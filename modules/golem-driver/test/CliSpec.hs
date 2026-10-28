@@ -18,6 +18,7 @@ import Golem.Preflight.Rules (Level (..), Rules (..), parseRules, printRules)
 import Golem.Preflight.View (GlyphView (..), ImageView (..), LineView (..), PageView (..), RuleView (..), View (..))
 import Golem.Project.Style (Page (..), Style (..), parseDim, parseStyle)
 import Golem.Syntax
+import Golem.Syntax.Length (Sp (..))
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath ((</>))
@@ -31,7 +32,7 @@ templateText :: Language -> FilePath -> IO T.Text
 templateText lang file = maybe (assertFailure ("the template has no " <> file)) pure (lookup file (templateFiles lang uuid0))
 
 -- | The page size, vertical writing and right binding the template's style.toml lays out.
-templatePage :: Language -> IO (Either [Diagnostic] ((Integer, Integer), Bool, Bool))
+templatePage :: Language -> IO (Either [Diagnostic] ((Sp, Sp), Bool, Bool))
 templatePage lang = do
   style <- templateText lang "style.toml"
   pure ((\g -> (pgPageSize g, pgVertical g, pgBindingRight g)) <$> (parseStyle (FileId 0) style >>= pageGeometry (FileId 0) False))
@@ -62,7 +63,7 @@ newProjectTests =
              -- golem-pdf ADR 0010, golem-project ADR 0010
              testCase "the templates have a bleed: 3mm for Japanese, 0.125in (9pt) for English" $ do
                let bleedOf lang = fmap (fmap pageBleed . stPage) . parseStyle (FileId 0) <$> templateText lang "style.toml"
-               bleedOf Japanese >>= (@?= Right (Just (round (3 * 72 * 65536 / (25.4 :: Rational)))))
+               bleedOf Japanese >>= (@?= Right (Just (Sp (round (3 * 72 * 65536 / (25.4 :: Rational))))))
                bleedOf English >>= (@?= Right (Just (9 * 65536)))
                parseDim "0.125in" @?= parseDim "9pt",
              testCase "fonts come from tagged releases with fixed hashes" $ do
@@ -246,7 +247,7 @@ preflightTests =
         p <- preflightIn tmp
         v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
         -- A5: 148mm wide
-        map (rectW . pvTrim) (vwPages v) @?= map (const (round (148 * 72 / 25.4 * 65536 :: Rational))) (vwPages v)
+        map (rectW . pvTrim) (vwPages v) @?= map (const (Sp (round (148 * 72 / 25.4 * 65536 :: Rational)))) (vwPages v)
         assertBool "folio on every page" (all (any ((== "ノンブル") . lvKind) . pvLines) (vwPages v))
         case concatMap pvImages (vwPages v) of
           [iv] -> do
@@ -254,20 +255,20 @@ preflightTests =
             -- a figure that does not wrap fills the measure: 12 characters of 10pt
             rectW (ivRect iv) @?= 120 * 65536
           other -> assertFailure (show (length other))
-        sort (map rvWeight (concatMap pvRules (vwPages v))) @?= [round (0.3 * 65536 :: Rational), round (0.6 * 65536 :: Rational), round (0.6 * 65536 :: Rational)],
+        sort (map rvWeight (concatMap pvRules (vwPages v))) @?= [Sp (round (0.3 * 65536 :: Rational)), Sp (round (0.6 * 65536 :: Rational)), Sp (round (0.6 * 65536 :: Rational))],
     testCase "the view: the rule before the footnotes is a rule of its own kind (golem-driver ADR 0024)" $
       withPreflightProject (horizontalStyle <> "\n[notes.rule]\nlength = \"5zw\"\nweight = \"0.2pt\"\n") "# 章\n\n漢[note: 注。]字\n" [] $ \tmp -> do
         p <- preflightIn tmp
         v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
-        [(rvKind r, rvWeight r) | r <- concatMap pvRules (vwPages v)] @?= [("脚注の罫線", round (0.2 * 65536 :: Rational))],
+        [(rvKind r, rvWeight r) | r <- concatMap pvRules (vwPages v)] @?= [("脚注の罫線", Sp (round (0.2 * 65536 :: Rational)))],
     testCase "the view: the weight of a rule is its thinnest part, its colour a swatch used (golem-driver ADR 0028)" $ do
       let weightOf st = withPreflightProject (horizontalStyle <> "\n[notes.rule]\nlength = \"5zw\"\nweight = \"1.2pt\"\nstyle = \"" <> st <> "\"\n") "# 章\n\n漢[note: 注。]字\n" [] $ \tmp -> do
             p <- preflightIn tmp
             v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
             pure (map rvWeight (concatMap pvRules (vwPages v)))
-          w = round (1.2 * 65536 :: Rational)
-      weightOf "thin-thin" >>= (@?= [w `div` 3])
-      weightOf "wavy" >>= (@?= [w `div` 4])
+          w = Sp (round (1.2 * 65536 :: Rational))
+      weightOf "thin-thin" >>= (@?= [Sp (unSp w `div` 3)])
+      weightOf "wavy" >>= (@?= [Sp (unSp w `div` 4)])
       weightOf "dotted" >>= (@?= [w])
       withPreflightProject (horizontalStyle <> "\n[color.swatches]\nheavy = { cmyk = [100, 100, 100, 100] }\n\n[notes.rule]\nlength = \"5zw\"\ncolor = \"heavy\"\n") "# 章\n\n漢[note: 注。]字\n" [] $ \tmp -> do
         p <- preflightIn tmp

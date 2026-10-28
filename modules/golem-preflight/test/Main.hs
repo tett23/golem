@@ -11,6 +11,7 @@ import Golem.Preflight
 import Golem.Preflight.Rules
 import Golem.Preflight.View
 import Golem.Syntax
+import Golem.Syntax.Length (Sp (..))
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -19,10 +20,10 @@ main = defaultMain tests
 
 -- ------------------------------------------------------------------ fixtures
 
-pt, mm, inch :: Rational -> Integer
-pt x = round (x * 65536)
-mm x = round (x * 72 / 25.4 * 65536)
-inch x = round (x * 72 * 65536)
+pt, mm, inch :: Rational -> Sp
+pt x = Sp (round (x * 65536))
+mm x = Sp (round (x * 72 / 25.4 * 65536))
+inch x = Sp (round (x * 72 * 65536))
 
 -- | A B6 trimmed page (128mm × 182mm).
 trim :: Rect

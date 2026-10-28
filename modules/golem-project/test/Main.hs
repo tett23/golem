@@ -569,7 +569,7 @@ tests =
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))
-        parseDim "4Q" @?= Just (Abs (round (72 * 65536 / (25.4 :: Rational))))
+        parseDim "4Q" @?= Just (Abs (Sp (round (72 * 65536 / (25.4 :: Rational)))))
         parseDim "1H" @?= parseDim "0.25mm"
         parseDim "2zw" @?= Just (Zw 2)
         parseDim "3em" @?= Nothing,
@@ -577,7 +577,7 @@ tests =
         parseDim "1in" @?= Just (Abs (72 * 65536))
         parseDim "0.125in" @?= Just (Abs (9 * 65536))
         parseDim "8.5in" @?= parseDim "612pt"
-        parseDim "0.1in" @?= Just (Abs (round (72 * 65536 / (10 :: Rational))))
+        parseDim "0.1in" @?= Just (Abs (Sp (round (72 * 65536 / (10 :: Rational)))))
         fmap (\case Abs x -> x < 0; Zw _ -> False) (parseSignedDim "-0.5in") @?= Just True
         parseSignedDim "-0.5in" @?= Just (Abs (-(36 * 65536)))
         parseDim "1 in" @?= Nothing
@@ -712,7 +712,7 @@ tests =
         codes (parseStyle (FileId 0) "[notes.rule]\nlength = \"10zw\"\nspace-after = \"abc\"\n") @?= ["G03006"],
       testCase "the colour and the style of a rule (golem-driver ADR 0028)" $ do
         let rule = parseRuleSpec (FileId 0)
-            pt x = round (x * 65536 :: Rational)
+            pt x = Sp (round (x * 65536 :: Rational))
         fmap (\r -> (rsColor r, rsStyle r)) (rule "") @?= Right (Nothing, RuleSolid)
         fmap rsStyle (rule "style = \"dashed\"\nweight = \"0.5pt\"\n") @?= Right (RuleDashed (pt 1.5) (pt 1))
         fmap rsStyle (rule "style = \"dashed\"\nweight = \"0.5pt\"\ndash = \"3pt\"\ngap = \"1.5pt\"\n") @?= Right (RuleDashed (pt 3) (pt 1.5))
@@ -790,7 +790,7 @@ tests =
         fmap (fmap hsRuleBefore) (headingOf "[headings.2]\nrule-before = false\n") @?= Right (Just Nothing)
         codes (parseStyle (FileId 0) "[headings.2]\nrule-before = true\n") @?= ["G03006"],
       testCase "the spaces of a rule in mm (golem-driver ADR 0035)" $ do
-        let mm r = Abs (round (r * 72 * 65536 / 25.4 :: Rational))
+        let mm r = Abs (Sp (round (r * 72 * 65536 / 25.4 :: Rational)))
             spaces r = (rsSpaceBefore r, rsSpaceAfter r)
         fmap (fmap spaces . fst . (`paraRules` Just "sec")) (parseStyle (FileId 0) "[paragraph-styles.sec]\nrule-before = { space-before = \"3mm\", space-after = \"1.5mm\" }\n")
           @?= Right (Just (Just (mm 3), Just (mm 1.5)))
@@ -1753,7 +1753,7 @@ pageSizeTests =
     abs' t = case parseDim t of
       Just (Abs x) -> x
       d -> error (show d)
-    mm x = round (x * 72 * 65536 / (254 / 10) :: Rational)
+    mm x = Sp (round (x * 72 * 65536 / (254 / 10) :: Rational))
     isRight = either (const False) (const True)
     g03017 v needle = case parseStyle (FileId 0) (src v) of
       Left ds -> do

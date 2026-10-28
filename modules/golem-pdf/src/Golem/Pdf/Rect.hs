@@ -5,5 +5,7 @@ with it, and golem-layout-spec re-exports it for the page geometry.
 -}
 module Golem.Pdf.Rect (Rect (..)) where
 
-data Rect = Rect {rectX :: !Integer, rectY :: !Integer, rectW :: !Integer, rectH :: !Integer}
+import Golem.Syntax.Length (Sp)
+
+data Rect = Rect {rectX :: !Sp, rectY :: !Sp, rectW :: !Sp, rectH :: !Sp}
   deriving stock (Eq, Show)

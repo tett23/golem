@@ -68,7 +68,7 @@ columnWidths available cols
     -- the largest c in [lo, hi] that fits; lo fits
     search lo hi
       | lo >= hi = lo
-      | otherwise = let mid = (lo + hi + 1) `div` 2 in if fits mid then search mid hi else search lo (mid - 1)
+      | otherwise = let mid = Sp (unSp (lo + hi + 1) `div` 2) in if fits mid then search mid hi else search lo (mid - 1)
 
 data SetCell = SetCell
   { -- | from the start of the table: the column's position and the alignment of the first line
@@ -103,7 +103,7 @@ layoutTable params measure gap aligns header rows = do
         [] -> []
       columns = [[cellExtent (cell r c) | r <- header : rows] | c <- [0 .. ncols - 1]]
       extents = [(maximum (0 : map fst col), maximum (0 : map snd col)) | col <- columns]
-      available = measure - gap * toInteger (max 0 (ncols - 1))
+      available = measure - gap * fromIntegral (max 0 (ncols - 1))
   widths <- columnWidths available extents
   let positions = scanl (\p w -> p + w + gap) 0 widths
       ps = params {pProtrusion = False}
@@ -118,7 +118,7 @@ layoutTable params measure gap aligns header rows = do
               let room = max 0 (w - contentWidth l)
                in case alignOf c of
                     AlignRight -> room
-                    AlignCenter -> room `div` 2
+                    AlignCenter -> Sp (unSp room `div` 2)
                     _ -> 0
             shifts = map shift ls
             first = case shifts of
@@ -133,7 +133,7 @@ layoutTable params measure gap aligns header rows = do
   pure
     SetTable
       { stWidths = widths,
-        stWidth = sum widths + gap * toInteger (max 0 (ncols - 1)),
+        stWidth = sum widths + gap * fromIntegral (max 0 (ncols - 1)),
         stHeader = headerCells,
         stRows = rowCells,
         stHeaderLines = if null header then 0 else height headerCells,

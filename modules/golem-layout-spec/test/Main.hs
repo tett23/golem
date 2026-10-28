@@ -120,13 +120,13 @@ tests =
         case Map.lookup "body" (pgMasters g) of
           Just (MasterGeometry (Just (co, ce, ho, he)) (Just (_, fo, _))) -> do
             (co, ce) @?= (oneLine (RefHeading 1 HeadShort PickFirst), oneLine (RefMeta "title"))
-            ho @?= Anchor (ox + ow) ((oy + oh + a5H) `div` 2) AlignEnd
-            he @?= Anchor ex ((oy + oh + a5H) `div` 2) AlignStart
-            fo @?= Anchor (ox + ow `div` 2) (oy `div` 2) AlignCenter
+            ho @?= Anchor (ox + ow) (Sp (unSp (oy + oh + a5H) `div` 2)) AlignEnd
+            he @?= Anchor ex (Sp (unSp (oy + oh + a5H) `div` 2)) AlignStart
+            fo @?= Anchor (ox + Sp (unSp ow `div` 2)) (Sp (unSp oy `div` 2)) AlignCenter
           other -> assertFailure (show other),
       testCase "a running head of more lines than the margin holds is G07052 (golem-driver ADR 0022)" $ do
         -- 30 lines of 10pt at a 17pt pitch: the type area is 503pt deep; the margin is 1.5 pitches
-        let margin = pt 51 `div` 2
+        let margin = Sp (unSp (pt 51) `div` 2)
             depth = pt 503
             headGrid = (grid 30 30 1 Nothing) {gridTop = Abs margin}
             footGrid = (grid 30 30 1 Nothing) {gridTop = Abs (a5H - depth - margin)}
@@ -151,7 +151,7 @@ tests =
         assertBool "21zw on columns of 20 characters" (isG07001 (pageGeometry (FileId 0) False (ruled (Zw 21) (small 20 2 (Just (Zw 2))))))
         assertBool "20zw on columns of 20 characters" (not (isLeft (pageGeometry (FileId 0) False (ruled (Zw 20) (small 20 2 (Just (Zw 2))))))),
       testCase "G07001: paragraph and heading rules out of the trim or over half the column gap (golem-driver ADR 0027)" $ do
-        let mm x = round (x * 72 / 25.4 * 65536 :: Rational) :: Integer
+        let mm x = Sp (round (x * 72 / 25.4 * 65536 :: Rational))
             gridOf size chars cols gap top gutter = Grid (Abs (pt size)) chars 30 (Abs (pt (size + 6))) cols gap (Abs top) (Abs gutter)
             rule = RuleSpec Nothing 19661 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True
             withRule g size r = (styleWith False False g) {stParaStyles = Map.insert "a" noParaDef {psSize = size, psRuleBefore = Just (Just r)} (stParaStyles defaultStyle)}

@@ -346,7 +346,7 @@ Golem は、長さと位置の計算に浮動小数点数を使わない。
 
 | 値 | 型 | 場所 |
 | --- | --- | --- |
-| 長さと位置（版面、行、ページの上の座標） | 整数の sp（[code: type Sp = Integer]、1pt = 65536sp） | golem-project、golem-layout-spec、golem-layout |
+| 長さと位置（版面、行、ページの上の座標） | 整数の sp（[code: newtype Sp = Sp Integer]、1pt = 65536sp） | golem-syntax の [code: Golem.Syntax.Length] が定め、golem-project、golem-layout-spec、golem-layout、golem-pdf などが使う |
 | [code: style.toml] の寸法 | sp の整数か、字の大きさに対する比（[code: Zw !Rational]） | golem-project の [code: parseDim] |
 | フォントの送り、カーニング、字面の位置 | フォントの単位の整数を、有理数で sp に換算 | golem-font の [code: unitsToSp]、golem-driver |
 | 行の伸縮の比、デメリット | [code: Rational]（[code: lineRatio]）、[code: Integer] | golem-layout |
@@ -358,6 +358,8 @@ Haskell の [code: Integer] は桁数に上限のない整数で、桁あふれ�
 [code: style.toml] の [code: "10.5pt"] のような十進の寸法も、[code: parseDim] が有理数として読み、sp への換算で一度だけ最近接偶数丸めで丸める。
 単位の比（1in = 72pt = 25.4mm、1Q = 1H = 0.25mm）と、sp への換算と、長さを書く表記は、golem-syntax の [code: Golem.Syntax.Length] の一か所にまとめてある。
 diagnostic に書く mm は小数点以下 2 桁、PDF と CSS に書く pt と em は小数点以下 4 桁で、どれも最近接偶数丸めで丸める。
+[code: Sp] は [code: Integer] を包む [code: newtype] なので、sp の値をページの番号や字数のようなほかの整数と取り違えると、型の検査で見つかる。
+sp どうしの足し算と引き算、整数の倍はそのまま書けるが、割り算と有理数への変換は [code: unSp] で整数を取り出して書く。
 換算が散らばっていると、同じ長さを直した値が箇所ごとに少しずつ食い違うからである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0103-single-place-for-unit-conversions.md]（docs/adr ADR 0103「長さの単位の変換を一か所にまとめ、表示の桁と丸めをそろえる」）]
 
 HarfBuzz と FreeType についても、Golem が受け取る値は整数である。

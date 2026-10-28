@@ -60,7 +60,7 @@ import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportSite (..), importSite)
 import Golem.Project.Paths (PathError (..), pathErrorMessage)
-import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Style, kentenShapeNames, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
+import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Sp (..), Style, kentenShapeNames, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
 import Golem.Syntax
 import Golem.Syntax.Text (isSpaceTab, tshow)
 import Numeric.Natural (Natural)
@@ -1819,7 +1819,7 @@ aki sp args slots = case (args, slots) of
   where
     amount t = case (parseAki t, parseDim t) of
       (Just r, _) -> Just (AkiZw r)
-      (_, Just (Abs x)) -> Just (AkiAbs x)
+      (_, Just (Abs x)) -> Just (AkiAbs (unSp x))
       _ -> Nothing
     wrong why = err "G02055" sp (why <> "。" <> akiAmounts) >> pure []
     -- the numerator and the denominator of zw, or sp (golem-doc ADR 0006)

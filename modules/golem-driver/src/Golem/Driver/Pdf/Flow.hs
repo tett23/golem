@@ -292,7 +292,7 @@ codeMeasureDiagnostics fid style locals geom =
 measure and gap, from line 0.
 -}
 pageColumnSet :: Style -> PageGeometry -> ColumnSet
-pageColumnSet style geom = ColumnSet (length (pgColumns geom)) (columnMeasure geom) (pageColumnGap style geom) 0
+pageColumnSet style geom = ColumnSet (length (pgColumns geom)) (unSp (columnMeasure geom)) (unSp (pageColumnGap style geom)) 0
 
 -- | The column-gap of [page.grid] in sp; 0 without one.
 pageColumnGap :: Style -> PageGeometry -> Sp
@@ -312,7 +312,7 @@ indexColumnSet style geom = do
       gap = maybe (pageColumnGap style geom) (dimToSp (pgFontSize geom)) (ixColumnGap ix)
   if n == length (pgColumns geom)
     then Nothing
-    else Just (ColumnSet n ((w - toInteger (n - 1) * gap) `div` toInteger n) gap 0)
+    else Just (ColumnSet n (unSp (w - fromIntegral (n - 1) * gap) `div` toInteger n) (unSp gap) 0)
 
 {- | G07044: the columns of the index leave 8 characters of the type
 area's size (docs/adr ADR 0025), at the value of [index] columns.
@@ -321,7 +321,7 @@ indexDiagnostics :: FileId -> Style -> PageGeometry -> [Diagnostic]
 indexDiagnostics fid style geom =
   [ diagnostic "G07044" Error (mkSpan fid at at) "索引の段の行長が足りません。columns を減らすか column-gap を狭めてください"
   | Just set <- [indexColumnSet style geom],
-    csMeasure set < 8 * pgFontSize geom,
+    Sp (csMeasure set) < 8 * pgFontSize geom,
     let at = maybe 0 ixColumnsAt (stIndex style)
   ]
 
@@ -332,9 +332,9 @@ bottom in vertical writing.
 columnSetRects :: PageGeometry -> Int -> ColumnSet -> [Rect]
 columnSetRects geom n set =
   let Rect x y w h = typeAreaFor geom n
-      m = csMeasure set
-      g = csGap set
-   in [ if pgVertical geom then Rect x (y + h - (i + 1) * m - i * g) w m else Rect (x + i * (m + g)) y m h
+      m = Sp (csMeasure set)
+      g = Sp (csGap set)
+   in [ if pgVertical geom then Rect x (y + h - fromInteger (i + 1) * m - fromInteger i * g) w m else Rect (x + fromInteger i * (m + g)) y m h
       | i <- [0 .. toInteger (csColumns set) - 1]
       ]
 
@@ -462,8 +462,8 @@ adjustLimit geom =
       at = gridLine geom
       areas = [pgTypeArea geom, pgTypeAreaEven geom]
       inside k
-        | pgVertical geom = all (\r -> rectX r + rectW r - at k - fs `div` 2 >= 0) areas
-        | otherwise = all (\r -> rectY r + rectH r - at k - (fs - round (toRational fs * baselineRatio)) >= 0) areas
+        | pgVertical geom = all (\r -> rectX r + rectW r - at k - Sp (unSp fs `div` 2) >= 0) areas
+        | otherwise = all (\r -> rectY r + rectH r - at k - (fs - L.zwToSp fs baselineRatio) >= 0) areas
    in n + length (takeWhile inside [n .. n + 999])
 
 {- | The position of grid line @k@ from the type area, past its last line
@@ -472,8 +472,8 @@ too (docs/adr ADR 0030).
 gridLine :: PageGeometry -> Int -> Sp
 gridLine geom k = case (drop k grid, grid) of
   (g : _, _) -> g
-  (_, g0 : _) -> g0 + toInteger k * pgLinePitch geom
-  _ -> toInteger k * pgLinePitch geom
+  (_, g0 : _) -> g0 + fromIntegral k * pgLinePitch geom
+  _ -> fromIntegral k * pgLinePitch geom
   where
     grid = pgLineGrid geom
 
@@ -676,7 +676,7 @@ runningHeadNotices inp geom fonts layout =
 
 -- | The width of a text set in a role at a size, unjustified.
 plainWidth :: LoadedFonts -> Text -> Sp -> Text -> Sp
-plainWidth fonts role size txt = sum [round (shAdvance g * toRational size) | g <- lfShape fonts (Shaping role False []) txt]
+plainWidth fonts role size txt = sum [L.zwToSp size (shAdvance g) | g <- lfShape fonts (Shaping role False []) txt]
 
 {- | Whether a page gets its folio (golem-driver ADR 0021): not a blank
 page, and its master page has a folio. 'masterMarks' and 'hiddenFolios'
@@ -711,7 +711,7 @@ hiddenFolios inp geom layout = case (piMarks inp, pgHiddenFolio geom) of
           x = case gutterSide (pgBindingRight geom) n of
             SideLeft -> hgGutter hg
             SideRight -> pw - hgGutter hg
-       in [(c, (x, ph `div` 2 + (toInteger (k - 1 - 2 * i) * size) `div` 2)) | (i, c) <- zip [0 ..] digits]
+       in [(c, (x, Sp (unSp ph `div` 2 + (fromIntegral (k - 1 - 2 * i) * unSp size) `div` 2))) | (i, c) <- zip [0 ..] digits]
 
 -- | How the last line of a table of contents entry ends (golem-driver ADR 0009).
 data TocGeometry = TocGeometry
@@ -755,10 +755,10 @@ tocPage tg e number =
       u = tgLeaderUnit tg
       ns0 = tgMeasure tg - w
       le = tgMeasure tg - max (tgReserve tg) w - g
-      k0 = if tgLeaders tg && u > 0 then max 0 ((le - (e + g)) `div` u) else 0
+      k0 = if tgLeaders tg && u > 0 then max 0 (unSp (le - (e + g)) `div` unSp u) else 0
       (ns, k) = if ns0 < e + g then (e + g, 0) else (ns0, k0)
-      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource) | _ <- [1 .. k]] 0 (k * u) 0 (0, 0) False (0, 0)
-   in TocPage (le - k * u) leader ns number
+      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) False (0, 0)
+   in TocPage (le - fromInteger k * u) leader ns number
 
 -- | The measure of a column of the page.
 columnMeasure :: PageGeometry -> Sp
@@ -785,7 +785,7 @@ tocGeometry style geom fonts =
   let fs = pgFontSize geom
       env = composeEnv style geom fonts (Assumed Map.empty Map.empty) (bodyLook style fs)
       (w, u) = tocMetrics env
-   in TocGeometry (columnMeasure geom) w (fs `div` 2) u (stTocLeader style == "dots") (ceLook env)
+   in TocGeometry (columnMeasure geom) w (Sp (unSp fs `div` 2)) u (stTocLeader style == "dots") (ceLook env)
 
 {- | The text of the lines of each page, as far as the layout goes
 (golem-driver ADR 0007): the boxes of a line joined.
@@ -873,7 +873,7 @@ to the size.
 sidenoteMetrics :: Style -> PageGeometry -> (Text, Sp, Sp)
 sidenoteMetrics style geom =
   let (role, size) = paraFace style geom "sidenote"
-   in (role, size, pgLinePitch geom * size `div` pgFontSize geom)
+   in (role, size, Sp (unSp (pgLinePitch geom) * unSp size `div` unSp (pgFontSize geom)))
 
 {- | Sidenotes the PDF cannot place (golem-driver ADR 0006): in vertical
 writing (G07032), without a sidenote column (G07034), or in a footnote or
@@ -940,21 +940,21 @@ placePageSidenotes geom metricsOf lineMap p =
         SHeading lid m -> [lid .. lid + m - 1]
         _ -> []
       notes =
-        [ (sp, toInteger slot * bodyPitch, ls)
+        [ (sp, fromIntegral slot * bodyPitch, ls)
         | (slot, s) <- sortOn fst (poSlots p),
           lid <- lineIds s,
           Just sl <- [Map.lookup lid lineMap],
           (sp, ls) <- slSidenotes sl
         ]
-      height sp ls = let (pitch, size) = metricsOf sp in toInteger (max 1 (length ls) - 1) * pitch + size
+      height sp ls = let (pitch, size) = metricsOf sp in fromIntegral (max 1 (length ls) - 1) * pitch + size
       columnH = maybe 0 rectH (sidenoteAreaFor geom (poNumber p))
       at i = case drop i notes of
         ((sp, _, _) : _) -> sp
         [] -> mkSpan (FileId 0) 0 0
    in if null notes
         then Right []
-        else case placeSidenotes columnH (bodyPitch `div` 2) [(want, height sp ls) | (sp, want, ls) <- notes] of
-          Right tops -> Right [PlacedSidenote sp t ls | ((sp, _, ls), t) <- zip notes tops]
+        else case placeSidenotes (unSp columnH) (unSp bodyPitch `div` 2) [(unSp want, unSp (height sp ls)) | (sp, want, ls) <- notes] of
+          Right tops -> Right [PlacedSidenote sp (Sp t) ls | ((sp, _, ls), t) <- zip notes tops]
           Left (TooTall i) -> Left [diagnostic "G07033" Error (at i) "傍注が傍注の領域より高く、収まりません"]
           Left (DoesNotFit i) -> Left [diagnostic "G07033" Error (at i) "このページの傍注が傍注の領域に収まりません"]
 
@@ -1300,7 +1300,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
                in case indexSet of
                     Nothing -> (n, entries (UPara noIndent))
                     -- the index in its own columns (docs/adr ADR 0025)
-                    Just set -> (n, [plainUnit (UColumns (Just set)) Nothing []] <> entries (UIndexEntry (csMeasure set)) <> [plainUnit (UColumns Nothing) Nothing []])
+                    Just set -> (n, [plainUnit (UColumns (Just set)) Nothing []] <> entries (UIndexEntry (Sp (csMeasure set))) <> [plainUnit (UColumns Nothing) Nothing []])
             -- each entry of a channel of a plugin a paragraph of its style (golem-doc ADR 0007)
             ChannelOutput (CustomOutput name st) ->
               let (face, ind) = paraLook style geom st
@@ -1359,11 +1359,11 @@ listWidths envOf fs gap units =
             Just d -> dimToSp (lkSize (uLook u)) d
             Nothing
               | endsWithSpacedPunctuation (T.concat (map inlineText m)) -> 0
-              | otherwise -> fs `div` 2,
+              | otherwise -> Sp (unSp fs `div` 2),
       lid <- take 1 (reverse (uLists u))
     ]
   where
-    roundUp x = ((x + fs - 1) `div` fs) * fs
+    roundUp x = Sp (unSp (x + fs - 1) `div` unSp fs) * fs
 
 -- | w: the width of the boxes of a marker.
 markerWidth :: ComposeEnv -> [Inline] -> Sp
@@ -1399,7 +1399,7 @@ buildFlow inp geom fonts images assumed = do
       measure = columnMeasure geom
       -- the reserve for the page number of a table of contents entry: W and two em (golem-driver ADR 0009)
       tocReserve = fst (tocMetrics bodyEnv) + 2 * fs
-      tocIndent l = toInteger (l - 1) * fs
+      tocIndent l = fromIntegral (l - 1) * fs
       -- a mark without an assumed page yet stands at page 1 in the first round
       markPage sp = Map.lookup sp (asMarks assumed) <|> (if Map.null (asMarks assumed) then Just 1 else Nothing)
       rawUnits = unitsOf (bookLanguage inp) (piBook inp) geom (indexColumnSet style geom) (docStyle inp) markPage (piBibliography inp)
@@ -1496,7 +1496,7 @@ buildFlow inp geom fonts images assumed = do
             (captionItems, captionAnchors) = composeInlines ((styledEnv (uStyle u) (envFor (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption"), ceSizeSource = paraSizeSource (uStyle u) (Just "caption")}) captionInlines
             captionAt len = if null captionInlines then [] else brLines (breakParagraph captionParams (const len) captionItems)
             -- the grid lines a caption of k lines takes: the fewest that hold it, its pitch in the body's ratio of pitch to size
-            captionSpanOf k = if k == 0 then (pitch, 0) else let cb' = headingBlock fs pitch cs k 1 in (hbPitch cb', hbSpan cb')
+            captionSpanOf k = if k == 0 then (pitch, 0) else let cb' = headingBlock (unSp fs) (unSp pitch) (unSp cs) k 1 in (Sp (hbPitch cb'), hbSpan cb')
             -- the caption in the measure before fitting (golem-driver ADR 0034)
             caption = captionAt alongSp
             captionMarks = [sp | AnchorIndex _ sp _ <- captionAnchors]
@@ -1507,8 +1507,8 @@ buildFlow inp geom fonts images assumed = do
             fitOf len k s = fitFigure ratio len k pitch fs (if s == 0 then Nothing else Just s)
             (alongFit, across, fitted) = case figWrap fig of
               Nothing -> fitOf alongSp gridLines span'
-              Just _ -> (alongSp, floor (fromInteger alongSp * ratio), False)
-            m = fromInteger ((across + pitch - 1) `div` pitch)
+              Just _ -> (alongSp, Sp (floor (fromInteger (unSp alongSp) * ratio)), False)
+            m = fromInteger (unSp (across + pitch - 1) `div` unSp pitch)
             -- the size the figure would take turned, to tell the writer (golem-driver ADR 0034)
             turnedArea =
               let s = snd (captionSpanOf (length (captionAt frameAlong)))
@@ -1518,11 +1518,11 @@ buildFlow inp geom fonts images assumed = do
             place' = if turned then "ページ" else "段"
             tooDeep = isNothing (figWrap fig) && n > 0 && span' >= gridLines
             notices =
-              [ notice "G07039" (uSpan u) ("図版を" <> place' <> "に収めるため " <> T.pack (show (alongFit * 100 `div` max 1 alongSp)) <> "% に縮めました" <> hint)
+              [ notice "G07039" (uSpan u) ("図版を" <> place' <> "に収めるため " <> T.pack (show (unSp alongFit * 100 `div` max 1 (unSp alongSp))) <> "% に縮めました" <> hint)
               | fitted,
                 not tooDeep
               ]
-            depth = if n > 0 then toInteger m * pitch + toInteger (n - 1) * cp + cs else across
+            depth = if n > 0 then fromIntegral m * pitch + fromIntegral (n - 1) * cp + cs else across
             gap = dimToSp fs (stWrapGap style)
             ex = (\side -> exclusion side pitch gap alongSp depth) <$> figWrap fig
             errs = case (figWrap fig, ex) of
@@ -1549,7 +1549,7 @@ buildFlow inp geom fonts images assumed = do
       horizontal text and its width in vertical text -}
       typeArea = pgTypeArea geom
       (frameAlong, frameAcross) = if vertical then (rectW typeArea, rectH typeArea) else (rectH typeArea, rectW typeArea)
-      frameLines = fromInteger (max 0 (frameAcross - fs) `div` pitch) + 1
+      frameLines = fromInteger (unSp (max 0 (frameAcross - fs)) `div` unSp pitch) + 1
       -- 1. a job per wrapped figure: the paragraphs right after it, in order, beside the exclusion
       wrapJob i ex = go (i + 1) 0
         where
@@ -1625,7 +1625,7 @@ buildFlow inp geom fonts images assumed = do
             noteLines = Map.fromListWith (flip (<>)) [(lineOfItem (i + cShift c), [(k, nls)]) | ((i, _, _, _), (k, nls)) <- zip (noteAnchors (cAnchors c)) (cNotes c)]
             sidenoteLinesOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [(sp, sls)]) | (i, sp, sls) <- cSidenotes c]
             marksOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [sp]) | (i, sp) <- cMarks c]
-            boxes = [LineBox lid [NoteBody key (length nls) | (key, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) (overhangOf l) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+            boxes = [LineBox lid [NoteBody key (length nls) | (key, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) (unSp (overhangOf l)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
             set = Map.fromList [(lid, SetLine l size (indentOf k) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
          in (boxes, set)
       emptyLine = Line [] 0 0 0 (0, 0) False (0, 0)
@@ -1637,7 +1637,7 @@ buildFlow inp geom fonts images assumed = do
             (inner, outer)
               | before = (sp (rsSpaceAfter spec), sp (rsSpaceBefore spec))
               | otherwise = (sp (rsSpaceBefore spec), sp (rsSpaceAfter spec))
-         in RuleSide inner outer (rsWeight spec) (isJust (rsSpaceBefore spec) || isJust (rsSpaceAfter spec)) (if rsKeepInColumn spec then Nothing else Just (marginAcross geom before))
+         in RuleSide (unSp inner) (unSp outer) (unSp (rsWeight spec)) (isJust (rsSpaceBefore spec) || isJust (rsSpaceAfter spec)) (if rsKeepInColumn spec then Nothing else Just (unSp (marginAcross geom before)))
       -- how far the ruby and kenten of a line reach toward the line before (golem-driver ADR 0033)
       overhangOf = lineOverhang vertical fs (emBoxCentralOf fonts)
       {- a grid line of space after a code block with a background, a band or
@@ -1652,7 +1652,7 @@ buildFlow inp geom fonts images assumed = do
         where
           painted ci = isJust (ciBackground ci) || not (null (ciBands ci)) || isJust (ciBorder ci)
           reaches ci remaining = case remaining of
-            next : _ | Just l <- firstLineOf next -> reachesBackground pitch fs (maybe 0 snd (ciBorder ci)) (lbOverhang l)
+            next : _ | Just l <- firstLineOf next -> reachesBackground pitch fs (maybe 0 snd (ciBorder ci)) (Sp (lbOverhang l))
             _ -> False
           firstLineOf = \case
             FRuled {frBody = RuledLines (l : _)} -> Just l
@@ -1665,7 +1665,7 @@ buildFlow inp geom fonts images assumed = do
       step (nextId, flows, lineAcc, figAcc, headAcc, errs, tabAcc, ext) (i, u) = case uKind u of
         UTable {} -> case Map.lookup i tables of
           Just (Left (ColumnsTooWide mn avail)) ->
-            (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G07041" Error (uSpan u) ("表の列の最小の幅の合計（" <> L.mmText (L.Sp mn) <> "）が使える幅（" <> L.mmText (L.Sp avail) <> "）に収まりません")], tabAcc, ext)
+            (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G07041" Error (uSpan u) ("表の列の最小の幅の合計（" <> L.mmText mn <> "）が使える幅（" <> L.mmText avail <> "）に収まりません")], tabAcc, ext)
           Just (Right (t, atts))
             | tall@(_ : _) <- [r | (r, h) <- zip [1 :: Int ..] (stRowLines t), stHeaderLines t + h > capacity] ->
                 (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G07042" Error (uSpan u) ("表の " <> T.pack (show r) <> " 行目が見出しの行とともに一ページに収まりません") | r <- tall], tabAcc, ext)
@@ -1673,7 +1673,7 @@ buildFlow inp geom fonts images assumed = do
                 let heights = stHeaderLines t : stRowLines t
                     starts = scanl (+) nextId heights
                     rowsOut =
-                      [ ( [ LineBox lid [NoteBody key (length nls) | (key, nls) <- ns] (if lid == nextId then label u else []) ms (maximum (0 : [overhangOf l | c <- cells, (j, l) <- zip [0 :: Int ..] (scLines c), j == k]))
+                      [ ( [ LineBox lid [NoteBody key (length nls) | (key, nls) <- ns] (if lid == nextId then label u else []) ms (unSp (maximum (0 : [overhangOf l | c <- cells, (j, l) <- zip [0 :: Int ..] (scLines c), j == k])))
                           | (k, (lid, (ns, _, ms))) <- zip [0 ..] (zip ids att)
                           ],
                           Map.fromList [(lid, SetLine emptyLine fs 0 ns sn) | (lid, (ns, sn, _)) <- zip ids att],
@@ -1777,8 +1777,8 @@ buildFlow inp geom fonts images assumed = do
                     UHeading l _ _ -> headingLines (bookLanguage inp) (uStyle u) capacity l
                     UNotesTitle _ -> headingLines (bookLanguage inp) (uStyle u) capacity 2
                     _ -> 1
-                  hb = headingBlock fs pitch size (length ls) least
-                  ruledOf = FRuled nextId (ruleSide True <$> fst (uRules u)) (ruleSide False <$> snd (uRules u)) False (RuleGrid pitch fs) 0
+                  hb = headingBlock (unSp fs) (unSp pitch) (unSp size) (length ls) least
+                  ruledOf = FRuled nextId (ruleSide True <$> fst (uRules u)) (ruleSide False <$> snd (uRules u)) False (RuleGrid (unSp pitch) (unSp fs)) 0
                   flowOf = case uKind u of
                     UHeading _ _ recto | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledHeading recto (hbSpan hb) boxes)]
                     UPara _ | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledLines boxes)]
@@ -1810,8 +1810,8 @@ buildFlow inp geom fonts images assumed = do
               captionParams = params {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
               (captionItems, captionAnchors) = composeInlines ((styledEnv (uStyle u) (envFor (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption"), ceSizeSource = paraSizeSource (uStyle u) (Just "caption")}) captionInlines
               ls = brLines (breakParagraph captionParams (const (measure - lead)) captionItems)
-              cb = headingBlock fs pitch cs (length ls) 1
-           in CodeCaption ls cs (hbPitch cb) (if null ls then 0 else hbSpan cb) [sp | AnchorIndex _ sp _ <- captionAnchors]
+              cb = headingBlock (unSp fs) (unSp pitch) (unSp cs) (length ls) 1
+           in CodeCaption ls cs (Sp (hbPitch cb)) (if null ls then 0 else hbSpan cb) [sp | AnchorIndex _ sp _ <- captionAnchors]
       codeErrors = concatMap cbErrors (Map.elems codeBlocks)
       -- the text of a list item leaves 8 characters of the type area (golem-driver ADR 0013)
       listTooDeep sp = diagnostic "G07027" Error sp "リストの入れ子が深く、項目の本文の行長が足りません。行長を本文の文字の大きさの 8 字分以上残してください"
@@ -1934,7 +1934,7 @@ codeBlockOf geom fonts measure capacity u lead code caption =
       vertical = pgVertical geom
       st = uStyle u
       cs = stCode st
-      toSp a = round (a * toRational size) :: Sp
+      toSp = L.zwToSp size
       -- the shaping of each side: Latin, or Japanese ('漢')
       side latin = shapingOf vertical lk (if latin then 'a' else '\x6F22')
       shape latin r =
@@ -2092,11 +2092,11 @@ that deep, keeping its proportions (@ratio@ across for each along).
 -}
 fitFigure :: Rational -> Sp -> Int -> Sp -> Sp -> Maybe Int -> (Sp, Sp, Bool)
 fitFigure ratio along0 l p fs captionSpan =
-  let across0 = floor (fromInteger along0 * ratio)
+  let across0 = Sp (floor (fromInteger (unSp along0) * ratio))
       acrossMax = max 0 $ case captionSpan of
-        Just s -> toInteger (l - s) * p
-        Nothing -> toInteger (l - 1) * p + fs
-   in if across0 <= acrossMax then (along0, across0, False) else (floor (fromInteger acrossMax / ratio), acrossMax, True)
+        Just s -> fromIntegral (l - s) * p
+        Nothing -> fromIntegral (l - 1) * p + fs
+   in if across0 <= acrossMax then (along0, across0, False) else (Sp (floor (fromInteger (unSp acrossMax) / ratio)), acrossMax, True)
 
 {- | The items of a cell without a break between its last two boxes when
 both are one Japanese character (golem-driver ADR 0037): a penalty
@@ -2205,7 +2205,7 @@ as near.
 -}
 imageRect :: PageGeometry -> Rect -> Rect -> Int -> PlacedFigure -> Rect
 imageRect geom paper ta slot pf =
-  let d = toInteger slot * pgLinePitch geom
+  let d = fromIntegral slot * pgLinePitch geom
       along = pfAlong pf
       across = pfAcross pf
       atEnd = case pfWrap pf of
@@ -2242,7 +2242,7 @@ turnedFrame geom t ta pf =
       paper = unturnRect t ta (paperOf geom)
       depth
         | null (pfCaption pf) = pfAcross pf
-        | otherwise = toInteger (pfImageLines pf) * pgLinePitch geom + toInteger (length (pfCaption pf) - 1) * pfCaptionPitch pf + pfCaptionSize pf
+        | otherwise = fromIntegral (pfImageLines pf) * pgLinePitch geom + fromIntegral (length (pfCaption pf) - 1) * pfCaptionPitch pf + pfCaptionSize pf
       spare = max 0 ((if vertical then rectW frame else rectH frame) - depth)
       -- the end across the lines: the left of the frame in vertical text, its bottom in horizontal text
       endNearer

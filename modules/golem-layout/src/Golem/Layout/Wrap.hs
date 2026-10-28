@@ -11,7 +11,7 @@ module Golem.Layout.Wrap
 where
 
 import Golem.Doc.IR (Wrap (..))
-import Golem.Layout.KnuthPlass (Sp)
+import Golem.Layout.KnuthPlass (Sp (..))
 
 data Exclusion = Exclusion
   { exSide :: !Wrap,
@@ -27,7 +27,7 @@ gap; the extent along the line progression is rounded up to grid lines.
 -}
 exclusion :: Wrap -> Sp -> Sp -> Sp -> Sp -> Exclusion
 exclusion side pitch gap figWidth figDepth =
-  Exclusion side (figWidth + gap) (fromInteger ((figDepth + gap + pitch - 1) `div` pitch))
+  Exclusion side (figWidth + gap) (fromInteger (unSp (figDepth + gap + pitch - 1) `div` unSp pitch))
 
 {- | L*(i) for a paragraph starting @offset@ grid lines after the top of
 the exclusion area.

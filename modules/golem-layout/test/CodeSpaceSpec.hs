@@ -14,7 +14,7 @@ import Test.Tasty.HUnit
 
 -- | The advance of a space in 'defaultComposeEnv': a quarter em.
 sw :: Sp
-sw = fs `div` 4
+sw = Sp (unSp fs `div` 4)
 
 -- | Text in the look of the environment, and in the character style code.
 env :: ComposeEnv
@@ -52,16 +52,16 @@ codeSpaceTests =
     "spaces inside inline code (golem-layout ADR 0017)"
     [ testCase "a space of code is glue of its advance and tracking, with no stretch or shrink" $ do
         let lk = look0 {lkCode = True, lkTracking = 50}
-            t = round (toRational (50 * lkSize lk) / 1000)
+            t = Sp (round (toRational (unSp (50 * lkSize lk)) / 1000))
         glues (fst (composeInlines (defaultComposeEnv fs) {ceLook = lk} [txt "golem new DIR"])) @?= [(sw + t, 0, 0), (sw + t, 0, 0)],
       testCase "a space between words stretches by half its advance and shrinks by a third" $
-        glues (fst (composeInlines (defaultComposeEnv fs) [txt "a b"])) @?= [(sw, sw `div` 2, sw `div` 3)],
+        glues (fst (composeInlines (defaultComposeEnv fs) [txt "a b"])) @?= [(sw, Sp (unSp sw `div` 2), Sp (unSp sw `div` 3))],
       testCase "a space of a URL stretches and shrinks as one between words" $
-        glues (fst (composeInlines (defaultComposeEnv fs) {ceLook = look0 {lkUrl = True}} [txt "a b"])) @?= [(sw, sw `div` 2, sw `div` 3)],
+        glues (fst (composeInlines (defaultComposeEnv fs) {ceLook = look0 {lkUrl = True}} [txt "a b"])) @?= [(sw, Sp (unSp sw `div` 2), Sp (unSp sw `div` 3))],
       testCase "in a justified line the space of code keeps its width; the Japanese glue takes up the rest" $ do
         let items = justified [txt "あいうえおかきくけこ", code "x y", txt "さしすせそたちつてと"]
             natural = sum [itemWidth it | it <- items, case it of Penalty {} -> False; _ -> True]
-            ls = brLines (breakParagraph defaultParams (const (natural + fs `div` 2)) items)
+            ls = brLines (breakParagraph defaultParams (const (natural + Sp (unSp fs `div` 2))) items)
         length ls @?= 1
         case ls of
           [l] -> do

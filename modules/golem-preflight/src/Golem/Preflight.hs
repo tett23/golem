@@ -88,7 +88,7 @@ pagesFact ps = ("pdf-pages", FactInts (map toInteger ps))
 
 -- | A length in mm to two decimals, half to even (docs/adr ADR 0103).
 mmText :: Sp -> Text
-mmText = L.mmText . L.Sp
+mmText = L.mmText
 
 {- | The effective resolution: the pixels over the inches placed, the
 smaller of the two, cut down. A turned image lies across its rectangle
@@ -98,7 +98,7 @@ ppiOf :: ImageView -> ImageData -> Integer
 ppiOf iv img =
   let Rect _ _ rw rh = ivRect iv
       (w, h) = if ivTurned iv then (rh, rw) else (rw, rh)
-      per px sz = if sz <= 0 then 0 else floor (toRational px / L.fromSp L.In (L.Sp sz))
+      per px sz = if sz <= 0 then 0 else floor (toRational px / L.fromSp L.In sz)
    in min (per (imgWidth img) w) (per (imgHeight img) h)
 
 data Kind = KColor | KGray | KBitmap

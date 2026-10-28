@@ -43,7 +43,7 @@ combiningTests =
         let env = (defaultComposeEnv fs) {ceWordAdvance = \_ t -> if t == "か\x3099" then 9 / 8 else 1}
             items = compose env "か\x3099が"
         boxTexts items @?= ["か\x3099", "が"]
-        take 1 [w | Box w _ <- items] @?= [fs + fs `div` 8],
+        take 1 [w | Box w _ <- items] @?= [fs + Sp (unSp fs `div` 8)],
       testCase "か◌゙。: the spacing and the kinsoku of か。" $
         map stripMarks (compose markless "か\x3099。") @?= compose markless "か。",
       testCase "a combining character at the paragraph start is a box of its own" $

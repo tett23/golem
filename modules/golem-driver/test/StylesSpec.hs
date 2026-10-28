@@ -16,6 +16,7 @@ import Golem.LayoutSpec (pageGeometry)
 import Golem.Project (ProjectFailure (..))
 import Golem.Project.Style (LocalStyles (..), ParaStyleDef (..), noLocalStyles, noParaDef, parseStyle)
 import Golem.Syntax
+import Golem.Syntax.Length (Sp (..))
 import Support
 import System.FilePath ((</>))
 import Test.Tasty
@@ -32,7 +33,7 @@ evaluatedOk tmp = do
       (_, errs) -> assertFailure (show [(diagCode d, diagMessage d) | d <- errs])
 
 -- | The PDF lines of the chapters as (line length, indent).
-chapterLines :: BS.ByteString -> [(FilePath, T.Text)] -> IO [(Integer, Integer)]
+chapterLines :: BS.ByteString -> [(FilePath, T.Text)] -> IO [(Sp, Sp)]
 chapterLines style chapters = withChapters style chapters [] $ \tmp -> do
   (e, book) <- evaluatedOk tmp
   r <- flowLines fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty)

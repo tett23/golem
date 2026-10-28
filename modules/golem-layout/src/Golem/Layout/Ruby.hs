@@ -14,8 +14,7 @@ module Golem.Layout.Ruby
 where
 
 import Data.Ratio ((%))
-
-type Sp = Integer
+import Golem.Syntax.Length (Sp (..))
 
 -- | How characters are spread over a longer width (JLReq 1:2:1, 0:1:0, centred, at the start).
 data RubyAlign = Align121 | Align010 | AlignCenter | AlignStart
@@ -37,7 +36,7 @@ data RubyStyle = RubyStyle
 
 -- | The defaults, from the size of the paragraph: JLReq's usual setting, half an em of overhang.
 defaultRubyStyle :: Sp -> RubyStyle
-defaultRubyStyle fs = RubyStyle AlignCenter Align121 Align121 (fs `div` 2) True
+defaultRubyStyle fs = RubyStyle AlignCenter Align121 Align121 (Sp (unSp fs `div` 2)) True
 
 -- | Mono ruby (one base character per reading) or group ruby (a reading over several).
 data RubyKind = MonoRuby | GroupRuby
@@ -69,9 +68,9 @@ placeRuby style kind base reading (a, b)
             GroupRuby -> rsGroupAlign style
        in RubyPlacement w0 0 (distribute AlignStart w0 base) (distribute align w0 reading)
   | otherwise =
-      let o = max 0 (minimum [a, b, (r - w0) `div` 2])
+      let o = max 0 (minimum [a, b, Sp (unSp (r - w0) `div` 2)])
           w = max w0 (r - 2 * o)
-          start = negate ((r - w) `div` 2)
+          start = negate (Sp (unSp (r - w) `div` 2))
        in RubyPlacement w o (distribute (rsBaseSpacing style) w base) (map (+ start) (distribute AlignStart r reading))
   where
     w0 = sum base
@@ -82,8 +81,9 @@ space split by the alignment. Positions are exact rationals rounded
 down once per character, so rounding never accumulates.
 -}
 distribute :: RubyAlign -> Sp -> [Sp] -> [Sp]
-distribute align width advances =
-  let n = toInteger (length advances)
+distribute align (Sp width) spAdvances =
+  let advances = map unSp spAdvances
+      n = toInteger (length advances)
       e = width - sum advances
       (first, gap) = case align of
         Align121 | n >= 1 -> (e % (2 * n), e % n)
@@ -91,4 +91,4 @@ distribute align width advances =
         AlignStart -> (0, 0)
         _ -> (e % 2, 0)
       starts = scanl (\pos adv -> pos + toRational adv + gap) first advances
-   in map floor (take (length advances) starts)
+   in map (Sp . floor) (take (length advances) starts)

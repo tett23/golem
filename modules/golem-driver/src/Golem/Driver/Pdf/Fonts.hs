@@ -70,6 +70,7 @@ import Golem.Pdf qualified as P
 import Golem.Project
 import Golem.Project.Style
 import Golem.Syntax
+import Golem.Syntax.Length (zwToSp)
 
 {- | How a text is shaped (docs/adr/0020): the font role (golem-driver ADR
 0003; a role that is not loaded is the body role), the direction, and
@@ -146,13 +147,13 @@ data GlyphFrame
   deriving stock (Eq, Show)
 
 -- | The origin of a glyph moved by its offset at a size (golem-driver ADR 0020).
-offsetOrigin :: Integer -> GlyphFrame -> (Rational, Rational) -> (Integer, Integer) -> (Integer, Integer)
+offsetOrigin :: Sp -> GlyphFrame -> (Rational, Rational) -> (Sp, Sp) -> (Sp, Sp)
 offsetOrigin size frame (dx, dy) (gx, gy) = case frame of
   FrameHorizontal scale -> (gx + sp (dx * toRational (1000 + scale) / 1000), gy + sp dy)
   FrameUpright -> (gx + sp dx, gy + sp dy)
   FrameTurned -> (gx + sp dy, gy - sp dx)
   where
-    sp a = round (a * toRational size)
+    sp = zwToSp size
 
 newtype FontProvider = FontProvider
   { {- | the root, style.toml and the styles of the files (docs/adr ADR 0014)
@@ -505,7 +506,7 @@ syntheticStrokeLatin = 1 / 60
 
 -- | The stroke of a size, rounded down to whole sp.
 syntheticStroke :: Rational -> Sp -> Sp
-syntheticStroke r size = floor (toRational size * r)
+syntheticStroke r size = Sp (floor (toRational (unSp size) * r))
 
 {- | The role and size of the headings of a level (golem-driver ADR 0003):
 the size of the book's language by default (golem-driver ADR 0032).

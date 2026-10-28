@@ -17,6 +17,7 @@ import Golem.LayoutSpec (PageGeometry (..), Rect (..), columnsFor, typeAreaFor)
 import Golem.Pdf (spToPt)
 import Golem.Project.Style (dimToSp, parseDim)
 import Golem.Syntax
+import Golem.Syntax.Length (Sp (..))
 import Support
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -179,7 +180,7 @@ indentTests =
       take 2 (map snd ls) @?= [fs, 0]
       a <- miniPdf fakeProvider True (pdfStyle <> "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") "いろは\n" [] >>= firstY
       b <- miniPdf fakeProvider True pdfStyle "いろは\n" [] >>= firstY
-      assertBool (show (a, b)) (abs ((b - a) - toRational fs / 65536) < 1 / 100),
+      assertBool (show (a, b)) (abs ((b - a) - toRational (unSp fs) / 65536) < 1 / 100),
     testCase "PDF: no indent in list items and the table of contents; indent in definitions" $ do
       let fs = 655360
           style = horizontal30 "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n"

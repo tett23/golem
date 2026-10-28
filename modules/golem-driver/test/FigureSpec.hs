@@ -26,6 +26,7 @@ import Golem.LayoutSpec (PageGeometry (..), Rect (..), columnsFor, typeAreaFor)
 import Golem.Pdf (FigureContent (..), ImportedPage (..), Mark (..), Turn (..), contentStream)
 import Golem.Preflight.View (ImageView (..), LineView (..), PageView (..), View (..))
 import Golem.Syntax
+import Golem.Syntax.Length (Sp (..))
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
 import System.FilePath ((</>))
@@ -170,7 +171,7 @@ pdfFigureTests =
           (_, pl) <- layoutOk horizontal24 "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", rotatedPdf r), ("images/f.png", png False)]
           (_, pf, _, _) <- theFigure pl
           (pfAlong pf, pfAcross pf) @?= (along, across * pt)
-      | (r, along, across) <- [(0 :: Int, 240 * pt, 120), (90, 435 * pt `div` 2, 435), (180, 240 * pt, 120), (270, 435 * pt `div` 2, 435)]
+      | (r, along, across) <- [(0 :: Int, 240 * pt, 120), (90, Sp (unSp (435 * pt) `div` 2), 435), (180, 240 * pt, 120), (270, Sp (unSp (435 * pt) `div` 2), 435)]
       ],
     testCase "a PDF figure fills the measure, its height in the proportion of its crop box" $ do
       figPdf <- golemPdf
@@ -180,7 +181,7 @@ pdfFigureTests =
         VectorFigure ip -> do
           let (w, h) = ipSize ip
           pfAlong pf @?= 240 * pt
-          pfAcross pf @?= floor (fromInteger (240 * pt) * h / w)
+          pfAcross pf @?= Sp (floor (fromInteger (unSp (240 * pt)) * h / w))
         other -> assertFailure (show other),
     testCase "the book's PDF has one Form XObject for a PDF figure placed twice" $ do
       figPdf <- golemPdf
@@ -540,7 +541,7 @@ fitFigureTests =
   [ testGroup
       "the size: within the measure and the depth of the column"
       [ testCase "without a caption a figure is as deep as the column: (L - 1) p + h, its height in proportion" $
-          fitFigure 3 (240 * pt) 10 (15 * pt) (10 * pt) Nothing @?= (floor (145 * pt % 3), 145 * pt, True),
+          fitFigure 3 (240 * pt) 10 (15 * pt) (10 * pt) Nothing @?= (Sp (floor (145 * unSp pt % 3)), 145 * pt, True),
         testCase "a figure that fits keeps the measure" $
           fitFigure (1 / 3) (240 * pt) 10 (15 * pt) (10 * pt) Nothing @?= (240 * pt, 80 * pt, False),
         testCase "vertical: a wide figure with only its number is as deep as the lines the number leaves, its height in proportion" $ do
@@ -548,7 +549,7 @@ fitFigureTests =
           (pf, p, slot) <- single (figuresIn pl)
           pfCaptionSpan pf @?= 1
           pfAcross pf @?= 9 * 15 * pt
-          pfAlong pf @?= floor (fromInteger (pfAcross pf) * 100 / 300 :: Rational)
+          pfAlong pf @?= Sp (floor (fromInteger (unSp (pfAcross pf)) * 100 / 300 :: Rational))
           pfFullAlong pf @?= 240 * pt
           assertBool "inside the column" (inside (figureRect geom (poNumber p) (columnOf geom p) slot pf) (columnOf geom p)),
         testCase "vertical: with a caption, the image takes the lines the caption leaves" $ do
@@ -557,7 +558,7 @@ fitFigureTests =
           let s = pfCaptionSpan pf
           assertBool "a caption" (s > 0)
           pfImageLines pf @?= 10 - s
-          pfAcross pf @?= toInteger (10 - s) * pgLinePitch geom
+          pfAcross pf @?= fromIntegral (10 - s) * pgLinePitch geom
           assertBool "the caption in the column" (slot + pfImageLines pf + pfCaptionSpan pf <= 10),
         testCase "vertical: a tall figure (2 by 3) that fits keeps the measure" $ do
           img <- tinyImage

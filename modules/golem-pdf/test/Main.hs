@@ -516,7 +516,7 @@ tests tinyJpeg =
       testGroup
         "styled glyph runs and saved state (golem-driver ADR 0004)"
         [ testCase "a slanted, emboldened run sets its text matrix and stroke inside q and Q" $ do
-            let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [StyledGlyphRun (RunStyle 1000 False (1 / 5) (65536 `div` 4)) (FontRef 7) (10 * 65536) [(2, 65536, -65536)]]
+            let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [StyledGlyphRun (RunStyle 1000 False (1 / 5) 16384) (FontRef 7) (10 * 65536) [(2, 65536, -65536)]]
             assertBool (show cs) ("q BT /F1 10 Tf 2 Tr 0.25 w" `BS.isInfixOf` cs)
             assertBool (show cs) ("1 0 0.2 1 1 -1 Tm <0002> Tj" `BS.isInfixOf` cs)
             assertBool (show cs) ("ET Q" `BS.isInfixOf` cs)
@@ -614,7 +614,7 @@ tests tinyJpeg =
             assertEqual (out <> err) ExitSuccess code
     ]
   where
-    sp = Gen.integral (Range.linearFrom 0 (-1000000) 100000000)
+    sp = Sp <$> Gen.integral (Range.linearFrom 0 (-1000000) 100000000)
     -- translated marks nest other marks (ADR 0004)
     mark =
       Gen.recursive

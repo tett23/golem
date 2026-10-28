@@ -14,7 +14,7 @@ where
 
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf qualified as P
-import Golem.Project.Style (RuleStyle (..), Sp)
+import Golem.Project.Style (RuleStyle (..), Sp (..))
 
 -- | A filled shape on the page.
 data RuleShape
@@ -27,14 +27,15 @@ data RuleShape
 
 {- | A shape in the coordinates of the band: along the rule from its
 start, and across it from its before edge (the top, the right in
-vertical text).
+vertical text). The lengths are the integers of sp, for the arithmetic
+of the shapes.
 -}
 data Local
   = -- | from, length along; from, thickness across
-    LRect !Sp !Sp !Sp !Sp
+    LRect !Integer !Integer !Integer !Integer
   | -- | centre along, centre across, radius
-    LDisc !Sp !Sp !Sp
-  | LCurve !(Sp, Sp) ![((Sp, Sp), (Sp, Sp), (Sp, Sp))]
+    LDisc !Integer !Integer !Integer
+  | LCurve !(Integer, Integer) ![((Integer, Integer), (Integer, Integer), (Integer, Integer))]
 
 {- | The shapes of a rule of a style in its band, in vertical text when
 the first argument is true: the band then runs down from its top and its
@@ -45,24 +46,24 @@ ruleShapes vertical band style = map place (localShapes len w style)
   where
     (len, w) = if vertical then (rectH band, rectW band) else (rectW band, rectH band)
     point (s, t)
-      | vertical = (rectX band + w - t, rectY band + len - s)
-      | otherwise = (rectX band + s, rectY band + w - t)
+      | vertical = (rectX band + w - Sp t, rectY band + len - Sp s)
+      | otherwise = (rectX band + Sp s, rectY band + w - Sp t)
     place = \case
       LRect s ls t lt
-        | vertical -> ShapeRect (Rect (rectX band + w - t - lt) (rectY band + len - s - ls) lt ls)
-        | otherwise -> ShapeRect (Rect (rectX band + s) (rectY band + w - t - lt) ls lt)
-      LDisc s t r -> let (x, y) = point (s, t) in ShapeDisc x y r
+        | vertical -> ShapeRect (Rect (rectX band + w - Sp t - Sp lt) (rectY band + len - Sp s - Sp ls) (Sp lt) (Sp ls))
+        | otherwise -> ShapeRect (Rect (rectX band + Sp s) (rectY band + w - Sp t - Sp lt) (Sp ls) (Sp lt))
+      LDisc s t r -> let (x, y) = point (s, t) in ShapeDisc x y (Sp r)
       LCurve start cs -> ShapeCurve (point start) [(point a, point b, point c) | (a, b, c) <- cs]
 
 -- | The shapes of a style for a band of length len and weight w.
 localShapes :: Sp -> Sp -> RuleStyle -> [Local]
-localShapes len w = \case
+localShapes (Sp len) (Sp w) = \case
   RuleSolid -> [LRect 0 len 0 w]
   RuleMulti ratios ->
     let u = toInteger (sum ratios)
         edges = [(c * w) `div` u | c <- scanl (+) 0 (map toInteger ratios)]
      in [LRect 0 len a (b - a) | (i, a, b) <- zip3 [0 :: Int ..] edges (drop 1 edges), even i]
-  RuleDashed d g ->
+  RuleDashed (Sp d) (Sp g) ->
     let n = max 1 (roundDiv (len + g) (d + g))
         total = n * d + (n - 1) * g
      in if n == 1
@@ -73,8 +74,8 @@ localShapes len w = \case
               let a = (i * (d + g) * len) `div` total
                   b = ((i * (d + g) + d) * len) `div` total
             ]
-  RuleDotted g -> [LDisc c (w `div` 2) (w `div` 2) | c <- dots g]
-  RuleJapaneseDots g -> [LRect (c - w `div` 2) w 0 w | c <- dots g]
+  RuleDotted (Sp g) -> [LDisc c (w `div` 2) (w `div` 2) | c <- dots g]
+  RuleJapaneseDots (Sp g) -> [LRect (c - w `div` 2) w 0 w | c <- dots g]
   RuleWavy ->
     let t = w `div` 4
         a = (w - t) `div` 2
@@ -105,7 +106,7 @@ localShapes len w = \case
             else [w `div` 2 + (i * (len - w)) `div` (n - 1) | i <- [0 .. n - 1]]
 
 -- | The curves of a path from start, run backwards from its end.
-reverseCurves :: (Sp, Sp) -> [((Sp, Sp), (Sp, Sp), (Sp, Sp))] -> [((Sp, Sp), (Sp, Sp), (Sp, Sp))]
+reverseCurves :: (Integer, Integer) -> [((Integer, Integer), (Integer, Integer), (Integer, Integer))] -> [((Integer, Integer), (Integer, Integer), (Integer, Integer))]
 reverseCurves start cs =
   let starts = start : [e | (_, _, e) <- cs]
    in reverse [(b, a, s) | (s, (a, b, _)) <- zip starts cs]
@@ -118,13 +119,14 @@ roundDiv a b = (2 * a + b) `div` (2 * b)
 preflight checks (G09018).
 -}
 ruleThinnest :: Sp -> RuleStyle -> Sp
-ruleThinnest w = \case
-  RuleMulti ratios ->
-    let u = toInteger (sum ratios)
-        edges = [(c * w) `div` u | c <- scanl (+) 0 (map toInteger ratios)]
-     in minimum (w : [b - a | (i, a, b) <- zip3 [0 :: Int ..] edges (drop 1 edges), even i])
-  RuleWavy -> w `div` 4
-  _ -> w
+ruleThinnest (Sp w) =
+  Sp . \case
+    RuleMulti ratios ->
+      let u = toInteger (sum ratios)
+          edges = [(c * w) `div` u | c <- scanl (+) 0 (map toInteger ratios)]
+       in minimum (w : [b - a | (i, a, b) <- zip3 [0 :: Int ..] edges (drop 1 edges), even i])
+    RuleWavy -> w `div` 4
+    _ -> w
 
 -- | The marks of the shapes, filled with a swatch inside q and Q when there is one.
 ruleMarks :: Maybe P.Swatch -> [RuleShape] -> [P.Mark]
