@@ -4,15 +4,15 @@ module RuleShapeSpec (ruleShapeTests) where
 import Golem.Driver.RuleShape
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf qualified as P
-import Golem.Project.Style (RuleStyle (..))
+import Golem.Project.Style (RuleStyle (..), Sp (..))
 import Test.Tasty
 import Test.Tasty.HUnit
 
-pt :: Rational -> Integer
-pt x = round (x * 65536)
+pt :: Rational -> Sp
+pt x = Sp (round (x * 65536))
 
 -- | A horizontal band of length l and weight w with its lower left corner at the origin.
-band :: Integer -> Integer -> Rect
+band :: Sp -> Sp -> Rect
 band = Rect 0 0
 
 rects :: [RuleShape] -> [Rect]
@@ -26,8 +26,8 @@ ruleShapeTests =
         [a, b] -> do
           rectY a + rectH a @?= w
           rectY b @?= 0
-          assertBool (show a) (abs (rectH a - w `div` 3) <= 1)
-          assertBool (show b) (abs (rectH b - w `div` 3) <= 1)
+          assertBool (show a) (abs (rectH a - Sp (unSp w `div` 3)) <= 1)
+          assertBool (show b) (abs (rectH b - Sp (unSp w `div` 3)) <= 1)
           rectW a @?= pt 100
         other -> assertFailure (show other),
     testCase "thick-thin: 2pt, a gap of 1pt and 1pt from the before side" $
@@ -61,10 +61,10 @@ ruleShapeTests =
         [ShapeCurve start segs] -> do
           -- the upper edge, the end, the lower edge back
           length segs @?= 13 + 1 + 13
-          let ys = fromInteger (snd start) : concat [map snd (bezier p0 s) | (p0, s) <- zip (start : [e | (_, _, e) <- segs]) segs]
-          assertBool (show (maximum ys)) (abs (maximum ys - fromInteger (pt 4)) <= 2)
+          let ys = fromInteger (unSp (snd start)) : concat [map snd (bezier p0 s) | (p0, s) <- zip (start : [e | (_, _, e) <- segs]) segs]
+          assertBool (show (maximum ys)) (abs (maximum ys - fromInteger (unSp (pt 4))) <= 2)
           assertBool (show (minimum ys)) (abs (minimum ys) <= 2)
-          assertBool "inside the band" (all (\y -> y >= -1 && y <= fromInteger (pt 4) + 1) ys)
+          assertBool "inside the band" (all (\y -> y >= -1 && y <= fromInteger (unSp (pt 4)) + 1) ys)
         other -> assertFailure (show other),
     testCase "vertical: the same division down from the top of the band" $ do
       let ds = rects (ruleShapes True (Rect 0 0 (pt 1) (pt 100)) (RuleDashed (pt 3) (pt 2)))
@@ -130,7 +130,7 @@ ruleShapeTests =
       ShapeCurve s cs -> ShapeCurve (pturn len s) [(pturn len a, pturn len b, pturn len c) | (a, b, c) <- cs]
     pturn len (x, y) = (y, len - x)
     -- points along a cubic curve
-    bezier (x0, y0) ((x1, y1), (x2, y2), (x3, y3)) =
+    bezier (Sp x0, Sp y0) ((Sp x1, Sp y1), (Sp x2, Sp y2), (Sp x3, Sp y3)) =
       [ (cubic (fromInteger x0) (fromInteger x1) (fromInteger x2) (fromInteger x3) t, cubic (fromInteger y0) (fromInteger y1) (fromInteger y2) (fromInteger y3) t)
       | i <- [0 .. 64 :: Int],
         let t = fromIntegral i / 64

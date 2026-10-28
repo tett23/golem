@@ -24,7 +24,7 @@ import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..))
 import Golem.LayoutSpec (PageGeometry (..), pageGeometry)
 import Golem.Pdf (Font (..), FontProgram (..))
 import Golem.Project (Project (..), ProjectFailure (..))
-import Golem.Project.Style (parseStyle)
+import Golem.Project.Style (Sp (..), parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.ExternalTool (optionalTool)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
@@ -110,7 +110,7 @@ verseSource :: T.Text
 verseSource = "@style verse\n  Full fathom five thy father lies;\n  Of his bones are coral made;\n\n  Nothing of him that doth fade,\n"
 
 -- | The PDF flow of a verse project and its lines as (line length, indent).
-verseLines :: BS.ByteString -> T.Text -> IO ([Flow], [(Integer, Integer)])
+verseLines :: BS.ByteString -> T.Text -> IO ([Flow], [(Sp, Sp)])
 verseLines style src = withVerseProject style src $ \tmp -> do
   ev <- evaluateProject Dev tmp
   case ev of
@@ -392,7 +392,7 @@ layoutHeads manifest style sources = withSystemTempDirectory "golem-heads" $ \tm
 layoutOk :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO (PageGeometry, PdfLayout)
 layoutOk style source files = layoutMini style source files >>= either (assertFailure . show) pure
 
-pt :: Integer
+pt :: Sp
 pt = 65536
 
 -- | horizontalStyle with 24 characters a line: 10pt, 15pt pitch, 30 lines, 240pt.

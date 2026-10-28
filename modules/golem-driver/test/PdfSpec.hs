@@ -26,6 +26,7 @@ import Golem.Pdf qualified as P
 import Golem.Project (ProjectFailure (..))
 import Golem.Project.Style (dimToSp, parseDim, parseStyle)
 import Golem.Syntax
+import Golem.Syntax.Length (Sp (..))
 import Golem.TestSupport.ExternalTool (needsTool)
 import Numeric (readHex)
 import Support
@@ -348,8 +349,8 @@ characterFeatureTests =
     testCase "the offset of a glyph by how it is drawn; a scaled run scales the x offset (golem-driver ADR 0020)" $ do
       let size = 655360
       offsetOrigin size (FrameHorizontal 0) (1 / 10, 1 / 5) (1000, 2000) @?= (1000 + 65536, 2000 + 131072)
-      offsetOrigin size (FrameHorizontal 50) (1 / 10, 1 / 5) (1000, 2000) @?= (1000 + round (65536 * 1050 / 1000 :: Rational), 2000 + 131072)
-      offsetOrigin size (FrameHorizontal (-30)) (1 / 10, 0) (0, 0) @?= (round (65536 * 970 / 1000 :: Rational), 0)
+      offsetOrigin size (FrameHorizontal 50) (1 / 10, 1 / 5) (1000, 2000) @?= (1000 + Sp (round (65536 * 1050 / 1000 :: Rational)), 2000 + 131072)
+      offsetOrigin size (FrameHorizontal (-30)) (1 / 10, 0) (0, 0) @?= (Sp (round (65536 * 970 / 1000 :: Rational)), 0)
       offsetOrigin size FrameUpright (1 / 10, 1 / 5) (1000, 2000) @?= (1000 + 65536, 2000 + 131072)
       -- turned 90° clockwise: the glyph's x runs down the page, its y to the right
       offsetOrigin size FrameTurned (1 / 10, 1 / 5) (1000, 2000) @?= (1000 + 131072, 2000 - 65536)
@@ -405,7 +406,7 @@ variationTests =
 crop marks or none, and returns the geometry, the layout and the hidden
 folios of each page (ADR 0021).
 -}
-layoutHidden :: Maybe P.MarkStyle -> BS.ByteString -> BS.ByteString -> [(FilePath, T.Text)] -> IO (PageGeometry, PdfLayout, Map.Map Int [(Char, (Integer, Integer))])
+layoutHidden :: Maybe P.MarkStyle -> BS.ByteString -> BS.ByteString -> [(FilePath, T.Text)] -> IO (PageGeometry, PdfLayout, Map.Map Int [(Char, (Sp, Sp))])
 layoutHidden marks manifest style sources = withSystemTempDirectory "golem-hidden" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") manifest
   BS.writeFile (tmp </> "style.toml") style
@@ -465,7 +466,7 @@ hiddenFolioTests =
       (geom, _, hf) <- layoutHidden (Just P.Western) miniManifest oneLine [("a.gm", lines' 130 <> "\n")]
       let (_, ph) = pgPageSize geom
           size = 6 * pt
-          h2 = ph `div` 2
+          h2 = Sp (unSp ph `div` 2)
       Map.lookup 123 hf @?= Just [('1', (mm15, h2 + size)), ('2', (mm15, h2)), ('3', (mm15, h2 - size))],
     testCase "the folios do not move page breaks" $ do
       (_, a, _) <- layoutHidden Nothing miniManifest (headsStyle <> allPages) [("a.gm", twoChapters)]
@@ -482,7 +483,7 @@ hiddenFolioTests =
       assertBool "moved" (all (("q 1 0 0 1 " <> m <> " " <> m <> " cm") `BS.isPrefixOf`) pageStreams)
       -- '1' in 6pt, half an em wide in the fake font, centred on the line 1.5mm from the gutter
       [(dX d, dY d) | d <- drawnGlyphs (BS.concat pageStreams), dGlyph d == fromEnum '1', dSize d == "6"]
-        @?= [(TE.encodeUtf8 (spToPt (mm15 - 3 * pt `div` 2)), TE.encodeUtf8 (spToPt (h `div` 2 + 3 * pt - round (toRational (6 * pt) * baselineRatio))))],
+        @?= [(TE.encodeUtf8 (spToPt (mm15 - Sp (unSp (3 * pt) `div` 2))), TE.encodeUtf8 (spToPt (Sp (unSp h `div` 2) + 3 * pt - Sp (round (toRational (unSp (6 * pt)) * baselineRatio)))))],
     testCase "drawn after the figures of the page" $ do
       img <- tinyImage
       b <- buildMarksFilesWith "@figure images/tiny.jpg alt=\"t\"\n  キャプション。\n" (\o -> o {optMarks = WesternMarks}) (Just (withBodyFont (figStyle horizontalStyle <> allPages))) (bodyFontFiles horizontalStyle <> img)
@@ -548,7 +549,7 @@ boxText :: Rect -> BS.ByteString
 boxText (Rect x y w h) = BC.unwords [TE.encodeUtf8 (spToPt v) | v <- [x, y, x + w, y + h]]
 
 -- | The trimmed size of the A5 page of horizontalStyle.
-a5Size :: IO (Integer, Integer)
+a5Size :: IO (Sp, Sp)
 a5Size = case parseStyle (FileId 0) (TE.decodeUtf8 horizontalStyle) of
   Right s -> either (assertFailure . show) (pure . pgPageSize) (pageGeometry (FileId 0) False s)
   Left ds -> assertFailure (show ds)
@@ -996,7 +997,7 @@ turnedTests =
 -- ------------------------------------------------------------------ code (golem-driver ADR 0017)
 
 -- | The rows of the code blocks of a layout: each box with its text, from the line start of the column.
-codeRows :: PdfLayout -> [[(Integer, T.Text)]]
+codeRows :: PdfLayout -> [[(Sp, T.Text)]]
 codeRows pl =
   [ [(slIndent sl + off, bcText c) | (Box _ c, off) <- placeLine (slLine sl), not (T.null (bcText c))]
   | p <- plPages pl,
@@ -1036,7 +1037,7 @@ codeTests =
     -- the padding of 0.25zw before the first box and after the last (golem-driver ADR 0029)
     testCase "a tab in [code: ...] of a paragraph is set as before, not at a stop" $ do
       (_, pl) <- layoutOk horizontalStyle "[code: a\tb]\n" []
-      [(off, bcText c) | sl <- Map.elems (plLines pl), (Box _ c, off) <- placeLine (slLine sl), not (T.null (bcText c))] @?= [(0, "a"), (sp + pad `div` 2, "\t"), (2 * sp + pad `div` 2, "b")],
+      [(off, bcText c) | sl <- Map.elems (plLines pl), (Box _ c, off) <- placeLine (slLine sl), not (T.null (bcText c))] @?= [(0, "a"), (sp + Sp (unSp pad `div` 2), "\t"), (2 * sp + Sp (unSp pad `div` 2), "b")],
     testCase "no justification: two short words keep one space between them" $ do
       (_, pl) <- layoutOk horizontalStyle "```\nab cd\n```\n" []
       codeRows pl @?= [[(pad, "ab"), (pad + 3 * sp, "cd")]],
@@ -1075,7 +1076,7 @@ codeTests =
       contents <- pageContents pdf
       let ta = firstColumn geom
           -- (2 - 1) * 15 + 10 + 2 * 5 = 35pt: three lines of 15pt
-          top = rectY ta + rectH ta + (15 - 10) * pt `div` 2
+          top = rectY ta + rectH ta + Sp (unSp ((15 - 10) * pt) `div` 2)
       case contents of
         (c : _) -> do
           case filledRects c of
@@ -1145,7 +1146,7 @@ codeTests =
     testCase "vertical: the spaces and the tab stops are along the line, from the top" $ do
       (_, pl) <- layoutOk pdfStyle "```\n  \tx\n```\n" []
       let s13 = maybe 0 (dimToSp 0) (parseDim "13Q")
-          half = round (toRational s13 / 2) :: Integer
+          half = Sp (round (toRational (unSp s13) / 2))
       codeRows pl @?= [[(half + 4 * half, "x")]],
     testCase "@listing is set as a code block" $ do
       (_, a) <- layoutOk horizontalStyle "@listing src/a.txt\n" [("src/a.txt", "  a\tb\nlong line that wraps at the end\n")]
@@ -1251,7 +1252,7 @@ codeTests =
         [] -> assertFailure "no code"
       contents <- miniPdf fakeProvider True style "@caption 設定\n```\na\n```\n" [] >>= pageContents
       let ta = firstColumn geom
-          top = rectY ta + rectH ta + (15 - 10) * pt `div` 2 - 15 * pt
+          top = rectY ta + rectH ta + Sp (unSp ((15 - 10) * pt) `div` 2) - 15 * pt
       case concatMap filledRects contents of
         [[_, y, _, h]] -> do
           assertBool (show (y, h, toPt top)) (abs (y + h - toPt top) < 0.001)
@@ -1366,7 +1367,7 @@ codeTests =
     -- the fake fonts: a space is half an em of 10pt; the padding is 0.5zw
     sp = 5 * pt
     pad = 5 * pt
-    toPt x = fromIntegral x / 65536 :: Double
+    toPt (Sp x) = fromIntegral x / 65536 :: Double
     firstColumn geom = case columnsFor geom 1 of
       (r : _) -> r
       [] -> typeAreaFor geom 1
@@ -1396,7 +1397,7 @@ codeTests =
 order of the lines: the start of the first box and the end of the last,
 from the line start.
 -}
-backgroundRuns :: PdfLayout -> [(Integer, Integer)]
+backgroundRuns :: PdfLayout -> [(Sp, Sp)]
 backgroundRuns pl =
   [ (slIndent sl + s0, slIndent sl + e0)
   | sl <- Map.elems (plLines pl),
@@ -1472,8 +1473,8 @@ inlineCodeBackgroundTests =
         [l1@(f : _), l2] -> do
           map bcPadEnd l1 @?= map (const 0) l1
           map bcPadStart l2 @?= map (const 0) l2
-          bcPadStart f @?= 2 * pt + pt `div` 2
-          map bcPadEnd (take 1 (reverse l2)) @?= [2 * pt + pt `div` 2]
+          bcPadStart f @?= 2 * pt + Sp (unSp pt `div` 2)
+          map bcPadEnd (take 1 (reverse l2)) @?= [2 * pt + Sp (unSp pt `div` 2)]
         other -> assertFailure (show (length other)),
     testCase "vertical: centred on the line, as wide as its size, from the top along the line" $ do
       let src = "あ[code: abc]い\n"
@@ -1533,7 +1534,7 @@ inlineCodeBackgroundTests =
   ]
   where
     cbg = "\n[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[character-styles.code]\nbackground = \"code-bg\"\n"
-    toPt x = fromIntegral x / 65536 :: Double
+    toPt (Sp x) = fromIntegral x / 65536 :: Double
     approx a b = assertBool (show (a, b)) (abs (a - b) < 0.001)
     firstColumn geom = case columnsFor geom 1 of
       (r : _) -> r
@@ -1551,15 +1552,15 @@ inlineCodeBackgroundTests =
 codeBlockRubyTests :: [TestTree]
 codeBlockRubyTests =
   [ testCase "the overhang of a reading of 10pt type: 5.6pt above the face" $
-      rubyOverhang False (10 * pt) (10 * pt) (5 * pt) 0 @?= round (5.6 * 65536 :: Rational),
+      rubyOverhang False (10 * pt) (10 * pt) (5 * pt) 0 @?= Sp (round (5.6 * 65536 :: Rational)),
     testCase "10pt on 17pt: no ruby does not reach, a reading of 10pt type does; on 25pt it does not" $ do
       let reading = rubyOverhang False (10 * pt) (10 * pt) (5 * pt) 0
       reachesBackground (17 * pt) (10 * pt) 0 (lineOverhang False (10 * pt) (const 0) plainLine) @?= False
       reachesBackground (17 * pt) (10 * pt) 0 reading @?= True
       reachesBackground (25 * pt) (10 * pt) 0 reading @?= False,
     testCase "a border of 1pt: 3.1pt reaches, 2.9pt does not" $ do
-      reachesBackground (17 * pt) (10 * pt) pt (round (3.1 * 65536 :: Rational)) @?= True
-      reachesBackground (17 * pt) (10 * pt) pt (round (2.9 * 65536 :: Rational)) @?= False,
+      reachesBackground (17 * pt) (10 * pt) pt (Sp (round (3.1 * 65536 :: Rational))) @?= True
+      reachesBackground (17 * pt) (10 * pt) pt (Sp (round (2.9 * 65536 :: Rational))) @?= False,
     testCase "kenten reaches half the size of its character out of the face" $ do
       let central = baselineRatio - 1 / 2
       kentenOverhang False (10 * pt) (10 * pt) central 0 @?= 5 * pt
@@ -1572,13 +1573,13 @@ codeBlockRubyTests =
     testCase "vertical: kenten reaches half the size of its character right of the face" $
       kentenOverhang True (10 * pt) (10 * pt) 0 0 @?= 5 * pt,
     testCase "a line with a ruby box: the overhang of its reading, 5.6pt" $
-      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|かん" []]) @?= round (5.6 * 65536 :: Rational),
+      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|かん" []]) @?= Sp (round (5.6 * 65536 :: Rational)),
     testCase "a group ruby box overhangs as a mono ruby box does" $
-      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindGroupRuby "漢字|かんじ" []]) @?= round (5.6 * 65536 :: Rational),
+      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindGroupRuby "漢字|かんじ" []]) @?= Sp (round (5.6 * 65536 :: Rational)),
     testCase "the largest base character sets the baseline of the reading" $
       -- 20pt above the base, the reading's top 0.88 × 5pt above that, less the face 8.8pt: 15.6pt
       lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢字|かんじ" [plainLook "body" (10 * pt), plainLook "body" (20 * pt)]])
-        @?= round (15.6 * 65536 :: Rational),
+        @?= Sp (round (15.6 * 65536 :: Rational)),
     testCase "a ruby box without a reading does not overhang" $
       lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|" []]) @?= 0,
     testCase "a kenten box overhangs only when its look has a mark" $ do
@@ -1588,7 +1589,7 @@ codeBlockRubyTests =
       lineOverhang False (10 * pt) central (lineOf [kenten Nothing]) @?= 0,
     testCase "the overhang of a line is that of its highest box" $
       lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|かん" [], rubyBox KindRuby "字|じ" [plainLook "body" (20 * pt)]])
-        @?= round (15.6 * 65536 :: Rational),
+        @?= Sp (round (15.6 * 65536 :: Rational)),
     testCase "a paragraph with ruby after a code block with a background: one grid line between, the reading off the background" $ do
       let src = "```\na\n```\n\n[ruby: 漢|かん]字。\n"
       (_, pl) <- layoutOk (horizontalStyle <> codeBg) src []

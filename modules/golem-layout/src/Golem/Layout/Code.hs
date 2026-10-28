@@ -25,8 +25,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Layout.CharClass (CharClass (..), charClass)
 import Golem.Layout.Japanese (isExtending)
-
-type Sp = Integer
+import Golem.Syntax.Length (Sp (..))
 
 -- | A part of a line of code: a space, a tab, or a cluster of glyphs with its advance.
 data CodeAtom
@@ -96,7 +95,7 @@ isGlyph = \case
 advance :: Sp -> Sp -> CodeAtom -> Sp
 advance s x = \case
   ASpace -> x + s
-  ATab -> let unit = 2 * s in if unit <= 0 then x else (x `div` unit + 1) * unit
+  ATab -> let unit = 2 * s in if unit <= 0 then x else (Sp (unSp x `div` unSp unit) + 1) * unit
   AGlyph _ w _ _ -> x + w
 
 {- | The rows of a line of code with the space advance @s@ and @avail@ for
@@ -138,11 +137,11 @@ data CodeGeometry = CodeGeometry
 captions do (golem-driver ADR 0010).
 -}
 codeGeometry :: Sp -> Sp -> Sp -> Sp -> CodeGeometry
-codeGeometry fs p s = CodeGeometry fs p s (if fs <= 0 then p else round (p * s % fs))
+codeGeometry fs p s = CodeGeometry fs p s (if fs <= 0 then p else Sp (round (unSp p * unSp s % unSp fs)))
 
 -- | The rows and the padding above and below them, from the top of the first row's padding.
 codeExtent :: CodeGeometry -> Int -> Sp
-codeExtent g k = toInteger (max 1 k - 1) * cgPitch g + cgSize g + 2 * cgPadding g
+codeExtent g k = fromIntegral (max 1 k - 1) * cgPitch g + cgSize g + 2 * cgPadding g
 
 {- | The grid lines @k@ rows take: the fewest whose area (the line pitch
 each, from the space above the first line to the space below the last)
@@ -151,10 +150,10 @@ holds the rows and the padding.
 codeSpan :: CodeGeometry -> Int -> Int
 codeSpan g k =
   let p = max 1 (cgGridPitch g)
-   in fromInteger (max 1 ((codeExtent g k + p - 1) `div` p))
+   in fromInteger (max 1 (unSp (codeExtent g k + p - 1) `div` unSp p))
 
 {- | From the top of the area of @k@ rows to the top of the first row: the
 rows are centred in the area.
 -}
 codeRowsTop :: CodeGeometry -> Int -> Sp
-codeRowsTop g k = (toInteger (codeSpan g k) * cgGridPitch g - codeExtent g k) `div` 2 + cgPadding g
+codeRowsTop g k = Sp (unSp (fromIntegral (codeSpan g k) * cgGridPitch g - codeExtent g k) `div` 2) + cgPadding g

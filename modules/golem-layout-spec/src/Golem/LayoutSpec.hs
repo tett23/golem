@@ -135,11 +135,11 @@ pageGeometry fid marks style = case stPage style of
           pitch = dimToSp fs (gridLinePitch grid)
           gap = maybe 0 (dimToSp fs) (gridColumnGap grid)
           vertical = pageVertical page
-          lineDepth = pitch * (nLines - 1) + fs -- across the lines
-          columnLength = fs * n -- along a line
+          lineDepth = pitch * fromInteger (nLines - 1) + fs -- across the lines
+          columnLength = fs * fromInteger n -- along a line
           (taW, taH)
-            | vertical = (lineDepth, cols * columnLength + (cols - 1) * gap)
-            | otherwise = (cols * columnLength + (cols - 1) * gap, lineDepth)
+            | vertical = (lineDepth, fromInteger cols * columnLength + fromInteger (cols - 1) * gap)
+            | otherwise = (fromInteger cols * columnLength + fromInteger (cols - 1) * gap, lineDepth)
           top = dimToSp fs (gridTop grid)
           gutter = dimToSp fs (gridGutter grid)
           bindingRight = pageBindingRight page
@@ -152,13 +152,13 @@ pageGeometry fid marks style = case stPage style of
           odd' = areaOn 1
           even' = areaOn 2
           columnsOf (Rect x y _ _)
-            | vertical = [Rect x (y + taH - (i + 1) * columnLength - i * gap) taW columnLength | i <- [0 .. cols - 1]]
+            | vertical = [Rect x (y + taH - fromInteger (i + 1) * columnLength - fromInteger i * gap) taW columnLength | i <- [0 .. cols - 1]]
             | otherwise =
                 -- columns run in the line direction: left to right
-                [Rect (x + i * (columnLength + gap)) y columnLength taH | i <- [0 .. cols - 1]]
+                [Rect (x + fromInteger i * (columnLength + gap)) y columnLength taH | i <- [0 .. cols - 1]]
           grid'
-            | vertical = [i * pitch + fs `div` 2 | i <- [0 .. nLines - 1]]
-            | otherwise = [i * pitch + round (fromInteger fs * baselineRatio) | i <- [0 .. nLines - 1]]
+            | vertical = [fromInteger i * pitch + Sp (unSp fs `div` 2) | i <- [0 .. nLines - 1]]
+            | otherwise = [fromInteger i * pitch + Sp (round (fromInteger (unSp fs) * baselineRatio)) | i <- [0 .. nLines - 1]]
           overflow (Rect x y w h) = x < 0 || y < 0 || x + w > pw || y + h > ph
       if n <= 0 || nLines <= 0 || cols <= 0 || pitch < fs
         then Left [err "字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください"]
@@ -278,8 +278,8 @@ anchor, the others go out towards the edge of the page.
 -}
 runningHeadBaselines :: Sp -> Sp -> Anchor -> Int -> [Sp]
 runningHeadBaselines ph pitch a n
-  | anchorAtHead ph a = [anY a + toInteger (n - 1 - i) * pitch | i <- [0 .. n - 1]]
-  | otherwise = [anY a - toInteger i * pitch | i <- [0 .. n - 1]]
+  | anchorAtHead ph a = [anY a + fromIntegral (n - 1 - i) * pitch | i <- [0 .. n - 1]]
+  | otherwise = [anY a - fromIntegral i * pitch | i <- [0 .. n - 1]]
 
 {- | G07052 (golem-driver ADR 0022): the em box of the outermost line of a
 running head (the size times 'baselineRatio' above the baseline, the
@@ -291,7 +291,7 @@ runningHeadFits fid ph fs pitch masters =
     then Left [diagnostic "G07052" Error (mkSpan fid 0 0) "柱の行がページからはみ出しています。行の数を減らすか、天（または地）の余白を広げてください"]
     else Right ()
   where
-    above = round (fromInteger fs * baselineRatio)
+    above = Sp (round (fromInteger (unSp fs) * baselineRatio))
     linesOf = \case
       RunningLines ls -> length ls
       RunningNone -> 0
@@ -310,7 +310,7 @@ separatorLines fs pitch rule = case (rsSpaceBefore rule, rsSpaceAfter rule) of
   (Nothing, Nothing) -> 1
   (b, a) ->
     let need = maybe 0 (dimToSp fs) b + rsWeight rule + maybe 0 (dimToSp fs) a - (pitch - fs)
-     in max 1 (fromInteger (negate (negate need `div` pitch)))
+     in max 1 (fromInteger (negate (negate (unSp need) `div` unSp pitch)))
 
 {- | The hidden folios (golem-driver ADR 0021): only with crop marks and
 when enabled; G07050 at the top of @fid@ when the column of digits (half
@@ -324,7 +324,7 @@ hiddenFolioGeometry fid marks style pw bindingRight areas = case stHiddenFolio s
         let centre p = case gutterSide bindingRight p of
               SideLeft -> gutter
               SideRight -> pw - gutter
-            overlaps p (Rect x _ w _) = centre p - size `div` 2 < x + w && centre p + size `div` 2 > x
+            overlaps p (Rect x _ w _) = centre p - Sp (unSp size `div` 2) < x + w && centre p + Sp (unSp size `div` 2) > x
          in if or [overlaps p r | (p, rs) <- areas, r <- rs]
               then Left [diagnostic "G07050" Error (mkSpan fid 0 0) "隠しノンブルが版面に重なります。[hidden-folio] の gutter を小さくするか、ノドの余白を広げてください"]
               else Right (Just (HiddenFolioGeometry size gutter (pages == HiddenAll)))
@@ -342,10 +342,10 @@ masterGeometry ph bindingRight oddArea evenArea md =
     place (pos, content) = (content, anchor pos 1 oddArea, anchor pos 2 evenArea)
     anchor pos p (Rect x y w h) =
       let (vert, horiz) = T.breakOn "-" pos
-          ay = if vert == "top" then (y + h + ph) `div` 2 else y `div` 2
+          ay = if vert == "top" then Sp (unSp (y + h + ph) `div` 2) else Sp (unSp y `div` 2)
           gutterLeft = gutterSide bindingRight p == SideLeft
           (ax, al) = case horiz of
             "-outside" -> if gutterLeft then (x + w, AlignEnd) else (x, AlignStart)
             "-inside" -> if gutterLeft then (x, AlignStart) else (x + w, AlignEnd)
-            _ -> (x + w `div` 2, AlignCenter)
+            _ -> (x + Sp (unSp w `div` 2), AlignCenter)
        in Anchor ax ay al

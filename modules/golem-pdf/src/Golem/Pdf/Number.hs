@@ -11,12 +11,12 @@ module Golem.Pdf.Number
 where
 
 import Data.Text (Text)
-import Golem.Syntax.Length qualified as L
+import Golem.Syntax.Length (Sp, ptText)
 import Golem.Syntax.Text (showRationalDigits)
 
 -- | Sp as pt, at most four decimals (docs/adr ADR 0103).
-spToPt :: Integer -> Text
-spToPt = L.ptText . L.Sp
+spToPt :: Sp -> Text
+spToPt = ptText
 
 showRational4 :: Rational -> Text
 showRational4 = showRationalDigits 4

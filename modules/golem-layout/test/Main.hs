@@ -30,6 +30,7 @@ import Golem.Layout.Table
 import Golem.Layout.Wrap
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (FileId (..), mkSpan)
+import Golem.Syntax.Length (zwToSp)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -231,21 +232,21 @@ noteMarkTests =
           rest @?= drop 1 (compose (defaultComposeEnv fs) "漢字")
         other -> assertFailure (show other),
     testCase "the width of a mark: its advance at half the size across, half the size down" $ do
-      let env = (defaultComposeEnv fs) {ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == fs `div` 2 then 3 / 5 else 1)}
+      let env = (defaultComposeEnv fs) {ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == Sp (unSp fs `div` 2) then 3 / 5 else 1)}
           markWidth e = [w | Box w c <- fst (composeInlines e [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark]
-      markWidth env @?= [round (2 * 3 / 5 * toRational (fs `div` 2) :: Rational)]
-      markWidth env {ceVertical = True} @?= [fs `div` 2],
+      markWidth env @?= [Sp (round (2 * 3 / 5 * toRational (unSp fs `div` 2) :: Rational))]
+      markWidth env {ceVertical = True} @?= [Sp (unSp fs `div` 2)],
     testCase "mark-size 0.65zw: the box is the advance at that size across, the size down (golem-driver ADR 0025)" $ do
       let m = dimToSp fs (Zw (65 % 100))
           env = (defaultComposeEnv fs) {ceNoteMarkSize = Zw (65 % 100), ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == m then 3 / 5 else 1)}
           markWidth e = [w | Box w c <- fst (composeInlines e [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark]
-      markWidth env @?= [round (2 * 3 / 5 * toRational m :: Rational)]
+      markWidth env @?= [Sp (round (2 * 3 / 5 * toRational (unSp m) :: Rational))]
       markWidth env {ceVertical = True} @?= [m],
     testCase "an absolute mark size is kept, but not above the size of the text (golem-driver ADR 0025)" $ do
-      let q11 = round (11 / 4 * 72 * 65536 / (254 / 10) :: Rational) :: Sp
+      let q11 = Sp (round (11 / 4 * 72 * 65536 / (254 / 10) :: Rational)) :: Sp
       noteMarkSize (Abs (6 * 65536)) q11 @?= 6 * 65536
       noteMarkSize (Abs (20 * 65536)) q11 @?= q11
-      noteMarkSize (Zw (1 % 2)) fs @?= fs `div` 2,
+      noteMarkSize (Zw (1 % 2)) fs @?= Sp (unSp fs `div` 2),
     testCase "mark-format 注{n}: the box of the mark reads 注1 (golem-driver ADR 0025)" $ do
       let env = (defaultComposeEnv fs) {ceNoteMarkFormat = "注{n}"}
       [bcText c | Box _ c <- fst (composeInlines env [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark] @?= ["注1"],
@@ -253,7 +254,7 @@ noteMarkTests =
       let m = dimToSp fs (Zw (65 % 100))
           env = (defaultComposeEnv fs) {ceNoteMarkSize = Zw (65 % 100), ceNoteMarkFormat = "注{n}", ceSidenoteMarker = MarkerNumber, ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == m then 3 / 5 else 1)}
           sn = Sidenote (mkSpan (FileId 0) 3 9) 2 [sp0 "注"]
-      [(bcText c, w) | Box w c <- fst (composeInlines env [sp0 "漢", sn, sp0 "字"]), boxKind c == KindNoteMark] @?= [("2", round (3 / 5 * toRational m :: Rational))],
+      [(bcText c, w) | Box w c <- fst (composeInlines env [sp0 "漢", sn, sp0 "字"]), boxKind c == KindNoteMark] @?= [("2", Sp (round (3 / 5 * toRational (unSp m) :: Rational)))],
     testCase "the spacing of the pair around the mark comes after it" $ do
       let env = defaultComposeEnv fs
           without = compose env "」あ"
@@ -343,8 +344,8 @@ tests =
             badness 5 10 @?= 12 -- TeX's approximation of 12.5
             badness 100 1 @?= 10000,
           testProperty "the result has the least total demerits of all break sequences" $ property $ do
-            ws <- forAll (Gen.list (Range.linear 1 7) (Gen.integral (Range.linear 10 60)))
-            target <- forAll (Gen.integral (Range.linear 60 140))
+            ws <- forAll (Gen.list (Range.linear 1 7) (Sp <$> Gen.integral (Range.linear 10 60)))
+            target <- forAll (Sp <$> Gen.integral (Range.linear 60 140))
             let items = paragraph ws
                 r = breakParagraph noPretol (const target) items
             case bruteBest noPretol (const target) items of
@@ -375,8 +376,8 @@ tests =
             length (brLines r) @?= 4
             brDemerits r @?= 0,
           testProperty "of the least-demerit break sequences, the loosest last line, then the one greatest from the end, is chosen" $ property $ do
-            ws <- forAll (Gen.list (Range.linear 1 7) (Gen.integral (Range.linear 0 60)))
-            target <- forAll (Gen.integral (Range.linear 30 140))
+            ws <- forAll (Gen.list (Range.linear 1 7) (Sp <$> Gen.integral (Range.linear 0 60)))
+            target <- forAll (Sp <$> Gen.integral (Range.linear 30 140))
             let items = paragraph ws
                 r = breakParagraph noPretol (const target) items
             case bruteBest noPretol (const target) items of
@@ -520,7 +521,7 @@ tests =
                 rs -> assertFailure ("expected one run, found " <> show (length rs)),
             testCase "the data has every \\hsize of frog-king.tex, from both passes" $ do
               runs <- parseTrace <$> TIO.readFile knuthPlassLog
-              map trHsize runs @?= map (* 65536) referenceHsizes
+              map trHsize runs @?= map (Sp . (* 65536)) referenceHsizes
               assertBool "a run that ends in the first pass" (any ((== 1) . trPass) runs)
               assertBool "a run that reaches the second pass" (any ((== 2) . trPass) runs),
             testCase "the words add up to the paragraph TeX set in one box" $ do
@@ -529,12 +530,12 @@ tests =
                   widths = [w | WordBox _ w <- wBoxes ws]
                   n = toInteger (length widths)
                   ex = toInteger (length [() | WordExHyphen <- wBoxes ws])
-              sum widths + (n - 1 - ex) * space @?= wWhole ws
+              sum widths + fromInteger (n - 1 - ex) * space @?= wWhole ws
           ]
             <> [ testCase ("\\hsize=" <> show h <> "pt agrees with TeX") $ do
                    ws <- readWords knuthPlassWords
                    runs <- parseTrace <$> TIO.readFile knuthPlassLog
-                   case filter ((== h * 65536) . trHsize) runs of
+                   case filter ((== Sp (h * 65536)) . trHsize) runs of
                      [run] -> case compareRun ws run of
                        [] -> pure ()
                        ds -> assertFailure (unlines ds)
@@ -605,7 +606,7 @@ tests =
             (breakBeforeBox loose 1, breakBeforeBox loose 3) @?= (True, True),
           testCase "punctuation spacing: closing then opening keeps a half em, closing then closing none" $ do
             let glues t = [w | Glue w _ _ <- compose (defaultComposeEnv fs) t, w > 0]
-            glues "」「" @?= [fs `div` 2]
+            glues "」「" @?= [Sp (unSp fs `div` 2)]
             glues "）」" @?= []
             glues "あ。」" @?= [],
           testCase "apostrophes inside Latin words belong to the word" $ do
@@ -616,11 +617,11 @@ tests =
             [bcText c | Box _ c <- compose (defaultComposeEnv fs) "彼は“あ”と"] @?= ["彼", "は", "“", "あ", "”", "と"],
           testCase "a quarter em between Japanese and Latin text" $ do
             let items = compose (defaultComposeEnv fs) "日本Golem語"
-            [w | Glue w _ _ <- items, w > 0, w < filStretch] @?= [fs `div` 4, fs `div` 4],
+            [w | Glue w _ _ <- items, w > 0, w < filStretch] @?= [Sp (unSp fs `div` 4), Sp (unSp fs `div` 4)],
           testCase "ruby wider than its base overhangs, then widens the base" $ do
             let seg base r = RubySegment [Text sp base] (Just r)
                 rubyW e segs = [w | Box w c <- fst (composeInlines e [sp0 "の", Ruby sp () segs, sp0 "の"]), boxKind c `elem` [KindRuby, KindGroupRuby]]
-                env = (defaultComposeEnv fs) {ceRuby = (defaultRubyStyle fs) {rsOverhang = fs `div` 2}}
+                env = (defaultComposeEnv fs) {ceRuby = (defaultRubyStyle fs) {rsOverhang = Sp (unSp fs `div` 2)}}
             rubyW env [seg "字" "じ"] @?= [fs] -- fits
             rubyW env [seg "字" "あいう"] @?= [fs] -- 1.5em reading: overhang absorbs it
             rubyW env [seg "字" "あいうえおか"] @?= [fs * 2] -- 3em: half an em overhangs each kana, the base widens
@@ -659,7 +660,7 @@ tests =
           testCase "Japanese glyphs never expand" $
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
-            ws <- forAll (Gen.list (Range.linear 3 12) (Gen.integral (Range.linear 20 70)))
+            ws <- forAll (Gen.list (Range.linear 3 12) (Sp <$> Gen.integral (Range.linear 20 70)))
             let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource) | w <- ws] `interleave` Glue 6 3 2 <> finish
                 r = breakParagraph defaultParams {pExpansion = Just (20, 5)} (const 150) items
             mapM_ (\l -> assert (abs (lineExpansion l) <= 20 && lineExpansion l `mod` 5 == 0)) (brLines r),
@@ -842,14 +843,14 @@ tests =
           testCase "no space between Japanese and Latin across a forced break (docs/adr ADR 0016)" $ do
             let env = lookEnv const
                 items = fst (composeInlines env [sp0 "あい", LineBreak sp, sp0 "cd"])
-                quarter = fs `div` 4
+                quarter = Sp (unSp fs `div` 4)
             [w | Glue w _ _ <- items, w == quarter] @?= []
             assertBool "the space appears without the break" (not (null [w | Glue w _ _ <- fst (composeInlines env [sp0 "あいcd"]), w == quarter]))
         ],
       testGroup
         "heading blocks (golem-driver ADR 0003)"
         [ testCase "a 20Q heading on a 13Q, 22H grid takes two grid lines, three when it wraps" $ do
-            let q x = round (x / 4 * 72 * 65536 / (254 / 10) :: Rational) :: Sp
+            let q x = round (x / 4 * 72 * 65536 / (254 / 10) :: Rational) :: Integer
                 (bfs, bp, s) = (q 13, q 22, q 20)
                 hp = round (toRational bp * toRational s / toRational bfs)
                 expect m =
@@ -861,7 +862,7 @@ tests =
             hbSpan (headingBlock bfs bp s 1 1) @?= 2
             hbSpan (headingBlock bfs bp s 2 1) @?= 3,
           testCase "a heading of the body size sits on the grid" $
-            mapM_ (\m -> headingBlock fs (fs * 3 `div` 2) fs m 1 @?= HeadingBlock (fs * 3 `div` 2) m 0) [1, 2, 3],
+            mapM_ (\m -> headingBlock (unSp fs) (unSp fs * 3 `div` 2) (unSp fs) m 1 @?= HeadingBlock (unSp fs * 3 `div` 2) m 0) [1, 2, 3],
           testProperty "a least span of one gives the block of golem-driver ADR 0003 (golem-driver ADR 0032)" $ property $ do
             bfs <- forAll (Gen.integral (Range.linear 65536 (40 * 65536)))
             bp <- forAll (Gen.integral (Range.linear bfs (3 * bfs)))
@@ -872,12 +873,12 @@ tests =
                 n = max 1 ((e + bp - bfs + bp - 1) `div` bp)
             headingBlock bfs bp s m 1 === HeadingBlock hp (fromInteger n) (((n - 1) * bp + bfs - e) `div` 2),
           testCase "a heading of the body size with a least span of three sits in the middle line (golem-driver ADR 0032)" $ do
-            let q x = round (x / 4 * 72 * 65536 / (254 / 10) :: Rational) :: Sp
+            let q x = round (x / 4 * 72 * 65536 / (254 / 10) :: Rational) :: Integer
                 hb = headingBlock (q 13) (q 22) (q 13) 1 3
             hbSpan hb @?= 3
             hbOffset hb @?= q 22,
           testCase "a large heading takes the span of its size, not the least span (golem-driver ADR 0032)" $ do
-            let q x = round (x / 4 * 72 * 65536 / (254 / 10) :: Rational) :: Sp
+            let q x = round (x / 4 * 72 * 65536 / (254 / 10) :: Rational) :: Integer
             assertBool "span from the size" (hbSpan (headingBlock (q 13) (q 22) (q 40) 2 2) > 2)
             hbSpan (headingBlock (q 13) (q 22) (q 40) 2 2) @?= hbSpan (headingBlock (q 13) (q 22) (q 40) 2 1),
           testCase "a heading followed by a heading keeps both and two lines of the paragraph (golem-driver ADR 0032)" $ do
@@ -908,14 +909,14 @@ tests =
         "tables (golem-driver ADR 0008)"
         [ testCase "cell extents: the widest unbreakable piece and the natural width" $ do
             let env = defaultComposeEnv fs
-            cellExtent (compose env "PDF") @?= (fs * 3 `div` 2, fs * 3 `div` 2)
+            cellExtent (compose env "PDF") @?= (Sp (unSp fs * 3 `div` 2), Sp (unSp fs * 3 `div` 2))
             cellExtent (compose env "日本語") @?= (fs, 3 * fs)
             let (mn, nat) = cellExtent (compose env "あ。")
             mn @?= nat,
           testCase "cell extents: a pattern hyphen is no break, a written hyphen is (golem-layout ADR 0008, 0014)" $ do
             -- eleven and ten Latin characters of 0.5em
-            cellExtent (compose enUS "hyphenation") @?= (11 * fs `div` 2, 11 * fs `div` 2)
-            cellExtent (compose (defaultComposeEnv fs) "well-known") @?= (5 * fs `div` 2, 5 * fs),
+            cellExtent (compose enUS "hyphenation") @?= (11 * Sp (unSp fs `div` 2), 11 * Sp (unSp fs `div` 2))
+            cellExtent (compose (defaultComposeEnv fs) "well-known") @?= (5 * Sp (unSp fs `div` 2), 5 * fs),
           testCase "column widths: natural when they fit" $
             columnWidths 100 [(10, 30), (20, 40)] @?= Right [30, 40],
           testCase "column widths: short columns filled first, the long ones level (golem-driver ADR 0037)" $ do
@@ -927,10 +928,10 @@ tests =
             -- the remainder one sp at a time from the first column
             columnWidths 10 [(0, 9), (0, 9), (0, 9)] @?= Right [4, 3, 3],
           testProperty "column widths: the sum is the width, each between its minimum and natural width, the short ones natural (golem-driver ADR 0037)" $ property $ do
-            ranges <- forAll (Gen.list (Range.linear 1 8) (Gen.int (Range.linear 0 1000) >>= \lo -> (\hi -> (toInteger lo, toInteger hi)) <$> Gen.int (Range.linear lo 1000)))
+            ranges <- forAll (Gen.list (Range.linear 1 8) (Gen.int (Range.linear 0 1000) >>= \lo -> (\hi -> (fromIntegral lo, fromIntegral hi)) <$> Gen.int (Range.linear lo 1000)))
             let lo = sum (map fst ranges)
                 hi = sum (map snd ranges)
-            available <- forAll (Gen.integral (Range.linear lo (max lo (hi - 1))))
+            available <- forAll (Sp <$> Gen.integral (Range.linear (unSp lo) (unSp (max lo (hi - 1)))))
             if hi <= available
               then success
               else do
@@ -938,7 +939,7 @@ tests =
                 sum ws === available
                 assert (and [mn <= w && w <= nat | ((mn, nat), w) <- zip ranges ws])
                 let clampTo c (mn, nat) = max mn (min c nat)
-                    level = last (0 : [c | c <- [0 .. maximum (map snd ranges)], sum (map (clampTo c) ranges) <= available])
+                    level = last (0 : [c | c <- map Sp [0 .. unSp (maximum (map snd ranges))], sum (map (clampTo c) ranges) <= available])
                 assert (and [w == nat | ((_, nat), w) <- zip ranges ws, nat <= level]),
           testCase "column widths: minimum widths that do not fit are an error" $
             columnWidths 20 [(10, 30), (20, 40)] @?= Left (ColumnsTooWide 30 20),
@@ -964,8 +965,8 @@ tests =
                 offsetOf al = case table al of
                   Right t -> [scOffset c | (_ : c : _) <- stRows t]
                   Left e -> error (show e)
-            offsetOf AlignRight @?= [4 * fs + (fs - fs `div` 2)]
-            offsetOf AlignCenter @?= [4 * fs + (fs - fs `div` 2) `div` 2]
+            offsetOf AlignRight @?= [4 * fs + (fs - Sp (unSp fs `div` 2))]
+            offsetOf AlignCenter @?= [4 * fs + Sp (unSp (fs - Sp (unSp fs `div` 2)) `div` 2)]
             offsetOf AlignLeft @?= [4 * fs],
           testCase "cells do not hang punctuation: no line is wider than its column" $ do
             let env = (defaultComposeEnv fs) {ceHanging = False}
@@ -1188,7 +1189,7 @@ tests =
             [bcText c | Box _ c <- compose vsEnv "a\xFE00葛\xE0100\xFE01"] @?= ["a\xFE00", "葛\xE0100\xFE01"],
           testCase "a variation selector is shaped with its base character for the advance" $ do
             let env = (defaultComposeEnv fs) {ceWordAdvance = \_ t -> if t == "葛\xE0100" then 3 / 2 else 1}
-            [w | Box w _ <- compose env "葛\xE0100"] @?= [fs + fs `div` 2],
+            [w | Box w _ <- compose env "葛\xE0100"] @?= [fs + Sp (unSp fs `div` 2)],
           testCase "punctuation spacing after a variation selector is as without it" $
             map stripVs (compose vsEnv "葛\xE0100、あ") @?= compose vsEnv "葛、あ",
           testCase "line-start prohibitions after an opening bracket with a variation selector are as without it" $ do
@@ -1266,7 +1267,7 @@ characterFeatureTests =
     testCase "ruby, tate-chu-yoko and note marks get no tracking" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
       [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Tcy sp "12"])] @?= [(fs, 0)]
-      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Note sp 1 []])] @?= [(fs `div` 2, 0)],
+      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Note sp 1 []])] @?= [(Sp (unSp fs `div` 2), 0)],
     testCase "with tracking, the last box of every line ends at the measure" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
           items = compose env (T.replicate 40 "あ")
@@ -1293,10 +1294,10 @@ characterFeatureTests =
         ]
       sequence_ [assertBool (show (boxes (plain v) "あ\x2014\x2014い")) (all (\(_, _, e) -> e == 0) (boxes (plain v) "あ\x2014\x2014い")) | v <- [False, True]]
       -- a Japanese pair is kerned as before
-      sequence_ [map (\(_, _, e) -> e) (boxes (kernAll v) "あい") @?= [round (toRational fs * 88 / 1000), 0] | v <- [False, True]]
+      sequence_ [map (\(_, _, e) -> e) (boxes (kernAll v) "あい") @?= [Sp (round (toRational (unSp fs) * 88 / 1000)), 0] | v <- [False, True]]
   ]
   where
-    tenth = fs `div` 10
+    tenth = Sp (unSp fs `div` 10)
     kernEnv = (defaultComposeEnv fs) {ceKern = \_ a b -> if (a, b) == ('あ', 'い') then -(1 / 10) else 0}
 
 {- | Ruby base character styles (golem-layout ADR 0011): an advance of 1
@@ -1406,7 +1407,7 @@ edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [] 0 0 noBoxSourc
 boxSpans :: Line -> [(Sp, Sp)]
 boxSpans l =
   let placed = placeLine l
-      ends = [round (toRational off + toRational w) | (Box w _, off) <- placed]
+      ends = [Sp (round (toRational (unSp off) + toRational (unSp w))) | (Box w _, off) <- placed]
    in zip [off | (Box {}, off) <- placed] ends
 
 rubyTests :: [TestTree]
@@ -1437,10 +1438,10 @@ rubyTests =
       let oneSide = placeRuby (rubyStyle R.Align121) GroupRuby [1000, 1000] reading (500, 0)
       (rpOverhang oneSide, rpWidth oneSide) @?= (0, 3000),
     testProperty "ruby placement: the box holds the base, the reading fits the overhang, positions increase" $ property $ do
-      base <- forAll (Gen.list (Range.linear 1 5) (Gen.integral (Range.linear 100 2000)))
-      reading <- forAll (Gen.list (Range.linear 1 8) (Gen.integral (Range.linear 50 1000)))
-      a <- forAll (Gen.integral (Range.linear 0 1000))
-      b <- forAll (Gen.integral (Range.linear 0 1000))
+      base <- forAll (Gen.list (Range.linear 1 5) (Sp <$> Gen.integral (Range.linear 100 2000)))
+      reading <- forAll (Gen.list (Range.linear 1 8) (Sp <$> Gen.integral (Range.linear 50 1000)))
+      a <- forAll (Sp <$> Gen.integral (Range.linear 0 1000))
+      b <- forAll (Sp <$> Gen.integral (Range.linear 0 1000))
       align <- forAll (Gen.element [R.Align121, R.Align010, R.AlignCenter, R.AlignStart])
       kind <- forAll (Gen.element [MonoRuby, GroupRuby])
       let r = placeRuby (rubyStyle align) kind base reading (a, b)
@@ -1518,15 +1519,15 @@ referenceNormalize env items = go Nothing [it | it@Box {} <- items] <> lineEndIt
   where
     lineEndItems = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
     fsz = ceFontSize env
-    em r = round (r * toRational fsz)
+    em = zwToSp fsz
     go _ [] = []
     go prev (x : rest) = case (prev, x) of
       (Just p, Box _ c) -> between p c <> [x] <> go (Just c) rest
       (_, Box _ c) -> leading c <> [x] <> go (Just c) rest
       _ -> x : go Nothing rest
-    sizeOf c = toRational (lkSize (bcLook c))
+    sizeOf c = toRational (unSp (lkSize (bcLook c)))
     leading c = case textClass c of
-      Just cls | fst (punctSpace cls) > 0 -> let w = round (fst (punctSpace cls) * sizeOf c) in [Glue w 0 w]
+      Just cls | fst (punctSpace cls) > 0 -> let w = Sp (round (fst (punctSpace cls) * sizeOf c)) in [Glue w 0 w]
       _ -> []
     trailingSpace c = maybe 0 (snd . punctSpace) (textClass c) * sizeOf c
     leadingSpace c = maybe 0 (fst . punctSpace) (textClass c) * sizeOf c
@@ -1555,7 +1556,7 @@ referenceNormalize env items = go Nothing [it | it@Box {} <- items] <> lineEndIt
           waou = (pc == Just Western && isJa cc && isJust cc && space == 0 && notPunct cc) || (cc == Just Western && isJa pc && isJust pc && space == 0 && notPunct pc)
           pen = [Penalty 0 infPenalty NoHyphen | noBreak]
        in if space > 0
-            then pen <> [Glue (round space) 0 (round space)]
+            then pen <> [Glue (Sp (round space)) 0 (Sp (round space))]
             else
               if waou
                 then pen <> [Glue (em (1 / 4)) (em (1 / 4)) (em (1 / 8))]
@@ -1601,14 +1602,14 @@ akiTests =
           differ = [t | t <- akiTexts, compose env t /= referenceNormalize env (compose env t)]
           ja = filter (`notElem` ("「」・。、A" :: String)) akiRepresentatives
       differ @?= [T.pack [a, b] | a <- ja, b <- "ーぁ"] `orderedAs` akiTexts
-      let stretch = Glue 0 (fs `div` 10) 0
+      let stretch = Glue 0 (Sp (unSp fs `div` 10)) 0
           asBreak it = if it == stretch then Penalty 0 0 NoHyphen else it
       [t | t <- differ, compose env t /= map asBreak (referenceNormalize env (compose env t))] @?= [],
     testCase "a set with (四分, 三分, 二分) between Japanese and Latin" $ do
       let s = withAkiRule (akiPositions "western") (akiPositions "japanese") (Aki.Aki (1 / 4) (1 / 3) (1 / 2)) (akiWith ["japanese"] ["western"] (Aki.Aki (1 / 4) (1 / 3) (1 / 2)))
-          third = round (toRational fs / 3)
-          half = fs `div` 2
-          quarter = fs `div` 4
+          third = Sp (round (toRational (unSp fs) / 3))
+          half = Sp (unSp fs `div` 2)
+          quarter = Sp (unSp fs `div` 4)
       [g | g@Glue {} <- compose (akiEnv s) "漢A", itemStretch g < filStretch] @?= [Glue third (half - third) (third - quarter)]
       [g | g@Glue {} <- compose (akiEnv s) "A漢", itemStretch g < filStretch] @?= [Glue third (half - third) (third - quarter)],
     testCase "gyomatsu-yakumono-zenkaku keeps a half em after a closing bracket at the line end" $ do
@@ -1618,10 +1619,10 @@ akiTests =
             [] -> error "no line"
       zenkaku <- maybe (assertFailure "no zenkaku" >> error "unreachable") pure (Map.lookup "gyomatsu-yakumono-zenkaku" builtinAkiSets)
       let lz = firstLine zenkaku (4 * fs)
-          lh = firstLine defaultAkiSet (7 * fs `div` 2)
+          lh = firstLine defaultAkiSet (Sp (7 * unSp fs `div` 2))
       [bcText c | Box _ c <- take 1 (reverse (lineItems lz))] @?= ["」"]
       [bcText c | Box _ c <- take 1 (reverse (lineItems lh))] @?= ["」"]
-      trailingRoom lz @?= fs `div` 2
+      trailingRoom lz @?= Sp (unSp fs `div` 2)
       trailingRoom lh @?= 0,
     testCase "a set without the space before an opening bracket at the paragraph start" $ do
       let s = akiWith ["paragraph-start"] ["opening"] (Aki.Aki 0 0 0)
@@ -1637,7 +1638,7 @@ akiTests =
             Box w c -> Left (bcText c, boxKind c, w)
             it -> Right it
       map shapeOf (takeWhile (not . isLineEnd) items)
-        @?= [Left ("漢", KindText, fs), Left ("", KindAki, fs `div` 5), Left ("A", KindText, fs `div` 2)]
+        @?= [Left ("漢", KindText, fs), Left ("", KindAki, Sp (unSp fs `div` 5)), Left ("A", KindText, Sp (unSp fs `div` 2))]
       length items @?= 6
       let absolute = fst (composeInlines (akiEnv defaultAkiSet) [sp0 "3", Aki sp (AkiAbs 65536), sp0 "kg"])
       [(w, boxKind c) | Box w c <- absolute, boxKind c == KindAki] @?= [(65536, KindAki)]
@@ -1664,7 +1665,7 @@ akiTests =
           map boxKind (take 1 (reverse [c | Box _ c <- lineItems l])) @?= [KindAki]
           lineEdge l @?= (0, 0)
           -- あ (1 em), 」 (a half em, no space after it) and the [aki] (1 em)
-          trailingRoom l @?= 10 * fs - (fs + fs `div` 2 + fs)
+          trailingRoom l @?= 10 * fs - (fs + Sp (unSp fs `div` 2) + fs)
         ls -> assertFailure (show ls),
     testCase "an [aki] inside a line breaks as the penalty and the fixed glue did (golem-layout ADR 0012)" $ do
       let asGlue = concatMap $ \case
@@ -1676,7 +1677,7 @@ akiTests =
             [ [sp0 "第一章", Aki sp (AkiZw 1), sp0 "吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。"],
               [sp0 "重さは3", Aki sp (AkiZw (1 / 4)), sp0 "kgで、長さは12", Aki sp (AkiAbs 65536), sp0 "mmである。何でも薄暗いじめじめした所で泣いていた事だけは記憶している。"]
             ]
-      forM_ paras $ \p -> forM_ [5 * fs, 7 * fs, 9 * fs + fs `div` 3, 12 * fs] $ \w -> do
+      forM_ paras $ \p -> forM_ [5 * fs, 7 * fs, 9 * fs + Sp (unSp fs `div` 3), 12 * fs] $ \w -> do
         let its = fst (composeInlines (akiEnv defaultAkiSet) p)
         assertBool "has an [aki]" (not (null [() | Box _ c <- its, boxKind c == KindAki]))
         outcome its w @?= outcome (asGlue its) w
@@ -1715,16 +1716,16 @@ codeTests =
     testCase "an empty line is one row" $
       rowsWith (20 * s) (atomsOf "") @?= [CodeRow []],
     testCase "the grid: 13Q body, 22H pitch, 11Q code with 0.5zw padding takes 3 lines for 3 rows" $ do
-      let q n = n * 65536 * 72 * 10 `div` (254 * 4) -- approximately; only ratios matter
-          g = codeGeometry (q 13) (q 22) (q 11) (q 11 `div` 2)
+      let q n = Sp (n * 65536 * 72 * 10 `div` (254 * 4)) -- approximately; only ratios matter
+          g = codeGeometry (q 13) (q 22) (q 11) (Sp (unSp (q 11) `div` 2))
       codeSpan g 3 @?= 3
       codeSpan g 1 @?= 1,
     testCase "the rows are centred in the lines they take" $ do
       let g = codeGeometry 130 220 110 55
       forM_ [1 .. 6] $ \k -> do
         let top = codeRowsTop g k - cgPadding g
-            extent = toInteger (k - 1) * cgPitch g + cgSize g
-            bottom = toInteger (codeSpan g k) * cgGridPitch g - codeRowsTop g k - extent - cgPadding g
+            extent = fromIntegral (k - 1) * cgPitch g + cgSize g
+            bottom = fromIntegral (codeSpan g k) * cgGridPitch g - codeRowsTop g k - extent - cgPadding g
         assertBool (show (k, top, bottom)) (abs (top - bottom) <= 1),
     testCase "a code block breaks between rows; each part takes its own lines" $ do
       let g = CodeGeometry 10 10 10 10 0
@@ -1759,7 +1760,7 @@ codeTests =
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True}}
           its = compose env "a漢b"
       [w | Glue w _ _ <- takeWhile (not . isFinalPenalty) its] @?= []
-      sum [w | Box w _ <- its] @?= fs `div` 2 + fs + fs `div` 2,
+      sum [w | Box w _ <- its] @?= Sp (unSp fs `div` 2) + fs + Sp (unSp fs `div` 2),
     -- the padding of inline code (golem-driver ADR 0029)
     testCase "inline code: the padding is added to the first and the last box, with or without a background" $
       forM_ ["code", "plain"] $ \name -> do

@@ -16,7 +16,7 @@ module Golem.Pdf.Marks
 where
 
 import Golem.Pdf.Rect (Rect (..))
-import Golem.Pdf.Writer (Mark (..), Page (..), Sp, turnRect)
+import Golem.Pdf.Writer (Mark (..), Page (..), Sp (..), turnRect)
 
 data MarkStyle = Japanese | Western
   deriving stock (Eq, Show)
@@ -89,9 +89,9 @@ markRules style bleed (w, h) = concatMap corner corners <> centres
     mirrorY (Rect x y rw rh) = Rect x (h - y - rh) rw rh
     corners = [id, mirrorX, mirrorX . mirrorY, mirrorY]
     corner f = map f lowerLeft
-    cx = w `div` 2
-    cy = h `div` 2
-    hl = l `div` 2
+    cx = Sp (unSp w `div` 2)
+    cy = Sp (unSp h `div` 2)
+    hl = Sp (unSp l `div` 2)
     centres =
       [ -- bottom: the line across the edge, then the one along it
         vertical cx (-(o + l)) l,

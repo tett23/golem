@@ -21,6 +21,7 @@ where
 import Data.Text (Text)
 import Golem.Project.Style (SizeSource (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
+import Golem.Syntax.Length (Sp)
 
 {- | Where the size of a box comes from and where its characters are in the
 source (golem-cli ADR 0008), for golem preflight. Kept beside the look,
@@ -101,7 +102,7 @@ data Look = Look
     -- | the font role of Latin characters
     lkLatinFace :: !Text,
     -- | the size in sp
-    lkSize :: !Integer,
+    lkSize :: !Sp,
     -- | synthetic bold and slant of the Japanese side
     lkSynthetic :: !Synthetic,
     -- | synthetic bold and slant of the Latin side
@@ -115,7 +116,7 @@ data Look = Look
     -- | palt (vpal in vertical text) on Japanese characters
     lkProportional :: !Bool,
     -- | in sp: up in horizontal text, right in vertical text
-    lkBaselineShift :: !Integer,
+    lkBaselineShift :: !Sp,
     {- | the text is code (golem-driver ADR 0017): breaks only at spaces and
     after a slash, no hyphenation and no aki between its characters
     -} lkCode :: !Bool,
@@ -128,7 +129,7 @@ data Look = Look
     0029); Nothing is no background
     -} lkBackground :: !(Maybe Text),
     -- | the padding before and after a run of code along the line, in sp (golem-driver ADR 0029)
-    lkPadding :: !Integer
+    lkPadding :: !Sp
   }
   deriving stock (Eq, Ord, Show)
 
@@ -136,5 +137,5 @@ data Look = Look
 metrics kerning, no tracking, no proportional metrics, no baseline shift,
 not code, not a URL, no kenten, no background and no padding.
 -}
-plainLook :: Text -> Integer -> Look
+plainLook :: Text -> Sp -> Look
 plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0

@@ -314,7 +314,7 @@ piecesOf env inl = case inl of
       let m = noteMarkSize (ceNoteMarkSize env) (lkSize lk)
           w
             | ceVertical env = m
-            | otherwise = round (ceWordAdvance env lk {lkSize = m} t * toRational m)
+            | otherwise = L.zwToSp m (ceWordAdvance env lk {lkSize = m} t)
        in PBox lk t KindNoteMark w
 
 {- | The size of a note mark in text of a size (golem-driver ADR 0018,
@@ -442,11 +442,11 @@ withRuby = \case
 
 -- | The advance of a character in a look, in sp.
 advance :: ComposeEnv -> Look -> Char -> Sp
-advance env lk c = round (ceAdvance env lk c * toRational (lkSize lk))
+advance env lk c = L.zwToSp (lkSize lk) (ceAdvance env lk c)
 
 -- | The tracking of a look in sp: lkTracking thousandths of its size (docs/adr/0020).
 tracking :: Look -> Sp
-tracking lk = round (toInteger (lkTracking lk) * lkSize lk % 1000)
+tracking lk = Sp (round (toInteger (lkTracking lk) * unSp (lkSize lk) % 1000))
 
 {- | The pair kerning of Japanese characters (docs/adr/0020): two boxes of
 one Japanese character each, side by side, of the same look with metrics
@@ -463,7 +463,7 @@ kernPairs env = \case
       bcLook p == bcLook c,
       lkKerning (bcLook p) == KernMetrics,
       not (lkCode (bcLook p)) ->
-        let k = round (ceKern env (bcLook p) a b * toRational (lkSize (bcLook p)))
+        let k = L.zwToSp (lkSize (bcLook p)) (ceKern env (bcLook p) a b)
          in Box (w + k) p {bcEdgeEnd = bcEdgeEnd p - k} : kernPairs env rest
   x : rest -> x : kernPairs env rest
   [] -> []
@@ -523,11 +523,11 @@ baseAdvances env lk looks = zipWith unit (looks <> repeat lk) . clusters
     -- a base character and its combining characters, shaped together (golem-driver ADR 0036)
     unit l u = case T.unpack u of
       [c] -> advance env l c
-      _ -> round (ceWordAdvance env l u * toRational (lkSize l))
+      _ -> L.zwToSp (lkSize l) (ceWordAdvance env l u)
 
 -- | The advances of the reading characters: half the size of the base, as drawn.
 readingAdvances :: ComposeEnv -> Look -> Maybe Text -> [Sp]
-readingAdvances env lk = maybe [] (map (advance env lk {lkSize = lkSize lk `div` 2}) . T.unpack)
+readingAdvances env lk = maybe [] (map (advance env lk {lkSize = Sp (unSp (lkSize lk) `div` 2)}) . T.unpack)
 
 itemsFor :: ComposeEnv -> Maybe Piece -> Piece -> Maybe Piece -> [Item]
 itemsFor env prev p next = case p of
@@ -538,8 +538,8 @@ itemsFor env prev p next = case p of
         -- with variation selectors: shaped together with them
         full
           | T.null vs = advance env lk c
-          | otherwise = round (ceWordAdvance env lk (T.cons c vs) * toRational fs)
-        w = full - round ((pre + post) * toRational fs)
+          | otherwise = L.zwToSp fs (ceWordAdvance env lk (T.cons c vs))
+        w = full - L.zwToSp fs (pre + post)
         -- tracking after the character, given back at the line end (docs/adr/0020)
         t = tracking lk
         -- kenten on characters other than punctuation and separators (golem-driver ADR 0019)
@@ -555,7 +555,7 @@ itemsFor env prev p next = case p of
     let sw = advance env lk ' '
      in if lkCode lk
           then [Glue (sw + tracking lk) 0 0] -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
-          else [Glue (sw + tracking lk) (sw `div` 2) (sw `div` 3)]
+          else [Glue (sw + tracking lk) (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))]
   PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env))]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
@@ -565,9 +565,9 @@ itemsFor env prev p next = case p of
         -- a neighbouring base is measured in the looks of its characters
         allowance before = \case
           _ | not (rsOverhangOntoKana style) -> 0
-          Just (PChar lk' c _) | isNothing (lkKenten lk'), isKanaClass (charClass c) -> min (rsOverhang style) (advance env lk' c `div` 2)
+          Just (PChar lk' c _) | isNothing (lkKenten lk'), isKanaClass (charClass c) -> min (rsOverhang style) (Sp (unSp (advance env lk' c) `div` 2))
           Just (PRuby lk' _ b ls Nothing) -> case (if before then reverse else id) (zip (map T.head (clusters b)) (ls <> repeat lk')) of
-            (c, lc) : _ | isKanaClass (charClass c) -> min (rsOverhang style) (advance env lc c `div` 2)
+            (c, lc) : _ | isKanaClass (charClass c) -> min (rsOverhang style) (Sp (unSp (advance env lc c) `div` 2))
             _ -> 0
           Just (PRuby lk' k b ls r@(Just _)) ->
             let ras = readingAdvances env lk' r
@@ -587,8 +587,8 @@ itemsFor env prev p next = case p of
   -- zw is the size of the type at its place; an empty box: no break between it and a neighbouring box (golem-layout ADR 0012)
   PAki lk a ->
     let w = case a of
-          AkiZw r -> L.unSp (L.zwToSp (L.Sp (lkSize lk)) r)
-          AkiAbs x -> x
+          AkiZw r -> L.zwToSp (lkSize lk) r
+          AkiAbs x -> Sp (toInteger x)
      in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0 (ceBoxSource env))]
   PCode lk run ps pe -> codeItems env lk run ps pe
   PAnchor _ -> []
@@ -600,12 +600,12 @@ expansion.
 -}
 codeItems :: ComposeEnv -> Look -> Text -> Sp -> Sp -> [Item]
 codeItems env lk run padStart padEnd =
-  [ Box (w + tr * toInteger (T.length seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env))
+  [ Box (w + tr * fromIntegral (T.length seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env))
   | let segs = [seg | part <- slashParts run, seg <- T.groupBy sameSide part]
         lastIx = length segs - 1,
     (i, seg) <- zip [0 :: Int ..] segs,
     let latin = maybe False ((== Western) . charClass . fst) (T.uncons seg)
-        w = round (ceWordAdvance env lk seg * toRational (lkSize lk))
+        w = L.zwToSp (lkSize lk) (ceWordAdvance env lk seg)
         tag = if ceVertical env && latin then KindRotated else KindText
         ps = if i == 0 then padStart else 0
         pe = if i == lastIx then padEnd else 0
@@ -709,12 +709,12 @@ wordItems env lk word =
       tr = tracking lk
       -- the tracking after each character, given back at the line end (docs/adr/0020)
       box t =
-        let w = round (ceWordAdvance env lk t * toRational (lkSize lk))
+        let w = L.zwToSp (lkSize lk) (ceWordAdvance env lk t)
             ps = maybe 0 (min w . protAt fst . fst) (T.uncons t)
             pe = maybe 0 (min w . protAt snd . snd) (T.unsnoc t)
-         in Box (w + tr * toInteger (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0 (ceBoxSource env))
+         in Box (w + tr * fromIntegral (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0 (ceBoxSource env))
       -- the advance of the character at the line end, without tracking, by its ratio (golem-layout ADR 0014)
-      protAt pick c = if ceProtrusion env then advance env lk c * pick (protrusionRatio c) `div` 1000 else 0
+      protAt pick c = if ceProtrusion env then Sp (unSp (advance env lk c) * pick (protrusionRatio c) `div` 1000) else 0
    in concat [box part : [pen | i < length parts - 1] | (i, part) <- zip [0 :: Int ..] parts]
 
 {- | A word cut after each run of hyphens and dashes that has a character
@@ -804,7 +804,7 @@ normalize env = go AtStart True
       _ -> x : go AtStart first rest
     sizeOf = lkSize . bcLook
     glueOf base (A.Aki n o m) =
-      let sp r = round (r * toRational base)
+      let sp = L.zwToSp base
        in [Glue (sp o) (sp m - sp o) (sp o - sp n)]
     -- the space before the first box of a paragraph, in the box's size
     leading c = case akiFirst c of
@@ -813,7 +813,7 @@ normalize env = go AtStart True
     -- the line start (but not the paragraph start) and the line end are fixed, in the box's size
     withEdges first c = case (akiFirst c, akiLast c) of
       (Just f, Just l) ->
-        let edge a = round (A.akiOptimum a * toRational (sizeOf c))
+        let edge a = L.zwToSp (sizeOf c) (A.akiOptimum a)
          in c
               { bcEdgeStart = bcEdgeStart c + (if first then 0 else edge (akiBetween set AkiLineStart (AkiChar f))),
                 bcEdgeEnd = bcEdgeEnd c + edge (akiBetween set (AkiChar l) AkiLineEnd)

@@ -36,6 +36,7 @@ import Golem.Preflight.View qualified as V
 import Golem.Project
 import Golem.Project.Style
 import Golem.Syntax
+import Golem.Syntax.Length (zwToSp)
 
 {- | The PDF and the notices of its layout (G07030), or the errors that
 stopped it.
@@ -260,7 +261,7 @@ ref :: Int -> Bool -> P.FontRef
 ref ix v = P.FontRef (2 * ix + (if v then 1 else 0))
 
 toSp :: Sp -> Rational -> Sp
-toSp size a = round (a * toRational size) :: Integer
+toSp = zwToSp
 
 isLatin :: Char -> Bool
 isLatin = (== Western) . charClass
@@ -291,12 +292,12 @@ runAt env look v rotated scale (bx, by) txt =
       shapingFor role r = (shapingOf vv look (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = vv}
       {- the tracking after the last glyph of each cluster, for each of its
       characters, as the boxes count it (docs/adr/0020) -}
-      tr = toInteger (lkTracking look) * size
+      tr = fromIntegral (lkTracking look) * size
       trackingAfter r shaped =
         let starts = map shCluster shaped
             nexts = drop 1 starts <> [T.length r]
             cluster c = minimum (T.length r : filter (> c) starts) - c
-         in [if n /= c then round (toInteger (cluster c) * tr % 1000) else 0 | (c, n) <- zip starts nexts]
+         in [if n /= c then Sp (round (fromIntegral (cluster c) * unSp tr % 1000)) else 0 | (c, n) <- zip starts nexts]
       -- the stroke of synthetic bold of a side: Latin or Japanese (golem-driver ADR 0012)
       strokeOf latin s
         | synBold s = syntheticStroke (if latin then syntheticStrokeLatin else syntheticStrokeJa) size
@@ -441,8 +442,8 @@ codeBackgrounds env (x0, y0) sl =
       breaksBefore (_, _, p) (_, _, c) = bcPadEnd p > 0 || bcPadStart c > 0 || lkBackground (bcLook p) /= lkBackground (bcLook c)
       runs = groupWhen (\a b -> not (breaksBefore a b)) boxes
       rectOf s0 e0
-        | vertical = Rect (x0 - size `div` 2) (y0 - e0) size (e0 - s0)
-        | otherwise = Rect (x0 + s0) (y0 - (size - round (toRational size * baselineRatio))) (e0 - s0) size
+        | vertical = Rect (x0 - Sp (unSp size `div` 2)) (y0 - e0) size (e0 - s0)
+        | otherwise = Rect (x0 + s0) (y0 - (size - zwToSp size baselineRatio)) (e0 - s0) size
    in [ (sw, rectOf (slIndent sl + s0) (slIndent sl + e0))
       | run@((s0, _, c) : _) <- runs,
         Just name <- [lkBackground (bcLook c)],
@@ -466,8 +467,8 @@ lineFace env (x0, y0) sl =
         else
           Just
             ( if vertical
-                then Rect (x0 - size `div` 2) (y0 - e0) size (e0 - s0)
-                else Rect (x0 + s0) (y0 - (size - round (toRational size * baselineRatio))) (e0 - s0) size
+                then Rect (x0 - Sp (unSp size `div` 2)) (y0 - e0) size (e0 - s0)
+                else Rect (x0 + s0) (y0 - (size - zwToSp size baselineRatio)) (e0 - s0) size
             )
   where
     vertical = pgVertical (deGeom env)
@@ -521,7 +522,7 @@ drawLineAt env (x0, y0) sl =
         Box w c ->
           let look = bcLook c
               size = lkSize look
-              half = look {lkSize = size `div` 2}
+              half = look {lkSize = Sp (unSp size `div` 2)}
            in (,) (lkColor look) $ case boxKind c of
                 kind
                   | kind `elem` [KindRuby, KindGroupRuby] ->
@@ -540,7 +541,7 @@ drawLineAt env (x0, y0) sl =
                           baseAdv = zipWith advOf baseLooks baseUnits
                           readAdv = map (advOf half . T.singleton) (T.unpack rt)
                           excess = max 0 (sum readAdv - w)
-                          rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (excess `div` 2, excess `div` 2)
+                          rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (Sp (unSp excess `div` 2), Sp (unSp excess `div` 2))
                           -- the reading sits beside the largest base character
                           big = if null baseLooks then size else maximum (map lkSize baseLooks)
                           across = rubyAcross vertical big rsize
@@ -561,11 +562,11 @@ drawLineAt env (x0, y0) sl =
                       shift = lkBaselineShift look
                       parent = lfShape fonts (shapingOf vertical look (T.head (bcText c))) (bcText c)
                       centre
-                        | vertical = beside (origin (off + size `div` 2)) (shift + kentenAcross True size 0 d)
+                        | vertical = beside (origin (off + Sp (unSp size `div` 2))) (shift + kentenAcross True size 0 d)
                         | otherwise =
                             let adv = toSp size (sum (map shAdvance parent))
                                 central = maybe 0 (lfEmBoxCentral fonts . shFace) (listToMaybe parent)
-                             in beside (origin (off + adv `div` 2)) (shift + kentenAcross False size central d)
+                             in beside (origin (off + Sp (unSp adv `div` 2))) (shift + kentenAcross False size central d)
                       (b2, u2) = maybe ([], []) (\sh -> usesOf (whoOf V.PartKenten c) (look {lkSize = d}) (kentenMark env (lkFace look) sh d centre)) (lkKenten look)
                    in (b1 <> b2, u1 <> u2)
                 KindNoteMark ->
@@ -579,7 +580,7 @@ drawLineAt env (x0, y0) sl =
                       (ox, oy) = origin off
                       markWidth = toSp m (lfWordAdvance fonts (shapingOf False markLook (maybe '0' fst (T.uncons txt))) txt)
                    in if vertical
-                        then runAtU env (whoOf V.PartBase c) markLook {lkBaselineShift = 0} False False 0 (ox + size `div` 2 - markWidth + lkBaselineShift look, oy - m `div` 2 - toSp m central) txt
+                        then runAtU env (whoOf V.PartBase c) markLook {lkBaselineShift = 0} False False 0 (ox + Sp (unSp size `div` 2) - markWidth + lkBaselineShift look, oy - Sp (unSp m `div` 2) - toSp m central) txt
                         else runAtU env (whoOf V.PartBase c) markLook False False 0 (ox, oy + toSp (size - m) (central + 1 / 2)) txt
                 -- the empty box of an [aki] draws nothing (golem-layout ADR 0012)
                 KindAki -> ([], [])
@@ -592,7 +593,7 @@ drawLineAt env (x0, y0) sl =
                       (ox, oy) = origin (off + bcPadStart c - pre)
                       -- vertical glyph origins sit on the centre line; rotated Latin sits on a baseline beside it
                       pt
-                        | vertical && rotated = (ox - size * 3 `div` 10, oy)
+                        | vertical && rotated = (ox - Sp (unSp (size * 3) `div` 10), oy)
                         | otherwise = (ox, oy) -- Identity-V: the origin is the top centre of the em box
                    in runAtU env (whoOf V.PartBase c) look vertical rotated (if bcExpandable c then lineExpansion l else 0) pt (bcText c)
         -- a word broken at the line end gets its hyphen
@@ -601,7 +602,7 @@ drawLineAt env (x0, y0) sl =
               let (ox, oy) = origin off
                   look = lookBefore i
                   size = lkSize look
-               in (lkColor look, runAtU env (whoBefore i) look vertical vertical 0 (if vertical then (ox - size * 3 `div` 10, oy) else (ox, oy)) "-")
+               in (lkColor look, runAtU env (whoBefore i) look vertical vertical 0 (if vertical then (ox - Sp (unSp (size * 3) `div` 10), oy) else (ox, oy)) "-")
         _ -> (Nothing, ([], []))
       -- by the glyphs used, not the marks: the marks need the ToUnicode entries of every page (golem-driver ADR 0030)
       parts = filter (not . null . snd . snd) (zipWith (curry boxRun) [0 ..] placed)
@@ -626,9 +627,9 @@ textAt env kind anchor size txt =
   let w = plainWidth fonts body size txt
       x0 = case anAlign anchor of
         LS.AlignStart -> anX anchor
-        LS.AlignCenter -> anX anchor - w `div` 2
+        LS.AlignCenter -> anX anchor - Sp (unSp w `div` 2)
         LS.AlignEnd -> anX anchor - w
-      face = Rect x0 (anY anchor - (size - round (toRational size * baselineRatio))) w size
+      face = Rect x0 (anY anchor - (size - zwToSp size baselineRatio)) w size
    in (LineRec kind styleSpan (Just face) Nothing [], runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt)
   where
     fonts = deFonts env
@@ -733,7 +734,7 @@ drawColumn env p =
              | pr <- poRules p,
                Just info <- [Map.lookup (prId pr) (plRules layout)],
                Just spec <- [if prBefore pr then riBefore info else riAfter info],
-               let band = paragraphRule env ta (riSize info) spec (prAt pr)
+               let band = paragraphRule env ta (riSize info) spec (Sp (prAt pr))
                    sw = ruleSwatch env spec
              ]
           <> [ ("脚注の罫線", r, ruleThinnest t (rsStyle rule), ruleMarks sw (ruleShapes vertical r (rsStyle rule)), sw)
@@ -766,7 +767,7 @@ drawPage env ps master = case ps of
         hiddenParts = hiddenMarks env n
         -- sidenotes in the sidenote column of the page (golem-driver ADR 0006)
         sidenoteParts =
-          [ entryAt env "傍注の行" (psSpan ps') (rectX area, rectY area + rectH area - (psTop ps' + toInteger j * snPitch + round (toRational snSize' * baselineRatio))) (SetLine l snSize' 0 [] [])
+          [ entryAt env "傍注の行" (psSpan ps') (rectX area, rectY area + rectH area - (psTop ps' + fromIntegral j * snPitch + zwToSp snSize' baselineRatio)) (SetLine l snSize' 0 [] [])
           | Just area <- [sidenoteAreaFor geom n],
             ps' <- Map.findWithDefault [] n (plSidenotes layout),
             let (_, snSize', snPitch) = sidenoteMetrics (docStyle inp (spanFile (psSpan ps'))) geom,
@@ -830,8 +831,8 @@ noteRule env ta rule firstLine =
       w = rsWeight rule
       len = maybe 0 (dimToSp fs) (rsLength rule)
       far = case rsSpaceAfter rule of
-        Nothing -> toInteger (firstLine - 1) * p + fs `div` 2 - w `div` 2
-        Just a -> toInteger firstLine * p - dimToSp fs a - w
+        Nothing -> fromIntegral (firstLine - 1) * p + Sp (unSp fs `div` 2) - Sp (unSp w `div` 2)
+        Just a -> fromIntegral firstLine * p - dimToSp fs a - w
    in if vertical
         then (Rect (rectX ta + rectW ta - far - w) (rectY ta + rectH ta - len) w len, w)
         else (Rect (rectX ta) (rectY ta + rectH ta - far - w) len w, w)
@@ -847,16 +848,16 @@ tableRules env ta seg tg =
   let p = pgLinePitch geom
       fs = pgFontSize geom
       (a, d)
-        | vertical = (fs `div` 2, fs - fs `div` 2)
+        | vertical = (Sp (unSp fs `div` 2), fs - Sp (unSp fs `div` 2))
         | otherwise = (tgAscent tg, tgDescent tg)
-      c = max 0 ((p - a - d) `div` 2)
-      base k = toInteger k * p + (if vertical then fs `div` 2 else round (toRational fs * baselineRatio))
+      c = max 0 (Sp (unSp (p - a - d) `div` 2))
+      base k = fromIntegral k * p + (if vertical then Sp (unSp fs `div` 2) else zwToSp fs baselineRatio)
       before k = base k - a - c
       after k = base k + d + c
       w = tgWidth tg
       rule cy t
-        | vertical = (Rect (rectX ta + rectW ta - cy - t `div` 2) (rectY ta + rectH ta - w) t w, t)
-        | otherwise = (Rect (rectX ta) (rectY ta + rectH ta - cy - t `div` 2) w t, t)
+        | vertical = (Rect (rectX ta + rectW ta - cy - Sp (unSp t `div` 2)) (rectY ta + rectH ta - w) t w, t)
+        | otherwise = (Rect (rectX ta) (rectY ta + rectH ta - cy - Sp (unSp t `div` 2)) w t, t)
    in [rule (before (tsFirst seg)) thickRule] <> [rule (after e) thinRule | Just e <- [tsHeaderEnd seg]] <> [rule (after (tsLast seg)) thickRule]
   where
     geom = deGeom env
@@ -866,16 +867,16 @@ tableInk :: DrawEnv -> Int -> TableGeometry -> TableGeometry
 tableInk env tid tg =
   let fs = pgFontSize geom
       inks =
-        [ (toRational (guSize u) * y1, toRational (guSize u) * negate y0)
+        [ (toRational (unSp (guSize u)) * y1, toRational (unSp (guSize u)) * negate y0)
         | lid <- [tid .. tid + tgLines tg - 1],
           sl <- Map.findWithDefault [] lid (plTableLines layout),
           u <- snd (drawLineAt env (0, 0) sl),
           Just (_, y0, _, y1) <- [lfInkBox fonts (guFace u) (guGlyph u)]
         ]
-      emA = round (toRational fs * baselineRatio)
+      emA = zwToSp fs baselineRatio
    in if null inks
         then tg {tgAscent = emA, tgDescent = fs - emA}
-        else tg {tgAscent = round (maximum (map fst inks)), tgDescent = round (maximum (map snd inks))}
+        else tg {tgAscent = Sp (round (maximum (map fst inks))), tgDescent = Sp (round (maximum (map snd inks)))}
   where
     geom = deGeom env
     fonts = deFonts env
@@ -887,9 +888,9 @@ in it (golem-driver ADR 0017) -}
 codeRowAt :: DrawEnv -> Int -> CodeGeometry -> Int -> Int -> SetLine -> Sp
 codeRowAt env slot g k j sl =
   let s = slSize sl
-      areaTop = toInteger slot * pgLinePitch geom - (pgLinePitch geom - pgFontSize geom) `div` 2
-      top = areaTop + codeRowsTop g k + toInteger j * cgPitch g
-   in top + (if vertical then s `div` 2 else round (toRational s * baselineRatio))
+      areaTop = fromIntegral slot * pgLinePitch geom - Sp (unSp (pgLinePitch geom - pgFontSize geom) `div` 2)
+      top = areaTop + codeRowsTop g k + fromIntegral j * cgPitch g
+   in top + (if vertical then Sp (unSp s `div` 2) else zwToSp s baselineRatio)
   where
     geom = deGeom env
     vertical = pgVertical (deGeom env)
@@ -908,8 +909,8 @@ codePartOf slot lid k ci =
 codeCaptionLineAt :: DrawEnv -> Int -> CodeInfo -> Int -> Sp
 codeCaptionLineAt env slot ci j =
   let cs = ciCaptionSize ci
-      top = toInteger slot * pgLinePitch geom + toInteger (j :: Int) * ciCaptionPitch ci
-   in top + (if vertical then cs `div` 2 else round (toRational cs * baselineRatio))
+      top = fromIntegral slot * pgLinePitch geom + fromIntegral (j :: Int) * ciCaptionPitch ci
+   in top + (if vertical then Sp (unSp cs `div` 2) else zwToSp cs baselineRatio)
   where
     geom = deGeom env
     vertical = pgVertical (deGeom env)
@@ -918,9 +919,9 @@ codeCaptionLineAt env slot ci j =
 codeBand :: DrawEnv -> Rect -> Int -> CodeGeometry -> Int -> Int -> Int -> Sp -> Rect
 codeBand env ta slot g k j m start =
   let p = pgLinePitch geom
-      areaTop = toInteger slot * p - (p - pgFontSize geom) `div` 2
-      top = areaTop + codeRowsTop g k + toInteger j * cgPitch g - (cgPitch g - cgSize g) `div` 2
-      depth = toInteger m * cgPitch g
+      areaTop = fromIntegral slot * p - Sp (unSp (p - pgFontSize geom) `div` 2)
+      top = areaTop + codeRowsTop g k + fromIntegral j * cgPitch g - Sp (unSp (cgPitch g - cgSize g) `div` 2)
+      depth = fromIntegral m * cgPitch g
       measure = if vertical then rectH ta else rectW ta
    in if vertical
         then Rect (rectX ta + rectW ta - top - depth) (rectY ta + rectH ta - measure) depth (measure - start)
@@ -932,15 +933,15 @@ codeBand env ta slot g k j m start =
 -- the lines of a border of width t, centred on the sides of a rectangle
 borderRects :: Rect -> Sp -> [Rect]
 borderRects (Rect x y w h) t =
-  let half = t `div` 2
+  let half = Sp (unSp t `div` 2)
    in [Rect (x - half) (y + h - half) (w + t) t, Rect (x - half) (y - half) (w + t) t, Rect (x - half) (y - half) t (h + t), Rect (x + w - half) (y - half) t (h + t)]
 
 -- the area of a code block of n grid lines from grid line slot, from start to the end of the line
 codeRect :: DrawEnv -> Rect -> Int -> Int -> Sp -> Rect
 codeRect env ta slot n start =
   let p = pgLinePitch geom
-      areaTop = toInteger slot * p - (p - pgFontSize geom) `div` 2
-      across = toInteger n * p
+      areaTop = fromIntegral slot * p - Sp (unSp (p - pgFontSize geom) `div` 2)
+      across = fromIntegral n * p
       measure = if vertical then rectH ta else rectW ta
    in if vertical
         then Rect (rectX ta + rectW ta - areaTop - across) (rectY ta + rectH ta - measure) across (measure - start)
@@ -953,8 +954,8 @@ codeRect env ta slot n start =
 headingLineAt :: DrawEnv -> Int -> HeadingBlock -> Int -> SetLine -> Sp
 headingLineAt env k hb j sl =
   let s = slSize sl
-      top = toInteger k * pgLinePitch geom + hbOffset hb + toInteger j * hbPitch hb
-   in top + (if vertical then s `div` 2 else round (toRational s * baselineRatio))
+      top = fromIntegral k * pgLinePitch geom + Sp (hbOffset hb) + fromIntegral j * Sp (hbPitch hb)
+   in top + (if vertical then Sp (unSp s `div` 2) else zwToSp s baselineRatio)
   where
     geom = deGeom env
     vertical = pgVertical (deGeom env)
@@ -967,8 +968,8 @@ j caption pitches on, at the top of its lines (golem-driver ADR 0010) -}
 captionLineAt :: DrawEnv -> Int -> PlacedFigure -> Int -> Sp
 captionLineAt env slot pf j =
   let cs = pfCaptionSize pf
-      top = toInteger (slot + pfImageLines pf) * pgLinePitch geom + toInteger (j :: Int) * pfCaptionPitch pf
-   in top + (if vertical then cs `div` 2 else round (toRational cs * baselineRatio))
+      top = fromIntegral (slot + pfImageLines pf) * pgLinePitch geom + fromIntegral (j :: Int) * pfCaptionPitch pf
+   in top + (if vertical then Sp (unSp cs `div` 2) else zwToSp cs baselineRatio)
   where
     geom = deGeom env
     vertical = pgVertical (deGeom env)
@@ -984,7 +985,7 @@ captionIndent env ta pf
 -- each digit of a hidden folio, its advance centred on its point (golem-driver ADR 0021)
 hiddenMarks :: DrawEnv -> Int -> [([P.Mark], [GlyphUse])]
 hiddenMarks env n =
-  [ runAtU env (SourceHiddenFolio, V.PartBase, styleSpan) (plainLook body size) False False 0 (cx - w `div` 2, cy + size `div` 2 - round (toRational size * baselineRatio)) txt
+  [ runAtU env (SourceHiddenFolio, V.PartBase, styleSpan) (plainLook body size) False False 0 (cx - Sp (unSp w `div` 2), cy + Sp (unSp size `div` 2) - zwToSp size baselineRatio) txt
   | Just hg <- [pgHiddenFolio geom],
     let size = hgSize hg,
     (c, (cx, cy)) <- Map.findWithDefault [] n (deHidden env),

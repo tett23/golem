@@ -24,6 +24,7 @@ import Golem.Pdf (spToPt)
 import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
+import Golem.Syntax.Length (Sp (..))
 import Support
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
@@ -302,7 +303,7 @@ urlRefsJson :: BS.ByteString
 urlRefsJson = TE.encodeUtf8 "[{\"id\": \"jlreq\", \"type\": \"webpage\", \"title\": \"日本語組版処理の要件\", \"publisher\": \"W3C\", \"issued\": {\"date-parts\": [[2020]]}, \"URL\": \"https://www.w3.org/TR/jlreq/\", \"accessed\": {\"date-parts\": [[2026, 10, 16]]}}, {\"id\": \"js\", \"title\": \"Script\", \"URL\": \"javascript:alert(1)\"}]"
 
 -- | A line of one box of a width (a page number in the tests of tocPage).
-oneBoxLine :: Integer -> Line
+oneBoxLine :: Sp -> Line
 oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0 [] 0 0 noBoxSource)] 0 w 0 (0, 0) False (0, 0)
 
 -- | fs = 10pt, measure = 120pt, W = 15pt, g = 5pt, u = 10pt.
@@ -342,14 +343,14 @@ tocTests =
       tpNumberStart a @?= 110 * pt
       let b = at 62
       tpLeaderStart b @?= 70 * pt
-      tpLeaderStart b + toInteger (leaderCount b) * 10 * pt @?= 100 * pt
+      tpLeaderStart b + fromIntegral (leaderCount b) * 10 * pt @?= 100 * pt
       let c = at 85
       leaderCount c @?= 1
       tpLeaderStart c @?= 90 * pt,
     testCase "a toc line with a wide number, an overfull title, or no leaders" $ do
       let wide = tocPage (tocGeom True) (60 * pt) (oneBoxLine (20 * pt))
       tpNumberStart wide @?= 100 * pt
-      tpLeaderStart wide + toInteger (leaderCount wide) * 10 * pt @?= 95 * pt
+      tpLeaderStart wide + fromIntegral (leaderCount wide) * 10 * pt @?= 95 * pt
       let over = tocPage (tocGeom True) (118 * pt) (oneBoxLine (10 * pt))
       tpNumberStart over @?= 123 * pt
       leaderCount over @?= 0
@@ -441,7 +442,7 @@ purityTable =
     ]
 
 -- | The cell lines of the tables of a layout: their start in the table and their text.
-tableCellLines :: PdfLayout -> [(Integer, T.Text)]
+tableCellLines :: PdfLayout -> [(Sp, T.Text)]
 tableCellLines pl = [(slIndent sl, T.concat [bcText c | Box _ c <- lineItems (slLine sl)]) | sls <- Map.elems (plTableLines pl), sl <- sls]
 
 -- | The grid of the developer manual (B5, 13Q, 40 characters a line) with Noto Serif JP.
@@ -636,7 +637,7 @@ indexColumnTests =
       let entries = [sl | p <- plPages pl, sl <- indexLinesOn pl p]
       length entries @?= 40
       nub [lineTarget (slLine sl) | sl <- entries] @?= [15 * 10 * pt]
-      nub [csMeasure (poColumnSet p) | p <- plPages pl, not (null (indexLinesOn pl p))] @?= [15 * 10 * pt]
+      nub [Sp (csMeasure (poColumnSet p)) | p <- plPages pl, not (null (indexLinesOn pl p))] @?= [15 * 10 * pt]
       content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
       let ta = typeAreaFor geom 1
           x1 = TE.encodeUtf8 (spToPt (rectX ta + 17 * 10 * pt))
@@ -761,7 +762,7 @@ urlBreakTests =
     markGap l = case [(it, at) | (it, at) <- placeLine l] of
       (Box w mark, at) : rest -> case break (isText . fst) rest of
         (between, (Box {}, next) : _) ->
-          Just ((next - (at + w), round (toRational (lkSize (bcLook mark)) / 4)), length [() | (it, _) <- between, isBreak it])
+          Just ((next - (at + w), Sp (round (toRational (unSp (lkSize (bcLook mark))) / 4))), length [() | (it, _) <- between, isBreak it])
         _ -> Nothing
       _ -> Nothing
     isText = \case

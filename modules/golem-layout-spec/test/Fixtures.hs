@@ -13,7 +13,7 @@ import Golem.Project.Style
 import Golem.Syntax
 
 pt :: Integer -> Sp
-pt = (* 65536)
+pt = Sp . (* 65536)
 
 -- | 18mm and 20mm, rounded once from exact rationals.
 mm18, mm20 :: Sp

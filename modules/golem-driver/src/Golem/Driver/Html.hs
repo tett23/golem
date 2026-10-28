@@ -90,7 +90,7 @@ htmlRule style r =
         Just (Abs 0) -> "0"
         Just (Zw 0) -> "0"
         Just (Abs sp) -> cssLength (Abs sp)
-        Just (Zw z) -> maybe (L.emText z <> "rem") (\fs -> cssLength (Abs (round (z * toRational fs)))) gridSize
+        Just (Zw z) -> maybe (L.emText z <> "rem") (\fs -> cssLength (Abs (L.zwToSp fs z))) gridSize
    in HtmlRule
         { hrWidth = width,
           hrStartIndent = start,
@@ -129,7 +129,7 @@ most four decimals (docs/adr ADR 0103).
 cssLength :: Dim -> Text
 cssLength = \case
   Zw r -> L.emText r <> "em"
-  Abs sp -> L.ptText (L.Sp sp) <> "pt"
+  Abs sp -> L.ptText sp <> "pt"
 
 {- | A size of style.toml as a CSS font-size (golem-driver ADR 0010): zw as
 em, an absolute size as its ratio to an absolute grid size in em, pt
@@ -139,5 +139,5 @@ cssFontSize :: Style -> Dim -> Text
 cssFontSize style = \case
   Zw r -> L.emText r <> "em"
   Abs sp -> case stPage style >>= pageGrid of
-    Just Grid {gridFontSize = Abs fs} | fs > 0 -> L.emText (toRational sp / toRational fs) <> "em"
+    Just Grid {gridFontSize = Abs fs} | fs > 0 -> L.emText (toRational (unSp sp) / toRational (unSp fs)) <> "em"
     _ -> cssLength (Abs sp)

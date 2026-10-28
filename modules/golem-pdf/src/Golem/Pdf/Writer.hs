@@ -3,7 +3,7 @@ numbered in a fixed order, sorted dictionary keys, a classic xref table,
 numbers rounded with integer arithmetic, Flate by the bundled zlib.
 -}
 module Golem.Pdf.Writer
-  ( Sp,
+  ( Sp (..),
     GlyphId,
     FontRef (..),
     ImageRef (..),
@@ -52,10 +52,9 @@ import Golem.Pdf.Rect (Rect (..))
 import Golem.Pdf.Sha256 (sha256)
 import Golem.Pdf.Srgb (srgbProfile)
 import Golem.Pdf.X4
+import Golem.Syntax.Length (Sp (..))
 import Golem.Syntax.Text (tshow)
 import Text.Printf (printf)
-
-type Sp = Integer
 
 type GlyphId = Int
 
@@ -241,7 +240,7 @@ contentStreamWith fontNames imageNames formNames marks = BL.toStrict (B.toLazyBy
       Rule (Rect x y w h) -> num x <> sp <> num y <> sp <> num w <> sp <> num h <> " re f" <> nl
       Disc x y r ->
         -- four quarters counterclockwise from the right; the control points 0.5523 of the radius away
-        let k = round (toRational r * 5523 / 10000)
+        let k = Sp (round (toRational (unSp r) * 5523 / 10000))
          in point (x + r, y)
               <> " m"
               <> nl

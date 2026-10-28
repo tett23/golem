@@ -2,7 +2,7 @@
 module Golem.Project.Style
   ( Style (..),
     Dim (..),
-    Sp,
+    Sp (..),
     parseDim,
     parseSignedDim,
     dimToSp,
@@ -104,6 +104,7 @@ import Golem.Project.Manifest (decodeStrictBy, naturalIntOf, naturalOf)
 import Golem.Project.TomlMessage (schemaMessage)
 import Golem.Regex (RegexError (..), compile)
 import Golem.Syntax
+import Golem.Syntax.Length (Sp (..))
 import Golem.Syntax.Length qualified as L
 import Toml qualified
 import Toml.Schema
@@ -111,9 +112,6 @@ import Toml.Schema.Matcher (inKey)
 import Toml.Semantics (valueAnn)
 import Toml.Syntax (Position (..))
 import Prelude hiding (fail)
-
--- | Scaled points: 1pt = 65536sp.
-type Sp = Integer
 
 -- | An absolute length in sp, or a length relative to the font size.
 data Dim = Abs !Sp | Zw !Rational
@@ -137,7 +135,7 @@ parseDim t =
           "zw" -> Just (Zw r)
           _ -> Nothing
   where
-    abs' u r = Abs (L.unSp (L.toSp u r))
+    abs' u r = Abs (L.toSp u r)
     decimal s = case T.splitOn "." s of
       [i] | not (T.null i) -> Just (fromInteger (read (T.unpack i)))
       [i, f] | not (T.null i), not (T.null f) -> Just (read (T.unpack (i <> f)) % (10 ^ T.length f))
@@ -160,7 +158,7 @@ parseSignedDim t = case T.stripPrefix "-" (T.strip t) of
 -- | Resolves a dimension against a font size.
 dimToSp :: Sp -> Dim -> Sp
 dimToSp _ (Abs s) = s
-dimToSp fontSize (Zw r) = L.unSp (L.zwToSp (L.Sp fontSize) r)
+dimToSp fontSize (Zw r) = L.zwToSp fontSize r
 
 data Grid = Grid
   { gridFontSize :: !Dim,
@@ -796,7 +794,7 @@ data HiddenFolio = HiddenFolio
 
 -- | Without [hidden-folio]: enabled, on the pages without a folio, 6pt, 1.5mm.
 defaultHiddenFolio :: HiddenFolio
-defaultHiddenFolio = HiddenFolio True HiddenUnnumbered (Abs (L.unSp (L.toSp L.Pt 6))) (Abs (mmToSp (3 % 2))) False
+defaultHiddenFolio = HiddenFolio True HiddenUnnumbered (Abs (L.toSp L.Pt 6)) (Abs (mmToSp (3 % 2))) False
 
 {- | Every error of reading [hidden-folio] is G03006: a dimension in zw, of
 0 or less or unreadable, a value of pages outside the table and an
@@ -858,12 +856,12 @@ hiddenFolioChecks hf = case (hfSize hf, hfGutter hf) of
                 <> " 以上にするか、size を "
                 <> hundredthsText maxSize
                 <> " 以下にします）"
-         in [(path, message, [("gutter", FactInt gutter), ("size", FactInt size), ("min-gutter", FactInt (mmToSp (minGutter % 100))), ("max-size", FactInt (mmToSp (maxSize % 100)))])]
+         in [(path, message, [("gutter", FactInt (unSp gutter)), ("size", FactInt (unSp size)), ("min-gutter", FactInt (unSp (mmToSp (minGutter % 100)))), ("max-size", FactInt (unSp (mmToSp (maxSize % 100))))])]
   _ -> []
   where
-    spToMm = L.fromSp L.Mm . L.Sp
+    spToMm = L.fromSp L.Mm
     -- mm to two decimals, half to even (docs/adr ADR 0103)
-    mmText = L.mmText . L.Sp
+    mmText = L.mmText
     -- hundredths of a mm, which come back from sp unrounded
     hundredthsText k = L.mmText (L.toSp L.Mm (k % 100))
 
@@ -1144,7 +1142,7 @@ instance FromValue RuleSpec where
 
 -- | 0.3pt.
 defaultRuleWeight :: Sp
-defaultRuleWeight = L.unSp (L.toSp L.Pt (3 % 10))
+defaultRuleWeight = L.toSp L.Pt (3 % 10)
 
 -- | A TOML document that is one rule spec, read by its 'FromValue'; errors are G03006.
 parseRuleSpec :: FileId -> Text -> Either [Diagnostic] RuleSpec
@@ -1251,7 +1249,7 @@ pageTrimSize p = case pageSizeSpec p of
 
 -- | Millimetres to sp, rounded once, half to even.
 mmToSp :: Rational -> Sp
-mmToSp = L.unSp . L.toSp L.Mm
+mmToSp = L.toSp L.Mm
 
 -- | Inches as millimetres, exactly.
 inchesInMm :: Rational -> Rational
@@ -2092,7 +2090,7 @@ styleChecks owner s =
               let size = maybe fs (dimToSp fs) (psSize d),
               Just r <- [join (psRuleBefore d), join (psRuleAfter d)],
               isNothing (rsLength r),
-              toInteger chars * fs - dimToSp size (rsStartIndent r) - maybe 0 (dimToSp size) (rsEndIndent r) <= 0
+              fromIntegral chars * fs - dimToSp size (rsStartIndent r) - maybe 0 (dimToSp size) (rsEndIndent r) <= 0
             ]
           _ -> []
     -- based-on names an existing style without a cycle; body has none; colours exist (docs/adr ADR 0005)

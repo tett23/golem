@@ -4,7 +4,7 @@ approximation, exact rational adjustment ratios, ties broken as TeX
 breaks them (ADR 0008).
 -}
 module Golem.Layout.KnuthPlass
-  ( Sp,
+  ( Sp (..),
     Item (..),
     Hyphen (..),
     isPatternHyphen,
@@ -32,8 +32,7 @@ import Data.Ord (Down (..), comparing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Golem.Layout.Look (BoxSource, Look)
-
-type Sp = Integer
+import Golem.Syntax.Length (Sp (..))
 
 {- | What a box shows. Golem's composition fills these in; the algorithm
 only reads the microtypography fields.
@@ -158,7 +157,7 @@ data Breaks = Breaks
 
 -- | TeX's badness: approximately 100 (t/s)^3, capped at 10000.
 badness :: Sp -> Sp -> Int
-badness t s
+badness (Sp t) (Sp s)
   | t == 0 = 0
   | s <= 0 = 10000
   | otherwise =
@@ -374,7 +373,7 @@ breakParagraph ps lineWidth items =
           lastBox = listToMaybe [c | j <- [b - 1, b - 2 .. s], Box _ c <- [at j]]
        in (maybe 0 bcEdgeStart firstBox, maybe 0 bcEdgeEnd lastBox)
     expansionOf e = case pExpansion ps of
-      Just (limit, _) -> (e * toInteger limit `div` 1000, e * toInteger limit `div` 1000)
+      Just (limit, _) -> (Sp (unSp e * toInteger limit `div` 1000), Sp (unSp e * toInteger limit `div` 1000))
       Nothing -> (0, 0)
     walk nd = case nPrev nd of
       Nothing -> []
@@ -402,8 +401,8 @@ breakParagraph ps lineWidth items =
           shrink = tZ tw - tZ ts + ez
           shortfall = target - natural
           ratio
-            | shortfall > 0 && stretch > 0 = shortfall % stretch
-            | shortfall < 0 && shrink > 0 = max (-1) (shortfall % shrink)
+            | shortfall > 0 && stretch > 0 = unSp shortfall % unSp stretch
+            | shortfall < 0 && shrink > 0 = max (-1) (unSp shortfall % unSp shrink)
             | otherwise = 0
           overfull = shortfall < 0 && negate shortfall > shrink
           expansion = case pExpansion ps of
@@ -438,11 +437,11 @@ placeLine l =
       lastIx = length its - 1
       -- a penalty's width (a hyphen) counts only where the line breaks
       width (i, it) = case it of
-        Box w c -> toRational w * (if bcExpandable c then 1 + ex else 1)
-        Glue w y z -> toRational w + (if g >= 0 then toRational y else toRational z) * g
-        Penalty w _ _ -> if i == lastIx then toRational w else 0
-      offsets = scanl (+) (toRational (edgeS - protS)) (zipWith (curry width) [0 ..] its)
-   in zip its (map round offsets)
+        Box w c -> toRational (unSp w) * (if bcExpandable c then 1 + ex else 1)
+        Glue w y z -> toRational (unSp w) + (if g >= 0 then toRational (unSp y) else toRational (unSp z)) * g
+        Penalty w _ _ -> if i == lastIx then toRational (unSp w) else 0
+      offsets = scanl (+) (toRational (unSp (edgeS - protS))) (zipWith (curry width) [0 ..] its)
+   in zip its (map (Sp . round) offsets)
 
 {- | The ratio by which the glue of a set line is stretched or shrunk,
 after the glyph expansion has taken its share.
@@ -454,14 +453,14 @@ glueRatio l =
       (edgeS, edgeE) = lineEdge l
       ex = toRational (lineExpansion l) / 1000
       lastIx = length its - 1
-      natural = toRational (sum [itemWidth it | (i, it) <- zip [0 :: Int ..] its, not (isPenalty it) || i == lastIx] - protS - protE + edgeS + edgeE)
+      natural = toRational (unSp (sum [itemWidth it | (i, it) <- zip [0 :: Int ..] its, not (isPenalty it) || i == lastIx] - protS - protE + edgeS + edgeE))
       isPenalty = \case
         Penalty {} -> True
         _ -> False
-      expandable = toRational (sum [w | Box w c <- its, bcExpandable c])
-      rest = toRational (lineTarget l) - natural - expandable * ex
-      ys = toRational (sum [y | Glue _ y _ <- its])
-      zs = toRational (sum [z | Glue _ _ z <- its])
+      expandable = toRational (unSp (sum [w | Box w c <- its, bcExpandable c]))
+      rest = toRational (unSp (lineTarget l)) - natural - expandable * ex
+      ys = toRational (unSp (sum [y | Glue _ y _ <- its]))
+      zs = toRational (unSp (sum [z | Glue _ _ z <- its]))
    in if rest > 0 && ys > 0
         then rest / ys
         else if rest < 0 && zs > 0 then max (-1) (rest / zs) else 0

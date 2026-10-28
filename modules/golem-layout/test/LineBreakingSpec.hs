@@ -21,19 +21,23 @@ paragraph ws = concat [Box w (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 
 lastBoxEnd :: Line -> Sp
 lastBoxEnd l = maximum (0 : [x + w | (Box w _, x) <- placeLine l])
 
+-- | A length from @lo@ to @hi@ sp.
+genSp :: Sp -> Sp -> Gen Sp
+genSp lo hi = Sp <$> Gen.integral (Range.linear (unSp lo) (unSp hi))
+
 -- | A paragraph whose words all fit a measure of 60 to 200.
 genFitting :: Gen ([Sp], Sp)
 genFitting = do
-  target <- Gen.integral (Range.linear 60 200)
-  ws <- Gen.list (Range.linear 1 25) (Gen.integral (Range.linear 1 target))
+  target <- genSp 60 200
+  ws <- Gen.list (Range.linear 1 25) (genSp 1 target)
   pure (ws, target)
 
 -- | A paragraph with at least one word wider than the measure of 60 to 200 (docs/adr/0067).
 genWithWide :: Gen ([Sp], Sp)
 genWithWide = do
-  target <- Gen.integral (Range.linear 60 200)
-  ws <- Gen.list (Range.linear 0 12) (Gen.integral (Range.linear 1 (2 * target)))
-  wide <- Gen.integral (Range.linear (target + 1) (3 * target))
+  target <- genSp 60 200
+  ws <- Gen.list (Range.linear 0 12) (genSp 1 (2 * target))
+  wide <- genSp (target + 1) (3 * target)
   at <- Gen.int (Range.linear 0 (length ws))
   let (before, rest) = splitAt at ws
   pure (before <> [wide] <> rest, target)

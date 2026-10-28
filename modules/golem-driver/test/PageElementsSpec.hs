@@ -23,6 +23,7 @@ import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, pageGeomet
 import Golem.Pdf (spToPt)
 import Golem.Project.Style (Dim (..), HeadForm (..), HeadPick (..), RunningContent (..), RunningPart (..), RunningRef (..), dimToSp, parseDim, parseRunningFormat, parseStyle)
 import Golem.Syntax
+import Golem.Syntax.Length (Sp (..))
 import Support
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
@@ -61,8 +62,8 @@ footnoteTests =
     testCase "PDF: vertical, the mark is horizontal text whose right end is half the size right of the centre line" $ do
       content <- miniPdf fakeProvider True pdfStyle "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
-          s = toRational (maybe 0 (dimToSp 0) (parseDim "13Q")) / 65536
-          m = toRational (maybe 0 (dimToSp 0) (parseDim "13Q") `div` 2) / 65536
+          s = toRational (unSp (maybe 0 (dimToSp 0) (parseDim "13Q"))) / 65536
+          m = toRational (unSp (maybe 0 (dimToSp 0) (parseDim "13Q")) `div` 2) / 65536
           near a b = abs (a - b) < 1 / 100
           markOf c = [d | d <- ds, dGlyph d == fromEnum c, near (ptToRational (dSize d)) m]
       case (markOf '*', markOf '1', [d | d <- ds, dGlyph d == fromEnum '漢']) of
@@ -76,7 +77,7 @@ footnoteTests =
       content <- miniPdf fakeProvider True (horizontalStyle <> "\n[notes]\nmark-size = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           s = 10 :: Rational
-          m = toRational (dimToSp (10 * 65536) (Zw (65 % 100))) / 65536
+          m = toRational (unSp (dimToSp (10 * 65536) (Zw (65 % 100)))) / 65536
           near a b = abs (a - b) < 1 / 100
           small = [d | d <- ds, near (ptToRational (dSize d)) m]
           at c xs = [(ptToRational (dX d), ptToRational (dY d)) | d <- xs, dGlyph d == fromEnum c]
@@ -89,8 +90,8 @@ footnoteTests =
       content <- miniPdf fakeProvider True (pdfStyle <> "\n[notes]\nmark-size = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           sSp = maybe 0 (dimToSp 0) (parseDim "13Q")
-          s = toRational sSp / 65536
-          m = toRational (dimToSp sSp (Zw (65 % 100))) / 65536
+          s = toRational (unSp sSp) / 65536
+          m = toRational (unSp (dimToSp sSp (Zw (65 % 100)))) / 65536
           near a b = abs (a - b) < 1 / 100
           markOf c = [d | d <- ds, dGlyph d == fromEnum c, near (ptToRational (dSize d)) m]
       case (markOf '*', markOf '1', [d | d <- ds, dGlyph d == fromEnum '漢']) of
@@ -788,7 +789,7 @@ wrapTests =
           r = figureRect geom (poNumber p) ta slot pf
           fs = pgFontSize geom
       rectY r + rectH r @?= rectY ta + rectH ta
-      rectX r + rectW r @?= rectX ta + rectW ta - toInteger slot * pgLinePitch geom
+      rectX r + rectW r @?= rectX ta + rectW ta - fromIntegral slot * pgLinePitch geom
       ex <- maybe (assertFailure "no exclusion") pure (pfExclusion pf)
       map (slIndent . snd) (take (exLines ex) (linesFrom pl p slot)) @?= replicate (exLines ex) (5 * fs),
     testCase "a width that is not a length, or leaves too short lines, is G07022" $ do
@@ -904,9 +905,9 @@ captionTests =
       pdf <- miniPdf fakeProvider True style (figureWith 100) img
       content <- BS.concat <$> inflateAll pdf
       let ta = typeAreaFor geom (poNumber p)
-          top = toRational (rectY ta + rectH ta) / 65536
+          top = toRational (unSp (rectY ta + rectH ta)) / 65536
           ys = sortOn negate (nub [ptToRational (dY d) | d <- drawnGlyphs content, dSize d == "6"])
-          first = top - toRational (toInteger (slot + 24) * 15 * pt + round (toRational (6 * pt) * baselineRatio)) / 65536
+          first = top - toRational (unSp (fromIntegral (slot + 24) * 15 * pt + Sp (round (toRational (unSp (6 * pt)) * baselineRatio)))) / 65536
       case ys of
         (y1 : y2 : _) -> do
           assertBool (show (y1, first)) (abs (y1 - first) < 1 / 100)
@@ -935,13 +936,13 @@ captionTests =
       pdf <- miniPdf fakeProvider True style (figureWith 10) img
       content <- BS.concat <$> inflateAll pdf
       let ta = typeAreaFor geom (poNumber p)
-          right = toRational (rectX ta + rectW ta) / 65536
+          right = toRational (unSp (rectX ta + rectW ta)) / 65536
           xs = sortOn negate (nub [ptToRational (dX d) | d <- drawnGlyphs content, dGlyph d == fromEnum '甲'])
-          expected = right - toRational (toInteger (slot + pfImageLines pf) * pgLinePitch geom + q `div` 2) / 65536
+          expected = right - toRational (unSp (fromIntegral (slot + pfImageLines pf) * pgLinePitch geom + Sp (unSp q `div` 2))) / 65536
       case xs of
         (x : _) -> do
           assertBool (show (x, expected)) (abs (x - expected) < 1 / 100)
-          assertBool "in the type area" (x > toRational (rectX ta) / 65536)
+          assertBool "in the type area" (x > toRational (unSp (rectX ta)) / 65536)
         [] -> assertFailure "no caption glyph",
     testCase "naming the body role and size changes nothing" $ do
       img <- tinyImage
@@ -1011,14 +1012,14 @@ sidenoteTests =
       case sidenotesOf pl of
         [(page, ps)] -> do
           page @?= 1
-          Just (psTop ps) @?= fmap (\k -> toInteger k * 15 * pt) (slotOfMarker pl 1 0)
+          Just (psTop ps) @?= fmap (\k -> fromIntegral k * 15 * pt) (slotOfMarker pl 1 0)
         other -> assertFailure (show (length other)),
     testCase "notes on neighbouring lines are pushed down in order, half a pitch apart" $ do
       (_, pl) <- layoutOk sidenoteStyle ("一" <> twoLineNote <> "\n\n二" <> twoLineNote <> "\n") []
       case map snd (sidenotesOf pl) of
         [a, b] -> do
           length (psLines a) @?= 2
-          psTop b @?= psTop a + 20 * pt + 15 * pt `div` 2
+          psTop b @?= psTop a + 20 * pt + Sp (unSp (15 * pt) `div` 2)
         other -> assertFailure (show (length other)),
     testCase "notes at the foot of the page pull earlier ones up" $ do
       (_, pl) <- layoutOk sidenoteStyle (fillers 28 <> "一" <> twoLineNote <> "\n\n二" <> twoLineNote <> "\n") []

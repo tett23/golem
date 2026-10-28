@@ -20,6 +20,7 @@ module KnuthPlassReference
   )
 where
 
+import Data.Bifunctor (first)
 import Data.Char (isDigit)
 import Data.Either (rights)
 import Data.Map.Strict qualified as Map
@@ -98,7 +99,7 @@ parseWords t = do
       [x] -> Right x
       _ -> Left ("expected one " <> T.unpack key <> " record")
     int w = case TR.signed TR.decimal w of
-      Right (n, rest) | T.null rest -> Right n
+      Right (n, rest) | T.null rest -> Right (Sp n)
       _ -> Left ("not an integer: " <> T.unpack w)
 
 -- | The end of a paragraph, as in TeX: no break, \parfillskip, the forced break.
@@ -137,7 +138,7 @@ parseTrace t = mapMaybe run (drop 1 (T.splitOn "GOLEM-HSIZE=" t))
       let (digits, rest) = T.span isDigit part
           ls = T.lines rest
           (trace, shown) = break (T.isPrefixOf "> \\box") ls
-       in case reads (T.unpack digits) of
+       in case fmap (first Sp) (reads (T.unpack digits)) of
             [(h, "")] -> fmap (\(pass, brks, total) -> TexRun h pass brks total (glueSets shown)) (lastPass trace)
             _ -> Nothing
 
