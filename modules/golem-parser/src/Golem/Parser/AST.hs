@@ -115,6 +115,8 @@ data Expr
   | ECall Name [Located Expr]
   | EUnary UnaryOp (Located Expr)
   | EBinary BinaryOp (Located Expr) (Located Expr)
+  | -- | the closed range a...b, both ends included (docs/adr ADR 0113)
+    ERange (Located Expr) (Located Expr)
   | EError
   deriving stock (Eq, Show)
 

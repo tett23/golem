@@ -104,6 +104,7 @@ genExpr =
       [ AST.EArray <$> Gen.list (Range.linear 0 3) genExpr,
         AST.EHash <$> Gen.list (Range.linear 0 3) ((,) <$> genText <*> genExpr),
         AST.EBinary <$> Gen.element binaryOps <*> genExpr <*> genExpr,
+        AST.ERange <$> genExpr <*> genExpr,
         AST.EUnary AST.Negate <$> genExpr,
         AST.ECall <$> genText <*> Gen.list (Range.linear 0 2) genExpr
       ]

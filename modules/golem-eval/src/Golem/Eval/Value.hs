@@ -30,6 +30,8 @@ data Value
   | VNil
   | VArray ![Value]
   | VHash !(Map Text Value)
+  | -- | the closed range of two integers, both included; the first is not after the last (docs/adr ADR 0113)
+    VRange !Integer !Integer
   deriving stock (Eq, Show)
 
 -- | The three number types, from the narrowest (docs/adr ADR 0101).
@@ -46,6 +48,7 @@ typeName = \case
   VNil -> "nil"
   VArray _ -> "配列"
   VHash _ -> "連想配列"
+  VRange _ _ -> "範囲"
 
 -- | The type and the value of a number; Nothing for a value that is not one.
 numberOf :: Value -> Maybe (NumType, Rational)
@@ -77,3 +80,4 @@ valueToExpr at v = Located (locSpan at) $ case v of
   VNil -> ENil
   VArray vs -> EArray (map (valueToExpr at) vs)
   VHash m -> EHash [(k, valueToExpr at x) | (k, x) <- Map.toAscList m]
+  VRange a b -> ERange (Located (locSpan at) (EInt a)) (Located (locSpan at) (EInt b))

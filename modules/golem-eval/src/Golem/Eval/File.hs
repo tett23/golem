@@ -37,7 +37,7 @@ import Data.Either (fromLeft, fromRight, isLeft)
 import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ratio (denominator, numerator)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -51,6 +51,7 @@ import Golem.Doc.IR
 import Golem.Eval.Analysis (analyse)
 import Golem.Eval.Builtin
 import Golem.Eval.Expr
+import Golem.Eval.Number (exactText)
 import Golem.Eval.RegexStyle (applyRegexStyles, regexRules)
 import Golem.Eval.Settings
 import Golem.Eval.Value
@@ -1412,15 +1413,17 @@ listing ctx sp args = do
                 ca <- codeArgs ctx sp ["lang"] codeArgsOf
                 c <- codeOf sp ca start (caLang ca) [(sp, x) | x <- xs]
                 pure [block sp (CodeBlock c)]
-          linesArg <- traverse (rangesArg ctx "@listing の lines" sp) (lookup "lines" kw)
+          -- the diagnostics of lines= are at the argument (docs/adr ADR 0113)
+          let lsp = fromMaybe sp (listToMaybe [asp | A.Located asp (A.Keyword (A.Located _ "lines") _) <- args])
+          linesArg <- traverse (lineRanges ctx OneRange "@listing の lines" lsp) (lookup "lines" kw)
           case linesArg of
             Nothing -> code Nothing ls
             Just Nothing -> pure []
-            Just (Just (r, v)) -> case v of
-              Ranges [(a, b)]
-                | a >= 1 && b >= a && b <= fromIntegral (length ls) ->
+            Just (Just (r, rs)) -> case rs of
+              [LineRange a b]
+                | a >= 1 && b <= fromIntegral (length ls) ->
                     code (Just (toInteger a)) (take (fromIntegral (b - a + 1)) (drop (fromIntegral (a - 1)) ls))
-              _ -> err "G02037" sp ("lines の範囲が不正です: " <> r) >> pure []
+              _ -> err "G02037" lsp ("@listing の lines の範囲がファイルの行（1〜" <> tshow (length ls) <> "）を外れています: " <> r) >> pure []
         Just _ -> missing sp p >> pure []
         Nothing -> pure []
 
@@ -1452,16 +1455,11 @@ codeArgs ctx _ extra = foldl (\m a -> m >>= \acc -> step acc a) (pure (CodeArgs 
   where
     step acc (A.Located asp a) = case a of
       A.Keyword (A.Located _ k) v
-        | k `elem` ["numbers", "highlight"] ->
-            -- the natural numbers of numbers= and highlight= (docs/adr ADR 0102)
-            rangesArg ctx ("コードブロックの " <> k) asp v >>= \case
-              Nothing -> pure acc
-              Just (t, rv) -> case (k, rv) of
-                ("numbers", RangesBool b) -> pure (acc {caNumbers = Just (Left b)})
-                ("numbers", Ranges [(n, m)]) | n == m -> pure (acc {caNumbers = Just (Right (toInteger n))})
-                ("highlight", Ranges rs)
-                  | all (uncurry (<=)) rs -> pure (acc {caHighlight = Just (asp, [(toInteger x, toInteger y) | (x, y) <- rs])})
-                _ -> err "G02069" asp (k <> " の値が正しくありません: " <> t) >> pure acc
+        -- the natural numbers of numbers= (docs/adr ADR 0102) and the ranges of highlight= (docs/adr ADR 0113)
+        | k == "numbers" -> maybe acc (\n -> acc {caNumbers = Just n}) <$> numbersArg ctx asp v
+        | k == "highlight" ->
+            maybe acc (\(_, rs) -> acc {caHighlight = Just (asp, [(toInteger x, toInteger y) | LineRange x y <- rs])})
+              <$> lineRanges ctx AnyRanges "コードブロックの highlight" asp v
         | k `elem` codeKeys <> extra -> do
             t <- scalar asp v
             case t >>= reading k of
@@ -1581,6 +1579,7 @@ noteRefs e = do
       A.ECall _ xs -> Map.unionsWith Set.union (map nsRefsOf xs)
       A.EUnary _ a -> nsRefsOf a
       A.EBinary _ a b -> Map.unionWith Set.union (nsRefsOf a) (nsRefsOf b)
+      A.ERange a b -> Map.unionWith Set.union (nsRefsOf a) (nsRefsOf b)
       _ -> Map.empty
 
 evalInlines :: EvalContext -> Bool -> [A.Located A.Inline] -> M [Inline]
@@ -1605,6 +1604,7 @@ substitute en le@(A.Located sp e) = case e of
   A.ECall f xs -> A.Located sp (A.ECall f (map (substitute en) xs))
   A.EUnary o a -> A.Located sp (A.EUnary o (substitute en a))
   A.EBinary o a b -> A.Located sp (A.EBinary o (substitute en a) (substitute en b))
+  A.ERange a b -> A.Located sp (A.ERange (substitute en a) (substitute en b))
   _ -> le
 
 evalInline :: EvalContext -> Bool -> A.Located A.Inline -> M [Inline]
@@ -1965,70 +1965,165 @@ naturalOf what sp q
   | Just d <- naturalDiagnostic what sp q = Left d
   | otherwise = Right (fromInteger (numerator q))
 
--- | A range of natural numbers, both ends included.
-type NatRange = (Natural, Natural)
+-- | A range of lines, both ends included; the first is not after the last (docs/adr ADR 0113).
+data LineRange = LineRange !Natural !Natural
 
--- | The value of an argument of ranges of natural numbers.
-data RangesValue
-  = -- | true or false (numbers= of a code block)
-    RangesBool Bool
-  | -- | ranges whose ends are natural numbers, in the order written
-    Ranges [NatRange]
-  | -- | not of the form: the place reports it with its own code
-    RangesOther
+-- | How many items a place takes: lines= one, highlight= any (docs/adr ADR 0113).
+data RangeCount = OneRange | AnyRanges
+  deriving stock (Eq)
 
-{- | An argument of ranges of natural numbers (numbers= and highlight= of
-a code block, lines= of @listing; docs/adr ADR 0102): Nothing when a
-diagnostic is reported, else the text written, for the messages of the
-place, and the value.
+-- | An item of a word or a string of ranges, with its ends as written.
+data RangeItem
+  = -- | one line, @3@
+    ItemLine Rational
+  | -- | the closed range @3...5@
+    ItemRange Rational Rational
+  | -- | the range @3-5@, to be retired (G02108), and its ends as written
+    ItemDash Text Text Rational Rational
 
-A word or a string is @3@, @3-5@ or @1,3-5@, whose ends are words read as
-number literals, a leading - allowed (@3--1@ is 3 and -1). An expression
-is one range: a natural number @n@, the range of @n@ alone, or an array
-of two, @[a, b]@, the range from @a@ to @b@; a string is read as a word.
-An end that is a number but no natural number is G02086, G02103 or
-G02104, whether written as a word or in an expression.
+-- | Why an item is not read (docs/adr ADR 0113, ADR 0115).
+data ItemError
+  = -- | G02110: an end is missing or cannot be read
+    ItemBadEnd
+  | -- | G01100: the reserved ..
+    ItemReserved
+  | -- | G02105: neither a line nor a range
+    ItemNeither
+
+{- | An argument of lines (lines= of @listing, highlight= of a code
+block; docs/adr ADR 0113): Nothing when a diagnostic is reported, else
+the text of the value, for the messages of the place, and the ranges in
+the order written. @what@ names the place; @sp@ is the argument.
+
+A word or a string is items separated by commas: a line @3@, a range
+@3...5@, or the range @3-5@ that is to be retired (G02108, once an
+argument). An end is a number literal, a leading - allowed (docs/adr ADR
+0102). An expression is a range, a number (one line), a string (read as
+a word) or, where any number of items is taken, an array of numbers and
+ranges. The ends are natural numbers: G02086, G02103 or G02104 otherwise.
 -}
-rangesArg :: EvalContext -> Text -> SrcSpan -> A.ArgValue -> M (Maybe (Text, RangesValue))
-rangesArg ctx what sp = \case
+lineRanges :: EvalContext -> RangeCount -> Text -> SrcSpan -> A.ArgValue -> M (Maybe (Text, [LineRange]))
+lineRanges ctx count what sp = \case
   A.Word t -> ofText t
   A.StringLit t -> ofText t
+  -- a range written in the argument: its ends are checked as natural numbers
+  -- before its direction, as the ends of a word are (lines=[= 3...0 - 1] is G02103)
+  A.ExprArg e@(A.Located esp (A.ERange a b)) -> do
+    noteRefs e
+    en <- env
+    case analyse en e of
+      Just d -> report d >> pure Nothing
+      Nothing -> case (,) <$> evalExpr en a <*> evalExpr en b of
+        Left d -> report d >> pure Nothing
+        Right (x, y) -> case (numberOf x, numberOf y) of
+          (Just (_, p), Just (_, q)) -> naturals [(p, q)] >>= maybe (pure Nothing) (done (rangeText p q))
+          _ -> report (rangeEndDiagnostic esp (valueText (if isJust (numberOf x) then y else x))) >> pure Nothing
   v@(A.ExprArg _) ->
     argValue ctx sp v >>= \case
       Left d -> report d >> pure Nothing
       Right val -> ofValue val
-  A.CommandArg _ -> pure (Just ("", RangesOther))
+  A.CommandArg _ -> neither ""
   where
-    ofText t = case t of
-      "true" -> pure (Just (t, RangesBool True))
-      "false" -> pure (Just (t, RangesBool False))
-      _ ->
-        let items = map rangeEnds (T.splitOn "," t)
-         in case [d | Just q <- map A.numberWord (concat (catMaybes items)), Left d <- [naturalOf what sp q]] of
-              d : _ -> report d >> pure Nothing
-              []
-                | Just rs <- traverse (\item -> item >>= traverse A.numberWord >>= range) items -> pure (Just (t, Ranges rs))
-                | otherwise -> pure (Just (t, RangesOther))
-    -- every end is a natural number here: the others are reported above
-    range = \case
-      [a] -> Just (nat a, nat a)
-      [a, b] -> Just (nat a, nat b)
-      _ -> Nothing
-    nat = fromInteger . numerator
+    ofText t = case traverse rangeItem (T.splitOn "," t) of
+      Left (ItemBadEnd, i) -> report (rangeEndDiagnostic sp i) >> pure Nothing
+      Left (ItemReserved, _) -> err "G01100" sp "予約された記法です。今のバージョンでは使えません" >> pure Nothing
+      Left (ItemNeither, i) -> neither i
+      Right items
+        | count == OneRange && length items > 1 -> notOne t
+        | otherwise -> do
+            case [(x, y) | ItemDash x y _ _ <- items] of
+              (x, y) : _ -> report (notice "G02108" sp ("- で区切った範囲は廃止予定です。" <> x <> "..." <> y <> " のように ... で区切ります"))
+              [] -> pure ()
+            naturals (map ends items) >>= maybe (pure Nothing) (done t)
     ofValue = \case
       VString s -> ofText s
-      VBool b -> pure (Just (if b then "true" else "false", RangesBool b))
-      VArray [a, b] | Just (_, x) <- numberOf a, Just (_, y) <- numberOf b -> ends x (Just y)
-      val | Just (_, x) <- numberOf val -> ends x Nothing
-      _ -> pure (Just ("", RangesOther))
-    ends x my = case (,) <$> naturalOf what sp x <*> traverse (naturalOf what sp) my of
+      VArray vs
+        | count == OneRange -> notOne (T.intercalate "," (map valueText vs))
+        | otherwise -> case traverse valueEnds vs of
+            Just es -> naturals es >>= maybe (pure Nothing) (done (T.intercalate "," (map valueText vs)))
+            Nothing -> neither (T.intercalate "," [valueText x | x <- vs, isNothing (valueEnds x)])
+      val | Just es <- valueEnds val -> naturals [es] >>= maybe (pure Nothing) (done (valueText val))
+      val -> neither (valueText val)
+    valueEnds = \case
+      VRange a b -> Just (fromInteger a, fromInteger b)
+      val -> (\(_, q) -> (q, q)) <$> numberOf val
+    ends = \case
+      ItemLine q -> (q, q)
+      ItemRange p q -> (p, q)
+      ItemDash _ _ p q -> (p, q)
+    -- the ends as natural numbers, then the direction
+    naturals es = case traverse (\(p, q) -> (,) <$> naturalOf what sp p <*> naturalOf what sp q) es of
       Left d -> report d >> pure Nothing
-      Right (a, Nothing) -> pure (Just (tshow a, Ranges [(a, a)]))
-      Right (a, Just b) -> pure (Just (tshow a <> "-" <> tshow b, Ranges [(a, b)]))
+      Right ns -> case [(a, b) | (a, b) <- ns, a > b] of
+        (a, b) : _ -> err "G02106" sp ("範囲の始め " <> tshow a <> " が終わり " <> tshow b <> " より大きくなっています") >> pure Nothing
+        [] -> pure (Just [LineRange a b | (a, b) <- ns])
+    done t rs = pure (Just (t, rs))
+    rangeText p q = exactText p <> "..." <> exactText q
+    neither v = err "G02105" sp (what <> " には行の番号か範囲を書きます: " <> v) >> pure Nothing
+    notOne v = err "G02107" sp (what <> " には範囲を一つだけ書きます: " <> v) >> pure Nothing
 
-{- | The ends of one range of an argument, @3@ or @3-5@: an end is a
-leading - and the text up to the next - that does not follow an e (the
-exponent of @1e-3@). Nothing for more than two ends, or an empty one.
+{- | An item of a word or a string of ranges (docs/adr ADR 0113), with
+the item for the message when it is not read.
+-}
+rangeItem :: Text -> Either (ItemError, Text) RangeItem
+rangeItem i
+  | (a, rest) <- T.breakOn "..." i,
+    not (T.null rest) =
+      case (rangeEndWord a, rangeEndWord (T.drop 3 rest)) of
+        (Just p, Just q) -> Right (ItemRange p q)
+        _ -> Left (ItemBadEnd, i)
+  | ".." `T.isInfixOf` i = Left (ItemReserved, i)
+  | Just q <- rangeEndWord i = Right (ItemLine q)
+  | Just [a, b] <- rangeEnds i, Just p <- rangeEndWord a, Just q <- rangeEndWord b = Right (ItemDash a b p q)
+  | otherwise = Left (ItemNeither, i)
+
+{- | An end of a range written in a word: a number literal, a leading -
+allowed (docs/adr ADR 0102). A dot is between digits, as in an
+expression: @.2@ and @2.@ are no ends.
+-}
+rangeEndWord :: Text -> Maybe Rational
+rangeEndWord w
+  | any badDot (T.breakOnAll "." body) || "." `T.isPrefixOf` body = Nothing
+  | otherwise = A.numberWord w
+  where
+    body = fromMaybe w (T.stripPrefix "-" w)
+    badDot (_, after) = not (startsWithDigit (T.drop 1 after))
+    startsWithDigit t = maybe False (isDigit . fst) (T.uncons t)
+
+{- | The value of numbers= of a code block (docs/adr ADR 0113): true,
+false or a natural number, as a word, a string or an expression. Another
+value is G02069; a number that is no natural number is G02086, G02103 or
+G02104.
+-}
+numbersArg :: EvalContext -> SrcSpan -> A.ArgValue -> M (Maybe (Either Bool Integer))
+numbersArg ctx sp = \case
+  A.Word t | Just b <- boolWord t -> pure (Just (Left b))
+  A.StringLit t | Just b <- boolWord t -> pure (Just (Left b))
+  A.StringLit t -> natural (A.Word t) t
+  v@(A.ExprArg _) ->
+    argValue ctx sp v >>= \case
+      Left d -> report d >> pure Nothing
+      Right (VBool b) -> pure (Just (Left b))
+      Right val | Just (_, q) <- numberOf val -> either (\d -> report d >> pure Nothing) (pure . Just . Right . toInteger) (naturalOf what sp q)
+      Right val -> bad (valueText val)
+  v -> natural v (argText v)
+  where
+    what = "コードブロックの numbers"
+    boolWord = \case
+      "true" -> Just True
+      "false" -> Just False
+      _ -> Nothing
+    natural v t =
+      naturalArg ctx what sp v >>= \case
+        Right n -> pure (Just (Right (toInteger n)))
+        Left NaturalReported -> pure Nothing
+        Left NotANumber -> bad t
+    bad t = err "G02069" sp ("numbers の値が正しくありません: " <> t) >> pure Nothing
+
+{- | The ends of one range of - of an argument, @3@ or @3-5@, which is to
+be retired (docs/adr ADR 0113): an end is a leading - and the text up to
+the next - that does not follow an e (the exponent of @1e-3@). Nothing
+for more than two ends, or an empty one.
 -}
 rangeEnds :: Text -> Maybe [Text]
 rangeEnds t = case end t of
@@ -2064,6 +2159,7 @@ exprNumbers (A.Located _ e) = case e of
   A.ECall _ xs -> concatMap exprNumbers xs
   A.EUnary _ a -> exprNumbers a
   A.EBinary _ a b -> exprNumbers a <> exprNumbers b
+  A.ERange a b -> exprNumbers a <> exprNumbers b
   _ -> []
 
 -- | The integers a number is written with in the IR: its numerator and denominator.
@@ -2074,6 +2170,7 @@ ratioInts q = [numerator q, denominator q]
 valueInts :: Value -> [Integer]
 valueInts = \case
   VArray vs -> concatMap valueInts vs
+  VRange a b -> [a, b]
   v -> maybe [] (ratioInts . snd) (numberOf v)
 
 {- | The value of a number that is an integer, of any of the three types

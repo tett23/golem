@@ -61,6 +61,7 @@
 %token SkippedExpr
 %token NumberMark
 %token NumberBody
+%token RangeOp
 
 %inline Sp
 %inline ES
@@ -83,6 +84,7 @@
 %inline BadBreak
 %inline ReservedBracket
 %inline ReservedBlock
+%inline ReservedDots
 %inline HeadInline
 %inline Block
 %inline ItemTail
@@ -103,6 +105,7 @@
 %recover bracket SkipParagraph
 %recover hard_break SkipLine
 %recover reserved SkipParagraph
+%recover range_end SkipExpr
 
 # Every label is safe (golem-parser ADR 0007): removing it does not change
 # the language. The check of peg-hs 7114641, with the improvements of peg-hs
@@ -126,6 +129,8 @@
 # the characters it only looks at, and no alternative can go on at the
 # same place.
 %safe reserved
+# The same as expr (docs/adr ADR 0113).
+%safe range_end
 %safe arg_order
 # The same, and for the close of SplatArgument: after *[ fails, the checker
 # takes (Sp KwArg)* to be able to go on. It uses the known *[ only
@@ -418,7 +423,29 @@ ES :: ()
 ES <- Ws? { () }
 
 Expr :: ()
-Expr <- CompareExpr { () }
+Expr <- RangeExpr { () }
+
+# The closed range a...b (docs/adr ADR 0113). An end is an AddExpr, so
+# ... binds more loosely than + and -, and a comparison is no end. A
+# range without an end, with an end that cannot be read, or with dots
+# after its end throws range_end; .. is reserved (docs/adr ADR 0115).
+#
+# The .. after the first end is its own alternative, not an alternative of
+# RangeOp: after the recovery of reserved, the sequence of a range would
+# go on and throw range_end for the end it skipped.
+RangeExpr :: ()
+RangeExpr <- &'...' (&{ False } '...')^range_end { () }
+           / &'..' (&{ False } '..')^reserved { () }
+           / AddExpr ES ReservedDots { () }
+           / AddExpr ES RangeOp ES (AddExpr)^range_end (!(ES '..'))^range_end { () }
+           / CompareExpr { () }
+
+# .. that is not ... (1....2 is ..., then .2, which is no end)
+ReservedDots :: ()
+ReservedDots <- !'...' &'..' (&{ False } '..')^reserved { () }
+
+RangeOp :: ()
+RangeOp <- '...' { () }
 
 CompareExpr :: ()
 CompareExpr <- AddExpr ES CmpOp ES AddExpr { () }

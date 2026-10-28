@@ -24,6 +24,7 @@ kindForRule = \case
   "SplatArgument" -> Just NSplatArgument
   "ProseSlot" -> Just NProseSlot
   "ExprCtx" -> Just NExpr
+  "RangeExpr" -> Just NRangeExpr
   "CompareExpr" -> Just NBinaryExpr
   "AddExpr" -> Just NBinaryExpr
   "MulExpr" -> Just NBinaryExpr
@@ -98,6 +99,7 @@ kindForToken = \case
   "MulOp" -> KOperator
   "PowOp" -> KOperator
   "CmpOp" -> KOperator
+  "RangeOp" -> KOperator
   "NegOp" -> KOperator
   "Comma" -> KComma
   "LBrace" -> KLBrace

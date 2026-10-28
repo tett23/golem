@@ -1,6 +1,6 @@
 # ADR 0003: 評価の診断コード G02001 から G02043
 
-ステータス: 採択→到達しない G02022 の枝の扱いは [ADR 0027](../../adr/0027-exhaustive-command-dispatch-by-types.md)、G02077 は [golem-parser ADR 0013](../../golem-parser/adr/0013-splat-after-keyword-arguments.md)、G02033 と G02034 の `@table` の条件の改めと G02035 の廃止は [golem-eval ADR 0004](0004-tsv-tables.md)、G02078 は [golem-parser ADR 0011](../../golem-parser/adr/0011-number-shorthand.md)、G02039 の圏点の形の一覧は [golem-driver ADR 0019](../../golem-driver/adr/0019-pdf-kenten-shapes.md)、`@verse` の G02009 への移行と G02048 の廃止は [golem-fmt ADR 0002](../../golem-fmt/adr/0002-remove-verse-migration.md)
+ステータス: 採択→到達しない G02022 の枝の扱いは [ADR 0027](../../adr/0027-exhaustive-command-dispatch-by-types.md)、G02077 は [golem-parser ADR 0013](../../golem-parser/adr/0013-splat-after-keyword-arguments.md)、G02033 と G02034 の `@table` の条件の改めと G02035 の廃止は [golem-eval ADR 0004](0004-tsv-tables.md)、G02078 は [golem-parser ADR 0011](../../golem-parser/adr/0011-number-shorthand.md)、G02039 の圏点の形の一覧は [golem-driver ADR 0019](../../golem-driver/adr/0019-pdf-kenten-shapes.md)、`@verse` の G02009 への移行と G02048 の廃止は [golem-fmt ADR 0002](../../golem-fmt/adr/0002-remove-verse-migration.md)、G02037 を `lines` の範囲がファイルの行を外れることだけにしたのは [ADR 0113](../../adr/0113-closed-range-literal.md)
 
 ## 文脈
 

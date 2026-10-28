@@ -11,6 +11,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Ratio ((%))
+import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Doc.Cbor (documentTerm)
@@ -60,6 +61,10 @@ argumentsSent p vs = do
     Right (_, TList [_, _, TList args, _, _]) -> pure [v | TList [_, v] <- args]
     other -> assertFailure (show other)
 
+-- | A reason of 'termValue' as an error of a plugin, to compose with 'valueTerm'.
+first' :: Either Text Value -> Either PluginError Value
+first' = either (Left . BadOutput) Right
+
 -- | A deferred expression with its term replaced by the given one.
 deferredWith :: Term -> Term
 deferredWith e = TList [TList [TInt 11, spanT, e]]
@@ -77,6 +82,18 @@ numberTests =
         p <- load "echo.wat"
         args <- argumentsSent p [VRat (1 % 2), VRat 5, VNat 5, VInt (-5)]
         args @?= [TTagged 30 (TList [TInt 1, TInt 2]), TTagged 30 (TList [TInt 5, TInt 1]), TInt 5, TInt (-5)],
+      -- docs/adr ADR 0113
+      testCase "a range argument is the map of first and last" $ do
+        p <- load "echo.wat"
+        args <- argumentsSent p [VRange 1 3, VArray [VRange (-2) 5]]
+        args @?= [TMap [(TString "first", TInt 1), (TString "last", TInt 3)], TList [TMap [(TString "first", TInt (-2)), (TString "last", TInt 5)]]],
+      testCase "the value of the CDDL is read back, and a wrong range is no value" $ do
+        termValue (TMap [(TString "first", TInt 1), (TString "last", TInt 3)]) @?= Right (VRange 1 3)
+        termValue (TMap [(TString "first", TInt 4), (TString "last", TInt 3)]) @?= Left "範囲の first が last より大きくなっています"
+        termValue (TMap [(TString "first", TInt 1)]) @?= Left "範囲のキーは first と last の二つです"
+        termValue (TMap [(TString "first", TInt 1), (TString "end", TInt 3)]) @?= Left "範囲のキーは first と last の二つです"
+        termValue (TMap [(TString "first", TInt 1), (TString "last", TInt 3), (TString "step", TInt 1)]) @?= Left "範囲のキーは first と last の二つです"
+        mapM_ (\v -> (v, valueTerm v >>= first' . termValue) @?= (v, Right v)) [VInt 3, VRat (1 % 2), VString "a", VBool True, VNil, VArray [VInt 1, VRange 2 3]],
       testCase "a double in the answer is its exact rational, equal to the one of the request" $ do
         let half = DeferredExpr (A.Located callSpan (A.ERat (1 % 2)))
         p <- answering (cbor (TList [deferredWith (floatExpr (TDouble 0.5)), TList []]))

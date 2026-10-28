@@ -22,6 +22,8 @@ module Golem.Plugin
     loadPluginWith,
     invokeRaw,
     commandRequest,
+    valueTerm,
+    termValue,
     callCommand,
     applyFilter,
     describePluginError,
@@ -233,7 +235,9 @@ decodeDescription b = do
       _ -> Left (BadOutput "チャネルの宣言の形が不正です")
 
 {- | A value as a plugin gets it (docs/adr ADR 0101): a natural number and
-an integer as an integer, a rational as tag 30 even when it is integral.
+an integer as an integer, a rational as tag 30 even when it is integral,
+a range as the map of first and last, the keys in that order (docs/adr
+ADR 0113).
 -}
 valueTerm :: Value -> Either PluginError Term
 valueTerm = \case
@@ -245,6 +249,35 @@ valueTerm = \case
   VNil -> Right TNull
   VArray vs -> TList <$> mapM valueTerm vs
   VHash _ -> Left (BadOutput "ハッシュはプラグインに渡せません")
+  VRange a b -> Right (TMap [(TString "first", TInteger a), (TString "last", TInteger b)])
+
+{- | The @value@ of the CDDL read back, as a plugin reads its arguments
+(docs/adr ADR 0113): an integer as 'VInt', a rational of tag 30 in
+lowest terms, and a range as a map of exactly first and last whose first
+is not after its last. The host writes values and never reads them; this
+is the reading the schema asks of a plugin.
+-}
+termValue :: Term -> Either Text Value
+termValue = \case
+  TInt i -> Right (VInt (toInteger i))
+  TInteger i | inInt64 i -> Right (VInt i)
+  TTagged 30 (TList [n, d])
+    | Just a <- int64 n, Just b <- int64 d, b >= 1, gcd a b == 1 -> Right (VRat (fromInteger a / fromInteger b))
+  TString t -> Right (VString t)
+  TBool b -> Right (VBool b)
+  TNull -> Right VNil
+  TList ts -> VArray <$> mapM termValue ts
+  TMap kvs -> case kvs of
+    [(TString "first", f), (TString "last", l)]
+      | Just a <- int64 f, Just b <- int64 l -> if a > b then Left "範囲の first が last より大きくなっています" else Right (VRange a b)
+    _ -> Left "範囲のキーは first と last の二つです"
+  _ -> Left "値の形が不正です"
+  where
+    int64 = \case
+      TInt i -> Just (toInteger i)
+      TInteger i | inInt64 i -> Just i
+      _ -> Nothing
+    inInt64 i = i >= -9223372036854775808 && i <= 9223372036854775807
 
 -- | The CBOR of a command request (golem-doc.cddl @command-request@).
 commandRequest :: Text -> [Value] -> [[Inline]] -> SrcSpan -> Either PluginError ByteString

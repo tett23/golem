@@ -159,8 +159,9 @@ command-request = [0, name: tstr, args: [* argument],
                    slots: [* inlines], span]
 filter-request = [1, name: tstr, document]
 argument = [0, value] / [1, key: tstr, value]
-value = int64 / rational / tstr / bool / null / [* value]
+value = int64 / rational / tstr / bool / null / range / [* value]
 rational = #6.30([numerator: int64, denominator: 1..9223372036854775807])
+range = {"first": int64, "last": int64}
 response = [output: inlines / document,
             diagnostics: [* plugin-diagnostic]]
 plugin-diagnostic = [code: tstr, severity: 0 / 1, span, message: tstr]
@@ -172,9 +173,10 @@ channel-decl = [name: tstr, order: 0 / 1, locators: bool]
 - [code: golem_describe] は [code: description] を返す。二つのフィールドの [code: description] は不正な応答（G06005）である。[code: order] は 0 が文書の順、1 が読みの順である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0007-plugin-channel-lists.md]（golem-doc ADR 0007「プラグインの独自のチャネル」）]
 - コマンドの呼び出しでは、[code: golem_invoke] は [code: command-request] を受け取り、[code: output] がインラインの列（[code: inlines]）の [code: response] を返す。
 - フィルタの呼び出しでは、[code: filter-request] を受け取り、[code: output] がファイル一つ分の文書（[code: document]）の [code: response] を返す。
-- 引数の値に連想配列は渡せない。[code: value] にマップがないのはそのためである。
+- 引数の値に連想配列は渡せない。[code: value] のマップは範囲の形だけである。
+- 範囲の値（[code: 1...3]）は、[code: first] と [code: last] の二つのキーを持つマップ [code: {"first": 1, "last": 3}] で渡る。両端を含み、[code: first] は [code: last] 以下である。キーはこの順に書く。端が [code: int64] に収まらない範囲は G02091 になり、プラグインを呼ばない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0113-closed-range-literal.md]（ADR 0113「閉じた範囲のリテラル 1...10 を設け、.. を予約する」）]
 - 自然数と整数の引数は [code: int64] で、有理数の引数は値が整数でもタグ 30 の [code: rational]（既約の分子と分母）で渡る。[code: 1 / 2] は [code: 30(\[1, 2\])]、[code: 10 / 2] は [code: 30(\[5, 1\])] である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0101-rational-numbers-in-expressions.md]（ADR 0101「式の言語の数を自然数、整数、有理数の三つの型にし、浮動小数点数をなくす」）]
-- 遅延した式（[code: doc] を参照する [code: \[= ...\]]）の数は、整数が [code: \[0, span, int64\]]、自然数が [code: \[12, span, uint64\]]、有理数が [code: \[13, span, rational\]] である。プラグインが式に浮動小数点数（[code: \[1, span, float\]]）を書くと、ホストはその値の正確な有理数として読む。NaN と無限大は G06100 になる。
+- 遅延した式（[code: doc] を参照する [code: \[= ...\]]）の数は、整数が [code: \[0, span, int64\]]、自然数が [code: \[12, span, uint64\]]、有理数が [code: \[13, span, rational\]] である。範囲の式は [code: \[14, span, expr, expr\]] である。プラグインが式に浮動小数点数（[code: \[1, span, float\]]）を書くと、ホストはその値の正確な有理数として読む。NaN と無限大は G06100 になる。
 - 応答の diagnostic の重大度は、0 がエラー、1 が警告である。プラグインは notice を出せない。コードはプラグインが決め、Golem の [code: docs/diagnostics.md] の対象外である。
 
 たとえばファイルの先頭に書いた [code: \[furigana: 漢字\]] の呼び出しの要求は、CBOR の diagnostic notation（RFC 8949 が定める、CBOR を人が読むための表記）で次のような形になる。

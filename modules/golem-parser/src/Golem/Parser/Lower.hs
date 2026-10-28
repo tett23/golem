@@ -291,7 +291,7 @@ unquote t = go (T.unpack (T.dropEnd 1 (T.drop 1 t)))
 
 isExprNode :: P -> Bool
 isExprNode = \case
-  PN k _ _ -> k `elem` [NBinaryExpr, NUnaryExpr, NCallExpr, NLiteral, NVarExpr, NArrayExpr, NHashExpr, NParenExpr, NErrorNode]
+  PN k _ _ -> k `elem` [NRangeExpr, NBinaryExpr, NUnaryExpr, NCallExpr, NLiteral, NVarExpr, NArrayExpr, NHashExpr, NParenExpr, NErrorNode]
   PT KError _ _ -> True
   _ -> False
 
@@ -304,6 +304,10 @@ exprOf sp [] = Located (mkSpan (spanFile sp) (spanStart sp) (spanStart sp)) EErr
 
 expr :: P -> Located Expr
 expr p = Located (pspan p) $ case p of
+  PN NRangeExpr _ cs -> case significant cs of
+    [a, PT KOperator _ _, b] -> ERange (expr a) (expr b)
+    [a] -> locValue (expr a)
+    _ -> EError
   PN NBinaryExpr _ cs -> case significant cs of
     [a, PT KOperator _ op, b] -> EBinary (binop op) (expr a) (expr b)
     [a] -> locValue (expr a)
