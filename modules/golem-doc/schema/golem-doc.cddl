@@ -71,6 +71,15 @@ inline-no-ruby =
 number-style = 0..2                                ; kanji, kanji-digits, tcy
 ref-kind = 0..2                                    ; number, title, page
 
+; a rational in lowest terms, the denominator 1 or more (RFC 8949, the
+; registered tag 30); a rational of an integral value has the denominator 1
+; (docs/adr ADR 0101)
+rational = #6.30([numerator: int64, denominator: 1..9223372036854775807])
+
+; the number literals by their types: an integer, a natural number (12) and
+; a rational (13) (docs/adr ADR 0101). The host writes no [1, span, float]:
+; a plugin that writes one gets its exact rational, and NaN and the
+; infinities are G06100
 expr =
     [0, span, int64]
   / [1, span, float]
@@ -84,12 +93,14 @@ expr =
   / [9, span, expr]
   / [10, span, 0..11, expr, expr]
   / [11, span]
+  / [12, span, uint64]
+  / [13, span, rational]
 
 ; plugin requests and responses (golem-plugin ADR 0001)
 command-request = [0, name: tstr, args: [* argument], slots: [* inlines], span]
 filter-request = [1, name: tstr, document]
 argument = [0, value] / [1, key: tstr, value]
-value = int64 / float / tstr / bool / null / [* value]
+value = int64 / rational / tstr / bool / null / [* value]
 response = [output: inlines / document, diagnostics: [* plugin-diagnostic]]
 plugin-diagnostic = [code: tstr, severity: 0 / 1, span, message: tstr]
 ; golem_describe: the names of the commands and filters a plugin provides,

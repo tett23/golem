@@ -62,7 +62,7 @@ changes after the release that has it, and at most once between two
 releases (docs/adr ADR 0052); scripts/ci/abi-version.sh checks it.
 -}
 abiVersion :: Int
-abiVersion = 7
+abiVersion = 8
 
 data Document = Document
   { docFile :: !FileId,

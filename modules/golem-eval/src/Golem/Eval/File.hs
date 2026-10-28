@@ -645,7 +645,7 @@ printingsBlock ctx sp args body = case (errors, Map.lookup "printings" (ctxMeta 
         <> [("G02098", sp, "マニフェストに [[metadata.printings]] がありません") | not printings]
     line = \case
       VHash h
-        | Just [e, n, y, m, d] <- traverse (\k -> case Map.lookup k h of Just (VInt i) -> Just i; _ -> Nothing) ["edition", "number", "year", "month", "day"] ->
+        | Just [e, n, y, m, d] <- traverse (\k -> Map.lookup k h >>= intOf) ["edition", "number", "year", "month", "day"] ->
             Just . block sp . Paragraph Nothing $
               [num y (Just StyleKanjiDigits), txt "年", num m Nothing, txt "月", num d Nothing, txt "日\x3000"]
                 <> (if e == 1 then [txt "初版"] else [txt "第", num e Nothing, txt "版"])
@@ -1432,7 +1432,7 @@ codeArgs ctx _ extra = foldl (\m a -> m >>= \acc -> step acc a) (pure (CodeArgs 
       A.StringLit t -> pure (Just t)
       v@(A.ExprArg _) ->
         argValue ctx v >>= \case
-          Right (VInt n) -> pure (Just (T.pack (show n)))
+          Right val | Just n <- intOf val -> pure (Just (T.pack (show n)))
           Right (VString s) -> pure (Just s)
           Right (VBool b) -> pure (Just (if b then "true" else "false"))
           Right _ -> pure Nothing
@@ -1602,8 +1602,14 @@ evalInline ctx inHeading (A.Located sp i) = case i of
           then err "G02014" sp "見出しの中では doc を参照できません" >> pure []
           else
             let e' = substitute en e
-             in -- G02091: an integer of the IR out of int64 (golem-doc ADR 0006)
-                if all inInt64 (exprInts e') then pure [Deferred sp (DeferredExpr e')] else outOfInt64 sp >> pure []
+             in -- G02086: a literal past the limit of the evaluator (docs/adr ADR 0101);
+                -- G02091: an integer of the IR out of int64 (golem-doc ADR 0006)
+                if any overLimit (exprNumbers e')
+                  then err "G02086" sp "数が大きすぎます（整数と、分数の分子と分母の絶対値は 2 の 4096 乗未満に限ります）" >> pure []
+                  else
+                    if all (all inInt64 . ratioInts) (exprNumbers e')
+                      then pure [Deferred sp (DeferredExpr e')]
+                      else outOfInt64 sp >> pure []
       else case evalExpr en e >>= embedValue sp of
         Left d -> report d >> pure []
         Right t -> pure [Text sp t]
@@ -1706,11 +1712,13 @@ builtinWith ctx inHeading sp b args slots = do
         val <- argValue ctx v
         let st = argText <$> lookup "style" kw
         case (val, st) of
-          (Right (VInt n), _) | not (inInt64 n) -> outOfInt64 sp >> pure []
-          (Right (VInt n), Nothing) -> pure [Number sp n Nothing]
-          (Right (VInt n), Just s)
-            | Just ns <- lookup s [("kanji", StyleKanji), ("kanji-digits", StyleKanjiDigits), ("tcy", StyleTcy)] -> pure [Number sp n (Just ns)]
-            | otherwise -> err "G02019" sp ("style は kanji、kanji-digits、tcy のいずれかです: " <> s) >> pure []
+          (Right v', _) | Just n <- intOf v', not (inInt64 n) -> outOfInt64 sp >> pure []
+          (Right v', Nothing) | Just n <- intOf v' -> pure [Number sp n Nothing]
+          (Right v', Just s)
+            | Just n <- intOf v',
+              Just ns <- lookup s [("kanji", StyleKanji), ("kanji-digits", StyleKanjiDigits), ("tcy", StyleTcy)] ->
+                pure [Number sp n (Just ns)]
+            | Just _ <- intOf v' -> err "G02019" sp ("style は kanji、kanji-digits、tcy のいずれかです: " <> s) >> pure []
           (Left d, _) -> report d >> pure []
           _ -> err "G02019" sp "number-text に渡せるのは整数だけです" >> pure []
       _ -> err "G02019" sp "number-text には整数を一つ書きます" >> pure []
@@ -1858,7 +1866,7 @@ argText = \case
 argValueRaw :: A.ArgValue -> Value
 argValueRaw = \case
   A.Word t
-    | not (T.null t), T.all isDigit t -> VInt (read (T.unpack t))
+    | not (T.null t), T.all isDigit t -> VNat (read (T.unpack t))
     | otherwise -> VString t
   A.StringLit t -> VString t
   _ -> VNil
@@ -1875,27 +1883,35 @@ argValue _ = \case
 0006).
 -}
 outOfInt64 :: SrcSpan -> M ()
-outOfInt64 sp = err "G02091" sp "整数が意味論 IR に書ける範囲を超えています（-2 の 63 乗以上、2 の 63 乗未満に限ります）"
+outOfInt64 sp = err "G02091" sp "数が意味論 IR に書ける範囲を超えています（整数と、分数の分子と分母は -2 の 63 乗以上、2 の 63 乗未満に限ります）"
 
--- | The integer literals of an expression.
-exprInts :: A.Located A.Expr -> [Integer]
-exprInts (A.Located _ e) = case e of
-  A.EInt i -> [i]
-  A.EArray xs -> concatMap exprInts xs
-  A.EHash kvs -> concatMap (exprInts . snd) kvs
-  A.ECall _ xs -> concatMap exprInts xs
-  A.EUnary _ a -> exprInts a
-  A.EBinary _ a b -> exprInts a <> exprInts b
+-- | The number literals of an expression.
+exprNumbers :: A.Located A.Expr -> [Rational]
+exprNumbers (A.Located _ e) = case e of
+  A.ENat n -> [toRational n]
+  A.EInt i -> [fromInteger i]
+  A.ERat q -> [q]
+  A.EArray xs -> concatMap exprNumbers xs
+  A.EHash kvs -> concatMap (exprNumbers . snd) kvs
+  A.ECall _ xs -> concatMap exprNumbers xs
+  A.EUnary _ a -> exprNumbers a
+  A.EBinary _ a b -> exprNumbers a <> exprNumbers b
   _ -> []
+
+-- | The integers a number is written with in the IR: its numerator and denominator.
+ratioInts :: Rational -> [Integer]
+ratioInts q = [numerator q, denominator q]
 
 -- | The integers of a value as a plugin gets it.
 valueInts :: Value -> [Integer]
 valueInts = \case
-  VInt i -> [i]
   VArray vs -> concatMap valueInts vs
-  _ -> []
+  v -> maybe [] (ratioInts . snd) (numberOf v)
 
+{- | The value of a number that is an integer, of any of the three types
+(the narrowing of docs/adr ADR 0101).
+-}
 intOf :: Value -> Maybe Integer
-intOf = \case
-  VInt n -> Just n
+intOf v = case numberOf v of
+  Just (_, q) | denominator q == 1 -> Just (numerator q)
   _ -> Nothing

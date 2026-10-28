@@ -531,7 +531,7 @@ int64Tests =
         snd (run c "[greet [= 2 ** 63 - 1]: x]\n") @?= []
     ]
   where
-    msg = "整数が意味論 IR に書ける範囲を超えています（-2 の 63 乗以上、2 の 63 乗未満に限ります）"
+    msg = "数が意味論 IR に書ける範囲を超えています（整数と、分数の分子と分母は -2 の 63 乗以上、2 の 63 乗未満に限ります）"
 
 -- | The same key twice among the keyword arguments (golem-parser ADR 0013).
 duplicateKeyTests :: TestTree

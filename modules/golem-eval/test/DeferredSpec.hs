@@ -18,6 +18,7 @@ import Golem.Syntax
 import Hedgehog (annotateShow, failure, forAll, property, (===))
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import Numeric.Natural (Natural)
 import Support
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -35,8 +36,9 @@ deferredOf src = [e | Block _ _ (Paragraph _ is) <- resultBlocks (evalResult ctx
 
 -- | An expression without its positions.
 data E
-  = I Integer
-  | F Double
+  = N Natural
+  | I Integer
+  | R Rational
   | S Text
   | B Bool
   | Nil
@@ -51,8 +53,9 @@ data E
 
 shape :: A.Located A.Expr -> E
 shape (A.Located _ e) = case e of
+  A.ENat n -> N n
   A.EInt i -> I i
-  A.EFloat d -> F d
+  A.ERat q -> R q
   A.EString s -> S s
   A.EBool b -> B b
   A.ENil -> Nil
@@ -75,27 +78,27 @@ tests =
   testGroup
     "deferred expressions (S0 values substituted)"
     [ testCase "a variable in a binary expression becomes its value" $
-        deferredShapes "@set n = 2\n\n[= doc.x + n]\n" @?= [Bin A.Add docX (I 2)],
+        deferredShapes "@set n = 2\n\n[= doc.x + n]\n" @?= [Bin A.Add docX (N 2)],
       testCase "a variable inside an array becomes its value" $
-        deferredShapes "@set n = 2\n\n[= [doc.x, n]]\n" @?= [Arr [docX, I 2]],
+        deferredShapes "@set n = 2\n\n[= [doc.x, n]]\n" @?= [Arr [docX, N 2]],
       testCase "a variable inside a hash becomes its value" $
-        deferredShapes "@set n = 2\n\n[= {a: doc.x, b: n}]\n" @?= [Hash [("a", docX), ("b", I 2)]],
+        deferredShapes "@set n = 2\n\n[= {a: doc.x, b: n}]\n" @?= [Hash [("a", docX), ("b", N 2)]],
       testCase "a variable among the arguments of a call becomes its value" $
-        deferredShapes "@set n = 2\n\n[= max(doc.x, n)]\n" @?= [Call "max" [docX, I 2]],
+        deferredShapes "@set n = 2\n\n[= max(doc.x, n)]\n" @?= [Call "max" [docX, N 2]],
       testCase "a variable under a unary minus becomes its value" $
-        deferredShapes "@set n = 2\n\n[= doc.x * -n]\n" @?= [Bin A.Mul docX (Neg (I 2))],
+        deferredShapes "@set n = 2\n\n[= doc.x * -n]\n" @?= [Bin A.Mul docX (Neg (N 2))],
       testCase "a meta reference becomes its value" $
         deferredShapes "[= [doc.x, meta.title]]\n" @?= [Arr [docX, S "本の題"]],
       testCase "an array value becomes an array literal" $
-        deferredShapes "@set a = [1, [2.5]]\n\n[= [doc.x, a]]\n" @?= [Arr [docX, Arr [I 1, Arr [F 2.5]]]],
+        deferredShapes "@set a = [1, [2.5]]\n\n[= [doc.x, a]]\n" @?= [Arr [docX, Arr [N 1, Arr [R 2.5]]]],
       testCase "a hash value becomes a hash literal with its keys in order" $
         deferredShapes "@set h = {z: true, a: nil}\n\n[= [doc.x, h]]\n" @?= [Arr [docX, Hash [("a", Nil), ("z", B True)]]],
       testCase "a string value becomes a string literal" $
         deferredShapes "@set s = \"x\"\n\n[= [doc.x, s]]\n" @?= [Arr [docX, S "x"]],
       testCase "the value of an expression is substituted, not its source" $
-        deferredShapes "@set n = 1 + 2\n\n[= doc.x + n]\n" @?= [Bin A.Add docX (I 3)],
+        deferredShapes "@set n = 1 + 2\n\n[= doc.x + n]\n" @?= [Bin A.Add docX (N 3)],
       testCase "a literal stays as it is" $
-        deferredShapes "[= doc.x + 1.5]\n" @?= [Bin A.Add docX (F 1.5)],
+        deferredShapes "[= doc.x + 1.5]\n" @?= [Bin A.Add docX (R 1.5)],
       testCase "the substituted literal keeps the position of the name" $
         -- "@set n = 2\n\n" is 12 bytes; "[= doc.x + n]" puts n at 12 + 11
         [A.locSpan b | A.Located _ (A.EBinary _ _ b) <- deferredOf "@set n = 2\n\n[= doc.x + n]\n"] @?= [mkSpan (FileId 1) 23 24],
@@ -114,8 +117,13 @@ tests =
           [e] -> pure e
           other -> annotateShow other >> failure
         evalExpr (Env Map.empty docNs) deferred
-          === evalExpr (Env (Map.fromList [("a", VInt a), ("b", VInt b)]) docNs) original
+          === evalExpr (Env (Map.fromList [("a", setValue a), ("b", setValue b)]) docNs) original
     ]
   where
     tshow :: Integer -> Text
     tshow i = T.pack (show i)
+    -- the value of @set n = <integer literal>: a natural number, or an integer under a minus
+    setValue :: Integer -> Value
+    setValue i
+      | i >= 0 = VNat (fromInteger i)
+      | otherwise = VInt i

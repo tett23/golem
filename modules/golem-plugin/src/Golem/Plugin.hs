@@ -21,6 +21,7 @@ module Golem.Plugin
     loadPlugin,
     loadPluginWith,
     invokeRaw,
+    commandRequest,
     callCommand,
     applyFilter,
     describePluginError,
@@ -70,7 +71,7 @@ one more than the last release only when the ABI changed since
 (docs/adr ADR 0052).
 -}
 abiVersion :: Word32
-abiVersion = 7
+abiVersion = 8
 
 -- | The fuel of one call: about this many wasm instructions.
 defaultFuel :: Word64
@@ -99,6 +100,10 @@ data PluginError
   | Trapped Text
   | InstantiateFailed Text
   | BadOutput Text
+  | {- | a float without a finite value in a deferred expression, with the
+    value: NaN, Infinity or -Infinity (G06100, docs/adr ADR 0101)
+    -}
+    NonFiniteFloat Text
   deriving stock (Eq, Show)
 
 describePluginError :: PluginError -> Text
@@ -111,6 +116,7 @@ describePluginError = \case
   Trapped m -> "プラグインの実行が失敗しました（メモリの上限を超えた場合を含む）: " <> m
   InstantiateFailed m -> "プラグインを起動できません: " <> m
   BadOutput m -> "プラグインの出力が不正です: " <> m
+  NonFiniteFloat v -> "遅延した式に有限でない浮動小数点数（" <> v <> "）があります"
 
 withMessage :: (Ptr CString -> IO a) -> IO (a, Text)
 withMessage k = alloca $ \errPtr -> do
@@ -226,24 +232,40 @@ decodeDescription b = do
         | o == 1 -> Right (ChannelDecl n OrderReading l)
       _ -> Left (BadOutput "チャネルの宣言の形が不正です")
 
+{- | A value as a plugin gets it (docs/adr ADR 0101): a natural number and
+an integer as an integer, a rational as tag 30 even when it is integral.
+-}
 valueTerm :: Value -> Either PluginError Term
 valueTerm = \case
+  VNat n -> Right (TInteger (toInteger n))
   VInt i -> Right (TInteger i)
-  VFloat d -> Right (floatTerm d)
+  VRat q -> Right (rationalTerm q)
   VString s -> Right (TString s)
   VBool b -> Right (TBool b)
   VNil -> Right TNull
   VArray vs -> TList <$> mapM valueTerm vs
   VHash _ -> Left (BadOutput "ハッシュはプラグインに渡せません")
 
+-- | The CBOR of a command request (golem-doc.cddl @command-request@).
+commandRequest :: Text -> [Value] -> [[Inline]] -> SrcSpan -> Either PluginError ByteString
+commandRequest name args slots sp = do
+  argTerms <- mapM valueTerm args
+  pure (toStrictByteString (encodeTerm (TList [TInt 0, TString name, TList [TList [TInt 0, a] | a <- argTerms], TList (map inlinesTerm slots), spanT sp])))
+
+-- | The IR of an answer; a float without a finite value is G06100, not bad output.
+decoded :: Either DecodeError a -> Either PluginError a
+decoded = \case
+  Right x -> Right x
+  Left (FloatNotFinite v) -> Left (NonFiniteFloat v)
+  Left e -> Left (BadOutput (describeDecodeError e))
+
 -- | A command of the plugin. Returns the inlines and the plugin's diagnostics.
 callCommand :: Plugin -> Text -> [Value] -> [[Inline]] -> SrcSpan -> Either PluginError ([Inline], [Diagnostic])
 callCommand plugin name args slots sp = do
-  argTerms <- mapM valueTerm args
-  let req = TList [TInt 0, TString name, TList [TList [TInt 0, a] | a <- argTerms], TList (map inlinesTerm slots), spanT sp]
-  out <- invokeRaw plugin (toStrictByteString (encodeTerm req))
+  req <- commandRequest name args slots sp
+  out <- invokeRaw plugin req
   (outT, diags) <- response out
-  inls <- either (Left . BadOutput) Right (termInlines outT)
+  inls <- decoded (termInlinesE outT)
   checkItems plugin [] (concatMap inlineItems inls)
   let allowedSpans = Set.insert sp (Set.fromList (concatMap (concatMap inlineSpans) slots))
       allowedDeferred = concatMap (concatMap inlineDeferred) slots
@@ -256,7 +278,7 @@ applyFilter plugin name doc = do
   let req = TList [TInt 1, TString name, documentTerm doc]
   out <- invokeRaw plugin (toStrictByteString (encodeTerm req))
   (outT, diags) <- response out
-  doc' <- either (Left . BadOutput) Right (termDocument outT)
+  doc' <- decoded (termDocumentE outT)
   -- the items that came in with the document pass as they are (golem-doc ADR 0007)
   checkItems plugin (documentItems doc) (documentItems doc')
   checkOutput (Set.fromList (documentSpans doc)) (documentDeferred doc) (documentSpans doc') (documentDeferred doc')
@@ -275,7 +297,7 @@ response bytes = do
   where
     diag = \case
       TList [TString code, sev, spT, TString msg] -> do
-        sp <- either (Left . BadOutput) Right (termSpan spT)
+        sp <- decoded (termSpan spT)
         severity <- case sev of
           TInt 0 -> Right Error
           TInt 1 -> Right Warning

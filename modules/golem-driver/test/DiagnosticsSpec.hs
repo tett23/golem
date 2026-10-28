@@ -287,10 +287,11 @@ explainTests =
             fmap exStatus (lookupExplanation "G02044") @?= Just Retired,
           testCase "golem explain G03029 explains it (golem-driver ADR 0041)" $
             fmap (\e -> (exStatus e, exTitle e)) (lookupExplanation "G03029") @?= Just (InUse, "隠しノンブルが仕上がりの線を越えます"),
-          testCase "G02095 is in use and in the sources (golem-eval ADR 0006)" $ do
-            fmap exStatus (lookupExplanation "G02095") @?= Just InUse
+          testCase "G02004 and G02095 are retired; G02101, G02102 and G06100 are in use and in the sources (docs/adr ADR 0101)" $ do
+            map (fmap exStatus . lookupExplanation) ["G02004", "G02095"] @?= replicate 2 (Just Retired)
+            map (fmap exStatus . lookupExplanation) ["G02101", "G02102", "G06100"] @?= replicate 3 (Just InUse)
             used <- sourceCodes
-            assertBool "G02095 in the sources" ("G02095" `elem` used),
+            [c | c <- ["G02101", "G02102", "G06100"], c `notElem` used] @?= [],
           testCase "G02096, G02097, G02098 and G02099 are in use and in the sources (docs/adr ADR 0056, ADR 0060)" $ do
             map (fmap exStatus . lookupExplanation) ["G02096", "G02097", "G02098", "G02099"] @?= replicate 4 (Just InUse)
             used <- sourceCodes
