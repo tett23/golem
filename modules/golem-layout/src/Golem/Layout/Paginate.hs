@@ -50,8 +50,8 @@ import Golem.Layout.Paginate.Decide
 import Golem.Layout.Paginate.State
 import Golem.Layout.Paginate.Types
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..), ruleAfter, ruleAfterAtEnd)
+import Golem.Length (Sp (..))
 import Golem.Syntax (SrcSpan)
-import Golem.Syntax.Length (Sp (..))
 
 {- | The pitch, span and offset of a heading of size @s@ and @m@ lines on
 a grid of font size @fs@ and pitch @p@: the body's ratio of pitch to

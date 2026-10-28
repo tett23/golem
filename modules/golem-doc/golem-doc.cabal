@@ -33,6 +33,7 @@ library
     , bytestring    >=0.11 && <0.13
     , cborg         >=0.2  && <0.3
     , containers    >=0.6  && <0.8
+    , golem-length
     , golem-parser
     , golem-syntax
     , mtl           >=2.3  && <2.4
@@ -55,6 +56,7 @@ test-suite golem-doc-test
     , directory
     , filepath
     , golem-doc
+    , golem-length
     , golem-parser
     , golem-syntax
     , golem-test-support

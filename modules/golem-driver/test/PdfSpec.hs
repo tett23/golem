@@ -21,12 +21,12 @@ import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, typeAreaFor)
+import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Pdf qualified as P
 import Golem.Project (ProjectFailure (..))
 import Golem.Project.Style (dimToSp, parseDim, parseStyle)
 import Golem.Syntax
-import Golem.Syntax.Length (Sp (..))
 import Golem.TestSupport.ExternalTool (needsTool)
 import Numeric (readHex)
 import Support

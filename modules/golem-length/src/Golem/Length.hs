@@ -1,12 +1,13 @@
 {- | Lengths: the type of sp, the conversions of the units and the text
-of a length (docs/adr ADR 0103). The ratios of the units are written in
-this module only: 1pt = 65536sp, 1in = 72pt = 25.4mm, 1Q = 1H = 0.25mm.
+of a length (docs/adr ADR 0103, ADR 0114). The ratios of the units are
+written in this module only: 1pt = 65536sp, 1in = 72pt = 25.4mm,
+1Q = 1H = 0.25mm.
 
 A written length becomes sp once, from its exact rational, rounded half to
 even. A length is shown in mm to two decimals in diagnostics, and in pt
 and em to at most four decimals in the output; both round half to even.
 -}
-module Golem.Syntax.Length
+module Golem.Length
   ( Sp (..),
     Unit (..),
     toSp,
@@ -22,7 +23,7 @@ where
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Syntax.Text (showRationalDigits)
+import Golem.Length.Decimal (showRationalDigits)
 
 -- | Scaled points: 1pt = 65536sp. A newtype, so as not to be taken for another integer.
 newtype Sp = Sp {unSp :: Integer}

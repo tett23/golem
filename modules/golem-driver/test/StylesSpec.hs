@@ -13,10 +13,10 @@ import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLi
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..), Synthetic (..))
 import Golem.LayoutSpec (pageGeometry)
+import Golem.Length (Sp (..))
 import Golem.Project (ProjectFailure (..))
 import Golem.Project.Style (LocalStyles (..), ParaStyleDef (..), noLocalStyles, noParaDef, parseStyle)
 import Golem.Syntax
-import Golem.Syntax.Length (Sp (..))
 import Support
 import System.FilePath ((</>))
 import Test.Tasty

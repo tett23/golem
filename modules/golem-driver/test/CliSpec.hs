@@ -13,12 +13,12 @@ import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.New
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry)
+import Golem.Length (Sp (..))
 import Golem.Plugin.Lock (hashHex)
 import Golem.Preflight.Rules (Level (..), Rules (..), parseRules, printRules)
 import Golem.Preflight.View (GlyphView (..), ImageView (..), LineView (..), PageView (..), RuleView (..), View (..))
 import Golem.Project.Style (Page (..), Style (..), parseDim, parseStyle)
 import Golem.Syntax
-import Golem.Syntax.Length (Sp (..))
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath ((</>))

@@ -43,6 +43,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.UUID qualified as UUID
 import Data.UUID.V5 qualified as V5
+import Golem.Length (Sp (..))
 import Golem.Pdf.Drawing
 import Golem.Pdf.Image
 import Golem.Pdf.Import
@@ -52,7 +53,6 @@ import Golem.Pdf.Rect (Rect (..))
 import Golem.Pdf.Sha256 (sha256)
 import Golem.Pdf.Srgb (srgbProfile)
 import Golem.Pdf.X4
-import Golem.Syntax.Length (Sp (..))
 import Golem.Syntax.Text (tshow)
 import Text.Printf (printf)
 

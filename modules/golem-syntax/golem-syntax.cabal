@@ -21,7 +21,6 @@ library
     Golem.Syntax.Chars
     Golem.Syntax.Position
     Golem.Syntax.Diagnostic
-    Golem.Syntax.Length
     Golem.Syntax.Render
     Golem.Syntax.Sha256
     Golem.Syntax.ShowTree
@@ -39,7 +38,7 @@ test-suite golem-syntax-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    LengthSpec RenderSpec ShowTreeSpec
+  other-modules:    RenderSpec ShowTreeSpec
   -- a heap limit, so that a hash that keeps its state unevaluated fails
   ghc-options:      -rtsopts "-with-rtsopts=-M64m"
   build-depends:

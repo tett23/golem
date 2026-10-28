@@ -66,11 +66,11 @@ import Golem.Layout.Look hiding (Kerning (..))
 import Golem.Layout.Look qualified as L
 import Golem.Layout.Paginate
 import Golem.LayoutSpec (PageGeometry (..))
+import Golem.Length (zwToSp)
 import Golem.Pdf qualified as P
 import Golem.Project
 import Golem.Project.Style
 import Golem.Syntax
-import Golem.Syntax.Length (zwToSp)
 
 {- | How a text is shaped (docs/adr/0020): the font role (golem-driver ADR
 0003; a role that is not loaded is the body role), the direction, and

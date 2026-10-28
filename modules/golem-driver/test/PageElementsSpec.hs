@@ -20,10 +20,10 @@ import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Paginate (HeadingBlock (..), PageOut (..), Slotted (..))
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, pageGeometry, sidenoteAreaFor, typeAreaFor)
+import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Project.Style (Dim (..), HeadForm (..), HeadPick (..), RunningContent (..), RunningPart (..), RunningRef (..), dimToSp, parseDim, parseRunningFormat, parseStyle)
 import Golem.Syntax
-import Golem.Syntax.Length (Sp (..))
 import Support
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))

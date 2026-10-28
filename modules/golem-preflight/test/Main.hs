@@ -5,13 +5,13 @@ import Data.ByteString qualified as BS
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Length (Sp (..))
 import Golem.Pdf (ColorSpace (..), ColorUse (..), Drawing (..), FigureContent (..), ImageData (..), ImportedPage (..), Obj (..), X4Problem (..))
 import Golem.Pdf.Rect (Rect (..))
 import Golem.Preflight
 import Golem.Preflight.Rules
 import Golem.Preflight.View
 import Golem.Syntax
-import Golem.Syntax.Length (Sp (..))
 import Test.Tasty
 import Test.Tasty.HUnit
 

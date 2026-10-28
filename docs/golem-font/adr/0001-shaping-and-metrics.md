@@ -1,6 +1,6 @@
 # ADR 0001: シェイピングとメトリクス
 
-ステータス: 採択→CFF2 の輪郭のフォントの扱いは [ADR 0003](0003-reject-cff2-fonts-in-pdf.md)
+ステータス: 採択→CFF2 の輪郭のフォントの扱いは [ADR 0003](0003-reject-cff2-fonts-in-pdf.md)、シェイピングの `ShapedGlyph` と位置の sp への変換、メトリクスを sp で返すこと、テスト設計の sp への変換の丸めは [docs/adr ADR 0114](../../adr/0114-sp-in-a-length-package.md)（位置とメトリクスはフォントの単位で返す）
 
 ## 文脈
 

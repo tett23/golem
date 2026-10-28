@@ -14,7 +14,6 @@ import Golem.TestSupport.Gen (genText)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import LengthSpec qualified
 import RenderSpec qualified
 import ShowTreeSpec qualified
 import Test.Tasty
@@ -190,7 +189,6 @@ tests =
       noticeTests,
       infoTests,
       orderTests,
-      LengthSpec.tests,
       RenderSpec.tests,
       ShowTreeSpec.tests
     ]

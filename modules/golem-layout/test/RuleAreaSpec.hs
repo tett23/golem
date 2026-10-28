@@ -3,7 +3,7 @@ module RuleAreaSpec (ruleAreaTests) where
 
 import Data.Maybe (isJust)
 import Golem.Layout.RuleArea
-import Golem.Syntax.Length (Sp (..))
+import Golem.Length (Sp (..))
 import Test.Tasty
 import Test.Tasty.HUnit
 

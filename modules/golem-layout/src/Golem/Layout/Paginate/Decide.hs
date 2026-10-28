@@ -29,7 +29,7 @@ import Golem.Layout.Code (codeSpan)
 import Golem.Layout.Paginate.State
 import Golem.Layout.Paginate.Types
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..), ruleAfter, ruleAfterAtEnd, ruleBefore, ruleBeforeAtStart, rulesJoined)
-import Golem.Syntax.Length (Sp)
+import Golem.Length (Sp)
 
 {- | The first part of what follows a heading, a term or a kept paragraph:
 its grid lines and the lines of the notes of its lines (golem-layout ADR 0019).

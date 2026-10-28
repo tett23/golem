@@ -14,7 +14,7 @@ module Golem.Layout.Ruby
 where
 
 import Data.Ratio ((%))
-import Golem.Syntax.Length (Sp (..))
+import Golem.Length (Sp (..))
 
 -- | How characters are spread over a longer width (JLReq 1:2:1, 0:1:0, centred, at the start).
 data RubyAlign = Align121 | Align010 | AlignCenter | AlignStart

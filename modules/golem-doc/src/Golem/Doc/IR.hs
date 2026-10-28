@@ -46,8 +46,8 @@ import Data.Int (Int64)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Void (Void)
+import Golem.Length (Sp)
 import Golem.Parser.AST qualified as AST
-import Golem.Syntax.Length (Sp)
 import Golem.Syntax.Span
 import Numeric.Natural (Natural)
 

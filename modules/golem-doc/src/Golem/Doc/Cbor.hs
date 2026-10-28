@@ -38,8 +38,8 @@ import Data.Text qualified as T
 import Data.Void (Void, absurd)
 import GHC.Float (float2Double)
 import Golem.Doc.IR
+import Golem.Length (Sp (..))
 import Golem.Parser.AST qualified as AST
-import Golem.Syntax.Length (Sp (..))
 import Golem.Syntax.Span
 import Numeric.Natural (Natural)
 

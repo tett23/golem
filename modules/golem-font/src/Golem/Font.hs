@@ -11,6 +11,10 @@ functions with unsafePerformIO (docs/adr ADR 0034). Pure functions may be
 evaluated on any capability at once, so the C layer holds a lock per font
 around FreeType, whose face one thread may use at a time; HarfBuzz's
 objects are only read and need none.
+
+Positions and dimensions are returned in font units, the dimensionless
+numbers of an em divided into upem; this package holds no length. The
+caller multiplies them by the size of type (docs/adr ADR 0114).
 -}
 module Golem.Font
   ( Font,
@@ -29,11 +33,8 @@ module Golem.Font
     Direction (..),
     ShapeRequest (..),
     shapeRequest,
-    ShapedGlyph (..),
-    shape,
     shapeUnits,
     glyphVerticalOrigin,
-    unitsToSp,
     GlyphMetrics (..),
     glyphMetrics,
     glyphCid,
@@ -49,7 +50,6 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Unsafe qualified as BU
 import Data.Either (fromRight)
 import Data.Map.Strict qualified as Map
-import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -207,31 +207,18 @@ data ShapeRequest = ShapeRequest
     srLanguage :: !Text,
     srDirection :: !Direction,
     -- | HarfBuzz feature strings such as @"palt"@ or @"-liga"@
-    srFeatures :: ![Text],
-    -- | the font size in sp
-    srSize :: !Integer
+    srFeatures :: ![Text]
   }
   deriving stock (Eq, Show)
 
-shapeRequest :: Integer -> Text -> ShapeRequest
-shapeRequest size t = ShapeRequest t "" "" Horizontal [] size
+shapeRequest :: Text -> ShapeRequest
+shapeRequest t = ShapeRequest t "" "" Horizontal []
 
-data ShapedGlyph = ShapedGlyph
-  { sgGlyphId :: !Int,
-    -- | byte offset in the UTF-8 text (for ToUnicode)
-    sgCluster :: !Int,
-    sgAdvance :: !Integer,
-    sgOffset :: !(Integer, Integer)
-  }
-  deriving stock (Eq, Show)
-
--- | Font units to sp at a size: exact rational, rounded once, half to even.
-unitsToSp :: Int -> Integer -> Int -> Integer
-unitsToSp upem size units = round (toInteger units * size % toInteger upem)
-
-{- | Glyph ids, clusters and (x advance, y advance, x offset, y offset) in
-font units. The vertical direction enables @vert@ (HarfBuzz does so for
-top-to-bottom text).
+{- | Glyph ids, clusters (byte offsets in the UTF-8 text) and (x advance,
+y advance, x offset, y offset) in font units. Shaping needs no size: the
+caller multiplies the units by the size of type (docs/adr ADR 0114). The
+vertical direction enables @vert@ (HarfBuzz does so for top-to-bottom
+text).
 -}
 shapeUnits :: Font -> ShapeRequest -> [(Int, Int, (Int, Int, Int, Int))]
 shapeUnits f req = unsafePerformIO $ withForeignPtr (fontPtr f) $ \p ->
@@ -268,17 +255,6 @@ glyphVerticalOrigin f gid = unsafePerformIO $ withForeignPtr (fontPtr f) $ \p ->
     x <- peek px
     y <- peek py
     pure (fromIntegral x, fromIntegral y)
-
-{- | Shaping with positions in sp. In vertical text the advance is the
-downward advance.
--}
-shape :: Font -> ShapeRequest -> [ShapedGlyph]
-shape f req =
-  [ ShapedGlyph g c (sp (if srDirection req == Vertical then negate ya else xa)) (sp xo, sp yo)
-  | (g, c, (xa, ya, xo, yo)) <- shapeUnits f req
-  ]
-  where
-    sp = unitsToSp (fontUnitsPerEm f) (srSize req)
 
 data GlyphMetrics = GlyphMetrics
   { gmAdvance :: !Int,
