@@ -198,7 +198,7 @@ golem-font ADR 0001 は、FFI の呼び出しを純粋な関数として見え�
 
 + 結果が引数だけで決まる。フォントは常にバイト列から読み（パスからは読まない）、C の側は呼び出しのあいだで結果を左右する状態を持たない。
 + 作用が外から観察できない。C の側のオブジェクトは [code: ForeignPtr] のファイナライザが解放し、例外は外に漏らさない。
-+ 境界を越える値が環境に依存しない。C の側からは整数のフォントの単位を受け取り、[code: unitsToSp] が有理数で sp に換算して、最近接偶数丸めで一度だけ丸める。
++ 境界を越える値が環境に依存しない。C の側からは整数のフォントの単位を受け取り、golem-font はそれをそのまま返す。字の大きさを掛けて sp にするのは golem-driver であり、golem-length の [code: Golem.Length] の規則で、最近接偶数丸めで一度だけ丸める。
 + 複数のスレッドから同時に呼んでも、一つずつ呼んだときと同じ結果になる。純粋な関数は、どの OS のスレッドで、いくつ同時に評価されてもよいからである。
 
 三つめは決定性のための条件でもある。
@@ -346,9 +346,9 @@ Golem は、長さと位置の計算に浮動小数点数を使わない。
 
 | 値 | 型 | 場所 |
 | --- | --- | --- |
-| 長さと位置（版面、行、ページの上の座標） | 整数の sp（[code: newtype Sp = Sp Integer]、1pt = 65536sp） | golem-syntax の [code: Golem.Syntax.Length] が定め、golem-project、golem-layout-spec、golem-layout、golem-pdf などが使う |
+| 長さと位置（版面、行、ページの上の座標） | 整数の sp（[code: newtype Sp = Sp Integer]、1pt = 65536sp） | golem-length の [code: Golem.Length] が定め、golem-project、golem-layout-spec、golem-layout、golem-pdf などが使う |
 | [code: style.toml] の寸法 | sp の整数か、字の大きさに対する比（[code: Zw !Rational]） | golem-project の [code: parseDim] |
-| フォントの送り、カーニング、字面の位置 | フォントの単位の整数を、有理数で sp に換算 | golem-font の [code: unitsToSp]、golem-driver |
+| フォントの送り、カーニング、字面の位置 | フォントの単位の整数を、upem に対する比（有理数）にしてから sp に換算 | golem-font（フォントの単位）、golem-driver（比）、[code: Golem.Length] の [code: zwToSp]（sp） |
 | 行の伸縮の比、デメリット | [code: Rational]（[code: lineRatio]）、[code: Integer] | golem-layout |
 | PDF に書く座標 | sp から pt への換算を整数で計算し、小数点以下 4 桁の十進で書く | golem-pdf |
 | 式の言語の数 | [code: Natural]（[code: VNat]）、[code: Integer]（[code: VInt]）、[code: Rational]（[code: VRat]） | golem-eval |
@@ -356,7 +356,7 @@ Golem は、長さと位置の計算に浮動小数点数を使わない。
 Haskell の [code: Integer] は桁数に上限のない整数で、桁あふれしない。
 [code: Rational] は [code: Integer] の分子と分母の組で、四則演算の結果が厳密に定まる。
 [code: style.toml] の [code: "10.5pt"] のような十進の寸法も、[code: parseDim] が有理数として読み、sp への換算で一度だけ最近接偶数丸めで丸める。
-単位の比（1in = 72pt = 25.4mm、1Q = 1H = 0.25mm）と、sp への換算と、長さを書く表記は、golem-syntax の [code: Golem.Syntax.Length] の一か所にまとめてある。
+単位の比（1in = 72pt = 25.4mm、1Q = 1H = 0.25mm）と、sp への換算と、長さを書く表記は、golem-length の [code: Golem.Length] の一か所にまとめてある。
 diagnostic に書く mm は小数点以下 2 桁、PDF と CSS に書く pt と em は小数点以下 4 桁で、どれも最近接偶数丸めで丸める。
 [code: Sp] は [code: Integer] を包む [code: newtype] なので、sp の値をページの番号や字数のようなほかの整数と取り違えると、型の検査で見つかる。
 sp どうしの足し算と引き算、整数の倍はそのまま書けるが、割り算と有理数への変換は [code: unSp] で整数を取り出して書く。
@@ -365,7 +365,8 @@ sp どうしの足し算と引き算、整数の倍はそのまま書けるが�
 HarfBuzz と FreeType についても、Golem が受け取る値は整数である。
 golem-font の C の側（[code: cbits/golem/golem_font.c]）は、HarfBuzz のフォントの拡大率をフォントの 1em の単位数（upem）に設定し、グリフの位置をフォントの単位の整数で受け取る。
 FreeType のグリフは [code: FT_LOAD_NO_SCALE] で読み、拡大しない整数のメトリクスを得る。
-字の大きさへの拡大は、Haskell の側の [code: unitsToSp] が有理数で行う。
+字の大きさへの拡大は、Haskell の側で golem-driver が行う。
+フォントの単位を upem に対する比（em の有理数）にし、それに文字の大きさを掛けて [code: zwToSp] で sp にする。
 ライブラリの内部の計算は Golem からは見えないので、C のソースを [code: -ffp-contract=off] でコンパイルし、バージョンを固定して同梱している。
 
 式の言語も、浮動小数点数を使わない。

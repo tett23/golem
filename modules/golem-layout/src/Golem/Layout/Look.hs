@@ -19,9 +19,9 @@ module Golem.Layout.Look
 where
 
 import Data.Text (Text)
+import Golem.Length (Sp)
 import Golem.Project.Style (SizeSource (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
-import Golem.Syntax.Length (Sp)
 
 {- | Where the size of a box comes from and where its characters are in the
 source (golem-cli ADR 0008), for golem preflight. Kept beside the look,

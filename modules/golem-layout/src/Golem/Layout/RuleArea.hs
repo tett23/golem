@@ -17,7 +17,7 @@ module Golem.Layout.RuleArea
   )
 where
 
-import Golem.Syntax.Length (Sp (..))
+import Golem.Length (Sp (..))
 
 -- | The line pitch p and the height h of the em box of a grid line, in sp.
 data RuleGrid = RuleGrid {rgPitch :: !Sp, rgFace :: !Sp}

@@ -23,8 +23,8 @@ import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry)
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
+import Golem.Length (Sp)
 import Golem.Syntax (SrcSpan)
-import Golem.Syntax.Length (Sp)
 
 {- | A footnote in the book (golem-driver ADR 0018): the span of the note,
 and its place among the notes of the same span in one paragraph (from

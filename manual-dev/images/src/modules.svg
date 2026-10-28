@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1010" viewBox="0 0 1300 1010">
-  <!-- パッケージの依存（modules/*/*.cabal の build-depends から、ほかの依存を通して届く矢印と golem-syntax への矢印を除いたもの）。
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1090" viewBox="0 0 1300 1090">
+  <!-- パッケージの依存（modules/*/*.cabal の build-depends から、ほかの依存を通して届く矢印と、golem-syntax と golem-length への矢印を除いたもの）。
        scripts/manual/outline-figures.sh で、文字を輪郭にした manual-dev/images/modules.svg にする。 -->
   <style>
     @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
@@ -20,7 +20,7 @@
       <path d="M0,0 L10,5 L0,10 z" fill="#444"/>
     </marker>
   </defs>
-  <rect width="1300" height="1010" fill="#fff"/>
+  <rect width="1300" height="1090" fill="#fff"/>
 
   <!-- edges -->
   <line x1="650" y1="78" x2="650" y2="122"/>
@@ -82,6 +82,9 @@
   <rect class="box core" x="285" y="942" width="150" height="56"/><text class="name" x="360" y="970">syntax</text>
   <text class="note" x="455" y="962">regex、font、svg を除くすべてが使う</text>
   <text class="note" x="455" y="990">（この矢印は省いた）</text>
+  <rect class="box core" x="20" y="942" width="150" height="56"/><text class="name" x="95" y="970">length</text>
+  <text class="note" x="20" y="1040">length は doc、driver、html、layout、pdf、preflight、project が使う</text>
+  <text class="note" x="20" y="1068">（この矢印も省いた）</text>
 
   <!-- legend -->
   <rect class="box pdf" x="900" y="900" width="36" height="24"/><text class="note" x="946" y="920">PDF 経路</text>

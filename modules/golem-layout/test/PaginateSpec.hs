@@ -15,8 +15,8 @@ import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry (..))
 import Golem.Layout.Paginate
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
+import Golem.Length (Sp)
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
-import Golem.Syntax.Length (Sp)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range

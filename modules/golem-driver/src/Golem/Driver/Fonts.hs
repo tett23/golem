@@ -166,7 +166,7 @@ provide fid faces body roles =
     shapeText (Shaping role vertical extra) t =
       let (_, la, roleFeatures) = roleOf role
           features = roleFeatures <> extra
-          shapeIn f r dir = shapeUnits f ((shapeRequest 1000 r) {srDirection = dir, srFeatures = features})
+          shapeIn f r dir = shapeUnits f ((shapeRequest r) {srDirection = dir, srFeatures = features})
           em f u = toInteger u % toInteger (fontUnitsPerEm f)
           {- the offsets as HarfBuzz gives them in horizontal shaping; vertical
           shaping subtracts the vertical origin, added back here (golem-driver

@@ -42,9 +42,9 @@ import Golem.Layout.Hyphenation
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
 import Golem.Layout.Ruby
+import Golem.Length qualified as L
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan, diagnostic)
-import Golem.Syntax.Length qualified as L
 
 lineStartProhibited :: Bool -> CharClass -> Bool
 lineStartProhibited strict = \case

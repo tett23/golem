@@ -3,8 +3,8 @@ module Gen (genDocument, genInline, genExpr, genInt64) where
 import Data.Text (Text)
 import Data.Void (Void)
 import Golem.Doc.IR
+import Golem.Length (Sp (..))
 import Golem.Parser.AST qualified as AST
-import Golem.Syntax.Length (Sp (..))
 import Golem.Syntax.Span
 import Hedgehog
 import Hedgehog.Gen qualified as Gen

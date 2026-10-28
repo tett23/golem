@@ -31,12 +31,12 @@ import Golem.Layout.Paginate
 import Golem.Layout.Ruby (RubyKind (..), RubyPlacement (..), placeRuby)
 import Golem.LayoutSpec (Anchor (..), HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, columnsFor, gutterSide, runningHeadBaselines, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
+import Golem.Length (zwToSp)
 import Golem.Pdf qualified as P
 import Golem.Preflight.View qualified as V
 import Golem.Project
 import Golem.Project.Style
 import Golem.Syntax
-import Golem.Syntax.Length (zwToSp)
 
 {- | The PDF and the notices of its layout (G07030), or the errors that
 stopped it.

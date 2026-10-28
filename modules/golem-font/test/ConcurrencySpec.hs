@@ -37,13 +37,13 @@ concurrencyTests race han noto =
         "prop_concurrentShapingMatchesSequential"
         ( withTests (fromIntegral (30 * race)) . property $ do
             runs <- forAll (Gen.list (Range.linear 16 64) ((,) <$> genText <*> Gen.element [Horizontal, Vertical]))
-            let request (t, d) = (shapeRequest 1000 t) {srDirection = d, srFeatures = ["palt"]}
+            let request (t, d) = (shapeRequest t) {srDirection = d, srFeatures = ["palt"]}
                 alone = map (Right . shapeUnits noto . request) runs
             together <- evalIO (inParallel [pure (shapeUnits noto (request r)) | r <- runs])
             together === alone
         ),
       testCase "subsetting one font from every capability gives the bytes subsetting alone gives" $ do
-        let glyphSets = [[g | (g, _, _) <- shapeUnits han (shapeRequest 1000 (T.take n "「日本語の組版」、ー。"))] | n <- [1 .. 11]]
+        let glyphSets = [[g | (g, _, _) <- shapeUnits han (shapeRequest (T.take n "「日本語の組版」、ー。"))] | n <- [1 .. 11]]
         alone <- mapM (subsetFont han) glyphSets
         together <- inParallel [subsetFont han gs | gs <- glyphSets]
         together @?= map Right alone,

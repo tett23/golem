@@ -41,6 +41,7 @@ library
     , base               >=4.20 && <4.21
     , containers         >=0.6  && <0.8
     , golem-doc
+    , golem-length
     , golem-project
     , golem-syntax
     , template-haskell
@@ -67,6 +68,7 @@ test-suite golem-layout-test
     , containers
     , golem-doc
     , golem-layout
+    , golem-length
     , golem-project
     , golem-syntax
     , hedgehog       >=1.4 && <1.6
