@@ -14,10 +14,10 @@ import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..), placeLine
 import Golem.Layout.Look (Look (..), Synthetic (..))
 import Golem.Layout.Paginate (Flow (..), LineBox (..), PageOut (..), Slotted (..), paginate)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), columnsFor, typeAreaFor)
+import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Project.Style (dimToSp, parseDim)
 import Golem.Syntax
-import Golem.Syntax.Length (Sp (..))
 import Support
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)

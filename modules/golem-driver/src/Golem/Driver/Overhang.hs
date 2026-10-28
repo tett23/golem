@@ -19,7 +19,7 @@ import Golem.Layout.Japanese (BoxKind (..), boxKind, clusters)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..))
 import Golem.LayoutSpec (baselineRatio)
-import Golem.Syntax.Length (Sp (..), zwToSp)
+import Golem.Length (Sp (..), zwToSp)
 
 {- | The reading of a ruby across the line from its base (golem-layout ADR
 0011): its baseline the size of the largest base character above the

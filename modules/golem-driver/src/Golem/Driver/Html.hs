@@ -20,8 +20,8 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Html
+import Golem.Length qualified as L
 import Golem.Project.Style
-import Golem.Syntax.Length qualified as L
 
 -- | The character styles of a style, resolved for CSS (docs/adr ADR 0005).
 htmlCharStyles :: Style -> Map Text HtmlCharStyle

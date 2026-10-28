@@ -28,9 +28,9 @@ import Golem.Layout.Ruby qualified as R (RubyAlign (..))
 import Golem.Layout.Sidenotes
 import Golem.Layout.Table
 import Golem.Layout.Wrap
+import Golem.Length (zwToSp)
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (FileId (..), mkSpan)
-import Golem.Syntax.Length (zwToSp)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range

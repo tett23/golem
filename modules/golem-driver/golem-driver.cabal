@@ -54,6 +54,7 @@ library
     , golem-html
     , golem-layout
     , golem-layout-spec
+    , golem-length
     , golem-lint
     , golem-pdf
     , golem-plugin
@@ -108,6 +109,7 @@ test-suite golem-driver-test
     , golem-eval
     , golem-layout
     , golem-layout-spec
+    , golem-length
     , golem-parser
     , golem-pdf
     , golem-plugin

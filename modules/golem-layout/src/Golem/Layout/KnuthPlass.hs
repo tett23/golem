@@ -32,7 +32,7 @@ import Data.Ord (Down (..), comparing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Golem.Layout.Look (BoxSource, Look)
-import Golem.Syntax.Length (Sp (..))
+import Golem.Length (Sp (..))
 
 {- | What a box shows. Golem's composition fills these in; the algorithm
 only reads the microtypography fields.

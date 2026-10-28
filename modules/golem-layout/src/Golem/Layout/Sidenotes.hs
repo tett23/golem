@@ -7,7 +7,7 @@ module Golem.Layout.Sidenotes
   )
 where
 
-import Golem.Syntax.Length (Sp)
+import Golem.Length (Sp)
 
 data SidenoteError
   = -- | the sidenote at this index is taller than the column

@@ -20,11 +20,11 @@ import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..), glueRatio
 import Golem.Layout.Look (Look (..), noBoxSource, plainLook)
 import Golem.Layout.Paginate (ColumnSet (..), PageOut (..), Slotted (..), labelPages, markPages)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, typeAreaFor)
+import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
-import Golem.Syntax.Length (Sp (..))
 import Support
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))

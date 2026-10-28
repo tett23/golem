@@ -1,6 +1,6 @@
 # ADR 0103: 長さの単位の変換を一か所にまとめ、表示の桁と丸めをそろえる
 
-ステータス: 採択
+ステータス: 採択→一か所の置き場所（golem-syntax の `Golem.Syntax.Length`）は [ADR 0114](0114-sp-in-a-length-package.md) で golem-length の `Golem.Length` に移した
 
 ## 文脈
 

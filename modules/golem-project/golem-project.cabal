@@ -29,6 +29,7 @@ library
     , directory     >=1.3  && <1.4
     , filepath      >=1.4  && <1.6
     , golem-doc
+    , golem-length
     , golem-parser
     , golem-regex
     , golem-syntax
@@ -54,6 +55,7 @@ test-suite golem-project-test
     , directory
     , filepath
     , golem-doc
+    , golem-length
     , golem-parser
     , golem-project
     , golem-syntax

@@ -11,8 +11,8 @@ module Golem.Pdf.Number
 where
 
 import Data.Text (Text)
-import Golem.Syntax.Length (Sp, ptText)
-import Golem.Syntax.Text (showRationalDigits)
+import Golem.Length (Sp, ptText)
+import Golem.Length.Decimal (showRationalDigits)
 
 -- | Sp as pt, at most four decimals (docs/adr ADR 0103).
 spToPt :: Sp -> Text

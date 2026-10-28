@@ -22,6 +22,7 @@ library
     , base              >=4.20 && <4.21
     , bytestring        >=0.11 && <0.13
     , containers        >=0.6  && <0.8
+    , golem-length
     , golem-pdf
     , golem-project
     , golem-syntax
@@ -38,6 +39,7 @@ test-suite golem-preflight-test
     , base
     , bytestring
     , containers
+    , golem-length
     , golem-pdf
     , golem-preflight
     , golem-syntax

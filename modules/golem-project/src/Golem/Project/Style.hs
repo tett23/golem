@@ -100,12 +100,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Assemble (NoteNumbering (..))
 import Golem.Doc.ListMarkers (NumberFormat, parseNumberFormat)
+import Golem.Length (Sp (..))
+import Golem.Length qualified as L
 import Golem.Project.Manifest (decodeStrictBy, naturalIntOf, naturalOf)
 import Golem.Project.TomlMessage (schemaMessage)
 import Golem.Regex (RegexError (..), compile)
 import Golem.Syntax
-import Golem.Syntax.Length (Sp (..))
-import Golem.Syntax.Length qualified as L
 import Numeric.Natural (Natural)
 import Toml qualified
 import Toml.Schema

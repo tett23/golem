@@ -96,13 +96,13 @@ import Golem.Layout.Sidenotes (SidenoteError (..), placeSidenotes)
 import Golem.Layout.Table (SetCell (..), SetTable (..), TableError (..), layoutTable)
 import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
 import Golem.LayoutSpec (HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, gutterSide, pageGeometry, sidenoteAreaFor, typeAreaFor)
+import Golem.Length qualified as L
 import Golem.Pdf qualified as P
 import Golem.Project
 import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax
-import Golem.Syntax.Length qualified as L
 import System.FilePath (takeBaseName)
 
 -- | One line of the flow, with what is needed to draw it.

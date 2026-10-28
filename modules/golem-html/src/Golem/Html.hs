@@ -42,7 +42,7 @@ import Golem.Doc.IR
 import Golem.Doc.ListMarkers
 import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals
-import Golem.Syntax.Length qualified as L
+import Golem.Length qualified as L
 import Golem.Syntax.Span
 import Golem.Syntax.Text (escapeXml, tshow)
 import Numeric (showHex)

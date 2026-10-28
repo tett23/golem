@@ -16,13 +16,13 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Doc.Assemble (NoteNumbering (..))
 import Golem.Doc.ListMarkers (ListNumberStyle (..), NumberFormat (..))
+import Golem.Length qualified as L
 import Golem.Parser.SourceSettings
 import Golem.Project hiding (loadProject)
 import Golem.Project qualified as P
 import Golem.Project.Paths
 import Golem.Project.Style
 import Golem.Syntax
-import Golem.Syntax.Length qualified as L
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
 import StylePositionSpec qualified
@@ -1717,7 +1717,7 @@ pageSizeTests =
         | n <- ["A4", "A5", "A6", "B5", "B6", "四六判", "mass-market"],
           Just (w, h) <- [pageSize n]
         ],
-    testCase "the sp of every named size are fixed across the move to Golem.Syntax.Length (docs/adr ADR 0103)" $
+    testCase "the sp of every named size are fixed across the move to Golem.Length (docs/adr ADR 0103)" $
       sequence_
         [ trim ("\"" <> n <> "\"") @?= Right (Just wh)
         | (n, wh) <-

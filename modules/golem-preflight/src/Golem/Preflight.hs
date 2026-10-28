@@ -19,13 +19,13 @@ import Data.Ord (comparing)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Length qualified as L
 import Golem.Pdf (ColorSpace (..), ColorUse (..), FigureContent (..), ImageData (..), ImportedPage (..), X4Problem (..))
 import Golem.Pdf.Rect (Rect (..))
 import Golem.Preflight.Rules
 import Golem.Preflight.View
 import Golem.Project.Style (Sp, sizeSourcePath, sizeSourceText)
 import Golem.Syntax
-import Golem.Syntax.Length qualified as L
 import Golem.Syntax.Text (tshow)
 
 check :: Rules -> View -> [Diagnostic]

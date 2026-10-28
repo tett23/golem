@@ -53,29 +53,29 @@ tests race han sans serif noto =
     "golem-font (ADR 0001, 0002)"
     [ testGroup
         "shaping"
-        [ goldenShape "latin-ligature-kerning" sans (shapeRequest 1000 "office AVA Typography"),
-          goldenShape "japanese-horizontal" han (shapeRequest 1000 "「日本語の組版」、ー。"),
-          goldenShape "japanese-vertical" han ((shapeRequest 1000 "「日本語の組版」、ー。") {srDirection = Vertical}),
+        [ goldenShape "latin-ligature-kerning" sans (shapeRequest "office AVA Typography"),
+          goldenShape "japanese-horizontal" han (shapeRequest "「日本語の組版」、ー。"),
+          goldenShape "japanese-vertical" han ((shapeRequest "「日本語の組版」、ー。") {srDirection = Vertical}),
           testCase "vertical forms differ from horizontal ones for brackets and marks" $ do
-            let h = [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "「、ー")]
-                v = [g | (g, _, _) <- shapeUnits han ((shapeRequest 1000 "「、ー") {srDirection = Vertical})]
+            let h = [g | (g, _, _) <- shapeUnits han (shapeRequest "「、ー")]
+                v = [g | (g, _, _) <- shapeUnits han ((shapeRequest "「、ー") {srDirection = Vertical})]
             assertBool (show (h, v)) (and (zipWith (/=) h v)),
           testCase "palt moves a bracket within its narrowed box; without palt it has no offset (golem-driver ADR 0020)" $ do
-            let offsets feats = [(xo, yo) | (_, _, (_, _, xo, yo)) <- shapeUnits noto ((shapeRequest 1000 "「") {srFeatures = feats})]
+            let offsets feats = [(xo, yo) | (_, _, (_, _, xo, yo)) <- shapeUnits noto ((shapeRequest "「") {srFeatures = feats})]
             case offsets ["palt"] of
               [(xo, _)] -> assertBool "x offset with palt" (xo /= 0)
               other -> assertFailure (show other)
             offsets ["-palt"] @?= [(0, 0)],
           testCase "vertical shaping gives offsets less the vertical origin (golem-driver ADR 0020)" $ do
-            let vertical feats t = [(xo + ox, yo + oy) | (g, _, (_, _, xo, yo)) <- shapeUnits han ((shapeRequest 1000 t) {srDirection = Vertical, srFeatures = feats}), let (ox, oy) = glyphVerticalOrigin han g]
+            let vertical feats t = [(xo + ox, yo + oy) | (g, _, (_, _, xo, yo)) <- shapeUnits han ((shapeRequest t) {srDirection = Vertical, srFeatures = feats}), let (ox, oy) = glyphVerticalOrigin han g]
             vertical [] "漢" @?= [(0, 0)]
             case vertical ["vpal"] "「" of
               [(_, yo)] -> assertBool "y offset with vpal" (yo /= 0)
               other -> assertFailure (show other),
           testCase "the ff ligature is one glyph whose cluster covers two letters" $ do
-            let gs = shape sans (shapeRequest (10 * 65536) "office")
+            let gs = shapeUnits sans (shapeRequest "office")
             length gs @?= 5
-            map sgCluster gs @?= [0, 1, 3, 4, 5]
+            [c | (_, c, _) <- gs] @?= [0, 1, 3, 4, 5]
         ],
       testGroup
         "licence and units"
@@ -92,14 +92,6 @@ tests race han sans serif noto =
           testCase "fsType as the OpenType specification reads it: the least restrictive usage, no subsetting (golem-driver ADR 0016)" $ do
             sequence_ [loadFont (withFsType v serif) >>= (@?= Left (EmbeddingRestricted v)) . void | v <- [0x0102, 0x0100, 0x0302]]
             sequence_ [loadFont (withFsType v serif) >>= (@?= Right ()) . void | v <- [0x0000, 0x0004, 0x0008, 0x0006, 0x000A]],
-          testCase "units are converted to sp with a single rounding" $ do
-            -- 333 units of 1000 at 10.5pt: 333 × 688128 / 1000 = 229146.624
-            unitsToSp 1000 688128 333 @?= 229147
-            -- rounding each step separately would give a different value
-            unitsToSp 1000 688128 333 /= round (fromIntegral (round (333 / 1000 * 10.5 * 100 :: Double) :: Integer) / 100 * 65536 :: Double) @?= True
-            -- half to even
-            unitsToSp 2 1 1 @?= 0
-            unitsToSp 2 3 1 @?= 2,
           testCase "the centre of the ideographic em box lies within the extents (golem-driver ADR 0015)" $ do
             let (asc, desc, _) = fontExtents han
                 c = fontEmBoxCentral han
@@ -108,24 +100,24 @@ tests race han sans serif noto =
             c @?= 420,
           testCase "metrics come from FreeType in font units" $ do
             fontUnitsPerEm han @?= 1000
-            case glyphMetrics han (head' [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "日")]) of
+            case glyphMetrics han (head' [g | (g, _, _) <- shapeUnits han (shapeRequest "日")]) of
               Just m -> gmAdvance m @?= 1000
               Nothing -> assertFailure "no metrics"
         ],
       testGroup
         "subsetting (ADR 0002)"
         [ testCase "the same glyph set gives the same bytes" $ do
-            let gids = [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "日本語の組版")]
+            let gids = [g | (g, _, _) <- shapeUnits han (shapeRequest "日本語の組版")]
             a <- subsetFont han gids
             b <- subsetFont han (reverse gids)
             a @?= b
             assertBool "non-empty" (maybe False ((> 100) . BS.length) a),
           testCase "used glyphs stay with their ids; unused ones are emptied" $ do
-            let used = [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "日本")]
-                unused = head' [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "語")]
+            let used = [g | (g, _, _) <- shapeUnits han (shapeRequest "日本")]
+                unused = head' [g | (g, _, _) <- shapeUnits han (shapeRequest "語")]
             sub <- subsetFont han used >>= maybe (assertFailure "subset failed") pure
             f <- loadFont sub >>= either (assertFailure . show) pure
-            [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "日本")] @?= used
+            [g | (g, _, _) <- shapeUnits han (shapeRequest "日本")] @?= used
             mapM_ (assertBool "outline kept" . maybe False ((/= (0, 0, 0, 0)) . gmBBox) . glyphMetrics f) used
             assertBool "outline dropped" (maybe True ((== (0, 0, 0, 0)) . gmBBox) (glyphMetrics f unused)),
           testCase "the subset tag comes from the glyph set" $ do
@@ -145,7 +137,7 @@ tests race han sans serif noto =
             f <- loadFont serif >>= either (assertFailure . show) pure
             fontCidSystemInfo f @?= Nothing,
           testCase "a subset keeps the ROS and the CIDs of the glyphs used" $ do
-            let used = [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "「日本語の組版」、ー。")]
+            let used = [g | (g, _, _) <- shapeUnits han (shapeRequest "「日本語の組版」、ー。")]
             sub <- subsetFont han used >>= maybe (assertFailure "subset failed") pure
             f <- loadFont sub >>= either (assertFailure . show) pure
             fontCidSystemInfo f @?= fontCidSystemInfo han
