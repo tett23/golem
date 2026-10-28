@@ -7,6 +7,7 @@ import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.Pdf (PdfInput (..), layoutPages)
@@ -196,23 +197,29 @@ pluginTests =
                  Just (diagSpan d) @?= topOf r "chapters/01.gm"
                ds -> assertFailure (show ds),
          -- docs/adr ADR 0101
-         testCase "G06100: a command that writes NaN in a deferred expression, at the call" $
-           withPlugins [("nf", "nonfinite.wat")] (pluginDeclOf "nf" "") $ \tmp -> do
-             BS.appendFile (tmp </> "chapters/02.gm") "\n[nan]\n"
-             r <- build (defaultOptions tmp)
-             case [d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G06100"] of
-               [d] -> do
-                 diagMessage d @?= "nf.nan: 遅延した式に有限でない浮動小数点数（NaN）があります"
-                 Just (spanFile (diagSpan d)) @?= sourceFileId r "chapters/02.gm"
-               ds -> assertFailure (show ds),
-         testCase "G06100: a filter that writes NaN in a deferred expression, at the top of the file" $
-           withPlugins [("nf", "nonfinite.wat")] (pluginDeclOf "nf" "" <> filterDecl "nf" "nan") $ \tmp -> do
-             r <- build (defaultOptions tmp)
-             case [d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G06100"] of
-               [d] -> do
-                 diagMessage d @?= "nf.nan: 遅延した式に有限でない浮動小数点数（NaN）があります"
-                 Just (diagSpan d) @?= topOf r "chapters/01.gm"
-               ds -> assertFailure (show ds),
+         testCase "G06100: a command that writes NaN, Infinity or -Infinity in a deferred expression, at the call" $
+           mapM_
+             ( \(name, v) -> withPlugins [("nf", "nonfinite.wat")] (pluginDeclOf "nf" "") $ \tmp -> do
+                 BS.appendFile (tmp </> "chapters/02.gm") ("\n[" <> TE.encodeUtf8 name <> "]\n")
+                 r <- build (defaultOptions tmp)
+                 case [d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G06100"] of
+                   [d] -> do
+                     diagMessage d @?= "nf." <> name <> ": 遅延した式に有限でない浮動小数点数（" <> v <> "）があります"
+                     Just (spanFile (diagSpan d)) @?= sourceFileId r "chapters/02.gm"
+                   ds -> assertFailure (show ds)
+             )
+             nonFinite,
+         testCase "G06100: a filter that writes NaN, Infinity or -Infinity in a deferred expression, at the top of the file" $
+           mapM_
+             ( \(name, v) -> withPlugins [("nf", "nonfinite.wat")] (pluginDeclOf "nf" "" <> filterDecl "nf" (TE.encodeUtf8 name)) $ \tmp -> do
+                 r <- build (defaultOptions tmp)
+                 case [d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G06100"] of
+                   [d] -> do
+                     diagMessage d @?= "nf." <> name <> ": 遅延した式に有限でない浮動小数点数（" <> v <> "）があります"
+                     Just (diagSpan d) @?= topOf r "chapters/01.gm"
+                   ds -> assertFailure (show ds)
+             )
+             nonFinite,
          testCase "G06002: a plugin missing from the lock, or with another URL there" $
            withPluginProject pluginDecl $ \tmp -> do
              locked <- TIO.readFile (tmp </> "plugins.lock")
@@ -334,4 +341,7 @@ pluginTests =
        ]
   where
     pluginDecl = pluginDeclWith ""
+    -- the commands and filters of nonfinite.wat and the values they write (docs/adr ADR 0101)
+    nonFinite :: [(T.Text, T.Text)]
+    nonFinite = [("nan", "NaN"), ("inf", "Infinity"), ("ninf", "-Infinity")]
     pluginDeclWith extra = pluginDeclOf "identity" extra <> filterDecl "identity" "same"

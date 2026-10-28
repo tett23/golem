@@ -265,7 +265,7 @@ assembleResults channels style manifest project projectDiags results
           numberSites = Map.unions (map erNumberSites (Map.elems results))
           cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style)) channels pageLines
           -- the lines of a page; without [page.grid], no limit (docs/adr ADR 0047)
-          pageLines = maybe maxBound gridLines (stPage style >>= pageGrid)
+          pageLines = maybe maxBound (fromIntegral . gridLines) (stPage style >>= pageGrid)
           (book, s1Diags) = assemble cfg evalDeferred (map fst chapterRuns)
        in (Just book, s1Diags)
 

@@ -306,7 +306,8 @@ columns @column-gap@ apart, rounded down to sp.
 indexColumnSet :: Style -> PageGeometry -> Maybe ColumnSet
 indexColumnSet style geom = do
   ix <- stIndex style
-  n <- ixColumns ix
+  -- at most the largest Int (Golem.Project.Style)
+  n <- fromIntegral <$> ixColumns ix
   let ta = pgTypeArea geom
       w = if pgVertical geom then rectH ta else rectW ta
       gap = maybe (pageColumnGap style geom) (dimToSp (pgFontSize geom)) (ixColumnGap ix)

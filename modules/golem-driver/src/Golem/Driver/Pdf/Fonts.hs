@@ -522,7 +522,7 @@ of a page (golem-driver ADR 0032).
 -}
 headingLines :: Text -> Style -> Int -> Int -> Int
 headingLines lang style capacity level =
-  fromMaybe (min capacity (snd (headingDefaults lang level))) (Map.lookup level (stHeadings style) >>= hsLines)
+  maybe (min capacity (snd (headingDefaults lang level))) fromIntegral (Map.lookup level (stHeadings style) >>= hsLines)
 
 {- | The default size and least grid lines of a heading by the book's
 language and the level (golem-driver ADR 0032): a book whose language

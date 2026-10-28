@@ -106,6 +106,7 @@ import Golem.Regex (RegexError (..), compile)
 import Golem.Syntax
 import Golem.Syntax.Length (Sp (..))
 import Golem.Syntax.Length qualified as L
+import Numeric.Natural (Natural)
 import Toml qualified
 import Toml.Schema
 import Toml.Schema.Matcher (inKey)
@@ -162,10 +163,10 @@ dimToSp fontSize (Zw r) = L.zwToSp fontSize r
 
 data Grid = Grid
   { gridFontSize :: !Dim,
-    gridCharacters :: !Int,
-    gridLines :: !Int,
+    gridCharacters :: !Natural,
+    gridLines :: !Natural,
     gridLinePitch :: !Dim,
-    gridColumns :: !Int,
+    gridColumns :: !Natural,
     gridColumnGap :: !(Maybe Dim),
     gridTop :: !Dim,
     gridGutter :: !Dim
@@ -710,7 +711,7 @@ data HeadingStyle = HeadingStyle
     hsNumber :: !(Maybe Text),
     hsRectoBreak :: !Bool,
     -- | the least grid lines the heading takes (golem-driver ADR 0032)
-    hsLines :: !(Maybe Int),
+    hsLines :: !(Maybe Natural),
     -- | the rules before and after the heading (golem-driver ADR 0027)
     hsRuleBefore :: !(Maybe RuleSpec),
     hsRuleAfter :: !(Maybe RuleSpec)
@@ -766,7 +767,7 @@ Without columns, the index is set in the columns of the page; without
 column-gap, the gap is the column-gap of [page.grid].
 -}
 data IndexStyle = IndexStyle
-  { ixColumns :: !(Maybe Int),
+  { ixColumns :: !(Maybe Natural),
     ixColumnGap :: !(Maybe Dim),
     -- | where the value of columns starts in style.toml, for G07044
     ixColumnsAt :: !Int
@@ -1815,9 +1816,10 @@ newtype IndexSec = IndexSec IndexStyle
 instance FromValue IndexSec where
   fromValue = parseTableFromValue $ do
     cs <- optKeyOf "columns" $ \v -> case v of
-      -- a negative number is G02103 (docs/adr ADR 0102)
-      Integer' _ n | n < 0 -> fromIntegral <$> naturalOf v
-      Integer' _ n | n >= 1 && n <= toInteger (maxBound :: Int) -> pure (fromInteger n)
+      -- a natural number: a negative one is G02103 (docs/adr ADR 0102)
+      Integer' {} ->
+        naturalOf v >>= \n ->
+          if n >= 1 && n <= fromIntegral (maxBound :: Int) then pure n else failAt (valueAnn v) "[index] の columns は 1 以上の整数です"
       _ -> failAt (valueAnn v) "[index] の columns は 1 以上の整数です"
     gap <- optKeyOf "column-gap" $ \v -> case v of
       Text' _ t | Just d <- parseSignedDim t, not (negativeDim d) -> pure d
