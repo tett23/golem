@@ -19,7 +19,7 @@ import Control.Monad (when)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Project.Manifest (decodeStrictBy)
+import Golem.Project.Manifest (decodeStrictBy, naturalOf)
 import Golem.Project.Style (Dim (..), Sp, parseDim)
 import Golem.Syntax (Diagnostic, FileId)
 import Toml.Schema
@@ -250,6 +250,8 @@ lengthOf k = \case
 -- | An integer at least @low@.
 countOf :: Text -> Integer -> Value' l -> Matcher l Int
 countOf k low = \case
+  -- a negative number is G02103 (docs/adr ADR 0102)
+  v@(Integer' _ n) | n < 0 -> fromIntegral <$> naturalOf v
   Integer' l n
     | n < low -> bad l k (T.pack (show n)) (if low == 0 then "負の値は使えません" else "1 以上の整数にします")
     | n > 1000000 -> bad l k (T.pack (show n)) "大きすぎます"

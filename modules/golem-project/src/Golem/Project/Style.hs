@@ -100,7 +100,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Assemble (NoteNumbering (..))
 import Golem.Doc.ListMarkers (NumberFormat, parseNumberFormat)
-import Golem.Project.Manifest (decodeStrictBy)
+import Golem.Project.Manifest (decodeStrictBy, naturalIntOf, naturalOf)
 import Golem.Project.TomlMessage (schemaMessage)
 import Golem.Regex (RegexError (..), compile)
 import Golem.Syntax
@@ -1385,10 +1385,10 @@ enumKey k allowed =
 instance FromValue Grid where
   fromValue = parseTableFromValue $ do
     fs <- reqDim "font-size"
-    ch <- reqKey "characters"
-    ls <- reqKey "lines"
+    ch <- reqKeyOf "characters" naturalIntOf
+    ls <- reqKeyOf "lines" naturalIntOf
     lp <- reqDim "line-pitch"
-    colsAt <- optKeyAt "columns"
+    colsAt <- optKeyOf "columns" (\v -> (valueAnn v,) <$> naturalIntOf v)
     let cols = maybe 1 snd colsAt
     gap <- dimKey "column-gap"
     pos <- reqKey "position"
@@ -1513,7 +1513,7 @@ instance FromValue HeadingStyle where
     s <- dimKey "size"
     n <- optKey "number"
     pb <- enumKey "page-break" ["recto", "any"]
-    ls <- optKeyOf "lines" $ withValue $ \at l -> if l < (1 :: Int) then failAt at ("lines は 1 以上の整数です: " <> show l) else pure l
+    ls <- optKeyOf "lines" $ \v -> naturalIntOf v >>= \l -> if l < 1 then failAt (valueAnn v) ("lines は 1 以上の整数です: " <> show l) else pure l
     -- retired (golem-driver ADR 0014): G03019
     pickKey
       [ Key "running-head" (\v -> failAt (valueAnn v) "[headings.<l>] の running-head は廃止しました。柱に使う見出しは [masters.<名前>] の running-head の content で指定してください"),
@@ -1813,6 +1813,8 @@ newtype IndexSec = IndexSec IndexStyle
 instance FromValue IndexSec where
   fromValue = parseTableFromValue $ do
     cs <- optKeyOf "columns" $ \v -> case v of
+      -- a negative number is G02103 (docs/adr ADR 0102)
+      Integer' _ n | n < 0 -> fromIntegral <$> naturalOf v
       Integer' _ n | n >= 1 && n <= toInteger (maxBound :: Int) -> pure (fromInteger n)
       _ -> failAt (valueAnn v) "[index] の columns は 1 以上の整数です"
     gap <- optKeyOf "column-gap" $ \v -> case v of

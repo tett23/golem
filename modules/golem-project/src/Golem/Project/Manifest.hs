@@ -19,6 +19,8 @@ module Golem.Project.Manifest
     applyEdits,
     decodeStrict,
     decodeStrictBy,
+    naturalOf,
+    naturalIntOf,
   )
 where
 
@@ -35,6 +37,7 @@ import Data.Time.Calendar (Day)
 import Golem.Parser.SourceSettings
 import Golem.Project.TomlMessage (pathText, schemaMessage, semanticMessage, syntaxMessage)
 import Golem.Syntax
+import Numeric.Natural (Natural)
 import Toml qualified
 import Toml.Schema
 import Toml.Schema.FromValue (typeError)
@@ -332,9 +335,9 @@ printings = \case
 instance FromValue Printing where
   fromValue = parseTableFromValue (Printing <$> reqKeyOf "edition" atLeastOne <*> reqKeyOf "printing" atLeastOne <*> reqKey "date")
     where
-      atLeastOne = \case
-        Integer' l n | n < 1 -> failAt l "版と刷の番号は 1 以上の整数です"
-        v -> fromValue v
+      atLeastOne v =
+        naturalIntOf v >>= \n ->
+          if n < 1 then failAt (valueAnn v) "版と刷の番号は 1 以上の整数です" else pure n
 
 instance FromValue ChapterEntry where
   fromValue = \case
@@ -491,4 +494,23 @@ tomlDiagnosticsBy :: ([Scope] -> Text) -> FileId -> Text -> [MatchMessage Positi
 tomlDiagnosticsBy codeAt fid src = map one
   where
     one (MatchMessage loc path msg) =
-      diagnostic (codeAt path) Error (positionSpan fid src loc) (schemaMessage path msg)
+      diagnostic (if msg == naturalOutOfRange then "G02103" else codeAt path) Error (positionSpan fid src loc) (schemaMessage path msg)
+
+{- | The message of toml-parser for a negative number read as a natural
+number. It is G02103 in every file of settings, the code of a negative
+number at a place that takes a natural number (docs/adr ADR 0102).
+-}
+naturalOutOfRange :: String
+naturalOutOfRange = "integer out of range for Natural"
+
+-- | A key that takes a natural number, read as toml-parser reads a 'Natural' (docs/adr ADR 0102).
+naturalOf :: Value' l -> Matcher l Natural
+naturalOf = fromValue
+
+{- | A natural number kept in an 'Int': one past the range of 'Int' is
+the message of toml-parser for it.
+-}
+naturalIntOf :: Value' l -> Matcher l Int
+naturalIntOf v =
+  naturalOf v >>= \n ->
+    if n > fromIntegral (maxBound :: Int) then failAt (valueAnn v) "integer out of range for Int" else pure (fromIntegral n)

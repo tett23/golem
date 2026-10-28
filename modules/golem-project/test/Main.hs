@@ -22,6 +22,7 @@ import Golem.Project qualified as P
 import Golem.Project.Paths
 import Golem.Project.Style
 import Golem.Syntax
+import NaturalKeySpec qualified
 import OutputCharsSpec qualified
 import StylePositionSpec qualified
 import System.Directory (createDirectoryIfMissing, createFileLink)
@@ -566,6 +567,7 @@ tests =
       ColophonSpec.tests,
       OutputCharsSpec.tests,
       StylePositionSpec.tests,
+      NaturalKeySpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))
@@ -604,7 +606,9 @@ tests =
         linesOf "[headings.2]\nnumber = \"{n}\"\n" @?= Just (Just Nothing)
         mapM_
           (\v -> codes (parseStyle (FileId 0) ("[headings.2]\nlines = " <> v <> "\n")) @?= ["G03006"])
-          ["0", "-1", "1.5", "\"3\""],
+          ["0", "1.5", "\"3\""]
+        -- a negative number is G02103 (docs/adr ADR 0102)
+        codes (parseStyle (FileId 0) "[headings.2]\nlines = -1\n") @?= ["G02103"],
       testCase "the placement of notes (golem-driver ADR 0026)" $ do
         fmap stNotesPlacement (parseStyle (FileId 0) "") @?= Right PlaceFoot
         fmap stNotesPlacement (parseStyle (FileId 0) "[notes]\nplacement = \"chapter-end\"\n") @?= Right PlaceChapterEnd

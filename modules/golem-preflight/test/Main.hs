@@ -175,7 +175,6 @@ rulesTests =
       testCase "zw is G09001 at its line" $ g09001 "[bleed-size]\nmin = \"1zw\"\n" 1,
       testCase "error-below above warning-below is G09001 at its line" $ g09001 "[image-resolution]\ngray = { error-below = 400, warning-below = 300 }\n" 1,
       testCase "an unknown based-on is G09001" $ g09001 "based-on = \"strict\"\n" 0,
-      testCase "a negative threshold is G09001" $ g09001 "[ink-coverage]\nmax = -1\n" 1,
       testCase "TOML that does not parse is G09001" $
         either codesOf (const []) (parseRules (FileId 0) "[[") @?= ["G09001"],
       testCase "every key of every check goes to its own field" $
@@ -244,12 +243,17 @@ rulesTests =
         g09001 "[ink-coverage]\nmax = 1000001\n" 1
         ruPageMultiple (parsed "[page-count]\nmultiple-of = 1\n") @?= 1
         g09001 "[page-count]\nmultiple-of = 0\n" 1,
+      -- docs/adr ADR 0102
+      testCase "a negative count is G02103 at its value, with the message of the key" $ do
+        let errs src = either (map (\d -> let DiagnosticCode c = diagCode d in (c, diagMessage d, spanStart (diagSpan d)))) (const []) (parseRules (FileId 0) src)
+        errs "[ink-coverage]\nmax = -1\n" @?= [("G02103", "ink-coverage.max には 0 以上の整数を書きます", 21)]
+        errs "[page-count]\nmultiple-of = -1\n" @?= [("G02103", "page-count.multiple-of には 0 以上の整数を書きます", 27)]
+        errs "[image-resolution]\ncolor = { error-below = -1 }\n" @?= [("G02103", "image-resolution.color.error-below には 0 以上の整数を書きます", 43)],
       testCase "the messages of G09001 name the key, the value and what to write" $ do
         let msgs src = either (map diagMessage) (const []) (parseRules (FileId 0) src)
         msgs "[image-resolution]\ngray = { error-below = 400, warning-below = 300 }\n"
           @?= ["gray.error-below の値が正しくありません: 400（warning-below の 300 より大きくできません） (image-resolution.gray)"]
         msgs "[page-count]\nmultiple-of = 0\n" @?= ["multiple-of の値が正しくありません: 0（1 以上の整数にします） (page-count.multiple-of)"]
-        msgs "[ink-coverage]\nmax = -1\n" @?= ["max の値が正しくありません: -1（負の値は使えません） (ink-coverage.max)"]
         msgs "[image-color-space]\nallowed = [\"cmyk\", \"lab\"]\n" @?= ["allowed の値が正しくありません: lab（cmyk、gray、rgb のどれかにします） (image-color-space.allowed)"]
         msgs "[font-formats]\nallowed = [\"opentype\"]\n" @?= ["allowed の値が正しくありません: opentype（cff、cff2、truetype のどれかにします） (font-formats.allowed)"]
         msgs "[bleed-size]\nmin = \"3\"\n" @?= ["min の値が正しくありません: 3（長さは 3mm や 0.25pt のように書きます） (bleed-size.min)"]
