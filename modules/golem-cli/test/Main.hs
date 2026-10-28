@@ -346,6 +346,7 @@ explainTests =
         assertBool err ("診断のコードは G と 5 桁の数字です: G0258" `isPrefixOf` err),
       exitsWith (ExitFailure 2) ["explain", "G99999"],
       exitsWith (ExitFailure 2) ["explain", "nope"],
+      severalCodesTests,
       testCase "golem check with a syntax error ends with the hint" $ do
         (code, err) <- golemIn syntaxErrorFiles ["check"]
         assertEqual err (ExitFailure 1) code
@@ -360,6 +361,52 @@ explainTests =
         (code, err) <- golemIn syntaxErrorFiles ["check", "--format", "json"]
         assertEqual err (ExitFailure 1) code
         assertBool err (isJust (J.decode (BL.fromStrict (TE.encodeUtf8 (T.pack err))) :: Maybe J.Value))
+    ]
+
+-- | golem explain with several codes (golem-cli ADR 0009).
+severalCodesTests :: TestTree
+severalCodesTests =
+  testGroup
+    "golem explain with several codes (ADR 0009)"
+    [ testCase "golem explain G01017 G01002: the sections in order, a blank line between" $ do
+        (_, a, _) <- golemSplit ["explain", "G01017"]
+        (_, b, _) <- golemSplit ["explain", "G01002"]
+        (code, out, err) <- golemSplit ["explain", "G01017", "G01002"]
+        assertEqual err ExitSuccess code
+        out @?= a <> "\n" <> b
+        err @?= "",
+      testCase "golem explain G01002 G01017: the order of the command line" $ do
+        (_, a, _) <- golemSplit ["explain", "G01017"]
+        (_, b, _) <- golemSplit ["explain", "G01002"]
+        (code, out, err) <- golemSplit ["explain", "G01002", "G01017"]
+        assertEqual err ExitSuccess code
+        out @?= b <> "\n" <> a,
+      testCase "a code given twice, in any case, is shown once" $ do
+        (_, expected, _) <- golemSplit ["explain", "G01017", "G01002"]
+        (code, out, err) <- golemSplit ["explain", "G01017", "g01017", "G01002", "G01017"]
+        assertEqual err ExitSuccess code
+        out @?= expected,
+      testCase "an unknown code among them: 2, the others on stdout, one line on stderr" $ do
+        (_, expected, _) <- golemSplit ["explain", "G01017", "G01002"]
+        (code, out, err) <- golemSplit ["explain", "G01017", "G99999", "G01002"]
+        code @?= ExitFailure 2
+        out @?= expected
+        err @?= "未知の診断のコードです: G99999。プラグインが出す診断は、プラグインの文書を参照してください\n",
+      testCase "every bad code is reported once, in order" $ do
+        (_, expected, _) <- golemSplit ["explain", "G01017"]
+        (code, out, err) <- golemSplit ["explain", "G01017", "G0101", "nope", "G0101"]
+        code @?= ExitFailure 2
+        out @?= expected
+        lines err @?= ["診断のコードは G と 5 桁の数字です: G0101", "診断のコードは G と 5 桁の数字です: nope"],
+      testCase "a code of four digits alone: 2, nothing on stdout, one line and no usage on stderr" $ do
+        (code, out, err) <- golemSplit ["explain", "G0258"]
+        code @?= ExitFailure 2
+        out @?= ""
+        err @?= "診断のコードは G と 5 桁の数字です: G0258\n",
+      testCase "golem explain G01017 --format json is a usage error" $ do
+        (code, out, _) <- golemSplit ["explain", "G01017", "--format", "json"]
+        code @?= ExitFailure 2
+        out @?= ""
     ]
 
 -- | The TOML messages are Japanese in the output of golem check (golem-project ADR 0007).

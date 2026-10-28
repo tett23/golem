@@ -84,7 +84,7 @@ golem new mybook
 | `golem fmt [--check] [FILE...]` | 原稿を整形する |
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
 | `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
-| `golem explain [CODE]` | diagnostic のコードの説明を表示する。コードを省くと一覧を表示する |
+| `golem explain [CODE...]` | diagnostic のコードの説明を表示する。複数のコードを渡すと、渡した順に続けて表示する。コードを省くと一覧を表示する |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
 
 原稿の段落は、既定では空行で区切る。
