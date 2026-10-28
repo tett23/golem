@@ -290,7 +290,7 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.
               | haNoNumber a = (cs, Nothing)
               | otherwise =
                   let cur = cs !! (l - 1)
-                      n = fromMaybe (cur + 1) (haNumber a)
+                      n = maybe (cur + 1) toInteger (haNumber a)
                       upd = take (l - 1) cs <> [n] <> replicate (3 - l) 0
                    in (upd, Just (take l upd))
             fmt = fromMaybe (defaultHeadingFormat l) (Map.lookup l (acHeadingFormats cfg))
@@ -299,7 +299,7 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.
             figureReset = if l == 1 then 0 else nsFigure st
             info = HeadingInfo l nums numText (fromMaybe is (haTocTitle a)) (headingAnchor lbl sp) fid
             -- G04007: @number equal to the number it would get without it (golem-syntax ADR 0002)
-            redundant = [redundantNumber cfg sp n | not (haNoNumber a), Just n <- [haNumber a], n == cs !! (l - 1) + 1]
+            redundant = [redundantNumber cfg sp n | not (haNoNumber a), Just n <- [toInteger <$> haNumber a], n == cs !! (l - 1) + 1]
         put
           st
             { nsDiags = nsDiags st <> redundant,
@@ -413,7 +413,7 @@ listNumberNotices cfg = concatMap (blocks . docBlocks)
             found =
               [ redundantNumber cfg (if i == 0 then sp else itemSpan sp it) n
               | (i, it, auto) <- zip3 [0 :: Int ..] items autos,
-                Just n <- [itemNumber it],
+                Just n <- [toInteger <$> itemNumber it],
                 n == auto
               ]
          in (lastMaybe nums, acc <> found <> concatMap (blocks . itemBlocks) items)
@@ -424,7 +424,7 @@ listNumberNotices cfg = concatMap (blocks . docBlocks)
       FigureBlock f -> [figCaption f]
       _ -> []
     numbersFrom _ [] = []
-    numbersFrom next (ListItem n _ : rest) = let k = fromMaybe next n in k : numbersFrom (k + 1) rest
+    numbersFrom next (ListItem n _ : rest) = let k = maybe next toInteger n in k : numbersFrom (k + 1) rest
     itemSpan sp it = case itemBlocks it of
       (Block bsp _ _ : _) -> bsp
       [] -> sp

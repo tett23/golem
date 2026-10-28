@@ -402,7 +402,7 @@ block c (Block sp lbl body) = case body of
     let start = case items of
           (ListItem (Just n) _ : _) -> " start=\"" <> T.pack (show n) <> "\""
           _ -> ""
-     in "<ol" <> idAttr lbl <> listClass (NE.length . hlNumbers) <> start <> ">\n" <> T.concat (zipWith (\i it -> item inList (if i > (0 :: Int) then itemNumber it else Nothing) it) [0 ..] items) <> "</ol>\n"
+     in "<ol" <> idAttr lbl <> listClass (NE.length . hlNumbers) <> start <> ">\n" <> T.concat (zipWith (\i it -> item inList (if i > (0 :: Int) then toInteger <$> itemNumber it else Nothing) it) [0 ..] items) <> "</ol>\n"
   DefList gs ->
     "<dl"
       <> idAttr lbl

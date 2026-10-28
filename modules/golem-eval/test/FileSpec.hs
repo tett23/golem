@@ -1174,7 +1174,7 @@ oneCode src = case run ctx src of
 (golem-driver ADR 0023).
 -}
 linesOf :: Code -> [(Text, Maybe Integer, Maybe DiffMark, Bool, [Int])]
-linesOf c = [(clText l, clNumber l, clDiff l, clHighlight l, clCallouts l) | l <- codeLines c]
+linesOf c = [(clText l, toInteger <$> clNumber l, clDiff l, clHighlight l, clCallouts l) | l <- codeLines c]
 
 -- | Code blocks for technical books (golem-driver ADR 0023).
 codeTests :: TestTree

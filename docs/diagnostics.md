@@ -3415,7 +3415,7 @@ manifest.toml の誤りです
 
 `manifest.toml` が TOML として読めないか、スキーマに合わないか、出力ターゲットが一つもない。
 `[source]` と章の項目の `[source]` のキー（`paragraph-separator` など）の未知のキーと不正な値、同じファイルを章の配列に二度並べて適用される `[source]` の値が異なる場合も、この誤りとする。
-`[metadata]` の `creators` と `contributors` の `role` が役割の表の語でない場合、`name` が空の文字列の場合、`publisher-person` が空の文字列か改行を含む場合、`printings` の版か刷が 0 の場合（負の数は [G02103](#g02103)（[docs/adr/0102](adr/0102-natural-number-type.md)））、`printings` が版と刷の順に狭義に増えていない場合、`printings` の `date` が前の項目より前の場合も、この誤りとする。
+`[metadata]` の `creators` と `contributors` の `role` が役割の表の語でない場合、`name` が空の文字列の場合、`publisher-person` が空の文字列か改行を含む場合、`printings` の版か刷が 0 の場合（負の数は [G02103](#g02103)、[docs/adr/0102](adr/0102-natural-number-type.md)）、`printings` が版と刷の順に狭義に増えていない場合、`printings` の `date` が前の項目より前の場合も、この誤りとする。
 
 - メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、`章は、ファイルのパス、表、配列のどれかで書きます`、`役割は語で書きます。"<符号>" は "<語>" です`、`役割は <語の一覧> のどれかです: <値>`、`発行所は [metadata] の publisher に、発行人は publisher-person に書きます`、`name に空の文字列は書けません`、`publisher-person に空の文字列は書けません`、`publisher-person に改行は書けません`、`版と刷の番号は 1 以上の整数です`、`printings は版と刷の順に、同じ版と刷を二度書かずに並べます`、`printings の date が前の項目の date より前です`、または TOML のスキーマの誤りの文言（`知らないキーです: <経路>.<キー>`、`必須のキーがありません: <経路>.<キー>`、`<経路> には<型>を書きます（<型>が書かれています）`、`[source]` の不正な値など）。TOML の誤りの詳細は、`文字列が閉じていません`、`閉じた表にキーを足しています: <キー>` などの日本語の文言である。経路は `metadata.title` や `chapters[0]` の形で書く。Golem の検査の文言には、`(chapters[0])` のように経路を後ろに添える。経路が空のとき（ファイルの最上位の誤り）は添えない。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）。位置は、スキーマの誤りと Golem が値の読み込みで調べる誤り（章の項目、`[source]` の値など）では誤った値の位置、TOML の構文の誤りではその誤りの位置、それ以外（出力ターゲットが一つもないなど）では `manifest.toml` の先頭である
@@ -3550,7 +3550,7 @@ style.toml の誤りです
 `style.toml` が TOML として読めないか、スキーマに合わないか、値が範囲の外にある。
 フォントのファイルの欠落には使わない（[G03010](#g03010)、[G08002](#g08002)）。
 判型（`[page]` の `size`）の誤りには使わない（[G03017](#g03017)）。
-自然数を読むキー（`[page.grid]` の `characters`、`lines`、`columns`、見出しの `lines`、`[index]` の `columns`）の負の数には使わない（[G02103](#g02103)（[docs/adr/0102](adr/0102-natural-number-type.md)））。
+自然数を読むキー（`[page.grid]` の `characters`、`lines`、`columns`、見出しの `lines`、`[index]` の `columns`）の負の数には使わない（[G02103](#g02103)、[docs/adr/0102](adr/0102-natural-number-type.md)）。
 マスターページの柱の内容の誤りには使わない（[G03014](#g03014)）。
 見出しの `running-head` には使わない（[G03019](#g03019)）。
 文字スタイルと段落スタイルの `kerning`、`tracking`、`proportional-metrics`、`baseline-shift` の誤りには使わない（[G03021](#g03021)）。

@@ -2071,7 +2071,7 @@ lineIndexOfItems _ ls i =
 
 -- | A figure by its file and its page (1 unless a PDF figure says otherwise).
 figureKey :: Figure -> (Text, Int)
-figureKey f = (figSource f, fromMaybe 1 (figPage f))
+figureKey f = (figSource f, maybe 1 fromIntegral (figPage f))
 
 {- | The width and the height of a figure, by which its size is worked out:
 the pixels of an image, the crop box of a PDF figure after its rotation

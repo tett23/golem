@@ -11,7 +11,7 @@ sp :: SrcSpan
 sp = SrcSpan (FileId 0) 0 1
 
 item :: Maybe Integer -> ListItem
-item n = ListItem n [Block sp Nothing (Paragraph Nothing [Text sp "x"])]
+item n = ListItem (fromInteger <$> n) [Block sp Nothing (Paragraph Nothing [Text sp "x"])]
 
 tests :: TestTree
 tests =

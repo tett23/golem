@@ -948,7 +948,7 @@ indexStyleTests =
               codes r @?= ["G03025"]
               either (map (spanStart . diagSpan)) (const []) r @?= [T.length "[index]\ncolumns = "]
           )
-          ["0", "-1", "1.5", "\"2\""],
+          ["0", "1.5", "\"2\""],
       testCase "a column-gap that is negative or not a dimension is G03025" $ do
         codes (parseStyle (FileId 0) "[index]\ncolumns = 2\ncolumn-gap = \"-1zw\"\n") @?= ["G03025"]
         codes (parseStyle (FileId 0) "[index]\ncolumns = 2\ncolumn-gap = \"abc\"\n") @?= ["G03025"],

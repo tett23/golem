@@ -8,6 +8,7 @@ import Golem.Syntax.Span
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import Numeric.Natural (Natural)
 
 genSpan :: Gen SrcSpan
 genSpan = do
@@ -75,6 +76,10 @@ genInt64 =
       Gen.element [maxInt64, minInt64, maxInt64 - 1, minInt64 + 1, 4294967296, -4294967297]
     ]
 
+-- | A natural number of the CDDL @uint64@ (docs/adr ADR 0102).
+genNat :: Gen Natural
+genNat = fromInteger <$> genNonNegative64
+
 -- | A non-negative integer of the CDDL @int64@, with its end.
 genNonNegative64 :: Gen Integer
 genNonNegative64 = Gen.choice [Gen.integral (Range.linear 0 10000000), Gen.integral (Range.linear 0 maxInt64), pure maxInt64]
@@ -127,14 +132,14 @@ genBlock =
         ChannelOutput <$> Gen.choice [Gen.element [TocOutput 2, IndexOutput, BibliographyOutput], CustomOutput <$> genText <*> Gen.maybe genText],
         Table <$> Gen.list (Range.singleton 2) Gen.enumBounded <*> Gen.list (Range.singleton 2) inl <*> Gen.list (Range.linear 0 2) (Gen.list (Range.singleton 2) inl)
       ]
-      [ BulletList <$> Gen.list (Range.linear 1 3) (ListItem <$> Gen.maybe genInt64 <*> Gen.list (Range.linear 0 2) genBlock),
+      [ BulletList <$> Gen.list (Range.linear 1 3) (ListItem <$> Gen.maybe genNat <*> Gen.list (Range.linear 0 2) genBlock),
         OrderedList <$> Gen.list (Range.linear 1 3) (ListItem Nothing <$> Gen.list (Range.linear 0 2) genBlock),
         DefList <$> Gen.list (Range.linear 1 2) (DefGroup <$> Gen.list (Range.linear 1 2) inl <*> Gen.list (Range.linear 1 2) (Gen.list (Range.linear 0 2) genBlock)),
-        FigureBlock <$> (Figure <$> genText <*> Gen.maybe genText <*> genText <*> Gen.maybe Gen.enumBounded <*> Gen.maybe genText <*> Gen.list (Range.linear 0 1) genBlock <*> Gen.maybe (Gen.int (Range.linear 1 9)) <*> Gen.bool)
+        FigureBlock <$> (Figure <$> genText <*> Gen.maybe genText <*> genText <*> Gen.maybe Gen.enumBounded <*> Gen.maybe genText <*> Gen.list (Range.linear 0 1) genBlock <*> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.bool)
       ]
   where
     inl = Gen.list (Range.linear 0 3) genInline
-    attrs = HeadingAttrs <$> Gen.maybe inl <*> Gen.maybe genInt64 <*> Gen.bool <*> Gen.bool
+    attrs = HeadingAttrs <$> Gen.maybe inl <*> Gen.maybe genNat <*> Gen.bool <*> Gen.bool
 
 genCode :: Gen Code
 genCode =
@@ -144,7 +149,7 @@ genCode =
     <*> Gen.maybe genText
     <*> Gen.maybe (Gen.list (Range.linear 0 2) genInline)
     <*> Gen.bool
-    <*> Gen.list (Range.linear 0 3) (CodeLine <$> genText <*> Gen.maybe genInt64 <*> Gen.maybe Gen.enumBounded <*> Gen.bool <*> Gen.list (Range.linear 0 2) (Gen.int (Range.linear 1 50)))
+    <*> Gen.list (Range.linear 0 3) (CodeLine <$> genText <*> Gen.maybe genNat <*> Gen.maybe Gen.enumBounded <*> Gen.bool <*> Gen.list (Range.linear 0 2) (Gen.int (Range.linear 1 50)))
 
 genDocument :: Gen Document
 genDocument = Document (FileId 0) <$> Gen.list (Range.linear 0 5) genTopBlock

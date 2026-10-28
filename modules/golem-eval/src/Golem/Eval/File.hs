@@ -837,7 +837,7 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
         [A.Positional v] ->
           naturalArg ctx "@number の引数" sp v >>= \case
             Right n
-              | inInt64 (toInteger n) -> pure (label, f (toInteger n))
+              | inInt64 (toInteger n) -> pure (label, f n)
               -- G02091: as if there were no @number (golem-doc ADR 0006)
               | otherwise -> outOfInt64 sp >> pure (label, body)
             Left NaturalReported -> pure (label, body)
@@ -1514,11 +1514,11 @@ codeOf bsp ca0 start lang ls = do
   withCallouts <- mapM calloutsOf marked
   let numberedFrom c = snd (mapAccumL number (firstOf c) withCallouts)
   ca <-
-    if all inInt64 (firstOf ca0 : [n | CodeLine {clNumber = Just n} <- numberedFrom ca0])
+    if all inInt64 (firstOf ca0 : [toInteger n | CodeLine {clNumber = Just n} <- numberedFrom ca0])
       then pure ca0
       else outOfInt64 bsp >> pure ca0 {caNumbers = Nothing}
   let numbered = numberedFrom ca
-      present = Set.fromList [n | CodeLine {clNumber = Just n} <- numbered]
+      present = Set.fromList [toInteger n | CodeLine {clNumber = Just n} <- numbered]
   hl <- case caHighlight ca of
     Nothing -> pure Set.empty
     Just (asp, rs) -> do
@@ -1532,7 +1532,7 @@ codeOf bsp ca0 start lang ls = do
         codeFile = caFile ca,
         codeCaption = Nothing,
         codeDiff = caDiff ca,
-        codeLines = [l {clHighlight = maybe False (`Set.member` hl) (clNumber l)} | l <- numbered]
+        codeLines = [l {clHighlight = maybe False ((`Set.member` hl) . toInteger) (clNumber l)} | l <- numbered]
       }
   where
     firstOf c = case caNumbers c of
@@ -1540,7 +1540,7 @@ codeOf bsp ca0 start lang ls = do
       _ -> fromMaybe 1 start
     number n (t, d, cs)
       | d == Just DiffRemoved = (n, CodeLine t Nothing d False cs)
-      | otherwise = (n + 1, CodeLine t (Just n) d False cs)
+      | otherwise = (n + 1, CodeLine t (Just (fromInteger n)) d False cs)
     diffOf (lsp, t)
       | not (caDiff ca0) = pure (lsp, t, Nothing)
       | otherwise = case T.uncons t of
