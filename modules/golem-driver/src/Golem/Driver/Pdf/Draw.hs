@@ -734,7 +734,7 @@ drawColumn env p =
              | pr <- poRules p,
                Just info <- [Map.lookup (prId pr) (plRules layout)],
                Just spec <- [if prBefore pr then riBefore info else riAfter info],
-               let band = paragraphRule env ta (riSize info) spec (Sp (prAt pr))
+               let band = paragraphRule env ta (riSize info) spec (prAt pr)
                    sw = ruleSwatch env spec
              ]
           <> [ ("脚注の罫線", r, ruleThinnest t (rsStyle rule), ruleMarks sw (ruleShapes vertical r (rsStyle rule)), sw)
@@ -954,7 +954,7 @@ codeRect env ta slot n start =
 headingLineAt :: DrawEnv -> Int -> HeadingBlock -> Int -> SetLine -> Sp
 headingLineAt env k hb j sl =
   let s = slSize sl
-      top = fromIntegral k * pgLinePitch geom + Sp (hbOffset hb) + fromIntegral j * Sp (hbPitch hb)
+      top = fromIntegral k * pgLinePitch geom + hbOffset hb + fromIntegral j * hbPitch hb
    in top + (if vertical then Sp (unSp s `div` 2) else zwToSp s baselineRatio)
   where
     geom = deGeom env

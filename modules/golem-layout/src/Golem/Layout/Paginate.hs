@@ -51,20 +51,21 @@ import Golem.Layout.Paginate.State
 import Golem.Layout.Paginate.Types
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..), ruleAfter, ruleAfterAtEnd)
 import Golem.Syntax (SrcSpan)
+import Golem.Syntax.Length (Sp (..))
 
 {- | The pitch, span and offset of a heading of size @s@ and @m@ lines on
 a grid of font size @fs@ and pitch @p@: the body's ratio of pitch to
 size is kept, the span is the fewest grid lines that hold it but at
 least @least@ (golem-driver ADR 0032), and the heading is centred in
-them. Integer sp; one rounding.
+them. One rounding.
 -}
-headingBlock :: Integer -> Integer -> Integer -> Int -> Int -> HeadingBlock
-headingBlock fs p s m least =
+headingBlock :: Sp -> Sp -> Sp -> Int -> Int -> HeadingBlock
+headingBlock (Sp fs) (Sp p) (Sp s) m least =
   let hp = round (p * s % fs)
       extent = toInteger (max 1 m - 1) * hp + s
       n = max (toInteger (max 1 least)) ((extent + p - fs + p - 1) `div` p)
       area = (n - 1) * p + fs
-   in HeadingBlock hp (fromInteger n) ((area - extent) `div` 2)
+   in HeadingBlock (Sp hp) (fromInteger n) (Sp ((area - extent) `div` 2))
 
 {- | Lays the flow out on pages of @columns@ columns of @capacity@ grid
 lines each (docs/adr ADR 0018).
@@ -385,7 +386,7 @@ flushJoin env st = case sJoin st of
         (k, off)
           | aLast + 1 + ki >= cap env st - sNoteLines st = ruleAfterAtEnd g a {rsdOutside = if sNoteLines st > 0 then Nothing else rsdOutside a}
           | otherwise = (ki, offi)
-     in st {sRules = sRules st <> [PlacedRule aid False (toInteger aLast * p + h + off)], sUsed = sUsed st + min k (free env st), sJoin = Nothing}
+     in st {sRules = sRules st <> [PlacedRule aid False (fromIntegral aLast * p + h + off)], sUsed = sUsed st + min k (free env st), sJoin = Nothing}
 
 {- | A table: rows whole, a page break between rows repeats the header
 without its labels, notes and marks (golem-driver ADR 0008).

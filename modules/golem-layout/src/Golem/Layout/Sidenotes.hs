@@ -7,6 +7,8 @@ module Golem.Layout.Sidenotes
   )
 where
 
+import Golem.Syntax.Length (Sp)
+
 data SidenoteError
   = -- | the sidenote at this index is taller than the column
     TooTall !Int
@@ -20,7 +22,7 @@ the tops. Notes are pushed down past the previous one, then pulled up
 from the bottom if the last overflows; order is kept and no note rises
 above the column.
 -}
-placeSidenotes :: Integer -> Integer -> [(Integer, Integer)] -> Either SidenoteError [Integer]
+placeSidenotes :: Sp -> Sp -> [(Sp, Sp)] -> Either SidenoteError [Sp]
 placeSidenotes columnH gap notes
   | Just i <- lookupIndex (\(_, h) -> h > columnH) notes = Left (TooTall i)
   | otherwise =

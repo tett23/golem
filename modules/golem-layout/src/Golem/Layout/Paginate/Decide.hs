@@ -29,6 +29,7 @@ import Golem.Layout.Code (codeSpan)
 import Golem.Layout.Paginate.State
 import Golem.Layout.Paginate.Types
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..), ruleAfter, ruleAfterAtEnd, ruleBefore, ruleBeforeAtStart, rulesJoined)
+import Golem.Syntax.Length (Sp)
 
 {- | The first part of what follows a heading, a term or a kept paragraph:
 its grid lines and the lines of the notes of its lines (golem-layout ADR 0019).
@@ -179,11 +180,11 @@ bodySize = \case
   RuledLines ls -> length ls
   RuledHeading _ n _ -> n
 
-firstOverhang :: Flow -> Integer
+firstOverhang :: Flow -> Sp
 firstOverhang fr = maybe 0 lbOverhang (listToMaybe (bodyLines (frBody fr)))
 
 -- | The areas inside a column, for 'nextNeed'.
-insideBefore, insideAfter :: Flow -> (Int, Integer)
+insideBefore, insideAfter :: Flow -> (Int, Sp)
 insideBefore fr = maybe (0, 0) (\b -> ruleBefore (frGrid fr) b (firstOverhang fr)) (frBefore fr)
 insideAfter fr = maybe (0, 0) (\a -> ruleAfter (frGrid fr) a (frNextOverhang fr)) (frAfter fr)
 
@@ -207,15 +208,15 @@ planOf env st fr rest joined =
       (k1, before) = case (joined, frBefore fr) of
         (Just ((aid, ga, a, aLast), b), _) ->
           let (k, offA, offB) = rulesJoined ga a b r1
-              joinBase = toInteger (aLast :: Int) * p + h
+              joinBase = fromIntegral (aLast :: Int) * p + h
            in (k, [PlacedRule aid False (joinBase + offA), PlacedRule (frId fr) True (joinBase + offB)])
         (Nothing, Just b)
           | u == top st ->
               let (k, off) = ruleBeforeAtStart g b {rsdOutside = if top st == 0 then rsdOutside b else Nothing} r1
-               in (k, [PlacedRule (frId fr) True (toInteger u * p + off)])
+               in (k, [PlacedRule (frId fr) True (fromIntegral u * p + off)])
           | otherwise ->
               let (k, off) = ruleBefore g b r1
-               in (k, [PlacedRule (frId fr) True (toInteger (u - 1) * p + h + off)])
+               in (k, [PlacedRule (frId fr) True (fromIntegral (u - 1) * p + h + off)])
         (Nothing, Nothing) -> (0, [])
       lastLine = u + k1 + n - 1
       (k2, after) = case frAfter fr of
@@ -226,7 +227,7 @@ planOf env st fr rest joined =
                   (k, off)
                     | lastLine + 1 + ki >= cap env st - sNoteLines st = ruleAfterAtEnd g a {rsdOutside = if notes then Nothing else rsdOutside a}
                     | otherwise = (ki, offi)
-               in (k, [PlacedRule (frId fr) False (toInteger lastLine * p + h + off)])
+               in (k, [PlacedRule (frId fr) False (fromIntegral lastLine * p + h + off)])
         _ -> (0, [])
       waiting = case frAfter fr of
         Just a | joinsNext fr rest -> Just (frId fr, g, a, lastLine)

@@ -292,7 +292,7 @@ codeMeasureDiagnostics fid style locals geom =
 measure and gap, from line 0.
 -}
 pageColumnSet :: Style -> PageGeometry -> ColumnSet
-pageColumnSet style geom = ColumnSet (length (pgColumns geom)) (unSp (columnMeasure geom)) (unSp (pageColumnGap style geom)) 0
+pageColumnSet style geom = ColumnSet (length (pgColumns geom)) (columnMeasure geom) (pageColumnGap style geom) 0
 
 -- | The column-gap of [page.grid] in sp; 0 without one.
 pageColumnGap :: Style -> PageGeometry -> Sp
@@ -312,7 +312,7 @@ indexColumnSet style geom = do
       gap = maybe (pageColumnGap style geom) (dimToSp (pgFontSize geom)) (ixColumnGap ix)
   if n == length (pgColumns geom)
     then Nothing
-    else Just (ColumnSet n (unSp (w - fromIntegral (n - 1) * gap) `div` toInteger n) (unSp gap) 0)
+    else Just (ColumnSet n (Sp (unSp (w - fromIntegral (n - 1) * gap) `div` toInteger n)) gap 0)
 
 {- | G07044: the columns of the index leave 8 characters of the type
 area's size (docs/adr ADR 0025), at the value of [index] columns.
@@ -321,7 +321,7 @@ indexDiagnostics :: FileId -> Style -> PageGeometry -> [Diagnostic]
 indexDiagnostics fid style geom =
   [ diagnostic "G07044" Error (mkSpan fid at at) "索引の段の行長が足りません。columns を減らすか column-gap を狭めてください"
   | Just set <- [indexColumnSet style geom],
-    Sp (csMeasure set) < 8 * pgFontSize geom,
+    csMeasure set < 8 * pgFontSize geom,
     let at = maybe 0 ixColumnsAt (stIndex style)
   ]
 
@@ -332,8 +332,8 @@ bottom in vertical writing.
 columnSetRects :: PageGeometry -> Int -> ColumnSet -> [Rect]
 columnSetRects geom n set =
   let Rect x y w h = typeAreaFor geom n
-      m = Sp (csMeasure set)
-      g = Sp (csGap set)
+      m = csMeasure set
+      g = csGap set
    in [ if pgVertical geom then Rect x (y + h - fromInteger (i + 1) * m - fromInteger i * g) w m else Rect (x + fromInteger i * (m + g)) y m h
       | i <- [0 .. toInteger (csColumns set) - 1]
       ]
@@ -953,8 +953,8 @@ placePageSidenotes geom metricsOf lineMap p =
         [] -> mkSpan (FileId 0) 0 0
    in if null notes
         then Right []
-        else case placeSidenotes (unSp columnH) (unSp bodyPitch `div` 2) [(unSp want, unSp (height sp ls)) | (sp, want, ls) <- notes] of
-          Right tops -> Right [PlacedSidenote sp (Sp t) ls | ((sp, _, ls), t) <- zip notes tops]
+        else case placeSidenotes columnH (Sp (unSp bodyPitch `div` 2)) [(want, height sp ls) | (sp, want, ls) <- notes] of
+          Right tops -> Right [PlacedSidenote sp t ls | ((sp, _, ls), t) <- zip notes tops]
           Left (TooTall i) -> Left [diagnostic "G07033" Error (at i) "傍注が傍注の領域より高く、収まりません"]
           Left (DoesNotFit i) -> Left [diagnostic "G07033" Error (at i) "このページの傍注が傍注の領域に収まりません"]
 
@@ -1300,7 +1300,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
                in case indexSet of
                     Nothing -> (n, entries (UPara noIndent))
                     -- the index in its own columns (docs/adr ADR 0025)
-                    Just set -> (n, [plainUnit (UColumns (Just set)) Nothing []] <> entries (UIndexEntry (Sp (csMeasure set))) <> [plainUnit (UColumns Nothing) Nothing []])
+                    Just set -> (n, [plainUnit (UColumns (Just set)) Nothing []] <> entries (UIndexEntry (csMeasure set)) <> [plainUnit (UColumns Nothing) Nothing []])
             -- each entry of a channel of a plugin a paragraph of its style (golem-doc ADR 0007)
             ChannelOutput (CustomOutput name st) ->
               let (face, ind) = paraLook style geom st
@@ -1496,7 +1496,7 @@ buildFlow inp geom fonts images assumed = do
             (captionItems, captionAnchors) = composeInlines ((styledEnv (uStyle u) (envFor (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption"), ceSizeSource = paraSizeSource (uStyle u) (Just "caption")}) captionInlines
             captionAt len = if null captionInlines then [] else brLines (breakParagraph captionParams (const len) captionItems)
             -- the grid lines a caption of k lines takes: the fewest that hold it, its pitch in the body's ratio of pitch to size
-            captionSpanOf k = if k == 0 then (pitch, 0) else let cb' = headingBlock (unSp fs) (unSp pitch) (unSp cs) k 1 in (Sp (hbPitch cb'), hbSpan cb')
+            captionSpanOf k = if k == 0 then (pitch, 0) else let cb' = headingBlock fs pitch cs k 1 in (hbPitch cb', hbSpan cb')
             -- the caption in the measure before fitting (golem-driver ADR 0034)
             caption = captionAt alongSp
             captionMarks = [sp | AnchorIndex _ sp _ <- captionAnchors]
@@ -1625,7 +1625,7 @@ buildFlow inp geom fonts images assumed = do
             noteLines = Map.fromListWith (flip (<>)) [(lineOfItem (i + cShift c), [(k, nls)]) | ((i, _, _, _), (k, nls)) <- zip (noteAnchors (cAnchors c)) (cNotes c)]
             sidenoteLinesOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [(sp, sls)]) | (i, sp, sls) <- cSidenotes c]
             marksOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [sp]) | (i, sp) <- cMarks c]
-            boxes = [LineBox lid [NoteBody key (length nls) | (key, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) (unSp (overhangOf l)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+            boxes = [LineBox lid [NoteBody key (length nls) | (key, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) (overhangOf l) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
             set = Map.fromList [(lid, SetLine l size (indentOf k) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
          in (boxes, set)
       emptyLine = Line [] 0 0 0 (0, 0) False (0, 0)
@@ -1637,7 +1637,7 @@ buildFlow inp geom fonts images assumed = do
             (inner, outer)
               | before = (sp (rsSpaceAfter spec), sp (rsSpaceBefore spec))
               | otherwise = (sp (rsSpaceBefore spec), sp (rsSpaceAfter spec))
-         in RuleSide (unSp inner) (unSp outer) (unSp (rsWeight spec)) (isJust (rsSpaceBefore spec) || isJust (rsSpaceAfter spec)) (if rsKeepInColumn spec then Nothing else Just (unSp (marginAcross geom before)))
+         in RuleSide inner outer (rsWeight spec) (isJust (rsSpaceBefore spec) || isJust (rsSpaceAfter spec)) (if rsKeepInColumn spec then Nothing else Just (marginAcross geom before))
       -- how far the ruby and kenten of a line reach toward the line before (golem-driver ADR 0033)
       overhangOf = lineOverhang vertical fs (emBoxCentralOf fonts)
       {- a grid line of space after a code block with a background, a band or
@@ -1652,7 +1652,7 @@ buildFlow inp geom fonts images assumed = do
         where
           painted ci = isJust (ciBackground ci) || not (null (ciBands ci)) || isJust (ciBorder ci)
           reaches ci remaining = case remaining of
-            next : _ | Just l <- firstLineOf next -> reachesBackground pitch fs (maybe 0 snd (ciBorder ci)) (Sp (lbOverhang l))
+            next : _ | Just l <- firstLineOf next -> reachesBackground pitch fs (maybe 0 snd (ciBorder ci)) (lbOverhang l)
             _ -> False
           firstLineOf = \case
             FRuled {frBody = RuledLines (l : _)} -> Just l
@@ -1673,7 +1673,7 @@ buildFlow inp geom fonts images assumed = do
                 let heights = stHeaderLines t : stRowLines t
                     starts = scanl (+) nextId heights
                     rowsOut =
-                      [ ( [ LineBox lid [NoteBody key (length nls) | (key, nls) <- ns] (if lid == nextId then label u else []) ms (unSp (maximum (0 : [overhangOf l | c <- cells, (j, l) <- zip [0 :: Int ..] (scLines c), j == k])))
+                      [ ( [ LineBox lid [NoteBody key (length nls) | (key, nls) <- ns] (if lid == nextId then label u else []) ms (maximum (0 : [overhangOf l | c <- cells, (j, l) <- zip [0 :: Int ..] (scLines c), j == k]))
                           | (k, (lid, (ns, _, ms))) <- zip [0 ..] (zip ids att)
                           ],
                           Map.fromList [(lid, SetLine emptyLine fs 0 ns sn) | (lid, (ns, sn, _)) <- zip ids att],
@@ -1777,8 +1777,8 @@ buildFlow inp geom fonts images assumed = do
                     UHeading l _ _ -> headingLines (bookLanguage inp) (uStyle u) capacity l
                     UNotesTitle _ -> headingLines (bookLanguage inp) (uStyle u) capacity 2
                     _ -> 1
-                  hb = headingBlock (unSp fs) (unSp pitch) (unSp size) (length ls) least
-                  ruledOf = FRuled nextId (ruleSide True <$> fst (uRules u)) (ruleSide False <$> snd (uRules u)) False (RuleGrid (unSp pitch) (unSp fs)) 0
+                  hb = headingBlock fs pitch size (length ls) least
+                  ruledOf = FRuled nextId (ruleSide True <$> fst (uRules u)) (ruleSide False <$> snd (uRules u)) False (RuleGrid pitch fs) 0
                   flowOf = case uKind u of
                     UHeading _ _ recto | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledHeading recto (hbSpan hb) boxes)]
                     UPara _ | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledLines boxes)]
@@ -1810,8 +1810,8 @@ buildFlow inp geom fonts images assumed = do
               captionParams = params {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
               (captionItems, captionAnchors) = composeInlines ((styledEnv (uStyle u) (envFor (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption"), ceSizeSource = paraSizeSource (uStyle u) (Just "caption")}) captionInlines
               ls = brLines (breakParagraph captionParams (const (measure - lead)) captionItems)
-              cb = headingBlock (unSp fs) (unSp pitch) (unSp cs) (length ls) 1
-           in CodeCaption ls cs (Sp (hbPitch cb)) (if null ls then 0 else hbSpan cb) [sp | AnchorIndex _ sp _ <- captionAnchors]
+              cb = headingBlock fs pitch cs (length ls) 1
+           in CodeCaption ls cs (hbPitch cb) (if null ls then 0 else hbSpan cb) [sp | AnchorIndex _ sp _ <- captionAnchors]
       codeErrors = concatMap cbErrors (Map.elems codeBlocks)
       -- the text of a list item leaves 8 characters of the type area (golem-driver ADR 0013)
       listTooDeep sp = diagnostic "G07027" Error sp "リストの入れ子が深く、項目の本文の行長が足りません。行長を本文の文字の大きさの 8 字分以上残してください"
