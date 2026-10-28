@@ -3,11 +3,17 @@ module RuleAreaSpec (ruleAreaTests) where
 
 import Data.Maybe (isJust)
 import Golem.Layout.RuleArea
+import Golem.Syntax.Length (Sp (..))
 import Test.Tasty
 import Test.Tasty.HUnit
 
-pt :: Rational -> Integer
-pt x = round (x * 65536)
+pt :: Rational -> Sp
+pt x = Sp (round (x * 65536))
+
+-- | Sp divided by a whole number, and its remainder, as the rules divide.
+divBy, modBy :: Sp -> Integer -> Sp
+divBy (Sp x) n = Sp (x `div` n)
+modBy (Sp x) n = Sp (x `mod` n)
 
 -- | Size 10pt, pitch 17pt: 7pt between the em boxes of two lines.
 grid :: RuleGrid
@@ -20,7 +26,7 @@ side w i o = RuleSide (maybe 0 pt i) (maybe 0 pt o) (pt w) (isJust i || isJust o
 ruleAreaTests :: [TestTree]
 ruleAreaTests =
   [ testCase "inside a column, no spaces, 0.3pt: no line, the rule in the middle of the 7pt" $
-      ruleBefore grid (side 0.3 Nothing Nothing) 0 @?= (0, (pt 7 - pt 0.3) `div` 2),
+      ruleBefore grid (side 0.3 Nothing Nothing) 0 @?= (0, (pt 7 - pt 0.3) `divBy` 2),
     testCase "inside a column, inner 2pt, outer 4pt, 0.5pt: 6.5pt fits in 7pt, the rule 2pt from the paragraph" $ do
       ruleBefore grid (side 0.5 (Just 2) (Just 4)) 0 @?= (0, pt 7 - pt 2 - pt 0.5)
       ruleAfter grid (side 0.5 (Just 2) (Just 4)) 0 @?= (0, pt 2),
@@ -39,7 +45,7 @@ ruleAreaTests =
       ruleAfterAtEnd grid (side 0.5 (Just 5) (Just 10)) @?= (1, pt 5)
       ruleAfterAtEnd grid (side 0.5 (Just 5) Nothing) {rsdOutside = Just (pt 20)} @?= (0, pt 5)
       -- without spaces, in the middle of the line to the edge of the column
-      ruleAfterAtEnd grid (side 0.5 Nothing Nothing) @?= (1, (pt 17 - pt 0.5) `div` 2),
+      ruleAfterAtEnd grid (side 0.5 Nothing Nothing) @?= (1, (pt 17 - pt 0.5) `divBy` 2),
     testCase "rules in a row: 11pt - 7pt rounds up to one line, 6pt or more between them" $ do
       let (k, a, b) = rulesJoined grid (side 0.5 (Just 2) (Just 3)) (side 0.5 (Just 2) (Just 6)) 0
       k @?= 1
@@ -50,14 +56,14 @@ ruleAreaTests =
       let (k, a, b) = rulesJoined grid (side 0.5 Nothing Nothing) (side 0.5 Nothing Nothing) 0
           rest = pt 7 - pt 1
       k @?= 0
-      a @?= rest `div` 3
-      b @?= rest `div` 3 + pt 0.5 + rest `div` 3 + rest `mod` 3
-      (pt 7 - (b + pt 0.5)) @?= rest `div` 3,
+      a @?= rest `divBy` 3
+      b @?= rest `divBy` 3 + pt 0.5 + rest `divBy` 3 + rest `modBy` 3
+      (pt 7 - (b + pt 0.5)) @?= rest `divBy` 3,
     testCase "ruby over the first line: 12.1pt - 7pt is one line; the rule 2pt from the reading" $ do
       ruleBefore grid (side 0.5 (Just 2) (Just 4)) (pt 5.6) @?= (1, pt 24 - pt 5.6 - pt 2 - pt 0.5)
       fst (ruleBefore grid (side 0.5 (Just 2) (Just 4)) 0) @?= 0,
     testCase "ruby over the next line: no line, the rule in the middle of the 1.4pt left" $
-      ruleAfter grid (side 0.3 Nothing Nothing) (pt 5.6) @?= (0, (pt 7 - pt 5.6 - pt 0.3) `div` 2),
+      ruleAfter grid (side 0.3 Nothing Nothing) (pt 5.6) @?= (0, (pt 7 - pt 5.6 - pt 0.3) `divBy` 2),
     testCase "kenten count as ruby does" $
       fst (ruleBefore grid (side 0.5 (Just 2) (Just 4)) (pt 5)) @?= 1,
     testCase "rules in a row: the ruby of the next paragraph is added" $ do
