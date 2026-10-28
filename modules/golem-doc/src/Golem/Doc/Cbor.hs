@@ -367,19 +367,19 @@ termCode t =
   where
     termLine x =
       asList x >>= \case
-        [s, n, d, h, cs] -> CodeLine <$> asText s <*> asOpt asInt n <*> asOpt asEnum d <*> asBool h <*> (asList cs >>= traverse asIntI)
+        [s, n, d, h, cs] -> CodeLine <$> asText s <*> asOpt asNatural n <*> asOpt asEnum d <*> asBool h <*> (asList cs >>= traverse asIntI)
         _ -> bad "コードの行"
 
 termAttrs :: Term -> D HeadingAttrs
 termAttrs t =
   asList t >>= \case
-    [tt, n, nn, nt] -> HeadingAttrs <$> asOpt termInlinesE tt <*> asOpt asInt n <*> asBool nn <*> asBool nt
+    [tt, n, nn, nt] -> HeadingAttrs <$> asOpt termInlinesE tt <*> asOpt asNatural n <*> asBool nn <*> asBool nt
     _ -> bad "見出しの属性"
 
 termItem :: Term -> D ListItem
 termItem t =
   asList t >>= \case
-    [n, bs] -> ListItem <$> asOpt asInt n <*> (asList bs >>= traverse termBlock)
+    [n, bs] -> ListItem <$> asOpt asNatural n <*> (asList bs >>= traverse termBlock)
     _ -> bad "リストの項目"
 
 termGroup :: Term -> D DefGroup
@@ -392,7 +392,7 @@ termFigure :: Term -> D Figure
 termFigure t =
   asList t >>= \case
     [src, web, alt, wr, w, cap, pg, rot] ->
-      Figure <$> asText src <*> asOpt asText web <*> asText alt <*> asOpt asEnum wr <*> asOpt asText w <*> (asList cap >>= traverse termBlock) <*> asOpt asIntI pg <*> asBool rot
+      Figure <$> asText src <*> asOpt asText web <*> asText alt <*> asOpt asEnum wr <*> asOpt asText w <*> (asList cap >>= traverse termBlock) <*> asOpt asNatural pg <*> asBool rot
     _ -> bad "図版"
 
 termChannel :: Term -> D ChannelBlock
@@ -444,10 +444,10 @@ termInline rd t =
         (17, []) -> Right (LineBreak s)
         -- aki (docs/adr ADR 0019): zw as numerator and denominator, or sp; exactly one of them
         (18, [TList [n, d], TNull]) -> do
-          n' <- asInt n
+          n' <- toInteger <$> asNatural n
           d' <- asInt d
           if d' > 0 then Right (Aki s (AkiZw (n' % d'))) else bad "アキの分母"
-        (18, [TNull, x]) -> Aki s . AkiAbs <$> asInt x
+        (18, [TNull, x]) -> Aki s . AkiAbs . toInteger <$> asNatural x
         -- an item of a channel of a plugin (golem-doc ADR 0007)
         (19, [c, k, r, x]) -> fmap (ChannelItem s) (ChannelItemData <$> asText c <*> asOpt asText k <*> asOpt asText r <*> termInlinesE x)
         -- 1, 2 and 3 (strong, bold, italic) are retired: they are character styles (docs/adr ADR 0005)

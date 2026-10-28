@@ -275,6 +275,29 @@ cbor =
         doc (TList [TInt 11, TInt 3]) @?= Right (Document (FileId 0) [Block sp Nothing (ForcedBreak BreakColumn)])
         doc (TList [TInt 11, TInt 4]) @?= Left "スキーマに合いません: 列挙の範囲"
         doc (TList [TInt 11, TInt (-1)]) @?= Left "スキーマに合いません: 列挙の範囲",
+      -- docs/adr ADR 0102
+      testCase "the fields of natural numbers reject -1" $ do
+        let spT = TList [TInt 0, TInt 0, TInt 1]
+            doc body = decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, body]]])))
+            para i = TList [TInt 10, TNull, TList [i]]
+            attrs n = TList [TNull, n, TBool False, TBool False]
+            figure p = TList [TString "a.pdf", TString "a.png", TString "alt", TNull, TNull, TList [], p, TBool False]
+            codeLine n = TList [TNull, TNull, TNull, TNull, TBool False, TList [TList [TString "x", n, TNull, TBool False, TList []]]]
+            rejected r = assertBool (show r) (either (const True) (const False) r)
+            accepted r = assertBool (show r) (either (const False) (const True) r)
+        mapM_
+          ( \(name, mk) -> do
+              accepted (doc (mk (TInt 1)))
+              assertBool name (either (const True) (const False) (doc (mk (TInt (-1)))))
+          )
+          [ ("heading number", \n -> TList [TInt 1, TInt 1, attrs n, TList []]),
+            ("list item number", \n -> TList [TInt 3, TList [TList [n, TList []]]]),
+            ("figure page", \n -> TList [TInt 7, figure n]),
+            ("code line number", \n -> TList [TInt 6, codeLine n]),
+            ("aki sp", \n -> para (TList [TInt 18, spT, TNull, n])),
+            ("aki zw numerator", \n -> para (TList [TInt 18, spT, TList [n, TInt 5], TNull]))
+          ]
+        rejected (doc (TList [TInt 1, TInt 1, attrs (TInt (-1)), TList []])),
       testCase "a span that ends before it starts, or starts before 0, is rejected" $ do
         let inl t = decodeInlines (toStrictByteString (encodeTerm (TList [t])))
         inl (TList [TInt 0, TList [TInt 0, TInt 3, TInt 3], TString "a"]) @?= Right [Text (SrcSpan (FileId 0) 3 3) "a"]

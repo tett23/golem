@@ -28,17 +28,17 @@ block-body =
   / [13, lines: 1..9223372036854775807]            ; blank lines before what follows (docs/adr ADR 0046)
 ; 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
 
-heading-attrs = [toc-title: inlines / null, number: int64 / null, nonumber: bool, notoc: bool]
-list-item = [number: int64 / null, [* block]]
+heading-attrs = [toc-title: inlines / null, number: uint64 / null, nonumber: bool, notoc: bool]
+list-item = [number: uint64 / null, [* block]]
 def-group = [terms: [+ inlines], defs: [+ [* block]]]
 break-kind = 0..3                                  ; page, recto, verso, column
 page-control = [0]                                 ; no page break
              / [1, 1..9223372036854775807]         ; need lines
              / [2, -9223372036854775808..-1 / 1..9223372036854775807] ; adjust the lines of the column
 alignment = 0..3                                   ; default, left, center, right
-figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: tstr / null, caption: [* block], page: int64 / null, rotate: bool] ; page: golem-pdf ADR 0008; rotate: golem-driver ADR 0034
+figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: tstr / null, caption: [* block], page: uint64 / null, rotate: bool] ; page: golem-pdf ADR 0008; rotate: golem-driver ADR 0034
 code = [lang: tstr / null, numbers: bool / null, file: tstr / null, caption: inlines / null, diff: bool, lines: [* code-line]]
-code-line = [text: tstr, number: int64 / null, diff-mark: (0..2) / null, highlight: bool, callouts: [* 1..50]] ; added, removed, context
+code-line = [text: tstr, number: uint64 / null, diff-mark: (0..2) / null, highlight: bool, callouts: [* 1..50]] ; added, removed, context
 channel = [0, depth: uint64] / [1] / [2]           ; toc, index, bibliography
         / [3, name: tstr, style: tstr / null]      ; a channel of a plugin (golem-doc ADR 0007)
 
@@ -64,7 +64,7 @@ inline-no-ruby =
   / [15, span, key: tstr]                          ; citation
   / [16, span, tstr]                               ; proofreading comment
   / [17, span]                                     ; line break
-  / [18, span, zw: [int64, 1..9223372036854775807] / null, sp: int64 / null] ; aki: zw or sp, exactly one (docs/adr ADR 0019)
+  / [18, span, zw: [uint64, 1..9223372036854775807] / null, sp: uint64 / null] ; aki: zw or sp, exactly one (docs/adr ADR 0019)
   / [19, span, channel: tstr, key: tstr / null, reading: tstr / null, inlines] ; channel item (golem-doc ADR 0007)
 ; 1 (strong), 2 (bold) and 3 (italic) are retired: they are character styles (docs/adr ADR 0005)
 

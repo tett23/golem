@@ -49,6 +49,7 @@ import Data.Text qualified as T
 import Data.Void (Void)
 import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
+import Numeric.Natural (Natural)
 
 {- | Whether an integer is within the CDDL @int64@ (golem-doc ADR 0006):
 from -2^63 to 2^63 - 1, the range of the integers of the IR. It is the
@@ -109,7 +110,7 @@ data BreakKind = BreakPage | BreakRecto | BreakVerso | BreakColumn
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 data ListItem = ListItem
-  { itemNumber :: !(Maybe Integer), -- explicit @number
+  { itemNumber :: !(Maybe Natural), -- explicit @number (docs/adr ADR 0102)
     itemBlocks :: ![Block]
   }
   deriving stock (Eq, Show)
@@ -121,7 +122,7 @@ itemNumbers :: [ListItem] -> [Integer]
 itemNumbers = go 1
   where
     go _ [] = []
-    go next (ListItem n _ : rest) = let k = fromMaybe next n in k : go (k + 1) rest
+    go next (ListItem n _ : rest) = let k = maybe next toInteger n in k : go (k + 1) rest
 
 data DefGroup = DefGroup
   { dgTerms :: [[Inline]],
@@ -134,7 +135,7 @@ data Alignment = AlignDefault | AlignLeft | AlignCenter | AlignRight
 
 data HeadingAttrs = HeadingAttrs
   { haTocTitle :: !(Maybe [Inline]),
-    haNumber :: !(Maybe Integer),
+    haNumber :: !(Maybe Natural),
     haNoNumber :: !Bool,
     haNoToc :: !Bool
   }
@@ -186,7 +187,7 @@ is not a diff), whether it is highlighted, and its callouts.
 -}
 data CodeLine = CodeLine
   { clText :: !Text,
-    clNumber :: !(Maybe Integer),
+    clNumber :: !(Maybe Natural),
     clDiff :: !(Maybe DiffMark),
     clHighlight :: !Bool,
     clCallouts :: ![Int]
@@ -208,7 +209,7 @@ data Figure = Figure
     figWidth :: !(Maybe Text),
     figCaption :: ![Block],
     -- | the page of a PDF figure, from 1 (golem-pdf ADR 0008)
-    figPage :: !(Maybe Int),
+    figPage :: !(Maybe Natural),
     -- | whether the PDF turns the figure and its caption onto a page of their own (golem-driver ADR 0034)
     figRotate :: !Bool
   }
