@@ -317,13 +317,16 @@ byteLength :: Text -> Int
 byteLength = BS.length . TE.encodeUtf8
 
 {- | A notice is Information, not Hint: editors list Information among the
-problems, and a notice is meant to be read (golem-syntax ADR 0002).
+problems, and a notice is meant to be read (golem-syntax ADR 0002). An info
+is Hint: the LSP has no --verbose, and editors show a Hint quietly, out of
+the list of problems (docs/adr 0104).
 -}
 lspSeverity :: S.Severity -> DiagnosticSeverity
 lspSeverity = \case
   S.Error -> DiagnosticSeverity_Error
   S.Warning -> DiagnosticSeverity_Warning
   S.Notice -> DiagnosticSeverity_Information
+  S.Info -> DiagnosticSeverity_Hint
 
 toDiagnostic :: F.Encoding -> S.LineIndex -> S.Diagnostic -> Diagnostic
 toDiagnostic enc li d =

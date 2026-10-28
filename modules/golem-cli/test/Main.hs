@@ -464,7 +464,34 @@ noticeTests =
         err @?= ""
         quiet @?= loud,
       exitsWith (ExitFailure 2) ["fmt", "--no-notices"],
-      exitsWith (ExitFailure 2) ["explain", "--no-notices"]
+      exitsWith (ExitFailure 2) ["explain", "--no-notices"],
+      -- docs/adr 0104
+      testCase "build --verbose, check -v and lint --verbose are accepted" $
+        mapM_
+          ( \args -> do
+              (code, err) <- golemIn noticeFiles args
+              assertEqual (unwords args <> "\n" <> err) ExitSuccess code
+              assertBool err ("notice[G02063]" `isInfixOf` err)
+          )
+          [build <> ["--verbose"], ["check", "-v"], ["lint", "--verbose"]],
+      testCase "--verbose and --no-notices together drop the notices" $ do
+        (code, err) <- golemIn noticeFiles ["check", "-v", "--no-notices"]
+        code @?= ExitSuccess
+        err @?= "",
+      testCase "golem build --verbose writes the same bytes and the same diagnostics" $ do
+        (_, err, loud) <- golemOutputs noticeFiles build
+        (_, err', verbose) <- golemOutputs noticeFiles (build <> ["--verbose"])
+        err' @?= err
+        verbose @?= loud,
+      exitsWith (ExitFailure 2) ["fmt", "--verbose"],
+      exitsWith (ExitFailure 2) ["explain", "-v"],
+      exitsWith (ExitFailure 2) ["inspect", "a.gm", "--verbose"],
+      exitsWith (ExitFailure 2) ["preflight", "-v"],
+      testCase "golem -v is a misuse and prints no version" $ do
+        (code, out, err) <- golemSplit ["-v"]
+        code @?= ExitFailure 2
+        assertBool out (not ("golem " `isPrefixOf` out))
+        assertBool err (not ("golem 0" `isInfixOf` err))
     ]
   where
     -- the PDF needs a real font, so golem build writes the other targets
