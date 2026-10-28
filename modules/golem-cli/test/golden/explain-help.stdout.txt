@@ -1,4 +1,4 @@
-使い方: golem explain [CODE]
+使い方: golem explain [CODE...]
 
   診断のコードの説明を表示する
 

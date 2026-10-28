@@ -130,7 +130,7 @@ diagnostic を出すほかのコマンド（[code: golem inspect] と [code: gol
 - [code: golem lint] は、エラーが一つでもあれば 1、警告だけなら 0 で終わる。
 - [code: golem fmt --check] は、整形されていないファイルがあればそのパスを標準出力に書き、1 で終わる。
 - 引数なしの [code: golem fmt] は、原稿の CR（G01003）だけで読み込みが止まったら、そのファイルを前処理にかけた中身で読み込み直してから整形する。ほかのエラーで読み込めなければ、何も書き換えずに 1 で終わる。
-- [code: golem explain] は、文書にないコードを渡すと使い方の誤りとして 2 で終わる。
+- [code: golem explain] は、文書にないコードや形の誤ったコードが一つでもあれば、使い方の誤りとして 2 で終わる。正しいコードの説明は書いてから終わる。
 
 ## 標準出力と標準エラー出力
 
@@ -143,6 +143,17 @@ $ golem build --target pdf --format json 2> diagnostics.json
 ```
 
 [code: golem inspect] の表示、[code: golem explain] の説明、[code: golem fmt --check] のパスの一覧は標準出力に出る。
+
+[code: golem explain] にはコードをいくつでも渡せる。
+CI のログの JSON からコードを抜き出し、まとめて説明を引くこともできる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0009-explain-several-codes.md]（golem-cli ADR 0009「golem explain に複数のコードを渡す」）]
+
+```sh
+$ jq -r '.[].code' diagnostics.json | xargs golem explain
+```
+
+誤ったコードが混じっていても、正しいコードの説明は標準出力に出る。
+誤ったコードは、その後に一つずつ一行で標準エラー出力に出て、終了コードは 2 になる。
+終了コードが 0 なら、渡したコードの説明はすべてそろっている。
 
 ## プロファイル
 
