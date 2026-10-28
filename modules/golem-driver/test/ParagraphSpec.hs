@@ -126,6 +126,11 @@ verseTests =
         assertBool "no stanza gap" (not ("p.ps-verse + p.ps-verse" `T.isInfixOf` css))
         assertBool "margin" ("p.ps-verse { margin-block: 0; }" `T.isInfixOf` css)
         assertBool "indent" ("p.ps-verse { padding-inline-start: 10.5pt; text-indent: -2em; }" `T.isInfixOf` css),
+    testCase "HTML: an indent of 3mm is 8.5039pt, at four decimals (docs/adr ADR 0103)" $
+      withVerseProject "[paragraph-styles.verse]\nspace-between = 0\nindent = \"3mm\"\n" verseSource $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        assertBool (T.unpack css) ("p.ps-verse { padding-inline-start: 8.5039pt; text-indent: -2em; }" `T.isInfixOf` css),
     testCase "plain text: lines on lines, stanzas separated by a blank line" $
       withVerseProject "" verseSource $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}

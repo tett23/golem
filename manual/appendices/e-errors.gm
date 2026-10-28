@@ -713,6 +713,7 @@ PDF を組むときに出るエラーです。
 この節の診断は、[code: golem preflight] だけが出します（第[ref-number output]章の「[ref-title preflight]」）。
 G09001 のほかは、エラーか警告か、出すかどうかをプリフライトの設定で決めます。
 括弧の中は、組み込みの設定 [code: print] での重さです。
+メッセージの長さは mm で、小数点以下 2 桁まで書きます（[code: 0.06mm] など）。
 設定のキーは、[ref-title app-preflight]にあります。
 
 = [strong: G09001 [code: … の値が正しくありません: …（…）]]

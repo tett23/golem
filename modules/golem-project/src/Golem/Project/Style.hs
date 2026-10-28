@@ -104,6 +104,7 @@ import Golem.Project.Manifest (decodeStrictBy)
 import Golem.Project.TomlMessage (schemaMessage)
 import Golem.Regex (RegexError (..), compile)
 import Golem.Syntax
+import Golem.Syntax.Length qualified as L
 import Toml qualified
 import Toml.Schema
 import Toml.Schema.Matcher (inKey)
@@ -128,14 +129,15 @@ parseDim t =
    in do
         r <- decimal num
         case unit of
-          "pt" -> Just (Abs (round (r * 65536)))
-          "in" -> Just (Abs (round (r * 72 * 65536)))
-          "mm" -> Just (Abs (mmToSp r))
-          "Q" -> Just (Abs (mmToSp (r * (1 % 4))))
-          "H" -> Just (Abs (mmToSp (r * (1 % 4))))
+          "pt" -> Just (abs' L.Pt r)
+          "in" -> Just (abs' L.In r)
+          "mm" -> Just (abs' L.Mm r)
+          "Q" -> Just (abs' L.Q r)
+          "H" -> Just (abs' L.H r)
           "zw" -> Just (Zw r)
           _ -> Nothing
   where
+    abs' u r = Abs (L.unSp (L.toSp u r))
     decimal s = case T.splitOn "." s of
       [i] | not (T.null i) -> Just (fromInteger (read (T.unpack i)))
       [i, f] | not (T.null i), not (T.null f) -> Just (read (T.unpack (i <> f)) % (10 ^ T.length f))
@@ -158,7 +160,7 @@ parseSignedDim t = case T.stripPrefix "-" (T.strip t) of
 -- | Resolves a dimension against a font size.
 dimToSp :: Sp -> Dim -> Sp
 dimToSp _ (Abs s) = s
-dimToSp fontSize (Zw r) = round (r * fromInteger fontSize)
+dimToSp fontSize (Zw r) = L.unSp (L.zwToSp (L.Sp fontSize) r)
 
 data Grid = Grid
   { gridFontSize :: !Dim,
@@ -794,7 +796,7 @@ data HiddenFolio = HiddenFolio
 
 -- | Without [hidden-folio]: enabled, on the pages without a folio, 6pt, 1.5mm.
 defaultHiddenFolio :: HiddenFolio
-defaultHiddenFolio = HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs (mmToSp (3 % 2))) False
+defaultHiddenFolio = HiddenFolio True HiddenUnnumbered (Abs (L.unSp (L.toSp L.Pt 6))) (Abs (mmToSp (3 % 2))) False
 
 {- | Every error of reading [hidden-folio] is G03006: a dimension in zw, of
 0 or less or unreadable, a value of pages outside the table and an
@@ -846,26 +848,24 @@ hiddenFolioChecks hf = case (hfSize hf, hfGutter hf) of
             path = map ScopeKey ["hidden-folio", if hfGutterWritten hf then "gutter" else "size"]
             message =
               "[hidden-folio] の gutter（"
-                <> mm2 (spToMm gutter)
+                <> mmText gutter
                 <> "）が size（"
-                <> mm2 (spToMm size)
+                <> mmText size
                 <> "）の半分（"
-                <> mm2 (spToMm size / 2)
+                <> L.mmRationalText (spToMm size / 2)
                 <> "）より小さいため、隠しノンブルの数字が仕上がりの線を越えます（gutter を "
-                <> mm2 (minGutter % 100)
+                <> hundredthsText minGutter
                 <> " 以上にするか、size を "
-                <> mm2 (maxSize % 100)
+                <> hundredthsText maxSize
                 <> " 以下にします）"
          in [(path, message, [("gutter", FactInt gutter), ("size", FactInt size), ("min-gutter", FactInt (mmToSp (minGutter % 100))), ("max-size", FactInt (mmToSp (maxSize % 100)))])]
   _ -> []
   where
-    spToMm sp = toRational sp * (254 % 10) / (72 * 65536)
-    -- mm to two decimals, the third rounded half up
-    mm2 :: Rational -> Text
-    mm2 x =
-      let c = floor (x * 100 + 1 % 2) :: Integer
-          (i, f) = c `divMod` 100
-       in T.pack (show i <> "." <> (if f < 10 then "0" else "") <> show f <> "mm")
+    spToMm = L.fromSp L.Mm . L.Sp
+    -- mm to two decimals, half to even (docs/adr ADR 0103)
+    mmText = L.mmText . L.Sp
+    -- hundredths of a mm, which come back from sp unrounded
+    hundredthsText k = L.mmText (L.toSp L.Mm (k % 100))
 
 -- | How a heading is shown in a running head (golem-driver ADR 0014, 0022).
 data HeadForm = HeadShort | HeadNumbered | HeadNumber
@@ -1144,7 +1144,7 @@ instance FromValue RuleSpec where
 
 -- | 0.3pt.
 defaultRuleWeight :: Sp
-defaultRuleWeight = round (3 / 10 * 65536 :: Rational)
+defaultRuleWeight = L.unSp (L.toSp L.Pt (3 % 10))
 
 -- | A TOML document that is one rule spec, read by its 'FromValue'; errors are G03006.
 parseRuleSpec :: FileId -> Text -> Either [Diagnostic] RuleSpec
@@ -1239,7 +1239,7 @@ pageSize = \case
   "菊判" -> Just (150, 220)
   "新書判" -> Just (103, 182)
   -- 4.25in x 6.875in (ADR 0003)
-  "mass-market" -> Just (17 / 4 * 254 / 10, 55 / 8 * 254 / 10)
+  "mass-market" -> Just (inchesInMm (17 % 4), inchesInMm (55 % 8))
   _ -> Nothing
 
 -- | 仕上がりの幅と高さ（sp）。
@@ -1251,7 +1251,11 @@ pageTrimSize p = case pageSizeSpec p of
 
 -- | Millimetres to sp, rounded once, half to even.
 mmToSp :: Rational -> Sp
-mmToSp mm = round (mm * 72 * 65536 / (254 % 10))
+mmToSp = L.unSp . L.toSp L.Mm
+
+-- | Inches as millimetres, exactly.
+inchesInMm :: Rational -> Rational
+inchesInMm i = L.fromSp L.Mm (L.toSp L.In i)
 
 {- | A name of the table, or @{ width, height }@ in absolute dimensions
 greater than 0 (ADR 0005). Errors are at the value of size.

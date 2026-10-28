@@ -475,7 +475,7 @@ columnWidthTests =
       let cells = "| " <> T.intercalate " | " (replicate 6 "あい") <> " |\n"
       (errs, _) <- buildMini fakeProvider True horizontalStyle (cells <> "|" <> T.replicate 6 "---|" <> "\n" <> cells) []
       errs @?= [DiagnosticCode "G07041"]
-      layoutMini horizontalStyle (cells <> "|" <> T.replicate 6 "---|" <> "\n" <> cells) [] >>= (@?= [("G07041", "表の列の最小の幅の合計（42.3 mm）が使える幅（24.7 mm）に収まりません", FileId 1, 0, 138)]) . layoutErrors
+      layoutMini horizontalStyle (cells <> "|" <> T.replicate 6 "---|" <> "\n" <> cells) [] >>= (@?= [("G07041", "表の列の最小の幅の合計（42.33mm）が使える幅（24.69mm）に収まりません", FileId 1, 0, 138)]) . layoutErrors
   ]
 
 tableTests :: [TestTree]
@@ -504,7 +504,7 @@ tableTests =
       let wide = "| " <> T.intercalate " | " (replicate 13 "字") <> " |\n|" <> T.replicate 13 "---|" <> "\n| " <> T.intercalate " | " (replicate 13 "字") <> " |\n"
       (e1, p1) <- buildMini fakeProvider True horizontalStyle wide []
       (e1, p1) @?= ([DiagnosticCode "G07041"], Nothing)
-      layoutMini horizontalStyle wide [] >>= (@?= [("G07041", "表の列の最小の幅の合計（45.9 mm）が使える幅（0.0 mm）に収まりません", FileId 1, 0, 214)]) . layoutErrors
+      layoutMini horizontalStyle wide [] >>= (@?= [("G07041", "表の列の最小の幅の合計（45.86mm）が使える幅（0.00mm）に収まりません", FileId 1, 0, 214)]) . layoutErrors
       let tall = "| 項目 | 値 |\n|---|---|\n| " <> T.replicate 60 "あ" <> " | 1 |\n"
       (e2, p2) <- buildMini fakeProvider True fiveLines tall []
       (e2, p2) @?= ([DiagnosticCode "G07042"], Nothing)

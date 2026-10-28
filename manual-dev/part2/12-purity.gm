@@ -356,6 +356,9 @@ Golem は、長さと位置の計算に浮動小数点数を使わない。
 Haskell の [code: Integer] は桁数に上限のない整数で、桁あふれしない。
 [code: Rational] は [code: Integer] の分子と分母の組で、四則演算の結果が厳密に定まる。
 [code: style.toml] の [code: "10.5pt"] のような十進の寸法も、[code: parseDim] が有理数として読み、sp への換算で一度だけ最近接偶数丸めで丸める。
+単位の比（1in = 72pt = 25.4mm、1Q = 1H = 0.25mm）と、sp への換算と、長さを書く表記は、golem-syntax の [code: Golem.Syntax.Length] の一か所にまとめてある。
+diagnostic に書く mm は小数点以下 2 桁、PDF と CSS に書く pt と em は小数点以下 4 桁で、どれも最近接偶数丸めで丸める。
+換算が散らばっていると、同じ長さを直した値が箇所ごとに少しずつ食い違うからである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0103-single-place-for-unit-conversions.md]（docs/adr ADR 0103「長さの単位の変換を一か所にまとめ、表示の桁と丸めをそろえる」）]
 
 HarfBuzz と FreeType についても、Golem が受け取る値は整数である。
 golem-font の C の側（[code: cbits/golem/golem_font.c]）は、HarfBuzz のフォントの拡大率をフォントの 1em の単位数（upem）に設定し、グリフの位置をフォントの単位の整数で受け取る。

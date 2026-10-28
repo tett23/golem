@@ -1017,7 +1017,17 @@ W に傍注の領域は含めない。
 索引の段の行長が版面の文字の大きさの 8 字分に満たない場合は、`[index]` の `columns` の値の位置で G07044 とし、`golem check` も報告する（`golem check` は四つのターゲットを検査するので、つねに PDF を含む。[golem-pdf ADR 0010](golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)）。
 索引の段数を切り替える位置は、「索引」の節に書く。
 
-寸法は `mm`、`pt`、`Q`（級）、`H`（歯）、`in`（インチ。1in = 72pt = 25.4mm、[golem-project ADR 0010](golem-project/adr/0010-inch-unit.md)）、`zw`（全角一字分）の単位を付けた文字列で書き、処理系の内部では整数の sp に変換する。
+寸法は `mm`、`pt`、`Q`（級）、`H`（歯）、`in`（インチ。1in = 72pt = 25.4mm、[golem-project ADR 0010](golem-project/adr/0010-inch-unit.md)）、`zw`（全角一字分）の単位を付けた文字列で書き、処理系の内部では整数の sp（1pt = 65536sp）に変換する。
+数を正確な有理数で読み、sp に一度だけ、等距離なら偶数の側へ丸める。
+`zw` は、その位置の文字の大きさが決まってから、同じ規則で sp にする。
+単位の比と変換、長さの表記は golem-syntax の `Golem.Syntax.Length` に一つにまとめてある（[docs/adr/0103](adr/0103-single-place-for-unit-conversions.md)）。
+
+処理系が長さを書くときも、等距離なら偶数の側へ丸める。
+diagnostic に書く長さは mm で、小数点以下 2 桁にし、末尾の 0 を残し、単位の前に空白を入れない（`0.06mm`、`3.00mm`）。
+負の値は絶対値を丸めてから `-` を付け、丸めた値が 0 なら符号を付けない。
+PDF の座標と寸法、HTML と EPUB の CSS の長さは、pt と em（CSS の `rem` を含む）で小数点以下 4 桁までにし、末尾の 0 を書かない（`8.5039pt`、`0.7143em`）。
+この丸めは、式の言語の `round` と `fixed`（0 から遠い方向への四捨五入）と違う。
+式の関数は書き手が値を決めるためのものなので書き手の四捨五入の期待に合わせ、長さの変換と表記は処理系が測った値を伝えるためのものなので偏りのない偶数への丸めを使う。
 
 `[page]` の `size` は判型であり、仕上がりの寸法である（[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)、[golem-project ADR 0005](golem-project/adr/0005-page-size-by-dimensions.md)）。
 判型の表の名前か、幅と高さの寸法で書く。
@@ -3054,7 +3064,7 @@ SVG の図版は、G09008 では `rgb` とし、G09006、G09007、G09009 では�
 
 同じ原因の diagnostics は検査ごとの単位で一つにまとめ、最初のページの位置に出す。
 ページは PDF の何ページ目か（1 から数える）で示し、メッセージには最初の十ページまでを書き、それより多ければ `ほか <n> ページ` と添える。
-長さは mm で、小数点以下が一桁になるように丸めて書く。
+長さは mm で、小数点以下 2 桁に、等距離なら偶数の側へ丸めて書く（`0.06mm`。[docs/adr/0103](adr/0103-single-place-for-unit-conversions.md)）。
 検査は golem-preflight の純粋な関数（`Golem.Preflight.check`）が、golem-driver の PDF の書き手が作る組んだ結果の写し（`Golem.Preflight.View`）に対して行う。
 写しは遅延して作る。
 `golem build` は G08100 のために写しの字の一覧だけを評価し、図版、フォントの形式、色など、ほかの部分は `golem preflight` のときだけ作る。

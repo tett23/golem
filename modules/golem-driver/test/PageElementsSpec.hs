@@ -998,7 +998,7 @@ captionTests =
       let styleOf src = either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) src)
           dim t = fromMaybe (Abs 0) (parseDim t)
       s13 <- styleOf "[page]\nsize = \"B6\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 30\nlines = 20\nline-pitch = \"22H\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n"
-      cssFontSize s13 (dim "11Q") @?= "0.846em"
+      cssFontSize s13 (dim "11Q") @?= "0.8462em"
       cssFontSize s13 (dim "0.85zw") @?= "0.85em"
       none <- styleOf ""
       cssFontSize none (dim "9pt") @?= "9pt"
