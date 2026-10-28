@@ -14,7 +14,7 @@ ADR はコミットした後に変えられないので、下の層から順に�
 
 | モジュール | 役割 |
 | --- | --- |
-| golem-syntax | diagnostic とソースの位置。golem-regex、golem-font、golem-svg、golem-fixtures、golem-test-support を除くすべてのモジュールが使う最下層 |
+| golem-syntax | diagnostic とソースの位置、長さの単位の変換と表記（[code: Golem.Syntax.Length]）。golem-regex、golem-font、golem-svg、golem-fixtures、golem-test-support を除くすべてのモジュールが使う最下層 |
 | golem-regex | 正規表現スタイルの照合器。base、text、containers、array だけに依存する |
 | golem-parser | PEG のパーサー。CST、AST |
 | golem-project | マニフェスト、[code: style.toml]、import の解決 |

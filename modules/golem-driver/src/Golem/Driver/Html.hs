@@ -10,7 +10,6 @@ module Golem.Driver.Html
     rubyAlignCss,
     cssLength,
     cssFontSize,
-    decimal3,
   )
 where
 
@@ -22,7 +21,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Html
 import Golem.Project.Style
-import Golem.Syntax.Text (showRationalDigits)
+import Golem.Syntax.Length qualified as L
 
 -- | The character styles of a style, resolved for CSS (docs/adr ADR 0005).
 htmlCharStyles :: Style -> Map Text HtmlCharStyle
@@ -91,7 +90,7 @@ htmlRule style r =
         Just (Abs 0) -> "0"
         Just (Zw 0) -> "0"
         Just (Abs sp) -> cssLength (Abs sp)
-        Just (Zw z) -> maybe (decimal3 z <> "rem") (\fs -> cssLength (Abs (round (z * toRational fs)))) gridSize
+        Just (Zw z) -> maybe (L.emText z <> "rem") (\fs -> cssLength (Abs (round (z * toRational fs)))) gridSize
    in HtmlRule
         { hrWidth = width,
           hrStartIndent = start,
@@ -125,12 +124,12 @@ rubyAlignCss = \case
   _ -> "center"
 
 {- | A length of style.toml in CSS: zw as em, other units as pt, with at
-most three decimals (docs/adr ADR 0003).
+most four decimals (docs/adr ADR 0103).
 -}
 cssLength :: Dim -> Text
 cssLength = \case
-  Zw r -> decimal3 r <> "em"
-  Abs sp -> decimal3 (toRational sp / 65536) <> "pt"
+  Zw r -> L.emText r <> "em"
+  Abs sp -> L.ptText (L.Sp sp) <> "pt"
 
 {- | A size of style.toml as a CSS font-size (golem-driver ADR 0010): zw as
 em, an absolute size as its ratio to an absolute grid size in em, pt
@@ -138,11 +137,7 @@ without one.
 -}
 cssFontSize :: Style -> Dim -> Text
 cssFontSize style = \case
-  Zw r -> decimal3 r <> "em"
+  Zw r -> L.emText r <> "em"
   Abs sp -> case stPage style >>= pageGrid of
-    Just Grid {gridFontSize = Abs fs} | fs > 0 -> decimal3 (toRational sp / toRational fs) <> "em"
+    Just Grid {gridFontSize = Abs fs} | fs > 0 -> L.emText (toRational sp / toRational fs) <> "em"
     _ -> cssLength (Abs sp)
-
--- | At most three decimals, fixed (docs/adr ADR 0003).
-decimal3 :: Rational -> Text
-decimal3 = showRationalDigits 3

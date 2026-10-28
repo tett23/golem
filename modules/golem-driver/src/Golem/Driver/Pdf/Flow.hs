@@ -102,6 +102,7 @@ import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax
+import Golem.Syntax.Length qualified as L
 import System.FilePath (takeBaseName)
 
 -- | One line of the flow, with what is needed to draw it.
@@ -1661,11 +1662,10 @@ buildFlow inp geom fonts images assumed = do
             FDefTerm (l : _) -> Just l
             FTable {ftSpaceBefore = 0, ftHeader = l : _} -> Just l
             _ -> Nothing
-      mm sp = let tenths = round (toRational sp * 254 / (72 * 65536)) :: Integer in T.pack (show (tenths `div` 10) <> "." <> show (tenths `mod` 10))
       step (nextId, flows, lineAcc, figAcc, headAcc, errs, tabAcc, ext) (i, u) = case uKind u of
         UTable {} -> case Map.lookup i tables of
           Just (Left (ColumnsTooWide mn avail)) ->
-            (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G07041" Error (uSpan u) ("表の列の最小の幅の合計（" <> mm mn <> " mm）が使える幅（" <> mm avail <> " mm）に収まりません")], tabAcc, ext)
+            (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G07041" Error (uSpan u) ("表の列の最小の幅の合計（" <> L.mmText (L.Sp mn) <> "）が使える幅（" <> L.mmText (L.Sp avail) <> "）に収まりません")], tabAcc, ext)
           Just (Right (t, atts))
             | tall@(_ : _) <- [r | (r, h) <- zip [1 :: Int ..] (stRowLines t), stHeaderLines t + h > capacity] ->
                 (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G07042" Error (uSpan u) ("表の " <> T.pack (show r) <> " 行目が見出しの行とともに一ページに収まりません") | r <- tall], tabAcc, ext)

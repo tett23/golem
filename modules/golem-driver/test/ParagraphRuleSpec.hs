@@ -171,7 +171,7 @@ paragraphRuleTests =
       near (ySetsu + 8.8 - body) (-10),
     testCase "HTML: the spaces of a rule in mm are pt; zw is the size of the grid in pt (golem-driver ADR 0035)" $ do
       (_, mmCss) <- htmlMini (withRule horizontalStyle "space-before = \"3mm\"") section
-      assertBool (T.unpack mmCss) ("margin-block: 8.504pt 0;" `T.isInfixOf` mmCss)
+      assertBool (T.unpack mmCss) ("margin-block: 8.5039pt 0;" `T.isInfixOf` mmCss)
       (_, css) <- htmlMini (withRule horizontalStyle "space-before = \"1zw\", space-after = \"0.5zw\", length = \"10zw\"" <> "size = \"0.5zw\"\n") section
       assertBool (T.unpack css) ("margin-block: 10pt 5pt;" `T.isInfixOf` css)
       assertBool (T.unpack css) ("width: 10em" `T.isInfixOf` css)

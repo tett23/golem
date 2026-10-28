@@ -14,6 +14,7 @@ import Golem.TestSupport.Gen (genText)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import LengthSpec qualified
 import RenderSpec qualified
 import ShowTreeSpec qualified
 import Test.Tasty
@@ -187,6 +188,7 @@ tests =
           @?= "x.gm:2:2: error[G02001]: msg\n  | def\n",
       noticeTests,
       orderTests,
+      LengthSpec.tests,
       RenderSpec.tests,
       ShowTreeSpec.tests
     ]

@@ -25,6 +25,7 @@ import Golem.Preflight.Rules
 import Golem.Preflight.View
 import Golem.Project.Style (Sp, sizeSourcePath, sizeSourceText)
 import Golem.Syntax
+import Golem.Syntax.Length qualified as L
 import Golem.Syntax.Text (tshow)
 
 check :: Rules -> View -> [Diagnostic]
@@ -85,12 +86,9 @@ pagesPhrase ps =
 pagesFact :: [Int] -> (Text, Fact)
 pagesFact ps = ("pdf-pages", FactInts (map toInteger ps))
 
--- | A length in mm to one decimal (golem-cli ADR 0006).
+-- | A length in mm to two decimals, half to even (docs/adr ADR 0103).
 mmText :: Sp -> Text
-mmText s =
-  let tenths = round (toRational s * 254 / (72 * 65536)) :: Integer
-      (i, f) = abs tenths `divMod` 10
-   in (if tenths < 0 then "-" else "") <> tshow i <> "." <> tshow f <> "mm"
+mmText = L.mmText . L.Sp
 
 {- | The effective resolution: the pixels over the inches placed, the
 smaller of the two, cut down. A turned image lies across its rectangle
@@ -100,7 +98,7 @@ ppiOf :: ImageView -> ImageData -> Integer
 ppiOf iv img =
   let Rect _ _ rw rh = ivRect iv
       (w, h) = if ivTurned iv then (rh, rw) else (rw, rh)
-      per px sz = if sz <= 0 then 0 else toInteger px * 72 * 65536 `div` sz
+      per px sz = if sz <= 0 then 0 else floor (toRational px / L.fromSp L.In (L.Sp sz))
    in min (per (imgWidth img) w) (per (imgHeight img) h)
 
 data Kind = KColor | KGray | KBitmap

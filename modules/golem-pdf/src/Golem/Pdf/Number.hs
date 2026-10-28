@@ -10,13 +10,13 @@ module Golem.Pdf.Number
   )
 where
 
-import Data.Ratio ((%))
 import Data.Text (Text)
+import Golem.Syntax.Length qualified as L
 import Golem.Syntax.Text (showRationalDigits)
 
--- | 1pt = 65536sp.
+-- | Sp as pt, at most four decimals (docs/adr ADR 0103).
 spToPt :: Integer -> Text
-spToPt sp = showRational4 (sp % 65536)
+spToPt = L.ptText . L.Sp
 
 showRational4 :: Rational -> Text
 showRational4 = showRationalDigits 4

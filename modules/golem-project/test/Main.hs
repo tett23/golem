@@ -828,12 +828,17 @@ hiddenFolioTests =
             spanStart (diagSpan d) @?= T.length "[hidden-folio]\nsize = \"6pt\"\ngutter = "
             map fst (diagFacts d) @?= ["gutter", "size", "min-gutter", "max-size"]
           other -> assertFailure (show (void other)),
+      testCase "a length of exactly half a hundredth of a mm rounds half to even (docs/adr ADR 0103)" $
+        -- 27pt is exactly 9.525mm, 60pt about 21.167mm
+        case parseStyle (FileId 0) "[hidden-folio]\nsize = \"60pt\"\ngutter = \"27pt\"\n" of
+          Left [d] -> assertBool (T.unpack (diagMessage d)) ("gutter（9.52mm）が size（21.17mm）の半分（10.58mm）" `T.isInfixOf` diagMessage d)
+          other -> assertFailure (show (void other)),
       testCase "a size of 8mm with the default gutter is G03029 at size (golem-driver ADR 0041)" $
         case parseStyle (FileId 0) "[hidden-folio]\nsize = \"8mm\"\n" of
           Left [d] -> (diagCode d, spanStart (diagSpan d)) @?= (DiagnosticCode "G03029", T.length "[hidden-folio]\nsize = ")
           other -> assertFailure (show (void other)),
       testCase "the gutter and the size the message names pass, 0.01mm past them do not (golem-driver ADR 0041)" $
-        forM_ [("6pt", "2pt"), ("8mm", "1.5mm"), ("13Q", "1mm"), ("7pt", "0.5mm")] $ \(size, gutter) -> do
+        forM_ [("6pt", "2pt"), ("8mm", "1.5mm"), ("13Q", "1mm"), ("7pt", "0.5mm"), ("60pt", "27pt")] $ \(size, gutter) -> do
           let style s g = "[hidden-folio]\nsize = \"" <> s <> "\"\ngutter = \"" <> g <> "\"\n"
           (minGutter, maxSize) <- case parseStyle (FileId 0) (style size gutter) of
             Left [d] | diagCode d == DiagnosticCode "G03029" -> pure (bounds (diagMessage d))
@@ -1645,6 +1650,21 @@ pageSizeTests =
         [ trim ("\"" <> n <> "\"") @?= Right (Just (mm w, mm h))
         | n <- ["A4", "A5", "A6", "B5", "B6", "四六判", "mass-market"],
           Just (w, h) <- [pageSize n]
+        ],
+    testCase "the sp of every named size are fixed across the move to Golem.Syntax.Length (docs/adr ADR 0103)" $
+      sequence_
+        [ trim ("\"" <> n <> "\"") @?= Right (Just wh)
+        | (n, wh) <-
+            [ ("A4", (39011981, 55174088)),
+              ("A5", (27494158, 39011981)),
+              ("A6", (19505991, 27494158)),
+              ("B5", (33810384, 47743234)),
+              ("B6", (23778731, 33810384)),
+              ("四六判", (23592960, 34925012)),
+              ("菊判", (27865701, 40869694)),
+              ("新書判", (19134448, 33810384)),
+              ("mass-market", (20054016, 32440320))
+            ]
         ],
     testCase "菊判 and 新書判" $ do
       trim "\"菊判\"" @?= trim "{ width = \"150mm\", height = \"220mm\" }"

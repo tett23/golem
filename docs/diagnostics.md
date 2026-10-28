@@ -63,6 +63,8 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 [G09002](#g09002) から [G09018](#g09018) の重大度は、プリフライトの設定（`preflight.toml`）で決まり、`Golem.Syntax.Diagnostic.preflightCodes` にまとめてある。
 設定で選べるのはエラー、警告、off で、お知らせは選べない。
 [G09001](#g09001) は設定のファイルの誤りで、常にエラーである。
+09 のコードのメッセージと事実（JSON の `facts`）に書く長さは mm で、小数点以下 2 桁に、等距離なら偶数の側へ丸めて書く。
+末尾の 0 は残し、単位の前に空白を入れない（`0.06mm`、`3.00mm`。[docs/adr/0103](adr/0103-single-place-for-unit-conversions.md)）。
 
 ## お知らせ
 
@@ -4080,8 +4082,9 @@ dev と prod の両方でエラーであり、LSP も同じく出す。
 TOML として読めないか、スキーマに合わない（[G03006](#g03006) などで読み込みが止まる）ときは検査しない。
 `enabled`、`--marks`、ターゲットによらず検査する。
 位置は `gutter` の値で、`gutter` を書かず `size` だけを書いた場合は `size` の値である。
-値はどれも mm で、小数第 2 位まで書く。
+値はどれも mm で、小数第 2 位まで、等距離なら偶数の側へ丸めて書く（[docs/adr/0103](adr/0103-single-place-for-unit-conversions.md)）。
 `<下限>` は、検査を通る `gutter` のうち 0.01mm の倍数で最も小さい値、`<上限>` は、検査を通る `size` のうち 0.01mm の倍数で最も大きい値であり、どちらも `style.toml` の寸法と同じ丸めで sp に直して求める。
+二つは 0.01mm の倍数なので、丸めずに書かれる。
 diagnostic の事実（JSON の `facts`）に、`gutter`、`size`、`min-gutter`、`max-size` を sp の整数で持つ。
 
 - メッセージ: `[hidden-folio] の gutter（<gutter>）が size（<size>）の半分（<半分>）より小さいため、隠しノンブルの数字が仕上がりの線を越えます（gutter を <下限> 以上にするか、size を <上限> 以下にします）`（例: `size = "6pt"`、`gutter = "2pt"` では `[hidden-folio] の gutter（0.71mm）が size（2.12mm）の半分（1.06mm）より小さいため、隠しノンブルの数字が仕上がりの線を越えます（gutter を 1.06mm 以上にするか、size を 1.41mm 以下にします）`）
@@ -5379,7 +5382,7 @@ PDF は書く。
 表の各列の最小の幅（改行できる位置のあいだの最も広い部分）の合計が、版面の行長を超える。
 セルの最後の二つの和文の字は、一つの区間として数える（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。
 
-- メッセージ: `表の列の最小の幅の合計（<幅> mm）が使える幅（<幅> mm）に収まりません`
+- メッセージ: `表の列の最小の幅の合計（<幅>）が使える幅（<幅>）に収まりません`。幅は mm で、小数点以下 2 桁に、等距離なら偶数の側へ丸めて書く（例: `表の列の最小の幅の合計（42.33mm）が使える幅（24.69mm）に収まりません`。[docs/adr/0103](adr/0103-single-place-for-unit-conversions.md)）
 - 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
 - ADR: [golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)、[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)
 
@@ -6479,9 +6482,9 @@ PDF に埋め込んだフォントの形式が、プリフライトの設定の 
 diagnostics は、位置の原稿の順に並べる。
 まとまりと位置は原稿と `style.toml` だけで決まり、改ページの位置では変わらない。
 改ページで変わるのは、メッセージのページの列だけである。
-diagnostic の事実（JSON の `facts`）に、大きさの出どころの `style.toml` のキー（`source`、`paragraph-styles.a.size` など）と字の種類（`part`、`base`、`ruby`、`kenten` のどれか）を持つ。
+diagnostic の事実（JSON の `facts`）に、大きさの出どころの `style.toml` のキー（`source`、`paragraph-styles.a.size` など）と字の種類（`part`、`base`、`ruby`、`kenten` のどれか）と、メッセージと同じ表記の大きさ（`size`、`1.41mm` など）を持つ。
 
-- メッセージ: `文字が小さすぎます: <大きさ>（<min-size> 未満、<出どころ>、色 <スウォッチの名前>、PDF の <ページ> ページ目）`。`<出どころ>` は `段落スタイル a の size`、`文字スタイル b の size のルビ`、`[headings.1] の size の圏点`、`[notes] の mark-size`、`[page.grid] の font-size` のように書く。スウォッチを持たない文字の色は `なし` と書く
+- メッセージ: `文字が小さすぎます: <大きさ>（<min-size> 未満、<出どころ>、色 <スウォッチの名前>、PDF の <ページ> ページ目）`（例: `文字が小さすぎます: 1.41mm（1.76mm 未満、段落スタイル a の size、色 rich、PDF の 1 ページ目）`）。`<出どころ>` は `段落スタイル a の size`、`文字スタイル b の size のルビ`、`[headings.1] の size の圏点`、`[notes] の mark-size`、`[page.grid] の font-size` のように書く。スウォッチを持たない文字の色は `なし` と書く
 - 段階とモジュール: プリフライト（golem-preflight の `Golem.Preflight`）
 - ADR: [golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)、[golem-cli ADR 0008](golem-cli/adr/0008-g0904-by-size-source-and-colour.md)（まとめの単位と位置）
 
@@ -6716,7 +6719,7 @@ Knuth-Plass の行分割は、最後の段で行長を超える行を許す。
 行ごとに一つ出す。
 位置は、その行を含む原稿のブロックである。
 
-- メッセージ: `行が行長から <量> はみ出しています（PDF の <ページ> ページ目）`
+- メッセージ: `行が行長から <量> はみ出しています（PDF の <ページ> ページ目）`（例: `行が行長から 1.24mm はみ出しています（PDF の 1 ページ目）`）。事実の `overfull` は、メッセージと同じ表記の `<量>` である
 - 段階とモジュール: プリフライト（golem-driver の `Golem.Driver.Pdf`、golem-preflight の `Golem.Preflight`）
 - ADR: [golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)
 
@@ -6855,7 +6858,7 @@ v1 の表の罫線（0.6pt と 0.3pt）は、既定の 0.1mm より太い。
 脚注の前の罫線の太さは `[notes.rule]` の `weight` で決まり、既定の 0.3pt は 0.1mm より太い（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 位置は `style.toml` の先頭である。
 
-- メッセージ: `線が細すぎます: <線の種類>（<太さ>、<min> 未満、PDF の <ページ> ページ目）`
+- メッセージ: `線が細すぎます: <線の種類>（<太さ>、<min> 未満、PDF の <ページ> ページ目）`（例: 0.06mm の表の罫線は `線が細すぎます: 表の罫線（0.06mm、0.10mm 未満、PDF の 1 ページ目）`）
 - 段階とモジュール: プリフライト（golem-preflight の `Golem.Preflight`）
 - ADR: [golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)
 

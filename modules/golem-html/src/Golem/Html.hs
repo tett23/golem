@@ -42,8 +42,9 @@ import Golem.Doc.IR
 import Golem.Doc.ListMarkers
 import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals
+import Golem.Syntax.Length qualified as L
 import Golem.Syntax.Span
-import Golem.Syntax.Text (escapeXml, showRationalDigits, tshow)
+import Golem.Syntax.Text (escapeXml, tshow)
 import Numeric (showHex)
 import Skylighting qualified as S
 import System.FilePath (makeRelative, replaceExtension, splitDirectories, takeDirectory, takeFileName, (</>))
@@ -641,14 +642,13 @@ inline c = \case
   -- an empty span with a margin; word joiners keep the line from breaking around it (docs/adr ADR 0019)
   Aki _ a -> "&#x2060;<span class=\"aki\" style=\"margin-inline-start: " <> akiLength a <> "\"></span>&#x2060;"
 
--- | The CSS length of an aki: zw in em, an absolute amount in pt.
+{- | The CSS length of an aki: zw in em, an absolute amount in pt, at most
+four decimals (docs/adr ADR 0103).
+-}
 akiLength :: AkiAmount -> Text
 akiLength = \case
-  AkiZw r -> decimal r <> "em"
-  AkiAbs x -> decimal (toRational x / 65536) <> "pt"
-  where
-    -- at most four decimal places, rounded half to even, without trailing zeros
-    decimal = showRationalDigits 4
+  AkiZw r -> L.emText r <> "em"
+  AkiAbs x -> L.ptText (L.Sp (toInteger x)) <> "pt"
 
 sidenotes :: Ctx -> [Inline] -> Text
 sidenotes c is = T.concat ["<aside class=\"sidenote\"><span class=\"number\">" <> tshow n <> "</span>" <> inlines c xs <> "</aside>\n" | Sidenote _ n xs <- is]

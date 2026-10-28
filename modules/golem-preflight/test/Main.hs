@@ -290,15 +290,17 @@ checkTests =
     testCase "G09004: two definitions of one size, role and colour are two causes (golem-cli ADR 0008)" $ do
       let ds = only "G09004" (check printRules (withPages [(emptyPage 1) {pvGlyphs = [smallAt (SourceParagraphStyle "a") PartBase 10, smallAt (SourceParagraphStyle "b") PartBase 20]}]))
       map diagMessage ds
-        @?= [ "文字が小さすぎます: 1.4mm（1.8mm 未満、段落スタイル a の size、色 rich、PDF の 1 ページ目）",
-              "文字が小さすぎます: 1.4mm（1.8mm 未満、段落スタイル b の size、色 rich、PDF の 1 ページ目）"
+        @?= [ "文字が小さすぎます: 1.41mm（1.76mm 未満、段落スタイル a の size、色 rich、PDF の 1 ページ目）",
+              "文字が小さすぎます: 1.41mm（1.76mm 未満、段落スタイル b の size、色 rich、PDF の 1 ページ目）"
             ]
-      map (lookup "source" . diagFacts) ds @?= [Just (FactText "paragraph-styles.a.size"), Just (FactText "paragraph-styles.b.size")],
+      map (lookup "source" . diagFacts) ds @?= [Just (FactText "paragraph-styles.a.size"), Just (FactText "paragraph-styles.b.size")]
+      -- the size in mm to two decimals (docs/adr ADR 0103)
+      map (lookup "size" . diagFacts) ds @?= [Just (FactText "1.41mm"), Just (FactText "1.41mm")],
     testCase "G09004: the text and its ruby of one definition are two causes (golem-cli ADR 0008)" $ do
       let ds = only "G09004" (check printRules (withPages [(emptyPage 1) {pvGlyphs = [smallAt (SourceCharacterStyle "s") PartBase 10, smallAt (SourceCharacterStyle "s") PartRuby 10]}]))
       map diagMessage ds
-        @?= [ "文字が小さすぎます: 1.4mm（1.8mm 未満、文字スタイル s の size、色 rich、PDF の 1 ページ目）",
-              "文字が小さすぎます: 1.4mm（1.8mm 未満、文字スタイル s の size のルビ、色 rich、PDF の 1 ページ目）"
+        @?= [ "文字が小さすぎます: 1.41mm（1.76mm 未満、文字スタイル s の size、色 rich、PDF の 1 ページ目）",
+              "文字が小さすぎます: 1.41mm（1.76mm 未満、文字スタイル s の size のルビ、色 rich、PDF の 1 ページ目）"
             ]
       map (lookup "part" . diagFacts) ds @?= [Just (FactText "base"), Just (FactText "ruby")],
     testCase "G09004: at the character first in the source, not on the first page (golem-cli ADR 0008)" $ do
@@ -416,9 +418,10 @@ checkTests =
       assertBool (show ds) (all (\d -> "ノンブル" `T.isInfixOf` diagMessage d && "地" `T.isInfixOf` diagMessage d) ds),
     testCase "G09012: a line well inside is not reported" $
       only "G09012" (check printRules (withPages [(emptyPage 1) {pvLines = [LineView (Rect (mm 20) (mm 20) (mm 50) (mm 3)) "本文の行" srcSpan Nothing]}])) @?= [],
-    testCase "G09013: an overfull line, in mm to one decimal" $ do
+    testCase "G09013: an overfull line, in mm to two decimals (docs/adr ADR 0103)" $ do
       let ds = only "G09013" (check printRules (withPages [(emptyPage 1) {pvLines = [LineView (Rect (mm 20) (mm 20) (mm 50) (mm 3)) "本文の行" srcSpan (Just (mm 1.24))]}]))
-      map diagMessage ds @?= ["行が行長から 1.2mm はみ出しています（PDF の 1 ページ目）"]
+      map diagMessage ds @?= ["行が行長から 1.24mm はみ出しています（PDF の 1 ページ目）"]
+      map (lookup "overfull" . diagFacts) ds @?= [Just (FactText "1.24mm")]
       map diagSeverity ds @?= [Warning]
       map diagSpan ds @?= [srcSpan],
     testCase "G09014: one problem, off, and the missing intent alone" $ do
@@ -443,6 +446,9 @@ checkTests =
       let at w = length (only "G09018" (check printRules (withPages [(emptyPage 1) {pvRules = [RuleView "表の罫線" (pt w) (Rect (mm 20) (mm 20) (mm 50) (pt w))]}])))
       at 0.2 @?= 1
       at 0.3 @?= 0,
+    testCase "G09018: a line of 0.06mm is told apart from the threshold of 0.1mm (docs/adr ADR 0103)" $ do
+      let ds = only "G09018" (check printRules (withPages [(emptyPage 1) {pvRules = [RuleView "表の罫線" (mm 0.06) (Rect (mm 20) (mm 20) (mm 50) (mm 0.06))]}]))
+      map diagMessage ds @?= ["線が細すぎます: 表の罫線（0.06mm、0.10mm 未満、PDF の 1 ページ目）"],
     testCase "twelve pages: ten are listed, then ほか 2 ページ" $ do
       pagesPhrase [1 .. 12] @?= "PDF の 1、2、3、4、5、6、7、8、9、10 ページ目ほか 2 ページ"
       let v = withPages [(emptyPage n) {pvBlank = True} | n <- [1 .. 12]]

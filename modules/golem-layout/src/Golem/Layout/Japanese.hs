@@ -44,6 +44,7 @@ import Golem.Layout.Look
 import Golem.Layout.Ruby
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan, diagnostic)
+import Golem.Syntax.Length qualified as L
 
 lineStartProhibited :: Bool -> CharClass -> Bool
 lineStartProhibited strict = \case
@@ -586,7 +587,7 @@ itemsFor env prev p next = case p of
   -- zw is the size of the type at its place; an empty box: no break between it and a neighbouring box (golem-layout ADR 0012)
   PAki lk a ->
     let w = case a of
-          AkiZw r -> round (r * toRational (lkSize lk))
+          AkiZw r -> L.unSp (L.zwToSp (L.Sp (lkSize lk)) r)
           AkiAbs x -> x
      in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0 (ceBoxSource env))]
   PCode lk run ps pe -> codeItems env lk run ps pe
