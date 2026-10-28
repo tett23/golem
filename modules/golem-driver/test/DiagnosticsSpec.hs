@@ -440,7 +440,19 @@ evalDiagnosticTests :: TestTree
 evalDiagnosticTests =
   testGroup
     "evaluation diagnostics (golem-eval ADR 0003)"
-    [ testCase "absolute paths, URLs and paths outside the root are G02060" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
+    [ -- docs/adr ADR 0102
+      testCase "a number of digits that refers to doc is checked at S1: G02103 with three chapters, none with five" $ do
+        let src = "[= round(1 / 3, doc.chapters.count - 5)]\n"
+            chapters n = [("c" <> show i <> ".gm", "# h\n\n" <> (if i == (1 :: Int) then src else "a\n")) | i <- [1 .. n]]
+        three <- withChapters "" (chapters 3) [] $ \tmp -> do
+          r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+          pure [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
+        three @?= [(DiagnosticCode "G02103", "round の桁数には 0 以上の整数を書きます（書かれた値は -2）")]
+        five <- withChapters "" (chapters 5) [] $ \tmp -> do
+          r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+          pure [diagCode d | d <- brDiagnostics r, isError d]
+        five @?= [],
+      testCase "absolute paths, URLs and paths outside the root are G02060" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
         let root = tmp </> "book"
         at <- withChapter root "@figure /tmp/a.png alt=x\n\n@figure \"https://example.com/a.png\" alt=x\n\n@listing ../outside.txt\n"
         ds <- evalDiags root

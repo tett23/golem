@@ -9,6 +9,8 @@ module Golem.Eval.Expr
     embedValue,
     freeNames,
     overLimit,
+    naturalDiagnostic,
+    digitsDiagnostic,
   )
 where
 
@@ -103,7 +105,11 @@ evalExpr env le@(Located _ e) = case e of
     x <- evalExpr env a
     y <- evalExpr env b
     binary le op x y
-  ECall f args -> traverse (evalExpr env) args >>= call le f
+  ECall f args -> do
+    vs <- traverse (evalExpr env) args
+    case (args, vs) of
+      ([_, d], [_, dv]) | Just diag <- digitsDiagnostic f d dv -> Left diag
+      _ -> call le f vs
   EError -> err "G01020" le "式を解釈できません"
 
 lookupMember :: Located Expr -> Value -> [Name] -> Eval Value
@@ -112,6 +118,25 @@ lookupMember le (VHash m) (k : ks) = case Map.lookup k m of
   Just v -> lookupMember le v ks
   Nothing -> err "G02002" le ("未定義の名前 " <> k <> " です")
 lookupMember le v _ = typeErr le (typeName v <> " の要素は参照できません")
+
+{- | A number at a place that takes a natural number (docs/adr ADR 0102):
+G02103 for a negative one, G02104 for one that is not an integer, with
+the value written exactly; Nothing for a natural number. @what@ names
+the place.
+-}
+naturalDiagnostic :: Text -> SrcSpan -> Rational -> Maybe Diagnostic
+naturalDiagnostic what sp q
+  | q < 0 = Just (diagnostic "G02103" Error sp (what <> "には 0 以上の整数を書きます（書かれた値は " <> exactText q <> "）"))
+  | denominator q /= 1 = Just (diagnostic "G02104" Error sp (what <> "には 0 以上の整数を書きます（書かれた値 " <> exactText q <> " は整数ではありません）"))
+  | otherwise = Nothing
+
+{- | The number of digits of round and fixed, the second argument, when it
+is a number that is no natural number; Nothing otherwise.
+-}
+digitsDiagnostic :: Name -> Located Expr -> Value -> Maybe Diagnostic
+digitsDiagnostic f d v
+  | f `elem` ["round", "fixed"], Just (_, q) <- numberOf v = naturalDiagnostic (f <> " の桁数") (locSpan d) q
+  | otherwise = Nothing
 
 -- | The order of two numbers, by their values whatever their types.
 compareNum :: Value -> Value -> Maybe Ordering

@@ -48,12 +48,14 @@ import Data.Text.Internal qualified as TI
 import Data.Text.Unsafe (lengthWord8)
 import Golem.Doc.Assemble (ChannelDecl)
 import Golem.Doc.IR
+import Golem.Eval.Analysis (analyse)
 import Golem.Eval.Builtin
 import Golem.Eval.Expr
 import Golem.Eval.RegexStyle (applyRegexStyles, regexRules)
 import Golem.Eval.Settings
 import Golem.Eval.Value
 import Golem.Parser.AST qualified as A
+import Golem.Parser.Lower qualified as A (numberWord)
 import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportSite (..), importSite)
@@ -61,6 +63,7 @@ import Golem.Project.Paths (PathError (..), pathErrorMessage)
 import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Style, kentenShapeNames, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
 import Golem.Syntax
 import Golem.Syntax.Text (isSpaceTab, tshow)
+import Numeric.Natural (Natural)
 
 -- | The call of one plugin command.
 newtype PluginCommand = PluginCommand
@@ -447,7 +450,7 @@ evalBlock ctx (A.Located sp b) = case b of
           else do
             noteRefs e
             en <- env
-            case evalExpr en e of
+            case evalAnalysed en e of
               Left d -> report d
               Right v -> modify' (\s -> s {stVars = Map.insert n v (stVars s), stDefined = stDefined s <> [(n, nsp)]})
     pure []
@@ -488,9 +491,10 @@ standalone ctx sp (A.Located nsp name) args body = case name of
     pure []
   "toc" -> do
     kw <- keywords ctx args
-    let depth = maybe (Just 2) (intOf . argValueRaw) (lookup "depth" kw)
+    depth <- maybe (pure (Right 2)) (naturalArg ctx "@toc の depth" sp) (lookup "depth" kw)
     case depth of
-      Just d | d >= 1 && d <= 3 -> pure [block sp (ChannelOutput (TocOutput (fromInteger d)))]
+      Right d | d >= 1 && d <= 3 -> pure [block sp (ChannelOutput (TocOutput (fromIntegral d)))]
+      Left NaturalReported -> pure []
       _ -> err "G02025" sp "@toc の depth は 1 から 3 の整数です" >> pure []
   "index" -> pure [block sp (ChannelOutput IndexOutput)]
   "bibliography" -> pure [block sp (ChannelOutput BibliographyOutput)]
@@ -499,9 +503,9 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "page-break" -> forcedBreak sp name args body
   "column-break" -> forcedBreak sp name args body
   "no-page-break" -> pageControl sp name args body
-  "need-lines" -> pageControl sp name args body
+  "need-lines" -> needLines ctx sp name args body
   "page-lines" -> pageControl sp name args body
-  "blank-line" -> blankLine sp args body
+  "blank-line" -> blankLine ctx sp args body
   "figure" -> figure ctx sp args body
   "table" -> csvTable ctx sp args
   "listing" -> listing ctx sp args
@@ -692,8 +696,6 @@ pageControl :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] 
 pageControl sp name args body = breakCommand sp name body . fmap PageControl $ case (name, map A.locValue args) of
   ("no-page-break", []) -> Right NoBreak
   ("no-page-break", _) -> Left ("G02096", takesNoArguments name)
-  ("need-lines", [A.Positional (A.Word w)]) | Just n <- count w, n >= 1 -> Right (NeedLines n)
-  ("need-lines", _) -> Left ("G02070", "@need-lines の引数は 1 以上の整数です")
   ("page-lines", [A.Positional (A.Word w)])
     | Just (s, digits) <- T.uncons w,
       s `elem` ['+', '-'],
@@ -707,20 +709,39 @@ pageControl sp name args body = breakCommand sp name body . fmap PageControl $ c
       | not (T.null w) && T.all isDigit w && T.length w <= 9 = Just (read (T.unpack w))
       | otherwise = Nothing
 
-{- | @blank-line and @blank-line N (docs/adr ADR 0046): one positional
-integer word of 1 or more, G02092 otherwise; G02091 out of int64.
+{- | @need-lines N (docs/adr ADR 0030): a natural number of 1 or more and
+of at most 9 digits, G02070 otherwise; a negative number or one that is
+not an integer is G02103 or G02104 (docs/adr ADR 0102).
 -}
-blankLine :: SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-blankLine sp args body
+needLines :: EvalContext -> SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+needLines ctx sp name args body = case map A.locValue args of
+  [A.Positional v] ->
+    naturalArg ctx "@need-lines の引数" sp v >>= \case
+      Right n | n >= 1 && n < 10 ^ (9 :: Int) -> breakCommand sp name body (Right (PageControl (NeedLines (fromIntegral n))))
+      Left NaturalReported -> mapM_ (\(A.Located bsp _) -> err "G02097" bsp (takesNoBody name)) (take 1 body) >> pure []
+      _ -> usage
+  _ -> usage
+  where
+    usage = breakCommand sp name body (Left ("G02070", "@need-lines の引数は 1 以上の整数です"))
+
+{- | @blank-line and @blank-line N (docs/adr ADR 0046): one positional
+natural number of 1 or more, G02092 otherwise; G02091 out of int64; a
+negative number or one that is not an integer is G02103 or G02104
+(docs/adr ADR 0102).
+-}
+blankLine :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+blankLine ctx sp args body
   | not (null body) = bad "@blank-line は本体を持てません"
   | otherwise = case map A.locValue args of
       [] -> ok 1
-      [A.Positional (A.Word w)]
-        | not (T.null w) && T.all isDigit w ->
-            let n = read (T.unpack w) :: Integer
-             in if n < 1
-                  then bad usage
-                  else if inInt64 n then ok (fromInteger n) else outOfInt64 sp >> pure []
+      [A.Positional v] ->
+        naturalArg ctx "@blank-line の引数" sp v >>= \case
+          Right n
+            | n < 1 -> bad usage
+            | inInt64 (toInteger n) -> ok (fromIntegral n)
+            | otherwise -> outOfInt64 sp >> pure []
+          Left NaturalReported -> pure []
+          Left NotANumber -> bad usage
       _ -> bad usage
   where
     usage = "@blank-line の引数は 1 以上の整数を一つだけ書きます"
@@ -813,11 +834,16 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
     _ -> err "G02013" sp ("@" <> name <> " はこのブロックには付けられません") >> pure (label, body)
     where
       withNumber f = case map A.locValue args of
-        [A.Positional v]
-          | Just n <- intOf (argValueRaw v) ->
+        [A.Positional v] ->
+          naturalArg ctx "@number の引数" sp v >>= \case
+            Right n
+              | inInt64 (toInteger n) -> pure (label, f (toInteger n))
               -- G02091: as if there were no @number (golem-doc ADR 0006)
-              if inInt64 n then pure (label, f n) else outOfInt64 sp >> pure (label, body)
-        _ -> err "G02027" sp "@number には整数を一つ書きます" >> pure (label, body)
+              | otherwise -> outOfInt64 sp >> pure (label, body)
+            Left NaturalReported -> pure (label, body)
+            Left NotANumber -> wrongNumber
+        _ -> wrongNumber
+      wrongNumber = err "G02027" sp "@number には整数を一つ書きます" >> pure (label, body)
   _ -> pure (label, body)
   where
     positional = \case
@@ -1018,11 +1044,16 @@ figure ctx sp args body = do
                 Just w | extension w `notElem` [".png", ".jpg", ".jpeg", ".svg"] -> err "G02073" sp ("web の代替画像は PNG、JPEG、SVG です: " <> w) >> pure False
                 _ -> pure True
             ]
-      page <- case look "page" of
+      let wrongPage p = err "G02075" sp ("page は PDF の図版のページを 1 から数えた整数で書きます: " <> argText p) >> pure (Left ())
+      page <- case lookup "page" kw of
         Nothing -> pure (Right Nothing)
         Just p
-          | isPdf, not (T.null p), T.all isDigit p, T.length p <= 9, let n = read (T.unpack p), n >= 1 -> pure (Right (Just n))
-          | otherwise -> err "G02075" sp ("page は PDF の図版のページを 1 から数えた整数で書きます: " <> p) >> pure (Left ())
+          | not isPdf -> wrongPage p
+          | otherwise ->
+              naturalArg ctx "@figure の page" sp p >>= \case
+                Right n | n >= 1 && n < 10 ^ (9 :: Int) -> pure (Right (Just (fromIntegral n)))
+                Left NaturalReported -> pure (Left ())
+                _ -> wrongPage p
       fine <- (&& formats) <$> ok
       caption <- evalBlocks ctx . concat =<< mapM unstyled body
       case look "alt" of
@@ -1381,9 +1412,11 @@ listing ctx sp args = do
                 ca <- codeArgs ctx sp ["lang"] codeArgsOf
                 c <- codeOf sp ca start (caLang ca) [(sp, x) | x <- xs]
                 pure [block sp (CodeBlock c)]
-          case argText <$> lookup "lines" kw of
+          linesArg <- traverse (rangeText ctx "@listing の lines" sp) (lookup "lines" kw)
+          case linesArg of
             Nothing -> code Nothing ls
-            Just r -> case map (fmap fst . decimalInt) (T.splitOn "-" r) of
+            Just Nothing -> pure []
+            Just (Just r) -> case map (fmap fst . decimalInt) (T.splitOn "-" r) of
               [Just a, Just b]
                 | a >= 1 && b >= a && b <= length ls -> code (Just (toInteger a)) (take (b - a + 1) (drop (a - 1) ls))
               _ -> err "G02037" sp ("lines の範囲が不正です: " <> r) >> pure []
@@ -1420,6 +1453,13 @@ codeArgs ctx _ extra = foldl (\m a -> m >>= \acc -> step acc a) (pure (CodeArgs 
   where
     step acc (A.Located asp a) = case a of
       A.Keyword (A.Located _ k) v
+        | k `elem` ["numbers", "highlight"] ->
+            -- the natural numbers of numbers= and highlight= (docs/adr ADR 0102)
+            rangeText ctx ("コードブロックの " <> k) asp v >>= \case
+              Nothing -> pure acc
+              Just t -> case reading asp k t of
+                Just f -> pure (f acc)
+                Nothing -> err "G02069" asp (k <> " の値が正しくありません: " <> t) >> pure acc
         | k `elem` codeKeys <> extra -> do
             t <- scalar v
             case t >>= reading asp k of
@@ -1596,24 +1636,31 @@ evalInline ctx inHeading (A.Located sp i) = case i of
   A.Expr e -> do
     noteRefs e
     en <- env
-    if usesDoc e
-      then
-        if inHeading
-          then err "G02014" sp "見出しの中では doc を参照できません" >> pure []
-          else
-            let e' = substitute en e
-             in -- G02086: a literal past the limit of the evaluator (docs/adr ADR 0101);
-                -- G02091: an integer of the IR out of int64 (golem-doc ADR 0006)
-                if any overLimit (exprNumbers e')
-                  then err "G02086" sp "数が大きすぎます（整数と、分数の分子と分母の絶対値は 2 の 4096 乗未満に限ります）" >> pure []
-                  else
-                    if all (all inInt64 . ratioInts) (exprNumbers e')
-                      then pure [Deferred sp (DeferredExpr e')]
-                      else outOfInt64 sp >> pure []
-      else case evalExpr en e >>= embedValue sp of
-        Left d -> report d >> pure []
-        Right t -> pure [Text sp t]
+    -- the analysis before the evaluation (docs/adr ADR 0102): an expression
+    -- with a diagnostic is not evaluated, nor deferred
+    case analyse en e of
+      Just d -> report d >> pure []
+      Nothing -> exprInline en e
   A.Command n args slots -> uniqueKeys args >>= \args' -> evalCommand ctx inHeading sp n args' (codeSlots n args' slots)
+  where
+    exprInline en e =
+      if usesDoc e
+        then
+          if inHeading
+            then err "G02014" sp "見出しの中では doc を参照できません" >> pure []
+            else
+              let e' = substitute en e
+               in -- G02086: a literal past the limit of the evaluator (docs/adr ADR 0101);
+                  -- G02091: an integer of the IR out of int64 (golem-doc ADR 0006)
+                  if any overLimit (exprNumbers e')
+                    then err "G02086" sp "数が大きすぎます（整数と、分数の分子と分母の絶対値は 2 の 4096 乗未満に限ります）" >> pure []
+                    else
+                      if all (all inInt64 . ratioInts) (exprNumbers e')
+                        then pure [Deferred sp (DeferredExpr e')]
+                        else outOfInt64 sp >> pure []
+        else case evalExpr en e >>= embedValue sp of
+          Left d -> report d >> pure []
+          Right t -> pure [Text sp t]
 
 {- | The digits of ##N##: ASCII digits between the two ##, without a
 leading zero but 0 itself (golem-parser ADR 0011).
@@ -1876,8 +1923,63 @@ argValue _ = \case
   A.ExprArg e -> do
     noteRefs e
     en <- env
-    pure (evalExpr en e)
+    pure (evalAnalysed en e)
   v -> pure (Right (argValueRaw v))
+
+-- | The evaluation of an expression after the analysis (docs/adr ADR 0102).
+evalAnalysed :: Env -> A.Located A.Expr -> Either Diagnostic Value
+evalAnalysed en e = maybe (evalExpr en e) Left (analyse en e)
+
+-- | Why an argument is no natural number (docs/adr ADR 0102).
+data NaturalError
+  = -- | it is no number, nor a word read as one: the place reports it with its own code
+    NotANumber
+  | -- | its diagnostic is reported (G02103, G02104, or one of its expression)
+    NaturalReported
+
+{- | An argument at a place that takes a natural number (docs/adr ADR
+0102): a word read as a number literal, a leading - allowed, or an
+expression evaluated after the analysis. A negative number is G02103 and
+one that is not an integer G02104, at @sp@; @what@ names the place.
+-}
+naturalArg :: EvalContext -> Text -> SrcSpan -> A.ArgValue -> M (Either NaturalError Natural)
+naturalArg ctx what sp = \case
+  A.Word w -> maybe (pure (Left NotANumber)) check (A.numberWord w)
+  v@(A.ExprArg _) ->
+    argValue ctx v >>= \case
+      Left d -> report d >> pure (Left NaturalReported)
+      Right val -> maybe (pure (Left NotANumber)) (check . snd) (numberOf val)
+  _ -> pure (Left NotANumber)
+  where
+    check q = case naturalDiagnostic what sp q of
+      Just d -> report d >> pure (Left NaturalReported)
+      Nothing -> pure (Right (fromInteger (numerator q)))
+
+{- | The text of an argument of ranges of natural numbers, @3@, @3-5@ or
+@1,3-5@ (numbers= and highlight= of a code block, lines= of @listing): an
+end that is a number but no natural number is G02103 or G02104 (docs/adr
+ADR 0102), and Nothing. An expression whose value is a natural number is
+its digits, a string or a truth value its text, as before.
+-}
+rangeText :: EvalContext -> Text -> SrcSpan -> A.ArgValue -> M (Maybe Text)
+rangeText ctx what sp = \case
+  A.Word t -> checked t (concatMap (T.splitOn "-") (T.splitOn "," t))
+  A.StringLit t -> pure (Just t)
+  v@(A.ExprArg _) ->
+    argValue ctx v >>= \case
+      Left d -> report d >> pure Nothing
+      Right (VString s) -> pure (Just s)
+      Right (VBool b) -> pure (Just (if b then "true" else "false"))
+      Right val
+        | Just (_, q) <- numberOf val -> case naturalDiagnostic what sp q of
+            Just d -> report d >> pure Nothing
+            Nothing -> pure (Just (T.pack (show (numerator q))))
+        | otherwise -> pure (Just "")
+  A.CommandArg _ -> pure (Just "")
+  where
+    checked t ends = case [d | Just q <- map A.numberWord ends, Just d <- [naturalDiagnostic what sp q]] of
+      d : _ -> report d >> pure Nothing
+      [] -> pure (Just t)
 
 {- | G02091: an integer out of int64 for a field of the IR (golem-doc ADR
 0006).

@@ -1,6 +1,7 @@
 -- | Lowering the CST to the AST (golem-parser ADR 0005).
 module Golem.Parser.Lower
   ( lower,
+    numberWord,
   )
 where
 
@@ -349,6 +350,20 @@ binop = \case
   "<=" -> OpLe
   ">" -> OpGt
   _ -> OpGe
+
+{- | A word read as a number literal, with a leading - allowed (docs/adr
+ADR 0102): the value of @-1@, @1.5@ or @1e3@; Nothing for a word that is
+no number.
+-}
+numberWord :: Text -> Maybe Rational
+numberWord w = case T.uncons w of
+  Just ('-', rest) -> negate <$> unsigned rest
+  _ -> unsigned w
+  where
+    unsigned t = case number t of
+      ENat n -> Just (toRational n)
+      ERat q -> Just q
+      _ -> Nothing
 
 {- | A number literal (docs/adr ADR 0101): digits are a natural number; a
 decimal or an exponent is the exact rational, never rounded. An exponent

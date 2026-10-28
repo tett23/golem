@@ -411,7 +411,7 @@ hover ws path off = do
                 (ns, target, _) <- usageImports (erUsage res)
               ]
           chapterCount = maybe 0 (length . projectChapters . evProject) (wsEvaluated ws)
-          docNs = Map.fromList [("chapters", VHash (Map.fromList [("count", VInt (fromIntegral chapterCount))]))]
+          docNs = Map.fromList [("chapters", VHash (Map.fromList [("count", VNat (fromIntegral chapterCount))]))]
           s1 = isJust (wsEvaluated ws >>= evBook)
           env = Env vars (Map.insert "doc" docNs imports)
        in case evalExpr env e of

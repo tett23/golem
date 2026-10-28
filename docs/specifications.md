@@ -528,6 +528,8 @@ Golem の Writer が shem の読まない演算子や資源を書くようにな
 
 式の評価は、x86-64 と aarch64 の両方の CI でテストし、結果が一致することを確かめる。
 式の言語の数は自然数、整数、有理数であり、浮動小数点数を持たず、演算はすべて正確に行う（[ADR 0101](adr/0101-rational-numbers-in-expressions.md)）。
+行数、番号、桁数のように負にならない量を受け取る箇所は自然数を求め、式は評価の前に型を推論して、S0 で値の決まる負の数（G02103）と整数でない数（G02104）を評価の前に見つける。
+`doc` を参照する式の値は S1 の評価で調べる（[ADR 0102](adr/0102-natural-number-type.md)、[docs/markup.md](markup.md) の「数の規則」）。
 
 diagnostics も決定性の対象である（「設計原則」の「diagnostics の決定性」）。
 同じ入力からは同じ diagnostics を得て、並びの順はコードの順、ファイルの順、位置の順に固定する（[ADR 0002](adr/0002-determinism.md)、[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。

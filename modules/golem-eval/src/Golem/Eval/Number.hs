@@ -13,6 +13,7 @@ module Golem.Eval.Number
     piValue,
     eValue,
     renderNumber,
+    exactText,
     maxFractionDigits,
     floorDiv,
     floorMod,
@@ -146,6 +147,14 @@ renderNumber q
             Just k' -> (k', q)
             Nothing -> let r = round17 q in (fromMaybe 0 (finiteDigits (denominator r)), r)
        in if k > maxFractionDigits then Left k else Right (positional k v)
+
+{- | A number written exactly, for messages (docs/adr ADR 0102): a finite
+decimal positionally, any other rational as a fraction (@7/3@).
+-}
+exactText :: Rational -> Text
+exactText q = case finiteDigits (denominator q) of
+  Just k -> positional k q
+  Nothing -> T.pack (show (numerator q)) <> "/" <> T.pack (show (denominator q))
 
 {- | The fractional digits of a finite decimal with this denominator: the
 larger of the powers of 2 and 5 in it; Nothing when it has another prime

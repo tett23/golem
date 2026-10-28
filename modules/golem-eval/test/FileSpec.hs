@@ -1045,7 +1045,7 @@ pageControlTests =
       testCase "a wrong argument of @need-lines is G02070 (docs/adr ADR 0060)" $
         mapM_
           (\src -> assertEqual (T.unpack src) [("G02070", "@need-lines の引数は 1 以上の整数です")] (msgs src))
-          ["@need-lines\n", "@need-lines 0\n", "@need-lines 2.5\n", "@need-lines 3 4\n", "@need-lines n=3\n"],
+          ["@need-lines\n", "@need-lines 0\n", "@need-lines x\n", "@need-lines 3 4\n", "@need-lines n=3\n"],
       testCase "a wrong argument of @page-lines is G02099 (docs/adr ADR 0060)" $
         mapM_
           (\src -> assertEqual (T.unpack src) [("G02099", "@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です")] (msgs src))
@@ -1098,8 +1098,6 @@ blankLineTests =
         mapM_
           (\src -> assertEqual (T.unpack src) ([], ["G02092"]) (outline ctx src))
           [ "@blank-line 0\n",
-            "@blank-line -1\n",
-            "@blank-line 1.5\n",
             "@blank-line x\n",
             "@blank-line 1 2\n",
             "@blank-line lines=2\n",
