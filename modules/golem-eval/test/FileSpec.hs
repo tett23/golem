@@ -528,6 +528,19 @@ int64Tests =
         diags "[= 1e1301 + doc.chapters.count]\n" @?= [("G02086", big, 0, 31)]
         body "[= 1e1301 + doc.chapters.count]\n" @?= [Paragraph Nothing []]
         msgs "[= doc.chapters.count * 1e-1301]\n" @?= [("G02086", big)],
+      -- docs/adr ADR 0101; the audit of 2026-10-28, F-01: one code for a number past the limit
+      testCase "a word of digits past the limit of the evaluator is G02086, as the expression is" $ do
+        let huge = "1" <> T.replicate 1300 "0"
+            big = ("G02086", "数が大きすぎます（整数と、分数の分子と分母の絶対値は 2 の 4096 乗未満に限ります）")
+        msgs "[number-text [= 1e1300]]\n" @?= [big]
+        msgs ("[number-text " <> huge <> "]\n") @?= [big]
+        msgs ("##" <> huge <> "##\n") @?= [big]
+        paraOf ("a[number-text " <> huge <> "]b\n") @?= ["ab"]
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let hook = noPlugins {phCommands = Map.fromList [(greet, pluginOutput)]}
+            c = ctx {ctxPlugins = hook}
+        run c ("[greet " <> huge <> ": x]\n") @?= ([Paragraph Nothing []], ["G02086"])
+        run c ("[greet n=" <> huge <> ": x]\n") @?= ([Paragraph Nothing []], ["G02086"]),
       testCase "a plugin command with an argument beyond int64 is G02091 and is not called" $ do
         greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
         let hook = noPlugins {phCommands = Map.fromList [(greet, pluginOutput)]}
