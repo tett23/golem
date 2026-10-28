@@ -1463,17 +1463,17 @@ codeArgs ctx _ extra = foldl (\m a -> m >>= \acc -> step acc a) (pure (CodeArgs 
                   | all (uncurry (<=)) rs -> pure (acc {caHighlight = Just (asp, [(toInteger x, toInteger y) | (x, y) <- rs])})
                 _ -> err "G02069" asp (k <> " の値が正しくありません: " <> t) >> pure acc
         | k `elem` codeKeys <> extra -> do
-            t <- scalar v
+            t <- scalar asp v
             case t >>= reading k of
               Just f -> pure (f acc)
               Nothing -> err "G02069" asp (k <> " の値が正しくありません: " <> fromMaybe "" t) >> pure acc
         | otherwise -> err "G02069" asp ("コードブロックに書けないキーです: " <> k <> "。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます") >> pure acc
       _ -> err "G02069" asp "コードブロックの開始の行には、言語の名前とキーワード引数だけを書けます" >> pure acc
-    scalar = \case
+    scalar vsp = \case
       A.Word t -> pure (Just t)
       A.StringLit t -> pure (Just t)
       v@(A.ExprArg _) ->
-        argValue ctx v >>= \case
+        argValue ctx vsp v >>= \case
           Right val | Just n <- intOf val -> pure (Just (T.pack (show n)))
           Right (VString s) -> pure (Just s)
           Right (VBool b) -> pure (Just (if b then "true" else "false"))
@@ -1687,8 +1687,8 @@ evalCommand ctx inHeading sp (A.Located nsp name) args slots
     parsed = parseBuiltin name
     plugin pc = do
       vals <- forM args $ \(A.Located _ a) -> case a of
-        A.Positional v -> argValue ctx v
-        A.Keyword _ v -> argValue ctx v
+        A.Positional v -> argValue ctx sp v
+        A.Keyword _ v -> argValue ctx sp v
         _ -> pure (Right VNil)
       slots' <- mapM (evalInlines ctx inHeading) slots
       case sequence vals of
@@ -1746,7 +1746,7 @@ builtinWith ctx inHeading sp b args slots = do
       _ -> err "G02040" sp "縦中横の中身は地の文に限ります" >> pure []
     Overridable BNumberText -> case pos of
       [v] -> do
-        val <- argValue ctx v
+        val <- argValue ctx sp v
         let st = argText <$> lookup "style" kw
         case (val, st) of
           (Right v', _) | Just n <- intOf v', not (inInt64 n) -> outOfInt64 sp >> pure []
@@ -1908,13 +1908,22 @@ argValueRaw = \case
   A.StringLit t -> VString t
   _ -> VNil
 
-argValue :: EvalContext -> A.ArgValue -> M (Either Diagnostic Value)
-argValue _ = \case
+{- | The value of an argument. A word of digits past the limit of the
+evaluator is G02086 at @sp@, as the same literal in an expression is
+(docs/adr ADR 0101; the audit of 2026-10-28, F-01).
+-}
+argValue :: EvalContext -> SrcSpan -> A.ArgValue -> M (Either Diagnostic Value)
+argValue _ sp = \case
   A.ExprArg e -> do
     noteRefs e
     en <- env
     pure (evalAnalysed en e)
-  v -> pure (Right (argValueRaw v))
+  v ->
+    pure
+      ( case argValueRaw v of
+          VNat n | overLimit (toRational n) -> Left (tooBigDiagnostic sp)
+          val -> Right val
+      )
 
 -- | The evaluation of an expression after the analysis (docs/adr ADR 0102).
 evalAnalysed :: Env -> A.Located A.Expr -> Either Diagnostic Value
@@ -1936,7 +1945,7 @@ naturalArg :: EvalContext -> Text -> SrcSpan -> A.ArgValue -> M (Either NaturalE
 naturalArg ctx what sp = \case
   A.Word w -> maybe (pure (Left NotANumber)) check (A.numberWord w)
   v@(A.ExprArg _) ->
-    argValue ctx v >>= \case
+    argValue ctx sp v >>= \case
       Left d -> report d >> pure (Left NaturalReported)
       Right val -> maybe (pure (Left NotANumber)) (check . snd) (numberOf val)
   _ -> pure (Left NotANumber)
@@ -1985,7 +1994,7 @@ rangesArg ctx what sp = \case
   A.Word t -> ofText t
   A.StringLit t -> ofText t
   v@(A.ExprArg _) ->
-    argValue ctx v >>= \case
+    argValue ctx sp v >>= \case
       Left d -> report d >> pure Nothing
       Right val -> ofValue val
   A.CommandArg _ -> pure (Just ("", RangesOther))
