@@ -446,8 +446,9 @@ evalDiagnosticTests =
             chapters n = [("c" <> show i <> ".gm", "# h\n\n" <> (if i == (1 :: Int) then src else "a\n")) | i <- [1 .. n]]
         three <- withChapters "" (chapters 3) [] $ \tmp -> do
           r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
-          pure [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
-        three @?= [(DiagnosticCode "G02103", "round の桁数には 0 以上の整数を書きます（書かれた値は -2）")]
+          pure [(diagCode d, diagMessage d, Just (spanFile (diagSpan d)) == sourceFileId r "c1.gm", spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- brDiagnostics r, isError d]
+        -- at the expression of the digits, doc.chapters.count - 5, as at S0 (the audit of 2026-10-28, F-13)
+        three @?= [(DiagnosticCode "G02103", "round の桁数には 0 以上の整数を書きます（書かれた値は -2）", True, 21, 43)]
         five <- withChapters "" (chapters 5) [] $ \tmp -> do
           r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
           pure [diagCode d | d <- brDiagnostics r, isError d]

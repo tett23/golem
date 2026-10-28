@@ -140,8 +140,8 @@ inMetadata = \case
 
 -- | One edition and printing and its date (docs/adr ADR 0033).
 data Printing = Printing
-  { prEdition :: !Int,
-    prNumber :: !Int,
+  { prEdition :: !Natural,
+    prNumber :: !Natural,
     prDate :: !Day
   }
   deriving stock (Eq, Show)
@@ -507,10 +507,12 @@ naturalOutOfRange = "integer out of range for Natural"
 naturalOf :: Value' l -> Matcher l Natural
 naturalOf = fromValue
 
-{- | A natural number kept in an 'Int': one past the range of 'Int' is
-the message of toml-parser for it.
+{- | A natural number that the layout uses as an 'Int' (docs/adr ADR
+0102): the field is a 'Natural', and the upper bound is checked here, where
+the value has its position; one past the range of 'Int' is the message of
+toml-parser for it.
 -}
-naturalIntOf :: Value' l -> Matcher l Int
+naturalIntOf :: Value' l -> Matcher l Natural
 naturalIntOf v =
   naturalOf v >>= \n ->
-    if n > fromIntegral (maxBound :: Int) then failAt (valueAnn v) "integer out of range for Int" else pure (fromIntegral n)
+    if n > fromIntegral (maxBound :: Int) then failAt (valueAnn v) "integer out of range for Int" else pure n

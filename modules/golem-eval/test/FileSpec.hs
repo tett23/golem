@@ -522,6 +522,12 @@ int64Tests =
         errs "@set n = 2 ** 62\n\n[= n + doc.chapters.count]\n" @?= []
         -- a value in prose is text, not an integer of the IR
         paraOf "[= 2 ** 70]\n" @?= ["1180591620717411303424"],
+      -- docs/adr ADR 0101; the audit of 2026-10-28, F-05
+      testCase "a deferred expression with a literal past the limit of the evaluator is G02086, not G02091" $ do
+        let big = "数が大きすぎます（整数と、分数の分子と分母の絶対値は 2 の 4096 乗未満に限ります）"
+        diags "[= 1e1301 + doc.chapters.count]\n" @?= [("G02086", big, 0, 31)]
+        body "[= 1e1301 + doc.chapters.count]\n" @?= [Paragraph Nothing []]
+        msgs "[= doc.chapters.count * 1e-1301]\n" @?= [("G02086", big)],
       testCase "a plugin command with an argument beyond int64 is G02091 and is not called" $ do
         greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
         let hook = noPlugins {phCommands = Map.fromList [(greet, pluginOutput)]}

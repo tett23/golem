@@ -390,14 +390,15 @@ inkCoverage r v =
     [ at (ruInkCoverage r) "G09015" (vwStyleSpan v) ("色の総インキ量が多すぎます: " <> name <> "（" <> tshow total <> "%、" <> tshow (ruInkMax r) <> "% 超）") [("total", FactInt (toInteger total))]
     | (name, (c, m, y, k)) <- Map.toList (vwSwatchesUsed v),
       let total = c + m + y + k,
-      total > ruInkMax r
+      toInteger total > toInteger (ruInkMax r)
     ]
 
 -- | G09016: the pages are not a multiple of multiple-of.
 pageCount :: Rules -> View -> [Diagnostic]
 pageCount r v =
   let n = length (vwPages v)
-      m = max 1 (ruPageMultiple r)
+      -- multiple-of is at most 1000000 (Golem.Preflight.Rules.countOf)
+      m = max 1 (fromIntegral (ruPageMultiple r))
       short = (m - n `mod` m) `mod` m
    in [ d
       | short /= 0,

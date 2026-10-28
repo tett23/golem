@@ -195,8 +195,9 @@ tests =
         exprOf "[= 1e0]\n" @?= ERat 1
         exprOf "[= 2e+2]\n" @?= ERat 200,
       testCase "an upper-case E is no exponent (docs/adr ADR 0101)" $ do
+        -- 1 is the literal and E3 is left before the closing bracket: G01017
         let (_, _, ds) = parseAst fid "[= 1E3]\n"
-        assertBool "1E3 is not a number literal" (not (null ds) || exprOf "[= 1E3]\n" /= ERat 1000),
+        map diagCode ds @?= [DiagnosticCode "G01017"],
       testCase "commands with arguments and slots" $ case paraTexts "[number-text 10 style=tcy][ruby: 東/京|とう/きょう]\n" of
         [[Command n1 a1 [], Command n2 [] [s1, s2]]] -> do
           locValue n1 @?= "number-text"

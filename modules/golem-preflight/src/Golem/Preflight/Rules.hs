@@ -22,6 +22,7 @@ import Data.Text qualified as T
 import Golem.Project.Manifest (decodeStrictBy, naturalOf)
 import Golem.Project.Style (Dim (..), Sp, parseDim)
 import Golem.Syntax (Diagnostic, FileId)
+import Numeric.Natural (Natural)
 import Toml.Schema
 import Toml.Schema.FromValue (typeError)
 import Toml.Semantics (valueAnn)
@@ -32,8 +33,8 @@ data Level = LevelError | LevelWarning | LevelOff
 
 -- | The thresholds of the effective resolution of a kind of image, in ppi; 0 skips one.
 data Tier = Tier
-  { tierErrorBelow :: !Int,
-    tierWarningBelow :: !Int
+  { tierErrorBelow :: !Natural,
+    tierWarningBelow :: !Natural
   }
   deriving stock (Eq, Show)
 
@@ -52,9 +53,9 @@ data Rules = Rules
     ruResolutionGray :: !Tier,
     ruResolutionBitmap :: !Tier,
     ruImageResolutionMax :: !Level,
-    ruColorMax :: !Int,
-    ruGrayMax :: !Int,
-    ruBitmapMax :: !Int,
+    ruColorMax :: !Natural,
+    ruGrayMax :: !Natural,
+    ruBitmapMax :: !Natural,
     ruImageColorSpace :: !Level,
     ruColorSpacesAllowed :: ![Text],
     ruImageIcc :: !Level,
@@ -67,9 +68,9 @@ data Rules = Rules
     ruOverfullLines :: !Level,
     ruPdfX :: !Level,
     ruInkCoverage :: !Level,
-    ruInkMax :: !Int,
+    ruInkMax :: !Natural,
     ruPageCount :: !Level,
-    ruPageMultiple :: !Int,
+    ruPageMultiple :: !Natural,
     ruBlankPages :: !Level,
     ruStrokeWeight :: !Level,
     ruStrokeMin :: !Sp
@@ -247,15 +248,20 @@ lengthOf k = \case
     Nothing -> bad l k t "長さは 3mm や 0.25pt のように書きます"
   v -> typeError "string" v
 
--- | An integer at least @low@.
-countOf :: Text -> Integer -> Value' l -> Matcher l Int
+{- | A natural number at least @low@ and at most 1000000, read as
+toml-parser reads a 'Natural': a negative number is G02103 (docs/adr ADR
+0102).
+-}
+countOf :: Text -> Natural -> Value' l -> Matcher l Natural
 countOf k low = \case
-  -- a negative number is G02103 (docs/adr ADR 0102)
-  v@(Integer' _ n) | n < 0 -> fromIntegral <$> naturalOf v
-  Integer' l n
-    | n < low -> bad l k (T.pack (show n)) (if low == 0 then "負の値は使えません" else "1 以上の整数にします")
-    | n > 1000000 -> bad l k (T.pack (show n)) "大きすぎます"
-    | otherwise -> pure (fromInteger n)
+  v@(Integer' l _) ->
+    naturalOf v >>= \n ->
+      if n < low
+        then bad l k (T.pack (show n)) (T.pack (show low) <> " 以上の整数にします")
+        else
+          if n > 1000000
+            then bad l k (T.pack (show n)) "大きすぎます"
+            else pure n
   v -> typeError "integer" v
 
 textsOf :: Text -> [Text] -> Value' l -> Matcher l [Text]

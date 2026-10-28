@@ -11,6 +11,7 @@ where
 import Golem.LayoutSpec
 import Golem.Project.Style
 import Golem.Syntax
+import Numeric.Natural (Natural)
 
 pt :: Integer -> Sp
 pt = Sp . (* 65536)
@@ -21,7 +22,7 @@ mm18 = 3343884
 mm20 = 3715427
 
 -- | 10pt characters on a 17pt pitch, 18mm from the top, 20mm from the gutter.
-grid :: Int -> Int -> Int -> Maybe Dim -> Grid
+grid :: Natural -> Natural -> Natural -> Maybe Dim -> Grid
 grid chars ls cols gap = Grid (Abs (pt 10)) chars ls (Abs (pt 17)) cols gap (Abs mm18) (Abs mm20)
 
 -- | The geometry of a style that has no errors.

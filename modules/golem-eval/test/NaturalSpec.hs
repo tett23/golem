@@ -80,8 +80,8 @@ tests =
           testCase "rationals" $
             inferred "6 / 2" @?= Just (SNum TRat)
         ],
-      testCase "a deferred expression with a negative number of digits is G02103 at S0" $
-        codes "[= round(1 / 3, 0 - 1) + doc.chapters.count]\n" @?= ["G02103"],
+      testCase "a deferred expression with a negative number of digits is G02103 at S0, at the digits" $
+        [(c, s, e) | (c, _, s, e) <- map diagSite (fst (evalSource baseCtx "[= round(1 / 3, 0 - 1) + doc.chapters.count]\n"))] @?= [("G02103", 16, 21)],
       testCase "a deferred expression whose digits refer to doc has no diagnostic at S0" $
         codes "[= round(1 / 3, doc.chapters.count - 5)]\n" @?= [],
       testCase "a negative argument is G02103 in every place" $

@@ -66,6 +66,13 @@ S0 は脚注の番号もファイルごとに振るが、これは [code: golem 
 出力の番号は、章ごとのように本の構成に依存する範囲で振るので、S1 が振り直す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0018-footnote-marks-and-numbers.md]（golem-driver ADR 0018「脚注の印と番号」）]
 [code: meta] はマニフェストだけで決まるので、S0 の値として見出しの中でも使える。
 S0 で決められない値（[code: doc] を使う式と、ラベルへの参照）は、評価せずに意味論 IR に残す（後の「[ref-title deferred]」の節）。
+S0 は、式を評価する前に式の型を推論して調べる（評価の前の解析）。[index reading=ひょうかのまえのかいせき: 評価の前の解析]
+0 以上の整数を求める箇所（[code: @blank-line] の行数や [code: round] の桁数）に置いた式は、型が自然数なら調べない。
+型が自然数でなく [code: doc] を参照しない式は、値が S0 で決まるので、S0 のうちに負の数（G02103）と整数でない数（G02104）を見つけ、その式を評価しない。
+[code: doc] を参照する式の中に置いた箇所でも、その箇所の式が [code: doc] を参照しなければ同じである。
+型が自然数でなく [code: doc] を参照する式だけが、S1 の評価で同じコードとメッセージを出す。
+[code: doc] の名前の型は、仕様書が表で決めている（今は [code: doc.chapters.count] が自然数である）。
+数の型の決め方は、第[ref-number purity]章「[ref-title purity]」で説明する。
 S1 が集める情報（見出し、ラベル、チャネルへの項目、属性）は、S0 が作る意味論 IR の中に、書いた順に残る。
 チャネル（文書の各所から項目を集めて別の位置に一覧として出す仕組み）は、後の「[ref-title channels]」の節で説明する。
 

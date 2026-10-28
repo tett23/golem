@@ -104,13 +104,25 @@ numberTests =
               applyFilter p "upper" doc @?= Left (NonFiniteFloat v)
           )
           nonFinite,
+      -- the audit of 2026-10-28, F-02 and F-09: the decoder rejects what the
+      -- types Rational and Natural cannot hold, before Golem.Doc.Validate
+      testCase "a rational not in lowest terms in the answer is rejected by the decoder" $ do
+        p <- answering (cbor (TList [deferredWith (TList [TInt 13, TList [TInt 1, TInt 10, TInt 20], TTagged 30 (TList [TInt 2, TInt 4])]), TList []]))
+        callCommand p "shout" [] [] callSpan @?= Left (BadOutput "スキーマに合いません: 有理数が既約ではありません"),
+      testCase "a negative natural number in the answer is rejected by the decoder" $ do
+        p <- answering (cbor (TList [TList [TList [TInt 18, TList [TInt 1, TInt 10, TInt 20], TNull, TInt (-1)]], TList []]))
+        callCommand p "shout" [] [] callSpan @?= Left (BadOutput "スキーマに合いません: 自然数"),
       testCase "the reason of a float without a finite value" $
         describePluginError (NonFiniteFloat "NaN") @?= "遅延した式に有限でない浮動小数点数（NaN）があります",
-      testCase "nonfinite.wat answers a command and a filter with NaN" $ do
+      testCase "nonfinite.wat answers a command and a filter with NaN, Infinity and -Infinity" $ do
         p <- load "nonfinite.wat"
         let doc = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])]
-        callCommand p "nan" [] [] callSpan @?= Left (NonFiniteFloat "NaN")
-        applyFilter p "nan" doc @?= Left (NonFiniteFloat "NaN")
+        mapM_
+          ( \(name, v) -> do
+              callCommand p name [] [] callSpan @?= Left (NonFiniteFloat v)
+              applyFilter p name doc @?= Left (NonFiniteFloat v)
+          )
+          [("nan", "NaN"), ("inf", "Infinity"), ("ninf", "-Infinity")]
     ]
   where
     nonFinite = [(TDouble (0 / 0), "NaN"), (TDouble (1 / 0), "Infinity"), (TDouble (negate (1 / 0)), "-Infinity"), (TFloat (1 / 0), "Infinity"), (THalf (0 / 0), "NaN")]

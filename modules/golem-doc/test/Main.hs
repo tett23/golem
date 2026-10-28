@@ -105,6 +105,33 @@ verticalNumbers =
           @?= [VerticalFixed StyleKanji, VerticalFixed StyleKanjiDigits, VerticalFixed StyleTcy, VerticalAuto StyleKanji, VerticalAuto StyleKanjiDigits]
     ]
 
+{- | The bodies of a block whose natural number (docs/adr ADR 0102) is the
+given term: heading and list item numbers, the page of a figure, the
+number of a line of code, the sp and the zw numerator of an aki.
+-}
+naturalFields :: [(String, Term -> Term)]
+naturalFields =
+  [ ("heading number", \n -> TList [TInt 1, TInt 1, attrs n, TList []]),
+    ("list item number", \n -> TList [TInt 3, TList [TList [n, TList []]]]),
+    ("figure page", \n -> TList [TInt 7, figure n]),
+    ("code line number", \n -> TList [TInt 6, codeLine n]),
+    ("aki sp", \n -> para (TList [TInt 18, zeroSpanT, TNull, n])),
+    ("aki zw numerator", \n -> para (TList [TInt 18, zeroSpanT, TList [n, TInt 5], TNull]))
+  ]
+  where
+    para i = TList [TInt 10, TNull, TList [i]]
+    attrs n = TList [TNull, n, TBool False, TBool False]
+    figure p = TList [TString "a.pdf", TString "a.png", TString "alt", TNull, TNull, TList [], p, TBool False]
+    codeLine n = TList [TNull, TNull, TNull, TNull, TBool False, TList [TList [TString "x", n, TNull, TBool False, TList []]]]
+
+-- | The CBOR of a document of one block with the body.
+naturalFieldDocument :: Term -> BS.ByteString
+naturalFieldDocument body = toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [zeroSpanT, TNull, body]]]))
+
+-- | The span [0, 0, 1].
+zeroSpanT :: Term
+zeroSpanT = TList [TInt 0, TInt 0, TInt 1]
+
 cbor :: TestTree
 cbor =
   testGroup
@@ -277,27 +304,30 @@ cbor =
         doc (TList [TInt 11, TInt (-1)]) @?= Left "スキーマに合いません: 列挙の範囲",
       -- docs/adr ADR 0102
       testCase "the fields of natural numbers reject -1" $ do
-        let spT = TList [TInt 0, TInt 0, TInt 1]
-            doc body = decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, body]]])))
-            para i = TList [TInt 10, TNull, TList [i]]
-            attrs n = TList [TNull, n, TBool False, TBool False]
-            figure p = TList [TString "a.pdf", TString "a.png", TString "alt", TNull, TNull, TList [], p, TBool False]
-            codeLine n = TList [TNull, TNull, TNull, TNull, TBool False, TList [TList [TString "x", n, TNull, TBool False, TList []]]]
-            rejected r = assertBool (show r) (either (const True) (const False) r)
+        let doc = decodeDocument . naturalFieldDocument
             accepted r = assertBool (show r) (either (const False) (const True) r)
         mapM_
           ( \(name, mk) -> do
               accepted (doc (mk (TInt 1)))
               assertBool name (either (const True) (const False) (doc (mk (TInt (-1)))))
           )
-          [ ("heading number", \n -> TList [TInt 1, TInt 1, attrs n, TList []]),
-            ("list item number", \n -> TList [TInt 3, TList [TList [n, TList []]]]),
-            ("figure page", \n -> TList [TInt 7, figure n]),
-            ("code line number", \n -> TList [TInt 6, codeLine n]),
-            ("aki sp", \n -> para (TList [TInt 18, spT, TNull, n])),
-            ("aki zw numerator", \n -> para (TList [TInt 18, spT, TList [n, TInt 5], TNull]))
-          ]
-        rejected (doc (TList [TInt 1, TInt 1, attrs (TInt (-1)), TList []])),
+          naturalFields,
+      -- the audit of 2026-10-28, F-10: the schema rejects them too
+      needsTool "cddl" cddlValidator $ \cddl ->
+        testCase "the cddl CLI rejects -1 in the fields of natural numbers, and takes 1" $ do
+          exe <- cddl
+          let validate bs = withSystemTempDirectory "golem-doc" $ \dir -> do
+                let path = dir </> "doc.cbor"
+                BS.writeFile path bs
+                (code, _, _) <- readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
+                pure code
+          mapM_
+            ( \(name, mk) -> do
+                validate (naturalFieldDocument (mk (TInt 1))) >>= (@?= ExitSuccess)
+                code <- validate (naturalFieldDocument (mk (TInt (-1))))
+                assertBool name (code /= ExitSuccess)
+            )
+            naturalFields,
       testCase "a span that ends before it starts, or starts before 0, is rejected" $ do
         let inl t = decodeInlines (toStrictByteString (encodeTerm (TList [t])))
         inl (TList [TInt 0, TList [TInt 0, TInt 3, TInt 3], TString "a"]) @?= Right [Text (SrcSpan (FileId 0) 3 3) "a"]
