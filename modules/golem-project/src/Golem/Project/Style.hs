@@ -1236,8 +1236,9 @@ pageSize = \case
   -- ADR 0005
   "菊判" -> Just (150, 220)
   "新書判" -> Just (103, 182)
-  -- 4.25in x 6.875in (ADR 0003)
-  "mass-market" -> Just (inchesInMm (17 % 4), inchesInMm (55 % 8))
+  -- 4.25in x 6.875in (ADR 0003): exactly 107.95mm x 174.625mm, so that
+  -- the size is rounded to sp once, in pageTrimSize
+  "mass-market" -> Just (10795 % 100, 174625 % 1000)
   _ -> Nothing
 
 -- | 仕上がりの幅と高さ（sp）。
@@ -1250,10 +1251,6 @@ pageTrimSize p = case pageSizeSpec p of
 -- | Millimetres to sp, rounded once, half to even.
 mmToSp :: Rational -> Sp
 mmToSp = L.toSp L.Mm
-
--- | Inches as millimetres, exactly.
-inchesInMm :: Rational -> Rational
-inchesInMm i = L.fromSp L.Mm (L.toSp L.In i)
 
 {- | A name of the table, or @{ width, height }@ in absolute dimensions
 greater than 0 (ADR 0005). Errors are at the value of size.

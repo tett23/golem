@@ -39,6 +39,7 @@ import Data.Void (Void, absurd)
 import GHC.Float (float2Double)
 import Golem.Doc.IR
 import Golem.Parser.AST qualified as AST
+import Golem.Syntax.Length (Sp (..))
 import Golem.Syntax.Span
 import Numeric.Natural (Natural)
 
@@ -155,7 +156,7 @@ inlineT rt = \case
   ProofComment s t -> tagged 16 [spanT s, text t]
   LineBreak s -> tagged 17 [spanT s]
   Aki s (AkiZw r) -> tagged 18 [spanT s, TList [int (numerator r), int (denominator r)], TNull]
-  Aki s (AkiAbs x) -> tagged 18 [spanT s, TNull, int x]
+  Aki s (AkiAbs x) -> tagged 18 [spanT s, TNull, int (unSp x)]
   ChannelItem s (ChannelItemData c k r body) -> tagged 19 [spanT s, text c, opt text k, opt text r, inlinesTerm body]
   where
     sub = list (inlineT rt)
@@ -447,7 +448,7 @@ termInline rd t =
           n' <- toInteger <$> asNatural n
           d' <- asInt d
           if d' > 0 then Right (Aki s (AkiZw (n' % d'))) else bad "アキの分母"
-        (18, [TNull, x]) -> Aki s . AkiAbs . toInteger <$> asNatural x
+        (18, [TNull, x]) -> Aki s . AkiAbs . Sp . toInteger <$> asNatural x
         -- an item of a channel of a plugin (golem-doc ADR 0007)
         (19, [c, k, r, x]) -> fmap (ChannelItem s) (ChannelItemData <$> asText c <*> asOpt asText k <*> asOpt asText r <*> termInlinesE x)
         -- 1, 2 and 3 (strong, bold, italic) are retired: they are character styles (docs/adr ADR 0005)

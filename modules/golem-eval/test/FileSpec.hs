@@ -14,7 +14,7 @@ import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Parser.SourceSettings
 import Golem.Project.Paths (PathError (..))
-import Golem.Project.Style (LineBreaks (..), LocalStyles (..), RegexStyleDef (..), Sp (..), Style (..), dimToSp, paraLineBreaks, parseDim, parseStyle)
+import Golem.Project.Style (LineBreaks (..), LocalStyles (..), RegexStyleDef (..), Style (..), dimToSp, paraLineBreaks, parseDim, parseStyle)
 import Golem.Syntax
 import Hedgehog (forAll, property, (===))
 import Hedgehog.Gen qualified as Gen
@@ -1325,7 +1325,7 @@ diagnosticTests =
               other -> error (show other)
         akiOf "a[aki 五分]b\n" @?= [(1, 13, AkiZw (1 / 5))]
         akiOf "[aki 0.25zw][aki 12.5%][aki 全角]\n" @?= [(0, 12, AkiZw (1 / 4)), (12, 23, AkiZw (1 / 8)), (23, 35, AkiZw 1)]
-        akiOf "3[aki 1mm]kg\n" @?= [(1, 10, AkiAbs (maybe 0 (unSp . dimToSp 0) (parseDim "1mm")))]
+        akiOf "3[aki 1mm]kg\n" @?= [(1, 10, AkiAbs (maybe 0 (dimToSp 0) (parseDim "1mm")))]
         akiOf "[aki \"2pt\"]\n" @?= [(0, 11, AkiAbs (2 * 65536))]
         errs "a[aki 五分]b\n" @?= [],
       testCase "G02055: [aki] needs one amount and no prose slot" $ do

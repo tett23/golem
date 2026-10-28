@@ -588,7 +588,7 @@ itemsFor env prev p next = case p of
   PAki lk a ->
     let w = case a of
           AkiZw r -> L.zwToSp (lkSize lk) r
-          AkiAbs x -> Sp (toInteger x)
+          AkiAbs x -> x
      in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0 (ceBoxSource env))]
   PCode lk run ps pe -> codeItems env lk run ps pe
   PAnchor _ -> []

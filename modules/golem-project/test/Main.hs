@@ -2,7 +2,7 @@ module Main (main) where
 
 import ColophonSpec qualified
 import Control.Monad (forM_, void)
-import Data.Bifunctor (first)
+import Data.Bifunctor (bimap, first)
 import Data.ByteString qualified as BS
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NE
@@ -22,6 +22,7 @@ import Golem.Project qualified as P
 import Golem.Project.Paths
 import Golem.Project.Style
 import Golem.Syntax
+import Golem.Syntax.Length qualified as L
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
 import StylePositionSpec qualified
@@ -593,7 +594,9 @@ tests =
             Map.lookup "accent" (stSwatches s) @?= Just (Swatch (0, 80, 100, 0)),
       testCase "mass-market paperback size (ADR 0003)" $ do
         pageSize "mass-market" @?= Just (10795 / 100, 174625 / 1000)
-        pageSize "A6" @?= Just (105, 148),
+        pageSize "A6" @?= Just (105, 148)
+        -- the millimetres of the table are the inches exactly: one rounding to sp
+        fmap (bimap (L.toSp L.Mm) (L.toSp L.Mm)) (pageSize "mass-market") @?= Just (L.toSp L.In (17 / 4), L.toSp L.In (55 / 8)),
       testCase "style.toml errors" $ do
         codes (parseStyle (FileId 0) "[page]\nsize = \"B6\"\nunknown = 1\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[emphasis]\nstrong = \"underline\"\n") @?= ["G03006"]
