@@ -633,11 +633,7 @@ buildCore inMemory opts = do
     -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002),
     -- then the infos of silence-info, and every info without --verbose (docs/adr 0104)
     finishWith silenced silencedInfo =
-      sortDiagnostics
-        . (if optVerbose opts then id else dropInfo)
-        . silenceInfo silencedInfo
-        . silenceNotices (if optNoNotices opts then Nothing else Just silenced)
-        . map (adjustForProfile (optProfile opts))
+      finishDiagnostics (optProfile opts) (if optNoNotices opts then Nothing else Just silenced) silencedInfo (optVerbose opts)
 
 {- | G08014 (docs/adr ADR 0039): the SVG files that HTML and EPUB copy (a
 figure or its @web@ image, also inside lists) with active content, or

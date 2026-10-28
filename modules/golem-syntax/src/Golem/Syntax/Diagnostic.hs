@@ -17,6 +17,7 @@ module Golem.Syntax.Diagnostic
     hasErrors,
     adjustForProfile,
     sortDiagnostics,
+    finishDiagnostics,
     profileDependentCodes,
     preflightCodes,
   )
@@ -173,6 +174,21 @@ adjustForProfile prof d
   | diagCode d `elem` profileDependentCodes =
       d {diagSeverity = if prof == Prod then Error else Warning}
   | otherwise = d
+
+{- | The single place where a command finishes its list of diagnostics
+(docs/adr 0104): the profile, then the notices silenced by silence-notices
+or by --no-notices ('Nothing'), then the infos of silence-info, then every
+info unless @verbose@ (--verbose), sorted. golem build, check, lint and
+inspect all finish with it, so that each applies the same silencing at the
+same point.
+-}
+finishDiagnostics :: Profile -> Maybe (Set DiagnosticCode) -> Set DiagnosticCode -> Bool -> [Diagnostic] -> [Diagnostic]
+finishDiagnostics prof silenced silencedInfo verbose =
+  sortDiagnostics
+    . (if verbose then id else dropInfo)
+    . silenceInfo silencedInfo
+    . silenceNotices silenced
+    . map (adjustForProfile prof)
 
 {- | Deterministic order: errors and warnings first, notices after them
 (golem-syntax ADR 0002), infos last (docs/adr 0104); within each, the code,
