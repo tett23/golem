@@ -498,8 +498,8 @@ unmetWarnings names pages =
       UnmetNoBreak sp -> [diagnostic "G07037" Warning sp "ここで改ページを止められませんでした"]
       UnmetNeedLines sp k -> [diagnostic "G07037" Warning sp ("@need-lines " <> T.pack (show k) <> " は段の行数 " <> T.pack (show (poLines p)) <> " を超えます")]
       UnmetAdjust sp k limit -> [diagnostic "G07037" Warning sp (adjustReason limit <> "@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")]
-      -- G07047: blank lines dropped at the top of a column (docs/adr ADR 0046)
-      DroppedBlank sp -> [notice "G07047" sp "段の先頭に来た @blank-line の空きを捨てました"]
+      -- G07047: blank lines dropped at the top of a column (docs/adr ADR 0046), an info (docs/adr 0104)
+      DroppedBlank sp -> [infoDiagnostic "G07047" sp "段の先頭に来た @blank-line の空きを捨てました"]
       TallHeading i n room ->
         [ notice "G07100" sp ("見出しが段に入りません（" <> name <> "。見出しは " <> T.pack (show n) <> " 行、段の残りは " <> T.pack (show room) <> " 行）")
         | Just (sp, name) <- [Map.lookup i names]

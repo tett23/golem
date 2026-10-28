@@ -425,12 +425,12 @@ blankLineTests =
         (_, layout) <- layoutMini style "あ\n@blank-line 2\nい\n" [] >>= either (assertFailure . show) pure
         map (map fst . poSlots) (plPages layout) @?= [[0, 3]]
         plNotices layout @?= [],
-    testCase "PDF: a blank line at the top of a column is dropped with the notice G07047 at its line" $ do
+    testCase "PDF: a blank line at the top of a column is dropped with the info G07047 at its line (docs/adr 0104)" $ do
       let src = "あ\n\n@page-break\n\n@blank-line\n\nい\n"
       (_, layout) <- layoutMini fiveLines src [] >>= either (assertFailure . show) pure
       map (map fst . poSlots) (plPages layout) @?= [[0], [0]]
       [(diagCode d, diagSeverity d, diagMessage d, spanStart (diagSpan d)) | d <- plNotices layout]
-        @?= [(DiagnosticCode "G07047", Notice, "段の先頭に来た @blank-line の空きを捨てました", 18)],
+        @?= [(DiagnosticCode "G07047", Info, "段の先頭に来た @blank-line の空きを捨てました", 18)],
     testCase "PDF: blank lines between two stanzas take the place of space-between, not more" $ do
       (_, layout) <- layoutMini horizontalStyle "@style verse\n  あ\n\n@blank-line\n\n@style verse\n  い\n" [] >>= either (assertFailure . show) pure
       map (map fst . poSlots) (plPages layout) @?= [[0, 2]]

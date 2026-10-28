@@ -16,6 +16,7 @@ module Golem.Lsp.Workspace
     sourceOf,
     lineIndexOf,
     diagnosticsFor,
+    publishable,
     Summary,
   )
 where
@@ -267,6 +268,13 @@ sourceOf ws path = case wsEvaluated ws >>= \e -> fmap (e,) (findSource e path) o
   Just (e, (fid, sf)) -> Just (Source path fid (sfText sf) (sfCst sf) (sfAst sf) (Map.lookup fid (evResults e)) True)
   Nothing -> Map.lookup path (wsLoose ws)
 
+{- | The diagnostics published: none of the notices of silence-notices
+(golem-syntax ADR 0002) and none of the infos of silence-info (docs/adr
+0104). The other infos are published, as Hint.
+-}
+publishable :: Set.Set DiagnosticCode -> Set.Set DiagnosticCode -> [Diagnostic] -> [Diagnostic]
+publishable notices infos = silenceInfo infos . silenceNotices (Just notices)
+
 -- | Diagnostics of every known file, with lint in the dev profile.
 diagnosticsFor :: Workspace -> Map FilePath [Diagnostic]
 diagnosticsFor ws =
@@ -288,8 +296,8 @@ diagnosticsFor ws =
         let p = evProject e
             ft = projectFiles p
             lintDiags = lintEvaluated e
-            -- the notices of silence-notices are not published (golem-syntax ADR 0002)
-            all' = silenceNotices (Just (manifestSilencedNotices (projectManifest p))) (map (adjustForProfile Dev) (evDiagnostics e <> lintDiags))
+            m = projectManifest p
+            all' = publishable (manifestSilencedNotices m) (manifestSilencedInfo m) (map (adjustForProfile Dev) (evDiagnostics e <> lintDiags))
             -- a file read for @table or @listing is where its diagnostics point too (golem-eval ADR 0004)
             pathOf fid = lookupPath fid ft <|> (siPath <$> Map.lookup fid (evAssetSources e))
             byFile = Map.fromListWith (flip (<>)) [(fromMaybe "manifest.toml" (pathOf (spanFile (diagSpan d))), [d]) | d <- all']

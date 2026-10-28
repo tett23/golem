@@ -9,6 +9,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -286,6 +287,16 @@ tests =
         lspSeverity Notice @?= L.DiagnosticSeverity_Information
         lspSeverity Warning @?= L.DiagnosticSeverity_Warning
         lspSeverity Error @?= L.DiagnosticSeverity_Error,
+      testCase "an info is published as Hint (docs/adr 0104)" $
+        lspSeverity Info @?= L.DiagnosticSeverity_Hint,
+      testCase "the infos of silence-info are not published, the others are (docs/adr 0104)" $ do
+        let sp = SrcSpan (FileId 0) 0 1
+            i1 = infoDiagnostic "G07047" sp "i1"
+            i2 = infoDiagnostic "G07048" sp "i2"
+            n = notice "G07047" sp "n"
+            n2 = notice "G02063" sp "n2"
+            e = diagnostic "G01001" Error sp "e"
+        publishable (Set.singleton (DiagnosticCode "G02063")) (Set.singleton (DiagnosticCode "G07047")) [i1, i2, n, n2, e] @?= [i2, n, e],
       testCase "the notices of silence-notices are not published, the others are (golem-syntax ADR 0002)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "en"})
             codes ws = [(c, diagSeverity d) | d <- concat (Map.elems (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]

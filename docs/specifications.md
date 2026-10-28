@@ -295,15 +295,19 @@ Golem はこの二つを別の仕組みで扱う。
 同じ入力から同じ出力を得るには、使うプラグインのバイト列まで入力の一部として固定する必要があるためである。
 宣言の形式と取得の手順は「プラグイン」の節で定める。
 
-マニフェストの `[diagnostics]` の表は、diagnostics の扱いを決める（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+マニフェストの `[diagnostics]` の表は、diagnostics の扱いを決める（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)、[docs/adr/0104](adr/0104-info-severity.md)）。
 `silence-notices` に並べたコードの notice は、`golem build`、`golem check`、`golem lint`、LSP のどれにも出ない。
-並べられるのは notice のコードだけであり、ほかのコードと形の誤ったコードはその要素の位置でエラー（G03024）とする。
+`silence-info` に並べたコードの info は、`--verbose` を付けた `golem build`、`golem check`、`golem lint` にも、LSP にも出ない。
+`silence-notices` に並べられるのは notice のコードだけであり、`silence-info` に並べられるのは info のコードだけである。
+ほかのコード（もう一方の一覧に書くコードを含む）と形の誤ったコードは、その要素の位置でエラー（G03024）とする。
+メッセージは、コードがもう一方の一覧に書けるときに、その一覧の名前を添える。
 値が配列でない場合と、`[diagnostics]` の未知のキーは G03001 とする。
-すべての notice を抑制する値は設けない。
+すべての notice とすべての info を抑制する値は設けない。
 
 ```toml
 [diagnostics]
 silence-notices = ["G02062", "G04007"]
+silence-info = ["G07047"]
 ```
 
 定義の取り込みはソースファイルに `@import` で書く。
@@ -2063,17 +2067,34 @@ Golem が値の読み込みで出す誤り（単位のない寸法、列挙に�
 `style.toml` を読み込んだ後の検査（スタイルの参照、版面を超える文字の大きさなど）の誤りは、直すべき値の位置で出す。
 その値がそのスタイルの表に書かれていなければ（`based-on` で受け継いだ値など）その表の見出しの位置、表もなければ `style.toml` の先頭で出す。
 
-diagnostic の重大度は、エラー、警告、notice の三つである（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+diagnostic の重大度は、エラー、警告、notice、info の四つである（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)、[docs/adr/0104](adr/0104-info-severity.md)）。
 エラーはビルドを止め、警告は止めないが入稿やデプロイの前に直すべきものを表す。
 notice は、誤りではないが書き手が知っておいたほうがよいことを表し、直さなくてよい。
 notice は終了コードに影響せず、プロファイルで重大度が変わらず、出力のバイト列を変えない。
 人が読む形式では重大度を `notice`、JSON の形式では `"severity":"notice"` と書き、LSP では `Information` に写す。
 notice のコードは `Golem.Syntax.Diagnostic.noticeCodes` に一箇所で並べ、docs/diagnostics.md の重大度が「お知らせ」のコードと一致することを golem-driver のテストが確かめる。
 lint の規則（G05xxx）は notice を出さない。
-今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、`caption` と `sidenote` の 0 の字下げ（G03100）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、段の先頭で捨てた行アキ（G07047）、`@page-lines` で減らした段の残りより高い見出し（G07100）、`[fonts.code]` のない本のコード（G08008）である。
 
-diagnostics は、エラーと警告を先に、notice を後に並べる。
-エラーと警告のあいだは、コードの順、ファイルの順、開始位置の順、終了位置の順、メッセージの順で並べ、notice どうしも同じ規則で並べる（[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
+info は notice より下の重大度であり、組版の規則どおりに処理系が行ったことの記録で、書き手が知らなくても困らないものを表す（[docs/adr/0104](adr/0104-info-severity.md)）。
+notice と info を分ける基準は、書き手がそれを知る必要があるかどうかである。
+原稿か設定に理由があり、書き手が知っておいたほうがよいもの（効果のない書き方、廃止予定の書き方、書いた意図と違う結果になったものなど）は notice にし、迷うものも notice にする。
+info は、`golem build`、`golem check`、`golem lint` に `--verbose`（`-v`）を付けたときにだけ出し、付けなければその実行の diagnostics の一覧から落とす。
+人が読む形式でも JSON の形式でも同じであり、二つの形式で出す diagnostic の集合は同じである。
+info は終了コードに影響せず、プロファイルで重大度が変わらない。
+人が読む形式では重大度を `info`、JSON の形式では `"severity":"info"` と書き、LSP では `Hint` に写す。
+info のコードは `Golem.Syntax.Diagnostic.infoCodes` に一箇所で並べ、docs/diagnostics.md の重大度が「情報」のコードと一致することを golem-driver のテストが確かめる。
+一つのコードの重大度は一つに決まり、同じコードが場合によって notice になったり info になったりすることはない。
+lint の規則、プラグイン、プリフライト（G09xxx）は info を出さない。
+今の info は、段の先頭で捨てた行アキ（G07047）だけである。
+
+notice と info は、出力のバイト列を変えない。
+PDF、HTML、EPUB、プレーンテキストのバイト列は、notice と info を出すかどうかによらず、`silence-notices`、`silence-info`、`--no-notices`、`--verbose` の有無でも変わらない。
+`--verbose` は、出力を変えず、diagnostics の一覧だけを変えるオプションであり、同じ入力と同じオプションからは同じ info を同じ順で出す。
+これは golem-driver のテストが、すべての notice と info を出すプロジェクトで確かめる。
+今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、`caption` と `sidenote` の 0 の字下げ（G03100）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、`@page-lines` で減らした段の残りより高い見出し（G07100）、`[fonts.code]` のない本のコード（G08008）である。
+
+diagnostics は、エラーと警告を先に、notice をその後に、info を最後に並べる（[docs/adr/0104](adr/0104-info-severity.md)）。
+エラーと警告のあいだは、コードの順、ファイルの順、開始位置の順、終了位置の順、メッセージの順で並べ、notice どうしと info どうしも同じ規則で並べる（[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
 エラーと警告は区別せず、コードの順で混ぜて並べる。
 notice の多いプロジェクトで、ビルドを止めたエラーが画面の外に流れないようにするためである。
 人が読む形式と JSON の形式は同じ順で出す。
@@ -2089,11 +2110,15 @@ CRLF の行のソース行は、行末の CR を書かない。
 この置き換えは表示だけのもので、diagnostic の値も出力のファイルも変えない。
 JSON の形式（制御文字を `\u001b` の形でエスケープする）と、LSP に送る diagnostic は変えない。
 
-抑制できるのは notice だけであり、エラーと警告を抑制する手段はどこにも設けない。
-抑制の手段は、マニフェストの `[diagnostics]` の `silence-notices`（プロジェクトの方針としてコードを並べる）と、`golem build`、`golem check`、`golem lint` の `--no-notices`（その実行に限り、すべての notice を出さない）の二つである。
-原稿の中で notice を止める指示と、`style.toml` の設定は設けない。
-LSP は `silence-notices` に従い、抑制した notice を公開しない。
-LSP には `--no-notices` に当たる設定を設けない。
+抑制できるのは notice と info だけであり、エラーと警告を抑制する手段はどこにも設けない。
+notice の抑制の手段は、マニフェストの `[diagnostics]` の `silence-notices`（プロジェクトの方針としてコードを並べる）と、`golem build`、`golem check`、`golem lint` の `--no-notices`（その実行に限り、すべての notice を出さない）の二つである。
+info を止める手段は、マニフェストの `[diagnostics]` の `silence-info` だけである。
+`--verbose` は info を出すかどうかを決め、`silence-info` は出す info のうちどのコードを除くかを決める。
+`--no-notices` は info を落とさず、`silence-info` は notice を落とさない。
+`--verbose` と `--no-notices` を両方付けると、notice を出さず、info を出す。
+原稿の中で notice と info を止める指示と、`style.toml` の設定は設けない。
+LSP は `silence-notices` と `silence-info` に従い、抑制した notice と info を公開しない。
+LSP には `--no-notices` と `--verbose` に当たる設定を設けず、`silence-info` にない info はつねに `Hint` として公開する。
 記法と設定のキーを廃止するときは、まず廃止予定の notice を少なくとも一つの minor のバージョンで出し、次の ADR でエラーにする（手順は [docs/diagnostics.md](diagnostics.md) の「お知らせ」の節）。
 
 diagnostic は、プログラムが読む事実（`diagFacts`）を持てる（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
@@ -2189,7 +2214,7 @@ PDF では、行アキを、次に置くもの（行、見出し、図版、表�
 1. ためた改ページの印と `@need-lines` を適用する。`@need-lines` の判定に行アキの行数は数えない。
 2. 置くものが `page-break = "recto"` の見出しなら、奇数ページから始める。
 3. 今の段が空でなく、行アキの行数の和と、置くものの最初の部分の和が今の段の残りに入らなければ、次の段へ進む。
-4. 今の段の先頭なら、行アキを捨て、捨てた `@blank-line` ごとに notice（G07047）を出す。そうでなければ、行アキの行数だけ行の格子の行を空ける。
+4. 今の段の先頭なら、行アキを捨て、捨てた `@blank-line` ごとに info（G07047、`--verbose` を付けたときだけ出す。[docs/adr/0104](adr/0104-info-severity.md)）を出す。そうでなければ、行アキの行数だけ行の格子の行を空ける。
 5. 置くものを置く。
 
 行アキが段に入りきらない場合も段の先頭で捨てるので、行アキを途中で切り詰めることはない。
@@ -2397,7 +2422,7 @@ G01003 のほかのエラーで読み込みが失敗したら、diagnostic を�
 
 v1 の LSP は次の機能を持つ。
 
-- diagnostics（コンパイルエラーと lint）。notice は `Information` として載せ、`silence-notices` に並べたコードの notice は公開しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+- diagnostics（コンパイルエラーと lint）。notice は `Information` として載せ、`silence-notices` に並べたコードの notice は公開しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。info は `Hint` として載せ、`silence-info` に並べたコードの info は公開しない。LSP には `--verbose` に当たる設定がないので、ほかの info はつねに公開する。今の LSP は組版をしないので、G07047 などのレイアウトの info は載らない（[docs/adr/0104](adr/0104-info-severity.md)）。
 - 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。
 - ラベルの名前変更（章をまたいで一括で書き換える）
 - 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の `meta` と `meta.roles` のキー）
@@ -2885,16 +2910,16 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | コマンド | 内容 |
 |---|---|
 | `golem new <dir> [--language ja\|en] [--no-fonts]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する |
-| `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
-| `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)） |
+| `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
+| `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)） |
 | `golem preflight [--rules <ファイル>] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、ファイルに書かずに、入稿の前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)） |
-| `golem lint [--profile dev\|prod] [--no-notices]` | lint を実行する |
+| `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose]` | lint を実行する |
 | `golem fmt [--check] [<file>...]` | 整形する。引数のファイルがないか通常のファイルでなければ G03002 とし、そのファイルを飛ばして残りを整形し、終了コードを 1 とする（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)） |
 | `golem lsp` | LSP サーバーを起動する |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得し、キャッシュする |
 | `golem plugin lock` | `plugins.lock` を更新する |
 | `golem inspect <file> [--as cst\|ast\|ir\|cbor]` | CST、AST、意味論 IR を人が読む木の形で、または意味論 IR の CBOR を表示する（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)） |
-| `golem explain [CODE]` | diagnostic のコードの説明を表示する。コードを省くと、すべてのコードと題を一行ずつ表示する。未知のコードと形の誤りは使い方の誤りとする（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)） |
+| `golem explain [CODE...]` | diagnostic のコードの説明を表示する。コードを省くと、すべてのコードと題を一行ずつ表示する。複数のコードを渡すと、節をコマンドラインの順に、空行一つで区切って標準出力に書く。大文字に直して同じになるコードは最初のものだけを扱う。未知のコードと形の誤り（4 桁のコードを含む）は、正しいコードの節を書いた後に、一つずつ一行で標準エラー出力に書き、使い方の表示は書かず、使い方の誤りとして終了コードを 2 とする（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)、[golem-cli ADR 0009](golem-cli/adr/0009-explain-several-codes.md)） |
 | `golem --version` | `golem` にバージョンを続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
 
 `golem new` での `id` の生成が、Golem が乱数を使う唯一の箇所である。
@@ -2921,6 +2946,15 @@ PDF の段落の組版は複数の OS のスレッドで同時に進む（[golem
 人が読む形式と JSON の形式の両方に適用され、エラーと警告は残す。
 出力のバイト列は変えない。
 `golem build`、`golem check`、`golem lint` だけが受け付け、`golem fmt` と `golem explain` に付けると使い方の誤りになる。
+
+`--verbose`（短い形は `-v`）は、info の diagnostic も出す（[docs/adr/0104](adr/0104-info-severity.md)）。
+付けなければ、その実行の diagnostics の一覧から info を落とす。
+人が読む形式と JSON の形式の両方に適用され、`silence-info` に並べたコードの info は付けても出さない。
+変えるのは info を出すかどうかだけで、進み具合のログなどほかの出力は加えず、出力のバイト列も変えない。
+`--no-notices` とは互いに独立であり、両方を付けると notice を出さず、info を出す。
+`golem build`、`golem check`、`golem lint` だけが受け付け、`golem fmt`、`golem explain`、`golem inspect`、`golem preflight`、`golem new`、`golem plugin`、`golem lsp` に付けると使い方の誤りになる。
+この中で diagnostic を出す `golem inspect` と `golem preflight` は、info をつねに落とす。
+`-v` は `--version` の短い形ではなく、`golem -v` は使い方の誤りになる。
 
 `--marks` は PDF に付けるトンボの形を選ぶ（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
 値は `japanese`（日本式の二重のトンボ）、`western`（欧文の一重のトンボ）、`none`（トンボなし）で、既定は `none` である。

@@ -110,11 +110,16 @@ noticeProject :: BS.ByteString -> BS.ByteString -> [(FilePath, BS.ByteString)]
 noticeProject extra source =
   [("manifest.toml", noticeManifest extra), ("style.toml", withBodyFont horizontalStyle), ("a.gm", source), ("code.hs", "main = pure ()\n")] <> fakeFontFiles
 
+-- | silence-info of every code of 'infoCodes' (docs/adr 0104).
+silenceAllInfo :: BS.ByteString
+silenceAllInfo = "\n[diagnostics]\nsilence-info = [" <> BS.intercalate ", " [TE.encodeUtf8 ("\"" <> c <> "\"") | DiagnosticCode c <- infoCodes] <> "]\n"
+
 -- | silence-notices of every code of 'noticeCodes'.
 silenceAllNotices :: BS.ByteString
 silenceAllNotices = "\n[diagnostics]\nsilence-notices = [" <> BS.intercalate ", " [TE.encodeUtf8 ("\"" <> c <> "\"") | DiagnosticCode c <- noticeCodes] <> "]\n"
 
-{- | Projects that together give every notice of 'noticeCodes', as functions
+{- | Projects that together give every notice of 'noticeCodes' and, with
+--verbose, every info of 'infoCodes' (docs/adr 0104), as functions
 of more manifest text. The first builds the four targets. G03023 needs a
 project without style.toml, which has no fonts for the PDF (G08007), and so
 the second builds the other three.
@@ -136,7 +141,7 @@ everyNoticeProjects =
           "```\nabcdefghijklmnopqrstuvwxyzabcd\n```\n\n", -- G07030
           "@figure images/tall.svg alt=\"t\"\n  キャプション。\n\n", -- G07039, with a caption for G03100
           "@style sec\n  " <> T.replicate 96 "あ" <> "\n\n", -- G07046
-          "a\n\n@page-break\n\n@blank-line\n\nb\n\n", -- G07047
+          "a\n\n@page-break\n\n@blank-line\n\nb\n\n", -- G07047 (an info)
           "@blank-line\n@blank-line\n\nc\n\n", -- G02094
           "@blank-line 5\n\nd\n\n", -- G04011
           "@page-break\n\n@page-lines -4\n\n# H\n\ne\n\n", -- G07100
@@ -186,21 +191,39 @@ noticeTests =
         assertBool (show texts) (all ("ab\ncd" `BS.isInfixOf`) texts)
         quiet <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02079\"]\n" verse) id
         codesOf (nDiagnostics quiet) @?= [],
-      -- docs/adr ADR 0046
-      testCase "G07047 at a blank line dropped at the top of a column, and silence-notices drops G07047" $ do
+      -- docs/adr ADR 0046, docs/adr 0104
+      testCase "G07047 is an info at a blank line dropped at the top of a column, given with --verbose only" $ do
         let src = "a\n\n@page-break\n\n@blank-line\n\nb\n"
-        n <- buildNotified (noticeProject "" src) id
-        [(c, spanStart (diagSpan d)) | d <- nDiagnostics n, let { DiagnosticCode c = diagCode d }] @?= [("G07047", 16)]
-        quiet <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G07047\"]\n" src) id
-        codesOf (nDiagnostics quiet) @?= [],
+        quiet <- buildNotified (noticeProject "" src) id
+        codesOf (nDiagnostics quiet) @?= []
+        n <- buildNotified (noticeProject "" src) (\o -> o {optVerbose = True})
+        [(c, diagSeverity d, spanStart (diagSpan d)) | d <- nDiagnostics n, let { DiagnosticCode c = diagCode d }] @?= [("G07047", Info, 16)]
+        map withoutInstanceId (nOutputs n) @?= map withoutInstanceId (nOutputs quiet),
+      testCase "silence-info drops G07047 even with --verbose (docs/adr 0104)" $ do
+        let src = "a\n\n@page-break\n\n@blank-line\n\nb\n"
+        n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-info = [\"G07047\"]\n" src) (\o -> o {optVerbose = True})
+        codesOf (nDiagnostics n) @?= [],
+      testCase "silence-notices with G07047 is G03024 (docs/adr 0104)" $ do
+        let src = "a\n\n@page-break\n\n@blank-line\n\nb\n"
+        n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G07047\"]\n" src) id
+        codesOf (nDiagnostics n) @?= ["G03024"],
+      testCase "--verbose with --no-notices gives the infos and no notice (docs/adr 0104)" $ do
+        let src = noticeSource <> "\na\n\n@page-break\n\n@blank-line\n\nb\n"
+        n <- buildNotified (noticeProject "" src) (\o -> o {optVerbose = True, optNoNotices = True})
+        codesOf (nDiagnostics n) @?= ["G07047"]
+        loud <- buildNotified (noticeProject "" src) (\o -> o {optVerbose = True})
+        -- the notices first, the info last
+        assertBool (show (codesOf (nDiagnostics loud))) (length (nDiagnostics loud) > 1)
+        drop (length (nDiagnostics loud) - 1) (codesOf (nDiagnostics loud)) @?= ["G07047"]
+        [diagSeverity d | d <- nDiagnostics loud, diagSeverity d /= Info] @?= replicate (length (nDiagnostics loud) - 1) Notice,
       testCase "--no-notices drops every notice and keeps the errors" $ do
         n <- buildNotified (noticeProject "" (noticeSource <> "\n[unknown: x]\n")) (\o -> o {optNoNotices = True})
         codesOf (nDiagnostics n) @?= ["G02022"]
         n' <- buildNotified (noticeProject "" (noticeSource <> "\n[unknown: x]\n")) id
         take 1 (codesOf (nDiagnostics n')) @?= ["G02022"]
         assertBool "notices after the error" (length (nDiagnostics n') > 1),
-      -- the spec: a notice does not change the bytes of the outputs
-      testCase "no notice of noticeCodes changes the outputs of the four targets" $ do
+      -- the spec: a notice or an info does not change the bytes of the outputs (docs/adr 0104)
+      testCase "no notice of noticeCodes and no info of infoCodes changes the outputs of the four targets" $ do
         raised <- forM everyNoticeProjects $ \project -> do
           loud <- buildNotified (project "") id
           [diagCode d | d <- nDiagnostics loud, diagSeverity d /= Notice] @?= []
@@ -210,10 +233,18 @@ noticeTests =
           none <- buildNotified (project "") (\o -> o {optNoNotices = True})
           nDiagnostics none @?= []
           nOutputs none @?= nOutputs loud
-          pure (map diagCode (nDiagnostics loud), map fst (nOutputs loud))
-        -- a new notice must be added to the projects
-        sort (nub (concatMap fst raised)) @?= sort noticeCodes
-        let written = concatMap snd raised
+          verbose <- buildNotified (project "") (\o -> o {optVerbose = True})
+          [diagCode d | d <- nDiagnostics verbose, diagSeverity d `notElem` [Notice, Info]] @?= []
+          [d | d <- nDiagnostics verbose, diagSeverity d /= Info] @?= nDiagnostics loud
+          nOutputs verbose @?= nOutputs loud
+          silencedInfo <- buildNotified (project silenceAllInfo) (\o -> o {optVerbose = True})
+          nDiagnostics silencedInfo @?= nDiagnostics loud
+          map withoutInstanceId (nOutputs silencedInfo) @?= map withoutInstanceId (nOutputs loud)
+          pure (map diagCode (nDiagnostics loud), [diagCode d | d <- nDiagnostics verbose, diagSeverity d == Info], map fst (nOutputs loud))
+        -- a new notice or info must be added to the projects
+        sort (nub (concatMap (\(n, _, _) -> n) raised)) @?= sort noticeCodes
+        sort (nub (concatMap (\(_, i, _) -> i) raised)) @?= sort infoCodes
+        let written = concatMap (\(_, _, w) -> w) raised
         assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"]),
       testCase "the path of @listing as the first argument gives the same outputs as src=" $ do
         let (pre, post) = BS.breakSubstring "src=code.hs" noticeSource
@@ -277,6 +308,9 @@ explainTests =
                 isDependent e = "- 重大度: dev では警告、prod ではエラー" `elem` T.lines (exBody e)
             assertBool "some profile-dependent codes" (not (null dependent))
             sort [c | (c, e) <- Map.toList catalog, isDependent e] @?= sort dependent,
+          testCase "the infos of the catalog are infoCodes (docs/adr 0104)" $ do
+            let isInfo e = "- 重大度: 情報" `elem` T.lines (exBody e)
+            sort [c | (c, e) <- Map.toList catalog, exStatus e == InUse, isInfo e] @?= sort [c | DiagnosticCode c <- infoCodes],
           testCase "the notices of the catalog are noticeCodes (golem-syntax ADR 0002)" $ do
             let isNotice e = "- 重大度: お知らせ" `elem` T.lines (exBody e)
             sort [c | (c, e) <- Map.toList catalog, exStatus e == InUse, isNotice e] @?= sort [c | DiagnosticCode c <- noticeCodes],
@@ -314,7 +348,9 @@ explainTests =
             fmap (map exCode) (parseCatalog (T.unlines (preamble <> inUse "G01001" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: お知らせ" else l) (inUse "G01002")))) @?= Right ["G01001", "G01002"],
           testCase "a severity by the preflight rules, with the default of print (golem-cli ADR 0006)" $
             fmap (map exCode) (parseCatalog (T.unlines (preamble <> inUse "G01001" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: プリフライトの設定による（print では警告）" else l) (inUse "G01002")))) @?= Right ["G01001", "G01002"],
-          bad "a severity that is none of the four" (preamble <> inUse "G01001" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: 情報" else l) (inUse "G01002")) "- 重大度: 情報",
+          testCase "情報 is a severity (docs/adr 0104)" $
+            fmap (map exCode) (parseCatalog (T.unlines (preamble <> inUse "G01001" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: 情報" else l) (inUse "G01002")))) @?= Right ["G01001", "G01002"],
+          bad "a severity that is none of the five" (preamble <> inUse "G01001" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: ヒント" else l) (inUse "G01002")) "- 重大度: ヒント",
           bad "out of order" (preamble <> inUse "G01002" <> inUse "G01001") "## G01001",
           bad "a code twice" (preamble <> inUse "G01001" <> inUse "G01001") "## G01001",
           testCase "a retired section without 主な原因 is accepted" $

@@ -1,6 +1,6 @@
 # ADR 0005: 診断のコードの説明を golem explain で表示する
 
-ステータス: 採択→説明の文書の重大度の「お知らせ」は [golem-syntax ADR 0002](../../golem-syntax/adr/0002-notice-severity.md)、重大度の「プリフライトの設定による」と区分 09 は [ADR 0006](0006-preflight.md)
+ステータス: 採択→説明の文書の重大度の「お知らせ」は [golem-syntax ADR 0002](../../golem-syntax/adr/0002-notice-severity.md)、重大度の「プリフライトの設定による」と区分 09 は [ADR 0006](0006-preflight.md)、複数のコードと、コードを実行の段階で検査することは [ADR 0009](0009-explain-several-codes.md)
 
 ## 文脈
 

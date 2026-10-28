@@ -11,7 +11,7 @@ Haskell では、golem-syntax の型 [code: Diagnostic] で表す。[note: [styl
 ```haskell
 data Diagnostic = Diagnostic
   { diagCode :: !DiagnosticCode,      -- "G01001" の形
-    diagSeverity :: !Severity,        -- Error | Warning | Notice
+    diagSeverity :: !Severity,        -- Error | Warning | Notice | Info
     diagSpan :: !SrcSpan,             -- ファイルと UTF-8 のバイトの範囲
     diagMessage :: !Text,
     diagRelated :: ![(SrcSpan, Text)],
@@ -56,7 +56,7 @@ golem-syntax の [code: Golem.Syntax.Render] の [code: renderJson] が文字列
 | キー | 型 | 内容 |
 | --- | --- | --- |
 | [code: code] | 文字列 | diagnostic のコード |
-| [code: severity] | 文字列 | [code: error]、[code: warning]、[code: notice] のどれか |
+| [code: severity] | 文字列 | [code: error]、[code: warning]、[code: notice]、[code: info] のどれか。[code: info] は [code: --verbose] を付けたときにだけ現れる |
 | [code: span] | オブジェクト | 位置（下の表） |
 | [code: message] | 文字列 | 一行のメッセージ |
 | [code: related] | 配列 | [code: span] と [code: message] を持つオブジェクトの列 |
@@ -100,8 +100,8 @@ CR を含む原稿の G01003 に付く「golem fmt で LF に直す」がその�
 
 ## 並び順
 
-diagnostics は、error と warning を先に、notice を後に並べる。[index reading="diagnosticsのならびじゅん": diagnostics の並び順]
-error と warning のあいだは、コードの順、ファイルの順、開始位置の順、終了位置の順、メッセージの順で並べ、notice どうしも同じ規則で並べる。
+diagnostics は、error と warning を先に、notice をその後に、info を最後に並べる。[index reading="diagnosticsのならびじゅん": diagnostics の並び順]
+error と warning のあいだは、コードの順、ファイルの順、開始位置の順、終了位置の順、メッセージの順で並べ、notice どうしと info どうしも同じ規則で並べる。
 error と warning は区別せず、コードの順で混ぜて並べる。
 行頭のコードで種類を見分けられ、同じコードの diagnostics がまとまるので、同じ原因の誤りを続けて読み、続けて直せる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-syntax/adr/0003-diagnostic-order.md]（golem-syntax ADR 0003「diagnostics をコードの順を先にして並べる」）]
 ファイルの順は、マニフェストの章の順とファイルを初めて読んだ順で決まり、実行ごとに変わらない。
@@ -144,7 +144,7 @@ CI でコードごとに扱いを分ける仕組み（特定のコードを集�
 今は G03010（HTML と EPUB に同梱するフォントの欠け）、G05004（参照されていないラベル）、G08100（PDF のフォントにない字）で、[code: dev] では警告、[code: prod] ではエラーになる。
 G02005（校正用のコメントの残り）は [code: prod] でだけ出る警告である。
 G09002 から G09018 の重大度は、プリフライトの設定で決まる（[code: Golem.Syntax.Diagnostic.preflightCodes]）。
-設定で選べるのは [code: error]、[code: warning]、[code: off] で、[code: notice] は選べない。
+設定で選べるのは [code: error]、[code: warning]、[code: off] で、[code: notice] と [code: info] は選べない。
 
 プラグインが出す diagnostic のコードは、プラグインが決める。
 Golem の文書の対象外であり、[code: golem explain] も説明を持たない。
@@ -158,11 +158,27 @@ Golem の文書の対象外であり、[code: golem explain] も説明を持た�
 $ golem explain G07030    # 一つのコードの説明
 $ golem explain g07030    # 大文字と小文字は区別しない
 $ golem explain          # すべてのコードと題を一行ずつ
+$ golem explain G07030 G01017    # 渡した順に、空行で区切って続ける
 ```
 
 一覧の形式は [code: G07001  版面を計算できません] のように、コード、空白二つ、題である。
 廃止したコードには題の後に「（廃止）」が付く。
+複数のコードを渡すと、節をコマンドラインの順に、空行一つで区切って書く。
+大文字と小文字だけが違うものも含め、同じコードは最初の一つだけを書く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0009-explain-several-codes.md]（golem-cli ADR 0009「golem explain に複数のコードを渡す」）]
 形の誤った値（4 桁の古いコードを含め、[code: G] と 5 桁の数字でないもの）と、文書にないコードは使い方の誤りであり、終了コード 2 で終わる。
+誤ったコードが混じっていても途中では止めず、正しいコードの節を標準出力に書いてから、誤ったコードを一つずつ一行で標準エラー出力に書く。
+
+```text
+$ golem explain G01017 G99999 G0101
+## G01017
+…（G01017 の節）
+未知の診断のコードです: G99999。プラグインが出す診断は、プラグインの文書を参照してください
+診断のコードは G と 5 桁の数字です: G0101
+$ echo $?
+2
+```
+
+値が誤っているだけで、引数の並べ方は正しいので、使い方の表示は書かない。
 
 人が読む形式で diagnostics を出した後、文書にあるコードが一つでもあれば、標準エラー出力に次の一行を加える。
 
@@ -181,14 +197,14 @@ LSP は、文書にあるコードの diagnostic の [code: codeDescription] に
 
 ## 重大度と notice
 
-重大度は、重いほうから error、warning、notice の三つである。[index reading=じゅうだいど: 重大度][index reading=のーてぃす: notice]
+重大度は、重いほうから error、warning、notice、info の四つである。[index reading=じゅうだいど: 重大度][index reading=のーてぃす: notice]
 error はビルドを止める。
 warning はビルドを止めないが、入稿やデプロイの前に直すべきものを表す。
 notice は、誤りではないが書き手が知っておいたほうがよいことを表し、直さなくてよい。
 
 notice を、ログの水準の info（情報を流すだけの出力）と同じものと読むと、扱いを誤る。
 notice は、原稿か設定に理由があって出る diagnostic であり、ほかの diagnostic と同じくコードを持ち、[code: docs/diagnostics.md] に説明の節がある。
-Golem には info に当たる重大度はない。
+Golem の info は、notice の下に別に設けた重大度であり、この章の「info」の節で説明する。
 LSP の重大度には notice がないので、LSP では [code: Information] に写しているが、これは写す先の都合である。
 使い手のマニュアルと [code: docs/diagnostics.md] は、同じ重大度を「お知らせ」と書いている。
 
@@ -199,7 +215,7 @@ notice には、ほかの二つと違う性質が三つある。
 - 出力のバイト列を変えない。抑制しても、しなくても、PDF は同じである。
 
 人が読む形式では [code: notice\[G07030\]] のように書き、JSON では [code: "severity":"notice"] と書く。
-今の notice は次の十九である。
+今の notice は次の十八である。
 
 | コード | 内容 |
 | --- | --- |
@@ -219,16 +235,55 @@ notice には、ほかの二つと違う性質が三つある。
 | G07039 | 段かページに収めるために縮めた図版 |
 | G07045 | PDF で描かない、ルビの親文字の圏点 |
 | G07046 | 罫線を持つ段落を分けたか、見出しの罫線を省いた |
-| G07047 | 段の先頭で捨てた行アキ |
 | G07100 | [code: @page-lines] で減らした段の残りより高い見出し |
 | G08008 | [code: \[fonts.code\]] のない本のコード |
 
 notice のコードは [code: Golem.Syntax.Diagnostic.noticeCodes] の一箇所に並べてある。
 lint の規則（G05xxx）は notice を出さない。
 
+## info
+
+info は、notice の下の重大度である。[index reading=いんふぉ: info][note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0104-info-severity.md]（docs/adr 0104「diagnostic の重大度 info を notice の下に設ける」）]
+組版の規則どおりに処理系が行ったことの記録で、書き手が知らなくても困らないものを表す。
+使い手のマニュアルと [code: docs/diagnostics.md] は「情報」と書いている。
+
+notice と info を分ける基準は、書き手がそれを知る必要があるかどうかである。
+原稿か設定に理由があり、書き手が知っておいたほうがよいもの（効果のない書き方、廃止予定の書き方、書いた意図と違う結果になったものなど）は notice にする。
+迷うものも notice にする。
+info はふだん見えないので、見落としても困らないと言い切れるものだけを info にする。
+一つのコードの重大度は一つに決まり、同じコードが場合によって notice になったり info になったりすることはない。
+同じ現象に、知らせるべき場合と記録でよい場合があるなら、原因が違うのでコードを分ける。
+
+info は、notice の三つの性質を持ち、さらに、ふだんは出さない。
+
+- [code: golem build]、[code: golem check]、[code: golem lint] に [code: --verbose]（[code: -v]）を付けたときにだけ出す。付けなければ、その実行の diagnostics の一覧から落とす。
+- 人が読む形式でも JSON の形式でも同じである。二つの形式で出す diagnostic の集合をそろえるためで、プログラムで info を集めるときも [code: --verbose] を付ける。
+- [code: --verbose] の有無でも、出力のバイト列は変わらない。
+
+人が読む形式では [code: info\[G07047\]] のように書き、JSON では [code: "severity":"info"] と書く。
+LSP では [code: Hint] に写し、つねに公開する。
+今の info は、G07047（段の先頭で捨てた行アキ）だけである。
+info のコードは [code: Golem.Syntax.Diagnostic.infoCodes] の一箇所に並べてあり、info を作る関数は [code: infoDiagnostic] である。
+lint の規則、プラグイン、プリフライトは info を出さない。
+
+[code: --verbose] を付けて、ほかの info は見たいが特定のコードは見たくない、という場合は、マニフェストの [code: \[diagnostics\]] の [code: silence-info] にコードを並べる。[index reading="silence-info": silence-info]
+
+```toml
+[diagnostics]
+silence-info = ["G07047"]
+```
+
+並べたコードの info は、[code: --verbose] を付けても、LSP でも出ない。
+[code: --verbose] は info を出すかどうかを決め、[code: silence-info] は出す info のうちどのコードを除くかを決める。
+[code: silence-info] に並べられるのは info のコードだけで、ほかのコードはその要素の位置でエラー（G03024）になる。
+[code: silence-notices] に info のコードを書いても G03024 になる。
+どちらの誤りも、コードがもう一方の一覧に書けるなら、メッセージがその一覧の名前を添える。
+すべての info を止める値はない。
+
 ## notice を抑制する
 
-抑制できるのは notice だけである。
+抑制できるのは notice と info だけである。
+info の抑制は前の節の [code: silence-info] で、この節では notice の抑制を説明する。
 error と warning を抑制する手段は、どこにも設けていない。
 lint の警告を個別の箇所で止める手段がないのと同じ考え方で、誤りの可能性のある diagnostic は消せない。
 
@@ -251,6 +306,7 @@ silence-notices = ["G02062", "G04007"]
 その実行に限り、すべての notice を出さない。
 人が読む形式と JSON の両方に適用され、error と warning は残す。
 [code: golem build]、[code: golem check]、[code: golem lint] だけが受け付け、[code: golem fmt] と [code: golem explain] に付けると使い方の誤りになる。
+info は落とさないので、[code: --verbose] と両方を付けると、notice を出さずに info を出す。
 LSP には [code: --no-notices] に当たる設定はなく、[code: silence-notices] だけに従う。
 
 原稿の中で notice を止める指示と、[code: style.toml] の設定はない。
