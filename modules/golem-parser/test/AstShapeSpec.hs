@@ -4,10 +4,12 @@ construct gives a different tree.
 -}
 module AstShapeSpec (tests) where
 
+import Data.Ratio ((%))
 import Data.Text (Text)
 import Golem.Parser
 import Golem.Parser.AST
 import Golem.Syntax
+import Numeric.Natural (Natural)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -85,8 +87,8 @@ txt = l . Text
 cmd :: Text -> [Argument] -> [[Located Inline]] -> Located Inline
 cmd n args = l . Command (l n) (map l args)
 
-int :: Integer -> Located Expr
-int = l . EInt
+int :: Natural -> Located Expr
+int = l . ENat
 
 bin :: BinaryOp -> Located Expr -> Located Expr -> Located Expr
 bin o a b = l (EBinary o a b)
@@ -191,7 +193,7 @@ tests =
           [ para
               [ Expr (l (EUnary Negate (bin Pow (int 2) (int 2)))),
                 Text " ",
-                Expr (l (ECall "round" [l (EFloat 2.675), int 2])),
+                Expr (l (ECall "round" [l (ERat (2675 % 1000)), int 2])),
                 Text " ",
                 Expr (l (EArray [int 1, int 2])),
                 Text " ",

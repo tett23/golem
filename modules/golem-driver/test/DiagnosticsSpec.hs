@@ -321,10 +321,11 @@ explainTests =
             fmap exStatus (lookupExplanation "G02044") @?= Just Retired,
           testCase "golem explain G03029 explains it (golem-driver ADR 0041)" $
             fmap (\e -> (exStatus e, exTitle e)) (lookupExplanation "G03029") @?= Just (InUse, "隠しノンブルが仕上がりの線を越えます"),
-          testCase "G02095 is in use and in the sources (golem-eval ADR 0006)" $ do
-            fmap exStatus (lookupExplanation "G02095") @?= Just InUse
+          testCase "G02004 and G02095 are retired; G02101, G02102 and G06100 are in use and in the sources (docs/adr ADR 0101)" $ do
+            map (fmap exStatus . lookupExplanation) ["G02004", "G02095"] @?= replicate 2 (Just Retired)
+            map (fmap exStatus . lookupExplanation) ["G02101", "G02102", "G06100"] @?= replicate 3 (Just InUse)
             used <- sourceCodes
-            assertBool "G02095 in the sources" ("G02095" `elem` used),
+            [c | c <- ["G02101", "G02102", "G06100"], c `notElem` used] @?= [],
           testCase "G02096, G02097, G02098 and G02099 are in use and in the sources (docs/adr ADR 0056, ADR 0060)" $ do
             map (fmap exStatus . lookupExplanation) ["G02096", "G02097", "G02098", "G02099"] @?= replicate 4 (Just InUse)
             used <- sourceCodes
@@ -439,7 +440,19 @@ evalDiagnosticTests :: TestTree
 evalDiagnosticTests =
   testGroup
     "evaluation diagnostics (golem-eval ADR 0003)"
-    [ testCase "absolute paths, URLs and paths outside the root are G02060" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
+    [ -- docs/adr ADR 0102
+      testCase "a number of digits that refers to doc is checked at S1: G02103 with three chapters, none with five" $ do
+        let src = "[= round(1 / 3, doc.chapters.count - 5)]\n"
+            chapters n = [("c" <> show i <> ".gm", "# h\n\n" <> (if i == (1 :: Int) then src else "a\n")) | i <- [1 .. n]]
+        three <- withChapters "" (chapters 3) [] $ \tmp -> do
+          r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+          pure [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
+        three @?= [(DiagnosticCode "G02103", "round の桁数には 0 以上の整数を書きます（書かれた値は -2）")]
+        five <- withChapters "" (chapters 5) [] $ \tmp -> do
+          r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+          pure [diagCode d | d <- brDiagnostics r, isError d]
+        five @?= [],
+      testCase "absolute paths, URLs and paths outside the root are G02060" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
         let root = tmp </> "book"
         at <- withChapter root "@figure /tmp/a.png alt=x\n\n@figure \"https://example.com/a.png\" alt=x\n\n@listing ../outside.txt\n"
         ds <- evalDiags root

@@ -1,4 +1,4 @@
-module Gen (genDocument, genInline, genExpr, genFloat, genInt64) where
+module Gen (genDocument, genInline, genExpr, genInt64) where
 
 import Data.Text (Text)
 import Data.Void (Void)
@@ -86,8 +86,9 @@ genExpr =
     <$> genSpan
     <*> Gen.recursive
       Gen.choice
-      [ AST.EInt <$> genInt,
-        AST.EFloat <$> genFloat,
+      [ AST.ENat . fromInteger <$> genNonNegative64,
+        AST.EInt <$> genInt,
+        AST.ERat <$> genRatio,
         AST.EString <$> genText,
         AST.EBool <$> Gen.bool,
         pure AST.ENil,
@@ -111,35 +112,6 @@ genInt =
     [ Gen.integral (Range.linearFrom 0 (-100) 100),
       Gen.element [23, 24, 255, 256, 65535, 65536, 4294967295, 4294967296, maxInt64, -24, -25, minInt64],
       genInt64
-    ]
-
-{- | Floats at the edges of the half, single and double precision encodings
-(RFC 8949 preferred serialization).
--}
-genFloat :: Gen Double
-genFloat =
-  Gen.choice
-    [ Gen.element
-        [ 0,
-          0.5,
-          -2.5,
-          65504, -- the largest half
-          65520, -- rounds past the largest half: single
-          6.103515625e-5, -- 2^-14, the smallest normal half
-          5.960464477539063e-8, -- 2^-24, the smallest subnormal half
-          2.9802322387695312e-8, -- 2^-25: single
-          1.0009765625, -- 1 + 2^-10: half
-          1.00048828125, -- 1 + 2^-11: single
-          3.4028234663852886e38, -- the largest single
-          1.401298464324817e-45, -- the smallest subnormal single
-          0.1, -- double
-          1.5e-7,
-          2.675,
-          1e300,
-          5.0e-324, -- the smallest subnormal double
-          1.7976931348623157e308 -- the largest double
-        ],
-      Gen.double (Range.exponentialFloatFrom 0 (-1e30) 1e30)
     ]
 
 genBlock :: Gen Block

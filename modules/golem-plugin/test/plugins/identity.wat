@@ -7,7 +7,7 @@
   (global $heap (mut i32) (i32.const 65536))
   ;; [["broken"], ["same"], []]
   (data (i32.const 16) "\83\81\66broken\81\64same\80")
-  (func (export "golem_abi_version") (result i32) (i32.const 7))
+  (func (export "golem_abi_version") (result i32) (i32.const 8))
   (func (export "golem_alloc") (param $n i32) (result i32) (local $p i32)
     (local.set $p (global.get $heap))
     (global.set $heap (i32.add (global.get $heap) (local.get $n)))

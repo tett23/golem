@@ -1,6 +1,7 @@
 module LowerSpec (tests) where
 
 import Data.List (isInfixOf)
+import Data.Ratio ((%))
 import Data.Text (Text)
 import Golem.Parser
 import Golem.Parser.AST
@@ -174,14 +175,28 @@ tests =
         [Heading 2 is] -> inl is @?= [Text "節の題"]
         other -> assertFailure (show other),
       testCase "operator precedence" $ do
-        let lit = Located (mkSpan fid 0 0) . EInt
+        let lit = Located (mkSpan fid 0 0) . ENat
         exprOf "[= -2 ** 2]\n" @?= EUnary Negate (Located (mkSpan fid 0 0) (EBinary Pow (lit 2) (lit 2)))
         exprOf "[= 1 - 2 - 3]\n" @?= EBinary Sub (Located (mkSpan fid 0 0) (EBinary Sub (lit 1) (lit 2))) (lit 3)
         exprOf "[= 2 ** 3 ** 2]\n" @?= EBinary Pow (lit 2) (Located (mkSpan fid 0 0) (EBinary Pow (lit 3) (lit 2))),
       testCase "literals" $ do
-        exprOf "[= 2.675]\n" @?= EFloat 2.675
+        exprOf "[= 2.675]\n" @?= ERat (2675 % 1000)
         exprOf "[= \"a\\\"b\"]\n" @?= EString "a\"b"
         exprOf "[= nil]\n" @?= ENil,
+      -- docs/adr ADR 0101
+      testCase "an integer literal is a natural number, a decimal an exact rational" $ do
+        exprOf "[= 5]\n" @?= ENat 5
+        exprOf "[= 0.1]\n" @?= ERat (1 % 10)
+        exprOf "[= 2.50]\n" @?= ERat (5 % 2)
+        exprOf "[= 3.0]\n" @?= ERat 3,
+      testCase "an exponent is read exactly, and makes a rational (docs/adr ADR 0101)" $ do
+        exprOf "[= 15e-1]\n" @?= ERat (3 % 2)
+        exprOf "[= 1.5e3]\n" @?= ERat 1500
+        exprOf "[= 1e0]\n" @?= ERat 1
+        exprOf "[= 2e+2]\n" @?= ERat 200,
+      testCase "an upper-case E is no exponent (docs/adr ADR 0101)" $ do
+        let (_, _, ds) = parseAst fid "[= 1E3]\n"
+        assertBool "1E3 is not a number literal" (not (null ds) || exprOf "[= 1E3]\n" /= ERat 1000),
       testCase "commands with arguments and slots" $ case paraTexts "[number-text 10 style=tcy][ruby: 東/京|とう/きょう]\n" of
         [[Command n1 a1 [], Command n2 [] [s1, s2]]] -> do
           locValue n1 @?= "number-text"

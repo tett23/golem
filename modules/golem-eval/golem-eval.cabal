@@ -16,6 +16,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:
+    Golem.Eval.Analysis
     Golem.Eval.Builtin
     Golem.Eval.Expr
     Golem.Eval.File
@@ -40,7 +41,7 @@ test-suite golem-eval-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    BuiltinSpec DeferredSpec DiagnosticSitesSpec ExprSpec FileSpec OperatorSpec RegexStyleSpec Support TableSpec
+  other-modules:    BuiltinSpec DeferredSpec DiagnosticSitesSpec ExprSpec FileSpec NaturalSpec OperatorSpec RationalSpec RegexStyleSpec Support TableSpec
   -- GHC.Stats measures the memory of reading a table (docs/adr ADR 0043)
   ghc-options:      -rtsopts "-with-rtsopts=-T"
   build-depends:

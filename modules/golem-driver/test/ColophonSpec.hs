@@ -113,7 +113,7 @@ colophonTests =
       ev "meta.printing.month" >>= (@?= Right (VInt 1))
       ev "meta.printing.day" >>= (@?= Right (VInt 10))
       ev "meta.printing.date" >>= (@?= Right (VString "2028-01-10"))
-      ev "len(meta.printings)" >>= (@?= Right (VInt 3))
+      ev "len(meta.printings)" >>= (@?= Right (VNat 3))
       ev "meta.publisher_person" >>= (@?= Right (VString "佐藤 一郎")),
     testCase "a book without a publisher has its publisher person" $ do
       let noPublisher = T.unlines (filter (/= "publisher = \"ゴーレム書房\"") (T.lines colophonMeta))

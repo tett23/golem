@@ -294,7 +294,7 @@ golem-driver の [code: templateFiles] は、その UUID を引数の文字列�
 両者が同じ値を返すかどうかは、次の三つで決まる。
 
 = [strong: 浮動小数点数]
-  同じソースの浮動小数点数の計算でも、演算の列が変われば結果のビット列が変わる。Golem がどこでどの数の型を使い、これをどう抑えているかは、後の「数の表し方」の節で述べる。
+  同じソースの浮動小数点数の計算でも、演算の列が変われば結果のビット列が変わる。Golem がどこでどの数の型を使い、浮動小数点数をどう避けているかは、後の「数の表し方」の節で述べる。
 = [strong: C のライブラリ]
   HarfBuzz、FreeType、zlib、wasmtime の結果は、バージョンとコンパイルの設定で変わりうる。バージョンを固定して同梱し、バージョンを上げるときは ADR を書く（第[ref-number modules]章）。
 = [strong: コンパイラと Haskell のライブラリ]
@@ -351,7 +351,7 @@ Golem は、長さと位置の計算に浮動小数点数を使わない。
 | フォントの送り、カーニング、字面の位置 | フォントの単位の整数を、有理数で sp に換算 | golem-font の [code: unitsToSp]、golem-driver |
 | 行の伸縮の比、デメリット | [code: Rational]（[code: lineRatio]）、[code: Integer] | golem-layout |
 | PDF に書く座標 | sp から pt への換算を整数で計算し、小数点以下 4 桁の十進で書く | golem-pdf |
-| 式の言語の数 | [code: Integer]（[code: VInt]）と [code: Double]（[code: VFloat]） | golem-eval |
+| 式の言語の数 | [code: Natural]（[code: VNat]）、[code: Integer]（[code: VInt]）、[code: Rational]（[code: VRat]） | golem-eval |
 
 Haskell の [code: Integer] は桁数に上限のない整数で、桁あふれしない。
 [code: Rational] は [code: Integer] の分子と分母の組で、四則演算の結果が厳密に定まる。
@@ -366,28 +366,31 @@ FreeType のグリフは [code: FT_LOAD_NO_SCALE] で読み、拡大しない整
 字の大きさへの拡大は、Haskell の側の [code: unitsToSp] が有理数で行う。
 ライブラリの内部の計算は Golem からは見えないので、C のソースを [code: -ffp-contract=off] でコンパイルし、バージョンを固定して同梱している。
 
-[code: Double] を使うのは、式の言語だけである。
-書き手は [code: \[= 1.5 * 2\]] のように小数を書くので、小数を値として持つ型が要る。
-golem-eval ADR 0001 は、式の言語の数を [code: Integer] と倍精度の [code: Double] の二つにし、記法の仕様の「数の規則」で計算と表記を固定した。[note: [style url: https://github.com/tett23/golem/blob/main/docs/markup.md#数の規則]（記法の仕様の「数の規則」の節）]
+式の言語も、浮動小数点数を使わない。
+書き手は [code: \[= 1.5 * 2\]] のように小数を書くが、ADR 0101 は、式の言語の数を自然数、整数、有理数の三つの型にし、小数のリテラルを正確な十進数の有理数として読むと決めた。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0101-rational-numbers-in-expressions.md]（ADR 0101「式の言語の数を自然数、整数、有理数の三つの型にし、浮動小数点数をなくす」）、[style url: https://github.com/tett23/golem/blob/main/docs/markup.md#数の規則]（記法の仕様の「数の規則」の節）]
 
-- 丸めは最近接偶数丸めとし、整数と浮動小数点数の演算では整数を浮動小数点数に変換する。変換すると無限大になる整数は G02004 にする。
-- 整数と浮動小数点数の比較は、浮動小数点数を有理数にして正確に行う。整数どうしの [code: /] は、有理数の商を一度だけ丸める。
-- 十進のリテラルは、最も近い倍精度の値へ正しく丸めて読む。
-- [code: **] の指数は整数に限る。整数の底と 0 以上の指数は整数で計算し、それ以外は正確な値を一度だけ丸める（[code: powRounded]）。判定は整数の演算だけで行い、倍精度の見積もりを使わない。底の絶対値を [code: m × 2^f]（[code: m] は奇数）と分け、まず [code: (m のビットの数 - 1) × \|k\|] が [code: maxExactBits]（2 の 20 乗）を超える式を G02095 にする。次に [code: m^\|k\|] のビットの数と [code: f × k] から、範囲の外の結果（G02004 か 0）を決める。見積もりの誤差でコードが変わらないよう、上限を範囲より先に判定する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-eval/adr/0005-float-overflow.md]（golem-eval ADR 0005「浮動小数点数の桁あふれ」）、[style url: https://github.com/tett23/golem/blob/main/docs/golem-eval/adr/0006-exact-power-limit-before-range.md]（golem-eval ADR 0006「累乗の計算の上限を範囲より先に正確に判定する」）]
-- NaN と無限大になる演算はエラーにし、負のゼロは正のゼロにする（[code: finite]）。
-- [code: round(x, n)] は、[code: x] を最短の十進表記に直してから、十進数として丸める。
-- 本文に埋め込む表記は、最短の往復表記の数字列から、指数表記を使わずに作る（[code: renderDouble]）。
+- 演算はすべて [code: Natural]、[code: Integer]、[code: Rational] の上で正確に行い、丸めない。結果の型は引数の型だけで決まる。
+- 有理数で表せない値（[code: sqrt]、[code: pi]、[code: e]）は、整数の平方根と整数の比較だけで、有効数字 17 桁の十進数に丸める。
+- 循環小数になる有理数は、値を変えずに持ち、本文に書くときにだけ有効数字 17 桁に丸める。丸める値は有限小数と等しくならないので、等距離の場合の規則は要らない。
+- 計算の量は、整数と、分数の分子と分母の絶対値を 2 の 4096 乗未満に限ることで抑える。累乗は計算の前に、底の分子と分母のビットの数と指数だけで判定する。
 
-この規則で、演算の列と十進との変換が一つに決まり、結果のビット列と本文に出る文字列が、計算機によらず一つになる。
-プラグインとの受け渡しでは、golem-doc の [code: Golem.Doc.Cbor] が倍精度の値を、値を失わない最も短い CBOR の浮動小数点数（半精度、単精度、倍精度のどれか）で書く。
+浮動小数点数を持たないので、演算の列や十進との変換の方法で結果が変わることはない。
+
+型は値からではなく式から決まるので、評価の前に式の型がわかる。
+golem-eval の [code: Golem.Eval.Analysis] は、評価の前に式の型を推論し（[code: inferExpr]）、0 以上の整数（自然数）を求める箇所の式を調べる（[code: analyse]）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0102-natural-number-type.md]（ADR 0102「負になりえない量を自然数で受け取り、負になりうる値を評価の前に調べる」）]
+型が自然数の式は負にならないので調べない。
+[code: doc] を参照しない式は、S0 で値を求め、負なら G02103、整数でなければ G02104 にして、その式を評価しない。
+[code: doc] を参照する式だけが S1 の評価まで残り、同じコードとメッセージで報告される。
+プラグインとの受け渡しでは、有理数を CBOR のタグ 30 の分子と分母の組で書く。
+プラグインが返した浮動小数点数は、その値の正確な有理数として読む。
 
 ### 決定性にとっての意味
 
 長さと位置を整数と有理数で計算するので、組版の結果は、CPU の浮動小数点数の実装にも、コンパイラの最適化にも左右されない。
 同じ入力から同じ sp の値が出れば、PDF の座標の文字列も同じになる。
-浮動小数点数による揺れの余地が残るのは、式の言語の [code: Double] の計算と、C のライブラリの内部である。
-前者は数の規則で演算の列と変換を固定し、後者はバージョンとコンパイルの設定を固定している。
-どちらも、最後は CI の [code: determinism] ジョブが二つのアーキテクチャの出力を比べて確かめる。
+浮動小数点数による揺れの余地が残るのは、C のライブラリの内部である。
+これはバージョンとコンパイルの設定を固定して抑えている。
+最後は CI の [code: determinism] ジョブが二つのアーキテクチャの出力を比べて確かめる。
 
 ## 決定性が純粋性に求めること
 

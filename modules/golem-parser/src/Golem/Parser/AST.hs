@@ -29,6 +29,7 @@ where
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Syntax.Span
+import Numeric.Natural (Natural)
 
 data File = File {fileId :: !FileId, fileBlocks :: ![Located Block]}
   deriving stock (Eq, Show)
@@ -96,9 +97,15 @@ data ArgValue
   | CommandArg (Located Inline)
   deriving stock (Eq, Show)
 
+{- | An expression. The three number literals are the three number types
+(docs/adr ADR 0101): the parser makes 'ENat' of an integer literal and
+'ERat' of a decimal or an exponent; 'EInt' comes from an S0 value put
+back into an expression and from the output of a plugin.
+-}
 data Expr
-  = EInt Integer
-  | EFloat Double
+  = ENat Natural
+  | EInt Integer
+  | ERat Rational
   | EString Text
   | EBool Bool
   | ENil

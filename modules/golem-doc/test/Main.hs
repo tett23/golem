@@ -134,12 +134,8 @@ cbor =
         d <- forAll genDocument
         let bs = encodeDocument d
         fmap encodeDocument (decodeDocument bs) === Right bs,
-      testCase "small integers and floats use their shortest form" $ do
-        BS.length (toStrictByteString (encodeTerm (TInteger 1))) @?= 1
-        BS.length (toStrictByteString (encodeTerm (floatTerm 0.5))) @?= 3
-        BS.length (toStrictByteString (encodeTerm (floatTerm 0.1))) @?= 9
-        BS.length (toStrictByteString (encodeTerm (floatTerm 1.0e-7))) @?= 9
-        BS.length (toStrictByteString (encodeTerm (floatTerm 100000.5))) @?= 5,
+      testCase "small integers use their shortest form" $
+        BS.length (toStrictByteString (encodeTerm (TInteger 1))) @?= 1,
       testCase "ruby inside ruby is rejected by the decoder" $ do
         let zeroSpan = TList [TInt 0, TInt 0, TInt 1]
             inner = TList [TInt 4, zeroSpan, TList [TList [TList [], TNull]]]
@@ -182,12 +178,12 @@ cbor =
         validateDocument size [] (para Nothing [a, br, br, a]) @?= ["改行は段落の最上位のインラインの間にだけ置けます"]
         validateDocument size [] (para (Just "body") [a]) @?= ["段落スタイル body は null で表します"]
         validateInlines size [] [a, br, a] @?= ["改行は段落の最上位のインラインの間にだけ置けます"],
-      testCase "the ABI version is 7 and version 6 is rejected (golem-pdf ADR 0008)" $ do
-        abiVersion @?= 7
-        let bytes = toStrictByteString (encodeTerm (TList [TInt 6, TInt 0, TList []]))
-        decodeDocument bytes @?= Left "ABI のバージョンが異なります: 6"
+      testCase "the ABI version is 8 and version 7 is rejected (docs/adr ADR 0101)" $ do
+        abiVersion @?= 8
+        let bytes = toStrictByteString (encodeTerm (TList [TInt 7, TInt 0, TList []]))
+        decodeDocument bytes @?= Left "ABI のバージョンが異なります: 7"
         -- the next version is not accepted either
-        decodeDocument (toStrictByteString (encodeTerm (TList [TInt 8, TInt 0, TList []]))) @?= Left "ABI のバージョンが異なります: 8",
+        decodeDocument (toStrictByteString (encodeTerm (TList [TInt 9, TInt 0, TList []]))) @?= Left "ABI のバージョンが異なります: 9",
       testCase "a figure with its page and rotate survives the CBOR round trip (golem-pdf ADR 0008, golem-driver ADR 0034)" $ do
         let fig = Figure "images/a.pdf" (Just "images/a.png") "alt" Nothing Nothing [] (Just 3) True
             doc = Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing (FigureBlock fig)]

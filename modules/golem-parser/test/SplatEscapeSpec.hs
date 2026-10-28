@@ -70,7 +70,7 @@ splats =
         -- "[f **[h]]": h is byte 6
         [at e | SplatKeyword e <- argsOf "[f **[h]]\n"] @?= [(6, 7)],
       testCase "a keyword splat holds a whole expression" $
-        [bare e | SplatKeyword e <- argsOf "[f **[{a: 1}]]\n"] @?= [EHash [("a", Located (mkSpan fid 10 11) (EInt 1))]]
+        [bare e | SplatKeyword e <- argsOf "[f **[{a: 1}]]\n"] @?= [EHash [("a", Located (mkSpan fid 10 11) (ENat 1))]]
     ]
   where
     kind :: Argument -> String
@@ -101,7 +101,7 @@ malformed =
         bare (exprIn "[= {a:}]\n") @?= EError
         map (\(c, _, _) -> c) (syntaxDiags "[= {a:}]\n") @?= ["G01020"],
       testCase "an expression followed by a stray token keeps the expression and is a G01017" $ do
-        bare (exprIn "[= 1 ? 2]\n") @?= EInt 1
+        bare (exprIn "[= 1 ? 2]\n") @?= ENat 1
         syntaxDiags "[= 1 ? 2]\n" @?= [("G01017", 5, 9)]
     ]
 

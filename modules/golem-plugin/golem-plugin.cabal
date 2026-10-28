@@ -57,6 +57,7 @@ test-suite golem-plugin-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    ConcurrencySpec
+                    NumbersSpec
                     ResponseSpec
   -- -N: one capability per processor from the start, so that the count
   -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)

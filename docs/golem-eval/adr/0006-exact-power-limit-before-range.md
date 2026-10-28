@@ -1,6 +1,6 @@
 # ADR 0006: 累乗の計算の上限を範囲より先に正確に判定する
 
-ステータス: 採択
+ステータス: 採択→累乗の判定の順序と G02095 は [docs/adr ADR 0101](../../adr/0101-rational-numbers-in-expressions.md)
 
 ## 文脈
 

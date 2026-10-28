@@ -39,6 +39,7 @@ import Network.Socket
 import Network.Wai qualified as W
 import Network.Wai.Handler.Warp qualified as Warp
 import Network.Wai.Handler.WarpTLS qualified as WT
+import NumbersSpec (numberTests)
 import ResponseSpec (responseTests)
 import System.Directory
   ( doesFileExist,
@@ -54,7 +55,7 @@ import Test.Tasty.HUnit
 import Text.Printf (printf)
 
 main :: IO ()
-main = defaultMainReportingSkips (const (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests]))
+main = defaultMainReportingSkips (const (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests, numberTests]))
 
 callSpan :: SrcSpan
 callSpan = mkSpan (FileId 1) 10 20
@@ -146,10 +147,10 @@ tests =
       testCase "a plugin of ABI version 2 is rejected (docs/adr ADR 0005)" $ do
         w <- fixed 2 (responseWith (TList []))
         loadPlugin w >>= (@?= Left (AbiMismatch 2)) . void,
-      testCase "the ABI version is 7 and a plugin of version 6 is rejected (golem-pdf ADR 0008)" $ do
-        (Golem.Plugin.abiVersion, Golem.Doc.IR.abiVersion) @?= (7, 7)
-        w <- fixed 6 (responseWith (TList []))
-        loadPlugin w >>= (@?= Left (AbiMismatch 6)) . void,
+      testCase "the ABI version is 8 and a plugin of version 7 is rejected (docs/adr ADR 0101)" $ do
+        (Golem.Plugin.abiVersion, Golem.Doc.IR.abiVersion) @?= (8, 8)
+        w <- fixed 7 (responseWith (TList []))
+        loadPlugin w >>= (@?= Left (AbiMismatch 7)) . void,
       testCase "a code block survives a filter unchanged (golem-driver ADR 0023)" $ do
         p <- load =<< compile =<< wat "identity.wat"
         let code = Code (Just "haskell") (Just True) (Just "a.hs") (Just [Text callSpan "c"]) True [CodeLine "a" (Just 1) (Just DiffAdded) True [1], CodeLine "b" Nothing (Just DiffRemoved) False []]

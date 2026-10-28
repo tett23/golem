@@ -181,7 +181,7 @@ aarch64 は x86-64 より短く終わるので、一つのランナーのまま�
 行列の一つにすれば、ほかのランナーと同時に始まり、[code: PATH] がそろっていればビルドは十数秒で済む。
 
 aarch64 のランナーで同じことをするのは、時間がかかっても省けない。
-浮動小数点数の計算とネイティブライブラリの結果が二つのアーキテクチャで一致することが、決定性の主張の根拠そのものだからである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0001-haskell-workspace-and-ci.md]（docs/adr の ADR 0001「Haskell のワークスペースと CI」）]
+ネイティブライブラリの結果と、それを使う組版の結果が二つのアーキテクチャで一致することが、決定性の主張の根拠そのものだからである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0001-haskell-workspace-and-ci.md]（docs/adr の ADR 0001「Haskell のワークスペースと CI」）]
 
 ## determinism
 

@@ -1,9 +1,9 @@
 {- | Deterministic CBOR for the semantic IR (golem-doc ADR 0001).
 
 Sum types are arrays @[tag, fields...]@; maps are never used, so no key
-order is involved. Integers use the shortest form (cborg does this) and
-floats the shortest of half, single and double that keeps the value
-(RFC 8949 preferred serialization).
+order is involved. Integers use the shortest form (cborg does this). The
+host writes no float: a rational is tag 30 (docs/adr ADR 0101), and a
+float a plugin writes in an expression is read as its exact rational.
 -}
 module Golem.Doc.Cbor
   ( encodeDocument,
@@ -14,7 +14,11 @@ module Golem.Doc.Cbor
     inlinesTerm,
     termDocument,
     termInlines,
-    floatTerm,
+    termDocumentE,
+    termInlinesE,
+    DecodeError (..),
+    describeDecodeError,
+    rationalTerm,
     spanT,
     termSpan,
   )
@@ -24,17 +28,19 @@ import Codec.CBOR.Read (deserialiseFromBytes)
 import Codec.CBOR.Term (Term (..), decodeTerm, encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Control.Monad (when, (>=>))
-import Data.Bits (shiftR, (.&.))
+import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy qualified as BL
 import Data.Ratio (denominator, numerator, (%))
+import Data.String (IsString (..))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Void (Void, absurd)
-import GHC.Float (castFloatToWord32, double2Float, float2Double)
+import GHC.Float (float2Double)
 import Golem.Doc.IR
 import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
+import Numeric.Natural (Natural)
 
 -- ------------------------------------------------------------------ encoding
 
@@ -71,29 +77,12 @@ tagged t xs = TList (int t : xs)
 spanT :: SrcSpan -> Term
 spanT (SrcSpan (FileId f) s e) = TList [int f, int s, int e]
 
--- | The shortest float encoding that preserves the value.
-floatTerm :: Double -> Term
-floatTerm d
-  | float2Double f == d = if halfExact f then THalf f else TFloat f
-  | otherwise = TDouble d
-  where
-    f = double2Float d
-
--- Whether a single-precision value is exactly representable as binary16.
-halfExact :: Float -> Bool
-halfExact f
-  | isNaN f || isInfinite f = False
-  | f == 0 = True
-  | otherwise =
-      let w = castFloatToWord32 f
-          ex = fromIntegral ((w `shiftR` 23) .&. 0xFF) - 127 :: Int
-          mant = w .&. 0x7FFFFF
-       in if ex >= -14 && ex <= 15
-            then mant .&. 0x1FFF == 0 -- 10 mantissa bits survive
-            else
-              ex >= -24
-                && ex < -14
-                && let dropBits = 13 + (-14 - ex) in mant .&. ((2 ^ dropBits) - 1) == 0
+{- | A rational as the CDDL @rational@: tag 30 of the numerator and the
+denominator in lowest terms (RFC 8949, docs/adr ADR 0101), the
+denominator 1 for an integral value.
+-}
+rationalTerm :: Rational -> Term
+rationalTerm q = TTagged 30 (TList [int (numerator q), int (denominator q)])
 
 documentTerm :: Document -> Term
 documentTerm (Document (FileId f) bs) = TList [int abiVersion, int f, list blockT bs]
@@ -177,7 +166,8 @@ segT (RubySegment base reading) = TList [list (inlineT absurd) base, opt text re
 exprT :: AST.Located AST.Expr -> Term
 exprT (AST.Located s e) = case e of
   AST.EInt i -> tagged 0 [spanT s, int i]
-  AST.EFloat d -> tagged 1 [spanT s, floatTerm d]
+  AST.ENat n -> tagged 12 [spanT s, int n]
+  AST.ERat q -> tagged 13 [spanT s, rationalTerm q]
   AST.EString t -> tagged 2 [spanT s, text t]
   AST.EBool b -> tagged 3 [spanT s, TBool b]
   AST.ENil -> tagged 4 [spanT s]
@@ -197,23 +187,46 @@ binopIndex op = length (takeWhile (/= op) binops)
 
 -- ------------------------------------------------------------------ decoding
 
-type D = Either Text
+{- | Why a term is no IR: it does not conform to the schema, or a float a
+plugin wrote in an expression has no finite value (G06100, docs/adr ADR
+0101), with the value as text: NaN, Infinity or -Infinity.
+-}
+data DecodeError
+  = SchemaError Text
+  | FloatNotFinite Text
+  deriving stock (Eq, Show)
 
-decodeDocument :: ByteString -> D Document
-decodeDocument bs = termOf bs >>= termDocument
+instance IsString DecodeError where
+  fromString = SchemaError . T.pack
 
-decodeInlines :: ByteString -> D [Inline]
-decodeInlines bs = termOf bs >>= termInlines
+describeDecodeError :: DecodeError -> Text
+describeDecodeError = \case
+  SchemaError t -> t
+  FloatNotFinite v -> "遅延した式に有限でない浮動小数点数（" <> v <> "）があります"
+
+type D = Either DecodeError
+
+decodeDocument :: ByteString -> Either Text Document
+decodeDocument bs = first describeDecodeError (termOf bs >>= termDocumentE)
+
+decodeInlines :: ByteString -> Either Text [Inline]
+decodeInlines bs = first describeDecodeError (termOf bs >>= termInlinesE)
+
+termDocument :: Term -> Either Text Document
+termDocument = first describeDecodeError . termDocumentE
+
+termInlines :: Term -> Either Text [Inline]
+termInlines = first describeDecodeError . termInlinesE
 
 termOf :: ByteString -> D Term
 termOf bs = case deserialiseFromBytes decodeTerm (BL.fromStrict bs) of
-  Left e -> Left (T.pack (show e))
+  Left e -> Left (SchemaError (T.pack (show e)))
   Right (rest, t)
     | BL.null rest -> Right t
     | otherwise -> Left "CBOR の後に余分なバイト列があります"
 
 bad :: Text -> D a
-bad what = Left ("スキーマに合いません: " <> what)
+bad what = Left (SchemaError ("スキーマに合いません: " <> what))
 
 {- | An integer of the CDDL @int64@ (golem-doc ADR 0006); a larger one,
 a bignum (tags 2 and 3) included, does not conform.
@@ -256,12 +269,35 @@ asEnum t = do
   i <- asIntI t
   if i >= fromEnum (minBound :: a) && i <= fromEnum (maxBound :: a) then Right (toEnum i) else bad "列挙の範囲"
 
-asFloat :: Term -> D Double
-asFloat = \case
-  THalf f -> Right (float2Double f)
-  TFloat f -> Right (float2Double f)
-  TDouble d -> Right d
+{- | A float a plugin wrote in an expression, as its exact rational, a
+negative zero as 0 (docs/adr ADR 0101); NaN and the infinities have none.
+-}
+asFloatRational :: Term -> D Rational
+asFloatRational = \case
+  THalf f -> exact (float2Double f)
+  TFloat f -> exact (float2Double f)
+  TDouble d -> exact d
   _ -> bad "浮動小数点数"
+  where
+    exact d
+      | isNaN d = Left (FloatNotFinite "NaN")
+      | isInfinite d = Left (FloatNotFinite (if d > 0 then "Infinity" else "-Infinity"))
+      | otherwise = Right (toRational d)
+
+-- | The CDDL @rational@ in lowest terms with a denominator of 1 or more.
+asRational :: Term -> D Rational
+asRational = \case
+  TTagged 30 (TList [n, d]) -> do
+    n' <- asInt n
+    d' <- asInt d
+    if d' < 1
+      then bad "有理数"
+      else if gcd n' d' /= 1 then bad "有理数が既約ではありません" else Right (n' % d')
+  _ -> bad "有理数"
+
+-- | The CDDL @uint64@ as a natural number.
+asNatural :: Term -> D Natural
+asNatural t = asInt t >>= \i -> if i < 0 then bad "自然数" else Right (fromInteger i)
 
 termSpan :: Term -> D SrcSpan
 termSpan t =
@@ -273,13 +309,13 @@ termSpan t =
       if s' < 0 || e' < s' then bad "位置の範囲" else Right (SrcSpan (FileId f') s' e')
     _ -> bad "位置"
 
-termDocument :: Term -> D Document
-termDocument t =
+termDocumentE :: Term -> D Document
+termDocumentE t =
   asList t >>= \case
     [v, f, bs] -> do
       v' <- asIntI v
       when (v' /= abiVersion) $
-        Left ("ABI のバージョンが異なります: " <> T.pack (show v'))
+        Left (SchemaError ("ABI のバージョンが異なります: " <> T.pack (show v')))
       Document . FileId <$> asIntI f <*> (asList bs >>= traverse termBlock)
     _ -> bad "文書"
 
@@ -294,8 +330,8 @@ termBody t =
   asList t >>= \case
     (tag : fs) ->
       asIntI tag >>= \case
-        10 | [st, is] <- fs -> Paragraph <$> asOpt asText st <*> termInlines is
-        1 | [l, a, is] <- fs -> Heading <$> asIntI l <*> termAttrs a <*> termInlines is
+        10 | [st, is] <- fs -> Paragraph <$> asOpt asText st <*> termInlinesE is
+        1 | [l, a, is] <- fs -> Heading <$> asIntI l <*> termAttrs a <*> termInlinesE is
         2 | [xs] <- fs -> BulletList <$> (asList xs >>= traverse termItem)
         3 | [xs] <- fs -> OrderedList <$> (asList xs >>= traverse termItem)
         4 | [gs] <- fs -> DefList <$> (asList gs >>= traverse termGroup)
@@ -303,8 +339,8 @@ termBody t =
           | [al, h, rows] <- fs ->
               Table
                 <$> (asList al >>= traverse asEnum)
-                <*> (asList h >>= traverse termInlines)
-                <*> (asList rows >>= traverse (asList >=> traverse termInlines))
+                <*> (asList h >>= traverse termInlinesE)
+                <*> (asList rows >>= traverse (asList >=> traverse termInlinesE))
         6 | [c] <- fs -> CodeBlock <$> termCode c
         7 | [fig] <- fs -> FigureBlock <$> termFigure fig
         8 | [c] <- fs -> ChannelOutput <$> termChannel c
@@ -326,7 +362,7 @@ termPageControl t =
 termCode :: Term -> D Code
 termCode t =
   asList t >>= \case
-    [l, n, f, c, d, ls] -> Code <$> asOpt asText l <*> asOpt asBool n <*> asOpt asText f <*> asOpt termInlines c <*> asBool d <*> (asList ls >>= traverse termLine)
+    [l, n, f, c, d, ls] -> Code <$> asOpt asText l <*> asOpt asBool n <*> asOpt asText f <*> asOpt termInlinesE c <*> asBool d <*> (asList ls >>= traverse termLine)
     _ -> bad "コードブロック"
   where
     termLine x =
@@ -337,7 +373,7 @@ termCode t =
 termAttrs :: Term -> D HeadingAttrs
 termAttrs t =
   asList t >>= \case
-    [tt, n, nn, nt] -> HeadingAttrs <$> asOpt termInlines tt <*> asOpt asInt n <*> asBool nn <*> asBool nt
+    [tt, n, nn, nt] -> HeadingAttrs <$> asOpt termInlinesE tt <*> asOpt asInt n <*> asBool nn <*> asBool nt
     _ -> bad "見出しの属性"
 
 termItem :: Term -> D ListItem
@@ -349,7 +385,7 @@ termItem t =
 termGroup :: Term -> D DefGroup
 termGroup t =
   asList t >>= \case
-    [ts, ds] -> DefGroup <$> (asList ts >>= traverse termInlines) <*> (asList ds >>= traverse (asList >=> traverse termBlock))
+    [ts, ds] -> DefGroup <$> (asList ts >>= traverse termInlinesE) <*> (asList ds >>= traverse (asList >=> traverse termBlock))
     _ -> bad "定義リストの組"
 
 termFigure :: Term -> D Figure
@@ -377,8 +413,8 @@ termChannel t =
         _ -> bad "チャネル"
     _ -> bad "チャネル"
 
-termInlines :: Term -> D [Inline]
-termInlines t = asList t >>= traverse (termInline (const (Right ())))
+termInlinesE :: Term -> D [Inline]
+termInlinesE t = asList t >>= traverse (termInline (const (Right ())))
 
 {- | The ruby decoder decides whether ruby is allowed: inside a ruby base it
 is 'Left', which is how nested ruby is rejected.
@@ -413,7 +449,7 @@ termInline rd t =
           if d' > 0 then Right (Aki s (AkiZw (n' % d'))) else bad "アキの分母"
         (18, [TNull, x]) -> Aki s . AkiAbs <$> asInt x
         -- an item of a channel of a plugin (golem-doc ADR 0007)
-        (19, [c, k, r, x]) -> fmap (ChannelItem s) (ChannelItemData <$> asText c <*> asOpt asText k <*> asOpt asText r <*> termInlines x)
+        (19, [c, k, r, x]) -> fmap (ChannelItem s) (ChannelItemData <$> asText c <*> asOpt asText k <*> asOpt asText r <*> termInlinesE x)
         -- 1, 2 and 3 (strong, bold, italic) are retired: they are character styles (docs/adr ADR 0005)
         _ -> bad "インラインの種類"
     _ -> bad "インライン"
@@ -435,7 +471,10 @@ termExpr t =
       i <- asIntI tag
       AST.Located s <$> case (i, fs) of
         (0, [x]) -> AST.EInt <$> asInt x
-        (1, [x]) -> AST.EFloat <$> asFloat x
+        -- written by a plugin, never by the host (docs/adr ADR 0101)
+        (1, [x]) -> AST.ERat <$> asFloatRational x
+        (12, [x]) -> AST.ENat <$> asNatural x
+        (13, [x]) -> AST.ERat <$> asRational x
         (2, [x]) -> AST.EString <$> asText x
         (3, [x]) -> AST.EBool <$> asBool x
         (4, []) -> Right AST.ENil

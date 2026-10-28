@@ -195,6 +195,24 @@ pluginTests =
                  assertBool (show d) ("loop.spin: " `T.isPrefixOf` diagMessage d)
                  Just (diagSpan d) @?= topOf r "chapters/01.gm"
                ds -> assertFailure (show ds),
+         -- docs/adr ADR 0101
+         testCase "G06100: a command that writes NaN in a deferred expression, at the call" $
+           withPlugins [("nf", "nonfinite.wat")] (pluginDeclOf "nf" "") $ \tmp -> do
+             BS.appendFile (tmp </> "chapters/02.gm") "\n[nan]\n"
+             r <- build (defaultOptions tmp)
+             case [d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G06100"] of
+               [d] -> do
+                 diagMessage d @?= "nf.nan: 遅延した式に有限でない浮動小数点数（NaN）があります"
+                 Just (spanFile (diagSpan d)) @?= sourceFileId r "chapters/02.gm"
+               ds -> assertFailure (show ds),
+         testCase "G06100: a filter that writes NaN in a deferred expression, at the top of the file" $
+           withPlugins [("nf", "nonfinite.wat")] (pluginDeclOf "nf" "" <> filterDecl "nf" "nan") $ \tmp -> do
+             r <- build (defaultOptions tmp)
+             case [d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G06100"] of
+               [d] -> do
+                 diagMessage d @?= "nf.nan: 遅延した式に有限でない浮動小数点数（NaN）があります"
+                 Just (diagSpan d) @?= topOf r "chapters/01.gm"
+               ds -> assertFailure (show ds),
          testCase "G06002: a plugin missing from the lock, or with another URL there" $
            withPluginProject pluginDecl $ \tmp -> do
              locked <- TIO.readFile (tmp </> "plugins.lock")
