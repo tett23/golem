@@ -326,7 +326,9 @@ inspect path mode =
           rel <- relativePath path
           let project = evProject e
               sources = Map.insert (evStyleFile e) (SourceInfo "style.toml" (mkLineIndex (evStyleText e))) (withEvaluatedSources e (sourceInfos project))
-              finish = sortDiagnostics . silenceNotices (Just (manifestSilencedNotices (projectManifest project))) . map (adjustForProfile Dev)
+              manifest = projectManifest project
+              -- the same finishing as golem build, check and lint, without --verbose (docs/adr 0104)
+              finish = finishDiagnostics Dev (Just (manifestSilencedNotices manifest)) (manifestSilencedInfo manifest) False
           case [(fid, sf) | (fid, sf) <- Map.toList (projectSources project), sfPath sf == rel] of
             -- a file of the project: its document of the evaluation, and every diagnostic of it
             (fid, _) : _ -> do

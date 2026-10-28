@@ -1263,7 +1263,8 @@ codeTests =
       testCase "the wrong arguments are G02069" $ do
         msgs "```haskell foo\na\n```\n" @?= [("G02069", "コードブロックの開始の行には、言語の名前とキーワード引数だけを書けます")]
         msgs "``` unknown=1\na\n```\n" @?= [("G02069", "コードブロックに書けないキーです: unknown。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます")]
-        msgs "``` numbers=-1\na\n```\n" @?= [("G02069", "numbers の値が正しくありません: -1")]
+        -- a negative number is G02103 (docs/adr ADR 0102), a range is no first line
+        msgs "``` numbers=1-2\na\n```\n" @?= [("G02069", "numbers の値が正しくありません: 1-2")]
         msgs "``` numbers=abc\na\n```\n" @?= [("G02069", "numbers の値が正しくありません: abc")]
         msgs "``` diff=yes\na\n```\n" @?= [("G02069", "diff の値が正しくありません: yes")]
         msgs "@listing x.hs unknown=1\n" @?= [("G02069", "コードブロックに書けないキーです: unknown。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます")],

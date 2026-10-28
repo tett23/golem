@@ -24,6 +24,7 @@ import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry)
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Syntax (SrcSpan)
+import Golem.Syntax.Length (Sp)
 
 {- | A footnote in the book (golem-driver ADR 0018): the span of the note,
 and its place among the notes of the same span in one paragraph (from
@@ -44,7 +45,7 @@ data LineBox = LineBox
     {- | how far the ruby and kenten of the line reach out of the face of
     the line toward the line before it, in sp (golem-driver ADR 0033);
     pagination does not read it
-    -} lbOverhang :: !Integer
+    -} lbOverhang :: !Sp
   }
   deriving stock (Eq, Show)
 
@@ -103,7 +104,7 @@ data Flow
         frAfter :: !(Maybe RuleSide),
         frJoined :: !Bool,
         frGrid :: !RuleGrid,
-        frNextOverhang :: !Integer,
+        frNextOverhang :: !Sp,
         frBody :: !RuledBody
       }
   | -- | the start of the index in its own columns (docs/adr ADR 0025)
@@ -135,7 +136,7 @@ belongs to, whether it is the rule before, and the place of the start of
 its weight across the lines in sp from the start of the em box of the
 first grid line of the page (negative out of the column).
 -}
-data PlacedRule = PlacedRule {prId :: !Int, prBefore :: !Bool, prAt :: !Integer}
+data PlacedRule = PlacedRule {prId :: !Int, prBefore :: !Bool, prAt :: !Sp}
   deriving stock (Eq, Show)
 
 {- | A set of columns (docs/adr ADR 0025): from which grid line of the
@@ -145,9 +146,9 @@ data ColumnSet = ColumnSet
   { -- | the number of columns
     csColumns :: !Int,
     -- | the measure of a column (sp)
-    csMeasure :: !Integer,
+    csMeasure :: !Sp,
     -- | the gap between columns (sp)
-    csGap :: !Integer,
+    csGap :: !Sp,
     -- | the grid line of the page where the columns start, from 0
     csFirstLine :: !Int
   }
@@ -168,11 +169,11 @@ data Slotted
 -- | How a heading sits on the line grid (golem-driver ADR 0003).
 data HeadingBlock = HeadingBlock
   { -- | the line pitch of the heading
-    hbPitch :: !Integer,
+    hbPitch :: !Sp,
     -- | how many grid lines it takes
     hbSpan :: !Int,
     -- | from its first grid line to the top of its first line
-    hbOffset :: !Integer
+    hbOffset :: !Sp
   }
   deriving stock (Eq, Show)
 

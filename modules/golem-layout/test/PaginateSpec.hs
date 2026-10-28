@@ -16,6 +16,7 @@ import Golem.Layout.Code (CodeGeometry (..))
 import Golem.Layout.Paginate
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
+import Golem.Syntax.Length (Sp)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -653,7 +654,7 @@ ruleGrid :: RuleGrid
 ruleGrid = RuleGrid (17 * 65536) (10 * 65536)
 
 -- | A rule of 0.5pt with an inner and an outer space in pt.
-spaced :: Integer -> Integer -> RuleSide
+spaced :: Sp -> Sp -> RuleSide
 spaced i o = RuleSide (i * 65536) (o * 65536) 32768 True Nothing
 
 -- | A rule of 0.3pt without spaces: no grid line inside a column.

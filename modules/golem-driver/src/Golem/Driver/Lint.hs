@@ -32,11 +32,7 @@ lintProject profile noNotices verbose root = do
        in (withEvaluatedSources e (sourceInfos (evProject e)), finish (manifestSilencedNotices m) (manifestSilencedInfo m) (evDiagnostics e <> lintEvaluated e))
   where
     finish silenced silencedInfo =
-      sortDiagnostics
-        . (if verbose then id else dropInfo)
-        . silenceInfo silencedInfo
-        . silenceNotices (if noNotices then Nothing else Just silenced)
-        . map (adjustForProfile profile)
+      finishDiagnostics profile (if noNotices then Nothing else Just silenced) silencedInfo verbose
 
 {- | The rules on an evaluated project. G05001 of a file that defines styles
 uses the paragraph styles that keep their lines in that file (docs/adr

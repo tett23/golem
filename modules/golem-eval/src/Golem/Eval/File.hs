@@ -37,7 +37,7 @@ import Data.Either (fromLeft, fromRight, isLeft)
 import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ratio (denominator, numerator)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -1412,18 +1412,17 @@ listing ctx sp args = do
                 ca <- codeArgs ctx sp ["lang"] codeArgsOf
                 c <- codeOf sp ca start (caLang ca) [(sp, x) | x <- xs]
                 pure [block sp (CodeBlock c)]
-          linesArg <- traverse (rangeText ctx "@listing の lines" sp) (lookup "lines" kw)
+          linesArg <- traverse (rangesArg ctx "@listing の lines" sp) (lookup "lines" kw)
           case linesArg of
             Nothing -> code Nothing ls
             Just Nothing -> pure []
-            Just (Just r) -> case map (fmap fst . decimalInt) (T.splitOn "-" r) of
-              [Just a, Just b]
-                | a >= 1 && b >= a && b <= length ls -> code (Just (toInteger a)) (take (b - a + 1) (drop (a - 1) ls))
+            Just (Just (r, v)) -> case v of
+              Ranges [(a, b)]
+                | a >= 1 && b >= a && b <= fromIntegral (length ls) ->
+                    code (Just (toInteger a)) (take (fromIntegral (b - a + 1)) (drop (fromIntegral (a - 1)) ls))
               _ -> err "G02037" sp ("lines の範囲が不正です: " <> r) >> pure []
         Just _ -> missing sp p >> pure []
         Nothing -> pure []
-  where
-    decimalInt x = if not (T.null x) && T.all isDigit x then Just (read (T.unpack x) :: Int, ()) else Nothing
 
 -- ------------------------------------------------------------------ code blocks (golem-driver ADR 0023)
 
@@ -1455,14 +1454,17 @@ codeArgs ctx _ extra = foldl (\m a -> m >>= \acc -> step acc a) (pure (CodeArgs 
       A.Keyword (A.Located _ k) v
         | k `elem` ["numbers", "highlight"] ->
             -- the natural numbers of numbers= and highlight= (docs/adr ADR 0102)
-            rangeText ctx ("コードブロックの " <> k) asp v >>= \case
+            rangesArg ctx ("コードブロックの " <> k) asp v >>= \case
               Nothing -> pure acc
-              Just t -> case reading asp k t of
-                Just f -> pure (f acc)
-                Nothing -> err "G02069" asp (k <> " の値が正しくありません: " <> t) >> pure acc
+              Just (t, rv) -> case (k, rv) of
+                ("numbers", RangesBool b) -> pure (acc {caNumbers = Just (Left b)})
+                ("numbers", Ranges [(n, m)]) | n == m -> pure (acc {caNumbers = Just (Right (toInteger n))})
+                ("highlight", Ranges rs)
+                  | all (uncurry (<=)) rs -> pure (acc {caHighlight = Just (asp, [(toInteger x, toInteger y) | (x, y) <- rs])})
+                _ -> err "G02069" asp (k <> " の値が正しくありません: " <> t) >> pure acc
         | k `elem` codeKeys <> extra -> do
             t <- scalar v
-            case t >>= reading asp k of
+            case t >>= reading k of
               Just f -> pure (f acc)
               Nothing -> err "G02069" asp (k <> " の値が正しくありません: " <> fromMaybe "" t) >> pure acc
         | otherwise -> err "G02069" asp ("コードブロックに書けないキーです: " <> k <> "。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます") >> pure acc
@@ -1482,23 +1484,11 @@ codeArgs ctx _ extra = foldl (\m a -> m >>= \acc -> step acc a) (pure (CodeArgs 
       "true" -> Just True
       "false" -> Just False
       _ -> Nothing
-    reading asp k t = case k of
-      "numbers" -> case bool t of
-        Just b -> Just (\c -> c {caNumbers = Just (Left b)})
-        Nothing -> (\n c -> c {caNumbers = Just (Right n)}) <$> natural t
+    reading k t = case k of
       "file" -> Just (\c -> c {caFile = Just t})
-      "highlight" -> (\rs c -> c {caHighlight = Just (asp, rs)}) <$> traverse range (T.splitOn "," t)
       "diff" -> (\b c -> c {caDiff = b}) <$> bool t
       "callouts" -> (\b c -> c {caCallouts = b}) <$> bool t
       "lang" | not (T.null t) -> Just (\c -> c {caLang = Just t})
-      _ -> Nothing
-    natural t = if not (T.null t) && T.all isDigit t then Just (read (T.unpack t)) else Nothing
-    range r = case T.splitOn "-" r of
-      [a] -> (\n -> (n, n)) <$> natural a
-      [a, b] -> do
-        x <- natural a
-        y <- natural b
-        if x <= y then Just (x, y) else Nothing
       _ -> Nothing
 
 {- | The code of lines with their spans (golem-driver ADR 0023): the diff
@@ -1653,7 +1643,7 @@ evalInline ctx inHeading (A.Located sp i) = case i of
                in -- G02086: a literal past the limit of the evaluator (docs/adr ADR 0101);
                   -- G02091: an integer of the IR out of int64 (golem-doc ADR 0006)
                   if any overLimit (exprNumbers e')
-                    then err "G02086" sp "数が大きすぎます（整数と、分数の分子と分母の絶対値は 2 の 4096 乗未満に限ります）" >> pure []
+                    then report (tooBigDiagnostic sp) >> pure []
                     else
                       if all (all inInt64 . ratioInts) (exprNumbers e')
                         then pure [Deferred sp (DeferredExpr e')]
@@ -1951,35 +1941,102 @@ naturalArg ctx what sp = \case
       Right val -> maybe (pure (Left NotANumber)) (check . snd) (numberOf val)
   _ -> pure (Left NotANumber)
   where
-    check q = case naturalDiagnostic what sp q of
-      Just d -> report d >> pure (Left NaturalReported)
-      Nothing -> pure (Right (fromInteger (numerator q)))
+    check q = case naturalOf what sp q of
+      Left d -> report d >> pure (Left NaturalReported)
+      Right n -> pure (Right n)
 
-{- | The text of an argument of ranges of natural numbers, @3@, @3-5@ or
-@1,3-5@ (numbers= and highlight= of a code block, lines= of @listing): an
-end that is a number but no natural number is G02103 or G02104 (docs/adr
-ADR 0102), and Nothing. An expression whose value is a natural number is
-its digits, a string or a truth value its text, as before.
+{- | A number at a place that takes a natural number: G02086 past the
+limit of the evaluator, as the same literal in an expression is (docs/adr
+ADR 0101; the audit of 2026-10-28, F-01), then G02103 or G02104 (docs/adr
+ADR 0102).
 -}
-rangeText :: EvalContext -> Text -> SrcSpan -> A.ArgValue -> M (Maybe Text)
-rangeText ctx what sp = \case
-  A.Word t -> checked t (concatMap (T.splitOn "-") (T.splitOn "," t))
-  A.StringLit t -> pure (Just t)
+naturalOf :: Text -> SrcSpan -> Rational -> Either Diagnostic Natural
+naturalOf what sp q
+  | overLimit q = Left (tooBigDiagnostic sp)
+  | Just d <- naturalDiagnostic what sp q = Left d
+  | otherwise = Right (fromInteger (numerator q))
+
+-- | A range of natural numbers, both ends included.
+type NatRange = (Natural, Natural)
+
+-- | The value of an argument of ranges of natural numbers.
+data RangesValue
+  = -- | true or false (numbers= of a code block)
+    RangesBool Bool
+  | -- | ranges whose ends are natural numbers, in the order written
+    Ranges [NatRange]
+  | -- | not of the form: the place reports it with its own code
+    RangesOther
+
+{- | An argument of ranges of natural numbers (numbers= and highlight= of
+a code block, lines= of @listing; docs/adr ADR 0102): Nothing when a
+diagnostic is reported, else the text written, for the messages of the
+place, and the value.
+
+A word or a string is @3@, @3-5@ or @1,3-5@, whose ends are words read as
+number literals, a leading - allowed (@3--1@ is 3 and -1). An expression
+is one range: a natural number @n@, the range of @n@ alone, or an array
+of two, @[a, b]@, the range from @a@ to @b@; a string is read as a word.
+An end that is a number but no natural number is G02086, G02103 or
+G02104, whether written as a word or in an expression.
+-}
+rangesArg :: EvalContext -> Text -> SrcSpan -> A.ArgValue -> M (Maybe (Text, RangesValue))
+rangesArg ctx what sp = \case
+  A.Word t -> ofText t
+  A.StringLit t -> ofText t
   v@(A.ExprArg _) ->
     argValue ctx v >>= \case
       Left d -> report d >> pure Nothing
-      Right (VString s) -> pure (Just s)
-      Right (VBool b) -> pure (Just (if b then "true" else "false"))
-      Right val
-        | Just (_, q) <- numberOf val -> case naturalDiagnostic what sp q of
-            Just d -> report d >> pure Nothing
-            Nothing -> pure (Just (T.pack (show (numerator q))))
-        | otherwise -> pure (Just "")
-  A.CommandArg _ -> pure (Just "")
+      Right val -> ofValue val
+  A.CommandArg _ -> pure (Just ("", RangesOther))
   where
-    checked t ends = case [d | Just q <- map A.numberWord ends, Just d <- [naturalDiagnostic what sp q]] of
-      d : _ -> report d >> pure Nothing
-      [] -> pure (Just t)
+    ofText t = case t of
+      "true" -> pure (Just (t, RangesBool True))
+      "false" -> pure (Just (t, RangesBool False))
+      _ ->
+        let items = map rangeEnds (T.splitOn "," t)
+         in case [d | Just q <- map A.numberWord (concat (catMaybes items)), Left d <- [naturalOf what sp q]] of
+              d : _ -> report d >> pure Nothing
+              []
+                | Just rs <- traverse (\item -> item >>= traverse A.numberWord >>= range) items -> pure (Just (t, Ranges rs))
+                | otherwise -> pure (Just (t, RangesOther))
+    -- every end is a natural number here: the others are reported above
+    range = \case
+      [a] -> Just (nat a, nat a)
+      [a, b] -> Just (nat a, nat b)
+      _ -> Nothing
+    nat = fromInteger . numerator
+    ofValue = \case
+      VString s -> ofText s
+      VBool b -> pure (Just (if b then "true" else "false", RangesBool b))
+      VArray [a, b] | Just (_, x) <- numberOf a, Just (_, y) <- numberOf b -> ends x (Just y)
+      val | Just (_, x) <- numberOf val -> ends x Nothing
+      _ -> pure (Just ("", RangesOther))
+    ends x my = case (,) <$> naturalOf what sp x <*> traverse (naturalOf what sp) my of
+      Left d -> report d >> pure Nothing
+      Right (a, Nothing) -> pure (Just (tshow a, Ranges [(a, a)]))
+      Right (a, Just b) -> pure (Just (tshow a <> "-" <> tshow b, Ranges [(a, b)]))
+
+{- | The ends of one range of an argument, @3@ or @3-5@: an end is a
+leading - and the text up to the next - that does not follow an e (the
+exponent of @1e-3@). Nothing for more than two ends, or an empty one.
+-}
+rangeEnds :: Text -> Maybe [Text]
+rangeEnds t = case end t of
+  (a, rest)
+    | T.null a -> Nothing
+    | T.null rest -> Just [a]
+    | Just r <- T.stripPrefix "-" rest, (b, rest') <- end r, not (T.null b), T.null rest' -> Just [a, b]
+    | otherwise -> Nothing
+  where
+    end s =
+      let (sign, body) = maybe ("", s) ("-",) (T.stripPrefix "-" s)
+          n = upTo 0 ' ' (T.unpack body)
+       in (sign <> T.take n body, T.drop n body)
+    upTo :: Int -> Char -> String -> Int
+    upTo i prev = \case
+      c : cs | c /= '-' || prev == 'e' -> upTo (i + 1) c cs
+      _ -> i
 
 {- | G02091: an integer out of int64 for a field of the IR (golem-doc ADR
 0006).

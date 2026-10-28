@@ -308,6 +308,19 @@ infoTests =
         let i = infoDiagnostic "G07047" sp0 "i"
             n = notice "G07047" sp0 "n"
         silenceInfo (Set.singleton (DiagnosticCode "G07047")) [i, n] @?= [n],
+      testProperty "finishDiagnostics is the profile, silence-notices, silence-info and --verbose, sorted" $ property $ do
+        ds <- forAll (Gen.list (Range.linear 0 20) genDiagWithInfos)
+        prof <- forAll (Gen.element [Dev, Prod])
+        silenced <- forAll (Gen.maybe (Set.fromList <$> Gen.subsequence (map DiagnosticCode ["G01001", "G02001", "G05004"])))
+        silencedInfo <- forAll (Set.fromList <$> Gen.subsequence (map DiagnosticCode ["G01001", "G02001", "G05004"]))
+        verbose <- forAll Gen.bool
+        finishDiagnostics prof silenced silencedInfo verbose ds
+          === sortDiagnostics ((if verbose then id else dropInfo) (silenceInfo silencedInfo (silenceNotices silenced (map (adjustForProfile prof) ds)))),
+      testCase "finishDiagnostics drops an info of silence-info with --verbose" $ do
+        let i = infoDiagnostic "G07047" sp0 "i"
+        finishDiagnostics Dev (Just Set.empty) (Set.singleton (DiagnosticCode "G07047")) True [i] @?= []
+        finishDiagnostics Dev (Just Set.empty) Set.empty True [i] @?= [i]
+        finishDiagnostics Dev (Just Set.empty) Set.empty False [i] @?= [],
       testCase "silenceNotices Nothing keeps the infos" $ do
         let i = infoDiagnostic "G07047" sp0 "i"
             n = notice "G02062" sp0 "n"

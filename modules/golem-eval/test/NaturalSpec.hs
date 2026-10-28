@@ -6,11 +6,13 @@ types the analysis infers.
 module NaturalSpec (tests) where
 
 import Data.Map.Strict qualified as Map
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Eval.Analysis
 import Golem.Eval.Expr (Env (..), evalExpr)
+import Golem.Eval.File (Asset (..), EvalContext (..))
 import Golem.Eval.Value
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
@@ -44,6 +46,22 @@ msgs src = [(c, m) | (c, m, _, _) <- map diagSite (fst (evalSource baseCtx src))
 
 codes :: Text -> [Text]
 codes = map fst . msgs
+
+-- | A context with the file src/Main.hs of three lines, for @listing.
+listingCtx :: EvalContext
+listingCtx = baseCtx {ctxAssets = Map.fromList [("src/Main.hs", AssetText (FileId 22) "l1\nl2\nl3\n")]}
+
+-- | The codes and messages of a source with src/Main.hs.
+listingMsgs :: Text -> [(Text, Text)]
+listingMsgs src = [(c, m) | (c, m, _, _) <- map diagSite (fst (evalSource listingCtx src))]
+
+-- | The lines of the code blocks of a source with src/Main.hs, and the lines highlighted.
+codeLinesOf :: Text -> [([Text], [Text])]
+codeLinesOf src = mapMaybe lns (resultBodies (evalResult listingCtx src))
+  where
+    lns = \case
+      CodeBlock c -> Just (map clText (codeLines c), [clText l | l <- codeLines c, clHighlight l])
+      _ -> Nothing
 
 -- | The blank lines a source puts out.
 blankLines :: Text -> [Integer]
@@ -99,6 +117,54 @@ tests =
       testCase "a negative number-text is set as before" $ do
         codes "[number-text [= 0 - 5]]\n" @?= []
         [n | Paragraph _ is <- resultBodies (evalResult baseCtx "[number-text [= 0 - 5]]\n"), Number _ n _ <- is] @?= [-5],
+      -- the audit of 2026-10-28, F-01: one code for a literal past the limit (docs/adr ADR 0101)
+      testCase "a word past the limit of the evaluator is G02086, as the expression is" $ do
+        let big = ("G02086", "数が大きすぎます（整数と、分数の分子と分母の絶対値は 2 の 4096 乗未満に限ります）")
+        msgs "@blank-line [= 1e1301]\n" @?= [big]
+        msgs "@blank-line 1e1301\n" @?= [big]
+        msgs "@blank-line 1e-1301\n" @?= [big]
+        msgs "@need-lines 1e1301\n" @?= [big]
+        msgs "@toc depth=1e1301\n" @?= [big]
+        msgs "@blank-line 1e1300\n" @?= [big]
+        listingMsgs "@listing src/Main.hs lines=1-1e1301\n" @?= [big]
+        listingMsgs "``` highlight=1e1301\na\n```\n" @?= [big]
+        listingMsgs "``` numbers=1e1301\na\n```\n" @?= [big],
+      -- the audit of 2026-10-28, F-08: the ends of lines= and highlight= take expressions
+      testCase "lines= takes a natural number or a range of two, as a word and as an expression" $ do
+        codeLinesOf "@listing src/Main.hs lines=2\n" @?= [(["l2"], [])]
+        codeLinesOf "@listing src/Main.hs lines=[= 2]\n" @?= [(["l2"], [])]
+        codeLinesOf "@listing src/Main.hs lines=[= [1, 2]]\n" @?= [(["l1", "l2"], [])]
+        codeLinesOf "@set n = 3\n\n@listing src/Main.hs lines=[= [n - 1, n]]\n" @?= [(["l2", "l3"], [])]
+        codeLinesOf "@listing src/Main.hs lines=[= [4 / 2, 3]]\n" @?= [(["l2", "l3"], [])]
+        codeLinesOf "@listing src/Main.hs lines=[= \"1-2\"]\n" @?= [(["l1", "l2"], [])]
+        codeLinesOf "@listing src/Main.hs lines=2e0-3\n" @?= [(["l2", "l3"], [])],
+      testCase "a negative end of lines= is G02103, one not an integer G02104, word and expression alike" $ do
+        let neg = [("G02103", "@listing の lines には 0 以上の整数を書きます（書かれた値は -1）")]
+        listingMsgs "@listing src/Main.hs lines=-1\n" @?= neg
+        listingMsgs "@listing src/Main.hs lines=3--1\n" @?= neg
+        listingMsgs "@listing src/Main.hs lines=-1-2\n" @?= neg
+        listingMsgs "@listing src/Main.hs lines=[= 0 - 1]\n" @?= neg
+        listingMsgs "@listing src/Main.hs lines=[= [1, 0 - 1]]\n" @?= neg
+        listingMsgs "@listing src/Main.hs lines=1-1.5\n" @?= [("G02104", "@listing の lines には 0 以上の整数を書きます（書かれた値 1.5 は整数ではありません）")]
+        listingMsgs "@listing src/Main.hs lines=[= [1, 3 / 2]]\n" @?= listingMsgs "@listing src/Main.hs lines=1-1.5\n",
+      testCase "lines= out of the file, reversed or not a range stays G02037" $ do
+        map fst (listingMsgs "@listing src/Main.hs lines=2-9\n") @?= ["G02037"]
+        map fst (listingMsgs "@listing src/Main.hs lines=[= [3, 2]]\n") @?= ["G02037"]
+        map fst (listingMsgs "@listing src/Main.hs lines=[= [1, 2, 3]]\n") @?= ["G02037"]
+        map fst (listingMsgs "@listing src/Main.hs lines=1,2\n") @?= ["G02037"]
+        map fst (listingMsgs "@listing src/Main.hs lines=0-1\n") @?= ["G02037"]
+        map fst (listingMsgs "@listing src/Main.hs lines=a-2\n") @?= ["G02037"],
+      testCase "highlight= takes a natural number or a range of two as an expression" $ do
+        codeLinesOf "``` highlight=[= 2]\na\nb\nc\n```\n" @?= [(["a", "b", "c"], ["b"])]
+        codeLinesOf "``` highlight=[= [2, 3]]\na\nb\nc\n```\n" @?= [(["a", "b", "c"], ["b", "c"])]
+        codeLinesOf "@set n = 1\n\n``` highlight=[= [n, n + 1]]\na\nb\nc\n```\n" @?= [(["a", "b", "c"], ["a", "b"])],
+      testCase "a negative end of highlight= or numbers= is G02103, word and expression alike" $ do
+        let neg k = [("G02103", "コードブロックの " <> k <> " には 0 以上の整数を書きます（書かれた値は -1）")]
+        listingMsgs "``` highlight=-1\na\n```\n" @?= neg "highlight"
+        listingMsgs "``` highlight=1,2--1\na\nb\n```\n" @?= neg "highlight"
+        listingMsgs "``` highlight=[= [1, 0 - 1]]\na\n```\n" @?= neg "highlight"
+        listingMsgs "``` numbers=-1\na\n```\n" @?= neg "numbers"
+        listingMsgs "``` numbers=[= 0 - 1]\na\n```\n" @?= neg "numbers",
       testProperty "the constructor of a value is the type the analysis infers" $ property $ do
         e <- forAll genExpr
         case (evalExpr (Env Map.empty Map.empty) (exprOf e), inferExpr typeEnv (exprOf e)) of
