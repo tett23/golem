@@ -326,6 +326,10 @@ explainTests =
             map (fmap exStatus . lookupExplanation) ["G02101", "G02102", "G06100"] @?= replicate 3 (Just InUse)
             used <- sourceCodes
             [c | c <- ["G02101", "G02102", "G06100"], c `notElem` used] @?= [],
+          testCase "golem explain G01100 explains the reserved syntax (docs/adr ADR 0115)" $ do
+            fmap (\e -> (exStatus e, exTitle e)) (lookupExplanation "G01100") @?= Just (InUse, "予約された記法です")
+            used <- sourceCodes
+            assertBool "G01100 in the sources" ("G01100" `elem` used),
           testCase "G02096, G02097, G02098 and G02099 are in use and in the sources (docs/adr ADR 0056, ADR 0060)" $ do
             map (fmap exStatus . lookupExplanation) ["G02096", "G02097", "G02098", "G02099"] @?= replicate 4 (Just InUse)
             used <- sourceCodes

@@ -220,8 +220,50 @@ tests =
             messageOf "| a | b |\\\n|---|---|\n" (snd (labelCode (Just "hard_break")))
         ],
       codeTests,
-      numberShorthandTests
+      numberShorthandTests,
+      reservedSyntaxTests
     ]
+
+-- | The reserved syntax [! and @! (docs/adr ADR 0115).
+reservedSyntaxTests :: TestTree
+reservedSyntaxTests =
+  testGroup
+    "reserved syntax (docs/adr ADR 0115)"
+    [ testCase "[! is G01100 from the [" $ do
+        map (\(c, s, _) -> (c, s)) (parsed "a [!foo bar] b\n") @?= [(g "G01100", 2)]
+        map (\(c, s, _) -> (c, s)) (parsed "a [!] b\n") @?= [(g "G01100", 2)]
+        map (\(c, s, _) -> (c, s)) (parsed "[! x]\n") @?= [(g "G01100", 0)],
+      testCase "[! in a heading, a prose slot, a cell and an argument" $ do
+        map (\(c, s, _) -> (c, s)) (parsed "# 題 [!x]\n") @?= [(g "G01100", 6)]
+        -- the recovery skips the ] of strong too, as for G01021 (the same SkipParagraph)
+        map (\(c, s, _) -> (c, s)) (parsed "[strong: [!x]]\n") @?= [(g "G01100", 9), (g "G01017", 15)]
+        map (\(c, _, _) -> c) (parsed "[strong: [A]]\n") @?= [g "G01021", g "G01017"]
+        -- In a cell, the recovery of SkipParagraph reads past the end of the
+        -- row, as it does for G01021: the table fails as a block.
+        codes "| [!x] |\n|---|\n| a |\n" @?= codes "| [A] |\n|---|\n| a |\n"
+        map (\(c, s, _) -> (c, s)) (parsed "@caption [!x]\n") @?= [(g "G01100", 9)],
+      testCase "@! at the start of a block is G01100 from the @" $ do
+        map (\(c, s, _) -> (c, s)) (parsed "@!foo\n") @?= [(g "G01100", 0)]
+        map (\(c, s, _) -> (c, s)) (parsed "@note\n  @!foo\n") @?= [(g "G01100", 8)]
+        map (\(c, s, _) -> (c, s)) (parsed "本文\n@!foo\n") @?= [(g "G01100", 7)]
+        map (\(c, s, _) -> (c, s)) (parsed "@style x\n@!foo\n") @?= [(g "G01100", 9)],
+      testCase "the message" $ do
+        messageOf "a [!x] b\n" "予約された記法です。今のバージョンでは使えません"
+        messageOf "@!foo\n" "予約された記法です。今のバージョンでは使えません",
+      testCase "@! in the middle of a line, escapes, code, comments are text" $ do
+        mapM_ parseOk ["a@!b\n", "\\[!x]\n", "\\@!foo\n", "```\n[!x]\n@!foo\n```\n", "a %% [!x] %%\n"]
+        map inlinesOf (astOf "a@!b\n") @?= [[Golem.Parser.AST.Text "a@!b"]]
+        map inlinesOf (astOf "\\[!x]\n") @?= [[Golem.Parser.AST.Escaped '[', Golem.Parser.AST.Text "!x]"]]
+        map inlinesOf (astOf "\\@!foo\n") @?= [[Golem.Parser.AST.Escaped '@', Golem.Parser.AST.Text "!foo"]],
+      testCase "[ followed by another character is still G01021" $
+        codes "a [A] b\n" @?= [g "G01021"],
+      testCase "reserved has its code" $
+        labelCode (Just "reserved") @?= ("G01100", "予約された記法です。今のバージョンでは使えません")
+    ]
+  where
+    inlinesOf (Golem.Parser.AST.Located _ b) = case b of
+      Golem.Parser.AST.Paragraph is -> map Golem.Parser.AST.locValue is
+      _ -> []
 
 -- | The tokens of each ##…## of a source (golem-parser ADR 0011).
 shorthandNodes :: Text -> [[(SyntaxKind, Text)]]
