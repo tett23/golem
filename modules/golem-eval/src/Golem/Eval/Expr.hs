@@ -9,11 +9,13 @@ module Golem.Eval.Expr
     embedValue,
     freeNames,
     overLimit,
+    tooBigDiagnostic,
     naturalDiagnostic,
     digitsDiagnostic,
   )
 where
 
+import Data.Char (isAlphaNum, isAscii)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Ratio (denominator, numerator, (%))
@@ -49,7 +51,11 @@ overLimit :: Rational -> Bool
 overLimit q = abs (numerator q) >= intLimit || denominator q >= intLimit
 
 tooBig :: Located a -> Eval b
-tooBig at = err "G02086" at "数が大きすぎます（整数と、分数の分子と分母の絶対値は 2 の 4096 乗未満に限ります）"
+tooBig at = Left (tooBigDiagnostic (locSpan at))
+
+-- | G02086 at a span: a number past the limit of 'intLimit'.
+tooBigDiagnostic :: SrcSpan -> Diagnostic
+tooBigDiagnostic sp = diagnostic "G02086" Error sp "数が大きすぎます（整数と、分数の分子と分母の絶対値は 2 の 4096 乗未満に限ります）"
 
 -- | A number of a type, or G02086 when it is too large.
 checked :: Located a -> NumType -> Rational -> Eval Value
@@ -122,13 +128,18 @@ lookupMember le v _ = typeErr le (typeName v <> " の要素は参照できませ
 {- | A number at a place that takes a natural number (docs/adr ADR 0102):
 G02103 for a negative one, G02104 for one that is not an integer, with
 the value written exactly; Nothing for a natural number. @what@ names
-the place.
+the place; a space comes between it and the Japanese when it ends in a
+Latin letter (@listing の lines には).
 -}
 naturalDiagnostic :: Text -> SrcSpan -> Rational -> Maybe Diagnostic
 naturalDiagnostic what sp q
-  | q < 0 = Just (diagnostic "G02103" Error sp (what <> "には 0 以上の整数を書きます（書かれた値は " <> exactText q <> "）"))
-  | denominator q /= 1 = Just (diagnostic "G02104" Error sp (what <> "には 0 以上の整数を書きます（書かれた値 " <> exactText q <> " は整数ではありません）"))
+  | q < 0 = Just (diagnostic "G02103" Error sp (place <> "には 0 以上の整数を書きます（書かれた値は " <> exactText q <> "）"))
+  | denominator q /= 1 = Just (diagnostic "G02104" Error sp (place <> "には 0 以上の整数を書きます（書かれた値 " <> exactText q <> " は整数ではありません）"))
   | otherwise = Nothing
+  where
+    place = case T.unsnoc what of
+      Just (_, c) | isAscii c && isAlphaNum c -> what <> " "
+      _ -> what
 
 {- | The number of digits of round and fixed, the second argument, when it
 is a number that is no natural number; Nothing otherwise.
