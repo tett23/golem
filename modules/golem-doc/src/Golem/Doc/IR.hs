@@ -43,11 +43,11 @@ module Golem.Doc.IR
 where
 
 import Data.Int (Int64)
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Void (Void)
 import Golem.Parser.AST qualified as AST
+import Golem.Syntax.Length (Sp)
 import Golem.Syntax.Span
 import Numeric.Natural (Natural)
 
@@ -243,7 +243,7 @@ data InlineF r
   deriving stock (Eq, Show)
 
 -- | The amount of an [aki]: in zw (the size of the type there), or absolute in sp.
-data AkiAmount = AkiZw !Rational | AkiAbs !Integer
+data AkiAmount = AkiZw !Rational | AkiAbs !Sp
   deriving stock (Eq, Show)
 
 type Inline = InlineF ()

@@ -1,8 +1,8 @@
 {- | Tables on the line grid (golem-driver ADR 0008): column widths from
 the cells' minimum and natural widths, cells broken into lines at their
-column width, rows as high as their tallest cell. Integer sp only.
+column width, rows as high as their tallest cell.
 
-Lengths are along the lines ("widths") whatever the writing direction.
+Lengths are 'Sp', along the lines ("widths") whatever the writing direction.
 -}
 module Golem.Layout.Table
   ( cellExtent,

@@ -4,6 +4,7 @@ import Data.Text (Text)
 import Data.Void (Void)
 import Golem.Doc.IR
 import Golem.Parser.AST qualified as AST
+import Golem.Syntax.Length (Sp (..))
 import Golem.Syntax.Span
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
@@ -38,7 +39,7 @@ genInlineWith mr =
         Cite <$> genSpan <*> genText,
         ProofComment <$> genSpan <*> genText,
         LineBreak <$> genSpan,
-        Aki <$> genSpan <*> Gen.choice [AkiZw <$> genRatio, AkiAbs <$> genNonNegative64],
+        Aki <$> genSpan <*> Gen.choice [AkiZw <$> genRatio, AkiAbs . Sp <$> genNonNegative64],
         -- an item of a channel of a plugin (golem-doc ADR 0007)
         ChannelItem <$> genSpan <*> (ChannelItemData <$> genText <*> Gen.maybe genText <*> Gen.maybe genText <*> Gen.list (Range.linear 0 2) (Text <$> genSpan <*> genText))
       ]

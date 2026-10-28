@@ -1819,13 +1819,13 @@ aki sp args slots = case (args, slots) of
   where
     amount t = case (parseAki t, parseDim t) of
       (Just r, _) -> Just (AkiZw r)
-      (_, Just (Abs x)) -> Just (AkiAbs (unSp x))
+      (_, Just (Abs x)) -> Just (AkiAbs x)
       _ -> Nothing
     wrong why = err "G02055" sp (why <> "。" <> akiAmounts) >> pure []
     -- the numerator and the denominator of zw, or sp (golem-doc ADR 0006)
     akiInInt64 = \case
       AkiZw r -> inInt64 (numerator r) && inInt64 (denominator r)
-      AkiAbs x -> inInt64 x
+      AkiAbs x -> inInt64 (unSp x)
 
 -- | What the amount of an [aki] may be (the message of G02055).
 akiAmounts :: Text

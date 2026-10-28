@@ -648,7 +648,7 @@ four decimals (docs/adr ADR 0103).
 akiLength :: AkiAmount -> Text
 akiLength = \case
   AkiZw r -> L.emText r <> "em"
-  AkiAbs x -> L.ptText (L.Sp (toInteger x)) <> "pt"
+  AkiAbs x -> L.ptText x <> "pt"
 
 sidenotes :: Ctx -> [Inline] -> Text
 sidenotes c is = T.concat ["<aside class=\"sidenote\"><span class=\"number\">" <> tshow n <> "</span>" <> inlines c xs <> "</aside>\n" | Sidenote _ n xs <- is]
