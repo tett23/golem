@@ -28,6 +28,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **用語集のプラグイン**：`[term: 語]` で語を集め、巻末に用語集を組み、各語の出現のページを参照で引くプラグインを作る。プラグインの独自のチャネル（[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）と、値を読めない DeferredRef を出力に入れる経路を、実際のプラグインで通す。独自のチャネルを使った EPUB を epubcheck にかけることも、このプラグインで確かめる。語の並べ方と一覧の書式は ADR で決める。
 - **縦中横を自動で当てるフィルタ**：縦組みの本文の 2 桁の数字や `!?` に、自動で `tcy` を当てるフィルタを作る。ルビのプラグインと違い、テキストのノードを割って組み込みのノードを挟む書き換えになる。`[strong: 1]2` のようにノードの境をまたぐ文字の並びの扱い、当てる対象の決め方は ADR で決める。
 - **TSV から表を組むコマンド**：外から渡された TSV を、`@table` と同じ表のブロックにして返すコマンドを作る。ブロックを返すコマンドと、大きな断片を返すときの上限と速度を、実際のプラグインで通す。上の「プラグインにデータを渡す仕組み」の、ルビの辞書と形の違う二つめの使い道でもある。データの渡し方はその仕組みの ADR に従い、このコマンドの引数と表の書式は ADR で決める。
+- **`.gm` の中の関数の宣言**：原稿の `.gm` の中で関数を宣言できるようにする。今は書き手が関数を定義する仕組みがなく、[docs/markup.md](markup.md) はそれをプラグインの役割としているが、小さな計算や書式のためにプラグインを作るのは重い。宣言の記法、引数と戻り値の型と `@set` との関係、再帰を許すかと止まることの保証、評価の階層（S0、S1、S2）との関係、`@import` で別のファイルから使うこと、組み込みの関数やプラグインのコマンドと名前が重なったときの扱い、LSP の補完と診断を ADR で決める。決定性の検査の対象にする。
 - **注の印の文字スタイル**：注の印に文字スタイル（`[notes]` の `mark-style`）を当てられるようにする。印の大きさと書式は `mark-size` と `mark-format` で指定できる（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
 - **注の印の数字の表記**：注の印の番号を、算用数字のほかに、漢数字や記号の連なり（JLReq の 4.2.2 が挙げる形）で組めるようにする。今の `mark-format` は算用数字の番号だけを置き換える（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
 
@@ -276,7 +277,7 @@ ADR と仕様が扱わないと決めたもので、課題として残さない�
 - **lint の規則の設定と抑制、表記の規則**：規則は処理系が固定し、合意の取れない表記の規則は外部の校正ツールに任せると決めたので持たない（[golem-lint ADR 0001](golem-lint/adr/0001-lint-rules.md)、[「lint」の節](specifications.md#lint)）。
 - **生の CSS**：媒体契約の外で見た目を変える抜け道になるので設けない（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)、[「style.toml」の節](specifications.md#styletoml)）。
 - **fmt の表の列揃え、本文の折り返し、整形の規則の設定**：整形の結果が環境によって揺れず、書き手の改行を変えないことを優先したので作らない（[golem-fmt ADR 0001](golem-fmt/adr/0001-formatter.md)）。
-- **式の拡張**：ユーザー定義の関数、条件式、繰り返し、文字列の演算子は、書籍の原稿の計算で要る場面が少ないので、必要が明らかになるまで加えない（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)、[golem-parser ADR 0004](golem-parser/adr/0004-inline-grammar.md)）。
+- **式の拡張**：条件式、繰り返し、文字列の演算子は、書籍の原稿の計算で要る場面が少ないので、必要が明らかになるまで加えない（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)、[golem-parser ADR 0004](golem-parser/adr/0004-inline-grammar.md)）。
 - **フォントの難読化と Type 3 による埋め込み**：v1 の出力に要らないので、ADR が扱わないと決めた（[golem-font ADR 0002](golem-font/adr/0002-subsetting-and-embedding.md)、[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。
 - **複雑な文字体系の検証**：Golem の対象を和文と欧文に限るので、アラビア文字やインド系の文字は確かめない（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)）。
 - **固定レイアウトの EPUB**：EPUB は幾何を持たないリフローの媒体として扱うので作らない（[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)、[「設計原則」の節](specifications.md#設計原則)）。
