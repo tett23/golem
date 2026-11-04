@@ -1,6 +1,6 @@
 # ADR 0113: 閉じた範囲のリテラル `1...10` を設け、`..` を予約する
 
-ステータス: 採択→`..` の回復の範囲は [ADR 0116](0116-narrow-reserved-syntax-recovery.md)、`numbers` に書いた `...` の範囲のコード（G02069 から G02113 に）は [ADR 0111](0111-argument-words-as-number-literals.md)
+ステータス: 採択→`..` の回復の範囲は [ADR 0116](0116-narrow-reserved-syntax-recovery.md)、`numbers` に書いた `...` の範囲のコード（G02069 から G02113 に）は [ADR 0111](0111-argument-words-as-number-literals.md) と [ADR 0134](0134-numbers-range-code-is-g02113.md)
 
 ## 文脈
 
