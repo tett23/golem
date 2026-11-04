@@ -180,7 +180,9 @@ data Targets = Targets
 
 data PluginDecl = PluginDecl
   { pdUrl :: !Text,
-    pdOverrides :: ![Text]
+    pdOverrides :: ![Text],
+    -- | the data the project passes to the plugin: names and project-relative paths (docs/adr/0105)
+    pdData :: !(Map Text FilePath)
   }
   deriving stock (Eq, Show)
 
@@ -409,7 +411,8 @@ instance FromValue PluginDecl where
   fromValue = parseTableFromValue $ do
     u <- reqKey "url"
     o <- optKey "overrides"
-    pure (PluginDecl u (fromMaybe [] o))
+    d <- optKey "data"
+    pure (PluginDecl u (fromMaybe [] o) (maybe Map.empty (Map.map T.unpack) d))
 
 instance FromValue FilterDecl where
   fromValue = parseTableFromValue $ do

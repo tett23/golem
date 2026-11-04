@@ -21,6 +21,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import DataSpec (dataTests)
 import Golem.Doc.Assemble (ChannelDecl (..))
 import Golem.Doc.Cbor (documentTerm, inlinesTerm)
 import Golem.Doc.IR
@@ -55,7 +56,7 @@ import Test.Tasty.HUnit
 import Text.Printf (printf)
 
 main :: IO ()
-main = defaultMainReportingSkips (const (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests, numberTests]))
+main = defaultMainReportingSkips (const (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests, numberTests, dataTests]))
 
 callSpan :: SrcSpan
 callSpan = mkSpan (FileId 1) 10 20
@@ -84,7 +85,7 @@ fixed = fixedFrom "fixed.wat"
 fixedFrom :: FilePath -> Int -> ByteString -> IO ByteString
 fixedFrom file ver response = do
   src <- wat file
-  let describe = cbor (TList [TList [TString "shout"], TList [TString "upper"], TList []])
+  let describe = cbor (TList [TList [TString "shout"], TList [TString "upper"], TList [], TList []])
       filled =
         T.replace "{{ABI}}" (T.pack (show ver))
           . T.replace "{{DESCRIBE}}" (escape describe)

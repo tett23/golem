@@ -32,7 +32,7 @@ channels, glossary in reading order and people in document order with
 locators (golem-doc ADR 0007).
 -}
 shoutAndUpper :: ByteString
-shoutAndUpper = cbor (TList [TList [TString "shout"], TList [TString "upper"], TList [decl "glossary" 1 False, decl "people" 0 True]])
+shoutAndUpper = cbor (TList [TList [TString "shout"], TList [TString "upper"], TList [decl "glossary" 1 False, decl "people" 0 True], TList []])
   where
     decl n o l = TList [TString n, TInt o, TBool l]
 
@@ -154,7 +154,7 @@ channelTests :: TestTree
 channelTests =
   testGroup
     "the channels of a plugin (golem-doc ADR 0007)"
-    [ testCase "the description of three fields gives the channels" $ do
+    [ testCase "the description of four fields gives the channels" $ do
         p <- answering (withDiagnostics [])
         pluginChannels p @?= [ChannelDecl "glossary" OrderReading False, ChannelDecl "people" OrderDocument True],
       testCase "a description of two fields is bad output" $ do
@@ -188,10 +188,10 @@ malformedDescriptionTests =
         wasm <- fixedPlugin (cbor (TList [TList [TString "shout"]])) (withDiagnostics [])
         loadPlugin wasm >>= (@?= Left (BadOutput "golem_describe の形が不正です")) . void,
       testCase "a command name that is not a string" $ do
-        wasm <- fixedPlugin (cbor (TList [TList [TInt 1], TList [], TList []])) (withDiagnostics [])
+        wasm <- fixedPlugin (cbor (TList [TList [TInt 1], TList [], TList [], TList []])) (withDiagnostics [])
         loadPlugin wasm >>= (@?= Left (BadOutput "名前が文字列ではありません")) . void,
       testCase "a filter name that is not a string" $ do
-        wasm <- fixedPlugin (cbor (TList [TList [], TList [TBool True], TList []])) (withDiagnostics [])
+        wasm <- fixedPlugin (cbor (TList [TList [], TList [TBool True], TList [], TList []])) (withDiagnostics [])
         loadPlugin wasm >>= (@?= Left (BadOutput "名前が文字列ではありません")) . void
     ]
 

@@ -8,13 +8,16 @@ module Golem.Driver.Plugins
   )
 where
 
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isDigit)
-import Data.Either (partitionEithers, rights)
+import Data.Either (lefts, partitionEithers, rights)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Doc.Assemble (ChannelDecl (..))
 import Golem.Doc.IR (Document (..))
 import Golem.Eval.Builtin (BuiltinInline (..), OverridableBuiltin, PluginCommandName, parseBuiltin, pluginCommandName)
@@ -22,14 +25,18 @@ import Golem.Eval.File (PluginCommand (..), PluginHook (..), noPlugins)
 import Golem.Plugin
 import Golem.Plugin.Lock
 import Golem.Project.Manifest
+import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Syntax
+import System.Directory (getFileSize)
+import System.FilePath ((</>))
 
-{- | Given the cache, the FileId of manifest.toml, where most diagnostics
-point, and the FileId and text of plugins.lock (empty when there is
-none), where G06011 points.
+{- | Given the root of the project, the texts of the editor (the LSP), the
+cache, the FileId of manifest.toml, where most diagnostics point, and the
+FileId and text of plugins.lock (empty when there is none), where G06011
+points.
 -}
-loadPlugins :: FilePath -> FileId -> FileId -> Text -> Manifest -> IO (Either [Diagnostic] PluginHook)
-loadPlugins cacheDir mfid lfid lockText manifest
+loadPlugins :: FilePath -> Map.Map FilePath Text -> FilePath -> FileId -> FileId -> Text -> Manifest -> IO (Either [Diagnostic] PluginHook)
+loadPlugins root overlay cacheDir mfid lfid lockText manifest
   | Map.null (manifestPlugins manifest) && null (manifestFilters manifest) = pure (Right noPlugins)
   | otherwise =
       case parseLock lfid lockText of
@@ -50,7 +57,7 @@ loadPlugins cacheDir mfid lfid lockText manifest
           Right bytes ->
             loadPlugin bytes >>= \case
               Left pe -> pure (Left [err "G06005" (name <> ": " <> describePluginError pe)])
-              Right p -> pure (Right (name, decl, p))
+              Right p -> fmap (\d -> (name, decl, withPluginData d p)) <$> loadData root overlay err name decl p
       Just _ -> pure (Left [err "G06002" ("plugins.lock の URL が manifest.toml と違います。golem plugin lock を実行してください: " <> name)])
       Nothing -> pure (Left [err "G06002" ("plugins.lock にないプラグインです。golem plugin lock を実行してください: " <> name)])
     hook plugins =
@@ -119,6 +126,44 @@ loadPlugins cacheDir mfid lfid lockText manifest
                     phApplyFilters = applyFilters
                   }
             else Left diags
+
+{- | The data the manifest passes to a loaded plugin (docs/adr/0105): each
+name must be one the plugin takes (G06102), each path a file in the
+project (G03003, G06101), and all of them together at most
+'maxDataBytes' (G06103). The text of the editor comes before the file,
+as for @table. Every error of the plugin is reported; the size is
+checked when there is none.
+-}
+loadData :: FilePath -> Map.Map FilePath Text -> (Text -> Text -> Diagnostic) -> Text -> PluginDecl -> Plugin -> IO (Either [Diagnostic] (Map.Map Text ByteString))
+loadData root overlay err name decl p = do
+  let takes = pluginDataNames p
+      unknown =
+        [ err "G06102" ("プラグインが受け取らないデータの名前です: " <> name <> "." <> k <> "（受け取る名前: " <> (if null takes then "なし" else T.intercalate "、" takes) <> "）")
+        | k <- Map.keys (pdData decl),
+          k `notElem` takes
+        ]
+  found <- mapM locate (Map.toList (pdData decl))
+  case unknown <> lefts found of
+    [] -> do
+      let sized = rights found
+          total = sum [n | (_, _, n) <- sized]
+      if total > fromIntegral maxDataBytes
+        then pure (Left [err "G06103" ("プラグインのデータが上限（" <> tshow maxDataBytes <> " バイト）を超えています: " <> name <> "（" <> tshow total <> " バイト）")])
+        else Right . Map.fromList <$> mapM (\(k, src, _) -> (k,) <$> either pure BS.readFile src) sized
+    ds -> pure (Left ds)
+  where
+    tshow :: (Show a) => a -> Text
+    tshow = T.pack . show
+    -- the name, the bytes of the editor or the file to read, and the size
+    locate (k, path) = do
+      let what = name <> "." <> k <> ": " <> T.pack path
+      res <- resolveInRoot root path
+      case res of
+        Left Missing -> pure (Left (err "G06101" ("プラグインのデータのファイルがありません: " <> what)))
+        Left e -> pure (Left (err "G03003" (T.pack (pathErrorMessage e) <> ": " <> what)))
+        Right rel -> case Map.lookup rel overlay of
+          Just t -> let b = TE.encodeUtf8 t in pure (Right (k, Left b, toInteger (BS.length b)))
+          Nothing -> (\n -> Right (k, Right (root </> rel), n)) <$> getFileSize (root </> rel)
 
 {- | The key of a command a plugin provides: Right with the key, Left with
 (command, plugin) for an undeclared built-in name (G06007), or Nothing for a
