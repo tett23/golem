@@ -110,10 +110,11 @@ jobs:
     # suites of golem-driver, and the rest, by scripts/ci/test-suites.sh),
     # one makes the outputs (the PDFs of the visual regression test, the
     # determinism check, the two manuals and epubcheck), one runs the
-    # environment check. On aarch64 one runner runs the tests and one makes
-    # the outputs. The work is bound by the four cores of a runner, and the
-    # runners end at about the same time; one runner of each architecture
-    # saves dist-newstyle (docs/adr/0045, docs/adr/0097, docs/adr/0140)
+    # environment check. On aarch64 two runners run the tests, split in the
+    # same way, and one makes the outputs. The work is bound by the four
+    # cores of a runner, and the runners end at about the same time; one
+    # runner of each architecture saves dist-newstyle (docs/adr/0045,
+    # docs/adr/0097, docs/adr/0140, docs/adr/0155)
     strategy:
       fail-fast: false
       matrix:
@@ -147,12 +148,19 @@ jobs:
             suites: none
             save: false
           - runner: ubuntu-24.04-arm
-            part: tests
+            part: tests-driver
             tests: true
             outputs: false
             env: false
-            suites: all
+            suites: driver
             save: true
+          - runner: ubuntu-24.04-arm
+            part: tests-rest
+            tests: true
+            outputs: false
+            env: false
+            suites: rest
+            save: false
           - runner: ubuntu-24.04-arm
             part: outputs
             tests: false
@@ -321,8 +329,8 @@ jobs:
       # stopped and fails (the test wrapper scripts/ci/suite-timeout.sh in
       # cabal.project.local); the step itself stops after 20, so that a
       # hang fails in minutes, not at the job's timeout
-      # the suites of the part of this runner, one target per line;
-      # aarch64 runs them all (docs/adr/0140)
+      # the suites of the part of this runner, one target per line
+      # (docs/adr/0140, docs/adr/0155)
       - name: The test suites of the runner (docs/adr/0140)
         if: matrix.tests
         timeout-minutes: 20
@@ -445,8 +453,8 @@ jobs:
             manual-dev/build/html
       # pushes to main only: a pull request's cache would serve that pull
       # request alone, under a key that changes with every commit. The
-      # runner of matrix.save saves it: tests-driver on x86-64, tests on
-      # aarch64 (docs/adr/0045, docs/adr/0140)
+      # runner of matrix.save saves it: tests-driver on each architecture
+      # (docs/adr/0045, docs/adr/0140, docs/adr/0155)
       - name: Save dist-newstyle (docs/adr/0009)
         if: success() && matrix.save && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v6
