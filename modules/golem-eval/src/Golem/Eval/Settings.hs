@@ -52,6 +52,12 @@ fileHeader = go []
 err :: Text -> SrcSpan -> Text -> Diagnostic
 err code = diagnostic code Error
 
+{- | G02114: @manifest and @style-def are read before the evaluation, so
+an argument *[式] or **[式] is not spread (docs/adr ADR 0112).
+-}
+spreadBeforeEvaluation :: Text -> SrcSpan -> Diagnostic
+spreadBeforeEvaluation name sp = diagnostic "G02114" Error sp (name <> " は評価の前に読むので、*[式] と **[式] を書けません")
+
 -- | The keyword arguments of a setting: (key, span, value), or the G02052 messages.
 keywordArgs :: [A.Located A.Argument] -> ([(Text, SrcSpan, LocalValue)], [(SrcSpan, Text)])
 keywordArgs args =
@@ -80,7 +86,8 @@ fileSettings table s0 header = foldl step (s0, []) [(sp, args, body) | A.Located
     step (s, ds) (sp, args, body)
       | not (null body) || null args = (s, ds <> [err "G02052" sp shape])
       | otherwise =
-          let others = [asp | A.Located asp a <- args, not (isKeyword a)]
+          let others = [asp | A.Located asp a <- args, not (isKeyword a), not (isSplat a)]
+              spreads = [asp | A.Located asp a <- args, isSplat a]
               (kvs, bad) = keywordArgs args
               apply (s', ds') (k, ksp, v) = case lookup k table of
                 Nothing -> (s', ds' <> [err "G02050" ksp (notOverridable k)])
@@ -88,9 +95,13 @@ fileSettings table s0 header = foldl step (s0, []) [(sp, args, body) | A.Located
                   Left m -> (s', ds' <> [err "G02051" ksp m])
                   Right g -> (g s', ds')
               (s'', applied) = foldl apply (s, []) kvs
-           in (s'', ds <> [err "G02052" asp shape | asp <- others] <> [err "G02052" bsp m | (bsp, m) <- bad] <> applied)
+           in (s'', ds <> [spreadBeforeEvaluation "@manifest" asp | asp <- spreads] <> [err "G02052" asp shape | asp <- others] <> [err "G02052" bsp m | (bsp, m) <- bad] <> applied)
     isKeyword = \case
       A.Keyword {} -> True
+      _ -> False
+    isSplat = \case
+      A.SplatPositional _ -> True
+      A.SplatKeyword _ -> True
       _ -> False
     valueText = \case
       LocalWord w -> w
@@ -198,10 +209,12 @@ fileStyles style header =
     shape = "@style-def には種類（character、paragraph、regex）と名前を書きます"
     readDef (defs, ds) (sp, args, body) =
       let positionals = [v | A.Located _ (A.Positional v) <- args]
-          splats = [() | A.Located _ a <- args, isSplat a]
+          splats = [asp | A.Located asp a <- args, isSplat a]
           (kvs, bad) = keywordArgs args
           shapeErrs = [err "G02052" bsp m | (bsp, m) <- bad]
        in case positionals of
+            -- G02114: read before the evaluation, so nothing is spread (docs/adr ADR 0112)
+            _ | not (null splats) -> (defs, ds <> [spreadBeforeEvaluation "@style-def" asp | asp <- splats])
             [A.Word kindW, A.Word name]
               | null body,
                 null splats,
