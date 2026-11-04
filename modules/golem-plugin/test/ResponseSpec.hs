@@ -78,6 +78,7 @@ responseTests =
   testGroup
     "the response of a plugin (golem-plugin ADR 0001)"
     [ diagnosticTests,
+      diagnosticCodeAndSpanTests,
       channelTests,
       malformedResponseTests,
       malformedDescriptionTests,
@@ -92,35 +93,80 @@ diagnosticTests =
   testGroup
     "diagnostics returned by a plugin"
     [ testCase "a warning of a command comes back with its code, span and message" $ do
-        p <- answering (withDiagnostics [pluginDiagnostic "X0001" 1 "読みが推測です"])
-        shout p @?= Right ([Text callSpan "SLOT"], [diagnostic "X0001" Warning callSpan "読みが推測です"]),
+        p <- answering (withDiagnostics [pluginDiagnostic "x0001" 1 "読みが推測です"])
+        shout p @?= Right ([Text callSpan "SLOT"], [diagnostic "x0001" Warning callSpan "読みが推測です"]),
       testCase "severity 0 is an error" $ do
-        p <- answering (withDiagnostics [pluginDiagnostic "X0002" 0 "読めません"])
-        fmap snd (shout p) @?= Right [diagnostic "X0002" Error callSpan "読めません"],
+        p <- answering (withDiagnostics [pluginDiagnostic "x0002" 0 "読めません"])
+        fmap snd (shout p) @?= Right [diagnostic "x0002" Error callSpan "読めません"],
       testCase "several diagnostics keep the order of the response" $ do
-        p <- answering (withDiagnostics [pluginDiagnostic "X0003" 1 "二つ目より前", pluginDiagnostic "X0001" 0 "後"])
-        fmap (map diagCode . snd) (shout p) @?= Right [DiagnosticCode "X0003", DiagnosticCode "X0001"],
+        p <- answering (withDiagnostics [pluginDiagnostic "x0003" 1 "二つ目より前", pluginDiagnostic "x0001" 0 "後"])
+        fmap (map diagCode . snd) (shout p) @?= Right [DiagnosticCode "x0003", DiagnosticCode "x0001"],
       testCase "a filter returns its diagnostics with the document" $ do
         let doc = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])]
-        p <- answering (cbor (TList [documentTerm doc, TList [pluginDiagnostic "X0004" 1 "総ルビにしました"]]))
-        applyFilter p "upper" doc @?= Right (doc, [diagnostic "X0004" Warning callSpan "総ルビにしました"])
+        p <- answering (cbor (TList [documentTerm doc, TList [pluginDiagnostic "x0004" 1 "総ルビにしました"]]))
+        applyFilter p "upper" doc @?= Right (doc, [diagnostic "x0004" Warning callSpan "総ルビにしました"])
     ]
+
+-- | A plugin-diagnostic with its span.
+diagnosticAt :: Text -> [Int] -> Term
+diagnosticAt code sp = TList [TString code, TInt 0, TList (map TInt sp), TString "m"]
+
+{- | The code of a plugin's diagnostic is lowercase letters, digits and -,
+which the host puts after the name of the plugin; its span is one of the
+request, or for a filter the top of the file of the document too
+(docs/adr/0108).
+-}
+diagnosticCodeAndSpanTests :: TestTree
+diagnosticCodeAndSpanTests =
+  testGroup
+    "the codes and spans of a plugin's diagnostics (docs/adr/0108)"
+    [ testCase "a code of lowercase letters, digits and - comes back as it is" $ do
+        p <- answering (withDiagnostics [diagnosticAt "no-key-2" [1, 10, 20]])
+        fmap (map diagCode . snd) (shout p) @?= Right [DiagnosticCode "no-key-2"],
+      testCase "a code of Golem, an upper case letter, a / or nothing is bad output" $
+        mapM_
+          ( \c -> do
+              p <- answering (withDiagnostics [diagnosticAt c [1, 10, 20]])
+              shout p @?= Left (BadOutput ("診断のコードの形が不正です: " <> c))
+          )
+          ["G02022", "Lookup/x", "a/b", "", "no_key"],
+      testCase "a command's diagnostic in another file is bad output" $ do
+        p <- answering (withDiagnostics [diagnosticAt "x" [2, 10, 20]])
+        shout p @?= Left (BadOutput "診断が要求にないソース位置を指しています"),
+      testCase "a command's diagnostic out of the request is bad output" $ do
+        p <- answering (withDiagnostics [diagnosticAt "x" [1, 100, 200]])
+        shout p @?= Left (BadOutput "診断が要求にないソース位置を指しています"),
+      testCase "a command's diagnostic at the top of the file is bad output" $ do
+        p <- answering (withDiagnostics [diagnosticAt "x" [1, 0, 0]])
+        shout p @?= Left (BadOutput "診断が要求にないソース位置を指しています"),
+      testCase "a filter's diagnostic at the top of the file of the document comes back" $ do
+        p <- answering (cbor (TList [documentTerm filtered, TList [diagnosticAt "bad-tsv" [1, 0, 0]]]))
+        applyFilter p "upper" filtered @?= Right (filtered, [diagnostic "bad-tsv" Error (mkSpan (FileId 1) 0 0) "m"]),
+      testCase "a filter's diagnostic at the top of another file is bad output" $ do
+        p <- answering (cbor (TList [documentTerm filtered, TList [diagnosticAt "bad-tsv" [2, 0, 0]]]))
+        applyFilter p "upper" filtered @?= Left (BadOutput "診断が要求にないソース位置を指しています"),
+      testCase "a filter's diagnostic out of the document is bad output" $ do
+        p <- answering (cbor (TList [documentTerm filtered, TList [diagnosticAt "bad-tsv" [1, 30, 40]]]))
+        applyFilter p "upper" filtered @?= Left (BadOutput "診断が要求にないソース位置を指しています")
+    ]
+  where
+    filtered = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])]
 
 malformedResponseTests :: TestTree
 malformedResponseTests =
   testGroup
     "malformed responses are bad output"
     [ testCase "severity 2" $ do
-        p <- answering (withDiagnostics [pluginDiagnostic "X0001" 2 "m"])
+        p <- answering (withDiagnostics [pluginDiagnostic "x0001" 2 "m"])
         shout p @?= Left (BadOutput "診断の重大度が不正です"),
       testCase "a diagnostic without its message" $ do
-        p <- answering (withDiagnostics [TList [TString "X0001", TInt 1, TList [TInt 1, TInt 10, TInt 20]]])
+        p <- answering (withDiagnostics [TList [TString "x0001", TInt 1, TList [TInt 1, TInt 10, TInt 20]]])
         shout p @?= Left (BadOutput "診断の形が不正です"),
       testCase "a diagnostic whose code is a number" $ do
         p <- answering (withDiagnostics [TList [TInt 1, TInt 1, TList [TInt 1, TInt 10, TInt 20], TString "m"]])
         shout p @?= Left (BadOutput "診断の形が不正です"),
       testCase "a diagnostic whose span ends before it starts" $ do
-        p <- answering (withDiagnostics [TList [TString "X0001", TInt 1, TList [TInt 1, TInt 20, TInt 10], TString "m"]])
+        p <- answering (withDiagnostics [TList [TString "x0001", TInt 1, TList [TInt 1, TInt 20, TInt 10], TString "m"]])
         shout p @?= Left (BadOutput "スキーマに合いません: 位置の範囲"),
       testCase "a response of three elements" $ do
         p <- answering (cbor (TList [inlinesTerm [Text callSpan "SLOT"], TList [], TList []]))

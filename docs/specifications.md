@@ -2065,6 +2065,7 @@ diagnostic のコードの一覧と、コードごとの意味、原因、直し
 G02035（`@table` のコマンドを指した CSV の誤り）は、G02085 に置き換えて廃止した。
 ソースで使うコードがすべて使用中の節を持ち、使用中の節のコードがすべてソースで使われていることは、golem-driver のテストが確かめる。
 プラグインが出す diagnostic のコードは、この文書の対象外である。
+そのコードは `<プラグインの宣言の名前>/<英小文字、数字、- の列>` の形で、Golem のコードとは重ならない（「プラグイン」の節）。
 
 プロジェクトの段階の diagnostics（G03001 から G03009、G03016 など）は、プロジェクトの読み込みに失敗したときも、それまでに読んだファイル（`manifest.toml`、原稿、`style.toml`）の位置で表示する（[golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)）。
 `manifest.toml` がないときは G03016 とし、章や `@import` の指すファイルがないときの G03002 と分ける。
@@ -2980,6 +2981,12 @@ files = ["chapters/01.gm"]
 - `plugins.lock` の更新は、ユーザーが明示的に指示したときだけ行う。
 
 プラグインの読み込みと検査の誤りは、G06002 から G06012 と G06101 から G06103 の diagnostic で報告する（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)、[docs/adr/0105](adr/0105-plugin-data.md)）。
+プラグインが応答で返す diagnostic は、次の規則で検査する（[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)）。
+
+- コードは英小文字、数字、`-` だけからなる空でない列とし、ホストがその前に `manifest.toml` のプラグインの宣言の名前と `/` を置く。`lookup` と宣言したプラグインの `no-key` は `lookup/no-key` になる。ほかの形のコード（`G02022` や `Lookup/x` など）は、不正な出力（G06009）にする。
+- 位置は、出力のノードと同じく、呼び出しの位置か、要求に含まれていたノードの位置に限る。フィルタの diagnostic は、要求の文書のファイルの先頭（長さ 0 の位置）も指してよい。データの誤りのように、どのノードにも属さない誤りを報告するためである。ほかの位置は不正な出力（G06009）にする。
+- `golem explain` にプラグインのコードを渡すと、説明が golem にないことを一行で標準出力に書き、終了コード 0 で終わる。
+
 `plugins.lock` が TOML として読めない誤り（G06011）は `plugins.lock` の中の位置を指し、プラグインの実行の失敗（G06009）はコマンドを呼んだ箇所かフィルタを適用したファイルの先頭を指す。
 そのほかは `manifest.toml` の先頭を指し、メッセージにプラグインの名前を書く。
 プラグインの読み込みか検査が誤りを出したときは、評価で未知のコマンド（G02022）と未知のチャネル（G02090）を報告しない。

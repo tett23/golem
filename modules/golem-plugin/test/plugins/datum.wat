@@ -1,7 +1,7 @@
 ;; A command "datum" that takes the data "table" (docs/adr/0105) and
 ;; answers with its bytes as one text at the span of the call.
 ;; Without the data it answers with no inlines and its own error
-;; datum-no-table. The data is found by the first [name, bytes] pair
+;; no-table at the span of the call. The data is found by the first [name, bytes] pair
 ;; named "table" in the request (82 65 "table"); the request of [datum]
 ;; has no other.
 (module
@@ -11,8 +11,9 @@
   (data (i32.const 16) "\a2\64data\81\65table\68commands\81\65datum")
   ;; the pair the request carries the data in
   (data (i32.const 64) "\82\65table")
-  ;; [[], [["datum-no-table", 0, [0, 0, 0], "no table"]]]
-  (data (i32.const 128) "\82\80\81\84\6edatum-no-table\00\83\00\00\00\68no table")
+  ;; [[], [["no-table", 0, span, "no table"]]]: before and after the span
+  (data (i32.const 128) "\82\80\81\84\68no-table\00")
+  (data (i32.const 160) "\68no table")
   (func $alloc (export "golem_alloc") (param $n i32) (result i32) (local $p i32) (local $end i32)
     (local.set $p (global.get $heap))
     (local.set $end (i32.add (local.get $p) (local.get $n)))
@@ -24,6 +25,15 @@
           (then (unreachable)))))
     (global.set $heap (local.get $end))
     (local.get $p))
+  ;; copies n bytes from src to dst; the end of dst
+  (func $copy (param $dst i32) (param $src i32) (param $n i32) (result i32) (local $j i32)
+    (block $done
+      (loop $next
+        (br_if $done (i32.ge_u (local.get $j) (local.get $n)))
+        (i32.store8 (i32.add (local.get $dst) (local.get $j)) (i32.load8_u (i32.add (local.get $src) (local.get $j))))
+        (local.set $j (i32.add (local.get $j) (i32.const 1)))
+        (br $next)))
+    (i32.add (local.get $dst) (local.get $n)))
   (func (export "golem_abi_version") (result i32) (i32.const 8))
   (func (export "golem_dealloc") (param i32 i32))
   (func (export "golem_describe") (result i64)
@@ -59,8 +69,16 @@
           (then (local.set $h (i32.add (local.get $ptr) (i32.add (local.get $i) (i32.const 7)))) (br $found)))
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $scan)))
+    ;; without the data the request ends with the span and 80
     (if (i32.eq (local.get $h) (i32.const -1))
-      (then (return (i64.or (i64.shl (i64.const 128) (i64.const 32)) (i64.const 33)))))
+      (then
+        (local.set $sl (i32.sub (local.get $len) (i32.const 11)))
+        (local.set $out (call $alloc (i32.add (local.get $sl) (i32.const 23))))
+        (local.set $o (call $copy (local.get $out) (i32.const 128) (i32.const 14)))
+        (local.set $o (call $copy (local.get $o) (i32.add (local.get $ptr) (i32.const 10)) (local.get $sl)))
+        (local.set $o (call $copy (local.get $o) (i32.const 160) (i32.const 9)))
+        (return (i64.or (i64.shl (i64.extend_i32_u (local.get $out)) (i64.const 32))
+          (i64.extend_i32_u (i32.sub (local.get $o) (local.get $out)))))))
     ;; the head of the byte string: its length in the byte or in 1, 2 or 4 bytes after it
     (local.set $b (i32.load8_u (local.get $h)))
     (if (i32.lt_u (local.get $b) (i32.const 0x58))

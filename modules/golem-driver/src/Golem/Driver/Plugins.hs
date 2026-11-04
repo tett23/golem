@@ -100,7 +100,7 @@ loadPlugins root overlay cacheDir mfid lfid lockText manifest
               <> [err "G06012" ("複数のプラグインが同じチャネルを宣言しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- channelCollisions]
               <> [err "G06012" (n <> ": このチャネルの名前は使えません: " <> c) | (n, c) <- badChannels]
           call pname p name = PluginCommand $ \vals slots sp ->
-            either (\pe -> Left [diagnostic (pluginErrorCode pe) Error sp (qualified pname name pe)]) Right (callCommand p name vals slots sp)
+            either (\pe -> Left [diagnostic (pluginErrorCode pe) Error sp (qualified pname name pe)]) (Right . fmap (map (ofPlugin pname))) (callCommand p name vals slots sp)
           -- a filter that fails points at the top of the file (golem-plugin ADR 0003)
           applyFilters path doc0 =
             foldl
@@ -111,7 +111,7 @@ loadPlugins root overlay cacheDir mfid lfid lockText manifest
                       Just (_, _, p) <- lookupPlugin (fdPlugin f) ->
                         case applyFilter p (fdFilter f) doc of
                           Left pe -> Left [diagnostic (pluginErrorCode pe) Error (mkSpan (docFile doc0) 0 0) (qualified (fdPlugin f) (fdFilter f) pe)]
-                          Right (doc', ws') -> Right (doc', ws <> ws')
+                          Right (doc', ws') -> Right (doc', ws <> map (ofPlugin (fdPlugin f)) ws')
                     | otherwise -> Right (doc, ws)
               )
               (Right (doc0, []))
@@ -126,6 +126,13 @@ loadPlugins root overlay cacheDir mfid lfid lockText manifest
                     phApplyFilters = applyFilters
                   }
             else Left diags
+
+{- | A diagnostic of a plugin, its code after the name the manifest gives
+the plugin: @<plugin>/<code>@, which is neither a code of Golem nor one of
+another plugin (docs/adr/0108).
+-}
+ofPlugin :: Text -> Diagnostic -> Diagnostic
+ofPlugin pname d = let DiagnosticCode c = diagCode d in d {diagCode = DiagnosticCode (pname <> "/" <> c)}
 
 {- | The data the manifest passes to a loaded plugin (docs/adr/0105): each
 name must be one the plugin takes (G06102), each path a file in the

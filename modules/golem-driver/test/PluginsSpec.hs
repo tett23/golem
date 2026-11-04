@@ -206,10 +206,23 @@ dataTests =
       withDataPlugin "lookup.wasm" "data = { table = \"data/words.tsv\" }\n" "[lookup: key]\n" [("data/words.tsv", "# words\nkey\tvalue\nkey\tsecond\n")] $ \tmp -> do
         (inls, ds) <- lookedUp Map.empty tmp
         (texts inls, ds) @?= (["value"], []),
+    testCase "the code of a plugin's diagnostic has the name of the plugin before it, in human and JSON output (docs/adr/0108)" $
+      withSystemTempDirectory "golem-data" $ \tmp -> do
+        BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> pluginDeclOf "lookup" "data = { table = \"w.tsv\" }\n")
+        BS.writeFile (tmp </> "style.toml") horizontalStyle
+        TIO.writeFile (tmp </> "a.gm") "[lookup: none]\n"
+        BS.writeFile (tmp </> "w.tsv") "key\tvalue\n"
+        lockIn [("lookup", "lookup.wasm")] tmp $ do
+          r <- build (defaultOptions tmp)
+          map diagCode (brDiagnostics r) @?= [DiagnosticCode "lookup/no-key"]
+          let human = renderHuman (brSources r) (brDiagnostics r)
+              json = renderJson (brSources r) (brDiagnostics r)
+          assertBool (T.unpack human) ("error[lookup/no-key]" `T.isInfixOf` human)
+          assertBool (T.unpack json) ("\"code\":\"lookup/no-key\"" `T.isInfixOf` json),
     testCase "the sample plugin lookup without its data reports its own diagnostic (docs/adr/0106)" $
       withDataPlugin "lookup.wasm" "" "[lookup: key]\n" [] $ \tmp -> do
         (_, ds) <- lookedUp Map.empty tmp
-        map fst ds @?= [DiagnosticCode "lookup-no-table"],
+        map fst ds @?= [DiagnosticCode "lk/no-table"],
     testCase "the plugin reads the file the manifest passes as data" $
       withDatum "data = { table = \"data/words.tsv\" }\n" "[datum]\n" [("data/words.tsv", "value")] $ \tmp -> do
         (inls, ds) <- lookedUp Map.empty tmp
@@ -217,7 +230,7 @@ dataTests =
     testCase "without the data the plugin reports its own diagnostic" $
       withDatum "" "[datum]\n" [] $ \tmp -> do
         (_, ds) <- lookedUp Map.empty tmp
-        map fst ds @?= [DiagnosticCode "datum-no-table"],
+        map fst ds @?= [DiagnosticCode "lk/no-table"],
     testCase "a changed file gives the new value when the project is evaluated again" $
       withDatum "data = { table = \"words.tsv\" }\n" "[datum]\n" [("words.tsv", "one")] $ \tmp -> do
         lookedUp Map.empty tmp >>= (@?= ["one"]) . texts . fst

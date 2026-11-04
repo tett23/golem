@@ -44,12 +44,12 @@ pub fn invoke(req: Request) -> Response {
             let key = c.slots.first().map(|s| plain(s)).unwrap_or_default();
             let tsv = match c.data.get("table").map(std::str::from_utf8) {
                 Some(Ok(t)) => t,
-                Some(Err(_)) => return Response::inlines(vec![]).with(error(c.span, "lookup-utf8", "table が UTF-8 ではありません".into())),
-                None => return Response::inlines(vec![]).with(error(c.span, "lookup-no-table", "manifest.toml で data の table を渡してください".into())),
+                Some(Err(_)) => return Response::inlines(vec![]).with(error(c.span, "utf8", "table が UTF-8 ではありません".into())),
+                None => return Response::inlines(vec![]).with(error(c.span, "no-table", "manifest.toml で data の table を渡してください".into())),
             };
             match find(tsv, &key) {
                 Some(v) => Response::inlines(vec![Inline::Text { span: c.span, text: v.into() }]),
-                None => Response::inlines(vec![]).with(error(c.span, "lookup-no-key", format!("table にないキーです: {key}"))),
+                None => Response::inlines(vec![]).with(error(c.span, "no-key", format!("table にないキーです: {key}"))),
             }
         }
         Request::Filter(f) => Response::document(f.document),

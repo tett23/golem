@@ -378,6 +378,7 @@ callCommand plugin name args slots sp = do
   let allowedSpans = Set.insert sp (Set.fromList (concatMap (concatMap inlineSpans) slots))
       allowedDeferred = concatMap (concatMap inlineDeferred) slots
   checkOutput allowedSpans allowedDeferred (concatMap inlineSpans inls) (concatMap inlineDeferred inls)
+  checkDiagnosticSpans allowedSpans diags
   Right (inls, diags)
 
 -- | A filter of the plugin over one file's document.
@@ -389,6 +390,8 @@ applyFilter plugin name doc = do
   -- the items that came in with the document pass as they are (golem-doc ADR 0007)
   checkItems plugin (documentItems doc) (documentItems doc')
   checkOutput (Set.fromList (documentSpans doc)) (documentDeferred doc) (documentSpans doc') (documentDeferred doc')
+  -- a filter has no call: the top of the file stands for what no node holds, such as its data (docs/adr/0108)
+  checkDiagnosticSpans (Set.insert (mkSpan (docFile doc) 0 0) (Set.fromList (documentSpans doc))) diags
   -- the invariants of the IR, such as forced breaks only at the top (docs/adr ADR 0017);
   -- the spans were checked above, so every file is taken to be large enough
   case validateDocument (const (Just maxBound)) (documentDeferred doc) doc' of
@@ -404,6 +407,10 @@ response bytes = do
   where
     diag = \case
       TList [TString code, sev, spT, TString msg] -> do
+        -- the host puts the name of the plugin before it (docs/adr/0108)
+        if not (T.null code) && T.all (\c -> isAsciiLower c || isDigit c || c == '-') code
+          then Right ()
+          else Left (BadOutput ("診断のコードの形が不正です: " <> code))
         sp <- decoded (termSpan spT)
         severity <- case sev of
           TInt 0 -> Right Error
@@ -411,6 +418,14 @@ response bytes = do
           _ -> Left (BadOutput "診断の重大度が不正です")
         Right (diagnostic code severity sp msg)
       _ -> Left (BadOutput "診断の形が不正です")
+
+{- | The diagnostics of a plugin point at what came in with the request
+(docs/adr/0108).
+-}
+checkDiagnosticSpans :: Set.Set SrcSpan -> [Diagnostic] -> Either PluginError ()
+checkDiagnosticSpans allowed ds
+  | any ((`Set.notMember` allowed) . diagSpan) ds = Left (BadOutput "診断が要求にないソース位置を指しています")
+  | otherwise = Right ()
 
 {- | The output may only carry source positions and deferred expressions
 that came in with the request (ADR 0001).

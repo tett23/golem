@@ -146,8 +146,9 @@ G02005（校正用のコメントの残り）は [code: prod] でだけ出る警
 G09002 から G09018 の重大度は、プリフライトの設定で決まる（[code: Golem.Syntax.Diagnostic.preflightCodes]）。
 設定で選べるのは [code: error]、[code: warning]、[code: off] で、[code: notice] と [code: info] は選べない。
 
-プラグインが出す diagnostic のコードは、プラグインが決める。
+プラグインが出す diagnostic のコードは、[code: lookup/no-key] のように、[code: manifest.toml] でのプラグインの宣言の名前、[code: /]、プラグインが決めた英小文字、数字、[code: -] の列である。
 Golem の文書の対象外であり、[code: golem explain] も説明を持たない。
+[code: golem explain lookup/no-key] は、説明が golem にないことを一行で書き、終了コード 0 で終わる。
 
 ## diagnostic のコードの説明
 
