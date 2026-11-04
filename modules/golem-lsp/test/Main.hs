@@ -279,6 +279,14 @@ tests =
         let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
         codesIn "style.toml" @?= ["G03006"]
         codesIn "manifest.toml" @?= [],
+      testCase "a bibliography with a character that cannot be written is G03108 on manifest.toml (docs/adr/0159)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "en"})
+        BS.writeFile (tmp </> "a.gm") "A.\n"
+        BS.writeFile (tmp </> "refs.json") "[{\"id\": \"a\", \"title\": \"x\\u0001\"}]"
+        BS.writeFile (tmp </> "manifest.toml") ("bibliography = [\"refs.json\"]\n" <> manifest)
+        ws <- openWorkspace tmp
+        let codes = [c | d <- fromMaybe [] (Map.lookup "manifest.toml" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
+        assertBool (show codes) ("G03108" `elem` codes),
       testCase "a project file publishes its diagnostics in the order of the codes (golem-syntax ADR 0003)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "en"})
         BS.writeFile (tmp </> "a.gm") "@label unused\n# A\n\nSee [ref-title nope].\n"

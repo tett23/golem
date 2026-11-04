@@ -26,7 +26,7 @@ import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Support
-import System.Directory (createDirectoryIfMissing)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -258,6 +258,7 @@ bibliographyFormatTests =
       assertBool (show ds1) (all (("参考文献のファイルを JSON として読めません: refs.json（" `T.isPrefixOf`) . diagMessage) ds1)
       (ds2, _) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", "{}")]
       map diagMessage ds2 @?= ["参考文献のファイルは CSL-JSON の配列で書きます: refs.json"],
+    unwritableTests,
     testCase "an absolute path is G03003" $ do
       (ds, _) <- bibOf "bibliography = [\"/abs.json\"]" []
       map diagCode ds @?= [DiagnosticCode "G03003"],
@@ -813,3 +814,49 @@ refPageNumeralTests =
       case [setLineText sl | sl <- Map.elems (plLines pl), "参照は" `T.isPrefixOf` setLineText sl] of
         [l] -> pure l
         ls -> assertFailure (show ls)
+
+{- | The fixture of the bibliographies, its refs.json with one text replaced:
+the CLI reproduction of the security audit of 2026-11-05 (V-03).
+-}
+withRefsReplaced :: T.Text -> T.Text -> (FilePath -> IO a) -> IO a
+withRefsReplaced fromText toText act = withSystemTempDirectory "golem-bib" $ \tmp -> do
+  copyTree "test/fixtures/bibliographies" tmp
+  refs <- BS.readFile (tmp </> "refs.json")
+  let from = TE.encodeUtf8 fromText
+      to = TE.encodeUtf8 toText
+      (before, rest) = BS.breakSubstring from refs
+  assertBool "the text to replace" (not (BS.null rest))
+  BS.writeFile (tmp </> "refs.json") (before <> to <> BS.drop (BS.length from) rest)
+  act tmp
+
+{- | The G03108 errors of a build, and whether HTML and EPUB were written;
+the cite marks of the file also give G02021, as its keys are not read.
+-}
+unwritableBuild :: Profile -> [Target] -> FilePath -> IO ([(DiagnosticCode, T.Text)], Bool, Bool)
+unwritableBuild profile targets tmp = do
+  r <- build (defaultOptions tmp) {optTargets = Just targets, optProfile = profile, optFonts = fakeProvider}
+  html <- doesDirectoryExist (tmp </> "build/html")
+  epub <- doesDirectoryExist (tmp </> "build/epub")
+  pure ([(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d, diagCode d == DiagnosticCode "G03108"], html, epub)
+
+-- | A character that cannot be written to the output in CSL-JSON is G03108 (docs/adr/0159).
+unwritableTests :: TestTree
+unwritableTests =
+  testGroup
+    "G03108 (docs/adr/0159)"
+    [ testCase "U+0001 in the title of a cited item: G03108 for HTML and EPUB, in dev and prod, and neither is written" $
+        withRefsReplaced "\"日本語組版処理の要件\"" "\"audit-control-\\u0001\"" $ \tmp ->
+          forM_ [Dev, Prod] $ \profile -> do
+            (errs, html, epub) <- unwritableBuild profile [TargetHtml, TargetEpub] tmp
+            assertEqual (show profile) [(DiagnosticCode "G03108", "参考文献のファイルに出力に書けない文字（U+0001）があります: refs.json（/0/title）")] errs
+            (html, epub) @?= (False, False),
+      testCase "plain text and PDF report G03108 too" $
+        withRefsReplaced "\"日本語組版処理の要件\"" "\"audit-control-\\u0001\"" $ \tmp ->
+          forM_ [[TargetText], [TargetPdf]] $ \targets -> do
+            (errs, _, _) <- unwritableBuild Dev targets tmp
+            map fst errs @?= [DiagnosticCode "G03108"],
+      testCase "a character in an item that is not cited is G03108 too, with ほか" $
+        withRefsReplaced "}}]" "}}, {\"id\": \"unused\", \"note\": \"\\u001b\", \"title\": \"\\u0001\"}]" $ \tmp -> do
+          (errs, _, _) <- unwritableBuild Dev [TargetHtml] tmp
+          errs @?= [(DiagnosticCode "G03108", "参考文献のファイルに出力に書けない文字（U+001B）があります: refs.json（/3/note）、ほか 1 件")]
+    ]
