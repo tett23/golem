@@ -48,18 +48,28 @@ loadPlugins root overlay cacheDir mfid lfid lockText manifest
             ds -> Left ds
   where
     err code = diagnostic code Error (mkSpan mfid 0 0)
-    loadOne lock (name, decl) = case Map.lookup name lock of
-      Just e | leUrl e == pdUrl decl -> do
-        cached <- readCached cacheDir e
-        case cached of
-          Left NotCached -> pure (Left [err "G06003" ("キャッシュにないプラグインです。golem plugin fetch を実行してください: " <> name)])
-          Left HashMismatch -> pure (Left [err "G06004" ("キャッシュの配布物のハッシュが plugins.lock と一致しません: " <> name)])
-          Right bytes ->
-            loadPlugin bytes >>= \case
-              Left pe -> pure (Left [err "G06005" (name <> ": " <> describePluginError pe)])
-              Right p -> fmap (\d -> (name, decl, withPluginData d p)) <$> loadData root overlay err name decl p
-      Just _ -> pure (Left [err "G06002" ("plugins.lock の URL が manifest.toml と違います。golem plugin lock を実行してください: " <> name)])
-      Nothing -> pure (Left [err "G06002" ("plugins.lock にないプラグインです。golem plugin lock を実行してください: " <> name)])
+    loadOne lock (name, decl) = case pdSource decl of
+      -- a plugin of the project: not in plugins.lock nor in the cache (docs/adr/0109)
+      PluginPath path -> do
+        let what = name <> ": " <> T.pack path
+        res <- resolveInRoot root path
+        case res of
+          Left Missing -> pure (Left [err "G06104" ("プラグインのファイルがありません: " <> what)])
+          Left e -> pure (Left [err "G03003" (T.pack (pathErrorMessage e) <> ": " <> what)])
+          Right rel -> BS.readFile (root </> rel) >>= loaded name decl
+      PluginUrl url -> case Map.lookup name lock of
+        Just e | leUrl e == url -> do
+          cached <- readCached cacheDir e
+          case cached of
+            Left NotCached -> pure (Left [err "G06003" ("キャッシュにないプラグインです。golem plugin fetch を実行してください: " <> name)])
+            Left HashMismatch -> pure (Left [err "G06004" ("キャッシュの配布物のハッシュが plugins.lock と一致しません: " <> name)])
+            Right bytes -> loaded name decl bytes
+        Just _ -> pure (Left [err "G06002" ("plugins.lock の URL が manifest.toml と違います。golem plugin lock を実行してください: " <> name)])
+        Nothing -> pure (Left [err "G06002" ("plugins.lock にないプラグインです。golem plugin lock を実行してください: " <> name)])
+    loaded name decl bytes =
+      loadPlugin bytes >>= \case
+        Left pe -> pure (Left [err "G06005" (name <> ": " <> describePluginError pe)])
+        Right p -> fmap (\d -> (name, decl, withPluginData d p)) <$> loadData root overlay err name decl p
     hook plugins =
       let provided = [(c, name) | (name, _, p) <- plugins, c <- pluginCommands p]
           overrides = [(o, name, p) | (name, decl, p) <- plugins, o <- pdOverrides decl]

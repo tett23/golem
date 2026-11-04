@@ -27,7 +27,7 @@ import Golem.Parser.CST (pretty)
 import Golem.Parser.Read (readInfo)
 import Golem.Plugin.Lock (defaultCacheDir, fetchPlugins, httpsFetcher, lockPlugins, parseLock, renderLock)
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..), loadProjectWith)
-import Golem.Project.Manifest (Manifest (..), PluginDecl (..), parseManifest)
+import Golem.Project.Manifest (Manifest (..), PluginDecl (..), PluginSource (..), parseManifest)
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
 import Golem.Syntax.ShowTree (showTree)
@@ -483,7 +483,8 @@ pluginLock = do
     Right m -> do
       fetcher <- httpsFetcher
       cache <- defaultCacheDir
-      r <- lockPlugins fetcher cache (Map.map pdUrl (manifestPlugins m))
+      -- a plugin of the project's path is not fetched nor locked (docs/adr/0109)
+      r <- lockPlugins fetcher cache (Map.mapMaybe (\d -> case pdSource d of PluginUrl u -> Just u; PluginPath _ -> Nothing) (manifestPlugins m))
       case r of
         Left es -> mapM_ (TIO.hPutStrLn stderr) es >> pure (ExitFailure 1)
         Right lock -> BS.writeFile "plugins.lock" (TE.encodeUtf8 (renderLock lock)) >> pure ExitSuccess

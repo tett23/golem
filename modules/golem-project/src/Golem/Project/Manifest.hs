@@ -13,6 +13,7 @@ module Golem.Project.Manifest
     Targets (..),
     TextVariant (..),
     PluginDecl (..),
+    PluginSource (..),
     FilterDecl (..),
     parseManifest,
     chapterFiles,
@@ -179,11 +180,21 @@ data Targets = Targets
   deriving stock (Eq, Show)
 
 data PluginDecl = PluginDecl
-  { pdUrl :: !Text,
+  { pdSource :: !PluginSource,
     pdOverrides :: ![Text],
     -- | the data the project passes to the plugin: names and project-relative paths (docs/adr/0105)
     pdData :: !(Map Text FilePath)
   }
+  deriving stock (Eq, Show)
+
+{- | Where a plugin comes from: an artifact fetched from its URL and fixed
+in plugins.lock (golem-plugin ADR 0002), or a .wasm of the project, fixed
+by the repository like the manuscripts (docs/adr/0109).
+-}
+data PluginSource
+  = PluginUrl !Text
+  | -- | relative to the root of the project
+    PluginPath !FilePath
   deriving stock (Eq, Show)
 
 data FilterDecl = FilterDecl
@@ -407,12 +418,16 @@ instance FromValue TextTable where
     vs <- optKey "variants"
     pure (TextTable (fromMaybe ["vertical", "horizontal"] vs))
 
+-- | url or path, exactly one of them (docs/adr/0109).
 instance FromValue PluginDecl where
-  fromValue = parseTableFromValue $ do
-    u <- reqKey "url"
-    o <- optKey "overrides"
-    d <- optKey "data"
-    pure (PluginDecl u (fromMaybe [] o) (maybe Map.empty (Map.map T.unpack) d))
+  fromValue v = do
+    (u, p, o, d) <- parseTableFromValue ((,,,) <$> optKey "url" <*> optKey "path" <*> optKey "overrides" <*> optKey "data") v
+    src <- case (u, p) of
+      (Just x, Nothing) -> pure (PluginUrl x)
+      (Nothing, Just x) -> pure (PluginPath (T.unpack x))
+      (Just _, Just _) -> failAt (valueAnn v) "プラグインには url と path のどちらか一方だけを書きます"
+      (Nothing, Nothing) -> failAt (valueAnn v) "プラグインには url か path のどちらかを書きます"
+    pure (PluginDecl src (fromMaybe [] o) (maybe Map.empty (Map.map T.unpack) d))
 
 instance FromValue FilterDecl where
   fromValue = parseTableFromValue $ do

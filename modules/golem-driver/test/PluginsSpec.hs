@@ -199,6 +199,48 @@ lookedUp overlay tmp = do
 texts :: [Inline] -> [T.Text]
 texts is = [t | Text _ t <- is]
 
+{- | A one-chapter project, a.gm, with datum.wat built into
+plugins/datum.wasm and declared as lk with the given keys, and the given
+files: a plugin of the project's path (docs/adr/0109), no plugins.lock.
+-}
+withLocal :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withLocal decl source files k = withSystemTempDirectory "golem-local" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> "\n[plugins.lk]\n" <> decl)
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  TIO.writeFile (tmp </> "a.gm") source
+  src <- TIO.readFile "../golem-plugin/test/plugins/datum.wat"
+  wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
+  writeFiles tmp (("plugins/datum.wasm", wasm) : files)
+  k tmp
+
+-- | A plugin of the project's path (docs/adr/0109).
+localPluginTests :: [TestTree]
+localPluginTests =
+  [ testCase "a plugin of the project's path runs without plugins.lock" $
+      withLocal "path = \"plugins/datum.wasm\"\ndata = { table = \"v.txt\" }\n" "[datum]\n" [("v.txt", "value")] $ \tmp -> do
+        (inls, ds) <- lookedUp Map.empty tmp
+        (texts inls, ds) @?= (["value"], [])
+        listDirectory tmp >>= (@?= False) . elem "plugins.lock",
+    testCase "the file of a plugin of the project's path is watched like the files of @table" $
+      withLocal "path = \"./plugins/datum.wasm\"\n" "本文\n" [] $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        assertBool (show (evTableFiles e)) ("plugins/datum.wasm" `elem` evTableFiles e),
+    testCase "G06104: a plugin of the project's path that is not there" $
+      withLocal "path = \"plugins/none.wasm\"\n" "本文\n" [] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06104", "プラグインのファイルがありません: lk: plugins/none.wasm")]),
+    testCase "G03003: a path of a plugin outside the project, absolute or a URL" $
+      mapM_
+        ( \(path, why) -> withLocal ("path = \"" <> path <> "\"\n") "本文\n" [] $ \tmp -> do
+            r <- build (defaultOptions tmp)
+            atManifestTop r >>= (@?= [(DiagnosticCode "G03003", why <> ": lk: " <> TE.decodeUtf8 path)])
+        )
+        [ ("../datum.wasm", "プロジェクトルートの外を指しています"),
+          ("/etc/hosts", "絶対パスは使えません"),
+          ("https://example.com/datum.wasm", "URL は使えません")
+        ]
+  ]
+
 -- | The data a project passes to a plugin (docs/adr/0105).
 dataTests :: [TestTree]
 dataTests =
@@ -283,6 +325,7 @@ pluginTests :: [TestTree]
 pluginTests =
   channelTests
     <> dataTests
+    <> localPluginTests
     <> [ testCase "a filter runs over the declared files and keeps the output" $ do
            plain <- buildAndRead Dev "build/text/horizontal/chapters/01.txt"
            filtered <- withPluginProject pluginDecl $ \tmp -> do

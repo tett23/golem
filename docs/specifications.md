@@ -2966,8 +2966,20 @@ filter = "furigana"
 files = ["chapters/01.gm"]
 ```
 
-- `[plugins.<名前>]` は、プラグインを名前を付けて宣言する。`url`（必須）は配布物の URL、`overrides` は上書きする組み込みのインラインのコマンドの名前の配列、`data` はプラグインに渡すデータ（「データ」の節）である。名前は原稿と `[[filters]]` からプラグインを指すのに使う。
+- `[plugins.<名前>]` は、プラグインを名前を付けて宣言する。`url` は配布物の URL、`path` はプロジェクトの中の `.wasm` のパス（下の「プロジェクトの中のプラグイン」）で、どちらか一方だけを書く。両方を書くか、どちらも書かなければ G03001 になる。`overrides` は上書きする組み込みのインラインのコマンドの名前の配列、`data` はプラグインに渡すデータ（「データ」の節）である。名前は原稿と `[[filters]]` からプラグインを指すのに使う。
 - `[[filters]]` は、フィルタを当てるファイルを当てる順に書く。`plugin`（必須）は `[plugins.<名前>]` の名前、`filter`（必須）はそのプラグインのフィルタの名前、`files`（必須）はフィルタを当てる原稿のファイルの配列である。
+
+プロジェクトの中の `.wasm` は、`url` の代わりに `path` で宣言できる（[docs/adr/0109](adr/0109-local-plugin-path.md)）。
+作ったばかりのプラグインを試すときや、配布せずにリポジトリに置くプラグインに使う。
+
+```toml
+[plugins.local]
+path = "plugins/local.wasm"
+```
+
+- `path` は、プロジェクトのルートを基準にしたパスである。検査はデータのファイルと同じく行い、URL、絶対パス、ルートの外（シンボリックリンクの先も含む）は G03003、ファイルがなければ G06104 になる。
+- `path` のプラグインは、`plugins.lock` にもキャッシュにも入れない。原稿やデータと同じくプロジェクトの入力であり、リポジトリの版管理で固定される。`golem plugin lock` と `golem plugin fetch` は `path` のプラグインを飛ばす。
+- LSP は、`path` のファイルを `@table` のファイルと同じく監視し、変われば読み込み直す。
 
 想定する配布元は GitHub などのリリースであり、URL はバージョンごとに固定されたものを書く。
 許容するバージョンの範囲を宣言して解決する方式は、配布機構を作る段階で導入する。
@@ -2980,7 +2992,7 @@ files = ["chapters/01.gm"]
 - 取得した配布物はハッシュをキーに手元にキャッシュし、キャッシュがあればビルドはネットワークに接続しない。
 - `plugins.lock` の更新は、ユーザーが明示的に指示したときだけ行う。
 
-プラグインの読み込みと検査の誤りは、G06002 から G06012 と G06101 から G06103 の diagnostic で報告する（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)、[docs/adr/0105](adr/0105-plugin-data.md)）。
+プラグインの読み込みと検査の誤りは、G06002 から G06012 と G06101 から G06104 の diagnostic で報告する（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)、[docs/adr/0105](adr/0105-plugin-data.md)、[docs/adr/0109](adr/0109-local-plugin-path.md)）。
 プラグインが応答で返す diagnostic は、次の規則で検査する（[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)）。
 
 - コードは英小文字、数字、`-` だけからなる空でない列とし、ホストがその前に `manifest.toml` のプラグインの宣言の名前と `/` を置く。`lookup` と宣言したプラグインの `no-key` は `lookup/no-key` になる。ほかの形のコード（`G02022` や `Lookup/x` など）は、不正な出力（G06009）にする。

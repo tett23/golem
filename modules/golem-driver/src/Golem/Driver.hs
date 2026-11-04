@@ -250,12 +250,17 @@ evaluateProjectWith overlay profile root = do
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
               pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded) (laTableFiles loaded <> pluginDataFiles manifest0) projectDiags s1Diags reassemble again pluginCommands))
 
-{- | The files the plugins take as data (docs/adr/0105), which the LSP
-watches with the files of @table: a change of one evaluates the project
-again. Paths of the wrong shape are left out; G03003 reports them.
+{- | The files the plugins take as data (docs/adr/0105) and the .wasm of
+the plugins of the project (docs/adr/0109), which the LSP watches with
+the files of @table: a change of one evaluates the project again. Paths
+of the wrong shape are left out; G03003 reports them.
 -}
 pluginDataFiles :: Manifest -> Set.Set FilePath
-pluginDataFiles m = Set.fromList [rel | d <- Map.elems (manifestPlugins m), Right rel <- map normalizeRelative (Map.elems (pdData d))]
+pluginDataFiles m = Set.fromList [rel | d <- Map.elems (manifestPlugins m), Right rel <- map normalizeRelative (ownPath d <> Map.elems (pdData d))]
+  where
+    ownPath d = case pdSource d of
+      PluginPath p -> [p]
+      PluginUrl _ -> []
 
 {- | S1 from the S0 results of the files (golem-lsp ADR 0004): the book
 and the diagnostics of S1; nothing when the diagnostics of the project
