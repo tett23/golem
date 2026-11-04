@@ -719,6 +719,13 @@ argWordTests =
         msgs "@blank-line 1...3\n" @?= [g02113 "1...3"]
         msgs "[number-text [= 1...3]]\n" @?= [g02113 "1...3"]
         msgs "@blank-line [= 1...3]\n" @?= [g02113 "1...3"],
+      -- one cause, one code: no G02069 besides (the audit of 2026-11-04, F-14)
+      testCase "a range as the expression of a key of a code block is G02113 only" $
+        mapM_
+          (\k -> msgs ("```haskell " <> k <> "=[= 1...3]\nx\n```\n") @?= [("G02113", "範囲を受け取らない引数に範囲を書いています: 1...3")])
+          ["file", "diff", "callouts"],
+      testCase "a wrong expression of a key of a code block is its own code only" $
+        errs "```haskell file=[= nope]\nx\n```\n" @?= errs "[number-text [= nope]]\n",
       testCase "a plugin gets a word of a range literal as the range of the expression" $ do
         greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
         let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show (map pluginArgValue vs)))], []))
