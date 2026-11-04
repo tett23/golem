@@ -9,7 +9,7 @@ import Data.Maybe (isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..))
+import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfInput (..), layoutPages)
 import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
@@ -240,6 +240,52 @@ withDescribedDatum describe size decl source files k = withSystemTempDirectory "
   wasm <- watToWasm (described src) >>= either (assertFailure . T.unpack) pure
   writeFiles tmp (("datum.wasm", wasm) : files)
   k tmp
+
+{- | A one-chapter project, a.gm, with the plugins (name, wat file or
+sample plugin) declared with the given text after their url.
+-}
+withBlockProject :: [(T.Text, FilePath, BS.ByteString)] -> T.Text -> (FilePath -> IO a) -> IO a
+withBlockProject plugins source k = withSystemTempDirectory "golem-blocks" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> foldMap (\(n, _, decl) -> pluginDeclOf (TE.encodeUtf8 n) decl) plugins)
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  TIO.writeFile (tmp </> "a.gm") source
+  lockIn [(n, f) | (n, f, _) <- plugins] tmp (k tmp)
+
+-- | The S0 blocks of a.gm.
+blocksOf :: FilePath -> IO ([Block], [(DiagnosticCode, T.Text)])
+blocksOf tmp = do
+  e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+  let bs = [b | (fid, sf) <- Map.toList (projectSources (evProject e)), sfPath sf == "a.gm", Just r <- [Map.lookup fid (evResults e)], b <- docBlocks (erDocument r)]
+  pure (bs, [(diagCode d, diagMessage d) | d <- evDiagnostics e])
+
+-- | Block commands of plugins (docs/adr/0122), with grid.wat.
+blockCommandTests :: [TestTree]
+blockCommandTests =
+  [ testCase "@grid puts out the blocks of the plugin at the call" $
+      withBlockProject [("gr", "grid.wat", "")] "@grid\n" $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        ds @?= []
+        [(spanStart (blockSpan b), spanEnd (blockSpan b), [t | Paragraph _ is <- [blockBody b], Text _ t <- is]) | b <- bs] @?= [(0, 6, ["表"])],
+    testCase "a block command is not an inline command, nor an inline command a block command" $
+      withBlockProject [("gr", "grid.wat", ""), ("lookup", "lookup.wasm", "")] "[grid]\n\n@lookup x\n" $ \tmp -> do
+        (_, ds) <- blocksOf tmp
+        map fst ds @?= [DiagnosticCode "G02022", DiagnosticCode "G02009"],
+    testCase "no G02009 nor G02022 after a plugin failed to load" $
+      withBlockProject [("gr", "grid.wat", "data = { table = \"none.tsv\" }\n")] "@grid\n\n[grid]\n\n@nope\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101", DiagnosticCode "G06102"],
+    testCase "G06006: two plugins with the same block command" $
+      withBlockProject [("a", "grid.wat", ""), ("b", "grid.wat", "")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06006", "複数のプラグインが同じブロックコマンドを提供しています: @grid（a、b）")]),
+    testCase "a block command in a list item takes @label" $
+      withBlockProject [("gr", "grid.wat", "")] "- 項目\n\n  @label t\n  @grid\n" $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        ds @?= []
+        case map blockBody bs of
+          [BulletList [ListItem _ [_, Block _ (Just "t") (Paragraph _ [Text _ "表"])]]] -> pure ()
+          other -> assertFailure (show other)
+  ]
 
 -- | The context of the book a plugin asks for (docs/adr/0121).
 contextTests :: [TestTree]
@@ -492,6 +538,7 @@ pluginTests =
     <> anyDataTests
     <> checkDataTests
     <> contextTests
+    <> blockCommandTests
     <> [ testCase "a filter runs over the declared files and keeps the output" $ do
            plain <- buildAndRead Dev "build/text/horizontal/chapters/01.txt"
            filtered <- withPluginProject pluginDecl $ \tmp -> do

@@ -2,7 +2,7 @@
 //! ADR 0001, golem-doc ADR 0007, docs/adr/0105).
 
 use crate::cbor::{DecodeError, Value};
-use crate::ir::{self, Document, Inline, Span};
+use crate::ir::{self, Block, Document, Inline, Span};
 
 type R<T> = Result<T, DecodeError>;
 
@@ -81,10 +81,25 @@ pub struct FilterRequest {
     pub data: Data,
 }
 
+/// The request of a block command, `@name` at the start of a line
+/// (docs/adr/0122): its arguments and its body, evaluated.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BlockCommandRequest {
+    pub name: String,
+    pub args: Vec<Arg>,
+    /// the indented lines after `@name`, evaluated as blocks
+    pub body: Vec<Block>,
+    /// where the command is called; the span of what the plugin makes
+    pub span: Span,
+    pub context: Context,
+    pub data: Data,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Request {
     Command(CommandRequest),
     Filter(FilterRequest),
+    Block(BlockCommandRequest),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -106,6 +121,8 @@ pub struct Diagnostic {
 pub enum Output {
     Inlines(Vec<Inline>),
     Document(Document),
+    /// the output of a block command (docs/adr/0122)
+    Blocks(Vec<Block>),
 }
 
 /// `response = [output, diagnostics]`
@@ -122,6 +139,11 @@ impl Response {
 
     pub fn document(d: Document) -> Self {
         Response { output: Output::Document(d), diagnostics: vec![] }
+    }
+
+    /// The answer of a block command (docs/adr/0122).
+    pub fn blocks(bs: Vec<Block>) -> Self {
+        Response { output: Output::Blocks(bs), diagnostics: vec![] }
     }
 
     pub fn with(mut self, d: Diagnostic) -> Self {
@@ -144,7 +166,7 @@ pub struct ChannelDecl {
     pub locators: bool,
 }
 
-/// `description = {? "commands", ? "filters", ? "channels", ? "data", ? "context"}`
+/// `description = {? "commands", ? "filters", ? "channels", ? "data", ? "context", ? "blocks"}`
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Description {
     pub commands: Vec<String>,
@@ -155,6 +177,8 @@ pub struct Description {
     /// the names of the context of the book it asks for (docs/adr/0121):
     /// `writing-mode`, `vertical-numbers`
     pub context: Vec<String>,
+    /// the block commands it provides, `@name` (docs/adr/0122)
+    pub blocks: Vec<String>,
 }
 
 fn texts(xs: &[String]) -> Value {
@@ -182,6 +206,7 @@ pub fn description_value(d: &Description) -> Value {
     // already in the order of 4.2.1
     let mut fields = vec![
         ("data", texts(&d.data)),
+        ("blocks", texts(&d.blocks)),
         ("context", texts(&d.context)),
         ("filters", texts(&d.filters)),
         ("channels", Value::Array(channels)),
@@ -195,6 +220,7 @@ pub fn response_value(r: &Response) -> Value {
     let out = match &r.output {
         Output::Inlines(xs) => ir::inlines_value(xs),
         Output::Document(d) => ir::document_value(d),
+        Output::Blocks(bs) => ir::blocks_value(bs),
     };
     Value::Array(vec![
         out,
@@ -289,17 +315,7 @@ pub fn request_of(v: &Value) -> R<Request> {
     match xs {
         [Value::Int(0), name, Value::Array(args), Value::Array(slots), span, context, data] => Ok(Request::Command(CommandRequest {
             name: ir::text_of(name)?,
-            args: args
-                .iter()
-                .map(|a| match a {
-                    Value::Array(p) => match p.as_slice() {
-                        [Value::Int(0), x] => Ok(Arg::Positional(arg_value_of(x)?)),
-                        [Value::Int(1), k, x] => Ok(Arg::Keyword(ir::text_of(k)?, arg_value_of(x)?)),
-                        _ => Err(DecodeError::Shape("argument")),
-                    },
-                    _ => Err(DecodeError::Shape("argument")),
-                })
-                .collect::<R<_>>()?,
+            args: args_of(args)?,
             slots: slots.iter().map(ir::inlines_of).collect::<R<_>>()?,
             span: ir::span_of(span)?,
             context: context_of(context)?,
@@ -311,8 +327,29 @@ pub fn request_of(v: &Value) -> R<Request> {
             context: context_of(context)?,
             data: data_of(data)?,
         })),
+        [Value::Int(2), name, Value::Array(args), body, span, context, data] => Ok(Request::Block(BlockCommandRequest {
+            name: ir::text_of(name)?,
+            args: args_of(args)?,
+            body: ir::blocks_of(body)?,
+            span: ir::span_of(span)?,
+            context: context_of(context)?,
+            data: data_of(data)?,
+        })),
         _ => Err(DecodeError::Shape("request")),
     }
+}
+
+fn args_of(args: &[Value]) -> R<Vec<Arg>> {
+    args.iter()
+        .map(|a| match a {
+            Value::Array(p) => match p.as_slice() {
+                [Value::Int(0), x] => Ok(Arg::Positional(arg_value_of(x)?)),
+                [Value::Int(1), k, x] => Ok(Arg::Keyword(ir::text_of(k)?, arg_value_of(x)?)),
+                _ => Err(DecodeError::Shape("argument")),
+            },
+            _ => Err(DecodeError::Shape("argument")),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -360,6 +397,7 @@ mod tests {
             channels: vec![ChannelDecl { name: "glossary".into(), order: ChannelOrder::Reading, locators: false }],
             data: vec!["table".into()],
             context: vec!["writing-mode".into()],
+            blocks: vec!["grid".into()],
         };
         let key = |k: &str| Value::Text(k.into());
         let channel = Value::Array(vec![Value::Text("glossary".into()), Value::Int(1), Value::Bool(false)]);
@@ -367,6 +405,7 @@ mod tests {
             description_value(&d),
             Value::Map(vec![
                 (key("data"), Value::Array(vec![Value::Text("table".into())])),
+                (key("blocks"), Value::Array(vec![Value::Text("grid".into())])),
                 (key("context"), Value::Array(vec![Value::Text("writing-mode".into())])),
                 (key("channels"), Value::Array(vec![channel])),
                 (key("commands"), Value::Array(vec![Value::Text("c".into())])),
@@ -406,5 +445,34 @@ mod tests {
     fn a_request_without_the_context_is_no_request() {
         let v = Value::Array(vec![Value::Int(1), t("f"), Value::Array(vec![Value::Int(8), Value::Int(0), Value::Array(vec![])]), Value::Array(vec![])]);
         assert!(request_of(&v).is_err());
+    }
+
+    #[test]
+    fn reads_the_request_of_a_block_command() {
+        let span = Value::Array(vec![Value::Int(1), Value::Int(0), Value::Int(6)]);
+        let v = Value::Array(vec![
+            Value::Int(2),
+            t("grid"),
+            Value::Array(vec![Value::Array(vec![Value::Int(1), t("align"), t("left")])]),
+            Value::Array(vec![]),
+            span,
+            Value::Array(vec![]),
+            Value::Array(vec![]),
+        ]);
+        match request_of(&v).unwrap() {
+            Request::Block(b) => {
+                assert_eq!(b.name, "grid");
+                assert_eq!(b.args, vec![Arg::Keyword("align".into(), ArgValue::Str("left".into()))]);
+                assert!(b.body.is_empty());
+                assert_eq!(b.span, Span { file: 1, start: 0, end: 6 });
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_block_command_answers_with_blocks() {
+        let r = Response::blocks(vec![]);
+        assert_eq!(response_value(&r), Value::Array(vec![Value::Array(vec![]), Value::Array(vec![])]));
     }
 }

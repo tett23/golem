@@ -10,7 +10,7 @@ import Data.Text qualified as T
 import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.IR
 import Golem.Doc.Validate (validateDocument)
-import Golem.Eval.Builtin (OverridableBuiltin (..), pluginCommandName)
+import Golem.Eval.Builtin (OverridableBuiltin (..), builtinBlockCommands, pluginCommandName)
 import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Parser.SourceSettings
@@ -82,6 +82,72 @@ msgs src = [(c, m) | (c, m, _, _) <- diags src]
 -- | A plugin command that answers PLUGIN at the call.
 pluginOutput :: PluginCommand
 pluginOutput = PluginCommand (\_ _ sp -> Right ([Text sp "PLUGIN"], []))
+
+{- | A block command that answers a table of its arguments: a row of each
+key (or -) and value, and a paragraph of each block of its body.
+-}
+gridCommand :: PluginBlockCommand
+gridCommand = PluginBlockCommand $ \args bodyBlocks sp ->
+  Right
+    ( Block sp Nothing (Table [AlignDefault, AlignDefault] [[Text sp "k"], [Text sp "v"]] [[[Text sp (argKey a)], [Text sp (T.pack (show (pluginArgValue a)))]] | a <- args]) : bodyBlocks,
+      [diagnostic "grid-called" Warning sp "grid"]
+    )
+  where
+    argKey = \case
+      PluginKeyword k _ -> k
+      PluginPositional _ -> "-"
+
+gridHook :: PluginHook
+gridHook = noPlugins {phBlocks = Map.fromList [("grid", gridCommand)]}
+
+-- | Block commands of plugins (docs/adr/0122).
+pluginBlockTests :: TestTree
+pluginBlockTests =
+  testGroup
+    "block commands of plugins (docs/adr/0122)"
+    [ testCase "@name calls the block command of a plugin with its arguments, keys kept" $ do
+        let (bs, ds) = run ctx {ctxPlugins = gridHook} "@grid sales align=left\n"
+        ds @?= ["grid-called"]
+        case bs of
+          [Table _ _ rows] -> map (map stripSpans) rows @?= [[["-"], ["VString \"sales\""]], [["align"], ["VString \"left\""]]]
+          other -> assertFailure (show other),
+      testCase "spread arguments reach a block command expanded (docs/adr/0112)" $ do
+        let (bs, ds) = run ctx {ctxPlugins = gridHook} "@grid *[[\"sales\"]] **[{align: \"left\"}]\n"
+        ds @?= ["grid-called"]
+        case bs of
+          [Table _ _ rows] -> map (map stripSpans) rows @?= [[["-"], ["VString \"sales\""]], [["align"], ["VString \"left\""]]]
+          other -> assertFailure (show other),
+      testCase "the blocks are at the call" $
+        map blockSpan (resultBlocks (evalResult ctx {ctxPlugins = gridHook} "a\n\n@grid\n"))
+          @?= [mkSpan (FileId 1) 0 2, mkSpan (FileId 1) 3 9],
+      testCase "the body is evaluated and passed" $ do
+        let (bs, _) = run ctx {ctxPlugins = gridHook} "@grid\n  本文\n"
+        case bs of
+          [Table {}, Paragraph Nothing is] -> stripSpans is @?= ["本文"]
+          other -> assertFailure (show other),
+      testCase "a block command in a list item" $ do
+        let (bs, ds) = run ctx {ctxPlugins = gridHook} "- 項目\n\n  @grid\n"
+        ds @?= ["grid-called"]
+        case bs of
+          [BulletList [ListItem _ [_, Block _ _ (Table {})]]] -> pure ()
+          other -> assertFailure (show other),
+      testCase "@label gives the label to the first block" $
+        map blockLabel (resultBlocks (evalResult ctx {ctxPlugins = gridHook} "@label t\n@grid\n")) @?= [Just "t"],
+      testCase "an unknown block command is still G02009, and [grid] is G02022" $ do
+        diagsWith ctx {ctxPlugins = gridHook} "@nope\n" @?= [("G02009", "未知のブロックコマンドです: @nope", 1, 5)]
+        map (\(c, _, _, _) -> c) (diagsWith ctx {ctxPlugins = gridHook} "[grid]\n") @?= ["G02022"],
+      testCase "an argument beyond int64 is G02091 and the command is not called" $
+        run ctx {ctxPlugins = gridHook} "@grid [= 2 ** 63]\n" @?= ([], ["G02091"]),
+      testCase "the errors of the call are reported and give no blocks" $ do
+        let failing = noPlugins {phBlocks = Map.fromList [("grid", PluginBlockCommand (\_ _ sp -> Left [diagnostic "G06009" Error sp "x"]))]}
+        run ctx {ctxPlugins = failing} "@grid\n" @?= ([], ["G06009"]),
+      testCase "a paragraph style the file does not define is G02047" $ do
+        let styled = noPlugins {phBlocks = Map.fromList [("grid", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (Paragraph (Just "nope") [])], [])))]}
+        snd (run ctx {ctxPlugins = styled} "@grid\n") @?= ["G02047"],
+      -- set is the name of @set name = 式, which the parser reads apart
+      testCase "no name of builtinBlockCommands but set is an unknown block command" $
+        mapM_ (\n -> assertBool (T.unpack n) ("G02009" `notElem` snd (run ctx {ctxPlugins = gridHook} ("@" <> n <> "\n")))) (filter (/= "set") builtinBlockCommands)
+    ]
 
 paraInlines :: BlockBody -> Maybe [Inline]
 paraInlines = \case
@@ -209,6 +275,7 @@ tests =
   testGroup
     "file evaluation, S0 (ADR 0002)"
     [ verseTests,
+      pluginBlockTests,
       outputCharTests,
       printingsTests,
       diagnosticTests,

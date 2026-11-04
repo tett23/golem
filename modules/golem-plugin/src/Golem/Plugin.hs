@@ -14,6 +14,7 @@ module Golem.Plugin
     pluginFilters,
     pluginChannels,
     pluginDataNames,
+    pluginBlocks,
     takesData,
     withPluginData,
     HostContext (..),
@@ -30,10 +31,12 @@ module Golem.Plugin
     loadPluginWith,
     invokeRaw,
     commandRequest,
+    blockCommandRequest,
     valueTerm,
     termValue,
     filterRequest,
     callCommand,
+    callBlockCommand,
     applyFilter,
     describePluginError,
     DataDiagnostic (..),
@@ -64,7 +67,8 @@ import Foreign.C.Types
 import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.Cbor
 import Golem.Doc.IR hiding (abiVersion)
-import Golem.Doc.Validate (validateDocument)
+import Golem.Doc.Validate (validateBlocks, validateDocument)
+import Golem.Eval.Builtin (builtinBlockCommands)
 import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Syntax
 import Numeric.Natural (Natural)
@@ -121,6 +125,8 @@ data Plugin = Plugin
     pluginChannels :: ![ChannelDecl],
     -- | the names of the data it takes (docs/adr/0105)
     pluginDataNames :: ![Text],
+    -- | the block commands it provides (docs/adr/0122)
+    pluginBlocks :: ![Text],
     -- | the data the project passes, as the CBOR of the last element of a request
     plData :: !ByteString,
     -- | whether it exports golem_check_data (docs/adr/0120)
@@ -255,7 +261,7 @@ loadPluginWith fuel memory wasm = do
       n <- c_importCount p
       names <- mapM (\i -> c_importName p i >>= \c -> T.pack <$> peekCString c <* c_freeBytes c) [0 .. n - 1]
       checks <- withCString "golem_check_data" (c_hasExport p)
-      let plugin = Plugin fp fuel memory [] [] [] [] noData (checks /= 0) [] noData
+      let plugin = Plugin fp fuel memory [] [] [] [] [] noData (checks /= 0) [] noData
       if not (null names)
         then pure (Left (HasImports names))
         else do
@@ -268,8 +274,8 @@ loadPluginWith fuel memory wasm = do
                   described <- callMode plugin 1 BS.empty
                   pure $ do
                     (bytes, _) <- described
-                    (cmds, filts, chans, names, ctx) <- decodeDescription bytes
-                    Right plugin {pluginCommands = cmds, pluginFilters = filts, pluginChannels = chans, pluginDataNames = names, pluginContextNames = ctx}
+                    (cmds, filts, chans, names, ctx, blocks) <- decodeDescription bytes
+                    Right plugin {pluginCommands = cmds, pluginFilters = filts, pluginChannels = chans, pluginDataNames = names, pluginContextNames = ctx, pluginBlocks = blocks}
 
 -- | No data, no context: the empty array.
 noData :: ByteString
@@ -326,9 +332,10 @@ description. A name of data is a lowercase ASCII letter, then lowercase
 letters, digits and -, and is given once; or the data is * alone, any
 name (docs/adr/0119). A name of the context (docs/adr/0121) is one of
 'contextNames', given once; the others are 'UnknownContext', all of
-them.
+them. A block command (docs/adr/0122) is a name of the form of a name of
+data, given once, and not the name of a built-in block command.
 -}
-decodeDescription :: ByteString -> Either PluginError ([Text], [Text], [ChannelDecl], [Text], [Text])
+decodeDescription :: ByteString -> Either PluginError ([Text], [Text], [ChannelDecl], [Text], [Text], [Text])
 decodeDescription b = do
   t <- decodeTermBytes b
   kvs <- case t of
@@ -350,9 +357,17 @@ decodeDescription b = do
   chs <- field "channels"
   ds <- field "data"
   xs <- field "context"
-  (,,,,) <$> mapM name cs <*> mapM name fs <*> mapM channel chs <*> (mapM name ds >>= dataNames) <*> (mapM name xs >>= contextOf)
+  bs <- field "blocks"
+  (,,,,,) <$> mapM name cs <*> mapM name fs <*> mapM channel chs <*> (mapM name ds >>= dataNames) <*> (mapM name xs >>= contextOf) <*> (mapM name bs >>= blockNames)
   where
-    fields = ["commands", "filters", "channels", "data", "context"]
+    fields = ["commands", "filters", "channels", "data", "context", "blocks"]
+    blockNames ns = case [n | n <- ns, not (dataName n)] of
+      (n : _) -> Left (BadOutput ("ブロックコマンドの名前が不正です: " <> n))
+      [] -> case [n | (i, n) <- zip [0 :: Int ..] ns, n `elem` take i ns] of
+        (n : _) -> Left (BadOutput ("ブロックコマンドの名前が重複しています: " <> n))
+        [] -> case [n | n <- ns, n `elem` builtinBlockCommands] of
+          (n : _) -> Left (BadOutput ("組み込みのブロックコマンドの名前です: " <> n))
+          [] -> Right ns
     contextOf ns = case [n | (i, n) <- zip [0 :: Int ..] ns, n `elem` take i ns] of
       (n : _) -> Left (BadOutput ("文脈の名前が重複しています: " <> n))
       [] -> case filter (`notElem` contextNames) ns of
@@ -427,13 +442,23 @@ the data of the plugin at the end (docs/adr/0105).
 -}
 commandRequest :: Plugin -> Text -> [PluginArg] -> [[Inline]] -> SrcSpan -> Either PluginError ByteString
 commandRequest plugin name args slots sp = do
-  argTerms <- mapM argTerm args
+  argTerms <- mapM argumentTerm args
   pure (withData plugin [TInt 0, TString name, TList argTerms, TList (map inlinesTerm slots), spanT sp])
-  where
-    -- golem-doc.cddl's argument: [0, value] / [1, key, value] (docs/adr/0110)
-    argTerm = \case
-      PluginPositional v -> (\t -> TList [TInt 0, t]) <$> valueTerm v
-      PluginKeyword k v -> (\t -> TList [TInt 1, TString k, t]) <$> valueTerm v
+
+{- | The CBOR of the request of a block command (golem-doc.cddl
+@block-command-request@, docs/adr/0122): its arguments, its body
+evaluated, where it is called, the context and the data.
+-}
+blockCommandRequest :: Plugin -> Text -> [PluginArg] -> [Block] -> SrcSpan -> Either PluginError ByteString
+blockCommandRequest plugin name args body sp = do
+  argTerms <- mapM argumentTerm args
+  pure (withData plugin [TInt 2, TString name, TList argTerms, blocksTerm body, spanT sp])
+
+-- | golem-doc.cddl's argument: [0, value] / [1, key, value] (docs/adr/0110).
+argumentTerm :: PluginArg -> Either PluginError Term
+argumentTerm = \case
+  PluginPositional v -> (\t -> TList [TInt 0, t]) <$> valueTerm v
+  PluginKeyword k v -> (\t -> TList [TInt 1, TString k, t]) <$> valueTerm v
 
 -- | The CBOR of a filter request (golem-doc.cddl @filter-request@), with the context and the data at the end.
 filterRequest :: Plugin -> Text -> Document -> ByteString
@@ -463,6 +488,53 @@ callCommand plugin name args slots sp = do
   checkOutput allowedSpans allowedDeferred (concatMap inlineSpans inls) (concatMap inlineDeferred inls)
   checkDiagnosticSpans allowedSpans diags
   Right (inls, diags)
+
+{- | A block command of the plugin (docs/adr/0122). Returns the blocks and
+the plugin's diagnostics. A block of the body passes as it came; any
+other block is a paragraph, a list, a definition list, a table or a code
+block, without a label, and holds only blocks of those kinds; its spans
+are the call's or those of the body, and the IR holds as below the top of
+a document.
+-}
+callBlockCommand :: Plugin -> Text -> [PluginArg] -> [Block] -> SrcSpan -> Either PluginError ([Block], [Diagnostic])
+callBlockCommand plugin name args body sp = do
+  req <- blockCommandRequest plugin name args body sp
+  out <- invokeRaw plugin req
+  (outT, diags) <- response out
+  bs <- decoded (termBlocksE outT)
+  let made = filter (`notElem` body) bs
+      bodyDoc = Document (FileId 0) body
+      madeDoc = Document (FileId 0) made
+      allowedSpans = Set.insert sp (Set.fromList (documentSpans bodyDoc))
+  mapM_ blockKind made
+  checkItems plugin (documentItems bodyDoc) (documentItems madeDoc)
+  checkOutput allowedSpans (documentDeferred bodyDoc) (documentSpans madeDoc) (documentDeferred madeDoc)
+  checkDiagnosticSpans allowedSpans diags
+  case validateBlocks (const (Just maxBound)) (documentDeferred bodyDoc) made of
+    [] -> Right (bs, diags)
+    errs -> Left (BadOutput (T.intercalate "、" errs))
+
+{- | The kinds of blocks a block command makes, at any depth, and no label
+(docs/adr/0122).
+-}
+blockKind :: Block -> Either PluginError ()
+blockKind (Block _ lbl body)
+  | Just _ <- lbl = Left (BadOutput "ブロックコマンドの出力はラベルを持てません")
+  | otherwise = case body of
+      Paragraph _ _ -> Right ()
+      Table {} -> Right ()
+      CodeBlock _ -> Right ()
+      BulletList items -> mapM_ (mapM_ blockKind . itemBlocks) items
+      OrderedList items -> mapM_ (mapM_ blockKind . itemBlocks) items
+      DefList gs -> mapM_ (mapM_ (mapM_ blockKind) . dgDefs) gs
+      Heading {} -> refuse "見出し"
+      FigureBlock _ -> refuse "図版"
+      ChannelOutput _ -> refuse "一覧の出力"
+      ForcedBreak _ -> refuse "改ページ"
+      PageControl _ -> refuse "改ページの制御"
+      BlankLines _ -> refuse "行アキ"
+  where
+    refuse k = Left (BadOutput ("ブロックコマンドが返せないブロックです: " <> k))
 
 -- | A filter of the plugin over one file's document.
 applyFilter :: Plugin -> Text -> Document -> Either PluginError (Document, [Diagnostic])

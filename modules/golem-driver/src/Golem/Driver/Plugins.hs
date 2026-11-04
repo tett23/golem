@@ -23,7 +23,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Doc.Assemble (ChannelDecl (..))
 import Golem.Doc.IR (Document (..))
 import Golem.Eval.Builtin (BuiltinInline (..), OverridableBuiltin, PluginCommandName, parseBuiltin, pluginCommandName)
-import Golem.Eval.File (PluginCommand (..), PluginHook (..), noPlugins)
+import Golem.Eval.File (PluginBlockCommand (..), PluginCommand (..), PluginHook (..), noPlugins)
 import Golem.Plugin
 import Golem.Plugin.Lock
 import Golem.Project.Manifest
@@ -118,6 +118,9 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context m
           overrides = [(o, name, p) | (name, decl, p) <- plugins, o <- pdOverrides decl]
           providers = Map.fromListWith (<>) [(c, [n]) | (c, n) <- provided]
           collisions = [(c, sort ns) | (c, ns) <- Map.toList providers, length ns > 1]
+          -- the block commands (docs/adr/0122), a namespace of their own
+          blockProviders = Map.fromListWith (<>) [(c, [n]) | (n, _, p) <- plugins, c <- pluginBlocks p]
+          blockCollisions = [(c, sort ns) | (c, ns) <- Map.toList blockProviders, length ns > 1]
           -- each name in overrides as the built-in command it overrides, or G06008
           checkedOverrides = [((n, o), overrideTarget o n p) | (o, n, p) <- overrides]
           overrideTarget o n p
@@ -147,6 +150,7 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context m
           badChannels = [(n, c) | (c, (n, _)) <- declared, not (validChannelName c)]
           diags =
             [err "G06006" ("複数のプラグインが同じコマンドを提供しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- collisions]
+              <> [err "G06006" ("複数のプラグインが同じブロックコマンドを提供しています: @" <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- blockCollisions]
               <> [err "G06007" (collisionMessage u) | u <- undeclared]
               <> [err "G06008" m | (_, Left m) <- checkedOverrides]
               <> [err "G06010" m | Just m <- map filterError (manifestFilters manifest)]
@@ -154,6 +158,8 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context m
               <> [err "G06012" (n <> ": このチャネルの名前は使えません: " <> c) | (n, c) <- badChannels]
           call pname p name = PluginCommand $ \vals slots sp ->
             either (\pe -> Left [diagnostic (pluginErrorCode pe) Error sp (qualified pname name pe)]) (Right . fmap (map (ofPlugin pname))) (callCommand p name vals slots sp)
+          callBlock pname p name = PluginBlockCommand $ \vals body sp ->
+            either (\pe -> Left [diagnostic (pluginErrorCode pe) Error sp (qualified pname name pe)]) (Right . fmap (map (ofPlugin pname))) (callBlockCommand p name vals body sp)
           -- a filter that fails points at the top of the file (golem-plugin ADR 0003)
           applyFilters path doc0 =
             foldl
@@ -175,6 +181,7 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context m
                 PluginHook
                   { phOverrides = Map.fromList [(o, call pname p c) | (Left o, (c, pname, p)) <- keyed],
                     phCommands = Map.fromList [(k, call pname p c) | (Right k, (c, pname, p)) <- keyed],
+                    phBlocks = Map.fromList [(c, callBlock pname p c) | (pname, _, p) <- plugins, c <- pluginBlocks p],
                     phChannels = Map.fromList [(c, d) | (c, (_, d)) <- declared],
                     phApplyFilters = applyFilters,
                     phContextNames = sort (nubOrd [c | (_, _, p) <- plugins, c <- pluginContextNames p])
