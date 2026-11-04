@@ -1,6 +1,6 @@
 # ADR 0014: .gm の中に、そのファイルにだけ効く設定とスタイルを書く
 
-ステータス: 採択→正規表現スタイルの意味と G02054 の廃止は [docs/adr/0015](0015-regex-styles.md)
+ステータス: 採択→正規表現スタイルの意味と G02054 の廃止は [docs/adr/0015](0015-regex-styles.md)、G02052 の原因の分け方は [docs/adr/0132](0132-setting-command-codes-by-cause.md)
 
 ## 文脈
 
