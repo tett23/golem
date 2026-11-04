@@ -1,6 +1,6 @@
 # ADR 0157: 固定した wasmtime の版を、上流のアドバイザリと毎日照合する
 
-ステータス: 採択（未実装）
+ステータス: 採択（未実装）→範囲、修正版、パッケージの読み方は [ADR 0166](0166-read-wasmtime-advisory-ranges-as-written.md)
 
 ## 文脈
 
