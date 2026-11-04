@@ -7,7 +7,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.List (isSuffixOf, sort)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
@@ -461,6 +461,40 @@ kansujiTests =
       withSample style "kansuji" "overrides = [\"number-text\"]\n" "" source [] $ \tmp ->
         lookedUp Map.empty tmp >>= \(is, ds) -> k (shapes is, ds)
 
+-- | The sample filter auto-tcy (docs/adr/0128), with the integration test of docs/adr/0121 that needs it.
+autoTcyTests :: [TestTree]
+autoTcyTests =
+  [ testCase "two digits and !? in tate-chu-yoko, 3.14 and 123 left alone" $
+      autoTcy verticalStyle "" "第12回、本当か!?、3.14、123、[strong: 34]\n" $ \r ->
+        r @?= (["第", "#12", "回、本当か", "[tcy: !?]", "、3.14、123、", "[strong: #34]"], []),
+    testCase "a chunk across nodes is left alone with a warning" $
+      autoTcy verticalStyle "" "[strong: 1]2\n" $ \r ->
+        r @?= (["[strong: 1]", "2"], [(DiagnosticCode "auto-tcy/split", "ノードの境をまたぐので縦中横にしませんでした: 12。[tcy: ...] か [number-text ... style=tcy] で書いてください")]),
+    testCase "the warning is a warning, not an error" $
+      withSample verticalStyle "auto-tcy" "" filters "[strong: 1]2\n" [] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        [(diagCode d, diagSeverity d) | d <- brDiagnostics r] @?= [(DiagnosticCode "auto-tcy/split", Warning)],
+    testCase "in horizontal writing the filter changes nothing and warns of nothing (the context writing-mode)" $
+      autoTcy horizontalStyle "" "第12回、本当か!?、[strong: 1]2\n" $ \r ->
+        r @?= (["第12回、本当か!?、", "[strong: 1]", "2"], []),
+    testCase "code and an explicit tcy are not rewritten" $
+      autoTcy verticalStyle "" "[code: 12][tcy: !?]\n" $ \r ->
+        r @?= (["[code: 12]", "[tcy: !?]"], []),
+    testCase "the data config chooses the counts of digits and the marks" $
+      autoTcy verticalStyle "data = { config = \"tcy.conf\" }\n" "12と123と!!!\n" $ \r ->
+        r @?= (["12と", "#123", "と", "[tcy: !!!]"], []),
+    testCase "an error of the config points at the top of the file, in horizontal writing too" $
+      withSample horizontalStyle "auto-tcy" "data = { config = \"bad.conf\" }\n" filters "12\n" [("bad.conf", "digits = 9\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        [(diagCode d, diagSpan d) | d <- brDiagnostics r] @?= [(DiagnosticCode "auto-tcy/config-digits", topOf' r)]
+  ]
+  where
+    filters = "\n[[filters]]\nplugin = \"auto-tcy\"\nfilter = \"auto-tcy\"\nfiles = [\"a.gm\"]\n"
+    autoTcy style decl source k =
+      withSample style "auto-tcy" decl filters source [("tcy.conf", "digits = 3\nmarks = !!!\n")] $ \tmp ->
+        lookedUp Map.empty tmp >>= \(is, ds) -> k (shapes is, ds)
+    topOf' r = fromMaybe (error "no a.gm") (topOf r "a.gm")
+
 {- | A small CBOR encoder for the responses of check-data.wat: arrays,
 text strings, small unsigned integers and null.
 -}
@@ -783,6 +817,7 @@ pluginTests =
     <> [testGroup "the sample plugin glossary (docs/adr/0126)" glossaryTests]
     <> contextTests
     <> kansujiTests
+    <> autoTcyTests
     <> blockCommandTests
     <> pluginFigureTests
     <> [ testCase "a filter runs over the declared files and keeps the output" $ do

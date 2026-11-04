@@ -1,0 +1,13 @@
+[package]
+name = "auto-tcy"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "A sample plugin: the filter auto-tcy sets two digits and !? in tate-chu-yoko in vertical writing (docs/adr/0128)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+golem-plugin-sdk = { path = "../golem-plugin-sdk" }

@@ -166,6 +166,36 @@ files = ["chapters/01.gm", "chapters/02.gm"]
 
 [code: \[\[filters\]\]] を複数書くと、書いた順に適用します。
 
+Golem のリリースには、見本のフィルタ [code: auto-tcy] が添えてあります。
+縦組みの本の地の文に書いた 2 桁の数字と [code: !?] のような記号の並びを、縦中横にします。
+
+```toml
+[plugins.auto-tcy]
+url = "<リリースの URL>/auto-tcy.wasm"
+data = { config = "auto-tcy.conf" }
+
+[[filters]]
+plugin = "auto-tcy"
+filter = "auto-tcy"
+files = ["chapters/01.gm", "chapters/02.gm"]
+```
+
+[code: <リリースの URL>] は、第[ref-number first-book]章で Golem を取得したときと同じ形の URL です。
+[code: data] の行は省けます。
+省くと、2 桁の数字と [code: !!]、[code: !?]、[code: ?!]、[code: ??] を縦中横にします。
+当てる桁数と記号は、[code: config] のファイルで変えられます。
+
+```
+# auto-tcy.conf
+digits = 2 3
+marks = !! !? ?! ?? !!!
+```
+
+[code: 3.14] や [code: x86] のように、ほかの文字と続く数字には当てません。
+[code: \[strong: 1\]2] のように、装飾の境をまたぐ並びは書き換えず、警告（[code: auto-tcy/split]）を出します。
+その箇所は、[code: \[tcy: ...\]] か [code: \[number-text ... style=tcy\]] で書いてください。
+横組みの本では、何もしません。
+
 ## プラグインにデータを渡す
 
 辞書や設定のように、プラグインが使うデータは、ファイルにしてプロジェクトに置き、[code: data] で渡します。

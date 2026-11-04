@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "auto-tcy"
+version = "0.1.0"
+dependencies = [
+ "golem-plugin-sdk",
+]
+
+[[package]]
 name = "bar-chart"
 version = "0.1.0"
 dependencies = [
