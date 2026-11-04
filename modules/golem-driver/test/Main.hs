@@ -97,6 +97,7 @@ tests skips cacheHome =
              testGroup "blank lines (docs/adr ADR 0046)" blankLineTests,
              testGroup "columns (docs/adr ADR 0018)" columnTests,
              testGroup "index columns (docs/adr ADR 0025)" indexColumnTests,
+             testGroup "the numerals of ref-page in vertical text (docs/adr/0118)" refPageNumeralTests,
              testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
              testGroup "kerning, proportional metrics and baseline shift (docs/adr/0020)" characterFeatureTests,
              testGroup "running heads (ADR 0014)" runningHeadTests,

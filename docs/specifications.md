@@ -906,6 +906,13 @@ HTML と EPUB は版面を無視するので、段組みを出力せず、CSS �
 プレーンテキストには縦中横がないので、縦中横になる数は位取りをする漢数字で書く。
 HTML と EPUB のリストの番号は CSS のカウンターで書くので、`auto` は位取りをする漢数字、`auto-digits` は一字ずつの漢数字になる。
 
+`[numbers]` の `ref-page` は、縦組みの PDF で `[ref-page ...]` のページ番号の表記を決める（[docs/adr/0118](adr/0118-ref-page-numerals-in-vertical-text.md)）。
+省けば `vertical` と同じ表記になる。
+値は `vertical` の五つと `sideways` であり、`sideways` は算用数字を横に倒して組む。
+ほかの値は G03006 になる。
+横組み、HTML、EPUB、プレーンテキストでは、`ref-page` は何も変えない。
+索引、目次、チャネルの一覧のページ番号は、`ref-page` によらず `vertical` に従う。
+
 `[notes]` の `numbering` は、脚注と傍注の番号を 1 から振り直す範囲を決める（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）。
 
 | 値 | 意味 |
