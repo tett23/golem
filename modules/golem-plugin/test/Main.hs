@@ -99,6 +99,17 @@ fixedFrom file ver response = do
           $ src
   compile filled
 
+{- | A module whose one function has a br_table of @n@ targets besides the
+default, the shape of wasmtime's tests/all/br_table.rs (docs/adr ADR 0156).
+-}
+brTableModule :: Int -> Text
+brTableModule n =
+  T.concat
+    [ "(module\n  (func (export \"f\") (param i32) (result i32) (local $r i32)\n    (block $exit\n      (block $t\n        (br_table\n",
+      T.replicate n "0 ",
+      "\n          1 (local.get 0)))\n      (local.set $r (i32.const 5)))\n    (local.get $r)))\n"
+    ]
+
 load :: ByteString -> IO Plugin
 load wasm = loadPlugin wasm >>= either (assertFailure . show) pure
 
@@ -217,6 +228,18 @@ tests =
         w <- fixedFrom "table-1000001.wat" abi (responseWith (TList []))
         loadPlugin w >>= \case
           Left (InstantiateFailed _) -> pure ()
+          other -> assertFailure (show (void other)),
+      -- docs/adr ADR 0156: wasmtime rejects it before making machine code,
+      -- so this compiles nothing that runs, on any architecture
+      testCase "a br_table of 65521 targets is rejected when compiling (docs/adr ADR 0156)" $ do
+        w <- compile (brTableModule 65521)
+        loadPlugin w >>= \case
+          Left (CompileFailed m) -> assertBool (T.unpack m) ("exceeds the implementation limit of 65520" `T.isInfixOf` m)
+          other -> assertFailure (show (void other)),
+      testCase "a br_table of 65520 targets compiles, and lacks the ABI functions (docs/adr ADR 0156)" $ do
+        w <- compile (brTableModule 65520)
+        loadPlugin w >>= \case
+          Left (MissingExport _) -> pure ()
           other -> assertFailure (show (void other)),
       testCase "a result of the wrong type is bad output, every time (docs/adr ADR 0035)" $ do
         w <- compile =<< wat "describe-i32.wat"

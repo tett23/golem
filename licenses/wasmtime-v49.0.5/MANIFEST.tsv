@@ -1,40 +1,40 @@
 package	version	library	license	files
-cranelift-assembler-x64	0.136.2	cranelift_assembler_x64	Apache-2.0 WITH LLVM-exception	LICENSE
-cranelift-bforest	0.136.2	cranelift_bforest	Apache-2.0 WITH LLVM-exception	LICENSE
-cranelift-bitset	0.136.2	cranelift_bitset	Apache-2.0 WITH LLVM-exception	LICENSE
-cranelift-codegen	0.136.2	cranelift_codegen	Apache-2.0 WITH LLVM-exception	LICENSE
-cranelift-codegen-shared	0.136.2	cranelift_codegen_shared	Apache-2.0 WITH LLVM-exception	LICENSE
-cranelift-control	0.136.2	cranelift_control	Apache-2.0 WITH LLVM-exception	LICENSE
-cranelift-entity	0.136.2	cranelift_entity	Apache-2.0 WITH LLVM-exception	LICENSE
-cranelift-frontend	0.136.2	cranelift_frontend	Apache-2.0 WITH LLVM-exception	LICENSE
-cranelift-native	0.136.2	cranelift_native	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-c-api-impl	49.0.2	wasmtime_c_api	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-c-api-macros	49.0.2	wasmtime_internal_c_api_macros	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-c-api	49.0.2	wasmtime	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-cache	49.0.2	wasmtime_internal_cache	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-component-macro	49.0.2	wasmtime_internal_component_macro	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-component-util	49.0.2	wasmtime_internal_component_util	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-core	49.0.2	wasmtime_internal_core	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-cranelift	49.0.2	wasmtime_internal_cranelift	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-environ	49.0.2	wasmtime_environ	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-fiber	49.0.2	wasmtime_internal_fiber	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-jit-debug	49.0.2	wasmtime_internal_jit_debug	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-jit-icache-coherence	49.0.2	wasmtime_internal_jit_icache_coherence	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-unwinder	49.0.2	wasmtime_internal_unwinder	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-versioned-export-macros	49.0.2	wasmtime_internal_versioned_export_macros	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-wasi	49.0.2	wasmtime_wasi	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-wasi-http	49.0.2	wasmtime_wasi_http	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-wasi-io	49.0.2	wasmtime_wasi_io	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime	49.0.2	wasmtime	Apache-2.0 WITH LLVM-exception	LICENSE
-wiggle	49.0.2	wiggle	Apache-2.0 WITH LLVM-exception	LICENSE
-wiggle-generate	49.0.2	wiggle_generate	Apache-2.0 WITH LLVM-exception	LICENSE
-wiggle-macro	49.0.2	wiggle_macro	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-winch	49.0.2	wasmtime_internal_winch	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-wit-bindgen	49.0.2	wasmtime_internal_wit_bindgen	Apache-2.0 WITH LLVM-exception	LICENSE
-wasmtime-internal-wmemcheck	49.0.2	wasmtime_internal_wmemcheck	Apache-2.0 WITH LLVM-exception	LICENSE
-pulley-interpreter	49.0.2	pulley_interpreter	Apache-2.0 WITH LLVM-exception	LICENSE
-pulley-macros	49.0.2	pulley_macros	Apache-2.0 WITH LLVM-exception	LICENSE
-winch-codegen	49.0.2	winch_codegen	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-assembler-x64	0.136.5	cranelift_assembler_x64	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-bforest	0.136.5	cranelift_bforest	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-bitset	0.136.5	cranelift_bitset	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-codegen	0.136.5	cranelift_codegen	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-codegen-shared	0.136.5	cranelift_codegen_shared	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-control	0.136.5	cranelift_control	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-entity	0.136.5	cranelift_entity	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-frontend	0.136.5	cranelift_frontend	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-native	0.136.5	cranelift_native	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-c-api-impl	49.0.5	wasmtime_c_api	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-c-api-macros	49.0.5	wasmtime_internal_c_api_macros	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-c-api	49.0.5	wasmtime	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-cache	49.0.5	wasmtime_internal_cache	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-component-macro	49.0.5	wasmtime_internal_component_macro	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-component-util	49.0.5	wasmtime_internal_component_util	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-core	49.0.5	wasmtime_internal_core	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-cranelift	49.0.5	wasmtime_internal_cranelift	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-environ	49.0.5	wasmtime_environ	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-fiber	49.0.5	wasmtime_internal_fiber	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-jit-debug	49.0.5	wasmtime_internal_jit_debug	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-jit-icache-coherence	49.0.5	wasmtime_internal_jit_icache_coherence	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-unwinder	49.0.5	wasmtime_internal_unwinder	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-versioned-export-macros	49.0.5	wasmtime_internal_versioned_export_macros	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-wasi	49.0.5	wasmtime_wasi	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-wasi-http	49.0.5	wasmtime_wasi_http	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-wasi-io	49.0.5	wasmtime_wasi_io	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime	49.0.5	wasmtime	Apache-2.0 WITH LLVM-exception	LICENSE
+wiggle	49.0.5	wiggle	Apache-2.0 WITH LLVM-exception	LICENSE
+wiggle-generate	49.0.5	wiggle_generate	Apache-2.0 WITH LLVM-exception	LICENSE
+wiggle-macro	49.0.5	wiggle_macro	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-winch	49.0.5	wasmtime_internal_winch	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-wit-bindgen	49.0.5	wasmtime_internal_wit_bindgen	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-wmemcheck	49.0.5	wasmtime_internal_wmemcheck	Apache-2.0 WITH LLVM-exception	LICENSE
+pulley-interpreter	49.0.5	pulley_interpreter	Apache-2.0 WITH LLVM-exception	LICENSE
+pulley-macros	49.0.5	pulley_macros	Apache-2.0 WITH LLVM-exception	LICENSE
+winch-codegen	49.0.5	winch_codegen	Apache-2.0 WITH LLVM-exception	LICENSE
 addr2line	0.26.0	addr2line	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
 aho-corasick	1.0.2	aho_corasick	Unlicense OR MIT	COPYING LICENSE-MIT
 allocator-api2	0.2.20	allocator_api2	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
@@ -110,7 +110,7 @@ hashbrown	0.17.0	hashbrown	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
 heck	0.5.0	heck	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
 http-body-util	0.1.3	http_body_util	MIT	LICENSE
 http-body	1.0.1	http_body	MIT	LICENSE
-http	1.3.1	http	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+http	1.5.0	http	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
 httparse	1.10.1	httparse	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
 httpdate	1.0.2	httpdate	MIT/Apache-2.0	LICENSE-APACHE LICENSE-MIT
 humantime	2.1.0	humantime	MIT/Apache-2.0	LICENSE-APACHE LICENSE-MIT
@@ -178,8 +178,8 @@ rustc-hash	2.1.1	rustc_hash	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
 rustix-linux-procfs	0.1.1	rustix_linux_procfs	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
 rustix	1.1.4	rustix	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
 rustls-pki-types	1.13.1	rustls_pki_types	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
-rustls-webpki	0.103.13	webpki	ISC	LICENSE
-rustls	0.23.37	rustls	Apache-2.0 OR ISC OR MIT	LICENSE-APACHE LICENSE-ISC LICENSE-MIT
+rustls-webpki	0.103.15	webpki	ISC	LICENSE
+rustls	0.23.46	rustls	Apache-2.0 OR ISC OR MIT	LICENSE-APACHE LICENSE-ISC LICENSE-MIT
 ryu	1.0.9	ryu	Apache-2.0 OR BSL-1.0	LICENSE-APACHE LICENSE-BOOST
 semver	1.0.27	semver	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
 serde	1.0.228	serde	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
