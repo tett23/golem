@@ -47,9 +47,8 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 ### セキュリティ監査の残り
 
 2026-10-24 のセキュリティ監査（[記録](audits/2026-10-24-security-audit.md)）で、仕様を変えなければ直せない問題のうち、rc4 に回したものである。
-どちらも重大度は低で、ADR で決める。
+重大度は低で、ADR で決める。
 
-- **G08014 の表にない外部の参照**：HTML と EPUB に写す SVG の図版で、[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md) の表にない書き方の外部の参照が、G08014 の検査を通る。表現の属性の `url()`（`fill`、`filter`、`clip-path`、`mask`、`marker-*`、`cursor`）、`url(` を使わない CSS の `image-set()`、`xml-stylesheet` の処理命令、XHTML の名前空間の要素の `src`、`set` と `animate` で `style` や `fill` を書き換えるもの、XLink の名前空間を `xlink` 以外の接頭辞で書いた `attributeName` である。どれも検査を通ることは監査のテストで確かめたが、ブラウザーと EPUB の読書環境が SVG を文書として開いたときに実際に読むかは確かめていない。最後の形でスクリプトが動くなら、重大度は中になる。表を広げるか、広げるならどの形を足すか、読むかを確かめる手順を決める（監査の C9）。
 - **CSL-JSON の制御文字**：CSL-JSON の文字列にある XML 1.0 が許さない文字（U+0001 や ESC など）が、HTML と EPUB の XHTML にそのまま書かれ、`xmllint` がその XHTML を拒む。ビルドは diagnostic を出さずに終わる。[docs/adr/0042](adr/0042-control-characters-and-glob-metacharacters.md) の検査は `manifest.toml`（G03028）と原稿、表のファイル、取り込んだコードとテキスト（G02089）だけを見て、CSL-JSON を見ない。参考文献のファイルを読むときに拒むか、引用と参考文献の項目を組むときに拒むか、どのコードを使うか（G02089 を広げるか、新しいコードにするか）を決める（監査の C10）。
 
 ### LaTeX との差を埋める項目
