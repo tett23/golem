@@ -15,10 +15,11 @@ import Golem.Driver.Pdf (PdfInput (..), layoutPages)
 import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
 import Golem.Eval.Builtin (BuiltinInline (..), builtinName, unPluginCommandName)
 import Golem.Eval.File (EvalResult (..), PluginHook (..))
-import Golem.Plugin (maxDataBytes, watToWasm)
+import Golem.Plugin (HostContext (..), maxDataBytes, watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..))
 import Golem.Project.Manifest (parseManifest)
+import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.Env (withEnv)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
@@ -218,18 +219,48 @@ of table (docs/adr/0119): it takes data of any name, and answers [datum]
 with the data table, which must be the first data by name.
 -}
 withAnyDatum :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
-withAnyDatum decl source files k = withSystemTempDirectory "golem-any" $ \tmp -> do
+withAnyDatum = withDescribedDatum "\\a2\\64data\\81\\61*\\68commands\\81\\65datum" 25
+
+{- | A project as 'withLocal' with datum.wat answering golem_describe with
+the given bytes (escaped for wat) of the given length instead of its own.
+-}
+withDescribedDatum :: T.Text -> Int -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withDescribedDatum describe size decl source files k = withSystemTempDirectory "golem-described" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> "\n[plugins.lk]\npath = \"datum.wasm\"\n" <> decl)
   BS.writeFile (tmp </> "style.toml") horizontalStyle
   TIO.writeFile (tmp </> "a.gm") source
   src <- TIO.readFile "../golem-plugin/test/plugins/datum.wat"
-  let anyName =
-        T.replace "(i64.const 29)" "(i64.const 25)"
-          . T.replace "\"\\a2\\64data\\81\\65table\\68commands" "\"\\a2\\64data\\81\\61*\\68commands"
-  assertBool "datum.wat declares table" (anyName src /= src)
-  wasm <- watToWasm (anyName src) >>= either (assertFailure . T.unpack) pure
+  -- at 256, after the other data of datum.wat, however long it is
+  let described =
+        T.replace "(i64.const 29)" ("(i64.const " <> T.pack (show size) <> ")")
+          . T.replace "(i64.shl (i64.const 16) (i64.const 32))" "(i64.shl (i64.const 256) (i64.const 32))"
+          . T.replace "(data (i32.const 16) \"" "(data (i32.const 256) \""
+          . T.replace "\"\\a2\\64data\\81\\65table\\68commands\\81\\65datum\"" ("\"" <> describe <> "\"")
+  assertBool "datum.wat declares table" (described src /= src)
+  wasm <- watToWasm (described src) >>= either (assertFailure . T.unpack) pure
   writeFiles tmp (("datum.wasm", wasm) : files)
   k tmp
+
+-- | The context of the book a plugin asks for (docs/adr/0121).
+contextTests :: [TestTree]
+contextTests =
+  [ testCase "G06105: a plugin that asks for context Golem does not have" $
+      withDescribedDatum "\\a3\\64data\\81\\65table\\68commands\\81\\65datum\\67context\\82\\68language\\65media" 53 "" "本文\n" [] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06105", "lk: Golem が渡せない文脈を求めています: language、media（渡せる文脈: vertical-numbers、writing-mode）")]),
+    testCase "the LSP watches style.toml when a plugin asks for context, and not otherwise" $ do
+      withDescribedDatum "\\a3\\64data\\81\\65table\\68commands\\81\\65datum\\67context\\81\\6cwriting-mode" 51 "" "本文\n" [] $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        assertBool (show (evTableFiles e)) ("style.toml" `elem` evTableFiles e)
+      withLocal "path = \"plugins/datum.wasm\"\n" "本文\n" [] $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        assertBool (show (evTableFiles e)) ("style.toml" `notElem` evTableFiles e),
+    testCase "the context is the writing mode of [page] and [numbers] vertical, with their defaults" $ do
+      let ctxOf t = either (assertFailure . show) (pure . hostContext) (parseStyle (FileId 0) t)
+      ctxOf "" >>= (@?= HostContext "horizontal" "kanji")
+      ctxOf (TE.decodeUtf8 pdfStyle) >>= (@?= HostContext "vertical" "kanji")
+      ctxOf (TE.decodeUtf8 pdfStyle <> "\n[numbers]\nvertical = \"tcy\"\n") >>= (@?= HostContext "vertical" "tcy")
+  ]
 
 {- | A small CBOR encoder for the responses of check-data.wat: arrays,
 text strings, small unsigned integers and null.
@@ -460,6 +491,7 @@ pluginTests =
     <> localPluginTests
     <> anyDataTests
     <> checkDataTests
+    <> contextTests
     <> [ testCase "a filter runs over the declared files and keeps the output" $ do
            plain <- buildAndRead Dev "build/text/horizontal/chapters/01.txt"
            filtered <- withPluginProject pluginDecl $ \tmp -> do
@@ -615,7 +647,7 @@ pluginTests =
                  cache <- defaultCacheDir
                  lockText <- TIO.readFile (tmp </> "plugins.lock")
                  m <- TIO.readFile (tmp </> "manifest.toml") >>= either (assertFailure . show) pure . parseManifest (FileId 0)
-                 hook <- loadPlugins tmp Map.empty cache (FileId 0) (FileId 1) lockText (FileId 2) m >>= either (assertFailure . show) pure . lpHook
+                 hook <- loadPlugins tmp Map.empty cache (FileId 0) (FileId 1) lockText (FileId 2) (HostContext "horizontal" "kanji") m >>= either (assertFailure . show) pure . lpHook
                  let overrides = map (builtinName . Overridable) (Map.keys (phOverrides hook))
                  pure (sort (overrides <> map unPluginCommandName (Map.keys (phCommands hook))), sort overrides)
            keysOf [("ov", "override-ruby.wat")] (pluginDeclOf "ov" "overrides = [\"ruby\"]\n") >>= (@?= (["greet", "ruby"], ["ruby"]))

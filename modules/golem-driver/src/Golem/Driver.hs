@@ -14,6 +14,7 @@ module Golem.Driver
     PreflightResult (..),
     preflight,
     evaluateProject,
+    hostContext,
     evaluateProjectWith,
     evaluateLoose,
     loadBibliography,
@@ -75,6 +76,7 @@ import Golem.Parser.AST qualified as A
 import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
 import Golem.Parser.SourceSettings (SourceSettings, defaultSourceSettings)
 import Golem.Pdf qualified as P
+import Golem.Plugin (HostContext (..))
 import Golem.Plugin.Lock (defaultCacheDir)
 import Golem.Preflight (MissingGlyph (..), check, missingGlyphs)
 import Golem.Preflight.Rules (Rules (..), parseRules, printRules)
@@ -187,6 +189,13 @@ sourceInfos p =
   Map.insert (projectManifestFile p) (SourceInfo "manifest.toml" (mkLineIndex (projectManifestText p))) $
     Map.map (\sf -> SourceInfo (sfPath sf) (mkLineIndex (sfText sf))) (projectSources p)
 
+{- | The context of the book a plugin may ask for (docs/adr/0121): the
+values the layout uses, horizontal writing without [page] and kanji
+without [numbers] vertical.
+-}
+hostContext :: Style -> HostContext
+hostContext style = HostContext (if maybe False pageVertical (stPage style) then "vertical" else "horizontal") (stNumbersVertical style)
+
 -- | Everything up to S1. Stops after a stage that produced errors.
 evaluateProject :: Profile -> FilePath -> IO (Either ProjectFailure Evaluated)
 evaluateProject = evaluateProjectWith Map.empty
@@ -218,11 +227,13 @@ evaluateProjectWith overlay profile root = do
           (docs/adr ADR 0031) -}
           cacheDir <- defaultCacheDir
           lockText <- readMaybeText (root </> "plugins.lock")
-          LoadedPlugins hookE checkWarnings pluginSources <- loadPlugins root overlay cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) (dataFileBase project) manifest0
+          LoadedPlugins hookE checkWarnings pluginSources <- loadPlugins root overlay cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) (dataFileBase project) (hostContext style) manifest0
           let (pluginErrors, hook) = either (,noPlugins) ([],) hookE
               -- the warnings of the checks of the data (docs/adr/0120) do not stop the plugins
               pluginDiags = pluginErrors <> checkWarnings
               pluginCommands = sort (map unPluginCommandName (Map.keys (phCommands hook)))
+              -- style.toml, which the context comes from, when a plugin asks for it: the LSP watches it (docs/adr/0121)
+              contextFiles = Set.fromList ["style.toml" | not (null (phContextNames hook))]
               -- no G02022 after the plugins failed to load (golem-plugin ADR 0003), nor G02090 (golem-doc ADR 0007)
               quiet = if null pluginErrors then id else \r -> r {erDiagnostics = filter ((`notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090"]) . diagCode) (erDiagnostics r)}
           if hasErrors synDiags
@@ -231,7 +242,7 @@ evaluateProjectWith overlay profile root = do
               let assets = laAssets loaded
               (bibDiags, citeKeys, _) <- loadBibliography root manifest0
               let projectDiags = pluginDiags <> laDiagnostics loaded <> bibDiags
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded <> pluginSources) (laTableFiles loaded <> pluginDataFiles manifest0) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook Map.empty f sf)) pluginCommands))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded <> pluginSources) (laTableFiles loaded <> pluginDataFiles manifest0 <> contextFiles) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook Map.empty f sf)) pluginCommands))
             else do
               let manifest = manifest0
                   -- one G03007 for each name, in the order of the chapters (golem-project ADR 0006)
@@ -250,7 +261,7 @@ evaluateProjectWith overlay profile root = do
                   reassemble = assembleResults (phChannels hook) style manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded <> pluginSources) (laTableFiles loaded <> pluginDataFiles manifest0) projectDiags s1Diags reassemble again pluginCommands))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded <> pluginSources) (laTableFiles loaded <> pluginDataFiles manifest0 <> contextFiles) projectDiags s1Diags reassemble again pluginCommands))
 
 {- | The files the plugins take as data (docs/adr/0105) and the .wasm of
 the plugins of the project (docs/adr/0109), which the LSP watches with

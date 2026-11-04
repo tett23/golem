@@ -4,6 +4,7 @@ import CheckDataSpec (checkDataTests)
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import ConcurrencySpec (concurrencyTests)
+import ContextSpec (contextTests)
 import Control.Concurrent.Async
   ( async,
     cancel,
@@ -57,7 +58,7 @@ import Test.Tasty.HUnit
 import Text.Printf (printf)
 
 main :: IO ()
-main = defaultMainReportingSkips (const (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests, numberTests, dataTests, describeTests, checkDataTests]))
+main = defaultMainReportingSkips (const (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests, numberTests, dataTests, describeTests, checkDataTests, contextTests]))
 
 callSpan :: SrcSpan
 callSpan = mkSpan (FileId 1) 10 20

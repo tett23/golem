@@ -114,12 +114,12 @@ dataTests =
         lastOf p req >>= (@?= TList [])
         t <- decoded req
         case t of
-          TList xs -> length xs @?= 6
+          TList xs -> length xs @?= 7
           other -> assertFailure (show other),
-      testCase "a filter request is the name, the document and the data" $ do
+      testCase "a filter request is the name, the document, the context and the data" $ do
         p <- withPluginData (Map.fromList [("dict", "x")]) <$> echo
         let doc = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])]
-        filterRequest p "f" doc @?= cbor (TList [TInt 1, TString "f", documentTerm doc, TList [TList [TString "dict", TBytes "x"]]])
+        filterRequest p "f" doc @?= cbor (TList [TInt 1, TString "f", documentTerm doc, TList [], TList [TList [TString "dict", TBytes "x"]]])
     ]
 
 -- | What a plugin declares, as a host reads it.

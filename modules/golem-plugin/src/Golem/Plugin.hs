@@ -16,6 +16,10 @@ module Golem.Plugin
     pluginDataNames,
     takesData,
     withPluginData,
+    HostContext (..),
+    contextNames,
+    pluginContextNames,
+    withPluginContext,
     maxDataBytes,
     PluginError (..),
     abiVersion,
@@ -48,6 +52,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Unsafe qualified as BU
 import Data.Char (isAsciiLower, isDigit)
+import Data.List (sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
@@ -119,8 +124,43 @@ data Plugin = Plugin
     -- | the data the project passes, as the CBOR of the last element of a request
     plData :: !ByteString,
     -- | whether it exports golem_check_data (docs/adr/0120)
-    pluginChecksData :: !Bool
+    pluginChecksData :: !Bool,
+    -- | the names of the context of the book it asks for (docs/adr/0121)
+    pluginContextNames :: ![Text],
+    -- | the context, as the CBOR of the element of a request before the data
+    plContext :: !ByteString
   }
+
+{- | The context of the book a plugin may ask for (docs/adr/0121): the
+writing mode of [page] in style.toml (horizontal or vertical) and the
+vertical notation of numbers of [numbers] (kanji, kanji-digits, tcy,
+auto or auto-digits). The list is closed; a name is added with the ABI.
+-}
+data HostContext = HostContext
+  { hcWritingMode :: !Text,
+    hcVerticalNumbers :: !Text
+  }
+  deriving stock (Eq, Show)
+
+-- | The names a plugin may ask for, in code point order.
+contextNames :: [Text]
+contextNames = ["vertical-numbers", "writing-mode"]
+
+contextValue :: HostContext -> Text -> Text
+contextValue c = \case
+  "writing-mode" -> hcWritingMode c
+  _ -> hcVerticalNumbers c
+
+{- | The context of the book for the names the plugin asked for, and only
+those: @[* [name, value]]@ in code point order of the names, encoded once
+here. A plugin that asks for nothing gets the same requests in every
+book (docs/adr/0121).
+-}
+withPluginContext :: HostContext -> Plugin -> Plugin
+withPluginContext c p = p {plContext = toStrictByteString (encodeListLen (fromIntegral (length names)) <> foldMap entry names)}
+  where
+    names = sort (pluginContextNames p)
+    entry n = encodeListLen 2 <> encodeString n <> encodeString (contextValue c n)
 
 {- | Whether the plugin takes data of a name (docs/adr/0119): one of the
 names it declares, or any well-formed name when it declares @*@.
@@ -160,6 +200,8 @@ data PluginError
     value: NaN, Infinity or -Infinity (G06100, docs/adr ADR 0101)
     -}
     NonFiniteFloat Text
+  | -- | names of context the host does not have, in the order of the description (G06105, docs/adr/0121)
+    UnknownContext [Text]
   deriving stock (Eq, Show)
 
 describePluginError :: PluginError -> Text
@@ -173,6 +215,7 @@ describePluginError = \case
   InstantiateFailed m -> "プラグインを起動できません: " <> m
   BadOutput m -> "プラグインの出力が不正です: " <> m
   NonFiniteFloat v -> "遅延した式に有限でない浮動小数点数（" <> v <> "）があります"
+  UnknownContext ns -> "Golem が渡せない文脈を求めています: " <> T.intercalate "、" ns <> "（渡せる文脈: " <> T.intercalate "、" contextNames <> "）"
 
 withMessage :: (Ptr CString -> IO a) -> IO (a, Text)
 withMessage k = alloca $ \errPtr -> do
@@ -212,7 +255,7 @@ loadPluginWith fuel memory wasm = do
       n <- c_importCount p
       names <- mapM (\i -> c_importName p i >>= \c -> T.pack <$> peekCString c <* c_freeBytes c) [0 .. n - 1]
       checks <- withCString "golem_check_data" (c_hasExport p)
-      let plugin = Plugin fp fuel memory [] [] [] [] noData (checks /= 0)
+      let plugin = Plugin fp fuel memory [] [] [] [] noData (checks /= 0) [] noData
       if not (null names)
         then pure (Left (HasImports names))
         else do
@@ -225,10 +268,10 @@ loadPluginWith fuel memory wasm = do
                   described <- callMode plugin 1 BS.empty
                   pure $ do
                     (bytes, _) <- described
-                    (cmds, filts, chans, names) <- decodeDescription bytes
-                    Right plugin {pluginCommands = cmds, pluginFilters = filts, pluginChannels = chans, pluginDataNames = names}
+                    (cmds, filts, chans, names, ctx) <- decodeDescription bytes
+                    Right plugin {pluginCommands = cmds, pluginFilters = filts, pluginChannels = chans, pluginDataNames = names, pluginContextNames = ctx}
 
--- | No data: the empty array.
+-- | No data, no context: the empty array.
 noData :: ByteString
 noData = BS.singleton 0x80
 
@@ -281,9 +324,11 @@ is empty; an unknown field, a field given twice, a key that is not a
 text string and anything but a map of definite length are not a
 description. A name of data is a lowercase ASCII letter, then lowercase
 letters, digits and -, and is given once; or the data is * alone, any
-name (docs/adr/0119).
+name (docs/adr/0119). A name of the context (docs/adr/0121) is one of
+'contextNames', given once; the others are 'UnknownContext', all of
+them.
 -}
-decodeDescription :: ByteString -> Either PluginError ([Text], [Text], [ChannelDecl], [Text])
+decodeDescription :: ByteString -> Either PluginError ([Text], [Text], [ChannelDecl], [Text], [Text])
 decodeDescription b = do
   t <- decodeTermBytes b
   kvs <- case t of
@@ -304,9 +349,15 @@ decodeDescription b = do
   fs <- field "filters"
   chs <- field "channels"
   ds <- field "data"
-  (,,,) <$> mapM name cs <*> mapM name fs <*> mapM channel chs <*> (mapM name ds >>= dataNames)
+  xs <- field "context"
+  (,,,,) <$> mapM name cs <*> mapM name fs <*> mapM channel chs <*> (mapM name ds >>= dataNames) <*> (mapM name xs >>= contextOf)
   where
-    fields = ["commands", "filters", "channels", "data"]
+    fields = ["commands", "filters", "channels", "data", "context"]
+    contextOf ns = case [n | (i, n) <- zip [0 :: Int ..] ns, n `elem` take i ns] of
+      (n : _) -> Left (BadOutput ("文脈の名前が重複しています: " <> n))
+      [] -> case filter (`notElem` contextNames) ns of
+        [] -> Right ns
+        unknown -> Left (UnknownContext unknown)
     key = \case
       (TString k, _) -> Right k
       _ -> Left (BadOutput "golem_describe の形が不正です")
@@ -384,13 +435,13 @@ commandRequest plugin name args slots sp = do
       PluginPositional v -> (\t -> TList [TInt 0, t]) <$> valueTerm v
       PluginKeyword k v -> (\t -> TList [TInt 1, TString k, t]) <$> valueTerm v
 
--- | The CBOR of a filter request (golem-doc.cddl @filter-request@), with the data at the end.
+-- | The CBOR of a filter request (golem-doc.cddl @filter-request@), with the context and the data at the end.
 filterRequest :: Plugin -> Text -> Document -> ByteString
 filterRequest plugin name doc = withData plugin [TInt 1, TString name, documentTerm doc]
 
--- | An array of the terms and the plugin's data, already encoded, as its last element.
+-- | An array of the terms, then the context and the data of the plugin, already encoded (docs/adr/0105, docs/adr/0121).
 withData :: Plugin -> [Term] -> ByteString
-withData plugin ts = toStrictByteString (encodeListLen (fromIntegral (length ts + 1)) <> foldMap encodeTerm ts <> encodePreEncoded (plData plugin) :: Encoding)
+withData plugin ts = toStrictByteString (encodeListLen (fromIntegral (length ts + 2)) <> foldMap encodeTerm ts <> encodePreEncoded (plContext plugin) <> encodePreEncoded (plData plugin) :: Encoding)
 
 -- | The IR of an answer; a float without a finite value is G06100, not bad output.
 decoded :: Either DecodeError a -> Either PluginError a

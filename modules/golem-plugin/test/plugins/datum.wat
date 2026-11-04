@@ -69,10 +69,10 @@
           (then (local.set $h (i32.add (local.get $ptr) (i32.add (local.get $i) (i32.const 7)))) (br $found)))
         (local.set $i (i32.add (local.get $i) (i32.const 1)))
         (br $scan)))
-    ;; without the data the request ends with the span and 80
+    ;; without the data the request ends with the span, 80 (the context, docs/adr/0121) and 80
     (if (i32.eq (local.get $h) (i32.const -1))
       (then
-        (local.set $sl (i32.sub (local.get $len) (i32.const 11)))
+        (local.set $sl (i32.sub (local.get $len) (i32.const 12)))
         (local.set $out (call $alloc (i32.add (local.get $sl) (i32.const 23))))
         (local.set $o (call $copy (local.get $out) (i32.const 128) (i32.const 14)))
         (local.set $o (call $copy (local.get $o) (i32.add (local.get $ptr) (i32.const 10)) (local.get $sl)))
@@ -88,8 +88,9 @@
         (local.set $n (call $be (i32.add (local.get $h) (i32.const 1)) (local.get $k)))))
     (local.set $src (i32.add (local.get $h) (i32.add (local.get $k) (i32.const 1))))
     ;; [[[0, span, text]], []], the span of the call: the request of
-    ;; [datum] is 86 00 65 "datum" 80 80, the span, then 81 and the pair
-    (local.set $sl (i32.sub (local.get $i) (i32.const 11)))
+    ;; [datum] is 87 00 65 "datum" 80 80, the span, 80 (the context,
+    ;; docs/adr/0121), then 81 and the pair
+    (local.set $sl (i32.sub (local.get $i) (i32.const 12)))
     (local.set $out (call $alloc (i32.add (local.get $n) (i32.add (local.get $sl) (i32.const 16)))))
     (i32.store8 (local.get $out) (i32.const 0x82))
     (i32.store8 (i32.add (local.get $out) (i32.const 1)) (i32.const 0x81))
