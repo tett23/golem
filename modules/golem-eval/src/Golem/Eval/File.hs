@@ -9,11 +9,6 @@ module Golem.Eval.File
     PluginCommand (..),
     PluginBlockCommand (..),
     noPlugins,
-    FunctionParam (..),
-    FunctionCommand (..),
-    FunctionBlockCommand (..),
-    FunctionTable (..),
-    noFunctions,
     figureChecks,
     Usage (..),
     EvalResult (..),
@@ -106,39 +101,6 @@ data PluginHook = PluginHook
 noPlugins :: PluginHook
 noPlugins = PluginHook Map.empty Map.empty Map.empty Map.empty (\_ d -> Right (d, [])) []
 
-{- | The type of a positional argument of a command of a function of
-.gmx (docs/adr/0150): a value of .gm becomes one of these when its type
-fits, a narrower number widening to a wider one.
--}
-data FunctionParam = FPNat | FPInt | FPRat | FPString | FPBool | FPList !FunctionParam
-  deriving stock (Eq, Show)
-
-{- | An inline command of a function (docs/adr/0150): the types of its
-positional arguments, the number of its prose slots, and the call, which
-golem-driver makes of golem-gmx.
--}
-data FunctionCommand = FunctionCommand
-  { fcParams :: ![FunctionParam],
-    fcSlots :: !Int,
-    fcCall :: [Value] -> [[Inline]] -> SrcSpan -> Either [Diagnostic] [Inline]
-  }
-
--- | A block command of a function: whether it takes the body (docs/adr/0150).
-data FunctionBlockCommand = FunctionBlockCommand
-  { fbParams :: ![FunctionParam],
-    fbBody :: !Bool,
-    fbCall :: [Value] -> [Block] -> SrcSpan -> Either [Diagnostic] [Block]
-  }
-
--- | The commands of the functions of the project, by name (docs/adr/0150).
-data FunctionTable = FunctionTable
-  { ftInline :: !(Map Text FunctionCommand),
-    ftBlock :: !(Map Text FunctionBlockCommand)
-  }
-
-noFunctions :: FunctionTable
-noFunctions = FunctionTable Map.empty Map.empty
-
 data EvalContext = EvalContext
   { ctxFile :: !FileId,
     ctxPath :: !FilePath,
@@ -158,9 +120,7 @@ data EvalContext = EvalContext
     -- | how the file is read (docs/adr ADR 0013)
     ctxSource :: !SourceSettings,
     -- | style.toml as read, which the @style-def of a file is laid over (docs/adr ADR 0014)
-    ctxStyle :: !Style,
-    -- | the commands of the functions of .gmx (docs/adr/0150)
-    ctxFunctions :: !FunctionTable
+    ctxStyle :: !Style
   }
 
 -- | A file referenced by @figure, @table or @listing (golem-eval ADR 0003).
@@ -581,128 +541,7 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   _
     | name `elem` attributeCommands -> err "G02010" sp ("@" <> name <> " の後にブロックがありません") >> pure []
     | Just pb <- Map.lookup name (phBlocks (ctxPlugins ctx)) -> pluginBlock ctx sp pb args body
-    | Just fb <- Map.lookup name (ftBlock (ctxFunctions ctx)) -> functionBlock ctx sp name fb args body
     | otherwise -> err "G02009" nsp ("未知のブロックコマンドです: @" <> name) >> pure []
-
-{- | The positional arguments of a command of a function (docs/adr/0150),
-evaluated and of the types the function takes: G02119 for a keyword
-argument, G02120 for a wrong number, G02121 for a value of another type.
-Nothing after an error, which is reported.
--}
-functionArgs :: EvalContext -> SrcSpan -> Text -> [FunctionParam] -> [A.Located A.Argument] -> M (Maybe [Value])
-functionArgs ctx sp name params args = case [asp | A.Located asp (A.Keyword _ _) <- args] of
-  ksp : _ -> err "G02119" ksp ("関数のコマンドはキーワード引数を受け付けません: " <> name) >> pure Nothing
-  []
-    | length positional /= length params ->
-        err "G02120" sp ("位置引数の数が合いません: " <> name <> " は " <> tshow (length params) <> " 個の位置引数を取ります") >> pure Nothing
-    | otherwise -> do
-        vals <- forM positional $ \(asp, v) -> fmap (asp,) <$> argValue ctx sp v
-        case sequence vals of
-          Left d -> report d >> pure Nothing
-          Right vs -> case [(i, asp, p, v) | (i, p, (asp, v)) <- zip3 [1 :: Int ..] params vs, not (fits p v)] of
-            (i, asp, p, v) : _ -> err "G02121" asp ("引数の型が合いません: " <> name <> " の " <> tshow i <> " 番目の引数は " <> paramName p <> " を求めますが、" <> typeName v <> "です") >> pure Nothing
-            [] -> pure (Just (map snd vs))
-  where
-    positional = [(asp, v) | A.Located asp (A.Positional v) <- args]
-    fits p v = case (p, v) of
-      (FPNat, VNat _) -> True
-      (FPInt, VNat _) -> True
-      (FPInt, VInt _) -> True
-      (FPRat, _) | Just _ <- numberOf v -> True
-      (FPString, VString _) -> True
-      (FPBool, VBool _) -> True
-      (FPList q, VArray xs) -> all (fits q) xs
-      _ -> False
-    paramName = \case
-      FPNat -> "Nat"
-      FPInt -> "Int"
-      FPRat -> "Rat"
-      FPString -> "String"
-      FPBool -> "Bool"
-      FPList q -> "List " <> paramName q
-
--- | An inline command of a function (docs/adr/0150); on any error the function is not called.
-functionInline :: EvalContext -> Bool -> SrcSpan -> Text -> FunctionCommand -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
-functionInline ctx inHeading sp name fc args slots = do
-  vals <- functionArgs ctx sp name (fcParams fc) args
-  case vals of
-    Nothing -> pure []
-    Just vs
-      | length slots /= fcSlots fc -> err "G02122" sp ("散文スロットの数が合いません: " <> name <> " は " <> tshow (fcSlots fc) <> " 個の散文スロットを取ります") >> pure []
-      | otherwise -> do
-          slots' <- mapM (evalInlines ctx inHeading) slots
-          case fcCall fc vs slots' sp of
-            Left ds -> mapM_ report ds >> pure []
-            Right out -> do
-              let out' = map (fillKenten ctx) out
-              ok <- outputChecked ctx sp out' []
-              pure (if ok then out' else [])
-
--- | A block command of a function (docs/adr/0150); on any error the function is not called.
-functionBlock :: EvalContext -> SrcSpan -> Text -> FunctionBlockCommand -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-functionBlock ctx sp name fb args body = do
-  vals <- functionArgs ctx sp name (fbParams fb) args
-  case vals of
-    Nothing -> pure []
-    Just vs
-      | not (fbBody fb) && not (null body) -> err "G02123" sp ("本体を受け取らない関数のブロックコマンドに本体があります: @" <> name) >> pure []
-      | otherwise -> do
-          body' <- evalBlocks ctx body
-          case fbCall fb vs body' sp of
-            Left ds -> mapM_ report ds >> pure []
-            Right out -> do
-              ok <- outputChecked ctx sp [] out
-              pure (if ok then out else [])
-
-{- | The names a function put in its output, checked as the built-in
-commands check them: a character style (G02018), a swatch (G02017), a
-paragraph style (G02047). False after an error: the caller drops the
-output.
--}
-outputChecked :: EvalContext -> SrcSpan -> [Inline] -> [Block] -> M Bool
-outputChecked ctx sp is bs = do
-  let charStyles = [n | CharStyle _ n _ <- universeInlines (is <> blockInlines bs)]
-      swatches = [n | Color _ n _ <- universeInlines (is <> blockInlines bs)]
-      paraStyles = [n | Block _ _ (Paragraph (Just n) _) <- universeBlocks bs]
-      errors =
-        [("G02018", "定義されていない文字スタイルです: " <> n) | n <- charStyles, not (Set.member n (ctxCharStyles ctx))]
-          <> [("G02017", "style.toml にないスウォッチです: " <> n) | n <- swatches, not (Set.member n (ctxSwatches ctx))]
-          <> [("G02047", "定義されていない段落スタイルです: " <> n) | n <- paraStyles, not (Map.member n (ctxParaStyles ctx))]
-  mapM_ (\(c, m) -> err c sp m) errors
-  pure (null errors)
-  where
-    universeBlocks = concatMap (\b -> b : universeBlocks (innerBlocks b))
-    innerBlocks (Block _ _ body) = case body of
-      BulletList items -> concatMap itemBlocks items
-      OrderedList items -> concatMap itemBlocks items
-      DefList gs -> concat (concatMap dgDefs gs)
-      _ -> []
-    blockInlines =
-      concatMap
-        ( \(Block _ _ body) -> case body of
-            Paragraph _ xs -> xs
-            Table _ h rows -> concat h <> concat (concat rows)
-            DefList gs -> concat (concatMap dgTerms gs)
-            _ -> []
-        )
-        . universeBlocks
-    universeInlines = concatMap (\i -> i : universeInlines (children i))
-    children = \case
-      Kenten _ _ xs -> xs
-      Color _ _ xs -> xs
-      CharStyle _ _ xs -> xs
-      Note _ _ xs -> xs
-      Sidenote _ _ xs -> xs
-      _ -> []
-
--- | A kenten of a function without a shape takes the default of style.toml.
-fillKenten :: EvalContext -> Inline -> Inline
-fillKenten ctx = \case
-  Kenten s Nothing xs -> Kenten s (Just (ctxDefaultKenten ctx)) (map (fillKenten ctx) xs)
-  Kenten s sh xs -> Kenten s sh (map (fillKenten ctx) xs)
-  Color s c xs -> Color s c (map (fillKenten ctx) xs)
-  CharStyle s c xs -> CharStyle s c (map (fillKenten ctx) xs)
-  i -> i
 
 {- | A block command of a plugin (docs/adr/0122): its arguments as a plugin
 command's, its body evaluated as blocks. An argument beyond int64 is
@@ -2000,7 +1839,6 @@ evalCommand ctx inHeading sp (A.Located nsp name) args slots
   | Just (Overridable o) <- parsed, Just pc <- Map.lookup o (phOverrides (ctxPlugins ctx)) = plugin pc
   | Just b <- parsed = builtin ctx inHeading sp b args slots
   | Just pc <- pluginCommandName name >>= (`Map.lookup` phCommands (ctxPlugins ctx)) = plugin pc
-  | Just fc <- Map.lookup name (ftInline (ctxFunctions ctx)) = functionInline ctx inHeading sp name fc args slots
   | otherwise = err "G02022" nsp ("未知のコマンドです: " <> name) >> pure []
   where
     parsed = parseBuiltin name

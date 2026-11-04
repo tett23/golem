@@ -15,7 +15,6 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import EditingSpec (editingTests)
-import FunctionsLspSpec (functionsLspTests)
 import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Eval.File (builtinInlineCommands)
 import Golem.Lsp.Features
@@ -466,7 +465,6 @@ tests =
             ],
       editingTests,
       tableWatchTests,
-      functionsLspTests,
       staleS1Tests
     ]
 

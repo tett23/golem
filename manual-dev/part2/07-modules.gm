@@ -20,7 +20,6 @@ ADR はコミットした後に変えられないので、下の層から順に�
 | golem-parser | PEG のパーサー。CST、AST |
 | golem-project | マニフェスト、[code: style.toml]、import の解決 |
 | golem-eval | 式の評価とプラグインの展開（S0） |
-| golem-gmx | 関数の言語 [code: .gmx] の読み込み、型の検査、評価、整形 |
 | golem-doc | 意味論 IR と文書構造（S1）の集約。参考文献の CSL-JSON の読み取りと書式 |
 | golem-plugin | wasm のランタイム、プラグインの取得とロックファイル |
 | golem-lint | lint の規則 |
@@ -49,7 +48,7 @@ golem-length を使うのは、golem-doc、golem-driver、golem-html、golem-lay
 たとえば golem-cli は golem-driver にも直接依存しているが、golem-lsp を通して届くので、矢印は golem-lsp への一本だけである。
 
 @label fig-modules
-@figure images/modules.svg alt="golem- の接頭辞を省いたパッケージの名前を箱にし、依存を矢印で結んだ図。cli が lsp を、lsp が driver と fmt を、driver が preflight、text、epub、lint、plugin、layout、layout-spec、pdf、font、svg、gmx を使い、gmx が eval を使い、preflight と layout-spec が pdf を使い、下の層は project、doc、parser、syntax と続く。length は syntax と並ぶ最下層に置き、どちらへの矢印も省いた。PDF 経路、Web 経路、テキスト経路のパッケージを色で分けている"
+@figure images/modules.svg alt="golem- の接頭辞を省いたパッケージの名前を箱にし、依存を矢印で結んだ図。cli が lsp を、lsp が driver と fmt を、driver が preflight、text、epub、lint、plugin、layout、layout-spec、pdf、font、svg を使い、preflight と layout-spec が pdf を使い、下の層は project、doc、parser、syntax と続く。length は syntax と並ぶ最下層に置き、どちらへの矢印も省いた。PDF 経路、Web 経路、テキスト経路のパッケージを色で分けている"
   パッケージの依存（golem- の接頭辞を省いた）。
 
 上から読むと、golem-cli が golem-lsp を通して golem-driver を使い、golem-driver が出力の各パッケージと golem-lint と golem-plugin を束ねる。
@@ -57,9 +56,6 @@ golem-preflight は、golem-driver が PDF を書きながら作る組んだ結�
 PDF/X-4 の要件の検査は、golem-pdf の [code: Golem.Pdf.X4.verify] が書く前の PDF のオブジェクトに対して行う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
 下の層は、golem-project、golem-doc、golem-parser、golem-syntax の順に積み重なる。
 golem-project が golem-doc に依存するのは、[code: style.toml] の [code: \[lists\]] の番号の書式を golem-doc の型で読むからである。
-golem-gmx は、書き手が [code: .gmx] に書く関数を読み、検査し、評価する。
-golem-eval に依存するのは、数の演算を式文脈と共有するためである。
-golem-driver が golem-gmx の関数から golem-eval のコマンドの表を作るので、golem-eval は golem-gmx に依存しない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0150-calling-gmx-functions-from-gm.md]（docs/adr ADR 0150「.gm から .gmx の関数をコマンドとして呼ぶ」）]
 golem-eval が golem-project に依存するのは、ファイルの中の [code: @style-def] と正規表現スタイルを [code: style.toml] の型で扱い、import の先を golem-project の関数で解決するからである。
 PDF の経路のパッケージ（golem-layout-spec、golem-layout、golem-font、golem-pdf）だけが、レイアウト IR、シェイピング、フォントのサブセット化を扱う。
 golem-layout は、段落を Knuth と Plass の方式で行に分け [cite knuth-plass]、和文は日本語組版処理の要件 [cite jlreq] に従って組む。
