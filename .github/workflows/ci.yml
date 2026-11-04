@@ -581,7 +581,7 @@ jobs:
       # output of each comes after a line with its name, its exit code and
       # its seconds, and any failure fails the step
       - name: Tests of the scripts (CI, manuals, environment check, release, by hand, visual regression test)
-        run: sh scripts/ci/run-all.sh scripts/ci/test.sh scripts/manual/test.sh scripts/env-determinism/test.sh scripts/release/test.sh scripts/test.sh scripts/visual/test.sh
+        run: sh scripts/ci/run-all.sh -t 600 scripts/ci/test.sh scripts/manual/test.sh scripts/env-determinism/test.sh scripts/release/test.sh scripts/test.sh scripts/visual/test.sh
 
   format:
     needs: changes

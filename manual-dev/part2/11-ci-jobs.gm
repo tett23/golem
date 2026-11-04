@@ -313,6 +313,9 @@ API キーは渡さない。
 [code: jq] は macOS 15 の [code: /usr/bin] にある。
 [code: timeout] のようにない道具を使う検査は飛ばし、飛ばした数をテストの要約に書く。
 [code: claude --help] の検査は [code: release-scripts] が受け持つので、ここでは飛ばす。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0079-shell-tests-on-macos.md]（docs/adr の ADR 0079「スクリプトのテストを macOS の BSD の道具でも走らせる」）]
+六本は [code: scripts/ci/run-all.sh] でランナーのコアの上に同時に走らせ、すべてが終わってから、引数の順に一本ずつ、終了コードと秒数の行の後に出力を書く。
+600 秒の期限を過ぎても終わらないテストは止め、そこまでに書いた出力を「timed out」の行の後に書いて、手順を失敗にする。
+ジョブの 15 分の時間切れより前に止めるので、どのテストのどこまでが動いたかがログに残る。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0154-scripts-macos-tests-at-once-with-deadline.md]（docs/adr の ADR 0154「scripts-macos の六本のテストを同時に走らせ、期限を過ぎたテストを止めて出力を残す」）]
 
 [code: format] は、fourmolu 0.21.0.0 で整形済みであることと、hlint 3.10 の指摘がないことを確かめる（第[ref-number build-test]章）。
 hlint は [code: -j] でランナーのすべてのコアを使う。
