@@ -904,8 +904,12 @@ if grep -qx '    needs: changes' "$SM" && grep -qxF "    if: needs.changes.outpu
 if grep -qx '      PATH: /usr/bin:/bin:/usr/sbin:/sbin' "$SM" && ! grep -Eq 'brew|gnubin|coreutils|gawk|gnu-sed|findutils' "$SM"; then ok; else ng "ci.yml: scripts-macos has the tools of the system only on PATH"; fi
 # the six run at the same time on the cores of the runner, by run-all.sh,
 # in one step
-SM_RUN='        run: sh scripts/ci/run-all.sh scripts/ci/test.sh scripts/manual/test.sh scripts/env-determinism/test.sh scripts/release/test.sh scripts/test.sh scripts/visual/test.sh'
-if grep -qxF "$SM_RUN" "$SM" && [ "$(grep -c 'run: ' "$SM")" = 1 ]; then ok; else ng "ci.yml: scripts-macos runs the six tests with run-all.sh"; fi
+SM_RUN='        run: sh scripts/ci/run-all.sh -t 600 scripts/ci/test.sh scripts/manual/test.sh scripts/env-determinism/test.sh scripts/release/test.sh scripts/test.sh scripts/visual/test.sh'
+if grep -qxF "$SM_RUN" "$SM" && [ "$(grep -c 'run: ' "$SM")" = 1 ]; then ok; else ng "ci.yml: scripts-macos runs the six tests with run-all.sh -t 600"; fi
+# the deadline comes before the timeout of the job, so that the outputs are
+# written (docs/adr/0154)
+SM_MIN=$(sed -n 's/^    timeout-minutes: \([0-9]*\)$/\1/p' "$SM")
+if [ -n "$SM_MIN" ] && [ 600 -lt $((SM_MIN * 60)) ]; then ok; else ng "ci.yml: the deadline of scripts-macos is shorter than the timeout of its job"; fi
 # the tests of the scripts run in scripts-linux, beside changes, so that the
 # build does not wait for them; it is never skipped (docs/adr/0097)
 SL=$WORK/scripts-linux.yml
@@ -1462,6 +1466,25 @@ if [ "$CODE" = 0 ] && ! grep -q 'from stdin' "$WORK/out"; then ok; else ng "run-
 : >"$WORK/in"
 run run_all
 expect "run-all: no argument" 2
+# -t SECONDS stops a script still running after SECONDS seconds, writes
+# what it wrote so far after a header that says so, and fails the run;
+# the output of run-all.sh is closed when it ends, so a pipe after it
+# does not wait for the stopped script (docs/adr/0154)
+printf 'echo before\nsleep 30\necho after\n' >"$RA/hang.sh"
+T0=$(date +%s)
+CODE=0
+sh "$HERE/run-all.sh" -t 2 "$RA/hang.sh" "$RA/two.sh" <"$WORK/in" 2>"$WORK/err" | cat >"$WORK/out" || true
+sh "$HERE/run-all.sh" -t 2 "$RA/hang.sh" "$RA/two.sh" </dev/null >/dev/null 2>&1 || CODE=$?
+T1=$(date +%s)
+if [ $((T1 - T0)) -lt 20 ] && [ "$CODE" = 1 ] &&
+  grep -A1 -xF "==> $RA/hang.sh: timed out after 2 s" "$WORK/out" | tail -1 | grep -qx before &&
+  ! grep -qx after "$WORK/out" &&
+  grep -q "^==> $RA/two.sh: exit 0" "$WORK/out"; then ok; else ng "run-all: -t stops a script over its seconds and writes what it wrote"; fi
+if [ "$(cat "$WORK/err")" = "run-all: $RA/hang.sh timed out (2 s)" ]; then ok; else ng "run-all: a stopped script is named on stderr"; fi
+run run_all -t 0 "$RA/two.sh"
+expect "run-all: -t 0" 2
+run run_all -t x "$RA/two.sh"
+expect "run-all: -t of a word" 2
 
 # ---------------------------------------------------------------- golem-driver's suites and threads
 # (docs/adr/0146-threaded-golem-driver-test.md)
