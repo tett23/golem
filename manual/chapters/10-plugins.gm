@@ -94,12 +94,22 @@ url = "<リリースの URL>/kansuji.wasm"
 overrides = ["number-text"]
 ```
 
-[code: <リリースの URL>] には、[code: https://github.com/tett23/golem/releases/download/v0.1.0-rc4] のように、Golem のリリースの配布物を置いた URL を書きます。
+[code: <リリースの URL>] は、第[ref-number first-book]章で Golem を取得したときと同じく、次の形の URL です。
+[code: <版>] には、[code: v0.1.0-rc4] のような版を書きます。
 
-縦組みでは、[code: \[number-text 123\]] が「百二十三」に、[code: \[number-text \[= 2 / 3\]\]] が「三分の二」になります。
-[code: \[number-text 3.14\]] は、整数の部分を「三」、小数点を中黒、小数の部分を「一四」と書きます。
-[code: style=kanji-digits] で「一二三」のように一字ずつ、[code: style=tcy] で縦中横に組みます。
-[code: form=fraction] を書くと、小数で書ける数も「二分の一」のような分数にします。
+```
+https://github.com/tett23/golem/releases/download/<版>
+```
+
+縦組みの本では、数を次のように組みます。
+
+- [code: \[number-text 123\]]：百二十三
+- [code: \[number-text 3.14\]]：整数の部分を「三」、小数点を中黒、小数の部分を「一四」と書きます。
+- [code: \[number-text \[= 2 / 3\]\]]：三分の二
+- [code: \[number-text 123 style=kanji-digits\]]：一二三
+- [code: \[number-text 12 style=tcy\]]：縦中横の 12
+- [code: \[number-text 0.5 form=fraction\]]：二分の一
+
 [code: style] を書かない数と [code: ##12##] の表記は、組み込みと同じく [code: style.toml] の [code: \[numbers\]] の [code: vertical] に従います。
 横組みの本では、組み込みと同じく算用数字（[code: 123]、[code: 3.14]、[code: 2/3]）で組みます。
 ページ番号や箇条書きの番号は、このプラグインを通らず、組み込みのとおりに組まれます。
