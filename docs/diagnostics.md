@@ -7159,7 +7159,7 @@ HTML か EPUB を組むとき（`golem build`）にだけ出す。
 
 - メッセージ: `図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: <パス>`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver`）
-- ADR: [docs/adr/0123](adr/0123-figures-from-plugins.md)
+- ADR: [docs/adr/0123](adr/0123-figures-from-plugins.md)、[docs/adr/0137](adr/0137-plugin-image-folder-collision-g08102.md)
 
 ### 主な原因
 
