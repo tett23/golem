@@ -117,7 +117,11 @@ value = int64 / rational / tstr / bool / null / range / [* value]
 range = {"first": int64, "last": int64}
 ; the output of a command is inlines, of a filter a document, of a block
 ; command blocks (docs/adr/0122)
-response = [output: inlines / document / [* block], diagnostics: [* plugin-diagnostic]]
+response = [output: inlines / document / block-output, diagnostics: [* plugin-diagnostic]]
+; the output of a block command: its blocks and the images of its figures,
+; each pointed at as plugin:<name> (docs/adr/0123)
+block-output = [blocks: [* block], images: [* plugin-image]]
+plugin-image = [name: tstr, format: "svg" / "png" / "jpeg", bytes: bstr]
 plugin-diagnostic = [code: tstr, severity: 0 / 1, span, message: tstr]
 ; golem_check_data, an optional export, called once after the data is read
 ; (docs/adr/0120); line counts from 1, null for the whole file

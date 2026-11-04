@@ -6868,7 +6868,7 @@ SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあ�
 ### 意味
 
 HTML と EPUB に写す SVG のファイルに、ブラウザーが SVG を文書として開いたときに動かすか読むもの（動的なコンテンツ）がある。
-写す SVG は、`@figure` の図版か `web` のうち、拡張子が `.svg` のものである。
+写す SVG は、`@figure` の図版か `web` のうち、拡張子が `.svg` のものと、プラグインが作った SVG の図版（[docs/adr/0123](adr/0123-figures-from-plugins.md)）である。
 HTML と EPUB は SVG をそのまま写すので、読者が SVG を直接開けば、そのスクリプトが動く。
 拒むのは、`script` の要素、`foreignObject`、`iframe`、`embed`、`object`、`handler`、`listener` の要素、名前が `on` で始まる属性、`#` で始まらない `href` と `xlink:href`、`href` かイベントの属性を書き換える `set` と `animate`、CSS の `@import` と `#` で始まらない `url()` である。
 XML として読めない SVG、UTF-8 でない SVG、内部サブセットを持つ `DOCTYPE` を持つ SVG も、中身を確かめられないのでこのコードにする。
@@ -7126,6 +7126,36 @@ HTML と EPUB は SVG を写すだけで、`marker` を展開しないためで�
 メッセージの延べ数を見て、`marker` を置く回数か中身の区間を減らす。
 図の作成ツールで `marker` を図形に展開して書き出すか、PDF で書き出して PDF の図版として置く。
 展開した図形は図の本体の区間になるので、数えない。
+
+## G08102
+
+図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+原稿の `@figure` の図版で、HTML と EPUB に写す画像（`web` があれば `web`、なければ図版そのもの）のパスが `images/golem-plugin/` の下にある。
+HTML と EPUB は、プラグインが作った画像を `images/golem-plugin/<SHA-256>.<拡張子>` に置く（[docs/adr/0123](adr/0123-figures-from-plugins.md)）。
+原稿の画像を同じ場所に写すと、プラグインの画像と取り違えるおそれがあるので、プラグインを使っていない本でも拒む。
+パスは `./` や `..` を正規化してから比べる。
+`@figure` ごとに一つ出し、HTML と EPUB を書かない。
+PDF とプレーンテキストは書く。
+HTML か EPUB を組むとき（`golem build`）にだけ出す。
+位置は、その `@figure` のブロックである。
+
+- メッセージ: `図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: <パス>`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`）
+- ADR: [docs/adr/0123](adr/0123-figures-from-plugins.md)
+
+### 主な原因
+
+- 画像を `images/golem-plugin/` というフォルダーに置いた。
+
+### 直し方
+
+画像を別のフォルダーに移し、`@figure` のパスを直す。
 
 ## G09001
 

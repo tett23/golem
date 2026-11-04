@@ -159,7 +159,7 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context m
           call pname p name = PluginCommand $ \vals slots sp ->
             either (\pe -> Left [diagnostic (pluginErrorCode pe) Error sp (qualified pname name pe)]) (Right . fmap (map (ofPlugin pname))) (callCommand p name vals slots sp)
           callBlock pname p name = PluginBlockCommand $ \vals body sp ->
-            either (\pe -> Left [diagnostic (pluginErrorCode pe) Error sp (qualified pname name pe)]) (Right . fmap (map (ofPlugin pname))) (callBlockCommand p name vals body sp)
+            either (\pe -> Left [diagnostic (pluginErrorCode pe) Error sp (qualified pname name pe)]) (\(bs, imgs, ds) -> Right (bs, imgs, map (ofPlugin pname) ds)) (callBlockCommand p name vals body sp)
           -- a filter that fails points at the top of the file (golem-plugin ADR 0003)
           applyFilters path doc0 =
             foldl

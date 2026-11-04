@@ -2145,7 +2145,8 @@ loadFigures inp = do
   pure (Map.fromList pairs)
   where
     loadOne (s, page) = do
-      bytes <- BS.readFile (piRoot inp <> "/" <> T.unpack s)
+      -- the image a plugin made, or the file (docs/adr/0123)
+      bytes <- maybe (BS.readFile (piRoot inp <> "/" <> T.unpack s)) pure (Map.lookup s (bookImages (piBook inp)))
       pure $
         if
           | ".pdf" `T.isSuffixOf` T.toLower s -> case P.importPage page bytes of

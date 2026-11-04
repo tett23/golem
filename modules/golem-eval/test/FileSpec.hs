@@ -75,6 +75,10 @@ diags = diagsWith ctx
 diagsWith :: EvalContext -> Text -> [(Text, Text, Int, Int)]
 diagsWith c = map diagSite . fst . evalSource c
 
+-- | A PNG figure of images/a.png with the alt text x.
+fig0 :: Figure
+fig0 = Figure "images/a.png" Nothing "x" Nothing Nothing [] Nothing False
+
 -- | The code and message of each diagnostic.
 msgs :: Text -> [(Text, Text)]
 msgs src = [(c, m) | (c, m, _, _) <- diags src]
@@ -90,6 +94,7 @@ gridCommand :: PluginBlockCommand
 gridCommand = PluginBlockCommand $ \args bodyBlocks sp ->
   Right
     ( Block sp Nothing (Table [AlignDefault, AlignDefault] [[Text sp "k"], [Text sp "v"]] [[[Text sp (argKey a)], [Text sp (T.pack (show (pluginArgValue a)))]] | a <- args]) : bodyBlocks,
+      Map.empty,
       [diagnostic "grid-called" Warning sp "grid"]
     )
   where
@@ -141,8 +146,37 @@ pluginBlockTests =
       testCase "the errors of the call are reported and give no blocks" $ do
         let failing = noPlugins {phBlocks = Map.fromList [("grid", PluginBlockCommand (\_ _ sp -> Left [diagnostic "G06009" Error sp "x"]))]}
         run ctx {ctxPlugins = failing} "@grid\n" @?= ([], ["G06009"]),
+      -- docs/adr/0123
+      testCase "a figure of a plugin keeps its image and goes through the checks of @figure" $ do
+        let src = "golem-plugin-image://00.svg"
+            drawn f = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (f sp))], Map.fromList [(src, "<svg/>")], [])))]}
+            plain sp = Figure src Nothing "棒グラフ" Nothing Nothing [Block sp Nothing (Paragraph Nothing [Text sp "図"])] Nothing False
+            r = evalResult ctx {ctxPlugins = drawn plain} "@label c\n@chart\n"
+        map blockLabel (resultBlocks r) @?= [Just "c"]
+        map blockBody (resultBlocks r) @?= [FigureBlock (plain (mkSpan (FileId 1) 9 16))]
+        erImages r @?= Map.fromList [(src, "<svg/>")]
+        -- wrapped without a width: G02031 at the call, and no figure, as @figure
+        diagsWith ctx {ctxPlugins = drawn (\sp -> (plain sp) {figWrap = Just WrapEnd})} "@chart\n" @?= [("G02031", "回り込む図版には width が必要です", 0, 7)]
+        fst (run ctx {ctxPlugins = drawn (\sp -> (plain sp) {figWrap = Just WrapEnd})} "@chart\n") @?= []
+        -- turned and wrapped: G02087
+        map (\(c, _, _, _) -> c) (diagsWith ctx {ctxPlugins = drawn (\sp -> (plain sp) {figWrap = Just WrapEnd, figWidth = Just "50%", figRotate = True})} "@chart\n") @?= ["G02087"]
+        -- a page of a figure that is not PDF: G02075
+        map (\(c, _, _, _) -> c) (diagsWith ctx {ctxPlugins = drawn (\sp -> (plain sp) {figPage = Just 2})} "@chart\n") @?= ["G02075"],
+      testCase "the image of a figure that fails the checks is not kept" $ do
+        let src = "golem-plugin-image://00.svg"
+            drawn = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (Figure src Nothing "x" (Just WrapEnd) Nothing [] Nothing False))], Map.fromList [(src, "<svg/>")], [])))]}
+        erImages (evalResult ctx {ctxPlugins = drawn} "@chart\n") @?= Map.empty,
+      testCase "a paragraph style in the caption of a figure of a plugin is G02013 and is dropped, as @figure" $ do
+        let src = "golem-plugin-image://00.svg"
+            styled sp = Figure src Nothing "x" Nothing Nothing [Block sp Nothing (Paragraph (Just "quote") [Text sp "図"])] Nothing False
+            hook = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (styled sp))], Map.fromList [(src, "<svg/>")], [])))]}
+            (bs, ds) = run ctx {ctxPlugins = hook} "@chart\n"
+        ds @?= ["G02013"]
+        case bs of
+          [FigureBlock f] -> map blockBody (figCaption f) @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 7) "図"]]
+          other -> assertFailure (show other),
       testCase "a paragraph style the file does not define is G02047" $ do
-        let styled = noPlugins {phBlocks = Map.fromList [("grid", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (Paragraph (Just "nope") [])], [])))]}
+        let styled = noPlugins {phBlocks = Map.fromList [("grid", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (Paragraph (Just "nope") [])], Map.empty, [])))]}
         snd (run ctx {ctxPlugins = styled} "@grid\n") @?= ["G02047"],
       -- set is the name of @set name = 式, which the parser reads apart
       testCase "no name of builtinBlockCommands but set is an unknown block command" $
@@ -368,6 +402,28 @@ tests =
         msgs "@figure images/a.pdf page=0 web=images/a.png alt=\"x\"\n" @?= [("G02075", "page は PDF の図版のページを 1 から数えた整数で書きます: 0")]
         errs "@figure images/a.pdf page=x web=images/a.png alt=\"x\"\n" @?= ["G02075"]
         errs "@figure images/a.png page=1 alt=\"x\"\n" @?= ["G02075"],
+      -- the checks of @figure over the IR, for the figures of plugins (docs/adr/NNNN-figures-from-plugins)
+      testCase "the checks of a figure of the IR report what @figure reports" $
+        mapM_
+          ( \(src, fig) -> do
+              let sp = mkSpan (FileId 1) 0 (T.length src)
+                  (ds, ok) = figureChecks ctx sp fig
+              map diagSite ds @?= diags src
+              ok @?= null (diags src)
+          )
+          [ ("@figure images/a.png alt=x\n", fig0),
+            ("@figure images/a.bmp alt=x\n", fig0 {figSource = "images/a.bmp"}),
+            ("@figure images/a.png web=images/b.pdf alt=x\n", fig0 {figWeb = Just "images/b.pdf"}),
+            ("@figure images/a.pdf alt=x\n", fig0 {figSource = "images/a.pdf"}),
+            ("@figure images/a.png page=2 alt=x\n", fig0 {figPage = Just 2}),
+            ("@figure images/a.pdf web=images/a.png page=0 alt=x\n", fig0 {figSource = "images/a.pdf", figWeb = Just "images/a.png", figPage = Just 0}),
+            ("@figure images/a.pdf web=images/a.png page=3 alt=x\n", fig0 {figSource = "images/a.pdf", figWeb = Just "images/a.png", figPage = Just 3}),
+            ("@figure images/a.png alt=x wrap=end\n", fig0 {figWrap = Just WrapEnd}),
+            ("@figure images/a.png alt=x wrap=start width=4zw rotate=true\n", fig0 {figWrap = Just WrapStart, figWidth = Just "4zw", figRotate = True}),
+            ("@figure gone.png alt=x\n", fig0 {figSource = "gone.png"}),
+            ("@figure /tmp/a.png alt=x\n", fig0 {figSource = "/tmp/a.png"}),
+            ("@figure images/a.bmp web=gone.txt alt=x wrap=end\n", fig0 {figSource = "images/a.bmp", figWeb = Just "gone.txt", figWrap = Just WrapEnd})
+          ],
       testCase "a figure turned to take a page of its own (golem-driver ADR 0034)" $ do
         let rotateOf src = case body src of
               [FigureBlock f] -> pure (figRotate f)

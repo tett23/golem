@@ -20,6 +20,7 @@ import Golem.Doc.IR hiding (abiVersion)
 import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Plugin
 import Golem.Syntax
+import Golem.Syntax.Sha256 (sha256)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Printf (printf)
@@ -52,7 +53,24 @@ described blocks = TMap [(TString "commands", TList [TString "shout"]), (TString
 
 -- | A plugin with the block command grid that answers with these blocks.
 answering :: [Block] -> IO Plugin
-answering bs = fixed (described ["grid"]) (TList [blocksTerm bs, TList []]) >>= either (assertFailure . show) pure
+answering bs = drawing bs []
+
+-- | A plugin with the block command grid that answers with these blocks and images (docs/adr/0123).
+drawing :: [Block] -> [(Text, Text, ByteString)] -> IO Plugin
+drawing bs imgs =
+  fixed (described ["grid"]) (TList [TList [blocksTerm bs, TList [TList [TString n, TString f, TBytes b] | (n, f, b) <- imgs]], TList []])
+    >>= either (assertFailure . show) pure
+
+-- | A figure of the call whose image is src.
+figureOf :: Text -> Block
+figureOf src = Block callSpan Nothing (FigureBlock (Figure src Nothing "棒グラフ" Nothing Nothing [] Nothing False))
+
+svgBytes :: ByteString
+svgBytes = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 10 10\"><rect width=\"5\" height=\"5\"/></svg>"
+
+-- | The SHA-256 of svgBytes in hexadecimal, as the host names the image.
+svgName :: Text
+svgName = "golem-plugin-image://" <> T.pack (concatMap (printf "%02x") (BS.unpack (sha256 svgBytes))) <> ".svg"
 
 echo :: IO Plugin
 echo = do
@@ -119,12 +137,44 @@ blockTests =
             ),
       testCase "a table at the call is the output" $ do
         p <- answering [table]
-        callBlockCommand p "grid" [] [] callSpan @?= Right ([table], []),
+        callBlockCommand p "grid" [] [] callSpan @?= Right ([table], Map.empty, []),
+      -- docs/adr/0123
+      testCase "a figure of an image of the response is named by the SHA-256 of the image" $ do
+        p <- drawing [figureOf "plugin:chart"] [("chart", "svg", svgBytes)]
+        callBlockCommand p "grid" [] [] callSpan @?= Right ([figureOf svgName], Map.fromList [(svgName, svgBytes)], []),
+      testCase "the same bytes under two names are one image" $ do
+        p <- drawing [figureOf "plugin:a", figureOf "plugin:b"] [("a", "svg", svgBytes), ("b", "svg", svgBytes)]
+        callBlockCommand p "grid" [] [] callSpan @?= Right ([figureOf svgName, figureOf svgName], Map.fromList [(svgName, svgBytes)], []),
+      testCase "png and jpeg images are named with .png and .jpg" $ do
+        p <- drawing [figureOf "plugin:a", figureOf "plugin:b"] [("a", "png", "P"), ("b", "jpeg", "J")]
+        let named ext b = "golem-plugin-image://" <> T.pack (concatMap (printf "%02x") (BS.unpack (sha256 b))) <> ext
+        fmap (\(_, imgs, _) -> Map.keys imgs) (callBlockCommand p "grid" [] [] callSpan) @?= Right (Map.keys (Map.fromList [(named ".png" "P", ()), (named ".jpg" "J", ())])),
+      testCase "the images of a figure that are bad output" $ do
+        let bad bs imgs m = drawing bs imgs >>= \p -> badOutput m (callBlockCommand p "grid" [] [] callSpan)
+        bad [figureOf "plugin:nope"] [] "応答にない画像です: plugin:nope"
+        bad [figureOf "images/a.png"] [] "プラグインの図版は plugin:<名前> で画像を指します: images/a.png"
+        bad [] [("chart", "svg", svgBytes)] "どの図版も使っていない画像があります: chart"
+        bad [figureOf "plugin:chart"] [("chart", "pdf", svgBytes)] "画像の形式は svg、png、jpeg のどれかです: pdf"
+        bad [figureOf "plugin:Chart"] [("Chart", "svg", svgBytes)] "画像の名前が不正です: Chart"
+        bad [figureOf "plugin:chart"] [("chart", "svg", svgBytes), ("chart", "svg", svgBytes)] "画像の名前が重複しています: chart"
+        let withWeb = Block callSpan Nothing (FigureBlock (Figure "plugin:chart" (Just "plugin:chart") "x" Nothing Nothing [] Nothing False))
+        bad [withWeb] [("chart", "svg", svgBytes)] "プラグインの図版は web を持てません"
+        bad [Block callSpan Nothing (BulletList [ListItem Nothing [figureOf "plugin:chart"]])] [("chart", "svg", svgBytes)] "図版は出力の最上位にだけ置けます",
+      testCase "images over 64 MiB together are bad output" $ do
+        src <- TIO.readFile "test/plugins/big-image.wat"
+        wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
+        p <- loadPlugin wasm >>= either (assertFailure . show) pure
+        badOutput "画像の大きさの合計が上限（67108864 バイト）を超えています" (callBlockCommand p "grid" [] [] callSpan),
+      testCase "the blocks without the list of images are bad output" $ do
+        p <- fixed (described ["grid"]) (TList [blocksTerm [table], TList []]) >>= either (assertFailure . show) pure
+        case callBlockCommand p "grid" [] [] callSpan of
+          Left (BadOutput _) -> pure ()
+          other -> assertFailure (show other),
       testCase "a paragraph and a list are output" $ do
         let para = Block callSpan Nothing (Paragraph Nothing [text "p"])
             list = Block callSpan Nothing (BulletList [ListItem Nothing [para]])
         p <- answering [para, list]
-        callBlockCommand p "grid" [] [] callSpan @?= Right ([para, list], []),
+        callBlockCommand p "grid" [] [] callSpan @?= Right ([para, list], Map.empty, []),
       testCase "a heading is no output of a block command" $ do
         p <- answering [Block callSpan Nothing (Heading 1 noHeadingAttrs [text "h"])]
         badOutput "ブロックコマンドが返せないブロックです: 見出し" (callBlockCommand p "grid" [] [] callSpan),
@@ -151,9 +201,9 @@ blockTests =
       testCase "a block of the body passes as it came, even a heading" $ do
         let h = Block bodySpan (Just "h") (Heading 2 noHeadingAttrs [Text bodySpan "h"])
         p <- answering [h, table]
-        callBlockCommand p "grid" [] [h] callSpan @?= Right ([h, table], []),
+        callBlockCommand p "grid" [] [h] callSpan @?= Right ([h, table], Map.empty, []),
       testCase "inlines are no output of a block command" $ do
-        p <- fixed (described ["grid"]) (TList [inlinesTerm [text "x"], TList []]) >>= either (assertFailure . show) pure
+        p <- fixed (described ["grid"]) (TList [TList [inlinesTerm [text "x"], TList []], TList []]) >>= either (assertFailure . show) pure
         case callBlockCommand p "grid" [] [] callSpan of
           Left (BadOutput _) -> pure ()
           other -> assertFailure (show other)

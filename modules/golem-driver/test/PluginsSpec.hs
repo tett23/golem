@@ -1,14 +1,16 @@
 module PluginsSpec (pluginTests, cacheHomeRestored) where
 
+import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
-import Data.List (sort)
+import Data.List (isSuffixOf, sort)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Golem.Doc.Assemble (Book (..))
 import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfInput (..), layoutPages)
@@ -21,6 +23,7 @@ import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..))
 import Golem.Project.Manifest (parseManifest)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
+import Golem.Syntax.Sha256 (sha256)
 import Golem.TestSupport.Env (withEnv)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import Support
@@ -30,6 +33,7 @@ import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
+import Text.Printf (printf)
 
 {- | XDG_CACHE_HOME after the plugin tests is what it was when the suite
 started: the tests that set it set it back (docs/adr ADR 0072). The
@@ -287,6 +291,73 @@ blockCommandTests =
           other -> assertFailure (show other)
   ]
 
+{- | A one-chapter project, a.gm, for PDF, HTML and EPUB with the fake
+fonts, and the sample plugin bar-chart (docs/adr/0123) declared as bc
+with the data sales.
+-}
+withBarChart :: T.Text -> (FilePath -> IO a) -> IO a
+withBarChart source k = withSystemTempDirectory "golem-chart" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["pdf", "html", "epub"]}) <> pluginDeclOf "bc" "data = { sales = \"sales.tsv\" }\n")
+  BS.writeFile (tmp </> "style.toml") (withBodyFont horizontalStyle)
+  TIO.writeFile (tmp </> "a.gm") source
+  writeFiles tmp (("sales.tsv", TE.encodeUtf8 "月\t売上\n1月\t12\n2月\t30\n") : fakeFontFiles)
+  lockIn [("bc", "bar-chart.wasm")] tmp (k tmp)
+
+-- | The SVG bar-chart draws for 12 and 30.
+chartSvg :: BS.ByteString
+chartSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 400 200\" width=\"400\" height=\"200\"><rect x=\"20\" y=\"120\" width=\"160\" height=\"80\" fill=\"#404040\"/><rect x=\"220\" y=\"0\" width=\"160\" height=\"200\" fill=\"#404040\"/><rect x=\"0\" y=\"199\" width=\"400\" height=\"1\" fill=\"#000000\"/></svg>"
+
+-- | Where HTML and EPUB put it.
+chartPath :: FilePath
+chartPath = "images/golem-plugin/" <> concatMap (printf "%02x") (BS.unpack (sha256 chartSvg)) <> ".svg"
+
+-- | The figures of plugins (docs/adr/0123).
+pluginFigureTests :: [TestTree]
+pluginFigureTests =
+  [ testCase "a bar chart of a plugin is a figure with a number, in PDF, HTML and EPUB" $
+      withBarChart "# 章\n\n@label c\n@bar-chart sales alt=\"売上の棒グラフ\"\n  月ごとの売上\n\n[ref-number c]\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optFonts = fakeProvider}
+        filter isError (brDiagnostics r) @?= []
+        BS.readFile (tmp </> "build/html" </> chartPath) >>= (@?= chartSvg)
+        page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        assertBool (T.unpack page) (T.pack chartPath `T.isInfixOf` page)
+        epubs <- filter (".epub" `isSuffixOf`) <$> listDirectory (tmp </> "build/epub")
+        case epubs of
+          [f] -> do
+            a <- toArchive . BL.fromStrict <$> BS.readFile (tmp </> "build/epub" </> f)
+            fmap (BL.toStrict . fromEntry) (findEntryByPath ("OEBPS/" <> chartPath) a) @?= Just chartSvg
+          other -> assertFailure (show other)
+        assertBool "a PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        fmap (Map.size . bookFigures) (evBook e) @?= Just 1,
+    testCase "the same input gives the same PDF, twice" $
+      withBarChart "# 章\n\n@bar-chart sales alt=\"x\"\n" $ \tmp -> do
+        let pdfOf = do
+              r <- build (defaultOptions tmp) {optFonts = fakeProvider, optTargets = Just [TargetPdf]}
+              case filter (".pdf" `isSuffixOf`) (brWritten r) of
+                [p] -> BS.readFile p
+                ps -> assertFailure (show ps)
+        a <- pdfOf
+        b <- pdfOf
+        a @?= b,
+    testCase "the source of a plugin's image written in @figure is a URL, G02060" $
+      withBarChart ("@figure \"golem-plugin-image://" <> T.pack (drop (length ("images/golem-plugin/" :: String)) chartPath) <> "\" alt=x\n") $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        map diagCode (evDiagnostics e) @?= [DiagnosticCode "G02060"],
+    testCase "the errors of the plugin give no figure" $
+      withBarChart "@bar-chart sales\n" $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        map diagCode (evDiagnostics e) @?= [DiagnosticCode "bc/bar-chart-alt"],
+    testCase "G08102: a figure of the source where HTML and EPUB put the images of plugins" $
+      withBarChart "# 章\n\n@figure ./images/golem-plugin/x.svg alt=x\n" $ \tmp -> do
+        writeFiles tmp [("images/golem-plugin/x.svg", chartSvg)]
+        r <- build (defaultOptions tmp) {optFonts = fakeProvider}
+        [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
+          @?= [(DiagnosticCode "G08102", "図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: ./images/golem-plugin/x.svg")]
+        assertBool "no HTML" (not (any (("build/html/" `T.isInfixOf`) . T.pack) (brWritten r)))
+        assertBool "a PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
+  ]
+
 -- | The context of the book a plugin asks for (docs/adr/0121).
 contextTests :: [TestTree]
 contextTests =
@@ -539,6 +610,7 @@ pluginTests =
     <> checkDataTests
     <> contextTests
     <> blockCommandTests
+    <> pluginFigureTests
     <> [ testCase "a filter runs over the declared files and keeps the output" $ do
            plain <- buildAndRead Dev "build/text/horizontal/chapters/01.txt"
            filtered <- withPluginProject pluginDecl $ \tmp -> do

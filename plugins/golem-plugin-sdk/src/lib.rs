@@ -32,7 +32,7 @@ pub mod protocol;
 pub use cbor::Value;
 pub use ir::{Block, BlockBody, DefGroup, Document, Inline, ListItem, NumberStyle, RefKind, RubySegment, Sp, Span, ABI_VERSION};
 pub use protocol::{
-    Arg, ArgValue, BlockCommandRequest, ChannelDecl, ChannelOrder, CommandRequest, Context, Data, Description, Diagnostic, FilterRequest, Output, Request, Response,
+    Arg, ArgValue, BlockCommandRequest, ChannelDecl, Image, ImageFormat, ChannelOrder, CommandRequest, Context, Data, Description, Diagnostic, FilterRequest, Output, Request, Response,
     Severity,
 };
 

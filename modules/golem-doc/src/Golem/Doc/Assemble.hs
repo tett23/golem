@@ -32,6 +32,7 @@ where
 import Control.Monad (when, zipWithM)
 import Control.Monad.State.Strict
 import Data.Bifunctor (first)
+import Data.ByteString (ByteString)
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -163,7 +164,10 @@ data Book = Book
     entries (golem-doc ADR 0007)
     -} bookChannels :: ![(ListAt, Text, [ChannelEntry])],
     -- | the channels the plugins declare, by name
-    bookChannelDecls :: !(Map Text ChannelDecl)
+    bookChannelDecls :: !(Map Text ChannelDecl),
+    {- | the images plugins made for figures, by the source of the figure
+    (docs/adr/0123); the outputs read them instead of a file of the project
+    -} bookImages :: !(Map Text ByteString)
   }
 
 {- | The place of a list of a channel: the file and the span of its block
@@ -386,7 +390,8 @@ assemble cfg evalDeferred docs0 =
             bookReferenced = refd,
             bookChapterOf = acChapterOf cfg,
             bookChannels = channelLists (acChannels cfg) docs',
-            bookChannelDecls = acChannels cfg
+            bookChannelDecls = acChannels cfg,
+            bookImages = Map.empty
           },
         sortDiagnostics (nsDiags ns <> figureErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs <> blankDiags)
       )

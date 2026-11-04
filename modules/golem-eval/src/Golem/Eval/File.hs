@@ -9,6 +9,7 @@ module Golem.Eval.File
     PluginCommand (..),
     PluginBlockCommand (..),
     noPlugins,
+    figureChecks,
     Usage (..),
     EvalResult (..),
     evalFile,
@@ -33,6 +34,7 @@ import Control.Applicative ((<|>))
 import Control.Monad (forM, unless)
 import Control.Monad.State.Strict
 import Data.Bifunctor qualified as Bi
+import Data.ByteString (ByteString)
 import Data.Char (isAscii, isAsciiLower, isDigit)
 import Data.Either (fromLeft, fromRight, isLeft)
 import Data.List (mapAccumL, partition)
@@ -78,7 +80,7 @@ arguments, the body evaluated, and where it is called.
 -}
 newtype PluginBlockCommand = PluginBlockCommand
   { -- | the blocks and the plugin's own diagnostics, or errors
-    pbCall :: [PluginArg] -> [Block] -> SrcSpan -> Either [Diagnostic] ([Block], [Diagnostic])
+    pbCall :: [PluginArg] -> [Block] -> SrcSpan -> Either [Diagnostic] ([Block], Map Text ByteString, [Diagnostic])
   }
 
 {- | Plugin commands and filters, provided by golem-plugin. The keys tell an
@@ -159,7 +161,9 @@ data EvalResult = EvalResult
     -- | the styles the file defines (docs/adr ADR 0014)
     erStyles :: !LocalStyles,
     -- | the line of each @number by the span of the block it numbers (G04007, golem-syntax ADR 0002)
-    erNumberSites :: !(Map SrcSpan SrcSpan)
+    erNumberSites :: !(Map SrcSpan SrcSpan),
+    -- | the images plugins made for the figures of the file, by their source (docs/adr/0123)
+    erImages :: !(Map Text ByteString)
   }
 
 data St = St
@@ -173,7 +177,9 @@ data St = St
     stSidenote :: !Int,
     stDiags :: ![Diagnostic],
     -- | the line of each @number by the span of its block (G04007)
-    stNumberSites :: !(Map SrcSpan SrcSpan)
+    stNumberSites :: !(Map SrcSpan SrcSpan),
+    -- | the images of the figures of plugins that passed the checks (docs/adr/0123)
+    stImages :: !(Map Text ByteString)
   }
 
 type M = State St
@@ -209,7 +215,7 @@ evalFile ctx0 (A.File fid blocks0) =
       (local, styleDiags) = fileStyles (ctxStyle ctx0) header
       ctx = (withFileStyles local ctx0) {ctxSource = source}
       blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
-      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty
+      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty Map.empty
       (bs0, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
       (bs, nestedDiags) = nestedBreaks bs0
       breakDiags = nestedDiags <> conflictingBreaks bs <> blankLinesInRow bs
@@ -226,7 +232,8 @@ evalFile ctx0 (A.File fid blocks0) =
           erDiagnostics = stDiags st <> breakDiags <> filterDiags <> unwritableText (applyRegexStyles rules doc),
           erSource = ctxSource ctx,
           erStyles = local,
-          erNumberSites = stNumberSites st
+          erNumberSites = stNumberSites st,
+          erImages = stImages st
         }
 
 {- | The context with the styles of the file over those of style.toml
@@ -548,7 +555,29 @@ pluginBlock ctx sp pb args body = do
     Right vs | not (all (all inInt64 . valueInts . pluginArgValue) vs) -> outOfInt64 sp >> pure []
     Right vs -> case pbCall pb vs body' sp of
       Left ds -> mapM_ report ds >> pure []
-      Right (out, ds) -> mapM_ report ds >> pure out
+      Right (out, imgs, ds) -> do
+        mapM_ report ds
+        concat <$> mapM (pluginFigure body' imgs) out
+  where
+    {- a figure the plugin made goes through the checks of @figure
+    (checkFigure), its image found among the images of the answer; one that
+    fails gives no block, as @figure, and its image is not kept. A paragraph
+    style in its caption is G02013, and is dropped, as @figure does
+    (docs/adr/0123) -}
+    pluginFigure body' imgs b = case b of
+      Block bsp lbl (FigureBlock f) | b `notElem` body' -> do
+        mapM_ (\_ -> err "G02013" sp "@style は図版のキャプションには付けられません") [() | Block _ _ (Paragraph (Just _) _) <- figCaption f]
+        let unstyle = \case
+              Block csp clbl (Paragraph (Just _) is) -> Block csp clbl (Paragraph Nothing is)
+              c -> c
+            f' = f {figCaption = map unstyle (figCaption f)}
+        ok <- checkFigure sp (pure . (`Map.member` imgs)) f'
+        if ok
+          then do
+            modify' (\s -> s {stImages = Map.union (stImages s) (Map.restrictKeys imgs (Set.fromList (figSource f' : maybe [] pure (figWeb f'))))})
+            pure [Block bsp lbl (FigureBlock f')]
+          else pure []
+      _ -> pure [b]
 
 {- | The arguments of a call of a plugin: a keyword with its name
 (docs/adr/0110). A spread is already expanded by 'prepareArgs'
@@ -1069,6 +1098,78 @@ blankEnd = \case
 
 -- ------------------------------------------------------------------ figures, tables, listings
 
+{- | The checks of a figure over the IR (golem-pdf ADR 0008, 0009,
+golem-driver ADR 0034): the formats (G02074, G02073), the page (G02075),
+the image files (as the caller finds them), the web image of a PDF
+(G02029), then, when all those pass, wrap and rotate (G02087, G02031).
+The steps are those @figure takes, in the same order; @figure reads its
+arguments between them, so that a figure of the source reports what it
+always did.
+-}
+checkFigure :: SrcSpan -> (Text -> M Bool) -> Figure -> M Bool
+checkFigure sp exists f = do
+  let fmts = figureFormatErrors sp (figSource f) (figWeb f)
+  mapM_ report fmts
+  pageOk <- case figPage f of
+    Just n | not (isPdfFigure (figSource f)) || not (figurePageInRange (toInteger n)) -> report (figurePageError sp (tshow n)) >> pure False
+    _ -> pure True
+  files <- and <$> sequence [exists (figSource f), maybe (pure True) exists (figWeb f)]
+  if figureNeedsWeb (figSource f) (figWeb f)
+    then report (figureNeedsWebError sp) >> pure False
+    else
+      if not (null fmts && pageOk && files)
+        then pure False
+        else case figureLayoutError sp (figWrap f) (figRotate f) (figWidth f) of
+          Just d -> report d >> pure False
+          Nothing -> pure True
+
+{- | 'checkFigure' of a figure of the IR, its files found as @figure finds
+them: the diagnostics, and whether the figure passes.
+-}
+figureChecks :: EvalContext -> SrcSpan -> Figure -> ([Diagnostic], Bool)
+figureChecks ctx sp f =
+  let st0 = St Map.empty Map.empty [] Set.empty Map.empty [] 0 0 [] Map.empty Map.empty
+      (ok, st) = runState (checkFigure sp (fmap isJust . asset ctx sp) f) st0
+   in (stDiags st, ok)
+
+-- | G02029: a PDF figure without a web image.
+figureNeedsWebError :: SrcSpan -> Diagnostic
+figureNeedsWebError sp = diagnostic "G02029" Error sp "PDF の図版には web の代替画像が必要です"
+
+-- | G02074 for an image that is not PDF, PNG, JPEG or SVG; G02073 for a web image that is not PNG, JPEG or SVG.
+figureFormatErrors :: SrcSpan -> Text -> Maybe Text -> [Diagnostic]
+figureFormatErrors sp path web =
+  [diagnostic "G02074" Error sp ("図版の形式は PDF、PNG、JPEG、SVG です: " <> path) | figureExtension path `notElem` [".pdf", ".png", ".jpg", ".jpeg", ".svg"]]
+    <> [diagnostic "G02073" Error sp ("web の代替画像は PNG、JPEG、SVG です: " <> w) | Just w <- [web], figureExtension w `notElem` [".png", ".jpg", ".jpeg", ".svg"]]
+
+-- | G02075 with the page as written.
+figurePageError :: SrcSpan -> Text -> Diagnostic
+figurePageError sp p = diagnostic "G02075" Error sp ("page は PDF の図版のページを 1 から数えた整数で書きます: " <> p)
+
+-- | The pages of a PDF figure: from 1, below 10^9.
+figurePageInRange :: Integer -> Bool
+figurePageInRange n = n >= 1 && n < 10 ^ (9 :: Int)
+
+isPdfFigure :: Text -> Bool
+isPdfFigure path = figureExtension path == ".pdf"
+
+-- | A PDF figure needs a web image (G02029).
+figureNeedsWeb :: Text -> Maybe Text -> Bool
+figureNeedsWeb path web = isPdfFigure path && isNothing web
+
+-- | G02087 for a figure both turned and wrapped, G02031 for a wrapped figure without a width.
+figureLayoutError :: SrcSpan -> Maybe Wrap -> Bool -> Maybe Text -> Maybe Diagnostic
+figureLayoutError sp wr rot width
+  | rot && isJust wr = Just (diagnostic "G02087" Error sp "回して置く図版は回り込ませられません")
+  | isJust wr && isNothing width = Just (diagnostic "G02031" Error sp "回り込む図版には width が必要です")
+  | otherwise = Nothing
+
+-- | The extension of a path in lower case, with its dot.
+figureExtension :: Text -> Text
+figureExtension p = case T.breakOnEnd "." p of
+  (before, after) | not (T.null before), not ("/" `T.isInfixOf` after) -> "." <> T.toLower after
+  _ -> ""
+
 figure :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 figure ctx sp args body = do
   kw <- keywords ctx args
@@ -1079,24 +1180,19 @@ figure ctx sp args body = do
       let path = argText src
           web = look "web"
           ok = and <$> sequence [check path, maybe (pure True) check web]
-          isPdf = extension path == ".pdf"
+          isPdf = isPdfFigure path
       -- the formats by the extension, the same for every output (golem-pdf ADR 0008, 0009)
-      formats <-
-        and
-          <$> sequence
-            [ if extension path `elem` [".pdf", ".png", ".jpg", ".jpeg", ".svg"] then pure True else err "G02074" sp ("図版の形式は PDF、PNG、JPEG、SVG です: " <> path) >> pure False,
-              case web of
-                Just w | extension w `notElem` [".png", ".jpg", ".jpeg", ".svg"] -> err "G02073" sp ("web の代替画像は PNG、JPEG、SVG です: " <> w) >> pure False
-                _ -> pure True
-            ]
-      let wrongPage p = err "G02075" sp ("page は PDF の図版のページを 1 から数えた整数で書きます: " <> argText p) >> pure (Left ())
+      let fmts = figureFormatErrors sp path web
+      mapM_ report fmts
+      let formats = null fmts
+          wrongPage p = report (figurePageError sp (argText p)) >> pure (Left ())
       page <- case lookup "page" kw of
         Nothing -> pure (Right Nothing)
         Just p
           | not isPdf -> wrongPage p
           | otherwise ->
               naturalArg ctx "@figure の page" sp p >>= \case
-                Right n | n >= 1 && n < 10 ^ (9 :: Int) -> pure (Right (Just (fromIntegral n)))
+                Right n | figurePageInRange (toInteger n) -> pure (Right (Just (fromIntegral n)))
                 Left NaturalReported -> pure (Left ())
                 _ -> wrongPage p
       fine <- (&& formats) <$> ok
@@ -1104,7 +1200,7 @@ figure ctx sp args body = do
       case look "alt" of
         Nothing -> err "G02028" sp "図版には alt の代替テキストが必要です" >> pure []
         Just alt
-          | isPdf && isNothing web -> err "G02029" sp "PDF の図版には web の代替画像が必要です" >> pure []
+          | figureNeedsWeb path web -> report (figureNeedsWebError sp) >> pure []
           | not fine || isLeft page -> pure []
           | otherwise -> do
               wrap <- case look "wrap" of
@@ -1121,17 +1217,12 @@ figure ctx sp args body = do
               case (wrap, rotate) of
                 (Left w, _) -> err "G02030" sp ("wrap は start か end です: " <> w) >> pure []
                 (_, Left r) -> err "G02087" sp ("rotate は true か false です: " <> r) >> pure []
-                (Right wr, Right rot)
-                  | rot && isJust wr -> err "G02087" sp "回して置く図版は回り込ませられません" >> pure []
-                  | isJust wr && isNothing (look "width") -> err "G02031" sp "回り込む図版には width が必要です" >> pure []
-                  | otherwise -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page) rot))]
+                (Right wr, Right rot) -> case figureLayoutError sp wr rot (look "width") of
+                  Just d -> report d >> pure []
+                  Nothing -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page) rot))]
     _ -> err "G02032" sp "@figure には画像のパスを一つ書きます" >> pure []
   where
     check p = isJust <$> asset ctx sp p
-    -- the extension in lower case, with its dot
-    extension p = case T.breakOnEnd "." p of
-      (before, after) | not (T.null before), not ("/" `T.isInfixOf` after) -> "." <> T.toLower after
-      _ -> ""
     -- a caption has no paragraph style of its own (docs/adr ADR 0005, golem-driver ADR 0010)
     noStyle csp = err "G02013" csp "@style は図版のキャプションには付けられません"
     unstyled = \case
