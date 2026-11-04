@@ -1595,24 +1595,29 @@ codeArgs ctx _ extra = foldl (\m a -> m >>= \acc -> step acc a) (pure (CodeArgs 
         | k == "highlight" ->
             maybe acc (\(_, rs) -> acc {caHighlight = Just (asp, [(toInteger x, toInteger y) | LineRange x y <- rs])})
               <$> lineRanges ctx AnyRanges "コードブロックの highlight" asp v
-        | k `elem` codeKeys <> extra -> do
-            t <- scalar asp v
-            case t >>= reading k of
-              Just f -> pure (f acc)
-              Nothing -> err "G02069" asp (k <> " の値が正しくありません: " <> fromMaybe "" t) >> pure acc
+        | k `elem` codeKeys <> extra ->
+            scalar asp v >>= \case
+              -- the diagnostic of the expression is the one of its cause: no G02069 besides (the audit of 2026-11-04, F-14)
+              Nothing -> pure acc
+              Just t -> case t >>= reading k of
+                Just f -> pure (f acc)
+                Nothing -> err "G02069" asp (k <> " の値が正しくありません: " <> fromMaybe "" t) >> pure acc
         | otherwise -> err "G02069" asp ("コードブロックに書けないキーです: " <> k <> "。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます") >> pure acc
       _ -> err "G02069" asp "コードブロックの開始の行には、言語の名前とキーワード引数だけを書けます" >> pure acc
+    {- the text of a value: Just Nothing for a value that is no text, and
+    Nothing for an expression whose diagnostic is reported (G02113 for a
+    range, docs/adr ADR 0111; or the code of the expression) -}
     scalar vsp = \case
-      A.Word t -> pure (Just t)
-      A.StringLit t -> pure (Just t)
+      A.Word t -> pure (Just (Just t))
+      A.StringLit t -> pure (Just (Just t))
       v@(A.ExprArg _) ->
         plainArgValue ctx vsp v >>= \case
-          Right val | Just n <- intOf val -> pure (Just (T.pack (show n)))
-          Right (VString s) -> pure (Just s)
-          Right (VBool b) -> pure (Just (if b then "true" else "false"))
-          Right _ -> pure Nothing
+          Right val | Just n <- intOf val -> pure (Just (Just (T.pack (show n))))
+          Right (VString s) -> pure (Just (Just s))
+          Right (VBool b) -> pure (Just (Just (if b then "true" else "false")))
+          Right _ -> pure (Just Nothing)
           Left d -> report d >> pure Nothing
-      A.CommandArg _ -> pure Nothing
+      A.CommandArg _ -> pure (Just Nothing)
     bool = \case
       "true" -> Just True
       "false" -> Just False

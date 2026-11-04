@@ -35,7 +35,7 @@ fn run(blocks: Vec<Block>, data: &Data, a: Option<&dyn Analyzer>) -> (Vec<Block>
 }
 
 fn unread(s: &str) -> Diagnostic {
-    Diagnostic { code: "sou-ruby-unread".into(), severity: Severity::Warning, span: SP, message: format!("読みの分からない漢字です: {s}") }
+    Diagnostic { code: "unread".into(), severity: Severity::Warning, span: SP, message: format!("読みの分からない漢字です: {s}") }
 }
 
 const TSV: &str = "東京\tとうきょう\n住/む\tす/\n今日\t\n";
@@ -78,7 +78,7 @@ fn the_ruby_of_the_source_is_kept() {
 fn without_words_and_an_analyzer_an_error() {
     let (bs, ds) = run(vec![para(vec![t("東京")])], &Data::default(), None);
     assert_eq!(bs, vec![para(vec![t("東京")])]);
-    assert_eq!(ds.iter().map(|d| d.code.as_str()).collect::<Vec<_>>(), ["sou-ruby-no-words"]);
+    assert_eq!(ds.iter().map(|d| d.code.as_str()).collect::<Vec<_>>(), ["no-words"]);
 }
 
 /// Splits a text at 。 and reads 大阪 and 書き込む; nothing else.
@@ -144,7 +144,7 @@ fn some_files_of_a_dictionary_but_not_all_is_an_error() {
     d.0.push(("dict-matrix".into(), vec![0; 4]));
     let ds = dict_error(&d);
     assert_eq!(ds.len(), 1);
-    assert_eq!(ds[0].code, "sou-ruby-dict");
+    assert_eq!(ds[0].code, "dict");
     assert_eq!(
         ds[0].message,
         "辞書のファイルが足りません: dict-char-def、dict-metadata、dict-trie、dict-unk、dict-vals、dict-vals-idx、dict-words、dict-words-idx"
@@ -155,7 +155,7 @@ fn some_files_of_a_dictionary_but_not_all_is_an_error() {
 fn a_dictionary_lindera_cannot_read_is_an_error() {
     let d = Data(lindera_dict::NAMES.iter().map(|(n, _)| (n.to_string(), b"{}".to_vec())).collect());
     let ds = dict_error(&d);
-    assert_eq!(ds.iter().map(|d| d.code.as_str()).collect::<Vec<_>>(), ["sou-ruby-dict"]);
+    assert_eq!(ds.iter().map(|d| d.code.as_str()).collect::<Vec<_>>(), ["dict"]);
     assert!(ds[0].message.starts_with("辞書のファイルを読めません: dict-metadata: "), "{}", ds[0].message);
 }
 

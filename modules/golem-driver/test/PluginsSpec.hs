@@ -886,15 +886,15 @@ souRubyTests =
         (paras, ds) <- rubyText tmp
         paras @?= [("a.gm", ["東京《とうきょう》に住《す》む。大阪と大阪。", "東京《とうきょう》。"]), ("b.gm", ["大阪の東京《とうきょう》。"])]
         ds
-          @?= [ (DiagnosticCode "sou-ruby/sou-ruby-unread", Just "a.gm", "読みの分からない漢字です: 大阪"),
-                (DiagnosticCode "sou-ruby/sou-ruby-unread", Just "b.gm", "読みの分からない漢字です: 大阪")
+          @?= [ (DiagnosticCode "sou-ruby/unread", Just "a.gm", "読みの分からない漢字です: 大阪"),
+                (DiagnosticCode "sou-ruby/unread", Just "b.gm", "読みの分からない漢字です: 大阪")
               ],
-    testCase "some of the files of a dictionary: sou-ruby-dict, once for each file of the filter" $
+    testCase "some of the files of a dictionary: sou-ruby/dict, once for each file of the filter" $
       withRubyFilter "sou-ruby" "data = { words = \"words.tsv\", dict-trie = \"dict.trie\", dict-unk = \"unk.bin\" }\n" [("words.tsv", TE.encodeUtf8 "東京\tとうきょう\n"), ("dict.trie", "x"), ("unk.bin", "x"), ("a.gm", TE.encodeUtf8 "東京。\n"), ("b.gm", TE.encodeUtf8 "東京。\n")] $ \tmp -> do
         (paras, ds) <- rubyText tmp
         paras @?= [("a.gm", ["東京。"]), ("b.gm", ["東京。"])]
         let missing = "辞書のファイルが足りません: dict-char-def、dict-matrix、dict-metadata、dict-vals、dict-vals-idx、dict-words、dict-words-idx"
-        ds @?= [(DiagnosticCode "sou-ruby/sou-ruby-dict", Just f, missing) | f <- ["a.gm", "b.gm"]]
+        ds @?= [(DiagnosticCode "sou-ruby/dict", Just f, missing) | f <- ["a.gm", "b.gm"]]
   ]
 
 -- | The sample plugin first-ruby (docs/adr/0131).
@@ -909,11 +909,11 @@ firstRubyTests =
       withRubyFilter "first-ruby" "data = { words = \"words.tsv\" }\n" [("words.tsv", TE.encodeUtf8 "東京\n"), ("a.gm", TE.encodeUtf8 "東京。\n"), ("b.gm", TE.encodeUtf8 "東京。\n")] $ \tmp -> do
         (paras, ds) <- rubyText tmp
         paras @?= [("a.gm", ["東京。"]), ("b.gm", ["東京。"])]
-        ds @?= [(DiagnosticCode "first-ruby/first-ruby-tsv", Just f, "words の 1 行め: 語と読みをタブで区切った二つの欄がありません") | f <- ["a.gm", "b.gm"]],
-    testCase "first-ruby-no-words: no words in the data" $
+        ds @?= [(DiagnosticCode "first-ruby/tsv", Just f, "words の 1 行め: 語と読みをタブで区切った二つの欄がありません") | f <- ["a.gm", "b.gm"]],
+    testCase "first-ruby/no-words: no words in the data" $
       withRubyFilter "first-ruby" "" [("a.gm", TE.encodeUtf8 "東京。\n"), ("b.gm", "")] $ \tmp -> do
         (_, ds) <- rubyText tmp
-        ds @?= [(DiagnosticCode "first-ruby/first-ruby-no-words", Just f, "manifest.toml の data で words を渡してください") | f <- ["a.gm", "b.gm"]]
+        ds @?= [(DiagnosticCode "first-ruby/no-words", Just f, "manifest.toml の data で words を渡してください") | f <- ["a.gm", "b.gm"]]
   ]
 
 -- | The data a project passes to a plugin (docs/adr/0105).

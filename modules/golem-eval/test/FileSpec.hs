@@ -719,6 +719,13 @@ argWordTests =
         msgs "@blank-line 1...3\n" @?= [g02113 "1...3"]
         msgs "[number-text [= 1...3]]\n" @?= [g02113 "1...3"]
         msgs "@blank-line [= 1...3]\n" @?= [g02113 "1...3"],
+      -- one cause, one code: no G02069 besides (the audit of 2026-11-04, F-14)
+      testCase "a range as the expression of a key of a code block is G02113 only" $
+        mapM_
+          (\k -> msgs ("```haskell " <> k <> "=[= 1...3]\nx\n```\n") @?= [("G02113", "範囲を受け取らない引数に範囲を書いています: 1...3")])
+          ["file", "diff", "callouts"],
+      testCase "a wrong expression of a key of a code block is its own code only" $
+        errs "```haskell file=[= nope]\nx\n```\n" @?= errs "[number-text [= nope]]\n",
       testCase "a plugin gets a word of a range literal as the range of the expression" $ do
         greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
         let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show (map pluginArgValue vs)))], []))
@@ -999,6 +1006,21 @@ settingsTests =
             ("@manifest\n", ["G02115"]),
             ("@style-def table a b\n", ["G02117", "G02052"])
           ],
+      -- a body does not hide the errors of the arguments: a code for each cause (the audit of 2026-11-04, F-44)
+      testCase "a @manifest with a body reports the errors of its arguments too (docs/adr ADR 0132)" $ do
+        mapM_
+          (\(src, cs) -> (src, codesS src) @?= (src, cs))
+          [ ("@manifest title=x title=x\n  a\n", ["G02077", "G02097"]),
+            ("@manifest line\n  a\n", ["G02052", "G02097"]),
+            ("@manifest title=[= \"x\"]\n  a\n", ["G02116", "G02097"]),
+            ("@manifest *[[1]] paragraph-separator=line\n  a\n", ["G02114", "G02097"]),
+            ("@style-def paragraph a indent=1zw indent=2zw\n  x\n", ["G02077", "G02097"])
+          ]
+        -- the @manifest is left out as before: no override applies, and the keys are not checked against [source]
+        let (_, ds, r) = runS sctx "@manifest paragraph-separator=line paragraph-separator=line\n  a\n"
+        map diagCodeText ds @?= ["G02077", "G02097"]
+        erSource r @?= ctxSource sctx
+        codesS "@manifest title=x\n  a\n" @?= ["G02097"],
       testCase "the positions and messages of the codes of @style-def and @manifest (docs/adr ADR 0132)" $ do
         let at src = let (_, ds, _) = runS sctx src in [(diagCodeText d, spanStart (diagSpan d), diagMessage d) | d <- ds]
         at "@style-def table a\n" @?= [("G02117", 11, "未知のスタイルの種類です: table。character、paragraph、regex のどれかを書きます")]
