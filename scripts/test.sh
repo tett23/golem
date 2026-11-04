@@ -1,11 +1,12 @@
 #!/bin/sh
 # Tests of the scripts that run only by hand
 # (docs/adr/0078-tests-for-release-and-hand-run-scripts.md):
-# gen-vertical-orientation.sh, fixtures/copy-fonts.sh and
-# fixtures/fetch-public-domain.sh. Each script writes into the repository
-# it is in, so each test runs a copy of it in a fake root in a temporary
-# directory; nothing here uses the network. The scripts-linux job of
-# .github/workflows/ci.yml runs this.
+# gen-vertical-orientation.sh, fixtures/copy-fonts.sh,
+# fixtures/fetch-public-domain.sh and plugin-licenses.sh
+# (docs/adr/0133-third-party-licenses-of-sample-plugins.md). Each script
+# writes into the repository it is in, so each test runs a copy of it in a
+# fake root in a temporary directory; nothing here uses the network. The
+# scripts-linux job of .github/workflows/ci.yml runs this.
 #
 # wasmtime-licenses.sh has no test: it runs curl, git, jq, nm, strings, ar,
 # cargo and rustup, too many to fake, and release/licenses.sh checks its
@@ -189,6 +190,207 @@ run env PATH="$FP/bin:$PATH" GOLEM="$FP/bin/golem" CABAL="$FP/bin/cabal" sh "$FP
 expect "fetch-public-domain: a text whose SHA-256 does not match" 1
 if grep -q 'SHA-256 mismatch for https://www.gutenberg.org/cache/epub/23042/pg23042.txt' "$WORK/err"; then ok; else ng "fetch-public-domain: the mismatch names the URL"; fi
 if [ ! -e "$FP/calls" ]; then ok; else ng "fetch-public-domain: nothing is converted after the mismatch"; fi
+
+# ---------------------------------------------------------------- plugin-licenses.sh
+
+# A fake repository with the plugins plain and rich and the library sdk
+# (no cdylib), a fake CARGO_HOME, a fake share/doc/rust/, the output of
+# cargo tree and of rustc -vV in files, and wasm files with the strings
+# that rustc leaves (docs/adr/0133). The fake curl writes its URL to
+# $PL/calls; the failing one exits 1.
+PL=$WORK/plugin-licenses
+PR=$PL/root
+REG=$PL/cargo/registry/src/index.crates.io-0123456789abcdef
+HASH=0123456789abcdef0123456789abcdef01234567
+LINDERA_COMMIT=0482efcc46b5ec518b7238efae55e9fed9bba0c0
+LINDERA_SHA=d37249886de3136db31717f15f6ade215a36fbed1c782381e38b2bf6047e8ec4
+mkdir -p "$PR/scripts" "$PR/plugins/plain" "$PR/plugins/rich" "$PR/plugins/sdk" "$PR/plugins/wasm" "$PL/doc/licenses"
+cp "$HERE/plugin-licenses.sh" "$PR/scripts/plugin-licenses.sh"
+printf '[lib]\ncrate-type = ["cdylib"]\n' >"$PR/plugins/plain/Cargo.toml"
+printf '[lib]\ncrate-type = ["cdylib"]\n' >"$PR/plugins/rich/Cargo.toml"
+printf '[package]\nname = "sdk"\n' >"$PR/plugins/sdk/Cargo.toml"
+mkdir -p "$REG/foo-1.0.0/src" "$REG/bar-2.0.0" "$REG/baz-0.1.0/LICENSES" "$REG/nolicense-1.0.0" "$REG/lindera-6.2.0"
+printf 'MIT of foo\n' >"$REG/foo-1.0.0/LICENSE-MIT"
+printf 'not a license\n' >"$REG/foo-1.0.0/src/lib.rs"
+printf 'Apache of bar\n' >"$REG/bar-2.0.0/LICENSE-APACHE"
+printf 'MIT of bar\n' >"$REG/bar-2.0.0/LICENSE-MIT"
+printf 'MIT of baz\n' >"$REG/baz-0.1.0/LICENSES/MIT.txt"
+printf '[package]\n' >"$REG/nolicense-1.0.0/Cargo.toml"
+printf '{\n  "git": {\n    "sha1": "%s"\n  },\n  "path_in_vcs": "lindera"\n}\n' "$LINDERA_COMMIT" >"$REG/lindera-6.2.0/.cargo_vcs_info.json"
+printf '<p>\xf0\x9f\x93\xa6 dlmalloc-0.2.14</p>\n<p>\xf0\x9f\x93\xa6 hashbrown-0.17.1</p>\n' >"$PL/doc/COPYRIGHT-library.html"
+printf 'MIT\n' >"$PL/doc/licenses/MIT.txt"
+printf 'Apache\n' >"$PL/doc/licenses/Apache-2.0.txt"
+printf 'not of the library\n' >"$PL/doc/COPYRIGHT.html"
+printf 'rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: %s\ncommit-date: 2026-10-13\nhost: aarch64-apple-darwin\nrelease: 1.99.1\nLLVM version: 23.1.1\n' "$HASH" >"$PL/rustc-vV"
+# pltree NAME [EXTRA-LINES-OF-RICH] [EXTRA-LINES-OF-PLAIN]: $PL/NAME, a cargo tree output
+pltree() {
+  {
+    printf '0plain v0.1.0 (%s/plugins/plain)|MIT\n1sdk v0.1.0 (%s/plugins/sdk)|MIT\n' "$PR" "$PR"
+    [ -z "${3:-}" ] || printf '%s\n' "$3"
+    printf '\n0rich v0.1.0 (%s/plugins/rich)|MIT\n1sdk v0.1.0 (%s/plugins/sdk)|MIT\n' "$PR" "$PR"
+    printf '1foo v1.0.0|MIT\n1bar v2.0.0 (proc-macro)|MIT OR Apache-2.0\n2foo v1.0.0|MIT\n1baz v0.1.0|MIT\n'
+    [ -z "${2:-}" ] || printf '%s\n' "$2"
+    printf '\n0sdk v0.1.0 (%s/plugins/sdk)|MIT\n' "$PR"
+  } >"$PL/$1"
+}
+pltree base
+# wasm NAME LINE...: plugins/wasm/NAME.wasm with the strings of the std and LINEs
+wasm() {
+  n=$1
+  shift
+  {
+    printf '\0asm\0/rustc/%s/library/std/src/panicking.rs\0' "$HASH"
+    printf '/rust/deps/dlmalloc-0.2.14/src/dlmalloc.rs\0'
+    for l in "$@"; do printf '%s\0' "$l"; done
+  } >"$PR/plugins/wasm/$n.wasm"
+}
+wasm plain
+wasm rich /cargo/registry/src/index.crates.io-0123456789abcdef/foo-1.0.0/src/lib.rs
+fake "$PL/bin" curl "echo \"\$*\" >>\"$PL/calls\"; exit 1"
+fake "$PL/bin-ok" curl "
+echo \"\$*\" >>\"$PL/calls\"
+while [ \$# -gt 0 ]; do
+  case \$1 in -o) out=\$2; shift 2 ;; *) shift ;; esac
+done
+cat \"$PL/lindera-LICENSE\" >\"\$out\""
+fake "$PL/bin-bad" curl "
+while [ \$# -gt 0 ]; do
+  case \$1 in -o) out=\$2; shift 2 ;; *) shift ;; esac
+done
+echo 'not the license' >\"\$out\""
+# the text of the pinned LICENSE of Lindera, as committed
+cp "$HERE/../licenses/plugins/crates/lindera-6.2.0/LICENSE" "$PL/lindera-LICENSE" 2>/dev/null || : >"$PL/lindera-LICENSE"
+OUTP=$PR/licenses/plugins
+# pl TREE [BIN] [ARG]: runs the script with the fake inputs
+pl() {
+  run env PATH="$PL/${2:-bin}:$PATH" CARGO_HOME="$PL/cargo" PLUGIN_LICENSES_TREE="$PL/$1" \
+    PLUGIN_LICENSES_RUST_DOC="$PL/doc" PLUGIN_LICENSES_RUSTC_VV="$PL/rustc-vV" \
+    PLUGIN_LICENSES_WASM="$PR/plugins/wasm" sh "$PR/scripts/plugin-licenses.sh" ${3:-}
+}
+# same NAME FILE CONTENT: FILE has exactly CONTENT
+same() {
+  if [ -f "$2" ] && [ "$(cat "$2")" = "$3" ]; then ok; else ng "$1"; fi
+}
+pl base
+expect "plugin-licenses: runs" 0
+TAB=$(printf '\t')
+same "plugin-licenses: MANIFEST.tsv has the three crates of rich, by name" "$OUTP/MANIFEST.tsv" \
+  "plugin${TAB}package${TAB}version${TAB}license${TAB}files
+rich${TAB}bar${TAB}2.0.0${TAB}MIT OR Apache-2.0${TAB}LICENSE-APACHE LICENSE-MIT
+rich${TAB}baz${TAB}0.1.0${TAB}MIT${TAB}LICENSES/MIT.txt
+rich${TAB}foo${TAB}1.0.0${TAB}MIT${TAB}LICENSE-MIT"
+same "plugin-licenses: LICENSE-MIT of foo" "$OUTP/crates/foo-1.0.0/LICENSE-MIT" "MIT of foo"
+same "plugin-licenses: LICENSE-APACHE of bar" "$OUTP/crates/bar-2.0.0/LICENSE-APACHE" "Apache of bar"
+same "plugin-licenses: LICENSE-MIT of bar" "$OUTP/crates/bar-2.0.0/LICENSE-MIT" "MIT of bar"
+same "plugin-licenses: LICENSES/ of REUSE" "$OUTP/crates/baz-0.1.0/LICENSES/MIT.txt" "MIT of baz"
+if [ "$(cd "$OUTP/crates" 2>/dev/null && ls | tr '\n' ' ')" = "bar-2.0.0 baz-0.1.0 foo-1.0.0 " ]; then ok; else ng "plugin-licenses: crates/ has no crate of the repository"; fi
+if [ ! -e "$OUTP/crates/foo-1.0.0/src" ]; then ok; else ng "plugin-licenses: only the license files are copied"; fi
+if grep -q 'sdk\|plain' "$OUTP/MANIFEST.tsv" 2>/dev/null; then ng "plugin-licenses: MANIFEST.tsv has no crate of the repository"; else ok; fi
+if grep -q '^plain: the Rust standard library only$' "$OUTP/README" 2>/dev/null; then ok; else ng "plugin-licenses: README says plain has the standard library only"; fi
+if grep -q '^rich: bar 2.0.0, baz 0.1.0, foo 1.0.0$' "$OUTP/README" 2>/dev/null; then ok; else ng "plugin-licenses: README lists the crates of rich"; fi
+if grep -q 'sdk' "$OUTP/README" 2>/dev/null; then ng "plugin-licenses: README has no library as a plugin"; else ok; fi
+if cmp -s "$PL/doc/COPYRIGHT-library.html" "$OUTP/rust/COPYRIGHT-library.html" &&
+  diff -r "$PL/doc/licenses" "$OUTP/rust/licenses" >/dev/null 2>&1 && [ ! -e "$OUTP/rust/COPYRIGHT.html" ]; then ok; else ng "plugin-licenses: rust/ has the documents of the standard library"; fi
+same "plugin-licenses: rust/VERSION" "$OUTP/rust/VERSION" "release: 1.99.1
+commit-hash: $HASH"
+rm -rf "$PL/first"
+cp -R "$OUTP" "$PL/first" 2>/dev/null
+pl base
+if diff -r "$PL/first" "$OUTP" >/dev/null 2>&1; then ok; else ng "plugin-licenses: two runs write the same bytes"; fi
+# both plugins depend on foo: one copy, two lines
+pltree shared "" "1foo v1.0.0|MIT"
+wasm plain /cargo/registry/src/index.crates.io-0123456789abcdef/foo-1.0.0/src/lib.rs
+pl shared
+expect "plugin-licenses: a crate of two plugins" 0
+if [ "$(grep -c "${TAB}foo${TAB}" "$OUTP/MANIFEST.tsv" 2>/dev/null)" = 2 ] &&
+  [ "$(cd "$OUTP/crates" 2>/dev/null && ls | grep -c '^foo-')" = 1 ]; then ok; else ng "plugin-licenses: one copy of foo, a line for each plugin"; fi
+# plain does not depend on foo but its wasm has foo
+pl base
+expect "plugin-licenses: a crate in the wasm of a plugin that does not depend on it" 1
+wasm plain
+# a crate without a license file, not in UPSTREAM
+pltree nofile "1nolicense v1.0.0|MIT"
+pl nofile
+expect "plugin-licenses: a crate without a license file" 1
+if grep -q 'nolicense-1.0.0' "$WORK/err"; then ok; else ng "plugin-licenses: the crate without a license file is named"; fi
+# a crate of UPSTREAM: fetched and checked by its SHA-256
+pltree upstream "1lindera v6.2.0|MIT"
+rm -f "$PL/calls"
+pl upstream bin-bad
+expect "plugin-licenses: a fetched LICENSE of another SHA-256" 1
+pl upstream bin-ok
+expect "plugin-licenses: a LICENSE of UPSTREAM" 0
+if grep -q "https://raw.githubusercontent.com/lindera/lindera/$LINDERA_COMMIT/LICENSE" "$PL/calls" 2>/dev/null; then ok; else ng "plugin-licenses: the URL of the commit"; fi
+if [ -s "$PL/lindera-LICENSE" ] && cmp -s "$PL/lindera-LICENSE" "$OUTP/crates/lindera-6.2.0/LICENSE"; then ok; else ng "plugin-licenses: LICENSE of lindera"; fi
+if grep -q "$LINDERA_SHA" "$OUTP/crates/lindera-6.2.0/NOTE" 2>/dev/null &&
+  grep -q "https://raw.githubusercontent.com/lindera/lindera/$LINDERA_COMMIT/LICENSE" "$OUTP/crates/lindera-6.2.0/NOTE"; then ok; else ng "plugin-licenses: NOTE has the URL and the SHA-256"; fi
+# the LICENSE is already there: no fetch
+rm -f "$PL/calls"
+pl upstream bin
+expect "plugin-licenses: a LICENSE of UPSTREAM already there" 0
+if [ ! -e "$PL/calls" ]; then ok; else ng "plugin-licenses: no fetch of a LICENSE already there"; fi
+# another commit in .cargo_vcs_info.json
+cp "$REG/lindera-6.2.0/.cargo_vcs_info.json" "$PL/vcs"
+sed 's/0482efcc/1482efcc/' "$PL/vcs" >"$REG/lindera-6.2.0/.cargo_vcs_info.json"
+pl upstream bin-ok
+expect "plugin-licenses: .cargo_vcs_info.json of another commit" 1
+cp "$PL/vcs" "$REG/lindera-6.2.0/.cargo_vcs_info.json"
+# the wasm: another rustc, a crate of the std not in COPYRIGHT-library.html,
+# a crate that the plugin does not depend on
+pl base
+sed "s/$HASH/fedcba9876543210fedcba9876543210fedcba98/" "$PL/rustc-vV" >"$PL/rustc-vV.other"
+run env PATH="$PL/bin:$PATH" CARGO_HOME="$PL/cargo" PLUGIN_LICENSES_TREE="$PL/base" \
+  PLUGIN_LICENSES_RUST_DOC="$PL/doc" PLUGIN_LICENSES_RUSTC_VV="$PL/rustc-vV.other" \
+  PLUGIN_LICENSES_WASM="$PR/plugins/wasm" sh "$PR/scripts/plugin-licenses.sh"
+expect "plugin-licenses: a wasm of another rustc" 1
+wasm plain /rust/deps/dlmalloc-0.2.15/src/dlmalloc.rs
+pl base
+expect "plugin-licenses: a crate of the std not in COPYRIGHT-library.html" 1
+if grep -q 'dlmalloc-0.2.15' "$WORK/err"; then ok; else ng "plugin-licenses: the crate of the std is named"; fi
+wasm plain
+wasm rich /cargo/registry/src/index.crates.io-0123456789abcdef/foo-1.0.0/src/lib.rs /cargo/registry/src/index.crates.io-0123456789abcdef/qux-1.0.0/src/lib.rs
+pl base
+expect "plugin-licenses: a crate in the wasm that the plugin does not depend on" 1
+wasm rich /cargo/registry/src/index.crates.io-0123456789abcdef/foo-1.0.0/src/lib.rs
+# --check
+mkdir -p "$REG/new-1.0.0"
+printf 'MIT of new\n' >"$REG/new-1.0.0/LICENSE"
+pl base
+rm -f "$PL/calls"
+pl base bin --check
+expect "plugin-licenses --check: the output as generated" 0
+pltree added "1new v1.0.0|MIT"
+pl added bin --check
+expect "plugin-licenses --check: a crate added" 1
+if grep -q 'new-1.0.0' "$WORK/err"; then ok; else ng "plugin-licenses --check: the path of the crate added"; fi
+grep -v '^1baz' "$PL/base" >"$PL/removed"
+pl removed bin --check
+expect "plugin-licenses --check: a crate removed" 1
+if grep -q 'baz-0.1.0' "$WORK/err"; then ok; else ng "plugin-licenses --check: the path of the crate removed"; fi
+sed 's/^1baz v0.1.0/1baz v0.1.1/' "$PL/base" >"$PL/version"
+mkdir -p "$REG/baz-0.1.1/LICENSES"
+cp "$REG/baz-0.1.0/LICENSES/MIT.txt" "$REG/baz-0.1.1/LICENSES/MIT.txt"
+pl version bin --check
+expect "plugin-licenses --check: a version changed" 1
+if grep -q 'baz-0.1' "$WORK/err"; then ok; else ng "plugin-licenses --check: the path of the version changed"; fi
+printf 'MIT of fo0\n' >"$OUTP/crates/foo-1.0.0/LICENSE-MIT"
+pl base bin --check
+expect "plugin-licenses --check: a file of crates/ changed" 1
+if grep -q 'LICENSE-MIT' "$WORK/err"; then ok; else ng "plugin-licenses --check: the path of the file changed"; fi
+pl base
+printf 'release: 1.99.0\n' >"$OUTP/rust/VERSION"
+pl base bin --check
+expect "plugin-licenses --check: rust/VERSION changed" 1
+if grep -q 'VERSION' "$WORK/err"; then ok; else ng "plugin-licenses --check: the path of rust/VERSION"; fi
+pl upstream bin-ok
+rm -f "$PL/calls"
+pl upstream bin --check
+expect "plugin-licenses --check: a crate of UPSTREAM" 0
+if [ ! -e "$PL/calls" ]; then ok; else ng "plugin-licenses --check: no curl"; fi
+printf 'changed\n' >>"$OUTP/crates/lindera-6.2.0/LICENSE"
+pl upstream bin-ok --check
+expect "plugin-licenses --check: a LICENSE of UPSTREAM of another SHA-256" 1
+if [ ! -e "$PL/calls" ]; then ok; else ng "plugin-licenses --check: no curl for a LICENSE of another SHA-256"; fi
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures\n' "$COUNT" "$FAILURES"
