@@ -4,6 +4,7 @@
 module Main (main) where
 
 import CommandsSpec (commandsTests)
+import Control.Monad (forM_)
 import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
@@ -354,7 +355,24 @@ explainTests =
         (code, out, _) <- golemSplit ["explain", "lk/x", "G01017"]
         code @?= ExitSuccess
         out @?= "lk/x: プラグインの診断のコードです。説明は golem にはないので、プラグインの文書を参照してください\n\n" <> a,
-      exitsWith (ExitFailure 2) ["explain", "lookup/No-key"],
+      testCase "the codes of plugins of the form of docs/adr/0139 are one line each, and exit with 0 (docs/adr/0151)" $
+        forM_ ["x/a", "x/a-", "x/no-key-2"] $ \c -> do
+          (code, out, err) <- golemSplit ["explain", c]
+          assertEqual c ExitSuccess code
+          out @?= c <> ": プラグインの診断のコードです。説明は golem にはないので、プラグインの文書を参照してください\n"
+          err @?= "",
+      testCase "a code of a plugin not of the form of docs/adr/0139 is a usage error (docs/adr/0151)" $
+        forM_ ["x/404", "x/-", "x/0", "x/2x", "x/-a", "lookup/No-key"] $ \c -> do
+          (code, out, err) <- golemSplit ["explain", c]
+          assertEqual c (ExitFailure 2) code
+          out @?= ""
+          err @?= badPluginCode c <> "\n",
+      testCase "golem explain x/404 G01017: the section of G01017, then the line on x/404 (docs/adr/0151)" $ do
+        (_, a, _) <- golemSplit ["explain", "G01017"]
+        (code, out, err) <- golemSplit ["explain", "x/404", "G01017"]
+        code @?= ExitFailure 2
+        out @?= a
+        err @?= badPluginCode "x/404" <> "\n",
       exitsWith (ExitFailure 2) ["explain", "G99999"],
       exitsWith (ExitFailure 2) ["explain", "nope"],
       severalCodesTests,
@@ -373,6 +391,10 @@ explainTests =
         assertEqual err (ExitFailure 1) code
         assertBool err (isJust (J.decode (BL.fromStrict (TE.encodeUtf8 (T.pack err))) :: Maybe J.Value))
     ]
+
+-- | The line on a code of a plugin not of the form of docs/adr/0139 (docs/adr/0151).
+badPluginCode :: String -> String
+badPluginCode c = "プラグインの診断のコードの形が不正です: " <> c <> "。/ の後は英小文字で始まり、英小文字、数字、- だけからなります"
 
 -- | golem explain with several codes (golem-cli ADR 0009).
 severalCodesTests :: TestTree

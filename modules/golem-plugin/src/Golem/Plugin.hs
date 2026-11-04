@@ -46,6 +46,7 @@ module Golem.Plugin
     pluginChecksData,
     checkDataRequest,
     checkData,
+    pluginCodeForm,
   )
 where
 
@@ -814,13 +815,20 @@ documentSpans doc = concat [blockSpan b : concatMap inlineSpans (blockInlines b)
 documentDeferred :: Document -> [DeferredExpr]
 documentDeferred doc = concat [concatMap inlineDeferred (blockInlines b) | b <- blocksOf doc]
 
-{- | A code of a plugin's diagnostic: the form of a name of data, a
-lowercase letter, then lowercase letters, digits and - (docs/adr/0139).
+{- | The form of a code of a plugin's diagnostic, the part after the name
+of the plugin: a lowercase letter, then lowercase letters, digits and -
+(docs/adr/0139). golem explain judges the codes it is given by it
+(docs/adr/0151).
+-}
+pluginCodeForm :: Text -> Bool
+pluginCodeForm = dataName
+
+{- | A code of a plugin's diagnostic, of the form of 'pluginCodeForm'.
 The host puts the name of the plugin before it (docs/adr/0108).
 -}
 pluginCode :: Text -> Either PluginError ()
 pluginCode code
-  | dataName code = Right ()
+  | pluginCodeForm code = Right ()
   | otherwise = Left (BadOutput ("診断のコードの形が不正です: " <> code))
 
 -- | The severity of a plugin's diagnostic: 0 an error, 1 a warning.
