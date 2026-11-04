@@ -190,7 +190,7 @@ projectPaths ws = case wsEvaluated ws of
 -- | Open files outside the project: syntax and S0 only.
 refreshLoose :: Workspace -> Workspace
 refreshLoose ws =
-  ws {wsLoose = Map.fromList [(p, loose p t) | (p, t) <- Map.toList (wsOverlay ws), not (p `Set.member` projectPaths ws), not (p `Set.member` assetPaths ws)]}
+  ws {wsLoose = Map.fromList [(p, loose p t) | (p, t) <- Map.toList (wsOverlay ws), not (p `Set.member` projectPaths ws), not (p `Set.member` assetPaths ws), not (".gmx" `T.isSuffixOf` T.pack p)]}
 
 loose :: FilePath -> Text -> Source
 loose path text =
@@ -225,8 +225,8 @@ updateFile ws0 path text = do
            in if unchanged
                 then pure ws {wsEvaluated = Just (replaceFile e fid sf res)}
                 else fullEvaluate ws
-    -- a file read for @table or @listing, open in the editor (golem-eval ADR 0004)
-    Just _ | path `Set.member` assetPaths ws -> fullEvaluate ws
+    -- a file read for @table or @listing, open in the editor (golem-eval ADR 0004), or a .gmx (docs/adr/0150)
+    Just _ | path `Set.member` assetPaths ws || ".gmx" `T.isSuffixOf` T.pack path -> fullEvaluate ws
     Just _ -> pure (refreshLoose ws)
     Nothing -> fullEvaluate ws
 

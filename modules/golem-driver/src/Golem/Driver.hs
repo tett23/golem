@@ -61,7 +61,7 @@ import Golem.Doc.Bibliography.Csl (CslJsonError (..), decodeCslJson)
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Driver.Fonts (cff2FontDiagnostics, golemFontProvider)
-import Golem.Driver.Functions (LoadedFunctions (..), functionCommands, functionFiles, loadFunctions)
+import Golem.Driver.Functions (LoadedFunctions (..), functionCommands, functionFiles, loadFunctions, programCommandsOf)
 import Golem.Driver.Html
 import Golem.Driver.Pdf
 import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
@@ -71,6 +71,7 @@ import Golem.Eval.Builtin (unPluginCommandName)
 import Golem.Eval.Expr (Env (..), embedValue, evalExpr)
 import Golem.Eval.File
 import Golem.Eval.Value
+import Golem.Gmx (Command)
 import Golem.Html
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
@@ -159,7 +160,9 @@ data Evaluated = Evaluated
     -} evReevaluate :: FileId -> SourceFile -> EvalResult,
     {- | the names of the commands of the plugins, in order, for completion;
     empty when the plugins failed to load (docs/adr ADR 0031)
-    -} evPluginCommands :: ![Text]
+    -} evPluginCommands :: ![Text],
+    -- | the commands of the functions of .gmx (docs/adr/0150), for the LSP
+    evFunctionCommands :: ![Command]
   }
 
 -- | The styles each file defines, of the files that define any (docs/adr ADR 0014).
@@ -250,7 +253,7 @@ evaluateProjectWith overlay profile root = do
               let assets = laAssets loaded
               (bibDiags, citeKeys, _) <- loadBibliography root manifest0
               let projectDiags = pluginDiags <> laDiagnostics loaded <> bibDiags
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded <> pluginSources <> lfSources functions) (laTableFiles loaded <> pluginDataFiles manifest0 <> functionFiles manifest0 <> gmxFiles functions <> contextFiles) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook functionTable Map.empty f sf)) pluginCommands))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded <> pluginSources <> lfSources functions) (laTableFiles loaded <> pluginDataFiles manifest0 <> functionFiles manifest0 <> gmxFiles functions <> contextFiles) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook functionTable Map.empty f sf)) pluginCommands (programCommandsOf functions)))
             else do
               let manifest = manifest0
                   -- one G03007 for each name, in the order of the chapters (golem-project ADR 0006)
@@ -269,7 +272,7 @@ evaluateProjectWith overlay profile root = do
                   reassemble = assembleResults (phChannels hook) style manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook functionTable results f sf)
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded <> pluginSources <> lfSources functions) (laTableFiles loaded <> pluginDataFiles manifest0 <> functionFiles manifest0 <> gmxFiles functions <> contextFiles) projectDiags s1Diags reassemble again pluginCommands))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded <> pluginSources <> lfSources functions) (laTableFiles loaded <> pluginDataFiles manifest0 <> functionFiles manifest0 <> gmxFiles functions <> contextFiles) projectDiags s1Diags reassemble again pluginCommands (programCommandsOf functions)))
 
 {- | The files the plugins take as data (docs/adr/0105) and the .wasm of
 the plugins of the project (docs/adr/0109), which the LSP watches with
