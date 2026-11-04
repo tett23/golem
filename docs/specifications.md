@@ -164,6 +164,7 @@ golem-font は長さを持たず、位置と寸法をフォントの単位で返
 golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
 golem-svg は base、bytestring、containers、text だけに依存し、SVG の図版を PDF に描ける形に読む（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、仕様は [golem-svg の仕様書](golem-svg/specifications.md)）。
 golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画に直す。
+golem-gmx は関数を書く言語 `.gmx` の読み込み、型の検査、評価、整形を持ち、数の演算を golem-eval と共有する（[docs/adr/0148](adr/0148-gmx-function-language-core.md)、仕様は [golem-gmx の仕様書](golem-gmx/specifications.md)）。
 golem-html は golem-project に依存せず、golem-driver が `style.toml` の値を golem-html の設定の型に直す（[ADR 0090](adr/0090-html-settings-conversion-stays-in-driver.md)）。
 ほかの依存を通して届く依存の矢印も省いている。
 PDF 経路のモジュールだけが、レイアウト IR、シェイピング[^shaping]、フォントのサブセット化[^subset]を扱う。
@@ -181,6 +182,7 @@ flowchart TD
     regex["golem-regex<br/>正規表現スタイルの照合器"]
     parser["golem-parser<br/>PEG パーサー"]
     eval["golem-eval<br/>式の評価とプラグインの展開"]
+    gmx["golem-gmx<br/>関数の言語 .gmx"]
     doc["golem-doc<br/>意味論 IR と文書構造（S1）の集約"]
     syntax["golem-syntax<br/>diagnostic とソース位置（最下層）"]
     length["golem-length<br/>長さの型と単位の変換（最下層）"]
@@ -214,6 +216,7 @@ flowchart TD
     epub --> html
     eval --> project
     fmt --> parser
+    gmx --> eval
     html --> doc
     layout --> project
     layoutspec --> pdf

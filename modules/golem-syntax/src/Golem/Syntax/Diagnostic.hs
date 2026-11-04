@@ -41,7 +41,7 @@ data Severity = Error | Warning | Notice | Info
 
 {- | @G@ followed by five digits (docs/adr 0061). The upper two digits name
 the source (01 syntax, 02 eval, 03 project, 04 document, 05 lint, 06 plugin,
-07 layout, 08 output, 09 preflight); the lower three are the number in it.
+07 layout, 08 output, 09 preflight, 10 functions); the lower three are the number in it.
 Numbers 000 to 099 are the codes of four digits written with a 0 inserted;
 new codes take 100 to 999. A code is never reused for another meaning.
 -}
