@@ -71,6 +71,7 @@ import Golem.Doc.Validate (validateBlocks, validateDocument)
 import Golem.Eval.Builtin (builtinBlockCommands)
 import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Syntax
+import Golem.Syntax.Sha256 (sha256)
 import Numeric.Natural (Natural)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -489,19 +490,26 @@ callCommand plugin name args slots sp = do
   checkDiagnosticSpans allowedSpans diags
   Right (inls, diags)
 
-{- | A block command of the plugin (docs/adr/0122). Returns the blocks and
-the plugin's diagnostics. A block of the body passes as it came; any
+{- | A block command of the plugin (docs/adr/0122). Returns the blocks, the
+images of its figures by the source the host gives them (docs/adr/0123)
+and the plugin's diagnostics. A block of the body passes as it came; any
 other block is a paragraph, a list, a definition list, a table or a code
 block, without a label, and holds only blocks of those kinds; its spans
 are the call's or those of the body, and the IR holds as below the top of
 a document.
 -}
-callBlockCommand :: Plugin -> Text -> [PluginArg] -> [Block] -> SrcSpan -> Either PluginError ([Block], [Diagnostic])
+callBlockCommand :: Plugin -> Text -> [PluginArg] -> [Block] -> SrcSpan -> Either PluginError ([Block], Map Text ByteString, [Diagnostic])
 callBlockCommand plugin name args body sp = do
   req <- blockCommandRequest plugin name args body sp
   out <- invokeRaw plugin req
   (outT, diags) <- response out
-  bs <- decoded (termBlocksE outT)
+  -- [blocks, images] (docs/adr/0123)
+  (blocksT, imagesT) <- case outT of
+    TList [b, TList is] -> Right (b, is)
+    _ -> Left (BadOutput "ブロックコマンドの出力は [ブロックの列, 画像の列] です")
+  bs0 <- decoded (termBlocksE blocksT)
+  images <- mapM image imagesT
+  (bs, used) <- placeImages body images bs0
   let made = filter (`notElem` body) bs
       bodyDoc = Document (FileId 0) body
       madeDoc = Document (FileId 0) made
@@ -511,8 +519,64 @@ callBlockCommand plugin name args body sp = do
   checkOutput allowedSpans (documentDeferred bodyDoc) (documentSpans madeDoc) (documentDeferred madeDoc)
   checkDiagnosticSpans allowedSpans diags
   case validateBlocks (const (Just maxBound)) (documentDeferred bodyDoc) made of
-    [] -> Right (bs, diags)
+    [] -> Right (bs, used, diags)
     errs -> Left (BadOutput (T.intercalate "、" errs))
+  where
+    image = \case
+      TList [TString n, TString f, TBytes b] -> Right (n, f, b)
+      _ -> Left (BadOutput "画像の形が不正です")
+
+{- | The images of the figures a block command returns (docs/adr/0123):
+each named once with a name of the form of a name of data, of SVG, PNG or
+JPEG, used, and at most 'maxDataBytes' together. A figure of its own
+stands at the top of the output, without a web image, and points at an
+image as plugin:<name>; its source becomes the one the host names the
+image by, the SHA-256 of the bytes. The figures of the body pass as they
+came.
+-}
+placeImages :: [Block] -> [(Text, Text, ByteString)] -> [Block] -> Either PluginError ([Block], Map Text ByteString)
+placeImages body images bs = do
+  case [n | (n, _, _) <- images, not (dataName n)] of
+    (n : _) -> Left (BadOutput ("画像の名前が不正です: " <> n))
+    [] -> Right ()
+  case [n | (i, (n, _, _)) <- zip [0 :: Int ..] images, n `elem` [m | (m, _, _) <- take i images]] of
+    (n : _) -> Left (BadOutput ("画像の名前が重複しています: " <> n))
+    [] -> Right ()
+  named <- mapM source images
+  if sum [BS.length b | (_, _, b) <- images] > fromIntegral maxDataBytes
+    then Left (BadOutput ("画像の大きさの合計が上限（" <> T.pack (show maxDataBytes) <> " バイト）を超えています"))
+    else Right ()
+  mapM_ nested bs
+  bs' <- mapM (place named) bs
+  let usedNames = [n | b@(Block _ _ (FigureBlock f)) <- bs, b `notElem` body, Just n <- [T.stripPrefix "plugin:" (figSource f)]]
+  case [n | (n, _, _) <- images, n `notElem` usedNames] of
+    (n : _) -> Left (BadOutput ("どの図版も使っていない画像があります: " <> n))
+    [] -> Right ()
+  Right (bs', Map.fromList [(p, b) | (n, (p, b)) <- named, n `elem` usedNames])
+  where
+    source (n, f, b) = case lookup f [("svg", ".svg"), ("png", ".png"), ("jpeg", ".jpg")] of
+      Just ext -> Right (n, (pluginImagePrefix <> hexOf (sha256 b) <> ext, b))
+      Nothing -> Left (BadOutput ("画像の形式は svg、png、jpeg のどれかです: " <> f))
+    hexOf = T.pack . concatMap (\w -> [hexDigit (w `div` 16), hexDigit (w `mod` 16)]) . BS.unpack
+    hexDigit w = "0123456789abcdef" !! fromIntegral w
+    place named b@(Block bsp lbl (FigureBlock f))
+      | b `elem` body = Right b
+      | Just _ <- figWeb f = Left (BadOutput "プラグインの図版は web を持てません")
+      | Just n <- T.stripPrefix "plugin:" (figSource f) = case lookup n named of
+          Just (p, _) -> Right (Block bsp lbl (FigureBlock f {figSource = p}))
+          Nothing -> Left (BadOutput ("応答にない画像です: " <> figSource f))
+      | otherwise = Left (BadOutput ("プラグインの図版は plugin:<名前> で画像を指します: " <> figSource f))
+    place _ b = Right b
+    -- a figure of its own below the top of the output
+    nested (Block _ _ b) = mapM_ deep (inner b)
+    deep blk@(Block _ _ b) = case b of
+      FigureBlock _ | blk `notElem` body -> Left (BadOutput "図版は出力の最上位にだけ置けます")
+      _ -> mapM_ deep (inner b)
+    inner = \case
+      BulletList items -> concatMap itemBlocks items
+      OrderedList items -> concatMap itemBlocks items
+      DefList gs -> concat (concatMap dgDefs gs)
+      _ -> []
 
 {- | The kinds of blocks a block command makes, at any depth, and no label
 (docs/adr/0122).
@@ -528,7 +592,8 @@ blockKind (Block _ lbl body)
       OrderedList items -> mapM_ (mapM_ blockKind . itemBlocks) items
       DefList gs -> mapM_ (mapM_ (mapM_ blockKind) . dgDefs) gs
       Heading {} -> refuse "見出し"
-      FigureBlock _ -> refuse "図版"
+      -- its image is checked by placeImages, its caption here (docs/adr/0123)
+      FigureBlock f -> mapM_ blockKind (figCaption f)
       ChannelOutput _ -> refuse "一覧の出力"
       ForcedBreak _ -> refuse "改ページ"
       PageControl _ -> refuse "改ページの制御"

@@ -4,6 +4,8 @@ mirror it and are checked against it by round-trip tests.
 -}
 module Golem.Doc.IR
   ( abiVersion,
+    pluginImagePrefix,
+    pluginImageOutput,
     inInt64,
     Document (..),
     Block (..),
@@ -64,6 +66,18 @@ releases (docs/adr ADR 0052); scripts/ci/abi-version.sh checks it.
 -}
 abiVersion :: Int
 abiVersion = 8
+
+{- | The source of a figure whose image a plugin made (docs/adr/0123):
+this prefix, the SHA-256 of the bytes in hexadecimal and the extension.
+It has ://, so a path of the source written so is a URL (G02060), never a
+file of the project.
+-}
+pluginImagePrefix :: Text
+pluginImagePrefix = "golem-plugin-image://"
+
+-- | Where HTML and EPUB put the image of such a figure: images/golem-plugin/<SHA-256>.<extension>.
+pluginImageOutput :: Text -> Maybe Text
+pluginImageOutput src = ("images/golem-plugin/" <>) <$> T.stripPrefix pluginImagePrefix src
 
 data Document = Document
   { docFile :: !FileId,

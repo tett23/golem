@@ -121,8 +121,26 @@ pub struct Diagnostic {
 pub enum Output {
     Inlines(Vec<Inline>),
     Document(Document),
-    /// the output of a block command (docs/adr/0122)
-    Blocks(Vec<Block>),
+    /// the output of a block command (docs/adr/0122): its blocks and the
+    /// images of its figures (docs/adr/0123)
+    Blocks(Vec<Block>, Vec<Image>),
+}
+
+/// The format of an image a plugin makes for a figure (docs/adr/0123).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageFormat {
+    Svg,
+    Png,
+    Jpeg,
+}
+
+/// `plugin-image = [name, format, bytes]`: a figure of the output points at
+/// it with the source `plugin:<name>` ([`ir::figure`], docs/adr/0123).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Image {
+    pub name: String,
+    pub format: ImageFormat,
+    pub bytes: Vec<u8>,
 }
 
 /// `response = [output, diagnostics]`
@@ -143,7 +161,12 @@ impl Response {
 
     /// The answer of a block command (docs/adr/0122).
     pub fn blocks(bs: Vec<Block>) -> Self {
-        Response { output: Output::Blocks(bs), diagnostics: vec![] }
+        Response { output: Output::Blocks(bs, vec![]), diagnostics: vec![] }
+    }
+
+    /// Blocks with the images their figures point at (docs/adr/0123).
+    pub fn blocks_with_images(bs: Vec<Block>, images: Vec<Image>) -> Self {
+        Response { output: Output::Blocks(bs, images), diagnostics: vec![] }
     }
 
     pub fn with(mut self, d: Diagnostic) -> Self {
@@ -220,7 +243,28 @@ pub fn response_value(r: &Response) -> Value {
     let out = match &r.output {
         Output::Inlines(xs) => ir::inlines_value(xs),
         Output::Document(d) => ir::document_value(d),
-        Output::Blocks(bs) => ir::blocks_value(bs),
+        Output::Blocks(bs, images) => Value::Array(vec![
+            ir::blocks_value(bs),
+            Value::Array(
+                images
+                    .iter()
+                    .map(|i| {
+                        Value::Array(vec![
+                            Value::Text(i.name.clone()),
+                            Value::Text(
+                                match i.format {
+                                    ImageFormat::Svg => "svg",
+                                    ImageFormat::Png => "png",
+                                    ImageFormat::Jpeg => "jpeg",
+                                }
+                                .into(),
+                            ),
+                            Value::Bytes(i.bytes.clone()),
+                        ])
+                    })
+                    .collect(),
+            ),
+        ]),
     };
     Value::Array(vec![
         out,
@@ -471,8 +515,19 @@ mod tests {
     }
 
     #[test]
-    fn a_block_command_answers_with_blocks() {
+    fn a_block_command_answers_with_blocks_and_images() {
         let r = Response::blocks(vec![]);
-        assert_eq!(response_value(&r), Value::Array(vec![Value::Array(vec![]), Value::Array(vec![])]));
+        assert_eq!(response_value(&r), Value::Array(vec![Value::Array(vec![Value::Array(vec![]), Value::Array(vec![])]), Value::Array(vec![])]));
+        let img = Image { name: "chart".into(), format: ImageFormat::Svg, bytes: b"<svg/>".to_vec() };
+        match response_value(&Response::blocks_with_images(vec![], vec![img])) {
+            Value::Array(xs) => assert_eq!(
+                xs[0],
+                Value::Array(vec![
+                    Value::Array(vec![]),
+                    Value::Array(vec![Value::Array(vec![t("chart"), t("svg"), Value::Bytes(b"<svg/>".to_vec())])])
+                ])
+            ),
+            other => panic!("{other:?}"),
+        }
     }
 }

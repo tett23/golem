@@ -1,0 +1,13 @@
+[package]
+name = "bar-chart"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "A sample plugin: @bar-chart name draws a bar chart of a column of a TSV the project passes as data, as an SVG figure (docs/adr/0123)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+golem-plugin-sdk = { path = "../golem-plugin-sdk" }

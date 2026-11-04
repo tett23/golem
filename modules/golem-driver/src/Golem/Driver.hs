@@ -45,7 +45,7 @@ import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Either (fromRight, lefts, rights)
-import Data.List (nub, sort)
+import Data.List (isPrefixOf, nub, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe)
@@ -293,7 +293,7 @@ assembleResults channels style manifest project projectDiags results
           -- the lines of a page; without [page.grid], no limit (docs/adr ADR 0047)
           pageLines = maybe maxBound (fromIntegral . gridLines) (stPage style >>= pageGrid)
           (book, s1Diags) = assemble cfg evalDeferred (map fst chapterRuns)
-       in (Just book, s1Diags)
+       in (Just book {bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
 
 readMaybeText :: FilePath -> IO (Maybe Text)
 readMaybeText p = do
@@ -656,9 +656,10 @@ buildCore inMemory opts = do
         Just book
           | not (hasErrors (finish evDiags)) && not (optCheckOnly opts) -> do
               -- G08014 stops HTML and EPUB, which copy SVG figures as they are (docs/adr ADR 0039)
+              -- and G08102, a figure of the source where they put the images of plugins (docs/adr/0123)
               activeDiags <-
                 if any (`elem` writable) [TargetHtml, TargetEpub]
-                  then activeContentDiagnostics (optRoot opts) book
+                  then (pluginImagePathDiagnostics book <>) <$> activeContentDiagnostics (optRoot opts) book
                   else pure []
               let webWritable = [t | t <- writable, null activeDiags || t `notElem` [TargetHtml, TargetEpub]]
                   -- a list number its format cannot write stops every target (golem-driver ADR 0013)
@@ -675,6 +676,21 @@ buildCore inMemory opts = do
     finishWith silenced silencedInfo =
       finishDiagnostics (optProfile opts) (if optNoNotices opts then Nothing else Just silenced) silencedInfo (optVerbose opts)
 
+{- | G08102 (docs/adr/0123): a figure of the source whose image HTML and
+EPUB copy (its web image, or itself) would be written under
+images/golem-plugin/, where they put the images plugins make. One for
+each figure, at its block.
+-}
+pluginImagePathDiagnostics :: Book -> [Diagnostic]
+pluginImagePathDiagnostics book =
+  [ diagnostic "G08102" Error sp ("図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: " <> path)
+  | Document _ bs <- bookDocs book,
+    Block sp _ (FigureBlock f) <- allFigures bs,
+    let path = fromMaybe (figSource f) (figWeb f),
+    Right rel <- [normalizeRelative (T.unpack path)],
+    "images/golem-plugin/" `isPrefixOf` rel
+  ]
+
 {- | G08014 (docs/adr ADR 0039): the SVG files that HTML and EPUB copy (a
 figure or its @web@ image, also inside lists) with active content, or
 that cannot be read; each file is read once, and each @figure that uses
@@ -684,11 +700,14 @@ outside the root are left to the diagnostics about paths.
 activeContentDiagnostics :: FilePath -> Book -> IO [Diagnostic]
 activeContentDiagnostics root book = do
   let figures = [(sp, webSource f) | Document _ bs <- bookDocs book, Block sp _ (FigureBlock f) <- allFigures bs, ".svg" `T.isSuffixOf` T.toLower (webSource f)]
-  checked <- forM (nub (map snd figures)) $ \path -> do
-    resolved <- resolveInRoot root (T.unpack path)
-    case resolved of
-      Right _ -> (path,) . activeMessage path . activeContent <$> BS.readFile (root </> T.unpack path)
-      Left _ -> pure (path, Nothing)
+  checked <- forM (nub (map snd figures)) $ \path -> case Map.lookup path (bookImages book) of
+    -- an image a plugin made (docs/adr/0123)
+    Just bytes -> pure (path, activeMessage path (activeContent bytes))
+    Nothing -> do
+      resolved <- resolveInRoot root (T.unpack path)
+      case resolved of
+        Right _ -> (path,) . activeMessage path . activeContent <$> BS.readFile (root </> T.unpack path)
+        Left _ -> pure (path, Nothing)
   let messages = Map.fromList checked
   pure [diagnostic "G08014" Error sp msg | (sp, path) <- figures, Just (Just msg) <- [Map.lookup path messages]]
 
@@ -950,7 +969,12 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
       forM_ (sitePages site) $ \(p, t) -> writeText (dir </> p) t
       writeText (dir </> "style.css") (siteCss site)
       writeText (dir </> "index.xhtml") (indexPage hcfg ft book)
-      copied <- forM (siteAssets site) $ \(o, src) -> copy (root </> src) (dir </> o) >> pure (dir </> o)
+      -- the images plugins made are written from the book (docs/adr/0123)
+      copied <- forM (siteAssets site) $ \(o, src) -> do
+        case Map.lookup (T.pack src) (bookImages book) of
+          Just bytes -> createDirectoryIfMissing True (takeDirectory (dir </> o)) >> BS.writeFile (dir </> o) bytes
+          Nothing -> copy (root </> src) (dir </> o)
+        pure (dir </> o)
       pure (map ((dir </>) . fst) (sitePages site) <> [dir </> "style.css", dir </> "index.xhtml"] <> copied, [], Nothing)
     TargetEpub -> do
       let dir = root </> "build" </> "epub"

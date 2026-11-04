@@ -73,7 +73,8 @@ emptyBook =
       bookReferenced = Set.empty,
       bookChapterOf = [],
       bookChannels = [],
-      bookChannelDecls = Map.empty
+      bookChannelDecls = Map.empty,
+      bookImages = Map.empty
     }
 
 entry :: Int -> FileId -> Text -> Text -> TocEntry
