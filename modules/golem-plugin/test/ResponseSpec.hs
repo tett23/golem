@@ -129,7 +129,15 @@ diagnosticCodeAndSpanTests =
               p <- answering (withDiagnostics [diagnosticAt c [1, 10, 20]])
               shout p @?= Left (BadOutput ("診断のコードの形が不正です: " <> c))
           )
-          ["G02022", "Lookup/x", "a/b", "", "no_key"],
+          -- a code starts with a lowercase letter (docs/adr/0139)
+          ["G02022", "Lookup/x", "a/b", "", "no_key", "-", "-x", "0", "404", "2x"],
+      testCase "a code starting with a letter, with digits and - after it, comes back as it is (docs/adr/0139)" $
+        mapM_
+          ( \c -> do
+              p <- answering (withDiagnostics [diagnosticAt c [1, 10, 20]])
+              fmap (map diagCode . snd) (shout p) @?= Right [DiagnosticCode c]
+          )
+          ["no-key-2", "a", "a-"],
       testCase "a command's diagnostic in another file is bad output" $ do
         p <- answering (withDiagnostics [diagnosticAt "x" [2, 10, 20]])
         shout p @?= Left (BadOutput "診断が要求にないソース位置を指しています"),

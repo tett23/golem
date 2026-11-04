@@ -1,6 +1,6 @@
 # ADR 0108: プラグインが返す diagnostic のコードと位置を検査する
 
-ステータス: 採択
+ステータス: 採択→コードの先頭の文字は [ADR 0139](0139-plugin-diagnostic-code-starts-with-letter.md)
 
 ## 文脈
 

@@ -810,12 +810,13 @@ documentSpans doc = concat [blockSpan b : concatMap inlineSpans (blockInlines b)
 documentDeferred :: Document -> [DeferredExpr]
 documentDeferred doc = concat [concatMap inlineDeferred (blockInlines b) | b <- blocksOf doc]
 
-{- | A code of a plugin's diagnostic: lowercase letters, digits and -, not
-empty. The host puts the name of the plugin before it (docs/adr/0108).
+{- | A code of a plugin's diagnostic: the form of a name of data, a
+lowercase letter, then lowercase letters, digits and - (docs/adr/0139).
+The host puts the name of the plugin before it (docs/adr/0108).
 -}
 pluginCode :: Text -> Either PluginError ()
 pluginCode code
-  | not (T.null code) && T.all (\c -> isAsciiLower c || isDigit c || c == '-') code = Right ()
+  | dataName code = Right ()
   | otherwise = Left (BadOutput ("診断のコードの形が不正です: " <> code))
 
 -- | The severity of a plugin's diagnostic: 0 an error, 1 a warning.
