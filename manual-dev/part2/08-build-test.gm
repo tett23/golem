@@ -54,6 +54,14 @@ $ scripts/fetch-wasmtime.sh
 ライブラリの絶対パスを [code: cabal.project.local] に書き込むので、以後の [code: cabal] はそれを使ってリンクする。
 [code: third_party/] と [code: cabal.project.local] は [code: .gitignore] に入っている。
 
+固定した wasmtime の版は、上流のアドバイザリと毎日照合する。
+[code: .github/workflows/advisories.yml] が一日に一度、[code: scripts/wasmtime-advisories.sh] で bytecodealliance/wasmtime のリポジトリのアドバイザリを取得し、固定した版がどれかの範囲に入れば失敗する。[index reading="wasmtime-advisories.sh": wasmtime-advisories.sh]
+パッケージの版は [code: licenses/wasmtime-v49.0.5/MANIFEST.tsv] から引くので、[code: wasmtime-wasi] や [code: cranelift-codegen] のアドバイザリも照合できる。
+読めない範囲の書き方や、一覧にないパッケージが現れたときも、黙って通さずに失敗する。
+失敗の通知が届いたら、出力の行（GHSA の ID、重大度、パッケージ、範囲、概要）を読み、ADR を書いて版を上げる。
+プルリクエストの CI では照合しない。
+[code: scripts/fetch-wasmtime.sh] を変えたプルリクエストでは、手元で [code: sh scripts/wasmtime-advisories.sh] を実行し、出力をプルリクエストの説明に貼る。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0157-check-wasmtime-pin-against-advisories.md]（docs/adr の ADR 0157「固定した wasmtime の版を、上流のアドバイザリと毎日照合する」）][note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0166-read-wasmtime-advisory-ranges-as-written.md]（docs/adr の ADR 0166「wasmtime のアドバイザリの範囲、修正版、パッケージを、上流の書き方のまま読む」）]
+
 ```sh
 $ cabal build all
 $ cabal test all
@@ -172,7 +180,7 @@ Golem の方針として、小さな道具を組み合わせ、Python のスク�
 | [code: scripts/ci/test.sh] | [code: scripts/ci/] のスクリプト（変更のパス、ビルドの要否、判定のジョブ） |
 | [code: scripts/manual/test.sh] | [code: scripts/manual/] のスクリプト（組み方、奥付の版の情報、更新の検査、フォントの取得） |
 | [code: scripts/release/test.sh] | [code: scripts/release/] のスクリプト（バージョンの検査、リリースノート、ライセンス、アーカイブの作成と検査、GMP の版と取得、macOS のビルドの順序） |
-| [code: scripts/test.sh] | 手でだけ動くスクリプト（[code: scripts/gen-vertical-orientation.sh]、[code: scripts/fixtures/] の二本） |
+| [code: scripts/test.sh] | 手でだけ動くスクリプト（[code: scripts/gen-vertical-orientation.sh]、[code: scripts/fixtures/] の二本、[code: scripts/plugin-licenses.sh]）と、アドバイザリの照合（[code: scripts/wasmtime-advisories.sh]） |
 | [code: scripts/visual/test.sh] | [code: scripts/visual/] のスクリプト（見た目の回帰テストの、ラスタライザ shem の取得、入力の組み方、参照との比較） |
 
 どれも一時ディレクトリに Git のリポジトリや偽の [code: golem] を作り、スクリプトの終了コードと出力を確かめる。
