@@ -616,6 +616,11 @@ jobs:
         run: cargo test --locked
       - name: The committed plugins are what the sources build
         run: sh build.sh --check
+      # licenses/plugins/ is what the sources and the toolchain give; the
+      # build above fetched the sources of the crates, so it uses no network
+      # (docs/adr/0133)
+      - name: The license documents of the plugins are up to date
+        run: sh ../scripts/plugin-licenses.sh --check
 
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
