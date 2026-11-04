@@ -75,7 +75,9 @@ data Signature = Signature
     sigPub :: !Bool,
     sigName :: !Name,
     sigNameLoc :: !Loc,
-    sigType :: !TypeE
+    sigType :: !TypeE,
+    -- | the requirements after @=>@ (docs/adr/0149)
+    sigReqs :: ![(Name, Loc)]
   }
   deriving stock (Eq, Show)
 

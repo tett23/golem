@@ -5,6 +5,7 @@ module Support
     messages,
     call,
     callAt,
+    callWith,
     callSpan,
     nat,
     int,
@@ -55,6 +56,12 @@ call src = callAt [("main.gmx", src)]
 callAt :: [(FilePath, Text)] -> Text -> [Result] -> IO (Either Diagnostic Result)
 callAt files f args = case loadMany files of
   ([], Just p) -> pure (callFunction p callSpan "main.gmx" f args)
+  (ds, _) -> assertFailure ("the source did not load: " <> show ds) >> fail "unreachable"
+
+-- | Calls a function of main.gmx with handlers of the requirements (docs/adr/0149).
+callWith :: Handlers -> Text -> Text -> [Result] -> IO (Either Diagnostic Result)
+callWith hs src f args = case load src of
+  ([], Just p) -> pure (callFunctionWith hs p callSpan "main.gmx" f args)
   (ds, _) -> assertFailure ("the source did not load: " <> show ds) >> fail "unreachable"
 
 nat :: Integer -> Result

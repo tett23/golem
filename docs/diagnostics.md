@@ -4779,6 +4779,110 @@ diagnostic の事実（JSON の `facts`）に、`gutter`、`size`、`min-gutter`
 そのキーを消す。
 `silence-notices` に `"G03100"` を加えると、このお知らせを出さなくなる。
 
+## G03101
+
+[functions] の requires に知らない要求があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[functions]` の `requires` に、要求の一覧にない名前がある。
+今の一覧は `file` だけである。
+知らない名前は、すべて一つの diagnostic に並べる。
+位置は `manifest.toml` の先頭である。
+`.gmx` のシグネチャに書いた知らない要求は [G10500](#g10500) である。
+
+- メッセージ: `[functions] の requires に知らない要求があります: <名前>（使える要求: file）`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.Functions`）
+- ADR: [docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- 要求の名前の綴りを誤った。
+
+### 直し方
+
+`requires` には一覧の名前だけを書く。
+
+## G03102
+
+[functions] のファイルがありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[functions]` の `files` か `[functions.data]` に書いたファイルがない。
+原稿が関数を呼ばない本でも検査する。
+位置は `manifest.toml` の先頭で、メッセージで欄を示す。
+`files` から `import` で読む `.gmx` がないときは、`import` の位置の [G03002](#g03002) である。
+
+- メッセージ: `[functions] の files のファイルがありません: <パス>`、`[functions.data] のファイルがありません: <名前>: <パス>`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.Functions`）
+- ADR: [docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- パスの綴りを誤った。
+- ファイルを動かした。
+
+### 直し方
+
+パスを直すか、ファイルを置く。
+
+## G03103
+
+[functions.data] の大きさの合計が上限を超えています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[functions.data]` のファイルの大きさの合計が、プラグインのデータと同じ上限（64 MiB）を超えた。
+位置は `manifest.toml` の先頭である。
+
+- メッセージ: `[functions.data] の大きさの合計が上限（<上限> バイト）を超えています（<合計> バイト）`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.Functions`）
+- ADR: [docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- 関数に、本の組版に要らない大きなファイルを渡した。
+
+### 直し方
+
+関数が読む部分だけのファイルにする。
+
+## G03104
+
+[functions.data] がありますが、requires に file がありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` に `[functions.data]` があるのに、`[functions]` の `requires` に `file` がない。
+`requires` に `file` がなければ関数はデータを読めないので、`requires` の書き忘れであることが多い。
+位置は `manifest.toml` の先頭である。
+
+- メッセージ: `[functions.data] がありますが、[functions] の requires に file がありません`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.Functions`）
+- ADR: [docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- `requires = ["file"]` を書き忘れた。
+
+### 直し方
+
+関数にデータを読ませるなら `requires = ["file"]` を書く。
+読ませないなら `[functions.data]` を消す。
+
 ## G04001
 
 ラベルが重複しています
@@ -8154,3 +8258,158 @@ where の位置が誤っています
 ### 直し方
 
 途中の結果を引数で渡す末尾再帰に書き直す（`sumGo acc n = sumGo (acc + n) (n - 1)`）。
+
+## G10500
+
+シグネチャに知らない要求があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`.gmx` のシグネチャの `=>` の後ろに、要求の一覧にない名前を書いた。
+今の一覧は `file` だけである。
+一つのシグネチャの知らない名前は、すべて一つの diagnostic に並べ、位置は最初の知らない名前である。
+
+- メッセージ: `知らない要求です: <名前>（使える要求: file）`
+- 段階とモジュール: 関数（golem-gmx の `Golem.Gmx.Check`）
+- ADR: [docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- 要求の名前の綴りを誤った。
+
+### 直し方
+
+一覧の名前を書く。
+
+## G10501
+
+シグネチャにない要求を使っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`.gmx` の関数が、自分のシグネチャにない要求を使った。
+`File.read` を呼ぶか、`file` を要求する関数を呼ぶ関数は、シグネチャに `=> file` を持たなければならない。
+`where` の中の局所の関数は、外の関数の要求を受け継ぐ。
+要求を持つ関数（要求を使う局所の関数を含む）を、値として引数に渡したときも、このコードとする。
+位置は、その呼び出しか参照である。
+
+- メッセージ: `シグネチャにない要求を使っています: <要求>（<関数の名前> のシグネチャに => <要求> を書きます）`、`要求を持つ関数は値として渡せません: <関数の名前>（=> <要求>）`
+- 段階とモジュール: 関数（golem-gmx の `Golem.Gmx.Check`）
+- ADR: [docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- `=> file` を書き忘れた。
+- `File.read` を使う関数を `List.map` に渡した。
+
+### 直し方
+
+シグネチャに要求を書く。
+要求を持つ関数を値として渡す代わりに、読んだ値を引数で渡す。
+
+## G10502
+
+シグネチャに同じ要求を二度書いています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`.gmx` のシグネチャの `=>` の後ろに、同じ名前を二度書いた。
+位置は二度めの名前である。
+
+- メッセージ: `要求 <名前> を二度書いています: <関数の名前>`
+- 段階とモジュール: 関数（golem-gmx の `Golem.Gmx.Check`）
+- ADR: [docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- 要求を足すときに、すでにある名前を足した。
+
+### 直し方
+
+一つを消す。
+
+## G10503
+
+[functions.data] にない名前です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`File.read` に、`manifest.toml` の `[functions.data]` にない名前を渡した。
+名前は評価の中で決まりうるので、評価のときに見つかる。
+位置は `.gmx` の `File.read` の呼び出しである。
+
+- メッセージ: `[functions.data] にない名前です: <名前>`
+- 段階とモジュール: 関数（golem-gmx の `Golem.Gmx.Eval`）
+- ADR: [docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- 名前の綴りを誤った。
+- `[functions.data]` に名前を足し忘れた。
+
+### 直し方
+
+`[functions.data]` に名前とパスを書く。
+
+## G10504
+
+File.read で読んだファイルが UTF-8 として読めません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`File.read` で読んだ `[functions.data]` のファイルに、UTF-8 として読めないバイト列がある。
+位置は `.gmx` の `File.read` の呼び出しである。
+先頭の BOM は読み飛ばし、CRLF は LF にして返すので、どちらもこのコードにならない。
+
+- メッセージ: `File.read で読んだファイルが UTF-8 として読めません: <名前>`
+- 段階とモジュール: 関数（golem-gmx の `Golem.Gmx`）
+- ADR: [docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- Shift_JIS など、UTF-8 でない文字コードでファイルを保存した。
+
+### 直し方
+
+UTF-8 で保存し直す。
+
+## G10505
+
+シグネチャの要求が manifest.toml の requires にありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[functions]` の `files` から `import` でたどれる `.gmx` のシグネチャに、`manifest.toml` の `[functions]` の `requires` にない要求がある。
+原稿が関数を呼ばない本でも検査する。
+位置は、その要求を書いたシグネチャの名前である。
+
+- メッセージ: `manifest.toml の [functions] の requires にない要求です: <要求>（requires に "<要求>" を足します）`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.Functions`）
+- ADR: [docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- 関数がファイルを読むようにしたのに、`manifest.toml` を直さなかった。
+
+### 直し方
+
+`requires` に名前を足す。
+`requires` は、本の設定の担当が、関数が何を読むかを `manifest.toml` だけで確かめるためのものである。
