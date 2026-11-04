@@ -138,19 +138,29 @@ impl Visitor for Sou<'_> {
     fn ruby(&mut self, _base: &str) {}
 }
 
+/// The message of data without `words` and a dictionary (`no-words`).
+const NO_WORDS: &str = "manifest.toml の data で words を渡してください";
+
+/// `golem_check_data`: data with neither `words` nor a file of a
+/// dictionary is one error of all the data, which the host puts at the top
+/// of manifest.toml, once however many files the filter has
+/// (docs/adr/0136).
+pub fn check_data(data: &Data) -> Vec<DataDiagnostic> {
+    if data.get("words").is_some() || lindera_dict::NAMES.iter().any(|(n, _)| data.get(n).is_some()) {
+        return vec![];
+    }
+    vec![DataDiagnostic { code: "no-words".into(), severity: Severity::Error, name: None, line: None, message: NO_WORDS.into() }]
+}
+
 /// The filter with an analyzer or none.
 pub fn filter_with(mut doc: Document, data: &Data, analyzer: Option<&dyn Analyzer>) -> Response {
     let dict = match read_words(data, "words", doc.file) {
         Ok(Some(d)) => d,
         Ok(None) if analyzer.is_some() => Dict::default(),
+        // check_data reports this at load; this is for a host that does not call it
         Ok(None) => {
             let top = Span { file: doc.file, start: 0, end: 0 };
-            return Response::document(doc).with(Diagnostic {
-                code: "no-words".into(),
-                severity: Severity::Error,
-                span: top,
-                message: "manifest.toml の data で words を渡してください".into(),
-            });
+            return Response::document(doc).with(Diagnostic { code: "no-words".into(), severity: Severity::Error, span: top, message: NO_WORDS.into() });
         }
         Err(ds) => return Response { output: Output::Document(doc), diagnostics: ds },
     };
@@ -279,7 +289,7 @@ pub fn invoke(req: Request) -> Response {
     }
 }
 
-export_plugin!(describe, invoke);
+export_plugin!(describe, invoke, check_data);
 
 #[cfg(test)]
 mod tests;

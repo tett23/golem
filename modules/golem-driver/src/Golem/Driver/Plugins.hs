@@ -107,11 +107,11 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context m
             Right files -> do
               let p' = withPluginData (Map.map snd files) (withPluginContext context p)
               checked <- checkData p'
-              pure $ case checked >>= mapM (located name files) of
+              pure $ case checked >>= \dds -> (dds,) <$> mapM (located (mkSpan mfid 0 0) name files) dds of
                 Left pe -> Left [Ready (err (pluginErrorCode pe) (qualified name "golem_check_data" pe))]
                 -- an error of the data stops the plugin, as an error of loading (docs/adr/0120)
-                Right ps
-                  | any ((== Error) . ddSeverity) [dd | AtData _ _ _ _ dd <- ps] -> Left ps
+                Right (dds, ps)
+                  | any ((== Error) . ddSeverity) dds -> Left ps
                   | otherwise -> Right ((name, decl, p'), ps)
     hook plugins =
       let provided = [(c, name) | (name, _, p) <- plugins, c <- pluginCommands p]
@@ -196,18 +196,22 @@ ofPlugin :: Text -> Diagnostic -> Diagnostic
 ofPlugin pname d = let DiagnosticCode c = diagCode d in d {diagCode = DiagnosticCode (pname <> "/" <> c)}
 
 {- | A diagnostic of golem_check_data at the start of its line of the file
-of its data, or at the start of the file for no line (docs/adr/0120). A
-name the plugin was not given, or a line the file does not have, is bad
-output.
+of its data, or at the start of the file for no line (docs/adr/0120); one
+with no name, of all the data, at the top of manifest.toml, as G06101 to
+G06103 (docs/adr/0136). A name the plugin was not given, or a line the
+file does not have, is bad output; golem-plugin rejects no name with a
+line.
 -}
-located :: Text -> Map.Map Text (FilePath, ByteString) -> DataDiagnostic -> Either PluginError Pending
-located pname files dd = case Map.lookup (ddName dd) files of
-  Nothing -> Left (BadOutput ("渡していないデータの名前です: " <> ddName dd))
-  Just (rel, bytes) -> case ddLine dd of
-    Nothing -> Right (AtData pname rel bytes 0 dd)
-    Just n -> case drop (fromIntegral n - 1) (lineStarts bytes) of
-      (off : _) -> Right (AtData pname rel bytes off dd)
-      [] -> Left (BadOutput ("データの行がありません: " <> ddName dd <> ": " <> T.pack (show n)))
+located :: SrcSpan -> Text -> Map.Map Text (FilePath, ByteString) -> DataDiagnostic -> Either PluginError Pending
+located manifestTop pname files dd = case ddName dd of
+  Nothing -> Right (Ready (ofPlugin pname (diagnostic (ddCode dd) (ddSeverity dd) manifestTop (ddMessage dd))))
+  Just name -> case Map.lookup name files of
+    Nothing -> Left (BadOutput ("渡していないデータの名前です: " <> name))
+    Just (rel, bytes) -> case ddLine dd of
+      Nothing -> Right (AtData pname rel bytes 0 dd)
+      Just n -> case drop (fromIntegral n - 1) (lineStarts bytes) of
+        (off : _) -> Right (AtData pname rel bytes off dd)
+        [] -> Left (BadOutput ("データの行がありません: " <> name <> ": " <> T.pack (show n)))
 
 {- | The byte offsets of the lines of a file: 0, and the one after each
 LF but a last one. An empty file has the line 1.

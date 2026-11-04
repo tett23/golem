@@ -668,7 +668,14 @@ calledAnswer = cborBytes (CArr [CArr [], CArr [CArr [CText "called", CUInt 1, CA
 
 -- | A data-diagnostic of golem_check_data.
 dataDiag :: T.Text -> Int -> T.Text -> Maybe Int -> T.Text -> Cbor
-dataDiag code sev name line msg = CArr [CText code, CUInt sev, CText name, maybe CNull CUInt line, CText msg]
+dataDiag code sev name = noNameDiag' code sev (CText name)
+
+-- | A data-diagnostic of golem_check_data with a null name (docs/adr/0136).
+noNameDiag :: T.Text -> Int -> Maybe Int -> T.Text -> Cbor
+noNameDiag code sev = noNameDiag' code sev CNull
+
+noNameDiag' :: T.Text -> Int -> Cbor -> Maybe Int -> T.Text -> Cbor
+noNameDiag' code sev name line msg = CArr [CText code, CUInt sev, name, maybe CNull CUInt line, CText msg]
 
 -- | Where each diagnostic of a build points: the file, the line and the column, as rendered.
 pointedAt :: BuildResult -> [T.Text]
@@ -699,6 +706,10 @@ checkDataTests =
       withChecker calledAnswer [] "[shout]\n" [("t.tsv", "a\n")] $ \tmp -> do
         r <- build (defaultOptions tmp)
         map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06009"],
+    testCase "an error with a null name is at the top of manifest.toml, once, and no command runs (docs/adr/0136)" $
+      withChecker calledAnswer [noNameDiag "no-data" 0 Nothing "データを渡してください"] "[shout]\n\n[shout]\n" [("t.tsv", "a\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "lk/no-data", "データを渡してください")]),
     testCase "G06009: a name the plugin was not given, a line out of the file, a code of the wrong form" $
       mapM_
         ( \(d, why) -> withChecker emptyAnswer [d] "本文\n" [("t.tsv", "a\nb\n")] $ \tmp -> do
@@ -707,7 +718,8 @@ checkDataTests =
         )
         [ (dataDiag "x" 0 "other" Nothing "m", "渡していないデータの名前です: other"),
           (dataDiag "x" 0 "table" (Just 3) "m", "データの行がありません: table: 3"),
-          (dataDiag "Lookup/x" 0 "table" Nothing "m", "診断のコードの形が不正です: Lookup/x")
+          (dataDiag "Lookup/x" 0 "table" Nothing "m", "診断のコードの形が不正です: Lookup/x"),
+          (noNameDiag "x" 0 (Just 1) "m", "データの名前のない診断に行があります")
         ]
   ]
 
@@ -818,6 +830,17 @@ glossaryTests =
       withGlossaryOf (TE.encodeUtf8 "組版\t\t版を組むこと\n") horizontalStyle "本文。\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
         pointedAt r @?= ["terms.tsv:1:1: error[glossary/tsv-no-reading]: terms の 1 行めの語は漢字を含むので、読みが要ります: 組版"],
+    testCase "glossary/no-data: no terms, once at the top of manifest.toml, with or without [term] (docs/adr/0136)" $
+      mapM_
+        ( \source -> withSystemTempDirectory "golem-glossary" $ \tmp -> do
+            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.text]\n" <> pluginDeclOf "glossary" "")
+            BS.writeFile (tmp </> "style.toml") horizontalStyle
+            TIO.writeFile (tmp </> "a.gm") source
+            lockIn [("glossary", "glossary.wasm")] tmp $ do
+              r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+              atManifestTop r >>= (@?= [(DiagnosticCode "glossary/no-data", "manifest.toml で data の terms を渡してください")])
+        )
+        ["本文。\n", "[term: 組版]と[term: 組版]と[term: 組版]。\n"],
     testCase "HTML: a word and an index mark in a heading have their ids once, not again in @toc of the same file" $
       withGlossary horizontalStyle "@toc\n\n# [term: 組版]と[index reading=はんめん: 版面]\n\n@channel glossary\n\n@index\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
@@ -910,10 +933,10 @@ firstRubyTests =
         (paras, ds) <- rubyText tmp
         paras @?= [("a.gm", ["東京。"]), ("b.gm", ["東京。"])]
         ds @?= [(DiagnosticCode "first-ruby/tsv", Just f, "words の 1 行め: 語と読みをタブで区切った二つの欄がありません") | f <- ["a.gm", "b.gm"]],
-    testCase "first-ruby/no-words: no words in the data" $
+    testCase "first-ruby/no-words: no words in the data, once at the top of manifest.toml (docs/adr/0136)" $
       withRubyFilter "first-ruby" "" [("a.gm", TE.encodeUtf8 "東京。\n"), ("b.gm", "")] $ \tmp -> do
-        (_, ds) <- rubyText tmp
-        ds @?= [(DiagnosticCode "first-ruby/no-words", Just f, "manifest.toml の data で words を渡してください") | f <- ["a.gm", "b.gm"]]
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "first-ruby/no-words", "manifest.toml の data で words を渡してください")])
   ]
 
 -- | The data a project passes to a plugin (docs/adr/0105).

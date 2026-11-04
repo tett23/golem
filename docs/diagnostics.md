@@ -5354,7 +5354,7 @@ overrides に書けない名前です
 プラグインのコマンド、ブロックコマンド（[docs/adr/0122](adr/0122-block-commands-in-plugins.md)）かフィルタの実行、またはデータの検査（`golem_check_data`、[docs/adr/0120](adr/0120-plugin-data-check-at-load.md)）が失敗した。
 命令数の上限、メモリの上限を含むトラップ、不正な出力を含む。
 位置は、コマンドならコマンドを呼んだ箇所、フィルタならフィルタを適用したファイルの先頭、データの検査なら `manifest.toml` の先頭である。
-データの検査の不正な出力の詳細には、`渡していないデータの名前です: <データの名前>` と `データの行がありません: <データの名前>: <行>` がある。
+データの検査の不正な出力の詳細には、`渡していないデータの名前です: <データの名前>`、`データの行がありません: <データの名前>: <行>`、`name` が null で `line` を持つ応答の `データの名前のない診断に行があります`（[docs/adr/0136](adr/0136-missing-plugin-data-at-load.md)）がある。
 理由の文言は [G06005](#g06005) と同じである。
 遅延した式に有限でない浮動小数点数を書いた出力は、このコードではなく [G06100](#g06100) になる。
 チャネルの項目（[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）の不正な出力の詳細は、`宣言していないチャネルです: <チャネル>`、`読みの順のチャネルの項目には読みが要ります: <チャネル>`、`チャネルの項目の本文に置けない要素があります` である。
@@ -5364,7 +5364,7 @@ overrides に書けない名前です
 
 - メッセージ: `<プラグイン>.<コマンド>: <理由>`、`<プラグイン>.<ブロックコマンド>: <理由>`、`<プラグイン>.<フィルタ>: <理由>`、`<プラグイン>.golem_check_data: <理由>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)、[docs/adr/0120](adr/0120-plugin-data-check-at-load.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)、[docs/adr/0123](adr/0123-figures-from-plugins.md)
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)、[docs/adr/0120](adr/0120-plugin-data-check-at-load.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)、[docs/adr/0123](adr/0123-figures-from-plugins.md)、[docs/adr/0136](adr/0136-missing-plugin-data-at-load.md)
 
 ### 主な原因
 

@@ -65,20 +65,29 @@ impl Visitor for First<'_> {
     }
 }
 
+/// The message of data without `words` (`no-words`).
+const NO_WORDS: &str = "manifest.toml の data で words を渡してください";
+
+/// `golem_check_data`: data without `words` is one error of all the data,
+/// which the host puts at the top of manifest.toml, once however many
+/// files the filter has (docs/adr/0136).
+pub fn check_data(data: &Data) -> Vec<DataDiagnostic> {
+    if data.get("words").is_some() {
+        return vec![];
+    }
+    vec![DataDiagnostic { code: "no-words".into(), severity: Severity::Error, name: None, line: None, message: NO_WORDS.into() }]
+}
+
 pub fn filter(mut doc: Document, data: &Data) -> Response {
     match read_words(data, "words", doc.file) {
         Ok(Some(dict)) => {
             walk(&mut doc, false, &mut First { dict: &dict, seen: BTreeSet::new() });
             Response::document(doc)
         }
+        // check_data reports this at load; this is for a host that does not call it
         Ok(None) => {
             let top = Span { file: doc.file, start: 0, end: 0 };
-            Response::document(doc).with(Diagnostic {
-                code: "no-words".into(),
-                severity: Severity::Error,
-                span: top,
-                message: "manifest.toml の data で words を渡してください".into(),
-            })
+            Response::document(doc).with(Diagnostic { code: "no-words".into(), severity: Severity::Error, span: top, message: NO_WORDS.into() })
         }
         Err(ds) => Response { output: Output::Document(doc), diagnostics: ds },
     }
@@ -103,7 +112,7 @@ pub fn invoke(req: Request) -> Response {
     }
 }
 
-export_plugin!(describe, invoke);
+export_plugin!(describe, invoke, check_data);
 
 #[cfg(test)]
 mod tests;
