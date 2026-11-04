@@ -7,10 +7,10 @@
 (module
   (memory (export "memory") 4)
   (global $heap (mut i32) (i32.const 65536))
-  ;; [["term", "person"], [], [["glossary", 1, false], ["people", 0, true]], []]
-  (data (i32.const 16) "\84\82\64term\66person\80\82\83\68glossary\01\f4\83\66people\00\f5\80")
-  (data (i32.const 64) "\68glossary")
-  (data (i32.const 80) "\66people")
+  ;; {"channels": [["glossary", 1, false], ["people", 0, true]], "commands": ["term", "person"]}
+  (data (i32.const 16) "\a2\68channels\82\83\68glossary\01\f4\83\66people\00\f5\68commands\82\64term\66person")
+  (data (i32.const 128) "\68glossary")
+  (data (i32.const 144) "\66people")
   (func (export "golem_abi_version") (result i32) (i32.const 8))
   (func (export "golem_alloc") (param $n i32) (result i32) (local $p i32)
     (local.set $p (global.get $heap))
@@ -18,7 +18,7 @@
     (local.get $p))
   (func (export "golem_dealloc") (param i32 i32))
   (func (export "golem_describe") (result i64)
-    (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 39)))
+    (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 55)))
   ;; the length of the head of the CBOR item at p
   (func $head (param $p i32) (result i32) (local $ai i32)
     (local.set $ai (i32.and (i32.load8_u (local.get $p)) (i32.const 31)))
@@ -95,8 +95,8 @@
     (local.set $o (call $copy (i32.add (local.get $o) (i32.const 2))
       (local.get $span) (call $skip (local.get $span))))
     (if (i32.eq (i32.load8_u (local.get $name)) (i32.const 0x64))
-      (then (local.set $o (call $copy (local.get $o) (i32.const 64) (i32.const 73))))
-      (else (local.set $o (call $copy (local.get $o) (i32.const 80) (i32.const 87)))))
+      (then (local.set $o (call $copy (local.get $o) (i32.const 128) (i32.const 137))))
+      (else (local.set $o (call $copy (local.get $o) (i32.const 144) (i32.const 151)))))
     (if (i32.ge_u (local.get $nargs) (i32.const 1))
       (then (local.set $o (call $value (local.get $o) (local.get $a1))))
       (else (local.set $o (call $null (local.get $o)))))

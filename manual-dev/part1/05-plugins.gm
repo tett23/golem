@@ -166,12 +166,12 @@ range = {"first": int64, "last": int64}
 response = [output: inlines / document,
             diagnostics: [* plugin-diagnostic]]
 plugin-diagnostic = [code: tstr, severity: 0 / 1, span, message: tstr]
-description = [commands: [* tstr], filters: [* tstr],
-               channels: [* channel-decl], data: [* tstr]]
+description = {? "commands" => [* tstr], ? "filters" => [* tstr],
+               ? "channels" => [* channel-decl], ? "data" => [* tstr]}
 channel-decl = [name: tstr, order: 0 / 1, locators: bool]
 ```
 
-- [code: golem_describe] は [code: description] を返す。四つのフィールドでない [code: description] は不正な応答（G06005）である。[code: order] は 0 が文書の順、1 が読みの順である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0007-plugin-channel-lists.md]（golem-doc ADR 0007「プラグインの独自のチャネル」）]
+- [code: golem_describe] は [code: description] を返す。[code: description] は欄の名前から配列へのマップで、欄の順は問わない。書かない欄は空の配列と同じである。未知の欄、二度書いた欄、配列でない欄の値、マップでない [code: description] は不正な応答（G06005）である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0107-named-describe-fields.md]（docs/adr/0107「golem_describe の欄に名前を付ける」）][code: order] は 0 が文書の順、1 が読みの順である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0007-plugin-channel-lists.md]（golem-doc ADR 0007「プラグインの独自のチャネル」）]
 - コマンドの呼び出しでは、[code: golem_invoke] は [code: command-request] を受け取り、[code: output] がインラインの列（[code: inlines]）の [code: response] を返す。
 - フィルタの呼び出しでは、[code: filter-request] を受け取り、[code: output] がファイル一つ分の文書（[code: document]）の [code: response] を返す。
 - 引数の値に連想配列は渡せない。[code: value] のマップは範囲の形だけである。
@@ -254,8 +254,8 @@ golem-plugin のテストは、テスト用のプラグインを wat（wasm の�
 (module
   (memory (export "memory") 2)
   (global $heap (mut i32) (i32.const 65536))
-  ;; golem_describe の CBOR: [[], ["same"], [], []]
-  (data (i32.const 16) "\84\80\81\64same\80\80")
+  ;; golem_describe の CBOR: {"filters": ["same"]}
+  (data (i32.const 16) "\a1\67filters\81\64same")
   (func (export "golem_abi_version") (result i32) (i32.const 8))
   (func (export "golem_alloc") (param $n i32) (result i32)
     (local $p i32)
@@ -263,7 +263,7 @@ golem-plugin のテストは、テスト用のプラグインを wat（wasm の�
     (global.set $heap (i32.add (global.get $heap) (local.get $n)))
     (local.get $p))
   (func (export "golem_describe") (result i64)
-    (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 10)))
+    (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 15)))
   (func (export "golem_invoke") (param $ptr i32) (param $len i32)
     (result i64)
     (local $skip i32) (local $doc i32)

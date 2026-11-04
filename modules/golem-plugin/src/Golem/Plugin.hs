@@ -248,17 +248,40 @@ decodeTermBytes b = case deserialiseFromBytes decodeTerm (BL.fromStrict b) of
   Left e -> Left (BadOutput (T.pack (show e)))
 
 {- | The commands, the filters, the channels (golem-doc ADR 0007) and the
-names of the data (docs/adr/0105) of a description: four lists; fewer
-are not a description. A name of data is a lowercase ASCII letter, then
-lowercase letters, digits and -, and is given once.
+names of the data (docs/adr/0105) of a description: a map from the names
+of its fields to arrays, in any order (docs/adr/0107). A field left out
+is empty; an unknown field, a field given twice, a key that is not a
+text string and anything but a map of definite length are not a
+description. A name of data is a lowercase ASCII letter, then lowercase
+letters, digits and -, and is given once.
 -}
 decodeDescription :: ByteString -> Either PluginError ([Text], [Text], [ChannelDecl], [Text])
 decodeDescription b = do
   t <- decodeTermBytes b
-  case t of
-    TList [TList cs, TList fs, TList chs, TList ds] -> (,,,) <$> mapM name cs <*> mapM name fs <*> mapM channel chs <*> (mapM name ds >>= dataNames)
+  kvs <- case t of
+    TMap kvs -> Right kvs
     _ -> Left (BadOutput "golem_describe の形が不正です")
+  keys <- mapM key kvs
+  case [k | k <- keys, k `notElem` fields] of
+    (k : _) -> Left (BadOutput ("golem_describe に未知の欄があります: " <> k))
+    [] -> Right ()
+  case [k | (i, k) <- zip [0 :: Int ..] keys, k `elem` take i keys] of
+    (k : _) -> Left (BadOutput ("golem_describe の欄が重複しています: " <> k))
+    [] -> Right ()
+  let field k = case [v | (k', v) <- zip keys (map snd kvs), k' == k] of
+        [] -> Right []
+        (TList xs : _) -> Right xs
+        _ -> Left (BadOutput ("golem_describe の欄の形が不正です: " <> k))
+  cs <- field "commands"
+  fs <- field "filters"
+  chs <- field "channels"
+  ds <- field "data"
+  (,,,) <$> mapM name cs <*> mapM name fs <*> mapM channel chs <*> (mapM name ds >>= dataNames)
   where
+    fields = ["commands", "filters", "channels", "data"]
+    key = \case
+      (TString k, _) -> Right k
+      _ -> Left (BadOutput "golem_describe の形が不正です")
     dataNames ns = case [n | n <- ns, not (dataName n)] of
       (n : _) -> Left (BadOutput ("データの名前が不正です: " <> n))
       [] -> case [n | (i, n) <- zip [0 :: Int ..] ns, n `elem` take i ns] of
