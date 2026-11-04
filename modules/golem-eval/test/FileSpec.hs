@@ -402,7 +402,7 @@ tests =
         msgs "@figure images/a.pdf page=0 web=images/a.png alt=\"x\"\n" @?= [("G02075", "page は PDF の図版のページを 1 から数えた整数で書きます: 0")]
         errs "@figure images/a.pdf page=x web=images/a.png alt=\"x\"\n" @?= ["G02075"]
         errs "@figure images/a.png page=1 alt=\"x\"\n" @?= ["G02075"],
-      -- the checks of @figure over the IR, for the figures of plugins (docs/adr/NNNN-figures-from-plugins)
+      -- the checks of @figure over the IR, for the figures of plugins (docs/adr/0123-figures-from-plugins)
       testCase "the checks of a figure of the IR report what @figure reports" $
         mapM_
           ( \(src, fig) -> do

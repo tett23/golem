@@ -1,5 +1,5 @@
 {- | The data a project passes to a plugin (docs/adr/0105): the names a
-plugin takes, from the fourth list of its description, and the data at
+plugin takes, from the field data of its description (docs/adr/0107), and the data at
 the end of every request.
 -}
 module DataSpec (dataTests, describeTests) where
@@ -74,7 +74,7 @@ dataTests :: TestTree
 dataTests =
   testGroup
     "the data of a plugin (docs/adr/0105)"
-    [ testCase "the fourth list of the description is the names of the data the plugin takes" $ do
+    [ testCase "the field data of the description is the names of the data the plugin takes" $ do
         p <- describing (withDataNames ["table", "dict"]) >>= either (assertFailure . show) pure
         pluginDataNames p @?= ["table", "dict"],
       testCase "a description without data takes no data" $ do
