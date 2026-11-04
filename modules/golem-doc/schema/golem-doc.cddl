@@ -109,6 +109,11 @@ value = int64 / rational / tstr / bool / null / range / [* value]
 range = {"first": int64, "last": int64}
 response = [output: inlines / document, diagnostics: [* plugin-diagnostic]]
 plugin-diagnostic = [code: tstr, severity: 0 / 1, span, message: tstr]
+; golem_check_data, an optional export, called once after the data is read
+; (docs/adr/0120); line counts from 1, null for the whole file
+check-data-request = [data]
+check-data-response = [* data-diagnostic]
+data-diagnostic = [code: tstr, severity: 0 / 1, name: tstr, line: uint64 / null, message: tstr]
 ; golem_describe: the names of the commands and filters a plugin provides,
 ; the channels it declares (golem-doc ADR 0007) and the names of the data it
 ; takes (docs/adr/0105), as a map of named fields in any order; a field left

@@ -62,7 +62,7 @@ import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Driver.Fonts (cff2FontDiagnostics, golemFontProvider)
 import Golem.Driver.Html
 import Golem.Driver.Pdf
-import Golem.Driver.Plugins (loadPlugins)
+import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
 import Golem.Driver.Svg (activeMessage)
 import Golem.Epub
 import Golem.Eval.Builtin (unPluginCommandName)
@@ -218,18 +218,20 @@ evaluateProjectWith overlay profile root = do
           (docs/adr ADR 0031) -}
           cacheDir <- defaultCacheDir
           lockText <- readMaybeText (root </> "plugins.lock")
-          hookE <- loadPlugins root overlay cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) manifest0
-          let (pluginDiags, hook) = either (,noPlugins) ([],) hookE
+          LoadedPlugins hookE checkWarnings pluginSources <- loadPlugins root overlay cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) (dataFileBase project) manifest0
+          let (pluginErrors, hook) = either (,noPlugins) ([],) hookE
+              -- the warnings of the checks of the data (docs/adr/0120) do not stop the plugins
+              pluginDiags = pluginErrors <> checkWarnings
               pluginCommands = sort (map unPluginCommandName (Map.keys (phCommands hook)))
               -- no G02022 after the plugins failed to load (golem-plugin ADR 0003), nor G02090 (golem-doc ADR 0007)
-              quiet = if null pluginDiags then id else \r -> r {erDiagnostics = filter ((`notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090"]) . diagCode) (erDiagnostics r)}
+              quiet = if null pluginErrors then id else \r -> r {erDiagnostics = filter ((`notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090"]) . diagCode) (erDiagnostics r)}
           if hasErrors synDiags
             then do
               loaded <- loadAssets overlay root project
               let assets = laAssets loaded
               (bibDiags, citeKeys, _) <- loadBibliography root manifest0
               let projectDiags = pluginDiags <> laDiagnostics loaded <> bibDiags
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded) (laTableFiles loaded <> pluginDataFiles manifest0) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook Map.empty f sf)) pluginCommands))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded <> pluginSources) (laTableFiles loaded <> pluginDataFiles manifest0) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook Map.empty f sf)) pluginCommands))
             else do
               let manifest = manifest0
                   -- one G03007 for each name, in the order of the chapters (golem-project ADR 0006)
@@ -248,7 +250,7 @@ evaluateProjectWith overlay profile root = do
                   reassemble = assembleResults (phChannels hook) style manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded) (laTableFiles loaded <> pluginDataFiles manifest0) projectDiags s1Diags reassemble again pluginCommands))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded <> pluginSources) (laTableFiles loaded <> pluginDataFiles manifest0) projectDiags s1Diags reassemble again pluginCommands))
 
 {- | The files the plugins take as data (docs/adr/0105) and the .wasm of
 the plugins of the project (docs/adr/0109), which the LSP watches with
@@ -474,6 +476,21 @@ data LoadedAssets = LoadedAssets
     laTableFiles :: !(Set.Set FilePath)
   }
 
+-- | The paths the sources refer to as assets, with their uses.
+assetUses :: Project -> Map FilePath (Set.Set AssetUse)
+assetUses project = Map.fromListWith Set.union [(p, Set.singleton u) | sf <- Map.elems (projectSources project), (p, u) <- assetRefs (sfAst sf)]
+
+-- | The paths of the assets read as text, which have a FileId each ('loadAssets').
+assetTextPaths :: Project -> [FilePath]
+assetTextPaths project = [p | (p, us) <- Map.toList (assetUses project), any (`Set.member` us) [UseTable, UseListing]]
+
+{- | The first FileId of the files of data that the checks of the data of
+the plugins point at (docs/adr/0120): the one after the assets read as
+text.
+-}
+dataFileBase :: Project -> FileId
+dataFileBase project = let FileId lock = lockFileId project in FileId (lock + 1 + length (assetTextPaths project))
+
 {- | Files referenced by @figure, @table and @listing: text content for
 tables and listings, presence for images, and why a path cannot be used
 (golem-eval ADR 0003). A path any reference reads as text is read as
@@ -485,10 +502,9 @@ over 'tableMaxBytes' is not read for the table (docs/adr ADR 0043).
 -}
 loadAssets :: Map FilePath Text -> FilePath -> Project -> IO LoadedAssets
 loadAssets overlay root project = do
-  let refs = Map.fromListWith Set.union [(p, Set.singleton u) | sf <- Map.elems (projectSources project), (p, u) <- assetRefs (sfAst sf)]
+  let refs = assetUses project
       FileId lock = lockFileId project
-      textPaths = [p | (p, us) <- Map.toList refs, any (`Set.member` us) [UseTable, UseListing]]
-      fids = Map.fromList (zip textPaths (map FileId [lock + 1 ..]))
+      fids = Map.fromList (zip (assetTextPaths project) (map FileId [lock + 1 ..]))
   loaded <- Map.traverseWithKey (load fids) refs
   pure
     LoadedAssets

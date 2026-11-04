@@ -32,6 +32,10 @@ module Golem.Plugin
     callCommand,
     applyFilter,
     describePluginError,
+    DataDiagnostic (..),
+    pluginChecksData,
+    checkDataRequest,
+    checkData,
   )
 where
 
@@ -50,7 +54,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Foreign
-import Foreign.C.String (CString, peekCString, withCStringLen)
+import Foreign.C.String (CString, peekCString, withCString, withCStringLen)
 import Foreign.C.Types
 import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.Cbor
@@ -58,6 +62,7 @@ import Golem.Doc.IR hiding (abiVersion)
 import Golem.Doc.Validate (validateDocument)
 import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Syntax
+import Numeric.Natural (Natural)
 import System.IO.Unsafe (unsafePerformIO)
 
 data CPlugin
@@ -69,6 +74,8 @@ foreign import capi unsafe "golem_plugin.h &golem_plugin_free" c_free :: FunPtr 
 foreign import capi unsafe "golem_plugin.h golem_plugin_import_count" c_importCount :: Ptr CPlugin -> IO CInt
 
 foreign import capi unsafe "golem_plugin.h golem_plugin_import_name" c_importName :: Ptr CPlugin -> CInt -> IO CString
+
+foreign import capi unsafe "golem_plugin.h golem_plugin_has_export" c_hasExport :: Ptr CPlugin -> CString -> IO CInt
 
 foreign import capi safe "golem_plugin.h golem_plugin_call"
   c_call :: Ptr CPlugin -> CInt -> Word64 -> Int64 -> Ptr Word8 -> CSize -> Ptr (Ptr Word8) -> Ptr CSize -> Ptr Word32 -> Ptr CString -> IO CInt
@@ -110,7 +117,9 @@ data Plugin = Plugin
     -- | the names of the data it takes (docs/adr/0105)
     pluginDataNames :: ![Text],
     -- | the data the project passes, as the CBOR of the last element of a request
-    plData :: !ByteString
+    plData :: !ByteString,
+    -- | whether it exports golem_check_data (docs/adr/0120)
+    pluginChecksData :: !Bool
   }
 
 {- | Whether the plugin takes data of a name (docs/adr/0119): one of the
@@ -202,7 +211,8 @@ loadPluginWith fuel memory wasm = do
       fp <- newForeignPtr c_free p
       n <- c_importCount p
       names <- mapM (\i -> c_importName p i >>= \c -> T.pack <$> peekCString c <* c_freeBytes c) [0 .. n - 1]
-      let plugin = Plugin fp fuel memory [] [] [] [] noData
+      checks <- withCString "golem_check_data" (c_hasExport p)
+      let plugin = Plugin fp fuel memory [] [] [] [] noData (checks /= 0)
       if not (null names)
         then pure (Left (HasImports names))
         else do
@@ -430,14 +440,9 @@ response bytes = do
     diag = \case
       TList [TString code, sev, spT, TString msg] -> do
         -- the host puts the name of the plugin before it (docs/adr/0108)
-        if not (T.null code) && T.all (\c -> isAsciiLower c || isDigit c || c == '-') code
-          then Right ()
-          else Left (BadOutput ("診断のコードの形が不正です: " <> code))
+        pluginCode code
         sp <- decoded (termSpan spT)
-        severity <- case sev of
-          TInt 0 -> Right Error
-          TInt 1 -> Right Warning
-          _ -> Left (BadOutput "診断の重大度が不正です")
+        severity <- pluginSeverity sev
         Right (diagnostic code severity sp msg)
       _ -> Left (BadOutput "診断の形が不正です")
 
@@ -558,3 +563,62 @@ documentSpans doc = concat [blockSpan b : concatMap inlineSpans (blockInlines b)
 
 documentDeferred :: Document -> [DeferredExpr]
 documentDeferred doc = concat [concatMap inlineDeferred (blockInlines b) | b <- blocksOf doc]
+
+{- | A code of a plugin's diagnostic: lowercase letters, digits and -, not
+empty. The host puts the name of the plugin before it (docs/adr/0108).
+-}
+pluginCode :: Text -> Either PluginError ()
+pluginCode code
+  | not (T.null code) && T.all (\c -> isAsciiLower c || isDigit c || c == '-') code = Right ()
+  | otherwise = Left (BadOutput ("診断のコードの形が不正です: " <> code))
+
+-- | The severity of a plugin's diagnostic: 0 an error, 1 a warning.
+pluginSeverity :: Term -> Either PluginError Severity
+pluginSeverity = \case
+  TInt 0 -> Right Error
+  TInt 1 -> Right Warning
+  _ -> Left (BadOutput "診断の重大度が不正です")
+
+{- | A diagnostic of the data of a plugin (golem-doc.cddl @data-diagnostic@,
+docs/adr/0120): the code, the severity, the name of the data and the line,
+from 1, or none for the whole file. The host makes it a diagnostic at the
+start of that line of the file of the data.
+-}
+data DataDiagnostic = DataDiagnostic
+  { ddCode :: !Text,
+    ddSeverity :: !Severity,
+    ddName :: !Text,
+    ddLine :: !(Maybe Natural),
+    ddMessage :: !Text
+  }
+  deriving stock (Eq, Show)
+
+-- | The request of golem_check_data: @[data]@ (docs/adr/0120).
+checkDataRequest :: Plugin -> ByteString
+checkDataRequest p = BS.cons 0x81 (plData p)
+
+{- | The check of the data of a plugin, called once after the data is
+read (docs/adr/0120): the diagnostics of golem_check_data, or none for a
+plugin without the export. The name and the line are checked by the
+host, which knows the files.
+-}
+checkData :: Plugin -> IO (Either PluginError [DataDiagnostic])
+checkData p
+  | not (pluginChecksData p) = pure (Right [])
+  | otherwise = do
+      out <- callMode p 3 (checkDataRequest p)
+      pure (out >>= decodeTermBytes . fst >>= diags)
+  where
+    diags = \case
+      TList ds -> mapM one ds
+      _ -> Left (BadOutput "データの検査の応答の形が不正です")
+    one = \case
+      TList [TString code, sev, TString name, lineT, TString msg] -> do
+        pluginCode code
+        severity <- pluginSeverity sev
+        line <- case lineT of
+          TNull -> Right Nothing
+          TInt n | n >= 1 -> Right (Just (fromIntegral n))
+          _ -> Left (BadOutput "データの診断の行が不正です")
+        Right (DataDiagnostic code severity name line msg)
+      _ -> Left (BadOutput "データの診断の形が不正です")
