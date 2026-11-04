@@ -72,7 +72,7 @@ import Foreign.C.Types
 import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.Cbor
 import Golem.Doc.IR hiding (abiVersion)
-import Golem.Doc.Validate (validateBlocks, validateDocument)
+import Golem.Doc.Validate (captionErrors, validateBlocks, validateDocument)
 import Golem.Eval.Builtin (builtinBlockCommands)
 import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Syntax
@@ -554,6 +554,10 @@ callBlockCommand plugin name args body sp = do
     _ -> Left (BadOutput "ブロックコマンドの出力は [ブロックの列, 画像の列] です")
   bs0 <- decoded (termBlocksE blocksT)
   images <- mapM image imagesT
+  -- a caption holds paragraphs only, so a figure in it is that error, not one of its image (docs/adr/0144)
+  case concat [captionErrors f | Block _ _ (FigureBlock f) <- bs0] of
+    e : _ -> Left (BadOutput e)
+    [] -> Right ()
   (bs, used) <- placeImages body images bs0
   let made = filter (`notElem` body) bs
       bodyDoc = Document (FileId 0) body
@@ -637,8 +641,8 @@ blockKind (Block _ lbl body)
       OrderedList items -> mapM_ (mapM_ blockKind . itemBlocks) items
       DefList gs -> mapM_ (mapM_ (mapM_ blockKind) . dgDefs) gs
       Heading {} -> refuse "見出し"
-      -- its image is checked by placeImages, its caption here (docs/adr/0123)
-      FigureBlock f -> mapM_ blockKind (figCaption f)
+      -- its image is checked by placeImages (docs/adr/0123), its caption of paragraphs by validateBlocks (docs/adr/0144)
+      FigureBlock _ -> Right ()
       ChannelOutput _ -> refuse "一覧の出力"
       ForcedBreak _ -> refuse "改ページ"
       PageControl _ -> refuse "改ページの制御"

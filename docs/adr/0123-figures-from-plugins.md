@@ -1,6 +1,6 @@
 # ADR 0123: プラグインが作った画像の図版
 
-ステータス: 採択→`images/golem-plugin/` と重なる原稿の図版のエラー（G08102）は [ADR 0137](0137-plugin-image-folder-collision-g08102.md)
+ステータス: 採択→`images/golem-plugin/` と重なる原稿の図版のエラー（G08102）は [ADR 0137](0137-plugin-image-folder-collision-g08102.md)、キャプションの中の図版とブロックの扱いは [ADR 0144](0144-figure-captions-hold-paragraphs-only.md)
 
 ## 文脈
 

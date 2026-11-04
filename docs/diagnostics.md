@@ -3855,6 +3855,38 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 種類に `character`、`paragraph`、`regex` のどれかを書く。
 
+## G02118
+
+図版のキャプションには段落だけを書けます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@figure` のキャプション（字下げした本体）を評価した結果に、段落でないブロックがある（[docs/adr/0144](adr/0144-figure-captions-hold-paragraphs-only.md)）。
+どの出力もキャプションの段落だけを組むので、ほかのブロックは出力から消えてしまう。
+段落でないブロックごとに一つ出し、そのブロックをキャプションから除く。
+図版は残すので、図版のラベルと図番号は誤りのないときと同じである。
+除いたブロックの中の図版は、図番号を取らない。
+位置は、その段落でないブロックである。
+`@blank-line`（G02093）、`@page-break`（G02059）、`@no-page-break`（G02071）のように、既存のコードが先に拒むブロックには、このコードを重ねない。
+
+- メッセージ: `図版のキャプションには段落だけを書けます: <種類>`。種類は、図版、箇条書き、番号付きリスト、定義リスト、表、コードブロック、見出し、一覧の出力のどれかである
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0144](adr/0144-figure-captions-hold-paragraphs-only.md)
+
+### 主な原因
+
+- 図版のキャプションの中に、別の `@figure` を字下げして書いた。
+- キャプションに箇条書き、表、コードブロックを書いた。
+
+### 直し方
+
+キャプションは段落だけで書く。
+箇条書きや表は、図版の後の本文に置く。
+図版を並べたいときは、`@figure` を字下げせずに続けて書く。
+
 ## G03001
 
 manifest.toml の誤りです
@@ -5362,10 +5394,11 @@ overrides に書けない名前です
 プラグインが返す diagnostic（[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)）の不正な出力の詳細は、コードが英小文字で始まり、英小文字、数字、`-` だけからなる列でないとき（[docs/adr/0139](adr/0139-plugin-diagnostic-code-starts-with-letter.md)）の `診断のコードの形が不正です: <コード>` と、位置が呼び出しの位置でも要求のノードの位置でもない（フィルタではファイルの先頭でもない）ときの `診断が要求にないソース位置を指しています` である。
 ブロックコマンドの不正な出力の詳細は、`ブロックコマンドの出力は [ブロックの列, 画像の列] です`、`ブロックコマンドが返せないブロックです: <種類>`（見出し、一覧の出力、改ページ、改ページの制御、行アキ）、`ブロックコマンドの出力はラベルを持てません` である。
 プラグインが作った画像の図版（[docs/adr/0123](adr/0123-figures-from-plugins.md)）の不正な出力の詳細は、`画像の形が不正です`、`画像の名前が不正です: <名前>`、`画像の名前が重複しています: <名前>`、`画像の大きさの合計が上限（67108864 バイト）を超えています`、`どの図版も使っていない画像があります: <名前>`、`画像の形式は svg、png、jpeg のどれかです: <形式>`、`プラグインの図版は web を持てません`、`応答にない画像です: <src>`、`プラグインの図版は plugin:<名前> で画像を指します: <src>`、`図版は出力の最上位にだけ置けます` である。
+図版のキャプションに段落でないブロックを置いた出力（ブロックコマンドとフィルタ）の詳細は、`図版のキャプションには段落だけを置けます` である（[docs/adr/0144](adr/0144-figure-captions-hold-paragraphs-only.md)）。
 
 - メッセージ: `<プラグイン>.<コマンド>: <理由>`、`<プラグイン>.<ブロックコマンド>: <理由>`、`<プラグイン>.<フィルタ>: <理由>`、`<プラグイン>.golem_check_data: <理由>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)、[docs/adr/0120](adr/0120-plugin-data-check-at-load.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)、[docs/adr/0123](adr/0123-figures-from-plugins.md)、[docs/adr/0136](adr/0136-missing-plugin-data-at-load.md)
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)、[docs/adr/0120](adr/0120-plugin-data-check-at-load.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)、[docs/adr/0123](adr/0123-figures-from-plugins.md)、[docs/adr/0136](adr/0136-missing-plugin-data-at-load.md)、[docs/adr/0144](adr/0144-figure-captions-hold-paragraphs-only.md)
 
 ### 主な原因
 

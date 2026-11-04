@@ -1197,7 +1197,7 @@ figure ctx sp args body = do
                 Left NaturalReported -> pure (Left ())
                 _ -> wrongPage p
       fine <- (&& formats) <$> ok
-      caption <- evalBlocks ctx . concat =<< mapM unstyled body
+      caption <- captionParagraphs =<< evalBlocks ctx . concat =<< mapM unstyled body
       case look "alt" of
         Nothing -> err "G02028" sp "図版には alt の代替テキストが必要です" >> pure []
         Just alt
@@ -1224,6 +1224,22 @@ figure ctx sp args body = do
     _ -> err "G02032" sp "@figure には画像のパスを一つ書きます" >> pure []
   where
     check p = isJust <$> asset ctx sp p
+    -- a caption holds paragraphs only: G02118 at each other block, which is dropped (docs/adr/0144)
+    captionParagraphs = fmap concat . mapM (\b -> maybe (pure [b]) (\k -> [] <$ err "G02118" (blockSpan b) ("図版のキャプションには段落だけを書けます: " <> k)) (notInCaption (blockBody b)))
+    -- a forced break, a page control and blank lines are left to nestedBreaks (G02059, G02071, G02093)
+    notInCaption = \case
+      Paragraph _ _ -> Nothing
+      ForcedBreak _ -> Nothing
+      PageControl _ -> Nothing
+      BlankLines _ -> Nothing
+      FigureBlock _ -> Just "図版"
+      BulletList _ -> Just "箇条書き"
+      OrderedList _ -> Just "番号付きリスト"
+      DefList _ -> Just "定義リスト"
+      Table {} -> Just "表"
+      CodeBlock _ -> Just "コードブロック"
+      Heading {} -> Just "見出し"
+      ChannelOutput _ -> Just "一覧の出力"
     -- a caption has no paragraph style of its own (docs/adr ADR 0005, golem-driver ADR 0010)
     noStyle csp = err "G02013" csp "@style は図版のキャプションには付けられません"
     unstyled = \case

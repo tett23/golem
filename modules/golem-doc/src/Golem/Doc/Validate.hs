@@ -5,6 +5,7 @@ module Golem.Doc.Validate
   ( validateInlines,
     validateDocument,
     validateBlocks,
+    captionErrors,
   )
 where
 
@@ -76,11 +77,22 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
         maybe [] inl (codeCaption c)
           <> ["注釈の印の番号は 1 から 50 までです" | any (any (\n -> n < 1 || n > 50) . clCallouts) (codeLines c)]
           <> ["差分のコードの行には差分の印が、ほかのコードの行には印がありません" | any (\l -> isJust (clDiff l) /= codeDiff c) (codeLines c)]
-      FigureBlock f -> concatMap blockErrors (figCaption f)
+      -- a caption holds paragraphs only (docs/adr/0144)
+      FigureBlock f -> captionErrors f <> concatMap blockErrors [b | b@(Block _ _ (Paragraph _ _)) <- figCaption f]
       ChannelOutput _ -> []
       ForcedBreak _ -> []
       PageControl _ -> []
       BlankLines _ -> []
+
+{- | A caption of a figure holds paragraphs only (docs/adr/0144): the
+outputs set nothing else of it, so anything else would vanish.
+-}
+captionErrors :: Figure -> [Text]
+captionErrors f = ["図版のキャプションには段落だけを置けます" | not (all (isParagraph . blockBody) (figCaption f))]
+  where
+    isParagraph = \case
+      Paragraph _ _ -> True
+      _ -> False
 
 {- | A line break stands only between two inlines at the top of a
 paragraph, never two in a row (docs/adr ADR 0005).

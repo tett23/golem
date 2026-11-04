@@ -2,12 +2,14 @@ module FileSpec (tests) where
 
 import Control.Exception (evaluate)
 import Data.Bifunctor (first)
+import Data.ByteString qualified as BS
 import Data.Either (lefts)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.IR
 import Golem.Doc.Validate (validateDocument)
@@ -402,6 +404,26 @@ tests =
         errs "@figure images/a.pdf alt=x\n" @?= ["G02029"]
         errs "@figure images/none.png alt=x\n" @?= ["G02033"]
         errs "@figure images/a.png alt=x wrap=end\n" @?= ["G02031"],
+      testCase "G02118: a block of a caption that is not a paragraph, at the block; the figure stays with its paragraphs (docs/adr/0144)" $ do
+        let src = "@figure images/a.png alt=x\n  外\n\n  @figure images/a.png alt=y\n    内\n\n  - 項目\n\n  ```\n  code\n  ```\n\n  | a |\n  |---|\n  | b |\n"
+            -- the byte offset of the first needle
+            at needle = BS.length (TE.encodeUtf8 (fst (T.breakOn needle src)))
+        [(c, m, st) | (c, m, st, _) <- diags src]
+          @?= [ ("G02118", "図版のキャプションには段落だけを書けます: 図版", at "  @figure images/a.png alt=y"),
+                ("G02118", "図版のキャプションには段落だけを書けます: 箇条書き", at "  - 項目"),
+                ("G02118", "図版のキャプションには段落だけを書けます: コードブロック", at "  ```"),
+                ("G02118", "図版のキャプションには段落だけを書けます: 表", at "  | a |")
+              ]
+        case body src of
+          [FigureBlock f] -> (figAlt f, [blockBody b | b <- figCaption f]) @?= ("x", [Paragraph Nothing [Text (mkSpan (FileId 1) (at "外") (at "外" + 3)) "外"]])
+          other -> assertFailure (show other),
+      testCase "a caption of paragraphs only is no error; @blank-line in a caption is G02093 only (docs/adr/0144)" $ do
+        errs "@figure images/a.png alt=x\n  一つめ。\n\n  二つめ。\n" @?= []
+        errs "@figure images/a.png alt=x\n  一つめ。\n\n  @blank-line\n" @?= ["G02093"],
+      testCase "a figure in a caption is not in the IR, so it takes no number: the next figure is the second (docs/adr/0144)" $
+        case body "@figure images/a.png alt=x\n  外\n\n  @figure images/a.png alt=y\n    内\n\n@figure images/a.png alt=z\n  二つめ\n" of
+          [FigureBlock f, FigureBlock g] -> (figAlt f, length (figCaption f), figAlt g) @?= ("x", 1, "z")
+          other -> assertFailure (show other),
       testCase "the formats of a figure and its web image (golem-pdf ADR 0008)" $ do
         msgs "@figure images/a.gif alt=\"x\"\n" @?= [("G02074", "図版の形式は PDF、PNG、JPEG、SVG です: images/a.gif")]
         errs "@figure images/a.PDF web=images/a.png alt=\"x\"\n" @?= []

@@ -264,8 +264,26 @@ cbor =
         validateDocument size [] (doc [brk]) @?= []
         validateDocument size [] (doc [Block sp Nothing (BulletList [ListItem Nothing [brk]])]) @?= [msgNested]
         validateDocument size [] (doc [Block sp Nothing (DefList [DefGroup [[]] [[brk]]])]) @?= [msgNested]
-        validateDocument size [] (doc [Block sp Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing [brk] Nothing False))]) @?= [msgNested]
+        -- a caption holds paragraphs only (docs/adr/0144)
+        validateDocument size [] (doc [Block sp Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing [brk] Nothing False))]) @?= ["図版のキャプションには段落だけを置けます"]
         validateDocument size [] (doc [Block sp (Just "x") (ForcedBreak BreakRecto)]) @?= [msgLabel],
+      testCase "a caption holds paragraphs only (docs/adr/0144)" $ do
+        let size (FileId 0) = Just 10
+            size _ = Nothing
+            fig c = Block sp Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing c Nothing False))
+            par = Block sp Nothing (Paragraph Nothing [Text sp "a"])
+            msg = "図版のキャプションには段落だけを置けます"
+        mapM_
+          ( \b -> do
+              validateDocument size [] (Document (FileId 0) [fig [par, b]]) @?= [msg]
+              validateBlocks size [] [fig [b]] @?= [msg]
+          )
+          [ fig [],
+            Block sp Nothing (BulletList [ListItem Nothing [par]]),
+            Block sp Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False []))
+          ]
+        validateDocument size [] (Document (FileId 0) [fig [par, par]]) @?= []
+        validateBlocks size [] [fig [par]] @?= [],
       testCase "every page control survives the CBOR round trip (docs/adr ADR 0030)" $ do
         let d = Document (FileId 0) [Block sp Nothing (PageControl c) | c <- [NoBreak, NeedLines 5, AdjustLines 1, AdjustLines (-2)]]
         decodeDocument (encodeDocument d) @?= Right d,
