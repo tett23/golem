@@ -70,7 +70,8 @@ checkDataTests =
               p <- answering (TList [TList [TString c, TInt 0, TString "table", TNull, TString "m"]])
               checkData p >>= (@?= Left (BadOutput ("診断のコードの形が不正です: " <> c)))
           )
-          ["Lookup/x", "", "a_b"],
+          -- a code starts with a lowercase letter (docs/adr/0139)
+          ["Lookup/x", "", "a_b", "404", "-x"],
       testCase "a wrong severity, line or shape is bad output" $ do
         let bad t m = answering t >>= checkData >>= (@?= Left (BadOutput m))
         bad (TList [TList [TString "x", TInt 2, TString "table", TNull, TString "m"]]) "診断の重大度が不正です"
