@@ -1006,6 +1006,23 @@ if [ -n "$SETUP_AT" ] && [ -n "$SLIM_AT" ] && [ -n "$CBUILD_AT" ] && [ "$SETUP_A
   ng "ci.yml: the files of GHC are removed after haskell-actions/setup and before cabal build"
 fi
 
+# ---------------------------------------------------------------- ci.yml and the times of setup-config
+# (docs/adr/0147-touch-setup-config-after-restoring-dist.md)
+
+# the setup-config of the restored dist-newstyle are made newer than the
+# .cabal files of the checkout, after the restore and before cabal build,
+# so that Setup does not configure every test suite again
+TOUCH_STEP="name: The setup-config of dist-newstyle newer than the .cabal files"
+if step_has "$TOUCH_STEP" 'find dist-newstyle -name setup-config -exec touch {} +'; then ok; else
+  ng "ci.yml: a step touches the setup-config of dist-newstyle"
+fi
+RESTORE_AT=$(build_lines | grep -n 'name: Restore dist-newstyle' | head -1 | cut -d: -f1)
+TOUCH_AT=$(build_lines | grep -nF "$TOUCH_STEP" | head -1 | cut -d: -f1)
+CB_AT=$(build_lines | grep -n -- '- id: build$' | head -1 | cut -d: -f1)
+if [ -n "$RESTORE_AT" ] && [ -n "$TOUCH_AT" ] && [ -n "$CB_AT" ] && [ "$RESTORE_AT" -lt "$TOUCH_AT" ] && [ "$TOUCH_AT" -lt "$CB_AT" ]; then ok; else
+  ng "ci.yml: the setup-config are touched after Restore dist-newstyle and before cabal build"
+fi
+
 # ---------------------------------------------------------------- release.yml and mise.toml
 # (docs/adr/0044-release-workflow-hardening.md)
 

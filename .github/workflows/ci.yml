@@ -261,6 +261,15 @@ jobs:
           path: dist-newstyle
           key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ github.sha }}
           restore-keys: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-
+      # Setup configures a component again when its .cabal file is newer
+      # than its setup-config, by the times alone. The .cabal files of the
+      # checkout are always newer than the restored setup-config, so cabal
+      # test configured and linked every test suite again before running
+      # it. cabal-install still sees a changed .cabal file by its content
+      # (docs/adr/0147)
+      - name: The setup-config of dist-newstyle newer than the .cabal files (docs/adr/0147)
+        run: |
+          if [ -d dist-newstyle ]; then find dist-newstyle -name setup-config -exec touch {} +; fi
       - name: wasmtime C API (golem-plugin ADR 0001)
         run: scripts/fetch-wasmtime.sh
       - id: cddl
