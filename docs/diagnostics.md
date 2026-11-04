@@ -6964,7 +6964,8 @@ SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあ�
 HTML と EPUB に写す SVG のファイルに、ブラウザーが SVG を文書として開いたときに動かすか読むもの（動的なコンテンツ）がある。
 写す SVG は、`@figure` の図版か `web` のうち、拡張子が `.svg` のものと、プラグインが作った SVG の図版（[docs/adr/0123](adr/0123-figures-from-plugins.md)）である。
 HTML と EPUB は SVG をそのまま写すので、読者が SVG を直接開けば、そのスクリプトが動く。
-拒むのは、`script` の要素、`foreignObject`、`iframe`、`embed`、`object`、`handler`、`listener` の要素、名前が `on` で始まる属性、`#` で始まらない `href` と `xlink:href`、`href` かイベントの属性を書き換える `set` と `animate`、CSS の `@import` と `#` で始まらない `url()` である。
+拒むのは、`script` の要素、`foreignObject`、`iframe`、`embed`、`object`、`handler`、`listener` の要素、名前空間が XHTML の要素、名前が `on` で始まる属性、`#` で始まらない `href` と `xlink:href`、`href` かイベントの属性を書き換える `set` と `animate`（`attributeName` の接頭辞を問わない）、CSS の `@import` と `#` で始まらない `url()` と `image-set()`、対象が `xml-stylesheet` の処理命令である。
+CSS は、`style` の要素の中身と、すべての属性の値（`fill`、`filter` などの表現の属性や、`set` の `to` を含む）から探す（[docs/adr/0158](adr/0158-svg-external-references-beyond-href.md)）。
 XML として読めない SVG、UTF-8 でない SVG、内部サブセットを持つ `DOCTYPE` を持つ SVG も、中身を確かめられないのでこのコードにする。
 見つかったものを文書の順に集め、最初のものの名前と位置（SVG のファイルの中の行と桁）を書き、残りの件数を添える。
 `@figure` ごとに一つ出し、HTML と EPUB を書かない。
@@ -6973,9 +6974,9 @@ dev と prod の両方でエラーである。
 HTML か EPUB を組むとき（`golem build`）にだけ出す。
 位置は、その `@figure` のブロックである。
 
-- メッセージ: `SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。`<名前>` は要素の名前、属性の名前、`url()`、`@import` のどれかである。ほかになければ `ほか <n> 件` を書かない。読めない SVG なら `SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: <パス>（<G08010 と同じ理由>）`
+- メッセージ: `SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。`<名前>` は要素の名前、属性の名前、`url()`、`@import`、`image-set()`、`xml-stylesheet` のどれかである。ほかになければ `ほか <n> 件` を書かない。読めない SVG なら `SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: <パス>（<G08010 と同じ理由>）`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg.Active`）
-- ADR: [docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)、[docs/adr/0057](adr/0057-g0814-says-dynamic-content.md)（文言）
+- ADR: [docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)、[docs/adr/0057](adr/0057-g0814-says-dynamic-content.md)（文言）、[docs/adr/0158](adr/0158-svg-external-references-beyond-href.md)（属性の値の CSS、処理命令、XHTML の要素）
 
 ### 主な原因
 

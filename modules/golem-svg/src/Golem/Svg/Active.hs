@@ -1,7 +1,10 @@
 {- | The active content of an SVG figure that HTML and EPUB copy as it is
 (docs/adr ADR 0039): what a browser runs or loads when the file is opened
 as a document. The figure is read with the XML reader of golem-svg and
-its elements and attributes are walked in the order of the document.
+its processing instructions, elements and attributes are walked in the
+order of the document. docs/adr/0158 adds the CSS of every attribute
+value, image-set(), xml-stylesheet, the elements of XHTML and the local
+name of attributeName.
 -}
 module Golem.Svg.Active
   ( Active (..),
@@ -30,11 +33,28 @@ data Active = Active
 xlinkNs :: Text
 xlinkNs = "http://www.w3.org/1999/xlink"
 
+-- | The namespace of XHTML, whose elements are refused anywhere (docs/adr/0158).
+xhtmlNs :: Text
+xhtmlNs = "http://www.w3.org/1999/xhtml"
+
 {- | The active content of an SVG file, in the order of the document; the
 reason when it cannot be read as XML (the words of G08010).
 -}
 activeContent :: ByteString -> Either Text [Active]
-activeContent bytes = element <$> parseXml bytes
+activeContent bytes = document <$> parseXmlDocument bytes
+
+-- | The instructions before the root, the root, and those after it.
+document :: Document -> [Active]
+document d =
+  let root = docRoot d
+      (before, after) = span ((< elPos root) . snd) (docInstructions d)
+   in concatMap (uncurry instruction) before <> element root <> concatMap (uncurry instruction) after
+
+{- | A processing instruction whose target is xml-stylesheet, in any case
+(docs/adr/0158); other instructions, such as the xpacket of XMP, pass.
+-}
+instruction :: Text -> Pos -> [Active]
+instruction target p = [at "xml-stylesheet" p | T.toLower target == "xml-stylesheet"]
 
 element :: Element -> [Active]
 element e =
@@ -45,10 +65,12 @@ element e =
     lower = T.toLower (elName e)
     refusedElement =
       lower `elem` ["script", "foreignobject", "iframe", "embed", "object", "handler", "listener"]
+        || elNs e == xhtmlNs
         || (lower `elem` ["set", "animate"] && maybe False animatesLink (attrValue "attributeName"))
+    -- the local name, after the last :, whatever namespace its prefix names (docs/adr/0158)
     animatesLink v =
-      let n = T.toLower (T.strip v)
-       in n `elem` ["href", "xlink:href"] || "on" `T.isPrefixOf` n
+      let n = snd (T.breakOnEnd ":" (T.toLower (T.strip v)))
+       in n == "href" || "on" `T.isPrefixOf` n
     attrValue k = case [atValue a | a <- elAttrs e, atNs a == "", atName a == k] of
       v : _ -> Just v
       [] -> Nothing
@@ -57,15 +79,30 @@ element e =
       NText t p
         | lower == "style" -> css t p
         | otherwise -> []
+      NInstruction target p -> instruction target p
 
+{- | An event attribute, an external href, and the CSS references in the
+value of any attribute, in any namespace (docs/adr/0158): the value of
+fill, filter or the to of a set is read as CSS as that of style is.
+-}
 attribute :: Attr -> [Active]
-attribute a
-  | "on" `T.isPrefixOf` T.toLower (atName a) = [at (atName a) (atPos a)]
-  | atName a == "href" && not (internal (atValue a)) = [at (if atNs a == xlinkNs then "xlink:href" else "href") (atPos a)]
-  | atNs a == "" && atName a == "style" = [at n (atPos a) | (n, _) <- cssRefs (atValue a)]
-  | otherwise = []
+attribute a = named <> [at n (atPos a) | mayRefer (atValue a), (n, _) <- cssRefs (atValue a)]
   where
+    named
+      | "on" `T.isPrefixOf` T.toLower (atName a) = [at (atName a) (atPos a)]
+      | atName a == "href" && not (internal (atValue a)) = [at (if atNs a == xlinkNs then "xlink:href" else "href") (atPos a)]
+      | otherwise = []
     internal v = "#" `T.isPrefixOf` T.stripStart v
+
+{- | Whether a value can hold a CSS reference: without a backslash (an
+escape) or a slash (a comment), the text that CSS reads is the value
+itself. The long values of most attributes, such as the d of a path,
+are not decoded.
+-}
+mayRefer :: Text -> Bool
+mayRefer v =
+  T.any (\c -> c == '\\' || c == '/') v
+    || any (`T.isInfixOf` T.toLower v) ["@import", "url(", "image-set("]
 
 {- | The external references of the text of a style element, each at its
 place in the file: the text starts at the position given.
@@ -78,8 +115,8 @@ css t (Pos l c) =
         lines' = T.count "\n" before
   ]
 
-{- | @import and url() whose target does not start with #, with their
-offsets, in order. The text is read as CSS tokenizes it: comments are
+{- | @import, url() whose target does not start with #, and image-set()
+(docs/adr/0158), with their offsets, in order. The text is read as CSS tokenizes it: comments are
 dropped, but not inside strings, and escapes are decoded, so that
 @\\69mport and \\75 rl( are found too (security audit 2026-10-24).
 Letters are compared without case, as CSS does.
@@ -89,6 +126,7 @@ cssRefs t0 =
   sortOn snd $
     [("@import", origin o) | (o, _) <- occurrences "@import"]
       <> [("url()", origin o) | (o, after) <- occurrences "url(", not ("#" `T.isPrefixOf` T.dropWhile (\ch -> isSpace ch || ch == '"' || ch == '\'') after)]
+      <> [("image-set()", origin o) | (o, _) <- occurrences "image-set("]
   where
     decoded = cssChars t0
     t = T.pack (map (toLower . fst) decoded)

@@ -8,8 +8,8 @@ golem-svg は、`@figure` の SVG の図版を、PDF に描ける形（パス、
 ## モジュール
 
 - `Golem.Svg`：図を読む `readSvg`。要素、スタイル、図形、`marker` を扱う。
-- `Golem.Svg.Active`：HTML と EPUB に写す SVG の動的なコンテンツを、文書の順に返す `activeContent`（[docs/adr/0039](../adr/0039-svg-active-content-in-html-and-epub.md)）。拒むものの表は [仕様書](../specifications.md) の図版の節に書く。`style` の要素と属性の CSS は、CSS の字句解析（CSS Syntax Level 3）と同じく読んでから、`@import` と `url(` を探す。文字列の外の注釈は除き、文字列の中の `/*` は注釈の始まりとしない。エスケープ（`\75 rl(` や `@\69mport`）は文字に戻す。見つけたものの位置は、元の CSS の中の位置（エスケープなら逆斜線の位置）で報告する。手間は文書の長さを n として n log n である。
-- `Golem.Svg.Xml`：SVG が使う XML の読み手。
+- `Golem.Svg.Active`：HTML と EPUB に写す SVG の動的なコンテンツを、文書の順に返す `activeContent`（[docs/adr/0039](../adr/0039-svg-active-content-in-html-and-epub.md)）。拒むものの表は [仕様書](../specifications.md) の図版の節に書く。処理命令は対象が `xml-stylesheet` のものを拾い、XHTML の名前空間の要素と、`attributeName` の局所名が `href` か `on` で始まる `set` と `animate` を拾う。`style` の要素の中身とすべての属性の値の CSS は（[docs/adr/0158](../adr/0158-svg-external-references-beyond-href.md)）、CSS の字句解析（CSS Syntax Level 3）と同じく読んでから、`@import`、`url(`、`image-set(` を探す。逆斜線（エスケープ）も `/`（注釈）も含まず、`@import`、`url(`、`image-set(` のどれも大文字と小文字を問わず含まない属性の値は、字句として読まずに通す。`path` の `d` のような長い値を読まないためで、読んだときと結果は変わらない。文字列の外の注釈は除き、文字列の中の `/*` は注釈の始まりとしない。エスケープ（`\75 rl(` や `@\69mport`）は文字に戻す。見つけたものの位置は、元の CSS の中の位置（エスケープなら逆斜線の位置）で報告する。手間は文書の長さを n として n log n である。
+- `Golem.Svg.Xml`：SVG が使う XML の読み手。`parseXmlDocument` はルートの要素（`docRoot`）と、その前と後の処理命令の対象の名前と `<?` の位置（`docInstructions`、文書の順）を返し、`parseXml` はルートの要素だけを返す。要素の中の処理命令は、子の `NInstruction`（対象の名前と位置）として残す。XML の宣言は処理命令に含めない。`Golem.Svg` の描画は `NInstruction` を読み飛ばすので、処理命令の有無で PDF は変わらない（[docs/adr/0158](../adr/0158-svg-external-references-beyond-href.md)）。
 - `Golem.Svg.Css`：`<style>` と `style` の属性の CSS の読み手。
 - `Golem.Svg.Number`：数の読み手と、有理数の三角関数と平方根。
 - `Golem.Svg.Colors`：色の名前の表。

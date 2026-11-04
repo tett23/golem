@@ -75,17 +75,24 @@ golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画�
 そのため、[code: marker] が描くパスの区間を置く回数の分だけ数え、延べ数が 100 万を超える図版を G08101 にする。
 数は描画を展開せず、[code: marker] の参照のグラフの上で [code: marker] ごとに一度だけ計算するので、手間は文書の大きさに比例する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0084-svg-marker-drawn-segment-limit.md]（docs/adr ADR 0084「SVG の図版の marker が描くパスの区間の延べ数に上限を設ける」）]
 HTML と EPUB は SVG をそのまま写すが、golem-driver の [code: buildCore] が、写す前に golem-svg の [code: Golem.Svg.Active] で動的なコンテンツを探す。
-同じ XML の読み手で読み、要素と属性を文書の順にたどって、次の表のものを G08014 にする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0039-svg-active-content-in-html-and-epub.md]（docs/adr ADR 0039「HTML と EPUB に写す SVG の図版の、動的なコンテンツを拒む」）]
+同じ XML の読み手で読み、処理命令、要素、属性を文書の順にたどって、次の表のものを G08014 にする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0039-svg-active-content-in-html-and-epub.md]（docs/adr ADR 0039「HTML と EPUB に写す SVG の図版の、動的なコンテンツを拒む」）]
 G08014 があれば HTML と EPUB を書かず、PDF とプレーンテキストは書く。
 
 | 種類 | 拒むもの |
 | --- | --- |
 | スクリプトの要素 | [code: script] |
 | 別の文書を埋め込む要素 | [code: foreignObject]、[code: iframe]、[code: embed]、[code: object]、[code: handler]、[code: listener] |
+| XHTML の要素 | 名前空間が XHTML の要素（[code: foreignObject] の外でも） |
 | イベントの属性 | [code: on] で始まる属性（大文字と小文字を区別しない） |
 | 参照の属性 | [code: #] で始まらない [code: href] と [code: xlink:href] |
-| アニメーションによる書き換え | [code: href]、[code: xlink:href]、[code: on] で始まる名前を [code: attributeName] にした [code: set] と [code: animate] |
-| CSS の外部の参照 | [code: @import] と、[code: #] で始まらない [code: url()] |
+| アニメーションによる書き換え | [code: attributeName] の局所名（接頭辞を除いた名前）が [code: href] か [code: on] で始まる名前の [code: set] と [code: animate] |
+| CSS の外部の参照 | [code: style] の要素の中身と、すべての属性の値の中の [code: @import]、[code: #] で始まらない [code: url()]、[code: image-set()] |
+| 処理命令 | 対象が [code: xml-stylesheet] の処理命令 |
+
+属性の値の CSS は、[code: fill] などの表現の属性も、[code: set] の [code: to] も同じく探す。
+[code: xml-stylesheet] のほかの処理命令と、Inkscape の [code: sodipodi:namedview] のような XHTML 以外の名前空間の要素は通す。
+処理命令を拾うため、XML の読み手は処理命令の対象の名前と位置を残す（[code: NInstruction] と [code: parseXmlDocument]）。
+PDF の側はそれを読み飛ばすので、PDF の出力は変わらない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0158-svg-external-references-beyond-href.md]（docs/adr ADR 0158「G08014 の検査を、属性の値の CSS、処理命令、XHTML の要素、接頭辞つきの attributeName に広げる」）]
 
 HTML と EPUB は並列ではなく親子であり、golem-epub は golem-html の出力に EPUB 3.3 [cite epub33] のパッケージングを加える薄い層である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#モジュール構成]（仕様書の「モジュール構成」の節）]
 golem-html は golem-project に依存せず、[code: style.toml] の値を golem-html の設定の型に直すのは golem-driver である。
@@ -105,7 +112,7 @@ C のライブラリは、それぞれを担当するモジュールの中に閉
 | --- | --- | --- |
 | HarfBuzz | 14.6.0 | golem-font |
 | FreeType | 2.14.3 | golem-font |
-| wasmtime | 49.0.2 | golem-plugin |
+| wasmtime | 49.0.5 | golem-plugin |
 | zlib | 1.3.2 | golem-pdf |
 | hyph-utf8 | 5684c0f | golem-layout |
 

@@ -716,7 +716,8 @@ PDF を組むときに出るエラーです。
 = [strong: G08014 [code: SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: …]]
   HTML と EPUB に写す SVG の図版（[code: web] に書いた SVG を含みます）に、スクリプトなどの動的なコンテンツがあります。
   メッセージには、最初に見つかったものの名前と、SVG のファイルの中の行と桁が出ます。
-  名前は、[code: script]、[code: foreignObject]、[code: onload] などの [code: on] で始まる属性、ほかのファイルを指す [code: href]、CSS の [code: @import] と [code: url()] などです。
+  名前は、[code: script]、[code: foreignObject]、[code: onload] などの [code: on] で始まる属性、ほかのファイルを指す [code: href]、CSS の [code: @import]、[code: url()]、[code: image-set()]、処理命令の [code: xml-stylesheet] などです。
+  [code: fill] などの属性の値に書いた [code: url()] も数えます。
   図の作成ツールで、これらを使わずに書き出し直してください。
   行と桁の代わりに括弧の中に理由が出たら、SVG を XML として読めていません。
   G08010 と同じく、書き出し直してください。

@@ -91,9 +91,24 @@ xmlTests =
           (elNs e, elName e) @?= ("http://www.w3.org/2000/svg", "svg")
           [(atName a, atValue a) | a <- elAttrs e] @?= [("a", "1")]
           case elChildren e of
-            [NElement d] -> [t | NText t _ <- elChildren d] @?= ["<AB&<x>"]
+            [NElement d, NInstruction "pi" (Pos 2 113)] -> [t | NText t _ <- elChildren d] @?= ["<AB&<x>"]
             other -> assertFailure (show other)
         Left err -> assertFailure (T.unpack err),
+    testCase "processing instructions are kept, before, in and after the root, and nothing else changes (docs/adr/0158)" $ do
+      let with = "<?xml version=\"1.0\"?>\n<?xml-stylesheet href=\"a.css\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\"><g><?pi x?><rect/></g></svg>\n<?after?>"
+          without = "<?xml version=\"1.0\"?>\n<?xml-stylesheet href=\"a.css\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\"><g>        <rect/></g></svg>\n<?after?>"
+      case (parseXmlDocument with, parseXml with, parseXml without) of
+        (Right doc, Right e, Right e') -> do
+          docInstructions doc @?= [("xml-stylesheet", Pos 2 1), ("after", Pos 4 1)]
+          docRoot doc @?= e
+          [p | NElement g <- elChildren e, NInstruction _ p <- elChildren g] @?= [Pos 3 44]
+          stripInstructions e @?= dropBlank e'
+        other -> assertFailure (show other),
+    testCase "an SVG with processing instructions draws as without them (docs/adr/0158)" $ do
+      let body = "<rect width=\"10\" height=\"10\" fill=\"#ff0000\"/>"
+      with <- either (assertFailure . show) (pure . svgDrawing) (readSvg ("<?xml-stylesheet href=\"a.css\"?>" <> svg ("<?pi x?>" <> body <> "<g><?pi y?></g>")))
+      with' <- drawing (body <> "<g></g>")
+      with @?= with',
     testCase "positions are lines and columns from 1" $
       case parseXml "<svg xmlns=\"http://www.w3.org/2000/svg\">\n  <rect x=\"1\"/>\n</svg>" of
         Right e -> case [c | NElement c <- elChildren e] of
@@ -451,3 +466,21 @@ transformTests =
            map unName (unsupported (svg ("<path transform=\"" <> t <> "\" d=\"M0 0 L1 1\"/>"))) @?= ["transform"]
        | t <- ["rotate(1 2)", "skew(10)", "translate(1,2", "matrix(1 2 3)"]
        ]
+
+-- | An element without its processing instructions, at any depth (docs/adr/0158).
+stripInstructions :: Element -> Element
+stripInstructions e = e {elChildren = [n' | n <- elChildren e, n' <- keep n]}
+  where
+    keep = \case
+      NInstruction _ _ -> []
+      NElement c -> [NElement (stripInstructions c)]
+      t -> [t]
+
+-- | An element without the texts of spaces only, at any depth.
+dropBlank :: Element -> Element
+dropBlank e = e {elChildren = [n' | n <- elChildren e, n' <- keep n]}
+  where
+    keep = \case
+      NText t _ | T.all (== ' ') t -> []
+      NElement c -> [NElement (dropBlank c)]
+      t -> [t]

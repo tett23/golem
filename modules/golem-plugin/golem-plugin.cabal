@@ -39,7 +39,7 @@ library
     , text          >=2.0  && <2.2
     , toml-parser
   default-language: GHC2021
-  -- the wasmtime 49.0.2 C API, linked statically. scripts/fetch-wasmtime.sh
+  -- the wasmtime 49.0.5 C API, linked statically. scripts/fetch-wasmtime.sh
   -- puts it in third_party/wasmtime and writes its absolute paths into
   -- cabal.project.local (extra-include-dirs, extra-lib-dirs).
   include-dirs:     cbits

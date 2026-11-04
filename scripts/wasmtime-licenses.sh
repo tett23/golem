@@ -34,9 +34,9 @@
 #   8. c-objects.tsv: the C and assembly members of each libwasmtime.a; the
 #      component column is filled by hand and kept from the previous output
 set -eu
-VERSION=49.0.2
-# the commit of the tag v49.0.2 (git ls-remote, 2026-10-13)
-COMMIT=3c8a3e79aa3188a1a12b3aebbaa097abccceac92
+VERSION=49.0.5
+# the commit of the tag v49.0.5 (git ls-remote, 2026-11-05)
+COMMIT=805a0f15320e8836cf2b9f001b53d884bf866c89
 RUSTC_VERSION=1.98.0
 # the SHA-256 of compiler-rt/LICENSE.TXT of llvm-project at the version
 # of LLVM of rustc $RUSTC_VERSION (llvmorg-22.1.8, the blob
@@ -67,9 +67,9 @@ fi
 sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 archive_sha() {
   case "$1" in
-    aarch64-macos) echo f7000ab1661495d09b9dc87a11b356941b4e6097f295434bcb30a8cf1393b0d5 ;;
-    x86_64-musl) echo c7039fec0ac87b4f65e6f893c8bad7fb4f5e1c2e3e10d0e927828bd075ac2e17 ;;
-    aarch64-musl) echo a67c334d594d05d6059c7e4cbf8fe4c73c0e9dbb049f18e9729d93bc71c3206a ;;
+    aarch64-macos) echo 16bf4584b586bf18c708bf7b98cb94c415c0201575d5ad24860dcbdf83c213e5 ;;
+    x86_64-musl) echo a56728962f434ad6eed02c6b9313069b0044e2ac3143574bc9fa2c0f5cb2cebc ;;
+    aarch64-musl) echo 2e2a6cb8cabf22f88f2dc52018ac0b048bfc9ba45b09455bb5b17af6588239b1 ;;
   esac
 }
 triple() {

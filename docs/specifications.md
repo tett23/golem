@@ -1939,16 +1939,23 @@ SVG の図版は、golem-svg が Haskell で読み、PDF の描画の演算子�
 - 数は有理数で計算し、三角関数と平方根は有理数の級数を決まった項数で打ち切って求める。座標と行列の値は、PDF に書くときに 1/65536 に丸める。x86-64 と aarch64 で同じ出力にするためである（[docs/adr/0002](adr/0002-determinism.md)）。
 - 色は sRGB の ICCBased の色空間（`/GolemSRGB`）で書き、DeviceRGB と CMYK への変換は使わない。sRGB のプロファイルは、画像、PDF の図版、SVG の図版で共有し、PDF に一度だけ書く。
 - HTML と EPUB は、SVG の図版をそのまま写して `<img>` で置く（`web` があればそれを置く）。EPUB の `media-type` は `image/svg+xml` である。写す前に、次に定める動的なコンテンツだけを検査する（[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)、語は [docs/adr/0057](adr/0057-g0814-says-dynamic-content.md)）。PDF の部分集合の外のもの（輪郭にしていない文字、`@font-face` など）は、HTML と EPUB では許す。
-- 動的なコンテンツとは、ブラウザーが SVG を文書として開いたときに動かすか読むものであり、次の表のものを指す。HTML か EPUB を組むとき、写す SVG のファイル（`@figure` の図版か `web` の、拡張子が `.svg` のもの。箇条の中の `@figure` も含む）を golem-svg の XML の読み手で読み、要素と属性を文書の順にたどる。一つでもあれば、その SVG を参照する `@figure` のブロックごとに G08014 のエラーとし、HTML と EPUB を書かない。PDF とプレーンテキストは書く。dev と prod の両方でエラーである。一つの SVG を複数の `@figure` が参照していても、ファイルは一度だけ読む。
+- 動的なコンテンツとは、ブラウザーが SVG を文書として開いたときに動かすか読むものであり、次の表のものを指す。HTML か EPUB を組むとき、写す SVG のファイル（`@figure` の図版か `web` の、拡張子が `.svg` のもの。箇条の中の `@figure` も含む）を golem-svg の XML の読み手で読み、処理命令、要素、属性を文書の順にたどる。一つでもあれば、その SVG を参照する `@figure` のブロックごとに G08014 のエラーとし、HTML と EPUB を書かない。PDF とプレーンテキストは書く。dev と prod の両方でエラーである。一つの SVG を複数の `@figure` が参照していても、ファイルは一度だけ読む。
 
-| 種類 | 拒むもの |
-| --- | --- |
-| スクリプトの要素 | `script`（名前空間を問わない） |
-| 別の文書を埋め込む要素 | `foreignObject`、`iframe`、`embed`、`object`、`handler`、`listener` |
-| イベントの属性 | 名前が `on` で始まる属性（大文字と小文字を区別しない） |
-| 参照の属性 | `href` と `xlink:href` のうち、値が `#` で始まらないもの |
-| アニメーションによる書き換え | `set`、`animate` の要素で、`attributeName` が `href`、`xlink:href`、または `on` で始まる名前のもの |
-| CSS の外部の参照 | `style` の要素と `style` の属性の中の `@import` と、`url(` の後が `#` で始まらないもの |
+| 種類 | 拒むもの | `<名前>` |
+| --- | --- | --- |
+| スクリプトの要素 | `script`（名前空間を問わない） | 要素の名前 |
+| 別の文書を埋め込む要素 | `foreignObject`、`iframe`、`embed`、`object`、`handler`、`listener` | 要素の名前 |
+| XHTML の要素 | 名前空間が `http://www.w3.org/1999/xhtml` の要素（`foreignObject` の外でも） | 要素の名前 |
+| イベントの属性 | 名前が `on` で始まる属性（大文字と小文字を区別しない） | 属性の名前 |
+| 参照の属性 | `href` と `xlink:href` のうち、値が `#` で始まらないもの | 属性の名前 |
+| アニメーションによる書き換え | `set`、`animate` の要素で、`attributeName` の局所名（`:` の後。`:` がなければ全体）が `href` か、`on` で始まる名前のもの。大文字と小文字を区別しない | 要素の名前 |
+| CSS の外部の参照 | `style` の要素の中身と、すべての属性の値の中の `@import`、`url(` の後が `#` で始まらないもの、`image-set(` | `@import`、`url()`、`image-set()` |
+| 処理命令 | 対象が `xml-stylesheet` の処理命令（文書のどこにあっても。対象の名前は大文字と小文字を区別しない） | `xml-stylesheet` |
+
+- 「すべての属性の値」は、名前空間を問わない。`fill`、`filter`、`clip-path`、`mask`、`marker-start`、`cursor` などの表現の属性と、`set` と `animate` の `to`、`from`、`by`、`values` を含む。値は CSS の字句として読む（注釈を除き、エスケープを解く）。`-webkit-image-set(` も `image-set(` を含むので当たる。`<set attributeName="style" to="fill:url(…)"/>` は `to` の値の `url(` で当たり、`attributeName` が `style` であることだけでは拒まない（[docs/adr/0158](adr/0158-svg-external-references-beyond-href.md)）。
+- `attributeName` の接頭辞は解決しない。局所名が `href` なら、接頭辞がどの名前空間を指していても拒む。
+- `xml-stylesheet` のほかの処理命令（XMP の `<?xpacket?>` など）と XML の宣言は通す。`foreignObject` の外の、XHTML 以外の名前空間の要素（Inkscape の `sodipodi:namedview`、RDF のメタデータなど）も通す。
+- 内部の参照 `url(#id)` と `href="#id"` は通す。ブラウザーと EPUB の読書環境が各形を実際に読むかは確かめておらず、読まないことを確かめていない形は読むものとして扱う。
 
 - XML として読めない SVG、UTF-8 でない SVG、内部サブセットを持つ `DOCTYPE` を持つ SVG も、中身を確かめられないので G08014 とし、G08010 と同じ理由を括弧の中に書く。動的なコンテンツを取り除いて写すことはしない。検査を通った SVG は、バイト列をそのまま写す。
 
