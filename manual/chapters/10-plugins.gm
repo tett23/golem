@@ -101,10 +101,6 @@ overrides = ["number-text"]
 https://github.com/tett23/golem/releases/download/<版>
 ```
 
-見本のプラグインに入っているもの（Rust のクレートと標準ライブラリ）の著作権の表示とライセンスの文書は、同じリリースのアーカイブ [code: golem-plugins-licenses-<版>.tar.gz] にまとめてあります。
-URL は、[code: <リリースの URL>] の後に [code: /golem-plugins-licenses-<版>.tar.gz] を付けたものです。
-見本のプラグインの [code: .wasm] をほかの人に配るときは、このアーカイブも一緒に配ってください。
-
 縦組みの本では、数を次のように組みます。
 
 - [code: \[number-text 123\]]：百二十三
@@ -117,6 +113,13 @@ URL は、[code: <リリースの URL>] の後に [code: /golem-plugins-licenses
 [code: style] を書かない数と [code: ##12##] の表記は、組み込みと同じく [code: style.toml] の [code: \[numbers\]] の [code: vertical] に従います。
 横組みの本では、組み込みと同じく算用数字（[code: 123]、[code: 3.14]、[code: 2/3]）で組みます。
 ページ番号や箇条書きの番号は、このプラグインを通らず、組み込みのとおりに組まれます。
+
+見本のプラグインに入っている Rust のクレートと標準ライブラリの著作権の表示とライセンスの文書は、同じリリースの次のアーカイブにまとめてあります。
+見本のプラグインの [code: .wasm] をほかの人に配るときは、このアーカイブも一緒に配ってください。
+
+```
+<リリースの URL>/golem-plugins-licenses-<版>.tar.gz
+```
 
 ## プラグインのブロックコマンドを使う
 
