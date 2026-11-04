@@ -362,17 +362,18 @@ explainTests =
           out @?= c <> ": プラグインの診断のコードです。説明は golem にはないので、プラグインの文書を参照してください\n"
           err @?= "",
       testCase "a code of a plugin not of the form of docs/adr/0139 is a usage error (docs/adr/0151)" $
-        forM_ ["x/404", "x/-", "x/0", "x/2x", "x/-a", "lookup/No-key"] $ \c -> do
+        forM_ ["x/404", "x/-", "x/0", "x/2x", "x/-a", "lookup/No-key", "G01017/"] $ \c -> do
           (code, out, err) <- golemSplit ["explain", c]
           assertEqual c (ExitFailure 2) code
           out @?= ""
-          err @?= badPluginCode c <> "\n",
+          err @?= badPluginCode afterSlash c <> "\n",
       testCase "golem explain x/404 G01017: the section of G01017, then the line on x/404 (docs/adr/0151)" $ do
         (_, a, _) <- golemSplit ["explain", "G01017"]
         (code, out, err) <- golemSplit ["explain", "x/404", "G01017"]
         code @?= ExitFailure 2
         out @?= a
-        err @?= badPluginCode "x/404" <> "\n",
+        err @?= badPluginCode afterSlash "x/404" <> "\n",
+      pluginCodeOrderTests,
       exitsWith (ExitFailure 2) ["explain", "G99999"],
       exitsWith (ExitFailure 2) ["explain", "nope"],
       severalCodesTests,
@@ -392,9 +393,62 @@ explainTests =
         assertBool err (isJust (J.decode (BL.fromStrict (TE.encodeUtf8 (T.pack err))) :: Maybe J.Value))
     ]
 
--- | The line on a code of a plugin not of the form of docs/adr/0139 (docs/adr/0151).
-badPluginCode :: String -> String
-badPluginCode c = "プラグインの診断のコードの形が不正です: " <> c <> "。/ の後は英小文字で始まり、英小文字、数字、- だけからなります"
+{- | The line on a code of a plugin not of the form of docs/adr/0139
+(docs/adr/0151): the second half names the place to fix (docs/adr/0164).
+-}
+badPluginCode :: String -> String -> String
+badPluginCode why c = "プラグインの診断のコードの形が不正です: " <> c <> "。" <> why
+
+-- | The second halves of the lines on malformed codes of plugins (docs/adr/0164).
+twoSlashes, beforeSlash, afterSlash :: String
+twoSlashes = "/ は一つだけです"
+beforeSlash = "/ の前はプラグインの宣言の名前で、空でなく、空白を含みません"
+afterSlash = "/ の後は英小文字で始まり、英小文字、数字、- だけからなります"
+
+{- | The dedup of golem explain does not depend on the order of the arguments,
+and a malformed code of a plugin is told where it is wrong (docs/adr/0164).
+-}
+pluginCodeOrderTests :: TestTree
+pluginCodeOrderTests =
+  testGroup
+    "codes of plugins: dedup and messages (docs/adr/0164)"
+    [ testCase "golem explain X/A x/a and x/a X/A: the line on x/a, and X/A is an error" $ do
+        (_, a, _) <- golemSplit ["explain", "x/a"]
+        forM_ [["X/A", "x/a"], ["x/a", "X/A"]] $ \args -> do
+          (code, out, err) <- golemSplit ("explain" : args)
+          assertEqual (unwords args) (ExitFailure 2) code
+          out @?= a
+          err @?= badPluginCode afterSlash "X/A" <> "\n",
+      testCase "golem explain lk/x LK/x: two lines, for two declarations" $ do
+        (code, out, err) <- golemSplit ["explain", "lk/x", "LK/x"]
+        code @?= ExitSuccess
+        out @?= pluginLine "lk/x" <> "\n\n" <> pluginLine "LK/x" <> "\n"
+        err @?= "",
+      testCase "golem explain x/a x/a: one line" $ do
+        (code, out, err) <- golemSplit ["explain", "x/a", "x/a"]
+        code @?= ExitSuccess
+        out @?= pluginLine "x/a" <> "\n"
+        err @?= "",
+      testCase "golem explain nope NOPE: one line on nope" $ do
+        (code, out, err) <- golemSplit ["explain", "nope", "NOPE"]
+        code @?= ExitFailure 2
+        out @?= ""
+        err @?= "診断のコードは G と 5 桁の数字です: nope\n",
+      testCase "two or more slashes: / is only one" $
+        forM_ ["a/b/c", "x/a/", "/a/b"] $ \c -> do
+          (code, out, err) <- golemSplit ["explain", c]
+          assertEqual c (ExitFailure 2) code
+          out @?= ""
+          err @?= badPluginCode twoSlashes c <> "\n",
+      testCase "the name before the slash is empty or has a space" $
+        forM_ ["x /a", "/a", "x y/A", "/A"] $ \c -> do
+          (code, out, err) <- golemSplit ["explain", c]
+          assertEqual c (ExitFailure 2) code
+          out @?= ""
+          err @?= badPluginCode beforeSlash c <> "\n"
+    ]
+  where
+    pluginLine c = c <> ": プラグインの診断のコードです。説明は golem にはないので、プラグインの文書を参照してください"
 
 -- | golem explain with several codes (golem-cli ADR 0009).
 severalCodesTests :: TestTree
