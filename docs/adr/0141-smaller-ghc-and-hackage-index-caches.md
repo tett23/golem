@@ -1,6 +1,6 @@
 # ADR 0141: GHC と Hackage の索引のキャッシュから、CI が読まないファイルを除く
 
-ステータス: 採択
+ステータス: 採択、`01-index.tar.gz` の除き方は [ADR 0152](0152-remove-hackage-index-tar-gz-before-cache.md)
 
 ## 文脈
 
