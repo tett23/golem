@@ -123,6 +123,7 @@ If only a few features are needed, implementing only those is fine.
 
 Raising the version of any pinned native library listed in [README.md](./README.md) (HarfBuzz, FreeType, wasmtime, zlib, hyph-utf8) requires an ADR.
 When raising the version of wasmtime, regenerate `licenses/wasmtime-v<version>/` (the license documents of the Rust crates and others in `libwasmtime.a`) with `scripts/wasmtime-licenses.sh` and commit the output ([docs/adr/0007](./docs/adr/0007-third-party-licenses.md)).
+A pull request that changes `scripts/fetch-wasmtime.sh` runs `sh scripts/wasmtime-advisories.sh` locally and pastes its output and exit code into the description, to show that the new version is in the range of no known advisory ([docs/adr/0157](./docs/adr/0157-check-wasmtime-pin-against-advisories.md)).
 The script connects to the network and needs `cargo` and `rustup`.
 It does not fill in the component column of `c-objects.tsv`; fill it in by hand.
 When raising the version of shem, the rasterizer of the visual regression test, change the version and the SHA-256 of the three archives in `scripts/visual/fetch-shem.sh`.

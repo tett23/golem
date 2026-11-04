@@ -1400,6 +1400,18 @@ fi
 if grep -qF 'one font from many threads' "$HERE/../../modules/golem-font/test/ConcurrencySpec.hs"; then ok; else ng "race.yml: the pattern names the group of ConcurrencySpec"; fi
 if awk -v c="if: steps.needed.outputs.run == 'true'" 'index($0, "name: The race tests") { getline; if (index($0, c)) f = 1 } END { exit !f }' "$RACE_YML"; then ok; else ng "race.yml: the tests run only when race-needed.sh says so"; fi
 
+# ---------------------------------------------------------------- advisories.yml
+# (docs/adr/0157-check-wasmtime-pin-against-advisories.md)
+
+ADV_YML=$HERE/../../.github/workflows/advisories.yml
+if [ -f "$ADV_YML" ]; then ok; else ng "advisories.yml: exists"; fi
+# once a day, and by hand; never on a pull request or a push
+if grep -qE '^    - cron: "[0-9]+ [0-9]+ \* \* \*"$' "$ADV_YML" && grep -qx '  workflow_dispatch:' "$ADV_YML" &&
+  ! grep -qE '^  (pull_request|push):' "$ADV_YML"; then ok; else ng "advisories.yml: a schedule of once a day and workflow_dispatch only"; fi
+if [ "$(awk '/^permissions:/ { on = 1; next } on && /^[^ ]/ { on = 0 } on && /^  [a-z]/' "$ADV_YML")" = "  contents: read" ] &&
+  ! grep -qE ': *write' "$ADV_YML"; then ok; else ng "advisories.yml: the permissions are contents: read only"; fi
+if grep -qF 'GH_TOKEN: ${{ github.token }}' "$ADV_YML" && grep -qx '        run: sh scripts/wasmtime-advisories.sh' "$ADV_YML"; then ok; else ng "advisories.yml: runs wasmtime-advisories.sh with the token of the run"; fi
+
 # ---------------------------------------------------------------- test-suites.sh
 # (docs/adr/0140-ci-split-test-runners-and-visual-pdfs-first.md)
 
