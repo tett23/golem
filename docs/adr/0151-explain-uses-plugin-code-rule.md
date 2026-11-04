@@ -1,6 +1,6 @@
 # ADR 0151: `golem explain` が受けるプラグインのコードの形を、golem-plugin の規則で判定する
 
-ステータス: 採択
+ステータス: 採択、重複の除き方と形の誤りの文は [ADR 0164](0164-explain-dedup-and-plugin-code-messages.md)
 
 ## 文脈
 
