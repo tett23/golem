@@ -1,7 +1,8 @@
 //! A sample plugin (docs/adr/0126): `[term: 語]` sets the word in the text
 //! and sends it to the channel `glossary`; `@channel glossary` lists the
 //! words in the order of their readings, each with its definition and the
-//! pages it is on. The project passes the words as the data `terms`:
+//! pages it is on. `[term 組む: 組んだ]` sets 組んだ and sends the headword
+//! 組む (docs/adr/0127). The project passes the words as the data `terms`:
 //!
 //! ```toml
 //! [plugins.glossary]
@@ -150,6 +151,18 @@ fn error(span: Span, code: &str, message: String) -> Diagnostic {
     Diagnostic { code: code.into(), severity: Severity::Error, span, message }
 }
 
+/// The headword of a call: its positional argument, a word or a string, or
+/// else the text of its slot (docs/adr/0127).
+fn headword(args: &[Arg], slot: &[Inline]) -> Result<String, (&'static str, &'static str)> {
+    match args {
+        [] => Ok(plain(slot)),
+        [Arg::Positional(ArgValue::Str(s))] if s.is_empty() => Err(("headword-empty", "term の見出し語が空です")),
+        [Arg::Positional(ArgValue::Str(s))] => Ok(s.clone()),
+        [Arg::Positional(_)] => Err(("headword-type", "term の見出し語は文字列で書きます")),
+        _ => Err(("args", "term には見出し語を一つだけ書けます")),
+    }
+}
+
 pub fn invoke(req: Request) -> Response {
     let c = match req {
         Request::Command(c) => c,
@@ -162,13 +175,13 @@ pub fn invoke(req: Request) -> Response {
         _ => return Response::inlines(vec![]).with(error(c.span, "slot", "term には語を一つ書きます".into())),
     };
     let shown = Response::inlines(slot.clone());
-    let word = plain(&slot);
-    if word.is_empty() {
+    if plain(&slot).is_empty() {
         return shown.with(error(c.span, "slot", "term には語を一つ書きます".into()));
     }
-    if !c.args.is_empty() {
-        return shown.with(error(c.span, "args", "term は引数を取りません".into()));
-    }
+    let word = match headword(&c.args, &slot) {
+        Ok(w) => w,
+        Err((code, message)) => return shown.with(error(c.span, code, message.into())),
+    };
     let tsv = match c.data.get(DATA).map(tsv_of) {
         Some(Ok(t)) => t,
         Some(Err((code, m))) => return shown.with(error(c.span, code, m)),
@@ -302,6 +315,20 @@ mod tests {
         assert_eq!(r, Response::inlines(vec![text("カーニング"), item("カーニング", "カーニング", vec![text("カーニング"), text("\u{3000}"), text("字間の調整")])]));
     }
 
+    fn word(s: &str) -> Arg {
+        Arg::Positional(ArgValue::Str(s.into()))
+    }
+
+    #[test]
+    fn the_argument_is_the_headword_and_the_slot_the_text() {
+        let tsv = Some("組む\tくむ\t版を作ること\n".as_bytes());
+        let r = invoke(command(vec![word("組む")], vec![vec![text("組んだ")]], tsv));
+        assert_eq!(r, Response::inlines(vec![text("組んだ"), item("組む", "くむ", vec![text("組む"), text("\u{3000}"), text("版を作ること")])]));
+        let unknown = invoke(command(vec![word("組める")], vec![vec![text("組んだ")]], tsv));
+        assert_eq!(unknown.diagnostics.iter().map(|d| d.message.as_str()).collect::<Vec<_>>(), vec!["terms にない語です: 組める"]);
+        assert_eq!(unknown.output, Output::Inlines(vec![text("組んだ")]));
+    }
+
     #[test]
     fn the_fourth_column_is_a_reference_to_a_page() {
         let t = Term { word: "w".into(), reading: "w".into(), definition: "d".into(), see: Some("sec".into()) };
@@ -337,7 +364,10 @@ mod tests {
             (command(vec![], one(), None), "no-data"),
             (command(vec![], one(), Some(&[0xff])), "utf8"),
             (command(vec![], one(), Some("x\n".as_bytes())), "tsv-columns"),
-            (command(vec![Arg::Positional(ArgValue::Str("a".into()))], one(), tsv), "args"),
+            (command(vec![word("a"), word("b")], one(), tsv), "args"),
+            (command(vec![Arg::Keyword("headword".into(), ArgValue::Str("a".into()))], one(), tsv), "args"),
+            (command(vec![Arg::Positional(ArgValue::Int(3))], one(), tsv), "headword-type"),
+            (command(vec![word("")], one(), tsv), "headword-empty"),
         ];
         for (req, code) in cases {
             let r = invoke(req);

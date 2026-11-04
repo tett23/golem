@@ -561,6 +561,15 @@ glossaryTests =
         ls <- concat <$> pdfPages tmp
         assertBool (show ls) ("カーニング。一" `elem` ls)
         assertBool (show ls) ("カーニング　字間の調整（→一）　一" `elem` ls),
+    -- docs/adr/0127
+    testCase "a headword in the argument: two forms of the word make one entry with two places" $
+      withGlossary horizontalStyle "[term 組む: 組んだ]版と[term: 組む]版。\n\n@channel glossary\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        t <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        t @?= "組んだ版と組む版。\n\n組む　版を作ること\n"
+        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        (T.count "<li>" html, T.count "href=\"#c-glossary-" html + T.count "a.xhtml#c-glossary-" html) @?= (1, 2),
     testCase "G04003: the label of the fourth column is not in the book" $
       withGlossary horizontalStyle "[term: カーニング]。\n\n@channel glossary\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
