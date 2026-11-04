@@ -68,10 +68,13 @@ lockIn plugins tmp act = do
     act
   where
     pluginUrl name = "https://example.com/" <> name <> ".wasm"
-    serve (name, wat) = do
-      src <- TIO.readFile ("../golem-plugin/test/plugins" </> wat)
-      wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
-      pure (pluginUrl name, wasm)
+    -- a wat file of golem-plugin's tests, or a sample plugin built into plugins/wasm (docs/adr/0106)
+    serve (name, file)
+      | ".wasm" `T.isSuffixOf` T.pack file = (pluginUrl name,) <$> BS.readFile (".." </> ".." </> "plugins" </> "wasm" </> file)
+      | otherwise = do
+          src <- TIO.readFile ("../golem-plugin/test/plugins" </> file)
+          wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
+          pure (pluginUrl name, wasm)
 
 -- | The declaration of a plugin as withPlugins serves it.
 pluginDeclOf :: BS.ByteString -> BS.ByteString -> BS.ByteString
@@ -175,12 +178,16 @@ answers [datum] with the bytes of its data table, declared as lk with
 the given keys after its url, and the given files.
 -}
 withDatum :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
-withDatum decl source files k = withSystemTempDirectory "golem-data" $ \tmp -> do
+withDatum = withDataPlugin "datum.wat"
+
+-- | The same with a plugin of the given file: a wat file or a sample plugin.
+withDataPlugin :: FilePath -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withDataPlugin plugin decl source files k = withSystemTempDirectory "golem-data" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> pluginDeclOf "lk" decl)
   BS.writeFile (tmp </> "style.toml") horizontalStyle
   TIO.writeFile (tmp </> "a.gm") source
   writeFiles tmp files
-  lockIn [("lk", "datum.wat")] tmp (k tmp)
+  lockIn [("lk", plugin)] tmp (k tmp)
 
 -- | The S0 inlines of the paragraphs of a.gm, and every diagnostic.
 lookedUp :: Map.Map FilePath T.Text -> FilePath -> IO ([Inline], [(DiagnosticCode, T.Text)])
@@ -195,7 +202,15 @@ texts is = [t | Text _ t <- is]
 -- | The data a project passes to a plugin (docs/adr/0105).
 dataTests :: [TestTree]
 dataTests =
-  [ testCase "the plugin reads the file the manifest passes as data" $
+  [ testCase "the sample plugin lookup gives the value of a key in its TSV (docs/adr/0106)" $
+      withDataPlugin "lookup.wasm" "data = { table = \"data/words.tsv\" }\n" "[lookup: key]\n" [("data/words.tsv", "# words\nkey\tvalue\nkey\tsecond\n")] $ \tmp -> do
+        (inls, ds) <- lookedUp Map.empty tmp
+        (texts inls, ds) @?= (["value"], []),
+    testCase "the sample plugin lookup without its data reports its own diagnostic (docs/adr/0106)" $
+      withDataPlugin "lookup.wasm" "" "[lookup: key]\n" [] $ \tmp -> do
+        (_, ds) <- lookedUp Map.empty tmp
+        map fst ds @?= [DiagnosticCode "lookup-no-table"],
+    testCase "the plugin reads the file the manifest passes as data" $
       withDatum "data = { table = \"data/words.tsv\" }\n" "[datum]\n" [("data/words.tsv", "value")] $ \tmp -> do
         (inls, ds) <- lookedUp Map.empty tmp
         (texts inls, ds) @?= (["value"], []),

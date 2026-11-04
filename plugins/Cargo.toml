@@ -1,0 +1,23 @@
+# The sample plugins of Golem and the helper crate they are written with
+# (docs/adr/0106). Each member but golem-plugin-sdk is one plugin whose
+# package name is the name of its directory; build.sh builds it into
+# wasm/<name>.wasm.
+[workspace]
+resolver = "2"
+members = ["golem-plugin-sdk", "lookup"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+publish = false
+
+# the same bytes from the same sources: one codegen unit, no debug info,
+# abort on panic (a trap for the host), symbols stripped
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false
+strip = true
+incremental = false

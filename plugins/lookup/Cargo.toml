@@ -1,0 +1,13 @@
+[package]
+name = "lookup"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "A sample plugin: [lookup: key] gives the value of the key in a TSV the project passes as data (docs/adr/0105, 0106)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+golem-plugin-sdk = { path = "../golem-plugin-sdk" }
