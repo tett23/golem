@@ -1450,6 +1450,33 @@ if [ "$CODE" = 0 ] && ! grep -q 'from stdin' "$WORK/out"; then ok; else ng "run-
 run run_all
 expect "run-all: no argument" 2
 
+# ---------------------------------------------------------------- golem-driver's suites and threads
+# (docs/adr/0146-threaded-golem-driver-test.md)
+
+# stanza NAME: the lines of the test-suite NAME of golem-driver.cabal
+DRIVER_CABAL=$HERE/../../modules/golem-driver/golem-driver.cabal
+stanza() { awk -v n="test-suite $1" '$0 == n { on = 1; next } on && /^[^ \t-]/ { on = 0 } on' "$DRIVER_CABAL"; }
+# modules NAME: the other-modules of the test-suite NAME, one per line
+modules_of() { stanza "$1" | awk '/^  other-modules:/ { on = 1; next } on && /^  [a-z-]+:/ { on = 0 } on { print $1 }'; }
+if stanza golem-driver-test | grep -Eq '^  ghc-options: .*-threaded' && stanza golem-driver-test | grep -qF '"-with-rtsopts=-N"'; then ok; else
+  ng "golem-driver.cabal: golem-driver-test is built -threaded with -N"
+fi
+if [ -n "$(stanza golem-driver-global-test)" ] && ! stanza golem-driver-global-test | grep -q -- '-threaded'; then ok; else
+  ng "golem-driver.cabal: golem-driver-global-test is a suite without -threaded"
+fi
+if ! modules_of golem-driver-test | grep -Eqx 'PluginsSpec|LocaleSpec' &&
+  modules_of golem-driver-global-test | grep -qx PluginsSpec && modules_of golem-driver-global-test | grep -qx LocaleSpec; then ok; else
+  ng "golem-driver.cabal: PluginsSpec and LocaleSpec are in golem-driver-global-test, not in golem-driver-test"
+fi
+# the threaded suite changes no state of the process: tasty runs its tests
+# at the same time, and the others would read the state half changed
+GLOBAL_STATE=$(for m in $(modules_of golem-driver-test) Main; do
+  grep -lwE 'withEnv|setEnv|unsetEnv|setLocaleEncoding|setCurrentDirectory|withCurrentDirectory' "$HERE/../../modules/golem-driver/test/$m.hs" 2>/dev/null
+done)
+if [ -n "$(modules_of golem-driver-test)" ] && [ -z "$GLOBAL_STATE" ]; then ok; else
+  ng "golem-driver-test: no test changes the state of the process ($GLOBAL_STATE)"
+fi
+
 # ---------------------------------------------------------------- test-only-deps.sh
 
 PLANS=$HERE/testdata/test-only-deps

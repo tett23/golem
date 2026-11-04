@@ -1,6 +1,6 @@
 # ADR 0131: 初出の語にルビを振るプラグイン
 
-ステータス: 採択
+ステータス: 採択→diagnostic のコードは後ろの部分（`no-words`、`utf8`、`tsv`）を返すことは [ADR 0153](0153-sample-plugin-codes-are-tails.md)
 
 ## 文脈
 

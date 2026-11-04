@@ -222,6 +222,11 @@ IO で書ける処理は IO のエッジに置き、どうしても純粋な関�
 tasty 1.5.4 も、capability がプロセッサより少ないと起動の時点でこれを呼ぶので、`-N` で呼ばせないようにする。
 どちらかを破ると、CI の `changes` ジョブ（`scripts/ci/rts-capabilities.sh`）が失敗する。
 
+`-threaded` のテストのスイートでは、tasty がテストを同時に走らせる。
+環境変数、ロケールの符号化、カレントディレクトリのようなプロセスの状態を変えるテストは、ほかのテストが途中の状態を読むので、`-threaded` のスイートに置かない。
+golem-driver では、そうしたテストを `-threaded` でない `golem-driver-global-test` に書く（[docs/adr/0146](./docs/adr/0146-threaded-golem-driver-test.md)）。
+`golem-driver-test` のモジュールが `withEnv`、`setEnv`、`setLocaleEncoding`、`setCurrentDirectory` などを使うと、CI の `scripts-linux` ジョブ（`scripts/ci/test.sh`）が失敗する。
+
 監査の記録や性能計測のスナップショットは、`docs/` の下に用途ごとのディレクトリを作って置く。
 これらもコミットしたあとは変更しない。
 `docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/` に置いた記録は、フックと CI の `adr` ジョブがコミット後の変更、削除、移動を拒否する（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)）。
