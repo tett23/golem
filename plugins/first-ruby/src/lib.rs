@@ -66,7 +66,7 @@ impl Visitor for First<'_> {
 }
 
 pub fn filter(mut doc: Document, data: &Data) -> Response {
-    match read_words(data, "words", doc.file, NAME) {
+    match read_words(data, "words", doc.file) {
         Ok(Some(dict)) => {
             walk(&mut doc, false, &mut First { dict: &dict, seen: BTreeSet::new() });
             Response::document(doc)
@@ -74,7 +74,7 @@ pub fn filter(mut doc: Document, data: &Data) -> Response {
         Ok(None) => {
             let top = Span { file: doc.file, start: 0, end: 0 };
             Response::document(doc).with(Diagnostic {
-                code: format!("{NAME}-no-words"),
+                code: "no-words".into(),
                 severity: Severity::Error,
                 span: top,
                 message: "manifest.toml の data で words を渡してください".into(),
@@ -89,13 +89,13 @@ pub fn invoke(req: Request) -> Response {
         Request::Filter(f) => filter(f.document, &f.data),
         // the host calls only what describe declares: no command, no block command
         Request::Block(b) => Response::blocks(vec![]).with(Diagnostic {
-            code: format!("{NAME}-no-command"),
+            code: "no-command".into(),
             severity: Severity::Error,
             span: b.span,
             message: format!("{NAME} にコマンドはありません"),
         }),
         Request::Command(c) => Response::inlines(vec![]).with(Diagnostic {
-            code: format!("{NAME}-no-command"),
+            code: "no-command".into(),
             severity: Severity::Error,
             span: c.span,
             message: format!("{NAME} にコマンドはありません"),
