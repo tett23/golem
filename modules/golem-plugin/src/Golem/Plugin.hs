@@ -306,13 +306,6 @@ noData = BS.singleton 0x80
 callMode :: Plugin -> CInt -> ByteString -> IO (Either PluginError (ByteString, Word32))
 callMode plugin mode input = fst <$> callModeWith (plFuel plugin) plugin mode input
 
-{- | Whether to write the fuel of each call to the standard error
-(GOLEM_DEBUG_PLUGIN_FUEL, docs/adr/0124): read once.
--}
-debugFuel :: Bool
-debugFuel = unsafePerformIO (isJust <$> lookupEnv "GOLEM_DEBUG_PLUGIN_FUEL")
-{-# NOINLINE debugFuel #-}
-
 {- | A call with a limit on its instructions, and the fuel it used, all of
 it when it ran out (docs/adr/0124). With GOLEM_DEBUG_PLUGIN_FUEL a line
 of the call goes to the standard error; the outputs do not change.
@@ -326,6 +319,7 @@ callModeWith fuel plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
       poke usedPtr 0
       (status, msg) <- withMessage (c_call p mode fuel (plMemory plugin) (castPtr inPtr) (fromIntegral inLen) outPtr outLen u32 usedPtr)
       used <- peek usedPtr
+      debugFuel <- isJust <$> lookupEnv "GOLEM_DEBUG_PLUGIN_FUEL"
       when debugFuel $
         hPutStrLn stderr ("golem-debug-fuel: mode=" <> show mode <> " request=" <> show inLen <> " fuel=" <> show fuel <> " used=" <> show used <> " status=" <> show status)
       out <- peek outPtr
@@ -348,14 +342,21 @@ callModeWith fuel plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
         5 -> Left (InstantiateFailed msg)
         _ -> Left (Trapped msg)
 
-{- | One call of @golem_invoke@ with raw CBOR. The one unsafePerformIO of
-this module (docs/adr ADR 0034): the evaluator, a pure function, calls
-it. It is a function of the plugin and the input alone, since each call
-gets a fresh store and instance, the plugin has no imports, and its
-limits are counted in instructions and bytes, not in time (ADR 0001).
--}
+-- | One call of @golem_invoke@ with raw CBOR, with the fuel of a command.
 invokeRaw :: Plugin -> ByteString -> Either PluginError ByteString
-invokeRaw plugin input = fst <$> unsafePerformIO (callMode plugin 2 input)
+invokeRaw plugin = fst . invokeRawFuel (plFuel plugin) plugin
+
+{- | One call of @golem_invoke@ with a limit on the instructions, and the
+fuel the call used (docs/adr/0124). The one unsafePerformIO of this
+module (docs/adr ADR 0034): the evaluator, a pure function, calls it. It
+is a function of the limit, the plugin and the input alone, since each
+call gets a fresh store and instance, the plugin has no imports, and its
+limits and the fuel used are counted in instructions and bytes, not in
+time (ADR 0001). The line GOLEM_DEBUG_PLUGIN_FUEL writes to the standard
+error changes no result.
+-}
+invokeRawFuel :: Word64 -> Plugin -> ByteString -> (Either PluginError ByteString, Word64)
+invokeRawFuel fuel plugin input = let (r, used) = unsafePerformIO (callModeWith fuel plugin 2 input) in (fst <$> r, used)
 
 decodeTermBytes :: ByteString -> Either PluginError Term
 decodeTermBytes b = case deserialiseFromBytes decodeTerm (BL.fromStrict b) of
@@ -650,14 +651,14 @@ applyFilter :: Plugin -> Text -> Document -> Either PluginError (Document, [Diag
 applyFilter plugin name doc = fst (applyFilterFuel plugin name doc)
 
 {- | 'applyFilter', and the fuel the call used (docs/adr/0124). The limit
-is 'filterFuel' of the CBOR of the document. Pure as 'invokeRaw' is.
+is 'filterFuel' of the CBOR of the document.
 -}
 applyFilterFuel :: Plugin -> Text -> Document -> (Either PluginError (Document, [Diagnostic]), Word64)
 applyFilterFuel plugin name doc =
   let docBytes = toStrictByteString (encodeTerm (documentTerm doc))
       fuel = filterFuel (plFuel plugin) (BS.length docBytes)
-      (out, used) = unsafePerformIO (callModeWith fuel plugin 2 (filterRequestOf plugin name docBytes))
-   in (out >>= filtered plugin doc . fst, used)
+      (out, used) = invokeRawFuel fuel plugin (filterRequestOf plugin name docBytes)
+   in (out >>= filtered plugin doc, used)
 
 -- | The answer of a filter over the document: checked as below.
 filtered :: Plugin -> Document -> ByteString -> Either PluginError (Document, [Diagnostic])

@@ -7,4 +7,4 @@
 modules/golem-font/src/Golem/Font.hs:glyphMetrics # the pure layout asks for ink boxes as it goes; FreeType reads the font bytes only
 modules/golem-font/src/Golem/Font.hs:glyphVerticalOrigin # the pure layout asks for it per glyph in vertical text; HarfBuzz reads the font bytes only
 modules/golem-font/src/Golem/Font.hs:shapeUnits # the pure layout shapes texts as it goes; HarfBuzz keeps no state between calls
-modules/golem-plugin/src/Golem/Plugin.hs:invokeRaw # the pure evaluator calls plugins; a fresh wasm instance per call, no imports, fuel and memory limits
+modules/golem-plugin/src/Golem/Plugin.hs:invokeRawFuel # the pure evaluator calls plugins; a fresh wasm instance per call, no imports, fuel and memory limits; the fuel used is counted in instructions (docs/adr/0124)
