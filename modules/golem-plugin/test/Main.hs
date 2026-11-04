@@ -25,7 +25,7 @@ import DataSpec (dataTests, describeTests)
 import Golem.Doc.Assemble (ChannelDecl (..))
 import Golem.Doc.Cbor (documentTerm, inlinesTerm)
 import Golem.Doc.IR
-import Golem.Eval.Value (Value (..))
+import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Parser.AST qualified as A
 import Golem.Plugin
 import Golem.Plugin.Lock
@@ -103,7 +103,7 @@ responseWith :: Term -> ByteString
 responseWith out = cbor (TList [out, TList []])
 
 shout :: Plugin -> Either PluginError ([Inline], [Diagnostic])
-shout p = callCommand p "shout" [VString "x"] [[Text callSpan "slot"]] callSpan
+shout p = callCommand p "shout" [PluginPositional (VString "x")] [[Text callSpan "slot"]] callSpan
 
 -- | Replaces the first occurrence of a subterm.
 replaceTerm :: Term -> Term -> Term -> Term
@@ -132,8 +132,8 @@ tests =
         map channelName (pluginChannels p) @?= ["glossary", "people"]
         let slot = [Text callSpan "語"]
             itemOf c k r = ChannelItem callSpan (ChannelItemData c k r slot)
-        fmap fst (callCommand p "term" [VString "k", VString "よみ"] [slot] callSpan) @?= Right (slot <> [itemOf "glossary" (Just "k") (Just "よみ")])
-        fmap fst (callCommand p "person" [VString "甲"] [slot] callSpan) @?= Right (slot <> [itemOf "people" (Just "甲") Nothing])
+        fmap fst (callCommand p "term" [PluginPositional (VString "k"), PluginPositional (VString "よみ")] [slot] callSpan) @?= Right (slot <> [itemOf "glossary" (Just "k") (Just "よみ")])
+        fmap fst (callCommand p "person" [PluginPositional (VString "甲")] [slot] callSpan) @?= Right (slot <> [itemOf "people" (Just "甲") Nothing])
         fmap fst (callCommand p "person" [] [slot] callSpan) @?= Right (slot <> [itemOf "people" Nothing Nothing]),
       -- docs/adr ADR 0031
       testCase "a plugin without golem_dealloc loads and answers" $ do

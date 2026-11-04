@@ -1,5 +1,7 @@
 module Golem.Eval.Value
   ( Value (..),
+    PluginArg (..),
+    pluginArgValue,
     NumType (..),
     typeName,
     valueToExpr,
@@ -33,6 +35,20 @@ data Value
   | -- | the closed range of two integers, both included; the first is not after the last (docs/adr ADR 0113)
     VRange !Integer !Integer
   deriving stock (Eq, Show)
+
+{- | An argument of a call of a plugin's command, as golem-doc.cddl's
+@argument@: a positional value, or a keyword and its value (docs/adr/0110).
+-}
+data PluginArg
+  = PluginPositional !Value
+  | PluginKeyword !Text !Value
+  deriving stock (Eq, Show)
+
+-- | The value of an argument of a plugin's command.
+pluginArgValue :: PluginArg -> Value
+pluginArgValue = \case
+  PluginPositional v -> v
+  PluginKeyword _ v -> v
 
 -- | The three number types, from the narrowest (docs/adr ADR 0101).
 data NumType = TNat | TInt | TRat
