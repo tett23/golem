@@ -3016,6 +3016,8 @@ Golem は、プラグインの仕組みを通す見本のプラグインを、�
 - 見本のプラグインは、`plugins/<名前>/` のクレートで、`plugins/build.sh` が `plugins/wasm/<名前>.wasm` に作る。作った `.wasm` はコミットし、golem-driver のテストはそれを読む。
 - ツールチェーンは `plugins/rust-toolchain.toml` で固定し、ソースのパスを固定の文字列に置き換えて作るので、同じソースからは同じバイト列になる。cargo が各クレートに付ける `-C metadata` は、ホストの名前を含む `rustc -vV` の出力から作られ、derive のマクロが書く項目の順をホストごとに変える。`build.sh` は、rustc のラッパー `plugins/rustc-wrapper.sh` で、この値をパッケージの名前、版、フィーチャー、ホスト向けかターゲット向けかの文字列に置き換える。CI の `plugins` ジョブが、コミットした `.wasm` とソースから作ったバイト列の一致を確かめる。
 - 見本のプラグインは、リリースに `<名前>.wasm` として添える。利用者は `https://github.com/tett23/golem/releases/download/<タグ>/<名前>.wasm` を `url` に書いて使う。
+- 見本のプラグインに入るもの（依存する crates.io のクレートと Rust の標準ライブラリ）の著作権の表示とライセンスの文書は、`scripts/plugin-licenses.sh` が `licenses/plugins/` に生成し、コミットする（[docs/adr/0133](adr/0133-third-party-licenses-of-sample-plugins.md)）。クレートの集合は `cargo tree` の通常とビルドの依存から求め、手続きマクロとビルドの依存も入れる。パッケージにライセンスのファイルがないクレートは、スクリプトに固定した上流のコミットの文書を、SHA-256 を検証して写す。標準ライブラリの文書は、ツールチェーンの `share/doc/rust/` の `COPYRIGHT-library.html` と `licenses/` を写す。コミットした `.wasm` の文字列から読める rustc のコミットとクレートが、これらと合わなければエラーとする。CI の `plugins` ジョブが `--check` で作り直し、コミットしたものと一字でも違えば失敗する。
+- リリースには、`licenses/plugins/` を `THIRD_PARTY_LICENSES/` として Golem の `LICENSE` と一緒にまとめた `golem-plugins-licenses-<タグ>.tar.gz` を添える。展開すると `golem-plugins-licenses-<タグ>/` の一つのディレクトリができる。
 
 今の見本のプラグインは `lookup`、`bar-chart`、`glossary`、`kansuji`、`auto-tcy`、`tsv-table`、`sou-ruby`、`first-ruby` である。
 `[lookup: キー]` は、データ `table` で渡した TSV（キー、タブ、値の行）からキーの値を返す。
@@ -3399,8 +3401,8 @@ Golem のバージョンは `X.Y.Z` か、プレリリースの識別子を付�
 
 アーカイブの名前は `golem-<タグ>-<プラットフォーム>.tar.gz` とし、展開すると `golem-<タグ>-<プラットフォーム>/` の一つのディレクトリができる。
 中には、実行ファイル `golem`、Golem のライセンス `LICENSE`、静的にリンクしたものと同梱したデータのライセンスの文書 `THIRD_PARTY_LICENSES/`、ビルドの情報 `BUILDINFO` が入る。
-リリースには、三つのアーカイブのほかに、`SHA256SUMS`、ビルドの来歴の証明、リンクした GMP のソースのアーカイブ、二つのマニュアルの PDF と HTML（「マニュアル」の節）、見本のプラグインの `<名前>.wasm`（「見本のプラグイン」の節）を添える。
-見本のプラグインの SHA-256 も `SHA256SUMS` に載せる。
+リリースには、三つのアーカイブのほかに、`SHA256SUMS`、ビルドの来歴の証明、リンクした GMP のソースのアーカイブ、二つのマニュアルの PDF と HTML（「マニュアル」の節）、見本のプラグインの `<名前>.wasm` と、そのライセンスの文書のアーカイブ `golem-plugins-licenses-<タグ>.tar.gz`（「見本のプラグイン」の節）を添える。
+見本のプラグインとそのライセンスの文書のアーカイブの SHA-256 も `SHA256SUMS` に載せる。
 GMP は LGPL-3.0 であり、三つの実行ファイルのどれにも静的にリンクされるためである。
 
 `THIRD_PARTY_LICENSES/` に入れるものは、固定の一覧ではなく、実行ファイルのリンクマップから決める（[docs/adr/0007](adr/0007-third-party-licenses.md)）。

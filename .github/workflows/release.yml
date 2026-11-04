@@ -251,15 +251,24 @@ jobs:
               gzip -n > "dist/$name-$TAG-html.tar.gz"
           done
       # the sample plugins, as committed: the plugins job of ci.yml checked
-      # that they are what their sources build (docs/adr/0106)
+      # that they are what their sources build (docs/adr/0106); an archive of
+      # their license documents: licenses/plugins/, which the same job checked,
+      # and the LICENSE of Golem (docs/adr/0133)
       - name: SHA256SUMS, the sample plugins and the source of GMP
         run: |
           cp plugins/wasm/*.wasm dist/
+          lic=golem-plugins-licenses-$TAG
+          mkdir -p "$RUNNER_TEMP/$lic"
+          cp LICENSE "$RUNNER_TEMP/$lic/LICENSE"
+          cp -R licenses/plugins "$RUNNER_TEMP/$lic/THIRD_PARTY_LICENSES"
+          tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+            -C "$RUNNER_TEMP" -cf - "$lic" | gzip -n > "dist/$lic.tar.gz"
           cd dist
           cat golem-*.tar.gz.sha256 > SHA256SUMS
           sha256sum "golem-manual-$TAG.pdf" "golem-manual-$TAG-html.tar.gz" \
             "golem-dev-manual-$TAG.pdf" "golem-dev-manual-$TAG-html.tar.gz" >> SHA256SUMS
           sha256sum *.wasm >> SHA256SUMS
+          sha256sum "golem-plugins-licenses-$TAG.tar.gz" >> SHA256SUMS
           sha256sum -c SHA256SUMS
           for v in $(cat gmp-version-*.txt | sort -u); do
             sh ../scripts/release/fetch-gmp.sh "$v" .
@@ -277,5 +286,6 @@ jobs:
         run: |
           set -- --draft --verify-tag --title "$TAG" --notes-file notes.md
           if [ "$PRERELEASE" = true ]; then set -- "$@" --prerelease; fi
-          # dist/golem-*.tar.gz has the HTML of the two manuals too
+          # dist/golem-*.tar.gz has the HTML of the two manuals and the license
+          # documents of the plugins too
           gh release create "$TAG" "$@" dist/golem-*.tar.gz dist/golem-manual-*.pdf dist/golem-dev-manual-*.pdf dist/*.wasm dist/SHA256SUMS dist/gmp-*.tar.xz
