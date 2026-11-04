@@ -162,6 +162,22 @@ silenceTests =
     elementAt extra c = len (fst (T.breakOn extra (manifestWith ["\"a.gm\""] extra))) + len (fst (T.breakOn c extra))
     len = BS.length . TE.encodeUtf8
 
+-- | The data of a plugin in the manifest (docs/adr/0105).
+pluginDataTests :: TestTree
+pluginDataTests =
+  testGroup
+    "[plugins.<name>.data] (docs/adr/0105)"
+    [ testCase "the names and paths of the data are read" $
+        fmap (fmap pdData . Map.lookup "lk" . manifestPlugins) (parse "[plugins.lk]\nurl = \"https://example.com/lk.wasm\"\ndata = { table = \"data/words.tsv\", dict = \"d.bin\" }\n")
+          @?= Right (Just (Map.fromList [("dict", "d.bin"), ("table", "data/words.tsv")])),
+      testCase "without data a plugin has none" $
+        fmap (fmap pdData . Map.lookup "lk" . manifestPlugins) (parse "[plugins.lk]\nurl = \"https://example.com/lk.wasm\"\n") @?= Right (Just Map.empty),
+      testCase "a path that is not a string is G03001" $
+        codes (parse "[plugins.lk]\nurl = \"https://example.com/lk.wasm\"\ndata = { table = 1 }\n") @?= ["G03001"]
+    ]
+  where
+    parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] extra)
+
 -- | [diagnostics] silence-info of the manifest (docs/adr 0104).
 silenceInfoTests :: TestTree
 silenceInfoTests =
@@ -838,6 +854,7 @@ tests =
       testGroup "page size by dimensions (ADR 0005)" pageSizeTests,
       silenceTests,
       silenceInfoTests,
+      pluginDataTests,
       indexStyleTests,
       hiddenFolioTests,
       findCycleTests,

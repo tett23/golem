@@ -40,7 +40,7 @@ load name = do
 answering :: ByteString -> IO Plugin
 answering response = do
   src <- TIO.readFile "test/plugins/fixed.wat"
-  let describe = cbor (TList [TList [TString "shout"], TList [TString "upper"], TList []])
+  let describe = cbor (TList [TList [TString "shout"], TList [TString "upper"], TList [], TList []])
       escape = T.pack . concatMap (printf "\\%02x") . BS.unpack
       filled =
         T.replace "{{ABI}}" (T.pack (show abiVersion))
@@ -55,10 +55,10 @@ answering response = do
 -- | The arguments of a command request as echo.wat sends them back.
 argumentsSent :: Plugin -> [Value] -> IO [Term]
 argumentsSent p vs = do
-  req <- either (assertFailure . show) pure (commandRequest "echo" vs [] callSpan)
+  req <- either (assertFailure . show) pure (commandRequest p "echo" vs [] callSpan)
   out <- either (assertFailure . show) pure (invokeRaw p req)
   case deserialiseFromBytes decodeTerm (BL.fromStrict out) of
-    Right (_, TList [_, _, TList args, _, _]) -> pure [v | TList [_, v] <- args]
+    Right (_, TList [_, _, TList args, _, _, _]) -> pure [v | TList [_, v] <- args]
     other -> assertFailure (show other)
 
 -- | A reason of 'termValue' as an error of a plugin, to compose with 'valueTerm'.
