@@ -357,17 +357,33 @@ binop = \case
 
 {- | A word read as a number literal, with a leading - allowed (docs/adr
 ADR 0102): the value of @-1@, @1.5@ or @1e3@; Nothing for a word that is
-no number.
+no number. The word is a literal of the grammar of expressions
+(@[0-9]+ ('.' [0-9]+)? ('e' [+-]? [0-9]+)?@), so @.5@ and @5.@ are no
+numbers (docs/adr ADR 0111).
 -}
 numberWord :: Text -> Maybe Rational
 numberWord w = case T.uncons w of
   Just ('-', rest) -> negate <$> unsigned rest
   _ -> unsigned w
   where
-    unsigned t = case number t of
-      ENat n -> Just (toRational n)
-      ERat q -> Just q
-      _ -> Nothing
+    unsigned t
+      | not (literal t) = Nothing
+      | otherwise = case number t of
+          ENat n -> Just (toRational n)
+          ERat q -> Just q
+          _ -> Nothing
+    literal t =
+      let (int, r1) = T.span isDigit t
+          (frac, r2) = case T.uncons r1 of
+            Just ('.', f) -> let (ds, r) = T.span isDigit f in (Just ds, r)
+            _ -> (Nothing, r1)
+          ex = case T.uncons r2 of
+            Nothing -> True
+            Just ('e', x) ->
+              let x' = maybe x snd (T.uncons x >>= \(s, rest) -> if s == '+' || s == '-' then Just (s, rest) else Nothing)
+               in not (T.null x') && T.all isDigit x'
+            _ -> False
+       in not (T.null int) && maybe True (not . T.null) frac && ex
 
 {- | A number literal (docs/adr ADR 0101): digits are a natural number; a
 decimal or an exponent is the exact rational, never rounded. An exponent
