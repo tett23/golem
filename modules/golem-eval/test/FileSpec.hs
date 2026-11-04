@@ -2,6 +2,7 @@ module FileSpec (tests) where
 
 import Control.Exception (evaluate)
 import Data.Bifunctor (first)
+import Data.Either (lefts)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
@@ -13,7 +14,9 @@ import Golem.Doc.Validate (validateDocument)
 import Golem.Eval.Builtin (OverridableBuiltin (..), builtinBlockCommands, pluginCommandName)
 import Golem.Eval.File
 import Golem.Eval.Value
+import Golem.Parser (parseAst)
 import Golem.Parser.SourceSettings
+import Golem.Project.Imports (importsOf)
 import Golem.Project.Paths (PathError (..))
 import Golem.Project.Style (LineBreaks (..), LocalStyles (..), RegexStyleDef (..), Style (..), dimToSp, paraLineBreaks, parseDim, parseStyle)
 import Golem.Syntax
@@ -78,6 +81,10 @@ diagsWith c = map diagSite . fst . evalSource c
 -- | A PNG figure of images/a.png with the alt text x.
 fig0 :: Figure
 fig0 = Figure "images/a.png" Nothing "x" Nothing Nothing [] Nothing False
+
+-- | The diagnostics golem-project's importsOf gives the @import of a source (golem-project ADR 0006).
+importSites :: Text -> [(Text, Text, Int, Int)]
+importSites src = let (file, _, _) = parseAst (FileId 1) src in map diagSite (lefts (importsOf file))
 
 -- | The code and message of each diagnostic.
 msgs :: Text -> [(Text, Text)]
@@ -715,10 +722,39 @@ argWordTests =
       testCase "a range where no range is taken is G02113, as a word and as an expression" $ do
         let g02113 w = ("G02113", "範囲を受け取らない引数に範囲を書いています: " <> w)
         msgs "[number-text 1...3]\n" @?= [g02113 "1...3"]
-        msgs "[number-text -1...1.5]\n" @?= [g02113 "-1...1.5"]
         msgs "@blank-line 1...3\n" @?= [g02113 "1...3"]
         msgs "[number-text [= 1...3]]\n" @?= [g02113 "1...3"]
         msgs "@blank-line [= 1...3]\n" @?= [g02113 "1...3"],
+      -- docs/adr ADR 0135: a range word is first the range of the same expression
+      testCase "a range word that is no range where no range is taken is the code of the expression" $
+        mapM_
+          (\(w, e) -> msgs w @?= msgs e)
+          [ ("[number-text -1...1.5]\n", "[number-text [= -1...1.5]]\n"),
+            ("[number-text 1.5...3]\n", "[number-text [= 1.5...3]]\n"),
+            ("[number-text 7...3]\n", "[number-text [= 7...3]]\n"),
+            ("[number-text 1e1301...2]\n", "[number-text [= 1e1301...2]]\n"),
+            ("@blank-line 1...1.5\n", "@blank-line [= 1...1.5]\n"),
+            ("@blank-line 7...3\n", "@blank-line [= 7...3]\n"),
+            ("```haskell numbers=7...3\nx\n```\n", "```haskell numbers=[= 7...3]\nx\n```\n")
+          ],
+      testCase "a range word that is no range is G02104, G02106 or G02086, not G02113" $ do
+        errs "[number-text -1...1.5]\n" @?= ["G02104"]
+        errs "[number-text 1.5...3]\n" @?= ["G02104"]
+        errs "[number-text 7...3]\n" @?= ["G02106"]
+        errs "[number-text 1e1301...2]\n" @?= ["G02086"]
+        errs "@blank-line 1...1.5\n" @?= ["G02104"]
+        errs "@blank-line 7...3\n" @?= ["G02106"]
+        errs "```haskell numbers=7...3\nx\n```\n" @?= ["G02106"],
+      testCase "a range word that is a range where no range is taken is G02113 with the word" $ do
+        let g02113 w = ("G02113", "範囲を受け取らない引数に範囲を書いています: " <> w)
+        msgs "[number-text 1...3]\n" @?= [g02113 "1...3"]
+        msgs "@blank-line 1...3\n" @?= [g02113 "1...3"]
+        msgs "```haskell numbers=5...5\nx\n```\n" @?= [g02113 "5...5"],
+      testCase "another word with ... where no range is taken is as before" $ do
+        errs "[number-text 1...]\n" @?= ["G02019"]
+        errs "[number-text a...3]\n" @?= ["G02019"]
+        errs "[number-text 1...2...3]\n" @?= ["G02019"]
+        errs "```haskell numbers=1...\nx\n```\n" @?= ["G02069"],
       -- one cause, one code: no G02069 besides (the audit of 2026-11-04, F-14)
       testCase "a range as the expression of a key of a code block is G02113 only" $
         mapM_
@@ -798,6 +834,20 @@ spreadTests =
       testCase "G02114: @manifest and @style-def read their arguments before the evaluation" $ do
         codesS "@manifest **[{a: \"line\"}]\n" @?= ["G02114"]
         codesS "@style-def character x **[{weight: \"bold\"}]\n" @?= ["G02114"],
+      -- docs/adr ADR 0142: @import is read as written, as the project reads it
+      testCase "@import *[[\"x.gm\"]] as n is G03009 and binds no namespace (ADR 0142)" $ do
+        errs "@import *[[\"x.gm\"]] as n\n" @?= ["G03009"]
+        usageImports (erUsage (evalResult ctx "@import *[[\"x.gm\"]] as n\n")) @?= [],
+      testCase "@import *[1] is G03009 only (ADR 0142)" $
+        errs "@import *[1]\n" @?= ["G03009"],
+      testCase "@import *[y] with y undefined is G03009 only (ADR 0142)" $
+        errs "@import *[y]\n" @?= ["G03009"],
+      testCase "@import **[{a: 1}] stays G03009 (ADR 0142)" $
+        errs "@import **[{a: 1}]\n" @?= ["G03009"],
+      testCase "a spread in @import has the message and position of the project's importsOf (ADR 0142)" $
+        mapM_
+          (\src -> diags src @?= importSites src)
+          ["@import *[[\"x.gm\"]] as n\n", "@import *[1]\n", "@import *[y]\n", "@import **[{a: 1}]\n"],
       testCase "G02114: @style decides the lines of its body before the evaluation" $ do
         errs "@style *[[\"note\"]]\na\n" @?= ["G02114"]
         errs "@style *[[\"note\"]]\n  a\n" @?= ["G02114"]

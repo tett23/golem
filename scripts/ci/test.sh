@@ -839,6 +839,8 @@ if step_if "name: Generated parser matches the grammar" "if: matrix.tests && mat
 if step_if "name: Outputs for the determinism check" "if: matrix.outputs"; then ok; else ng "ci.yml: the outputs are made on the runners of the outputs"; fi
 # the lines of the job $1 of ci.yml
 job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML"; }
+# the lines of the build job of ci.yml
+build_lines() { job_lines build; }
 # the environment check has an x86-64 runner of its own (docs/adr/0097)
 if step_if "name: Japanese locales for the environment check" "if: matrix.env"; then ok; else ng "ci.yml: the locales are generated on the runner of the environment check"; fi
 if step_if "name: The outputs do not change with the environment" "if: matrix.env"; then ok; else ng "ci.yml: the environment check runs on its own runner"; fi
@@ -972,6 +974,36 @@ if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?scripts-macos([],].*)?$'; the
 if grep -qF "matrix.save && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'" "$CI_YML"; then ok; else ng "ci.yml: a pull request saves dist-newstyle when GHC compiled, from the runner that saves (docs/adr/0140)"; fi
 if grep -qF "if: success() && matrix.save && github.event_name == 'push' && github.ref == 'refs/heads/main'" "$CI_YML"; then ok; else ng "ci.yml: a push to main saves dist-newstyle from the runner that saves (docs/adr/0140)"; fi
 if grep -n 'Save dist-newstyle' -A 1 "$CI_YML" | grep -q 'matrix.tests'; then ng "ci.yml: the saves of dist-newstyle do not depend on matrix.tests"; else ok; fi
+
+# ---------------------------------------------------------------- ci.yml and the caches of GHC and the index
+# (docs/adr/0141-smaller-ghc-and-hackage-index-caches.md)
+
+# the Hackage index is cached without 01-index.tar.gz, which cabal does not
+# read to plan a build, under a key of its own
+if step_has "name: Cache the Hackage index" '            ~/.cabal/packages/hackage.haskell.org' &&
+  step_has "name: Cache the Hackage index" '            !~/.cabal/packages/hackage.haskell.org/01-index.tar.gz' &&
+  step_has "name: Cache the Hackage index" "key: hackage-index-tar-\${{ hashFiles('cabal.project.freeze') }}"; then ok; else
+  ng "ci.yml: the Hackage index is cached without 01-index.tar.gz under hackage-index-tar-"
+fi
+# GHC is cached without its documentation and its libraries for profiling
+if step_has "name: Cache GHC" 'key: ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-slim'; then ok; else
+  ng "ci.yml: the key of the cache of GHC ends in -slim"
+fi
+SLIM_STEP="name: The files of GHC that CI does not read"
+if step_if "$SLIM_STEP" "if: steps.ghc.outputs.cache-hit != 'true'" &&
+  build_lines | grep -B1 -F 'name: Cache GHC' | grep -qx '      - id: ghc'; then ok; else
+  ng "ci.yml: the files of GHC are removed only when the cache of GHC missed"
+fi
+if step_has "$SLIM_STEP" 'rm -rf "$GHC_DIR/share/doc"' &&
+  step_has "$SLIM_STEP" "find \"\$GHC_DIR\" -type f \\( -name '*_p.a' -o -name '*.p_hi' \\) -delete"; then ok; else
+  ng "ci.yml: the documentation and the libraries for profiling are removed from GHC"
+fi
+SETUP_AT=$(build_lines | grep -n 'uses: haskell-actions/setup@' | head -1 | cut -d: -f1)
+SLIM_AT=$(build_lines | grep -nF "$SLIM_STEP" | head -1 | cut -d: -f1)
+CBUILD_AT=$(build_lines | grep -n -- '- id: build$' | head -1 | cut -d: -f1)
+if [ -n "$SETUP_AT" ] && [ -n "$SLIM_AT" ] && [ -n "$CBUILD_AT" ] && [ "$SETUP_AT" -lt "$SLIM_AT" ] && [ "$SLIM_AT" -lt "$CBUILD_AT" ]; then ok; else
+  ng "ci.yml: the files of GHC are removed after haskell-actions/setup and before cabal build"
+fi
 
 # ---------------------------------------------------------------- release.yml and mise.toml
 # (docs/adr/0044-release-workflow-hardening.md)

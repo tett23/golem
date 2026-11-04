@@ -204,17 +204,28 @@ jobs:
           # ghcup installs into $GHCUP_INSTALL_BASE_PREFIX/.ghcup, which is
           # /usr/local on x86-64 and unset (so $HOME) on aarch64
           echo "GHC_DIR=${GHCUP_INSTALL_BASE_PREFIX:-$HOME}/.ghcup/ghc/$GHC_VERSION" >> "$GITHUB_ENV"
-      - name: Cache GHC (docs/adr/0009)
+      # without its documentation and its libraries for profiling, which
+      # CI does not read: the step after haskell-actions/setup removes them
+      # when the cache missed, and the cache is saved at the end of the job
+      # (docs/adr/0141)
+      - id: ghc
+        name: Cache GHC (docs/adr/0009, docs/adr/0141)
         uses: actions/cache@v6
         with:
           path: ${{ env.GHC_DIR }}
-          key: ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
+          key: ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-slim
       - id: setup
         uses: haskell-actions/setup@v2
         with:
           ghc-version: ${{ env.GHC_VERSION }}
           cabal-version: "3.16.1.0"
           cabal-update: false
+      - name: The files of GHC that CI does not read (docs/adr/0141)
+        if: steps.ghc.outputs.cache-hit != 'true'
+        run: |
+          rm -rf "$GHC_DIR/share/doc"
+          find "$GHC_DIR" -type f \( -name '*_p.a' -o -name '*.p_hi' \) -delete
+          du -sh "$GHC_DIR"
       - name: GHC on the PATH (docs/adr/0009)
         # On a cache hit of GHC, ghcup skips the install and does not link
         # ghc-$GHC_VERSION into its bin directory, so cabal (with-compiler:
@@ -225,12 +236,17 @@ jobs:
             ln -s ghc "$GHC_DIR/bin/ghc-$GHC_VERSION"
           fi
           echo "$GHC_DIR/bin" >> "$GITHUB_PATH"
+      # without 01-index.tar.gz: cabal plans a build from 01-index.tar and
+      # its indices, and the compressed copy does not shrink in the cache
+      # (docs/adr/0141)
       - id: index
-        name: Cache the Hackage index (docs/adr/0009)
+        name: Cache the Hackage index (docs/adr/0009, docs/adr/0141)
         uses: actions/cache@v6
         with:
-          path: ~/.cabal/packages/hackage.haskell.org
-          key: hackage-index-${{ hashFiles('cabal.project.freeze') }}
+          path: |
+            ~/.cabal/packages/hackage.haskell.org
+            !~/.cabal/packages/hackage.haskell.org/01-index.tar.gz
+          key: hackage-index-tar-${{ hashFiles('cabal.project.freeze') }}
       - if: steps.index.outputs.cache-hit != 'true'
         run: cabal update
       - name: Cache the cabal store

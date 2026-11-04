@@ -480,6 +480,8 @@ evalBlock ctx (A.Located sp b) = case b of
   A.BlockCommand name@(A.Located _ n) args body
     -- @manifest and @style-def read their own arguments (docs/adr ADR 0132)
     | n `elem` settingCommands -> standalone ctx sp name args body
+    -- @import is read as written, as the project reads it: a spread is G03009 (docs/adr ADR 0142)
+    | n == "import" -> standalone ctx sp name args body
     -- @style is read before the evaluation for the lines of its body (G02114, docs/adr ADR 0112)
     | n == "style", (ssp : _) <- spreadsOf args -> report (styleSpread ssp) >> pure []
     | otherwise -> prepareArgs args >>= maybe (pure []) (\args' -> standalone ctx sp name args' body)
@@ -2138,16 +2140,20 @@ argValue _ sp = \case
       )
 
 {- | The value of an argument where no range is taken (docs/adr ADR
-0111): a word of a closed range literal, or an expression whose value is
-a range, is G02113 at @sp@; another argument is its 'argValue'.
+0111): its 'argValue', and a range is G02113 at @sp@, with the text of a
+word as written. A word of a closed range literal is first the range of
+the same text in an expression, so one that is no range has the code of
+that expression: G02104, G02106 or G02086 (docs/adr ADR 0135).
 -}
 plainArgValue :: EvalContext -> SrcSpan -> A.ArgValue -> M (Either Diagnostic Value)
-plainArgValue ctx sp = \case
-  A.Word w | isJust (rangeWord w) -> pure (Left (rangeDiagnostic sp w))
-  v ->
-    argValue ctx sp v >>= \case
-      Right r@(VRange _ _) -> pure (Left (rangeDiagnostic sp (valueText r)))
-      other -> pure other
+plainArgValue ctx sp v =
+  argValue ctx sp v >>= \case
+    Right r@(VRange _ _) -> pure (Left (rangeDiagnostic sp (written r)))
+    other -> pure other
+  where
+    written r = case v of
+      A.Word w -> w
+      _ -> valueText r
 
 {- | The ends of a word of a closed range literal, @<number>...<number>@
 with each end a number literal (docs/adr ADR 0113, ADR 0111). Nothing
@@ -2176,18 +2182,21 @@ data NaturalError
 {- | An argument at a place that takes a natural number (docs/adr ADR
 0102): a word read as a number literal, a leading - allowed, or an
 expression evaluated after the analysis. A negative number is G02103 and
-one that is not an integer G02104, at @sp@; @what@ names the place.
+one that is not an integer G02104, at @sp@; @what@ names the place. A
+word of a closed range literal, as an expression, is read with
+'plainArgValue' (docs/adr ADR 0135).
 -}
 naturalArg :: EvalContext -> Text -> SrcSpan -> A.ArgValue -> M (Either NaturalError Natural)
 naturalArg ctx what sp = \case
-  A.Word w | isJust (rangeWord w) -> report (rangeDiagnostic sp w) >> pure (Left NaturalReported)
-  A.Word w -> maybe (pure (Left NotANumber)) check (A.numberWord w)
-  v@(A.ExprArg _) ->
-    plainArgValue ctx sp v >>= \case
-      Left d -> report d >> pure (Left NaturalReported)
-      Right val -> maybe (pure (Left NotANumber)) (check . snd) (numberOf val)
+  A.Word w | Nothing <- rangeWord w -> maybe (pure (Left NotANumber)) check (A.numberWord w)
+  v@(A.Word _) -> fromValue v
+  v@(A.ExprArg _) -> fromValue v
   _ -> pure (Left NotANumber)
   where
+    fromValue v =
+      plainArgValue ctx sp v >>= \case
+        Left d -> report d >> pure (Left NaturalReported)
+        Right val -> maybe (pure (Left NotANumber)) (check . snd) (numberOf val)
     check q = case naturalOf what sp q of
       Left d -> report d >> pure (Left NaturalReported)
       Right n -> pure (Right n)
