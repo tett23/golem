@@ -6,8 +6,8 @@
 (module
   (memory (export "memory") 1)
   (global $heap (mut i32) (i32.const 8192))
-  ;; [["nan", "inf", "ninf"], ["nan", "inf", "ninf"], []]
-  (data (i32.const 16) "\83\83\63nan\63inf\64ninf\83\63nan\63inf\64ninf\80")
+  ;; {"filters": ["nan", "inf", "ninf"], "commands": ["nan", "inf", "ninf"]}
+  (data (i32.const 16) "\a2\67filters\83\63nan\63inf\64ninf\68commands\83\63nan\63inf\64ninf")
   ;; [[[11, [0, 0, 0], [1, [0, 0, 0], NaN]]], []]
   (data (i32.const 1024) "\82\81\83\0b\83\00\00\00\83\01\83\00\00\00\f9\7e\00\80")
   ;; [[8, 0, [[[0, 0, 0], null, [10, null, [the inline above]]]]], []]
@@ -25,7 +25,7 @@
     (local.get $p))
   (func (export "golem_dealloc") (param i32 i32))
   (func (export "golem_describe") (result i64)
-    (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 30)))
+    (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 46)))
   (func (export "golem_invoke") (param $ptr i32) (param $len i32) (result i64) (local $at i32)
     ;; the answer of the command: "nan" (3 letters, n), "inf" (i), "ninf" (4 letters)
     (local.set $at (i32.const 1024))

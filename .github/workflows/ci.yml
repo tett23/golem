@@ -561,10 +561,31 @@ jobs:
       # -j checks the files on every core of the runner (docs/adr/0037)
       - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs"'
 
+  # The sample plugins and their helper crate (docs/adr/0106): the tests of
+  # the crates, and the committed plugins/wasm/*.wasm are the bytes the
+  # sources build with the toolchain of plugins/rust-toolchain.toml, which
+  # rustup installs on the first cargo there
+  plugins:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: plugins
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Tests of the crates
+        run: cargo test --locked
+      - name: The committed plugins are what the sources build
+        run: sh build.sh --check
+
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
   ci:
-    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format]
+    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins]
     if: always()
     runs-on: ubuntu-24.04
     steps:

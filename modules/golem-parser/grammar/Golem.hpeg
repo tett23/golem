@@ -59,6 +59,7 @@
 %token Rest
 %token SkippedArgs
 %token SkippedExpr
+%token SkippedReserved
 %token NumberMark
 %token NumberBody
 %token RangeOp
@@ -84,7 +85,7 @@
 %inline BadBreak
 %inline ReservedBracket
 %inline ReservedBlock
-%inline ReservedDots
+%inline ReservedRange
 %inline HeadInline
 %inline Block
 %inline ItemTail
@@ -104,7 +105,7 @@
 %recover expr SkipExpr
 %recover bracket SkipParagraph
 %recover hard_break SkipLine
-%recover reserved SkipParagraph
+%recover reserved SkipReserved
 %recover range_end SkipExpr
 
 # Every label is safe (golem-parser ADR 0007): removing it does not change
@@ -435,14 +436,17 @@ Expr <- RangeExpr { () }
 # go on and throw range_end for the end it skipped.
 RangeExpr :: ()
 RangeExpr <- &'...' (&{ False } '...')^range_end { () }
-           / &'..' (&{ False } '..')^reserved { () }
-           / AddExpr ES ReservedDots { () }
+           / ReservedRange { () }
+           / AddExpr ES ReservedRange { () }
            / AddExpr ES RangeOp ES (AddExpr)^range_end (!(ES '..'))^range_end { () }
            / CompareExpr { () }
 
-# .. that is not ... (1....2 is ..., then .2, which is no end)
-ReservedDots :: ()
-ReservedDots <- !'...' &'..' (&{ False } '..')^reserved { () }
+# .. that is not ... (1....2 is ..., then .2, which is no end). After the
+# recovery reads the two dots, the end is read as an expression, and the
+# dots after it as well (docs/adr ADR 0116).
+ReservedRange :: ()
+ReservedRange <- !'...' &'..' (&{ False } '..')^reserved
+                 (ES AddExpr)? (ES (ReservedRange / RangeOp (ES AddExpr)?))* { () }
 
 RangeOp :: ()
 RangeOp <- '...' { () }
@@ -721,3 +725,23 @@ SkipExpr <- SkippedExpr { () }
 
 SkippedExpr :: ()
 SkippedExpr <- (!']' !ParaEnd .)* { () }
+
+SkipReserved :: ()
+SkipReserved <- SkippedReserved { () }
+
+# The recovery of the reserved syntax (docs/adr ADR 0116). Every rule that
+# throws reserved looks at [!, @! or .. first, so the two characters at the
+# throw tell which syntax it is.
+SkippedReserved :: ()
+SkippedReserved <- '[!' ReservedBracketBody ']' { () }
+                 / '[!' { () }
+                 / '@!' (![\n] .)* { () }
+                 / '..' { () }
+
+# Up to the ] that closes [! on the same line.
+ReservedBracketBody :: ()
+ReservedBracketBody <- ( '\\' ![\n] .
+                       / '%%' (!'%%' ![\n] .)* '%%'
+                       / '[' ReservedBracketBody ']'
+                       / ![\[\]\\\n] .
+                       )* { () }

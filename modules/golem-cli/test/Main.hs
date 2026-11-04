@@ -344,6 +344,17 @@ explainTests =
         code @?= ExitFailure 2
         out @?= ""
         assertBool err ("診断のコードは G と 5 桁の数字です: G0258" `isPrefixOf` err),
+      testCase "a code of a plugin is one line that it has no section here, and exits with 0 (docs/adr/0108)" $ do
+        (code, out, err) <- golemSplit ["explain", "lookup/no-key"]
+        code @?= ExitSuccess
+        out @?= "lookup/no-key: プラグインの診断のコードです。説明は golem にはないので、プラグインの文書を参照してください\n"
+        err @?= "",
+      testCase "a code of a plugin among codes of Golem keeps its place (docs/adr/0108)" $ do
+        (_, a, _) <- golemSplit ["explain", "G01017"]
+        (code, out, _) <- golemSplit ["explain", "lk/x", "G01017"]
+        code @?= ExitSuccess
+        out @?= "lk/x: プラグインの診断のコードです。説明は golem にはないので、プラグインの文書を参照してください\n\n" <> a,
+      exitsWith (ExitFailure 2) ["explain", "lookup/No-key"],
       exitsWith (ExitFailure 2) ["explain", "G99999"],
       exitsWith (ExitFailure 2) ["explain", "nope"],
       severalCodesTests,

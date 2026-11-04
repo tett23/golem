@@ -470,6 +470,10 @@ pluginTests =
         $ \dir (code, _, err) -> do
           (code, err) @?= (ExitFailure 1, "ruby: HTTPS の URL だけを使えます: http://example.invalid/a.wasm\n")
           readUtf8 (dir </> "plugins.lock") >>= (@?= lockOfAAA),
+      testCase "lock skips a plugin of the project's path: nothing to fetch, nothing in plugins.lock (docs/adr/0109)" $
+        inPluginProject [("manifest.toml", manifestWith [] <> "\n[plugins.local]\npath = \"plugins/local.wasm\"\n")] [] ["plugin", "lock"] $ \dir (code, _, err) -> do
+          (code, err) @?= (ExitSuccess, "")
+          BS.readFile (dir </> "plugins.lock") >>= (@?= ""),
       testCase "fetch without plugins.lock has nothing to do and exits with 0" $
         inPluginProject [("manifest.toml", manifestWith [])] [] ["plugin", "fetch"] $ \_ (code, _, err) ->
           (code, err) @?= (ExitSuccess, ""),

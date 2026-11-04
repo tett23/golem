@@ -16,7 +16,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Doc.Cbor (documentTerm)
 import Golem.Doc.IR hiding (abiVersion)
-import Golem.Eval.Value (Value (..))
+import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Parser.AST qualified as A
 import Golem.Plugin
 import Golem.Syntax
@@ -40,7 +40,7 @@ load name = do
 answering :: ByteString -> IO Plugin
 answering response = do
   src <- TIO.readFile "test/plugins/fixed.wat"
-  let describe = cbor (TList [TList [TString "shout"], TList [TString "upper"], TList []])
+  let describe = cbor (TMap [(TString "commands", TList [TString "shout"]), (TString "filters", TList [TString "upper"])])
       escape = T.pack . concatMap (printf "\\%02x") . BS.unpack
       filled =
         T.replace "{{ABI}}" (T.pack (show abiVersion))
@@ -52,13 +52,17 @@ answering response = do
   wasm <- watToWasm filled >>= either (assertFailure . T.unpack) pure
   loadPlugin wasm >>= either (assertFailure . show) pure
 
--- | The arguments of a command request as echo.wat sends them back.
+-- | The values of the positional arguments of a command request as echo.wat sends them back.
 argumentsSent :: Plugin -> [Value] -> IO [Term]
-argumentsSent p vs = do
-  req <- either (assertFailure . show) pure (commandRequest "echo" vs [] callSpan)
+argumentsSent p vs = (\args -> [v | TList [_, v] <- args]) <$> argumentTerms p (map PluginPositional vs)
+
+-- | The arguments of a command request as echo.wat sends them back.
+argumentTerms :: Plugin -> [PluginArg] -> IO [Term]
+argumentTerms p as = do
+  req <- either (assertFailure . show) pure (commandRequest p "echo" as [] callSpan)
   out <- either (assertFailure . show) pure (invokeRaw p req)
   case deserialiseFromBytes decodeTerm (BL.fromStrict out) of
-    Right (_, TList [_, _, TList args, _, _]) -> pure [v | TList [_, v] <- args]
+    Right (_, TList [_, _, TList args, _, _, _, _]) -> pure args
     other -> assertFailure (show other)
 
 -- | A reason of 'termValue' as an error of a plugin, to compose with 'valueTerm'.
@@ -94,6 +98,14 @@ numberTests =
         termValue (TMap [(TString "first", TInt 1), (TString "end", TInt 3)]) @?= Left "範囲のキーは first と last の二つです"
         termValue (TMap [(TString "first", TInt 1), (TString "last", TInt 3), (TString "step", TInt 1)]) @?= Left "範囲のキーは first と last の二つです"
         mapM_ (\v -> (v, valueTerm v >>= first' . termValue) @?= (v, Right v)) [VInt 3, VRat (1 % 2), VString "a", VBool True, VNil, VArray [VInt 1, VRange 2 3]],
+      testCase "a keyword argument is [1, key, value] in the order of the source (golem-doc.cddl, docs/adr/0110)" $ do
+        p <- load "echo.wat"
+        args <- argumentTerms p [PluginPositional (VNat 1), PluginKeyword "style" (VString "tcy"), PluginPositional (VString "x")]
+        args @?= [TList [TInt 0, TInt 1], TList [TInt 1, TString "style", TString "tcy"], TList [TInt 0, TString "x"]],
+      testCase "a keyword argument first and a positional one after it keep their order (docs/adr/0110)" $ do
+        p <- load "echo.wat"
+        args <- argumentTerms p [PluginKeyword "n" (VNat 3), PluginPositional (VBool True)]
+        args @?= [TList [TInt 1, TString "n", TInt 3], TList [TInt 0, TBool True]],
       testCase "a double in the answer is its exact rational, equal to the one of the request" $ do
         let half = DeferredExpr (A.Located callSpan (A.ERat (1 % 2)))
         p <- answering (cbor (TList [deferredWith (floatExpr (TDouble 0.5)), TList []]))

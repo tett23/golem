@@ -11,9 +11,9 @@ module Golem.Eval.Settings
   )
 where
 
-import Data.List (nub)
+import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (fromMaybe, isNothing, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Parser.AST qualified as A
@@ -52,45 +52,80 @@ fileHeader = go []
 err :: Text -> SrcSpan -> Text -> Diagnostic
 err code = diagnostic code Error
 
--- | The keyword arguments of a setting: (key, span, value), or the G02052 messages.
-keywordArgs :: [A.Located A.Argument] -> ([(Text, SrcSpan, LocalValue)], [(SrcSpan, Text)])
+{- | G02114: @manifest and @style-def are read before the evaluation, so
+an argument *[式] or **[式] is not spread (docs/adr ADR 0112).
+-}
+spreadBeforeEvaluation :: Text -> SrcSpan -> Diagnostic
+spreadBeforeEvaluation name sp = diagnostic "G02114" Error sp (name <> " は評価の前に読むので、*[式] と **[式] を書けません")
+
+{- | The keyword arguments of a setting: (key, span, value) of each key
+written once, and the diagnostics of the others in the order written
+(docs/adr ADR 0132): G02116 for a value that is no word nor string,
+G02077 for each argument of a key after its first. A key written twice
+is left out as a whole.
+-}
+keywordArgs :: [A.Located A.Argument] -> ([(Text, SrcSpan, LocalValue)], [Diagnostic])
 keywordArgs args =
   let kws = [(k, sp, v) | A.Located sp (A.Keyword (A.Located _ k) v) <- args]
       keys = [k | (k, _, _) <- kws]
-      dup = nub [k | (i, k) <- zip [0 :: Int ..] keys, k `elem` take i keys]
+      repeated i k = k `elem` take i keys
+      dup = nub [k | (i, k) <- zip [0 :: Int ..] keys, repeated i k]
       values = [(k, sp, lv) | (k, sp, v) <- kws, k `notElem` dup, Just lv <- [localValue v]]
-      bad =
-        [(sp, "値は語か文字列で書きます") | (_, sp, v) <- kws, Nothing <- [localValue v]]
-          <> [(sp, "同じキーを二度書いています: " <> k) | k <- dup, (k', sp, _) <- take 1 [x | x@(k'', _, _) <- kws, k'' == k], k' == k]
-   in (values, bad)
-  where
-    localValue = \case
-      A.Word w -> Just (LocalWord w)
-      A.StringLit s -> Just (LocalString s)
-      _ -> Nothing
+      diags =
+        concat
+          [ [notWordDiagnostic sp | isNothing (localValue v)] <> [err "G02077" sp ("同じキーを二度書いています: " <> k) | repeated i k]
+          | (i, (k, sp, v)) <- zip [0 :: Int ..] kws
+          ]
+   in (values, diags)
+
+-- | A value or a positional argument written as a word or a string.
+localValue :: A.ArgValue -> Maybe LocalValue
+localValue = \case
+  A.Word w -> Just (LocalWord w)
+  A.StringLit s -> Just (LocalString s)
+  _ -> Nothing
+
+-- | G02116: a value or a positional argument that is no word nor string (docs/adr ADR 0132).
+notWordDiagnostic :: SrcSpan -> Diagnostic
+notWordDiagnostic sp = err "G02116" sp "値は語か文字列で書きます"
+
+-- | G02097 at the first block of a body (docs/adr ADR 0132).
+bodyDiagnostics :: Text -> [A.Located A.Block] -> [Diagnostic]
+bodyDiagnostics name body = [err "G02097" bsp (name <> " は本体を持てません") | A.Located bsp _ <- take 1 body]
+
+-- | The diagnostics of the arguments in the order they are written.
+inOrder :: [Diagnostic] -> [Diagnostic]
+inOrder = sortOn (spanStart . diagSpan)
 
 {- | Each @manifest applied in order with a table of the keys of [source]
 (docs/adr ADR 0013) to the settings of the context, and the diagnostics.
-A wrong argument is left out; the others take effect.
+A @manifest with a body (G02097) or without arguments (G02115) is left
+out. Otherwise a wrong argument is left out (G02052, G02077, G02114,
+G02116; docs/adr ADR 0132) and the others take effect.
 -}
 fileSettings :: [(Text, Text -> Either Text (s -> s))] -> s -> [A.Located A.Block] -> (s, [Diagnostic])
 fileSettings table s0 header = foldl step (s0, []) [(sp, args, body) | A.Located sp (A.BlockCommand (A.Located _ "manifest") args body) <- header]
   where
     shape = "@manifest には key=value だけを書きます"
     step (s, ds) (sp, args, body)
-      | not (null body) || null args = (s, ds <> [err "G02052" sp shape])
+      | not (null body) || null args = (s, ds <> [err "G02115" sp "@manifest には key=value を一つ以上書きます" | null args] <> bodyDiagnostics "@manifest" body)
       | otherwise =
-          let others = [asp | A.Located asp a <- args, not (isKeyword a)]
-              (kvs, bad) = keywordArgs args
+          let others = [asp | A.Located asp a <- args, not (isKeyword a), not (isSplat a)]
+              spreads = [asp | A.Located asp a <- args, isSplat a]
+              (kvs, kwDiags) = keywordArgs args
               apply (s', ds') (k, ksp, v) = case lookup k table of
                 Nothing -> (s', ds' <> [err "G02050" ksp (notOverridable k)])
                 Just f -> case f (valueText v) of
                   Left m -> (s', ds' <> [err "G02051" ksp m])
                   Right g -> (g s', ds')
               (s'', applied) = foldl apply (s, []) kvs
-           in (s'', ds <> [err "G02052" asp shape | asp <- others] <> [err "G02052" bsp m | (bsp, m) <- bad] <> applied)
+           in (s'', ds <> inOrder ([spreadBeforeEvaluation "@manifest" asp | asp <- spreads] <> [err "G02052" asp shape | asp <- others] <> kwDiags) <> applied)
     isKeyword = \case
       A.Keyword {} -> True
+      _ -> False
+    isSplat = \case
+      A.SplatPositional _ -> True
+      A.SplatKeyword _ -> True
       _ -> False
     valueText = \case
       LocalWord w -> w
@@ -197,30 +232,46 @@ fileStyles style header =
   where
     shape = "@style-def には種類（character、paragraph、regex）と名前を書きます"
     readDef (defs, ds) (sp, args, body) =
-      let positionals = [v | A.Located _ (A.Positional v) <- args]
-          splats = [() | A.Located _ a <- args, isSplat a]
-          (kvs, bad) = keywordArgs args
-          shapeErrs = [err "G02052" bsp m | (bsp, m) <- bad]
+      let positionals = [(asp, v) | A.Located asp (A.Positional v) <- args]
+          spreads = [spreadBeforeEvaluation "@style-def" asp | A.Located asp a <- args, isSplat a]
+          (kvs, kwDiags) = keywordArgs args
+          -- G02052: the number of the positional arguments, at each one past the two or at the line
+          countDiags = case positionals of
+            [_, _] -> []
+            _ : _ : extra -> [err "G02052" asp shape | (asp, _) <- extra]
+            _ -> [err "G02052" sp shape]
+          -- G02116 for a kind or a name that is no word nor string, G02117 for an unknown kind
+          kindDiags = case positionals of
+            (asp, v) : _ -> case textOf v of
+              Nothing -> [notWordDiagnostic asp]
+              Just w | isNothing (kindOf w) -> [err "G02117" asp ("未知のスタイルの種類です: " <> w <> "。character、paragraph、regex のどれかを書きます")]
+              Just _ -> []
+            [] -> []
+          nameDiags = [notWordDiagnostic asp | _ : (asp, v) : _ <- [positionals], isNothing (textOf v)]
+          errs = inOrder (spreads <> countDiags <> kindDiags <> nameDiags <> kwDiags) <> bodyDiagnostics "@style-def" body
        in case positionals of
-            [A.Word kindW, A.Word name]
-              | null body,
-                null splats,
+            [(_, kv), (_, nv)]
+              | null errs,
+                Just kindW <- textOf kv,
+                Just name <- textOf nv,
                 Just kind <- kindOf kindW ->
                   case kind of
                     -- a word is read as a string: the pattern and the style are strings (docs/adr ADR 0015)
-                    Nothing
-                      | not (null shapeErrs) -> (defs, ds <> shapeErrs)
-                      | otherwise -> case localRegexStyleDef [(key, asString v) | (key, _, v) <- kvs] of
-                          Left ms -> (defs, ds <> [err "G03006" sp ("@style-def の値が不正です: " <> m) | m <- ms])
-                          Right d -> (defs <> [RegexDef sp name d], ds)
+                    Nothing -> case localRegexStyleDef [(key, asString v) | (key, _, v) <- kvs] of
+                      Left ms -> (defs, ds <> [err "G03006" sp ("@style-def の値が不正です: " <> m) | m <- ms])
+                      Right d -> (defs <> [RegexDef sp name d], ds)
                     Just k
-                      | not (null shapeErrs) -> (defs, ds <> shapeErrs)
                       | not (null [() | Def _ k' n _ <- defs, k' == k, n == name]) -> (defs, ds <> [err "G02053" sp ("同じ名前のスタイルを二度定義しています: " <> name)])
                       | otherwise -> case localStyleDef k [(key, v) | (key, _, v) <- kvs] of
                           -- an aki amount in a dimension is G03020 (docs/adr ADR 0019); kerning, tracking and baseline shift G03021 (docs/adr/0020)
                           Left ms -> (defs, ds <> [err (if "アキの量の指定が正しくありません" `T.isPrefixOf` m then "G03020" else code) sp ("@style-def の値が不正です: " <> m) | (code, m) <- ms])
                           Right d -> (defs <> [Def sp k name d], ds)
-            _ -> (defs, ds <> [err "G02052" sp shape] <> shapeErrs)
+            _ -> (defs, ds <> errs)
+    -- the kind and the name, as a word or a string literal (docs/adr ADR 0132)
+    textOf v = case localValue v of
+      Just (LocalWord w) -> Just w
+      Just (LocalString t) -> Just t
+      Nothing -> Nothing
     asString = \case
       LocalWord w -> LocalString w
       v -> v

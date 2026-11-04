@@ -13,42 +13,73 @@ module Golem.Plugin
     pluginCommands,
     pluginFilters,
     pluginChannels,
+    pluginDataNames,
+    pluginBlocks,
+    takesData,
+    withPluginData,
+    HostContext (..),
+    contextNames,
+    pluginContextNames,
+    withPluginContext,
+    maxDataBytes,
     PluginError (..),
     abiVersion,
     defaultFuel,
+    fuelPerDocumentByte,
+    filterFuel,
     defaultMemoryLimit,
     watToWasm,
     loadPlugin,
     loadPluginWith,
     invokeRaw,
     commandRequest,
+    blockCommandRequest,
     valueTerm,
     termValue,
+    filterRequest,
     callCommand,
+    callBlockCommand,
     applyFilter,
+    applyFilterFuel,
     describePluginError,
+    DataDiagnostic (..),
+    pluginChecksData,
+    checkDataRequest,
+    checkData,
   )
 where
 
+import Codec.CBOR.Encoding (Encoding, encodeBytes, encodeListLen, encodePreEncoded, encodeString)
 import Codec.CBOR.Read (deserialiseFromBytes)
 import Codec.CBOR.Term (Term (..), decodeTerm, encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
+import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Unsafe qualified as BU
+import Data.Char (isAsciiLower, isDigit)
+import Data.List (sort)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Maybe (isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Foreign
-import Foreign.C.String (CString, peekCString, withCStringLen)
+import Foreign.C.String (CString, peekCString, withCString, withCStringLen)
 import Foreign.C.Types
 import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.Cbor
 import Golem.Doc.IR hiding (abiVersion)
-import Golem.Doc.Validate (validateDocument)
-import Golem.Eval.Value (Value (..))
+import Golem.Doc.Validate (validateBlocks, validateDocument)
+import Golem.Eval.Builtin (builtinBlockCommands)
+import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Syntax
+import Golem.Syntax.Sha256 (sha256)
+import Numeric.Natural (Natural)
+import System.Environment (lookupEnv)
+import System.IO (hPutStrLn, stderr)
 import System.IO.Unsafe (unsafePerformIO)
 
 data CPlugin
@@ -61,8 +92,10 @@ foreign import capi unsafe "golem_plugin.h golem_plugin_import_count" c_importCo
 
 foreign import capi unsafe "golem_plugin.h golem_plugin_import_name" c_importName :: Ptr CPlugin -> CInt -> IO CString
 
+foreign import capi unsafe "golem_plugin.h golem_plugin_has_export" c_hasExport :: Ptr CPlugin -> CString -> IO CInt
+
 foreign import capi safe "golem_plugin.h golem_plugin_call"
-  c_call :: Ptr CPlugin -> CInt -> Word64 -> Int64 -> Ptr Word8 -> CSize -> Ptr (Ptr Word8) -> Ptr CSize -> Ptr Word32 -> Ptr CString -> IO CInt
+  c_call :: Ptr CPlugin -> CInt -> Word64 -> Int64 -> Ptr Word8 -> CSize -> Ptr (Ptr Word8) -> Ptr CSize -> Ptr Word32 -> Ptr Word64 -> Ptr CString -> IO CInt
 
 foreign import capi unsafe "golem_plugin.h golem_plugin_free_bytes" c_freeBytes :: Ptr a -> IO ()
 
@@ -79,6 +112,27 @@ abiVersion = 8
 defaultFuel :: Word64
 defaultFuel = 1000000000
 
+{- | The fuel a filter gets for each byte of the CBOR of its document, over
+the fuel of a command (docs/adr/0124): about three times the most two
+ruby filters used on the fixtures.
+-}
+fuelPerDocumentByte :: Word64
+fuelPerDocumentByte = 10000
+
+{- | The limit on the instructions of one call of a filter (docs/adr/0124):
+the limit of a command and 'fuelPerDocumentByte' for each byte of the
+CBOR of the document, the data not counted.
+-}
+filterFuel :: Word64 -> Int -> Word64
+filterFuel base documentBytes = base + fuelPerDocumentByte * fromIntegral documentBytes
+
+{- | The most bytes of the data of one plugin, all its files together
+(docs/adr/0105): a quarter of the memory of an instance, which holds the
+request and what the plugin makes of it.
+-}
+maxDataBytes :: Int64
+maxDataBytes = 64 * 1024 * 1024
+
 -- | The memory of one instance: 256 MiB.
 defaultMemoryLimit :: Int64
 defaultMemoryLimit = 256 * 1024 * 1024
@@ -90,8 +144,76 @@ data Plugin = Plugin
     pluginCommands :: ![Text],
     pluginFilters :: ![Text],
     -- | the channels it declares (golem-doc ADR 0007)
-    pluginChannels :: ![ChannelDecl]
+    pluginChannels :: ![ChannelDecl],
+    -- | the names of the data it takes (docs/adr/0105)
+    pluginDataNames :: ![Text],
+    -- | the block commands it provides (docs/adr/0122)
+    pluginBlocks :: ![Text],
+    -- | the data the project passes, as the CBOR of the last element of a request
+    plData :: !ByteString,
+    -- | whether it exports golem_check_data (docs/adr/0120)
+    pluginChecksData :: !Bool,
+    -- | the names of the context of the book it asks for (docs/adr/0121)
+    pluginContextNames :: ![Text],
+    -- | the context, as the CBOR of the element of a request before the data
+    plContext :: !ByteString
   }
+
+{- | The context of the book a plugin may ask for (docs/adr/0121): the
+writing mode of [page] in style.toml (horizontal or vertical) and the
+vertical notation of numbers of [numbers] (kanji, kanji-digits, tcy,
+auto or auto-digits). The list is closed; a name is added with the ABI.
+-}
+data HostContext = HostContext
+  { hcWritingMode :: !Text,
+    hcVerticalNumbers :: !Text
+  }
+  deriving stock (Eq, Show)
+
+-- | The names a plugin may ask for, in code point order.
+contextNames :: [Text]
+contextNames = ["vertical-numbers", "writing-mode"]
+
+contextValue :: HostContext -> Text -> Text
+contextValue c = \case
+  "writing-mode" -> hcWritingMode c
+  _ -> hcVerticalNumbers c
+
+{- | The context of the book for the names the plugin asked for, and only
+those: @[* [name, value]]@ in code point order of the names, encoded once
+here. A plugin that asks for nothing gets the same requests in every
+book (docs/adr/0121).
+-}
+withPluginContext :: HostContext -> Plugin -> Plugin
+withPluginContext c p = p {plContext = toStrictByteString (encodeListLen (fromIntegral (length names)) <> foldMap entry names)}
+  where
+    names = sort (pluginContextNames p)
+    entry n = encodeListLen 2 <> encodeString n <> encodeString (contextValue c n)
+
+{- | Whether the plugin takes data of a name (docs/adr/0119): one of the
+names it declares, or any well-formed name when it declares @*@.
+-}
+takesData :: Plugin -> Text -> Bool
+takesData p n
+  | pluginDataNames p == ["*"] = dataName n
+  | otherwise = n `elem` pluginDataNames p
+
+{- | A name of data: a lowercase ASCII letter, then lowercase letters,
+digits and - (docs/adr/0105).
+-}
+dataName :: Text -> Bool
+dataName n = case T.uncons n of
+  Just (h, rest) -> isAsciiLower h && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
+  Nothing -> False
+
+{- | The data the project passes to the plugin (docs/adr/0105), by name.
+Every request ends with it, @[* [name, bytes]]@ in the order of the
+names; it is encoded here once, not at each call.
+-}
+withPluginData :: Map Text ByteString -> Plugin -> Plugin
+withPluginData m p = p {plData = toStrictByteString (encodeListLen (fromIntegral (Map.size m)) <> foldMap entry (Map.toAscList m))}
+  where
+    entry (k, v) = encodeListLen 2 <> encodeString k <> encodeBytes v
 
 data PluginError
   = CompileFailed Text
@@ -106,6 +228,8 @@ data PluginError
     value: NaN, Infinity or -Infinity (G06100, docs/adr ADR 0101)
     -}
     NonFiniteFloat Text
+  | -- | names of context the host does not have, in the order of the description (G06105, docs/adr/0121)
+    UnknownContext [Text]
   deriving stock (Eq, Show)
 
 describePluginError :: PluginError -> Text
@@ -119,6 +243,7 @@ describePluginError = \case
   InstantiateFailed m -> "プラグインを起動できません: " <> m
   BadOutput m -> "プラグインの出力が不正です: " <> m
   NonFiniteFloat v -> "遅延した式に有限でない浮動小数点数（" <> v <> "）があります"
+  UnknownContext ns -> "Golem が渡せない文脈を求めています: " <> T.intercalate "、" ns <> "（渡せる文脈: " <> T.intercalate "、" contextNames <> "）"
 
 withMessage :: (Ptr CString -> IO a) -> IO (a, Text)
 withMessage k = alloca $ \errPtr -> do
@@ -157,7 +282,8 @@ loadPluginWith fuel memory wasm = do
       fp <- newForeignPtr c_free p
       n <- c_importCount p
       names <- mapM (\i -> c_importName p i >>= \c -> T.pack <$> peekCString c <* c_freeBytes c) [0 .. n - 1]
-      let plugin = Plugin fp fuel memory [] [] []
+      checks <- withCString "golem_check_data" (c_hasExport p)
+      let plugin = Plugin fp fuel memory [] [] [] [] [] noData (checks /= 0) [] noData
       if not (null names)
         then pure (Left (HasImports names))
         else do
@@ -170,16 +296,32 @@ loadPluginWith fuel memory wasm = do
                   described <- callMode plugin 1 BS.empty
                   pure $ do
                     (bytes, _) <- described
-                    (cmds, filts, chans) <- decodeDescription bytes
-                    Right plugin {pluginCommands = cmds, pluginFilters = filts, pluginChannels = chans}
+                    (cmds, filts, chans, names, ctx, blocks) <- decodeDescription bytes
+                    Right plugin {pluginCommands = cmds, pluginFilters = filts, pluginChannels = chans, pluginDataNames = names, pluginContextNames = ctx, pluginBlocks = blocks}
+
+-- | No data, no context: the empty array.
+noData :: ByteString
+noData = BS.singleton 0x80
 
 callMode :: Plugin -> CInt -> ByteString -> IO (Either PluginError (ByteString, Word32))
-callMode plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
+callMode plugin mode input = fst <$> callModeWith (plFuel plugin) plugin mode input
+
+{- | A call with a limit on its instructions, and the fuel it used, all of
+it when it ran out (docs/adr/0124). With GOLEM_DEBUG_PLUGIN_FUEL a line
+of the call goes to the standard error; the outputs do not change.
+-}
+callModeWith :: Word64 -> Plugin -> CInt -> ByteString -> IO (Either PluginError (ByteString, Word32), Word64)
+callModeWith fuel plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
   BU.unsafeUseAsCStringLen input $ \(inPtr, inLen) ->
-    alloca $ \outPtr -> alloca $ \outLen -> alloca $ \u32 -> do
+    alloca $ \outPtr -> alloca $ \outLen -> alloca $ \u32 -> alloca $ \usedPtr -> do
       poke outPtr nullPtr
       poke u32 0
-      (status, msg) <- withMessage (c_call p mode (plFuel plugin) (plMemory plugin) (castPtr inPtr) (fromIntegral inLen) outPtr outLen u32)
+      poke usedPtr 0
+      (status, msg) <- withMessage (c_call p mode fuel (plMemory plugin) (castPtr inPtr) (fromIntegral inLen) outPtr outLen u32 usedPtr)
+      used <- peek usedPtr
+      debugFuel <- isJust <$> lookupEnv "GOLEM_DEBUG_PLUGIN_FUEL"
+      when debugFuel $
+        hPutStrLn stderr ("golem-debug-fuel: mode=" <> show mode <> " request=" <> show inLen <> " fuel=" <> show fuel <> " used=" <> show used <> " status=" <> show status)
       out <- peek outPtr
       bytes <-
         if out == nullPtr
@@ -190,7 +332,7 @@ callMode plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
             c_freeBytes out
             pure b
       v <- peek u32
-      pure $ case status of
+      pure . (,used) $ case status of
         0 -> Right (bytes, v)
         2 -> Left (OutOfFuel msg)
         3 -> Left (MissingExport msg)
@@ -200,14 +342,21 @@ callMode plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
         5 -> Left (InstantiateFailed msg)
         _ -> Left (Trapped msg)
 
-{- | One call of @golem_invoke@ with raw CBOR. The one unsafePerformIO of
-this module (docs/adr ADR 0034): the evaluator, a pure function, calls
-it. It is a function of the plugin and the input alone, since each call
-gets a fresh store and instance, the plugin has no imports, and its
-limits are counted in instructions and bytes, not in time (ADR 0001).
--}
+-- | One call of @golem_invoke@ with raw CBOR, with the fuel of a command.
 invokeRaw :: Plugin -> ByteString -> Either PluginError ByteString
-invokeRaw plugin input = fst <$> unsafePerformIO (callMode plugin 2 input)
+invokeRaw plugin = fst . invokeRawFuel (plFuel plugin) plugin
+
+{- | One call of @golem_invoke@ with a limit on the instructions, and the
+fuel the call used (docs/adr/0124). The one unsafePerformIO of this
+module (docs/adr ADR 0034): the evaluator, a pure function, calls it. It
+is a function of the limit, the plugin and the input alone, since each
+call gets a fresh store and instance, the plugin has no imports, and its
+limits and the fuel used are counted in instructions and bytes, not in
+time (ADR 0001). The line GOLEM_DEBUG_PLUGIN_FUEL writes to the standard
+error changes no result.
+-}
+invokeRawFuel :: Word64 -> Plugin -> ByteString -> (Either PluginError ByteString, Word64)
+invokeRawFuel fuel plugin input = let (r, used) = unsafePerformIO (callModeWith fuel plugin 2 input) in (fst <$> r, used)
 
 decodeTermBytes :: ByteString -> Either PluginError Term
 decodeTermBytes b = case deserialiseFromBytes decodeTerm (BL.fromStrict b) of
@@ -215,16 +364,66 @@ decodeTermBytes b = case deserialiseFromBytes decodeTerm (BL.fromStrict b) of
   Right _ -> Left (BadOutput "CBOR の後ろに余分なバイトがあります")
   Left e -> Left (BadOutput (T.pack (show e)))
 
-{- | The commands, the filters and the channels of a description
-(golem-doc ADR 0007): three lists; two are not a description.
+{- | The commands, the filters, the channels (golem-doc ADR 0007) and the
+names of the data (docs/adr/0105) of a description: a map from the names
+of its fields to arrays, in any order (docs/adr/0107). A field left out
+is empty; an unknown field, a field given twice, a key that is not a
+text string and anything but a map of definite length are not a
+description. A name of data is a lowercase ASCII letter, then lowercase
+letters, digits and -, and is given once; or the data is * alone, any
+name (docs/adr/0119). A name of the context (docs/adr/0121) is one of
+'contextNames', given once; the others are 'UnknownContext', all of
+them. A block command (docs/adr/0122) is a name of the form of a name of
+data, given once, and not the name of a built-in block command.
 -}
-decodeDescription :: ByteString -> Either PluginError ([Text], [Text], [ChannelDecl])
+decodeDescription :: ByteString -> Either PluginError ([Text], [Text], [ChannelDecl], [Text], [Text], [Text])
 decodeDescription b = do
   t <- decodeTermBytes b
-  case t of
-    TList [TList cs, TList fs, TList chs] -> (,,) <$> mapM name cs <*> mapM name fs <*> mapM channel chs
+  kvs <- case t of
+    TMap kvs -> Right kvs
     _ -> Left (BadOutput "golem_describe の形が不正です")
+  keys <- mapM key kvs
+  case [k | k <- keys, k `notElem` fields] of
+    (k : _) -> Left (BadOutput ("golem_describe に未知の欄があります: " <> k))
+    [] -> Right ()
+  case [k | (i, k) <- zip [0 :: Int ..] keys, k `elem` take i keys] of
+    (k : _) -> Left (BadOutput ("golem_describe の欄が重複しています: " <> k))
+    [] -> Right ()
+  let field k = case [v | (k', v) <- zip keys (map snd kvs), k' == k] of
+        [] -> Right []
+        (TList xs : _) -> Right xs
+        _ -> Left (BadOutput ("golem_describe の欄の形が不正です: " <> k))
+  cs <- field "commands"
+  fs <- field "filters"
+  chs <- field "channels"
+  ds <- field "data"
+  xs <- field "context"
+  bs <- field "blocks"
+  (,,,,,) <$> mapM name cs <*> mapM name fs <*> mapM channel chs <*> (mapM name ds >>= dataNames) <*> (mapM name xs >>= contextOf) <*> (mapM name bs >>= blockNames)
   where
+    fields = ["commands", "filters", "channels", "data", "context", "blocks"]
+    blockNames ns = case [n | n <- ns, not (dataName n)] of
+      (n : _) -> Left (BadOutput ("ブロックコマンドの名前が不正です: " <> n))
+      [] -> case [n | (i, n) <- zip [0 :: Int ..] ns, n `elem` take i ns] of
+        (n : _) -> Left (BadOutput ("ブロックコマンドの名前が重複しています: " <> n))
+        [] -> case [n | n <- ns, n `elem` builtinBlockCommands] of
+          (n : _) -> Left (BadOutput ("組み込みのブロックコマンドの名前です: " <> n))
+          [] -> Right ns
+    contextOf ns = case [n | (i, n) <- zip [0 :: Int ..] ns, n `elem` take i ns] of
+      (n : _) -> Left (BadOutput ("文脈の名前が重複しています: " <> n))
+      [] -> case filter (`notElem` contextNames) ns of
+        [] -> Right ns
+        unknown -> Left (UnknownContext unknown)
+    key = \case
+      (TString k, _) -> Right k
+      _ -> Left (BadOutput "golem_describe の形が不正です")
+    -- \* alone takes any name (docs/adr/0119); with another name it is a bad name
+    dataNames ["*"] = Right ["*"]
+    dataNames ns = case [n | n <- ns, not (dataName n)] of
+      (n : _) -> Left (BadOutput ("データの名前が不正です: " <> n))
+      [] -> case [n | (i, n) <- zip [0 :: Int ..] ns, n `elem` take i ns] of
+        (n : _) -> Left (BadOutput ("データの名前が重複しています: " <> n))
+        [] -> Right ns
     name = \case
       TString s -> Right s
       _ -> Left (BadOutput "名前が文字列ではありません")
@@ -279,11 +478,41 @@ termValue = \case
       _ -> Nothing
     inInt64 i = i >= -9223372036854775808 && i <= 9223372036854775807
 
--- | The CBOR of a command request (golem-doc.cddl @command-request@).
-commandRequest :: Text -> [Value] -> [[Inline]] -> SrcSpan -> Either PluginError ByteString
-commandRequest name args slots sp = do
-  argTerms <- mapM valueTerm args
-  pure (toStrictByteString (encodeTerm (TList [TInt 0, TString name, TList [TList [TInt 0, a] | a <- argTerms], TList (map inlinesTerm slots), spanT sp])))
+{- | The CBOR of a command request (golem-doc.cddl @command-request@), with
+the data of the plugin at the end (docs/adr/0105).
+-}
+commandRequest :: Plugin -> Text -> [PluginArg] -> [[Inline]] -> SrcSpan -> Either PluginError ByteString
+commandRequest plugin name args slots sp = do
+  argTerms <- mapM argumentTerm args
+  pure (withData plugin [TInt 0, TString name, TList argTerms, TList (map inlinesTerm slots), spanT sp])
+
+{- | The CBOR of the request of a block command (golem-doc.cddl
+@block-command-request@, docs/adr/0122): its arguments, its body
+evaluated, where it is called, the context and the data.
+-}
+blockCommandRequest :: Plugin -> Text -> [PluginArg] -> [Block] -> SrcSpan -> Either PluginError ByteString
+blockCommandRequest plugin name args body sp = do
+  argTerms <- mapM argumentTerm args
+  pure (withData plugin [TInt 2, TString name, TList argTerms, blocksTerm body, spanT sp])
+
+-- | golem-doc.cddl's argument: [0, value] / [1, key, value] (docs/adr/0110).
+argumentTerm :: PluginArg -> Either PluginError Term
+argumentTerm = \case
+  PluginPositional v -> (\t -> TList [TInt 0, t]) <$> valueTerm v
+  PluginKeyword k v -> (\t -> TList [TInt 1, TString k, t]) <$> valueTerm v
+
+-- | The CBOR of a filter request (golem-doc.cddl @filter-request@), with the context and the data at the end.
+filterRequest :: Plugin -> Text -> Document -> ByteString
+filterRequest plugin name doc = filterRequestOf plugin name (toStrictByteString (encodeTerm (documentTerm doc)))
+
+-- | The same with the CBOR of the document already encoded, which sets the fuel of the call (docs/adr/0124).
+filterRequestOf :: Plugin -> Text -> ByteString -> ByteString
+filterRequestOf plugin name docBytes =
+  toStrictByteString (encodeListLen 5 <> encodeTerm (TInt 1) <> encodeTerm (TString name) <> encodePreEncoded docBytes <> encodePreEncoded (plContext plugin) <> encodePreEncoded (plData plugin) :: Encoding)
+
+-- | An array of the terms, then the context and the data of the plugin, already encoded (docs/adr/0105, docs/adr/0121).
+withData :: Plugin -> [Term] -> ByteString
+withData plugin ts = toStrictByteString (encodeListLen (fromIntegral (length ts + 2)) <> foldMap encodeTerm ts <> encodePreEncoded (plContext plugin) <> encodePreEncoded (plData plugin) :: Encoding)
 
 -- | The IR of an answer; a float without a finite value is G06100, not bad output.
 decoded :: Either DecodeError a -> Either PluginError a
@@ -293,9 +522,9 @@ decoded = \case
   Left e -> Left (BadOutput (describeDecodeError e))
 
 -- | A command of the plugin. Returns the inlines and the plugin's diagnostics.
-callCommand :: Plugin -> Text -> [Value] -> [[Inline]] -> SrcSpan -> Either PluginError ([Inline], [Diagnostic])
+callCommand :: Plugin -> Text -> [PluginArg] -> [[Inline]] -> SrcSpan -> Either PluginError ([Inline], [Diagnostic])
 callCommand plugin name args slots sp = do
-  req <- commandRequest name args slots sp
+  req <- commandRequest plugin name args slots sp
   out <- invokeRaw plugin req
   (outT, diags) <- response out
   inls <- decoded (termInlinesE outT)
@@ -303,18 +532,144 @@ callCommand plugin name args slots sp = do
   let allowedSpans = Set.insert sp (Set.fromList (concatMap (concatMap inlineSpans) slots))
       allowedDeferred = concatMap (concatMap inlineDeferred) slots
   checkOutput allowedSpans allowedDeferred (concatMap inlineSpans inls) (concatMap inlineDeferred inls)
+  checkDiagnosticSpans allowedSpans diags
   Right (inls, diags)
+
+{- | A block command of the plugin (docs/adr/0122). Returns the blocks, the
+images of its figures by the source the host gives them (docs/adr/0123)
+and the plugin's diagnostics. A block of the body passes as it came; any
+other block is a paragraph, a list, a definition list, a table or a code
+block, without a label, and holds only blocks of those kinds; its spans
+are the call's or those of the body, and the IR holds as below the top of
+a document.
+-}
+callBlockCommand :: Plugin -> Text -> [PluginArg] -> [Block] -> SrcSpan -> Either PluginError ([Block], Map Text ByteString, [Diagnostic])
+callBlockCommand plugin name args body sp = do
+  req <- blockCommandRequest plugin name args body sp
+  out <- invokeRaw plugin req
+  (outT, diags) <- response out
+  -- [blocks, images] (docs/adr/0123)
+  (blocksT, imagesT) <- case outT of
+    TList [b, TList is] -> Right (b, is)
+    _ -> Left (BadOutput "ブロックコマンドの出力は [ブロックの列, 画像の列] です")
+  bs0 <- decoded (termBlocksE blocksT)
+  images <- mapM image imagesT
+  (bs, used) <- placeImages body images bs0
+  let made = filter (`notElem` body) bs
+      bodyDoc = Document (FileId 0) body
+      madeDoc = Document (FileId 0) made
+      allowedSpans = Set.insert sp (Set.fromList (documentSpans bodyDoc))
+  mapM_ blockKind made
+  checkItems plugin (documentItems bodyDoc) (documentItems madeDoc)
+  checkOutput allowedSpans (documentDeferred bodyDoc) (documentSpans madeDoc) (documentDeferred madeDoc)
+  checkDiagnosticSpans allowedSpans diags
+  case validateBlocks (const (Just maxBound)) (documentDeferred bodyDoc) made of
+    [] -> Right (bs, used, diags)
+    errs -> Left (BadOutput (T.intercalate "、" errs))
+  where
+    image = \case
+      TList [TString n, TString f, TBytes b] -> Right (n, f, b)
+      _ -> Left (BadOutput "画像の形が不正です")
+
+{- | The images of the figures a block command returns (docs/adr/0123):
+each named once with a name of the form of a name of data, of SVG, PNG or
+JPEG, used, and at most 'maxDataBytes' together. A figure of its own
+stands at the top of the output, without a web image, and points at an
+image as plugin:<name>; its source becomes the one the host names the
+image by, the SHA-256 of the bytes. The figures of the body pass as they
+came.
+-}
+placeImages :: [Block] -> [(Text, Text, ByteString)] -> [Block] -> Either PluginError ([Block], Map Text ByteString)
+placeImages body images bs = do
+  case [n | (n, _, _) <- images, not (dataName n)] of
+    (n : _) -> Left (BadOutput ("画像の名前が不正です: " <> n))
+    [] -> Right ()
+  case [n | (i, (n, _, _)) <- zip [0 :: Int ..] images, n `elem` [m | (m, _, _) <- take i images]] of
+    (n : _) -> Left (BadOutput ("画像の名前が重複しています: " <> n))
+    [] -> Right ()
+  named <- mapM source images
+  if sum [BS.length b | (_, _, b) <- images] > fromIntegral maxDataBytes
+    then Left (BadOutput ("画像の大きさの合計が上限（" <> T.pack (show maxDataBytes) <> " バイト）を超えています"))
+    else Right ()
+  mapM_ nested bs
+  bs' <- mapM (place named) bs
+  let usedNames = [n | b@(Block _ _ (FigureBlock f)) <- bs, b `notElem` body, Just n <- [T.stripPrefix "plugin:" (figSource f)]]
+  case [n | (n, _, _) <- images, n `notElem` usedNames] of
+    (n : _) -> Left (BadOutput ("どの図版も使っていない画像があります: " <> n))
+    [] -> Right ()
+  Right (bs', Map.fromList [(p, b) | (n, (p, b)) <- named, n `elem` usedNames])
+  where
+    source (n, f, b) = case lookup f [("svg", ".svg"), ("png", ".png"), ("jpeg", ".jpg")] of
+      Just ext -> Right (n, (pluginImagePrefix <> hexOf (sha256 b) <> ext, b))
+      Nothing -> Left (BadOutput ("画像の形式は svg、png、jpeg のどれかです: " <> f))
+    hexOf = T.pack . concatMap (\w -> [hexDigit (w `div` 16), hexDigit (w `mod` 16)]) . BS.unpack
+    hexDigit w = "0123456789abcdef" !! fromIntegral w
+    place named b@(Block bsp lbl (FigureBlock f))
+      | b `elem` body = Right b
+      | Just _ <- figWeb f = Left (BadOutput "プラグインの図版は web を持てません")
+      | Just n <- T.stripPrefix "plugin:" (figSource f) = case lookup n named of
+          Just (p, _) -> Right (Block bsp lbl (FigureBlock f {figSource = p}))
+          Nothing -> Left (BadOutput ("応答にない画像です: " <> figSource f))
+      | otherwise = Left (BadOutput ("プラグインの図版は plugin:<名前> で画像を指します: " <> figSource f))
+    place _ b = Right b
+    -- a figure of its own below the top of the output
+    nested (Block _ _ b) = mapM_ deep (inner b)
+    deep blk@(Block _ _ b) = case b of
+      FigureBlock _ | blk `notElem` body -> Left (BadOutput "図版は出力の最上位にだけ置けます")
+      _ -> mapM_ deep (inner b)
+    inner = \case
+      BulletList items -> concatMap itemBlocks items
+      OrderedList items -> concatMap itemBlocks items
+      DefList gs -> concat (concatMap dgDefs gs)
+      _ -> []
+
+{- | The kinds of blocks a block command makes, at any depth, and no label
+(docs/adr/0122).
+-}
+blockKind :: Block -> Either PluginError ()
+blockKind (Block _ lbl body)
+  | Just _ <- lbl = Left (BadOutput "ブロックコマンドの出力はラベルを持てません")
+  | otherwise = case body of
+      Paragraph _ _ -> Right ()
+      Table {} -> Right ()
+      CodeBlock _ -> Right ()
+      BulletList items -> mapM_ (mapM_ blockKind . itemBlocks) items
+      OrderedList items -> mapM_ (mapM_ blockKind . itemBlocks) items
+      DefList gs -> mapM_ (mapM_ (mapM_ blockKind) . dgDefs) gs
+      Heading {} -> refuse "見出し"
+      -- its image is checked by placeImages, its caption here (docs/adr/0123)
+      FigureBlock f -> mapM_ blockKind (figCaption f)
+      ChannelOutput _ -> refuse "一覧の出力"
+      ForcedBreak _ -> refuse "改ページ"
+      PageControl _ -> refuse "改ページの制御"
+      BlankLines _ -> refuse "行アキ"
+  where
+    refuse k = Left (BadOutput ("ブロックコマンドが返せないブロックです: " <> k))
 
 -- | A filter of the plugin over one file's document.
 applyFilter :: Plugin -> Text -> Document -> Either PluginError (Document, [Diagnostic])
-applyFilter plugin name doc = do
-  let req = TList [TInt 1, TString name, documentTerm doc]
-  out <- invokeRaw plugin (toStrictByteString (encodeTerm req))
+applyFilter plugin name doc = fst (applyFilterFuel plugin name doc)
+
+{- | 'applyFilter', and the fuel the call used (docs/adr/0124). The limit
+is 'filterFuel' of the CBOR of the document.
+-}
+applyFilterFuel :: Plugin -> Text -> Document -> (Either PluginError (Document, [Diagnostic]), Word64)
+applyFilterFuel plugin name doc =
+  let docBytes = toStrictByteString (encodeTerm (documentTerm doc))
+      fuel = filterFuel (plFuel plugin) (BS.length docBytes)
+      (out, used) = invokeRawFuel fuel plugin (filterRequestOf plugin name docBytes)
+   in (out >>= filtered plugin doc, used)
+
+-- | The answer of a filter over the document: checked as below.
+filtered :: Plugin -> Document -> ByteString -> Either PluginError (Document, [Diagnostic])
+filtered plugin doc out = do
   (outT, diags) <- response out
   doc' <- decoded (termDocumentE outT)
   -- the items that came in with the document pass as they are (golem-doc ADR 0007)
   checkItems plugin (documentItems doc) (documentItems doc')
   checkOutput (Set.fromList (documentSpans doc)) (documentDeferred doc) (documentSpans doc') (documentDeferred doc')
+  -- a filter has no call: the top of the file stands for what no node holds, such as its data (docs/adr/0108)
+  checkDiagnosticSpans (Set.insert (mkSpan (docFile doc) 0 0) (Set.fromList (documentSpans doc))) diags
   -- the invariants of the IR, such as forced breaks only at the top (docs/adr ADR 0017);
   -- the spans were checked above, so every file is taken to be large enough
   case validateDocument (const (Just maxBound)) (documentDeferred doc) doc' of
@@ -330,13 +685,20 @@ response bytes = do
   where
     diag = \case
       TList [TString code, sev, spT, TString msg] -> do
+        -- the host puts the name of the plugin before it (docs/adr/0108)
+        pluginCode code
         sp <- decoded (termSpan spT)
-        severity <- case sev of
-          TInt 0 -> Right Error
-          TInt 1 -> Right Warning
-          _ -> Left (BadOutput "診断の重大度が不正です")
+        severity <- pluginSeverity sev
         Right (diagnostic code severity sp msg)
       _ -> Left (BadOutput "診断の形が不正です")
+
+{- | The diagnostics of a plugin point at what came in with the request
+(docs/adr/0108).
+-}
+checkDiagnosticSpans :: Set.Set SrcSpan -> [Diagnostic] -> Either PluginError ()
+checkDiagnosticSpans allowed ds
+  | any ((`Set.notMember` allowed) . diagSpan) ds = Left (BadOutput "診断が要求にないソース位置を指しています")
+  | otherwise = Right ()
 
 {- | The output may only carry source positions and deferred expressions
 that came in with the request (ADR 0001).
@@ -447,3 +809,62 @@ documentSpans doc = concat [blockSpan b : concatMap inlineSpans (blockInlines b)
 
 documentDeferred :: Document -> [DeferredExpr]
 documentDeferred doc = concat [concatMap inlineDeferred (blockInlines b) | b <- blocksOf doc]
+
+{- | A code of a plugin's diagnostic: lowercase letters, digits and -, not
+empty. The host puts the name of the plugin before it (docs/adr/0108).
+-}
+pluginCode :: Text -> Either PluginError ()
+pluginCode code
+  | not (T.null code) && T.all (\c -> isAsciiLower c || isDigit c || c == '-') code = Right ()
+  | otherwise = Left (BadOutput ("診断のコードの形が不正です: " <> code))
+
+-- | The severity of a plugin's diagnostic: 0 an error, 1 a warning.
+pluginSeverity :: Term -> Either PluginError Severity
+pluginSeverity = \case
+  TInt 0 -> Right Error
+  TInt 1 -> Right Warning
+  _ -> Left (BadOutput "診断の重大度が不正です")
+
+{- | A diagnostic of the data of a plugin (golem-doc.cddl @data-diagnostic@,
+docs/adr/0120): the code, the severity, the name of the data and the line,
+from 1, or none for the whole file. The host makes it a diagnostic at the
+start of that line of the file of the data.
+-}
+data DataDiagnostic = DataDiagnostic
+  { ddCode :: !Text,
+    ddSeverity :: !Severity,
+    ddName :: !Text,
+    ddLine :: !(Maybe Natural),
+    ddMessage :: !Text
+  }
+  deriving stock (Eq, Show)
+
+-- | The request of golem_check_data: @[data]@ (docs/adr/0120).
+checkDataRequest :: Plugin -> ByteString
+checkDataRequest p = BS.cons 0x81 (plData p)
+
+{- | The check of the data of a plugin, called once after the data is
+read (docs/adr/0120): the diagnostics of golem_check_data, or none for a
+plugin without the export. The name and the line are checked by the
+host, which knows the files.
+-}
+checkData :: Plugin -> IO (Either PluginError [DataDiagnostic])
+checkData p
+  | not (pluginChecksData p) = pure (Right [])
+  | otherwise = do
+      out <- callMode p 3 (checkDataRequest p)
+      pure (out >>= decodeTermBytes . fst >>= diags)
+  where
+    diags = \case
+      TList ds -> mapM one ds
+      _ -> Left (BadOutput "データの検査の応答の形が不正です")
+    one = \case
+      TList [TString code, sev, TString name, lineT, TString msg] -> do
+        pluginCode code
+        severity <- pluginSeverity sev
+        line <- case lineT of
+          TNull -> Right Nothing
+          TInt n | n >= 1 -> Right (Just (fromIntegral n))
+          _ -> Left (BadOutput "データの診断の行が不正です")
+        Right (DataDiagnostic code severity name line msg)
+      _ -> Left (BadOutput "データの診断の形が不正です")

@@ -79,7 +79,8 @@ bookOf bs =
       bookReferenced = Set.empty,
       bookChapterOf = [],
       bookChannels = [],
-      bookChannelDecls = Map.empty
+      bookChannelDecls = Map.empty,
+      bookImages = Map.empty
     }
 
 para :: Int -> [Inline] -> Block

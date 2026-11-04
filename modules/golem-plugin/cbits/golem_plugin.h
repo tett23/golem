@@ -21,15 +21,19 @@ void golem_plugin_free(golem_plugin *p);
 /* Number of imports and the name of the i-th ("module.name", malloc'd). */
 int golem_plugin_import_count(golem_plugin *p);
 char *golem_plugin_import_name(golem_plugin *p, int i);
+/* Whether the module exports the name (docs/adr/0120). */
+int golem_plugin_has_export(golem_plugin *p, const char *name);
 
 /* mode 0: golem_abi_version, result in *out_u32
    mode 1: golem_describe, bytes in *out
    mode 2: golem_invoke with input, bytes in *out
+   mode 3: golem_check_data with input, bytes in *out (docs/adr/0120)
    A fresh store and instance for every call; fuel and memory limits.
+   *used is the fuel the call used, all of it when it ran out (docs/adr/0124).
    *out and *err are malloc'd (free with golem_plugin_free_bytes). */
 int golem_plugin_call(golem_plugin *p, int mode, uint64_t fuel, int64_t memory_limit,
                       const uint8_t *input, size_t in_len, uint8_t **out, size_t *out_len,
-                      uint32_t *out_u32, char **err);
+                      uint32_t *out_u32, uint64_t *used, char **err);
 void golem_plugin_free_bytes(void *b);
 
 /* The binary form of a module in the text format. */

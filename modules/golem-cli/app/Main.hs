@@ -3,7 +3,7 @@ module Main (main) where
 
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
-import Data.Char (isDigit)
+import Data.Char (isAsciiLower, isDigit, isSpace)
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Either (partitionEithers)
 import Data.List (intercalate, isPrefixOf, stripPrefix)
@@ -27,7 +27,7 @@ import Golem.Parser.CST (pretty)
 import Golem.Parser.Read (readInfo)
 import Golem.Plugin.Lock (defaultCacheDir, fetchPlugins, httpsFetcher, lockPlugins, parseLock, renderLock)
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..), loadProjectWith)
-import Golem.Project.Manifest (Manifest (..), PluginDecl (..), parseManifest)
+import Golem.Project.Manifest (Manifest (..), PluginDecl (..), PluginSource (..), parseManifest)
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
 import Golem.Syntax.ShowTree (showTree)
@@ -153,6 +153,19 @@ checkCode s
   where
     code = T.toUpper s
 
+{- | A code of a plugin's diagnostic, @<plugin>/<lowercase letters, digits
+and ->@ (docs/adr/0108): one line that golem has no section for it.
+-}
+pluginCode :: T.Text -> Maybe T.Text
+pluginCode s = case T.splitOn "/" s of
+  [name, c]
+    | not (T.null name),
+      not (T.any isSpace name),
+      not (T.null c),
+      T.all (\x -> isAsciiLower x || isDigit x || x == '-') c ->
+        Just (s <> ": プラグインの診断のコードです。説明は golem にはないので、プラグインの文書を参照してください")
+  _ -> Nothing
+
 commands :: Parser Command
 commands =
   subparser
@@ -235,8 +248,9 @@ explain = \case
       TIO.putStrLn (exCode e <> "  " <> exTitle e <> (if exStatus e == Retired then "（廃止）" else ""))
     pure ExitSuccess
   args -> do
-    let (bad, good) = partitionEithers (map checkCode (nubOrdOn T.toUpper args))
-        bodies = [exBody e | c <- good, Just e <- [Map.lookup c catalog]]
+    -- a code of a plugin is not one of Golem: the line of pluginCode (docs/adr/0108)
+    let (bad, good) = partitionEithers [maybe (Right <$> checkCode a) (Right . Left) (pluginCode a) | a <- nubOrdOn T.toUpper args]
+        bodies = [either id (maybe "" exBody . (`Map.lookup` catalog)) c | c <- good]
     unless (null bodies) (TIO.putStrLn (T.intercalate "\n\n" bodies))
     hFlush stdout
     mapM_ (TIO.hPutStrLn stderr) bad
@@ -469,7 +483,8 @@ pluginLock = do
     Right m -> do
       fetcher <- httpsFetcher
       cache <- defaultCacheDir
-      r <- lockPlugins fetcher cache (Map.map pdUrl (manifestPlugins m))
+      -- a plugin of the project's path is not fetched nor locked (docs/adr/0109)
+      r <- lockPlugins fetcher cache (Map.mapMaybe (\d -> case pdSource d of PluginUrl u -> Just u; PluginPath _ -> Nothing) (manifestPlugins m))
       case r of
         Left es -> mapM_ (TIO.hPutStrLn stderr) es >> pure (ExitFailure 1)
         Right lock -> BS.writeFile "plugins.lock" (TE.encodeUtf8 (renderLock lock)) >> pure ExitSuccess

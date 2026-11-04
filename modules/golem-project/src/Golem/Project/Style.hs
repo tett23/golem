@@ -1162,6 +1162,8 @@ data Style = Style
     stHeadings :: !(Map Int HeadingStyle),
     stComposition :: !Composition,
     stNumbersVertical :: !Text,
+    -- | [numbers] ref-page: the numerals of [ref-page] in vertical text; Nothing follows vertical (docs/adr/0118)
+    stNumbersRefPage :: !(Maybe Text),
     -- | [notes] placement: the foot of the page or the end of the chapter, in the PDF (golem-driver ADR 0026)
     stNotesPlacement :: !NotesPlacement,
     -- | [notes] numbering: the range over which notes are numbered (golem-driver ADR 0018)
@@ -1206,6 +1208,7 @@ defaultStyle =
       stHeadings = Map.empty,
       stComposition = defaultComposition,
       stNumbersVertical = "kanji",
+      stNumbersRefPage = Nothing,
       stNotesPlacement = PlaceFoot,
       stNotesNumbering = NumberPerChapter,
       stNotesRule = Nothing,
@@ -1678,10 +1681,13 @@ instance FromValue Swatch where
       [c, m, y, k] | all (\x -> x >= 0 && x <= 100) cs -> pure (Swatch (c, m, y, k))
       _ -> failAt l "cmyk は 0 から 100 までの整数四つです"
 
-newtype Numbers = Numbers (Maybe Text)
+-- | [numbers]: vertical and ref-page (golem-parser ADR 0011, docs/adr/0118).
+data Numbers = Numbers (Maybe Text) (Maybe Text)
 
 instance FromValue Numbers where
-  fromValue = parseTableFromValue (Numbers <$> enumKey "vertical" ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"])
+  fromValue = parseTableFromValue (Numbers <$> enumKey "vertical" verticals <*> enumKey "ref-page" (verticals <> ["sideways"]))
+    where
+      verticals = ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"]
 
 -- | The retired [emphasis] (docs/adr ADR 0005): an error that names its replacement.
 data EmphasisV
@@ -1854,7 +1860,7 @@ instance FromValue Style where
         (headings :: Map Text HeadingStyle) <- fromValue v
         traverse (headingLevel v) (Map.toList headings)
     comp <- fromMaybe defaultComposition <$> optKey "composition"
-    Numbers nv <- fromMaybe (Numbers Nothing) <$> optKey "numbers"
+    Numbers nv nrp <- fromMaybe (Numbers Nothing Nothing) <$> optKey "numbers"
     -- the value of a retired table fails with how to rewrite it
     (_ :: Maybe EmphasisV) <- optKey "emphasis"
     Notes np nn nr nms nmf <- fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing) <$> optKey "notes"
@@ -1885,6 +1891,7 @@ instance FromValue Style where
           stHeadings = Map.fromList hs,
           stComposition = comp,
           stNumbersVertical = fromMaybe (stNumbersVertical d) nv,
+          stNumbersRefPage = nrp,
           stNotesPlacement = maybe (stNotesPlacement d) (\p -> if p == "chapter-end" then PlaceChapterEnd else PlaceFoot) np,
           stNotesNumbering = fromMaybe (stNotesNumbering d) nn,
           stNotesRule = nr,

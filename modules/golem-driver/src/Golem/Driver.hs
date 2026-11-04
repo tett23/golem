@@ -14,6 +14,7 @@ module Golem.Driver
     PreflightResult (..),
     preflight,
     evaluateProject,
+    hostContext,
     evaluateProjectWith,
     evaluateLoose,
     loadBibliography,
@@ -44,7 +45,7 @@ import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Either (fromRight, lefts, rights)
-import Data.List (nub, sort)
+import Data.List (isPrefixOf, nub, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe)
@@ -62,7 +63,7 @@ import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Driver.Fonts (cff2FontDiagnostics, golemFontProvider)
 import Golem.Driver.Html
 import Golem.Driver.Pdf
-import Golem.Driver.Plugins (loadPlugins)
+import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
 import Golem.Driver.Svg (activeMessage)
 import Golem.Epub
 import Golem.Eval.Builtin (unPluginCommandName)
@@ -75,12 +76,13 @@ import Golem.Parser.AST qualified as A
 import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
 import Golem.Parser.SourceSettings (SourceSettings, defaultSourceSettings)
 import Golem.Pdf qualified as P
+import Golem.Plugin (HostContext (..))
 import Golem.Plugin.Lock (defaultCacheDir)
 import Golem.Preflight (MissingGlyph (..), check, missingGlyphs)
 import Golem.Preflight.Rules (Rules (..), parseRules, printRules)
 import Golem.Preflight.View (View)
 import Golem.Project
-import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
+import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Svg.Active (activeContent)
 import Golem.Syntax
@@ -187,6 +189,13 @@ sourceInfos p =
   Map.insert (projectManifestFile p) (SourceInfo "manifest.toml" (mkLineIndex (projectManifestText p))) $
     Map.map (\sf -> SourceInfo (sfPath sf) (mkLineIndex (sfText sf))) (projectSources p)
 
+{- | The context of the book a plugin may ask for (docs/adr/0121): the
+values the layout uses, horizontal writing without [page] and kanji
+without [numbers] vertical.
+-}
+hostContext :: Style -> HostContext
+hostContext style = HostContext (if maybe False pageVertical (stPage style) then "vertical" else "horizontal") (stNumbersVertical style)
+
 -- | Everything up to S1. Stops after a stage that produced errors.
 evaluateProject :: Profile -> FilePath -> IO (Either ProjectFailure Evaluated)
 evaluateProject = evaluateProjectWith Map.empty
@@ -218,18 +227,23 @@ evaluateProjectWith overlay profile root = do
           (docs/adr ADR 0031) -}
           cacheDir <- defaultCacheDir
           lockText <- readMaybeText (root </> "plugins.lock")
-          hookE <- loadPlugins cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) manifest0
-          let (pluginDiags, hook) = either (,noPlugins) ([],) hookE
+          LoadedPlugins hookE checkWarnings pluginSources <- loadPlugins root overlay cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) (dataFileBase project) (hostContext style) manifest0
+          let (pluginErrors, hook) = either (,noPlugins) ([],) hookE
+              -- the warnings of the checks of the data (docs/adr/0120) do not stop the plugins
+              pluginDiags = pluginErrors <> checkWarnings
               pluginCommands = sort (map unPluginCommandName (Map.keys (phCommands hook)))
-              -- no G02022 after the plugins failed to load (golem-plugin ADR 0003), nor G02090 (golem-doc ADR 0007)
-              quiet = if null pluginDiags then id else \r -> r {erDiagnostics = filter ((`notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090"]) . diagCode) (erDiagnostics r)}
+              -- style.toml, which the context comes from, when a plugin asks for it: the LSP watches it (docs/adr/0121)
+              contextFiles = Set.fromList ["style.toml" | not (null (phContextNames hook))]
+              -- no G02022 after the plugins failed to load (golem-plugin ADR 0003), nor G02090 (golem-doc ADR 0007),
+              -- nor G02009 for their block commands (docs/adr/0122)
+              quiet = if null pluginErrors then id else \r -> r {erDiagnostics = filter ((`notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090", DiagnosticCode "G02009"]) . diagCode) (erDiagnostics r)}
           if hasErrors synDiags
             then do
               loaded <- loadAssets overlay root project
               let assets = laAssets loaded
               (bibDiags, citeKeys, _) <- loadBibliography root manifest0
               let projectDiags = pluginDiags <> laDiagnostics loaded <> bibDiags
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded) (laTableFiles loaded) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook Map.empty f sf)) pluginCommands))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded <> pluginSources) (laTableFiles loaded <> pluginDataFiles manifest0 <> contextFiles) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook Map.empty f sf)) pluginCommands))
             else do
               let manifest = manifest0
                   -- one G03007 for each name, in the order of the chapters (golem-project ADR 0006)
@@ -248,7 +262,19 @@ evaluateProjectWith overlay profile root = do
                   reassemble = assembleResults (phChannels hook) style manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded) (laTableFiles loaded) projectDiags s1Diags reassemble again pluginCommands))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded <> pluginSources) (laTableFiles loaded <> pluginDataFiles manifest0 <> contextFiles) projectDiags s1Diags reassemble again pluginCommands))
+
+{- | The files the plugins take as data (docs/adr/0105) and the .wasm of
+the plugins of the project (docs/adr/0109), which the LSP watches with
+the files of @table: a change of one evaluates the project again. Paths
+of the wrong shape are left out; G03003 reports them.
+-}
+pluginDataFiles :: Manifest -> Set.Set FilePath
+pluginDataFiles m = Set.fromList [rel | d <- Map.elems (manifestPlugins m), Right rel <- map normalizeRelative (ownPath d <> Map.elems (pdData d))]
+  where
+    ownPath d = case pdSource d of
+      PluginPath p -> [p]
+      PluginUrl _ -> []
 
 {- | S1 from the S0 results of the files (golem-lsp ADR 0004): the book
 and the diagnostics of S1; nothing when the diagnostics of the project
@@ -267,7 +293,7 @@ assembleResults channels style manifest project projectDiags results
           -- the lines of a page; without [page.grid], no limit (docs/adr ADR 0047)
           pageLines = maybe maxBound (fromIntegral . gridLines) (stPage style >>= pageGrid)
           (book, s1Diags) = assemble cfg evalDeferred (map fst chapterRuns)
-       in (Just book, s1Diags)
+       in (Just book {bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
 
 readMaybeText :: FilePath -> IO (Maybe Text)
 readMaybeText p = do
@@ -462,6 +488,21 @@ data LoadedAssets = LoadedAssets
     laTableFiles :: !(Set.Set FilePath)
   }
 
+-- | The paths the sources refer to as assets, with their uses.
+assetUses :: Project -> Map FilePath (Set.Set AssetUse)
+assetUses project = Map.fromListWith Set.union [(p, Set.singleton u) | sf <- Map.elems (projectSources project), (p, u) <- assetRefs (sfAst sf)]
+
+-- | The paths of the assets read as text, which have a FileId each ('loadAssets').
+assetTextPaths :: Project -> [FilePath]
+assetTextPaths project = [p | (p, us) <- Map.toList (assetUses project), any (`Set.member` us) [UseTable, UseListing]]
+
+{- | The first FileId of the files of data that the checks of the data of
+the plugins point at (docs/adr/0120): the one after the assets read as
+text.
+-}
+dataFileBase :: Project -> FileId
+dataFileBase project = let FileId lock = lockFileId project in FileId (lock + 1 + length (assetTextPaths project))
+
 {- | Files referenced by @figure, @table and @listing: text content for
 tables and listings, presence for images, and why a path cannot be used
 (golem-eval ADR 0003). A path any reference reads as text is read as
@@ -473,10 +514,9 @@ over 'tableMaxBytes' is not read for the table (docs/adr ADR 0043).
 -}
 loadAssets :: Map FilePath Text -> FilePath -> Project -> IO LoadedAssets
 loadAssets overlay root project = do
-  let refs = Map.fromListWith Set.union [(p, Set.singleton u) | sf <- Map.elems (projectSources project), (p, u) <- assetRefs (sfAst sf)]
+  let refs = assetUses project
       FileId lock = lockFileId project
-      textPaths = [p | (p, us) <- Map.toList refs, any (`Set.member` us) [UseTable, UseListing]]
-      fids = Map.fromList (zip textPaths (map FileId [lock + 1 ..]))
+      fids = Map.fromList (zip (assetTextPaths project) (map FileId [lock + 1 ..]))
   loaded <- Map.traverseWithKey (load fids) refs
   pure
     LoadedAssets
@@ -616,9 +656,10 @@ buildCore inMemory opts = do
         Just book
           | not (hasErrors (finish evDiags)) && not (optCheckOnly opts) -> do
               -- G08014 stops HTML and EPUB, which copy SVG figures as they are (docs/adr ADR 0039)
+              -- and G08102, a figure of the source where they put the images of plugins (docs/adr/0123)
               activeDiags <-
                 if any (`elem` writable) [TargetHtml, TargetEpub]
-                  then activeContentDiagnostics (optRoot opts) book
+                  then (pluginImagePathDiagnostics book <>) <$> activeContentDiagnostics (optRoot opts) book
                   else pure []
               let webWritable = [t | t <- writable, null activeDiags || t `notElem` [TargetHtml, TargetEpub]]
                   -- a list number its format cannot write stops every target (golem-driver ADR 0013)
@@ -635,6 +676,21 @@ buildCore inMemory opts = do
     finishWith silenced silencedInfo =
       finishDiagnostics (optProfile opts) (if optNoNotices opts then Nothing else Just silenced) silencedInfo (optVerbose opts)
 
+{- | G08102 (docs/adr/0123): a figure of the source whose image HTML and
+EPUB copy (its web image, or itself) would be written under
+images/golem-plugin/, where they put the images plugins make. One for
+each figure, at its block.
+-}
+pluginImagePathDiagnostics :: Book -> [Diagnostic]
+pluginImagePathDiagnostics book =
+  [ diagnostic "G08102" Error sp ("図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: " <> path)
+  | Document _ bs <- bookDocs book,
+    Block sp _ (FigureBlock f) <- allFigures bs,
+    let path = fromMaybe (figSource f) (figWeb f),
+    Right rel <- [normalizeRelative (T.unpack path)],
+    "images/golem-plugin/" `isPrefixOf` rel
+  ]
+
 {- | G08014 (docs/adr ADR 0039): the SVG files that HTML and EPUB copy (a
 figure or its @web@ image, also inside lists) with active content, or
 that cannot be read; each file is read once, and each @figure that uses
@@ -644,11 +700,14 @@ outside the root are left to the diagnostics about paths.
 activeContentDiagnostics :: FilePath -> Book -> IO [Diagnostic]
 activeContentDiagnostics root book = do
   let figures = [(sp, webSource f) | Document _ bs <- bookDocs book, Block sp _ (FigureBlock f) <- allFigures bs, ".svg" `T.isSuffixOf` T.toLower (webSource f)]
-  checked <- forM (nub (map snd figures)) $ \path -> do
-    resolved <- resolveInRoot root (T.unpack path)
-    case resolved of
-      Right _ -> (path,) . activeMessage path . activeContent <$> BS.readFile (root </> T.unpack path)
-      Left _ -> pure (path, Nothing)
+  checked <- forM (nub (map snd figures)) $ \path -> case Map.lookup path (bookImages book) of
+    -- an image a plugin made (docs/adr/0123)
+    Just bytes -> pure (path, activeMessage path (activeContent bytes))
+    Nothing -> do
+      resolved <- resolveInRoot root (T.unpack path)
+      case resolved of
+        Right _ -> (path,) . activeMessage path . activeContent <$> BS.readFile (root </> T.unpack path)
+        Left _ -> pure (path, Nothing)
   let messages = Map.fromList checked
   pure [diagnostic "G08014" Error sp msg | (sp, path) <- figures, Just (Just msg) <- [Map.lookup path messages]]
 
@@ -910,7 +969,12 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
       forM_ (sitePages site) $ \(p, t) -> writeText (dir </> p) t
       writeText (dir </> "style.css") (siteCss site)
       writeText (dir </> "index.xhtml") (indexPage hcfg ft book)
-      copied <- forM (siteAssets site) $ \(o, src) -> copy (root </> src) (dir </> o) >> pure (dir </> o)
+      -- the images plugins made are written from the book (docs/adr/0123)
+      copied <- forM (siteAssets site) $ \(o, src) -> do
+        case Map.lookup (T.pack src) (bookImages book) of
+          Just bytes -> createDirectoryIfMissing True (takeDirectory (dir </> o)) >> BS.writeFile (dir </> o) bytes
+          Nothing -> copy (root </> src) (dir </> o)
+        pure (dir </> o)
       pure (map ((dir </>) . fst) (sitePages site) <> [dir </> "style.css", dir </> "index.xhtml"] <> copied, [], Nothing)
     TargetEpub -> do
       let dir = root </> "build" </> "epub"

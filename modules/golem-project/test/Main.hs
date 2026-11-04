@@ -162,6 +162,40 @@ silenceTests =
     elementAt extra c = len (fst (T.breakOn extra (manifestWith ["\"a.gm\""] extra))) + len (fst (T.breakOn c extra))
     len = BS.length . TE.encodeUtf8
 
+-- | The data of a plugin in the manifest (docs/adr/0105).
+pluginDataTests :: TestTree
+pluginDataTests =
+  testGroup
+    "[plugins.<name>.data] (docs/adr/0105)"
+    [ testCase "the names and paths of the data are read" $
+        fmap (fmap pdData . Map.lookup "lk" . manifestPlugins) (parse "[plugins.lk]\nurl = \"https://example.com/lk.wasm\"\ndata = { table = \"data/words.tsv\", dict = \"d.bin\" }\n")
+          @?= Right (Just (Map.fromList [("dict", "d.bin"), ("table", "data/words.tsv")])),
+      testCase "without data a plugin has none" $
+        fmap (fmap pdData . Map.lookup "lk" . manifestPlugins) (parse "[plugins.lk]\nurl = \"https://example.com/lk.wasm\"\n") @?= Right (Just Map.empty),
+      testCase "a path that is not a string is G03001" $
+        codes (parse "[plugins.lk]\nurl = \"https://example.com/lk.wasm\"\ndata = { table = 1 }\n") @?= ["G03001"]
+    ]
+  where
+    parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] extra)
+
+-- | A plugin in the project, declared with path (docs/adr/0109).
+pluginPathTests :: TestTree
+pluginPathTests =
+  testGroup
+    "[plugins.<name>] path (docs/adr/0109)"
+    [ testCase "url is a plugin to fetch" $
+        source "url = \"https://example.com/lk.wasm\"\n" @?= Right (Just (PluginUrl "https://example.com/lk.wasm")),
+      testCase "path is a plugin of the project" $
+        source "path = \"plugins/lk.wasm\"\n" @?= Right (Just (PluginPath "plugins/lk.wasm")),
+      testCase "both url and path are G03001" $
+        codes (parse "[plugins.lk]\nurl = \"https://example.com/lk.wasm\"\npath = \"plugins/lk.wasm\"\n") @?= ["G03001"],
+      testCase "neither url nor path is G03001" $
+        codes (parse "[plugins.lk]\noverrides = []\n") @?= ["G03001"]
+    ]
+  where
+    parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] extra)
+    source decl = fmap (fmap pdSource . Map.lookup "lk" . manifestPlugins) (parse ("[plugins.lk]\n" <> decl))
+
 -- | [diagnostics] silence-info of the manifest (docs/adr 0104).
 silenceInfoTests :: TestTree
 silenceInfoTests =
@@ -487,6 +521,14 @@ tests =
         case vertical "[numbers]\nvertical = \"automatic\"\n" of
           Left _ -> pure ()
           Right v -> assertFailure (show v),
+      testCase "[numbers] ref-page takes the values of vertical and sideways (docs/adr/0118)" $ do
+        let refPage src = stNumbersRefPage <$> parseStyle (FileId 0) src
+        refPage "" @?= Right Nothing
+        refPage "[numbers]\nref-page = \"sideways\"\n" @?= Right (Just "sideways")
+        refPage "[numbers]\nref-page = \"auto-digits\"\n" @?= Right (Just "auto-digits")
+        case parseStyle (FileId 0) "[numbers]\nref-page = \"arabic\"\n" of
+          Left [d] -> (diagCode d, diagMessage d) @?= (DiagnosticCode "G03006", "ref-page に使えない値です: arabic（kanji, kanji-digits, tcy, auto, auto-digits, sideways のどれか） (numbers.ref-page)")
+          other -> assertFailure (show (fmap stNumbersRefPage other)),
       testCase "normalisation" $ do
         normalizeRelative "./a/../b/c.gm" @?= Right "b/c.gm"
         normalizeRelative "../x.gm" @?= Left EscapesRoot
@@ -830,6 +872,8 @@ tests =
       testGroup "page size by dimensions (ADR 0005)" pageSizeTests,
       silenceTests,
       silenceInfoTests,
+      pluginDataTests,
+      pluginPathTests,
       indexStyleTests,
       hiddenFolioTests,
       findCycleTests,

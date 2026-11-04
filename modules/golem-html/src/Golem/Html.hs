@@ -285,13 +285,19 @@ renderXhtml cfg ft book =
         sortOn fst
           $ Map.toList
           $ Map.fromList
-          $ [(T.unpack (webSource f), T.unpack (webSource f)) | Document _ bs <- bookDocs book, Block _ _ (FigureBlock f) <- allFigures bs]
+          $ [(T.unpack (webOutput f), T.unpack (webSource f)) | Document _ bs <- bookDocs book, Block _ _ (FigureBlock f) <- allFigures bs]
             <> [(fontOut p, p) | (ja, la) <- Map.elems (hcFonts cfg), Just p <- [ja, la]]
     }
 
 -- | The file that HTML and EPUB copy for a figure: its @web@ image, or the figure itself.
 webSource :: Figure -> Text
 webSource f = fromMaybe (figSource f) (figWeb f)
+
+{- | Where HTML and EPUB put that file: its own path, or for an image a
+plugin made, images/golem-plugin/<SHA-256>.<extension> (docs/adr/0123).
+-}
+webOutput :: Figure -> Text
+webOutput f = fromMaybe (webSource f) (pluginImageOutput (webSource f))
 
 fontOut :: FilePath -> FilePath
 fontOut p = "fonts" </> takeFileName p
@@ -452,7 +458,7 @@ block c (Block sp lbl body) = case body of
   FigureBlock f ->
     let num = numberSpan c (Map.lookup sp (bookFigures (cBook c)))
         cap = T.concat [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
-     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webSource f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
+     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webOutput f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
   ChannelOutput (TocOutput d) -> toc c (Just d)
   ChannelOutput IndexOutput -> index c sp
   ChannelOutput (CustomOutput name _) -> channelList c sp name

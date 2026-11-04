@@ -93,6 +93,19 @@ char *golem_plugin_import_name(golem_plugin *p, int i) {
   return r;
 }
 
+int golem_plugin_has_export(golem_plugin *p, const char *name) {
+  wasm_exporttype_vec_t exports;
+  wasmtime_module_exports(p->module, &exports);
+  size_t n = strlen(name);
+  int found = 0;
+  for (size_t i = 0; i < exports.size; i++) {
+    const wasm_name_t *e = wasm_exporttype_name(exports.data[i]);
+    if (e->size == n && memcmp(e->data, name, n) == 0) found = 1;
+  }
+  wasm_exporttype_vec_delete(&exports);
+  return found;
+}
+
 static int get_func(wasmtime_context_t *cx, wasmtime_instance_t *inst, const char *name, wasmtime_func_t *out) {
   wasmtime_extern_t ext;
   if (!wasmtime_instance_export_get(cx, inst, name, strlen(name), &ext) || ext.kind != WASMTIME_EXTERN_FUNC) return 0;
@@ -138,7 +151,7 @@ static int read_result(wasmtime_context_t *cx, wasmtime_instance_t *inst, uint64
 
 int golem_plugin_call(golem_plugin *p, int mode, uint64_t fuel, int64_t memory_limit,
                       const uint8_t *input, size_t in_len, uint8_t **out, size_t *out_len,
-                      uint32_t *out_u32, char **err) {
+                      uint32_t *out_u32, uint64_t *used, char **err) {
   wasmtime_store_t *store = wasmtime_store_new(p->engine, NULL, NULL);
   wasmtime_store_limiter(store, memory_limit, GOLEM_TABLE_ELEMENTS, 1, 1, 1);
   wasmtime_context_t *cx = wasmtime_store_context(store);
@@ -160,9 +173,12 @@ int golem_plugin_call(golem_plugin *p, int mode, uint64_t fuel, int64_t memory_l
     status = call(cx, &f, "golem_describe", WASMTIME_I64, NULL, 0, &res, err);
     if (status == GOLEM_OK) status = read_result(cx, &inst, (uint64_t)res.of.i64, out, out_len, err);
   } else {
+    /* mode 3 calls golem_check_data the way mode 2 calls golem_invoke (docs/adr/0120) */
+    const char *fname = mode == 3 ? "golem_check_data" : "golem_invoke";
     wasmtime_func_t alloc;
-    if (!get_func(cx, &inst, "golem_alloc", &alloc) || !get_func(cx, &inst, "golem_invoke", &f)) {
-      *err = copy_msg("golem_alloc/golem_invoke", 24); status = GOLEM_MISSING_EXPORT; goto done;
+    if (!get_func(cx, &inst, "golem_alloc", &alloc) || !get_func(cx, &inst, fname, &f)) {
+      const char *what = mode == 3 ? "golem_alloc/golem_check_data" : "golem_alloc/golem_invoke";
+      *err = copy_msg(what, strlen(what)); status = GOLEM_MISSING_EXPORT; goto done;
     }
     wasmtime_val_t a;
     a.kind = WASMTIME_I32;
@@ -180,10 +196,17 @@ int golem_plugin_call(golem_plugin *p, int mode, uint64_t fuel, int64_t memory_l
     wasmtime_val_t args[2];
     args[0].kind = WASMTIME_I32; args[0].of.i32 = (int32_t)ptr;
     args[1].kind = WASMTIME_I32; args[1].of.i32 = (int32_t)in_len;
-    status = call(cx, &f, "golem_invoke", WASMTIME_I64, args, 2, &res, err);
+    status = call(cx, &f, fname, WASMTIME_I64, args, 2, &res, err);
     if (status == GOLEM_OK) status = read_result(cx, &inst, (uint64_t)res.of.i64, out, out_len, err);
   }
 done:
+  {
+    /* the fuel the call used, all of it when it ran out (docs/adr/0124) */
+    uint64_t left = 0;
+    wasmtime_error_t *fe = wasmtime_context_get_fuel(cx, &left);
+    if (fe) { wasmtime_error_delete(fe); left = 0; }
+    *used = status == GOLEM_OUT_OF_FUEL ? fuel : (left <= fuel ? fuel - left : 0);
+  }
   wasmtime_store_delete(store);
   return status;
 }

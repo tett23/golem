@@ -1,32 +1,39 @@
 module PluginsSpec (pluginTests, cacheHomeRestored) where
 
+import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
-import Data.List (sort)
+import Data.List (isSuffixOf, sort)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Golem.Doc.Assemble (Book (..))
+import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfInput (..), layoutPages)
-import Golem.Driver.Plugins (loadPlugins)
+import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
 import Golem.Eval.Builtin (BuiltinInline (..), builtinName, unPluginCommandName)
 import Golem.Eval.File (EvalResult (..), PluginHook (..))
-import Golem.Plugin (watToWasm)
+import Golem.Plugin (HostContext (..), maxDataBytes, watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..))
 import Golem.Project.Manifest (parseManifest)
+import Golem.Project.Style (parseStyle)
 import Golem.Syntax
+import Golem.Syntax.Sha256 (sha256)
 import Golem.TestSupport.Env (withEnv)
+import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import Support
-import System.Directory (listDirectory)
+import System.Directory (createFileLink, listDirectory)
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
+import Text.Printf (printf)
 
 {- | XDG_CACHE_HOME after the plugin tests is what it was when the suite
 started: the tests that set it set it back (docs/adr ADR 0072). The
@@ -66,10 +73,13 @@ lockIn plugins tmp act = do
     act
   where
     pluginUrl name = "https://example.com/" <> name <> ".wasm"
-    serve (name, wat) = do
-      src <- TIO.readFile ("../golem-plugin/test/plugins" </> wat)
-      wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
-      pure (pluginUrl name, wasm)
+    -- a wat file of golem-plugin's tests, or a sample plugin built into plugins/wasm (docs/adr/0106)
+    serve (name, file)
+      | ".wasm" `T.isSuffixOf` T.pack file = (pluginUrl name,) <$> BS.readFile (".." </> ".." </> "plugins" </> "wasm" </> file)
+      | otherwise = do
+          src <- TIO.readFile ("../golem-plugin/test/plugins" </> file)
+          wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
+          pure (pluginUrl name, wasm)
 
 -- | The declaration of a plugin as withPlugins serves it.
 pluginDeclOf :: BS.ByteString -> BS.ByteString -> BS.ByteString
@@ -168,9 +178,439 @@ channelTests =
         t @?= "人甲と乙。\n\n甲\n乙\n"
   ]
 
+{- | A one-chapter project, a.gm, with the plugin of datum.wat, which
+answers [datum] with the bytes of its data table, declared as lk with
+the given keys after its url, and the given files.
+-}
+withDatum :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withDatum = withDataPlugin "datum.wat"
+
+-- | The same with a plugin of the given file: a wat file or a sample plugin.
+withDataPlugin :: FilePath -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withDataPlugin plugin decl source files k = withSystemTempDirectory "golem-data" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> pluginDeclOf "lk" decl)
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  TIO.writeFile (tmp </> "a.gm") source
+  writeFiles tmp files
+  lockIn [("lk", plugin)] tmp (k tmp)
+
+-- | The S0 inlines of the paragraphs of a.gm, and every diagnostic.
+lookedUp :: Map.Map FilePath T.Text -> FilePath -> IO ([Inline], [(DiagnosticCode, T.Text)])
+lookedUp overlay tmp = do
+  e <- evaluateProjectWith overlay Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+  let inls = [i | (fid, sf) <- Map.toList (projectSources (evProject e)), sfPath sf == "a.gm", Just r <- [Map.lookup fid (evResults e)], b <- docBlocks (erDocument r), Paragraph _ is <- [blockBody b], i <- is]
+  pure (inls, [(diagCode d, diagMessage d) | d <- evDiagnostics e])
+
+texts :: [Inline] -> [T.Text]
+texts is = [t | Text _ t <- is]
+
+{- | A one-chapter project, a.gm, with datum.wat built into
+plugins/datum.wasm and declared as lk with the given keys, and the given
+files: a plugin of the project's path (docs/adr/0109), no plugins.lock.
+-}
+withLocal :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withLocal decl source files k = withSystemTempDirectory "golem-local" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> "\n[plugins.lk]\n" <> decl)
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  TIO.writeFile (tmp </> "a.gm") source
+  src <- TIO.readFile "../golem-plugin/test/plugins/datum.wat"
+  wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
+  writeFiles tmp (("plugins/datum.wasm", wasm) : files)
+  k tmp
+
+{- | A project as 'withLocal' with datum.wat declaring the data * instead
+of table (docs/adr/0119): it takes data of any name, and answers [datum]
+with the data table, which must be the first data by name.
+-}
+withAnyDatum :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withAnyDatum = withDescribedDatum "\\a2\\64data\\81\\61*\\68commands\\81\\65datum" 25
+
+{- | A project as 'withLocal' with datum.wat answering golem_describe with
+the given bytes (escaped for wat) of the given length instead of its own.
+-}
+withDescribedDatum :: T.Text -> Int -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withDescribedDatum describe size decl source files k = withSystemTempDirectory "golem-described" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> "\n[plugins.lk]\npath = \"datum.wasm\"\n" <> decl)
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  TIO.writeFile (tmp </> "a.gm") source
+  src <- TIO.readFile "../golem-plugin/test/plugins/datum.wat"
+  -- at 256, after the other data of datum.wat, however long it is
+  let described =
+        T.replace "(i64.const 29)" ("(i64.const " <> T.pack (show size) <> ")")
+          . T.replace "(i64.shl (i64.const 16) (i64.const 32))" "(i64.shl (i64.const 256) (i64.const 32))"
+          . T.replace "(data (i32.const 16) \"" "(data (i32.const 256) \""
+          . T.replace "\"\\a2\\64data\\81\\65table\\68commands\\81\\65datum\"" ("\"" <> describe <> "\"")
+  assertBool "datum.wat declares table" (described src /= src)
+  wasm <- watToWasm (described src) >>= either (assertFailure . T.unpack) pure
+  writeFiles tmp (("datum.wasm", wasm) : files)
+  k tmp
+
+{- | A one-chapter project, a.gm, with the plugins (name, wat file or
+sample plugin) declared with the given text after their url.
+-}
+withBlockProject :: [(T.Text, FilePath, BS.ByteString)] -> T.Text -> (FilePath -> IO a) -> IO a
+withBlockProject plugins source k = withSystemTempDirectory "golem-blocks" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> foldMap (\(n, _, decl) -> pluginDeclOf (TE.encodeUtf8 n) decl) plugins)
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  TIO.writeFile (tmp </> "a.gm") source
+  lockIn [(n, f) | (n, f, _) <- plugins] tmp (k tmp)
+
+-- | The S0 blocks of a.gm.
+blocksOf :: FilePath -> IO ([Block], [(DiagnosticCode, T.Text)])
+blocksOf tmp = do
+  e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+  let bs = [b | (fid, sf) <- Map.toList (projectSources (evProject e)), sfPath sf == "a.gm", Just r <- [Map.lookup fid (evResults e)], b <- docBlocks (erDocument r)]
+  pure (bs, [(diagCode d, diagMessage d) | d <- evDiagnostics e])
+
+-- | Block commands of plugins (docs/adr/0122), with grid.wat.
+blockCommandTests :: [TestTree]
+blockCommandTests =
+  [ testCase "@grid puts out the blocks of the plugin at the call" $
+      withBlockProject [("gr", "grid.wat", "")] "@grid\n" $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        ds @?= []
+        [(spanStart (blockSpan b), spanEnd (blockSpan b), [t | Paragraph _ is <- [blockBody b], Text _ t <- is]) | b <- bs] @?= [(0, 6, ["表"])],
+    testCase "a block command is not an inline command, nor an inline command a block command" $
+      withBlockProject [("gr", "grid.wat", ""), ("lookup", "lookup.wasm", "")] "[grid]\n\n@lookup x\n" $ \tmp -> do
+        (_, ds) <- blocksOf tmp
+        map fst ds @?= [DiagnosticCode "G02022", DiagnosticCode "G02009"],
+    testCase "no G02009 nor G02022 after a plugin failed to load" $
+      withBlockProject [("gr", "grid.wat", "data = { table = \"none.tsv\" }\n")] "@grid\n\n[grid]\n\n@nope\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101", DiagnosticCode "G06102"],
+    testCase "G06006: two plugins with the same block command" $
+      withBlockProject [("a", "grid.wat", ""), ("b", "grid.wat", "")] "本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06006", "複数のプラグインが同じブロックコマンドを提供しています: @grid（a、b）")]),
+    testCase "a block command in a list item takes @label" $
+      withBlockProject [("gr", "grid.wat", "")] "- 項目\n\n  @label t\n  @grid\n" $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        ds @?= []
+        case map blockBody bs of
+          [BulletList [ListItem _ [_, Block _ (Just "t") (Paragraph _ [Text _ "表"])]]] -> pure ()
+          other -> assertFailure (show other)
+  ]
+
+{- | A one-chapter project, a.gm, for PDF, HTML and EPUB with the fake
+fonts, and the sample plugin bar-chart (docs/adr/0123) declared as bc
+with the data sales.
+-}
+withBarChart :: T.Text -> (FilePath -> IO a) -> IO a
+withBarChart source k = withSystemTempDirectory "golem-chart" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["pdf", "html", "epub"]}) <> pluginDeclOf "bc" "data = { sales = \"sales.tsv\" }\n")
+  BS.writeFile (tmp </> "style.toml") (withBodyFont horizontalStyle)
+  TIO.writeFile (tmp </> "a.gm") source
+  writeFiles tmp (("sales.tsv", TE.encodeUtf8 "月\t売上\n1月\t12\n2月\t30\n") : fakeFontFiles)
+  lockIn [("bc", "bar-chart.wasm")] tmp (k tmp)
+
+-- | The SVG bar-chart draws for 12 and 30.
+chartSvg :: BS.ByteString
+chartSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 400 200\" width=\"400\" height=\"200\"><rect x=\"20\" y=\"120\" width=\"160\" height=\"80\" fill=\"#404040\"/><rect x=\"220\" y=\"0\" width=\"160\" height=\"200\" fill=\"#404040\"/><rect x=\"0\" y=\"199\" width=\"400\" height=\"1\" fill=\"#000000\"/></svg>"
+
+-- | Where HTML and EPUB put it.
+chartPath :: FilePath
+chartPath = "images/golem-plugin/" <> concatMap (printf "%02x") (BS.unpack (sha256 chartSvg)) <> ".svg"
+
+-- | The figures of plugins (docs/adr/0123).
+pluginFigureTests :: [TestTree]
+pluginFigureTests =
+  [ testCase "a bar chart of a plugin is a figure with a number, in PDF, HTML and EPUB" $
+      withBarChart "# 章\n\n@label c\n@bar-chart sales alt=\"売上の棒グラフ\"\n  月ごとの売上\n\n[ref-number c]\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optFonts = fakeProvider}
+        filter isError (brDiagnostics r) @?= []
+        BS.readFile (tmp </> "build/html" </> chartPath) >>= (@?= chartSvg)
+        page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        assertBool (T.unpack page) (T.pack chartPath `T.isInfixOf` page)
+        epubs <- filter (".epub" `isSuffixOf`) <$> listDirectory (tmp </> "build/epub")
+        case epubs of
+          [f] -> do
+            a <- toArchive . BL.fromStrict <$> BS.readFile (tmp </> "build/epub" </> f)
+            fmap (BL.toStrict . fromEntry) (findEntryByPath ("OEBPS/" <> chartPath) a) @?= Just chartSvg
+          other -> assertFailure (show other)
+        assertBool "a PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        fmap (Map.size . bookFigures) (evBook e) @?= Just 1,
+    testCase "the same input gives the same PDF, twice" $
+      withBarChart "# 章\n\n@bar-chart sales alt=\"x\"\n" $ \tmp -> do
+        let pdfOf = do
+              r <- build (defaultOptions tmp) {optFonts = fakeProvider, optTargets = Just [TargetPdf]}
+              case filter (".pdf" `isSuffixOf`) (brWritten r) of
+                [p] -> BS.readFile p
+                ps -> assertFailure (show ps)
+        a <- pdfOf
+        b <- pdfOf
+        a @?= b,
+    testCase "the source of a plugin's image written in @figure is a URL, G02060" $
+      withBarChart ("@figure \"golem-plugin-image://" <> T.pack (drop (length ("images/golem-plugin/" :: String)) chartPath) <> "\" alt=x\n") $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        map diagCode (evDiagnostics e) @?= [DiagnosticCode "G02060"],
+    testCase "the errors of the plugin give no figure" $
+      withBarChart "@bar-chart sales\n" $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        map diagCode (evDiagnostics e) @?= [DiagnosticCode "bc/bar-chart-alt"],
+    testCase "G08102: a figure of the source where HTML and EPUB put the images of plugins" $
+      withBarChart "# 章\n\n@figure ./images/golem-plugin/x.svg alt=x\n" $ \tmp -> do
+        writeFiles tmp [("images/golem-plugin/x.svg", chartSvg)]
+        r <- build (defaultOptions tmp) {optFonts = fakeProvider}
+        [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
+          @?= [(DiagnosticCode "G08102", "図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: ./images/golem-plugin/x.svg")]
+        assertBool "no HTML" (not (any (("build/html/" `T.isInfixOf`) . T.pack) (brWritten r)))
+        assertBool "a PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
+  ]
+
+-- | The context of the book a plugin asks for (docs/adr/0121).
+contextTests :: [TestTree]
+contextTests =
+  [ testCase "G06105: a plugin that asks for context Golem does not have" $
+      withDescribedDatum "\\a3\\64data\\81\\65table\\68commands\\81\\65datum\\67context\\82\\68language\\65media" 53 "" "本文\n" [] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06105", "lk: Golem が渡せない文脈を求めています: language、media（渡せる文脈: vertical-numbers、writing-mode）")]),
+    testCase "the LSP watches style.toml when a plugin asks for context, and not otherwise" $ do
+      withDescribedDatum "\\a3\\64data\\81\\65table\\68commands\\81\\65datum\\67context\\81\\6cwriting-mode" 51 "" "本文\n" [] $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        assertBool (show (evTableFiles e)) ("style.toml" `elem` evTableFiles e)
+      withLocal "path = \"plugins/datum.wasm\"\n" "本文\n" [] $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        assertBool (show (evTableFiles e)) ("style.toml" `notElem` evTableFiles e),
+    testCase "the context is the writing mode of [page] and [numbers] vertical, with their defaults" $ do
+      let ctxOf t = either (assertFailure . show) (pure . hostContext) (parseStyle (FileId 0) t)
+      ctxOf "" >>= (@?= HostContext "horizontal" "kanji")
+      ctxOf (TE.decodeUtf8 pdfStyle) >>= (@?= HostContext "vertical" "kanji")
+      ctxOf (TE.decodeUtf8 pdfStyle <> "\n[numbers]\nvertical = \"tcy\"\n") >>= (@?= HostContext "vertical" "tcy")
+  ]
+
+{- | A small CBOR encoder for the responses of check-data.wat: arrays,
+text strings, small unsigned integers and null.
+-}
+data Cbor = CArr [Cbor] | CText T.Text | CUInt Int | CNull
+
+cborBytes :: Cbor -> BS.ByteString
+cborBytes = \case
+  CArr xs -> headOf 0x80 (length xs) <> foldMap cborBytes xs
+  CText t -> let b = TE.encodeUtf8 t in headOf 0x60 (BS.length b) <> b
+  CUInt n -> headOf 0x00 n
+  CNull -> BS.singleton 0xf6
+  where
+    headOf major n
+      | n < 24 = BS.singleton (fromIntegral (major + n))
+      | n < 256 = BS.pack [fromIntegral (major + 24), fromIntegral n]
+      | otherwise = BS.pack [fromIntegral (major + 25), fromIntegral (n `div` 256), fromIntegral (n `mod` 256)]
+
+{- | A one-chapter project, a.gm, with check-data.wat built into
+plugins/check.wasm and declared as lk (docs/adr/0120), with the data
+table = "t.tsv" and the given files. The plugin provides the command
+shout and takes the data table; it answers golem_invoke and
+golem_check_data with the given responses.
+-}
+withChecker :: BS.ByteString -> [Cbor] -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withChecker invoke check source files k = withSystemTempDirectory "golem-check" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> "\n[plugins.lk]\npath = \"plugins/check.wasm\"\ndata = { table = \"t.tsv\" }\n")
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  TIO.writeFile (tmp </> "a.gm") source
+  src <- TIO.readFile "../golem-plugin/test/plugins/check-data.wat"
+  let describe = BS.concat [BS.pack [0xa2], cborBytes (CText "commands"), cborBytes (CArr [CText "shout"]), cborBytes (CText "data"), cborBytes (CArr [CText "table"])]
+      checkB = cborBytes (CArr check)
+      escape = T.pack . concatMap (\w -> '\\' : hex2 w) . BS.unpack
+      hex2 w = [digit (w `div` 16), digit (w `mod` 16)]
+      digit d = "0123456789abcdef" !! fromIntegral d
+      filled =
+        T.replace "{{DESCRIBE}}" (escape describe)
+          . T.replace "{{DESCRIBE_LEN}}" (T.pack (show (BS.length describe)))
+          . T.replace "{{RESPONSE}}" (escape invoke)
+          . T.replace "{{RESPONSE_LEN}}" (T.pack (show (BS.length invoke)))
+          . T.replace "{{CHECK}}" (escape checkB)
+          . T.replace "{{CHECK_LEN}}" (T.pack (show (BS.length checkB)))
+          $ src
+  wasm <- watToWasm filled >>= either (assertFailure . T.unpack) pure
+  writeFiles tmp (("plugins/check.wasm", wasm) : files)
+  k tmp
+
+-- | [[], []]: no inlines and no diagnostics.
+emptyAnswer :: BS.ByteString
+emptyAnswer = cborBytes (CArr [CArr [], CArr []])
+
+{- | An answer with a diagnostic at a span of no request, G06009 if a
+command is called at all.
+-}
+calledAnswer :: BS.ByteString
+calledAnswer = cborBytes (CArr [CArr [], CArr [CArr [CText "called", CUInt 1, CArr [CUInt 99, CUInt 0, CUInt 0], CText "m"]]])
+
+-- | A data-diagnostic of golem_check_data.
+dataDiag :: T.Text -> Int -> T.Text -> Maybe Int -> T.Text -> Cbor
+dataDiag code sev name line msg = CArr [CText code, CUInt sev, CText name, maybe CNull CUInt line, CText msg]
+
+-- | Where each diagnostic of a build points: the file, the line and the column, as rendered.
+pointedAt :: BuildResult -> [T.Text]
+pointedAt r = filter (not . T.null) [l | l <- T.lines (renderHuman (brSources r) (brDiagnostics r)), ": error[" `T.isInfixOf` l || ": warning[" `T.isInfixOf` l]
+
+-- | The check of a plugin's data at load (docs/adr/0120).
+checkDataTests :: [TestTree]
+checkDataTests =
+  [ testCase "an error of golem_check_data points at its line of the file of the data, once, and no command runs" $
+      withChecker calledAnswer [dataDiag "tsv-columns" 0 "table" (Just 2) "欄の数が違います"] "[shout]\n\n[shout]\n\n[shout]\n" [("t.tsv", "a\tb\nc\nd\te\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        pointedAt r @?= ["t.tsv:2:1: error[lk/tsv-columns]: 欄の数が違います"]
+        map (spanStart . diagSpan) (brDiagnostics r) @?= [4]
+        map (Just . spanFile . diagSpan) (brDiagnostics r) @?= [sourceFileId r "t.tsv"],
+    testCase "an error of the data is reported in a book that calls no command" $
+      withChecker calledAnswer [dataDiag "tsv-columns" 0 "table" (Just 2) "欄の数が違います"] "本文\n" [("t.tsv", "a\tb\nc\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        pointedAt r @?= ["t.tsv:2:1: error[lk/tsv-columns]: 欄の数が違います"],
+    testCase "no G02022 after an error of the data" $
+      withChecker calledAnswer [dataDiag "tsv-empty" 0 "table" Nothing "空です"] "[shout]\n" [("t.tsv", "")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        pointedAt r @?= ["t.tsv:1:1: error[lk/tsv-empty]: 空です"],
+    testCase "a warning of the data: the plugin loads and its commands run" $
+      withChecker emptyAnswer [dataDiag "tsv-blank" 1 "table" (Just 1) "空の行です"] "[shout]\n" [("t.tsv", "\na\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        pointedAt r @?= ["t.tsv:1:1: warning[lk/tsv-blank]: 空の行です"],
+    testCase "the commands of a plugin with nothing to report run" $
+      withChecker calledAnswer [] "[shout]\n" [("t.tsv", "a\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06009"],
+    testCase "G06009: a name the plugin was not given, a line out of the file, a code of the wrong form" $
+      mapM_
+        ( \(d, why) -> withChecker emptyAnswer [d] "本文\n" [("t.tsv", "a\nb\n")] $ \tmp -> do
+            r <- build (defaultOptions tmp)
+            atManifestTop r >>= (@?= [(DiagnosticCode "G06009", "lk.golem_check_data: プラグインの出力が不正です: " <> why)])
+        )
+        [ (dataDiag "x" 0 "other" Nothing "m", "渡していないデータの名前です: other"),
+          (dataDiag "x" 0 "table" (Just 3) "m", "データの行がありません: table: 3"),
+          (dataDiag "Lookup/x" 0 "table" Nothing "m", "診断のコードの形が不正です: Lookup/x")
+        ]
+  ]
+
+-- | Data of any name (docs/adr/0119).
+anyDataTests :: [TestTree]
+anyDataTests =
+  [ testCase "a plugin that declares * takes data of names the project chooses" $
+      withAnyDatum "data = { table = \"t.txt\", units = \"s.txt\", weights = \"c.txt\" }\n" "[datum]\n" [("t.txt", "value"), ("s.txt", "s"), ("c.txt", "c")] $ \tmp -> do
+        (inls, ds) <- lookedUp Map.empty tmp
+        (texts inls, ds) @?= (["value"], []),
+    testCase "G06102: a name of data of the wrong form, for a plugin that declares *" $
+      withAnyDatum "data = { table = \"t.txt\", Sales = \"t.txt\" }\n" "[datum]\n" [("t.txt", "value")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06102", "プラグインが受け取らないデータの名前です: lk.Sales（受け取る名前: 英小文字で始まる任意の名前）")])
+  ]
+
+-- | A plugin of the project's path (docs/adr/0109).
+localPluginTests :: [TestTree]
+localPluginTests =
+  [ testCase "a plugin of the project's path runs without plugins.lock" $
+      withLocal "path = \"plugins/datum.wasm\"\ndata = { table = \"v.txt\" }\n" "[datum]\n" [("v.txt", "value")] $ \tmp -> do
+        (inls, ds) <- lookedUp Map.empty tmp
+        (texts inls, ds) @?= (["value"], [])
+        listDirectory tmp >>= (@?= False) . elem "plugins.lock",
+    testCase "the file of a plugin of the project's path is watched like the files of @table" $
+      withLocal "path = \"./plugins/datum.wasm\"\n" "本文\n" [] $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        assertBool (show (evTableFiles e)) ("plugins/datum.wasm" `elem` evTableFiles e),
+    testCase "G06104: a plugin of the project's path that is not there" $
+      withLocal "path = \"plugins/none.wasm\"\n" "本文\n" [] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06104", "プラグインのファイルがありません: lk: plugins/none.wasm")]),
+    testCase "G03003: a path of a plugin outside the project, absolute or a URL" $
+      mapM_
+        ( \(path, why) -> withLocal ("path = \"" <> path <> "\"\n") "本文\n" [] $ \tmp -> do
+            r <- build (defaultOptions tmp)
+            atManifestTop r >>= (@?= [(DiagnosticCode "G03003", why <> ": lk: " <> TE.decodeUtf8 path)])
+        )
+        [ ("../datum.wasm", "プロジェクトルートの外を指しています"),
+          ("/etc/hosts", "絶対パスは使えません"),
+          ("https://example.com/datum.wasm", "URL は使えません")
+        ]
+  ]
+
+-- | The data a project passes to a plugin (docs/adr/0105).
+dataTests :: [TestTree]
+dataTests =
+  [ testCase "the sample plugin lookup gives the value of a key in its TSV (docs/adr/0106)" $
+      withDataPlugin "lookup.wasm" "data = { table = \"data/words.tsv\" }\n" "[lookup: key]\n" [("data/words.tsv", "# words\nkey\tvalue\nkey\tsecond\n")] $ \tmp -> do
+        (inls, ds) <- lookedUp Map.empty tmp
+        (texts inls, ds) @?= (["value"], []),
+    testCase "the code of a plugin's diagnostic has the name of the plugin before it, in human and JSON output (docs/adr/0108)" $
+      withSystemTempDirectory "golem-data" $ \tmp -> do
+        BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> pluginDeclOf "lookup" "data = { table = \"w.tsv\" }\n")
+        BS.writeFile (tmp </> "style.toml") horizontalStyle
+        TIO.writeFile (tmp </> "a.gm") "[lookup: none]\n"
+        BS.writeFile (tmp </> "w.tsv") "key\tvalue\n"
+        lockIn [("lookup", "lookup.wasm")] tmp $ do
+          r <- build (defaultOptions tmp)
+          map diagCode (brDiagnostics r) @?= [DiagnosticCode "lookup/no-key"]
+          let human = renderHuman (brSources r) (brDiagnostics r)
+              json = renderJson (brSources r) (brDiagnostics r)
+          assertBool (T.unpack human) ("error[lookup/no-key]" `T.isInfixOf` human)
+          assertBool (T.unpack json) ("\"code\":\"lookup/no-key\"" `T.isInfixOf` json),
+    testCase "the sample plugin lookup without its data reports its own diagnostic (docs/adr/0106)" $
+      withDataPlugin "lookup.wasm" "" "[lookup: key]\n" [] $ \tmp -> do
+        (_, ds) <- lookedUp Map.empty tmp
+        map fst ds @?= [DiagnosticCode "lk/no-table"],
+    testCase "the plugin reads the file the manifest passes as data" $
+      withDatum "data = { table = \"data/words.tsv\" }\n" "[datum]\n" [("data/words.tsv", "value")] $ \tmp -> do
+        (inls, ds) <- lookedUp Map.empty tmp
+        (texts inls, ds) @?= (["value"], []),
+    testCase "without the data the plugin reports its own diagnostic" $
+      withDatum "" "[datum]\n" [] $ \tmp -> do
+        (_, ds) <- lookedUp Map.empty tmp
+        map fst ds @?= [DiagnosticCode "lk/no-table"],
+    testCase "a changed file gives the new value when the project is evaluated again" $
+      withDatum "data = { table = \"words.tsv\" }\n" "[datum]\n" [("words.tsv", "one")] $ \tmp -> do
+        lookedUp Map.empty tmp >>= (@?= ["one"]) . texts . fst
+        BS.writeFile (tmp </> "words.tsv") "two"
+        lookedUp Map.empty tmp >>= (@?= ["two"]) . texts . fst,
+    testCase "the text of the editor comes before the file (as for @table, golem-eval ADR 0004)" $
+      withDatum "data = { table = \"words.tsv\" }\n" "[datum]\n" [("words.tsv", "disk")] $ \tmp ->
+        lookedUp (Map.fromList [("words.tsv", "editor")]) tmp >>= (@?= ["editor"]) . texts . fst,
+    testCase "the files of data are watched like the files of @table" $
+      withDatum "data = { table = \"./data/../words.tsv\" }\n" "[datum]\n" [("words.tsv", "v")] $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        assertBool (show (evTableFiles e)) ("words.tsv" `elem` evTableFiles e),
+    testCase "G06101: a file of data that is not there" $
+      withDatum "data = { table = \"none.tsv\" }\n" "[datum]\n" [] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06101", "プラグインのデータのファイルがありません: lk.table: none.tsv")]),
+    testCase "G06102: a name of data the plugin does not take" $
+      withDatum "data = { table = \"w.tsv\", tabel = \"w.tsv\" }\n" "[datum]\n" [("w.tsv", "v")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06102", "プラグインが受け取らないデータの名前です: lk.tabel（受け取る名前: table）")]),
+    testCase "G03003: a path of data outside the project, absolute or a URL" $
+      mapM_
+        ( \(path, why) -> withDatum ("data = { table = \"" <> path <> "\" }\n") "[datum]\n" [] $ \tmp -> do
+            r <- build (defaultOptions tmp)
+            atManifestTop r >>= (@?= [(DiagnosticCode "G03003", why <> ": lk.table: " <> TE.decodeUtf8 path)])
+        )
+        [ ("../w.tsv", "プロジェクトルートの外を指しています"),
+          ("/etc/hosts", "絶対パスは使えません"),
+          ("https://example.com/w.tsv", "URL は使えません")
+        ],
+    testCase "G03003: a symbolic link out of the project" $
+      withSystemTempDirectory "golem-outside" $ \out -> do
+        BS.writeFile (out </> "w.tsv") "secret"
+        withDatum "data = { table = \"w.tsv\" }\n" "[datum]\n" [] $ \tmp -> do
+          createFileLink (out </> "w.tsv") (tmp </> "w.tsv")
+          r <- build (defaultOptions tmp)
+          atManifestTop r >>= (@?= [DiagnosticCode "G03003"]) . map fst,
+    testCase "G06103: data over the limit, all the files of a plugin together" $
+      withDatum "data = { table = \"big.tsv\" }\n" "[datum]\n" [] $ \tmp -> do
+        BS.writeFile (tmp </> "big.tsv") (BS.replicate (fromIntegral maxDataBytes + 1) 0x20)
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06103", "プラグインのデータが上限（67108864 バイト）を超えています: lk（67108865 バイト）")]),
+    testCase "no G02022 after an error of the data (golem-plugin ADR 0003)" $
+      withDatum "data = { table = \"none.tsv\" }\n" "[datum]\n" [] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101"]
+  ]
+
 pluginTests :: [TestTree]
 pluginTests =
   channelTests
+    <> dataTests
+    <> localPluginTests
+    <> anyDataTests
+    <> checkDataTests
+    <> contextTests
+    <> blockCommandTests
+    <> pluginFigureTests
     <> [ testCase "a filter runs over the declared files and keeps the output" $ do
            plain <- buildAndRead Dev "build/text/horizontal/chapters/01.txt"
            filtered <- withPluginProject pluginDecl $ \tmp -> do
@@ -326,7 +766,7 @@ pluginTests =
                  cache <- defaultCacheDir
                  lockText <- TIO.readFile (tmp </> "plugins.lock")
                  m <- TIO.readFile (tmp </> "manifest.toml") >>= either (assertFailure . show) pure . parseManifest (FileId 0)
-                 hook <- loadPlugins cache (FileId 0) (FileId 1) lockText m >>= either (assertFailure . show) pure
+                 hook <- loadPlugins tmp Map.empty cache (FileId 0) (FileId 1) lockText (FileId 2) (HostContext "horizontal" "kanji") m >>= either (assertFailure . show) pure . lpHook
                  let overrides = map (builtinName . Overridable) (Map.keys (phOverrides hook))
                  pure (sort (overrides <> map unPluginCommandName (Map.keys (phCommands hook))), sort overrides)
            keysOf [("ov", "override-ruby.wat")] (pluginDeclOf "ov" "overrides = [\"ruby\"]\n") >>= (@?= (["greet", "ruby"], ["ruby"]))

@@ -1,0 +1,7 @@
+# The toolchain the committed wasm/*.wasm are built with (docs/adr/0106).
+# A change of the version is a change of every binary: rebuild them with
+# build.sh in the same change.
+[toolchain]
+channel = "1.99.1"
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"

@@ -15,6 +15,7 @@ import Codec.Archive.Zip
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (toLower)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -139,7 +140,8 @@ navDocument cfg ft book =
 -- | Writes the EPUB. Assets are read from the project root.
 writeEpub :: FilePath -> FilePath -> EpubConfig -> FileTable -> Book -> XhtmlSite -> IO ()
 writeEpub root out cfg ft book site = do
-  assets <- mapM (\(o, src) -> (o,) <$> BS.readFile (root </> src)) (siteAssets site)
+  -- the images plugins made come from the book (docs/adr/0123)
+  assets <- mapM (\(o, src) -> (o,) <$> maybe (BS.readFile (root </> src)) pure (Map.lookup (T.pack src) (bookImages book))) (siteAssets site)
   let pages = map fst (sitePages site)
       others = "style.css" : map fst assets
       text p t = toEntry ("OEBPS" </> p) 0 (BL.fromStrict (TE.encodeUtf8 t))

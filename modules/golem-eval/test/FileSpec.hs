@@ -1,6 +1,7 @@
 module FileSpec (tests) where
 
 import Control.Exception (evaluate)
+import Data.Bifunctor (first)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
@@ -9,7 +10,7 @@ import Data.Text qualified as T
 import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.IR
 import Golem.Doc.Validate (validateDocument)
-import Golem.Eval.Builtin (OverridableBuiltin (..), pluginCommandName)
+import Golem.Eval.Builtin (OverridableBuiltin (..), builtinBlockCommands, pluginCommandName)
 import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Parser.SourceSettings
@@ -74,6 +75,10 @@ diags = diagsWith ctx
 diagsWith :: EvalContext -> Text -> [(Text, Text, Int, Int)]
 diagsWith c = map diagSite . fst . evalSource c
 
+-- | A PNG figure of images/a.png with the alt text x.
+fig0 :: Figure
+fig0 = Figure "images/a.png" Nothing "x" Nothing Nothing [] Nothing False
+
 -- | The code and message of each diagnostic.
 msgs :: Text -> [(Text, Text)]
 msgs src = [(c, m) | (c, m, _, _) <- diags src]
@@ -81,6 +86,102 @@ msgs src = [(c, m) | (c, m, _, _) <- diags src]
 -- | A plugin command that answers PLUGIN at the call.
 pluginOutput :: PluginCommand
 pluginOutput = PluginCommand (\_ _ sp -> Right ([Text sp "PLUGIN"], []))
+
+{- | A block command that answers a table of its arguments: a row of each
+key (or -) and value, and a paragraph of each block of its body.
+-}
+gridCommand :: PluginBlockCommand
+gridCommand = PluginBlockCommand $ \args bodyBlocks sp ->
+  Right
+    ( Block sp Nothing (Table [AlignDefault, AlignDefault] [[Text sp "k"], [Text sp "v"]] [[[Text sp (argKey a)], [Text sp (T.pack (show (pluginArgValue a)))]] | a <- args]) : bodyBlocks,
+      Map.empty,
+      [diagnostic "grid-called" Warning sp "grid"]
+    )
+  where
+    argKey = \case
+      PluginKeyword k _ -> k
+      PluginPositional _ -> "-"
+
+gridHook :: PluginHook
+gridHook = noPlugins {phBlocks = Map.fromList [("grid", gridCommand)]}
+
+-- | Block commands of plugins (docs/adr/0122).
+pluginBlockTests :: TestTree
+pluginBlockTests =
+  testGroup
+    "block commands of plugins (docs/adr/0122)"
+    [ testCase "@name calls the block command of a plugin with its arguments, keys kept" $ do
+        let (bs, ds) = run ctx {ctxPlugins = gridHook} "@grid sales align=left\n"
+        ds @?= ["grid-called"]
+        case bs of
+          [Table _ _ rows] -> map (map stripSpans) rows @?= [[["-"], ["VString \"sales\""]], [["align"], ["VString \"left\""]]]
+          other -> assertFailure (show other),
+      testCase "spread arguments reach a block command expanded (docs/adr/0112)" $ do
+        let (bs, ds) = run ctx {ctxPlugins = gridHook} "@grid *[[\"sales\"]] **[{align: \"left\"}]\n"
+        ds @?= ["grid-called"]
+        case bs of
+          [Table _ _ rows] -> map (map stripSpans) rows @?= [[["-"], ["VString \"sales\""]], [["align"], ["VString \"left\""]]]
+          other -> assertFailure (show other),
+      testCase "the blocks are at the call" $
+        map blockSpan (resultBlocks (evalResult ctx {ctxPlugins = gridHook} "a\n\n@grid\n"))
+          @?= [mkSpan (FileId 1) 0 2, mkSpan (FileId 1) 3 9],
+      testCase "the body is evaluated and passed" $ do
+        let (bs, _) = run ctx {ctxPlugins = gridHook} "@grid\n  本文\n"
+        case bs of
+          [Table {}, Paragraph Nothing is] -> stripSpans is @?= ["本文"]
+          other -> assertFailure (show other),
+      testCase "a block command in a list item" $ do
+        let (bs, ds) = run ctx {ctxPlugins = gridHook} "- 項目\n\n  @grid\n"
+        ds @?= ["grid-called"]
+        case bs of
+          [BulletList [ListItem _ [_, Block _ _ (Table {})]]] -> pure ()
+          other -> assertFailure (show other),
+      testCase "@label gives the label to the first block" $
+        map blockLabel (resultBlocks (evalResult ctx {ctxPlugins = gridHook} "@label t\n@grid\n")) @?= [Just "t"],
+      testCase "an unknown block command is still G02009, and [grid] is G02022" $ do
+        diagsWith ctx {ctxPlugins = gridHook} "@nope\n" @?= [("G02009", "未知のブロックコマンドです: @nope", 1, 5)]
+        map (\(c, _, _, _) -> c) (diagsWith ctx {ctxPlugins = gridHook} "[grid]\n") @?= ["G02022"],
+      testCase "an argument beyond int64 is G02091 and the command is not called" $
+        run ctx {ctxPlugins = gridHook} "@grid [= 2 ** 63]\n" @?= ([], ["G02091"]),
+      testCase "the errors of the call are reported and give no blocks" $ do
+        let failing = noPlugins {phBlocks = Map.fromList [("grid", PluginBlockCommand (\_ _ sp -> Left [diagnostic "G06009" Error sp "x"]))]}
+        run ctx {ctxPlugins = failing} "@grid\n" @?= ([], ["G06009"]),
+      -- docs/adr/0123
+      testCase "a figure of a plugin keeps its image and goes through the checks of @figure" $ do
+        let src = "golem-plugin-image://00.svg"
+            drawn f = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (f sp))], Map.fromList [(src, "<svg/>")], [])))]}
+            plain sp = Figure src Nothing "棒グラフ" Nothing Nothing [Block sp Nothing (Paragraph Nothing [Text sp "図"])] Nothing False
+            r = evalResult ctx {ctxPlugins = drawn plain} "@label c\n@chart\n"
+        map blockLabel (resultBlocks r) @?= [Just "c"]
+        map blockBody (resultBlocks r) @?= [FigureBlock (plain (mkSpan (FileId 1) 9 16))]
+        erImages r @?= Map.fromList [(src, "<svg/>")]
+        -- wrapped without a width: G02031 at the call, and no figure, as @figure
+        diagsWith ctx {ctxPlugins = drawn (\sp -> (plain sp) {figWrap = Just WrapEnd})} "@chart\n" @?= [("G02031", "回り込む図版には width が必要です", 0, 7)]
+        fst (run ctx {ctxPlugins = drawn (\sp -> (plain sp) {figWrap = Just WrapEnd})} "@chart\n") @?= []
+        -- turned and wrapped: G02087
+        map (\(c, _, _, _) -> c) (diagsWith ctx {ctxPlugins = drawn (\sp -> (plain sp) {figWrap = Just WrapEnd, figWidth = Just "50%", figRotate = True})} "@chart\n") @?= ["G02087"]
+        -- a page of a figure that is not PDF: G02075
+        map (\(c, _, _, _) -> c) (diagsWith ctx {ctxPlugins = drawn (\sp -> (plain sp) {figPage = Just 2})} "@chart\n") @?= ["G02075"],
+      testCase "the image of a figure that fails the checks is not kept" $ do
+        let src = "golem-plugin-image://00.svg"
+            drawn = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (Figure src Nothing "x" (Just WrapEnd) Nothing [] Nothing False))], Map.fromList [(src, "<svg/>")], [])))]}
+        erImages (evalResult ctx {ctxPlugins = drawn} "@chart\n") @?= Map.empty,
+      testCase "a paragraph style in the caption of a figure of a plugin is G02013 and is dropped, as @figure" $ do
+        let src = "golem-plugin-image://00.svg"
+            styled sp = Figure src Nothing "x" Nothing Nothing [Block sp Nothing (Paragraph (Just "quote") [Text sp "図"])] Nothing False
+            hook = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (styled sp))], Map.fromList [(src, "<svg/>")], [])))]}
+            (bs, ds) = run ctx {ctxPlugins = hook} "@chart\n"
+        ds @?= ["G02013"]
+        case bs of
+          [FigureBlock f] -> map blockBody (figCaption f) @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 7) "図"]]
+          other -> assertFailure (show other),
+      testCase "a paragraph style the file does not define is G02047" $ do
+        let styled = noPlugins {phBlocks = Map.fromList [("grid", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (Paragraph (Just "nope") [])], Map.empty, [])))]}
+        snd (run ctx {ctxPlugins = styled} "@grid\n") @?= ["G02047"],
+      -- set is the name of @set name = 式, which the parser reads apart
+      testCase "no name of builtinBlockCommands but set is an unknown block command" $
+        mapM_ (\n -> assertBool (T.unpack n) ("G02009" `notElem` snd (run ctx {ctxPlugins = gridHook} ("@" <> n <> "\n")))) (filter (/= "set") builtinBlockCommands)
+    ]
 
 paraInlines :: BlockBody -> Maybe [Inline]
 paraInlines = \case
@@ -208,6 +309,7 @@ tests =
   testGroup
     "file evaluation, S0 (ADR 0002)"
     [ verseTests,
+      pluginBlockTests,
       outputCharTests,
       printingsTests,
       diagnosticTests,
@@ -222,6 +324,8 @@ tests =
       codeTests,
       escapeTests,
       duplicateKeyTests,
+      argWordTests,
+      spreadTests,
       shorthandTests,
       int64Tests,
       channelCommandTests,
@@ -298,6 +402,28 @@ tests =
         msgs "@figure images/a.pdf page=0 web=images/a.png alt=\"x\"\n" @?= [("G02075", "page は PDF の図版のページを 1 から数えた整数で書きます: 0")]
         errs "@figure images/a.pdf page=x web=images/a.png alt=\"x\"\n" @?= ["G02075"]
         errs "@figure images/a.png page=1 alt=\"x\"\n" @?= ["G02075"],
+      -- the checks of @figure over the IR, for the figures of plugins (docs/adr/NNNN-figures-from-plugins)
+      testCase "the checks of a figure of the IR report what @figure reports" $
+        mapM_
+          ( \(src, fig) -> do
+              let sp = mkSpan (FileId 1) 0 (T.length src)
+                  (ds, ok) = figureChecks ctx sp fig
+              map diagSite ds @?= diags src
+              ok @?= null (diags src)
+          )
+          [ ("@figure images/a.png alt=x\n", fig0),
+            ("@figure images/a.bmp alt=x\n", fig0 {figSource = "images/a.bmp"}),
+            ("@figure images/a.png web=images/b.pdf alt=x\n", fig0 {figWeb = Just "images/b.pdf"}),
+            ("@figure images/a.pdf alt=x\n", fig0 {figSource = "images/a.pdf"}),
+            ("@figure images/a.png page=2 alt=x\n", fig0 {figPage = Just 2}),
+            ("@figure images/a.pdf web=images/a.png page=0 alt=x\n", fig0 {figSource = "images/a.pdf", figWeb = Just "images/a.png", figPage = Just 0}),
+            ("@figure images/a.pdf web=images/a.png page=3 alt=x\n", fig0 {figSource = "images/a.pdf", figWeb = Just "images/a.png", figPage = Just 3}),
+            ("@figure images/a.png alt=x wrap=end\n", fig0 {figWrap = Just WrapEnd}),
+            ("@figure images/a.png alt=x wrap=start width=4zw rotate=true\n", fig0 {figWrap = Just WrapStart, figWidth = Just "4zw", figRotate = True}),
+            ("@figure gone.png alt=x\n", fig0 {figSource = "gone.png"}),
+            ("@figure /tmp/a.png alt=x\n", fig0 {figSource = "/tmp/a.png"}),
+            ("@figure images/a.bmp web=gone.txt alt=x wrap=end\n", fig0 {figSource = "images/a.bmp", figWeb = Just "gone.txt", figWrap = Just WrapEnd})
+          ],
       testCase "a figure turned to take a page of its own (golem-driver ADR 0034)" $ do
         let rotateOf src = case body src of
               [FigureBlock f] -> pure (figRotate f)
@@ -556,6 +682,120 @@ int64Tests =
   where
     msg = "数が意味論 IR に書ける範囲を超えています（整数と、分数の分子と分母は -2 の 63 乗以上、2 の 63 乗未満に限ります）"
 
+{- | A word of an argument that is a number literal is that number, as the
+same literal in an expression is (docs/adr ADR 0111): the value a plugin
+gets, and the diagnostics of [number-text ...].
+-}
+argWordTests :: TestTree
+argWordTests =
+  testGroup
+    "an argument word that is a number literal (docs/adr ADR 0111)"
+    [ testCase "a plugin gets the value of the expression with the same literal" $ do
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show (map pluginArgValue vs)))], []))
+            c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
+            got src = map (fmap stripSpans . paraInlines) (fst (run c src))
+        mapM_
+          (\(w, e) -> got ("[greet " <> w <> "]\n") @?= got ("[greet [= " <> e <> "]]\n"))
+          [("12", "12"), ("-3", "-3"), ("3.14", "3.14"), ("-0.5", "-0.5"), ("1e3", "1e3"), ("15e-1", "15e-1"), ("-0", "-0"), ("007", "007")]
+        got "[greet -3 3.14 1e3]\n" @?= [Just ["[VInt (-3),VRat (157 % 50),VRat (1000 % 1)]"]],
+      testCase "a word that is no number literal stays a string" $ do
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show (map pluginArgValue vs)))], []))
+            c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
+        map (fmap stripSpans . paraInlines) (fst (run c "[greet +3 --3 3.1.4 1e .5 5. 1-2 a3 1... a...3 1...2...3]\n"))
+          @?= [Just ["[VString \"+3\",VString \"--3\",VString \"3.1.4\",VString \"1e\",VString \".5\",VString \"5.\",VString \"1-2\",VString \"a3\",VString \"1...\",VString \"a...3\",VString \"1...2...3\"]"]],
+      testCase "[number-text -3] is the number -3, as [number-text [= -3]]" $ do
+        map (fmap stripSpans . paraInlines) (fst (run ctx "[number-text -3]\n")) @?= map (fmap stripSpans . paraInlines) (fst (run ctx "[number-text [= -3]]\n"))
+        map (fmap stripSpans . paraInlines) (fst (run ctx "[number-text -3]\n")) @?= [Just ["<number -3 Nothing>"]]
+        map (fmap stripSpans . paraInlines) (fst (run ctx "[number-text 1e3 style=kanji]\n")) @?= [Just ["<number 1000 Just StyleKanji>"]],
+      testCase "[number-text 3.14] is G02019, as [number-text [= 3.14]]" $ do
+        errs "[number-text 3.14]\n" @?= ["G02019"]
+        msgs "[number-text 3.14]\n" @?= msgs "[number-text [= 3.14]]\n",
+      testCase "a range where no range is taken is G02113, as a word and as an expression" $ do
+        let g02113 w = ("G02113", "範囲を受け取らない引数に範囲を書いています: " <> w)
+        msgs "[number-text 1...3]\n" @?= [g02113 "1...3"]
+        msgs "[number-text -1...1.5]\n" @?= [g02113 "-1...1.5"]
+        msgs "@blank-line 1...3\n" @?= [g02113 "1...3"]
+        msgs "[number-text [= 1...3]]\n" @?= [g02113 "1...3"]
+        msgs "@blank-line [= 1...3]\n" @?= [g02113 "1...3"],
+      testCase "a plugin gets a word of a range literal as the range of the expression" $ do
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show (map pluginArgValue vs)))], []))
+            c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
+            got src = first (map (fmap stripSpans . paraInlines)) (run c src)
+        got "[greet 1...3]\n" @?= got "[greet [= 1...3]]\n"
+        got "[greet 1...3]\n" @?= ([Just ["[VRange 1 3]"]], [])
+        got "[greet -1...1.5]\n" @?= got "[greet [= -1...1.5]]\n"
+        got "[greet 5...1]\n" @?= got "[greet [= 5...1]]\n",
+      testCase "a word literal past the limit is G02086, as the expression is" $ do
+        msgs "[number-text 1e1301]\n" @?= msgs "[number-text [= 1e1301]]\n"
+        errs "[number-text -1e1301]\n" @?= ["G02086"]
+    ]
+
+{- | *[式] and **[式] spread into the arguments of a built-in command
+(docs/adr ADR 0112): each element is the argument written as a literal, a
+string as a string literal and another value as [= value].
+-}
+spreadTests :: TestTree
+spreadTests =
+  testGroup
+    "spreading *[式] and **[式] into a built-in command (docs/adr ADR 0112)"
+    [ testCase "inline commands take spread positional and keyword arguments" $ do
+        paraOf "[number-text *[[12]]]\n" @?= ["<number 12 Nothing>"]
+        paraOf "[number-text 12 **[{style: \"tcy\"}]]\n" @?= ["<number 12 Just StyleTcy>"]
+        paraOf "[number-text *[[12]] **[{style: \"kanji\"}]]\n" @?= ["<number 12 Just StyleKanji>"]
+        errs "[kenten **[{shape: \"dot\"}]: x]\n" @?= []
+        errs "[kenten **[{shape: \"nope\"}]: x]\n" @?= ["G02039"],
+      testCase "an empty array and an empty hash spread nothing" $
+        paraOf "[number-text 3 *[[]] **[{}]]\n" @?= ["<number 3 Nothing>"],
+      testCase "block commands and the opening line of a code block" $ do
+        fst (run ctx "@page-break *[[\"recto\"]]\n") @?= [ForcedBreak BreakRecto]
+        fst (run ctx "@blank-line *[[2]]\n") @?= fst (run ctx "@blank-line 2\n")
+        fst (run ctx "```haskell **[{numbers: true}]\nx\n```\n") @?= fst (run ctx "```haskell numbers=true\nx\n```\n"),
+      testCase "an attribute" $ do
+        map blockLabel (resultBlocks (evalResult ctx "@label *[[\"p\"]]\na\n")) @?= [Just "p"]
+        errs "@label *[[\"p\"]]\na\n" @?= [],
+      testCase "a word and a string literal of the same text are the same argument where a name is read" $ do
+        fst (run ctx "@page-break \"recto\"\n") @?= [ForcedBreak BreakRecto]
+        map blockLabel (resultBlocks (evalResult ctx "@label \"p\"\na\n")) @?= [Just "p"]
+        run ctx "@page-lines \"+1\"\n" @?= run ctx "@page-lines +1\n"
+        verseOf "@style \"verse\"\n  A\n  B\n" @?= [[["A"], ["B"]]]
+        paraOf "[style \"code\": ##1##]\n" @?= paraOf "[style code: ##1##]\n"
+        paraOf "[style *[[\"code\"]]: ##1##]\n" @?= paraOf "[style code: ##1##]\n",
+      testCase "a plugin's command gets the spread values" $ do
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show (map pluginArgValue vs)))], []))
+            c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
+        first (map (fmap stripSpans . paraInlines)) (run c "[greet *[[1, \"a\", 1...3]]]\n") @?= ([Just ["[VNat 1,VString \"a\",VRange 1 3]"]], [])
+        snd (run c "[greet *[1]]\n") @?= ["G02111"],
+      -- docs/adr/0110
+      testCase "a plugin's command gets a keyword argument with its name, in the order of the source" $ do
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show vs))], []))
+            c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
+            got src = first (map (fmap stripSpans . paraInlines)) (run c src)
+        got "[greet a n=1]\n" @?= ([Just [T.pack (show [PluginPositional (VString "a"), PluginKeyword "n" (VNat 1)])]], [])
+        got "[greet a **[{n: 1}]]\n" @?= got "[greet a n=1]\n"
+        got "[greet n=1 n=2]\n" @?= ([Just [T.pack (show [PluginKeyword "n" (VNat 1)])]], ["G02077"]),
+      testCase "G02111 and G02112: a spread of the wrong type, and the command is not run" $ do
+        msgs "[number-text *[12]]\n" @?= [("G02111", "*[式] の値は配列でなければなりません: 自然数")]
+        msgs "[number-text 12 **[[1]]]\n" @?= [("G02112", "**[式] の値は連想配列でなければなりません: 配列")]
+        paraOf "a[number-text *[12]]b\n" @?= ["ab"]
+        errs "@blank-line *[2]\n" @?= ["G02111"],
+      testCase "G02077: a spread key that a keyword before it has" $ do
+        errs "[number-text 12 style=kanji **[{style: \"tcy\"}]]\n" @?= ["G02077"]
+        paraOf "[number-text 12 style=kanji **[{style: \"tcy\"}]]\n" @?= ["<number 12 Just StyleKanji>"],
+      testCase "an error of the expression of a spread is the error of the expression" $
+        errs "[number-text *[nope]]\n" @?= errs "[number-text [= nope]]\n",
+      testCase "G02114: @manifest and @style-def read their arguments before the evaluation" $ do
+        codesS "@manifest **[{a: \"line\"}]\n" @?= ["G02114"]
+        codesS "@style-def character x **[{weight: \"bold\"}]\n" @?= ["G02114"],
+      testCase "G02114: @style decides the lines of its body before the evaluation" $ do
+        errs "@style *[[\"note\"]]\na\n" @?= ["G02114"]
+        errs "@style *[[\"note\"]]\n  a\n" @?= ["G02114"]
+    ]
+
 -- | The same key twice among the keyword arguments (golem-parser ADR 0013).
 duplicateKeyTests :: TestTree
 duplicateKeyTests =
@@ -584,8 +824,8 @@ duplicateKeyTests =
       testCase "different keys and an unexpanded **[...] are not" $ do
         filter (== "G02077") (errs "[f k=1 j=1]\n") @?= []
         filter (== "G02077") (errs "[f k=1 **[h]]\n") @?= [],
-      testCase "@style-def keeps G02052" $
-        codesS "@style-def character x weight=bold weight=normal\n" @?= ["G02052"]
+      testCase "@style-def is G02077 too (docs/adr ADR 0132)" $
+        codesS "@style-def character x weight=bold weight=normal\n" @?= ["G02077"]
     ]
 
 -- | A context whose styles are those of 'settingsStyle'.
@@ -737,22 +977,47 @@ settingsTests =
         map stripped bs @?= [(Just "verse", ["ab"])]
         let (bs', _, _) = runS sctx "@style verse\na\nb\n"
         map stripped bs' @?= [(Just "verse", ["a", "<br>", "b"])],
-      testCase "the arguments of @style-def and @manifest are G02052" $ do
+      testCase "the arguments of @style-def and @manifest, a code for each cause (docs/adr ADR 0132)" $ do
         mapM_
-          (\src -> (src, codesS src) @?= (src, ["G02052"]))
-          [ "@style-def\n",
-            "@style-def table a\n",
-            "@style-def paragraph\n",
-            "@style-def paragraph a b\n",
-            "@style-def paragraph a font=[= \"x\"]\n",
-            "@style-def paragraph a indent=1zw indent=2zw\n",
-            "@style-def paragraph a\n  x\n",
-            "@manifest line\n",
-            "@manifest\n",
-            "@manifest title=x title=x\n",
-            "@manifest title=[= \"x\"]\n",
-            "@manifest title=x\n  a\n"
+          (\(src, cs) -> (src, codesS src) @?= (src, cs))
+          [ ("@style-def\n", ["G02052"]),
+            ("@style-def paragraph\n", ["G02052"]),
+            ("@style-def paragraph a b\n", ["G02052"]),
+            ("@manifest line\n", ["G02052"]),
+            ("@style-def table a\n", ["G02117"]),
+            ("@style-def paragraph a font=[= \"x\"]\n", ["G02116"]),
+            ("@style-def [= \"paragraph\"] a\n", ["G02116"]),
+            ("@manifest title=[= \"x\"]\n", ["G02116"]),
+            ("@manifest paragraph-separator=[= \"line\"]\n", ["G02116"]),
+            ("@style-def paragraph a indent=1zw indent=2zw\n", ["G02077"]),
+            ("@style-def character x weight=bold weight=normal\n", ["G02077"]),
+            ("@manifest title=x title=x\n", ["G02077"]),
+            ("@manifest paragraph-separator=line paragraph-separator=line\n", ["G02077"]),
+            ("@style-def paragraph a\n  x\n", ["G02097"]),
+            ("@manifest title=x\n  a\n", ["G02097"]),
+            ("@manifest paragraph-separator=line\n  a\n", ["G02097"]),
+            ("@manifest\n", ["G02115"]),
+            ("@style-def table a b\n", ["G02117", "G02052"])
           ],
+      testCase "the positions and messages of the codes of @style-def and @manifest (docs/adr ADR 0132)" $ do
+        let at src = let (_, ds, _) = runS sctx src in [(diagCodeText d, spanStart (diagSpan d), diagMessage d) | d <- ds]
+        at "@style-def table a\n" @?= [("G02117", 11, "未知のスタイルの種類です: table。character、paragraph、regex のどれかを書きます")]
+        at "@style-def paragraph a b\n" @?= [("G02052", 23, "@style-def には種類（character、paragraph、regex）と名前を書きます")]
+        at "@style-def paragraph\n" @?= [("G02052", 0, "@style-def には種類（character、paragraph、regex）と名前を書きます")]
+        at "@manifest\n" @?= [("G02115", 0, "@manifest には key=value を一つ以上書きます")]
+        at "@manifest title=[= \"x\"]\n" @?= [("G02116", 10, "値は語か文字列で書きます")]
+        at "@manifest title=x title=x\n" @?= [("G02077", 18, "同じキーを二度書いています: title")]
+        at "@style-def paragraph a\n  x\n" @?= [("G02097", 23, "@style-def は本体を持てません")],
+      testCase "the rest of a wrong @manifest applies; a wrong @style-def is dropped (docs/adr ADR 0132)" $ do
+        let (bs, ds, r) = runS sctx "@manifest line paragraph-separator=line\n\na\nb\n"
+        map diagCodeText ds @?= ["G02052"]
+        erSource r @?= SourceSettings LineSeparated
+        map stripped bs @?= [(Nothing, ["a"]), (Nothing, ["b"])]
+        codesS "@style-def table a\n\n@style a\nx\n" @?= ["G02117", "G02047"],
+      testCase "the kind and the name of @style-def as string literals (docs/adr ADR 0132)" $ do
+        let (bs, ds, _) = runS sctx "@style-def \"paragraph\" \"note\"\n\n@style note\na\n"
+        ds @?= []
+        map stripped bs @?= [(Just "note", ["a"])],
       testCase "@manifest overrides only the keys of [source] (G02050)" $ do
         codesS "@manifest title=x\n" @?= ["G02050"]
         codesS "@manifest paragraph-separater=line\n" @?= ["G02050"]
@@ -775,7 +1040,7 @@ settingsTests =
         codesS "@style-def regex body\n" @?= ["G03006"]
         codesS "@style-def regex body pattern=x style=nope\n" @?= ["G03013"]
         codesS "@style-def regex body pattern=x style=bold colour=x\n" @?= ["G03006"]
-        codesS "@style-def regex body pattern=x pattern=y style=bold\n" @?= ["G02052"],
+        codesS "@style-def regex body pattern=x pattern=y style=bold\n" @?= ["G02077"],
       testCase "a wrong regex style is reported at its line and dropped, the others stay" $ do
         let src = "@style-def regex body pattern=a style=bold\n@style-def regex body pattern=\"\\\\1\" style=bold\n@style-def regex body pattern=b style=nope\n\nab\n"
             (bs, ds, r) = runS sctx src
@@ -836,15 +1101,15 @@ settingsTests =
         let (_, ds, r) = runS sctx "a\n\n@manifest paragraph-separator=line\n"
         map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G02049"]
         erSource r @?= ctxSource sctx,
-      testCase "the keys and values of @manifest (G02050, G02051, G02052)" $ do
+      testCase "the keys and values of @manifest (G02050, G02051, G02077, G02097, G02116)" $ do
         codesS "@manifest title=x\n" @?= ["G02050"]
         codesS "@manifest paragraph-separater=line\n" @?= ["G02050"]
         codesS "@manifest paragraph-separator=lines\n" @?= ["G02051"]
         mapM_
-          (\src -> (src, codesS src) @?= (src, ["G02052"]))
-          [ "@manifest paragraph-separator=line paragraph-separator=line\n",
-            "@manifest paragraph-separator=[= \"line\"]\n",
-            "@manifest paragraph-separator=line\n  a\n"
+          (\(src, c) -> (src, codesS src) @?= (src, [c]))
+          [ ("@manifest paragraph-separator=line paragraph-separator=line\n", "G02077"),
+            ("@manifest paragraph-separator=[= \"line\"]\n", "G02116"),
+            ("@manifest paragraph-separator=line\n  a\n", "G02097")
           ]
         let (bs, ds, _) = runS sctx "@manifest title=x paragraph-separator=line\n\na\nb\n"
         map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G02050"]
