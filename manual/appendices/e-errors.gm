@@ -770,6 +770,34 @@ PDF を組むときに出るエラーです。
   プラグインが、この Golem より新しい Golem のために作られています。Golem を新しい版に上げるか、この Golem に合う版のプラグインを使ってください。
 
 @nonumber
+## 関数
+
+この節の診断は、関数（第[ref-number functions]章）のファイルと、[code: manifest.toml] の [code: \[functions\]] の誤りです。
+
+= [strong: G10100] [code: .gmx] の構文の誤り
+  メッセージに、要る字句を示します。宣言の終わりの [code: ;] と、[code: case] と [code: where] の [code: { }] を確かめてください。
+= [strong: G10101 [code: 閉じていない { があります。} が要ります]] など
+  括弧か文字列を閉じてください。
+= [strong: G10102 [code: … は .gmx で使えない予約語です]]
+  [code: if] や繰り返しは使えません。パターン、ガード、[code: case]、再帰で書きます。
+= [strong: G10103] [code: where] の位置の誤り
+  [code: where] は、関数の最後の等式の後ろに一つだけ書けます。
+= [strong: G10200] から [strong: G10206] 名前と型の誤り
+  未定義の名前（G10200）、型の不一致（G10201）、シグネチャのない関数（G10202）、[code: import] の循環（G10203）、二度の定義（G10204）、[code: pub] のない名前（G10205）、引数の数の誤り（G10206）です。
+= [strong: G10300] から [strong: G10302] パターンの誤り
+  すべての場合を書いていないとき（G10300）、決して選ばれない場合があるとき（G10301）、ガードの最後が [code: otherwise] でないとき（G10302）です。
+= [strong: G10400 [code: 関数の評価の手数が上限（…）を超えました: …]]、[strong: G10401 [code: 末尾でない呼び出しの深さが上限（10000）を超えました: …]]
+  再帰が止まらないか、深すぎます。位置は原稿の呼び出しです。
+= [strong: G10500] から [strong: G10505] 要求の誤り
+  シグネチャの [code: =>] の後ろの誤りと、[code: File.read] の誤りと、[code: manifest.toml] の [code: requires] にない要求です。
+= [strong: G10600] から [strong: G10602] [code: pub inline] と [code: pub block] の誤り
+  コマンドにできない名前（G10600）、戻り値の型（G10601）、引数の型と順（G10602）の誤りです。
+= [strong: G03101] から [strong: G03107] [code: \[functions\]] とコマンドの名前の誤り
+  [code: requires] の知らない名前（G03101）、ないファイル（G03102）、大きすぎるデータ（G03103）、[code: file] のない [code: requires]（G03104）、組み込みとプラグインと二つの [code: .gmx] で重なるコマンドの名前（G03105 から G03107）です。
+= [strong: G02119] から [strong: G02123] 関数のコマンドの呼び方の誤り
+  キーワード引数（G02119）、位置引数の数（G02120）と型（G02121）、散文スロットの数（G02122）、本体（G02123）の誤りで、関数を呼びません。
+
+@nonumber
 ## プリフライト
 
 この節の診断は、[code: golem preflight] だけが出します（第[ref-number output]章の「[ref-title preflight]」）。
