@@ -101,25 +101,31 @@ inOrder = sortOn (spanStart . diagSpan)
 (docs/adr ADR 0013) to the settings of the context, and the diagnostics.
 A @manifest with a body (G02097) or without arguments (G02115) is left
 out. Otherwise a wrong argument is left out (G02052, G02077, G02114,
-G02116; docs/adr ADR 0132) and the others take effect.
+G02116; docs/adr ADR 0132) and the others take effect. A body does not
+hide the errors of the arguments: each cause has its code (docs/adr ADR
+0132; the audit of 2026-11-04, F-44), but the keys of a @manifest left
+out are not checked against the table (G02050, G02051).
 -}
 fileSettings :: [(Text, Text -> Either Text (s -> s))] -> s -> [A.Located A.Block] -> (s, [Diagnostic])
 fileSettings table s0 header = foldl step (s0, []) [(sp, args, body) | A.Located sp (A.BlockCommand (A.Located _ "manifest") args body) <- header]
   where
     shape = "@manifest には key=value だけを書きます"
     step (s, ds) (sp, args, body)
-      | not (null body) || null args = (s, ds <> [err "G02115" sp "@manifest には key=value を一つ以上書きます" | null args] <> bodyDiagnostics "@manifest" body)
+      | null args = (s, ds <> [err "G02115" sp "@manifest には key=value を一つ以上書きます"] <> bodyDiagnostics "@manifest" body)
+      | not (null body) = (s, ds <> argDiags <> bodyDiagnostics "@manifest" body)
       | otherwise =
-          let others = [asp | A.Located asp a <- args, not (isKeyword a), not (isSplat a)]
-              spreads = [asp | A.Located asp a <- args, isSplat a]
-              (kvs, kwDiags) = keywordArgs args
-              apply (s', ds') (k, ksp, v) = case lookup k table of
+          let apply (s', ds') (k, ksp, v) = case lookup k table of
                 Nothing -> (s', ds' <> [err "G02050" ksp (notOverridable k)])
                 Just f -> case f (valueText v) of
                   Left m -> (s', ds' <> [err "G02051" ksp m])
                   Right g -> (g s', ds')
               (s'', applied) = foldl apply (s, []) kvs
-           in (s'', ds <> inOrder ([spreadBeforeEvaluation "@manifest" asp | asp <- spreads] <> [err "G02052" asp shape | asp <- others] <> kwDiags) <> applied)
+           in (s'', ds <> argDiags <> applied)
+      where
+        others = [asp | A.Located asp a <- args, not (isKeyword a), not (isSplat a)]
+        spreads = [asp | A.Located asp a <- args, isSplat a]
+        (kvs, kwDiags) = keywordArgs args
+        argDiags = inOrder ([spreadBeforeEvaluation "@manifest" asp | asp <- spreads] <> [err "G02052" asp shape | asp <- others] <> kwDiags)
     isKeyword = \case
       A.Keyword {} -> True
       _ -> False

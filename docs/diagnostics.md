@@ -3298,7 +3298,8 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 位置は本体の最初のブロックである。
 対象は `@page-break`、`@column-break`、`@no-page-break`、`@need-lines`、`@page-lines`、`@printings`、`@manifest`、`@style-def` である（`@manifest` と `@style-def` は [docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)）。
 `@manifest` はその `@manifest` を無視し、`@style-def` は定義の全体を捨てる。
-引数も誤っていれば、引数の誤りのコードの後に出る。
+引数も誤っていれば（[G02052](#g02052)、[G02077](#g02077)、[G02114](#g02114)、[G02116](#g02116) など）、引数の誤りのコードの後に出る。
+無視した `@manifest` のキーは上書きに使わないので、[G02050](#g02050) と [G02051](#g02051) は出さない。
 
 - メッセージ: `<名前> は本体を持てません`。`<名前>` は `@` を付けたコマンドの名前である。
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
