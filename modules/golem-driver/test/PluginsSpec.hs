@@ -7,7 +7,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.List (isSuffixOf, sort)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
@@ -461,6 +461,155 @@ kansujiTests =
       withSample style "kansuji" "overrides = [\"number-text\"]\n" "" source [] $ \tmp ->
         lookedUp Map.empty tmp >>= \(is, ds) -> k (shapes is, ds)
 
+-- | The sample filter auto-tcy (docs/adr/0128), with the integration test of docs/adr/0121 that needs it.
+autoTcyTests :: [TestTree]
+autoTcyTests =
+  [ testCase "two digits and !? in tate-chu-yoko, 3.14 and 123 left alone" $
+      autoTcy verticalStyle "" "第12回、本当か!?、3.14、123、[strong: 34]\n" $ \r ->
+        r @?= (["第", "#12", "回、本当か", "[tcy: !?]", "、3.14、123、", "[strong: #34]"], []),
+    testCase "a chunk across nodes is left alone with a warning" $
+      autoTcy verticalStyle "" "[strong: 1]2\n" $ \r ->
+        r @?= (["[strong: 1]", "2"], [(DiagnosticCode "auto-tcy/split", "ノードの境をまたぐので縦中横にしませんでした: 12。[tcy: ...] か [number-text ... style=tcy] で書いてください")]),
+    testCase "the warning is a warning, not an error" $
+      withSample verticalStyle "auto-tcy" "" filters "[strong: 1]2\n" [] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        [(diagCode d, diagSeverity d) | d <- brDiagnostics r] @?= [(DiagnosticCode "auto-tcy/split", Warning)],
+    testCase "in horizontal writing the filter changes nothing and warns of nothing (the context writing-mode)" $
+      autoTcy horizontalStyle "" "第12回、本当か!?、[strong: 1]2\n" $ \r ->
+        r @?= (["第12回、本当か!?、", "[strong: 1]", "2"], []),
+    testCase "code and an explicit tcy are not rewritten" $
+      autoTcy verticalStyle "" "[code: 12][tcy: !?]\n" $ \r ->
+        r @?= (["[code: 12]", "[tcy: !?]"], []),
+    testCase "the data config chooses the counts of digits and the marks" $
+      autoTcy verticalStyle "data = { config = \"tcy.conf\" }\n" "12と123と!!!\n" $ \r ->
+        r @?= (["12と", "#123", "と", "[tcy: !!!]"], []),
+    testCase "an error of the config points at the top of the file, in horizontal writing too" $
+      withSample horizontalStyle "auto-tcy" "data = { config = \"bad.conf\" }\n" filters "12\n" [("bad.conf", "digits = 9\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        [(diagCode d, diagSpan d) | d <- brDiagnostics r] @?= [(DiagnosticCode "auto-tcy/config-digits", topOf' r)]
+  ]
+  where
+    filters = "\n[[filters]]\nplugin = \"auto-tcy\"\nfilter = \"auto-tcy\"\nfiles = [\"a.gm\"]\n"
+    autoTcy style decl source k =
+      withSample style "auto-tcy" decl filters source [("tcy.conf", "digits = 3\nmarks = !!!\n")] $ \tmp ->
+        lookedUp Map.empty tmp >>= \(is, ds) -> k (shapes is, ds)
+    topOf' r = fromMaybe (error "no a.gm") (topOf r "a.gm")
+
+{- | A one-chapter project, a.gm, with the sample plugin tsv-table
+(docs/adr/0129) declared as tt with the data the declaration gives.
+-}
+withTsvTable :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withTsvTable decl source files k = withSystemTempDirectory "golem-tsv" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> pluginDeclOf "tt" decl)
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  TIO.writeFile (tmp </> "a.gm") source
+  writeFiles tmp files
+  lockIn [("tt", "tsv-table.wasm")] tmp (k tmp)
+
+-- | A table without its spans: the alignments and the texts of the cells.
+tableShape :: BlockBody -> Maybe (String, [[T.Text]], [[[T.Text]]])
+tableShape = \case
+  Table al h rows -> Just (show al, map texts h, map (map texts) rows)
+  _ -> Nothing
+
+salesTsv :: BS.ByteString
+salesTsv = TE.encodeUtf8 "品目\t数\t備考\n\"りんご\"\t12\t\nみかん\t3\t\\x\n"
+
+{- | The sample plugin tsv-table (docs/adr/0129), with the integration
+tests of docs/adr/0110, 0119 and 0122 that need it.
+-}
+tsvTableTests :: [TestTree]
+tsvTableTests =
+  [ testCase "@tsv-table makes the table @table makes of the same TSV, with align (docs/adr/0110)" $
+      withTsvTable "data = { sales = \"data/sales.tsv\" }\n" "@tsv-table sales align=left,right,center\n\n@table src=data/sales.tsv align=left,right,center\n" [("data/sales.tsv", salesTsv)] $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        ds @?= []
+        case map (tableShape . blockBody) bs of
+          [Just a, Just b] -> do
+            a @?= b
+            a @?= ("[AlignLeft,AlignRight,AlignCenter]", [["品目"], ["数"], ["備考"]], [[["\"りんご\""], ["12"], []], [["みかん"], ["3"], ["\\x"]]])
+          other -> assertFailure (show other),
+    testCase "the nodes of the table are at the call (docs/adr/0122)" $
+      withTsvTable "data = { sales = \"s.tsv\" }\n" "@tsv-table sales\n" [("s.tsv", "a\nb\n")] $ \tmp -> do
+        (bs, _) <- blocksOf tmp
+        case bs of
+          [Block sp _ (Table _ [[Text csp "a"]] [[[Text rsp "b"]]])] -> do
+            (spanStart sp, spanEnd sp) @?= (0, 17)
+            csp @?= sp
+            rsp @?= sp
+          other -> assertFailure (show other),
+    testCase "data of any name: two tables of two files, typeset to text (docs/adr/0119)" $
+      withTsvTable "data = { sales = \"s.tsv\", costs = \"c.tsv\" }\n" "@tsv-table sales\n\n@tsv-table costs\n" [("s.tsv", TE.encodeUtf8 "売上\n100\n"), ("c.tsv", TE.encodeUtf8 "費用\n40\n")] $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        ds @?= []
+        map (tableShape . blockBody) bs @?= [Just ("[AlignDefault]", [["売上"]], [[["100"]]]), Just ("[AlignDefault]", [["費用"]], [[["40"]]])]
+        r <- build (defaultOptions tmp)
+        brDiagnostics r @?= []
+        out <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        map (`T.isInfixOf` out) ["売上", "100", "費用", "40"] @?= [True, True, True, True],
+    testCase "@label gives the table its label" $
+      withTsvTable "data = { sales = \"s.tsv\" }\n" "@label t\n@tsv-table sales\n" [("s.tsv", "a\n")] $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        ds @?= []
+        map blockLabel bs @?= [Just "t"],
+    testCase "a table in a list item" $
+      withTsvTable "data = { sales = \"s.tsv\" }\n" "- 項目\n\n  @tsv-table sales\n" [("s.tsv", "a\n")] $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        ds @?= []
+        case map blockBody bs of
+          [BulletList [ListItem _ [_, Block _ _ (Table {})]]] -> pure ()
+          other -> assertFailure (show other),
+    testCase "the errors of the TSV are the plugin's, at the call, and give no table" $
+      withTsvTable "data = { sales = \"s.tsv\" }\n" "@tsv-table sales\n\n@tsv-table costs\n" [("s.tsv", "a\tb\n1\n")] $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        bs @?= []
+        ds
+          @?= [ (DiagnosticCode "tt/cells", "sales の 2 行目のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）"),
+                (DiagnosticCode "tt/no-data", "manifest.toml の data にない名前です: costs")
+              ],
+    testCase "a name of data that is not a name is G06102 for a plugin of any name (docs/adr/0119)" $
+      withTsvTable "data = { Sales = \"s.tsv\" }\n" "x\n" [("s.tsv", "a\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [DiagnosticCode "G06102"]) . map fst,
+    testCase "[tsv-table] is an unknown command; @lookup an unknown block command" $
+      withTsvTable "data = { sales = \"s.tsv\" }\n" "[tsv-table sales]\n\n@lookup x\n" [("s.tsv", "a\n")] $ \tmp -> do
+        (_, ds) <- blocksOf tmp
+        map fst ds @?= [DiagnosticCode "G02022", DiagnosticCode "G02009"],
+    testCase "G06006: two plugins with the same block command" $
+      withSystemTempDirectory "golem-tsv" $ \tmp -> do
+        BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> pluginDeclOf "t1" "" <> pluginDeclOf "t2" "")
+        BS.writeFile (tmp </> "style.toml") horizontalStyle
+        TIO.writeFile (tmp </> "a.gm") "x\n"
+        lockIn [("t1", "tsv-table.wasm"), ("t2", "tsv-table.wasm")] tmp $ do
+          r <- build (defaultOptions tmp)
+          atManifestTop r >>= (@?= [(DiagnosticCode "G06006", "複数のプラグインが同じブロックコマンドを提供しています: @tsv-table（t1、t2）")]),
+    testCase "data of 64 MiB reaches the plugin, which reports its own limit" $
+      withTsvTable "data = { big = \"big.tsv\" }\n" "@tsv-table big\n" [] $ \tmp -> do
+        BS.writeFile (tmp </> "big.tsv") (BS.replicate (fromIntegral maxDataBytes) 0x61)
+        (bs, ds) <- blocksOf tmp
+        bs @?= []
+        map fst ds @?= [DiagnosticCode "tt/limit"],
+    -- docs/adr/0129: about 7.2e8 of the 1e9 instructions of a call
+    testCase "the largest TSV the plugin takes, of Japanese text, stays within the fuel" $ do
+      let cellOf r c = T.pack ("c" <> show r <> "-" <> show c) <> T.replicate 52 "あ"
+          tsv = TE.encodeUtf8 (T.unlines [T.intercalate "\t" [cellOf r c | c <- [1 .. 5 :: Int]] | r <- [1 .. 10000 :: Int]])
+      assertBool (show (BS.length tsv)) (BS.length tsv <= 8 * 1024 * 1024 && BS.length tsv > 8 * 1000 * 1000)
+      withTsvTable "data = { big = \"big.tsv\" }\n" "@tsv-table big\n" [("big.tsv", tsv)] $ \tmp -> do
+        (bs, ds) <- blocksOf tmp
+        ds @?= []
+        map (fmap (\(_, h, rows) -> (length h, length rows)) . tableShape . blockBody) bs @?= [Just (5, 9999)],
+    testCase "no G02009 for the block commands after a plugin fails to load, as G02022 (docs/adr/0122)" $
+      withTsvTable "data = { sales = \"none.tsv\" }\n" "@tsv-table sales\n\n[tsv-table sales]\n" [] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101"],
+    testCase "the table is built to text" $
+      withTsvTable "data = { sales = \"s.tsv\" }\n" "@tsv-table sales\n" [("s.tsv", salesTsv)] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        filter isError (brDiagnostics r) @?= []
+        out <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        assertBool (T.unpack out) ("みかん" `T.isInfixOf` out)
+  ]
+
 {- | A small CBOR encoder for the responses of check-data.wat: arrays,
 text strings, small unsigned integers and null.
 -}
@@ -839,6 +988,8 @@ pluginTests =
     <> [testGroup "the sample plugin sou-ruby (docs/adr/0130)" souRubyTests]
     <> contextTests
     <> kansujiTests
+    <> autoTcyTests
+    <> tsvTableTests
     <> blockCommandTests
     <> pluginFigureTests
     <> [ testCase "a filter runs over the declared files and keeps the output" $ do
