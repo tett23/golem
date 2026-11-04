@@ -2482,13 +2482,13 @@ PDF をターゲットに含むビルドと `golem check`（四つのターゲ�
 
 - メッセージ: `コードブロックに書けないキーです: <キー>。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます`、`コードブロックの開始の行には、言語の名前とキーワード引数だけを書けます`、`<キー> の値が正しくありません: <値>`、`highlight の行 <番号> はこのコードにありません`、`diff=true のコードの行は +、-、空白のどれかで始めます`、`注釈の印の番号は 1 から 50 までです: <番号>`、`@caption には本文を書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)、[docs/adr/0113](adr/0113-closed-range-literal.md)
+- ADR: [golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)、[docs/adr/0113](adr/0113-closed-range-literal.md)、[docs/adr/0134](adr/0134-numbers-range-code-is-g02113.md)
 
 ### 主な原因
 
 - キーの綴りを誤った。`lang` を ```` ``` ```` の開始の行に書いた（開始の行では、言語の名前を ```` ``` ```` のすぐ後に書く）。
 - 言語の名前の後に、キーワードでない語を書いた。
-- `numbers` に範囲か数でない語を、`diff` と `callouts` に `true` と `false` のほかの値を書いた。
+- `numbers` に `-` で区切った範囲か数でない語を、`diff` と `callouts` に `true` と `false` のほかの値を書いた。
 - `highlight` に、コードの行の外の番号か、削除した行（`-` の行）の番号を書いた。`@listing` の `lines=20...48` のコードの行番号は 20 から始まる。
 - `diff=true` のコードに、差分の印のない行を書いた。
 - 注釈の印に 0 か 51 以上の番号を書いた。
@@ -3730,7 +3730,7 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 - メッセージ: `範囲を受け取らない引数に範囲を書いています: <値>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0111](adr/0111-argument-words-as-number-literals.md)
+- ADR: [docs/adr/0111](adr/0111-argument-words-as-number-literals.md)、[docs/adr/0134](adr/0134-numbers-range-code-is-g02113.md)
 
 ### 主な原因
 
@@ -7159,7 +7159,7 @@ HTML か EPUB を組むとき（`golem build`）にだけ出す。
 
 - メッセージ: `図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: <パス>`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver`）
-- ADR: [docs/adr/0123](adr/0123-figures-from-plugins.md)
+- ADR: [docs/adr/0123](adr/0123-figures-from-plugins.md)、[docs/adr/0137](adr/0137-plugin-image-folder-collision-g08102.md)
 
 ### 主な原因
 
