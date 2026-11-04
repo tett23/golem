@@ -85,6 +85,25 @@ overrides = ["ruby"]
 注、傍注、索引、引用、相互参照のように本の構造に関わるコマンドと、[code: aki] は置き換えられません。
 [code: overrides] にこれらの名前を書くと、エラー（G06008）になります。
 
+Golem のリリースには、[code: number-text] を置き換える見本のプラグイン [code: kansuji] が添えてあります。
+縦組みの本の数を漢数字で組み、組み込みにない小数と分数も書けます。
+
+```toml
+[plugins.kansuji]
+url = "<リリースの URL>/kansuji.wasm"
+overrides = ["number-text"]
+```
+
+[code: <リリースの URL>] には、[code: https://github.com/tett23/golem/releases/download/v0.1.0-rc4] のように、Golem のリリースの配布物を置いた URL を書きます。
+
+縦組みでは、[code: \[number-text 123\]] が「百二十三」に、[code: \[number-text \[= 2 / 3\]\]] が「三分の二」になります。
+[code: \[number-text 3.14\]] は、整数の部分を「三」、小数点を中黒、小数の部分を「一四」と書きます。
+[code: style=kanji-digits] で「一二三」のように一字ずつ、[code: style=tcy] で縦中横に組みます。
+[code: form=fraction] を書くと、小数で書ける数も「二分の一」のような分数にします。
+[code: style] を書かない数と [code: ##12##] の表記は、組み込みと同じく [code: style.toml] の [code: \[numbers\]] の [code: vertical] に従います。
+横組みの本では、組み込みと同じく算用数字（[code: 123]、[code: 3.14]、[code: 2/3]）で組みます。
+ページ番号や箇条書きの番号は、このプラグインを通らず、組み込みのとおりに組まれます。
+
 ## プラグインのブロックコマンドを使う
 
 プラグインのブロックコマンドは、組み込みのブロックコマンドと同じく、行頭に [code: @] と名前を書いて呼びます。
