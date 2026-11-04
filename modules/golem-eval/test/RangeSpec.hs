@@ -181,7 +181,9 @@ tests =
             codes "``` highlight=1-2,4-5\na\nb\nc\nd\ne\n```\n" @?= ["G02108"]
         ],
       testCase "numbers= takes no range" $ do
-        mapM_ (\a -> (a, codes ("``` " <> a <> "\na\n```\n")) @?= (a, ["G02069"])) ["numbers=5-5", "numbers=5...5", "numbers=[= 1...3]"]
+        codes "``` numbers=5-5\na\n```\n" @?= ["G02069"]
+        -- a range where no range is taken is G02113 (docs/adr ADR 0111)
+        mapM_ (\a -> (a, codes ("``` " <> a <> "\na\n```\n")) @?= (a, ["G02113"])) ["numbers=5...5", "numbers=[= 1...3]"]
         mapM_ (\a -> (a, codes ("``` " <> a <> "\na\n```\n")) @?= (a, [])) ["numbers=5", "numbers=[= 5]", "numbers=true"]
         [n | (_, _, n) <- codeOf "``` numbers=5\na\n```\n"] @?= [Just 5]
     ]

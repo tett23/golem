@@ -37,7 +37,7 @@ import Data.Either (fromLeft, fromRight, isLeft)
 import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ratio (denominator, numerator)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -389,7 +389,7 @@ splitLines source paraStyles
       other -> other
     -- @style with the name of a style that keeps its lines
     keepsLines = \case
-      A.Located _ (A.BlockCommand (A.Located _ "style") [A.Located _ (A.Positional (A.Word n))] _) -> Map.lookup n paraStyles == Just KeepLines
+      A.Located _ (A.BlockCommand (A.Located _ "style") [A.Located _ (A.Positional v)] _) | Just n <- nameArg v -> Map.lookup n paraStyles == Just KeepLines
       _ -> False
 
 {- | The lines of a paragraph as paragraphs: spaces and tabs at the start of
@@ -436,11 +436,13 @@ evalBlock ctx (A.Located sp b) = case b of
     h' <- mapM (evalInlines ctx False) h
     rows' <- mapM (mapM (evalInlines ctx False)) rows
     pure [block sp (Table (map alignment al) h' rows')]
-  A.CodeBlock lang args0 ls -> do
-    args <- uniqueKeys args0
-    ca <- codeArgs ctx sp [] args
-    c <- codeOf sp ca Nothing lang [(lsp, t) | A.Located lsp t <- ls]
-    pure [block sp (CodeBlock c)]
+  A.CodeBlock lang args0 ls ->
+    prepareArgs args0 >>= \case
+      Nothing -> pure []
+      Just args -> do
+        ca <- codeArgs ctx sp [] args
+        c <- codeOf sp ca Nothing lang [(lsp, t) | A.Located lsp t <- ls]
+        pure [block sp (CodeBlock c)]
   A.SetVar (A.Located nsp n) e -> do
     defined <- gets (Map.member n . stVars)
     if n `elem` reservedNames
@@ -458,7 +460,9 @@ evalBlock ctx (A.Located sp b) = case b of
   A.BlockCommand name@(A.Located _ n) args body
     -- @manifest and @style-def read their own arguments (G02052)
     | n `elem` settingCommands -> standalone ctx sp name args body
-    | otherwise -> uniqueKeys args >>= \args' -> standalone ctx sp name args' body
+    -- @style is read before the evaluation for the lines of its body (G02114, docs/adr ADR 0112)
+    | n == "style", (ssp : _) <- spreadsOf args -> report (styleSpread ssp) >> pure []
+    | otherwise -> prepareArgs args >>= maybe (pure []) (\args' -> standalone ctx sp name args' body)
   A.Attributed cmds target -> attributed ctx sp cmds target
   A.ErrorBlock -> pure []
   where
@@ -598,7 +602,7 @@ attributedGroup ctx sp cmds target = case target of
       _ -> False
     foldM' f z = foldl (\acc x -> acc >>= \a -> f a x) (pure z)
     withAttrs attrs0 t = do
-      attrs <- mapM uniqueAttrKeys attrs0
+      attrs <- catMaybes <$> mapM uniqueAttrKeys attrs0
       -- every line of an attribute already given (golem-eval ADR 0003)
       let named = [(n, asp) | A.Located asp (A.BlockCommand (A.Located _ n) _ _) <- attrs]
           repeated = [asp | (i, (n, asp)) <- zip [0 :: Int ..] named, n `elem` map fst (take i named)]
@@ -683,8 +687,8 @@ argument of @column-break (docs/adr ADR 0060).
 forcedBreak :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 forcedBreak sp name args body = breakCommand sp name body $ case (name, map A.locValue args) of
   ("page-break", []) -> Right (ForcedBreak BreakPage)
-  ("page-break", [A.Positional (A.Word "recto")]) -> Right (ForcedBreak BreakRecto)
-  ("page-break", [A.Positional (A.Word "verso")]) -> Right (ForcedBreak BreakVerso)
+  ("page-break", [A.Positional v]) | nameArg v == Just "recto" -> Right (ForcedBreak BreakRecto)
+  ("page-break", [A.Positional v]) | nameArg v == Just "verso" -> Right (ForcedBreak BreakVerso)
   ("column-break", []) -> Right (ForcedBreak BreakColumn)
   ("column-break", _) -> Left ("G02096", takesNoArguments name)
   _ -> Left ("G02058", "@page-break の引数は recto か verso です")
@@ -697,8 +701,9 @@ pageControl :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] 
 pageControl sp name args body = breakCommand sp name body . fmap PageControl $ case (name, map A.locValue args) of
   ("no-page-break", []) -> Right NoBreak
   ("no-page-break", _) -> Left ("G02096", takesNoArguments name)
-  ("page-lines", [A.Positional (A.Word w)])
-    | Just (s, digits) <- T.uncons w,
+  ("page-lines", [A.Positional v])
+    | Just w <- nameArg v,
+      Just (s, digits) <- T.uncons w,
       s `elem` ['+', '-'],
       Just n <- count digits,
       n /= 0 ->
@@ -815,7 +820,7 @@ applyAttr :: EvalContext -> (Maybe Text, BlockBody) -> A.Located A.Block -> M (M
 applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
   A.BlockCommand (A.Located _ name) args _ -> case (name, body) of
     ("label", _) -> case map A.locValue args of
-      [A.Positional (A.Word l)] | validLabel l -> pure (Just l, body)
+      [A.Positional v] | Just l <- nameArg v, validLabel l -> pure (Just l, body)
       _ -> err "G02026" sp "@label にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます" >> pure (label, body)
     ("toc-title", Heading l a is) -> do
       t <- evalInlines ctx True [A.Located sp (A.Text (T.unwords (map (argText . positional) args)))]
@@ -881,8 +886,8 @@ not one name. code is the style of code blocks: G02066 and body
 -}
 styleName :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M (Maybe Text)
 styleName _ sp = \case
-  [A.Located _ (A.Positional (A.Word "code"))] -> err "G02066" sp "code はコードブロックの段落スタイルです。コードは ``` か @listing で書きます" >> pure Nothing
-  [A.Located _ (A.Positional (A.Word n))] -> pure (Just n)
+  [A.Located _ (A.Positional v)] | nameArg v == Just "code" -> err "G02066" sp "code はコードブロックの段落スタイルです。コードは ``` か @listing で書きます" >> pure Nothing
+  [A.Located _ (A.Positional v)] | Just n <- nameArg v -> pure (Just n)
   _ -> err "G02047" sp "@style には段落スタイルの名前を一つ書きます" >> pure Nothing
 
 {- | The body form of @style (docs/adr ADR 0005): every paragraph of the
@@ -1471,7 +1476,7 @@ codeArgs ctx _ extra = foldl (\m a -> m >>= \acc -> step acc a) (pure (CodeArgs 
       A.Word t -> pure (Just t)
       A.StringLit t -> pure (Just t)
       v@(A.ExprArg _) ->
-        argValue ctx vsp v >>= \case
+        plainArgValue ctx vsp v >>= \case
           Right val | Just n <- intOf val -> pure (Just (T.pack (show n)))
           Right (VString s) -> pure (Just s)
           Right (VBool b) -> pure (Just (if b then "true" else "false"))
@@ -1631,7 +1636,7 @@ evalInline ctx inHeading (A.Located sp i) = case i of
     case analyse en e of
       Just d -> report d >> pure []
       Nothing -> exprInline en e
-  A.Command n args slots -> uniqueKeys args >>= \args' -> evalCommand ctx inHeading sp n args' (codeSlots n args' slots)
+  A.Command n args slots -> prepareArgs args >>= maybe (pure []) (\args' -> evalCommand ctx inHeading sp n args' (codeSlots n args' slots))
   where
     exprInline en e =
       if usesDoc e
@@ -1673,7 +1678,7 @@ codeSlots (A.Located _ name) args slots
   | otherwise = slots
   where
     isCode = \case
-      (A.Located _ (A.Positional (A.Word "code")) : _) -> True
+      (A.Located _ (A.Positional v) : _) -> nameArg v == Just "code"
       _ -> False
 
 -- | An inline command, its repeated keys dropped (golem-parser ADR 0013).
@@ -1746,7 +1751,7 @@ builtinWith ctx inHeading sp b args slots = do
       _ -> err "G02040" sp "縦中横の中身は地の文に限ります" >> pure []
     Overridable BNumberText -> case pos of
       [v] -> do
-        val <- argValue ctx sp v
+        val <- plainArgValue ctx sp v
         let st = argText <$> lookup "style" kw
         case (val, st) of
           (Right v', _) | Just n <- intOf v', not (inInt64 n) -> outOfInt64 sp >> pure []
@@ -1870,19 +1875,67 @@ repeatedKeys args = [(asp, k) | (i, (asp, k)) <- zip [0 :: Int ..] keyed, k `ele
     keyed = [(asp, k) | A.Located asp (A.Keyword (A.Located _ k) _) <- args]
 
 {- | The arguments with 'duplicateKeys' reported and every repeated keyword
-argument dropped: the first of each key is used.
+argument dropped: the first of each key is used. The arguments are told
+apart by their place, since the keywords of one **[式] share its span.
 -}
 uniqueKeys :: [A.Located A.Argument] -> M [A.Located A.Argument]
 uniqueKeys args = do
   mapM_ report (duplicateKeys args)
-  let repeated = map fst (repeatedKeys args)
-  pure [a | a@(A.Located asp _) <- args, asp `notElem` repeated]
+  let keyed = [(i, k) | (i, A.Located _ (A.Keyword (A.Located _ k) _)) <- zip [0 :: Int ..] args]
+      repeated = [i | (n, (i, k)) <- zip [0 :: Int ..] keyed, k `elem` map snd (take n keyed)]
+  pure [a | (i, a) <- zip [0 :: Int ..] args, i `notElem` repeated]
 
--- | 'uniqueKeys' on the arguments of an attribute.
-uniqueAttrKeys :: A.Located A.Block -> M (A.Located A.Block)
+{- | The arguments of a command with *[式] and **[式] spread (docs/adr ADR 0112)
+and the repeated keys dropped ('uniqueKeys'). Each element of a spread is
+the argument written as a literal: a string as a string literal, another
+value as [= value]; the keys of a hash in code point order. A spread of
+the wrong type is G02111 or G02112 at the spread; then, as for an error of
+its expression, Nothing: the command is not run.
+-}
+prepareArgs :: [A.Located A.Argument] -> M (Maybe [A.Located A.Argument])
+prepareArgs args = do
+  spread <- mapM one args
+  traverse (uniqueKeys . concat) (sequence spread)
+  where
+    one la@(A.Located asp a) = case a of
+      A.SplatPositional e -> withValue e $ \case
+        VArray xs -> Right [A.Located asp (A.Positional (literalArg e x)) | x <- xs]
+        v -> Left (diagnostic "G02111" Error asp ("*[式] の値は配列でなければなりません: " <> typeName v))
+      A.SplatKeyword e -> withValue e $ \case
+        VHash m -> Right [A.Located asp (A.Keyword (A.Located asp k) (literalArg e x)) | (k, x) <- Map.toAscList m]
+        v -> Left (diagnostic "G02112" Error asp ("**[式] の値は連想配列でなければなりません: " <> typeName v))
+      _ -> pure (Just [la])
+    withValue e k = do
+      noteRefs e
+      en <- env
+      case evalAnalysed en e >>= k of
+        Left d -> report d >> pure Nothing
+        Right xs -> pure (Just xs)
+    literalArg e = \case
+      VString s -> A.StringLit s
+      v -> A.ExprArg (valueToExpr e v)
+
+-- | The spans of the arguments *[式] and **[式].
+spreadsOf :: [A.Located A.Argument] -> [SrcSpan]
+spreadsOf args = [asp | A.Located asp a <- args, isSpread a]
+  where
+    isSpread = \case
+      A.SplatPositional _ -> True
+      A.SplatKeyword _ -> True
+      _ -> False
+
+{- | G02114 for @style: whether its body keeps its lines is decided from
+the name before the evaluation, so the name is not spread (docs/adr ADR 0112).
+-}
+styleSpread :: SrcSpan -> Diagnostic
+styleSpread sp = diagnostic "G02114" Error sp "@style は評価の前に読むので、*[式] と **[式] を書けません"
+
+-- | 'prepareArgs' on the arguments of an attribute; Nothing drops the attribute.
+uniqueAttrKeys :: A.Located A.Block -> M (Maybe (A.Located A.Block))
 uniqueAttrKeys = \case
-  A.Located sp (A.BlockCommand n args body) -> (\args' -> A.Located sp (A.BlockCommand n args' body)) <$> uniqueKeys args
-  other -> pure other
+  A.Located _ (A.BlockCommand (A.Located _ "style") args _) | (ssp : _) <- spreadsOf args -> report (styleSpread ssp) >> pure Nothing
+  A.Located sp (A.BlockCommand n args body) -> fmap (\args' -> A.Located sp (A.BlockCommand n args' body)) <$> prepareArgs args
+  other -> pure (Just other)
 
 keywords :: EvalContext -> [A.Located A.Argument] -> M [(Text, A.ArgValue)]
 keywords _ args = pure [(k, v) | A.Located _ (A.Keyword (A.Located _ k) v) <- args]
@@ -1902,15 +1955,36 @@ argText = \case
 
 argValueRaw :: A.ArgValue -> Value
 argValueRaw = \case
-  A.Word t
-    | not (T.null t), T.all isDigit t -> VNat (read (T.unpack t))
-    | otherwise -> VString t
+  A.Word t -> fromMaybe (VString t) (wordNumber t)
   A.StringLit t -> VString t
   _ -> VNil
 
-{- | The value of an argument. A word of digits past the limit of the
-evaluator is G02086 at @sp@, as the same literal in an expression is
-(docs/adr ADR 0101; the audit of 2026-10-28, F-01).
+{- | A word that is a number literal of the expression language, with one
+leading - (docs/adr ADR 0111): the value of the same text in an expression,
+of the same type (docs/adr ADR 0101). Digits are a natural number, -
+and digits an integer, a decimal or an exponent a rational. Nothing for
+another word, which stays a string.
+-}
+wordNumber :: Text -> Maybe Value
+wordNumber t = case T.stripPrefix "-" t of
+  Just rest -> negateNumber <$> unsigned rest
+  Nothing -> unsigned t
+  where
+    unsigned u
+      | T.null u || "-" `T.isPrefixOf` u = Nothing
+      | T.all isDigit u = Just (VNat (read (T.unpack u)))
+      | otherwise = VRat <$> A.numberWord u
+    negateNumber = \case
+      VNat n -> VInt (negate (toInteger n))
+      VRat q -> VRat (negate q)
+      v -> v
+
+{- | The value of an argument. A word that is a number literal past the
+limit of the evaluator is G02086 at @sp@, as the same literal in an
+expression is (docs/adr ADR 0101; the audit of 2026-10-28, F-01;
+docs/adr ADR 0111). A word of a closed range literal is the range of the
+same text in an expression (docs/adr ADR 0113, ADR 0111): a place that
+takes no range reads its arguments with 'plainArgValue'.
 -}
 argValue :: EvalContext -> SrcSpan -> A.ArgValue -> M (Either Diagnostic Value)
 argValue _ sp = \case
@@ -1918,12 +1992,43 @@ argValue _ sp = \case
     noteRefs e
     en <- env
     pure (evalAnalysed en e)
+  A.Word w | Just (a, b) <- rangeWord w -> case [q | Just (_, q) <- map numberOf [a, b], overLimit q] of
+    _ : _ -> pure (Left (tooBigDiagnostic sp))
+    [] -> do
+      en <- env
+      let lit = valueToExpr (A.Located sp A.ENil)
+      pure (evalAnalysed en (A.Located sp (A.ERange (lit a) (lit b))))
   v ->
     pure
       ( case argValueRaw v of
-          VNat n | overLimit (toRational n) -> Left (tooBigDiagnostic sp)
+          val | Just (_, q) <- numberOf val, overLimit q -> Left (tooBigDiagnostic sp)
           val -> Right val
       )
+
+{- | The value of an argument where no range is taken (docs/adr ADR
+0111): a word of a closed range literal, or an expression whose value is
+a range, is G02113 at @sp@; another argument is its 'argValue'.
+-}
+plainArgValue :: EvalContext -> SrcSpan -> A.ArgValue -> M (Either Diagnostic Value)
+plainArgValue ctx sp = \case
+  A.Word w | isJust (rangeWord w) -> pure (Left (rangeDiagnostic sp w))
+  v ->
+    argValue ctx sp v >>= \case
+      Right r@(VRange _ _) -> pure (Left (rangeDiagnostic sp (valueText r)))
+      other -> pure other
+
+{- | The ends of a word of a closed range literal, @<number>...<number>@
+with each end a number literal (docs/adr ADR 0113, ADR 0111). Nothing
+for another word: @1...@, @a...3@ and @1...2...3@ are none.
+-}
+rangeWord :: Text -> Maybe (Value, Value)
+rangeWord w = case T.breakOn "..." w of
+  (a, rest) | not (T.null rest) -> (,) <$> wordNumber a <*> wordNumber (T.drop 3 rest)
+  _ -> Nothing
+
+-- | G02113: a range where the argument takes no range (docs/adr ADR 0111).
+rangeDiagnostic :: SrcSpan -> Text -> Diagnostic
+rangeDiagnostic sp w = diagnostic "G02113" Error sp ("範囲を受け取らない引数に範囲を書いています: " <> w)
 
 -- | The evaluation of an expression after the analysis (docs/adr ADR 0102).
 evalAnalysed :: Env -> A.Located A.Expr -> Either Diagnostic Value
@@ -1943,9 +2048,10 @@ one that is not an integer G02104, at @sp@; @what@ names the place.
 -}
 naturalArg :: EvalContext -> Text -> SrcSpan -> A.ArgValue -> M (Either NaturalError Natural)
 naturalArg ctx what sp = \case
+  A.Word w | isJust (rangeWord w) -> report (rangeDiagnostic sp w) >> pure (Left NaturalReported)
   A.Word w -> maybe (pure (Left NotANumber)) check (A.numberWord w)
   v@(A.ExprArg _) ->
-    argValue ctx sp v >>= \case
+    plainArgValue ctx sp v >>= \case
       Left d -> report d >> pure (Left NaturalReported)
       Right val -> maybe (pure (Left NotANumber)) (check . snd) (numberOf val)
   _ -> pure (Left NotANumber)
@@ -2101,7 +2207,7 @@ numbersArg ctx sp = \case
   A.StringLit t | Just b <- boolWord t -> pure (Just (Left b))
   A.StringLit t -> natural (A.Word t) t
   v@(A.ExprArg _) ->
-    argValue ctx sp v >>= \case
+    plainArgValue ctx sp v >>= \case
       Left d -> report d >> pure Nothing
       Right (VBool b) -> pure (Just (Left b))
       Right val | Just (_, q) <- numberOf val -> either (\d -> report d >> pure Nothing) (pure . Just . Right . toInteger) (naturalOf what sp q)

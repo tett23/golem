@@ -671,13 +671,23 @@ G01010 から G01023 に当たらない構文エラーの既定のコードで�
 - `..`：端を省いた範囲と、終わりを含まない範囲のための記法。式の中と、`@listing` の `lines` とコードブロックの `highlight` の語と文字列で使えない（[docs/adr/0113](adr/0113-closed-range-literal.md)）。
 
 位置は、予約された記法の最初の字から始まる。
+範囲は記法ごとに次のとおりである（[docs/adr/0116](adr/0116-narrow-reserved-syntax-recovery.md)）。
+
+- `[!`：同じ行の対応する `]` まで。`[` と `]` の入れ子を数え、エスケープ（`\]`）とコメント（`%% ] %%`）の中の `]` は数えない。対応する `]` が同じ行になければ `[!` の二字だけである。
+- `@!`：行の終わりまで。
+- `..`：二字だけ。
+
+予約された記法の後ろは、そのまま読まれる。
+後ろに別の誤りがあれば、それも報告される。
+たとえば `[strong: [!x]]` の外の `]` は `strong` を閉じ、`[= [1..3]]` の `3` と閉じ括弧は式として読まれる。
+`@!` は本体を持たないので、次の行から `@!` より深く字下げした行は、それぞれ字下げの誤り（[G01011](#g01011)）になる。
 語と文字列の中の `..` は評価の段階で見つかり、位置はその引数である。
 記法によらず、メッセージは一つである。
 どの記法を書いたかは位置で分かる。
 
 - メッセージ: `予約された記法です。今のバージョンでは使えません`
 - 段階とモジュール: 構文（golem-parser）。語と文字列の中の `..` は評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0115](adr/0115-reserved-syntax-code.md)、[docs/adr/0113](adr/0113-closed-range-literal.md)
+- ADR: [docs/adr/0115](adr/0115-reserved-syntax-code.md)、[docs/adr/0113](adr/0113-closed-range-literal.md)、[docs/adr/0116](adr/0116-narrow-reserved-syntax-recovery.md)
 
 ### 主な原因
 
@@ -1150,6 +1160,8 @@ number-text の引数が不正です
 ### 意味
 
 `[number-text ...]` の引数が不正である。
+数は、語で書いても式で書いても、同じ値なら同じコードになる（`[number-text 3.14]` と `[number-text [= 3.14]]`、[docs/adr/0111](adr/0111-argument-words-as-number-literals.md)）。
+範囲（`[number-text 1...3]`、`[number-text [= 1...3]]`）は、このコードではなく [G02113](#g02113) である。
 
 - メッセージ: `style は kanji、kanji-digits、tcy のいずれかです: <値>`、`number-text に渡せるのは整数だけです`、`number-text には整数を一つ書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
@@ -1955,7 +1967,7 @@ lines の範囲がファイルの行を外れています
 ### 意味
 
 `@manifest` か `@style-def` の引数の形が誤っている。
-位置引数の数の誤り、未知の種類、展開する引数（`*[...]`、`**[...]`）、本体がある、`@manifest` に引数がない、同じキーを二度書いた、値が語と文字列のほか（`[= ...]` など）のいずれかである。
+位置引数の数の誤り、未知の種類、本体がある、`@manifest` に引数がない、同じキーを二度書いた、値が語と文字列のほか（`[= ...]` など）のいずれかである。
 誤りのある `@manifest` の引数はその引数だけを無視し、誤りのある `@style-def` は定義の全体を捨てる。
 
 - メッセージ: `@manifest には key=value だけを書きます`、`@style-def には種類（character、paragraph、regex）と名前を書きます`、`値は語か文字列で書きます`、`同じキーを二度書いています: <キー>`
@@ -2449,7 +2461,8 @@ PDF をターゲットに含むビルドと `golem check`（四つのターゲ�
 
 コードブロックの開始の行か `@listing` に書いた引数か、引数が決める中身の読み方に誤りがある。
 `numbers` と `highlight` の数の負の数は [G02103](#g02103)、整数でない数は [G02104](#g02104)、式の評価の上限を超える数は [G02086](#g02086) である（[docs/adr/0102](adr/0102-natural-number-type.md)）。
-`numbers` の値は `true`、`false`、自然数のどれかであり、範囲（`5-5`、`5...5`、`[= 1...3]`）はこのコードになる。
+`numbers` の値は `true`、`false`、自然数のどれかであり、`-` で区切った範囲（`5-5`）はこのコードになる。
+`...` の範囲（`5...5`、`[= 1...3]`）は、範囲を受け取らない引数の範囲として [G02113](#g02113) になる（[docs/adr/0111](adr/0111-argument-words-as-number-literals.md)）。
 `highlight` の値の形の誤りと逆順の範囲は、このコードではなく [G02105](#g02105)、[G02106](#g02106)、[G02110](#g02110) になる（[docs/adr/0113](adr/0113-closed-range-literal.md)）。
 コードブロックに書けるキーは `numbers`、`file`、`highlight`、`diff`、`callouts` であり、`@listing` ではこれに `lang` が加わる。
 開始の行には、言語の名前のほかに位置引数を書けない。
@@ -2684,11 +2697,12 @@ PNG、JPEG、SVG の図版からは、`page` を消す。
 検査は、インラインのコマンド（組み込みとプラグイン）、ブロックコマンド、コードブロックの開始の行と `@listing` に当てる。
 `@manifest` と `@style-def` は設定であり、同じキーを G02052 にする。
 位置は、二度めから後のそれぞれの引数の全体である。
-`**[式]` を展開したキーがほかのキーワード引数と重なるときもこの誤りとする予定だが、今の評価は `**[式]` を展開しないので、この場合はまだ出ない。
+`**[式]` を展開したキーが、前のキーワード引数か前の展開のキーと重なるときもこの誤りとする（[docs/adr/0112](adr/0112-spread-arguments.md)）。
+展開したキーの位置は、その `**[...]` である。
 
 - メッセージ: `同じキーを二度書いています: <キー>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-parser ADR 0013](golem-parser/adr/0013-splat-after-keyword-arguments.md)
+- ADR: [golem-parser ADR 0013](golem-parser/adr/0013-splat-after-keyword-arguments.md)、[docs/adr/0112](adr/0112-spread-arguments.md)
 
 ### 主な原因
 
@@ -3137,6 +3151,8 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 `@blank-line` は、引数を取らないか、1 以上の整数の位置引数を一つだけ取る。
 整数は語か式で書き、キーワード引数は使えない。
 負の数は [G02103](#g02103)、整数でない数は [G02104](#g02104) である（[docs/adr/0102](adr/0102-natural-number-type.md)）。
+語は、式の数のリテラルの形のときだけ数として読み、`.5` と `5.` は数でない語としてこのコードになる（[docs/adr/0111](adr/0111-argument-words-as-number-literals.md)）。
+範囲（`1...3`、`[= 1...3]`）は [G02113](#g02113) である。
 本体は持たない。
 そのコマンドは捨て、行アキを入れない。
 2 の 63 乗以上の整数は [G02091](#g02091) である。
@@ -3627,6 +3643,120 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 両端に数を書く（`1...3`）。
 範囲は連ねられないので、一つの範囲にする。
 
+## G02111
+
+*[式] の値は配列でなければなりません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+コマンドの引数の `*[式]` の値が配列でない（[docs/adr/0112](adr/0112-spread-arguments.md)）。
+`*[式]` は配列の要素を位置引数に展開する。
+インラインのコマンド、ブロックのコマンド、属性、コードブロックの開始の行、プラグインのコマンドのどれでも同じである。
+そのコマンドは実行しない。
+インラインのコマンドは何も出さず、ブロックのコマンドとコードブロックはブロックを作らず、属性はその属性がないものとする。
+位置は `*[...]` の引数である。
+
+- メッセージ: `*[式] の値は配列でなければなりません: <型>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0112](adr/0112-spread-arguments.md)
+
+### 主な原因
+
+- `*[12]` のように、配列でない値を展開した。
+- 連想配列を `*[...]` で展開した（連想配列は `**[...]` で展開する）。
+
+### 直し方
+
+`*[[12]]` のように、配列を展開する。
+
+## G02112
+
+**[式] の値は連想配列でなければなりません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+コマンドの引数の `**[式]` の値が連想配列でない（[docs/adr/0112](adr/0112-spread-arguments.md)）。
+`**[式]` は連想配列の要素を、キーのコードポイントの順にキーワード引数に展開する。
+そのコマンドは、[G02111](#g02111) と同じく実行しない。
+位置は `**[...]` の引数である。
+
+- メッセージ: `**[式] の値は連想配列でなければなりません: <型>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0112](adr/0112-spread-arguments.md)
+
+### 主な原因
+
+- `**[[1]]` のように、配列を `**[...]` で展開した。
+
+### 直し方
+
+`**[{style: "kanji"}]` のように、連想配列を展開する。
+
+## G02113
+
+範囲を受け取らない引数に範囲を書いています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+範囲を受け取らない引数に、範囲を書いた（[docs/adr/0111](adr/0111-argument-words-as-number-literals.md)）。
+範囲を受け取らない引数は、`[number-text ...]` の数、自然数を求める箇所（`@blank-line`、`@need-lines`、`@number`、`@toc` の `depth`、`@figure` の `page`、コードブロックの `numbers`）、コードブロックのほかのキー（`file`、`diff`、`callouts`、`lang`）である。
+語では、`<数のリテラル>...<数のリテラル>` の形（`3...5`、`-1...1.5`）がこのコードになる。
+式では、値が範囲になる式（`[= 1...3]`）がこのコードになる。
+ほかの `...` を含む語（`1...`、`a...3`、`1...2...3`）は、このコードにならず、各箇所の数でない値のコードになる。
+`@listing` の `lines`、コードブロックの `highlight`、プラグインのコマンドの引数は、範囲を受け取るので、このコードを出さない。
+位置は引数である。
+
+- メッセージ: `範囲を受け取らない引数に範囲を書いています: <値>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0111](adr/0111-argument-words-as-number-literals.md)
+
+### 主な原因
+
+- `[number-text 1...3]` のように、一つの数を書く引数に範囲を書いた。
+- `@set r = 1...3` の変数 `r` を、数を求める引数に渡した。
+
+### 直し方
+
+範囲ではなく一つの数を書く。
+
+## G02114
+
+評価の前に読むコマンドに展開を書いています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+引数を評価の前に読むコマンドに、`*[式]` か `**[式]` を書いた（[docs/adr/0112](adr/0112-spread-arguments.md)）。
+展開の値は式を評価しないと分からないので、評価の前に読むコマンドは展開を受け付けない。
+対象は、ファイルの設定を決める `@manifest`、文字スタイルと段落スタイルを定義する `@style-def`、本体の行を保つかどうかを名前で決める `@style`（本体の形と属性の形）である。
+`@manifest` はその引数だけを無視し、`@style-def` は定義の全体を捨て、`@style` はそのコマンドを捨てる（属性の形では、その属性がないものとする）。
+`@import` の展開は、このコードではなく形の誤り（[G03009](#g03009)）である。
+位置は展開の引数である。
+
+- メッセージ: `<コマンド> は評価の前に読むので、*[式] と **[式] を書けません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`、`Golem.Eval.File`）
+- ADR: [docs/adr/0112](adr/0112-spread-arguments.md)
+
+### 主な原因
+
+- `@manifest **[{...}]` のように、設定を式で選ぼうとした。
+- `@style *[["note"]]` のように、段落スタイルの名前を式で選ぼうとした。
+
+### 直し方
+
+引数を展開せずに、そのまま書く（`@style note`）。
+
 ## G03001
 
 manifest.toml の誤りです
@@ -3783,7 +3913,7 @@ style.toml の誤りです
 
 - メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1、2、3 のどれかです: <段>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format には {n} をちょうど一つ書きます: <書式>`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル <名前> には 0 でない indent と first-line-indent を書けません。キャプションと傍注は字下げをしません: <キー>`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りと Golem が値の読み込みで調べる誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置である。二つのキーの組み合わせの誤りは、文言が直すよう求めているキーの値の位置（`columns` と `column-gap` では `columns`）に出す。読み込んだ後の検査では、直すべき値の位置であり、その値が書かれていなければそのスタイルなどの表の見出しの位置、それもなければ `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md) である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0118](adr/0118-ref-page-numerals-in-vertical-text.md)（`[numbers]` の `ref-page`）である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 

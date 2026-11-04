@@ -284,6 +284,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | キー | 既定 | 意味 |
 |:---|:---|:---|
 | [code: vertical] | [code: "kanji"] | 縦組みでの [code: ##数##] と [code: \[number-text ...\]] の表記です。[code: "kanji"]（十）、[code: "kanji-digits"]（一〇）、[code: "tcy"]（縦中横の 10）、[code: "auto"]（2 桁までは縦中横、ほかは十）、[code: "auto-digits"]（2 桁までは縦中横、ほかは一〇〇）から選びます。 |
+| [code: ref-page] | [code: vertical] と同じ | 縦組みの PDF での [code: \[ref-page ...\]] のページ番号の表記です。[code: vertical] の五つの値か、[code: "sideways"]（算用数字を横に倒す）から選びます。索引や目次のページ番号は変わりません。 |
 
 @nonumber
 ## [code: \[notes\]]

@@ -103,7 +103,10 @@ tests =
         msgs "@blank-line [= 7 / 3]\n" @?= [("G02104", "@blank-line の引数には 0 以上の整数を書きます（書かれた値 7/3 は整数ではありません）")],
       testCase "0 and a word that is no number stay G02092" $ do
         codes "@blank-line 0\n" @?= ["G02092"]
-        codes "@blank-line x\n" @?= ["G02092"],
+        codes "@blank-line x\n" @?= ["G02092"]
+        -- .5 and 5. are no literals of the grammar of expressions (docs/adr ADR 0111)
+        codes "@blank-line .5\n" @?= ["G02092"]
+        codes "@blank-line 5.\n" @?= ["G02092"],
       testCase "a rational of a natural value is taken" $ do
         blankLines "@blank-line [= 4 / 2]\n" @?= [2]
         blankLines "@blank-line 2.0\n" @?= [2],
