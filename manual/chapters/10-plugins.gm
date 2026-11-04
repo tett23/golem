@@ -101,6 +101,10 @@ overrides = ["number-text"]
 https://github.com/tett23/golem/releases/download/<版>
 ```
 
+見本のプラグインに入っているもの（Rust のクレートと標準ライブラリ）の著作権の表示とライセンスの文書は、同じリリースのアーカイブ [code: golem-plugins-licenses-<版>.tar.gz] にまとめてあります。
+URL は、[code: <リリースの URL>] の後に [code: /golem-plugins-licenses-<版>.tar.gz] を付けたものです。
+見本のプラグインの [code: .wasm] をほかの人に配るときは、このアーカイブも一緒に配ってください。
+
 縦組みの本では、数を次のように組みます。
 
 - [code: \[number-text 123\]]：百二十三

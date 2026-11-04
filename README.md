@@ -64,6 +64,7 @@ xattr -d com.apple.quarantine golem
 ca-certificates の入っていない最小構成のコンテナでは、ca-certificates を入れるか、環境変数 `SSL_CERT_FILE` で証明書のファイルを指定する。
 
 アーカイブの中の `THIRD_PARTY_LICENSES/` に、実行ファイルに静的にリンクしたライブラリと同梱したデータのライセンスがある。
+見本のプラグイン（`<名前>.wasm`）に入るクレートと Rust の標準ライブラリのライセンスは、リリースに添えた `golem-plugins-licenses-<タグ>.tar.gz` にある（[docs/adr/0133](./docs/adr/0133-third-party-licenses-of-sample-plugins.md)）。
 `BUILDINFO` には、ビルドしたコミットと環境を記録している。
 
 ## Usage
@@ -186,6 +187,7 @@ HarfBuzz と FreeType は、ソースを `modules/golem-font/cbits/` に同梱�
 zlib は Hackage の `zlib-clib` 1.3.2 を同梱するバージョンとして使う（`cabal.project` で固定）。
 wasmtime はプラットフォームごとの C API の配布物を `scripts/fetch-wasmtime.sh` で取得する（SHA-256 を検証し、`third_party/wasmtime` に置く。`third_party/wasmtime/VERSION` の名前と SHA-256 がスクリプトのものと一致しなければ取り直す）。
 `licenses/` には、配布物の `THIRD_PARTY_LICENSES/` に写すライセンスの文書のうち、ビルドの環境から取れないもの（`libwasmtime.a` に入った Rust のクレートなどの文書と、Alpine のパッケージが入れない文書）を置く（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
+`licenses/plugins/` には、見本のプラグインに入るものの著作権の表示とライセンスの文書を `scripts/plugin-licenses.sh` で生成して置く（[docs/adr/0133](./docs/adr/0133-third-party-licenses-of-sample-plugins.md)）。
 
 ### ビルドとテスト
 
@@ -378,7 +380,7 @@ Golem のビルドとテストは Node を使わない。
 | `ci.yml` | `release-scripts` | `VERSION` と全パッケージのバージョンの一致を検査し、`mise.toml` に固定した版の Claude Code を、`notes` と同じ版と SHA-256 で固定した mise で入れて、`scripts/release/` のスクリプトのテスト（`scripts/release/test.sh`）を `GOLEM_REQUIRE_CLAUDE=1` で実行する（[docs/adr/0058](./docs/adr/0058-run-skipped-checks-in-ci.md)）。テストは、リリースのときだけ動くスクリプト（アーカイブの作成と検査、GMP の版と取得、macOS のビルド）も、偽のコマンドでネットワークを使わずに動かす（[docs/adr/0078](./docs/adr/0078-tests-for-release-and-hand-run-scripts.md)） |
 | `ci.yml` | `scripts-macos` | macOS 15 のランナーで、`PATH` をシステムの道具（BSD 版の `awk`、`sed`、`find`、`grep`）だけにして、`scripts/` の下の六本のテスト（`scripts/ci/test.sh`、`scripts/manual/test.sh`、`scripts/env-determinism/test.sh`、`scripts/release/test.sh`、`scripts/test.sh`、`scripts/visual/test.sh`）を実行する（[docs/adr/0079](./docs/adr/0079-shell-tests-on-macos.md)） |
 | `ci.yml` | `format` | fourmolu と hlint で検査する |
-| `ci.yml` | `plugins` | `plugins/` の Rust のクレート（見本のプラグインと、それを書く補助のクレート `golem-plugin-sdk`）のテストを実行し、コミットした `plugins/wasm/*.wasm` が、`plugins/rust-toolchain.toml` の版のツールチェーンでソースから作ったバイト列と一致することを `plugins/build.sh --check` で確かめる（[docs/adr/0106](./docs/adr/0106-sample-plugins-in-rust.md)） |
+| `ci.yml` | `plugins` | `plugins/` の Rust のクレート（見本のプラグインと、それを書く補助のクレート `golem-plugin-sdk`）のテストを実行し、コミットした `plugins/wasm/*.wasm` が、`plugins/rust-toolchain.toml` の版のツールチェーンでソースから作ったバイト列と一致することを `plugins/build.sh --check` で確かめる（[docs/adr/0106](./docs/adr/0106-sample-plugins-in-rust.md)）。`licenses/plugins/` が、依存のクレートとツールチェーンから作り直したものと一致することを `scripts/plugin-licenses.sh --check` で確かめる（[docs/adr/0133](./docs/adr/0133-third-party-licenses-of-sample-plugins.md)） |
 | `ci.yml` | `ci` | `ci.yml` のほかのジョブがすべて成功したか、省かれたことを確かめる（`scripts/ci/gate.sh`） |
 | `race.yml` | `race` | 毎日一回 `main` で起動し、前回の成功した実行から `main` が変わっていれば（`scripts/ci/race-needed.sh`）、並行の競合を探すテスト（`golem-driver-parallel-test`、`golem-font-race-test`、`golem-font-test` の並行のテスト）を `GOLEM_RACE_TESTS=40` で走らせる。`workflow_dispatch` で手で起動すると、判定せずに走らせる。権限は `contents: read` と `actions: read` だけである（[docs/adr/0075](./docs/adr/0075-race-search-repetitions.md)） |
 
@@ -407,7 +409,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 | `smoke` | アーカイブを別のランナーと、`alpine` と `debian:stable-slim` のコンテナの中で展開して動かす。`golem new` の雛形と sample のビルドが diagnostics を一つも出さない（notice も含む）こと、`golem new --no-fonts` が置くべきフォントの一覧のほかに何も書かないことを確かめる（[docs/adr/0080](./docs/adr/0080-release-smoke-checks-diagnostics.md)） |
 | `determinism` | 三つの配布物と CI のビルドの、`scripts/determinism.sh` の出力を比べる |
 | `notes` | `mise.toml` で固定した Claude Code を、版と SHA-256 で固定した mise（[docs/adr/0085](./docs/adr/0085-pin-mise-version-in-workflows.md)）で `jdx/mise-action` を使って入れ、`scripts/release/write-notes.sh` でリリースノートを書き、`notes.md` を成果物として上げる。権限は `contents: read` だけである（[docs/adr/0044](./docs/adr/0044-release-workflow-hardening.md)） |
-| `release` | タグの push のときだけ、`SHA256SUMS`、来歴の証明、GMP のソース、x86-64 の Linux の配布物で組んだ二つのマニュアルの PDF と HTML（`golem-manual-<タグ>` と `golem-dev-manual-<タグ>`）、コミットした見本のプラグイン（`plugins/wasm/*.wasm`、[docs/adr/0106](./docs/adr/0106-sample-plugins-in-rust.md)）、`notes` が書いたリリースノートと共に下書きのリリースを作る。Node と Claude Code は入れない |
+| `release` | タグの push のときだけ、`SHA256SUMS`、来歴の証明、GMP のソース、x86-64 の Linux の配布物で組んだ二つのマニュアルの PDF と HTML（`golem-manual-<タグ>` と `golem-dev-manual-<タグ>`）、コミットした見本のプラグイン（`plugins/wasm/*.wasm`、[docs/adr/0106](./docs/adr/0106-sample-plugins-in-rust.md)）、そのライセンスの文書のアーカイブ（`golem-plugins-licenses-<タグ>.tar.gz`、[docs/adr/0133](./docs/adr/0133-third-party-licenses-of-sample-plugins.md)）、`notes` が書いたリリースノートと共に下書きのリリースを作る。Node と Claude Code は入れない |
 
 リリースノートを書く AI の API キーは、リポジトリの秘密情報 `ANTHROPIC_API_KEY` に置く。
 
