@@ -269,6 +269,7 @@ G06009 のメッセージは [code: <プラグイン>.<コマンド>: <理由>] 
 プラグインは、上の呼び出し規約と CBOR の形を満たせば、どの言語で書いてもよい。
 Golem のリポジトリの [code: plugins/] には、Rust でプラグインを書くための補助のクレート [code: golem-plugin-sdk] と、それで書いた見本のプラグインがある。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0106-sample-plugins-in-rust.md]（docs/adr/0106「見本のプラグインを Rust で書き、リポジトリに置く」）]
 [code: golem-plugin-sdk] は、CBOR の読み書き、意味論 IR の型、要求と応答の型、四つの関数を公開するマクロ [code: export_plugin!] を持ち、ほかのクレートに依存しない。
+[code: export_plugin!] に三つめの関数を渡すと、データを検査する [code: golem_check_data] も公開する。
 見本のプラグインは [code: sh plugins/build.sh] で [code: plugins/wasm/] に作る。
 ツールチェーンの版は [code: plugins/rust-toolchain.toml] で固定し、ソースのパスを置き換えて作るので、どこで作っても同じバイト列になる。
 CI の [code: plugins] ジョブが、コミットした [code: .wasm] がソースから作ったものと同じであることを確かめる。

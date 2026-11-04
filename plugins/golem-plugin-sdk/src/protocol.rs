@@ -117,6 +117,18 @@ pub struct Diagnostic {
     pub message: String,
 }
 
+/// `data-diagnostic = [code, severity, name, line, message]`: an error or a
+/// warning of the data, at a line of the file of the data `name` (counted
+/// from 1), or at its top when `line` is None (docs/adr/0120).
+#[derive(Clone, Debug, PartialEq)]
+pub struct DataDiagnostic {
+    pub code: String,
+    pub severity: Severity,
+    pub name: String,
+    pub line: Option<u64>,
+    pub message: String,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Output {
     Inlines(Vec<Inline>),
@@ -285,6 +297,37 @@ pub fn response_value(r: &Response) -> Value {
                 .collect(),
         ),
     ])
+}
+
+/// The response of `golem_check_data`: `[* data-diagnostic]` (docs/adr/0120).
+pub fn data_diagnostics_value(ds: &[DataDiagnostic]) -> Value {
+    Value::Array(
+        ds.iter()
+            .map(|d| {
+                Value::Array(vec![
+                    Value::Text(d.code.clone()),
+                    Value::Int(match d.severity {
+                        Severity::Error => 0,
+                        Severity::Warning => 1,
+                    }),
+                    Value::Text(d.name.clone()),
+                    d.line.map_or(Value::Null, |l| Value::Int(l as i128)),
+                    Value::Text(d.message.clone()),
+                ])
+            })
+            .collect(),
+    )
+}
+
+/// The request of `golem_check_data`: `[data]` (docs/adr/0120).
+pub fn check_data_request_of(v: &Value) -> R<Data> {
+    match v {
+        Value::Array(xs) => match xs.as_slice() {
+            [data] => data_of(data),
+            _ => Err(DecodeError::Shape("check-data request")),
+        },
+        _ => Err(DecodeError::Shape("check-data request")),
+    }
 }
 
 fn int64(i: i128) -> bool {
@@ -489,6 +532,24 @@ mod tests {
     fn a_request_without_the_context_is_no_request() {
         let v = Value::Array(vec![Value::Int(1), t("f"), Value::Array(vec![Value::Int(8), Value::Int(0), Value::Array(vec![])]), Value::Array(vec![])]);
         assert!(request_of(&v).is_err());
+    }
+
+    #[test]
+    fn reads_the_request_of_a_check_of_the_data_and_writes_its_answer() {
+        let req = Value::Array(vec![Value::Array(vec![Value::Array(vec![t("terms"), Value::Bytes(b"a".to_vec())])])]);
+        assert_eq!(check_data_request_of(&req), Ok(Data(vec![("terms".into(), b"a".to_vec())])));
+        assert!(check_data_request_of(&Value::Array(vec![])).is_err());
+        let ds = vec![
+            DataDiagnostic { code: "tsv-columns".into(), severity: Severity::Error, name: "terms".into(), line: Some(7), message: "m".into() },
+            DataDiagnostic { code: "utf8".into(), severity: Severity::Warning, name: "terms".into(), line: None, message: "n".into() },
+        ];
+        assert_eq!(
+            data_diagnostics_value(&ds),
+            Value::Array(vec![
+                Value::Array(vec![t("tsv-columns"), Value::Int(0), t("terms"), Value::Int(7), t("m")]),
+                Value::Array(vec![t("utf8"), Value::Int(1), t("terms"), Value::Null, t("n")]),
+            ])
+        );
     }
 
     #[test]
