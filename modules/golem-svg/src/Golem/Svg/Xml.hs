@@ -1,9 +1,9 @@
 {-# LANGUAGE MultiWayIf #-}
 
 {- | The XML that SVG needs (golem-pdf ADR 0009): UTF-8 documents only;
-elements, attributes, namespaces, text, CDATA, comments and processing
-instructions (skipped), character references and the five predefined
-entity references. A DOCTYPE with an internal subset is refused, as
+elements, attributes, namespaces, text, CDATA, comments, processing
+instructions (their targets kept, docs/adr/0158), character references and
+the five predefined entity references. A DOCTYPE with an internal subset is refused, as
 entities are never expanded.
 -}
 module Golem.Svg.Xml
@@ -11,7 +11,9 @@ module Golem.Svg.Xml
     Element (..),
     Attr (..),
     Node (..),
+    Document (..),
     parseXml,
+    parseXmlDocument,
     xmlNs,
   )
 where
@@ -55,6 +57,19 @@ data Node
   = NElement !Element
   | -- | text and CDATA, with references resolved
     NText !Text !Pos
+  | {- | a processing instruction: its target and the place of its @<?@
+    (docs/adr/0158); the drawing skips it
+    -}
+    NInstruction !Text !Pos
+  deriving stock (Eq, Show)
+
+-- | A document: its root and the processing instructions around it (docs/adr/0158).
+data Document = Document
+  { docRoot :: !Element,
+    {- | the processing instructions before and after the root, in the
+    order of the document; the XML declaration is not one
+    -} docInstructions :: ![(Text, Pos)]
+  }
   deriving stock (Eq, Show)
 
 -- | The namespace of the @xml:@ prefix.
@@ -68,16 +83,21 @@ type P a = Input -> Either Text (a, Input)
 
 -- | The root element of a document.
 parseXml :: ByteString -> Either Text Element
-parseXml bytes = do
+parseXml bytes = docRoot <$> parseXmlDocument bytes
+
+-- | A document, with the processing instructions outside its root (docs/adr/0158).
+parseXmlDocument :: ByteString -> Either Text Document
+parseXmlDocument bytes = do
   decoded <- either (const (Left "UTF-8 として読めません")) Right (TE.decodeUtf8' (if "\xEF\xBB\xBF" `BS.isPrefixOf` bytes then BS.drop 3 bytes else bytes))
   let lineStarts = Map.fromList (zip (0 : [i + 1 | (i, c) <- zip [0 ..] (T.unpack decoded), c == '\n']) [1 ..])
       posAt off = case Map.lookupLE off lineStarts of
         Just (s, l) -> Pos l (off - s + 1)
         Nothing -> Pos 1 (off + 1)
-  (raw, rest) <- prolog (Input 0 decoded) >>= element posAt Map.empty
-  (_, end) <- misc rest
+  (before, start) <- prolog posAt (Input 0 decoded)
+  (raw, rest) <- element posAt Map.empty start
+  (instructions, end) <- misc posAt before rest
   case end of
-    Input _ t | T.null t -> Right raw
+    Input _ t | T.null t -> Right (Document raw (reverse instructions))
     _ -> Left "ルートの要素の後に余分なものがあります"
 
 -- the input helpers
@@ -100,9 +120,9 @@ upTo what delim i =
   let (before, after) = T.breakOn delim (rest' i)
    in if T.null after then Left (what <> "が閉じていません") else Right (before, advance (T.length before + T.length delim) i)
 
--- | The XML declaration, comments, processing instructions and a DOCTYPE before the root.
-prolog :: Input -> Either Text Input
-prolog i0 = do
+-- | The XML declaration, comments, processing instructions (the last first) and a DOCTYPE before the root.
+prolog :: (Int -> Pos) -> Input -> Either Text ([(Text, Pos)], Input)
+prolog posAt i0 = do
   i1 <-
     if "<?xml" `T.isPrefixOf` rest' i0 && maybe False (isSpace . fst) (T.uncons (T.drop 5 (rest' i0)))
       then do
@@ -110,16 +130,16 @@ prolog i0 = do
         let enc = T.toLower <$> attrIn "encoding" decl
         if maybe True (`elem` ["utf-8", "utf8"]) enc then Right i else Left ("UTF-8 でない文字コードです: " <> fromMaybe "" (attrIn "encoding" decl))
       else Right i0
-  go i1
+  go [] i1
   where
-    go i = do
-      (_, i') <- misc i
+    go acc i = do
+      (acc', i') <- misc posAt acc i
       let t = rest' i'
       if "<!DOCTYPE" `T.isPrefixOf` t
         then do
           let body = T.takeWhile (/= '>') t
-          if "[" `T.isInfixOf` body then Left "内部サブセットを持つ DOCTYPE は使えません" else go (advance (T.length body + 1) i')
-        else Right i'
+          if "[" `T.isInfixOf` body then Left "内部サブセットを持つ DOCTYPE は使えません" else go acc' (advance (T.length body + 1) i')
+        else Right (acc', i')
     attrIn k decl =
       let (_, after) = T.breakOn (k <> "=") decl
        in if T.null after
@@ -130,15 +150,26 @@ prolog i0 = do
                     Just (q, r) | q == '"' || q == '\'' -> Just (T.takeWhile (/= q) r)
                     _ -> Nothing
 
--- | White space, comments and processing instructions.
-misc :: P ()
-misc i0 =
+{- | White space, comments and processing instructions: the instructions
+are put before those given, the last first (adding at the end is
+quadratic).
+-}
+misc :: (Int -> Pos) -> [(Text, Pos)] -> P [(Text, Pos)]
+misc posAt acc i0 =
   let i = skipSpace i0
       t = rest' i
    in if
-        | "<!--" `T.isPrefixOf` t -> upTo "コメント" "-->" (advance 4 i) >>= misc . snd
-        | "<?" `T.isPrefixOf` t -> upTo "処理命令" "?>" (advance 2 i) >>= misc . snd
-        | otherwise -> Right ((), i)
+        | "<!--" `T.isPrefixOf` t -> upTo "コメント" "-->" (advance 4 i) >>= misc posAt acc . snd
+        | "<?" `T.isPrefixOf` t -> do
+            (target, i') <- instruction i
+            misc posAt ((target, posAt (offset i)) : acc) i'
+        | otherwise -> Right (acc, i)
+
+-- | A processing instruction at @<?@: its target, and the input after it.
+instruction :: P Text
+instruction i =
+  let target = T.takeWhile isNameChar (T.drop 2 (rest' i))
+   in (\(_, i') -> (target, i')) <$> upTo "処理命令" "?>" (advance 2 i)
 
 isNameChar :: Char -> Bool
 isNameChar c = isAlphaNum c || c `elem` ("-_.:" :: String) || c > '\x7F'
@@ -215,7 +246,9 @@ content posAt scope acc i =
         | "<![CDATA[" `T.isPrefixOf` t -> do
             (body, i') <- upTo "CDATA" "]]>" (advance 9 i)
             content posAt scope (text body (posAt (offset i)) acc) i'
-        | "<?" `T.isPrefixOf` t -> upTo "処理命令" "?>" (advance 2 i) >>= content posAt scope acc . snd
+        | "<?" `T.isPrefixOf` t -> do
+            (target, i') <- instruction i
+            content posAt scope (PNode (NInstruction target (posAt (offset i))) : acc) i'
         | "<!" `T.isPrefixOf` t -> Left "要素の中に置けない宣言があります"
         | "<" `T.isPrefixOf` t -> do
             (e, i') <- element posAt scope i

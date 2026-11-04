@@ -395,6 +395,10 @@ activeBuild profile targets source files = withSystemTempDirectory "golem-active
 scriptSvg :: BS.ByteString
 scriptSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">\n<script/></svg>"
 
+-- | The SVG of the CLI probe of the security audit of 2026-11-05 (V-02).
+auditSvg :: BS.ByteString
+auditSvg = "<?xml-stylesheet type=\"text/css\" href=\"https://example.invalid/a.css\"?><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><rect width=\"10\" height=\"10\" fill=\"url(https://example.invalid/a#g)\"/></svg>"
+
 activeContentTests :: [TestTree]
 activeContentTests =
   [ testCase "an SVG figure with a script is G08014 for HTML and for EPUB, in dev and prod, and neither is written" $
@@ -421,6 +425,18 @@ activeContentTests =
       (errs, _, html, _, pdf) <- activeBuild Dev [TargetHtml, TargetPdf] "@figure images/f.png web=images/s.svg alt=\"t\"\n" [("images/f.png", png False), ("images/s.svg", scriptSvg)]
       map fst errs @?= [DiagnosticCode "G08014"]
       (html, pdf) @?= (False, True),
+    testCase "an SVG figure with xml-stylesheet and a url() in fill is G08014 for HTML and for EPUB, and neither is written (docs/adr/0158)" $
+      forM_ [TargetHtml, TargetEpub] $ \t -> do
+        (errs, _, html, epub, _) <- activeBuild Dev [t] "@figure images/s.svg alt=\"t\"\n" [("images/s.svg", auditSvg)]
+        errs @?= [(DiagnosticCode "G08014", "SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: images/s.svg:1:1（xml-stylesheet）ほか 1 件")]
+        (html, epub) @?= (False, False),
+    testCase "processing instructions do not change the PDF of an SVG figure (docs/adr/0158)" $ do
+      let withInstructions = "<?xml-stylesheet href=\"a.css\"?>" <> BS.take 65 redSvg <> "<?pi x?>" <> BS.drop 65 redSvg
+      (codes, plain, _) <- pdfWith Dev "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", redSvg)]
+      (codes', with, _) <- pdfWith Dev "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", withInstructions)]
+      (codes, codes') @?= ([], [])
+      assertBool "a PDF" (isJust plain)
+      with @?= plain,
     testCase "an SVG that passes is copied byte for byte, with text and @font-face" $ withSystemTempDirectory "golem-active" $ \tmp -> do
       let ok = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><style>@font-face { font-family: a }</style><use href=\"#a\"/><text>a</text></svg>"
       BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")
