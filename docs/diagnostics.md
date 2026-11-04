@@ -3763,7 +3763,7 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 - メッセージ: `<コマンド> は評価の前に読むので、*[式] と **[式] を書けません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`、`Golem.Eval.File`）
-- ADR: [docs/adr/0112](adr/0112-spread-arguments.md)
+- ADR: [docs/adr/0112](adr/0112-spread-arguments.md)、[docs/adr/0142](adr/0142-import-arguments-are-not-spread.md)
 
 ### 主な原因
 
@@ -4099,10 +4099,13 @@ style.toml にないフォントの役割です
 `@import` の引数が `パス as 名前空間` の形でない。
 引数は、ちょうど三つの位置引数「語か文字列」「語 `as`」「語」の並びでなければならない。
 キーワード引数、式やコマンドの引数、引数の数の違いは、すべてこの誤りである。
+展開（`*[式]`、`**[式]`）を書いた `@import` もこの誤りである。
+プロジェクトの外のファイルを評価するときも、展開せずに書いたままの引数を調べるので、同じくこのコードになる（[docs/adr/0142](adr/0142-import-arguments-are-not-spread.md)）。
+展開の式は評価しないので、式の中の誤りは出さない。
 
 - メッセージ: `@import は「@import パス as 名前空間」の形で書きます`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Imports`）。プロジェクトの外のファイルを評価するときは、golem-eval の `Golem.Eval.File` が同じ関数で調べる。位置はその `@import` のブロック全体である
-- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md) と [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md) が使用済みの番号として触れる
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）、[docs/adr/0142](adr/0142-import-arguments-are-not-spread.md)。[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md) と [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md) が使用済みの番号として触れる
 
 ### 主な原因
 
