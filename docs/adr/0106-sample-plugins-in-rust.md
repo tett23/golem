@@ -1,6 +1,6 @@
 # ADR 0106: 見本のプラグインを Rust で書き、リポジトリに置く
 
-ステータス: 採択
+ステータス: 採択→ホストに依らない `-C metadata`（`plugins/rustc-wrapper.sh`）は [ADR 0138](0138-host-independent-crate-metadata-for-plugins.md)
 
 ## 文脈
 
