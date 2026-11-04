@@ -160,6 +160,13 @@ blockTests =
         let withWeb = Block callSpan Nothing (FigureBlock (Figure "plugin:chart" (Just "plugin:chart") "x" Nothing Nothing [] Nothing False))
         bad [withWeb] [("chart", "svg", svgBytes)] "プラグインの図版は web を持てません"
         bad [Block callSpan Nothing (BulletList [ListItem Nothing [figureOf "plugin:chart"]])] [("chart", "svg", svgBytes)] "図版は出力の最上位にだけ置けます",
+      -- the audit's F-26: a figure of the plugin in the caption of a figure at the top
+      testCase "a caption with a figure or a list is bad output (docs/adr/0144)" $ do
+        let bad bs imgs m = drawing bs imgs >>= \p -> badOutput m (callBlockCommand p "grid" [] [] callSpan)
+            captioned c = Block callSpan Nothing (FigureBlock (Figure "plugin:chart" Nothing "棒グラフ" Nothing Nothing c Nothing False))
+            para = Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])
+        bad [captioned [figureOf "plugin:inner"]] [("chart", "svg", svgBytes), ("inner", "svg", svgBytes)] "図版のキャプションには段落だけを置けます"
+        bad [captioned [para, Block callSpan Nothing (BulletList [ListItem Nothing [para]])]] [("chart", "svg", svgBytes)] "図版のキャプションには段落だけを置けます",
       testCase "images over 64 MiB together are bad output" $ do
         src <- TIO.readFile "test/plugins/big-image.wat"
         wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
