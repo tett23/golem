@@ -32,6 +32,10 @@ library
     Golem.TestSupport.Parallel
     Golem.TestSupport.Skipped
     Golem.TestSupport.TimeLimit
+    Golem.TestSupport.Watchdog
+  -- the thread of the watchdog, outside the Haskell runtime (docs/adr ADR 0117)
+  include-dirs:     cbits
+  c-sources:        cbits/golem_watchdog.c
   build-depends:
     , base        >=4.20 && <4.21
     , bytestring  >=0.11 && <0.13
@@ -50,6 +54,7 @@ test-suite golem-test-support-test
     , bytestring
     , golem-test-support
     , hedgehog
+    , process             >=1.6 && <1.7
     , tasty
     , tasty-hunit         >=0.10 && <0.11
     , text

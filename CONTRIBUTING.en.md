@@ -211,6 +211,9 @@ A test that changes the state of the process (an environment variable, the local
 In golem-driver, such tests go to `golem-driver-global-test`, which is not built with `-threaded` ([docs/adr/0146](./docs/adr/0146-threaded-golem-driver-test.md)).
 If a module of `golem-driver-test` uses `withEnv`, `setEnv`, `setLocaleEncoding`, `setCurrentDirectory` or the like, the `scripts-linux` job of CI (`scripts/ci/test.sh`) fails.
 
+The `-threaded` suite `golem-driver-parallel-test` is wrapped in `watchTests` of `Golem.TestSupport.Watchdog` in `modules/golem-test-support`.
+A POSIX thread outside the Haskell runtime measures the wall-clock time; when a test runs for more than 300 seconds times the value of `GOLEM_RACE_TESTS`, or the process has not exited that long after its tests ended, it writes the names of the running tests and the heartbeat of the runtime to the standard error and stops the process with `abort()` ([docs/adr/0117](./docs/adr/0117-watchdog-outside-the-runtime-for-threaded-tests.md)).
+
 Audit records and performance snapshots go under `docs/`, in a directory for each purpose.
 These are also not changed once committed.
 Records under `docs/audit/`, `docs/audits/`, `docs/benchmarks/`, and `docs/benchmark/` are enforced: the hook and the `adr` job in CI reject changes, deletions, and moves of committed ones ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md), [docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)).

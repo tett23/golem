@@ -1,3 +1,5 @@
+{-# LANGUAGE CApiFFI #-}
+
 {- | Tests of "Golem.TestSupport.ExternalTool" (docs/adr/0028).
 
 The wrapped tests are run directly with 'run', and whether tools are
@@ -9,11 +11,13 @@ module Main (main) where
 
 import Control.Concurrent (threadDelay)
 import Control.Exception (Exception, SomeException, evaluate, throwIO, try)
-import Control.Monad (replicateM)
+import Control.Monad (replicateM, void)
 import Data.ByteString qualified as BS
 import Data.IORef (modifyIORef, newIORef, readIORef)
 import Data.List (isPrefixOf)
 import Data.Text qualified as T
+import Foreign.C.Types (CUInt (..))
+import GHC.Clock (getMonotonicTime)
 import Golem.TestSupport.Bytes
 import Golem.TestSupport.Env
 import Golem.TestSupport.ExternalTool
@@ -23,9 +27,12 @@ import Golem.TestSupport.Manifest
 import Golem.TestSupport.Parallel
 import Golem.TestSupport.Skipped
 import Golem.TestSupport.TimeLimit
+import Golem.TestSupport.Watchdog
 import Hedgehog.Gen qualified as Gen
 import System.CPUTime (getCPUTime)
-import System.Environment (lookupEnv, setEnv, unsetEnv)
+import System.Environment (getExecutablePath, lookupEnv, setEnv, unsetEnv)
+import System.Exit (ExitCode (..))
+import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
 import Test.Tasty.Options (OptionSet, singleOption)
@@ -33,7 +40,10 @@ import Test.Tasty.Providers (IsTest (..))
 import Test.Tasty.Runners (Result (..), TestTree (..), resultSuccessful)
 
 main :: IO ()
-main =
+main = lookupEnv "GOLEM_WATCHDOG_CHILD" >>= maybe allTests watchdogChild
+
+allTests :: IO ()
+allTests =
   defaultMain $
     testGroup
       "golem-test-support"
@@ -48,7 +58,8 @@ main =
         genTextTests,
         manifestTests,
         skippedTests,
-        timeLimitTests
+        timeLimitTests,
+        watchdogTests
       ]
 
 found, missing :: IO (Maybe FilePath)
@@ -357,4 +368,68 @@ timeLimitTests =
         show (WallTimeExceeded 300) @?= "took more than 300 seconds of wall-clock time",
       testCase "hangLimits: 60 seconds of CPU time, 300 of wall-clock time" $
         (cpuSeconds hangLimits, wallSeconds hangLimits) @?= (60, 300)
+    ]
+
+-- * the watchdog (docs/adr ADR 0117)
+
+-- | sleep(3) of the C library, called unsafe: it holds the one OS thread of the non-threaded runtime.
+foreign import capi unsafe "unistd.h sleep" c_sleep :: CUInt -> IO CUInt
+
+{- | The suites that the tests of the watchdog run in a child process of
+this program, by the value of GOLEM_WATCHDOG_CHILD. The limit is 3 seconds: the watchdog
+calls the runtime stuck when it has not run a thread for 2 seconds.
+-}
+watchdogChild :: String -> IO ()
+watchdogChild = \case
+  -- a test that waits in Haskell: the runtime still runs
+  "waits" -> defaultMain (watchTests 3 (testGroup "g" [testCase "waits" (threadDelay 60000000)]))
+  -- a test that holds the runtime: no Haskell thread runs
+  "holds" -> defaultMain (watchTests 3 (testGroup "g" [testCase "holds" (void (c_sleep 60))]))
+  -- tests that end, in a process that does not exit
+  "stays" -> (try (defaultMain (watchTests 3 (testCase "ends" (pure ())))) :: IO (Either ExitCode ())) >> threadDelay 60000000
+  -- tests that end within the limit
+  "ends" -> defaultMain (watchTests 3 (testGroup "g" [testCase "a" (threadDelay 100000), testCase "b" (pure ())]))
+  other -> fail ("GOLEM_WATCHDOG_CHILD: " <> other)
+
+-- | Runs a child suite: its exit code, its standard error and the seconds it took.
+runChild :: String -> IO (ExitCode, String, Double)
+runChild mode = do
+  self <- getExecutablePath
+  t0 <- getMonotonicTime
+  (code, _, err) <- readCreateProcessWithExitCode (proc self []) {env = Just [("GOLEM_WATCHDOG_CHILD", mode)]} ""
+  t1 <- getMonotonicTime
+  pure (code, err, t1 - t0)
+
+{- | The child was stopped by the watchdog within 10 seconds, wrote lines
+that begin with the texts given, and did not write the text forbidden.
+-}
+abortedWith :: String -> [String] -> String -> IO String
+abortedWith mode expected forbidden = do
+  (code, err, took) <- runChild mode
+  let ls = lines err
+  assertBool ("exit code " <> show code <> ", standard error:\n" <> err) (code /= ExitSuccess)
+  assertBool ("took " <> show took <> " s") (took < 10)
+  mapM_ (\l -> assertBool ("no line " <> show l <> " in:\n" <> err) (any (l `isPrefixOf`) ls)) (expected <> ["watchdog: aborting the process"])
+  assertBool ("the text " <> show forbidden <> " in:\n" <> err) (null forbidden || not (T.pack forbidden `T.isInfixOf` T.pack err))
+  pure err
+
+watchdogTests :: TestTree
+watchdogTests =
+  testGroup
+    "watchTests (docs/adr ADR 0117)"
+    [ testCase "a test that waits is named, and the runtime is not stuck"
+        $ void
+        $ abortedWith "waits" ["watchdog: \"g/waits\" has run for more than 3 seconds of wall-clock time", "watchdog: the Haskell runtime last ran a thread"] "stuck",
+      testCase "a test that holds the runtime is named, and the runtime is stuck" $
+        abortedWith "holds" ["watchdog: \"g/holds\" has run for more than 3 seconds of wall-clock time", "watchdog: the Haskell runtime last ran a thread"] "" >>= \err ->
+          assertBool err ("(it is stuck, not only the tests)" `T.isInfixOf` T.pack err),
+      testCase "a process that does not exit after its tests is stopped"
+        $ void
+        $ abortedWith "stays" ["watchdog: no test is running, and the last one ended"] "has run for",
+      testCase "tests that end within the limit end the process as usual, and the watchdog says nothing" $ do
+        (code, err, _) <- runChild "ends"
+        code @?= ExitSuccess
+        assertBool err (not ("watchdog" `T.isInfixOf` T.pack err)),
+      testCase "the name of a test: its groups and its own, joined with /" $
+        watchedName ["a", "b"] "c" @?= "a/b/c"
     ]
