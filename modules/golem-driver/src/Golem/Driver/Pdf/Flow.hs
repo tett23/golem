@@ -1018,6 +1018,9 @@ composeEnv style geom fonts assumed look =
           ceExplicitHyphenPenalty = compExplicitHyphenPenalty comp,
           ceRuby = rubyStyleOf style (lkSize look),
           ceVerticalNumbers = verticalNumbersNamed (stNumbersVertical style),
+          ceRefPageNumbers = case fromMaybe (stNumbersVertical style) (stNumbersRefPage style) of
+            "sideways" -> Nothing
+            v -> Just (verticalNumbersNamed v),
           cePageOf = (`Map.lookup` asLabels assumed),
           ceSidenoteMarker = case snMarker <$> stSidenotes style of
             Just "symbol" -> MarkerSymbol

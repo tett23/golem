@@ -222,6 +222,7 @@ tests =
       codeTests,
       numberShorthandTests,
       reservedSyntaxTests,
+      narrowReservedTests,
       rangeTests
     ]
 
@@ -249,14 +250,13 @@ rangeTests =
     "the range literal (docs/adr ADR 0113)"
     [ testCase "ranges parse" $
         mapM_ parseOk ["[= 1...10]\n", "[= 1.5...2]\n", "[= 1e-3...2]\n", "[= n...n + 4]\n", "[= -1...3]\n", "[= (1...3)]\n", "[= [3, 5...7]]\n", "[= (1...2) == (1...2)]\n", "[= a...b]\n", "[= meta.x...meta.y]\n", "@set r = 1...3\n"],
-      -- The recovery of reserved skips the rest of the paragraph, the ] of
-      -- [= ...] too, which is then G01017 (docs/adr ADR 0115).
+      -- The recovery of reserved reads the two dots only (docs/adr ADR 0116).
       testCase ".. is G01100 from the .." $ do
-        map (\(c, s, _) -> (c, s)) (parsed "[= 1..3]\n") @?= [(g "G01100", 4), (g "G01017", 8)]
-        map (\(c, s, _) -> (c, s)) (parsed "[= a..b]\n") @?= [(g "G01100", 4), (g "G01017", 8)]
+        map (\(c, s, _) -> (c, s)) (parsed "[= 1..3]\n") @?= [(g "G01100", 4)]
+        map (\(c, s, _) -> (c, s)) (parsed "[= a..b]\n") @?= [(g "G01100", 4)]
         map (\(c, s, _) -> (c, s)) (parsed "@set r = 1..3\n") @?= [(g "G01100", 10)]
-        map (\(c, s, _) -> (c, s)) (parsed "[= ..5]\n") @?= [(g "G01100", 3), (g "G01017", 7)]
-        map (\(c, s, _) -> (c, s)) (parsed "[= 5..]\n") @?= [(g "G01100", 4), (g "G01017", 7)],
+        map (\(c, s, _) -> (c, s)) (parsed "[= ..5]\n") @?= [(g "G01100", 3)]
+        map (\(c, s, _) -> (c, s)) (parsed "[= 5..]\n") @?= [(g "G01100", 4)],
       testCase "a range without an end, or with an end that cannot be read, is G02110" $
         mapM_ (\src -> (src, nub (codes src)) @?= (src, [g "G02110"])) ["[= 1....2]\n", "[= 1...2...3]\n", "[= 1...2..3]\n", "[= 5...]\n", "[= ...5]\n"],
       testCase "a comparison is no end, nor a range a side of a comparison" $ do
@@ -284,6 +284,86 @@ rangeTests =
         fst (labelCode (Just "range_end")) @?= "G02110"
     ]
 
+-- | The recovery of the reserved syntax covers the syntax only (docs/adr ADR 0116).
+narrowReservedTests :: TestTree
+narrowReservedTests =
+  testGroup
+    "the recovery of the reserved syntax (docs/adr ADR 0116)"
+    [ testCase "the reserved syntax is exactly G01100" $
+        mapM_
+          (\(src, want) -> (src, sort (parsed src)) @?= (src, sort [(g "G01100", s, e) | (s, e) <- want]))
+          [ ("a [!foo bar] b\n", [(2, 12)]),
+            ("a [!x\nb] c\n", [(2, 4)]),
+            ("# h [!x] t\n", [(4, 8)]),
+            ("= t [!x]\n  d\n", [(4, 8)]),
+            ("| [!x] | b |\n|---|---|\n| c | d |\n", [(2, 6)]),
+            ("| a | b |\n|---|---|\n| [!x] | d |\n", [(22, 26)]),
+            ("| [!x | b |\n|---|---|\n| c | d |\n", [(2, 4)]),
+            ("[strong: [!x]]\n", [(9, 13)]),
+            ("[strong [!x]: y]\n", [(8, 12)]),
+            ("@caption [!x]\n", [(9, 13)]),
+            ("a [!x %% ] %%] b\n", [(2, 14)]),
+            ("[= 1..3]\n", [(4, 6)]),
+            ("[= a..b]\n", [(4, 6)]),
+            ("[= ..5]\n", [(3, 5)]),
+            ("[= 5..]\n", [(4, 6)]),
+            ("[= [1..3]]\n", [(5, 7)]),
+            ("[= f(1..3)]\n", [(6, 8)]),
+            ("[= {a: 1..3}]\n", [(8, 10)]),
+            ("[= 1..3..5]\n", [(4, 6), (7, 9)]),
+            ("[= 1..3...5]\n", [(4, 6)]),
+            ("@set r = 1..3\n", [(10, 12)]),
+            ("@!foo\n", [(0, 5)]),
+            ("@note\n  @!foo\n", [(8, 13)]),
+            ("- a\n  @!foo\n- b\n", [(6, 11)]),
+            ("@style x\n@!foo\n", [(9, 14)])
+          ],
+      testCase "the blocks around the reserved syntax are kept" $ do
+        map shapeOf (astOf "= t [!x]\n  d\n") @?= ["deflist"]
+        map tableShapeLen (astOf "| [!x] | b |\n|---|---|\n| c | d |\n") @?= [Just (2, 2)]
+        map tableShapeLen (astOf "| a | b |\n|---|---|\n| [!x] | d |\n") @?= [Just (2, 2)]
+        map tableShapeLen (astOf "| [!x | b |\n|---|---|\n| c | d |\n") @?= [Just (2, 2)]
+        map itemsOf (astOf "- a\n  @!foo\n- b\n") @?= [Just 2],
+      testCase "the lines indented after @! are G01011" $ do
+        sort (starts "@!foo\n  body\n") @?= [(g "G01011", 6), (g "G01100", 0)]
+        sort (starts "@!foo\n  body\n\n  more\n") @?= [(g "G01011", 6), (g "G01011", 14), (g "G01100", 0)]
+        sort (starts "@!foo\n\n  body\n") @?= [(g "G01011", 7), (g "G01100", 0)],
+      testCase "the errors after the reserved syntax are reported" $ do
+        sort (starts "a [!x] b\nc [ d\n") @?= [(g "G01021", 11), (g "G01100", 2)]
+        sort (map fst (starts "# h [!x] t\nnext [ y\n")) @?= [g "G01021", g "G01100"]
+        sort (map fst (starts "- a [!x] b\n- c [ d\n")) @?= [g "G01021", g "G01100"]
+        starts "[= 1..3] [= 2..4]\n" @?= [(g "G01100", 4), (g "G01100", 13)]
+        sort (starts "[= 1..3, 4]\n") @?= [(g "G01017", 7), (g "G01100", 4)]
+        codes "[= 1, 4]\n" @?= [g "G01017"]
+        sort (starts "@set r = 1..3\n@set y = [\n") @?= [(g "G01020", 23), (g "G01100", 10)]
+        filter (\(c, _, _) -> c == g "G01100") (parsed "@!foo bar\nnext [ y\n") @?= [(g "G01100", 0, 9)]
+        sort (starts "@!foo bar\nnext [ y\n") @?= [(g "G01021", 15), (g "G01100", 0)]
+        sort (starts "@note\n  @!foo\n  next [ y\n") @?= [(g "G01021", 21), (g "G01100", 8)],
+      testCase "the tree keeps the text of the source" $
+        mapM_
+          (\src -> render (fst (parse fid src)) @?= src)
+          [ "a [!foo bar] b\n",
+            "a [!x\nb] c\n",
+            "| [!x | b |\n|---|---|\n| c | d |\n",
+            "a [!x %% ] %%] b\n",
+            "[= 1..3..5]\n",
+            "[= 1..3...5]\n",
+            "[= {a: 1..3}]\n",
+            "@!foo\n  body\n\n  more\n",
+            "- a\n  @!foo\n- b\n",
+            "@set r = 1..3\n@set y = [\n"
+          ]
+    ]
+  where
+    starts = map (\(c, s, _) -> (c, s)) . parsed
+    shapeOf (Golem.Parser.AST.Located _ b) = case b of
+      Golem.Parser.AST.DefList _ -> "deflist" :: Text
+      _ -> "other"
+    tableShapeLen blk = (\rows -> (length rows, maximum (map length rows))) <$> tableShape blk
+    itemsOf (Golem.Parser.AST.Located _ b) = case b of
+      Golem.Parser.AST.BulletList is -> Just (length is)
+      _ -> Nothing
+
 -- | The reserved syntax [! and @! (docs/adr ADR 0115).
 reservedSyntaxTests :: TestTree
 reservedSyntaxTests =
@@ -295,12 +375,10 @@ reservedSyntaxTests =
         map (\(c, s, _) -> (c, s)) (parsed "[! x]\n") @?= [(g "G01100", 0)],
       testCase "[! in a heading, a prose slot, a cell and an argument" $ do
         map (\(c, s, _) -> (c, s)) (parsed "# 題 [!x]\n") @?= [(g "G01100", 6)]
-        -- the recovery skips the ] of strong too, as for G01021 (the same SkipParagraph)
-        map (\(c, s, _) -> (c, s)) (parsed "[strong: [!x]]\n") @?= [(g "G01100", 9), (g "G01017", 15)]
+        -- the recovery reads [!x] only, and ] closes strong (docs/adr ADR 0116)
+        map (\(c, s, _) -> (c, s)) (parsed "[strong: [!x]]\n") @?= [(g "G01100", 9)]
         map (\(c, _, _) -> c) (parsed "[strong: [A]]\n") @?= [g "G01021", g "G01017"]
-        -- In a cell, the recovery of SkipParagraph reads past the end of the
-        -- row, as it does for G01021: the table fails as a block.
-        codes "| [!x] |\n|---|\n| a |\n" @?= codes "| [A] |\n|---|\n| a |\n"
+        codes "| [!x] |\n|---|\n| a |\n" @?= [g "G01100"]
         map (\(c, s, _) -> (c, s)) (parsed "@caption [!x]\n") @?= [(g "G01100", 9)],
       testCase "@! at the start of a block is G01100 from the @" $ do
         map (\(c, s, _) -> (c, s)) (parsed "@!foo\n") @?= [(g "G01100", 0)]

@@ -103,6 +103,8 @@ data ComposeEnv = ComposeEnv
     ceRuby :: !RubyStyle,
     -- | the number notation of vertical text when the source names none
     ceVerticalNumbers :: !VerticalNumbers,
+    -- | the notation of a page reference in vertical text; Nothing sets the digits sideways (docs/adr/0118)
+    ceRefPageNumbers :: !(Maybe VerticalNumbers),
     cePatterns :: !(Maybe Patterns),
     -- | page numbers of labels decided so far (S2); unknown labels take a one-digit stand-in
     cePageOf :: Text -> Maybe Integer,
@@ -148,6 +150,7 @@ defaultComposeEnv fs =
       ceProtrusion = False,
       ceRuby = defaultRubyStyle fs,
       ceVerticalNumbers = VerticalFixed StyleKanji,
+      ceRefPageNumbers = Just (VerticalFixed StyleKanji),
       cePatterns = Nothing,
       cePageOf = const Nothing,
       ceLook = plainLook "body" fs,
@@ -283,7 +286,11 @@ piecesOf env inl = case inl of
   Number sp n style -> at sp (numberPieces env n style)
   Ref sp RefPage l ->
     let n = fromMaybe 1 (cePageOf env l)
-     in at sp (PAnchor (`AnchorPageRef` l) : textPieces lk (T.pack (show n)))
+        -- a number as any other, in the notation of [numbers] ref-page (docs/adr/0118)
+        digits = case ceRefPageNumbers env of
+          Just v | ceVertical env -> numberPieces env {ceVerticalNumbers = v} n Nothing
+          _ -> textPieces lk (T.pack (show n))
+     in at sp (PAnchor (`AnchorPageRef` l) : digits)
   Ref sp _ l -> at sp (textPieces lk l)
   Deferred {} -> []
   -- a mark is set at the mark size of [notes] (golem-driver ADR 0025)
