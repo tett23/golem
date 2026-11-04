@@ -2,6 +2,7 @@ module PluginsSpec (pluginTests, cacheHomeRestored) where
 
 import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
 import Control.Monad (forM_)
+import Data.Bifunctor (second)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.List (isSuffixOf, sort)
@@ -11,7 +12,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Doc.Assemble (Book (..), inlineText)
-import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), RubySegment (..))
+import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), NumberStyle (..), RubySegment (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfInput (..), layoutPages)
 import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
@@ -378,6 +379,87 @@ contextTests =
       ctxOf (TE.decodeUtf8 pdfStyle) >>= (@?= HostContext "vertical" "kanji")
       ctxOf (TE.decodeUtf8 pdfStyle <> "\n[numbers]\nvertical = \"tcy\"\n") >>= (@?= HostContext "vertical" "tcy")
   ]
+
+{- | A one-chapter project, a.gm, in a style, with a sample plugin of
+plugins/wasm (docs/adr/0106) declared under its own name with the given
+keys after its url, the given extra text of the manifest, and the given
+files.
+-}
+withSample :: BS.ByteString -> T.Text -> BS.ByteString -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withSample style name decl extra source files k = withSystemTempDirectory "golem-sample" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> pluginDeclOf (TE.encodeUtf8 name) decl <> extra)
+  BS.writeFile (tmp </> "style.toml") style
+  TIO.writeFile (tmp </> "a.gm") source
+  writeFiles tmp files
+  lockIn [(name, T.unpack name <> ".wasm")] tmp (k tmp)
+
+-- | 'horizontalStyle' in vertical writing.
+verticalStyle :: BS.ByteString
+verticalStyle = TE.encodeUtf8 (T.replace "writing-mode = \"horizontal\"" "writing-mode = \"vertical\"" (TE.decodeUtf8 horizontalStyle))
+
+-- | The inlines in a short form: a text as it is, a number of the style tcy as #n, a tcy as [tcy: t].
+shapes :: [Inline] -> [T.Text]
+shapes = map $ \case
+  Text _ t -> t
+  Number _ n (Just StyleTcy) -> "#" <> T.pack (show n)
+  Number _ n _ -> "number " <> T.pack (show n)
+  Tcy _ t -> "[tcy: " <> t <> "]"
+  CharStyle _ s xs -> "[" <> s <> ": " <> T.concat (shapes xs) <> "]"
+  _ -> "?"
+
+{- | The sample plugin kansuji overrides number-text (docs/adr/0125), with
+the integration tests of docs/adr/0110, 0112 and 0121 that need it.
+-}
+kansujiTests :: [TestTree]
+kansujiTests =
+  [ testCase "integers, decimals, fractions and negative numbers in kanji in vertical writing" $
+      kansuji verticalStyle "[number-text 123]、##12##、[number-text 123 style=kanji-digits]、[number-text [= 3.14]]、[number-text [= 2 / 3]]、[number-text [= -3]]、[number-text [= 3.0]]\n" $ \r ->
+        -- the text of the plugin and the text around it are one text node
+        r @?= (["百二十三、十二、一二三、三・一四、三分の二、マイナス三、三"], []),
+    testCase "the words -3 and 3.14 reach the plugin as numbers (docs/adr/0111)" $
+      kansuji verticalStyle "[number-text -3]、[number-text 3.14]\n" $ \r ->
+        r @?= (["マイナス三、三・一四"], []),
+    testCase "style=tcy gives the number node, and form=fraction a fraction" $
+      kansuji verticalStyle "[number-text 12 style=tcy][number-text [= 0.5] form=fraction]\n" $ \r ->
+        r @?= (["#12", "二分の一"], []),
+    testCase "the default style is [numbers] vertical of style.toml, the context vertical-numbers (docs/adr/0121)" $
+      kansuji (verticalStyle <> "\n[numbers]\nvertical = \"auto\"\n") "##12##と##120##\n" $ \r ->
+        r @?= (["#12", "と百二十"], []),
+    testCase "in horizontal writing an integer is the number node and a rational is in Arabic numerals (the context writing-mode)" $
+      kansuji horizontalStyle "[number-text 123]、[number-text [= 3.14]]、[number-text [= 2 / 3]]、[number-text [= -3]]、[number-text 12 style=kanji]\n" $ \r ->
+        r @?= (["number 123", "、3.14、2/3、", "number -3", "、", "number 12"], []),
+    testCase "style.toml is watched, since kansuji asks for its context (docs/adr/0121)" $
+      withSample verticalStyle "kansuji" "overrides = [\"number-text\"]\n" "" "x\n" [] $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        assertBool (show (evTableFiles e)) ("style.toml" `elem` evTableFiles e),
+    testCase "style.toml is not watched for lookup, which asks for no context (docs/adr/0121)" $
+      withDataPlugin "lookup.wasm" "data = { table = \"w.tsv\" }\n" "x\n" [("w.tsv", "key\tv\n")] $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        assertBool (show (evTableFiles e)) ("style.toml" `notElem` evTableFiles e),
+    testCase "a word that is no number: the diagnostic of the plugin, with the name of its declaration (docs/adr/0108)" $
+      kansuji verticalStyle "[number-text abc]\n" $ \r ->
+        r @?= ([], [(DiagnosticCode "kansuji/not-number", "number-text には数を渡します: abc")]),
+    testCase "G02091: an integer past int64 does not reach the plugin (golem-doc ADR 0006)" $
+      kansuji verticalStyle "[number-text 9223372036854775808][number-text [= 1 / 9223372036854775808]]\n" $ \r ->
+        second (map fst) r @?= ([], [DiagnosticCode "G02091", DiagnosticCode "G02091"]),
+    testCase "*[expr] and **[expr] are expanded into the arguments of the plugin (docs/adr/0110, 0112)" $
+      kansuji verticalStyle "[number-text *[[123]]]と[number-text 12 **[{style: \"tcy\"}]]\n" $ \r ->
+        r @?= (["百二十三と", "#12"], []),
+    testCase "G02111, G02112 and G02077: a spread of the wrong type, and a key twice, where the first key is used (docs/adr/0110, 0112)" $
+      mapM_
+        (\(source, out, code) -> kansuji verticalStyle source $ \r -> second (map fst) r @?= (out, [DiagnosticCode code]))
+        [ ("[number-text *[12]]\n", [], "G02111"),
+          ("[number-text 12 **[[1]]]\n", [], "G02112"),
+          ("[number-text 12 style=kanji **[{style: \"tcy\"}]]\n", ["十二"], "G02077")
+        ],
+    testCase "the largest int64 in kanji" $
+      kansuji verticalStyle "[number-text 9223372036854775807]\n" $ \r ->
+        r @?= (["九百二十二京三千三百七十二兆三百六十八億五千四百七十七万五千八百七"], [])
+  ]
+  where
+    kansuji style source k =
+      withSample style "kansuji" "overrides = [\"number-text\"]\n" "" source [] $ \tmp ->
+        lookedUp Map.empty tmp >>= \(is, ds) -> k (shapes is, ds)
 
 {- | A small CBOR encoder for the responses of check-data.wat: arrays,
 text strings, small unsigned integers and null.
@@ -756,6 +838,7 @@ pluginTests =
     <> [testGroup "the sample plugin glossary (docs/adr/0126)" glossaryTests]
     <> [testGroup "the sample plugin sou-ruby (docs/adr/0130)" souRubyTests]
     <> contextTests
+    <> kansujiTests
     <> blockCommandTests
     <> pluginFigureTests
     <> [ testCase "a filter runs over the declared files and keeps the output" $ do
