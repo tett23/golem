@@ -136,6 +136,8 @@ CI の `scripts-macos` ジョブが、`PATH` をシステムの道具だけに�
 
 [README.md](./README.md) にある固定したネイティブライブラリ（HarfBuzz、FreeType、wasmtime、zlib、hyph-utf8）のバージョンを上げるときは、ADR を書く。
 wasmtime のバージョンを上げるときは、`scripts/wasmtime-licenses.sh` で `licenses/wasmtime-v<バージョン>/`（`libwasmtime.a` に入った Rust のクレートなどのライセンスの文書）を作り直し、生成物もコミットする（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
+`scripts/fetch-wasmtime.sh` を変えたプルリクエストでは、手元で `sh scripts/wasmtime-advisories.sh` を実行し、出力と終了コードをプルリクエストの説明に貼る。
+新しい版が既知のアドバイザリの範囲に入っていないことを確かめるためである（[docs/adr/0157](./docs/adr/0157-check-wasmtime-pin-against-advisories.md)）。
 このスクリプトはネットワークに接続し、`cargo` と `rustup` を要する。
 `c-objects.tsv` の構成要素の列は、スクリプトが埋めないので手で埋める。
 見た目の回帰テストのラスタライザ shem の版を上げるときは、`scripts/visual/fetch-shem.sh` の版と三つのアーカイブの SHA-256 を変える。

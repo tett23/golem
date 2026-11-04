@@ -514,6 +514,16 @@ isbn = "978-..."
 これらのバージョンが変わるとグリフの配置が変わり、同じ入力から同じ出力が得られなくなるためである。
 使っているバージョンは README に記載し、バージョンを上げるときは ADR を作成する。
 
+固定した wasmtime の版は、`.github/workflows/advisories.yml` が毎日一回、`scripts/wasmtime-advisories.sh` で bytecodealliance/wasmtime のリポジトリのアドバイザリと照合する（[ADR 0157](adr/0157-check-wasmtime-pin-against-advisories.md)）。
+パッケージ（`wasmtime`、`wasmtime-wasi`、`cranelift-codegen` など）の版は、固定した版の `licenses/wasmtime-v<バージョン>/MANIFEST.tsv` から引く。
+範囲（`vulnerable_version_range`）は、末尾の `(excluding …)` を除く版として切り離し、残りをカンマ、`&&`、`and` で比較の項目に分け、版の順に並べてから、下限で区間を開き上限で閉じる並びとして読む。
+上限のない区間に入ったときだけ修正版（`patched_versions`）を読み、区間の下限以上で固定した版以下の修正版が同じ系列にあるか、修正版の最大であれば、直った版として当たりにしない（[ADR 0166](adr/0166-read-wasmtime-advisory-ranges-as-written.md)）。
+当たるアドバイザリがあれば終了コード 1、一覧にないパッケージ、ほかのエコシステム、読めない範囲や修正版があれば終了コード 2 で、ワークフローは失敗する。
+当たったアドバイザリが Golem に届くかは判定せず、照合から外す一覧も持たない。
+当たったときは、ADR を書いて wasmtime の版を上げる。
+プルリクエストの CI では照合しない。
+結果がコミットではなく、上流がアドバイザリを公開した時刻で変わるためである。
+
 テストにだけ使う道具として、見た目の回帰テストで PDF のページを画像にするラスタライザ shem（[tett23/shem](https://github.com/tett23/shem)）も版を固定する（[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）。
 golem の実行ファイルと配布物には含めず、テストと CI からコマンドとして呼ぶ。
 `scripts/visual/fetch-shem.sh` が、shem の GitHub の release から、固定した版（v0.1.0-rc3）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ `third_party/shem/` に入れる。
