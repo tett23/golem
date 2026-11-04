@@ -897,6 +897,25 @@ souRubyTests =
         ds @?= [(DiagnosticCode "sou-ruby/sou-ruby-dict", Just f, missing) | f <- ["a.gm", "b.gm"]]
   ]
 
+-- | The sample plugin first-ruby (docs/adr/0131).
+firstRubyTests :: [TestTree]
+firstRubyTests =
+  [ testCase "the first occurrence in each file gets ruby, b.gm again; a ruby of the source counts" $
+      withRubyFilter "first-ruby" "data = { words = \"words.tsv\" }\n" [("words.tsv", TE.encodeUtf8 "東京\tとうきょう\n大阪\tおおさか\n"), ("a.gm", TE.encodeUtf8 "# 東京\n\n東京と[ruby: 大阪|おおさか]。\n\n東京と大阪。\n"), ("b.gm", TE.encodeUtf8 "大阪と東京と東京。\n")] $ \tmp -> do
+        (paras, ds) <- rubyText tmp
+        paras @?= [("a.gm", ["東京《とうきょう》と大阪《おおさか》。", "東京と大阪。"]), ("b.gm", ["大阪《おおさか》と東京《とうきょう》と東京。"])]
+        ds @?= [],
+    testCase "an error of the TSV is reported once for each file of the filter" $
+      withRubyFilter "first-ruby" "data = { words = \"words.tsv\" }\n" [("words.tsv", TE.encodeUtf8 "東京\n"), ("a.gm", TE.encodeUtf8 "東京。\n"), ("b.gm", TE.encodeUtf8 "東京。\n")] $ \tmp -> do
+        (paras, ds) <- rubyText tmp
+        paras @?= [("a.gm", ["東京。"]), ("b.gm", ["東京。"])]
+        ds @?= [(DiagnosticCode "first-ruby/first-ruby-tsv", Just f, "words の 1 行め: 語と読みをタブで区切った二つの欄がありません") | f <- ["a.gm", "b.gm"]],
+    testCase "first-ruby-no-words: no words in the data" $
+      withRubyFilter "first-ruby" "" [("a.gm", TE.encodeUtf8 "東京。\n"), ("b.gm", "")] $ \tmp -> do
+        (_, ds) <- rubyText tmp
+        ds @?= [(DiagnosticCode "first-ruby/first-ruby-no-words", Just f, "manifest.toml の data で words を渡してください") | f <- ["a.gm", "b.gm"]]
+  ]
+
 -- | The data a project passes to a plugin (docs/adr/0105).
 dataTests :: [TestTree]
 dataTests =
@@ -986,6 +1005,7 @@ pluginTests =
     <> checkDataTests
     <> [testGroup "the sample plugin glossary (docs/adr/0126)" glossaryTests]
     <> [testGroup "the sample plugin sou-ruby (docs/adr/0130)" souRubyTests]
+    <> [testGroup "the sample plugin first-ruby (docs/adr/0131)" firstRubyTests]
     <> contextTests
     <> kansujiTests
     <> autoTcyTests

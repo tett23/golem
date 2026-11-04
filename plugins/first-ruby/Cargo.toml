@@ -1,0 +1,14 @@
+[package]
+name = "first-ruby"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "A sample plugin: a filter that puts ruby on the first occurrence in a file of each word of a TSV the project passes as data (docs/adr/0131)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+golem-plugin-sdk = { path = "../golem-plugin-sdk" }
+ruby-common = { path = "../ruby-common" }

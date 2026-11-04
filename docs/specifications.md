@@ -3017,7 +3017,7 @@ Golem は、プラグインの仕組みを通す見本のプラグインを、�
 - ツールチェーンは `plugins/rust-toolchain.toml` で固定し、ソースのパスを固定の文字列に置き換えて作るので、同じソースからは同じバイト列になる。cargo が各クレートに付ける `-C metadata` は、ホストの名前を含む `rustc -vV` の出力から作られ、derive のマクロが書く項目の順をホストごとに変える。`build.sh` は、rustc のラッパー `plugins/rustc-wrapper.sh` で、この値をパッケージの名前、版、フィーチャー、ホスト向けかターゲット向けかの文字列に置き換える。CI の `plugins` ジョブが、コミットした `.wasm` とソースから作ったバイト列の一致を確かめる。
 - 見本のプラグインは、リリースに `<名前>.wasm` として添える。利用者は `https://github.com/tett23/golem/releases/download/<タグ>/<名前>.wasm` を `url` に書いて使う。
 
-今の見本のプラグインは `lookup`、`bar-chart`、`glossary`、`kansuji`、`auto-tcy`、`tsv-table`、`sou-ruby` である。
+今の見本のプラグインは `lookup`、`bar-chart`、`glossary`、`kansuji`、`auto-tcy`、`tsv-table`、`sou-ruby`、`first-ruby` である。
 `[lookup: キー]` は、データ `table` で渡した TSV（キー、タブ、値の行）からキーの値を返す。
 空の行と `#` で始まる行は飛ばし、同じキーの行が二つあれば先の行を使う。
 
@@ -3110,6 +3110,26 @@ files = ["chapters/01.gm"]
 - 読みの分からない漢字の連なりは、ルビなしで残し、警告 `sou-ruby-unread`（`読みの分からない漢字です: <語>`）を出す。警告はファイルごとに語ごとに一度で、位置はその語が最初に出たテキストのノードの位置である。
 - エラーは、フィルタを当てたファイルの先頭に出し、文書を書き換えない。コードは `sou-ruby-no-words`（`words` も辞書もない）、`sou-ruby-utf8`（`words` が UTF-8 でない）、`sou-ruby-tsv`（TSV の行の誤り。行ごとに一つ）、`sou-ruby-dict`（辞書のファイルの一部だけを渡した、Lindera が読めないか版の合わないファイル、欄 `reading` のない辞書）である。
 - 辞書は、利用者が Lindera（6.2.0）の CLI で作り、プロジェクトに置く。Golem のリリースは辞書を添えない。
+
+`first-ruby` は、フィルタ `first-ruby` を当てたファイルごとに、データ `words` の語の最初の出現にだけルビを振る（初出ルビ、[docs/adr/0131](adr/0131-first-occurrence-ruby-plugin.md)）。
+
+```toml
+[plugins.first-ruby]
+url = "https://github.com/tett23/golem/releases/download/v0.1.0-rc4/first-ruby.wasm"
+data = { words = "data/words.tsv" }
+
+[[filters]]
+plugin = "first-ruby"
+filter = "first-ruby"
+files = ["chapters/01.gm", "chapters/02.gm"]
+```
+
+- `words` の TSV と照合は `sou-ruby` と同じである。形態素解析はしない。
+- 初出の単位は、フィルタを当てたファイル一つである。フィルタはほかのファイルを見られないので、一つの章を二つのファイルに分けた本では、二つめのファイルの最初の出現にもルビが振られる。
+- ファイルの中は、段落、箇条書きの項目、表（見出しの行、次に各行）、定義リストの語と説明の順に辿る。注と傍注の本文は注の印の位置で辿り、色と文字スタイルの中も辿る。
+- 見出しは書き換えず、出現にも数えない。コード、圏点、縦中横、数、参照、遅延した式、索引の印、文献の引用、校正の注記、チャネルの項目も同じである。図版とコードのブロック（キャプションを含む）は辿らない。
+- 原稿のルビは残し、その親文字に現れる語は、そこで出現したものとして数える。
+- エラーは、フィルタを当てたファイルの先頭に出し、文書を書き換えない。コードは `first-ruby-no-words`（`words` がない）、`first-ruby-utf8`（`words` が UTF-8 でない）、`first-ruby-tsv`（TSV の行の誤り。行ごとに一つ）である。TSV の誤りは、フィルタを当てたファイルの数だけ報告される。
 
 TSV の読み込み、最長一致、文書の辿り方、読みの割り当ては、ライブラリのクレート `plugins/ruby-common/` にある。
 `crate-type` を持たないので、`build.sh` は wasm を作らない。
