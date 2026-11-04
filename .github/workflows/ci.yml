@@ -237,18 +237,23 @@ jobs:
           fi
           echo "$GHC_DIR/bin" >> "$GITHUB_PATH"
       # without 01-index.tar.gz: cabal plans a build from 01-index.tar and
-      # its indices, and the compressed copy does not shrink in the cache
-      # (docs/adr/0141)
+      # its indices, and the compressed copy does not shrink in the cache.
+      # The step of cabal update removes it, and the cache is saved at the
+      # end of the job; a line with ! in the path took nothing out
+      # (docs/adr/0141, docs/adr/0152)
       - id: index
-        name: Cache the Hackage index (docs/adr/0009, docs/adr/0141)
+        name: Cache the Hackage index (docs/adr/0009, docs/adr/0141, docs/adr/0152)
         uses: actions/cache@v6
         with:
-          path: |
-            ~/.cabal/packages/hackage.haskell.org
-            !~/.cabal/packages/hackage.haskell.org/01-index.tar.gz
-          key: hackage-index-tar-${{ hashFiles('cabal.project.freeze') }}
+          path: ~/.cabal/packages/hackage.haskell.org
+          key: hackage-index-no-gz-${{ hashFiles('cabal.project.freeze') }}
+      # rm without -f: if cabal names the file otherwise, the step fails
       - if: steps.index.outputs.cache-hit != 'true'
-        run: cabal update
+        run: |
+          cabal update
+          ls -l ~/.cabal/packages/hackage.haskell.org/01-index.tar.gz
+          rm ~/.cabal/packages/hackage.haskell.org/01-index.tar.gz
+          du -sh ~/.cabal/packages/hackage.haskell.org
       - name: Cache the cabal store
         uses: actions/cache@v6
         with:
