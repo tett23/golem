@@ -244,6 +244,7 @@ GitHub Actions の [code: needs] は、行列の一つのランナーだけを�
 成果物があれば終わり、[code: build (ubuntu-24.04, outputs)] のジョブが成果物を上げずに終わったか、そのジョブがなければ失敗する。
 待つのは名前で探したジョブなので、[code: build] の行列の [code: name] か [code: part] を変えると [code: visual] は失敗する。
 [code: scripts/ci/test.sh] が、待つ名前と行列から作られる名前の一致を確かめる。
+[code: release.yml] から呼ばれたときはジョブの名前の前に [code: ci / ] がつくが、[code: wait-pdfs.sh] は名前が [code: / build (ubuntu-24.04, outputs)] で終わるジョブも待つジョブとして見つける。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0165-wait-pdfs-finds-the-job-under-a-caller-prefix.md]（docs/adr の ADR 0165「wait-pdfs.sh は、呼び出し元の接頭辞のついたジョブの名前でも待つジョブを見つける」）]
 待つ上限の 60 分は、キャッシュのない [code: build] でも届く長さである。
 [code: build] が [code: visual-pdfs] を上げずに失敗すると、[code: visual] も失敗する（以前は省かれた）。
 どちらの場合も [code: ci] は失敗するので、必須の検査の結果は変わらない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0099-visual-job-waits-only-for-visual-pdfs.md]（docs/adr の ADR 0099「visual ジョブを build と同時に始め、成果物 visual-pdfs だけを待つ」）]
