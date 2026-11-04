@@ -86,6 +86,10 @@ fig0 = Figure "images/a.png" Nothing "x" Nothing Nothing [] Nothing False
 importSites :: Text -> [(Text, Text, Int, Int)]
 importSites src = let (file, _, _) = parseAst (FileId 1) src in map diagSite (lefts (importsOf file))
 
+-- | The start and end of each G02114 (docs/adr ADR 0112, ADR 0143).
+g02114At :: Text -> [(Int, Int)]
+g02114At src = [(st, e) | (c, _, st, e) <- diags src, c == "G02114"]
+
 -- | The code and message of each diagnostic.
 msgs :: Text -> [(Text, Text)]
 msgs src = [(c, m) | (c, m, _, _) <- diags src]
@@ -848,6 +852,18 @@ spreadTests =
         mapM_
           (\src -> diags src @?= importSites src)
           ["@import *[[\"x.gm\"]] as n\n", "@import *[1]\n", "@import *[y]\n", "@import **[{a: 1}]\n"],
+      -- docs/adr ADR 0143: one G02114 for each spread of @style, at the spread, in order
+      testCase "@style in the body form gives G02114 at each spread (ADR 0143)" $
+        g02114At "@style *[[\"a\"]] **[{b: 1}]\n  a\n" @?= [(7, 15), (16, 26)],
+      testCase "@style in the attribute form gives G02114 at each spread (ADR 0143)" $
+        g02114At "@style *[[\"a\"]] **[{b: 1}]\na\n" @?= [(7, 15), (16, 26)],
+      testCase "@style with one spread gives one G02114 (ADR 0143)" $ do
+        g02114At "@style **[{b: 1}]\n  a\n" @?= [(7, 17)]
+        g02114At "@style **[{b: 1}]\na\n" @?= [(7, 17)],
+      testCase "a paragraph after @style with two spreads is as without @style (ADR 0143)" $ do
+        let paras src = [(st, stripSpans is) | Paragraph st is <- body src]
+        paras "@style *[[\"a\"]] **[{b: 1}]\na\n" @?= [(Nothing, ["a"])]
+        paras "@style *[[\"a\"]] **[{b: 1}]\n  a\n\nb\n" @?= [(Nothing, ["b"])],
       testCase "G02114: @style decides the lines of its body before the evaluation" $ do
         errs "@style *[[\"note\"]]\na\n" @?= ["G02114"]
         errs "@style *[[\"note\"]]\n  a\n" @?= ["G02114"]
