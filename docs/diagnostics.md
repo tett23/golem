@@ -7,7 +7,7 @@ diagnostic は、コードと一行のメッセージだけを出す。
 LSP の diagnostic の `codeDescription` は、GitHub の上のこの文書の節を指す。
 
 プラグインが出す diagnostic のコードは、この文書の対象外である。
-プラグインのコードはプラグインが決めるので、プラグインの文書を参照する。
+プラグインのコードは `<プラグインの宣言の名前>/<英小文字、数字、- の列>` の形で（[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)）、後ろの部分はプラグインが決めるので、プラグインの文書を参照する。
 
 コードは、以前は `G` と 4 桁の数字だった（[docs/adr/0061](adr/0061-five-digit-diagnostic-codes.md)）。
 4 桁のコードは廃止したので、`golem explain` も `silence-notices` と `silence-info` も受け付けない。

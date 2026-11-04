@@ -86,7 +86,8 @@ $ golem explain G02022
 
 実際には一行で表示されます。
 同じ説明は、Golem の Web 上の文書でも読めます[note: Golem の診断のコードの一覧。[code: https://github.com/tett23/golem/blob/main/docs/diagnostics.md]]。
-プラグインが出す診断のコードは、プラグインの文書を参照してください。
+プラグインが出す診断のコードは、[code: lookup/no-key] のように、[code: manifest.toml] でプラグインに付けた名前と [code: /] で始まります。
+その説明は、プラグインの文書を参照してください。
 
 @label notices
 ## お知らせ

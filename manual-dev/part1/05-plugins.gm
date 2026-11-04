@@ -180,7 +180,9 @@ channel-decl = [name: tstr, order: 0 / 1, locators: bool]
 - 要求の最後の [code: data] は、プロジェクトが [code: manifest.toml] の [code: data] で渡すファイルのバイト列である。名前の順に並び、プラグインが [code: description] の [code: data] で宣言した名前のうち、プロジェクトが渡したものだけを含む。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0105-plugin-data.md]（docs/adr/0105「プラグインにデータを渡す」）]
 - 自然数と整数の引数は [code: int64] で、有理数の引数は値が整数でもタグ 30 の [code: rational]（既約の分子と分母）で渡る。[code: 1 / 2] は [code: 30(\[1, 2\])]、[code: 10 / 2] は [code: 30(\[5, 1\])] である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0101-rational-numbers-in-expressions.md]（ADR 0101「式の言語の数を自然数、整数、有理数の三つの型にし、浮動小数点数をなくす」）]
 - 遅延した式（[code: doc] を参照する [code: \[= ...\]]）の数は、整数が [code: \[0, span, int64\]]、自然数が [code: \[12, span, uint64\]]、有理数が [code: \[13, span, rational\]] である。範囲の式は [code: \[14, span, expr, expr\]] である。プラグインが式に浮動小数点数（[code: \[1, span, float\]]）を書くと、ホストはその値の正確な有理数として読む。NaN と無限大は G06100 になる。
-- 応答の diagnostic の重大度は、0 がエラー、1 が警告である。プラグインは notice を出せない。コードはプラグインが決め、Golem の [code: docs/diagnostics.md] の対象外である。
+- 応答の diagnostic の重大度は、0 がエラー、1 が警告である。プラグインは notice を出せない。
+- 応答の diagnostic のコードは、英小文字、数字、[code: -] だけからなる空でない列である。ホストはその前に、[code: manifest.toml] でのプラグインの宣言の名前と [code: /] を置く。[code: lookup] と宣言したプラグインが返した [code: no-key] は [code: lookup/no-key] になる。ほかの形のコードは不正な出力（G06009）である。コードは Golem の [code: docs/diagnostics.md] の対象外である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0108-plugin-diagnostic-codes-and-spans.md]（docs/adr/0108「プラグインが返す diagnostic のコードと位置を検査する」）]
+- 応答の diagnostic の [code: span] は、出力のノードと同じく、呼び出しの位置か、要求に含まれていたノードの位置に限る。フィルタの diagnostic に限り、要求の文書のファイルの先頭（[code: \[file, 0, 0\]]）も指してよい。データの誤りのように、どのノードにも属さない誤りを報告するためである。ほかの位置は不正な出力（G06009）である。
 
 たとえばファイルの先頭に書いた [code: \[furigana: 漢字\]] の呼び出しの要求は、CBOR の diagnostic notation（RFC 8949 が定める、CBOR を人が読むための表記）で次のような形になる。
 [code: span] は、ファイルの番号と、UTF-8 のバイトの範囲の組である。
