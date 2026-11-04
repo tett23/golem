@@ -1,6 +1,6 @@
 #!/bin/sh
-# The rustc wrapper of build.sh (docs/adr/0106): cargo runs it as
-# `rustc-wrapper.sh <rustc> <arguments>`.
+# The rustc wrapper of build.sh (docs/adr/0106, docs/adr/0138): cargo
+# runs it as `rustc-wrapper.sh <rustc> <arguments>`.
 #
 # Cargo gives each crate a -C metadata hashed with, among others, the
 # output of `rustc -vV`, which names the host. The ids of the crates then
