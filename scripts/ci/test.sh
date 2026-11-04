@@ -990,7 +990,7 @@ if step_has "$INDEX_STEP" '          path: ~/.cabal/packages/hackage.haskell.org
   ng "ci.yml: the Hackage index is cached as one directory under hackage-index-no-gz-"
 fi
 UPDATE_STEP="- if: steps.index.outputs.cache-hit != 'true'"
-UPD_AT=$(build_lines | grep -nF "$UPDATE_STEP" | head -1 | cut -d: -f1)
+UPD_AT=$(build_lines | grep -nF -- "$UPDATE_STEP" | head -1 | cut -d: -f1)
 if [ -n "$UPD_AT" ] && build_lines | sed -n "$UPD_AT,\$p" | awk 'NR > 1 && /^      - / { exit } { print }' >"$WORK/update-step" &&
   grep -n 'cabal update' "$WORK/update-step" >/dev/null &&
   [ "$(grep -n '^ *cabal update$' "$WORK/update-step" | cut -d: -f1)" -lt "$(grep -n '^ *rm ~/.cabal/packages/hackage.haskell.org/01-index.tar.gz$' "$WORK/update-step" | cut -d: -f1)" ]; then ok; else
