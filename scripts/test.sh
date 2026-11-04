@@ -2,10 +2,11 @@
 # Tests of the scripts that run only by hand
 # (docs/adr/0078-tests-for-release-and-hand-run-scripts.md):
 # gen-vertical-orientation.sh, fixtures/copy-fonts.sh,
-# fixtures/fetch-public-domain.sh and plugin-licenses.sh
-# (docs/adr/0133-third-party-licenses-of-sample-plugins.md). Each script
-# writes into the repository it is in, so each test runs a copy of it in a
-# fake root in a temporary directory; nothing here uses the network. The
+# fixtures/fetch-public-domain.sh, plugin-licenses.sh
+# (docs/adr/0133-third-party-licenses-of-sample-plugins.md) and
+# wasmtime-advisories.sh (docs/adr/0157, docs/adr/0166). Each script that
+# writes into the repository it is in runs as a copy in a fake root in a
+# temporary directory; nothing here uses the network. The
 # scripts-linux job of .github/workflows/ci.yml runs this.
 #
 # wasmtime-licenses.sh has no test: it runs curl, git, jq, nm, strings, ar,
@@ -391,6 +392,166 @@ printf 'changed\n' >>"$OUTP/crates/lindera-6.2.0/LICENSE"
 pl upstream bin-ok --check
 expect "plugin-licenses --check: a LICENSE of UPSTREAM of another SHA-256" 1
 if [ ! -e "$PL/calls" ]; then ok; else ng "plugin-licenses --check: no curl for a LICENSE of another SHA-256"; fi
+
+# ---------------------------------------------------------------- wasmtime-advisories.sh
+# (docs/adr/0157-check-wasmtime-pin-against-advisories.md,
+# docs/adr/0166-read-wasmtime-advisory-ranges-as-written.md)
+#
+# testdata/wasmtime-advisories.json is the 86 advisories of
+# bytecodealliance/wasmtime as the API gave them on 2026-11-05, with only
+# ghsa_id, severity, summary and package, vulnerable_version_range and
+# patched_versions of vulnerabilities. The list of the crates is
+# licenses/wasmtime-v49.0.5/MANIFEST.tsv as it is.
+
+WA=$WORK/advisories
+mkdir -p "$WA"
+WA_MANIFEST=$HERE/../licenses/wasmtime-v49.0.5/MANIFEST.tsv
+WA_DATA=$HERE/testdata/wasmtime-advisories.json
+# manifest PACKAGE VERSION...: a list of the crates with PACKAGE at each VERSION
+manifest() {
+  pkg=$1
+  shift
+  printf 'package\tversion\tlibrary\tlicense\tfiles\n' >"$WA/manifest.tsv"
+  for v in "$@"; do printf '%s\t%s\tx\tMIT\tLICENSE\n' "$pkg" "$v" >>"$WA/manifest.tsv"; done
+}
+# advisory RANGE [PATCHED [PACKAGE [ECOSYSTEM]]]: one advisory GHSA-test
+# with one element
+advisory() {
+  jq -n --arg r "$1" --arg p "${2:-}" --arg n "${3:-wasmtime}" --arg e "${4:-rust}" \
+    '[{ghsa_id: "GHSA-test", severity: "high", summary: "a test",
+       vulnerabilities: [{package: {ecosystem: $e, name: $n},
+                          vulnerable_version_range: $r, patched_versions: $p}]}]' >"$WA/one.json"
+}
+# advise VERSION: checks the version of wasmtime VERSION against one.json
+advise() {
+  WASMTIME_VERSION=$1 WASMTIME_MANIFEST=$WA/manifest.tsv sh "$HERE/wasmtime-advisories.sh" "$WA/one.json"
+}
+# matches RANGE PATCHED CODE VERSION...: for each VERSION (of the package
+# wasmtime), the exit code is CODE (1: it matches; 0: it does not)
+matches() {
+  advisory "$1" "$2"
+  for v in $4; do
+    manifest wasmtime "$v"
+    run advise "$v"
+    expect "wasmtime-advisories: '$1' (patched '$2') at $v" "$3"
+  done
+}
+
+# the ranges of ADR 0157
+R='<36.0.19, >=37.0.0, <48.0.7, >=49.0.0, <49.0.4'
+matches "$R" '' 1 '49.0.2 49.0.3 36.0.18 37.0.0 48.0.6'
+matches "$R" '' 0 '49.0.4 49.0.5 36.0.19 48.0.7 50.0.0'
+matches '>= 49.0.0, < 49.0.5' '' 1 49.0.4
+matches '>= 49.0.0, < 49.0.5' '' 0 49.0.5
+matches '<= 36.0.17' '' 1 36.0.17
+matches '<= 36.0.17' '' 0 36.0.18
+matches '50.0.0' '' 1 50.0.0
+matches '50.0.0' '' 0 '49.0.5 50.0.1'
+advisory "$R"
+manifest wasmtime 49.0.2
+run advise 49.0.2
+if [ "$(cat "$WORK/out")" = "GHSA-test	high	wasmtime	$R	a test" ]; then ok; else ng "wasmtime-advisories: the line of a matching advisory"; fi
+
+# the ranges of ADR 0166: an upper bound before the lower one, a list of
+# versions, (excluding ...), && and a trailing comma
+matches '<= 6.0.0, >= 0.37.0' '' 1 '0.37.0 6.0.0'
+matches '<= 6.0.0, >= 0.37.0' '' 0 '0.36.9 6.0.1 49.0.5'
+matches '<= 6.0.0, >= 1.0.0' '' 0 49.0.5
+matches '<= 0.38.1, >=0.37.0' '' 0 49.0.5
+matches '0.34.0, 0.34.1, 0.35.0, and 0.35.1' '' 1 '0.34.1 0.35.1'
+matches '0.34.0, 0.34.1, 0.35.0, and 0.35.1' '' 0 0.34.2
+matches '<= 0.34.0 (excluding 0.33.1)' '' 1 '0.34.0 0.33.0'
+matches '<= 0.34.0 (excluding 0.33.1)' '' 0 '0.33.1 0.34.1'
+matches '>= 0.26.0 && <= 0.29.0' '' 1 0.29.0
+matches '>= 0.26.0 && <= 0.29.0' '' 0 0.30.0
+matches '>=0.19.0 && <=0.29.0' '' 1 0.29.0
+matches '>=0.19.0 && <=0.29.0' '' 0 0.30.0
+matches '>= 30.0.0, <= 36.0.7, >= 37.0.0, <= 43.0.1, 44.0.0,' '' 1 '44.0.0 36.0.7'
+matches '>= 30.0.0, <= 36.0.7, >= 37.0.0, <= 43.0.1, 44.0.0,' '' 0 '44.0.1 36.0.8'
+# ranges it cannot read
+for r in '>=49.0.0, >=50.0.0' '~49.0' '<= 1.0.0 (excluding 0.9.0) , >= 2.0.0' '>=49.0.0, <=49.0.0' '<36.0.0, <37.0.0'; do
+  matches "$r" '' 2 49.0.5
+done
+
+# the patched versions, read only in an interval with no upper bound
+matches '>= 29.0.0' '36.0.5, 40.0.3, 41.0.1' 0 '49.0.5 41.0.1 40.0.3 36.0.5'
+matches '>= 29.0.0' '36.0.5, 40.0.3, 41.0.1' 1 '41.0.0 40.0.2 37.0.0 29.0.0'
+advisory '>= 29.0.0' '36.0.5, 40.0.3, 41.0.1'
+manifest wasmtime 49.0.5
+run advise 49.0.5
+if [ "$(cat "$WORK/err")" = "note: GHSA-test	wasmtime	49.0.5	>= 29.0.0	36.0.5, 40.0.3, 41.0.1" ]; then ok; else ng "wasmtime-advisories: a note for a version fixed by a patched version"; fi
+matches '>= 29.0.0' '' 1 49.0.5
+matches '>= 29.0.0' '50.0.1' 1 49.0.5
+matches '<36.0.19, >= 37.0.0, <43.0.0' '36.0.19' 1 '37.0.0 42.0.0'
+R='< 24.0.10, >= 25.0.0, < 36.0.11, >= 37.0.0, < 44.0.3, 45.0.0, 45.0.1'
+matches "$R" '24.0.10, 36.0.11, 44.0,3, 45.0.2' 1 45.0.0
+matches "$R" '24.0.10, 36.0.11, 44.0,3, 45.0.2' 0 49.0.5
+matches '>= 29.0.0' '41.0,1' 2 49.0.5
+
+# the packages: their versions are those of the list of the crates
+advisory '<= 0.93.0, >= 0.88.0' '' cranelift-codegen
+manifest cranelift-codegen 0.136.5
+run advise 49.0.5
+expect "wasmtime-advisories: cranelift-codegen at 0.136.5" 0
+manifest cranelift-codegen 0.90.0
+run advise 49.0.5
+expect "wasmtime-advisories: cranelift-codegen at 0.90.0" 1
+advisory '< 49.0.0' '' wasmtime-cranelift
+manifest wasmtime 48.0.0
+run advise 48.0.0
+expect "wasmtime-advisories: a package not in the list" 2
+advisory '< 49.0.0' '' wasmtime npm
+run advise 48.0.0
+expect "wasmtime-advisories: the ecosystem npm" 2
+advisory '< 49.0.0'
+manifest wasmtime 49.0.5 48.0.0
+run advise 49.0.5
+expect "wasmtime-advisories: a package at two versions, one of them in the range" 1
+run env WASMTIME_VERSION=49.0.5 WASMTIME_MANIFEST="$WA/no-such.tsv" sh "$HERE/wasmtime-advisories.sh" "$WA/one.json"
+expect "wasmtime-advisories: no list of the crates" 2
+# one line for an advisory whatever elements match (GHSA-h4wp-g4x3-7398)
+jq '[.[] | select(.ghsa_id == "GHSA-h4wp-g4x3-7398")]' "$WA_DATA" >"$WA/one.json"
+manifest wasmtime-wasi-http 49.0.2 36.0.1
+run advise 49.0.2
+expect "wasmtime-advisories: GHSA-h4wp-g4x3-7398 at 49.0.2" 1
+if [ "$(wc -l <"$WORK/out" | tr -d ' ')" = 1 ]; then ok; else ng "wasmtime-advisories: one line for an advisory with two matching elements"; fi
+
+# the whole data
+run env WASMTIME_VERSION=49.0.5 WASMTIME_MANIFEST="$WA_MANIFEST" sh "$HERE/wasmtime-advisories.sh" "$WA_DATA"
+expect "wasmtime-advisories: the advisories of 2026-11-05 at 49.0.5" 0
+if [ ! -s "$WORK/out" ]; then ok; else ng "wasmtime-advisories: nothing matches 49.0.5"; fi
+if [ "$(cut -f 1 "$WORK/err")" = "note: GHSA-vc8c-j3xm-xj73" ]; then ok; else ng "wasmtime-advisories: one note, GHSA-vc8c-j3xm-xj73, at 49.0.5"; fi
+sed 's/	49\.0\.5	/	49.0.2	/; s/	0\.136\.5	/	0.136.2	/' "$WA_MANIFEST" >"$WA/manifest-49.0.2.tsv"
+run env WASMTIME_VERSION=49.0.2 WASMTIME_MANIFEST="$WA/manifest-49.0.2.tsv" sh "$HERE/wasmtime-advisories.sh" "$WA_DATA"
+expect "wasmtime-advisories: the advisories of 2026-11-05 at 49.0.2" 1
+cat >"$WA/expected" <<'EOF'
+GHSA-3982-jqvv-277m
+GHSA-3r89-v5mq-j5xf
+GHSA-54p9-vhhq-8f7q
+GHSA-5hhx-4wrr-3j9g
+GHSA-5qpp-g3j2-8frx
+GHSA-63h4-6cx9-pjfj
+GHSA-6fr9-xmw9-5352
+GHSA-7v24-42x9-pxf7
+GHSA-93g3-36p8-x2gc
+GHSA-9prg-84vf-g5fc
+GHSA-9pvw-hwfg-92h5
+GHSA-h4wp-g4x3-7398
+GHSA-hmmr-87qq-258j
+GHSA-hmwq-g22x-qjw5
+GHSA-jxcf-8qw5-5c33
+GHSA-m6w2-jwq2-cv2c
+GHSA-m9f7-9w4p-gv38
+GHSA-mghf-wjfp-p5xm
+GHSA-p79w-pv2r-29qp
+GHSA-q554-3cjc-rx7p
+GHSA-qw58-7h65-crq2
+GHSA-r8xh-cgf7-392j
+GHSA-vcg5-q8m5-8379
+GHSA-w36r-2hch-9xp9
+GHSA-wjc8-633q-pwxr
+EOF
+if [ "$(cut -f 1 "$WORK/out" | LC_ALL=C sort)" = "$(cat "$WA/expected")" ]; then ok; else ng "wasmtime-advisories: the 25 advisories that match 49.0.2"; fi
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures\n' "$COUNT" "$FAILURES"

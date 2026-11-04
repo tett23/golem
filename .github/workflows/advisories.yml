@@ -1,0 +1,28 @@
+name: Advisories
+
+# Checks the pinned version of wasmtime against the security advisories of
+# bytecodealliance/wasmtime, once a day and whenever it is started by hand
+# (docs/adr/0157, docs/adr/0166). A failed scheduled run is the notice to
+# the maintainer. Pull requests do not run it: its result depends on the
+# day, not on the commit.
+on:
+  schedule:
+    - cron: "41 21 * * *"
+  workflow_dispatch:
+
+# The published advisories of a public repository are readable with this.
+permissions:
+  contents: read
+
+jobs:
+  wasmtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: The pinned wasmtime against its advisories (docs/adr/0157)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh scripts/wasmtime-advisories.sh
