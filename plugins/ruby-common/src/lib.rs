@@ -336,11 +336,12 @@ fn walk_run(xs: &mut Vec<Inline>, v: &mut impl Visitor) {
 }
 
 /// The TSV of words a project passes as the data `name`, if it passes it.
-/// A TSV that is not UTF-8 is the error `<code>-utf8`, and each wrong line
-/// the error `<code>-tsv`, at the top of the file.
-pub fn read_words(data: &Data, name: &str, file: u64, code: &str) -> Result<Option<Dict>, Vec<Diagnostic>> {
+/// A TSV that is not UTF-8 is the error `utf8`, and each wrong line
+/// the error `tsv`, at the top of the file. The host puts the name of the
+/// plugin before a code (docs/adr/0108).
+pub fn read_words(data: &Data, name: &str, file: u64) -> Result<Option<Dict>, Vec<Diagnostic>> {
     let top = Span { file, start: 0, end: 0 };
-    let error = |suffix: &str, message: String| Diagnostic { code: format!("{code}-{suffix}"), severity: Severity::Error, span: top, message };
+    let error = |code: &str, message: String| Diagnostic { code: code.into(), severity: Severity::Error, span: top, message };
     let Some(bytes) = data.get(name) else { return Ok(None) };
     let tsv = std::str::from_utf8(bytes).map_err(|_| vec![error("utf8", format!("{name} が UTF-8 ではありません"))])?;
     parse_tsv(tsv)

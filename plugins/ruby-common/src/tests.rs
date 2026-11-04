@@ -186,24 +186,24 @@ fn doc_para() -> Vec<Inline> {
 #[test]
 fn the_words_a_project_passes() {
     let data = |b: &[u8]| Data(vec![("words".into(), b.to_vec())]);
-    assert_eq!(read_words(&Data::default(), "words", 3, "x"), Ok(None));
-    assert_eq!(read_words(&data("東京\tとうきょう\n".as_bytes()), "words", 3, "x").unwrap().unwrap().get("東京").is_some(), true);
+    assert_eq!(read_words(&Data::default(), "words", 3), Ok(None));
+    assert_eq!(read_words(&data("東京\tとうきょう\n".as_bytes()), "words", 3).unwrap().unwrap().get("東京").is_some(), true);
     let top = Span { file: 3, start: 0, end: 0 };
     assert_eq!(
-        read_words(&data(b"\xff"), "words", 3, "x"),
-        Err(vec![Diagnostic { code: "x-utf8".into(), severity: Severity::Error, span: top, message: "words が UTF-8 ではありません".into() }])
+        read_words(&data(b"\xff"), "words", 3),
+        Err(vec![Diagnostic { code: "utf8".into(), severity: Severity::Error, span: top, message: "words が UTF-8 ではありません".into() }])
     );
     assert_eq!(
-        read_words(&data("a\nb\n".as_bytes()), "words", 3, "x"),
+        read_words(&data("a\nb\n".as_bytes()), "words", 3),
         Err(vec![
             Diagnostic {
-                code: "x-tsv".into(),
+                code: "tsv".into(),
                 severity: Severity::Error,
                 span: top,
                 message: "words の 1 行め: 語と読みをタブで区切った二つの欄がありません".into()
             },
             Diagnostic {
-                code: "x-tsv".into(),
+                code: "tsv".into(),
                 severity: Severity::Error,
                 span: top,
                 message: "words の 2 行め: 語と読みをタブで区切った二つの欄がありません".into()
