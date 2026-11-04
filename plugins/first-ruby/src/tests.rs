@@ -100,6 +100,20 @@ fn without_words_the_document_is_kept_and_an_error_says_so() {
 }
 
 #[test]
+fn the_check_of_the_data_reports_no_words_once() {
+    // docs/adr/0136
+    let no_words = DataDiagnostic {
+        code: "no-words".into(),
+        severity: Severity::Error,
+        name: None,
+        line: None,
+        message: "manifest.toml の data で words を渡してください".into(),
+    };
+    assert_eq!(check_data(&Data::default()), vec![no_words]);
+    assert_eq!(check_data(&Data(vec![("words".into(), "東京\tとうきょう\n".as_bytes().to_vec())])), vec![]);
+}
+
+#[test]
 fn a_wrong_tsv_keeps_the_document() {
     let (bs, ds) = run(vec![para(vec![t("東京")])], "東京\n");
     assert_eq!(bs, vec![para(vec![t("東京")])]);

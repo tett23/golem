@@ -829,12 +829,14 @@ pluginSeverity = \case
 {- | A diagnostic of the data of a plugin (golem-doc.cddl @data-diagnostic@,
 docs/adr/0120): the code, the severity, the name of the data and the line,
 from 1, or none for the whole file. The host makes it a diagnostic at the
-start of that line of the file of the data.
+start of that line of the file of the data. No name is a diagnostic of
+all the data the plugin was given, such as data it needs and was not
+given, and has no line (docs/adr/0136).
 -}
 data DataDiagnostic = DataDiagnostic
   { ddCode :: !Text,
     ddSeverity :: !Severity,
-    ddName :: !Text,
+    ddName :: !(Maybe Text),
     ddLine :: !(Maybe Natural),
     ddMessage :: !Text
   }
@@ -860,12 +862,19 @@ checkData p
       TList ds -> mapM one ds
       _ -> Left (BadOutput "データの検査の応答の形が不正です")
     one = \case
-      TList [TString code, sev, TString name, lineT, TString msg] -> do
+      TList [TString code, sev, nameT, lineT, TString msg] -> do
         pluginCode code
         severity <- pluginSeverity sev
+        name <- case nameT of
+          TString n -> Right (Just n)
+          TNull -> Right Nothing
+          _ -> Left (BadOutput "データの診断の形が不正です")
         line <- case lineT of
           TNull -> Right Nothing
           TInt n | n >= 1 -> Right (Just (fromIntegral n))
           _ -> Left (BadOutput "データの診断の行が不正です")
-        Right (DataDiagnostic code severity name line msg)
+        -- no name is no file, so no line to count (docs/adr/0136)
+        case (name, line) of
+          (Nothing, Just _) -> Left (BadOutput "データの名前のない診断に行があります")
+          _ -> Right (DataDiagnostic code severity name line msg)
       _ -> Left (BadOutput "データの診断の形が不正です")

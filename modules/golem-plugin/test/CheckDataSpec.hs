@@ -63,7 +63,13 @@ checkDataTests =
       testCase "the response is the diagnostics of the data: code, severity, name, line or null, message" $ do
         p <- answering (TList [TList [TString "tsv-columns", TInt 0, TString "table", TInt 7, TString "欄の数が違います"], TList [TString "tsv-empty", TInt 1, TString "table", TNull, TString "空です"]])
         checkData p
-          >>= (@?= Right [DataDiagnostic "tsv-columns" Error "table" (Just 7) "欄の数が違います", DataDiagnostic "tsv-empty" Warning "table" Nothing "空です"]),
+          >>= (@?= Right [DataDiagnostic "tsv-columns" Error (Just "table") (Just 7) "欄の数が違います", DataDiagnostic "tsv-empty" Warning (Just "table") Nothing "空です"]),
+      testCase "a diagnostic with a null name and a null line is one of all the data (docs/adr/0136)" $ do
+        p <- answering (TList [TList [TString "no-data", TInt 0, TNull, TNull, TString "データを渡してください"]])
+        checkData p >>= (@?= Right [DataDiagnostic "no-data" Error Nothing Nothing "データを渡してください"]),
+      testCase "a diagnostic with a null name and a line is bad output (docs/adr/0136)" $ do
+        p <- answering (TList [TList [TString "no-data", TInt 0, TNull, TInt 1, TString "m"]])
+        checkData p >>= (@?= Left (BadOutput "データの名前のない診断に行があります")),
       testCase "a code of the wrong form is bad output (docs/adr/0108)" $
         mapM_
           ( \c -> do

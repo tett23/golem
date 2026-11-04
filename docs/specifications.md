@@ -2955,9 +2955,10 @@ data = { table = "data/words.tsv" }
 プラグインは、任意の export `golem_check_data` でデータを検査できる（[docs/adr/0120](adr/0120-plugin-data-check-at-load.md)）。
 ホストは、プラグインを読み込んでデータを読んだ後に、一度だけ呼ぶ。
 
-- 呼び方は `golem_invoke` と同じで、要求は `[data]`、応答は `[* data-diagnostic]` である。`data-diagnostic = [code: tstr, severity: 0 / 1, name: tstr, line: uint64 / null, message: tstr]` で、`name` はデータの名前、`line` は 1 から数えた行の番号か null である。
+- 呼び方は `golem_invoke` と同じで、要求は `[data]`、応答は `[* data-diagnostic]` である。`data-diagnostic = [code: tstr, severity: 0 / 1, name: tstr / null, line: uint64 / null, message: tstr]` で、`name` はデータの名前か null、`line` は 1 から数えた行の番号か null である。
 - ホストは、`name` のデータのファイルの `line` 行めの先頭（null ならファイルの先頭）を位置とする diagnostic にする。行は、ファイルの先頭と、最後のバイトでない LF の後から始まる。空のファイルも 1 行めを持つ。
-- `name` が渡したデータの名前でない応答と、ファイルにない行を指す応答は、不正な応答（G06009）とする。位置は `manifest.toml` の先頭で、メッセージは `<プラグイン>.golem_check_data: <理由>` である。
+- `name` が null の diagnostic は、特定のデータのファイルでなく、プラグインに渡したデータの全体（必須のデータが渡されていないことなど）についてのものである。ホストは `manifest.toml` の先頭を位置とする。G06101 から G06103 と同じ位置である（[docs/adr/0136](adr/0136-missing-plugin-data-at-load.md)）。
+- `name` が渡したデータの名前でない応答、ファイルにない行を指す応答、`name` が null で `line` が null でない応答は、不正な応答（G06009）とする。位置は `manifest.toml` の先頭で、メッセージは `<プラグイン>.golem_check_data: <理由>` である。
 - `code` には、コマンドとフィルタの diagnostic と同じ規則を当て、ホストが `<宣言名>/<コード>` の形にする（[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)）。
 - エラーを一つでも返したプラグインは、読み込みの誤りとして扱う。コマンドを呼ばず、評価で G02022 と G02090 を報告しない。警告だけなら、プラグインは読み込まれる。
 - データのファイルには、diagnostic の位置のために FileId を振る。振るのは diagnostic が指すファイルだけで、`@table` と `@listing` で読むファイルの後から、パスの順に振る。
@@ -3050,8 +3051,8 @@ data = { terms = "data/terms.tsv" }
 - 項目の本文は、語、全角の空白、定義である。ラベルの欄があれば、その後に `（→`、ラベルへのページ番号の参照、`）` を足す。参照の表示は媒体で違う（PDF はページ番号、HTML と EPUB は題へのリンク、プレーンテキストは「」で括った題）ので、文言は矢印と括弧だけにしている。
 - `[term 組む: 組んだ]` のように位置引数を一つ書くと、その引数（語か文字列）が見出し語になり、散文スロットは本文に出す字だけになる（[docs/adr/0127](adr/0127-glossary-headword-argument.md)）。項目のキー、読み、本文は見出し語の TSV の行から作るので、活用や略称の出現も見出し語の一つのエントリにまとまる。
 - 一覧は、利用者が `@channel glossary` で置く。PDF では出現のページの列が、HTML と EPUB では出現へのリンクが付く。
-- `golem_check_data` で TSV を検査し、誤りを TSV の行の位置に出す。コードは原因ごとに、`tsv-columns`（欄の数が 3 か 4 でない）、`tsv-empty`（語、定義、ラベルの欄が空）、`tsv-no-reading`（読みが空で、語が漢字を含む）、`tsv-reading`（読みに書けない文字）、`tsv-duplicate`（前の行と同じ語）、`utf8`（UTF-8 でない。位置はファイルの先頭）である。
-- 呼び出しの誤りは呼び出しの位置に出し、本文の語は消さずに出して項目だけを送らない。コードは `slot`（散文スロットが一つでないか、その文字列が空）、`args`（位置引数が二つ以上か、キーワード引数を書いた）、`headword-type`（位置引数が文字列でない）、`headword-empty`（位置引数が空の文字列）、`no-data`（`data` に `terms` がない）、`unknown`（TSV にない見出し語）である。
+- `golem_check_data` で TSV を検査し、誤りを TSV の行の位置に出す。コードは原因ごとに、`tsv-columns`（欄の数が 3 か 4 でない）、`tsv-empty`（語、定義、ラベルの欄が空）、`tsv-no-reading`（読みが空で、語が漢字を含む）、`tsv-reading`（読みに書けない文字）、`tsv-duplicate`（前の行と同じ語）、`utf8`（UTF-8 でない。位置はファイルの先頭）である。`data` に `terms` がなければ、`golem_check_data` が `no-data` を `manifest.toml` の先頭に一度だけ出す。`[term]` を書いていない本でも出る（[docs/adr/0136](adr/0136-missing-plugin-data-at-load.md)）。
+- 呼び出しの誤りは呼び出しの位置に出し、本文の語は消さずに出して項目だけを送らない。コードは `slot`（散文スロットが一つでないか、その文字列が空）、`args`（位置引数が二つ以上か、キーワード引数を書いた）、`headword-type`（位置引数が文字列でない）、`headword-empty`（位置引数が空の文字列）、`unknown`（TSV にない見出し語）である。`golem_check_data` を呼ばないホストのために、`data` に `terms` がないときの `no-data` も呼び出しの位置に出す。Golem では、`no-data` で読み込みの誤りになったプラグインは呼ばれない。
 
 `kansuji` は、`overrides = ["number-text"]` で組み込みの `[number-text ...]` を上書きし、縦組みの本の数を漢数字で書く（[docs/adr/0125](adr/0125-kansuji-plugin-overrides-number-text.md)）。
 本の文脈の `writing-mode` と `vertical-numbers` を宣言し、データは受け取らない。
@@ -3111,7 +3112,8 @@ files = ["chapters/01.gm"]
 - 漢字は、CJK 統合漢字（拡張 A、第 2 面と第 3 面を含む）、CJK 互換漢字、`々`、`〆`、`〇`、`ヶ` とする。
 - 見出しにも振る。原稿のルビは残す。コード、圏点、縦中横、数、参照、索引の印、チャネルの項目、校正の注記は書き換えない。図版とコードのブロック（キャプションを含む）は辿らない。
 - 読みの分からない漢字の連なりは、ルビなしで残し、警告 `unread`（`読みの分からない漢字です: <語>`）を出す。警告はファイルごとに語ごとに一度で、位置はその語が最初に出たテキストのノードの位置である。
-- エラーは、フィルタを当てたファイルの先頭に出し、文書を書き換えない。コードは `no-words`（`words` も辞書もない）、`utf8`（`words` が UTF-8 でない）、`tsv`（TSV の行の誤り。行ごとに一つ）、`dict`（辞書のファイルの一部だけを渡した、Lindera が読めないか版の合わないファイル、欄 `reading` のない辞書）である。
+- `words` も辞書のファイルも渡していなければ、`golem_check_data` がエラー `no-words`（`manifest.toml の data で words を渡してください`）を `manifest.toml` の先頭に一度だけ出し、プラグインは読み込みの誤りになる（[docs/adr/0136](adr/0136-missing-plugin-data-at-load.md)）。
+- ほかのエラーは、フィルタを当てたファイルの先頭に出し、文書を書き換えない。コードは `no-words`（`words` も辞書もない。`golem_check_data` を呼ばないホストのため）、`utf8`（`words` が UTF-8 でない）、`tsv`（TSV の行の誤り。行ごとに一つ）、`dict`（辞書のファイルの一部だけを渡した、Lindera が読めないか版の合わないファイル、欄 `reading` のない辞書）である。
 - コードは、ほかの見本と同じく後ろの部分だけで、ホストが宣言の名前を前に付けて `sou-ruby/unread` などと表示する（[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)）。
 - 辞書は、利用者が Lindera（6.2.0）の CLI で作り、プロジェクトに置く。Golem のリリースは辞書を添えない。
 
@@ -3133,7 +3135,8 @@ files = ["chapters/01.gm", "chapters/02.gm"]
 - ファイルの中は、段落、箇条書きの項目、表（見出しの行、次に各行）、定義リストの語と説明の順に辿る。注と傍注の本文は注の印の位置で辿り、色と文字スタイルの中も辿る。
 - 見出しは書き換えず、出現にも数えない。コード、圏点、縦中横、数、参照、遅延した式、索引の印、文献の引用、校正の注記、チャネルの項目も同じである。図版とコードのブロック（キャプションを含む）は辿らない。
 - 原稿のルビは残し、その親文字に現れる語は、そこで出現したものとして数える。
-- エラーは、フィルタを当てたファイルの先頭に出し、文書を書き換えない。コードは `no-words`（`words` がない）、`utf8`（`words` が UTF-8 でない）、`tsv`（TSV の行の誤り。行ごとに一つ）で、宣言の名前を前に付けて `first-ruby/tsv` などと表示する。TSV の誤りは、フィルタを当てたファイルの数だけ報告される。
+- `words` を渡していなければ、`golem_check_data` がエラー `no-words`（`manifest.toml の data で words を渡してください`）を `manifest.toml` の先頭に一度だけ出し、プラグインは読み込みの誤りになる（[docs/adr/0136](adr/0136-missing-plugin-data-at-load.md)）。フィルタを当てたファイルの数によらない。
+- ほかのエラーは、フィルタを当てたファイルの先頭に出し、文書を書き換えない。コードは `no-words`（`words` がない。`golem_check_data` を呼ばないホストのため）、`utf8`（`words` が UTF-8 でない）、`tsv`（TSV の行の誤り。行ごとに一つ）で、宣言の名前を前に付けて `first-ruby/tsv` などと表示する。TSV の誤りは、フィルタを当てたファイルの数だけ報告される。
 
 TSV の読み込み、最長一致、文書の辿り方、読みの割り当ては、ライブラリのクレート `plugins/ruby-common/` にある。
 `crate-type` を持たないので、`build.sh` は wasm を作らない。

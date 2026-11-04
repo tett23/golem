@@ -28,6 +28,9 @@ pub const CHANNEL: &str = "glossary";
 /// The name of the data of the words.
 pub const DATA: &str = "terms";
 
+/// The message of data without `terms` (`no-data`).
+const NO_DATA: &str = "manifest.toml で data の terms を渡してください";
+
 fn describe() -> Description {
     Description {
         commands: vec!["term".into()],
@@ -109,12 +112,13 @@ fn tsv_of(bytes: &[u8]) -> Result<&str, (&'static str, String)> {
 }
 
 /// `golem_check_data`: the errors of `terms`, each at its line; the
-/// file as a whole when it is not UTF-8. Data without `terms` is the error
-/// of each call (`no-data`), as the host has no file to point at.
+/// file as a whole when it is not UTF-8. Data without `terms` is one error
+/// of all the data (`no-data`, no name), which the host puts at the top of
+/// manifest.toml (docs/adr/0136).
 pub fn check_data(data: &Data) -> Vec<DataDiagnostic> {
-    let at = |line: Option<u64>, code: &str, message: String| DataDiagnostic { code: code.into(), severity: Severity::Error, name: DATA.into(), line, message };
+    let at = |line: Option<u64>, code: &str, message: String| DataDiagnostic { code: code.into(), severity: Severity::Error, name: Some(DATA.into()), line, message };
     match data.get(DATA).map(tsv_of) {
-        None => vec![],
+        None => vec![DataDiagnostic { code: "no-data".into(), severity: Severity::Error, name: None, line: None, message: NO_DATA.into() }],
         Some(Err((code, m))) => vec![at(None, code, m)],
         Some(Ok(tsv)) => match parse(tsv) {
             Ok(_) => vec![],
@@ -185,7 +189,8 @@ pub fn invoke(req: Request) -> Response {
     let tsv = match c.data.get(DATA).map(tsv_of) {
         Some(Ok(t)) => t,
         Some(Err((code, m))) => return shown.with(error(c.span, code, m)),
-        None => return shown.with(error(c.span, "no-data", "manifest.toml で data の terms を渡してください".into())),
+        // check_data reports this at load; this is for a host that does not call it
+        None => return shown.with(error(c.span, "no-data", NO_DATA.into())),
     };
     // the host calls no command after an error of check_data; this is for a host that does not check
     let terms = match parse(tsv) {
@@ -290,9 +295,13 @@ mod tests {
 
     #[test]
     fn the_check_of_the_data_points_at_the_lines() {
-        let at = |line, code: &str, message: &str| DataDiagnostic { code: code.into(), severity: Severity::Error, name: "terms".into(), line, message: message.into() };
+        let at = |line, code: &str, message: &str| DataDiagnostic { code: code.into(), severity: Severity::Error, name: Some("terms".into()), line, message: message.into() };
         assert_eq!(check_data(&terms(Some(b"a\ta\td\n"))), vec![]);
-        assert_eq!(check_data(&terms(None)), vec![]);
+        // no terms: one error of the data as a whole, at load (docs/adr/0136)
+        assert_eq!(
+            check_data(&terms(None)),
+            vec![DataDiagnostic { code: "no-data".into(), severity: Severity::Error, name: None, line: None, message: "manifest.toml で data の terms を渡してください".into() }]
+        );
         assert_eq!(check_data(&terms(Some(&[0xff]))), vec![at(None, "utf8", "terms が UTF-8 ではありません")]);
         assert_eq!(
             check_data(&terms(Some("# c\nx\n組版\t\td\n".as_bytes()))),

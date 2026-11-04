@@ -119,12 +119,15 @@ pub struct Diagnostic {
 
 /// `data-diagnostic = [code, severity, name, line, message]`: an error or a
 /// warning of the data, at a line of the file of the data `name` (counted
-/// from 1), or at its top when `line` is None (docs/adr/0120).
+/// from 1), or at its top when `line` is None (docs/adr/0120). A `name` of
+/// None is of all the data, such as data the plugin needs and was not
+/// given; the host puts it at the top of manifest.toml, and it has no
+/// `line` (docs/adr/0136).
 #[derive(Clone, Debug, PartialEq)]
 pub struct DataDiagnostic {
     pub code: String,
     pub severity: Severity,
-    pub name: String,
+    pub name: Option<String>,
     pub line: Option<u64>,
     pub message: String,
 }
@@ -310,7 +313,7 @@ pub fn data_diagnostics_value(ds: &[DataDiagnostic]) -> Value {
                         Severity::Error => 0,
                         Severity::Warning => 1,
                     }),
-                    Value::Text(d.name.clone()),
+                    d.name.clone().map_or(Value::Null, Value::Text),
                     d.line.map_or(Value::Null, |l| Value::Int(l as i128)),
                     Value::Text(d.message.clone()),
                 ])
@@ -540,14 +543,16 @@ mod tests {
         assert_eq!(check_data_request_of(&req), Ok(Data(vec![("terms".into(), b"a".to_vec())])));
         assert!(check_data_request_of(&Value::Array(vec![])).is_err());
         let ds = vec![
-            DataDiagnostic { code: "tsv-columns".into(), severity: Severity::Error, name: "terms".into(), line: Some(7), message: "m".into() },
-            DataDiagnostic { code: "utf8".into(), severity: Severity::Warning, name: "terms".into(), line: None, message: "n".into() },
+            DataDiagnostic { code: "tsv-columns".into(), severity: Severity::Error, name: Some("terms".into()), line: Some(7), message: "m".into() },
+            DataDiagnostic { code: "utf8".into(), severity: Severity::Warning, name: Some("terms".into()), line: None, message: "n".into() },
+            DataDiagnostic { code: "no-data".into(), severity: Severity::Error, name: None, line: None, message: "o".into() },
         ];
         assert_eq!(
             data_diagnostics_value(&ds),
             Value::Array(vec![
                 Value::Array(vec![t("tsv-columns"), Value::Int(0), t("terms"), Value::Int(7), t("m")]),
                 Value::Array(vec![t("utf8"), Value::Int(1), t("terms"), Value::Null, t("n")]),
+                Value::Array(vec![t("no-data"), Value::Int(0), Value::Null, Value::Null, t("o")]),
             ])
         );
     }
