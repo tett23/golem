@@ -517,8 +517,7 @@ standalone ctx sp (A.Located nsp name) args body = case name of
       (Right _, _) -> pure ()
     pure []
   "toc" -> do
-    kw <- keywords ctx args
-    depth <- maybe (pure (Right 2)) (naturalArg ctx "@toc の depth" sp) (lookup "depth" kw)
+    depth <- maybe (pure (Right 2)) (naturalArg ctx "@toc の depth" sp) (keywordAt "depth" args)
     case depth of
       Right d | d >= 1 && d <= 3 -> pure [block sp (ChannelOutput (TocOutput (fromIntegral d)))]
       Left NaturalReported -> pure []
@@ -790,9 +789,9 @@ of at most 9 digits, G02070 otherwise; a negative number or one that is
 not an integer is G02103 or G02104 (docs/adr ADR 0102).
 -}
 needLines :: EvalContext -> SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-needLines ctx sp name args body = case map A.locValue args of
-  [A.Positional v] ->
-    naturalArg ctx "@need-lines の引数" sp v >>= \case
+needLines ctx sp name args body = case args of
+  [A.Located asp (A.Positional v)] ->
+    naturalArg ctx "@need-lines の引数" sp (A.Located asp v) >>= \case
       Right n | n >= 1 && n < 10 ^ (9 :: Int) -> breakCommand sp name body (Right (PageControl (NeedLines (fromIntegral n))))
       Left NaturalReported -> mapM_ (\(A.Located bsp _) -> err "G02097" bsp (takesNoBody name)) (take 1 body) >> pure []
       _ -> usage
@@ -808,10 +807,10 @@ negative number or one that is not an integer is G02103 or G02104
 blankLine :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 blankLine ctx sp args body
   | not (null body) = bad "@blank-line は本体を持てません"
-  | otherwise = case map A.locValue args of
+  | otherwise = case args of
       [] -> ok 1
-      [A.Positional v] ->
-        naturalArg ctx "@blank-line の引数" sp v >>= \case
+      [A.Located asp (A.Positional v)] ->
+        naturalArg ctx "@blank-line の引数" sp (A.Located asp v) >>= \case
           Right n
             | n < 1 -> bad usage
             | inInt64 (toInteger n) -> ok (fromIntegral n)
@@ -909,9 +908,9 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
           pure (label, CodeBlock c {codeCaption = Just is})
     _ -> err "G02013" sp ("@" <> name <> " はこのブロックには付けられません") >> pure (label, body)
     where
-      withNumber f = case map A.locValue args of
-        [A.Positional v] ->
-          naturalArg ctx "@number の引数" sp v >>= \case
+      withNumber f = case args of
+        [A.Located asp (A.Positional v)] ->
+          naturalArg ctx "@number の引数" sp (A.Located asp v) >>= \case
             Right n
               | inInt64 (toInteger n) -> pure (label, f n)
               -- G02091: as if there were no @number (golem-doc ADR 0006)
@@ -1188,12 +1187,12 @@ figure ctx sp args body = do
       mapM_ report fmts
       let formats = null fmts
           wrongPage p = report (figurePageError sp (argText p)) >> pure (Left ())
-      page <- case lookup "page" kw of
+      page <- case keywordAt "page" args of
         Nothing -> pure (Right Nothing)
-        Just p
+        Just lp@(A.Located _ p)
           | not isPdf -> wrongPage p
           | otherwise ->
-              naturalArg ctx "@figure の page" sp p >>= \case
+              naturalArg ctx "@figure の page" sp lp >>= \case
                 Right n | figurePageInRange (toInteger n) -> pure (Right (Just (fromIntegral n)))
                 Left NaturalReported -> pure (Left ())
                 _ -> wrongPage p
@@ -1613,7 +1612,7 @@ codeArgs ctx _ extra = foldl (\m a -> m >>= \acc -> step acc a) (pure (CodeArgs 
       A.Word t -> pure (Just (Just t))
       A.StringLit t -> pure (Just (Just t))
       v@(A.ExprArg _) ->
-        plainArgValue ctx vsp v >>= \case
+        plainArgValue ctx vsp (A.Located vsp v) >>= \case
           Right val | Just n <- intOf val -> pure (Just (Just (T.pack (show n))))
           Right (VString s) -> pure (Just (Just s))
           Right (VBool b) -> pure (Just (Just (if b then "true" else "false")))
@@ -1883,9 +1882,9 @@ builtinWith ctx inHeading sp b args slots = do
         | otherwise -> pure [Tcy sp t]
       [] -> pure []
       _ -> err "G02040" sp "縦中横の中身は地の文に限ります" >> pure []
-    Overridable BNumberText -> case pos of
-      [v] -> do
-        val <- plainArgValue ctx sp v
+    Overridable BNumberText -> case [A.Located asp v | A.Located asp (A.Positional v) <- args] of
+      [lv] -> do
+        val <- plainArgValue ctx sp lv
         let st = argText <$> lookup "style" kw
         case (val, st) of
           (Right v', _) | Just n <- intOf v', not (inInt64 n) -> outOfInt64 sp >> pure []
@@ -2072,6 +2071,10 @@ uniqueAttrKeys = \case
   A.Located sp (A.BlockCommand n args body) -> fmap (\args' -> A.Located sp (A.BlockCommand n args' body)) <$> prepareArgs args
   other -> pure (Just other)
 
+-- | The first keyword argument @k@, at the position of the argument.
+keywordAt :: Text -> [A.Located A.Argument] -> Maybe (A.Located A.ArgValue)
+keywordAt k args = listToMaybe [A.Located asp v | A.Located asp (A.Keyword (A.Located _ k') v) <- args, k' == k]
+
 keywords :: EvalContext -> [A.Located A.Argument] -> M [(Text, A.ArgValue)]
 keywords _ args = pure [(k, v) | A.Located _ (A.Keyword (A.Located _ k) v) <- args]
 
@@ -2141,15 +2144,16 @@ argValue _ sp = \case
       )
 
 {- | The value of an argument where no range is taken (docs/adr ADR
-0111): its 'argValue', and a range is G02113 at @sp@, with the text of a
-word as written. A word of a closed range literal is first the range of
+0111): its 'argValue' at @sp@, and a range is G02113 at the argument
+(the audit of 2026-11-04, F-16), with the text of a word as written. A
+word of a closed range literal is first the range of
 the same text in an expression, so one that is no range has the code of
 that expression: G02104, G02106 or G02086 (docs/adr ADR 0135).
 -}
-plainArgValue :: EvalContext -> SrcSpan -> A.ArgValue -> M (Either Diagnostic Value)
-plainArgValue ctx sp v =
+plainArgValue :: EvalContext -> SrcSpan -> A.Located A.ArgValue -> M (Either Diagnostic Value)
+plainArgValue ctx sp (A.Located asp v) =
   argValue ctx sp v >>= \case
-    Right r@(VRange _ _) -> pure (Left (rangeDiagnostic sp (written r)))
+    Right r@(VRange _ _) -> pure (Left (rangeDiagnostic asp (written r)))
     other -> pure other
   where
     written r = case v of
@@ -2187,15 +2191,15 @@ one that is not an integer G02104, at @sp@; @what@ names the place. A
 word of a closed range literal, as an expression, is read with
 'plainArgValue' (docs/adr ADR 0135).
 -}
-naturalArg :: EvalContext -> Text -> SrcSpan -> A.ArgValue -> M (Either NaturalError Natural)
-naturalArg ctx what sp = \case
+naturalArg :: EvalContext -> Text -> SrcSpan -> A.Located A.ArgValue -> M (Either NaturalError Natural)
+naturalArg ctx what sp lv@(A.Located _ v) = case v of
   A.Word w | Nothing <- rangeWord w -> maybe (pure (Left NotANumber)) check (A.numberWord w)
-  v@(A.Word _) -> fromValue v
-  v@(A.ExprArg _) -> fromValue v
+  A.Word _ -> fromValue
+  A.ExprArg _ -> fromValue
   _ -> pure (Left NotANumber)
   where
-    fromValue v =
-      plainArgValue ctx sp v >>= \case
+    fromValue =
+      plainArgValue ctx sp lv >>= \case
         Left d -> report d >> pure (Left NaturalReported)
         Right val -> maybe (pure (Left NotANumber)) (check . snd) (numberOf val)
     check q = case naturalOf what sp q of
@@ -2349,7 +2353,7 @@ numbersArg ctx sp = \case
   A.StringLit t | Just b <- boolWord t -> pure (Just (Left b))
   A.StringLit t -> natural (A.Word t) t
   v@(A.ExprArg _) ->
-    plainArgValue ctx sp v >>= \case
+    plainArgValue ctx sp (A.Located sp v) >>= \case
       Left d -> report d >> pure Nothing
       Right (VBool b) -> pure (Just (Left b))
       Right val | Just (_, q) <- numberOf val -> either (\d -> report d >> pure Nothing) (pure . Just . Right . toInteger) (naturalOf what sp q)
@@ -2362,7 +2366,7 @@ numbersArg ctx sp = \case
       "false" -> Just False
       _ -> Nothing
     natural v t =
-      naturalArg ctx what sp v >>= \case
+      naturalArg ctx what sp (A.Located sp v) >>= \case
         Right n -> pure (Just (Right (toInteger n)))
         Left NaturalReported -> pure Nothing
         Left NotANumber -> bad t
