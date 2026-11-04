@@ -113,6 +113,7 @@ kindForToken = \case
   "Rest" -> KError
   "SkippedArgs" -> KError
   "SkippedExpr" -> KError
+  "SkippedReserved" -> KError
   "ERROR" -> KError
   _ -> KOperator
 
