@@ -1,4 +1,4 @@
-module ReferencesSpec (indexTests, bibliographyFormatTests, tableTests, columnWidthTests, tocTests, indexColumnTests, urlBreakTests) where
+module ReferencesSpec (refPageNumeralTests, indexTests, bibliographyFormatTests, tableTests, columnWidthTests, tocTests, indexColumnTests, urlBreakTests) where
 
 import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
 import Control.Monad (forM_, zipWithM_)
@@ -772,3 +772,28 @@ urlBreakTests =
       Glue {} -> True
       Penalty _ p _ -> p < 10000
       Box {} -> False
+
+{- | The numerals of [ref-page] in vertical text: [numbers] vertical by
+default, [numbers] ref-page when the book sets it (docs/adr/0118).
+-}
+refPageNumeralTests :: [TestTree]
+refPageNumeralTests =
+  [ testCase "PDF: vertical, by default as [numbers] vertical (kanji)" $
+      refLine (pdfStyle <> "\n[numbers]\nvertical = \"kanji\"\n") 1 >>= (@?= "参照は一ページ。"),
+    testCase "PDF: vertical, ref-page omitted follows vertical = \"kanji-digits\"" $
+      refLine (pdfStyle <> "\n[numbers]\nvertical = \"kanji-digits\"\n") 12 >>= (@?= "参照は一二ページ。"),
+    testCase "PDF: vertical, ref-page = \"kanji\" over vertical = \"kanji-digits\"" $
+      refLine (pdfStyle <> "\n[numbers]\nvertical = \"kanji-digits\"\nref-page = \"kanji\"\n") 12 >>= (@?= "参照は十二ページ。"),
+    testCase "PDF: vertical, ref-page = \"sideways\" sets the digits" $
+      refLine (pdfStyle <> "\n[numbers]\nref-page = \"sideways\"\n") 12 >>= (@?= "参照は12ページ。"),
+    testCase "PDF: horizontal, ref-page changes nothing" $
+      refLine (horizontalStyle <> "\n[numbers]\nref-page = \"kanji\"\n") 1 >>= (@?= "参照は1ページ。")
+  ]
+  where
+    -- the line of the reference to a label on page p
+    refLine style p = do
+      let filler = T.concat (replicate (p - 1) "あ\n\n@page-break\n\n")
+      (_, pl) <- layoutOk style ("参照は[ref-page later]ページ。\n\n" <> filler <> "@label later\n後。\n") []
+      case [setLineText sl | sl <- Map.elems (plLines pl), "参照は" `T.isPrefixOf` setLineText sl] of
+        [l] -> pure l
+        ls -> assertFailure (show ls)

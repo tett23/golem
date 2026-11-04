@@ -678,6 +678,10 @@ overhang-onto = "kana"
 [code: "kanji"]（十、百二十）、[code: "kanji-digits"]（一〇、一二〇）、[code: "tcy"]（縦中横の算用数字）から選べます。
 [code: "auto"] は 2 桁までの数を縦中横に、それより大きい数を位取りをする漢数字（百二十）にします。
 [code: "auto-digits"] は 2 桁までの数を縦中横に、それより大きい数を一字ずつの漢数字（二〇二六）にします。
+[code: \[ref-page ...\]] のページ番号も、縦組みの PDF では同じ表記で組みます。
+参照のページ番号だけを別の表記にしたいときは、[code: \[numbers\]] の [code: ref-page] に [code: vertical] の五つの値か [code: "sideways"] を書きます。
+[code: "sideways"] は、算用数字を欧文と同じく横に倒して組みます。
+ノンブルを算用数字で振る本で、本文の「12 ページ」をノンブルと揃えたいときに使います。
 
 @label aki-sets
 ## 字間の空き

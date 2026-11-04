@@ -487,6 +487,14 @@ tests =
         case vertical "[numbers]\nvertical = \"automatic\"\n" of
           Left _ -> pure ()
           Right v -> assertFailure (show v),
+      testCase "[numbers] ref-page takes the values of vertical and sideways (docs/adr/0118)" $ do
+        let refPage src = stNumbersRefPage <$> parseStyle (FileId 0) src
+        refPage "" @?= Right Nothing
+        refPage "[numbers]\nref-page = \"sideways\"\n" @?= Right (Just "sideways")
+        refPage "[numbers]\nref-page = \"auto-digits\"\n" @?= Right (Just "auto-digits")
+        case parseStyle (FileId 0) "[numbers]\nref-page = \"arabic\"\n" of
+          Left [d] -> (diagCode d, diagMessage d) @?= (DiagnosticCode "G03006", "ref-page に使えない値です: arabic（kanji, kanji-digits, tcy, auto, auto-digits, sideways のどれか） (numbers.ref-page)")
+          other -> assertFailure (show (fmap stNumbersRefPage other)),
       testCase "normalisation" $ do
         normalizeRelative "./a/../b/c.gm" @?= Right "b/c.gm"
         normalizeRelative "../x.gm" @?= Left EscapesRoot
