@@ -41,6 +41,7 @@ module Golem.Doc.IR
     noRuby,
     isLineBreak,
     splitAtLineBreaks,
+    withoutAnchors,
   )
 where
 
@@ -334,6 +335,22 @@ noRuby = \case
   LineBreak s -> Just (LineBreak s)
   Aki s a -> Just (Aki s a)
   ChannelItem s c -> Just (ChannelItem s c)
+
+{- | A title as it is copied elsewhere in the book (the table of contents,
+[ref-title]): without the inlines that tell a list where the text is,
+index marks and channel items, at any depth (docs/adr/0145). A mark
+stands only where it was written, so a list never points at a copy. The
+notes are left as they are.
+-}
+withoutAnchors :: [InlineF r] -> [InlineF r]
+withoutAnchors = concatMap $ \case
+  IndexMark {} -> []
+  ChannelItem {} -> []
+  Ruby sp r segs -> [Ruby sp r [s {rsBase = withoutAnchors (rsBase s)} | s <- segs]]
+  Kenten sp s xs -> [Kenten sp s (withoutAnchors xs)]
+  Color sp c xs -> [Color sp c (withoutAnchors xs)]
+  CharStyle sp c xs -> [CharStyle sp c (withoutAnchors xs)]
+  x -> [x]
 
 -- | Whether an inline is a line break.
 isLineBreak :: InlineF r -> Bool

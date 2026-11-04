@@ -301,7 +301,8 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.
             numText = (\ns -> formatNumber fmt ns (Just (head' ns))) <$> nums
             chapter = if l == 1 then head' <$> nums else nsChapter st
             figureReset = if l == 1 then 0 else nsFigure st
-            info = HeadingInfo l nums numText (fromMaybe is (haTocTitle a)) (headingAnchor lbl sp) fid
+            -- the title of the copies, without the anchors of lists (docs/adr/0145)
+            info = HeadingInfo l nums numText (withoutAnchors (fromMaybe is (haTocTitle a))) (headingAnchor lbl sp) fid
             -- G04007: @number equal to the number it would get without it (golem-syntax ADR 0002)
             redundant = [redundantNumber cfg sp n | not (haNoNumber a), Just n <- [toInteger <$> haNumber a], n == cs !! (l - 1) + 1]
         put
@@ -563,14 +564,14 @@ collectLabels ns docs = foldl add (Map.empty, []) targets
         Just HeadingInfo {hiNumbers = Just [n], hiTitle = t} -> (Just (Number sp n Nothing), t)
         Just HeadingInfo {hiNumbers = Just nums, hiTitle = t} -> (Just (Text sp (T.intercalate "." (map (T.pack . show) nums))), t)
         Just h -> (Nothing, hiTitle h)
-        Nothing -> (Nothing, is)
+        Nothing -> (Nothing, withoutAnchors is)
       FigureBlock f -> case Map.lookup sp (nsFigures ns) of
         Just (ch, n) -> (Just (Text sp (maybe "" (\c -> T.pack (show c) <> "-") ch <> T.pack (show n))), [Text sp (figAlt f)])
         Nothing -> (Nothing, [Text sp (figAlt f)])
       -- the number and the caption of a code block (golem-driver ADR 0023)
       CodeBlock c -> case Map.lookup sp (nsListings ns) of
-        Just (ch, n) -> (Just (Text sp (maybe "" (\x -> T.pack (show x) <> "-") ch <> T.pack (show n))), fromMaybe [] (codeCaption c))
-        Nothing -> (Nothing, fromMaybe [] (codeCaption c))
+        Just (ch, n) -> (Just (Text sp (maybe "" (\x -> T.pack (show x) <> "-") ch <> T.pack (show n))), withoutAnchors (fromMaybe [] (codeCaption c)))
+        Nothing -> (Nothing, withoutAnchors (fromMaybe [] (codeCaption c)))
       _ -> (Nothing, [])
     add (m, ds) (l, t) = case Map.lookup l m of
       Just prev ->

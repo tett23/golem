@@ -1,6 +1,6 @@
 # ADR 0126: 用語集のプラグイン
 
-ステータス: 採択
+ステータス: 採択→目次の写しから印を除く範囲（PDF、`[ref-title]`、入れ子）は [ADR 0145](0145-title-copies-drop-anchor-inlines.md)
 
 ## 文脈
 

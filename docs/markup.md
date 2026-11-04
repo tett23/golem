@@ -1367,6 +1367,8 @@ HTML と EPUB では、論理方向の余白を持つ空の `span`（`class="aki
 番号を持つのは `@nonumber` のない見出し、図版、キャプションを付けたコードブロックであり、題を持つのは見出し、図版、キャプションを付けたコードブロックである。
 キャプションのないコードブロックは番号も題も持たない（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 相互参照のコマンドは散文スロットを取らず、`: ` の後に本文を書くとコンパイルエラーとなる（[golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)）。
+`[ref-title ...]` で写した題には、索引の印とプラグインのチャネルの項目（用語集の `[term]` など）を含めない。
+それらは見出しの位置だけで数え、写しの位置は索引や一覧に載らない（[docs/adr/0145](adr/0145-title-copies-drop-anchor-inlines.md)）。
 
 ### 脚注
 
@@ -1404,6 +1406,8 @@ PDF では、`style.toml` に `[sidenotes]` がない場合と、脚注の本文
 `[index reading=えー: a\/b]` は、語「a/b」の一段の項目である。
 語を区切るのは原稿に書いた `/` だけであり、式の値の中の `/` は区切りにならない。
 `reading` は引数なので、`\/` で `/` を書くことはできない。
+見出しの中の索引の印は、見出しの位置だけを数える。
+目次と `[ref-title]` に写した題には印を含めないので、写しの位置のページは索引に載らない（[docs/adr/0145](adr/0145-title-copies-drop-anchor-inlines.md)）。
 
 ### 引用
 
