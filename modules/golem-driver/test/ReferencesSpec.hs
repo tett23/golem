@@ -90,6 +90,22 @@ indexTests =
       take 1 (at "本文") @?= [1]
       assertBool (show pages) (any ("組版　1" `elem`) pages)
       assertBool (show pages) (any ("和文　3" `elem`) pages),
+    -- the copies of a title do not count (docs/adr/0145)
+    testCase "PDF: an index mark of a heading on page 1 is on page 1, with @toc, [ref-title] or nested in a style on page 2" $
+      mapM_
+        ( \(heading, copy) -> do
+            let source = "@label h\n# " <> heading <> "の章\n\n" <> fillers 6 <> copy <> "\n\n@index\n"
+            r <- pagesMini "" (fiveLines <> flatHeadings) source [] Map.empty
+            pages <- either (assertFailure . show) pure r
+            let at t = [n | (n, ls) <- zip [1 :: Int ..] pages, any (t `T.isInfixOf`) ls]
+            take 1 (at "の章") @?= [1]
+            assertBool (show pages) (2 `elem` at (if copy == "@toc" then "の章" else "参照"))
+            assertBool (show pages) (any ("組　1" `elem`) pages)
+        )
+        [ ("[index reading=くみ: 組]", "@toc"),
+          ("[index reading=くみ: 組]", "参照[ref-title h]"),
+          ("[strong: [index reading=くみ: 組]と]", "@toc")
+        ],
     testCase "an index page that gains a digit converges" $ do
       r <- pagesMini "" fiveLines (fillers 45 <> "本文[index reading=くみはん: 組版]。\n\n@index\n") [] Map.empty
       pages <- either (assertFailure . show) pure r

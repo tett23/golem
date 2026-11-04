@@ -841,6 +841,26 @@ glossaryTests =
               atManifestTop r >>= (@?= [(DiagnosticCode "glossary/no-data", "manifest.toml で data の terms を渡してください")])
         )
         ["本文。\n", "[term: 組版]と[term: 組版]と[term: 組版]。\n"],
+    -- the copies of a title do not count (docs/adr/0145)
+    testCase "PDF: a word of a heading on page 1 has the page 1, with @toc or [ref-title] on page 2" $
+      mapM_
+        ( \copy -> withGlossary horizontalStyle ("@label h\n# [term: 組版]の章\n\n" <> fillers 35 <> copy <> "\n\n@channel glossary\n") $ \tmp -> do
+            t <- T.concat . concat <$> pdfPages tmp
+            assertBool (show t) ("組版　版を組むこと　1" `T.isSuffixOf` t)
+        )
+        ["@toc", "参照[ref-title h]"],
+    testCase "HTML: a word of a heading copied by [ref-title] links to the heading only" $
+      withGlossary horizontalStyle "@label h\n# [term: 組版]の章\n\n参照[ref-title h]。\n\n@channel glossary\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        (T.count "id=\"c-glossary-" html, T.count "href=\"#c-glossary-" html + T.count "a.xhtml#c-glossary-" html) @?= (1, 1),
+    testCase "HTML: an index mark nested in a style of a heading has no id in @toc" $
+      withGlossary horizontalStyle "@toc\n\n# [strong: [index reading=はんめん: 版面]と]\n\n@index\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        T.count "id=\"i-" html @?= 1,
     testCase "HTML: a word and an index mark in a heading have their ids once, not again in @toc of the same file" $
       withGlossary horizontalStyle "@toc\n\n# [term: 組版]と[index reading=はんめん: 版面]\n\n@channel glossary\n\n@index\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}

@@ -94,6 +94,7 @@ tests =
         bookBibliographies (fst (assemble cfg noEval docs)) @?= [(Nothing, [("b", 1), ("a", 2)])],
       multipleListTests,
       channelTests,
+      titleCopyTests,
       testCase "tocWithinDepth: every entry without @toc, those within its depth in order with it (golem-epub ADR 0002)" $ do
         let docs d =
               [ Document (FileId 1) ([Block (sp 1 0) Nothing (ChannelOutput (TocOutput n)) | Just n <- [d]] <> [heading 1 10 1 noHeadingAttrs Nothing "一", heading 1 20 2 noHeadingAttrs Nothing "節", heading 1 30 3 noHeadingAttrs Nothing "項", heading 1 40 1 noHeadingAttrs Nothing "二"])
@@ -104,6 +105,37 @@ tests =
         levels (Just 2) @?= [1, 2, 1]
         levels (Just 3) @?= [1, 2, 3, 1],
       diagnosticCodes
+    ]
+
+{- | The copies of a title (the table of contents, [ref-title]) have no
+index marks and no channel items, at any depth; the heading keeps them
+(docs/adr/0145).
+-}
+titleCopyTests :: TestTree
+titleCopyTests =
+  testGroup
+    "the copies of a title drop the anchor inlines (docs/adr/0145)"
+    [ testCase "the toc entry and the label's title of a heading: no marks at any depth; the heading keeps them" $ do
+        let mark = IndexMark (sp 1 3) (IndexEntry ["組"] ["くみ"])
+            itm = ChannelItem (sp 1 4) (ChannelItemData "glossary" (Just "k") (Just "か") [Text (sp 1 4) "組版"])
+            title = [CharStyle (sp 1 2) "strong" [mark, Text (sp 1 2) "と"], itm, Kenten (sp 1 5) Nothing [itm], Text (sp 1 6) "の章"]
+            h = Block (sp 1 1) (Just "h") (Heading 1 noHeadingAttrs title)
+            docs = [Document (FileId 1) [Block (sp 1 0) Nothing (ChannelOutput (TocOutput 2)), h, para 1 7 [Ref (sp 1 8) RefTitle "h"]]]
+            book = fst (assemble cfg noEval docs)
+            stripped = [CharStyle (sp 1 2) "strong" [Text (sp 1 2) "と"], Kenten (sp 1 5) Nothing [], Text (sp 1 6) "の章"]
+        map teTitle (bookToc book) @?= [stripped]
+        case bookDocs book of
+          [Document _ [_, Block _ _ (Heading _ _ is), Block _ _ (Paragraph _ copied)]] -> do
+            is @?= title
+            copied @?= [CharStyle (sp 1 2) "strong" [Text (sp 1 2) "と"], Kenten (sp 1 5) Nothing [], Text (sp 1 8) "の章"]
+          other -> assertFailure (show other),
+      testCase "the label's title of a captioned code block has no marks" $ do
+        let mark = IndexMark (sp 1 3) (IndexEntry ["組"] ["くみ"])
+            code = Block (sp 1 1) (Just "c") (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 2) "例", mark]) False []))
+            docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", code, para 1 7 [Ref (sp 1 8) RefTitle "c"]]]
+        case bookDocs (fst (assemble cfg noEval docs)) of
+          [Document _ [_, _, Block _ _ (Paragraph _ copied)]] -> copied @?= [Text (sp 1 8) "例"]
+          other -> assertFailure (show other)
     ]
 
 -- | The channels of plugins (golem-doc ADR 0007).

@@ -410,7 +410,7 @@ EPUB 3.3 がナビゲーション文書を必須にしており、読書シス�
 どの diagnostic も、印か出す位置のブロックの位置を指す。
 
 = [strong: 目次]
-  [code: @toc] の [code: depth] の既定は 2 で、1 から 3 の整数でなければ G02025 の error になる。[code: @toc] は文書に一つだけで、二つ目からは G04002 の error が、最初の [code: @toc] を関連の位置として出る。見出しに [code: @toc-title] があれば、目次にはその短い題を載せる。見出しの中の索引の印は、PDF では見出しの位置で数え、目次の項目では数えない。
+  [code: @toc] の [code: depth] の既定は 2 で、1 から 3 の整数でなければ G02025 の error になる。[code: @toc] は文書に一つだけで、二つ目からは G04002 の error が、最初の [code: @toc] を関連の位置として出る。見出しに [code: @toc-title] があれば、目次にはその短い題を載せる。見出しの中の索引の印とチャネルの項目は、どの出力でも見出しの位置だけで数え、目次の項目と [code: \[ref-title\]] の写しでは数えない。S1 が、写す題から入れ子の中の印まで除く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0145-title-copies-drop-anchor-inlines.md]（docs/adr/0145「目次と \[ref-title\] に写す題から、索引の印とチャネルの項目を除く」）]
 = [strong: 脚注]
   S0 はファイルごとに 1 から番号を振るが、これは [code: golem check] と LSP のための仮の番号である。S1 が、[code: \[notes\]] の [code: numbering] の範囲（[code: "chapter"] が既定、ほかに [code: "file"] と [code: "book"]）ごとに振り直す。マニフェストの章を複数のファイルに分けても、既定では章の途中で 1 に戻らない。
 = [strong: 索引]

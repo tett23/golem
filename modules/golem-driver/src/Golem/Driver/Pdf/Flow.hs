@@ -1297,8 +1297,8 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
             -- always in the paragraph style code (golem-driver ADR 0017)
             CodeBlock code -> (n, [unit (UCode 0 code) lbl [] (codeLook style geom) (paraSizeSource style (Just "code"))])
             FigureBlock fig -> (n, [plainUnit (UFigure fig) lbl []])
-            -- the index marks of a title are counted at the heading, not in the table of contents
-            ChannelOutput (TocOutput depth) -> (n, [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (numberedTitle lang (teSpan e) (teNumber e) (filter (not . isMark) (teTitle e))) | e <- bookToc book, teLevel e <= depth])
+            -- S1 has dropped the index marks and channel items of the title (docs/adr/0145)
+            ChannelOutput (TocOutput depth) -> (n, [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (numberedTitle lang (teSpan e) (teNumber e) (teTitle e)) | e <- bookToc book, teLevel e <= depth])
             ChannelOutput IndexOutput ->
               let entries kind = [plainUnit kind Nothing is | is <- indexLines (pgVertical geom) pageOf (indexAt book sp)]
                in case indexSet of
@@ -1341,9 +1341,6 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
       (l, _ : rest) -> l : splitBreaks rest
     isBreak = \case
       LineBreak _ -> True
-      _ -> False
-    isMark = \case
-      IndexMark {} -> True
       _ -> False
 
 {- | The marker width M of each list, by its number (golem-driver ADR 0013):
