@@ -12,6 +12,8 @@
 # cargo and rustup, too many to fake, and release/licenses.sh checks its
 # output at a release (docs/adr/0078).
 set -u
+# PROBE of ADR 0154, reverted by the next commit: hang on macOS only
+if [ "$(uname -s)" = Darwin ]; then echo "probe: sleeping 900 s"; sleep 900; fi
 HERE=$(cd "$(dirname "$0")" && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "${WORK:?}"' EXIT
