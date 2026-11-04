@@ -9,19 +9,21 @@ import Data.Maybe (isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfInput (..), layoutPages)
 import Golem.Driver.Plugins (loadPlugins)
 import Golem.Eval.Builtin (BuiltinInline (..), builtinName, unPluginCommandName)
 import Golem.Eval.File (EvalResult (..), PluginHook (..))
-import Golem.Plugin (watToWasm)
+import Golem.Plugin (maxDataBytes, watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..))
 import Golem.Project.Manifest (parseManifest)
 import Golem.Syntax
 import Golem.TestSupport.Env (withEnv)
+import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import Support
-import System.Directory (listDirectory)
+import System.Directory (createFileLink, listDirectory)
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -168,9 +170,91 @@ channelTests =
         t @?= "人甲と乙。\n\n甲\n乙\n"
   ]
 
+{- | A one-chapter project, a.gm, with the plugin of datum.wat, which
+answers [datum] with the bytes of its data table, declared as lk with
+the given keys after its url, and the given files.
+-}
+withDatum :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withDatum decl source files k = withSystemTempDirectory "golem-data" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> pluginDeclOf "lk" decl)
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  TIO.writeFile (tmp </> "a.gm") source
+  writeFiles tmp files
+  lockIn [("lk", "datum.wat")] tmp (k tmp)
+
+-- | The S0 inlines of the paragraphs of a.gm, and every diagnostic.
+lookedUp :: Map.Map FilePath T.Text -> FilePath -> IO ([Inline], [(DiagnosticCode, T.Text)])
+lookedUp overlay tmp = do
+  e <- evaluateProjectWith overlay Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+  let inls = [i | (fid, sf) <- Map.toList (projectSources (evProject e)), sfPath sf == "a.gm", Just r <- [Map.lookup fid (evResults e)], b <- docBlocks (erDocument r), Paragraph _ is <- [blockBody b], i <- is]
+  pure (inls, [(diagCode d, diagMessage d) | d <- evDiagnostics e])
+
+texts :: [Inline] -> [T.Text]
+texts is = [t | Text _ t <- is]
+
+-- | The data a project passes to a plugin (docs/adr/0105).
+dataTests :: [TestTree]
+dataTests =
+  [ testCase "the plugin reads the file the manifest passes as data" $
+      withDatum "data = { table = \"data/words.tsv\" }\n" "[datum]\n" [("data/words.tsv", "value")] $ \tmp -> do
+        (inls, ds) <- lookedUp Map.empty tmp
+        (texts inls, ds) @?= (["value"], []),
+    testCase "without the data the plugin reports its own diagnostic" $
+      withDatum "" "[datum]\n" [] $ \tmp -> do
+        (_, ds) <- lookedUp Map.empty tmp
+        map fst ds @?= [DiagnosticCode "datum-no-table"],
+    testCase "a changed file gives the new value when the project is evaluated again" $
+      withDatum "data = { table = \"words.tsv\" }\n" "[datum]\n" [("words.tsv", "one")] $ \tmp -> do
+        lookedUp Map.empty tmp >>= (@?= ["one"]) . texts . fst
+        BS.writeFile (tmp </> "words.tsv") "two"
+        lookedUp Map.empty tmp >>= (@?= ["two"]) . texts . fst,
+    testCase "the text of the editor comes before the file (as for @table, golem-eval ADR 0004)" $
+      withDatum "data = { table = \"words.tsv\" }\n" "[datum]\n" [("words.tsv", "disk")] $ \tmp ->
+        lookedUp (Map.fromList [("words.tsv", "editor")]) tmp >>= (@?= ["editor"]) . texts . fst,
+    testCase "the files of data are watched like the files of @table" $
+      withDatum "data = { table = \"./data/../words.tsv\" }\n" "[datum]\n" [("words.tsv", "v")] $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        assertBool (show (evTableFiles e)) ("words.tsv" `elem` evTableFiles e),
+    testCase "G06101: a file of data that is not there" $
+      withDatum "data = { table = \"none.tsv\" }\n" "[datum]\n" [] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06101", "プラグインのデータのファイルがありません: lk.table: none.tsv")]),
+    testCase "G06102: a name of data the plugin does not take" $
+      withDatum "data = { table = \"w.tsv\", tabel = \"w.tsv\" }\n" "[datum]\n" [("w.tsv", "v")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06102", "プラグインが受け取らないデータの名前です: lk.tabel（受け取る名前: table）")]),
+    testCase "G03003: a path of data outside the project, absolute or a URL" $
+      mapM_
+        ( \(path, why) -> withDatum ("data = { table = \"" <> path <> "\" }\n") "[datum]\n" [] $ \tmp -> do
+            r <- build (defaultOptions tmp)
+            atManifestTop r >>= (@?= [(DiagnosticCode "G03003", why <> ": lk.table: " <> TE.decodeUtf8 path)])
+        )
+        [ ("../w.tsv", "プロジェクトルートの外を指しています"),
+          ("/etc/hosts", "絶対パスは使えません"),
+          ("https://example.com/w.tsv", "URL は使えません")
+        ],
+    testCase "G03003: a symbolic link out of the project" $
+      withSystemTempDirectory "golem-outside" $ \out -> do
+        BS.writeFile (out </> "w.tsv") "secret"
+        withDatum "data = { table = \"w.tsv\" }\n" "[datum]\n" [] $ \tmp -> do
+          createFileLink (out </> "w.tsv") (tmp </> "w.tsv")
+          r <- build (defaultOptions tmp)
+          atManifestTop r >>= (@?= [DiagnosticCode "G03003"]) . map fst,
+    testCase "G06103: data over the limit, all the files of a plugin together" $
+      withDatum "data = { table = \"big.tsv\" }\n" "[datum]\n" [] $ \tmp -> do
+        BS.writeFile (tmp </> "big.tsv") (BS.replicate (fromIntegral maxDataBytes + 1) 0x20)
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06103", "プラグインのデータが上限（67108864 バイト）を超えています: lk（67108865 バイト）")]),
+    testCase "no G02022 after an error of the data (golem-plugin ADR 0003)" $
+      withDatum "data = { table = \"none.tsv\" }\n" "[datum]\n" [] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101"]
+  ]
+
 pluginTests :: [TestTree]
 pluginTests =
   channelTests
+    <> dataTests
     <> [ testCase "a filter runs over the declared files and keeps the output" $ do
            plain <- buildAndRead Dev "build/text/horizontal/chapters/01.txt"
            filtered <- withPluginProject pluginDecl $ \tmp -> do
@@ -326,7 +410,7 @@ pluginTests =
                  cache <- defaultCacheDir
                  lockText <- TIO.readFile (tmp </> "plugins.lock")
                  m <- TIO.readFile (tmp </> "manifest.toml") >>= either (assertFailure . show) pure . parseManifest (FileId 0)
-                 hook <- loadPlugins cache (FileId 0) (FileId 1) lockText m >>= either (assertFailure . show) pure
+                 hook <- loadPlugins tmp Map.empty cache (FileId 0) (FileId 1) lockText m >>= either (assertFailure . show) pure
                  let overrides = map (builtinName . Overridable) (Map.keys (phOverrides hook))
                  pure (sort (overrides <> map unPluginCommandName (Map.keys (phCommands hook))), sort overrides)
            keysOf [("ov", "override-ruby.wat")] (pluginDeclOf "ov" "overrides = [\"ruby\"]\n") >>= (@?= (["greet", "ruby"], ["ruby"]))

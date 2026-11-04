@@ -3,12 +3,12 @@
 ;; The command term sends its slot to glossary, person to people; each
 ;; answers the slot, then an item of the call's span whose body is the slot.
 ;; The first positional argument is the key, the second the reading; a
-;; missing one is null. Request: [0, name, args, [slot], span].
+;; missing one is null. Request: [0, name, args, [slot], span, data].
 (module
   (memory (export "memory") 4)
   (global $heap (mut i32) (i32.const 65536))
-  ;; [["term", "person"], [], [["glossary", 1, false], ["people", 0, true]]]
-  (data (i32.const 16) "\83\82\64term\66person\80\82\83\68glossary\01\f4\83\66people\00\f5")
+  ;; [["term", "person"], [], [["glossary", 1, false], ["people", 0, true]], []]
+  (data (i32.const 16) "\84\82\64term\66person\80\82\83\68glossary\01\f4\83\66people\00\f5\80")
   (data (i32.const 64) "\68glossary")
   (data (i32.const 80) "\66people")
   (func (export "golem_abi_version") (result i32) (i32.const 8))
@@ -18,7 +18,7 @@
     (local.get $p))
   (func (export "golem_dealloc") (param i32 i32))
   (func (export "golem_describe") (result i64)
-    (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 38)))
+    (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 39)))
   ;; the length of the head of the CBOR item at p
   (func $head (param $p i32) (result i32) (local $ai i32)
     (local.set $ai (i32.and (i32.load8_u (local.get $p)) (i32.const 31)))
@@ -93,7 +93,7 @@
     (i32.store8 (local.get $o) (i32.const 0x86))
     (i32.store8 (i32.add (local.get $o) (i32.const 1)) (i32.const 0x13))
     (local.set $o (call $copy (i32.add (local.get $o) (i32.const 2))
-      (local.get $span) (i32.add (local.get $ptr) (local.get $len))))
+      (local.get $span) (call $skip (local.get $span))))
     (if (i32.eq (i32.load8_u (local.get $name)) (i32.const 0x64))
       (then (local.set $o (call $copy (local.get $o) (i32.const 64) (i32.const 73))))
       (else (local.set $o (call $copy (local.get $o) (i32.const 80) (i32.const 87)))))

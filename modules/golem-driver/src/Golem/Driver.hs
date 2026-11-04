@@ -80,7 +80,7 @@ import Golem.Preflight (MissingGlyph (..), check, missingGlyphs)
 import Golem.Preflight.Rules (Rules (..), parseRules, printRules)
 import Golem.Preflight.View (View)
 import Golem.Project
-import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
+import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Svg.Active (activeContent)
 import Golem.Syntax
@@ -218,7 +218,7 @@ evaluateProjectWith overlay profile root = do
           (docs/adr ADR 0031) -}
           cacheDir <- defaultCacheDir
           lockText <- readMaybeText (root </> "plugins.lock")
-          hookE <- loadPlugins cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) manifest0
+          hookE <- loadPlugins root overlay cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) manifest0
           let (pluginDiags, hook) = either (,noPlugins) ([],) hookE
               pluginCommands = sort (map unPluginCommandName (Map.keys (phCommands hook)))
               -- no G02022 after the plugins failed to load (golem-plugin ADR 0003), nor G02090 (golem-doc ADR 0007)
@@ -229,7 +229,7 @@ evaluateProjectWith overlay profile root = do
               let assets = laAssets loaded
               (bibDiags, citeKeys, _) <- loadBibliography root manifest0
               let projectDiags = pluginDiags <> laDiagnostics loaded <> bibDiags
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded) (laTableFiles loaded) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook Map.empty f sf)) pluginCommands))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded) (laTableFiles loaded <> pluginDataFiles manifest0) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook Map.empty f sf)) pluginCommands))
             else do
               let manifest = manifest0
                   -- one G03007 for each name, in the order of the chapters (golem-project ADR 0006)
@@ -248,7 +248,14 @@ evaluateProjectWith overlay profile root = do
                   reassemble = assembleResults (phChannels hook) style manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded) (laTableFiles loaded) projectDiags s1Diags reassemble again pluginCommands))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded) (laTableFiles loaded <> pluginDataFiles manifest0) projectDiags s1Diags reassemble again pluginCommands))
+
+{- | The files the plugins take as data (docs/adr/0105), which the LSP
+watches with the files of @table: a change of one evaluates the project
+again. Paths of the wrong shape are left out; G03003 reports them.
+-}
+pluginDataFiles :: Manifest -> Set.Set FilePath
+pluginDataFiles m = Set.fromList [rel | d <- Map.elems (manifestPlugins m), Right rel <- map normalizeRelative (Map.elems (pdData d))]
 
 {- | S1 from the S0 results of the files (golem-lsp ADR 0004): the book
 and the diagnostics of S1; nothing when the diagnostics of the project

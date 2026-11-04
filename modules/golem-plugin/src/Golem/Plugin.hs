@@ -13,6 +13,9 @@ module Golem.Plugin
     pluginCommands,
     pluginFilters,
     pluginChannels,
+    pluginDataNames,
+    withPluginData,
+    maxDataBytes,
     PluginError (..),
     abiVersion,
     defaultFuel,
@@ -24,12 +27,14 @@ module Golem.Plugin
     commandRequest,
     valueTerm,
     termValue,
+    filterRequest,
     callCommand,
     applyFilter,
     describePluginError,
   )
 where
 
+import Codec.CBOR.Encoding (Encoding, encodeBytes, encodeListLen, encodePreEncoded, encodeString)
 import Codec.CBOR.Read (deserialiseFromBytes)
 import Codec.CBOR.Term (Term (..), decodeTerm, encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
@@ -37,6 +42,9 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Unsafe qualified as BU
+import Data.Char (isAsciiLower, isDigit)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -79,6 +87,13 @@ abiVersion = 8
 defaultFuel :: Word64
 defaultFuel = 1000000000
 
+{- | The most bytes of the data of one plugin, all its files together
+(docs/adr/0105): a quarter of the memory of an instance, which holds the
+request and what the plugin makes of it.
+-}
+maxDataBytes :: Int64
+maxDataBytes = 64 * 1024 * 1024
+
 -- | The memory of one instance: 256 MiB.
 defaultMemoryLimit :: Int64
 defaultMemoryLimit = 256 * 1024 * 1024
@@ -90,8 +105,21 @@ data Plugin = Plugin
     pluginCommands :: ![Text],
     pluginFilters :: ![Text],
     -- | the channels it declares (golem-doc ADR 0007)
-    pluginChannels :: ![ChannelDecl]
+    pluginChannels :: ![ChannelDecl],
+    -- | the names of the data it takes (docs/adr/0105)
+    pluginDataNames :: ![Text],
+    -- | the data the project passes, as the CBOR of the last element of a request
+    plData :: !ByteString
   }
+
+{- | The data the project passes to the plugin (docs/adr/0105), by name.
+Every request ends with it, @[* [name, bytes]]@ in the order of the
+names; it is encoded here once, not at each call.
+-}
+withPluginData :: Map Text ByteString -> Plugin -> Plugin
+withPluginData m p = p {plData = toStrictByteString (encodeListLen (fromIntegral (Map.size m)) <> foldMap entry (Map.toAscList m))}
+  where
+    entry (k, v) = encodeListLen 2 <> encodeString k <> encodeBytes v
 
 data PluginError
   = CompileFailed Text
@@ -157,7 +185,7 @@ loadPluginWith fuel memory wasm = do
       fp <- newForeignPtr c_free p
       n <- c_importCount p
       names <- mapM (\i -> c_importName p i >>= \c -> T.pack <$> peekCString c <* c_freeBytes c) [0 .. n - 1]
-      let plugin = Plugin fp fuel memory [] [] []
+      let plugin = Plugin fp fuel memory [] [] [] [] noData
       if not (null names)
         then pure (Left (HasImports names))
         else do
@@ -170,8 +198,12 @@ loadPluginWith fuel memory wasm = do
                   described <- callMode plugin 1 BS.empty
                   pure $ do
                     (bytes, _) <- described
-                    (cmds, filts, chans) <- decodeDescription bytes
-                    Right plugin {pluginCommands = cmds, pluginFilters = filts, pluginChannels = chans}
+                    (cmds, filts, chans, names) <- decodeDescription bytes
+                    Right plugin {pluginCommands = cmds, pluginFilters = filts, pluginChannels = chans, pluginDataNames = names}
+
+-- | No data: the empty array.
+noData :: ByteString
+noData = BS.singleton 0x80
 
 callMode :: Plugin -> CInt -> ByteString -> IO (Either PluginError (ByteString, Word32))
 callMode plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
@@ -215,16 +247,26 @@ decodeTermBytes b = case deserialiseFromBytes decodeTerm (BL.fromStrict b) of
   Right _ -> Left (BadOutput "CBOR の後ろに余分なバイトがあります")
   Left e -> Left (BadOutput (T.pack (show e)))
 
-{- | The commands, the filters and the channels of a description
-(golem-doc ADR 0007): three lists; two are not a description.
+{- | The commands, the filters, the channels (golem-doc ADR 0007) and the
+names of the data (docs/adr/0105) of a description: four lists; fewer
+are not a description. A name of data is a lowercase ASCII letter, then
+lowercase letters, digits and -, and is given once.
 -}
-decodeDescription :: ByteString -> Either PluginError ([Text], [Text], [ChannelDecl])
+decodeDescription :: ByteString -> Either PluginError ([Text], [Text], [ChannelDecl], [Text])
 decodeDescription b = do
   t <- decodeTermBytes b
   case t of
-    TList [TList cs, TList fs, TList chs] -> (,,) <$> mapM name cs <*> mapM name fs <*> mapM channel chs
+    TList [TList cs, TList fs, TList chs, TList ds] -> (,,,) <$> mapM name cs <*> mapM name fs <*> mapM channel chs <*> (mapM name ds >>= dataNames)
     _ -> Left (BadOutput "golem_describe の形が不正です")
   where
+    dataNames ns = case [n | n <- ns, not (dataName n)] of
+      (n : _) -> Left (BadOutput ("データの名前が不正です: " <> n))
+      [] -> case [n | (i, n) <- zip [0 :: Int ..] ns, n `elem` take i ns] of
+        (n : _) -> Left (BadOutput ("データの名前が重複しています: " <> n))
+        [] -> Right ns
+    dataName n = case T.uncons n of
+      Just (h, rest) -> isAsciiLower h && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
+      Nothing -> False
     name = \case
       TString s -> Right s
       _ -> Left (BadOutput "名前が文字列ではありません")
@@ -279,11 +321,21 @@ termValue = \case
       _ -> Nothing
     inInt64 i = i >= -9223372036854775808 && i <= 9223372036854775807
 
--- | The CBOR of a command request (golem-doc.cddl @command-request@).
-commandRequest :: Text -> [Value] -> [[Inline]] -> SrcSpan -> Either PluginError ByteString
-commandRequest name args slots sp = do
+{- | The CBOR of a command request (golem-doc.cddl @command-request@), with
+the data of the plugin at the end (docs/adr/0105).
+-}
+commandRequest :: Plugin -> Text -> [Value] -> [[Inline]] -> SrcSpan -> Either PluginError ByteString
+commandRequest plugin name args slots sp = do
   argTerms <- mapM valueTerm args
-  pure (toStrictByteString (encodeTerm (TList [TInt 0, TString name, TList [TList [TInt 0, a] | a <- argTerms], TList (map inlinesTerm slots), spanT sp])))
+  pure (withData plugin [TInt 0, TString name, TList [TList [TInt 0, a] | a <- argTerms], TList (map inlinesTerm slots), spanT sp])
+
+-- | The CBOR of a filter request (golem-doc.cddl @filter-request@), with the data at the end.
+filterRequest :: Plugin -> Text -> Document -> ByteString
+filterRequest plugin name doc = withData plugin [TInt 1, TString name, documentTerm doc]
+
+-- | An array of the terms and the plugin's data, already encoded, as its last element.
+withData :: Plugin -> [Term] -> ByteString
+withData plugin ts = toStrictByteString (encodeListLen (fromIntegral (length ts + 1)) <> foldMap encodeTerm ts <> encodePreEncoded (plData plugin) :: Encoding)
 
 -- | The IR of an answer; a float without a finite value is G06100, not bad output.
 decoded :: Either DecodeError a -> Either PluginError a
@@ -295,7 +347,7 @@ decoded = \case
 -- | A command of the plugin. Returns the inlines and the plugin's diagnostics.
 callCommand :: Plugin -> Text -> [Value] -> [[Inline]] -> SrcSpan -> Either PluginError ([Inline], [Diagnostic])
 callCommand plugin name args slots sp = do
-  req <- commandRequest name args slots sp
+  req <- commandRequest plugin name args slots sp
   out <- invokeRaw plugin req
   (outT, diags) <- response out
   inls <- decoded (termInlinesE outT)
@@ -308,8 +360,7 @@ callCommand plugin name args slots sp = do
 -- | A filter of the plugin over one file's document.
 applyFilter :: Plugin -> Text -> Document -> Either PluginError (Document, [Diagnostic])
 applyFilter plugin name doc = do
-  let req = TList [TInt 1, TString name, documentTerm doc]
-  out <- invokeRaw plugin (toStrictByteString (encodeTerm req))
+  out <- invokeRaw plugin (filterRequest plugin name doc)
   (outT, diags) <- response out
   doc' <- decoded (termDocumentE outT)
   -- the items that came in with the document pass as they are (golem-doc ADR 0007)
