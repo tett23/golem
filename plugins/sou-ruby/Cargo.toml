@@ -1,0 +1,18 @@
+[package]
+name = "sou-ruby"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "A sample plugin: a filter that puts ruby on every kanji, by a TSV of words and a dictionary of Lindera the project passes as data (docs/adr/0130)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+golem-plugin-sdk = { path = "../golem-plugin-sdk" }
+ruby-common = { path = "../ruby-common" }
+# no embed-* feature: the dictionary comes as data, and nothing is fetched
+# when the plugin is built (docs/adr/0130)
+lindera = { version = "=6.2.0", default-features = false }
+lindera-dictionary = { version = "=6.2.0", default-features = false }

@@ -4,7 +4,7 @@
 # wasm/<name>.wasm.
 [workspace]
 resolver = "2"
-members = ["golem-plugin-sdk", "lookup", "bar-chart", "glossary"]
+members = ["golem-plugin-sdk", "lookup", "bar-chart", "glossary", "ruby-common", "sou-ruby"]
 
 [workspace.package]
 edition = "2021"
