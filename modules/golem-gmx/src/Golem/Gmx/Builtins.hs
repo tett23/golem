@@ -21,43 +21,8 @@ builtinSources :: [(Text, FilePath, Text)]
 builtinSources =
   [ ("List", "<builtin>/List.gmx", listSource),
     ("String", "<builtin>/String.gmx", stringSource),
-    ("File", "<builtin>/File.gmx", fileSource),
-    ("Inline", "<builtin>/Inline.gmx", inlineSource),
-    ("Block", "<builtin>/Block.gmx", blockSource)
+    ("File", "<builtin>/File.gmx", fileSource)
   ]
-
-{- | The inlines a function makes (docs/adr/0150). The base of a ruby is a
-string, so that a ruby cannot hold a ruby.
--}
-inlineSource :: Text
-inlineSource =
-  T.unlines
-    [ "pub text :: String -> Inlines;",
-      "pub ruby :: String -> String -> Inlines;",
-      "pub kenten :: Inlines -> Inlines;",
-      "pub charStyle :: String -> Inlines -> Inlines;",
-      "pub color :: String -> Inlines -> Inlines;",
-      "pub tcy :: String -> Inlines;",
-      "pub number :: Int -> Inlines;",
-      "pub concat :: List Inlines -> Inlines;"
-    ]
-
--- | The blocks a function makes (docs/adr/0150): those a block command of a plugin may return.
-blockSource :: Text
-blockSource =
-  T.unlines
-    [ "-- a term and its definition",
-      "pub data Def = Def Inlines Blocks;",
-      "",
-      "pub paragraph :: Inlines -> Blocks;",
-      "pub styledParagraph :: String -> Inlines -> Blocks;",
-      "pub bulletList :: List Blocks -> Blocks;",
-      "pub orderedList :: List Blocks -> Blocks;",
-      "pub defList :: List Def -> Blocks;",
-      "pub table :: List Inlines -> List (List Inlines) -> Blocks;",
-      "pub code :: String -> Blocks;",
-      "pub concat :: List Blocks -> Blocks;"
-    ]
 
 -- | The operations of the requirement file (docs/adr/0149), which the driver handles.
 fileSource :: Text

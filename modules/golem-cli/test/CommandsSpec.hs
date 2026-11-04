@@ -398,14 +398,6 @@ fmtTests =
         -- the project has no style.toml, so check still fails, on other codes
         (_, out, err) <- golemAt tmp ["check"]
         assertBool (out <> err) (not ("G01003" `isInfixOf` (out <> err))),
-      -- docs/adr/0148, docs/adr/0150
-      testCase "the .gmx of [functions] are formatted with the chapters" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
-        writeFiles tmp [("manifest.toml", manifestWith ["chapters/01.gm"] <> "\n[functions]\nfiles = [\"fn.gmx\"]\n"), ("chapters/01.gm", "本文。\n"), ("fn.gmx", "import \"lib.gmx\" as L;\nf :: Nat;\nf = case 1 of { 0 -> 1; _ -> 2 };\n"), ("lib.gmx", "g :: Nat;\n\n\ng = 1;\n")]
-        (code, out, _) <- golemAt tmp ["fmt", "--check"]
-        (code, lines out) @?= (ExitFailure 1, ["fn.gmx", "lib.gmx"])
-        _ <- golemAt tmp ["fmt"]
-        readUtf8 (tmp </> "fn.gmx") >>= (@?= "import \"lib.gmx\" as L;\nf :: Nat;\nf = case 1 of {\n  0 -> 1; _ -> 2\n};\n")
-        readUtf8 (tmp </> "lib.gmx") >>= (@?= "g :: Nat;\n\ng = 1;\n"),
       testCase "without a manifest: G03016 and 1" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
         (code, _, err) <- golemAt tmp ["fmt"]
         code @?= ExitFailure 1

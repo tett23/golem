@@ -26,7 +26,6 @@ import Data.Map.Strict qualified as Map
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.IR (Block, Inline)
 import Golem.Eval.Expr (binaryAt)
 import Golem.Eval.Expr qualified as E
 import Golem.Eval.Value (NumType (..), Value (..), mkNumber, numberOf)
@@ -45,9 +44,6 @@ data Result
   | RList ![Result]
   | -- | a function, which cannot leave the evaluator
     RFun
-  | -- | inlines and blocks of the semantic IR (docs/adr/0150)
-    RInlines ![Inline]
-  | RBlocks ![Block]
   deriving stock (Eq, Show)
 
 type Globals = Map GKey Global
@@ -69,8 +65,6 @@ data V s
   | VC !Text ![V s]
   | VL ![V s]
   | VF !(Fn s) ![V s]
-  | VI ![Inline]
-  | VB ![Block]
 
 data Fn s
   = FnClo !(Clo s)
@@ -289,7 +283,7 @@ evalCallCounted hs globals files at key args = case Map.lookup key globals of
           Right t -> Step (Ret (VP (VString t))) k (1 + T.length t) 0
           Left (code, msg) -> Step (fault k l (diagnostic code Error at msg)) k 1 0
         _ -> Step (fault k l (diagnostic "G02007" Error at "File.read の引数が不正です")) k 1 0
-      FnPrim name _ -> pure $ case runPrim at name (map toPrim vs) of
+      FnPrim name _ -> pure $ case runPrim name (map toPrim vs) of
         Right (pv, size) -> Step (Ret (fromPrim pv)) k (1 + size) 0
         Left d -> Step (fault k l d) k 1 0
       FnClo c -> do
@@ -313,8 +307,6 @@ evalCallCounted hs globals files at key args = case Map.lookup key globals of
     binop op a b = case (op, a, b) of
       (OpAppend, VP (VString x), VP (VString y)) -> let r = x <> y in Right (VP (VString r), T.length r)
       (OpAppend, VL x, VL y) -> Right (VL (x <> y), length x + length y)
-      (OpAppend, VI x, VI y) -> Right (VI (x <> y), length x + length y)
-      (OpAppend, VB x, VB y) -> Right (VB (x <> y), length x + length y)
       (_, VP (VBool x), VP (VBool y)) | Just c <- cmpOf op -> Right (VP (VBool (c (compare x y))), 0)
       (_, VP x, VP y) | Just o <- golemOp op -> case binaryAt at o x y of
         Right r -> Right (VP r, 0)
@@ -378,8 +370,6 @@ toPrim = \case
   VC c vs -> PC c (map toPrim vs)
   VL vs -> PL (map toPrim vs)
   VF {} -> PFun
-  VI xs -> PI xs
-  VB xs -> PB xs
 
 fromPrim :: PrimValue -> V s
 fromPrim = \case
@@ -387,8 +377,6 @@ fromPrim = \case
   PC c vs -> VC c (map fromPrim vs)
   PL vs -> VL (map fromPrim vs)
   PFun -> VP VNil
-  PI xs -> VI xs
-  PB xs -> VB xs
 
 toResult :: V s -> Result
 toResult = \case
@@ -396,8 +384,6 @@ toResult = \case
   VC c vs -> RCon c (map toResult vs)
   VL vs -> RList (map toResult vs)
   VF {} -> RFun
-  VI xs -> RInlines xs
-  VB xs -> RBlocks xs
 
 fromResult :: Result -> V s
 fromResult = \case
@@ -405,5 +391,3 @@ fromResult = \case
   RCon c vs -> VC c (map fromResult vs)
   RList vs -> VL (map fromResult vs)
   RFun -> VP VNil
-  RInlines xs -> VI xs
-  RBlocks xs -> VB xs

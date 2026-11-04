@@ -2,7 +2,6 @@
 module FunctionsSpec (functionsTests) where
 
 import Data.ByteString qualified as BS
-import Data.List (isSuffixOf, sort)
 import Data.Text (Text)
 import Data.Text.IO qualified as TIO
 import Golem.Driver
@@ -13,7 +12,6 @@ import Golem.Syntax
 import Support
 import System.FilePath ((</>))
 import System.IO (IOMode (..), hSetFileSize, withFile)
-import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -41,56 +39,11 @@ callRead tmp name = do
     Nothing -> assertFailure (show (lfDiagnostics lf)) >> fail "unreachable"
     Just callIt -> pure (callIt (mkSpan (FileId 0) 0 0) "fn.gmx" "f" [RPrim (VString name)])
 
--- | The codes of a project whose .gmx is the given and whose chapter is a.gm.
-callingCodes :: Text -> Text -> IO [Text]
-callingCodes gmx gm =
-  withChapters "" [("a.gm", gm)] [("fn.gmx", gmx)] $ \tmp -> do
-    TIO.appendFile (tmp </> "manifest.toml") "\n[functions]\nfiles = [\"fn.gmx\"]\n"
-    projectCodes tmp
-
--- | The outputs of a copy of the fixture of functions built to HTML, EPUB and text.
-buildFixture :: Bool -> IO ([Diagnostic], [(FilePath, BS.ByteString)])
-buildFixture parallel = withSystemTempDirectory "golem-functions" $ \tmp -> do
-  copyTree fixtureDir tmp
-  r <- build (defaultOptions tmp) {optParallel = parallel, optTargets = Just [TargetHtml, TargetEpub, TargetText]}
-  outs <- mapM (\p -> (drop (length tmp) p,) <$> BS.readFile p) (sort (brWritten r))
-  pure (brDiagnostics r, outs)
-  where
-    fixtureDir = "test" </> "fixtures" </> "functions"
-
 functionsTests :: TestTree
 functionsTests =
   testGroup
     "[functions] (docs/adr/0149)"
-    [ testCase "G03105: a function named as a built-in command" $
-        callingCodes "pub inline strong :: Inlines -> Inlines;\nstrong s = s;\n" "一。\n" >>= (@?= ["G03105"]),
-      testCase "G03107: two .gmx give the same command" $
-        withChapters "" [("a.gm", "一。\n")] [("a.gmx", "pub inline taxIncluded :: Inlines;\ntaxIncluded = Inline.text \"\";\n"), ("b.gmx", "pub inline taxIncluded :: Inlines;\ntaxIncluded = Inline.text \"\";\n")] $ \tmp -> do
-          TIO.appendFile (tmp </> "manifest.toml") "\n[functions]\nfiles = [\"a.gmx\", \"b.gmx\"]\n"
-          projectCodes tmp >>= (@?= ["G03107"]),
-      testCase "G03106: a function named as a command of a plugin" $
-        withChapters "" [("a.gm", "一。\n")] [("lookup.gmx", "pub inline lookup :: Inlines;\nlookup = Inline.text \"\";\n")] $ \tmp -> do
-          BS.readFile (".." </> ".." </> "plugins" </> "wasm" </> "lookup.wasm") >>= BS.writeFile (tmp </> "lookup.wasm")
-          TIO.appendFile (tmp </> "manifest.toml") "\n[plugins.lookup]\npath = \"lookup.wasm\"\n\n[functions]\nfiles = [\"lookup.gmx\"]\n"
-          projectCodes tmp >>= (@?= ["G03106"]),
-      testCase "a type error of a .gmx gives no G02022 at the calls" $
-        callingCodes "pub inline taxIncluded :: Nat -> Inlines;\ntaxIncluded n = n;\n" "[tax-included 1000]\n" >>= (@?= ["G10201"]),
-      testCase "[tax-included 1000] in a chapter is the text the function makes" $
-        withChapters "" [("a.gm", "[tax-included 1000]\n")] [("fn.gmx", "pub inline taxIncluded :: Nat -> Inlines;\ntaxIncluded n = Inline.text (String.fromNat (div (n * 11) 10));\n")] $ \tmp -> do
-          TIO.appendFile (tmp </> "manifest.toml") "\n[functions]\nfiles = [\"fn.gmx\"]\n"
-          r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
-          map diagCode (brDiagnostics r) @?= []
-          texts <- mapM BS.readFile (filter (".txt" `isSuffixOf`) (brWritten r))
-          assertBool (show texts) (all ("1100" `BS.isInfixOf`) texts && not (null texts)),
-      testCase "the fixture of functions builds twice to the same bytes and diagnostics, in parallel and in sequence" $ do
-        a <- buildFixture False
-        b <- buildFixture False
-        c <- buildFixture True
-        fst a @?= []
-        assertBool "outputs" (not (null (snd a)))
-        b @?= a
-        c @?= a,
-      testCase "=> file without requires is G10505, in a book that calls no function" $
+    [ testCase "=> file without requires is G10505, in a book that calls no function" $
         withFunctions "[functions]\nfiles = [\"fn.gmx\"]\n" [("fn.gmx", readFile')] $ \tmp ->
           projectCodes tmp >>= (@?= ["G10505"]),
       testCase "requires = [\"net\"] is G03101" $

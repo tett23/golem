@@ -12,7 +12,6 @@ module Golem.Gmx.Syntax
     Module (..),
     Decl (..),
     Signature (..),
-    CmdKind (..),
     Equation (..),
     Rhs (..),
     Guard (..),
@@ -78,13 +77,8 @@ data Signature = Signature
     sigNameLoc :: !Loc,
     sigType :: !TypeE,
     -- | the requirements after @=>@ (docs/adr/0149)
-    sigReqs :: ![(Name, Loc)],
-    -- | @pub inline@ or @pub block@ (docs/adr/0150)
-    sigKind :: !(Maybe CmdKind)
+    sigReqs :: ![(Name, Loc)]
   }
-  deriving stock (Eq, Show)
-
-data CmdKind = CmdInline | CmdBlock
   deriving stock (Eq, Show)
 
 {- | One equation: the name, the patterns of the arguments, the right-hand

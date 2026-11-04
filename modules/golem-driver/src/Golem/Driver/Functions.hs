@@ -9,9 +9,6 @@ module Golem.Driver.Functions
     loadFunctions,
     loadFunctionsAt,
     functionFiles,
-    functionCommands,
-    formatFunctionFile,
-    functionSourcePaths,
     Result (..),
   )
 where
@@ -28,8 +25,6 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Eval.Builtin (allBuiltins, builtinBlockCommands, builtinName)
-import Golem.Eval.File (FunctionBlockCommand (..), FunctionCommand (..), FunctionTable (..), noFunctions)
 import Golem.Gmx
 import Golem.Plugin (maxDataBytes)
 import Golem.Project (Project (..), loadProjectWith)
@@ -115,63 +110,6 @@ loadFunctions root overlay mfid (FileId base) manifest = case manifestFunctions 
     tshow :: (Show a) => a -> Text
     tshow = T.pack . show
     readInfo' rel bytes = SourceInfo rel (mkLineIndex (TE.decodeUtf8Lenient bytes))
-
-{- | The commands of the functions (docs/adr/0150) for golem-eval, and the
-errors of their names: G03105 for the name of a built-in command, G03106
-for that of a command of a plugin, G03107 for a name two .gmx give; each at
-the declaration read later. The plugins' inline and block commands are
-given by name. Nothing when the functions failed to load.
--}
-functionCommands :: LoadedFunctions -> Set Text -> Set Text -> ([Diagnostic], FunctionTable)
-functionCommands lf pluginInline pluginBlock = case lfProgram lf of
-  Nothing -> ([], noFunctions)
-  Just (p, hs) ->
-    let cmds = programCommands p
-        builtinInline = Set.fromList (map builtinName allBuiltins)
-        builtinBlock = Set.fromList builtinBlockCommands
-        check (seen, ds, ok) c =
-          let key = (cmdKind c, cmdName c)
-              inline = cmdKind c == InlineCommand
-              at = cmdSpan c
-              clash
-                | Set.member (cmdName c) (if inline then builtinInline else builtinBlock) =
-                    Just (diagnostic "G03105" Error at ("組み込みのコマンドと同じ名前の関数のコマンドです: " <> shown c))
-                | Set.member (cmdName c) (if inline then pluginInline else pluginBlock) =
-                    Just (diagnostic "G03106" Error at ("プラグインのコマンドと同じ名前の関数のコマンドです: " <> shown c))
-                | Just other <- Map.lookup key seen =
-                    Just (diagnostic "G03107" Error at ("二つの .gmx が同じ名前のコマンドを出しています: " <> shown c <> "（" <> T.pack other <> " と " <> T.pack (cmdPath c) <> "）"))
-                | otherwise = Nothing
-           in case clash of
-                Just d -> (seen, ds <> [d], ok)
-                Nothing -> (Map.insert key (cmdPath c) seen, ds, ok <> [c])
-        (_, diags, accepted) = foldl check (Map.empty, [], []) cmds
-        inlineCmd c = FunctionCommand (cmdParams c) (cmdSlots c) $ \vs slots sp -> case callCommand hs p sp c vs (Left slots) of
-          Left d -> Left [d]
-          Right (Left is) -> Right is
-          Right (Right _) -> Left []
-        blockCmd c = FunctionBlockCommand (cmdParams c) (cmdBody c) $ \vs body sp -> case callCommand hs p sp c vs (Right body) of
-          Left d -> Left [d]
-          Right (Right bs) -> Right bs
-          Right (Left _) -> Left []
-        table =
-          FunctionTable
-            (Map.fromList [(cmdName c, inlineCmd c) | c <- accepted, cmdKind c == InlineCommand])
-            (Map.fromList [(cmdName c, blockCmd c) | c <- accepted, cmdKind c == BlockCommand])
-     in (diags, table)
-  where
-    shown c = (if cmdKind c == InlineCommand then "[" else "@") <> cmdName c <> (if cmdKind c == InlineCommand then "]" else "")
-
-{- | golem fmt of a .gmx (docs/adr/0148, docs/adr/0150): the formatted
-text, or the errors that keep it from being read.
--}
-formatFunctionFile :: Text -> Either [Diagnostic] Text
-formatFunctionFile = formatGmx
-
-{- | The .gmx of the project at a root, for golem fmt without arguments:
-those of files and the ones they import, as far as they can be read.
--}
-functionSourcePaths :: FilePath -> IO [FilePath]
-functionSourcePaths root = map siPath . Map.elems . lfSources <$> loadFunctionsAt root
 
 -- | 'loadFunctions' of the project at a root, for tests and tools.
 loadFunctionsAt :: FilePath -> IO LoadedFunctions

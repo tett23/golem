@@ -33,7 +33,6 @@ TOML の書き方は、第[ref-number basics]章「[ref-title toml]」で説明�
 | [code: \[targets\]] | 出力の形式ごとの設定です。 |
 | [code: \[plugins.名前\]] | 使うプラグインの宣言です（テーブル）。 |
 | [code: \[\[filters\]\]] | フィルタのプラグインを当てるファイルです（テーブルの並び）。 |
-| [code: \[functions\]] | 関数のファイルと、関数に許すことと読ませるファイルです（テーブル）。 |
 | [code: \[source\]] | 原稿の読み方です（テーブル）。 |
 | [code: \[diagnostics\]] | 診断の扱いです（テーブル）。 |
 
@@ -156,16 +155,3 @@ chapters = [
 | [code: plugin] | [code: \[plugins.名前\]] で宣言したプラグインの名前です（文字列、必須）。 |
 | [code: filter] | そのプラグインのフィルタの名前です（文字列、必須）。 |
 | [code: files] | フィルタを当てる原稿のファイルです（文字列の配列、必須）。 |
-
-@nonumber
-## [code: \[functions\]]
-
-関数（第[ref-number functions]章）のファイルを書きます。
-
-| キー | 意味 |
-|:---|:---|
-| [code: files] | コマンドにする関数のファイル（[code: .gmx]）です（文字列の配列）。 |
-| [code: requires] | 関数に許す要求です（文字列の配列）。今は [code: "file"] だけを書けます。 |
-| [code: \[functions.data\]] | [code: File.read] で読ませるファイルの名前とパスです（テーブル）。名前は英小文字で始め、英小文字、数字、[code: -] で書きます。 |
-
-ファイルがないとき（G03102）、[code: \[functions.data\]] の合計が 64 MiB を超えるとき（G03103）、[code: \[functions.data\]] があって [code: requires] に [code: "file"] がないとき（G03104）は、関数を呼ばない本でもエラーになります。

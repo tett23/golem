@@ -15,8 +15,6 @@ module Golem.Gmx.Types
     tRat,
     tBool,
     tString,
-    tInlines,
-    tBlocks,
     tList,
     tMaybe,
     numRank,
@@ -67,10 +65,6 @@ tInt = TC "Int" []
 tRat = TC "Rat" []
 tBool = TC "Bool" []
 tString = TC "String" []
-
-tInlines, tBlocks :: Ty
-tInlines = TC "Inlines" []
-tBlocks = TC "Blocks" []
 
 tList, tMaybe :: Ty -> Ty
 tList t = TC "List" [t]
