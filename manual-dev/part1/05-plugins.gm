@@ -274,6 +274,9 @@ Golem のリポジトリの [code: plugins/] には、Rust でプラグインを
 ツールチェーンの版は [code: plugins/rust-toolchain.toml] で固定し、ソースのパスを置き換えて作るので、どこで作っても同じバイト列になる。
 CI の [code: plugins] ジョブが、コミットした [code: .wasm] がソースから作ったものと同じであることを確かめる。
 見本のプラグインを足すときは、[code: plugins/<名前>/] にクレートを作って [code: plugins/Cargo.toml] の [code: members] に加え、[code: sh plugins/build.sh] で作った [code: .wasm] を [code: Cargo.lock] と一緒にコミットする。
+見本のプラグインの依存（[code: Cargo.lock]）かツールチェーンの版を変えたら、[code: sh scripts/plugin-licenses.sh] で [code: licenses/plugins/] を作り直し、[code: Cargo.lock] と一緒にコミットする。
+[code: licenses/plugins/] には、プラグインに入る crates.io のクレートと Rust の標準ライブラリの著作権の表示とライセンスの文書があり、リリースはこれを [code: golem-plugins-licenses-<タグ>.tar.gz] として添える。
+CI の [code: plugins] ジョブが、作り直したものとコミットしたものが同じであることを確かめる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0133-third-party-licenses-of-sample-plugins.md]（docs/adr/0133「見本のプラグインのライセンスの文書をリリースに添える」）]
 作ったばかりのプラグインを手元のプロジェクトで試すときは、[code: .wasm] をプロジェクトに置いて [code: \[plugins.<名前>\]] の [code: path] で宣言すれば、[code: plugins.lock] もキャッシュも要らない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0109-local-plugin-path.md]（docs/adr/0109「プロジェクトの中のプラグインを path で宣言する」）]
 
 golem-plugin のテストは、テスト用のプラグインを wat（wasm のテキストの形式）で書き、[code: modules/golem-plugin/test/plugins/] に置いている。
