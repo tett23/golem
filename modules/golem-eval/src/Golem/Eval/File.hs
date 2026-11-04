@@ -7,6 +7,7 @@ module Golem.Eval.File
     Asset (..),
     PluginHook (..),
     PluginCommand (..),
+    PluginBlockCommand (..),
     noPlugins,
     Usage (..),
     EvalResult (..),
@@ -72,12 +73,22 @@ newtype PluginCommand = PluginCommand
     pcCall :: [PluginArg] -> [[Inline]] -> SrcSpan -> Either [Diagnostic] ([Inline], [Diagnostic])
   }
 
+{- | The call of one block command of a plugin (docs/adr/0122): the
+arguments, the body evaluated, and where it is called.
+-}
+newtype PluginBlockCommand = PluginBlockCommand
+  { -- | the blocks and the plugin's own diagnostics, or errors
+    pbCall :: [PluginArg] -> [Block] -> SrcSpan -> Either [Diagnostic] ([Block], [Diagnostic])
+  }
+
 {- | Plugin commands and filters, provided by golem-plugin. The keys tell an
 override of a built-in command from a command of its own (docs/adr ADR 0027).
 -}
 data PluginHook = PluginHook
   { phOverrides :: !(Map OverridableBuiltin PluginCommand),
     phCommands :: !(Map PluginCommandName PluginCommand),
+    -- | the block commands of the plugins, by name (docs/adr/0122)
+    phBlocks :: !(Map Text PluginBlockCommand),
     -- | the channels the plugins declare (golem-doc ADR 0007)
     phChannels :: !(Map Text ChannelDecl),
     phApplyFilters :: FilePath -> Document -> Either [Diagnostic] (Document, [Diagnostic]),
@@ -86,7 +97,7 @@ data PluginHook = PluginHook
   }
 
 noPlugins :: PluginHook
-noPlugins = PluginHook Map.empty Map.empty Map.empty (\_ d -> Right (d, [])) []
+noPlugins = PluginHook Map.empty Map.empty Map.empty Map.empty (\_ d -> Right (d, [])) []
 
 data EvalContext = EvalContext
   { ctxFile :: !FileId,
@@ -521,7 +532,33 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   _ | name `elem` settingCommands -> misplacedSetting sp >> pure []
   _
     | name `elem` attributeCommands -> err "G02010" sp ("@" <> name <> " の後にブロックがありません") >> pure []
+    | Just pb <- Map.lookup name (phBlocks (ctxPlugins ctx)) -> pluginBlock ctx sp pb args body
     | otherwise -> err "G02009" nsp ("未知のブロックコマンドです: @" <> name) >> pure []
+
+{- | A block command of a plugin (docs/adr/0122): its arguments as a plugin
+command's, its body evaluated as blocks. An argument beyond int64 is
+G02091 and the plugin is not called.
+-}
+pluginBlock :: EvalContext -> SrcSpan -> PluginBlockCommand -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+pluginBlock ctx sp pb args body = do
+  vals <- pluginArgs ctx sp args
+  body' <- evalBlocks ctx body
+  case sequence vals of
+    Left d -> report d >> pure []
+    Right vs | not (all (all inInt64 . valueInts . pluginArgValue) vs) -> outOfInt64 sp >> pure []
+    Right vs -> case pbCall pb vs body' sp of
+      Left ds -> mapM_ report ds >> pure []
+      Right (out, ds) -> mapM_ report ds >> pure out
+
+{- | The arguments of a call of a plugin: a keyword with its name
+(docs/adr/0110). A spread is already expanded by 'prepareArgs'
+(docs/adr/0112), so a plugin never gets one.
+-}
+pluginArgs :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Either Diagnostic PluginArg]
+pluginArgs ctx sp args = forM args $ \(A.Located _ a) -> case a of
+  A.Positional v -> fmap PluginPositional <$> argValue ctx sp v
+  A.Keyword (A.Located _ k) v -> fmap (PluginKeyword k) <$> argValue ctx sp v
+  _ -> pure (Right (PluginPositional VNil))
 
 {- | An attribute group and the block it applies to. Without a block after
 it, a last block command that is not an attribute (a figure, @style with a
@@ -1693,12 +1730,7 @@ evalCommand ctx inHeading sp (A.Located nsp name) args slots
   where
     parsed = parseBuiltin name
     plugin pc = do
-      -- a keyword goes with its name (docs/adr/0110); a spread is already
-      -- expanded by 'prepareArgs' (docs/adr/0112), so a plugin never gets one
-      vals <- forM args $ \(A.Located _ a) -> case a of
-        A.Positional v -> fmap PluginPositional <$> argValue ctx sp v
-        A.Keyword (A.Located _ k) v -> fmap (PluginKeyword k) <$> argValue ctx sp v
-        _ -> pure (Right (PluginPositional VNil))
+      vals <- pluginArgs ctx sp args
       slots' <- mapM (evalInlines ctx inHeading) slots
       case sequence vals of
         Left d -> report d >> pure []

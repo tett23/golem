@@ -11,10 +11,12 @@ module Golem.Doc.Cbor
     encodeInlines,
     decodeInlines,
     documentTerm,
+    blocksTerm,
     inlinesTerm,
     termDocument,
     termInlines,
     termDocumentE,
+    termBlocksE,
     termInlinesE,
     DecodeError (..),
     describeDecodeError,
@@ -84,6 +86,10 @@ denominator 1 for an integral value.
 -}
 rationalTerm :: Rational -> Term
 rationalTerm q = TTagged 30 (TList [int (numerator q), int (denominator q)])
+
+-- | The blocks of a block command's body or output (docs/adr/0122).
+blocksTerm :: [Block] -> Term
+blocksTerm = list blockT
 
 documentTerm :: Document -> Term
 documentTerm (Document (FileId f) bs) = TList [int abiVersion, int f, list blockT bs]
@@ -321,6 +327,10 @@ termDocumentE t =
         Left (SchemaError ("ABI のバージョンが異なります: " <> T.pack (show v')))
       Document . FileId <$> asIntI f <*> (asList bs >>= traverse termBlock)
     _ -> bad "文書"
+
+-- | The inverse of 'blocksTerm'.
+termBlocksE :: Term -> D [Block]
+termBlocksE t = asList t >>= traverse termBlock
 
 termBlock :: Term -> D Block
 termBlock t =

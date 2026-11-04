@@ -234,8 +234,9 @@ evaluateProjectWith overlay profile root = do
               pluginCommands = sort (map unPluginCommandName (Map.keys (phCommands hook)))
               -- style.toml, which the context comes from, when a plugin asks for it: the LSP watches it (docs/adr/0121)
               contextFiles = Set.fromList ["style.toml" | not (null (phContextNames hook))]
-              -- no G02022 after the plugins failed to load (golem-plugin ADR 0003), nor G02090 (golem-doc ADR 0007)
-              quiet = if null pluginErrors then id else \r -> r {erDiagnostics = filter ((`notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090"]) . diagCode) (erDiagnostics r)}
+              -- no G02022 after the plugins failed to load (golem-plugin ADR 0003), nor G02090 (golem-doc ADR 0007),
+              -- nor G02009 for their block commands (docs/adr/0122)
+              quiet = if null pluginErrors then id else \r -> r {erDiagnostics = filter ((`notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090", DiagnosticCode "G02009"]) . diagCode) (erDiagnostics r)}
           if hasErrors synDiags
             then do
               loaded <- loadAssets overlay root project

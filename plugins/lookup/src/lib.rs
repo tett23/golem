@@ -53,6 +53,8 @@ pub fn invoke(req: Request) -> Response {
             }
         }
         Request::Filter(f) => Response::document(f.document),
+        // lookup declares no block command, so the host sends none (docs/adr/0122)
+        Request::Block(_) => Response::blocks(vec![]),
     }
 }
 

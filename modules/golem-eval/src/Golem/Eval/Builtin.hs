@@ -13,6 +13,7 @@ module Golem.Eval.Builtin
     PluginCommandName,
     pluginCommandName,
     unPluginCommandName,
+    builtinBlockCommands,
   )
 where
 
@@ -123,3 +124,36 @@ pluginCommandName n
 
 unPluginCommandName :: PluginCommandName -> Text
 unPluginCommandName (PluginCommandName n) = n
+
+{- | The names of the built-in block commands, the file settings and the
+attributes among them: a plugin may not provide a block command of one of
+these names (docs/adr/0122).
+-}
+builtinBlockCommands :: [Text]
+builtinBlockCommands =
+  [ "import",
+    "set",
+    "toc",
+    "index",
+    "bibliography",
+    "channel",
+    "printings",
+    "page-break",
+    "column-break",
+    "no-page-break",
+    "need-lines",
+    "page-lines",
+    "blank-line",
+    "figure",
+    "table",
+    "listing",
+    "style",
+    "manifest",
+    "style-def",
+    "label",
+    "toc-title",
+    "number",
+    "nonumber",
+    "notoc",
+    "caption"
+  ]

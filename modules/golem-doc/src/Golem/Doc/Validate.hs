@@ -4,6 +4,7 @@ the invariants that the Haskell types guarantee internally.
 module Golem.Doc.Validate
   ( validateInlines,
     validateDocument,
+    validateBlocks,
   )
 where
 
@@ -20,7 +21,17 @@ validateInlines :: (FileId -> Maybe Int) -> [DeferredExpr] -> [Inline] -> [Text]
 validateInlines fileSize allowed is = concatMap (inlineErrors fileSize allowed) is <> breakErrors False is
 
 validateDocument :: (FileId -> Maybe Int) -> [DeferredExpr] -> Document -> [Text]
-validateDocument fileSize allowed (Document _ bs) = concatMap (blockAt True) bs
+validateDocument fileSize allowed (Document _ bs) = blocksAt fileSize allowed True bs
+
+{- | The blocks a block command puts out (docs/adr/0122): not at the top of
+a document, since a block command may stand in a list item, so no forced
+break, page control or blank lines.
+-}
+validateBlocks :: (FileId -> Maybe Int) -> [DeferredExpr] -> [Block] -> [Text]
+validateBlocks fileSize allowed = blocksAt fileSize allowed False
+
+blocksAt :: (FileId -> Maybe Int) -> [DeferredExpr] -> Bool -> [Block] -> [Text]
+blocksAt fileSize allowed top0 = concatMap (blockAt top0)
   where
     blockErrors = blockAt False
     -- a forced break stands only at the top of a document, without a label (docs/adr ADR 0017)
