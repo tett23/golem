@@ -614,6 +614,48 @@ expect "build: a manual that does not build fails" 1
 run visual_build
 expect "build: no output directory" 2
 
+# The inputs are built at the same time, at most as many as getconf says
+# processors; the manuals are one of them (docs/adr/0163). A slow fake
+# golem waits longer for the inputs that start first, so that an input
+# built later ends sooner and one PDF could be taken for another; it
+# counts the golems that run with a directory each in RUNNING, and writes
+# a line when it ends. A fake getconf says 3 processors
+fake "$BR/slow" getconf '[ "$1" = _NPROCESSORS_ONLN ] && echo 3'
+fake "$BR/slow" golem 'here=$(basename "$(pwd)")
+mkdir "$RUNNING/$here"
+ls "$RUNNING" | wc -l | tr -d " " >>"$CONCURRENT"
+case "$here" in sample | figures | manual) s=0.6 ;; kanikosen*) s=0.4 ;; *) s=0.2 ;; esac
+sleep "$s"
+rmdir "$RUNNING/$here"
+[ "$here" != "$FAKE_GOLEM_FAIL" ] || { echo "error in $here" >&2; exit 1; }
+mkdir -p build/pdf
+printf "%s\n" "$here" >build/pdf/book.pdf
+echo "$here" >>"$ENDED"'
+slow_build() {
+  rm -rf "$BR/running"
+  mkdir -p "$BR/running"
+  : >"$BR/concurrent"
+  : >"$BR/ended"
+  env PATH="$BR/slow:$PATH" GOLEM="$BR/slow/golem" RUNNING="$BR/running" CONCURRENT="$BR/concurrent" ENDED="$BR/ended" \
+    GOLEM_MANUAL_SKIP_FONTS=1 FAKE_GOLEM_FAIL="${FAKE_GOLEM_FAIL-}" sh "$BR/scripts/visual/build.sh" "$@"
+}
+run slow_build "$BR/out4"
+expect "build: the inputs build at the same time" 0
+wrong=
+for i in $INPUTS; do
+  [ "$(cat "$BR/out4/$i.pdf" 2>/dev/null)" = "$i" ] || wrong="$wrong $i"
+done
+if [ -z "$wrong" ]; then ok; else ng "build: built at the same time, each PDF is that of its input ($wrong)"; fi
+MAX=$(sort -n "$BR/concurrent" | tail -1)
+if [ -n "$MAX" ] && [ "$MAX" -ge 2 ]; then ok; else ng "build: two inputs or more are built at the same time (at most ${MAX:-0})"; fi
+if [ -n "$MAX" ] && [ "$MAX" -le 3 ]; then ok; else ng "build: no more inputs at the same time than getconf _NPROCESSORS_ONLN says (${MAX:-0})"; fi
+# a failed input: its output on stderr, exit 1, after every other golem ended
+FAKE_GOLEM_FAIL=sample run slow_build "$BR/out5"
+ENDED_AT_EXIT=$(wc -l <"$BR/ended" | tr -d ' ')
+if [ "$CODE" = 1 ] && grep -qx 'error in sample' "$WORK/err" && [ "$ENDED_AT_EXIT" = 16 ]; then ok; else
+  ng "build: a failed input fails the run after the other inputs end (exit $CODE, $ENDED_AT_EXIT ended)"
+fi
+
 # ----------------------------------------------------------------
 printf '%s tests, %s failures\n' "$COUNT" "$FAILURES"
 [ "$FAILURES" -eq 0 ]
