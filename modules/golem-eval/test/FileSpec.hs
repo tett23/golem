@@ -715,10 +715,39 @@ argWordTests =
       testCase "a range where no range is taken is G02113, as a word and as an expression" $ do
         let g02113 w = ("G02113", "範囲を受け取らない引数に範囲を書いています: " <> w)
         msgs "[number-text 1...3]\n" @?= [g02113 "1...3"]
-        msgs "[number-text -1...1.5]\n" @?= [g02113 "-1...1.5"]
         msgs "@blank-line 1...3\n" @?= [g02113 "1...3"]
         msgs "[number-text [= 1...3]]\n" @?= [g02113 "1...3"]
         msgs "@blank-line [= 1...3]\n" @?= [g02113 "1...3"],
+      -- docs/adr ADR 0135: a range word is first the range of the same expression
+      testCase "a range word that is no range where no range is taken is the code of the expression" $
+        mapM_
+          (\(w, e) -> msgs w @?= msgs e)
+          [ ("[number-text -1...1.5]\n", "[number-text [= -1...1.5]]\n"),
+            ("[number-text 1.5...3]\n", "[number-text [= 1.5...3]]\n"),
+            ("[number-text 7...3]\n", "[number-text [= 7...3]]\n"),
+            ("[number-text 1e1301...2]\n", "[number-text [= 1e1301...2]]\n"),
+            ("@blank-line 1...1.5\n", "@blank-line [= 1...1.5]\n"),
+            ("@blank-line 7...3\n", "@blank-line [= 7...3]\n"),
+            ("```haskell numbers=7...3\nx\n```\n", "```haskell numbers=[= 7...3]\nx\n```\n")
+          ],
+      testCase "a range word that is no range is G02104, G02106 or G02086, not G02113" $ do
+        errs "[number-text -1...1.5]\n" @?= ["G02104"]
+        errs "[number-text 1.5...3]\n" @?= ["G02104"]
+        errs "[number-text 7...3]\n" @?= ["G02106"]
+        errs "[number-text 1e1301...2]\n" @?= ["G02086"]
+        errs "@blank-line 1...1.5\n" @?= ["G02104"]
+        errs "@blank-line 7...3\n" @?= ["G02106"]
+        errs "```haskell numbers=7...3\nx\n```\n" @?= ["G02106"],
+      testCase "a range word that is a range where no range is taken is G02113 with the word" $ do
+        let g02113 w = ("G02113", "範囲を受け取らない引数に範囲を書いています: " <> w)
+        msgs "[number-text 1...3]\n" @?= [g02113 "1...3"]
+        msgs "@blank-line 1...3\n" @?= [g02113 "1...3"]
+        msgs "```haskell numbers=5...5\nx\n```\n" @?= [g02113 "5...5"],
+      testCase "another word with ... where no range is taken is as before" $ do
+        errs "[number-text 1...]\n" @?= ["G02019"]
+        errs "[number-text a...3]\n" @?= ["G02019"]
+        errs "[number-text 1...2...3]\n" @?= ["G02019"]
+        errs "```haskell numbers=1...\nx\n```\n" @?= ["G02069"],
       -- one cause, one code: no G02069 besides (the audit of 2026-11-04, F-14)
       testCase "a range as the expression of a key of a code block is G02113 only" $
         mapM_
