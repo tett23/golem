@@ -2,6 +2,7 @@ module FileSpec (tests) where
 
 import Control.Exception (evaluate)
 import Data.Bifunctor (first)
+import Data.Either (lefts)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
@@ -13,7 +14,9 @@ import Golem.Doc.Validate (validateDocument)
 import Golem.Eval.Builtin (OverridableBuiltin (..), builtinBlockCommands, pluginCommandName)
 import Golem.Eval.File
 import Golem.Eval.Value
+import Golem.Parser (parseAst)
 import Golem.Parser.SourceSettings
+import Golem.Project.Imports (importsOf)
 import Golem.Project.Paths (PathError (..))
 import Golem.Project.Style (LineBreaks (..), LocalStyles (..), RegexStyleDef (..), Style (..), dimToSp, paraLineBreaks, parseDim, parseStyle)
 import Golem.Syntax
@@ -78,6 +81,10 @@ diagsWith c = map diagSite . fst . evalSource c
 -- | A PNG figure of images/a.png with the alt text x.
 fig0 :: Figure
 fig0 = Figure "images/a.png" Nothing "x" Nothing Nothing [] Nothing False
+
+-- | The diagnostics golem-project's importsOf gives the @import of a source (golem-project ADR 0006).
+importSites :: Text -> [(Text, Text, Int, Int)]
+importSites src = let (file, _, _) = parseAst (FileId 1) src in map diagSite (lefts (importsOf file))
 
 -- | The code and message of each diagnostic.
 msgs :: Text -> [(Text, Text)]
@@ -827,6 +834,20 @@ spreadTests =
       testCase "G02114: @manifest and @style-def read their arguments before the evaluation" $ do
         codesS "@manifest **[{a: \"line\"}]\n" @?= ["G02114"]
         codesS "@style-def character x **[{weight: \"bold\"}]\n" @?= ["G02114"],
+      -- docs/adr ADR 0142: @import is read as written, as the project reads it
+      testCase "@import *[[\"x.gm\"]] as n is G03009 and binds no namespace (ADR 0142)" $ do
+        errs "@import *[[\"x.gm\"]] as n\n" @?= ["G03009"]
+        usageImports (erUsage (evalResult ctx "@import *[[\"x.gm\"]] as n\n")) @?= [],
+      testCase "@import *[1] is G03009 only (ADR 0142)" $
+        errs "@import *[1]\n" @?= ["G03009"],
+      testCase "@import *[y] with y undefined is G03009 only (ADR 0142)" $
+        errs "@import *[y]\n" @?= ["G03009"],
+      testCase "@import **[{a: 1}] stays G03009 (ADR 0142)" $
+        errs "@import **[{a: 1}]\n" @?= ["G03009"],
+      testCase "a spread in @import has the message and position of the project's importsOf (ADR 0142)" $
+        mapM_
+          (\src -> diags src @?= importSites src)
+          ["@import *[[\"x.gm\"]] as n\n", "@import *[1]\n", "@import *[y]\n", "@import **[{a: 1}]\n"],
       testCase "G02114: @style decides the lines of its body before the evaluation" $ do
         errs "@style *[[\"note\"]]\na\n" @?= ["G02114"]
         errs "@style *[[\"note\"]]\n  a\n" @?= ["G02114"]
