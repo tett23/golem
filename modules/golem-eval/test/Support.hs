@@ -40,7 +40,8 @@ baseCtx =
       ctxAssets = Map.empty,
       ctxPlugins = noPlugins,
       ctxSource = defaultSourceSettings,
-      ctxStyle = defaultStyle
+      ctxStyle = defaultStyle,
+      ctxFunctions = noFunctions
     }
 
 {- | Parses the source as file 1 and evaluates it in the context: the

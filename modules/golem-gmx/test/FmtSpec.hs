@@ -88,8 +88,12 @@ sepBy s = \case
   x : xs -> x <> concatMap (s :) xs
 
 printSig :: Signature -> [Text]
-printSig s = ["pub" | sigPub s] <> [sigName s, "::"] <> printType (sigType s) <> reqs (map fst (sigReqs s))
+printSig s = ["pub" | sigPub s] <> kind (sigKind s) <> [sigName s, "::"] <> printType (sigType s) <> reqs (map fst (sigReqs s))
   where
+    kind = \case
+      Just CmdInline -> ["inline"]
+      Just CmdBlock -> ["block"]
+      Nothing -> []
     reqs = \case
       [] -> []
       rs -> "=>" : sepBy "," (map pure rs)
@@ -206,7 +210,10 @@ genDecl =
     ]
 
 genSig :: Bool -> Gen Signature
-genSig top = Signature l0 <$> (if top then Gen.bool else pure False) <*> genVar <*> pure l0 <*> genType <*> (if top then genReqs else pure [])
+genSig top = do
+  kind <- if top then Gen.element [Nothing, Nothing, Just CmdInline, Just CmdBlock] else pure Nothing
+  pub <- if top then maybe Gen.bool (const (pure True)) kind else pure False
+  Signature l0 pub <$> genVar <*> pure l0 <*> genType <*> (if top then genReqs else pure []) <*> pure kind
 
 -- | requirements in the order of their names, the order fmt gives
 genReqs :: Gen [(Name, Loc)]
