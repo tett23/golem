@@ -153,11 +153,12 @@ checked when there is none.
 -}
 loadData :: FilePath -> Map.Map FilePath Text -> (Text -> Text -> Diagnostic) -> Text -> PluginDecl -> Plugin -> IO (Either [Diagnostic] (Map.Map Text ByteString))
 loadData root overlay err name decl p = do
-  let takes = pluginDataNames p
+  let -- \* takes any well-formed name (docs/adr/0119)
+      takes = [if n == "*" then "英小文字で始まる任意の名前" else n | n <- pluginDataNames p]
       unknown =
         [ err "G06102" ("プラグインが受け取らないデータの名前です: " <> name <> "." <> k <> "（受け取る名前: " <> (if null takes then "なし" else T.intercalate "、" takes) <> "）")
         | k <- Map.keys (pdData decl),
-          k `notElem` takes
+          not (takesData p k)
         ]
   found <- mapM locate (Map.toList (pdData decl))
   case unknown <> lefts found of

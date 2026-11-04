@@ -14,6 +14,7 @@ module Golem.Plugin
     pluginFilters,
     pluginChannels,
     pluginDataNames,
+    takesData,
     withPluginData,
     maxDataBytes,
     PluginError (..),
@@ -111,6 +112,22 @@ data Plugin = Plugin
     -- | the data the project passes, as the CBOR of the last element of a request
     plData :: !ByteString
   }
+
+{- | Whether the plugin takes data of a name (docs/adr/0119): one of the
+names it declares, or any well-formed name when it declares @*@.
+-}
+takesData :: Plugin -> Text -> Bool
+takesData p n
+  | pluginDataNames p == ["*"] = dataName n
+  | otherwise = n `elem` pluginDataNames p
+
+{- | A name of data: a lowercase ASCII letter, then lowercase letters,
+digits and - (docs/adr/0105).
+-}
+dataName :: Text -> Bool
+dataName n = case T.uncons n of
+  Just (h, rest) -> isAsciiLower h && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
+  Nothing -> False
 
 {- | The data the project passes to the plugin (docs/adr/0105), by name.
 Every request ends with it, @[* [name, bytes]]@ in the order of the
@@ -253,7 +270,8 @@ of its fields to arrays, in any order (docs/adr/0107). A field left out
 is empty; an unknown field, a field given twice, a key that is not a
 text string and anything but a map of definite length are not a
 description. A name of data is a lowercase ASCII letter, then lowercase
-letters, digits and -, and is given once.
+letters, digits and -, and is given once; or the data is * alone, any
+name (docs/adr/0119).
 -}
 decodeDescription :: ByteString -> Either PluginError ([Text], [Text], [ChannelDecl], [Text])
 decodeDescription b = do
@@ -282,14 +300,13 @@ decodeDescription b = do
     key = \case
       (TString k, _) -> Right k
       _ -> Left (BadOutput "golem_describe の形が不正です")
+    -- \* alone takes any name (docs/adr/0119); with another name it is a bad name
+    dataNames ["*"] = Right ["*"]
     dataNames ns = case [n | n <- ns, not (dataName n)] of
       (n : _) -> Left (BadOutput ("データの名前が不正です: " <> n))
       [] -> case [n | (i, n) <- zip [0 :: Int ..] ns, n `elem` take i ns] of
         (n : _) -> Left (BadOutput ("データの名前が重複しています: " <> n))
         [] -> Right ns
-    dataName n = case T.uncons n of
-      Just (h, rest) -> isAsciiLower h && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
-      Nothing -> False
     name = \case
       TString s -> Right s
       _ -> Left (BadOutput "名前が文字列ではありません")

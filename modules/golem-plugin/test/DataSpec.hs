@@ -86,6 +86,23 @@ dataTests =
           ["Dict", "", "1a", "a_b"],
       testCase "a name of data twice is bad output" $
         describing (withDataNames ["dict", "dict"]) >>= (@?= Left (BadOutput "データの名前が重複しています: dict")) . void,
+      -- docs/adr/0119
+      testCase "a plugin that declares * takes data of any well-formed name" $ do
+        p <- describing (withDataNames ["*"]) >>= either (assertFailure . show) pure
+        map (takesData p) ["sales", "costs", "a-1", "Sales", "1a", "", "*"] @?= [True, True, True, False, False, False, False],
+      testCase "a plugin that declares names takes those names only" $ do
+        p <- describing (withDataNames ["table"]) >>= either (assertFailure . show) pure
+        map (takesData p) ["table", "sales"] @?= [True, False]
+        q <- describing (TMap [(TString "commands", TList [TString "shout"])]) >>= either (assertFailure . show) pure
+        takesData q "table" @?= False,
+      testCase "* with another name is a bad name of data" $
+        mapM_
+          (\ns -> describing (withDataNames ns) >>= (@?= Left (BadOutput "データの名前が不正です: *")) . void)
+          [["*", "table"], ["table", "*"], ["*", "*"]],
+      testCase "data of any name is at the end of a command request" $ do
+        p <- withPluginData (Map.fromList [("sales", "1"), ("costs", "2")]) <$> echo
+        req <- either (assertFailure . show) pure (commandRequest p "echo" [] [] callSpan)
+        lastOf p req >>= (@?= TList [TList [TString "costs", TBytes "2"], TList [TString "sales", TBytes "1"]]),
       testCase "a command request ends with the data, in the order of the names" $ do
         p <- withPluginData (Map.fromList [("b", "2"), ("a", "\0\1")]) <$> echo
         req <- either (assertFailure . show) pure (commandRequest p "echo" [] [] callSpan)
