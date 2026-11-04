@@ -276,6 +276,10 @@ jobs:
       # peg-cli is built with the rest, for the check of the generated
       # parser. compiled is true when GHC compiled a module, that is, when
       # dist-newstyle is no longer the one restored above (docs/adr/0045)
+      # MEASUREMENT ONLY (draft, not to be merged): the .cabal files older
+      # than the configuration in the restored dist-newstyle
+      - name: Old times on the .cabal files (measurement)
+        run: find modules -name '*.cabal' -exec touch -t 200001010000 {} +
       - id: build
         name: cabal build all peg-cli:exe:peg-hs
         shell: bash
