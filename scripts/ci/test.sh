@@ -902,9 +902,10 @@ job_lines scripts-macos >"$SM"
 if grep -qx '    runs-on: macos-15' "$SM"; then ok; else ng "ci.yml: scripts-macos runs on macos-15"; fi
 if grep -qx '    needs: changes' "$SM" && grep -qxF "    if: needs.changes.outputs.build == 'true'" "$SM"; then ok; else ng "ci.yml: scripts-macos is skipped as build is"; fi
 if grep -qx '      PATH: /usr/bin:/bin:/usr/sbin:/sbin' "$SM" && ! grep -Eq 'brew|gnubin|coreutils|gawk|gnu-sed|findutils' "$SM"; then ok; else ng "ci.yml: scripts-macos has the tools of the system only on PATH"; fi
-for t in scripts/ci/test.sh scripts/manual/test.sh scripts/env-determinism/test.sh scripts/release/test.sh scripts/test.sh scripts/visual/test.sh; do
-  if grep -qx "        run: sh $t" "$SM"; then ok; else ng "ci.yml: scripts-macos runs $t"; fi
-done
+# the six run at the same time on the cores of the runner, by run-all.sh,
+# in one step
+SM_RUN='        run: sh scripts/ci/run-all.sh scripts/ci/test.sh scripts/manual/test.sh scripts/env-determinism/test.sh scripts/release/test.sh scripts/test.sh scripts/visual/test.sh'
+if grep -qxF "$SM_RUN" "$SM" && [ "$(grep -c 'run: ' "$SM")" = 1 ]; then ok; else ng "ci.yml: scripts-macos runs the six tests with run-all.sh"; fi
 # the tests of the scripts run in scripts-linux, beside changes, so that the
 # build does not wait for them; it is never skipped (docs/adr/0097)
 SL=$WORK/scripts-linux.yml
@@ -1398,6 +1399,39 @@ if [ -s "$WORK/ts-driver" ] && [ -s "$WORK/ts-rest" ] &&
   ! grep -qv '^golem-driver:' "$WORK/ts-driver"; then ok; else
   ng "test-suites: driver and rest of modules/ split every test suite in two"
 fi
+
+# ---------------------------------------------------------------- run-all.sh
+
+run_all() { sh "$HERE/run-all.sh" "$@"; }
+RA=$WORK/run-all
+mkdir -p "$RA"
+# the first ends last; the output is in the order of the arguments
+printf 'sleep 1\necho one\necho one-err >&2\n' >"$RA/one.sh"
+printf 'echo two\n' >"$RA/two.sh"
+: >"$WORK/in"
+run run_all "$RA/one.sh" "$RA/two.sh"
+if [ "$CODE" = 0 ] && [ "$(grep -v '^==> ' "$WORK/out")" = "one
+one-err
+two" ] && [ "$(grep -c '^==> ' "$WORK/out")" = 2 ]; then ok; else ng "run-all: the outputs of the scripts, in the order of the arguments"; fi
+if grep -q "^==> $RA/one.sh: exit 0" "$WORK/out"; then ok; else ng "run-all: a header names the script and its exit code"; fi
+# the scripts run at the same time: each waits for the other's file
+printf 'touch "%s/a"; i=0; while [ ! -f "%s/b" ]; do i=$((i + 1)); [ $i -lt 100 ] || exit 9; sleep 0.1; done\n' "$RA" "$RA" >"$RA/a.sh"
+printf 'touch "%s/b"; i=0; while [ ! -f "%s/a" ]; do i=$((i + 1)); [ $i -lt 100 ] || exit 9; sleep 0.1; done\n' "$RA" "$RA" >"$RA/b.sh"
+run run_all "$RA/a.sh" "$RA/b.sh"
+expect "run-all: the scripts run at the same time" 0
+# a failure fails the run, and the failed script is named on stderr; the
+# others still run to their end
+printf 'exit 3\n' >"$RA/three.sh"
+run run_all "$RA/three.sh" "$RA/two.sh"
+if [ "$CODE" = 1 ] && grep -qx "run-all: $RA/three.sh failed (exit 3)" "$WORK/err" && grep -qx two "$WORK/out"; then ok; else ng "run-all: a failed script fails the run and is named"; fi
+# no standard input reaches the scripts
+printf 'cat\n' >"$RA/cat.sh"
+printf 'from stdin\n' >"$WORK/in"
+run run_all "$RA/cat.sh"
+if [ "$CODE" = 0 ] && ! grep -q 'from stdin' "$WORK/out"; then ok; else ng "run-all: the scripts read no standard input"; fi
+: >"$WORK/in"
+run run_all
+expect "run-all: no argument" 2
 
 # ---------------------------------------------------------------- test-only-deps.sh
 
