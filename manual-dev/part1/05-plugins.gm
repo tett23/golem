@@ -209,7 +209,7 @@ channel-decl = [name: tstr, order: 0 / 1, locators: bool]
 
 ## プラグインの diagnostic
 
-プラグインの読み込みと実行の誤りは、G06002 から G06012 と G06101 から G06103 で報告する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0003-plugin-diagnostic-codes.md]（golem-plugin ADR 0003「プラグインの診断のコード（G06002 から G06010）」）]
+プラグインの読み込みと実行の誤りは、G06002 から G06012 と G06101 から G06104 で報告する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0003-plugin-diagnostic-codes.md]（golem-plugin ADR 0003「プラグインの診断のコード（G06002 から G06010）」）]
 
 | コード | 内容 |
 | --- | --- |
@@ -227,6 +227,7 @@ channel-decl = [name: tstr, order: 0 / 1, locators: bool]
 | G06101 | [code: data] のファイルがない |
 | G06102 | [code: data] の名前をプラグインが受け取らない |
 | G06103 | [code: data] の大きさの合計が 64 MiB を超える |
+| G06104 | [code: path] のプラグインのファイルがない |
 
 diagnostic の位置は、ほとんどが [code: manifest.toml] の先頭である。
 マニフェストはプラグインの宣言の位置を持たないので、メッセージにプラグインの名前を書いて、宣言を見つけられるようにしている。
@@ -246,6 +247,7 @@ Golem のリポジトリの [code: plugins/] には、Rust でプラグインを
 ツールチェーンの版は [code: plugins/rust-toolchain.toml] で固定し、ソースのパスを置き換えて作るので、どこで作っても同じバイト列になる。
 CI の [code: plugins] ジョブが、コミットした [code: .wasm] がソースから作ったものと同じであることを確かめる。
 見本のプラグインを足すときは、[code: plugins/<名前>/] にクレートを作って [code: plugins/Cargo.toml] の [code: members] に加え、[code: sh plugins/build.sh] で作った [code: .wasm] を [code: Cargo.lock] と一緒にコミットする。
+作ったばかりのプラグインを手元のプロジェクトで試すときは、[code: .wasm] をプロジェクトに置いて [code: \[plugins.<名前>\]] の [code: path] で宣言すれば、[code: plugins.lock] もキャッシュも要らない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0109-local-plugin-path.md]（docs/adr/0109「プロジェクトの中のプラグインを path で宣言する」）]
 
 golem-plugin のテストは、テスト用のプラグインを wat（wasm のテキストの形式）で書き、[code: modules/golem-plugin/test/plugins/] に置いている。
 規約の最小の形は、そのテストのプラグインから読み取れる。

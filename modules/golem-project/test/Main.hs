@@ -178,6 +178,24 @@ pluginDataTests =
   where
     parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] extra)
 
+-- | A plugin in the project, declared with path (docs/adr/0109).
+pluginPathTests :: TestTree
+pluginPathTests =
+  testGroup
+    "[plugins.<name>] path (docs/adr/0109)"
+    [ testCase "url is a plugin to fetch" $
+        source "url = \"https://example.com/lk.wasm\"\n" @?= Right (Just (PluginUrl "https://example.com/lk.wasm")),
+      testCase "path is a plugin of the project" $
+        source "path = \"plugins/lk.wasm\"\n" @?= Right (Just (PluginPath "plugins/lk.wasm")),
+      testCase "both url and path are G03001" $
+        codes (parse "[plugins.lk]\nurl = \"https://example.com/lk.wasm\"\npath = \"plugins/lk.wasm\"\n") @?= ["G03001"],
+      testCase "neither url nor path is G03001" $
+        codes (parse "[plugins.lk]\noverrides = []\n") @?= ["G03001"]
+    ]
+  where
+    parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] extra)
+    source decl = fmap (fmap pdSource . Map.lookup "lk" . manifestPlugins) (parse ("[plugins.lk]\n" <> decl))
+
 -- | [diagnostics] silence-info of the manifest (docs/adr 0104).
 silenceInfoTests :: TestTree
 silenceInfoTests =
@@ -855,6 +873,7 @@ tests =
       silenceTests,
       silenceInfoTests,
       pluginDataTests,
+      pluginPathTests,
       indexStyleTests,
       hiddenFolioTests,
       findCycleTests,
