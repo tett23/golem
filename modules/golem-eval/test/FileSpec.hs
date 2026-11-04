@@ -90,6 +90,14 @@ importSites src = let (file, _, _) = parseAst (FileId 1) src in map diagSite (le
 g02114At :: Text -> [(Int, Int)]
 g02114At src = [(st, e) | (c, _, st, e) <- diags src, c == "G02114"]
 
+-- | The start and end of each G02113 (docs/adr ADR 0111).
+g02113At :: Text -> [(Int, Int)]
+g02113At src = [(st, e) | (c, _, st, e) <- diags src, c == "G02113"]
+
+-- | The start and end of the first occurrence of @a@ in an ASCII source.
+spanOf :: Text -> Text -> (Int, Int)
+spanOf src a = let n = T.length (fst (T.breakOn a src)) in (n, n + T.length a)
+
 -- | The code and message of each diagnostic.
 msgs :: Text -> [(Text, Text)]
 msgs src = [(c, m) | (c, m, _, _) <- diags src]
@@ -759,6 +767,22 @@ argWordTests =
         errs "[number-text a...3]\n" @?= ["G02019"]
         errs "[number-text 1...2...3]\n" @?= ["G02019"]
         errs "```haskell numbers=1...\nx\n```\n" @?= ["G02069"],
+      -- the position of G02113 is the argument (docs/adr ADR 0111; the audit of 2026-11-04, F-16)
+      testCase "G02113 is at the argument, not at the command" $
+        let cases =
+              [ ("[number-text 1...3]\n", "1...3"),
+                ("[number-text [= 1...3]]\n", "[= 1...3]"),
+                ("x [number-text 1...3 style=kanji]\n", "1...3"),
+                ("@blank-line 1...3\n", "1...3"),
+                ("@blank-line [= 1...3]\n", "[= 1...3]"),
+                ("@need-lines 1...3\n", "1...3"),
+                ("@number 1...3\n# h\n", "1...3"),
+                ("@toc depth=1...3\n", "depth=1...3"),
+                ("@figure images/a.pdf page=[= 1...3] web=images/a.png alt=x\n", "page=[= 1...3]"),
+                ("```haskell numbers=5...5\nx\n```\n", "numbers=5...5"),
+                ("```haskell file=[= 1...3]\nx\n```\n", "file=[= 1...3]")
+              ]
+         in [(src, g02113At src) | (src, _) <- cases] @?= [(src, [spanOf src a]) | (src, a) <- cases],
       -- one cause, one code: no G02069 besides (the audit of 2026-11-04, F-14)
       testCase "a range as the expression of a key of a code block is G02113 only" $
         mapM_
