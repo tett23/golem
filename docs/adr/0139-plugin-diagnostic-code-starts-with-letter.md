@@ -1,6 +1,6 @@
 # ADR 0139: プラグインの diagnostic のコードを英小文字で始める
 
-ステータス: 採択
+ステータス: 採択、`golem explain` の判定は [ADR 0151](0151-explain-uses-plugin-code-rule.md)
 
 ## 文脈
 

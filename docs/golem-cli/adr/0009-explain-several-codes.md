@@ -1,6 +1,6 @@
 # ADR 0009: golem explain に複数のコードを渡す
 
-ステータス: 採択
+ステータス: 採択、プラグインのコードの形の誤りの文は [docs/adr/0151](../../adr/0151-explain-uses-plugin-code-rule.md)
 
 ## 文脈
 
