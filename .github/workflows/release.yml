@@ -24,8 +24,14 @@ env:
   MISE_SHA256: "e97c38973336aa2ff350fea50f47b412b266fe263b102b7200ff1e9b118c6942"
 
 jobs:
+  # A called workflow gets at most the permissions of the job that calls
+  # it; the visual job of ci.yml asks for actions: read (docs/adr/0096),
+  # and without it here every run of this workflow fails at startup
   ci:
     uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      actions: read
 
   version:
     runs-on: ubuntu-24.04
