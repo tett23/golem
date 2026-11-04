@@ -2941,6 +2941,17 @@ data = { table = "data/words.tsv" }
 - データは原稿と同じくプロジェクトの入力であり、ハッシュを `plugins.lock` に記録しない。同じ原稿と同じデータからは、同じ出力になる。
 - LSP は、データのファイルを `@table` のファイルと同じく監視し、変わればプロジェクトを評価し直す。エディタで開いているファイルは、エディタの内容を使う。
 
+プラグインは、任意の export `golem_check_data` でデータを検査できる（[docs/adr/0120](adr/0120-plugin-data-check-at-load.md)）。
+ホストは、プラグインを読み込んでデータを読んだ後に、一度だけ呼ぶ。
+
+- 呼び方は `golem_invoke` と同じで、要求は `[data]`、応答は `[* data-diagnostic]` である。`data-diagnostic = [code: tstr, severity: 0 / 1, name: tstr, line: uint64 / null, message: tstr]` で、`name` はデータの名前、`line` は 1 から数えた行の番号か null である。
+- ホストは、`name` のデータのファイルの `line` 行めの先頭（null ならファイルの先頭）を位置とする diagnostic にする。行は、ファイルの先頭と、最後のバイトでない LF の後から始まる。空のファイルも 1 行めを持つ。
+- `name` が渡したデータの名前でない応答と、ファイルにない行を指す応答は、不正な応答（G06009）とする。位置は `manifest.toml` の先頭で、メッセージは `<プラグイン>.golem_check_data: <理由>` である。
+- `code` には、コマンドとフィルタの diagnostic と同じ規則を当て、ホストが `<宣言名>/<コード>` の形にする（[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)）。
+- エラーを一つでも返したプラグインは、読み込みの誤りとして扱う。コマンドを呼ばず、評価で G02022 と G02090 を報告しない。警告だけなら、プラグインは読み込まれる。
+- データのファイルには、diagnostic の位置のために FileId を振る。振るのは diagnostic が指すファイルだけで、`@table` と `@listing` で読むファイルの後から、パスの順に振る。
+- export がないプラグインは呼ばず、データの誤りはコマンドとフィルタの呼び出しのときにプラグインが報告する。
+
 ### 見本のプラグイン
 
 Golem は、プラグインの仕組みを通す見本のプラグインを、リポジトリの `plugins/` に Rust の Cargo のワークスペースとして持つ（[docs/adr/0106](adr/0106-sample-plugins-in-rust.md)）。

@@ -12,7 +12,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfInput (..), layoutPages)
-import Golem.Driver.Plugins (loadPlugins)
+import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
 import Golem.Eval.Builtin (BuiltinInline (..), builtinName, unPluginCommandName)
 import Golem.Eval.File (EvalResult (..), PluginHook (..))
 import Golem.Plugin (maxDataBytes, watToWasm)
@@ -231,6 +231,107 @@ withAnyDatum decl source files k = withSystemTempDirectory "golem-any" $ \tmp ->
   writeFiles tmp (("datum.wasm", wasm) : files)
   k tmp
 
+{- | A small CBOR encoder for the responses of check-data.wat: arrays,
+text strings, small unsigned integers and null.
+-}
+data Cbor = CArr [Cbor] | CText T.Text | CUInt Int | CNull
+
+cborBytes :: Cbor -> BS.ByteString
+cborBytes = \case
+  CArr xs -> headOf 0x80 (length xs) <> foldMap cborBytes xs
+  CText t -> let b = TE.encodeUtf8 t in headOf 0x60 (BS.length b) <> b
+  CUInt n -> headOf 0x00 n
+  CNull -> BS.singleton 0xf6
+  where
+    headOf major n
+      | n < 24 = BS.singleton (fromIntegral (major + n))
+      | n < 256 = BS.pack [fromIntegral (major + 24), fromIntegral n]
+      | otherwise = BS.pack [fromIntegral (major + 25), fromIntegral (n `div` 256), fromIntegral (n `mod` 256)]
+
+{- | A one-chapter project, a.gm, with check-data.wat built into
+plugins/check.wasm and declared as lk (docs/adr/0120), with the data
+table = "t.tsv" and the given files. The plugin provides the command
+shout and takes the data table; it answers golem_invoke and
+golem_check_data with the given responses.
+-}
+withChecker :: BS.ByteString -> [Cbor] -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withChecker invoke check source files k = withSystemTempDirectory "golem-check" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> "\n[plugins.lk]\npath = \"plugins/check.wasm\"\ndata = { table = \"t.tsv\" }\n")
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  TIO.writeFile (tmp </> "a.gm") source
+  src <- TIO.readFile "../golem-plugin/test/plugins/check-data.wat"
+  let describe = BS.concat [BS.pack [0xa2], cborBytes (CText "commands"), cborBytes (CArr [CText "shout"]), cborBytes (CText "data"), cborBytes (CArr [CText "table"])]
+      checkB = cborBytes (CArr check)
+      escape = T.pack . concatMap (\w -> '\\' : hex2 w) . BS.unpack
+      hex2 w = [digit (w `div` 16), digit (w `mod` 16)]
+      digit d = "0123456789abcdef" !! fromIntegral d
+      filled =
+        T.replace "{{DESCRIBE}}" (escape describe)
+          . T.replace "{{DESCRIBE_LEN}}" (T.pack (show (BS.length describe)))
+          . T.replace "{{RESPONSE}}" (escape invoke)
+          . T.replace "{{RESPONSE_LEN}}" (T.pack (show (BS.length invoke)))
+          . T.replace "{{CHECK}}" (escape checkB)
+          . T.replace "{{CHECK_LEN}}" (T.pack (show (BS.length checkB)))
+          $ src
+  wasm <- watToWasm filled >>= either (assertFailure . T.unpack) pure
+  writeFiles tmp (("plugins/check.wasm", wasm) : files)
+  k tmp
+
+-- | [[], []]: no inlines and no diagnostics.
+emptyAnswer :: BS.ByteString
+emptyAnswer = cborBytes (CArr [CArr [], CArr []])
+
+{- | An answer with a diagnostic at a span of no request, G06009 if a
+command is called at all.
+-}
+calledAnswer :: BS.ByteString
+calledAnswer = cborBytes (CArr [CArr [], CArr [CArr [CText "called", CUInt 1, CArr [CUInt 99, CUInt 0, CUInt 0], CText "m"]]])
+
+-- | A data-diagnostic of golem_check_data.
+dataDiag :: T.Text -> Int -> T.Text -> Maybe Int -> T.Text -> Cbor
+dataDiag code sev name line msg = CArr [CText code, CUInt sev, CText name, maybe CNull CUInt line, CText msg]
+
+-- | Where each diagnostic of a build points: the file, the line and the column, as rendered.
+pointedAt :: BuildResult -> [T.Text]
+pointedAt r = filter (not . T.null) [l | l <- T.lines (renderHuman (brSources r) (brDiagnostics r)), ": error[" `T.isInfixOf` l || ": warning[" `T.isInfixOf` l]
+
+-- | The check of a plugin's data at load (docs/adr/0120).
+checkDataTests :: [TestTree]
+checkDataTests =
+  [ testCase "an error of golem_check_data points at its line of the file of the data, once, and no command runs" $
+      withChecker calledAnswer [dataDiag "tsv-columns" 0 "table" (Just 2) "欄の数が違います"] "[shout]\n\n[shout]\n\n[shout]\n" [("t.tsv", "a\tb\nc\nd\te\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        pointedAt r @?= ["t.tsv:2:1: error[lk/tsv-columns]: 欄の数が違います"]
+        map (spanStart . diagSpan) (brDiagnostics r) @?= [4]
+        map (Just . spanFile . diagSpan) (brDiagnostics r) @?= [sourceFileId r "t.tsv"],
+    testCase "an error of the data is reported in a book that calls no command" $
+      withChecker calledAnswer [dataDiag "tsv-columns" 0 "table" (Just 2) "欄の数が違います"] "本文\n" [("t.tsv", "a\tb\nc\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        pointedAt r @?= ["t.tsv:2:1: error[lk/tsv-columns]: 欄の数が違います"],
+    testCase "no G02022 after an error of the data" $
+      withChecker calledAnswer [dataDiag "tsv-empty" 0 "table" Nothing "空です"] "[shout]\n" [("t.tsv", "")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        pointedAt r @?= ["t.tsv:1:1: error[lk/tsv-empty]: 空です"],
+    testCase "a warning of the data: the plugin loads and its commands run" $
+      withChecker emptyAnswer [dataDiag "tsv-blank" 1 "table" (Just 1) "空の行です"] "[shout]\n" [("t.tsv", "\na\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        pointedAt r @?= ["t.tsv:1:1: warning[lk/tsv-blank]: 空の行です"],
+    testCase "the commands of a plugin with nothing to report run" $
+      withChecker calledAnswer [] "[shout]\n" [("t.tsv", "a\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06009"],
+    testCase "G06009: a name the plugin was not given, a line out of the file, a code of the wrong form" $
+      mapM_
+        ( \(d, why) -> withChecker emptyAnswer [d] "本文\n" [("t.tsv", "a\nb\n")] $ \tmp -> do
+            r <- build (defaultOptions tmp)
+            atManifestTop r >>= (@?= [(DiagnosticCode "G06009", "lk.golem_check_data: プラグインの出力が不正です: " <> why)])
+        )
+        [ (dataDiag "x" 0 "other" Nothing "m", "渡していないデータの名前です: other"),
+          (dataDiag "x" 0 "table" (Just 3) "m", "データの行がありません: table: 3"),
+          (dataDiag "Lookup/x" 0 "table" Nothing "m", "診断のコードの形が不正です: Lookup/x")
+        ]
+  ]
+
 -- | Data of any name (docs/adr/0119).
 anyDataTests :: [TestTree]
 anyDataTests =
@@ -358,6 +459,7 @@ pluginTests =
     <> dataTests
     <> localPluginTests
     <> anyDataTests
+    <> checkDataTests
     <> [ testCase "a filter runs over the declared files and keeps the output" $ do
            plain <- buildAndRead Dev "build/text/horizontal/chapters/01.txt"
            filtered <- withPluginProject pluginDecl $ \tmp -> do
@@ -513,7 +615,7 @@ pluginTests =
                  cache <- defaultCacheDir
                  lockText <- TIO.readFile (tmp </> "plugins.lock")
                  m <- TIO.readFile (tmp </> "manifest.toml") >>= either (assertFailure . show) pure . parseManifest (FileId 0)
-                 hook <- loadPlugins tmp Map.empty cache (FileId 0) (FileId 1) lockText m >>= either (assertFailure . show) pure
+                 hook <- loadPlugins tmp Map.empty cache (FileId 0) (FileId 1) lockText (FileId 2) m >>= either (assertFailure . show) pure . lpHook
                  let overrides = map (builtinName . Overridable) (Map.keys (phOverrides hook))
                  pure (sort (overrides <> map unPluginCommandName (Map.keys (phCommands hook))), sort overrides)
            keysOf [("ov", "override-ruby.wat")] (pluginDeclOf "ov" "overrides = [\"ruby\"]\n") >>= (@?= (["greet", "ruby"], ["ruby"]))

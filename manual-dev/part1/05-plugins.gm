@@ -125,6 +125,7 @@ WASI がないので、標準入出力やファイルを使うライブラリは
 | [code: golem_describe] | [code: () -> u64] | コマンドとフィルタの名前と、チャネルの宣言の一覧を CBOR で返す |
 | [code: golem_alloc] | [code: (len: u32) -> u32] | 入力を書く領域を確保し、その位置を返す |
 | [code: golem_invoke] | [code: (ptr: u32, len: u32) -> u64] | CBOR の要求を受け取り、CBOR の応答を返す |
+| [code: golem_check_data] | [code: (ptr: u32, len: u32) -> u64] | 任意。データを検査し、誤りを CBOR で返す |
 
 ホストは呼び出しごとにインスタンスを捨てるので、領域を解放する関数を求めない。
 プラグインが [code: golem_dealloc] を公開していても害はなく、ホストは呼ばない。
@@ -142,10 +143,13 @@ WASI がないので、標準入出力やファイルを使うライブラリは
 + インスタンスを捨てる。
 
 読み込みの時点で、ホストは [code: golem_abi_version] を呼び、ホストの ABI のバージョンと比べる。
-今の ABI のバージョンは 7 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
+今の ABI のバージョンは 8 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
 一致しなければ、読み込みの時点でエラー（G06005）になる。
 続けて [code: golem_describe] を呼び、プラグインが提供するコマンドとフィルタの名前と、宣言するチャネルを得る。
 チャネルの名前が予約した名前か形の誤った名前であるか、二つのプラグインが同じチャネルを宣言すると、G06012 のエラーになる。
+プラグインが [code: golem_check_data] を公開していれば、データを読んだ後に一度だけ呼ぶ。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0120-plugin-data-check-at-load.md]（docs/adr/0120「プラグインのデータを読み込みで一度だけ検査する」）]
+呼び方は [code: golem_invoke] と同じである。
+データの誤りをここで返せば、コマンドを書いた箇所の数によらず一度だけ報告され、コマンドを一度も書いていない本でも報告される。
 
 ## 受け渡す CBOR
 
@@ -166,6 +170,10 @@ range = {"first": int64, "last": int64}
 response = [output: inlines / document,
             diagnostics: [* plugin-diagnostic]]
 plugin-diagnostic = [code: tstr, severity: 0 / 1, span, message: tstr]
+check-data-request = [data]
+check-data-response = [* data-diagnostic]
+data-diagnostic = [code: tstr, severity: 0 / 1, name: tstr,
+                   line: uint64 / null, message: tstr]
 description = {? "commands" => [* tstr], ? "filters" => [* tstr],
                ? "channels" => [* channel-decl], ? "data" => [* tstr]}
 channel-decl = [name: tstr, order: 0 / 1, locators: bool]
@@ -182,6 +190,7 @@ channel-decl = [name: tstr, order: 0 / 1, locators: bool]
 - 自然数と整数の引数は [code: int64] で、有理数の引数は値が整数でもタグ 30 の [code: rational]（既約の分子と分母）で渡る。[code: 1 / 2] は [code: 30(\[1, 2\])]、[code: 10 / 2] は [code: 30(\[5, 1\])] である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0101-rational-numbers-in-expressions.md]（ADR 0101「式の言語の数を自然数、整数、有理数の三つの型にし、浮動小数点数をなくす」）]
 - 遅延した式（[code: doc] を参照する [code: \[= ...\]]）の数は、整数が [code: \[0, span, int64\]]、自然数が [code: \[12, span, uint64\]]、有理数が [code: \[13, span, rational\]] である。範囲の式は [code: \[14, span, expr, expr\]] である。プラグインが式に浮動小数点数（[code: \[1, span, float\]]）を書くと、ホストはその値の正確な有理数として読む。NaN と無限大は G06100 になる。
 - 応答の diagnostic の重大度は、0 がエラー、1 が警告である。プラグインは notice を出せない。
+- [code: golem_check_data] は [code: check-data-request] を受け取り、[code: check-data-response] を返す。[code: name] はデータの名前、[code: line] は 1 から数えた行の番号で、[code: null] はファイルの全体を表す。ホストは、そのデータのファイルの [code: line] 行めの先頭（[code: null] ならファイルの先頭）を位置とする diagnostic にする。コードには、コマンドの diagnostic と同じ規則と前置きを当てる。渡していないデータの名前と、ファイルにない行は、不正な出力（G06009）である。エラーを一つでも返したプラグインは読み込めなかったものとして扱い、そのコマンドを呼ばない。警告だけなら、プラグインはそのまま使える。[code: golem_check_data] を公開しないプラグインは、データを呼び出しのたびに自分で検査する。
 - 応答の diagnostic のコードは、英小文字、数字、[code: -] だけからなる空でない列である。ホストはその前に、[code: manifest.toml] でのプラグインの宣言の名前と [code: /] を置く。[code: lookup] と宣言したプラグインが返した [code: no-key] は [code: lookup/no-key] になる。ほかの形のコードは不正な出力（G06009）である。コードは Golem の [code: docs/diagnostics.md] の対象外である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0108-plugin-diagnostic-codes-and-spans.md]（docs/adr/0108「プラグインが返す diagnostic のコードと位置を検査する」）]
 - 応答の diagnostic の [code: span] は、出力のノードと同じく、呼び出しの位置か、要求に含まれていたノードの位置に限る。フィルタの diagnostic に限り、要求の文書のファイルの先頭（[code: \[file, 0, 0\]]）も指してよい。データの誤りのように、どのノードにも属さない誤りを報告するためである。ほかの位置は不正な出力（G06009）である。
 
@@ -232,7 +241,7 @@ channel-decl = [name: tstr, order: 0 / 1, locators: bool]
 
 diagnostic の位置は、ほとんどが [code: manifest.toml] の先頭である。
 マニフェストはプラグインの宣言の位置を持たないので、メッセージにプラグインの名前を書いて、宣言を見つけられるようにしている。
-例外は二つで、G06009 はコマンドを呼んだ箇所か、フィルタを適用したファイルの先頭を指し、G06011 は [code: plugins.lock] の中の位置を指す。
+例外は二つで、G06009 はコマンドを呼んだ箇所か、フィルタを適用したファイルの先頭を指し（[code: golem_check_data] の失敗は [code: manifest.toml] の先頭）、G06011 は [code: plugins.lock] の中の位置を指す。
 
 G06005 と G06009 のメッセージには、理由が続く（[code: プラグインの ABI のバージョンが異なります: 4] など）。
 G06009 のメッセージは [code: <プラグイン>.<コマンド>: <理由>] の形で、どのプラグインのどのコマンドが失敗したかを示す。
