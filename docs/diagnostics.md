@@ -3807,6 +3807,7 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 `@manifest` か `@style-def` の値か位置引数を、語と文字列のほか（`[= ...]` など）で書いた（[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)）。
 ファイルの設定は評価の前に読むので、式を受け取らない。
 `@style-def` の種類を式で書いたときも、未知の種類（[G02117](#g02117)）ではなくこのコードである。
+位置引数の数の誤りになる引数（`@manifest` の位置引数と、`@style-def` の三つめから後の位置引数）は、式で書いても [G02052](#g02052) だけになり、このコードは出さない。
 誤りのある `@manifest` の引数はその引数だけを無視し、誤りのある `@style-def` は定義の全体を捨てる。
 位置はその引数である。
 
@@ -3916,16 +3917,17 @@ manifest.toml の誤りです
 
 ### 意味
 
-章や `@import` のパスが、絶対パス、URL、またはプロジェクトのルートの外を指すパスである。
+章や `@import` のパス、`manifest.toml` の `bibliography` のファイル、プラグインの `path`（[docs/adr/0109](adr/0109-local-plugin-path.md)）とデータ（`data`、[docs/adr/0105](adr/0105-plugin-data.md)）のパスが、絶対パス、URL、またはプロジェクトのルートの外を指すパスである。
 シンボリックリンクを解決した実体がルートの外にあるときも、この誤りとする。
+`bibliography` とプラグインのパスの誤りの位置は、`manifest.toml` の先頭である。
 
 - メッセージ: `絶対パスは使えません: <パス>`、`URL は使えません: <パス>`、`プロジェクトルートの外を指しています: <パス>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project`）。位置は [G03002](#g03002) と同じである
-- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project`）。章と `@import` の位置は [G03002](#g03002) と同じである
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)、[docs/adr/0105](adr/0105-plugin-data.md)、[docs/adr/0109](adr/0109-local-plugin-path.md)
 
 ### 主な原因
 
-- 章や `@import` のパスに、絶対パスか URL を書いた。
+- 章、`@import`、`bibliography`、プラグインの `path` や `data` のパスに、絶対パスか URL を書いた。
 - `..` でプロジェクトのルートの外を指した。
 
 ### 直し方
@@ -5233,13 +5235,16 @@ plugins.lock にないプラグインです
 位置は `manifest.toml` の先頭である。
 理由の文言は次のいずれかで、[G06009](#g06009) と共有する。
 `プラグインを読み込めません: <詳細>`、`プラグインが import を要求しています: <import の一覧>`、`プラグインの ABI のバージョンが異なります: <バージョン>`、`プラグインが関数を公開していません: <関数>`、`プラグインの実行が命令数の上限を超えました`、`プラグインの実行が失敗しました（メモリの上限を超えた場合を含む）: <詳細>`、`プラグインを起動できません: <詳細>`（テーブルの要素の数の上限 100 万を超えるモジュールを含む）、`プラグインの出力が不正です: <詳細>`（`<関数名> の戻り値の型が不正です` を含む。[docs/adr/0035](adr/0035-security-hardening.md)）
-`golem_describe` の応答は、欄の名前（`commands`、`filters`、`channels`、`data`）から配列へのマップである（[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)、[docs/adr/0105](adr/0105-plugin-data.md)、[docs/adr/0107](adr/0107-named-describe-fields.md)）。
+`golem_describe` の応答は、欄の名前（`commands`、`filters`、`channels`、`data`、`context`、`blocks`）から配列へのマップである（[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)、[docs/adr/0105](adr/0105-plugin-data.md)、[docs/adr/0107](adr/0107-named-describe-fields.md)、[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)）。
 マップでない応答、長さの決まっていないマップ、テキスト文字列でないキーは `golem_describe の形が不正です`、未知の欄は `golem_describe に未知の欄があります: <名前>`、二度書いた欄は `golem_describe の欄が重複しています: <名前>`、配列でない欄の値は `golem_describe の欄の形が不正です: <名前>` になる。
 チャネルの宣言の形の誤りは `チャネルの宣言の形が不正です`、データの名前の誤りは `データの名前が不正です: <名前>` と `データの名前が重複しています: <名前>` になる。
+文脈の名前を二度書いた宣言は `文脈の名前が重複しています: <名前>` になる。
+Golem が渡せない文脈の名前は、このコードではなく [G06105](#g06105) になる。
+ブロックコマンドの名前の誤りは、形の誤りが `ブロックコマンドの名前が不正です: <名前>`、二度書いた名前が `ブロックコマンドの名前が重複しています: <名前>`、組み込みのブロックコマンドの名前が `組み込みのブロックコマンドの名前です: <名前>` になる。
 
 - メッセージ: `<名前>: <理由>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[docs/adr/0107](adr/0107-named-describe-fields.md)、[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)
 
 ### 主な原因
 
@@ -5338,17 +5343,20 @@ overrides に書けない名前です
 
 ### 意味
 
-プラグインのコマンドかフィルタの実行、またはデータの検査（`golem_check_data`、[docs/adr/0120](adr/0120-plugin-data-check-at-load.md)）が失敗した。
+プラグインのコマンド、ブロックコマンド（[docs/adr/0122](adr/0122-block-commands-in-plugins.md)）かフィルタの実行、またはデータの検査（`golem_check_data`、[docs/adr/0120](adr/0120-plugin-data-check-at-load.md)）が失敗した。
 命令数の上限、メモリの上限を含むトラップ、不正な出力を含む。
 位置は、コマンドならコマンドを呼んだ箇所、フィルタならフィルタを適用したファイルの先頭、データの検査なら `manifest.toml` の先頭である。
 データの検査の不正な出力の詳細には、`渡していないデータの名前です: <データの名前>` と `データの行がありません: <データの名前>: <行>` がある。
 理由の文言は [G06005](#g06005) と同じである。
 遅延した式に有限でない浮動小数点数を書いた出力は、このコードではなく [G06100](#g06100) になる。
 チャネルの項目（[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）の不正な出力の詳細は、`宣言していないチャネルです: <チャネル>`、`読みの順のチャネルの項目には読みが要ります: <チャネル>`、`チャネルの項目の本文に置けない要素があります` である。
+プラグインが返す diagnostic（[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)）の不正な出力の詳細は、コードが英小文字、数字、`-` だけの空でない列でないときの `診断のコードの形が不正です: <コード>` と、位置が呼び出しの位置でも要求のノードの位置でもない（フィルタではファイルの先頭でもない）ときの `診断が要求にないソース位置を指しています` である。
+ブロックコマンドの不正な出力の詳細は、`ブロックコマンドの出力は [ブロックの列, 画像の列] です`、`ブロックコマンドが返せないブロックです: <種類>`（見出し、一覧の出力、改ページ、改ページの制御、行アキ）、`ブロックコマンドの出力はラベルを持てません` である。
+プラグインが作った画像の図版（[docs/adr/0123](adr/0123-figures-from-plugins.md)）の不正な出力の詳細は、`画像の形が不正です`、`画像の名前が不正です: <名前>`、`画像の名前が重複しています: <名前>`、`画像の大きさの合計が上限（67108864 バイト）を超えています`、`どの図版も使っていない画像があります: <名前>`、`画像の形式は svg、png、jpeg のどれかです: <形式>`、`プラグインの図版は web を持てません`、`応答にない画像です: <src>`、`プラグインの図版は plugin:<名前> で画像を指します: <src>`、`図版は出力の最上位にだけ置けます` である。
 
-- メッセージ: `<プラグイン>.<コマンド>: <理由>`、`<プラグイン>.<フィルタ>: <理由>`、`<プラグイン>.golem_check_data: <理由>`
+- メッセージ: `<プラグイン>.<コマンド>: <理由>`、`<プラグイン>.<ブロックコマンド>: <理由>`、`<プラグイン>.<フィルタ>: <理由>`、`<プラグイン>.golem_check_data: <理由>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[docs/adr/0120](adr/0120-plugin-data-check-at-load.md)
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)、[docs/adr/0120](adr/0120-plugin-data-check-at-load.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)、[docs/adr/0123](adr/0123-figures-from-plugins.md)
 
 ### 主な原因
 

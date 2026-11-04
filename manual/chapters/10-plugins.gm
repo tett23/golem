@@ -50,7 +50,7 @@ $ golem plugin fetch
 $ golem build
 ```
 
-プラグインを読み込めないときは、[code: plugins.lock] やキャッシュの問題を示すエラー（G06002 から G06012 と G06101 から G06104。付録E）だけを出します。
+プラグインを読み込めないときは、[code: plugins.lock] やキャッシュの問題を示すエラー（G06002 から G06012 と G06101 から G06105。付録E）だけを出します。
 そのプラグインのコマンドと一覧を使った箇所は、未知のコマンドや未知の一覧として報告しません。
 [code: plugins.lock] が壊れて読めないときは、[code: plugins.lock] を消してから [code: golem plugin lock] を実行し直してください。
 
@@ -173,6 +173,19 @@ HTML と EPUB では、図の画像は [code: images/golem-plugin/] に置かれ
 [code: @channel] を置かない一覧は、どこにも組まれません。
 プラグインが作らない名前を書くと、エラー（G02090）になります。
 
+上の [code: glossary] は、Golem のリリースに添えてある見本のプラグイン [code: glossary] の一覧です。
+本文に [code: \[term: 組版\]] と書くと、語をそのまま組み、[code: data] で渡した TSV からその語の読みと定義を引いて、一覧に項目を送ります。
+
+```toml
+[plugins.glossary]
+url = "<リリースの URL>/glossary.wasm"
+data = { terms = "data/terms.tsv" }
+```
+
+TSV は一行に一語で、語、読み、定義、参照するラベル（省けます）をタブで区切ります。
+一覧は読みの順に並び、PDF では語が出てきたページの番号が、HTML と EPUB ではその箇所へのリンクが付きます。
+[code: \[term 組む: 組んだ\]] のように見出し語を書くと、本文の「組んだ」を「組む」の項目として数えます。
+
 ## フィルタを適用する
 
 フィルタは、[code: \[\[filters\]\]] で、どのプラグインのどのフィルタを、どのファイルに適用するかを書きます。
@@ -215,6 +228,27 @@ marks = !! !? ?! ?? !!!
 [code: \[strong: 1\]2] のように、装飾の境をまたぐ並びは書き換えず、警告（[code: auto-tcy/split]）を出します。
 その箇所は、[code: \[tcy: ...\]] か [code: \[number-text ... style=tcy\]] で書いてください。
 横組みの本では、何もしません。
+
+ルビを振る見本のフィルタも、二つ添えてあります。
+[code: first-ruby] は、[code: data] の [code: words] に書いた語の、フィルタを適用したファイルごとの最初の出現にだけルビを振ります。
+[code: sou-ruby] は、本文の漢字にすべてルビを振ります（総ルビ）。
+[code: words] の語の読みを先に使い、残りの漢字は、[code: data] で渡した形態素解析の辞書（Lindera の辞書）で読みを引きます。
+辞書は Golem のリリースに含まれないので、使う人が用意します。
+
+```toml
+[plugins.first-ruby]
+url = "<リリースの URL>/first-ruby.wasm"
+data = { words = "data/words.tsv" }
+
+[[filters]]
+plugin = "first-ruby"
+filter = "first-ruby"
+files = ["chapters/01.gm", "chapters/02.gm"]
+```
+
+[code: words] の TSV は、一行に語と読みをタブで区切って書きます。
+原稿に書いたルビは、そのまま残ります。
+[code: sou-ruby] は、読みの分からない漢字にはルビを振らず、警告を出します。
 
 ## プラグインにデータを渡す
 
