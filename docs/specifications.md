@@ -3017,7 +3017,7 @@ Golem は、プラグインの仕組みを通す見本のプラグインを、�
 - ツールチェーンは `plugins/rust-toolchain.toml` で固定し、ソースのパスを固定の文字列に置き換えて作るので、同じソースからは同じバイト列になる。CI の `plugins` ジョブが、コミットした `.wasm` とソースから作ったバイト列の一致を確かめる。
 - 見本のプラグインは、リリースに `<名前>.wasm` として添える。利用者は `https://github.com/tett23/golem/releases/download/<タグ>/<名前>.wasm` を `url` に書いて使う。
 
-今の見本のプラグインは `lookup`、`bar-chart`、`glossary`、`kansuji` である。
+今の見本のプラグインは `lookup`、`bar-chart`、`glossary`、`kansuji`、`auto-tcy` である。
 `[lookup: キー]` は、データ `table` で渡した TSV（キー、タブ、値の行）からキーの値を返す。
 空の行と `#` で始まる行は飛ばし、同じキーの行が二つあれば先の行を使う。
 
@@ -3064,6 +3064,18 @@ data = { terms = "data/terms.tsv" }
 
 誤りは、プラグインのコード `kansuji/arity`、`kansuji/not-number`、`kansuji/style`、`kansuji/form`、`kansuji/key`、`kansuji/tcy-not-integer`、`kansuji/slot` で、呼び出しの位置に出す。
 誤りのときの出力は、空のインラインの列である。
+
+`auto-tcy` は、フィルタ `auto-tcy` で、縦組みの本の地の文の短い数字と `!?` のような記号の並びを縦中横にする（[docs/adr/0128](adr/0128-auto-tcy-filter.md)）。
+本の文脈の `writing-mode` と、省ける `config` のデータを宣言する。
+
+- 文書を塊に分けて読む。塊は、インラインの列を読む順に並べた文字のうち、ASCII の図形文字（U+0021 から U+007E）の極大の並びである。空白、和文の文字、全角の記号は塊を区切る。
+- 一つのテキストのノードに収まる塊が、桁数が `digits`（既定は 2）のいずれかの ASCII の数字だけの並びなら、表記 `tcy` の数のノードにする。先頭が 0 の 2 桁以上の数字は、縦中横のノードにする。`marks`（既定は `!!`、`!?`、`?!`、`??`）のいずれかと一致する塊は、縦中横のノードにする。`3.14`、`x86`、`!!!`、全角の数字と記号には当てない。
+- 二つ以上のノードにまたがる塊（`[strong: 1]2`）と、中身の分からないノード（数、相互参照、遅延した式、引用）にかかる塊は、書き換えない。その全体か、一つのテキストのノードに収まる部分が対象に当たるときは、警告 `auto-tcy/split` を、塊の最初のノードの位置に出す（[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md) のとおり、要求のノードの位置に限るため）。
+- 文字スタイルと色の中は書き換える。文字スタイル `code` の中、ルビの親文字、圏点、縦中横は書き換えない。脚注と傍注とチャネルの項目の本文は、別の列として読む。強制改行とアキは塊を区切り、索引の印と校正のコメントは何も並べない。図版のキャプションと見出しの `toc-title` は辿らない。
+- `config` は、一行に一つ `キー = 値` を書く。値は空白で区切った並びで、`digits` は 1 から 4 の数、`marks` は数字を含まない 1 字から 4 字の ASCII の図形文字である。`none` は空の並びである。空行と `#` で始まる行は飛ばす。
+- 横組みの本では、文書を変えずに返し、`auto-tcy/split` も出さない。`config` の誤りは横組みでも報告する。
+
+`config` の誤りは、エラー `auto-tcy/config-utf8`、`auto-tcy/config-syntax`、`auto-tcy/config-key`、`auto-tcy/config-digits`、`auto-tcy/config-mark` で、フィルタを当てたファイルの先頭に出し、文書を書き換えずに返す。
 
 ### 配布
 
