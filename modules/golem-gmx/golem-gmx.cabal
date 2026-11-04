@@ -47,10 +47,11 @@ test-suite golem-gmx-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    FmtSpec LanguageSpec RequirementSpec Support
+  other-modules:    CommandSpec FmtSpec LanguageSpec RequirementSpec Support
   build-depends:
     , base
     , containers
+    , golem-doc
     , golem-eval
     , golem-gmx
     , golem-syntax

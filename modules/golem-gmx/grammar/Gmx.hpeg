@@ -107,7 +107,13 @@ FieldDecl :: (Name, TypeE)
 FieldDecl <- n:VarName DColonS t:Type { (n, t) }
 
 Signature :: Signature
-Signature <- p:PubOpt n:VarNameLoc DColonS t:Type rs:Requirements { Signature (endOf (maybe (snd n) id p <-> typeLoc t) (map snd rs)) (maybe False (const True) p) (fst n) (snd n) t rs }
+Signature <- p:KS<'pub'> k:CommandKind n:VarNameLoc DColonS t:Type rs:Requirements { Signature (endOf (p <-> typeLoc t) (map snd rs)) True (fst n) (snd n) t rs (Just k) }
+           / p:PubOpt n:VarNameLoc DColonS t:Type rs:Requirements { Signature (endOf (maybe (snd n) id p <-> typeLoc t) (map snd rs)) (maybe False (const True) p) (fst n) (snd n) t rs Nothing }
+
+# pub inline and pub block: a command of .gm (docs/adr/0150); one of the two.
+CommandKind :: CmdKind
+CommandKind <- KS<'inline'> { CmdInline }
+             / KS<'block'> { CmdBlock }
 
 # What the function requires of the processor (docs/adr/0149): => file.
 Requirements :: [(Name, Loc)]
@@ -121,7 +127,7 @@ ReqTok :: (Name, Loc)
 ReqTok <- w:$([a-z] [a-z0-9\-]*) { (w, loc _span) }
 
 LocalSignature :: Signature
-LocalSignature <- n:VarNameLoc DColonS t:Type { Signature (snd n <-> typeLoc t) False (fst n) (snd n) t [] }
+LocalSignature <- n:VarNameLoc DColonS t:Type { Signature (snd n <-> typeLoc t) False (fst n) (snd n) t [] Nothing }
 
 # One equation; the ; after it is read by the caller.
 Equation :: Equation

@@ -46,7 +46,7 @@ build() {
   printf 'exit %s  %s\n' "$code" "$name"
 }
 
-for project in "$ROOT/scripts/determinism" "$ROOT/modules/golem-driver/test/fixtures/sample"; do
+for project in "$ROOT/scripts/determinism" "$ROOT/modules/golem-driver/test/fixtures/sample" "$ROOT/modules/golem-driver/test/fixtures/functions"; do
   build "$(basename "$project")" "$project" --target html --target epub --target text
   rm -rf "$project/build"
 done

@@ -99,6 +99,37 @@ golem-eval の数の演算を使うので、`.gmx` の数の規則は `.gm` の�
 `List.uncons` の値の型 `List.Cons a` は、先頭と残りを持つ組み込みのデータ型（`Cons a (List a)`）である。
 `.gmx` は組の型を持たず、Haskell の `:` は三項演算子と重なるので、先頭と残りはこの型のパターンで取り出す（`Just (List.Cons x rest)`）。
 
+## 関数のコマンド
+
+`pub inline` と `pub block` は `pub` の後ろに一つだけ書く（`pub inline block f` は G10100）（[docs/adr/0150](../adr/0150-calling-gmx-functions-from-gm.md)）。
+`Golem.Gmx.Check` の `commandDiags` が名前（G10600）、戻り値（G10601）、引数（G10602）を検査し、`programCommands` が `loadProgram` に渡したファイルの関数をコマンドの一覧にする。
+`callCommand` は、位置引数の値と、散文スロットの `Inlines` か本体の `Blocks` を渡して関数を呼ぶ。
+`pub block` の関数の最後の引数が `Blocks` でなければ、本体は渡さない。
+golem-driver が一覧から golem-eval の `FunctionCommand` と `FunctionBlockCommand` を作る。
+
+組み込みのモジュール `Inline` と `Block` は次の関数を持つ。
+作るノードの位置は、すべて `.gm` の呼び出しの位置である。
+
+| 関数 | 型 | 作るもの |
+| --- | --- | --- |
+| `Inline.text` | `String -> Inlines` | 文字 |
+| `Inline.ruby` | `String -> String -> Inlines` | 親文字と読みのルビ。親文字が文字列なので、ルビの中にルビは作れない |
+| `Inline.kenten` | `Inlines -> Inlines` | 圏点（形は `style.toml` の既定） |
+| `Inline.charStyle` | `String -> Inlines -> Inlines` | 文字スタイル |
+| `Inline.color` | `String -> Inlines -> Inlines` | 色（スウォッチの名前） |
+| `Inline.tcy` | `String -> Inlines` | 縦中横 |
+| `Inline.number` | `Int -> Inlines` | 数（`[number-text ...]` と同じく書字方向で表記が決まる） |
+| `Inline.concat` | `List Inlines -> Inlines` | 連結 |
+| `Block.paragraph` | `Inlines -> Blocks` | 段落（`body`） |
+| `Block.styledParagraph` | `String -> Inlines -> Blocks` | 段落スタイルを付けた段落 |
+| `Block.bulletList`、`Block.orderedList` | `List Blocks -> Blocks` | 項目ごとのブロックの箇条書き |
+| `Block.defList` | `List Block.Def -> Blocks` | 定義の並び。`Block.Def` は用語の `Inlines` と定義の `Blocks` を持つ |
+| `Block.table` | `List Inlines -> List (List Inlines) -> Blocks` | 見出しの行と本体の行の表 |
+| `Block.code` | `String -> Blocks` | コードのブロック（行ごと） |
+| `Block.concat` | `List Blocks -> Blocks` | 連結 |
+
+`++` は `Inlines` どうしと `Blocks` どうしもつなぐ。
+
 ## 要求
 
 関数のシグネチャは、型の後ろの `=>` に要求を並べる（[docs/adr/0149](../adr/0149-gmx-requirements-and-driver-handlers.md)）。

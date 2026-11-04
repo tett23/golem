@@ -13,11 +13,14 @@ module Golem.Gmx.Check
     checkModule,
     builtinCons,
     requirementNames,
+    commandName,
+    splitAll,
   )
 where
 
 import Control.Monad (foldM, forM, forM_, unless, when, zipWithM)
 import Control.Monad.State.Strict
+import Data.Char (isAsciiLower, isAsciiUpper, toLower)
 import Data.Either (fromRight, lefts, rights)
 import Data.IntMap.Strict (IntMap)
 import Data.IntMap.Strict qualified as IntMap
@@ -306,6 +309,7 @@ collectFuns prims cx decls =
           <> [diagnostic "G10200" Error (spanOf cx (sigNameLoc s)) ("関数 " <> sigName s <> " の等式がありません") | s <- noEq]
           <> schemeDiags
           <> concatMap (requirementDiags cx) sigs
+          <> concat [commandDiags cx s sch | s <- sigs, Just _ <- [sigKind s], Right sch <- [schemeOf cx (sigType s)]]
       groups = [(s, eqsOf (sigName s)) | s <- Map.elems sigMap, Map.member (sigName s) infos]
    in (diags, infos, sortOn (locStart . sigLoc . fst) groups)
 
@@ -330,6 +334,57 @@ requirementDiags cx s =
       | (_, l) : _ <- [unknown]
       ]
         <> [diagnostic "G10502" Error (spanOf cx l) ("要求 " <> r <> " を二度書いています: " <> sigName s) | (r, l) <- duplicates (sigReqs s)]
+
+{- | The name of the command of a function (docs/adr/0150): each capital
+letter becomes - and the small letter. Nothing for a name with two
+capitals in a row, @_@, or a character that is no letter of ASCII.
+-}
+commandName :: Name -> Maybe Text
+commandName n = case T.unpack n of
+  c : rest | isAsciiLower c, all isAsciiLetter rest, not (twoCapitals rest) -> Just (T.pack (concatMap low (c : rest)))
+  _ -> Nothing
+  where
+    isAsciiLetter x = isAsciiLower x || isAsciiUpper x
+    twoCapitals = \case
+      a : b : more -> (isAsciiUpper a && isAsciiUpper b) || twoCapitals (b : more)
+      _ -> False
+    low x = if isAsciiUpper x then ['-', toLower x] else [x]
+
+-- | The arguments and the result of a type of functions.
+splitAll :: Ty -> ([Ty], Ty)
+splitAll = \case
+  TF a b -> let (as, r) = splitAll b in (a : as, r)
+  t -> ([], t)
+
+{- | The checks of pub inline and pub block (docs/adr/0150): the name
+(G10600), the result (G10601), and the arguments (G10602): those of
+values first, of the types .gm can pass, then the Inlines of the slots of
+an inline command or the Blocks of the body of a block command, last.
+-}
+commandDiags :: Ctx -> Signature -> Scheme -> [Diagnostic]
+commandDiags cx s (Scheme _ t _) =
+  let (args, res) = splitAll t
+      (values, ir) = break isIR args
+      inline = sigKind s == Just CmdInline
+      want = if inline then tInlines else tBlocks
+      at = spanOf cx (sigNameLoc s)
+      nameDiag = case commandName (sigName s) of
+        Just _ -> []
+        Nothing -> [diagnostic "G10600" Error at ("コマンドにできない関数の名前です: " <> sigName s <> "（英小文字で始め、英字だけで書き、英大文字を続けません。例: taxIncluded は tax-included になります）")]
+      resDiag = [diagnostic "G10601" Error (spanOf cx (typeLoc (sigType s))) ("pub " <> (if inline then "inline" else "block") <> " の戻り値の型は " <> showTy want <> " です: " <> sigName s <> " は " <> showTy res <> " を返します") | res /= want]
+      argDiag
+        | any isIR values || not (all isIR ir) = [diagnostic "G10602" Error at ("Inlines と Blocks の引数は、ほかの引数の後ろに書きます: " <> sigName s)]
+        | not inline && (any (/= tBlocks) ir || length ir > 1) = [diagnostic "G10602" Error at ("pub block は、最後の一つの Blocks の引数で本体を受け取ります。Inlines の引数は取れません: " <> sigName s)]
+        | inline && any (/= tInlines) ir = [diagnostic "G10602" Error at ("pub inline は、Inlines の引数で散文スロットを受け取ります。Blocks の引数は取れません: " <> sigName s)]
+        | (v : _) <- filter (not . passable) values = [diagnostic "G10602" Error at (".gm から渡せない型の引数です: " <> showTy v <> "（" <> sigName s <> "）")]
+        | otherwise = []
+   in nameDiag <> resDiag <> argDiag
+  where
+    isIR x = x == tInlines || x == tBlocks
+    passable = \case
+      TC c [] -> c `elem` ["Nat", "Int", "Rat", "String", "Bool"]
+      TC "List" [x] -> passable x
+      _ -> False
 
 -- | The equations of each run of one name, in order.
 runsOf :: [Decl] -> [[Equation]]
@@ -492,6 +547,8 @@ satisfies n t = case (n, t) of
   (NeedEq, TC c []) -> isJust (numRank c) || c `elem` ["Bool", "String"]
   (NeedAppend, TC "String" []) -> True
   (NeedAppend, TC "List" [_]) -> True
+  (NeedAppend, TC "Inlines" []) -> True
+  (NeedAppend, TC "Blocks" []) -> True
   _ -> False
 
 occurs :: Int -> Ty -> Bool
@@ -646,11 +703,11 @@ appendTy cx l x y = do
     _ -> do
       t <- joinTy cx l a b
       case t of
-        TC "String" [] -> pure t
+        TC c [] | c `elem` ["String", "Inlines", "Blocks"] -> pure t
         TM i -> addNeed i NeedAppend >>= \ok' -> unless ok' bad >> pure t
         _ -> bad
   where
-    bad = failAt cx "G10201" l "++ は String どうしか List どうしにだけ使えます"
+    bad = failAt cx "G10201" l "++ は String どうし、List どうし、Inlines どうし、Blocks どうしにだけ使えます"
 
 numTyOf :: Value -> Ty
 numTyOf v = case numberOf v of

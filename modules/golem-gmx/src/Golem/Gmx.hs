@@ -13,6 +13,11 @@ module Golem.Gmx
     fileHandler,
     programRequirements,
     requirementNames,
+    commandName,
+    Command (..),
+    CommandKind (..),
+    programCommands,
+    callCommand,
     Result (..),
     stepLimit,
     depthLimit,
@@ -28,16 +33,20 @@ import Data.ByteString (ByteString)
 import Data.List (intercalate, isInfixOf, isPrefixOf)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Doc.IR (Block, Inline)
+import Golem.Eval.File (FunctionParam (..))
+import Golem.Eval.Value (Value (..))
 import Golem.Gmx.Builtins (builtinSources, divInfo)
 import Golem.Gmx.Check
 import Golem.Gmx.Eval
 import Golem.Gmx.Fmt (formatGmx)
 import Golem.Gmx.Parse (parseModule, readGmx)
 import Golem.Gmx.Syntax
+import Golem.Gmx.Types
 import Golem.Syntax
 import System.FilePath (splitDirectories)
 
@@ -49,7 +58,30 @@ data SourceProblem = MissingFile | OutsideRoot
 data Program = Program
   { prGlobals :: !Globals,
     prFiles :: !(Map FilePath FileId),
-    prRequirements :: ![(Text, SrcSpan)]
+    prRequirements :: ![(Text, SrcSpan)],
+    -- | the commands of the files given to 'loadProgram' (docs/adr/0150)
+    prCommands :: ![Command]
+  }
+
+data CommandKind = InlineCommand | BlockCommand
+  deriving stock (Eq, Ord, Show)
+
+{- | A function of pub inline or pub block in a file given to 'loadProgram'
+(docs/adr/0150): its command, the types of its positional arguments, its
+prose slots or whether it takes the body, and where it is declared.
+-}
+data Command = Command
+  { cmdName :: !Text,
+    cmdKind :: !CommandKind,
+    cmdParams :: ![FunctionParam],
+    cmdSlots :: !Int,
+    cmdBody :: !Bool,
+    cmdPath :: !FilePath,
+    cmdFunction :: !Name,
+    -- | the name in the signature
+    cmdSpan :: !SrcSpan,
+    -- | the signature as written, requirements included
+    cmdSignature :: !Text
   }
 
 -- | The files of the program and their ids, the built-in modules left out.
@@ -96,10 +128,25 @@ loadProgram source roots = do
                   let scope = Scope (Map.fromList [(a, imported) | (a, p) <- imports, Just imported <- [Map.lookup p mods]]) builtinMods (Map.fromList [("div", fst divInfo)])
                       (es, mi, fdefs) = checkModule Nothing scope fid path src m
                    in (Map.insert path mi mods, ds <> es, done <> fdefs, if null es then failed else path : failed)
-      (_, checkDiags, defs, _) = foldl' check (Map.empty, [], [], ldFailed loaded) (ldOrder loaded)
+      (modules, checkDiags, defs, _) = foldl' check (Map.empty, [], [], ldFailed loaded) (ldOrder loaded)
       diags = preludeDiags <> ldDiags loaded <> checkDiags
       reqs = [(r, mkSpan fid s e) | path <- ldOrder loaded, Just (fid, _, Module decls) <- [Map.lookup path (ldFiles loaded)], DSig sg <- decls, (r, Loc s e) <- sigReqs sg]
-      program = Program (Map.union preludeGlobals (Map.fromList defs)) (Map.map (\(f, _, _) -> f) (ldFiles loaded)) reqs
+      commands =
+        [ Command cname (if k == CmdInline then InlineCommand else BlockCommand) params (if k == CmdInline then length ir else 0) (k == CmdBlock && not (null ir)) path (sigName sg) (mkSpan fid s e) (sigName sg <> " :: " <> showScheme sch)
+        | path <- roots,
+          Just (fid, _, Module decls) <- [Map.lookup path (ldFiles loaded)],
+          Just mi <- [Map.lookup path modules],
+          DSig sg <- decls,
+          Just k <- [sigKind sg],
+          Just cname <- [commandName (sigName sg)],
+          Just fi <- [Map.lookup (sigName sg) (miFuns mi)],
+          let sch@(Scheme _ t _) = fiScheme fi
+              (args, _) = splitAll t
+              (values, ir) = break (`elem` [tInlines, tBlocks]) args
+              params = mapMaybe paramOf values
+              Loc s e = sigNameLoc sg
+        ]
+      program = Program (Map.union preludeGlobals (Map.fromList defs)) (Map.map (\(f, _, _) -> f) (ldFiles loaded)) reqs commands
   pure (sortDiagnostics diags, if any isError diags then Nothing else Just program)
   where
     visit stack via path ld
@@ -146,6 +193,38 @@ normalize p
     go (_ : acc) (".." : rest) = go acc rest
     go [] (".." : _) = Left "プロジェクトルートの外を指しています"
     go acc (seg : rest) = go (seg : acc) rest
+
+-- | The type of an argument as .gm passes it.
+paramOf :: Ty -> Maybe FunctionParam
+paramOf = \case
+  TC "Nat" [] -> Just FPNat
+  TC "Int" [] -> Just FPInt
+  TC "Rat" [] -> Just FPRat
+  TC "String" [] -> Just FPString
+  TC "Bool" [] -> Just FPBool
+  TC "List" [x] -> FPList <$> paramOf x
+  _ -> Nothing
+
+-- | The commands of the program, in the order of the files and of their declarations.
+programCommands :: Program -> [Command]
+programCommands = prCommands
+
+{- | Calls the function of a command with the values of its positional
+arguments and its prose slots (Left) or its body (Right): the inlines
+(Left) or the blocks (Right) it returns. @at@ is the call, the position of
+what the function makes.
+-}
+callCommand :: Handlers -> Program -> SrcSpan -> Command -> [Value] -> Either [[Inline]] [Block] -> Either Diagnostic (Either [Inline] [Block])
+callCommand hs p at c vals rest =
+  let args = map toArg vals <> either (map RInlines) (\bs -> [RBlocks bs | cmdBody c]) rest
+   in callFunctionWith hs p at (cmdPath c) (cmdFunction c) args >>= \case
+        RInlines xs -> Right (Left xs)
+        RBlocks xs -> Right (Right xs)
+        _ -> Left (diagnostic "G10601" Error at ("関数のコマンドが Inlines か Blocks を返しませんでした: " <> cmdFunction c))
+  where
+    toArg = \case
+      VArray xs -> RList (map toArg xs)
+      v -> RPrim v
 
 {- | Calls a function of a module of the program. @at@ is the span of the
 call in .gm, where the limits of steps and depth are reported.

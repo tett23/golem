@@ -12,6 +12,7 @@ where
 import Data.Char (isDigit)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Doc.IR
 import Golem.Eval.Expr (divAt)
 import Golem.Eval.Number (renderNumber)
 import Golem.Eval.Value (Value (..), numberOf)
@@ -22,13 +23,39 @@ data PrimValue
   | PC !Text ![PrimValue]
   | PL ![PrimValue]
   | PFun
+  | -- | inlines and blocks of the semantic IR (docs/adr/0150)
+    PI ![Inline]
+  | PB ![Block]
 
 -- | The span of an error of a primitive; the evaluator puts it at the call.
 nowhere :: SrcSpan
 nowhere = mkSpan (FileId 0) 0 0
 
-runPrim :: Text -> [PrimValue] -> Either Diagnostic (PrimValue, Int)
-runPrim name args = case (name, args) of
+{- | A primitive applied to its arguments. @at@ is the call of .gm, which
+the nodes that @Inline@ and @Block@ make take as their position
+(docs/adr/0150).
+-}
+runPrim :: SrcSpan -> Text -> [PrimValue] -> Either Diagnostic (PrimValue, Int)
+runPrim at name args = case (name, args) of
+  -- Inline and Block (docs/adr/0150)
+  ("Inline.text", [PV (VString s)]) -> inl [Text at s]
+  ("Inline.ruby", [PV (VString b), PV (VString r)]) -> inl [Ruby at () [RubySegment [Text at b] (Just r)]]
+  ("Inline.kenten", [PI xs]) -> inl [Kenten at Nothing xs]
+  ("Inline.charStyle", [PV (VString n), PI xs]) -> inl [CharStyle at n xs]
+  ("Inline.color", [PV (VString n), PI xs]) -> inl [Color at n xs]
+  ("Inline.tcy", [PV (VString s)]) -> inl [Tcy at s]
+  ("Inline.number", [PV v]) | Just (_, q) <- numberOf v -> inl [Number at (truncate q) Nothing]
+  ("Inline.concat", [PL xs]) -> inl (concat [is | PI is <- xs])
+  ("Block.paragraph", [PI xs]) -> blk [Block at Nothing (Paragraph Nothing xs)]
+  ("Block.styledParagraph", [PV (VString st), PI xs]) -> blk [Block at Nothing (Paragraph (Just st) xs)]
+  ("Block.bulletList", [PL xs]) -> blk [Block at Nothing (BulletList [ListItem Nothing bs | PB bs <- xs])]
+  ("Block.orderedList", [PL xs]) -> blk [Block at Nothing (OrderedList [ListItem Nothing bs | PB bs <- xs])]
+  ("Block.defList", [PL xs]) -> blk [Block at Nothing (DefList [DefGroup [t] [d] | PC "Def" [PI t, PB d] <- xs])]
+  ("Block.table", [PL hs, PL rows]) ->
+    let header = [is | PI is <- hs]
+     in blk [Block at Nothing (Table (map (const AlignDefault) header) header [[is | PI is <- r] | PL r <- rows])]
+  ("Block.code", [PV (VString s)]) -> blk [Block at Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine l (Just i) Nothing False [] | (i, l) <- zip [1 ..] (T.lines s)]))]
+  ("Block.concat", [PL xs]) -> blk (concat [bs | PB bs <- xs])
   ("div", [PV a, PV b]) -> (\v -> (PV v, 0)) <$> divAt nowhere a b
   -- List
   ("List.length", [PL xs]) -> sized0 (nat (length xs))
@@ -76,6 +103,8 @@ runPrim name args = case (name, args) of
     _ -> PC "Nothing" []
   _ -> Left (diagnostic "G02007" Error nowhere (name <> " の引数が不正です"))
   where
+    inl xs = Right (PI xs, length xs)
+    blk xs = Right (PB xs, length xs)
     sized0 v = Right (v, 0)
     list xs = Right (PL xs, length xs)
     text t = Right (PV (VString t), T.length t)
