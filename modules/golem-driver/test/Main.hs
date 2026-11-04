@@ -8,28 +8,29 @@ import DiagnosticSitesSpec
 import DiagnosticsSpec
 import FigureSpec
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
-import LocaleSpec
 import MemoSpec
 import OutputGoldenSpec
 import PageElementsSpec
 import ParagraphRuleSpec
 import ParagraphSpec
 import PdfSpec
-import PluginsSpec
 import ReferencesSpec
 import RuleShapeSpec
 import SecuritySpec
 import StylesSpec
-import System.Environment (lookupEnv)
 import TableFilesSpec
 import Test.Tasty
 
 main :: IO ()
-main = lookupEnv "XDG_CACHE_HOME" >>= defaultMainReportingSkips . flip tests
+main = defaultMainReportingSkips tests
 
--- | The tests, with XDG_CACHE_HOME as it was when the suite started (docs/adr ADR 0072).
-tests :: Skips -> Maybe String -> TestTree
-tests skips cacheHome =
+{- | The tests. The suite is -threaded and tasty runs them at the same time:
+none of them changes the state of the process (environment variables, the
+locale encoding, the current directory). Those that do are in
+golem-driver-global-test (GlobalMain.hs, docs/adr/0146).
+-}
+tests :: Skips -> TestTree
+tests skips =
   testGroup
     "golem-driver (ADR 0001)"
     ( [ qpdfInstalled,
@@ -80,8 +81,6 @@ tests skips cacheHome =
              testGroup "table column widths (golem-driver ADR 0037)" columnWidthTests,
              testGroup "PDF table of contents (ADR 0009)" tocTests,
              testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,
-             testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
-             cacheHomeRestored cacheHome,
              testGroup "vertical glyphs turned without a vertical form (ADR 0015)" turnedTests,
              testGroup "kenten in the PDF (golem-driver ADR 0019)" kentenTests,
              testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
@@ -107,7 +106,6 @@ tests skips cacheHome =
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
              testGroup "the shapes of the line styles of a rule (ADR 0028)" ruleShapeTests,
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
-             localeTests,
              publicDomainTests skips,
              diagnosticSiteTests
            ]
