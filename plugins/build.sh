@@ -21,6 +21,9 @@ cd "$DIR"
 CARGO_HOME=${CARGO_HOME:-$HOME/.cargo}
 RUSTFLAGS="--remap-path-prefix=$DIR=/golem/plugins --remap-path-prefix=$CARGO_HOME=/cargo"
 export RUSTFLAGS
+# the crates built for the host get ids that do not name the host (rustc-wrapper.sh)
+RUSTC_WRAPPER="$DIR/rustc-wrapper.sh"
+export RUSTC_WRAPPER
 cargo build --release --locked --target wasm32-unknown-unknown
 status=0
 for toml in */Cargo.toml; do

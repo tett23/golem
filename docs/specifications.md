@@ -3014,7 +3014,7 @@ Golem は、プラグインの仕組みを通す見本のプラグインを、�
 
 - 補助のクレート `golem-plugin-sdk` は、ゲストの側の CBOR の読み書き、意味論 IR の型、要求と応答と記述の型、四つの関数を公開するマクロ `export_plugin!` を持ち、ほかのクレートに依存しない。`export_plugin!` に三つめの関数を渡すと、`golem_check_data` も公開する。
 - 見本のプラグインは、`plugins/<名前>/` のクレートで、`plugins/build.sh` が `plugins/wasm/<名前>.wasm` に作る。作った `.wasm` はコミットし、golem-driver のテストはそれを読む。
-- ツールチェーンは `plugins/rust-toolchain.toml` で固定し、ソースのパスを固定の文字列に置き換えて作るので、同じソースからは同じバイト列になる。CI の `plugins` ジョブが、コミットした `.wasm` とソースから作ったバイト列の一致を確かめる。
+- ツールチェーンは `plugins/rust-toolchain.toml` で固定し、ソースのパスを固定の文字列に置き換えて作るので、同じソースからは同じバイト列になる。cargo が各クレートに付ける `-C metadata` は、ホストの名前を含む `rustc -vV` の出力から作られ、derive のマクロが書く項目の順をホストごとに変える。`build.sh` は、rustc のラッパー `plugins/rustc-wrapper.sh` で、この値をパッケージの名前、版、フィーチャー、ホスト向けかターゲット向けかの文字列に置き換える。CI の `plugins` ジョブが、コミットした `.wasm` とソースから作ったバイト列の一致を確かめる。
 - 見本のプラグインは、リリースに `<名前>.wasm` として添える。利用者は `https://github.com/tett23/golem/releases/download/<タグ>/<名前>.wasm` を `url` に書いて使う。
 
 今の見本のプラグインは `lookup`、`bar-chart`、`glossary`、`kansuji`、`sou-ruby` である。
