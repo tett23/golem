@@ -206,6 +206,11 @@ Two calls that raise the number of capabilities at the same time stop the runtim
 tasty 1.5.4 also calls it at start when there are fewer capabilities than processors, and `-N` keeps it from doing so.
 If either rule is broken, the `changes` job of CI (`scripts/ci/rts-capabilities.sh`) fails.
 
+In a test suite built with `-threaded`, tasty runs the tests at the same time.
+A test that changes the state of the process (an environment variable, the locale encoding, the current directory) is not put in such a suite, as the other tests would read the state half changed.
+In golem-driver, such tests go to `golem-driver-global-test`, which is not built with `-threaded` ([docs/adr/0146](./docs/adr/0146-threaded-golem-driver-test.md)).
+If a module of `golem-driver-test` uses `withEnv`, `setEnv`, `setLocaleEncoding`, `setCurrentDirectory` or the like, the `scripts-linux` job of CI (`scripts/ci/test.sh`) fails.
+
 Audit records and performance snapshots go under `docs/`, in a directory for each purpose.
 These are also not changed once committed.
 Records under `docs/audit/`, `docs/audits/`, `docs/benchmarks/`, and `docs/benchmark/` are enforced: the hook and the `adr` job in CI reject changes, deletions, and moves of committed ones ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md), [docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)).
