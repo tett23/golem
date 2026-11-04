@@ -1,0 +1,13 @@
+[package]
+name = "kansuji"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "A sample plugin: overrides [number-text ...] to set integers, decimals and fractions in kanji (docs/adr/0125)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+golem-plugin-sdk = { path = "../golem-plugin-sdk" }

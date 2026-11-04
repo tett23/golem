@@ -3017,7 +3017,7 @@ Golem は、プラグインの仕組みを通す見本のプラグインを、�
 - ツールチェーンは `plugins/rust-toolchain.toml` で固定し、ソースのパスを固定の文字列に置き換えて作るので、同じソースからは同じバイト列になる。CI の `plugins` ジョブが、コミットした `.wasm` とソースから作ったバイト列の一致を確かめる。
 - 見本のプラグインは、リリースに `<名前>.wasm` として添える。利用者は `https://github.com/tett23/golem/releases/download/<タグ>/<名前>.wasm` を `url` に書いて使う。
 
-今の見本のプラグインは `lookup`、`bar-chart`、`glossary` である。
+今の見本のプラグインは `lookup`、`bar-chart`、`glossary`、`kansuji` である。
 `[lookup: キー]` は、データ `table` で渡した TSV（キー、タブ、値の行）からキーの値を返す。
 空の行と `#` で始まる行は飛ばし、同じキーの行が二つあれば先の行を使う。
 
@@ -3050,6 +3050,20 @@ data = { terms = "data/terms.tsv" }
 - 一覧は、利用者が `@channel glossary` で置く。PDF では出現のページの列が、HTML と EPUB では出現へのリンクが付く。
 - `golem_check_data` で TSV を検査し、誤りを TSV の行の位置に出す。コードは原因ごとに、`tsv-columns`（欄の数が 3 か 4 でない）、`tsv-empty`（語、定義、ラベルの欄が空）、`tsv-no-reading`（読みが空で、語が漢字を含む）、`tsv-reading`（読みに書けない文字）、`tsv-duplicate`（前の行と同じ語）、`utf8`（UTF-8 でない。位置はファイルの先頭）である。
 - 呼び出しの誤りは呼び出しの位置に出し、本文の語は消さずに出して項目だけを送らない。コードは `slot`（散文スロットが一つでないか、その文字列が空）、`args`（位置引数が二つ以上か、キーワード引数を書いた）、`headword-type`（位置引数が文字列でない）、`headword-empty`（位置引数が空の文字列）、`no-data`（`data` に `terms` がない）、`unknown`（TSV にない見出し語）である。
+
+`kansuji` は、`overrides = ["number-text"]` で組み込みの `[number-text ...]` を上書きし、縦組みの本の数を漢数字で書く（[docs/adr/0125](adr/0125-kansuji-plugin-overrides-number-text.md)）。
+本の文脈の `writing-mode` と `vertical-numbers` を宣言し、データは受け取らない。
+
+- 位置引数は整数か有理数を一つ取る。キーワード引数は `style`（`kanji`、`kanji-digits`、`tcy`）と `form`（`decimal` が既定、`fraction`）で、散文スロットは取らない。
+- `style` のない数（`##N##` を含む）の表記は、`vertical-numbers`（`[numbers]` の `vertical`）で決める。`auto` と `auto-digits` は組み込みと同じく、0 以上 99 以下を縦中横にする。
+- 縦組みでは、整数を `kanji` の位取り（`百二十三`、`一万`）か `kanji-digits` の一字ずつ（`一二三`）で書く。位取りは `Golem.Doc.Numerals` と同じで、十、百、千の前の「一」を書かず、万、億、兆、京の前の「一」を書く。負の数は前に「マイナス」を付ける。
+- 十進で有限に書ける有理数は、整数の部分を `style` の表記で、小数点を「・」、小数の部分を一字ずつの漢数字で書く（`三・一四`）。ほかの有理数と `form=fraction` は「（分母）分の（分子）」と書く（`三分の二`）。値が整数の有理数は整数として書く。
+- `tcy` は、IR の数のノード（`number-style` は 2）を返す。整数でない数の `tcy` は、横組みでも誤りにする。
+- 横組みでは、`style` によらず、整数を表記のない数のノードで返し、有理数を算用数字の `3.14`、`-0.125`、`2/3` で書く。
+- 上書きで変わるのは、原稿の `[number-text ...]` と `##N##` だけである。ページ番号、リストの番号、見出しの番号は、レイアウトが数のノードから組むので、プラグインを通らない。
+
+誤りは、プラグインのコード `kansuji/arity`、`kansuji/not-number`、`kansuji/style`、`kansuji/form`、`kansuji/key`、`kansuji/tcy-not-integer`、`kansuji/slot` で、呼び出しの位置に出す。
+誤りのときの出力は、空のインラインの列である。
 
 ### 配布
 
