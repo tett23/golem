@@ -6,7 +6,13 @@ module Golem.Gmx
     SourceProblem (..),
     loadProgram,
     callFunction,
+    callFunctionWith,
     callFunctionCounted,
+    Handlers (..),
+    noHandlers,
+    fileHandler,
+    programRequirements,
+    requirementNames,
     Result (..),
     stepLimit,
     depthLimit,
@@ -22,8 +28,10 @@ import Data.ByteString (ByteString)
 import Data.List (intercalate, isInfixOf, isPrefixOf)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Gmx.Builtins (builtinSources, divInfo)
 import Golem.Gmx.Check
 import Golem.Gmx.Eval
@@ -40,7 +48,8 @@ data SourceProblem = MissingFile | OutsideRoot
 -- | The checked modules of a project, ready to call.
 data Program = Program
   { prGlobals :: !Globals,
-    prFiles :: !(Map FilePath FileId)
+    prFiles :: !(Map FilePath FileId),
+    prRequirements :: ![(Text, SrcSpan)]
   }
 
 -- | The files of the program and their ids, the built-in modules left out.
@@ -89,7 +98,8 @@ loadProgram source roots = do
                    in (Map.insert path mi mods, ds <> es, done <> fdefs, if null es then failed else path : failed)
       (_, checkDiags, defs, _) = foldl' check (Map.empty, [], [], ldFailed loaded) (ldOrder loaded)
       diags = preludeDiags <> ldDiags loaded <> checkDiags
-      program = Program (Map.union preludeGlobals (Map.fromList defs)) (Map.map (\(f, _, _) -> f) (ldFiles loaded))
+      reqs = [(r, mkSpan fid s e) | path <- ldOrder loaded, Just (fid, _, Module decls) <- [Map.lookup path (ldFiles loaded)], DSig sg <- decls, (r, Loc s e) <- sigReqs sg]
+      program = Program (Map.union preludeGlobals (Map.fromList defs)) (Map.map (\(f, _, _) -> f) (ldFiles loaded)) reqs
   pure (sortDiagnostics diags, if any isError diags then Nothing else Just program)
   where
     visit stack via path ld
@@ -141,8 +151,34 @@ normalize p
 call in .gm, where the limits of steps and depth are reported.
 -}
 callFunction :: Program -> SrcSpan -> FilePath -> Name -> [Result] -> Either Diagnostic Result
-callFunction p at path name = evalCall (prGlobals p) (prFiles p) at (path, name)
+callFunction = callFunctionWith noHandlers
+
+-- | 'callFunction' with the handlers of the requirements (docs/adr/0149).
+callFunctionWith :: Handlers -> Program -> SrcSpan -> FilePath -> Name -> [Result] -> Either Diagnostic Result
+callFunctionWith hs p at path name = evalCall hs (prGlobals p) (prFiles p) at (path, name)
+
+{- | The handler of @file@ over the bytes of the files of [functions.data]
+by their names (docs/adr/0149): a name not there is G10503, bytes that are
+no UTF-8 G10504. A BOM at the start is skipped and CRLF becomes LF, as
+for the files of @table.
+-}
+fileHandler :: Map Text ByteString -> Handlers
+fileHandler files = Handlers $ \n -> case Map.lookup n decoded of
+  Nothing -> Left ("G10503", "[functions.data] にない名前です: " <> n)
+  Just Nothing -> Left ("G10504", "File.read で読んだファイルが UTF-8 として読めません: " <> n)
+  Just (Just t) -> Right t
+  where
+    decoded = Map.map decode files
+    decode b = case TE.decodeUtf8' b of
+      Left _ -> Nothing
+      Right t -> Just (T.replace "\r\n" "\n" (fromMaybe t (T.stripPrefix "\xFEFF" t)))
+
+{- | The requirements the signatures of the program write, each at its
+name in its signature, for the check against manifest.toml (G10505).
+-}
+programRequirements :: Program -> [(Text, SrcSpan)]
+programRequirements = prRequirements
 
 -- | 'callFunction' with the steps the call took (for measuring the work of functions).
 callFunctionCounted :: Program -> SrcSpan -> FilePath -> Name -> [Result] -> (Either Diagnostic Result, Int)
-callFunctionCounted p at path name = evalCallCounted (prGlobals p) (prFiles p) at (path, name)
+callFunctionCounted p at path name = evalCallCounted noHandlers (prGlobals p) (prFiles p) at (path, name)
