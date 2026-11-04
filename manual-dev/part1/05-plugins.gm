@@ -103,7 +103,7 @@ FFI は golem-plugin の中に閉じ、ほかのモジュールは golem-plugin 
 - スレッドを無効にする。
 - 浮動小数点数の NaN を正規化する。
 - 結果が実装によって変わりうる命令（relaxed SIMD）を無効にする。
-- 一回の呼び出しで実行できる命令の数に上限（wasmtime の fuel）を設ける。今の上限はおよそ 10 億命令である。命令の数で数えるので、上限を超えるかどうかも決定的である。[index reading="fuel": fuel]
+- 一回の呼び出しで実行できる命令の数に上限（wasmtime の fuel）を設ける。コマンドの上限は 10 億命令である。フィルタの上限は、それに文書の CBOR の 1 バイトあたり 10000 命令を足したもので、長いファイルほど多い。命令の数で数えるので、上限を超えるかどうかも決定的である。環境変数 [code: GOLEM_DEBUG_PLUGIN_FUEL] を設けると、呼び出しごとに使った命令の数を標準エラーに書く。[index reading="fuel": fuel][note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0124-filter-fuel-by-document-size.md]（docs/adr/0124「フィルタの命令の数の上限を文書の大きさに比例させる」）]
 - メモリの量に上限を設ける。今の上限は一つのインスタンスあたり 256 MiB である。
 - テーブルの要素の数に上限を設ける。今の上限は 100 万である。メモリの上限の外で、テーブルがホストのメモリを使い切らないようにするためである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0035-security-hardening.md]（docs/adr の ADR 0035「信頼できない入力に対する防御を固める」）]
 - 呼び出しごとに新しいインスタンスを作り、呼び出しのあいだで状態を持ち越させない。

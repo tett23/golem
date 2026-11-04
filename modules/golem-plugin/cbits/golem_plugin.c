@@ -151,7 +151,7 @@ static int read_result(wasmtime_context_t *cx, wasmtime_instance_t *inst, uint64
 
 int golem_plugin_call(golem_plugin *p, int mode, uint64_t fuel, int64_t memory_limit,
                       const uint8_t *input, size_t in_len, uint8_t **out, size_t *out_len,
-                      uint32_t *out_u32, char **err) {
+                      uint32_t *out_u32, uint64_t *used, char **err) {
   wasmtime_store_t *store = wasmtime_store_new(p->engine, NULL, NULL);
   wasmtime_store_limiter(store, memory_limit, GOLEM_TABLE_ELEMENTS, 1, 1, 1);
   wasmtime_context_t *cx = wasmtime_store_context(store);
@@ -200,6 +200,13 @@ int golem_plugin_call(golem_plugin *p, int mode, uint64_t fuel, int64_t memory_l
     if (status == GOLEM_OK) status = read_result(cx, &inst, (uint64_t)res.of.i64, out, out_len, err);
   }
 done:
+  {
+    /* the fuel the call used, all of it when it ran out (docs/adr/0124) */
+    uint64_t left = 0;
+    wasmtime_error_t *fe = wasmtime_context_get_fuel(cx, &left);
+    if (fe) { wasmtime_error_delete(fe); left = 0; }
+    *used = status == GOLEM_OUT_OF_FUEL ? fuel : (left <= fuel ? fuel - left : 0);
+  }
   wasmtime_store_delete(store);
   return status;
 }
