@@ -106,36 +106,60 @@ jobs:
     needs: changes
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 30
-    # On x86-64 three runners build the same commit: one runs the tests,
-    # one makes the outputs (the determinism check, the two manuals and
-    # epubcheck), one runs the environment check. The work is bound by the
-    # four cores of a runner, and the x86-64 build is the longest job; on
-    # aarch64 one runner does the tests and the outputs (docs/adr/0045,
-    # docs/adr/0097)
+    # On x86-64 four runners build the same commit: two run the tests (the
+    # suites of golem-driver, and the rest, by scripts/ci/test-suites.sh),
+    # one makes the outputs (the PDFs of the visual regression test, the
+    # determinism check, the two manuals and epubcheck), one runs the
+    # environment check. On aarch64 one runner runs the tests and one makes
+    # the outputs. The work is bound by the four cores of a runner, and the
+    # runners end at about the same time; one runner of each architecture
+    # saves dist-newstyle (docs/adr/0045, docs/adr/0097, docs/adr/0140)
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-24.04
-            part: tests
+            part: tests-driver
             tests: true
             outputs: false
             env: false
+            suites: driver
+            save: true
+          - runner: ubuntu-24.04
+            part: tests-rest
+            tests: true
+            outputs: false
+            env: false
+            suites: rest
+            save: false
           - runner: ubuntu-24.04
             part: outputs
             tests: false
             outputs: true
             env: false
+            suites: none
+            save: false
           - runner: ubuntu-24.04
             part: env
             tests: false
             outputs: false
             env: true
+            suites: none
+            save: false
           - runner: ubuntu-24.04-arm
-            part: all
+            part: tests
             tests: true
+            outputs: false
+            env: false
+            suites: all
+            save: true
+          - runner: ubuntu-24.04-arm
+            part: outputs
+            tests: false
             outputs: true
             env: false
+            suites: none
+            save: false
     name: build (${{ matrix.runner }}, ${{ matrix.part }})
     runs-on: ${{ matrix.runner }}
     steps:
@@ -267,10 +291,13 @@ jobs:
       # stopped and fails (the test wrapper scripts/ci/suite-timeout.sh in
       # cabal.project.local); the step itself stops after 20, so that a
       # hang fails in minutes, not at the job's timeout
-      - run: cabal test all
+      # the suites of the part of this runner, one target per line;
+      # aarch64 runs them all (docs/adr/0140)
+      - name: The test suites of the runner (docs/adr/0140)
         if: matrix.tests
         timeout-minutes: 20
         env:
+          SUITES: ${{ matrix.suites }}
           GOLEM_REQUIRE_EXTERNAL_TOOLS: "1"
           # the ten public-domain books are typeset to every target
           # (docs/adr/0026, docs/adr/0058)
@@ -281,8 +308,13 @@ jobs:
           # the suites without tasty-golden, and no cabal command here takes
           # a flag of the configuration (docs/adr/0037)
           TASTY_NO_CREATE: "true"
+        run: |
+          # each target is one word
+          # shellcheck disable=SC2046
+          cabal test $(sh scripts/ci/test-suites.sh "$SUITES")
+      # golem-parser-test is not a suite of tests-driver
       - name: Generated parser matches the grammar
-        if: matrix.tests
+        if: matrix.tests && matrix.suites != 'driver'
         run: |
           scripts/gen-parser.sh
           git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs
@@ -294,6 +326,20 @@ jobs:
             manual/fonts
             manual-dev/fonts
           key: manual-fonts-${{ hashFiles('scripts/manual/fetch-fonts.sh') }}
+      # the 17 PDFs of the visual regression test; the visual job renders
+      # and compares them (docs/adr/0094, docs/adr/0095). They come first
+      # of the outputs: build.sh copies every input to a directory of its
+      # own and fetches the fonts of the manuals itself, and visual waits
+      # for visual-pdfs alone (docs/adr/0099, docs/adr/0140)
+      - name: The PDFs of the visual regression test (docs/adr/0095)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        run: GOLEM="$(cabal list-bin -v0 golem)" sh scripts/visual/build.sh visual-pdfs
+      - name: Upload the PDFs of the visual regression test
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-pdfs
+          path: visual-pdfs
       # the EPUB of aarch64 is the same, by the determinism job
       - name: The EPUB passes epubcheck
         if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
@@ -322,18 +368,6 @@ jobs:
         with:
           name: determinism-${{ matrix.runner }}
           path: determinism-${{ matrix.runner }}.txt
-      # the 17 PDFs of the visual regression test, built where golem, the
-      # fonts of the manuals and the other outputs already are; the visual
-      # job renders and compares them (docs/adr/0094, docs/adr/0095)
-      - name: The PDFs of the visual regression test (docs/adr/0095)
-        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
-        run: GOLEM="$(cabal list-bin -v0 golem)" sh scripts/visual/build.sh visual-pdfs
-      - name: Upload the PDFs of the visual regression test
-        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
-        uses: actions/upload-artifact@v7
-        with:
-          name: visual-pdfs
-          path: visual-pdfs
       # the outputs do not change with the time zone, the locale,
       # SOURCE_DATE_EPOCH, HOME, XDG_*, PATH, the umask, the path of the
       # project, the times of its files and files nothing refers to; the
@@ -380,10 +414,11 @@ jobs:
             manual-dev/build/pdf
             manual-dev/build/html
       # pushes to main only: a pull request's cache would serve that pull
-      # request alone, under a key that changes with every commit. On
-      # x86-64 the runner of the tests saves it (docs/adr/0045)
+      # request alone, under a key that changes with every commit. The
+      # runner of matrix.save saves it: tests-driver on x86-64, tests on
+      # aarch64 (docs/adr/0045, docs/adr/0140)
       - name: Save dist-newstyle (docs/adr/0009)
-        if: success() && matrix.tests && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: success() && matrix.save && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v6
         with:
           path: dist-newstyle
@@ -394,7 +429,7 @@ jobs:
       # the caches of the pull request first and then in those of main
       # (docs/adr/0045)
       - name: Save dist-newstyle of the pull request (docs/adr/0045)
-        if: always() && matrix.tests && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'
+        if: always() && matrix.save && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'
         uses: actions/cache/save@v6
         with:
           path: dist-newstyle

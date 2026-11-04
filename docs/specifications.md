@@ -571,7 +571,7 @@ Golem と shem の出力はどちらも決定的なので、同じ PDF からは
 `--accept` は、PDF がない入力、ページが一つもない入力、`unreadable` の入力があれば、どの参照も書かずに失敗する。
 PDF の Producer とインスタンス ID は画像に現れないので、`VERSION` だけを変えても参照は変わらない。
 画像と図版は shem が中身を読まずに箱で描くので、その中身の変化はこのテストでは見つからない。
-CI では、`build` の x86-64 の `outputs` のランナーが PDF を組んで成果物 `visual-pdfs` として上げ、`visual` ジョブが x86-64 で描いて比べる（[ADR 0095](adr/0095-visual-job-in-ci.md)）。
+CI では、`build` の x86-64 の `outputs` のランナーが、epubcheck と決定性の検査の出力より先に PDF を組んで成果物 `visual-pdfs` として上げ、`visual` ジョブが x86-64 で描いて比べる（[ADR 0095](adr/0095-visual-job-in-ci.md)、[ADR 0140](adr/0140-ci-split-test-runners-and-visual-pdfs-first.md)）。
 比べる手順の実時間の上限は 600 秒で、shem が止まらなくなったことだけを見つけるためのものである。
 比べる手順が失敗したときだけ、`scripts/visual/report.sh` が、変わったページの前と後の画像（150 dpi の PNG、最初の 100 ページ）と `shem diff` の差分の画像、`check.sh --accept` が書くはずの参照の一覧を成果物 `visual-diff` として上げ、変わったページの表（違う画素の数と矩形は 72 dpi で数える）をジョブの要約に書く（[ADR 0096](adr/0096-before-and-after-images-of-changed-pages.md)）。
 前の画像は、ベースのコミットから first-parent の祖先を 20 個までたどって最初に見つかった成果物 `visual-pdfs` から描き、ページの SHA-256 がベースのコミットの参照と一致するときだけ使う。

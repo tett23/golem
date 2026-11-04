@@ -804,27 +804,39 @@ if grep -qF "QUICK: \${{ github.event_name == 'pull_request' && '--quick' || '' 
 # ---------------------------------------------------------------- ci.yml and the parts of build
 # (docs/adr/0045-split-x86-build-and-pull-request-cache.md)
 
-# x86-64 builds three times: one runner for the tests, one for the outputs,
-# one for the environment check; aarch64 does the tests and the outputs
-# (docs/adr/0045, docs/adr/0097)
-matrix_rows() { # the runner, part, tests, outputs and env of each row of the matrix
+# x86-64 builds four times: two runners for the tests (the suites of
+# golem-driver, and the rest), one for the outputs, one for the environment
+# check; aarch64 builds twice, for the tests and for the outputs. One runner
+# of each architecture saves dist-newstyle (docs/adr/0045, docs/adr/0097,
+# docs/adr/0140)
+matrix_rows() { # the runner, part, tests, outputs, env, suites and save of each row of the matrix
   awk '/^        include:/ { on = 1; next }
     on && /^    [a-z]/ { on = 0 }
     on && /- runner:/ { r = $3 } on && /part:/ { p = $2 } on && /tests:/ { t = $2 }
-    on && /outputs:/ { o = $2 } on && /env:/ { print r, p, t, o, $2 }' "$1"
+    on && /outputs:/ { o = $2 } on && /env:/ { e = $2 } on && /suites:/ { u = $2 }
+    on && /save:/ { print r, p, t, o, e, u, $2 }' "$1"
 }
-if [ "$(matrix_rows "$CI_YML")" = "ubuntu-24.04 tests true false false
-ubuntu-24.04 outputs false true false
-ubuntu-24.04 env false false true
-ubuntu-24.04-arm all true true false" ]; then ok; else ng "ci.yml: the matrix of build has the tests, the outputs and the environment check of x86-64 and all of aarch64"; fi
-# the step after a line that matches $1 has the condition $2
-step_if() { awk -v s="$1" -v c="$2" 'index($0, s) { getline; if (index($0, c)) found = 1 } END { exit !found }' "$CI_YML"; }
-if step_if "- run: cabal test all" "if: matrix.tests"; then ok; else ng "ci.yml: the tests run on the runners of the tests"; fi
-if step_if "name: Outputs for the determinism check" "if: matrix.outputs"; then ok; else ng "ci.yml: the outputs are made on the runners of the outputs"; fi
+if [ "$(matrix_rows "$CI_YML")" = "ubuntu-24.04 tests-driver true false false driver true
+ubuntu-24.04 tests-rest true false false rest false
+ubuntu-24.04 outputs false true false none false
+ubuntu-24.04 env false false true none false
+ubuntu-24.04-arm tests true false false all true
+ubuntu-24.04-arm outputs false true false none false" ]; then ok; else ng "ci.yml: the matrix of build has two runners of the tests, the outputs and the environment check of x86-64, and the tests and the outputs of aarch64"; fi
 # the step that starts at a line that matches $1 has a line that matches $2
 step_has() {
   awk -v s="$1" -v c="$2" 'index($0, s) { on = 1; print; next } on && /^      - / { on = 0 } on' "$CI_YML" | grep -qF -- "$2"
 }
+# the step after a line that matches $1 has the condition $2
+step_if() { awk -v s="$1" -v c="$2" 'index($0, s) { getline; if (index($0, c)) found = 1 } END { exit !found }' "$CI_YML"; }
+TEST_STEP="name: The test suites of the runner"
+if step_if "$TEST_STEP" "if: matrix.tests"; then ok; else ng "ci.yml: the tests run on the runners of the tests"; fi
+if step_has "$TEST_STEP" 'cabal test $(sh scripts/ci/test-suites.sh "$SUITES")' && step_has "$TEST_STEP" 'SUITES: ${{ matrix.suites }}'; then ok; else
+  ng "ci.yml: each runner of the tests runs the suites that test-suites.sh gives for its part (docs/adr/0140)"
+fi
+if [ "$(grep -cE '^ +(- run: )?cabal test ' "$CI_YML")" = 1 ]; then ok; else ng "ci.yml: one step runs cabal test"; fi
+# the generated parser is checked where the suites of golem-parser run
+if step_if "name: Generated parser matches the grammar" "if: matrix.tests && matrix.suites != 'driver'"; then ok; else ng "ci.yml: the generated parser is checked on the runners of the tests but tests-driver"; fi
+if step_if "name: Outputs for the determinism check" "if: matrix.outputs"; then ok; else ng "ci.yml: the outputs are made on the runners of the outputs"; fi
 # the lines of the job $1 of ci.yml
 job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML"; }
 # the environment check has an x86-64 runner of its own (docs/adr/0097)
@@ -846,11 +858,11 @@ if [ "$(build_before_cabal | grep -c 'GITHUB_PATH')" = 1 ] && build_before_cabal
 fi
 if step_has "name: epubcheck is installed" 'echo "$RUNNER_TEMP/epubcheck/bin" >> "$GITHUB_PATH"'; then ok; else ng "ci.yml: epubcheck is put on PATH after cabal build"; fi
 # the ten public-domain books are typeset to every target in CI (docs/adr/0058)
-if step_has "- run: cabal test all" 'GOLEM_PD_BOOKS: "1"'; then ok; else ng "ci.yml: cabal test all has GOLEM_PD_BOOKS"; fi
+if step_has "$TEST_STEP" 'GOLEM_PD_BOOKS: "1"'; then ok; else ng "ci.yml: cabal test all has GOLEM_PD_BOOKS"; fi
 # a missing golden file fails the tests in CI instead of being created
 # (tasty-golden's --no-create, given by the environment: a suite without
 # tasty-golden would reject the flag on its command line)
-if step_has "- run: cabal test all" 'TASTY_NO_CREATE: "true"'; then ok; else ng "ci.yml: cabal test all has TASTY_NO_CREATE"; fi
+if step_has "$TEST_STEP" 'TASTY_NO_CREATE: "true"'; then ok; else ng "ci.yml: cabal test all has TASTY_NO_CREATE"; fi
 # apt installs qpdf on the runners of the tests only; epubcheck comes from
 # its release, cached by its version and SHA-256, on the x86-64 runner of
 # the outputs (docs/adr/0062)
@@ -945,12 +957,21 @@ if step_if "name: Upload the PDFs of the visual regression test" "$VISUAL_IF" &&
   step_has "name: Upload the PDFs of the visual regression test" 'name: visual-pdfs'; then ok; else
   ng "ci.yml: the x86-64 runner of the outputs uploads visual-pdfs"
 fi
+# visual-pdfs is built and uploaded before the EPUBs and the outputs of
+# determinism.sh, so that visual does not wait for them (docs/adr/0140)
 DET_AT=$(grep -n 'name: Outputs for the determinism check' "$CI_YML" | cut -d: -f1)
+EPUB_AT=$(grep -n 'name: The EPUB passes epubcheck' "$CI_YML" | cut -d: -f1)
 VB_AT=$(grep -n 'name: The PDFs of the visual regression test' "$CI_YML" | cut -d: -f1)
-if [ -n "$DET_AT" ] && [ -n "$VB_AT" ] && [ "$DET_AT" -lt "$VB_AT" ]; then ok; else ng "ci.yml: the PDFs of the visual regression test are built after determinism.sh"; fi
+VU_AT=$(grep -n 'name: Upload the PDFs of the visual regression test' "$CI_YML" | cut -d: -f1)
+if [ -n "$DET_AT" ] && [ -n "$EPUB_AT" ] && [ -n "$VB_AT" ] && [ -n "$VU_AT" ] &&
+  [ "$VB_AT" -lt "$VU_AT" ] && [ "$VU_AT" -lt "$EPUB_AT" ] && [ "$VU_AT" -lt "$DET_AT" ]; then ok; else
+  ng "ci.yml: the PDFs of the visual regression test are built and uploaded before epubcheck and determinism.sh"
+fi
 if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?visual([],].*)?$'; then ok; else ng "ci.yml: ci needs visual"; fi
 if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?scripts-macos([],].*)?$'; then ok; else ng "ci.yml: ci needs scripts-macos"; fi
-if grep -qF "matrix.tests && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'" "$CI_YML"; then ok; else ng "ci.yml: a pull request saves dist-newstyle when GHC compiled, from the runner of the tests"; fi
+if grep -qF "matrix.save && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'" "$CI_YML"; then ok; else ng "ci.yml: a pull request saves dist-newstyle when GHC compiled, from the runner that saves (docs/adr/0140)"; fi
+if grep -qF "if: success() && matrix.save && github.event_name == 'push' && github.ref == 'refs/heads/main'" "$CI_YML"; then ok; else ng "ci.yml: a push to main saves dist-newstyle from the runner that saves (docs/adr/0140)"; fi
+if grep -n 'Save dist-newstyle' -A 1 "$CI_YML" | grep -q 'matrix.tests'; then ng "ci.yml: the saves of dist-newstyle do not depend on matrix.tests"; else ok; fi
 
 # ---------------------------------------------------------------- release.yml and mise.toml
 # (docs/adr/0044-release-workflow-hardening.md)
@@ -1304,6 +1325,47 @@ if [ "$(grep -c 'cabal test' "$RACE_YML")" = 2 ] &&
 fi
 if grep -qF 'one font from many threads' "$HERE/../../modules/golem-font/test/ConcurrencySpec.hs"; then ok; else ng "race.yml: the pattern names the group of ConcurrencySpec"; fi
 if awk -v c="if: steps.needed.outputs.run == 'true'" 'index($0, "name: The race tests") { getline; if (index($0, c)) f = 1 } END { exit !f }' "$RACE_YML"; then ok; else ng "race.yml: the tests run only when race-needed.sh says so"; fi
+
+# ---------------------------------------------------------------- test-suites.sh
+# (docs/adr/0140-ci-split-test-runners-and-visual-pdfs-first.md)
+
+test_suites() { sh "$HERE/test-suites.sh" "$@"; }
+TS=$WORK/test-suites
+mkdir -p "$TS/golem-driver" "$TS/golem-pdf" "$TS/golem-plain" "$TS/other-dir"
+printf 'cabal-version: 3.0\nname:          golem-driver\n\nlibrary\n  exposed-modules: A\n\ntest-suite golem-driver-test\n  type: exitcode-stdio-1.0\n\ntest-suite golem-driver-parallel-test\n  type: exitcode-stdio-1.0\n' >"$TS/golem-driver/golem-driver.cabal"
+printf 'cabal-version: 3.0\nname: golem-pdf\n\nlibrary\n\nTest-Suite   golem-pdf-test\n  type: exitcode-stdio-1.0\n' >"$TS/golem-pdf/golem-pdf.cabal"
+printf 'cabal-version: 3.0\nname: golem-plain\n\nlibrary\n' >"$TS/golem-plain/golem-plain.cabal"
+# the name of the package, not of its directory
+printf 'cabal-version: 3.0\nname: golem-renamed\n\ntest-suite renamed-test\n  type: exitcode-stdio-1.0\n' >"$TS/other-dir/golem-renamed.cabal"
+: >"$WORK/in"
+run test_suites driver "$TS"
+expect "test-suites: driver has the suites of golem-driver" 0 "golem-driver:test:golem-driver-test
+golem-driver:test:golem-driver-parallel-test"
+run test_suites rest "$TS"
+expect "test-suites: rest has every other suite, by the name of its package" 0 "golem-pdf:test:golem-pdf-test
+golem-renamed:test:renamed-test"
+run test_suites all "$TS"
+expect "test-suites: all is all of cabal test all" 0 "all"
+run test_suites
+expect "test-suites: no argument" 2
+run test_suites tests "$TS"
+expect "test-suites: an unknown part" 2
+run test_suites driver "$WORK/no-such-modules"
+expect "test-suites: no such directory" 1
+# the real modules/: driver and rest share no suite, and together they are
+# every test-suite of modules/*/*.cabal
+test_suites driver >"$WORK/ts-driver" 2>"$WORK/err" || true
+test_suites rest >"$WORK/ts-rest" 2>>"$WORK/err" || true
+for f in "$HERE"/../../modules/*/*.cabal; do
+  pkg=$(awk 'tolower($1) == "name:" { print $2; exit }' "$f")
+  awk -v p="$pkg" 'tolower($1) == "test-suite" { print p ":test:" $2 }' "$f"
+done | LC_ALL=C sort >"$WORK/ts-every"
+if [ -s "$WORK/ts-driver" ] && [ -s "$WORK/ts-rest" ] &&
+  [ -z "$(LC_ALL=C sort "$WORK/ts-driver" "$WORK/ts-rest" | uniq -d)" ] &&
+  [ "$(cat "$WORK/ts-driver" "$WORK/ts-rest" | LC_ALL=C sort)" = "$(cat "$WORK/ts-every")" ] &&
+  ! grep -qv '^golem-driver:' "$WORK/ts-driver"; then ok; else
+  ng "test-suites: driver and rest of modules/ split every test suite in two"
+fi
 
 # ---------------------------------------------------------------- test-only-deps.sh
 

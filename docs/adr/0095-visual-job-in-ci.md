@@ -1,6 +1,6 @@
 # ADR 0095: 見た目の回帰テストを、CI の新しいジョブ visual で動かす
 
-ステータス: 採択
+ステータス: 採択→visual-pdfs を scripts/determinism.sh の後に組む順序は [ADR 0140](0140-ci-split-test-runners-and-visual-pdfs-first.md)
 
 ## 文脈
 
