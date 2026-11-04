@@ -692,8 +692,8 @@ duplicateKeyTests =
       testCase "different keys and an unexpanded **[...] are not" $ do
         filter (== "G02077") (errs "[f k=1 j=1]\n") @?= []
         filter (== "G02077") (errs "[f k=1 **[h]]\n") @?= [],
-      testCase "@style-def keeps G02052" $
-        codesS "@style-def character x weight=bold weight=normal\n" @?= ["G02052"]
+      testCase "@style-def is G02077 too (docs/adr ADR 0132)" $
+        codesS "@style-def character x weight=bold weight=normal\n" @?= ["G02077"]
     ]
 
 -- | A context whose styles are those of 'settingsStyle'.
@@ -845,22 +845,47 @@ settingsTests =
         map stripped bs @?= [(Just "verse", ["ab"])]
         let (bs', _, _) = runS sctx "@style verse\na\nb\n"
         map stripped bs' @?= [(Just "verse", ["a", "<br>", "b"])],
-      testCase "the arguments of @style-def and @manifest are G02052" $ do
+      testCase "the arguments of @style-def and @manifest, a code for each cause (docs/adr ADR 0132)" $ do
         mapM_
-          (\src -> (src, codesS src) @?= (src, ["G02052"]))
-          [ "@style-def\n",
-            "@style-def table a\n",
-            "@style-def paragraph\n",
-            "@style-def paragraph a b\n",
-            "@style-def paragraph a font=[= \"x\"]\n",
-            "@style-def paragraph a indent=1zw indent=2zw\n",
-            "@style-def paragraph a\n  x\n",
-            "@manifest line\n",
-            "@manifest\n",
-            "@manifest title=x title=x\n",
-            "@manifest title=[= \"x\"]\n",
-            "@manifest title=x\n  a\n"
+          (\(src, cs) -> (src, codesS src) @?= (src, cs))
+          [ ("@style-def\n", ["G02052"]),
+            ("@style-def paragraph\n", ["G02052"]),
+            ("@style-def paragraph a b\n", ["G02052"]),
+            ("@manifest line\n", ["G02052"]),
+            ("@style-def table a\n", ["G02117"]),
+            ("@style-def paragraph a font=[= \"x\"]\n", ["G02116"]),
+            ("@style-def [= \"paragraph\"] a\n", ["G02116"]),
+            ("@manifest title=[= \"x\"]\n", ["G02116"]),
+            ("@manifest paragraph-separator=[= \"line\"]\n", ["G02116"]),
+            ("@style-def paragraph a indent=1zw indent=2zw\n", ["G02077"]),
+            ("@style-def character x weight=bold weight=normal\n", ["G02077"]),
+            ("@manifest title=x title=x\n", ["G02077"]),
+            ("@manifest paragraph-separator=line paragraph-separator=line\n", ["G02077"]),
+            ("@style-def paragraph a\n  x\n", ["G02097"]),
+            ("@manifest title=x\n  a\n", ["G02097"]),
+            ("@manifest paragraph-separator=line\n  a\n", ["G02097"]),
+            ("@manifest\n", ["G02115"]),
+            ("@style-def table a b\n", ["G02117", "G02052"])
           ],
+      testCase "the positions and messages of the codes of @style-def and @manifest (docs/adr ADR 0132)" $ do
+        let at src = let (_, ds, _) = runS sctx src in [(diagCodeText d, spanStart (diagSpan d), diagMessage d) | d <- ds]
+        at "@style-def table a\n" @?= [("G02117", 11, "未知のスタイルの種類です: table。character、paragraph、regex のどれかを書きます")]
+        at "@style-def paragraph a b\n" @?= [("G02052", 23, "@style-def には種類（character、paragraph、regex）と名前を書きます")]
+        at "@style-def paragraph\n" @?= [("G02052", 0, "@style-def には種類（character、paragraph、regex）と名前を書きます")]
+        at "@manifest\n" @?= [("G02115", 0, "@manifest には key=value を一つ以上書きます")]
+        at "@manifest title=[= \"x\"]\n" @?= [("G02116", 10, "値は語か文字列で書きます")]
+        at "@manifest title=x title=x\n" @?= [("G02077", 18, "同じキーを二度書いています: title")]
+        at "@style-def paragraph a\n  x\n" @?= [("G02097", 23, "@style-def は本体を持てません")],
+      testCase "the rest of a wrong @manifest applies; a wrong @style-def is dropped (docs/adr ADR 0132)" $ do
+        let (bs, ds, r) = runS sctx "@manifest line paragraph-separator=line\n\na\nb\n"
+        map diagCodeText ds @?= ["G02052"]
+        erSource r @?= SourceSettings LineSeparated
+        map stripped bs @?= [(Nothing, ["a"]), (Nothing, ["b"])]
+        codesS "@style-def table a\n\n@style a\nx\n" @?= ["G02117", "G02047"],
+      testCase "the kind and the name of @style-def as string literals (docs/adr ADR 0132)" $ do
+        let (bs, ds, _) = runS sctx "@style-def \"paragraph\" \"note\"\n\n@style note\na\n"
+        ds @?= []
+        map stripped bs @?= [(Just "note", ["a"])],
       testCase "@manifest overrides only the keys of [source] (G02050)" $ do
         codesS "@manifest title=x\n" @?= ["G02050"]
         codesS "@manifest paragraph-separater=line\n" @?= ["G02050"]
@@ -883,7 +908,7 @@ settingsTests =
         codesS "@style-def regex body\n" @?= ["G03006"]
         codesS "@style-def regex body pattern=x style=nope\n" @?= ["G03013"]
         codesS "@style-def regex body pattern=x style=bold colour=x\n" @?= ["G03006"]
-        codesS "@style-def regex body pattern=x pattern=y style=bold\n" @?= ["G02052"],
+        codesS "@style-def regex body pattern=x pattern=y style=bold\n" @?= ["G02077"],
       testCase "a wrong regex style is reported at its line and dropped, the others stay" $ do
         let src = "@style-def regex body pattern=a style=bold\n@style-def regex body pattern=\"\\\\1\" style=bold\n@style-def regex body pattern=b style=nope\n\nab\n"
             (bs, ds, r) = runS sctx src
@@ -944,15 +969,15 @@ settingsTests =
         let (_, ds, r) = runS sctx "a\n\n@manifest paragraph-separator=line\n"
         map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G02049"]
         erSource r @?= ctxSource sctx,
-      testCase "the keys and values of @manifest (G02050, G02051, G02052)" $ do
+      testCase "the keys and values of @manifest (G02050, G02051, G02077, G02097, G02116)" $ do
         codesS "@manifest title=x\n" @?= ["G02050"]
         codesS "@manifest paragraph-separater=line\n" @?= ["G02050"]
         codesS "@manifest paragraph-separator=lines\n" @?= ["G02051"]
         mapM_
-          (\src -> (src, codesS src) @?= (src, ["G02052"]))
-          [ "@manifest paragraph-separator=line paragraph-separator=line\n",
-            "@manifest paragraph-separator=[= \"line\"]\n",
-            "@manifest paragraph-separator=line\n  a\n"
+          (\(src, c) -> (src, codesS src) @?= (src, [c]))
+          [ ("@manifest paragraph-separator=line paragraph-separator=line\n", "G02077"),
+            ("@manifest paragraph-separator=[= \"line\"]\n", "G02116"),
+            ("@manifest paragraph-separator=line\n  a\n", "G02097")
           ]
         let (bs, ds, _) = runS sctx "@manifest title=x paragraph-separator=line\n\na\nb\n"
         map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G02050"]
