@@ -321,38 +321,84 @@ run check "$CK/no-such"
 expect "check: no directory of PDFs" 2
 
 # ---------------------------------------------------------------- wait-pdfs.sh
-# (docs/adr/0099)
+# (docs/adr/0099, docs/adr/0165)
 
 # The fake gh records its arguments. For the artifacts, it prints 1 from
 # the FAKE_ARTIFACT_AT-th call on (0 before; never when it is empty); for
-# the jobs, it prints FAKE_JOB_STATUS.
+# the jobs, it makes the jobs of the attempt from FAKE_JOBS, the lines of a
+# name and a status separated by a tab, and applies the --jq of the call to
+# them with jq, as gh does: so the match of the names is tested whether
+# wait-pdfs.sh makes it in jq or in the shell. It fails from
+# the 21st question for the artifact, so that a wait-pdfs.sh that never
+# stops fails instead.
 WT=$WORK/wait
 fake "$WT/bin" gh 'printf "%s\n" "$*" >>"$GH_LOG"
 case "$*" in
   *"/artifacts?name=visual-pdfs"*)
     n=$(grep -c "/artifacts?name=visual-pdfs" "$GH_LOG")
+    [ "$n" -le 20 ] || { echo "fake gh: asked for the artifact more than 20 times" >&2; exit 65; }
     if [ -n "$FAKE_ARTIFACT_AT" ] && [ "$n" -ge "$FAKE_ARTIFACT_AT" ]; then echo 1; else echo 0; fi ;;
-  *"/jobs"*) printf "%s\n" "$FAKE_JOB_STATUS" ;;
+  *"/jobs"*)
+    while [ "$1" != --jq ]; do shift; done
+    if [ -n "$FAKE_JOBS" ]; then printf "%s\n" "$FAKE_JOBS"; fi |
+      jq -R "split(\"\t\") | {name: .[0], status: .[1]}" | jq -s "{jobs: .}" | jq -r "$2" ;;
   *) exit 64 ;;
 esac'
 wait_pdfs() {
   : >"$WT/gh.log"
   env PATH="$WT/bin:$PATH" GH_LOG="$WT/gh.log" WAIT_INTERVAL=0 sh "$HERE/wait-pdfs.sh" "$@"
 }
-FAKE_ARTIFACT_AT=3 FAKE_JOB_STATUS=in_progress run wait_pdfs 123 2 'build (ubuntu-24.04, outputs)'
+TAB=$(printf '\t')
+# joblist NAME STATUS ...: the lines of FAKE_JOBS
+joblist() {
+  while [ $# -gt 1 ]; do printf '%s\t%s\n' "$1" "$2"; shift 2; done
+}
+OUT='build (ubuntu-24.04, outputs)'
+FAKE_ARTIFACT_AT=3 FAKE_JOBS="$OUT${TAB}in_progress" run wait_pdfs 123 2 "$OUT"
 expect "wait-pdfs: waits until visual-pdfs is uploaded" 0
 if [ "$(grep -c '^api repos/{owner}/{repo}/actions/runs/123/artifacts?name=visual-pdfs ' "$WT/gh.log")" = 3 ]; then ok; else ng "wait-pdfs: asks for the artifact of the run until it is there"; fi
 if grep -q '^api --paginate repos/{owner}/{repo}/actions/runs/123/attempts/2/jobs ' "$WT/gh.log"; then ok; else ng "wait-pdfs: asks for the jobs of the attempt"; fi
-FAKE_ARTIFACT_AT=1 FAKE_JOB_STATUS=completed run wait_pdfs 123 1 'build (ubuntu-24.04, outputs)'
+FAKE_ARTIFACT_AT=1 FAKE_JOBS="$OUT${TAB}completed" run wait_pdfs 123 1 "$OUT"
 expect "wait-pdfs: an uploaded artifact is enough, whatever the job" 0
-FAKE_ARTIFACT_AT='' FAKE_JOB_STATUS=completed run wait_pdfs 123 1 'build (ubuntu-24.04, outputs)'
+FAKE_ARTIFACT_AT='' FAKE_JOBS="$OUT${TAB}completed" run wait_pdfs 123 1 "$OUT"
 expect "wait-pdfs: the job completed without the artifact fails" 1
 if grep -q "completed without uploading visual-pdfs" "$WORK/err"; then ok; else ng "wait-pdfs: says that the job completed without visual-pdfs"; fi
-FAKE_ARTIFACT_AT='' FAKE_JOB_STATUS='' run wait_pdfs 123 1 'build (ubuntu-24.04, outputs)'
+FAKE_ARTIFACT_AT='' FAKE_JOBS='' run wait_pdfs 123 1 "$OUT"
 expect "wait-pdfs: no such job fails" 1
-if grep -q "has no job 'build (ubuntu-24.04, outputs)'" "$WORK/err"; then ok; else ng "wait-pdfs: names the missing job"; fi
+if grep -q "has no job '$OUT'" "$WORK/err"; then ok; else ng "wait-pdfs: names the missing job"; fi
 run wait_pdfs 123 1
 expect "wait-pdfs: usage" 2
+
+# The jobs of release.yml, as the run 41918079466 named them: ci.yml is
+# called by the job ci, so its jobs are named "ci / ..." (docs/adr/0165).
+release_jobs() {
+  joblist version completed 'ci / changes' completed 'ci / scripts-linux' completed \
+    notes completed 'build (aarch64-linux, ubuntu-24.04-arm)' completed \
+    'build (x86_64-linux, ubuntu-24.04)' completed 'build (aarch64-macos, macos-15)' completed \
+    'ci / plugins' completed 'ci / visual' in_progress \
+    'ci / build (ubuntu-24.04-arm, tests-driver)' in_progress \
+    'ci / build (ubuntu-24.04-arm, outputs)' "$2" \
+    'ci / build (ubuntu-24.04, outputs)' "$1" \
+    'ci / build (ubuntu-24.04, tests-rest)' in_progress \
+    'ci / ci' queued determinism queued release queued
+}
+FAKE_ARTIFACT_AT='' FAKE_JOBS=$(release_jobs completed in_progress) run wait_pdfs 41918079466 1 "$OUT"
+expect "wait-pdfs: a called job completed without the artifact fails" 1
+if grep -q "'ci / $OUT' completed without uploading visual-pdfs" "$WORK/err"; then ok; else ng "wait-pdfs: finds the job under the prefix of the caller"; fi
+FAKE_ARTIFACT_AT=2 FAKE_JOBS=$(release_jobs in_progress completed) run wait_pdfs 41918079466 1 "$OUT"
+expect "wait-pdfs: waits for a called job until visual-pdfs is uploaded" 0
+FAKE_ARTIFACT_AT='' FAKE_JOBS=$(joblist "a / b / $OUT" completed) run wait_pdfs 123 1 "$OUT"
+expect "wait-pdfs: a job under nested callers fails without the artifact" 1
+if grep -q "'a / b / $OUT' completed without uploading" "$WORK/err"; then ok; else ng "wait-pdfs: finds the job under nested callers"; fi
+FAKE_ARTIFACT_AT='' FAKE_JOBS=$(joblist "x$OUT" completed "$OUT / x" completed) run wait_pdfs 123 1 "$OUT"
+expect "wait-pdfs: a name that only contains JOB is not the job" 1
+if grep -q "has no job '$OUT'" "$WORK/err"; then ok; else ng "wait-pdfs: matches the whole name or the part after ' / '"; fi
+FAKE_ARTIFACT_AT='' FAKE_JOBS=$(joblist "$OUT" in_progress "ci / $OUT" in_progress) run wait_pdfs 123 1 "$OUT"
+expect "wait-pdfs: two matching jobs fail" 1
+if grep -qx "  $OUT" "$WORK/err" && grep -qx "  ci / $OUT" "$WORK/err"; then ok; else ng "wait-pdfs: names every matching job"; fi
+FAKE_ARTIFACT_AT='' FAKE_JOBS=$(joblist 'ci / build (ubuntu-24.04-arm, outputs)' completed) run wait_pdfs 123 1 "$OUT"
+expect "wait-pdfs: the aarch64 outputs is not the job" 1
+if grep -q "has no job '$OUT'" "$WORK/err"; then ok; else ng "wait-pdfs: does not take the aarch64 outputs for the job"; fi
 
 # ---------------------------------------------------------------- report.sh
 # (docs/adr/0096-before-and-after-images-of-changed-pages.md)
