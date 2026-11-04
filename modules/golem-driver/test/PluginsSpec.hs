@@ -11,8 +11,8 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Doc.Assemble (Book (..))
-import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), NumberStyle (..))
+import Golem.Doc.Assemble (Book (..), inlineText)
+import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), NumberStyle (..), RubySegment (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfInput (..), layoutPages)
 import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
@@ -842,6 +842,61 @@ glossaryTests =
         again @?= (one, two, epub)
   ]
 
+{- | A two-chapter project, a.gm and b.gm, with a sample ruby plugin of
+plugins/wasm declared as the given name with the given data, as a filter of
+both chapters, and the given files.
+-}
+withRubyFilter :: T.Text -> BS.ByteString -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withRubyFilter name decl files k = withSystemTempDirectory "golem-ruby" $ \tmp -> do
+  let n = TE.encodeUtf8 name
+  BS.writeFile (tmp </> "manifest.toml") $
+    TE.encodeUtf8 (manifestToml testManifest {tmChapters = ["a.gm", "b.gm"], tmTargets = ["text"]})
+      <> pluginDeclOf n decl
+      <> "\n[[filters]]\nplugin = \""
+      <> n
+      <> "\"\nfilter = \""
+      <> n
+      <> "\"\nfiles = [\"a.gm\", \"b.gm\"]\n"
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  writeFiles tmp files
+  lockIn [(name, T.unpack name <> ".wasm")] tmp (k tmp)
+
+{- | The paragraphs of each chapter after the filters, a ruby as its bases
+each followed by 《reading》, and every diagnostic with the file it is in.
+-}
+rubyText :: FilePath -> IO ([(FilePath, [T.Text])], [(DiagnosticCode, Maybe FilePath, T.Text)])
+rubyText tmp = do
+  e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+  let srcs = projectSources (evProject e)
+      pathOf fid = sfPath <$> Map.lookup fid srcs
+      paras = [(sfPath sf, [T.concat (map shown is) | b <- docBlocks (erDocument r), Paragraph _ is <- [blockBody b]]) | (fid, sf) <- Map.toList srcs, Just r <- [Map.lookup fid (evResults e)]]
+      shown = \case
+        Text _ t -> t
+        Ruby _ _ segs -> T.concat [T.concat (map inlineText (rsBase s)) <> maybe "" (\r -> "《" <> r <> "》") (rsReading s) | s <- segs]
+        _ -> ""
+  pure (sort paras, [(diagCode d, pathOf (spanFile (diagSpan d)), diagMessage d) | d <- evDiagnostics e])
+
+-- | The sample plugin sou-ruby (docs/adr/0130).
+souRubyTests :: [TestTree]
+souRubyTests =
+  [ testCase "with the TSV only: every word gets its ruby, a kanji the TSV does not have is a warning once a file" $
+      withRubyFilter "sou-ruby" "data = { words = \"words.tsv\" }\n" [("words.tsv", TE.encodeUtf8 "東京\tとうきょう\n住/む\tす/\n"), ("a.gm", TE.encodeUtf8 "東京に住む。大阪と大阪。\n\n東京。\n"), ("b.gm", TE.encodeUtf8 "大阪の東京。\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        (paras, ds) <- rubyText tmp
+        paras @?= [("a.gm", ["東京《とうきょう》に住《す》む。大阪と大阪。", "東京《とうきょう》。"]), ("b.gm", ["大阪の東京《とうきょう》。"])]
+        ds
+          @?= [ (DiagnosticCode "sou-ruby/sou-ruby-unread", Just "a.gm", "読みの分からない漢字です: 大阪"),
+                (DiagnosticCode "sou-ruby/sou-ruby-unread", Just "b.gm", "読みの分からない漢字です: 大阪")
+              ],
+    testCase "some of the files of a dictionary: sou-ruby-dict, once for each file of the filter" $
+      withRubyFilter "sou-ruby" "data = { words = \"words.tsv\", dict-trie = \"dict.trie\", dict-unk = \"unk.bin\" }\n" [("words.tsv", TE.encodeUtf8 "東京\tとうきょう\n"), ("dict.trie", "x"), ("unk.bin", "x"), ("a.gm", TE.encodeUtf8 "東京。\n"), ("b.gm", TE.encodeUtf8 "東京。\n")] $ \tmp -> do
+        (paras, ds) <- rubyText tmp
+        paras @?= [("a.gm", ["東京。"]), ("b.gm", ["東京。"])]
+        let missing = "辞書のファイルが足りません: dict-char-def、dict-matrix、dict-metadata、dict-vals、dict-vals-idx、dict-words、dict-words-idx"
+        ds @?= [(DiagnosticCode "sou-ruby/sou-ruby-dict", Just f, missing) | f <- ["a.gm", "b.gm"]]
+  ]
+
 -- | The data a project passes to a plugin (docs/adr/0105).
 dataTests :: [TestTree]
 dataTests =
@@ -930,6 +985,7 @@ pluginTests =
     <> anyDataTests
     <> checkDataTests
     <> [testGroup "the sample plugin glossary (docs/adr/0126)" glossaryTests]
+    <> [testGroup "the sample plugin sou-ruby (docs/adr/0130)" souRubyTests]
     <> contextTests
     <> kansujiTests
     <> autoTcyTests

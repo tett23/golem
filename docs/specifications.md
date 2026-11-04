@@ -3014,10 +3014,10 @@ Golem は、プラグインの仕組みを通す見本のプラグインを、�
 
 - 補助のクレート `golem-plugin-sdk` は、ゲストの側の CBOR の読み書き、意味論 IR の型、要求と応答と記述の型、四つの関数を公開するマクロ `export_plugin!` を持ち、ほかのクレートに依存しない。`export_plugin!` に三つめの関数を渡すと、`golem_check_data` も公開する。
 - 見本のプラグインは、`plugins/<名前>/` のクレートで、`plugins/build.sh` が `plugins/wasm/<名前>.wasm` に作る。作った `.wasm` はコミットし、golem-driver のテストはそれを読む。
-- ツールチェーンは `plugins/rust-toolchain.toml` で固定し、ソースのパスを固定の文字列に置き換えて作るので、同じソースからは同じバイト列になる。CI の `plugins` ジョブが、コミットした `.wasm` とソースから作ったバイト列の一致を確かめる。
+- ツールチェーンは `plugins/rust-toolchain.toml` で固定し、ソースのパスを固定の文字列に置き換えて作るので、同じソースからは同じバイト列になる。cargo が各クレートに付ける `-C metadata` は、ホストの名前を含む `rustc -vV` の出力から作られ、derive のマクロが書く項目の順をホストごとに変える。`build.sh` は、rustc のラッパー `plugins/rustc-wrapper.sh` で、この値をパッケージの名前、版、フィーチャー、ホスト向けかターゲット向けかの文字列に置き換える。CI の `plugins` ジョブが、コミットした `.wasm` とソースから作ったバイト列の一致を確かめる。
 - 見本のプラグインは、リリースに `<名前>.wasm` として添える。利用者は `https://github.com/tett23/golem/releases/download/<タグ>/<名前>.wasm` を `url` に書いて使う。
 
-今の見本のプラグインは `lookup`、`bar-chart`、`glossary`、`kansuji`、`auto-tcy`、`tsv-table` である。
+今の見本のプラグインは `lookup`、`bar-chart`、`glossary`、`kansuji`、`auto-tcy`、`tsv-table`、`sou-ruby` である。
 `[lookup: キー]` は、データ `table` で渡した TSV（キー、タブ、値の行）からキーの値を返す。
 空の行と `#` で始まる行は飛ばし、同じキーの行が二つあれば先の行を使う。
 
@@ -3087,6 +3087,32 @@ data = { terms = "data/terms.tsv" }
 
 誤りは、プラグインのコード `name`、`key`、`body`、`no-data`、`utf8`、`cr`、`empty`、`cells`、`align`、`limit`（宣言の名前を前に付けて `tsv-table/name` などと表示する）で、呼び出しの位置に出し、ブロックを一つも返さない。
 `utf8`、`cr`、`cells`、`limit` のメッセージには、TSV の行の番号を書く。
+
+`sou-ruby` は、フィルタ `sou-ruby` を当てたファイルの漢字にルビを振る（総ルビ、[docs/adr/0130](adr/0130-sou-ruby-plugin.md)）。
+データ `words`（語と読みの TSV）と、Lindera の辞書の九つのファイル `dict-char-def`、`dict-matrix`、`dict-metadata`、`dict-trie`、`dict-unk`、`dict-vals`、`dict-vals-idx`、`dict-words`、`dict-words-idx` を受け取る。
+
+```toml
+[plugins.sou-ruby]
+url = "https://github.com/tett23/golem/releases/download/v0.1.0-rc4/sou-ruby.wasm"
+data = { words = "data/readings.tsv", dict-char-def = "dict/char_def.bin", dict-matrix = "dict/matrix.mtx", dict-metadata = "dict/metadata.json", dict-trie = "dict/dict.trie", dict-unk = "dict/unk.bin", dict-vals = "dict/dict.vals", dict-vals-idx = "dict/dict.valsidx", dict-words = "dict/dict.words", dict-words-idx = "dict/dict.wordsidx" }
+
+[[filters]]
+plugin = "sou-ruby"
+filter = "sou-ruby"
+files = ["chapters/01.gm"]
+```
+
+- 読みは二段で決める。まず `words` の語を、テキストのノードの中で左から最も長いものを取って照合し、一致した語に TSV の読みでルビを振る。一致しなかった部分に漢字があれば、辞書を渡したときに限り、Lindera で語に分けて辞書の欄 `reading` の読みを引く。辞書はプラグインに埋め込まない。
+- `words` の TSV は、一行に語と読みをタブで区切って書く。`/` で語と読みを同じ数の区切りに分けるとモノルビ、読みの区切りを空にするとその区切りにルビを振らない部分ルビ、読みを空にするとルビを振らずにほかの語の一致を止める語になる。空の行と `#` で始まる行は飛ばし、行末の CR は除く。
+- 辞書の読みは、語の中の仮名の位置で切り、漢字の連なりごとに一つのグループルビにする。カタカナの読みはひらがなにする。
+- 漢字は、CJK 統合漢字（拡張 A、第 2 面と第 3 面を含む）、CJK 互換漢字、`々`、`〆`、`〇`、`ヶ` とする。
+- 見出しにも振る。原稿のルビは残す。コード、圏点、縦中横、数、参照、索引の印、チャネルの項目、校正の注記は書き換えない。図版とコードのブロック（キャプションを含む）は辿らない。
+- 読みの分からない漢字の連なりは、ルビなしで残し、警告 `sou-ruby-unread`（`読みの分からない漢字です: <語>`）を出す。警告はファイルごとに語ごとに一度で、位置はその語が最初に出たテキストのノードの位置である。
+- エラーは、フィルタを当てたファイルの先頭に出し、文書を書き換えない。コードは `sou-ruby-no-words`（`words` も辞書もない）、`sou-ruby-utf8`（`words` が UTF-8 でない）、`sou-ruby-tsv`（TSV の行の誤り。行ごとに一つ）、`sou-ruby-dict`（辞書のファイルの一部だけを渡した、Lindera が読めないか版の合わないファイル、欄 `reading` のない辞書）である。
+- 辞書は、利用者が Lindera（6.2.0）の CLI で作り、プロジェクトに置く。Golem のリリースは辞書を添えない。
+
+TSV の読み込み、最長一致、文書の辿り方、読みの割り当ては、ライブラリのクレート `plugins/ruby-common/` にある。
+`crate-type` を持たないので、`build.sh` は wasm を作らない。
 
 ### 配布
 
