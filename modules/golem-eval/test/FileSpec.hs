@@ -224,6 +224,7 @@ tests =
       escapeTests,
       duplicateKeyTests,
       argWordTests,
+      spreadTests,
       shorthandTests,
       int64Tests,
       channelCommandTests,
@@ -607,6 +608,60 @@ argWordTests =
       testCase "a word literal past the limit is G02086, as the expression is" $ do
         msgs "[number-text 1e1301]\n" @?= msgs "[number-text [= 1e1301]]\n"
         errs "[number-text -1e1301]\n" @?= ["G02086"]
+    ]
+
+{- | *[式] and **[式] spread into the arguments of a built-in command
+(docs/adr ADR 0112): each element is the argument written as a literal, a
+string as a string literal and another value as [= value].
+-}
+spreadTests :: TestTree
+spreadTests =
+  testGroup
+    "spreading *[式] and **[式] into a built-in command (docs/adr ADR 0112)"
+    [ testCase "inline commands take spread positional and keyword arguments" $ do
+        paraOf "[number-text *[[12]]]\n" @?= ["<number 12 Nothing>"]
+        paraOf "[number-text 12 **[{style: \"tcy\"}]]\n" @?= ["<number 12 Just StyleTcy>"]
+        paraOf "[number-text *[[12]] **[{style: \"kanji\"}]]\n" @?= ["<number 12 Just StyleKanji>"]
+        errs "[kenten **[{shape: \"dot\"}]: x]\n" @?= []
+        errs "[kenten **[{shape: \"nope\"}]: x]\n" @?= ["G02039"],
+      testCase "an empty array and an empty hash spread nothing" $
+        paraOf "[number-text 3 *[[]] **[{}]]\n" @?= ["<number 3 Nothing>"],
+      testCase "block commands and the opening line of a code block" $ do
+        fst (run ctx "@page-break *[[\"recto\"]]\n") @?= [ForcedBreak BreakRecto]
+        fst (run ctx "@blank-line *[[2]]\n") @?= fst (run ctx "@blank-line 2\n")
+        fst (run ctx "```haskell **[{numbers: true}]\nx\n```\n") @?= fst (run ctx "```haskell numbers=true\nx\n```\n"),
+      testCase "an attribute" $ do
+        map blockLabel (resultBlocks (evalResult ctx "@label *[[\"p\"]]\na\n")) @?= [Just "p"]
+        errs "@label *[[\"p\"]]\na\n" @?= [],
+      testCase "a word and a string literal of the same text are the same argument where a name is read" $ do
+        fst (run ctx "@page-break \"recto\"\n") @?= [ForcedBreak BreakRecto]
+        map blockLabel (resultBlocks (evalResult ctx "@label \"p\"\na\n")) @?= [Just "p"]
+        run ctx "@page-lines \"+1\"\n" @?= run ctx "@page-lines +1\n"
+        verseOf "@style \"verse\"\n  A\n  B\n" @?= [[["A"], ["B"]]]
+        paraOf "[style \"code\": ##1##]\n" @?= paraOf "[style code: ##1##]\n"
+        paraOf "[style *[[\"code\"]]: ##1##]\n" @?= paraOf "[style code: ##1##]\n",
+      testCase "a plugin's command gets the spread values" $ do
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show vs))], []))
+            c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
+        first (map (fmap stripSpans . paraInlines)) (run c "[greet *[[1, \"a\", 1...3]]]\n") @?= ([Just ["[VNat 1,VString \"a\",VRange 1 3]"]], [])
+        snd (run c "[greet *[1]]\n") @?= ["G02111"],
+      testCase "G02111 and G02112: a spread of the wrong type, and the command is not run" $ do
+        msgs "[number-text *[12]]\n" @?= [("G02111", "*[式] の値は配列でなければなりません: 自然数")]
+        msgs "[number-text 12 **[[1]]]\n" @?= [("G02112", "**[式] の値は連想配列でなければなりません: 配列")]
+        paraOf "a[number-text *[12]]b\n" @?= ["ab"]
+        errs "@blank-line *[2]\n" @?= ["G02111"],
+      testCase "G02077: a spread key that a keyword before it has" $ do
+        errs "[number-text 12 style=kanji **[{style: \"tcy\"}]]\n" @?= ["G02077"]
+        paraOf "[number-text 12 style=kanji **[{style: \"tcy\"}]]\n" @?= ["<number 12 Just StyleKanji>"],
+      testCase "an error of the expression of a spread is the error of the expression" $
+        errs "[number-text *[nope]]\n" @?= errs "[number-text [= nope]]\n",
+      testCase "G02114: @manifest and @style-def read their arguments before the evaluation" $ do
+        codesS "@manifest **[{a: \"line\"}]\n" @?= ["G02114"]
+        codesS "@style-def character x **[{weight: \"bold\"}]\n" @?= ["G02114"],
+      testCase "G02114: @style decides the lines of its body before the evaluation" $ do
+        errs "@style *[[\"note\"]]\na\n" @?= ["G02114"]
+        errs "@style *[[\"note\"]]\n  a\n" @?= ["G02114"]
     ]
 
 -- | The same key twice among the keyword arguments (golem-parser ADR 0013).
