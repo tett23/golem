@@ -820,8 +820,15 @@ if [ "$(matrix_rows "$CI_YML")" = "ubuntu-24.04 tests-driver true false false dr
 ubuntu-24.04 tests-rest true false false rest false
 ubuntu-24.04 outputs false true false none false
 ubuntu-24.04 env false false true none false
-ubuntu-24.04-arm tests true false false all true
-ubuntu-24.04-arm outputs false true false none false" ]; then ok; else ng "ci.yml: the matrix of build has two runners of the tests, the outputs and the environment check of x86-64, and the tests and the outputs of aarch64"; fi
+ubuntu-24.04-arm tests-driver true false false driver true
+ubuntu-24.04-arm tests-rest true false false rest false
+ubuntu-24.04-arm outputs false true false none false" ]; then ok; else ng "ci.yml: the matrix of build has two runners of the tests on each architecture, the outputs of both, and the environment check of x86-64 (docs/adr/0155)"; fi
+# one runner of each architecture saves dist-newstyle (docs/adr/0045,
+# docs/adr/0140, docs/adr/0155)
+if [ "$(matrix_rows "$CI_YML" | awk '$7 == "true" { print $1 }' | sort | uniq -c | awk '{ print $1 }' | sort -u)" = 1 ] &&
+  [ "$(matrix_rows "$CI_YML" | awk '$7 == "true"' | wc -l | tr -d ' ')" = 2 ]; then ok; else
+  ng "ci.yml: one runner of each architecture has save: true"
+fi
 # the step that starts at a line that matches $1 has a line that matches $2
 step_has() {
   awk -v s="$1" -v c="$2" 'index($0, s) { on = 1; print; next } on && /^      - / { on = 0 } on' "$CI_YML" | grep -qF -- "$2"
