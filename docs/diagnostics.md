@@ -3760,10 +3760,11 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 `@manifest` はその引数だけを無視し、`@style-def` は定義の全体を捨て、`@style` はそのコマンドを捨てる（属性の形では、その属性がないものとする）。
 `@import` の展開は、このコードではなく形の誤り（[G03009](#g03009)）である。
 位置は展開の引数である。
+展開の引数ごとに一つ出し、並びは引数を書いた順である（`@style` も同じ、[docs/adr/0143](adr/0143-style-spread-diagnostic-per-argument.md)）。
 
 - メッセージ: `<コマンド> は評価の前に読むので、*[式] と **[式] を書けません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`、`Golem.Eval.File`）
-- ADR: [docs/adr/0112](adr/0112-spread-arguments.md)、[docs/adr/0142](adr/0142-import-arguments-are-not-spread.md)
+- ADR: [docs/adr/0112](adr/0112-spread-arguments.md)、[docs/adr/0142](adr/0142-import-arguments-are-not-spread.md)、[docs/adr/0143](adr/0143-style-spread-diagnostic-per-argument.md)
 
 ### 主な原因
 

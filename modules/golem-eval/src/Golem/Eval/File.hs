@@ -482,8 +482,8 @@ evalBlock ctx (A.Located sp b) = case b of
     | n `elem` settingCommands -> standalone ctx sp name args body
     -- @import is read as written, as the project reads it: a spread is G03009 (docs/adr ADR 0142)
     | n == "import" -> standalone ctx sp name args body
-    -- @style is read before the evaluation for the lines of its body (G02114, docs/adr ADR 0112)
-    | n == "style", (ssp : _) <- spreadsOf args -> report (styleSpread ssp) >> pure []
+    -- @style is read before the evaluation for the lines of its body: G02114 at each spread (docs/adr ADR 0112, ADR 0143)
+    | n == "style", ssps@(_ : _) <- spreadsOf args -> mapM_ (report . styleSpread) ssps >> pure []
     | otherwise -> prepareArgs args >>= maybe (pure []) (\args' -> standalone ctx sp name args' body)
   A.Attributed cmds target -> attributed ctx sp cmds target
   A.ErrorBlock -> pure []
@@ -2059,7 +2059,8 @@ spreadsOf args = [asp | A.Located asp a <- args, isSpread a]
       _ -> False
 
 {- | G02114 for @style: whether its body keeps its lines is decided from
-the name before the evaluation, so the name is not spread (docs/adr ADR 0112).
+the name before the evaluation, so the name is not spread (docs/adr ADR
+0112). One for each spread, in the order written (docs/adr ADR 0143).
 -}
 styleSpread :: SrcSpan -> Diagnostic
 styleSpread sp = diagnostic "G02114" Error sp "@style は評価の前に読むので、*[式] と **[式] を書けません"
@@ -2067,7 +2068,7 @@ styleSpread sp = diagnostic "G02114" Error sp "@style は評価の前に読む�
 -- | 'prepareArgs' on the arguments of an attribute; Nothing drops the attribute.
 uniqueAttrKeys :: A.Located A.Block -> M (Maybe (A.Located A.Block))
 uniqueAttrKeys = \case
-  A.Located _ (A.BlockCommand (A.Located _ "style") args _) | (ssp : _) <- spreadsOf args -> report (styleSpread ssp) >> pure Nothing
+  A.Located _ (A.BlockCommand (A.Located _ "style") args _) | ssps@(_ : _) <- spreadsOf args -> mapM_ (report . styleSpread) ssps >> pure Nothing
   A.Located sp (A.BlockCommand n args body) -> fmap (\args' -> A.Located sp (A.BlockCommand n args' body)) <$> prepareArgs args
   other -> pure (Just other)
 
