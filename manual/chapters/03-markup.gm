@@ -285,6 +285,7 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 
 一つの数だけ表記を変えるときは、[code: \[number-text 10 style=kanji\]] のように書きます。
 [code: style=] には [code: kanji]（十）、[code: kanji-digits]（一〇）、[code: tcy]（縦中横の 10）を書けます。
+負の数も、[code: \[number-text -3\]] のようにそのまま書けます。
 
 ## 空きを入れる
 

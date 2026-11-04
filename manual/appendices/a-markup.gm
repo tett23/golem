@@ -333,6 +333,7 @@
   横組みでは算用数字に、縦組みでは [code: style=] か [code: style.toml] の [code: \[numbers\]] で選んだ表記になります。
   [code: style=] には [code: kanji]（十）、[code: kanji-digits]（一〇）、[code: tcy]（縦中横の 10）を書けます。
   整数だけを渡せます。
+  [code: \[number-text -3\]] のように、負の数も書けます。
 = [strong: [code: \[note: 注の本文\]]]
   脚注です。
   注の本文には段落の中の要素だけを書けます。

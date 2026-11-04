@@ -1471,7 +1471,7 @@ codeArgs ctx _ extra = foldl (\m a -> m >>= \acc -> step acc a) (pure (CodeArgs 
       A.Word t -> pure (Just t)
       A.StringLit t -> pure (Just t)
       v@(A.ExprArg _) ->
-        argValue ctx vsp v >>= \case
+        plainArgValue ctx vsp v >>= \case
           Right val | Just n <- intOf val -> pure (Just (T.pack (show n)))
           Right (VString s) -> pure (Just s)
           Right (VBool b) -> pure (Just (if b then "true" else "false"))
@@ -1746,7 +1746,7 @@ builtinWith ctx inHeading sp b args slots = do
       _ -> err "G02040" sp "縦中横の中身は地の文に限ります" >> pure []
     Overridable BNumberText -> case pos of
       [v] -> do
-        val <- argValue ctx sp v
+        val <- plainArgValue ctx sp v
         let st = argText <$> lookup "style" kw
         case (val, st) of
           (Right v', _) | Just n <- intOf v', not (inInt64 n) -> outOfInt64 sp >> pure []
@@ -1902,15 +1902,36 @@ argText = \case
 
 argValueRaw :: A.ArgValue -> Value
 argValueRaw = \case
-  A.Word t
-    | not (T.null t), T.all isDigit t -> VNat (read (T.unpack t))
-    | otherwise -> VString t
+  A.Word t -> fromMaybe (VString t) (wordNumber t)
   A.StringLit t -> VString t
   _ -> VNil
 
-{- | The value of an argument. A word of digits past the limit of the
-evaluator is G02086 at @sp@, as the same literal in an expression is
-(docs/adr ADR 0101; the audit of 2026-10-28, F-01).
+{- | A word that is a number literal of the expression language, with one
+leading - (docs/adr ADR 0111): the value of the same text in an expression,
+of the same type (docs/adr ADR 0101). Digits are a natural number, -
+and digits an integer, a decimal or an exponent a rational. Nothing for
+another word, which stays a string.
+-}
+wordNumber :: Text -> Maybe Value
+wordNumber t = case T.stripPrefix "-" t of
+  Just rest -> negateNumber <$> unsigned rest
+  Nothing -> unsigned t
+  where
+    unsigned u
+      | T.null u || "-" `T.isPrefixOf` u = Nothing
+      | T.all isDigit u = Just (VNat (read (T.unpack u)))
+      | otherwise = VRat <$> A.numberWord u
+    negateNumber = \case
+      VNat n -> VInt (negate (toInteger n))
+      VRat q -> VRat (negate q)
+      v -> v
+
+{- | The value of an argument. A word that is a number literal past the
+limit of the evaluator is G02086 at @sp@, as the same literal in an
+expression is (docs/adr ADR 0101; the audit of 2026-10-28, F-01;
+docs/adr ADR 0111). A word of a closed range literal is the range of the
+same text in an expression (docs/adr ADR 0113, ADR 0111): a place that
+takes no range reads its arguments with 'plainArgValue'.
 -}
 argValue :: EvalContext -> SrcSpan -> A.ArgValue -> M (Either Diagnostic Value)
 argValue _ sp = \case
@@ -1918,12 +1939,43 @@ argValue _ sp = \case
     noteRefs e
     en <- env
     pure (evalAnalysed en e)
+  A.Word w | Just (a, b) <- rangeWord w -> case [q | Just (_, q) <- map numberOf [a, b], overLimit q] of
+    _ : _ -> pure (Left (tooBigDiagnostic sp))
+    [] -> do
+      en <- env
+      let lit = valueToExpr (A.Located sp A.ENil)
+      pure (evalAnalysed en (A.Located sp (A.ERange (lit a) (lit b))))
   v ->
     pure
       ( case argValueRaw v of
-          VNat n | overLimit (toRational n) -> Left (tooBigDiagnostic sp)
+          val | Just (_, q) <- numberOf val, overLimit q -> Left (tooBigDiagnostic sp)
           val -> Right val
       )
+
+{- | The value of an argument where no range is taken (docs/adr ADR
+0111): a word of a closed range literal, or an expression whose value is
+a range, is G02113 at @sp@; another argument is its 'argValue'.
+-}
+plainArgValue :: EvalContext -> SrcSpan -> A.ArgValue -> M (Either Diagnostic Value)
+plainArgValue ctx sp = \case
+  A.Word w | isJust (rangeWord w) -> pure (Left (rangeDiagnostic sp w))
+  v ->
+    argValue ctx sp v >>= \case
+      Right r@(VRange _ _) -> pure (Left (rangeDiagnostic sp (valueText r)))
+      other -> pure other
+
+{- | The ends of a word of a closed range literal, @<number>...<number>@
+with each end a number literal (docs/adr ADR 0113, ADR 0111). Nothing
+for another word: @1...@, @a...3@ and @1...2...3@ are none.
+-}
+rangeWord :: Text -> Maybe (Value, Value)
+rangeWord w = case T.breakOn "..." w of
+  (a, rest) | not (T.null rest) -> (,) <$> wordNumber a <*> wordNumber (T.drop 3 rest)
+  _ -> Nothing
+
+-- | G02113: a range where the argument takes no range (docs/adr ADR 0111).
+rangeDiagnostic :: SrcSpan -> Text -> Diagnostic
+rangeDiagnostic sp w = diagnostic "G02113" Error sp ("範囲を受け取らない引数に範囲を書いています: " <> w)
 
 -- | The evaluation of an expression after the analysis (docs/adr ADR 0102).
 evalAnalysed :: Env -> A.Located A.Expr -> Either Diagnostic Value
@@ -1943,9 +1995,10 @@ one that is not an integer G02104, at @sp@; @what@ names the place.
 -}
 naturalArg :: EvalContext -> Text -> SrcSpan -> A.ArgValue -> M (Either NaturalError Natural)
 naturalArg ctx what sp = \case
+  A.Word w | isJust (rangeWord w) -> report (rangeDiagnostic sp w) >> pure (Left NaturalReported)
   A.Word w -> maybe (pure (Left NotANumber)) check (A.numberWord w)
   v@(A.ExprArg _) ->
-    argValue ctx sp v >>= \case
+    plainArgValue ctx sp v >>= \case
       Left d -> report d >> pure (Left NaturalReported)
       Right val -> maybe (pure (Left NotANumber)) (check . snd) (numberOf val)
   _ -> pure (Left NotANumber)
@@ -2101,7 +2154,7 @@ numbersArg ctx sp = \case
   A.StringLit t | Just b <- boolWord t -> pure (Just (Left b))
   A.StringLit t -> natural (A.Word t) t
   v@(A.ExprArg _) ->
-    argValue ctx sp v >>= \case
+    plainArgValue ctx sp v >>= \case
       Left d -> report d >> pure Nothing
       Right (VBool b) -> pure (Just (Left b))
       Right val | Just (_, q) <- numberOf val -> either (\d -> report d >> pure Nothing) (pure . Just . Right . toInteger) (naturalOf what sp q)

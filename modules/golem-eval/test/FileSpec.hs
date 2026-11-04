@@ -1,6 +1,7 @@
 module FileSpec (tests) where
 
 import Control.Exception (evaluate)
+import Data.Bifunctor (first)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
@@ -222,6 +223,7 @@ tests =
       codeTests,
       escapeTests,
       duplicateKeyTests,
+      argWordTests,
       shorthandTests,
       int64Tests,
       channelCommandTests,
@@ -555,6 +557,57 @@ int64Tests =
     ]
   where
     msg = "数が意味論 IR に書ける範囲を超えています（整数と、分数の分子と分母は -2 の 63 乗以上、2 の 63 乗未満に限ります）"
+
+{- | A word of an argument that is a number literal is that number, as the
+same literal in an expression is (docs/adr ADR 0111): the value a plugin
+gets, and the diagnostics of [number-text ...].
+-}
+argWordTests :: TestTree
+argWordTests =
+  testGroup
+    "an argument word that is a number literal (docs/adr ADR 0111)"
+    [ testCase "a plugin gets the value of the expression with the same literal" $ do
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show vs))], []))
+            c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
+            got src = map (fmap stripSpans . paraInlines) (fst (run c src))
+        mapM_
+          (\(w, e) -> got ("[greet " <> w <> "]\n") @?= got ("[greet [= " <> e <> "]]\n"))
+          [("12", "12"), ("-3", "-3"), ("3.14", "3.14"), ("-0.5", "-0.5"), ("1e3", "1e3"), ("15e-1", "15e-1"), ("-0", "-0"), ("007", "007")]
+        got "[greet -3 3.14 1e3]\n" @?= [Just ["[VInt (-3),VRat (157 % 50),VRat (1000 % 1)]"]],
+      testCase "a word that is no number literal stays a string" $ do
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show vs))], []))
+            c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
+        map (fmap stripSpans . paraInlines) (fst (run c "[greet +3 --3 3.1.4 1e .5 5. 1-2 a3 1... a...3 1...2...3]\n"))
+          @?= [Just ["[VString \"+3\",VString \"--3\",VString \"3.1.4\",VString \"1e\",VString \".5\",VString \"5.\",VString \"1-2\",VString \"a3\",VString \"1...\",VString \"a...3\",VString \"1...2...3\"]"]],
+      testCase "[number-text -3] is the number -3, as [number-text [= -3]]" $ do
+        map (fmap stripSpans . paraInlines) (fst (run ctx "[number-text -3]\n")) @?= map (fmap stripSpans . paraInlines) (fst (run ctx "[number-text [= -3]]\n"))
+        map (fmap stripSpans . paraInlines) (fst (run ctx "[number-text -3]\n")) @?= [Just ["<number -3 Nothing>"]]
+        map (fmap stripSpans . paraInlines) (fst (run ctx "[number-text 1e3 style=kanji]\n")) @?= [Just ["<number 1000 Just StyleKanji>"]],
+      testCase "[number-text 3.14] is G02019, as [number-text [= 3.14]]" $ do
+        errs "[number-text 3.14]\n" @?= ["G02019"]
+        msgs "[number-text 3.14]\n" @?= msgs "[number-text [= 3.14]]\n",
+      testCase "a range where no range is taken is G02113, as a word and as an expression" $ do
+        let g02113 w = ("G02113", "範囲を受け取らない引数に範囲を書いています: " <> w)
+        msgs "[number-text 1...3]\n" @?= [g02113 "1...3"]
+        msgs "[number-text -1...1.5]\n" @?= [g02113 "-1...1.5"]
+        msgs "@blank-line 1...3\n" @?= [g02113 "1...3"]
+        msgs "[number-text [= 1...3]]\n" @?= [g02113 "1...3"]
+        msgs "@blank-line [= 1...3]\n" @?= [g02113 "1...3"],
+      testCase "a plugin gets a word of a range literal as the range of the expression" $ do
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show vs))], []))
+            c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
+            got src = first (map (fmap stripSpans . paraInlines)) (run c src)
+        got "[greet 1...3]\n" @?= got "[greet [= 1...3]]\n"
+        got "[greet 1...3]\n" @?= ([Just ["[VRange 1 3]"]], [])
+        got "[greet -1...1.5]\n" @?= got "[greet [= -1...1.5]]\n"
+        got "[greet 5...1]\n" @?= got "[greet [= 5...1]]\n",
+      testCase "a word literal past the limit is G02086, as the expression is" $ do
+        msgs "[number-text 1e1301]\n" @?= msgs "[number-text [= 1e1301]]\n"
+        errs "[number-text -1e1301]\n" @?= ["G02086"]
+    ]
 
 -- | The same key twice among the keyword arguments (golem-parser ADR 0013).
 duplicateKeyTests :: TestTree
