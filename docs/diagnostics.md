@@ -3476,13 +3476,14 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 負の数で整数でもない数は、[G02103](#g02103) になる。
 
 範囲の端に整数でない数を書いたときも、語でも式でもこのコードになる（`lines=1...1.5`、`[= 1...7 / 2]`、`@set r = 1.5...3`、[docs/adr/0113](adr/0113-closed-range-literal.md)）。
+範囲を受け取らない引数の語（`[number-text -1...1.5]`、`@blank-line 1...1.5`）も、同じ字の式と同じく、範囲を受け取らない引数の範囲（[G02113](#g02113)）ではなくこのコードになる（[docs/adr/0135](adr/0135-range-words-read-as-range-expressions.md)）。
 原因は「整数が要るところに整数でない数を書いた」で同じだからである。
 範囲の値を作るときは、範囲の端は負でもよいので、負で整数でない数もこのコードになる。
 位置は、範囲の値を作るときはその範囲の式である。
 
 - メッセージ: `<何>には 0 以上の整数を書きます（書かれた値 <値> は整数ではありません）`。`<何>` と `<値>` は [G02103](#g02103) と同じである。範囲の値を作るときは `範囲の端には整数を書きます（書かれた値 <値> は整数ではありません）`。
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`、`Golem.Eval.Expr`、`Golem.Eval.Analysis`）
-- ADR: [docs/adr/0102](adr/0102-natural-number-type.md)、[docs/adr/0113](adr/0113-closed-range-literal.md)
+- ADR: [docs/adr/0102](adr/0102-natural-number-type.md)、[docs/adr/0113](adr/0113-closed-range-literal.md)、[docs/adr/0135](adr/0135-range-words-read-as-range-expressions.md)
 
 ### 主な原因
 
@@ -3537,13 +3538,14 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 範囲は両端を含むので、始めが終わり以下なら空にならない。
 逆順の範囲を空の範囲とせずにこのエラーにするので、空の範囲は作れない。
 式の範囲の値（`[= 7...3]`、`@set r = 7...3`）と、`lines` と `highlight` の語と文字列の範囲（`7...3`）の両方に出る。
+範囲を受け取らない引数の語（`[number-text 7...3]`、`@blank-line 7...3`、コードブロックの `numbers=7...3`）も、同じ字の式と同じく、範囲を受け取らない引数の範囲（[G02113](#g02113)）ではなくこのコードになる（[docs/adr/0135](adr/0135-range-words-read-as-range-expressions.md)）。
 位置は、式ならその範囲の式、語と文字列なら引数である。
 
 `lines` と `highlight` の引数に直接書いた範囲の式（`lines=[= 3...0 - 1]`）は、端を自然数として調べてから向きを調べるので、負の端は [G02103](#g02103) になる。
 
 - メッセージ: `範囲の始め <a> が終わり <b> より大きくなっています`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`、`Golem.Eval.File`）
-- ADR: [docs/adr/0113](adr/0113-closed-range-literal.md)
+- ADR: [docs/adr/0113](adr/0113-closed-range-literal.md)、[docs/adr/0135](adr/0135-range-words-read-as-range-expressions.md)
 
 ### 主な原因
 
@@ -3722,7 +3724,9 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 範囲を受け取らない引数は、`[number-text ...]` の数、自然数を求める箇所（`@blank-line`、`@need-lines`、`@number`、`@toc` の `depth`、`@figure` の `page`、コードブロックの `numbers`）、コードブロックのほかのキー（`file`、`diff`、`callouts`、`lang`）である。
 コードブロックのほかのキーは値を字のまま読むので、語の `file=1...3` は字の `1...3` であり、このコードになるのは式（`file=[= 1...3]`）だけである。
 このとき、キーの値の誤り（[G02069](#g02069)）は重ねて出さない。
-語では、`<数のリテラル>...<数のリテラル>` の形（`3...5`、`-1...1.5`）がこのコードになる。
+語では、`<数のリテラル>...<数のリテラル>` の形のうち、範囲として成り立つ語（`3...5`）がこのコードになる（[docs/adr/0135](adr/0135-range-words-read-as-range-expressions.md)）。
+範囲の形の語は、同じ字の式（`[= <語>]`）と同じく、まず範囲の値として作る。
+作れない語は、同じ字の式と同じく、端が整数でなければ [G02104](#g02104)（`-1...1.5`）、始めが終わりより大きければ [G02106](#g02106)（`7...3`）、端が評価の上限を超えれば [G02086](#g02086)（`1e1301...2`）になり、このコードにならない。
 式では、値が範囲になる式（`[= 1...3]`）がこのコードになる。
 ほかの `...` を含む語（`1...`、`a...3`、`1...2...3`）は、このコードにならず、各箇所の数でない値のコードになる。
 `@listing` の `lines`、コードブロックの `highlight`、プラグインのコマンドの引数は、範囲を受け取るので、このコードを出さない。
@@ -3730,7 +3734,7 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 - メッセージ: `範囲を受け取らない引数に範囲を書いています: <値>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0111](adr/0111-argument-words-as-number-literals.md)、[docs/adr/0134](adr/0134-numbers-range-code-is-g02113.md)
+- ADR: [docs/adr/0111](adr/0111-argument-words-as-number-literals.md)、[docs/adr/0134](adr/0134-numbers-range-code-is-g02113.md)、[docs/adr/0135](adr/0135-range-words-read-as-range-expressions.md)
 
 ### 主な原因
 

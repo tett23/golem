@@ -630,6 +630,9 @@ jobs:
           persist-credentials: false
       - name: Tests of the crates
         run: cargo test --locked
+      # the ids of the crates do not name the host (docs/adr/0138)
+      - name: Tests of the rustc wrapper
+        run: sh rustc-wrapper-test.sh
       - name: The committed plugins are what the sources build
         run: sh build.sh --check
       # licenses/plugins/ is what the sources and the toolchain give; the

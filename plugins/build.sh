@@ -1,6 +1,6 @@
 #!/bin/sh
-# Builds the sample plugins into plugins/wasm/<name>.wasm (docs/adr/0106)
-# with the toolchain of rust-toolchain.toml.
+# Builds the sample plugins into plugins/wasm/<name>.wasm (docs/adr/0106,
+# docs/adr/0138) with the toolchain of rust-toolchain.toml.
 #
 #   build.sh          build and copy every plugin to wasm/
 #   build.sh --check  build, and fail when a wasm/*.wasm differs from the
