@@ -12,6 +12,7 @@ where
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isDigit)
+import Data.Containers.ListUtils (nubOrd)
 import Data.Either (lefts, partitionEithers, rights)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
@@ -54,10 +55,10 @@ cache, the FileId of manifest.toml, where most diagnostics point, the
 FileId and text of plugins.lock (empty when there is none), where G06011
 points, and the first FileId for the files of data that the checks of
 the data point at (docs/adr/0120), one for each file in the order of the
-paths.
+paths, and the context of the book a plugin may ask for (docs/adr/0121).
 -}
-loadPlugins :: FilePath -> Map.Map FilePath Text -> FilePath -> FileId -> FileId -> Text -> FileId -> Manifest -> IO LoadedPlugins
-loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) manifest
+loadPlugins :: FilePath -> Map.Map FilePath Text -> FilePath -> FileId -> FileId -> Text -> FileId -> HostContext -> Manifest -> IO LoadedPlugins
+loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context manifest
   | Map.null (manifestPlugins manifest) && null (manifestFilters manifest) = pure (LoadedPlugins (Right noPlugins) [] Map.empty)
   | otherwise =
       case parseLock lfid lockText of
@@ -97,12 +98,14 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) manifest
         Nothing -> pure (Left [Ready (err "G06002" ("plugins.lock にないプラグインです。golem plugin lock を実行してください: " <> name))])
     loaded name decl bytes =
       loadPlugin bytes >>= \case
+        -- G06105: context the host does not have (docs/adr/0121)
+        Left pe@(UnknownContext _) -> pure (Left [Ready (err "G06105" (name <> ": " <> describePluginError pe))])
         Left pe -> pure (Left [Ready (err "G06005" (name <> ": " <> describePluginError pe))])
         Right p ->
           loadData root overlay err name decl p >>= \case
             Left ds -> pure (Left (map Ready ds))
             Right files -> do
-              let p' = withPluginData (Map.map snd files) p
+              let p' = withPluginData (Map.map snd files) (withPluginContext context p)
               checked <- checkData p'
               pure $ case checked >>= mapM (located name files) of
                 Left pe -> Left [Ready (err (pluginErrorCode pe) (qualified name "golem_check_data" pe))]
@@ -173,7 +176,8 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) manifest
                   { phOverrides = Map.fromList [(o, call pname p c) | (Left o, (c, pname, p)) <- keyed],
                     phCommands = Map.fromList [(k, call pname p c) | (Right k, (c, pname, p)) <- keyed],
                     phChannels = Map.fromList [(c, d) | (c, (_, d)) <- declared],
-                    phApplyFilters = applyFilters
+                    phApplyFilters = applyFilters,
+                    phContextNames = sort (nubOrd [c | (_, _, p) <- plugins, c <- pluginContextNames p])
                   }
             else Left diags
 

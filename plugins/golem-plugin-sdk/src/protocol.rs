@@ -41,6 +41,26 @@ impl Data {
     }
 }
 
+/// The context of the book the plugin asked for in its description
+/// (docs/adr/0121): each name with its value, in the order of the names.
+/// `writing-mode` is `horizontal` or `vertical`; `vertical-numbers` is
+/// `kanji`, `kanji-digits`, `tcy`, `auto` or `auto-digits`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Context(pub Vec<(String, String)>);
+
+impl Context {
+    /// The value of a name, if the plugin asked for it.
+    pub fn get(&self, name: &str) -> Option<&str> {
+        self.0.iter().find(|(n, _)| n == name).map(|(_, v)| v.as_str())
+    }
+
+    /// Whether the book is set in vertical writing; None when the plugin
+    /// did not ask for `writing-mode`.
+    pub fn vertical(&self) -> Option<bool> {
+        self.get("writing-mode").map(|m| m == "vertical")
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct CommandRequest {
     pub name: String,
@@ -49,6 +69,7 @@ pub struct CommandRequest {
     pub slots: Vec<Vec<Inline>>,
     /// where the command is called; the span of what the plugin makes
     pub span: Span,
+    pub context: Context,
     pub data: Data,
 }
 
@@ -56,6 +77,7 @@ pub struct CommandRequest {
 pub struct FilterRequest {
     pub name: String,
     pub document: Document,
+    pub context: Context,
     pub data: Data,
 }
 
@@ -122,7 +144,7 @@ pub struct ChannelDecl {
     pub locators: bool,
 }
 
-/// `description = {? "commands", ? "filters", ? "channels", ? "data"}`
+/// `description = {? "commands", ? "filters", ? "channels", ? "data", ? "context"}`
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Description {
     pub commands: Vec<String>,
@@ -130,6 +152,9 @@ pub struct Description {
     pub channels: Vec<ChannelDecl>,
     /// the names of the data the plugin takes (docs/adr/0105)
     pub data: Vec<String>,
+    /// the names of the context of the book it asks for (docs/adr/0121):
+    /// `writing-mode`, `vertical-numbers`
+    pub context: Vec<String>,
 }
 
 fn texts(xs: &[String]) -> Value {
@@ -157,6 +182,7 @@ pub fn description_value(d: &Description) -> Value {
     // already in the order of 4.2.1
     let mut fields = vec![
         ("data", texts(&d.data)),
+        ("context", texts(&d.context)),
         ("filters", texts(&d.filters)),
         ("channels", Value::Array(channels)),
         ("commands", texts(&d.commands)),
@@ -238,13 +264,30 @@ fn data_of(v: &Value) -> R<Data> {
     }
 }
 
+fn context_of(v: &Value) -> R<Context> {
+    match v {
+        Value::Array(xs) => Ok(Context(
+            xs.iter()
+                .map(|e| match e {
+                    Value::Array(p) => match p.as_slice() {
+                        [Value::Text(n), Value::Text(x)] => Ok((n.clone(), x.clone())),
+                        _ => Err(DecodeError::Shape("context entry")),
+                    },
+                    _ => Err(DecodeError::Shape("context entry")),
+                })
+                .collect::<R<_>>()?,
+        )),
+        _ => Err(DecodeError::Shape("context")),
+    }
+}
+
 pub fn request_of(v: &Value) -> R<Request> {
     let xs = match v {
         Value::Array(xs) => xs.as_slice(),
         _ => return Err(DecodeError::Shape("request")),
     };
     match xs {
-        [Value::Int(0), name, Value::Array(args), Value::Array(slots), span, data] => Ok(Request::Command(CommandRequest {
+        [Value::Int(0), name, Value::Array(args), Value::Array(slots), span, context, data] => Ok(Request::Command(CommandRequest {
             name: ir::text_of(name)?,
             args: args
                 .iter()
@@ -259,11 +302,13 @@ pub fn request_of(v: &Value) -> R<Request> {
                 .collect::<R<_>>()?,
             slots: slots.iter().map(ir::inlines_of).collect::<R<_>>()?,
             span: ir::span_of(span)?,
+            context: context_of(context)?,
             data: data_of(data)?,
         })),
-        [Value::Int(1), name, doc, data] => Ok(Request::Filter(FilterRequest {
+        [Value::Int(1), name, doc, context, data] => Ok(Request::Filter(FilterRequest {
             name: ir::text_of(name)?,
             document: ir::document_of(doc)?,
+            context: context_of(context)?,
             data: data_of(data)?,
         })),
         _ => Err(DecodeError::Shape("request")),
@@ -300,7 +345,7 @@ mod tests {
     fn reads_the_data_of_a_command_request() {
         let span = ir::span_value(Span { file: 1, start: 0, end: 4 });
         let data = Value::Array(vec![Value::Array(vec![Value::Text("table".into()), Value::Bytes(b"k\tv".to_vec())])]);
-        let req = Value::Array(vec![Value::Int(0), Value::Text("c".into()), Value::Array(vec![]), Value::Array(vec![]), span, data]);
+        let req = Value::Array(vec![Value::Int(0), Value::Text("c".into()), Value::Array(vec![]), Value::Array(vec![]), span, Value::Array(vec![]), data]);
         match request_of(&req) {
             Ok(Request::Command(c)) => assert_eq!(c.data.get("table"), Some(&b"k\tv"[..])),
             other => panic!("{other:?}"),
@@ -314,6 +359,7 @@ mod tests {
             filters: vec![],
             channels: vec![ChannelDecl { name: "glossary".into(), order: ChannelOrder::Reading, locators: false }],
             data: vec!["table".into()],
+            context: vec!["writing-mode".into()],
         };
         let key = |k: &str| Value::Text(k.into());
         let channel = Value::Array(vec![Value::Text("glossary".into()), Value::Int(1), Value::Bool(false)]);
@@ -321,11 +367,44 @@ mod tests {
             description_value(&d),
             Value::Map(vec![
                 (key("data"), Value::Array(vec![Value::Text("table".into())])),
+                (key("context"), Value::Array(vec![Value::Text("writing-mode".into())])),
                 (key("channels"), Value::Array(vec![channel])),
                 (key("commands"), Value::Array(vec![Value::Text("c".into())])),
             ])
         );
         assert_eq!(description_value(&Description::default()), Value::Map(vec![]));
         assert_eq!(crate::cbor::encode(&description_value(&Description::default())), vec![0xa0]);
+    }
+
+    fn t(s: &str) -> Value {
+        Value::Text(s.into())
+    }
+
+    #[test]
+    fn a_command_request_has_the_context_before_the_data() {
+        let v = Value::Array(vec![
+            Value::Int(0),
+            t("x"),
+            Value::Array(vec![]),
+            Value::Array(vec![]),
+            Value::Array(vec![Value::Int(1), Value::Int(0), Value::Int(3)]),
+            Value::Array(vec![Value::Array(vec![t("writing-mode"), t("vertical")])]),
+            Value::Array(vec![Value::Array(vec![t("d"), Value::Bytes(b"1".to_vec())])]),
+        ]);
+        match request_of(&v).unwrap() {
+            Request::Command(c) => {
+                assert_eq!(c.context.get("writing-mode"), Some("vertical"));
+                assert_eq!(c.context.vertical(), Some(true));
+                assert_eq!(c.context.get("vertical-numbers"), None);
+                assert_eq!(c.data.get("d"), Some(&b"1"[..]));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn a_request_without_the_context_is_no_request() {
+        let v = Value::Array(vec![Value::Int(1), t("f"), Value::Array(vec![Value::Int(8), Value::Int(0), Value::Array(vec![])]), Value::Array(vec![])]);
+        assert!(request_of(&v).is_err());
     }
 }

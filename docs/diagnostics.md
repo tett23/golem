@@ -5562,6 +5562,34 @@ NaN と無限大は有理数を持たないので、このエラーにする。
 
 パスを直すか、`.wasm` のファイルを置く。
 
+## G06105
+
+Golem が渡せない文脈を求めています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+プラグインが `golem_describe` の `context` の欄で、この Golem が渡せない本の文脈の名前を宣言した。
+渡せる文脈は `vertical-numbers` と `writing-mode` である。
+プラグインは読み込まれない。
+宣言にある知らない名前は、すべて一つの diagnostic に並べる。
+位置は `manifest.toml` の先頭である。
+同じ名前を二度書いた宣言は、このコードではなく [G06005](#g06005) になる。
+
+- メッセージ: `<プラグイン>: Golem が渡せない文脈を求めています: <名前>、…（渡せる文脈: vertical-numbers、writing-mode）`
+- 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
+- ADR: [docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)
+
+### 主な原因
+
+- プラグインが、この Golem より新しい Golem のために作られている。
+
+### 直し方
+
+Golem を新しい版に上げるか、この Golem に合う版のプラグインを使う。
+
 ## G07001
 
 版面を計算できません

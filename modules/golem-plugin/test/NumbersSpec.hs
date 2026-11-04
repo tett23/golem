@@ -62,7 +62,7 @@ argumentTerms p as = do
   req <- either (assertFailure . show) pure (commandRequest p "echo" as [] callSpan)
   out <- either (assertFailure . show) pure (invokeRaw p req)
   case deserialiseFromBytes decodeTerm (BL.fromStrict out) of
-    Right (_, TList [_, _, TList args, _, _, _]) -> pure args
+    Right (_, TList [_, _, TList args, _, _, _, _]) -> pure args
     other -> assertFailure (show other)
 
 -- | A reason of 'termValue' as an error of a plugin, to compose with 'valueTerm'.

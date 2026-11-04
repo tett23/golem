@@ -2914,7 +2914,7 @@ CI の `changes` ジョブの `scripts/ci/abi-version.sh` は、直前のリリ�
 ホストはプラグインに import を一切渡さず、時計、乱数、ファイル、ネットワークに触れさせない。
 呼び出し規約、実行量の上限、出力の検証の詳細は golem-plugin の ADR に定める。
 
-プラグインは、`golem_describe` の応答で、提供するコマンド（`commands`）、フィルタ（`filters`）、チャネル（`channels`）、受け取るデータの名前（`data`）を宣言する（[docs/adr/0107](adr/0107-named-describe-fields.md)）。
+プラグインは、`golem_describe` の応答で、提供するコマンド（`commands`）、フィルタ（`filters`）、チャネル（`channels`）、受け取るデータの名前（`data`）、受け取る本の文脈の名前（`context`）を宣言する（[docs/adr/0107](adr/0107-named-describe-fields.md)、[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)）。
 
 - 応答は、欄の名前から配列へのマップである。欄の順は問わない。
 - 書かない欄は、空の配列と同じである。
@@ -2951,6 +2951,24 @@ data = { table = "data/words.tsv" }
 - エラーを一つでも返したプラグインは、読み込みの誤りとして扱う。コマンドを呼ばず、評価で G02022 と G02090 を報告しない。警告だけなら、プラグインは読み込まれる。
 - データのファイルには、diagnostic の位置のために FileId を振る。振るのは diagnostic が指すファイルだけで、`@table` と `@listing` で読むファイルの後から、パスの順に振る。
 - export がないプラグインは呼ばず、データの誤りはコマンドとフィルタの呼び出しのときにプラグインが報告する。
+
+### 本の文脈
+
+プラグインは、`golem_describe` の `context` の欄で、受け取る本の文脈の名前を宣言する（[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)）。
+ホストは、宣言された名前の値だけを要求に入れる。
+宣言できる名前は次の閉じた一覧であり、ABI と一緒に版を管理する。
+
+| 名前 | 中身 | 値 |
+| --- | --- | --- |
+| `vertical-numbers` | `style.toml` の `[numbers]` の `vertical`。書かなければ `kanji` | `kanji`、`kanji-digits`、`tcy`、`auto`、`auto-digits` |
+| `writing-mode` | `style.toml` の `[page]` の `writing-mode`。`[page]` がなければ `horizontal` | `horizontal`、`vertical` |
+
+- 一覧にない名前は G06105 とし、プラグインを読み込まない。宣言にある知らない名前をすべて一つの diagnostic に並べる。メッセージは `<プラグイン>: Golem が渡せない文脈を求めています: <名前>、…（渡せる文脈: vertical-numbers、writing-mode）` で、位置は `manifest.toml` の先頭である。
+- 同じ名前を二度書いた宣言は、不正な `golem_describe`（G06005、`文脈の名前が重複しています: <名前>`）である。
+- 要求では、文脈をデータの前に置く。`command-request = [0, name, args, slots, span, context, data]`、`filter-request = [1, name, document, context, data]` で、`context = [* [名前, 値]]` は宣言した名前だけを名前のコードポイントの順に並べる。値は `style.toml` に書く字と同じ文字列である。文脈の CBOR は、データと同じくプラグインを読み込んだときに一度だけ符号化する。
+- 宣言のないプラグインの文脈は空の配列であり、要求のバイト列は `style.toml` によらない。要求は、原稿、データ、宣言した文脈だけで決まる。
+- 文脈を宣言したプラグインがあるとき、S0 の結果は `style.toml` に依る。LSP は、そのとき `style.toml` を `@table` のファイルと同じく監視し（`Evaluated` の `evTableFiles` に加える）、変われば評価し直す。エディタで開いた `style.toml` の未保存の内容は使わない。
+- `language` と出力の媒体は渡さない。S0 の評価は媒体ごとに分かれていないからである。
 
 ### 見本のプラグイン
 
@@ -3007,7 +3025,7 @@ path = "plugins/local.wasm"
 - 取得した配布物はハッシュをキーに手元にキャッシュし、キャッシュがあればビルドはネットワークに接続しない。
 - `plugins.lock` の更新は、ユーザーが明示的に指示したときだけ行う。
 
-プラグインの読み込みと検査の誤りは、G06002 から G06012 と G06101 から G06104 の diagnostic で報告する（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)、[docs/adr/0105](adr/0105-plugin-data.md)、[docs/adr/0109](adr/0109-local-plugin-path.md)）。
+プラグインの読み込みと検査の誤りは、G06002 から G06012 と G06101 から G06105 の diagnostic で報告する（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)、[docs/adr/0105](adr/0105-plugin-data.md)、[docs/adr/0109](adr/0109-local-plugin-path.md)、[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)）。
 プラグインが応答で返す diagnostic は、次の規則で検査する（[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)）。
 
 - コードは英小文字、数字、`-` だけからなる空でない列とし、ホストがその前に `manifest.toml` のプラグインの宣言の名前と `/` を置く。`lookup` と宣言したプラグインの `no-key` は `lookup/no-key` になる。ほかの形のコード（`G02022` や `Lookup/x` など）は、不正な出力（G06009）にする。

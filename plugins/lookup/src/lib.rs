@@ -79,6 +79,7 @@ mod tests {
             args: vec![],
             slots: vec![vec![Inline::Text { span, text: "key".into() }]],
             span,
+            context: Default::default(),
             data: Data(vec![("table".into(), b"key\tvalue\n".to_vec())]),
         });
         assert_eq!(invoke(req), Response::inlines(vec![Inline::Text { span, text: "value".into() }]));

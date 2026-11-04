@@ -58,6 +58,7 @@ test-suite golem-plugin-test
   main-is:          Main.hs
   other-modules:    CheckDataSpec
                     ConcurrencySpec
+                    ContextSpec
                     DataSpec
                     NumbersSpec
                     ResponseSpec

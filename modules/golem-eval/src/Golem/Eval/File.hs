@@ -80,11 +80,13 @@ data PluginHook = PluginHook
     phCommands :: !(Map PluginCommandName PluginCommand),
     -- | the channels the plugins declare (golem-doc ADR 0007)
     phChannels :: !(Map Text ChannelDecl),
-    phApplyFilters :: FilePath -> Document -> Either [Diagnostic] (Document, [Diagnostic])
+    phApplyFilters :: FilePath -> Document -> Either [Diagnostic] (Document, [Diagnostic]),
+    -- | the names of the context of the book the plugins ask for, in order (docs/adr/0121)
+    phContextNames :: ![Text]
   }
 
 noPlugins :: PluginHook
-noPlugins = PluginHook Map.empty Map.empty Map.empty (\_ d -> Right (d, []))
+noPlugins = PluginHook Map.empty Map.empty Map.empty (\_ d -> Right (d, [])) []
 
 data EvalContext = EvalContext
   { ctxFile :: !FileId,
