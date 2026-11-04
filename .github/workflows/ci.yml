@@ -272,8 +272,8 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: dist-newstyle
-          key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ github.sha }}
-          restore-keys: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-
+          key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-${{ github.sha }}
+          restore-keys: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-
       # Setup configures a component again when its .cabal file is newer
       # than its setup-config, by the times alone. The .cabal files of the
       # checkout are always newer than the restored setup-config, so cabal
@@ -309,6 +309,10 @@ jobs:
       # on golem-test-support, which only the test suites use (docs/adr/0028)
       - name: Only the test suites depend on golem-test-support (docs/adr/0028)
         run: sh scripts/ci/test-only-deps.sh dist-newstyle/cache/plan.json
+      # cabal does not see a new libwasmtime.a under extra-lib-dirs, so a
+      # golem of a restored dist-newstyle may keep an old one (docs/adr/0156)
+      - name: golem is linked with the wasmtime of fetch-wasmtime.sh (docs/adr/0156)
+        run: sh scripts/check-wasmtime-linked.sh "$(cabal list-bin -v0 golem)"
       - name: qpdf is installed
         if: matrix.tests
         timeout-minutes: 5
@@ -460,7 +464,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: dist-newstyle
-          key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ github.sha }}
+          key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-${{ github.sha }}
       # A pull request saves its own dist-newstyle when cabal build has
       # compiled something, even when a later step fails, so that its next
       # push or a rerun builds on it. Restore dist-newstyle above looks in
@@ -471,7 +475,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: dist-newstyle
-          key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-pr-${{ github.event.pull_request.number }}-${{ github.sha }}-${{ github.run_attempt }}
+          key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-pr-${{ github.event.pull_request.number }}-${{ github.sha }}-${{ github.run_attempt }}
 
   determinism:
     needs: build

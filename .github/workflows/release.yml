@@ -147,6 +147,13 @@ jobs:
         with:
           name: archive-${{ matrix.platform }}
           path: dist
+      # the golem of the archive holds the line "version: X.Y.Z" of the
+      # libwasmtime.a it is linked with (docs/adr/0156)
+      - name: The golem of the archive is linked with the wasmtime of fetch-wasmtime.sh (docs/adr/0156)
+        run: |
+          mkdir -p "$RUNNER_TEMP/linked"
+          tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP/linked"
+          sh scripts/check-wasmtime-linked.sh "$RUNNER_TEMP/linked/$(basename "$ARCHIVE" .tar.gz)/golem"
       - name: On the runner
         run: sh scripts/release/smoke.sh --deps --determinism "determinism-${{ matrix.platform }}.txt" "$ARCHIVE" "$VERSION"
       - name: In alpine
