@@ -28,6 +28,7 @@ showError :: CslJsonError -> String
 showError = \case
   CslNotJson m -> "CslNotJson " <> m
   CslNotArray -> "CslNotArray"
+  CslUnwritable c p n -> "CslUnwritable " <> show (c, p, n)
 
 -- | The one entry of an array with one item, whose fields follow the id k.
 one :: Text -> IO CslEntry
@@ -91,5 +92,38 @@ tests =
         cslYear (scientific 9 (-2)) @?= Just 0
         cslYear (scientific 19996 (-1)) @?= Just 2000
         r <- evaluate (cslYear (scientific 1 1000000000))
-        r @?= Nothing
+        r @?= Nothing,
+      unwritableTests
+    ]
+
+-- | The result of decoding JSON text, the error as CslUnwritable or else Nothing.
+unwritable :: Text -> Maybe (Char, Text, Int)
+unwritable s = case decodeCslJson (utf8 s) of
+  Left (CslUnwritable c p n) -> Just (c, p, n)
+  _ -> Nothing
+
+-- | Characters that cannot be written to the output refuse the whole file (docs/adr/0159).
+unwritableTests :: TestTree
+unwritableTests =
+  testGroup
+    "characters that cannot be written to the output (docs/adr/0159)"
+    [ testCase "\\u0001 in a title is CslUnwritable at /0/title" $
+        unwritable "[{\"id\": \"a\", \"title\": \"x\\u0001y\"}]" @?= Just ('\x01', "/0/title", 0),
+      testCase "ESC, NUL, U+FFFE and U+FFFF are refused too" $
+        mapM_
+          (\(esc, c) -> unwritable ("[{\"id\": \"a\", \"title\": \"" <> esc <> "\"}]") @?= Just (c, "/0/title", 0))
+          [("\\u001b", '\x1B'), ("\\u0000", '\x00'), ("\\ufffe", '\xFFFE'), ("\\uffff", '\xFFFF'), ("\xFFFE", '\xFFFE')],
+      testCase "a field that is not cited or not read, note and abstract, is checked" $ do
+        unwritable "[{\"id\": \"a\", \"note\": \"\\u0001\"}]" @?= Just ('\x01', "/0/note", 0)
+        unwritable "[{\"id\": \"a\", \"abstract\": \"\\u0001\"}]" @?= Just ('\x01', "/0/abstract", 0),
+      testCase "a key with the character is pointed at" $
+        unwritable "[{\"id\": \"a\", \"x\\u0001\": \"y\"}]" @?= Just ('\x01', "/0/x\x01", 0),
+      testCase "/ and ~ in a key are written ~1 and ~0" $
+        unwritable "[{\"id\": \"a\", \"a/b~c\": {\"d\": \"\\u0001\"}}]" @?= Just ('\x01', "/0/a~1b~0c/d", 0),
+      testCase "the first of two items is reported, with one more; in an item, the first key in code point order" $ do
+        unwritable "[{\"id\": \"a\"}, {\"id\": \"b\", \"title\": \"\\u0002\"}, {\"id\": \"c\", \"title\": \"\\u0001\"}]" @?= Just ('\x02', "/1/title", 1)
+        unwritable "[{\"id\": \"a\", \"title\": \"\\u0002\", \"author\": [{\"family\": \"\\u0003\"}, {\"family\": \"\\u0001\"}]}]" @?= Just ('\x03', "/0/author/0/family", 2),
+      testCase "tab, newline, return, U+007F, U+0085, Japanese and U+1F600 as a surrogate pair pass" $ do
+        es <- entries "[{\"id\": \"a\", \"title\": \"a\\tb\\nc\\rd\\u007fe\\u0085f日本語\\ud83d\\ude00\"}]"
+        map ceTitle es @?= [Just "a\tb\nc\rd\x7F\&e\x85\&f日本語\x1F600"]
     ]

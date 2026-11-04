@@ -577,7 +577,8 @@ assetRefs (A.File _ bs) = concatMap blk bs
       _ -> Nothing
 
 {- | CSL-JSON: G03026 and G03003 for the files of the bibliography that
-cannot be read, the keys, and the entries formatted by golem-doc
+cannot be read, G03108 for those with a character that cannot be written to
+the output (docs/adr/0159), the keys, and the entries formatted by golem-doc
 (golem-doc ADR 0004, 0005). The diagnostics point at the head of manifest.toml,
 FileId 0, as G03002 does, because the manifest keeps no positions.
 -}
@@ -594,6 +595,18 @@ loadBibliography root manifest = do
           Left _ -> Left (unreadable ("参考文献のファイルがありません: " <> T.pack p))
           Right (Left (CslNotJson err)) -> Left (unreadable ("参考文献のファイルを JSON として読めません: " <> T.pack p <> "（" <> T.pack err <> "）"))
           Right (Left CslNotArray) -> Left (unreadable ("参考文献のファイルは CSL-JSON の配列で書きます: " <> T.pack p))
+          Right (Left (CslUnwritable c ptr more)) ->
+            Left
+              ( diagnostic "G03108" Error manifestHead $
+                  "参考文献のファイルに出力に書けない文字（"
+                    <> codePointText c
+                    <> "）があります: "
+                    <> T.pack p
+                    <> "（"
+                    <> ptr
+                    <> "）"
+                    <> (if more == 0 then "" else "、ほか " <> T.pack (show more) <> " 件")
+              )
           Right (Right es) -> Right es
   let m = Map.fromList [(ceId c, formatEntry c) | c <- concat (rights results)]
   pure (lefts results, Map.keysSet m, m)

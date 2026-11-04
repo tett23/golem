@@ -15,22 +15,58 @@ import Data.Aeson.Key qualified as JK
 import Data.Aeson.KeyMap qualified as KM
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (isDigit)
-import Data.Maybe (mapMaybe)
+import Data.List (sortOn)
+import Data.Maybe (mapMaybe, maybeToList)
 import Data.Scientific (Scientific, base10Exponent, coefficient, toBoundedInteger)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Golem.Doc.Bibliography (CslDate (..), CslEntry (..), CslName (..))
+import Golem.Syntax.Chars (firstUnwritable)
 
--- | Why a file of CSL-JSON is not read: not JSON (the message of aeson), or not an array.
-data CslJsonError = CslNotJson String | CslNotArray
+{- | Why a file of CSL-JSON is not read: not JSON (the message of aeson),
+not an array, or a string or a key with a character that cannot be written
+to the output (docs/adr/0159): the first such character, the JSON Pointer
+of the first such string, and how many more strings have one.
+-}
+data CslJsonError
+  = CslNotJson String
+  | CslNotArray
+  | CslUnwritable Char T.Text Int
   deriving stock (Eq, Show)
 
--- | The entries of a CSL-JSON array, in order; the items that are not entries are left out.
+{- | The entries of a CSL-JSON array, in order; the items that are not
+entries are left out. The whole file is refused when a string or a key
+anywhere in it, read by Golem or not, has a character that cannot be
+written to the output (docs/adr/0159, docs/adr ADR 0042).
+-}
 decodeCslJson :: BL.ByteString -> Either CslJsonError [CslEntry]
 decodeCslJson s = case J.eitherDecode s of
   Left err -> Left (CslNotJson err)
-  Right (J.Array xs) -> Right (mapMaybe cslEntry (V.toList xs))
+  Right v@(J.Array xs) -> case unwritables v of
+    (c, p) : rest -> Left (CslUnwritable c p (length rest))
+    [] -> Right (mapMaybe cslEntry (V.toList xs))
   Right _ -> Left CslNotArray
+
+{- | The strings and keys of a JSON value with a character that cannot be
+written, each with its first such character and its JSON Pointer (RFC
+6901), in order: arrays by index, objects by the code points of the keys,
+a key before its value; not in the order of aeson's KeyMap.
+-}
+unwritables :: J.Value -> [(Char, T.Text)]
+unwritables = go ""
+  where
+    go path = \case
+      J.String t -> [(c, path) | c <- maybeToList (firstUnwritable t)]
+      J.Array xs -> concat [go (path <> "/" <> T.pack (show i)) x | (i, x) <- zip [0 :: Int ..] (V.toList xs)]
+      J.Object o ->
+        concat
+          [ [(c, here) | c <- maybeToList (firstUnwritable k)] <> go here x
+          | (k, x) <- sortOn fst [(JK.toText k', x') | (k', x') <- KM.toList o],
+            let here = path <> "/" <> pointerToken k
+          ]
+      _ -> []
+    -- ~ is ~0 and / is ~1 (RFC 6901, 3)
+    pointerToken = T.replace "/" "~1" . T.replace "~" "~0"
 
 {- | The fields of a CSL-JSON item that the bibliography shows; Nothing
 without a string id (golem-doc ADR 0004, 0005). An empty string, or one
