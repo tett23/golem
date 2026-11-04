@@ -185,7 +185,7 @@ golem-plugin の [code: loadPlugin] と、テストでだけ使う [code: watToW
 これらは [code: unsafePerformIO] で包み、純粋な関数として公開している。
 
 - golem-font の [code: shapeUnits]（シェイピング）、[code: glyphVerticalOrigin]（縦組みの原点）、[code: glyphMetrics]（グリフの送りと外接矩形）。
-- golem-plugin の [code: invokeRaw]（プラグインの呼び出し。[code: callCommand] と [code: applyFilter] はこれを使う）。
+- golem-plugin の [code: invokeRawFuel]（プラグインの呼び出し。[code: invokeRaw]、[code: callCommand]、[code: applyFilter] はこれを使う）。
 
 golem-font ADR 0001 は、FFI の呼び出しを純粋な関数として見えるように包むと決めている。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-font/adr/0001-shaping-and-metrics.md]（golem-font ADR 0001「シェイピングとメトリクス」）]
 この四つのほかに [code: unsafePerformIO] とその仲間はない。

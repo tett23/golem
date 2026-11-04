@@ -25,6 +25,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import DataSpec (dataTests, describeTests)
+import FuelSpec (fuelTests)
 import Golem.Doc.Assemble (ChannelDecl (..))
 import Golem.Doc.Cbor (documentTerm, inlinesTerm)
 import Golem.Doc.IR
@@ -59,7 +60,7 @@ import Test.Tasty.HUnit
 import Text.Printf (printf)
 
 main :: IO ()
-main = defaultMainReportingSkips (const (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests, numberTests, dataTests, describeTests, checkDataTests, contextTests, blockTests]))
+main = defaultMainReportingSkips (const (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests, numberTests, dataTests, describeTests, checkDataTests, contextTests, blockTests, fuelTests]))
 
 callSpan :: SrcSpan
 callSpan = mkSpan (FileId 1) 10 20

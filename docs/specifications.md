@@ -2914,6 +2914,15 @@ CI の `changes` ジョブの `scripts/ci/abi-version.sh` は、直前のリリ�
 ホストはプラグインに import を一切渡さず、時計、乱数、ファイル、ネットワークに触れさせない。
 呼び出し規約、実行量の上限、出力の検証の詳細は golem-plugin の ADR に定める。
 
+一回の呼び出しで実行できる命令の数（wasmtime の fuel）には上限がある。
+コマンド、ブロックコマンド、データの検査の上限は 10 億である（`Golem.Plugin.defaultFuel`）。
+フィルタの上限は、`10 億 + 10000 × 文書のバイト数` である（[docs/adr/0124](adr/0124-filter-fuel-by-document-size.md)、`filterFuel`、`fuelPerDocumentByte`）。
+文書のバイト数は、フィルタの要求に入れる文書の CBOR のバイト数であり、データは数えない。
+上限は文書のバイト列だけで決まるので、同じ入力からは同じ位置で同じ G06009 になる。
+環境変数 `GOLEM_DEBUG_PLUGIN_FUEL` があれば、ホストは呼び出しごとに `golem-debug-fuel: mode=<呼び出しの種類> request=<要求のバイト数> fuel=<上限> used=<使った数> status=<結果>` の一行を標準エラーに書く。
+上限を使い切ったときの `used` は上限の全部である。
+出力のファイルと diagnostic は変わらない。
+
 プラグインは、`golem_describe` の応答で、提供するコマンド（`commands`）、フィルタ（`filters`）、チャネル（`channels`）、受け取るデータの名前（`data`）、受け取る本の文脈の名前（`context`）、ブロックコマンド（`blocks`）を宣言する（[docs/adr/0107](adr/0107-named-describe-fields.md)、[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)、[docs/adr/0122](adr/0122-block-commands-in-plugins.md)）。
 
 - 応答は、欄の名前から配列へのマップである。欄の順は問わない。

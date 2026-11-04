@@ -25,6 +25,8 @@ module Golem.Plugin
     PluginError (..),
     abiVersion,
     defaultFuel,
+    fuelPerDocumentByte,
+    filterFuel,
     defaultMemoryLimit,
     watToWasm,
     loadPlugin,
@@ -38,6 +40,7 @@ module Golem.Plugin
     callCommand,
     callBlockCommand,
     applyFilter,
+    applyFilterFuel,
     describePluginError,
     DataDiagnostic (..),
     pluginChecksData,
@@ -50,6 +53,7 @@ import Codec.CBOR.Encoding (Encoding, encodeBytes, encodeListLen, encodePreEncod
 import Codec.CBOR.Read (deserialiseFromBytes)
 import Codec.CBOR.Term (Term (..), decodeTerm, encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
+import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
@@ -58,6 +62,7 @@ import Data.Char (isAsciiLower, isDigit)
 import Data.List (sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -73,6 +78,8 @@ import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
 import Numeric.Natural (Natural)
+import System.Environment (lookupEnv)
+import System.IO (hPutStrLn, stderr)
 import System.IO.Unsafe (unsafePerformIO)
 
 data CPlugin
@@ -88,7 +95,7 @@ foreign import capi unsafe "golem_plugin.h golem_plugin_import_name" c_importNam
 foreign import capi unsafe "golem_plugin.h golem_plugin_has_export" c_hasExport :: Ptr CPlugin -> CString -> IO CInt
 
 foreign import capi safe "golem_plugin.h golem_plugin_call"
-  c_call :: Ptr CPlugin -> CInt -> Word64 -> Int64 -> Ptr Word8 -> CSize -> Ptr (Ptr Word8) -> Ptr CSize -> Ptr Word32 -> Ptr CString -> IO CInt
+  c_call :: Ptr CPlugin -> CInt -> Word64 -> Int64 -> Ptr Word8 -> CSize -> Ptr (Ptr Word8) -> Ptr CSize -> Ptr Word32 -> Ptr Word64 -> Ptr CString -> IO CInt
 
 foreign import capi unsafe "golem_plugin.h golem_plugin_free_bytes" c_freeBytes :: Ptr a -> IO ()
 
@@ -104,6 +111,20 @@ abiVersion = 8
 -- | The fuel of one call: about this many wasm instructions.
 defaultFuel :: Word64
 defaultFuel = 1000000000
+
+{- | The fuel a filter gets for each byte of the CBOR of its document, over
+the fuel of a command (docs/adr/0124): about three times the most two
+ruby filters used on the fixtures.
+-}
+fuelPerDocumentByte :: Word64
+fuelPerDocumentByte = 10000
+
+{- | The limit on the instructions of one call of a filter (docs/adr/0124):
+the limit of a command and 'fuelPerDocumentByte' for each byte of the
+CBOR of the document, the data not counted.
+-}
+filterFuel :: Word64 -> Int -> Word64
+filterFuel base documentBytes = base + fuelPerDocumentByte * fromIntegral documentBytes
 
 {- | The most bytes of the data of one plugin, all its files together
 (docs/adr/0105): a quarter of the memory of an instance, which holds the
@@ -283,12 +304,24 @@ noData :: ByteString
 noData = BS.singleton 0x80
 
 callMode :: Plugin -> CInt -> ByteString -> IO (Either PluginError (ByteString, Word32))
-callMode plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
+callMode plugin mode input = fst <$> callModeWith (plFuel plugin) plugin mode input
+
+{- | A call with a limit on its instructions, and the fuel it used, all of
+it when it ran out (docs/adr/0124). With GOLEM_DEBUG_PLUGIN_FUEL a line
+of the call goes to the standard error; the outputs do not change.
+-}
+callModeWith :: Word64 -> Plugin -> CInt -> ByteString -> IO (Either PluginError (ByteString, Word32), Word64)
+callModeWith fuel plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
   BU.unsafeUseAsCStringLen input $ \(inPtr, inLen) ->
-    alloca $ \outPtr -> alloca $ \outLen -> alloca $ \u32 -> do
+    alloca $ \outPtr -> alloca $ \outLen -> alloca $ \u32 -> alloca $ \usedPtr -> do
       poke outPtr nullPtr
       poke u32 0
-      (status, msg) <- withMessage (c_call p mode (plFuel plugin) (plMemory plugin) (castPtr inPtr) (fromIntegral inLen) outPtr outLen u32)
+      poke usedPtr 0
+      (status, msg) <- withMessage (c_call p mode fuel (plMemory plugin) (castPtr inPtr) (fromIntegral inLen) outPtr outLen u32 usedPtr)
+      used <- peek usedPtr
+      debugFuel <- isJust <$> lookupEnv "GOLEM_DEBUG_PLUGIN_FUEL"
+      when debugFuel $
+        hPutStrLn stderr ("golem-debug-fuel: mode=" <> show mode <> " request=" <> show inLen <> " fuel=" <> show fuel <> " used=" <> show used <> " status=" <> show status)
       out <- peek outPtr
       bytes <-
         if out == nullPtr
@@ -299,7 +332,7 @@ callMode plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
             c_freeBytes out
             pure b
       v <- peek u32
-      pure $ case status of
+      pure . (,used) $ case status of
         0 -> Right (bytes, v)
         2 -> Left (OutOfFuel msg)
         3 -> Left (MissingExport msg)
@@ -309,14 +342,21 @@ callMode plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
         5 -> Left (InstantiateFailed msg)
         _ -> Left (Trapped msg)
 
-{- | One call of @golem_invoke@ with raw CBOR. The one unsafePerformIO of
-this module (docs/adr ADR 0034): the evaluator, a pure function, calls
-it. It is a function of the plugin and the input alone, since each call
-gets a fresh store and instance, the plugin has no imports, and its
-limits are counted in instructions and bytes, not in time (ADR 0001).
--}
+-- | One call of @golem_invoke@ with raw CBOR, with the fuel of a command.
 invokeRaw :: Plugin -> ByteString -> Either PluginError ByteString
-invokeRaw plugin input = fst <$> unsafePerformIO (callMode plugin 2 input)
+invokeRaw plugin = fst . invokeRawFuel (plFuel plugin) plugin
+
+{- | One call of @golem_invoke@ with a limit on the instructions, and the
+fuel the call used (docs/adr/0124). The one unsafePerformIO of this
+module (docs/adr ADR 0034): the evaluator, a pure function, calls it. It
+is a function of the limit, the plugin and the input alone, since each
+call gets a fresh store and instance, the plugin has no imports, and its
+limits and the fuel used are counted in instructions and bytes, not in
+time (ADR 0001). The line GOLEM_DEBUG_PLUGIN_FUEL writes to the standard
+error changes no result.
+-}
+invokeRawFuel :: Word64 -> Plugin -> ByteString -> (Either PluginError ByteString, Word64)
+invokeRawFuel fuel plugin input = let (r, used) = unsafePerformIO (callModeWith fuel plugin 2 input) in (fst <$> r, used)
 
 decodeTermBytes :: ByteString -> Either PluginError Term
 decodeTermBytes b = case deserialiseFromBytes decodeTerm (BL.fromStrict b) of
@@ -463,7 +503,12 @@ argumentTerm = \case
 
 -- | The CBOR of a filter request (golem-doc.cddl @filter-request@), with the context and the data at the end.
 filterRequest :: Plugin -> Text -> Document -> ByteString
-filterRequest plugin name doc = withData plugin [TInt 1, TString name, documentTerm doc]
+filterRequest plugin name doc = filterRequestOf plugin name (toStrictByteString (encodeTerm (documentTerm doc)))
+
+-- | The same with the CBOR of the document already encoded, which sets the fuel of the call (docs/adr/0124).
+filterRequestOf :: Plugin -> Text -> ByteString -> ByteString
+filterRequestOf plugin name docBytes =
+  toStrictByteString (encodeListLen 5 <> encodeTerm (TInt 1) <> encodeTerm (TString name) <> encodePreEncoded docBytes <> encodePreEncoded (plContext plugin) <> encodePreEncoded (plData plugin) :: Encoding)
 
 -- | An array of the terms, then the context and the data of the plugin, already encoded (docs/adr/0105, docs/adr/0121).
 withData :: Plugin -> [Term] -> ByteString
@@ -603,8 +648,21 @@ blockKind (Block _ lbl body)
 
 -- | A filter of the plugin over one file's document.
 applyFilter :: Plugin -> Text -> Document -> Either PluginError (Document, [Diagnostic])
-applyFilter plugin name doc = do
-  out <- invokeRaw plugin (filterRequest plugin name doc)
+applyFilter plugin name doc = fst (applyFilterFuel plugin name doc)
+
+{- | 'applyFilter', and the fuel the call used (docs/adr/0124). The limit
+is 'filterFuel' of the CBOR of the document.
+-}
+applyFilterFuel :: Plugin -> Text -> Document -> (Either PluginError (Document, [Diagnostic]), Word64)
+applyFilterFuel plugin name doc =
+  let docBytes = toStrictByteString (encodeTerm (documentTerm doc))
+      fuel = filterFuel (plFuel plugin) (BS.length docBytes)
+      (out, used) = invokeRawFuel fuel plugin (filterRequestOf plugin name docBytes)
+   in (out >>= filtered plugin doc, used)
+
+-- | The answer of a filter over the document: checked as below.
+filtered :: Plugin -> Document -> ByteString -> Either PluginError (Document, [Diagnostic])
+filtered plugin doc out = do
   (outT, diags) <- response out
   doc' <- decoded (termDocumentE outT)
   -- the items that came in with the document pass as they are (golem-doc ADR 0007)

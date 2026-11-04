@@ -61,6 +61,7 @@ test-suite golem-plugin-test
                     ConcurrencySpec
                     ContextSpec
                     DataSpec
+                    FuelSpec
                     NumbersSpec
                     ResponseSpec
   -- -N: one capability per processor from the start, so that the count
