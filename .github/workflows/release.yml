@@ -250,12 +250,16 @@ jobs:
               --transform "s,^html,$name-$TAG-html," -C "$dir/build" -cf - html |
               gzip -n > "dist/$name-$TAG-html.tar.gz"
           done
-      - name: SHA256SUMS and the source of GMP
+      # the sample plugins, as committed: the plugins job of ci.yml checked
+      # that they are what their sources build (docs/adr/0106)
+      - name: SHA256SUMS, the sample plugins and the source of GMP
         run: |
+          cp plugins/wasm/*.wasm dist/
           cd dist
           cat golem-*.tar.gz.sha256 > SHA256SUMS
           sha256sum "golem-manual-$TAG.pdf" "golem-manual-$TAG-html.tar.gz" \
             "golem-dev-manual-$TAG.pdf" "golem-dev-manual-$TAG-html.tar.gz" >> SHA256SUMS
+          sha256sum *.wasm >> SHA256SUMS
           sha256sum -c SHA256SUMS
           for v in $(cat gmp-version-*.txt | sort -u); do
             sh ../scripts/release/fetch-gmp.sh "$v" .
@@ -274,4 +278,4 @@ jobs:
           set -- --draft --verify-tag --title "$TAG" --notes-file notes.md
           if [ "$PRERELEASE" = true ]; then set -- "$@" --prerelease; fi
           # dist/golem-*.tar.gz has the HTML of the two manuals too
-          gh release create "$TAG" "$@" dist/golem-*.tar.gz dist/golem-manual-*.pdf dist/golem-dev-manual-*.pdf dist/SHA256SUMS dist/gmp-*.tar.xz
+          gh release create "$TAG" "$@" dist/golem-*.tar.gz dist/golem-manual-*.pdf dist/golem-dev-manual-*.pdf dist/*.wasm dist/SHA256SUMS dist/gmp-*.tar.xz
