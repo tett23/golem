@@ -1,0 +1,12 @@
+command: ('build', '--target', 'html', '--target', 'epub') exit: 0 diagnostics: 
+invalid HTML: build/html/chapters/01.xhtml not well-formed (invalid token): line 14, column 34
+invalid HTML: build/html/chapters/02.xhtml not well-formed (invalid token): line 14, column 36
+EPUB control byte: OEBPS/chapters/01.xhtml
+EPUB control byte: OEBPS/chapters/02.xhtml
+command: ('build', '--target', 'html') exit: 0 diagnostics: 
+SVG preserved: True
+command: ('build', '--target', 'html') exit: 1 diagnostics: style.toml:1:1: error[G08013]: 出力先がシンボリックリンクかディレクトリではないので、消すことも書くこともしません: build
+  | [headings.1]
+コードの説明は golem explain <コード> で表示できます（例: golem explain G08013）
+output guard: True sentinel: unchanged
+artifacts: /var/folders/5t/47dyfgwj64v0jt16_pgwr8gw0000gn/T/golem-audit-20261105-c0li5zr0

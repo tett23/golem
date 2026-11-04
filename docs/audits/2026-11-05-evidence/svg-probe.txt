@@ -1,0 +1,5 @@
+script-control: Right [Active {acName = "script", acLine = 1, acColumn = 41}]
+href-control: Right [Active {acName = "href", acLine = 1, acColumn = 48}]
+presentation-url: Right []
+stylesheet-pi: Right []
+animated-style: Right []
