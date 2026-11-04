@@ -291,7 +291,7 @@ explainTests =
               [] -> pure ()
               unused -> assertFailure ("codes in use but not in the sources (make them retired): " <> unwords (map T.unpack unused)),
           testCase "every code in the catalog is G, the two digits of a stage and three digits (docs/adr 0061)" $ do
-            let stages = ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
+            let stages = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
                 malformed c = T.length c /= 6 || T.take 2 (T.drop 1 c) `notElem` stages
             assertBool "a catalog" (not (Map.null catalog))
             filter malformed (Map.keys catalog) @?= [],

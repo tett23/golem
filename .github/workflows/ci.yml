@@ -333,7 +333,7 @@ jobs:
         if: matrix.tests && matrix.suites != 'driver'
         run: |
           scripts/gen-parser.sh
-          git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs
+          git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs modules/golem-gmx/src/Golem/Gmx/Generated.hs
       - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
         if: matrix.outputs || matrix.env
         uses: actions/cache@v6
@@ -599,11 +599,12 @@ jobs:
             modules/**/*.hs
             !modules/golem-parser/src/Golem/Parser/Generated.hs
             !modules/golem-parser/test/StrippedGrammar.hs
+            !modules/golem-gmx/src/Golem/Gmx/Generated.hs
       # the release of hlint, not a build of it with GHC (docs/adr/0009)
       - name: hlint 3.10
         run: sh scripts/ci/fetch-hlint.sh
       # -j checks the files on every core of the runner (docs/adr/0037)
-      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs"'
+      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs" --ignore-glob="modules/golem-gmx/src/Golem/Gmx/Generated.hs"'
 
   # The sample plugins and their helper crate (docs/adr/0106): the tests of
   # the crates, and the committed plugins/wasm/*.wasm are the bytes the
