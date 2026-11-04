@@ -120,17 +120,17 @@ pub fn chart(req: &BlockCommandRequest) -> Result<(Block, Image), Diagnostic> {
             }
             Arg::Keyword(k, ArgValue::Int(n)) if k == "column" && *n >= 1 => column = *n as usize,
             Arg::Keyword(k, ArgValue::Str(s)) if k == "alt" => alt = Some(s.as_str()),
-            Arg::Keyword(k, _) => return Err(error(span, "bar-chart-key", format!("@bar-chart のキーワード引数は column（1 以上の整数）と alt（文字列）です: {k}"))),
+            Arg::Keyword(k, _) => return Err(error(span, "key", format!("@bar-chart のキーワード引数は column（1 以上の整数）と alt（文字列）です: {k}"))),
         }
     }
     let name = match (positional, name) {
         (1, Some(n)) => n,
-        _ => return Err(error(span, "bar-chart-name", "@bar-chart にはデータの名前を一つ書きます".into())),
+        _ => return Err(error(span, "name", "@bar-chart にはデータの名前を一つ書きます".into())),
     };
-    let alt = alt.ok_or_else(|| error(span, "bar-chart-alt", "@bar-chart には alt の代替テキストが必要です".into()))?;
-    let bytes = req.data.get(name).ok_or_else(|| error(span, "bar-chart-no-data", format!("manifest.toml の data にない名前です: {name}")))?;
-    let rows = rows(bytes).map_err(|m| error(span, "bar-chart-tsv", format!("{name} が {m}")))?;
-    let vs = values(&rows, column).map_err(|m| error(span, "bar-chart-values", format!("{name}: {m}")))?;
+    let alt = alt.ok_or_else(|| error(span, "alt", "@bar-chart には alt の代替テキストが必要です".into()))?;
+    let bytes = req.data.get(name).ok_or_else(|| error(span, "no-data", format!("manifest.toml の data にない名前です: {name}")))?;
+    let rows = rows(bytes).map_err(|m| error(span, "tsv", format!("{name} が {m}")))?;
+    let vs = values(&rows, column).map_err(|m| error(span, "values", format!("{name}: {m}")))?;
     let image = Image { name: "chart".into(), format: ImageFormat::Svg, bytes: svg(&vs).into_bytes() };
     Ok((ir::figure(span, "chart", alt, req.body.clone()), image))
 }
@@ -200,11 +200,11 @@ mod tests {
     #[test]
     fn the_errors_of_a_call() {
         let code = |args: Vec<Arg>, tsv: &[u8]| chart(&request(args, tsv)).expect_err("a chart").code;
-        assert_eq!(code(vec![alt()], b"m\tv\n"), "bar-chart-name");
-        assert_eq!(code(vec![named("sales")], b"m\tv\n"), "bar-chart-alt");
-        assert_eq!(code(vec![named("costs"), alt()], b"m\tv\n"), "bar-chart-no-data");
-        assert_eq!(code(vec![named("sales"), alt()], b"m\tv\na\tx\n"), "bar-chart-values");
-        assert_eq!(code(vec![named("sales"), alt(), Arg::Keyword("color".into(), ArgValue::Str("red".into()))], b"m\tv\n"), "bar-chart-key");
-        assert_eq!(code(vec![named("sales"), alt()], b"\xff"), "bar-chart-tsv");
+        assert_eq!(code(vec![alt()], b"m\tv\n"), "name");
+        assert_eq!(code(vec![named("sales")], b"m\tv\n"), "alt");
+        assert_eq!(code(vec![named("costs"), alt()], b"m\tv\n"), "no-data");
+        assert_eq!(code(vec![named("sales"), alt()], b"m\tv\na\tx\n"), "values");
+        assert_eq!(code(vec![named("sales"), alt(), Arg::Keyword("color".into(), ArgValue::Str("red".into()))], b"m\tv\n"), "key");
+        assert_eq!(code(vec![named("sales"), alt()], b"\xff"), "tsv");
     }
 }

@@ -348,7 +348,7 @@ pluginFigureTests =
     testCase "the errors of the plugin give no figure" $
       withBarChart "@bar-chart sales\n" $ \tmp -> do
         e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
-        map diagCode (evDiagnostics e) @?= [DiagnosticCode "bc/bar-chart-alt"],
+        map diagCode (evDiagnostics e) @?= [DiagnosticCode "bc/alt"],
     testCase "G08102: a figure of the source where HTML and EPUB put the images of plugins" $
       withBarChart "# 章\n\n@figure ./images/golem-plugin/x.svg alt=x\n" $ \tmp -> do
         writeFiles tmp [("images/golem-plugin/x.svg", chartSvg)]
