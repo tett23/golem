@@ -1959,31 +1959,35 @@ lines の範囲がファイルの行を外れています
 
 ## G02052
 
-@manifest か @style-def の引数の形が誤っています
+@manifest か @style-def の位置引数の数が誤っています
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@manifest` か `@style-def` の引数の形が誤っている。
-位置引数の数の誤り、未知の種類、本体がある、`@manifest` に引数がない、同じキーを二度書いた、値が語と文字列のほか（`[= ...]` など）のいずれかである。
+`@manifest` か `@style-def` に書いた位置引数の数が、コマンドの取る数と違う（[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)）。
+`@manifest` は位置引数を取らず、`@style-def` は二つ（種類と名前）を取る。
+位置は、余分な位置引数のそれぞれである。
+足りないときは、コマンドの行である。
 誤りのある `@manifest` の引数はその引数だけを無視し、誤りのある `@style-def` は定義の全体を捨てる。
 
-- メッセージ: `@manifest には key=value だけを書きます`、`@style-def には種類（character、paragraph、regex）と名前を書きます`、`値は語か文字列で書きます`、`同じキーを二度書いています: <キー>`
+ほかの誤りは、原因ごとのコードになる。
+未知の種類は [G02117](#g02117)、展開する引数は [G02114](#g02114)、本体は [G02097](#g02097)、引数のない `@manifest` は [G02115](#g02115)、同じキーは [G02077](#g02077)、語と文字列のほかで書いた値か位置引数は [G02116](#g02116) である。
+
+- メッセージ: `@manifest には key=value だけを書きます`、`@style-def には種類（character、paragraph、regex）と名前を書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`）
-- ADR: [docs/adr/0014](adr/0014-in-file-settings.md)
+- ADR: [docs/adr/0014](adr/0014-in-file-settings.md)、[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)
 
 ### 主な原因
 
 - `@style-def` の種類か名前を書き忘れた。
-- 一つのスタイルの欄を、字下げした続きの行に書いた。
-- 値を式で書いた。
+- `@style-def` の名前の後に、もう一つ語を書いた。
+- `@manifest` に、`key=value` の形でない語を書いた。
 
 ### 直し方
 
-メッセージの示す形に直す。
-一つのスタイルは一行の `@style-def` で定義し、値は語か文字列で書く。
+`@manifest` には `key=value` だけを書き、`@style-def` には種類と名前を一つずつ書く。
 
 ## G02053
 
@@ -2695,7 +2699,8 @@ PNG、JPEG、SVG の図版からは、`page` を消す。
 コマンドのキーワード引数の並びで、同じキーが二度以上出た。
 二度めから後の引数はどれも捨て、最初に書いたものだけを使う。
 検査は、インラインのコマンド（組み込みとプラグイン）、ブロックコマンド、コードブロックの開始の行と `@listing` に当てる。
-`@manifest` と `@style-def` は設定であり、同じキーを G02052 にする。
+`@manifest` と `@style-def` にも当てる（[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)）。
+`@manifest` では重なったキーを一つも適用せず、`@style-def` では定義の全体を捨てる。
 位置は、二度めから後のそれぞれの引数の全体である。
 `**[式]` を展開したキーが、前のキーワード引数か前の展開のキーと重なるときもこの誤りとする（[docs/adr/0112](adr/0112-spread-arguments.md)）。
 展開したキーの位置は、その `**[...]` である。
@@ -3265,7 +3270,7 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 - メッセージ: `<名前> は引数を取りません`。`<名前>` は `@` を付けたコマンドの名前である。
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
+- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)、[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)
 
 ### 主な原因
 
@@ -3287,7 +3292,8 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 本体を持てないブロックコマンドの次の行を字下げし、本体を書いた。
 コマンドは何も組まない。
 位置は本体の最初のブロックである。
-対象は `@page-break`、`@column-break`、`@no-page-break`、`@need-lines`、`@page-lines`、`@printings` である。
+対象は `@page-break`、`@column-break`、`@no-page-break`、`@need-lines`、`@page-lines`、`@printings`、`@manifest`、`@style-def` である（`@manifest` と `@style-def` は [docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)）。
+`@manifest` はその `@manifest` を無視し、`@style-def` は定義の全体を捨てる。
 引数も誤っていれば、引数の誤りのコードの後に出る。
 
 - メッセージ: `<名前> は本体を持てません`。`<名前>` は `@` を付けたコマンドの名前である。
@@ -3756,6 +3762,84 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 ### 直し方
 
 引数を展開せずに、そのまま書く（`@style note`）。
+
+## G02115
+
+@manifest に引数がありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@manifest` にキーワード引数が一つもない（[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)）。
+その `@manifest` は無視する。
+位置はコマンドの行である。
+
+- メッセージ: `@manifest には key=value を一つ以上書きます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)
+
+### 主な原因
+
+- 上書きする設定を書き忘れた。
+
+### 直し方
+
+`@manifest paragraph-separator=line` のように、上書きする設定を書くか、`@manifest` の行を消す。
+
+## G02116
+
+値は語か文字列で書きます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@manifest` か `@style-def` の値か位置引数を、語と文字列のほか（`[= ...]` など）で書いた（[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)）。
+ファイルの設定は評価の前に読むので、式を受け取らない。
+`@style-def` の種類を式で書いたときも、未知の種類（[G02117](#g02117)）ではなくこのコードである。
+誤りのある `@manifest` の引数はその引数だけを無視し、誤りのある `@style-def` は定義の全体を捨てる。
+位置はその引数である。
+
+- メッセージ: `値は語か文字列で書きます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)
+
+### 主な原因
+
+- `@style-def paragraph a font=[= "x"]` のように、値を式で書いた。
+
+### 直し方
+
+値を語か文字列で書く（`font="x"`）。
+
+## G02117
+
+未知のスタイルの種類です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@style-def` の種類が `character`、`paragraph`、`regex` のどれでもない（[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)）。
+その定義の全体を捨てる。
+位置は種類の引数である。
+
+- メッセージ: `未知のスタイルの種類です: <種類>。character、paragraph、regex のどれかを書きます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)
+
+### 主な原因
+
+- 種類の綴りを誤った。
+- 種類を書かずに、名前から書いた。
+
+### 直し方
+
+種類に `character`、`paragraph`、`regex` のどれかを書く。
 
 ## G03001
 

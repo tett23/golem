@@ -403,9 +403,17 @@ G03010、G05004、G08100 は、[code: --profile dev] では警告、[code: --pro
 = [strong: G02051 [code: paragraph-separator は "blank-line" か "line" です: …]]
   [code: @manifest] の値を [code: blank-line] か [code: line] にしてください。
 = [strong: G02052 [code: @style-def には種類（character、paragraph、regex）と名前を書きます]] など
-  [code: @manifest] か [code: @style-def] の書き方が違います。
-  メッセージの示す形に直してください。
-  値は語か文字列で書き、一つのスタイルは一行で定義します。
+  [code: @manifest] か [code: @style-def] の位置引数の数が違います。
+  [code: @manifest] には [code: キー=値] だけを、[code: @style-def] には種類と名前を一つずつ書いてください。
+= [strong: G02115 [code: @manifest には key=value を一つ以上書きます]]
+  [code: @manifest] に、上書きする設定がありません。
+  [code: @manifest paragraph-separator=line] のように書くか、行を消してください。
+= [strong: G02116 [code: 値は語か文字列で書きます]]
+  [code: @manifest] か [code: @style-def] の値を、[code: \[= ...\]] のような式で書いています。
+  値は語か文字列で書いてください。
+= [strong: G02117 [code: 未知のスタイルの種類です: …]]
+  [code: @style-def] の種類が、[code: character]、[code: paragraph]、[code: regex] のどれでもありません。
+  綴りを直してください。
 = [strong: G02053 [code: 同じ名前のスタイルを二度定義しています: …]]
   同じファイルで、同じ種類の同じ名前を二度 [code: @style-def] しています。
   一行にまとめてください。

@@ -364,6 +364,7 @@ paragraph-separator = "line"
 一つのファイルに適用される値は、ファイルの中の上書き（`@manifest`）、章の項目、`[source]`、既定の順で、最初に見つかったものとする。
 `@import` でだけ参照されるファイルには、そのファイルの `@manifest` か `[source]` の値が適用され、取り込む側には及ばない。
 `@manifest` で上書きできないキー（`title` など）は G02050、不正な値は G02051 とする。
+`@manifest` と `@style-def` の引数の誤りは原因ごとのコードとし、位置引数の数の誤りだけを G02052 とする（[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)）。
 
 既定を空行の様式とするのは、既存の原稿の出力を変えないためである。
 `[metadata]` の `language` からは推定しない。
