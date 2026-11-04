@@ -3030,7 +3030,7 @@ TSV は UTF-8 で、先頭の BOM を飛ばし、LF か CRLF の行を読み、�
 字下げした行がキャプションになる。
 文字を輪郭にしないと G08011 になるので、文字を描かない。
 座標は整数の演算で決めるので、同じデータからは同じバイト列の SVG になる。
-誤りは、プラグインのコード `bar-chart-name`、`bar-chart-alt`、`bar-chart-key`、`bar-chart-no-data`、`bar-chart-tsv`、`bar-chart-values` で、呼び出しの位置に出す。
+誤りは、プラグインのコード `name`、`alt`、`key`、`no-data`、`tsv`、`values`（宣言の名前を前に付けて `bar-chart/alt` などと表示する）で、呼び出しの位置に出す。
 
 `glossary` は、用語集を組む（[docs/adr/0126](adr/0126-glossary-plugin.md)）。
 コマンド `term`、読みの順で `locators` が真のチャネル `glossary`、データ `terms` を宣言する。
