@@ -14,6 +14,9 @@ module Golem.Eval.Expr
     digitsDiagnostic,
     rangeEndDiagnostic,
     valueText,
+    BinaryOp (..),
+    binaryAt,
+    divAt,
   )
 where
 
@@ -189,6 +192,17 @@ digitsDiagnostic f d v
 -- | The order of two numbers, by their values whatever their types.
 compareNum :: Value -> Value -> Maybe Ordering
 compareNum a b = compare . snd <$> numberOf a <*> (snd <$> numberOf b)
+
+{- | A binary operator of the expression context on two values, with its
+diagnostics at a span: the numeric rules shared with the functions of
+.gmx (docs/adr/0148).
+-}
+binaryAt :: SrcSpan -> BinaryOp -> Value -> Value -> Either Diagnostic Value
+binaryAt sp = binary (Located sp ENil)
+
+-- | @div@ of the expression context on two values, as 'binaryAt'.
+divAt :: SrcSpan -> Value -> Value -> Either Diagnostic Value
+divAt sp a b = call (Located sp ENil) "div" [a, b]
 
 binary :: Located Expr -> BinaryOp -> Value -> Value -> Eval Value
 binary le op x y = case op of

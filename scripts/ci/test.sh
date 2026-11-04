@@ -983,13 +983,26 @@ if grep -n 'Save dist-newstyle' -A 1 "$CI_YML" | grep -q 'matrix.tests'; then ng
 # ---------------------------------------------------------------- ci.yml and the caches of GHC and the index
 # (docs/adr/0141-smaller-ghc-and-hackage-index-caches.md)
 
-# the Hackage index is cached without 01-index.tar.gz, which cabal does not
-# read to plan a build, under a key of its own
-if step_has "name: Cache the Hackage index" '            ~/.cabal/packages/hackage.haskell.org' &&
-  step_has "name: Cache the Hackage index" '            !~/.cabal/packages/hackage.haskell.org/01-index.tar.gz' &&
-  step_has "name: Cache the Hackage index" "key: hackage-index-tar-\${{ hashFiles('cabal.project.freeze') }}"; then ok; else
-  ng "ci.yml: the Hackage index is cached without 01-index.tar.gz under hackage-index-tar-"
+# the Hackage index is cached as one directory, and the step of cabal
+# update removes 01-index.tar.gz before the cache is saved at the end of
+# the job: a line with ! in the path of actions/cache took nothing out
+# (docs/adr/0152)
+INDEX_STEP="name: Cache the Hackage index"
+if step_has "$INDEX_STEP" '          path: ~/.cabal/packages/hackage.haskell.org' &&
+  ! step_has "$INDEX_STEP" '!~/.cabal' &&
+  step_has "$INDEX_STEP" "key: hackage-index-no-gz-\${{ hashFiles('cabal.project.freeze') }}"; then ok; else
+  ng "ci.yml: the Hackage index is cached as one directory under hackage-index-no-gz-"
 fi
+UPDATE_STEP="- if: steps.index.outputs.cache-hit != 'true'"
+UPD_AT=$(build_lines | grep -nF -- "$UPDATE_STEP" | head -1 | cut -d: -f1)
+if [ -n "$UPD_AT" ] && build_lines | sed -n "$UPD_AT,\$p" | awk 'NR > 1 && /^      - / { exit } { print }' >"$WORK/update-step" &&
+  grep -n 'cabal update' "$WORK/update-step" >/dev/null &&
+  [ "$(grep -n '^ *cabal update$' "$WORK/update-step" | cut -d: -f1)" -lt "$(grep -n '^ *rm ~/.cabal/packages/hackage.haskell.org/01-index.tar.gz$' "$WORK/update-step" | cut -d: -f1)" ]; then ok; else
+  ng "ci.yml: the step of cabal update removes 01-index.tar.gz after cabal update"
+fi
+# a ! line works in actions/cache only with patterns of single files, which
+# no check of the path catches: no step of actions/cache has one
+if grep -n -A6 'uses: actions/cache' "$CI_YML" | grep -Eq '^[0-9]+-\s+!'; then ng "ci.yml: no path of actions/cache has a line with !"; else ok; fi
 # GHC is cached without its documentation and its libraries for profiling
 if step_has "name: Cache GHC" 'key: ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-slim'; then ok; else
   ng "ci.yml: the key of the cache of GHC ends in -slim"
@@ -1008,6 +1021,23 @@ SLIM_AT=$(build_lines | grep -nF "$SLIM_STEP" | head -1 | cut -d: -f1)
 CBUILD_AT=$(build_lines | grep -n -- '- id: build$' | head -1 | cut -d: -f1)
 if [ -n "$SETUP_AT" ] && [ -n "$SLIM_AT" ] && [ -n "$CBUILD_AT" ] && [ "$SETUP_AT" -lt "$SLIM_AT" ] && [ "$SLIM_AT" -lt "$CBUILD_AT" ]; then ok; else
   ng "ci.yml: the files of GHC are removed after haskell-actions/setup and before cabal build"
+fi
+
+# ---------------------------------------------------------------- ci.yml and the times of setup-config
+# (docs/adr/0147-touch-setup-config-after-restoring-dist.md)
+
+# the setup-config of the restored dist-newstyle are made newer than the
+# .cabal files of the checkout, after the restore and before cabal build,
+# so that Setup does not configure every test suite again
+TOUCH_STEP="name: The setup-config of dist-newstyle newer than the .cabal files"
+if step_has "$TOUCH_STEP" 'find dist-newstyle -name setup-config -exec touch {} +'; then ok; else
+  ng "ci.yml: a step touches the setup-config of dist-newstyle"
+fi
+RESTORE_AT=$(build_lines | grep -n 'name: Restore dist-newstyle' | head -1 | cut -d: -f1)
+TOUCH_AT=$(build_lines | grep -nF "$TOUCH_STEP" | head -1 | cut -d: -f1)
+CB_AT=$(build_lines | grep -n -- '- id: build$' | head -1 | cut -d: -f1)
+if [ -n "$RESTORE_AT" ] && [ -n "$TOUCH_AT" ] && [ -n "$CB_AT" ] && [ "$RESTORE_AT" -lt "$TOUCH_AT" ] && [ "$TOUCH_AT" -lt "$CB_AT" ]; then ok; else
+  ng "ci.yml: the setup-config are touched after Restore dist-newstyle and before cabal build"
 fi
 
 # ---------------------------------------------------------------- release.yml and mise.toml

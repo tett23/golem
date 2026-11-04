@@ -237,18 +237,23 @@ jobs:
           fi
           echo "$GHC_DIR/bin" >> "$GITHUB_PATH"
       # without 01-index.tar.gz: cabal plans a build from 01-index.tar and
-      # its indices, and the compressed copy does not shrink in the cache
-      # (docs/adr/0141)
+      # its indices, and the compressed copy does not shrink in the cache.
+      # The step of cabal update removes it, and the cache is saved at the
+      # end of the job; a line with ! in the path took nothing out
+      # (docs/adr/0141, docs/adr/0152)
       - id: index
-        name: Cache the Hackage index (docs/adr/0009, docs/adr/0141)
+        name: Cache the Hackage index (docs/adr/0009, docs/adr/0141, docs/adr/0152)
         uses: actions/cache@v6
         with:
-          path: |
-            ~/.cabal/packages/hackage.haskell.org
-            !~/.cabal/packages/hackage.haskell.org/01-index.tar.gz
-          key: hackage-index-tar-${{ hashFiles('cabal.project.freeze') }}
+          path: ~/.cabal/packages/hackage.haskell.org
+          key: hackage-index-no-gz-${{ hashFiles('cabal.project.freeze') }}
+      # rm without -f: if cabal names the file otherwise, the step fails
       - if: steps.index.outputs.cache-hit != 'true'
-        run: cabal update
+        run: |
+          cabal update
+          ls -l ~/.cabal/packages/hackage.haskell.org/01-index.tar.gz
+          rm ~/.cabal/packages/hackage.haskell.org/01-index.tar.gz
+          du -sh ~/.cabal/packages/hackage.haskell.org
       - name: Cache the cabal store
         uses: actions/cache@v6
         with:
@@ -261,6 +266,15 @@ jobs:
           path: dist-newstyle
           key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ github.sha }}
           restore-keys: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-
+      # Setup configures a component again when its .cabal file is newer
+      # than its setup-config, by the times alone. The .cabal files of the
+      # checkout are always newer than the restored setup-config, so cabal
+      # test configured and linked every test suite again before running
+      # it. cabal-install still sees a changed .cabal file by its content
+      # (docs/adr/0147)
+      - name: The setup-config of dist-newstyle newer than the .cabal files (docs/adr/0147)
+        run: |
+          if [ -d dist-newstyle ]; then find dist-newstyle -name setup-config -exec touch {} +; fi
       - name: wasmtime C API (golem-plugin ADR 0001)
         run: scripts/fetch-wasmtime.sh
       - id: cddl
@@ -333,7 +347,7 @@ jobs:
         if: matrix.tests && matrix.suites != 'driver'
         run: |
           scripts/gen-parser.sh
-          git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs
+          git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs modules/golem-gmx/src/Golem/Gmx/Generated.hs
       - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
         if: matrix.outputs || matrix.env
         uses: actions/cache@v6
@@ -599,11 +613,12 @@ jobs:
             modules/**/*.hs
             !modules/golem-parser/src/Golem/Parser/Generated.hs
             !modules/golem-parser/test/StrippedGrammar.hs
+            !modules/golem-gmx/src/Golem/Gmx/Generated.hs
       # the release of hlint, not a build of it with GHC (docs/adr/0009)
       - name: hlint 3.10
         run: sh scripts/ci/fetch-hlint.sh
       # -j checks the files on every core of the runner (docs/adr/0037)
-      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs"'
+      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs" --ignore-glob="modules/golem-gmx/src/Golem/Gmx/Generated.hs"'
 
   # The sample plugins and their helper crate (docs/adr/0106): the tests of
   # the crates, and the committed plugins/wasm/*.wasm are the bytes the

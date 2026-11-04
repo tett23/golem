@@ -164,6 +164,7 @@ golem-font は長さを持たず、位置と寸法をフォントの単位で返
 golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
 golem-svg は base、bytestring、containers、text だけに依存し、SVG の図版を PDF に描ける形に読む（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、仕様は [golem-svg の仕様書](golem-svg/specifications.md)）。
 golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画に直す。
+golem-gmx は関数を書く言語 `.gmx` の読み込み、型の検査、評価、整形を持ち、数の演算を golem-eval と共有する（[docs/adr/0148](adr/0148-gmx-function-language-core.md)、仕様は [golem-gmx の仕様書](golem-gmx/specifications.md)）。
 golem-html は golem-project に依存せず、golem-driver が `style.toml` の値を golem-html の設定の型に直す（[ADR 0090](adr/0090-html-settings-conversion-stays-in-driver.md)）。
 ほかの依存を通して届く依存の矢印も省いている。
 PDF 経路のモジュールだけが、レイアウト IR、シェイピング[^shaping]、フォントのサブセット化[^subset]を扱う。
@@ -181,6 +182,7 @@ flowchart TD
     regex["golem-regex<br/>正規表現スタイルの照合器"]
     parser["golem-parser<br/>PEG パーサー"]
     eval["golem-eval<br/>式の評価とプラグインの展開"]
+    gmx["golem-gmx<br/>関数の言語 .gmx"]
     doc["golem-doc<br/>意味論 IR と文書構造（S1）の集約"]
     syntax["golem-syntax<br/>diagnostic とソース位置（最下層）"]
     length["golem-length<br/>長さの型と単位の変換（最下層）"]
@@ -203,6 +205,7 @@ flowchart TD
     doc --> parser
     driver --> epub
     driver --> font
+    driver --> gmx
     driver --> layout
     driver --> layoutspec
     driver --> lint
@@ -214,6 +217,7 @@ flowchart TD
     epub --> html
     eval --> project
     fmt --> parser
+    gmx --> eval
     html --> doc
     layout --> project
     layoutspec --> pdf
@@ -2820,6 +2824,47 @@ S1 は、一覧ごとに、キーが同じ項目を一つのエントリにま�
 
 エントリのない一覧は、PDF とプレーンテキストでは何も出さず、HTML と EPUB では空の `<ul>` を持つ `<section>` を出す。
 一覧は目次と EPUB のナビゲーション文書に入れない。
+
+## 関数
+
+書き手は、関数を言語 `.gmx` で書ける（[docs/adr/0148](adr/0148-gmx-function-language-core.md)）。
+言語の規則と組み込みのモジュールは [golem-gmx の仕様書](golem-gmx/specifications.md) に書く。
+
+関数のファイルと、関数に許す要求と、関数に読ませるデータは、`manifest.toml` の `[functions]` に書く（[docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md)）。
+
+```toml
+[functions]
+files = ["functions/book.gmx"]
+requires = ["file"]
+
+[functions.data]
+words = "data/words.tsv"
+```
+
+- `files` は関数のファイルの一覧である。そこから `import` で読む `.gmx` は書かなくてよい。
+- `requires` は関数に許す要求の一覧で、省けば空である。要求は今は `file` だけで、ほかの名前は G03101 とする。
+- `[functions.data]` は、`File.read` に渡す名前から、ルートからのパスへの表である。名前は英小文字で始め、英小文字、数字、`-` だけで書く。
+
+関数は、シグネチャの `=>` の後ろに要求を書く（`read :: String -> String => file;`）。
+`files` からたどれるすべての関数の要求が `requires` になければ、G10505 とする。
+`requires` を `manifest.toml` にも書かせるのは、関数が何を読むかを、`.gmx` を開かずにプロジェクトの設定だけで確かめられるようにするためである。
+
+読み込みの時点で、次のことを検査する。
+原稿が関数を呼ばない本でも検査するのは、誤りが見えるかどうかを、原稿に呼び出しを書いたかどうかで変えないためである。
+
+- `files` と `[functions.data]` のファイルがなければ G03102、ルートの外を指せば G03003 とする。
+- `[functions.data]` の大きさの合計は、プラグインのデータと同じく 64 MiB までで、超えれば G03103 とする。
+- `[functions.data]` があるのに `requires` に `file` がなければ G03104 とする。
+- `.gmx` の構文、名前、型、パターンの誤り（G101xx から G105xx）。
+
+要求 `file` のハンドラは driver が持つ。
+ハンドラは読み込みの時点で `[functions.data]` のファイルをすべて読み、評価のあいだはその値だけを返す。
+評価の途中でファイルシステムに触れないので、評価は純粋であり、ファイルを並列に評価できる。
+`File.read` はファイルの中身を UTF-8 の文字列で返し、先頭の BOM を読み飛ばし、CRLF を LF にする。
+`[functions.data]` にない名前は G10503、UTF-8 として読めないファイルは G10504 とする。
+LSP は `files` からたどれる `.gmx` と `[functions.data]` のファイルを、表のファイルと同じ仕組みで監視し、変われば評価し直す。
+
+今は、`.gm` から関数を呼ぶ手段はない。
 
 ## プラグイン
 
