@@ -3194,7 +3194,13 @@ path = "plugins/local.wasm"
 - 位置は、出力のノードと同じく、呼び出しの位置か、要求に含まれていたノードの位置に限る。フィルタの diagnostic は、要求の文書のファイルの先頭（長さ 0 の位置）も指してよい。データの誤りのように、どのノードにも属さない誤りを報告するためである。ほかの位置は不正な出力（G06009）にする。
 - `golem explain` にプラグインのコードを渡すと、説明が golem にないことを一行で標準出力に書き、終了コード 0 で終わる。
   `/` を含む引数のうち、`/` をちょうど一つ含み、`/` の前が空でなく空白を含まず、`/` の後が上のコードの形のものをプラグインのコードとする。`/` の前の名前の形は検査しない。
-  `/` を含み、この形でない引数（`x/404`、`x/-`、`lookup/No-key` など）は、`プラグインの診断のコードの形が不正です: <引数>。/ の後は英小文字で始まり、英小文字、数字、- だけからなります` の一行を標準エラー出力に書き、使い方の誤り（終了コード 2）とする。形の判定は golem-plugin の規則をそのまま使う（[docs/adr/0151](adr/0151-explain-uses-plugin-code-rule.md)）。
+  `/` を含み、この形でない引数は、使い方の誤り（終了コード 2）とし、標準エラー出力に一行を書く。形の判定は golem-plugin の規則をそのまま使う（[docs/adr/0151](adr/0151-explain-uses-plugin-code-rule.md)）。
+  一行は、次の順に検査して最初に当たったものの文とする。前半の `プラグインの診断のコードの形が不正です: <引数>。` は共通で、後半が直す場所を示す（[docs/adr/0164](adr/0164-explain-dedup-and-plugin-code-messages.md)）。
+  1. `/` を二つ以上含む（`a/b/c` など）：`/ は一つだけです`
+  2. `/` の前が空か、空白を含む（`/a`、`x /a` など）：`/ の前はプラグインの宣言の名前で、空でなく、空白を含みません`
+  3. `/` の後が上のコードの形でない（`x/404`、`x/-`、`lookup/No-key` など）：`/ の後は英小文字で始まり、英小文字、数字、- だけからなります`
+
+  二つ以上に当たる引数（`x y/A` など）は、最初の一つの文だけを書く。
 
 `plugins.lock` が TOML として読めない誤り（G06011）は `plugins.lock` の中の位置を指し、プラグインの実行の失敗（G06009）はコマンドを呼んだ箇所かフィルタを適用したファイルの先頭を指す。
 そのほかは `manifest.toml` の先頭を指し、メッセージにプラグインの名前を書く。
@@ -3218,7 +3224,7 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得し、キャッシュする |
 | `golem plugin lock` | `plugins.lock` を更新する |
 | `golem inspect <file> [--as cst\|ast\|ir\|cbor]` | CST、AST、意味論 IR を人が読む木の形で、または意味論 IR の CBOR を表示する（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)） |
-| `golem explain [CODE...]` | diagnostic のコードの説明を表示する。コードを省くと、すべてのコードと題を一行ずつ表示する。複数のコードを渡すと、節をコマンドラインの順に、空行一つで区切って標準出力に書く。大文字に直して同じになるコードは最初のものだけを扱う。未知のコードと形の誤り（4 桁のコードと、プラグインのコードの形の誤りを含む）は、正しいコードの節を書いた後に、一つずつ一行で標準エラー出力に書き、使い方の表示は書かず、使い方の誤りとして終了コードを 2 とする（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)、[golem-cli ADR 0009](golem-cli/adr/0009-explain-several-codes.md)、[docs/adr/0151](adr/0151-explain-uses-plugin-code-rule.md)） |
+| `golem explain [CODE...]` | diagnostic のコードの説明を表示する。コードを省くと、すべてのコードと題を一行ずつ表示する。複数のコードを渡すと、節をコマンドラインの順に、空行一つで区切って標準出力に書く。Golem のコードは大文字に直して同じになるものを、プラグインのコードは綴りが同じものを、最初のものだけ扱う。未知のコードと形の誤り（4 桁のコードと、プラグインのコードの形の誤りを含む）は、正しいコードの節を書いた後に、一つずつ一行で標準エラー出力に書き、使い方の表示は書かず、使い方の誤りとして終了コードを 2 とする（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)、[golem-cli ADR 0009](golem-cli/adr/0009-explain-several-codes.md)、[docs/adr/0151](adr/0151-explain-uses-plugin-code-rule.md)、[docs/adr/0164](adr/0164-explain-dedup-and-plugin-code-messages.md)） |
 | `golem --version` | `golem` にバージョンを続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
 
 `golem new` での `id` の生成が、Golem が乱数を使う唯一の箇所である。

@@ -158,17 +158,31 @@ checkCode s
 (docs/adr/0108): @Just (Right line)@, one line that golem has no section
 for it, when the part after the / is of the form of docs/adr/0139
 ('pluginCodeForm'), and @Just (Left message)@ otherwise (docs/adr/0151).
+The message names the first place that is wrong, in the order the number of
+/, the part before it, the part after it (docs/adr/0164).
 An argument without a / is a code of Golem: 'Nothing'.
 -}
 pluginCode :: T.Text -> Maybe (Either T.Text T.Text)
 pluginCode s
   | not (T.any (== '/') s) = Nothing
-  | [name, c] <- T.splitOn "/" s,
-    not (T.null name),
-    not (T.any isSpace name),
-    pluginCodeForm c =
-      Just (Right (s <> ": プラグインの診断のコードです。説明は golem にはないので、プラグインの文書を参照してください"))
-  | otherwise = Just (Left ("プラグインの診断のコードの形が不正です: " <> s <> "。/ の後は英小文字で始まり、英小文字、数字、- だけからなります"))
+  | [name, c] <- T.splitOn "/" s = Just (check name c)
+  | otherwise = Just (Left (bad "/ は一つだけです"))
+  where
+    check name c
+      | T.null name || T.any isSpace name = Left (bad "/ の前はプラグインの宣言の名前で、空でなく、空白を含みません")
+      | not (pluginCodeForm c) = Left (bad "/ の後は英小文字で始まり、英小文字、数字、- だけからなります")
+      | otherwise = Right (s <> ": プラグインの診断のコードです。説明は golem にはないので、プラグインの文書を参照してください")
+    bad why = "プラグインの診断のコードの形が不正です: " <> s <> "。" <> why
+
+{- | The key by which golem explain drops a repeated argument: a code of
+Golem in upper case, as it is in any case (golem-cli ADR 0009), and a code
+of a plugin as it is spelled, as its check tells the cases apart
+(docs/adr/0164). Two arguments of one key are checked alike.
+-}
+dedupKey :: T.Text -> T.Text
+dedupKey s
+  | T.any (== '/') s = s
+  | otherwise = T.toUpper s
 
 commands :: Parser Command
 commands =
@@ -241,9 +255,9 @@ run = \case
   Explain code -> explain code
 
 {- | golem explain (golem-cli ADR 0005, 0009): the sections of the codes in
-the order given, each once, a blank line between them, and then one line on
-stderr for each bad code, which makes the exit code 2; or every code with
-its title.
+the order given, each once (by 'dedupKey', docs/adr/0164), a blank
+line between them, and then one line on stderr for each bad code, which
+makes the exit code 2; or every code with its title.
 -}
 explain :: [T.Text] -> IO ExitCode
 explain = \case
@@ -253,7 +267,7 @@ explain = \case
     pure ExitSuccess
   args -> do
     -- a code of a plugin is not one of Golem: the line of pluginCode (docs/adr/0108, 0151)
-    let (bad, good) = partitionEithers [maybe (Right <$> checkCode a) (fmap Left) (pluginCode a) | a <- nubOrdOn T.toUpper args]
+    let (bad, good) = partitionEithers [maybe (Right <$> checkCode a) (fmap Left) (pluginCode a) | a <- nubOrdOn dedupKey args]
         bodies = [either id (maybe "" exBody . (`Map.lookup` catalog)) c | c <- good]
     unless (null bodies) (TIO.putStrLn (T.intercalate "\n\n" bodies))
     hFlush stdout
