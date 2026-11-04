@@ -5226,8 +5226,9 @@ plugins.lock にないプラグインです
 位置は `manifest.toml` の先頭である。
 理由の文言は次のいずれかで、[G06009](#g06009) と共有する。
 `プラグインを読み込めません: <詳細>`、`プラグインが import を要求しています: <import の一覧>`、`プラグインの ABI のバージョンが異なります: <バージョン>`、`プラグインが関数を公開していません: <関数>`、`プラグインの実行が命令数の上限を超えました`、`プラグインの実行が失敗しました（メモリの上限を超えた場合を含む）: <詳細>`、`プラグインを起動できません: <詳細>`（テーブルの要素の数の上限 100 万を超えるモジュールを含む）、`プラグインの出力が不正です: <詳細>`（`<関数名> の戻り値の型が不正です` を含む。[docs/adr/0035](adr/0035-security-hardening.md)）
-`golem_describe` の応答は、コマンド、フィルタ、チャネルの三つの欄を持つ（[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）。
-二つの欄の応答は `golem_describe の形が不正です`、チャネルの宣言の形の誤りは `チャネルの宣言の形が不正です` になる。
+`golem_describe` の応答は、欄の名前（`commands`、`filters`、`channels`、`data`）から配列へのマップである（[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)、[docs/adr/0105](adr/0105-plugin-data.md)、[docs/adr/0107](adr/0107-named-describe-fields.md)）。
+マップでない応答、長さの決まっていないマップ、テキスト文字列でないキーは `golem_describe の形が不正です`、未知の欄は `golem_describe に未知の欄があります: <名前>`、二度書いた欄は `golem_describe の欄が重複しています: <名前>`、配列でない欄の値は `golem_describe の欄の形が不正です: <名前>` になる。
+チャネルの宣言の形の誤りは `チャネルの宣言の形が不正です`、データの名前の誤りは `データの名前が不正です: <名前>` と `データの名前が重複しています: <名前>` になる。
 
 - メッセージ: `<名前>: <理由>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）

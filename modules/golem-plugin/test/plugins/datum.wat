@@ -7,8 +7,8 @@
 (module
   (memory (export "memory") 2)
   (global $heap (mut i32) (i32.const 65536))
-  ;; [["datum"], [], [], ["table"]]
-  (data (i32.const 16) "\84\81\65datum\80\80\81\65table")
+  ;; {"data": ["table"], "commands": ["datum"]}
+  (data (i32.const 16) "\a2\64data\81\65table\68commands\81\65datum")
   ;; the pair the request carries the data in
   (data (i32.const 64) "\82\65table")
   ;; [[], [["datum-no-table", 0, [0, 0, 0], "no table"]]]
@@ -27,7 +27,7 @@
   (func (export "golem_abi_version") (result i32) (i32.const 8))
   (func (export "golem_dealloc") (param i32 i32))
   (func (export "golem_describe") (result i64)
-    (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 17)))
+    (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 29)))
   ;; the 7 bytes at $at are the pair's head
   (func $isPair (param $at i32) (result i32) (local $i i32)
     (block $no

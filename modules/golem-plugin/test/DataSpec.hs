@@ -2,7 +2,7 @@
 plugin takes, from the fourth list of its description, and the data at
 the end of every request.
 -}
-module DataSpec (dataTests) where
+module DataSpec (dataTests, describeTests) where
 
 import Codec.CBOR.Read (deserialiseFromBytes)
 import Codec.CBOR.Term (Term (..), decodeTerm, encodeTerm)
@@ -15,6 +15,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
+import Golem.Doc.Assemble (ChannelDecl (..))
 import Golem.Doc.Cbor (documentTerm)
 import Golem.Doc.IR hiding (abiVersion)
 import Golem.Plugin
@@ -47,7 +48,7 @@ describing describe = do
   loadPlugin wasm
 
 withDataNames :: [Text] -> Term
-withDataNames ns = TList [TList [TString "shout"], TList [], TList [], TList (map TString ns)]
+withDataNames ns = TMap [(TString "commands", TList [TString "shout"]), (TString "data", TList (map TString ns))]
 
 echo :: IO Plugin
 echo = do
@@ -76,8 +77,9 @@ dataTests =
     [ testCase "the fourth list of the description is the names of the data the plugin takes" $ do
         p <- describing (withDataNames ["table", "dict"]) >>= either (assertFailure . show) pure
         pluginDataNames p @?= ["table", "dict"],
-      testCase "a description of three lists is bad output" $
-        describing (TList [TList [TString "shout"], TList [], TList []]) >>= (@?= Left (BadOutput "golem_describe の形が不正です")) . void,
+      testCase "a description without data takes no data" $ do
+        p <- describing (TMap [(TString "commands", TList [TString "shout"])]) >>= either (assertFailure . show) pure
+        pluginDataNames p @?= [],
       testCase "a name of data that is not a lowercase name is bad output" $
         mapM_
           (\n -> describing (withDataNames [n]) >>= (@?= Left (BadOutput ("データの名前が不正です: " <> n))) . void)
@@ -101,4 +103,46 @@ dataTests =
         p <- withPluginData (Map.fromList [("dict", "x")]) <$> echo
         let doc = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])]
         filterRequest p "f" doc @?= cbor (TList [TInt 1, TString "f", documentTerm doc, TList [TList [TString "dict", TBytes "x"]]])
+    ]
+
+-- | What a plugin declares, as a host reads it.
+declared :: Plugin -> ([Text], [Text], [Text], [Text])
+declared p = (pluginCommands p, pluginFilters p, map channelName (pluginChannels p), pluginDataNames p)
+
+-- | The fields of golem_describe have names (docs/adr/0107).
+describeTests :: TestTree
+describeTests =
+  testGroup
+    "the named fields of golem_describe (docs/adr/0107)"
+    [ testCase "an empty map declares nothing" $ do
+        p <- describing (TMap []) >>= either (assertFailure . show) pure
+        declared p @?= ([], [], [], []),
+      testCase "the order of the fields does not matter" $ do
+        let fields =
+              [ (TString "commands", TList [TString "c"]),
+                (TString "filters", TList [TString "f"]),
+                (TString "channels", TList [TList [TString "glossary", TInt 1, TBool False]]),
+                (TString "data", TList [TString "table"])
+              ]
+        a <- describing (TMap fields) >>= either (assertFailure . show) pure
+        b <- describing (TMap (reverse fields)) >>= either (assertFailure . show) pure
+        declared a @?= (["c"], ["f"], ["glossary"], ["table"])
+        declared b @?= declared a,
+      testCase "an unknown field is bad output" $
+        describing (TMap [(TString "commands", TList []), (TString "macros", TList [])]) >>= (@?= Left (BadOutput "golem_describe に未知の欄があります: macros")) . void,
+      testCase "a field twice is bad output" $
+        describing (TMap [(TString "commands", TList [TString "a"]), (TString "commands", TList [TString "b"])]) >>= (@?= Left (BadOutput "golem_describe の欄が重複しています: commands")) . void,
+      testCase "a key that is not a text string is bad output" $
+        describing (TMap [(TInt 0, TList [])]) >>= (@?= Left (BadOutput "golem_describe の形が不正です")) . void,
+      testCase "a field that is not an array is bad output" $
+        describing (TMap [(TString "commands", TString "a")]) >>= (@?= Left (BadOutput "golem_describe の欄の形が不正です: commands")) . void,
+      testCase "a map of indefinite length is bad output" $
+        describing (TMapI [(TString "commands", TList [])]) >>= (@?= Left (BadOutput "golem_describe の形が不正です")) . void,
+      testCase "the old arrays of lists are bad output" $
+        mapM_
+          (\t -> describing t >>= (@?= Left (BadOutput "golem_describe の形が不正です")) . void)
+          [ TList [TList [TString "shout"], TList []],
+            TList [TList [TString "shout"], TList [], TList [], TList []],
+            TList [TList [TString "shout"], TList [], TList [], TList [], TList []]
+          ]
     ]

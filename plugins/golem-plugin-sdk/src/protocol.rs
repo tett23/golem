@@ -122,7 +122,7 @@ pub struct ChannelDecl {
     pub locators: bool,
 }
 
-/// `description = [commands, filters, channels, data]`
+/// `description = {? "commands", ? "filters", ? "channels", ? "data"}`
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Description {
     pub commands: Vec<String>,
@@ -136,27 +136,33 @@ fn texts(xs: &[String]) -> Value {
     Value::Array(xs.iter().map(|s| Value::Text(s.clone())).collect())
 }
 
+/// The description as a map of its fields that are not empty, in the order
+/// of RFC 8949 4.2.1: shorter keys first, then by their bytes
+/// (docs/adr/0107). A field left out is empty for the host.
 pub fn description_value(d: &Description) -> Value {
-    Value::Array(vec![
-        texts(&d.commands),
-        texts(&d.filters),
-        Value::Array(
-            d.channels
-                .iter()
-                .map(|c| {
-                    Value::Array(vec![
-                        Value::Text(c.name.clone()),
-                        Value::Int(match c.order {
-                            ChannelOrder::Document => 0,
-                            ChannelOrder::Reading => 1,
-                        }),
-                        Value::Bool(c.locators),
-                    ])
-                })
-                .collect(),
-        ),
-        texts(&d.data),
-    ])
+    let channels = d
+        .channels
+        .iter()
+        .map(|c| {
+            Value::Array(vec![
+                Value::Text(c.name.clone()),
+                Value::Int(match c.order {
+                    ChannelOrder::Document => 0,
+                    ChannelOrder::Reading => 1,
+                }),
+                Value::Bool(c.locators),
+            ])
+        })
+        .collect::<Vec<_>>();
+    // already in the order of 4.2.1
+    let mut fields = vec![
+        ("data", texts(&d.data)),
+        ("filters", texts(&d.filters)),
+        ("channels", Value::Array(channels)),
+        ("commands", texts(&d.commands)),
+    ];
+    fields.retain(|(_, v)| !matches!(v, Value::Array(xs) if xs.is_empty()));
+    Value::Map(fields.into_iter().map(|(k, v)| (Value::Text(k.into()), v)).collect())
 }
 
 pub fn response_value(r: &Response) -> Value {
@@ -299,5 +305,27 @@ mod tests {
             Ok(Request::Command(c)) => assert_eq!(c.data.get("table"), Some(&b"k\tv"[..])),
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn describes_the_fields_that_are_not_empty_in_the_order_of_4_2_1() {
+        let d = Description {
+            commands: vec!["c".into()],
+            filters: vec![],
+            channels: vec![ChannelDecl { name: "glossary".into(), order: ChannelOrder::Reading, locators: false }],
+            data: vec!["table".into()],
+        };
+        let key = |k: &str| Value::Text(k.into());
+        let channel = Value::Array(vec![Value::Text("glossary".into()), Value::Int(1), Value::Bool(false)]);
+        assert_eq!(
+            description_value(&d),
+            Value::Map(vec![
+                (key("data"), Value::Array(vec![Value::Text("table".into())])),
+                (key("channels"), Value::Array(vec![channel])),
+                (key("commands"), Value::Array(vec![Value::Text("c".into())])),
+            ])
+        );
+        assert_eq!(description_value(&Description::default()), Value::Map(vec![]));
+        assert_eq!(crate::cbor::encode(&description_value(&Description::default())), vec![0xa0]);
     }
 }

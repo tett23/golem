@@ -1,6 +1,6 @@
 # ADR 0105: プラグインにデータを渡す
 
-ステータス: 採択
+ステータス: 採択→`description` の形は [docs/adr/0107](0107-named-describe-fields.md)
 
 ## 文脈
 

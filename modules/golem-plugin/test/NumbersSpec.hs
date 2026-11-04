@@ -40,7 +40,7 @@ load name = do
 answering :: ByteString -> IO Plugin
 answering response = do
   src <- TIO.readFile "test/plugins/fixed.wat"
-  let describe = cbor (TList [TList [TString "shout"], TList [TString "upper"], TList [], TList []])
+  let describe = cbor (TMap [(TString "commands", TList [TString "shout"]), (TString "filters", TList [TString "upper"])])
       escape = T.pack . concatMap (printf "\\%02x") . BS.unpack
       filled =
         T.replace "{{ABI}}" (T.pack (show abiVersion))
