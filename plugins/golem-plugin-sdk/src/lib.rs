@@ -22,6 +22,11 @@
 //! export_plugin!(describe, invoke);
 //! ```
 //!
+//! A plugin that takes data may check it once, when the host reads it
+//! (docs/adr/0120), with a third function: `export_plugin!(describe,
+//! invoke, check_data)`, where `check_data` is a `fn(&Data) ->
+//! Vec<DataDiagnostic>`.
+//!
 //! The host gives each call a fresh instance, so nothing is freed: the
 //! request and the response live until the instance is dropped.
 
@@ -32,7 +37,7 @@ pub mod protocol;
 pub use cbor::Value;
 pub use ir::{Block, BlockBody, DefGroup, Document, Inline, ListItem, NumberStyle, RefKind, RubySegment, Sp, Span, ABI_VERSION};
 pub use protocol::{
-    Arg, ArgValue, BlockCommandRequest, ChannelDecl, Image, ImageFormat, ChannelOrder, CommandRequest, Context, Data, Description, Diagnostic, FilterRequest, Output, Request, Response,
+    Arg, ArgValue, BlockCommandRequest, ChannelDecl, Image, ImageFormat, ChannelOrder, CommandRequest, Context, Data, DataDiagnostic, Description, Diagnostic, FilterRequest, Output, Request, Response,
     Severity,
 };
 
@@ -69,12 +74,32 @@ pub mod abi {
         };
         leak(cbor::encode(&protocol::response_value(&f(req))))
     }
+
+    /// `golem_check_data` (docs/adr/0120): the diagnostics of the data, once
+    /// after the host reads it. A request that does not decode traps.
+    pub fn check_data(ptr: u32, len: u32, f: fn(&Data) -> Vec<DataDiagnostic>) -> u64 {
+        // SAFETY: the host wrote `len` bytes at `ptr`, a region golem_alloc returned
+        let input = unsafe { core::slice::from_raw_parts(ptr as usize as *const u8, len as usize) };
+        let data = match cbor::decode(input).and_then(|v| protocol::check_data_request_of(&v)) {
+            Ok(d) => d,
+            Err(e) => panic!("golem-plugin-sdk: bad check-data request: {e}"),
+        };
+        leak(cbor::encode(&protocol::data_diagnostics_value(&f(&data))))
+    }
 }
 
 /// Exports `golem_abi_version`, `golem_alloc`, `golem_describe` and
-/// `golem_invoke` from a description function and an invoke function.
+/// `golem_invoke` from a description function and an invoke function, and
+/// with a third function, `golem_check_data` too (docs/adr/0120).
 #[macro_export]
 macro_rules! export_plugin {
+    ($describe:path, $invoke:path, $check:path) => {
+        $crate::export_plugin!($describe, $invoke);
+        #[unsafe(no_mangle)]
+        pub extern "C" fn golem_check_data(ptr: u32, len: u32) -> u64 {
+            $crate::abi::check_data(ptr, len, $check)
+        }
+    };
     ($describe:path, $invoke:path) => {
         #[unsafe(no_mangle)]
         pub extern "C" fn golem_abi_version() -> u32 {
