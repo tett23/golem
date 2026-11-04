@@ -33,6 +33,9 @@ golem-pdf と golem-svg のテストだけは、時間の上限を [code: within
 混んだマシンでは、ほかのプロセスに CPU を取られた時間だけ実時間が延び、正しい実装のテストでも 30 秒を超えたからである。
 CPU 時間は待たされても延びないが、CPU を使わずに待ち続けるテストは CPU 時間では止まらないので、実時間の上限を歯止めに残す。
 上限を付けるテストの CPU 時間は、単独で走らせて 10 秒以内に収める。
+[code: -threaded] の [code: golem-driver-parallel-test] は、[code: watchTests] で包む。
+Haskell のランタイムの外の POSIX のスレッドが実時間を測り、一つのテストが [code: GOLEM_RACE_TESTS] の値の 300 倍の秒数を超えるか、テストが終わってもプロセスが同じ秒数を超えて終わらないと、走っていたテストの名前とランタイムの心拍を書いてプロセスを止める。
+ランタイムそのものが止まっても働くので、tasty の時間切れでは捕まえられない止まり方も、名前つきの失敗になる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0117-watchdog-outside-the-runtime-for-threaded-tests.md]（docs/adr の ADR 0117「golem-driver-parallel-test に、Haskell のランタイムの外で実時間を測る見張りを付ける」）]
 
 ## 置き場所と名前
 

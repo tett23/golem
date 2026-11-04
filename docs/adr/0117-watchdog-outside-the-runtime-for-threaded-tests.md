@@ -1,6 +1,6 @@
 # ADR 0117: golem-driver-parallel-test に、Haskell のランタイムの外で実時間を測る見張りを付ける
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 
