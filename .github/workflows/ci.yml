@@ -261,6 +261,11 @@ jobs:
           path: dist-newstyle
           key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ github.sha }}
           restore-keys: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-
+      # MEASUREMENT ONLY (draft, not to be merged): the configurations of
+      # the restored dist-newstyle newer than the .cabal files of the
+      # checkout, so that Setup does not configure every component again
+      - name: New times on the setup-config of dist-newstyle (measurement)
+        run: find dist-newstyle -name setup-config -exec touch {} + 2>/dev/null || true
       - name: wasmtime C API (golem-plugin ADR 0001)
         run: scripts/fetch-wasmtime.sh
       - id: cddl
@@ -276,10 +281,6 @@ jobs:
       # peg-cli is built with the rest, for the check of the generated
       # parser. compiled is true when GHC compiled a module, that is, when
       # dist-newstyle is no longer the one restored above (docs/adr/0045)
-      # MEASUREMENT ONLY (draft, not to be merged): the .cabal files older
-      # than the configuration in the restored dist-newstyle
-      - name: Old times on the .cabal files (measurement)
-        run: find modules -name '*.cabal' -exec touch -t 200001010000 {} +
       - id: build
         name: cabal build all peg-cli:exe:peg-hs
         shell: bash
