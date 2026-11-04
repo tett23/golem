@@ -103,19 +103,6 @@ tableWatchTests =
             watched
           -- the pattern itself: a watcher that registers nothing fails too (docs/adr/0066)
           regs @?= ["data/x[*]y[?].tsv"],
-      -- docs/adr/0149
-      testCase "the files of [functions] are watched, and a change of one publishes the diagnostics again" $
-        withProject [("a.gm", "一。\n"), ("manifest.toml", manifest <> "\n[functions]\nfiles = [\"fn.gmx\"]\nrequires = [\"file\"]\n\n[functions.data]\nwords = \"data/words.tsv\"\n"), ("fn.gmx", "f :: Nat;\nf = 1;\n")] $ \dir -> do
-          ws <- openWorkspace dir
-          -- with the notice of no style.toml
-          codesOf ws "manifest.toml" @?= ["G03102", "G03023"]
-          tablesToWatch ws @?= Set.fromList ["data/words.tsv", "fn.gmx"]
-          cleared <- lspSession True dir $ do
-            _ <- waitDiagnostics dir "manifest.toml" (elem "G03102")
-            liftIO (createDirectoryIfMissing True (dir </> "data") >> BS.writeFile (dir </> "data/words.tsv") "a\tb\n")
-            LT.sendNotification M.SMethod_WorkspaceDidChangeWatchedFiles (L.DidChangeWatchedFilesParams [L.FileEvent (L.filePathToUri (dir </> "data/words.tsv")) L.FileChangeType_Created])
-            waitDiagnostics dir "manifest.toml" (notElem "G03102")
-          cleared @?= ["G03023"],
       testCase "a client without dynamic registration is not asked to watch" $ withTableProject $ \dir -> do
         regs <- lspSession False dir $ do
           _ <- waitDiagnostics dir "data/x.tsv" (not . null)

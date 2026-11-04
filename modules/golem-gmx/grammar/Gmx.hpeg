@@ -24,8 +24,6 @@
 %token CloseBlock
 %token GuardBar
 %token Semi
-%token FatArrow
-%token ReqTok
 
 %inline Sp
 
@@ -107,21 +105,10 @@ FieldDecl :: (Name, TypeE)
 FieldDecl <- n:VarName DColonS t:Type { (n, t) }
 
 Signature :: Signature
-Signature <- p:PubOpt n:VarNameLoc DColonS t:Type rs:Requirements { Signature (endOf (maybe (snd n) id p <-> typeLoc t) (map snd rs)) (maybe False (const True) p) (fst n) (snd n) t rs }
-
-# What the function requires of the processor (docs/adr/0149): => file.
-Requirements :: [(Name, Loc)]
-Requirements <- FatArrowS r:ReqName rs:(CommaU ReqName)* { r : rs }
-              / '' { [] }
-
-ReqName :: (Name, Loc)
-ReqName <- r:ReqTok Sp { r }
-
-ReqTok :: (Name, Loc)
-ReqTok <- w:$([a-z] [a-z0-9\-]*) { (w, loc _span) }
+Signature <- p:PubOpt n:VarNameLoc DColonS t:Type { Signature (maybe (snd n) id p <-> typeLoc t) (maybe False (const True) p) (fst n) (snd n) t }
 
 LocalSignature :: Signature
-LocalSignature <- n:VarNameLoc DColonS t:Type { Signature (snd n <-> typeLoc t) False (fst n) (snd n) t [] }
+LocalSignature <- n:VarNameLoc DColonS t:Type { Signature (snd n <-> typeLoc t) False (fst n) (snd n) t }
 
 # One equation; the ; after it is read by the caller.
 Equation :: Equation
@@ -434,12 +421,6 @@ AltBarU <- AltBarS { () }
 
 CommaS :: Loc
 CommaS <- l:S<','> Sp { l }
-
-FatArrowS :: Loc
-FatArrowS <- l:FatArrow Sp { l }
-
-FatArrow :: Loc
-FatArrow <- '=>' { loc _span }
 
 EqS :: Loc
 EqS <- l:S<'='> !('=' / '>') Sp { l }

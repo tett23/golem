@@ -13,8 +13,6 @@ module Golem.Gmx.Eval
     Globals,
     evalCall,
     evalCallCounted,
-    Handlers (..),
-    noHandlers,
     stepLimit,
     depthLimit,
   )
@@ -118,25 +116,12 @@ call in .gm, where the limits are reported; other errors point into the
 .gmx, whose file ids @files@ gives. Nothing comes out of a call that
 fails.
 -}
-
-{- | The handlers of the requirements (docs/adr/0149), which the driver
-gives: @file@ returns the text of a name of [functions.data], or the code
-and the message of an error.
--}
-newtype Handlers = Handlers
-  { handleFile :: Text -> Either (Text, Text) Text
-  }
-
--- | No data: every name is unknown (G10503).
-noHandlers :: Handlers
-noHandlers = Handlers (\n -> Left ("G10503", "[functions.data] にない名前です: " <> n))
-
-evalCall :: Handlers -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> Either Diagnostic Result
-evalCall hs globals files at key args = fst (evalCallCounted hs globals files at key args)
+evalCall :: Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> Either Diagnostic Result
+evalCall globals files at key args = fst (evalCallCounted globals files at key args)
 
 -- | 'evalCall' with the steps the call took, to measure the work of functions against 'stepLimit'.
-evalCallCounted :: Handlers -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> (Either Diagnostic Result, Int)
-evalCallCounted hs globals files at key args = case Map.lookup key globals of
+evalCallCounted :: Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> (Either Diagnostic Result, Int)
+evalCallCounted globals files at key args = case Map.lookup key globals of
   Nothing -> (Left (diagnostic "G10200" Error at ("未定義の関数 " <> snd key <> " です")), 0)
   Just g -> runST $ do
     Step c k n d <- apply (Loc 0 0) (globalValue g) (map fromResult args) []
@@ -278,11 +263,6 @@ evalCallCounted hs globals files at key args = case Map.lookup key globals of
 
     enter l fn vs k = case fn of
       FnCon c _ -> pure (Step (Ret (VC c vs)) k 1 0)
-      FnPrim "File.read" _ -> pure $ case vs of
-        [VP (VString n)] -> case handleFile hs n of
-          Right t -> Step (Ret (VP (VString t))) k (1 + T.length t) 0
-          Left (code, msg) -> Step (fault k l (diagnostic code Error at msg)) k 1 0
-        _ -> Step (fault k l (diagnostic "G02007" Error at "File.read の引数が不正です")) k 1 0
       FnPrim name _ -> pure $ case runPrim name (map toPrim vs) of
         Right (pv, size) -> Step (Ret (fromPrim pv)) k (1 + size) 0
         Left d -> Step (fault k l d) k 1 0

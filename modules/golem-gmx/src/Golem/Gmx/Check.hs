@@ -12,7 +12,6 @@ module Golem.Gmx.Check
     Scope (..),
     checkModule,
     builtinCons,
-    requirementNames,
   )
 where
 
@@ -102,9 +101,7 @@ data Ctx = Ctx
     cxMod :: !ModInfo,
     cxScope :: !Scope,
     -- | the function being checked, for the messages of guards
-    cxFun :: !Name,
-    -- | the requirements of the top-level function being checked (docs/adr/0149)
-    cxReqs :: ![Name]
+    cxFun :: !Name
   }
 
 data Local = LMono !Ty | LPoly !Scheme
@@ -115,9 +112,7 @@ data TcState = TcState
   { tsNext :: !Int,
     tsSubst :: !(IntMap Ty),
     tsNeeds :: !(IntMap Need),
-    tsDiags :: ![Diagnostic],
-    -- | the requirements the binding being checked uses
-    tsUsed :: !(Set.Set Name)
+    tsDiags :: ![Diagnostic]
   }
 
 type Tc = StateT TcState (Either Diagnostic)
@@ -142,7 +137,7 @@ primitives: there a signature without equations is a primitive.
 -}
 checkModule :: Maybe Text -> Scope -> FileId -> FilePath -> Text -> Module -> ([Diagnostic], ModInfo, [(GKey, Global)])
 checkModule primPrefix scope fid path src (Module decls) =
-  let cx0 = Ctx fid path src (ModInfo path Map.empty Map.empty Map.empty) scope "" []
+  let cx0 = Ctx fid path src (ModInfo path Map.empty Map.empty Map.empty) scope ""
       importDiags = importChecks cx0 decls
       (typeDiags, types) = collectTypes cx0 decls
       cx1 = cx0 {cxMod = (cxMod cx0) {miTypes = types}}
@@ -293,7 +288,7 @@ collectFuns prims cx decls =
       noEq = [s | not prims, s <- Map.elems sigMap, null (eqsOf (sigName s))]
       infos =
         Map.fromList
-          [ (sigName s, (FunInfo (cxPath cx, sigName s) (withReqs sch (knownReqs s)) (sigPub s), s))
+          [ (sigName s, (FunInfo (cxPath cx, sigName s) sch (sigPub s), s))
           | s <- Map.elems sigMap,
             Right sch <- [schemeOf cx (sigType s)]
           ]
@@ -305,31 +300,8 @@ collectFuns prims cx decls =
           <> [diagnostic "G10202" Error (spanOf cx (eqNameLoc q)) ("最上位の関数 " <> eqName q <> " にシグネチャがありません") | (q : _) <- noSig]
           <> [diagnostic "G10200" Error (spanOf cx (sigNameLoc s)) ("関数 " <> sigName s <> " の等式がありません") | s <- noEq]
           <> schemeDiags
-          <> concatMap (requirementDiags cx) sigs
       groups = [(s, eqsOf (sigName s)) | s <- Map.elems sigMap, Map.member (sigName s) infos]
    in (diags, infos, sortOn (locStart . sigLoc . fst) groups)
-
--- | The requirements a processor has handlers for (docs/adr/0149).
-requirementNames :: [Name]
-requirementNames = ["file"]
-
--- | The requirements of a signature that are known, once each.
-knownReqs :: Signature -> [Name]
-knownReqs s = nub [r | (r, _) <- sigReqs s, r `elem` requirementNames]
-
-withReqs :: Scheme -> [Name] -> Scheme
-withReqs (Scheme vs t _) = Scheme vs t
-
-{- | G10500 for the names of a signature that are no requirement, all in
-one diagnostic at the first, and G10502 for a name written twice.
--}
-requirementDiags :: Ctx -> Signature -> [Diagnostic]
-requirementDiags cx s =
-  let unknown = [(r, l) | (r, l) <- sigReqs s, r `notElem` requirementNames]
-   in [ diagnostic "G10500" Error (spanOf cx l) ("知らない要求です: " <> T.intercalate "、" (nub (map fst unknown)) <> "（使える要求: " <> T.intercalate "、" requirementNames <> "）")
-      | (_, l) : _ <- [unknown]
-      ]
-        <> [diagnostic "G10502" Error (spanOf cx l) ("要求 " <> r <> " を二度書いています: " <> sigName s) | (r, l) <- duplicates (sigReqs s)]
 
 -- | The equations of each run of one name, in order.
 runsOf :: [Decl] -> [[Equation]]
@@ -347,7 +319,7 @@ runsOf = go []
 schemeOf :: Ctx -> TypeE -> Either Diagnostic Scheme
 schemeOf cx t =
   let vs = nub (typeVars t)
-   in (\ty -> Scheme vs ty []) <$> typeOf cx (Map.fromList (zip vs [TG i | i <- [0 ..]])) t
+   in Scheme vs <$> typeOf cx (Map.fromList (zip vs [TG i | i <- [0 ..]])) t
 
 typeVars :: TypeE -> [Name]
 typeVars = \case
@@ -361,7 +333,7 @@ the function; the errors of guards and patterns come all.
 -}
 checkFunction :: Ctx -> Signature -> [Equation] -> Either [Diagnostic] (GKey, Global)
 checkFunction cx0 sig eqs = do
-  let cx = cx0 {cxFun = sigName sig, cxReqs = knownReqs sig}
+  let cx = cx0 {cxFun = sigName sig}
   case whereDiags cx eqs of
     [] -> pure ()
     ds -> Left ds
@@ -374,13 +346,13 @@ checkFunction cx0 sig eqs = do
     when (length (eqPats q) /= n || n /= sigArity) $
       Left [diagnostic "G10206" Error (spanOf cx (eqNameLoc q)) ("等式の引数の数がシグネチャと合いません: " <> sigName sig <> " は " <> T.pack (show sigArity) <> " 個の引数を取ります")]
   let run = do
-        let Scheme names t _ = sch
+        let Scheme names t = sch
             skolem = substGen (map TS names) t
             (argTys, resTy) = splitArgs n skolem
         binds <- checkWhereBlock cx (finalWhere eqs)
         ceqs <- checkEquations cx (whereLocals binds) argTys resTy eqs
         pure (ceqs, map (snd . snd) binds)
-  case runStateT run (TcState 0 IntMap.empty IntMap.empty [] Set.empty) of
+  case runStateT run (TcState 0 IntMap.empty IntMap.empty []) of
     Left d -> Left [d]
     Right ((ceqs, binds), st)
       | not (null (tsDiags st)) -> Left (reverse (tsDiags st))
@@ -388,7 +360,7 @@ checkFunction cx0 sig eqs = do
           let line = lineOf (cxSource cx) (locStart (sigLoc sig))
            in Right ((cxPath cx, sigName sig), GFun (CFun (sigName sig) (cxPath cx) line n ceqs binds))
   where
-    schemeTy (Scheme _ t _) = t
+    schemeTy (Scheme _ t) = t
 
 arityOf :: Ty -> Int
 arityOf = \case
@@ -466,7 +438,7 @@ zonk = \case
   t -> pure t
 
 instantiate :: Scheme -> Tc Ty
-instantiate (Scheme names t _) = do
+instantiate (Scheme names t) = do
   ms <- mapM (const fresh) names
   pure (substGen ms t)
 
@@ -665,31 +637,10 @@ checkNumber cx l v = case numberOf v of
 
 -- ** Names
 
-{- | A name used in an expression, called (@True@: the head of an
-application with all its arguments) or as a value. A function with
-requirements may only be called, from a function whose signature has
-them (G10501); a function of no arguments is called where it is named.
--}
-useVar :: Ctx -> Locals -> Loc -> QName -> Bool -> Tc (Ty, CExpr)
-useVar cx locals l q called = do
-  (t, c, Scheme _ st reqs) <- resolveVar cx locals l q
-  unless (null reqs) $ do
-    if called || arityOf st == 0
-      then case filter (`notElem` cxReqs cx) reqs of
-        [] -> modify' (\s -> s {tsUsed = Set.union (Set.fromList reqs) (tsUsed s)})
-        missing -> failAt cx "G10501" l ("シグネチャにない要求を使っています: " <> T.intercalate "、" missing <> "（" <> cxFun cx <> " のシグネチャに => " <> T.intercalate ", " missing <> " を書きます）")
-      else failAt cx "G10501" l ("要求を持つ関数は値として渡せません: " <> qnameText q <> "（=> " <> T.intercalate ", " reqs <> "）")
-  pure (t, c)
-
-unparen :: Expr -> Expr
-unparen = \case
-  EParen _ e -> unparen e
-  e -> e
-
-resolveVar :: Ctx -> Locals -> Loc -> QName -> Tc (Ty, CExpr, Scheme)
+resolveVar :: Ctx -> Locals -> Loc -> QName -> Tc (Ty, CExpr)
 resolveVar cx locals l q = case q of
   QName Nothing n
-    | Just loc <- Map.lookup n locals -> (\(t, s) -> (t, CLocal n, s)) <$> localTy loc
+    | Just loc <- Map.lookup n locals -> (,CLocal n) <$> localTy loc
     | Just fi <- Map.lookup n (miFuns (cxMod cx)) -> global fi
     | Just fi <- Map.lookup n (scGlobals (cxScope cx)) -> global fi
     | otherwise -> failAt cx "G10200" l ("未定義の名前 " <> n <> " です")
@@ -701,10 +652,10 @@ resolveVar cx locals l q = case q of
         | not (fiPub fi) -> failAt cx "G10205" l (qnameText q <> " は公開されていません（pub がありません）")
         | otherwise -> global fi
   where
-    global fi = (,CGlobal l (fiKey fi),fiScheme fi) <$> instantiate (fiScheme fi)
+    global fi = (,CGlobal l (fiKey fi)) <$> instantiate (fiScheme fi)
     localTy = \case
-      LMono t -> pure (t, monoScheme t)
-      LPoly s -> (,s) <$> instantiate s
+      LMono t -> pure t
+      LPoly s -> instantiate s
 
 resolveCon :: Ctx -> Loc -> QName -> Tc ConInfo
 resolveCon cx l q = case q of
@@ -735,7 +686,7 @@ infer cx locals = \case
     checkNumber cx l v
     pure (numTyOf v, CLit v)
   EStr _ s -> pure (tString, CLit (VString s))
-  EVar l q -> useVar cx locals l q False
+  EVar l q -> resolveVar cx locals l q
   ECon l q -> do
     ci <- resolveCon cx l q
     (args, res) <- conType ci
@@ -750,9 +701,7 @@ infer cx locals = \case
     pure (tList el, CList (map snd ts))
   e@EApp {} -> do
     let (f, args) = spine e
-    (ft, cf) <- case unparen f of
-      EVar l q -> useVar cx locals l q True
-      _ -> infer cx locals f
+    (ft, cf) <- infer cx locals f
     case (cf, args) of
       (CGlobal _ ("<builtin>", "div"), [a, b]) -> do
         (ta, ca) <- infer cx locals a
@@ -1081,14 +1030,14 @@ checkWhereBlock cx bs = do
   sigSchemes <- forM sigs $ \s -> either (lift . Left) (pure . (sigName s,)) (schemeOf cx (sigType s))
   monos <- forM [n | (n, _) <- defs, n `notElem` map fst sigSchemes] $ \n -> (n,) <$> fresh
   let locals = Map.fromList ([(n, LPoly sc) | (n, sc) <- sigSchemes] <> [(n, LMono t) | (n, t) <- monos])
-  checked <- forM (sortOn (locStart . itemLoc) ([Left x | x <- lazies] <> [Right r | r <- runs])) $ \item -> withUsed $ do
+  checked <- forM (sortOn (locStart . itemLoc) ([Left x | x <- lazies] <> [Right r | r <- runs])) $ \item -> do
     let name = case item of
           Left (n, _, _) -> n
           Right (q : _) -> eqName q
           Right [] -> ""
         cxb = cx {cxFun = name}
     target <- case lookup name sigSchemes of
-      Just (Scheme names t _) -> pure (substGen (map TS names) t)
+      Just (Scheme names t) -> pure (substGen (map TS names) t)
       Nothing -> maybe fresh pure (lookup name monos)
     case item of
       Left (n, _, e) -> do
@@ -1111,24 +1060,16 @@ checkWhereBlock cx bs = do
         pure (name, CBind name False arity ceqs (lineAt cx (itemLoc item)))
       Right [] -> failAt cx "G10100" (Loc 0 0) "空の束縛"
   -- generalise the bindings without signatures
-  forM checked $ \((n, cb), used) -> case lookup n sigSchemes of
-    Just sc -> pure (n, (LPoly (withReqs sc (Set.toAscList used)), cb))
+  forM checked $ \(n, cb) -> case lookup n sigSchemes of
+    Just sc -> pure (n, (LPoly sc, cb))
     Nothing -> do
       t <- zonk (fromMaybe tNat (lookup n monos))
       needs <- gets tsNeeds
       let free = nub [i | i <- metas t, not (IntMap.member i needs)]
           gen = Map.fromList (zip free [0 ..])
           t' = mapMetas (\i -> maybe (TM i) TG (Map.lookup i gen)) t
-      pure (n, (LPoly (Scheme [T.pack ("t" <> show k) | k <- [1 .. length free]] t' (Set.toAscList used)), cb))
+      pure (n, (LPoly (Scheme [T.pack ("t" <> show k) | k <- [1 .. length free]] t'), cb))
   where
-    -- the requirements a binding uses, which a local function has as its own
-    withUsed m = do
-      before <- gets tsUsed
-      modify' (\s -> s {tsUsed = Set.empty})
-      r <- m
-      used <- gets tsUsed
-      modify' (\s -> s {tsUsed = Set.union before used})
-      pure (r, used)
     metas = \case
       TM i -> [i]
       TC _ as -> concatMap metas as

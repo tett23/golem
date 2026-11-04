@@ -32,8 +32,6 @@ fmtTests =
       testCase "blank lines between declarations become one, and comments stay" $
         formatGmx "-- top\nf :: Nat;\n\n\n\nf = 1; -- one\n\n\n"
           @?= Right "-- top\nf :: Nat;\n\nf = 1; -- one\n",
-      testCase "requirements are sorted by their names (docs/adr/0149)" $
-        formatGmx "f :: String => net, file;\nf = \"\";\n" @?= Right "f :: String => file, net;\nf = \"\";\n",
       testCase "a BOM and CR are removed" $
         formatGmx "\xFEFF\&f :: Nat;\r\nf = 1;\r\n" @?= Right "f :: Nat;\nf = 1;\n",
       testProperty "fmt keeps the AST and is idempotent" $ property $ do
@@ -88,11 +86,7 @@ sepBy s = \case
   x : xs -> x <> concatMap (s :) xs
 
 printSig :: Signature -> [Text]
-printSig s = ["pub" | sigPub s] <> [sigName s, "::"] <> printType (sigType s) <> reqs (map fst (sigReqs s))
-  where
-    reqs = \case
-      [] -> []
-      rs -> "=>" : sepBy "," (map pure rs)
+printSig s = ["pub" | sigPub s] <> [sigName s, "::"] <> printType (sigType s)
 
 printCon :: ConDecl -> [Text]
 printCon = \case
@@ -206,11 +200,7 @@ genDecl =
     ]
 
 genSig :: Bool -> Gen Signature
-genSig top = Signature l0 <$> (if top then Gen.bool else pure False) <*> genVar <*> pure l0 <*> genType <*> (if top then genReqs else pure [])
-
--- | requirements in the order of their names, the order fmt gives
-genReqs :: Gen [(Name, Loc)]
-genReqs = map (,l0) <$> Gen.subsequence ["file", "net", "x-y"]
+genSig top = Signature l0 <$> (if top then Gen.bool else pure False) <*> genVar <*> pure l0 <*> genType
 
 genConDecl :: Gen ConDecl
 genConDecl =

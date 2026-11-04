@@ -20,19 +20,14 @@ import Golem.Gmx.Types
 builtinSources :: [(Text, FilePath, Text)]
 builtinSources =
   [ ("List", "<builtin>/List.gmx", listSource),
-    ("String", "<builtin>/String.gmx", stringSource),
-    ("File", "<builtin>/File.gmx", fileSource)
+    ("String", "<builtin>/String.gmx", stringSource)
   ]
-
--- | The operations of the requirement file (docs/adr/0149), which the driver handles.
-fileSource :: Text
-fileSource = "pub read :: String -> String => file;\n"
 
 -- | @div@: the floor division of integers, as in the expression context.
 divInfo :: (FunInfo, (GKey, Global))
 divInfo =
   let key = ("<builtin>", "div")
-   in (FunInfo key (Scheme [] (TF tInt (TF tInt tInt)) []) True, (key, GPrim "div" 2))
+   in (FunInfo key (Scheme [] (TF tInt (TF tInt tInt))) True, (key, GPrim "div" 2))
 
 listSource :: Text
 listSource =

@@ -15,7 +15,6 @@ module Golem.Project.Manifest
     PluginDecl (..),
     PluginSource (..),
     FilterDecl (..),
-    FunctionsDecl (..),
     parseManifest,
     chapterFiles,
     applyEdits,
@@ -27,7 +26,7 @@ module Golem.Project.Manifest
 where
 
 import Control.Monad (zipWithM_)
-import Data.Char (isAsciiLower, isDigit)
+import Data.Char (isDigit)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, isJust)
@@ -64,9 +63,7 @@ data Manifest = Manifest
     -- | [diagnostics] silence-notices: codes of notices not shown (golem-syntax ADR 0002)
     manifestSilencedNotices :: !(Set DiagnosticCode),
     -- | [diagnostics] silence-info: codes of infos not shown, even with --verbose (docs/adr 0104)
-    manifestSilencedInfo :: !(Set DiagnosticCode),
-    -- | [functions]: the .gmx of the project (docs/adr/0149)
-    manifestFunctions :: !(Maybe FunctionsDecl)
+    manifestSilencedInfo :: !(Set DiagnosticCode)
   }
   deriving stock (Eq, Show)
 
@@ -200,34 +197,6 @@ data PluginSource
     PluginPath !FilePath
   deriving stock (Eq, Show)
 
-{- | The [functions] table (docs/adr/0149): the .gmx whose functions .gm
-calls, the requirements they may have, and the files File.read reads by
-their names, relative to the root.
--}
-data FunctionsDecl = FunctionsDecl
-  { fnFiles :: ![FilePath],
-    fnRequires :: ![Text],
-    fnData :: !(Map Text FilePath)
-  }
-  deriving stock (Eq, Show)
-
-instance FromValue FunctionsDecl where
-  fromValue = parseTableFromValue $ do
-    fs <- optKey "files"
-    rs <- optKey "requires"
-    d <- optKeyOf "data" dataTable
-    pure (FunctionsDecl (maybe [] (map T.unpack) fs) (fromMaybe [] rs) (fromMaybe Map.empty d))
-    where
-      -- a name as the names of the data of plugins (docs/adr/0105)
-      dataTable v = do
-        m <- fromValue v
-        case [k | k <- Map.keys m, not (dataNameShape k)] of
-          [] -> pure (Map.map T.unpack m)
-          k : _ -> failAt (valueAnn v) (T.unpack ("[functions.data] の名前は英小文字で始め、英小文字、数字、- だけで書きます: " <> k))
-      dataNameShape k = case T.uncons k of
-        Just (h, rest) -> h >= 'a' && h <= 'z' && T.all (\c -> isAsciiLower c || isDigit c || c == '-') rest
-        Nothing -> False
-
 data FilterDecl = FilterDecl
   { fdPlugin :: !Text,
     fdFilter :: !Text,
@@ -254,7 +223,6 @@ instance FromValue Manifest where
     bib <- optKey "bibliography"
     src <- optKey "source"
     dg <- optKey "diagnostics"
-    fns <- optKey "functions"
     pure
       Manifest
         { manifestMetadata = md,
@@ -265,8 +233,7 @@ instance FromValue Manifest where
           manifestBibliography = maybe [] (map T.unpack) bib,
           manifestSource = applyEdits (maybe [] sourceTableEdits src) defaultSourceSettings,
           manifestSilencedNotices = maybe Set.empty silenced dg,
-          manifestSilencedInfo = maybe Set.empty silencedInfo dg,
-          manifestFunctions = fns
+          manifestSilencedInfo = maybe Set.empty silencedInfo dg
         }
 
 -- | The [diagnostics] table (golem-syntax ADR 0002, docs/adr 0104).
