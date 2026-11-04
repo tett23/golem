@@ -40,3 +40,10 @@ version = "0.1.0"
 dependencies = [
  "golem-plugin-sdk",
 ]
+
+[[package]]
+name = "tsv-table"
+version = "0.1.0"
+dependencies = [
+ "golem-plugin-sdk",
+]

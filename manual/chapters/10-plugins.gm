@@ -130,6 +130,19 @@ https://github.com/tett23/golem/releases/download/<版>
 どのプラグインも持たない名前は、エラー（G02009）になります。
 プラグインを読み込めなかったときは、その原因のエラーだけが出ます。
 
+上の [code: @tsv-table] は、Golem のリリースに添えてある見本のプラグイン [code: tsv-table] のブロックコマンドです。
+[code: data] で渡した TSV のファイルを、[code: @table] と同じ表にします。
+
+```toml
+[plugins.tsv-table]
+url = "<リリースの URL>/tsv-table.wasm"
+data = { sales = "data/sales.tsv", costs = "data/costs.tsv" }
+```
+
+[code: @tsv-table] の後には、[code: data] に書いた名前（[code: sales] など）を一つ書きます。
+TSV の読み方と [code: align] の書き方は、[code: @table] と同じです。
+ただし、TSV は 8 MiB まで、セルは合わせて 50,000 個までです。
+
 ブロックコマンドは、グラフのような図をプラグインが描いて、図版として返すこともあります。
 その図版は、[code: @figure] の図版と同じく番号が付き、[code: @label] で参照でき、同じ検査を受けます。
 HTML と EPUB では、図の画像は [code: images/golem-plugin/] に置かれます。

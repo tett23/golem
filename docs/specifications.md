@@ -3017,7 +3017,7 @@ Golem は、プラグインの仕組みを通す見本のプラグインを、�
 - ツールチェーンは `plugins/rust-toolchain.toml` で固定し、ソースのパスを固定の文字列に置き換えて作るので、同じソースからは同じバイト列になる。CI の `plugins` ジョブが、コミットした `.wasm` とソースから作ったバイト列の一致を確かめる。
 - 見本のプラグインは、リリースに `<名前>.wasm` として添える。利用者は `https://github.com/tett23/golem/releases/download/<タグ>/<名前>.wasm` を `url` に書いて使う。
 
-今の見本のプラグインは `lookup`、`bar-chart`、`glossary`、`kansuji`、`auto-tcy` である。
+今の見本のプラグインは `lookup`、`bar-chart`、`glossary`、`kansuji`、`auto-tcy`、`tsv-table` である。
 `[lookup: キー]` は、データ `table` で渡した TSV（キー、タブ、値の行）からキーの値を返す。
 空の行と `#` で始まる行は飛ばし、同じキーの行が二つあれば先の行を使う。
 
@@ -3076,6 +3076,17 @@ data = { terms = "data/terms.tsv" }
 - 横組みの本では、文書を変えずに返し、`auto-tcy/split` も出さない。`config` の誤りは横組みでも報告する。
 
 `config` の誤りは、エラー `auto-tcy/config-utf8`、`auto-tcy/config-syntax`、`auto-tcy/config-key`、`auto-tcy/config-digits`、`auto-tcy/config-mark` で、フィルタを当てたファイルの先頭に出し、文書を書き換えずに返す。
+
+`@tsv-table <データの名前> align=...` は、データで渡した TSV を、`@table` と同じ表のブロックにする（[docs/adr/0129](adr/0129-tsv-table-plugin.md)）。
+ブロックコマンド `tsv-table` とデータの名前 `*` を宣言し、インラインのコマンドとフィルタは持たない。
+
+- 位置引数はデータの名前の文字列を一つだけ取る。キーワード引数は `align` だけで、`@table` の `align` と同じく `left`、`center`、`right`、`default` をカンマで区切って列の順に並べる。一つだけ書けば、すべての列に当てる。本体（字下げした行）は取らない。
+- TSV は `@table` と同じ規則で読む。UTF-8 に限り、先頭の BOM を飛ばし、行の終わりは LF か CRLF で、ファイルの末尾の行の終わりを一つだけ捨てる。タブでセルを区切り、引用符もエスケープもない。一行目が見出しの行で、すべての行のセルの数は見出しの行と同じである。
+- セルは地の文として扱い、記法を解釈しない。空のセルはインラインを持たない。表とセルの位置は、どれも呼び出しの位置である。
+- 上限は、行の数（見出しの行を含めて 10,000）と一行のセルの数（256）が `@table` と同じで、加えてセルの合計を 50,000、TSV の大きさを 8 MiB（8,388,608 バイト）とする。命令数の上限より先に、プラグインの上限に当たるようにするためである。
+
+誤りは、プラグインのコード `name`、`key`、`body`、`no-data`、`utf8`、`cr`、`empty`、`cells`、`align`、`limit`（宣言の名前を前に付けて `tsv-table/name` などと表示する）で、呼び出しの位置に出し、ブロックを一つも返さない。
+`utf8`、`cr`、`cells`、`limit` のメッセージには、TSV の行の番号を書く。
 
 ### 配布
 
