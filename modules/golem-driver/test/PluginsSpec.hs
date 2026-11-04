@@ -213,6 +213,37 @@ withLocal decl source files k = withSystemTempDirectory "golem-local" $ \tmp -> 
   writeFiles tmp (("plugins/datum.wasm", wasm) : files)
   k tmp
 
+{- | A project as 'withLocal' with datum.wat declaring the data * instead
+of table (docs/adr/0119): it takes data of any name, and answers [datum]
+with the data table, which must be the first data by name.
+-}
+withAnyDatum :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withAnyDatum decl source files k = withSystemTempDirectory "golem-any" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["text"]}) <> "\n[plugins.lk]\npath = \"datum.wasm\"\n" <> decl)
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  TIO.writeFile (tmp </> "a.gm") source
+  src <- TIO.readFile "../golem-plugin/test/plugins/datum.wat"
+  let anyName =
+        T.replace "(i64.const 29)" "(i64.const 25)"
+          . T.replace "\"\\a2\\64data\\81\\65table\\68commands" "\"\\a2\\64data\\81\\61*\\68commands"
+  assertBool "datum.wat declares table" (anyName src /= src)
+  wasm <- watToWasm (anyName src) >>= either (assertFailure . T.unpack) pure
+  writeFiles tmp (("datum.wasm", wasm) : files)
+  k tmp
+
+-- | Data of any name (docs/adr/0119).
+anyDataTests :: [TestTree]
+anyDataTests =
+  [ testCase "a plugin that declares * takes data of names the project chooses" $
+      withAnyDatum "data = { table = \"t.txt\", units = \"s.txt\", weights = \"c.txt\" }\n" "[datum]\n" [("t.txt", "value"), ("s.txt", "s"), ("c.txt", "c")] $ \tmp -> do
+        (inls, ds) <- lookedUp Map.empty tmp
+        (texts inls, ds) @?= (["value"], []),
+    testCase "G06102: a name of data of the wrong form, for a plugin that declares *" $
+      withAnyDatum "data = { table = \"t.txt\", Sales = \"t.txt\" }\n" "[datum]\n" [("t.txt", "value")] $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G06102", "プラグインが受け取らないデータの名前です: lk.Sales（受け取る名前: 英小文字で始まる任意の名前）")])
+  ]
+
 -- | A plugin of the project's path (docs/adr/0109).
 localPluginTests :: [TestTree]
 localPluginTests =
@@ -326,6 +357,7 @@ pluginTests =
   channelTests
     <> dataTests
     <> localPluginTests
+    <> anyDataTests
     <> [ testCase "a filter runs over the declared files and keeps the output" $ do
            plain <- buildAndRead Dev "build/text/horizontal/chapters/01.txt"
            filtered <- withPluginProject pluginDecl $ \tmp -> do
