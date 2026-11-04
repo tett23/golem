@@ -1,6 +1,5 @@
 #!/bin/sh
-# Regenerates the Golem parser from its grammar (golem-parser ADR 0002),
-# and the parser of .gmx from its own (docs/adr/0148).
+# Regenerates the Golem parser from its grammar (golem-parser ADR 0002).
 # Each module exports only the names that Golem uses (peg-hs ADR 0061):
 # Golem.Parser uses parseSyntaxRecover, Golem.Parser.Convert uses
 # nameOfSyntaxKind, and LabelSafetySpec uses parse of StrippedGrammar.
@@ -15,7 +14,3 @@ PEG=$("$CABAL" list-bin -v0 peg-cli:exe:peg-hs)
 # the grammar without its labels, for the label safety test (golem-parser ADR 0007)
 "$PEG" gen modules/golem-parser/grammar/Golem.hpeg --Werror --strip-labels StrippedGrammar \
   --export parse -o modules/golem-parser/test/StrippedGrammar.hs
-# the parser of .gmx: the AST, and the lossless tree for golem fmt
-"$PEG" gen modules/golem-gmx/grammar/Gmx.hpeg --Werror \
-  --export parse --export parseSyntax --export nameOfSyntaxKind \
-  -o modules/golem-gmx/src/Golem/Gmx/Generated.hs

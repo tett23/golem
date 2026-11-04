@@ -164,7 +164,6 @@ golem-font は長さを持たず、位置と寸法をフォントの単位で返
 golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
 golem-svg は base、bytestring、containers、text だけに依存し、SVG の図版を PDF に描ける形に読む（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、仕様は [golem-svg の仕様書](golem-svg/specifications.md)）。
 golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画に直す。
-golem-gmx は関数を書く言語 `.gmx` の読み込み、型の検査、評価、整形を持ち、数の演算を golem-eval と共有する（[docs/adr/0148](adr/0148-gmx-function-language-core.md)、仕様は [golem-gmx の仕様書](golem-gmx/specifications.md)）。
 golem-html は golem-project に依存せず、golem-driver が `style.toml` の値を golem-html の設定の型に直す（[ADR 0090](adr/0090-html-settings-conversion-stays-in-driver.md)）。
 ほかの依存を通して届く依存の矢印も省いている。
 PDF 経路のモジュールだけが、レイアウト IR、シェイピング[^shaping]、フォントのサブセット化[^subset]を扱う。
@@ -182,7 +181,6 @@ flowchart TD
     regex["golem-regex<br/>正規表現スタイルの照合器"]
     parser["golem-parser<br/>PEG パーサー"]
     eval["golem-eval<br/>式の評価とプラグインの展開"]
-    gmx["golem-gmx<br/>関数の言語 .gmx"]
     doc["golem-doc<br/>意味論 IR と文書構造（S1）の集約"]
     syntax["golem-syntax<br/>diagnostic とソース位置（最下層）"]
     length["golem-length<br/>長さの型と単位の変換（最下層）"]
@@ -205,7 +203,6 @@ flowchart TD
     doc --> parser
     driver --> epub
     driver --> font
-    driver --> gmx
     driver --> layout
     driver --> layoutspec
     driver --> lint
@@ -217,7 +214,6 @@ flowchart TD
     epub --> html
     eval --> project
     fmt --> parser
-    gmx --> eval
     html --> doc
     layout --> project
     layoutspec --> pdf
@@ -2456,11 +2452,9 @@ v1 の LSP は次の機能を持つ。
 - diagnostics（コンパイルエラーと lint）。notice は `Information` として載せ、`silence-notices` に並べたコードの notice は公開しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。info は `Hint` として載せ、`silence-info` に並べたコードの info は公開しない。LSP には `--verbose` に当たる設定がないので、ほかの info はつねに公開する。今の LSP は組版をしないので、G07047 などのレイアウトの info は載らない（[docs/adr/0104](adr/0104-info-severity.md)）。
 - 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。
 - ラベルの名前変更（章をまたいで一括で書き換える）
-- 補完（組み込み、プラグイン、`.gmx` の関数のコマンドの名前（行頭の `@` の後ろではブロックコマンドの名前）、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の `meta` と `meta.roles` のキー）
-- ホバーによる `[= ...]` の評価結果の表示と、関数のコマンドのシグネチャ（要求を含む）の表示
-- 整形（fmt を呼び出す。`.gmx` も整形する）
-- 関数のコマンドの名前から `.gmx` の宣言への移動と、`.gmx` の関数を呼ぶ `.gm` の箇所の一覧（[docs/adr/0150](adr/0150-calling-gmx-functions-from-gm.md)）
-- `.gmx` の diagnostics。`.gmx` を編集すれば、プロジェクトを評価し直す。`.gmx` の中の補完は持たない
+- 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の `meta` と `meta.roles` のキー）
+- ホバーによる `[= ...]` の評価結果の表示
+- 整形（fmt を呼び出す）
 - 見出しによる文書のアウトライン
 
 組版結果のプレビューは LSP の範囲外とする。
@@ -2826,97 +2820,6 @@ S1 は、一覧ごとに、キーが同じ項目を一つのエントリにま�
 
 エントリのない一覧は、PDF とプレーンテキストでは何も出さず、HTML と EPUB では空の `<ul>` を持つ `<section>` を出す。
 一覧は目次と EPUB のナビゲーション文書に入れない。
-
-## 関数
-
-書き手は、関数を言語 `.gmx` で書ける（[docs/adr/0148](adr/0148-gmx-function-language-core.md)）。
-言語の規則と組み込みのモジュールは [golem-gmx の仕様書](golem-gmx/specifications.md) に書く。
-
-関数のファイルと、関数に許す要求と、関数に読ませるデータは、`manifest.toml` の `[functions]` に書く（[docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md)）。
-
-```toml
-[functions]
-files = ["functions/book.gmx"]
-requires = ["file"]
-
-[functions.data]
-words = "data/words.tsv"
-```
-
-- `files` は関数のファイルの一覧である。そこから `import` で読む `.gmx` は書かなくてよい。
-- `requires` は関数に許す要求の一覧で、省けば空である。要求は今は `file` だけで、ほかの名前は G03101 とする。
-- `[functions.data]` は、`File.read` に渡す名前から、ルートからのパスへの表である。名前は英小文字で始め、英小文字、数字、`-` だけで書く。
-
-関数は、シグネチャの `=>` の後ろに要求を書く（`read :: String -> String => file;`）。
-`files` からたどれるすべての関数の要求が `requires` になければ、G10505 とする。
-`requires` を `manifest.toml` にも書かせるのは、関数が何を読むかを、`.gmx` を開かずにプロジェクトの設定だけで確かめられるようにするためである。
-
-読み込みの時点で、次のことを検査する。
-原稿が関数を呼ばない本でも検査するのは、誤りが見えるかどうかを、原稿に呼び出しを書いたかどうかで変えないためである。
-
-- `files` と `[functions.data]` のファイルがなければ G03102、ルートの外を指せば G03003 とする。
-- `[functions.data]` の大きさの合計は、プラグインのデータと同じく 64 MiB までで、超えれば G03103 とする。
-- `[functions.data]` があるのに `requires` に `file` がなければ G03104 とする。
-- `.gmx` の構文、名前、型、パターンの誤り（G101xx から G105xx）。
-
-要求 `file` のハンドラは driver が持つ。
-ハンドラは読み込みの時点で `[functions.data]` のファイルをすべて読み、評価のあいだはその値だけを返す。
-評価の途中でファイルシステムに触れないので、評価は純粋であり、ファイルを並列に評価できる。
-`File.read` はファイルの中身を UTF-8 の文字列で返し、先頭の BOM を読み飛ばし、CRLF を LF にする。
-`[functions.data]` にない名前は G10503、UTF-8 として読めないファイルは G10504 とする。
-LSP は `files` からたどれる `.gmx` と `[functions.data]` のファイルを、表のファイルと同じ仕組みで監視し、変われば評価し直す。
-
-### 関数のコマンド
-
-`files` の `.gmx` の `pub inline` と `pub block` を付けた関数は、`.gm` のインラインのコマンドとブロックコマンドになる（[docs/adr/0150](adr/0150-calling-gmx-functions-from-gm.md)）。
-`pub inline` の戻り値の型は `Inlines`、`pub block` の戻り値の型は `Blocks` である（G10601）。
-`import` で読まれるだけの `.gmx` の `pub inline` と `pub block` は、ほかの `.gmx` から普通の関数として呼べるが、コマンドにはならない。
-
-```haskell
-pub inline taxIncluded :: Nat -> Inlines;
-taxIncluded n = Inline.text (String.fromNat (div (n * 11) 10));
-
-pub block wordTable :: String -> Blocks => file;
-```
-
-コマンドの名前は、関数の名前の英大文字の一字を `-` と英小文字に置き換えたものである（`taxIncluded` は `tax-included`）。
-英大文字が続く名前、`_` を含む名前、英字のほかの字を含む名前は、コマンドにできない（G10600）。
-関数のコマンドは、プラグインのコマンドと同じく、プロジェクトの全体の名前であり、`.gm` に `@import` を書かずに呼べる。
-組み込みのコマンドと同じ名前は G03105、プラグインのコマンドと同じ名前は G03106、二つの `.gmx` の同じ名前は G03107 で、どれも読み込みの時点のエラーである。
-コマンドの解決は、組み込み、プラグイン、関数の順に調べる。
-`.gmx` の読み込みか検査に誤りがあるときは、未知のコマンド（G02022、G02009）を報告しない。
-
-コマンドの引数は、評価してから関数に渡す。
-
-- シグネチャの引数のうち、`Inlines` でも `Blocks` でもない型の引数が、位置引数に順に対応する。型は `Nat`、`Int`、`Rat`、`String`、`Bool` と、それらの `List` に限る（G10602）。
-- `pub inline` では、その後ろに並ぶ `Inlines` の引数が、散文スロットに順に対応する。
-- `pub block` では、最後の引数を `Blocks` にすると、字下げした本体を受け取る。
-- `.gm` の数は自然数から整数へ、整数から有理数へだけ広がる。文字列（語を含む）は `String`、真偽値は `Bool`、配列は `List` に写す。連想配列、範囲、`nil` は渡せない。
-- キーワード引数は G02119、位置引数の数の誤りは G02120、写せない値は G02121、散文スロットの数の誤りは G02122、本体を受け取らない関数への本体は G02123 とし、どれも関数を呼ばない。
-
-関数は、組み込みのモジュール `Inline` と `Block` の関数で意味論 IR を作って返す。
-作れるのは、文字、ルビ、圏点、文字スタイル、色、縦中横、数と、段落、箇条書き、番号付きの箇条書き、定義の並び、表、コードのブロックである。
-見出し、一覧の出力、改ページ、行アキは作れない。
-散文スロットと本体で受け取った `Inlines` と `Blocks` の中身は読めず、そのまま返すか、ほかの値で包んで返す。
-中の注、相互参照、索引の印、評価を遅らせた値は、受け取ったまま渡る。
-関数が作ったノードのソースの位置は、呼び出しの位置である。
-関数が書いた文字スタイル、色、段落スタイルの名前は、組み込みのコマンドと同じく検査する（G02018、G02017、G02047）。
-
-関数はファイル内評価（S0）でだけ呼ぶ。
-関数は純粋であり、`file` の値も読み込みの時点で決まるので、ファイルを並列に評価できる。
-関数を `[= ...]` の式文脈から呼ぶ手段はない。
-
-### 関数とプラグイン
-
-関数は、社内の使い手や組版のオペレーターが、手元の不便を解消するために書く。
-プラグインは、技術者が作って配る。
-このため、関数は `plugins.lock` やレジストリのような配布の仕組みを持たない。
-関数のファイルは、プロジェクトのルートの中のパスでだけ指せ、ほかのプロジェクトで使うにはファイルをコピーする。
-Golem は関数の出どころを記録しない。
-評価の手数と深さに上限があり（G10400、G10401、[golem-gmx の仕様書](golem-gmx/specifications.md)）、重い仕事はプラグインの役割である。
-
-`golem fmt` は、引数のないとき、章のファイルに加えて `files` からたどれる `.gmx` を整形する。
-引数に `.gmx` のファイルを渡しても整形する。
 
 ## プラグイン
 
@@ -3651,6 +3554,15 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 どのバージョンで何を扱うかは、[docs/roadmap.md](roadmap.md) にまとめる。
 まだ実装していない項目、ADR が求める手作業の確かめが残っている項目、未決事項、課題にしなかった事項もそこに載せる。
 この仕様書は、今の Golem の振る舞いだけを書く。
+
+## 破棄した ADR
+
+採択した後に破棄した ADR と、破棄した理由をここに書く。
+
+- **`.gmx` の関数（[docs/adr/0148](adr/0148-gmx-function-language-core.md)、[docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md)、[docs/adr/0150](adr/0150-calling-gmx-functions-from-gm.md)）**：三つの ADR は、`.gmx` のファイルに関数を宣言し、`.gm` からコマンドとして呼ぶ仕組みを決める草案だった。
+  [PR #526](https://github.com/tett23/golem/pull/526) で、ほかの草案（docs/adr の 0146、0147、0151 から 0154）とともに誤って採択し、PR #531、#533、#534、#536 で実装した。
+  メンテナーは 2026-11-05 に、設計の検討を続けるために三つを取り下げ、実装を戻した。
+  関数の宣言は、新しい ADR を起草して決め直す（[docs/roadmap.md](roadmap.md)）。
 
 ## 既知の不具合
 

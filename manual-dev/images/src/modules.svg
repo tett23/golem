@@ -52,8 +52,6 @@
   <path class="edge" d="M705,278 V296 H1262 V490 H1247"/>
   <path class="edge" d="M725,266 H900 V462"/>
   <path class="edge" d="M385,264 H375 V610 H625"/>
-  <path class="edge" d="M720,278 V560 H800 V730 H775"/>
-  <path class="edge" d="M640,702 V670 H600 V518"/>
 
   <!-- nodes: center x, y; width 150 (layout-spec 190) -->
   <rect class="box tool" x="575" y="22" width="150" height="56"/><text class="name" x="650" y="50">cli</text>
@@ -79,7 +77,6 @@
 
   <rect class="box core" x="285" y="702" width="150" height="56"/><text class="name" x="360" y="730">doc</text>
   <rect class="box core" x="925" y="702" width="150" height="56"/><text class="name" x="1000" y="730">regex</text>
-  <rect class="box core" x="625" y="702" width="150" height="56"/><text class="name" x="700" y="730">gmx</text>
 
   <rect class="box core" x="285" y="822" width="150" height="56"/><text class="name" x="360" y="850">parser</text>
   <rect class="box core" x="285" y="942" width="150" height="56"/><text class="name" x="360" y="970">syntax</text>
