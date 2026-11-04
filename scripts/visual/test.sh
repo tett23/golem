@@ -639,6 +639,9 @@ slow_build() {
   env PATH="$BR/slow:$PATH" GOLEM="$BR/slow/golem" RUNNING="$BR/running" CONCURRENT="$BR/concurrent" ENDED="$BR/ended" \
     GOLEM_MANUAL_SKIP_FONTS=1 FAKE_GOLEM_FAIL="${FAKE_GOLEM_FAIL-}" sh "$BR/scripts/visual/build.sh" "$@"
 }
+# FAKE_GOLEM_FAIL=... before a function stays set in some shells (the sh
+# of macOS): clear it
+FAKE_GOLEM_FAIL=
 run slow_build "$BR/out4"
 expect "build: the inputs build at the same time" 0
 wrong=
