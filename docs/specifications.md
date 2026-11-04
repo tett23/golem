@@ -2456,9 +2456,11 @@ v1 の LSP は次の機能を持つ。
 - diagnostics（コンパイルエラーと lint）。notice は `Information` として載せ、`silence-notices` に並べたコードの notice は公開しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。info は `Hint` として載せ、`silence-info` に並べたコードの info は公開しない。LSP には `--verbose` に当たる設定がないので、ほかの info はつねに公開する。今の LSP は組版をしないので、G07047 などのレイアウトの info は載らない（[docs/adr/0104](adr/0104-info-severity.md)）。
 - 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。
 - ラベルの名前変更（章をまたいで一括で書き換える）
-- 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の `meta` と `meta.roles` のキー）
-- ホバーによる `[= ...]` の評価結果の表示
-- 整形（fmt を呼び出す）
+- 補完（組み込み、プラグイン、`.gmx` の関数のコマンドの名前（行頭の `@` の後ろではブロックコマンドの名前）、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の `meta` と `meta.roles` のキー）
+- ホバーによる `[= ...]` の評価結果の表示と、関数のコマンドのシグネチャ（要求を含む）の表示
+- 整形（fmt を呼び出す。`.gmx` も整形する）
+- 関数のコマンドの名前から `.gmx` の宣言への移動と、`.gmx` の関数を呼ぶ `.gm` の箇所の一覧（[docs/adr/0150](adr/0150-calling-gmx-functions-from-gm.md)）
+- `.gmx` の diagnostics。`.gmx` を編集すれば、プロジェクトを評価し直す。`.gmx` の中の補完は持たない
 - 見出しによる文書のアウトライン
 
 組版結果のプレビューは LSP の範囲外とする。

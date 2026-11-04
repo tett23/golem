@@ -34,10 +34,13 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver (Evaluated (..), metadataValues)
+import Golem.Driver.Functions (formatFunctionFile)
+import Golem.Eval.Builtin (builtinBlockCommands)
 import Golem.Eval.Expr (Env (..), embedValue, evalExpr)
 import Golem.Eval.File (EvalResult (..), Usage (..), builtinInlineCommands)
 import Golem.Eval.Value (Value (..), typeName)
 import Golem.Fmt (FormatResult (..), format)
+import Golem.Gmx qualified as Gmx
 import Golem.Lsp.Workspace
 import Golem.Parser.AST
 import Golem.Parser.SourceSettings (sourceKeys)
@@ -98,6 +101,8 @@ data Occurrence
     OccStyleDef StyleKind Text
   | -- | a style named by @style, [style ...] or based-on of @style-def
     OccStyleRef StyleKind Text
+  | -- | the name of an inline command (True) or a block command (docs/adr/0150)
+    OccCommand Bool Text
   deriving stock (Show)
 
 labelCommands :: [Text]
@@ -115,7 +120,7 @@ occurrences (File _ bs) = concatMap block bs
       DefList gs -> concatMap (\g -> concatMap (concatMap inline) (dgTerms g) <> concatMap (concatMap block) (dgDefs g)) gs
       Table _ h rows -> concatMap (concatMap inline) h <> concatMap (concatMap (concatMap inline)) rows
       SetVar (Located vsp v) e -> (vsp, OccVar Nothing v) : expr e
-      BlockCommand (Located _ name) args body -> blockCommand sp name args <> concatMap block body
+      BlockCommand (Located nsp name) args body -> (nsp, OccCommand False name) : blockCommand sp name args <> concatMap block body
       Attributed cs t -> concatMap block cs <> maybe [] block t
       _ -> []
     blockCommand _ name args = case (name, args) of
@@ -132,14 +137,15 @@ occurrences (File _ bs) = concatMap block bs
       _ -> concatMap argument args
     inline (Located sp i) = case i of
       Expr e -> (sp, OccExpr e) : expr e
-      Command (Located _ name) args slots ->
-        ( case (name, args) of
-            (n, Located asp (Positional (Word l)) : _)
-              | n `elem` labelCommands -> [(asp, OccLabelRef l)] <> [(sp, OccPageRef l) | n == "ref-page"]
-            ("style", [Located asp (Positional (Word n))]) -> [(asp, OccStyleRef CharacterKind n)]
-            _ -> concatMap argument args
-        )
-          <> concatMap (concatMap inline) slots
+      Command (Located nsp name) args slots ->
+        (nsp, OccCommand True name)
+          : ( case (name, args) of
+                (n, Located asp (Positional (Word l)) : _)
+                  | n `elem` labelCommands -> [(asp, OccLabelRef l)] <> [(sp, OccPageRef l) | n == "ref-page"]
+                ("style", [Located asp (Positional (Word n))]) -> [(asp, OccStyleRef CharacterKind n)]
+                _ -> concatMap argument args
+            )
+            <> concatMap (concatMap inline) slots
       SoftBreak -> []
       -- an escaped character refers to nothing (golem-parser ADR 0010)
       Escaped _ -> []
@@ -200,7 +206,24 @@ definition ws path off = case sourceOf ws path of
     -- a style defined (or overridden) in the file; style.toml keeps no positions (docs/adr ADR 0014)
     Just (OccStyleRef k n) -> styleDefs src k n
     Just (OccStyleDef k n) -> styleDefs src k n
+    -- the declaration of the function of a command (docs/adr/0150)
+    Just (OccCommand k n) -> [Location (Gmx.cmdPath c) (spanStart (Gmx.cmdSpan c)) (spanEnd (Gmx.cmdSpan c)) | Just c <- [functionCommand ws k n]]
     _ -> []
+
+-- | The function of a command of .gm, when a function makes it (docs/adr/0150).
+functionCommand :: Workspace -> Bool -> Text -> Maybe Gmx.Command
+functionCommand ws inline n =
+  listToMaybe [c | c <- maybe [] evFunctionCommands (wsEvaluated ws), Gmx.cmdName c == n, (Gmx.cmdKind c == Gmx.InlineCommand) == inline]
+
+-- | The calls of the command of a function in the sources (docs/adr/0150).
+commandCalls :: Workspace -> Gmx.Command -> [Location]
+commandCalls ws c =
+  [ loc s sp
+  | s <- allSources ws,
+    (sp, OccCommand k n) <- occurrences (srcAst s),
+    n == Gmx.cmdName c,
+    k == (Gmx.cmdKind c == Gmx.InlineCommand)
+  ]
 
 styleDefs :: Source -> StyleKind -> Text -> [Location]
 styleDefs src k n = take 1 [loc src sp | (sp, OccStyleDef k' n') <- occurrences (srcAst src), k' == k, n' == n]
@@ -224,8 +247,17 @@ a variable in its file and through namespaces in the files importing it.
 -}
 references :: Workspace -> FilePath -> Int -> [Location]
 references ws path off = case sourceOf ws path of
-  Nothing -> []
+  -- the declaration of a function in a .gmx: the calls of its command (docs/adr/0150)
+  Nothing ->
+    concat
+      [ commandCalls ws c
+      | c <- maybe [] evFunctionCommands (wsEvaluated ws),
+        Gmx.cmdPath c == path,
+        spanStart (Gmx.cmdSpan c) <= off,
+        off <= spanEnd (Gmx.cmdSpan c)
+      ]
   Just src -> case snd <$> occurrenceAt src off of
+    Just (OccCommand k n) -> maybe [] (commandCalls ws) (functionCommand ws k n)
     Just (OccLabelRef l) -> nub (labelDefs ws l <> labelRefs ws l)
     Just (OccLabelDef l) -> nub (labelDefs ws l <> labelRefs ws l)
     Just (OccVar Nothing v) -> varRefs src v
@@ -297,40 +329,46 @@ completions ws path off = case sourceOf ws path of
           Just _ -> Just (T.splitOn "." (T.takeWhileEnd (\c -> c == '.' || c == '_' || c `elem` ['a' .. 'z'] || c `elem` ['0' .. '9']) lastOpen))
           Nothing -> Nothing
         meta = maybe Map.empty (metadataValues . manifestMetadata . projectManifest . evProject) (wsEvaluated ws)
-     in if "@import " `T.isPrefixOf` T.stripStart lineBefore
-          then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
-          else case (T.stripPrefix "@manifest " (T.stripStart lineBefore), T.stripPrefix "@style-def " (T.stripStart lineBefore)) of
-            (Just rest, _) -> manifestCompletions rest
-            (_, Just rest) -> styleDefCompletions style paraNames charNames rest
-            _ ->
-              -- the kinds of a page break (docs/adr ADR 0017)
-              if "@page-break " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
-                then [Completion k CkSettingValue | k <- ["recto", "verso"]]
-                else -- the signed counts of @page-lines (docs/adr ADR 0030)
-                  if "@page-lines " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
-                    then [Completion k CkSettingValue | k <- ["+1", "-1"]]
-                    else
-                      -- paragraph styles after @style at the start of a line (docs/adr ADR 0005)
-                      if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
-                        then [Completion n CkParaStyle | n <- paraNames]
+     in if "@" `T.isPrefixOf` T.stripStart lineBefore && not (T.any (== ' ') (T.stripStart lineBefore))
+          then blockNames
+          else
+            if "@import " `T.isPrefixOf` T.stripStart lineBefore
+              then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
+              else case (T.stripPrefix "@manifest " (T.stripStart lineBefore), T.stripPrefix "@style-def " (T.stripStart lineBefore)) of
+                (Just rest, _) -> manifestCompletions rest
+                (_, Just rest) -> styleDefCompletions style paraNames charNames rest
+                _ ->
+                  -- the kinds of a page break (docs/adr ADR 0017)
+                  if "@page-break " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                    then [Completion k CkSettingValue | k <- ["recto", "verso"]]
+                    else -- the signed counts of @page-lines (docs/adr ADR 0030)
+                      if "@page-lines " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                        then [Completion k CkSettingValue | k <- ["+1", "-1"]]
                         else
-                          if not hasOpen || T.isInfixOf "]" lastOpen
-                            then []
-                            else case metaPath of
-                              -- the keys of meta and of meta.roles (docs/adr ADR 0033)
-                              Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
-                              Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
-                              _ -> case ws' of
-                                [] -> commandNames
-                                [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
-                                (cmd : _)
-                                  | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
-                                  | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
-                                  | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
-                                _ -> []
+                          -- paragraph styles after @style at the start of a line (docs/adr ADR 0005)
+                          if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                            then [Completion n CkParaStyle | n <- paraNames]
+                            else
+                              if not hasOpen || T.isInfixOf "]" lastOpen
+                                then []
+                                else case metaPath of
+                                  -- the keys of meta and of meta.roles (docs/adr ADR 0033)
+                                  Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
+                                  Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
+                                  _ -> case ws' of
+                                    [] -> commandNames
+                                    [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
+                                    (cmd : _)
+                                      | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
+                                      | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
+                                      | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
+                                    _ -> []
   where
-    -- the built-in commands, then those of the plugins (docs/adr ADR 0031)
-    commandNames = [Completion c CkCommand | c <- builtinInlineCommands <> maybe [] evPluginCommands (wsEvaluated ws)]
+    -- the built-in commands, then those of the plugins (docs/adr ADR 0031), then those of the functions (docs/adr/0150)
+    commandNames = [Completion c CkCommand | c <- builtinInlineCommands <> maybe [] evPluginCommands (wsEvaluated ws) <> functionNames True]
+    functionNames inline = [Gmx.cmdName c | c <- maybe [] evFunctionCommands (wsEvaluated ws), (Gmx.cmdKind c == Gmx.InlineCommand) == inline]
+    -- the block commands at the start of a line: the built-in ones and those of the functions (docs/adr/0150)
+    blockNames = [Completion c CkCommand | c <- builtinBlockCommands <> functionNames False]
 
 {- | Completion after @manifest (docs/adr ADR 0014): the keys of [source]
 (docs/adr ADR 0013), then the values of a key.
@@ -397,9 +435,15 @@ hover ws path off = do
   (_, occ) <- listToMaybe (sortOn (negate . spanLength . fst) [o | o@(sp, OccExpr _) <- occurrences (srcAst src), spanStart sp <= off, off <= spanEnd sp]) `orElse` occurrenceAt src off
   case occ of
     OccExpr e -> Just (evaluate src e)
-    OccPageRef _ -> Just "ページ番号はレイアウト（S2）で決まるため、ここでは表示できません"
+    -- the signature of the function of a command (docs/adr/0150)
+    OccCommand k n
+      | Just c <- functionCommand ws k n -> Just (Gmx.cmdSignature c)
+      -- the name of [ref-page ...] stands on the page reference
+      | otherwise -> listToMaybe [pageRefText | (sp, OccPageRef _) <- occurrences (srcAst src), spanStart sp <= off, off <= spanEnd sp]
+    OccPageRef _ -> Just pageRefText
     _ -> Nothing
   where
+    pageRefText = "ページ番号はレイアウト（S2）で決まるため、ここでは表示できません"
     orElse (Just x) _ = Just x
     orElse Nothing y = y
     evaluate src e =
@@ -434,11 +478,18 @@ hover ws path off = do
 errors or is already formatted.
 -}
 formatting :: Workspace -> FilePath -> Maybe Text
-formatting ws path = do
-  src <- sourceOf ws path
-  case format (srcText src) of
-    Formatted t | t /= srcText src -> Just t
-    _ -> Nothing
+formatting ws path
+  -- a .gmx (docs/adr/0150), as the editor has it
+  | ".gmx" `T.isSuffixOf` T.pack path = do
+      text <- Map.lookup path (wsOverlay ws)
+      case formatFunctionFile text of
+        Right t | t /= text -> Just t
+        _ -> Nothing
+  | otherwise = do
+      src <- sourceOf ws path
+      case format (srcText src) of
+        Formatted t | t /= srcText src -> Just t
+        _ -> Nothing
 
 -- ------------------------------------------------------------------ outline
 

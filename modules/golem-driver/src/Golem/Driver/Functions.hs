@@ -10,6 +10,7 @@ module Golem.Driver.Functions
     loadFunctionsAt,
     functionFiles,
     functionCommands,
+    programCommandsOf,
     formatFunctionFile,
     functionSourcePaths,
     Result (..),
@@ -160,6 +161,10 @@ functionCommands lf pluginInline pluginBlock = case lfProgram lf of
      in (diags, table)
   where
     shown c = (if cmdKind c == InlineCommand then "[" else "@") <> cmdName c <> (if cmdKind c == InlineCommand then "]" else "")
+
+-- | The commands of the functions loaded, none after an error.
+programCommandsOf :: LoadedFunctions -> [Command]
+programCommandsOf = maybe [] (programCommands . fst) . lfProgram
 
 {- | golem fmt of a .gmx (docs/adr/0148, docs/adr/0150): the formatted
 text, or the errors that keep it from being read.
