@@ -266,6 +266,15 @@ jobs:
           path: dist-newstyle
           key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ github.sha }}
           restore-keys: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-
+      # Setup configures a component again when its .cabal file is newer
+      # than its setup-config, by the times alone. The .cabal files of the
+      # checkout are always newer than the restored setup-config, so cabal
+      # test configured and linked every test suite again before running
+      # it. cabal-install still sees a changed .cabal file by its content
+      # (docs/adr/0147)
+      - name: The setup-config of dist-newstyle newer than the .cabal files (docs/adr/0147)
+        run: |
+          if [ -d dist-newstyle ]; then find dist-newstyle -name setup-config -exec touch {} +; fi
       - name: wasmtime C API (golem-plugin ADR 0001)
         run: scripts/fetch-wasmtime.sh
       - id: cddl
@@ -338,7 +347,7 @@ jobs:
         if: matrix.tests && matrix.suites != 'driver'
         run: |
           scripts/gen-parser.sh
-          git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs
+          git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs modules/golem-gmx/src/Golem/Gmx/Generated.hs
       - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
         if: matrix.outputs || matrix.env
         uses: actions/cache@v6
@@ -604,11 +613,12 @@ jobs:
             modules/**/*.hs
             !modules/golem-parser/src/Golem/Parser/Generated.hs
             !modules/golem-parser/test/StrippedGrammar.hs
+            !modules/golem-gmx/src/Golem/Gmx/Generated.hs
       # the release of hlint, not a build of it with GHC (docs/adr/0009)
       - name: hlint 3.10
         run: sh scripts/ci/fetch-hlint.sh
       # -j checks the files on every core of the runner (docs/adr/0037)
-      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs"'
+      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs" --ignore-glob="modules/golem-gmx/src/Golem/Gmx/Generated.hs"'
 
   # The sample plugins and their helper crate (docs/adr/0106): the tests of
   # the crates, and the committed plugins/wasm/*.wasm are the bytes the
