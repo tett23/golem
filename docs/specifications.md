@@ -3086,7 +3086,8 @@ data = { terms = "data/terms.tsv" }
 - 上限は、行の数（見出しの行を含めて 10,000）と一行のセルの数（256）が `@table` と同じで、加えてセルの合計を 50,000、TSV の大きさを 8 MiB（8,388,608 バイト）とする。命令数の上限より先に、プラグインの上限に当たるようにするためである。
 
 誤りは、プラグインのコード `name`、`key`、`body`、`no-data`、`utf8`、`cr`、`empty`、`cells`、`align`、`limit`（宣言の名前を前に付けて `tsv-table/name` などと表示する）で、呼び出しの位置に出し、ブロックを一つも返さない。
-`utf8`、`cr`、`cells`、`limit` のメッセージには、TSV の行の番号を書く。
+`utf8`、`cr`、`cells` と、行の数とセルの数の `limit` のメッセージには、TSV の行の番号を書く。
+TSV の大きさの `limit` は、ファイル全体の大きさの誤りなので、行の番号の代わりにバイト数と上限を書く。
 
 `sou-ruby` は、フィルタ `sou-ruby` を当てたファイルの漢字にルビを振る（総ルビ、[docs/adr/0130](adr/0130-sou-ruby-plugin.md)）。
 データ `words`（語と読みの TSV）と、Lindera の辞書の九つのファイル `dict-char-def`、`dict-matrix`、`dict-metadata`、`dict-trie`、`dict-unk`、`dict-vals`、`dict-vals-idx`、`dict-words`、`dict-words-idx` を受け取る。
