@@ -55,7 +55,7 @@ import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.Cbor
 import Golem.Doc.IR hiding (abiVersion)
 import Golem.Doc.Validate (validateDocument)
-import Golem.Eval.Value (Value (..))
+import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Syntax
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -347,10 +347,15 @@ termValue = \case
 {- | The CBOR of a command request (golem-doc.cddl @command-request@), with
 the data of the plugin at the end (docs/adr/0105).
 -}
-commandRequest :: Plugin -> Text -> [Value] -> [[Inline]] -> SrcSpan -> Either PluginError ByteString
+commandRequest :: Plugin -> Text -> [PluginArg] -> [[Inline]] -> SrcSpan -> Either PluginError ByteString
 commandRequest plugin name args slots sp = do
-  argTerms <- mapM valueTerm args
-  pure (withData plugin [TInt 0, TString name, TList [TList [TInt 0, a] | a <- argTerms], TList (map inlinesTerm slots), spanT sp])
+  argTerms <- mapM argTerm args
+  pure (withData plugin [TInt 0, TString name, TList argTerms, TList (map inlinesTerm slots), spanT sp])
+  where
+    -- golem-doc.cddl's argument: [0, value] / [1, key, value] (docs/adr/0110)
+    argTerm = \case
+      PluginPositional v -> (\t -> TList [TInt 0, t]) <$> valueTerm v
+      PluginKeyword k v -> (\t -> TList [TInt 1, TString k, t]) <$> valueTerm v
 
 -- | The CBOR of a filter request (golem-doc.cddl @filter-request@), with the data at the end.
 filterRequest :: Plugin -> Text -> Document -> ByteString
@@ -368,7 +373,7 @@ decoded = \case
   Left e -> Left (BadOutput (describeDecodeError e))
 
 -- | A command of the plugin. Returns the inlines and the plugin's diagnostics.
-callCommand :: Plugin -> Text -> [Value] -> [[Inline]] -> SrcSpan -> Either PluginError ([Inline], [Diagnostic])
+callCommand :: Plugin -> Text -> [PluginArg] -> [[Inline]] -> SrcSpan -> Either PluginError ([Inline], [Diagnostic])
 callCommand plugin name args slots sp = do
   req <- commandRequest plugin name args slots sp
   out <- invokeRaw plugin req

@@ -569,7 +569,7 @@ argWordTests =
     "an argument word that is a number literal (docs/adr ADR 0111)"
     [ testCase "a plugin gets the value of the expression with the same literal" $ do
         greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
-        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show vs))], []))
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show (map pluginArgValue vs)))], []))
             c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
             got src = map (fmap stripSpans . paraInlines) (fst (run c src))
         mapM_
@@ -578,7 +578,7 @@ argWordTests =
         got "[greet -3 3.14 1e3]\n" @?= [Just ["[VInt (-3),VRat (157 % 50),VRat (1000 % 1)]"]],
       testCase "a word that is no number literal stays a string" $ do
         greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
-        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show vs))], []))
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show (map pluginArgValue vs)))], []))
             c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
         map (fmap stripSpans . paraInlines) (fst (run c "[greet +3 --3 3.1.4 1e .5 5. 1-2 a3 1... a...3 1...2...3]\n"))
           @?= [Just ["[VString \"+3\",VString \"--3\",VString \"3.1.4\",VString \"1e\",VString \".5\",VString \"5.\",VString \"1-2\",VString \"a3\",VString \"1...\",VString \"a...3\",VString \"1...2...3\"]"]],
@@ -598,7 +598,7 @@ argWordTests =
         msgs "@blank-line [= 1...3]\n" @?= [g02113 "1...3"],
       testCase "a plugin gets a word of a range literal as the range of the expression" $ do
         greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
-        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show vs))], []))
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show (map pluginArgValue vs)))], []))
             c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
             got src = first (map (fmap stripSpans . paraInlines)) (run c src)
         got "[greet 1...3]\n" @?= got "[greet [= 1...3]]\n"
@@ -642,10 +642,19 @@ spreadTests =
         paraOf "[style *[[\"code\"]]: ##1##]\n" @?= paraOf "[style code: ##1##]\n",
       testCase "a plugin's command gets the spread values" $ do
         greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
-        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show vs))], []))
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show (map pluginArgValue vs)))], []))
             c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
         first (map (fmap stripSpans . paraInlines)) (run c "[greet *[[1, \"a\", 1...3]]]\n") @?= ([Just ["[VNat 1,VString \"a\",VRange 1 3]"]], [])
         snd (run c "[greet *[1]]\n") @?= ["G02111"],
+      -- docs/adr/0110
+      testCase "a plugin's command gets a keyword argument with its name, in the order of the source" $ do
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let shown = PluginCommand (\vs _ sp -> Right ([Text sp (T.pack (show vs))], []))
+            c = ctx {ctxPlugins = noPlugins {phCommands = Map.fromList [(greet, shown)]}}
+            got src = first (map (fmap stripSpans . paraInlines)) (run c src)
+        got "[greet a n=1]\n" @?= ([Just [T.pack (show [PluginPositional (VString "a"), PluginKeyword "n" (VNat 1)])]], [])
+        got "[greet a **[{n: 1}]]\n" @?= got "[greet a n=1]\n"
+        got "[greet n=1 n=2]\n" @?= ([Just [T.pack (show [PluginKeyword "n" (VNat 1)])]], ["G02077"]),
       testCase "G02111 and G02112: a spread of the wrong type, and the command is not run" $ do
         msgs "[number-text *[12]]\n" @?= [("G02111", "*[式] の値は配列でなければなりません: 自然数")]
         msgs "[number-text 12 **[[1]]]\n" @?= [("G02112", "**[式] の値は連想配列でなければなりません: 配列")]

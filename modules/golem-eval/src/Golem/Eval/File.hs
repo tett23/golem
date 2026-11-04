@@ -69,7 +69,7 @@ import Numeric.Natural (Natural)
 -- | The call of one plugin command.
 newtype PluginCommand = PluginCommand
   { -- | the output and the plugin's own diagnostics, or errors
-    pcCall :: [Value] -> [[Inline]] -> SrcSpan -> Either [Diagnostic] ([Inline], [Diagnostic])
+    pcCall :: [PluginArg] -> [[Inline]] -> SrcSpan -> Either [Diagnostic] ([Inline], [Diagnostic])
   }
 
 {- | Plugin commands and filters, provided by golem-plugin. The keys tell an
@@ -1691,15 +1691,17 @@ evalCommand ctx inHeading sp (A.Located nsp name) args slots
   where
     parsed = parseBuiltin name
     plugin pc = do
+      -- a keyword goes with its name (docs/adr/0110); a spread is already
+      -- expanded by 'prepareArgs' (docs/adr/0112), so a plugin never gets one
       vals <- forM args $ \(A.Located _ a) -> case a of
-        A.Positional v -> argValue ctx sp v
-        A.Keyword _ v -> argValue ctx sp v
-        _ -> pure (Right VNil)
+        A.Positional v -> fmap PluginPositional <$> argValue ctx sp v
+        A.Keyword (A.Located _ k) v -> fmap (PluginKeyword k) <$> argValue ctx sp v
+        _ -> pure (Right (PluginPositional VNil))
       slots' <- mapM (evalInlines ctx inHeading) slots
       case sequence vals of
         Left d -> report d >> pure []
         -- G02091: the plugin is not called (golem-doc ADR 0006)
-        Right vs | not (all (all inInt64 . valueInts) vs) -> outOfInt64 sp >> pure []
+        Right vs | not (all (all inInt64 . valueInts . pluginArgValue) vs) -> outOfInt64 sp >> pure []
         Right vs -> case pcCall pc vs slots' sp of
           Left ds -> mapM_ report ds >> pure []
           Right (out, ds) -> mapM_ report ds >> pure out
