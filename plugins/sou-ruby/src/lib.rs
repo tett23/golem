@@ -18,7 +18,7 @@
 //! goes to a morphological analyzer, Lindera, when the project passes the
 //! files of a dictionary of Lindera as the data `dict-*`
 //! ([`lindera_dict::NAMES`]); the plugin embeds no dictionary. A run of
-//! kanji with no reading keeps no ruby, and the warning `sou-ruby-unread`
+//! kanji with no reading keeps no ruby, and the warning `unread`
 //! names it once per file. The ruby of the source is kept as it is.
 
 use golem_plugin_sdk::*;
@@ -140,13 +140,13 @@ impl Visitor for Sou<'_> {
 
 /// The filter with an analyzer or none.
 pub fn filter_with(mut doc: Document, data: &Data, analyzer: Option<&dyn Analyzer>) -> Response {
-    let dict = match read_words(data, "words", doc.file, NAME) {
+    let dict = match read_words(data, "words", doc.file) {
         Ok(Some(d)) => d,
         Ok(None) if analyzer.is_some() => Dict::default(),
         Ok(None) => {
             let top = Span { file: doc.file, start: 0, end: 0 };
             return Response::document(doc).with(Diagnostic {
-                code: format!("{NAME}-no-words"),
+                code: "no-words".into(),
                 severity: Severity::Error,
                 span: top,
                 message: "manifest.toml の data で words を渡してください".into(),
@@ -160,7 +160,7 @@ pub fn filter_with(mut doc: Document, data: &Data, analyzer: Option<&dyn Analyze
         .unread
         .into_iter()
         .map(|(u, span)| Diagnostic {
-            code: format!("{NAME}-unread"),
+            code: "unread".into(),
             severity: Severity::Warning,
             span,
             message: format!("読みの分からない漢字です: {u}"),
@@ -176,7 +176,7 @@ pub fn filter(doc: Document, data: &Data) -> Response {
     match lindera_dict::from_data(data) {
         Ok(None) => filter_with(doc, data, None),
         Ok(Some(a)) => filter_with(doc, data, Some(&a)),
-        Err(m) => Response::document(doc).with(Diagnostic { code: format!("{NAME}-dict"), severity: Severity::Error, span: top, message: m }),
+        Err(m) => Response::document(doc).with(Diagnostic { code: "dict".into(), severity: Severity::Error, span: top, message: m }),
     }
 }
 
@@ -265,13 +265,13 @@ pub fn invoke(req: Request) -> Response {
         Request::Filter(f) => filter(f.document, &f.data),
         // the host calls only what describe declares: no command, no block command
         Request::Block(b) => Response::blocks(vec![]).with(Diagnostic {
-            code: format!("{NAME}-no-command"),
+            code: "no-command".into(),
             severity: Severity::Error,
             span: b.span,
             message: format!("{NAME} にコマンドはありません"),
         }),
         Request::Command(c) => Response::inlines(vec![]).with(Diagnostic {
-            code: format!("{NAME}-no-command"),
+            code: "no-command".into(),
             severity: Severity::Error,
             span: c.span,
             message: format!("{NAME} にコマンドはありません"),
