@@ -458,7 +458,7 @@ evalBlock ctx (A.Located sp b) = case b of
               Right v -> modify' (\s -> s {stVars = Map.insert n v (stVars s), stDefined = stDefined s <> [(n, nsp)]})
     pure []
   A.BlockCommand name@(A.Located _ n) args body
-    -- @manifest and @style-def read their own arguments (G02052)
+    -- @manifest and @style-def read their own arguments (docs/adr ADR 0132)
     | n `elem` settingCommands -> standalone ctx sp name args body
     -- @style is read before the evaluation for the lines of its body (G02114, docs/adr ADR 0112)
     | n == "style", (ssp : _) <- spreadsOf args -> report (styleSpread ssp) >> pure []
