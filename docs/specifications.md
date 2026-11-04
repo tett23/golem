@@ -2879,6 +2879,9 @@ CDDL ではこの範囲を `int64` と書き、bignum（CBOR の tag 2 と 3）�
 既約でない組は、復号で `スキーマに合いません: 有理数が既約ではありません` とする。
 有理数の分子と分母も、`int64` の範囲に限る。
 プラグインに渡す引数の値（CDDL の `value`）は、自然数と整数を `int64`、有理数をタグ 30 で書く。
+引数（CDDL の `argument`）は、位置引数を `[0, value]`、キーワード引数を `[1, key, value]` と書き、原稿に書いた順に並べる（[docs/adr/0110](adr/0110-keyword-arguments-to-plugins.md)）。
+同じキーを二度書いた引数は、評価器が G02077 を報告して最初のものだけを渡す。
+`*[式]` と `**[式]` は、組み込みのコマンドと同じく呼び出しの前に展開し、プラグインには展開した後の位置引数とキーワード引数を渡す（[docs/adr/0112](adr/0112-spread-arguments.md)）。
 範囲の値は、`first` と `last` の二つのキーを持つ CBOR の map（`{"first": int64, "last": int64}`）で書き、キーはこの順に書く（[ADR 0113](adr/0113-closed-range-literal.md)）。
 `first` は `last` 以下である。
 `value` の map の形は範囲だけであり、連想配列は渡せない。

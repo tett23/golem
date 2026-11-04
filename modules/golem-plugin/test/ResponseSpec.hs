@@ -17,7 +17,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.Cbor (documentTerm, inlinesTerm)
 import Golem.Doc.IR
-import Golem.Eval.Value (Value (..))
+import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Plugin
 import Golem.Syntax
 import Test.Tasty
@@ -63,7 +63,7 @@ callSpan = mkSpan (FileId 1) 10 20
 
 -- | The command shout, called at callSpan with one slot.
 shout :: Plugin -> Either PluginError ([Inline], [Diagnostic])
-shout p = callCommand p "shout" [VString "x"] [[Text callSpan "slot"]] callSpan
+shout p = callCommand p "shout" [PluginPositional (VString "x")] [[Text callSpan "slot"]] callSpan
 
 -- | A response of the inlines [Text callSpan "SLOT"] with the diagnostics.
 withDiagnostics :: [Term] -> ByteString
@@ -84,7 +84,7 @@ responseTests =
       malformedDescriptionTests,
       testCase "a hash as an argument is bad output before the plugin runs" $ do
         p <- answering (withDiagnostics [])
-        callCommand p "shout" [VHash mempty] [] callSpan @?= Left (BadOutput "ハッシュはプラグインに渡せません"),
+        callCommand p "shout" [PluginPositional (VHash mempty)] [] callSpan @?= Left (BadOutput "ハッシュはプラグインに渡せません"),
       describeErrorTests
     ]
 
