@@ -45,12 +45,15 @@ data Ty
   | TG !Int
   deriving stock (Eq, Ord, Show)
 
--- | A type with 'TG' 0 to n - 1 for its variables, and their names.
-data Scheme = Scheme ![Text] !Ty
+{- | A type with 'TG' 0 to n - 1 for its variables, and their names, and
+the requirements of the function (docs/adr/0149): a set of names, so that
+variables of requirements and handlers of users can be added later.
+-}
+data Scheme = Scheme ![Text] !Ty ![Text]
   deriving stock (Eq, Show)
 
 monoScheme :: Ty -> Scheme
-monoScheme = Scheme []
+monoScheme t = Scheme [] t []
 
 -- | What an operator needs of a variable.
 data Need = NeedNum | NeedEq | NeedAppend
@@ -115,4 +118,5 @@ showTy = go 0
     paren b t = if b then "(" <> t <> ")" else t
 
 showScheme :: Scheme -> Text
-showScheme (Scheme names t) = showTy (substGen (map TS names) t)
+showScheme (Scheme names t reqs) =
+  showTy (substGen (map TS names) t) <> if null reqs then "" else " => " <> T.intercalate ", " reqs

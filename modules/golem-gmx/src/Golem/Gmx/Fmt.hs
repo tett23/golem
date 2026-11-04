@@ -13,6 +13,7 @@ module Golem.Gmx.Fmt
   )
 where
 
+import Data.List (sort)
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -23,7 +24,7 @@ import Peg.Runtime.Syntax (syntaxTokens, tokenKind, tokenText)
 
 data Tok = Tok !TokKind !Text
 
-data TokKind = KWs | KNl | KComment | KOpen | KClose | KGuard | KSemi | KOther
+data TokKind = KWs | KNl | KComment | KOpen | KClose | KGuard | KSemi | KArrow | KReq | KOther
   deriving stock (Eq)
 
 -- | The formatted text, or the errors that keep the file from being read.
@@ -33,7 +34,7 @@ formatGmx raw = do
   _ <- parseModule (FileId 0) src
   tree <- either (const (Left [])) Right (G.parseSyntax src)
   let toks = [Tok (kindOf (G.nameOfSyntaxKind (tokenKind t))) (tokenText t) | t <- syntaxTokens tree]
-  pure (render (layout (splitLines toks)))
+  pure (render (layout (splitLines (sortRequirements toks))))
 
 kindOf :: Text -> TokKind
 kindOf = \case
@@ -44,7 +45,27 @@ kindOf = \case
   "CloseBlock" -> KClose
   "GuardBar" -> KGuard
   "Semi" -> KSemi
+  "FatArrow" -> KArrow
+  "ReqTok" -> KReq
   _ -> KOther
+
+{- | The names of the requirements of each signature in the order of the
+names (docs/adr/0149); the commas, white space and comments between them
+stay where they are.
+-}
+sortRequirements :: [Tok] -> [Tok]
+sortRequirements = \case
+  [] -> []
+  t@(Tok KArrow _) : rest ->
+    let (run, after) = span (\(Tok k _) -> k `elem` [KReq, KWs, KNl, KComment, KOther] && not (isEnd k)) rest
+        isEnd k = k == KSemi
+        names = sort [x | Tok KReq x <- run]
+        refill ns = \case
+          Tok KReq _ : more | n : ns' <- ns -> Tok KReq n : refill ns' more
+          other : more -> other : refill ns more
+          [] -> []
+     in t : refill names run <> sortRequirements after
+  t : rest -> t : sortRequirements rest
 
 {- | The lines of the tokens, without their newlines: the breaks of the
 writer, and the breaks fmt adds after @{@, before @}@ and before a guard.
