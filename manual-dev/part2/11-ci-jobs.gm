@@ -106,8 +106,8 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 ## build
 
 [code: build] は、[code: ubuntu-24.04]（x86-64）と [code: ubuntu-24.04-arm]（aarch64）のランナーで実行する。
-x86-64 では同じコミットを三つのランナーでビルドし、[code: tests] がテストを、[code: outputs] が出力を作る手順を、[code: env] が実行の環境を変える検査を受け持つ。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0045-split-x86-build-and-pull-request-cache.md]（docs/adr の ADR 0045「x86-64 の build をテストと出力の二つのランナーに分け、プルリクエストの dist-newstyle を残す」）]
-aarch64 では一つのランナー（[code: all]）が、環境を変える検査のほかのすべてを受け持つ。
+x86-64 では同じコミットを四つのランナーでビルドし、[code: tests-driver] と [code: tests-rest] がテストを、[code: outputs] が出力を作る手順を、[code: env] が実行の環境を変える検査を受け持つ。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0045-split-x86-build-and-pull-request-cache.md]（docs/adr の ADR 0045「x86-64 の build をテストと出力の二つのランナーに分け、プルリクエストの dist-newstyle を残す」）]
+aarch64 では二つのランナーでビルドし、[code: tests] がテストを、[code: outputs] が出力を作る手順を受け持つ。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0140-ci-split-test-runners-and-visual-pdfs-first.md]（docs/adr の ADR 0140「build のテストを四つのランナーに分け、visual-pdfs を決定性の検査の出力より先に組む」）]
 主な手順は次のとおりである。
 
 + テストを受け持つランナーでは qpdf を、x86-64 の [code: outputs] では epubcheck を、裏で入れ始める。入れ終わるのを待つのは、ビルドの直後である。
@@ -115,19 +115,19 @@ aarch64 では一つのランナー（[code: all]）が、環境を変える検�
 + GHC 9.10.3 と cabal-install 3.16.1.0 を用意する。GHC のディレクトリ、Hackage の索引、cabal の store、[code: dist-newstyle] をキャッシュから戻す。
 + [code: scripts/fetch-wasmtime.sh] で wasmtime を取得する。
 + テストを受け持つランナーでは、[code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
-+ [code: cabal build all] を実行し、テストを受け持つランナーでは続けて [code: cabal test all] を実行する。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。テストには [code: GOLEM_PD_BOOKS] を付け、フィクスチャの十冊をすべてのターゲットに組む（第[ref-number fixtures]章）。[code: TASTY_NO_CREATE=true] も付け、ゴールデンのファイルが欠けていれば失敗にする（第[ref-number build-test]章）。ビルドとテストのあいだで、[code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることと、golem-test-support が golem のパッケージに依存しないことを確かめる。
-+ テストを受け持つランナーでは、[code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
++ [code: cabal build all] を実行し、テストを受け持つランナーでは続けて [code: cabal test] を実行する。x86-64 の [code: tests-driver] は golem-driver のスイートを、[code: tests-rest] はそのほかのすべてのスイートを、aarch64 の [code: tests] はすべてのスイートを実行する。x86-64 の二つへの振り分けは [code: scripts/ci/test-suites.sh] が [code: modules/] の [code: .cabal] のファイルから決めるので、新しいスイートはどこにも書かなくても [code: tests-rest] で走る。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。テストには [code: GOLEM_PD_BOOKS] を付け、フィクスチャの十冊をすべてのターゲットに組む（第[ref-number fixtures]章）。[code: TASTY_NO_CREATE=true] も付け、ゴールデンのファイルが欠けていれば失敗にする（第[ref-number build-test]章）。ビルドとテストのあいだで、[code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることと、golem-test-support が golem のパッケージに依存しないことを確かめる。
++ テストを受け持つランナー（[code: tests-driver] を除く）では、[code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
 + 出力を受け持つランナーと [code: env] では、二つのマニュアルのフォントをキャッシュから戻す。
++ x86-64 の出力を受け持つランナーでは、[code: scripts/visual/build.sh] で見た目の回帰テストの 17 の PDF を組み、成果物 [code: visual-pdfs] として上げる。比べるのは [code: visual] ジョブで、この成果物だけを待つので、出力の手順のうちで最初に組む。
 + x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
 + 出力を受け持つランナーでは、[code: scripts/determinism.sh] の出力をファイルにし、成果物として上げる。このスクリプトは [code: scripts/manual/build.sh] で二つのマニュアルも組むので、diagnostic が一つでも出ればここで失敗する。
-+ x86-64 の出力を受け持つランナーでは、[code: scripts/visual/build.sh] で見た目の回帰テストの 17 の PDF を組み、成果物 [code: visual-pdfs] として上げる。比べるのは [code: visual] ジョブである。
 + [code: env] では、[code: locale-gen] で日本語のロケール（UTF-8 と EUC-JP）を作り、[code: scripts/manual/fetch-fonts.sh] で二つのマニュアルのフォントを取る（キャッシュにあれば取らない）。[code: outputs] では [code: scripts/manual/build.sh] がフォントを取るが、[code: env] はマニュアルを組まないからである。続けて[code: GOLEM_REQUIRE_LOCALES=1] と [code: GOLEM_REQUIRE_FONTS=1] を付けて [code: scripts/env-determinism/check.sh] を実行する。実行の環境を変えても出力が変わらないことを確かめる（第[ref-number determinism]章）。
 プルリクエストでは [code: --quick] を付けて小さな入力だけを検査し、[code: main] への push とリリースではすべての入力を検査する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0038-env-determinism-quick-on-pull-requests.md]（docs/adr の ADR 0038「プルリクエストでは環境を変える検査を小さな入力に絞る」）]
 + x86-64 では、組んだマニュアルの PDF と HTML を、成果物 [code: manual] と [code: manual-dev] として上げる。
 
 キャッシュのキーは、[code: cabal.project] と [code: cabal.project.freeze] のハッシュ、ランナーの OS とアーキテクチャ、GHC のバージョンから作る。
 [code: dist-newstyle] のキャッシュは、[code: main] への push と、プルリクエストで GHC がモジュールをコンパイルしたときに保存する。
-x86-64 では、テストを受け持つランナーだけが保存する。
+保存するのは、x86-64 では [code: tests-driver]、aarch64 では [code: tests] の、アーキテクチャごとに一つのランナーである。
 プルリクエストのキャッシュは、そのプルリクエストの次の push と再実行だけが使える。
 キャッシュを戻すときは、そのプルリクエストのキャッシュを先に探し、なければ [code: main] のキャッシュを使う。
 何もコンパイルしなかった実行は、戻したキャッシュのままなので保存しない。
@@ -168,11 +168,12 @@ zip は版と SHA-256 をキーにキャッシュするので、取りに行く�
 [code: epubcheck] の名前で呼べるよう、jar を動かす小さなシェルのスクリプトを [code: PATH] に置く。
 版を上げるときは、[code: ci.yml] の版と SHA-256 を変えるプルリクエストを出す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0062-epubcheck-from-release-with-cache.md]（docs/adr の ADR 0062「epubcheck を apt ではなく配布元の release から取り、キャッシュする」）]
 
-x86-64 で二つのランナーに分けるのは、テストも出力を作る手順も、ランナーの四つのコアを使い切るからである。
+テストと出力を別のランナーに分けるのは、テストも出力を作る手順も、ランナーの四つのコアを使い切るからである。
 同じランナーの上で二つを同時に走らせても、どちらも遅くなり、合わせた時間はほとんど縮まらない。
 ランナーを分ければビルドを二度することになるが、二つのランナーは同時に走る。
-x86-64 にかかる時間は、ビルドに、テストと出力の長い方を足したものになる。
-aarch64 は x86-64 より短く終わるので、一つのランナーのままにしている。
+各ランナーにかかる時間は、ビルドに、受け持つ手順を足したものになる。
+x86-64 のテストは、golem-driver のスイートが最初に始まって最後に終わり、ほかのスイートとコアを取り合っていたので、golem-driver とそのほかの二つのランナーに分けた。
+aarch64 も、テストと決定性の検査の出力を一つのランナーで続けて走らせると、ほかのランナーより遅く終わっていたので、二つに分けた。
 
 環境を変える検査を [code: outputs] から [code: env] に分けたのも、同じ理由である。
 この検査は [code: outputs] のほかの手順の結果を使わず、要るのはビルドした golem、日本語のロケール、マニュアルのフォントだけである。
@@ -208,8 +209,8 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 ## visual
 
 [code: visual] は、見た目の回帰テスト（第[ref-number determinism]章）を動かす。
-x86-64 の [code: outputs] のランナーが、[code: scripts/determinism.sh] の後に [code: scripts/visual/build.sh] で 17 の入力の PDF を組み、成果物 [code: visual-pdfs] として上げる。
-このランナーには、golem と、マニュアルのフォントと、ほかの出力がすでにそろっている。
+x86-64 の [code: outputs] のランナーが、ビルドの直後、epubcheck と [code: scripts/determinism.sh] より先に、[code: scripts/visual/build.sh] で 17 の入力の PDF を組み、成果物 [code: visual-pdfs] として上げる。
+[code: scripts/visual/build.sh] は入力を一時ディレクトリに写して組み、マニュアルのフォントも自分で取るので、ほかの出力を待たない。
 [code: visual] は [code: changes] だけを待ち、[code: build] と同時に [code: ubuntu-24.04] で走り始め、次の順に進む。
 
 + チェックアウトする。
