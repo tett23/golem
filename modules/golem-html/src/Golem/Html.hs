@@ -513,12 +513,18 @@ toc c depth =
           <> linkTo c (teFile e) (teAnchor e)
           <> "\">"
           <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage (cCfg c)) n)) (teNumber e)
-          <> inlines c (teTitle e)
+          <> inlines c (filter (not . isAnchored) (teTitle e))
           <> "</a></li>\n"
       | e <- bookToc (cBook c),
         maybe True (teLevel e <=) depth
       ]
     <> "</ol>\n</nav>\n"
+  where
+    -- the id of an index mark or a channel item is at the heading, once in the book (docs/adr/0126)
+    isAnchored = \case
+      IndexMark {} -> True
+      ChannelItem {} -> True
+      _ -> False
 
 linkTo :: Ctx -> FileId -> Text -> Text
 linkTo c fid anchor =

@@ -521,6 +521,87 @@ localPluginTests =
         ]
   ]
 
+-- | The words of the glossary tests: kana sorts カーニング before 組版.
+glossaryTsv :: BS.ByteString
+glossaryTsv = TE.encodeUtf8 "# 語\t読み\t定義\t参照\n組版\tくみはん\t版を組むこと\nカーニング\t\t字間の調整\tkern\n組む\tくむ\t版を作ること\n"
+
+{- | A one-chapter project, a.gm, with the sample plugin glossary of
+plugins/wasm (docs/adr/0126) and its words in terms.tsv, for PDF, HTML and
+plain text.
+-}
+withGlossary :: BS.ByteString -> T.Text -> (FilePath -> IO a) -> IO a
+withGlossary = withGlossaryOf glossaryTsv
+
+-- | 'withGlossary' with the given terms.tsv.
+withGlossaryOf :: BS.ByteString -> BS.ByteString -> T.Text -> (FilePath -> IO a) -> IO a
+withGlossaryOf tsv style source k = withSystemTempDirectory "golem-glossary" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n[targets.text]\n" <> pluginDeclOf "glossary" "data = { terms = \"terms.tsv\" }\n")
+  BS.writeFile (tmp </> "style.toml") style
+  BS.writeFile (tmp </> "terms.tsv") tsv
+  TIO.writeFile (tmp </> "a.gm") source
+  lockIn [("glossary", "glossary.wasm")] tmp (k tmp)
+
+-- | The sample plugin glossary (docs/adr/0126) through every target.
+glossaryTests :: [TestTree]
+glossaryTests =
+  [ -- カーニング has no reading in the TSV: the word is its reading, and it sorts before くみはん
+    testCase "plain text: the words in the order of their readings, each with its definition" $
+      withGlossary horizontalStyle "[term: 組版]と[term: カーニング]。\n\n@label kern\n# 字間\n\n@channel glossary\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        t <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        t @?= "組版とカーニング。\n\n1　字間\n\nカーニング　字間の調整（→「字間」）\n組版　版を組むこと\n",
+    testCase "PDF: each entry has the pages of the word, and the page of its label after the arrow" $
+      withGlossary horizontalStyle ("[term: 組版]。\n\n" <> fillers 35 <> "[term: 組版]と[term: カーニング]。\n\n@label kern\n# 字間\n\n@channel glossary\n") $ \tmp -> do
+        t <- T.concat . concat <$> pdfPages tmp
+        assertBool (show t) ("カーニング　字間の調整（→2）　2組版　版を組むこと　1,2" `T.isSuffixOf` t),
+    -- the page of the label in the numerals of [numbers], as [ref-page] in the text (docs/adr/0118)
+    testCase "PDF: in vertical text the page of the label is in kanji, as [ref-page] in the text" $
+      withGlossary pdfStyle "[term: カーニング]。[ref-page kern]\n\n@label kern\n# 字間\n\n@channel glossary\n" $ \tmp -> do
+        ls <- concat <$> pdfPages tmp
+        assertBool (show ls) ("カーニング。一" `elem` ls)
+        assertBool (show ls) ("カーニング　字間の調整（→一）　一" `elem` ls),
+    testCase "G04003: the label of the fourth column is not in the book" $
+      withGlossary horizontalStyle "[term: カーニング]。\n\n@channel glossary\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        [(diagCode d, diagMessage d) | d <- brDiagnostics r] @?= [(DiagnosticCode "G04003", "存在しないラベルへの参照です: kern")],
+    testCase "a word the data does not have is the plugin's error, at the call; the word stays in the text" $
+      withGlossary horizontalStyle "前[term: 版面]後\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        [(diagCode d, diagMessage d, spanStart (diagSpan d)) | d <- brDiagnostics r] @?= [(DiagnosticCode "glossary/unknown", "terms にない語です: 版面", 3)],
+    -- docs/adr/0120: the check of the data at load, through a real plugin
+    testCase "a bad line of terms is reported once, at its line, however many [term] the book has" $
+      withGlossaryOf (TE.encodeUtf8 "組版\tくみはん\t版を組むこと\n\nx\ty\n") horizontalStyle "[term: 組版]と[term: 組版]と[term: 組版]。\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        pointedAt r @?= ["terms.tsv:3:1: error[glossary/tsv-columns]: terms の 3 行めの欄の数が 3 か 4 ではありません"],
+    testCase "a bad line of terms is reported in a book without [term]" $
+      withGlossaryOf (TE.encodeUtf8 "組版\t\t版を組むこと\n") horizontalStyle "本文。\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        pointedAt r @?= ["terms.tsv:1:1: error[glossary/tsv-no-reading]: terms の 1 行めの語は漢字を含むので、読みが要ります: 組版"],
+    testCase "HTML: a word and an index mark in a heading have their ids once, not again in @toc of the same file" $
+      withGlossary horizontalStyle "@toc\n\n# [term: 組版]と[index reading=はんめん: 版面]\n\n@channel glossary\n\n@index\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        map (`T.count` html) ["id=\"c-glossary-", "id=\"i-"] @?= [1, 1],
+    testCase "HTML and EPUB: the list links to the words in another file; the same bytes twice" $
+      withPlugins [("glossary", "glossary.wasm")] (pluginDeclOf "glossary" "data = { terms = \"terms.tsv\" }\n") $ \tmp -> do
+        BS.writeFile (tmp </> "terms.tsv") (TE.encodeUtf8 "組版\tくみはん\t版を組むこと\tintro\n")
+        TIO.appendFile (tmp </> "chapters/01.gm") "\n[term: 組版]を試す。\n"
+        TIO.appendFile (tmp </> "chapters/02.gm") "\n# 用語集\n\n@channel glossary\n"
+        let out = do
+              r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
+              assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+              (,,) <$> TIO.readFile (tmp </> "build/html/chapters/01.xhtml") <*> TIO.readFile (tmp </> "build/html/chapters/02.xhtml") <*> BS.readFile (tmp </> "build/epub/book.epub")
+        (one, two, epub) <- out
+        assertBool (T.unpack one) ("<span id=\"c-glossary-" `T.isInfixOf` one)
+        assertBool (T.unpack two) ("<section class=\"channel\" data-channel=\"glossary\">" `T.isInfixOf` two)
+        assertBool (T.unpack two) ("<li>組版　版を組むこと（→<a href=\"../chapters/01.xhtml#" `T.isInfixOf` two)
+        assertBool (T.unpack two) ("） <a href=\"../chapters/01.xhtml#c-glossary-" `T.isInfixOf` two)
+        again <- out
+        again @?= (one, two, epub)
+  ]
+
 -- | The data a project passes to a plugin (docs/adr/0105).
 dataTests :: [TestTree]
 dataTests =
@@ -608,6 +689,7 @@ pluginTests =
     <> localPluginTests
     <> anyDataTests
     <> checkDataTests
+    <> [testGroup "the sample plugin glossary (docs/adr/0126)" glossaryTests]
     <> contextTests
     <> blockCommandTests
     <> pluginFigureTests

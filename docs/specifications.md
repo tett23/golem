@@ -714,6 +714,8 @@ R は、ページ番号 999 を項目と同じ環境で組んだ幅 W に、二�
 そのため、目次のページ番号が目次の行数とページ数を変えることはなく、後ろのページの番号も動かさない。
 見出しのページは、S2 の繰り返しが収束した後に、最終回のページから一度だけ求める。
 HTML、EPUB、プレーンテキストの目次は、ページを持たないので、リンクの一覧と題の一覧のままである。
+HTML と EPUB の本文の `@toc` は、見出しのインラインから索引の印とチャネルの項目を除いて書く（[docs/adr/0126](adr/0126-glossary-plugin.md)）。
+PDF の目次と同じ扱いであり、印の `id` は見出しの位置の一か所にだけ置く。
 
 キャプション（`@caption`）を付けたコードブロックには、リスト番号を振る（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 数え方は図番号と同じく、階層 1 の見出しで数え直し、文書構造（S1）で決める。
@@ -3010,12 +3012,12 @@ data = { table = "data/words.tsv" }
 
 Golem は、プラグインの仕組みを通す見本のプラグインを、リポジトリの `plugins/` に Rust の Cargo のワークスペースとして持つ（[docs/adr/0106](adr/0106-sample-plugins-in-rust.md)）。
 
-- 補助のクレート `golem-plugin-sdk` は、ゲストの側の CBOR の読み書き、意味論 IR の型、要求と応答と記述の型、四つの関数を公開するマクロ `export_plugin!` を持ち、ほかのクレートに依存しない。
+- 補助のクレート `golem-plugin-sdk` は、ゲストの側の CBOR の読み書き、意味論 IR の型、要求と応答と記述の型、四つの関数を公開するマクロ `export_plugin!` を持ち、ほかのクレートに依存しない。`export_plugin!` に三つめの関数を渡すと、`golem_check_data` も公開する。
 - 見本のプラグインは、`plugins/<名前>/` のクレートで、`plugins/build.sh` が `plugins/wasm/<名前>.wasm` に作る。作った `.wasm` はコミットし、golem-driver のテストはそれを読む。
 - ツールチェーンは `plugins/rust-toolchain.toml` で固定し、ソースのパスを固定の文字列に置き換えて作るので、同じソースからは同じバイト列になる。CI の `plugins` ジョブが、コミットした `.wasm` とソースから作ったバイト列の一致を確かめる。
 - 見本のプラグインは、リリースに `<名前>.wasm` として添える。利用者は `https://github.com/tett23/golem/releases/download/<タグ>/<名前>.wasm` を `url` に書いて使う。
 
-今の見本のプラグインは `lookup` と `bar-chart` である。
+今の見本のプラグインは `lookup`、`bar-chart`、`glossary` である。
 `[lookup: キー]` は、データ `table` で渡した TSV（キー、タブ、値の行）からキーの値を返す。
 空の行と `#` で始まる行は飛ばし、同じキーの行が二つあれば先の行を使う。
 
@@ -3029,6 +3031,24 @@ TSV は UTF-8 で、先頭の BOM を飛ばし、LF か CRLF の行を読み、�
 文字を輪郭にしないと G08011 になるので、文字を描かない。
 座標は整数の演算で決めるので、同じデータからは同じバイト列の SVG になる。
 誤りは、プラグインのコード `bar-chart-name`、`bar-chart-alt`、`bar-chart-key`、`bar-chart-no-data`、`bar-chart-tsv`、`bar-chart-values` で、呼び出しの位置に出す。
+
+`glossary` は、用語集を組む（[docs/adr/0126](adr/0126-glossary-plugin.md)）。
+コマンド `term`、読みの順で `locators` が真のチャネル `glossary`、データ `terms` を宣言する。
+
+```toml
+[plugins.glossary]
+url = "https://github.com/tett23/golem/releases/download/v0.1.0-rc4/glossary.wasm"
+data = { terms = "data/terms.tsv" }
+```
+
+- `terms` は UTF-8 の TSV で、一行が一語である。欄は、語、読み、定義、参照するラベルの順で、ラベルは省ける。空の行と `#` で始まる行は読み飛ばす。
+- 読みには、ひらがな、カタカナ、長音符、ASCII の英数字だけを書ける。照合（`Golem.Doc.Collation`）は漢字をすべてのかなの後に並べるので、読みに漢字を書くと黙って末尾へ回る。それを誤りとして止めるためである。
+- 読みは空にでき、そのときは語そのものを読みとする。ただし、語が漢字（CJK 統合漢字とその拡張、CJK 互換漢字、「々」）を含むときは誤りである。語から読みを作るときは、かなと英字のほかの記号も許す。
+- `[term: 語]` は散文スロットを一つだけ取り、そのインラインを本文にそのまま出す。散文スロットの文字列（テキスト、ルビの親文字、文字スタイルの中の文字）を語として TSV から引き、ある語なら本文の後にチャネル `glossary` の項目を足す。キーは語、読みは TSV の読み（空なら語）である。
+- 項目の本文は、語、全角の空白、定義である。ラベルの欄があれば、その後に `（→`、ラベルへのページ番号の参照、`）` を足す。参照の表示は媒体で違う（PDF はページ番号、HTML と EPUB は題へのリンク、プレーンテキストは「」で括った題）ので、文言は矢印と括弧だけにしている。
+- 一覧は、利用者が `@channel glossary` で置く。PDF では出現のページの列が、HTML と EPUB では出現へのリンクが付く。
+- `golem_check_data` で TSV を検査し、誤りを TSV の行の位置に出す。コードは原因ごとに、`tsv-columns`（欄の数が 3 か 4 でない）、`tsv-empty`（語、定義、ラベルの欄が空）、`tsv-no-reading`（読みが空で、語が漢字を含む）、`tsv-reading`（読みに書けない文字）、`tsv-duplicate`（前の行と同じ語）、`utf8`（UTF-8 でない。位置はファイルの先頭）である。
+- 呼び出しの誤りは呼び出しの位置に出し、本文の語は消さずに出して項目だけを送らない。コードは `slot`（散文スロットが一つでないか、その文字列が空）、`args`（引数を書いた）、`no-data`（`data` に `terms` がない）、`unknown`（TSV にない語）である。
 
 ### 配布
 
