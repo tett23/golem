@@ -2510,6 +2510,12 @@ LSP は、最後の変更から一定の時間を待ってから、変わった�
 見出し、ラベル、import される変数が変わったときは、影響を受けるほかのファイルも評価し直す。
 それ以外の編集でも、すべてのファイルの S0 の結果から S1 を毎回組み直し、古い S1 の diagnostics を新しいものに替える（[golem-lsp ADR 0004](golem-lsp/adr/0004-stale-s1-diagnostics.md)）。
 プロジェクトの段階か S0 の diagnostics にエラーがあれば、`golem build` と同じく S1 を行わない。
+待つ時間は 100ms である（[golem-lsp ADR 0005](golem-lsp/adr/0005-keystroke-latency-and-ordered-evaluation.md)）。
+評価は一つずつ行い、後に始まった評価は先の評価の結果の上で動く。
+評価を始めるときは、まだ評価していない変更のあるファイルをすべて、エディタの今の内容で評価する。
+diagnostics は、評価で内容を変えたファイルと、diagnostics が最後に送ったものと違うファイルにだけ送る。
+diagnostics がなくなったファイルには空の列を送り、一度も diagnostics を持たなかったファイルには送らない。
+LSP は semantic tokens を処理しないので、初期化の応答で知らせない。
 
 LSP は、`@table` が参照する表のファイルの変更を受けて評価し直す（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
 クライアントが `workspace/didChangeWatchedFiles` の動的な登録を申し出れば、最後の評価で読んだ表のファイルのパスを、プロジェクトのルートを基準にした `RelativePattern` で登録する。

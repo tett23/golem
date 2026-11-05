@@ -1,6 +1,6 @@
 # ADR 0005: キー入力を待たせない LSP（semantic tokens、diagnostics の送り方、評価の順序）
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 
