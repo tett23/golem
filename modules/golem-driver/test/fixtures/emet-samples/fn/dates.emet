@@ -1,0 +1,61 @@
+-- Dates: the Japanese era and the dates of the colophon.
+-- In .gm: `@import fn/dates.emet as d`.
+
+import "fn/numbers.emet"
+
+-- An era: its name, and the year, month and day it began.
+data Era = Era String Nat Nat Nat
+
+eras :: List Era
+eras = [Era "令和" 2019 5 1, Era "平成" 1989 1 8, Era "昭和" 1926 12 25, Era "大正" 1912 7 30, Era "明治" 1868 10 23]
+
+-- 4. A western year (with the month and the day, if given) in the
+-- Japanese era, in kansuji; the first year of an era is 元年. With the
+-- year only, a year in which the era changed is given in the new era.
+-- Years before 明治 are left in the western calendar.
+-- `[d.wareki 2026]` → 令和八年; `[d.wareki 1989 month=1 day=7]` → 昭和六十四年一月七日
+pub inline wareki :: Nat -> (month :: Nat = 0) -> (day :: Nat = 0) -> Inlines
+wareki year month day = Inline.text (warekiString year month day)
+
+pub warekiString :: Nat -> Nat -> Nat -> String
+warekiString year month day = eraOf eras year (key year month day) ++ monthDay month day
+
+-- The month and the day as a number to compare with the start of an era;
+-- a year without them is its last day.
+key :: Nat -> Nat -> Nat -> Nat
+key year 0 _ = year * 10000 + 1231
+key year month 0 = year * 10000 + month * 100 + 31
+key year month day = year * 10000 + month * 100 + day
+
+eraOf :: List Era -> Nat -> Nat -> String
+eraOf [] year _ = String.fromNat year ++ "年"
+eraOf (Era name y m d : rest) year k
+  | k >= y * 10000 + m * 100 + d = name ++ eraYear (year - y + 1) ++ "年"
+  | otherwise = eraOf rest year k
+
+eraYear :: Int -> String
+eraYear 1 = "元"
+eraYear n = case String.toNat (String.fromInt n) of {
+  Just m -> kanji m
+  Nothing -> String.fromInt n
+}
+
+monthDay :: Nat -> Nat -> String
+monthDay 0 _ = ""
+monthDay month 0 = kanji month ++ "月"
+monthDay month day = kanji month ++ "月" ++ kanji day ++ "日"
+
+-- 17. An ISO date in Japanese: "2026-11-06" → "2026年11月6日". A string
+-- that is not a date of the form YYYY-MM-DD is given back as it is.
+-- `[= d.jdate("2026-11-06")]` → 2026年11月6日
+pub fn jdate :: String -> String
+jdate s = case String.split "-" s of {
+  [y, m, d] -> fromParts (String.toNat y) (String.toNat m) (String.toNat d) s
+  _ -> s
+}
+
+fromParts :: Maybe Nat -> Maybe Nat -> Maybe Nat -> String -> String
+fromParts (Just y) (Just m) (Just d) s
+  | m >= 1 && m <= 12 && d >= 1 && d <= 31 = String.fromNat y ++ "年" ++ String.fromNat m ++ "月" ++ String.fromNat d ++ "日"
+  | otherwise = s
+fromParts _ _ _ s = s

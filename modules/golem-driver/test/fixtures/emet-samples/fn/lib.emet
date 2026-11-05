@@ -1,0 +1,149 @@
+-- Helpers that the other .emet files share through `import "fn/lib.emet"`.
+-- Bare `pub` functions: they are not commands of .gm.
+
+-- The rows of a TSV: one list of cells for each line that is not empty
+-- and does not start with `#`.
+pub tsv :: String -> List (List String)
+tsv text = List.map cells (List.select used (String.lines text))
+  where {
+    cells line = String.split "\t" line
+    used line = String.length line > 0 && not (String.startsWith "#" line)
+  }
+
+-- The first two cells of each row of a TSV, as pairs (a row of one cell
+-- is left out).
+pub pairs :: String -> List (String, String)
+pairs text = List.concatMap pair (tsv text)
+
+pair :: List String -> List (String, String)
+pair (a : b : _) = [(a, b)]
+pair _ = []
+
+pub not :: Bool -> Bool
+not True = False
+not False = True
+
+pub same :: String -> String -> Bool
+same a b = a == b
+
+-- The pairs sorted by the length of their keys, the longest first; keys of
+-- the same length keep their order.
+pub longestFirst :: List (String, a) -> List (String, a)
+longestFirst xs = List.foldl insertByLength [] xs
+
+insertByLength :: List (String, a) -> (String, a) -> List (String, a)
+insertByLength [] x = [x]
+insertByLength ((w, v) : rest) (k, kv)
+  | String.length k > String.length w = (k, kv) : (w, v) : rest
+  | otherwise = (w, v) : insertByLength rest (k, kv)
+
+-- The first pair whose key starts the string.
+pub firstMatch :: List (String, a) -> String -> Maybe (String, a)
+firstMatch [] _ = Nothing
+firstMatch ((w, v) : rest) s = String.startsWith w s ? Just (w, v) : firstMatch rest s
+
+-- The character a table maps a character to, or the character itself.
+pub lookupChar :: List (Char, Char) -> Char -> Char
+lookupChar [] c = c
+lookupChar ((from, to) : rest) c = from == c ? to : lookupChar rest c
+
+-- Rewrites the text of the blocks in document order, carrying a state.
+-- The function gets the state and the string of a Text node and gives
+-- Nothing to keep the node, or the inlines that replace it. Paragraphs,
+-- headings (when `headings` is True), lists, definition lists, tables and
+-- the inlines in character styles, colours, kenten and notes are walked;
+-- code blocks and ruby are left alone. A block in which nothing changes
+-- is given back as it came, so it keeps its label and its position.
+pub walk :: (s -> String -> (Maybe Inlines, s)) -> Bool -> s -> Blocks -> (Blocks, s)
+walk f headings st bs = case listGo (walkBlock f headings) st bs [] False of {
+  (Just ys, st2) -> (ys, st2)
+  (Nothing, st2) -> (bs, st2)
+}
+
+-- `walk` without a state: the function gets only the string.
+pub mapTexts :: (String -> Maybe Inlines) -> Bool -> Blocks -> Blocks
+mapTexts f headings bs = case walk (stateless f) headings 0 bs of {
+  (ys, _) -> ys
+}
+
+stateless :: (String -> Maybe Inlines) -> Nat -> String -> (Maybe Inlines, Nat)
+stateless f st s = (f s, st)
+
+-- Walks a list with a function that may change an element; Just the new
+-- list if any element changed.
+listGo :: (s -> a -> (Maybe a, s)) -> s -> List a -> List a -> Bool -> (Maybe (List a), s)
+listGo _ st [] acc changed = (changed ? Just (List.reverse acc) : Nothing, st)
+listGo g st (x : xs) acc changed = case g st x of {
+  (Just y, st2) -> listGo g st2 xs (y : acc) True
+  (Nothing, st2) -> listGo g st2 xs (x : acc) changed
+}
+
+rewrap :: (a -> b) -> (Maybe a, s) -> (Maybe b, s)
+rewrap k (Just x, st) = (Just (k x), st)
+rewrap _ (Nothing, st) = (Nothing, st)
+
+walkBlock :: (s -> String -> (Maybe Inlines, s)) -> Bool -> s -> Block.Block -> (Maybe Block.Block, s)
+walkBlock f _ st (Block.Paragraph style xs) = rewrap (Block.Paragraph style) (walkInlines f st xs)
+walkBlock f True st (Block.Heading level attrs xs) = rewrap (Block.Heading level attrs) (walkInlines f st xs)
+walkBlock f headings st (Block.BulletList items) = rewrap Block.BulletList (listGo (walkItem f headings) st items [] False)
+walkBlock f headings st (Block.OrderedList items) = rewrap Block.OrderedList (listGo (walkItem f headings) st items [] False)
+walkBlock f headings st (Block.DefList groups) = rewrap Block.DefList (listGo (walkGroup f headings) st groups [] False)
+walkBlock f _ st (Block.Table aligns header rows) = walkTable f st aligns header rows
+walkBlock _ _ st _ = (Nothing, st)
+
+walkTable :: (s -> String -> (Maybe Inlines, s)) -> s -> List Block.Alignment -> List Inlines -> List (List Inlines) -> (Maybe Block.Block, s)
+walkTable f st aligns header rows = case listGo (walkInlines f) st header [] False of {
+  (h, st2) -> case listGo (listGo1 (walkInlines f)) st2 rows [] False of {
+    (Nothing, st3) -> (table aligns h header Nothing rows, st3)
+    (Just rs, st3) -> (table aligns h header (Just rs) rows, st3)
+  }
+}
+
+listGo1 :: (s -> a -> (Maybe a, s)) -> s -> List a -> (Maybe (List a), s)
+listGo1 g st xs = listGo g st xs [] False
+
+table :: List Block.Alignment -> Maybe (List Inlines) -> List Inlines -> Maybe (List (List Inlines)) -> List (List Inlines) -> Maybe Block.Block
+table _ Nothing _ Nothing _ = Nothing
+table aligns (Just h) _ (Just rs) _ = Just (Block.Table aligns h rs)
+table aligns (Just h) _ Nothing rows = Just (Block.Table aligns h rows)
+table aligns Nothing header (Just rs) _ = Just (Block.Table aligns header rs)
+
+walkItem :: (s -> String -> (Maybe Inlines, s)) -> Bool -> s -> Block.ListItem -> (Maybe Block.ListItem, s)
+walkItem f headings st (Block.ListItem n bs) = rewrap (Block.ListItem n) (listGo (walkBlock f headings) st bs [] False)
+
+walkGroup :: (s -> String -> (Maybe Inlines, s)) -> Bool -> s -> Block.DefGroup -> (Maybe Block.DefGroup, s)
+walkGroup f headings st (Block.DefGroup terms defs) = case listGo (walkInlines f) st terms [] False of {
+  (ts, st2) -> case listGo (listGo1 (walkBlock f headings)) st2 defs [] False of {
+    (Nothing, st3) -> (rewrapGroup ts terms Nothing defs, st3)
+    (Just ds, st3) -> (rewrapGroup ts terms (Just ds) defs, st3)
+  }
+}
+
+rewrapGroup :: Maybe (List Inlines) -> List Inlines -> Maybe (List Blocks) -> List Blocks -> Maybe Block.DefGroup
+rewrapGroup Nothing _ Nothing _ = Nothing
+rewrapGroup (Just ts) _ (Just ds) _ = Just (Block.DefGroup ts ds)
+rewrapGroup (Just ts) _ Nothing defs = Just (Block.DefGroup ts defs)
+rewrapGroup Nothing terms (Just ds) _ = Just (Block.DefGroup terms ds)
+
+walkInlines :: (s -> String -> (Maybe Inlines, s)) -> s -> Inlines -> (Maybe Inlines, s)
+walkInlines f st xs = inlinesGo f st xs [] False
+
+inlinesGo :: (s -> String -> (Maybe Inlines, s)) -> s -> Inlines -> List Inlines -> Bool -> (Maybe Inlines, s)
+inlinesGo _ st [] acc changed = (changed ? Just (List.concat (List.reverse acc)) : Nothing, st)
+inlinesGo f st (x : xs) acc changed = case walkInline f st x of {
+  (Just ys, st2) -> inlinesGo f st2 xs (ys : acc) True
+  (Nothing, st2) -> inlinesGo f st2 xs ([x] : acc) changed
+}
+
+-- One inline as a list of inlines: a Text node may become several.
+walkInline :: (s -> String -> (Maybe Inlines, s)) -> s -> Inline.Inline -> (Maybe Inlines, s)
+walkInline f st (Inline.Text s) = f st s
+walkInline f st (Inline.CharStyle name xs) = rewrap (one (Inline.CharStyle name)) (walkInlines f st xs)
+walkInline f st (Inline.Color name xs) = rewrap (one (Inline.Color name)) (walkInlines f st xs)
+walkInline f st (Inline.Kenten shape xs) = rewrap (one (Inline.Kenten shape)) (walkInlines f st xs)
+walkInline f st (Inline.Note xs) = rewrap (one Inline.Note) (walkInlines f st xs)
+walkInline f st (Inline.Sidenote xs) = rewrap (one Inline.Sidenote) (walkInlines f st xs)
+walkInline _ st _ = (Nothing, st)
+
+one :: (Inlines -> Inline.Inline) -> Inlines -> Inlines
+one k xs = [k xs]

@@ -4,6 +4,7 @@
 |---|---|
 | `sample/` | a small project written for the tests |
 | `functions/` | a small project that uses functions of `.emet` of every kind, a keyword and a variable argument, a filter, `File.read` of a TSV and a tail recursion; built by the determinism check ([docs/adr/0162](../../../../docs/adr/0162-calling-emet-functions-from-gm.md)) |
+| `emet-samples/` | a library of twenty functions of `.emet` an editor or an operator of a Japanese book would use (prices, kansuji, the Japanese era, ruby, a glossary and a table from TSV, filters for first-occurrence ruby, variant spellings and full-width letters), split by theme under `fn/`, with a chapter that calls each; the golem-driver test `EmetSamplesSpec` checks what each gives, and the determinism check builds it |
 | `figures/` | a small project with an SVG, a PDF and a JPEG figure, for the goldens of the PDF and the EPUB (`OutputGoldenSpec`); the test copies its fonts in as `fonts/ja.otf` and `fonts/latin.otf` |
 | `tempest/` | *The Tempest* by William Shakespeare, set horizontally |
 | `kanikosen/` | 『蟹工船』小林多喜二, set vertically |

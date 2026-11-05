@@ -1,0 +1,17 @@
+@import fn/numbers.emet as n
+
+# 数
+
+税込みの価格は[= n.taxIncluded(1980, 10)]円です。
+
+総額は[n.yen 1234567]です。
+
+漢数字は[n.kansuji 1234]、[n.kansuji 20000]、[n.kansuji 2026 digits=true]です。
+
+丸数字は[n.circled 3]、[n.circled 20]、[n.circled 21]です。
+
+縦中横は[n.auto-tcy 12]、[n.auto-tcy 2026]です。
+
+寸法は[n.unit 10 mm]です。
+
+範囲は[= n.pageRange(12, 15)]と[= n.pageRange(12, 12)]です。

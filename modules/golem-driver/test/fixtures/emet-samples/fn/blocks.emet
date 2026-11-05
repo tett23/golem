@@ -1,0 +1,87 @@
+-- Blocks: boxes, a glossary, a price table and a checklist.
+-- In .gm: `@import fn/blocks.emet as b`.
+
+import "fn/lib.emet"
+import "fn/numbers.emet"
+
+-- 12. A box for a caution or a column: a title paragraph in the style
+-- `box-title` and the paragraphs of the body in the style `box`.
+-- `@b.box` (title 注意) or `@b.box title=コラム`, with the body indented
+pub block box :: (title :: String = "注意") -> Blocks -> Blocks
+box title body = Block.styled "box-title" (Inline.text ("【" ++ title ++ "】")) ++ List.map inBox body
+
+inBox :: Block.Block -> Block.Block
+inBox (Block.Paragraph _ xs) = Block.Paragraph (Just "box") xs
+inBox b = b
+
+-- 13. The glossary of data/glossary.tsv (word, reading, description) as a
+-- definition list, each word with its reading as ruby.
+-- `@b.glossary`
+pub block glossary :: <file "data/glossary.tsv"> Blocks
+glossary = Block.definitions (List.concatMap entry (tsv (File.read "data/glossary.tsv")))
+
+entry :: List String -> List (Inlines, Blocks)
+entry [word, reading, description] = [(Inline.ruby word reading, Block.paragraph (Inline.text description))]
+entry _ = []
+
+-- 14. The table of data/prices.tsv: the first row is the header; a column
+-- whose cells are all numbers is aligned right, with commas.
+-- `@b.price-table`
+pub block "price-table" priceTable :: <file "data/prices.tsv"> Blocks
+priceTable = tsvTable (File.read "data/prices.tsv")
+
+pub tsvTable :: String -> Blocks
+tsvTable text = case tsv text of {
+  [] -> []
+  (header : rows) -> tableOf header rows (List.foldl numericColumns (List.map always header) rows)
+}
+
+tableOf :: List String -> List (List String) -> List Bool -> Blocks
+tableOf header rows flags = [Block.Table (aligns header flags) (List.map Inline.text header) (List.map (row flags) rows)]
+
+always :: String -> Bool
+always _ = True
+
+-- Whether each column is numeric so far, and in this row.
+numericColumns :: List Bool -> List String -> List Bool
+numericColumns flags cells = List.map both (List.zip flags (cells ++ List.map blank flags))
+  where {
+    both (f, c) = f && isNumber c
+    blank _ = ""
+  }
+
+isNumber :: String -> Bool
+isNumber s = case String.toNat (String.replace "," "" s) of {
+  Just _ -> True
+  Nothing -> False
+}
+
+aligns :: List String -> List Bool -> List Block.Alignment
+aligns [] _ = []
+aligns (_ : hs) (True : fs) = Block.AlignRight : aligns hs fs
+aligns (_ : hs) (False : fs) = Block.AlignDefault : aligns hs fs
+aligns (_ : hs) [] = Block.AlignDefault : aligns hs []
+
+row :: List Bool -> List String -> List Inlines
+row flags cells = List.map cell (List.zip (flags ++ List.map never cells) cells)
+  where {
+    never _ = False
+  }
+
+cell :: (Bool, String) -> Inlines
+cell (True, c) = Inline.text (numberText c)
+cell (False, c) = Inline.text c
+
+numberText :: String -> String
+numberText c = case String.toNat (String.replace "," "" c) of {
+  Just n -> commas n
+  Nothing -> c
+}
+
+-- 15. A checklist: a bullet list of the items, each with a ballot box.
+-- `@b.checklist 初校 再校 索引 奥付`
+pub block checklist :: Varargs String -> Blocks
+checklist items = Block.bullets (List.map item items)
+
+item :: String -> Blocks
+item s = Block.paragraph (Inline.text ("☐ " ++ s))
