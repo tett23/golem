@@ -6,6 +6,7 @@ module Support
     messages,
     call,
     callAt,
+    callWith,
     callSpan,
     stepsOf,
     nat,
@@ -62,14 +63,18 @@ call :: Text -> Text -> [Result] -> IO (Either Diagnostic Result)
 call src = callAt [("main.emet", src)]
 
 callAt :: [(FilePath, Text)] -> Text -> [Result] -> IO (Either Diagnostic Result)
-callAt files f args = case loadMany files of
-  (ds, Just p) | not (any isError ds) -> pure (callFunction p callSpan "main.emet" f args)
+callAt = callWith noHandlers
+
+-- | 'callAt' with the handlers of the requirements (docs/adr/0161).
+callWith :: Handlers -> [(FilePath, Text)] -> Text -> [Result] -> IO (Either Diagnostic Result)
+callWith hs files f args = case loadMany files of
+  (ds, Just p) | not (any isError ds) -> pure (callFunction hs p callSpan "main.emet" f args)
   (ds, _) -> assertFailure ("the source did not load: " <> show ds) >> fail "unreachable"
 
 -- | The steps of a call of main.emet.
 stepsOf :: Text -> Text -> [Result] -> IO (Either Diagnostic Result, Int)
 stepsOf src f args = case load src of
-  (ds, Just p) | not (any isError ds) -> pure (callFunctionCounted p callSpan "main.emet" f args)
+  (ds, Just p) | not (any isError ds) -> pure (callFunctionCounted noHandlers p callSpan "main.emet" f args)
   (ds, _) -> assertFailure (show ds) >> fail "unreachable"
 
 nat :: Integer -> Result

@@ -18,14 +18,28 @@ depend on anything but the source:
 4. the operands of arithmetic that are both variables become Rat, and a
    variable beside a number becomes that number's type;
 5. a variable that must be a number becomes Rat.
+
+The rows of requirements (docs/adr/0161) are sets with a variable for
+the rest. Two rows are made equal by putting what each lacks into the
+variable of the other (Leijen 2005, as sets); a call needs the row of the
+arrows it applies to be in the row of the body around it, which puts the
+requirements it lacks into the variable of the body when there is one
+and fails with E05101 otherwise. A row whose variable is still unknown
+when nothing else can be decided is the least one: the variable of a body
+takes the variable of the call, and a variable of a call alone none.
+These defaults of rows apply before a @where@ is generalised too, so that
+the variables of its rows are generalised as those of types.
 -}
 module Golem.Emet.Solve
   ( Constraint (..),
+    RowWhy (..),
     ArithOp (..),
     SolveState (..),
     emptySolveState,
     freshMeta,
+    freshRow,
     zonk,
+    zonkRow,
     solve,
   )
 where
@@ -34,7 +48,9 @@ import Data.IntMap.Strict (IntMap)
 import Data.IntMap.Strict qualified as IntMap
 import Data.List (find)
 import Data.Maybe (isJust)
+import Data.Set qualified as Set
 import Data.Text (Text)
+import Data.Text qualified as T
 import Golem.Emet.Syntax (Loc)
 import Golem.Emet.Types
 
@@ -52,20 +68,35 @@ data Constraint
     KArith !Loc !ArithOp !Ty !Ty !Ty
   | -- | the operand of the unary minus and its result
     KNeg !Loc !Ty !Ty
+  | -- | the first row is in the second (docs/adr/0161)
+    KRow !Loc !RowWhy !Row !Row
+  deriving stock (Show)
+
+{- | Why a row must be in another: a call in a body (E05101), or a
+function passed where the type of a function is expected (E02101, with
+the two types for the message).
+-}
+data RowWhy = RCall | RType !Ty !Ty
   deriving stock (Show)
 
 data SolveState = SolveState
   { ssNext :: !Int,
     ssSubst :: !(IntMap Ty),
+    -- | the rows of the variables of rows
+    ssRows :: !(IntMap Row),
     -- | the constraints not solved yet, in their order
     ssPending :: ![Constraint]
   }
 
 emptySolveState :: SolveState
-emptySolveState = SolveState 0 IntMap.empty []
+emptySolveState = SolveState 0 IntMap.empty IntMap.empty []
 
 freshMeta :: SolveState -> (Ty, SolveState)
 freshMeta s = (TM (ssNext s), s {ssNext = ssNext s + 1})
+
+-- | A row of a new variable alone.
+freshRow :: SolveState -> (Row, SolveState)
+freshRow s = let (v, s') = freshMeta s in (rowVar v, s')
 
 zonk :: SolveState -> Ty -> Ty
 zonk s = go
@@ -73,8 +104,17 @@ zonk s = go
     go = \case
       TM i -> maybe (TM i) go (IntMap.lookup i (ssSubst s))
       TC c as -> TC c (map go as)
-      TF a b -> TF (go a) (go b)
+      TF a r b -> TF (go a) (zonkRow s r) (go b)
       t -> t
+
+-- | A row with the rows of its variables put in, to a variable not known or none.
+zonkRow :: SolveState -> Row -> Row
+zonkRow s (Row rs v) = case v of
+  Just (TM i) | Just r <- IntMap.lookup i (ssRows s) -> let Row rs' v' = zonkRow s r in Row (Set.union rs rs') v'
+  _ -> Row rs v
+
+bindRow :: Int -> Row -> SolveState -> SolveState
+bindRow i r s = s {ssRows = IntMap.insert i r (ssRows s)}
 
 -- | The head of a type after the substitution, its arguments not resolved.
 whnf :: SolveState -> Ty -> Ty
@@ -87,26 +127,29 @@ data Step
   = Solved
   | Stuck
   | Into ![Constraint]
-  | Failed !Loc !Text
+  | Failed !Loc !Text !Text
 
 {- | Solves the pending constraints with these new ones after them. With
 @final@, the constraints left on variables are decided by the defaults;
-without, they stay pending (a @where@ before its bindings are
-generalised). The first error is a location and a message of E02101.
+without, those of types stay pending (a @where@ before its bindings are
+generalised) and those of rows take their defaults. The first error is
+a location, a code (E02101, or E05101 for a requirement a body lacks) and
+a message.
 -}
-solve :: Bool -> [Constraint] -> SolveState -> Either (Loc, Text) SolveState
+solve :: Bool -> [Constraint] -> SolveState -> Either (Loc, Text, Text) SolveState
 solve final new s0 = loop s0 {ssPending = ssPending s0 <> new}
   where
     loop s = do
       (progress, s') <- pass s
       if progress
         then loop s'
-        else
-          if final
-            then case defaulting s' of
-              Just s'' -> loop s''
-              Nothing -> pure s' {ssPending = []}
-            else pure s'
+        else case rowDefault s' of
+          Just s'' -> loop s''
+          Nothing
+            | final -> case defaulting s' of
+                Just s'' -> loop s''
+                Nothing -> pure s' {ssPending = []}
+            | otherwise -> pure s'
 
     -- one pass over the pending constraints
     pass s = go False s {ssPending = []} (ssPending s)
@@ -114,7 +157,7 @@ solve final new s0 = loop s0 {ssPending = ssPending s0 <> new}
         go progress st = \case
           [] -> Right (progress, st {ssPending = reverse (ssPending st)})
           c : rest -> case step st c of
-            (Failed l m, _) -> Left (l, m)
+            (Failed l code m, _) -> Left (l, code, m)
             (Solved, st') -> go True st' rest
             (Stuck, st') -> go progress st' {ssPending = c : ssPending st'} rest
             (Into cs, st') -> go True st' (cs <> rest)
@@ -129,19 +172,22 @@ step s = \case
     TM _ -> (Stuck, s)
     t'
       | holds p t' -> (Solved, s)
-      | otherwise -> (Failed l (op <> " は " <> predText p <> " にだけ使えます（" <> showTy (zonk s t') <> " があります）"), s)
+      | otherwise -> (Failed l "E02101" (op <> " は " <> predText p <> " にだけ使えます（" <> showTy (zonk s t') <> " があります）"), s)
   KArith l op a b r -> case (rankOf (whnf s a), rankOf (whnf s b)) of
     (Just x, Just y) -> case arith op x y of
       Right k -> (Into [KEq l r (rankTy k)], s)
-      Left m -> (Failed l m, s)
+      Left m -> (Failed l "E02101" m, s)
     _ -> (Stuck, s)
   KNeg l a r -> case rankOf (whnf s a) of
     Just x -> (Into [KEq l r (rankTy (max 1 x))], s)
     Nothing -> (Stuck, s)
+  KRow l why a b -> rowIn s l why a b
   where
     sub l a b = case (a, b) of
       (TC c [], TC d []) | Just x <- numRank c, Just y <- numRank d -> if x <= y then (Solved, s) else (mismatch l b a, s)
       (TC c as, TC d bs) | c == d, covariant c, length as == length bs -> (Into (zipWith (KSub l) as bs), s)
+      -- a function with fewer requirements is accepted where one with more is expected
+      (TF a1 r1 b1, TF a2 r2 b2) -> (Into [KEq l a1 a2, KRow l (RType b a) r1 r2, KEq l b1 b2], s)
       (TM _, TM _) -> (Stuck, s)
       (TM _, t) | isNumber t -> (Stuck, s)
       (t, TM _) | isNumber t -> (Stuck, s)
@@ -155,8 +201,38 @@ step s = \case
       let (ms, s') = foldr (\_ (acc, st) -> let (m, st') = freshMeta st in (m : acc, st')) ([], s) as
           t = TC c ms
        in (Into [k t], s' {ssSubst = IntMap.insert i t (ssSubst s')})
-    mismatch l expected actual =
-      Failed l ("型が合いません: " <> showTy (zonk s expected) <> " を求める位置に " <> showTy (zonk s actual) <> " があります")
+    mismatch = mismatchIn s
+
+mismatchIn :: SolveState -> Loc -> Ty -> Ty -> Step
+mismatchIn s l expected actual =
+  Failed l "E02101" ("型が合いません: " <> showTy (zonk s expected) <> " を求める位置に " <> showTy (zonk s actual) <> " があります")
+
+{- | The first row in the second: the requirements the second lacks go
+into its variable, and the variable of the first must be the second's,
+or go into it. A variable of the first not known yet waits.
+-}
+rowIn :: SolveState -> Loc -> RowWhy -> Row -> Row -> (Step, SolveState)
+rowIn s l why r1 r2 =
+  let Row a t1 = zonkRow s r1
+      Row b t2 = zonkRow s r2
+      missing = Set.difference a b
+   in if not (Set.null missing)
+        then case t2 of
+          Just (TM j) ->
+            let (rest, s') = freshMeta s
+             in (Into [KRow l why r1 r2], bindRow j (Row missing (Just rest)) s')
+          _ -> (lacking (map showReq (Set.toList missing)), s)
+        else case t1 of
+          Nothing -> (Solved, s)
+          Just v
+            | Just v == t2 -> (Solved, s)
+            | TM _ <- v -> (Stuck, s)
+            | Just (TM j) <- t2 -> (Solved, bindRow j (Row Set.empty (Just v)) s)
+            | otherwise -> (lacking [showRow (rowVar v)], s)
+  where
+    lacking what = case why of
+      RCall -> Failed l "E05101" ("シグネチャにない要求を使っています: " <> T.intercalate "、" what)
+      RType expected actual -> mismatchIn s l expected actual
 
 isNumber :: Ty -> Bool
 isNumber = \case
@@ -197,7 +273,7 @@ unify s x y = case (whnf s x, whnf s y) of
   (TM i, t) -> bind i t
   (t, TM i) -> bind i t
   (TC c as, TC d bs) | c == d && length as == length bs -> unifyAll s (zip as bs)
-  (TF a1 b1, TF a2 b2) -> unifyAll s [(a1, a2), (b1, b2)]
+  (TF a1 r1 b1, TF a2 r2 b2) -> unifyAll s [(a1, a2)] >>= \s' -> unifyRow s' r1 r2 >>= \s'' -> unify s'' b1 b2
   (TS i _, TS j _) | i == j -> Just s
   _ -> Nothing
   where
@@ -207,6 +283,47 @@ unify s x y = case (whnf s x, whnf s y) of
 
 unifyAll :: SolveState -> [(Ty, Ty)] -> Maybe SolveState
 unifyAll = foldl (\acc (a, b) -> acc >>= \st -> unify st a b) . Just
+
+{- | Two rows made the same, as sets: what one lacks goes into the
+variable of the other. A rigid variable takes nothing, and a row without
+a variable takes nothing.
+-}
+unifyRow :: SolveState -> Row -> Row -> Maybe SolveState
+unifyRow s r1 r2 =
+  let Row a t1 = zonkRow s r1
+      Row b t2 = zonkRow s r2
+      onlyA = Set.difference a b
+      onlyB = Set.difference b a
+   in case (t1, t2) of
+        (Just (TM i), Just (TM j))
+          | i == j -> if a == b then Just s else let (v, s') = freshMeta s in Just (bindRow i (Row (Set.union a b) (Just v)) s')
+          | otherwise ->
+              let (v, s') = freshMeta s
+               in Just (bindRow j (Row onlyA (Just v)) (bindRow i (Row onlyB (Just v)) s'))
+        (Just (TM i), _)
+          | Set.null onlyA -> Just (bindRow i (Row onlyB t2) s)
+          | otherwise -> Nothing
+        (_, Just (TM j))
+          | Set.null onlyB -> Just (bindRow j (Row onlyA t1) s)
+          | otherwise -> Nothing
+        _
+          | t1 == t2 && a == b -> Just s
+          | otherwise -> Nothing
+
+{- | The default of one row whose variable is not known (all the
+constraints of rows stuck): the variable of a body takes that of a call
+in it; a variable of a call in a row without one becomes no requirement.
+Nothing when no row is stuck.
+-}
+rowDefault :: SolveState -> Maybe SolveState
+rowDefault s = firstJust [one a b | KRow _ _ a b <- ssPending s]
+  where
+    one a b = case (zonkRow s a, zonkRow s b) of
+      (Row _ (Just (TM i)), Row _ t2) -> case t2 of
+        Just (TM j) | j /= i -> Just (bindRow j (Row Set.empty (Just (TM i))) s)
+        Just (TM _) -> Nothing
+        _ -> Just (bindRow i pureRow s)
+      _ -> Nothing
 
 {- | The first default that applies to the pending constraints (all of
 them stuck), as the module's header lists; Nothing when none does.

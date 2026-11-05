@@ -13,10 +13,17 @@ compare, types that join) are called through a table of their
 implementations by the type of the operand ('instancesOf'), as a type
 class passes its dictionary: a type class would add the instances of the
 users to the table.
+
+@File.read@ (docs/adr/0161) calls the handler the driver gives, which
+returns the text it read when the project was loaded: the evaluator
+touches no file system, and the same path gives the same text in every
+call.
 -}
 module Golem.Emet.Eval
   ( Result (..),
     Globals,
+    Handlers (..),
+    noHandlers,
     evalCall,
     evalCallCounted,
     stepLimit,
@@ -121,17 +128,29 @@ data Frame s
 -- | What applying a function does: the next control and stack, the steps and the change of depth.
 data Step s = Step !(Ctl s) ![Frame s] !Int !Int
 
+{- | The handlers of the requirements (docs/adr/0161), which the driver
+gives: @file@ returns the text of a file by its path from the root, read
+when the project was loaded, or Nothing for a path it was not given.
+-}
+newtype Handlers = Handlers
+  { handleFile :: Text -> Maybe Text
+  }
+
+-- | No file: every File.read is E05104.
+noHandlers :: Handlers
+noHandlers = Handlers (const Nothing)
+
 {- | Calls a top-level function with arguments. @at@ is the span of the
 call in .gm, where the limits and the cycles of bindings are reported;
 other errors point into the .emet, whose file ids @files@ gives. Nothing
 comes out of a call that fails.
 -}
-evalCall :: Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> Either Diagnostic Result
-evalCall globals files at key args = fst (evalCallCounted globals files at key args)
+evalCall :: Handlers -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> Either Diagnostic Result
+evalCall hs globals files at key args = fst (evalCallCounted hs globals files at key args)
 
 -- | 'evalCall' with the steps the call took, to measure the work of functions against 'stepLimit'.
-evalCallCounted :: Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> (Either Diagnostic Result, Int)
-evalCallCounted globals files at key args = case Map.lookup key globals of
+evalCallCounted :: Handlers -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> (Either Diagnostic Result, Int)
+evalCallCounted hs globals files at key args = case Map.lookup key globals of
   Nothing -> (Left (diagnostic "E02100" Error at ("未定義の関数 " <> snd key <> " です")), 0)
   Just g -> runST $ do
     Step c k n d <- apply (Loc 0 0) (globalValue g) (map fromResult args) []
@@ -292,6 +311,12 @@ evalCallCounted globals files at key args = case Map.lookup key globals of
 
     enter l fn vs k = case fn of
       FnCon c _ -> pure (Step (Ret (VC c vs)) k 1 0)
+      -- the text the driver read (docs/adr/0161): one step, as it makes no new string
+      FnPrim "File.read" _ -> pure $ case vs of
+        [VP (VString p)] -> case handleFile hs p of
+          Just t -> Step (Ret (VP (VString t))) k 1 0
+          Nothing -> Step (Fail (diagnostic "E05104" Error at ("manifest.toml の [functions.requires] の file にないファイルです: " <> p))) k 1 0
+        _ -> Step (fault k l (diagnostic "G02007" Error at "File.read の引数が不正です")) k 1 0
       FnPrim name _ -> pure $ case runPrim name (map toPrim vs) of
         Right (pv, size) -> Step (Ret (fromPrim pv)) k (1 + size) 0
         Left d -> Step (fault k l d) k 1 0

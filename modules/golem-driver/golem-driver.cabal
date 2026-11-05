@@ -26,6 +26,7 @@ library
                     Golem.Driver.Explain
                     Golem.Driver.Explain.Catalog
                     Golem.Driver.Fonts
+                    Golem.Driver.Functions
                     Golem.Driver.Html
                     Golem.Driver.Lint
                     Golem.Driver.Memo
@@ -48,6 +49,7 @@ library
     , directory     >=1.3  && <1.4
     , filepath      >=1.4  && <1.6
     , golem-doc
+    , golem-emet
     , golem-epub
     , golem-eval
     , golem-font
@@ -83,6 +85,7 @@ test-suite golem-driver-test
     DiagnosticSitesSpec
     DiagnosticsSpec
     FigureSpec
+    FunctionsSpec
     MemoSpec
     OutputGoldenSpec
     PageElementsSpec
@@ -108,6 +111,7 @@ test-suite golem-driver-test
     , filepath
     , golem-doc
     , golem-driver
+    , golem-emet
     , golem-epub
     , golem-eval
     , golem-layout

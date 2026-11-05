@@ -20,6 +20,8 @@ module Golem.Emet.Syntax
     Binding (..),
     ConDecl (..),
     TypeE (..),
+    RowE (..),
+    ReqE (..),
     Pat (..),
     Expr (..),
     Alt (..),
@@ -81,6 +83,8 @@ data Signature = Signature
     sigPub :: !Bool,
     sigName :: !Name,
     sigNameLoc :: !Loc,
+    -- | the row written right after @::@ (docs/adr/0161)
+    sigRow :: !(Maybe RowE),
     sigType :: !TypeE
   }
   deriving stock (Eq, Show)
@@ -134,9 +138,30 @@ data ConDecl
 data TypeE
   = TCon !Loc !QName ![TypeE]
   | TVar !Loc !Name
-  | TFun !TypeE !TypeE
+  | -- | an arrow, with the row of requirements written after it (docs/adr/0161)
+    TFun !TypeE !(Maybe RowE) !TypeE
   | -- | a tuple of two types or more
     TTuple !Loc ![TypeE]
+  deriving stock (Eq, Show)
+
+{- | A row of requirements (docs/adr/0161): @<file "a.tsv", file "b.tsv"|e>@,
+or a variable alone (@e@ before a type). The requirements are in the
+order they are written.
+-}
+data RowE = RowE
+  { rowLoc :: !Loc,
+    rowReqs :: ![ReqE],
+    -- | the variable after @|@, or the variable alone, and its range
+    rowTail :: !(Maybe (Name, Loc))
+  }
+  deriving stock (Eq, Show)
+
+-- | A requirement as written: its kind and the string literals after it (@file "a.tsv"@).
+data ReqE = ReqE
+  { reqLoc :: !Loc,
+    reqKind :: !Name,
+    reqArgs :: ![Text]
+  }
   deriving stock (Eq, Show)
 
 data Pat
@@ -276,7 +301,7 @@ typeLoc :: TypeE -> Loc
 typeLoc = \case
   TCon l _ _ -> l
   TVar l _ -> l
-  TFun a b -> typeLoc a <-> typeLoc b
+  TFun a _ b -> typeLoc a <-> typeLoc b
   TTuple l _ -> l
 
 rhsLoc :: Rhs -> Loc

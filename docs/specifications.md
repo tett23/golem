@@ -165,7 +165,7 @@ golem-regex は base、text、containers、array だけに依存する正規表�
 golem-svg は base、bytestring、containers、text だけに依存し、SVG の図版を PDF に描ける形に読む（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、仕様は [golem-svg の仕様書](golem-svg/specifications.md)）。
 golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画に直す。
 golem-emet は関数を書く言語 Emet（`.emet`）の読み込み、型の検査、評価、整形を持ち、数の演算を golem-eval と共有する（[docs/adr/0160](adr/0160-emet-function-language-core.md)、仕様は [golem-emet の仕様書](golem-emet/specifications.md)）。
-今は golem-emet に依存するモジュールがない。
+golem-driver は golem-emet に依存し、関数の要求を処理するハンドラを持つ（[docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)）。
 golem-html は golem-project に依存せず、golem-driver が `style.toml` の値を golem-html の設定の型に直す（[ADR 0090](adr/0090-html-settings-conversion-stays-in-driver.md)）。
 ほかの依存を通して届く依存の矢印も省いている。
 PDF 経路のモジュールだけが、レイアウト IR、シェイピング[^shaping]、フォントのサブセット化[^subset]を扱う。
@@ -208,6 +208,7 @@ flowchart TD
     driver --> font
     driver --> layout
     driver --> layoutspec
+    driver --> emet
     driver --> lint
     driver --> pdf
     driver --> plugin
@@ -319,6 +320,10 @@ Golem はこの二つを別の仕組みで扱う。
 silence-notices = ["G02062", "G04007"]
 silence-info = ["G07047"]
 ```
+
+マニフェストの `[functions.requires]` の表は、`.emet` の関数に許す要求を並べる（[docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)、「関数の要求」の節）。
+キーは要求の種類で、v1 は関数が読むファイルの `file`（プロジェクトのルートからの相対パスの配列）だけである。
+ほかのキーは G03101、`[functions]` の未知のキーと配列でない値は G03001 とする。
 
 定義の取り込みはソースファイルに `@import` で書く。
 v1 で取り込めるのは `@set` で定義した変数だけである。
@@ -2915,7 +2920,7 @@ S1 は、一覧ごとに、キーが同じ項目を一つのエントリにま�
 
 関数は、社内の使い手や組版のオペレーターが手元の不便を解消するために、`.emet` のファイルに書く（[docs/adr/0160](adr/0160-emet-function-language-core.md)）。
 Emet は Haskell の方言であり、`.gm` の `[...]` と `@` の記法を使わない。
-今は言語の核（構文、型、評価、パターンマッチ、整形）だけを golem-emet に実装しており、`.gm` からはまだ呼べない。
+今は言語の核（構文、型、評価、パターンマッチ、整形）と関数の要求を実装しており、`.gm` からはまだ呼べない。
 
 - 最上位の宣言、`where { }` の束縛、`case ... of { }` の選択肢は改行で区切る。`;` は持たない。字下げは意味を持たず、`golem fmt` が決める。
 - 続きの行であることは字句で示す。行の最後に二項演算子、`=`、`->`、`::`、`,`、`?`、`:` を置くか、次の行を `|`、`-` を除く二項演算子、`?`、`:`、`where`、`->` で始めるか、括弧の中に書く。行頭の `-` は新しい項目の始まりである。
@@ -2925,6 +2930,33 @@ Emet は Haskell の方言であり、`.gm` の `[...]` と `@` の記法を使�
 - `.gm` からの一つの呼び出しの評価には、手数の上限（100,000,000 手）と、末尾でない呼び出しの深さの上限（10000）がある。
 - `import "パス"` は、ほかの `.emet` の公開された名前を名前空間なしで取り込む。組み込みのモジュール `List` と `String` は、つねに名前を付けて参照する。
 - 誤りのコードは `E` と 5 桁の数字である（[docs/diagnostics.md](diagnostics.md)）。
+
+### 関数の要求
+
+関数が処理系に求めるもの（**要求**）は、Koka にならい、シグネチャの矢印の後ろ、結果の型の前に列で書く（[docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)）。
+
+```haskell
+lookupReading :: String -> <file "data/words.tsv"> Maybe String
+lookupReading w = List.at 0 (List.select (String.startsWith w) (String.lines (File.read "data/words.tsv")))
+```
+
+- v1 の要求は `file "パス"` だけである。パスはプロジェクトのルートからの相対パスで、正規化して比べる。`File.read "パス"` の型は `<file "パス"> String` で、引数は文字列のリテラルに限る。
+- 列を書かない矢印は要求を持たない。列の最後に `|e` を書くと開いた列になり、変数だけの列は `e String` と書く。列は集合として扱う。
+- 本体の要求は本体の中の呼び出しの要求を合わせたもので、シグネチャの本体の矢印（等式の引数の数が n なら n 個目の矢印）の列に含まれなければならない。部分適用は要求を持たない。
+- 要求を持つ関数も引数として渡せる。`List.map` などの組み込みの高階の関数は、渡された関数の要求をそのまま自分の要求にする。
+- ハンドラは golem-driver だけが持ち、利用者は書けない。
+
+関数に読ませるファイルは、`manifest.toml` の `[functions.requires]` に並べる。
+
+```toml
+[functions.requires]
+file = ["data/words.tsv", "data/terms.tsv"]
+```
+
+- キーは要求の種類、値はその種類の要求の配列である。v1 のキーは `file` だけで、ほかのキーは G03101 とする。
+- golem-driver は、関数を呼ぶかどうかによらず、プロジェクトを読み込む時点で `file` のファイルをすべて一度だけ読み、評価のあいだはその値を返す。ないファイルは G03102、ルートの外のパスは G03003、大文字と小文字だけが違うパスは G03004、UTF-8 でないファイルは E05103、64 MiB を超えるファイルは E05105 である。先頭の BOM は読み飛ばし、CRLF は LF として読む。
+- LSP は `file` のファイルを `@table` の表のファイルと同じ仕組みで監視し、変われば評価し直す。
+- golem-driver は、`.emet` から `import` でたどれるすべてのシグネチャの要求を `[functions.requires]` と突き合わせ、ないものを E05104 とする。メッセージには `manifest.toml` に足す行を書く。`.gm` から `.emet` を取り込む経路がまだないので、今はこの検査をビルドから呼ばない（[ADR 0162](adr/0162-calling-emet-functions-from-gm.md) が呼ぶ）。
 
 文法、改行の規則、型の検査、評価器、組み込みの関数の一覧は、golem-emet の仕様書に書く（[docs/golem-emet/specifications.md](golem-emet/specifications.md)）。
 

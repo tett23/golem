@@ -1,5 +1,6 @@
 {- | Functions written in .emet (docs/adr/0160): loading a program of
-modules, calling its functions, and formatting a file.
+modules, calling its functions with the handlers of their requirements
+(docs/adr/0161), and formatting a file.
 -}
 module Golem.Emet
   ( Program,
@@ -7,6 +8,12 @@ module Golem.Emet
     loadProgram,
     callFunction,
     callFunctionCounted,
+    Handlers (..),
+    noHandlers,
+    fileHandlers,
+    Req (..),
+    showReq,
+    programRequirements,
     Result (..),
     stepLimit,
     depthLimit,
@@ -19,7 +26,7 @@ where
 
 import Control.Monad (foldM)
 import Data.ByteString (ByteString)
-import Data.List (intercalate, isInfixOf, isPrefixOf)
+import Data.List (intercalate)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -29,9 +36,10 @@ import Golem.Emet.Check
 import Golem.Emet.Eval
 import Golem.Emet.Fmt (formatEmet)
 import Golem.Emet.Parse (parseModule, readEmet)
+import Golem.Emet.Path (normalizePath)
 import Golem.Emet.Syntax
+import Golem.Emet.Types (Req (..), showReq)
 import Golem.Syntax
-import System.FilePath (splitDirectories)
 
 -- | Why a file could not be read: it is missing, or it resolves outside the root.
 data SourceProblem = MissingFile | OutsideRoot
@@ -40,8 +48,17 @@ data SourceProblem = MissingFile | OutsideRoot
 -- | The checked modules of a project, ready to call.
 data Program = Program
   { prGlobals :: !Globals,
-    prFiles :: !(Map FilePath FileId)
+    prFiles :: !(Map FilePath FileId),
+    -- | the requirements the signatures write, each at its place (docs/adr/0161)
+    prRequirements :: ![(Req, SrcSpan)]
   }
+
+{- | The requirements the signatures of the program write, top-level and
+of where, each where it is written, in the order of the files and of the
+text: what manifest.toml must allow (E05104, docs/adr/0161).
+-}
+programRequirements :: Program -> [(Req, SrcSpan)]
+programRequirements = prRequirements
 
 -- | The files of the program and their ids, the built-in modules left out.
 programFiles :: Program -> Map FilePath FileId
@@ -79,7 +96,7 @@ loadProgram source roots = do
       check (mods, ds, done, failed) path = case Map.lookup path (ldFiles loaded) of
         Nothing -> (mods, ds, done, failed)
         Just (fid, src, m@(Module decls)) ->
-          let imports = [(l, target) | DImport _ p l <- decls, Right target <- [normalize (T.unpack p)]]
+          let imports = [(l, target) | DImport _ p l <- decls, Right target <- [normalizePath (T.unpack p)]]
               broken = [p | (_, p) <- imports, p `elem` failed || not (Map.member p mods)]
            in if not (null broken)
                 then (mods, ds, done, path : failed)
@@ -89,7 +106,16 @@ loadProgram source roots = do
                    in (Map.insert path mi mods, ds <> es, done <> fdefs, if any isError es then path : failed else failed)
       (_, checkDiags, defs, _) = foldl' check (Map.empty, [], [], ldFailed loaded) (ldOrder loaded)
       diags = preludeDiags <> ldDiags loaded <> checkDiags
-      program = Program (Map.union preludeGlobals (Map.fromList defs)) (Map.map (\(f, _, _) -> f) (ldFiles loaded))
+      reqs =
+        [ (ReqFile (T.pack p), mkSpan fid (locStart l) (locEnd l))
+        | path <- ldOrder loaded,
+          Just (fid, _, Module decls) <- [Map.lookup path (ldFiles loaded)],
+          sig <- concatMap signatures decls,
+          RowE _ qs _ <- rowsOfSig sig,
+          ReqE l "file" [raw] <- qs,
+          Right p <- [normalizePath (T.unpack raw)]
+        ]
+      program = Program (Map.union preludeGlobals (Map.fromList defs)) (Map.map (\(f, _, _) -> f) (ldFiles loaded)) reqs
   pure (sortDiagnostics diags, if any isError diags then Nothing else Just program)
   where
     visit stack via path ld
@@ -105,7 +131,7 @@ loadProgram source roots = do
                     stack' = path : stack
                 ld' <-
                   foldM
-                    ( \acc (l, p) -> case normalize (T.unpack p) of
+                    ( \acc (l, p) -> case normalizePath (T.unpack p) of
                         Left why -> pure acc {ldDiags = ldDiags acc <> [diagnostic "G03003" Error (mkSpan fid (locStart l) (locEnd l)) (why <> ": " <> p)]}
                         Right target
                           | target `elem` stack' ->
@@ -122,27 +148,41 @@ loadProgram source roots = do
             MissingFile -> diagnostic "G03002" Error sp ("ファイルがありません: " <> T.pack path)
             OutsideRoot -> diagnostic "G03003" Error sp ("プロジェクトルートの外を指しています: " <> T.pack path)
 
-{- | A path of an import, from the root of the project: absolute paths,
-URLs and paths that climb out of the root cannot be imported (G03003).
--}
-normalize :: FilePath -> Either Text FilePath
-normalize p
-  | "://" `isInfixOf` p = Left "URL は使えません"
-  | "/" `isPrefixOf` p = Left "絶対パスは使えません"
-  | otherwise = intercalate "/" . reverse <$> go [] (splitDirectories p)
+-- | The signatures of a declaration: the top-level one, or those of the where of an equation.
+signatures :: Decl -> [Signature]
+signatures = \case
+  DSig s -> [s]
+  DEq q -> [s | Where _ bs <- eqWheres q <> guardWheres (eqRhs q), BSig s <- bs]
+  _ -> []
   where
-    go acc [] = Right acc
-    go acc ("." : rest) = go acc rest
-    go (_ : acc) (".." : rest) = go acc rest
-    go [] (".." : _) = Left "プロジェクトルートの外を指しています"
-    go acc (seg : rest) = go (seg : acc) rest
+    guardWheres = \case
+      Guarded gs -> concatMap snd gs
+      Plain _ -> []
 
-{- | Calls a function of a module of the program. @at@ is the span of the
-call in .gm, where the limits of steps and depth are reported.
+-- | The rows of a signature, the one after @::@ first.
+rowsOfSig :: Signature -> [RowE]
+rowsOfSig sig = maybe id (:) (sigRow sig) (go (sigType sig))
+  where
+    go = \case
+      TFun a r b -> go a <> maybe [] pure r <> go b
+      TCon _ _ as -> concatMap go as
+      TTuple _ ts -> concatMap go ts
+      TVar {} -> []
+
+{- | The handlers of the requirements over the texts of the files by their
+paths from the root (docs/adr/0161), which the driver reads when the
+project is loaded.
 -}
-callFunction :: Program -> SrcSpan -> FilePath -> Name -> [Result] -> Either Diagnostic Result
-callFunction p at path name = evalCall (prGlobals p) (prFiles p) at (path, name)
+fileHandlers :: Map Text Text -> Handlers
+fileHandlers files = Handlers (`Map.lookup` files)
+
+{- | Calls a function of a module of the program with the handlers of the
+requirements. @at@ is the span of the call in .gm, where the limits of
+steps and depth are reported.
+-}
+callFunction :: Handlers -> Program -> SrcSpan -> FilePath -> Name -> [Result] -> Either Diagnostic Result
+callFunction hs p at path name = evalCall hs (prGlobals p) (prFiles p) at (path, name)
 
 -- | 'callFunction' with the steps the call took (for measuring the work of functions).
-callFunctionCounted :: Program -> SrcSpan -> FilePath -> Name -> [Result] -> (Either Diagnostic Result, Int)
-callFunctionCounted p at path name = evalCallCounted (prGlobals p) (prFiles p) at (path, name)
+callFunctionCounted :: Handlers -> Program -> SrcSpan -> FilePath -> Name -> [Result] -> (Either Diagnostic Result, Int)
+callFunctionCounted hs p at path name = evalCallCounted hs (prGlobals p) (prFiles p) at (path, name)

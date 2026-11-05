@@ -65,9 +65,11 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | 02 | 名前と型 | golem-emet |
 | 03 | パターンマッチの網羅性 | golem-emet |
 | 04 | 評価の上限と循環 | golem-emet |
+| 05 | 要求（[docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)） | golem-emet、golem-driver |
 
 `.emet` の原因が `.gm` と同じ誤りは、`G` のコードを使う。
 読み込みの誤りは [G01001](#g01001)、[G01002](#g01002)、[G01003](#g01003)、`import` のパスの誤りは [G03002](#g03002)、[G03003](#g03003) である。
+要求 `file` のパスの誤りも [G03003](#g03003) と [G03004](#g03004) である（[docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)）。
 数の演算の誤りは式文脈と同じ 02 のコード（[G02003](#g02003) など）で、位置は `.emet` の中である。
 
 重大度がプロファイルで変わるコードは `Golem.Syntax.Diagnostic.profileDependentCodes` にまとめてあり、dev では警告、prod ではエラーになる。
@@ -149,11 +151,12 @@ LSP では、目立たない表示の `Hint` として、つねに公開する�
 一つのコードの重大度は一つに決まり、同じコードが場合によってお知らせになったり情報になったりすることはない。
 
 情報のコードは `Golem.Syntax.Diagnostic.infoCodes` にまとめてある。
-今は次の一つである。
+今は次の二つである。
 
 | コード | 種類 | 段階 |
 | --- | --- | --- |
 | [G07047](#g07047) | 処理系による調整 | レイアウト |
+| [E05108](#e05108) | 効果のない書き方 | Emet の型の検査 |
 
 `manifest.toml` の `[diagnostics]` の `silence-info` に並べたコードの情報は、`--verbose` を付けても出ず、LSP でも公開しない。
 `--verbose` を付けて、ほかの情報は見たいが特定のコードは見たくない、という場合に使う。
@@ -177,6 +180,7 @@ silence-info = ["G07047"]
 - **廃止**：G02004 と G02095。浮動小数点数の値と、倍精度に丸める累乗に定めたが、[docs/adr/0101](adr/0101-rational-numbers-in-expressions.md) で式の言語から浮動小数点数をなくし、使わなくなった。下に節を置く。
 - **廃止**：G09005。[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md) がプリフライトの読めない図版に定めたが、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md) で `golem build` の [G08010](#g08010) に置き換えた。下に節を置く。
 - **写しの空き**：G01004 から G01009、G01025 から G01028、G06001、G07003 から G07020、G07031、G07036、G07040、G07048、G07049、G08012。各区分の 099 までの、最後に使った番号より後も空いている。000 から 099 は 4 桁のコードの写しに取っておくので、ここに新しいコードを割り当てない。
+- **空き**：G03103 から G03107。取り下げた [docs/adr/0149](adr/0149-gmx-requirements-and-driver-handlers.md) の実装が `[functions]` の誤りに使った番号で、[docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md) は同じ意味の G03101 と G03102 だけを使い直した。ほかの意味にも使い回さない。
 - **空き**：G02109。[docs/adr/0113](adr/0113-closed-range-literal.md) が範囲のコードの番号を詰め直したときに使わなかった番号で、空けておく。
 - **新しいコードの番号**：各区分の 100 から 999。
 - **使わない区分**：G10。取り下げた [docs/adr/0148](adr/0148-gmx-function-language-core.md) の実装が関数の誤りに使ったが、関数の言語のコードは `E` にしたので（[docs/adr/0160](adr/0160-emet-function-language-core.md)）、G10 の番号はどれも使わず、ほかの意味にも使い回さない。
@@ -709,6 +713,255 @@ where の束縛が自分自身の値を求めました
 ### 直し方
 
 束縛の定義から循環を取り除く。
+
+## E05100
+
+知らない要求の種類です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`.emet` のシグネチャの要求の列に、要求の一覧にない種類を書いた。
+v1 の要求の種類は `file` だけである。
+一つのシグネチャの知らない種類は、すべて一つの diagnostic に並べ、使える種類の一覧を添える。
+位置は、知らない種類の最初の要求である。
+`manifest.toml` の `[functions.requires]` に知らない種類のキーを書いたときは [G03101](#g03101) である。
+
+- メッセージ: `知らない要求の種類です: <種類>、…（使える種類: file）`
+- 段階とモジュール: Emet の型の検査（golem-emet の `Golem.Emet.Check`）
+- ADR: [docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- `<net>` のように、一覧にない要求を書いた。
+- `file` の綴りを誤った。
+
+### 直し方
+
+要求を一覧にある種類で書く。
+ファイルを読むときは `file "data/words.tsv"` のように、`file` とファイルのパスを書く。
+
+## E05101
+
+シグネチャにない要求を使っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+関数の本体の呼び出しが、シグネチャの本体の列にない要求を持つ。
+`File.read`、要求を持つ関数の呼び出し、要求を持つ引数のない関数の参照、要求を持つ関数を渡した高階の関数の呼び出しが、要求を持つ。
+本体の列は、等式の引数の数を n として、n 個目の矢印の列（引数がなければ `::` の直後の列）である。
+開いた列なら、変数が残りの要求を受け取るので、この誤りにならない。
+位置はその呼び出しで、メッセージには足りない要求を書く。
+`where` の中のシグネチャのない関数の要求は推論し、それを呼んだ位置で外の関数のシグネチャと突き合わせる。
+
+- メッセージ: `シグネチャにない要求を使っています: <要求>、…`（例: `シグネチャにない要求を使っています: file "a.tsv"`）
+- 段階とモジュール: Emet の型の検査（golem-emet の `Golem.Emet.Check`、`Golem.Emet.Solve`）
+- ADR: [docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- 列のない関数の中で `File.read` を呼んだ。
+- 要求を持つ関数を、その要求を書いていない関数から呼んだ。
+
+### 直し方
+
+関数のシグネチャの本体の矢印に、足りない要求を書く（`String -> <file "a.tsv"> String`）。
+高階の関数なら、開いた列（`<file "a.tsv"|e>`）や変数だけの列（`e String`）で、渡された関数の要求を受け取る。
+
+## E05102
+
+同じ要求を二度書いています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+一つの要求の列に、同じ要求を二度書いた。
+要求の列は集合であり、二つの要求は種類とパスがどちらも等しいときに同じである。
+パスは正規化してから比べるので、`data/./a.tsv` と `data/a.tsv` は同じ要求である。
+位置は後の要求である。
+
+- メッセージ: `同じ要求を二度書いています: <要求>`
+- 段階とモジュール: Emet の型の検査（golem-emet の `Golem.Emet.Check`）
+- ADR: [docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- 列を書き足したときに、同じファイルを重ねた。
+
+### 直し方
+
+後の要求を消す。
+
+## E05103
+
+要求したファイルが UTF-8 として読めません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[functions.requires]` の `file` に書いたファイルに、UTF-8 として読めないバイト列がある。
+ファイルは、関数を呼ぶかどうかによらず、プロジェクトを読み込む時点で読む。
+先頭の BOM は読み飛ばし、CRLF は LF として読む。
+位置は `manifest.toml` の先頭である。
+
+- メッセージ: `要求したファイルが UTF-8 として読めません: <パス>`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.Functions`）
+- ADR: [docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- Shift_JIS など、UTF-8 でない符号化で保存した。
+
+### 直し方
+
+ファイルを UTF-8 で保存し直す。
+
+## E05104
+
+要求が manifest.toml の [functions.requires] にありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`.emet` のシグネチャに書いた要求が、`manifest.toml` の `[functions.requires]` にない。
+`import` でたどれるすべての `.emet` の、最上位と `where` のすべてのシグネチャを検査する。
+位置はその要求で、メッセージには `manifest.toml` に足す行を書く。
+評価の途中で、driver が読んでいないファイルを `File.read` が求めたときも、このコードとし、位置は `.gm` の呼び出しである。
+
+- メッセージ: `<要求> が manifest.toml の [functions.requires] にありません。[functions.requires] に file = ["<パス>"] と書きます`、`<要求> が manifest.toml の [functions.requires] にありません。[functions.requires] の file に "<パス>" を足します`、`manifest.toml の [functions.requires] の file にないファイルです: <パス>`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.Functions`）、Emet の評価（golem-emet の `Golem.Emet.Eval`）
+- ADR: [docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- 関数が新しいファイルを読むようにしたが、`manifest.toml` に足していない。
+
+### 直し方
+
+メッセージの行を `manifest.toml` に足す。
+
+```toml
+[functions.requires]
+file = ["data/words.tsv"]
+```
+
+## E05105
+
+要求したファイルが大きすぎます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[functions.requires]` の `file` に書いたファイルが、64 MiB（67,108,864 バイト）を超える。
+上限はプラグインのデータと同じである。
+位置は `manifest.toml` の先頭である。
+
+- メッセージ: `要求したファイルが上限（67108864 バイト）を超えています: <パス>（<大きさ> バイト）`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.Functions`）
+- ADR: [docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- 関数が使わない部分を含む大きなファイルを指した。
+
+### 直し方
+
+ファイルを分け、関数が使う部分だけを読ませる。
+
+## E05106
+
+本体を評価する前の矢印に要求の列があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+関数のシグネチャで、本体を評価する矢印より前に要求の列を書いた。
+等式の引数の数を n とすると、本体を評価するのは n 個目の矢印である。
+それより前の矢印と、n が 1 以上のときの `::` の直後では何も評価しないので、列を書けない。
+n 個目より後ろの矢印の列は、関数が返す関数の要求であり、誤りではない。
+型の別名から来た列も同じに扱い、そのときの位置はシグネチャの型である。
+
+- メッセージ: `本体を評価する前の矢印に要求の列があります: <関数の名前> の本体は <n> 個目の矢印で評価します`
+- 段階とモジュール: Emet の型の検査（golem-emet の `Golem.Emet.Check`）
+- ADR: [docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- 引数が二つの関数に、`String -> <file "a.tsv"> String -> String` のように一つ目の矢印の列を書いた。
+
+### 直し方
+
+列を n 個目の矢印に移す（`String -> String -> <file "a.tsv"> String`）。
+
+## E05107
+
+File.read の引数が文字列のリテラルではありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`File.read` に、文字列のリテラルでない引数を渡した。
+要求にファイルの名前を含めるので、読むファイルは型の検査の時点で決まっていなければならない。
+`File.read` を値として関数に渡したときも、このコードとする。
+
+- メッセージ: `File.read の引数は文字列のリテラルに限ります。読むファイルは型の検査の時点で決まっていなければなりません`
+- 段階とモジュール: Emet の型の検査（golem-emet の `Golem.Emet.Check`）
+- ADR: [docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- 変数や式で組み立てたパスを渡した。
+- `List.map File.read paths` のように、`File.read` を渡した。
+
+### 直し方
+
+読むファイルごとに `File.read "data/words.tsv"` と書き、シグネチャと `manifest.toml` にそのファイルを並べる。
+
+## E05108
+
+本体が使わない要求です
+
+- 重大度: 情報
+- 状態: 使用中
+
+### 意味
+
+最上位の関数のシグネチャの本体の列が閉じていて、本体のどの呼び出しも使わない要求を持つ。
+将来使う予定の要求を先に書くことを妨げないので、誤りにしない。
+開いた列の変数は、使わなくても知らせない。
+位置はその要求である。
+情報なので、コマンドに `--verbose`（`-v`）を付けたときと LSP にだけ出る（[docs/adr/0104](adr/0104-info-severity.md)）。
+
+- メッセージ: `関数 <関数の名前> の本体が使わない要求です: <要求>`
+- 段階とモジュール: Emet の型の検査（golem-emet の `Golem.Emet.Check`）
+- ADR: [docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- 本体から `File.read` を消したが、シグネチャの要求を残した。
+
+### 直し方
+
+使わない要求をシグネチャから消す。
+先に書いておく要求なら、そのままでよい。
+`silence-info` に `"E05108"` を加えると、この情報を出さなくなる。
 
 ## G01001
 
@@ -4502,7 +4755,8 @@ manifest.toml の誤りです
 
 ### 意味
 
-章や `@import` のパス、`manifest.toml` の `bibliography` のファイル、プラグインの `path`（[docs/adr/0109](adr/0109-local-plugin-path.md)）とデータ（`data`、[docs/adr/0105](adr/0105-plugin-data.md)）のパスが、絶対パス、URL、またはプロジェクトのルートの外を指すパスである。
+章や `@import` のパス、`manifest.toml` の `bibliography` のファイル、プラグインの `path`（[docs/adr/0109](adr/0109-local-plugin-path.md)）とデータ（`data`、[docs/adr/0105](adr/0105-plugin-data.md)）のパス、`[functions.requires]` の `file` のパスと `.emet` の要求 `file` と `File.read` のパス（[docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)）が、絶対パス、URL、またはプロジェクトのルートの外を指すパスである。
+`.emet` の中のパスは字面で検査し、位置はそのパスである。
 シンボリックリンクを解決した実体がルートの外にあるときも、この誤りとする。
 `bibliography` とプラグインのパスの誤りの位置は、`manifest.toml` の先頭である。
 
@@ -4530,6 +4784,7 @@ manifest.toml の誤りです
 
 大文字と小文字だけが違う二つのパスを使った。
 大文字と小文字を区別しないファイルシステムで、結果が変わるためである。
+`.emet` の一つの要求の列の二つの `file`、`[functions.requires]` の `file` の二つのパス、シグネチャの `file` と `[functions.requires]` のパスも比べる（[docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)）。
 書いたパスで比べるので、どのファイルシステムでも同じ誤りになる。
 シンボリックリンクを解決した後のパスも比べる。
 
@@ -5322,6 +5577,61 @@ diagnostic の事実（JSON の `facts`）に、`gutter`、`size`、`min-gutter`
 
 そのキーを消す。
 `silence-notices` に `"G03100"` を加えると、このお知らせを出さなくなる。
+
+## G03101
+
+[functions.requires] に知らない要求の種類があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[functions.requires]` に、要求の一覧にない種類のキーを書いた。
+v1 の要求の種類は `file` だけである。
+`.emet` のシグネチャに知らない種類を書いたときは [E05100](#e05100) である。
+二つは原因が同じ種類の誤りだが、直す人とファイルが違うので、コードを分ける。
+位置はそのキーである。
+
+- メッセージ: `[functions.requires] に知らない要求の種類があります: <キー>（使える種類: file）`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）
+- ADR: [docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- `net` のように、一覧にない要求を許そうとした。
+- `file` の綴りを誤った（`files` など）。
+
+### 直し方
+
+キーを `file` にするか、消す。
+
+## G03102
+
+[functions.requires] の file のファイルがありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[functions.requires]` の `file` に書いたファイルがない。
+ファイルは、関数を呼ぶかどうかによらず、プロジェクトを読み込む時点で読むので、関数を一つも呼ばない本でもこの誤りになる。
+位置は `manifest.toml` の先頭である。
+パスの形の誤り（URL、絶対パス、プロジェクトのルートの外）は [G03003](#g03003)、大文字と小文字だけが違う二つのパスは [G03004](#g03004) である。
+
+- メッセージ: `[functions.requires] の file のファイルがありません: <パス>`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.Functions`）
+- ADR: [docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)
+
+### 主な原因
+
+- パスを誤った。
+- ファイルを移したか、消した。
+
+### 直し方
+
+ファイルを置くか、パスを直す。
 
 ## G03108
 

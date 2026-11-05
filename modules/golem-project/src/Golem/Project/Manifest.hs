@@ -44,7 +44,7 @@ import Numeric.Natural (Natural)
 import Toml qualified
 import Toml.Schema
 import Toml.Schema.FromValue (typeError)
-import Toml.Schema.Matcher (inIndex)
+import Toml.Schema.Matcher (inIndex, inKey)
 import Toml.Semantics
   ( SemanticError (..),
     semantics,
@@ -65,7 +65,10 @@ data Manifest = Manifest
     -- | [diagnostics] silence-notices: codes of notices not shown (golem-syntax ADR 0002)
     manifestSilencedNotices :: !(Set DiagnosticCode),
     -- | [diagnostics] silence-info: codes of infos not shown, even with --verbose (docs/adr 0104)
-    manifestSilencedInfo :: !(Set DiagnosticCode)
+    manifestSilencedInfo :: !(Set DiagnosticCode),
+    {- | [functions.requires] file: the files the functions may read, as
+    written, relative to the root; Nothing without the key (docs/adr/0161)
+    -} manifestRequiredFiles :: !(Maybe [FilePath])
   }
   deriving stock (Eq, Show)
 
@@ -225,6 +228,7 @@ instance FromValue Manifest where
     bib <- optKey "bibliography"
     src <- optKey "source"
     dg <- optKey "diagnostics"
+    fns <- optKey "functions"
     pure
       Manifest
         { manifestMetadata = md,
@@ -235,8 +239,27 @@ instance FromValue Manifest where
           manifestBibliography = maybe [] (map T.unpack) bib,
           manifestSource = applyEdits (maybe [] sourceTableEdits src) defaultSourceSettings,
           manifestSilencedNotices = maybe Set.empty silenced dg,
-          manifestSilencedInfo = maybe Set.empty silencedInfo dg
+          manifestSilencedInfo = maybe Set.empty silencedInfo dg,
+          manifestRequiredFiles = fns >>= \(FunctionsTable fs) -> fs
         }
+
+{- | The table [functions] (docs/adr/0161): [functions.requires], whose keys
+are the kinds of requirements and whose values are the requirements of
+each kind. v1 has the kind file, the paths of the files. Every other key
+of [functions.requires] is G03101 at the key ('manifestCode').
+-}
+newtype FunctionsTable = FunctionsTable (Maybe [FilePath])
+
+instance FromValue FunctionsTable where
+  fromValue = parseTableFromValue (FunctionsTable . (>>= id) <$> optKeyOf "requires" requires)
+    where
+      requires = \case
+        Table' _ (MkTable kvs) -> do
+          mapM_ (\(k, (pos, _)) -> inKey k (warnAt pos ("[functions.requires] に知らない要求の種類があります: " <> T.unpack k <> "（使える種類: file）"))) [kv | kv@(k, _) <- Map.toList kvs, k /= "file"]
+          case Map.lookup "file" kvs of
+            Nothing -> pure Nothing
+            Just (_, v) -> Just . map T.unpack <$> inKey "file" (fromValue v)
+        v -> typeError "table" v
 
 -- | The [diagnostics] table (golem-syntax ADR 0002, docs/adr 0104).
 data DiagnosticsTable = DiagnosticsTable {silenced :: Set DiagnosticCode, silencedInfo :: Set DiagnosticCode}
@@ -282,10 +305,12 @@ silenceList sl = \case
       v -> warnAt (Toml.valueAnn v) "診断のコードは文字列で書きます" >> pure Nothing
 
 {- | The code of a schema message of the manifest: G03024 for an element of
-silence-notices or silence-info, G03001 otherwise.
+silence-notices or silence-info, G03101 for an unknown kind of
+[functions.requires] (docs/adr/0161), G03001 otherwise.
 -}
 manifestCode :: [Scope] -> Text
 manifestCode = \case
+  [ScopeKey "functions", ScopeKey "requires", ScopeKey k] | k /= "file" -> "G03101"
   [ScopeKey "diagnostics", ScopeKey "silence-notices", ScopeIndex _] -> "G03024"
   [ScopeKey "diagnostics", ScopeKey "silence-info", ScopeIndex _] -> "G03024"
   _ -> "G03001"

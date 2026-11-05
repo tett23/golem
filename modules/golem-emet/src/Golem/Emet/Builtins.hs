@@ -4,6 +4,13 @@ functions are written in .emet on top of primitives ('Golem.Emet.Prim'):
 a signature without equations is a primitive. The functions written in
 .emet count their steps and frames as any other. Each module has a path
 that no file of a project can have.
+
+The higher-order functions take the requirements of the functions they
+are given as their own (docs/adr/0161): @List.map :: (a -> e b) -> List a
+-> e (List b)@. The module @File@ has @File.read@, whose type depends on
+its argument, a string literal: the checker gives it the type
+@<file "path"> String@, and the evaluator calls the handler of the
+driver for it.
 -}
 module Golem.Emet.Builtins
   ( builtinSources,
@@ -21,14 +28,15 @@ import Golem.Emet.Types
 builtinSources :: [(Text, FilePath, Text)]
 builtinSources =
   [ ("List", "<builtin>/List.emet", listSource),
-    ("String", "<builtin>/String.emet", stringSource)
+    ("String", "<builtin>/String.emet", stringSource),
+    ("File", "<builtin>/File.emet", "pub read :: String -> String\n")
   ]
 
 -- | @div@: the floor division of integers, as in the expression context.
 divInfo :: (FunInfo, (GKey, Global))
 divInfo =
   let key = ("<builtin>", "div")
-   in (FunInfo key (Scheme [] (TF tInt (TF tInt tInt))) True, (key, GPrim "div" 2))
+   in (FunInfo key (Scheme [] pureRow (TF tInt pureRow (TF tInt pureRow tInt))) True, (key, GPrim "div" 2))
 
 listSource :: Text
 listSource =
@@ -45,40 +53,40 @@ listSource =
       "isEmpty [] = True",
       "isEmpty _ = False",
       "",
-      "pub map :: (a -> b) -> List a -> List b",
+      "pub map :: (a -> e b) -> List a -> e (List b)",
       "map f xs = mapGo f xs []",
       "",
-      "mapGo :: (a -> b) -> List a -> List b -> List b",
+      "mapGo :: (a -> e b) -> List a -> List b -> e (List b)",
       "mapGo _ [] acc = reverse acc",
       "mapGo f (y : ys) acc = mapGo f ys (f y : acc)",
       "",
-      "pub select :: (a -> Bool) -> List a -> List a",
+      "pub select :: (a -> e Bool) -> List a -> e (List a)",
       "select p xs = selectGo p xs []",
       "",
-      "selectGo :: (a -> Bool) -> List a -> List a -> List a",
+      "selectGo :: (a -> e Bool) -> List a -> List a -> e (List a)",
       "selectGo _ [] acc = reverse acc",
       "selectGo p (y : ys) acc = selectGo p ys (p y ? (y : acc) : acc)",
       "",
-      "pub foldl :: (b -> a -> b) -> b -> List a -> b",
+      "pub foldl :: (b -> a -> e b) -> b -> List a -> e b",
       "foldl _ z [] = z",
       "foldl f z (y : ys) = foldl f (f z y) ys",
       "",
-      "pub foldr :: (a -> b -> b) -> b -> List a -> b",
+      "pub foldr :: (a -> b -> e b) -> b -> List a -> e b",
       "foldr f z xs = foldrGo f z (reverse xs)",
       "",
-      "foldrGo :: (a -> b -> b) -> b -> List a -> b",
+      "foldrGo :: (a -> b -> e b) -> b -> List a -> e b",
       "foldrGo _ z [] = z",
       "foldrGo f z (y : ys) = foldrGo f (f y z) ys",
       "",
-      "pub any :: (a -> Bool) -> List a -> Bool",
+      "pub any :: (a -> e Bool) -> List a -> e Bool",
       "any _ [] = False",
       "any p (y : ys) = p y || any p ys",
       "",
-      "pub all :: (a -> Bool) -> List a -> Bool",
+      "pub all :: (a -> e Bool) -> List a -> e Bool",
       "all _ [] = True",
       "all p (y : ys) = p y && all p ys",
       "",
-      "pub concatMap :: (a -> List b) -> List a -> List b",
+      "pub concatMap :: (a -> e (List b)) -> List a -> e (List b)",
       "concatMap f xs = concat (map f xs)",
       "",
       "pub zip :: List a -> List b -> List (a, b)",
@@ -112,12 +120,12 @@ stringSource =
       "pub toNat :: String -> Maybe Nat",
       "pub toInt :: String -> Maybe Int",
       "",
-      "pub all :: (Char -> Bool) -> String -> Bool",
+      "pub all :: (Char -> e Bool) -> String -> e Bool",
       "all p s = List.all p (chars s)",
       "",
-      "pub any :: (Char -> Bool) -> String -> Bool",
+      "pub any :: (Char -> e Bool) -> String -> e Bool",
       "any p s = List.any p (chars s)",
       "",
-      "pub map :: (Char -> Char) -> String -> String",
+      "pub map :: (Char -> e Char) -> String -> e String",
       "map f s = fromChars (List.map f (chars s))"
     ]

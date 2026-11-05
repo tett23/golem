@@ -26,6 +26,7 @@ library
     Golem.Emet.Generated
     Golem.Emet.Literal
     Golem.Emet.Parse
+    Golem.Emet.Path
     Golem.Emet.Prim
     Golem.Emet.Solve
     Golem.Emet.Syntax
@@ -47,7 +48,7 @@ test-suite golem-emet-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    FmtSpec LanguageSpec Support
+  other-modules:    FmtSpec LanguageSpec RequirementSpec Support
   build-depends:
     , base
     , containers

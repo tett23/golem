@@ -242,10 +242,10 @@ noticeTests =
           nDiagnostics silencedInfo @?= nDiagnostics loud
           map withoutInstanceId (nOutputs silencedInfo) @?= map withoutInstanceId (nOutputs loud)
           pure (map diagCode (nDiagnostics loud), [diagCode d | d <- nDiagnostics verbose, diagSeverity d == Info], map fst (nOutputs loud))
-        -- a new notice or info must be added to the projects; the notices of
-        -- .emet (E) come when .gm calls functions of .emet (docs/adr/0162)
+        -- a new notice or info must be added to the projects; the notices and
+        -- infos of .emet (E) come when .gm calls functions of .emet (docs/adr/0162)
         sort (nub (concatMap (\(n, _, _) -> n) raised)) @?= sort [c | c@(DiagnosticCode t) <- noticeCodes, not ("E" `T.isPrefixOf` t)]
-        sort (nub (concatMap (\(_, i, _) -> i) raised)) @?= sort infoCodes
+        sort (nub (concatMap (\(_, i, _) -> i) raised)) @?= sort [c | c@(DiagnosticCode t) <- infoCodes, not ("E" `T.isPrefixOf` t)]
         let written = concatMap (\(_, _, w) -> w) raised
         assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"]),
       testCase "the path of @listing as the first argument gives the same outputs as src=" $ do
