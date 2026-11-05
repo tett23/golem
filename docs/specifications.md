@@ -576,6 +576,8 @@ EPUB はパッケージである zip の中に時刻や並び順の揺れを含�
 `scripts/visual/build.sh` が、各プロジェクトを一時的なディレクトリに写して組み、リポジトリの `build/` には書かない。
 入力の一覧は `build.sh --list` が出す。
 `scripts/visual/check.sh` が、各 PDF を shem で 72 dpi の PPM に描き、ページごとの SHA-256 を `scripts/visual/pages/<入力>.txt` の参照と比べる。
+PDF は、プロセッサの数（`getconf _NPROCESSORS_ONLN`、取れなければ 1）を上限に同時に、大きい（バイト数の多い）ものから、同じ大きさなら入力の名前の順に描き始め、各 shem には `--jobs 1` を渡す（[ADR 0168](adr/0168-render-visual-pdfs-side-by-side-with-shem-jobs-1.md)）。
+違いの行は、描き終えた順によらず、入力の一覧の順に書く。
 参照の一行は `<SHA-256>  page-<番号>` で、行はページの順（`LC_ALL=C`）に並べる。
 比べるのはバイト列の完全な一致で、閾値はない。
 Golem と shem の出力はどちらも決定的なので、同じ PDF からは同じ一覧ができる。

@@ -1,6 +1,6 @@
 # ADR 0100: shem を v0.1.0-rc3 に上げ、pre-release の識別子を変える版の上げ方を決める
 
-ステータス: 採択
+ステータス: 採択→`visual` の描き方（`--jobs` を渡さないこと）は [ADR 0168](0168-render-visual-pdfs-side-by-side-with-shem-jobs-1.md)
 
 ## 文脈
 
