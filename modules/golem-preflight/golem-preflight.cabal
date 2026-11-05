@@ -35,6 +35,7 @@ test-suite golem-preflight-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    RulesSchemaSpec
   build-depends:
     , base
     , bytestring
@@ -46,4 +47,5 @@ test-suite golem-preflight-test
     , tasty          >=1.4 && <1.6
     , tasty-hunit    >=0.10 && <0.11
     , text
+    , toml-parser
   default-language: GHC2021

@@ -20,7 +20,7 @@ v1 の LSP は次の機能を持つ。[note: [style url: https://github.com/tett
 | 定義への移動 | [code: @import] のパス、名前空間を通した変数、ラベル、ファイルの中で定義したスタイル |
 | 参照の検索 | 変数とラベル。ラベルはファイルをまたいで検索する |
 | 名前の変更 | ラベルの名前を、定義とすべての参照で書き換える。既存のラベルと重なる名前は拒否する |
-| 補完 | 組み込みとプラグインのコマンドの名前、ラベル、[code: @import] のパス、スウォッチ、スタイルの名前、[code: @manifest] と [code: @style-def] のキーと値 |
+| 補完 | 組み込みとプラグインのコマンドの名前、ラベル、[code: @import] のパス、スウォッチ、スタイルの名前、[code: @manifest] と [code: @style-def] のキーと値、ルートの [code: style.toml] と [code: preflight.toml] のキーと値 |
 | ホバー | [code: \[= ...\]] の評価の結果 |
 | 整形 | [code: golem fmt] と同じ整形 |
 | アウトライン | 見出しの階層 |
@@ -35,11 +35,20 @@ LSP はレイアウト（S2）とバックエンドを実行しない。
 エディタの側では、次の三つを設定する。
 
 - 起動のコマンド：[code: golem lsp]
-- 対象のファイル：拡張子 [code: .gm]
+- 対象のファイル：拡張子 [code: .gm]。[code: style.toml] と [code: preflight.toml] を補うなら [code: .toml] も
 - プロジェクトのルートを決める印：[code: manifest.toml]
 
 [code: manifest.toml] のあるディレクトリが、プロジェクトのルートになる。
-マニフェストから到達しないファイルを開いた場合は、構文解析とファイル内評価（S0）だけを行い、文書構造（S1）の diagnostics は出さない。
+マニフェストから到達しない [code: .gm] のファイルを開いた場合は、構文解析とファイル内評価（S0）だけを行い、文書構造（S1）の diagnostics は出さない。
+拡張子が [code: .gm] でないファイルは、開いても原稿として解析しない。
+補完と位置の変換のために、テキストと行の索引だけを持つ。
+
+[code: style.toml] と [code: preflight.toml] の補完は、ルートからの相対パスがちょうどその名前のファイルだけで働く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0169-lsp-completion-in-style-and-preflight-toml.md]（ADR 0169「LSP で style.toml と preflight.toml のキーと値を補完する」）]
+キーと列挙の値は、デコーダーと同じモジュールに置いたスキーマ（golem-project の [code: styleSchema] と golem-preflight の [code: rulesSchema]）から取る。
+スキーマは知らないキーの判定にも使うので、補完の候補と、読み込みが受け付けるキーは食い違わない。
+カーソルの位置は、エディタが今持っているテキストの先頭からカーソルまでを小さな読み取りで読んで決める。
+書きかけの行があっても読み取りは失敗せず、コメントと複数行の文字列の中では候補を返さない。
+参照する名前（スタイル、書体の役割、スウォッチ、アキ量のセット）は、編集中のファイルのテキストで定義した名前に、組み込みの名前を前に加えたものである。
 
 Neovim の組み込みのクライアント（ADR が挙動を調べたのは 0.12.5）なら、次の設定でつながる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-lsp/adr/0003-position-handling.md]（golem-lsp ADR 0003「行の長さを超える列を行末に丸め、位置の交渉をエディタで確かめる」）]
 
@@ -47,13 +56,15 @@ Neovim の組み込みのクライアント（ADR が挙動を調べたのは 0.
 vim.filetype.add({ extension = { gm = 'golem' } })
 vim.lsp.config('golem', {
   cmd = { 'golem', 'lsp' },
-  filetypes = { 'golem' },
+  filetypes = { 'golem', 'toml' },
   root_markers = { 'manifest.toml' },
 })
 vim.lsp.enable('golem')
 ```
 
 この設定は、ADR がエディタでの確かめの手順として示しているものである。
+[code: 'toml'] は [code: style.toml] と [code: preflight.toml] の補完のための指定である。
+Neovim 0.12.6 をヘッドレスで動かし、この設定で、[code: style.toml] の見出し、キー、列挙の値、真偽の値、名前の参照と、[code: preflight.toml] の [code: severity] に候補が出ること、[code: manifest.toml] とルートの外の [code: style.toml] には候補が出ず、原稿として解析した diagnostics も出ないことを確かめた。
 実際の Neovim でこの手順を通して確かめる作業は、[code: docs/roadmap.md] の「手で確かめる項目」にまだ残っている。
 
 ## 位置の単位の交渉

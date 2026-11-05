@@ -1,6 +1,6 @@
 # ADR 0169: LSP で style.toml と preflight.toml のキーと値を補完する
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 

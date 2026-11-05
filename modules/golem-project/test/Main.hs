@@ -26,6 +26,7 @@ import Golem.Syntax
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
 import StylePositionSpec qualified
+import StyleSchemaSpec qualified
 import System.Directory (createDirectoryIfMissing, createFileLink)
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -610,6 +611,7 @@ tests =
       ColophonSpec.tests,
       OutputCharsSpec.tests,
       StylePositionSpec.tests,
+      StyleSchemaSpec.tests,
       NaturalKeySpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)

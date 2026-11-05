@@ -43,7 +43,7 @@ import Golem.Project
 import Golem.Project.Style (defaultStyle, withLocalStyles)
 import Golem.Syntax
 import System.Directory (doesDirectoryExist, listDirectory)
-import System.FilePath (makeRelative, (</>))
+import System.FilePath (makeRelative, takeExtension, (</>))
 
 -- | One source file as the features see it.
 data Source = Source
@@ -187,10 +187,13 @@ projectPaths ws = case wsEvaluated ws of
   Just e -> Set.fromList (map sfPath (Map.elems (projectSources (evProject e))))
   Nothing -> Set.empty
 
--- | Open files outside the project: syntax and S0 only.
+{- | Open .gm files outside the project: syntax and S0 only. An open file of
+another extension (style.toml, manifest.toml and so on) is not a source:
+it keeps its text and its line index, and nothing else (docs/adr ADR 0169).
+-}
 refreshLoose :: Workspace -> Workspace
 refreshLoose ws =
-  ws {wsLoose = Map.fromList [(p, loose p t) | (p, t) <- Map.toList (wsOverlay ws), not (p `Set.member` projectPaths ws), not (p `Set.member` assetPaths ws)]}
+  ws {wsLoose = Map.fromList [(p, loose p t) | (p, t) <- Map.toList (wsOverlay ws), takeExtension p == ".gm", not (p `Set.member` projectPaths ws), not (p `Set.member` assetPaths ws)]}
 
 loose :: FilePath -> Text -> Source
 loose path text =
