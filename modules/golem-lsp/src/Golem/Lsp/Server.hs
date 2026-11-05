@@ -19,14 +19,16 @@ where
 import Colog.Core (LogAction, WithSeverity (..))
 import Colog.Core qualified as L
 import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Concurrent.STM
-import Control.Monad (forM_, guard, join, void, when)
+import Control.Monad (forM_, guard, join, unless, void, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as J
 import Data.Aeson.KeyMap qualified as KM
 import Data.ByteString qualified as BS
 import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.ByteString.Lazy qualified as BSL
+import Data.Foldable (foldlM)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
@@ -58,9 +60,9 @@ findRoot dir0 = do
         if e || takeDirectory d == d then pure (if e then d else dir) else go (takeDirectory d)
   go dir
 
--- | Waits this long after the last change before evaluating.
+-- | Waits this long after the last change before evaluating (golem-lsp ADR 0005).
 debounceMicros :: Int
-debounceMicros = 250000
+debounceMicros = 100000
 
 runGolemLsp :: IO Int
 runGolemLsp = runGolemLspWithHandles stdin stdout
@@ -108,7 +110,9 @@ runGolemLspWithHandles hin hout = do
     ioLog = L.cmap (\l -> show ("[" <> viaShow (L.getSeverity l) <> "] " <> pretty (L.getMsg l))) L.logStringStderr
 
 {- | Sets @capabilities.positionEncoding@ of the initialize response with
-the given id to the negotiated encoding. Anything else is 'Nothing'.
+the given id to the negotiated encoding, and removes
+@capabilities.semanticTokensProvider@ (golem-lsp ADR 0005). Anything else
+is 'Nothing'.
 -}
 rewriteInitializeResponse :: LspId Method_Initialize -> F.Encoding -> BSL.ByteString -> Maybe BSL.ByteString
 rewriteInitializeResponse lid enc bytes = do
@@ -117,7 +121,7 @@ rewriteInitializeResponse lid enc bytes = do
   guard (i == J.toJSON lid)
   J.Object result <- KM.lookup "result" msg
   J.Object caps <- KM.lookup "capabilities" result
-  let caps' = KM.insert "positionEncoding" (J.toJSON (F.encodingKind enc)) caps
+  let caps' = KM.delete "semanticTokensProvider" (KM.insert "positionEncoding" (J.toJSON (F.encodingKind enc)) caps)
       result' = KM.insert "capabilities" (J.Object caps') result
   pure (J.encode (J.Object (KM.insert "result" (J.Object result') msg)))
 
@@ -127,6 +131,9 @@ serverDefinition encVar initIdVar = do
   gen <- newTVarIO 0
   rootVar <- newTVarIO "."
   watchVar <- newTVarIO Nothing
+  lock <- newMVar ()
+  dirtyVar <- newTVarIO Set.empty
+  pubVar <- newTVarIO Map.empty
   pure $
     ServerDefinition
       { parseConfig = const (const (Right ())),
@@ -141,7 +148,7 @@ serverDefinition encVar initIdVar = do
             writeTVar encVar (F.chooseEncoding (offeredEncodings params))
             writeTVar initIdVar (Just lid)
           pure (Right env),
-        staticHandlers = \_ -> handlers encVar rootVar wsVar gen watchVar,
+        staticHandlers = \_ -> handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar,
         interpretHandler = \env -> Iso (runLspT env) liftIO,
         options =
           defaultOptions
@@ -158,13 +165,14 @@ offeredEncodings (InitializeParams _ _ _ _ _ _ (ClientCapabilities _ _ _ _ gener
 -- | The registration of the watched table files (golem-eval ADR 0004).
 type WatchToken = RegistrationToken Method_WorkspaceDidChangeWatchedFiles
 
-handlers :: TVar F.Encoding -> TVar FilePath -> TVar (Maybe Workspace) -> TVar Int -> TVar (Maybe WatchToken) -> Handlers (LspM ())
-handlers encVar rootVar wsVar gen watchVar =
+handlers :: TVar F.Encoding -> TVar FilePath -> TVar (Maybe Workspace) -> TVar Int -> TVar (Maybe WatchToken) -> MVar () -> TVar (Set.Set FilePath) -> TVar (Map.Map FilePath [Diagnostic]) -> Handlers (LspM ())
+handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
   mconcat
     [ notificationHandler SMethod_Initialized $ \_ -> do
         root <- liftIO (readTVarIO rootVar)
-        ws <- liftIO (openWorkspace root)
-        commit Map.empty ws,
+        serially $ do
+          ws <- liftIO (openWorkspace root)
+          commit Set.empty ws,
       notificationHandler SMethod_TextDocumentDidOpen $ \(TNotificationMessage _ _ (DidOpenTextDocumentParams (TextDocumentItem uri _ _ _))) ->
         changed uri,
       notificationHandler SMethod_TextDocumentDidChange $ \(TNotificationMessage _ _ (DidChangeTextDocumentParams (VersionedTextDocumentIdentifier uri _) _)) ->
@@ -173,9 +181,9 @@ handlers encVar rootVar wsVar gen watchVar =
       notificationHandler SMethod_WorkspaceDidChangeConfiguration $ \_ -> pure (),
       notificationHandler SMethod_TextDocumentDidClose $ \(TNotificationMessage _ _ (DidCloseTextDocumentParams (TextDocumentIdentifier uri))) -> do
         st <- state
-        forM_ (relPath st uri) $ \p -> withWs $ \ws -> do
+        forM_ (relPath st uri) $ \p -> serially $ withWs $ \ws -> do
           ws' <- liftIO (closeFile ws p)
-          commit (diagnosticsFor ws) ws',
+          commit Set.empty ws',
       requestHandler SMethod_TextDocumentDefinition $ \(TRequestMessage _ _ _ (DefinitionParams doc pos _ _)) respond -> do
         enc <- encoding
         r <- atPosition doc pos $ \ws p off ->
@@ -243,22 +251,30 @@ handlers encVar rootVar wsVar gen watchVar =
     changed uri = do
       st <- state
       forM_ (relPath st uri) $ \p -> do
-        g <- liftIO (atomically (modifyTVar' gen (+ 1) >> readTVar gen))
+        g <- liftIO (atomically (modifyTVar' dirtyVar (Set.insert p) >> modifyTVar' gen (+ 1) >> readTVar gen))
         env <- getLspEnv
         void . liftIO . forkIO $ do
           threadDelay debounceMicros
           current <- readTVarIO gen
-          when (current == g) $ runLspT env $ do
-            mvf <- getVirtualFile (toNormalizedUri uri)
-            forM_ mvf $ \vf -> withWs $ \ws -> do
-              ws' <- liftIO (updateFile ws p (virtualFileText vf))
-              commit (diagnosticsFor ws) ws'
+          when (current == g) $ runLspT env $ serially $ withWs $ \ws0 -> do
+            dirty <- liftIO (atomically (readTVar dirtyVar <* writeTVar dirtyVar Set.empty))
+            let step ws q = do
+                  mvf <- getVirtualFile (toNormalizedUri (filePathToUri (stRoot st </> q)))
+                  maybe (pure ws) (\vf -> liftIO (updateFile ws q (virtualFileText vf))) mvf
+            ws' <- foldlM step ws0 (Set.toList dirty)
+            unless (Set.null dirty) (commit dirty ws')
+    {- one evaluation at a time (golem-lsp ADR 0005): a later evaluation
+    starts from the result of an earlier one, and every changed file not
+    yet evaluated is evaluated, whichever change ended the wait -}
+    serially act = do
+      env <- getLspEnv
+      liftIO (withMVar lock (\_ -> runLspT env act))
     {- the workspace after a change: the watched table files follow the
     evaluation, then the diagnostics are published (golem-eval ADR 0004) -}
-    commit old ws = do
+    commit edited ws = do
       ws' <- syncWatches ws
       liftIO (atomically (writeTVar wsVar (Just ws')))
-      publishAll old ws'
+      publishAll edited ws'
     {- asks the client to watch the table files the evaluation read, when
     they changed; a client without dynamic registration watches nothing -}
     syncWatches ws
@@ -280,8 +296,9 @@ handlers encVar rootVar wsVar gen watchVar =
       st <- state
       withWs $ \ws ->
         when (tableFilesChanged ws [p | FileEvent u _ <- events, Just p <- [relPath st u]]) $ do
-          ws' <- liftIO (reloadWorkspace ws)
-          commit (diagnosticsFor ws) ws'
+          serially $ withWs $ \ws1 -> do
+            ws' <- liftIO (reloadWorkspace ws1)
+            commit Set.empty ws'
     atPosition doc pos k = do
       st <- state
       enc <- encoding
@@ -307,12 +324,18 @@ handlers encVar rootVar wsVar gen watchVar =
       F.NotALabel -> "ラベルの上で名前を変更してください"
       F.LabelExists l -> "すでにあるラベルの名前です: " <> l
       F.InvalidName l -> "ラベルに使えない名前です: " <> l
-    publishAll old ws = do
+    {- the edited files, and the files whose diagnostics differ from those
+    last published to them (golem-lsp ADR 0005) -}
+    publishAll edited ws = do
       enc <- encoding
-      let now = diagnosticsFor ws
+      old <- liftIO (readTVarIO pubVar)
+      let now = Map.mapWithKey (\p ds -> map (toDiagnostic enc (lineIndexOf ws p)) ds) (diagnosticsFor ws)
           cleared = Map.map (const []) (Map.difference old now)
-      forM_ (Map.toList (Map.union now cleared)) $ \(p, ds) ->
-        sendNotification SMethod_TextDocumentPublishDiagnostics (PublishDiagnosticsParams (fileUri ws p) Nothing (map (toDiagnostic enc (lineIndexOf ws p)) ds))
+          new = Map.union now cleared
+      forM_ (Map.toList new) $ \(p, ds) ->
+        when (Set.member p edited || Map.findWithDefault [] p old /= ds) $
+          sendNotification SMethod_TextDocumentPublishDiagnostics (PublishDiagnosticsParams (fileUri ws p) Nothing ds)
+      liftIO (atomically (writeTVar pubVar (Map.filter (not . null) new)))
 
 rangeIn :: F.Encoding -> Workspace -> FilePath -> Int -> Int -> Range
 rangeIn enc ws p s e =
