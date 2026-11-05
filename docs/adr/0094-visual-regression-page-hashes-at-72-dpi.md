@@ -1,6 +1,6 @@
 # ADR 0094: 見た目の回帰テストで、PDF のページを 72 dpi の PPM に描き、ページごとの SHA-256 をコミットした一覧と比べる
 
-ステータス: 採択
+ステータス: 採択→PDF の描き方（PDF を並べ、`--jobs 1` を渡すこと）は [ADR 0168](0168-render-visual-pdfs-side-by-side-with-shem-jobs-1.md)
 
 ## 文脈
 

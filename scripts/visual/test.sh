@@ -230,10 +230,14 @@ if [ "$(wc -l <"$REFS/tempest.txt" | tr -d ' ')" = 3 ] && grep -Eqx '[0-9a-f]{64
 run check "$CK/p"
 expect "check: the pages are those of the references" 0
 if [ ! -s "$WORK/out" ]; then ok; else ng "check: nothing on stdout when the pages match"; fi
-if grep -q '^render ' "$CK/shem.log" && ! grep -q -- '--jobs' "$CK/shem.log"; then ok; else ng "check: shem renders without --jobs"; fi
+if grep -q '^render ' "$CK/shem.log" && [ "$(grep -c '^render --dpi 72 --format ppm --jobs 1 ' "$CK/shem.log")" = "$(grep -c '^render ' "$CK/shem.log")" ]; then ok; else ng "check: shem renders with --jobs 1 (docs/adr/0168)"; fi
 if [ "$(grep -c '^render --dpi 72 --format ppm ' "$CK/shem.log")" = 34 ]; then ok; else ng "check: shem renders each PDF once at 72 dpi to PPM, one PDF a call"; fi
-if [ "$(grep '^render ' "$CK/shem.log" | awk '{ print NF }' | sort -u)" = 7 ]; then ok; else ng "check: one PDF to one directory a call"; fi
-if grep -q 'check: rendering manual-dev' "$WORK/err"; then ok; else ng "check: the name of each input goes to stderr"; fi
+if [ "$(grep '^render ' "$CK/shem.log" | awk '{ print NF }' | sort -u)" = 9 ]; then ok; else ng "check: one PDF to one directory a call"; fi
+missed=
+for i in $INPUTS; do
+  [ "$(grep -cx "check: rendering $i" "$WORK/err")" = 1 ] || missed="$missed $i"
+done
+if [ -z "$missed" ]; then ok; else ng "check: the name of each input goes to stderr once ($missed)"; fi
 
 # one page changed
 printf 'tempest 1\ntempest two\ntempest 3\n' >"$CK/p/tempest.pdf"
@@ -319,6 +323,76 @@ expect "check: without shem" 1
 if grep -q 'fetch-shem.sh' "$WORK/err"; then ok; else ng "check: without shem, the error names fetch-shem.sh"; fi
 run check "$CK/no-such"
 expect "check: no directory of PDFs" 2
+
+# The PDFs are rendered at the same time, at most as many as getconf says
+# processors, the largest first (docs/adr/0168). A slow fake shem waits
+# longer for the inputs that come first in the list, so that they end
+# last; it counts the shems that run with a directory each in RUNNING
+fake "$CK/slow" getconf '[ "$1" = _NPROCESSORS_ONLN ] && echo "$FAKE_NPROC"'
+fake "$CK/slow" shem 'case "$1" in --version) exec "$REAL_SHEM" "$@" ;; esac
+for a in "$@"; do pdf=$out; out=$a; done
+name=$(basename "$pdf" .pdf)
+mkdir "$RUNNING/$name"
+ls "$RUNNING" | wc -l | tr -d " " >>"$CONCURRENT"
+case "$name" in sample | figures | kanikosen) s=0.6 ;; tempest | pd-frogs) s=0.4 ;; *) s=0.1 ;; esac
+sleep "$s"
+rmdir "$RUNNING/$name"
+exec "$REAL_SHEM" "$@"'
+slow_check() {
+  rm -rf "$CK/running"
+  mkdir -p "$CK/running"
+  : >"$CK/concurrent"
+  : >"$CK/shem.log"
+  env PATH="$CK/slow:$PATH" SHEM="$CK/slow/shem" REAL_SHEM="$CK/bin/shem" SHEM_LOG="$CK/shem.log" FAKE_SHEM_VERSION="$VERSION" \
+    RUNNING="$CK/running" CONCURRENT="$CK/concurrent" FAKE_NPROC="$1" sh "$CK/root/scripts/visual/check.sh" "$2"
+}
+# FAKE_SHEM_VERSION=9.9.9 before the function run above stays set in some
+# shells (the sh of macOS): clear it
+FAKE_SHEM_VERSION=
+pdfs "$CK/p"
+fixture "check: the references of the slow shem" check --accept "$CK/p"
+run slow_check 3 "$CK/p"
+expect "check: the PDFs render at the same time" 0
+MAX=$(sort -n "$CK/concurrent" | tail -1)
+if [ -n "$MAX" ] && [ "$MAX" -ge 2 ]; then ok; else ng "check: two PDFs or more render at the same time (at most ${MAX:-0})"; fi
+if [ -n "$MAX" ] && [ "$MAX" -le 3 ]; then ok; else ng "check: no more PDFs at the same time than getconf _NPROCESSORS_ONLN says (${MAX:-0})"; fi
+# two changed pages, a missing PDF and an unreadable one: the same lines in
+# the same order as when the PDFs were rendered one by one, whatever order
+# they end in
+printf 'tempest 1\ntempest two\ntempest 3\n' >"$CK/p/tempest.pdf"
+printf 'manual one\nmanual 2\nmanual 3\n' >"$CK/p/manual.pdf"
+rm "$CK/p/figures.pdf"
+printf 'FAIL\n' >"$CK/p/pd-snark.pdf"
+P=$(cd "$CK/p" && pwd)
+EXPECTED="missing figures
+changed tempest page-0002
+unreadable pd-snark
+shem: $P/pd-snark.pdf: page 1: offset 120: unsupported operator TJ
+changed manual page-0001"
+run slow_check 3 "$CK/p"
+expect "check: differences found at the same time fail" 1
+if [ "$(cat "$WORK/out")" = "$EXPECTED" ]; then ok; else ng "check: the lines are in the order of the inputs"; fi
+run slow_check 1 "$CK/p"
+if [ "$(cat "$WORK/out")" = "$EXPECTED" ]; then ok; else ng "check: the same lines with one processor"; fi
+# with one processor, the shems run one at a time, the largest PDF first and
+# PDFs of the same size by name
+pdfs "$CK/p"
+# the PDFs of three lines are the largest by the length of the name of the
+# input; pd-elements-of-style and pd-taira-no-masakado have the same size
+: >"$CK/p/pd-snark.pdf"
+: >"$CK/p/tempest.pdf"
+i=1
+while [ $i -le 30 ]; do
+  printf 'pd-snark %s\n' "$i" >>"$CK/p/pd-snark.pdf"
+  [ $i -gt 20 ] || printf 'tempest %s\n' "$i" >>"$CK/p/tempest.pdf"
+  i=$((i + 1))
+done
+run slow_check 1 "$CK/p"
+MAX=$(sort -n "$CK/concurrent" | tail -1)
+if [ "$MAX" = 1 ]; then ok; else ng "check: one PDF at a time with one processor (at most ${MAX:-0})"; fi
+ORDER=$(sed -n 's#^render .*/\([^/]*\)\.pdf .*#\1#p' "$CK/shem.log" | head -n 4 | tr '\n' ' ')
+if [ "$ORDER" = "pd-snark tempest kanikosen-marks-japanese pd-elements-of-style " ]; then ok; else ng "check: the largest PDF first, then by name ($ORDER)"; fi
+pdfs "$CK/p"
 
 # ---------------------------------------------------------------- wait-pdfs.sh
 # (docs/adr/0099, docs/adr/0165)

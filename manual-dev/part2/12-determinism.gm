@@ -224,9 +224,11 @@ Golem は三つめの、ページの画像の SHA-256 の一覧をコミット�
 - 二つのマニュアル。奥付がコミットごとに変わらないように、[code: GOLEM_MANUAL_COMMIT] を 0 が 40 個の文字列に、[code: GOLEM_MANUAL_TAG] を [code: v0.0.0-visual] にして組む。
 
 [code: scripts/visual/build.sh] は、各プロジェクトを一時的なディレクトリに写して組み、リポジトリの [code: build/] には書かない。
-[code: scripts/visual/check.sh] は、PDF を一つずつ [code: shem render --dpi 72 --format ppm] で描き、ページごとの PPM の SHA-256 を [code: scripts/visual/pages/<入力>.txt] と比べる。
-ページを並べて描くのは shem の [code: --jobs] に任せ、既定のとおり使えるコアをすべて使う。
-出力のバイト列は [code: --jobs] によらないので、参照はコアの数によらない。
+[code: scripts/visual/check.sh] は、PDF を [code: shem render --dpi 72 --format ppm --jobs 1] で描き、ページごとの PPM の SHA-256 を [code: scripts/visual/pages/<入力>.txt] と比べる。
+PDF は、プロセッサの数（[code: getconf _NPROCESSORS_ONLN]）を上限に同時に描き、大きい PDF から描き始める。
+一つの PDF のページを shem のスレッドで並べて描くより、PDF を並べて描くほうが速かったからである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0168-render-visual-pdfs-side-by-side-with-shem-jobs-1.md]（docs/adr の ADR 0168「見た目の回帰テストで、PDF を並べて描き、shem に --jobs 1 を渡す」）]
+出力のバイト列は [code: --jobs] にも描く順にもよらないので、参照はコアの数によらない。
+違いの行は、描き終えた順ではなく、入力の一覧の順に書く。
 
 形式を PPM にしたのは、PPM のバイト列が画素だけで決まるからである。
 PNG のバイト列は、shem の版が変わると、画素が同じでも変わりうる。
@@ -288,5 +290,5 @@ CI の [code: visual] ジョブは、比べる手順が失敗すると、変わ�
 [code: figures] の図版の中身は、出力のゴールデンのハッシュが固定している。
 PDF の Producer とインスタンス ID は画像に現れないので、[code: VERSION] だけを変えても参照は変わらない。
 
-手元の Apple silicon の macOS では、17 の入力を組んで描き、比べるまでが約 45 秒だった。
-CI の [code: visual] ジョブでは、描いて比べる手順が約 216 秒かかり、[code: visual] の予算の 2 分を超えている（第[ref-number ci-jobs]章）。
+手元の Apple silicon の macOS（10 コア）では、17 の入力を組むのに約 20 秒、描いて比べるのに約 1.5 秒かかった。
+CI の [code: visual] ジョブでは、描いて比べる手順が数秒で終わり、[code: visual] の予算の 2 分に収まる（第[ref-number ci-jobs]章）。
