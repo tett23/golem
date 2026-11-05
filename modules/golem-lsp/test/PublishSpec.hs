@@ -8,13 +8,10 @@ module PublishSpec (publishTests) where
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forM_, void)
 import Control.Monad.IO.Class (liftIO)
-import Data.Aeson qualified as J
-import Data.ByteString.Lazy qualified as BL
 import Data.List (nub, sort)
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
-import Golem.Lsp.Features (Encoding (..))
-import Golem.Lsp.Server (rewriteInitializeResponse, runGolemLspWithHandles)
+import Golem.Lsp.Server (runGolemLspWithHandles)
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
@@ -86,12 +83,7 @@ publishTests :: TestTree
 publishTests =
   testGroup
     "publishing and evaluation order (golem-lsp ADR 0005)"
-    [ testCase "the initialize response does not advertise semantic tokens" $ do
-        let resp = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\",\"hoverProvider\":true,\"semanticTokensProvider\":{\"legend\":{\"tokenTypes\":[],\"tokenModifiers\":[]}}}}}"
-            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\",\"hoverProvider\":true}}}"
-            decode = J.decode :: BL.ByteString -> Maybe J.Value
-        (decode =<< rewriteInitializeResponse (M.IdInt 1) Utf16 resp) @?= decode expected,
-      testCase "an edit that changes no other file's diagnostics is published for that file alone" $ withFixture $ \dir -> do
+    [ testCase "an edit that changes no other file's diagnostics is published for that file alone" $ withFixture $ \dir -> do
         published <- session dir $ do
           a <- LT.openDoc "a.gm" "golem"
           b <- LT.openDoc "b.gm" "golem"

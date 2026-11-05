@@ -34,6 +34,7 @@ import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
 import PublishSpec (publishTests)
+import SemanticTokensSpec (semanticTokensTests)
 import StaleS1Spec (staleS1Tests)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory, makeAbsolute)
 import System.Environment (lookupEnv)
@@ -478,6 +479,7 @@ tests =
       tableWatchTests,
       staleS1Tests,
       publishTests,
+      semanticTokensTests,
       tomlTests
     ]
 
