@@ -1155,6 +1155,9 @@ HTML、EPUB、プレーンテキストはページを持たないので、`[hidd
 
 未知のキーはエラーとする。
 綴りを誤った設定が黙って無視されると、その誤りは出力の見た目の劣化としてしか現れないためである。
+どのキーが未知かは、キーと列挙の値をデータとして書いたスキーマで決める（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
+スキーマは、LSP の補完の候補にも使う。
+値の誤りと未知のキーが同じファイルにあれば、両方を報告し、ファイルの中の位置の順に並べる。
 同じ理由で、見出しの `font` が `[fonts]` にない役割を指す場合もエラー（G03008）とする（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
 
 `style.toml` が指すファイル（`[fonts]` のフォントと、`[color]` の `intent` の ICC プロファイル）の存在は、`style.toml` を読むときには検査しない。
@@ -2475,12 +2478,26 @@ v1 の LSP は次の機能を持つ。
 - diagnostics（コンパイルエラーと lint）。notice は `Information` として載せ、`silence-notices` に並べたコードの notice は公開しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。info は `Hint` として載せ、`silence-info` に並べたコードの info は公開しない。LSP には `--verbose` に当たる設定がないので、ほかの info はつねに公開する。今の LSP は組版をしないので、G07047 などのレイアウトの info は載らない（[docs/adr/0104](adr/0104-info-severity.md)）。
 - 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。
 - ラベルの名前変更（章をまたいで一括で書き換える）
-- 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の `meta` と `meta.roles` のキー）
+- 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の `meta` と `meta.roles` のキー、`style.toml` と `preflight.toml` のキーと値）
 - ホバーによる `[= ...]` の評価結果の表示
 - 整形（fmt を呼び出す）
 - 見出しによる文書のアウトライン
 
 組版結果のプレビューは LSP の範囲外とする。
+
+`style.toml` と `preflight.toml` の補完は、プロジェクトのルートからの相対パスがちょうど `style.toml` と `preflight.toml` のファイルだけで働く（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
+ルートより下の同じ名前のファイルと `manifest.toml` では補わない。
+エディタがこれらのファイルを LSP に送るように設定する必要がある。
+補う位置は、表の見出し（次の段のキー、利用者が名前を決める段では名前）、表の中のキー（その表にまだ書いていないキー）、列挙の値、真偽の値、名前の参照（`based-on`、`font`、`color`、`aki-set`、正規表現スタイルの `style` など）の五つである。
+寸法、数、自由な文字列、ファイルのパスは補わない。
+文字列の値の候補は、カーソルが文字列の外にあれば引用符を付け、開いた引用符の中にあれば付けない。
+キーと値の候補は、`style.toml` とプリフライトの設定を読むスキーマから取る。
+参照する名前は、編集中のファイルのテキストで定義した名前（`[fonts.<役割>]`、`[color.swatches.<名前>]`、`[character-styles.<名前>]`、`[paragraph-styles.<名前>]`、`[aki-sets.<名前>]`、`[masters.<名前>]`）に、組み込みのスタイルとアキ量のセットの名前を前に加えたものである。
+段落スタイルの `based-on` の候補には、`code` とそのスタイル自身を含めない。
+カーソルの位置は、交渉した単位で受けて UTF-8 のバイト位置に変え、エディタが今持っているテキストのカーソルより前だけを、先頭から読んで決める。
+コメントと複数行の文字列の中、値の後では候補を返さない。
+この二つのファイルの diagnostics は今のとおりディスクの内容による。
+拡張子が `.gm` でない編集中のファイル（`style.toml`、`manifest.toml` など）は、原稿として構文解析も評価もしない。
 
 位置の単位は、初期化のときにクライアントと交渉して決める（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)）。
 クライアントが UTF-8 を申し出れば UTF-8 を使い、申し出なければ UTF-16 を使う。
@@ -3352,6 +3369,7 @@ InDesign のプリフライトプロファイルにあたるものを、プリ�
 notice は設定の値として選べない。
 長さは `style.toml` と同じ書き方で、`zw` は使えない。
 設定のファイルの誤りはすべて G09001 で、G09001 があれば PDF を組まずに終える。
+未知のキーは、`style.toml` と同じく、キーと列挙の値をデータとして書いたスキーマで決め、値の誤りと未知のキーが同じファイルにあれば両方を報告する（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
 
 組み込みの設定は次のとおりである。
 `basic` は InDesign の `[基本]` にあたり、ビルドを止めない項目だけを検査する。

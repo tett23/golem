@@ -13,6 +13,8 @@ module Golem.Lsp.Features
     Completion (..),
     CompletionKind (..),
     completions,
+    tomlFileCompletions,
+    isSettingsFile,
     hover,
     formatting,
     Outline (..),
@@ -38,11 +40,14 @@ import Golem.Eval.Expr (Env (..), embedValue, evalExpr)
 import Golem.Eval.File (EvalResult (..), Usage (..), builtinInlineCommands)
 import Golem.Eval.Value (Value (..), typeName)
 import Golem.Fmt (FormatResult (..), format)
+import Golem.Lsp.Toml (Context (..), Quote (..), contextAt, definedPaths)
 import Golem.Lsp.Workspace
 import Golem.Parser.AST
 import Golem.Parser.SourceSettings (sourceKeys)
+import Golem.Preflight.Rules (rulesSchema)
 import Golem.Project
-import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), charStyleKeys, defaultStyle, noLocalStyles, paraStyleKeys, regexStyleKeys)
+import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), builtinAkiSetNames, builtinCharStyles, builtinParaStyles, charStyleKeys, defaultStyle, lineBreaksValues, noLocalStyles, paraStyleKeys, regexStyleKeys, styleSchema)
+import Golem.Project.TomlSchema (Leaf (..), Namespace (..), Node (..), nodeAt)
 import Golem.Syntax
 import Language.LSP.Protocol.Types (PositionEncodingKind (..))
 
@@ -267,7 +272,7 @@ renameLabel ws path off new = case sourceOf ws path >>= \s -> snd <$> occurrence
 
 -- ------------------------------------------------------------------ completion
 
-data CompletionKind = CkCommand | CkLabel | CkPath | CkSwatch | CkCharStyle | CkParaStyle | CkSettingKey | CkSettingValue | CkStyleKind
+data CompletionKind = CkCommand | CkLabel | CkPath | CkSwatch | CkCharStyle | CkParaStyle | CkSettingKey | CkSettingValue | CkStyleKind | CkTable
   deriving stock (Eq, Show)
 
 data Completion = Completion {cmpLabel :: !Text, cmpKind :: !CompletionKind}
@@ -276,6 +281,7 @@ data Completion = Completion {cmpLabel :: !Text, cmpKind :: !CompletionKind}
 -- | Completion from the text before the cursor on its line.
 completions :: Workspace -> FilePath -> Int -> [Completion]
 completions ws path off = case sourceOf ws path of
+  _ | isJust (settingsSchemaOf path) -> maybe [] (\t -> tomlFileCompletions path t off) (Map.lookup path (wsOverlay ws))
   Nothing -> []
   Just src ->
     let before = TE.decodeUtf8Lenient (BS.take off (TE.encodeUtf8 (srcText src)))
@@ -383,8 +389,134 @@ styleDefCompletions style paraNames charNames rest =
       "font" -> [Completion r CkSettingValue | r <- Map.keys (stFonts style :: Map.Map Text FontRole)]
       "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
       "style" | kind == "regex" -> [Completion n CkCharStyle | n <- charNames]
-      "line-breaks" | kind == "paragraph" -> [Completion v CkSettingValue | v <- ["join", "keep"]]
+      "line-breaks" | kind == "paragraph" -> [Completion v CkSettingValue | v <- lineBreaksValues]
       _ -> []
+
+{- | The schema of a file of settings the language server completes
+(docs/adr ADR 0169): style.toml and preflight.toml at the root of the
+project, and no other file.
+-}
+settingsSchemaOf :: FilePath -> Maybe Node
+settingsSchemaOf = \case
+  "style.toml" -> Just styleSchema
+  "preflight.toml" -> Just rulesSchema
+  _ -> Nothing
+
+-- | style.toml or preflight.toml at the root.
+isSettingsFile :: FilePath -> Bool
+isSettingsFile = isJust . settingsSchemaOf
+
+-- | Completion in style.toml or preflight.toml at the root, from its text; none in another file.
+tomlFileCompletions :: FilePath -> Text -> Int -> [Completion]
+tomlFileCompletions path text off = maybe [] (\schema -> tomlCompletions schema text off) (settingsSchemaOf path)
+
+{- | Completion in a TOML file of a schema (docs/adr ADR 0169): the steps
+of a header, the keys of a table not written in it yet, the values of an
+enumeration, true and false, and the names a value refers to.
+-}
+tomlCompletions :: Node -> Text -> Int -> [Completion]
+tomlCompletions schema text off = case contextAt text off of
+  AtHeader segs _ -> case nodeAt schema segs >>= tableOf of
+    Just (NTable kvs) -> [Completion k CkTable | (k, n) <- kvs, tableLike n]
+    Just (NNamed ns _) -> namesUnder ns segs
+    _ -> []
+  AtKey path keys _ -> case nodeAt schema path >>= tableOf of
+    Just (NTable kvs) ->
+      [ Completion k CkSettingKey
+      | (k, n) <- kvs,
+        n /= NRejected,
+        k `notElem` keys,
+        -- the tables of an array are each their own; the file tells only of the others
+        crossesArray schema path || (path <> [k]) `notElem` defined
+      ]
+    Just (NNamed ns _) -> namesUnder ns path
+    _ -> []
+  AtValue path element q _ -> maybe [] (nub . values element) (nodeAt schema path)
+    where
+      values inArr = \case
+        NValue l | not inArr -> leaf l
+        NArray n | inArr -> values False n
+        NEither ns -> concatMap (values inArr) ns
+        _ -> []
+      leaf = \case
+        LEnum vs -> [Completion (quoted v) CkSettingValue | v <- vs]
+        LBoolean | q == Bare -> [Completion b CkSettingValue | b <- ["true", "false"]]
+        LFalse | q == Bare -> [Completion "false" CkSettingValue]
+        LRef ns -> [Completion (quoted n) (nameKind ns) | n <- refNames ns path]
+        _ -> []
+      quoted v = if q == Bare then "\"" <> v <> "\"" else v
+  Nowhere -> []
+  where
+    defined = definedPaths text
+    -- the names a namespace has: the built-in ones, then those of the file in its order
+    names ns = nub (builtinNames ns <> [n | (ns', n) <- concatMap (namesOn schema) defined, ns' == ns])
+    namesUnder ns path = case ns of
+      Just x -> [Completion n (nameKind x) | n <- names x]
+      Nothing -> [Completion n CkSettingValue | n <- nub [last p | p <- defined, length p == length path + 1, take (length path) p == path]]
+    {- a style is not based on itself, nor on code, the style of code blocks
+    (golem-project ADR 0008, golem-driver ADR 0017) -}
+    refNames ns path =
+      [ n
+      | n <- names ns,
+        (ns, n) `notElem` namesOn schema path,
+        not (ns == ParaStyles && n == "code")
+      ]
+
+-- | The node of a table: a table, or the table among several shapes.
+tableOf :: Node -> Maybe Node
+tableOf = \case
+  n@(NTable _) -> Just n
+  n@(NNamed _ _) -> Just n
+  NEither ns -> listToMaybe (mapMaybe tableOf ns)
+  _ -> Nothing
+
+-- | A node a header can name: a table, or an array of tables.
+tableLike :: Node -> Bool
+tableLike = \case
+  NTable _ -> True
+  NNamed _ _ -> True
+  NArray n -> tableLike n
+  NEither ns -> any tableLike ns
+  _ -> False
+
+-- | Whether a path goes through an array of the schema.
+crossesArray :: Node -> [Text] -> Bool
+crossesArray node = \case
+  [] -> False
+  path@(k : rest) -> case node of
+    NTable kvs -> maybe False (`crossesArray` rest) (lookup k kvs)
+    NNamed _ n -> crossesArray n rest
+    NArray _ -> True
+    NEither ns -> any (\n -> isJust (nodeAt n path) && crossesArray n path) ns
+    _ -> False
+
+-- | The names a path defines: each step that is a key of a named table of a namespace.
+namesOn :: Node -> [Text] -> [(Namespace, Text)]
+namesOn node = \case
+  [] -> []
+  path@(k : rest) -> case node of
+    NTable kvs -> maybe [] (`namesOn` rest) (lookup k kvs)
+    NNamed ns n -> [(x, k) | Just x <- [ns]] <> namesOn n rest
+    NArray n -> namesOn n path
+    NEither ns -> case [n | n <- ns, isJust (nodeAt n path)] of
+      (n : _) -> namesOn n path
+      [] -> []
+    _ -> []
+
+-- | The built-in names of a namespace (docs/adr ADR 0169).
+builtinNames :: Namespace -> [Text]
+builtinNames = \case
+  CharStyles -> Map.keys builtinCharStyles
+  ParaStyles -> Map.keys builtinParaStyles
+  AkiSets -> builtinAkiSetNames
+  _ -> []
+
+nameKind :: Namespace -> CompletionKind
+nameKind = \case
+  CharStyles -> CkCharStyle
+  ParaStyles -> CkParaStyle
+  Swatches -> CkSwatch
+  _ -> CkSettingValue
 
 -- ------------------------------------------------------------------ hover
 

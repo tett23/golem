@@ -12,6 +12,7 @@ import Golem.Preflight
 import Golem.Preflight.Rules
 import Golem.Preflight.View
 import Golem.Syntax
+import RulesSchemaSpec qualified
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -105,7 +106,8 @@ tests =
     "golem-preflight (golem-cli ADR 0006)"
     [ rulesTests,
       testGroup "checks" checkTests,
-      auditTests
+      auditTests,
+      RulesSchemaSpec.tests
     ]
 
 -- | G08100 of golem build groups the glyphs of a whole book: in time n log n (security audit 2026-10-24).

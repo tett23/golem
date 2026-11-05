@@ -22,6 +22,7 @@ library
     Golem.Project.Paths
     Golem.Project.Style
     Golem.Project.TomlMessage
+    Golem.Project.TomlSchema
   build-depends:
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
@@ -47,6 +48,7 @@ test-suite golem-project-test
                     OutputCharsSpec
                     NaturalKeySpec
                     StylePositionSpec
+                    StyleSchemaSpec
                     TomlMessageSpec
   build-depends:
     , base

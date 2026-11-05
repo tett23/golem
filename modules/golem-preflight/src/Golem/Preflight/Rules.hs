@@ -12,6 +12,13 @@ module Golem.Preflight.Rules
     noneRules,
     builtinRules,
     parseRules,
+    RulesFile (..),
+    rulesSchema,
+    levelValues,
+    fontFormatValues,
+    colorSpaceValues,
+    Node (..),
+    Leaf (..),
   )
 where
 
@@ -19,8 +26,9 @@ import Control.Monad (when)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Project.Manifest (decodeStrictBy, naturalOf)
+import Golem.Project.Manifest (decodeStrictWith, naturalOf)
 import Golem.Project.Style (Dim (..), Sp, parseDim)
+import Golem.Project.TomlSchema (Leaf (..), Node (..))
 import Golem.Syntax (Diagnostic, FileId)
 import Numeric.Natural (Natural)
 import Toml.Schema
@@ -159,7 +167,7 @@ builtinRules = [("basic", basicRules), ("print", printRules), ("none", noneRules
 
 -- | Reads a file of rules; every error is G09001 at its place in the file.
 parseRules :: FileId -> Text -> Either [Diagnostic] Rules
-parseRules fid src = (\(RulesFile r) -> r) <$> decodeStrictBy "G09001" (const "G09001") fid src
+parseRules fid src = (\(RulesFile r) -> r) <$> decodeStrictWith rulesSchema "G09001" (const "G09001") fid src
 
 newtype RulesFile = RulesFile Rules
 
@@ -171,7 +179,7 @@ instance FromValue RulesFile where
   fromValue = parseTableFromValue $ do
     base <-
       optKeyOf "based-on" $ \case
-        Text' l t -> maybe (bad l "based-on" t "basic、print、none のどれかにします") (pure . (t,)) (lookup t builtinRules)
+        Text' l t -> maybe (bad l "based-on" t (T.intercalate "、" (map fst builtinRules) <> " のどれかにします")) (pure . (t,)) (lookup t builtinRules)
         v -> typeError "string" v
     let r0 = maybe printRules snd base
     name <- optKey "name"
@@ -179,7 +187,7 @@ instance FromValue RulesFile where
     r2 <- check "glyph-missing" r1 $ \r -> levelKey r ruGlyphMissing (\x -> r {ruGlyphMissing = x})
     r3 <- check "font-formats" r2 $ \r -> do
       a <- levelKey r ruFontFormats (\x -> r {ruFontFormats = x})
-      textsKey "allowed" ["cff", "cff2", "truetype"] a ruFontFormatsAllowed (\x -> a {ruFontFormatsAllowed = x})
+      textsKey "allowed" fontFormatValues a ruFontFormatsAllowed (\x -> a {ruFontFormatsAllowed = x})
     r4 <- check "type-size" r3 $ \r -> do
       a <- levelKey r ruTypeSize (\x -> r {ruTypeSize = x})
       b <- lengthKey "min-size" a ruTypeSizeMin (\x -> a {ruTypeSizeMin = x})
@@ -195,7 +203,7 @@ instance FromValue RulesFile where
       countKey "bitmap-max" c ruBitmapMax (\x -> c {ruBitmapMax = x})
     r8 <- check "image-color-space" r7 $ \r -> do
       a <- levelKey r ruImageColorSpace (\x -> r {ruImageColorSpace = x})
-      textsKey "allowed" ["cmyk", "gray", "rgb"] a ruColorSpacesAllowed (\x -> a {ruColorSpacesAllowed = x})
+      textsKey "allowed" colorSpaceValues a ruColorSpacesAllowed (\x -> a {ruColorSpacesAllowed = x})
     r9 <- check "image-icc" r8 $ \r -> levelKey r ruImageIcc (\x -> r {ruImageIcc = x})
     r10 <- check "bleed-size" r9 $ \r -> do
       a <- levelKey r ruBleedSize (\x -> r {ruBleedSize = x})
@@ -234,11 +242,50 @@ instance FromValue RulesFile where
 
 levelOf :: Value' l -> Matcher l Level
 levelOf = \case
-  Text' _ "error" -> pure LevelError
-  Text' _ "warning" -> pure LevelWarning
-  Text' _ "off" -> pure LevelOff
-  Text' l t -> bad l "severity" t "error、warning、off のどれかにします"
+  Text' l t -> maybe (bad l "severity" t (T.intercalate "、" (map fst levelValues) <> " のどれかにします")) pure (lookup t levelValues)
   v -> typeError "string" v
+
+-- | The values of severity: a notice cannot be chosen (golem-cli ADR 0006).
+levelValues :: [(Text, Level)]
+levelValues = [("error", LevelError), ("warning", LevelWarning), ("off", LevelOff)]
+
+-- | The values of allowed of [font-formats] and of [image-color-space].
+fontFormatValues, colorSpaceValues :: [Text]
+fontFormatValues = ["cff", "cff2", "truetype"]
+colorSpaceValues = ["cmyk", "gray", "rgb"]
+
+{- | The keys of a file of rules and their values (docs/adr ADR 0169), in
+the order the decoder reads them. A key the decoder reads and the schema
+does not have is unknown to 'parseRules'; a key the schema has and the
+decoder does not read is caught by the test of the schema.
+-}
+rulesSchema :: Node
+rulesSchema =
+  NTable
+    [ ("based-on", NValue (LEnum (map fst builtinRules))),
+      ("name", NValue LString),
+      ("glyph-missing", check []),
+      ("font-formats", check [("allowed", NArray (NValue (LEnum fontFormatValues)))]),
+      ("type-size", check [("min-size", len'), ("multi-ink-only", NValue LBoolean)]),
+      ("image-resolution", NTable [("color", tier), ("gray", tier), ("bitmap", tier)]),
+      ("image-resolution-max", check [("color-max", count), ("gray-max", count), ("bitmap-max", count)]),
+      ("image-color-space", check [("allowed", NArray (NValue (LEnum colorSpaceValues)))]),
+      ("image-icc", check []),
+      ("bleed-size", check [("min", len')]),
+      ("bleed-trim-hazard", check [("distance", len')]),
+      ("live-area", check [("distance", len')]),
+      ("overfull-lines", check []),
+      ("pdf-x", check []),
+      ("ink-coverage", check [("max", count)]),
+      ("page-count", check [("multiple-of", count)]),
+      ("blank-pages", check []),
+      ("stroke-weight", check [("min", len')])
+    ]
+  where
+    check kvs = NTable (("severity", NValue (LEnum (map fst levelValues))) : kvs)
+    tier = NTable [("error-below", count), ("warning-below", count)]
+    len' = NValue LDimension
+    count = NValue LInteger
 
 lengthOf :: Text -> Value' l -> Matcher l Sp
 lengthOf k = \case

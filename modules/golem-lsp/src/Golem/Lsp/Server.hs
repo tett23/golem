@@ -193,7 +193,19 @@ handlers encVar rootVar wsVar gen watchVar =
           Just (Left e) -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (renameMessage e) Nothing))
           Nothing -> respond (Right (InR Null)),
       requestHandler SMethod_TextDocumentCompletion $ \(TRequestMessage _ _ _ (CompletionParams doc pos _ _ _)) respond -> do
-        r <- atPosition doc pos $ \ws p off -> pure (F.completions ws p off)
+        st <- state
+        let TextDocumentIdentifier docUri = doc
+        r <- case relPath st docUri of
+          {- style.toml and preflight.toml (docs/adr ADR 0169): the text the
+          editor has now, which the workspace gets only after the pause -}
+          Just p | F.isSettingsFile p -> do
+            enc <- encoding
+            mvf <- getVirtualFile (toNormalizedUri docUri)
+            pure $ do
+              text <- virtualFileText <$> mvf
+              off <- F.fromLineCol enc (S.mkLineIndex text) (fromPosition pos)
+              pure (F.tomlFileCompletions p text off)
+          _ -> atPosition doc pos $ \ws p off -> pure (F.completions ws p off)
         respond (Right (InL (maybe [] (map completionItem) r))),
       requestHandler SMethod_TextDocumentHover $ \(TRequestMessage _ _ _ (HoverParams doc pos _)) respond -> do
         r <- atPosition doc pos $ \ws p off -> pure (F.hover ws p off)
@@ -358,6 +370,7 @@ completionItem (F.Completion label kind) =
       F.CkSettingKey -> CompletionItemKind_Property
       F.CkSettingValue -> CompletionItemKind_EnumMember
       F.CkStyleKind -> CompletionItemKind_Keyword
+      F.CkTable -> CompletionItemKind_Module
 
 symbol :: F.Encoding -> S.LineIndex -> F.Outline -> DocumentSymbol
 symbol enc li o =

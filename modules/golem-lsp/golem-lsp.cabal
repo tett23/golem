@@ -18,6 +18,7 @@ library
   exposed-modules:  Golem.Lsp.Workspace
                     Golem.Lsp.Features
                     Golem.Lsp.Server
+                    Golem.Lsp.Toml
   build-depends:
     , aeson         >=2.0  && <2.3
     , base          >=4.20 && <4.21
@@ -31,6 +32,7 @@ library
     , golem-fmt
     , golem-lint
     , golem-parser
+    , golem-preflight
     , golem-project
     , golem-syntax
     , bytestring    >=0.11 && <0.13
@@ -46,7 +48,7 @@ test-suite golem-lsp-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    EditingSpec StaleS1Spec TableWatchSpec
+  other-modules:    EditingSpec StaleS1Spec TableWatchSpec TomlSpec
   -- -N: one capability per processor from the start, so that the count
   -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)
   ghc-options:      -threaded "-with-rtsopts=-N"

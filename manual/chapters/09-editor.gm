@@ -15,7 +15,7 @@ LSP に対応したエディタに設定すると、原稿を書きながら誤�
 - エラーと警告とお知らせ：保存を待たずに、[code: golem check] と [code: golem lint] と同じ診断を、誤りの箇所に表示します。お知らせは、エディタが問題の一覧に載せる重さ（LSP の Information）で表示します。[code: manifest.toml] の [code: silence-notices] に並べたお知らせは表示しません（第[ref-number check]章）。情報は、問題の一覧に載らない目立たない重さ（LSP の Hint）で表示し、[code: silence-info] に並べた情報は表示しません。今のエディタの診断は組版をしないので、G07047 のような組版の情報は出ません。診断のコードは、そのコードの説明へのリンクになります。[code: @table] の表のファイルの誤りは、その表のファイルに表示します。別のソフトで表のファイルを直して保存すると、原稿を編集しなくても診断が新しくなります（エディタがファイルの監視に対応している場合）。
 - 定義への移動と参照の検索：ラベル、変数、[code: @import] のファイルをたどれます。ラベルは章をまたいで引けます。
 - 名前の変更：ラベルの名前を変えると、ほかの章の参照も一度に書き換えます。
-- 補完：コマンドの名前（プラグインのコマンドを含みます）、ラベル、[code: @import] のパス、[code: \[color ...\]] のスウォッチ、[code: \[style ...\]] の文字スタイル、[code: @style] の段落スタイル、[code: @manifest] と [code: @style-def] のキーと値を補います。
+- 補完：コマンドの名前（プラグインのコマンドを含みます）、ラベル、[code: @import] のパス、[code: \[color ...\]] のスウォッチ、[code: \[style ...\]] の文字スタイル、[code: @style] の段落スタイル、[code: @manifest] と [code: @style-def] のキーと値、[code: style.toml] と [code: preflight.toml] のキーと値を補います。[code: style.toml] では、表の見出し、表のキー、[code: binding] のように決まった値、[code: true] と [code: false]、[code: based-on] や [code: font] が指す名前（同じファイルで定義したスタイル、書体の役割、スウォッチなど）を補います。
 - 式の値の表示：[code: \[= ...\]] にカーソルを合わせると、計算の結果を表示します。
 - 整形：[code: golem fmt] と同じ整形をします。
 - アウトライン：見出しの一覧を表示します。
@@ -29,6 +29,10 @@ LSP に対応したエディタに設定すると、原稿を書きながら誤�
 このプログラムは、[code: golem lsp] というコマンドです。
 起動するのは人ではなくエディタで、エディタはこのコマンドの入出力を通してやりとりします。
 エディタには、拡張子が [code: .gm] のファイルを開いたときにこのコマンドを起動し、[code: manifest.toml] のあるフォルダをプロジェクトのフォルダとして扱うように設定します。
+[code: style.toml] と [code: preflight.toml] でも補完を使うには、TOML のファイルを開いたときにもこのコマンドを起動するように設定します。
+補うのは、プロジェクトのフォルダの直下にある [code: style.toml] と [code: preflight.toml] だけです。
+ほかの TOML のファイル（[code: manifest.toml] や、下のフォルダの [code: style.toml]）では補いません。
+TOML のファイルを原稿として読むことはないので、原稿の診断がそこに出ることもありません。
 エディタの設定の画面や設定のファイルでは、プロジェクトのフォルダを「ルート」や「ワークスペース」と呼ぶことがあります。
 
 Neovim（0.11 以降）では、たとえば次のように設定します。
@@ -37,14 +41,15 @@ Neovim（0.11 以降）では、たとえば次のように設定します。
 vim.filetype.add({ extension = { gm = "golem" } })
 vim.lsp.config("golem", {
   cmd = { "golem", "lsp" },
-  filetypes = { "golem" },
+  filetypes = { "golem", "toml" },
   root_markers = { "manifest.toml" },
 })
 vim.lsp.enable("golem")
 ```
 
 これは Neovim の設定のファイル（Lua という言語で書きます）の例で、上の三つの指定をそのまま並べています。
-ほかのエディタでも、起動するコマンド（[code: golem lsp]）と、対象のファイル（[code: .gm]）と、プロジェクトのフォルダの目印（[code: manifest.toml]）の三つを設定すれば使えます。
+[code: filetypes] の [code: "toml"] は、[code: style.toml] と [code: preflight.toml] の補完のための指定で、要らなければ [code: { "golem" }] だけにします。
+ほかのエディタでも、起動するコマンド（[code: golem lsp]）と、対象のファイル（[code: .gm]、補完を使うなら [code: .toml] も）と、プロジェクトのフォルダの目印（[code: manifest.toml]）の三つを設定すれば使えます。
 Visual Studio Code では、LSP の言語サーバーを起動する汎用の拡張機能を入れ、この三つを設定します。
 
 ファイルの中の位置（何行目の何文字目か）の数え方は、エディタと Golem が起動のときに相談して決めます。

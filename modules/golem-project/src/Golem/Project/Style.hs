@@ -48,6 +48,11 @@ module Golem.Project.Style
     checkLocalStyles,
     charStyleKeys,
     paraStyleKeys,
+    styleSchema,
+    builtinCharStyles,
+    builtinParaStyles,
+    builtinAkiSetNames,
+    lineBreaksValues,
     HeadingStyle (..),
     NotesPlacement (..),
     Composition (..),
@@ -102,8 +107,9 @@ import Golem.Doc.Assemble (NoteNumbering (..))
 import Golem.Doc.ListMarkers (NumberFormat, parseNumberFormat)
 import Golem.Length (Sp (..))
 import Golem.Length qualified as L
-import Golem.Project.Manifest (decodeStrictBy, naturalIntOf, naturalOf)
+import Golem.Project.Manifest (decodeStrictBy, decodeStrictWith, naturalIntOf, naturalOf)
 import Golem.Project.TomlMessage (schemaMessage)
+import Golem.Project.TomlSchema
 import Golem.Regex (RegexError (..), compile)
 import Golem.Syntax
 import Numeric.Natural (Natural)
@@ -809,10 +815,11 @@ instance FromValue HiddenFolio where
     pages <-
       optKeyOf
         "pages"
-        ( withValue $ \l -> \case
-            "unnumbered" -> pure HiddenUnnumbered
-            "all" -> pure HiddenAll
-            v -> failAt l ("[hidden-folio] の pages に使えない値です: " <> T.unpack v <> "（unnumbered, all のどれか）")
+        ( withValue $ \l v ->
+            maybe
+              (failAt l ("[hidden-folio] の pages に使えない値です: " <> T.unpack v <> "（" <> T.unpack (T.intercalate ", " (map fst hiddenFolioPagesValues)) <> " のどれか）"))
+              pure
+              (lookup v hiddenFolioPagesValues)
         )
     let len k = optKeyOf k $ \v -> case v of
           Text' l t ->
@@ -1230,20 +1237,24 @@ defaultStyle =
 
 -- | JIS B series, A series, 四六判, 菊判, 新書判 and mass-market, in millimetres.
 pageSize :: Text -> Maybe (Rational, Rational)
-pageSize = \case
-  "A4" -> Just (210, 297)
-  "A5" -> Just (148, 210)
-  "A6" -> Just (105, 148)
-  "B5" -> Just (182, 257)
-  "B6" -> Just (128, 182)
-  "四六判" -> Just (127, 188)
-  -- ADR 0005
-  "菊判" -> Just (150, 220)
-  "新書判" -> Just (103, 182)
-  -- 4.25in x 6.875in (ADR 0003): exactly 107.95mm x 174.625mm, so that
-  -- the size is rounded to sp once, in pageTrimSize
-  "mass-market" -> Just (10795 % 100, 174625 % 1000)
-  _ -> Nothing
+pageSize n = lookup n pageSizes
+
+-- | The named page sizes, in millimetres (the values of size, docs/adr ADR 0169).
+pageSizes :: [(Text, (Rational, Rational))]
+pageSizes =
+  [ ("A4", (210, 297)),
+    ("A5", (148, 210)),
+    ("A6", (105, 148)),
+    ("B5", (182, 257)),
+    ("B6", (128, 182)),
+    ("四六判", (127, 188)),
+    -- ADR 0005
+    ("菊判", (150, 220)),
+    ("新書判", (103, 182)),
+    -- 4.25in x 6.875in (ADR 0003): exactly 107.95mm x 174.625mm, so that
+    -- the size is rounded to sp once, in pageTrimSize
+    ("mass-market", (10795 % 100, 174625 % 1000))
+  ]
 
 -- | 仕上がりの幅と高さ（sp）。
 pageTrimSize :: Page -> (Sp, Sp)
@@ -1409,8 +1420,8 @@ instance FromValue Position2 where
 instance FromValue Page where
   fromValue = parseTableFromValue $ do
     size <- reqKey "size"
-    binding <- enumKey "binding" ["right", "left"]
-    wm <- enumKey "writing-mode" ["vertical", "horizontal"]
+    binding <- enumKey "binding" bindingValues
+    wm <- enumKey "writing-mode" writingModeValues
     grid <- optKey "grid"
     bleed <-
       fmap (fromMaybe 0) . optKeyOf "bleed" . withValue $ \l -> \case
@@ -1451,12 +1462,8 @@ featureKeysOf = do
   let wrong l key v = failAt l (T.unpack (key <> " の値が正しくありません: " <> v))
   k <-
     optKeyOf "kerning" $
-      withValue $ \l -> \case
-        "metrics" -> pure KernMetrics
-        "japanese-equal-width" -> pure KernJapaneseEqualWidth
-        "none" -> pure KernNone
-        "optical" -> pure KernOptical
-        v -> wrong l "kerning" v
+      withValue $
+        \l v -> maybe (wrong l "kerning" v) pure (lookup v kerningValues)
   t <-
     optKeyOf "tracking" $
       withValue $ \l n ->
@@ -1474,7 +1481,7 @@ instance FromValue ParaStyleDef where
     b <- optKey "based-on"
     f <- optKey "font"
     s <- dimKey "size"
-    lb <- enumKey "line-breaks" ["join", "keep"]
+    lb <- enumKey "line-breaks" lineBreaksValues
     sb <- optKeyOf "space-between" (withValue (\l x -> if x < 0 then failAt l "space-between は 0 以上です" else pure x))
     ind <- dimKey "indent"
     fli' <- signedDimKey "first-line-indent" "（1zw や -1zw のように書きます）"
@@ -1515,7 +1522,7 @@ instance FromValue HeadingStyle where
     f <- optKey "font"
     s <- dimKey "size"
     n <- optKey "number"
-    pb <- enumKey "page-break" ["recto", "any"]
+    pb <- enumKey "page-break" pageBreakValues
     ls <- optKeyOf "lines" $ \v -> naturalIntOf v >>= \l -> if l < 1 then failAt (valueAnn v) ("lines は 1 以上の整数です: " <> show l) else pure l
     -- retired (golem-driver ADR 0014): G03019
     pickKey
@@ -1528,11 +1535,11 @@ instance FromValue HeadingStyle where
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
-    m <- enumKey "mono-align" ["center", "start"]
-    g <- enumKey "group-align" ["1:2:1", "0:1:0", "center", "start"]
-    b <- enumKey "base-spacing" ["1:2:1", "0:1:0", "center"]
+    m <- enumKey "mono-align" monoAlignValues
+    g <- enumKey "group-align" groupAlignValues
+    b <- enumKey "base-spacing" baseSpacingValues
     o <- dimKey "overhang"
-    onto <- enumKey "overhang-onto" ["kana", "none"]
+    onto <- enumKey "overhang-onto" overhangOntoValues
     let d = defaultRubyStyleDef
     pure
       RubyStyleDef
@@ -1550,7 +1557,7 @@ instance FromValue Expansion where
 
 instance FromValue Composition where
   fromValue = parseTableFromValue $ do
-    k <- enumKey "kinsoku" ["strict", "loose"]
+    k <- enumKey "kinsoku" kinsokuValues
     h <- optKey "hanging-punctuation"
     r <- optKey "ruby"
     kt <- enumKey "kenten" kentenShapeNames
@@ -1577,7 +1584,7 @@ instance FromValue Composition where
 
 instance FromValue SidenoteStyle where
   fromValue = parseTableFromValue $ do
-    _ <- enumKey "side" ["outside"]
+    _ <- enumKey "side" sideValues
     w <- reqDim "width"
     g <- reqDim "gap"
     f <- textAt "font"
@@ -1585,7 +1592,7 @@ instance FromValue SidenoteStyle where
     case fmap fst f <|> fmap fst s of
       Just l -> failTableAt l "[sidenotes] の font と size は廃止しました。[paragraph-styles.sidenote] の font と size に書き換えます"
       Nothing -> pure ()
-    m <- enumKey "marker" ["number", "symbol", "none"]
+    m <- enumKey "marker" markerValues
     pure (SidenoteStyle w g (fromMaybe "number" m))
 
 -- | The positions of a running head and a folio (golem-driver ADR 0014).
@@ -1685,9 +1692,7 @@ instance FromValue Swatch where
 data Numbers = Numbers (Maybe Text) (Maybe Text)
 
 instance FromValue Numbers where
-  fromValue = parseTableFromValue (Numbers <$> enumKey "vertical" verticals <*> enumKey "ref-page" (verticals <> ["sideways"]))
-    where
-      verticals = ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"]
+  fromValue = parseTableFromValue (Numbers <$> enumKey "vertical" verticalValues <*> enumKey "ref-page" refPageValues)
 
 -- | The retired [emphasis] (docs/adr ADR 0005): an error that names its replacement.
 data EmphasisV
@@ -1708,8 +1713,8 @@ instance FromValue Notes where
   fromValue =
     parseTableFromValue
       ( Notes
-          <$> enumKey "placement" ["page-foot", "chapter-end"]
-          <*> (fmap numbering <$> enumKey "numbering" ["chapter", "file", "book"])
+          <$> enumKey "placement" placementValues
+          <*> (fmap numbering <$> enumKey "numbering" numberingValues)
           <*> optKeyOf "rule" noteRule
           <*> optKeyOf "mark-size" (withValue (\l (DimV d) -> markSize l d))
           <*> optKeyOf "mark-format" (withValue markFormat)
@@ -1832,7 +1837,7 @@ instance FromValue IndexSec where
 newtype TocSec = TocSec (Maybe Text)
 
 instance FromValue TocSec where
-  fromValue = parseTableFromValue (TocSec <$> enumKey "leader" ["dots", "none"])
+  fromValue = parseTableFromValue (TocSec <$> enumKey "leader" leaderValues)
 
 data ColorSec = ColorSec (Maybe Text) (Map Text Swatch)
 
@@ -1953,7 +1958,7 @@ filesystem.
 -}
 parseStyle :: FileId -> Text -> Either [Diagnostic] Style
 parseStyle fid src = do
-  s0 <- either (Left . map akiCode) Right (decodeStrictBy "G03006" codeAt fid src)
+  s0 <- either (Left . map akiCode) Right (decodeStrictWith styleSchema "G03006" codeAt fid src)
   let s = s0 {stIndex = (\ix -> ix {ixColumnsAt = columnsAt}) <$> stIndex s0}
   -- the same code and message once, at the path that comes first (golem-project ADR 0008)
   case nubBy (\(c, _, m) (c', _, m') -> (c, m) == (c', m')) [(code, path, m) | (code, _, path, m) <- styleChecks "style.toml の" s] of
@@ -2232,9 +2237,9 @@ data LocalValue = LocalWord Text | LocalString Text
 
 -- | The keys @style-def takes, as style.toml's (for completion).
 charStyleKeys, paraStyleKeys, regexStyleKeys :: [Text]
-charStyleKeys = ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic"] <> featureKeys <> ["background", "padding"]
-paraStyleKeys = ["based-on", "font", "size", "line-breaks", "space-between", "indent", "first-line-indent", "aki-set"] <> featureKeys <> ["background", "padding", "border", "border-width"]
-regexStyleKeys = ["pattern", "style"]
+charStyleKeys = scalarKeys charStyleNode
+paraStyleKeys = scalarKeys paraStyleNode
+regexStyleKeys = scalarKeys regexStyleNode
 
 {- | The keys of one @style-def as a TOML table, read with the 'FromValue'
 of style.toml: a string is a string, the words true and false are
@@ -2355,3 +2360,244 @@ loadStyle fid = maybe (Right defaultStyle) (parseStyle fid)
 -- | Font files named by [fonts]: role, then Japanese before Latin, roles in name order.
 fontFiles :: Style -> [(Text, FilePath)]
 fontFiles s = [(r, p) | (r, FontRole ja la _) <- Map.toAscList (stFonts s), Just p <- [ja, la]]
+
+-- ------------------------------------------------------------------ the schema
+
+{- | The values of the enumerations of style.toml, written once for the
+decoder and the schema (docs/adr ADR 0169).
+-}
+bindingValues, writingModeValues, lineBreaksValues, pageBreakValues, monoAlignValues, groupAlignValues, baseSpacingValues, overhangOntoValues, kinsokuValues, sideValues, markerValues, verticalValues, refPageValues, placementValues, numberingValues, leaderValues :: [Text]
+bindingValues = ["right", "left"]
+writingModeValues = ["vertical", "horizontal"]
+lineBreaksValues = ["join", "keep"]
+pageBreakValues = ["recto", "any"]
+monoAlignValues = ["center", "start"]
+groupAlignValues = ["1:2:1", "0:1:0", "center", "start"]
+baseSpacingValues = ["1:2:1", "0:1:0", "center"]
+overhangOntoValues = ["kana", "none"]
+kinsokuValues = ["strict", "loose"]
+sideValues = ["outside"]
+markerValues = ["number", "symbol", "none"]
+verticalValues = ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"]
+refPageValues = verticalValues <> ["sideways"]
+placementValues = ["page-foot", "chapter-end"]
+numberingValues = ["chapter", "file", "book"]
+leaderValues = ["dots", "none"]
+
+-- | The values of kerning (docs/adr/0020).
+kerningValues :: [(Text, Kerning)]
+kerningValues = [("metrics", KernMetrics), ("japanese-equal-width", KernJapaneseEqualWidth), ("none", KernNone), ("optical", KernOptical)]
+
+-- | The values of pages of [hidden-folio] (golem-driver ADR 0021).
+hiddenFolioPagesValues :: [(Text, HiddenFolioPages)]
+hiddenFolioPagesValues = [("unnumbered", HiddenUnnumbered), ("all", HiddenAll)]
+
+{- | The keys of style.toml and their values (docs/adr ADR 0169), in the
+order the decoder reads them. A key the decoder reads and the schema does
+not have is unknown to 'parseStyle'; a key the schema has and the decoder
+does not read is caught by the test of the schema.
+-}
+styleSchema :: Node
+styleSchema =
+  NTable
+    [ ("page", pageNode),
+      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", NArray str)])),
+      ("character-styles", NNamed (Just CharStyles) charStyleNode),
+      ("paragraph-styles", NNamed (Just ParaStyles) paraStyleNode),
+      ("headings", NNamed Nothing headingNode),
+      ("composition", compositionNode),
+      ("numbers", NTable [("vertical", enum verticalValues), ("ref-page", enum refPageValues)]),
+      ("emphasis", NRejected),
+      ("notes", notesNode),
+      ("sidenotes", NTable [("side", enum sideValues), ("width", dim), ("gap", dim), ("font", NRejected), ("size", NRejected), ("marker", enum markerValues)]),
+      ("figures", NTable [("number", str), ("wrap-gap", dim)]),
+      ("color", NTable [("intent", str), ("swatches", NNamed (Just Swatches) (NTable [("cmyk", NArray int)]))]),
+      ("masters", NNamed (Just Masters) masterNode),
+      ("verse", NRejected),
+      ("toc", NTable [("leader", enum leaderValues)]),
+      ("lists", NTable [("bullets", NArray str), ("numbers", NArray str), ("gap", dim)]),
+      ("aki-sets", NNamed (Just AkiSets) akiSetNode),
+      ("index", NTable [("columns", int), ("column-gap", dim)]),
+      ("code", codeNode),
+      ("hidden-folio", NTable [("enabled", bool), ("pages", enum (map fst hiddenFolioPagesValues)), ("size", dim), ("gutter", dim)])
+    ]
+  where
+    pageNode =
+      NTable
+        [ ("size", NEither [enum (map fst pageSizes), NTable [("width", dim), ("height", dim)]]),
+          ("binding", enum bindingValues),
+          ("writing-mode", enum writingModeValues),
+          ("grid", gridNode),
+          ("bleed", dim)
+        ]
+    gridNode =
+      NTable
+        [ ("font-size", dim),
+          ("characters", int),
+          ("lines", int),
+          ("line-pitch", dim),
+          ("columns", int),
+          ("column-gap", dim),
+          ("position", NTable [("top", dim), ("gutter", dim)])
+        ]
+    headingNode =
+      NTable
+        [ ("font", ref FontRoles),
+          ("size", dim),
+          ("number", str),
+          ("page-break", enum pageBreakValues),
+          ("lines", int),
+          -- retired (golem-driver ADR 0014): G03019
+          ("running-head", NRejected),
+          ("rule-before", ruleOrFalseNode),
+          ("rule-after", ruleOrFalseNode)
+        ]
+    compositionNode =
+      NTable
+        [ ("kinsoku", enum kinsokuValues),
+          ("hanging-punctuation", bool),
+          ( "ruby",
+            NTable
+              [ ("mono-align", enum monoAlignValues),
+                ("group-align", enum groupAlignValues),
+                ("base-spacing", enum baseSpacingValues),
+                ("overhang", dim),
+                ("overhang-onto", enum overhangOntoValues)
+              ]
+          ),
+          ("kenten", enum kentenShapeNames),
+          ("pretolerance", int),
+          ("tolerance", int),
+          ("emergency-stretch", dim),
+          ("protrusion", bool),
+          ("expansion", NTable [("limit", int), ("step", int)]),
+          ("explicit-hyphen-penalty", int)
+        ]
+    notesNode =
+      NTable
+        [ ("placement", enum placementValues),
+          ("numbering", enum numberingValues),
+          -- the place of a rule in its column is for paragraphs and headings (golem-driver ADR 0027)
+          ("rule", NTable ([kv | kv@(k, _) <- ruleKeys, k `notElem` columnKeys] <> [(k, NRejected) | k <- columnKeys])),
+          ("mark-size", dim),
+          ("mark-format", str)
+        ]
+    columnKeys = ["start-indent", "end-indent", "keep-in-column"]
+    masterNode =
+      NTable
+        [ ( "running-head",
+            NTable [("position", enum masterPositions), ("content", runningContent), ("even", runningContent), ("odd", runningContent)]
+          ),
+          ("folio", NTable [("position", enum masterPositions), ("content", str), ("format", str)])
+        ]
+    runningContent = NEither [str, NArray str]
+    akiSetNode =
+      NTable
+        [ ("based-on", ref AkiSets),
+          ( "rules",
+            NArray
+              ( NTable
+                  [ ("before", classes (akiClassNames <> ["line-start", "paragraph-start"])),
+                    ("after", classes (akiClassNames <> ["line-end"])),
+                    ("optimum", str),
+                    ("minimum", str),
+                    ("maximum", str)
+                  ]
+              )
+          )
+        ]
+    classes cs = NEither [enum cs, NArray (enum cs)]
+    codeNode =
+      NTable
+        [ ("number", str),
+          ("line-numbers", bool),
+          ("line-number-color", ref Swatches),
+          ("highlight", ref Swatches),
+          ("added", ref Swatches),
+          ("removed", ref Swatches),
+          ("wrap-mark", str),
+          ("continued", str),
+          -- the kinds are checked by the decoder, with its own message (golem-driver ADR 0023)
+          ("colors", NNamed Nothing (ref Swatches))
+        ]
+
+-- | [character-styles.<name>].
+charStyleNode :: Node
+charStyleNode =
+  NTable
+    ( [ ("based-on", ref CharStyles),
+        ("font", ref FontRoles),
+        ("size", dim),
+        ("color", ref Swatches),
+        ("synthetic-bold", bool),
+        ("synthetic-italic", bool)
+      ]
+        <> featureNodes
+        <> [ ("background", NEither [ref Swatches, NValue LFalse]),
+             ("padding", dim)
+           ]
+    )
+
+-- | [paragraph-styles.<name>].
+paraStyleNode :: Node
+paraStyleNode =
+  NTable
+    ( [ ("based-on", ref ParaStyles),
+        ("font", ref FontRoles),
+        ("size", dim),
+        ("line-breaks", enum lineBreaksValues),
+        ("space-between", int),
+        ("indent", dim),
+        ("first-line-indent", dim),
+        ("regex-styles", NArray regexStyleNode),
+        ("aki-set", ref AkiSets)
+      ]
+        <> featureNodes
+        <> [ ("background", ref Swatches),
+             ("padding", dim),
+             ("border", ref Swatches),
+             ("border-width", dim),
+             ("rule-before", ruleOrFalseNode),
+             ("rule-after", ruleOrFalseNode)
+           ]
+    )
+
+-- | One regex style of a paragraph style (docs/adr ADR 0015).
+regexStyleNode :: Node
+regexStyleNode = NTable [("pattern", str), ("style", ref CharStyles)]
+
+-- | The keys of 'featureKeysOf'.
+featureNodes :: [(Text, Node)]
+featureNodes = zip featureKeys [enum (map fst kerningValues), int, bool, dim]
+
+-- | A rule spec, or false (golem-driver ADR 0027).
+ruleOrFalseNode :: Node
+ruleOrFalseNode = NEither [NValue LFalse, NTable ruleKeys]
+
+-- | The keys of a rule spec (golem-driver ADR 0024, 0027, 0028).
+ruleKeys :: [(Text, Node)]
+ruleKeys =
+  [ ("length", dim),
+    ("weight", dim),
+    ("space-before", dim),
+    ("space-after", dim),
+    ("color", ref Swatches),
+    ("style", enum (map fst ruleStyleNames)),
+    ("dash", dim),
+    ("gap", dim),
+    ("start-indent", dim),
+    ("end-indent", dim),
+    ("keep-in-column", bool)
+  ]
+
+str, dim, int, bool :: Node
+str = NValue LString
+dim = NValue LDimension
+int = NValue LInteger
+bool = NValue LBoolean
+
+enum :: [Text] -> Node
+enum = NValue . LEnum
+
+ref :: Namespace -> Node
+ref = NValue . LRef

@@ -20,6 +20,7 @@ module Golem.Project.Manifest
     applyEdits,
     decodeStrict,
     decodeStrictBy,
+    decodeStrictWith,
     naturalOf,
     naturalIntOf,
   )
@@ -27,6 +28,7 @@ where
 
 import Control.Monad (zipWithM_)
 import Data.Char (isDigit)
+import Data.List (isPrefixOf, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, isJust)
@@ -37,6 +39,7 @@ import Data.Text qualified as T
 import Data.Time.Calendar (Day)
 import Golem.Parser.SourceSettings
 import Golem.Project.TomlMessage (pathText, schemaMessage, semanticMessage, syntaxMessage)
+import Golem.Project.TomlSchema (Node, unknownKeys)
 import Golem.Syntax
 import Numeric.Natural (Natural)
 import Toml qualified
@@ -453,6 +456,26 @@ decodeStrictBy code codeAt fid src = case parseToml src of
     Failure es -> Left (tomlDiagnosticsBy codeAt fid src es)
     Success [] a -> Right a
     Success ws _ -> Left (tomlDiagnosticsBy codeAt fid src ws)
+
+{- | 'decodeStrictBy' whose unknown keys are those the schema does not
+know (docs/adr ADR 0169): the warnings of toml-parser for the keys left in
+a table are dropped, and the keys the schema does not know are added to
+the errors of the values, or to the other warnings. So an error of a value
+does not hide an unknown key. The messages are in the order of their
+positions in the file.
+-}
+decodeStrictWith :: (FromValue a) => Node -> Text -> ([Scope] -> Text) -> FileId -> Text -> Either [Diagnostic] a
+decodeStrictWith schema code codeAt fid src = case parseToml src of
+  Left (ErrSyntax (Located pos msg)) -> Left [diagnostic code Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> syntaxMessage msg)]
+  Left (ErrSemantics (SemanticError pos key kind)) -> Left [diagnostic code Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> semanticMessage kind key)]
+  Right tab ->
+    let unknown = unknownKeys schema tab
+        report = Left . tomlDiagnosticsBy codeAt fid src . sortOn (fmap (\(Position _ l c) -> (l, c)) . matchAnn)
+     in case runMatcher (fromValue (Table' (Position 0 1 1) tab)) of
+          Failure es -> report (es <> unknown)
+          Success ws a -> case filter (not . isPrefixOf "unexpected key: " . matchMessage) ws <> unknown of
+            [] -> Right a
+            ms -> report ms
 
 -- | The errors of reading TOML before the schema (Toml.parse' of toml-parser, which the package does not export).
 data TomlError

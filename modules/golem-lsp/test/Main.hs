@@ -45,6 +45,7 @@ import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
+import TomlSpec (tomlTests)
 
 root :: FilePath
 root = "test/fixtures/proj"
@@ -274,7 +275,8 @@ tests =
         codesIn "manifest.toml" @?= [],
       testCase "a style.toml error is reported on style.toml (golem-project ADR 0006)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         mapM_ (\f -> createDirectoryIfMissing True (takeDirectory (tmp </> f)) >> copyFile (root </> f) (tmp </> f)) ["manifest.toml", "a.gm", "b.gm", "common/values.gm"]
-        BS.writeFile (tmp </> "style.toml") "[page]\nunknown = 1\n"
+        -- with size: without it, the missing key is a second G03006 (docs/adr ADR 0169)
+        BS.writeFile (tmp </> "style.toml") "[page]\nsize = \"B6\"\nunknown = 1\n"
         ws <- openWorkspace tmp
         let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
         codesIn "style.toml" @?= ["G03006"]
@@ -473,7 +475,8 @@ tests =
             ],
       editingTests,
       tableWatchTests,
-      staleS1Tests
+      staleS1Tests,
+      tomlTests
     ]
 
 data SessionSpec = SessionSpec
@@ -537,6 +540,14 @@ session spec = do
     _ <- errorsFor (absRoot </> "b.gm")
     atEnd <- completionLabels <$> LT.getCompletions bdoc (L.Position 0 7)
     far <- completionLabels <$> LT.getCompletions bdoc (L.Position 0 1000)
+    -- style.toml, on a line after Japanese and with Japanese before the cursor (docs/adr ADR 0169)
+    let tomlLine = "page = { size = \"四六判\", binding = "
+        tomlColumn
+          | L.PositionEncodingKind_UTF8 `elem` ssEncodings spec = BS.length (TE.encodeUtf8 tomlLine)
+          | otherwise = T.length tomlLine
+    sdoc <- LT.openDoc "style.toml" "toml"
+    LT.changeDoc sdoc [L.TextDocumentContentChangeEvent (L.InR (L.TextDocumentContentChangeWholeDocument ("# 日本語のコメント😀\n" <> tomlLine)))]
+    tomlItems <- completionLabels <$> LT.getCompletions sdoc (L.Position 1 (fromIntegral tomlColumn))
     pure
       SessionResult
         { srLines =
@@ -547,7 +558,8 @@ session spec = do
               "symbols: " <> concat [T.unpack n <> "(" <> T.unpack (T.intercalate "," cs) <> ")" | (n, cs) <- symbolNames syms],
               "positionEncoding: " <> show (positionEncoding initResp),
               "references: " <> show [(fmap (drop (length absRoot + 1)) (L.uriToFilePath u), rng) | L.Location u rng <- refs],
-              "missing label: " <> show [(d ^. diagRange, d ^. diagCode) | d <- missing]
+              "missing label: " <> show [(d ^. diagRange, d ^. diagCode) | d <- missing],
+              "style.toml completion: " <> show tomlItems
             ]
               <> maybe [] (\i -> ["hover inside a character: " <> show i]) inside,
           srMissingLabelColumns = [c | d <- missing, let L.Range (L.Position _ c) _ = d ^. diagRange],
