@@ -14,10 +14,10 @@ module Golem.Driver.Explain.Catalog
 where
 
 import Control.Monad (foldM_, unless, when)
-import Data.Char (isDigit)
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Syntax.Diagnostic (isCodeShape)
 
 -- | Whether a code is still emitted or has been retired (it is never reused).
 data Status = InUse | Retired
@@ -84,8 +84,9 @@ splitSections numbered headings =
 isCodeHeading :: Text -> Bool
 isCodeHeading l = maybe False isCode (T.stripPrefix "## " l)
 
+-- | A code: @G@ or @E@ (the codes of .emet, docs/adr/0160) and five digits.
 isCode :: Text -> Bool
-isCode t = T.length t == 6 && T.take 1 t == "G" && T.all isDigit (T.drop 1 t)
+isCode = isCodeShape
 
 -- | Each line with whether it is inside a fenced code block.
 withFence :: [Numbered] -> [(Int, Text, Bool)]

@@ -164,6 +164,8 @@ golem-font は長さを持たず、位置と寸法をフォントの単位で返
 golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
 golem-svg は base、bytestring、containers、text だけに依存し、SVG の図版を PDF に描ける形に読む（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、仕様は [golem-svg の仕様書](golem-svg/specifications.md)）。
 golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画に直す。
+golem-emet は関数を書く言語 Emet（`.emet`）の読み込み、型の検査、評価、整形を持ち、数の演算を golem-eval と共有する（[docs/adr/0160](adr/0160-emet-function-language-core.md)、仕様は [golem-emet の仕様書](golem-emet/specifications.md)）。
+今は golem-emet に依存するモジュールがない。
 golem-html は golem-project に依存せず、golem-driver が `style.toml` の値を golem-html の設定の型に直す（[ADR 0090](adr/0090-html-settings-conversion-stays-in-driver.md)）。
 ほかの依存を通して届く依存の矢印も省いている。
 PDF 経路のモジュールだけが、レイアウト IR、シェイピング[^shaping]、フォントのサブセット化[^subset]を扱う。
@@ -181,6 +183,7 @@ flowchart TD
     regex["golem-regex<br/>正規表現スタイルの照合器"]
     parser["golem-parser<br/>PEG パーサー"]
     eval["golem-eval<br/>式の評価とプラグインの展開"]
+    emet["golem-emet<br/>関数の言語 Emet"]
     doc["golem-doc<br/>意味論 IR と文書構造（S1）の集約"]
     syntax["golem-syntax<br/>diagnostic とソース位置（最下層）"]
     length["golem-length<br/>長さの型と単位の変換（最下層）"]
@@ -211,6 +214,7 @@ flowchart TD
     driver --> preflight
     driver --> svg
     driver --> text
+    emet --> eval
     epub --> html
     eval --> project
     fmt --> parser
@@ -2906,6 +2910,23 @@ S1 は、一覧ごとに、キーが同じ項目を一つのエントリにま�
 
 エントリのない一覧は、PDF とプレーンテキストでは何も出さず、HTML と EPUB では空の `<ul>` を持つ `<section>` を出す。
 一覧は目次と EPUB のナビゲーション文書に入れない。
+
+## 関数の言語 Emet
+
+関数は、社内の使い手や組版のオペレーターが手元の不便を解消するために、`.emet` のファイルに書く（[docs/adr/0160](adr/0160-emet-function-language-core.md)）。
+Emet は Haskell の方言であり、`.gm` の `[...]` と `@` の記法を使わない。
+今は言語の核（構文、型、評価、パターンマッチ、整形）だけを golem-emet に実装しており、`.gm` からはまだ呼べない。
+
+- 最上位の宣言、`where { }` の束縛、`case ... of { }` の選択肢は改行で区切る。`;` は持たない。字下げは意味を持たず、`golem fmt` が決める。
+- 続きの行であることは字句で示す。行の最後に二項演算子、`=`、`->`、`::`、`,`、`?`、`:` を置くか、次の行を `|`、`-` を除く二項演算子、`?`、`:`、`where`、`->` で始めるか、括弧の中に書く。行頭の `-` は新しい項目の始まりである。
+- 型は静的に検査する。組み込みの型は `Nat`、`Int`、`Rat`、`Bool`、`Char`、`String`、`List a`、`Maybe a`、組である。数は自然数から整数へ、整数から有理数へ暗に広がる。型クラスは持たない。
+- 分岐はパターンマッチ、ガード、`case`、三項演算子で書き、繰り返しは再帰で書く。パターンマッチは網羅していなければならない。
+- 評価は正格だが、`where` の束縛は使ったときに一度だけ評価する。末尾呼び出しは深さを増やさない。これは最適化ではなく言語の約束である。
+- `.gm` からの一つの呼び出しの評価には、手数の上限（100,000,000 手）と、末尾でない呼び出しの深さの上限（10000）がある。
+- `import "パス"` は、ほかの `.emet` の公開された名前を名前空間なしで取り込む。組み込みのモジュール `List` と `String` は、つねに名前を付けて参照する。
+- 誤りのコードは `E` と 5 桁の数字である（[docs/diagnostics.md](diagnostics.md)）。
+
+文法、改行の規則、型の検査、評価器、組み込みの関数の一覧は、golem-emet の仕様書に書く（[docs/golem-emet/specifications.md](golem-emet/specifications.md)）。
 
 ## プラグイン
 

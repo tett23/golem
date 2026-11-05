@@ -168,16 +168,17 @@ tests =
         preflightCodes @?= [DiagnosticCode (T.pack ("G090" <> (if n < 10 then "0" else "") <> show n)) | n <- [2 .. 18 :: Int], n /= 5]
         assertBool "no notice" (not (any (`elem` noticeCodes) preflightCodes))
         assertBool "no profile" (not (any (`elem` profileDependentCodes) preflightCodes)),
-      testCase "every code is G, the two digits of its stage and three digits (docs/adr 0061)" $ do
+      testCase "every code is G or E, the two digits of its stage and three digits (docs/adr 0061, docs/adr/0160)" $ do
         let stage (DiagnosticCode c) = T.take 2 (T.drop 1 c)
+            stages = \case
+              "G" -> ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
+              "E" -> ["01", "02", "03", "04", "05", "06", "07"]
+              _ -> []
             shaped (DiagnosticCode c) =
-              T.length c == 6
-                && T.take 1 c == "G"
-                && T.all (`elem` ['0' .. '9']) (T.drop 1 c)
-                && stage (DiagnosticCode c) `elem` ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
+              isCodeShape c && stage (DiagnosticCode c) `elem` stages (T.take 1 c)
         [c | c <- noticeCodes <> infoCodes <> profileDependentCodes <> preflightCodes, not (shaped c)] @?= []
         -- the stage that gives each of them
-        map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "02", "03", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "08"]
+        map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "02", "03", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "08", "02"]
         map stage infoCodes @?= ["07"]
         map stage profileDependentCodes @?= ["05", "03", "08"]
         assertBool "preflight is 09" (all ((== "09") . stage) preflightCodes),
@@ -212,8 +213,10 @@ noticeTests =
         diagSeverity (adjustForProfile Dev d) @?= Notice,
       testCase "no code is a notice and profile-dependent" $
         [c | c <- noticeCodes, c `elem` profileDependentCodes] @?= [],
+      testCase "the codes of the shape of a code (docs/adr/0160)" $
+        map isCodeShape ["G01001", "E02109", "G0101", "E021090", "e02109", "X01001", "G0100a"] @?= [True, True, False, False, False, False, False],
       testCase "the initial notice codes" $
-        noticeCodes @?= map DiagnosticCode ["G02062", "G02063", "G02064", "G02065", "G02079", "G02094", "G02108", "G03023", "G03100", "G04007", "G04008", "G04009", "G04011", "G07030", "G07039", "G07045", "G07046", "G07100", "G08008"],
+        noticeCodes @?= map DiagnosticCode ["G02062", "G02063", "G02064", "G02065", "G02079", "G02094", "G02108", "G03023", "G03100", "G04007", "G04008", "G04009", "G04011", "G07030", "G07039", "G07045", "G07046", "G07100", "G08008", "E02109"],
       testCase "a notice early in the file comes after an error late in it" $ do
         let n = notice "G02065" (mkSpan (FileId 0) 0 1) "n"
             e = diagnostic "G02001" Error (mkSpan (FileId 1) 50 51) "e"
