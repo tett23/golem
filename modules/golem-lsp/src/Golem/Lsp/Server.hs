@@ -260,7 +260,7 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
             dirty <- liftIO (atomically (readTVar dirtyVar <* writeTVar dirtyVar Set.empty))
             let step ws q = do
                   mvf <- getVirtualFile (toNormalizedUri (filePathToUri (stRoot st </> q)))
-                  maybe (pure ws) (\vf -> liftIO (updateFile ws q (virtualFileText vf))) mvf
+                  maybe (pure ws) (liftIO . updateFile ws q . virtualFileText) mvf
             ws' <- foldlM step ws0 (Set.toList dirty)
             unless (Set.null dirty) (commit dirty ws')
     {- one evaluation at a time (golem-lsp ADR 0005): a later evaluation
@@ -329,7 +329,7 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
     publishAll edited ws = do
       enc <- encoding
       old <- liftIO (readTVarIO pubVar)
-      let now = Map.mapWithKey (\p ds -> map (toDiagnostic enc (lineIndexOf ws p)) ds) (diagnosticsFor ws)
+      let now = Map.mapWithKey (map . toDiagnostic enc . lineIndexOf ws) (diagnosticsFor ws)
           cleared = Map.map (const []) (Map.difference old now)
           new = Map.union now cleared
       forM_ (Map.toList new) $ \(p, ds) ->
