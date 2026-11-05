@@ -11,7 +11,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Eval.Analysis
-import Golem.Eval.Expr (Env (..), evalExpr)
+import Golem.Eval.Expr (Env, evalExpr, plainEnv)
 import Golem.Eval.File (Asset (..), EvalContext (..))
 import Golem.Eval.Value
 import Golem.Parser (parseAst)
@@ -35,7 +35,7 @@ exprOf src =
 
 -- | The environment of the analysis: n = 3 by @set, and doc.
 typeEnv :: Env
-typeEnv = Env (Map.fromList [("n", VNat 3)]) Map.empty
+typeEnv = plainEnv (Map.fromList [("n", VNat 3)]) Map.empty
 
 inferred :: Text -> Maybe StaticType
 inferred = inferExpr typeEnv . exprOf
@@ -171,7 +171,7 @@ tests =
         listingMsgs "``` numbers=[= 0 - 1]\na\n```\n" @?= neg "numbers",
       testProperty "the constructor of a value is the type the analysis infers" $ property $ do
         e <- forAll genExpr
-        case (evalExpr (Env Map.empty Map.empty) (exprOf e), inferExpr typeEnv (exprOf e)) of
+        case (evalExpr (plainEnv Map.empty Map.empty) (exprOf e), inferExpr typeEnv (exprOf e)) of
           (Right v, Just t) -> do
             annotateShow (v, t)
             constructorType v === Just t

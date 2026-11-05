@@ -26,6 +26,7 @@ module Golem.Emet.Eval
     noHandlers,
     evalCall,
     evalCallCounted,
+    evalCallLimited,
     stepLimit,
     depthLimit,
   )
@@ -150,7 +151,13 @@ evalCall hs globals files at key args = fst (evalCallCounted hs globals files at
 
 -- | 'evalCall' with the steps the call took, to measure the work of functions against 'stepLimit'.
 evalCallCounted :: Handlers -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> (Either Diagnostic Result, Int)
-evalCallCounted hs globals files at key args = case Map.lookup key globals of
+evalCallCounted = evalCallLimited stepLimit
+
+{- | 'evalCallCounted' with another limit of steps: that of a filter grows
+with the document (docs/adr/0162).
+-}
+evalCallLimited :: Int -> Handlers -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> (Either Diagnostic Result, Int)
+evalCallLimited limit hs globals files at key args = case Map.lookup key globals of
   Nothing -> (Left (diagnostic "E02100" Error at ("未定義の関数 " <> snd key <> " です")), 0)
   Just g -> runST $ do
     Step c k n d <- apply (Loc 0 0) (globalValue g) (map fromResult args) []
@@ -164,7 +171,7 @@ evalCallCounted hs globals files at key args = case Map.lookup key globals of
 
     loop :: Ctl s -> [Frame s] -> Int -> Int -> ST s (Either Diagnostic (V s), Int)
     loop ctl k !steps !depth
-      | steps > stepLimit = stop steps (diagnostic "E04100" Error at ("関数の評価の手数が上限（" <> T.pack (show stepLimit) <> " 手）を超えました: " <> current k))
+      | steps > limit = stop steps (diagnostic "E04100" Error at ("関数の評価の手数が上限（" <> T.pack (show limit) <> " 手）を超えました: " <> current k))
       | depth > depthLimit = stop steps (diagnostic "E04101" Error at ("末尾でない呼び出しの深さが上限（" <> T.pack (show depthLimit) <> "）を超えました: " <> current k))
       | otherwise = case ctl of
           Eval env e -> evalE env e k steps depth

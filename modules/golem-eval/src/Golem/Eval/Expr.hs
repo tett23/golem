@@ -5,6 +5,9 @@ every operation is exact.
 -}
 module Golem.Eval.Expr
   ( Env (..),
+    plainEnv,
+    splitNamespace,
+    callsFunction,
     evalExpr,
     embedValue,
     freeNames,
@@ -23,10 +26,12 @@ where
 import Data.Char (isAlphaNum, isAscii)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isJust)
 import Data.Ratio (denominator, numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Num.Integer (integerLog2)
+import Golem.Eval.Functions
 import Golem.Eval.Number
 import Golem.Eval.Value
 import Golem.Parser.AST
@@ -34,8 +39,31 @@ import Golem.Syntax
 
 data Env = Env
   { envVars :: !(Map Name Value),
-    envNamespaces :: !(Map Name (Map Name Value))
+    envNamespaces :: !(Map Name (Map Name Value)),
+    -- | the namespaces of the .emet a file imports (docs/adr/0162)
+    envFunctions :: !(Map Name FunctionRef)
   }
+
+-- | An environment of variables and namespaces of variables, without functions.
+plainEnv :: Map Name Value -> Map Name (Map Name Value) -> Env
+plainEnv vars nss = Env vars nss Map.empty
+
+-- | The namespace and the name of @ns.f@, a function of a .emet (docs/adr/0162).
+splitNamespace :: Name -> Maybe (Name, Name)
+splitNamespace f = case T.breakOn "." f of
+  (ns, rest) | not (T.null ns), Just n <- T.stripPrefix "." rest, not (T.null n) -> Just (ns, n)
+  _ -> Nothing
+
+-- | Whether an expression calls a function of a .emet.
+callsFunction :: Located Expr -> Bool
+callsFunction (Located _ e) = case e of
+  ECall f xs -> isJust (splitNamespace f) || any callsFunction xs
+  EArray xs -> any callsFunction xs
+  EHash kvs -> any (callsFunction . snd) kvs
+  EUnary _ x -> callsFunction x
+  EBinary _ a b -> callsFunction a || callsFunction b
+  ERange a b -> callsFunction a || callsFunction b
+  _ -> False
 
 type Eval = Either Diagnostic
 
@@ -117,6 +145,9 @@ evalExpr env le@(Located _ e) = case e of
     x <- evalExpr env a
     y <- evalExpr env b
     binary le op x y
+  ECall f args | Just (ns, name) <- splitNamespace f -> do
+    vs <- traverse (evalExpr env) args
+    callFunction env le ns name vs
   ECall f args -> do
     vs <- traverse (evalExpr env) args
     case (args, vs) of
@@ -268,6 +299,27 @@ equal a b = case (numberOf a, numberOf b) of
     (VArray xs, VArray ys) -> length xs == length ys && and (zipWith equal xs ys)
     (VHash m, VHash n) -> Map.keys m == Map.keys n && and (zipWith equal (Map.elems m) (Map.elems n))
     _ -> a == b
+
+{- | A function of the expression context of a .emet (docs/adr/0162):
+@pub fn@ of the .emet of a namespace. A name of a function that is no
+@pub fn@ is G02002 with why; a call through a namespace whose .emet could
+not be loaded carries 'unloadedFact', and is not reported.
+-}
+callFunction :: Env -> Located Expr -> Name -> Name -> [Value] -> Eval Value
+callFunction env le ns name vs = case Map.lookup ns (envFunctions env) of
+  Nothing
+    | Map.member ns (envNamespaces env) -> err "G02002" le ("名前空間 " <> ns <> " は .gm の変数の取り込みで、関数を持ちません: " <> qualified)
+    | otherwise -> err "G02002" le ("未定義の名前空間 " <> ns <> " です: " <> qualified)
+  Just Unloaded -> Left ((diagnostic "G02002" Error (locSpan le) ("読み込めなかった .emet の関数です: " <> qualified)) {diagFacts = [unloadedFact]})
+  Just (Loaded fns) -> case Map.lookup name (fnExpr fns) of
+    Just ef -> case positionalValues (efParams ef) vs of
+      Left e -> Left (argErrorDiagnostic (locSpan le) qualified e)
+      Right args -> efCall ef args (locSpan le)
+    Nothing -> case Map.lookup name (fnOthers fns) of
+      Just why -> err "G02002" le (qualified <> " は pub fn ではないので、式からは呼べません（" <> why <> "）")
+      Nothing -> err "G02002" le ("未定義の関数 " <> qualified <> " です")
+  where
+    qualified = ns <> "." <> name
 
 call :: Located Expr -> Name -> [Value] -> Eval Value
 call le f args = case (f, args) of

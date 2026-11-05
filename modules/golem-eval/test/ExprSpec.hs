@@ -25,7 +25,7 @@ exprOf src =
 
 env :: Env
 env =
-  Env
+  plainEnv
     (Map.fromList [("x", VNat 10)])
     ( Map.fromList
         [ ("values", Map.fromList [("price", VNat 100)]),

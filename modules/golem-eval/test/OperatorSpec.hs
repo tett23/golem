@@ -25,7 +25,7 @@ exprOf src =
 
 -- | The value, or the code of the diagnostic.
 ev :: Text -> Either Text Value
-ev src = either (Left . (\(DiagnosticCode c) -> c) . diagCode) Right (evalExpr (Env Map.empty Map.empty) (exprOf src))
+ev src = either (Left . (\(DiagnosticCode c) -> c) . diagCode) Right (evalExpr (plainEnv Map.empty Map.empty) (exprOf src))
 
 -- | The text the value is embedded as in prose, or the code of the diagnostic.
 shown :: Text -> Either Text Text

@@ -244,5 +244,19 @@ tests =
       testCase "escapes" $
         shapeOf "\\# 見出しではない \\[ 50% \\\\\n" [para [Escaped '#', Text " 見出しではない ", Escaped '[', Text " 50% ", Escaped '\\']],
       testCase "a proofreading comment and a comment" $
-        shapeOf "a%% x %%b%%= 校正 %%c\n" [para [Text "ab", ProofComment "校正", Text "c"]]
+        shapeOf "a%% x %%b%%= 校正 %%c\n" [para [Text "ab", ProofComment "校正", Text "c"]],
+      -- the commands and the functions of a namespace (docs/adr/0162)
+      testCase "a command of a namespace" $
+        shapeOf
+          "[book.tax-included 1000] [= book.total([1, 2]) + 1]\n\n@book.word-table data/words.tsv\n"
+          [ para
+              [ Command (l "book.tax-included") [l (Positional (Word "1000"))] [],
+                Text " ",
+                Expr (bin Add (l (ECall "book.total" [l (EArray [int 1, int 2])])) (int 1))
+              ],
+            BlockCommand (l "book.word-table") [l (Positional (Word "data/words.tsv"))] []
+          ],
+      testCase "a name of two dots is no command" $ do
+        let (_, _, ds) = parseAst fid "[a.b.c]\n"
+        assertBool "an error" (not (null ds))
     ]

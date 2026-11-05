@@ -608,6 +608,21 @@ noticeTests =
               assertBool err ("notice[G02063]" `isInfixOf` err)
           )
           [build <> ["--verbose"], ["check", "-v"], ["lint", "--verbose"]],
+      -- docs/adr/0161, docs/adr/0162: an info of a .emet a .gm uses
+      testCase "golem check gives E05108 with --verbose only" $ do
+        let files =
+              [ (p, if p == "manifest.toml" then c <> "\n[functions.requires]\nfile = [\"w.tsv\"]\n" else c) | (p, c) <- noticeFiles, p /= "a.gm"
+              ]
+                <> [ ("a.gm", "@import f.emet as f\n\n[f.x]\n"),
+                     ("f.emet", "pub inline x :: <file \"w.tsv\"> Inlines\nx = Inline.text \"x\"\n"),
+                     ("w.tsv", "w\n")
+                   ]
+        (code, quiet) <- golemIn files ["check"]
+        assertEqual quiet ExitSuccess code
+        assertBool quiet (not ("E05108" `isInfixOf` quiet))
+        (code', loud) <- golemIn files ["check", "--verbose"]
+        assertEqual loud ExitSuccess code'
+        assertBool loud ("info[E05108]" `isInfixOf` loud),
       testCase "--verbose and --no-notices together drop the notices" $ do
         (code, err) <- golemIn noticeFiles ["check", "-v", "--no-notices"]
         code @?= ExitSuccess

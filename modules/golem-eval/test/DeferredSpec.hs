@@ -9,7 +9,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
-import Golem.Eval.Expr (Env (..), evalExpr)
+import Golem.Eval.Expr (evalExpr, plainEnv)
 import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Parser (parseAst)
@@ -118,8 +118,8 @@ tests =
         deferred <- case deferredOf src of
           [e] -> pure e
           other -> annotateShow other >> failure
-        evalExpr (Env Map.empty docNs) deferred
-          === evalExpr (Env (Map.fromList [("a", setValue a), ("b", setValue b)]) docNs) original
+        evalExpr (plainEnv Map.empty docNs) deferred
+          === evalExpr (plainEnv (Map.fromList [("a", setValue a), ("b", setValue b)]) docNs) original
     ]
   where
     tshow :: Integer -> Text

@@ -9,7 +9,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Driver
 import Golem.Driver.Pdf (pdfXPeople)
 import Golem.Epub (packageDocument)
-import Golem.Eval.Expr (Env (..), evalExpr)
+import Golem.Eval.Expr (evalExpr, plainEnv)
 import Golem.Eval.Value (Value (..))
 import Golem.Parser (parseAst)
 import Golem.Parser.AST
@@ -88,7 +88,7 @@ metadataOf src = either (assertFailure . show) (pure . manifestMetadata) (parseM
 evalMeta :: Text -> Text -> IO (Either Text Value)
 evalMeta manifest src = do
   md <- metadataOf manifest
-  let env = Env Map.empty (Map.singleton "meta" (metadataValues md))
+  let env = plainEnv Map.empty (Map.singleton "meta" (metadataValues md))
   case parseAst (FileId 0) ("[= " <> src <> "]\n") of
     (File _ [Located _ (Paragraph [Located _ (Expr e)])], _, []) ->
       pure (either (Left . (\(DiagnosticCode c) -> c) . diagCode) Right (evalExpr env e))

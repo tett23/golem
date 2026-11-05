@@ -225,7 +225,9 @@ loadSources overlay root mfid ft0 manifest = do
                   case [pathDiagnostic (isSpan s) (T.unpack (isPath s)) e | (s, Left e) <- resolved] of
                     errs@(_ : _) -> failed errs
                     [] -> do
-                      let step (ftA, sn, es, acc) (s, Right rel) =
+                      -- a .emet is no source: its path is checked, and golem-emet reads it (docs/adr/0162)
+                      let step acc (s, _) | isEmet s = acc
+                          step (ftA, sn, es, acc) (s, Right rel) =
                             let w = writtenPath (T.unpack (isPath s))
                              in case caseCollision sn w rel of
                                   Just c -> (ftA, sn, es, acc <> [caseDiagnostic (isSpan s) c])
@@ -233,6 +235,7 @@ loadSources overlay root mfid ft0 manifest = do
                                     let (tfid, ftB) = registerFile rel ftA
                                      in (ftB, see w rel sn, es <> [(tfid, s)], acc)
                           step acc (_, Left _) = acc
+                          isEmet s = ".emet" `T.isSuffixOf` isPath s
                           (ft', seen', out, collisions) = foldl step (ft, seen, [], []) resolved
                       if not (null collisions)
                         then failed collisions

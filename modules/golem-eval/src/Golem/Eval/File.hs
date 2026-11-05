@@ -54,6 +54,7 @@ import Golem.Doc.IR
 import Golem.Eval.Analysis (analyse)
 import Golem.Eval.Builtin
 import Golem.Eval.Expr
+import Golem.Eval.Functions
 import Golem.Eval.Number (exactText)
 import Golem.Eval.RegexStyle (applyRegexStyles, regexRules)
 import Golem.Eval.Settings
@@ -63,7 +64,7 @@ import Golem.Parser.Lower qualified as A (numberWord)
 import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportSite (..), importSite)
-import Golem.Project.Paths (PathError (..), pathErrorMessage)
+import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
 import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Sp (..), Style, kentenShapeNames, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
 import Golem.Syntax
 import Golem.Syntax.Text (isSpaceTab, tshow)
@@ -120,7 +121,9 @@ data EvalContext = EvalContext
     -- | how the file is read (docs/adr ADR 0013)
     ctxSource :: !SourceSettings,
     -- | style.toml as read, which the @style-def of a file is laid over (docs/adr ADR 0014)
-    ctxStyle :: !Style
+    ctxStyle :: !Style,
+    -- | the functions of the .emet of the project (docs/adr/0162)
+    ctxFunctions :: !FunctionTable
   }
 
 -- | A file referenced by @figure, @table or @listing (golem-eval ADR 0003).
@@ -169,6 +172,8 @@ data EvalResult = EvalResult
 data St = St
   { stVars :: !(Map Text Value),
     stNamespaces :: !(Map Text (Map Text Value)),
+    -- | the namespaces of the .emet the file imports (docs/adr/0162)
+    stFunctions :: !(Map Text FunctionRef),
     stDefined :: ![(Text, SrcSpan)],
     stRefs :: !(Set Text),
     stNsRefs :: !(Map Text (Set Text)),
@@ -184,8 +189,13 @@ data St = St
 
 type M = State St
 
+{- | A diagnostic of the file; one of a call through a namespace whose
+.emet could not be loaded is not reported (docs/adr/0162).
+-}
 report :: Diagnostic -> M ()
-report d = modify' (\s -> s {stDiags = stDiags s <> [d]})
+report d
+  | isUnloaded d = pure ()
+  | otherwise = modify' (\s -> s {stDiags = stDiags s <> [d]})
 
 err :: Text -> SrcSpan -> Text -> M ()
 err code sp msg = report (diagnostic code Error sp msg)
@@ -215,14 +225,14 @@ evalFile ctx0 (A.File fid blocks0) =
       (local, styleDiags) = fileStyles (ctxStyle ctx0) header
       ctx = (withFileStyles local ctx0) {ctxSource = source}
       blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
-      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty Map.empty
+      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty Map.empty
       (bs0, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
       (bs, nestedDiags) = nestedBreaks bs0
       breakDiags = nestedDiags <> conflictingBreaks bs <> blankLinesInRow bs
       doc0 = Document fid bs
       (doc, filterDiags) = case phApplyFilters (ctxPlugins ctx) (ctxPath ctx) doc0 of
         Left ds -> (doc0, ds)
-        Right (d, ws) -> (d, ws <> unknownParaStyles ctx d)
+        Right (d, ws) -> (fillFilterKenten ctx d, ws <> unknownParaStyles ctx d <> functionFilterNames ctx d)
       -- the regex styles last, so that the text of filters is matched too (docs/adr ADR 0015)
       rules = regexRules (withLocalStyles (ctxStyle ctx0) local)
    in EvalResult
@@ -439,7 +449,7 @@ splitParagraph = concatMap paragraph . chunks
 -- ------------------------------------------------------------------ blocks
 
 env :: M Env
-env = gets (\s -> Env (stVars s) (stNamespaces s))
+env = gets (\s -> Env (stVars s) (stNamespaces s) (stFunctions s))
 
 block :: SrcSpan -> BlockBody -> Block
 block sp = Block sp Nothing
@@ -509,9 +519,17 @@ standalone ctx sp (A.Located nsp name) args body = case name of
       (Right (ImportSite path ns _), [_, _, A.Located nssp _]) -> do
         if ns `elem` reservedNames
           then err "G02023" nssp ("予約語は名前空間に使えません: " <> ns)
-          else do
-            let vals = fromMaybe Map.empty (Map.lookup (T.unpack path) (ctxImports ctx))
-            modify' (\s -> s {stNamespaces = Map.insert ns vals (stNamespaces s), stImports = stImports s <> [(ns, T.unpack path, sp)]})
+          else
+            if ".emet" `T.isSuffixOf` path
+              then -- the functions of a .emet (docs/adr/0162)
+                let table = ctxFunctions ctx
+                    ref = case normalizeRelative (T.unpack path) >>= \p -> maybe (Left Missing) Right (Map.lookup p (ftFiles table)) of
+                      Right fns | not (ftUnloaded table) -> Loaded fns
+                      _ -> Unloaded
+                 in modify' (\s -> s {stFunctions = Map.insert ns ref (stFunctions s), stImports = stImports s <> [(ns, T.unpack path, sp)]})
+              else do
+                let vals = fromMaybe Map.empty (Map.lookup (T.unpack path) (ctxImports ctx))
+                modify' (\s -> s {stNamespaces = Map.insert ns vals (stNamespaces s), stImports = stImports s <> [(ns, T.unpack path, sp)]})
       (Left d, _) -> report d
       -- importSite accepts three arguments only
       (Right _, _) -> pure ()
@@ -541,6 +559,7 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   _
     | name `elem` attributeCommands -> err "G02010" sp ("@" <> name <> " の後にブロックがありません") >> pure []
     | Just pb <- Map.lookup name (phBlocks (ctxPlugins ctx)) -> pluginBlock ctx sp pb args body
+    | Just (ns, n) <- splitNamespace name -> functionBlock ctx sp nsp ns n args body
     | otherwise -> err "G02009" nsp ("未知のブロックコマンドです: @" <> name) >> pure []
 
 {- | A block command of a plugin (docs/adr/0122): its arguments as a plugin
@@ -589,6 +608,208 @@ pluginArgs ctx sp args = forM args $ \(A.Located _ a) -> case a of
   A.Positional v -> fmap PluginPositional <$> argValue ctx sp v
   A.Keyword (A.Located _ k) v -> fmap (PluginKeyword k) <$> argValue ctx sp v
   _ -> pure (Right (PluginPositional VNil))
+
+-- ------------------------------------------------------------------ functions of .emet
+
+{- | The namespace of a command of a .emet (docs/adr/0162): Left with the
+diagnostic of a namespace the file has not imported, Nothing for one whose
+.emet could not be loaded (nothing is reported), or its functions.
+-}
+functionNamespace :: Text -> SrcSpan -> Text -> Text -> M (Either Diagnostic (Maybe FunctionNamespace))
+functionNamespace code nsp ns shown = do
+  -- the namespace is used, for the lint of unused imports (G05003)
+  modify' (\s -> s {stNsRefs = Map.insertWith Set.union ns (Set.singleton shown) (stNsRefs s)})
+  refs <- gets stFunctions
+  isVars <- gets (Map.member ns . stNamespaces)
+  pure $ case Map.lookup ns refs of
+    Just (Loaded fns) -> Right (Just fns)
+    Just Unloaded -> Right Nothing
+    Nothing
+      | isVars -> Left (diagnostic code Error nsp ("名前空間 " <> ns <> " は .gm の変数の取り込みで、コマンドを持ちません: " <> shown))
+      | otherwise -> Left (diagnostic code Error nsp ("未定義の名前空間 " <> ns <> " のコマンドです: " <> shown))
+
+{- | The values of the arguments of a command of a .emet (docs/adr/0162),
+fitted to what it takes: the positional ones, the variable ones as an
+array, and the keyword ones in the order of the signature, a left out one
+with its default. G02119 for a keyword argument the signature has not,
+G02120 for the number of the positional ones, G02121 for a value of
+another type. Nothing after an error, which is reported.
+-}
+functionArgs :: EvalContext -> SrcSpan -> Text -> Params -> [A.Located A.Argument] -> M (Maybe [Value])
+functionArgs ctx sp name ps args = do
+  vals <- forM args $ \la@(A.Located _ a) -> case a of
+    A.Positional _ -> fmap (Nothing,) <$> plainArgValue ctx sp (argOf la)
+    A.Keyword (A.Located _ k) _ -> fmap (Just k,) <$> plainArgValue ctx sp (argOf la)
+    _ -> pure (Right (Nothing, VNil))
+  case sequence vals of
+    Left d -> report d >> pure Nothing
+    Right vs -> do
+      let known = map kpName (prKeywords ps)
+          unknown = [(asp, k) | (A.Located asp (A.Keyword (A.Located _ k) _)) <- args, k `notElem` known]
+      mapM_ (\(asp, k) -> err "G02119" asp ("シグネチャにないキーワード引数です: " <> k <> "（" <> name <> (if null known then " はキーワード引数を取りません）" else " のキーワード引数: " <> T.intercalate "、" known <> "）"))) unknown
+      if not (null unknown)
+        then pure Nothing
+        else case positionalValues ps [v | (Nothing, v) <- vs] of
+          Left e -> report (argErrorDiagnostic sp name e) >> pure Nothing
+          Right pos -> do
+            let given = [(k, v) | (Just k, v) <- vs]
+                keyword kp = case lookup (kpName kp) given of
+                  Nothing -> Right (kpDefault kp)
+                  Just v -> maybe (Left (diagnostic "G02121" Error sp ("引数の型が合いません: " <> name <> " のキーワード引数 " <> kpName kp <> " は " <> argTypeText (kpType kp) <> " を求めますが、" <> typeName v <> "です"))) Right (fitValue (kpType kp) v)
+            case mapM keyword (prKeywords ps) of
+              Left d -> report d >> pure Nothing
+              Right kws -> pure (Just (pos <> kws))
+  where
+    argOf (A.Located asp a) = case a of
+      A.Positional v -> A.Located asp v
+      A.Keyword _ v -> A.Located asp v
+      _ -> A.Located asp (A.Word "")
+
+-- | An inline command of a .emet (docs/adr/0162); after any error, the function is not called.
+functionInline :: EvalContext -> Bool -> SrcSpan -> SrcSpan -> Text -> Text -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
+functionInline ctx inHeading sp nsp ns n args slots =
+  functionNamespace "G02022" nsp ns qualified >>= \case
+    Left d -> report d >> pure []
+    Right Nothing -> pure []
+    Right (Just fns) -> case Map.lookup n (fnInline fns) of
+      Nothing -> err "G02022" nsp ("名前空間 " <> ns <> " にないインラインのコマンドです: " <> qualified <> blockHint) >> pure []
+        where
+          blockHint = if Map.member n (fnBlock fns) then "（ブロックコマンドの @" <> qualified <> " はあります）" else ""
+      Just f -> do
+        vals <- functionArgs ctx sp qualified (ifParams f) args
+        case vals of
+          Nothing -> pure []
+          Just vs
+            | length slots /= ifSlots f -> err "G02122" sp ("散文スロットの数が合いません: " <> qualified <> " は " <> tshow (ifSlots f) <> " 個の散文スロットを取りますが、" <> tshow (length slots) <> " 個あります") >> pure []
+            | otherwise -> do
+                slots' <- mapM (evalInlines ctx inHeading) slots
+                case ifCall f vs slots' sp of
+                  Left ds -> mapM_ report ds >> pure []
+                  Right out -> do
+                    let out' = map (fillKenten ctx) out
+                    ok <- outputChecked ctx sp out' []
+                    pure (if ok then out' else [])
+  where
+    qualified = ns <> "." <> n
+
+-- | A block command of a .emet (docs/adr/0162); after any error, the function is not called.
+functionBlock :: EvalContext -> SrcSpan -> SrcSpan -> Text -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+functionBlock ctx sp nsp ns n args body =
+  functionNamespace "G02009" nsp ns ("@" <> qualified) >>= \case
+    Left d -> report d >> pure []
+    Right Nothing -> pure []
+    Right (Just fns) -> case Map.lookup n (fnBlock fns) of
+      Nothing -> err "G02009" nsp ("名前空間 " <> ns <> " にないブロックコマンドです: @" <> qualified <> inlineHint) >> pure []
+        where
+          inlineHint = if Map.member n (fnInline fns) then "（インラインのコマンドの [" <> qualified <> "] はあります）" else ""
+      Just f -> do
+        vals <- functionArgs ctx sp qualified (bfParams f) args
+        case vals of
+          Nothing -> pure []
+          Just vs
+            | not (bfBody f) && not (null body) -> err "G02123" sp ("本体を受け取らない関数のブロックコマンドに本体があります: @" <> qualified) >> pure []
+            | otherwise -> do
+                body' <- evalBlocks ctx body
+                case bfCall f vs body' sp of
+                  Left ds -> mapM_ report ds >> pure []
+                  Right out -> do
+                    let out' = map (fillKentenBlock ctx) out
+                    ok <- outputChecked ctx sp [] out'
+                    pure (if ok then out' else [])
+  where
+    qualified = ns <> "." <> n
+
+{- | The names a function put in its output, checked as the built-in
+commands check them (docs/adr/0162): a character style (G02018), a
+swatch (G02017), a paragraph style (G02047), a shape of kenten (G02039)
+and a key of the bibliography (G02021), at the call. False after an
+error: the caller drops the output.
+-}
+outputChecked :: EvalContext -> SrcSpan -> [Inline] -> [Block] -> M Bool
+outputChecked ctx sp is bs = do
+  let errors = nameErrors ctx is bs
+  mapM_ (\(c, m) -> err c sp m) errors
+  pure (null errors)
+
+-- | The errors of the names of inlines and blocks, each name once.
+nameErrors :: EvalContext -> [Inline] -> [Block] -> [(Text, Text)]
+nameErrors ctx is bs =
+  let inl = universeInlines (is <> concatMap blockInlines (universeBlocks bs))
+      once xs = Set.toList (Set.fromList xs)
+   in [("G02018", "定義されていない文字スタイルです: " <> x) | x <- once [x | CharStyle _ x _ <- inl], not (Set.member x (ctxCharStyles ctx))]
+        <> [("G02017", "style.toml にないスウォッチです: " <> x) | x <- once [x | Color _ x _ <- inl], not (Set.member x (ctxSwatches ctx))]
+        <> [("G02047", "定義されていない段落スタイルです: " <> x) | x <- once [x | Block _ _ (Paragraph (Just x) _) <- universeBlocks bs], not (Map.member x (ctxParaStyles ctx))]
+        <> [("G02039", "未知の圏点の形です: " <> x) | x <- once [x | Kenten _ (Just x) _ <- inl], x `notElem` kentenShapes]
+        <> [("G02021", "書誌データにないキーです: " <> x) | x <- once [x | Cite _ x <- inl], not (Set.member x (ctxCiteKeys ctx))]
+  where
+    universeBlocks = concatMap (\b -> b : universeBlocks (innerBlocks b))
+    innerBlocks (Block _ _ body) = case body of
+      BulletList items -> concatMap itemBlocks items
+      OrderedList items -> concatMap itemBlocks items
+      DefList gs -> concat (concatMap dgDefs gs)
+      FigureBlock f -> figCaption f
+      _ -> []
+    blockInlines (Block _ _ body) = case body of
+      Paragraph _ xs -> xs
+      Heading _ a xs -> fromMaybe [] (haTocTitle a) <> xs
+      Table _ h rows -> concat h <> concat (concat rows)
+      DefList gs -> concat (concatMap dgTerms gs)
+      CodeBlock c -> fromMaybe [] (codeCaption c)
+      _ -> []
+    universeInlines = concatMap (\i -> i : universeInlines (children i))
+    children = \case
+      Kenten _ _ xs -> xs
+      Color _ _ xs -> xs
+      CharStyle _ _ xs -> xs
+      Note _ _ xs -> xs
+      Sidenote _ _ xs -> xs
+      ChannelItem _ c -> ciBody c
+      Ruby _ _ segs -> concat [mapMaybe withRubyInline (rsBase g) | g <- segs]
+      _ -> []
+    withRubyInline :: InlineNoRuby -> Maybe Inline
+    withRubyInline = \case
+      Text a t -> Just (Text a t)
+      _ -> Nothing
+
+{- | The errors of the names of a document after the filters of .emet
+(docs/adr/0162), at the top of the file: the filters of a plugin check
+the paragraph styles alone ('unknownParaStyles').
+-}
+functionFilterNames :: EvalContext -> Document -> [Diagnostic]
+functionFilterNames ctx d
+  | Set.member (ctxPath ctx) (ftFilterFiles (ctxFunctions ctx)) =
+      [diagnostic c Error (mkSpan (ctxFile ctx) 0 0) m | (c, m) <- nameErrors ctx [] (docBlocks d), c /= "G02047"]
+  | otherwise = []
+
+-- | 'fillKenten' over a document a filter of a .emet applies to (docs/adr/0162).
+fillFilterKenten :: EvalContext -> Document -> Document
+fillFilterKenten ctx d
+  | Set.member (ctxPath ctx) (ftFilterFiles (ctxFunctions ctx)) = d {docBlocks = map (fillKentenBlock ctx) (docBlocks d)}
+  | otherwise = d
+
+-- | A kenten a function made without a shape takes the default of style.toml (docs/adr/0162).
+fillKenten :: EvalContext -> Inline -> Inline
+fillKenten ctx = \case
+  Kenten s Nothing xs -> Kenten s (Just (ctxDefaultKenten ctx)) (map (fillKenten ctx) xs)
+  Kenten s sh xs -> Kenten s sh (map (fillKenten ctx) xs)
+  Color s c xs -> Color s c (map (fillKenten ctx) xs)
+  CharStyle s c xs -> CharStyle s c (map (fillKenten ctx) xs)
+  Note s n xs -> Note s n (map (fillKenten ctx) xs)
+  Sidenote s n xs -> Sidenote s n (map (fillKenten ctx) xs)
+  i -> i
+
+-- | 'fillKenten' in the inlines of blocks.
+fillKentenBlock :: EvalContext -> Block -> Block
+fillKentenBlock ctx (Block sp l body) = Block sp l $ case body of
+  Paragraph st xs -> Paragraph st (map f xs)
+  Heading lv a xs -> Heading lv a (map f xs)
+  BulletList items -> BulletList [ListItem n (map (fillKentenBlock ctx) bs) | ListItem n bs <- items]
+  OrderedList items -> OrderedList [ListItem n (map (fillKentenBlock ctx) bs) | ListItem n bs <- items]
+  DefList gs -> DefList [DefGroup (map (map f) ts) (map (map (fillKentenBlock ctx)) ds) | DefGroup ts ds <- gs]
+  Table al h rows -> Table al (map (map f) h) (map (map (map f)) rows)
+  other -> other
+  where
+    f = fillKenten ctx
 
 {- | An attribute group and the block it applies to. Without a block after
 it, a last block command that is not an attribute (a figure, @style with a
@@ -1129,7 +1350,7 @@ them: the diagnostics, and whether the figure passes.
 -}
 figureChecks :: EvalContext -> SrcSpan -> Figure -> ([Diagnostic], Bool)
 figureChecks ctx sp f =
-  let st0 = St Map.empty Map.empty [] Set.empty Map.empty [] 0 0 [] Map.empty Map.empty
+  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 [] Map.empty Map.empty
       (ok, st) = runState (checkFigure sp (fmap isJust . asset ctx sp) f) st0
    in (stDiags st, ok)
 
@@ -1733,6 +1954,8 @@ noteRefs e = do
       A.EVar (ns : n : _) -> Map.singleton ns (Set.singleton n)
       A.EArray xs -> Map.unionsWith Set.union (map nsRefsOf xs)
       A.EHash kvs -> Map.unionsWith Set.union (map (nsRefsOf . snd) kvs)
+      -- a function of a .emet uses its namespace (docs/adr/0162)
+      A.ECall f xs | Just (ns, n) <- splitNamespace f -> Map.unionsWith Set.union (Map.singleton ns (Set.singleton n) : map nsRefsOf xs)
       A.ECall _ xs -> Map.unionsWith Set.union (map nsRefsOf xs)
       A.EUnary _ a -> nsRefsOf a
       A.EBinary _ a b -> Map.unionWith Set.union (nsRefsOf a) (nsRefsOf b)
@@ -1791,7 +2014,8 @@ evalInline ctx inHeading (A.Located sp i) = case i of
   A.Command n args slots -> prepareArgs args >>= maybe (pure []) (\args' -> evalCommand ctx inHeading sp n args' (codeSlots n args' slots))
   where
     exprInline en e =
-      if usesDoc e
+      -- a function of a .emet runs at S0 alone, and doc is no value there (docs/adr/0162)
+      if usesDoc e && not (callsFunction e)
         then
           if inHeading
             then err "G02014" sp "見出しの中では doc を参照できません" >> pure []
@@ -1839,6 +2063,7 @@ evalCommand ctx inHeading sp (A.Located nsp name) args slots
   | Just (Overridable o) <- parsed, Just pc <- Map.lookup o (phOverrides (ctxPlugins ctx)) = plugin pc
   | Just b <- parsed = builtin ctx inHeading sp b args slots
   | Just pc <- pluginCommandName name >>= (`Map.lookup` phCommands (ctxPlugins ctx)) = plugin pc
+  | Just (ns, n) <- splitNamespace name = functionInline ctx inHeading sp nsp ns n args slots
   | otherwise = err "G02022" nsp ("未知のコマンドです: " <> name) >> pure []
   where
     parsed = parseBuiltin name

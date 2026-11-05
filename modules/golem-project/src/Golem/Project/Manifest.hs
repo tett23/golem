@@ -15,6 +15,7 @@ module Golem.Project.Manifest
     PluginDecl (..),
     PluginSource (..),
     FilterDecl (..),
+    FilterSource (..),
     parseManifest,
     chapterFiles,
     applyEdits,
@@ -202,11 +203,19 @@ data PluginSource
     PluginPath !FilePath
   deriving stock (Eq, Show)
 
+{- | A filter of [[filters]]: of a plugin, or a function of a .emet
+(docs/adr/0162), its name, and the files it applies to. The filters apply
+in the order of the manifest, of plugins and of .emet alike.
+-}
 data FilterDecl = FilterDecl
-  { fdPlugin :: !Text,
+  { fdSource :: !FilterSource,
     fdFilter :: !Text,
     fdFiles :: ![FilePath]
   }
+  deriving stock (Eq, Show)
+
+-- | Where a filter is: a plugin by its name, or a .emet by its path from the root.
+data FilterSource = FilterPlugin !Text | FilterFunction !FilePath
   deriving stock (Eq, Show)
 
 {- | Chapter files in manifest order, flattened, with their master pages
@@ -456,11 +465,15 @@ instance FromValue PluginDecl where
     pure (PluginDecl src (fromMaybe [] o) (maybe Map.empty (Map.map T.unpack) d))
 
 instance FromValue FilterDecl where
-  fromValue = parseTableFromValue $ do
-    p <- reqKey "plugin"
-    f <- reqKey "filter"
-    fs <- reqKey "files"
-    pure (FilterDecl p f (map T.unpack fs))
+  fromValue v = do
+    (p, fn, f, fs) <- parseTableFromValue ((,,,) <$> optKey "plugin" <*> optKey "function" <*> reqKey "filter" <*> reqKey "files") v
+    -- plugin or function, one of them (docs/adr/0162)
+    src <- case (p, fn) of
+      (Just x, Nothing) -> pure (FilterPlugin x)
+      (Nothing, Just x) -> pure (FilterFunction (T.unpack x))
+      (Just _, Just _) -> failAt (valueAnn v) "フィルタには plugin と function のどちらか一方だけを書きます"
+      (Nothing, Nothing) -> failAt (valueAnn v) "フィルタには plugin か function のどちらかを書きます"
+    pure (FilterDecl src f (map T.unpack fs))
 
 {- | Parses TOML and matches it against a schema. Unknown keys (warnings
 in toml-parser) are errors: a misspelt key must not be silently ignored.

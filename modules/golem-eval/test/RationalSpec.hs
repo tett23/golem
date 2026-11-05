@@ -32,7 +32,7 @@ exprOf src =
 
 -- | The value, or the code of the diagnostic.
 ev :: Text -> Either Text Value
-ev src = either (Left . code) Right (evalExpr (Env Map.empty Map.empty) (exprOf src))
+ev src = either (Left . code) Right (evalExpr (plainEnv Map.empty Map.empty) (exprOf src))
 
 code :: Diagnostic -> Text
 code d = let DiagnosticCode c = diagCode d in c
@@ -43,7 +43,7 @@ shown src = ev src >>= either (Left . code) Right . embedValue (mkSpan (FileId 0
 
 -- | The code and the message of a failed evaluation or embedding.
 shownm :: Text -> Either (Text, Text) Text
-shownm src = case evalExpr (Env Map.empty Map.empty) (exprOf src) of
+shownm src = case evalExpr (plainEnv Map.empty Map.empty) (exprOf src) of
   Left d -> Left (code d, diagMessage d)
   Right v -> either (\d -> Left (code d, diagMessage d)) Right (embedValue (mkSpan (FileId 0) 0 0) v)
 
@@ -193,7 +193,7 @@ tests =
             annotate (T.unpack t)
             let (neg, body) = maybe (False, t) (True,) (T.stripPrefix "-" t)
                 lit = if T.any (== '.') body then body else body <> ".0"
-            case evalExpr (Env Map.empty Map.empty) (exprOf lit) of
+            case evalExpr (plainEnv Map.empty Map.empty) (exprOf lit) of
               Right v -> ((if neg then negate else id) <$> asRat v) === Just q
               Left d -> annotateShow d >> failure,
       testProperty "x + y - y == x, and x / x == 1" $ property $ do

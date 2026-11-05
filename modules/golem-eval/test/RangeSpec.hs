@@ -9,7 +9,7 @@ import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Golem.Doc.IR
 import Golem.Eval.Analysis (StaticType (..), inferExpr)
-import Golem.Eval.Expr (Env (..), evalExpr)
+import Golem.Eval.Expr (Env, evalExpr, plainEnv)
 import Golem.Eval.File (Asset (..), EvalContext (..))
 import Golem.Eval.Value (Value (..))
 import Golem.Parser (parseAst)
@@ -29,7 +29,7 @@ exprOf src =
 
 -- | An environment with r = 2...3, as @set r = 2...3 makes it.
 rangeEnv :: Env
-rangeEnv = Env (Map.fromList [("r", VRange 2 3)]) Map.empty
+rangeEnv = plainEnv (Map.fromList [("r", VRange 2 3)]) Map.empty
 
 -- | The value of an expression in 'rangeEnv', or the code of its diagnostic.
 ev :: Text -> Either Text Value

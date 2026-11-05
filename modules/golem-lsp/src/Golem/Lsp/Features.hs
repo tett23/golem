@@ -38,7 +38,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver (Evaluated (..), metadataValues)
-import Golem.Eval.Expr (Env (..), embedValue, evalExpr)
+import Golem.Eval.Expr (embedValue, evalExpr, plainEnv)
 import Golem.Eval.File (EvalResult (..), Usage (..), builtinInlineCommands)
 import Golem.Eval.Value (Value (..), typeName)
 import Golem.Fmt (FormatResult (..), format)
@@ -550,7 +550,7 @@ hover ws path off = do
           chapterCount = maybe 0 (length . projectChapters . evProject) (wsEvaluated ws)
           docNs = Map.fromList [("chapters", VHash (Map.fromList [("count", VNat (fromIntegral chapterCount))]))]
           s1 = isJust (wsEvaluated ws >>= evBook)
-          env = Env vars (Map.insert "doc" docNs imports)
+          env = plainEnv vars (Map.insert "doc" docNs imports)
        in case evalExpr env e of
             Left d -> "評価できません: " <> diagMessage d
             Right v ->

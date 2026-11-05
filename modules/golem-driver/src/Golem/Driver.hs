@@ -61,15 +61,18 @@ import Golem.Doc.Bibliography.Csl (CslJsonError (..), decodeCslJson)
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Driver.Fonts (cff2FontDiagnostics, golemFontProvider)
-import Golem.Driver.Functions (RequiredFiles (..), loadRequiredFiles, requiredFileSet)
+import Golem.Driver.Functions (LoadedFunctions (..), RequiredFiles (..), loadFunctions, loadRequiredFiles, requiredFileSet, requirementHandlers)
 import Golem.Driver.Html
 import Golem.Driver.Pdf
-import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
+import Golem.Driver.Plugins (FunctionFilter, LoadedPlugins (..), loadPlugins)
 import Golem.Driver.Svg (activeMessage)
+import Golem.Emet (Handlers (..), Program)
+import Golem.Emet.Gm (filterOf, functionNamespaces)
 import Golem.Epub
 import Golem.Eval.Builtin (unPluginCommandName)
-import Golem.Eval.Expr (Env (..), embedValue, evalExpr)
+import Golem.Eval.Expr (embedValue, evalExpr, plainEnv)
 import Golem.Eval.File
+import Golem.Eval.Functions (FunctionTable (..), noFunctions)
 import Golem.Eval.Value
 import Golem.Html
 import Golem.Parser (parseAst)
@@ -159,7 +162,11 @@ data Evaluated = Evaluated
     -} evReevaluate :: FileId -> SourceFile -> EvalResult,
     {- | the names of the commands of the plugins, in order, for completion;
     empty when the plugins failed to load (docs/adr ADR 0031)
-    -} evPluginCommands :: ![Text]
+    -} evPluginCommands :: ![Text],
+    {- | the functions of the .emet the project uses (docs/adr/0162): the
+    program, Nothing after an error, and the .emet read
+    -} evFunctions :: !(Maybe Program),
+    evFunctionSources :: !(Map FileId SourceInfo)
   }
 
 -- | The styles each file defines, of the files that define any (docs/adr ADR 0014).
@@ -228,12 +235,23 @@ evaluateProjectWith overlay profile root = do
           (docs/adr ADR 0031) -}
           cacheDir <- defaultCacheDir
           lockText <- readMaybeText (root </> "plugins.lock")
-          LoadedPlugins hookE checkWarnings pluginSources <- loadPlugins root overlay cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) (dataFileBase project) (hostContext style) manifest0
           -- the files functions may read, whether or not a chapter calls a function (docs/adr/0161)
           required <- loadRequiredFiles root overlay (projectManifestFile project) manifest0
+          -- the functions of the .emet of @import and [[filters]] (docs/adr/0162)
+          (filterRootDiags, emetRoots) <- functionRoots root project
+          functions <-
+            if null emetRoots
+              then pure (LoadedFunctions [] Map.empty Nothing)
+              else loadFunctions root overlay (functionsFileBase project) manifest0 emetRoots
+          let handlers = requirementHandlers required
+              table = functionTableOf handlers project emetRoots functions
+              functionFilter = functionFilterOf handlers project (lfProgram functions)
+              filterNameDiags = unknownFilters project (lfProgram functions)
+          LoadedPlugins hookE checkWarnings pluginSources <- loadPlugins root overlay cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) (dataFileBase project) (hostContext style) functionFilter manifest0
           let (pluginErrors, hook) = either (,noPlugins) ([],) hookE
               -- the warnings of the checks of the data (docs/adr/0120) do not stop the plugins
-              pluginDiags = pluginErrors <> checkWarnings <> rqDiagnostics required
+              pluginDiags = pluginErrors <> checkWarnings <> rqDiagnostics required <> filterRootDiags <> lfDiagnostics functions <> filterNameDiags
+              functionFiles = Set.fromList [siPath si | si <- Map.elems (lfSources functions)]
               pluginCommands = sort (map unPluginCommandName (Map.keys (phCommands hook)))
               -- style.toml, which the context comes from, when a plugin asks for it: the LSP watches it (docs/adr/0121)
               contextFiles = Set.fromList ["style.toml" | not (null (phContextNames hook))]
@@ -246,7 +264,7 @@ evaluateProjectWith overlay profile root = do
               let assets = laAssets loaded
               (bibDiags, citeKeys, _) <- loadBibliography root manifest0
               let projectDiags = pluginDiags <> laDiagnostics loaded <> bibDiags
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded <> pluginSources) (laTableFiles loaded <> pluginDataFiles manifest0 <> requiredFileSet manifest0 <> contextFiles) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook Map.empty f sf)) pluginCommands))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded <> pluginSources <> lfSources functions) (laTableFiles loaded <> pluginDataFiles manifest0 <> requiredFileSet manifest0 <> contextFiles <> functionFiles) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook table Map.empty f sf)) pluginCommands (lfProgram functions) (lfSources functions)))
             else do
               let manifest = manifest0
                   -- one G03007 for each name, in the order of the chapters (golem-project ADR 0006)
@@ -259,13 +277,13 @@ evaluateProjectWith overlay profile root = do
               let assets = laAssets loaded
               -- G03026 and G03003 of the bibliography, for every target (golem-doc ADR 0004)
               (bibDiags, citeKeys, _) <- loadBibliography root manifest
-              let results = Map.map quiet (evalAll profile project style assets citeKeys hook)
+              let results = Map.map quiet (evalAll profile project style assets citeKeys hook table)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
                   projectDiags = defaultStyleNotice <> styleNoticeDiags <> masterDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
                   reassemble = assembleResults (phChannels hook) style manifest project projectDiags
                   (book, s1Diags) = reassemble results
-                  again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded <> pluginSources) (laTableFiles loaded <> pluginDataFiles manifest0 <> requiredFileSet manifest0 <> contextFiles) projectDiags s1Diags reassemble again pluginCommands))
+                  again f sf = quiet (reeval profile project style assets citeKeys hook table results f sf)
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded <> pluginSources <> lfSources functions) (laTableFiles loaded <> pluginDataFiles manifest0 <> requiredFileSet manifest0 <> contextFiles <> functionFiles) projectDiags s1Diags reassemble again pluginCommands (lfProgram functions) (lfSources functions)))
 
 {- | The files the plugins take as data (docs/adr/0105) and the .wasm of
 the plugins of the project (docs/adr/0109), which the LSP watches with
@@ -316,20 +334,20 @@ noFix d = d {diagFixes = []}
 evalDeferred :: DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text
 evalDeferred dv sp (DeferredExpr e) =
   let docNs = Map.fromList [("chapters", VHash (Map.fromList [("count", VNat (fromInteger (dvChapterCount dv)))]))]
-      en = Env Map.empty (Map.singleton "doc" docNs)
+      en = plainEnv Map.empty (Map.singleton "doc" docNs)
    in evalExpr en e >>= embedValue sp
 
 -- | Evaluates files in import order so that imports see their exports.
-evalAll :: Profile -> Project -> Style -> Map FilePath Asset -> Set.Set Text -> PluginHook -> Map FileId EvalResult
-evalAll profile project style assets citeKeys hook = foldl' step Map.empty (projectOrder project)
+evalAll :: Profile -> Project -> Style -> Map FilePath Asset -> Set.Set Text -> PluginHook -> FunctionTable -> Map FileId EvalResult
+evalAll profile project style assets citeKeys hook table = foldl' step Map.empty (projectOrder project)
   where
     step acc fid = case Map.lookup fid (projectSources project) of
       Nothing -> acc
-      Just sf -> Map.insert fid (reeval profile project style assets citeKeys hook acc fid sf) acc
+      Just sf -> Map.insert fid (reeval profile project style assets citeKeys hook table acc fid sf) acc
 
 -- | S0 of one file, with the exports of its imports taken from @acc@.
-reeval :: Profile -> Project -> Style -> Map FilePath Asset -> Set.Set Text -> PluginHook -> Map FileId EvalResult -> FileId -> SourceFile -> EvalResult
-reeval profile project style assets citeKeys hook acc fid sf =
+reeval :: Profile -> Project -> Style -> Map FilePath Asset -> Set.Set Text -> PluginHook -> FunctionTable -> Map FileId EvalResult -> FileId -> SourceFile -> EvalResult
+reeval profile project style assets citeKeys hook table acc fid sf =
   let ft = projectFiles project
       meta = metadataValues (manifestMetadata (projectManifest project))
       importsOfFile f = let ImportGraph g = projectImports project in Map.findWithDefault [] f g
@@ -355,7 +373,8 @@ reeval profile project style assets citeKeys hook acc fid sf =
             ctxAssets = assets,
             ctxPlugins = hook,
             ctxSource = sourceSettingsOf project fid,
-            ctxStyle = style
+            ctxStyle = style,
+            ctxFunctions = table
           }
    in evalFile ctx (sfAst sf)
 
@@ -371,7 +390,7 @@ evaluateLoose path text =
   let fid = FileId 0
       (ast, _, synDiags) = parseAst fid text
       -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
-      ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle
+      ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle noFunctions
       res = evalFile ctx ast
       syntax = checkText fid text <> synDiags
    in res {erDiagnostics = if hasErrors syntax then syntax else syntax <> erDiagnostics res}
@@ -498,6 +517,69 @@ assetUses project = Map.fromListWith Set.union [(p, Set.singleton u) | sf <- Map
 -- | The paths of the assets read as text, which have a FileId each ('loadAssets').
 assetTextPaths :: Project -> [FilePath]
 assetTextPaths project = [p | (p, us) <- Map.toList (assetUses project), any (`Set.member` us) [UseTable, UseListing]]
+
+{- | The .emet the project uses (docs/adr/0162), in the order they are met:
+those of @import of the sources, in the order of the files, then those of
+[[filters]]. A .emet of [[filters]] that is missing is G03002, one outside
+the root G03003, at the top of manifest.toml; the project checks those of
+@import as it checks the .gm.
+-}
+functionRoots :: FilePath -> Project -> IO ([Diagnostic], [FilePath])
+functionRoots root project = do
+  let imported = [p | sf <- Map.elems (projectSources project), site <- sfImports sf, ".emet" `T.isSuffixOf` isPath site, Right p <- [normalizeRelative (T.unpack (isPath site))]]
+      filtered = nub [p | FilterDecl (FilterFunction p) _ _ <- manifestFilters (projectManifest project)]
+      at = mkSpan (projectManifestFile project) 0 0
+  checked <- forM filtered $ \p ->
+    resolveInRoot root p >>= \case
+      Left Missing -> pure (Left (diagnostic "G03002" Error at ("[[filters]] の function のファイルがありません: " <> T.pack p)))
+      Left e -> pure (Left (diagnostic "G03003" Error at (T.pack (pathErrorMessage e <> ": " <> p))))
+      Right rel -> pure (Right rel)
+  pure (lefts checked, nub (imported <> rights checked))
+
+{- | The table of the functions for golem-eval (docs/adr/0162): the
+namespaces of the program, or, after an error of the .emet, none, whose
+calls report nothing.
+-}
+functionTableOf :: Handlers -> Project -> [FilePath] -> LoadedFunctions -> FunctionTable
+functionTableOf hs project roots lf =
+  let filterFiles = Set.fromList [rel | FilterDecl (FilterFunction _) _ fs <- manifestFilters (projectManifest project), f <- fs, Right rel <- [normalizeRelative f]]
+   in case lfProgram lf of
+        Just p -> FunctionTable (functionNamespaces hs p) False filterFiles
+        Nothing
+          | null roots -> noFunctions
+          | otherwise -> FunctionTable Map.empty True filterFiles
+
+{- | The filters of the .emet (docs/adr/0162), with the size of each .gm in
+bytes for their limit of steps. None after an error of the .emet.
+-}
+functionFilterOf :: Handlers -> Project -> Maybe Program -> FunctionFilter
+functionFilterOf hs project program emet name _path doc = do
+  p <- program
+  rel <- either (const Nothing) Just (normalizeRelative emet)
+  f <- filterOf hs p rel name
+  let bytes = maybe 0 (lengthWord8 . sfText) (Map.lookup (docFile doc) (projectSources project))
+  pure ((,[]) <$> f bytes doc)
+
+{- | G03001 at the top of manifest.toml for a filter of [[filters]] its .emet
+does not have (docs/adr/0162).
+-}
+unknownFilters :: Project -> Maybe Program -> [Diagnostic]
+unknownFilters project = \case
+  Nothing -> []
+  Just p ->
+    [ diagnostic "G03001" Error (mkSpan (projectManifestFile project) 0 0) ("function の .emet にないフィルタです: " <> T.pack emet <> " の " <> name)
+    | FilterDecl (FilterFunction emet) name _ <- manifestFilters (projectManifest project),
+      Right rel <- [normalizeRelative emet],
+      Nothing <- [filterOf (Handlers (const Nothing)) p rel name]
+    ]
+
+{- | The first FileId of the .emet (docs/adr/0162): after the files of data
+of the plugins, as many as their declarations name at most.
+-}
+functionsFileBase :: Project -> FileId
+functionsFileBase project =
+  let FileId base = dataFileBase project
+   in FileId (base + sum [Map.size (pdData d) | d <- Map.elems (manifestPlugins (projectManifest project))])
 
 {- | The first FileId of the files of data that the checks of the data of
 the plugins point at (docs/adr/0120): the one after the assets read as

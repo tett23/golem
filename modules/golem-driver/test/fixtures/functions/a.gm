@@ -1,0 +1,14 @@
+@import fn/book.emet as book
+
+# 関数
+
+本体は[book.tax-included 1000]、送料は[book.price 500 tax=false unit=" 円"]です。
+
+工程は[book.tags ・ 組版 校正 入稿]と進みます。
+
+合計は[= book.total([1200, 800, 450])]円、三つの和は[= book.sum(1, 2, 3)]です。
+
+@book.word-table
+  次の語を使います。
+
+[book.repeat 3: 繰り返し]

@@ -15,6 +15,7 @@ driver for it.
 module Golem.Emet.Builtins
   ( builtinSources,
     divInfo,
+    hiddenConstructors,
   )
 where
 
@@ -29,8 +30,166 @@ builtinSources :: [(Text, FilePath, Text)]
 builtinSources =
   [ ("List", "<builtin>/List.emet", listSource),
     ("String", "<builtin>/String.emet", stringSource),
-    ("File", "<builtin>/File.emet", "pub read :: String -> String\n")
+    ("File", "<builtin>/File.emet", "pub read :: String -> String\n"),
+    ("Inline", "<builtin>/Inline.emet", inlineSource),
+    ("Block", "<builtin>/Block.emet", blockSource)
   ]
+
+{- | The constructors of the built-in modules that no module may use: the
+one of @Inline.Deferred@, whose value is the index of a deferred
+expression of the IR (docs/adr/0162).
+-}
+hiddenConstructors :: [(Text, Text)]
+hiddenConstructors = [("Inline", "Opaque")]
+
+{- | The inlines of the semantic IR (docs/adr/0162), as the ABI with the
+plugins serialises them (the section シリアライズ形式 of the specification). The
+spans, the numbers of the notes and the expressions of Deferred are not
+fields: a node that comes in keeps them, and a node a function makes
+takes the place of its call. The functions are the short ways of making
+the nodes used most.
+-}
+inlineSource :: Text
+inlineSource =
+  T.unlines
+    [ "pub data Inline =",
+      "  Text String",
+      "  | Ruby (List RubySegment)",
+      "  | Kenten (Maybe String) (List Inline)",
+      "  | Color String (List Inline)",
+      "  | CharStyle String (List Inline)",
+      "  | Tcy String",
+      "  | Number Int (Maybe NumberStyle)",
+      "  | Ref RefKind String",
+      "  | Deferred Deferred",
+      "  | Note (List Inline)",
+      "  | Sidenote (List Inline)",
+      "  | IndexMark (List String) (List String)",
+      "  | Cite String",
+      "  | ProofComment String",
+      "  | LineBreak",
+      "  | Aki AkiAmount",
+      "  | ChannelItem String (Maybe String) (Maybe String) (List Inline)",
+      "",
+      "pub data RubySegment = RubySegment (List Inline) (Maybe String)",
+      "",
+      "pub data NumberStyle = Kanji | KanjiDigits | TateChuYoko",
+      "",
+      "pub data RefKind = RefNumber | RefTitle | RefPage",
+      "",
+      "pub data AkiAmount = Zw Rat | Sp Nat",
+      "",
+      "pub data Deferred = Opaque Nat",
+      "",
+      "pub text :: String -> List Inline",
+      "text s = [Text s]",
+      "",
+      "pub ruby :: String -> String -> List Inline",
+      "ruby base reading = [Ruby [RubySegment [Text base] (Just reading)]]",
+      "",
+      "pub style :: String -> List Inline -> List Inline",
+      "style name xs = [CharStyle name xs]",
+      "",
+      "pub color :: String -> List Inline -> List Inline",
+      "color name xs = [Color name xs]",
+      "",
+      "pub kenten :: List Inline -> List Inline",
+      "kenten xs = [Kenten Nothing xs]",
+      "",
+      "pub tcy :: String -> List Inline",
+      "tcy s = [Tcy s]",
+      "",
+      "pub note :: List Inline -> List Inline",
+      "note xs = [Note xs]",
+      "",
+      "pub plain :: List Inline -> String",
+      "plain xs = String.join \"\" (List.map plainOf xs)",
+      "",
+      "plainOf :: Inline -> String",
+      "plainOf (Text s) = s",
+      "plainOf (Ruby segs) = String.join \"\" (List.map segmentText segs)",
+      "plainOf (Kenten _ xs) = plain xs",
+      "plainOf (Color _ xs) = plain xs",
+      "plainOf (CharStyle _ xs) = plain xs",
+      "plainOf (Tcy s) = s",
+      "plainOf (Number n _) = String.fromInt n",
+      "plainOf _ = \"\"",
+      "",
+      "segmentText :: RubySegment -> String",
+      "segmentText (RubySegment base _) = plain base"
+    ]
+
+{- | The blocks of the semantic IR (docs/adr/0162), as the ABI serialises
+them. The spans and the labels are not fields, as for 'inlineSource'.
+-}
+blockSource :: Text
+blockSource =
+  T.unlines
+    [ "pub data Block =",
+      "  Paragraph (Maybe String) Inlines",
+      "  | Heading Nat HeadingAttrs Inlines",
+      "  | BulletList (List ListItem)",
+      "  | OrderedList (List ListItem)",
+      "  | DefList (List DefGroup)",
+      "  | Table (List Alignment) (List Inlines) (List (List Inlines))",
+      "  | CodeBlock Code",
+      "  | FigureBlock Figure",
+      "  | ChannelOutput Channel",
+      "  | ForcedBreak BreakKind",
+      "  | PageControl PageControl",
+      "  | BlankLines Nat",
+      "",
+      "pub data HeadingAttrs = HeadingAttrs { tocTitle :: Maybe Inlines, number :: Maybe Nat, nonumber :: Bool, notoc :: Bool }",
+      "",
+      "pub data ListItem = ListItem (Maybe Nat) (List Block)",
+      "",
+      "pub data DefGroup = DefGroup (List Inlines) (List (List Block))",
+      "",
+      "pub data Alignment = AlignDefault | AlignLeft | AlignCenter | AlignRight",
+      "",
+      "pub data Code = Code { lang :: Maybe String, numbers :: Maybe Bool, file :: Maybe String, caption :: Maybe Inlines, diff :: Bool, lines :: List CodeLine }",
+      "",
+      "pub data CodeLine = CodeLine { text :: String, number :: Maybe Nat, mark :: Maybe DiffMark, highlight :: Bool, callouts :: List Nat }",
+      "",
+      "pub data DiffMark = Added | Removed | Unchanged",
+      "",
+      "pub data Figure = Figure { source :: String, web :: Maybe String, alt :: String, wrap :: Maybe Wrap, width :: Maybe String, caption :: List Block, page :: Maybe Nat, rotate :: Bool }",
+      "",
+      "pub data Wrap = WrapStart | WrapEnd",
+      "",
+      "pub data Channel = TocOutput Nat | IndexOutput | BibliographyOutput | CustomOutput String (Maybe String)",
+      "",
+      "pub data BreakKind = BreakPage | BreakRecto | BreakVerso | BreakColumn",
+      "",
+      "pub data PageControl = NoBreak | NeedLines Nat | AdjustLines Int",
+      "",
+      "pub paragraph :: Inlines -> Blocks",
+      "paragraph xs = [Paragraph Nothing xs]",
+      "",
+      "pub styled :: String -> Inlines -> Blocks",
+      "styled name xs = [Paragraph (Just name) xs]",
+      "",
+      "pub bullets :: List Blocks -> Blocks",
+      "bullets items = [BulletList (List.map item items)]",
+      "",
+      "pub numbered :: List Blocks -> Blocks",
+      "numbered items = [OrderedList (List.map item items)]",
+      "",
+      "item :: Blocks -> ListItem",
+      "item bs = ListItem Nothing bs",
+      "",
+      "pub table :: List Inlines -> List (List Inlines) -> Blocks",
+      "table header rows = [Table (List.map align header) header rows]",
+      "  where {",
+      "    align _ = AlignDefault",
+      "  }",
+      "",
+      "pub definitions :: List (Inlines, Blocks) -> Blocks",
+      "definitions pairs = [DefList (List.map group pairs)]",
+      "",
+      "group :: (Inlines, Blocks) -> DefGroup",
+      "group (term, body) = DefGroup [term] [body]"
+    ]
 
 -- | @div@: the floor division of integers, as in the expression context.
 divInfo :: (FunInfo, (GKey, Global))

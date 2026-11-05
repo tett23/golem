@@ -18,6 +18,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Golem.Doc.IR (Block, BlockBody, blockBody, docBlocks)
 import Golem.Eval.File
+import Golem.Eval.Functions (noFunctions)
 import Golem.Parser (parseAst)
 import Golem.Parser.SourceSettings (defaultSourceSettings)
 import Golem.Project.Style (defaultStyle)
@@ -40,7 +41,8 @@ baseCtx =
       ctxAssets = Map.empty,
       ctxPlugins = noPlugins,
       ctxSource = defaultSourceSettings,
-      ctxStyle = defaultStyle
+      ctxStyle = defaultStyle,
+      ctxFunctions = noFunctions
     }
 
 {- | Parses the source as file 1 and evaluates it in the context: the

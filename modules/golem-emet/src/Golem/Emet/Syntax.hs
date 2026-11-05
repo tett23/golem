@@ -12,6 +12,9 @@ module Golem.Emet.Syntax
     Module (..),
     Decl (..),
     Signature (..),
+    Kind (..),
+    kindWord,
+    ArgName (..),
     Equation (..),
     Rhs (..),
     Guard (..),
@@ -78,9 +81,27 @@ data Decl
     DType !Loc !Bool !Name ![Name] !TypeE
   deriving stock (Eq, Show)
 
+{- | The kind of a function .gm uses (docs/adr/0162), the word after @pub@:
+an inline command, a block command, a filter, or a function of the
+expression context.
+-}
+data Kind = KindInline | KindBlock | KindFilter | KindFn
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+kindWord :: Kind -> Text
+kindWord = \case
+  KindInline -> "inline"
+  KindBlock -> "block"
+  KindFilter -> "filter"
+  KindFn -> "fn"
+
 data Signature = Signature
   { sigLoc :: !Loc,
     sigPub :: !Bool,
+    -- | the kind after @pub@ and its range (docs/adr/0162)
+    sigKind :: !(Maybe (Kind, Loc)),
+    -- | the name .gm uses, written as a string after the kind, and its range
+    sigExport :: !(Maybe (Text, Loc)),
     sigName :: !Name,
     sigNameLoc :: !Loc,
     -- | the row written right after @::@ (docs/adr/0161)
@@ -142,6 +163,18 @@ data TypeE
     TFun !TypeE !(Maybe RowE) !TypeE
   | -- | a tuple of two types or more
     TTuple !Loc ![TypeE]
+  | {- | a keyword argument (docs/adr/0162): @(tax :: Bool = True)@, its
+    name, the type and the default
+    -}
+    TNamed !Loc !ArgName !TypeE !(Maybe Expr)
+  deriving stock (Eq, Show)
+
+-- | The name of a keyword argument: an identifier, or a string (@"font-size"@).
+data ArgName = ArgName
+  { argNameText :: !Text,
+    argNameLoc :: !Loc,
+    argNameQuoted :: !Bool
+  }
   deriving stock (Eq, Show)
 
 {- | A row of requirements (docs/adr/0161): @<file "a.tsv", file "b.tsv"|e>@,
@@ -303,6 +336,7 @@ typeLoc = \case
   TVar l _ -> l
   TFun a _ b -> typeLoc a <-> typeLoc b
   TTuple l _ -> l
+  TNamed l _ _ _ -> l
 
 rhsLoc :: Rhs -> Loc
 rhsLoc = \case

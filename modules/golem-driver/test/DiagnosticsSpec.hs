@@ -127,7 +127,15 @@ the second builds the other three.
 everyNoticeProjects :: [BS.ByteString -> [(FilePath, BS.ByteString)]]
 everyNoticeProjects =
   [ \extra -> [("manifest.toml", noticeManifest extra), ("style.toml", withBodyFont style), ("a.gm", TE.encodeUtf8 source), ("code.hs", "main = pure ()\n"), ("images/tall.svg", tall)] <> fakeFontFiles,
-    \extra -> [("manifest.toml", replaceIn "[targets.pdf]\n" "" (noticeManifest extra)), ("a.gm", "x\n")]
+    \extra -> [("manifest.toml", replaceIn "[targets.pdf]\n" "" (noticeManifest extra)), ("a.gm", "x\n")],
+    -- the notice E02109 and the info E05108 of a .emet that a .gm calls (docs/adr/0162)
+    \extra ->
+      [ ("manifest.toml", replaceIn "[targets.pdf]\n" "" (noticeManifest extra) <> "\n[functions.requires]\nfile = [\"w.tsv\"]\n"),
+        ("style.toml", horizontalStyle),
+        ("a.gm", "@import f.emet as f\n\n[f.x]\n"),
+        ("f.emet", "pub inline x :: <file \"w.tsv\"> Inlines\nx = Inline.text \"x\"\n  where {\n    unused = 1\n  }\n"),
+        ("w.tsv", "w\n")
+      ]
   ]
   where
     -- five lines of 12 characters, a paragraph style with rules, and a zero indent of caption (G03100)
@@ -242,10 +250,9 @@ noticeTests =
           nDiagnostics silencedInfo @?= nDiagnostics loud
           map withoutInstanceId (nOutputs silencedInfo) @?= map withoutInstanceId (nOutputs loud)
           pure (map diagCode (nDiagnostics loud), [diagCode d | d <- nDiagnostics verbose, diagSeverity d == Info], map fst (nOutputs loud))
-        -- a new notice or info must be added to the projects; the notices and
-        -- infos of .emet (E) come when .gm calls functions of .emet (docs/adr/0162)
-        sort (nub (concatMap (\(n, _, _) -> n) raised)) @?= sort [c | c@(DiagnosticCode t) <- noticeCodes, not ("E" `T.isPrefixOf` t)]
-        sort (nub (concatMap (\(_, i, _) -> i) raised)) @?= sort [c | c@(DiagnosticCode t) <- infoCodes, not ("E" `T.isPrefixOf` t)]
+        -- a new notice or info must be added to the projects
+        sort (nub (concatMap (\(n, _, _) -> n) raised)) @?= sort noticeCodes
+        sort (nub (concatMap (\(_, i, _) -> i) raised)) @?= sort infoCodes
         let written = concatMap (\(_, _, w) -> w) raised
         assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"]),
       testCase "the path of @listing as the first argument gives the same outputs as src=" $ do
