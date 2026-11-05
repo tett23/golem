@@ -24,11 +24,10 @@ export -f hashes; export OUT
 
 t() { # label, command...
   local label=$1; shift
-  local s e
-  s=$(date +%s.%N)
-  /usr/bin/time -f "%U %S" -o "$OUT/time" "$@"
-  e=$(date +%s.%N)
-  printf '| %s | %.2f | %s | %s |\n' "$label" "$(echo "$e - $s" | bc)" $(cat "$OUT/time")
+  local TIMEFORMAT='%R %U %S' r
+  r=$( { time "$@" >/dev/null 2>&1; } 2>&1 )
+  printf '| %s | %s | %s | %s |
+' "$label" $r
 }
 
 ALL=$(ls "$PDFS"/*.pdf)
