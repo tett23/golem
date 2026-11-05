@@ -42,6 +42,8 @@
 %token OpenBlock
 %token CloseBlock
 %token GuardBar
+%token RowOpen
+%token RowClose
 
 %inline SpH
 %inline SpN
@@ -145,10 +147,10 @@ FieldDecl :: (Name, TypeE)
 FieldDecl <- n:VarName(True) DColonS t:Type(True) { (n, t) }
 
 Signature :: Signature
-Signature <- p:PubOpt n:VarNameLoc(False) DColonS t:Type(False) { Signature (maybe (snd n) id p <-> typeLoc t) (maybe False (const True) p) (fst n) (snd n) t }
+Signature <- p:PubOpt n:VarNameLoc(False) DColonS r:LeadRow t:Type(False) { Signature (maybe (snd n) id p <-> typeLoc t) (maybe False (const True) p) (fst n) (snd n) r t }
 
 LocalSignature :: Signature
-LocalSignature <- n:VarNameLoc(False) DColonS t:Type(False) { Signature (snd n <-> typeLoc t) False (fst n) (snd n) t }
+LocalSignature <- n:VarNameLoc(False) DColonS r:LeadRow t:Type(False) { Signature (snd n <-> typeLoc t) False (fst n) (snd n) r t }
 
 # One equation; the newline after it is read by the caller.
 Equation :: Equation
@@ -175,8 +177,41 @@ Binding <- s:LocalSignature { BSig s }
 # --- types
 
 Type(nl :: Bool) :: TypeE
-Type <- a:BType(nl) ArrowS b:Type(nl) { TFun a b }
+Type <- a:BType(nl) ArrowS r:ArrowRow(nl) b:Type(nl) { TFun a r b }
       / BType(nl)
+
+# --- rows of requirements (docs/adr/0161)
+#
+# A row comes after an arrow, before the type of the result, and right
+# after :: (a function of no arguments). After an arrow, a variable
+# followed by a type is a row of that variable alone (e String): .emet has
+# no higher kinds, so a variable of type is never applied to a type.
+
+LeadRow :: Maybe RowE
+LeadRow <- r:Row(False) { Just r }
+         / '' { Nothing }
+
+ArrowRow(nl :: Bool) :: Maybe RowE
+ArrowRow <- r:Row(nl) { Just r }
+          / v:VarNameLoc(nl) &AType(nl) { Just (RowE (snd v) [] (Just v)) }
+          / '' { Nothing }
+
+Row(nl :: Bool) :: RowE
+Row <- s:RowOpen SpN rs:CommaList<Req> t:RowTail e:RowClose Sp(nl) { RowE (s <-> e) rs t }
+
+RowOpen :: Loc
+RowOpen <- '<' { loc _span }
+
+RowClose :: Loc
+RowClose <- '>' { loc _span }
+
+RowTail :: Maybe (Name, Loc)
+RowTail <- '|' SpN v:VarNameLoc(True) { Just v }
+         / '' { Nothing }
+
+# A requirement: its kind and its string literals (file "a.tsv").
+Req :: ReqE
+Req <- k:VarNameLoc(True) as:StrLitLoc(True)* { ReqE (endOf (snd k) (map snd as)) (fst k) (map fst as) }
 
 BType(nl :: Bool) :: TypeE
 BType <- c:TyConLoc(nl) as:AType(nl)+ { tapp (snd c) (fst c) as }

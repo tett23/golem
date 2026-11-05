@@ -14,6 +14,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import FunctionsSpec qualified
 import Golem.Doc.Assemble (NoteNumbering (..))
 import Golem.Doc.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Length qualified as L
@@ -615,6 +616,7 @@ tests =
       StylePositionSpec.tests,
       StyleSchemaSpec.tests,
       NaturalKeySpec.tests,
+      FunctionsSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))

@@ -10,6 +10,12 @@ instances to that table and leaves the rest as it is (the section
 -}
 module Golem.Emet.Types
   ( Ty (..),
+    Row (..),
+    Req (..),
+    pureRow,
+    rowVar,
+    showReq,
+    showRow,
     Scheme (..),
     Pred (..),
     monoScheme,
@@ -32,39 +38,86 @@ module Golem.Emet.Types
     showScheme,
     typeKeyName,
     substGen,
+    substRow,
     builtinTypes,
     metasOf,
+    rowMetas,
   )
 where
 
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, maybeToList)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 
 {- | A type. 'TC' names a type by its key: a built-in name (@Nat@, @List@,
-@(,)@ for tuples) or @path#Name@ for a data type of a module. 'TM' is a
-variable of inference, 'TS' a variable of a signature inside its
-function (rigid; its number keeps two signatures' @a@ apart), 'TG' a
-variable of a scheme.
+@(,)@ for tuples) or @path#Name@ for a data type of a module. 'TF' is an
+arrow with the row of requirements that applying it makes
+(docs/adr/0161). 'TM' is a variable of inference, 'TS' a variable of a
+signature inside its function (rigid; its number keeps two signatures'
+@a@ apart), 'TG' a variable of a scheme.
 -}
 data Ty
   = TC !Text ![Ty]
-  | TF !Ty !Ty
+  | TF !Ty !Row !Ty
   | TM !Int
   | TS !Int !Text
   | TG !Int
   deriving stock (Eq, Ord, Show)
 
-{- | A type with 'TG' 0 to n - 1 for its variables, and their names. The
-requirements of docs/adr/0161 are to come as a row on the arrows of 'TF'.
+{- | A requirement (docs/adr/0161). v1 has one kind, @file@, with the path
+of the file from the root of the project, normalised. Two requirements
+are the same when their kinds and paths are.
 -}
-data Scheme = Scheme ![Text] !Ty
+newtype Req = ReqFile Text
+  deriving stock (Eq, Ord, Show)
+
+{- | A row of requirements: a set, and the variable of the rest for an
+open row. The variable is a 'TM', 'TS' or 'TG' of the same numbers as
+the variables of types; a number is a variable of a type or of a row,
+never both. A row is a set (docs/adr/0161): a requirement is in it once.
+-}
+data Row = Row !(Set Req) !(Maybe Ty)
+  deriving stock (Eq, Ord, Show)
+
+-- | No requirement: the row of an arrow without one.
+pureRow :: Row
+pureRow = Row Set.empty Nothing
+
+-- | The row of a variable alone.
+rowVar :: Ty -> Row
+rowVar v = Row Set.empty (Just v)
+
+showReq :: Req -> Text
+showReq (ReqFile p) = "file \"" <> p <> "\""
+
+{- | A row as written in .emet, in the order of fmt: @<file "a.tsv"|e>@, a
+variable alone with no brackets, and nothing for no requirement.
+-}
+showRow :: Row -> Text
+showRow (Row rs v) = case (Set.toList rs, v) of
+  ([], Nothing) -> ""
+  ([], Just t) -> showVar t
+  (xs, Nothing) -> "<" <> T.intercalate ", " (map showReq xs) <> ">"
+  (xs, Just t) -> "<" <> T.intercalate ", " (map showReq xs) <> "|" <> showVar t <> ">"
+  where
+    showVar = \case
+      TS _ n -> n
+      TG i -> "e" <> T.pack (show i)
+      _ -> "_"
+
+{- | A type with 'TG' 0 to n - 1 for its variables, and their names; the
+row that naming it makes (a function of no arguments, docs/adr/0161);
+and the type.
+-}
+data Scheme = Scheme ![Text] !Row !Ty
   deriving stock (Eq, Show)
 
 monoScheme :: Ty -> Scheme
-monoScheme = Scheme []
+monoScheme = Scheme [] pureRow
 
 {- | The closed predicates of the operators: numbers (arithmetic), types
 that compare (== and <), and types that join (++). They are the built-in
@@ -143,18 +196,25 @@ substGen ts = go
     go = \case
       TG i | i < length ts -> ts !! i
       TC c as -> TC c (map go as)
-      TF a b -> TF (go a) (go b)
+      TF a r b -> TF (go a) (substRow ts r) (go b)
       t -> t
 
--- | The variables of inference in a type, in order, once each.
+substRow :: [Ty] -> Row -> Row
+substRow ts (Row rs v) = Row rs (substGen ts <$> v)
+
+-- | The variables of inference in a type, of types and of rows, in order, once each.
 metasOf :: Ty -> [Int]
 metasOf = foldr (\i acc -> i : filter (/= i) acc) [] . go
   where
     go = \case
       TM i -> [i]
       TC _ as -> concatMap go as
-      TF a b -> go a <> go b
+      TF a r b -> go a <> rowMetas r <> go b
       _ -> []
+
+-- | The variable of inference of a row.
+rowMetas :: Row -> [Int]
+rowMetas (Row _ v) = [i | TM i <- maybeToList v]
 
 -- | A type as written in .emet; a variable of inference is @_@.
 showTy :: Ty -> Text
@@ -165,11 +225,18 @@ showTy = go 0
       TC c ts | c == tupleKey -> "(" <> T.intercalate ", " (map (go 0) ts) <> ")"
       TC c [] -> typeKeyName c
       TC c as -> paren (p > 1) (T.unwords (typeKeyName c : map (go 2) as))
-      TF a b -> paren (p > 0) (go 1 a <> " -> " <> go 0 b)
+      TF a r b -> paren (p > 0) (go 1 a <> " -> " <> rowText r <> go 0 b)
       TM _ -> "_"
       TS _ n -> n
       TG i -> "t" <> T.pack (show i)
     paren b t = if b then "(" <> t <> ")" else t
+    rowText r = case showRow r of
+      "" -> ""
+      x -> x <> " "
 
 showScheme :: Scheme -> Text
-showScheme (Scheme names t) = showTy (substGen [TS i n | (i, n) <- zip [0 ..] names] t)
+showScheme (Scheme names r t) =
+  let vs = [TS i n | (i, n) <- zip [0 ..] names]
+   in case showRow (substRow vs r) of
+        "" -> showTy (substGen vs t)
+        x -> x <> " " <> showTy (substGen vs t)

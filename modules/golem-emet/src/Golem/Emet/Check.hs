@@ -8,6 +8,13 @@ constraints ('Golem.Emet.Solve.Constraint') and never unifies, and the
 solver decides them. The bindings of a @where@ are solved first and
 generalised (Hindley-Milner), then the equations, and the defaults come
 at the end of the function.
+
+The requirements of docs/adr/0161 are rows on the arrows. The body of a
+function with n arguments in its equations has the row of the n-th arrow
+of its signature (the row after @::@ for none); applying an arrow, and
+naming a function of no arguments, is a call that needs the row of the
+arrow to be in the row of the body around it (E05101). @File.read@ takes
+a string literal (E05107) and needs @file@ of its path.
 -}
 module Golem.Emet.Check
   ( ModInfo (..),
@@ -35,6 +42,7 @@ import Data.Text qualified as T
 import Golem.Emet.Core
 import Golem.Emet.Exhaust
 import Golem.Emet.Parse (lineOf)
+import Golem.Emet.Path (normalizePath)
 import Golem.Emet.Solve
 import Golem.Emet.Syntax
 import Golem.Emet.Types
@@ -102,7 +110,7 @@ builtinCons =
 
 -- | The names of the built-in modules, which no type or constructor of a user may take.
 builtinModuleNames :: [Name]
-builtinModuleNames = ["List", "String"]
+builtinModuleNames = ["List", "String", "File"]
 
 -- * The names a module sees
 
@@ -130,10 +138,13 @@ data Ctx = Ctx
     -- | the binding of where whose body is checked; "" for the equations
     cxUser :: !Name,
     -- | the names of the bindings of the where of the function
-    cxWhereNames :: !(Set Name)
+    cxWhereNames :: !(Set Name),
+    -- | the row of the body being checked, which every call in it needs its requirements in
+    cxAmbient :: !Row
   }
 
-data Local = LMono !Ty | LPoly !Scheme
+-- | A local name: its type and the row naming it makes (a value of where), or its scheme.
+data Local = LMono !Row !Ty | LPoly !Scheme
 
 type Locals = Map Name Local
 
@@ -145,7 +156,9 @@ data TcState = TcState
     tsDiags :: ![Diagnostic],
     -- | which binding of where uses which (the user "" is the equations)
     tsUses :: !(Set (Name, Name)),
-    tsSkolems :: !Int
+    tsSkolems :: !Int,
+    -- | the rows of the calls, each with the binding of where it is in ("" for the equations)
+    tsCalls :: ![(Name, Row)]
   }
 
 type Tc = StateT TcState (Either Diagnostic)
@@ -159,18 +172,36 @@ warnAt cx code l msg = modify' (\s -> s {tsDiags = diagnostic code Error (spanOf
 spanOf :: Ctx -> Loc -> SrcSpan
 spanOf cx (Loc s e) = mkSpan (cxFile cx) s (max s e)
 
+-- | The first of the errors of a signature stops the check.
+failFirst :: Ctx -> [Diagnostic] -> Tc a
+failFirst cx = \case
+  d : _ -> lift (Left d)
+  [] -> failAt cx "E02101" (Loc 0 0) "シグネチャの誤り"
+
 fresh :: Tc Ty
 fresh = state (\s -> let (t, ss) = freshMeta (tsSolve s) in (t, s {tsSolve = ss}))
+
+-- | A row of a new variable.
+freshR :: Tc Row
+freshR = rowVar <$> fresh
 
 emit :: Constraint -> Tc ()
 emit c = modify' (\s -> s {tsWanted = c : tsWanted s})
 
--- | Solves the constraints collected; a failure is E02101.
+-- | A call at a place: its row must be in the row of the body (docs/adr/0161).
+emitCall :: Ctx -> Loc -> Row -> Tc ()
+emitCall cx l r
+  | r == pureRow = pure ()
+  | otherwise = do
+      emit (KRow l RCall r (cxAmbient cx))
+      modify' (\s -> s {tsCalls = (cxUser cx, r) : tsCalls s})
+
+-- | Solves the constraints collected; a failure is E02101 or E05101.
 solveNow :: Ctx -> Bool -> Tc ()
 solveNow cx final = do
   st <- get
   case solve final (reverse (tsWanted st)) (tsSolve st) of
-    Left (l, m) -> failAt cx "E02101" l m
+    Left (l, code, m) -> failAt cx code l m
     Right ss -> put st {tsSolve = ss, tsWanted = []}
 
 zonkM :: Ty -> Tc Ty
@@ -185,7 +216,7 @@ is a primitive.
 checkModule :: Bool -> Scope -> FileId -> FilePath -> Text -> Module -> ([Diagnostic], ModInfo, [(GKey, Global)])
 checkModule prims scope fid path src (Module decls) =
   let vis0 = importedNames scope
-      cx0 = Ctx fid path src vis0 scope "" "" Set.empty
+      cx0 = Ctx fid path src vis0 scope "" "" Set.empty pureRow
       (typeDiags, types) = collectTypes cx0 decls
       cx1 = withOwn cx0 (ModInfo path types Map.empty Map.empty)
       (conDiags, cons) = collectCons cx1 decls
@@ -201,7 +232,7 @@ checkModule prims scope fid path src (Module decls) =
    in (importDiags <> typeDiags <> conDiags <> funDiags <> bodyDiags, own, prim <> defs)
   where
     arity = \case
-      TFun _ b -> 1 + arity b
+      TFun _ _ b -> 1 + arity b
       _ -> 0 :: Int
     -- <builtin>/List.emet -> List
     dropExt p = takeWhile (/= '.') (reverse (takeWhile (/= '/') (reverse p)))
@@ -287,6 +318,7 @@ collectTypes cx decls =
           | otherwise -> do
               let others = Map.mapWithKey (\k td -> if Map.member k aliasBodies && k /= n then td {tdAlias = fromRight Nothing (resolveAlias (Set.insert n seen) k)} else td) base
                   tcx = withOwn cx (ModInfo (cxPath cx) others Map.empty Map.empty)
+              noRowVars cx t
               Just <$> typeOf tcx (Map.fromList (zip vs [TG i | i <- [0 ..]])) t
       aliasBodies = Map.fromList [(n, (l, tdParams td, t)) | (n, (l, td, Just t)) <- entries]
       resolved = Map.mapWithKey (\n td -> (td, resolveAlias Set.empty n)) base
@@ -296,6 +328,15 @@ collectTypes cx decls =
   where
     key n = T.pack (cxPath cx) <> "#" <> n
 
+{- | The rows of a type of an alias or a data type: requirements are
+checked as those of a signature, and a variable of a row is E02101, as
+the parameters of these types are types.
+-}
+noRowVars :: Ctx -> TypeE -> Either Diagnostic ()
+noRowVars cx t = case rowDiagnostics cx Nothing t <> [diagnostic "E02101" Error (spanOf cx l) "型の別名とデータ型には要求の変数を書けません" | VarUse _ l True <- varUses Nothing t] of
+  d : _ -> Left d
+  [] -> Right ()
+
 -- | A written type in a module, with the variables it may use.
 typeOf :: Ctx -> Map Name Ty -> TypeE -> Either Diagnostic Ty
 typeOf cx vars = go
@@ -304,7 +345,7 @@ typeOf cx vars = go
     undef l msg = Left (diagnostic "E02100" Error (spanOf cx l) msg)
     go = \case
       TVar l v -> maybe (undef l ("未定義の型変数 " <> v <> " です")) Right (Map.lookup v vars)
-      TFun a b -> TF <$> go a <*> go b
+      TFun a r b -> TF <$> go a <*> rowOf cx vars r <*> go b
       TTuple _ ts -> tTuple <$> mapM go ts
       TCon l q args -> do
         as <- mapM go args
@@ -325,6 +366,85 @@ typeOf cx vars = go
             | not (tdPub td) -> Left (diagnostic "E02105" Error (spanOf cx l) ("型 " <> qnameText q <> " は公開されていません"))
             | otherwise -> Right (tdKey td, length (tdParams td), tdAlias td)
 
+-- ** Rows of requirements (docs/adr/0161)
+
+-- | The kinds of requirements of v1.
+requirementKinds :: [Name]
+requirementKinds = ["file"]
+
+{- | A written row; the requirements that are not right are left out, as
+'rowDiagnostics' reports them.
+-}
+rowOf :: Ctx -> Map Name Ty -> Maybe RowE -> Either Diagnostic Row
+rowOf cx vars = \case
+  Nothing -> Right pureRow
+  Just (RowE _ reqs v) -> Row (Set.fromList [r | (_, Right r) <- map reqOf reqs]) <$> traverse var v
+  where
+    var (n, l) = maybe (Left (diagnostic "E02100" Error (spanOf cx l) ("未定義の要求の変数 " <> n <> " です"))) Right (Map.lookup n vars)
+
+-- | A written requirement: the requirement, or what is wrong with it.
+reqOf :: ReqE -> (ReqE, Either ReqProblem Req)
+reqOf q = (q,) $ case (reqKind q, reqArgs q) of
+  ("file", [p]) -> either (Left . BadPath p) (Right . ReqFile . T.pack) (normalizePath (T.unpack p))
+  ("file", _) -> Left FileArity
+  (k, _) -> Left (UnknownKind k)
+
+data ReqProblem = UnknownKind !Name | FileArity | BadPath !Text !Text
+
+-- | The rows of a type, the one after @::@ first, in the order they are written.
+rowsOf :: Maybe RowE -> TypeE -> [RowE]
+rowsOf lead t = maybe id (:) lead (go t)
+  where
+    go = \case
+      TFun a r b -> go a <> maybe [] pure r <> go b
+      TCon _ _ as -> concatMap go as
+      TTuple _ ts -> concatMap go ts
+      TVar {} -> []
+
+{- | The errors of the requirements of a type: E05100 once for all the
+kinds not in the list, E02101 for @file@ without one path, G03003 for a
+path outside the root, E05102 for a requirement twice in a row, and
+G03004 for two paths of a row that differ only in case.
+-}
+rowDiagnostics :: Ctx -> Maybe RowE -> TypeE -> [Diagnostic]
+rowDiagnostics cx lead t =
+  let rows = rowsOf lead t
+      checked = [map reqOf (rowReqs r) | r <- rows]
+      unknown = [(q, k) | qs <- checked, (q, Left (UnknownKind k)) <- qs]
+      kindDiag = case unknown of
+        (q, _) : _ -> [diagnostic "E05100" Error (spanOf cx (reqLoc q)) ("知らない要求の種類です: " <> T.intercalate "、" (nub (map snd unknown)) <> "（使える種類: " <> T.intercalate "、" requirementKinds <> "）")]
+        [] -> []
+      problems =
+        concat
+          [ case e of
+              FileArity -> [diagnostic "E02101" Error (spanOf cx (reqLoc q)) "file には読むファイルのパスを一つだけ書きます"]
+              BadPath raw why -> [diagnostic "G03003" Error (spanOf cx (reqLoc q)) (why <> ": " <> raw)]
+              UnknownKind _ -> []
+          | qs <- checked,
+            (q, Left e) <- qs
+          ]
+      repeats = concatMap (inRow Map.empty Map.empty) [[(q, r) | (q, Right r) <- qs] | qs <- checked]
+      inRow _ _ [] = []
+      inRow seen lower ((q, r@(ReqFile p)) : rest)
+        | Map.member r seen = diagnostic "E05102" Error (spanOf cx (reqLoc q)) ("同じ要求を二度書いています: " <> showReq r) : inRow seen lower rest
+        | Just other <- Map.lookup (T.toLower p) lower = diagnostic "G03004" Error (spanOf cx (reqLoc q)) ("大文字と小文字だけが異なるパスです: " <> p <> " と " <> other) : inRow seen lower rest
+        | otherwise = inRow (Map.insert r () seen) (Map.insert (T.toLower p) p lower) rest
+   in kindDiag <> problems <> repeats
+
+-- | A variable of a type or of a row, where it is written.
+data VarUse = VarUse !Name !Loc !Bool
+
+-- | The variables of a type in the order they are written, each use with whether it is of a row.
+varUses :: Maybe RowE -> TypeE -> [VarUse]
+varUses lead t = rowVars lead <> go t
+  where
+    go = \case
+      TVar l v -> [VarUse v l False]
+      TFun a r b -> go a <> rowVars r <> go b
+      TCon _ _ as -> concatMap go as
+      TTuple _ ts -> concatMap go ts
+    rowVars r = [VarUse v l True | Just (RowE _ _ (Just (v, l))) <- [r]]
+
 -- ** Constructors
 
 collectCons :: Ctx -> [Decl] -> ([Diagnostic], Map Name ConInfo)
@@ -339,6 +459,7 @@ collectCons cx decls =
               cl = conLoc c
               vars = Map.fromList (zip vs [TG i | i <- [0 ..]])
               mk = do
+                mapM_ (noRowVars cx) (conTypes c)
                 args <- mapM (typeOf cx vars) (conTypes c)
                 fieldDup c
                 pure (ConInfo cname (T.pack (cxPath cx) <> "#" <> n) (length vs) args (conFieldNames c) sibs pub)
@@ -388,9 +509,9 @@ collectFuns prims cx decls =
         Map.fromList
           [ (sigName s, (FunInfo (cxPath cx, sigName s) sch (sigPub s), s))
           | s <- Map.elems sigMap,
-            Right sch <- [schemeOf cx (sigType s)]
+            Right sch <- [schemeOf cx s]
           ]
-      schemeDiags = nub [d | s <- Map.elems sigMap, Left d <- [schemeOf cx (sigType s)]]
+      schemeDiags = nub [d | s <- Map.elems sigMap, Left ds <- [schemeOf cx s], d <- ds]
       diags =
         [diagnostic "E02104" Error (spanOf cx l) ("関数 " <> n <> " のシグネチャを二度書いています") | (n, l) <- dupSigs]
           <> [diagnostic "E02104" Error (spanOf cx l) ("関数 " <> n <> " は組み込みの関数と重なります") | (n, l) <- builtinClash]
@@ -415,35 +536,73 @@ runsOf = go []
       Nothing : rest -> close acc <> go [] rest
     close acc = [reverse acc | not (null acc)]
 
--- | The scheme of a signature: its variables in the order they appear.
-schemeOf :: Ctx -> TypeE -> Either Diagnostic Scheme
-schemeOf cx t =
-  let vs = nub (typeVars t)
-   in Scheme vs <$> typeOf cx (Map.fromList (zip vs [TG i | i <- [0 ..]])) t
+{- | The scheme of a signature: its variables in the order they appear,
+those of types and of rows. The errors of its requirements come all; a
+variable both of a type and of a row is E02101.
+-}
+schemeOf :: Ctx -> Signature -> Either [Diagnostic] Scheme
+schemeOf cx sig =
+  let lead = sigRow sig
+      t = sigType sig
+      uses = varUses lead t
+      vs = nub [v | VarUse v _ _ <- uses]
+      clash = [diagnostic "E02101" Error (spanOf cx l) ("変数 " <> v <> " を型の変数と要求の変数の両方に使っています") | VarUse v l True <- uses, any (\(VarUse w _ r) -> w == v && not r) uses]
+      vars = Map.fromList (zip vs [TG i | i <- [0 ..]])
+   in case rowDiagnostics cx lead t <> take 1 clash of
+        [] -> either (Left . pure) Right (Scheme vs <$> rowOf cx vars lead <*> typeOf cx vars t)
+        ds -> Left ds
 
-typeVars :: TypeE -> [Name]
-typeVars = \case
-  TVar _ v -> [v]
-  TFun a b -> typeVars a <> typeVars b
-  TCon _ _ as -> concatMap typeVars as
-  TTuple _ ts -> concatMap typeVars ts
-
--- | A scheme with its variables made rigid, new ones.
-skolemize :: Scheme -> Tc Ty
-skolemize (Scheme names t) = do
+-- | A scheme with its variables made rigid, new ones: the row of naming it and the type.
+skolemize :: Scheme -> Tc (Row, Ty)
+skolemize (Scheme names r t) = do
   k <- gets tsSkolems
   modify' (\s -> s {tsSkolems = k + length names})
-  pure (substGen [TS (k + i) n | (i, n) <- zip [0 ..] names] t)
+  let vs = [TS (k + i) n | (i, n) <- zip [0 ..] names]
+  pure (substRow vs r, substGen vs t)
 
 arityOf :: Ty -> Int
 arityOf = \case
-  TF _ b -> 1 + arityOf b
+  TF _ _ b -> 1 + arityOf b
   _ -> 0
 
-splitArgs :: Int -> Ty -> ([Ty], Ty)
-splitArgs 0 t = ([], t)
-splitArgs n (TF a b) = let (as, r) = splitArgs (n - 1) b in (a : as, r)
-splitArgs _ t = ([], t)
+{- | The types of the first n arguments, the row of the body (the n-th
+arrow's, or the row of naming it for none) and the type of the result.
+-}
+splitBody :: Int -> Row -> Ty -> ([Ty], Row, Ty)
+splitBody 0 r t = ([], r, t)
+splitBody 1 _ (TF a r b) = ([a], r, b)
+splitBody n r0 (TF a _ b) = let (as, r, res) = splitBody (n - 1) r0 b in (a : as, r, res)
+splitBody _ r t = ([], r, t)
+
+{- | The arrows of n arguments, of no requirement but the n-th, whose row is
+given; the row is that of naming it for none.
+-}
+arrowsWith :: [Ty] -> Row -> Ty -> Ty
+arrowsWith as r res = case as of
+  [] -> res
+  [a] -> TF a r res
+  a : rest -> TF a pureRow (arrowsWith rest r res)
+
+{- | E05106: a row written before the arrow of the body of a function of n
+arguments (after @::@, or on an arrow before the n-th), or one from an
+alias there.
+-}
+earlyRows :: Ctx -> Int -> Signature -> Row -> Ty -> [Diagnostic]
+earlyRows cx n sig lead ty =
+  let written = [r | n >= 1, Just r <- [sigRow sig]] <> before 1 (sigType sig)
+      before i = \case
+        TFun _ r b | i < n -> maybe [] pure r <> before (i + 1 :: Int) b
+        _ -> []
+      typed = (n >= 1 && lead /= pureRow) || any (/= pureRow) (tyRows (n - 1) ty)
+      tyRows k = \case
+        TF _ r b | k > 0 -> r : tyRows (k - 1 :: Int) b
+        _ -> []
+      diag l = diagnostic "E05106" Error (spanOf cx l) ("本体を評価する前の矢印に要求の列があります: " <> sigName sig <> " の本体は " <> T.pack (show n) <> " 個目の矢印で評価します")
+   in case written of
+        r : _ -> [diag (rowLoc r)]
+        []
+          | typed -> [diag (typeLoc (sigType sig))]
+          | otherwise -> []
 
 {- | E02106: equations with different numbers of arguments, or more than
 the arrows of the signature. Fewer return a function.
@@ -472,24 +631,57 @@ checkFunction cx0 sig eqs = do
   case whereDiags cx eqs of
     [] -> pure ()
     ds -> Left ds
-  sch@(Scheme _ sigTy) <- either (Left . pure) Right (schemeOf cx (sigType sig))
+  sch@(Scheme _ lead sigTy) <- schemeOf cx sig
   forM_ (arityDiag cx (sigName sig) (Just (arityOf sigTy)) eqs) (Left . pure)
   let n = maybe 0 (length . eqPats) (safeHead eqs)
-      run = do
-        skolem <- skolemize sch
-        let (argTys, resTy) = splitArgs n skolem
-        binds <- checkWhereBlock cx bindings
-        ceqs <- checkEquations cx (whereLocals binds) argTys resTy eqs
+  case earlyRows cx n sig lead sigTy of
+    [] -> pure ()
+    ds -> Left ds
+  let run = do
+        (refRow, skolem) <- skolemize sch
+        let (argTys, bodyRow, resTy) = splitBody n refRow skolem
+            cxb = cx {cxAmbient = bodyRow}
+        binds <- checkWhereBlock cxb bindings
+        ceqs <- checkEquations cxb (whereLocals binds) argTys resTy eqs
         solveNow cx True
         uses <- gets tsUses
-        pure (ceqs, map (snd . snd) binds, unusedNotices cx bindings uses)
-  case runStateT run (TcState emptySolveState [] [] Set.empty 0) of
+        unused <- unusedRequirements cx n sig bodyRow
+        pure (ceqs, map (snd . snd) binds, unusedNotices cx bindings uses <> unused)
+  case runStateT run (TcState emptySolveState [] [] Set.empty 0 []) of
     Left d -> Left [d]
     Right ((ceqs, binds, notices), st)
       | not (null (tsDiags st)) -> Left (reverse (tsDiags st) <> notices)
       | otherwise ->
           let line = lineOf (cxSource cx) (locStart (sigLoc sig))
            in Right (notices, ((cxPath cx, sigName sig), GFun (CFun (sigName sig) (cxPath cx) line n ceqs binds)))
+
+{- | E05108, an info, for each requirement of the closed row of the body
+of a top-level function that no call of its equations needs, at the
+requirement as written (docs/adr/0161). A variable of an open row is
+never reported.
+-}
+unusedRequirements :: Ctx -> Int -> Signature -> Row -> Tc [Diagnostic]
+unusedRequirements cx n sig (Row declared tl) = case tl of
+  Just _ -> pure []
+  Nothing -> do
+    st <- gets tsSolve
+    calls <- gets tsCalls
+    let used = Set.unions [rs | ("", r) <- calls, let Row rs _ = zonkRow st r]
+        written = [(r, reqLoc q) | rowE <- bodyRowE, (q, Right r) <- map reqOf (rowReqs rowE)]
+        at r = fromMaybe (sigLoc sig) (lookup r written)
+    pure
+      [ diagnostic "E05108" Info (spanOf cx (at r)) ("関数 " <> sigName sig <> " の本体が使わない要求です: " <> showReq r)
+      | r <- Set.toList (Set.difference declared used)
+      ]
+  where
+    bodyRowE = case n of
+      0 -> maybe [] pure (sigRow sig)
+      _ -> nth n (sigType sig)
+    nth k = \case
+      TFun _ r b
+        | k == 1 -> maybe [] pure r
+        | otherwise -> nth (k - 1 :: Int) b
+      _ -> []
 
 safeHead :: [a] -> Maybe a
 safeHead = \case
@@ -575,15 +767,16 @@ checkNumber cx l v = case numberOf v of
   Just (_, q) | overLimit q -> lift (Left (tooBigDiagnostic (spanOf cx l)))
   _ -> pure ()
 
-instantiate :: Scheme -> Tc Ty
-instantiate (Scheme names t) = do
+instantiate :: Scheme -> Tc (Row, Ty)
+instantiate (Scheme names r t) = do
   ms <- mapM (const fresh) names
-  pure (substGen ms t)
+  pure (substRow ms r, substGen ms t)
 
 -- ** Names
 
 resolveVar :: Ctx -> Locals -> Loc -> QName -> Tc (Ty, CExpr)
 resolveVar cx locals l q = case q of
+  QName (Just "File") "read" -> failAt cx "E05107" l fileReadLiteral
   QName Nothing n
     | Just loc <- Map.lookup n locals -> do
         when (Set.member n (cxWhereNames cx)) $ modify' (\s -> s {tsUses = Set.insert (cxUser cx, n) (tsUses s)})
@@ -600,10 +793,19 @@ resolveVar cx locals l q = case q of
         | not (fiPub fi) -> failAt cx "E02105" l (qnameText q <> " は公開されていません")
         | otherwise -> global fi
   where
-    global fi = (,CGlobal l (fiKey fi)) <$> instantiate (fiScheme fi)
+    -- naming a function of no arguments is a call of it (docs/adr/0161)
+    named (r, t) = emitCall cx l r >> pure t
+    global fi = (,CGlobal l (fiKey fi)) <$> (instantiate (fiScheme fi) >>= named)
     localTy = \case
-      LMono t -> pure t
-      LPoly s -> instantiate s
+      LMono r t -> named (r, t)
+      LPoly s -> instantiate s >>= named
+
+fileReadLiteral :: Text
+fileReadLiteral = "File.read の引数は文字列のリテラルに限ります。読むファイルは型の検査の時点で決まっていなければなりません"
+
+-- | The key of File.read, which the driver handles (docs/adr/0161).
+fileReadKey :: GKey
+fileReadKey = ("<builtin>/File.emet", "read")
 
 resolveCon :: Ctx -> Loc -> QName -> Tc ConInfo
 resolveCon cx l q = case q of
@@ -642,7 +844,7 @@ infer cx locals = \case
     (args, res) <- conType ci
     pure $ case (ciTypeKey ci, ciName ci) of
       ("Bool", b) -> (tBool, CLit (LValue (VBool (b == "True"))))
-      _ -> (foldr TF res args, CConV (ciName ci) (length args))
+      _ -> (foldr (`TF` pureRow) res args, CConV (ciName ci) (length args))
   EList _ es -> do
     el <- fresh
     cs <- mapM (\e -> check cx locals e el) es
@@ -650,18 +852,28 @@ infer cx locals = \case
   ETuple _ es -> do
     ts <- mapM (infer cx locals) es
     pure (tTuple (map fst ts), CTuple (map snd ts))
-  e@EApp {} -> do
-    let (f, args) = spine e
-    (ft, cf) <- infer cx locals f
-    case (cf, args) of
-      (CGlobal _ ("<builtin>", "div"), [a, b]) -> do
-        (ta, ca) <- infer cx locals a
-        (tb, cb) <- infer cx locals b
-        r <- arithmetic (exprLoc e) "div" ADivInt ta tb
-        pure (r, CApp (exprLoc e) cf [ca, cb])
-      _ -> do
-        (rt, cargs) <- applyArgs cx locals ft args
-        pure (rt, CApp (exprLoc e) cf cargs)
+  e@EApp {} -> case spine e of
+    (EVar l (QName (Just "File") "read"), a : more) -> case unparen a of
+      EStr sl raw -> case normalizePath (T.unpack raw) of
+        Left why -> failAt cx "G03003" sl (why <> ": " <> raw)
+        Right p -> do
+          let path = T.pack p
+              read' = CApp (exprLoc e) (CGlobal l fileReadKey) [CLit (LValue (VString path))]
+          emitCall cx (exprLoc e) (Row (Set.singleton (ReqFile path)) Nothing)
+          (rt, cargs) <- applyArgs cx locals (exprLoc e) tString more
+          pure (rt, if null cargs then read' else CApp (exprLoc e) read' cargs)
+      _ -> failAt cx "E05107" (exprLoc a) fileReadLiteral
+    (f, args) -> do
+      (ft, cf) <- infer cx locals f
+      case (cf, args) of
+        (CGlobal _ ("<builtin>", "div"), [a, b]) -> do
+          (ta, ca) <- infer cx locals a
+          (tb, cb) <- infer cx locals b
+          r <- arithmetic (exprLoc e) "div" ADivInt ta tb
+          pure (r, CApp (exprLoc e) cf [ca, cb])
+        _ -> do
+          (rt, cargs) <- applyArgs cx locals (exprLoc e) ft args
+          pure (rt, CApp (exprLoc e) cf cargs)
   EBin l op a b -> do
     (ta, ca) <- infer cx locals a
     (tb, cb) <- infer cx locals b
@@ -732,6 +944,11 @@ infer cx locals = \case
       OpMod -> AMod
       _ -> APow
 
+unparen :: Expr -> Expr
+unparen = \case
+  EParen _ x -> unparen x
+  x -> x
+
 spine :: Expr -> (Expr, [Expr])
 spine = go []
   where
@@ -740,18 +957,23 @@ spine = go []
       EParen _ e@EApp {} | null acc -> go acc e
       f -> (f, acc)
 
-applyArgs :: Ctx -> Locals -> Ty -> [Expr] -> Tc (Ty, [CExpr])
-applyArgs _ _ ft [] = pure (ft, [])
-applyArgs cx locals ft (a : as) = do
-  (p, r) <- case ft of
-    TF p r -> pure (p, r)
+{- | The arguments of an application at a place: applying each arrow is a
+call of its row (docs/adr/0161).
+-}
+applyArgs :: Ctx -> Locals -> Loc -> Ty -> [Expr] -> Tc (Ty, [CExpr])
+applyArgs _ _ _ ft [] = pure (ft, [])
+applyArgs cx locals at ft (a : as) = do
+  (p, row, r) <- case ft of
+    TF p row r -> pure (p, row, r)
     _ -> do
       p <- fresh
+      row <- freshR
       r <- fresh
-      emit (KEq (exprLoc a) (TF p r) ft)
-      pure (p, r)
+      emit (KEq (exprLoc a) (TF p row r) ft)
+      pure (p, row, r)
   c <- check cx locals a p
-  (t, cs) <- applyArgs cx locals r as
+  emitCall cx at row
+  (t, cs) <- applyArgs cx locals at r as
   pure (t, c : cs)
 
 -- | An expression where a type is expected: a narrower number is accepted.
@@ -765,7 +987,7 @@ check cx locals e expected = do
 checkAlt :: Ctx -> Locals -> Ty -> Ty -> Alt -> Tc (CAlt, XPat)
 checkAlt cx locals st r a = do
   (binds, cp, xp) <- checkPat cx st (altPat a)
-  rhs <- checkRhs cx (Map.union (Map.map LMono binds) locals) r (altRhs a)
+  rhs <- checkRhs cx (Map.union (Map.map (LMono pureRow) binds) locals) r (altRhs a)
   pure (CAlt cp rhs, xp)
 
 checkRhs :: Ctx -> Locals -> Ty -> Rhs -> Tc CRhs
@@ -864,7 +1086,7 @@ checkEquations cx locals argTys resTy eqs = do
   rows <- forM eqs $ \q -> do
     pats <- zipWithM (checkPat cx) argTys (eqPats q)
     binds <- mergeBinds cx (eqLoc q) [b | (b, _, _) <- pats]
-    r <- checkRhs cx (Map.union (Map.map LMono binds) locals) resTy (eqRhs q)
+    r <- checkRhs cx (Map.union (Map.map (LMono pureRow) binds) locals) resTy (eqRhs q)
     pure (CEq [c | (_, c, _) <- pats] r, [x | (_, _, x) <- pats])
   let whole = case (eqs, reverse eqs) of
         (q : _, z : _) -> eqLoc q <-> eqLoc z
@@ -960,46 +1182,62 @@ checkWhereBlock cx bs = do
   forM_ (duplicates [(sigName s, sigNameLoc s) | s <- sigs]) $ \(n, l) -> failAt cx "E02104" l ("局所の関数 " <> n <> " のシグネチャを二度書いています")
   forM_ (duplicates defs) $ \(n, l) -> failAt cx "E02107" l ("束縛 " <> n <> " の等式が離れています。同じ束縛の等式は続けて書きます")
   forM_ sigs $ \s -> unless (sigName s `elem` map fst defs) (failAt cx "E02100" (sigNameLoc s) ("束縛 " <> sigName s <> " の等式がありません"))
-  sigSchemes <- forM sigs $ \s -> either (lift . Left) (pure . (sigName s,)) (schemeOf cx (sigType s))
-  monos <- forM [n | (n, _) <- defs, n `notElem` map fst sigSchemes] $ \n -> (n,) <$> fresh
-  let locals = Map.fromList ([(n, LPoly sc) | (n, sc) <- sigSchemes] <> [(n, LMono t) | (n, t) <- monos])
+  sigSchemes <- forM sigs $ \s -> either (failFirst cx) (pure . (sigName s,)) (schemeOf cx s)
+  let arities = Map.fromList [(eqName q, length (eqPats q)) | q : _ <- runs]
+  -- a value of where without a signature: the row of naming it is that of its body
+  monos <- forM [n | (n, _) <- defs, n `notElem` map fst sigSchemes] $ \n -> do
+    t <- fresh
+    r <- if Map.lookup n arities == Just 0 then freshR else pure pureRow
+    pure (n, (r, t))
+  let locals = Map.fromList ([(n, LPoly sc) | (n, sc) <- sigSchemes] <> [(n, LMono r t) | (n, (r, t)) <- monos])
   checked <- forM runs $ \run -> case run of
     [] -> failAt cx "E01100" (Loc 0 0) "空の束縛"
     q : _ -> do
       let name = eqName q
-          cxb = cx {cxUser = name}
           sigScheme = lookup name sigSchemes
-      forM_ (arityDiag cx name (arityOf . (\(Scheme _ t) -> t) <$> sigScheme) run) (lift . Left)
+      forM_ (arityDiag cx name (arityOf . (\(Scheme _ _ t) -> t) <$> sigScheme) run) (lift . Left)
       let arity = length (eqPats q)
-      target <- maybe (maybe fresh pure (lookup name monos)) skolemize sigScheme
-      (argTys, resTy) <- case sigScheme of
-        Just _ -> pure (splitArgs arity target)
+      forM_ [s | s <- sigs, sigName s == name] $ \s -> forM_ sigScheme $ \(Scheme _ lead t) -> case earlyRows cx arity s lead t of
+        d : _ -> lift (Left d)
+        [] -> pure ()
+      (argTys, bodyRow, resTy) <- case sigScheme of
+        Just sc -> do
+          (lead, target) <- skolemize sc
+          pure (splitBody arity lead target)
         Nothing -> do
+          let (monoRow, target) = fromMaybe (pureRow, tNat) (lookup name monos)
           as <- mapM (const fresh) [1 .. arity]
           r <- fresh
-          emit (KEq (eqNameLoc q) (foldr TF r as) target)
-          pure (as, r)
-      ceqs <- checkEquations cxb {cxFun = name} locals argTys resTy run
+          row <- if arity == 0 then pure monoRow else freshR
+          emit (KEq (eqNameLoc q) (arrowsWith as row r) target)
+          pure (as, row, r)
+      ceqs <- checkEquations cx {cxUser = name, cxFun = name, cxAmbient = bodyRow} locals argTys resTy run
       pure (name, CBind name arity ceqs (lineAt cx (eqNameLoc q)))
   solveNow cx False
   pending <- gets (ssPending . tsSolve)
   held <- Set.fromList . concatMap metasOf <$> mapM zonkM (concatMap constraintTypes pending)
+  st <- gets tsSolve
   forM checked $ \(n, cb) -> case lookup n sigSchemes of
     Just sc -> pure (n, (LPoly sc, cb))
     Nothing -> do
-      t <- zonkM (fromMaybe tNat (lookup n monos))
+      let (r0, t0) = fromMaybe (pureRow, tNat) (lookup n monos)
+          r = zonkRow st r0
+      t <- zonkM t0
       let free = [i | i <- metasOf t, not (Set.member i held)]
           gen = Map.fromList (zip free [0 ..])
           t' = mapMetas (\i -> maybe (TM i) TG (Map.lookup i gen)) t
-      pure (n, (if null free then LMono t else LPoly (Scheme [T.pack ("t" <> show k) | k <- [1 .. length free]] t'), cb))
+      pure (n, (if null free then LMono r t else LPoly (Scheme [T.pack ("t" <> show k) | k <- [1 .. length free]] r t'), cb))
   where
     mapMetas f = \case
       TM i -> f i
       TC c as -> TC c (map (mapMetas f) as)
-      TF a b -> TF (mapMetas f a) (mapMetas f b)
+      TF a r b -> TF (mapMetas f a) (mapRow f r) (mapMetas f b)
       t -> t
+    mapRow f (Row rs v) = Row rs (mapMetas f <$> v)
 
--- | The types a constraint holds.
+{- | The types a constraint holds; a row as the arrow between two
+booleans, so that its variable counts.
+-}
 constraintTypes :: Constraint -> [Ty]
 constraintTypes = \case
   KEq _ a b -> [a, b]
@@ -1007,6 +1245,7 @@ constraintTypes = \case
   KPred _ _ _ t -> [t]
   KArith _ _ a b r -> [a, b, r]
   KNeg _ a r -> [a, r]
+  KRow _ _ a b -> [TF tBool a tBool, TF tBool b tBool]
 
 lineAt :: Ctx -> Loc -> Int
 lineAt cx l = lineOf (cxSource cx) (locStart l)

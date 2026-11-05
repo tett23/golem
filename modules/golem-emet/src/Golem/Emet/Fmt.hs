@@ -15,12 +15,18 @@ G01003).
 fmt works on the tokens of the lossless syntax tree, so comments stay
 where they are; the tree tells a newline that separates (SepNl) from one
 that is white space (Nl).
+
+The requirements of a row (docs/adr/0161) are put in the order of their
+kinds and paths, as @<file "a.tsv", file "b.tsv"|e>@. A row with a
+comment or a newline in it is left as it is, as fmt does not move a
+comment.
 -}
 module Golem.Emet.Fmt
   ( formatEmet,
   )
 where
 
+import Data.List (sortOn)
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -44,8 +50,46 @@ formatEmet raw = do
   let src = T.replace "\r" "\n" (T.replace "\r\n" "\n" (fromMaybe raw (T.stripPrefix "\xFEFF" raw)))
   _ <- parseModule (FileId 0) src
   tree <- either (const (Left [])) Right (G.parseSyntax src)
-  let toks = [Tok (kindOf (G.nameOfSyntaxKind (tokenKind t))) (tokenText t) | t <- syntaxTokens tree]
+  let raws = [(G.nameOfSyntaxKind (tokenKind t), tokenText t) | t <- syntaxTokens tree]
+      toks = [Tok (kindOf k) x | (k, x) <- sortRows raws]
   pure (render (layout (splitLines toks)))
+
+{- | The requirements of each row in the order of their kinds and paths,
+over the tokens by the names of their kinds. A row already in order, or
+with a comment or a newline in it, keeps its tokens.
+-}
+sortRows :: [(Text, Text)] -> [(Text, Text)]
+sortRows = \case
+  [] -> []
+  open@("RowOpen", _) : rest ->
+    let (inside, after) = break ((== "RowClose") . fst) rest
+     in case after of
+          close : more -> row open inside close <> sortRows more
+          [] -> open : inside
+  t : rest -> t : sortRows rest
+  where
+    row open inside close
+      | any ((`elem` ["Comment", "Nl", "SepNl"]) . fst) inside = open : inside <> [close]
+      | otherwise =
+          let (reqPart, tailPart) = break ((== "|") . snd) inside
+              items = map trim (splitItems reqPart)
+              sorted = sortOn key items
+           in if map key sorted == map key items
+                then open : inside <> [close]
+                else open : joinWith [(",", ","), ("Ws", " ")] sorted <> tailPart <> [close]
+    -- the words of a requirement: its kind and its literals
+    key = map (T.concat . map snd) . filter (not . null) . splitOnWs
+    splitOnWs ts = case break ((== "Ws") . fst) ts of
+      (w, []) -> [w]
+      (w, _ : more) -> w : splitOnWs more
+    trim = reverse . dropWhile ((== "Ws") . fst) . reverse . dropWhile ((== "Ws") . fst)
+    splitItems ts = case break ((== ",") . snd) ts of
+      ([], []) -> []
+      (item, []) -> [item]
+      (item, _ : more) -> item : splitItems more
+    joinWith sep = \case
+      [] -> []
+      x : xs -> x <> concatMap (sep <>) xs
 
 kindOf :: Text -> TokKind
 kindOf = \case

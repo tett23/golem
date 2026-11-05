@@ -144,7 +144,8 @@ must agree with them (a golem-driver test).
 -}
 infoCodes :: [DiagnosticCode]
 infoCodes =
-  [ DiagnosticCode "G07047" -- blank lines dropped at the top of a column (docs/adr ADR 0046)
+  [ DiagnosticCode "G07047", -- blank lines dropped at the top of a column (docs/adr ADR 0046)
+    DiagnosticCode "E05108" -- a requirement of a signature of .emet that its body does not use (docs/adr/0161)
   ]
 
 -- | Drops every info: a run without --verbose (docs/adr 0104).

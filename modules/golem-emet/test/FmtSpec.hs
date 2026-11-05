@@ -5,6 +5,7 @@ separators between the items.
 -}
 module FmtSpec (fmtTests) where
 
+import Data.List (sortOn)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Emet
@@ -133,7 +134,19 @@ printDecl = \case
   DType _ pub n vs t -> [T "pub" | pub] <> [T "type", T n] <> map T vs <> [T "=", Free] <> printType False t
 
 printSig :: Signature -> [Piece]
-printSig s = [T "pub" | sigPub s] <> [T (sigName s), T "::", Free] <> printType False (sigType s)
+printSig s = [T "pub" | sigPub s] <> [T (sigName s), T "::", Free] <> maybe [] (\r -> printBracketRow r <> [Tight]) (sigRow s) <> printType False (sigType s)
+
+-- | A row in brackets, or a variable alone.
+printRow :: RowE -> [Piece]
+printRow = \case
+  RowE _ [] (Just (v, _)) -> [T v]
+  r -> printBracketRow r
+
+printBracketRow :: RowE -> [Piece]
+printBracketRow = \case
+  RowE _ qs v -> [T "<", Free] <> sepBy [Free, T ",", Free] (map printReq qs) <> maybe [] (\(n, _) -> [Free, T "|", Free, T n]) v <> [Free, T ">"]
+  where
+    printReq (ReqE _ k as) = T k : concat [[Free, T (quote a)] | a <- as]
 
 printCon :: ConDecl -> [Piece]
 printCon = \case
@@ -142,7 +155,7 @@ printCon = \case
 
 printType :: Bool -> TypeE -> [Piece]
 printType nl = \case
-  TFun a b -> printBType nl a <> [Free, T "->", Free] <> printType nl b
+  TFun a r b -> printBType nl a <> [Free, T "->", Free] <> maybe [] (\x -> printRow x <> [gap nl]) r <> printType nl b
   t -> printBType nl t
 
 printBType :: Bool -> TypeE -> [Piece]
@@ -271,7 +284,26 @@ genDecl =
 genSig :: Bool -> Gen Signature
 genSig top = do
   pub <- if top then Gen.bool else pure False
-  Signature l0 pub <$> genVar <*> pure l0 <*> genType
+  Signature l0 pub <$> genVar <*> pure l0 <*> Gen.maybe genBracketRow <*> genType
+
+{- | A row in brackets, its requirements in the order fmt puts them (by
+their kinds, then their literals), each once.
+-}
+genBracketRow :: Gen RowE
+genBracketRow = do
+  qs <- Gen.list (Range.linear 0 3) (ReqE l0 <$> Gen.element ["file", "net"] <*> Gen.list (Range.linear 0 2) (Gen.element ["a.tsv", "data/b.tsv", "c"]))
+  v <- Gen.maybe ((,l0) <$> genVar)
+  pure (RowE l0 (nubOrdOn key (sortOn key qs)) v)
+  where
+    key (ReqE _ k as) = (k, map quote as)
+    nubOrdOn f = \case
+      x : y : rest | f x == f y -> nubOrdOn f (x : rest)
+      x : rest -> x : nubOrdOn f rest
+      [] -> []
+
+-- | The row of an arrow: none, a row in brackets, or a variable alone.
+genRow :: Gen (Maybe RowE)
+genRow = Gen.frequency [(3, pure Nothing), (1, Just <$> genBracketRow), (1, (\v -> Just (RowE l0 [] (Just (v, l0)))) <$> genVar)]
 
 genConDecl :: Gen ConDecl
 genConDecl =
@@ -286,7 +318,7 @@ genType =
     Gen.choice
     [TCon l0 <$> genTyCon <*> pure [], TVar l0 <$> genVar]
     [ TCon l0 <$> genTyCon <*> Gen.list (Range.linear 1 2) genType,
-      TFun <$> genType <*> genType,
+      TFun <$> genType <*> genRow <*> genType,
       TTuple l0 <$> Gen.list (Range.linear 2 3) genType
     ]
 
