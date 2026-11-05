@@ -1,0 +1,95 @@
+-- Numbers: prices, kansuji, circled numbers, units and page ranges.
+-- In .gm: `@import fn/numbers.emet as n`.
+
+import "fn/lib.emet"
+
+-- 1. The price with tax, in whole yen, rounded down; the rate in percent.
+-- `[= n.taxIncluded(1980, 10)]` → 2178
+pub fn taxIncluded :: Nat -> Nat -> Nat
+taxIncluded price rate = div (price * (100 + rate)) 100
+
+-- 2. Yen with a comma every three digits.
+-- `[n.yen 1234567]` → 1,234,567円
+pub inline yen :: Nat -> Inlines
+yen n = Inline.text (commas n ++ "円")
+
+-- A number with a comma every three digits.
+pub commas :: Nat -> String
+commas n = n < 1000 ? String.fromNat n : commas (div n 1000) ++ "," ++ pad3 (n % 1000)
+
+pad3 :: Nat -> String
+pad3 n
+  | n < 10 = "00" ++ String.fromNat n
+  | n < 100 = "0" ++ String.fromNat n
+  | otherwise = String.fromNat n
+
+-- 3. Kansuji with the units of place (千二百三十四), or digit by digit
+-- (二〇二六) with `digits=true`.
+-- `[n.kansuji 1234]` → 千二百三十四; `[n.kansuji 2026 digits=true]` → 二〇二六
+pub inline kansuji :: Nat -> (digits :: Bool = False) -> Inlines
+kansuji n digits = Inline.text (digits ? kanjiDigits n : kanji n)
+
+-- The kansuji of a number with the units of place, up to 京; 〇 for 0.
+pub kanji :: Nat -> String
+kanji 0 = "〇"
+kanji n = groups n 0 ""
+
+-- The groups of four digits, from the lowest, each with its unit.
+groups :: Nat -> Nat -> String -> String
+groups 0 _ acc = acc
+groups n i acc = groups (div n 10000) (i + 1) (group4 (n % 10000) i ++ acc)
+
+group4 :: Nat -> Nat -> String
+group4 0 _ = ""
+group4 g i = place (div g 1000) "千" ++ place (div (g % 1000) 100) "百" ++ place (div (g % 100) 10) "十" ++ ones (g % 10) ++ bigUnit i
+
+place :: Nat -> String -> String
+place 0 _ = ""
+place 1 unit = unit
+place d unit = kanjiDigits d ++ unit
+
+ones :: Nat -> String
+ones 0 = ""
+ones d = kanjiDigits d
+
+bigUnit :: Nat -> String
+bigUnit i = case List.at i ["", "万", "億", "兆", "京"] of {
+  Just u -> u
+  Nothing -> "?"
+}
+
+-- The kansuji of each digit: 2026 → 二〇二六.
+pub kanjiDigits :: Nat -> String
+kanjiDigits n = String.map (lookupChar table) (String.fromNat n)
+  where {
+    table = List.zip (String.chars "0123456789") (String.chars "〇一二三四五六七八九")
+  }
+
+-- 5. Circled numbers ①–⑳; beyond 20, the number in parentheses.
+-- `[n.circled 3]` → ③; `[n.circled 21]` → (21)
+pub inline circled :: Nat -> Inlines
+circled n = Inline.text (circledString n)
+
+circledString :: Nat -> String
+circledString n
+  | n >= 1 && n <= 20 = String.take 1 (String.drop n "⓪①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳")
+  | otherwise = "(" ++ String.fromNat n ++ ")"
+
+-- 7. A number in vertical text: up to two digits as tate-chu-yoko,
+-- longer ones as kansuji.
+-- `[n.auto-tcy 12]` → 12 set horizontally in the line; `[n.auto-tcy 2026]` → 二千二十六
+pub inline "auto-tcy" autoTcy :: Nat -> Inlines
+autoTcy n = n < 100 ? Inline.tcy (String.fromNat n) : Inline.text (kanji n)
+
+-- 9. A value and its unit with a quarter-em space (shibu-aki) that does
+-- not break.
+-- `[n.unit 10 mm]` → 10 mm; `[n.unit 2.5 kg]` → 2.5 kg
+pub inline unit :: Rat -> String -> Inlines
+unit v name = [Inline.Text (String.fromRat v), Inline.Aki (Inline.Zw 0.25), Inline.Text name]
+
+-- 16. A page range: "p. 12" for one page, "pp. 12–15" for more.
+-- `[= n.pageRange(12, 15)]` → pp. 12–15; `[= n.pageRange(12, 12)]` → p. 12
+pub fn pageRange :: Nat -> Nat -> String
+pageRange from to
+  | from == to = "p. " ++ String.fromNat from
+  | otherwise = "pp. " ++ String.fromNat from ++ "–" ++ String.fromNat to

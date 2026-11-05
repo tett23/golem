@@ -1,0 +1,37 @@
+-- Text: ruby, manuscript pages, page references and index terms.
+-- In .gm: `@import fn/text.emet as t`.
+
+-- 6. Mono ruby: one reading for each character of the base. A character
+-- without a reading has none.
+-- `[t.mono 漢字 かん じ]` → 漢(かん)字(じ)
+pub inline mono :: String -> Varargs String -> Inlines
+mono base readings = [Inline.Ruby (segments (String.chars base) readings [])]
+
+segments :: List Char -> List String -> List Inline.RubySegment -> List Inline.RubySegment
+segments [] _ acc = List.reverse acc
+segments (c : cs) [] acc = segments cs [] (Inline.RubySegment [Inline.Text (String.fromChar c)] Nothing : acc)
+segments (c : cs) (r : rs) acc = segments cs rs (Inline.RubySegment [Inline.Text (String.fromChar c)] (Just r) : acc)
+
+-- 8. The number of 400-character manuscript sheets (genkō yōshi) a text
+-- fills, counting every character but spaces and line breaks, rounded up.
+-- `[= t.manuscriptPages("吾輩は猫である。")]` → 1
+pub fn manuscriptPages :: String -> Nat
+manuscriptPages s = div (charCount s + 399) 400
+
+-- The number of characters but spaces and line breaks.
+pub fn charCount :: String -> Nat
+charCount s = List.length (List.select counted (String.chars s))
+  where {
+    counted c = c /= ' ' && c /= '　' && c /= '\n' && c /= '\t'
+  }
+
+-- 10. A reference to the page of a label: "→ p." and the page number, as
+-- `[ref-page]` gives it (a number in the PDF, a link in HTML and EPUB).
+-- `[t.see terms]` → → p.12 (the page of the block with `@label terms`)
+pub inline see :: String -> Inlines
+see label = [Inline.Text "→ p.", Inline.Ref Inline.RefPage label]
+
+-- 11. A term that also goes into the index, with its reading.
+-- `[t.term 組版 くみはん]` → 組版, and an entry 組版 (くみはん) in `@index`
+pub inline term :: String -> String -> Inlines
+term word reading = [Inline.Text word, Inline.IndexMark [word] [reading]]

@@ -1,0 +1,29 @@
+chapters = ["numbers.gm", "dates.gm", "text.gm", "blocks.gm", "filters.gm"]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000163"
+title = "Emet の関数の見本"
+language = "ja"
+date = 2026-11-06
+
+[targets.html]
+[targets.epub]
+[targets.text]
+
+[functions.requires]
+file = ["data/glossary.tsv", "data/prices.tsv", "data/variants.tsv", "data/words.tsv"]
+
+[[filters]]
+function = "fn/filters.emet"
+filter = "unify-variants"
+files = ["filters.gm"]
+
+[[filters]]
+function = "fn/filters.emet"
+filter = "halfwidth"
+files = ["filters.gm"]
+
+[[filters]]
+function = "fn/filters.emet"
+filter = "first-ruby"
+files = ["filters.gm"]

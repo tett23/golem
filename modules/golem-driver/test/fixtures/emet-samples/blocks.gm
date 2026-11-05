@@ -1,0 +1,15 @@
+@import fn/blocks.emet as b
+
+# ブロック
+
+@b.box
+  刷り直しのたびに奥付を確かめます。
+
+@b.box title=コラム
+  活版の時代には、組版は職人の仕事でした。
+
+@b.glossary
+
+@b.price-table
+
+@b.checklist 初校 再校 索引 奥付

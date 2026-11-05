@@ -7,6 +7,7 @@ import CliSpec
 import ColophonSpec
 import DiagnosticSitesSpec
 import DiagnosticsSpec
+import EmetSamplesSpec (emetSamplesTests)
 import FigureSpec
 import FunctionsSpec (functionsTests)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
@@ -43,6 +44,7 @@ tests skips =
         evalDiagnosticTests,
         functionsTests,
         callsTests,
+        emetSamplesTests,
         testGroup "output and layout diagnostic codes (golem-driver ADR 0016)" outputDiagnosticTests,
         testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
         testGroup "the background of inline code (golem-driver ADR 0029)" inlineCodeBackgroundTests,

@@ -1,0 +1,64 @@
+-- Filters: they rewrite whole files, listed in `[[filters]]` of
+-- manifest.toml with `function = "fn/filters.emet"`.
+
+import "fn/lib.emet"
+
+-- 18. Ruby on the first occurrence of each word of data/words.tsv (word,
+-- reading) in a file: in paragraphs, lists, definition lists and tables,
+-- not in headings. A longer word is matched before a shorter one.
+-- `filter = "first-ruby"`
+pub filter "first-ruby" firstRuby :: Blocks -> <file "data/words.tsv"> Blocks
+firstRuby bs = case walk (rubyText (longestFirst (pairs (File.read "data/words.tsv")))) False [] bs of {
+  (ys, _) -> ys
+}
+
+-- The ruby of the words not yet seen in a string; the state is the words
+-- seen.
+rubyText :: List (String, String) -> List String -> String -> (Maybe Inlines, List String)
+rubyText table seen s = rubyGo table seen s "" [] False
+
+rubyGo :: List (String, String) -> List String -> String -> String -> Inlines -> Bool -> (Maybe Inlines, List String)
+rubyGo table seen rest acc out changed
+  | String.length rest == 0 = (changed ? Just (out ++ flush acc) : Nothing, seen)
+  | otherwise = case firstMatch table rest of {
+    Just (w, r) -> List.any (same w) seen ? rubyGo table seen (String.drop (String.length w) rest) (acc ++ w) out changed : rubyGo table (w : seen) (String.drop (String.length w) rest) "" (out ++ flush acc ++ Inline.ruby w r) True
+    Nothing -> rubyGo table seen (String.drop 1 rest) (acc ++ String.take 1 rest) out changed
+  }
+
+flush :: String -> Inlines
+flush "" = []
+flush s = Inline.text s
+
+-- 19. Unifies variant spellings with data/variants.tsv (variant, preferred
+-- form), e.g. 出来る → できる, 下さい → ください. At each position the longest
+-- variant is replaced; a replaced text is not matched again.
+-- `filter = "unify-variants"`
+pub filter "unify-variants" unifyVariants :: Blocks -> <file "data/variants.tsv"> Blocks
+unifyVariants bs = mapTexts (replaceText (longestFirst (pairs (File.read "data/variants.tsv")))) True bs
+
+replaceText :: List (String, String) -> String -> Maybe Inlines
+replaceText table s = replaceGo table s "" False
+
+replaceGo :: List (String, String) -> String -> String -> Bool -> Maybe Inlines
+replaceGo table rest acc changed
+  | String.length rest == 0 = changed ? Just (Inline.text acc) : Nothing
+  | otherwise = case firstMatch table rest of {
+    Just (w, to) -> replaceGo table (String.drop (String.length w) rest) (acc ++ to) True
+    Nothing -> replaceGo table (String.drop 1 rest) (acc ++ String.take 1 rest) changed
+  }
+
+-- 20. Full-width Latin letters and digits to half-width (Ａ → A, １ → 1),
+-- leaving code blocks as they are.
+-- `filter = "halfwidth"`
+pub filter halfwidth :: Blocks -> Blocks
+halfwidth bs = mapTexts halfText True bs
+
+halfText :: String -> Maybe Inlines
+halfText s = String.map (lookupChar widths) s == s ? Nothing : Just (Inline.text (String.map (lookupChar widths) s))
+  where {
+    widths = List.zip (String.chars (upperFull ++ lowerFull ++ "０１２３４５６７８９")) (String.chars (upper ++ lower ++ "0123456789"))
+    upperFull = "ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ"
+    lowerFull = "ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ"
+    upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    lower = "abcdefghijklmnopqrstuvwxyz"
+  }

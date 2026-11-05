@@ -1,0 +1,7 @@
+@import fn/dates.emet as d
+
+# 日付
+
+今年は[d.wareki 2026]、改元の年は[d.wareki 2019]、平成元年は[d.wareki 1989 month=1 day=8]、その前日は[d.wareki 1989 month=1 day=7]です。
+
+発行日は[= d.jdate("2026-11-06")]です。日付でない文字列は[= d.jdate("近刊")]のままです。

@@ -1,0 +1,14 @@
+@import fn/text.emet as t
+
+# 文字
+
+[t.mono 漢字 かん じ]には一字ずつルビを付けます。
+
+この節は原稿用紙で[= t.manuscriptPages("吾輩は猫である。名前はまだ無い。")]枚、[= t.charCount("吾輩は 猫である。")]字です。
+
+@label terms
+[t.term 組版 くみはん]の語は索引に載ります。
+
+用語は[t.see terms]を見てください。
+
+@index
