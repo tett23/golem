@@ -21,6 +21,7 @@ import Colog.Core qualified as L
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Concurrent.STM
+import Control.Exception (evaluate)
 import Control.Monad (forM_, guard, join, unless, void, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as J
@@ -28,6 +29,7 @@ import Data.Aeson.KeyMap qualified as KM
 import Data.ByteString qualified as BS
 import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.ByteString.Lazy qualified as BSL
+import Data.Either (fromRight)
 import Data.Foldable (foldlM)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -46,7 +48,7 @@ import Language.LSP.Server
 import Language.LSP.VFS (virtualFileText)
 import Prettyprinter (pretty, viaShow)
 import System.Directory (doesFileExist, makeAbsolute)
-import System.FilePath (makeRelative, takeDirectory, (</>))
+import System.FilePath (makeRelative, takeDirectory, takeExtension, (</>))
 import System.IO (BufferMode (..), Handle, hFlush, hSetBuffering, hSetEncoding, stdin, stdout, utf8)
 
 newtype State = State {stRoot :: FilePath}
@@ -110,9 +112,7 @@ runGolemLspWithHandles hin hout = do
     ioLog = L.cmap (\l -> show ("[" <> viaShow (L.getSeverity l) <> "] " <> pretty (L.getMsg l))) L.logStringStderr
 
 {- | Sets @capabilities.positionEncoding@ of the initialize response with
-the given id to the negotiated encoding, and removes
-@capabilities.semanticTokensProvider@ (golem-lsp ADR 0005). Anything else
-is 'Nothing'.
+the given id to the negotiated encoding. Anything else is 'Nothing'.
 -}
 rewriteInitializeResponse :: LspId Method_Initialize -> F.Encoding -> BSL.ByteString -> Maybe BSL.ByteString
 rewriteInitializeResponse lid enc bytes = do
@@ -121,7 +121,7 @@ rewriteInitializeResponse lid enc bytes = do
   guard (i == J.toJSON lid)
   J.Object result <- KM.lookup "result" msg
   J.Object caps <- KM.lookup "capabilities" result
-  let caps' = KM.delete "semanticTokensProvider" (KM.insert "positionEncoding" (J.toJSON (F.encodingKind enc)) caps)
+  let caps' = KM.insert "positionEncoding" (J.toJSON (F.encodingKind enc)) caps
       result' = KM.insert "capabilities" (J.Object caps') result
   pure (J.encode (J.Object (KM.insert "result" (J.Object result') msg)))
 
@@ -179,6 +179,36 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
         changed uri,
       notificationHandler SMethod_TextDocumentDidSave $ \_ -> pure (),
       notificationHandler SMethod_WorkspaceDidChangeConfiguration $ \_ -> pure (),
+      -- the lsp package does not cancel; nothing to log (golem-lsp ADR 0006)
+      notificationHandler SMethod_CancelRequest $ \_ -> pure (),
+      {- the editor's text now, parsed on a thread of its own (golem-lsp ADR
+      0006); the workspace's CST when it has the same text -}
+      requestHandler SMethod_TextDocumentSemanticTokensFull $ \(TRequestMessage _ _ _ (SemanticTokensParams _ _ (TextDocumentIdentifier docUri))) respond -> do
+        st <- state
+        enc <- encoding
+        mws <- liftIO (readTVarIO wsVar)
+        mvf <- getVirtualFile (toNormalizedUri docUri)
+        env <- getLspEnv
+        let empty = SemanticTokens Nothing []
+            {- every number computed here: a thunk in the response would be
+            computed by the thread that sends the responses, and hold up
+            the responses after it -}
+            answer toks = do
+              let r = fromRight empty (makeSemanticTokens defaultSemanticTokensLegend toks)
+                  SemanticTokens _ ds = r
+              _ <- evaluate (foldl' (+) 0 ds)
+              runLspT env (respond (Right (InL r)))
+        case (relPath st docUri, virtualFileText <$> mvf) of
+          (Just p, Just text)
+            | takeExtension p == ".gm" ->
+                void . liftIO . forkIO $ do
+                  let cached = do
+                        src <- mws >>= (`sourceOf` p)
+                        guard (srcText src == text)
+                        pure (srcCst src)
+                      toks = maybe (F.semanticTokens enc text) (F.semanticTokensOf enc text) cached
+                  answer toks
+          _ -> respond (Right (InL empty)),
       notificationHandler SMethod_TextDocumentDidClose $ \(TNotificationMessage _ _ (DidCloseTextDocumentParams (TextDocumentIdentifier uri))) -> do
         st <- state
         forM_ (relPath st uri) $ \p -> serially $ withWs $ \ws -> do

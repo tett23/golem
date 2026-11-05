@@ -24,6 +24,8 @@ module Golem.Lsp.Features
     fromLineCol,
     chooseEncoding,
     encodingKind,
+    semanticTokens,
+    semanticTokensOf,
   )
 where
 
@@ -42,14 +44,16 @@ import Golem.Eval.Value (Value (..), typeName)
 import Golem.Fmt (FormatResult (..), format)
 import Golem.Lsp.Toml (Context (..), Quote (..), contextAt, definedPaths)
 import Golem.Lsp.Workspace
+import Golem.Parser (parse)
 import Golem.Parser.AST
+import Golem.Parser.CST qualified as C
 import Golem.Parser.SourceSettings (sourceKeys)
 import Golem.Preflight.Rules (rulesSchema)
 import Golem.Project
 import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), builtinAkiSetNames, builtinCharStyles, builtinParaStyles, charStyleKeys, defaultStyle, lineBreaksValues, noLocalStyles, paraStyleKeys, regexStyleKeys, styleSchema)
 import Golem.Project.TomlSchema (Leaf (..), Namespace (..), Node (..), nodeAt)
 import Golem.Syntax
-import Language.LSP.Protocol.Types (PositionEncodingKind (..))
+import Language.LSP.Protocol.Types (PositionEncodingKind (..), SemanticTokenAbsolute (..), SemanticTokenModifiers (..), SemanticTokenTypes (..))
 
 -- ------------------------------------------------------------------ positions
 
@@ -599,3 +603,80 @@ outline ws path = case sourceOf ws path of
     nest (o : rest) =
       let (kids, others) = span ((> olLevel o) . olLevel) rest
        in o {olChildren = nest kids} : nest others
+
+-- ------------------------------------------------------------------ semantic tokens
+
+{- | The semantic tokens of a .gm text (golem-lsp ADR 0006): its CST
+classified by the kind of each token and of its parent, in document order,
+in the negotiated unit, and split at newlines.
+-}
+semanticTokens :: Encoding -> Text -> [SemanticTokenAbsolute]
+semanticTokens enc text = semanticTokensOf enc text (fst (parse (FileId 0) text))
+
+-- | The same, from a CST of the text already parsed.
+semanticTokensOf :: Encoding -> Text -> C.Node -> [SemanticTokenAbsolute]
+semanticTokensOf enc text root = concatMap place (classify 0 root)
+  where
+    li = mkLineIndex text
+    bytes = TE.encodeUtf8 text
+    place (s, e, ty, mods) =
+      [ SemanticTokenAbsolute (fromIntegral l) (fromIntegral c) (fromIntegral (c' - c)) ty mods
+      | (a, b) <- lineParts s e,
+        let LineCol l c = toLineCol enc li a
+            LineCol _ c' = toLineCol enc li b,
+        c' > c
+      ]
+    -- the parts of [s, e) between its newlines, without them
+    lineParts s e = case BS.elemIndex 10 (BS.take (e - s) (BS.drop s bytes)) of
+      Just i -> (s, s + i) : lineParts (s + i + 1) e
+      Nothing -> [(s, e)]
+
+-- | (start, end, type, modifiers) of each highlighted token under a node at the offset.
+classify :: Int -> C.Node -> [(Int, Int, SemanticTokenTypes, [SemanticTokenModifiers])]
+classify start n = go start False False (C.nodeChildren n)
+  where
+    parent = C.nodeKind n
+    go _ _ _ [] = []
+    go off ident word (e : es) =
+      let w = C.elementWidth e
+          rest k = go (off + w) (ident || k == C.KIdent) (word || k == C.KWord) es
+       in case e of
+            C.ElemNode m -> classify off m <> go (off + w) ident word es
+            C.ElemToken (C.Token k _) ->
+              maybe [] (\(ty, ms) -> [(off, off + w, ty, ms)]) (tokenType parent ident word k) <> rest k
+
+{- | The type of a token from its kind, its parent's kind, and whether an
+identifier or a word came before it under the same parent.
+-}
+tokenType :: C.SyntaxKind -> Bool -> Bool -> C.SyntaxKind -> Maybe (SemanticTokenTypes, [SemanticTokenModifiers])
+tokenType parent ident word = \case
+  C.KComment -> plain SemanticTokenTypes_Comment
+  C.KProofComment -> Just (SemanticTokenTypes_Comment, [SemanticTokenModifiers_Modification])
+  C.KAt | parent == C.NBlockCommand -> plain SemanticTokenTypes_Decorator
+  C.KIdent
+    | parent == C.NBlockCommand, not ident -> plain SemanticTokenTypes_Decorator
+    | parent `elem` [C.NInlineCommand, C.NCallExpr], not ident -> plain SemanticTokenTypes_Function
+    | parent == C.NVarExpr -> plain SemanticTokenTypes_Variable
+  C.KWord
+    | parent == C.NKeywordArgument -> plain (if word then SemanticTokenTypes_String else SemanticTokenTypes_Parameter)
+    | parent == C.NArgument -> plain SemanticTokenTypes_String
+    | parent == C.NCodeBlock -> plain SemanticTokenTypes_Type
+  C.KString -> plain SemanticTokenTypes_String
+  C.KExprOpen -> plain SemanticTokenTypes_Keyword
+  C.KNumber -> plain SemanticTokenTypes_Number
+  C.KKeyword -> plain SemanticTokenTypes_Keyword
+  C.KOperator -> plain SemanticTokenTypes_Operator
+  C.KEscape -> plain SemanticTokenTypes_Macro
+  C.KNumberMark -> plain SemanticTokenTypes_Operator
+  C.KNumberBody -> plain SemanticTokenTypes_Number
+  C.KHash | parent == C.NHeading -> plain SemanticTokenTypes_Keyword
+  C.KText | parent == C.NHeading -> plain SemanticTokenTypes_Namespace
+  C.KDash | parent == C.NListItem -> plain SemanticTokenTypes_Keyword
+  C.KPlus | parent == C.NListItem -> plain SemanticTokenTypes_Keyword
+  C.KEquals | parent == C.NDefTerm -> plain SemanticTokenTypes_Keyword
+  C.KPipe -> plain SemanticTokenTypes_Operator
+  C.KDelim -> plain SemanticTokenTypes_Operator
+  C.KFence -> plain SemanticTokenTypes_Keyword
+  _ -> Nothing
+  where
+    plain t = Just (t, [])

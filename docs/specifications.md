@@ -2482,6 +2482,7 @@ v1 の LSP は次の機能を持つ。
 - ホバーによる `[= ...]` の評価結果の表示
 - 整形（fmt を呼び出す）
 - 見出しによる文書のアウトライン
+- semantic tokens による `.gm` の色付け（[golem-lsp ADR 0006](golem-lsp/adr/0006-semantic-tokens-highlighting.md)）
 
 組版結果のプレビューは LSP の範囲外とする。
 
@@ -2515,7 +2516,34 @@ LSP は、最後の変更から一定の時間を待ってから、変わった�
 評価を始めるときは、まだ評価していない変更のあるファイルをすべて、エディタの今の内容で評価する。
 diagnostics は、評価で内容を変えたファイルと、diagnostics が最後に送ったものと違うファイルにだけ送る。
 diagnostics がなくなったファイルには空の列を送り、一度も diagnostics を持たなかったファイルには送らない。
-LSP は semantic tokens を処理しないので、初期化の応答で知らせない。
+
+`.gm` の色付けは、`textDocument/semanticTokens/full` で返す（[golem-lsp ADR 0006](golem-lsp/adr/0006-semantic-tokens-highlighting.md)）。
+`range` と `full/delta` は知らせない。
+凡例は `lsp` パッケージの `defaultSemanticTokensLegend`（LSP の標準の型と修飾子）である。
+トークンは、要求の時点のエディタの内容の CST から、別のスレッドで作る。
+ワークスペースが同じ本文を持っていれば、その CST を使う。
+`.gm` でないファイルには、空のトークンの列を返す。
+型は、CST のトークンの種類と、その親のノードで決める。
+
+| 原稿の要素 | 型 |
+| --- | --- |
+| コメント | `comment`（校正のコメントは修飾子 `modification` を付ける） |
+| ブロックのコマンドの `@` と名前 | `decorator` |
+| インラインのコマンドの名前、式の呼び出しの名前 | `function` |
+| キーワード引数の名前 | `parameter` |
+| 引数の値、式の文字列 | `string` |
+| `[=`、式のキーワード | `keyword` |
+| 式の数、数の表記の中身 | `number` |
+| 式の変数 | `variable` |
+| 式の演算子、数の表記の `##`、表の区切り | `operator` |
+| エスケープ | `macro` |
+| 見出しの `#`、リストと定義リストの印、コードブロックの囲み | `keyword` |
+| 見出しの文字 | `namespace` |
+| コードブロックの言語名 | `type` |
+
+地の文、散文スロットの中身、コードブロックの中身、構文エラーの箇所には、トークンを作らない。
+改行をまたぐトークンは、行ごとに分ける。
+`$/cancelRequest` は何もせずに受け取る。
 
 LSP は、`@table` が参照する表のファイルの変更を受けて評価し直す（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
 クライアントが `workspace/didChangeWatchedFiles` の動的な登録を申し出れば、最後の評価で読んだ表のファイルのパスを、プロジェクトのルートを基準にした `RelativePattern` で登録する。
