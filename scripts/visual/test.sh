@@ -346,6 +346,9 @@ slow_check() {
   env PATH="$CK/slow:$PATH" SHEM="$CK/slow/shem" REAL_SHEM="$CK/bin/shem" SHEM_LOG="$CK/shem.log" FAKE_SHEM_VERSION="$VERSION" \
     RUNNING="$CK/running" CONCURRENT="$CK/concurrent" FAKE_NPROC="$1" sh "$CK/root/scripts/visual/check.sh" "$2"
 }
+# FAKE_SHEM_VERSION=9.9.9 before the function run above stays set in some
+# shells (the sh of macOS): clear it
+FAKE_SHEM_VERSION=
 pdfs "$CK/p"
 fixture "check: the references of the slow shem" check --accept "$CK/p"
 run slow_check 3 "$CK/p"
