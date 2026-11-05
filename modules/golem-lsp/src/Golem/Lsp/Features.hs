@@ -30,6 +30,7 @@ module Golem.Lsp.Features
 where
 
 import Data.ByteString qualified as BS
+import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Either (fromRight)
 import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as Map
@@ -38,6 +39,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver (Evaluated (..), metadataValues)
+import Golem.Emet (Export (..), Kind (..), Program, formatEmet, programExports)
+import Golem.Emet.Ide (IdeKind (..), emetCompletions, emetDefinition, emetExportAt, emetHover)
 import Golem.Eval.Expr (embedValue, evalExpr, plainEnv)
 import Golem.Eval.File (EvalResult (..), Usage (..), builtinInlineCommands)
 import Golem.Eval.Value (Value (..), typeName)
@@ -50,6 +53,7 @@ import Golem.Parser.CST qualified as C
 import Golem.Parser.SourceSettings (sourceKeys)
 import Golem.Preflight.Rules (rulesSchema)
 import Golem.Project
+import Golem.Project.Paths (normalizeRelative)
 import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), builtinAkiSetNames, builtinCharStyles, builtinParaStyles, charStyleKeys, defaultStyle, lineBreaksValues, noLocalStyles, paraStyleKeys, regexStyleKeys, styleSchema)
 import Golem.Project.TomlSchema (Leaf (..), Namespace (..), Node (..), nodeAt)
 import Golem.Syntax
@@ -107,6 +111,10 @@ data Occurrence
     OccStyleDef StyleKind Text
   | -- | a style named by @style, [style ...] or based-on of @style-def
     OccStyleRef StyleKind Text
+  | -- | the name of a command of a .emet, ns.name: inline (True) or block (docs/adr/0162)
+    OccCommand Bool Text
+  | -- | a call of a pub fn of a .emet in an expression, ns.f(...)
+    OccFunction Text
   deriving stock (Show)
 
 labelCommands :: [Text]
@@ -124,7 +132,7 @@ occurrences (File _ bs) = concatMap block bs
       DefList gs -> concatMap (\g -> concatMap (concatMap inline) (dgTerms g) <> concatMap (concatMap block) (dgDefs g)) gs
       Table _ h rows -> concatMap (concatMap inline) h <> concatMap (concatMap (concatMap inline)) rows
       SetVar (Located vsp v) e -> (vsp, OccVar Nothing v) : expr e
-      BlockCommand (Located _ name) args body -> blockCommand sp name args <> concatMap block body
+      BlockCommand (Located nsp name) args body -> [(nsp, OccCommand False name) | T.isInfixOf "." name] <> blockCommand sp name args <> concatMap block body
       Attributed cs t -> concatMap block cs <> maybe [] block t
       _ -> []
     blockCommand _ name args = case (name, args) of
@@ -141,13 +149,14 @@ occurrences (File _ bs) = concatMap block bs
       _ -> concatMap argument args
     inline (Located sp i) = case i of
       Expr e -> (sp, OccExpr e) : expr e
-      Command (Located _ name) args slots ->
-        ( case (name, args) of
-            (n, Located asp (Positional (Word l)) : _)
-              | n `elem` labelCommands -> [(asp, OccLabelRef l)] <> [(sp, OccPageRef l) | n == "ref-page"]
-            ("style", [Located asp (Positional (Word n))]) -> [(asp, OccStyleRef CharacterKind n)]
-            _ -> concatMap argument args
-        )
+      Command (Located nsp name) args slots ->
+        [(nsp, OccCommand True name) | T.isInfixOf "." name]
+          <> ( case (name, args) of
+                 (n, Located asp (Positional (Word l)) : _)
+                   | n `elem` labelCommands -> [(asp, OccLabelRef l)] <> [(sp, OccPageRef l) | n == "ref-page"]
+                 ("style", [Located asp (Positional (Word n))]) -> [(asp, OccStyleRef CharacterKind n)]
+                 _ -> concatMap argument args
+             )
           <> concatMap (concatMap inline) slots
       SoftBreak -> []
       -- an escaped character refers to nothing (golem-parser ADR 0010)
@@ -167,11 +176,68 @@ occurrences (File _ bs) = concatMap block bs
       EVar (ns : v : _) -> [(sp, OccVar (Just ns) v)]
       EArray es -> concatMap expr es
       EHash kvs -> concatMap (expr . snd) kvs
-      ECall _ es -> concatMap expr es
+      ECall f es -> [(sp, OccFunction f) | T.isInfixOf "." f] <> concatMap expr es
       EUnary _ a -> expr a
       EBinary _ a b -> expr a <> expr b
       ERange a b -> expr a <> expr b
       _ -> []
+
+-- ------------------------------------------------------------------ functions of .emet
+
+-- | The functions of the .emet of the project (docs/adr/0162), when they loaded.
+programOf :: Workspace -> Maybe Program
+programOf ws = wsEvaluated ws >>= evFunctions
+
+{- | The namespaces of the .emet a source imports, with their paths: from
+its syntax, so that a file being typed with an error keeps them.
+-}
+emetImports :: Source -> Map.Map Text FilePath
+emetImports src =
+  Map.fromList
+    [ (isNamespace site, p)
+    | Right site <- importsOf (srcAst src),
+      ".emet" `T.isSuffixOf` isPath site,
+      Right p <- [normalizeRelative (T.unpack (isPath site))]
+    ]
+
+-- | The function of a .emet a name of a source calls: ns.name of a kind.
+exportOf :: Workspace -> Source -> Kind -> Text -> Maybe Export
+exportOf ws src kind q = do
+  p <- programOf ws
+  let (ns, rest) = T.breakOn "." q
+  n <- T.stripPrefix "." rest
+  path <- Map.lookup ns (emetImports src)
+  listToMaybe [e | e <- Map.findWithDefault [] path (programExports p), exKind e == kind, exName e == n]
+
+-- | The declaration of a function of a .emet.
+exportLocation :: Export -> Location
+exportLocation e = Location (exPath e) (spanStart (exSpan e)) (spanEnd (exSpan e))
+
+-- | The calls of a function of a .emet in the sources of the project.
+callsOf :: Workspace -> Export -> [Location]
+callsOf ws e =
+  [ loc s sp
+  | s <- allSources ws,
+    (sp, occ) <- occurrences (srcAst s),
+    Just (kind, q) <- [called occ],
+    Just e' <- [exportOf ws s kind q],
+    exPath e' == exPath e,
+    exKind e' == exKind e,
+    exName e' == exName e
+  ]
+  where
+    called = \case
+      OccCommand True q -> Just (KindInline, q)
+      OccCommand False q -> Just (KindBlock, q)
+      OccFunction q -> Just (KindFn, q)
+      _ -> Nothing
+
+-- | The function of a .emet an occurrence calls.
+occurrenceExport :: Workspace -> Source -> Occurrence -> Maybe Export
+occurrenceExport ws src = \case
+  OccCommand inline q -> exportOf ws src (if inline then KindInline else KindBlock) q
+  OccFunction q -> exportOf ws src KindFn q
+  _ -> Nothing
 
 -- | The innermost occurrence at an offset.
 occurrenceAt :: Source -> Int -> Maybe (SrcSpan, Occurrence)
@@ -190,7 +256,9 @@ loc s sp = Location (srcPath s) (spanStart sp) (spanEnd sp)
 
 definition :: Workspace -> FilePath -> Int -> [Location]
 definition ws path off = case sourceOf ws path of
-  Nothing -> []
+  -- a name in a .emet: its declaration in the file or an import (docs/adr/0162)
+  Nothing -> [Location p s e | Just text <- [emetText ws path], Just prog <- [programOf ws], Just (p, s, e) <- [emetDefinition prog path text off]]
+  Just src | Just e <- occurrenceAt src off >>= occurrenceExport ws src . snd -> [exportLocation e]
   Just src -> case snd <$> occurrenceAt src off of
     Just (OccImport p) -> [Location (T.unpack p) 0 0 | T.unpack p `elem` wsSourceFiles ws || any ((== T.unpack p) . srcPath) (allSources ws)]
     Just (OccVar Nothing v) -> [loc src sp | Just r <- [srcResult src], (d, sp) <- usageDefined (erUsage r), d == v]
@@ -233,7 +301,9 @@ a variable in its file and through namespaces in the files importing it.
 -}
 references :: Workspace -> FilePath -> Int -> [Location]
 references ws path off = case sourceOf ws path of
-  Nothing -> []
+  -- a function of a .emet: the calls of it in the sources (docs/adr/0162)
+  Nothing -> [l | Just text <- [emetText ws path], Just prog <- [programOf ws], Just e <- [emetExportAt prog path text off], l <- callsOf ws e]
+  Just src | Just e <- occurrenceAt src off >>= occurrenceExport ws src . snd -> callsOf ws e
   Just src -> case snd <$> occurrenceAt src off of
     Just (OccLabelRef l) -> nub (labelDefs ws l <> labelRefs ws l)
     Just (OccLabelDef l) -> nub (labelDefs ws l <> labelRefs ws l)
@@ -286,7 +356,10 @@ data Completion = Completion {cmpLabel :: !Text, cmpKind :: !CompletionKind}
 completions :: Workspace -> FilePath -> Int -> [Completion]
 completions ws path off = case sourceOf ws path of
   _ | isJust (settingsSchemaOf path) -> maybe [] (\t -> tomlFileCompletions path t off) (Map.lookup path (wsOverlay ws))
-  Nothing -> []
+  -- a .emet (docs/adr/0162)
+  Nothing -> [Completion n (emetKind k) | Just text <- [emetText ws path], (n, k) <- emetCompletions (programOf ws) path text off]
+  Just src
+    | Just names <- namespaceCompletions ws src off -> names
   Just src ->
     let before = TE.decodeUtf8Lenient (BS.take off (TE.encodeUtf8 (srcText src)))
         lineBefore = T.takeWhileEnd (/= '\n') before
@@ -341,6 +414,47 @@ completions ws path off = case sourceOf ws path of
   where
     -- the built-in commands, then those of the plugins (docs/adr ADR 0031)
     commandNames = [Completion c CkCommand | c <- builtinInlineCommands <> maybe [] evPluginCommands (wsEvaluated ws)]
+
+-- | What a name completed in a .emet is, as a completion of the server.
+emetKind :: IdeKind -> CompletionKind
+emetKind = \case
+  IdeFunction -> CkCommand
+  IdeConstructor -> CkSettingValue
+  IdeType -> CkStyleKind
+  IdeModule -> CkTable
+  IdeVariable -> CkSettingKey
+  IdeRequirement -> CkSettingKey
+  IdeKeyword -> CkStyleKind
+
+{- | The functions of a namespace of a .emet after its name and a dot
+(docs/adr/0162): the block commands after @ at the start of a line, the
+pub fn in an expression, the inline commands after [. Nothing when the
+text before the cursor is no such name.
+-}
+namespaceCompletions :: Workspace -> Source -> Int -> Maybe [Completion]
+namespaceCompletions ws src off = do
+  p <- programOf ws
+  let before = TE.decodeUtf8Lenient (BS.take off (TE.encodeUtf8 (srcText src)))
+      lineBefore = T.takeWhileEnd (/= '\n') before
+      typed = T.takeWhileEnd (\c -> c == '.' || c == '-' || c == '_' || isAsciiAlphaNum c) lineBefore
+      (q, _) = T.breakOnEnd "." typed
+  ns <- T.stripSuffix "." q
+  path <- Map.lookup ns (emetImports src)
+  let exports = Map.findWithDefault [] path (programExports p)
+      rest = T.dropEnd (T.length typed) lineBefore
+      names kind = Just [Completion (exName e) CkCommand | e <- exports, exKind e == kind]
+  case () of
+    _
+      | T.strip rest == "@" -> names KindBlock
+      | inExpression rest -> names KindFn
+      | "[" `T.isSuffixOf` rest -> names KindInline
+      | otherwise -> Nothing
+  where
+    isAsciiAlphaNum c = isAsciiLower c || isAsciiUpper c || isDigit c
+    -- the text before the name is inside [= ... ] that is not closed
+    inExpression rest = case T.breakOnEnd "[=" rest of
+      ("", _) -> False
+      (_, after) -> not (T.isInfixOf "]" after)
 
 {- | Completion after @manifest (docs/adr ADR 0014): the keys of [source]
 (docs/adr ADR 0013), then the values of a key.
@@ -528,8 +642,27 @@ nameKind = \case
 the S1 result; page numbers are decided by layout (S2).
 -}
 hover :: Workspace -> FilePath -> Int -> Maybe Text
-hover ws path off = do
-  src <- sourceOf ws path
+hover ws path off
+  -- the type of a function in a .emet (docs/adr/0162)
+  | isEmet path = do
+      text <- emetText ws path
+      prog <- programOf ws
+      emetHover prog path text off
+  | otherwise = do
+      src <- sourceOf ws path
+      -- the signature of the function of a .emet that a name calls (docs/adr/0162)
+      case [e | (sp, occ) <- occurrences (srcAst src), onName sp occ, Just e <- [occurrenceExport ws src occ]] of
+        e : _ -> Just (exSignature e)
+        [] -> gmHover ws src off
+  where
+    onName sp = \case
+      OccCommand _ _ -> spanStart sp <= off && off <= spanEnd sp
+      OccFunction q -> spanStart sp <= off && off <= spanStart sp + BS.length (TE.encodeUtf8 q)
+      _ -> False
+
+-- | The hover of a .gm.
+gmHover :: Workspace -> Source -> Int -> Maybe Text
+gmHover ws src off = do
   (_, occ) <- listToMaybe (sortOn (negate . spanLength . fst) [o | o@(sp, OccExpr _) <- occurrences (srcAst src), spanStart sp <= off, off <= spanEnd sp]) `orElse` occurrenceAt src off
   case occ of
     OccExpr e -> Just (evaluate src e)
@@ -538,8 +671,8 @@ hover ws path off = do
   where
     orElse (Just x) _ = Just x
     orElse Nothing y = y
-    evaluate src e =
-      let r = srcResult src
+    evaluate s0 e =
+      let r = srcResult s0
           vars = maybe Map.empty erExports r
           imports =
             Map.fromList
@@ -570,11 +703,18 @@ hover ws path off = do
 errors or is already formatted.
 -}
 formatting :: Workspace -> FilePath -> Maybe Text
-formatting ws path = do
-  src <- sourceOf ws path
-  case format (srcText src) of
-    Formatted t | t /= srcText src -> Just t
-    _ -> Nothing
+formatting ws path
+  -- a .emet, by fmt of golem-emet (docs/adr/0162)
+  | isEmet path = do
+      text <- emetText ws path
+      case formatEmet text of
+        Right t | t /= text -> Just t
+        _ -> Nothing
+  | otherwise = do
+      src <- sourceOf ws path
+      case format (srcText src) of
+        Formatted t | t /= srcText src -> Just t
+        _ -> Nothing
 
 -- ------------------------------------------------------------------ outline
 

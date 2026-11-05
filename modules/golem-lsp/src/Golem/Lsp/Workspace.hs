@@ -14,6 +14,8 @@ module Golem.Lsp.Workspace
     watchGlob,
     tableFilesChanged,
     sourceOf,
+    emetText,
+    isEmet,
     lineIndexOf,
     diagnosticsFor,
     publishable,
@@ -30,6 +32,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Driver (Evaluated (..), assetRefs, builtinKeepStyles, evaluateLoose, evaluateProjectWith, keepStyles)
 import Golem.Driver.Lint (lintEvaluated)
+import Golem.Emet (programModules)
 import Golem.Eval.File
 import Golem.Eval.Settings (isSettingCommand)
 import Golem.Eval.Value (Value)
@@ -120,7 +123,7 @@ listSources root = map (makeRelative root) <$> go root
               isDir <- doesDirectoryExist p
               if isDir
                 then if e `elem` ["build", "dist-newstyle", ".git"] then pure [] else go p
-                else pure [p | ".gm" `T.isSuffixOf` T.pack e]
+                else pure [p | any (`T.isSuffixOf` T.pack e) [".gm", ".emet"]]
           )
           entries
 
@@ -265,6 +268,18 @@ replaceFile e fid sf res =
           evS1Diagnostics = s1,
           evDiagnostics = sortDiagnostics (kept <> sfSyntaxDiagnostics sf <> erDiagnostics res <> s1)
         }
+
+-- | Whether a path is of a .emet (docs/adr/0162).
+isEmet :: FilePath -> Bool
+isEmet = (== ".emet") . takeExtension
+
+{- | The text of a .emet the project uses (docs/adr/0162): the editor's,
+or the one the last evaluation read.
+-}
+emetText :: Workspace -> FilePath -> Maybe Text
+emetText ws path
+  | not (isEmet path) = Nothing
+  | otherwise = Map.lookup path (wsOverlay ws) <|> (wsEvaluated ws >>= evFunctions >>= \p -> (\(_, t, _) -> t) <$> Map.lookup path (programModules p))
 
 sourceOf :: Workspace -> FilePath -> Maybe Source
 sourceOf ws path = case wsEvaluated ws >>= \e -> fmap (e,) (findSource e path) of

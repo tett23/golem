@@ -17,6 +17,7 @@ module Golem.Driver
     hostContext,
     evaluateProjectWith,
     evaluateLoose,
+    functionPaths,
     loadBibliography,
     metadataValues,
     epubConfig,
@@ -535,6 +536,19 @@ functionRoots root project = do
       Left e -> pure (Left (diagnostic "G03003" Error at (T.pack (pathErrorMessage e <> ": " <> p))))
       Right rel -> pure (Right rel)
   pure (lefts checked, nub (imported <> rights checked))
+
+{- | The .emet a project uses (docs/adr/0162), those of @import and
+[[filters]] and those they import, as far as they can be read; for golem
+fmt without arguments.
+-}
+functionPaths :: FilePath -> Project -> IO [FilePath]
+functionPaths root project = do
+  (_, roots) <- functionRoots root project
+  if null roots
+    then pure []
+    else do
+      lf <- loadFunctions root Map.empty (functionsFileBase project) (projectManifest project) roots
+      pure (sort [siPath si | si <- Map.elems (lfSources lf)])
 
 {- | The table of the functions for golem-eval (docs/adr/0162): the
 namespaces of the program, or, after an error of the .emet, none, whose
