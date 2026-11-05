@@ -1,0 +1,19 @@
+chapters = ["a.gm"]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000162"
+title = "関数"
+language = "ja"
+date = 2026-11-06
+
+[targets.html]
+[targets.epub]
+[targets.text]
+
+[functions.requires]
+file = ["data/words.tsv"]
+
+[[filters]]
+function = "fn/book.emet"
+filter = "mark-first"
+files = ["a.gm"]

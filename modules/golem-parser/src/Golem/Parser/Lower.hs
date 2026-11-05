@@ -325,6 +325,8 @@ expr p = Located (pspan p) $ case p of
     _ -> EError
   PN NVarExpr _ cs -> EVar [t | PT KIdent _ t <- cs]
   PN NCallExpr _ cs -> case significant cs of
+    -- a function of a namespace, ns.f (docs/adr/0162), is named with its dot
+    (PT KIdent _ ns : PT KDot _ _ : PT KIdent _ f : rest) -> ECall (ns <> "." <> f) [expr e | e <- rest, isExprNode e]
     (PT KIdent _ f : rest) -> ECall f [expr e | e <- rest, isExprNode e]
     _ -> EError
   PN NArrayExpr _ cs -> EArray [expr e | e <- cs, isExprNode e]

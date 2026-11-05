@@ -1,6 +1,7 @@
 module Main (main) where
 
 import BuildSpec
+import CallsSpec (callsTests)
 import ChapterNotesSpec
 import CliSpec
 import ColophonSpec
@@ -41,6 +42,7 @@ tests skips =
         testGroup "reading stage (golem-parser ADR 0009)" readingTests,
         evalDiagnosticTests,
         functionsTests,
+        callsTests,
         testGroup "output and layout diagnostic codes (golem-driver ADR 0016)" outputDiagnosticTests,
         testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
         testGroup "the background of inline code (golem-driver ADR 0029)" inlineCodeBackgroundTests,

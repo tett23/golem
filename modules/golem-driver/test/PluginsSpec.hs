@@ -483,6 +483,29 @@ autoTcyTests =
     testCase "the data config chooses the counts of digits and the marks" $
       autoTcy verticalStyle "data = { config = \"tcy.conf\" }\n" "12と123と!!!\n" $ \r ->
         r @?= (["12と", "#123", "と", "[tcy: !!!]"], []),
+    -- docs/adr/0162
+    testCase "the filters of .emet and of plugins apply in the order of [[filters]]" $ do
+      let emet =
+            TE.encodeUtf8 . T.unlines $
+              [ "pub filter add :: Blocks -> Blocks",
+                "add bs = bs ++ Block.paragraph (Inline.text \"12\")",
+                "",
+                "pub filter count :: Blocks -> Blocks",
+                "count bs = bs ++ Block.paragraph (Inline.text (String.fromNat (List.length (List.select isTcy (List.concatMap inlinesOf bs)))))",
+                "",
+                "inlinesOf :: Block.Block -> Inlines",
+                "inlinesOf (Block.Paragraph _ xs) = xs",
+                "inlinesOf _ = []",
+                "",
+                "isTcy :: Inline.Inline -> Bool",
+                "isTcy (Inline.Number _ (Just Inline.TateChuYoko)) = True",
+                "isTcy _ = False"
+              ]
+          function name = "\n[[filters]]\nfunction = \"f.emet\"\nfilter = \"" <> name <> "\"\nfiles = [\"a.gm\"]\n"
+          ordered first = withSample verticalStyle "auto-tcy" "" (first <> function "count") "本文。\n" [("f.emet", emet)] $ \tmp ->
+            lookedUp Map.empty tmp >>= \(is, ds) -> pure (shapes is, ds)
+      ordered (function "add" <> filters) >>= (@?= (["本文。", "#12", "1"], []))
+      ordered (filters <> function "add") >>= (@?= (["本文。", "12", "0"], [])),
     testCase "an error of the config points at the top of the file, in horizontal writing too" $
       withSample horizontalStyle "auto-tcy" "data = { config = \"bad.conf\" }\n" filters "12\n" [("bad.conf", "digits = 9\n")] $ \tmp -> do
         r <- build (defaultOptions tmp)
@@ -1210,7 +1233,7 @@ pluginTests =
                  cache <- defaultCacheDir
                  lockText <- TIO.readFile (tmp </> "plugins.lock")
                  m <- TIO.readFile (tmp </> "manifest.toml") >>= either (assertFailure . show) pure . parseManifest (FileId 0)
-                 hook <- loadPlugins tmp Map.empty cache (FileId 0) (FileId 1) lockText (FileId 2) (HostContext "horizontal" "kanji") m >>= either (assertFailure . show) pure . lpHook
+                 hook <- loadPlugins tmp Map.empty cache (FileId 0) (FileId 1) lockText (FileId 2) (HostContext "horizontal" "kanji") (\_ _ _ _ -> Nothing) m >>= either (assertFailure . show) pure . lpHook
                  let overrides = map (builtinName . Overridable) (Map.keys (phOverrides hook))
                  pure (sort (overrides <> map unPluginCommandName (Map.keys (phCommands hook))), sort overrides)
            keysOf [("ov", "override-ruby.wat")] (pluginDeclOf "ov" "overrides = [\"ruby\"]\n") >>= (@?= (["greet", "ruby"], ["ruby"]))

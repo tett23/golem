@@ -8,6 +8,8 @@ module Golem.Emet
     loadProgram,
     callFunction,
     callFunctionCounted,
+    callFunctionLimited,
+    programOthers,
     Handlers (..),
     noHandlers,
     fileHandlers,
@@ -21,6 +23,14 @@ module Golem.Emet
     readEmet,
     formatEmet,
     programFiles,
+    programExports,
+    Export (..),
+    ExportArg (..),
+    Kind (..),
+    kindWord,
+    tInlines,
+    tBlocks,
+    showTy,
   )
 where
 
@@ -31,14 +41,14 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Emet.Builtins (builtinSources, divInfo)
+import Golem.Emet.Builtins (builtinSources, divInfo, hiddenConstructors)
 import Golem.Emet.Check
 import Golem.Emet.Eval
 import Golem.Emet.Fmt (formatEmet)
 import Golem.Emet.Parse (parseModule, readEmet)
 import Golem.Emet.Path (normalizePath)
 import Golem.Emet.Syntax
-import Golem.Emet.Types (Req (..), showReq)
+import Golem.Emet.Types (Req (..), showReq, showTy)
 import Golem.Syntax
 
 -- | Why a file could not be read: it is missing, or it resolves outside the root.
@@ -49,6 +59,10 @@ data SourceProblem = MissingFile | OutsideRoot
 data Program = Program
   { prGlobals :: !Globals,
     prFiles :: !(Map FilePath FileId),
+    -- | the functions .gm uses, by the paths of their modules (docs/adr/0162)
+    prExports :: !(Map FilePath [Export]),
+    -- | the functions the expression context cannot call, by the paths of their modules, with why
+    prOthers :: !(Map FilePath (Map Name Text)),
     -- | the requirements the signatures write, each at its place (docs/adr/0161)
     prRequirements :: ![(Req, SrcSpan)]
   }
@@ -59,6 +73,16 @@ text: what manifest.toml must allow (E05104, docs/adr/0161).
 -}
 programRequirements :: Program -> [(Req, SrcSpan)]
 programRequirements = prRequirements
+
+-- | The functions .gm uses, by the paths of the modules (docs/adr/0162).
+programExports :: Program -> Map FilePath [Export]
+programExports = prExports
+
+{- | The functions of each module that the expression context of .gm
+cannot call, with why: those that are not @pub fn@ (docs/adr/0162).
+-}
+programOthers :: Program -> Map FilePath (Map Name Text)
+programOthers = prOthers
 
 -- | The files of the program and their ids, the built-in modules left out.
 programFiles :: Program -> Map FilePath FileId
@@ -73,7 +97,9 @@ builtins = foldl' step ([], Map.empty, Map.fromList [snd divInfo]) builtinSource
       Right m ->
         let scope = Scope [] mods (Map.fromList [("div", fst divInfo)])
             (es, mi, defs) = checkModule True scope builtinFile path src m
-         in (ds <> es, Map.insert name mi mods, Map.union globals (Map.fromList defs))
+            hidden = [c | (mn, c) <- hiddenConstructors, mn == name]
+            mi' = mi {miCons = Map.mapWithKey (\c ci -> if c `elem` hidden then ci {ciPub = False} else ci) (miCons mi)}
+         in (ds <> es, Map.insert name mi' mods, Map.union globals (Map.fromList defs))
     builtinFile = FileId (-1)
 
 data Loaded = Loaded
@@ -104,7 +130,7 @@ loadProgram source roots = do
                   let scope = Scope [(l, imported) | (l, p) <- imports, Just imported <- [Map.lookup p mods]] builtinMods (Map.fromList [("div", fst divInfo)])
                       (es, mi, fdefs) = checkModule False scope fid path src m
                    in (Map.insert path mi mods, ds <> es, done <> fdefs, if any isError es then path : failed else failed)
-      (_, checkDiags, defs, _) = foldl' check (Map.empty, [], [], ldFailed loaded) (ldOrder loaded)
+      (checkedMods, checkDiags, defs, _) = foldl' check (Map.empty, [], [], ldFailed loaded) (ldOrder loaded)
       diags = preludeDiags <> ldDiags loaded <> checkDiags
       reqs =
         [ (ReqFile (T.pack p), mkSpan fid (locStart l) (locEnd l))
@@ -115,7 +141,21 @@ loadProgram source roots = do
           ReqE l "file" [raw] <- qs,
           Right p <- [normalizePath (T.unpack raw)]
         ]
-      program = Program (Map.union preludeGlobals (Map.fromList defs)) (Map.map (\(f, _, _) -> f) (ldFiles loaded)) reqs
+      exports = Map.map miExports checkedMods
+      others = Map.map othersOf checkedMods
+      othersOf mi =
+        let kinds = Map.fromList [(exFunction e, exKind e) | e <- miExports mi]
+         in Map.fromList
+              [ (n, why)
+              | (n, fi) <- Map.toList (miFuns mi),
+                Map.lookup n kinds /= Just KindFn,
+                let why = case Map.lookup n kinds of
+                      Just k -> "pub " <> kindWord k <> " の関数です"
+                      Nothing
+                        | fiPub fi -> "種類の語のない pub の関数は .gm から見えません"
+                        | otherwise -> "pub のない関数です"
+              ]
+      program = Program (Map.union preludeGlobals (Map.fromList defs)) (Map.map (\(f, _, _) -> f) (ldFiles loaded)) exports others reqs
   pure (sortDiagnostics diags, if any isError diags then Nothing else Just program)
   where
     visit stack via path ld
@@ -167,6 +207,7 @@ rowsOfSig sig = maybe id (:) (sigRow sig) (go (sigType sig))
       TFun a r b -> go a <> maybe [] pure r <> go b
       TCon _ _ as -> concatMap go as
       TTuple _ ts -> concatMap go ts
+      TNamed _ _ t _ -> go t
       TVar {} -> []
 
 {- | The handlers of the requirements over the texts of the files by their
@@ -182,6 +223,10 @@ steps and depth are reported.
 -}
 callFunction :: Handlers -> Program -> SrcSpan -> FilePath -> Name -> [Result] -> Either Diagnostic Result
 callFunction hs p at path name = evalCall hs (prGlobals p) (prFiles p) at (path, name)
+
+-- | 'callFunction' with another limit of steps (docs/adr/0162: a filter's grows with the document).
+callFunctionLimited :: Int -> Handlers -> Program -> SrcSpan -> FilePath -> Name -> [Result] -> Either Diagnostic Result
+callFunctionLimited limit hs p at path name = fst . evalCallLimited limit hs (prGlobals p) (prFiles p) at (path, name)
 
 -- | 'callFunction' with the steps the call took (for measuring the work of functions).
 callFunctionCounted :: Handlers -> Program -> SrcSpan -> FilePath -> Name -> [Result] -> (Either Diagnostic Result, Int)

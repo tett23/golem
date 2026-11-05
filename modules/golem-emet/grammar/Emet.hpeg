@@ -147,10 +147,23 @@ FieldDecl :: (Name, TypeE)
 FieldDecl <- n:VarName(True) DColonS t:Type(True) { (n, t) }
 
 Signature :: Signature
-Signature <- p:PubOpt n:VarNameLoc(False) DColonS r:LeadRow t:Type(False) { Signature (maybe (snd n) id p <-> typeLoc t) (maybe False (const True) p) (fst n) (snd n) r t }
+Signature <- p:SigPub n:VarNameLoc(False) DColonS r:LeadRow t:Type(False) { Signature (maybe (snd n) (\(l, _, _) -> l) p <-> typeLoc t) (maybe False (const True) p) (p >>= \(_, k, _) -> k) (p >>= \(_, _, e) -> e) (fst n) (snd n) r t }
+
+# pub, maybe with the kind of a function .gm uses and the name it uses
+# there (docs/adr/0162): pub inline "tax-included".
+SigPub :: Maybe (Loc, Maybe (Kind, Loc), Maybe (Text, Loc))
+SigPub <- l:KS<'pub'>(False) k:KindWord s:StrLitLoc(False)? { Just (l, Just k, s) }
+        / l:KS<'pub'>(False) { Just (l, Nothing, Nothing) }
+        / '' { Nothing }
+
+KindWord :: (Kind, Loc)
+KindWord <- l:KS<'inline'>(False) { (KindInline, l) }
+          / l:KS<'block'>(False) { (KindBlock, l) }
+          / l:KS<'filter'>(False) { (KindFilter, l) }
+          / l:KS<'fn'>(False) { (KindFn, l) }
 
 LocalSignature :: Signature
-LocalSignature <- n:VarNameLoc(False) DColonS r:LeadRow t:Type(False) { Signature (snd n <-> typeLoc t) False (fst n) (snd n) r t }
+LocalSignature <- n:VarNameLoc(False) DColonS r:LeadRow t:Type(False) { Signature (snd n <-> typeLoc t) False Nothing Nothing (fst n) (snd n) r t }
 
 # One equation; the newline after it is read by the caller.
 Equation :: Equation
@@ -218,13 +231,24 @@ BType <- c:TyConLoc(nl) as:AType(nl)+ { tapp (snd c) (fst c) as }
        / AType(nl)
 
 AType(nl :: Bool) :: TypeE
-AType <- c:TyConLoc(nl) { TCon (snd c) (fst c) [] }
+AType <- s:OpenParenS n:ArgNameE DColonS t:Type(True) d:DefaultOpt e:CloseParenS(nl) { TNamed (s <-> e) n t d }
+       / c:TyConLoc(nl) { TCon (snd c) (fst c) [] }
        / v:VarNameLoc(nl) { TVar (snd v) (fst v) }
        / s:OpenParenS t:Type(True) ts:(CommaS Type(True))* e:CloseParenS(nl) { tupleOr (TTuple (s <-> e)) id t ts }
 
 TyConLoc(nl :: Bool) :: (QName, Loc)
 TyConLoc <- q:QualCon Sp(nl) { q }
           / c:ConNameLoc(nl) { (QName Nothing (fst c), snd c) }
+
+# A keyword argument (docs/adr/0162): its name, an identifier or a
+# string, and its default after =.
+ArgNameE :: ArgName
+ArgNameE <- n:VarNameLoc(True) { ArgName (fst n) (snd n) False }
+          / s:StrLitLoc(True) { ArgName (fst s) (snd s) True }
+
+DefaultOpt :: Maybe Expr
+DefaultOpt <- EqS e:Expr(True) { Just e }
+            / '' { Nothing }
 
 # --- patterns
 

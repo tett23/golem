@@ -28,6 +28,8 @@ module Golem.Doc.IR
     Wrap (..),
     InlineF (..),
     AkiAmount (..),
+    akiAbsolute,
+    akiAbsoluteSp,
     Inline,
     InlineNoRuby,
     RubySegment (..),
@@ -49,7 +51,7 @@ import Data.Int (Int64)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Void (Void)
-import Golem.Length (Sp)
+import Golem.Length (Sp (..))
 import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
 import Numeric.Natural (Natural)
@@ -260,6 +262,16 @@ data InlineF r
 -- | The amount of an [aki]: in zw (the size of the type there), or absolute in sp.
 data AkiAmount = AkiZw !Rational | AkiAbs !Sp
   deriving stock (Eq, Show)
+
+-- | An absolute amount of an [aki] in sp, for a module without golem-length (docs/adr/0162).
+akiAbsolute :: Integer -> AkiAmount
+akiAbsolute = AkiAbs . Sp
+
+-- | The sp of an absolute amount of an [aki].
+akiAbsoluteSp :: AkiAmount -> Maybe Integer
+akiAbsoluteSp = \case
+  AkiAbs (Sp n) -> Just n
+  AkiZw _ -> Nothing
 
 type Inline = InlineF ()
 

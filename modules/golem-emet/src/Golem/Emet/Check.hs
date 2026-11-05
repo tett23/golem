@@ -25,11 +25,20 @@ module Golem.Emet.Check
     checkModule,
     builtinCons,
     builtinModuleNames,
+    Export (..),
+    ExportArg (..),
+    inlineTypeKey,
+    blockTypeKey,
+    tInlines,
+    tBlocks,
+    gmName,
   )
 where
 
 import Control.Monad (forM, forM_, unless, when, zipWithM)
 import Control.Monad.State.Strict
+import Data.ByteString qualified as BS
+import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Either (fromRight, lefts)
 import Data.List (find, nub, sortOn)
 import Data.Map.Strict (Map)
@@ -39,6 +48,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Emet.Core
 import Golem.Emet.Exhaust
 import Golem.Emet.Parse (lineOf)
@@ -47,7 +57,8 @@ import Golem.Emet.Solve
 import Golem.Emet.Syntax
 import Golem.Emet.Types
 import Golem.Eval.Expr (overLimit, tooBigDiagnostic)
-import Golem.Eval.Value (NumType (..), Value (..), numberOf)
+import Golem.Eval.Functions (ArgType (..))
+import Golem.Eval.Value (NumType (..), Value (..), mkNumber, numberOf)
 import Golem.Syntax
 
 -- * What a module exports
@@ -82,8 +93,38 @@ data ModInfo = ModInfo
   { miPath :: !FilePath,
     miTypes :: !(Map Name TypeDef),
     miCons :: !(Map Name ConInfo),
-    miFuns :: !(Map Name FunInfo)
+    miFuns :: !(Map Name FunInfo),
+    -- | the functions .gm uses, in the order of the file (docs/adr/0162)
+    miExports :: ![Export]
   }
+
+{- | A function .gm uses (docs/adr/0162): its kind, the name .gm uses, the
+name of the function, the path of its module, what it takes, the type of
+its result, where it is declared, and its signature as written (with
+its requirements), for the LSP.
+-}
+data Export = Export
+  { exKind :: !Kind,
+    exName :: !Text,
+    exFunction :: !Name,
+    exPath :: !FilePath,
+    exArgs :: ![ExportArg],
+    exResult :: !Ty,
+    exSpan :: !SrcSpan,
+    exSignature :: !Text
+  }
+
+-- | An argument of a function .gm uses, by what .gm gives it.
+data ExportArg
+  = ArgPositional !ArgType
+  | -- | @Varargs a@: the rest of the positional values
+    ArgVarargs !ArgType
+  | -- | a keyword argument: its name in .gm, its type and its default
+    ArgKeyword !Text !ArgType !Value
+  | -- | a prose slot of an inline command
+    ArgProse
+  | -- | the body of a block command, and the document of a filter
+    ArgBody
 
 {- | What a module sees besides itself: its imports in their order, each
 with the range of its path; the built-in modules by their names; and the
@@ -110,7 +151,24 @@ builtinCons =
 
 -- | The names of the built-in modules, which no type or constructor of a user may take.
 builtinModuleNames :: [Name]
-builtinModuleNames = ["List", "String", "File"]
+builtinModuleNames = ["List", "String", "File", "Inline", "Block"]
+
+-- | The keys of the data types of the semantic IR (docs/adr/0162).
+inlineTypeKey, blockTypeKey :: Text
+inlineTypeKey = "<builtin>/Inline.emet#Inline"
+blockTypeKey = "<builtin>/Block.emet#Block"
+
+-- | @Inlines@ and @Blocks@: @List Inline@ and @List Block@.
+tInlines, tBlocks :: Ty
+tInlines = tList (TC inlineTypeKey [])
+tBlocks = tList (TC blockTypeKey [])
+
+{- | The names of the types every module sees besides 'builtinTypes', each
+the name of another type: @Inlines@, @Blocks@ and @Varargs a@, which is
+@List a@ (docs/adr/0162). Their parameters, and the types they name.
+-}
+namedTypes :: Map Name (Int, Ty)
+namedTypes = Map.fromList [("Inlines", (0, tInlines)), ("Blocks", (0, tBlocks)), ("Varargs", (1, tList (TG 0)))]
 
 -- * The names a module sees
 
@@ -218,18 +276,19 @@ checkModule prims scope fid path src (Module decls) =
   let vis0 = importedNames scope
       cx0 = Ctx fid path src vis0 scope "" "" Set.empty pureRow
       (typeDiags, types) = collectTypes cx0 decls
-      cx1 = withOwn cx0 (ModInfo path types Map.empty Map.empty)
+      cx1 = withOwn cx0 (ModInfo path types Map.empty Map.empty [])
       (conDiags, cons) = collectCons cx1 decls
-      cx2 = withOwn cx0 (ModInfo path types cons Map.empty)
+      cx2 = withOwn cx0 (ModInfo path types cons Map.empty [])
       (funDiags, funs, groups) = collectFuns prims cx2 decls
-      own = ModInfo path types cons (Map.map fst funs)
+      (exportDiags, exports) = checkExports cx2 decls [s | (_, s) <- Map.elems funs]
+      own = ModInfo path types cons (Map.map fst funs) exports
       cx3 = withOwn cx0 own
       importDiags = importCollisions cx0 own
       checked = [checkFunction cx3 sig eqs | (sig, eqs@(_ : _)) <- groups]
       prim = [((path, sigName sig), GPrim (T.pack (dropExt path) <> "." <> sigName sig) (arity (sigType sig))) | prims, (sig, []) <- groups]
       bodyDiags = concat (lefts checked) <> concat [ds | Right (ds, _) <- checked]
       defs = [d | Right (_, d) <- checked]
-   in (importDiags <> typeDiags <> conDiags <> funDiags <> bodyDiags, own, prim <> defs)
+   in (importDiags <> typeDiags <> conDiags <> funDiags <> exportDiags <> bodyDiags, own, prim <> defs)
   where
     arity = \case
       TFun _ _ b -> 1 + arity b
@@ -307,8 +366,8 @@ collectTypes cx decls =
   let entries = [(n, (l, TypeDef (key n) vs pub Nothing, Nothing)) | DData l pub n vs _ <- decls] <> [(n, (l, TypeDef (key n) vs pub Nothing, Just t)) | DType l pub n vs t <- decls]
       dupDiags =
         [diagnostic "E02104" Error (spanOf cx l) ("型 " <> n <> " を二度定義しています") | (n, l) <- duplicates [(n, l) | (n, (l, _, _)) <- entries]]
-          <> [diagnostic "E02104" Error (spanOf cx l) ("型 " <> n <> " は組み込みの型と重なります") | (n, (l, _, _)) <- entries, Map.member n builtinTypes]
-          <> [diagnostic "E02104" Error (spanOf cx l) ("型 " <> n <> " は組み込みのモジュールの名前と重なります") | (n, (l, _, _)) <- entries, n `elem` builtinModuleNames, not (Map.member n builtinTypes)]
+          <> [diagnostic "E02104" Error (spanOf cx l) ("型 " <> n <> " は組み込みの型と重なります") | (n, (l, _, _)) <- entries, Map.member n builtinTypes || Map.member n namedTypes]
+          <> [diagnostic "E02104" Error (spanOf cx l) ("型 " <> n <> " は組み込みのモジュールの名前と重なります") | (n, (l, _, _)) <- entries, n `elem` builtinModuleNames, not (Map.member n builtinTypes), not ("<builtin>/" `T.isPrefixOf` T.pack (cxPath cx))]
       base = Map.fromList [(n, td) | (n, (_, td, _)) <- reverse entries]
       -- aliases resolved in order, each against the others (a cycle is E02101)
       resolveAlias seen n = case Map.lookup n aliasBodies of
@@ -317,7 +376,7 @@ collectTypes cx decls =
           | Set.member n seen -> Left (diagnostic "E02101" Error (spanOf cx l) ("型の別名 " <> n <> " が循環しています"))
           | otherwise -> do
               let others = Map.mapWithKey (\k td -> if Map.member k aliasBodies && k /= n then td {tdAlias = fromRight Nothing (resolveAlias (Set.insert n seen) k)} else td) base
-                  tcx = withOwn cx (ModInfo (cxPath cx) others Map.empty Map.empty)
+                  tcx = withOwn cx (ModInfo (cxPath cx) others Map.empty Map.empty [])
               noRowVars cx t
               Just <$> typeOf tcx (Map.fromList (zip vs [TG i | i <- [0 ..]])) t
       aliasBodies = Map.fromList [(n, (l, tdParams td, t)) | (n, (l, td, Just t)) <- entries]
@@ -347,6 +406,8 @@ typeOf cx vars = go
       TVar l v -> maybe (undef l ("未定義の型変数 " <> v <> " です")) Right (Map.lookup v vars)
       TFun a r b -> TF <$> go a <*> rowOf cx vars r <*> go b
       TTuple _ ts -> tTuple <$> mapM go ts
+      -- a keyword argument is an argument of its type (docs/adr/0162)
+      TNamed _ _ inner _ -> go inner
       TCon l q args -> do
         as <- mapM go args
         (k, params, alias) <- lookupType l q
@@ -356,6 +417,7 @@ typeOf cx vars = go
       QName Nothing n
         | Just (_, td) <- Map.lookup n (vTypes (cxVis cx)) -> Right (tdKey td, length (tdParams td), tdAlias td)
         | Just a <- Map.lookup n builtinTypes -> Right (n, a, Nothing)
+        | Just (a, t) <- Map.lookup n namedTypes -> Right (n, a, Just t)
         | Set.member n (vHidden (cxVis cx)) -> Left (diagnostic "E02105" Error (spanOf cx l) ("型 " <> n <> " は公開されていません（pub がありません）"))
         | otherwise -> undef l ("未定義の型 " <> n <> " です")
       QName (Just m) n -> case Map.lookup m (scBuiltins (cxScope cx)) of
@@ -399,6 +461,7 @@ rowsOf lead t = maybe id (:) lead (go t)
       TFun a r b -> go a <> maybe [] pure r <> go b
       TCon _ _ as -> concatMap go as
       TTuple _ ts -> concatMap go ts
+      TNamed _ _ inner _ -> go inner
       TVar {} -> []
 
 {- | The errors of the requirements of a type: E05100 once for all the
@@ -443,6 +506,7 @@ varUses lead t = rowVars lead <> go t
       TFun a r b -> go a <> rowVars r <> go b
       TCon _ _ as -> concatMap go as
       TTuple _ ts -> concatMap go ts
+      TNamed _ _ inner _ -> go inner
     rowVars r = [VarUse v l True | Just (RowE _ _ (Just (v, l))) <- [r]]
 
 -- ** Constructors
@@ -1249,3 +1313,246 @@ constraintTypes = \case
 
 lineAt :: Ctx -> Loc -> Int
 lineAt cx l = lineOf (cxSource cx) (locStart l)
+
+-- * The functions .gm uses (docs/adr/0162)
+
+{- | Whether a name is a name of a command of .gm: a lowercase ASCII
+letter, then lowercase letters, digits and @-@.
+-}
+gmName :: Text -> Bool
+gmName t = case T.uncons t of
+  Just (c, rest) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
+  Nothing -> False
+
+{- | The functions .gm uses and the errors of their declarations (E06100
+to E06106), and the keyword and the variable arguments where no function
+.gm calls has them: in a signature of no kind or of where, a field of a
+data type and an alias (E06103, E06105). One error at most for each
+declaration, the first.
+-}
+checkExports :: Ctx -> [Decl] -> [Signature] -> ([Diagnostic], [Export])
+checkExports cx decls sigs =
+  let topSigs = sortOn (locStart . sigLoc) sigs
+      checked = [(s, exportOf cx s) | s <- topSigs]
+      exports = [e | (_, Right (Just e)) <- checked]
+      sigDiags = [d | (_, Left d) <- checked]
+      dupDiags =
+        [ diagnostic "E06106" Error (exSpan e) ("同じ名前の" <> kindNoun (exKind e) <> "を二度出しています: " <> exName e)
+        | (i, e) <- zip [0 :: Int ..] exports,
+          any (\o -> nameSpace (exKind o) == nameSpace (exKind e) && exName o == exName e) (take i exports)
+        ]
+      -- the signatures of where, the fields of data types and the aliases
+      elsewhere =
+        concat
+          [ take 1 (misplaced t)
+          | d <- decls,
+            t <- case d of
+              DData _ _ _ _ cs -> concatMap conTypes cs
+              DType _ _ _ _ t -> [t]
+              DEq q -> [sigType bs | Where _ bsx <- eqWheres q <> guardWs (eqRhs q), BSig bs <- bsx]
+              _ -> []
+          ]
+   in (sigDiags <> dupDiags <> elsewhere, exports)
+  where
+    nameSpace = \case
+      KindInline -> 0 :: Int
+      KindBlock -> 1
+      KindFilter -> 2
+      KindFn -> 3
+    conTypes = \case
+      ConPos _ _ ts -> ts
+      ConRec _ _ fs -> map snd fs
+    guardWs = \case
+      Guarded gs -> concatMap snd gs
+      Plain _ -> []
+    misplaced t = [named l | l <- namedLocs t] <> [varargs l | l <- varargsLocs t]
+    named l = diagnostic "E06103" Error (spanOf cx l) "キーワード引数は、.gm から呼ぶインラインのコマンドとブロックコマンドの引数にだけ書けます"
+    varargs l = diagnostic "E06105" Error (spanOf cx l) "Varargs は、pub inline、pub block、pub fn の引数にだけ書けます"
+
+kindNoun :: Kind -> Text
+kindNoun = \case
+  KindInline -> "インラインのコマンド"
+  KindBlock -> "ブロックコマンド"
+  KindFilter -> "フィルタ"
+  KindFn -> "式の関数"
+
+-- | The ranges of the keyword arguments of a type, at any depth.
+namedLocs :: TypeE -> [Loc]
+namedLocs = \case
+  TNamed l _ t _ -> l : namedLocs t
+  TFun a _ b -> namedLocs a <> namedLocs b
+  TCon _ _ as -> concatMap namedLocs as
+  TTuple _ ts -> concatMap namedLocs ts
+  TVar {} -> []
+
+-- | The ranges of the Varargs of a type, at any depth.
+varargsLocs :: TypeE -> [Loc]
+varargsLocs = \case
+  TCon l (QName Nothing "Varargs") as -> l : concatMap varargsLocs as
+  TCon _ _ as -> concatMap varargsLocs as
+  TFun a _ b -> varargsLocs a <> varargsLocs b
+  TTuple _ ts -> concatMap varargsLocs ts
+  TNamed _ _ t _ -> varargsLocs t
+  TVar {} -> []
+
+-- | The arguments of a written type: the types before the arrows, and the result.
+syntaxArrows :: TypeE -> ([TypeE], TypeE)
+syntaxArrows = \case
+  TFun a _ b -> let (as, r) = syntaxArrows b in (a : as, r)
+  t -> ([], t)
+
+tyArrows :: Ty -> ([Ty], Ty)
+tyArrows = \case
+  TF a _ b -> let (as, r) = tyArrows b in (a : as, r)
+  t -> ([], t)
+
+-- | A type .gm passes and a pub fn returns (docs/adr/0162).
+gmType :: Ty -> Maybe ArgType
+gmType = \case
+  TC "Nat" [] -> Just ArgNat
+  TC "Int" [] -> Just ArgInt
+  TC "Rat" [] -> Just ArgRat
+  TC "String" [] -> Just ArgString
+  TC "Bool" [] -> Just ArgBool
+  TC "List" [t] -> ArgList <$> gmType t
+  _ -> Nothing
+
+-- | An argument as written, with its type.
+data Shape
+  = SPositional !Loc !Ty
+  | SVarargs !Loc !Ty
+  | SKeyword !Loc !ArgName !Ty !(Maybe Expr)
+  | SProse !Loc
+  | SBlocks !Loc
+
+{- | The function .gm uses of a signature, Nothing for one of no kind, or
+the first error of its declaration.
+-}
+exportOf :: Ctx -> Signature -> Either Diagnostic (Maybe Export)
+exportOf cx sig = case sigKind sig of
+  Nothing -> case (namedLocs (sigType sig), varargsLocs (sigType sig)) of
+    (l : _, _) -> Left (diagnostic "E06103" Error (spanOf cx l) ("キーワード引数は、.gm から呼ぶインラインのコマンドとブロックコマンドの引数にだけ書けます: " <> sigName sig))
+    (_, l : _) -> Left (diagnostic "E06105" Error (spanOf cx l) ("Varargs は、pub inline、pub block、pub fn の引数にだけ書けます: " <> sigName sig))
+    _ -> Right Nothing
+  Just (kind, _) -> case schemeOf cx sig of
+    -- the errors of the signature are reported by the check of its function
+    Left _ -> Right Nothing
+    Right (Scheme _ _ ty) -> Just <$> exportWith kind ty
+  where
+    err code l m = Left (diagnostic code Error (spanOf cx l) m)
+    fname = sigName sig
+    exportWith kind ty = do
+      name <- exportName kind
+      let (sArgs, sRes) = syntaxArrows (sigType sig)
+          (tArgs, tRes) = tyArrows ty
+          -- an alias may hide arrows: then the written arguments are not known
+          aligned = length sArgs == length tArgs
+          resLoc = if aligned then typeLoc sRes else typeLoc (sigType sig)
+          shapes = zipWith shapeOf (if aligned then map Just sArgs else map (const Nothing) tArgs) tArgs
+          -- a Varargs nested in another type, or in the result
+          nested = if aligned then concatMap nestedVarargs sArgs <> varargsLocs sRes else []
+      mapM_ (\l -> err "E06105" l ("Varargs は引数の型にだけ書けます: " <> fname)) (take 1 nested)
+      when (kind == KindFilter) $ do
+        mapM_ (\l -> err "E06103" l ("フィルタはキーワード引数を持てません: " <> fname)) (take 1 (namedLocs (sigType sig)))
+        mapM_ (\l -> err "E06105" l ("フィルタは可変長引数を持てません: " <> fname)) (take 1 (varargsLocs (sigType sig)))
+      args <- case kind of
+        KindInline -> do
+          resultIs kind resLoc tRes tInlines "Inlines"
+          ordered kind shapes
+        KindBlock -> do
+          resultIs kind resLoc tRes tBlocks "Blocks"
+          ordered kind shapes
+        KindFilter -> case (shapes, tRes == tBlocks) of
+          ([SBlocks _], True) -> Right [ArgBody]
+          _ -> err "E06101" (typeLoc (sigType sig)) ("pub filter の型は Blocks -> Blocks か、要求の列を付けた Blocks -> <...> Blocks です: " <> fname)
+        KindFn -> case gmType tRes of
+          Nothing -> err "E06101" resLoc ("pub fn の戻り値は Nat、Int、Rat、String、Bool か、それらの List です: " <> fname <> " :: " <> showTy tRes)
+          Just _ -> ordered kind shapes
+      pure (Export kind name fname (cxPath cx) args tRes (spanOf cx (sigNameLoc sig)) (sourceText (sigLoc sig)))
+    exportName kind = case (kind, sigExport sig) of
+      (KindFn, Just (_, l)) -> err "E06100" l ("pub fn は .emet の名前のまま式から呼ぶので、名前の文字列を書けません: " <> fname)
+      (KindFn, Nothing) -> Right fname
+      (_, Just (n, l))
+        | gmName n -> Right n
+        | otherwise -> err "E06100" l ("コマンドとフィルタの名前は、英小文字で始まり、英小文字、数字、- だけで書きます: \"" <> n <> "\"")
+      (_, Nothing)
+        | gmName fname -> Right fname
+        | otherwise -> err "E06100" (sigNameLoc sig) ("関数の名前 " <> fname <> " は .gm のコマンドの名前になりません。pub " <> kindWord kind <> " \"" <> suggestion fname <> "\" " <> fname <> " のように、名前を文字列で書きます")
+    suggestion n = T.toLower (T.concatMap (\c -> if isAsciiUpper c then T.pack ['-', c] else if c == '_' then "-" else T.singleton c) n)
+    resultIs kind l t want wantText
+      | t == want = Right ()
+      | otherwise = err "E06101" l ("pub " <> kindWord kind <> " の戻り値は " <> wantText <> " です: " <> fname <> " :: " <> showTy t)
+    shapeOf written t = case written of
+      Just (TNamed l n _ d) -> SKeyword l n t d
+      Just a@(TCon l (QName Nothing "Varargs") [_]) -> case t of
+        TC "List" [e] -> SVarargs l e
+        _ -> SPositional (typeLoc a) t
+      Just a
+        | t == tInlines -> SProse (typeLoc a)
+        | t == tBlocks -> SBlocks (typeLoc a)
+        | otherwise -> SPositional (typeLoc a) t
+      Nothing
+        | t == tInlines -> SProse (sigNameLoc sig)
+        | t == tBlocks -> SBlocks (sigNameLoc sig)
+        | otherwise -> SPositional (sigNameLoc sig) t
+    nestedVarargs = \case
+      TCon _ (QName Nothing "Varargs") as -> concatMap varargsLocs as
+      t -> varargsLocs t
+    -- the stages of the arguments: positional 0, variable 1, keyword 2, prose or body 3
+    ordered kind = go (0 :: Int) False
+      where
+        isCommand = kind `elem` [KindInline, KindBlock]
+        go _ _ [] = Right []
+        go stage seenVar (sh : rest) = case sh of
+          SPositional l t
+            | stage == 1 -> err "E06105" l ("可変長引数の後ろに位置引数は置けません: " <> fname)
+            | stage == 2 -> err "E06103" l ("キーワード引数は位置引数と可変長引数の後ろに置きます: " <> fname)
+            | stage == 3 -> err "E06102" l ("Inlines と Blocks の引数は、ほかの型の引数の後ろに置きます: " <> fname)
+            | otherwise -> case gmType t of
+                Nothing -> err "E06102" l (notPassable t)
+                Just a -> (ArgPositional a :) <$> go 0 seenVar rest
+          SVarargs l t
+            | seenVar -> err "E06105" l ("可変長引数は一つの関数に一つだけです: " <> fname)
+            | stage >= 2 -> err "E06105" l ("可変長引数は位置引数の最後に置きます: " <> fname)
+            | otherwise -> case gmType t of
+                Nothing -> err "E06102" l (notPassable t)
+                Just a -> (ArgVarargs a :) <$> go 1 True rest
+          SKeyword l n t d
+            | not isCommand -> err "E06103" l ("キーワード引数は、インラインのコマンドとブロックコマンドだけが持てます: " <> fname)
+            | stage == 3 -> err "E06103" l ("キーワード引数は散文スロットと本体の前に置きます: " <> fname)
+            | not (gmName (argNameText n)) -> err "E06100" (argNameLoc n) ("キーワード引数の名前は、英小文字で始まり、英小文字、数字、- だけで書きます: " <> argNameText n)
+            | otherwise -> case (gmType t, d) of
+                (Nothing, _) -> err "E06102" l (notPassable t)
+                (_, Nothing) -> err "E06103" l ("キーワード引数には既定の値を書きます: " <> argNameText n)
+                (Just a, Just e) -> case literalValue a e of
+                  Nothing -> err "E06103" (exprLoc e) ("キーワード引数の既定の値は " <> showTy t <> " のリテラルに限ります: " <> argNameText n)
+                  Just v -> (ArgKeyword (argNameText n) a v :) <$> go 2 seenVar rest
+          SProse l
+            | kind /= KindInline -> err "E06102" l ("Inlines を受け取れるのはインラインのコマンドの散文スロットだけです: " <> fname)
+            | otherwise -> (ArgProse :) <$> go 3 seenVar rest
+          SBlocks l
+            | kind /= KindBlock -> err "E06102" l ("Blocks を受け取れるのはブロックコマンドの本体だけです: " <> fname)
+            | not (null rest) -> err "E06102" l ("本体の Blocks はブロックコマンドの最後の引数に置きます: " <> fname)
+            | otherwise -> pure [ArgBody]
+    notPassable t = ".gm から渡せない型の引数です（渡せるのは Nat、Int、Rat、String、Bool とそれらの List）: " <> fname <> " の " <> showTy t
+    sourceText (Loc a b) = TE.decodeUtf8Lenient (BS.take (b - a) (BS.drop a (TE.encodeUtf8 (cxSource cx))))
+
+{- | The value of a default of a keyword argument (docs/adr/0162): a
+literal of its type, a number widened to it.
+-}
+literalValue :: ArgType -> Expr -> Maybe Value
+literalValue t e = case (t, e) of
+  (_, EParen _ x) -> literalValue t x
+  (ArgString, EStr _ s) -> Just (VString s)
+  (ArgBool, ECon _ (QName Nothing "True")) -> Just (VBool True)
+  (ArgBool, ECon _ (QName Nothing "False")) -> Just (VBool False)
+  (ArgList a, EList _ xs) -> VArray <$> traverse (literalValue a) xs
+  (_, ENum _ v) -> number v
+  (_, ENeg _ (ENum _ v)) -> numberOf v >>= \(_, q) -> number (mkNumber TRat (negate q))
+  _ -> Nothing
+  where
+    number v = case (t, numberOf v) of
+      (ArgNat, Just (_, q)) | q >= 0 && q == fromInteger (round q) -> Just (VNat (fromInteger (round q)))
+      (ArgInt, Just (_, q)) | q == fromInteger (round q) -> Just (VInt (round q))
+      (ArgRat, Just (_, q)) -> Just (VRat q)
+      _ -> Nothing

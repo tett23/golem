@@ -336,8 +336,10 @@ BadBracket <- &LBr (&{ False } LBr)^bracket { () }
 RBr :: ()
 RBr <- ']' { () }
 
+# A name of a command, maybe after the name of a namespace and one dot
+# (docs/adr/0162): [book.tax-included 1000]. A second dot is no name.
 Ident :: ()
-Ident <- [a-z] [a-z0-9\-]* { () }
+Ident <- [a-z] [a-z0-9\-]* ('.' [a-z] [a-z0-9\-]*)? !('.' [a-z]) { () }
 
 Arguments :: ()
 Arguments <- (Sp PosArg)* (Sp KwArg)* (!(Sp PosArg))^arg_order { () }
@@ -491,7 +493,7 @@ PostfixExpr <- CallExpr { () }
              / Primary { () }
 
 CallExpr :: ()
-CallExpr <- ExprIdent LParen ES (Expr ES (Comma ES Expr ES)*)? RParen { () }
+CallExpr <- ExprIdent (Dot ExprIdent)? LParen ES (Expr ES (Comma ES Expr ES)*)? RParen { () }
 
 Primary :: ()
 Primary <- NumberLiteral { () }

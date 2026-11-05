@@ -6,6 +6,7 @@ The codes, messages and spans of the diagnostics: golem-plugin ADR 0003.
 module Golem.Driver.Plugins
   ( loadPlugins,
     LoadedPlugins (..),
+    FunctionFilter,
   )
 where
 
@@ -50,16 +51,50 @@ data Pending
   = Ready !Diagnostic
   | AtData !Text !FilePath !ByteString !Int !DataDiagnostic
 
+{- | A filter of a .emet (docs/adr/0162) by the path of the .emet and its
+name: over the document of a .gm by its path, Nothing for one the
+functions do not have (golem-driver reports it).
+-}
+type FunctionFilter = FilePath -> Text -> FilePath -> Document -> Maybe (Either [Diagnostic] (Document, [Diagnostic]))
+
+{- | The filters of [[filters]] over the document of a file, in their order,
+those of plugins and of .emet alike (docs/adr/0162). A filter of a
+plugin that fails points at the top of the file (golem-plugin ADR 0003).
+-}
+filtersOver :: (Text -> Maybe Plugin) -> FunctionFilter -> Manifest -> FilePath -> Document -> Either [Diagnostic] (Document, [Diagnostic])
+filtersOver lookupPlugin functionFilter manifest path doc0 =
+  foldl
+    ( \acc f -> case acc of
+        Left ds -> Left ds
+        Right (doc, ws)
+          | path `notElem` fdFiles f -> Right (doc, ws)
+          | otherwise -> case fdSource f of
+              FilterPlugin pname
+                | Just p <- lookupPlugin pname -> case applyFilter p (fdFilter f) doc of
+                    Left pe -> Left [diagnostic (pluginErrorCode pe) Error (mkSpan (docFile doc0) 0 0) (qualified pname (fdFilter f) pe)]
+                    Right (doc', ws') -> Right (doc', ws <> map (ofPlugin pname) ws')
+                | otherwise -> Right (doc, ws)
+              FilterFunction emet -> case functionFilter emet (fdFilter f) path doc of
+                Just (Left ds) -> Left ds
+                Just (Right (doc', ws')) -> Right (doc', ws <> ws')
+                Nothing -> Right (doc, ws)
+    )
+    (Right (doc0, []))
+    (manifestFilters manifest)
+
 {- | Given the root of the project, the texts of the editor (the LSP), the
 cache, the FileId of manifest.toml, where most diagnostics point, the
 FileId and text of plugins.lock (empty when there is none), where G06011
 points, and the first FileId for the files of data that the checks of
 the data point at (docs/adr/0120), one for each file in the order of the
-paths, and the context of the book a plugin may ask for (docs/adr/0121).
+paths, the context of the book a plugin may ask for (docs/adr/0121), and
+the filters of the .emet (docs/adr/0162), which apply in one order with
+those of the plugins.
 -}
-loadPlugins :: FilePath -> Map.Map FilePath Text -> FilePath -> FileId -> FileId -> Text -> FileId -> HostContext -> Manifest -> IO LoadedPlugins
-loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context manifest
-  | Map.null (manifestPlugins manifest) && null (manifestFilters manifest) = pure (LoadedPlugins (Right noPlugins) [] Map.empty)
+loadPlugins :: FilePath -> Map.Map FilePath Text -> FilePath -> FileId -> FileId -> Text -> FileId -> HostContext -> FunctionFilter -> Manifest -> IO LoadedPlugins
+loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context functionFilter manifest
+  | Map.null (manifestPlugins manifest) && null [() | FilterDecl (FilterPlugin _) _ _ <- manifestFilters manifest] =
+      pure (LoadedPlugins (Right noPlugins {phApplyFilters = filtersOver (const Nothing) functionFilter manifest}) [] Map.empty)
   | otherwise =
       case parseLock lfid lockText of
         Left ds -> pure (LoadedPlugins (Left ds) [] Map.empty)
@@ -132,11 +167,13 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context m
           -- built-in name; a declared name that is not overridable is G06008 above
           (undeclared, keyed) = partitionEithers (mapMaybe (commandKey checkedOverrides) plugins')
           plugins' = [(c, name, p) | (name, _, p) <- plugins, c <- pluginCommands p]
-          filterError f = case lookupPlugin (fdPlugin f) of
-            Nothing -> Just ("宣言されていないプラグインです: " <> fdPlugin f <> "（フィルタ " <> fdPlugin f <> "." <> fdFilter f <> "）")
-            Just (_, _, p)
-              | fdFilter f `notElem` pluginFilters p -> Just ("プラグインが提供していないフィルタです: " <> fdPlugin f <> "." <> fdFilter f)
-              | otherwise -> Nothing
+          filterError f = case fdSource f of
+            FilterFunction _ -> Nothing
+            FilterPlugin pname -> case lookupPlugin pname of
+              Nothing -> Just ("宣言されていないプラグインです: " <> pname <> "（フィルタ " <> pname <> "." <> fdFilter f <> "）")
+              Just (_, _, p)
+                | fdFilter f `notElem` pluginFilters p -> Just ("プラグインが提供していないフィルタです: " <> pname <> "." <> fdFilter f)
+                | otherwise -> Nothing
           lookupPlugin n = case [x | x@(n', _, _) <- plugins, n' == n] of
             (x : _) -> Just x
             [] -> Nothing
@@ -160,21 +197,7 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context m
             either (\pe -> Left [diagnostic (pluginErrorCode pe) Error sp (qualified pname name pe)]) (Right . fmap (map (ofPlugin pname))) (callCommand p name vals slots sp)
           callBlock pname p name = PluginBlockCommand $ \vals body sp ->
             either (\pe -> Left [diagnostic (pluginErrorCode pe) Error sp (qualified pname name pe)]) (\(bs, imgs, ds) -> Right (bs, imgs, map (ofPlugin pname) ds)) (callBlockCommand p name vals body sp)
-          -- a filter that fails points at the top of the file (golem-plugin ADR 0003)
-          applyFilters path doc0 =
-            foldl
-              ( \acc f -> case acc of
-                  Left ds -> Left ds
-                  Right (doc, ws)
-                    | path `elem` fdFiles f,
-                      Just (_, _, p) <- lookupPlugin (fdPlugin f) ->
-                        case applyFilter p (fdFilter f) doc of
-                          Left pe -> Left [diagnostic (pluginErrorCode pe) Error (mkSpan (docFile doc0) 0 0) (qualified (fdPlugin f) (fdFilter f) pe)]
-                          Right (doc', ws') -> Right (doc', ws <> map (ofPlugin (fdPlugin f)) ws')
-                    | otherwise -> Right (doc, ws)
-              )
-              (Right (doc0, []))
-              (manifestFilters manifest)
+          applyFilters = filtersOver (fmap (\(_, _, p) -> p) . lookupPlugin) functionFilter manifest
        in if null diags
             then
               Right

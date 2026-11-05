@@ -1,0 +1,47 @@
+-- The functions of the determinism fixture (docs/adr/0162): one of each
+-- kind, keyword and variable arguments, File.read of a TSV and a tail
+-- recursion.
+
+pub inline "tax-included" taxIncluded :: Nat -> Inlines
+taxIncluded n = Inline.text (String.fromNat (div (n * 110) 100) ++ "円（税込）")
+
+pub inline price :: Nat -> (tax :: Bool = True) -> (unit :: String = "円") -> Inlines
+price n tax unit = Inline.text (String.fromNat n ++ unit ++ (tax ? "（税込）" : ""))
+
+pub inline tags :: String -> Varargs String -> Inlines
+tags sep words = Inline.text (String.join sep words)
+
+pub block "word-table" wordTable :: Blocks -> <file "data/words.tsv"> Blocks
+wordTable body = body ++ Block.table [Inline.text "語", Inline.text "読み"] (List.map row (rows (File.read "data/words.tsv")))
+
+rows :: String -> List (List String)
+rows text = List.map cells (List.select filled (String.lines text))
+  where {
+    cells line = String.split "\t" line
+    filled line = String.length line > 0
+  }
+
+row :: List String -> List Inlines
+row cells = List.map Inline.text cells
+
+pub inline repeat :: Nat -> Inlines -> Inlines
+repeat n xs = go n xs []
+
+-- a tail recursion
+go :: Int -> Inlines -> Inlines -> Inlines
+go k xs acc
+  | k <= 0 = acc
+  | otherwise = go (k - 1) xs (acc ++ xs)
+
+pub fn total :: List Nat -> Nat
+total xs = List.foldl add 0 xs
+  where {
+    add a b = a + b
+  }
+
+pub fn sum :: Varargs Nat -> Nat
+sum xs = total xs
+
+pub filter "mark-first" markFirst :: Blocks -> Blocks
+markFirst (Block.Heading l attrs xs : rest) = Block.Heading l attrs (Inline.kenten xs) : rest
+markFirst bs = bs

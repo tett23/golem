@@ -14,6 +14,7 @@ where
 import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe, mapMaybe)
 import Golem.Eval.Expr
+import Golem.Eval.Functions
 import Golem.Eval.Value
 import Golem.Parser.AST
 import Golem.Syntax
@@ -37,6 +38,16 @@ docType = \case
   ["chapters"] -> Just SHash
   ["chapters", "count"] -> Just (SNum TNat)
   _ -> Nothing
+
+-- | The type of a value a function of a .emet returns.
+argStatic :: ArgType -> StaticType
+argStatic = \case
+  ArgNat -> SNum TNat
+  ArgInt -> SNum TInt
+  ArgRat -> SNum TRat
+  ArgString -> SString
+  ArgBool -> SBool
+  ArgList _ -> SArray
 
 -- | The type of a value: the constructor of a number.
 valueType :: Value -> StaticType
@@ -88,6 +99,10 @@ inferExpr env (Located _ e) = case e of
         s <- numOf a
         t <- numOf b
         num (f s t)
+  -- a pub fn of a .emet returns the type of its signature (docs/adr/0162)
+  ECall f _ | Just (ns, name) <- splitNamespace f -> case Map.lookup ns (envFunctions env) of
+    Just (Loaded fns) -> argStatic . efResult <$> Map.lookup name (fnExpr fns)
+    _ -> Nothing
   ECall f args -> case (f, args) of
     ("sqrt", [_]) -> num TRat
     ("floor", [x]) -> numOf x >>= num . min TInt

@@ -24,6 +24,8 @@ library
     Golem.Emet.Exhaust
     Golem.Emet.Fmt
     Golem.Emet.Generated
+    Golem.Emet.Gm
+    Golem.Emet.IR
     Golem.Emet.Literal
     Golem.Emet.Parse
     Golem.Emet.Path
@@ -37,6 +39,7 @@ library
     , containers    >=0.6  && <0.8
     , filepath      >=1.4  && <1.6
     , mtl           >=2.3  && <2.4
+    , golem-doc
     , golem-eval
     , golem-syntax
     , peg-runtime   >=0.1  && <0.2
@@ -48,7 +51,7 @@ test-suite golem-emet-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    FmtSpec LanguageSpec RequirementSpec Support
+  other-modules:    ExportSpec FmtSpec LanguageSpec RequirementSpec Support
   build-depends:
     , base
     , containers

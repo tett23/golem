@@ -6,6 +6,7 @@ separators between the items.
 module FmtSpec (fmtTests) where
 
 import Data.List (sortOn)
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Emet
@@ -134,7 +135,7 @@ printDecl = \case
   DType _ pub n vs t -> [T "pub" | pub] <> [T "type", T n] <> map T vs <> [T "=", Free] <> printType False t
 
 printSig :: Signature -> [Piece]
-printSig s = [T "pub" | sigPub s] <> [T (sigName s), T "::", Free] <> maybe [] (\r -> printBracketRow r <> [Tight]) (sigRow s) <> printType False (sigType s)
+printSig s = [T "pub" | sigPub s] <> [T (kindWord k) | Just (k, _) <- [sigKind s]] <> [T (quote n) | Just (n, _) <- [sigExport s]] <> [T (sigName s), T "::", Free] <> maybe [] (\r -> printBracketRow r <> [Tight]) (sigRow s) <> printType False (sigType s)
 
 -- | A row in brackets, or a variable alone.
 printRow :: RowE -> [Piece]
@@ -168,6 +169,8 @@ printAType = \case
   TCon _ c [] -> [T (qnameText c)]
   TVar _ v -> [T v]
   TTuple _ ts -> [T "(", Free] <> sepBy [Free, T ",", Free] (map (printType True) ts) <> [Free, T ")"]
+  -- a keyword argument (docs/adr/0162)
+  TNamed _ n t d -> [T "(", Free, T (if argNameQuoted n then quote (argNameText n) else argNameText n), Free, T "::", Free] <> printType True t <> maybe [] (\e -> [Free, T "=", Free] <> printExpr True e) d <> [Free, T ")"]
   t -> [T "(", Free] <> printType True t <> [Free, T ")"]
 
 printEq :: Text -> Equation -> [Piece]
@@ -284,7 +287,10 @@ genDecl =
 genSig :: Bool -> Gen Signature
 genSig top = do
   pub <- if top then Gen.bool else pure False
-  Signature l0 pub <$> genVar <*> pure l0 <*> Gen.maybe genBracketRow <*> genType
+  -- the kind of a function .gm uses, and its name in .gm (docs/adr/0162)
+  kind <- if pub then Gen.maybe ((,l0) <$> Gen.enumBounded) else pure Nothing
+  export <- if isJust kind then Gen.maybe ((,l0) <$> Gen.element ["tax-included", "a", "x1"]) else pure Nothing
+  Signature l0 pub kind export <$> genVar <*> pure l0 <*> Gen.maybe genBracketRow <*> genType
 
 {- | A row in brackets, its requirements in the order fmt puts them (by
 their kinds, then their literals), each once.
@@ -319,7 +325,8 @@ genType =
     [TCon l0 <$> genTyCon <*> pure [], TVar l0 <$> genVar]
     [ TCon l0 <$> genTyCon <*> Gen.list (Range.linear 1 2) genType,
       TFun <$> genType <*> genRow <*> genType,
-      TTuple l0 <$> Gen.list (Range.linear 2 3) genType
+      TTuple l0 <$> Gen.list (Range.linear 2 3) genType,
+      TNamed l0 <$> Gen.choice [ArgName "tax" l0 <$> Gen.bool, pure (ArgName "font-size" l0 True)] <*> genType <*> Gen.maybe genExpr
     ]
 
 genTyCon :: Gen QName

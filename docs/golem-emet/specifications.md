@@ -1,11 +1,10 @@
 # golem-emet 仕様書
 
 golem-emet は、関数を書く言語 Emet（拡張子 `.emet`）を読み、検査し、評価し、整形するパッケージである（[docs/adr/0160](../adr/0160-emet-function-language-core.md)）。
-依存する golem のパッケージは golem-syntax（位置と diagnostic）と golem-eval（値と数の演算）だけであり、ほかに peg-runtime を使う。
+依存する golem のパッケージは golem-syntax（位置と diagnostic）、golem-eval（値と数の演算、`.gm` が使う関数の表の型）、golem-doc（意味論 IR）であり、ほかに peg-runtime を使う。
 golem-eval の数の演算を使うので、`.emet` の数の規則は `.gm` の式文脈と同じになる。
-ADR が依存を許す golem-doc は、意味論 IR を表すデータ型を足すときに使う（[ADR 0162](../adr/0162-calling-emet-functions-from-gm.md)）。
-golem-driver が golem-emet に依存し、関数の要求のハンドラを渡す（[docs/adr/0161](../adr/0161-emet-requirements-and-driver-handlers.md)）。
-`.gm` から関数を呼ぶ経路と、`golem fmt` から `.emet` を整形する経路はまだない。
+golem-driver が golem-emet に依存し、関数の要求のハンドラを渡し、`.gm` が使う関数の表を作る（[docs/adr/0161](../adr/0161-emet-requirements-and-driver-handlers.md)、[ADR 0162](../adr/0162-calling-emet-functions-from-gm.md)）。
+`golem fmt` から `.emet` を整形する経路はまだない。
 
 ## モジュール
 
@@ -21,6 +20,8 @@ golem-driver が golem-emet に依存し、関数の要求のハンドラを渡�
 - `Golem.Emet.Eval`：評価器。
 - `Golem.Emet.Builtins`、`Golem.Emet.Prim`：組み込みのモジュールの `.emet` の原文と、Haskell で書いたプリミティブ。
 - `Golem.Emet.Fmt`：整形。
+- `Golem.Emet.IR`：意味論 IR と、組み込みのモジュール `Inline` と `Block` のデータ型の値のあいだの変換（[ADR 0162](../adr/0162-calling-emet-functions-from-gm.md)）。
+- `Golem.Emet.Gm`：`.gm` が使う関数の表（golem-eval の `FunctionNamespace`）と、`.emet` のフィルタ。`.gm` の値と `.emet` の値の写し方と、出力の検査（E06104）を持つ。
 
 ## 文法と改行
 
@@ -53,7 +54,25 @@ ADR の読み方の規則（偽の枝はどの式でもよい）に従った。
 - レコードは、位置で作る（`Book "題" 2020`）ほか、欄の名前で作れる（`Book { title = "題", year = 2020 }`）。名前で作るときは、すべての欄を一度ずつ書く。欄はパターンで取り出す。
 - 型の別名は `pub type` で公開できる。
 - `where` の束縛と同じ名前のパターンの変数は、E02104 とする。どちらを指すかを読み手に推測させないためである。
-- 組み込みの型（`Nat`、`String` など）、組み込みのモジュール（`List`、`String`）、組み込みのコンストラクタと同じ名前の型とコンストラクタ、組み込みの関数 `div` と同じ名前の関数は、E02104 とする。
+- 組み込みの型（`Nat`、`String`、`Inlines`、`Blocks`、`Varargs` など）、組み込みのモジュール（`List`、`String`、`File`、`Inline`、`Block`）、組み込みのコンストラクタと同じ名前の型とコンストラクタ、組み込みの関数 `div` と同じ名前の関数は、E02104 とする。
+
+## .gm から使う関数の宣言
+
+`.gm` から使う関数（[ADR 0162](../adr/0162-calling-emet-functions-from-gm.md)）は、シグネチャの `pub` の後ろに種類の語（`inline`、`block`、`filter`、`fn`）を書き、その後ろに `.gm` に出す名前を文字列で書ける。
+
+```haskell
+pub inline "tax-included" taxIncluded :: Nat -> (tax :: Bool = True) -> Inlines
+pub inline tags :: String -> Varargs String -> Inlines
+pub block "word-table" wordTable :: String -> Blocks -> <file "data/words.tsv"> Blocks
+pub filter "first-ruby" firstRuby :: Blocks -> Blocks
+pub fn total :: List Nat -> Nat
+```
+
+- 種類の語は予約語なので、二つ書く（`pub inline fn f`）と E01100 になる。種類の語は `pub` の後ろにだけ書け、データ型と型の別名には書けない。
+- キーワード引数は、型の位置に `(名前 :: 型 = 既定の値)` と書く。名前は識別子か文字列（`("font-size" :: Rat = 10)`）で、既定の値は式の文法で読んでから、リテラルかどうかを検査する（E06103）。型の検査では、括弧の中の型の引数と同じである。既定の値を省いた形（`(tax :: Bool)`）も文法としては読み、E06103 とする。
+- `Varargs a`、`Inlines`、`Blocks` は型の別名で、それぞれ `List a`、`List Inline.Inline`、`List Block.Block` である。`.gm` から呼ぶ関数の引数の種類（位置引数、可変長引数、キーワード引数、散文スロット、本体）は、書いた型（`Varargs` とキーワード引数）と、別名を解いた型（`Inlines` と `Blocks`）から決める。型の別名で矢印を隠したシグネチャは、書いた型の引数がないものとして扱う。
+- 宣言の誤り（E06100 から E06106）は、シグネチャごとに最初の一つだけを出す。誤りのない宣言は `Program` の `programExports` に、関数の名前、引数の種類、戻り値の型、シグネチャの原文とともに入る。
+- 式文脈から呼べない関数（`pub fn` でない関数）は、その理由とともに `programOthers` に入る。golem-eval が G02002 のメッセージに使う。
 
 ## 型
 
@@ -140,6 +159,57 @@ ADR の読み方の規則（偽の枝はどの式でもよい）に従った。
 | `String.map` | `(Char -> e Char) -> String -> e String` | 各字に当てる |
 
 型クラスを足せば多相になる関数（並べ替え、要素の有無）は、まだ持たない。
+
+組み込みのモジュール `Inline` と `Block` は、意味論 IR のデータ型を持つ（[ADR 0162](../adr/0162-calling-emet-functions-from-gm.md)）。
+コンストラクタは、プラグインとの ABI のシリアライズ形式と同じ範囲である。
+
+| データ型 | コンストラクタ |
+| --- | --- |
+| `Inline.Inline` | `Text String`、`Ruby (List RubySegment)`、`Kenten (Maybe String) Inlines`、`Color String Inlines`、`CharStyle String Inlines`、`Tcy String`、`Number Int (Maybe NumberStyle)`、`Ref RefKind String`、`Deferred Deferred`、`Note Inlines`、`Sidenote Inlines`、`IndexMark (List String) (List String)`、`Cite String`、`ProofComment String`、`LineBreak`、`Aki AkiAmount`、`ChannelItem String (Maybe String) (Maybe String) Inlines` |
+| `Inline.RubySegment` | `RubySegment Inlines (Maybe String)`（親文字と読み） |
+| `Inline.NumberStyle` | `Kanji`、`KanjiDigits`、`TateChuYoko` |
+| `Inline.RefKind` | `RefNumber`、`RefTitle`、`RefPage` |
+| `Inline.AkiAmount` | `Zw Rat`、`Sp Nat` |
+| `Inline.Deferred` | なし（中身の読めない値） |
+| `Block.Block` | `Paragraph (Maybe String) Inlines`、`Heading Nat HeadingAttrs Inlines`、`BulletList (List ListItem)`、`OrderedList (List ListItem)`、`DefList (List DefGroup)`、`Table (List Alignment) (List Inlines) (List (List Inlines))`、`CodeBlock Code`、`FigureBlock Figure`、`ChannelOutput Channel`、`ForcedBreak BreakKind`、`PageControl PageControl`、`BlankLines Nat` |
+| `Block.HeadingAttrs` | `HeadingAttrs { tocTitle :: Maybe Inlines, number :: Maybe Nat, nonumber :: Bool, notoc :: Bool }` |
+| `Block.ListItem` | `ListItem (Maybe Nat) (List Block)`（番号と中身） |
+| `Block.DefGroup` | `DefGroup (List Inlines) (List Blocks)`（語と定義） |
+| `Block.Alignment` | `AlignDefault`、`AlignLeft`、`AlignCenter`、`AlignRight` |
+| `Block.Code` | `Code { lang :: Maybe String, numbers :: Maybe Bool, file :: Maybe String, caption :: Maybe Inlines, diff :: Bool, lines :: List CodeLine }` |
+| `Block.CodeLine` | `CodeLine { text :: String, number :: Maybe Nat, mark :: Maybe DiffMark, highlight :: Bool, callouts :: List Nat }` |
+| `Block.DiffMark` | `Added`、`Removed`、`Unchanged` |
+| `Block.Figure` | `Figure { source :: String, web :: Maybe String, alt :: String, wrap :: Maybe Wrap, width :: Maybe String, caption :: Blocks, page :: Maybe Nat, rotate :: Bool }` |
+| `Block.Wrap` | `WrapStart`、`WrapEnd` |
+| `Block.Channel` | `TocOutput Nat`、`IndexOutput`、`BibliographyOutput`、`CustomOutput String (Maybe String)` |
+| `Block.BreakKind` | `BreakPage`、`BreakRecto`、`BreakVerso`、`BreakColumn` |
+| `Block.PageControl` | `NoBreak`、`NeedLines Nat`、`AdjustLines Int` |
+
+ADR は注と傍注の本文を `Blocks` と書くが、ABI と意味論 IR の注の本文はインラインの列なので、`Inlines` にした。
+
+よく使うノードを作る関数は次のとおりである。
+
+| 関数 | 型 | 中身 |
+| --- | --- | --- |
+| `Inline.text` | `String -> Inlines` | テキスト |
+| `Inline.ruby` | `String -> String -> Inlines` | 親文字と読みのルビ |
+| `Inline.style` | `String -> Inlines -> Inlines` | 文字スタイル |
+| `Inline.color` | `String -> Inlines -> Inlines` | 色 |
+| `Inline.kenten` | `Inlines -> Inlines` | 既定の形の圏点 |
+| `Inline.tcy` | `String -> Inlines` | 縦中横 |
+| `Inline.note` | `Inlines -> Inlines` | 脚注 |
+| `Inline.plain` | `Inlines -> String` | テキスト、ルビの親文字、圏点と色と文字スタイルの中身、縦中横、数をつないだ文字列 |
+| `Block.paragraph` | `Inlines -> Blocks` | 段落 |
+| `Block.styled` | `String -> Inlines -> Blocks` | 段落スタイルを付けた段落 |
+| `Block.bullets`、`Block.numbered` | `List Blocks -> Blocks` | 箇条書き、番号付きリスト |
+| `Block.table` | `List Inlines -> List (List Inlines) -> Blocks` | 見出しの行と本体の行の表 |
+| `Block.definitions` | `List (Inlines, Blocks) -> Blocks` | 定義リスト |
+
+値の中のソースの位置、ブロックのラベル、注の番号、遅延した式は、データ型の欄に出さない（`Golem.Emet.IR`）。
+外から来たノードは、宣言の欄の後ろに、それらを引く添字を一つ多く持つ。
+パターンは宣言の欄だけを照合するので、関数からは見えない。
+関数が作ったノードは添字を持たず、呼び出しの位置（フィルタではファイルの先頭）を持つ。
+`Inline.Deferred` のコンストラクタ `Opaque` は利用者に見せず、値は遅延した式の添字である。
 
 高階の関数は、渡された関数の要求をそのまま自分の要求にする型を持つ（[docs/adr/0161](../adr/0161-emet-requirements-and-driver-handlers.md)）。
 組み込みのモジュール `File` は `File.read` だけを持つ。
