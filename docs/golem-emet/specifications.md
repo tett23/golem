@@ -4,7 +4,7 @@ golem-emet は、関数を書く言語 Emet（拡張子 `.emet`）を読み、�
 依存する golem のパッケージは golem-syntax（位置と diagnostic）、golem-eval（値と数の演算、`.gm` が使う関数の表の型）、golem-doc（意味論 IR）であり、ほかに peg-runtime を使う。
 golem-eval の数の演算を使うので、`.emet` の数の規則は `.gm` の式文脈と同じになる。
 golem-driver が golem-emet に依存し、関数の要求のハンドラを渡し、`.gm` が使う関数の表を作る（[docs/adr/0161](../adr/0161-emet-requirements-and-driver-handlers.md)、[ADR 0162](../adr/0162-calling-emet-functions-from-gm.md)）。
-`golem fmt` から `.emet` を整形する経路はまだない。
+`golem fmt` と `golem lint` は golem-driver を通して `.emet` を扱い、golem-lsp は golem-emet に依存する。
 
 ## モジュール
 
@@ -21,6 +21,8 @@ golem-driver が golem-emet に依存し、関数の要求のハンドラを渡�
 - `Golem.Emet.Builtins`、`Golem.Emet.Prim`：組み込みのモジュールの `.emet` の原文と、Haskell で書いたプリミティブ。
 - `Golem.Emet.Fmt`：整形。
 - `Golem.Emet.IR`：意味論 IR と、組み込みのモジュール `Inline` と `Block` のデータ型の値のあいだの変換（[ADR 0162](../adr/0162-calling-emet-functions-from-gm.md)）。
+- `Golem.Emet.Lint`：`.emet` の lint（E07100 から E07102）。
+- `Golem.Emet.Ide`：LSP の補完、ホバー、宣言への移動、参照の検索のための、`.emet` の文字列とプログラムの上の純粋な関数。書きかけの文字列が解析できなければ、カーソルの行の残りを仮の値に替えた文字列、その行を除いた文字列を順に解析し、初めに解析できたものを使う。
 - `Golem.Emet.Gm`：`.gm` が使う関数の表（golem-eval の `FunctionNamespace`）と、`.emet` のフィルタ。`.gm` の値と `.emet` の値の写し方と、出力の検査（E06104）を持つ。
 
 ## 文法と改行

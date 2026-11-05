@@ -12,6 +12,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Golem.Doc.Assemble (Book (..), LabelTarget (..))
 import Golem.Driver
+import Golem.Emet.Lint (lintProgram)
 import Golem.Eval.File (EvalResult (..))
 import Golem.Lint
 import Golem.Project
@@ -36,10 +37,14 @@ lintProject profile noNotices verbose root = do
 
 {- | The rules on an evaluated project. G05001 of a file that defines styles
 uses the paragraph styles that keep their lines in that file (docs/adr
-ADR 0005, 0014).
+ADR 0005, 0014). The rules of .emet (E07100 to E07102) apply to the .emet
+the project uses, when they load (docs/adr/0162).
 -}
 lintEvaluated :: Evaluated -> [Diagnostic]
-lintEvaluated e =
+lintEvaluated e = lintGm e <> maybe [] lintProgram (evFunctions e)
+
+lintGm :: Evaluated -> [Diagnostic]
+lintGm e =
   let project = evProject e
       sources = Map.toList (projectSources project)
       keep = keepStyles (evStyle e)

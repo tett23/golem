@@ -13,6 +13,7 @@ module Golem.Driver.Functions
     LoadedFunctions (..),
     loadFunctions,
     requirementDiagnostics,
+    formatFunctionFile,
   )
 where
 
@@ -87,6 +88,12 @@ loadRequiredFiles root overlay mfid manifest = go [] [] Map.empty (nub (fromMayb
                       Right t -> go ds seen' (Map.insert (T.pack written) (T.replace "\r\n" "\n" t) texts) rest
     tshow :: (Show a) => a -> Text
     tshow = T.pack . show
+
+{- | golem fmt of a .emet (docs/adr/0160, docs/adr/0162): the formatted
+text, or the errors that keep it from being read.
+-}
+formatFunctionFile :: Text -> Either [Diagnostic] Text
+formatFunctionFile = formatEmet
 
 -- | The functions of the .emet a program reaches, checked.
 data LoadedFunctions = LoadedFunctions

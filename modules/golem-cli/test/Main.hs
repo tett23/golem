@@ -232,6 +232,19 @@ fmtCrTests =
         ([(code, _, err)], files') <- golemSteps files [["fmt"]]
         assertEqual err (ExitFailure 1) code
         files' @?= files,
+      -- docs/adr/0162
+      testCase "golem fmt formats a .emet given, and those the project uses without arguments" $ do
+        let messy = "pub inline f :: Inlines\nf = Inline.text \"x\"   \n\n\n\nhelper :: Nat\nhelper = 1\n"
+            tidy = "pub inline f :: Inlines\nf = Inline.text \"x\"\n\nhelper :: Nat\nhelper = 1\n"
+        ([(code, _, err)], files') <- golemSteps [("f.emet", messy)] [["fmt", "f.emet"]]
+        assertEqual err ExitSuccess code
+        lookup "f.emet" files' @?= Just tidy
+        ([(code', _, err'), (lcode, _, lerr)], files'') <- golemSteps [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "@import f.emet as f\n\n[f.f]\n"), ("f.emet", messy)] [["fmt"], ["lint"]]
+        assertEqual err' ExitSuccess code'
+        lookup "f.emet" files'' @?= Just tidy
+        -- the lint of .emet: helper is not used
+        assertEqual lerr (ExitFailure 1) lcode
+        assertBool lerr ("error[E07100]" `isInfixOf` lerr),
       testCase "golem fmt --check shows a chapter with a CR and rewrites nothing" $ do
         let files = [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "本文。\r\n")]
         ([(code, out, err)], files') <- golemSteps files [["fmt", "--check"]]

@@ -6,7 +6,7 @@ import Data.ByteString qualified as BS
 import Data.Char (isDigit, isSpace)
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Either (partitionEithers)
-import Data.List (intercalate, isPrefixOf, stripPrefix)
+import Data.List (intercalate, isPrefixOf, isSuffixOf, stripPrefix)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -16,6 +16,7 @@ import Data.UUID.V4 qualified as UUID
 import Golem.Doc.Cbor (encodeDocument)
 import Golem.Driver
 import Golem.Driver.Explain (Explanation (..), Status (..), catalog, explainHint)
+import Golem.Driver.Functions (formatFunctionFile)
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
 import Golem.Driver.Version (golemVersion)
@@ -439,7 +440,8 @@ formatFiles check files0 = do
       then
         projectSourcePaths >>= \case
           Left f -> putHuman (pfSources f) (pfDiagnostics f) >> pure Nothing
-          Right ps -> pure (Just ps)
+          -- and the .emet the project uses (docs/adr/0162)
+          Right ps -> Just . (ps <>) <$> (loadProjectWith Map.empty "." >>= either (const (pure [])) (functionPaths "."))
       else pure (Just files0)
   case files of
     Nothing -> pure (ExitFailure 1)
@@ -454,15 +456,22 @@ formatFiles check files0 = do
         Just bytes -> case TE.decodeUtf8' bytes of
           Left _ -> TIO.hPutStrLn stderr (T.pack path <> ": UTF-8 として読めないため整形しません") >> pure False
           Right src -> formatOne path bytes src
-    formatOne path bytes src =
-      case format src of
-        Unformattable ds -> do
-          putHuman (Map.singleton (FileId 0) (SourceInfo path (mkLineIndex src))) ds
-          pure False
-        Formatted out
-          | TE.encodeUtf8 out == bytes -> pure True
-          | check -> putStrLn path >> pure False
-          | otherwise -> BS.writeFile path (TE.encodeUtf8 out) >> pure True
+    formatOne path bytes src
+      -- a .emet, through golem-driver (docs/adr/0162)
+      | ".emet" `isSuffixOf` path = case formatFunctionFile src of
+          Left ds -> do
+            putHuman (Map.singleton (FileId 0) (SourceInfo path (mkLineIndex src))) ds
+            pure False
+          Right out -> written path bytes out
+      | otherwise = case format src of
+          Unformattable ds -> do
+            putHuman (Map.singleton (FileId 0) (SourceInfo path (mkLineIndex src))) ds
+            pure False
+          Formatted out -> written path bytes out
+    written path bytes out
+      | TE.encodeUtf8 out == bytes = pure True
+      | check = putStrLn path >> pure False
+      | otherwise = BS.writeFile path (TE.encodeUtf8 out) >> pure True
 
 {- | The sources of the project in the current directory, for golem fmt
 without arguments (golem-fmt ADR 0004). When the load stops only at the CR

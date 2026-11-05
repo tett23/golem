@@ -10,6 +10,14 @@ module Golem.Emet
     callFunctionCounted,
     callFunctionLimited,
     programOthers,
+    programModules,
+    programModInfos,
+    programBuiltins,
+    ModInfo (..),
+    FunInfo (..),
+    TypeDef (..),
+    ConInfo (..),
+    showScheme,
     Handlers (..),
     noHandlers,
     fileHandlers,
@@ -48,7 +56,7 @@ import Golem.Emet.Fmt (formatEmet)
 import Golem.Emet.Parse (parseModule, readEmet)
 import Golem.Emet.Path (normalizePath)
 import Golem.Emet.Syntax
-import Golem.Emet.Types (Req (..), showReq, showTy)
+import Golem.Emet.Types (Req (..), showReq, showScheme, showTy)
 import Golem.Syntax
 
 -- | Why a file could not be read: it is missing, or it resolves outside the root.
@@ -63,6 +71,11 @@ data Program = Program
     prExports :: !(Map FilePath [Export]),
     -- | the functions the expression context cannot call, by the paths of their modules, with why
     prOthers :: !(Map FilePath (Map Name Text)),
+    -- | the modules of the files: their ids, texts and syntax, for lint and the LSP (docs/adr/0162)
+    prModules :: !(Map FilePath (FileId, Text, Module)),
+    -- | what each module of a file defines, and the built-in modules by their names
+    prModInfos :: !(Map FilePath ModInfo),
+    prBuiltinMods :: !(Map Name ModInfo),
     -- | the requirements the signatures write, each at its place (docs/adr/0161)
     prRequirements :: ![(Req, SrcSpan)]
   }
@@ -77,6 +90,18 @@ programRequirements = prRequirements
 -- | The functions .gm uses, by the paths of the modules (docs/adr/0162).
 programExports :: Program -> Map FilePath [Export]
 programExports = prExports
+
+-- | The modules of the files of the program: their ids, texts and syntax.
+programModules :: Program -> Map FilePath (FileId, Text, Module)
+programModules = prModules
+
+-- | What each module of a file defines.
+programModInfos :: Program -> Map FilePath ModInfo
+programModInfos = prModInfos
+
+-- | The built-in modules by their names.
+programBuiltins :: Program -> Map Name ModInfo
+programBuiltins = prBuiltinMods
 
 {- | The functions of each module that the expression context of .gm
 cannot call, with why: those that are not @pub fn@ (docs/adr/0162).
@@ -155,7 +180,7 @@ loadProgram source roots = do
                         | fiPub fi -> "種類の語のない pub の関数は .gm から見えません"
                         | otherwise -> "pub のない関数です"
               ]
-      program = Program (Map.union preludeGlobals (Map.fromList defs)) (Map.map (\(f, _, _) -> f) (ldFiles loaded)) exports others reqs
+      program = Program (Map.union preludeGlobals (Map.fromList defs)) (Map.map (\(f, _, _) -> f) (ldFiles loaded)) exports others (ldFiles loaded) checkedMods builtinMods reqs
   pure (sortDiagnostics diags, if any isError diags then Nothing else Just program)
   where
     visit stack via path ld

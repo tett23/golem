@@ -18,6 +18,7 @@ where
 
 import Colog.Core (LogAction, WithSeverity (..))
 import Colog.Core qualified as L
+import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Concurrent.STM
@@ -255,9 +256,9 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
         let edits = fromMaybe [] $ do
               ws <- mws
               p <- relPath st docUri
-              src <- sourceOf ws p
+              text <- (srcText <$> sourceOf ws p) <|> emetText ws p
               new <- F.formatting ws p
-              let end = F.toLineCol enc (lineIndexOf ws p) (byteLength (srcText src))
+              let end = F.toLineCol enc (lineIndexOf ws p) (byteLength text)
               pure [TextEdit (Range (Position 0 0) (toPosition end)) new]
         respond (Right (InL edits)),
       requestHandler SMethod_TextDocumentDocumentSymbol $ \(TRequestMessage _ _ _ (DocumentSymbolParams _ _ (TextDocumentIdentifier docUri))) respond -> do
@@ -335,7 +336,8 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
       mws <- liftIO (readTVarIO wsVar)
       let TextDocumentIdentifier docUri = doc
       case (mws, relPath st docUri) of
-        (Just ws, Just p) | Just _ <- sourceOf ws p -> do
+        -- a .gm, or a .emet the project uses (docs/adr/0162)
+        (Just ws, Just p) | isJust (sourceOf ws p) || isJust (emetText ws p) -> do
           case F.fromLineCol enc (lineIndexOf ws p) (fromPosition pos) of
             Just off -> Just <$> k ws p off
             Nothing -> pure Nothing

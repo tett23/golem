@@ -67,6 +67,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | 04 | 評価の上限と循環 | golem-emet |
 | 05 | 要求（[docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)） | golem-emet、golem-driver |
 | 06 | `.gm` から使う関数の宣言と出力（[docs/adr/0162](adr/0162-calling-emet-functions-from-gm.md)） | golem-emet |
+| 07 | lint（[docs/adr/0162](adr/0162-calling-emet-functions-from-gm.md)） | golem-emet、golem-driver |
 
 `.emet` の原因が `.gm` と同じ誤りは、`G` のコードを使う。
 読み込みの誤りは [G01001](#g01001)、[G01002](#g01002)、[G01003](#g01003)、`import` のパスの誤りは [G03002](#g03002)、[G03003](#g03003) である。
@@ -1153,6 +1154,84 @@ pub inline price :: Nat -> (tax :: Bool = True) -> Inlines
 ### 直し方
 
 どちらかの名前を変える。
+
+## E07100
+
+使われていない、pub のない最上位の宣言です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`.emet` の `pub` のない最上位の関数、データ型、型の別名を、同じファイルのどこも使わない（`.emet` の lint）。
+関数が自分自身を呼ぶだけなら、使われていないとする。
+データ型は、型の名前かコンストラクタのどれかを使えば、使われているとする。
+`pub` の付いた宣言は、どこからも使われていなくても対象にしない。
+位置は、関数ではシグネチャの名前、データ型と型の別名では宣言である。
+
+- メッセージ: `使われていない関数です: <名前>`、`使われていないデータ型です: <名前>`、`使われていない型の別名です: <名前>`
+- 段階とモジュール: lint（golem-emet の `Golem.Emet.Lint`、golem-driver の `Golem.Driver.Lint`）
+- ADR: [docs/adr/0162](adr/0162-calling-emet-functions-from-gm.md)
+
+### 主な原因
+
+- 使わなくなった補助の関数を残した。
+- 関数をほかの `.emet` から使うつもりで、`pub` を付け忘れた。
+
+### 直し方
+
+使わない宣言を消すか、ほかのファイルから使うなら `pub` を付ける。
+
+## E07101
+
+使われていない import です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`.emet` の `import` で取り込んだファイルの公開された名前（関数、型、コンストラクタ）を、一つも使わない（`.emet` の lint）。
+位置は、`import` のパスである。
+
+- メッセージ: `使われていない import です: <パス>`
+- 段階とモジュール: lint（golem-emet の `Golem.Emet.Lint`、golem-driver の `Golem.Driver.Lint`）
+- ADR: [docs/adr/0162](adr/0162-calling-emet-functions-from-gm.md)
+
+### 主な原因
+
+- 使っていた関数を消したが、`import` を残した。
+
+### 直し方
+
+`import` の行を消す。
+
+## E07102
+
+使われていないパターンの変数です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+等式か `case` の選択肢のパターンの変数を、その右辺（ガードを含む）が使わない（`.emet` の lint）。
+`_` で始まる名前は、使わないことを示すので対象にしない。
+位置は、その変数である。
+
+- メッセージ: `使われていないパターンの変数です: <名前>（使わない変数は _ で始めます）`
+- 段階とモジュール: lint（golem-emet の `Golem.Emet.Lint`、golem-driver の `Golem.Driver.Lint`）
+- ADR: [docs/adr/0162](adr/0162-calling-emet-functions-from-gm.md)
+
+### 主な原因
+
+- 引数の名前を書き誤り、右辺で別の名前を使った。
+- 使わない引数に名前を付けた。
+
+### 直し方
+
+使わない変数は `_` か、`_` で始まる名前にする。
 
 ## G01001
 

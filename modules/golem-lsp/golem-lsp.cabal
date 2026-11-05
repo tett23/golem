@@ -28,6 +28,7 @@ library
     , filepath      >=1.4  && <1.6
     , golem-doc
     , golem-driver
+    , golem-emet
     , golem-eval
     , golem-fmt
     , golem-lint
@@ -48,7 +49,7 @@ test-suite golem-lsp-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    EditingSpec PublishSpec SemanticTokensSpec StaleS1Spec TableWatchSpec TomlSpec
+  other-modules:    EditingSpec FunctionsLspSpec PublishSpec SemanticTokensSpec StaleS1Spec TableWatchSpec TomlSpec
   -- -N: one capability per processor from the start, so that the count
   -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)
   ghc-options:      -threaded "-with-rtsopts=-N"
