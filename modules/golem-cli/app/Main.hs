@@ -147,7 +147,7 @@ arguments, so that it reports every bad one (golem-cli ADR 0009).
 -}
 checkCode :: T.Text -> Either T.Text T.Text
 checkCode s
-  | T.length code /= 6 || T.take 1 code /= "G" || not (T.all isDigit (T.drop 1 code)) =
+  | not (isCodeShape code) =
       Left ("診断のコードは G と 5 桁の数字です: " <> s)
   | Map.member code catalog = Right code
   | otherwise = Left ("未知の診断のコードです: " <> s <> "。プラグインが出す診断は、プラグインの文書を参照してください")

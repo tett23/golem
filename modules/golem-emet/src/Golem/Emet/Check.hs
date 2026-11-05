@@ -1,0 +1,1012 @@
+{- | The check of a module of .emet (docs/adr/0160): the places of @where@
+(E01103), names (E021xx), types, the rules of guards (E03102) and the
+exhaustiveness of patterns (E03100, E03101). A module that passes becomes
+the core form ('Golem.Emet.Core') that the evaluator runs.
+
+Types are checked in two stages kept apart: walking the syntax collects
+constraints ('Golem.Emet.Solve.Constraint') and never unifies, and the
+solver decides them. The bindings of a @where@ are solved first and
+generalised (Hindley-Milner), then the equations, and the defaults come
+at the end of the function.
+-}
+module Golem.Emet.Check
+  ( ModInfo (..),
+    ConInfo (..),
+    FunInfo (..),
+    TypeDef (..),
+    Scope (..),
+    checkModule,
+    builtinCons,
+    builtinModuleNames,
+  )
+where
+
+import Control.Monad (forM, forM_, unless, when, zipWithM)
+import Control.Monad.State.Strict
+import Data.Either (fromRight, lefts)
+import Data.List (find, nub, sortOn)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe, isNothing)
+import Data.Set (Set)
+import Data.Set qualified as Set
+import Data.Text (Text)
+import Data.Text qualified as T
+import Golem.Emet.Core
+import Golem.Emet.Exhaust
+import Golem.Emet.Parse (lineOf)
+import Golem.Emet.Solve
+import Golem.Emet.Syntax
+import Golem.Emet.Types
+import Golem.Eval.Expr (overLimit, tooBigDiagnostic)
+import Golem.Eval.Value (NumType (..), Value (..), numberOf)
+import Golem.Syntax
+
+-- * What a module exports
+
+data TypeDef = TypeDef
+  { tdKey :: !Text,
+    tdParams :: ![Name],
+    tdPub :: !Bool,
+    -- | the body of an alias, with 'TG' for the parameters
+    tdAlias :: !(Maybe Ty)
+  }
+
+data ConInfo = ConInfo
+  { ciName :: !Name,
+    ciTypeKey :: !Text,
+    ciParams :: !Int,
+    ciArgs :: ![Ty],
+    ciFields :: !(Maybe [Name]),
+    -- | the constructors of the type in the order they are declared, with their arities
+    ciSiblings :: ![(Name, Int)],
+    ciPub :: !Bool
+  }
+
+data FunInfo = FunInfo
+  { fiKey :: !GKey,
+    fiScheme :: !Scheme,
+    fiPub :: !Bool
+  }
+
+-- | What a module defines, @pub@ or not; an import sees the @pub@ part.
+data ModInfo = ModInfo
+  { miPath :: !FilePath,
+    miTypes :: !(Map Name TypeDef),
+    miCons :: !(Map Name ConInfo),
+    miFuns :: !(Map Name FunInfo)
+  }
+
+{- | What a module sees besides itself: its imports in their order, each
+with the range of its path; the built-in modules by their names; and the
+unqualified built-in functions (@div@).
+-}
+data Scope = Scope
+  { scImports :: ![(Loc, ModInfo)],
+    scBuiltins :: !(Map Name ModInfo),
+    scGlobals :: !(Map Name FunInfo)
+  }
+
+-- | @True@, @False@, @Nothing@ and @Just@.
+builtinCons :: Map Name ConInfo
+builtinCons =
+  Map.fromList
+    [ ("True", ConInfo "True" "Bool" 0 [] Nothing boolSigs True),
+      ("False", ConInfo "False" "Bool" 0 [] Nothing boolSigs True),
+      ("Nothing", ConInfo "Nothing" "Maybe" 1 [] Nothing maybeSigs True),
+      ("Just", ConInfo "Just" "Maybe" 1 [TG 0] Nothing maybeSigs True)
+    ]
+  where
+    boolSigs = [("False", 0), ("True", 0)]
+    maybeSigs = [("Nothing", 0), ("Just", 1)]
+
+-- | The names of the built-in modules, which no type or constructor of a user may take.
+builtinModuleNames :: [Name]
+builtinModuleNames = ["List", "String"]
+
+-- * The names a module sees
+
+-- | Where a name comes from: this file (Nothing), or the path of an import.
+type Origin = Maybe FilePath
+
+data Visible = Visible
+  { vTypes :: !(Map Name (Origin, TypeDef)),
+    vCons :: !(Map Name (Origin, ConInfo)),
+    vFuns :: !(Map Name (Origin, FunInfo)),
+    -- | the names of the imports that are not pub (E02105)
+    vHidden :: !(Set Name)
+  }
+
+-- * The context of a check
+
+data Ctx = Ctx
+  { cxFile :: !FileId,
+    cxPath :: !FilePath,
+    cxSource :: !Text,
+    cxVis :: !Visible,
+    cxScope :: !Scope,
+    -- | the function being checked, for the messages of guards
+    cxFun :: !Name,
+    -- | the binding of where whose body is checked; "" for the equations
+    cxUser :: !Name,
+    -- | the names of the bindings of the where of the function
+    cxWhereNames :: !(Set Name)
+  }
+
+data Local = LMono !Ty | LPoly !Scheme
+
+type Locals = Map Name Local
+
+data TcState = TcState
+  { tsSolve :: !SolveState,
+    -- | the constraints collected and not solved yet, last first
+    tsWanted :: ![Constraint],
+    -- | the errors of patterns and guards, last first
+    tsDiags :: ![Diagnostic],
+    -- | which binding of where uses which (the user "" is the equations)
+    tsUses :: !(Set (Name, Name)),
+    tsSkolems :: !Int
+  }
+
+type Tc = StateT TcState (Either Diagnostic)
+
+failAt :: Ctx -> Text -> Loc -> Text -> Tc a
+failAt cx code l msg = lift (Left (diagnostic code Error (spanOf cx l) msg))
+
+warnAt :: Ctx -> Text -> Loc -> Text -> Tc ()
+warnAt cx code l msg = modify' (\s -> s {tsDiags = diagnostic code Error (spanOf cx l) msg : tsDiags s})
+
+spanOf :: Ctx -> Loc -> SrcSpan
+spanOf cx (Loc s e) = mkSpan (cxFile cx) s (max s e)
+
+fresh :: Tc Ty
+fresh = state (\s -> let (t, ss) = freshMeta (tsSolve s) in (t, s {tsSolve = ss}))
+
+emit :: Constraint -> Tc ()
+emit c = modify' (\s -> s {tsWanted = c : tsWanted s})
+
+-- | Solves the constraints collected; a failure is E02101.
+solveNow :: Ctx -> Bool -> Tc ()
+solveNow cx final = do
+  st <- get
+  case solve final (reverse (tsWanted st)) (tsSolve st) of
+    Left (l, m) -> failAt cx "E02101" l m
+    Right ss -> put st {tsSolve = ss, tsWanted = []}
+
+zonkM :: Ty -> Tc Ty
+zonkM t = gets (\s -> zonk (tsSolve s) t)
+
+-- * Checking a module
+
+{- | Checks a module and returns its diagnostics, what it defines and its
+functions. In a built-in module (@prims@), a signature without equations
+is a primitive.
+-}
+checkModule :: Bool -> Scope -> FileId -> FilePath -> Text -> Module -> ([Diagnostic], ModInfo, [(GKey, Global)])
+checkModule prims scope fid path src (Module decls) =
+  let vis0 = importedNames scope
+      cx0 = Ctx fid path src vis0 scope "" "" Set.empty
+      (typeDiags, types) = collectTypes cx0 decls
+      cx1 = withOwn cx0 (ModInfo path types Map.empty Map.empty)
+      (conDiags, cons) = collectCons cx1 decls
+      cx2 = withOwn cx0 (ModInfo path types cons Map.empty)
+      (funDiags, funs, groups) = collectFuns prims cx2 decls
+      own = ModInfo path types cons (Map.map fst funs)
+      cx3 = withOwn cx0 own
+      importDiags = importCollisions cx0 own
+      checked = [checkFunction cx3 sig eqs | (sig, eqs@(_ : _)) <- groups]
+      prim = [((path, sigName sig), GPrim (T.pack (dropExt path) <> "." <> sigName sig) (arity (sigType sig))) | prims, (sig, []) <- groups]
+      bodyDiags = concat (lefts checked) <> concat [ds | Right (ds, _) <- checked]
+      defs = [d | Right (_, d) <- checked]
+   in (importDiags <> typeDiags <> conDiags <> funDiags <> bodyDiags, own, prim <> defs)
+  where
+    arity = \case
+      TFun _ b -> 1 + arity b
+      _ -> 0 :: Int
+    -- <builtin>/List.emet -> List
+    dropExt p = takeWhile (/= '.') (reverse (takeWhile (/= '/') (reverse p)))
+
+-- | The context with the names of this module over those of the imports.
+withOwn :: Ctx -> ModInfo -> Ctx
+withOwn cx mi =
+  let v = cxVis cx
+   in cx
+        { cxVis =
+            v
+              { vTypes = Map.union (Map.map (Nothing,) (miTypes mi)) (vTypes v),
+                vCons = Map.union (Map.map (Nothing,) (miCons mi)) (vCons v),
+                vFuns = Map.union (Map.map (Nothing,) (miFuns mi)) (vFuns v)
+              }
+        }
+
+-- | The pub names of the imports, the first import's on a collision (E02108 reports it).
+importedNames :: Scope -> Visible
+importedNames scope =
+  let mods = map snd (scImports scope)
+      types = Map.unionsWith const [Map.map (Just (miPath mi),) (Map.filter tdPub (miTypes mi)) | mi <- mods]
+      cons = Map.unionsWith const [Map.map (Just (miPath mi),) (Map.filter ciPub (miCons mi)) | mi <- mods]
+      funs = Map.unionsWith const [Map.map (Just (miPath mi),) (Map.filter fiPub (miFuns mi)) | mi <- mods]
+      hidden =
+        Set.unions
+          [ Set.fromList (Map.keys (Map.filter (not . tdPub) (miTypes mi)) <> Map.keys (Map.filter (not . ciPub) (miCons mi)) <> Map.keys (Map.filter (not . fiPub) (miFuns mi)))
+          | mi <- mods
+          ]
+   in Visible types cons funs hidden
+
+{- | E02108 for a pub name of an import that another import brought
+before, or that this file defines: at the path of the import, whether
+the name is used or not (docs/adr/0160).
+-}
+importCollisions :: Ctx -> ModInfo -> [Diagnostic]
+importCollisions cx own = go Map.empty (scImports (cxScope cx))
+  where
+    go _ [] = []
+    go seen ((l, mi) : rest) =
+      let names =
+            [("型 ", n) | (n, td) <- Map.toList (miTypes mi), tdPub td]
+              <> [("コンストラクタ ", n) | (n, ci) <- Map.toList (miCons mi), ciPub ci]
+              <> [("関数 ", n) | (n, fi) <- Map.toList (miFuns mi), fiPub fi]
+          ownHas (k, n) = case k of
+            "型 " -> Map.member n (miTypes own)
+            "コンストラクタ " -> Map.member n (miCons own)
+            _ -> Map.member n (miFuns own)
+          here = T.pack (miPath mi)
+          diag = diagnostic "E02108" Error (spanOf cx l)
+          clash kn@(k, n)
+            | ownHas kn = Just (diag ("取り込んだ" <> k <> n <> " が、このファイルの定義と重なります（" <> here <> " と " <> T.pack (miPath own) <> "）"))
+            | Just p <- Map.lookup kn seen = Just (diag ("取り込んだ" <> k <> n <> " が重なります（" <> T.pack p <> " と " <> here <> "）"))
+            | otherwise = Nothing
+          ds = [d | kn <- names, Just d <- [clash kn]]
+          seen' = Map.union seen (Map.fromList [(kn, miPath mi) | kn <- names])
+       in ds <> go seen' rest
+
+-- | The second and later of names that occur twice.
+duplicates :: [(Name, Loc)] -> [(Name, Loc)]
+duplicates = go Set.empty
+  where
+    go _ [] = []
+    go seen ((n, l) : rest)
+      | Set.member n seen = (n, l) : go seen rest
+      | otherwise = go (Set.insert n seen) rest
+
+-- ** Types
+
+collectTypes :: Ctx -> [Decl] -> ([Diagnostic], Map Name TypeDef)
+collectTypes cx decls =
+  let entries = [(n, (l, TypeDef (key n) vs pub Nothing, Nothing)) | DData l pub n vs _ <- decls] <> [(n, (l, TypeDef (key n) vs pub Nothing, Just t)) | DType l pub n vs t <- decls]
+      dupDiags =
+        [diagnostic "E02104" Error (spanOf cx l) ("型 " <> n <> " を二度定義しています") | (n, l) <- duplicates [(n, l) | (n, (l, _, _)) <- entries]]
+          <> [diagnostic "E02104" Error (spanOf cx l) ("型 " <> n <> " は組み込みの型と重なります") | (n, (l, _, _)) <- entries, Map.member n builtinTypes]
+          <> [diagnostic "E02104" Error (spanOf cx l) ("型 " <> n <> " は組み込みのモジュールの名前と重なります") | (n, (l, _, _)) <- entries, n `elem` builtinModuleNames, not (Map.member n builtinTypes)]
+      base = Map.fromList [(n, td) | (n, (_, td, _)) <- reverse entries]
+      -- aliases resolved in order, each against the others (a cycle is E02101)
+      resolveAlias seen n = case Map.lookup n aliasBodies of
+        Nothing -> Right Nothing
+        Just (l, vs, t)
+          | Set.member n seen -> Left (diagnostic "E02101" Error (spanOf cx l) ("型の別名 " <> n <> " が循環しています"))
+          | otherwise -> do
+              let others = Map.mapWithKey (\k td -> if Map.member k aliasBodies && k /= n then td {tdAlias = fromRight Nothing (resolveAlias (Set.insert n seen) k)} else td) base
+                  tcx = withOwn cx (ModInfo (cxPath cx) others Map.empty Map.empty)
+              Just <$> typeOf tcx (Map.fromList (zip vs [TG i | i <- [0 ..]])) t
+      aliasBodies = Map.fromList [(n, (l, tdParams td, t)) | (n, (l, td, Just t)) <- entries]
+      resolved = Map.mapWithKey (\n td -> (td, resolveAlias Set.empty n)) base
+      aliasDiags = nub [d | (_, Left d) <- Map.elems resolved]
+      types = Map.map (\(td, r) -> td {tdAlias = fromRight Nothing r}) resolved
+   in (dupDiags <> aliasDiags, types)
+  where
+    key n = T.pack (cxPath cx) <> "#" <> n
+
+-- | A written type in a module, with the variables it may use.
+typeOf :: Ctx -> Map Name Ty -> TypeE -> Either Diagnostic Ty
+typeOf cx vars = go
+  where
+    err l msg = Left (diagnostic "E02101" Error (spanOf cx l) msg)
+    undef l msg = Left (diagnostic "E02100" Error (spanOf cx l) msg)
+    go = \case
+      TVar l v -> maybe (undef l ("未定義の型変数 " <> v <> " です")) Right (Map.lookup v vars)
+      TFun a b -> TF <$> go a <*> go b
+      TTuple _ ts -> tTuple <$> mapM go ts
+      TCon l q args -> do
+        as <- mapM go args
+        (k, params, alias) <- lookupType l q
+        when (length as /= params) $ err l ("型 " <> qnameText q <> " の引数の数が合いません（" <> T.pack (show params) <> " 個を取ります）")
+        pure (maybe (TC k as) (substGen as) alias)
+    lookupType l q = case q of
+      QName Nothing n
+        | Just (_, td) <- Map.lookup n (vTypes (cxVis cx)) -> Right (tdKey td, length (tdParams td), tdAlias td)
+        | Just a <- Map.lookup n builtinTypes -> Right (n, a, Nothing)
+        | Set.member n (vHidden (cxVis cx)) -> Left (diagnostic "E02105" Error (spanOf cx l) ("型 " <> n <> " は公開されていません（pub がありません）"))
+        | otherwise -> undef l ("未定義の型 " <> n <> " です")
+      QName (Just m) n -> case Map.lookup m (scBuiltins (cxScope cx)) of
+        Nothing -> undef l ("未定義のモジュール " <> m <> " です")
+        Just mi -> case Map.lookup n (miTypes mi) of
+          Nothing -> undef l ("未定義の型 " <> qnameText q <> " です")
+          Just td
+            | not (tdPub td) -> Left (diagnostic "E02105" Error (spanOf cx l) ("型 " <> qnameText q <> " は公開されていません"))
+            | otherwise -> Right (tdKey td, length (tdParams td), tdAlias td)
+
+-- ** Constructors
+
+collectCons :: Ctx -> [Decl] -> ([Diagnostic], Map Name ConInfo)
+collectCons cx decls =
+  let datas = [(pub, n, vs, cs) | DData _ pub n vs cs <- decls]
+      entries =
+        [ (cname, cl, mk)
+        | (pub, n, vs, cs) <- datas,
+          let sibs = [(conName c, length (conTypes c)) | c <- cs],
+          c <- cs,
+          let cname = conName c
+              cl = conLoc c
+              vars = Map.fromList (zip vs [TG i | i <- [0 ..]])
+              mk = do
+                args <- mapM (typeOf cx vars) (conTypes c)
+                fieldDup c
+                pure (ConInfo cname (T.pack (cxPath cx) <> "#" <> n) (length vs) args (conFieldNames c) sibs pub)
+        ]
+      dupDiags =
+        [diagnostic "E02104" Error (spanOf cx l) ("コンストラクタ " <> n <> " を二度定義しています") | (n, l) <- duplicates [(n, l) | (n, l, _) <- entries]]
+          <> [diagnostic "E02104" Error (spanOf cx l) ("コンストラクタ " <> n <> " は組み込みのコンストラクタと重なります") | (n, l, _) <- entries, Map.member n builtinCons]
+          <> [diagnostic "E02104" Error (spanOf cx l) ("コンストラクタ " <> n <> " は組み込みのモジュールの名前と重なります") | (n, l, _) <- entries, n `elem` builtinModuleNames]
+      built = [(n, mk) | (n, _, mk) <- entries]
+   in (dupDiags <> nub (lefts (map snd built)), Map.fromList (reverse [(n, ci) | (n, Right ci) <- built]))
+  where
+    conName = \case
+      ConPos _ n _ -> n
+      ConRec _ n _ -> n
+    conLoc = \case
+      ConPos l _ _ -> l
+      ConRec l _ _ -> l
+    conTypes = \case
+      ConPos _ _ ts -> ts
+      ConRec _ _ fs -> map snd fs
+    conFieldNames = \case
+      ConPos {} -> Nothing
+      ConRec _ _ fs -> Just (map fst fs)
+    fieldDup = \case
+      ConRec l n fs | (f : _) <- [f | (f, _) <- duplicates [(f, l) | (f, _) <- fs]] -> Left (diagnostic "E02104" Error (spanOf cx l) ("欄 " <> f <> " を二度定義しています: " <> n))
+      _ -> Right ()
+
+-- ** Functions
+
+{- | The signatures and the equations of the top-level functions, grouped:
+E02104 for a signature written twice, E02107 for equations apart, E02102
+for equations without a signature, E02100 for a signature without
+equations (outside the built-in modules, where it is a primitive).
+-}
+collectFuns :: Bool -> Ctx -> [Decl] -> ([Diagnostic], Map Name (FunInfo, Signature), [(Signature, [Equation])])
+collectFuns prims cx decls =
+  let sigs = [s | DSig s <- decls]
+      dupSigs = duplicates [(sigName s, sigNameLoc s) | s <- sigs]
+      builtinClash = [(sigName s, sigNameLoc s) | s <- sigs, Map.member (sigName s) (scGlobals (cxScope cx))]
+      runs = runsOf [case d of DEq q -> Just q; _ -> Nothing | d <- decls]
+      apart = duplicates [(eqName q, eqNameLoc q) | q : _ <- runs]
+      sigMap = Map.fromList (reverse [(sigName s, s) | s <- sigs])
+      noSig = [r | r@(q : _) <- runs, not (Map.member (eqName q) sigMap)]
+      eqsOf n = concat [r | r@(q : _) <- runs, eqName q == n]
+      noEq = [s | not prims, s <- Map.elems sigMap, null (eqsOf (sigName s))]
+      infos =
+        Map.fromList
+          [ (sigName s, (FunInfo (cxPath cx, sigName s) sch (sigPub s), s))
+          | s <- Map.elems sigMap,
+            Right sch <- [schemeOf cx (sigType s)]
+          ]
+      schemeDiags = nub [d | s <- Map.elems sigMap, Left d <- [schemeOf cx (sigType s)]]
+      diags =
+        [diagnostic "E02104" Error (spanOf cx l) ("関数 " <> n <> " のシグネチャを二度書いています") | (n, l) <- dupSigs]
+          <> [diagnostic "E02104" Error (spanOf cx l) ("関数 " <> n <> " は組み込みの関数と重なります") | (n, l) <- builtinClash]
+          <> [diagnostic "E02107" Error (spanOf cx l) ("関数 " <> n <> " の等式が離れています。同じ関数の等式は続けて書きます") | (n, l) <- apart]
+          <> [diagnostic "E02102" Error (spanOf cx (eqNameLoc q)) ("最上位の関数 " <> eqName q <> " にシグネチャがありません") | (q : _) <- noSig]
+          <> [diagnostic "E02100" Error (spanOf cx (sigNameLoc s)) ("関数 " <> sigName s <> " の等式がありません") | s <- noEq]
+          <> schemeDiags
+      groups = [(s, eqsOf (sigName s)) | s <- Map.elems sigMap, Map.member (sigName s) infos, sigName s `notElem` map fst apart]
+   in (diags, infos, sortOn (locStart . sigLoc . fst) groups)
+
+{- | The equations of each run of one name, in order. A run ends at an
+equation of another name or at anything else ('Nothing').
+-}
+runsOf :: [Maybe Equation] -> [[Equation]]
+runsOf = go []
+  where
+    go acc = \case
+      [] -> close acc
+      Just q : rest -> case acc of
+        (p : _) | eqName p == eqName q -> go (q : acc) rest
+        _ -> close acc <> go [q] rest
+      Nothing : rest -> close acc <> go [] rest
+    close acc = [reverse acc | not (null acc)]
+
+-- | The scheme of a signature: its variables in the order they appear.
+schemeOf :: Ctx -> TypeE -> Either Diagnostic Scheme
+schemeOf cx t =
+  let vs = nub (typeVars t)
+   in Scheme vs <$> typeOf cx (Map.fromList (zip vs [TG i | i <- [0 ..]])) t
+
+typeVars :: TypeE -> [Name]
+typeVars = \case
+  TVar _ v -> [v]
+  TFun a b -> typeVars a <> typeVars b
+  TCon _ _ as -> concatMap typeVars as
+  TTuple _ ts -> concatMap typeVars ts
+
+-- | A scheme with its variables made rigid, new ones.
+skolemize :: Scheme -> Tc Ty
+skolemize (Scheme names t) = do
+  k <- gets tsSkolems
+  modify' (\s -> s {tsSkolems = k + length names})
+  pure (substGen [TS (k + i) n | (i, n) <- zip [0 ..] names] t)
+
+arityOf :: Ty -> Int
+arityOf = \case
+  TF _ b -> 1 + arityOf b
+  _ -> 0
+
+splitArgs :: Int -> Ty -> ([Ty], Ty)
+splitArgs 0 t = ([], t)
+splitArgs n (TF a b) = let (as, r) = splitArgs (n - 1) b in (a : as, r)
+splitArgs _ t = ([], t)
+
+{- | E02106: equations with different numbers of arguments, or more than
+the arrows of the signature. Fewer return a function.
+-}
+arityDiag :: Ctx -> Name -> Maybe Int -> [Equation] -> Maybe Diagnostic
+arityDiag cx name arrows eqs = case eqs of
+  [] -> Nothing
+  q : _ ->
+    let n = length (eqPats q)
+     in case [r | r <- eqs, length (eqPats r) /= n] of
+          r : _ -> Just (diagnostic "E02106" Error (spanOf cx (eqNameLoc r)) ("等式どうしで引数の数が違います: " <> name <> " の最初の等式は " <> T.pack (show n) <> " 個の引数を取ります"))
+          []
+            | Just a <- arrows, n > a -> Just (diagnostic "E02106" Error (spanOf cx (eqNameLoc q)) ("等式の引数がシグネチャの矢印の数より多くあります: " <> name <> " は " <> T.pack (show a) <> " 個までの引数を取ります"))
+            | otherwise -> Nothing
+
+{- | Checks one top-level function: the places of @where@, the numbers of
+arguments, the types, guards and patterns. One error of names or types
+stops the check of the function; the errors of guards and patterns come
+all, and the notices of unused bindings (E02109) after them.
+-}
+checkFunction :: Ctx -> Signature -> [Equation] -> Either [Diagnostic] ([Diagnostic], (GKey, Global))
+checkFunction cx0 sig eqs = do
+  let bindings = finalWhere eqs
+      whereNames = Set.fromList ([eqName q | BEq q <- bindings])
+      cx = cx0 {cxFun = sigName sig, cxUser = "", cxWhereNames = whereNames}
+  case whereDiags cx eqs of
+    [] -> pure ()
+    ds -> Left ds
+  sch@(Scheme _ sigTy) <- either (Left . pure) Right (schemeOf cx (sigType sig))
+  forM_ (arityDiag cx (sigName sig) (Just (arityOf sigTy)) eqs) (Left . pure)
+  let n = maybe 0 (length . eqPats) (safeHead eqs)
+      run = do
+        skolem <- skolemize sch
+        let (argTys, resTy) = splitArgs n skolem
+        binds <- checkWhereBlock cx bindings
+        ceqs <- checkEquations cx (whereLocals binds) argTys resTy eqs
+        solveNow cx True
+        uses <- gets tsUses
+        pure (ceqs, map (snd . snd) binds, unusedNotices cx bindings uses)
+  case runStateT run (TcState emptySolveState [] [] Set.empty 0) of
+    Left d -> Left [d]
+    Right ((ceqs, binds, notices), st)
+      | not (null (tsDiags st)) -> Left (reverse (tsDiags st) <> notices)
+      | otherwise ->
+          let line = lineOf (cxSource cx) (locStart (sigLoc sig))
+           in Right (notices, ((cxPath cx, sigName sig), GFun (CFun (sigName sig) (cxPath cx) line n ceqs binds)))
+
+safeHead :: [a] -> Maybe a
+safeHead = \case
+  x : _ -> Just x
+  [] -> Nothing
+
+-- | E02109 for each binding no equation and no other binding uses.
+unusedNotices :: Ctx -> [Binding] -> Set (Name, Name) -> [Diagnostic]
+unusedNotices cx bindings uses =
+  [ notice "E02109" (spanOf cx l) ("使われていない where の束縛です: " <> n)
+  | (n, l) <- nubOn fst [(eqName q, eqNameLoc q) | BEq q <- bindings],
+    not (any (\(user, used) -> used == n && user /= n) (Set.toList uses))
+  ]
+  where
+    nubOn f = foldr (\x acc -> x : filter ((/= f x) . f) acc) []
+
+-- | The @where@ of a function: after its last equation (or the last guard of it).
+finalWhere :: [Equation] -> [Binding]
+finalWhere eqs = case reverse eqs of
+  q : _ -> case (eqWheres q, eqRhs q) of
+    (Where _ bs : _, _) -> bs
+    ([], Guarded gs) | (_, Where _ bs : _) : _ <- reverse gs -> bs
+    _ -> []
+  [] -> []
+
+-- ** The places of where (E01103)
+
+whereDiags :: Ctx -> [Equation] -> [Diagnostic]
+whereDiags cx eqs = concatMap perEq (zip [0 ..] eqs)
+  where
+    lastIx = length eqs - 1
+    perEq (i, q) =
+      let final = i == lastIx
+          gws = case eqRhs q of
+            Guarded gs -> [(w, j == length gs - 1) | (j, (_, ws)) <- zip [0 :: Int ..] gs, w <- ws]
+            Plain _ -> []
+          placed =
+            [(w, final && k == 0 && null gws) | (k, w) <- zip [0 :: Int ..] (eqWheres q)]
+              <> [(w, final && null (eqWheres q) && isLast && k == 0) | (k, (w, isLast)) <- zip [0 :: Int ..] gws]
+       in [misplaced w "where は関数の最後の等式（ガードがあれば最後のガード）の後ろに一つだけ書けます" | (w, False) <- placed]
+            <> concat [innerWheres w | (w, True) <- placed]
+            <> rhsWheres (eqRhs q)
+    misplaced w m = diagnostic "E01103" Error (spanOf cx (whereLoc w)) (m <> ": " <> cxFun cx)
+    innerWheres (Where _ bs) = concatMap bindingWheres bs
+    bindingWheres = \case
+      BSig _ -> []
+      BEq q -> map nested (eqWheres q) <> map nested (guardWs (eqRhs q)) <> rhsWheres (eqRhs q)
+    nested w = misplaced w "where の中には where を書けません"
+    guardWs = \case
+      Guarded gs -> concatMap snd gs
+      Plain _ -> []
+    rhsWheres = \case
+      Plain e -> exprWheres e
+      Guarded gs -> concat [condWheres (guardCond g) <> exprWheres (guardBody g) | (g, _) <- gs]
+    condWheres = \case
+      GOtherwise _ -> []
+      GExpr e -> exprWheres e
+    exprWheres = \case
+      ECase _ e as -> exprWheres e <> concatMap altWs as
+      EApp f x -> exprWheres f <> exprWheres x
+      EBin _ _ a b -> exprWheres a <> exprWheres b
+      ENeg _ e -> exprWheres e
+      ETernary _ c a b -> exprWheres c <> exprWheres a <> exprWheres b
+      EList _ es -> concatMap exprWheres es
+      ETuple _ es -> concatMap exprWheres es
+      ERecord _ _ fs -> concat [exprWheres e | (_, _, e) <- fs]
+      EParen _ e -> exprWheres e
+      _ -> []
+    altWs a =
+      [misplaced w "case の選択肢の後ろには where を書けません" | w <- altWheres a <> guardWs (altRhs a)]
+        <> rhsWheres (altRhs a)
+
+-- * Constraints of expressions
+
+numTyOf :: Value -> Ty
+numTyOf v = case numberOf v of
+  Just (TNat, _) -> tNat
+  Just (TInt, _) -> tInt
+  _ -> tRat
+
+checkNumber :: Ctx -> Loc -> Value -> Tc ()
+checkNumber cx l v = case numberOf v of
+  Just (_, q) | overLimit q -> lift (Left (tooBigDiagnostic (spanOf cx l)))
+  _ -> pure ()
+
+instantiate :: Scheme -> Tc Ty
+instantiate (Scheme names t) = do
+  ms <- mapM (const fresh) names
+  pure (substGen ms t)
+
+-- ** Names
+
+resolveVar :: Ctx -> Locals -> Loc -> QName -> Tc (Ty, CExpr)
+resolveVar cx locals l q = case q of
+  QName Nothing n
+    | Just loc <- Map.lookup n locals -> do
+        when (Set.member n (cxWhereNames cx)) $ modify' (\s -> s {tsUses = Set.insert (cxUser cx, n) (tsUses s)})
+        (,CLocal n) <$> localTy loc
+    | Just (_, fi) <- Map.lookup n (vFuns (cxVis cx)) -> global fi
+    | Just fi <- Map.lookup n (scGlobals (cxScope cx)) -> global fi
+    | Set.member n (vHidden (cxVis cx)) -> failAt cx "E02105" l (n <> " は公開されていません（取り込んだファイルで pub がありません）")
+    | otherwise -> failAt cx "E02100" l ("未定義の名前 " <> n <> " です")
+  QName (Just m) n -> case Map.lookup m (scBuiltins (cxScope cx)) of
+    Nothing -> failAt cx "E02100" l ("未定義のモジュール " <> m <> " です")
+    Just mi -> case Map.lookup n (miFuns mi) of
+      Nothing -> failAt cx "E02100" l ("未定義の名前 " <> qnameText q <> " です")
+      Just fi
+        | not (fiPub fi) -> failAt cx "E02105" l (qnameText q <> " は公開されていません")
+        | otherwise -> global fi
+  where
+    global fi = (,CGlobal l (fiKey fi)) <$> instantiate (fiScheme fi)
+    localTy = \case
+      LMono t -> pure t
+      LPoly s -> instantiate s
+
+resolveCon :: Ctx -> Loc -> QName -> Tc ConInfo
+resolveCon cx l q = case q of
+  QName Nothing n
+    | Just (_, ci) <- Map.lookup n (vCons (cxVis cx)) -> pure ci
+    | Just ci <- Map.lookup n builtinCons -> pure ci
+    | Set.member n (vHidden (cxVis cx)) -> failAt cx "E02105" l ("コンストラクタ " <> n <> " は公開されていません（取り込んだファイルで pub がありません）")
+    | otherwise -> failAt cx "E02100" l ("未定義のコンストラクタ " <> n <> " です")
+  QName (Just m) n -> case Map.lookup m (scBuiltins (cxScope cx)) of
+    Nothing -> failAt cx "E02100" l ("未定義のモジュール " <> m <> " です")
+    Just mi -> case Map.lookup n (miCons mi) of
+      Nothing -> failAt cx "E02100" l ("未定義のコンストラクタ " <> qnameText q <> " です")
+      Just ci
+        | not (ciPub ci) -> failAt cx "E02105" l (qnameText q <> " は公開されていません")
+        | otherwise -> pure ci
+
+-- | The type of a constructor applied to new variables for the parameters of its type.
+conType :: ConInfo -> Tc ([Ty], Ty)
+conType ci = do
+  ms <- mapM (const fresh) [1 .. ciParams ci]
+  pure (map (substGen ms) (ciArgs ci), TC (ciTypeKey ci) ms)
+
+-- ** Expressions
+
+infer :: Ctx -> Locals -> Expr -> Tc (Ty, CExpr)
+infer cx locals = \case
+  EParen _ e -> infer cx locals e
+  ENum l v -> do
+    checkNumber cx l v
+    pure (numTyOf v, CLit (LValue v))
+  EStr _ s -> pure (tString, CLit (LValue (VString s)))
+  EChar _ c -> pure (tChar, CLit (LChar c))
+  EVar l q -> resolveVar cx locals l q
+  ECon l q -> do
+    ci <- resolveCon cx l q
+    (args, res) <- conType ci
+    pure $ case (ciTypeKey ci, ciName ci) of
+      ("Bool", b) -> (tBool, CLit (LValue (VBool (b == "True"))))
+      _ -> (foldr TF res args, CConV (ciName ci) (length args))
+  EList _ es -> do
+    el <- fresh
+    cs <- mapM (\e -> check cx locals e el) es
+    pure (tList el, CList cs)
+  ETuple _ es -> do
+    ts <- mapM (infer cx locals) es
+    pure (tTuple (map fst ts), CTuple (map snd ts))
+  e@EApp {} -> do
+    let (f, args) = spine e
+    (ft, cf) <- infer cx locals f
+    case (cf, args) of
+      (CGlobal _ ("<builtin>", "div"), [a, b]) -> do
+        (ta, ca) <- infer cx locals a
+        (tb, cb) <- infer cx locals b
+        r <- arithmetic (exprLoc e) "div" ADivInt ta tb
+        pure (r, CApp (exprLoc e) cf [ca, cb])
+      _ -> do
+        (rt, cargs) <- applyArgs cx locals ft args
+        pure (rt, CApp (exprLoc e) cf cargs)
+  EBin l op a b -> do
+    (ta, ca) <- infer cx locals a
+    (tb, cb) <- infer cx locals b
+    t <- case op of
+      _ | op `elem` [OpAnd, OpOr] -> do
+        emit (KSub (exprLoc a) ta tBool)
+        emit (KSub (exprLoc b) tb tBool)
+        pure tBool
+      _ | op `elem` [OpEq, OpNe, OpLt, OpLe, OpGt, OpGe] -> do
+        t <- fresh
+        emit (KSub (exprLoc a) ta t)
+        emit (KSub (exprLoc b) tb t)
+        emit (KPred l (binOpText op) IsOrd t)
+        pure tBool
+      OpAppend -> do
+        t <- fresh
+        emit (KSub (exprLoc a) ta t)
+        emit (KSub (exprLoc b) tb t)
+        emit (KPred l "++" IsConcat t)
+        pure t
+      OpCons -> do
+        el <- fresh
+        emit (KSub (exprLoc a) ta el)
+        emit (KSub (exprLoc b) tb (tList el))
+        pure (tList el)
+      _ -> arithmetic l (binOpText op) (arithOf op) ta tb
+    pure (t, CBin l op ca cb)
+  ENeg l e -> do
+    (t, c) <- infer cx locals e
+    emit (KPred l "-" IsNum t)
+    r <- fresh
+    emit (KNeg l t r)
+    pure (r, CNeg l c)
+  ECase l e alts -> do
+    (st, ce) <- infer cx locals e
+    r <- fresh
+    checked <- mapM (checkAlt cx locals st r) alts
+    alternativeChecks cx l [(altLoc a, [x], altRhs a, [altPat a]) | (a, (_, x)) <- zip alts checked]
+    pure (r, CCase ce (map fst checked))
+  ETernary _ c a b -> do
+    cc <- check cx locals c tBool
+    r <- fresh
+    ca <- check cx locals a r
+    cb <- check cx locals b r
+    pure (r, CTern cc ca cb)
+  ERecord l q fs -> do
+    ci <- resolveCon cx l q
+    (args, res) <- conType ci
+    names <- maybe (failAt cx "E02101" l ("コンストラクタ " <> qnameText q <> " はレコードではありません")) pure (ciFields ci)
+    forM_ (duplicates [(f, fl) | (f, fl, _) <- fs]) $ \(f, fl) -> failAt cx "E02104" fl ("欄 " <> f <> " を二度書いています")
+    forM_ fs $ \(f, fl, _) -> unless (f `elem` names) (failAt cx "E02100" fl ("欄 " <> f <> " は " <> qnameText q <> " にありません"))
+    cs <- forM (zip names args) $ \(f, t) -> case find (\(g, _, _) -> g == f) fs of
+      Nothing -> failAt cx "E02101" l ("欄 " <> f <> " がありません")
+      Just (_, _, e) -> check cx locals e t
+    pure (res, if null cs then CConV (ciName ci) 0 else CApp l (CConV (ciName ci) (length cs)) cs)
+  where
+    arithmetic l what op ta tb = do
+      emit (KPred l what IsNum ta)
+      emit (KPred l what IsNum tb)
+      r <- fresh
+      emit (KArith l op ta tb r)
+      pure r
+    arithOf = \case
+      OpAdd -> AAdd
+      OpSub -> ASub
+      OpMul -> AMul
+      OpDiv -> ADiv
+      OpMod -> AMod
+      _ -> APow
+
+spine :: Expr -> (Expr, [Expr])
+spine = go []
+  where
+    go acc = \case
+      EApp f x -> go (x : acc) f
+      EParen _ e@EApp {} | null acc -> go acc e
+      f -> (f, acc)
+
+applyArgs :: Ctx -> Locals -> Ty -> [Expr] -> Tc (Ty, [CExpr])
+applyArgs _ _ ft [] = pure (ft, [])
+applyArgs cx locals ft (a : as) = do
+  (p, r) <- case ft of
+    TF p r -> pure (p, r)
+    _ -> do
+      p <- fresh
+      r <- fresh
+      emit (KEq (exprLoc a) (TF p r) ft)
+      pure (p, r)
+  c <- check cx locals a p
+  (t, cs) <- applyArgs cx locals r as
+  pure (t, c : cs)
+
+-- | An expression where a type is expected: a narrower number is accepted.
+check :: Ctx -> Locals -> Expr -> Ty -> Tc CExpr
+check cx locals e expected = do
+  (t, c) <- infer cx locals e
+  emit (KSub (exprLoc e) t expected)
+  pure c
+
+-- | An alternative of case, against the type of the scrutinee and that of the result.
+checkAlt :: Ctx -> Locals -> Ty -> Ty -> Alt -> Tc (CAlt, XPat)
+checkAlt cx locals st r a = do
+  (binds, cp, xp) <- checkPat cx st (altPat a)
+  rhs <- checkRhs cx (Map.union (Map.map LMono binds) locals) r (altRhs a)
+  pure (CAlt cp rhs, xp)
+
+checkRhs :: Ctx -> Locals -> Ty -> Rhs -> Tc CRhs
+checkRhs cx locals t = \case
+  Plain e -> CPlain <$> check cx locals e t
+  Guarded gs -> CGuards <$> mapM guard gs
+    where
+      guard (g, _) = do
+        c <- case guardCond g of
+          GOtherwise _ -> pure Nothing
+          GExpr e -> Just <$> check cx locals e tBool
+        (c,) <$> check cx locals (guardBody g) t
+
+-- ** Patterns
+
+checkPat :: Ctx -> Ty -> Pat -> Tc (Map Name Ty, CPat, XPat)
+checkPat cx expected = \case
+  PVar l n -> do
+    when (Set.member n (cxWhereNames cx)) $ failAt cx "E02104" l ("変数 " <> n <> " は where の束縛と同じ名前です")
+    pure (Map.singleton n expected, CPVar n, XWild)
+  PWild _ -> pure (Map.empty, CPWild, XWild)
+  PNum l v -> do
+    checkNumber cx l v
+    emit (KSub l (numTyOf v) expected)
+    pure (Map.empty, CPLit (LValue v), XLit (maybe "_" (T.pack . show . snd) (numberOf v)))
+  PStr l s -> do
+    emit (KEq l tString expected)
+    pure (Map.empty, CPLit (LValue (VString s)), XLit (T.pack (show s)))
+  PChar l c -> do
+    emit (KEq l tChar expected)
+    pure (Map.empty, CPLit (LChar c), XLit (T.pack (show c)))
+  PCon l q ps -> do
+    ci <- resolveCon cx l q
+    (args, res) <- conType ci
+    emit (KEq l res expected)
+    when (length ps /= length args) $
+      failAt cx "E02101" l ("コンストラクタ " <> qnameText q <> " は " <> T.pack (show (length args)) <> " 個の引数を取ります")
+    if ciTypeKey ci == "Bool"
+      then pure (Map.empty, CPLit (LValue (VBool (ciName ci == "True"))), XCon (conKey ci) [])
+      else do
+        subs <- zipWithM (checkPat cx) args ps
+        binds <- mergeBinds cx l [b | (b, _, _) <- subs]
+        pure (binds, CPCon (ciName ci) [c | (_, c, _) <- subs], XCon (conKey ci) [x | (_, _, x) <- subs])
+  PList l ps -> do
+    el <- fresh
+    emit (KEq l (tList el) expected)
+    subs <- mapM (checkPat cx el) ps
+    binds <- mergeBinds cx l [b | (b, _, _) <- subs]
+    pure (binds, CPList [c | (_, c, _) <- subs], foldr (\(_, _, x) r -> XCon "::" [x, r]) (XCon "[]" []) subs)
+  PCons l h t -> do
+    el <- fresh
+    emit (KEq l (tList el) expected)
+    (bh, ch, xh) <- checkPat cx el h
+    (bt, ct, xt) <- checkPat cx (tList el) t
+    binds <- mergeBinds cx l [bh, bt]
+    pure (binds, CPCons ch ct, XCon "::" [xh, xt])
+  PTuple l ps -> do
+    ms <- mapM (const fresh) ps
+    emit (KEq l (tTuple ms) expected)
+    subs <- zipWithM (checkPat cx) ms ps
+    binds <- mergeBinds cx l [b | (b, _, _) <- subs]
+    pure (binds, CPTuple [c | (_, c, _) <- subs], XCon (tupleCon (length ps)) [x | (_, _, x) <- subs])
+  PRec l q fs -> do
+    ci <- resolveCon cx l q
+    (args, res) <- conType ci
+    emit (KEq l res expected)
+    names <- maybe (failAt cx "E02101" l ("コンストラクタ " <> qnameText q <> " はレコードではありません")) pure (ciFields ci)
+    forM_ (duplicates [(f, patLoc p) | (f, p) <- fs]) $ \(f, fl) -> failAt cx "E02104" fl ("欄 " <> f <> " を二度書いています")
+    forM_ fs $ \(f, p) -> unless (f `elem` names) (failAt cx "E02100" (patLoc p) ("欄 " <> f <> " は " <> qnameText q <> " にありません"))
+    subs <- forM (zip names args) $ \(f, t) -> case lookup f fs of
+      Nothing -> pure (Map.empty, CPWild, XWild)
+      Just p -> checkPat cx t p
+    binds <- mergeBinds cx l [b | (b, _, _) <- subs]
+    pure (binds, CPCon (ciName ci) [c | (_, c, _) <- subs], XCon (conKey ci) [x | (_, _, x) <- subs])
+
+mergeBinds :: Ctx -> Loc -> [Map Name Ty] -> Tc (Map Name Ty)
+mergeBinds cx l = foldM' Map.empty
+  where
+    foldM' acc = \case
+      [] -> pure acc
+      m : rest -> case Map.keys (Map.intersection acc m) of
+        n : _ -> failAt cx "E02104" l ("変数 " <> n <> " を一つのパターンに二度書いています")
+        [] -> foldM' (Map.union acc m) rest
+
+-- | The constructor of the tuples of n items in the rows of patterns: @(,)@ and a comma for each item past the second.
+tupleCon :: Int -> Text
+tupleCon n = "(,)" <> T.replicate (n - 2) ","
+
+conKey :: ConInfo -> Text
+conKey ci = ciTypeKey ci <> "\t" <> ciName ci
+
+-- * Equations and the rules of patterns
+
+checkEquations :: Ctx -> Locals -> [Ty] -> Ty -> [Equation] -> Tc [CEq]
+checkEquations cx locals argTys resTy eqs = do
+  rows <- forM eqs $ \q -> do
+    pats <- zipWithM (checkPat cx) argTys (eqPats q)
+    binds <- mergeBinds cx (eqLoc q) [b | (b, _, _) <- pats]
+    r <- checkRhs cx (Map.union (Map.map LMono binds) locals) resTy (eqRhs q)
+    pure (CEq [c | (_, c, _) <- pats] r, [x | (_, _, x) <- pats])
+  let whole = case (eqs, reverse eqs) of
+        (q : _, z : _) -> eqLoc q <-> eqLoc z
+        _ -> Loc 0 0
+  patternRules cx ("等式", "関数 " <> cxFun cx <> " の等式") whole [(eqLoc q, xs, eqRhs q, eqPats q) | (q, (_, xs)) <- zip eqs rows]
+  pure (map fst rows)
+
+alternativeChecks :: Ctx -> Loc -> [(Loc, [XPat], Rhs, [Pat])] -> Tc ()
+alternativeChecks cx = patternRules cx ("選択肢", "case の選択肢")
+
+{- | E03101 for guards after otherwise and rows never chosen, E03102 for
+guards that do not end with otherwise (but before a last row of variables
+only), and E03100 when the rows do not cover every value. A function or
+case with E03102 is not checked for E03100: the rows without otherwise do
+not count, and the missing values would be the same mistake again.
+-}
+patternRules :: Ctx -> (Text, Text) -> Loc -> [(Loc, [XPat], Rhs, [Pat])] -> Tc ()
+patternRules cx (rowWord, whose) whole rows = do
+  let sig = signatureOf cx
+      n = length rows
+      lastCatchAll = case reverse rows of
+        (_, _, Plain _, ps) : _ -> all varOrWild ps
+        _ -> False
+      varOrWild = \case
+        PVar {} -> True
+        PWild _ -> True
+        _ -> False
+      isOther = \case
+        (Guard _ (GOtherwise _) _, _) -> True
+        _ -> False
+      counts (_, _, rhs, _) = case rhs of
+        Plain _ -> True
+        Guarded gs -> any isOther gs
+  forM_ rows $ \(_, _, rhs, _) -> case rhs of
+    Guarded gs -> case dropWhile (not . isOther) gs of
+      _ : (g, _) : _ -> warnAt cx "E03101" (guardLoc g) ("otherwise の後ろのガードは選ばれません: " <> cxFun cx)
+      _ -> pure ()
+    Plain _ -> pure ()
+  let lastGuards =
+        [ guardLoc (fst (last gs))
+        | (i, (_, _, Guarded gs, _)) <- zip [0 :: Int ..] rows,
+          not (any isOther gs),
+          not (lastCatchAll && i < n - 1)
+        ]
+  forM_ lastGuards $ \l -> warnAt cx "E03102" l ("ガードの並びの最後が otherwise ではありません: " <> cxFun cx)
+  -- rows never chosen
+  forM_ (zip [0 :: Int ..] rows) $ \(i, (l, xs, _, _)) ->
+    let before = [ys | r@(_, ys, _, _) <- take i rows, counts r]
+     in when (i > 0 && isNothing (useful sig before xs)) $
+          warnAt cx "E03101" l ("選ばれない" <> rowWord <> "です: " <> cxFun cx)
+  when (null lastGuards) $
+    let counted = [xs | r@(_, xs, _, _) <- rows, counts r]
+        width = case rows of
+          (_, xs, _, _) : _ -> length xs
+          [] -> 1
+     in case useful sig counted (replicate width XWild) of
+          Just w -> warnAt cx "E03100" whole ("網羅していないパターンマッチです。" <> T.unwords (map (showWitness . display) w) <> " に当たる" <> rowWord <> "がありません（" <> whose <> "）")
+          Nothing -> pure ()
+  where
+    display = \case
+      XCon c as -> XCon (snd (T.breakOnEnd "\t" c)) (map display as)
+      x -> x
+
+signatureOf :: Ctx -> ConSignature
+signatureOf cx key
+  | key `elem` ["[]", "::"] = Just [("[]", 0), ("::", 2)]
+  | Just n <- T.stripPrefix "(,)" key = Just [(key, T.length n + 2)]
+  | otherwise = case T.breakOn "\t" key of
+      (_, "") -> Nothing
+      (tk, _) -> case [ci | ci <- allCons, ciTypeKey ci == tk] of
+        ci : _ -> Just [(tk <> "\t" <> c, a) | (c, a) <- ciSiblings ci]
+        [] -> Nothing
+  where
+    allCons =
+      map snd (Map.elems (vCons (cxVis cx)))
+        <> Map.elems builtinCons
+        <> concatMap (Map.elems . miCons) (Map.elems (scBuiltins (cxScope cx)))
+
+-- * where
+
+whereLocals :: [(Name, (Local, CBind))] -> Locals
+whereLocals bs = Map.fromList [(n, l) | (n, (l, _)) <- bs]
+
+{- | The bindings of a @where@: a recursive group, inferred together,
+solved, and generalised but for the variables that constraints left
+pending still hold. A binding with a signature has the type of it.
+-}
+checkWhereBlock :: Ctx -> [Binding] -> Tc [(Name, (Local, CBind))]
+checkWhereBlock cx bs = do
+  let sigs = [s | BSig s <- bs]
+      runs = runsOf [case b of BEq q -> Just q; BSig _ -> Nothing | b <- bs]
+      defs = [(eqName q, eqNameLoc q) | (q : _) <- runs]
+  forM_ (duplicates [(sigName s, sigNameLoc s) | s <- sigs]) $ \(n, l) -> failAt cx "E02104" l ("局所の関数 " <> n <> " のシグネチャを二度書いています")
+  forM_ (duplicates defs) $ \(n, l) -> failAt cx "E02107" l ("束縛 " <> n <> " の等式が離れています。同じ束縛の等式は続けて書きます")
+  forM_ sigs $ \s -> unless (sigName s `elem` map fst defs) (failAt cx "E02100" (sigNameLoc s) ("束縛 " <> sigName s <> " の等式がありません"))
+  sigSchemes <- forM sigs $ \s -> either (lift . Left) (pure . (sigName s,)) (schemeOf cx (sigType s))
+  monos <- forM [n | (n, _) <- defs, n `notElem` map fst sigSchemes] $ \n -> (n,) <$> fresh
+  let locals = Map.fromList ([(n, LPoly sc) | (n, sc) <- sigSchemes] <> [(n, LMono t) | (n, t) <- monos])
+  checked <- forM runs $ \run -> case run of
+    [] -> failAt cx "E01100" (Loc 0 0) "空の束縛"
+    q : _ -> do
+      let name = eqName q
+          cxb = cx {cxUser = name}
+          sigScheme = lookup name sigSchemes
+      forM_ (arityDiag cx name (arityOf . (\(Scheme _ t) -> t) <$> sigScheme) run) (lift . Left)
+      let arity = length (eqPats q)
+      target <- maybe (maybe fresh pure (lookup name monos)) skolemize sigScheme
+      (argTys, resTy) <- case sigScheme of
+        Just _ -> pure (splitArgs arity target)
+        Nothing -> do
+          as <- mapM (const fresh) [1 .. arity]
+          r <- fresh
+          emit (KEq (eqNameLoc q) (foldr TF r as) target)
+          pure (as, r)
+      ceqs <- checkEquations cxb {cxFun = name} locals argTys resTy run
+      pure (name, CBind name arity ceqs (lineAt cx (eqNameLoc q)))
+  solveNow cx False
+  pending <- gets (ssPending . tsSolve)
+  held <- Set.fromList . concatMap metasOf <$> mapM zonkM (concatMap constraintTypes pending)
+  forM checked $ \(n, cb) -> case lookup n sigSchemes of
+    Just sc -> pure (n, (LPoly sc, cb))
+    Nothing -> do
+      t <- zonkM (fromMaybe tNat (lookup n monos))
+      let free = [i | i <- metasOf t, not (Set.member i held)]
+          gen = Map.fromList (zip free [0 ..])
+          t' = mapMetas (\i -> maybe (TM i) TG (Map.lookup i gen)) t
+      pure (n, (if null free then LMono t else LPoly (Scheme [T.pack ("t" <> show k) | k <- [1 .. length free]] t'), cb))
+  where
+    mapMetas f = \case
+      TM i -> f i
+      TC c as -> TC c (map (mapMetas f) as)
+      TF a b -> TF (mapMetas f a) (mapMetas f b)
+      t -> t
+
+-- | The types a constraint holds.
+constraintTypes :: Constraint -> [Ty]
+constraintTypes = \case
+  KEq _ a b -> [a, b]
+  KSub _ a b -> [a, b]
+  KPred _ _ _ t -> [t]
+  KArith _ _ a b r -> [a, b, r]
+  KNeg _ a r -> [a, r]
+
+lineAt :: Ctx -> Loc -> Int
+lineAt cx l = lineOf (cxSource cx) (locStart l)

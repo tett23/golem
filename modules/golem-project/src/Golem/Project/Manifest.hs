@@ -27,7 +27,6 @@ module Golem.Project.Manifest
 where
 
 import Control.Monad (zipWithM_)
-import Data.Char (isDigit)
 import Data.List (isPrefixOf, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -281,7 +280,6 @@ silenceList sl = \case
             warnAt l (slRefusal sl <> T.unpack t <> (if DiagnosticCode t `elem` slOther sl then slOtherHint sl else "")) >> pure Nothing
         | otherwise -> pure (Just (DiagnosticCode t))
       v -> warnAt (Toml.valueAnn v) "診断のコードは文字列で書きます" >> pure Nothing
-    isCodeShape t = T.length t == 6 && T.take 1 t == "G" && T.all isDigit (T.drop 1 t)
 
 {- | The code of a schema message of the manifest: G03024 for an element of
 silence-notices or silence-info, G03001 otherwise.

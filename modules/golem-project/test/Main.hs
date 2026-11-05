@@ -127,6 +127,8 @@ silenceTests =
     "[diagnostics] silence-notices (golem-syntax ADR 0002)"
     [ testCase "the codes of notices are read" $
         fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"G02062\"]\n") @?= Right (Set.fromList [DiagnosticCode "G02062"]),
+      testCase "the notice of .emet E02109 is read (docs/adr/0160)" $
+        fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"E02109\"]\n") @?= Right (Set.fromList [DiagnosticCode "E02109"]),
       testCase "without [diagnostics] and with an empty array nothing is silenced" $ do
         fmap manifestSilencedNotices (parse "") @?= Right Set.empty
         fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = []\n") @?= Right Set.empty,

@@ -6,6 +6,7 @@ module Golem.Syntax.Diagnostic
     Fact (..),
     Profile (..),
     diagnostic,
+    isCodeShape,
     notice,
     noticeCodes,
     silenceNotices,
@@ -23,6 +24,7 @@ module Golem.Syntax.Diagnostic
   )
 where
 
+import Data.Char (isDigit)
 import Data.List (sortOn)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -44,6 +46,11 @@ the source (01 syntax, 02 eval, 03 project, 04 document, 05 lint, 06 plugin,
 07 layout, 08 output, 09 preflight); the lower three are the number in it.
 Numbers 000 to 099 are the codes of four digits written with a 0 inserted;
 new codes take 100 to 999. A code is never reused for another meaning.
+
+The codes of .emet, the language of functions, are @E@ followed by five
+digits in the same form (docs/adr/0160): 01 syntax, 02 names and types, 03
+the exhaustiveness of patterns, 04 the limits of evaluation and cycles; the
+numbers in a stage start at 100.
 -}
 newtype DiagnosticCode = DiagnosticCode Text
   deriving stock (Eq, Ord, Show)
@@ -74,6 +81,12 @@ data Diagnostic = Diagnostic
 
 data Profile = Dev | Prod
   deriving stock (Eq, Ord, Show)
+
+{- | Whether a text has the form of a code: @G@ or @E@ and five digits
+(docs/adr 0061, docs/adr/0160).
+-}
+isCodeShape :: Text -> Bool
+isCodeShape t = T.length t == 6 && T.take 1 t `elem` ["G", "E"] && T.all isDigit (T.drop 1 t)
 
 diagnostic :: Text -> Severity -> SrcSpan -> Text -> Diagnostic
 diagnostic code sev sp msg = Diagnostic (DiagnosticCode code) sev sp msg [] [] []
@@ -108,7 +121,8 @@ noticeCodes =
       "G07045", -- kenten with ruby, not drawn in the PDF (golem-driver ADR 0019)
       "G07046", -- a block with rules broken or a heading rule left out (golem-driver ADR 0027)
       "G07100", -- a heading taller than the rest of its column (golem-layout ADR 0020)
-      "G08008" -- code in the body role without [fonts.code] (golem-driver ADR 0017)
+      "G08008", -- code in the body role without [fonts.code] (golem-driver ADR 0017)
+      "E02109" -- a binding of where of .emet that nothing uses (docs/adr/0160)
     ]
 
 {- | The single place where notices are silenced: those whose codes are in

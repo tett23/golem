@@ -1,0 +1,520 @@
+# The grammar of .emet, the language of functions (docs/adr/0160).
+#
+# No offside rule: a newline separates the top-level declarations, the
+# bindings of where { } and the alternatives of case ... of { }. A newline
+# is white space only where the tokens show that the line goes on:
+#
+# - inside ( ), [ ] and the { } of a record: the rules there take nl =
+#   True, and every token reads the newlines after it (Sp(True));
+# - after a line that ends in a binary operator, =, ->, ::, ',', ? or :
+#   (these tokens read the newlines after them always, SpN);
+# - before a line that starts with |, a binary operator but -, ?, :,
+#   where or -> (these tokens read the newlines before them, SpN).
+#
+# Elsewhere a token reads spaces and comments only (Sp(False)), and the
+# newline that ends the line is a separator (SepNl, Sep). Indentation is
+# white space. A line that starts with - starts a new item, so that an
+# alternative of case can match a negative number.
+#
+# The true branch of c ? a : b has no ? and no : at its top
+# (TrueBranch, Or(nl, False)), so the : after it is the : of the ternary
+# operator; the false branch is any expression.
+#
+# The typed entry builds the AST (Golem.Emet.Syntax); the lossless syntax
+# tree feeds golem fmt, which needs the comments and tells the newlines
+# that separate (SepNl) from those that are white space (Nl). Every token
+# returns its own range, and the white space after it is read by the
+# caller, so that the range of a node ends at its last token.
+
+%module Golem.Emet.Generated
+%syntax
+%language OverloadedStrings, LambdaCase
+
+%token Ws
+%trivia Ws
+%token Nl
+%trivia Nl
+%token Comment
+%trivia Comment
+%token SepNl
+%token StrTok
+%token CharTok
+%token OpenBlock
+%token CloseBlock
+%token GuardBar
+
+%inline SpH
+%inline SpN
+
+# The labels are thrown only where a closing bracket or a quote is
+# expected and the input ends (or, for ( and [, a } comes), where no
+# alternative can go on at the same place.
+%safe unclosed_paren
+%safe unclosed_bracket
+%safe unclosed_brace
+%safe unclosed_string
+%safe unclosed_char
+
+%{
+import Data.Text (Text)
+import Data.Text qualified as T
+import Golem.Eval.Value (Value)
+import Golem.Emet.Literal (charValue, negateValue, numberValue, stringValue)
+import Golem.Emet.Syntax
+import Peg.Runtime (Pos (..), Span (..))
+
+loc :: Span -> Loc
+loc (Span s e) = Loc (posOffset s) (posOffset e)
+
+-- | The words that are no names: those of the language, and those it reserves (E01102).
+reservedWords :: [Text]
+reservedWords =
+  [ "pub", "inline", "block", "filter", "fn", "data", "type", "import", "as", "where", "case", "of", "otherwise",
+    "if", "then", "else", "for", "while", "let", "in", "lazy", "class", "instance", "deriving", "default"
+  ]
+
+-- | The left-associative application of a function to its arguments.
+apps :: Expr -> [Expr] -> Expr
+apps = foldl EApp
+
+-- | Left-associative binary operators.
+leftAssoc :: Expr -> [(BinOp, Expr)] -> Expr
+leftAssoc = foldl (\l (o, r) -> EBin (exprLoc l <-> exprLoc r) o l r)
+
+bin :: Expr -> BinOp -> Expr -> Expr
+bin l o r = EBin (exprLoc l <-> exprLoc r) o l r
+
+-- | A type constructor applied to arguments.
+tapp :: Loc -> QName -> [TypeE] -> TypeE
+tapp l c args = TCon (foldl (\a t -> a <-> typeLoc t) l args) c args
+
+-- | The range of a list of items after a first range.
+endOf :: Loc -> [Loc] -> Loc
+endOf l ls = foldl (<->) l ls
+
+-- | One item in parentheses, or a tuple of two or more.
+tupleOr :: ([a] -> b) -> (a -> b) -> a -> [a] -> b
+tupleOr _ one x [] = one x
+tupleOr many _ x xs = many (x : xs)
+
+conDeclLoc :: ConDecl -> Loc
+conDeclLoc = \case
+  ConPos l _ _ -> l
+  ConRec l _ _ -> l
+}%
+
+Module :: Module
+Module <- SpH ds:Items<Decl> !. { Module ds }
+
+# Items separated by newlines; blank lines and newlines before the first
+# and after the last are separators too.
+Items<p :: a> :: [a]
+Items<p> <- Sep? x:p xs:(Sep p)* Sep? { x : xs }
+          / Sep? { [] }
+
+Sep :: ()
+Sep <- (SepNl SpH)+ { () }
+
+SepNl :: ()
+SepNl <- '\n' { () }
+
+Decl :: Decl
+Decl <- Import
+      / Data
+      / TypeAlias
+      / s:Signature { DSig s }
+      / q:Equation { DEq q }
+
+Import :: Decl
+Import <- s:KS<'import'>(False) p:StrLitLoc(False) { DImport (s <-> snd p) (fst p) (snd p) }
+
+Data :: Decl
+Data <- p:PubOpt s:KS<'data'>(False) n:ConNameLoc(False) vs:VarName(False)* EqS c:ConDecl cs:(DataBarS ConDecl)* { DData (maybe s id p <-> conDeclLoc (last (c : cs))) (maybe False (const True) p) (fst n) vs (c : cs) }
+
+PubOpt :: Maybe Loc
+PubOpt <- l:KS<'pub'>(False) { Just l } / '' { Nothing }
+
+TypeAlias :: Decl
+TypeAlias <- p:PubOpt s:KS<'type'>(False) n:ConNameLoc(False) vs:VarName(False)* EqS t:Type(False) { DType (maybe s id p <-> typeLoc t) (maybe False (const True) p) (fst n) vs t }
+
+ConDecl :: ConDecl
+ConDecl <- n:ConNameLoc(False) OpenRecS f:FieldDecl fs:(CommaS FieldDecl)* e:CloseRecS(False) { ConRec (snd n <-> e) (fst n) (f : fs) }
+         / n:ConNameLoc(False) ts:AType(False)* { ConPos (endOf (snd n) (map typeLoc ts)) (fst n) ts }
+
+FieldDecl :: (Name, TypeE)
+FieldDecl <- n:VarName(True) DColonS t:Type(True) { (n, t) }
+
+Signature :: Signature
+Signature <- p:PubOpt n:VarNameLoc(False) DColonS t:Type(False) { Signature (maybe (snd n) id p <-> typeLoc t) (maybe False (const True) p) (fst n) (snd n) t }
+
+LocalSignature :: Signature
+LocalSignature <- n:VarNameLoc(False) DColonS t:Type(False) { Signature (snd n <-> typeLoc t) False (fst n) (snd n) t }
+
+# One equation; the newline after it is read by the caller.
+Equation :: Equation
+Equation <- n:VarNameLoc(False) ps:APat(False)* r:Rhs ws:Where* { Equation (endOf (snd n) (rhsLoc r : map whereLoc ws)) (fst n) (snd n) ps r ws }
+
+Rhs :: Rhs
+Rhs <- EqS e:Expr(False) { Plain e }
+     / gs:GuardEq+ { Guarded gs }
+
+GuardEq :: (Guard, [Where])
+GuardEq <- s:GuardBarS c:GuardCond EqS e:Expr(False) ws:Where* { (Guard (s <-> exprLoc e) c e, ws) }
+
+GuardCond :: GuardCond
+GuardCond <- l:KS<'otherwise'>(False) { GOtherwise l }
+           / e:Expr(False) { GExpr e }
+
+Where :: Where
+Where <- s:WhereS OpenBlockS bs:Items<Binding> e:CloseBlockS(False) { Where (s <-> e) bs }
+
+Binding :: Binding
+Binding <- s:LocalSignature { BSig s }
+         / q:Equation { BEq q }
+
+# --- types
+
+Type(nl :: Bool) :: TypeE
+Type <- a:BType(nl) ArrowS b:Type(nl) { TFun a b }
+      / BType(nl)
+
+BType(nl :: Bool) :: TypeE
+BType <- c:TyConLoc(nl) as:AType(nl)+ { tapp (snd c) (fst c) as }
+       / AType(nl)
+
+AType(nl :: Bool) :: TypeE
+AType <- c:TyConLoc(nl) { TCon (snd c) (fst c) [] }
+       / v:VarNameLoc(nl) { TVar (snd v) (fst v) }
+       / s:OpenParenS t:Type(True) ts:(CommaS Type(True))* e:CloseParenS(nl) { tupleOr (TTuple (s <-> e)) id t ts }
+
+TyConLoc(nl :: Bool) :: (QName, Loc)
+TyConLoc <- q:QualCon Sp(nl) { q }
+          / c:ConNameLoc(nl) { (QName Nothing (fst c), snd c) }
+
+# --- patterns
+
+Pat(nl :: Bool) :: Pat
+Pat <- h:PApp(nl) ColonS t:Pat(nl) { PCons (patLoc h <-> patLoc t) h t }
+     / PApp(nl)
+
+PApp(nl :: Bool) :: Pat
+PApp <- c:ConRefLoc(nl) as:APat(nl)+ { PCon (endOf (snd c) (map patLoc as)) (fst c) as }
+      / APat(nl)
+
+APat(nl :: Bool) :: Pat
+APat <- l:WildS(nl) { PWild l }
+      / n:VarNameLoc(nl) { PVar (snd n) (fst n) }
+      / n:NumLitLoc(nl) { PNum (snd n) (fst n) }
+      / m:MinusS(False) n:NumLitLoc(nl) { PNum (m <-> snd n) (negateValue (fst n)) }
+      / s:StrLitLoc(nl) { PStr (snd s) (fst s) }
+      / c:CharLitLoc(nl) { PChar (snd c) (fst c) }
+      / s:OpenBracketS ps:CommaList<Pat(True)> e:CloseBracketS(nl) { PList (s <-> e) ps }
+      / c:ConRefLoc(False) OpenRecS fs:CommaList<FieldPat> e:CloseRecS(nl) { PRec (snd c <-> e) (fst c) fs }
+      / c:ConRefLoc(nl) { PCon (snd c) (fst c) [] }
+      / s:OpenParenS p:Pat(True) ps:(CommaS Pat(True))* e:CloseParenS(nl) { tupleOr (PTuple (s <-> e)) id p ps }
+
+FieldPat :: (Name, Pat)
+FieldPat <- n:VarName(True) EqS p:Pat(True) { (n, p) }
+
+# Zero or more items separated by commas.
+CommaList<p :: a> :: [a]
+CommaList<p> <- x:p xs:(CommaS p)* { x : xs }
+              / '' { [] }
+
+# --- expressions
+
+Expr(nl :: Bool) :: Expr
+Expr <- Case(nl)
+      / Ternary(nl)
+
+Case(nl :: Bool) :: Expr
+Case <- s:KS<'case'>(nl) e:Expr(nl) KS<'of'>(False) OpenBlockS as:Items<Alt> c:CloseBlockS(nl) { ECase (s <-> c) e as }
+
+Alt :: Alt
+Alt <- p:Pat(False) r:AltRhs ws:Where* { Alt (endOf (patLoc p) (rhsLoc r : map whereLoc ws)) p r ws }
+
+AltRhs :: Rhs
+AltRhs <- ArrowS e:Expr(False) { Plain e }
+        / gs:GuardAlt+ { Guarded gs }
+
+GuardAlt :: (Guard, [Where])
+GuardAlt <- s:GuardBarS c:GuardCond ArrowS e:Expr(False) ws:Where* { (Guard (s <-> exprLoc e) c e, ws) }
+
+Ternary(nl :: Bool) :: Expr
+Ternary <- c:Or(nl, True) QuestionS a:TrueBranch(nl) ColonS b:Expr(nl) { ETernary (exprLoc c <-> exprLoc b) c a b }
+         / Or(nl, True)
+
+# The true branch: no ? and no : at its top.
+TrueBranch(nl :: Bool) :: Expr
+TrueBranch <- Case(nl)
+            / Or(nl, False)
+
+# cons: whether : of lists may come at this level.
+Or(nl :: Bool, cons :: Bool) :: Expr
+Or <- l:And(nl, cons) OrOpS r:Or(nl, cons) { bin l OpOr r }
+    / And(nl, cons)
+
+And(nl :: Bool, cons :: Bool) :: Expr
+And <- l:Cmp(nl, cons) AndOpS r:And(nl, cons) { bin l OpAnd r }
+     / Cmp(nl, cons)
+
+Cmp(nl :: Bool, cons :: Bool) :: Expr
+Cmp <- l:Append(nl, cons) o:CmpOp r:Append(nl, cons) { bin l o r }
+     / Append(nl, cons)
+
+# ++ and : of lists, right-associative, of the same precedence.
+Append(nl :: Bool, cons :: Bool) :: Expr
+Append <- l:AddE(nl) o:AppendOp(cons) r:Append(nl, cons) { bin l o r }
+        / AddE(nl)
+
+AppendOp(cons :: Bool) :: BinOp
+AppendOp <- AppendOpS { OpAppend }
+          / &{ cons } ColonS { OpCons }
+
+AddE(nl :: Bool) :: Expr
+AddE <- l:MulE(nl) rs:AddTail(nl)* { leftAssoc l rs }
+
+AddTail(nl :: Bool) :: (BinOp, Expr)
+AddTail <- o:AddOp e:MulE(nl) { (o, e) }
+
+# A line may start with + but not with -: a - there starts a new item.
+# Inside brackets the token before has read the newlines already.
+AddOp :: BinOp
+AddOp <- SpN '+' !'+' SpN { OpAdd }
+       / '-' !('-' / '>') SpN { OpSub }
+
+MulE(nl :: Bool) :: Expr
+MulE <- l:Unary(nl) rs:MulTail(nl)* { leftAssoc l rs }
+
+MulTail(nl :: Bool) :: (BinOp, Expr)
+MulTail <- o:MulOp e:Unary(nl) { (o, e) }
+
+MulOp :: BinOp
+MulOp <- SpN '*' !'*' SpN { OpMul }
+       / SpN '/' !'=' SpN { OpDiv }
+       / SpN '%' SpN { OpMod }
+
+Unary(nl :: Bool) :: Expr
+Unary <- m:MinusS(nl) e:Unary(nl) { ENeg (m <-> exprLoc e) e }
+       / PowE(nl)
+
+PowE(nl :: Bool) :: Expr
+PowE <- b:App(nl) PowOpS e:Unary(nl) { bin b OpPow e }
+      / App(nl)
+
+CmpOp :: BinOp
+CmpOp <- SpN '==' SpN { OpEq }
+       / SpN '/=' SpN { OpNe }
+       / SpN '<=' SpN { OpLe }
+       / SpN '>=' SpN { OpGe }
+       / SpN '<' SpN { OpLt }
+       / SpN '>' SpN { OpGt }
+
+App(nl :: Bool) :: Expr
+App <- f:Atom(nl) as:Atom(nl)* { apps f as }
+
+Atom(nl :: Bool) :: Expr
+Atom <- s:OpenParenS e:Expr(True) es:(CommaS Expr(True))* c:CloseParenS(nl) { tupleOr (ETuple (s <-> c)) (EParen (s <-> c)) e es }
+      / s:OpenBracketS es:CommaList<Expr(True)> c:CloseBracketS(nl) { EList (s <-> c) es }
+      / n:NumLitLoc(nl) { ENum (snd n) (fst n) }
+      / s:StrLitLoc(nl) { EStr (snd s) (fst s) }
+      / c:CharLitLoc(nl) { EChar (snd c) (fst c) }
+      / v:QualVarLoc(nl) { EVar (snd v) (fst v) }
+      / v:VarNameLoc(nl) { EVar (snd v) (QName Nothing (fst v)) }
+      / c:ConRefLoc(False) OpenRecS fs:CommaList<FieldExpr> e:CloseRecS(nl) { ERecord (snd c <-> e) (fst c) fs }
+      / c:ConRefLoc(nl) { ECon (snd c) (fst c) }
+
+FieldExpr :: (Name, Loc, Expr)
+FieldExpr <- n:VarNameLoc(True) EqS e:Expr(True) { (fst n, snd n, e) }
+
+# Never succeeds.
+Never :: ()
+Never <- !. . { () }
+
+# --- names
+
+IdChar :: ()
+IdChar <- [A-Za-z0-9_] { () }
+
+VarName(nl :: Bool) :: Name
+VarName <- n:VarNameLoc(nl) { fst n }
+
+VarNameLoc(nl :: Bool) :: (Name, Loc)
+VarNameLoc <- n:VarTok Sp(nl) { n }
+
+VarTok :: (Name, Loc)
+VarTok <- w:$([a-z_] IdChar*) &{ w /= "_" && w `notElem` reservedWords } { (w, loc _span) }
+
+ConNameLoc(nl :: Bool) :: (Name, Loc)
+ConNameLoc <- c:ConTok Sp(nl) { c }
+
+ConTok :: (Name, Loc)
+ConTok <- w:$([A-Z] IdChar*) !'.' { (w, loc _span) }
+
+# A constructor, maybe of a built-in module: Just, Inline.Text.
+ConRefLoc(nl :: Bool) :: (QName, Loc)
+ConRefLoc <- q:QualCon Sp(nl) { q }
+           / c:ConNameLoc(nl) { (QName Nothing (fst c), snd c) }
+
+QualCon :: (QName, Loc)
+QualCon <- m:$([A-Z] IdChar*) '.' c:$([A-Z] IdChar*) { (QName (Just m) c, loc _span) }
+
+QualVarLoc(nl :: Bool) :: (QName, Loc)
+QualVarLoc <- q:QualVar Sp(nl) { q }
+
+QualVar :: (QName, Loc)
+QualVar <- m:$([A-Z] IdChar*) '.' v:$([a-z_] IdChar*) &{ v /= "_" && v `notElem` reservedWords } { (QName (Just m) v, loc _span) }
+
+# --- literals
+
+NumLitLoc(nl :: Bool) :: (Value, Loc)
+NumLitLoc <- n:NumTok Sp(nl) { n }
+
+NumTok :: (Value, Loc)
+NumTok <- t:$([0-9]+ ('.' [0-9]+)? ('e' [+\-]? [0-9]+)?) !IdChar { (numberValue t, loc _span) }
+
+StrLitLoc(nl :: Bool) :: (Text, Loc)
+StrLitLoc <- s:StrTok Sp(nl) { s }
+
+StrTok :: (Text, Loc)
+StrTok <- '"' cs:$StrChar* StrClose { (stringValue cs, loc _span) }
+
+StrChar :: ()
+StrChar <- Escape
+         / !["\\\n] . { () }
+
+# The escapes of strings and characters: \" \' \\ \n \t \u{...}.
+Escape :: ()
+Escape <- '\\' ["'\\nt] { () }
+        / '\\u{' [0-9A-Fa-f]+ '}' { () }
+
+StrClose :: ()
+StrClose <- '"' { () }
+          / &('\n' / !.) Never ^unclosed_string { () }
+
+CharLitLoc(nl :: Bool) :: (Char, Loc)
+CharLitLoc <- c:CharTok Sp(nl) { c }
+
+CharTok :: (Char, Loc)
+CharTok <- '\'' c:$(Escape / !['\\\n] .) CharClose { (charValue c, loc _span) }
+
+CharClose :: ()
+CharClose <- '\'' { () }
+           / &('\n' / !.) Never ^unclosed_char { () }
+
+# --- symbols, each followed by white space
+
+KS<w>(nl :: Bool) :: Loc
+KS<w> <- l:K<w> Sp(nl) { l }
+
+K<w> :: Loc
+K<w> <- w !IdChar { loc _span }
+
+S<s> :: Loc
+S<s> <- s { loc _span }
+
+WhereS :: Loc
+WhereS <- SpN l:K<'where'> SpH { l }
+
+OpenBlockS :: Loc
+OpenBlockS <- l:OpenBlock SpH { l }
+
+OpenBlock :: Loc
+OpenBlock <- '{' { loc _span }
+
+CloseBlockS(nl :: Bool) :: Loc
+CloseBlockS <- l:CloseBlock Sp(nl) { l }
+
+CloseBlock :: Loc
+CloseBlock <- '}' { loc _span }
+            / !. Never ^unclosed_brace { Loc 0 0 }
+
+OpenRecS :: Loc
+OpenRecS <- l:S<'{'> SpN { l }
+
+CloseRecS(nl :: Bool) :: Loc
+CloseRecS <- l:S<'}'> Sp(nl) { l }
+           / !. Never ^unclosed_brace { Loc 0 0 }
+
+GuardBarS :: Loc
+GuardBarS <- SpN l:GuardBar SpH { l }
+
+GuardBar :: Loc
+GuardBar <- '|' !'|' { loc _span }
+
+DataBarS :: ()
+DataBarS <- SpN '|' !'|' SpH { () }
+
+OpenParenS :: Loc
+OpenParenS <- l:S<'('> SpN { l }
+
+CloseParenS(nl :: Bool) :: Loc
+CloseParenS <- l:S<')'> Sp(nl) { l }
+             / &('}' / !.) Never ^unclosed_paren { Loc 0 0 }
+
+OpenBracketS :: Loc
+OpenBracketS <- l:S<'['> SpN { l }
+
+CloseBracketS(nl :: Bool) :: Loc
+CloseBracketS <- l:S<']'> Sp(nl) { l }
+               / &('}' / !.) Never ^unclosed_bracket { Loc 0 0 }
+
+CommaS :: ()
+CommaS <- ',' SpN { () }
+
+EqS :: ()
+EqS <- '=' !('=' / '>') SpN { () }
+
+DColonS :: ()
+DColonS <- '::' SpN { () }
+
+ColonS :: ()
+ColonS <- SpN ':' !':' SpN { () }
+
+QuestionS :: ()
+QuestionS <- SpN '?' SpN { () }
+
+ArrowS :: ()
+ArrowS <- SpN '->' SpN { () }
+
+# A unary minus; it reads no newline before it.
+MinusS(nl :: Bool) :: Loc
+MinusS <- l:S<'-'> !('-' / '>') Sp(nl) { l }
+
+WildS(nl :: Bool) :: Loc
+WildS <- l:S<'_'> !IdChar Sp(nl) { l }
+
+OrOpS :: ()
+OrOpS <- SpN '||' SpN { () }
+
+AndOpS :: ()
+AndOpS <- SpN '&&' SpN { () }
+
+AppendOpS :: ()
+AppendOpS <- SpN '++' SpN { () }
+
+PowOpS :: ()
+PowOpS <- SpN '**' SpN { () }
+
+# --- white space
+
+Sp(nl :: Bool) :: ()
+Sp <- &{ nl } SpN { () }
+    / SpH { () }
+
+# Spaces and comments, no newline.
+SpH :: ()
+SpH <- (Ws / Comment)* { () }
+
+# Spaces, comments and newlines.
+SpN :: ()
+SpN <- (Ws / Nl / Comment)* { () }
+
+Ws :: ()
+Ws <- [ \t]+ { () }
+
+Nl :: ()
+Nl <- '\n' { () }
+
+Comment :: ()
+Comment <- '--' (!'\n' .)* { () }

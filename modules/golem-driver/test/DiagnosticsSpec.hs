@@ -242,8 +242,9 @@ noticeTests =
           nDiagnostics silencedInfo @?= nDiagnostics loud
           map withoutInstanceId (nOutputs silencedInfo) @?= map withoutInstanceId (nOutputs loud)
           pure (map diagCode (nDiagnostics loud), [diagCode d | d <- nDiagnostics verbose, diagSeverity d == Info], map fst (nOutputs loud))
-        -- a new notice or info must be added to the projects
-        sort (nub (concatMap (\(n, _, _) -> n) raised)) @?= sort noticeCodes
+        -- a new notice or info must be added to the projects; the notices of
+        -- .emet (E) come when .gm calls functions of .emet (docs/adr/0162)
+        sort (nub (concatMap (\(n, _, _) -> n) raised)) @?= sort [c | c@(DiagnosticCode t) <- noticeCodes, not ("E" `T.isPrefixOf` t)]
         sort (nub (concatMap (\(_, i, _) -> i) raised)) @?= sort infoCodes
         let written = concatMap (\(_, _, w) -> w) raised
         assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"]),
@@ -290,9 +291,12 @@ explainTests =
             case [c | (c, e) <- Map.toList catalog, exStatus e == InUse, c `notElem` used] of
               [] -> pure ()
               unused -> assertFailure ("codes in use but not in the sources (make them retired): " <> unwords (map T.unpack unused)),
-          testCase "every code in the catalog is G, the two digits of a stage and three digits (docs/adr 0061)" $ do
-            let stages = ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
-                malformed c = T.length c /= 6 || T.take 2 (T.drop 1 c) `notElem` stages
+          testCase "every code in the catalog is G or E, the two digits of a stage and three digits (docs/adr 0061, docs/adr/0160)" $ do
+            let stages = \case
+                  "G" -> ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
+                  "E" -> ["01", "02", "03", "04", "05", "06", "07"]
+                  _ -> []
+                malformed c = T.length c /= 6 || T.take 2 (T.drop 1 c) `notElem` stages (T.take 1 c)
             assertBool "a catalog" (not (Map.null catalog))
             filter malformed (Map.keys catalog) @?= [],
           testCase "no code of four digits is in the sources (docs/adr 0061)" $ do
@@ -410,11 +414,12 @@ haskellFiles dir = do
   nested <- concat <$> mapM haskellFiles dirs
   pure ([e | e <- entries, ".hs" `isSuffixOf` e, e `notElem` dirs] <> nested)
 
--- | The strings @"G@, @n@ digits and @"@ in a source.
+-- | The strings @"G@ or @"E@ (the codes of .emet, docs/adr/0160), @n@ digits and @"@ in a source.
 quotedCodesOf :: Int -> T.Text -> [T.Text]
 quotedCodesOf n src =
   [ code
-  | (_, rest) <- T.breakOnAll "\"G" src,
+  | prefix <- ["\"G", "\"E"],
+    (_, rest) <- T.breakOnAll prefix src,
     let code = T.take (n + 1) (T.drop 1 rest),
     T.length code == n + 1,
     T.all isDigit (T.drop 1 code),
