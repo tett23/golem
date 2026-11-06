@@ -12,6 +12,7 @@ module Golem.Emet.Ide
   ( IdeKind (..),
     emetCompletions,
     emetHover,
+    emetLocalHover,
     emetDefinition,
     emetExportAt,
     nameAt,
@@ -192,6 +193,18 @@ emetHover p path text off = do
                ]
         )
   pure (n <> " :: " <> showScheme (fiScheme fi))
+
+{- | The type of the local name at an offset (docs/adr/0170): a variable
+of a pattern or a binding of where, where it is bound or named. Only when
+the text is the one the program last checked: in another text the
+offsets may fall on another name.
+-}
+emetLocalHover :: Program -> FilePath -> Text -> Int -> Maybe Text
+emetLocalHover p path text off = do
+  (_, checked, _) <- Map.lookup path (programModules p)
+  if checked /= text
+    then Nothing
+    else listToMaybe [t | (s, e, t) <- sortOn (\(s, e, _) -> e - s) (localTypes p path), s <= off, off <= e]
 
 {- | The declaration of the name at an offset: a function, a data type or
 a constructor of the file or of an import, as a path and a range.

@@ -9,7 +9,10 @@ module Golem.Lsp.Features
     definition,
     references,
     RenameError (..),
+    renameMessage,
     renameLabel,
+    renameEmet,
+    emetTextOf,
     Completion (..),
     CompletionKind (..),
     completions,
@@ -26,9 +29,11 @@ module Golem.Lsp.Features
     encodingKind,
     semanticTokens,
     semanticTokensOf,
+    emetSemanticTokens,
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Either (fromRight)
@@ -39,8 +44,10 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver (Evaluated (..), metadataValues)
-import Golem.Emet (Export (..), Kind (..), Program, formatEmet, programExports)
-import Golem.Emet.Ide (IdeKind (..), emetCompletions, emetDefinition, emetExportAt, emetHover)
+import Golem.Emet (Export (..), Kind (..), Program, formatEmet, programExports, programModules)
+import Golem.Emet.Highlight (Highlight (..), HlType (..), emetHighlights)
+import Golem.Emet.Ide (IdeKind (..), emetCompletions, emetDefinition, emetExportAt, emetHover, emetLocalHover)
+import Golem.Emet.Rename qualified as R
 import Golem.Eval.Expr (embedValue, evalExpr, plainEnv)
 import Golem.Eval.File (EvalResult (..), Usage (..), builtinInlineCommands)
 import Golem.Eval.Value (Value (..), typeName)
@@ -202,8 +209,11 @@ emetImports src =
 
 -- | The function of a .emet a name of a source calls: ns.name of a kind.
 exportOf :: Workspace -> Source -> Kind -> Text -> Maybe Export
-exportOf ws src kind q = do
-  p <- programOf ws
+exportOf ws src kind q = programOf ws >>= \p -> exportIn p src kind q
+
+-- | The same, in a program.
+exportIn :: Program -> Source -> Kind -> Text -> Maybe Export
+exportIn p src kind q = do
   let (ns, rest) = T.breakOn "." q
   n <- T.stripPrefix "." rest
   path <- Map.lookup ns (emetImports src)
@@ -215,12 +225,16 @@ exportLocation e = Location (exPath e) (spanStart (exSpan e)) (spanEnd (exSpan e
 
 -- | The calls of a function of a .emet in the sources of the project.
 callsOf :: Workspace -> Export -> [Location]
-callsOf ws e =
+callsOf ws e = maybe [] (\p -> callsIn p ws e) (programOf ws)
+
+-- | The same, as a program has the functions.
+callsIn :: Program -> Workspace -> Export -> [Location]
+callsIn p ws e =
   [ loc s sp
   | s <- allSources ws,
     (sp, occ) <- occurrences (srcAst s),
     Just (kind, q) <- [called occ],
-    Just e' <- [exportOf ws s kind q],
+    Just e' <- [exportIn p s kind q],
     exPath e' == exPath e,
     exKind e' == exKind e,
     exName e' == exName e
@@ -329,8 +343,23 @@ references ws path off = case sourceOf ws path of
 
 -- ------------------------------------------------------------------ rename
 
-data RenameError = NotALabel | LabelExists Text | InvalidName Text
+data RenameError = NotALabel | LabelExists Text | InvalidName Text | EmetRename R.RenameError
   deriving stock (Eq, Show)
+
+-- | The message of an error of renaming, as the editor shows it.
+renameMessage :: RenameError -> Text
+renameMessage = \case
+  NotALabel -> "ラベルの上で名前を変更してください"
+  LabelExists l -> "すでにあるラベルの名前です: " <> l
+  InvalidName l -> "ラベルに使えない名前です: " <> l
+  EmetRename e -> case e of
+    R.RenameNotAName -> "関数、型、コンストラクタ、局所の名前の上で名前を変更してください"
+    R.RenameBuiltin n -> "組み込みの名前は変えられません: " <> n
+    R.RenameInvalid n -> ".emet の名前の規則に合いません: " <> n
+    R.RenameReserved n -> "予約語です: " <> n
+    R.RenameTaken n -> "同じ有効範囲の名前と重なります: " <> n
+    R.RenameNotCommand n -> ".gm のコマンドの名前は、英小文字で始まり、英小文字と数字だけで書きます: " <> n
+    R.RenameSyntax p -> "構文の誤りのあるファイルがあるため、名前を変えられません: " <> T.pack p
 
 -- | Renames a label in its definition and every reference.
 renameLabel :: Workspace -> FilePath -> Int -> Text -> Either RenameError [(Location, Text)]
@@ -343,6 +372,89 @@ renameLabel ws path off new = case sourceOf ws path >>= \s -> snd <$> occurrence
       | T.null new || T.any (\c -> c == ' ' || c == ']' || c == '[' || c == '\n') new = Left (InvalidName new)
       | new /= l && not (null (labelDefs ws new)) = Left (LabelExists new)
       | otherwise = Right [(x, new) | x <- nub (labelDefs ws l <> labelRefs ws l)]
+
+{- | Renames a name of a .emet (docs/adr/0170): in the .emet of the
+program, and for a function .gm calls by its name, the calls of .gm and
+the filters of [[filters]] in the text of manifest.toml given. The
+program is the one last checked; the texts are the editor's.
+-}
+renameEmet :: Workspace -> Maybe Text -> FilePath -> Int -> Text -> Either RenameError [(Location, Text)]
+renameEmet ws manifest path off new = do
+  prog <- maybe (Left (EmetRename R.RenameNotAName)) Right (lastProgramOf ws)
+  let files = Map.fromList [(p, (m, fromMaybe t (emetText ws p))) | (p, (_, t, m)) <- Map.toList (programModules prog)]
+  r <- either (Left . EmetRename) Right (R.emetRename files path off new)
+  let gmEdits = case R.rnExported r of
+        Just (p, old, kind, hasString)
+          | new /= old,
+            kind == KindFn || not hasString ->
+              [ l
+              | e <- Map.findWithDefault [] p (programExports prog),
+                exFunction e == old,
+                exKind e == kind,
+                Just l <- map (nameIn old) (callsIn prog ws e)
+              ]
+                <> [l | kind == KindFilter, l <- filterNames manifest p old]
+        _ -> []
+  pure ([(Location p s e, new) | (p, s, e) <- R.rnEdits r] <> [(l, new) | l <- gmEdits])
+  where
+    -- the name after the namespace in a call of .gm: ns.name
+    nameIn old (Location p s e) = do
+      src <- sourceOf ws p
+      let piece = BS.take (e - s) (BS.drop s (TE.encodeUtf8 (srcText src)))
+          needle = TE.encodeUtf8 ("." <> old)
+          (pre, rest) = BS.breakSubstring needle piece
+          after = BS.drop (BS.length needle) rest
+          isNameByte b = b == 95 || b == 45 || (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
+      if BS.null rest || maybe False (isNameByte . fst) (BS.uncons after)
+        then Nothing
+        else Just (Location p (s + BS.length pre + 1) (s + BS.length pre + BS.length needle))
+
+-- | The program of the last evaluation that checked the functions (docs/adr/0170).
+lastProgramOf :: Workspace -> Maybe Program
+lastProgramOf ws = programOf ws <|> wsLastFunctions ws
+
+-- | The text of a .emet: the editor's, or the one the last check read.
+emetTextOf :: Workspace -> FilePath -> Maybe Text
+emetTextOf ws p = emetText ws p <|> (lastProgramOf ws >>= \prog -> (\(_, t, _) -> t) <$> Map.lookup p (programModules prog))
+
+{- | The values of filter of the tables of [[filters]] of manifest.toml
+whose function is a path and whose filter is a name: the ranges of the
+names in their strings.
+-}
+filterNames :: Maybe Text -> FilePath -> Text -> [Location]
+filterNames manifest path old = maybe [] scan manifest
+  where
+    scan txt =
+      let ls = T.splitOn "\n" txt
+          offsets = scanl (\o l -> o + BS.length (TE.encodeUtf8 l) + 1) 0 ls
+       in tables False [] (zip offsets ls)
+    -- each table of [[filters]]: its keys and their strings with their ranges
+    tables inFilters acc = \case
+      [] -> close inFilters acc
+      (o, l) : rest
+        | "[" `T.isPrefixOf` T.strip l -> close inFilters acc <> tables (T.strip l == "[[filters]]") [] rest
+        | inFilters, Just kv <- keyValue o l -> tables inFilters (kv : acc) rest
+        | otherwise -> tables inFilters acc rest
+    close inFilters acc =
+      [ Location "manifest.toml" s e
+      | inFilters,
+        Just (f, _, _) <- [lookup "function" [(k, v) | (k, v) <- acc]],
+        either (const False) (== path) (normalizeRelative (T.unpack f)),
+        Just (n, s, e) <- [lookup "filter" acc],
+        n == old
+      ]
+    keyValue o l = do
+      let (k, rest) = T.breakOn "=" l
+      v0 <- T.stripPrefix "=" rest
+      let lead = T.takeWhile (== ' ') v0
+          v = T.drop (T.length lead) v0
+      (q, body) <- T.uncons v
+      if q /= '"' && q /= '\''
+        then Nothing
+        else do
+          let content = T.takeWhile (/= q) body
+              start = o + BS.length (TE.encodeUtf8 (k <> "=" <> lead)) + 1
+          pure (T.strip k, (content, start, start + BS.length (TE.encodeUtf8 content)))
 
 -- ------------------------------------------------------------------ completion
 
@@ -646,8 +758,9 @@ hover ws path off
   -- the type of a function in a .emet (docs/adr/0162)
   | isEmet path = do
       text <- emetText ws path
-      prog <- programOf ws
-      emetHover prog path text off
+      -- the type of a local name, while the text is the one checked (docs/adr/0170)
+      (lastProgramOf ws >>= \prog -> emetLocalHover prog path text off)
+        <|> (programOf ws >>= \prog -> emetHover prog path text off)
   | otherwise = do
       src <- sourceOf ws path
       -- the signature of the function of a .emet that a name calls (docs/adr/0162)
@@ -755,7 +868,34 @@ semanticTokens enc text = semanticTokensOf enc text (fst (parse (FileId 0) text)
 
 -- | The same, from a CST of the text already parsed.
 semanticTokensOf :: Encoding -> Text -> C.Node -> [SemanticTokenAbsolute]
-semanticTokensOf enc text root = concatMap place (classify 0 root)
+semanticTokensOf enc text root = placeTokens enc text (classify 0 root)
+
+{- | The semantic tokens of a .emet text (docs/adr/0170): the tokens of its
+lossless syntax tree, placed as those of a .gm.
+-}
+emetSemanticTokens :: Encoding -> Text -> [SemanticTokenAbsolute]
+emetSemanticTokens enc text =
+  placeTokens enc text [(hlStart h, hlEnd h, emetTokenType (hlType h), [SemanticTokenModifiers_Declaration | hlDeclaration h]) | h <- emetHighlights text]
+
+emetTokenType :: HlType -> SemanticTokenTypes
+emetTokenType = \case
+  HlComment -> SemanticTokenTypes_Comment
+  HlKeyword -> SemanticTokenTypes_Keyword
+  HlFunction -> SemanticTokenTypes_Function
+  HlVariable -> SemanticTokenTypes_Variable
+  HlParameter -> SemanticTokenTypes_Parameter
+  HlType -> SemanticTokenTypes_Type
+  HlTypeParameter -> SemanticTokenTypes_TypeParameter
+  HlEnumMember -> SemanticTokenTypes_EnumMember
+  HlNamespace -> SemanticTokenTypes_Namespace
+  HlString -> SemanticTokenTypes_String
+  HlNumber -> SemanticTokenTypes_Number
+  HlOperator -> SemanticTokenTypes_Operator
+  HlMacro -> SemanticTokenTypes_Macro
+
+-- | Tokens at byte ranges, in the negotiated unit and split at newlines.
+placeTokens :: Encoding -> Text -> [(Int, Int, SemanticTokenTypes, [SemanticTokenModifiers])] -> [SemanticTokenAbsolute]
+placeTokens enc text = concatMap place
   where
     li = mkLineIndex text
     bytes = TE.encodeUtf8 text

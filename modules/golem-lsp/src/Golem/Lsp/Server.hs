@@ -39,6 +39,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver.Explain (codeDescriptionUrl)
+import Golem.Emet.Outline (emetOutline)
+import Golem.Emet.Outline qualified as O
 import Golem.Lsp.Features qualified as F
 import Golem.Lsp.Workspace
 import Golem.Syntax qualified as S
@@ -209,6 +211,8 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
                         pure (srcCst src)
                       toks = maybe (F.semanticTokens enc text) (F.semanticTokensOf enc text) cached
                   answer toks
+            -- a .emet, from its lossless syntax tree (docs/adr/0170)
+            | isEmet p -> void . liftIO . forkIO $ answer (F.emetSemanticTokens enc text)
           _ -> respond (Right (InL empty)),
       notificationHandler SMethod_TextDocumentDidClose $ \(TNotificationMessage _ _ (DidCloseTextDocumentParams (TextDocumentIdentifier uri))) -> do
         st <- state
@@ -226,10 +230,21 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
         respond (Right (InL (fromMaybe [] r))),
       requestHandler SMethod_TextDocumentRename $ \(TRequestMessage _ _ _ (RenameParams _ doc pos newName)) respond -> do
         enc <- encoding
-        r <- atPosition doc pos $ \ws p off -> pure (fmap (toEdit enc ws) (F.renameLabel ws p off newName))
+        st <- state
+        -- the manifest the editor has, or the one on the disk, for [[filters]] (docs/adr/0170)
+        let manifestPath = stRoot st </> "manifest.toml"
+        mvf <- getVirtualFile (toNormalizedUri (filePathToUri manifestPath))
+        manifest <- case virtualFileText <$> mvf of
+          Just t -> pure (Just t)
+          Nothing -> liftIO (either (const Nothing) Just . TE.decodeUtf8' <$> BS.readFile manifestPath) `orIfMissing` manifestPath
+        r <- atPosition doc pos $ \ws p off ->
+          pure $
+            if isEmet p
+              then fmap (toEditWith enc (emetLines ws manifest)) (F.renameEmet ws manifest p off newName)
+              else fmap (toEdit enc ws) (F.renameLabel ws p off newName)
         case r of
           Just (Right edit) -> respond (Right (InL edit))
-          Just (Left e) -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (renameMessage e) Nothing))
+          Just (Left e) -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (F.renameMessage e) Nothing))
           Nothing -> respond (Right (InR Null)),
       requestHandler SMethod_TextDocumentCompletion $ \(TRequestMessage _ _ _ (CompletionParams doc pos _ _ _)) respond -> do
         st <- state
@@ -265,11 +280,18 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
         st <- state
         enc <- encoding
         mws <- liftIO (readTVarIO wsVar)
+        mvf <- getVirtualFile (toNormalizedUri docUri)
         let syms = fromMaybe [] $ do
-              ws <- mws
               p <- relPath st docUri
-              _ <- sourceOf ws p
-              pure (map (symbol enc (lineIndexOf ws p)) (F.outline ws p))
+              if isEmet p
+                then do
+                  -- the declarations of a .emet, from the editor's text (docs/adr/0170)
+                  text <- (virtualFileText <$> mvf) <|> (mws >>= (`emetText` p))
+                  pure (map (emetSymbol enc (S.mkLineIndex text)) (emetOutline text))
+                else do
+                  ws <- mws
+                  _ <- sourceOf ws p
+                  pure (map (symbol enc (lineIndexOf ws p)) (F.outline ws p))
         respond (Right (InR (InL syms)))
     ]
   where
@@ -347,15 +369,17 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
     toLspLocation enc (ws, p, s, e) = Location (fileUri ws p) (rangeIn enc ws p s e)
     toLink enc (ws, p, s, e) = DefinitionLink (LocationLink Nothing (fileUri ws p) (rangeIn enc ws p s e) (rangeIn enc ws p s e))
     fileUri ws p = filePathToUri (wsRoot ws </> p)
-    toEdit enc ws pairs =
+    toEdit enc ws = toEditWith enc (ws, lineIndexOf ws)
+    toEditWith enc (ws, li) pairs =
       WorkspaceEdit
-        (Just (Map.fromListWith (<>) [(fileUri ws p, [TextEdit (rangeIn enc ws p s e) t]) | (F.Location p s e, t) <- pairs]))
+        (Just (Map.fromListWith (<>) [(fileUri ws p, [TextEdit (rangeWith enc (li p) s e) t]) | (F.Location p s e, t) <- pairs]))
         Nothing
         Nothing
-    renameMessage = \case
-      F.NotALabel -> "ラベルの上で名前を変更してください"
-      F.LabelExists l -> "すでにあるラベルの名前です: " <> l
-      F.InvalidName l -> "ラベルに使えない名前です: " <> l
+    -- the lines of the files a renaming in a .emet rewrites
+    emetLines ws manifest = (ws, \p -> if p == "manifest.toml" then S.mkLineIndex (fromMaybe "" manifest) else maybe (lineIndexOf ws p) S.mkLineIndex (F.emetTextOf ws p))
+    orIfMissing act path = do
+      exists <- liftIO (doesFileExist path)
+      if exists then act else pure Nothing
     {- the edited files, and the files whose diagnostics differ from those
     last published to them (golem-lsp ADR 0005) -}
     publishAll edited ws = do
@@ -370,9 +394,10 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
       liftIO (atomically (writeTVar pubVar (Map.filter (not . null) new)))
 
 rangeIn :: F.Encoding -> Workspace -> FilePath -> Int -> Int -> Range
-rangeIn enc ws p s e =
-  let li = lineIndexOf ws p
-   in Range (toPosition (F.toLineCol enc li s)) (toPosition (F.toLineCol enc li e))
+rangeIn enc ws p = rangeWith enc (lineIndexOf ws p)
+
+rangeWith :: F.Encoding -> S.LineIndex -> Int -> Int -> Range
+rangeWith enc li s e = Range (toPosition (F.toLineCol enc li s)) (toPosition (F.toLineCol enc li e))
 
 toPosition :: S.LineCol -> Position
 toPosition (S.LineCol l c) = Position (fromIntegral l) (fromIntegral c)
@@ -426,6 +451,21 @@ completionItem (F.Completion label kind) =
       F.CkSettingValue -> CompletionItemKind_EnumMember
       F.CkStyleKind -> CompletionItemKind_Keyword
       F.CkTable -> CompletionItemKind_Module
+
+-- | A declaration of a .emet (docs/adr/0170).
+emetSymbol :: F.Encoding -> S.LineIndex -> O.Symbol -> DocumentSymbol
+emetSymbol enc li o =
+  let range a b = Range (toPosition (F.toLineCol enc li a)) (toPosition (F.toLineCol enc li b))
+      kind = case O.symKind o of
+        O.SymFunction -> SymbolKind_Function
+        O.SymVariable -> SymbolKind_Variable
+        O.SymEnum -> SymbolKind_Enum
+        O.SymStruct -> SymbolKind_Struct
+        O.SymEnumMember -> SymbolKind_EnumMember
+        O.SymField -> SymbolKind_Field
+        O.SymTypeParameter -> SymbolKind_TypeParameter
+        O.SymModule -> SymbolKind_Module
+   in DocumentSymbol (O.symName o) (O.symDetail o) kind Nothing Nothing (range (O.symStart o) (O.symEnd o)) (range (O.symNameStart o) (O.symNameEnd o)) (Just (map (emetSymbol enc li) (O.symChildren o)))
 
 symbol :: F.Encoding -> S.LineIndex -> F.Outline -> DocumentSymbol
 symbol enc li o =
