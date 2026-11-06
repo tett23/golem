@@ -1,0 +1,101 @@
+================================================================================
+Commands, arguments and prose slots over lines
+================================================================================
+
+A [ruby 漢字: かんじ] and [note: a
+continued | b] and [x.y-z 1 key=v *[xs] **[h]].
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (text)
+    (inline_command
+      (command_name)
+      (argument
+        (word))
+      (prose_slots
+        (prose_slot
+          (text))))
+    (text)
+    (inline_command
+      (command_name)
+      (prose_slots
+        (prose_slot
+          (text)
+          (text))
+        (prose_slot
+          (text))))
+    (text)
+    (inline_command
+      (command_name)
+      (argument
+        (word))
+      (keyword_argument
+        (argument_name)
+        (word))
+      (splat_argument
+        (variable_expression
+          (variable)))
+      (splat_argument
+        (variable_expression
+          (variable))))
+    (text)))
+
+================================================================================
+Comments over a line, escapes, number shorthands
+================================================================================
+
+Text %% a comment
+over two lines %% and %%= proof %% \[ and ##1,000## and 100%.
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (text)
+    (comment)
+    (text)
+    (proof_comment)
+    (escape)
+    (text)
+    (number_shorthand
+      (number_mark)
+      (number_body)
+      (number_mark))
+    (text)))
+
+================================================================================
+Expressions
+================================================================================
+
+[= book.total([1, 2]) + -x.y ** 2 ... 4 == {a: "b"}] and [= true]
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (expression
+      (range_expression
+        (binary_expression
+          (call_expression
+            (function)
+            (function)
+            (array
+              (number)
+              (number)))
+          (unary_expression
+            (binary_expression
+              (variable_expression
+                (variable)
+                (variable))
+              (number))))
+        (binary_expression
+          (number)
+          (hash
+            (hash_entry
+              (key)
+              (string))))))
+    (text)
+    (expression
+      (keyword))))

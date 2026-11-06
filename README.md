@@ -66,6 +66,8 @@ ca-certificates の入っていない最小構成のコンテナでは、ca-cert
 アーカイブの中の `THIRD_PARTY_LICENSES/` に、実行ファイルに静的にリンクしたライブラリと同梱したデータのライセンスがある。
 見本のプラグイン（`<名前>.wasm`）に入るクレートと Rust の標準ライブラリのライセンスは、リリースに添えた `golem-plugins-licenses-<タグ>.tar.gz` にある（[docs/adr/0133](./docs/adr/0133-third-party-licenses-of-sample-plugins.md)）。
 `BUILDINFO` には、ビルドしたコミットと環境を記録している。
+`share/golem/editors/` には、エディタが `.gm` と `.emet` を色付けするための TextMate と tree-sitter の構文の定義がある。
+使い方は、同じディレクトリの `README.md`（[tools/editors/README.md](./tools/editors/README.md)）にある。
 
 ## Usage
 
@@ -360,6 +362,7 @@ Node を入れてから `sh scripts/ci/textlint.sh` を実行する。
 `TEXTLINT_ARGS=--fix` を付けると、直せる違反を直す。
 規則と、止めた規則の理由は [tools/textlint/README.md](./tools/textlint/README.md) にある。
 Golem のビルドとテストは Node を使わない。
+エディタ向けの構文の定義のテスト（`tools/editors/test.sh`）は、textlint と同じく Node を使う。
 
 ### CI
 
@@ -381,6 +384,7 @@ Golem のビルドとテストは Node を使わない。
 | `ci.yml` | `scripts-macos` | macOS 15 のランナーで、`PATH` をシステムの道具（BSD 版の `awk`、`sed`、`find`、`grep`）だけにして、`scripts/` の下の六本のテスト（`scripts/ci/test.sh`、`scripts/manual/test.sh`、`scripts/env-determinism/test.sh`、`scripts/release/test.sh`、`scripts/test.sh`、`scripts/visual/test.sh`）を、`scripts/ci/run-all.sh` で同時に、600 秒の期限を付けて実行する（[docs/adr/0079](./docs/adr/0079-shell-tests-on-macos.md)、[docs/adr/0154](./docs/adr/0154-scripts-macos-tests-at-once-with-deadline.md)） |
 | `ci.yml` | `format` | fourmolu と hlint で検査する |
 | `ci.yml` | `plugins` | `plugins/` の Rust のクレート（見本のプラグインと、それを書く補助のクレート `golem-plugin-sdk`）のテストを実行し、コミットした `plugins/wasm/*.wasm` が、`plugins/rust-toolchain.toml` の版のツールチェーンでソースから作ったバイト列と一致することを `plugins/build.sh --check` で確かめる（[docs/adr/0106](./docs/adr/0106-sample-plugins-in-rust.md)）。`licenses/plugins/` が、依存のクレートとツールチェーンから作り直したものと一致することを `scripts/plugin-licenses.sh --check` で確かめる（[docs/adr/0133](./docs/adr/0133-third-party-licenses-of-sample-plugins.md)） |
+| `ci.yml` | `editors` | `tools/editors/` のエディタ向けの構文の定義を `tools/editors/test.sh` で検査する。生成した tree-sitter のパーサーが `grammar.js` と一致すること、tree-sitter と TextMate の文法のテスト、二つの形式が同じ見本で同じ分類になること、テストの原稿と二つのマニュアルのすべての `.gm` と `.emet` を tree-sitter が誤りなく読むことを確かめる。テストの道具は `tools/editors/package-lock.json` で固定し、tree-sitter の実行ファイルの SHA-256 を照合する。`needs` も条件も持たず、文書だけの変更でも走る（[docs/adr/0170](./docs/adr/0170-emet-editor-support.md)） |
 | `ci.yml` | `ci` | `ci.yml` のほかのジョブがすべて成功したか、省かれたことを確かめる（`scripts/ci/gate.sh`） |
 | `advisories.yml` | `wasmtime` | 毎日一回と `workflow_dispatch` で、固定した wasmtime の版を bytecodealliance/wasmtime のリポジトリのアドバイザリと `scripts/wasmtime-advisories.sh` で照合する。当たるアドバイザリがあるか、読めないアドバイザリがあれば失敗し、スケジュールの実行の失敗の通知がメンテナーに届く。プルリクエストでは走らない。権限は `contents: read` だけである（[docs/adr/0157](./docs/adr/0157-check-wasmtime-pin-against-advisories.md)、[docs/adr/0166](./docs/adr/0166-read-wasmtime-advisory-ranges-as-written.md)） |
 | `race.yml` | `race` | 毎日一回 `main` で起動し、前回の成功した実行から `main` が変わっていれば（`scripts/ci/race-needed.sh`）、並行の競合を探すテスト（`golem-driver-parallel-test`、`golem-font-race-test`、`golem-font-test` の並行のテスト）を `GOLEM_RACE_TESTS=40` で走らせる。`workflow_dispatch` で手で起動すると、判定せずに走らせる。権限は `contents: read` と `actions: read` だけである（[docs/adr/0075](./docs/adr/0075-race-search-repetitions.md)） |

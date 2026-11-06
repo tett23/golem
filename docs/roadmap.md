@@ -190,6 +190,7 @@ v3 の GUI は、次の原則に従って作る。
 確かめたら、結果を実装のプルリクエストか `docs/audits/` の記録に書き、この一覧から消す。
 
 - **リリースのワークフローの固め方**：`workflow_dispatch` で `release.yml` を動かし、`notes` ジョブが mise で Claude Code を入れて `notes.md` を上げることと、タグの push で `release` ジョブがそれを使うことを確かめていない。`build-linux.sh` を Alpine のコンテナで動かし、ghcup のブートストラップのスクリプトのハッシュが一致して進むことと、ハッシュを一文字変えると止まることも確かめていない（[docs/adr/0044](adr/0044-release-workflow-hardening.md)）。
+- **エディタ向けの構文の定義の読み込み**：`tools/editors/README.md` の読み込ませ方のうち、Visual Studio Code、Sublime Text、TextMate、Helix、Zed の手順を、実際のエディタで確かめていない。Neovim の手順は 0.12.6 で確かめた（[docs/adr/0170](adr/0170-emet-editor-support.md)）。
 - **LSP の位置の扱い**：UTF-8 の位置の交渉と、行の長さを超える列の丸めを、実際のエディタ（Neovim）で確かめていない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)、[golem-lsp ADR 0003](golem-lsp/adr/0003-position-handling.md)）。
 - **CIDSystemInfo と異体字**：Adobe-Japan1 の ROS を持つフォント（小塚明朝 Pr6N など）で組んだ PDF を Acrobat のプリフライトにかけ、`CIDSystemInfo` がフォントの ROS になっていること、IVS の異体字が出ることを確かめていない。リポジトリにそうしたフォントがないためである（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。
 - **プリフライトと商用のプリフライトの差**：Golem の G09014 が出なかった PDF を Acrobat のプリフライト（PDF/X-4 の適合の検査）にかけ、Acrobat が PDF/X-4 の誤りを報告するかを確かめていない。差があれば `Golem.Pdf.X4.verify` に足す要件を ADR にし、結果は `docs/audits/` に残す。同じ条件の文書を InDesign のプリフライトにかけ、同じ種類の問題が両方で出るかも確かめていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。

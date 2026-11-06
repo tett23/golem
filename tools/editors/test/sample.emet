@@ -1,0 +1,98 @@
+-- SYNTAX TEST "source.emet" "the shared sample of the editor grammars (docs/adr/0170)"
+-- A sample of the elements of the table of docs/adr/0170, for both grammars.
+--<-- comment.line.double-dash.emet
+import "fn/lib.emet"
+--<------ keyword.control.emet
+--     ^^^^^^^^^^^^^ string.quoted.double.emet
+
+pub data Shape a = Circle Nat | Square a
+--<--- keyword.control.emet
+--  ^^^^ keyword.control.emet
+--       ^^^^^ entity.name.type.emet
+--             ^ entity.name.type.variable.emet
+--               ^ keyword.operator.emet
+--                 ^^^^^^ entity.name.type.emet
+--                        ^^^ entity.name.type.emet
+--                            ^ keyword.operator.emet
+
+type Name = String
+--<---- keyword.control.emet
+--   ^^^^ entity.name.type.emet
+
+pub inline "tax-included" taxIncluded :: Nat -> (tax :: Bool = True) -> Inlines
+--  ^^^^^^ keyword.control.emet
+--         ^^^^^^^^^^^^^^ string.quoted.double.emet
+--                        ^^^^^^^^^^^ entity.name.function.emet
+--                                    ^^ keyword.operator.emet
+--                                           ^^ keyword.operator.emet
+--                                              ^ source.emet
+--                                               ^^^ variable.parameter.emet
+--                                                             ^^^^ constant.other.emet
+taxIncluded n tax = Inline.text (label n ? "a" : "b")
+--<----------- entity.name.function.emet
+--          ^ variable.parameter.emet
+--            ^^^ variable.parameter.emet
+--                  ^^^^^^ entity.name.namespace.emet
+--                         ^^^^ variable.other.emet
+--                               ^^^^^ variable.other.emet
+--                                     ^ variable.other.emet
+--                                       ^ keyword.operator.emet
+--                                         ^^^ string.quoted.double.emet
+--                                             ^ keyword.operator.emet
+
+pub block wordTable :: Blocks -> <file "data/words.tsv" | e> Blocks
+--  ^^^^^ keyword.control.emet
+--        ^^^^^^^^^ entity.name.function.emet
+--                               ^ storage.modifier.row.emet
+--                                ^^^^ storage.modifier.requirement.emet
+--                                     ^^^^^^^^^^^^^^^^ string.quoted.double.emet
+--                                                      ^ storage.modifier.row.emet
+--                                                        ^ entity.name.type.variable.emet
+--                                                         ^ storage.modifier.row.emet
+wordTable body = body ++ List.map row (File.read "data/words.tsv")
+--               ^^^^ variable.other.emet
+--                    ^^ keyword.operator.emet
+--                       ^^^^ entity.name.namespace.emet
+--                            ^^^ variable.other.emet
+--                                ^^^ variable.other.emet
+
+pub filter mark :: Blocks -> Blocks
+--  ^^^^^^ keyword.control.emet
+mark bs = bs
+
+pub fn total :: List Nat -> Nat
+--  ^^ keyword.control.emet
+total xs = List.foldl add 0 xs
+--                    ^^^ variable.other.emet
+--                        ^ constant.numeric.emet
+  where {
+--^^^^^ keyword.control.emet
+--      ^ source.emet
+    add a b = a + b
+--  ^^^ entity.name.function.emet
+--      ^ variable.parameter.emet
+--              ^ keyword.operator.emet
+  }
+
+size :: Shape Nat -> Nat
+size s = case s of {
+--       ^^^^ keyword.control.emet
+--              ^^ keyword.control.emet
+  Circle r -> r * 2
+--^^^^^^ constant.other.emet
+--       ^ variable.other.emet
+--         ^^ keyword.operator.emet
+  Square _ -> 'x' == 'y' ? 1 : 0
+--            ^^^ string.quoted.single.emet
+--                ^^ keyword.operator.emet
+}
+
+sign :: Int -> Int
+sign k
+--<---- entity.name.function.emet
+--   ^ variable.parameter.emet
+  | k < 0 = -1
+--^ keyword.operator.emet
+--           ^ constant.numeric.emet
+  | otherwise = 1
+--  ^^^^^^^^^ keyword.control.emet

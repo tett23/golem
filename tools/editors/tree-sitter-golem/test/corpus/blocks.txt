@@ -1,0 +1,218 @@
+================================================================================
+Headings and paragraphs joined over lines
+================================================================================
+
+# Title
+
+A paragraph
+that goes on.
+
+Another \
+with a hard break.
+
+--------------------------------------------------------------------------------
+
+(document
+  (heading
+    (heading_marker)
+    (text))
+  (paragraph
+    (text)
+    (text))
+  (paragraph
+    (text)
+    (hard_break)
+    (text)))
+
+================================================================================
+Block commands with bodies, and @set
+================================================================================
+
+@set version = "1.0"
+@box title="t"
+  Inside.
+
+  @style verse
+    Deeper.
+After.
+
+--------------------------------------------------------------------------------
+
+(document
+  (set_command
+    (set_name)
+    (string))
+  (block_command
+    (command_name)
+    (keyword_argument
+      (argument_name)
+      (string))
+    (body
+      (paragraph
+        (text))
+      (block_command
+        (command_name)
+        (argument
+          (word))
+        (body
+          (paragraph
+            (text))))))
+  (paragraph
+    (text)))
+
+================================================================================
+Lists: continuation lines and the blocks of an item
+================================================================================
+
+- one
+  goes on
+  @label x
+  a paragraph of the item
+- two
+
+  after a blank line
++ first
+
+--------------------------------------------------------------------------------
+
+(document
+  (bullet_list
+    (bullet_item
+      (list_marker)
+      (text)
+      (text)
+      (body
+        (block_command
+          (command_name)
+          (argument
+            (word)))
+        (paragraph
+          (text))))
+    (bullet_item
+      (list_marker)
+      (text)
+      (body
+        (paragraph
+          (text)))))
+  (ordered_list
+    (ordered_item
+      (list_marker)
+      (text))))
+
+================================================================================
+Definition lists
+================================================================================
+
+= term
+= another term
+  the body
+=:
+  a new body
+
+--------------------------------------------------------------------------------
+
+(document
+  (definition_list
+    (term
+      (term_marker)
+      (text))
+    (term
+      (term_marker)
+      (text)
+      (body
+        (paragraph
+          (text))))
+    (new_definition
+      (term_marker)
+      (body
+        (paragraph
+          (text))))))
+
+================================================================================
+Tables
+================================================================================
+
+| a | b |
+|:--|--:|
+| [em x] | ##3## |
+|  | y |
+
+--------------------------------------------------------------------------------
+
+(document
+  (table
+    (table_row
+      (table_cell
+        (text))
+      (table_cell
+        (text)))
+    (table_delimiter_row
+      (table_delimiter)
+      (table_delimiter))
+    (table_row
+      (table_cell
+        (inline_command
+          (command_name)
+          (argument
+            (word))))
+      (table_cell
+        (number_shorthand
+          (number_mark)
+          (number_body)
+          (number_mark))))
+    (table_row
+      (table_cell
+        (text)))))
+
+================================================================================
+Code blocks end at the fence of their indentation
+================================================================================
+
+```toml numbers=true
+a = 1
+  ```
+```
+
+@box
+  ```
+code at the left
+  ```
+
+--------------------------------------------------------------------------------
+
+(document
+  (code_block
+    (fence)
+    (language)
+    (keyword_argument
+      (argument_name)
+      (word))
+    (code_content)
+    (fence))
+  (block_command
+    (command_name)
+    (body
+      (code_block
+        (fence)
+        (code_content)
+        (fence)))))
+
+================================================================================
+A number shorthand starts a paragraph; # starts a heading (Golem also wants a space after it)
+================================================================================
+
+##12## は数。
+#tag
+
+--------------------------------------------------------------------------------
+
+(document
+  (paragraph
+    (number_shorthand
+      (number_mark)
+      (number_body)
+      (number_mark))
+    (text))
+  (heading
+    (heading_marker)
+    (text)))

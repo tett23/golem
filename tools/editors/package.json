@@ -1,0 +1,10 @@
+{
+  "name": "golem-editors",
+  "private": true,
+  "description": "The tools that test the editor grammars of .gm and .emet (a development tool; the grammars themselves need none of these)",
+  "license": "MIT",
+  "devDependencies": {
+    "tree-sitter-cli": "0.27.1",
+    "vscode-tmgrammar-test": "0.1.3"
+  }
+}

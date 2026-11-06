@@ -2572,6 +2572,26 @@ diagnostics がなくなったファイルには空の列を送り、一度も d
 改行をまたぐトークンは、行ごとに分ける。
 `$/cancelRequest` は何もせずに受け取る。
 
+### エディタ向けの構文の定義
+
+LSP が動き出す前と、LSP を使わないエディタのために、`.gm` と `.emet` の構文の定義を `tools/editors/` に置く（[docs/adr/0170](adr/0170-emet-editor-support.md)）。
+
+- TextMate の文法：`tools/editors/textmate/golem.tmLanguage.json`（スコープ `source.golem`）と `emet.tmLanguage.json`（スコープ `source.emet`）。
+- tree-sitter の文法：`tools/editors/tree-sitter-golem/` と `tools/editors/tree-sitter-emet/`。`grammar.js`、生成した `src/`（`parser.c`、`grammar.json`、`node-types.json`、ヘッダー）、外部のスキャナー `src/scanner.c`、`queries/highlights.scm` を持つ。生成した `src/` はコミットする。
+
+色の分類は semantic tokens と同じにし、型ごとに TextMate のスコープと nvim-treesitter の捕捉の名前に対応させる（`comment` は `comment.line` と `@comment`、`decorator` は `entity.name.tag` と `@attribute`、`macro` は `.gm` で `constant.character.escape` と `@string.escape`、`.emet` で `storage.modifier` と `@keyword.modifier` など。表は `tools/editors/README.md` にある）。
+TextMate の文法は、`.gm` の見出しの行の全体を `markup.heading` にし、`.emet` の関数の適用の先頭の名前を `variable.other` にする。
+`.gm` の名前空間付きの式の呼び出し（`book.total(xs)`）は、二つの形式とも両方の名前を `function` にする。
+
+tree-sitter の文法は、改行と字下げで決まる区切りを外部のスキャナーで読む。
+`.gm` では、ブロックの本体の字下げ、段落とリストの項目と散文スロットの続きの行、段落の始まり、地の文、行をまたぐコメント、数の表記の `##`、コードブロックの行である。
+`.emet` では、項目を区切る改行である。
+Golem の構文解析が受け付ける原稿は受け付けるが、Golem が誤りとする原稿の一部（2 つでない字下げの本体、`#` の後に空白のない見出しなど）も受け付ける。
+
+`tools/editors/test.sh`（CI の `editors` ジョブ）が、生成した `src/` と `grammar.js` の一致、`tree-sitter test` の構文木と色付けのテスト、vscode-tmgrammar-test の形式で書いた見本 `tools/editors/test/sample.gm` と `sample.emet` のスコープ、同じ見本の同じ要素が二つの形式で同じ分類になること、`modules/golem-driver/test/fixtures/`、`manual/`、`manual-dev/` のすべての `.gm` と `.emet` を tree-sitter が誤りなく読めることを確かめる。
+テストの道具（tree-sitter-cli 0.27.1 と vscode-tmgrammar-test 0.1.3）は `tools/editors/package.json` と `package-lock.json` で固定し、tree-sitter-cli が取る実行ファイルの SHA-256 を `tools/editors/tree-sitter-cli.sha256` で照合する。
+構文の定義は、リリースのアーカイブの `share/golem/editors/` にも入る（「配布物」の節）。
+
 LSP は、`@table` が参照する表のファイルの変更を受けて評価し直す（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
 クライアントが `workspace/didChangeWatchedFiles` の動的な登録を申し出れば、最後の評価で読んだ表のファイルのパスを、プロジェクトのルートを基準にした `RelativePattern` で登録する。
 パスの `*`、`?`、`[`、`]`、`{`、`}` は、LSP の glob の文法に従い、その 1 文字だけの角括弧の集合（`[*]`、`[[]` など）に置き換えて登録する（[docs/adr/0042](adr/0042-control-characters-and-glob-metacharacters.md)）。
@@ -3744,7 +3764,8 @@ Golem のバージョンは `X.Y.Z` か、プレリリースの識別子を付�
 ### 配布物
 
 アーカイブの名前は `golem-<タグ>-<プラットフォーム>.tar.gz` とし、展開すると `golem-<タグ>-<プラットフォーム>/` の一つのディレクトリができる。
-中には、実行ファイル `golem`、Golem のライセンス `LICENSE`、静的にリンクしたものと同梱したデータのライセンスの文書 `THIRD_PARTY_LICENSES/`、ビルドの情報 `BUILDINFO` が入る。
+中には、実行ファイル `golem`、Golem のライセンス `LICENSE`、静的にリンクしたものと同梱したデータのライセンスの文書 `THIRD_PARTY_LICENSES/`、ビルドの情報 `BUILDINFO`、エディタ向けの構文の定義 `share/golem/editors/` が入る。
+`share/golem/editors/` には、`tools/editors/` の `README.md`、`textmate/` の二つの文法、二つの tree-sitter の文法の `grammar.js`、`tree-sitter.json`、`src/`、`queries/` を写す（「エディタ向けの構文の定義」の節、[docs/adr/0170](adr/0170-emet-editor-support.md)）。
 リリースには、三つのアーカイブのほかに、`SHA256SUMS`、ビルドの来歴の証明、リンクした GMP のソースのアーカイブ、二つのマニュアルの PDF と HTML（「マニュアル」の節）、見本のプラグインの `<名前>.wasm` と、そのライセンスの文書のアーカイブ `golem-plugins-licenses-<タグ>.tar.gz`（「見本のプラグイン」の節）を添える。
 見本のプラグインとそのライセンスの文書のアーカイブの SHA-256 も `SHA256SUMS` に載せる。
 GMP は LGPL-3.0 であり、三つの実行ファイルのどれにも静的にリンクされるためである。

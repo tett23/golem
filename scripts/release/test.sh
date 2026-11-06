@@ -916,6 +916,16 @@ PK=$WORK/package
 mkdir -p "$PK/root/scripts/release" "$PK/root/scripts/ci" "$PK/root/third_party/wasmtime" "$PK/root/dist-newstyle/cache"
 cp "$HERE/package.sh" "$PK/root/scripts/release/package.sh"
 printf 'MIT\n' >"$PK/root/LICENSE"
+# the editor grammars (docs/adr/0170): what the archive takes, and a test
+# of a grammar that it leaves out
+EDITOR_FILES="README.md textmate/golem.tmLanguage.json textmate/emet.tmLanguage.json"
+for g in tree-sitter-golem tree-sitter-emet; do
+  EDITOR_FILES="$EDITOR_FILES $g/grammar.js $g/tree-sitter.json $g/src/parser.c $g/src/scanner.c $g/src/grammar.json $g/src/tree_sitter/parser.h $g/queries/highlights.scm"
+done
+for f in $EDITOR_FILES tree-sitter-emet/test/corpus/blocks.txt; do
+  mkdir -p "$(dirname "$PK/root/tools/editors/$f")"
+  printf '%s\n' "$f" >"$PK/root/tools/editors/$f"
+done
 printf 'v99.0.0\n' >"$PK/root/third_party/wasmtime/VERSION"
 : >"$PK/root/dist-newstyle/cache/plan.json"
 # licenses.sh PLAN OUTDIR TAG writes the README of OUTDIR
@@ -940,6 +950,10 @@ for f in golem LICENSE BUILDINFO THIRD_PARTY_LICENSES/README; do
   if [ -f "$PK/x/golem-v1.2.3-linux-x86_64/$f" ]; then ok; else ng "package: the archive has $f"; fi
 done
 if [ "$(cat "$PK/x/golem-v1.2.3-linux-x86_64/golem" 2>/dev/null)" = stripped ]; then ok; else ng "package: golem is stripped"; fi
+for f in $EDITOR_FILES; do
+  if [ "$(cat "$PK/x/golem-v1.2.3-linux-x86_64/share/golem/editors/$f" 2>/dev/null)" = "$f" ]; then ok; else ng "package: the archive has share/golem/editors/$f"; fi
+done
+if [ ! -e "$PK/x/golem-v1.2.3-linux-x86_64/share/golem/editors/tree-sitter-emet/test" ]; then ok; else ng "package: the archive has no tests of the grammars"; fi
 if grep -qx 'commit: 0123456789abcdef0123456789abcdef01234567' "$PK/x/golem-v1.2.3-linux-x86_64/BUILDINFO" 2>/dev/null &&
   grep -qx 'gmp: 6.3.0' "$PK/x/golem-v1.2.3-linux-x86_64/BUILDINFO" &&
   grep -qx 'wasmtime: v99.0.0' "$PK/x/golem-v1.2.3-linux-x86_64/BUILDINFO"; then ok; else ng "package: BUILDINFO"; fi
