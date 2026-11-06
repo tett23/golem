@@ -1139,6 +1139,10 @@
           {
             "type": "parameter",
             "named": true
+          },
+          {
+            "type": "string",
+            "named": true
           }
         ]
       },

@@ -11,7 +11,7 @@ pub data Shape a = Circle Nat | Square a
 --       ^^^^^ entity.name.type.emet
 --             ^ entity.name.type.variable.emet
 --               ^ keyword.operator.emet
---                 ^^^^^^ entity.name.type.emet
+--                 ^^^^^^ constant.other.emet
 --                        ^^^ entity.name.type.emet
 --                            ^ keyword.operator.emet
 

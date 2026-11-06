@@ -114,6 +114,17 @@
           ]
         },
         {
+          "match": "(=|\\|)\\s*([A-Z][A-Za-z0-9_]*)\\b(?!\\.)",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.emet"
+            },
+            "2": {
+              "name": "constant.other.emet"
+            }
+          }
+        },
+        {
           "include": "#type"
         }
       ]
@@ -141,12 +152,15 @@
           "include": "#comment"
         },
         {
-          "begin": "(\\()\\s*([a-z_][A-Za-z0-9_]*|\"(?:[^\"\\\\]|\\\\(?:[\"'\\\\nt]|u\\{[0-9A-Fa-f]+\\}))*\")\\s*(::)",
+          "begin": "(\\()\\s*(?:([a-z_][A-Za-z0-9_]*)|(\"(?:[^\"\\\\]|\\\\(?:[\"'\\\\nt]|u\\{[0-9A-Fa-f]+\\}))*\"))\\s*(::)",
           "beginCaptures": {
             "2": {
               "name": "variable.parameter.emet"
             },
             "3": {
+              "name": "string.quoted.double.emet"
+            },
+            "4": {
               "name": "keyword.operator.emet"
             }
           },

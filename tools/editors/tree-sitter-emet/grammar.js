@@ -157,7 +157,6 @@ module.exports = grammar({
       repeat(seq('|', $.constructor_declaration)),
     ),
 
-    // the names of a data declaration are types (docs/adr/0170)
     constructor_declaration: $ => choice(
       seq(field('name', alias($._upper, $.constructor_name)), repeat($._atype)),
       seq(
@@ -280,7 +279,7 @@ module.exports = grammar({
     // (tax :: Bool = True), ("font-size" :: Rat = 10)
     keyword_parameter: $ => seq(
       '(',
-      field('name', choice(alias($.variable, $.parameter), alias($.string, $.parameter))),
+      field('name', choice(alias($.variable, $.parameter), $.string)),
       '::',
       field('type', $._type),
       optional(seq('=', field('default', $._expression))),

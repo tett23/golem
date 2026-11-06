@@ -35,7 +35,7 @@
 
 (type) @type
 
-(constructor_name) @type
+(constructor_name) @constructor
 
 (type_variable) @type
 
