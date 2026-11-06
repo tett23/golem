@@ -1,6 +1,6 @@
 # ADR 0171: Neovim の設定例で、tree-sitter の文法を GitHub から入れ、.emet でも LSP を起動する
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 

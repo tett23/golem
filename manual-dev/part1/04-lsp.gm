@@ -146,6 +146,36 @@ semantic tokens の色は、LSP が動き出すまで付かず、LSP を使わ�
 リリースのアーカイブには、[code: share/golem/editors/] として入る。
 各エディタでの読み込ませ方は [code: tools/editors/README.md] にある。
 
+Neovim では、使い手のマニュアルの例のとおり、nvim-treesitter の main ブランチで GitHub から文法を入れられる。
+nvim-treesitter のない環境や、手元の写しの文法を試すときは、パーサーを C コンパイラーで共有ライブラリにして、問い合わせと一緒に [code: runtimepath] の下に置く。
+次の [code: <editors>] は、リポジトリの [code: tools/editors/] か、アーカイブの [code: share/golem/editors/] のパスに置き換える。
+[code: ~/.local/share/nvim/site] は、Neovim が既定で [code: runtimepath] に含めるディレクトリである。
+
+```sh
+$ SITE=~/.local/share/nvim/site
+$ mkdir -p "$SITE/parser" "$SITE/queries/golem" "$SITE/queries/emet"
+$ for g in golem emet; do
+  cc -shared -fPIC -O2 -I "<editors>/tree-sitter-$g/src" \
+    "<editors>/tree-sitter-$g/src/parser.c" \
+    "<editors>/tree-sitter-$g/src/scanner.c" \
+    -o "$SITE/parser/$g.so"
+  cp "<editors>/tree-sitter-$g/queries/highlights.scm" "$SITE/queries/$g/"
+done
+```
+
+[code: init.lua] では、ファイルタイプを決めて tree-sitter の色付けを始める。
+
+```lua
+vim.filetype.add({ extension = { gm = 'golem', emet = 'emet' } })
+vim.api.nvim_create_autocmd('FileType', {
+  pattern = { 'golem', 'emet' },
+  callback = function() vim.treesitter.start() end,
+})
+```
+
+この手順は [code: tools/editors/README.md] の手順と同じである。
+変えるときは、二か所を合わせて直す。
+
 色の分類は semantic tokens と同じにし、型ごとに TextMate のスコープと tree-sitter の捕捉の名前を対応させる。
 tree-sitter の文法は golem-parser の PEG の文法とは別に書いたもので、改行と字下げで決まる区切り（段落の続きの行、ブロックの本体、コードブロックの終わり）は C で書いた外部のスキャナーが読む。
 PEG の文法が誤りとする原稿の一部も受け付ける。

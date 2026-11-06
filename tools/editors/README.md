@@ -74,25 +74,60 @@ Golem が受け付ける原稿は受け付けるように書き、テストの�
 
 `<editors>` は、このディレクトリかアーカイブの `share/golem/editors/` のパスとする。
 Neovim の手順は Neovim 0.12.6 で確かめた。
+nvim-treesitter を使う手順は、nvim-treesitter の main ブランチの `e289100` で確かめた。
 ほかのエディタの手順は、まだ実際のエディタで確かめていない（[docs/roadmap.md](../../docs/roadmap.md) の「手で確かめる項目」）。
 
 ### Neovim
 
 tree-sitter の文法を使う。
-パーサーを C コンパイラーで共有ライブラリにして、問い合わせと一緒に `runtimepath` の下に置く。
+nvim-treesitter（main ブランチ）を使っている場合は、`init.lua` に次のように書き、`:TSInstall golem emet` で GitHub から文法を入れる。
+
+```lua
+vim.api.nvim_create_autocmd('User', { pattern = 'TSUpdate', callback = function()
+  local parsers = require('nvim-treesitter.parsers')
+  parsers.golem = { install_info = {
+    url = 'https://github.com/tett23/golem',
+    location = 'tools/editors/tree-sitter-golem',
+    queries = 'tools/editors/tree-sitter-golem/queries',
+  } }
+  parsers.emet = { install_info = {
+    url = 'https://github.com/tett23/golem',
+    location = 'tools/editors/tree-sitter-emet',
+    queries = 'tools/editors/tree-sitter-emet/queries',
+  } }
+end })
+vim.filetype.add({ extension = { gm = 'golem', emet = 'emet' } })
+vim.api.nvim_create_autocmd('FileType', {
+  pattern = { 'golem', 'emet' },
+  callback = function() vim.treesitter.start() end,
+})
+```
+
+- 手元に Golem を clone しなくてよい。nvim-treesitter が GitHub からリポジトリを落とし、`location` のディレクトリでパーサーをコンパイルする。nvim-treesitter の main ブランチの要件のとおり、コンパイルには tree-sitter の CLI（`tree-sitter build`）と C コンパイラーが要る。
+- nvim-treesitter は色付けを自動では始めないので、`FileType` で `vim.treesitter.start()` を呼ぶ。
+- `queries` は `location` からではなく、リポジトリのルートからのパスで書く。nvim-treesitter は、落として展開したリポジトリのルートに `queries` を連結して、問い合わせを写すからである。
+- `revision` を書かなければ、`main` の先頭を入れる。そのときは、`:TSUpdate` のたびに入れ直す。版を固定したいときは、`install_info` の `revision` にタグかコミットを書く。
+- この例は、Neovim 0.12.6 と、nvim-treesitter の main ブランチの `e289100`（`e289100ff98969e118c702199d88b764ce9e7fdf`）で確かめた。nvim-treesitter が `install_info` の書き方を変えたら、この例も直す。
+
+手元の写し（リポジトリかリリースのアーカイブ）から入れる場合は、`url` の代わりに `path` をその写しの文法のディレクトリ（`<editors>/tree-sitter-golem` と `<editors>/tree-sitter-emet`）にし、`location` を除く。
+`path` のときも、`queries` は `location` ではなく `path` からのパスで書くので、ここでは `queries = 'queries'` になる。
+`path` から入れるときは、問い合わせを写さずにリンクを張り、パーサーはそのディレクトリに `parser.so` としてコンパイルしてから写す。
+
+nvim-treesitter を使わない場合は、パーサーを C コンパイラーで共有ライブラリにして、問い合わせと一緒に `runtimepath` の下に置く。
 
 ```sh
 SITE=~/.local/share/nvim/site
 mkdir -p "$SITE/parser" "$SITE/queries/golem" "$SITE/queries/emet"
 for g in golem emet; do
   cc -shared -fPIC -O2 -I "<editors>/tree-sitter-$g/src" \
-    "<editors>/tree-sitter-$g/src/parser.c" "<editors>/tree-sitter-$g/src/scanner.c" \
+    "<editors>/tree-sitter-$g/src/parser.c" \
+    "<editors>/tree-sitter-$g/src/scanner.c" \
     -o "$SITE/parser/$g.so"
   cp "<editors>/tree-sitter-$g/queries/highlights.scm" "$SITE/queries/$g/"
 done
 ```
 
-`init.lua` で、ファイルタイプを決めて tree-sitter の色付けを始める。
+`init.lua` には、上の例の `vim.filetype.add` と `FileType` の部分だけを書き、ファイルタイプを決めて tree-sitter の色付けを始める。
 
 ```lua
 vim.filetype.add({ extension = { gm = 'golem', emet = 'emet' } })
@@ -101,8 +136,6 @@ vim.api.nvim_create_autocmd('FileType', {
   callback = function() vim.treesitter.start() end,
 })
 ```
-
-nvim-treesitter を使っている場合は、`require('nvim-treesitter.parsers')` に `install_info` の `path` をこのディレクトリにした項目を足し、`:TSInstall` でも入れられる。
 
 ### Visual Studio Code
 
