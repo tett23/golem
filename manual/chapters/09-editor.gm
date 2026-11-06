@@ -38,19 +38,56 @@ TOML のファイルを原稿として読むことはないので、原稿の診
 
 Neovim（0.11 以降）では、たとえば次のように設定します。
 
-```lua
-vim.filetype.add({ extension = { gm = "golem" } })
+```lua numbers=true
+-- ファイルの種類
+vim.filetype.add({
+  extension = { gm = "golem", emet = "emet" },
+})
+
+-- LSP
 vim.lsp.config("golem", {
   cmd = { "golem", "lsp" },
-  filetypes = { "golem", "toml" },
+  filetypes = { "golem", "emet", "toml" },
   root_markers = { "manifest.toml" },
 })
 vim.lsp.enable("golem")
+
+-- LSP が動く前の色付け（nvim-treesitter の main ブランチ）
+local function golem_parsers()
+  local parsers = require("nvim-treesitter.parsers")
+  parsers.golem = { install_info = {
+    url = "https://github.com/tett23/golem",
+    location = "tools/editors/tree-sitter-golem",
+    queries = "tools/editors/tree-sitter-golem/queries",
+  } }
+  parsers.emet = { install_info = {
+    url = "https://github.com/tett23/golem",
+    location = "tools/editors/tree-sitter-emet",
+    queries = "tools/editors/tree-sitter-emet/queries",
+  } }
+end
+vim.api.nvim_create_autocmd("User", {
+  pattern = "TSUpdate",
+  callback = golem_parsers,
+})
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = { "golem", "emet" },
+  callback = function() vim.treesitter.start() end,
+})
 ```
 
-これは Neovim の設定のファイル（Lua という言語で書きます）の例で、上の三つの指定をそのまま並べています。
-[code: filetypes] の [code: "toml"] は、[code: style.toml] と [code: preflight.toml] の補完のための指定で、要らなければ [code: { "golem" }] だけにします。
-ほかのエディタでも、起動するコマンド（[code: golem lsp]）と、対象のファイル（[code: .gm]、補完を使うなら [code: .toml] も）と、プロジェクトのフォルダの目印（[code: manifest.toml]）の三つを設定すれば使えます。
+これは Neovim の設定のファイル（Lua という言語で書きます）の例です。
+「LSP」の部分は、上の三つの指定をそのまま並べています。
+[code: filetypes] の [code: "emet"] は、関数を書く言語 Emet のファイル（[code: .emet]）のための指定です。
+[code: "toml"] は、[code: style.toml] と [code: preflight.toml] の補完のための指定です。
+関数を書かなければ [code: "emet"] を、補完が要らなければ [code: "toml"] を除けます。
+
+「LSP が動く前の色付け」の部分は、次の節で説明する構文の定義を、GitHub から入れて使う設定です。
+Neovim の拡張機能 nvim-treesitter の main ブランチ（Neovim 0.12 以降が要ります）と、それが求めるツール（tree-sitter のコマンドと C コンパイラー）を入れておきます。
+この設定を書いて Neovim を起動し、[code: :TSInstall golem emet] を実行すると、構文の定義が入ります。
+入るのは GitHub にある Golem の最新の構文の定義で、[code: :TSUpdate] を実行するたびに入れ直します。
+
+ほかのエディタでも、起動するコマンド（[code: golem lsp]）と、対象のファイル（[code: .gm]、関数を書くなら [code: .emet]、補完を使うなら [code: .toml] も）と、プロジェクトのフォルダの目印（[code: manifest.toml]）の三つを設定すれば使えます。
 Visual Studio Code では、LSP の言語サーバーを起動する汎用の拡張機能を入れ、この三つを設定します。
 
 ファイルの中の位置（何行目の何文字目か）の数え方は、エディタと Golem が起動のときに相談して決めます。
@@ -66,6 +103,8 @@ Visual Studio Code では、LSP の言語サーバーを起動する汎用の拡
 - TextMate の文法（[code: textmate/] の下）：Visual Studio Code、Sublime Text、TextMate などが読みます。
 - tree-sitter の文法（[code: tree-sitter-golem/] と [code: tree-sitter-emet/]）：Neovim（nvim-treesitter）、Helix、Zed などが読みます。
 
-それぞれのエディタでの読み込ませ方は、同じフォルダの [code: README.md] にあります。
+Neovim では、前の節の例の「LSP が動く前の色付け」の部分で、同じ tree-sitter の文法を GitHub から入れられます。
+nvim-treesitter を使わずに入れる方法は、開発者のマニュアルにあります。
+ほかのエディタでの読み込ませ方は、同じフォルダの [code: README.md] にあります。
 LSP の色付けに対応したエディタでは、LSP が動き出すと LSP の色が優先されます。
 TextMate の文法は行ごとの規則で色を決めるので、LSP や tree-sitter の文法より大まかです。
