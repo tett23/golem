@@ -104,7 +104,7 @@ Visual Studio Code では、LSP の言語サーバーを起動する汎用の拡
 - tree-sitter の文法（[code: tree-sitter-golem/] と [code: tree-sitter-emet/]）：Neovim（nvim-treesitter）、Helix、Zed などが読みます。
 
 Neovim では、前の節の例の「LSP が動く前の色付け」の部分で、同じ tree-sitter の文法を GitHub から入れられます。
-nvim-treesitter を使わずに入れる方法は、開発者のマニュアルにあります。
+nvim-treesitter を使わずに入れる方法は、開発者のマニュアル（第[ref-number git-ci]章の「[ref-title dev-manual]」）にあります。
 ほかのエディタでの読み込ませ方は、同じフォルダの [code: README.md] にあります。
 LSP の色付けに対応したエディタでは、LSP が動き出すと LSP の色が優先されます。
 TextMate の文法は行ごとの規則で色を決めるので、LSP や tree-sitter の文法より大まかです。
