@@ -6,6 +6,7 @@ module Golem.Emet.Parse
   ( readEmet,
     checkEmetText,
     parseModule,
+    parsedPrefix,
     lineOf,
   )
 where
@@ -85,6 +86,37 @@ parseModule fid src = case checkEmetText fid src of
     Right m -> case escapeErrors fid src of
       [] -> Right m
       ds -> Left ds
+
+{- | What a text that does not parse still gives the editor (docs/adr/0170):
+the result of the parser on the longest part of the text before the error
+that it reads. The grammar has no recovery, so the text is cut at the
+starts of lines. A line that starts at its first column with no space and
+no closing bracket or bar likely starts a declaration; the parts between
+such lines are read one after another (a part that does not parse alone
+is read again with up to seven parts after it, for a declaration whose
+lines go on at the first column), and in the first part that is not read,
+the text is cut at the latest start of a line before which it reads.
+-}
+parsedPrefix :: (Text -> Either e a) -> Text -> Maybe a
+parsedPrefix p text = case p text of
+  Right a -> Just a
+  Left _ -> either (const Nothing) Just (p (T.take (go 0 tops) text))
+  where
+    total = T.length text
+    -- the offsets (in characters) of the starts of the lines but the first
+    chars = T.unpack text
+    starts = [i | (i, prev) <- zip [1 ..] chars, prev == '\n', i < total]
+    tops = [i | (i, prev, c) <- zip3 [1 ..] chars (drop 1 chars), prev == '\n', c `notElem` (" \t\n})]|" :: String)] <> [total]
+    slice a b = T.take (b - a) (T.drop a text)
+    parses a b = either (const False) (const True) (p (slice a b))
+    go a bs = case [b | b <- take 8 bs, parses a b] of
+      b : _ -> if b >= total then total else go b (dropWhile (<= b) bs)
+      [] -> case bs of
+        b : _ -> within a b
+        [] -> a
+    within a b = case [c | c <- take 32 (reverse [s | s <- starts, s > a, s < b]), parses a c] of
+      c : _ -> c
+      [] -> a
 
 -- | The words that are reserved and cannot be used (E01102).
 unusableWords :: [Text]

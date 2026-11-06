@@ -13,6 +13,7 @@ module Golem.Emet
     programModules,
     programModInfos,
     programBuiltins,
+    localTypes,
     ModInfo (..),
     FunInfo (..),
     TypeDef (..),
@@ -102,6 +103,20 @@ programModInfos = prModInfos
 -- | The built-in modules by their names.
 programBuiltins :: Program -> Map Name ModInfo
 programBuiltins = prBuiltinMods
+
+{- | The types of the local names of a file of the program, each with the
+range of the name where it is bound or named, as @name :: type@
+(docs/adr/0170). The file is checked again with the types kept, against
+the modules it imports as the program has them: the check of the program
+keeps none, so golem build and golem check pay nothing for them.
+-}
+localTypes :: Program -> FilePath -> [(Int, Int, Text)]
+localTypes p path = case Map.lookup path (prModules p) of
+  Nothing -> []
+  Just (fid, src, m@(Module decls)) ->
+    let imports = [(l, mi) | DImport _ raw l <- decls, Right target <- [normalizePath (T.unpack raw)], Just mi <- [Map.lookup target (prModInfos p)]]
+        scope = Scope imports (prBuiltinMods p) (Map.fromList [("div", fst divInfo)])
+     in [(locStart l, locEnd l, t) | (l, t) <- checkModuleLocals scope fid path src m]
 
 {- | The functions of each module that the expression context of .gm
 cannot call, with why: those that are not @pub fn@ (docs/adr/0162).
