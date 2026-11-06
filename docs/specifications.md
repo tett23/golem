@@ -38,6 +38,18 @@ Golem はこの性質をプレーンテキストの上で実現する。
 PDF/X-4 への準拠は、Golem が生成しうる要素についての自前の検査と、qpdf による構造の検査で確かめる。
 PDF/X-4 の適合を判定できる自由な検証ツールがないためであり、入稿前の最終確認は利用者が商用のプリフライトで行う（[golem-pdf ADR 0003](golem-pdf/adr/0003-pdf-x-4-validator.md)）。
 
+PDF に PDF/X-4 の出力インテント[^intent]を書くのは、`style.toml` の `[color]` に `intent`（ICC プロファイルのパス）があるときだけである（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)、[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+`intent` があるときは、次の三つを書く。
+
+- **カタログの `OutputIntents`**：`S` を `GTS_PDFX` とした辞書を一つだけ置く。`DestOutputProfile` には、`intent` のファイルのバイト列を、`N` を 4 としたストリームとして埋め込む。`OutputConditionIdentifier` は、`intent` のパスが `JapanColor2001Coated` を含めば `JC200103`、含まなければファイル名から拡張子を除いたものとする。
+- **カタログの `Metadata`**：XMP のメタデータのストリームである。`pdfxid:GTS_PDFXVersion` を `PDF/X-4`、`pdf:Trapped` を `False` とし、題名、関係者の名前、日時、文書 ID とインスタンス ID、Producer を書く（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)、[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md)）。
+- **文書情報辞書の `Trapped` と `GTS_PDFXVersion`**：`Trapped` を `False`、`GTS_PDFXVersion` を `PDF/X-4` とする。
+
+`intent` がないときは、この三つをどれも書かない。
+その PDF は PDF/X-4 の要件を満たさないので、`golem preflight` の `pdf-x` の検査は、欠けた要件を一つずつ並べず、出力インテントがないことの G09014 を一つだけ出す（「golem preflight」の節）。
+PDF の版（1.6）、各ページの `TrimBox` と `BleedBox`、フォントの埋め込み、文書情報辞書の `Title`、日時、`Producer` は、`intent` の有無によらず書く。
+`intent` のファイルがないときは G08006 のエラーとし、PDF を書かない（「style.toml」の節、[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
+
 これらは完全に同じ見た目にはならないし、それを目指さない。
 かわりに次の**媒体契約**を不変条件として固定する。
 意味内容は全媒体で同一とする。
