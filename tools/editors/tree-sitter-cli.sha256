@@ -1,0 +1,7 @@
+# The SHA-256 of the executable that the npm package tree-sitter-cli 0.27.1
+# downloads from https://github.com/tree-sitter/tree-sitter/releases/tag/v0.27.1
+# (tree-sitter-<platform>.gz, unpacked). Its install script checks no hash;
+# test.sh checks the executable against this list before it runs it. Change
+# the list with the version in package.json.
+6de5f5c0f6d2e281ad2643d3874b66cf240fa77140c5346b670889483982b0c7  linux-x64
+470aa2d72494ba665f8d0067bd6053f45668d45e7e0283e80cfc671488434457  macos-arm64

@@ -2,7 +2,9 @@
 # Makes the release archive golem-<tag>-<platform>.tar.gz
 # (docs/adr/0004-binary-distribution-and-release.md): strips the
 # executable (and signs it again ad hoc on macOS), writes LICENSE,
-# THIRD_PARTY_LICENSES/ and BUILDINFO, and records the SHA-256.
+# THIRD_PARTY_LICENSES/ and BUILDINFO, copies the editor grammars of .gm and
+# .emet to share/golem/editors/ (docs/adr/0170-emet-editor-support.md), and
+# records the SHA-256.
 #
 #   package.sh TAG PLATFORM BINARY OUTDIR
 #
@@ -43,6 +45,18 @@ AFTER=$(wc -c <"$STAGE/golem" | tr -d ' ')
 echo "golem: $BEFORE bytes before strip, $AFTER bytes after"
 
 cp "$ROOT/LICENSE" "$STAGE/LICENSE"
+# the editor grammars as they are in tools/editors/: the README that tells
+# how to load them, the two TextMate grammars, and of each tree-sitter
+# grammar its source, the generated parser and the queries (not its tests)
+EDITORS=$STAGE/share/golem/editors
+mkdir -p "$EDITORS/textmate"
+cp "$ROOT/tools/editors/README.md" "$EDITORS/README.md"
+cp "$ROOT/tools/editors/textmate/golem.tmLanguage.json" "$ROOT/tools/editors/textmate/emet.tmLanguage.json" "$EDITORS/textmate/"
+for g in tree-sitter-golem tree-sitter-emet; do
+  mkdir -p "$EDITORS/$g"
+  cp "$ROOT/tools/editors/$g/grammar.js" "$ROOT/tools/editors/$g/tree-sitter.json" "$EDITORS/$g/"
+  cp -R "$ROOT/tools/editors/$g/src" "$ROOT/tools/editors/$g/queries" "$EDITORS/$g/"
+done
 # golem does not link golem-test-support, which only the test suites use
 # (docs/adr/0028-shared-test-support-package.md)
 sh "$ROOT/scripts/ci/test-only-deps.sh" "$ROOT/dist-newstyle/cache/plan.json"

@@ -1,0 +1,52 @@
+pub inline "tax-included" taxIncluded :: Nat -> (tax :: Bool = True) -> Inlines
+-- <- @keyword
+--  ^ @keyword
+--         ^ @string
+--                        ^ @function
+--                                    ^ @operator
+--                                       ^ @type
+--                                               ^ @variable.parameter
+--                                                             ^ @constructor
+taxIncluded n tax = Inline.text (String.fromNat n ++ (tax ? "a" : "b"))
+-- <- @function
+--          ^ @variable.parameter
+--                ^ @operator
+--                  ^ @module
+--                         ^ @function
+--                                      ^ @function
+--                                              ^ @variable
+--                                                ^ @operator
+--                                                        ^ @operator
+--                                                              ^ @operator
+
+lookup :: String -> e String -> <file "data/words.tsv" | e> Maybe String
+--                  ^ @type
+--                              ^ @keyword.modifier
+--                               ^ @keyword.modifier
+--                                    ^ @string
+--                                                     ^ @keyword.modifier
+--                                                       ^ @type
+--                                                        ^ @keyword.modifier
+lookup key = case key of {
+--           ^ @keyword
+--                    ^ @keyword
+  "a" -> Just 'x'
+--    ^ @operator
+--       ^ @constructor
+--            ^ @string
+  other -> Nothing
+--^ @variable
+}
+  where {
+--^ @keyword
+    n = 1
+--  ^ @function
+--      ^ @number
+  }
+
+sign k
+  | k < 0 = -1
+--^ @operator
+--  ^ @variable
+  | otherwise = 1
+--  ^ @keyword

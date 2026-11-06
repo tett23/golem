@@ -661,10 +661,38 @@ jobs:
       - name: The license documents of the plugins are up to date
         run: sh ../scripts/plugin-licenses.sh --check
 
+  # The editor grammars of .gm and .emet in tools/editors/ (docs/adr/0170):
+  # tree-sitter and vscode-tmgrammar-test at the versions of its
+  # package-lock.json, the generated parsers, the tests of both kinds of
+  # grammars on the same samples, and a parse of every .gm and .emet of the
+  # fixtures and the manuals. Never skipped: a change of a manual alone can
+  # break the parse
+  editors:
+    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      # node_modules itself is cached; test.sh checks the SHA-256 of the
+      # executable of tree-sitter, also when it comes from the cache
+      - id: cache
+        uses: actions/cache@v6
+        with:
+          path: tools/editors/node_modules
+          key: editors-${{ runner.os }}-${{ hashFiles('tools/editors/package-lock.json') }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: npm ci --prefix tools/editors --no-fund --no-audit
+      - name: Tests of the editor grammars (docs/adr/0170)
+        run: sh tools/editors/test.sh
+
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
   ci:
-    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins]
+    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins, editors]
     if: always()
     runs-on: ubuntu-24.04
     steps:

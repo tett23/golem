@@ -1144,24 +1144,24 @@ needs() { # needs NAME=RESULT...: the JSON of the needs context
   done
   printf '}\n'
 }
-needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success plugins=success >"$WORK/in"
+needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success plugins=success editors=success >"$WORK/in"
 run gate
 expect "gate: all succeeded" 0
-needs changes=success scripts-linux=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped plugins=skipped >"$WORK/in"
+needs changes=success scripts-linux=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped plugins=skipped editors=success >"$WORK/in"
 run gate
 expect "gate: docs only" 0
-needs changes=success scripts-linux=success build=failure determinism=skipped visual=skipped release-scripts=success scripts-macos=success format=success plugins=success >"$WORK/in"
+needs changes=success scripts-linux=success build=failure determinism=skipped visual=skipped release-scripts=success scripts-macos=success format=success plugins=success editors=success >"$WORK/in"
 run gate
 expect "gate: a failed build" 1
 if grep -q 'build' "$WORK/err" && grep -q 'failure' "$WORK/err"; then ok; else ng "gate: the failed job is named"; fi
-needs changes=success scripts-linux=success build=success determinism=cancelled visual=cancelled release-scripts=success scripts-macos=success format=success plugins=success >"$WORK/in"
+needs changes=success scripts-linux=success build=success determinism=cancelled visual=cancelled release-scripts=success scripts-macos=success format=success plugins=success editors=success >"$WORK/in"
 run gate
 expect "gate: a cancelled job" 1
-needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success plugins=success >"$WORK/in"
+needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success plugins=success editors=success >"$WORK/in"
 run gate
 expect "gate: a missing job" 1
 if grep -q 'format' "$WORK/err"; then ok; else ng "gate: the missing job is named"; fi
-needs changes=success scripts-linux=success build=success determinism=success visual=failure release-scripts=success scripts-macos=success format=success plugins=success >"$WORK/in"
+needs changes=success scripts-linux=success build=success determinism=success visual=failure release-scripts=success scripts-macos=success format=success plugins=success editors=success >"$WORK/in"
 run gate
 expect "gate: a failed visual (docs/adr/0095)" 1
 if grep -q 'visual' "$WORK/err"; then ok; else ng "gate: the failed visual is named"; fi

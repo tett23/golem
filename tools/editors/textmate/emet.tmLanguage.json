@@ -1,0 +1,326 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Emet",
+  "scopeName": "source.emet",
+  "fileTypes": [
+    "emet"
+  ],
+  "comment": "The TextMate grammar of .emet, the language of functions of Golem (docs/adr/0170-emet-editor-support.md). The scopes follow the classes of the semantic tokens of .emet; the head of an application is a variable here, and only the names of declarations are functions. tools/editors/README.md has the table.",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#signature"
+    },
+    {
+      "include": "#data"
+    },
+    {
+      "include": "#type-alias"
+    },
+    {
+      "include": "#equation-head"
+    },
+    {
+      "include": "#expression"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "match": "--.*$",
+      "name": "comment.line.double-dash.emet"
+    },
+    "keyword": {
+      "match": "\\b(?:pub|inline|block|filter|fn|data|type|import|where|case|of|otherwise)\\b",
+      "name": "keyword.control.emet"
+    },
+    "literal": {
+      "patterns": [
+        {
+          "match": "\"(?:[^\"\\\\]|\\\\(?:[\"'\\\\nt]|u\\{[0-9A-Fa-f]+\\}))*\"",
+          "name": "string.quoted.double.emet"
+        },
+        {
+          "match": "'(?:[^'\\\\]|\\\\(?:[\"'\\\\nt]|u\\{[0-9A-Fa-f]+\\}))'",
+          "name": "string.quoted.single.emet"
+        },
+        {
+          "match": "\\b[0-9]+(?:\\.[0-9]+)?(?:e[+\\-]?[0-9]+)?\\b",
+          "name": "constant.numeric.emet"
+        }
+      ]
+    },
+    "operator": {
+      "match": "\\+\\+|\\*\\*|&&|\\|\\||==|/=|<=|>=|->|::|[-+*/%<>=?:|]",
+      "name": "keyword.operator.emet"
+    },
+    "signature": {
+      "begin": "^(\\s*)(?:(pub)\\s+(?:(inline|block|filter|fn)\\s+(?:(\"(?:[^\"\\\\]|\\\\(?:[\"'\\\\nt]|u\\{[0-9A-Fa-f]+\\}))*\")\\s+)?)?)?([a-z_][A-Za-z0-9_]*)\\s*(::)",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.emet"
+        },
+        "3": {
+          "name": "keyword.control.emet"
+        },
+        "4": {
+          "name": "string.quoted.double.emet"
+        },
+        "5": {
+          "name": "entity.name.function.emet"
+        },
+        "6": {
+          "name": "keyword.operator.emet"
+        }
+      },
+      "end": "^(?!\\s*(?:->|<|--))",
+      "patterns": [
+        {
+          "include": "#type"
+        }
+      ]
+    },
+    "data": {
+      "begin": "^(\\s*)(?:(pub)\\s+)?(data)\\b",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.emet"
+        },
+        "3": {
+          "name": "keyword.control.emet"
+        }
+      },
+      "end": "^(?!\\s*(?:\\||--))",
+      "patterns": [
+        {
+          "begin": "\\{",
+          "end": "\\}",
+          "patterns": [
+            {
+              "match": "\\b([a-z_][A-Za-z0-9_]*)\\s*(::)",
+              "captures": {
+                "1": {
+                  "name": "variable.other.field.emet"
+                },
+                "2": {
+                  "name": "keyword.operator.emet"
+                }
+              }
+            },
+            {
+              "include": "#type"
+            }
+          ]
+        },
+        {
+          "match": "(=|\\|)\\s*([A-Z][A-Za-z0-9_]*)\\b(?!\\.)",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.emet"
+            },
+            "2": {
+              "name": "constant.other.emet"
+            }
+          }
+        },
+        {
+          "include": "#type"
+        }
+      ]
+    },
+    "type-alias": {
+      "begin": "^(\\s*)(?:(pub)\\s+)?(type)\\b",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.emet"
+        },
+        "3": {
+          "name": "keyword.control.emet"
+        }
+      },
+      "end": "^(?!\\s*(?:->|<|--))",
+      "patterns": [
+        {
+          "include": "#type"
+        }
+      ]
+    },
+    "type": {
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "begin": "(\\()\\s*(?:([a-z_][A-Za-z0-9_]*)|(\"(?:[^\"\\\\]|\\\\(?:[\"'\\\\nt]|u\\{[0-9A-Fa-f]+\\}))*\"))\\s*(::)",
+          "beginCaptures": {
+            "2": {
+              "name": "variable.parameter.emet"
+            },
+            "3": {
+              "name": "string.quoted.double.emet"
+            },
+            "4": {
+              "name": "keyword.operator.emet"
+            }
+          },
+          "end": "\\)",
+          "patterns": [
+            {
+              "begin": "=",
+              "beginCaptures": {
+                "0": {
+                  "name": "keyword.operator.emet"
+                }
+              },
+              "end": "(?=\\))",
+              "patterns": [
+                {
+                  "include": "#expression"
+                }
+              ]
+            },
+            {
+              "include": "#type"
+            }
+          ]
+        },
+        {
+          "begin": "<",
+          "beginCaptures": {
+            "0": {
+              "name": "storage.modifier.row.emet"
+            }
+          },
+          "end": ">",
+          "endCaptures": {
+            "0": {
+              "name": "storage.modifier.row.emet"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#comment"
+            },
+            {
+              "include": "#literal"
+            },
+            {
+              "match": "(\\|)\\s*([a-z_][A-Za-z0-9_]*)",
+              "captures": {
+                "1": {
+                  "name": "storage.modifier.row.emet"
+                },
+                "2": {
+                  "name": "entity.name.type.variable.emet"
+                }
+              }
+            },
+            {
+              "match": "\\b[a-z_][A-Za-z0-9_]*\\b",
+              "name": "storage.modifier.requirement.emet"
+            }
+          ]
+        },
+        {
+          "include": "#keyword"
+        },
+        {
+          "match": "\\b([A-Z][A-Za-z0-9_]*)(\\.)(?=[A-Z])",
+          "captures": {
+            "1": {
+              "name": "entity.name.namespace.emet"
+            }
+          }
+        },
+        {
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b",
+          "name": "entity.name.type.emet"
+        },
+        {
+          "match": "\\b[a-z_][A-Za-z0-9_]*\\b",
+          "name": "entity.name.type.variable.emet"
+        },
+        {
+          "include": "#operator"
+        }
+      ]
+    },
+    "equation-head": {
+      "begin": "^(\\s*)(?!(?:pub|data|type|import|where|case|of|otherwise)\\b)([a-z_][A-Za-z0-9_]*)(?=(?:[^=\\n>|\\-]|-(?!>))*?(?<![=<>/!:])=(?![=>])|[\\w\\s()\\[\\],'\"_.{}]*$)",
+      "beginCaptures": {
+        "2": {
+          "name": "entity.name.function.emet"
+        }
+      },
+      "end": "(?==(?!=))|(?=\\|)|$",
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#literal"
+        },
+        {
+          "match": "\\b_\\b",
+          "name": "variable.language.wildcard.emet"
+        },
+        {
+          "match": "\\b([A-Z][A-Za-z0-9_]*)(\\.)(?=[A-Z])",
+          "captures": {
+            "1": {
+              "name": "entity.name.namespace.emet"
+            }
+          }
+        },
+        {
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b",
+          "name": "constant.other.emet"
+        },
+        {
+          "match": "\\b[a-z_][A-Za-z0-9_]*\\b",
+          "name": "variable.parameter.emet"
+        },
+        {
+          "include": "#operator"
+        }
+      ]
+    },
+    "expression": {
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#literal"
+        },
+        {
+          "include": "#keyword"
+        },
+        {
+          "match": "\\b_\\b",
+          "name": "variable.language.wildcard.emet"
+        },
+        {
+          "match": "\\b([A-Z][A-Za-z0-9_]*)(\\.)(?=[A-Za-z_])",
+          "captures": {
+            "1": {
+              "name": "entity.name.namespace.emet"
+            }
+          }
+        },
+        {
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b",
+          "name": "constant.other.emet"
+        },
+        {
+          "match": "\\b[a-z_][A-Za-z0-9_]*\\b",
+          "name": "variable.other.emet"
+        },
+        {
+          "include": "#operator"
+        }
+      ]
+    }
+  }
+}

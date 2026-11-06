@@ -1,0 +1,139 @@
+================================================================================
+Application heads and qualified names
+================================================================================
+
+f xs = List.map g (String.lines xs)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (equation
+    (function_name)
+    (parameter)
+    (application
+      (application
+        (qualified_variable
+          (module)
+          (function))
+        (variable))
+      (parenthesized_expression
+        (application
+          (qualified_variable
+            (module)
+            (function))
+          (variable))))))
+
+================================================================================
+The true branch of a ternary has no : of lists
+================================================================================
+
+f c x xs ys = c ? x : xs : ys
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (equation
+    (function_name)
+    (parameter)
+    (parameter)
+    (parameter)
+    (parameter)
+    (ternary_expression
+      (variable)
+      (variable)
+      (binary_expression
+        (variable)
+        (variable)))))
+
+================================================================================
+Case with negative numbers, guards and wildcards
+================================================================================
+
+f n = case n of {
+  -1 -> Nothing
+  Just x | x > 0 -> x
+  _ -> 0
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (equation
+    (function_name)
+    (parameter)
+    (case_expression
+      (variable)
+      (alternative
+        (negative_number
+          (number))
+        (constructor))
+      (alternative
+        (constructor_pattern
+          (constructor)
+          (variable))
+        (guard_alternative
+          (binary_expression
+            (variable)
+            (number))
+          (variable)))
+      (alternative
+        (wildcard)
+        (number)))))
+
+================================================================================
+A line that starts with an operator goes on the line before
+================================================================================
+
+f x = x
+  -- a comment
+  + 1
+g = 2
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (equation
+    (function_name)
+    (parameter)
+    (binary_expression
+      (variable)
+      (comment)
+      (number)))
+  (equation
+    (function_name)
+    (number)))
+
+================================================================================
+Records, lists, tuples, characters
+================================================================================
+
+f (Book { title = t }) [a, _] (p, q) = Book { title = 'x', year = -2 ** 2 }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (equation
+    (function_name)
+    (parenthesized_pattern
+      (record_pattern
+        (constructor)
+        (field_pattern
+          (field_name)
+          (parameter))))
+    (list_pattern
+      (parameter)
+      (wildcard))
+    (tuple_pattern
+      (parameter)
+      (parameter))
+    (record
+      (constructor)
+      (field_assignment
+        (field_name)
+        (char))
+      (field_assignment
+        (field_name)
+        (negation
+          (binary_expression
+            (number)
+            (number)))))))

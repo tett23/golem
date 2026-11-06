@@ -1,0 +1,353 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Golem",
+  "scopeName": "source.golem",
+  "fileTypes": [
+    "gm"
+  ],
+  "comment": "The TextMate grammar of .gm, the markup of Golem (docs/adr/0170-emet-editor-support.md). The scopes follow the classes of the semantic tokens of golem-lsp ADR 0006; tools/editors/README.md has the table.",
+  "patterns": [
+    {
+      "include": "#code-block"
+    },
+    {
+      "include": "#heading"
+    },
+    {
+      "include": "#set-command"
+    },
+    {
+      "include": "#block-command"
+    },
+    {
+      "include": "#table-delimiter"
+    },
+    {
+      "include": "#table-row"
+    },
+    {
+      "include": "#list-marker"
+    },
+    {
+      "include": "#term"
+    },
+    {
+      "include": "#inline"
+    }
+  ],
+  "repository": {
+    "code-block": {
+      "begin": "^(\\s*)(```)([A-Za-z0-9_+\\-]*)(.*)$",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.fence.golem"
+        },
+        "3": {
+          "name": "entity.name.type.language.golem"
+        },
+        "4": {
+          "patterns": [
+            {
+              "include": "#arguments"
+            }
+          ]
+        }
+      },
+      "end": "^\\1(```)\\s*$",
+      "endCaptures": {
+        "1": {
+          "name": "keyword.control.fence.golem"
+        }
+      },
+      "contentName": "markup.raw.block.golem"
+    },
+    "heading": {
+      "name": "markup.heading.golem",
+      "begin": "^(\\s*)(#{1,3})(?=[ \\t])",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.control.heading.golem"
+        }
+      },
+      "end": "$",
+      "patterns": [
+        {
+          "include": "#inline"
+        }
+      ]
+    },
+    "set-command": {
+      "begin": "^(\\s*)(@)(set)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(=)",
+      "beginCaptures": {
+        "2": {
+          "name": "entity.name.tag.golem"
+        },
+        "3": {
+          "name": "entity.name.tag.golem"
+        }
+      },
+      "end": "$",
+      "patterns": [
+        {
+          "include": "#expression-body"
+        }
+      ]
+    },
+    "block-command": {
+      "begin": "^(\\s*)(@)([a-z][a-z0-9\\-]*(?:\\.[a-z][a-z0-9\\-]*)?)",
+      "beginCaptures": {
+        "2": {
+          "name": "entity.name.tag.golem"
+        },
+        "3": {
+          "name": "entity.name.tag.golem"
+        }
+      },
+      "end": "$",
+      "patterns": [
+        {
+          "include": "#arguments"
+        }
+      ]
+    },
+    "table-delimiter": {
+      "match": "^\\s*(?:\\|\\s*:?-+:?\\s*)+\\|\\s*$",
+      "name": "keyword.operator.table.golem"
+    },
+    "table-row": {
+      "begin": "^(\\s*)(\\|)",
+      "beginCaptures": {
+        "2": {
+          "name": "keyword.operator.table.golem"
+        }
+      },
+      "end": "$",
+      "patterns": [
+        {
+          "match": "\\|",
+          "name": "keyword.operator.table.golem"
+        },
+        {
+          "include": "#inline"
+        }
+      ]
+    },
+    "list-marker": {
+      "match": "^(\\s*)([-+])(?=[ \\t])",
+      "captures": {
+        "2": {
+          "name": "keyword.control.list.golem"
+        }
+      }
+    },
+    "term": {
+      "match": "^(\\s*)(=)(?=[ \\t])",
+      "captures": {
+        "2": {
+          "name": "keyword.control.term.golem"
+        }
+      }
+    },
+    "inline": {
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#escape"
+        },
+        {
+          "include": "#expression"
+        },
+        {
+          "include": "#inline-command"
+        },
+        {
+          "include": "#number-shorthand"
+        }
+      ]
+    },
+    "comment": {
+      "patterns": [
+        {
+          "name": "comment.line.proof.golem",
+          "begin": "%%=",
+          "end": "%%"
+        },
+        {
+          "name": "comment.line.percentage.golem",
+          "begin": "%%",
+          "end": "%%"
+        }
+      ]
+    },
+    "escape": {
+      "match": "\\\\.",
+      "name": "constant.character.escape.golem"
+    },
+    "number-shorthand": {
+      "match": "(##)([0-9][^#\\[\\]|\\\\]*)(##)?",
+      "captures": {
+        "1": {
+          "name": "keyword.operator.number.golem"
+        },
+        "2": {
+          "name": "constant.numeric.golem"
+        },
+        "3": {
+          "name": "keyword.operator.number.golem"
+        }
+      }
+    },
+    "inline-command": {
+      "begin": "(\\[)([a-z][a-z0-9\\-]*(?:\\.[a-z][a-z0-9\\-]*)?)",
+      "beginCaptures": {
+        "2": {
+          "name": "entity.name.function.golem"
+        }
+      },
+      "end": "\\]",
+      "patterns": [
+        {
+          "include": "#prose-slots"
+        },
+        {
+          "include": "#arguments"
+        }
+      ]
+    },
+    "prose-slots": {
+      "begin": ":",
+      "end": "(?=\\])",
+      "patterns": [
+        {
+          "match": "\\|",
+          "name": "keyword.operator.slot.golem"
+        },
+        {
+          "include": "#inline"
+        }
+      ]
+    },
+    "arguments": {
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "begin": "\\*\\*?\\[",
+          "end": "\\]",
+          "patterns": [
+            {
+              "include": "#expression-body"
+            }
+          ]
+        },
+        {
+          "match": "([^\\s\\]:|=\\[\"\\\\]+)(=)",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.golem"
+            }
+          }
+        },
+        {
+          "include": "#string"
+        },
+        {
+          "include": "#expression"
+        },
+        {
+          "include": "#inline-command"
+        },
+        {
+          "match": "[^\\s\\]:|=\\[\"\\\\]+",
+          "name": "string.unquoted.golem"
+        }
+      ]
+    },
+    "string": {
+      "match": "\"(?:[^\"\\\\]|\\\\.)*\"",
+      "name": "string.quoted.double.golem"
+    },
+    "expression": {
+      "begin": "\\[=",
+      "beginCaptures": {
+        "0": {
+          "name": "keyword.control.expression.golem"
+        }
+      },
+      "end": "\\]",
+      "patterns": [
+        {
+          "include": "#expression-body"
+        }
+      ]
+    },
+    "expression-body": {
+      "patterns": [
+        {
+          "include": "#string"
+        },
+        {
+          "match": "\\b[0-9]+(?:\\.[0-9]+)?(?:e[+\\-]?[0-9]+)?\\b",
+          "name": "constant.numeric.golem"
+        },
+        {
+          "match": "\\b(?:true|false|nil)\\b",
+          "name": "keyword.control.golem"
+        },
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(?:(\\.)([A-Za-z_][A-Za-z0-9_]*))?(?=\\()",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.golem"
+            },
+            "3": {
+              "name": "entity.name.function.golem"
+            }
+          }
+        },
+        {
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*:)",
+          "name": "meta.key.golem"
+        },
+        {
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+          "name": "variable.other.golem"
+        },
+        {
+          "match": "\\.\\.\\.|\\*\\*|==|!=|<=|>=|[-+*/%<>]",
+          "name": "keyword.operator.golem"
+        },
+        {
+          "begin": "\\[",
+          "end": "\\]",
+          "patterns": [
+            {
+              "include": "#expression-body"
+            }
+          ]
+        },
+        {
+          "begin": "\\(",
+          "end": "\\)",
+          "patterns": [
+            {
+              "include": "#expression-body"
+            }
+          ]
+        },
+        {
+          "begin": "\\{",
+          "end": "\\}",
+          "patterns": [
+            {
+              "include": "#expression-body"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

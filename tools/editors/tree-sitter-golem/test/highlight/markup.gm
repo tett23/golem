@@ -1,0 +1,34 @@
+@label intro
+%% <- @attribute %%
+%%^ @attribute %%
+%%     ^ @string %%
+@set edition = 2
+%%^ @attribute %%
+%%             ^ @number %%
+## A heading [= edition]
+%% <- @keyword %%
+%%   ^ @module %%
+%%           ^ @keyword %%
+%%              ^ @variable %%
+
+Text \[ with [ruby kanji: reading] and [image src="a.png" alt=x].
+%%   ^ @string.escape %%
+%%            ^ @function %%
+%%                 ^ @string %%
+%%                                            ^ @variable.parameter %%
+%%                                                ^ @string %%
+%%                                                            ^ @string %%
+Then %% a comment %% and [= f(1, x.y) + -2 ... 3] and ##12## yen.
+%%   ^ @comment %%
+%%                          ^ @function %%
+%%                            ^ @number %%
+%%                               ^ @variable %%
+%%                                    ^ @operator %%
+%%                                      ^ @operator %%
+%%                                         ^ @operator %%
+%%                                                    ^ @operator %%
+%%                                                      ^ @number %%
+- an item
+%% <- @keyword %%
+= a term
+%% <- @keyword %%

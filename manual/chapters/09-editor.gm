@@ -56,3 +56,16 @@ Visual Studio Code では、LSP の言語サーバーを起動する汎用の拡
 ファイルの中の位置（何行目の何文字目か）の数え方は、エディタと Golem が起動のときに相談して決めます。
 エディタが UTF-8 のバイトで数えると伝えてくればそれを使い、そうでなければ UTF-16 の単位で数えます。
 どちらになっても、使う人が設定する必要はありません。
+
+## LSP が動く前の色付け
+
+色付けは LSP の機能なので、LSP が動き出すまでのあいだと、LSP を使わないエディタでは、原稿に色が付きません。
+そのために、Golem のアーカイブには、エディタが自分で色分けするための構文の定義が入っています。
+展開したフォルダの [code: share/golem/editors/] にあり、原稿の [code: .gm] と、関数を書く言語 Emet のファイル [code: .emet] の二つに対応しています。
+
+- TextMate の文法（[code: textmate/] の下）：Visual Studio Code、Sublime Text、TextMate などが読みます。
+- tree-sitter の文法（[code: tree-sitter-golem/] と [code: tree-sitter-emet/]）：Neovim（nvim-treesitter）、Helix、Zed などが読みます。
+
+それぞれのエディタでの読み込ませ方は、同じフォルダの [code: README.md] にあります。
+LSP の色付けに対応したエディタでは、LSP が動き出すと LSP の色が優先されます。
+TextMate の文法は行ごとの規則で色を決めるので、LSP や tree-sitter の文法より大まかです。

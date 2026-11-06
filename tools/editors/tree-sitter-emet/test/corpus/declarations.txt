@@ -1,0 +1,141 @@
+================================================================================
+Import, data, type alias
+================================================================================
+
+import "fn/lib.emet"
+
+pub data Shape a = Circle Nat
+  | Rect { width :: Nat, height :: Nat }
+
+type Pair a = (a, a)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (import
+    (string))
+  (data
+    (type)
+    (type_variable)
+    (constructor_declaration
+      (constructor_name)
+      (type))
+    (constructor_declaration
+      (constructor_name)
+      (field_declaration
+        (field_name)
+        (type))
+      (field_declaration
+        (field_name)
+        (type))))
+  (type_alias
+    (type)
+    (type_variable)
+    (tuple_type
+      (type_variable)
+      (type_variable))))
+
+================================================================================
+Signatures of the functions .gm uses
+================================================================================
+
+pub inline "tax-included" taxIncluded :: Nat -> (tax :: Bool = True) -> Inlines
+pub block wordTable :: Blocks -> <file "data/words.tsv"> Blocks
+pub tags :: String -> Varargs String -> Inlines
+lookup :: String -> e String -> <file "a" | e> Maybe String
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (signature
+    (export
+      (string))
+    (function_name)
+    (function_type
+      (type)
+      (function_type
+        (keyword_parameter
+          (parameter)
+          (type)
+          (constructor))
+        (type))))
+  (signature
+    (export)
+    (function_name)
+    (function_type
+      (type)
+      (row
+        (requirement
+          (requirement_kind)
+          (string)))
+      (type)))
+  (signature
+    (export)
+    (function_name)
+    (function_type
+      (type)
+      (function_type
+        (type_application
+          (type)
+          (type))
+        (type))))
+  (signature
+    (function_name)
+    (function_type
+      (type)
+      (row_variable)
+      (function_type
+        (type)
+        (row
+          (requirement
+            (requirement_kind)
+            (string))
+          (row_variable))
+        (type_application
+          (type)
+          (type))))))
+
+================================================================================
+Guards and where
+================================================================================
+
+go k xs acc
+  | k <= 0 = acc
+  | otherwise = go (k - 1) xs (acc ++ xs)
+  where {
+    step x = x
+  }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (equation
+    (function_name)
+    (parameter)
+    (parameter)
+    (parameter)
+    (guard
+      (binary_expression
+        (variable)
+        (number))
+      (variable))
+    (guard
+      (otherwise)
+      (application
+        (application
+          (application
+            (function)
+            (parenthesized_expression
+              (binary_expression
+                (variable)
+                (number))))
+          (variable))
+        (parenthesized_expression
+          (binary_expression
+            (variable)
+            (variable))))
+      (where
+        (equation
+          (function_name)
+          (parameter)
+          (variable))))))

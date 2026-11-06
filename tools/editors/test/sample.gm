@@ -1,0 +1,71 @@
+%% SYNTAX TEST "source.golem" "the shared sample of the editor grammars (docs/adr/0170)"
+@manifest paragraph-separator=blank-line
+%%<- entity.name.tag.golem
+%%<~-------- entity.name.tag.golem
+%%        ^^^^^^^^^^^^^^^^^^^ variable.parameter.golem
+%%                           ^ source.golem
+%%                            ^^^^^^^^^^ string.unquoted.golem
+@set edition = 2
+%%<- entity.name.tag.golem
+%%<~--- entity.name.tag.golem
+%%             ^ constant.numeric.golem
+# Title of edition [= edition] ##3##
+%%<- keyword.control.heading.golem
+%%^^^^^ markup.heading.golem
+%%                 ^^ keyword.control.expression.golem
+%%                    ^^^^^^^ variable.other.golem
+%%                             ^^ keyword.operator.number.golem
+%%                               ^ constant.numeric.golem
+
+Plain text with \[ an escape, [ruby kanji: reading] and [note alt="x": a | b].
+%%<----- source.golem
+%%              ^^ constant.character.escape.golem
+%%                             ^^^^ entity.name.function.golem
+%%                                  ^^^^^ string.unquoted.golem
+%%                                         ^^^^^^^ source.golem
+%%                                                            ^^^ variable.parameter.golem
+%%                                                                ^^^ string.quoted.double.golem
+%%                                                                       ^ keyword.operator.slot.golem
+%% a comment %% and %%= a proof comment %% then [= f(1, x.y) + -2 ** 3 ... 4] and [= true].
+%%<-- comment.line.percentage.golem
+%%                  ^^^ comment.line.proof.golem
+%%                                              ^^ keyword.control.expression.golem
+%%                                                 ^ entity.name.function.golem
+%%                                                   ^ constant.numeric.golem
+%%                                                      ^ variable.other.golem
+%%                                                           ^ keyword.operator.golem
+%%                                                             ^ keyword.operator.golem
+%%                                                                ^^ keyword.operator.golem
+%%                                                                     ^^^ keyword.operator.golem
+%%                                                                                   ^^^^ keyword.control.golem
+漢字の本文 [em 強調] と [= "文字列"]。
+%%     ^^ entity.name.function.golem
+%%                 ^^^^^ string.quoted.double.golem
+
+- an item
+%%<- keyword.control.list.golem
+%%   ^^^^ source.golem
++ an ordered item
+%%<- keyword.control.list.golem
+= a term
+%%<- keyword.control.term.golem
+  the body
+
+| a | [em b] |
+%%<- keyword.operator.table.golem
+%%     ^^ entity.name.function.golem
+|:--|--:|
+%%<~--- keyword.operator.table.golem
+| ##1## | x |
+%%^^ keyword.operator.number.golem
+%%  ^ constant.numeric.golem
+
+```toml numbers=true
+%%<--- keyword.control.fence.golem
+%% ^^^^ entity.name.type.language.golem
+%%      ^^^^^^^ variable.parameter.golem
+%%              ^^^^ string.unquoted.golem
+a = 1
+%%<----- markup.raw.block.golem
+```
+%%<--- keyword.control.fence.golem
