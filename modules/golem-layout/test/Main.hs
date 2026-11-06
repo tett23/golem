@@ -11,6 +11,7 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
+import DoubleDashSpec (doubleDashTests)
 import Fixtures (compose, fs, look0, sp, sp0)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiSet, akiPositions, builtinAkiSets, defaultAkiSet, withAkiRule)
@@ -329,6 +330,7 @@ tests =
       testGroup "boundaries and invariants" [paginateTests, punctuationTests, lineBreakingTests],
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       inseparableTests,
+      doubleDashTests,
       codeSpaceTests,
       urlBreakTests,
       combiningTests,

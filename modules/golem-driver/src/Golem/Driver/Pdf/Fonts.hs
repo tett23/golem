@@ -21,6 +21,8 @@ module Golem.Driver.Pdf.Fonts
     codeFontNotice,
     kentenShaped,
     kentenRubyNotices,
+    dashShaped,
+    dashInk,
     blockInlineLists,
     restyle,
     restyleSource,
@@ -325,6 +327,24 @@ the shape in the Japanese face of a role, in the direction of the text.
 -}
 kentenShaped :: LoadedFonts -> Bool -> Text -> KentenShape -> [Shaped]
 kentenShaped fonts vertical role shape = lfShape fonts (Shaping role vertical []) (T.singleton (kentenChar shape))
+
+{- | The glyphs of a dash of a run of dashes (docs/adr ADR 0172), shaped
+alone in the look of the run: a ligature of the font for two dashes is
+never used.
+-}
+dashShaped :: LoadedFonts -> Bool -> Look -> Char -> [Shaped]
+dashShaped fonts vertical look c = lfShape fonts (shapingOf vertical look c) (T.singleton c)
+
+{- | The ink of a glyph of a dash along the line, in em of the glyph
+(docs/adr ADR 0172): x of a horizontal glyph, and of a glyph turned in
+vertical text; y of an upright glyph in vertical text. Nothing for a
+glyph without ink.
+-}
+dashInk :: LoadedFonts -> Bool -> Shaped -> Maybe (Rational, Rational)
+dashInk fonts vertical g = do
+  (x0, y0, x1, y1) <- lfInkBox fonts (shFace g) (shGlyph g)
+  let (a, b) = if vertical && not (shTurned g) then (y0, y1) else (x0, x1)
+  if b > a then Just (a, b) else Nothing
 
 {- | G07045 (golem-driver ADR 0019): kenten in the base of a ruby, at the
 kenten, and ruby in kenten, at the ruby. The PDF draws no kenten there;

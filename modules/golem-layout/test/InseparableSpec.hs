@@ -1,6 +1,7 @@
 {- | Inseparable characters at the line edges (golem-layout ADR 0016):
 an ellipsis keeps the full stop after it, and a double dash of U+2015
-HORIZONTAL BAR is not split, as a double dash of U+2014 EM DASH is not.
+HORIZONTAL BAR is not split, as a double dash of U+2014 EM DASH is not
+(each is one box, docs/adr ADR 0172).
 -}
 module InseparableSpec (inseparableTests) where
 
@@ -82,13 +83,12 @@ inseparableTests =
           assertBool ctx (not (any (endsWithOne '―') ls))
           assertBool ctx (all (\l -> not ("―" `T.isPrefixOf` l) || "――" `T.isPrefixOf` l) ls)
           assertBool ctx (not (any ("。" `T.isPrefixOf`) ls)),
-      testCase "no break between the two bars of a double dash, but one before it" $ do
+      testCase "the two bars of a double dash are one box (docs/adr ADR 0172), with a break before it" $ do
         let items = compose (defaultComposeEnv fs) "漢――漢"
-        [bcText c | Box _ c <- items] @?= ["漢", "―", "―", "漢"]
+        [bcText c | Box _ c <- items] @?= ["漢", "――", "漢"]
         breakAfterBox items 0 @?= True
-        breakAfterBox items 1 @?= False
         let em = compose (defaultComposeEnv fs) "漢——漢"
-        breakAfterBox em 1 @?= False,
+        [bcText c | Box _ c <- em] @?= ["漢", "——", "漢"],
       testCase "the default aki set spaces U+2015 as an ideograph" $ do
         glues "漢―" @?= glues "漢漢"
         glues "―漢" @?= glues "漢漢"

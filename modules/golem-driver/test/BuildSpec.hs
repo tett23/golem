@@ -167,9 +167,9 @@ publicDomainTests skips =
         (written, pdf, _) <- buildBook "kanikosen"
         assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"])
         assertBool "vertical" ("/Identity-V" `BS.isInfixOf` pdf)
-        -- 「——漁夫は」: the dashes (CID 722) turned (golem-driver ADR 0015)
+        -- 「——漁夫は」: the dashes (CID 722) turned (golem-driver ADR 0015) and scaled along the line (docs/adr ADR 0172)
         content <- BS.concat <$> inflateAll pdf
-        assertBool "turned dashes" (any (\d -> dGlyph d == 722 && dMatrix d == ["0", "-1", "1", "0"]) (drawnGlyphs content))
+        assertBool "turned dashes" (any (\d -> dGlyph d == 722 && take 1 (dMatrix d) == ["0"] && drop 2 (dMatrix d) == ["1", "0"]) (drawnGlyphs content))
         qpdfCheck pdf,
       testGroup "ten public-domain books (docs/adr/0026)" (map (pdBookTest skips) pdBooks)
     ]

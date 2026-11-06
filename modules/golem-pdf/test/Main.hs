@@ -529,6 +529,15 @@ tests tinyJpeg =
             let run sc = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [StyledGlyphRun (RunStyle sc False (1 / 5) 0) (FontRef 7) (10 * 65536) [(2, 0, 0)]]
             assertBool "Tz" ("105 Tz" `BS.isInfixOf` run 1050)
             assertBool "no Tz" (not ("Tz" `BS.isInfixOf` run 1000)),
+          testCase "a transformed run gives each glyph its own text matrix (docs/adr ADR 0172)" $ do
+            let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [TransformedGlyphRun (FontRef 7) (10 * 65536) 0 [((5 / 4, 0, 0, 1), 2, 65536, -65536), ((0, -(5 / 4), 1, 0), 3, 0, 0), ((1, 0, 0, 1245 / 1000), 4, 0, 0)]]
+            cs @?= "BT /F1 10 Tf\n1.25 0 0 1 1 -1 Tm <0002> Tj\n0 -1.25 1 0 0 0 Tm <0003> Tj\n1 0 0 1.245 0 0 Tm <0004> Tj\nET\n",
+          testCase "a transformed run with synthetic bold strokes inside q and Q (docs/adr ADR 0172)" $ do
+            let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [TransformedGlyphRun (FontRef 7) (10 * 65536) 16384 [((5 / 4, 0, 1 / 5, 1), 2, 0, 0)]]
+            cs @?= "q BT /F1 10 Tf 2 Tr 0.25 w\n1.25 0 0.2 1 0 0 Tm <0002> Tj\nET Q\n",
+          testCase "the font of a transformed run is a page resource (docs/adr ADR 0172)" $ do
+            let pdf = writePdf (documentWith tinyJpeg [page [TransformedGlyphRun (FontRef 7) 65536 0 [((1, 0, 0, 1), 1, 0, 0)]]]) {docFonts = Map.fromList [(FontRef 7, font)]}
+            assertBool "F1" ("/F1 " `BS.isInfixOf` pdf),
           testCase "saved marks restore the colour" $ do
             let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [Saved [SetColor (Swatch 0 80 100 0), GlyphRun (FontRef 7) (10 * 65536) [(2, 0, 0)]]]
             BS.take 2 cs @?= "q\n"

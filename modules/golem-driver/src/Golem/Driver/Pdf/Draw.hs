@@ -74,7 +74,8 @@ renderPdfView provider inp0 = case checkedGeometry inp of
                   case nub (lefts (Map.elems embedded)) of
                     [] -> do
                       let (bytes, view) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
-                      pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout, view))
+                      -- G07101: dashes without ink (docs/adr ADR 0172)
+                      pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout, view))
                     ds -> pure (Left ds)
                 ds -> pure (Left ds)
   where
@@ -359,6 +360,59 @@ runAt env look v rotated scale (bx, by) txt =
   where
     fonts = deFonts env
 
+{- | A run of full-width dashes from the start of its box (docs/adr ADR
+0172): each dash shaped alone in an em of its own, its glyph scaled along
+the line by the text matrix so that its ink fills the em, and so the
+lines meet; across the line, as an unscaled glyph. Upright in vertical
+text with a vertical form, turned otherwise (golem-driver ADR 0015); a
+glyph without ink is drawn unscaled at the start of its em (G07101).
+-}
+dashesAt :: DrawEnv -> Look -> Bool -> (Sp, Sp) -> Text -> ([P.Mark], [(P.FontRef, Int, Text, ClusterPart)])
+dashesAt env look v (bx, by) txt =
+  let size = lkSize look
+      shift = lkBaselineShift look
+      (x0, y0) = if v then (bx + shift, by) else (bx, by + shift)
+      syn = lkSynthetic look
+      slant = if synSlant syn then syntheticSlant else 0
+      stroke = if synBold syn then syntheticStroke syntheticStrokeJa size else 0
+      em = toSp size
+      cell k ch =
+        let start = size * fromInteger k
+         in case dashShaped fonts v look ch of
+              [g] -> Right (glyph start g)
+              -- not one glyph: drawn as other text, at the start of its em
+              _ -> Left (runAt env look v False 0 (if v then (bx, by - start) else (bx + start, by)) (T.singleton ch))
+      glyph start g@Shaped {shFace = ix, shGlyph = gl, shText = t, shPart = part} =
+        let turned = v && shTurned g
+            r = ref ix (v && not turned)
+            ink = dashInk fonts v g
+            -- the scale that makes the ink an em long
+            s = maybe 1 (\(a, b) -> 1 / (b - a)) ink
+            (matrix, origin)
+              | not v = ((s, 0, slant, 1), (x0 + start - maybe 0 (\(a, _) -> em (s * a)) ink, y0))
+              -- the x of the glyph goes down the line, its baseline left of the centre line (golem-driver ADR 0015)
+              | turned = ((0, negate s, 1, negate slant), (x0 - em (lfEmBoxCentral fonts ix), y0 - start + maybe 0 (\(a, _) -> em (s * a)) ink))
+              -- Identity-V: the glyph origin is 0.88 em below the top of the em box (golem-pdf W2)
+              | otherwise = ((1, 0, slant * s, s), (x0, y0 - start - maybe 0 (\(_, b) -> em (s * (b - 88 / 100))) ink))
+            drawnAt = (matrix, lfCode fonts ix gl, fst origin, snd origin)
+            replacement = case actualTextOf (Map.findWithDefault Map.empty r (deTextEntries env)) [(gl, t, part)] of
+              [(_, Just t')] -> Just t'
+              _ -> Nothing
+         in (r, replacement, drawnAt, (r, gl, t, part))
+      cells = zipWith cell [0 :: Integer ..] (T.unpack txt)
+      -- the glyphs of a font in a row are one run; a glyph whose text is not its ToUnicode entry is drawn alone in ActualText (golem-driver ADR 0030)
+      marksOf = \case
+        [] -> []
+        Left (ms, _) : rest -> ms <> marksOf rest
+        Right (r, Just t', e, _) : rest -> P.ActualText t' [P.TransformedGlyphRun r size stroke [e]] : marksOf rest
+        Right (r, Nothing, e, _) : rest ->
+          let (same, rest') = span (\case Right (r', Nothing, _, _) -> r' == r; _ -> False) rest
+           in P.TransformedGlyphRun r size stroke (e : [e' | Right (_, _, e', _) <- same]) : marksOf rest'
+      uses = concat [either snd (\(_, _, _, u) -> [u]) c | c <- cells]
+   in (marksOf cells, uses)
+  where
+    fonts = deFonts env
+
 {- the mark of a kenten shape in a role at a size, the centre of the
 ink box of its glyph at a point (golem-driver ADR 0019): horizontal,
 in the vertical font (its glyph origin at (1/2, 0.88) em of the
@@ -584,6 +638,8 @@ drawLineAt env (x0, y0) sl =
                         else runAtU env (whoOf V.PartBase c) markLook False False 0 (ox, oy + toSp (size - m) (central + 1 / 2)) txt
                 -- the empty box of an [aki] draws nothing (golem-layout ADR 0012)
                 KindAki -> ([], [])
+                -- a run of full-width dashes: one line from end to end of its box (docs/adr ADR 0172)
+                KindDashes -> usesOf (whoOf V.PartBase c) look (dashesAt env look vertical (origin off) (bcText c))
                 _ ->
                   let pre = case T.unpack (bcText c) of
                         [ch] | boxKind c == KindPunctuation -> toSp size (fst (punctSpace (charClass ch)))

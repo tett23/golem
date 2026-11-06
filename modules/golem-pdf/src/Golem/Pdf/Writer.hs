@@ -104,6 +104,11 @@ data Mark
   | SetColor !Swatch
   | -- | a glyph run slanted or emboldened (golem-driver ADR 0004)
     StyledGlyphRun !RunStyle !FontRef !Sp ![(GlyphId, Sp, Sp)]
+  | {- | font, size, the width of the outline stroke of synthetic bold (0 for
+    none), and glyphs, each with the a, b, c and d of its text matrix and
+    its origin: a glyph scaled along the line (docs/adr ADR 0172)
+    -}
+    TransformedGlyphRun !FontRef !Sp !Sp ![((Rational, Rational, Rational, Rational), GlyphId, Sp, Sp)]
   | -- | marks drawn inside q and Q, so the graphics state is restored
     Saved ![Mark]
   | -- | marks drawn with the origin moved, inside q and Q (ADR 0004)
@@ -270,6 +275,18 @@ contentStreamWith fontNames imageNames formNames marks = BL.toStrict (B.toLazyBy
               <> nl
               <> mconcat [matrix <> num x <> sp <> num y <> " Tm <" <> hex4 g <> "> Tj" <> nl | (g, x, y) <- gs]
               <> "ET Q"
+              <> nl
+      TransformedGlyphRun f size stroke gs ->
+        let (open, close) = if stroke > 0 then ("q BT ", "ET Q") else ("BT ", "ET")
+         in open
+              <> fontName' f
+              <> sp
+              <> num size
+              <> " Tf"
+              <> (if stroke > 0 then " 2 Tr " <> num stroke <> " w" else "")
+              <> nl
+              <> mconcat [mconcat [ratio v <> sp | v <- [a, b, c, d]] <> num x <> sp <> num y <> " Tm <" <> hex4 g <> "> Tj" <> nl | ((a, b, c, d), g, x, y) <- gs]
+              <> close
               <> nl
       Saved ms -> "q" <> nl <> mconcat (map mark ms) <> "Q" <> nl
       -- a /Span with the replacement text written in the stream, no tag structure (golem-driver ADR 0030)
@@ -450,6 +467,7 @@ documentObjects doc =
       ScaledGlyphRun f _ _ _ -> [f]
       RotatedGlyphRun f _ _ -> [f]
       StyledGlyphRun _ f _ _ -> [f]
+      TransformedGlyphRun f _ _ _ -> [f]
       Saved ms -> concatMap fontsOf ms
       ActualText _ ms -> concatMap fontsOf ms
       Translated _ _ ms -> concatMap fontsOf ms
