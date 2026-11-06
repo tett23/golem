@@ -32,7 +32,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Driver (Evaluated (..), assetRefs, builtinKeepStyles, evaluateLoose, evaluateProjectWith, keepStyles)
 import Golem.Driver.Lint (lintEvaluated)
-import Golem.Emet (programModules)
+import Golem.Emet (Program, programModules)
 import Golem.Eval.File
 import Golem.Eval.Settings (isSettingCommand)
 import Golem.Eval.Value (Value)
@@ -76,7 +76,9 @@ data Workspace = Workspace
     -- | the line index of every known file, for position conversion (ADR 0002)
     wsLines :: !(Map FilePath LineIndex),
     -- | the table files the client has been asked to watch (golem-eval ADR 0004)
-    wsWatchedTables :: !(Set.Set FilePath)
+    wsWatchedTables :: !(Set.Set FilePath),
+    -- | the functions of .emet as the last evaluation that checked them had them (docs/adr/0170)
+    wsLastFunctions :: !(Maybe Program)
   }
 
 {- | What other files depend on: imports, exported variables, headings and
@@ -109,7 +111,7 @@ summaryOf ast res =
 openWorkspace :: FilePath -> IO Workspace
 openWorkspace root = do
   files <- listSources root
-  fullEvaluate (Workspace root Map.empty Nothing [] Map.empty Map.empty 0 files Map.empty Set.empty)
+  fullEvaluate (Workspace root Map.empty Nothing [] Map.empty Map.empty 0 files Map.empty Set.empty Nothing)
 
 listSources :: FilePath -> IO [FilePath]
 listSources root = map (makeRelative root) <$> go root
@@ -131,7 +133,7 @@ fullEvaluate :: Workspace -> IO Workspace
 fullEvaluate ws = do
   r <- evaluateProjectWith (wsOverlay ws) Dev (wsRoot ws)
   let ws' = ws {wsFullEvaluations = wsFullEvaluations ws + 1}
-  pure . rebuildLines $ case r of
+  pure . rememberFunctions . rebuildLines $ case r of
     Left f -> refreshLoose ws' {wsEvaluated = Nothing, wsProjectErrors = pfDiagnostics f, wsProjectSources = pfSources f}
     Right e -> refreshLoose ws' {wsEvaluated = Just e, wsProjectErrors = [], wsProjectSources = Map.empty}
 
@@ -140,6 +142,13 @@ disk (golem-eval ADR 0004).
 -}
 reloadWorkspace :: Workspace -> IO Workspace
 reloadWorkspace = fullEvaluate
+
+{- | Keeps the functions of .emet of the last evaluation that checked them
+(docs/adr/0170): renaming finds the names with them while a file does not
+check.
+-}
+rememberFunctions :: Workspace -> Workspace
+rememberFunctions ws = ws {wsLastFunctions = (wsEvaluated ws >>= evFunctions) <|> wsLastFunctions ws}
 
 -- | Line indexes of the project's sources, of every edited file, and of the files read for @table and @listing.
 rebuildLines :: Workspace -> Workspace
@@ -229,7 +238,7 @@ updateFile ws0 path text = do
                   -- the files it reads are read again (golem-eval ADR 0004)
                   && assetRefs ast == assetRefs (sfAst old)
            in if unchanged
-                then pure ws {wsEvaluated = Just (replaceFile e fid sf res)}
+                then pure (rememberFunctions ws {wsEvaluated = Just (replaceFile e fid sf res)})
                 else fullEvaluate ws
     -- a file read for @table or @listing, open in the editor (golem-eval ADR 0004)
     Just _ | path `Set.member` assetPaths ws -> fullEvaluate ws

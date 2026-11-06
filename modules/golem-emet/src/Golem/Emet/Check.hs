@@ -23,6 +23,7 @@ module Golem.Emet.Check
     TypeDef (..),
     Scope (..),
     checkModule,
+    checkModuleLocals,
     builtinCons,
     builtinModuleNames,
     Export (..),
@@ -198,11 +199,19 @@ data Ctx = Ctx
     -- | the names of the bindings of the where of the function
     cxWhereNames :: !(Set Name),
     -- | the row of the body being checked, which every call in it needs its requirements in
-    cxAmbient :: !Row
+    cxAmbient :: !Row,
+    -- | whether the types of the local names are kept, for the LSP alone (docs/adr/0170)
+    cxRecord :: !Bool
   }
 
 -- | A local name: its type and the row naming it makes (a value of where), or its scheme.
 data Local = LMono !Row !Ty | LPoly !Scheme
+
+{- | The type of a local name kept for the LSP (docs/adr/0170): a type and
+the row naming it makes, a scheme of a signature, or a scheme generalised
+from a binding of where without one.
+-}
+data LocalTy = LTMono !Row !Ty | LTScheme !Scheme | LTGen !Scheme
 
 type Locals = Map Name Local
 
@@ -216,7 +225,9 @@ data TcState = TcState
     tsUses :: !(Set (Name, Name)),
     tsSkolems :: !Int,
     -- | the rows of the calls, each with the binding of where it is in ("" for the equations)
-    tsCalls :: ![(Name, Row)]
+    tsCalls :: ![(Name, Row)],
+    -- | the local names and their types, where they are bound and named, when the context keeps them
+    tsLocalTys :: ![(Loc, Name, LocalTy)]
   }
 
 type Tc = StateT TcState (Either Diagnostic)
@@ -235,6 +246,10 @@ failFirst :: Ctx -> [Diagnostic] -> Tc a
 failFirst cx = \case
   d : _ -> lift (Left d)
   [] -> failAt cx "E02101" (Loc 0 0) "シグネチャの誤り"
+
+-- | Keeps the type of a local name at a place, when the context keeps them (docs/adr/0170).
+recordLocal :: Ctx -> Loc -> Name -> LocalTy -> Tc ()
+recordLocal cx l n t = when (cxRecord cx) $ modify' (\s -> s {tsLocalTys = (l, n, t) : tsLocalTys s})
 
 fresh :: Tc Ty
 fresh = state (\s -> let (t, ss) = freshMeta (tsSolve s) in (t, s {tsSolve = ss}))
@@ -272,9 +287,22 @@ functions. In a built-in module (@prims@), a signature without equations
 is a primitive.
 -}
 checkModule :: Bool -> Scope -> FileId -> FilePath -> Text -> Module -> ([Diagnostic], ModInfo, [(GKey, Global)])
-checkModule prims scope fid path src (Module decls) =
+checkModule prims scope fid path src m = let (ds, mi, defs, _) = checkModuleWith False prims scope fid path src m in (ds, mi, defs)
+
+{- | The types of the local names of a module that checks, each where it
+is bound or named, as the hover of the LSP shows them (docs/adr/0170):
+@name :: type@. The check keeps them only here, never for golem build
+and golem check.
+-}
+checkModuleLocals :: Scope -> FileId -> FilePath -> Text -> Module -> [(Loc, Text)]
+checkModuleLocals scope fid path src m =
+  let (_, _, _, locals) = checkModuleWith True False scope fid path src m
+   in [(l, n <> " :: " <> localText t) | (l, n, t) <- locals]
+
+checkModuleWith :: Bool -> Bool -> Scope -> FileId -> FilePath -> Text -> Module -> ([Diagnostic], ModInfo, [(GKey, Global)], [(Loc, Name, LocalTy)])
+checkModuleWith record prims scope fid path src (Module decls) =
   let vis0 = importedNames scope
-      cx0 = Ctx fid path src vis0 scope "" "" Set.empty pureRow
+      cx0 = Ctx fid path src vis0 scope "" "" Set.empty pureRow record
       (typeDiags, types) = collectTypes cx0 decls
       cx1 = withOwn cx0 (ModInfo path types Map.empty Map.empty [])
       (conDiags, cons) = collectCons cx1 decls
@@ -286,9 +314,10 @@ checkModule prims scope fid path src (Module decls) =
       importDiags = importCollisions cx0 own
       checked = [checkFunction cx3 sig eqs | (sig, eqs@(_ : _)) <- groups]
       prim = [((path, sigName sig), GPrim (T.pack (dropExt path) <> "." <> sigName sig) (arity (sigType sig))) | prims, (sig, []) <- groups]
-      bodyDiags = concat (lefts checked) <> concat [ds | Right (ds, _) <- checked]
-      defs = [d | Right (_, d) <- checked]
-   in (importDiags <> typeDiags <> conDiags <> funDiags <> exportDiags <> bodyDiags, own, prim <> defs)
+      bodyDiags = concat (lefts checked) <> concat [ds | Right (ds, _, _) <- checked]
+      defs = [d | Right (_, d, _) <- checked]
+      locals = concat [ls | Right (_, _, ls) <- checked]
+   in (importDiags <> typeDiags <> conDiags <> funDiags <> exportDiags <> bodyDiags, own, prim <> defs, locals)
   where
     arity = \case
       TFun _ _ b -> 1 + arity b
@@ -687,7 +716,7 @@ arguments, the types, guards and patterns. One error of names or types
 stops the check of the function; the errors of guards and patterns come
 all, and the notices of unused bindings (E02109) after them.
 -}
-checkFunction :: Ctx -> Signature -> [Equation] -> Either [Diagnostic] ([Diagnostic], (GKey, Global))
+checkFunction :: Ctx -> Signature -> [Equation] -> Either [Diagnostic] ([Diagnostic], (GKey, Global), [(Loc, Name, LocalTy)])
 checkFunction cx0 sig eqs = do
   let bindings = finalWhere eqs
       whereNames = Set.fromList ([eqName q | BEq q <- bindings])
@@ -710,14 +739,35 @@ checkFunction cx0 sig eqs = do
         solveNow cx True
         uses <- gets tsUses
         unused <- unusedRequirements cx n sig bodyRow
-        pure (ceqs, map (snd . snd) binds, unusedNotices cx bindings uses <> unused)
-  case runStateT run (TcState emptySolveState [] [] Set.empty 0 []) of
+        locals <- keptLocals bindings binds
+        pure (ceqs, map (snd . snd) binds, unusedNotices cx bindings uses <> unused, locals)
+  case runStateT run (TcState emptySolveState [] [] Set.empty 0 [] []) of
     Left d -> Left [d]
-    Right ((ceqs, binds, notices), st)
+    Right ((ceqs, binds, notices, locals), st)
       | not (null (tsDiags st)) -> Left (reverse (tsDiags st) <> notices)
       | otherwise ->
           let line = lineOf (cxSource cx) (locStart (sigLoc sig))
-           in Right (notices, ((cxPath cx, sigName sig), GFun (CFun (sigName sig) (cxPath cx) line n ceqs binds)))
+           in Right (notices, ((cxPath cx, sigName sig), GFun (CFun (sigName sig) (cxPath cx) line n ceqs binds)), locals)
+  where
+    {- the types kept, after the constraints are solved: a binding of where
+    has its final type wherever it is bound or named -}
+    keptLocals bindings binds
+      | not (cxRecord cx0) = pure []
+      | otherwise = do
+          st <- gets tsSolve
+          kept <- gets tsLocalTys
+          let sigNames = [sigName s | BSig s <- bindings]
+              final = Map.fromList [(nm, finalOf nm l) | (nm, (l, _)) <- binds]
+              finalOf nm = \case
+                LMono r t -> LTMono r t
+                LPoly sc -> if nm `elem` sigNames then LTScheme sc else LTGen sc
+              sites = [(eqNameLoc q, eqName q) | BEq q <- bindings] <> [(sigNameLoc s, sigName s) | BSig s <- bindings]
+              zonked = \case
+                LTMono r t -> LTMono (zonkRow st r) (zonk st t)
+                LTScheme (Scheme vs r t) -> LTScheme (Scheme vs (zonkRow st r) (zonk st t))
+                LTGen (Scheme vs r t) -> LTGen (Scheme vs (zonkRow st r) (zonk st t))
+              typed (l, nm, t) = (l, nm, zonked (fromMaybe t (Map.lookup nm final)))
+          pure (map typed (reverse kept <> [(l, nm, t) | (l, nm) <- sites, Just t <- [Map.lookup nm final]]))
 
 {- | E05108, an info, for each requirement of the closed row of the body
 of a top-level function that no call of its equations needs, at the
@@ -844,6 +894,9 @@ resolveVar cx locals l q = case q of
   QName Nothing n
     | Just loc <- Map.lookup n locals -> do
         when (Set.member n (cxWhereNames cx)) $ modify' (\s -> s {tsUses = Set.insert (cxUser cx, n) (tsUses s)})
+        recordLocal cx l n $ case loc of
+          LMono r t -> LTMono r t
+          LPoly sc -> LTScheme sc
         (,CLocal n) <$> localTy loc
     | Just (_, fi) <- Map.lookup n (vFuns (cxVis cx)) -> global fi
     | Just fi <- Map.lookup n (scGlobals (cxScope cx)) -> global fi
@@ -1071,6 +1124,7 @@ checkPat :: Ctx -> Ty -> Pat -> Tc (Map Name Ty, CPat, XPat)
 checkPat cx expected = \case
   PVar l n -> do
     when (Set.member n (cxWhereNames cx)) $ failAt cx "E02104" l ("変数 " <> n <> " は where の束縛と同じ名前です")
+    recordLocal cx l n (LTMono pureRow expected)
     pure (Map.singleton n expected, CPVar n, XWild)
   PWild _ -> pure (Map.empty, CPWild, XWild)
   PNum l v -> do
@@ -1313,6 +1367,57 @@ constraintTypes = \case
 
 lineAt :: Ctx -> Loc -> Int
 lineAt cx l = lineOf (cxSource cx) (locStart l)
+
+-- * The types of local names for the LSP (docs/adr/0170)
+
+{- | A type kept for a local name as the hover shows it: the row of naming
+it before the type, as a signature writes them. The variables of a
+scheme generalised and those never decided are named a, b, ... in the
+order they appear, past the names of the signature around. A variable of
+a row that appears once and nowhere else adds no requirement and is left
+out: the row is closed there.
+-}
+localText :: LocalTy -> Text
+localText = \case
+  LTScheme sc -> showScheme sc
+  LTMono r t -> named r t
+  LTGen (Scheme _ r t) -> named r t
+  where
+    named r0 t0 =
+      let occurrences = rowVars r0 <> tyVars t0
+          lone = Set.fromList [v | v <- occurrences, length (filter (== v) occurrences) == 1]
+          close (Row rs v) = Row rs (if maybe False (`Set.member` lone) v then Nothing else closeTy <$> v)
+          closeTy = \case
+            TC c as -> TC c (map closeTy as)
+            TF a row b -> TF (closeTy a) (close row) (closeTy b)
+            x -> x
+          r = close r0
+          t = closeTy t0
+          vars = nub (rowVars r <> tyVars t)
+          taken = Set.fromList (rowNames r <> tyNames t)
+          names = filter (`Set.notMember` taken) ([T.singleton c | c <- ['a' .. 'z']] <> [T.pack (c : show i) | i <- [1 :: Int ..], c <- ['a' .. 'z']])
+          table = Map.fromList (zip vars [TS (-1 - i) nm | (i, nm) <- zip [0 ..] names])
+          sub = \case
+            v@(TM _) -> Map.findWithDefault v v table
+            v@(TG _) -> Map.findWithDefault v v table
+            TC c as -> TC c (map sub as)
+            TF a row b -> TF (sub a) (subRow row) (sub b)
+            x -> x
+          subRow (Row rs v) = Row rs (sub <$> v)
+       in showScheme (Scheme [] (subRow r) (sub t))
+    tyVars = \case
+      v@(TM _) -> [v]
+      v@(TG _) -> [v]
+      TC _ as -> concatMap tyVars as
+      TF a row b -> tyVars a <> rowVars row <> tyVars b
+      _ -> []
+    rowVars (Row _ v) = maybe [] tyVars v
+    tyNames = \case
+      TS _ nm -> [nm]
+      TC _ as -> concatMap tyNames as
+      TF a row b -> tyNames a <> rowNames row <> tyNames b
+      _ -> []
+    rowNames (Row _ v) = maybe [] tyNames v
 
 -- * The functions .gm uses (docs/adr/0162)
 
