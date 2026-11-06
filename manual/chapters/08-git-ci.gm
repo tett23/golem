@@ -232,9 +232,12 @@ CI を組む作業は、社内の IT の部署に頼むことが多いでしょ�
 ターミナルや Git の説明は要らない一方で、仕組みを組むときに頼る約束（すべてのコマンドの終了コード、診断の JSON のフィールド、プラグインと受け渡すデータの形）は、このマニュアルには書いていないからです。
 
 そうした技術者に向けて、Golem には開発者のマニュアル[index reading=かいはつしゃのまにゅある: 開発者のマニュアル]があります。
-Golem の各バージョンを GitHub Releases（第[ref-number first-book]章の「[ref-title install]」）で公開するとき、このマニュアルと並べて、開発者のマニュアルの PDF と HTML も置いています。
-ファイルの名前は、[code: golem-dev-manual-v0.1.0.pdf] と [code: golem-dev-manual-v0.1.0-html.tar.gz] のような形です。
+Golem の各バージョンを GitHub Releases（第[ref-number first-book]章の「[ref-title install]」）で公開するとき、このマニュアルと並べて、開発者のマニュアルも置いています。
 CI で使う Golem と同じバージョンのものを渡してください。
+ファイルの名前は、次のような形です。
+
+- [code: golem-dev-manual-v0.1.0.pdf]：PDF
+- [code: golem-dev-manual-v0.1.0-html.tar.gz]：HTML のアーカイブ
 
 開発者のマニュアルは二部に分かれています。
 技術者に読んでもらうのは、Golem を部品として使う人に向けた第一部「Golem で仕組みを作る」の六つの章です。
