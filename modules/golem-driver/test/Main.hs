@@ -7,6 +7,7 @@ import CliSpec
 import ColophonSpec
 import DiagnosticSitesSpec
 import DiagnosticsSpec
+import DoubleDashSpec (doubleDashTests)
 import EmetSamplesSpec (emetSamplesTests)
 import FigureSpec
 import FunctionsSpec (functionsTests)
@@ -89,6 +90,7 @@ tests skips =
              testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,
              testGroup "vertical glyphs turned without a vertical form (ADR 0015)" turnedTests,
              testGroup "kenten in the PDF (golem-driver ADR 0019)" kentenTests,
+             testGroup "double dashes drawn as one line (docs/adr ADR 0172)" doubleDashTests,
              testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
              testGroup "hard line breaks (docs/adr ADR 0016)" hardBreakTests,
              testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,

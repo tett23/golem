@@ -16,6 +16,7 @@ module Golem.Layout.Japanese
     Anchor (..),
     BoxKind (..),
     boxKind,
+    joinedDashes,
     noteMarkSize,
     noteMarkText,
     composeInlines,
@@ -33,6 +34,7 @@ import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Unsafe (lengthWord8)
 import Golem.Doc.IR
 import Golem.Doc.Numerals (kanji, kanjiDigits)
 import Golem.Layout.Aki (AkiPos (..), AkiSet, akiBetween, defaultAkiSet, noAki)
@@ -44,7 +46,7 @@ import Golem.Layout.Look
 import Golem.Layout.Ruby
 import Golem.Length qualified as L
 import Golem.Project.Style (Dim (..), dimToSp)
-import Golem.Syntax (Diagnostic, Severity (..), SrcSpan, diagnostic)
+import Golem.Syntax (Diagnostic, Severity (..), SrcSpan (..), diagnostic, mkSpan, spanLength)
 
 lineStartProhibited :: Bool -> CharClass -> Bool
 lineStartProhibited strict = \case
@@ -199,10 +201,11 @@ data Anchor
 {- | What a box shows (kept in 'bcTag').
 'KindRuby' is a mono ruby, 'KindGroupRuby' a group ruby (golem-layout ADR 0009).
 'KindAki' is the empty box of an [aki] (golem-layout ADR 0012) and
-'KindNoteMark' the mark of a note (golem-driver ADR 0018); they come last
-so that the values before them keep their 'fromEnum'.
+'KindNoteMark' the mark of a note (golem-driver ADR 0018) and 'KindDashes'
+a run of full-width dashes (docs/adr ADR 0172); they come last so that
+the values before them keep their 'fromEnum'.
 -}
-data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby | KindAki | KindNoteMark
+data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby | KindAki | KindNoteMark | KindDashes
   deriving stock (Eq, Show, Enum, Bounded)
 
 boxKind :: BoxContent -> BoxKind
@@ -221,6 +224,7 @@ data Piece
   | PForcedBreak -- a hard line break: the line ends as a paragraph does (docs/adr ADR 0016)
   | PAki !Look !AkiAmount -- [aki]: a fixed space, no break around it (docs/adr ADR 0019)
   | PCode !Look !Text !Sp !Sp -- a run of code without spaces and tabs (golem-driver ADR 0017), the padding before and after it (golem-driver ADR 0029)
+  | PDashes !Look !Text -- a run of two or more full-width dashes: one box, an em for each (docs/adr ADR 0172)
   | PAnchor (Int -> Anchor)
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
@@ -276,7 +280,7 @@ comes from.
 -}
 piecesOf :: ComposeEnv -> Inline -> [(BoxSource, Piece)]
 piecesOf env inl = case inl of
-  Text sp t -> at sp (textPieces lk t)
+  Text sp t -> [((ceSizeSource env, pieceSpan sp t i p), p) | (i, p) <- textPiecesAt lk t]
   Color _ _ xs -> restyled xs
   CharStyle _ _ xs -> restyled xs
   -- the shape is a look of the characters inside; the inner kenten wins (golem-driver ADR 0019)
@@ -335,15 +339,39 @@ noteMarkSize d s = max 1 (min s (dimToSp s d))
 noteMarkText :: Text -> Int -> Text
 noteMarkText format n = T.replace "{n}" (T.pack (show n)) format
 
+{- | The source of a piece of a text at a character of it: the run of
+dashes itself when the text is its source byte for byte (G07101, docs/adr
+ADR 0172), the text otherwise.
+-}
+pieceSpan :: SrcSpan -> Text -> Int -> Piece -> SrcSpan
+pieceSpan sp t i = \case
+  PDashes _ d
+    | spanLength sp == lengthWord8 t ->
+        let s = spanStart sp + lengthWord8 (T.take i t)
+         in mkSpan (spanFile sp) s (s + lengthWord8 d)
+  _ -> sp
+
+{- | The characters a run of which in Japanese text is one box, an em for
+each, drawn as one line (docs/adr ADR 0172): the full-width dashes. The
+one list of them; more characters are added here.
+-}
+joinedDashes :: [Char]
+joinedDashes = "\x2014\x2015"
+
 textPieces :: Look -> Text -> [Piece]
-textPieces lk t
-  | breaksAsCode lk = codePieces lk t
-  | otherwise = go (zip units latinish)
+textPieces lk = map snd . textPiecesAt lk
+
+-- | The pieces of a text, each with the index of its first character in the text.
+textPiecesAt :: Look -> Text -> [(Int, Piece)]
+textPiecesAt lk t
+  | breaksAsCode lk = map (0,) (codePieces lk t)
+  | otherwise = joinDashes (go (zip3 offsets units latinish))
   where
     {- the units of the text: a base character and the combining characters
     after it, variation selectors among them (golem-pdf ADR 0006,
     golem-driver ADR 0036); the classes come from the base characters -}
     units = [(T.head u, T.tail u) | u <- clusters t]
+    offsets = scanl (\n (_, marks) -> n + 1 + T.length marks) 0 units
     cs = map fst units
     isLatinWordChar c = charClass c == Western && not (isSpace c)
     -- quotation marks, apostrophes, hyphens and dashes join a Latin word when
@@ -360,12 +388,23 @@ textPieces lk t
       (c : _) -> isLatinWordChar c
       [] -> False
     go [] = []
-    go (((c, marks), l) : rest)
-      | c == ' ' = PSpace lk : go (dropWhile ((== ' ') . fst . fst) rest)
+    go ((i, (c, marks), l) : rest)
+      | c == ' ' = (i, PSpace lk) : go (dropWhile (\(_, (b, _), _) -> b == ' ') rest)
       | l =
-          let (w, rest') = span snd (((c, marks), l) : rest)
-           in PWord lk (T.concat [T.cons b m | ((b, m), _) <- w]) : go rest'
-      | otherwise = PChar lk c marks : go rest
+          let (w, rest') = span (\(_, _, latin) -> latin) ((i, (c, marks), l) : rest)
+           in (i, PWord lk (T.concat [T.cons b m | (_, (b, m), _) <- w])) : go rest'
+      | otherwise = (i, PChar lk c marks) : go rest
+    -- two or more dashes in a row, without combining characters, are one piece (docs/adr ADR 0172)
+    joinDashes = \case
+      (i, p) : rest
+        | Just c <- dash p,
+          (more@(_ : _), rest') <- span (isJust . dash . snd) rest ->
+            (i, PDashes lk (T.pack (c : [d | (_, q) <- more, Just d <- [dash q]]))) : joinDashes rest'
+      x : rest -> x : joinDashes rest
+      [] -> []
+    dash = \case
+      PChar _ c marks | T.null marks, c `elem` joinedDashes -> Just c
+      _ -> Nothing
 
 {- | The text of code (golem-driver ADR 0017): spaces as breaks of a fixed
 width (golem-layout ADR 0017), a
@@ -598,6 +637,13 @@ itemsFor env prev p next = case p of
           AkiAbs x -> x
      in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0 (ceBoxSource env))]
   PCode lk run ps pe -> codeItems env lk run ps pe
+  {- a run of dashes: an em for each, whatever the font's advance; inseparable
+  at both ends, so the spacing and the breaks around it are those of one
+  dash; the tracking once, after it (docs/adr ADR 0172) -}
+  PDashes lk d ->
+    let t = tracking lk
+        w = lkSize lk * fromIntegral (T.length d)
+     in [Box (w + t) (BoxContent d False 0 0 (fromEnum KindDashes) lk 0 (negate t) [] 0 0 (ceBoxSource env))]
   PAnchor _ -> []
 
 {- | A run of code (golem-driver ADR 0017): a box for each part of Latin or

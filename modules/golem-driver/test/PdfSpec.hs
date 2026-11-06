@@ -1,4 +1,4 @@
-module PdfSpec (qpdfInstalled, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests, codeBlockRubyTests, ligatureTests, combiningTests) where
+module PdfSpec (qpdfInstalled, fontResources, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests, codeBlockRubyTests, ligatureTests, combiningTests) where
 
 import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
@@ -978,7 +978,11 @@ turnedTests =
       let encodingOf name = [enc | (n, dict, _) <- resources, n == name, enc <- ["Identity-V", "Identity-H"], ("/" <> enc) `BS.isInfixOf` dict]
           drawn = drawnGlyphs content
           dashes = [d | d <- drawn, dGlyph d == 722]
-          turned = [d | d <- dashes, dMatrix d == ["0", "-1", "1", "0"]]
+          -- turned, and scaled along the line as a double dash (docs/adr ADR 0172)
+          turned = [d | d <- dashes, isTurned (dMatrix d)]
+          isTurned = \case
+            [a, b, c, d] -> (a, c, d) == ("0", "1", "0") && "-" `BS.isPrefixOf` b
+            _ -> False
       length turned @?= 2
       length dashes @?= 2
       assertBool "the horizontal font" (all (\d -> encodingOf (dFont d) == ["Identity-H"]) turned)

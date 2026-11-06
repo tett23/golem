@@ -13,6 +13,7 @@ module Golem.Driver.Pdf.Flow
     columnSetRects,
     checkedGeometry,
     kentenGlyphDiagnostics,
+    dashInkNotices,
     flowLines,
     layoutPdf,
     gridLine,
@@ -374,6 +375,19 @@ kentenGlyphDiagnostics fid vertical fonts layout =
   | (role, shape) <- Set.toAscList (Set.fromList [(lkFace (bcLook c), shape) | l <- layoutLines layout, Box _ c <- lineItems l, boxKind c == KindKenten, Just shape <- [lkKenten (bcLook c)]]),
     let gs = kentenShaped fonts vertical role shape,
     null gs || any ((== 0) . shGlyph) gs
+  ]
+
+{- | G07101 (docs/adr ADR 0172): a run of dashes with a dash whose glyph has
+no ink, once for each run, at its first dash. Such a glyph is drawn
+unscaled.
+-}
+dashInkNotices :: Bool -> LoadedFonts -> PdfLayout -> [Diagnostic]
+dashInkNotices vertical fonts layout =
+  [ notice "G07101" (snd (bcSource c)) ("ダッシュの字形に線がないので、二倍ダッシュの線をつながずに描きます: " <> codePointText ch <> "（" <> T.pack (fst (lfFaceFile fonts (shFace g))) <> "）")
+  | l <- layoutLines layout,
+    Box _ c <- lineItems l,
+    boxKind c == KindDashes,
+    (ch, g) <- take 1 [(ch, g) | ch <- T.unpack (bcText c), g <- dashShaped fonts vertical (bcLook c) ch, isNothing (dashInk fonts vertical g)]
   ]
 
 -- | Every line of a layout: of the text, notes, sidenotes, tables, captions and the table of contents.

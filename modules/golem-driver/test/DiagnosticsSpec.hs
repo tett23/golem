@@ -139,13 +139,15 @@ everyNoticeProjects =
   ]
   where
     -- five lines of 12 characters, a paragraph style with rules, and a zero indent of caption (G03100)
-    style = replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\" }\nrule-after = { weight = \"0.5pt\" }\n\n[paragraph-styles.caption]\nindent = \"0zw\"\n"
+    -- the role inkless of the fake fonts draws dashes without ink (G07101)
+    style = replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\" }\nrule-after = { weight = \"0.5pt\" }\n\n[paragraph-styles.caption]\nindent = \"0zw\"\n" <> fakeBody <> "\n[fonts.inkless]\nja = \"fonts/b.otf\"\n\n[character-styles.inkless]\nfont = \"inkless\"\n"
     tall = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"300\"><rect width=\"100\" height=\"300\" fill=\"none\"/></svg>"
     source =
       T.concat
         [ TE.decodeUtf8 noticeSource,
           "\n本文。\n\n@style verse\n  ab\\ \n  cd\n\n", -- G02079
           "[ruby: [kenten: 漢]|かん]\n\n", -- G07045
+          "あ[style inkless: ——]い\n\n", -- G07101
           "```\nabcdefghijklmnopqrstuvwxyzabcd\n```\n\n", -- G07030
           "@figure images/tall.svg alt=\"t\"\n  キャプション。\n\n", -- G07039, with a caption for G03100
           "@style sec\n  " <> T.replicate 96 "あ" <> "\n\n", -- G07046

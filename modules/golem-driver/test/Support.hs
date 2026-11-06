@@ -519,7 +519,7 @@ tfSizes content = [size | l <- BC.lines content, (size, "Tf") <- zip (BC.words l
 
 {- | Fixed-width stand-in fonts: full-width characters one em, others half;
 the role "wide" (face 2) sets everything one em wide; the role "heading"
-is face 4.
+is face 4; the glyphs of the role "inkless" (face 8) have no ink (G07101).
 -}
 fakeFonts :: LoadedFonts
 fakeFonts =
@@ -531,7 +531,7 @@ fakeFonts =
       lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i (0, 0) ClusterWhole | (i, c) <- zip [0 ..] (T.unpack t)],
       lfEmBoxCentral = const (38 / 100),
       lfFaceFile = const ("fonts/b.otf", "truetype"),
-      lfInkBox = \_ _ -> Just (1 / 10, -(1 / 10), 9 / 10, 8 / 10),
+      lfInkBox = \ix _ -> if ix == 8 then Nothing else Just (1 / 10, -(1 / 10), 9 / 10, 8 / 10),
       lfEmbed = \_ vertical used ->
         pure . Right $
           Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used ("Adobe", "Identity", 0)
@@ -543,6 +543,7 @@ fakeFonts =
       "wide" -> 2
       "heading" -> 4
       "code" -> 6
+      "inkless" -> 8
       _ -> 0
     adv c = if fromEnum c < 0x2000 then 1 / 2 else 1
 
