@@ -138,6 +138,22 @@ diagnostics は、評価で内容を変えたファイルと、diagnostics が�
 評価の結果を使うと、評価までの 100ms のあいだ、色の位置が本文とずれる。
 大きな章のファイルでは構文解析に数十 ms かかるので、別のスレッドで作って応答し、そのあいだも補完などの要求を待たせない。
 
+### エディタ向けの構文の定義
+
+semantic tokens の色は、LSP が動き出すまで付かず、LSP を使わないエディタでは付かない。
+その間のために、[code: .gm] と [code: .emet] の構文の定義を [code: tools/editors/] に置く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0170-emet-editor-support.md]（ADR 0170「Emet のエディタ対応と、.gm と .emet の構文の定義」）]
+形式は二つあり、[code: textmate/] の TextMate の文法は Visual Studio Code や Sublime Text が、[code: tree-sitter-golem/] と [code: tree-sitter-emet/] の tree-sitter の文法は Neovim、Helix、Zed が読む。
+リリースのアーカイブには、[code: share/golem/editors/] として入る。
+各エディタでの読み込ませ方は [code: tools/editors/README.md] にある。
+
+色の分類は semantic tokens と同じにし、型ごとに TextMate のスコープと tree-sitter の捕捉の名前を対応させる。
+tree-sitter の文法は golem-parser の PEG の文法とは別に書いたもので、改行と字下げで決まる区切り（段落の続きの行、ブロックの本体、コードブロックの終わり）は C で書いた外部のスキャナーが読む。
+PEG の文法が誤りとする原稿の一部も受け付ける。
+
+構文を変えたときは、PEG の文法、semantic tokens、二つの構文の定義を合わせて変える。
+変え忘れは CI の [code: editors] ジョブ（[code: tools/editors/test.sh]）が見つける。
+このジョブは、生成したパーサーが [code: grammar.js] と一致すること、二つの形式が同じ見本の原稿の同じ要素を同じ分類にすること、テストの原稿と二つのマニュアルのすべての [code: .gm] と [code: .emet] を tree-sitter が誤りなく読むことを確かめる。
+
 ## diagnostics の載せ方
 
 LSP の diagnostic の重大度は、error が [code: Error]、warning が [code: Warning]、notice が [code: Information] になる。
