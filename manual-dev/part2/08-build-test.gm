@@ -148,11 +148,33 @@ golem-parser のテストは、二つの文法が同じ入力を受理するこ�
 CI の [code: build] ジョブは、[code: scripts/gen-parser.sh] を実行し、生成物に差分がないことを [code: git diff --exit-code] で確かめる。
 文法だけを変えて生成し忘れると、CI が止まる。
 
+## 埋め込むモジュールを生成する
+
+golem-driver は、リポジトリのルートの [code: VERSION] と [code: docs/diagnostics.md] を、生成してコミットしたモジュールで埋め込む。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md]（docs/adr の ADR 0203「golem-driver の Template Haskell を、生成してコミットしたモジュールにする」）]
+[code: VERSION] は [code: modules/golem-driver/src/Golem/Driver/Version/Embedded.hs] に、[code: docs/diagnostics.md] は [code: modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs] になる。
+どちらかのファイルを変えたら、同じ変更で生成し直して生成物もコミットする。
+
+```sh
+$ sh scripts/gen-embedded.sh
+```
+
+このスクリプトは、ファイルの一行を一つの文字列のリテラルにし、改行でつなぐモジュールを書く。[index reading="gen-embedded.sh": gen-embedded.sh]
+ファイルを一行変えれば、生成物も一行だけ変わる。
+タブかほかの制御文字を含むファイルは、行の番号を書いて失敗し、生成物を書き換えない。
+
+生成し直すのを忘れると、二つの検査が止める。
+golem-driver のテストは、生成物がファイルとバイト単位で一致することを確かめる。
+CI の [code: build] ジョブは、パーサーの検査の後でこのスクリプトを実行し、生成物に差分がないことを [code: git diff --exit-code] で確かめる。
+
+このモジュールを Template Haskell で作らないのは、golem-driver を wasm で組むためである。
+wasm の GHC は Template Haskell の splice を評価するときに依存のパッケージを読み込むが、golem-font が import する例外処理のタグ [code: __c_longjmp] を扱えない。
+そこで、golem-font に依存するパッケージでは Template Haskell を使わない。
+
 ## 整形と検査
 
 Haskell のコードは fourmolu 0.21.0.0 で整形し（設定は [code: fourmolu.yaml]）、hlint 3.10 の指摘をなくす。[index reading="fourmolu": fourmolu][index reading="hlint": hlint]
 どちらも CI の [code: format] ジョブが検査する。
-生成したパーサーと、ラベルを外した文法は対象外である。
+生成したパーサーと、ラベルを外した文法と、[code: scripts/gen-embedded.sh] が生成する二つのモジュールは対象外である。
 
 CI の [code: format] ジョブは、hlint を次のように呼ぶ。
 手元で同じ検査をするときも、この形で実行すればよい。

@@ -36,7 +36,7 @@ $ gh run rerun <実行の ID> --failed
 ## 手順
 
 + セキュリティ監査をする。前の監査からの変更を中心に、信頼できない入力（原稿、TOML、画像、フォント、CSL-JSON、プラグイン、シンボリックリンク）と CI のワークフローを調べ、結果を [code: docs/audits/<日付>-security-audit.md] に記録して [code: main] に入れる。
-+ バージョンを上げるプルリクエストを作る。[code: VERSION] を新しいバージョン（例：[code: 0.1.0-rc1]）に書き換え、識別子を除いた [code: X.Y.Z] を全パッケージの cabal ファイルの [code: version] に書く。CI の [code: release-scripts] ジョブが、二つの一致を検査する。
++ バージョンを上げるプルリクエストを作る。[code: VERSION] を新しいバージョン（例：[code: 0.1.0-rc1]）に書き換え、識別子を除いた [code: X.Y.Z] を全パッケージの cabal ファイルの [code: version] に書く。CI の [code: release-scripts] ジョブが、二つの一致を検査する。[code: VERSION] を書き換えた後に [code: sh scripts/gen-embedded.sh] を走らせ、生成し直した [code: modules/golem-driver/src/Golem/Driver/Version/Embedded.hs] も同じプルリクエストに入れる。
 + プルリクエストを [code: main] にマージする。
 + マージしたコミットに、[code: v] に [code: VERSION] の内容を続けたタグ（例：[code: v0.1.0-rc1]）を付けて push する。
 + [code: release.yml] が、配布物を作って検査し、下書きのリリースを作る。プレリリースのタグでは、プレリリースの印が付く。

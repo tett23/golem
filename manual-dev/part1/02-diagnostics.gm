@@ -193,7 +193,8 @@ JSON の形式には加えない。
 LSP は、文書にあるコードの diagnostic の [code: codeDescription] に、[code: main] の [code: docs/diagnostics.md] の節の URL（[code: …/docs/diagnostics.md#g01017] の形）を付ける。
 
 説明の文書は golem-driver に埋め込まれている。
-コンパイルのときに Template Haskell で読み、節の形（題、重大度、状態、意味、主な原因、直し方、昇順）が崩れていれば golem をビルドできない。
+埋め込みは、[code: scripts/gen-embedded.sh] が文書から生成してコミットしたモジュール [code: Golem.Driver.Explain.Embedded] で行う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md]（docs/adr の ADR 0203「golem-driver の Template Haskell を、生成してコミットしたモジュールにする」）]
+節の形（題、重大度、状態、意味、主な原因、直し方、昇順）が崩れていれば、golem-driver のテストが失敗する。
 ソースで使うコードと文書の節が一致することは golem-driver のテストが確かめる。
 この決まりは、Golem を開発する側から見ると、diagnostic を一つ足すたびに文書の節も足す義務になる（第[ref-number docs]章）。
 

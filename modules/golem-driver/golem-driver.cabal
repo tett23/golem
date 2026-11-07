@@ -7,10 +7,11 @@ author:             tett23
 maintainer:         tett23@gmail.com
 category:           Text
 build-type:         Simple
--- the version of Golem, embedded by Golem.Driver.Version (docs/adr/0004);
--- a symbolic link to VERSION at the root of the repository
--- the explanations of the diagnostic codes, embedded by Golem.Driver.Explain
--- (golem-cli ADR 0005); a symbolic link to docs/diagnostics.md
+-- read by the tests that compare them with the modules that
+-- scripts/gen-embedded.sh generates (docs/adr/0203): the version of Golem
+-- (docs/adr/0004), a symbolic link to VERSION at the root of the
+-- repository, and the explanations of the diagnostic codes (golem-cli ADR
+-- 0005), a symbolic link to docs/diagnostics.md
 extra-source-files:
   VERSION
   diagnostics.md
@@ -25,6 +26,7 @@ library
   exposed-modules:  Golem.Driver
                     Golem.Driver.Explain
                     Golem.Driver.Explain.Catalog
+                    Golem.Driver.Explain.Embedded
                     Golem.Driver.Functions
                     Golem.Driver.Html
                     Golem.Driver.Lint
@@ -32,6 +34,7 @@ library
                     Golem.Driver.Plugins
                     Golem.Driver.Svg
                     Golem.Driver.Version
+                    Golem.Driver.Version.Embedded
   other-modules:    Golem.Driver.ProjectVars
   build-depends:
     , base          >=4.20 && <4.21
@@ -57,7 +60,6 @@ library
     , golem-syntax
     , golem-text
     , golem-typeset
-    , template-haskell
     , text          >=2.0  && <2.2
     , time          >=1.12 && <1.15
   default-language: GHC2021
