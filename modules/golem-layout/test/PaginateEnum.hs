@@ -1,7 +1,9 @@
 {- | Every small input of 'paginateWithin' (docs/adr/0204): columns of 3
 to 8 grid lines, pages of one or two columns, a footnote separator of
 one grid line, and flows of the elements of 'elementsFor', tier n
-holding the flows of n elements.
+holding the flows of n elements ('fullInputs'). The tests check the
+enumeration shortened by docs/adr/0208 ('inputs'), and draw inputs from
+the whole one.
 
 The lines are numbered from 0 in the order of the flow, the figures
 from 1000. A paragraph with a note has it on its first line; a note
@@ -13,6 +15,9 @@ module PaginateEnum
   ( Element (..),
     Input (..),
     elementsFor,
+    shortElementsFor,
+    inputsOver,
+    fullInputs,
     inputs,
     enumFlows,
     paginateInput,
@@ -71,11 +76,39 @@ elementsFor c =
     <> [ESpace, EBreak]
     <> [ENeedLines, EBlank 1, EBlank 2]
 
-{- | Every input, tier n holding the flows of n elements, the columns of
-fewer grid lines and the pages of fewer columns first.
+{- | The elements of the flows of the shortened enumeration (docs/adr/0208,
+its section 3): those of 'elementsFor', with the figures of 1, c − 1 and
+c lines only, the values of the table of the boundary inputs of
+docs/adr/0204 (its c + 1 is taller than the column, which 'elementsFor'
+no longer makes, docs/adr/0206).
 -}
+shortElementsFor :: Int -> [Element]
+shortElementsFor c = filter boundary (elementsFor c)
+  where
+    boundary = \case
+      EFigure n -> n `elem` [1, c - 1, c]
+      _ -> True
+
+{- | Every input of the columns of the grid lines given, of one and two
+columns, and of the elements given for each column, tier n holding the
+flows of n elements, the columns of fewer grid lines and the pages of
+fewer columns first.
+
+The tiers of an enumeration that is a value of its own, as 'inputs' and
+'fullInputs' are, stay as long as the program once they are made; the
+tests that check millions of inputs call this function where they check
+them instead, so that only the inputs being checked are held.
+-}
+inputsOver :: [Int] -> (Int -> [Element]) -> Tiers Input
+inputsOver cs els = foldr1 (\/) [mapT (Input c k) (listsOf (Tiers [els c])) | c <- cs, k <- [1, 2]]
+
+-- | The inputs of docs/adr/0204: columns of 3 to 8 grid lines and every element of 'elementsFor'.
+fullInputs :: Tiers Input
+fullInputs = inputsOver [3 .. 8] elementsFor
+
+-- | The inputs of the shortened enumeration (docs/adr/0208): columns of 3 to 5 grid lines and 'shortElementsFor'.
 inputs :: Tiers Input
-inputs = foldr1 (\/) [mapT (Input c k) (listsOf (Tiers [elementsFor c])) | c <- [3 .. 8], k <- [1, 2]]
+inputs = inputsOver [3 .. 5] shortElementsFor
 
 -- | The note of the line i.
 noteOf :: Int -> NoteId
