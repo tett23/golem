@@ -927,31 +927,41 @@ placeTokens enc text = concatMap place
       Just i -> (s, s + i) : lineParts (s + i + 1) e
       Nothing -> [(s, e)]
 
--- | (start, end, type, modifiers) of each highlighted token under a node at the offset.
+{- | (start, end, type, modifiers) of each highlighted token under a node at
+the offset. A node inside an expression (NExpr) gives its punctuation the
+operator type (golem-lsp ADR 0007); a prose slot or a command inside it does not.
+-}
 classify :: Int -> C.Node -> [(Int, Int, SemanticTokenTypes, [SemanticTokenModifiers])]
-classify start n = go start False False (C.nodeChildren n)
+classify = classifyIn False
+
+classifyIn :: Bool -> Int -> C.Node -> [(Int, Int, SemanticTokenTypes, [SemanticTokenModifiers])]
+classifyIn outer start n = go start False False (C.nodeChildren n)
   where
     parent = C.nodeKind n
+    inExpr = (outer || parent == C.NExpr) && parent `notElem` [C.NProseSlot, C.NInlineCommand]
     go _ _ _ [] = []
     go off ident word (e : es) =
       let w = C.elementWidth e
           rest k = go (off + w) (ident || k == C.KIdent) (word || k == C.KWord) es
        in case e of
-            C.ElemNode m -> classify off m <> go (off + w) ident word es
+            C.ElemNode m -> classifyIn inExpr off m <> go (off + w) ident word es
             C.ElemToken (C.Token k _) ->
-              maybe [] (\(ty, ms) -> [(off, off + w, ty, ms)]) (tokenType parent ident word k) <> rest k
+              maybe [] (\(ty, ms) -> [(off, off + w, ty, ms)]) (tokenType parent inExpr ident word k) <> rest k
 
-{- | The type of a token from its kind, its parent's kind, and whether an
-identifier or a word came before it under the same parent.
+{- | The type of a token from its kind, its parent's kind, whether it is
+inside an expression, and whether an identifier or a word came before it
+under the same parent.
 -}
-tokenType :: C.SyntaxKind -> Bool -> Bool -> C.SyntaxKind -> Maybe (SemanticTokenTypes, [SemanticTokenModifiers])
-tokenType parent ident word = \case
+tokenType :: C.SyntaxKind -> Bool -> Bool -> Bool -> C.SyntaxKind -> Maybe (SemanticTokenTypes, [SemanticTokenModifiers])
+tokenType parent inExpr ident word = \case
   C.KComment -> plain SemanticTokenTypes_Comment
   C.KProofComment -> Just (SemanticTokenTypes_Comment, [SemanticTokenModifiers_Modification])
   C.KAt | parent == C.NBlockCommand -> plain SemanticTokenTypes_Decorator
   C.KIdent
     | parent == C.NBlockCommand, not ident -> plain SemanticTokenTypes_Decorator
-    | parent `elem` [C.NInlineCommand, C.NCallExpr], not ident -> plain SemanticTokenTypes_Function
+    | parent == C.NInlineCommand, not ident -> plain SemanticTokenTypes_Function
+    -- both names of ns.f (golem-lsp ADR 0007)
+    | parent == C.NCallExpr -> plain SemanticTokenTypes_Function
     | parent == C.NVarExpr -> plain SemanticTokenTypes_Variable
   C.KWord
     | parent == C.NKeywordArgument -> plain (if word then SemanticTokenTypes_String else SemanticTokenTypes_Parameter)
@@ -973,6 +983,11 @@ tokenType parent ident word = \case
   C.KPipe -> plain SemanticTokenTypes_Operator
   C.KDelim -> plain SemanticTokenTypes_Operator
   C.KFence -> plain SemanticTokenTypes_Keyword
+  -- the brackets and the colon of an inline command (golem-lsp ADR 0007)
+  k | parent == C.NInlineCommand, k `elem` [C.KLBracket, C.KColon, C.KRBracket] -> plain SemanticTokenTypes_Operator
+  -- the punctuation of an expression (golem-lsp ADR 0007)
+  k | inExpr, k `elem` exprPunctuation -> plain SemanticTokenTypes_Operator
   _ -> Nothing
   where
     plain t = Just (t, [])
+    exprPunctuation = [C.KDot, C.KLParen, C.KRParen, C.KComma, C.KLBracket, C.KRBracket, C.KLBrace, C.KRBrace, C.KColon]
