@@ -94,7 +94,6 @@ test-suite golem-driver-test
     EmetSamplesSpec
     FigureSpec
     FunctionsSpec
-    IRGen
     MemoSpec
     OutputGoldenSpec
     PageElementsSpec
@@ -122,6 +121,7 @@ test-suite golem-driver-test
     , golem-assemble
     , golem-bibliography
     , golem-doc
+    , golem-doc-gen
     , golem-driver
     , golem-emet
     , golem-epub

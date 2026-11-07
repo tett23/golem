@@ -1,3 +1,6 @@
+-- A copy of Golem.DocGen of golem-doc-gen (docs/adr/0191): this test
+-- suite cannot depend on golem-doc-gen, which depends on golem-doc, since
+-- cabal rejects the cycle. Change the two together.
 module Gen (genDocument, genInline, genExpr, genInt64) where
 
 import Data.Text (Text)
