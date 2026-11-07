@@ -3,6 +3,7 @@ module Golem.Syntax.Render
   ( SourceInfo (..),
     renderHuman,
     renderJson,
+    jsonString,
   )
 where
 
@@ -136,6 +137,7 @@ renderHuman files = T.concat . map one . sortDiagnostics
             Nothing -> ""
        in header <> excerpt <> related
 
+-- | A JSON string with the escapes of the diagnostics of --format json.
 jsonString :: Text -> Text
 jsonString t = "\"" <> T.concatMap esc t <> "\""
   where
