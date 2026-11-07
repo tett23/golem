@@ -1248,7 +1248,7 @@ UTF-8 として不正なバイト列があります
 表のファイルの誤りは、そのファイルの位置で表示し、そのファイルからは表を作らない。
 
 - メッセージ: `UTF-8 として不正なバイト列があります`
-- 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
+- 段階とモジュール: 構文（golem-syntax の `Golem.Syntax.Read`、golem-parser の `Golem.Parser.Read`）
 - ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)（表のファイル）
 
 ### 主な原因
@@ -1275,7 +1275,7 @@ LSP では、エディタで開いているファイルにも出す。
 `@table` の表のファイル（CSV と TSV）の先頭の BOM は読み飛ばすので、このコードにならない（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
 
 - メッセージ: `ファイルの先頭に BOM があります。BOM を取り除いてください`
-- 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
+- 段階とモジュール: 構文（golem-syntax の `Golem.Syntax.Read`、golem-parser の `Golem.Parser.Read`）
 - ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
@@ -1304,7 +1304,7 @@ CRLF の改行の CR も、単独の CR も含む。
 LSP では、エディタで開いているファイルにも出す。
 
 - メッセージ: `改行に CR が含まれています。改行は LF に限ります`
-- 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
+- 段階とモジュール: 構文（golem-syntax の `Golem.Syntax.Read`、golem-parser の `Golem.Parser.Read`）
 - ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因

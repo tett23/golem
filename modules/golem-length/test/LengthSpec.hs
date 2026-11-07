@@ -34,6 +34,20 @@ tests =
   testGroup
     "length (docs/adr ADR 0103)"
     [ testGroup
+        "divSp (docs/adr/0173)"
+        [ testCase "a negative sp is rounded toward negative infinity" $ do
+            divSp (Sp (-7)) 2 @?= Sp (-4)
+            divSp (Sp (-1)) 3 @?= Sp (-1)
+            divSp (Sp (-6)) 3 @?= Sp (-2),
+          testCase "a positive sp is rounded down" $ do
+            divSp (Sp 7) 2 @?= Sp 3
+            divSp (Sp 6) 3 @?= Sp 2,
+          testProperty "the floor of the quotient" $ property $ do
+            x <- forAll (Gen.integral (Range.linearFrom 0 (-1000000) 1000000))
+            n <- forAll (Gen.integral (Range.linear 1 1000))
+            unSp (divSp (Sp x) n) === floor (fromInteger x / fromInteger n :: Rational)
+        ],
+      testGroup
         "toSp"
         [ testCase "1pt is 65536sp" $ toSp Pt 1 @?= 65536,
           testCase "1in is 72pt" $ toSp In 1 @?= 4718592,
