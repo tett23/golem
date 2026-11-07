@@ -5,7 +5,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Char (isDigit)
 import Data.IORef (modifyIORef', newIORef, readIORef)
-import Data.List (isSuffixOf, nub, sort)
+import Data.List (isPrefixOf, isSuffixOf, nub, sort)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
@@ -357,8 +357,7 @@ explainTests =
             assertBool "a catalog" (not (Map.null catalog))
             filter malformed (Map.keys catalog) @?= [],
           testCase "no code of four digits is in the sources (docs/adr 0061)" $ do
-            pkgs <- listDirectory ".."
-            dirs <- filterM doesDirectoryExist ([".." </> p </> "src" | p <- pkgs] <> ["../golem-cli/app"])
+            dirs <- sourceDirs
             files <- concat <$> mapM haskellFiles dirs
             old <- concat <$> mapM (fmap (quotedCodesOf 4) . TIO.readFile) files
             old @?= [],
@@ -458,11 +457,22 @@ write codes to cause errors).
 -}
 sourceCodes :: IO [T.Text]
 sourceCodes = do
-  pkgs <- listDirectory ".."
-  dirs <- filterM doesDirectoryExist ([".." </> p </> "src" | p <- pkgs] <> ["../golem-cli/app"])
+  dirs <- sourceDirs
   files <- concat <$> mapM haskellFiles dirs
   codes <- mapM (fmap (quotedCodesOf 5) . TIO.readFile) files
   pure (sort (nub (concat codes)))
+
+{- | The folders of the sources of every package: src, and src-plugins and
+src-no-plugins of golem-driver, which its flag plugins chooses between
+(docs/adr/0199); and the app of golem-cli.
+-}
+sourceDirs :: IO [FilePath]
+sourceDirs = do
+  pkgs <- listDirectory ".." >>= filterM doesDirectoryExist . map (".." </>)
+  dirs <- concat <$> mapM (\p -> map (p </>) . filter isSourceDir <$> listDirectory p) pkgs
+  filterM doesDirectoryExist (dirs <> ["../golem-cli/app"])
+  where
+    isSourceDir d = d == "src" || "src-" `isPrefixOf` d
 
 haskellFiles :: FilePath -> IO [FilePath]
 haskellFiles dir = do

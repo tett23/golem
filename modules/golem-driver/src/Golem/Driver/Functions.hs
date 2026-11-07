@@ -29,8 +29,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Driver.Plugins (maxDataBytes)
 import Golem.Emet
-import Golem.Plugin (maxDataBytes)
 import Golem.Project.Files (Files (..))
 import Golem.Project.Manifest (Manifest (..))
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
