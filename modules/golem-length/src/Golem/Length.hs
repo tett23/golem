@@ -17,6 +17,7 @@ module Golem.Length
     mmRationalText,
     ptText,
     emText,
+    divSp,
   )
 where
 
@@ -76,3 +77,7 @@ ptText = showRationalDigits 4 . fromSp Pt
 -- | A ratio (em) as a number for the output: at most four decimals, half to even.
 emText :: Rational -> Text
 emText = showRationalDigits 4
+
+-- | Sp divided by a whole number, rounded toward negative infinity.
+divSp :: Sp -> Integer -> Sp
+divSp (Sp x) n = Sp (x `div` n)
