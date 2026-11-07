@@ -1,0 +1,42 @@
+# 縦組みの本：注は章末に置き、傍注はない（docs/adr/0183）
+[page]
+size = "B6"
+binding = "right"
+writing-mode = "vertical"
+
+[page.grid]
+font-size = "12Q"
+characters = 34
+lines = 12
+line-pitch = "20H"
+columns = 1
+position = { top = "24mm", gutter = "20mm" }
+
+[fonts.body]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[fonts.code]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[headings.1]
+number = "第{n:kanji}章"
+
+[headings.2]
+number = "{n:kanji}"
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[code]
+number = "リスト{chapter}.{n}"
+line-numbers = true
+
+[masters.body]
+running-head = { position = "top-outside", content = ["{heading.1.short}"] }
+folio = { position = "bottom-outside", format = "{n}" }
+
+
+[notes]
+placement = "chapter-end"

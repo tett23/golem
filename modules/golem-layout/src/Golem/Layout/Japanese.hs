@@ -26,6 +26,10 @@ module Golem.Layout.Japanese
     MarkFormat (..),
     parseMarkFormat,
     composeInlines,
+    composeInlinesTree,
+    inlineStructure,
+    InlineNode (..),
+    InlineRole (..),
     lineStartProhibited,
     lineEndProhibited,
     protrusionRatio,
@@ -35,7 +39,8 @@ module Golem.Layout.Japanese
 where
 
 import Data.Char (GeneralCategory (..), generalCategory, isSpace)
-import Data.List (groupBy, zip4)
+import Data.List (groupBy, zip5)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
@@ -142,7 +147,13 @@ data ComposeEnv = ComposeEnv
     -- | the size source inside an inline element, as 'ceRestyle' is the look inside it
     ceSizeSourceOf :: SizeSource -> Inline -> SizeSource,
     -- | the source of the boxes of the piece 'itemsFor' makes; set by 'composeInlines'
-    ceBoxSource :: !BoxSource
+    ceBoxSource :: !BoxSource,
+    -- | the place of the composition in the structure tree of the PDF (docs/adr ADR 0183); empty for none
+    ceSite :: ![Int],
+    -- | the leaf of the boxes of the piece 'itemsFor' makes; set by 'composeInlines'
+    ceLeaf :: !Int,
+    -- | how many inlines at the start are a label, such as the mark of a note (docs/adr ADR 0183)
+    ceLabelInlines :: !Int
   }
 
 -- | The mark of a sidenote in the text: its number, ※ or nothing.
@@ -176,7 +187,10 @@ defaultComposeEnv fs =
       ceNoteMarkSource = const SourceNoteMark,
       ceSizeSource = SourceGrid,
       ceSizeSourceOf = const,
-      ceBoxSource = noBoxSource
+      ceBoxSource = noBoxSource,
+      ceSite = [],
+      ceLeaf = 0,
+      ceLabelInlines = 0
     }
   where
     defaultAdvance c
@@ -240,14 +254,23 @@ data Piece
   | PAnchor (Int -> Anchor)
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
-composeInlines env inls =
-  let sourced = concatMap (piecesOf env) inls
+composeInlines env inls = let (items, anchors, _) = composeInlinesTree env inls in (items, anchors)
+
+{- | 'composeInlines' with the structure of the inlines (docs/adr ADR 0183):
+the leaves of the boxes, numbered in the order of the inlines, inside the
+elements of ruby, references, notes and code.
+-}
+composeInlinesTree :: ComposeEnv -> [Inline] -> ([Item], [Anchor], [InlineNode])
+composeInlinesTree env inls =
+  let (nodes, sourced0) = structured env inls
+      sourced = [(src, p) | (_, src, p) <- sourced0]
+      leaves = [l | (l, _, _) <- sourced0]
       -- padCode keeps one piece for each piece
       pieces = padCode (map snd sourced)
-      (items, anchors) = foldl' emit ([], []) (zip4 (map fst sourced) prevs pieces nexts)
-      emit (acc, as) (_, _, PAnchor f, _) = (acc, (length acc, f) : as)
-      -- the boxes of a piece carry its source (golem-cli ADR 0008)
-      emit (acc, as) (src, pv, p, nx) = (acc <> itemsFor env {ceBoxSource = src} pv p nx, as)
+      (items, anchors) = foldl' emit ([], []) (zip5 leaves (map fst sourced) prevs pieces nexts)
+      emit (acc, as) (_, _, _, PAnchor f, _) = (acc, (length acc, f) : as)
+      -- the boxes of a piece carry its source (golem-cli ADR 0008) and its leaf (docs/adr ADR 0183)
+      emit (acc, as) (l, src, pv, p, nx) = (acc <> itemsFor env {ceBoxSource = src, ceLeaf = l} pv p nx, as)
       -- the neighbours of each piece, anchors and breaks between mono ruby bases skipped
       solid = \case
         PAnchor _ -> False
@@ -259,9 +282,121 @@ composeInlines env inls =
       -- anchors index the normalized items: the spacing inserted before a box shifts it
       positions = alignPositions items normalized
       at i = fromMaybe (length normalized) (lookup i positions)
-   in (finish normalized, [f (at i) | (i, f) <- reverse anchors])
+   in (finish normalized, [f (at i) | (i, f) <- reverse anchors], nodes)
   where
     finish its = its <> lineEnd
+
+-- | The structure of the inlines of 'composeInlinesTree', without composing them.
+inlineStructure :: ComposeEnv -> [Inline] -> [InlineNode]
+inlineStructure env = fst . structured env
+
+{- | The structure of composed inlines (docs/adr ADR 0183): leaves of
+content, and the elements Golem makes from the inlines.
+-}
+data InlineNode
+  = NodeLeaf !Int
+  | NodeElem !InlineRole ![InlineNode]
+  | {- | the body of a note marked here: its span, its place among the notes
+    of that span ('noteAnchors' of golem-driver), its number and its body
+    -}
+    NodeNote !SrcSpan !Int !Int [Inline]
+  | -- | the body of a sidenote marked here: its span, its number and its body
+    NodeSidenote !SrcSpan !Int [Inline]
+  | -- | a link (docs/adr ADR 0182): its URL, its inlines and what it holds
+    NodeLink !Text [Inline] [InlineNode]
+  deriving stock (Eq, Show)
+
+-- | The elements of inlines: the label of 'ceLabelInlines', ruby, its base and reading, a reference and code.
+data InlineRole = RoleLabel | RoleRuby | RoleRubyBase | RoleRubyText | RoleReference | RoleCode
+  deriving stock (Eq, Show)
+
+-- the state of 'structured': the next leaf, the leaf of the content, the notes seen by their span
+data LeafState = LeafState !Int !Int !(Map.Map SrcSpan Int)
+
+{- | The pieces of inlines with their leaves and sources, and the structure
+of the inlines. Leaf 0 is the content at the start; each element takes
+new leaves, and the content after it a new one.
+-}
+structured :: ComposeEnv -> [Inline] -> ([InlineNode], [(Int, BoxSource, Piece)])
+structured env inls =
+  let (labelled, rest) = splitAt (ceLabelInlines env) inls
+      st0 = LeafState 1 0 Map.empty
+   in if null labelled
+        then let (_, ns, ps) = walkAll env st0 rest in (NodeLeaf 0 : ns, ps)
+        else
+          let (st1, ns1, ps1) = walkAll env st0 labelled
+              (st2, after) = freshLeaf st1
+              (_, ns2, ps2) = walkAll env st2 rest
+           in (NodeElem RoleLabel (NodeLeaf 0 : ns1) : after : ns2, ps1 <> ps2)
+
+walkAll :: ComposeEnv -> LeafState -> [Inline] -> (LeafState, [InlineNode], [(Int, BoxSource, Piece)])
+walkAll env st0 = foldl' step (st0, [], [])
+  where
+    step (st, ns, ps) inl = let (st', ns', ps') = walk env st inl in (st', ns <> ns', ps <> ps')
+
+-- a new leaf for the content after an element
+freshLeaf :: LeafState -> (LeafState, InlineNode)
+freshLeaf (LeafState next _ seen) = (LeafState (next + 1) next seen, NodeLeaf next)
+
+-- | The pieces and the structure of one inline.
+walk :: ComposeEnv -> LeafState -> Inline -> (LeafState, [InlineNode], [(Int, BoxSource, Piece)])
+walk env st@(LeafState next cur seen) inl = case inl of
+  Color _ _ xs -> walkAll restyledEnv st xs
+  CharStyle _ _ xs
+    -- code inside text that is not code is an element (docs/adr ADR 0183)
+    | lkCode (ceLook restyledEnv) && not (lkCode lk) -> element RoleCode (\st' -> walkAll restyledEnv st' xs)
+    | otherwise -> walkAll restyledEnv st xs
+  Kenten _ sh xs -> walkAll env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}} st xs
+  Ruby _ _ segs -> rubySegments segs
+  Note sp num body ->
+    let k = Map.findWithDefault 0 sp seen
+        (anchor, mark) = splitAt 1 (piecesOf env inl)
+        st1 = LeafState (next + 1) cur (Map.insert sp (k + 1) seen)
+        (st2, after) = freshLeaf st1
+     in (st2, [NodeElem RoleReference [NodeLeaf next], NodeNote sp k num body, after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
+  Sidenote sp n body ->
+    let (anchor, mark) = splitAt 1 (piecesOf env inl)
+        st1 = LeafState (next + 1) cur seen
+        (st2, after) = freshLeaf st1
+        ref = [NodeElem RoleReference [NodeLeaf next] | not (null mark)]
+     in (st2, ref <> [NodeSidenote sp n body, after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
+  -- a link is an element; its look is that of the link (docs/adr ADR 0182)
+  Link _ u xs ->
+    let (st1, ns, ps) = walkAll restyledEnv (LeafState (next + 1) next seen) xs
+        LeafState next1 _ seen1 = st1
+        (st2, after) = freshLeaf (LeafState next1 cur seen1)
+     in (st2, [NodeLink u xs (NodeLeaf next : ns), after], ps)
+  Ref {} -> element RoleReference (\st' -> (st', [], [(leafOf st', src, p) | (src, p) <- piecesOf env inl]))
+  Cite {} -> element RoleReference (\st' -> (st', [], [(leafOf st', src, p) | (src, p) <- piecesOf env inl]))
+  _ -> (st, [], [(cur, src, p) | (src, p) <- piecesOf env inl])
+  where
+    lk = ceLook env
+    restyledEnv = env {ceLook = ceRestyle env lk inl, ceSizeSource = ceSizeSourceOf env (ceSizeSource env) inl}
+    leafOf (LeafState _ c _) = c
+    -- an element: its first leaf for what it holds, then a new leaf for what follows
+    element role inner =
+      let (st1, ns, ps) = inner (LeafState (next + 1) next seen)
+          LeafState next1 _ seen1 = st1
+          (st2, after) = freshLeaf (LeafState next1 cur seen1)
+       in (st2, [NodeElem role (NodeLeaf next : ns), after], ps)
+    {- each segment with a reading is a Ruby of its base and reading, the
+    reading the leaf after the base; a segment without one is content -}
+    rubySegments segs =
+      let go (s, ns, ps) (seg, segPieces) = case rsReading seg of
+            Just _ ->
+              let LeafState n c sn = s
+                  (s', after) = freshLeaf (LeafState (n + 2) c sn)
+               in (s', ns <> [NodeElem RoleRuby [NodeElem RoleRubyBase [NodeLeaf n], NodeElem RoleRubyText [NodeLeaf (n + 1)]], after], ps <> [(n, src, p) | (src, p) <- segPieces])
+            Nothing -> let LeafState _ c _ = s in (s, ns, ps <> [(c, src, p) | (src, p) <- segPieces])
+       in foldl' go (st, [], []) (zip segs (chunks (piecesOf env inl)))
+    -- the pieces of each segment: each ends with its PRuby, the break before it included
+    chunks ps = case break isRuby ps of
+      (pre, r : rest) -> (pre <> [r]) : chunks rest
+      ([], []) -> []
+      (pre, []) -> [pre]
+    isRuby (_, p) = case p of
+      PRuby {} -> True
+      _ -> False
 
 -- | The end of a paragraph, and of a line broken by a hard break: the rest of the line is fill.
 lineEnd :: [Item]
@@ -635,14 +770,14 @@ itemsFor env prev p next = case p of
           | pre + post > 0 = KindPunctuation
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
-     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing)]
+     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))]
   PWord lk word -> wordItems env lk word
   PSpace lk ->
     let sw = advance env lk ' '
      in if lkCode lk
           then [Glue (sw + tracking lk) 0 0] -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
           else [Glue (sw + tracking lk) (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))]
-  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env) Nothing)]
+  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
         rp = placeRuby style kind (baseAdvances env lk looks base) (readingAdvances env lk reading) (allowance True prev, allowance False next)
@@ -666,7 +801,7 @@ itemsFor env prev p next = case p of
         tag = case kind of
           MonoRuby -> KindRuby
           GroupRuby -> KindGroupRuby
-     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp) looks 0 0 (ceBoxSource env) Nothing)]
+     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp) looks 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
   -- normalize sees no box next to these items: the spacing is that of the line's edge
   PForcedBreak -> lineEnd
@@ -675,7 +810,7 @@ itemsFor env prev p next = case p of
     let w = case a of
           AkiZw r -> L.zwToSp (lkSize lk) r
           AkiAbs x -> x
-     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0 (ceBoxSource env) Nothing)]
+     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))]
   PCode lk run ps pe -> codeItems env lk run ps pe
   {- a run of dashes: an em for each, whatever the font's advance; inseparable
   at both ends, so the spacing and the breaks around it are those of one
@@ -683,7 +818,7 @@ itemsFor env prev p next = case p of
   PDashes lk d ->
     let t = tracking lk
         w = lkSize lk * fromIntegral (T.length d)
-     in [Box (w + t) (BoxContent d False 0 0 (fromEnum KindDashes) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing)]
+     in [Box (w + t) (BoxContent d False 0 0 (fromEnum KindDashes) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))]
   PMark place lk parts ps pe -> [markItem env place lk parts ps pe]
   PAnchor _ -> []
 
@@ -719,7 +854,7 @@ markItem env place lk parts ps pe =
       starts = scanl (\o (_, _, u, k) -> o + u + tr * fromIntegral k) ps units
       parts' = [(fromEnum kind, t, o) | ((kind, t, _, _), o) <- zip units starts]
       w = sum [u | (_, _, u, _) <- units] + tr * fromIntegral (max 0 (chars - 1)) + ps + pe
-   in Box w (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts')))
+   in Box w (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts')) (Leaf (ceSite env) (ceLeaf env)))
 
 {- | A run of code (golem-driver ADR 0017): a box for each part of Latin or
 other text, cut after each slash; 'normalize' allows a break after a
@@ -728,7 +863,7 @@ expansion.
 -}
 codeItems :: ComposeEnv -> Look -> Text -> Sp -> Sp -> [Item]
 codeItems env lk run padStart padEnd =
-  [ Box (w + tr * fromIntegral (T.length seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env) Nothing)
+  [ Box (w + tr * fromIntegral (T.length seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))
   | let segs = [seg | part <- slashParts run, seg <- T.groupBy sameSide part]
         lastIx = length segs - 1,
     (i, seg) <- zip [0 :: Int ..] segs,
@@ -858,7 +993,7 @@ wordItems env lk word =
         let w = L.zwToSp (lkSize lk) (ceWordAdvance env lk t)
             ps = maybe 0 (min w . protAt fst . fst) (T.uncons t)
             pe = maybe 0 (min w . protAt snd . snd) (T.unsnoc t)
-         in Box (w + tr * fromIntegral (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0 (ceBoxSource env) Nothing)
+         in Box (w + tr * fromIntegral (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))
       -- the advance of the character at the line end, without tracking, by its ratio (golem-layout ADR 0014)
       protAt pick c = if ceProtrusion env then Sp (unSp (advance env lk c) * pick (protrusionRatio c) `div` 1000) else 0
       withPens pen = concat . zipWith (\i x -> (if i > (0 :: Int) then pen else []) <> x) [0 ..]

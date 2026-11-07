@@ -218,6 +218,32 @@ pluginDataTests =
   where
     parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] extra)
 
+-- | [targets.pdf] pdfa and pdfua (docs/adr ADR 0183).
+pdfConformanceTests :: TestTree
+pdfConformanceTests =
+  testGroup
+    "[targets.pdf] pdfa and pdfua (docs/adr ADR 0183)"
+    [ testCase "pdfa = \"2a\" and pdfua = \"1\" are read" $ do
+        fmap (conformance . manifestTargets) (parse "pdfa = \"2a\"\npdfua = \"1\"\n") @?= Right (Just PdfA2a, Just PdfUa1)
+        fmap (conformance . manifestTargets) (parse "pdfua = \"1\"\n") @?= Right (Nothing, Just PdfUa1)
+        fmap (conformance . manifestTargets) (parse "") @?= Right (Nothing, Nothing),
+      testCase "other values and values that are not strings are G03001" $
+        mapM_
+          (\v -> (v, codes (parse v)) @?= (v, ["G03001"]))
+          ["pdfa = \"2u\"\n", "pdfa = \"2b\"\n", "pdfa = \"4\"\n", "pdfa = true\n", "pdfua = \"2\"\n", "pdfua = 1\n"],
+      testCase "pdfa is not a key of [targets.epub]" $
+        codes (parseManifest (FileId 0) (manifestWith ["\"a.gm\""] "[targets.epub]\npdfa = \"2a\"\n")) @?= ["G03001"],
+      testCase "the span of a value of the manifest is at the value" $ do
+        let src = manifestWith ["\"a.gm\""] "[targets.pdf]\npdfa = \"2a\"\n"
+            at t = BS.length (TE.encodeUtf8 (fst (T.breakOn t src)))
+        fmap spanStart (manifestValueSpan (FileId 0) src ["targets", "pdf", "pdfa"]) @?= Just (at "\"2a\"")
+        fmap spanStart (manifestValueSpan (FileId 0) src ["metadata", "language"]) @?= Just (at "\"ja\"")
+        manifestValueSpan (FileId 0) src ["targets", "pdf", "pdfua"] @?= Nothing
+    ]
+  where
+    parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] ("[targets.pdf]\n" <> extra))
+    conformance t = (tgPdfA t, tgPdfUa t)
+
 -- | A plugin in the project, declared with path (docs/adr/0109).
 pluginPathTests :: TestTree
 pluginPathTests =
@@ -918,6 +944,7 @@ tests =
       silenceInfoTests,
       pluginDataTests,
       pluginPathTests,
+      pdfConformanceTests,
       indexStyleTests,
       hiddenFolioTests,
       findCycleTests,

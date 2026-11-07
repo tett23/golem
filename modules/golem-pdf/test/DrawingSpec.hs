@@ -36,7 +36,7 @@ redSquare =
 doc :: [Mark] -> [(FormRef, FormContent)] -> Map.Map ImageRef ImageData -> Document
 doc marks forms images =
   Document
-    { docPages = [Page box box box marks []],
+    { docPages = [Page box box box [Tagged (LeafId [0]) marks] []],
       docFonts = Map.empty,
       docImages = images,
       docForms = Map.fromList forms,
@@ -45,7 +45,10 @@ doc marks forms images =
       docId = documentId "urn:uuid:11111111-2222-4333-8444-555555555555",
       docInstanceId = instanceId ["source"],
       docProducer = "Golem 0.0.0-test",
-      docPdfX = Nothing
+      docPdfX = Nothing,
+      docLang = "ja",
+      docPdfUa = Nothing,
+      docStructure = structElem SDocument [KidLeaf (LeafId [0])]
     }
   where
     box = Rect 0 0 (100 * 65536) (100 * 65536)
@@ -121,7 +124,7 @@ tests =
         assertBool (show pdf) ("/BBox [0 0 20 10]" `BS.isInfixOf` pdf)
         assertBool (show pdf) ("/Matrix [0.05 0 0 0.1 0 0]" `BS.isInfixOf` pdf),
       testCase "X4.verify finds nothing in a drawing" $
-        verify (documentObjects (doc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, DrawnForm redSquare)] Map.empty) {docPdfX = Just (PdfX "fake-cmyk-profile" "JC200103" [] [])}) @?= [],
+        verify (documentObjects (doc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, DrawnForm redSquare)] Map.empty) {docPdfX = Just (PdfX "fake-cmyk-profile" "JC200103" [] [] Nothing)}) @?= [],
       testCase "the sRGB profile is written once for images, PDF figures and drawings" $ do
         img <- either (assertFailure . show) pure (readImage rgbPng)
         page <- either (assertFailure . show) pure (importPage 1 rgbFigure)

@@ -45,6 +45,29 @@ module Golem.Driver.Pdf.Flow
     turnedFrame,
     pdfXPeople,
     loadIntent,
+    -- the structure tree of the PDF (docs/adr ADR 0183)
+    FlowEnv (..),
+    Unit (..),
+    UnitKind (..),
+    Frame (..),
+    FrameKind (..),
+    unitEnv,
+    noteEnv,
+    sidenoteEnv,
+    sidenotePrefix,
+    captionEnv,
+    tableEnv,
+    withNoteMark,
+    noteMarkCount,
+    unitSite,
+    markerSite,
+    cellSite,
+    captionSite,
+    codeRowSite,
+    codeFileSite,
+    figureSite,
+    noteSite,
+    sidenoteSite,
   )
 where
 
@@ -199,7 +222,9 @@ data PlacedFigure = PlacedFigure
     -- | the measure the figure is set against: of the column, or of the frame (golem-driver ADR 0034, docs/adr/0190)
     pfFullAlong :: !Sp,
     -- | how a figure turned onto a page of its own is turned
-    pfTurn :: !(Maybe P.Turn)
+    pfTurn :: !(Maybe P.Turn),
+    -- | the unit of the figure: the place of its image and caption in the structure tree (docs/adr ADR 0183)
+    pfUnit :: !Int
   }
 
 {- | A table by its first line (golem-driver ADR 0031): its width, the
@@ -241,7 +266,10 @@ data PdfLayout = PdfLayout
     -- | the block of the unit of each first line (golem-cli ADR 0006)
     plLineSpans :: !(Map Int SrcSpan),
     -- | the rules of each ruled block by its first line (golem-driver ADR 0027)
-    plRules :: !(Map Int RuledInfo)
+    plRules :: !(Map Int RuledInfo),
+    -- | the units of the book by their indices, and the composition: what the structure tree is made of (docs/adr ADR 0183)
+    plUnits :: ![(Int, Unit)],
+    plFlowEnv :: FlowEnv
   }
 
 data Built = Built
@@ -269,7 +297,10 @@ data Built = Built
     -- | the rules of each ruled block by its first line (golem-driver ADR 0027)
     bRules :: Map Int RuledInfo,
     -- | the span and the name in messages of each heading by its first line (golem-layout ADR 0020)
-    bHeadingNames :: Map Int (SrcSpan, Text)
+    bHeadingNames :: Map Int (SrcSpan, Text),
+    -- | the units by their indices, and the composition (docs/adr ADR 0183)
+    bUnits :: [(Int, Unit)],
+    bFlowEnv :: FlowEnv
   }
 
 {- | What style.toml alone decides before the layout (golem-driver ADR
@@ -470,7 +501,7 @@ layoutFigures inp geom fonts figures = do
           atHeading hs tp = tp {tpLeader = withBoxSource (SourceGrid, hs) (tpLeader tp), tpNumber = withBoxSource (SourceGrid, hs) (tpNumber tp)}
           tocPages = Map.fromList [(lid, atHeading hs (tocPage tg e (pageNumberLine env n))) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
        in case concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) pages) (bLineSpans built) (bRules built))
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) pages) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built))
             ds -> Left ds
 
 {- | The most grid lines a column may have with @page-lines (docs/adr ADR
@@ -766,7 +797,7 @@ tocPage tg e number =
       le = tgMeasure tg - max (tgReserve tg) w - g
       k0 = if tgLeaders tg && u > 0 then max 0 (unSp (le - (e + g)) `div` unSp u) else 0
       (ns, k) = if ns0 < e + g then (e + g, 0) else (ns0, k0)
-      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource Nothing) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) False (0, 0)
+      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource Nothing noLeaf) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) False (0, 0)
    in TocPage (le - fromInteger k * u) leader ns number
 
 -- | The measure of a column of the page.
@@ -865,7 +896,8 @@ and a link when it passes the checks of [link] (docs/adr ADR 0182).
 -}
 bibliographyLines :: Map Text [EntryPart] -> [(Text, Int)] -> [[Inline]]
 bibliographyLines bib cites =
-  [ merged (EntryText ("[" <> T.pack (show n) <> "] ") : fromMaybe [EntryText k] (Map.lookup k bib))
+  -- the number its own inline: the label of the entry (docs/adr ADR 0183)
+  [ Text sp0 ("[" <> T.pack (show n) <> "] ") : merged (fromMaybe [EntryText k] (Map.lookup k bib))
   | (k, n) <- cites
   ]
   where
@@ -1095,6 +1127,10 @@ withNoteMark style vertical sp n body = styled (markInlines sp (markParts vertic
     -- in the character style of [notes] body-mark-style (docs/adr/0177)
     styled xs = maybe xs (\name -> [CharStyle sp name xs]) (stNotesBodyMarkStyle style)
 
+-- | How many inlines the mark of a note is in 'withNoteMark': the label of the Note (docs/adr ADR 0183).
+noteMarkCount :: Style -> Bool -> SrcSpan -> Int -> Int
+noteMarkCount style vertical sp n = length (withNoteMark style vertical sp n []) - 1
+
 {- | The placement of ruby from [composition.ruby] (golem-layout ADR
 0009); @zw@ is the size of the paragraph.
 -}
@@ -1139,8 +1175,82 @@ data Unit = Unit
     -- | the rules before and after a paragraph or a heading (golem-driver ADR 0027)
     uRules :: (Maybe RuleSpec, Maybe RuleSpec),
     -- | the definition that decided the size of 'uLook' (golem-cli ADR 0008)
-    uSource :: SizeSource
+    uSource :: SizeSource,
+    -- | the frames of the structure tree around the unit, outermost first (docs/adr ADR 0183)
+    uFrames :: [Frame],
+    -- | the place of the unit among the units of the book, from 0 (docs/adr ADR 0183)
+    uIndex :: Int
   }
+
+{- | A frame of the structure tree of the PDF around units (docs/adr ADR
+0183): a list, an item, the table of contents and so on. Its number tells
+it from the frames of the same kind next to it.
+-}
+data Frame = Frame !Int !FrameKind
+  deriving stock (Eq, Show)
+
+data FrameKind
+  = -- | a list, numbered or not
+    FList !Bool
+  | FItem
+  | FDefList
+  | -- | a group of a definition list: its terms and its definitions
+    FDefItem
+  | FDefBody
+  | FToc
+  | FIndex
+  | FBibliography
+  | FChannel
+  | -- | the lines of a paragraph of a style that keeps its lines
+    FPara
+  | {- | a note at the end of a chapter, by its span, and how many inlines
+    its mark is: in the tree after its mark
+    -}
+    FEndNote !SrcSpan !Int
+  deriving stock (Eq, Show)
+
+-- | The place of the text of a unit (docs/adr ADR 0183).
+unitSite :: Int -> [Int]
+unitSite i = [i, 0]
+
+-- | The place of the marker of the first paragraph of a list item.
+markerSite :: Int -> [Int]
+markerSite i = [i, 1]
+
+-- | The place of a cell of a table: its row (the header row is 0) and its column.
+cellSite :: Int -> Int -> Int -> [Int]
+cellSite i r c = [i, 2, r, c]
+
+-- | The place of the caption of a figure or a code block.
+captionSite :: Int -> [Int]
+captionSite i = [i, 3]
+
+-- | The place of a line of code, its rows when it wraps.
+codeRowSite :: Int -> Int -> [Int]
+codeRowSite i j = [i, 4, j]
+
+-- | The place of the file name of a code block.
+codeFileSite :: Int -> [Int]
+codeFileSite i = [i, 6]
+
+-- | The place of the image of a figure.
+figureSite :: Int -> [Int]
+figureSite i = [i, 7]
+
+-- | The place of the body of a footnote, by its key: the same wherever its mark is.
+noteSite :: NoteId -> [Int]
+noteSite (NoteId sp k) = [-8, fileNumber (spanFile sp), spanStart sp, spanEnd sp, k]
+
+-- | The place of the body of a sidenote, by its span and its number.
+sidenoteSite :: SrcSpan -> Int -> [Int]
+sidenoteSite sp n = [-9, fileNumber (spanFile sp), spanStart sp, spanEnd sp, n]
+
+fileNumber :: FileId -> Int
+fileNumber (FileId f) = f
+
+-- | The units in a frame: the frame outside the frames they have.
+inFrame :: Frame -> [Unit] -> [Unit]
+inFrame f = map (\u -> u {uFrames = f : uFrames u})
 
 {- | How the messages of G07024 and G07100 name a heading, or the title of
 the notes (golem-driver ADR 0003, 0026; golem-layout ADR 0020).
@@ -1308,8 +1418,8 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
       [] -> []
       ns@((sp, _, _) : _) ->
         let title = notesTitle lang
-         in Unit (UNotesTitle title) Nothing [Text sp title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing) (SourceHeading 2)
-              : [Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n xs) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) SourceGrid | (nsp, n, xs) <- ns]
+         in Unit (UNotesTitle title) Nothing [Text sp title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing) (SourceHeading 2) [] 0
+              : [Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n xs) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) SourceGrid [Frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n))] 0 | (nsp, n, xs) <- ns]
     {- a list of blocks inside the lists @ctx@, from the list number @n@,
     with the spaces before and after of paragraphs when @spaced@ (not in a
     definition list): in a list item, paragraphs are not indented by their
@@ -1321,7 +1431,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
       Just (Block _ _ a)
         | g <- gapLines style ctx spaced a b,
           g > 0 ->
-            [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) SourceGrid]
+            [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) SourceGrid [] 0]
       _ -> []
     {- the grid lines between two blocks (docs/adr/0189): only the blank
     lines across them; none before a forced break or a control of page
@@ -1345,7 +1455,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
       PageControl _ -> prev
       _ -> Just b
     block style ctx n (Block sp lbl body) =
-      let unit kind l is face = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing)
+      let unit kind l is face src = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing) src [] 0
           -- the body role at the size of the grid (golem-cli ADR 0008)
           plainUnit kind l is = unit kind l is (bodyLook style fs) SourceGrid
        in case body of
@@ -1360,7 +1470,9 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
                   -- a paragraph in a list has no rules (golem-driver ADR 0027)
                   (rb, ra) = if null ctx then paraRules style st else (Nothing, Nothing)
                   rulesOf i = (if i == 0 then rb else Nothing, if i == length parts - 1 then ra else Nothing)
-               in (n, [(unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face (paraSizeSource style st)) {uParaStyle = st, uRules = rulesOf i} | (i, part) <- zip [0 :: Int ..] parts])
+                  us = [(unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face (paraSizeSource style st)) {uParaStyle = st, uRules = rulesOf i} | (i, part) <- zip [0 :: Int ..] parts]
+               in -- the lines of the paragraph are one P (docs/adr ADR 0183)
+                  if length parts > 1 then (n + 1, inFrame (Frame n FPara) us) else (n, us)
             Heading l attrs is ->
               let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
                   -- the number is at the heading (golem-cli ADR 0008)
@@ -1371,28 +1483,28 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
             BulletList items -> list style ctx n (map (Nothing,) items)
             OrderedList items -> list style ctx n (zip (map Just (itemNumbers items)) items)
             DefList gs ->
-              let group k g = ([plainUnit (UTerm noIndent) Nothing t | t <- dgTerms g] <>) <$> blocksOf k (dgDefs g)
+              let group k (j, g) = (\us -> inFrame (Frame j FDefItem) ([plainUnit (UTerm noIndent) Nothing t | t <- dgTerms g] <> inFrame (Frame 0 FDefBody) us)) <$> blocksOf k (dgDefs g)
                   blocksOf k ds = let (k', dss) = mapAccumL (blocks style ctx False) k ds in (k', concat dss)
-                  (n', uss) = mapAccumL group n gs
-               in (n', concat uss)
+                  (n', uss) = mapAccumL group (n + 1) (zip [0 ..] gs)
+               in (n', inFrame (Frame n FDefList) (concat uss))
             Table aligns h rows -> (n, [plainUnit (UTable aligns h rows) lbl []])
             -- always in the paragraph style code (golem-driver ADR 0017)
             CodeBlock code -> (n, [unit (UCode 0 code) lbl [] (codeLook style geom) (paraSizeSource style (Just "code"))])
             FigureBlock fig -> (n, [plainUnit (UFigure fig) lbl []])
             -- S1 has dropped the index marks and channel items of the title (docs/adr/0145)
-            ChannelOutput (TocOutput depth) -> (n, [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (numberedTitle lang (teSpan e) (teNumber e) (teTitle e)) | e <- bookToc book, teLevel e <= depth])
+            ChannelOutput (TocOutput depth) -> (n + 1, inFrame (Frame n FToc) [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (numberedTitle lang (teSpan e) (teNumber e) (teTitle e)) | e <- bookToc book, teLevel e <= depth])
             ChannelOutput IndexOutput ->
-              let entries kind = [plainUnit kind Nothing is | is <- indexLines (pgVertical geom) pageOf (indexAt book sp)]
+              let entries kind = inFrame (Frame n FIndex) [plainUnit kind Nothing is | is <- indexLines (pgVertical geom) pageOf (indexAt book sp)]
                in case indexSet of
-                    Nothing -> (n, entries (UPara noIndent))
+                    Nothing -> (n + 1, entries (UPara noIndent))
                     -- the index in its own columns (docs/adr ADR 0025)
-                    Just set -> (n, [plainUnit (UColumns (Just set)) Nothing []] <> entries (UIndexEntry (csMeasure set)) <> [plainUnit (UColumns Nothing) Nothing []])
+                    Just set -> (n + 1, [plainUnit (UColumns (Just set)) Nothing []] <> entries (UIndexEntry (csMeasure set)) <> [plainUnit (UColumns Nothing) Nothing []])
             -- each entry of a channel of a plugin a paragraph of its style (golem-doc ADR 0007)
             ChannelOutput (CustomOutput name st) ->
               let (face, ind) = paraLook style geom st
                   locators = maybe False channelLocators (Map.lookup name (bookChannelDecls book))
-               in (n, [(unit (UPara (if null ctx then ind else noIndent)) Nothing is face (paraSizeSource style st)) {uParaStyle = st} | is <- channelLines (pgVertical geom) pageOf locators (channelAt book sp)])
-            ChannelOutput BibliographyOutput -> (n, [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bibliographyAt book sp)])
+               in (n + 1, inFrame (Frame n FChannel) [(unit (UPara (if null ctx then ind else noIndent)) Nothing is face (paraSizeSource style st)) {uParaStyle = st} | is <- channelLines (pgVertical geom) pageOf locators (channelAt book sp)])
+            ChannelOutput BibliographyOutput -> (n + 1, inFrame (Frame n FBibliography) [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bibliographyAt book sp)])
             ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])
             PageControl c -> (n, [plainUnit (UPageControl c) Nothing []])
             BlankLines k -> (n, [plainUnit (UBlank k) Nothing []])
@@ -1401,11 +1513,12 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
     list style ctx n items =
       let ctx' = ctx <> [n]
           marker = listMarker style (pgVertical geom) (length ctx')
-          item k (num, it) =
+          item k (j, (num, it)) =
             let (k', us) = blocks style ctx' True k (itemBlocks it)
-             in (k', if startsWithParagraph it then markFirst (marker num) us else us)
-          (n', uss) = mapAccumL item (n + 1) items
-       in (n', concat uss)
+             in (k', inFrame (Frame j FItem) (if startsWithParagraph it then markFirst (marker num) us else us))
+          (n', uss) = mapAccumL item (n + 1) (zip [0 ..] items)
+          numbered = any (isJust . fst) items
+       in (n', inFrame (Frame n (FList numbered)) (concat uss))
     startsWithParagraph it = case itemBlocks it of
       (Block _ _ (Paragraph {}) : _) -> True
       _ -> False
@@ -1515,13 +1628,24 @@ withDocStyle st e = e {ceRestyle = restyle st, ceSizeSourceOf = restyleSource st
 
 -- | The composition of the text of a unit: its look, its document's style and the aki set of its paragraph style.
 unitEnv :: FlowEnv -> Unit -> ComposeEnv
-unitEnv fe u = (withDocStyle (uStyle u) (lookEnv fe (uLook u))) {ceAkiSet = akiSetOf (uStyle u) (uParaStyle u)}
+unitEnv fe u = (withDocStyle (uStyle u) (lookEnv fe (uLook u))) {ceAkiSet = akiSetOf (uStyle u) (uParaStyle u), ceLabelInlines = unitLabelInlines u}
+
+{- | How many inlines at the start of a unit are its label (docs/adr ADR
+0183): the mark and its space of a note at the end of a chapter, the
+number of an entry of the bibliography.
+-}
+unitLabelInlines :: Unit -> Int
+unitLabelInlines u = case [k | Frame _ k <- uFrames u] of
+  ks
+    | (k : _) <- [k | FEndNote _ k <- ks] -> k
+    | FBibliography `elem` ks -> 1
+    | otherwise -> 0
 
 {- | The units of the body in order, numbered from 0, and the marker width
 M of each list; a unit in lists is indented by them (golem-driver ADR 0013).
 -}
 flowUnits :: FlowEnv -> ([(Int, Unit)], Map Int Sp)
-flowUnits fe = (zip [0 :: Int ..] (map withListIndent rawUnits), widths)
+flowUnits fe = ([(i, (withListIndent u) {uIndex = i}) | (i, u) <- zip [0 :: Int ..] rawUnits], widths)
   where
     inp = feInput fe
     geom = feGeom fe
@@ -1584,14 +1708,14 @@ markerItems :: ComposeEnv -> Sp -> Unit -> [Item]
 markerItems env inner u = case uMarker u of
   Nothing -> []
   Just m ->
-    let boxes = [b | b@Box {} <- fst (composeInlines env m)]
+    let boxes = [b | b@Box {} <- fst (composeInlines env {ceSite = markerSite (uIndex u), ceLabelInlines = 0} m)]
         w = sum (map itemWidth boxes)
-     in boxes <> [Box (inner - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0 [] 0 0 (uSource u, uSpan u) Nothing)]
+     in boxes <> [Box (inner - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0 [] 0 0 (uSource u, uSpan u) Nothing noLeaf)]
 
 -- | Composes a unit and breaks it into lines of the widths, with its notes, sidenotes and index marks.
 composeUnit :: FlowEnv -> Map Int Sp -> (Int -> Sp) -> Unit -> Composed
 composeUnit fe widths lineWidth u =
-  let env = (unitEnv fe u) {ceSizeSource = uSource u}
+  let env = (unitEnv fe u) {ceSizeSource = uSource u, ceSite = unitSiteOf u}
       marker = markerItems env (listInner widths u) u
       -- the anchors count the items of the text; the marker comes first
       shift = length marker
@@ -1600,6 +1724,28 @@ composeUnit fe widths lineWidth u =
       lines' = brLines (A.breakAligned (layoutAlign (uKind u)) (feParams fe) lineWidth items)
    in Composed lines' (unitNotes fe u anchors) (unitSidenotes fe u shift anchors) (unitMarks fe u shift anchors) anchors items shift
 
+{- | The place of the text of a unit in the structure tree (docs/adr ADR
+0183): none for the title of the notes at the end of a chapter, which is
+an artifact.
+-}
+unitSiteOf :: Unit -> [Int]
+unitSiteOf u = case uKind u of
+  UNotesTitle _ -> []
+  _ -> unitSite (uIndex u)
+
+{- | The composition of the caption of a figure or a code block: the role
+and size of the paragraph style caption (golem-driver ADR 0010), at the
+place of the caption (docs/adr ADR 0183).
+-}
+captionEnv :: FlowEnv -> Unit -> ComposeEnv
+captionEnv fe u =
+  let (captionRole, cs) = paraFace (uStyle u) (feGeom fe) "caption"
+   in (withDocStyle (uStyle u) (lookEnv fe (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption"), ceSizeSource = paraSizeSource (uStyle u) (Just "caption"), ceSite = captionSite (uIndex u)}
+
+-- | The composition of the cells of a table: the body size, no hanging punctuation (golem-driver ADR 0008).
+tableEnv :: FlowEnv -> Style -> ComposeEnv
+tableEnv fe st = (withDocStyle st (feBodyEnv fe)) {ceHanging = False}
+
 -- | The composition of the notes and sidenotes of a unit: the body size of its document's style.
 noteEnv :: FlowEnv -> Style -> ComposeEnv
 noteEnv fe st = (withDocStyle st (lookEnv fe (bodyLook st (pgFontSize (feGeom fe))))) {ceAkiSet = akiSetOf st Nothing}
@@ -1607,7 +1753,7 @@ noteEnv fe st = (withDocStyle st (lookEnv fe (bodyLook st (pgFontSize (feGeom fe
 -- | The footnotes of a unit, each a paragraph of its own; none when the notes are at the end of the chapter (golem-driver ADR 0026).
 unitNotes :: FlowEnv -> Unit -> [Golem.Layout.Japanese.Anchor] -> [(NoteId, [Line])]
 unitNotes fe u anchors =
-  [ (k, brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines (noteEnv fe (uStyle u)) (withNoteMark (uStyle u) (pgVertical (feGeom fe)) (noteIdSpan k) n nbody)))))
+  [ (k, brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines (noteEnv fe (uStyle u)) {ceSite = noteSite k, ceLabelInlines = noteMarkCount (uStyle u) (pgVertical (feGeom fe)) (noteIdSpan k) n} (withNoteMark (uStyle u) (pgVertical (feGeom fe)) (noteIdSpan k) n nbody)))))
   | not (feNotesAtEnd fe),
     (_, k, n, nbody) <- noteAnchors anchors
   ]
@@ -1632,16 +1778,25 @@ sidenote of the document (docs/adr ADR 0014).
 sidenoteLines :: FlowEnv -> Style -> SrcSpan -> Int -> [Inline] -> [Line]
 sidenoteLines fe st sp n snBody =
   let geom = feGeom fe
-      (snRole, snSize', _) = sidenoteMetrics st geom
-      snEnv = (withDocStyle st (lookEnv fe (styleLook st (Just "sidenote") snRole snSize'))) {ceAkiSet = akiSetOf st (Just "sidenote"), ceSizeSource = paraSizeSource st (Just "sidenote")}
+      (_, snSize', _) = sidenoteMetrics st geom
+      prefix = sidenotePrefix fe sp n
+      snEnv = (sidenoteEnv fe st) {ceSite = sidenoteSite sp n, ceLabelInlines = length prefix}
       snParams = (feParams fe) {pEmergencyStretch = dimToSp snSize' (compEmergencyStretch (stComposition (piStyle (feInput fe))))}
       snMeasure = maybe 0 (rectW . fst) (pgSidenotes geom)
-      -- the number is at the sidenote (golem-cli ADR 0008)
-      prefix = case ceSidenoteMarker (feBodyEnv fe) of
-        MarkerNumber -> [Text sp (T.pack (show n) <> " ")]
-        MarkerSymbol -> [Text sp "※ "]
-        MarkerNone -> []
    in brLines (breakParagraph snParams (const snMeasure) (fst (composeInlines snEnv (prefix <> snBody))))
+
+-- | The composition of sidenotes: the role and size of the paragraph style sidenote of the document (docs/adr ADR 0014).
+sidenoteEnv :: FlowEnv -> Style -> ComposeEnv
+sidenoteEnv fe st =
+  let (snRole, snSize', _) = sidenoteMetrics st (feGeom fe)
+   in (withDocStyle st (lookEnv fe (styleLook st (Just "sidenote") snRole snSize'))) {ceAkiSet = akiSetOf st (Just "sidenote"), ceSizeSource = paraSizeSource st (Just "sidenote")}
+
+-- | The number of a sidenote before its body; it is at the sidenote (golem-cli ADR 0008).
+sidenotePrefix :: FlowEnv -> SrcSpan -> Int -> [Inline]
+sidenotePrefix fe sp n = case ceSidenoteMarker (feBodyEnv fe) of
+  MarkerNumber -> [Text sp (T.pack (show n) <> " ")]
+  MarkerSymbol -> [Text sp "※ "]
+  MarkerNone -> []
 
 {- | The notes, sidenotes and index marks of composed inlines in the body
 size of a document's style, by the line that holds them.
@@ -1650,7 +1805,7 @@ anchoredByLine :: FlowEnv -> Style -> [Item] -> [Golem.Layout.Japanese.Anchor] -
 anchoredByLine fe st items anchors ls =
   let lineOf = lineIndexOfItems items ls
       env = withDocStyle st (feBodyEnv fe)
-      noteBody k n b = brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines env (withNoteMark (piStyle (feInput fe)) (ceVertical env) (noteIdSpan k) n b))))
+      noteBody k n b = brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines env {ceSite = noteSite k, ceLabelInlines = noteMarkCount (piStyle (feInput fe)) (ceVertical env) (noteIdSpan k) n} (withNoteMark (piStyle (feInput fe)) (ceVertical env) (noteIdSpan k) n b))))
       marksIn b = [sp | AnchorIndex _ sp _ <- snd (composeInlines env b)]
       atEnd = feNotesAtEnd fe
    in ( Map.fromListWith (flip (<>)) [(lineOf i, [(k, noteBody k n b)]) | not atEnd, (i, k, n, b) <- noteAnchors anchors],
@@ -1697,9 +1852,9 @@ placeFigure fe u fig content =
       number = Map.lookup (uSpan u) (bookFigures (piBook inp))
       captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number (concat [is | Block _ _ (Paragraph _ is) <- figCaption fig])
       -- the caption in the role and size of the paragraph style caption (golem-driver ADR 0010)
-      (captionRole, cs) = paraFace (uStyle u) geom "caption"
+      (_, cs) = paraFace (uStyle u) geom "caption"
       captionParams = (feParams fe) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
-      (captionItems, captionAnchors) = composeInlines ((withDocStyle (uStyle u) (lookEnv fe (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption"), ceSizeSource = paraSizeSource (uStyle u) (Just "caption")}) captionInlines
+      (captionItems, captionAnchors) = composeInlines (captionEnv fe u) captionInlines
       captionAt len = if null captionInlines then [] else brLines (breakParagraph captionParams (const len) captionItems)
       -- the grid lines a caption of k lines takes: the fewest that hold it, its pitch in the body's ratio of pitch to size
       captionSpanOf k = if k == 0 then (pitch, 0) else let cb' = headingBlock fs pitch cs k 1 in (hbPitch cb', hbSpan cb')
@@ -1748,7 +1903,7 @@ placeFigure fe u fig content =
         | not turned = Nothing
         | pgVertical geom = Just P.TurnedRight
         | otherwise = Just P.TurnedLeft
-   in (PlacedFigure content alongFit across (figWrap fig) m caption cs cp span' ex (figSource fig) (snd (figureKey fig)) (uSpan u) (if isJust (figWrap fig) then alongSp else lineLen) turn, errs, notices, captionMarks)
+   in (PlacedFigure content alongFit across (figWrap fig) m caption cs cp span' ex (figSource fig) (snd (figureKey fig)) (uSpan u) (if isJust (figWrap fig) then alongSp else lineLen) turn (uIndex u), errs, notices, captionMarks)
 
 {- | The paragraphs right after a wrapped figure, in order, composed beside
 its exclusion: each by its index, with the line of the exclusion it starts
@@ -1773,13 +1928,13 @@ forceComposed c = evaluate (length (show (map lineRatio (cLines c))) + length (c
 (golem-driver ADR 0008), with the notes, sidenotes and index marks of each
 line of each row, the header row first.
 -}
-composeTable :: FlowEnv -> Style -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
-composeTable fe st aligns h rows =
-  let env = (withDocStyle st (feBodyEnv fe)) {ceHanging = False}
-      -- no break between the last two Japanese characters of a cell (golem-driver ADR 0037)
-      cellOf = first keepLastTwo . composeInlines env
-      hCells = map cellOf h
-      rCells = map (map cellOf) rows
+composeTable :: FlowEnv -> Int -> Style -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
+composeTable fe i st aligns h rows =
+  let env = tableEnv fe st
+      -- no break between the last two Japanese characters of a cell (golem-driver ADR 0037); each cell its place (docs/adr ADR 0183)
+      cellOf r c is = first keepLastTwo (composeInlines env {ceSite = cellSite i r c} is)
+      hCells = zipWith (cellOf 0) [0 ..] h
+      rCells = [zipWith (cellOf r) [0 ..] row | (r, row) <- zip [1 ..] rows]
       rowAttached cells setCells height =
         let perCell = [anchoredByLine fe st items anchors (scLines sc) | ((items, anchors), sc) <- zip cells setCells]
          in [(concat [Map.findWithDefault [] k ns | (ns, _, _) <- perCell], concat [Map.findWithDefault [] k sn | (_, sn, _) <- perCell], concat [Map.findWithDefault [] k ms | (_, _, ms) <- perCell]) | k <- [0 .. height - 1]]
@@ -1804,9 +1959,9 @@ codeCaptionOf fe u lead code = case codeCaption code of
     let inp = feInput fe
         number = Map.lookup (uSpan u) (bookListings (piBook inp))
         captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number is
-        (captionRole, cs) = paraFace (uStyle u) (feGeom fe) "caption"
+        (_, cs) = paraFace (uStyle u) (feGeom fe) "caption"
         captionParams = (feParams fe) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition (piStyle inp)))}
-        (captionItems, captionAnchors) = composeInlines ((withDocStyle (uStyle u) (lookEnv fe (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption"), ceSizeSource = paraSizeSource (uStyle u) (Just "caption")}) captionInlines
+        (captionItems, captionAnchors) = composeInlines (captionEnv fe u) captionInlines
         ls = brLines (breakParagraph captionParams (const (feMeasure fe - lead)) captionItems)
         cb = headingBlock fs pitch cs (length ls) 1
      in CodeCaption ls cs (hbPitch cb) (if null ls then 0 else hbSpan cb) [sp | AnchorIndex _ sp _ <- captionAnchors]
@@ -2141,7 +2296,7 @@ buildFlow inp geom fonts images assumed = do
       tableUnits = [(i, uStyle u, aligns, h, rows) | (i, u@Unit {uKind = UTable aligns h rows}) <- units]
   _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (\(_, u) -> forceComposed (composeUnit fe widths (unitLineWidth fe (uKind u)) u)) rest
-  tables <- Map.fromList <$> mapper (\(i, st, aligns, h, rows) -> let r = composeTable fe st aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) tableUnits
+  tables <- Map.fromList <$> mapper (\(i, st, aligns, h, rows) -> let r = composeTable fe i st aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) tableUnits
   -- 3. number the lines in document order
   let codeBlocks = codeBlocksOf fe units
       composed = ComposedUnits unitAt besides figures singles tables codeBlocks
@@ -2164,7 +2319,7 @@ buildFlow inp geom fonts images assumed = do
       -- the span and the name of each heading by its first line, for G07100 (golem-layout ADR 0020)
       namesBySpan = Map.fromList [(uSpan u, (uSpan u, name)) | (_, u) <- units, Just name <- [headingName (uKind u)]]
       headingNames = Map.mapMaybe (`Map.lookup` namesBySpan) lineSpans
-  pure (Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames)
+  pure (Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe)
 
 {- | The links between ruled blocks (golem-driver ADR 0027): a block whose
 rule before follows right after a block with a rule after shares its
@@ -2310,31 +2465,34 @@ codeBlockOf geom fonts measure capacity u lead code caption =
       lookOf col = lk {lkColor = col}
       -- the size of the paragraph style code, at the code block (golem-cli ADR 0008)
       source = (uSource u, uSpan u)
-      emptyBox w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [] 0 0 source Nothing)
-      -- pieces at offsets from the padding: (offset, text, width, Latin, swatch)
+      emptyBox w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [] 0 0 source Nothing noLeaf)
+      {- pieces at offsets from the padding: (offset, text, width, Latin,
+      swatch, leaf); line numbers and wrap marks are of no leaf: artifacts
+      (docs/adr ADR 0183) -}
       lineOf pieces =
         let go _ [] = []
-            go x ((o, t, w, latin, col) : rest) =
+            go x ((o, t, w, latin, col, leaf) : rest) =
               [emptyBox (o - x) | o > x]
-                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing)]
+                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf)]
                 <> go (o + w) rest
-         in Line (go 0 (sortOn (\(o, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) False (0, 0)
-      at o col t = [(o + cpOffset p, cpText p, cpWidth p, cpLatin p, col) | p <- oneRow t]
+         in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) False (0, 0)
+      at leaf o col t = [(o + cpOffset p, cpText p, cpWidth p, cpLatin p, col, leaf) | p <- oneRow t]
+      rowLeaf j = Leaf (codeRowSite (uIndex u) j) 0
       lineNumberColor = cdLineNumberColor cs
-      rowLine l n (i, (row, markAt)) =
+      rowLine j l n (i, (row, markAt)) =
         lineOf
-          ( concat [at (numberWidth - widthOf num) lineNumberColor num | i == 0, numbered, Just k <- [clNumber l], let num = T.pack (show k)]
-              <> concat [at numberColumn Nothing m | i == 0, Just m <- [diffMark (clDiff l)]]
-              <> [(codeStart + cpOffset p, cpText p, cpWidth p, cpLatin p, cpColor p) | p <- crPieces row]
-              <> concat [at (codeStart + avail) lineNumberColor wrapMark | i < n - 1, not (T.null wrapMark)]
-              <> [(codeStart + o + cpOffset p, cpText p, cpWidth p, cpLatin p, Nothing) | Just o <- [markAt], p <- marksOf (clCallouts l)]
+          ( concat [at noLeaf (numberWidth - widthOf num) lineNumberColor num | i == 0, numbered, Just k <- [clNumber l], let num = T.pack (show k)]
+              <> concat [at (rowLeaf j) numberColumn Nothing m | i == 0, Just m <- [diffMark (clDiff l)]]
+              <> [(codeStart + cpOffset p, cpText p, cpWidth p, cpLatin p, cpColor p, rowLeaf j) | p <- crPieces row]
+              <> concat [at noLeaf (codeStart + avail) lineNumberColor wrapMark | i < n - 1, not (T.null wrapMark)]
+              <> [(codeStart + o + cpOffset p, cpText p, cpWidth p, cpLatin p, Nothing, rowLeaf j) | Just o <- [markAt], p <- marksOf (clCallouts l)]
           )
       diffMark = \case
         Just DiffAdded -> Just "+"
         Just DiffRemoved -> Just "-"
         _ -> Nothing
-      fileRows = [lineOf (at codeStart Nothing f) | Just f <- [codeFile code]]
-      codeRows = concat [zipWith (curry (rowLine l (length rs))) [0 :: Int ..] rs | (l, rs) <- zip ls perLine]
+      fileRows = [lineOf (at (Leaf (codeFileSite (uIndex u)) 0) codeStart Nothing f) | Just f <- [codeFile code]]
+      codeRows = concat [zipWith (curry (rowLine j l (length rs))) [0 :: Int ..] rs | (j, (l, rs)) <- zip [0 ..] (zip ls perLine)]
       -- the bands of the highlight (K 15% by default) and of the diff
       bandOf l
         | clHighlight l = Just (fromMaybe (P.Swatch 0 0 0 15) (cdHighlight cs >>= swatchOf))
@@ -2344,7 +2502,7 @@ codeBlockOf geom fonts measure capacity u lead code caption =
       firsts = scanl (+) (length fileRows) (map length perLine)
       bands = [(r0, length rs, sw) | (l, rs, r0) <- zip3 ls perLine firsts, Just sw <- [bandOf l]]
       continued = cdContinued cs
-      continuedLine = if T.null continued then Nothing else Just (lineOf (at (codeStart + full - widthOf continued) Nothing continued))
+      continuedLine = if T.null continued then Nothing else Just (lineOf (at noLeaf (codeStart + full - widthOf continued) Nothing continued))
       g = codeGeometry (pgFontSize geom) (pgLinePitch geom) size pad
       codeStyle = paraStyle st (Just "code")
       background = codeStyle >>= psBackground >>= swatchOf
@@ -2600,7 +2758,11 @@ loadIntent inp = case stIntent (piStyle inp) of
         bytes <- BS.readFile (piRoot inp <> "/" <> rel)
         let md = manifestMetadata (projectManifest (piProject inp))
             condition = if "JapanColor2001Coated" `T.isInfixOf` T.pack path then "JC200103" else T.pack (takeBaseName path)
-        pure (Right (Just (uncurry (P.PdfX bytes condition) (pdfXPeople md))))
+            -- PDF/A on top of PDF/X-4 (docs/adr ADR 0183)
+            pdfA = case tgPdfA (manifestTargets (projectManifest (piProject inp))) of
+              Just PdfA2a -> Just P.PdfA2a
+              Nothing -> Nothing
+        pure (Right (Just (uncurry (P.PdfX bytes condition) (pdfXPeople md) pdfA)))
   where
     intentMessage = \case
       Missing -> "出力インテントの ICC プロファイルがありません"

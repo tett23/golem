@@ -25,6 +25,7 @@ library
                     Golem.Pdf.Rect
                     Golem.Pdf.Sha256
                     Golem.Pdf.Srgb
+                    Golem.Pdf.Structure
                     Golem.Pdf.Writer
                     Golem.Pdf.X4
   build-depends:
