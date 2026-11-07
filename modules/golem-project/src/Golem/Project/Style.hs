@@ -1054,8 +1054,8 @@ parseRunningFormatLegacy t0
             ["meta", "creators"] -> Left "meta.creators は配列なので、柱に書けません。@set で文字列の変数を作ってください"
             ["meta", k] | k `elem` runningMetaKeys -> ref (RefMeta k)
             ("set" : ns@(_ : _)) | length ns <= 2 && all varName ns -> ref (RefVar ns)
-                -- a variable of [vars], in its tables too (docs/adr/0185)
-                ("vars" : ns@(_ : _)) | all varName ns -> ref (RefProjectVar ns)
+            -- a variable of [vars], in its tables too (docs/adr/0185)
+            ("vars" : ns@(_ : _)) | all varName ns -> ref (RefProjectVar ns)
             _ -> unknown
     varName n = case T.uncons n of
       Just (c, r) -> (isAsciiLetter c || c == '_') && T.all (\x -> isAsciiLetter x || isDigit x || x == '_') r
