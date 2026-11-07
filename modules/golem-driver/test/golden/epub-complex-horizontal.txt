@@ -48,7 +48,7 @@ application/epub+zip
 <body>
 <nav epub:type="toc" id="toc">
 <h1>小さなビルドツール</h1>
-<ol><li><a href="chapters/01.xhtml#h-2-0">第1章　依存関係を読む</a><ol><li><a href="chapters/01.xhtml#h-2-67">1.1　依存のグラフ</a><ol><li><a href="chapters/01.xhtml#h-2-1515">1.1.1　循環する依存</a></li></ol></li><li><a href="chapters/01.xhtml#h-2-2313">1.2　依存を書くファイル</a><ol><li><a href="chapters/01.xhtml#h-2-3085">1.2.1　依存を自動で見つける</a></li><li><a href="chapters/01.xhtml#h-2-4251">1.2.2　読み込みのオプション</a></li></ol></li></ol></li><li><a href="chapters/02.xhtml#h-3-0">第2章　再ビルドを判定する</a><ol><li><a href="chapters/02.xhtml#h-3-46">2.1　時刻で比べる</a></li><li><a href="chapters/02.xhtml#h-3-1309">2.2　指紋で比べる</a><ol><li><a href="chapters/02.xhtml#h-3-1850">2.2.1　二つの方法の比べ方</a></li><li><a href="chapters/02.xhtml#h-3-3010">2.2.2　ハッシュの記録</a></li><li><a href="chapters/02.xhtml#h-3-4090">2.2.3　用語</a></li></ol></li></ol></li><li><a href="chapters/03.xhtml#h-4-0">第3章　同時に動かす</a><ol><li><a href="chapters/03.xhtml#h-4-38">3.1　動かす順</a></li><li><a href="chapters/03.xhtml#h-4-1075">3.2　出力を揃える</a><ol><li><a href="chapters/03.xhtml#h-4-1115">3.2.1　混ざる出力</a></li><li><a href="chapters/03.xhtml#h-4-1812">3.2.2　出力をためる</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-2416">3.3　失敗を扱う</a><ol><li><a href="chapters/03.xhtml#h-4-2436">3.3.1　止めるか続けるか</a></li><li><a href="chapters/03.xhtml#h-4-3134">3.3.2　書きかけのファイル</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-3873">3.4　作ったものを使い回す</a><ol><li><a href="chapters/03.xhtml#h-4-3908">3.4.1　キャッシュ</a></li><li><a href="chapters/03.xhtml#h-4-4530">3.4.2　使い回せる条件</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-5181">3.5　まとめ</a></li><li><a href="chapters/03.xhtml#h-4-5691">参考文献</a></li></ol></li><li><a href="back.xhtml#h-5-10">索引</a></li></ol>
+<ol><li><a href="chapters/01.xhtml#h-2-0">第1章　依存関係を読む</a><ol><li><a href="chapters/01.xhtml#h-2-67">1.1　依存のグラフ</a><ol><li><a href="chapters/01.xhtml#h-2-1515">1.1.1　循環する依存</a></li></ol></li><li><a href="chapters/01.xhtml#h-2-2313">1.2　依存を書くファイル</a><ol><li><a href="chapters/01.xhtml#h-2-3085">1.2.1　依存を自動で見つける</a></li><li><a href="chapters/01.xhtml#h-2-4251">1.2.2　読み込みのオプション</a></li></ol></li></ol></li><li><a href="chapters/02.xhtml#h-3-0">第2章　再ビルドを判定する</a><ol><li><a href="chapters/02.xhtml#h-3-46">2.1　時刻で比べる</a></li><li><a href="chapters/02.xhtml#h-3-1309">2.2　指紋で比べる</a><ol><li><a href="chapters/02.xhtml#h-3-1850">2.2.1　二つの方法の比べ方</a></li><li><a href="chapters/02.xhtml#h-3-3006">2.2.2　ハッシュの記録</a></li><li><a href="chapters/02.xhtml#h-3-4086">2.2.3　用語</a></li></ol></li></ol></li><li><a href="chapters/03.xhtml#h-4-0">第3章　同時に動かす</a><ol><li><a href="chapters/03.xhtml#h-4-38">3.1　動かす順</a></li><li><a href="chapters/03.xhtml#h-4-1075">3.2　出力を揃える</a><ol><li><a href="chapters/03.xhtml#h-4-1115">3.2.1　混ざる出力</a></li><li><a href="chapters/03.xhtml#h-4-1812">3.2.2　出力をためる</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-2416">3.3　失敗を扱う</a><ol><li><a href="chapters/03.xhtml#h-4-2436">3.3.1　止めるか続けるか</a></li><li><a href="chapters/03.xhtml#h-4-3134">3.3.2　書きかけのファイル</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-3873">3.4　作ったものを使い回す</a><ol><li><a href="chapters/03.xhtml#h-4-3908">3.4.1　キャッシュ</a></li><li><a href="chapters/03.xhtml#h-4-4530">3.4.2　使い回せる条件</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-5181">3.5　まとめ</a></li><li><a href="chapters/03.xhtml#h-4-5691">参考文献</a></li></ol></li><li><a href="back.xhtml#h-5-10">索引</a></li></ol>
 </nav>
 </body>
 </html>
@@ -122,8 +122,8 @@ code { padding-inline: 0.25em; }
 <li class="toc-2"><a href="chapters/02.xhtml#h-3-46">2.1　時刻で比べる</a></li>
 <li class="toc-2"><a href="chapters/02.xhtml#h-3-1309">2.2　<ruby class="mono">指<rp>（</rp><rt>し</rt><rp>）</rp>紋<rp>（</rp><rt>もん</rt><rp>）</rp></ruby>で比べる</a></li>
 <li class="toc-3"><a href="chapters/02.xhtml#h-3-1850">2.2.1　二つの方法の比べ方</a></li>
-<li class="toc-3"><a href="chapters/02.xhtml#h-3-3010">2.2.2　ハッシュの記録</a></li>
-<li class="toc-3"><a href="chapters/02.xhtml#h-3-4090">2.2.3　用語</a></li>
+<li class="toc-3"><a href="chapters/02.xhtml#h-3-3006">2.2.2　ハッシュの記録</a></li>
+<li class="toc-3"><a href="chapters/02.xhtml#h-3-4086">2.2.3　用語</a></li>
 <li class="toc-1"><a href="chapters/03.xhtml#h-4-0">第3章　<span class="kenten kenten-dot">同時に動かす</span></a></li>
 <li class="toc-2"><a href="chapters/03.xhtml#h-4-38">3.1　動かす順</a></li>
 <li class="toc-2"><a href="chapters/03.xhtml#h-4-1075">3.2　出力を<ruby class="mono">揃<rp>（</rp><rt>そろ</rt><rp>）</rp></ruby>える</a></li>
@@ -242,7 +242,7 @@ done &lt;deps.txt</code></pre></figure>
 </thead>
 <tbody>
 <tr><td class="align-left">速さ</td><td class="align-left">速い</td><td class="align-left">遅い</td></tr>
-<tr><td class="align-left">時刻の変化<span id="i-3-2543"></span></td><td class="align-left">作り直す</td><td class="align-left">作り直さない</td></tr>
+<tr><td class="align-left">時刻の変化<span id="i-3-2539"></span></td><td class="align-left">作り直す</td><td class="align-left">作り直さない</td></tr>
 <tr><td class="align-left">時刻の巻き戻し</td><td class="align-left">見落とす</td><td class="align-left">見落とさない</td></tr>
 <tr><td class="align-left">記録の要否</td><td class="align-left">要らない</td><td class="align-left">要る</td></tr>
 <tr><td class="align-left">精度の制限</td><td class="align-left">ある</td><td class="align-left">ない</td></tr>
@@ -252,14 +252,14 @@ done &lt;deps.txt</code></pre></figure>
 <tr><td class="align-left">ネットワーク越しのファイル</td><td class="align-left">時計のずれに弱い</td><td class="align-left">ずれに強い</td></tr>
 </tbody>
 </table>
-<h3 id="h-3-3010"><span class="number">2.2.2</span>　ハッシュの記録</h3>
-<p>ハッシュで比べるには、前回のハッシュ値をどこかに記録しておかなければならない<span id="i-3-3151"></span>。この本のツールは、ターゲットごとに一行を書いたテキストのファイルを、ビルドのディレクトリに置く。一行には、ターゲットの名前と、前提のファイルのハッシュ値を並べる。記録のファイルが壊れたり消えたりしたときは、すべてのターゲットを作り直せばよい。作り直しは遅いが、結果は正しい。記録を信じすぎて、作り直すべきものを作り直さないほうが、ずっと困った事態になる。</p>
+<h3 id="h-3-3006"><span class="number">2.2.2</span>　ハッシュの記録</h3>
+<p>ハッシュで比べるには、前回のハッシュ値をどこかに記録しておかなければならない<span id="i-3-3147"></span>。この本のツールは、ターゲットごとに一行を書いたテキストのファイルを、ビルドのディレクトリに置く。一行には、ターゲットの名前と、前提のファイルのハッシュ値を並べる。記録のファイルが壊れたり消えたりしたときは、すべてのターゲットを作り直せばよい。作り直しは遅いが、結果は正しい。記録を信じすぎて、作り直すべきものを作り直さないほうが、ずっと困った事態になる。</p>
 <figure id="fig-photo">
 <img src="../images/photo.jpg" alt="小さな写真"/>
 <figcaption><span class="number">図2.1</span>　記録のファイルを置いたディレクトリの写真（見本）。</figcaption>
 </figure>
 <p>図2-1のように、記録のファイルはビルドの出力と同じ場所に置く。出力を消せば記録も消えるので、二つが食い違うことがない。</p>
-<h3 id="h-3-4090"><span class="number">2.2.3</span>　用語</h3>
+<h3 id="h-3-4086"><span class="number">2.2.3</span>　用語</h3>
 <p>この章で使った用語を、定義リストにまとめる。</p>
 <dl>
 <dt>ターゲット</dt>
@@ -377,11 +377,11 @@ done app.o</code></pre>
 <li>キャッシュ / 仕組み <a href="chapters/03.xhtml#i-4-3927">1</a></li>
 <li>再ビルド / 時刻 <a href="chapters/02.xhtml#i-3-153">1</a></li>
 <li>再ビルド / ハッシュ <a href="chapters/02.xhtml#i-3-1462">1</a></li>
-<li>時刻 / 変化 <a href="chapters/02.xhtml#i-3-2543">1</a></li>
+<li>時刻 / 変化 <a href="chapters/02.xhtml#i-3-2539">1</a></li>
 <li>失敗 <a href="chapters/03.xhtml#i-4-2610">1</a></li>
 <li>出力 <a href="chapters/03.xhtml#i-4-1977">1</a></li>
 <li>トポロジカルソート <a href="chapters/01.xhtml#i-2-1437">1</a></li>
-<li>ハッシュ / 記録 <a href="chapters/02.xhtml#i-3-3151">1</a></li>
+<li>ハッシュ / 記録 <a href="chapters/02.xhtml#i-3-3147">1</a></li>
 <li>ビルドツール <a href="chapters/01.xhtml#i-2-128">1</a></li>
 <li>並列 <a href="chapters/03.xhtml#i-4-154">1</a></li>
 <li>make / オプション <a href="chapters/01.xhtml#i-2-4664">1</a></li>
