@@ -134,7 +134,8 @@ CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tag
 PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には `golem preflight --marks japanese` を通し、その後に商用のプリフライト（Acrobat や pdfToolbox など）で確認する（[docs/golem-cli/adr/0006](docs/golem-cli/adr/0006-preflight.md)）。
 入稿する PDF は `golem build --target pdf --profile prod` で作る。
 `golem preflight` の要約の SHA-256 は、この PDF と一致する。
-PDF と同じ `build/pdf/` には、各ページの最初の行が原稿のどのファイルの何行何列から始まるかを LSP の位置で表す `pages.json` も書く。エディタが改ページの位置の印を出すためのものである（[docs/adr/0195](./docs/adr/0195-page-start-positions-of-pdf.md)）。
+PDF と同じ `build/pdf/` には、各ページの最初の行が原稿のどのファイルの何行何列から始まるかを LSP の位置で表す `pages.json` も書く。
+エディタが改ページの位置の印を出すためのものである（[docs/adr/0195](./docs/adr/0195-page-start-positions-of-pdf.md)）。
 
 日本の印刷所に入稿する PDF は、`style.toml` の `[page]` に `bleed = "3mm"` を書き、`golem build --target pdf --marks japanese` で作る。
 塗り足しのない日本式のトンボはエラー（G07002）になる。

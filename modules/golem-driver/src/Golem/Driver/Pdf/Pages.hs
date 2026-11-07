@@ -8,6 +8,7 @@ module Golem.Driver.Pdf.Pages
   )
 where
 
+import Data.Bifunctor (second)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Map.Strict (Map)
@@ -57,7 +58,7 @@ the array is on one line, as the diagnostics of --format json.
 pagesJson :: Map FileId (FilePath, Text) -> [Maybe (FileId, Int)] -> Text
 pagesJson sources starts = "[" <> T.intercalate "," (zipWith one [1 :: Int ..] starts) <> "]\n"
   where
-    indexes = Map.map (\(p, src) -> (p, mkLineIndex src)) sources
+    indexes = Map.map (second mkLineIndex) sources
     one n start = "{\"page\":" <> tshow n <> maybe "" position (start >>= located) <> "}"
     located (fid, off) = (\(p, li) -> (p, offsetToUtf16LineCol li off)) <$> Map.lookup fid indexes
     position (p, LineCol l c) = ",\"file\":" <> jsonString (T.pack p) <> ",\"line\":" <> tshow l <> ",\"character\":" <> tshow c
