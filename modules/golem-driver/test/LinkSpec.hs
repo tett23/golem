@@ -5,6 +5,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.List (isSuffixOf)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
@@ -54,7 +55,7 @@ linkRuns :: PdfLayout -> [(Sp, Sp)]
 linkRuns pl =
   [ (slIndent sl + minimum (map fst bs), slIndent sl + maximum (map snd bs))
   | sl <- Map.elems (plLines pl),
-    let bs = [(off, off + w) | (Box w c, off) <- placeLine (slLine sl), lkLink (bcLook c) /= Nothing],
+    let bs = [(off, off + w) | (Box w c, off) <- placeLine (slLine sl), isJust (lkLink (bcLook c))],
     not (null bs)
   ]
 

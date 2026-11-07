@@ -527,8 +527,8 @@ linkRects :: DrawEnv -> (Sp, Sp) -> SetLine -> [(LinkTarget, Rect)]
 linkRects env start sl =
   [ (t, faceRect vertical (slSize sl) start (slIndent sl + s0) (slIndent sl + e0))
   | run@((s0, _, c) : _) <- groupWhen (\(_, _, p) (_, _, c) -> lkLink (bcLook p) == lkLink (bcLook c)) boxes,
-    Just t <- [lkLink (bcLook c)],
-    let e0 = maximum [o + w | (o, w, _) <- run]
+    let e0 = maximum [o + w | (o, w, _) <- run],
+    Just t <- [lkLink (bcLook c)]
   ]
   where
     boxes = [(off, w, c) | (Box w c, off) <- placeLine (slLine sl)]
