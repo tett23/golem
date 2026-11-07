@@ -1204,7 +1204,8 @@ data FrameKind
   | -- | the lines of a paragraph of a style that keeps its lines
     FPara
   | {- | a note at the end of a chapter, by its span, and how many inlines
-    its mark is: in the tree after its mark -}
+    its mark is: in the tree after its mark
+    -}
     FEndNote !SrcSpan !Int
   deriving stock (Eq, Show)
 

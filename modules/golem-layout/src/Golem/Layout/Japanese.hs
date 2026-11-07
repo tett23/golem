@@ -854,7 +854,7 @@ markItem env place lk parts ps pe =
       starts = scanl (\o (_, _, u, k) -> o + u + tr * fromIntegral k) ps units
       parts' = [(fromEnum kind, t, o) | ((kind, t, _, _), o) <- zip units starts]
       w = sum [u | (_, _, u, _) <- units] + tr * fromIntegral (max 0 (chars - 1)) + ps + pe
-   in Box w (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts')))
+   in Box w (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts')) (Leaf (ceSite env) (ceLeaf env)))
 
 {- | A run of code (golem-driver ADR 0017): a box for each part of Latin or
 other text, cut after each slash; 'normalize' allows a break after a
