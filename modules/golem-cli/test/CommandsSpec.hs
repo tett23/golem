@@ -269,11 +269,12 @@ tablePathTests =
   where
     -- /ID [<document ID> <instance ID>], the instance ID as zeros
     withoutInstanceId bytes = case BS.breakSubstring "/ID [<" bytes of
-      (before, rest) | not (BS.null rest) ->
-        let (docId, afterDoc) = BS.break (== 0x3E) (BS.drop 6 rest)
-            (sep, instanceAndRest) = BS.break (== 0x3C) afterDoc
-            (instanceId, after) = BS.break (== 0x3E) (BS.drop 1 instanceAndRest)
-         in BS.concat [before, "/ID [<", docId, sep, "<", BS.map (const 0x30) instanceId, after]
+      (before, rest)
+        | not (BS.null rest) ->
+            let (docId, afterDoc) = BS.break (== 0x3E) (BS.drop 6 rest)
+                (sep, instanceAndRest) = BS.break (== 0x3C) afterDoc
+                (instanceId, after) = BS.break (== 0x3E) (BS.drop 1 instanceAndRest)
+             in BS.concat [before, "/ID [<", docId, sep, "<", BS.map (const 0x30) instanceId, after]
       _ -> bytes
 
 -- ------------------------------------------------------------------ golem inspect (golem-cli ADR 0001)
