@@ -124,7 +124,7 @@ cbor :: TestTree
 cbor =
   testGroup
     "golem-doc (ADR 0001)"
-    [       needsTool "cddl" cddlValidator $ \cddl ->
+    [ needsTool "cddl" cddlValidator $ \cddl ->
         testCase "the cddl CLI rejects a document of another ABI version" $ do
           exe <- cddl
           (code, _, _) <- withSystemTempDirectory "golem-doc" $ \dir -> do
