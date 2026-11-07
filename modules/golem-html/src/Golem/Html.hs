@@ -475,7 +475,9 @@ block c (Block sp lbl body) = case body of
   FigureBlock f ->
     let num = numberSpan c (Map.lookup sp (bookFigures (cBook c)))
         cap = T.concat [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
-     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webOutput f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"" <> figureWidthStyle (hcVertical (cCfg c)) (figWidth f) <> "/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
+        -- no figcaption without a number and a caption (docs/adr/0200)
+        figcaption = if T.null (num <> cap) then "" else "<figcaption>" <> num <> cap <> "</figcaption>\n"
+     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webOutput f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"" <> figureWidthStyle (hcVertical (cCfg c)) (figWidth f) <> "/>\n" <> figcaption <> "</figure>\n"
   ChannelOutput (TocOutput d) -> toc c (Just d)
   ChannelOutput IndexOutput -> index c sp
   ChannelOutput (CustomOutput name _) -> channelList c sp name

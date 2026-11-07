@@ -4,6 +4,7 @@ import Control.Exception (evaluate)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.Either (lefts)
+import Data.Maybe (isJust)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
@@ -81,7 +82,7 @@ diagsWith c = map diagSite . fst . evalSource c
 
 -- | A PNG figure of images/a.png with the alt text x.
 fig0 :: Figure
-fig0 = Figure "images/a.png" Nothing "x" Nothing Nothing [] Nothing False
+fig0 = Figure "images/a.png" Nothing "x" Nothing Nothing [] Nothing False False
 
 -- | The diagnostics golem-project's importsOf gives the @import of a source (golem-project ADR 0006).
 importSites :: Text -> [(Text, Text, Int, Int)]
@@ -170,7 +171,7 @@ pluginBlockTests =
       testCase "a figure of a plugin keeps its image and goes through the checks of @figure" $ do
         let src = "golem-plugin-image://00.svg"
             drawn f = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (f sp))], Map.fromList [(src, "<svg/>")], [])))]}
-            plain sp = Figure src Nothing "棒グラフ" Nothing Nothing [Block sp Nothing (Paragraph Nothing [Text sp "図"])] Nothing False
+            plain sp = Figure src Nothing "棒グラフ" Nothing Nothing [Block sp Nothing (Paragraph Nothing [Text sp "図"])] Nothing False False
             r = evalResult ctx {ctxPlugins = drawn plain} "@label c\n@chart\n"
         map blockLabel (resultBlocks r) @?= [Just "c"]
         map blockBody (resultBlocks r) @?= [FigureBlock (plain (mkSpan (FileId 1) 9 16))]
@@ -184,11 +185,11 @@ pluginBlockTests =
         map (\(c, _, _, _) -> c) (diagsWith ctx {ctxPlugins = drawn (\sp -> (plain sp) {figPage = Just 2})} "@chart\n") @?= ["G02075"],
       testCase "the image of a figure that fails the checks is not kept" $ do
         let src = "golem-plugin-image://00.svg"
-            drawn = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (Figure src Nothing "x" (Just WrapEnd) Nothing [] Nothing False))], Map.fromList [(src, "<svg/>")], [])))]}
+            drawn = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (Figure src Nothing "x" (Just WrapEnd) Nothing [] Nothing False False))], Map.fromList [(src, "<svg/>")], [])))]}
         erImages (evalResult ctx {ctxPlugins = drawn} "@chart\n") @?= Map.empty,
       testCase "a paragraph style in the caption of a figure of a plugin is G02013 and is dropped, as @figure" $ do
         let src = "golem-plugin-image://00.svg"
-            styled sp = Figure src Nothing "x" Nothing Nothing [Block sp Nothing (Paragraph (Just "quote") [Text sp "図"])] Nothing False
+            styled sp = Figure src Nothing "x" Nothing Nothing [Block sp Nothing (Paragraph (Just "quote") [Text sp "図"])] Nothing False False
             hook = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (styled sp))], Map.fromList [(src, "<svg/>")], [])))]}
             (bs, ds) = run ctx {ctxPlugins = hook} "@chart\n"
         ds @?= ["G02013"]
@@ -397,6 +398,27 @@ tests =
         errs "@label a\n" @?= ["G02010"]
         errs "@nonumber\n本文。\n" @?= ["G02013"]
         errs "@label a\n@set x = 1\n# x\n" @?= ["G02011"],
+      -- docs/adr/0200
+      testCase "@nonumber on a figure: figNoNumber, no diagnostic" $ do
+        let src = "@nonumber\n@figure images/a.png alt=x\n  キャプション。\n"
+        errs src @?= []
+        map (\case FigureBlock f -> Just (figNoNumber f); _ -> Nothing) (body src) @?= [Just True]
+        map (\case FigureBlock f -> Just (figNoNumber f); _ -> Nothing) (body "@figure images/a.png alt=x\n") @?= [Just False],
+      testCase "@nonumber on a code block with @caption, in either order, and on @listing" $ do
+        let noNumber src = map (fmap (\c -> (codeNoNumber c, isJust (codeCaption c))) . codeOf) (body src)
+        noNumber "@caption 例\n@nonumber\n```\nx\n```\n" @?= [Just (True, True)]
+        noNumber "@nonumber\n@caption 例\n```\nx\n```\n" @?= [Just (True, True)]
+        noNumber "@caption 例\n```\nx\n```\n" @?= [Just (False, True)]
+        noNumber "@nonumber\n@caption 例\n@listing src/Main.hs\n" @?= [Just (True, True)]
+        errs "@caption 例\n@nonumber\n```\nx\n```\n" @?= []
+        errs "@nonumber\n@caption 例\n@listing src/Main.hs\n" @?= [],
+      testCase "G02134: @nonumber on a code block without a caption, at the @nonumber line" $ do
+        let src = "@label c\n@nonumber\n```\nx\n```\n"
+        diags src @?= [("G02134", "キャプションのないコードブロックは番号を持たないので、@nonumber は要りません", fst (spanOf src "@nonumber"), fst (spanOf src "@nonumber\n") + 10)]
+        errs "@nonumber\n@listing src/Main.hs\n" @?= ["G02134"],
+      testCase "@nonumber on a paragraph or a table is G02013 still" $ do
+        errs "@nonumber\n本文。\n" @?= ["G02013"]
+        errs "@nonumber\n| a |\n|---|\n| b |\n" @?= ["G02013"],
       testCase "figures" $ do
         errs "@figure images/a.png alt=\"x\"\n  キャプション。\n" @?= []
         errs "@figure images/a.png\n" @?= ["G02028"]
@@ -494,7 +516,7 @@ tests =
         map (\(c, _, _, _) -> c) (diags "@figure images/a.png alt=x wrap=end width=abc\n") @?= ["G02133"],
       testCase "a figure of a plugin with a width that cannot be read is G02133 at the call (docs/adr/0190)" $ do
         let src = "golem-plugin-image://00.svg"
-            drawn w = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (Figure src Nothing "x" Nothing (Just w) [] Nothing False))], Map.fromList [(src, "<svg/>")], [])))]}
+            drawn w = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (Figure src Nothing "x" Nothing (Just w) [] Nothing False False))], Map.fromList [(src, "<svg/>")], [])))]}
         diagsWith ctx {ctxPlugins = drawn "abc"} "@chart\n" @?= [("G02133", "図版の width が読めません。寸法（10zw、50mm など）か行長の割合（50% など）で書きます: abc", 0, 7)]
         fst (run ctx {ctxPlugins = drawn "abc"} "@chart\n") @?= []
         diagsWith ctx {ctxPlugins = drawn "50%"} "@chart\n" @?= [],
@@ -1727,7 +1749,7 @@ codeTests =
         codeFile l @?= Just "x.hs",
       testCase "a code block without arguments is as before" $ do
         c <- oneCode "```hs\na\n  b\n```\n"
-        c @?= Code (Just "hs") Nothing Nothing Nothing False [CodeLine "a" (Just 1) Nothing False [], CodeLine "  b" (Just 2) Nothing False []]
+        c @?= Code (Just "hs") Nothing Nothing Nothing False [CodeLine "a" (Just 1) Nothing False [], CodeLine "  b" (Just 2) Nothing False []] False
     ]
 
 -- | The codes, messages and positions of golem-eval ADR 0003.
