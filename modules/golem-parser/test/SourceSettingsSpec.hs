@@ -18,8 +18,8 @@ tests :: TestTree
 tests =
   testGroup
     "source settings (docs/adr ADR 0013)"
-    [ testCase "the default separates paragraphs by a blank line" $
-        ssParagraphSeparator defaultSourceSettings @?= BlankLineSeparated,
+    [ testCase "the default separates paragraphs by a newline (docs/adr/0193)" $
+        ssParagraphSeparator defaultSourceSettings @?= LineSeparated,
       testCase "paragraph-separator takes line and blank-line" $ do
         separator "line" @?= Right LineSeparated
         separator "blank-line" @?= Right BlankLineSeparated

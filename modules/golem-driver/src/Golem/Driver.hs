@@ -149,7 +149,7 @@ data Evaluated = Evaluated
     evAssetSources :: !(Map FileId SourceInfo),
     -- | the table files the evaluation read, relative to the root, for the LSP to watch (golem-eval ADR 0004)
     evTableFiles :: !(Set.Set FilePath),
-    -- | the diagnostics of the project stage: G03007, G03023, plugins, the bibliography, table files (golem-lsp ADR 0004)
+    -- | the diagnostics of the project stage: G03007, G03023, G03120, plugins, the bibliography, table files (golem-lsp ADR 0004)
     evProjectDiagnostics :: ![Diagnostic],
     -- | the diagnostics of S1 (golem-lsp ADR 0004)
     evS1Diagnostics :: ![Diagnostic],
@@ -219,6 +219,8 @@ evaluateProjectWith overlay profile root = do
       styleBytes <- readMaybeBytes (root </> "style.toml")
       let -- G03023: the default style, when there is no style.toml (golem-syntax ADR 0002)
           defaultStyleNotice = [notice "G03023" (mkSpan (projectManifestFile project) 0 0) "style.toml がないので、既定の体裁で組みます" | isNothing styleBytes]
+          -- G03120: no paragraph-separator in [source], read in the line style (docs/adr/0193)
+          defaultSeparatorNotice = [notice "G03120" (mkSpan (projectManifestFile project) 0 0) "段落の区切り方を書いていないので、改行の様式（paragraph-separator = \"line\"）で読みます" | not (manifestParagraphSeparatorWritten (projectManifest project))]
           manifest0 = projectManifest project
           styleFid = styleFileId project
       -- style.toml passes the reading stage too (golem-parser ADR 0009)
@@ -226,7 +228,7 @@ evaluateProjectWith overlay profile root = do
           styleText = fromRight Nothing styleRead
           -- G03100: a zero indent of caption or sidenote (golem-driver ADR 0043)
           styleNoticeDiags = maybe [] (styleNotices styleFid) styleText
-          synDiags = defaultStyleNotice <> styleNoticeDiags <> concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
+          synDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
       case first (map noFix . rfDiagnostics) styleRead >>= loadStyle styleFid of
         -- style.toml is where its errors point (golem-project ADR 0006)
         Left ds -> pure (Left (ProjectFailure ds (Map.insert styleFid (maybe (SourceInfo "style.toml" (mkLineIndex "")) (readInfo "style.toml") styleBytes) (sourceInfos project))))
@@ -280,7 +282,7 @@ evaluateProjectWith overlay profile root = do
               (bibDiags, citeKeys, _) <- loadBibliography root manifest
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook table)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
-                  projectDiags = defaultStyleNotice <> styleNoticeDiags <> masterDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
+                  projectDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> masterDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
                   reassemble = assembleResults (phChannels hook) style manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook table results f sf)

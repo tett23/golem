@@ -84,13 +84,34 @@ sourceTests =
             Left ds -> assertFailure (show ds)
             Right p -> do
               manifestSource (projectManifest p) @?= defaultSourceSettings
-              separators p @?= [("a.gm", BlankLineSeparated)],
+              separators p @?= [("a.gm", LineSeparated)]
+              ssParagraphSeparator (manifestSource (projectManifest p)) @?= LineSeparated
+              manifestParagraphSeparatorWritten (projectManifest p) @?= False,
       testCase "paragraph-separator = \"line\" is read" $
         withProject [("manifest.toml", manifestWith ["\"a.gm\""] "[source]\nparagraph-separator = \"line\"\n"), ("a.gm", "")] $ \root -> do
           r <- loadProject root
           case r of
             Left ds -> assertFailure (show ds)
-            Right p -> ssParagraphSeparator (manifestSource (projectManifest p)) @?= LineSeparated,
+            Right p -> do
+              ssParagraphSeparator (manifestSource (projectManifest p)) @?= LineSeparated
+              manifestParagraphSeparatorWritten (projectManifest p) @?= True,
+      testCase "paragraph-separator = \"blank-line\" is read (docs/adr/0193)" $
+        withProject [("manifest.toml", manifestWith ["\"a.gm\""] "[source]\nparagraph-separator = \"blank-line\"\n"), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          case r of
+            Left ds -> assertFailure (show ds)
+            Right p -> do
+              ssParagraphSeparator (manifestSource (projectManifest p)) @?= BlankLineSeparated
+              separators p @?= [("a.gm", BlankLineSeparated)]
+              manifestParagraphSeparatorWritten (projectManifest p) @?= True,
+      testCase "a chapter entry alone does not write [source] (docs/adr/0193)" $
+        withProject [("manifest.toml", manifest ["{ file = \"a.gm\", paragraph-separator = \"blank-line\" }"]), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          case r of
+            Left ds -> assertFailure (show ds)
+            Right p -> do
+              separators p @?= [("a.gm", BlankLineSeparated)]
+              manifestParagraphSeparatorWritten (projectManifest p) @?= False,
       testCase "an invalid value and an unknown key are G03001" $ do
         withProject [("manifest.toml", manifestWith ["\"a.gm\""] "[source]\nparagraph-separator = \"lines\"\n"), ("a.gm", "")] $ \root ->
           loadProject root >>= (@?= ["G03001"]) . codes
@@ -115,9 +136,9 @@ sourceTests =
               separators p @?= [("a.gm", LineSeparated), ("b.gm", BlankLineSeparated), ("c.gm", LineSeparated)]
               map (\(_, m, es) -> (m, length es)) (chapterFiles (manifestChapters (projectManifest p))) @?= [(Nothing, 0), (Nothing, 1)],
       testCase "the same file twice with different settings is G03001" $ do
-        withProject [("manifest.toml", manifest ["\"a.gm\"", "{ file = \"a.gm\", paragraph-separator = \"line\" }"]), ("a.gm", "")] $ \root ->
-          loadProject root >>= (@?= ["G03001"]) . codes
         withProject [("manifest.toml", manifest ["\"a.gm\"", "{ file = \"a.gm\", paragraph-separator = \"blank-line\" }"]), ("a.gm", "")] $ \root ->
+          loadProject root >>= (@?= ["G03001"]) . codes
+        withProject [("manifest.toml", manifest ["\"a.gm\"", "{ file = \"a.gm\", paragraph-separator = \"line\" }"]), ("a.gm", "")] $ \root ->
           loadProject root >>= (@?= []) . codes
     ]
 

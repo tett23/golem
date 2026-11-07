@@ -120,7 +120,7 @@ chapters = [
 
 | キー | 意味 |
 |:---|:---|
-| [code: paragraph-separator] | 段落の区切り方です（文字列）。[code: "blank-line"] は空行で段落を区切り、[code: "line"] は改行ひとつで区切って一行を一つの段落にします。省くと [code: "blank-line"] です。 |
+| [code: paragraph-separator] | 段落の区切り方です（文字列）。[code: "blank-line"] は空行で段落を区切り、[code: "line"] は改行ひとつで区切って一行を一つの段落にします。省くと [code: "line"] になり、お知らせ（G03120）が出ます。 |
 
 @nonumber
 ## [code: \[diagnostics\]]

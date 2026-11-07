@@ -16,3 +16,6 @@ role = "author"
 [targets.html]
 [targets.epub]
 [targets.text]
+
+[source]
+paragraph-separator = "blank-line"
