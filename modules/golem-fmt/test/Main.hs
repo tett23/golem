@@ -183,5 +183,37 @@ tests =
             mapM_ (\c -> assertBool (show c) (not (removableEscape c))) ['/', ' ', '\t']
         ],
       testCase "code blocks and comments are untouched" $
-        formatted "```\n  a   \n```\n\n本文%%  コメント   %%\n" @?= "```\n  a   \n```\n\n本文%%  コメント   %%\n"
+        formatted "```\n  a   \n```\n\n本文%%  コメント   %%\n" @?= "```\n  a   \n```\n\n本文%%  コメント   %%\n",
+      tableTests
     ]
+
+-- | The preprocessing of the table files (docs/adr/0186).
+tableTests :: TestTree
+tableTests =
+  testGroup
+    "the table files (docs/adr/0186)"
+    [ testCase "the BOM is removed and CRLF becomes LF" $
+        formatTable "\xFEFF\&a,b\r\n1,2\r\n" @?= "a,b\n1,2\n",
+      testCase "a lone CR becomes LF; CRLF stays one line break" $ do
+        formatTable "a,b\r1,2\r" @?= "a,b\n1,2\n"
+        formatTable "a\r\r\nb" @?= "a\n\nb",
+      testCase "tabs, spaces, blank lines and quotes are kept" $ do
+        formatTable "a\tb\n\tz  \n" @?= "a\tb\n\tz  \n"
+        formatTable "a,b\n\"x\n\n\ny  \",1\n\n\n  c ,\"d\"\"\"\n" @?= "a,b\n\"x\n\n\ny  \",1\n\n\n  c ,\"d\"\"\"\n",
+      testCase "only the BOM at the start, and only one, is removed" $ do
+        formatTable "a\xFEFF\&b\n" @?= "a\xFEFF\&b\n"
+        formatTable "\xFEFF\xFEFF\&a\n" @?= "\xFEFF\&a\n",
+      -- a second BOM right after the first is a character of the first cell,
+      -- which the reader keeps; it is left out here, as the reader leaves it
+      testProperty "idempotent" $ property $ do
+        src <- forAll tableText
+        formatTable (formatTable src) === formatTable src
+    ]
+
+-- | The text of a table file: a BOM at the start or none, then cells,
+-- separators, quotes and line breaks of every kind.
+tableText :: Gen Text
+tableText = do
+  bom <- Gen.element ["", "\xFEFF"]
+  body <- T.concat <$> Gen.list (Range.linear 0 30) (Gen.element ["a", "x y", " ", ",", "\t", "\"", "\n", "\r\n", "\r", "\xFEFF", "語"])
+  pure (bom <> (if "\xFEFF" `T.isPrefixOf` body then "a" <> body else body))
