@@ -39,6 +39,8 @@ color = "code"
 [character-styles.url]
 font = "code"
 color = "code"
+# 脚注の ADR の URL を行に収めるため、字の送りを詰める（docs/adr/0210）
+tracking = -10
 
 [paragraph-styles.body]
 first-line-indent = "1zw"

@@ -2634,7 +2634,7 @@ LSP には `--no-notices` と `--verbose` に当たる設定を設けず、`sile
 記法と設定のキーを廃止する手順は、互換性の文書 [docs/compatibility.md](compatibility.md) の「廃止の手順」にある（[docs/adr/0174](adr/0174-compatibility-promises-for-1-0.md)）。
 
 diagnostic は、プログラムが読む事実（`diagFacts`）を持てる（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
-事実は名前と値（整数、文字列、整数の配列、文字列の配列）の組の並びで、今はプリフライトの diagnostics と、フォントにない字の G08100（[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）だけが、ページ番号（`pdf-pages`）や測った値（`ppi` など）を持つ。
+事実は名前と値（整数、文字列、整数の配列、文字列の配列）の組の並びで、今はプリフライトの diagnostics と、フォントにない字の G08100（[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）と、行長からはみ出す行の G07105（[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）だけが、ページ番号（`pdf-pages`）や測った値（`ppi` など）を持つ。
 JSON の形式では、事実を持つ diagnostic にだけ、書いた順にキーを並べた `"facts"` のオブジェクトを `"fixes"` の後に加える。
 
 ```json
@@ -2912,7 +2912,13 @@ PDF 経路の段落は、Knuth と Plass の方式で行に分ける（[golem-la
 行長に収まる分割がなくなった位置では、収まらない箱を次の行へ送り出し、その前のいちばん後ろの分割の候補で行を終える（JLReq の追い出し）。
 送り出した行は伸びの許すかぎり字間を空けて行長にそろえ、分割はその行の後ろからやり直す。
 送り出せる候補がない場合、つまり一つの箱が行長より長い場合に限り、行長からはみ出す行を作る。
-はみ出す行は `golem build` では diagnostic にせず、`golem preflight` がプリフライトの検査 `overfull-lines`（G09013）で行ごとに報告する（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+はみ出す行は、PDF をターゲットに含む `golem build` が、描いた行ごとに G07105 の警告で報告する（[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。
+はみ出しの量は、行の自然な幅から縮みの合計（字形の圧縮を含む）と行長を引いた量で、行分割がはみ出す行とみなす条件と同じ式で求める（`lineOverflow`）。
+1sp でもはみ出せば報告し、量は mm で小数点以下 2 桁に切り上げて書く。
+位置は、行の箱を行頭から順に見て、終わりが行長を超える最初の箱の最初の字（長さ 0）で、その箱が原稿にない字（見出しの番号、目次の題など）なら、その行を含む原稿のブロックの位置とする。
+dev と prod の両方で警告で、PDF を書き、notice ではないので `silence-notices` では抑制できない。
+`golem check`、LSP、HTML、EPUB、プレーンテキストでは報告しない。
+`golem preflight` は、同じ行をプリフライトの検査 `overfull-lines`（G09013）でも報告する（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 たとえば、段落の途中に分割できない長いインラインのコードがあり、その前の文字列とともに一行に収まらない場合、コードの前までで行を終え、コードを次の行の先頭に置く。
 
 和文の字のあいだの改行は、JLReq の禁則に従う。
@@ -4610,6 +4616,8 @@ LSP、`golem check`、`golem build` はプリフライトの検査をしない�
 プロファイルが prod なので G08100 はエラーであり、プリフライトの設定の `glyph-missing` は G08100 に当たらない。
 G08100 は PDF を組んだ後に出るので、プリフライトの検査は走り、二つは同じ位置に同じメッセージと事実で並ぶ。
 `glyph-missing` を `warning` か `off` にしても、フォントにない字があれば終了コードは 1 である。
+行長からはみ出す行も、プリフライトの検査の G09013 のほかに、ビルドの G07105 の警告として出る（[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。
+二つは同じ行について、同じ位置に同じメッセージと事実で並び、G09013 の重大度だけが `overfull-lines` の `severity` による。
 ビルドは原稿と設定の誤りで止まり、プリフライトは印刷の条件で止まる、という分け方である。
 
 InDesign のプリフライトプロファイルにあたるものを、プリフライトの設定と呼ぶ。
@@ -4661,6 +4669,7 @@ SVG の図版は、G09008 では `rgb` とし、G09006、G09007、G09009 では�
 同じ原因の diagnostics は検査ごとの単位で一つにまとめ、最初のページの位置に出す。
 ページは PDF の何ページ目か（1 から数える）で示し、メッセージには最初の十ページまでを書き、それより多ければ `ほか <n> ページ` と添える。
 長さは mm で、小数点以下 2 桁に、等距離なら偶数の側へ丸めて書く（`0.06mm`。[docs/adr/0103](adr/0103-single-place-for-unit-conversions.md)）。
+G09013 のはみ出しの量だけは、G07105 と同じく、小数点以下 2 桁に切り上げて書く（`0.00mm` とは書かない。[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。
 検査は golem-preflight の純粋な関数（`Golem.Preflight.check`）が、golem-driver の PDF の書き手が作る組んだ結果の写し（`Golem.Preflight.View`）に対して行う。
 写しは遅延して作る。
 `golem build` は G08100 のために写しの字の一覧だけを評価し、図版、フォントの形式、色など、ほかの部分は `golem preflight` のときだけ作る。

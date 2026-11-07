@@ -7,6 +7,8 @@ module Golem.Preflight
   ( check,
     MissingGlyph (..),
     missingGlyphs,
+    OverfullLine (..),
+    overfullLine,
     pagesPhrase,
   )
 where
@@ -361,14 +363,32 @@ liveArea r v =
   where
     outside p rect = [(edge, e) | (edge, e) <- edges p rect, e < ruLiveAreaDistance r]
 
+{- | A line that sticks out past its measure (docs/adr ADR 0210): where,
+the message and the facts that G09013 and the G07105 of golem build
+share. The amount is in mm rounded up, so that a line 1sp over is
+@0.01mm@ over.
+-}
+data OverfullLine = OverfullLine
+  { olSpan :: !SrcSpan,
+    olMessage :: !Text,
+    olFacts :: ![(Text, Fact)]
+  }
+  deriving stock (Eq, Show)
+
+-- | The overfull line on a page of the PDF (from 1), by its amount and where.
+overfullLine :: Int -> Sp -> SrcSpan -> OverfullLine
+overfullLine page amount sp =
+  OverfullLine sp ("行が行長から " <> L.mmCeilText amount <> " はみ出しています（" <> pagesPhrase [page] <> "）") [("overfull", FactText (L.mmCeilText amount)), pagesFact [page]]
+
 -- | G09013: a line overfull after line breaking.
 overfullLines :: Rules -> View -> [Diagnostic]
 overfullLines r v =
   concat
-    [ at (ruOverfullLines r) "G09013" (lvSpan l) ("行が行長から " <> mmText amount <> " はみ出しています（" <> pagesPhrase [pvIndex p] <> "）") [("overfull", FactText (mmText amount)), pagesFact [pvIndex p]]
+    [ at (ruOverfullLines r) "G09013" (olSpan o) (olMessage o) (olFacts o)
     | p <- vwPages v,
       l <- pvLines p,
-      Just amount <- [lvOverfull l]
+      Just (amount, sp) <- [lvOverfull l],
+      let o = overfullLine (pvIndex p) amount sp
     ]
 
 -- | G09014: the PDF/X-4 requirements; one diagnostic when the output intent is missing.

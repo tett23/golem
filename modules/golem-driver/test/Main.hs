@@ -18,6 +18,7 @@ import HeadingLevelsSpec (headingLevelsTests)
 import InMemorySpec (inMemoryTests)
 import LinkSpec (linkTests)
 import OutputGoldenSpec
+import OverflowSpec (overflowTests)
 import PageElementsSpec
 import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
@@ -70,7 +71,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests]
         <> [ newProjectTests,
              allTargetsTests,
              pdfPipelineTests,

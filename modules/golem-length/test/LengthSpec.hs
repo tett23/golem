@@ -98,6 +98,17 @@ tests =
             mmText (toSp Mm (k % 100)) === hundredths k
         ],
       testGroup
+        "mmCeilText (docs/adr ADR 0210)"
+        [ testCase "1sp is 0.01mm, not 0.00mm" $ mmCeilText 1 @?= "0.01mm",
+          testCase "zero" $ mmCeilText 0 @?= "0.00mm",
+          testCase "the sp on either side of 0.005mm are both 0.01mm" $ map mmCeilText [928, 929] @?= ["0.01mm", "0.01mm"],
+          testCase "the sp below 1.24mm is 1.24mm, the sp above it 1.25mm" $ map mmCeilText [230356, 230357] @?= ["1.24mm", "1.25mm"],
+          testCase "the sp of 3mm, just below it, is 3.00mm" $ mmCeilText (toSp Mm 3) @?= "3.00mm",
+          testProperty "the hundredths of a mm rounded up" $ property $ do
+            s <- forAll (Gen.integral (Range.linear 0 100000000))
+            mmCeilText (Sp s) === hundredths (ceiling ((s * 2540) % 4718592))
+        ],
+      testGroup
         "ptText and emText"
         [ testCase "1sp is 0pt at four decimals" $ ptText 1 @?= "0",
           testCase "65536sp is 1pt" $ ptText 65536 @?= "1",
