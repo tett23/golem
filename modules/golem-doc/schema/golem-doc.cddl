@@ -66,6 +66,7 @@ inline-no-ruby =
   / [17, span]                                     ; line break
   / [18, span, zw: [uint64, 1..9223372036854775807] / null, sp: uint64 / null] ; aki: zw or sp, exactly one (docs/adr ADR 0019)
   / [19, span, channel: tstr, key: tstr / null, reading: tstr / null, inlines] ; channel item (golem-doc ADR 0007)
+  / [20, span, uri: tstr, inlines]               ; link to an external URL (docs/adr ADR 0182)
 ; 1 (strong), 2 (bold) and 3 (italic) are retired: they are character styles (docs/adr ADR 0005)
 
 number-style = 0..2                                ; kanji, kanji-digits, tcy

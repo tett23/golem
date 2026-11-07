@@ -365,6 +365,7 @@ kentenRubyNotices book =
       Ruby sp _ segs -> [sp | inKenten] <> concat [concatMap kentenIn b | RubySegment b _ <- segs]
       Color _ _ xs -> concatMap (sites inKenten) xs
       CharStyle _ _ xs -> concatMap (sites inKenten) xs
+      Link _ _ xs -> concatMap (sites inKenten) xs
       Note _ _ xs -> concatMap (sites False) xs
       Sidenote _ _ xs -> concatMap (sites False) xs
       _ -> []
@@ -374,6 +375,7 @@ kentenRubyNotices book =
       Kenten sp _ _ -> [sp]
       Color _ _ xs -> concatMap kentenIn xs
       CharStyle _ _ xs -> concatMap kentenIn xs
+      Link _ _ xs -> concatMap kentenIn xs
       _ -> []
 
 -- | Every list of inlines of a block, captions and nested blocks included.
@@ -440,6 +442,8 @@ restyle style lk = \case
         code = isCodeCharStyle style name
     Nothing -> lk
   Color _ sw _ -> lk {lkColor = Just sw}
+  -- the boxes of a link know its target, which the line breaking does not read (docs/adr ADR 0182)
+  Link _ u _ -> lk {lkLink = Just (L.LinkUri u)}
   _ -> lk
 
 {- | The size source inside an inline element (golem-cli ADR 0008), as

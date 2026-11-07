@@ -1,5 +1,6 @@
 module Main (main) where
 
+import AlignSpaceSpec (alignSpaceTests)
 import BuildSpec
 import CallsSpec (callsTests)
 import ChapterNotesSpec
@@ -13,6 +14,7 @@ import EmetSamplesSpec (emetSamplesTests)
 import FigureSpec
 import FunctionsSpec (functionsTests)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
+import LinkSpec (linkTests)
 import OutputGoldenSpec
 import PageElementsSpec
 import ParagraphRuleSpec
@@ -23,6 +25,7 @@ import SecuritySpec
 import StylesSpec
 import TableFilesSpec
 import Test.Tasty
+import VarsSpec (varsTests)
 
 main :: IO ()
 main = defaultMainReportingSkips tests
@@ -44,10 +47,12 @@ tests skips =
         evalDiagnosticTests,
         functionsTests,
         callsTests,
+        varsTests,
         emetSamplesTests,
         testGroup "output and layout diagnostic codes (golem-driver ADR 0016)" outputDiagnosticTests,
         testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
         testGroup "the background of inline code (golem-driver ADR 0029)" inlineCodeBackgroundTests,
+        testGroup "the link annotations of the PDF (docs/adr ADR 0182)" linkTests,
         testGroup "ruby and kenten after a code block (golem-driver ADR 0033)" codeBlockRubyTests,
         testGroup "the text layer of ligatures (golem-driver ADR 0030)" ligatureTests,
         testGroup "combining characters (golem-driver ADR 0036)" combiningTests,
@@ -78,6 +83,7 @@ tests skips =
              testGroup "SVG figures (golem-pdf ADR 0009)" svgFigureTests,
              testGroup "SVG active content in HTML and EPUB (docs/adr ADR 0039)" activeContentTests,
              testGroup "figures fitted to the column (golem-driver ADR 0034)" fitFigureTests,
+             testGroup "the width of figures (docs/adr/0190)" figureWidthTests,
              testGroup "turned figures (golem-driver ADR 0034)" turnedFigureTests,
              testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
              testGroup "PDF index and bibliography (ADR 0007)" indexTests,
@@ -111,6 +117,7 @@ tests skips =
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
+             testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
              publicDomainTests skips,
              diagnosticSiteTests
            ]

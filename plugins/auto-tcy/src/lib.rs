@@ -183,6 +183,8 @@ impl Flat {
                 }
                 Inline::CharStyle { style, body, .. } => self.run(body, editable && style != "code"),
                 Inline::Color { body, .. } => self.run(body, editable),
+                // the text of a link is set as that of a character style (docs/adr ADR 0182)
+                Inline::Link { body, .. } => self.run(body, editable),
                 Inline::Kenten { body, .. } => self.run(body, false),
                 Inline::Ruby { segments, .. } => {
                     for s in segments {
@@ -307,6 +309,7 @@ fn rebuild(xs: Vec<Inline>, edits: &Edits, count: &mut usize) -> Vec<Inline> {
             }
             Inline::CharStyle { span, style, body } => out.push(Inline::CharStyle { span, style, body: rebuild(body, edits, count) }),
             Inline::Color { span, swatch, body } => out.push(Inline::Color { span, swatch, body: rebuild(body, edits, count) }),
+            Inline::Link { span, uri, body } => out.push(Inline::Link { span, uri, body: rebuild(body, edits, count) }),
             Inline::Kenten { span, shape, body } => out.push(Inline::Kenten { span, shape, body: rebuild(body, edits, count) }),
             Inline::Ruby { span, segments } => out.push(Inline::Ruby {
                 span,

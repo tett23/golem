@@ -49,7 +49,9 @@ import Data.Text qualified as T
 import Data.Text.Array qualified as TA
 import Data.Text.Internal qualified as TI
 import Data.Text.Unsafe (lengthWord8)
+import Golem.Doc.FigureWidth (parseFigureWidth)
 import Golem.Doc.IR
+import Golem.Doc.Url (UrlProblem (..), checkUrl, linkElements, urlProblemMessage)
 import Golem.Eval.Analysis (analyse)
 import Golem.Eval.Builtin
 import Golem.Eval.Expr
@@ -106,6 +108,8 @@ data EvalContext = EvalContext
     ctxPath :: !FilePath,
     ctxProfile :: !Profile,
     ctxMeta :: !(Map Text Value),
+    -- | the namespace vars, the values of [vars] of manifest.toml (docs/adr/0185)
+    ctxVars :: !(Map Text Value),
     ctxImports :: !(Map FilePath (Map Text Value)), -- exported variables by file
     ctxSwatches :: !(Set Text),
     -- | the character styles, built-in ones included (docs/adr ADR 0005)
@@ -214,7 +218,7 @@ kentenShapes :: [Text]
 kentenShapes = kentenShapeNames
 
 reservedNames :: [Text]
-reservedNames = ["doc", "meta", "true", "false", "nil"]
+reservedNames = ["doc", "meta", "vars", "true", "false", "nil"]
 
 evalFile :: EvalContext -> A.File -> EvalResult
 evalFile ctx0 (A.File fid blocks0) =
@@ -224,7 +228,8 @@ evalFile ctx0 (A.File fid blocks0) =
       (local, styleDiags) = fileStyles (ctxStyle ctx0) header
       ctx = (withFileStyles local ctx0) {ctxSource = source}
       blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
-      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty Map.empty
+      -- meta and vars, which every file reads without @import (docs/adr/0185)
+      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty Map.empty
       (bs0, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
       (bs, nestedDiags) = nestedBreaks bs0
       breakDiags = nestedDiags <> conflictingBreaks bs <> blankLinesInRow bs
@@ -307,6 +312,7 @@ unwritableText = concatMap blockDiags . docBlocks
       LineBreak {} -> []
       Aki {} -> []
       ChannelItem sp c -> concatMap (at sp) (ciChannel c : maybe [] pure (ciKey c) <> maybe [] pure (ciReading c)) <> inlines (ciBody c)
+      Link _ _ xs -> inlines xs
 
 -- ------------------------------------------------------------------ newlines
 
@@ -763,6 +769,7 @@ nameErrors ctx is bs =
       Note _ _ xs -> xs
       Sidenote _ _ xs -> xs
       ChannelItem _ c -> ciBody c
+      Link _ _ xs -> xs
       Ruby _ _ segs -> concat [mapMaybe withRubyInline (rsBase g) | g <- segs]
       _ -> []
     withRubyInline :: InlineNoRuby -> Maybe Inline
@@ -795,6 +802,7 @@ fillKenten ctx = \case
   CharStyle s c xs -> CharStyle s c (map (fillKenten ctx) xs)
   Note s n xs -> Note s n (map (fillKenten ctx) xs)
   Sidenote s n xs -> Sidenote s n (map (fillKenten ctx) xs)
+  Link s u xs -> Link s u (map (fillKenten ctx) xs)
   i -> i
 
 -- | 'fillKenten' in the inlines of blocks.
@@ -1340,7 +1348,7 @@ checkFigure sp exists f = do
     else
       if not (null fmts && pageOk && files)
         then pure False
-        else case figureLayoutError sp (figWrap f) (figRotate f) (figWidth f) of
+        else case figureLayoutError sp sp (figWrap f) (figRotate f) (figWidth f) of
           Just d -> report d >> pure False
           Nothing -> pure True
 
@@ -1378,11 +1386,15 @@ isPdfFigure path = figureExtension path == ".pdf"
 figureNeedsWeb :: Text -> Maybe Text -> Bool
 figureNeedsWeb path web = isPdfFigure path && isNothing web
 
--- | G02087 for a figure both turned and wrapped, G02031 for a wrapped figure without a width.
-figureLayoutError :: SrcSpan -> Maybe Wrap -> Bool -> Maybe Text -> Maybe Diagnostic
-figureLayoutError sp wr rot width
+{- | G02087 for a figure both turned and wrapped, G02031 for a wrapped
+figure without a width, G02133 at the width (@wsp@) for a width that is
+neither a length nor a percentage of the measure, or 0 (docs/adr/0190).
+-}
+figureLayoutError :: SrcSpan -> SrcSpan -> Maybe Wrap -> Bool -> Maybe Text -> Maybe Diagnostic
+figureLayoutError sp wsp wr rot width
   | rot && isJust wr = Just (diagnostic "G02087" Error sp "回して置く図版は回り込ませられません")
   | isJust wr && isNothing width = Just (diagnostic "G02031" Error sp "回り込む図版には width が必要です")
+  | Just w <- width, isNothing (parseFigureWidth w) = Just (diagnostic "G02133" Error wsp ("図版の width が読めません。寸法（10zw、50mm など）か行長の割合（50% など）で書きます: " <> w))
   | otherwise = Nothing
 
 -- | The extension of a path in lower case, with its dot.
@@ -1438,7 +1450,7 @@ figure ctx sp args body = do
               case (wrap, rotate) of
                 (Left w, _) -> err "G02030" sp ("wrap は start か end です: " <> w) >> pure []
                 (_, Left r) -> err "G02087" sp ("rotate は true か false です: " <> r) >> pure []
-                (Right wr, Right rot) -> case figureLayoutError sp wr rot (look "width") of
+                (Right wr, Right rot) -> case figureLayoutError sp (maybe sp (\(A.Located wsp _) -> wsp) (keywordAt "width" args)) wr rot (look "width") of
                   Just d -> report d >> pure []
                   Nothing -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page) rot))]
     _ -> err "G02032" sp "@figure には画像のパスを一つ書きます" >> pure []
@@ -2175,6 +2187,7 @@ builtinWith ctx inHeading sp b args slots = do
       _ -> err "G02021" sp "cite には書誌データのキーを一つ書きます" >> pure []
     Overridable BRuby -> ruby ctx sp slots
     Fixed BAki -> aki sp args slots
+    Fixed BLink -> link ctx inHeading sp args slots
   where
     refTo k = \case
       [v] | validLabel (argText v) -> pure [Ref sp k (argText v)]
@@ -2202,6 +2215,51 @@ aki sp args slots = case (args, slots) of
     akiInInt64 = \case
       AkiZw r -> inInt64 (numerator r) && inInt64 (denominator r)
       AkiAbs x -> inInt64 (unSp x)
+
+{- | @[link "URL": 文字]@ (docs/adr ADR 0182): one positional argument, a
+string literal or an expression of a string, and no keyword argument;
+otherwise G02124, with a hint to quote a URL written as a word before a
+slot that starts with //. A URL that fails the checks is G02125, G02126
+or G02127, and an element inside that is a link itself G02128; then no
+link is made. Without a slot, the text is the URL in the character
+style url.
+-}
+link :: EvalContext -> Bool -> SrcSpan -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
+link ctx inHeading sp args slots = case (args, slots) of
+  (_, _ : _ : _) -> err "G02038" sp "link の散文スロットは一つまでです" >> pure []
+  ([A.Located _ (A.Positional v)], _) -> do
+    url <- case v of
+      A.StringLit t -> pure (Right t)
+      A.ExprArg _ ->
+        argValue ctx sp v >>= \case
+          Right (VString t) -> pure (Right t)
+          Right _ -> pure (Left Nothing)
+          Left d -> pure (Left (Just d))
+      _ -> pure (Left Nothing)
+    case url of
+      Left (Just d) -> report d >> pure []
+      Left Nothing -> wrong
+      Right u -> case checkUrl u of
+        Just p -> err (problemCode p) sp (urlProblemMessage p u) >> pure []
+        Nothing -> do
+          body <- case slots of
+            [s] -> evalInlines ctx inHeading s
+            _ -> pure [CharStyle sp "url" [Text sp u]]
+          case linkElements body of
+            [] -> pure [Link sp u body]
+            es -> mapM_ (\e -> err "G02128" sp ("リンクの中にリンクになる要素は置けません: " <> e)) es >> pure []
+  _ -> wrong
+  where
+    wrong = err "G02124" sp ("link の引数が誤っています" <> hint) >> pure []
+    -- [link https://...: ...]: the : after the scheme opened the slot
+    hint = case (args, slots) of
+      ([A.Located _ (A.Positional (A.Word _))], [A.Located _ (A.Text t) : _])
+        | "//" `T.isPrefixOf` t -> "。URL は \"https://...\" のように引用符で囲みます"
+      _ -> ""
+    problemCode = \case
+      UrlMalformed -> "G02125"
+      UrlScheme -> "G02126"
+      UrlHost -> "G02127"
 
 -- | What the amount of an [aki] may be (the message of G02055).
 akiAmounts :: Text

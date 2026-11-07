@@ -2338,7 +2338,7 @@ number-text の引数が不正です
 ### 意味
 
 `@set` の変数か `@import` の名前空間に、予約語を使った。
-予約語は `doc`、`meta`、`true`、`false`、`nil` である。
+予約語は `doc`、`meta`、`vars`、`true`、`false`、`nil` である（`vars` は [docs/adr/0185](adr/0185-project-wide-variables.md)）。
 位置は、変数の名前か名前空間の語である。
 
 - メッセージ: `予約語は変数の名前に使えません: <名前>`、`予約語は名前空間に使えません: <名前>`
@@ -2706,8 +2706,9 @@ lines の範囲がファイルの行を外れています
 
 インラインのコマンドの散文スロット（`: ` の後の本文）の数が違う。
 `number-text`、`ref-number`、`ref-title`、`ref-page`、`cite` は散文スロットを取らないので、書くとこのコードになり、コマンドは出力しない。
+`link` の散文スロットは一つまでで、二つ以上書くとこのコードになる（[docs/adr/0182](adr/0182-external-links.md)）。
 
-- メッセージ: `<名前> には散文スロットが一つ必要です`、`index には散文スロットが一つ必要です`、`ruby には散文スロットが二つ必要です`、`<名前> は散文スロットを取りません`
+- メッセージ: `<名前> には散文スロットが一つ必要です`、`index には散文スロットが一つ必要です`、`ruby には散文スロットが二つ必要です`、`<名前> は散文スロットを取りません`、`link の散文スロットは一つまでです`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
 - ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
@@ -5099,6 +5100,152 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 本体を字下げせずに書くか、関数の最後の引数を `Blocks` にする。
 
+## G02124
+
+link の引数が誤っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[link]` の引数が、URL の文字列の位置引数の一つだけでない。
+URL がない、位置引数が二つ以上ある、キーワード引数を書いた、URL が文字列でない場合である。
+URL は、文字列リテラル（`"..."`）か、文字列を値に持つ式文脈（`[= ...]`）で書く。
+語や数は文字列ではない。
+コマンドは実行せず、リンクを作らない。
+位置は、コマンドである。
+
+- メッセージ: `link の引数が誤っています`。URL の位置引数が語で、散文スロットが `//` で始まるときは `link の引数が誤っています。URL は "https://..." のように引用符で囲みます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0182](adr/0182-external-links.md)
+
+### 主な原因
+
+- `[link https://example.com/: 例]` のように、URL を引用符で囲まずに書いた。命令文脈の `:` は散文スロットの始まりなので、位置引数は語 `https` だけになる。
+- URL を書き忘れた。
+- 表示の文字を、二つ目の位置引数に書いた。
+
+### 直し方
+
+URL を引用符で囲み、`[link "https://example.com/": 例]` と書く。
+表示の文字は、`:` の後の散文スロットに書く。
+
+## G02125
+
+URL の形が誤っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[link]` の URL が、RFC 3986 の絶対 URI の形でない。
+空白と制御文字を含む、`%` の後に 16 進の数字が二つ続かない、`#` が二つ以上ある、`http` と `https` の URL に `//` とホストがない、ホストが空である、といった場合である。
+パス、クエリ、フラグメント、ホストの ASCII でない文字は、RFC 3987 の IRI の文字としてこの検査を通る（ホストの ASCII でない文字は [G02127](#g02127)）。
+リンクは作らない。
+位置は、コマンドである。
+プラグインと `.emet` の関数が返したリンクの URL の誤りは、プラグインでは [G06009](#g06009)、関数では [E06104](#e06104) になる。
+
+- メッセージ: `URL の形が誤っています: <URL>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`、golem-doc の `Golem.Doc.Url`）
+- ADR: [docs/adr/0182](adr/0182-external-links.md)
+
+### 主な原因
+
+- URL に空白を書いた。
+- `https:///a` のように、ホストを書き忘れた。
+- `%` を、符号化の印でなく文字として書いた。
+
+### 直し方
+
+空白と `%` は `%20` と `%25` に符号化して書く。
+`https://` の後にホストを書く。
+
+## G02126
+
+リンクにできる URL は http と https だけです
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[link]` の URL の scheme が、`http` と `https` のどちらでもない。
+scheme の大文字と小文字は区別しない。
+scheme のない URL（`example.com` など）も、これに当たる。
+`javascript:` のような URL をリンクにしないためである。
+リンクは作らない。
+位置は、コマンドである。
+
+- メッセージ: `リンクにできる URL は http と https だけです: <URL>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`、golem-doc の `Golem.Doc.Url`）
+- ADR: [docs/adr/0182](adr/0182-external-links.md)
+
+### 主な原因
+
+- `https://` を書き忘れた。
+- `mailto:` や `tel:` の URL をリンクにしようとした。
+
+### 直し方
+
+`https://` から書く。
+`mailto:` などの URL は、リンクにせず、文字として書く。
+
+## G02127
+
+URL のホストは ASCII で書きます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[link]` の URL のホストに、ASCII でない文字がある。
+国際化ドメイン名は、利用者が Punycode（`xn--` で始まる形）で書く。
+パス、クエリ、フラグメントの ASCII でない文字は、この検査に当たらない。
+リンクは作らない。
+位置は、コマンドである。
+
+- メッセージ: `URL のホストは ASCII で書きます: <URL>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`、golem-doc の `Golem.Doc.Url`）
+- ADR: [docs/adr/0182](adr/0182-external-links.md)
+
+### 主な原因
+
+- `https://例え.jp/` のように、日本語のドメイン名をそのまま書いた。
+
+### 直し方
+
+ホストを Punycode で書く（`https://xn--r8jz45g.jp/`）。
+
+## G02128
+
+リンクの中にリンクになる要素は置けません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[link]` の散文スロットの中に、リンク、相互参照（`[ref-number]`、`[ref-title]`、`[ref-page]`）、脚注、傍注、引用を書いた。
+どれも HTML では `a` 要素になる要素であり、`a` 要素の中に `a` 要素は置けない。
+文字スタイル、色、圏点、ルビの親文字の中に書いたものも数える。
+見つけた要素ごとに一つ出す。
+リンクは作らない。
+位置は、外側の `[link]` である。
+
+- メッセージ: `リンクの中にリンクになる要素は置けません: <要素>`。要素は `link`、`ref-number`、`ref-title`、`ref-page`、`note`、`sidenote`、`cite` のどれかである
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`、golem-doc の `Golem.Doc.Url`）
+- ADR: [docs/adr/0182](adr/0182-external-links.md)
+
+### 主な原因
+
+- リンクの文字に脚注を付けた。
+
+### 直し方
+
+脚注、相互参照、引用は、リンクの外に書く。
 ## G02129
 
 @table の src= は廃止予定です
@@ -5166,6 +5313,36 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 組みたい表のファイルのパスを一つだけ、最初の引数に書く。
 二つの表を組むときは、`@table` を二つ書く。
+
+## G02133
+
+図版の width が読めません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@figure` の `width` が、寸法としても行長の割合としても読めないか、値が 0 である。
+回り込ませる図版も、回り込ませない図版も、回した図版（`rotate=true`）も対象である。
+図版は置かない。
+位置は `width` の引数で、プラグインが作った図版ではコマンドの呼び出しである。
+評価で報告するので、PDF、HTML、EPUB、プレーンテキストのどれを組んでも、`golem check` でも出る。
+dev と prod の両方でエラーである。
+
+- メッセージ: `図版の width が読めません。寸法（10zw、50mm など）か行長の割合（50% など）で書きます: <値>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0190](adr/0190-non-wrapping-figure-width.md)
+
+### 主な原因
+
+- 単位を書いていない（`width=50`）か、`mm`、`pt`、`Q`、`H`、`in`、`zw`、`%` のほかの単位（`em` など）を書いた。
+- 負の値（`width=-3zw`）か、0（`width=0zw`、`width=0%`）を書いた。
+
+### 直し方
+
+`width` を、`12zw`、`40mm` のような寸法か、`50%` のような行長の割合で書く。
+割合は、回り込ませない図版と回り込ませる図版では段の行長、回した図版では枠の行長に対する割合である。
 
 ## G03001
 
@@ -5336,7 +5513,8 @@ style.toml の誤りです
 - 廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）を書いた。
 - 段落スタイル `code` に、`font`、`size`、`background`、`padding` のほかのキー（`based-on` を含む）を書いた（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 - `background` か `padding` を、`code` のほかの段落スタイルに書いた。`padding` が負であるか、寸法として読めない。
-- 組み込みの段落スタイル `caption` か `sidenote` に、0 でない `indent` か `first-line-indent` を書いた。キャプションと傍注は字下げをしないためである。値が 0 なら誤りとせず、お知らせ [G03100](#g03100) を出す（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。二つに書けないキーは、0 でない `indent` と `first-line-indent`、`rule-before`、`rule-after`、`background`、`padding`、`border`、`border-width` である。
+- 組み込みの段落スタイル `caption` か `sidenote` に、0 でない `indent`、`first-line-indent`、`end-indent` を書いた。キャプションと傍注は字下げをしないためである。値が 0 なら誤りとせず、お知らせ [G03100](#g03100) を出す（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。二つに書けないキーは、0 でない `indent`、`first-line-indent`、`end-indent`、`rule-before`、`rule-after`、`background`、`padding`、`border`、`border-width` である。
+- 段落スタイルの `align` に九つのほかの値を書いたか、`space-before` か `space-after` に負の数を、`end-indent` に負の長さを書いた（[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。段落スタイル `code` に `align`、`space-before`、`space-after`、`end-indent` を書いた場合も同じである。
 - `border` か `border-width` を、`code` のほかの段落スタイルに書いた。`border-width` を zw で書いた（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 - 文字スタイルの `background` か `padding` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。文字スタイルの `background` に `true` を書いた。文字スタイルの `padding` が負であるか、寸法として読めない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
 - `[code]` か `[code.colors]` に未知のキーを書いた。`[code]` の `line-numbers` が真偽値でない。`[code]` の `number` が `{n}` などの差し込みを含まない。
@@ -6038,7 +6216,7 @@ diagnostic の事実（JSON の `facts`）に、`gutter`、`size`、`min-gutter`
 
 ### 意味
 
-組み込みの段落スタイル `caption` か `sidenote` に、値が 0 の `indent` か `first-line-indent`（`"0zw"`、`"0mm"`、`"-0pt"` など）を書いた。
+組み込みの段落スタイル `caption` か `sidenote` に、値が 0 の `indent`、`first-line-indent`、`end-indent`（`"0zw"`、`"0mm"`、`"-0pt"` など）を書いた。
 キャプションと傍注は字下げをしない（組み込みの定義が字下げ 0 を持つ）ので、書いた値は組版を変えない。
 0 でない値は [G03006](#g03006) のエラーである。
 `style.toml` では位置は値で、`style.toml` を読めた後に出す。
@@ -6150,6 +6328,151 @@ LSP も同じく出す。
 
 メッセージの JSON Pointer の文字列から、その符号位置の文字を消す。
 引用しない項目でも、ファイルにあれば消す。
+
+## G03109
+
+[vars] に書けない値です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[vars]` に、浮動小数点数（`1.5`）、時刻（`12:30:00`）、日時（`2026-11-06T12:30:00`、時差つきの日時を含む）を書いた。
+配列の要素と表の中の値も同じである。
+`[vars]` の値は、文字列、整数、真偽値、ローカルの日付、配列、表のどれかである。
+TOML の浮動小数点数は `Double` を経て読むので、Golem の数（正確な有理数）に写すと書いた値と違う数になりうる。
+時刻と日時には、`meta` に当たる値がなく、文字列の形を決める理由がない。
+位置はその値である。
+
+- メッセージ: `<キーの経路> に浮動小数点数は書けません。[vars] の値は文字列、整数、真偽値、日付、配列、表のどれかです`（`浮動小数点数` は `時刻`、`日時` にもなる）
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）
+- ADR: [docs/adr/0185](adr/0185-project-wide-variables.md)
+
+### 主な原因
+
+- 比率や寸法を `ratio = 1.5` のように小数で書いた。
+- 日付に時刻を付けた。
+
+### 直し方
+
+整数でない数は文字列で書いて使う側で読むか、`@set` の式で作る。
+日付は時刻を付けずに `2026-11-06` と書く。
+
+## G03110
+
+[vars] のキーが式の名前の形ではありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[vars]` か、その中の表のキーが、式の識別子の形（英字か `_` で始まり、英数字と `_` が続く。`[a-zA-Z_][a-zA-Z0-9_]*`）ではない。
+`edition-count` のような `-` を含むキー、`2nd` のような数字で始まるキー、`"日本語"` のような引用符で囲んだキーが当たる。
+`meta` はマニフェストのキーの `-` を `_` に直すが、`[vars]` のキーは書き手が決めるので、直さずに書いたとおりの名前で引く。
+位置はそのキーである。
+
+- メッセージ: `<表の経路> のキー <キー> は式の名前の形（英字か _ で始まり、英数字と _ が続く）で書きます`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）
+- ADR: [docs/adr/0185](adr/0185-project-wide-variables.md)
+
+### 主な原因
+
+- `[metadata]` のキーにならって、`-` で語をつないだ。
+
+### 直し方
+
+`edition_count` のように、`-` を `_` に替えるか、英字で始まる名前にする。
+
+## G03111
+
+柱が参照する [vars] の変数がありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の柱の書式に書いた `{vars.<名前>}`（`?` なし）の名前が、`manifest.toml` の `[vars]` にない。
+表の中の値（`{vars.author.short}`）では、途中の表がない場合と、途中の値が表でない場合も当たる。
+`manifest.toml` と `style.toml` を読んだところで検査するので、章の数によらず、書式の行と名前ごとに一度だけ出す。
+`{set.<名前>}` の [G02067](#g02067) とは、変数の出どころ（`manifest.toml`）と検査の段階が違うので、コードを分ける。
+`{vars.<名前>?}` は、値がないときに空の文字列になり、このコードを出さない。
+位置は `style.toml` の書式の行の値である。
+
+- メッセージ: `柱が参照する変数 vars.<名前> が、manifest.toml の [vars] にありません（マスターページ <名前>）`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.ProjectVars`）。`golem check`、どのターゲットのビルド、LSP も出す
+- ADR: [docs/adr/0185](adr/0185-project-wide-variables.md)
+
+### 主な原因
+
+- 名前の綴りを誤った。
+- `[vars]` から変数を消した。
+
+### 直し方
+
+`[vars]` に変数を書くか、名前を直す。
+値がなくてもよい差し込みなら、`{vars.<名前>?}` と書く。
+
+## G03112
+
+柱に出せない [vars] の値です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の柱の書式に書いた `{vars.<名前>}` の値が、文字列でも数でもない（真偽値、配列、表）。
+日付は文字列なので出せる。
+`?` を付けても、値があればこのコードになる。
+`{set.<名前>}` の [G02068](#g02068) とは、変数の出どころと検査の段階が違うので、コードを分ける。
+位置は `style.toml` の書式の行の値である。
+
+- メッセージ: `柱に出せるのは文字列と数です: vars.<名前> は <型>（マスターページ <名前>）`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.ProjectVars`）。`golem check`、どのターゲットのビルド、LSP も出す
+- ADR: [docs/adr/0185](adr/0185-project-wide-variables.md)
+
+### 主な原因
+
+- 配列や表の全体を柱に出そうとした。
+
+### 直し方
+
+表の中の値なら `{vars.author.short}` のように値まで書く。
+配列は、`[vars]` に柱に出す文字列を別に書く。
+
+## G03118
+
+縦組みの本では、段落スタイルの align にノドと小口の揃えを書けません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[page]` の `writing-mode` が `"vertical"` の本で、段落スタイルの `align` に `"towards-spine"` か `"away-from-spine"` を書いた。
+二つは、行をページのノドの側か小口の側に寄せる値である。
+縦組みの行は天から地へ進むので、ノドと小口は行の方向に交わらず、行をノドの側に寄せることが意味を持たない。
+InDesign は縦組みのフレームではこの二つを適用しないが、Golem は書いた値を黙って適用しない出力を作らずに止める。
+値そのものは正しく、書字方向との組み合わせが原因なので、値の書き間違い（[G03006](#g03006)）とはコードを分ける。
+`style.toml` では位置は `align` の値である。
+ファイルの中の定義（`@style-def`）では、位置は `align` の引数であり、その定義を使わない。
+
+- メッセージ: `縦組みの本では、段落スタイル <名前> の align に <値> を書けません。ノドと小口は横組みの本でだけ使えます`（例: `縦組みの本では、段落スタイル quote の align に towards-spine を書けません。ノドと小口は横組みの本でだけ使えます`）
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）、評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)
+
+### 主な原因
+
+- 横組みの本の `style.toml` を、縦組みの本に写した。
+- 本を横組みから縦組みに切り替えた。
+
+### 直し方
+
+縦組みの本なら、`align` を `"left"`（天付き）か `"right"`（地付き）などの値に変える。
+横組みの本にするなら、`writing-mode` を `"horizontal"` にする。
 
 ## G03120
 
@@ -7170,20 +7493,21 @@ PDF を書かない。
 
 ### 意味
 
-回り込む図版の `width` が寸法として読めないか、図版の脇の行の長さが本文の文字の大きさの 8 字分に満たない。
+回り込む図版の脇の行の長さが、本文の文字の大きさの 8 字分に満たない。
+`width` が読めない場合は、評価の [G02133](#g02133) であり、このコードではない（[docs/adr/0190](adr/0190-non-wrapping-figure-width.md)）。
 
-- メッセージ: `回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: <幅>`
+- メッセージ: `回り込む図版の幅が不正です。行の残りを本文の 8 字分以上にしてください: <幅>`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)
+- ADR: [golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[docs/adr/0190](adr/0190-non-wrapping-figure-width.md)
 
 ### 主な原因
 
-- 回り込む図版の `width` を寸法として書いていない。
 - 図版が広く、脇の行の長さが本文の文字の大きさの 8 字分に満たない。
+- `width` を行長と同じか行長より大きく書いた（`width=100%` など）。
 
 ### 直し方
 
-`width` を寸法で書き、版面の行長より 8 字分以上小さくする。
+`width` を、版面の行長より 8 字分以上小さくする。
 
 ## G07023
 
@@ -7570,22 +7894,24 @@ dev と prod の両方でエラーになる。
 
 ### 意味
 
-回り込ませない図版を行長にそろえると、段の行の送りの方向の長さを超えるので、縦横の比を保って縮めた。
+回り込ませない図版を行長（`width` があればその長さ）にそろえると、段の行の送りの方向の長さを超えるので、縦横の比を保って縮めた。
+`width` を段の行長より大きく書いた図版を、行長に縮めた場合も、このコードである（[docs/adr/0190](adr/0190-non-wrapping-figure-width.md)）。
 縮めた図版は、行の方向に余りができ、仕上がりの紙の端に近いほうの段の端に寄せた。
 `rotate=true` の図版では、回した図版を組む枠に収めるために縮めた。
 図版ごとに一つ出し、位置は `@figure` のブロックである。
 PDF は書く。
 お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 
-- メッセージ: `図版を段に収めるため <r>% に縮めました`、回した図版では `図版をページに収めるため <r>% に縮めました`。`<r>` は縮めた後の行の方向の長さを行長で割った百分率の切り捨て。回さずに置いた図版が、回せばより大きく置ける場合は、`。rotate=true で回して一ページに置くと、より大きく置けます` が続く
+- メッセージ: `図版を段に収めるため <r>% に縮めました`、回した図版では `図版をページに収めるため <r>% に縮めました`。`<r>` は縮めた後の行の方向の長さを、`width` の長さ（なければ行長）で割った百分率の切り捨て。回さずに置いた図版が、回せばより大きく置ける場合は、`。rotate=true で回して一ページに置くと、より大きく置けます` が続く
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)
+- ADR: [golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)、[docs/adr/0190](adr/0190-non-wrapping-figure-width.md)
 
 ### 主な原因
 
 - 縦組みの版面に、横長の図版を置いた。
 - 横組みの版面に、縦長の図版を置いた。
 - キャプションが長く、画像を置ける行が少ない。
+- `width` を段の行長より大きく書いた（`width=150%` など）。
 
 ### 直し方
 
@@ -9032,6 +9358,9 @@ PDF/X-4 の要件を満たしていません
 組んだ PDF が、[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) の PDF/X-4 の要件のどれかを満たさない。
 `Golem.Pdf.X4.verify` が、書く前の PDF のオブジェクトを検査する。
 項目は、PDF のバージョン、出力インテントとその ICC プロファイル、XMP の `GTS_PDFXVersion` と `Trapped`、各ページのボックス、フォントの埋め込み、ICC プロファイルのない RGB、暗号化と JavaScript と外部への参照である。
+JavaScript と外部への参照の禁止の名前は、`JavaScript`、`JS`、`URI`、`Launch`、`GoToR` である。
+ただし、ページの `/Annots` にあるリンクの注釈の `/A` が `/S /URI` のアクションであれば、その中の `URI` は数えない（[docs/adr/0182](adr/0182-external-links.md)）。
+ほかの位置の `URI` と、注釈の中のほかの禁止の名前は数える。
 要件ごとに一つ出す。
 JavaScript と外部への参照の詳細は、見つけた禁止の名前を、トレーラー、オブジェクトの順に見つけた順に一度ずつ並べる（[golem-pdf ADR 0012](golem-pdf/adr/0012-x4-forbidden-names-in-found-order.md)）。
 `style.toml` に `[color] intent` がないときは、続く要件の不足を並べず、一つにまとめる。

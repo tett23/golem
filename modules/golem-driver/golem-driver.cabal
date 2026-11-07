@@ -32,6 +32,7 @@ library
                     Golem.Driver.Plugins
                     Golem.Driver.Svg
                     Golem.Driver.Version
+  other-modules:    Golem.Driver.ProjectVars
   build-depends:
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
@@ -67,6 +68,7 @@ test-suite golem-driver-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:
+    AlignSpaceSpec
     BuildSpec
     CallsSpec
     ChapterNotesSpec
@@ -79,6 +81,7 @@ test-suite golem-driver-test
     EmetSamplesSpec
     FigureSpec
     FunctionsSpec
+    LinkSpec
     OutputGoldenSpec
     PageElementsSpec
     ParagraphRuleSpec
@@ -88,6 +91,7 @@ test-suite golem-driver-test
     SecuritySpec
     StylesSpec
     TableFilesSpec
+    VarsSpec
     Support
   -- -threaded: tasty runs the tests at the same time on every processor;
   -- none of them changes the state of the process, and those that do are

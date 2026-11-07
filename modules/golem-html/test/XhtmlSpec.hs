@@ -245,7 +245,58 @@ chapterNoteTests =
 
 -- | A paragraph style that sets nothing but its rules.
 ruled :: Maybe HtmlRule -> Maybe HtmlRule -> HtmlParaStyle
-ruled = HtmlParaStyle Nothing False 0 "0" "0" noFeatures
+ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em"
+
+-- | A paragraph style of the defaults of body (docs/adr/0189).
+plainPara :: HtmlParaStyle
+plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em"
+
+-- | The rules of the CSS that have a declaration of the keys of docs/adr/0189, but those of the cells of tables.
+alignSpaceLines :: HtmlConfig -> [Text]
+alignSpaceLines cfg = [l | l <- cssLines "" cfg, not (".align-" `T.isPrefixOf` l), any (`T.isInfixOf` l) ["text-align: justify", "text-align: start", "text-align: end", "text-align: center", "text-align: left", "text-align: right", "padding-inline-end", "margin-block-start"]]
+
+alignSpaceTests :: [TestTree]
+alignSpaceTests =
+  [ testCase "the defaults write no rule" $
+      alignSpaceLines cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("quote", plainPara)]} @?= [],
+    testCase "the alignment of body when it is not the default, of another style when it is not that of body" $ do
+      let centre = plainPara {hpsAlign = ["text-align: center"]}
+      alignSpaceLines cfg0 {hcParaStyles = Map.fromList [("body", centre), ("quote", centre), ("letter", plainPara)]}
+        @?= ["p { text-align: center; }", "p.ps-letter { text-align: justify; text-align-last: start; }"]
+      alignSpaceLines cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("quote", centre)]}
+        @?= ["p.ps-quote { text-align: center; }"],
+    testCase "end-indent is padding-inline-end" $
+      alignSpaceLines cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("quote", plainPara {hpsEndIndent = "2em"})]}
+        @?= ["p.ps-quote { padding-inline-end: 2em; }"],
+    testCase "the space before and after, the pairs after them, the same style and after a blank line" $
+      alignSpaceLines cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("a", plainPara {hpsSpaceAfter = 2}), ("b", plainPara {hpsSpaceBefore = 1, hpsSpaceBetween = 1})]}
+        @?= [ "p.ps-a + p.ps-a { margin-block-start: 0; }",
+              "p.ps-b + p.ps-b { margin-block-start: 1em; }",
+              "p.ps-b { margin-block-start: 1em; }",
+              "p.ps-a + :not(.ps-a):not(.blank-line) { margin-block-start: 2em; }",
+              "p.ps-a + p.ps-b:not(.ps-a) { margin-block-start: 2em; }",
+              "div.blank-line + p.ps-b { margin-block-start: 0; }"
+            ],
+    testCase "the space after body: the next element without the class of body, not a blank line" $
+      alignSpaceLines cfg0 {hcParaStyles = Map.fromList [("body", plainPara {hpsSpaceAfter = 1}), ("quote", plainPara {hpsSpaceBefore = 2})]}
+        @?= [ "p + p { margin-block-start: 0; }",
+              "p.ps-quote + p.ps-quote { margin-block-start: 0; }",
+              "p.ps-quote { margin-block-start: 2em; }",
+              "p:not([class]) + :not(p):not(.blank-line), p:not([class]) + p[class] { margin-block-start: 1em; }",
+              "p:not([class]) + p.ps-quote { margin-block-start: 2em; }",
+              "div.blank-line + p.ps-quote { margin-block-start: 0; }"
+            ],
+    testCase "a file's styles write the alignment, the end indent and the spaces again" $ do
+      let local = HtmlLocalStyles Map.empty (Map.fromList [("quote", plainPara {hpsAlign = ["text-align: end"], hpsEndIndent = "1em", hpsSpaceBefore = 1})]) Nothing Nothing
+          cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("quote", plainPara)], hcLocalStyles = Map.fromList [(fidA, local)]}
+      cssLines "body.file-1 p.ps-quote {" cfg
+        @?= ["body.file-1 p.ps-quote { font-family: inherit; margin-block: 1em; margin-block-start: 1em; padding-inline-start: 0em; text-indent: 0em; padding-inline-end: 1em; text-align: end; }"]
+      cssLines "body.file-1 p.ps-quote + p.ps-quote" cfg @?= ["body.file-1 p.ps-quote + p.ps-quote { margin-block-start: 0; }"]
+      cssLines "body.file-1 div.blank-line" cfg @?= ["body.file-1 div.blank-line + p.ps-quote { margin-block-start: 0; }"]
+      let reset = HtmlLocalStyles Map.empty (Map.fromList [("quote", plainPara {hpsEndIndent = "1em"})]) Nothing Nothing
+      cssLines "body.file-1 p.ps-quote {" cfg {hcLocalStyles = Map.fromList [(fidA, reset)]}
+        @?= ["body.file-1 p.ps-quote { font-family: inherit; margin-block: 1em; padding-inline-start: 0em; text-indent: 0em; padding-inline-end: 1em; text-align: start; text-align-last: auto; }"]
+  ]
 
 -- | A solid rule of 0.5pt as wide as the line, 1em above and nothing below.
 solid :: HtmlRule
@@ -275,6 +326,7 @@ ruleTests =
 tests :: [TestTree]
 tests =
   [ testGroup "the rules of paragraph styles and headings (golem-driver ADR 0027)" ruleTests,
+    testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
     testGroup "blocks" blockTests,
     testGroup
       "colours: R = 255 × (1 − C) × (1 − K), rounded"
@@ -397,6 +449,25 @@ tests =
           let fig = Figure "images/a.png" Nothing "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False
               book = (bookOf [Block (at 0) Nothing (FigureBlock fig)]) {bookFigures = Map.fromList [(at 0, "図1-1")]}
            in bodyA cfg0 book @?= "<figure>\n<img src=\"images/a.png\" alt=\"代替\"/>\n<figcaption><span class=\"number\">図1-1</span>\x3000キャプション</figcaption>\n</figure>\n",
+        -- docs/adr/0190
+        testCase "the width of a figure: width and max-width in a horizontal book, height and max-height in a vertical one, in pt, em and %" $ do
+          let imgOf cfg w wr =
+                let fig = Figure "images/a.png" Nothing "代替" wr w [] Nothing False
+                 in T.takeWhile (/= '\n') (T.drop 1 (T.dropWhile (/= '\n') (bodyA cfg (bookOf [Block (at 0) Nothing (FigureBlock fig)]))))
+          imgOf cfg0 (Just "10zw") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 10em; max-width: 100%\"/>"
+          imgOf cfg0 (Just "50%") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 50%; max-width: 100%\"/>"
+          imgOf cfg0 (Just "12.5%") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 12.5%; max-width: 100%\"/>"
+          imgOf cfg0 (Just "25.4mm") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 72pt; max-width: 100%\"/>"
+          imgOf cfg0 (Just "40Q") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 28.3465pt; max-width: 100%\"/>"
+          imgOf cfg0 (Just "1in") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 72pt; max-width: 100%\"/>"
+          imgOf cfg0 (Just "10.5pt") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 10.5pt; max-width: 100%\"/>"
+          imgOf cfg0 {hcVertical = True} (Just "1.5zw") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"height: 1.5em; max-height: 100%\"/>"
+          imgOf cfg0 {hcVertical = True} (Just "40mm") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"height: 113.3858pt; max-height: 100%\"/>"
+          -- a wrapped figure is placed as any other, with its width
+          imgOf cfg0 (Just "8zw") (Just WrapEnd) @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 8em; max-width: 100%\"/>"
+          -- no width, no style
+          imgOf cfg0 Nothing Nothing @?= "<img src=\"images/a.png\" alt=\"代替\"/>"
+          imgOf cfg0 {hcVertical = True} Nothing Nothing @?= "<img src=\"images/a.png\" alt=\"代替\"/>",
         testCase "the table of contents" $
           let entry = TocEntry 1 (Just "第一章") [txt "はじめに"] "intro" fidA (at 9)
               book = (bookOf [Block (at 0) Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry]}
@@ -434,6 +505,15 @@ tests =
     multipleBibliographyTests,
     citeLinkTests,
     channelTests,
+    -- docs/adr ADR 0182
+    testCase "a link is an a element with the URL as written, & as &amp;" $
+      bodyA cfg0 (bookOf [para 0 [Link (at 1) "https://example.com/?a=1&b=組" [txt "例"], Link (at 2) "https://example.com/" [CharStyle (at 2) "url" [txt "https://example.com/"]]]])
+        @?= "<p><a href=\"https://example.com/?a=1&amp;b=組\">例</a><a href=\"https://example.com/\"><span class=\"cs-url\">https://example.com/</span></a></p>\n",
+    testCase "a heading with a link: the link stays in the heading, and the copy in a table of contents has its text alone" $
+      let h = Block (at 0) (Just "intro") (Heading 1 noHeadingAttrs [txt "見出し", Link (at 1) "https://example.com/" [txt "例"]])
+          site = renderXhtml cfg0 ft (assembled [[h, Block (at 5) Nothing (ChannelOutput (TocOutput 2))]])
+          page = maybe "" bodyOf (lookup "a.xhtml" (sitePages site))
+       in (T.count "<a href=\"https://example.com/\">" page, T.isInfixOf "<a href=\"https://example.com/\">例</a></h1>" page) @?= (1, True),
     -- golem-doc ADR 0005
     testCase "a URL of http or https in the bibliography is a link of class cs-url; another is a span" $
       let book =

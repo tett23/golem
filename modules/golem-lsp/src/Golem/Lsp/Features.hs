@@ -50,7 +50,7 @@ import Golem.Emet.Ide (IdeKind (..), emetCompletions, emetDefinition, emetExport
 import Golem.Emet.Rename qualified as R
 import Golem.Eval.Expr (embedValue, evalExpr, plainEnv)
 import Golem.Eval.File (EvalResult (..), Usage (..), builtinInlineCommands)
-import Golem.Eval.Value (Value (..), typeName)
+import Golem.Eval.Value (Value (..), projectVarValues, typeName)
 import Golem.Fmt (FormatResult (..), format)
 import Golem.Lsp.Toml (Context (..), Quote (..), contextAt, definedPaths)
 import Golem.Lsp.Workspace
@@ -61,7 +61,7 @@ import Golem.Parser.SourceSettings (sourceKeys)
 import Golem.Preflight.Rules (rulesSchema)
 import Golem.Project
 import Golem.Project.Paths (normalizeRelative)
-import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), builtinAkiSetNames, builtinCharStyles, builtinParaStyles, charStyleKeys, defaultStyle, lineBreaksValues, noLocalStyles, paraStyleKeys, regexStyleKeys, styleSchema)
+import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), alignValues, builtinAkiSetNames, builtinCharStyles, builtinParaStyles, charStyleKeys, defaultStyle, lineBreaksValues, noLocalStyles, paraStyleKeys, regexStyleKeys, styleSchema)
 import Golem.Project.TomlSchema (Leaf (..), Namespace (..), Node (..), nodeAt)
 import Golem.Syntax
 import Language.LSP.Protocol.Types (PositionEncodingKind (..), SemanticTokenAbsolute (..), SemanticTokenModifiers (..), SemanticTokenTypes (..))
@@ -489,9 +489,10 @@ completions ws path off = case sourceOf ws path of
         labels = nub [l | s <- allSources ws, (_, OccLabelDef l) <- occurrences (srcAst s)]
         -- the dotted name before the cursor in an expression
         metaPath = case T.stripPrefix "=" (T.stripStart lastOpen) of
-          Just _ -> Just (T.splitOn "." (T.takeWhileEnd (\c -> c == '.' || c == '_' || c `elem` ['a' .. 'z'] || c `elem` ['0' .. '9']) lastOpen))
+          Just _ -> Just (T.splitOn "." (T.takeWhileEnd (\c -> c == '.' || c == '_' || c `elem` ['a' .. 'z'] || c `elem` ['A' .. 'Z'] || c `elem` ['0' .. '9']) lastOpen))
           Nothing -> Nothing
         meta = maybe Map.empty (metadataValues . manifestMetadata . projectManifest . evProject) (wsEvaluated ws)
+        projectVars = projectVarsOf ws
      in if "@import " `T.isPrefixOf` T.stripStart lineBefore
           then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
           else case (T.stripPrefix "@manifest " (T.stripStart lineBefore), T.stripPrefix "@style-def " (T.stripStart lineBefore)) of
@@ -515,6 +516,8 @@ completions ws path off = case sourceOf ws path of
                               -- the keys of meta and of meta.roles (docs/adr ADR 0033)
                               Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
                               Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
+                              -- the keys of [vars] and of its tables (docs/adr/0185)
+                              Just ("vars" : path@(_ : _)) | Just keys <- varKeys projectVars (init path) -> [Completion k CkSettingKey | k <- keys]
                               _ -> case ws' of
                                 [] -> commandNames
                                 [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
@@ -526,6 +529,18 @@ completions ws path off = case sourceOf ws path of
   where
     -- the built-in commands, then those of the plugins (docs/adr ADR 0031)
     commandNames = [Completion c CkCommand | c <- builtinInlineCommands <> maybe [] evPluginCommands (wsEvaluated ws)]
+
+-- | The namespace vars of the project (docs/adr/0185); empty without a project.
+projectVarsOf :: Workspace -> Map.Map Text Value
+projectVarsOf = maybe Map.empty (projectVarValues . manifestVars . projectManifest . evProject) . wsEvaluated
+
+-- | The keys of the table of [vars] at a path; Nothing where there is no table.
+varKeys :: Map.Map Text Value -> [Text] -> Maybe [Text]
+varKeys vars = \case
+  [] -> Just (Map.keys vars)
+  k : rest -> case Map.lookup k vars of
+    Just (VHash t) -> varKeys t rest
+    _ -> Nothing
 
 -- | What a name completed in a .emet is, as a completion of the server.
 emetKind :: IdeKind -> CompletionKind
@@ -620,6 +635,8 @@ styleDefCompletions style paraNames charNames rest =
       "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
       "style" | kind == "regex" -> [Completion n CkCharStyle | n <- charNames]
       "line-breaks" | kind == "paragraph" -> [Completion v CkSettingValue | v <- lineBreaksValues]
+      -- docs/adr/0189
+      "align" | kind == "paragraph" -> [Completion v CkSettingValue | v <- alignValues]
       _ -> []
 
 {- | The schema of a file of settings the language server completes
@@ -796,7 +813,8 @@ gmHover ws src off = do
           chapterCount = maybe 0 (length . projectChapters . evProject) (wsEvaluated ws)
           docNs = Map.fromList [("chapters", VHash (Map.fromList [("count", VNat (fromIntegral chapterCount))]))]
           s1 = isJust (wsEvaluated ws >>= evBook)
-          env = plainEnv vars (Map.insert "doc" docNs imports)
+          -- the namespace vars of [vars] (docs/adr/0185)
+          env = plainEnv vars (Map.insert "vars" (projectVarsOf ws) (Map.insert "doc" docNs imports))
        in case evalExpr env e of
             Left d -> "評価できません: " <> diagMessage d
             Right v ->

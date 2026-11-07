@@ -24,6 +24,12 @@
 図[ref-number fig-stick]は、拾った活字を一行分ずつ並べる道具を描いたものである。
 この道具の名前は「[ref-title fig-stick]」とは呼ばれず、現場ではただ「ステッキ」と言った。
 
+@style quote
+拾った活字は、一本たりとも無駄にしてはならない。棚に戻すまでが文選の仕事である。
+
+@style signature
+ある活版所の壁の貼り紙から
+
 ## 活字の大きさ
 
 活字の大きさは、号数とポイントの二つの単位で数えられてきた[index reading=ごうすう: 号数]。
@@ -35,7 +41,7 @@
 
 本文によく使われた五号の活字は、一本の値段が[book.price 2 unit="銭"]ほどだった。
 
-@figure images/type-case.png alt="上から下へ色が淡くなる、縦に長い帯"
+@figure images/type-case.png alt="上から下へ色が淡くなる、縦に長い帯" width=12zw
   活字の棚の色の[kenten: 移り変わり]。上ほどよく使う字が並ぶ。
 
 ### 字面と[ruby: 字送り | じおくり]

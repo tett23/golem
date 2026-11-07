@@ -1,5 +1,6 @@
 module Main (main) where
 
+import AlignSpec (alignTests)
 import CodeSpaceSpec (codeSpaceTests)
 import CombiningSpec (combiningTests)
 import Control.Monad (forM_)
@@ -38,6 +39,7 @@ import Hedgehog.Range qualified as Range
 import InseparableSpec (inseparableTests)
 import KnuthPlassReference
 import LineBreakingSpec (lineBreakingTests)
+import LinkSpec (linkTests)
 import PaginateSpec (paginateTests)
 import PunctuationSpec (punctuationTests)
 import RuleAreaSpec (ruleAreaTests)
@@ -327,12 +329,13 @@ tests =
     [ testGroup "kenten shapes (golem-driver ADR 0019)" kentenTests,
       testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
       testGroup "note marks and note keys (golem-driver ADR 0018)" noteMarkTests,
-      testGroup "boundaries and invariants" [paginateTests, punctuationTests, lineBreakingTests],
+      testGroup "boundaries and invariants" [paginateTests, punctuationTests, lineBreakingTests, alignTests],
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       inseparableTests,
       doubleDashTests,
       codeSpaceTests,
       urlBreakTests,
+      linkTests,
       combiningTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,

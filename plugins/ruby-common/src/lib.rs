@@ -242,7 +242,7 @@ pub fn plain_text(xs: &[Inline]) -> String {
     xs.iter()
         .map(|x| match x {
             Inline::Text { text, .. } => text.clone(),
-            Inline::Kenten { body, .. } | Inline::Color { body, .. } | Inline::CharStyle { body, .. } => plain_text(body),
+            Inline::Kenten { body, .. } | Inline::Color { body, .. } | Inline::CharStyle { body, .. } | Inline::Link { body, .. } => plain_text(body),
             Inline::Ruby { segments, .. } => segments.iter().map(|s| plain_text(&s.base)).collect(),
             _ => String::new(),
         })
@@ -321,6 +321,11 @@ fn walk_run(xs: &mut Vec<Inline>, v: &mut impl Visitor) {
             Inline::Color { span, swatch, mut body } => {
                 walk_run(&mut body, v);
                 xs.push(Inline::Color { span, swatch, body });
+            }
+            // the text of a link is text as that of a character style (docs/adr ADR 0182)
+            Inline::Link { span, uri, mut body } => {
+                walk_run(&mut body, v);
+                xs.push(Inline::Link { span, uri, body });
             }
             Inline::Note { span, number, mut body } => {
                 walk_run(&mut body, v);

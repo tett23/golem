@@ -142,7 +142,9 @@ tests =
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "本文。\n\n["
         map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n["))) @?= builtinInlineCommands
-        length builtinInlineCommands @?= 18,
+        length builtinInlineCommands @?= 19
+        -- [link] is built in (docs/adr ADR 0182)
+        assertBool "link" ("link" `elem` builtinInlineCommands),
       testCase "completion: paragraph and character styles (docs/adr ADR 0005)" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@style \n本文。\n\n[style \n"
@@ -181,6 +183,14 @@ tests =
         ws' <- updateFile ws "a.gm" (textOf ws "a.gm" <> "\n@style \n")
         let srcA = textOf ws' "a.gm"
         assertBool "not in another file" ("letter" `notElem` map cmpLabel (completions ws' "a.gm" (offsetIn srcA "@style \n" 7))),
+      testCase "completion: the keys of docs/adr/0189 and the values of align in @style-def" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@style-def paragraph letter \n@style-def paragraph memo align=\n\n@label second\n# 次の章\n"
+        let src = textOf ws "b.gm"
+            found = completions ws "b.gm"
+            keys = map cmpLabel (found (offsetIn src "@style-def paragraph letter \n" 28))
+        assertBool (show keys) (all (`elem` keys) ["align=", "space-before=", "space-after=", "end-indent="])
+        map cmpLabel (found (offsetIn src "align=\n" 6)) @?= ["left", "center", "right", "left-justified", "center-justified", "right-justified", "fully-justified", "towards-spine", "away-from-spine"],
       testCase "completion: @style-def regex (docs/adr ADR 0015)" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@style-def paragraph letter\n\n@label second\n# 次の章\n\n@style-def regex \n\n@style-def regex body \n\n@style-def regex body pattern=x style=\n"
@@ -337,6 +347,15 @@ tests =
         let names o = map cmpLabel (completions ws "a.gm" o)
         names (offsetIn src "[= meta." 8) @?= ["creators", "date", "id", "language", "printing", "printings", "roles", "title"]
         names (offsetIn src "meta.roles." 11) @?= ["author", "cover_designer"],
+      testCase "completion: the keys of [vars] after vars. and of its tables (docs/adr/0185)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP"}) <> "\n[vars]\nproduct = \"Golem\"\nversion = \"0.1.0\"\n\n[vars.author]\nshort = \"tett23\"\nfullName = \"T\"\n"
+            src = "[= vars.]\n\n[= vars.author.]\n" :: Text
+        BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 src)
+        BS.writeFile (tmp </> "manifest.toml") manifest
+        ws <- openWorkspace tmp
+        let names o = map cmpLabel (completions ws "a.gm" o)
+        names (offsetIn src "[= vars." 8) @?= ["author", "product", "version"]
+        names (offsetIn src "vars.author." 12) @?= ["fullName", "short"],
       testCase "G05001 is not reported for the newlines of the line style (docs/adr ADR 0013)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "en"})
             g05001 ws = [c | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d, c == "G05001"]

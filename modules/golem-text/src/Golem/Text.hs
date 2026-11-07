@@ -200,6 +200,7 @@ blockInlines (Block _ _ body) = case body of
       Kenten _ _ xs -> deep xs
       Color _ _ xs -> deep xs
       CharStyle _ _ xs -> deep xs
+      Link _ _ xs -> deep xs
       _ -> []
 
 inlines :: Ctx -> [InlineF r] -> Text
@@ -231,6 +232,10 @@ inline c = \case
   -- the whole part of an amount in zw as ideographic spaces; less than one, and absolute amounts, are nothing (docs/adr ADR 0019)
   Aki _ (AkiZw r) -> T.replicate (fromInteger (max 0 (floor r))) "\x3000"
   Aki _ (AkiAbs _) -> ""
+  -- the text and the URL in full-width parentheses, as ruby; the URL alone when it is the text (docs/adr ADR 0182)
+  Link _ u xs ->
+    let t = inlines c xs
+     in if t == u then u else t <> "（" <> u <> "）"
 
 {- | Ruby as 「対象（読み）」. Consecutive segments with readings are joined;
 segments without a reading are written as they are.

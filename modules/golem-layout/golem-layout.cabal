@@ -19,6 +19,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Golem.Layout.KnuthPlass
+                    Golem.Layout.Align
                     Golem.Layout.Aki
                     Golem.Layout.CharClass
                     Golem.Layout.Code
@@ -54,7 +55,8 @@ test-suite golem-layout-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    CodeSpaceSpec
+  other-modules:    AlignSpec
+                    CodeSpaceSpec
                     CombiningSpec
                     DoubleDashSpec
                     Fixtures
@@ -64,6 +66,7 @@ test-suite golem-layout-test
                     PaginateSpec
                     PunctuationSpec
                     RuleAreaSpec
+                    LinkSpec
                     UrlBreakSpec
   build-depends:
     , base

@@ -1174,7 +1174,9 @@ pluginTests =
              sort ds
                @?= sort
                  [ (DiagnosticCode "G06007", "組み込みのコマンドと衝突しています（overrides で宣言してください）: names.ruby"),
-                   (DiagnosticCode "G06007", "上書きできない組み込みのコマンドと衝突しています: names.note")
+                   (DiagnosticCode "G06007", "上書きできない組み込みのコマンドと衝突しています: names.note"),
+                   -- link is built in, and a plugin may not override it (docs/adr ADR 0182)
+                   (DiagnosticCode "G06007", "上書きできない組み込みのコマンドと衝突しています: names.link")
                  ],
          testCase "G06008: one per name in overrides" $ do
            let g06008 m = [(DiagnosticCode "G06008", m)]
@@ -1184,9 +1186,11 @@ pluginTests =
            withPluginProject (pluginDeclWith "overrides = [\"xyz\"]\n") $ \tmp -> do
              r <- build (defaultOptions tmp)
              atManifestTop r >>= (@?= g06008 "プラグインが提供していないコマンドを overrides に書いています: identity.xyz")
-           withPlugins [("names", "builtin-names.wat")] (pluginDeclOf "names" "overrides = [\"note\", \"ruby\"]\n") $ \tmp -> do
+           -- link may not be overridden either (docs/adr ADR 0182)
+           withPlugins [("names", "builtin-names.wat")] (pluginDeclOf "names" "overrides = [\"note\", \"ruby\", \"link\"]\n") $ \tmp -> do
              r <- build (defaultOptions tmp)
-             atManifestTop r >>= (@?= g06008 "上書きできる組み込みのコマンドではありません: names.note"),
+             ds <- atManifestTop r
+             sort ds @?= sort (g06008 "上書きできる組み込みのコマンドではありません: names.note" <> g06008 "上書きできる組み込みのコマンドではありません: names.link"),
          -- docs/adr ADR 0031
          testCase "overrides = [\"code\"] loads; overrides = [\"aki\"] is G06008" $ do
            withPlugins [("cd", "override-code.wat")] (pluginDeclOf "cd" "overrides = [\"code\"]\n") $ \tmp -> do

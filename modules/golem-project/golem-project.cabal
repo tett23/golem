@@ -53,6 +53,7 @@ test-suite golem-project-test
                     SharedValuesSpec
                     Support
                     TomlMessageSpec
+                    VarsSpec
   build-depends:
     , base
     , bytestring

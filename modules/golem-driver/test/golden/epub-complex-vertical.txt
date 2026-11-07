@@ -49,11 +49,11 @@ application/epub+zip
 <body>
 <nav epub:type="toc" id="toc">
 <h1>町の活版所</h1>
-<ol><li><a href="chapters/01.xhtml#h-2-0">第一章　活字を拾う</a><ol><li><a href="chapters/01.xhtml#h-2-61">一　文選の棚</a></li><li><a href="chapters/01.xhtml#h-2-1889">二　活字の大きさ</a><ol><li><a href="chapters/01.xhtml#h-2-2546">（一）　字面と字送り</a></li></ol></li></ol></li><li><a href="chapters/02.xhtml#h-3-0">第二章　版を組む</a><ol><li><a href="chapters/02.xhtml#h-3-31">一　組版の手順</a><ol><li><a href="chapters/02.xhtml#h-3-1231">（一）　工程と日数</a></li></ol></li><li><a href="chapters/02.xhtml#h-3-1608">二　込め物の種類</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-0">第三章　刷りと校正</a><ol><li><a href="chapters/03.xhtml#h-4-32">一　校正の記号</a></li><li><a href="chapters/03.xhtml#h-4-682">二　赤字を写す</a><ol><li><a href="chapters/03.xhtml#h-4-719">（一）　刷りの控え</a></li><li><a href="chapters/03.xhtml#h-4-1733">（二）　版を崩す</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-4125">参考文献</a></li></ol></li><li><a href="back.xhtml#h-5-10">索引</a></li></ol>
+<ol><li><a href="chapters/01.xhtml#h-2-0">第一章　活字を拾う</a><ol><li><a href="chapters/01.xhtml#h-2-61">一　文選の棚</a></li><li><a href="chapters/01.xhtml#h-2-2082">二　活字の大きさ</a><ol><li><a href="chapters/01.xhtml#h-2-2750">（一）　字面と字送り</a></li></ol></li></ol></li><li><a href="chapters/02.xhtml#h-3-0">第二章　版を組む</a><ol><li><a href="chapters/02.xhtml#h-3-31">一　組版の手順</a><ol><li><a href="chapters/02.xhtml#h-3-1231">（一）　工程と日数</a></li></ol></li><li><a href="chapters/02.xhtml#h-3-1608">二　込め物の種類</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-0">第三章　刷りと校正</a><ol><li><a href="chapters/03.xhtml#h-4-32">一　校正の記号</a></li><li><a href="chapters/03.xhtml#h-4-682">二　赤字を写す</a><ol><li><a href="chapters/03.xhtml#h-4-719">（一）　刷りの控え</a></li><li><a href="chapters/03.xhtml#h-4-1733">（二）　版を崩す</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-4125">参考文献</a></li></ol></li><li><a href="back.xhtml#h-5-10">索引</a></li></ol>
 </nav>
 </body>
 </html>
-== OEBPS/style.css (deflate, time 315532800, 2794 bytes)
+== OEBPS/style.css (deflate, time 315532800, 3432 bytes)
 @font-face { font-family: "golem-body-latin"; src: url("fonts/latin.otf"); }
 @font-face { font-family: "golem-body-ja"; src: url("fonts/ja.otf"); }
 @font-face { font-family: "golem-code-latin"; src: url("fonts/latin.otf"); }
@@ -87,10 +87,21 @@ ruby.mono rt { ruby-align: center; }
 p { padding-inline-start: 0em; text-indent: 1em; }
 p.ps-box { padding-inline-start: 1em; text-indent: 0em; }
 p.ps-caption { padding-inline-start: 0em; text-indent: 0em; }
+p.ps-quote { padding-inline-start: 2em; text-indent: 0em; }
+p.ps-quote { padding-inline-end: 2em; }
+p.ps-quote + p.ps-quote { margin-block-start: 0; }
 p.ps-sidenote { padding-inline-start: 0em; text-indent: 0em; }
+p.ps-signature { padding-inline-start: 0em; text-indent: 0em; }
+p.ps-signature { text-align: end; }
+p.ps-signature { padding-inline-end: 1em; }
+p.ps-title { padding-inline-start: 0em; text-indent: 0em; }
+p.ps-title { text-align: center; }
 p.ps-verse { margin-block: 0; }
 p.ps-verse { padding-inline-start: 2em; text-indent: -2em; }
 p.ps-verse + p.ps-verse { margin-block-start: 1em; }
+p.ps-quote { margin-block-start: 1em; }
+p.ps-quote + :not(.ps-quote):not(.blank-line) { margin-block-start: 1em; }
+div.blank-line + p.ps-quote { margin-block-start: 0; }
 p.ps-box::before { content: ""; display: block; width: 100%; border-block-start: 0.5pt solid; margin-block: 0 4.6063pt; }
 p.ps-box::after { content: ""; display: block; width: 100%; border-block-start: 0.5pt dashed; margin-block: 4.6063pt 0; }
 h1::after { content: ""; display: block; width: 100%; border-block-start: 0.75pt double; margin-block: 4.6063pt 0; }
@@ -99,7 +110,8 @@ li p, li p[class] { padding-inline-start: 0; text-indent: 0; }
 .line { display: block; }
 .line + br { display: none; }
 code { padding-inline: 0.25em; }
-== OEBPS/front.xhtml (deflate, time 315532800, 2305 bytes)
+[data-break-before="page"] { page-break-before: always; break-before: page; }
+== OEBPS/front.xhtml (deflate, time 315532800, 2424 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -109,13 +121,15 @@ code { padding-inline: 0.25em; }
 <link rel="stylesheet" type="text/css" href="style.css"/>
 </head>
 <body class="vertical">
-<h1 id="h-1-17">目次</h1>
+<p class="ps-title">町の活版所</p>
+<p class="ps-signature">Golem プロジェクト</p>
+<h1 id="h-1-103" data-break-before="page">目次</h1>
 <nav epub:type="toc" class="toc">
 <ol>
 <li class="toc-1"><a href="chapters/01.xhtml#h-2-0">第一章　<span class="kenten kenten-sesame">活字を拾う</span></a></li>
 <li class="toc-2"><a href="chapters/01.xhtml#h-2-61">一　文選の<ruby class="mono">棚<rp>（</rp><rt>たな</rt><rp>）</rp></ruby></a></li>
-<li class="toc-2"><a href="chapters/01.xhtml#h-2-1889">二　活字の大きさ</a></li>
-<li class="toc-3"><a href="chapters/01.xhtml#h-2-2546">（一）　字面と<ruby>字送り<rp>（</rp><rt>じおくり</rt><rp>）</rp></ruby></a></li>
+<li class="toc-2"><a href="chapters/01.xhtml#h-2-2082">二　活字の大きさ</a></li>
+<li class="toc-3"><a href="chapters/01.xhtml#h-2-2750">（一）　字面と<ruby>字送り<rp>（</rp><rt>じおくり</rt><rp>）</rp></ruby></a></li>
 <li class="toc-1"><a href="chapters/02.xhtml#h-3-0">第二章　<span class="kenten kenten-sesame">版を組む</span></a></li>
 <li class="toc-2"><a href="chapters/02.xhtml#h-3-31">一　<ruby class="mono">組<rp>（</rp><rt>くみ</rt><rp>）</rp>版<rp>（</rp><rt>はん</rt><rp>）</rp></ruby>の手順</a></li>
 <li class="toc-3"><a href="chapters/02.xhtml#h-3-1231">（一）　工程と<span class="kenten kenten-sesame">日数</span></a></li>
@@ -131,7 +145,7 @@ code { padding-inline: 0.25em; }
 </nav>
 </body>
 </html>
-== OEBPS/chapters/01.xhtml (deflate, time 315532800, 6497 bytes)
+== OEBPS/chapters/01.xhtml (deflate, time 315532800, 6788 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -150,8 +164,10 @@ code { padding-inline: 0.25em; }
 <figcaption><span class="number">図1-1</span>　植字に使う<ruby class="mono">道<rp>（</rp><rt>どう</rt><rp>）</rp>具<rp>（</rp><rt>ぐ</rt><rp>）</rp></ruby>（ステッキ）。活字を一行分ずつ並べる。</figcaption>
 </figure>
 <p>図1-1は、拾った活字を一行分ずつ並べる道具を描いたものである。この道具の名前は「細長い植字用のステッキに活字が並んだ図」とは呼ばれず、現場ではただ「ステッキ」と言った。</p>
-<h2 id="h-2-1889"><span class="number">二</span>　活字の大きさ</h2>
-<p>活字の大きさは、号数とポイントの二つの単位で数えられてきた<span id="i-2-1999"></span>。二つの単位の関係は、次の表のとおりである。この表は、Emet の関数が TSV のファイルを読んで作っている。</p>
+<p class="ps-quote">拾った活字は、一本たりとも無駄にしてはならない。棚に戻すまでが文選の仕事である。</p>
+<p class="ps-signature">ある活版所の壁の貼り紙から</p>
+<h2 id="h-2-2082"><span class="number">二</span>　活字の大きさ</h2>
+<p>活字の大きさは、号数とポイントの二つの単位で数えられてきた<span id="i-2-2192"></span>。二つの単位の関係は、次の表のとおりである。この表は、Emet の関数が TSV のファイルを読んで作っている。</p>
 <p>号数とポイントの対応（抜き書き）。</p>
 <table>
 <thead>
@@ -170,17 +186,17 @@ code { padding-inline: 0.25em; }
 </table>
 <p>本文によく使われた五号の活字は、一本の値段が2銭ほどだった。</p>
 <figure>
-<img src="../images/type-case.png" alt="上から下へ色が淡くなる、縦に長い帯"/>
+<img src="../images/type-case.png" alt="上から下へ色が淡くなる、縦に長い帯" style="height: 12em; max-height: 100%"/>
 <figcaption><span class="number">図1-2</span>　活字の棚の色の<span class="kenten kenten-sesame">移り変わり</span>。上ほどよく使う字が並ぶ。</figcaption>
 </figure>
-<h3 id="h-2-2546"><span class="number">（一）</span>　字面と<ruby>字送り<rp>（</rp><rt>じおくり</rt><rp>）</rp></ruby></h3>
+<h3 id="h-2-2750"><span class="number">（一）</span>　字面と<ruby>字送り<rp>（</rp><rt>じおくり</rt><rp>）</rp></ruby></h3>
 <p>活字の一本は、字の形が載る面（<ruby class="mono">字<rp>（</rp><rt>じ</rt><rp>）</rp>面<rp>（</rp><rt>づら</rt><rp>）</rp></ruby>）と、それを支える<ruby class="mono">胴<rp>（</rp><rt>どう</rt><rp>）</rp></ruby>からできている。胴の幅を並べたものが字送りであり、和文の活字は胴が正方形なので、字送りは字の大きさに等しい。欧文の活字は字ごとに胴の幅が違い、「i」と「m」では三倍ほども差がある<a epub:type="noteref" class="noteref" href="#note-2" id="noteref-2">2</a>。</p>
 <figure id="fig-press">
-<img src="../images/press.svg" alt="手引きの印刷機を横から見た図"/>
+<img src="../images/press.svg" alt="手引きの印刷機を横から見た図" style="height: 10em; max-height: 100%"/>
 <figcaption><span class="number">図1-3</span>　手引きの印刷機。</figcaption>
 </figure>
-<p>手引きの印刷機（<a href="#fig-press">手引きの印刷機を横から見た図</a>ページの図1-3）は、版の上に紙を置き、上から<ruby class="mono">平<rp>（</rp><rt>ひら</rt><rp>）</rp>盤<rp>（</rp><rt>ばん</rt><rp>）</rp></ruby>を押し下げて刷る。一枚ずつ刷るので、一日に刷れる数は多くない。町の活版所の仕事の多くは、こうした端物と呼ばれる小さな刷り物である<span id="i-2-3562"></span>。</p>
-<p class="ps-box">大きな仕事が入ると、活版所は急に騒がしくなる。――棚の前に人が並び、ステッキの鳴る音が途切れなくなる。版を組む台の上には、組み終えたページが何枚も重ねられ、校正の刷りを待つ。その間も端物の注文は来るので、主人は夜遅くまで一人で刷り機を動かした<span id="i-2-3974"></span>。</p>
+<p>手引きの印刷機（<a href="#fig-press">手引きの印刷機を横から見た図</a>ページの図1-3）は、版の上に紙を置き、上から<ruby class="mono">平<rp>（</rp><rt>ひら</rt><rp>）</rp>盤<rp>（</rp><rt>ばん</rt><rp>）</rp></ruby>を押し下げて刷る。一枚ずつ刷るので、一日に刷れる数は多くない。町の活版所の仕事の多くは、こうした端物と呼ばれる小さな刷り物である<span id="i-2-3766"></span>。</p>
+<p class="ps-box">大きな仕事が入ると、活版所は急に騒がしくなる。――棚の前に人が並び、ステッキの鳴る音が途切れなくなる。版を組む台の上には、組み終えたページが何枚も重ねられ、校正の刷りを待つ。その間も端物の注文は来るので、主人は夜遅くまで一人で刷り機を動かした<span id="i-2-4178"></span>。</p>
 <section class="notes">
 <h2>注</h2>
 <aside epub:type="footnote" id="note-1"><a href="#noteref-1">1</a> 文選と植字を一人で兼ねる小さな活版所も多かった。仕事の分け方は、<a class="cite" href="../chapters/03.xhtml#cite-jlreq">[1]</a> の扱う範囲の外である。<span id="i-2-898"></span></aside>
@@ -352,15 +368,15 @@ code { padding-inline: 0.25em; }
 <li>解版 <a href="chapters/03.xhtml#i-4-2009">1</a></li>
 <li>活版所 <a href="chapters/01.xhtml#i-2-143">1</a></li>
 <li>行末 / 句読点 <a href="chapters/02.xhtml#i-3-1160">1</a></li>
-<li>号数 <a href="chapters/01.xhtml#i-2-1999">1</a></li>
+<li>号数 <a href="chapters/01.xhtml#i-2-2192">1</a></li>
 <li>校正 / 記号 <a href="chapters/03.xhtml#i-4-50">1</a></li>
 <li>込め物 <a href="chapters/02.xhtml#i-3-1787">1</a></li>
 <li>四分 <a href="chapters/02.xhtml#i-3-2531">1</a></li>
 <li>植字 / 手順 <a href="chapters/02.xhtml#i-3-133">1</a></li>
 <li>植字 / 文選との違い <a href="chapters/01.xhtml#i-2-898">1</a></li>
 <li>全角 <a href="chapters/02.xhtml#i-3-2360">1</a></li>
-<li>帳簿 <a href="chapters/01.xhtml#i-2-3974">1</a></li>
-<li>端物 <a href="chapters/01.xhtml#i-2-3562">1</a></li>
+<li>帳簿 <a href="chapters/01.xhtml#i-2-4178">1</a></li>
+<li>端物 <a href="chapters/01.xhtml#i-2-3766">1</a></li>
 <li>文選 / 文選工 <a href="chapters/01.xhtml#i-2-557">1</a></li>
 </ul>
 </section>

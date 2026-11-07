@@ -18,7 +18,9 @@ library
   hs-source-dirs:   src
   exposed-modules:
     Golem.Doc.Cbor
+    Golem.Doc.FigureWidth
     Golem.Doc.IR
+    Golem.Doc.Url
     Golem.Doc.Validate
   build-depends:
     , base          >=4.20 && <4.21
@@ -35,7 +37,7 @@ test-suite golem-doc-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    Gen CborExprSpec
+  other-modules:    Gen CborExprSpec LinkSpec
   build-depends:
     , base
     , bytestring
