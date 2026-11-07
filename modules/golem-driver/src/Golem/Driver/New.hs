@@ -50,7 +50,10 @@ templateFiles lang uuid =
           "[targets.html]",
           "",
           "[targets.text]",
-          "variants = [\"horizontal\"]"
+          "variants = [\"horizontal\"]",
+          "",
+          "[source]",
+          "paragraph-separator = \"line\""
         ]
     style = T.unlines $ case lang of
       Japanese ->

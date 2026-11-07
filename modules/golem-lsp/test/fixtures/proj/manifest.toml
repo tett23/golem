@@ -7,3 +7,6 @@ language = "ja"
 date = 2026-10-11
 
 [targets.html]
+
+[source]
+paragraph-separator = "blank-line"

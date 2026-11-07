@@ -149,7 +149,7 @@ data Evaluated = Evaluated
     evAssetSources :: !(Map FileId SourceInfo),
     -- | the table files the evaluation read, relative to the root, for the LSP to watch (golem-eval ADR 0004)
     evTableFiles :: !(Set.Set FilePath),
-    -- | the diagnostics of the project stage: G03007, G03023, plugins, the bibliography, table files (golem-lsp ADR 0004)
+    -- | the diagnostics of the project stage: G03007, G03023, G03120, plugins, the bibliography, table files (golem-lsp ADR 0004)
     evProjectDiagnostics :: ![Diagnostic],
     -- | the diagnostics of S1 (golem-lsp ADR 0004)
     evS1Diagnostics :: ![Diagnostic],
@@ -219,6 +219,8 @@ evaluateProjectWith overlay profile root = do
       styleBytes <- readMaybeBytes (root </> "style.toml")
       let -- G03023: the default style, when there is no style.toml (golem-syntax ADR 0002)
           defaultStyleNotice = [notice "G03023" (mkSpan (projectManifestFile project) 0 0) "style.toml がないので、既定の体裁で組みます" | isNothing styleBytes]
+          -- G03120: no paragraph-separator in [source], read in the line style (docs/adr/0193)
+          defaultSeparatorNotice = [notice "G03120" (mkSpan (projectManifestFile project) 0 0) "段落の区切り方を書いていないので、改行の様式（paragraph-separator = \"line\"）で読みます" | not (manifestParagraphSeparatorWritten (projectManifest project))]
           manifest0 = projectManifest project
           styleFid = styleFileId project
       -- style.toml passes the reading stage too (golem-parser ADR 0009)
@@ -226,7 +228,7 @@ evaluateProjectWith overlay profile root = do
           styleText = fromRight Nothing styleRead
           -- G03100: a zero indent of caption or sidenote (golem-driver ADR 0043)
           styleNoticeDiags = maybe [] (styleNotices styleFid) styleText
-          synDiags = defaultStyleNotice <> styleNoticeDiags <> concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
+          synDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
       case first (map noFix . rfDiagnostics) styleRead >>= loadStyle styleFid of
         -- style.toml is where its errors point (golem-project ADR 0006)
         Left ds -> pure (Left (ProjectFailure ds (Map.insert styleFid (maybe (SourceInfo "style.toml" (mkLineIndex "")) (readInfo "style.toml") styleBytes) (sourceInfos project))))
@@ -280,7 +282,7 @@ evaluateProjectWith overlay profile root = do
               (bibDiags, citeKeys, _) <- loadBibliography root manifest
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook table)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
-                  projectDiags = defaultStyleNotice <> styleNoticeDiags <> masterDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
+                  projectDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> masterDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
                   reassemble = assembleResults (phChannels hook) style manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook table results f sf)
@@ -991,163 +993,205 @@ unsafeOutputDirs root targets = filterM unsafe ("build" : nub (map targetDir tar
       link <- fromRight False <$> (try (pathIsSymbolicLink p) :: IO (Either SomeException Bool))
       if link then pure True else doesFileExist p
 
+{- | Writes each target in turn: the written files, the diagnostics of the
+targets and the PDF kept in memory with its view. The HTML configuration
+is made once, for the site that HTML and EPUB share (docs/adr/0173).
+-}
 writeTargetsChecked :: Bool -> BuildOptions -> Evaluated -> FileId -> Book -> Map FilePath PathError -> [Target] -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
 writeTargetsChecked inMemory opts e diagFid book missing targets = do
   let root = optRoot opts
-      project = evProject e
-      style = evStyle e
-      manifest = projectManifest project
-      md = manifestMetadata manifest
-      ft = projectFiles project
-      dev = optProfile opts == Dev
-      vertical = maybe False pageVertical (stPage style)
-  (_, _, bib) <- loadBibliography root manifest
-  let hcfg =
-        HtmlConfig
-          { hcTitle = mdTitle md,
-            hcLanguage = mdLanguage md,
-            hcVertical = vertical,
-            hcNumberDefault = stNumbersVertical style,
-            hcSwatches = Map.map (\(Swatch c) -> c) (stSwatches style),
-            -- missing fonts are left out of the site (golem-project ADR 0004)
-            hcFonts = Map.map (\fr -> (present (frJa fr), present (frLatin fr))) (stFonts style),
-            -- the resolved styles (docs/adr ADR 0005)
-            hcCharStyles = htmlCharStyles style,
-            hcParaStyles = htmlParaStyles style,
-            -- the styles of each file that differ from those of style.toml (docs/adr ADR 0014)
-            hcLocalStyles =
-              Map.fromList
-                [ ( fid,
-                    HtmlLocalStyles
-                      { hlCharStyles = Map.differenceWith changed (htmlCharStyles st) (htmlCharStyles style),
-                        hlParaStyles = Map.differenceWith changed (htmlParaStyles st) (htmlParaStyles style),
-                        hlCaptionFace = mfilter (/= captionFace style) (Just (captionFace st)),
-                        hlSidenoteFace = mfilter (/= sidenoteFace style) (Just (sidenoteFace st))
-                      }
-                  )
-                | fid <- Map.keys (localStylesOf e),
-                  let st = docStyles e fid
-                ],
-            hcBibliography = bib,
-            hcDev = dev,
-            hcCaptionFace = captionFace style,
-            hcSidenoteFace = sidenoteFace style,
-            hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
-            hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
-            hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
-            hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ (ForcedBreak k) <- bs],
-            hcNoBreak = or [True | Document _ bs <- bookDocs book, Block _ _ (PageControl NoBreak) <- bs],
-            -- only a book with [lists] changes the markers (golem-driver ADR 0013)
-            -- the paragraph style code for pre (golem-driver ADR 0017)
-            hcCode =
-              let d = paraStyle style (Just "code")
-               in HtmlCode
-                    { hcoFont = d >>= psFont,
-                      hcoSize = cssFontSize style <$> (d >>= psSize),
-                      hcoBackground = d >>= psBackground,
-                      hcoPadding = cssLength (fromMaybe (Zw 0.5) (d >>= psPadding)),
-                      -- the border and [code] (golem-driver ADR 0023)
-                      hcoBorder = d >>= psBorder,
-                      hcoBorderWidth = cssLength (fromMaybe (Abs 16384) (d >>= psBorderWidth)),
-                      hcoLineNumbers = cdLineNumbers (stCode style),
-                      hcoLineNumberColor = cdLineNumberColor (stCode style),
-                      hcoHighlight = cdHighlight (stCode style),
-                      hcoAdded = cdAdded (stCode style),
-                      hcoRemoved = cdRemoved (stCode style),
-                      hcoColors = cdColors (stCode style)
-                    },
-            hcLists =
-              if stLists style == defaultListStyle
-                then Nothing
-                else Just (HtmlLists (listBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style))),
-            -- the rules of headings (golem-driver ADR 0027)
-            hcHeadingRules =
-              Map.fromList
-                [ (l, (htmlRule style <$> hsRuleBefore h, htmlRule style <$> hsRuleAfter h))
-                | (l, h) <- Map.toList (stHeadings style),
-                  isJust (hsRuleBefore h) || isJust (hsRuleAfter h)
-                ]
-          }
-      present = mfilter (`Map.notMember` missing)
-      changed a b = if a == b then Nothing else Just a
-      captionFace st = let c = paraStyle st (Just "caption") in Face (c >>= psFont) (cssFontSize st <$> (c >>= psSize))
-      sidenoteFace st = let d = paraStyle st (Just "sidenote") in Face (d >>= psFont) (cssFontSize st <$> (d >>= psSize))
-      ruby = compRuby (stComposition style)
+      ft = projectFiles (evProject e)
+  (_, _, bib) <- loadBibliography root (projectManifest (evProject e))
+  let hcfg = htmlConfig (optProfile opts == Dev) e book missing bib
       site = renderXhtml hcfg ft book
   results <- forM targets $ \case
-    TargetHtml -> do
-      let dir = root </> "build" </> "html"
-      clean dir
-      forM_ (sitePages site) $ \(p, t) -> writeText (dir </> p) t
-      writeText (dir </> "style.css") (siteCss site)
-      writeText (dir </> "index.xhtml") (indexPage hcfg ft book)
-      -- the images plugins made are written from the book (docs/adr/0123)
-      copied <- forM (siteAssets site) $ \(o, src) -> do
-        case Map.lookup (T.pack src) (bookImages book) of
-          Just bytes -> createDirectoryIfMissing True (takeDirectory (dir </> o)) >> BS.writeFile (dir </> o) bytes
-          Nothing -> copy (root </> src) (dir </> o)
-        pure (dir </> o)
-      pure (map ((dir </>) . fst) (sitePages site) <> [dir </> "style.css", dir </> "index.xhtml"] <> copied, [], Nothing)
-    TargetEpub -> do
-      let dir = root </> "build" </> "epub"
-          out = dir </> "book.epub"
-          isbn = fromMaybe Nothing (tgEpub (manifestTargets manifest))
-          cfg = epubConfig md isbn vertical
-      clean dir
-      createDirectoryIfMissing True dir
-      writeEpub root out cfg ft book site
-      pure ([out], [], Nothing)
-    TargetText -> do
-      let dir = root </> "build" </> "text"
-          -- without [targets.text], both variants, as when variants is omitted (golem-cli ADR 0002)
-          variants = case tgText (manifestTargets manifest) of
-            [] -> [TextVertical, TextHorizontal]
-            vs -> vs
-      clean dir
-      files <- forM variants $ \v -> do
-        let (sub, gv) = case v of
-              TextVertical -> ("vertical", GT.Vertical)
-              TextHorizontal -> ("horizontal", GT.Horizontal)
-        -- each document with the indents of its style (docs/adr ADR 0014)
-        let pages = GT.renderText (mdLanguage md) (stNumbersVertical style) dev (textIndents . docStyles e) (textLists style) bib gv ft book
-        forM pages $ \(p, t) -> do
-          writeText (dir </> sub </> p) t
-          pure (dir </> sub </> p)
-      pure (concat files, [], Nothing)
-    TargetPdf -> do
-      let dir = root </> "build" </> "pdf"
-          out = dir </> pdfFileName (mdId md)
-          -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
-          inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
-      r <- renderPdfView (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)))
-      -- G08008: code in the body role without [fonts.code] (golem-driver ADR 0017)
-      -- G07045: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
-      let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book
-      case r of
-        Left ds -> pure ([], ds <> fontNotice, Nothing)
-        Right (bytes, notices, view)
-          -- golem preflight keeps the PDF in memory (golem-cli ADR 0006)
-          | inMemory -> pure ([], notices <> fontNotice <> glyphs, Just (bytes, view))
-          -- G08100 is an error in prod and stops the PDF; the PDF of an earlier build goes too (docs/adr 0081)
-          | hasErrors (map (adjustForProfile (optProfile opts)) glyphs) -> do
-              clean dir
-              pure ([], notices <> fontNotice <> glyphs, Nothing)
-          | otherwise -> do
-              clean dir
-              createDirectoryIfMissing True dir
-              BS.writeFile out bytes
-              pure ([out], notices <> fontNotice <> glyphs, Nothing)
-          where
-            -- G08100: the characters drawn as glyph 0, from the characters of the view (docs/adr 0081)
-            glyphs = [(diagnostic "G08100" Warning (mgSpan m) (mgMessage m)) {diagFacts = mgFacts m} | m <- missingGlyphs view]
+    TargetHtml -> writeHtmlTarget root hcfg ft book site
+    TargetEpub -> writeEpubTarget root e ft book site
+    TargetText -> writeTextTarget root (optProfile opts == Dev) e bib ft book
+    TargetPdf -> writePdfTarget inMemory opts e diagFid book bib
   pure (concat [w | (w, _, _) <- results], concat [d | (_, d, _) <- results], listToMaybe [x | (_, _, Just x) <- results])
+
+{- | The configuration of the HTML of a book from its style.toml and the
+styles of its files: @dev@ for the profile dev, the fonts that are
+@missing@ left out, the entries of the bibliography.
+-}
+htmlConfig :: Bool -> Evaluated -> Book -> Map FilePath PathError -> Map Text [EntryPart] -> HtmlConfig
+htmlConfig dev e book missing bib =
+  HtmlConfig
+    { hcTitle = mdTitle md,
+      hcLanguage = mdLanguage md,
+      hcVertical = vertical,
+      hcNumberDefault = stNumbersVertical style,
+      hcSwatches = Map.map (\(Swatch c) -> c) (stSwatches style),
+      -- missing fonts are left out of the site (golem-project ADR 0004)
+      hcFonts = Map.map (\fr -> (present (frJa fr), present (frLatin fr))) (stFonts style),
+      -- the resolved styles (docs/adr ADR 0005)
+      hcCharStyles = htmlCharStyles style,
+      hcParaStyles = htmlParaStyles style,
+      -- the styles of each file that differ from those of style.toml (docs/adr ADR 0014)
+      hcLocalStyles =
+        Map.fromList
+          [ ( fid,
+              HtmlLocalStyles
+                { hlCharStyles = Map.differenceWith changed (htmlCharStyles st) (htmlCharStyles style),
+                  hlParaStyles = Map.differenceWith changed (htmlParaStyles st) (htmlParaStyles style),
+                  hlCaptionFace = mfilter (/= captionFace style) (Just (captionFace st)),
+                  hlSidenoteFace = mfilter (/= sidenoteFace style) (Just (sidenoteFace st))
+                }
+            )
+          | fid <- Map.keys (localStylesOf e),
+            let st = docStyles e fid
+          ],
+      hcBibliography = bib,
+      hcDev = dev,
+      hcCaptionFace = captionFace style,
+      hcSidenoteFace = sidenoteFace style,
+      hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
+      hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
+      hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
+      hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ (ForcedBreak k) <- bs],
+      hcNoBreak = or [True | Document _ bs <- bookDocs book, Block _ _ (PageControl NoBreak) <- bs],
+      -- only a book with [lists] changes the markers (golem-driver ADR 0013)
+      -- the paragraph style code for pre (golem-driver ADR 0017)
+      hcCode =
+        let d = paraStyle style (Just "code")
+         in HtmlCode
+              { hcoFont = d >>= psFont,
+                hcoSize = cssFontSize style <$> (d >>= psSize),
+                hcoBackground = d >>= psBackground,
+                hcoPadding = cssLength (fromMaybe (Zw 0.5) (d >>= psPadding)),
+                -- the border and [code] (golem-driver ADR 0023)
+                hcoBorder = d >>= psBorder,
+                hcoBorderWidth = cssLength (fromMaybe (Abs 16384) (d >>= psBorderWidth)),
+                hcoLineNumbers = cdLineNumbers (stCode style),
+                hcoLineNumberColor = cdLineNumberColor (stCode style),
+                hcoHighlight = cdHighlight (stCode style),
+                hcoAdded = cdAdded (stCode style),
+                hcoRemoved = cdRemoved (stCode style),
+                hcoColors = cdColors (stCode style)
+              },
+      hcLists =
+        if stLists style == defaultListStyle
+          then Nothing
+          else Just (HtmlLists (listBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style))),
+      -- the rules of headings (golem-driver ADR 0027)
+      hcHeadingRules =
+        Map.fromList
+          [ (l, (htmlRule style <$> hsRuleBefore h, htmlRule style <$> hsRuleAfter h))
+          | (l, h) <- Map.toList (stHeadings style),
+            isJust (hsRuleBefore h) || isJust (hsRuleAfter h)
+          ]
+    }
   where
-    clean dir = do
-      ex <- doesDirectoryExist dir
-      when ex (removeDirectoryRecursive dir)
-    -- UTF-8 whatever the locale (docs/adr/0002-determinism.md)
-    writeText p t = createDirectoryIfMissing True (takeDirectory p) >> BS.writeFile p (TE.encodeUtf8 t)
-    copy src dst = createDirectoryIfMissing True (takeDirectory dst) >> BS.readFile src >>= BS.writeFile dst
+    style = evStyle e
+    md = manifestMetadata (projectManifest (evProject e))
+    vertical = maybe False pageVertical (stPage style)
+    present = mfilter (`Map.notMember` missing)
+    changed a b = if a == b then Nothing else Just a
+    captionFace st = let c = paraStyle st (Just "caption") in Face (c >>= psFont) (cssFontSize st <$> (c >>= psSize))
+    sidenoteFace st = let d = paraStyle st (Just "sidenote") in Face (d >>= psFont) (cssFontSize st <$> (d >>= psSize))
+    ruby = compRuby (stComposition style)
+
+-- | Writes the HTML site to build/html: its pages, its CSS, its index and its images.
+writeHtmlTarget :: FilePath -> HtmlConfig -> FileTable -> Book -> XhtmlSite -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
+writeHtmlTarget root hcfg ft book site = do
+  let dir = root </> "build" </> "html"
+  cleanDir dir
+  forM_ (sitePages site) $ \(p, t) -> writeUtf8File (dir </> p) t
+  writeUtf8File (dir </> "style.css") (siteCss site)
+  writeUtf8File (dir </> "index.xhtml") (indexPage hcfg ft book)
+  -- the images plugins made are written from the book (docs/adr/0123)
+  copied <- forM (siteAssets site) $ \(o, src) -> do
+    case Map.lookup (T.pack src) (bookImages book) of
+      Just bytes -> createDirectoryIfMissing True (takeDirectory (dir </> o)) >> BS.writeFile (dir </> o) bytes
+      Nothing -> copyFileInto (root </> src) (dir </> o)
+    pure (dir </> o)
+  pure (map ((dir </>) . fst) (sitePages site) <> [dir </> "style.css", dir </> "index.xhtml"] <> copied, [], Nothing)
+
+-- | Writes the EPUB of the site to build/epub/book.epub.
+writeEpubTarget :: FilePath -> Evaluated -> FileTable -> Book -> XhtmlSite -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
+writeEpubTarget root e ft book site = do
+  let manifest = projectManifest (evProject e)
+      style = evStyle e
+      dir = root </> "build" </> "epub"
+      out = dir </> "book.epub"
+      isbn = fromMaybe Nothing (tgEpub (manifestTargets manifest))
+      cfg = epubConfig (manifestMetadata manifest) isbn (maybe False pageVertical (stPage style))
+  cleanDir dir
+  createDirectoryIfMissing True dir
+  writeEpub root out cfg ft book site
+  pure ([out], [], Nothing)
+
+-- | Writes the plain text of each variant to build/text; @dev@ for the profile dev.
+writeTextTarget :: FilePath -> Bool -> Evaluated -> Map Text [EntryPart] -> FileTable -> Book -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
+writeTextTarget root dev e bib ft book = do
+  let manifest = projectManifest (evProject e)
+      style = evStyle e
+      md = manifestMetadata manifest
+      dir = root </> "build" </> "text"
+      -- without [targets.text], both variants, as when variants is omitted (golem-cli ADR 0002)
+      variants = case tgText (manifestTargets manifest) of
+        [] -> [TextVertical, TextHorizontal]
+        vs -> vs
+  cleanDir dir
+  files <- forM variants $ \v -> do
+    let (sub, gv) = case v of
+          TextVertical -> ("vertical", GT.Vertical)
+          TextHorizontal -> ("horizontal", GT.Horizontal)
+    -- each document with the indents of its style (docs/adr ADR 0014)
+    let pages = GT.renderText (mdLanguage md) (stNumbersVertical style) dev (textIndents . docStyles e) (textLists style) bib gv ft book
+    forM pages $ \(p, t) -> do
+      writeUtf8File (dir </> sub </> p) t
+      pure (dir </> sub </> p)
+  pure (concat files, [], Nothing)
+
+{- | Writes the PDF to build/pdf, or keeps it in memory with its view for
+golem preflight (@inMemory@), with the notices of the PDF.
+-}
+writePdfTarget :: Bool -> BuildOptions -> Evaluated -> FileId -> Book -> Map Text [EntryPart] -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
+writePdfTarget inMemory opts e diagFid book bib = do
+  let root = optRoot opts
+      project = evProject e
+      style = evStyle e
+      dir = root </> "build" </> "pdf"
+      out = dir </> pdfFileName (mdId (manifestMetadata (projectManifest project)))
+      -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
+      inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
+  r <- renderPdfView (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)))
+  -- G08008: code in the body role without [fonts.code] (golem-driver ADR 0017)
+  -- G07045: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
+  let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book
+  case r of
+    Left ds -> pure ([], ds <> fontNotice, Nothing)
+    Right (bytes, notices, view)
+      -- golem preflight keeps the PDF in memory (golem-cli ADR 0006)
+      | inMemory -> pure ([], notices <> fontNotice <> glyphs, Just (bytes, view))
+      -- G08100 is an error in prod and stops the PDF; the PDF of an earlier build goes too (docs/adr 0081)
+      | hasErrors (map (adjustForProfile (optProfile opts)) glyphs) -> do
+          cleanDir dir
+          pure ([], notices <> fontNotice <> glyphs, Nothing)
+      | otherwise -> do
+          cleanDir dir
+          createDirectoryIfMissing True dir
+          BS.writeFile out bytes
+          pure ([out], notices <> fontNotice <> glyphs, Nothing)
+      where
+        -- G08100: the characters drawn as glyph 0, from the characters of the view (docs/adr 0081)
+        glyphs = [(diagnostic "G08100" Warning (mgSpan m) (mgMessage m)) {diagFacts = mgFacts m} | m <- missingGlyphs view]
+
+-- | Removes a folder and what it holds, if it is there.
+cleanDir :: FilePath -> IO ()
+cleanDir dir = do
+  ex <- doesDirectoryExist dir
+  when ex (removeDirectoryRecursive dir)
+
+-- | Writes a text in UTF-8 whatever the locale (docs/adr/0002-determinism.md), with its folders.
+writeUtf8File :: FilePath -> Text -> IO ()
+writeUtf8File p t = createDirectoryIfMissing True (takeDirectory p) >> BS.writeFile p (TE.encodeUtf8 t)
+
+-- | Copies a file, with the folders of its destination.
+copyFileInto :: FilePath -> FilePath -> IO ()
+copyFileInto src dst = createDirectoryIfMissing True (takeDirectory dst) >> BS.readFile src >>= BS.writeFile dst
 
 {- | The markers of [lists] in plain text (golem-driver ADR 0013): a gap is
 written when [lists] gap is not 0, or by the last character without it.
