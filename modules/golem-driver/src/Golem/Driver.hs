@@ -66,6 +66,7 @@ import Golem.Driver.Fonts (cff2FontDiagnostics, golemFontProvider)
 import Golem.Driver.Functions (LoadedFunctions (..), RequiredFiles (..), loadFunctions, loadRequiredFiles, requiredFileSet, requirementHandlers)
 import Golem.Driver.Html
 import Golem.Driver.Pdf
+import Golem.Driver.Pdf.Pages (pagesJson)
 import Golem.Driver.Plugins (FunctionFilter, LoadedPlugins (..), loadPlugins)
 import Golem.Driver.ProjectVars (projectVarDiagnostics)
 import Golem.Driver.Svg (activeMessage)
@@ -1154,8 +1155,9 @@ writeTextTarget root dev e bib ft book = do
       pure (dir </> sub </> p)
   pure (concat files, [], Nothing)
 
-{- | Writes the PDF to build/pdf, or keeps it in memory with its view for
-golem preflight (@inMemory@), with the notices of the PDF.
+{- | Writes the PDF to build/pdf with pages.json, where each of its pages
+starts in the source (docs/adr ADR 0195), or keeps it in memory with its
+view for golem preflight (@inMemory@), with the notices of the PDF.
 -}
 writePdfTarget :: Bool -> BuildOptions -> Evaluated -> FileId -> Book -> Map Text [EntryPart] -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
 writePdfTarget inMemory opts e diagFid book bib = do
@@ -1164,13 +1166,14 @@ writePdfTarget inMemory opts e diagFid book bib = do
       style = evStyle e
       dir = root </> "build" </> "pdf"
       out = dir </> pdfFileName (mdId (manifestMetadata (projectManifest project)))
+      pagesOut = dir </> "pages.json"
   r <- renderPdfView (optFonts opts) (pdfInputOf opts e diagFid book bib)
   -- G08008: code in the body role without [fonts.code] (golem-driver ADR 0017)
   -- G07045: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
   let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book
   case r of
     Left ds -> pure ([], ds <> fontNotice, Nothing)
-    Right (bytes, notices, view)
+    Right (bytes, notices, view, starts)
       -- golem preflight keeps the PDF in memory (golem-cli ADR 0006)
       | inMemory -> pure ([], notices <> fontNotice <> glyphs, Just (bytes, view))
       -- G08100 is an error in prod and stops the PDF; the PDF of an earlier build goes too (docs/adr 0081)
@@ -1181,7 +1184,9 @@ writePdfTarget inMemory opts e diagFid book bib = do
           cleanDir dir
           createDirectoryIfMissing True dir
           BS.writeFile out bytes
-          pure ([out], notices <> fontNotice <> glyphs, Nothing)
+          -- where each page starts in the source, next to the PDF (docs/adr ADR 0195)
+          writeUtf8File pagesOut (pagesJson (Map.map (\sf -> (sfPath sf, sfText sf)) (projectSources project)) starts)
+          pure ([out, pagesOut], notices <> fontNotice <> glyphs, Nothing)
       where
         -- G08100: the characters drawn as glyph 0, from the characters of the view (docs/adr 0081)
         glyphs = [(diagnostic "G08100" Warning (mgSpan m) (mgMessage m)) {diagFacts = mgFacts m} | m <- missingGlyphs view]

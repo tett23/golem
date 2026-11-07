@@ -39,7 +39,7 @@ module Golem.Layout.Japanese
 where
 
 import Data.Char (GeneralCategory (..), generalCategory, isSpace)
-import Data.List (groupBy, zip5)
+import Data.List (groupBy, mapAccumL, zip5)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
@@ -148,6 +148,16 @@ data ComposeEnv = ComposeEnv
     ceSizeSourceOf :: SizeSource -> Inline -> SizeSource,
     -- | the source of the boxes of the piece 'itemsFor' makes; set by 'composeInlines'
     ceBoxSource :: !BoxSource,
+    {- | where a character of a text is in the source (docs/adr ADR 0195):
+    the span and the text of a 'Text' inline and the index of a character
+    in the text give a byte offset in the file of the span, or -1 when the
+    source does not have the character. The text may not be the source
+    as it is (newlines dropped, escapes, values); the default is the
+    start of the span. Applied to a span and a text once per inline, so
+    that the work can be shared.
+    -} ceSourceAt :: SrcSpan -> Text -> Int -> Int,
+    -- | where the character at an index of the piece 'itemsFor' makes is in the source; set by 'composeInlines'
+    ceBoxAt :: Int -> Int,
     -- | the place of the composition in the structure tree of the PDF (docs/adr ADR 0183); empty for none
     ceSite :: ![Int],
     -- | the leaf of the boxes of the piece 'itemsFor' makes; set by 'composeInlines'
@@ -188,6 +198,8 @@ defaultComposeEnv fs =
       ceSizeSource = SourceGrid,
       ceSizeSourceOf = const,
       ceBoxSource = noBoxSource,
+      ceSourceAt = \sp _ _ -> spanStart sp,
+      ceBoxAt = const 0,
       ceSite = [],
       ceLeaf = 0,
       ceLabelInlines = 0
@@ -270,7 +282,7 @@ composeInlinesTree env inls =
       (items, anchors) = foldl' emit ([], []) (zip5 leaves (map fst sourced) prevs pieces nexts)
       emit (acc, as) (_, _, _, PAnchor f, _) = (acc, (length acc, f) : as)
       -- the boxes of a piece carry its source (golem-cli ADR 0008) and its leaf (docs/adr ADR 0183)
-      emit (acc, as) (l, src, pv, p, nx) = (acc <> itemsFor env {ceBoxSource = src, ceLeaf = l} pv p nx, as)
+      emit (acc, as) (l, (src, offs), pv, p, nx) = (acc <> itemsFor env {ceBoxSource = src, ceBoxAt = offs, ceLeaf = l} pv p nx, as)
       -- the neighbours of each piece, anchors and breaks between mono ruby bases skipped
       solid = \case
         PAnchor _ -> False
@@ -317,7 +329,7 @@ data LeafState = LeafState !Int !Int !(Map.Map SrcSpan Int)
 of the inlines. Leaf 0 is the content at the start; each element takes
 new leaves, and the content after it a new one.
 -}
-structured :: ComposeEnv -> [Inline] -> ([InlineNode], [(Int, BoxSource, Piece)])
+structured :: ComposeEnv -> [Inline] -> ([InlineNode], [(Int, Sourced, Piece)])
 structured env inls =
   let (labelled, rest) = splitAt (ceLabelInlines env) inls
       st0 = LeafState 1 0 Map.empty
@@ -329,7 +341,7 @@ structured env inls =
               (_, ns2, ps2) = walkAll env st2 rest
            in (NodeElem RoleLabel (NodeLeaf 0 : ns1) : after : ns2, ps1 <> ps2)
 
-walkAll :: ComposeEnv -> LeafState -> [Inline] -> (LeafState, [InlineNode], [(Int, BoxSource, Piece)])
+walkAll :: ComposeEnv -> LeafState -> [Inline] -> (LeafState, [InlineNode], [(Int, Sourced, Piece)])
 walkAll env st0 = foldl' step (st0, [], [])
   where
     step (st, ns, ps) inl = let (st', ns', ps') = walk env st inl in (st', ns <> ns', ps <> ps')
@@ -339,7 +351,7 @@ freshLeaf :: LeafState -> (LeafState, InlineNode)
 freshLeaf (LeafState next _ seen) = (LeafState (next + 1) next seen, NodeLeaf next)
 
 -- | The pieces and the structure of one inline.
-walk :: ComposeEnv -> LeafState -> Inline -> (LeafState, [InlineNode], [(Int, BoxSource, Piece)])
+walk :: ComposeEnv -> LeafState -> Inline -> (LeafState, [InlineNode], [(Int, Sourced, Piece)])
 walk env st@(LeafState next cur seen) inl = case inl of
   Color _ _ xs -> walkAll restyledEnv st xs
   CharStyle _ _ xs
@@ -421,13 +433,21 @@ alignPositions = go 0 0
       Box {} -> True
       _ -> False
 
+{- | The source of a piece (golem-cli ADR 0008), and where each of its
+characters is in the source (docs/adr ADR 0195): the start of the span
+for a piece that is not of a text.
+-}
+type Sourced = (BoxSource, Int -> Int)
+
 {- | The pieces of an inline, each with its source (golem-cli ADR 0008): the
 size source of the look it is set in and the span of the inline it
 comes from.
 -}
-piecesOf :: ComposeEnv -> Inline -> [(BoxSource, Piece)]
+piecesOf :: ComposeEnv -> Inline -> [(Sourced, Piece)]
 piecesOf env inl = case inl of
-  Text sp t -> [((ceSizeSource env, pieceSpan sp t i p), p) | (i, p) <- textPiecesAt lk t]
+  Text sp t ->
+    let offs = ceSourceAt env sp t
+     in [(((ceSizeSource env, pieceSpan sp t i p), offs . (i +)), p) | (i, p) <- textPiecesAt lk t]
   Color _ _ xs -> restyled xs
   CharStyle _ _ xs -> restyled xs
   -- the target of a link is a look of the characters inside (docs/adr ADR 0182)
@@ -449,11 +469,11 @@ piecesOf env inl = case inl of
   -- a mark is set in the character style of [notes] mark-style (docs/adr/0177)
   Note sp n body ->
     let MarkFormat pre notation suf = ceNoteMarkFormat env
-     in [((ceSizeSource env, sp), PAnchor (\i -> AnchorNote i n sp body)), ((markSource, sp), markPiece (markParts (ceVertical env) pre notation (toInteger n) suf))]
+     in [(((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorNote i n sp body)), (((markSource, sp), const (spanStart sp)), markPiece (markParts (ceVertical env) pre notation (toInteger n) suf))]
   Sidenote sp n body ->
-    ((ceSizeSource env, sp), PAnchor (\i -> AnchorSidenote i n sp body)) : case ceSidenoteMarker env of
+    (((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorSidenote i n sp body)) : case ceSidenoteMarker env of
       -- the number alone, neither the format nor the notation of [notes] (docs/adr/0177)
-      MarkerNumber -> [((markSource, sp), markPiece (markParts (ceVertical env) "" arabic (toInteger n) ""))]
+      MarkerNumber -> [(((markSource, sp), const (spanStart sp)), markPiece (markParts (ceVertical env) "" arabic (toInteger n) ""))]
       MarkerSymbol -> at sp [PBox lk "※" KindText (lkSize lk)]
       MarkerNone -> []
   IndexMark sp e -> at sp [PAnchor (\i -> AnchorIndex i sp e)]
@@ -467,7 +487,7 @@ piecesOf env inl = case inl of
   Aki sp a -> at sp [PAki lk a]
   where
     lk = ceLook env
-    at sp = map ((ceSizeSource env, sp),)
+    at sp = map (((ceSizeSource env, sp), const (spanStart sp)),)
     -- the look inside: the inner setting wins, the rest is inherited (golem-driver ADR 0004)
     restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl, ceSizeSource = ceSizeSourceOf env (ceSizeSource env) inl})
     -- the mark of a note or a numbered sidenote (golem-driver ADR 0018) in the look of mark-style (docs/adr/0177)
@@ -537,7 +557,7 @@ textPieces lk = map snd . textPiecesAt lk
 -- | The pieces of a text, each with the index of its first character in the text.
 textPiecesAt :: Look -> Text -> [(Int, Piece)]
 textPiecesAt lk t
-  | breaksAsCode lk = map (0,) (codePieces lk t)
+  | breaksAsCode lk = codePieces lk t
   | otherwise = joinDashes (go (zip3 offsets units latinish))
   where
     {- the units of the text: a base character and the combining characters
@@ -583,16 +603,17 @@ textPiecesAt lk t
 width (golem-layout ADR 0017), a
 tab as other text has it, and each run of the rest as one piece.
 -}
-codePieces :: Look -> Text -> [Piece]
-codePieces lk = go
+codePieces :: Look -> Text -> [(Int, Piece)]
+codePieces lk = go 0
   where
-    go t = case T.uncons t of
+    -- each piece with the index of its first character in the text
+    go i t = case T.uncons t of
       Nothing -> []
-      Just (' ', _) -> PSpace lk : go (T.dropWhile (== ' ') t)
-      Just ('\t', rest) -> PChar lk '\t' "" : go rest
+      Just (' ', _) -> let (sps, rest) = T.span (== ' ') t in (i, PSpace lk) : go (i + T.length sps) rest
+      Just ('\t', rest) -> (i, PChar lk '\t' "") : go (i + 1) rest
       Just _ ->
         let (run, rest) = T.break (\c -> c == ' ' || c == '\t') t
-         in PCode lk run 0 0 : go rest
+         in (i, PCode lk run 0 0) : go (i + T.length run) rest
 
 numberPieces :: ComposeEnv -> Integer -> Maybe NumberStyle -> [Piece]
 numberPieces env n style
@@ -770,14 +791,14 @@ itemsFor env prev p next = case p of
           | pre + post > 0 = KindPunctuation
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
-     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))]
+     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PWord lk word -> wordItems env lk word
   PSpace lk ->
     let sw = advance env lk ' '
      in if lkCode lk
           then [Glue (sw + tracking lk) 0 0] -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
           else [Glue (sw + tracking lk) (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))]
-  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))]
+  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
         rp = placeRuby style kind (baseAdvances env lk looks base) (readingAdvances env lk reading) (allowance True prev, allowance False next)
@@ -801,7 +822,7 @@ itemsFor env prev p next = case p of
         tag = case kind of
           MonoRuby -> KindRuby
           GroupRuby -> KindGroupRuby
-     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp) looks 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))]
+     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp) looks 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
   -- normalize sees no box next to these items: the spacing is that of the line's edge
   PForcedBreak -> lineEnd
@@ -810,7 +831,7 @@ itemsFor env prev p next = case p of
     let w = case a of
           AkiZw r -> L.zwToSp (lkSize lk) r
           AkiAbs x -> x
-     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))]
+     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PCode lk run ps pe -> codeItems env lk run ps pe
   {- a run of dashes: an em for each, whatever the font's advance; inseparable
   at both ends, so the spacing and the breaks around it are those of one
@@ -818,7 +839,7 @@ itemsFor env prev p next = case p of
   PDashes lk d ->
     let t = tracking lk
         w = lkSize lk * fromIntegral (T.length d)
-     in [Box (w + t) (BoxContent d False 0 0 (fromEnum KindDashes) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))]
+     in [Box (w + t) (BoxContent d False 0 0 (fromEnum KindDashes) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PMark place lk parts ps pe -> [markItem env place lk parts ps pe]
   PAnchor _ -> []
 
@@ -854,7 +875,7 @@ markItem env place lk parts ps pe =
       starts = scanl (\o (_, _, u, k) -> o + u + tr * fromIntegral k) ps units
       parts' = [(fromEnum kind, t, o) | ((kind, t, _, _), o) <- zip units starts]
       w = sum [u | (_, _, u, _) <- units] + tr * fromIntegral (max 0 (chars - 1)) + ps + pe
-   in Box w (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts')) (Leaf (ceSite env) (ceLeaf env)))
+   in Box w (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts')) (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))
 
 {- | A run of code (golem-driver ADR 0017): a box for each part of Latin or
 other text, cut after each slash; 'normalize' allows a break after a
@@ -863,10 +884,11 @@ expansion.
 -}
 codeItems :: ComposeEnv -> Look -> Text -> Sp -> Sp -> [Item]
 codeItems env lk run padStart padEnd =
-  [ Box (w + tr * fromIntegral (T.length seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))
+  [ Box (w + tr * fromIntegral (T.length seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env k))
   | let segs = [seg | part <- slashParts run, seg <- T.groupBy sameSide part]
         lastIx = length segs - 1,
-    (i, seg) <- zip [0 :: Int ..] segs,
+    -- the index of the first character of each part in the run (docs/adr ADR 0195)
+    (i, k, seg) <- zip3 [0 :: Int ..] (scanl (\n x -> n + T.length x) 0 segs) segs,
     let latin = maybe False ((== Western) . charClass . fst) (T.uncons seg)
         w = L.zwToSp (lkSize lk) (ceWordAdvance env lk seg)
         tag = if ceVertical env && latin then KindRotated else KindText
@@ -989,15 +1011,17 @@ wordItems env lk word =
       tag = fromEnum (if rotated then KindRotated else KindText)
       tr = tracking lk
       -- the tracking after each character, given back at the line end (docs/adr/0020)
-      box t =
+      box (k, t) =
         let w = L.zwToSp (lkSize lk) (ceWordAdvance env lk t)
             ps = maybe 0 (min w . protAt fst . fst) (T.uncons t)
             pe = maybe 0 (min w . protAt snd . snd) (T.unsnoc t)
-         in Box (w + tr * fromIntegral (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)))
+         in Box (w + tr * fromIntegral (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env k))
       -- the advance of the character at the line end, without tracking, by its ratio (golem-layout ADR 0014)
       protAt pick c = if ceProtrusion env then Sp (unSp (advance env lk c) * pick (protrusionRatio c) `div` 1000) else 0
       withPens pen = concat . zipWith (\i x -> (if i > (0 :: Int) then pen else []) <> x) [0 ..]
-   in withPens [explicitPen] (map (withPens [patternPen] . map (pure . box)) elements)
+      -- each box with the index of its first character in the word (docs/adr ADR 0195)
+      indexed = snd (mapAccumL (mapAccumL (\k t -> (k + T.length t, (k, t)))) 0 elements)
+   in withPens [explicitPen] (map (withPens [patternPen] . map (pure . box)) indexed)
 
 {- | A word cut after each run of hyphens and dashes that has a character
 before it and one after it (lime-|tree, a--|b; not -5 or pre-).

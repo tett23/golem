@@ -53,14 +53,14 @@ main :: IO ()
 main = defaultMain tests
 
 box :: Sp -> Item
-box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf)
+box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
 
 -- | Words of the given widths separated by interword glue.
 paragraph :: [Sp] -> [Item]
 paragraph ws = concat [box w : [Glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 refBox :: Text -> Sp -> Item
-refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf)
+refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
 
 knuthPlassWords, knuthPlassLog :: FilePath
 knuthPlassWords = "test/data/knuth-plass/frog-king.words"
@@ -734,12 +734,12 @@ tests =
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
             ws <- forAll (Gen.list (Range.linear 3 12) (Sp <$> Gen.integral (Range.linear 20 70)))
-            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf) | w <- ws] `interleave` Glue 6 3 2 <> finish
+            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | w <- ws] `interleave` Glue 6 3 2 <> finish
                 r = breakParagraph defaultParams {pExpansion = Just (20, 5)} (const 150) items
             mapM_ (\l -> assert (abs (lineExpansion l) <= 20 && lineExpansion l `mod` 5 == 0)) (brLines r),
           testCase "expansion lowers the spread of adjustment ratios" $ do
             let ws = [23, 41, 37, 19, 52, 33, 28, 45, 31, 26, 39, 22, 48, 35, 29, 41]
-                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf) | w <- ws] `interleave` Glue 600 300 200 <> finish
+                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | w <- ws] `interleave` Glue 600 300 200 <> finish
                 variance ps =
                   let rs = map glueRatio (init (brLines (breakParagraph ps (const 15000) items)))
                       m = sum rs / fromIntegral (length rs)
@@ -1475,7 +1475,7 @@ rubyOf segs = Ruby sp () [RubySegment [Text sp b] r | (b, r) <- segs]
 
 -- | A box with edges (the overhang of a ruby).
 edgeBox :: Sp -> (Sp, Sp) -> Item
-edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [] 0 0 noBoxSource Nothing noLeaf)
+edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [] 0 0 noBoxSource Nothing noLeaf 0)
 
 -- | The start and end of each box of a set line.
 boxSpans :: Line -> [(Sp, Sp)]
