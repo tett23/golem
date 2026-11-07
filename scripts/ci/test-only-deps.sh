@@ -1,7 +1,8 @@
 #!/bin/sh
 # Checks that no library nor executable of the repository depends on
-# golem-test-support, the package that only the test suites use
-# (docs/adr/0028-shared-test-support-package.md), and that
+# golem-test-support or golem-doc-gen, the packages that only the test
+# suites use (docs/adr/0028-shared-test-support-package.md,
+# docs/adr/0191-semantic-ir-generator-module.md), and that
 # golem-test-support depends on no package of the repository
 # (docs/adr/0087-test-support-dependencies-and-shared-fixtures.md).
 #
@@ -12,20 +13,22 @@
 # The starting points are the libraries (lib, lib:*) and the executables
 # (exe:*) of the local packages, both of the per-component elements
 # (component-name) and of the per-package ones (the components table),
-# except those of golem-test-support itself. From each, the closure follows
-# depends, and the depends of the lib components of a per-package element,
-# not exe-depends (the build tools) nor setup: the rule of
-# scripts/release/licenses.sh for exe:golem.
+# except those of golem-test-support and golem-doc-gen themselves. From
+# each, the closure follows depends, and the depends of the lib components
+# of a per-package element, not exe-depends (the build tools) nor setup:
+# the rule of scripts/release/licenses.sh for exe:golem.
 #
 # The second check starts from the library of golem-test-support (lib of
 # a per-component element, or the lib of the components table of a
 # per-package one), not from its test suite, which rightly depends on the
 # library. The closure follows depends in the same way, and every element
-# of style local that it reaches is a package of the repository.
+# of style local that it reaches is a package of the repository. It is
+# not made for golem-doc-gen, which depends on golem-doc.
 #
-# Exit code 0: no starting point reaches golem-test-support, and
-# golem-test-support reaches no local package.
-# Exit code 1: some do; each is one line on stderr.
+# Exit code 0: no starting point reaches golem-test-support nor
+# golem-doc-gen, and golem-test-support reaches no local package.
+# Exit code 1: some do; each starting point and package it reaches is one
+# line on stderr.
 # Exit code 2: the plan cannot be read (no file, not JSON, no install-plan).
 set -eu
 
@@ -42,7 +45,10 @@ jq empty "$PLAN" >/dev/null 2>&1 || cannot "not JSON: $PLAN"
 jq -e '(type == "object") and (."install-plan" | type == "array")' "$PLAN" >/dev/null 2>&1 ||
   cannot "no install-plan in $PLAN"
 
-FOUND=$(jq -r '
+# the packages that only the test suites may use
+TEST_ONLY='["golem-test-support", "golem-doc-gen"]'
+
+FOUND=$(jq -r --argjson only "$TEST_ONLY" '
   def starts: test("^(lib|lib:.*|exe:.*)$");
   ."install-plan" as $plan
   | (reduce $plan[] as $e ({}; .[$e.id] = $e)) as $by
@@ -50,15 +56,17 @@ FOUND=$(jq -r '
     def fix(f): (f) as $n | if $n == . then . else ($n | fix(f)) end;
     def closure: fix(. + [.[] | $by[.] // empty | deps[]] | unique);
   [ $plan[]
-    | select(.style == "local" and ."pkg-name" != "golem-test-support")
+    | select(.style == "local" and (."pkg-name" as $p | $only | index($p) | not))
     | ."pkg-name" as $pkg
     | if has("component-name") then
         select(."component-name" | starts) | {name: ($pkg + ":" + ."component-name"), depends: (.depends // [])}
       else
         (.components // {}) | to_entries[] | select(.key | starts) | {name: ($pkg + ":" + .key), depends: (.value.depends // [])}
       end
-    | select(.depends | unique | closure | any(.[]; ($by[.] // {})."pkg-name" == "golem-test-support"))
-    | .name ]
+    | .name as $name
+    | (.depends | unique | closure | [.[] | ($by[.] // {})."pkg-name"]) as $reached
+    | $only[] | select(. as $p | $reached | index($p))
+    | $name + " " + . ]
   | unique[]' "$PLAN") || cannot "cannot read the dependencies from $PLAN"
 
 LOCAL=$(jq -r '
@@ -81,8 +89,8 @@ LOCAL=$(jq -r '
 
 [ -n "$FOUND" ] || [ -n "$LOCAL" ] || exit 0
 if [ -n "$FOUND" ]; then
-  printf '%s\n' "$FOUND" | while IFS= read -r c; do
-    printf 'test-only-deps: %s depends on golem-test-support, which only test suites may use\n' "$c" >&2
+  printf '%s\n' "$FOUND" | while IFS=' ' read -r c p; do
+    printf 'test-only-deps: %s depends on %s, which only test suites may use\n' "$c" "$p" >&2
   done
 fi
 if [ -n "$LOCAL" ]; then

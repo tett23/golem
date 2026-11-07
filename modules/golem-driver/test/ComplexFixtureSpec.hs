@@ -159,7 +159,7 @@ common =
     ("an SVG figure", figureOf [".svg"]),
     ("a PNG or JPEG figure", figureOf [".png", ".jpg", ".jpeg"]),
     ("ref-number and ref-title", \s -> commands "ref-number" s /= [] && commands "ref-title" s /= []),
-    ("a table from a file", hasGm "@table src="),
+    ("a table from a file", hasGm "@table data/"),
     ("a table written in the manuscript", \s -> any ("|---" `T.isInfixOf`) (gmLines s) || any ("|:---" `T.isInfixOf`) (gmLines s)),
     ("@listing", lineStarts "@listing "),
     ("a code block", lineStarts "```"),

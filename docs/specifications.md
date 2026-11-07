@@ -282,6 +282,16 @@ Hackage のパッケージには依存してよいが、`cabal.project.freeze` �
 golem の実行ファイルはこのパッケージに依存せず、このパッケージはリリースの配布物にも入らない。
 リポジトリのライブラリと実行ファイルがこのパッケージに依存しないことと、このパッケージが golem のパッケージに依存しないことは、cabal が解決した計画を読む `scripts/ci/test-only-deps.sh` が CI の `build` ジョブとリリースの `package.sh` で確かめる（[docs/adr/0028](adr/0028-shared-test-support-package.md)、[docs/adr/0087](adr/0087-test-support-dependencies-and-shared-fixtures.md)）。
 
+`modules/golem-doc-gen` は、意味論 IR の hedgehog の生成器を持つ、テストスイートだけが使うパッケージなので、golem-test-support と同じく図に含めない（[ADR 0191](adr/0191-semantic-ir-generator-module.md)）。
+`Golem.DocGen` の一つのモジュールが `genDocument`、`genInline`、`genExpr`、`genInt64` を公開し、golem-driver-test がこれを使う。
+ライブラリは golem-doc、golem-length、golem-parser、golem-syntax に依存する。
+golem-doc-test は、同じ生成器の写し（`modules/golem-doc/test/Gen.hs`）を使う。
+golem-doc のテストが golem-doc に依存する golem-doc-gen に依存すると、cabal の依存の解決がパッケージの循環として退けるからである。
+golem-doc-gen のテストは、`BlockBody` と `InlineF` の構成子の種類を `_` を使わない `case` で数え、生成した文書のうち、どの種類も少なくとも 1% に現れることを hedgehog の `cover` で求める。
+IR に構成子を足すと、このテストがコンパイルできなくなるか、生成器がその構成子を作るまで落ちる。
+リポジトリのライブラリと実行ファイル（golem-test-support と golem-doc-gen のものを除く）がこのパッケージに届かないことも、`scripts/ci/test-only-deps.sh` が確かめる。
+golem のパッケージに依存しないことの検査は golem-test-support だけに当て、golem-doc に依存する golem-doc-gen には当てない。
+
 処理は `parse → eval → 意味論 IR → 各バックエンド` の順に流れ、分岐点は意味論 IR である（「処理の流れ」の節を参照）。
 
 PDF 経路と Web 経路は対称ではない。
@@ -2141,6 +2151,11 @@ PDF では、図番号とキャプションを、画像の下（縦組みでは�
 HTML と EPUB は表を `<table>` として出力し、列の幅と罫線は読者側のエンジンに任せる。
 
 `@table` は、CSV（RFC 4180）か TSV（IANA の `text/tab-separated-values`）のファイルから表を作る（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
+表のファイルのパスは、`@figure` と `@listing` と同じく、最初の位置引数に語か文字列で書く（[ADR 0184](adr/0184-table-positional-path.md)）。
+`src=` のキーワード引数でも書けるが廃止予定であり、`src=` の引数に notice（G02129）を出して、同じ表を組む。
+パスがなければ G02034 とする。
+パスが二つ以上あるとき（位置引数が二つ以上か、位置引数と `src=` の両方）は、どちらが正しいかを処理系は知らないので、コマンドの行に G02130 を出して表を組まない。
+ビルドが読むファイルを集める `assetRefs` は、`@table` の最初の位置引数と `src=` の両方を集める。
 形式は、`format` のキーワード引数（`csv` か `tsv`）があればその値で、なければパスの拡張子で決める。
 拡張子が `.tsv`（大文字と小文字を区別しない）なら TSV、それ以外は CSV とする。
 TSV は、LF か CRLF で行を、タブでセルを区切り、引用符とバックスラッシュを書いたままの文字とする。
@@ -2261,7 +2276,7 @@ notice と info は、出力のバイト列を変えない。
 PDF、HTML、EPUB、プレーンテキストのバイト列は、notice と info を出すかどうかによらず、`silence-notices`、`silence-info`、`--no-notices`、`--verbose` の有無でも変わらない。
 `--verbose` は、出力を変えず、diagnostics の一覧だけを変えるオプションであり、同じ入力と同じオプションからは同じ info を同じ順で出す。
 これは golem-driver のテストが、すべての notice と info を出すプロジェクトで確かめる。
-今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、`caption` と `sidenote` の 0 の字下げ（G03100）、`[source]` に `paragraph-separator` を書いていないプロジェクト（G03120）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、`@page-lines` で減らした段の残りより高い見出し（G07100）、線のない字形のダッシュの二倍ダッシュ（G07101）、`[fonts.code]` のない本のコード（G08008）である。
+今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、`@table` の `src=`（G02129、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、`caption` と `sidenote` の 0 の字下げ（G03100）、`[source]` に `paragraph-separator` を書いていないプロジェクト（G03120）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、`@page-lines` で減らした段の残りより高い見出し（G07100）、線のない字形のダッシュの二倍ダッシュ（G07101）、`[fonts.code]` のない本のコード（G08008）である。
 
 diagnostics は、エラーと警告を先に、notice をその後に、info を最後に並べる（[docs/adr/0104](adr/0104-info-severity.md)）。
 エラーと警告のあいだは、コードの順、ファイルの順、開始位置の順、終了位置の順、メッセージの順で並べ、notice どうしと info どうしも同じ規則で並べる（[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。

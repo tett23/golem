@@ -1,0 +1,7 @@
+{"cabal-version":"3.16.1.0","install-plan":[
+ {"type":"pre-existing","id":"base-4.20.2.0-754f","pkg-name":"base","pkg-version":"4.20.2.0","depends":[]},
+ {"type":"configured","id":"golem-doc-0.1.0-inplace","pkg-name":"golem-doc","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f"],"exe-depends":[],"component-name":"lib"},
+ {"type":"configured","id":"golem-doc-gen-0.1.0-inplace","pkg-name":"golem-doc-gen","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-doc-0.1.0-inplace"],"exe-depends":[],"component-name":"lib"},
+ {"type":"configured","id":"golem-plugin-0.1.0-inplace","pkg-name":"golem-plugin","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-doc-gen-0.1.0-inplace"],"exe-depends":[],"component-name":"lib"},
+ {"type":"configured","id":"golem-driver-0.1.0-inplace","pkg-name":"golem-driver","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-doc-0.1.0-inplace","golem-plugin-0.1.0-inplace"],"exe-depends":[],"component-name":"lib"}
+]}

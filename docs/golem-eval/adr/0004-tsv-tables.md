@@ -1,6 +1,6 @@
 # ADR 0004: TSV の表、表のファイルの誤りの位置、表の列の揃え
 
-ステータス: 採択→表のファイルの BOM と改行を `golem fmt` で直すことは [docs/adr/0186](../../adr/0186-fmt-table-files.md)
+ステータス: 採択→表のファイルの BOM と改行を `golem fmt` で直すことは [docs/adr/0186](../../adr/0186-fmt-table-files.md)、`@table` のパスの書き方は [docs/adr/0184](../../adr/0184-table-positional-path.md)
 
 ## 文脈
 
