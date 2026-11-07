@@ -6,6 +6,7 @@ module Golem.Pdf
     module Golem.Pdf.Import,
     module Golem.Pdf.Marks,
     module Golem.Pdf.Number,
+    module Golem.Pdf.Structure,
     module Golem.Pdf.X4,
     sha256,
     srgbProfile,
@@ -19,5 +20,6 @@ import Golem.Pdf.Marks
 import Golem.Pdf.Number
 import Golem.Pdf.Sha256 (sha256)
 import Golem.Pdf.Srgb (srgbProfile)
+import Golem.Pdf.Structure
 import Golem.Pdf.Writer hiding (RegistrationRules)
 import Golem.Pdf.X4
