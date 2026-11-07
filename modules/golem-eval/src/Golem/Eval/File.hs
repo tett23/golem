@@ -49,6 +49,7 @@ import Data.Text qualified as T
 import Data.Text.Array qualified as TA
 import Data.Text.Internal qualified as TI
 import Data.Text.Unsafe (lengthWord8)
+import Golem.Doc.FigureWidth (parseFigureWidth)
 import Golem.Doc.IR
 import Golem.Eval.Analysis (analyse)
 import Golem.Eval.Builtin
@@ -1340,7 +1341,7 @@ checkFigure sp exists f = do
     else
       if not (null fmts && pageOk && files)
         then pure False
-        else case figureLayoutError sp (figWrap f) (figRotate f) (figWidth f) of
+        else case figureLayoutError sp sp (figWrap f) (figRotate f) (figWidth f) of
           Just d -> report d >> pure False
           Nothing -> pure True
 
@@ -1378,11 +1379,15 @@ isPdfFigure path = figureExtension path == ".pdf"
 figureNeedsWeb :: Text -> Maybe Text -> Bool
 figureNeedsWeb path web = isPdfFigure path && isNothing web
 
--- | G02087 for a figure both turned and wrapped, G02031 for a wrapped figure without a width.
-figureLayoutError :: SrcSpan -> Maybe Wrap -> Bool -> Maybe Text -> Maybe Diagnostic
-figureLayoutError sp wr rot width
+{- | G02087 for a figure both turned and wrapped, G02031 for a wrapped
+figure without a width, G02133 at the width (@wsp@) for a width that is
+neither a length nor a percentage of the measure, or 0 (docs/adr/0190).
+-}
+figureLayoutError :: SrcSpan -> SrcSpan -> Maybe Wrap -> Bool -> Maybe Text -> Maybe Diagnostic
+figureLayoutError sp wsp wr rot width
   | rot && isJust wr = Just (diagnostic "G02087" Error sp "回して置く図版は回り込ませられません")
   | isJust wr && isNothing width = Just (diagnostic "G02031" Error sp "回り込む図版には width が必要です")
+  | Just w <- width, isNothing (parseFigureWidth w) = Just (diagnostic "G02133" Error wsp ("図版の width が読めません。寸法（10zw、50mm など）か行長の割合（50% など）で書きます: " <> w))
   | otherwise = Nothing
 
 -- | The extension of a path in lower case, with its dot.
@@ -1438,7 +1443,7 @@ figure ctx sp args body = do
               case (wrap, rotate) of
                 (Left w, _) -> err "G02030" sp ("wrap は start か end です: " <> w) >> pure []
                 (_, Left r) -> err "G02087" sp ("rotate は true か false です: " <> r) >> pure []
-                (Right wr, Right rot) -> case figureLayoutError sp wr rot (look "width") of
+                (Right wr, Right rot) -> case figureLayoutError sp (maybe sp (\(A.Located wsp _) -> wsp) (keywordAt "width" args)) wr rot (look "width") of
                   Just d -> report d >> pure []
                   Nothing -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page) rot))]
     _ -> err "G02032" sp "@figure には画像のパスを一つ書きます" >> pure []

@@ -50,7 +50,9 @@ end of a page or a column; running heads with the number and the title of
 the chapter, and folios; `@toc`; mono and group ruby and kenten, in
 headings too; footnotes with `[notes.rule]` and a `[cite ...]` in a
 footnote; an SVG figure and a PNG or JPEG figure with figure numbers,
-`[ref-number]` and `[ref-title]`; a table from a file and one written in
+`[ref-number]` and `[ref-title]`; a figure that does not wrap with a
+`width` (`12zw` in the vertical book, `60%` in the horizontal one,
+docs/adr/0190); a table from a file and one written in
 the manuscript, split at the end of a page or a column; `@listing` and code
 blocks with wrapped lines, split at the end of a page or a column; a
 numbered and a definition list; index marks of two levels, in a heading, a
