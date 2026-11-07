@@ -26,7 +26,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ### PDF
 
-- **奥付のコミットの行**：コミットしていない変更がある状態でマニュアルを組むと、奥付のコミットの行が版面の右にはみ出す（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
+- **本文の中のコードの和文の改行**：和文を含む長い本文の中のコードは、空白と `/` の後でしか改行しないので、版面の右にはみ出す。利用者のマニュアルの付録 E で、`golem preflight` が 4 か所に G09013 を出す（[docs/adr/0178](adr/0178-colophon-commit-line-overflow.md)）。
 - **明示したハイフンの前の行**：原稿に書いたハイフンで終わる行が、極端に間延びする（fixture の The Elements of Style の目次と本文）。
 - **韻文の後の空き**：韻文の段落と、その直後の本文の段落とのあいだに空きがない（fixture の The Hunting of the Snark）。
 - **連の分割**：韻文の連が、ページの境で 2 行ずつに分かれる（fixture の The Hunting of the Snark）。
