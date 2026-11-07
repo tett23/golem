@@ -164,7 +164,7 @@ fileStyles style header =
       checked ls acc =
         let cs = checkLocalStyles style ls
             ds = [err code (positionOf ls name) m | (code, name, m) <- cs]
-            wrong = [localsOf ls name | (code, name, _) <- cs, code `elem` ["G03006", "G03008", "G03013"]]
+            wrong = [localsOf ls name | (code, name, _) <- cs, code `elem` ["G03006", "G03008", "G03013", "G03118"]]
             ls' =
               ls
                 { lsCharStyles = foldr Map.delete (lsCharStyles ls) (concatMap snd wrong),
