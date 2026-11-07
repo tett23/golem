@@ -79,6 +79,7 @@ import Control.Monad (join, mfilter)
 import Data.Bifunctor (first)
 import Data.Char (isSpace)
 import Data.Containers.ListUtils (nubOrdOn)
+import Data.Either (fromRight)
 import Data.Foldable (toList)
 import Data.Int (Int64)
 import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, unsnoc, zip4)
@@ -2696,7 +2697,7 @@ loadFigures inp = do
       -- the image a plugin made, or the file (docs/adr/0123)
       -- the path as golem-eval resolved it, normalised (docs/adr/0199)
       let path = T.unpack s
-      bytes <- maybe (filesRead (piFiles inp) (either (const path) id (normalizeRelative path))) pure (Map.lookup s (bookImages (piBook inp)))
+      bytes <- maybe (filesRead (piFiles inp) (fromRight path (normalizeRelative path))) pure (Map.lookup s (bookImages (piBook inp)))
       pure $
         if
           | ".pdf" `T.isSuffixOf` T.toLower s -> case P.importPage page bytes of
