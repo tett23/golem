@@ -229,12 +229,22 @@ jobs:
         with:
           path: ${{ env.GHC_DIR }}
           key: ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-slim
+      # cabal reads and writes everything under ~/.cabal, whatever the
+      # image and haskell-actions/setup leave in ~/.config/cabal
+      # (docs/adr/0201)
+      - name: cabal's directory (docs/adr/0201)
+        run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
       - id: setup
         uses: haskell-actions/setup@v2
         with:
           ghc-version: ${{ env.GHC_VERSION }}
           cabal-version: "3.16.1.0"
           cabal-update: false
+      - name: cabal uses ~/.cabal (docs/adr/0201)
+        run: |
+          test "$(cabal path -z --config-file)" = "$HOME/.cabal/config"
+          test "$(cabal path -z --remote-repo-cache)" = "$HOME/.cabal/packages"
+          test "$(cabal path -z --store-dir)" = "$HOME/.cabal/store"
       - name: The files of GHC that CI does not read (docs/adr/0141)
         if: steps.ghc.outputs.cache-hit != 'true'
         run: |

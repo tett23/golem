@@ -192,6 +192,7 @@ v3 の GUI は、次の原則に従って作る。
 - **リストの字下げ**：入れ子のリストと 10 項目を超える番号付きリストを、横組みと縦組みで PDF と EPUB にして目で見ることと、決定性の検査の蟹工船とテンペストの出力が変わらないことの確かめが残っている（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
 - **段組みの脚注**：段組みの版面で、脚注がその段の下に組まれることを PDF で目で確かめていない。自動のテストでだけ確かめている（[docs/adr/0018](adr/0018-multi-column-layout.md)）。
 - **LSP の notice**：Neovim で、notice が Information として表示され、問題の一覧に載ることと、`silence-notices` に加えると保存の後に消えることを確かめていない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+- **コマンドの中の空白の semantic tokens の見え方**：Ghostty の Neovim の本人のテーマで、コマンドと式の中の空白（型は `operator`）に背景や下線が出ないことを確かめていない（[golem-lsp ADR 0008](golem-lsp/adr/0008-semantic-tokens-for-whitespace-and-remaining-punctuation.md)）。
 - **style.toml と preflight.toml の補完**：ヘッドレスの Neovim 0.12.6 で補完の要求を送り、候補が返ることは確かめたが、ふつうに起動した Neovim で、候補の一覧が出ること、引用符を付けた候補を選んだときと開いた引用符の中で選んだときに正しく入ること、`manifest.toml` とルートの外の TOML のファイルで何も出ないことを目で確かめていない（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
 - **diagnostic の説明へのリンク**：GitHub の上で `docs/diagnostics.md#g01017` を開き、G01017 の節に移ることを確かめていない（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
 - **コードブロックの見え方**：コードブロックの PDF を Acrobat の出力プレビューで開き、背景の色が DeviceCMYK の版だけに出ることと、コードの書体が埋め込まれていることを確かめていない。HTML と EPUB の `pre` と `code` の見え方も、Safari と Chrome で確かめていない（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
