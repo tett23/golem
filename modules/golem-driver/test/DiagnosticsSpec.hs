@@ -167,9 +167,6 @@ withoutInstanceId (p, b)
        in (p, before <> BS.drop 1 (BC.dropWhile (/= ']') rest))
   | otherwise = (p, b)
 
-codesOf :: [Diagnostic] -> [T.Text]
-codesOf ds = [c | DiagnosticCode c <- map diagCode ds]
-
 noticeTests :: TestTree
 noticeTests =
   testGroup

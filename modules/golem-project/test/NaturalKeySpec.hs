@@ -4,20 +4,16 @@ message of the key; 0, a float and the other errors keep their codes.
 -}
 module NaturalKeySpec (tests) where
 
-import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Golem.Project
 import Golem.Project.Style
 import Golem.Syntax
+import Support (offsetOf)
 import Test.Tasty
 import Test.Tasty.HUnit
 
 -- | The byte offset of the first occurrence of a needle.
-offsetOf :: Text -> Text -> Int
-offsetOf src needle = BS.length (TE.encodeUtf8 (fst (T.breakOn needle src)))
-
 grid :: Text
 grid = "[page]\nsize = \"A5\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 40\nlines = 30\nline-pitch = \"16pt\"\nposition = { top = \"14mm\", gutter = \"14mm\" }\n"
 

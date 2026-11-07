@@ -37,6 +37,7 @@ import Language.LSP.Test qualified as LT
 import PublishSpec (publishTests)
 import SemanticTokensSpec (semanticTokensTests)
 import StaleS1Spec (staleS1Tests)
+import Support (codesOf)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory, makeAbsolute)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory, (</>))
@@ -614,10 +615,6 @@ session spec = do
             found@(_ : _) <- [d | d <- ds, diagCode d == Just (L.InR "G04003")] ->
               pure found
         _ -> missingLabel path
-
--- | The codes of the diagnostics of a file.
-codesOf :: Workspace -> FilePath -> [Text]
-codesOf ws p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
 
 {- | The LSP fixture with the identity plugin of golem-plugin's tests
 declared, locked and cached (docs/adr ADR 0031).

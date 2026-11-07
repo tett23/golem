@@ -40,6 +40,10 @@ import Test.Tasty.HUnit
 fixture :: FilePath
 fixture = "test/fixtures/sample"
 
+-- | The codes of the diagnostics, in their order.
+codesOf :: [Diagnostic] -> [T.Text]
+codesOf ds = [c | d <- ds, let DiagnosticCode c = diagCode d]
+
 copyTree :: FilePath -> FilePath -> IO ()
 copyTree from to = do
   createDirectoryIfMissing True to
