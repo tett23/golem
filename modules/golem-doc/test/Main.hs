@@ -5,7 +5,6 @@ import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Control.Exception (ErrorCall, evaluate, try)
 import Data.ByteString qualified as BS
-import Gen
 import Golem.Doc.Cbor
 import Golem.Doc.IR
 import Golem.Doc.Validate
@@ -13,7 +12,6 @@ import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
 import Golem.TestSupport.ExternalTool (needsTool)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
-import Hedgehog
 import LinkSpec qualified
 import System.Directory (findExecutable)
 import System.Environment (lookupEnv)
@@ -23,7 +21,6 @@ import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.Hedgehog
 
 main :: IO ()
 main = defaultMainReportingSkips (const tests)
@@ -128,16 +125,6 @@ cbor =
   testGroup
     "golem-doc (ADR 0001)"
     [ needsTool "cddl" cddlValidator $ \cddl ->
-        testProperty "CBOR conforms to the CDDL (the cddl CLI)" $ withTests 60 $ property $ do
-          d <- forAll genDocument
-          exe <- evalIO cddl
-          (code, out, err) <- evalIO $ withSystemTempDirectory "golem-doc" $ \dir -> do
-            let path = dir </> "doc.cbor"
-            BS.writeFile path (encodeDocument d)
-            readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
-          annotate (out <> err)
-          code === ExitSuccess,
-      needsTool "cddl" cddlValidator $ \cddl ->
         testCase "the cddl CLI rejects a document of another ABI version" $ do
           exe <- cddl
           (code, _, _) <- withSystemTempDirectory "golem-doc" $ \dir -> do
@@ -145,13 +132,6 @@ cbor =
             BS.writeFile path (BS.pack [0x83, 0x01, 0x00, 0x80])
             readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
           assertBool "rejected" (code /= ExitSuccess),
-      testProperty "CBOR round trip" $ withTests 300 $ property $ do
-        d <- forAll genDocument
-        decodeDocument (encodeDocument d) === Right d,
-      testProperty "encoding is canonical" $ property $ do
-        d <- forAll genDocument
-        let bs = encodeDocument d
-        fmap encodeDocument (decodeDocument bs) === Right bs,
       testCase "small integers use their shortest form" $
         BS.length (toStrictByteString (encodeTerm (TInteger 1))) @?= 1,
       testCase "ruby inside ruby is rejected by the decoder" $ do
