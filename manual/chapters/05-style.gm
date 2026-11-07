@@ -228,7 +228,10 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 段落スタイル（[code: \[paragraph-styles.<名前>\]]）に書けるキーは次のとおりです。
 
 - [code: font]、[code: size]：フォントの役割と文字の大きさです。大きさは本文の文字の大きさまでです。
-- [code: indent]、[code: first-line-indent]：字下げです。
+- [code: indent]、[code: first-line-indent]：行の始まりの側の字下げです。
+- [code: end-indent]：行の終わりの側の字下げです。
+- [code: align]：行揃えです。次の節で説明します。
+- [code: space-before]、[code: space-after]：段落の前と後に空ける行の数です。
 - [code: space-between]：同じ段落スタイルの段落が続くときに、あいだに空ける行の数です。
 - [code: line-breaks]：[code: "keep"] にすると、段落の中の改行を行の区切りにします。
 - [code: regex-styles]：正規表現スタイルです（「[ref-title regex-styles]」、[ref-page regex-styles] ページ）。
@@ -241,7 +244,7 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 段落スタイルを付けない段落は [code: body] で組みます。
 
 [code: caption] と [code: sidenote] は、[code: body] の字下げを引き継ぎません。
-図のキャプションと傍注の本文には字下げをしないので、この二つに 0 でない [code: indent] と [code: first-line-indent] を書くとエラー（G03006）になります。
+図のキャプションと傍注の本文には字下げをしないので、この二つに 0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書くとエラー（G03006）になります。
 0 を書いたときは、効果がないことを知らせるお知らせ（G03100）が出ます。
 
 [code: code] だけは、ほかの段落スタイルと扱いが違います。
@@ -287,8 +290,55 @@ InDesign の段落スタイルとの違いは、次のとおりです。
 
 - 行送り[index reading=ぎょうおくり: 行送り]を持ちません。行送りは版面で一つだけ決め、本文はすべて行の格子に載ります。段落ごとに行送りが変わると、見開きの左右で行の位置がずれるからです。
 - 文字の大きさは、本文の文字の大きさより大きくできません。大きい文字は見出しで組みます（「[ref-title heading-style]」、[ref-page heading-style] ページ）。
-- 段落の前後のアキの設定は、同じ段落スタイルの段落が続くときに空ける行の数（[code: space-between]）だけです。格子からずれる半端な空きは作れません。
+- 段落の前後のアキは、長さでなく行の数で書きます。格子からずれる半端な空きは作れません。前の段落の後のアキと次の段落の前のアキは足さず、大きいほうを取ります。
+- 最終行右インデントはありません。
 - 段落ごとに書いたスタイルの上書き（オーバーライド）はありません。体裁を変えたい段落には、別の段落スタイルを作って付けます。原稿にあるのはスタイルの名前だけなので、スタイルを直せば、それを使うすべての段落が変わります。
+
+## 行揃えと段落の前後のアキ
+
+段落スタイルの [code: align] で、段落の行の揃え方を変えます。
+値は InDesign の行揃えに当たります。
+
+- [code: "left"]、[code: "center"]、[code: "right"]：左揃え、中央揃え、右揃えです。縦組みでは天付き、中央、地付きです。
+- [code: "left-justified"]：両端を揃え、最後の行を行の始まりに寄せます。既定の値で、これまでの組み方です。
+- [code: "center-justified"]、[code: "right-justified"]：両端を揃え、最後の行を中央か行の終わりに寄せます。
+- [code: "fully-justified"]：最後の行も両端を揃えます。
+- [code: "towards-spine"]、[code: "away-from-spine"]：行をページのノドの側か小口の側に寄せます。横組みの本でだけ使えます。
+
+揃えは、字下げを引いた残りの長さの中で決まります。
+両端を揃えない行は、字間を広げずに組み、余った長さを行の端に回します。
+
+扉の書名は、中央揃えの段落スタイルで組めます。
+
+```toml
+[paragraph-styles.title]
+align = "center"
+```
+
+献辞や署名のように地付きで組む段落には、[code: "right"] を使います。
+
+```toml
+[paragraph-styles.dedication]
+align = "right"
+end-indent = "2zw"
+```
+
+[code: space-before] と [code: space-after] は、段落の前と後に空ける行の数です。
+引用を前後に一行ずつ空け、両側から二字下げて組むには、次のように書きます。
+
+```toml
+[paragraph-styles.quote]
+indent = "2zw"
+end-indent = "2zw"
+space-before = 1
+space-after = 1
+```
+
+同じ段落スタイルの段落が続くあいだには、前後のアキでなく [code: space-between] の行が空きます。
+違う段落スタイルの段落のあいだでは、前の段落の [code: space-after] と次の段落の [code: space-before] の大きいほうが空きます。
+[code: @blank-line] があれば、その行だけが空きます。
+段の先頭に来た空きは、捨てます。
+前後のアキは、リストの項目と定義リストの中の段落には適用されません。
 
 @label kerning
 ## 文字の送り

@@ -183,6 +183,14 @@ tests =
         ws' <- updateFile ws "a.gm" (textOf ws "a.gm" <> "\n@style \n")
         let srcA = textOf ws' "a.gm"
         assertBool "not in another file" ("letter" `notElem` map cmpLabel (completions ws' "a.gm" (offsetIn srcA "@style \n" 7))),
+      testCase "completion: the keys of docs/adr/0189 and the values of align in @style-def" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@style-def paragraph letter \n@style-def paragraph memo align=\n\n@label second\n# 次の章\n"
+        let src = textOf ws "b.gm"
+            found = completions ws "b.gm"
+            keys = map cmpLabel (found (offsetIn src "@style-def paragraph letter \n" 28))
+        assertBool (show keys) (all (`elem` keys) ["align=", "space-before=", "space-after=", "end-indent="])
+        map cmpLabel (found (offsetIn src "align=\n" 6)) @?= ["left", "center", "right", "left-justified", "center-justified", "right-justified", "fully-justified", "towards-spine", "away-from-spine"],
       testCase "completion: @style-def regex (docs/adr ADR 0015)" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@style-def paragraph letter\n\n@label second\n# 次の章\n\n@style-def regex \n\n@style-def regex body \n\n@style-def regex body pattern=x style=\n"

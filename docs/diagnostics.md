@@ -5517,7 +5517,8 @@ style.toml の誤りです
 - 廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）を書いた。
 - 段落スタイル `code` に、`font`、`size`、`background`、`padding` のほかのキー（`based-on` を含む）を書いた（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 - `background` か `padding` を、`code` のほかの段落スタイルに書いた。`padding` が負であるか、寸法として読めない。
-- 組み込みの段落スタイル `caption` か `sidenote` に、0 でない `indent` か `first-line-indent` を書いた。キャプションと傍注は字下げをしないためである。値が 0 なら誤りとせず、お知らせ [G03100](#g03100) を出す（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。二つに書けないキーは、0 でない `indent` と `first-line-indent`、`rule-before`、`rule-after`、`background`、`padding`、`border`、`border-width` である。
+- 組み込みの段落スタイル `caption` か `sidenote` に、0 でない `indent`、`first-line-indent`、`end-indent` を書いた。キャプションと傍注は字下げをしないためである。値が 0 なら誤りとせず、お知らせ [G03100](#g03100) を出す（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。二つに書けないキーは、0 でない `indent`、`first-line-indent`、`end-indent`、`rule-before`、`rule-after`、`background`、`padding`、`border`、`border-width` である。
+- 段落スタイルの `align` に九つのほかの値を書いたか、`space-before` か `space-after` に負の数を、`end-indent` に負の長さを書いた（[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。段落スタイル `code` に `align`、`space-before`、`space-after`、`end-indent` を書いた場合も同じである。
 - `border` か `border-width` を、`code` のほかの段落スタイルに書いた。`border-width` を zw で書いた（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 - 文字スタイルの `background` か `padding` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。文字スタイルの `background` に `true` を書いた。文字スタイルの `padding` が負であるか、寸法として読めない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
 - `[code]` か `[code.colors]` に未知のキーを書いた。`[code]` の `line-numbers` が真偽値でない。`[code]` の `number` が `{n}` などの差し込みを含まない。
@@ -6225,7 +6226,7 @@ diagnostic の事実（JSON の `facts`）に、`gutter`、`size`、`min-gutter`
 
 ### 意味
 
-組み込みの段落スタイル `caption` か `sidenote` に、値が 0 の `indent` か `first-line-indent`（`"0zw"`、`"0mm"`、`"-0pt"` など）を書いた。
+組み込みの段落スタイル `caption` か `sidenote` に、値が 0 の `indent`、`first-line-indent`、`end-indent`（`"0zw"`、`"0mm"`、`"-0pt"` など）を書いた。
 キャプションと傍注は字下げをしない（組み込みの定義が字下げ 0 を持つ）ので、書いた値は組版を変えない。
 0 でない値は [G03006](#g03006) のエラーである。
 `style.toml` では位置は値で、`style.toml` を読めた後に出す。
@@ -6625,6 +6626,38 @@ mark-size = "0.65zw"
 [character-styles.note-mark]
 size = "0.65zw"
 ```
+
+## G03118
+
+縦組みの本では、段落スタイルの align にノドと小口の揃えを書けません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[page]` の `writing-mode` が `"vertical"` の本で、段落スタイルの `align` に `"towards-spine"` か `"away-from-spine"` を書いた。
+二つは、行をページのノドの側か小口の側に寄せる値である。
+縦組みの行は天から地へ進むので、ノドと小口は行の方向に交わらず、行をノドの側に寄せることが意味を持たない。
+InDesign は縦組みのフレームではこの二つを適用しないが、Golem は書いた値を黙って適用しない出力を作らずに止める。
+値そのものは正しく、書字方向との組み合わせが原因なので、値の書き間違い（[G03006](#g03006)）とはコードを分ける。
+`style.toml` では位置は `align` の値である。
+ファイルの中の定義（`@style-def`）では、位置は `align` の引数であり、その定義を使わない。
+
+- メッセージ: `縦組みの本では、段落スタイル <名前> の align に <値> を書けません。ノドと小口は横組みの本でだけ使えます`（例: `縦組みの本では、段落スタイル quote の align に towards-spine を書けません。ノドと小口は横組みの本でだけ使えます`）
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）、評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)
+
+### 主な原因
+
+- 横組みの本の `style.toml` を、縦組みの本に写した。
+- 本を横組みから縦組みに切り替えた。
+
+### 直し方
+
+縦組みの本なら、`align` を `"left"`（天付き）か `"right"`（地付き）などの値に変える。
+横組みの本にするなら、`writing-mode` を `"horizontal"` にする。
+
 ## G03120
 
 段落の区切り方を書いていないので、改行の様式（paragraph-separator = "line"）で読みます

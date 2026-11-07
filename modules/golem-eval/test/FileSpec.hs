@@ -1008,6 +1008,14 @@ noticeTests =
         [c | (c, _, _, _) <- diagsWith sctx "@style-def paragraph caption indent=1zw\n\nx\n"] @?= ["G03006"]
         let (_, ds, _) = runS sctx "@style-def paragraph caption indent=0zw\n\nx\n"
         sort [(diagCode d, diagSeverity d) | d <- ds] @?= [(DiagnosticCode "G02062", Notice), (DiagnosticCode "G03100", Notice)],
+      -- docs/adr/0189
+      testCase "G03100 for a zero end-indent of caption, G03118 for the spine in a vertical book, at the keyword" $ do
+        [(c, st) | (c, _, st, _) <- diagsWith sctx "@style-def paragraph caption end-indent=0zw\n\nx\n", c == "G03100"] @?= [("G03100", 29)]
+        let vertical = either (error . show) id (parseStyle (FileId 0) "[page]\nsize = \"B6\"\nwriting-mode = \"vertical\"\n")
+            vctx = ctx {ctxStyle = vertical, ctxCharStyles = Map.keysSet (stCharStyles vertical), ctxParaStyles = paraLineBreaks vertical}
+        [(c, m, st) | (c, m, st, _) <- diagsWith vctx "@style-def paragraph quote size=1zw align=towards-spine\n\nx\n"]
+          @?= [("G03118", "縦組みの本では、段落スタイル quote の align に towards-spine を書けません。ノドと小口は横組みの本でだけ使えます", 36)]
+        [c | (c, _, _, _) <- diagsWith sctx "@style-def paragraph aside align=towards-spine\n\nx\n"] @?= [],
       testCase "G02062 is a notice" $ do
         let (_, ds, _) = runS sctx "@style-def paragraph body indent=1zw\n\nx\n"
         map diagSeverity ds @?= [Notice],

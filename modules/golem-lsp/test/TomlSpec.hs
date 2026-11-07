@@ -88,6 +88,9 @@ tomlTests =
           exactly "style.toml" "[headings.1]\nrunning-head = ▮" [],
           including "style.toml" "[headings.1]\n▮" ["font", "page-break", "rule-before"] ["running-head"],
           exactly "style.toml" "[paragraph-styles.body]\nrule-before = ▮" ["false"],
+          -- docs/adr/0189
+          exactly "style.toml" "[paragraph-styles.quote]\nalign = ▮" ["\"left\"", "\"center\"", "\"right\"", "\"left-justified\"", "\"center-justified\"", "\"right-justified\"", "\"fully-justified\"", "\"towards-spine\"", "\"away-from-spine\""],
+          including "style.toml" "[paragraph-styles.quote]\n▮" ["align", "space-before", "space-after", "end-indent"] [],
           exactly "style.toml" "[character-styles.em]\nbackground = ▮" ["false"],
           exactly "style.toml" "[color.swatches.a]\ncmyk = [0, 0, 0, 0]\n[character-styles.em]\nbackground = ▮" ["\"a\"", "false"],
           exactly "style.toml" "[aki-sets.mine]\nrules = [{ before = [▮" ["\"opening\"", "\"closing\"", "\"hyphen\"", "\"dividing\"", "\"middle-dot\"", "\"full-stop\"", "\"comma\"", "\"inseparable\"", "\"iteration\"", "\"prolonged-sound\"", "\"small-kana\"", "\"ideographic-space\"", "\"kana\"", "\"ideograph\"", "\"western\"", "\"japanese\"", "\"line-start\"", "\"paragraph-start\""],
