@@ -115,7 +115,6 @@ reverseCurves start cs =
 roundDiv :: Sp -> Sp -> Integer
 roundDiv (Sp a) (Sp b) = (2 * a + b) `div` (2 * b)
 
-
 -- | x × num / den in one division, rounded toward negative infinity.
 scaleSp :: Sp -> Sp -> Sp -> Sp
 scaleSp (Sp x) (Sp num) (Sp den) = Sp (num * x `div` den)

@@ -19,7 +19,7 @@
 - 発行：[= meta.publisher]
 - 版：[= build.edition]
 - コミット：\
-  [code: [= build.commit]]
+  [code: [= build.commit]][= build.uncommitted]
 - 組版：Golem
 
 この本は Golem で組みました。
