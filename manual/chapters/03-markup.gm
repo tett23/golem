@@ -769,8 +769,8 @@ HTML でこの段落を読むと、前の文のページ番号の位置に、図
 外部の URL へのリンク[index reading=りんく: リンク]は、[code: \[link "URL": 文字\]] で書きます。
 
 ```
-[link "https://www.w3.org/TR/jlreq/": 日本語組版処理の要件]を読んでください。
-要件の原文は [link "https://www.w3.org/TR/jlreq/"] にあります。
+[link "https://www.w3.org/TR/jlreq/": JLReq] を読む。
+原文は [link "https://www.w3.org/TR/jlreq/"] にある。
 ```
 
 URL は引用符で囲みます。
