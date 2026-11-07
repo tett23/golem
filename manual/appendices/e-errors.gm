@@ -875,7 +875,7 @@ PDF を組むときに出るエラーです。
 = [strong: E01102 [code: … は .emet で使えない予約語です。…]]
   [code: if]、[code: then]、[code: else]、[code: for]、[code: while]、[code: let]、[code: in]、[code: lazy]、[code: class]、[code: instance]、[code: deriving]、[code: default] は使えません。
   場合分けはガード、[code: case]、三項演算子で、繰り返しは再帰で、関数の中の名前は [code: where] で書きます。
-= [strong: E01103 [code: where は関数の最後の等式（ガードがあれば最後のガード）の後ろに一つだけ書けます: …]] など
+= [strong: E01103 [code: where は … の後ろに一つだけ書けます: …]] など
   [code: where] を、関数の最後の等式の後ろ以外に書いたか、二つ書いたか、[code: where] の中や [code: case] の選択肢の後ろに書いています。
   [code: where] を一つにまとめ、関数の最後の等式の後ろに置いてください。
 = [strong: E02100 [code: 未定義の名前 … です]]、[strong: [code: 関数 … の等式がありません]]
