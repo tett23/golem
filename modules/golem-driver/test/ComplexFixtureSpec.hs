@@ -171,6 +171,13 @@ common =
     ("the bibliography of CSL-JSON", \s -> hasGm "@bibliography" s && "bibliography" `T.isInfixOf` srcManifest s),
     ("an inline and a block function of .emet", \s -> "pub inline" `T.isInfixOf` srcEmet s && "pub block" `T.isInfixOf` srcEmet s && hasGm "@import " s),
     ("a function that reads a TSV with File.read and makes a table", \s -> "File.read" `T.isInfixOf` srcEmet s && "Block.table" `T.isInfixOf` srcEmet s && ".tsv" `T.isInfixOf` srcManifest s),
+    ( "a centred title, a signature at the end of the line and a quote spaced and indented on both sides (docs/adr/0189)",
+      \s ->
+        styleValue "[paragraph-styles.title]" "align" s == Just "\"center\""
+          && styleValue "[paragraph-styles.signature]" "align" s == Just "\"right\""
+          && all (\k -> isJust (styleValue "[paragraph-styles.quote]" k s)) ["indent", "end-indent", "space-before", "space-after"]
+          && all (\n -> lineStarts ("@style " <> n) s) ["title", "signature", "quote"]
+    ),
     ("a filter of [[filters]] that changes headings", \s -> "[[filters]]" `T.isInfixOf` srcManifest s && "pub filter" `T.isInfixOf` srcEmet s && "Block.Heading" `T.isInfixOf` srcEmet s)
   ]
 
