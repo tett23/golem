@@ -85,7 +85,7 @@ tables = go "" [] . T.lines
 styleKey :: Text -> Text -> Sources -> Bool
 styleKey prefix key s =
   or
-    [ any ((key <> " ") `T.isPrefixOf`) (map T.strip body) || any ((key <> "=") `T.isPrefixOf`) (map T.strip body) || ("." <> key <> "]") `T.isSuffixOf` h
+    [ any (\l -> (key <> " ") `T.isPrefixOf` T.strip l || (key <> "=") `T.isPrefixOf` T.strip l) body || ("." <> key <> "]") `T.isSuffixOf` h
     | (h, body) <- srcStyle s,
       ("[" <> prefix) `T.isPrefixOf` h
     ]
@@ -129,6 +129,14 @@ commands name s = concatMap (go . T.unpack) (srcGm s)
       | otherwise = ']' : body (d - 1) r
     body d (c : r) = c : body d r
 
+-- | Whether a line of a manuscript starts with the prefix.
+lineStarts :: Text -> Sources -> Bool
+lineStarts prefix = any (prefix `T.isPrefixOf`) . gmLines
+
+-- | Whether the body of a command of the name contains the needle.
+commandWith :: Text -> Text -> Sources -> Bool
+commandWith name needle = any (needle `T.isInfixOf`) . commands name
+
 -- | The figures with a file of one of the extensions.
 figureOf :: [String] -> Sources -> Bool
 figureOf exts s = or [any (\e -> T.pack e `T.isInfixOf` l) exts | l <- gmLines s, "@figure " `T.isPrefixOf` T.stripStart l]
@@ -142,22 +150,22 @@ common =
     ("rule-before and rule-after of a paragraph style", \s -> styleKey "paragraph-styles." "rule-before" s && styleKey "paragraph-styles." "rule-after" s),
     ("a running head with the number of a heading, and a folio", \s -> any (\(h, b) -> "[masters." `T.isPrefixOf` h && any (\l -> "number" `T.isInfixOf` l && "heading." `T.isInfixOf` l) b) (srcStyle s) && styleKey "masters." "folio" s),
     ("the table of contents", hasGm "@toc"),
-    ("mono ruby", \s -> any ("/" `T.isInfixOf`) (commands "ruby" s)),
-    ("group ruby", \s -> any (not . ("/" `T.isInfixOf`)) (commands "ruby" s)),
+    ("mono ruby", commandWith "ruby" "/"),
+    ("group ruby", not . all ("/" `T.isInfixOf`) . commands "ruby"),
     ("kenten", \s -> commands "kenten" s /= []),
     ("ruby and kenten in headings", \s -> lineWith "#" "[ruby" s && lineWith "#" "[kenten" s),
     ("footnotes with [notes.rule]", \s -> commands "note" s /= [] && any ((== "[notes.rule]") . fst) (srcStyle s)),
-    ("a citation in a footnote", \s -> any ("[cite " `T.isInfixOf`) (commands "note" s)),
+    ("a citation in a footnote", commandWith "note" "[cite "),
     ("an SVG figure", figureOf [".svg"]),
     ("a PNG or JPEG figure", figureOf [".png", ".jpg", ".jpeg"]),
     ("ref-number and ref-title", \s -> commands "ref-number" s /= [] && commands "ref-title" s /= []),
     ("a table from a file", hasGm "@table src="),
     ("a table written in the manuscript", \s -> any ("|---" `T.isInfixOf`) (gmLines s) || any ("|:---" `T.isInfixOf`) (gmLines s)),
-    ("@listing", \s -> any ("@listing " `T.isPrefixOf`) (gmLines s)),
-    ("a code block", \s -> any ("```" `T.isPrefixOf`) (gmLines s)),
-    ("a numbered list", \s -> any ("+ " `T.isPrefixOf`) (gmLines s)),
-    ("a definition list", \s -> any ("= " `T.isPrefixOf`) (gmLines s)),
-    ("index marks of two levels", \s -> any (\c -> "/" `T.isInfixOf` snd (T.breakOn ":" c)) (commands "index" s)),
+    ("@listing", lineStarts "@listing "),
+    ("a code block", lineStarts "```"),
+    ("a numbered list", lineStarts "+ "),
+    ("a definition list", lineStarts "= "),
+    ("index marks of two levels", any (\c -> "/" `T.isInfixOf` snd (T.breakOn ":" c)) . commands "index"),
     ("index marks in a heading, a footnote and a table cell", \s -> lineWith "#" "[index" s && any ("[index " `T.isInfixOf`) (commands "note" s) && lineWith "|" "[index" s),
     ("the index", \s -> "@index" `elem` map T.strip (gmLines s)),
     ("the bibliography of CSL-JSON", \s -> hasGm "@bibliography" s && "bibliography" `T.isInfixOf` srcManifest s),
@@ -171,8 +179,8 @@ vertical :: [Feature]
 vertical =
   [ ("vertical writing on B6, one column", \s -> styleValue "[page]" "writing-mode" s == Just "\"vertical\"" && styleValue "[page]" "size" s == Just "\"B6\"" && maybe True (== "1") (styleValue "[page.grid]" "columns" s)),
     ("[tcy: ...]", \s -> commands "tcy" s /= []),
-    ("[number-text ... style=tcy]", \s -> any ("style=tcy" `T.isInfixOf`) (commands "number-text" s)),
-    ("a wrapped figure", \s -> lineWith "@figure" "wrap=" s),
+    ("[number-text ... style=tcy]", commandWith "number-text" "style=tcy"),
+    ("a wrapped figure", lineWith "@figure" "wrap="),
     ("double dashes", hasGm "――"),
     ("an index of two columns", \s -> styleValue "[index]" "columns" s == Just "2")
   ]
@@ -181,7 +189,7 @@ vertical =
 horizontal :: [Feature]
 horizontal =
   [ ("horizontal writing on A5, two columns", \s -> styleValue "[page]" "writing-mode" s == Just "\"horizontal\"" && styleValue "[page]" "size" s == Just "\"A5\"" && styleValue "[page.grid]" "columns" s == Just "2"),
-    ("no wrapped figure", \s -> not (lineWith "@figure" "wrap=" s)),
+    ("no wrapped figure", not . lineWith "@figure" "wrap="),
     ("an index of three columns", \s -> styleValue "[index]" "columns" s == Just "3"),
-    ("Latin words long enough to be hyphenated", \s -> any (\w -> T.length w >= 14 && T.all (`elem` ['a' .. 'z']) w) (concatMap T.words (gmLines s)))
+    ("Latin words long enough to be hyphenated", any (any (\w -> T.length w >= 14 && T.all (`elem` ['a' .. 'z']) w) . T.words) . gmLines)
   ]
