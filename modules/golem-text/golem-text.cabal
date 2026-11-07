@@ -20,7 +20,10 @@ library
     , base          >=4.20 && <4.21
     , containers    >=0.6  && <0.8
     , filepath      >=1.4  && <1.6
+    , golem-assemble
+    , golem-bibliography
     , golem-doc
+    , golem-numerals
     , golem-syntax
     , text          >=2.0  && <2.2
   default-language: GHC2021
@@ -34,6 +37,8 @@ test-suite golem-text-test
   build-depends:
     , base
     , containers
+    , golem-assemble
+    , golem-bibliography
     , golem-doc
     , golem-syntax
     , golem-text

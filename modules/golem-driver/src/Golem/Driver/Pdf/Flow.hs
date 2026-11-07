@@ -72,12 +72,11 @@ import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.Assemble
-import Golem.Doc.Bibliography (EntryPart (..))
+import Golem.Assemble
+import Golem.Assemble.ListMarkers
+import Golem.Assemble.Numbering (numberSeparator)
+import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
-import Golem.Doc.ListMarkers
-import Golem.Doc.Numbering (numberSeparator)
-import Golem.Doc.Numerals (circled)
 import Golem.Driver.Overhang (lineOverhang, reachesBackground)
 import Golem.Driver.Pdf.Fonts
 import Golem.Driver.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
@@ -98,6 +97,7 @@ import Golem.Layout.Table (SetCell (..), SetTable (..), TableError (..), layoutT
 import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
 import Golem.LayoutSpec (HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, gutterSide, pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.Length qualified as L
+import Golem.Numerals (circled)
 import Golem.Pdf qualified as P
 import Golem.Project
 import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)

@@ -15,8 +15,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import FunctionsSpec qualified
-import Golem.Doc.Assemble (NoteNumbering (..))
-import Golem.Doc.ListMarkers (ListNumberStyle (..), NumberFormat (..))
+import Golem.Assemble (NoteNumbering (..))
+import Golem.Assemble.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Length qualified as L
 import Golem.Parser.SourceSettings
 import Golem.Project hiding (loadProject)

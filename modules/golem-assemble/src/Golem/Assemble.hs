@@ -1,7 +1,7 @@
 {- | Document assembly, S1 (golem-doc ADR 0002): values that depend on the
 whole document. Page numbers (S2) remain as 'Ref' 'RefPage'.
 -}
-module Golem.Doc.Assemble
+module Golem.Assemble
   ( AssembleConfig (..),
     NoteNumbering (..),
     DocValues (..),
@@ -10,8 +10,6 @@ module Golem.Doc.Assemble
     LabelTarget (..),
     TocEntry (..),
     IndexGroup (..),
-    ChannelOrder (..),
-    ChannelDecl (..),
     ChannelEntry (..),
     ListAt,
     assemble,
@@ -41,9 +39,9 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.Collation
+import Golem.Assemble.Collation
 import Golem.Doc.IR
-import Golem.Doc.Numerals
+import Golem.Numerals
 import Golem.Syntax
 
 data AssembleConfig = AssembleConfig
@@ -65,20 +63,6 @@ data AssembleConfig = AssembleConfig
     as many lines or more is dropped (docs/adr ADR 0047)
     -} acPageLines :: !Int
   }
-
--- | How the entries of a channel of a plugin are ordered (golem-doc ADR 0007).
-data ChannelOrder = OrderDocument | OrderReading
-  deriving stock (Eq, Show, Enum, Bounded)
-
-{- | A channel a plugin declares (golem-doc ADR 0007): its name, the order
-of its entries, and whether an entry shows where its items are.
--}
-data ChannelDecl = ChannelDecl
-  { channelName :: !Text,
-    channelOrder :: !ChannelOrder,
-    channelLocators :: !Bool
-  }
-  deriving stock (Eq, Show)
 
 {- | An entry of a list of a channel of a plugin (golem-doc ADR 0007): the
 key of its items, the body of the first of them, and where they are, in

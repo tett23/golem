@@ -14,7 +14,6 @@ import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.Cbor (documentTerm, inlinesTerm)
 import Golem.Doc.IR
 import Golem.Eval.Value (PluginArg (..), Value (..))

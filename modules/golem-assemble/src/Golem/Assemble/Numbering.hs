@@ -1,5 +1,5 @@
 -- | The separator between a number and its title (golem-html ADR 0002).
-module Golem.Doc.Numbering
+module Golem.Assemble.Numbering
   ( numberSeparator,
   )
 where

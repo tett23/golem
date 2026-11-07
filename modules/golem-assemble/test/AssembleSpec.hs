@@ -4,10 +4,10 @@ import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.Assemble
-import Golem.Doc.Collation
+import Golem.Assemble
+import Golem.Assemble.Collation
 import Golem.Doc.IR
-import Golem.Doc.Numerals
+import Golem.Numerals
 import Golem.Syntax
 import Test.Tasty
 import Test.Tasty.HUnit

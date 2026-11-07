@@ -1,7 +1,7 @@
 cabal-version:      3.0
 name:               golem-doc
 version:            0.1.0
-synopsis:           The semantic IR of Golem
+synopsis:           The semantic IR of Golem and the plugin ABI
 license:            MIT
 author:             tett23
 maintainer:         tett23@gmail.com
@@ -17,29 +17,17 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:
-    Golem.Doc.Assemble
-    Golem.Doc.Bibliography
-    Golem.Doc.Bibliography.Csl
     Golem.Doc.Cbor
-    Golem.Doc.Collation
     Golem.Doc.IR
-    Golem.Doc.ListMarkers
-    Golem.Doc.Numbering
-    Golem.Doc.Numerals
     Golem.Doc.Validate
   build-depends:
-    , aeson         >=2.1  && <2.3
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
     , cborg         >=0.2  && <0.3
-    , containers    >=0.6  && <0.8
     , golem-length
     , golem-parser
     , golem-syntax
-    , mtl           >=2.3  && <2.4
-    , scientific    >=0.3  && <0.4
     , text          >=2.0  && <2.2
-    , vector        >=0.13 && <0.14
   default-language: GHC2021
 
 test-suite golem-doc-test
@@ -47,7 +35,7 @@ test-suite golem-doc-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    Gen AssembleSpec BibliographySpec CborExprSpec CslSpec ListMarkersSpec NumberingSpec
+  other-modules:    Gen CborExprSpec
   build-depends:
     , base
     , bytestring

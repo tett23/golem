@@ -11,7 +11,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Doc.Assemble (Book (..), inlineText)
+import Golem.Assemble (Book (..), inlineText)
 import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), NumberStyle (..), RubySegment (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfInput (..), layoutPages)

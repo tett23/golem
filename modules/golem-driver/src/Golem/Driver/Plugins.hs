@@ -21,8 +21,7 @@ import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Doc.Assemble (ChannelDecl (..))
-import Golem.Doc.IR (Document (..))
+import Golem.Doc.IR (ChannelDecl (..), Document (..))
 import Golem.Eval.Builtin (BuiltinInline (..), OverridableBuiltin, PluginCommandName, parseBuiltin, pluginCommandName)
 import Golem.Eval.File (PluginBlockCommand (..), PluginCommand (..), PluginHook (..), noPlugins)
 import Golem.Plugin

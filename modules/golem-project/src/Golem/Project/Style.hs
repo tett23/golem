@@ -103,8 +103,8 @@ import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.Assemble (NoteNumbering (..))
-import Golem.Doc.ListMarkers (NumberFormat, parseNumberFormat)
+import Golem.Assemble (NoteNumbering (..))
+import Golem.Assemble.ListMarkers (NumberFormat, parseNumberFormat)
 import Golem.Length (Sp (..))
 import Golem.Length qualified as L
 import Golem.Project.Manifest (decodeStrictBy, decodeStrictWith, naturalIntOf, naturalOf)

@@ -70,7 +70,6 @@ import Data.Text qualified as T
 import Foreign
 import Foreign.C.String (CString, peekCString, withCString, withCStringLen)
 import Foreign.C.Types
-import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.Cbor
 import Golem.Doc.IR hiding (abiVersion)
 import Golem.Doc.Validate (captionErrors, validateBlocks, validateDocument)

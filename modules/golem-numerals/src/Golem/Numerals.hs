@@ -1,7 +1,7 @@
 {- | Number notations: positional kanji (十、百二十), digit-by-digit kanji
 (一〇、一二〇) and the number formats of style.toml.
 -}
-module Golem.Doc.Numerals
+module Golem.Numerals
   ( kanji,
     kanjiDigits,
     formatNumber,

@@ -36,13 +36,13 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.Assemble
-import Golem.Doc.Bibliography (EntryPart (..))
+import Golem.Assemble
+import Golem.Assemble.ListMarkers
+import Golem.Assemble.Numbering (numberSeparator)
+import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
-import Golem.Doc.ListMarkers
-import Golem.Doc.Numbering (numberSeparator)
-import Golem.Doc.Numerals
 import Golem.Length qualified as L
+import Golem.Numerals
 import Golem.Syntax.Span
 import Golem.Syntax.Text (escapeXml, tshow)
 import Numeric (showHex)

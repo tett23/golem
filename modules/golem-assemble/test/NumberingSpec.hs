@@ -1,7 +1,7 @@
 -- | numberSeparator (golem-html ADR 0002).
 module NumberingSpec (tests) where
 
-import Golem.Doc.Numbering
+import Golem.Assemble.Numbering
 import Test.Tasty
 import Test.Tasty.HUnit
 
