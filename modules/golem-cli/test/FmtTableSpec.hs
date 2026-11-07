@@ -71,7 +71,7 @@ golemSteps files steps = withSystemTempDirectory "golem-cli" $ \tmp -> do
 tables :: [(FilePath, Text)]
 tables =
   [ ("manifest.toml", T.pack manifest),
-    ("a.gm", "@table src=data/a.csv\n\n@table src=data/b.tsv\n\n@table src=data/c.csv\n"),
+    ("a.gm", "@table data/a.csv\n\n@table data/b.tsv\n\n@table data/c.csv\n"),
     ("data/a.csv", "\xFEFF\&a,b\r\n\"x\r\ny\",2\r\n"),
     ("data/b.tsv", "a\tb\r\nx\t\r\n"),
     ("data/c.csv", "a,b\n\"p\rq\",2\n")
@@ -102,7 +102,7 @@ commandTests =
         assertEqual err ExitSuccess code
         lookup "data/t.CSV" files' @?= Just "a,b\n\"x\n\n\ny  \",1\n",
       testCase "without arguments, a table file of format=tsv named .txt is a table file" $ do
-        let files = [("manifest.toml", T.pack manifest), ("a.gm", "@table src=data/export.txt format=tsv\n"), ("data/export.txt", "a\tb\r\n\tz  \r\n")]
+        let files = [("manifest.toml", T.pack manifest), ("a.gm", "@table data/export.txt format=tsv\n"), ("data/export.txt", "a\tb\r\n\tz  \r\n")]
         ([(code, _, err)], files') <- golemSteps files [["fmt"]]
         assertEqual err ExitSuccess code
         lookup "data/export.txt" files' @?= Just "a\tb\n\tz  \n",
@@ -114,17 +114,17 @@ commandTests =
         assertEqual err ExitSuccess code
         lookup "src/x.hs" files' @?= Just "main = pure ()\r\n",
       testCase "without arguments, a source stopping the load at its CR and a table file with CRLF are both fixed" $ do
-        let files = [("manifest.toml", T.pack manifest), ("a.gm", "本文。\r\n\r\n@table src=data/a.csv\r\n"), ("data/a.csv", "a,b\r\n1,2\r\n")]
+        let files = [("manifest.toml", T.pack manifest), ("a.gm", "本文。\r\n\r\n@table data/a.csv\r\n"), ("data/a.csv", "a,b\r\n1,2\r\n")]
         ([(code, _, err)], files') <- golemSteps files [["fmt"]]
         assertEqual err ExitSuccess code
-        lookup "a.gm" files' @?= Just "本文。\n\n@table src=data/a.csv\n"
+        lookup "a.gm" files' @?= Just "本文。\n\n@table data/a.csv\n"
         lookup "data/a.csv" files' @?= Just "a,b\n1,2\n",
       testCase "without arguments, a table file not UTF-8 is not formatted, with 1" $ do
-        ([(code, _, err)], _) <- withBytes [("manifest.toml", TE.encodeUtf8 (T.pack manifest)), ("a.gm", "@table src=data/a.csv\n"), ("data/a.csv", "a,b\r\n\xff,2\r\n")] [["fmt"]]
+        ([(code, _, err)], _) <- withBytes [("manifest.toml", TE.encodeUtf8 (T.pack manifest)), ("a.gm", "@table data/a.csv\n"), ("data/a.csv", "a,b\r\n\xff,2\r\n")] [["fmt"]]
         assertEqual err (ExitFailure 1) code
         assertBool err ("data/a.csv: UTF-8 として読めないため整形しません" `isInfixOf` err),
       testCase "without arguments, a missing table file and one outside the root are left to the build" $ do
-        let files = [("manifest.toml", T.pack manifest), ("a.gm", "@table src=data/none.csv\n\n@table src=../out.csv\n")]
+        let files = [("manifest.toml", T.pack manifest), ("a.gm", "@table data/none.csv\n\n@table ../out.csv\n")]
         ([(code, out, err)], _) <- golemSteps files [["fmt"]]
         assertEqual (out <> err) ExitSuccess code
         out <> err @?= ""

@@ -49,7 +49,7 @@ application/epub+zip
 <body>
 <nav epub:type="toc" id="toc">
 <h1>町の活版所</h1>
-<ol><li><a href="chapters/01.xhtml#h-2-0">第一章　活字を拾う</a><ol><li><a href="chapters/01.xhtml#h-2-61">一　文選の棚</a></li><li><a href="chapters/01.xhtml#h-2-2082">二　活字の大きさ</a><ol><li><a href="chapters/01.xhtml#h-2-2739">（一）　字面と字送り</a></li></ol></li></ol></li><li><a href="chapters/02.xhtml#h-3-0">第二章　版を組む</a><ol><li><a href="chapters/02.xhtml#h-3-31">一　組版の手順</a><ol><li><a href="chapters/02.xhtml#h-3-1231">（一）　工程と日数</a></li></ol></li><li><a href="chapters/02.xhtml#h-3-1612">二　込め物の種類</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-0">第三章　刷りと校正</a><ol><li><a href="chapters/03.xhtml#h-4-32">一　校正の記号</a></li><li><a href="chapters/03.xhtml#h-4-682">二　赤字を写す</a><ol><li><a href="chapters/03.xhtml#h-4-719">（一）　刷りの控え</a></li><li><a href="chapters/03.xhtml#h-4-1733">（二）　版を崩す</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-4125">参考文献</a></li></ol></li><li><a href="back.xhtml#h-5-10">索引</a></li></ol>
+<ol><li><a href="chapters/01.xhtml#h-2-0">第一章　活字を拾う</a><ol><li><a href="chapters/01.xhtml#h-2-61">一　文選の棚</a></li><li><a href="chapters/01.xhtml#h-2-2082">二　活字の大きさ</a><ol><li><a href="chapters/01.xhtml#h-2-2739">（一）　字面と字送り</a></li></ol></li></ol></li><li><a href="chapters/02.xhtml#h-3-0">第二章　版を組む</a><ol><li><a href="chapters/02.xhtml#h-3-31">一　組版の手順</a><ol><li><a href="chapters/02.xhtml#h-3-1231">（一）　工程と日数</a></li></ol></li><li><a href="chapters/02.xhtml#h-3-1608">二　込め物の種類</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-0">第三章　刷りと校正</a><ol><li><a href="chapters/03.xhtml#h-4-32">一　校正の記号</a></li><li><a href="chapters/03.xhtml#h-4-682">二　赤字を写す</a><ol><li><a href="chapters/03.xhtml#h-4-719">（一）　刷りの控え</a></li><li><a href="chapters/03.xhtml#h-4-1733">（二）　版を崩す</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-4125">参考文献</a></li></ol></li><li><a href="back.xhtml#h-5-10">索引</a></li></ol>
 </nav>
 </body>
 </html>
@@ -133,7 +133,7 @@ code { padding-inline: 0.25em; }
 <li class="toc-1"><a href="chapters/02.xhtml#h-3-0">第二章　<span class="kenten kenten-sesame">版を組む</span></a></li>
 <li class="toc-2"><a href="chapters/02.xhtml#h-3-31">一　<ruby class="mono">組<rp>（</rp><rt>くみ</rt><rp>）</rp>版<rp>（</rp><rt>はん</rt><rp>）</rp></ruby>の手順</a></li>
 <li class="toc-3"><a href="chapters/02.xhtml#h-3-1231">（一）　工程と<span class="kenten kenten-sesame">日数</span></a></li>
-<li class="toc-2"><a href="chapters/02.xhtml#h-3-1612">二　込め物の<ruby>種類<rp>（</rp><rt>しゅるい</rt><rp>）</rp></ruby></a></li>
+<li class="toc-2"><a href="chapters/02.xhtml#h-3-1608">二　込め物の<ruby>種類<rp>（</rp><rt>しゅるい</rt><rp>）</rp></ruby></a></li>
 <li class="toc-1"><a href="chapters/03.xhtml#h-4-0">第三章　<span class="kenten kenten-sesame">刷りと校正</span></a></li>
 <li class="toc-2"><a href="chapters/03.xhtml#h-4-32">一　校正の記号</a></li>
 <li class="toc-2"><a href="chapters/03.xhtml#h-4-682">二　赤字を<ruby class="mono">写<rp>（</rp><rt>うつ</rt><rp>）</rp></ruby>す</a></li>
@@ -242,8 +242,8 @@ code { padding-inline: 0.25em; }
 </tbody>
 </table>
 <p>日数を足すと十九日になる。このうち、<span class="kenten kenten-sesame">文選と植字だけで七日</span>を使っている。</p>
-<h2 id="h-3-1612"><span class="number">二</span>　込め物の<ruby>種類<rp>（</rp><rt>しゅるい</rt><rp>）</rp></ruby></h2>
-<p>込め物は、字のないところを埋める材料である。形と大きさによって、次のように呼び分けられた<span id="i-3-1791"></span>。</p>
+<h2 id="h-3-1608"><span class="number">二</span>　込め物の<ruby>種類<rp>（</rp><rt>しゅるい</rt><rp>）</rp></ruby></h2>
+<p>込め物は、字のないところを埋める材料である。形と大きさによって、次のように呼び分けられた<span id="i-3-1787"></span>。</p>
 <dl>
 <dt><ruby class="mono">全<rp>（</rp><rt>ぜん</rt><rp>）</rp>角<rp>（</rp><rt>かく</rt><rp>）</rp></ruby></dt>
 <dd>
@@ -268,10 +268,10 @@ code { padding-inline: 0.25em; }
 <tr><th class="align-left">名前</th><th class="align-left">幅</th><th class="align-left">主な使い道</th></tr>
 </thead>
 <tbody>
-<tr><td class="align-left">全角<span id="i-3-2364"></span></td><td class="align-left">一字</td><td class="align-left">段落の字下げ</td></tr>
+<tr><td class="align-left">全角<span id="i-3-2360"></span></td><td class="align-left">一字</td><td class="align-left">段落の字下げ</td></tr>
 <tr><td class="align-left">二分</td><td class="align-left">半字</td><td class="align-left">句読点の後</td></tr>
 <tr><td class="align-left">三分</td><td class="align-left">三分の一字</td><td class="align-left">欧文の語のあいだ</td></tr>
-<tr><td class="align-left">四分<span id="i-3-2535"></span></td><td class="align-left">四分の一字</td><td class="align-left">和文と欧文のあいだ</td></tr>
+<tr><td class="align-left">四分<span id="i-3-2531"></span></td><td class="align-left">四分の一字</td><td class="align-left">和文と欧文のあいだ</td></tr>
 <tr><td class="align-left">八分</td><td class="align-left">八分の一字</td><td class="align-left">字の調整</td></tr>
 <tr><td class="align-left">インテル</td><td class="align-left">行の長さ</td><td class="align-left">行のあいだ</td></tr>
 <tr><td class="align-left">込め木</td><td class="align-left">ページの幅</td><td class="align-left">版の外の余り</td></tr>
@@ -370,11 +370,11 @@ code { padding-inline: 0.25em; }
 <li>行末 / 句読点 <a href="chapters/02.xhtml#i-3-1160">1</a></li>
 <li>号数 <a href="chapters/01.xhtml#i-2-2192">1</a></li>
 <li>校正 / 記号 <a href="chapters/03.xhtml#i-4-50">1</a></li>
-<li>込め物 <a href="chapters/02.xhtml#i-3-1791">1</a></li>
-<li>四分 <a href="chapters/02.xhtml#i-3-2535">1</a></li>
+<li>込め物 <a href="chapters/02.xhtml#i-3-1787">1</a></li>
+<li>四分 <a href="chapters/02.xhtml#i-3-2531">1</a></li>
 <li>植字 / 手順 <a href="chapters/02.xhtml#i-3-133">1</a></li>
 <li>植字 / 文選との違い <a href="chapters/01.xhtml#i-2-898">1</a></li>
-<li>全角 <a href="chapters/02.xhtml#i-3-2364">1</a></li>
+<li>全角 <a href="chapters/02.xhtml#i-3-2360">1</a></li>
 <li>帳簿 <a href="chapters/01.xhtml#i-2-4167">1</a></li>
 <li>端物 <a href="chapters/01.xhtml#i-2-3755">1</a></li>
 <li>文選 / 文選工 <a href="chapters/01.xhtml#i-2-557">1</a></li>

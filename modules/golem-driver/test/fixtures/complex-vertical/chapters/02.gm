@@ -22,7 +22,7 @@
 一冊の本を作るのに要った日数を、ある活版所の記録から拾うと、次のようになる。
 この表は CSV のファイルから読んでいる。
 
-@table src=data/steps.csv align=left,left,right
+@table data/steps.csv align=left,left,right
 
 日数を足すと[number-text 19]日になる。
 このうち、[kenten: 文選と植字だけで七日]を使っている。
