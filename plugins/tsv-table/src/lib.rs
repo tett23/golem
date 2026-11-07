@@ -198,6 +198,7 @@ pub fn table(req: &BlockCommandRequest) -> Result<Block, Diagnostic> {
     Ok(Block {
         span,
         label: None,
+        lang: None,
         body: BlockBody::Table {
             alignments,
             header: header.iter().map(|t| cell(span, t)).collect(),
@@ -315,7 +316,7 @@ mod tests {
         assert_eq!(code(table(&request(vec![named("sales")], &[("sales", b"")]))), "empty");
         assert_eq!(code(table(&request(vec![named("sales")], &[("sales", b"a\tb\nc\n")]))), "cells");
         let mut with_body = request(vec![named("sales")], tsv);
-        with_body.body = vec![Block { span: SPAN, label: None, body: BlockBody::Paragraph { style: None, inlines: vec![] } }];
+        with_body.body = vec![Block { span: SPAN, label: None, lang: None, body: BlockBody::Paragraph { style: None, inlines: vec![] } }];
         assert_eq!(code(table(&with_body)), "body");
     }
 

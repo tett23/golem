@@ -138,7 +138,7 @@ The span is the item's first block, or the list's without one.
 listSites :: [Block] -> [ListSite]
 listSites = concatMap (go 0)
   where
-    go depth (Block sp _ body) = case body of
+    go depth (Block sp _ _ body) = case body of
       BulletList items -> concatMap (concatMap (go (depth + 1)) . itemBlocks) items
       OrderedList items ->
         concat
@@ -148,7 +148,7 @@ listSites = concatMap (go 0)
       DefList gs -> concatMap (concatMap (go depth)) (concatMap dgDefs gs)
       _ -> []
     itemSpan sp it = case itemBlocks it of
-      (Block bsp _ _ : _) -> bsp
+      (Block bsp _ _ _ : _) -> bsp
       [] -> sp
 
 {- | Numbers of list items that the number format of their depth cannot

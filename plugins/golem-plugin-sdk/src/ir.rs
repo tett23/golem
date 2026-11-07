@@ -83,6 +83,8 @@ pub enum Inline {
     ChannelItem { span: Span, channel: String, key: Option<String>, reading: Option<String>, body: Vec<Inline> },
     /// 20: a link to an external URL, as written (docs/adr ADR 0182)
     Link { span: Span, uri: String, body: Vec<Inline> },
+    /// 21: a language span, the tag as written (docs/adr ADR 0187)
+    Lang { span: Span, lang: String, body: Vec<Inline> },
 }
 
 impl Inline {
@@ -105,7 +107,8 @@ impl Inline {
             | Inline::LineBreak { span }
             | Inline::Aki { span, .. }
             | Inline::ChannelItem { span, .. }
-            | Inline::Link { span, .. } => *span,
+            | Inline::Link { span, .. }
+            | Inline::Lang { span, .. } => *span,
         }
     }
 }
@@ -145,6 +148,8 @@ pub enum BlockBody {
 pub struct Block {
     pub span: Span,
     pub label: Option<String>,
+    /// the language of the block, as written with @lang (docs/adr ADR 0187)
+    pub lang: Option<String>,
     pub body: BlockBody,
 }
 
@@ -296,6 +301,7 @@ pub fn inline_value(x: &Inline) -> Value {
             t(19, span, vec![text(channel), opt_text(key), opt_text(reading), inlines_value(body)])
         }
         Inline::Link { span, uri, body } => t(20, span, vec![text(uri), inlines_value(body)]),
+        Inline::Lang { span, lang, body } => t(21, span, vec![text(lang), inlines_value(body)]),
     }
 }
 
@@ -327,7 +333,7 @@ pub fn block_value(b: &Block) -> Value {
         BlockBody::Paragraph { style, inlines } => Value::Array(vec![int(10u8), opt_text(style), inlines_value(inlines)]),
         BlockBody::Other(v) => v.clone(),
     };
-    Value::Array(vec![span_value(b.span), opt_text(&b.label), body])
+    Value::Array(vec![span_value(b.span), opt_text(&b.label), opt_text(&b.lang), body])
 }
 
 fn items_value(items: &[ListItem]) -> Value {
@@ -358,7 +364,7 @@ pub fn figure(span: Span, image: &str, alt: &str, caption: Vec<Block>) -> Block 
             Value::Bool(false),
         ]),
     ]);
-    Block { span, label: None, body: BlockBody::Other(body) }
+    Block { span, label: None, lang: None, body: BlockBody::Other(body) }
 }
 
 pub fn blocks_value(bs: &[Block]) -> Value {
@@ -490,6 +496,7 @@ pub fn inline_of(v: &Value) -> R<Inline> {
             body: inlines_of(body)?,
         },
         (20, [u, body]) => Inline::Link { span, uri: text_of(u)?, body: inlines_of(body)? },
+        (21, [l, body]) => Inline::Lang { span, lang: text_of(l)?, body: inlines_of(body)? },
         _ => return Err(bad()),
     })
 }
@@ -509,8 +516,8 @@ fn items_of(v: &Value) -> R<Vec<ListItem>> {
 }
 
 pub fn block_of(v: &Value) -> R<Block> {
-    let (span, label, body) = match arr(v)? {
-        [s, l, b] => (span_of(s)?, opt(l, text_of)?, b),
+    let (span, label, lang, body) = match arr(v)? {
+        [s, l, g, b] => (span_of(s)?, opt(l, text_of)?, opt(g, text_of)?, b),
         _ => return Err(DecodeError::Shape("block")),
     };
     let xs = arr(body)?;
@@ -543,7 +550,7 @@ pub fn block_of(v: &Value) -> R<Block> {
         (1..=5 | 10, _) => return Err(DecodeError::Shape("block body")),
         _ => BlockBody::Other(body.clone()),
     };
-    Ok(Block { span, label, body })
+    Ok(Block { span, label, lang, body })
 }
 
 pub fn document_of(v: &Value) -> R<Document> {
@@ -586,6 +593,28 @@ mod tests {
         assert_eq!(inlines_of(&decode(&bytes).unwrap()).unwrap(), xs);
     }
 
+    /// the bytes of a language span are those of the host: [21, span, lang, inlines] (docs/adr ADR 0187)
+    #[test]
+    fn lang_bytes() {
+        let x = Inline::Lang { span: sp(0, 1), lang: "en".into(), body: vec![] };
+        let bytes = encode(&inline_value(&x));
+        let expected: Vec<u8> = [&[0x84, 0x15, 0x83, 0x01, 0x00, 0x01, 0x62][..], b"en", &[0x80][..]].concat();
+        assert_eq!(bytes, expected);
+        assert_eq!(inline_of(&decode(&bytes).unwrap()).unwrap(), x);
+    }
+
+    /// the language of a block goes back and forth with the same bytes: [span, label, lang, body] (docs/adr ADR 0187)
+    #[test]
+    fn block_lang_bytes() {
+        let b = Block { span: sp(0, 1), label: None, lang: Some("de-CH-1996".into()), body: BlockBody::Paragraph { style: None, inlines: vec![] } };
+        let bytes = encode(&block_value(&b));
+        let expected: Vec<u8> = [&[0x84, 0x83, 0x01, 0x00, 0x01, 0xf6, 0x6a][..], b"de-CH-1996", &[0x83, 0x0a, 0xf6, 0x80][..]].concat();
+        assert_eq!(bytes, expected);
+        assert_eq!(block_of(&decode(&bytes).unwrap()).unwrap(), b);
+        let none = Block { lang: None, ..b };
+        assert_eq!(block_of(&decode(&encode(&block_value(&none))).unwrap()).unwrap(), none);
+    }
+
     /// the bytes of a link are those of the host: [20, span, uri, inlines] (docs/adr ADR 0182)
     #[test]
     fn link_bytes() {
@@ -602,8 +631,8 @@ mod tests {
         let d = Document {
             file: 2,
             blocks: vec![
-                Block { span: sp(0, 9), label: Some("a".into()), body: BlockBody::Paragraph { style: None, inlines: vec![] } },
-                Block { span: sp(9, 9), label: None, body: BlockBody::Other(code) },
+                Block { span: sp(0, 9), label: Some("a".into()), lang: None, body: BlockBody::Paragraph { style: None, inlines: vec![] } },
+                Block { span: sp(9, 9), label: None, lang: None, body: BlockBody::Other(code) },
             ],
         };
         let bytes = encode(&document_value(&d));
@@ -612,8 +641,8 @@ mod tests {
 
     #[test]
     fn map_inlines_visits_list_items() {
-        let para = |s: &str| Block { span: sp(0, 1), label: None, body: BlockBody::Paragraph { style: None, inlines: vec![Inline::Text { span: sp(0, 1), text: s.into() }] } };
-        let mut d = Document { file: 1, blocks: vec![para("a"), Block { span: sp(0, 1), label: None, body: BlockBody::BulletList(vec![ListItem { number: None, blocks: vec![para("b")] }]) }] };
+        let para = |s: &str| Block { span: sp(0, 1), label: None, lang: None, body: BlockBody::Paragraph { style: None, inlines: vec![Inline::Text { span: sp(0, 1), text: s.into() }] } };
+        let mut d = Document { file: 1, blocks: vec![para("a"), Block { span: sp(0, 1), label: None, lang: None, body: BlockBody::BulletList(vec![ListItem { number: None, blocks: vec![para("b")] }]) }] };
         let mut seen = Vec::new();
         d.map_inlines(&mut |xs| {
             for x in &xs {

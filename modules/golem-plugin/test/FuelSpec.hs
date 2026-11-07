@@ -21,7 +21,7 @@ callSpan = mkSpan (FileId 1) 0 1
 
 -- | A document of one paragraph of n characters a.
 documentOf :: Int -> Document
-documentOf n = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan (T.replicate n "a")])]
+documentOf n = Document (FileId 1) [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan (T.replicate n "a")])]
 
 -- | The bytes of the CBOR of a document, as the filter request carries it.
 documentBytes :: Document -> Int

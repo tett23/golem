@@ -58,10 +58,10 @@ checkRun vertical role d = testCase (T.unpack (role <> " " <> d <> if vertical t
   pdf <- miniPdf realProvider True style (dashSource role d) files
   content <- BS.concat <$> inflateAll pdf
   resources <- fontResources pdf
-  let kan = case lfShape fonts (Shaping "body" vertical []) "漢" of
+  let kan = case lfShape fonts (Shaping "body" vertical [] False) "漢" of
         [g] -> lfCode fonts (shFace g) (shGlyph g)
         other -> error (show other)
-      dashes = [(c, g) | c <- T.unpack d, g <- lfShape fonts (Shaping role vertical []) (T.singleton c)]
+      dashes = [(c, g) | c <- T.unpack d, g <- lfShape fonts (Shaping role vertical [] False) (T.singleton c)]
       cids = [lfCode fonts (shFace g) (shGlyph g) | (_, g) <- dashes]
       drawn = [x | x <- drawnGlyphs content, dGlyph x `elem` (kan : cids)]
   map dGlyph drawn @?= [kan] <> cids <> [kan]

@@ -154,7 +154,7 @@ parallelTests race =
             -- two loads: the sequential answers must not warm the cache the threads use
             alone <- evalIO notoFonts
             shared <- evalIO notoFonts
-            let ask fonts (v, a, b) = (lfAdvance fonts (Shaping "body" v []) a, lfPairKern fonts (Shaping "body" v []) a b)
+            let ask fonts (v, a, b) = (lfAdvance fonts (Shaping "body" v [] False) a, lfPairKern fonts (Shaping "body" v [] False) a b)
             together <- evalIO (inParallel [pure (ask shared k) | k <- pairs])
             together === map (Right . ask alone) pairs
         ),

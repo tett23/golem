@@ -16,11 +16,11 @@ fn r(segs: &[(&str, Option<&str>)]) -> Inline {
 }
 
 fn para(xs: Vec<Inline>) -> Block {
-    Block { span: SP, label: None, body: BlockBody::Paragraph { style: None, inlines: xs } }
+    Block { span: SP, label: None, lang: None, body: BlockBody::Paragraph { style: None, inlines: xs } }
 }
 
 fn heading(xs: Vec<Inline>) -> Block {
-    Block { span: SP, label: None, body: BlockBody::Heading { level: 1, attrs: Value::Null, inlines: xs } }
+    Block { span: SP, label: None, lang: None, body: BlockBody::Heading { level: 1, attrs: Value::Null, inlines: xs } }
 }
 
 fn words(tsv: &str) -> Data {

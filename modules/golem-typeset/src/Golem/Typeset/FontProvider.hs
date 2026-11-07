@@ -24,6 +24,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Font
+import Golem.Layout.CharClass (isDualCharacter)
 import Golem.Layout.Japanese (CharClass (..), charClass, isExtending, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
 import Golem.Pdf qualified as P
@@ -153,17 +154,19 @@ provide fid faces body roles =
       Just (Nothing, Nothing, _) -> roleOf body
       Just r -> r
       Nothing -> fromMaybe (Just 0, Nothing, []) (Map.lookup body roles)
-    fontFor role c =
+    -- a character of both scripts is Latin in a Latin span (docs/adr ADR 0187)
+    latinIn dual c = charClass c == Western || (dual && isDualCharacter c)
+    fontFor dual role c =
       let (ja, la, _) = roleOf role
-       in fromMaybe 0 (if charClass c == Western then la <|> ja else ja <|> la)
+       in fromMaybe 0 (if latinIn dual c then la <|> ja else ja <|> la)
     -- a combining character stays with the character before it, variation selectors among them (golem-pdf ADR 0006, golem-driver ADR 0036)
-    runs role t = [(fontFor role (T.head r), r) | r <- T.groupBy (\a b -> isExtending b || fontFor role a == fontFor role b) t, not (T.null r)]
+    runs dual role t = [(fontFor dual role (T.head r), r) | r <- T.groupBy (\a b -> isExtending b || fontFor dual role a == fontFor dual role b) t, not (T.null r)]
     {- shaping a text in a role, with the features added after the role's
     (docs/adr/0020). In vertical text a cluster of a Japanese run whose
     glyphs vert leaves as they are, and whose first character is R or Tr in
     UAX #50, is turned: its horizontal glyphs and advances (golem-driver ADR
     0015). The clusters are numbered by character in the whole text. -}
-    shapeText (Shaping role vertical extra) t =
+    shapeText (Shaping role vertical extra dual) t =
       let (_, la, roleFeatures) = roleOf role
           features = roleFeatures <> extra
           shapeIn f r dir = shapeUnits f ((shapeRequest r) {srDirection = dir, srFeatures = features})
@@ -196,11 +199,11 @@ provide fid faces body roles =
             where
               f = fontAt ix
               -- a run for which fontFor chose the Latin face
-              latinRun = isJust la && maybe False ((== Western) . charClass . fst) (T.uncons r)
+              latinRun = isJust la && maybe False (latinIn dual . fst) (T.uncons r)
           -- the byte offsets of a run's clusters as character indices in t
-          offsets = scanl (+) 0 [T.length r | (_, r) <- runs role t]
+          offsets = scanl (+) 0 [T.length r | (_, r) <- runs dual role t]
           inText r start sh = sh {shCluster = start + T.length (TE.decodeUtf8Lenient (BS.take (shCluster sh) (TE.encodeUtf8 r)))}
-       in concat [map (inText r start) (run (ix, r)) | ((ix, r), start) <- zip (runs role t) offsets]
+       in concat [map (inText r start) (run (ix, r)) | ((ix, r), start) <- zip (runs dual role t) offsets]
     {- the text of a glyph for ToUnicode: its whole cluster, from its byte
     offset to the start of the next cluster of the run (golem-driver ADR
     0030), without variation selectors, so that a variant is found by its

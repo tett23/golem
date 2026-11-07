@@ -7,6 +7,8 @@ module Golem.Doc.Validate
     validateBlocks,
     captionErrors,
     linkErrors,
+    langErrors,
+    langTagMessage,
   )
 where
 
@@ -15,6 +17,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Doc.Url
+import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Syntax.Span
 
 {- | @fileSize@ gives the byte length of each known file. @allowed@ are the
@@ -38,8 +41,8 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
   where
     blockErrors = blockAt False
     -- a forced break stands only at the top of a document, without a label (docs/adr ADR 0017)
-    blockAt top (Block sp lbl body) =
-      spanErrors fileSize sp <> case body of
+    blockAt top (Block sp lbl lang body) =
+      spanErrors fileSize sp <> langTagErrors lang <> case body of
         ForcedBreak _ ->
           ["改ページは文書の最上位にだけ置けます" | not top]
             <> ["改ページはラベルを持てません" | Just _ <- [lbl]]
@@ -82,7 +85,7 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
           -- only a code block with a caption has a number to go without (docs/adr/0200; G02134)
           <> ["キャプションのないコードブロックは番号を持たないので、@nonumber は要りません" | codeNoNumber c, isNothing (codeCaption c)]
       -- a caption holds paragraphs only (docs/adr/0144)
-      FigureBlock f -> captionErrors f <> concatMap blockErrors [b | b@(Block _ _ (Paragraph _ _)) <- figCaption f]
+      FigureBlock f -> captionErrors f <> concatMap blockErrors [b | b@(Block _ _ _ (Paragraph _ _)) <- figCaption f]
       ChannelOutput _ -> []
       ForcedBreak _ -> []
       PageControl _ -> []
@@ -122,6 +125,7 @@ breakErrors top is =
       Note _ _ xs -> deep xs
       Sidenote _ _ xs -> deep xs
       Link _ _ xs -> deep xs
+      Lang _ _ xs -> deep xs
       _ -> False
     deep :: [InlineF r] -> Bool
     deep = any (\x -> isBreak x || nested x)
@@ -151,6 +155,8 @@ inlineErrors fileSize allowed i =
         <> ["チャネルの項目の本文に置けない要素があります" | any sends (ciBody c)]
     -- a URL that passes the checks, and no element inside that is a link itself (docs/adr ADR 0182)
     Link _ u xs -> linkOwnErrors u xs <> sub xs
+    -- a tag of the form of BCP 47 (docs/adr ADR 0187)
+    Lang _ l xs -> langTagErrors (Just l) <> sub xs
     _ -> []
   where
     sub :: [InlineF q] -> [Text]
@@ -167,6 +173,7 @@ inlineErrors fileSize allowed i =
       Color _ _ xs -> any sends xs
       CharStyle _ _ xs -> any sends xs
       Link _ _ xs -> any sends xs
+      Lang _ _ xs -> any sends xs
       _ -> False
     negativeAki = \case
       AkiZw r -> r < 0
@@ -191,6 +198,33 @@ linkErrors = concatMap $ \case
   Note _ _ xs -> linkErrors xs
   Sidenote _ _ xs -> linkErrors xs
   ChannelItem _ c -> linkErrors (ciBody c)
+  Lang _ _ xs -> linkErrors xs
+  _ -> []
+
+-- | The message of a language tag not of the form of BCP 47 (G02132, docs/adr ADR 0187).
+langTagMessage :: Text -> Text
+langTagMessage l = "言語のタグの形が誤っています: " <> l
+
+-- | The error of the language tag of a block or a language span, if it is not of the form (docs/adr ADR 0187).
+langTagErrors :: Maybe Text -> [Text]
+langTagErrors = \case
+  Just l | not (isLanguageTag l) -> [langTagMessage l]
+  _ -> []
+
+{- | The errors of the language spans among inlines at any depth (docs/adr
+ADR 0187), for the inlines a command of a plugin puts out.
+-}
+langErrors :: [InlineF r] -> [Text]
+langErrors = concatMap $ \case
+  Lang _ l xs -> langTagErrors (Just l) <> langErrors xs
+  Link _ _ xs -> langErrors xs
+  Ruby _ _ segs -> concatMap (langErrors . rsBase) segs
+  Kenten _ _ xs -> langErrors xs
+  Color _ _ xs -> langErrors xs
+  CharStyle _ _ xs -> langErrors xs
+  Note _ _ xs -> langErrors xs
+  Sidenote _ _ xs -> langErrors xs
+  ChannelItem _ c -> langErrors (ciBody c)
   _ -> []
 
 inlineSpan :: InlineF r -> SrcSpan
@@ -213,3 +247,4 @@ inlineSpan = \case
   Aki s _ -> s
   ChannelItem s _ -> s
   Link s _ _ -> s
+  Lang s _ _ -> s

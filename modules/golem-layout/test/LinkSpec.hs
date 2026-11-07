@@ -20,7 +20,7 @@ import Test.Tasty.HUnit
 env :: ComposeEnv
 env =
   (defaultComposeEnv fs)
-    { cePatterns = Just englishUS,
+    { cePatterns = const (Just englishUS),
       ceRestyle = \lk -> \case
         IR.Link _ u _ -> lk {lkLink = Just (LinkUri u)}
         IR.CharStyle _ "url" _ -> lk {lkUrl = True}

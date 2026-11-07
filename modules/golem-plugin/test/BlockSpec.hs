@@ -57,7 +57,7 @@ drawing bs imgs =
 
 -- | A figure of the call whose image is src.
 figureOf :: Text -> Block
-figureOf src = Block callSpan Nothing (FigureBlock (Figure src Nothing "棒グラフ" Nothing Nothing [] Nothing False False))
+figureOf src = Block callSpan Nothing Nothing (FigureBlock (Figure src Nothing "棒グラフ" Nothing Nothing [] Nothing False False))
 
 svgBytes :: ByteString
 svgBytes = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 10 10\"><rect width=\"5\" height=\"5\"/></svg>"
@@ -81,7 +81,7 @@ text :: Text -> Inline
 text = Text callSpan
 
 table :: Block
-table = Block callSpan Nothing (Table [AlignDefault, AlignRight] [[text "a"], [text "b"]] [[[text "1"], [text "2"]]])
+table = Block callSpan Nothing Nothing (Table [AlignDefault, AlignRight] [[text "a"], [text "b"]] [[[text "1"], [text "2"]]])
 
 bodySpan :: SrcSpan
 bodySpan = mkSpan (FileId 1) 21 30
@@ -115,7 +115,7 @@ blockTests =
           ["table", "figure", "label", "manifest", "style-def", "set", "import"],
       testCase "the request of a block command is [2, name, args, body, span, context, data]" $ do
         p <- echo
-        let body = [Block bodySpan Nothing (Paragraph Nothing [Text bodySpan "x"])]
+        let body = [Block bodySpan Nothing Nothing (Paragraph Nothing [Text bodySpan "x"])]
         req <- either (assertFailure . show) pure (blockCommandRequest p "grid" [PluginPositional (VString "sales"), PluginKeyword "align" (VString "left")] body callSpan)
         req
           @?= cbor
@@ -151,16 +151,16 @@ blockTests =
         bad [figureOf "plugin:chart"] [("chart", "pdf", svgBytes)] "画像の形式は svg、png、jpeg のどれかです: pdf"
         bad [figureOf "plugin:Chart"] [("Chart", "svg", svgBytes)] "画像の名前が不正です: Chart"
         bad [figureOf "plugin:chart"] [("chart", "svg", svgBytes), ("chart", "svg", svgBytes)] "画像の名前が重複しています: chart"
-        let withWeb = Block callSpan Nothing (FigureBlock (Figure "plugin:chart" (Just "plugin:chart") "x" Nothing Nothing [] Nothing False False))
+        let withWeb = Block callSpan Nothing Nothing (FigureBlock (Figure "plugin:chart" (Just "plugin:chart") "x" Nothing Nothing [] Nothing False False))
         bad [withWeb] [("chart", "svg", svgBytes)] "プラグインの図版は web を持てません"
-        bad [Block callSpan Nothing (BulletList [ListItem Nothing [figureOf "plugin:chart"]])] [("chart", "svg", svgBytes)] "図版は出力の最上位にだけ置けます",
+        bad [Block callSpan Nothing Nothing (BulletList [ListItem Nothing [figureOf "plugin:chart"]])] [("chart", "svg", svgBytes)] "図版は出力の最上位にだけ置けます",
       -- the audit's F-26: a figure of the plugin in the caption of a figure at the top
       testCase "a caption with a figure or a list is bad output (docs/adr/0144)" $ do
         let bad bs imgs m = drawing bs imgs >>= \p -> badOutput m (callBlockCommand p "grid" [] [] callSpan)
-            captioned c = Block callSpan Nothing (FigureBlock (Figure "plugin:chart" Nothing "棒グラフ" Nothing Nothing c Nothing False False))
-            para = Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])
+            captioned c = Block callSpan Nothing Nothing (FigureBlock (Figure "plugin:chart" Nothing "棒グラフ" Nothing Nothing c Nothing False False))
+            para = Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])
         bad [captioned [figureOf "plugin:inner"]] [("chart", "svg", svgBytes), ("inner", "svg", svgBytes)] "図版のキャプションには段落だけを置けます"
-        bad [captioned [para, Block callSpan Nothing (BulletList [ListItem Nothing [para]])]] [("chart", "svg", svgBytes)] "図版のキャプションには段落だけを置けます",
+        bad [captioned [para, Block callSpan Nothing Nothing (BulletList [ListItem Nothing [para]])]] [("chart", "svg", svgBytes)] "図版のキャプションには段落だけを置けます",
       testCase "images over 64 MiB together are bad output" $ do
         src <- TIO.readFile "test/plugins/big-image.wat"
         wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
@@ -172,16 +172,16 @@ blockTests =
           Left (BadOutput _) -> pure ()
           other -> assertFailure (show other),
       testCase "a paragraph and a list are output" $ do
-        let para = Block callSpan Nothing (Paragraph Nothing [text "p"])
-            list = Block callSpan Nothing (BulletList [ListItem Nothing [para]])
+        let para = Block callSpan Nothing Nothing (Paragraph Nothing [text "p"])
+            list = Block callSpan Nothing Nothing (BulletList [ListItem Nothing [para]])
         p <- answering [para, list]
         callBlockCommand p "grid" [] [] callSpan @?= Right ([para, list], Map.empty, []),
       testCase "a heading is no output of a block command" $ do
-        p <- answering [Block callSpan Nothing (Heading 1 noHeadingAttrs [text "h"])]
+        p <- answering [Block callSpan Nothing Nothing (Heading 1 noHeadingAttrs [text "h"])]
         badOutput "ブロックコマンドが返せないブロックです: 見出し" (callBlockCommand p "grid" [] [] callSpan),
       testCase "blank lines in a list item are no output of a block command" $ do
-        let item = Block callSpan Nothing (BlankLines 1)
-        p <- answering [Block callSpan Nothing (BulletList [ListItem Nothing [item]])]
+        let item = Block callSpan Nothing Nothing (BlankLines 1)
+        p <- answering [Block callSpan Nothing Nothing (BulletList [ListItem Nothing [item]])]
         badOutput "ブロックコマンドが返せないブロックです: 行アキ" (callBlockCommand p "grid" [] [] callSpan),
       testCase "a label is no output of a block command" $ do
         p <- answering [table {blockLabel = Just "t"}]
@@ -190,7 +190,7 @@ blockTests =
         p <- answering [table {blockSpan = mkSpan (FileId 2) 0 1}]
         badOutput "要求にないソース位置を含んでいます" (callBlockCommand p "grid" [] [] callSpan),
       testCase "a table whose rows do not match the header is bad output" $ do
-        p <- answering [Block callSpan Nothing (Table [AlignDefault] [[text "a"]] [[[text "1"], [text "2"]]])]
+        p <- answering [Block callSpan Nothing Nothing (Table [AlignDefault] [[text "a"]] [[[text "1"], [text "2"]]])]
         badOutput "表のセルの数が一致しません" (callBlockCommand p "grid" [] [] callSpan),
       testCase "the data reach the plugin at the end of the request" $ do
         p <- withPluginData (Map.fromList [("sales", "a\tb\n")]) <$> echo
@@ -200,7 +200,7 @@ blockTests =
           TList xs -> last xs @?= TList [TList [TString "sales", TBytes "a\tb\n"]]
           other -> assertFailure (show other),
       testCase "a block of the body passes as it came, even a heading" $ do
-        let h = Block bodySpan (Just "h") (Heading 2 noHeadingAttrs [Text bodySpan "h"])
+        let h = Block bodySpan (Just "h") Nothing (Heading 2 noHeadingAttrs [Text bodySpan "h"])
         p <- answering [h, table]
         callBlockCommand p "grid" [] [h] callSpan @?= Right ([h, table], Map.empty, []),
       testCase "inlines are no output of a block command" $ do

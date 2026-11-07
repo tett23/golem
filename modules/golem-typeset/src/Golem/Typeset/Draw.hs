@@ -121,7 +121,7 @@ declarationErrors inp =
        ]
     <> [ diagnostic "G07103" Error sp ("PDF/UA では見出しの段を飛ばせません: " <> tshow' before <> " から " <> tshow' l)
        | isJust pdfUa,
-         let levels = [(l, sp) | Document _ bs <- bookDocs (piBook inp), Block sp _ (Heading l _ _) <- blocksWithin bs],
+         let levels = [(l, sp) | Document _ bs <- bookDocs (piBook inp), Block sp _ _ (Heading l _ _) <- blocksWithin bs],
          (before, (l, sp)) <- zip (0 : map fst levels) levels,
          l > before + 1
        ]
@@ -367,8 +367,9 @@ ref ix v = P.FontRef (2 * ix + (if v then 1 else 0))
 toSp :: Sp -> Rational -> Sp
 toSp = zwToSp
 
-isLatin :: Char -> Bool
-isLatin = (== Western) . charClass
+-- | Whether a character is Latin in a look: of the language of its span (docs/adr ADR 0187).
+isLatin :: Look -> Char -> Bool
+isLatin look = (== Western) . lookClass look
 
 {- the runs of a text in a look: its role and whether it is a Latin
 run; split into Latin and other runs where the two sides differ in
@@ -378,7 +379,7 @@ selectors among them (golem-pdf ADR 0006, golem-driver ADR 0036) -}
 runsOf :: Look -> Text -> [(Text, Text, Bool)]
 runsOf look txt
   | lkFace look == lkLatinFace look && lkSynthetic look == lkLatinSynthetic look && not (synBold (lkSynthetic look) || synBold (lkLatinSynthetic look)) = [(lkFace look, txt, False)]
-  | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isExtending b || isLatin a == isLatin b) txt, not (T.null r), let latin = isLatin (T.head r)]
+  | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isExtending b || isLatin look a == isLatin look b) txt, not (T.null r), let latin = isLatin look (T.head r)]
 
 -- the synthetic bold and slant of a run
 syntheticOf :: Look -> Bool -> Synthetic
@@ -546,7 +547,7 @@ kentenMark env role shape d (cx, cy) =
 
 -- the face that sets the Japanese text of a look: that of an ideograph
 japaneseFace :: DrawEnv -> Look -> Int
-japaneseFace env look = maybe 0 shFace (listToMaybe (lfShape fonts (Shaping (lkFace look) False []) "漢"))
+japaneseFace env look = maybe 0 shFace (listToMaybe (lfShape fonts (Shaping (lkFace look) False [] False) "漢"))
   where
     fonts = deFonts env
 
@@ -783,7 +784,7 @@ drawLineAt env (x0, y0) sl =
                 KindDashes -> whole (usesOf (whoOf V.PartBase c) look (dashesAt env look vertical (origin off) (bcText c)))
                 _ ->
                   let pre = case T.unpack (bcText c) of
-                        [ch] | boxKind c == KindPunctuation -> toSp size (fst (punctSpace (charClass ch)))
+                        [ch] | boxKind c == KindPunctuation -> toSp size (fst (punctSpace (lookClass look ch)))
                         _ -> 0
                       rotated = boxKind c == KindRotated
                       -- the glyphs of inline code after its padding (golem-driver ADR 0029)
@@ -1217,7 +1218,7 @@ hiddenMarks env n =
     let size = hgSize hg,
     (c, (cx, cy)) <- Map.findWithDefault [] n (deHidden env),
     let txt = T.singleton c
-        w = sum [toSp size (shAdvance g) | g <- lfShape fonts (Shaping body False []) txt]
+        w = sum [toSp size (shAdvance g) | g <- lfShape fonts (Shaping body False [] False) txt]
   ]
   where
     geom = deGeom env

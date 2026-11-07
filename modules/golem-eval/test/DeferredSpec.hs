@@ -32,7 +32,7 @@ ctx =
 
 -- | The deferred expressions of a file, in order.
 deferredOf :: Text -> [A.Located A.Expr]
-deferredOf src = [e | Block _ _ (Paragraph _ is) <- resultBlocks (evalResult ctx src), Deferred _ (DeferredExpr e) <- is]
+deferredOf src = [e | Block _ _ _ (Paragraph _ is) <- resultBlocks (evalResult ctx src), Deferred _ (DeferredExpr e) <- is]
 
 -- | An expression without its positions.
 data E

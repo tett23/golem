@@ -27,7 +27,7 @@ ROOT=$(cd "$HERE/../.." && pwd)
 FIX=$ROOT/modules/golem-driver/test/fixtures
 PD_BOOKS="elements-of-style frogs haru-to-shura ichiaku-no-suna koya-hijiri merry-wives nightmare-abbey snark taira-no-masakado ushiyama-hotel"
 list() {
-  printf '%s\n' sample figures complex-vertical complex-horizontal kanikosen kanikosen-marks-japanese tempest
+  printf '%s\n' sample figures complex-vertical complex-horizontal kanikosen kanikosen-marks-japanese tempest languages
   for book in $PD_BOOKS; do printf 'pd-%s\n' "$book"; done
   printf '%s\n' manual manual-dev
 }
@@ -149,6 +149,10 @@ fi
 
 copy tempest "$FIX/tempest"
 
+# the characters of both scripts in and out of language spans (docs/adr/0187)
+copy languages "$FIX/languages"
+fonts "$WORK/languages"
+
 for book in $PD_BOOKS; do
   copy "pd-$book" "$FIX/pd/$book"
 done
@@ -183,6 +187,7 @@ job complex-horizontal pdf complex-horizontal "$WORK/complex-horizontal"
 job kanikosen pdf kanikosen "$WORK/kanikosen"
 job kanikosen-marks-japanese pdf kanikosen-marks-japanese "$WORK/kanikosen-marks-japanese" --marks japanese
 job tempest pdf tempest "$WORK/tempest"
+job languages pdf languages "$WORK/languages"
 for book in $PD_BOOKS; do
   job "pd-$book" pdf "pd-$book" "$WORK/pd-$book"
 done

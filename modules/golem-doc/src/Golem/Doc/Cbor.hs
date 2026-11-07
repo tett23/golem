@@ -95,7 +95,7 @@ documentTerm :: Document -> Term
 documentTerm (Document (FileId f) bs) = TList [int abiVersion, int f, list blockT bs]
 
 blockT :: Block -> Term
-blockT (Block sp lbl body) = TList [spanT sp, opt text lbl, bodyT body]
+blockT (Block sp lbl lang body) = TList [spanT sp, opt text lbl, opt text lang, bodyT body]
 
 bodyT :: BlockBody -> Term
 bodyT = \case
@@ -166,6 +166,8 @@ inlineT rt = \case
   ChannelItem s (ChannelItemData c k r body) -> tagged 19 [spanT s, text c, opt text k, opt text r, inlinesTerm body]
   -- a link to an external URL (docs/adr ADR 0182)
   Link s u xs -> tagged 20 [spanT s, text u, sub xs]
+  -- a language span (docs/adr ADR 0187)
+  Lang s l xs -> tagged 21 [spanT s, text l, sub xs]
   where
     sub = list (inlineT rt)
 
@@ -337,7 +339,7 @@ termBlocksE t = asList t >>= traverse termBlock
 termBlock :: Term -> D Block
 termBlock t =
   asList t >>= \case
-    [sp, lbl, body] -> Block <$> termSpan sp <*> asOpt asText lbl <*> termBody body
+    [sp, lbl, lang, body] -> Block <$> termSpan sp <*> asOpt asText lbl <*> asOpt asText lang <*> termBody body
     _ -> bad "ブロック"
 
 termBody :: Term -> D BlockBody
@@ -467,6 +469,8 @@ termInline rd t =
         (19, [c, k, r, x]) -> fmap (ChannelItem s) (ChannelItemData <$> asText c <*> asOpt asText k <*> asOpt asText r <*> termInlinesE x)
         -- a link to an external URL (docs/adr ADR 0182)
         (20, [u, x]) -> Link s <$> asText u <*> sub x
+        -- a language span (docs/adr ADR 0187)
+        (21, [l, x]) -> Lang s <$> asText l <*> sub x
         -- 1, 2 and 3 (strong, bold, italic) are retired: they are character styles (docs/adr ADR 0005)
         _ -> bad "インラインの種類"
     _ -> bad "インライン"

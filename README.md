@@ -118,6 +118,9 @@ PDF のリストは項目の印をぶら下げ、入れ子のリストを外の�
 原稿の任意の位置には、`3[aki 四分]kg` のように固定の空きを置ける。
 外部の URL へのリンクは `[link "https://www.w3.org/TR/jlreq/": 日本語組版処理の要件]` と書き、PDF ではリンクの注釈に、HTML と EPUB では `a` 要素になる。
 リンクは見た目を変えない（[docs/adr/0182](./docs/adr/0182-external-links.md)）。
+原稿の一部の言語は `[lang en: “Tokyo”]` と、ブロックの言語は `@lang en` と書く。
+PDF では引用符、ダッシュ、三点リーダーをその言語で欧文か和文として組み、英語のほかの言語では分綴しない。
+HTML と EPUB には `lang` と `xml:lang` を、PDF には `/Lang` を書く（[docs/adr/0187](./docs/adr/0187-inline-language-switch.md)）。
 一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ適用される（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
 段落スタイルの `regex-styles = [{ pattern = '[0-9]+', style = "bold" }]` のような正規表現スタイルは、段落の中で正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル、[docs/adr/0015](./docs/adr/0015-regex-styles.md)）。
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。

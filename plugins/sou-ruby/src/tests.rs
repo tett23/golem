@@ -19,7 +19,7 @@ fn g(b: &str, reading: &str) -> Inline {
 }
 
 fn para(xs: Vec<Inline>) -> Block {
-    Block { span: SP, label: None, body: BlockBody::Paragraph { style: None, inlines: xs } }
+    Block { span: SP, label: None, lang: None, body: BlockBody::Paragraph { style: None, inlines: xs } }
 }
 
 fn words(tsv: &str) -> Data {
@@ -62,7 +62,7 @@ fn a_word_with_no_reading_keeps_its_kanji_without_a_warning() {
 
 #[test]
 fn headings_get_ruby_too() {
-    let h = |xs| Block { span: SP, label: None, body: BlockBody::Heading { level: 1, attrs: Value::Null, inlines: xs } };
+    let h = |xs| Block { span: SP, label: None, lang: None, body: BlockBody::Heading { level: 1, attrs: Value::Null, inlines: xs } };
     let (bs, _) = run(vec![h(vec![t("東京")])], &words(TSV), None);
     assert_eq!(bs, vec![h(vec![g("東京", "とうきょう")])]);
 }

@@ -87,6 +87,6 @@ contextTests =
         (either (assertFailure . show) pure (req vertical) >>= decoded) >>= (@?= [TList [], TList []]) . drop 5,
       testCase "a filter request is [1, name, document, context, data]" $ do
         p <- withPluginContext horizontal <$> loaded (TMap [(TString "filters", TList [TString "f"]), (TString "context", TList [TString "writing-mode"])])
-        let doc = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])]
+        let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])]
         filterRequest p "f" doc @?= cbor (TList [TInt 1, TString "f", documentTerm doc, TList [TList [TString "writing-mode", TString "horizontal"]], TList []])
     ]

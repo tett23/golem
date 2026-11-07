@@ -7,6 +7,7 @@ into Knuth–Plass items. Glyph advances come from a metrics function
 module Golem.Layout.Japanese
   ( CharClass (..),
     charClass,
+    lookClass,
     isVariationSelector,
     isExtending,
     clusters,
@@ -60,6 +61,12 @@ import Golem.Numerals.Format (MarkFormat (..), defaultMarkFormat, parseMarkForma
 import Golem.Numerals.Notation (Notation, arabic, writeNumber)
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan (..), diagnostic, mkSpan, spanLength)
+
+{- | The class of a character in a look: of the language of its span
+(docs/adr ADR 0187), 'charClass' outside one.
+-}
+lookClass :: Look -> Char -> CharClass
+lookClass = charClassIn . lkLang
 
 lineStartProhibited :: Bool -> CharClass -> Bool
 lineStartProhibited strict = \case
@@ -120,7 +127,9 @@ data ComposeEnv = ComposeEnv
     ceVerticalNumbers :: !VerticalNumbers,
     -- | the notation of a page reference in vertical text; Nothing sets the digits sideways (docs/adr/0118)
     ceRefPageNumbers :: !(Maybe VerticalNumbers),
-    cePatterns :: !(Maybe Patterns),
+    {- | the patterns of the Latin words of a language span, from its
+    language; Nothing is outside a span (docs/adr ADR 0187)
+    -} cePatterns :: Maybe Text -> Maybe Patterns,
     -- | page numbers of labels decided so far (S2); unknown labels take a one-digit stand-in
     cePageOf :: Text -> Maybe Integer,
     -- | the look of the paragraph (golem-driver ADR 0004)
@@ -184,7 +193,7 @@ defaultComposeEnv fs =
       ceRuby = defaultRubyStyle fs,
       ceVerticalNumbers = VerticalFixed StyleKanji,
       ceRefPageNumbers = Just (VerticalFixed StyleKanji),
-      cePatterns = Nothing,
+      cePatterns = const Nothing,
       cePageOf = const Nothing,
       ceLook = plainLook "body" fs,
       ceRestyle = const,
@@ -318,8 +327,8 @@ data InlineNode
     NodeLink !Text [Inline] [InlineNode]
   deriving stock (Eq, Show)
 
--- | The elements of inlines: the label of 'ceLabelInlines', ruby, its base and reading, a reference and code.
-data InlineRole = RoleLabel | RoleRuby | RoleRubyBase | RoleRubyText | RoleReference | RoleCode
+-- | The elements of inlines: the label of 'ceLabelInlines', ruby, its base and reading, a reference, code and a language span (docs/adr ADR 0187).
+data InlineRole = RoleLabel | RoleRuby | RoleRubyBase | RoleRubyText | RoleReference | RoleCode | RoleLang !Text
   deriving stock (Eq, Show)
 
 -- the state of 'structured': the next leaf, the leaf of the content, the notes seen by their span
@@ -359,19 +368,21 @@ walk env st@(LeafState next cur seen) inl = case inl of
     | lkCode (ceLook restyledEnv) && not (lkCode lk) -> element RoleCode (\st' -> walkAll restyledEnv st' xs)
     | otherwise -> walkAll restyledEnv st xs
   Kenten _ sh xs -> walkAll env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}} st xs
+  -- a language span is an element of its language (docs/adr ADR 0187)
+  Lang _ l xs -> element (RoleLang l) (\st' -> walkAll env {ceLook = lk {lkLang = Just l}} st' xs)
   Ruby _ _ segs -> rubySegments segs
   Note sp num body ->
     let k = Map.findWithDefault 0 sp seen
         (anchor, mark) = splitAt 1 (piecesOf env inl)
         st1 = LeafState (next + 1) cur (Map.insert sp (k + 1) seen)
         (st2, after) = freshLeaf st1
-     in (st2, [NodeElem RoleReference [NodeLeaf next], NodeNote sp k num body, after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
+     in (st2, [NodeElem RoleReference [NodeLeaf next], NodeNote sp k num (inLangOf lk sp body), after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
   Sidenote sp n body ->
     let (anchor, mark) = splitAt 1 (piecesOf env inl)
         st1 = LeafState (next + 1) cur seen
         (st2, after) = freshLeaf st1
         ref = [NodeElem RoleReference [NodeLeaf next] | not (null mark)]
-     in (st2, ref <> [NodeSidenote sp n body, after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
+     in (st2, ref <> [NodeSidenote sp n (inLangOf lk sp body), after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
   -- a link is an element; its look is that of the link (docs/adr ADR 0182)
   Link _ u xs ->
     let (st1, ns, ps) = walkAll restyledEnv (LeafState (next + 1) next seen) xs
@@ -452,6 +463,8 @@ piecesOf env inl = case inl of
   CharStyle _ _ xs -> restyled xs
   -- the target of a link is a look of the characters inside (docs/adr ADR 0182)
   Link _ _ xs -> restyled xs
+  -- the language likewise; the inner span wins (docs/adr ADR 0187)
+  Lang _ l xs -> concatMap (piecesOf env {ceLook = lk {lkLang = Just l}}) xs
   -- the shape is a look of the characters inside; the inner kenten wins (golem-driver ADR 0019)
   Kenten _ sh xs -> concatMap (piecesOf env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}}) xs
   Ruby sp _ segs -> at sp (rubyPieces env segs)
@@ -469,9 +482,9 @@ piecesOf env inl = case inl of
   -- a mark is set in the character style of [notes] mark-style (docs/adr/0177)
   Note sp n body ->
     let MarkFormat pre notation suf = ceNoteMarkFormat env
-     in [(((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorNote i n sp body)), (((markSource, sp), const (spanStart sp)), markPiece (markParts (ceVertical env) pre notation (toInteger n) suf))]
+     in [(((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorNote i n sp (inLangOf lk sp body))), (((markSource, sp), const (spanStart sp)), markPiece (markParts (ceVertical env) pre notation (toInteger n) suf))]
   Sidenote sp n body ->
-    (((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorSidenote i n sp body)) : case ceSidenoteMarker env of
+    (((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorSidenote i n sp (inLangOf lk sp body))) : case ceSidenoteMarker env of
       -- the number alone, neither the format nor the notation of [notes] (docs/adr/0177)
       MarkerNumber -> [(((markSource, sp), const (spanStart sp)), markPiece (markParts (ceVertical env) "" arabic (toInteger n) ""))]
       MarkerSymbol -> at sp [PBox lk "※" KindText (lkSize lk)]
@@ -493,6 +506,12 @@ piecesOf env inl = case inl of
     -- the mark of a note or a numbered sidenote (golem-driver ADR 0018) in the look of mark-style (docs/adr/0177)
     markPiece parts = PMark lk (ceNoteMarkLook env lk) parts 0 0
     markSource = ceNoteMarkSource env (ceSizeSource env)
+
+{- | The body of a note or a sidenote in the language of the place of its
+mark, if that has one (docs/adr ADR 0187).
+-}
+inLangOf :: Look -> SrcSpan -> [Inline] -> [Inline]
+inLangOf lk sp body = maybe body (\l -> [Lang sp l body]) (lkLang lk)
 
 {- | The size of a note mark in text of a size (golem-driver ADR 0018,
 0025): the mark size of style.toml, at least 1sp and at most the size of
@@ -566,11 +585,12 @@ textPiecesAt lk t
     units = [(T.head u, T.tail u) | u <- clusters t]
     offsets = scanl (\n (_, marks) -> n + 1 + T.length marks) 0 units
     cs = map fst units
-    isLatinWordChar c = charClass c == Western && not (isSpace c)
-    -- quotation marks, apostrophes, hyphens and dashes join a Latin word when
-    -- the nearest letter on either side is Latin (I’ll, “Mercy”—“We”,
-    -- lime‐tree, 1990–2000; golem-layout ADR 0008)
-    isJoiner c = c `elem` ("‘’“”—‐‑–" :: String)
+    -- in a language span, the characters of both scripts are of its language (docs/adr ADR 0187)
+    isLatinWordChar c = lookClass lk c == Western && not (isSpace c)
+    -- outside a span, quotation marks, apostrophes, hyphens and dashes join a
+    -- Latin word when the nearest letter on either side is Latin (I’ll,
+    -- “Mercy”—“We”, lime‐tree, 1990–2000; golem-layout ADR 0008)
+    isJoiner c = isNothing (lkLang lk) && c `elem` ("‘’“”—‐‑–" :: String)
     latinish =
       [ isLatinWordChar c || (isJoiner c && (side (reverse before) || side after))
       | (i, c) <- zip [0 :: Int ..] cs,
@@ -652,6 +672,8 @@ baseChars env lk inl = case inl of
   Color _ _ xs -> inner xs
   CharStyle _ _ xs -> inner xs
   Link _ _ xs -> inner xs
+  -- a language span in a base: the look of its characters is of its language (docs/adr ADR 0187)
+  Lang _ l xs -> concatMap (baseChars env lk {lkLang = Just l}) xs
   Kenten _ _ xs -> concatMap (baseChars env lk) xs
   Tcy _ t -> each t
   Number _ n _ -> each (T.pack (show n))
@@ -681,6 +703,7 @@ withRuby = \case
   Aki s a -> Aki s a
   ChannelItem s c -> ChannelItem s c
   Link s u xs -> Link s u (map withRuby xs)
+  Lang s l xs -> Lang s l (map withRuby xs)
 
 -- | The advance of a character in a look, in sp.
 advance :: ComposeEnv -> Look -> Char -> Sp
@@ -713,7 +736,7 @@ kernPairs env = \case
     single c = case T.unpack (baseText (bcText c)) of
       [ch]
         | boxKind c `elem` [KindText, KindKenten],
-          charClass ch `notElem` [Western, Opening, Closing, FullStop, Comma, MiddleDot, Inseparable] ->
+          lookClass (bcLook c) ch `notElem` [Western, Opening, Closing, FullStop, Comma, MiddleDot, Inseparable] ->
             Just ch
       _ -> Nothing
 
@@ -774,7 +797,7 @@ readingAdvances env lk = maybe [] (map (advance env lk {lkSize = Sp (unSp (lkSiz
 itemsFor :: ComposeEnv -> Maybe Piece -> Piece -> Maybe Piece -> [Item]
 itemsFor env prev p next = case p of
   PChar lk c vs ->
-    let cls = charClass c
+    let cls = lookClass lk c
         fs = lkSize lk
         (pre, post) = punctSpace cls
         -- with variation selectors: shaped together with them
@@ -869,7 +892,7 @@ markItem env place lk parts ps pe =
       advanceOf u = case T.unpack u of
         [c] -> advance env lk c
         _ -> L.zwToSp m (ceWordAdvance env lk u)
-      latin u = maybe False ((== Western) . charClass . fst) (T.uncons u)
+      latin u = maybe False ((== Western) . lookClass lk . fst) (T.uncons u)
       chars = sum [k | (_, _, _, k) <- units]
       -- each unit after the one before it and the tracking of that one's characters
       starts = scanl (\o (_, _, u, k) -> o + u + tr * fromIntegral k) ps units
@@ -889,7 +912,7 @@ codeItems env lk run padStart padEnd =
         lastIx = length segs - 1,
     -- the index of the first character of each part in the run (docs/adr ADR 0195)
     (i, k, seg) <- zip3 [0 :: Int ..] (scanl (\n x -> n + T.length x) 0 segs) segs,
-    let latin = maybe False ((== Western) . charClass . fst) (T.uncons seg)
+    let latin = maybe False ((== Western) . lookClass lk . fst) (T.uncons seg)
         w = L.zwToSp (lkSize lk) (ceWordAdvance env lk seg)
         tag = if ceVertical env && latin then KindRotated else KindText
         ps = if i == 0 then padStart else 0
@@ -897,7 +920,7 @@ codeItems env lk run padStart padEnd =
   ]
   where
     tr = tracking lk
-    sameSide a b = isExtending b || (charClass a == Western) == (charClass b == Western)
+    sameSide a b = isExtending b || (lookClass lk a == Western) == (lookClass lk b == Western)
     slashParts = if lkUrl lk then urlParts else codeParts
     -- code breaks after each slash (golem-driver ADR 0017)
     codeParts t = case T.breakOn "/" t of
@@ -996,7 +1019,7 @@ wordItems env lk word =
       pieces el =
         let (stemUnits, runUnits) = spanEnd (\u -> let b = T.filter (not . isExtending) u in not (T.null b) && T.all isHyphen b) (clusters el)
             (stem, run) = (T.concat stemUnits, T.concat runUnits)
-         in case cePatterns env of
+         in case cePatterns env (lkLang lk) of
               Just p | not (T.null stem), not (T.any isHyphen stem) -> onLast (<> run) (hyphenateUnits p stem)
               _ -> [el]
       spanEnd f xs = let (b, a) = span f (reverse xs) in (reverse a, reverse b)
@@ -1127,12 +1150,21 @@ normalize env = go AtStart True
       _ -> c
     -- the classes come from the base characters, without combining characters (golem-driver ADR 0036)
     baseOf = baseText . bcText
-    firstClass c = case T.uncons (baseOf c) of
-      Just (ch, _) | not (isRuby c) -> Just (charClass ch)
+    firstChar c = case T.uncons (baseOf c) of
+      Just (ch, _) | not (isRuby c) -> Just ch
       _ -> Nothing
-    lastClass c = case T.unsnoc (baseOf c) of
-      Just (_, ch) | not (isRuby c) -> Just (charClass ch)
+    lastChar c = case T.unsnoc (baseOf c) of
+      Just (_, ch) | not (isRuby c) -> Just ch
       _ -> Nothing
+    firstClass c = lookClass (bcLook c) <$> firstChar c
+    lastClass c = lookClass (bcLook c) <$> lastChar c
+    {- a character of both scripts in a Latin span (docs/adr ADR 0187): no
+    aki beside it, and the line breaks beside it as beside the Japanese
+    character -}
+    latinDual c = \case
+      Just ch -> isDualCharacter ch && maybe False (not . spanIsJapanese) (lkLang (bcLook c))
+      Nothing -> False
+    breakClass edge cls c = if latinDual c (edge c) then dualJapaneseClass <$> edge c else cls c
     isRuby c = boxKind c `elem` [KindRuby, KindGroupRuby]
     -- a Latin word is Latin text at both ends, quotation marks and dashes included
     akiFirst c = if bcExpandable c then Just Western else firstClass c
@@ -1141,12 +1173,15 @@ normalize env = go AtStart True
     between p c =
       let pc = lastClass p
           cc = firstClass c
+          pk = breakClass lastChar lastClass p
+          ck = breakClass firstChar firstClass c
           strict = ceKinsokuStrict env
           noBreak =
-            maybe False (lineStartProhibited strict) cc
-              || maybe False lineEndProhibited pc
-              || (pc == Just Inseparable && cc == Just Inseparable)
+            maybe False (lineStartProhibited strict) ck
+              || maybe False lineEndProhibited pk
+              || (pk == Just Inseparable && ck == Just Inseparable)
               || (pc == Just Western && cc == Just Western && bcExpandable p && bcExpandable c)
+          noAkiHere = latinDual p (lastChar p) || latinDual c (firstChar c)
           pen = [Penalty 0 infPenalty NoHyphen | noBreak]
           -- a ruby is an ideograph next to punctuation, so that the punctuation keeps its space
           classes = case (akiLast p, akiFirst c) of
@@ -1162,7 +1197,8 @@ normalize env = go AtStart True
             | otherwise = ceFontSize env
        in case classes of
             Just (a, b)
-              | aki <- akiBetween set (AkiChar a) (AkiChar b),
+              | not noAkiHere,
+                aki <- akiBetween set (AkiChar a) (AkiChar b),
                 aki /= noAki ->
                   pen <> glueOf (base a b) aki
             Just _ -> [Penalty 0 0 NoHyphen | not noBreak]
@@ -1180,5 +1216,6 @@ verticalSidenotes env inls
       Kenten _ _ xs -> concatMap go xs
       Color _ _ xs -> concatMap go xs
       CharStyle _ _ xs -> concatMap go xs
+      Lang _ _ xs -> concatMap go xs
       Note _ _ xs -> concatMap go xs
       _ -> []

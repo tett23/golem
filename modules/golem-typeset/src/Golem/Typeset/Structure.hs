@@ -19,6 +19,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Doc.IR
 import Golem.Layout.Japanese (ComposeEnv (..), InlineNode (..), InlineRole (..), SidenoteMarker (..), inlineStructure)
+import Golem.Layout.Look (Look (..))
 import Golem.Layout.Paginate (NoteId (..))
 import Golem.LayoutSpec (PageGeometry (..))
 import Golem.Pdf qualified as P
@@ -53,12 +54,14 @@ structureTree fe units figureAttrs =
     book = piBook inp
     lang = bookLanguage inp
     atEnd = feNotesAtEnd fe
-    isEndNote u = any (\case Frame _ (FEndNote _ _) -> True; _ -> False) (uFrames u)
+    isEndNote u = any (\case Frame _ (FEndNote _ _) _ -> True; _ -> False) (uFrames u)
     -- the units of the notes at the end of chapters by their spans, in order
-    endNotes = Map.fromListWith (flip (<>)) [(sp, [(i, u)]) | (i, u) <- units, Frame _ (FEndNote sp _) <- uFrames u]
+    endNotes = Map.fromListWith (flip (<>)) [(sp, [(i, u)]) | (i, u) <- units, Frame _ (FEndNote sp _) _ <- uFrames u]
     content env site inls = [toKid (site, n) | n <- inlineStructure env inls]
     toKid (site, n) = case n of
       NodeLeaf k -> P.KidLeaf (P.LeafId (site <> [k]))
+      -- a language span: a Span of its language (docs/adr ADR 0187)
+      NodeElem (RoleLang l) ns -> P.KidElem ((P.structElem P.SSpan [toKid (site, m) | m <- ns]) {P.seLang = Just l})
       NodeElem role ns -> P.KidElem (P.structElem (roleType role) [toKid (site, m) | m <- ns])
       NodeNote sp k num nbody -> P.KidElem (noteElem sp k num nbody)
       NodeSidenote sp num snBody -> P.KidElem (sidenoteElem sp num snBody)
@@ -79,6 +82,7 @@ structureTree fe units figureAttrs =
       RoleRubyText -> P.SRT
       RoleReference -> P.SReference
       RoleCode -> P.SCode
+      RoleLang _ -> P.SSpan
     -- a Note: the mark (Lbl), then the body (P)
     noteFrom kids = case kids of
       P.KidElem lbl@P.StructElem {P.seType = P.SLbl} : rest -> P.structElem P.SNote (P.KidElem lbl : [P.KidElem (P.structElem P.SP rest) | not (null rest)])
@@ -102,16 +106,21 @@ structureTree fe units figureAttrs =
       let env = unitEnv fe u
           text = content env (unitSite i) (uInlines u)
           marker = [NMarker (P.structElem P.SLbl (content env (markerSite i) m)) | Just m <- [uMarker u]]
-       in marker <> case uKind u of
-            UPara _ -> [NKid (P.KidElem (P.structElem P.SP text))]
-            UIndexEntry _ -> [NKid (P.KidElem (P.structElem P.SP text))]
-            UHeading l _ _ -> [NKid (P.KidElem (P.structElem (headingType l) text))]
-            UTerm _ -> [NTerm text]
-            UTocEntry _ _ -> [NKid (P.KidElem (P.structElem P.STOCI text))]
-            UTable _ h rows -> [NKid (P.KidElem (tableElem i u h rows))]
-            UCode _ code -> [NKid (P.KidElem (codeElem i u code))]
-            UFigure fig -> [NKid (P.KidElem (figureElem i u fig))]
-            _ -> []
+          -- the element of a block with a language has its /Lang (docs/adr ADR 0187)
+          own = \case
+            NKid (P.KidElem e) -> NKid (P.KidElem e {P.seLang = uLang u})
+            x -> x
+       in marker <> map own (unitKids i u text)
+    unitKids i u text = case uKind u of
+      UPara _ -> [NKid (P.KidElem (P.structElem P.SP text))]
+      UIndexEntry _ -> [NKid (P.KidElem (P.structElem P.SP text))]
+      UHeading l _ _ -> [NKid (P.KidElem (P.structElem (headingType l) text))]
+      UTerm _ -> [NTerm text]
+      UTocEntry _ _ -> [NKid (P.KidElem (P.structElem P.STOCI text))]
+      UTable _ h rows -> [NKid (P.KidElem (tableElem i u h rows))]
+      UCode _ code -> [NKid (P.KidElem (codeElem i u code))]
+      UFigure fig -> [NKid (P.KidElem (figureElem i u fig))]
+      _ -> []
     headingType = \case
       1 -> P.SH1
       2 -> P.SH2
@@ -121,7 +130,7 @@ structureTree fe units figureAttrs =
       _ -> P.SH6
     -- a table: the header row of TH, the other rows of TD (golem-driver ADR 0008, 0031)
     tableElem i u h rows =
-      let env = tableEnv fe (uStyle u)
+      let env = tableEnv fe (uStyle u) (lkLang (uLook u))
           blankRow = all (T.all isSpace . T.concat . map inlineText) h
           cell r c t is = P.KidElem (P.structElem t (content env (cellSite i r c) is))
           header = [P.KidElem (P.structElem P.STR [(\(P.KidElem e) -> P.KidElem e {P.seAttrs = [P.Attribute "Table" [("Scope", P.OName "Column")]]}) (cell 0 c P.STH is) | (c, is) <- zip [0 ..] h]) | not blankRow]
@@ -137,7 +146,7 @@ structureTree fe units figureAttrs =
        in P.structElem P.SDiv (caption <> file <> linesOf)
     -- a figure: the Figure with its alternate text, then its caption (golem-driver ADR 0005, 0010)
     figureElem i u fig =
-      let captionInlines = numberedTitle lang (uSpan u) (Map.lookup (uSpan u) (bookFigures book)) (concat [is | Block _ _ (Paragraph _ is) <- figCaption fig])
+      let captionInlines = numberedTitle lang (uSpan u) (Map.lookup (uSpan u) (bookFigures book)) (concat [is | Block _ _ _ (Paragraph _ is) <- figCaption fig])
           figure = (P.structElem P.SFigure [P.KidLeaf (P.LeafId (figureSite i <> [0]))]) {P.seAlt = Just (figAlt fig), P.seAttrs = figureAttrs i}
        in P.structElem P.SDiv (P.KidElem figure : [P.KidElem (P.structElem P.SCaption (content (captionEnv fe u) (captionSite i) captionInlines)) | not (null captionInlines)])
     -- the units in their frames, the frames made elements
@@ -147,7 +156,8 @@ structureTree fe units figureAttrs =
       (f : fs, n) : rest ->
         let (same, others) = span (\(p, _) -> take 1 p == [f]) rest
          in frameNodes f (build ((fs, n) : [(drop 1 p, m) | (p, m) <- same])) <> build others
-    frameNodes (Frame _ k) inner = case k of
+    -- the element of a frame of a block with a language has its /Lang (docs/adr ADR 0187)
+    frameNodes (Frame _ k flang) inner = map (withLang flang) $ case k of
       FList numbered -> [elemNode (listElem (if numbered then "Decimal" else "Disc") (concatMap nodeKids inner))]
       FItem ->
         let lbls = [P.KidElem e | NMarker e <- inner]
@@ -178,6 +188,11 @@ structureTree fe units figureAttrs =
       FPara -> [elemNode (P.structElem P.SP (concat [if P.seType e == P.SP then P.seKids e else [P.KidElem e] | P.KidElem e <- concatMap nodeKids inner]))]
       FEndNote _ _ -> []
     elemNode = NKid . P.KidElem
+    withLang = \case
+      Nothing -> id
+      Just l -> \case
+        NKid (P.KidElem e) -> NKid (P.KidElem e {P.seLang = Just l})
+        x -> x
     listElem numbering = (\e -> e {P.seAttrs = [P.Attribute "List" [("ListNumbering", P.OName numbering)]]}) . P.structElem P.SL
     isMarker = \case
       NMarker _ -> True

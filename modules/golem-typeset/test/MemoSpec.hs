@@ -18,10 +18,11 @@ counted ref f n = unsafePerformIO (atomicModifyIORef' ref (\c -> (c + 1, ())) >>
 
 shapings :: [Shaping]
 shapings =
-  [ Shaping role vertical extra
+  [ Shaping role vertical extra dual
   | role <- ["", "body", "見出し", "ruby", T.replicate 40 "x"],
     vertical <- [False, True],
-    extra <- [[], ["palt"], ["-liga", "kern"], ["", ""]]
+    extra <- [[], ["palt"], ["-liga", "kern"], ["", ""]],
+    dual <- [False, True]
   ]
 
 texts :: [T.Text]

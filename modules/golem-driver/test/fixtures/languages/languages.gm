@@ -1,0 +1,38 @@
+# 両用の文字
+
+区間の外では、最も近い文字で決める。“東京”と“Hello”と言った。« Bonjour » と wait… what と ‹a› を組む。
+
+英語の区間では、[lang en: “東京”] の引用符が欧文になる。[lang en: wait… what] の三点リーダーは語に入る。
+
+和文の区間では、[lang ja: “Hello”] の引用符が和文の括弧になり、[lang ja: ‹a›] も括弧になる。
+
+フランス語の区間では、[lang fr: « Bonjour »] の山括弧が欧文になる。[lang en: A note in English[note: The body of the note is in the language of its mark, “the place”.].]
+
+# [lang en: The language of blocks]
+
+@lang en
+He said nothing, and the silence was the answer. “東京” is set as English here; [lang ja: “東京”] is Japanese.
+
+@lang fr
+- Bonjour.
+- Merci.
+
+@lang en
+  The first paragraph of a long quotation.
+
+  The second paragraph of the quotation.
+
+  - A list inside it.
+
+  @lang de
+  Ein Absatz auf Deutsch.
+
+# 分綴
+
+@lang en
+Hyphenation follows the English patterns in an English paragraph: hyphenation, typesetting, extraordinary.
+
+@lang fr
+Les mots longs ne sont pas coupés en français : anticonstitutionnellement, extraordinairement, porte-monnaie.
+
+Hors du bloc : hyphenation, typesetting, extraordinary.

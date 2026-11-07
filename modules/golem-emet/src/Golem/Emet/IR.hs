@@ -4,7 +4,7 @@ constructors are those of the serialisation of the ABI with the plugins.
 
 What the data types do not show is carried beside the values: the span
 of each node, the label of each block, the number of each note and the
-expression of each 'Deferred'. A node that comes in has one more field
+expression of each 'Deferred', and the language of each block (docs/adr ADR 0187). A node that comes in has one more field
 after its own, the index of what it carries; a function reads it as any
 other value only through the patterns, which do not see it. A node a
 function makes has no such field and takes the span given for a new node
@@ -38,8 +38,8 @@ import Golem.Eval.Value (Value (..), numberOf)
 import Golem.Syntax
 import Numeric.Natural (Natural)
 
--- | What a node carries that its fields do not show.
-data Hidden = Hidden !SrcSpan !(Maybe Text) !Int
+-- | What a node carries that its fields do not show: its span, the label and the language of a block, the number of a note.
+data Hidden = Hidden !SrcSpan !(Maybe Text) !(Maybe Text) !Int
 
 -- | What the nodes that came in carry, by their indexes.
 data Carried = Carried
@@ -115,6 +115,7 @@ withRuby = \case
   Aki s a -> Aki s a
   ChannelItem s c -> ChannelItem s c
   Link s u xs -> Link s u (map withRuby xs)
+  Lang s l xs -> Lang s l (map withRuby xs)
 
 encodeInline :: Inline -> Enc Result
 encodeInline = \case
@@ -132,8 +133,8 @@ encodeInline = \case
     j <- gets (Seq.length . cDeferred)
     modify' (\s -> s {cDeferred = cDeferred s Seq.|> e})
     at sp "Deferred" [con "Opaque" [nat j]]
-  Note sp n xs -> encodeInlines xs >>= \b -> node "Note" [b] (Hidden sp Nothing n)
-  Sidenote sp n xs -> encodeInlines xs >>= \b -> node "Sidenote" [b] (Hidden sp Nothing n)
+  Note sp n xs -> encodeInlines xs >>= \b -> node "Note" [b] (Hidden sp Nothing Nothing n)
+  Sidenote sp n xs -> encodeInlines xs >>= \b -> node "Sidenote" [b] (Hidden sp Nothing Nothing n)
   IndexMark sp (IndexEntry ts rs) -> at sp "IndexMark" [RList (map str ts), RList (map str rs)]
   Cite sp k -> at sp "Cite" [str k]
   ProofComment sp t -> at sp "ProofComment" [str t]
@@ -142,8 +143,10 @@ encodeInline = \case
   ChannelItem sp (ChannelItemData c k r body) -> encodeInlines body >>= \b -> at sp "ChannelItem" [str c, maybeR str k, maybeR str r, b]
   -- a link to an external URL (docs/adr ADR 0182)
   Link sp u xs -> encodeInlines xs >>= \b -> at sp "Link" [str u, b]
+  -- a language span (docs/adr ADR 0187)
+  Lang sp l xs -> encodeInlines xs >>= \b -> at sp "Lang" [str l, b]
   where
-    at sp c fs = node c fs (Hidden sp Nothing 0)
+    at sp c fs = node c fs (Hidden sp Nothing Nothing 0)
     numberStyle = \case
       StyleKanji -> con "Kanji" []
       StyleKanjiDigits -> con "KanjiDigits" []
@@ -160,7 +163,7 @@ encodeBlocks :: [Block] -> Enc Result
 encodeBlocks = listE encodeBlock
 
 encodeBlock :: Block -> Enc Result
-encodeBlock (Block sp lbl body) = do
+encodeBlock (Block sp lbl blang body) = do
   (c, fs) <- case body of
     Paragraph st xs -> encodeInlines xs >>= \b -> pure ("Paragraph", [maybeR str st, b])
     Heading lv (HeadingAttrs toc n nonum notoc) xs -> do
@@ -184,7 +187,7 @@ encodeBlock (Block sp lbl body) = do
     ForcedBreak k -> pure ("ForcedBreak", [con (breakKind k) []])
     PageControl pc -> pure ("PageControl", [pageControl pc])
     BlankLines n -> pure ("BlankLines", [nat n])
-  node c fs (Hidden sp lbl 0)
+  node c fs (Hidden sp lbl blang 0)
   where
     item (ListItem n bs) = (\b -> con "ListItem" [maybeR nat n, b]) <$> encodeBlocks bs
     alignment = \case
@@ -228,7 +231,7 @@ came in, a new one at the span of new nodes otherwise.
 fieldsOf :: Ctx -> Int -> [Result] -> ([Result], Hidden)
 fieldsOf (Ctx carried sp) n fs = case drop n fs of
   [RPrim (VNat i)] | Just h <- Seq.lookup (fromIntegral i) (cHidden carried) -> (take n fs, h)
-  _ -> (take n fs, Hidden sp Nothing 0)
+  _ -> (take n fs, Hidden sp Nothing Nothing 0)
 
 bad :: Text -> Dec a
 bad = Left
@@ -316,11 +319,12 @@ inlineD cx = \case
       [ch, k, r, xs] -> (\a b d e -> ChannelItem s (ChannelItemData a b d e)) <$> strD ch <*> maybeD strD k <*> maybeD strD r <*> inlinesD cx xs
       _ -> arity
     "Link" -> one2 $ \s u xs -> Link s <$> strD u <*> inlinesD cx xs
+    "Lang" -> one2 $ \s l xs -> Lang s <$> strD l <*> inlinesD cx xs
     _ -> bad ("インラインではない値です: " <> c)
     where
       arity = bad ("欄の数が合いません: " <> c)
       one n k =
-        let (xs, Hidden s _ _) = fieldsOf cx n fs
+        let (xs, Hidden s _ _ _) = fieldsOf cx n fs
          in if length xs == n then k s xs else arity
       one1 k = one 1 $ \s -> \case
         [a] -> k s a
@@ -329,7 +333,7 @@ inlineD cx = \case
         [a, b] -> k s a b
         _ -> arity
       withNumber mk =
-        let (xs, Hidden s _ num) = fieldsOf cx 1 fs
+        let (xs, Hidden s _ _ num) = fieldsOf cx 1 fs
          in case xs of
               [body] -> mk s num <$> inlinesD cx body
               _ -> bad ("欄の数が合いません: " <> c)
@@ -389,8 +393,8 @@ blockD cx = \case
     where
       arity = bad ("欄の数が合いません: " <> c)
       one n k =
-        let (xs, Hidden s lbl _) = fieldsOf cx n fs
-         in if length xs == n then Block s lbl <$> k xs else arity
+        let (xs, Hidden s lbl blang _) = fieldsOf cx n fs
+         in if length xs == n then Block s lbl blang <$> k xs else arity
       one1 k = one 1 $ \case
         [a] -> k a
         _ -> arity

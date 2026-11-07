@@ -49,7 +49,7 @@ combiningTests =
       testCase "a combining character at the paragraph start is a box of its own" $
         take 1 (boxTexts (compose (defaultComposeEnv fs) "\x301\&a")) @?= ["\x301"],
       testCase "re◌́sume◌́s: hyphenated as resumes, no box starts with a combining character" $ do
-        let env = (defaultComposeEnv fs) {cePatterns = Just englishUS}
+        let env = (defaultComposeEnv fs) {cePatterns = const (Just englishUS)}
             breaks is = length [() | Penalty _ _ (PatternHyphen _) <- is]
             items = compose env "re\x301sume\x301s"
         assertBool (show (boxTexts items)) (not (any (maybe False (isExtending . fst) . T.uncons) (boxTexts items)))

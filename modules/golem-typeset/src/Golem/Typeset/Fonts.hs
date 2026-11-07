@@ -60,6 +60,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
+import Golem.Layout.CharClass (spanIsJapanese)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look hiding (Kerning (..))
@@ -82,7 +83,9 @@ data Shaping = Shaping
   { shRole :: !Text,
     shVertical :: !Bool,
     -- | the features added after the role's features
-    shExtra :: ![Text]
+    shExtra :: ![Text],
+    -- | whether the characters of both scripts are Latin, in a Latin span: in the Latin font of the role (docs/adr ADR 0187)
+    shLatinDual :: !Bool
   }
   deriving stock (Eq, Ord, Show)
 
@@ -261,7 +264,7 @@ bookHasCode :: (FileId -> Style) -> Book -> Bool
 bookHasCode styleOf book = or [any (blockHas (styleOf fid)) bs | Document fid bs <- bookDocs book]
   where
     blockHas :: Style -> Block -> Bool
-    blockHas st (Block _ _ body) = case body of
+    blockHas st (Block _ _ _ body) = case body of
       CodeBlock {} -> True
       Paragraph _ is -> any (inlineHas st) is
       Heading _ _ is -> any (inlineHas st) is
@@ -329,7 +332,7 @@ codeFontNotice fid style book =
 the shape in the Japanese face of a role, in the direction of the text.
 -}
 kentenShaped :: LoadedFonts -> Bool -> Text -> KentenShape -> [Shaped]
-kentenShaped fonts vertical role shape = lfShape fonts (Shaping role vertical []) (T.singleton (kentenChar shape))
+kentenShaped fonts vertical role shape = lfShape fonts (Shaping role vertical [] False) (T.singleton (kentenChar shape))
 
 {- | The glyphs of a dash of a run of dashes (docs/adr ADR 0172), shaped
 alone in the look of the run: a ligature of the font for two dashes is
@@ -383,7 +386,7 @@ kentenRubyNotices book =
 
 -- | Every list of inlines of a block, captions and nested blocks included.
 blockInlineLists :: Block -> [[Inline]]
-blockInlineLists (Block _ _ body) = case body of
+blockInlineLists (Block _ _ _ body) = case body of
   Paragraph _ is -> [is]
   Heading _ _ is -> [is]
   BulletList items -> concatMap (concatMap blockInlineLists . itemBlocks) items
@@ -499,10 +502,12 @@ palt or vpal of the role.
 -}
 shapingOf :: Bool -> Look -> Char -> Shaping
 shapingOf vertical lk c
-  | charClass c == Western = Shaping (lkLatinFace lk) False ["-kern" | lkKerning lk == L.KernNone]
-  | otherwise = Shaping (lkFace lk) vertical extra
+  | lookClass lk c == Western = Shaping (lkLatinFace lk) False ["-kern" | lkKerning lk == L.KernNone] latinSpan
+  | otherwise = Shaping (lkFace lk) vertical extra latinSpan
   where
-    spaced = punctSpace (charClass c) /= (0, 0)
+    -- the characters of both scripts in a Latin span are Latin (docs/adr ADR 0187)
+    latinSpan = maybe False (not . spanIsJapanese) (lkLang lk)
+    spaced = punctSpace (lookClass lk c) /= (0, 0)
     proportional
       | spaced = ["-palt", "-vpal"]
       | otherwise = [if vertical then "vpal" else "palt" | lkProportional lk]
@@ -586,4 +591,4 @@ pdfFileName bookId =
 
 -- | The centre of the em box of the Japanese characters of a look above the baseline, in em (golem-driver ADR 0033).
 emBoxCentralOf :: LoadedFonts -> Look -> Rational
-emBoxCentralOf fonts look = lfEmBoxCentral fonts (maybe 0 shFace (listToMaybe (lfShape fonts (Shaping (lkFace look) False []) "漢")))
+emBoxCentralOf fonts look = lfEmBoxCentral fonts (maybe 0 shFace (listToMaybe (lfShape fonts (Shaping (lkFace look) False [] False) "漢")))
