@@ -142,7 +142,9 @@ tests =
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "本文。\n\n["
         map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n["))) @?= builtinInlineCommands
-        length builtinInlineCommands @?= 18,
+        length builtinInlineCommands @?= 19
+        -- [link] is built in (docs/adr ADR 0182)
+        assertBool "link" ("link" `elem` builtinInlineCommands),
       testCase "completion: paragraph and character styles (docs/adr ADR 0005)" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@style \n本文。\n\n[style \n"

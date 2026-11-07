@@ -51,6 +51,8 @@ data FixedBuiltin
   | BIndex
   | BCite
   | BAki
+  | -- | a link to an external URL (docs/adr ADR 0182)
+    BLink
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | The overridable commands, then the others.
@@ -79,6 +81,7 @@ builtinName = \case
     BIndex -> "index"
     BCite -> "cite"
     BAki -> "aki"
+    BLink -> "link"
 
 -- | The command of a name, the inverse of 'builtinName'.
 parseBuiltin :: Text -> Maybe BuiltinInline
@@ -111,6 +114,8 @@ takesNoSlot = \case
     BCite -> True
     -- [aki] reports a slot as G02055 itself (docs/adr ADR 0019)
     BAki -> False
+    -- the prose slot of [link] may be left out (docs/adr ADR 0182)
+    BLink -> False
 
 -- | The name of a plugin command that is not a built-in one.
 newtype PluginCommandName = PluginCommandName Text

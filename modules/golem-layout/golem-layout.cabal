@@ -66,6 +66,7 @@ test-suite golem-layout-test
                     PaginateSpec
                     PunctuationSpec
                     RuleAreaSpec
+                    LinkSpec
                     UrlBreakSpec
   build-depends:
     , base

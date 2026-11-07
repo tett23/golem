@@ -134,7 +134,7 @@ pub fn plain(xs: &[Inline]) -> String {
         .map(|x| match x {
             Inline::Text { text, .. } | Inline::Tcy { text, .. } => text.clone(),
             Inline::Ruby { segments, .. } => segments.iter().map(|s| plain(&s.base)).collect(),
-            Inline::Kenten { body, .. } | Inline::Color { body, .. } | Inline::CharStyle { body, .. } => plain(body),
+            Inline::Kenten { body, .. } | Inline::Color { body, .. } | Inline::CharStyle { body, .. } | Inline::Link { body, .. } => plain(body),
             _ => String::new(),
         })
         .collect()

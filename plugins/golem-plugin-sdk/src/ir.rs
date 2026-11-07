@@ -81,6 +81,8 @@ pub enum Inline {
     Aki { span: Span, zw: Option<(u64, u64)>, sp: Option<Sp> },
     /// 19 (golem-doc ADR 0007)
     ChannelItem { span: Span, channel: String, key: Option<String>, reading: Option<String>, body: Vec<Inline> },
+    /// 20: a link to an external URL, as written (docs/adr ADR 0182)
+    Link { span: Span, uri: String, body: Vec<Inline> },
 }
 
 impl Inline {
@@ -102,7 +104,8 @@ impl Inline {
             | Inline::ProofComment { span, .. }
             | Inline::LineBreak { span }
             | Inline::Aki { span, .. }
-            | Inline::ChannelItem { span, .. } => *span,
+            | Inline::ChannelItem { span, .. }
+            | Inline::Link { span, .. } => *span,
         }
     }
 }
@@ -292,6 +295,7 @@ pub fn inline_value(x: &Inline) -> Value {
         Inline::ChannelItem { span, channel, key, reading, body } => {
             t(19, span, vec![text(channel), opt_text(key), opt_text(reading), inlines_value(body)])
         }
+        Inline::Link { span, uri, body } => t(20, span, vec![text(uri), inlines_value(body)]),
     }
 }
 
@@ -483,6 +487,7 @@ pub fn inline_of(v: &Value) -> R<Inline> {
             reading: opt(r, text_of)?,
             body: inlines_of(body)?,
         },
+        (20, [u, body]) => Inline::Link { span, uri: text_of(u)?, body: inlines_of(body)? },
         _ => return Err(bad()),
     })
 }
@@ -573,9 +578,20 @@ mod tests {
             Inline::Deferred { span: sp(1, 2), expr: Value::Array(vec![Value::Int(0), span_value(sp(1, 2)), Value::Int(3)]) },
             Inline::ChannelItem { span: sp(1, 2), channel: "glossary".into(), key: Some("k".into()), reading: None, body: vec![] },
             Inline::LineBreak { span: sp(4, 4) },
+            Inline::Link { span: sp(1, 2), uri: "https://example.com/".into(), body: vec![Inline::Text { span: sp(1, 2), text: "例".into() }] },
         ];
         let bytes = encode(&inlines_value(&xs));
         assert_eq!(inlines_of(&decode(&bytes).unwrap()).unwrap(), xs);
+    }
+
+    /// the bytes of a link are those of the host: [20, span, uri, inlines] (docs/adr ADR 0182)
+    #[test]
+    fn link_bytes() {
+        let x = Inline::Link { span: sp(0, 1), uri: "https://e.jp/".into(), body: vec![] };
+        let bytes = encode(&inline_value(&x));
+        let expected: Vec<u8> = [&[0x84, 0x14, 0x83, 0x01, 0x00, 0x01, 0x6d][..], b"https://e.jp/", &[0x80][..]].concat();
+        assert_eq!(bytes, expected);
+        assert_eq!(inline_of(&decode(&bytes).unwrap()).unwrap(), x);
     }
 
     #[test]
