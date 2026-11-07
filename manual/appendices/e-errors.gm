@@ -541,6 +541,9 @@ G03010、G05004、G08100 は、[code: --profile dev] では警告、[code: --pro
   段落スタイルの [code: size] を、[code: \[page.grid\]] の [code: font-size] 以下にしてください。
 = [strong: G03012 [code: 段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: …]]
   ぶら下げの分だけ [code: indent] を大きくしてください。
+= [strong: G03118 [code: 縦組みの本では、段落スタイル … の align に … を書けません。…]]
+  ノドの側と小口の側に寄せる揃えは、横組みの本でだけ使えます。
+  [code: align] を [code: "left"] や [code: "right"] などに変えてください。
 = [strong: G03013 [code: style.toml のスタイルの参照が不正です: …]]
   [code: based-on] の先のスタイルがないか、引き継ぎが輪になっているか、[code: body] に [code: based-on] があるか、文字スタイルの [code: color] の色が定義されていないか、[code: regex-styles] の文字スタイルがありません。
 = [strong: G03014 [code: 柱の内容が正しくありません: …]]、[strong: [code: 柱の書式が正しくありません: …]]
@@ -601,7 +604,7 @@ PDF を組むときに出るエラーです。
   一ページには収まり、[code: @page-lines] で減らした段にだけ収まらない見出しは、このエラーではなく、お知らせの G07100 になります。
 = [strong: G07025 [code: 段落スタイルの字下げが大きすぎます。…]]
   字下げの後に、一行の長さが文字八つ分も残りません。
-  段落スタイルの [code: indent] と [code: first-line-indent] を小さくしてください。
+  段落スタイルの [code: indent]、[code: first-line-indent]、[code: end-indent] を小さくしてください。
 = [strong: G07027 [code: リストの入れ子が深く、項目の本文の行長が足りません。…]]
   リストの入れ子を浅くするか、[code: \[lists\]] の印を短くするか、[code: gap] を小さくしてください。
 = [strong: G07029 [code: リストの番号 … は、書式 … で表せません]]
