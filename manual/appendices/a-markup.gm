@@ -45,9 +45,9 @@
 
 = [strong: 段落]
   記号で始まらない行のまとまりです。
-  空行までが一つの段落になります。
-  段落の中の改行は文字を生まず、前後は空白なしでつながります。
-  [code: manifest.toml] の [code: \[source\]] に [code: paragraph-separator = "line"] と書くと、一行が一つの段落になります（付録B）。
+  既定では、一行が一つの段落になります。
+  [code: manifest.toml] の [code: \[source\]] に [code: paragraph-separator = "blank-line"] と書くと、空行までが一つの段落になります（付録B）。
+  このとき、段落の中の改行は文字を生まず、前後は空白なしでつながります。
 = [strong: 行末の [code: \\]]
   段落を分けずに、その位置で行を改めます（強制改行）。
   [code: \\] は行の最後の文字にし、次の行に同じ段落の続きを書きます。

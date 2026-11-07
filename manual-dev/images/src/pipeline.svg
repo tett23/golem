@@ -54,7 +54,7 @@
   <line x1="330" y1="376" x2="330" y2="442"/>
   <text class="label" x="345" y="414">ファイルごとの意味論 IR を、マニフェストの順に集める</text>
   <rect class="proc core" x="180" y="442" width="300" height="76"/>
-  <text class="c" x="330" y="466">文書構造の確定（S1）</text><text class="c mod" x="330" y="498">golem-doc</text>
+  <text class="c" x="330" y="466">文書構造の確定（S1）</text><text class="c mod" x="330" y="498">golem-assemble</text>
   <path class="cut" d="M20,540 H640"/>
   <text class="label" x="495" y="530" style="fill:#777">golem check はここまで</text>
 

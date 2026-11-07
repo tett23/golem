@@ -17,7 +17,12 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 
 ## 段落と改行
 
-空行で区切った行のまとまりが、一つの段落[index reading=だんらく: 段落]になります。
+段落[index reading=だんらく: 段落]の区切り方は、[code: manifest.toml] の [code: \[source\]] の [code: paragraph-separator] で選びます（「[ref-title source-settings]」、[ref-page source-settings] ページ）。
+書かなければ、改行ひとつで段落を区切り、一行が一つの段落になります。
+[code: golem new] で作ったプロジェクトも、この書き方です。
+
+[code: paragraph-separator = "blank-line"] と書くと、空行で区切った行のまとまりが、一つの段落になります。
+この章の例は、この書き方で書きます。
 
 ```
 吾輩は猫である。
@@ -53,9 +58,6 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 [code: \\] の次の行には、同じ段落の続きを書きます。
 段落の最後の行や、見出し、表のセル、角括弧の中では、行末の [code: \\] は誤りとして報告されます。
 本文の [code: \\] を行末に置くときは、[code: \\\\] と書きます。
-
-和文の原稿には、一行を一つの段落として書く書き方もあります。
-[code: manifest.toml] の [code: \[source\]] に [code: paragraph-separator = "line"] と書くと、改行ひとつで段落を区切る書き方になります（「[ref-title source-settings]」、[ref-page source-settings] ページ）。
 
 ## 見出し
 

@@ -58,6 +58,9 @@ done <"$WORK/files" | sort -u | while IFS= read -r ref; do
     */adr/*) continue ;;
     # golem-eval's Golem.Eval.Number cites it in a comment
     docs/markup.md) continue ;;
+    # abi-version.sh reads the copy of the last release (git show), and the
+    # build does not read it (docs/adr/0174)
+    docs/compatibility.md) continue ;;
   esac
   printf '%s\n' "$LIST" | grep -qxF "$ref" || printf '%s\n' "$ref"
 done >"$WORK/missing"

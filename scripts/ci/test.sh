@@ -211,15 +211,16 @@ abi_repo() {
 }
 # abi_change NAME CODE [STDERR-WORD...]: commits the changes made in $AV, then runs the script
 abi_change() {
-  name=$1 code=$2
+  # not name: fixture sets it
+  abi_name=$1 abi_code=$2
   shift 2
   abi_git add -A
   abi_git commit -q --allow-empty -m change
   : >"$WORK/in"
   run env GOLEM_ROOT="$AV" sh "$HERE/abi-version.sh"
-  expect "abi-version: $name" "$code"
+  expect "abi-version: $abi_name" "$abi_code"
   for w in "$@"; do
-    if grep -qF -- "$w" "$WORK/err"; then ok; else ng "$name: \"$w\" on stderr"; fi
+    if grep -qF -- "$w" "$WORK/err"; then ok; else ng "abi-version: $abi_name: \"$w\" on stderr"; fi
   done
 }
 abi_cddl() { printf "$1" >"$AV/modules/golem-doc/schema/golem-doc.cddl"; }
@@ -275,6 +276,221 @@ abi_repo
 abi_git tag -d v0.0.1
 abi_change "no release tag" 0
 if grep -q 'no release' "$WORK/out" "$WORK/err"; then ok; else ng "abi-version: no release tag: says the check is skipped"; fi
+
+# From v1.0.0 on (docs/adr/0174-compatibility-promises-for-1-0.md): a
+# minor version changes the ABI only after the last release announced it in
+# docs/compatibility.md, a patch version never changes it, and a major
+# version follows the rule of one more per release
+# abi_v1 [HEADING...]: the repository tagged v1.0.0 with VERSION 1.0.0 and
+# docs/compatibility.md that has the headings
+abi_v1() {
+  rm -rf "$AV"
+  fixture "abi-version: the repository" git_repo "$AV"
+  mkdir -p "$AV/modules/golem-doc/schema" "$AV/modules/golem-doc/src/Golem/Doc" "$AV/docs"
+  printf '; the IR\ndocument = { version: uint }\n' >"$AV/modules/golem-doc/schema/golem-doc.cddl"
+  printf -- 'module Golem.Doc.Validate where\n' >"$AV/modules/golem-doc/src/Golem/Doc/Validate.hs"
+  printf 'module Golem.Doc.IR where\n\nabiVersion :: Int\nabiVersion = 8\n' >"$AV/modules/golem-doc/src/Golem/Doc/IR.hs"
+  printf '1.0.0\n' >"$AV/VERSION"
+  printf '# 互換性\n\n## 予告している ABI の変更\n\n' >"$AV/docs/compatibility.md"
+  for h in "$@"; do printf '%s\n\n本文\n\n' "$h" >>"$AV/docs/compatibility.md"; done
+  abi_git add .
+  abi_git commit -q -m release
+  abi_git tag v1.0.0
+}
+abi_version() { printf '%s\n' "$1" >"$AV/VERSION"; }
+abi_new_abi() {
+  abi_cddl '; the IR\ndocument = { version: uint, title: tstr }\n'
+  abi_set 9
+}
+abi_v1
+abi_version 1.1.0
+abi_new_abi
+abi_change "1.1.0: a new ABI that v1.0.0 did not announce" 1 "9" "docs/compatibility.md"
+abi_v1 '### ABI のバージョン 10'
+abi_version 1.1.0
+abi_new_abi
+abi_change "1.1.0: a new ABI that v1.0.0 announced under another number" 1 "9"
+abi_v1 '### ABI のバージョン 9'
+abi_version 1.1.0
+abi_new_abi
+abi_change "1.1.0: a new ABI that v1.0.0 announced" 0
+abi_v1
+abi_version 1.1.0
+abi_change "1.1.0: the same ABI" 0
+abi_v1 '### ABI のバージョン 9'
+abi_version 1.0.1
+abi_new_abi
+abi_change "1.0.1: a new ABI, announced" 1 "patch"
+abi_v1
+abi_version 1.0.1
+abi_change "1.0.1: the same ABI" 0
+abi_v1
+abi_version 2.0.0
+abi_new_abi
+abi_change "2.0.0: a new ABI, not announced" 0
+abi_v1
+abi_version 2.0.0
+abi_cddl '; the IR\ndocument = { version: uint, title: tstr }\n'
+abi_change "2.0.0: a new ABI without a new version" 1 "9"
+# a prerelease of 1.0.0 comes before 1.0.0: the rule of one more per release
+abi_v1
+abi_git tag -d v1.0.0
+abi_git tag v1.0.0-rc1
+abi_version 1.0.0
+abi_new_abi
+abi_change "after v1.0.0-rc1: a new ABI, not announced" 0
+
+# ---------------------------------------------------------------- diagnostic-codes.sh
+# (docs/adr/0174-compatibility-promises-for-1-0.md)
+
+DC=$WORK/codes
+dc_git() { fixture "diagnostic-codes: git $*" git -C "$DC" "$@"; }
+# dc_section CODE SEVERITY STATE: one section of docs/diagnostics.md
+dc_section() {
+  printf '## %s\n\n題。\n\n- 重大度: %s\n- 状態: %s\n\n### 意味\n\n意味。\n\n' "$1" "$2" "$3"
+}
+# dc_doc: docs/diagnostics.md of the release
+dc_doc() {
+  {
+    printf '# diagnostic のコード\n\n## 節の形\n\n- **重大度**：`- 重大度:` の行。\n\n'
+    dc_section E01100 エラー 使用中
+    dc_section E02109 お知らせ 使用中
+    dc_section G01001 エラー 使用中
+    dc_section G02065 お知らせ 使用中
+    dc_section G02070 警告 使用中
+    dc_section G02071 警告 使用中
+    dc_section G02072 情報 使用中
+    dc_section G03010 'dev では警告、prod ではエラー' 使用中
+    dc_section G04001 エラー 廃止
+    dc_section G09002 'プリフライトの設定による（print の既定は警告、3mm）' 使用中
+    dc_section G09003 'プリフライトの設定による（print の既定は off）' 使用中
+  } >"$DC/docs/diagnostics.md"
+}
+# dc_repo TAG VERSION: the repository tagged TAG, with VERSION
+dc_repo() {
+  rm -rf "$DC"
+  fixture "diagnostic-codes: the repository" git_repo "$DC"
+  mkdir -p "$DC/docs"
+  dc_doc
+  printf '%s\n' "$2" >"$DC/VERSION"
+  dc_git add .
+  dc_git commit -q -m release
+  dc_git tag "$1"
+}
+# dc_set CODE SEVERITY STATE: rewrites the lines of the section of CODE
+dc_set() {
+  awk -v code="$1" -v sev="$2" -v state="$3" '
+    /^## / { cur = substr($0, 4) }
+    cur == code && /^- 重大度: / { print "- 重大度: " sev; next }
+    cur == code && /^- 状態: / { print "- 状態: " state; next }
+    { print }
+  ' "$DC/docs/diagnostics.md" >"$DC/d" && mv "$DC/d" "$DC/docs/diagnostics.md"
+}
+dc_version() { printf '%s\n' "$1" >"$DC/VERSION"; }
+# dc_check NAME CODE [STDERR-WORD...]: commits the changes made in $DC, then runs the script
+dc_check() {
+  dc_name=$1 dc_code=$2
+  shift 2
+  dc_git add -A
+  dc_git commit -q --allow-empty -m change
+  : >"$WORK/in"
+  run env GOLEM_ROOT="$DC" sh "$HERE/diagnostic-codes.sh"
+  expect "diagnostic-codes: $dc_name" "$dc_code"
+  for w in "$@"; do
+    if grep -qF -- "$w" "$WORK/err"; then ok; else ng "diagnostic-codes: $dc_name: \"$w\" on stderr"; fi
+  done
+}
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_check "nothing changed" 0
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_set G02065 お知らせ 廃止
+dc_check "a G code in use made obsolete" 1 G02065
+dc_repo v1.0.0 1.0.0
+dc_version 1.0.1
+awk '/^## G02070$/ { skip = 1 } /^## G02071$/ { skip = 0 } !skip' "$DC/docs/diagnostics.md" >"$DC/d" && mv "$DC/d" "$DC/docs/diagnostics.md"
+dc_check "a G code in use removed" 1 G02070
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_set G02065 警告 使用中
+dc_check "a notice made a warning" 1 G02065
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_set G02070 エラー 使用中
+dc_check "a warning made an error" 1 G02070
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_set G02070 'dev では警告、prod ではエラー' 使用中
+dc_check "a warning made an error in prod" 1 G02070
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_set G02072 お知らせ 使用中
+dc_check "an info made a notice" 1 G02072
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_set G03010 エラー 使用中
+dc_check "an error in prod made an error" 1 G03010
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_set G09002 'プリフライトの設定による（print の既定はエラー、3mm）' 使用中
+dc_check "a preflight code whose print default is made an error" 1 G09002
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_set G09003 'プリフライトの設定による（print の既定は警告）' 使用中
+dc_check "a preflight code whose print default off is made a warning" 1 G09003
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_set G09002 'プリフライトの設定による（print の既定は警告、5mm）' 使用中
+dc_check "a preflight code with another value of print" 0
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_set G01001 警告 使用中
+dc_set G02070 お知らせ 使用中
+dc_set G03010 警告 使用中
+dc_check "severities lowered" 0
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_set E01100 エラー 廃止
+dc_set E02109 エラー 使用中
+dc_check "E codes made obsolete and raised" 0
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_section G02200 エラー 使用中 >>"$DC/docs/diagnostics.md"
+dc_check "a code added" 0
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_set G04001 エラー 使用中
+dc_check "an obsolete code of the release" 0
+dc_repo v1.0.0 1.0.0
+dc_version 2.0.0
+dc_set G02065 お知らせ 廃止
+dc_set G02070 エラー 使用中
+dc_check "a major version" 0
+dc_repo v1.1.0 1.1.0
+dc_version 1.2.0-rc1
+dc_set G02070 エラー 使用中
+dc_check "after the release v1.1.0" 1 G02070
+dc_repo v0.1.0-rc3 0.1.0-rc3
+dc_version 0.1.0-rc4
+dc_set G02065 お知らせ 廃止
+dc_set G02070 エラー 使用中
+dc_check "before v1.0.0" 0
+dc_repo v1.0.0-rc1 1.0.0-rc1
+dc_version 1.0.0
+dc_set G02070 エラー 使用中
+dc_check "after a prerelease of 1.0.0" 0
+dc_repo v1.0.0 1.0.0
+dc_git tag -d v1.0.0
+dc_version 1.1.0
+dc_set G02070 エラー 使用中
+dc_check "no release" 0
+dc_repo v1.0.0 1.0.0
+dc_version 1.1.0
+dc_set G02070 致命的 使用中
+dc_check "a severity it does not know" 1 G02070
+run env GOLEM_ROOT="$HERE/../.." sh "$HERE/diagnostic-codes.sh"
+expect "diagnostic-codes: the repository" 0
 
 # ---------------------------------------------------------------- docs-refs.sh
 

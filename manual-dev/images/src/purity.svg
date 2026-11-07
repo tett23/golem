@@ -48,7 +48,7 @@
   <rect class="proc" x="670" y="190" width="280" height="76"/>
   <text class="c" x="810" y="214">S0：evalFile</text><text class="c mod" x="810" y="246">golem-eval</text>
   <rect class="proc" x="670" y="300" width="280" height="76"/>
-  <text class="c" x="810" y="324">S1：assemble</text><text class="c mod" x="810" y="356">golem-doc</text>
+  <text class="c" x="810" y="324">S1：assemble</text><text class="c mod" x="810" y="356">golem-assemble</text>
   <rect class="proc" x="670" y="410" width="270" height="76"/>
   <text class="c" x="805" y="434">S2：行分割と改ページ</text><text class="c mod" x="805" y="466">golem-layout</text>
   <rect class="proc" x="670" y="520" width="280" height="76"/>
