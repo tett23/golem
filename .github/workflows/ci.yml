@@ -649,8 +649,8 @@ jobs:
         with:
           path: third_party/ghc-wasm
           key: ${{ steps.ghcwasm.outputs.cache-primary-key }}
-      # cabal 3.14 plans and builds the build-tool-depends alex, happy and
-      # hsc2hs of the packages with the wasm GHC too: their executables in
+      # cabal 3.14 plans and builds the build-tool-depends alex and happy
+      # of the packages with the wasm GHC too: their executables in
       # the store are wasm modules (alex.wasm, happy.wasm), which cabal does
       # not take for alex and happy and which cannot run here, so the lexer
       # and the parser of toml-parser come from the native alex and happy on

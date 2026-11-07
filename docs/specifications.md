@@ -465,7 +465,8 @@ cborg は、32 ビットで組める上流のコミット `6ef2791c` を使う�
 `skylighting-core` 0.15 と `skylighting` 0.15 は、`scripts/fetch-wasm-packages.sh` が Hackage のアーカイブを SHA-256 で確かめて `third_party/wasm-packages/` に展開し、`Skylighting.Parser` と `Skylighting.Loader`、その再エクスポート、`xml-conduit` の依存を除く `scripts/wasm/patches/` の差分を当てる。
 golem-font は、wasm に向けて組むときだけ、FreeType を `-mllvm -wasm-enable-sjlj` でコンパイルし、wasi-sdk の `c++`、`c++abi`、`setjmp` をリンクする。
 `toml-parser` が使う `alex` と `happy` は、ネイティブの GHC で組んだ `alex` 3.5.4.2 と `happy` 2.2（`cabal.project.freeze` の版）を `PATH` に置いて使う。
-cabal 3.14.2.0 は、`build-tool-depends` の `alex`、`happy`、`hsc2hs` も wasm の GHC で組むが、それは wasm のモジュールなので、ビルドの中で動くのは `PATH` のものだけである。
+cabal 3.14.2.0 は、`build-tool-depends` の `alex` と `happy` も wasm の GHC で組んで store に `alex.wasm` と `happy.wasm` を置くが、それは wasm のモジュールで、cabal は `alex` と `happy` として使わないので、ビルドの中で動くのは `PATH` のものだけである。
+`hsc2hs` は、`wasm32-wasi-cabal` が `--with-hsc2hs` で渡す wasm の GHC のものを使う。
 
 処理は `parse → eval → 意味論 IR → 各バックエンド` の順に流れ、分岐点は意味論 IR である（「処理の流れ」の節を参照）。
 
