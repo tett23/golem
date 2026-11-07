@@ -5,7 +5,7 @@ import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
 import Data.Char (isDigit, isSpace, toLower)
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
-import Data.Either (partitionEithers)
+import Data.Either (partitionEithers, rights)
 import Data.List (intercalate, isPrefixOf, isSuffixOf, stripPrefix)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
@@ -497,7 +497,7 @@ tablePaths :: Project -> IO [FilePath]
 tablePaths project = do
   let paths = nubOrd [p | sf <- Map.elems (projectSources project), (p, UseTable) <- assetRefs (sfAst sf)]
   resolved <- mapM (resolveInRoot ".") paths
-  pure (nubOrd [rel | Right rel <- resolved])
+  pure (nubOrd (rights resolved))
 
 {- | The sources of the project in the current directory, for golem fmt
 without arguments (golem-fmt ADR 0004). When the load stops only at the CR
