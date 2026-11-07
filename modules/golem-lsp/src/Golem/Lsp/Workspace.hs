@@ -166,9 +166,12 @@ assetSources = maybe Map.empty evAssetSources . wsEvaluated
 assetPaths :: Workspace -> Set.Set FilePath
 assetPaths = Set.fromList . map siPath . Map.elems . assetSources
 
--- | The table files the last evaluation read, which the client is to watch (golem-eval ADR 0004).
+{- | The table files the last evaluation read, which the client is to watch
+(golem-eval ADR 0004), and manifest.toml, whose [vars] the sources read
+(docs/adr/0185), whether or not the project loaded.
+-}
 tablesToWatch :: Workspace -> Set.Set FilePath
-tablesToWatch = maybe Set.empty evTableFiles . wsEvaluated
+tablesToWatch = Set.insert "manifest.toml" . maybe Set.empty evTableFiles . wsEvaluated
 
 {- | The glob that watches one table file (docs/adr ADR 0042): each
 metacharacter of the glob of LSP ('*', '?', '[', ']', '{', '}') in the
@@ -185,10 +188,11 @@ watchGlob = T.pack . concatMap escape
 {- | Whether a notification of changed files asks for evaluating the project
 again: one of them is a watched table file that the editor does not have
 open, since the editor's text of an open file comes first (golem-eval ADR
-0004).
+0004). The project reads manifest.toml from the disk, open or not: a
+change of it on the disk evaluates again (docs/adr/0185).
 -}
 tableFilesChanged :: Workspace -> [FilePath] -> Bool
-tableFilesChanged ws = any (\p -> Set.member p (wsWatchedTables ws) && not (Map.member p (wsOverlay ws)))
+tableFilesChanged ws = any (\p -> Set.member p (wsWatchedTables ws) && (p == "manifest.toml" || not (Map.member p (wsOverlay ws))))
 
 -- | The line index of a file; an unknown file has the index of empty text.
 lineIndexOf :: Workspace -> FilePath -> LineIndex

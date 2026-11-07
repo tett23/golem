@@ -72,6 +72,7 @@ module Golem.Project.Style
     HeadForm (..),
     HeadPick (..),
     parseRunningFormat,
+    runningFormatSites,
     runningRefs,
     Swatch (..),
     ListStyle (..),
@@ -109,7 +110,7 @@ import Golem.Assemble (NoteNumbering (..))
 import Golem.Assemble.ListMarkers (NumberFormat, parseNumberFormat)
 import Golem.Length (Sp (..))
 import Golem.Length qualified as L
-import Golem.Project.Manifest (decodeStrictBy, decodeStrictWith, naturalIntOf, naturalOf)
+import Golem.Project.Manifest (decodeStrictBy, decodeStrictWith, naturalIntOf, naturalOf, positionSpan, readTomlTable)
 import Golem.Project.TomlMessage (schemaMessage)
 import Golem.Project.TomlSchema
 import Golem.Regex (RegexError (..), compile)
@@ -922,6 +923,8 @@ data RunningRef
     RefMeta !Text
   | -- | a variable of the page's file, with its namespace when imported
     RefVar ![Text]
+  | -- | a variable of [vars] of manifest.toml, by its path in the tables (docs/adr/0185)
+    RefProjectVar ![Text]
   deriving stock (Eq, Show)
 
 -- | A piece of a line of a running head: text, or a slot (True with @?@).
@@ -1041,6 +1044,8 @@ parseRunningFormat t0
               ["meta", "creators"] -> Left "meta.creators は配列なので、柱に書けません。@set で文字列の変数を作ってください"
               ["meta", k] | k `elem` runningMetaKeys -> ref (RefMeta k)
               ("set" : ns@(_ : _)) | length ns <= 2 && all varName ns -> ref (RefVar ns)
+              -- a variable of [vars], in its tables too (docs/adr/0185)
+              ("vars" : ns@(_ : _)) | all varName ns -> ref (RefProjectVar ns)
               _ -> unknown
     varName n = case T.uncons n of
       Just (c, r) -> (isAsciiLetter c || c == '_') && T.all (\x -> isAsciiLetter x || isDigit x || x == '_') r
@@ -1050,6 +1055,25 @@ parseRunningFormat t0
       PartText a : PartText b : r -> merge (PartText (a <> b) : r)
       x : r -> x : merge r
       [] -> []
+
+{- | The lines of the running head formats of style.toml, where they are
+written (docs/adr/0185): the master page, the span of the string and the
+slots of the line. Style keeps no positions; this reads the text again.
+A line that is not a format is left out: G03014 reports it.
+-}
+runningFormatSites :: FileId -> Text -> [(Text, SrcSpan, [(RunningRef, Bool)])]
+runningFormatSites fid src = case readTomlTable src of
+  Nothing -> []
+  Just (MkTable top) ->
+    [ (name, positionSpan fid src (Just pos), [(r, q) | PartRef r q <- parts])
+    | Just (_, Table' _ (MkTable masters)) <- [Map.lookup "masters" top],
+      (name, (_, Table' _ (MkTable master))) <- Map.toList masters,
+      Just (_, Table' _ (MkTable rh)) <- [Map.lookup "running-head" master],
+      key <- ["content", "even", "odd"],
+      Just (_, List' _ xs) <- [Map.lookup key rh],
+      Text' pos t <- xs,
+      Right parts <- [parseRunningFormat t]
+    ]
 
 {- | A rule of style.toml (golem-driver ADR 0024): the same keys and
 checks wherever a rule is written; the user decides whether the length
