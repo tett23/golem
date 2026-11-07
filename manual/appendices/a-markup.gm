@@ -52,9 +52,9 @@
   段落を分けずに、その位置で行を改めます（強制改行）。
   [code: \\] は行の最後の文字にし、次の行に同じ段落の続きを書きます。
   見出し、表のセル、角括弧の中には書けません。
-= [strong: [code: # 題]、[code: ## 題]、[code: ### 題]]
+= [strong: [code: # 題]、[code: ## 題]、[code: ### 題]、[code: #### 題]、[code: ##### 題]、[code: ###### 題]]
   見出しです。
-  [code: #] の数が階層で、三つまで使えます。
+  [code: #] の数が階層で、六つまで使えます。
   番号は書かず、[code: style.toml] の [code: \[headings\]] の書式で自動で振ります。
   見出しの中では、[code: doc] を使う式と相互参照は使えません。
 = [strong: [code: - 項目]]
@@ -124,7 +124,7 @@
   例：[code: @import common/values.gm as values]
 = [strong: [code: @toc depth=N]]
   その位置に目次を組みます。
-  [code: depth] は目次に載せる見出しの階層で、1 から 3 です。
+  [code: depth] は目次に載せる見出しの階層で、1 から 6 です。
   省くと 2 になります。
   本に一つだけ置けます。
 = [strong: [code: @index]]

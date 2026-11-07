@@ -14,7 +14,7 @@ uint64 = 0..9223372036854775807
 block = [span, label: tstr / null, lang: tstr / null, body: block-body]   ; lang: docs/adr ADR 0187
 
 block-body =
-    [1, level: 1..3, heading-attrs, inlines]        ; heading
+    [1, level: 1..6, heading-attrs, inlines]        ; heading
   / [2, [* list-item]]                             ; bullet list
   / [3, [* list-item]]                             ; ordered list
   / [4, [* def-group]]                             ; definition list

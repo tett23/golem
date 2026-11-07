@@ -16,6 +16,18 @@
 %%                    ^^^^^^^ variable.other.golem
 %%                             ^^ keyword.operator.number.golem
 %%                               ^ constant.numeric.golem
+#### Four
+%%<---- keyword.control.heading.golem
+%%   ^^^^ markup.heading.golem
+##### Five
+%%<----- keyword.control.heading.golem
+%%    ^^^^ markup.heading.golem
+###### Six
+%%<------ keyword.control.heading.golem
+%%     ^^^ markup.heading.golem
+####### Seven is not a heading
+%%<------- source.golem
+%%      ^^^^^ source.golem
 
 Plain text with \[ an escape, [ruby kanji: reading] and [note alt="x": a | b].
 %%<----- source.golem

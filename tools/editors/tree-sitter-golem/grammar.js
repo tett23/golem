@@ -101,7 +101,8 @@ module.exports = grammar({
     // ---------------------------------------------------------- headings
 
     heading: $ => seq(
-      field('marker', alias(choice('#', '##', '###'), $.heading_marker)),
+      // # to ###### (docs/adr/0188); the scanner does not start a block at seven or more
+      field('marker', alias(choice('#', '##', '###', '####', '#####', '######'), $.heading_marker)),
       repeat1($._head_inline),
     ),
 

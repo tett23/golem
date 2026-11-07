@@ -1377,28 +1377,28 @@ LSP では、エディタで開いているファイルにも出す。
 
 ## G01012
 
-見出しの階層は 3 までです
+見出しの階層は 6 までです
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`####` 以上の見出しがある。
-位置は 4 つ目の `#` から始まる。
+`#######` 以上の見出しがある。
+位置は 7 つ目の `#` から始まる。
 
-- メッセージ: `見出しの階層は 3 までです`
+- メッセージ: `見出しの階層は 6 までです`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)。上限を 6 にしたのは [ADR 0188](adr/0188-headings-beyond-level-3.md) である
 
 ### 主な原因
 
-- `####` 以上の見出しを書いた。
+- `#######` 以上の見出しを書いた。
 
 ### 直し方
 
-見出しは `#` から `###` までである。
-構成を 3 階層に収める。
+見出しは `#` から `######` までである。
+構成を 6 階層に収める。
 
 ## G01013
 
@@ -2385,20 +2385,20 @@ number-text の引数が不正です
 
 ## G02025
 
-@toc の depth は 1 から 3 の整数です
+@toc の depth は 1 から 6 の整数です
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@toc` の `depth` が 1 から 3 の整数でない。
+`@toc` の `depth` が 1 から 6 の整数でない。
 `depth` は語か式で書く。
 負の数は [G02103](#g02103)、整数でない数は [G02104](#g02104) である（[docs/adr/0102](adr/0102-natural-number-type.md)）。
 
-- メッセージ: `@toc の depth は 1 から 3 の整数です`
+- メッセージ: `@toc の depth は 1 から 6 の整数です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)。上限を 6 にしたのは [ADR 0188](adr/0188-headings-beyond-level-3.md) である
 
 ### 主な原因
 
@@ -5594,9 +5594,9 @@ style.toml の誤りです
 `@style-def` の名前と欄の誤りにも出る。
 誤りのある定義は捨てる。
 
-- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1、2、3 のどれかです: <段>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format が正しくありません（<理由>）: <書式>`、`[notes] の mark-size と、size を持つ mark-style <名前> は一緒に書けません`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル <名前> には 0 でない indent と first-line-indent を書けません。キャプションと傍注は字下げをしません: <キー>`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
+- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1 から 6 のどれかです: <段>`、`見出しの番号の書式の {<k>} は上の階層の番号です。階層 <段> の見出しには書けません: <書式>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format が正しくありません（<理由>）: <書式>`、`[notes] の mark-size と、size を持つ mark-style <名前> は一緒に書けません`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル <名前> には 0 でない indent と first-line-indent を書けません。キャプションと傍注は字下げをしません: <キー>`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りと Golem が値の読み込みで調べる誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置である。二つのキーの組み合わせの誤りは、文言が直すよう求めているキーの値の位置（`columns` と `column-gap` では `columns`）に出す。読み込んだ後の検査では、直すべき値の位置であり、その値が書かれていなければそのスタイルなどの表の見出しの位置、それもなければ `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0118](adr/0118-ref-page-numerals-in-vertical-text.md)（`[numbers]` の `ref-page`）である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0118](adr/0118-ref-page-numerals-in-vertical-text.md)（`[numbers]` の `ref-page`）、[ADR 0188](adr/0188-headings-beyond-level-3.md)（`[headings.N]` の階層と見出しの番号の書式の `{k}`）である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -5615,6 +5615,7 @@ style.toml の誤りです
 - 罫線の指定（`[notes.rule]`）で、`length` が寸法として読めないか 0 以下、`weight` が寸法として読めないか 0 以下か `zw`、`space-before` か `space-after` が寸法として読めないか負である。未知のキーを書いた。`[notes.rule]` に `length` を書いていない（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 - 罫線の指定で、`style` に線の種類の表にない値を書いた。`dash` か `gap` が寸法として読めないか、0 以下か、`zw` である。`dash` を `"dashed"` のほかの線の種類に、`gap` を `"dashed"`、`"dotted"`、`"japanese-dots"` のほかの線の種類に書いた。`color` を文字列で書いていない（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
 - 段落スタイルか `[headings.N]` の `rule-before`、`rule-after` に、表と `false` のほかの値（`true` を含む）を書いた。組み込みの段落スタイル `caption`、`sidenote`、`code` に書いた。`@style-def` に書いた。`length` と `end-indent` を一緒に書いた。`start-indent` と `end-indent` を引くと罫線の長さが 0 以下になる。`[notes.rule]` に `start-indent`、`end-indent`、`keep-in-column` を書いた（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
+- `[headings.N]` の N に 1 から 6 のほかの値を書いた。見出しの番号の書式に、その見出しの階層より小さくない `{k}` を書いた（`[headings.2]` の `{2}`、`[headings.1]` の `{1}` など）。図版、コードブロック、ノンブルの番号の書式に `{3}` から `{5}` を書いた（[ADR 0188](adr/0188-headings-beyond-level-3.md)）。
 - `[notes]` の `mark-format` に数の差し込みを書かなかったか、二つ以上書いたか、表にない差し込みか表記の名前を書いたか、`{{`、閉じていない `{`、対応のない `}`、誤ったエスケープ（`\a`、末尾の `\`）を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 - `[notes]` の `mark-size` と、`size` を持つ文字スタイルを指す `mark-style` を一緒に書いた。`mark-style` を書かずに `[character-styles.note-mark]` の `size` と `mark-size` を一緒に書いた場合も同じである（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 - 見出し、図版、コードブロック、ノンブルの番号の書式に、表にない差し込みか表記の名前、閉じていない `{`、対応のない `}`、誤ったエスケープを書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
@@ -5836,12 +5837,12 @@ style.toml のスタイルの参照が不正です
 
 - メッセージ: 語彙と組み合わせの誤りは `柱の内容が正しくありません: <値>。heading.<階層>.short か heading.<階層>.numbered（末尾に .last を付けられます）、title、none のどれかを、content に一つ、または even と odd の両方に書いてください`。組み合わせの誤りでは、`<値>` に書いた欄と値を並べ、どれも書いていなければ `（なし）` とする。書式の誤りは `柱の書式が正しくありません: <理由>`。どちらも誤った箇所の経路を添える。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)、[golem-driver ADR 0022](golem-driver/adr/0022-running-head-formats.md)
+- ADR: [golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)、[golem-driver ADR 0022](golem-driver/adr/0022-running-head-formats.md)、[ADR 0188](adr/0188-headings-beyond-level-3.md)（見出しの階層を 1 から 6 に限った）
 
 ### 主な原因
 
 - 内容の値の綴りを誤った（`heading.1.long`、`chapter` など）。
-- 見出しの階層に 0 や数でないものを書いた。
+- 見出しの階層に 0、7 以上、数でないものを書いた。階層は 1 から 6 である（[ADR 0188](adr/0188-headings-beyond-level-3.md)）。
 - 書式を配列でなく文字列で書いた（`"{meta.title}　{heading.1.short}"`）。
 - 書式の `{` を閉じていないか、文字の `}` を `\}` と書いていないか、`{}` を書いたか、`\` の後に `{`、`}`、`\` のほかの字を書いたか、行の末尾に `\` を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 - 差し込みに表記を書いた（`{heading.1.short:kanji}`）。

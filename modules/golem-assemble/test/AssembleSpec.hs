@@ -48,6 +48,7 @@ tests =
             nums = map (hiNumberText . snd) (Map.toAscList (bookHeadings book))
         ds @?= []
         nums @?= [Nothing, Just "第一章", Just "1.1", Just "第五章", Just "5.1", Just "第六章"],
+      sixLevelTests,
       testCase "labels: cross-file references, duplicates, missing" $ do
         let docs =
               [ Document (FileId 1) [heading 1 0 1 noHeadingAttrs (Just "intro") "はじめに"],
@@ -106,6 +107,27 @@ tests =
         levels (Just 3) @?= [1, 2, 3, 1],
       diagnosticCodes
     ]
+
+-- | The numbers of headings of levels 4 to 6 (docs/adr/0188).
+sixLevelTests :: TestTree
+sixLevelTests =
+  testGroup
+    "headings of six levels (docs/adr/0188)"
+    [ testCase "levels 1 to 6 by the default formats" $
+        numbersOf Map.empty [1, 2, 3, 4, 5, 6] @?= [Just "1", Just "1.1", Just "1.1.1", Just "1.1.1.1", Just "1.1.1.1.1", Just "1.1.1.1.1.1"],
+      testCase "a level 4 after a level 2 counts the deeper levels from 0" $
+        numbersOf Map.empty [1, 2, 3, 4, 5, 2, 4, 6] @?= [Just "1", Just "1.1", Just "1.1.1", Just "1.1.1.1", Just "1.1.1.1.1", Just "1.2", Just "1.2.0.1", Just "1.2.0.1.0.1"],
+      testCase "[headings.4] number = \"{1}-{3}-{n}\" writes as written" $
+        numbersOf (Map.fromList [(4, "{1}-{3}-{n}")]) [1, 2, 3, 3, 4, 4] @?= [Just "1", Just "1.1", Just "1.1.1", Just "1.1.2", Just "1-2-1", Just "1-2-2"],
+      testCase "a level 6 right after a level 3 is numbered, the levels 4 and 5 being 0" $
+        numbersOf Map.empty [1, 2, 3, 6] @?= [Just "1", Just "1.1", Just "1.1.1", Just "1.1.1.0.0.1"]
+    ]
+  where
+    numbersOf fmts ls =
+      let c = AssembleConfig fmts "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" Map.empty 16
+          docs = [Document (FileId 1) [heading 1 (i * 10) l noHeadingAttrs Nothing "見出し" | (i, l) <- zip [0 ..] ls]]
+          (book, ds) = assemble c noEval docs
+       in if null ds then map (hiNumberText . snd) (Map.toAscList (bookHeadings book)) else error (show ds)
 
 {- | The copies of a title (the table of contents, [ref-title]) have no
 index marks and no channel items, at any depth; the heading keeps them

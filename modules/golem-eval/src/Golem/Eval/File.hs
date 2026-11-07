@@ -551,9 +551,9 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "toc" -> do
     depth <- maybe (pure (Right 2)) (naturalArg ctx "@toc の depth" sp) (keywordAt "depth" args)
     case depth of
-      Right d | d >= 1 && d <= 3 -> pure [block sp (ChannelOutput (TocOutput (fromIntegral d)))]
+      Right d | d >= 1 && d <= 6 -> pure [block sp (ChannelOutput (TocOutput (fromIntegral d)))]
       Left NaturalReported -> pure []
-      _ -> err "G02025" sp "@toc の depth は 1 から 3 の整数です" >> pure []
+      _ -> err "G02025" sp "@toc の depth は 1 から 6 の整数です" >> pure []
   "index" -> pure [block sp (ChannelOutput IndexOutput)]
   "bibliography" -> pure [block sp (ChannelOutput BibliographyOutput)]
   "channel" -> channelBlock ctx sp args

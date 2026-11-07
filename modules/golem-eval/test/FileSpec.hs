@@ -1761,10 +1761,13 @@ diagnosticTests =
         diags "@set doc = 1\n" @?= [("G02023", "予約語は変数の名前に使えません: doc", 5, 8)]
         diags "@import common/values.gm as meta\n" @?= [("G02023", "予約語は名前空間に使えません: meta", 28, 32)],
       testCase "G02025: the depth of @toc" $ do
-        mapM_ (\src -> (src, errs src) @?= (src, ["G02025"])) ["@toc depth=0\n", "@toc depth=4\n", "@toc depth=x\n"]
-        msgs "@toc depth=0\n" @?= [("G02025", "@toc の depth は 1 から 3 の整数です")]
+        mapM_ (\src -> (src, errs src) @?= (src, ["G02025"])) ["@toc depth=0\n", "@toc depth=7\n", "@toc depth=x\n"]
+        msgs "@toc depth=0\n" @?= [("G02025", "@toc の depth は 1 から 6 の整数です")]
         errs "@toc\n" @?= []
-        errs "@toc depth=3\n" @?= [],
+        errs "@toc depth=3\n" @?= []
+        -- docs/adr/0188
+        errs "@toc depth=4\n" @?= []
+        errs "@toc depth=6\n" @?= [],
       testCase "G02026: the names of labels" $ do
         let labelMsg = "@label にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます"
             refMsg = "参照にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます"
