@@ -10,10 +10,10 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
-import Golem.Driver.Pdf (PdfLayout (..), SetLine (..))
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Length (Sp (..))
 import Golem.Syntax
+import Golem.Typeset (PdfLayout (..), SetLine (..))
 import Support
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
