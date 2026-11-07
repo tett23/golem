@@ -6,8 +6,8 @@ import Data.ByteString.Lazy qualified as BL
 import Data.Scientific (scientific)
 import Data.Text (Text)
 import Data.Text.Encoding qualified as TE
-import Golem.Doc.Bibliography
-import Golem.Doc.Bibliography.Csl
+import Golem.Bibliography
+import Golem.Bibliography.Csl
 import Test.Tasty
 import Test.Tasty.HUnit
 

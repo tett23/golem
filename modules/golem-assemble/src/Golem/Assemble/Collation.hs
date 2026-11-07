@@ -1,7 +1,7 @@
 {- | Ordering of index readings, based on JIS X 4061 (golem-doc ADR 0002).
 No locale-dependent collation library is used.
 -}
-module Golem.Doc.Collation
+module Golem.Assemble.Collation
   ( collationKey,
     CollationKey,
   )

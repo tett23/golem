@@ -1,0 +1,8 @@
+{"cabal-version":"3.16.1.0","install-plan":[
+ {"type":"pre-existing","id":"base-4.20.2.0-754f","pkg-name":"base","pkg-version":"4.20.2.0","depends":[]},
+ {"type":"configured","id":"golem-syntax-0.1.0-inplace","pkg-name":"golem-syntax","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f"],"exe-depends":[],"component-name":"lib"},
+ {"type":"configured","id":"golem-numerals-0.1.0-inplace","pkg-name":"golem-numerals","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f"],"exe-depends":[],"component-name":"lib"},
+ {"type":"configured","id":"golem-bibliography-0.1.0-inplace","pkg-name":"golem-bibliography","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-syntax-0.1.0-inplace"],"exe-depends":[],"component-name":"lib"},
+ {"type":"configured","id":"golem-doc-0.1.0-inplace","pkg-name":"golem-doc","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-syntax-0.1.0-inplace","golem-assemble-0.1.0-inplace"],"exe-depends":[],"component-name":"lib"},
+ {"type":"configured","id":"golem-assemble-0.1.0-inplace","pkg-name":"golem-assemble","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-doc-0.1.0-inplace","golem-numerals-0.1.0-inplace","golem-syntax-0.1.0-inplace"],"exe-depends":[],"component-name":"lib"}
+]}

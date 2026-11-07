@@ -36,7 +36,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Unsafe (lengthWord8)
 import Golem.Doc.IR
-import Golem.Doc.Numerals (kanji, kanjiDigits)
+import Golem.Numerals (kanji, kanjiDigits)
 import Golem.Layout.Aki (AkiPos (..), AkiSet, akiBetween, defaultAkiSet, noAki)
 import Golem.Layout.Aki qualified as A
 import Golem.Layout.CharClass

@@ -14,12 +14,12 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.Assemble
-import Golem.Doc.Bibliography (EntryPart, entryText)
+import Golem.Assemble
+import Golem.Bibliography (EntryPart, entryText)
 import Golem.Doc.IR
-import Golem.Doc.ListMarkers
-import Golem.Doc.Numbering (numberSeparator)
-import Golem.Doc.Numerals
+import Golem.Assemble.ListMarkers
+import Golem.Assemble.Numbering (numberSeparator)
+import Golem.Numerals
 import Golem.Syntax.Span
 import System.FilePath (replaceExtension)
 

@@ -17,7 +17,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (toGregorian)
 import Golem.Doc.IR
-import Golem.Doc.Numerals (formatNumber)
+import Golem.Numerals (formatNumber)
 import Golem.Driver.Overhang (kentenAcross, rubyAcross)
 import Golem.Driver.Pdf.Flow
 import Golem.Driver.Pdf.Fonts

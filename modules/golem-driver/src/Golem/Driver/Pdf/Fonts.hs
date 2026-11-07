@@ -57,8 +57,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Doc.Assemble
-import Golem.Doc.Bibliography (EntryPart (..))
+import Golem.Assemble
+import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
 import Golem.Driver.TextLayer (ClusterPart (..))
 import Golem.Driver.Version (golemVersion)

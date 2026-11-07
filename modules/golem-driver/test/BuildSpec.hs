@@ -11,7 +11,7 @@ import Data.Maybe (isJust, listToMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Doc.Assemble (Book (..), HeadingInfo (..))
+import Golem.Assemble (Book (..), HeadingInfo (..))
 import Golem.Doc.IR (InlineF (..))
 import Golem.Driver
 import Golem.Driver.New

@@ -1,7 +1,7 @@
 {- | The markers of lists (golem-driver ADR 0013): the number formats of
 @[lists] numbers@ in style.toml and the numbers written in them.
 -}
-module Golem.Doc.ListMarkers
+module Golem.Assemble.ListMarkers
   ( ListNumberStyle (..),
     NumberFormat (..),
     parseNumberFormat,
@@ -21,7 +21,7 @@ import Data.List.NonEmpty qualified as NE
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
-import Golem.Doc.Numerals (kanji)
+import Golem.Numerals (kanji)
 import Golem.Syntax.Span
 import Golem.Syntax.Text (tshow)
 

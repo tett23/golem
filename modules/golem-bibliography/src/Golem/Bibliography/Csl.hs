@@ -2,7 +2,7 @@
 0089): which fields are read and how is golem-doc ADR 0004 and 0005.
 Finding and reading the files, and the diagnostics, stay in golem-driver.
 -}
-module Golem.Doc.Bibliography.Csl
+module Golem.Bibliography.Csl
   ( CslJsonError (..),
     decodeCslJson,
     cslEntry,
@@ -20,7 +20,7 @@ import Data.Maybe (mapMaybe, maybeToList)
 import Data.Scientific (Scientific, base10Exponent, coefficient, toBoundedInteger)
 import Data.Text qualified as T
 import Data.Vector qualified as V
-import Golem.Doc.Bibliography (CslDate (..), CslEntry (..), CslName (..))
+import Golem.Bibliography (CslDate (..), CslEntry (..), CslName (..))
 import Golem.Syntax.Chars (firstUnwritable)
 
 {- | Why a file of CSL-JSON is not read: not JSON (the message of aeson),

@@ -1,7 +1,7 @@
 {- | The format of one entry of the bibliography, the single built-in
 style (golem-doc ADR 0004, 0005).
 -}
-module Golem.Doc.Bibliography
+module Golem.Bibliography
   ( CslName (..),
     CslDate (..),
     CslEntry (..),

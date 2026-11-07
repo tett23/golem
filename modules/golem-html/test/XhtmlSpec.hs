@@ -10,10 +10,10 @@ import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.Assemble (AssembleConfig (..), Book (..), ChannelDecl (..), ChannelOrder (..), HeadingInfo (..), IndexGroup (..), LabelTarget (..), NoteNumbering (..), TocEntry (..), assemble)
-import Golem.Doc.Bibliography (EntryPart (..))
+import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), LabelTarget (..), NoteNumbering (..), TocEntry (..), assemble)
+import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
-import Golem.Doc.ListMarkers (defaultNumberFormat)
+import Golem.Assemble.ListMarkers (defaultNumberFormat)
 import Golem.Html
 import Golem.Syntax.Span
 import Hedgehog (forAll, property, (===))

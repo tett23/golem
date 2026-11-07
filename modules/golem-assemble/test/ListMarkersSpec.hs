@@ -2,7 +2,7 @@
 module ListMarkersSpec (tests) where
 
 import Golem.Doc.IR
-import Golem.Doc.ListMarkers
+import Golem.Assemble.ListMarkers
 import Golem.Syntax.Span
 import Test.Tasty
 import Test.Tasty.HUnit

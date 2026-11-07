@@ -11,8 +11,8 @@ import Data.Maybe (mapMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Doc.Assemble (IndexGroup (..))
-import Golem.Doc.Bibliography (EntryPart (..), entryText)
+import Golem.Assemble (IndexGroup (..))
+import Golem.Bibliography (EntryPart (..), entryText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLines, tocPage)

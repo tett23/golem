@@ -10,7 +10,7 @@ where
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
-import Golem.Doc.Assemble (Book (..), LabelTarget (..))
+import Golem.Assemble (Book (..), LabelTarget (..))
 import Golem.Driver
 import Golem.Emet.Lint (lintProgram)
 import Golem.Eval.File (EvalResult (..))

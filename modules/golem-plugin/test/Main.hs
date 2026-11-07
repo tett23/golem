@@ -26,7 +26,6 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import DataSpec (dataTests, describeTests)
 import FuelSpec (fuelTests)
-import Golem.Doc.Assemble (ChannelDecl (..))
 import Golem.Doc.Cbor (documentTerm, inlinesTerm)
 import Golem.Doc.IR
 import Golem.Eval.Value (PluginArg (..), Value (..))

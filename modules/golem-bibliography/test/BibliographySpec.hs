@@ -2,7 +2,7 @@
 module BibliographySpec (tests) where
 
 import Data.Text (Text)
-import Golem.Doc.Bibliography
+import Golem.Bibliography
 import Test.Tasty
 import Test.Tasty.HUnit
 
