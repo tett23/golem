@@ -616,7 +616,6 @@ session spec = do
               pure found
         _ -> missingLabel path
 
--- | The codes of the diagnostics of a file.
 {- | The LSP fixture with the identity plugin of golem-plugin's tests
 declared, locked and cached (docs/adr ADR 0031).
 -}

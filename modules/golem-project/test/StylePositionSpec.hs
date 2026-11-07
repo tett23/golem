@@ -22,7 +22,6 @@ import Toml.Syntax (Position (..))
 -- | A row: its name, the fragment, the code, the needle, the bytes after it, and the path the message ends with.
 data Row = Row Text Text Text Text Int (Maybe Text)
 
--- | The byte offset of the first occurrence of a needle.
 -- | A page with a grid of 10pt, 40 characters, for the checks that need one.
 grid :: Text
 grid = "[page]\nsize = \"A5\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 40\nlines = 30\nline-pitch = \"16pt\"\nposition = { top = \"14mm\", gutter = \"14mm\" }\n"

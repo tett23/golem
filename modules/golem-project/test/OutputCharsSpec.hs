@@ -29,7 +29,6 @@ manifestOf title extra =
       "[targets.html]"
     ]
 
--- | The byte offset of the first occurrence of a needle.
 -- | The code, the start and the message of each diagnostic of a failed parse.
 failures :: Text -> [(DiagnosticCode, Int, Text)]
 failures src = case parseManifest (FileId 0) src of
