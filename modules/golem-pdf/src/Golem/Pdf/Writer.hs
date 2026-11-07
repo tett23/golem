@@ -18,6 +18,9 @@ module Golem.Pdf.Writer
     Move (..),
     contentMarks,
     Page (..),
+    Annotation (..),
+    LinkAction (..),
+    asciiUri,
     FontProgram (..),
     Font (..),
     Document (..),
@@ -40,6 +43,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Builder qualified as B
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
+import Data.Char (isAscii)
 import Data.List (mapAccumL, nub, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -186,9 +190,38 @@ data Page = Page
     pageTrimBox :: !Rect,
     pageBleedBox :: !Rect,
     -- | tagged content and artifacts only: no content is outside both (docs/adr ADR 0183)
-    pageContent :: ![Content]
+    pageContent :: ![Content],
+    -- | the annotations of the page, in the order drawn (docs/adr ADR 0182)
+    pageAnnots :: ![Annotation]
   }
   deriving stock (Eq, Show)
+
+{- | An annotation of a page (docs/adr ADR 0182): a link over a rectangle
+of the page, without a border or an appearance.
+-}
+data Annotation = LinkAnnotation
+  { annotRect :: !Rect,
+    annotAction :: !LinkAction,
+    -- | the link of the structure tree the annotation belongs to (docs/adr ADR 0183)
+    annotLink :: !(Maybe AnnotId),
+    -- | the text of the link, as plain text writes it (docs/adr ADR 0183)
+    annotContents :: !(Maybe Text)
+  }
+  deriving stock (Eq, Show)
+
+-- | What a link does: open an external URL, as written.
+newtype LinkAction = UriAction Text
+  deriving stock (Eq, Show)
+
+{- | A URL in 7-bit ASCII (docs/adr ADR 0182): each character outside
+ASCII as the %XX of its UTF-8 bytes; the rest, a %XX written among it,
+as it is.
+-}
+asciiUri :: Text -> Text
+asciiUri = T.concatMap $ \c ->
+  if isAscii c
+    then T.singleton c
+    else T.concat [T.pack (printf "%%%02X" b) | b <- BS.unpack (TE.encodeUtf8 (T.singleton c))]
 
 {- | The embedded font program: a TrueType font goes into FontFile2, the
 bare CFF table of a font with CFF outlines into FontFile3 with the subtype
@@ -434,7 +467,8 @@ serializePdf (PdfObjects version objects trailerDict) =
 
 {- | The objects of the document. Objects are numbered: catalog, page tree,
 each page (with its content), fonts and images in order of first
-reference, then the document information.
+reference, the annotations of the pages in order (docs/adr ADR 0182),
+then the document information.
 -}
 documentObjects :: Document -> PdfObjects
 documentObjects doc =
@@ -483,11 +517,18 @@ documentObjects doc =
                   ("Metadata", ORef (afterImages + 1))
                 ]
               )
+      -- the annotations of each page, the pages in order (docs/adr ADR 0182)
+      annotBase = afterImages + length xObjs
+      annotNums = drop 1 (scanl (+) annotBase (map (length . pageAnnots) pages))
+      annotRefs = [[ORef n | n <- take (length (pageAnnots p)) [from ..]] | (p, from) <- zip pages (annotBase : annotNums)]
+      -- each annotation with its object, its page and its key in the ParentTree after the pages (docs/adr ADR 0183)
+      annotPlaces = [(n, pg, nPages + k, a) | (k, (n, (pg, a))) <- zip [0 ..] (zip [annotBase ..] [(pg, a) | (pg, p) <- zip [0 ..] pages, a <- pageAnnots p])]
+      annotObjs = [annotationObject (if isJust (annotLink a) then Just key else Nothing) a | (_, _, key, a) <- annotPlaces]
       -- the structure tree after the objects of the pages, before the information dictionary (docs/adr ADR 0183)
-      structBase = afterImages + length xObjs
+      structBase = annotBase + length annotObjs
       (tree, tagOf) = withOrphans (docStructure doc) [l | p <- pages, l <- contentLeaves (pageContent p)]
       streams = [pageStream fontNames imageNames formNames tagOf (pageContent p) | p <- pages]
-      structObjs = structureObjects structBase pageObj tree (map snd streams)
+      structObjs = structureObjects structBase pageObj tree (map snd streams) [(n, pg, key, aid) | (n, pg, key, a) <- annotPlaces, Just aid <- [annotLink a]]
       infoObj = structBase + length structObjs
       imageObjCount i = case Map.lookup i (docImages doc) of
         Just img -> 1 + maybe 0 (const 1) (imgIcc img) + maybe 0 (const 1) (imgAlpha img)
@@ -529,11 +570,15 @@ documentObjects doc =
                   ("Resources", resources),
                   ("Contents", ORef (pageObj i + 1)),
                   ("StructParents", OInt (fromIntegral i))
-                ],
+                ]
+                `withAnnots` refs,
               OStream [("Filter", OName "FlateDecode")] (flate stream)
             ]
-          | (i, (p, (stream, _))) <- zip [0 ..] (zip pages streams)
+          | (i, p, (refs, (stream, _))) <- zip3 [0 ..] pages (zip annotRefs streams)
           ]
+      -- the annotations of a page, in the order of the structure tree (/Tabs /S, docs/adr ADR 0183)
+      withAnnots (ODict kvs) refs = ODict (kvs <> [("Annots", OArr refs) | not (null refs)] <> [("Tabs", OName "S") | not (null refs)])
+      withAnnots o _ = o
       fontObjsAll = concat [fontObjects (fontBase Map.! f) (docFonts doc Map.! f) | f <- fontOrder, Map.member f (docFonts doc)]
       imageObjsAll = concat [imageObjects srgbRef (imageBase Map.! i) img | i <- imageOrder, Just img <- [Map.lookup i (docImages doc)]]
       info =
@@ -546,7 +591,7 @@ documentObjects doc =
           `addInfo` [("Trapped", OName "False"), ("GTS_PDFXVersion", OStr "PDF/X-4")]
       addInfo (ODict kvs) extra = ODict (kvs <> (if isJust (docPdfX doc) then extra else []))
       addInfo o _ = o
-      objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> srgbObjs <> formObjsAll <> xObjs <> structObjs <> [info]
+      objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> srgbObjs <> formObjsAll <> xObjs <> annotObjs <> structObjs <> [info]
       size = length objects + 1
    in PdfObjects "1.6" objects (ODict [("Size", OInt (fromIntegral size)), ("Root", ORef 1), ("Info", ORef infoObj), ("ID", OArr [OHex (docId doc), OHex (docInstanceId doc)])])
   where
@@ -606,8 +651,8 @@ each page by MCID give the ParentTree, keyed by the page's StructParents
 (its index); a leaf on several pages, or on another page than its
 element's Pg, is an MCR. The IDs of the elements are in the IDTree.
 -}
-structureObjects :: Int -> (Int -> Int) -> StructElem -> [[LeafId]] -> [Obj]
-structureObjects base pageObj root pageLeaves =
+structureObjects :: Int -> (Int -> Int) -> StructElem -> [[LeafId]] -> [(Int, Int, Int, AnnotId)] -> [Obj]
+structureObjects base pageObj root pageLeaves annots =
   let numbered = preorder root
       -- the object of each element, in preorder after the root
       objOf = zip [base + 1 ..] numbered
@@ -629,7 +674,8 @@ structureObjects base pageObj root pageLeaves =
                 [ if Just p == pg then OInt (fromIntegral mcid) else ODict [("Type", OName "MCR"), ("Pg", ORef (pageObj p)), ("MCID", OInt (fromIntegral mcid))]
                 | (p, mcid) <- Map.findWithDefault [] l places
                 ]
-              KidAnnot _ -> []
+              -- the link annotations of the link, in the order drawn (docs/adr ADR 0183)
+              KidAnnot aid -> [ODict [("Type", OName "OBJR"), ("Obj", ORef o), ("Pg", ORef (pageObj p))] | (o, p, _, aid') <- annots, aid' == aid]
             attrs = [ODict (("O", OName (atOwner a)) : atEntries a) | a <- seAttrs e]
          in ( n,
               ODict
@@ -646,13 +692,23 @@ structureObjects base pageObj root pageLeaves =
                     <> [("A", OArr attrs) | length attrs > 1]
                 )
             )
+      elemOfAnnot = Map.fromList [(aid, n) | (n, (e, _)) <- objOf, KidAnnot aid <- seKids e]
       ids = sortOn fst [(TE.encodeUtf8 t, n) | (n, (e, _)) <- objOf, Just t <- [seId e]]
       rootObj =
         ODict
           ( [ ("Type", OName "StructTreeRoot"),
               ("K", OArr [ORef (base + 1)]),
-              ("ParentTree", ODict [("Nums", OArr (concat [[OInt (fromIntegral pg), OArr [ORef (Map.findWithDefault (base + 1) l elemOfLeaf) | l <- ls]] | (pg, ls) <- zip [0 :: Int ..] pageLeaves]))]),
-              ("ParentTreeNextKey", OInt (fromIntegral (length pageLeaves)))
+              ( "ParentTree",
+                ODict
+                  [ ( "Nums",
+                      OArr
+                        ( concat [[OInt (fromIntegral pg), OArr [ORef (Map.findWithDefault (base + 1) l elemOfLeaf) | l <- ls]] | (pg, ls) <- zip [0 :: Int ..] pageLeaves]
+                            <> concat [[OInt (fromIntegral key), ORef (Map.findWithDefault (base + 1) aid elemOfAnnot)] | (_, _, key, aid) <- annots]
+                        )
+                    )
+                  ]
+              ),
+              ("ParentTreeNextKey", OInt (fromIntegral (length pageLeaves + length annots)))
             ]
               <> [("IDTree", ODict [("Names", OArr (concat [[OStr k, ORef n] | (k, n) <- ids]))]) | not (null ids)]
           )
@@ -704,7 +760,7 @@ structureText doc =
             [ case k of
                 KidElem c -> render (depth + 1) c
                 KidLeaf l -> [T.replicate (depth + 1) "  " <> quoted (Map.findWithDefault "" l texts) | Map.member l texts]
-                KidAnnot (AnnotId n) -> [T.replicate (depth + 1) "  " <> "annotation " <> tshow n]
+                KidAnnot (AnnotId n) -> [T.replicate (depth + 1) "  " <> "OBJR " <> tshow (length [() | p <- pages, LinkAnnotation {annotLink = Just (AnnotId n')} <- pageAnnots p, n' == n])]
             | k <- seKids e
             ]
    in T.unlines (render 0 tree)
@@ -716,6 +772,26 @@ structureText doc =
       Moved _ cs -> concatMap tagged cs
     objText o = TE.decodeUtf8 (BL.toStrict (B.toLazyByteString (serialize o)))
     quoted t = "\"" <> t <> "\""
+
+{- | A link annotation (docs/adr ADR 0182): no border, no appearance, the
+print flag (PDF/A-2 asks for it; with no appearance nothing is printed),
+and the action that opens the URL in ASCII; its text in Contents and,
+when it is in the structure tree, its key of the ParentTree (docs/adr
+ADR 0183).
+-}
+annotationObject :: Maybe Int -> Annotation -> Obj
+annotationObject key (LinkAnnotation r (UriAction u) _ contents) =
+  ODict
+    ( [ ("A", ODict [("S", OName "URI"), ("URI", OStr (TE.encodeUtf8 (asciiUri u)))]),
+        ("Border", OArr [OInt 0, OInt 0, OInt 0]),
+        ("F", OInt 4),
+        ("Rect", rectObj r),
+        ("Subtype", OName "Link"),
+        ("Type", OName "Annot")
+      ]
+        <> [("Contents", pdfTextString t) | Just t <- [contents]]
+        <> [("StructParent", OInt (fromIntegral k)) | Just k <- [key]]
+    )
 
 {- | The Form XObjects of PDF figures from object @base@ (ADR 0008): each
 form, then the objects of its page not yet written, in the order of the

@@ -55,7 +55,9 @@ genInlineWith mr =
       Color <$> genSpan <*> genText <*> sub,
       CharStyle <$> genSpan <*> genText <*> sub,
       Note <$> genSpan <*> Gen.int (Range.linear 1 99) <*> sub,
-      Sidenote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> sub
+      Sidenote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> sub,
+      -- a link to an external URL (docs/adr ADR 0182)
+      Link <$> genSpan <*> genText <*> sub
     ]
   where
     sub = Gen.list (Range.linear 0 3) (genInlineWith mr)

@@ -5,6 +5,7 @@ gives the boxes it composes.
 -}
 module Golem.Driver.Pdf.Structure
   ( structureTree,
+    linksOfLeaves,
   )
 where
 
@@ -14,6 +15,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Doc.IR
 import Golem.Driver.Pdf.Flow
@@ -38,12 +40,13 @@ table of contents, the index and so on), each unit an element of its
 kind, the Notes after their marks. @figureAttrs@ gives the attributes of
 the Figure of each figure by its unit (its BBox, from the drawing).
 -}
-structureTree :: FlowEnv -> [(Int, Unit)] -> (Int -> [P.Attribute]) -> P.StructElem
+structureTree :: FlowEnv -> [(Int, Unit)] -> (Int -> [P.Attribute]) -> (P.StructElem, Map P.AnnotId T.Text)
 structureTree fe units figureAttrs =
   let body = [(uFrames u, n) | (i, u) <- units, not (isEndNote u), n <- unitNodes i u]
       kids = concatMap nodeKids (build body)
       root = (P.structElem P.SDocument kids) {P.seAttrs = [P.Attribute "Layout" [("WritingMode", P.OName "TbRl")] | pgVertical geom]}
-   in numberNotes root
+      tree = numberNotes root
+   in (withoutTexts tree, Map.fromList (linkTexts tree))
   where
     inp = feInput fe
     geom = feGeom fe
@@ -59,6 +62,16 @@ structureTree fe units figureAttrs =
       NodeElem role ns -> P.KidElem (P.structElem (roleType role) [toKid (site, m) | m <- ns])
       NodeNote sp k num nbody -> P.KidElem (noteElem sp k num nbody)
       NodeSidenote sp num snBody -> P.KidElem (sidenoteElem sp num snBody)
+      -- a link: its text, then the annotations of its lines (docs/adr ADR 0183)
+      NodeLink u xs ns -> P.KidElem (linkElem site u xs [toKid (site, m) | m <- ns] ns)
+    linkElem site u xs kids ns =
+      let first = case ns of
+            NodeLeaf k : _ -> k
+            _ -> 0
+          shown = T.concat (map inlineText xs)
+          contents = if shown == u then u else shown <> "（" <> u <> "）"
+          -- the text rides in an attribute of no owner of the PDF until 'withoutTexts' takes it out
+       in (P.structElem P.SLink (kids <> [P.KidAnnot (P.AnnotId (site <> [first]))])) {P.seAttrs = [P.Attribute "Golem" [("Contents", P.OStr (TE.encodeUtf8 contents))]]}
     roleType = \case
       RoleLabel -> P.SLbl
       RoleRuby -> P.SRuby
@@ -175,6 +188,33 @@ structureTree fe units figureAttrs =
       NKid k -> [k]
       NMarker e -> [P.KidElem e]
       NTerm ks -> [P.KidElem (P.structElem P.SLbl ks)]
+
+{- | The Link of each leaf of the tree inside one, by the annotations of
+the Link (docs/adr ADR 0183): an annotation is of the Link that holds the
+first box of its line.
+-}
+linksOfLeaves :: P.StructElem -> Map P.LeafId P.AnnotId
+linksOfLeaves = Map.fromList . go Nothing
+  where
+    go link e =
+      let here = case [a | P.KidAnnot a <- P.seKids e] of
+            (a : _) -> Just a
+            [] -> link
+       in concat [case k of P.KidLeaf l -> [(l, a) | Just a <- [here]]; P.KidElem c -> go here c; P.KidAnnot _ -> [] | k <- P.seKids e]
+
+-- | The text of each link, for the Contents of its annotations: as plain text writes it (docs/adr ADR 0182).
+linkTexts :: P.StructElem -> [(P.AnnotId, T.Text)]
+linkTexts e =
+  [(a, t) | P.seType e == P.SLink, P.KidAnnot a <- P.seKids e, P.Attribute "Golem" [("Contents", P.OStr b)] <- P.seAttrs e, let t = TE.decodeUtf8 b]
+    <> concat [linkTexts c | P.KidElem c <- P.seKids e]
+
+-- | The tree without the texts of its links, which 'linkTexts' has taken.
+withoutTexts :: P.StructElem -> P.StructElem
+withoutTexts e =
+  e
+    { P.seAttrs = [a | a <- P.seAttrs e, P.atOwner a /= "Golem"],
+      P.seKids = [case k of P.KidElem c -> P.KidElem (withoutTexts c); _ -> k | k <- P.seKids e]
+    }
 
 -- | The IDs of the Notes, note-1 on in the order of the tree.
 numberNotes :: P.StructElem -> P.StructElem

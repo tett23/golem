@@ -305,12 +305,13 @@ bibliographyFormatTests =
         assertBool (T.unpack page) (not ("href=\"javascript" `T.isInfixOf` page))
         css' <- TIO.readFile (tmp </> "build/html/style.css")
         assertBool (T.unpack css') (not ("cs-url" `T.isInfixOf` css')),
-    testCase "PDF: the URL of an entry is in the character style url" $ do
+    testCase "PDF: the URL of an entry is in the character style url, in a link (docs/adr ADR 0182)" $ do
       (_, m) <- bibPartsOf "bibliography = [\"refs.json\"]" [("refs.json", urlRefsJson)]
       case bibliographyLines m [("jlreq", 1)] of
         -- the number its own inline: the label of the entry in the structure tree (docs/adr ADR 0183)
-        [[Text _ number, Text _ before, CharStyle _ "url" [Text _ u], Text _ rest]] -> do
+        [[Text _ number, Text _ before, Link _ u0 [CharStyle _ "url" [Text _ u]], Text _ rest]] -> do
           number @?= "[1] "
+          u0 @?= u
           before @?= "「日本語組版処理の要件」、W3C、2020、"
           u @?= "https://www.w3.org/TR/jlreq/"
           rest @?= "（2026年10月16日閲覧）。"

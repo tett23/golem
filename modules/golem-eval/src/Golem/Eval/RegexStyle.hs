@@ -78,6 +78,7 @@ applyRegexStyles rules d
       Kenten sp k xs -> Kenten sp k (map sidenotes xs)
       Color sp c xs -> Color sp c (map sidenotes xs)
       CharStyle sp c xs -> CharStyle sp c (map sidenotes xs)
+      Link sp u xs -> Link sp u (map sidenotes xs)
       Ruby sp r segs -> Ruby sp r [s {rsBase = map sidenotes (rsBase s)} | s <- segs]
       other -> other
 
@@ -106,6 +107,8 @@ targetOf = \case
   Kenten _ _ xs -> T.concat (map targetOf xs)
   Color _ _ xs -> T.concat (map targetOf xs)
   CharStyle _ _ xs -> T.concat (map targetOf xs)
+  -- the text of a link, as that of a character style (docs/adr ADR 0182)
+  Link _ _ xs -> T.concat (map targetOf xs)
   LineBreak _ -> "\n"
   IndexMark _ _ -> ""
   ChannelItem _ _ -> ""
@@ -168,6 +171,13 @@ piecesOfOne labels p = \case
           -- a boundary inside the base: each base is wrapped inside, and the ruby is not wrapped
           let starts = scanl (+) p [sum (map width (rsBase s)) | s <- segs]
            in [(Nothing, Ruby sp r [s {rsBase = wrapRuns labels q (rsBase s)} | (s, q) <- zip segs starts])]
+  {- a link is not split (docs/adr ADR 0182): wrapped whole when its
+  characters have the same regex styles, otherwise wrapped inside -}
+  x@(Link sp u xs) -> case [labelAt labels i | i <- [p .. p + width x - 1]] of
+    [] -> [(Just [], x)]
+    l : rest
+      | all (== l) rest -> [(Just l, x)]
+      | otherwise -> [(Nothing, Link sp u (wrapRuns labels p xs))]
   x@(LineBreak _) -> [(Nothing, x)]
   x@(Note {}) -> [(Nothing, x)]
   x@(Sidenote {}) -> [(Nothing, x)]
@@ -200,3 +210,4 @@ spanOf = \case
   LineBreak s -> s
   Aki s _ -> s
   ChannelItem s _ -> s
+  Link s _ _ -> s

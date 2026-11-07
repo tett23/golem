@@ -290,6 +290,8 @@ data InlineNode
     NodeNote !SrcSpan !Int !Int [Inline]
   | -- | the body of a sidenote marked here: its span, its number and its body
     NodeSidenote !SrcSpan !Int [Inline]
+  | -- | a link (docs/adr ADR 0182): its URL, its inlines and what it holds
+    NodeLink !Text [Inline] [InlineNode]
   deriving stock (Eq, Show)
 
 -- | The elements of inlines: the label of 'ceLabelInlines', ruby, its base and reading, a reference and code.
@@ -346,6 +348,12 @@ walk env st@(LeafState next cur seen) inl = case inl of
         (st2, after) = freshLeaf st1
         ref = [NodeElem RoleReference [NodeLeaf next] | not (null mark)]
      in (st2, ref <> [NodeSidenote sp n body, after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
+  -- a link is an element; its look is that of the link (docs/adr ADR 0182)
+  Link _ u xs ->
+    let (st1, ns, ps) = walkAll restyledEnv (LeafState (next + 1) next seen) xs
+        LeafState next1 _ seen1 = st1
+        (st2, after) = freshLeaf (LeafState next1 cur seen1)
+     in (st2, [NodeLink u xs (NodeLeaf next : ns), after], ps)
   Ref {} -> element RoleReference (\st' -> (st', [], [(leafOf st', src, p) | (src, p) <- piecesOf env inl]))
   Cite {} -> element RoleReference (\st' -> (st', [], [(leafOf st', src, p) | (src, p) <- piecesOf env inl]))
   _ -> (st, [], [(cur, src, p) | (src, p) <- piecesOf env inl])
@@ -410,6 +418,8 @@ piecesOf env inl = case inl of
   Text sp t -> [((ceSizeSource env, pieceSpan sp t i p), p) | (i, p) <- textPiecesAt lk t]
   Color _ _ xs -> restyled xs
   CharStyle _ _ xs -> restyled xs
+  -- the target of a link is a look of the characters inside (docs/adr ADR 0182)
+  Link _ _ xs -> restyled xs
   -- the shape is a look of the characters inside; the inner kenten wins (golem-driver ADR 0019)
   Kenten _ sh xs -> concatMap (piecesOf env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}}) xs
   Ruby sp _ segs -> at sp (rubyPieces env segs)
@@ -584,6 +594,7 @@ baseChars env lk inl = case inl of
   Text _ t -> each t
   Color _ _ xs -> inner xs
   CharStyle _ _ xs -> inner xs
+  Link _ _ xs -> inner xs
   Kenten _ _ xs -> concatMap (baseChars env lk) xs
   Tcy _ t -> each t
   Number _ n _ -> each (T.pack (show n))
@@ -612,6 +623,7 @@ withRuby = \case
   LineBreak s -> LineBreak s
   Aki s a -> Aki s a
   ChannelItem s c -> ChannelItem s c
+  Link s u xs -> Link s u (map withRuby xs)
 
 -- | The advance of a character in a look, in sp.
 advance :: ComposeEnv -> Look -> Char -> Sp
@@ -877,7 +889,8 @@ padCode = \case
 ADR 0008), and inside each element where the patterns allow (docs/adr/0179).
 The patterns see each element without its trailing hyphens and dashes;
 an element with a hyphen or dash left in it, or a word kept whole by
-explicit-hyphen-penalty 10000, gets no pattern hyphens.
+explicit-hyphen-penalty 10000, gets no pattern hyphens. A word of a link
+is one box (docs/adr ADR 0182).
 -}
 wordItems :: ComposeEnv -> Look -> Text -> [Item]
 wordItems env lk word =
@@ -897,6 +910,7 @@ wordItems env lk word =
         x : rest -> reverse (f x : rest)
         [] -> [f ""]
       elements
+        | isJust (lkLink lk) = [[word]]
         | T.any isHyphen word = if explicitP >= infPenalty then [[word]] else map pieces (explicitParts word)
         | otherwise = [pieces word]
       rotated = ceVertical env

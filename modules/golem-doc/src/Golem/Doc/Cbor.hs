@@ -164,6 +164,8 @@ inlineT rt = \case
   Aki s (AkiZw r) -> tagged 18 [spanT s, TList [int (numerator r), int (denominator r)], TNull]
   Aki s (AkiAbs x) -> tagged 18 [spanT s, TNull, int (unSp x)]
   ChannelItem s (ChannelItemData c k r body) -> tagged 19 [spanT s, text c, opt text k, opt text r, inlinesTerm body]
+  -- a link to an external URL (docs/adr ADR 0182)
+  Link s u xs -> tagged 20 [spanT s, text u, sub xs]
   where
     sub = list (inlineT rt)
 
@@ -463,6 +465,8 @@ termInline rd t =
         (18, [TNull, x]) -> Aki s . AkiAbs . Sp . toInteger <$> asNatural x
         -- an item of a channel of a plugin (golem-doc ADR 0007)
         (19, [c, k, r, x]) -> fmap (ChannelItem s) (ChannelItemData <$> asText c <*> asOpt asText k <*> asOpt asText r <*> termInlinesE x)
+        -- a link to an external URL (docs/adr ADR 0182)
+        (20, [u, x]) -> Link s <$> asText u <*> sub x
         -- 1, 2 and 3 (strong, bold, italic) are retired: they are character styles (docs/adr ADR 0005)
         _ -> bad "インラインの種類"
     _ -> bad "インライン"

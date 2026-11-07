@@ -461,7 +461,7 @@ colourTests =
 formDoc :: [Mark] -> [(FormRef, ImportedPage)] -> Document
 formDoc marks forms =
   golemDoc
-    { docPages = [Page box box box [Tagged (LeafId [0]) marks]],
+    { docPages = [Page box box box [Tagged (LeafId [0]) marks] []],
       docForms = Map.fromList [(r, ImportedForm p) | (r, p) <- forms]
     }
   where
@@ -470,7 +470,7 @@ formDoc marks forms =
 golemDoc :: Document
 golemDoc =
   Document
-    { docPages = [Page box box box [Tagged (LeafId [0]) [SetColor (Swatch 0 0 0 100), Rule (Rect 0 0 65536 65536)]]],
+    { docPages = [Page box box box [Tagged (LeafId [0]) [SetColor (Swatch 0 0 0 100), Rule (Rect 0 0 65536 65536)]] []],
       docFonts = Map.empty,
       docImages = Map.empty,
       docForms = Map.empty,

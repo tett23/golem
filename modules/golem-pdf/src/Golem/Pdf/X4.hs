@@ -242,7 +242,17 @@ verify (PdfObjects version objects trailer) =
       OStream kvs _ -> any (usesDeviceRgb . snd) kvs
       _ -> False
     forbiddenNames = ["JavaScript", "JS", "URI", "Launch", "GoToR"]
-    forbidden = nubOrd' (concatMap namesIn (trailer : objects))
+    forbidden = nubOrd' (concatMap namesIn (trailer : zipWith excused [1 ..] objects))
+    {- the URI of the action of a link annotation in the /Annots of a page
+    is not counted (docs/adr ADR 0182); a URI elsewhere, and the other
+    names inside the annotation, are -}
+    annotNums = [n | p <- pages, Just (OArr xs) <- [deref <$> look "Annots" p], ORef n <- xs]
+    excused n o
+      | n `elem` annotNums, look "Subtype" o == Just (OName "Link"), ODict kvs <- o = ODict [(k, if k == "A" then uriless v else v) | (k, v) <- kvs]
+      | otherwise = o
+    uriless = \case
+      ODict kvs | lookup "S" kvs == Just (OName "URI") -> ODict [(k, v) | (k, v) <- kvs, k /= "S", k /= "URI"]
+      o -> o
     namesIn = \case
       ODict kvs -> [k | (k, _) <- kvs, k `elem` forbiddenNames] <> concatMap (namesIn . snd) kvs
       OStream kvs _ -> [k | (k, _) <- kvs, k `elem` forbiddenNames] <> concatMap (namesIn . snd) kvs

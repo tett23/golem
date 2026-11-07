@@ -25,8 +25,11 @@ and order matter.
 newtype LeafId = LeafId [Int]
   deriving stock (Eq, Ord, Show)
 
--- | A link annotation, by its place among the annotations of the document (docs/adr ADR 0182).
-newtype AnnotId = AnnotId Int
+{- | The link annotations of a link (docs/adr ADR 0182): those of the
+pages that name it, one for each line of the link. The caller names
+links; only their equality and order matter.
+-}
+newtype AnnotId = AnnotId [Int]
   deriving stock (Eq, Ord, Show)
 
 -- | The standard structure types of ISO 32000-1 14.8.4 that Golem writes.

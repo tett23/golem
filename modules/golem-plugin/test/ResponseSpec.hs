@@ -75,6 +75,16 @@ responseTests =
       channelTests,
       malformedResponseTests,
       malformedDescriptionTests,
+      -- docs/adr ADR 0182: the host reports bad output as G06009
+      testCase "a link the plugin returns comes back; a URL that fails the checks, or a link inside a link, is bad output" $ do
+        let ok = Link callSpan "https://example.com/" [Text callSpan "例"]
+            respond is = cbor (TList [inlinesTerm is, TList []])
+        p <- answering (respond [ok])
+        fmap fst (shout p) @?= Right [ok]
+        bad <- answering (respond [Link callSpan "javascript:alert(1)" [Text callSpan "x"]])
+        shout bad @?= Left (BadOutput "リンクにできる URL は http と https だけです: javascript:alert(1)")
+        nested <- answering (respond [Link callSpan "https://example.com/" [ok]])
+        shout nested @?= Left (BadOutput "リンクの中にリンクになる要素は置けません: link"),
       testCase "a hash as an argument is bad output before the plugin runs" $ do
         p <- answering (withDiagnostics [])
         callCommand p "shout" [PluginPositional (VHash mempty)] [] callSpan @?= Left (BadOutput "ハッシュはプラグインに渡せません"),

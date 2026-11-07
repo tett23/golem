@@ -51,6 +51,7 @@ import Data.Text.Internal qualified as TI
 import Data.Text.Unsafe (lengthWord8)
 import Golem.Doc.FigureWidth (parseFigureWidth)
 import Golem.Doc.IR
+import Golem.Doc.Url (UrlProblem (..), checkUrl, linkElements, urlProblemMessage)
 import Golem.Eval.Analysis (analyse)
 import Golem.Eval.Builtin
 import Golem.Eval.Expr
@@ -311,6 +312,7 @@ unwritableText = concatMap blockDiags . docBlocks
       LineBreak {} -> []
       Aki {} -> []
       ChannelItem sp c -> concatMap (at sp) (ciChannel c : maybe [] pure (ciKey c) <> maybe [] pure (ciReading c)) <> inlines (ciBody c)
+      Link _ _ xs -> inlines xs
 
 -- ------------------------------------------------------------------ newlines
 
@@ -767,6 +769,7 @@ nameErrors ctx is bs =
       Note _ _ xs -> xs
       Sidenote _ _ xs -> xs
       ChannelItem _ c -> ciBody c
+      Link _ _ xs -> xs
       Ruby _ _ segs -> concat [mapMaybe withRubyInline (rsBase g) | g <- segs]
       _ -> []
     withRubyInline :: InlineNoRuby -> Maybe Inline
@@ -799,6 +802,7 @@ fillKenten ctx = \case
   CharStyle s c xs -> CharStyle s c (map (fillKenten ctx) xs)
   Note s n xs -> Note s n (map (fillKenten ctx) xs)
   Sidenote s n xs -> Sidenote s n (map (fillKenten ctx) xs)
+  Link s u xs -> Link s u (map (fillKenten ctx) xs)
   i -> i
 
 -- | 'fillKenten' in the inlines of blocks.
@@ -2183,6 +2187,7 @@ builtinWith ctx inHeading sp b args slots = do
       _ -> err "G02021" sp "cite には書誌データのキーを一つ書きます" >> pure []
     Overridable BRuby -> ruby ctx sp slots
     Fixed BAki -> aki sp args slots
+    Fixed BLink -> link ctx inHeading sp args slots
   where
     refTo k = \case
       [v] | validLabel (argText v) -> pure [Ref sp k (argText v)]
@@ -2210,6 +2215,51 @@ aki sp args slots = case (args, slots) of
     akiInInt64 = \case
       AkiZw r -> inInt64 (numerator r) && inInt64 (denominator r)
       AkiAbs x -> inInt64 (unSp x)
+
+{- | @[link "URL": 文字]@ (docs/adr ADR 0182): one positional argument, a
+string literal or an expression of a string, and no keyword argument;
+otherwise G02124, with a hint to quote a URL written as a word before a
+slot that starts with //. A URL that fails the checks is G02125, G02126
+or G02127, and an element inside that is a link itself G02128; then no
+link is made. Without a slot, the text is the URL in the character
+style url.
+-}
+link :: EvalContext -> Bool -> SrcSpan -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
+link ctx inHeading sp args slots = case (args, slots) of
+  (_, _ : _ : _) -> err "G02038" sp "link の散文スロットは一つまでです" >> pure []
+  ([A.Located _ (A.Positional v)], _) -> do
+    url <- case v of
+      A.StringLit t -> pure (Right t)
+      A.ExprArg _ ->
+        argValue ctx sp v >>= \case
+          Right (VString t) -> pure (Right t)
+          Right _ -> pure (Left Nothing)
+          Left d -> pure (Left (Just d))
+      _ -> pure (Left Nothing)
+    case url of
+      Left (Just d) -> report d >> pure []
+      Left Nothing -> wrong
+      Right u -> case checkUrl u of
+        Just p -> err (problemCode p) sp (urlProblemMessage p u) >> pure []
+        Nothing -> do
+          body <- case slots of
+            [s] -> evalInlines ctx inHeading s
+            _ -> pure [CharStyle sp "url" [Text sp u]]
+          case linkElements body of
+            [] -> pure [Link sp u body]
+            es -> mapM_ (\e -> err "G02128" sp ("リンクの中にリンクになる要素は置けません: " <> e)) es >> pure []
+  _ -> wrong
+  where
+    wrong = err "G02124" sp ("link の引数が誤っています" <> hint) >> pure []
+    -- [link https://...: ...]: the : after the scheme opened the slot
+    hint = case (args, slots) of
+      ([A.Located _ (A.Positional (A.Word _))], [A.Located _ (A.Text t) : _])
+        | "//" `T.isPrefixOf` t -> "。URL は \"https://...\" のように引用符で囲みます"
+      _ -> ""
+    problemCode = \case
+      UrlMalformed -> "G02125"
+      UrlScheme -> "G02126"
+      UrlHost -> "G02127"
 
 -- | What the amount of an [aki] may be (the message of G02055).
 akiAmounts :: Text

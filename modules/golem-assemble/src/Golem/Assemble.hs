@@ -242,6 +242,7 @@ inlineText = \case
   Kenten _ _ xs -> foldMap inlineText xs
   Color _ _ xs -> foldMap inlineText xs
   CharStyle _ _ xs -> foldMap inlineText xs
+  Link _ _ xs -> foldMap inlineText xs
   Tcy _ t -> t
   Number _ n _ -> T.pack (show n)
   _ -> ""
@@ -776,6 +777,7 @@ bodyInlines body = concatMap flatten $ case body of
         Kenten _ _ xs -> concatMap flatten xs
         Color _ _ xs -> concatMap flatten xs
         CharStyle _ _ xs -> concatMap flatten xs
+        Link _ _ xs -> concatMap flatten xs
         Note _ _ xs -> concatMap flatten xs
         Sidenote _ _ xs -> concatMap flatten xs
         _ -> []

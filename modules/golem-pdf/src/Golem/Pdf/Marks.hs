@@ -11,13 +11,14 @@ module Golem.Pdf.Marks
     markRules,
     framePage,
     frameOrigin,
+    framePageWith,
     registrationRects,
     checkRegistration,
   )
 where
 
 import Golem.Pdf.Rect (Rect (..))
-import Golem.Pdf.Writer (ArtifactKind (..), Content (..), Mark (..), Move (..), Page (..), Sp (..), turnRect)
+import Golem.Pdf.Writer (Annotation (..), ArtifactKind (..), Content (..), Mark (..), Move (..), Page (..), Sp (..), turnRect)
 
 data MarkStyle = Japanese | Western
   deriving stock (Eq, Show)
@@ -114,14 +115,19 @@ after it in the registration colour (ADR 0007), as a Pagination artifact
 (docs/adr ADR 0183).
 -}
 framePage :: Maybe MarkStyle -> Sp -> (Sp, Sp) -> [Content] -> Page
-framePage marks bleed size content =
+framePage marks bleed size content = framePageWith marks bleed size content []
+
+-- | 'framePage' with the annotations of the page, moved with the content (docs/adr ADR 0182).
+framePageWith :: Maybe MarkStyle -> Sp -> (Sp, Sp) -> [Content] -> [Annotation] -> Page
+framePageWith marks bleed size content annots =
   let s = sheet marks bleed size
       m = shOrigin s
       drawn = [Artifact Pagination [RegistrationRules (markRules st bleed size)] | Just st <- [marks]]
       content'
         | m == 0 = content
         | otherwise = [Moved (MoveBy m m) (content <> drawn)]
-   in Page (shMedia s) (shTrim s) (shBleed s) content'
+      moved a@LinkAnnotation {annotRect = Rect x y w h} = a {annotRect = Rect (x + m) (y + m) w h}
+   in Page (shMedia s) (shTrim s) (shBleed s) content' (map moved annots)
 
 -- | Where 'framePage' moves the content of a page to: the lower left corner of the trimmed page, on both axes.
 frameOrigin :: Maybe MarkStyle -> Sp -> (Sp, Sp) -> Sp
