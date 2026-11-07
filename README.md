@@ -364,8 +364,8 @@ GOLEM="$(cabal list-bin golem)" sh scripts/manual/build.sh manual-dev  # 一冊�
 Git のリポジトリの外で組むときは、環境変数 `GOLEM_MANUAL_COMMIT` と `GOLEM_MANUAL_TAG` で値を渡す。
 スクリプトのテストは `scripts/manual/test.sh` にある。
 
-開発者のマニュアルの図は、`manual-dev/images/src/` の SVG が原稿である。
-SVG を直したら、`sh scripts/manual/outline-figures.sh` で、文字を輪郭にした `manual-dev/images/` の SVG を作り直し、両方をコミットする。
+二つのマニュアルの SVG の図は、`manual/images/src/` と `manual-dev/images/src/` の SVG が原稿である。
+SVG を直したら、`sh scripts/manual/outline-figures.sh` で、文字を輪郭にした一つ上の `images/` の SVG を作り直し、両方をコミットする（`sh scripts/manual/outline-figures.sh manual workflow` のように、マニュアルと図を選べる）。
 このスクリプトは Inkscape 1.x を使うので、図を直すときだけ Inkscape を入れておく（`INKSCAPE` で実行ファイルを選べる）。
 組むときには実行しないので、マニュアルを組むだけなら Inkscape は要らない。
 輪郭の SVG が原稿から作られたことは、`sh scripts/manual/check-figures.sh` で確かめられる（CI も確かめる）。
