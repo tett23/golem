@@ -1,7 +1,12 @@
 -- | itemNumbers and the number formats of lists (golem-driver ADR 0013).
 module ListMarkersSpec (tests) where
 
+import Data.Text (Text)
+import Data.Text qualified as T
 import Golem.Assemble.ListMarkers
+import Golem.Numerals (kanji)
+import Golem.Numerals.Format (Legacy (..))
+import Golem.Numerals.Notation
 import Golem.Doc.IR
 import Golem.Syntax.Span
 import Test.Tasty
@@ -21,37 +26,32 @@ tests =
         itemNumbers [item Nothing, item Nothing, item Nothing] @?= [1, 2, 3]
         itemNumbers [item Nothing, item (Just 10), item Nothing] @?= [1, 10, 11],
       testCase "formatListNumber writes a number in each notation, or cannot" $ do
-        formatListNumber NsArabic 3 @?= Just "3"
-        formatListNumber NsKanji 3 @?= Just "三"
-        formatListNumber NsCircled 3 @?= Just "③"
-        formatListNumber NsCircled 21 @?= Just "㉑"
-        formatListNumber NsCircled 50 @?= Just "㊿"
-        formatListNumber NsCircled 51 @?= Nothing
-        formatListNumber NsLowerAlpha 3 @?= Just "c"
-        formatListNumber NsLowerAlpha 27 @?= Just "aa"
-        formatListNumber NsUpperAlpha 52 @?= Just "AZ"
-        formatListNumber NsUpperRoman 3 @?= Just "III"
-        formatListNumber NsLowerRoman 1994 @?= Just "mcmxciv"
-        formatListNumber NsUpperRoman 0 @?= Nothing
-        formatListNumber NsUpperRoman 4000 @?= Nothing
-        formatListNumber NsAiueo 3 @?= Just "ウ"
-        formatListNumber NsAiueo 46 @?= Just "ン"
-        formatListNumber NsAiueo 47 @?= Nothing
-        formatListNumber NsIroha 3 @?= Just "ハ"
-        formatListNumber NsIroha 47 @?= Just "ス"
-        formatListNumber NsIroha 48 @?= Nothing,
-      testCase "a number format has one placeholder and doubles literal braces; each error names its reason" $ do
+        formatListNumber (NsNotation arabic) 3 @?= Just "3"
+        formatListNumber (NsNotation kanjiNotation) 3 @?= Just "三"
+        formatListNumber (NsNotation circledNotation) 51 @?= Nothing
+        formatListNumber (NsNotation asterisksNotation) 3 @?= Just "***"
+        formatListNumber NsBook 3 @?= Just "3",
+      testCase "the rows of the old placeholders write what formatListNumber wrote (docs/adr/0177)" $
+        sequence_
+          [ formatListNumber (NsNotation n) k @?= oldFormatListNumber old k
+          | (old, n) <- [(OldArabic, arabic), (OldKanji, kanjiNotation), (OldCircled, circledNotation), (OldLowerAlpha, lowerAlphaNotation), (OldUpperAlpha, upperAlphaNotation), (OldLowerRoman, lowerRomanNotation), (OldUpperRoman, upperRomanNotation), (OldIroha, irohaNotation), (OldAiueo, aiueoNotation)],
+            k <- [0 .. 200] <> [3998, 3999, 4000, 4001]
+          ],
+      testCase "a number format has one placeholder; the old forms are read and reported; each error names its reason" $ do
         parseNumberFormat "{n}." @?= Right (NumberFormat "" NsBook ".")
-        parseNumberFormat "({a})" @?= Right (NumberFormat "(" NsLowerAlpha ")")
-        parseNumberFormat "{{{n}}}" @?= Right (NumberFormat "{" NsBook "}")
-        parseNumberFormat "第{一}" @?= Right (NumberFormat "第" NsKanji "")
+        parseNumberFormat "({a})" @?= Right (NumberFormat "(" (NsNotation lowerAlphaNotation) ")")
+        parseNumberFormat "({n:lower-alpha})" @?= Right (NumberFormat "(" (NsNotation lowerAlphaNotation) ")")
+        parseNumberFormatLegacy "{{{n}}}" @?= Right (NumberFormat "{" NsBook "}", [LegacyBraces, LegacyBraces])
+        parseNumberFormatLegacy "\\{{n}\\}" @?= Right (NumberFormat "{" NsBook "}", [])
+        parseNumberFormatLegacy "第{一}" @?= Right (NumberFormat "第" (NsNotation kanjiNotation) "", [LegacySample "一" kanjiNotation])
+        parseNumberFormat "{n:asterisks}" @?= Right (NumberFormat "" (NsNotation asterisksNotation) "")
         parseNumberFormat "x" @?= Left "番号の差し込みがありません"
         parseNumberFormat "{n}{n}" @?= Left "番号の差し込みが二つ以上あります"
         parseNumberFormat "{x}" @?= Left "表にない差し込みです: {x}"
-        parseNumberFormat "{n" @?= Left "{ が閉じていません。差し込みでない { は {{ と書きます"
-        parseNumberFormat "{n}}" @?= Left "対応する { のない } があります。差し込みでない } は }} と書きます",
-      testCase "renderNumberFormat writes a format back" $
-        mapM_ (\f -> fmap renderNumberFormat (parseNumberFormat f) @?= Right f) ["{n}.", "({a})", "{{{n}}}", "{①}", "{イ}"],
+        parseNumberFormat "{n" @?= Left "閉じていない { があります。文字の { は \\{ と書きます"
+        parseNumberFormat "{n}}" @?= Left "対応する { のない } があります。文字の } は \\} と書きます",
+      testCase "renderNumberFormat writes a format in the new way" $
+        mapM_ (\(f, g) -> fmap renderNumberFormat (parseNumberFormat f) @?= Right g) [("{n}.", "{n}."), ("({a})", "({n:lower-alpha})"), ("{{{n}}}", "\\{{n}\\}"), ("{①}", "{n:circled}"), ("{n:iroha}", "{n:iroha}")],
       testCase "a list deeper than the given styles keeps the last style" $
         map (atDepth (pure 'a' <> pure 'b')) [1, 2, 3] @?= "abb",
       testCase "numbered items are listed with their numbers and depths, at their first blocks" $ do
@@ -60,3 +60,44 @@ tests =
             outer = Block sp Nothing (OrderedList [item Nothing, ListItem Nothing [Block second Nothing (Paragraph Nothing []), inner]])
         listSites [outer] @?= [ListSite 1 1 sp, ListSite 1 2 second, ListSite 2 5 sp]
     ]
+
+-- | The notations of formatListNumber before docs/adr/0177, as it was: the reference of the table.
+data OldStyle = OldArabic | OldKanji | OldCircled | OldLowerAlpha | OldUpperAlpha | OldLowerRoman | OldUpperRoman | OldIroha | OldAiueo
+
+oldFormatListNumber :: OldStyle -> Integer -> Maybe Text
+oldFormatListNumber st n = case st of
+  OldArabic -> Just (T.pack (show n))
+  OldKanji -> Just (kanji n)
+  OldCircled
+    | n >= 1 && n <= 20 -> Just (T.singleton (toEnum (0x2460 + fromInteger n - 1)))
+    | n >= 21 && n <= 35 -> Just (T.singleton (toEnum (0x3251 + fromInteger n - 21)))
+    | n >= 36 && n <= 50 -> Just (T.singleton (toEnum (0x32B1 + fromInteger n - 36)))
+    | otherwise -> Nothing
+  OldLowerAlpha -> alpha 'a'
+  OldUpperAlpha -> alpha 'A'
+  OldLowerRoman -> T.toLower <$> roman
+  OldUpperRoman -> roman
+  OldIroha -> fromList "イロハニホヘトチリヌルヲワカヨタレソツネナラムウヰノオクヤマケフコエテアサキユメミシヱヒモセス"
+  OldAiueo -> fromList "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン"
+  where
+    alpha base
+      | n < 1 = Nothing
+      | otherwise = Just (T.pack (letters n))
+      where
+        letters k
+          | k <= 0 = []
+          | otherwise = let (q, r) = (k - 1) `divMod` 26 in letters q <> [toEnum (fromEnum base + fromInteger r)]
+    roman
+      | n < 1 || n > 3999 = Nothing
+      | otherwise = Just (T.pack (go n numerals))
+      where
+        go 0 _ = ""
+        go k ((v, s) : rest)
+          | k >= v = s <> go (k - v) ((v, s) : rest)
+          | otherwise = go k rest
+        go _ [] = ""
+        numerals = [(1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"), (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
+    fromList :: Text -> Maybe Text
+    fromList cs
+      | n >= 1 && n <= toInteger (T.length cs) = Just (T.singleton (T.index cs (fromInteger n - 1)))
+      | otherwise = Nothing

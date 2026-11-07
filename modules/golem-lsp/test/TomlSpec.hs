@@ -79,7 +79,7 @@ tomlTests =
           exactly "style.toml" "[paragraph-styles.quote]\nbased-on = ▮" ["\"body\"", "\"caption\"", "\"sidenote\"", "\"verse\""],
           exactly "style.toml" "[fonts.heading]\nja = \"a.otf\"\n[character-styles.em]\nfont = ▮" ["\"heading\""],
           exactly "style.toml" "[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n[character-styles.em]\ncolor = ▮" ["\"accent\""],
-          exactly "style.toml" "[character-styles.em]\n[paragraph-styles.body]\nregex-styles = [\n  { pattern = 'x', style = ▮" ["\"bold\"", "\"code\"", "\"italic\"", "\"strong\"", "\"url\"", "\"em\""],
+          exactly "style.toml" "[character-styles.em]\n[paragraph-styles.body]\nregex-styles = [\n  { pattern = 'x', style = ▮" ["\"bold\"", "\"code\"", "\"italic\"", "\"note-mark\"", "\"strong\"", "\"url\"", "\"em\""],
           exactly "style.toml" "[page]\n# binding = ▮" [],
           exactly "style.toml" "[page]\nbinding = \"\"\"\n▮" [],
           exactly "style.toml" "[page]\nsize = \n[page.grid]\n▮" ["font-size", "characters", "lines", "line-pitch", "columns", "column-gap", "position"],

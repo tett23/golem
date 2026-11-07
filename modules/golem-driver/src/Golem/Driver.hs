@@ -65,6 +65,7 @@ import Golem.Driver.Fonts (cff2FontDiagnostics, golemFontProvider)
 import Golem.Driver.Functions (LoadedFunctions (..), RequiredFiles (..), loadFunctions, loadRequiredFiles, requiredFileSet, requirementHandlers)
 import Golem.Driver.Html
 import Golem.Driver.Pdf
+import Golem.Numerals.Format (MarkFormat (..))
 import Golem.Driver.Plugins (FunctionFilter, LoadedPlugins (..), loadPlugins)
 import Golem.Driver.Svg (activeMessage)
 import Golem.Emet (Handlers (..), Program)
@@ -774,8 +775,8 @@ buildCore inMemory opts = do
                   then (pluginImagePathDiagnostics book <>) <$> activeContentDiagnostics (optRoot opts) book
                   else pure []
               let webWritable = [t | t <- writable, null activeDiags || t `notElem` [TargetHtml, TargetEpub]]
-                  -- a list number its format cannot write stops every target (golem-driver ADR 0013)
-                  listDiags = listNumberDiagnostics (evStyle e) (maybe False pageVertical (stPage (evStyle e))) book
+                  -- a list number its format cannot write stops every target (golem-driver ADR 0013), and so does a note number (docs/adr/0177)
+                  listDiags = listNumberDiagnostics (evStyle e) (maybe False pageVertical (stPage (evStyle e))) book <> noteNumberDiagnostics (evStyle e) book
               (written, outDiags, pdf) <-
                 if null listDiags || null webWritable
                   then writeTargets inMemory opts e diagFid book missing webWritable
@@ -1066,7 +1067,9 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
                 [ (l, (htmlRule style <$> hsRuleBefore h, htmlRule style <$> hsRuleAfter h))
                 | (l, h) <- Map.toList (stHeadings style),
                   isJust (hsRuleBefore h) || isJust (hsRuleAfter h)
-                ]
+                ],
+            -- the links of notes in the notation of [notes] mark-format (docs/adr/0177)
+            hcNoteNotation = mfNotation (stNotesMarkFormat style)
           }
       present = mfilter (`Map.notMember` missing)
       changed a b = if a == b then Nothing else Just a

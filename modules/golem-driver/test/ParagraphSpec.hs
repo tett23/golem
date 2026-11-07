@@ -337,7 +337,7 @@ listTests =
       map snd ls @?= [0, 20 * pt],
     testCase "a number its format cannot write is G07029, at the item" $ do
       r <- layoutMini (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" []
-      layoutErrors r @?= [("G07029", "リストの番号 51 は、書式 {①} で表せません", FileId 1, 17, 23)]
+      layoutErrors r @?= [("G07029", "リストの番号 51 は、書式 {n:circled} で表せません", FileId 1, 17, 23)]
       withVerseProject (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" $ \tmp -> do
         r' <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText]}
         [diagCode d | d <- brDiagnostics r', isError d] @?= [DiagnosticCode "G07029"],

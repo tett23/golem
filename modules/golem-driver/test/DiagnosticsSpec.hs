@@ -141,6 +141,8 @@ everyNoticeProjects =
     -- five lines of 12 characters, a paragraph style with rules, and a zero indent of caption (G03100)
     -- the role inkless of the fake fonts draws dashes without ink (G07101)
     style = replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\" }\nrule-after = { weight = \"0.5pt\" }\n\n[paragraph-styles.caption]\nindent = \"0zw\"\n" <> fakeBody <> "\n[fonts.inkless]\nja = \"fonts/b.otf\"\n\n[character-styles.inkless]\nfont = \"inkless\"\n"
+        -- the ways of writing to be retired of docs/adr/0177: G03114, G03115, G03116 and G03117
+        <> "\n[lists]\nnumbers = [\"{{{n}}}\", \"{a}.\"]\n\n[notes]\nmark-size = \"0.5zw\"\n\n[masters.extra]\nrunning-head = { position = \"top-outside\", content = [\"{{x}}\"] }\n"
     tall = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"300\"><rect width=\"100\" height=\"300\" fill=\"none\"/></svg>"
     source =
       T.concat

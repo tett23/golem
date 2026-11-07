@@ -41,7 +41,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble.Collation
 import Golem.Doc.IR
-import Golem.Numerals
+import Golem.Numerals.Format (formatNumber, formatUsesChapter)
 import Golem.Syntax
 
 data AssembleConfig = AssembleConfig
@@ -336,7 +336,7 @@ assemble cfg evalDeferred docs0 =
       -- G04004 for figures and code blocks (golem-driver ADR 0023)
       outside fmt numbered =
         [ diagnostic "G04004" Error sp "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります"
-        | "{chapter}" `T.isInfixOf` fmt,
+        | formatUsesChapter fmt,
           (sp, (Nothing, _)) <- Map.toList numbered
         ]
       figureErrors = outside (acFigureFormat cfg) (nsFigures ns) <> outside (acListingFormat cfg) (nsListings ns)

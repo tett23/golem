@@ -10,6 +10,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Assemble.Formats (arabic, kanjiNotation)
 import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), LabelTarget (..), NoteNumbering (..), TocEntry (..), assemble)
 import Golem.Assemble.ListMarkers (defaultNumberFormat)
 import Golem.Bibliography (EntryPart (..))
@@ -59,7 +60,8 @@ cfg0 =
       hcNoBreak = False,
       hcLists = Nothing,
       hcCode = HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty,
-      hcHeadingRules = Map.empty
+      hcHeadingRules = Map.empty,
+      hcNoteNotation = arabic
     }
 
 -- | A book of one document, a.gm, with nothing assembled.
@@ -215,7 +217,16 @@ pageOf p cfg book = maybe "" bodyOf (lookup p (sitePages (renderXhtml cfg ft boo
 
 chapterNoteTests :: [TestTree]
 chapterNoteTests =
-  [ testCase "a chapter of two files: the notes of both at the end of the second, linked across" $ do
+  [ testCase "the links of notes in the notation of mark-format, without the text around it (docs/adr/0177)" $ do
+      let book = twoFileBook 3 3 [0, 1]
+          kanjiCfg = cfg0 {hcNoteNotation = kanjiNotation}
+      assertBool "noteref" ("id=\"noteref-3\">三</a>" `T.isInfixOf` pageOf "a.xhtml" kanjiCfg book)
+      assertBool "the way back" ("<a href=\"#noteref-3\">三</a> 注甲。" `T.isInfixOf` pageOf "a.xhtml" kanjiCfg book),
+    testCase "the links of notes of the default format are Arabic, as before (docs/adr/0177)" $ do
+      let book = twoFileBook 3 3 [0, 1]
+      assertBool "noteref" ("id=\"noteref-3\">3</a>" `T.isInfixOf` pageOf "a.xhtml" cfg0 book)
+      assertBool "the way back" ("<a href=\"#noteref-3\">3</a> 注甲。" `T.isInfixOf` pageOf "a.xhtml" cfg0 book),
+    testCase "a chapter of two files: the notes of both at the end of the second, linked across" $ do
       let book = twoFileBook 1 2 [0, 0]
       pageOf "a.xhtml" cfg0 book @?= "<p>甲<a epub:type=\"noteref\" class=\"noteref\" href=\"b.xhtml#note-1\" id=\"noteref-1\">1</a></p>\n"
       pageOf "b.xhtml" cfg0 book

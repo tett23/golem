@@ -40,6 +40,7 @@ module Golem.Driver.Pdf
     TableGeometry (..),
     styleLayoutDiagnostics,
     listNumberDiagnostics,
+    noteNumberDiagnostics,
     layoutPdf,
     layoutPages,
     indexLines,

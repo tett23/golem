@@ -5,6 +5,7 @@ module Golem.Assemble.ListMarkers
   ( ListNumberStyle (..),
     NumberFormat (..),
     parseNumberFormat,
+    parseNumberFormatLegacy,
     renderNumberFormat,
     formatListNumber,
     atDepth,
@@ -15,31 +16,23 @@ module Golem.Assemble.ListMarkers
   )
 where
 
-import Data.Either (lefts, rights)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
-import Golem.Numerals (kanji)
+import Golem.Numerals.Format
+import Golem.Numerals.Notation
 import Golem.Syntax.Span
 import Golem.Syntax.Text (tshow)
 
 {- | How a number of a list is written: @{n}@ is the book's notation, the
-others are fixed.
+others a notation of the table (docs/adr/0177).
 -}
 data ListNumberStyle
   = NsBook
-  | NsArabic
-  | NsKanji
-  | NsCircled
-  | NsLowerAlpha
-  | NsUpperAlpha
-  | NsLowerRoman
-  | NsUpperRoman
-  | NsIroha
-  | NsAiueo
-  deriving stock (Eq, Show, Enum, Bounded)
+  | NsNotation !Notation
+  deriving stock (Eq, Show)
 
 -- | A number format: the text before the number, its notation and the text after it.
 data NumberFormat = NumberFormat
@@ -49,56 +42,50 @@ data NumberFormat = NumberFormat
   }
   deriving stock (Eq, Show)
 
-placeholders :: [(Text, ListNumberStyle)]
-placeholders =
-  [ ("n", NsBook),
-    ("1", NsArabic),
-    ("一", NsKanji),
-    ("①", NsCircled),
-    ("a", NsLowerAlpha),
-    ("A", NsUpperAlpha),
-    ("i", NsLowerRoman),
-    ("I", NsUpperRoman),
-    ("イ", NsIroha),
-    ("ア", NsAiueo)
+{- | The samples of the notations in braces (golem-driver ADR 0013), read
+until they are retired (G03115, docs/adr/0177).
+-}
+samples :: [(Text, Notation)]
+samples =
+  [ ("1", arabic),
+    ("一", kanjiNotation),
+    ("①", circledNotation),
+    ("a", lowerAlphaNotation),
+    ("A", upperAlphaNotation),
+    ("i", lowerRomanNotation),
+    ("I", upperRomanNotation),
+    ("イ", irohaNotation),
+    ("ア", aiueoNotation)
   ]
 
-{- | Reads a number format: exactly one placeholder of the table; @{{@ and
-@}}@ are literal braces. The error is the reason, in Japanese.
+{- | Reads a number format: exactly one @{n}@ or @{n:<notation>}@
+(docs/adr/0177); @{{@, @}}@ and the samples are read as before. The error
+is the reason, in Japanese.
 -}
 parseNumberFormat :: Text -> Either Text NumberFormat
-parseNumberFormat src = go [] (T.unpack src) >>= assemble
-  where
-    -- pieces: Left literal text, Right a placeholder
-    go acc = \case
-      [] -> Right (reverse acc)
-      '{' : '{' : rest -> go (Left "{" : acc) rest
-      '}' : '}' : rest -> go (Left "}" : acc) rest
-      '{' : rest -> case break (== '}') rest of
-        (key, '}' : after) -> case lookup (T.pack key) placeholders of
-          Just st -> go (Right st : acc) after
-          Nothing -> Left ("表にない差し込みです: {" <> T.pack key <> "}")
-        _ -> Left "{ が閉じていません。差し込みでない { は {{ と書きます"
-      '}' : _ -> Left "対応する { のない } があります。差し込みでない } は }} と書きます"
-      c : rest -> go (Left (T.singleton c) : acc) rest
-    assemble pieces = case rights pieces of
-      [st] ->
-        let (before, after) = break isPlaceholder pieces
-         in Right (NumberFormat (literal before) st (literal (drop 1 after)))
-      [] -> Left "番号の差し込みがありません"
-      _ -> Left "番号の差し込みが二つ以上あります"
-    isPlaceholder = either (const False) (const True)
-    literal ps = T.concat (lefts ps)
+parseNumberFormat = fmap fst . parseNumberFormatLegacy
 
--- | The format as written in style.toml.
+-- | 'parseNumberFormat' with the forms to be retired the format uses (G03114, G03115).
+parseNumberFormatLegacy :: Text -> Either Text (NumberFormat, [Legacy])
+parseNumberFormatLegacy src = do
+  (ps, legacy) <- parseFormat DoubledToo table src
+  (pre, (), n, suf) <- singleNumber ps
+  pure (NumberFormat pre (maybe NsBook NsNotation n) suf, legacy)
+  where
+    table = \case
+      "n" -> Right (NumberSlot ())
+      name
+        | Just n <- lookup name samples -> Right (SampleSlot () n)
+        | otherwise -> Left ("表にない差し込みです: {" <> name <> "}")
+
+-- | The format as style.toml writes it.
 renderNumberFormat :: NumberFormat -> Text
 renderNumberFormat (NumberFormat pre st suf) =
-  escape pre <> "{" <> maybe "?" fst (lookupKey st) <> "}" <> escape suf
+  escapeLiteral pre <> "{n" <> notation <> "}" <> escapeLiteral suf
   where
-    lookupKey s = case [p | p@(_, s') <- placeholders, s' == s] of
-      (p : _) -> Just p
-      [] -> Nothing
-    escape = T.replace "}" "}}" . T.replace "{" "{{"
+    notation = case st of
+      NsBook -> ""
+      NsNotation n -> ":" <> notationName n
 
 {- | A number in a notation; 'Nothing' when the notation cannot write it
 (G07029). @{n}@ is written in Arabic numerals here: its vertical notation
@@ -107,49 +94,7 @@ is chosen where it is set.
 formatListNumber :: ListNumberStyle -> Integer -> Maybe Text
 formatListNumber st n = case st of
   NsBook -> Just (tshow n)
-  NsArabic -> Just (tshow n)
-  NsKanji -> Just (kanji n)
-  NsCircled
-    | n >= 1 && n <= 20 -> Just (T.singleton (toEnum (0x2460 + fromInteger n - 1)))
-    | n >= 21 && n <= 35 -> Just (T.singleton (toEnum (0x3251 + fromInteger n - 21)))
-    | n >= 36 && n <= 50 -> Just (T.singleton (toEnum (0x32B1 + fromInteger n - 36)))
-    | otherwise -> Nothing
-  NsLowerAlpha -> alpha 'a'
-  NsUpperAlpha -> alpha 'A'
-  NsLowerRoman -> T.toLower <$> roman
-  NsUpperRoman -> roman
-  NsIroha -> fromList iroha
-  NsAiueo -> fromList aiueo
-  where
-    -- bijective base 26: z, aa, ab
-    alpha base
-      | n < 1 = Nothing
-      | otherwise = Just (T.pack (letters n))
-      where
-        letters k
-          | k <= 0 = []
-          | otherwise = let (q, r) = (k - 1) `divMod` 26 in letters q <> [toEnum (fromEnum base + fromInteger r)]
-    roman
-      | n < 1 || n > 3999 = Nothing
-      | otherwise = Just (T.pack (go n numerals))
-      where
-        go 0 _ = ""
-        go k ((v, s) : rest)
-          | k >= v = s <> go (k - v) ((v, s) : rest)
-          | otherwise = go k rest
-        go _ [] = ""
-        numerals = [(1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"), (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
-    fromList cs
-      | n >= 1 && n <= toInteger (T.length cs) = Just (T.singleton (T.index cs (fromInteger n - 1)))
-      | otherwise = Nothing
-
--- | イロハ順, 47 characters.
-iroha :: Text
-iroha = "イロハニホヘトチリヌルヲワカヨタレソツネナラムウヰノオクヤマケフコエテアサキユメミシヱヒモセス"
-
--- | アイウエオ順, 46 characters.
-aiueo :: Text
-aiueo = "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン"
+  NsNotation x -> writeNumber x n
 
 {- | The element of a list of per-depth values for a depth (1 is the
 outermost list); deeper lists keep the last element.
