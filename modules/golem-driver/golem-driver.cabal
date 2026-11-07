@@ -41,6 +41,7 @@ library
   other-modules:    Golem.Driver.Pdf.Draw
                     Golem.Driver.Pdf.Flow
                     Golem.Driver.Pdf.Fonts
+                    Golem.Driver.ProjectVars
   build-depends:
     , async         >=2.2  && <2.3
     , base          >=4.20 && <4.21
@@ -104,6 +105,7 @@ test-suite golem-driver-test
     SecuritySpec
     StylesSpec
     TableFilesSpec
+    VarsSpec
     Support
   -- -threaded: tasty runs the tests at the same time on every processor;
   -- none of them changes the state of the process, and those that do are

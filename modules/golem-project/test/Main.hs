@@ -35,6 +35,7 @@ import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
 import TomlMessageSpec qualified
+import VarsSpec qualified
 
 main :: IO ()
 main = defaultMain tests
@@ -655,6 +656,7 @@ tests =
       StyleSchemaSpec.tests,
       NaturalKeySpec.tests,
       FunctionsSpec.tests,
+      VarsSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))

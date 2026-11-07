@@ -503,6 +503,7 @@ content = ["{meta.title}", "{heading.1.short}"]
 - [code: {heading.<階層>.number}]：見出しの番号だけです（「第3章」など）。
 - [code: {meta.title}]：[code: manifest.toml] の書名です。[code: title] のほかに [code: title_reading]、[code: edition]、[code: publisher]、[code: date]、[code: language]、[code: id] を書けます。
 - [code: {set.名前}]：そのページの章のファイルで [code: @set] した変数です。[code: @import ... as 名前空間] で取り込んだ変数は [code: {set.名前空間.名前}] と書きます。
+- [code: {vars.名前}]：[code: manifest.toml] の [code: \[vars\]] の変数です。どの章のページにも同じ値が出ます。表の中の値は [code: {vars.author.short}] と書きます。[code: \[vars\]] にない名前は G03111、文字列でも数でもない値は G03112 です。
 
 値のない差し込みがあると、その行は描きません。
 たとえば [code: \["{meta.title}　{heading.1.short}"\]] は、最初の章より前のページには出ません。

@@ -7,6 +7,7 @@ module Golem.Eval.Value
     valueToExpr,
     numberOf,
     mkNumber,
+    projectVarValues,
   )
 where
 
@@ -14,7 +15,9 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Ratio (numerator)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Golem.Parser.AST
+import Golem.Project.Manifest (ProjectVar (..))
 import Numeric.Natural (Natural)
 
 {- | Values of the expression language. The three number types are
@@ -97,3 +100,20 @@ valueToExpr at v = Located (locSpan at) $ case v of
   VArray vs -> EArray (map (valueToExpr at) vs)
   VHash m -> EHash [(k, valueToExpr at x) | (k, x) <- Map.toAscList m]
   VRange a b -> ERange (Located (locSpan at) (EInt a)) (Located (locSpan at) (EInt b))
+
+{- | The namespace vars: the values of [vars] of manifest.toml as values of
+expressions (docs/adr/0185). An integer of 0 or more is a natural number,
+a date the string of meta.date, a table a hash.
+-}
+projectVarValues :: Map Text ProjectVar -> Map Text Value
+projectVarValues = Map.map value
+  where
+    value = \case
+      VarString t -> VString t
+      VarInteger i
+        | i >= 0 -> VNat (fromInteger i)
+        | otherwise -> VInt i
+      VarBool b -> VBool b
+      VarDate d -> VString (T.pack (show d))
+      VarArray xs -> VArray (map value xs)
+      VarTable t -> VHash (Map.map value t)

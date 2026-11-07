@@ -16,6 +16,7 @@ module Golem.Project.Manifest
     PluginSource (..),
     FilterDecl (..),
     FilterSource (..),
+    ProjectVar (..),
     parseManifest,
     chapterFiles,
     applyEdits,
@@ -24,10 +25,13 @@ module Golem.Project.Manifest
     decodeStrictWith,
     naturalOf,
     naturalIntOf,
+    readTomlTable,
+    positionSpan,
   )
 where
 
 import Control.Monad (zipWithM_)
+import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.List (isPrefixOf, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -71,7 +75,9 @@ data Manifest = Manifest
     manifestSilencedInfo :: !(Set DiagnosticCode),
     {- | [functions.requires] file: the files the functions may read, as
     written, relative to the root; Nothing without the key (docs/adr/0161)
-    -} manifestRequiredFiles :: !(Maybe [FilePath])
+    -} manifestRequiredFiles :: !(Maybe [FilePath]),
+    -- | [vars]: the variables of the whole project, read through the namespace vars (docs/adr/0185)
+    manifestVars :: !(Map Text ProjectVar)
   }
   deriving stock (Eq, Show)
 
@@ -216,6 +222,20 @@ data FilterDecl = FilterDecl
   }
   deriving stock (Eq, Show)
 
+{- | A value of [vars] (docs/adr/0185): the TOML values a variable of the
+project takes. A float, a time and a date-time are G03109; a key that is
+not an identifier of expressions is G03110.
+-}
+data ProjectVar
+  = VarString !Text
+  | VarInteger !Integer
+  | VarBool !Bool
+  | -- | a local date, which the expressions read as a string, as meta.date
+    VarDate !Day
+  | VarArray ![ProjectVar]
+  | VarTable !(Map Text ProjectVar)
+  deriving stock (Eq, Show)
+
 -- | Where a filter is: a plugin by its name, or a .emet by its path from the root.
 data FilterSource = FilterPlugin !Text | FilterFunction !FilePath
   deriving stock (Eq, Show)
@@ -240,6 +260,7 @@ instance FromValue Manifest where
     src <- optKey "source"
     dg <- optKey "diagnostics"
     fns <- optKey "functions"
+    vs <- optKeyOf "vars" varsTable
     pure
       Manifest
         { manifestMetadata = md,
@@ -252,8 +273,64 @@ instance FromValue Manifest where
           manifestParagraphSeparatorWritten = any ((== "paragraph-separator") . seKey) (maybe [] sourceTableEdits src),
           manifestSilencedNotices = maybe Set.empty silenced dg,
           manifestSilencedInfo = maybe Set.empty silencedInfo dg,
-          manifestRequiredFiles = fns >>= \(FunctionsTable fs) -> fs
+          manifestRequiredFiles = fns >>= \(FunctionsTable fs) -> fs,
+          manifestVars = fromMaybe Map.empty vs
         }
+
+{- | [vars] (docs/adr/0185): a table of the values of 'ProjectVar'. The
+values and keys it does not take are reported before the schema
+('varsDiagnostics'); here they are left out.
+-}
+varsTable :: Value' l -> Matcher l (Map Text ProjectVar)
+varsTable = \case
+  Table' _ t -> pure (tableVars t)
+  v -> typeError "table" v
+  where
+    tableVars (MkTable kvs) = Map.fromList [(k, x) | (k, (_, v)) <- Map.toList kvs, Just x <- [varOf v]]
+    varOf = \case
+      Text' _ t -> Just (VarString t)
+      Integer' _ i -> Just (VarInteger i)
+      Bool' _ b -> Just (VarBool b)
+      Day' _ d -> Just (VarDate d)
+      List' _ xs -> VarArray <$> traverse varOf xs
+      Table' _ t -> Just (VarTable (tableVars t))
+      _ -> Nothing
+
+{- | G03110 at each key of [vars] and of its tables that is not an
+identifier of expressions, and G03109 at each value that is a float, a
+time or a date-time, in arrays and tables too (docs/adr/0185); in the
+order of the file.
+-}
+varsDiagnostics :: FileId -> Text -> Table' Position -> [Diagnostic]
+varsDiagnostics fid src (MkTable top) = case Map.lookup "vars" top of
+  Just (_, Table' _ t) -> map snd (sortOn fst (inTable ["vars"] t))
+  _ -> []
+  where
+    at pos = positionSpan fid src (Just pos)
+    one code pos msg = let sp = at pos in [(spanStart sp, diagnostic code Error sp msg)]
+    inTable path (MkTable kvs) =
+      concat
+        [ [ d
+          | not (isIdentifier k),
+            d <- one "G03110" kpos (T.intercalate "." path <> " のキー " <> k <> " は式の名前の形（英字か _ で始まり、英数字と _ が続く）で書きます")
+          ]
+            <> value (path <> [k]) v
+        | (k, (kpos, v)) <- Map.toList kvs
+        ]
+    value path = \case
+      Double' pos _ -> unsupported path pos "浮動小数点数"
+      TimeOfDay' pos _ -> unsupported path pos "時刻"
+      LocalTime' pos _ -> unsupported path pos "日時"
+      ZonedTime' pos _ -> unsupported path pos "日時"
+      List' _ xs -> concatMap (value path) xs
+      Table' _ t -> inTable path t
+      _ -> []
+    unsupported path pos what =
+      one "G03109" pos (T.intercalate "." path <> " に" <> what <> "は書けません。[vars] の値は文字列、整数、真偽値、日付、配列、表のどれかです")
+    isIdentifier k = case T.uncons k of
+      Just (c, r) -> (isAsciiAlpha c || c == '_') && T.all (\x -> isAsciiAlpha x || isDigit x || x == '_') r
+      Nothing -> False
+    isAsciiAlpha c = isAsciiLower c || isAsciiUpper c
 
 {- | The table [functions] (docs/adr/0161): [functions.requires], whose keys
 are the kinds of requirements and whose values are the requirements of
@@ -529,6 +606,10 @@ parseToml src = do
   exprs <- either (Left . ErrSyntax) Right (parseRawToml src)
   either (Left . ErrSemantics) Right (semantics exprs)
 
+-- | The tables of a TOML text before any schema; Nothing for an error of TOML.
+readTomlTable :: Text -> Maybe (Table' Position)
+readTomlTable = either (const Nothing) Just . parseToml
+
 -- | The span of a position of toml-parser; the start of the file without one.
 positionSpan :: FileId -> Text -> Maybe Position -> SrcSpan
 positionSpan fid src = \case
@@ -544,7 +625,12 @@ parseManifest fid src = do
   case either (const []) (unwritableStrings fid src) (parseToml src) of
     [] -> Right ()
     ds -> Left ds
-  m <- decodeStrictBy "G03001" manifestCode fid src
+  -- G03109 and G03110 of [vars], with the errors of the schema (docs/adr/0185)
+  let varsDiags = either (const []) (varsDiagnostics fid src) (parseToml src)
+  m <- case decodeStrictBy "G03001" manifestCode fid src of
+    Left ds -> Left (varsDiags <> ds)
+    Right _ | not (null varsDiags) -> Left varsDiags
+    Right m -> Right m
   let t = manifestTargets m
   if tgHtml t || not (null (tgText t)) || isJust (tgPdf t) || isJust (tgEpub t)
     then Right m
