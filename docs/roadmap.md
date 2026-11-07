@@ -98,6 +98,7 @@ v1.0.0 の後、v2 より前の minor のバージョンで扱う事項である
 - **より複雑な組版の fixture**：v0.1.0-rc4 で作る二冊の fixture（縦組みの一段の本と、横組みの二段の本）より複雑な組版の例を作り、fixture に入れる。二冊が組み合わせていない機能、たとえば縦組みの本文の段組みや、章ごとの書字方向と段数の切り替えのように後から足す機能を組み合わせ、機能のあいだの相互作用を、出力のゴールデン、決定性の検査、見た目の回帰テストで固定する。どの組み合わせを足すかと、fixture の数と大きさは、着手するときに ADR で決める。
 - **評価と書き出しを分けること**：golem-lsp のライブラリは、golem-driver から評価とその結果の補助と lint だけを使い、PDF の組版を使わない。それでも、評価と書き出しが一つのモジュール `Golem.Driver` にあるので、golem-lsp は golem-driver を通して golem-typeset にも依存する。PDF の組版を golem-typeset に分けたときに、評価の部分が PDF のモジュールを使わないようにしたので、評価を別のパッケージに分けられる。`Evaluated` の型と、評価と書き出しの両方が使う補助（`docStyles`、`localStylesOf`、`runningVars` など）の境目を読み、ADR で決める（[ADR 0192](adr/0192-split-pdf-typesetting-from-golem-driver.md)）。
 
+- **不変条件のテストで見つかった改ページの不具合**：仕様書の「既知の不具合」の「`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる」を直す。空きを `@need-lines` の次のブロックに数えるかを ADR で決める（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の抜き取りで見つかった）。
 - **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲の ADR はまだない。上から順に、前の範囲の結果を見て書く。
   - **表の列の幅**：`Golem.Layout.Table` の列の幅（列ごとの最小の幅と自然な幅、使える幅）を整数の小さな組で列挙し、列の幅の和と最小の幅の不変条件で確かめる（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。
   - **パーサーと `golem fmt` の往復**：文法から作る短い原稿を列挙し、`golem fmt` の往復と diagnostics の位置の不変条件で確かめる。peg-hs の文法を読んで原稿を作る部品が先に要る。

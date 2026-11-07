@@ -360,8 +360,18 @@ knownBugs =
         kbShape = not . null . waitingFigures,
         kbExcuses = \i b -> breachOf b `elem` [P1, P3, P4] && not (null (breachAt b)) && all (`elem` waitingFigures i) (breachAt b),
         kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 96), (5, 4482)]
+      },
+    KnownBug
+      { kbItem = "`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる",
+        kbShape = needLinesBeforeSpace,
+        kbExcuses = \_ b -> breachOf b == P1,
+        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 14)]
       }
   ]
+
+-- | Whether a need-lines is right before a space, as in the inputs drawn by the nightly job of 2026-11-08.
+needLinesBeforeSpace :: Input -> Bool
+needLinesBeforeSpace i = or (zipWith (\a b -> a == ENeedLines && b == ESpace) (inElements i) (drop 1 (inElements i)))
 
 {- | The figures after need-lines or blank lines, with a figure before
 them: they may wait behind a figure sent on (golem-layout ADR 0015).
