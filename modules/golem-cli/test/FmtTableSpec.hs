@@ -28,8 +28,9 @@ import Test.Tasty.Hedgehog (testProperty)
 fmtTableTests :: TestTree
 fmtTableTests = testGroup "golem fmt and the table files (docs/adr/0186)" [propertyTests, commandTests]
 
--- | The text of a table file without a lone CR: a BOM or none, then cells,
--- separators, quotes and line breaks.
+{- | The text of a table file without a lone CR: a BOM or none, then cells,
+separators, quotes and line breaks.
+-}
 tableText :: Gen Text
 tableText = do
   bom <- Gen.element ["", "\xFEFF"]

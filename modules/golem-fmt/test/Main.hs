@@ -210,8 +210,9 @@ tableTests =
         formatTable (formatTable src) === formatTable src
     ]
 
--- | The text of a table file: a BOM at the start or none, then cells,
--- separators, quotes and line breaks of every kind.
+{- | The text of a table file: a BOM at the start or none, then cells,
+separators, quotes and line breaks of every kind.
+-}
 tableText :: Gen Text
 tableText = do
   bom <- Gen.element ["", "\xFEFF"]
