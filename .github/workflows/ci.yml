@@ -609,6 +609,10 @@ jobs:
           wasm32-wasi-ghc --version
           wasm32-wasi-clang --version | head -1
           wasm32-wasi-ghc-pkg list --global --simple-output
+          # the license files of the GHC and the GMP it links (for the release, docs/adr/0199)
+          find third_party/ghc-wasm/wasm32-wasi-ghc -iname 'LICENSE*' | LC_ALL=C sort | head -80
+          find third_party/ghc-wasm/wasm32-wasi-ghc -name ghc-gmp.h -exec grep -H 'define __GNU_MP_VERSION' {} +
+          find third_party/ghc-wasm/wasi-sdk -iname 'LICENSE*' -o -iname 'COPYING*' | head
       - if: steps.ghcwasm.outputs.cache-hit != 'true'
         name: The Hackage index of the wasm build
         run: |
