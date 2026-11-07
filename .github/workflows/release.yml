@@ -59,6 +59,11 @@ jobs:
             echo "tag=dev-${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
           fi
           cat "$GITHUB_OUTPUT"
+      # a patch release from v1.0.0 on keeps the output but the version in
+      # the PDF (docs/adr/0174, docs/compatibility.md)
+      - name: A patch release keeps the output
+        if: github.ref_type == 'tag'
+        run: sh scripts/release/check-patch.sh "$GITHUB_REF_NAME"
 
   build:
     needs: version

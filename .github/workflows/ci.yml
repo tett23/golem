@@ -57,6 +57,8 @@ jobs:
         run: sh scripts/ci/rts-capabilities.sh
       - name: The ABI version of plugins follows the last release (docs/adr/0052)
         run: sh scripts/ci/abi-version.sh
+      - name: The diagnostic codes keep the promise of 1.x (docs/adr/0174)
+        run: sh scripts/ci/diagnostic-codes.sh
       - id: decide
         name: Paths of the change
         env:

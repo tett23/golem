@@ -221,3 +221,26 @@ diagnostics は、ほかのコマンドと同じく人が読む形で標準エ�
 閉じていない [code: \[] を含むファイルの CST のように、エラーがあっても、表示は作れる限り標準出力に書く。
 引数のファイルがないときは、G03002 になる。
 意味論 IR と CBOR の形は第[ref-number ir]章で説明する。
+
+## 1.x で守ること
+
+Golem は 1.0.0 から、CLI の互換を守る。[index reading=ごかんせい: 互換性][note: [style url: https://github.com/tett23/golem/blob/main/docs/compatibility.md]（互換性の文書。ADR 0174「1.0.0 から互換を守る範囲と、廃止の手順」で決めた）]
+1.x のあるバージョンで使えたものは、それより後の 1.x のバージョンでも同じ意味で使える。
+CI のワークフローは、Golem のバージョンを 1.x の中で上げても、次のものを書き換えずに済む。
+
+- コマンド、オプション、オプションの値。
+- 終了コードの 0、1、2 の意味。
+- [code: golem --version] の一行の形（[code: golem] とバージョン）。
+
+次のものは守らない。
+
+- コマンドとオプションを足すこと。
+- 人が読む形の diagnostics、ヘルプ、使い方の表示の文言。プログラムで読むときは [code: --format json] を使う（第[ref-number diagnostics]章）。
+- [code: golem inspect] の [code: --as cst]、[code: --as ast]、[code: --as ir] の表示。[code: --as cbor] のバイト列はプラグインの ABI の CBOR なので、ABI の規則に従う（第[ref-number plugins]章の「[ref-title plugin-abi-notice]」）。
+- [code: golem new] の雛形の中身。
+- [code: golem lsp]（第[ref-number lsp]章）。
+
+出力は、同じバージョンと同じ入力から同じバイト列になる。
+三つ目の数（patch）だけを上げたバージョンは、Golem のバージョンから作る値（PDF の Producer とインスタンス ID）のほかに出力を変えない。
+二つ目の数（minor）を上げたバージョンは、組版の結果を変えることがある。
+1.0.0 より前のバージョン（今のバージョン）は、これらを約束しない。
