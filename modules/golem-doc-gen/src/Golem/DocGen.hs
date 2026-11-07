@@ -58,7 +58,9 @@ genInlineWith mr =
       Note <$> genSpan <*> Gen.int (Range.linear 1 99) <*> sub,
       Sidenote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> sub,
       -- a link to an external URL (docs/adr ADR 0182)
-      Link <$> genSpan <*> genText <*> sub
+      Link <$> genSpan <*> genText <*> sub,
+      -- a language span (docs/adr ADR 0187)
+      Lang <$> genSpan <*> genText <*> sub
     ]
   where
     sub = Gen.list (Range.linear 0 3) (genInlineWith mr)
@@ -135,6 +137,8 @@ genBlock =
   Block
     <$> genSpan
     <*> Gen.maybe genText
+    -- the language of the block (docs/adr ADR 0187)
+    <*> Gen.maybe genText
     <*> Gen.recursive
       Gen.choice
       [ Paragraph <$> Gen.maybe genText <*> inl,
@@ -170,11 +174,12 @@ genTopBlock :: Gen Block
 genTopBlock =
   Gen.frequency
     [ (5, genBlock),
-      (1, Block <$> genSpan <*> pure Nothing <*> (ForcedBreak <$> Gen.enumBounded)),
+      (1, Block <$> genSpan <*> pure Nothing <*> pure Nothing <*> (ForcedBreak <$> Gen.enumBounded)),
       -- a manual control of page breaks (docs/adr ADR 0030)
       ( 1,
         Block
           <$> genSpan
+          <*> pure Nothing
           <*> pure Nothing
           <*> ( PageControl
                   <$> Gen.choice
@@ -185,5 +190,5 @@ genTopBlock =
               )
       ),
       -- blank lines (docs/adr ADR 0046)
-      (1, Block <$> genSpan <*> pure Nothing <*> (BlankLines <$> Gen.int64 (Range.exponential 1 maxBound)))
+      (1, Block <$> genSpan <*> pure Nothing <*> pure Nothing <*> (BlankLines <$> Gen.int64 (Range.exponential 1 maxBound)))
     ]

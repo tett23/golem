@@ -105,7 +105,7 @@ diagnosticTests =
         p <- answering (withDiagnostics [pluginDiagnostic "x0003" 1 "二つ目より前", pluginDiagnostic "x0001" 0 "後"])
         fmap (map diagCode . snd) (shout p) @?= Right [DiagnosticCode "x0003", DiagnosticCode "x0001"],
       testCase "a filter returns its diagnostics with the document" $ do
-        let doc = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])]
+        let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])]
         p <- answering (cbor (TList [documentTerm doc, TList [pluginDiagnostic "x0004" 1 "総ルビにしました"]]))
         applyFilter p "upper" doc @?= Right (doc, [diagnostic "x0004" Warning callSpan "総ルビにしました"])
     ]
@@ -161,7 +161,7 @@ diagnosticCodeAndSpanTests =
         applyFilter p "upper" filtered @?= Left (BadOutput "診断が要求にないソース位置を指しています")
     ]
   where
-    filtered = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])]
+    filtered = Document (FileId 1) [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])]
 
 malformedResponseTests :: TestTree
 malformedResponseTests =
@@ -199,7 +199,7 @@ malformedResponseTests =
         p <- answering (cbor (TList [numberOf (2 ^ (63 :: Int) - 1), TList []]))
         fmap fst (shout p) @?= Right [Number callSpan (2 ^ (63 :: Int) - 1) Nothing],
       testCase "a filter that answers with inlines instead of a document" $ do
-        let doc = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])]
+        let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])]
         p <- answering (withDiagnostics [])
         case applyFilter p "upper" doc of
           Left (BadOutput _) -> pure ()

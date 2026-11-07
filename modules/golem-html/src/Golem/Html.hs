@@ -302,7 +302,7 @@ renderXhtml cfg ft book =
         sortOn fst
           $ Map.toList
           $ Map.fromList
-          $ [(T.unpack (webOutput f), T.unpack (webSource f)) | Document _ bs <- bookDocs book, Block _ _ (FigureBlock f) <- allFigures bs]
+          $ [(T.unpack (webOutput f), T.unpack (webSource f)) | Document _ bs <- bookDocs book, Block _ _ _ (FigureBlock f) <- allFigures bs]
             <> [(fontOut p, p) | (ja, la) <- Map.elems (hcFonts cfg), Just p <- [ja, la]]
     }
 
@@ -323,7 +323,7 @@ fontOut p = "fonts" </> takeFileName p
 allFigures :: [Block] -> [Block]
 allFigures = concatMap go
   where
-    go b@(Block _ _ body) = case body of
+    go b@(Block _ _ _ body) = case body of
       FigureBlock _ -> [b]
       BulletList items -> allFigures (concatMap itemBlocks items)
       OrderedList items -> allFigures (concatMap itemBlocks items)
@@ -343,7 +343,7 @@ page cfg ft book notes (Document fid bs) =
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
       body = topBlocks c bs <> notesSection c
-      title = case [hiTitle h | Block sp _ (Heading 1 _ _) <- bs, Just h <- [Map.lookup sp (bookHeadings book)]] of
+      title = case [hiTitle h | Block sp _ _ (Heading 1 _ _) <- bs, Just h <- [Map.lookup sp (bookHeadings book)]] of
         (t : _) -> T.concat (map plain t)
         [] -> hcTitle cfg
    in T.concat
@@ -382,10 +382,10 @@ topBlocks c = go Nothing Nothing
   where
     -- the break pending, and the blank lines pending after a block (Nothing before one)
     go _ _ [] = ""
-    go _ _ (Block _ _ (ForcedBreak k) : rest) = go (breakName k) Nothing rest
-    go _ blanks (Block _ _ (PageControl NoBreak) : rest) = go (Just "avoid") blanks rest
-    go pending blanks (Block _ _ (PageControl _) : rest) = go pending blanks rest
-    go pending blanks (Block _ _ (BlankLines n) : rest) = go pending ((+ toInteger n) <$> blanks) rest
+    go _ _ (Block _ _ _ (ForcedBreak k) : rest) = go (breakName k) Nothing rest
+    go _ blanks (Block _ _ _ (PageControl NoBreak) : rest) = go (Just "avoid") blanks rest
+    go pending blanks (Block _ _ _ (PageControl _) : rest) = go pending blanks rest
+    go pending blanks (Block _ _ _ (BlankLines n) : rest) = go pending ((+ toInteger n) <$> blanks) rest
     go pending blanks (b : rest) = blankLines (fromMaybe 0 blanks) <> withBreak pending (block c b) <> go Nothing (Just 0) rest
     blankLines n
       | n > 0 = "<div class=\"blank-line\">" <> T.replicate (fromInteger n) "<br/>" <> "</div>\n"
@@ -406,7 +406,7 @@ breakName = \case
   BreakColumn -> Nothing
 
 block :: Ctx -> Block -> Text
-block c (Block sp lbl body) = case body of
+block c (Block sp lbl lang body) = case body of
   Paragraph st is ->
     let cls = maybe "" (\n -> " class=\"ps-" <> escapeXml n <> "\"") st
         -- the lines of a paragraph that keeps them, each a span; br is for readers without CSS (docs/adr ADR 0005).
@@ -474,7 +474,7 @@ block c (Block sp lbl body) = case body of
           else pre <> "\n"
   FigureBlock f ->
     let num = numberSpan c (Map.lookup sp (bookFigures (cBook c)))
-        cap = T.concat [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
+        cap = T.concat [inlines c is | Block _ _ _ (Paragraph _ is) <- figCaption f]
      in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webOutput f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"" <> figureWidthStyle (hcVertical (cCfg c)) (figWidth f) <> "/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
   ChannelOutput (TocOutput d) -> toc c (Just d)
   ChannelOutput IndexOutput -> index c sp
@@ -513,7 +513,7 @@ numberSpan c = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</sp
 item :: Ctx -> Maybe Integer -> ListItem -> Text
 item c value (ListItem _ bs) =
   "<li" <> maybe "" (\n -> " value=\"" <> T.pack (show n) <> "\"") value <> ">" <> case bs of
-    [Block _ _ (Paragraph Nothing is)] | not (keepsLines c Nothing) -> inlines c is <> "</li>\n"
+    [Block _ _ _ (Paragraph Nothing is)] | not (keepsLines c Nothing) -> inlines c is <> "</li>\n"
     _ -> "\n" <> T.concat (map (block c) bs) <> "</li>\n"
 
 -- | Whether the paragraph style keeps the lines of its paragraphs (docs/adr ADR 0005).
@@ -847,7 +847,7 @@ codeRules cfg book =
   where
     co = hcCode cfg
     codes = [c | Document _ bs <- bookDocs book, c <- concatMap codesIn bs]
-    codesIn (Block _ _ body) = case body of
+    codesIn (Block _ _ _ body) = case body of
       CodeBlock c -> [c]
       BulletList items -> concatMap (concatMap codesIn . itemBlocks) items
       OrderedList items -> concatMap (concatMap codesIn . itemBlocks) items

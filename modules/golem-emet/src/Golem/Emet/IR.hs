@@ -160,7 +160,7 @@ encodeBlocks :: [Block] -> Enc Result
 encodeBlocks = listE encodeBlock
 
 encodeBlock :: Block -> Enc Result
-encodeBlock (Block sp lbl body) = do
+encodeBlock (Block sp lbl lang body) = do
   (c, fs) <- case body of
     Paragraph st xs -> encodeInlines xs >>= \b -> pure ("Paragraph", [maybeR str st, b])
     Heading lv (HeadingAttrs toc n nonum notoc) xs -> do

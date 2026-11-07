@@ -935,7 +935,7 @@ sidenoteDiagnostics geom book
     inlineLists = concatMap blockInlineLists blocks
     -- each sidenote, and whether it is in the text flow
     sites = concatMap siteBlock blocks
-    siteBlock b@(Block _ _ body) = case body of
+    siteBlock b@(Block _ _ _ body) = case body of
       FigureBlock fig -> [(sp, False) | is <- concatMap blockInlineLists (figCaption fig), (sp, _) <- concatMap (inlineSites True) is]
       _ -> [x | is <- blockInlineLists b, x <- concatMap (inlineSites True) is]
     inlineSites flow = \case
@@ -950,7 +950,7 @@ sidenoteDiagnostics geom book
 labelSpans :: Book -> Map Text SrcSpan
 labelSpans book = Map.fromListWith (\_ old -> old) (concatMap site (concat [bs | Document _ bs <- bookDocs book]))
   where
-    site (Block sp l body) =
+    site (Block sp l lang body) =
       [(name, sp) | Just name <- [l]] <> case body of
         BulletList items -> concatMap (concatMap site . itemBlocks) items
         OrderedList items -> concatMap (concatMap site . itemBlocks) items
@@ -1427,8 +1427,8 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
     blocks style ctx spaced n bs =
       let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore style ctx spaced prev b <>) <$> block style ctx k b) n (zip (scanl before Nothing bs) bs)
        in (n', concat uss)
-    gapBefore style ctx spaced prev (Block sp _ b) = case prev of
-      Just (Block _ _ a)
+    gapBefore style ctx spaced prev (Block sp _ _ b) = case prev of
+      Just (Block _ _ _ a)
         | g <- gapLines style ctx spaced a b,
           g > 0 ->
             [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) SourceGrid [] 0]
@@ -1454,7 +1454,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
     before prev b = case blockBody b of
       PageControl _ -> prev
       _ -> Just b
-    block style ctx n (Block sp lbl body) =
+    block style ctx n (Block sp lbl lang body) =
       let unit kind l is face src = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing) src [] 0
           -- the body role at the size of the grid (golem-cli ADR 0008)
           plainUnit kind l is = unit kind l is (bodyLook style fs) SourceGrid
@@ -1520,7 +1520,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
           numbered = any (isJust . fst) items
        in (n', inFrame (Frame n (FList numbered)) (concat uss))
     startsWithParagraph it = case itemBlocks it of
-      (Block _ _ (Paragraph {}) : _) -> True
+      (Block _ _ _ (Paragraph {}) : _) -> True
       _ -> False
     -- the marker is at the block of its paragraph (golem-cli ADR 0008)
     markFirst m = \case
@@ -1850,7 +1850,7 @@ placeFigure fe u fig content =
       -- across the lines for each sp along them
       ratio = if pgVertical geom then w / h else h / w
       number = Map.lookup (uSpan u) (bookFigures (piBook inp))
-      captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number (concat [is | Block _ _ (Paragraph _ is) <- figCaption fig])
+      captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number (concat [is | Block _ _ _ (Paragraph _ is) <- figCaption fig])
       -- the caption in the role and size of the paragraph style caption (golem-driver ADR 0010)
       (_, cs) = paraFace (uStyle u) geom "caption"
       captionParams = (feParams fe) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
@@ -2634,7 +2634,7 @@ loadFigures inp = do
 
 -- | The @figure blocks of a book, with their spans.
 figureBlocks :: Book -> [(SrcSpan, Figure)]
-figureBlocks book = [(sp, f) | Document _ bs <- bookDocs book, Block sp _ (FigureBlock f) <- bs]
+figureBlocks book = [(sp, f) | Document _ bs <- bookDocs book, Block sp _ _ (FigureBlock f) <- bs]
 
 {- | G08010: a figure that cannot be placed in the PDF; G08011: an SVG figure
 with things outside the subset, G08016: with markers in a cycle, G08017: with

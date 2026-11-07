@@ -258,7 +258,7 @@ bookHasCode :: (FileId -> Style) -> Book -> Bool
 bookHasCode styleOf book = or [any (blockHas (styleOf fid)) bs | Document fid bs <- bookDocs book]
   where
     blockHas :: Style -> Block -> Bool
-    blockHas st (Block _ _ body) = case body of
+    blockHas st (Block _ _ _ body) = case body of
       CodeBlock {} -> True
       Paragraph _ is -> any (inlineHas st) is
       Heading _ _ is -> any (inlineHas st) is
@@ -380,7 +380,7 @@ kentenRubyNotices book =
 
 -- | Every list of inlines of a block, captions and nested blocks included.
 blockInlineLists :: Block -> [[Inline]]
-blockInlineLists (Block _ _ body) = case body of
+blockInlineLists (Block _ _ _ body) = case body of
   Paragraph _ is -> [is]
   Heading _ _ is -> [is]
   BulletList items -> concatMap (concatMap blockInlineLists . itemBlocks) items

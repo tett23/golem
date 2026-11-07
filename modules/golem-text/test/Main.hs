@@ -31,7 +31,7 @@ renderBlocks bib cites listings bodies =
   let (fid, ft) = registerFile "a.gm" emptyFileTable
       book =
         Book
-          { bookDocs = [Document fid [Block (mkSpan fid i (i + 1)) Nothing b | (i, b) <- zip [0 ..] bodies]],
+          { bookDocs = [Document fid [Block (mkSpan fid i (i + 1)) Nothing Nothing b | (i, b) <- zip [0 ..] bodies]],
             bookHeadings = Map.empty,
             bookFigures = Map.empty,
             bookListings = Map.fromList [(mkSpan fid i (i + 1), t) | (i, t) <- Map.toList listings],
@@ -54,13 +54,13 @@ sp :: Int -> SrcSpan
 sp s = mkSpan (FileId 0) s (s + 1)
 
 heading :: Int -> HeadingAttrs -> Text -> Block
-heading s a t = Block (sp s) Nothing (Heading 1 a [Text (sp s) t])
+heading s a t = Block (sp s) Nothing Nothing (Heading 1 a [Text (sp s) t])
 
 figure :: Int -> Text -> Block
-figure s cap = Block (sp s) Nothing (FigureBlock (Figure "a.png" Nothing "" Nothing Nothing [Block (sp (s + 1)) Nothing (Paragraph Nothing [Text (sp (s + 1)) cap])] Nothing False))
+figure s cap = Block (sp s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "" Nothing Nothing [Block (sp (s + 1)) Nothing Nothing (Paragraph Nothing [Text (sp (s + 1)) cap])] Nothing False))
 
 toc :: Int -> Block
-toc s = Block (sp s) Nothing (ChannelOutput (TocOutput 1))
+toc s = Block (sp s) Nothing Nothing (ChannelOutput (TocOutput 1))
 
 noEval :: DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text
 noEval _ _ _ = Right ""
@@ -100,7 +100,7 @@ tests =
             render "en" "{n}" [heading 0 noHeadingAttrs "A", figure 5 "Cap"] @?= ["1 A", "", "［図1-1 Cap］"]
             render "ja" "{n}" [heading 0 noHeadingAttrs "A", figure 5 "キャプション"] @?= ["1\x3000\&A", "", "［図1-1\x3000キャプション］"],
           testCase "the caption of a code block (golem-driver ADR 0042)" $ do
-            let listing s cap = Block (sp s) Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp s) cap]) False [CodeLine "x" Nothing Nothing False []]))
+            let listing s cap = Block (sp s) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp s) cap]) False [CodeLine "x" Nothing Nothing False []]))
             render "en" "{n}" [heading 0 noHeadingAttrs "A", listing 5 "設定の読み込み"] @?= ["1 A", "", "リスト1-1 設定の読み込み", "x"]
             render "ja" "{n}" [heading 0 noHeadingAttrs "A", listing 5 "設定の読み込み"] @?= ["1\x3000\&A", "", "リスト1-1\x3000設定の読み込み", "x"]
         ],

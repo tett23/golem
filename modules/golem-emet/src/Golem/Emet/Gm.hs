@@ -136,7 +136,7 @@ a plugin (docs/adr/0122): no heading, no list of a channel, no break and
 no blank lines; and no figure, whose image the evaluation has not read.
 -}
 blockKind :: Block -> [Text]
-blockKind (Block _ _ body) = case body of
+blockKind (Block _ _ _ body) = case body of
   Paragraph _ _ -> []
   Table {} -> []
   CodeBlock _ -> []
@@ -176,15 +176,15 @@ filterOf hs p path name = case [e | e <- Map.findWithDefault [] path (programExp
             Left why -> Left [invalid top e why]
             Right out ->
               let doc' = Document (docFile doc) out
-                  figures = [b | b@(Block _ _ (FigureBlock _)) <- allBlocks (docBlocks doc)]
-                  newFigures = [() | b@(Block _ _ (FigureBlock _)) <- allBlocks out, b `notElem` figures]
+                  figures = [b | b@(Block _ _ _ (FigureBlock _)) <- allBlocks (docBlocks doc)]
+                  newFigures = [() | b@(Block _ _ _ (FigureBlock _)) <- allBlocks out, b `notElem` figures]
                in case ["フィルタが作った図版です" | not (null newFigures)] <> validateDocument (const (Just maxBound)) (carriedDeferred carried) doc' of
                     [] -> Right doc'
                     errs -> Left [invalid top e (T.intercalate "、" errs)]
   [] -> Nothing
   where
     allBlocks = concatMap (\b -> b : allBlocks (inner b))
-    inner (Block _ _ body) = case body of
+    inner (Block _ _ _ body) = case body of
       BulletList items -> concatMap itemBlocks items
       OrderedList items -> concatMap itemBlocks items
       DefList gs -> concat (concatMap dgDefs gs)

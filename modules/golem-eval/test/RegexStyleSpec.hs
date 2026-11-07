@@ -35,7 +35,7 @@ para r is = case map blockBody (docBlocks (applyRegexStyles r (doc [Paragraph No
   other -> error (show other)
 
 doc :: [BlockBody] -> Document
-doc = Document (FileId 1) . map (Block sp Nothing)
+doc = Document (FileId 1) . map (Block sp Nothing Nothing)
 
 bodies :: RegexRules -> [BlockBody] -> [BlockBody]
 bodies r = map blockBody . docBlocks . applyRegexStyles r . doc
@@ -81,8 +81,8 @@ tests =
         para r [t "1", Sidenote sp 1 [t "2b"]] @?= [cs "n" [t "1"], Sidenote sp 1 [t "2", cs "m" [t "b"]]],
       testCase "a caption has the rules of caption, not of body" $ do
         let r = rules [("body", [("[0-9]+", "n")]), ("caption", [("[a-z]+", "m")])]
-            fig = FigureBlock (Figure "a.png" Nothing "" Nothing Nothing [Block sp Nothing (Paragraph Nothing [t "1a"])] Nothing False)
-        bodies r [fig] @?= [FigureBlock (Figure "a.png" Nothing "" Nothing Nothing [Block sp Nothing (Paragraph Nothing [t "1", cs "m" [t "a"]])] Nothing False)],
+            fig = FigureBlock (Figure "a.png" Nothing "" Nothing Nothing [Block sp Nothing Nothing (Paragraph Nothing [t "1a"])] Nothing False)
+        bodies r [fig] @?= [FigureBlock (Figure "a.png" Nothing "" Nothing Nothing [Block sp Nothing Nothing (Paragraph Nothing [t "1", cs "m" [t "a"]])] Nothing False)],
       testCase "a line break is not wrapped and cuts a run" $ do
         let r = rules [("body", [("[0-9\\n]+", "n")])]
             out = para r [t "a1", LineBreak sp, t "2b"]
@@ -91,13 +91,13 @@ tests =
       testCase "headings, table cells and terms are not matched; list items are" $ do
         let h = Heading 1 noHeadingAttrs [t "1"]
             tbl = Table [AlignDefault] [[t "1"]] [[[t "2"]]]
-            dl = DefList [DefGroup [[t "1"]] [[Block sp Nothing (Paragraph Nothing [t "2"])]]]
-            ul = BulletList [ListItem Nothing [Block sp Nothing (Paragraph Nothing [t "3"])]]
+            dl = DefList [DefGroup [[t "1"]] [[Block sp Nothing Nothing (Paragraph Nothing [t "2"])]]]
+            ul = BulletList [ListItem Nothing [Block sp Nothing Nothing (Paragraph Nothing [t "3"])]]
         bodies digits [h, tbl, dl, ul]
           @?= [ h,
                 tbl,
-                DefList [DefGroup [[t "1"]] [[Block sp Nothing (Paragraph Nothing [cs "n" [t "2"]])]]],
-                BulletList [ListItem Nothing [Block sp Nothing (Paragraph Nothing [cs "n" [t "3"]])]]
+                DefList [DefGroup [[t "1"]] [[Block sp Nothing Nothing (Paragraph Nothing [cs "n" [t "2"]])]]],
+                BulletList [ListItem Nothing [Block sp Nothing Nothing (Paragraph Nothing [cs "n" [t "3"]])]]
               ],
       testCase "a paragraph style uses its own rules" $ do
         let r = rules [("body", [("[0-9]+", "n")]), ("quote", [("[a-z]+", "m")])]

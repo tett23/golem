@@ -19,7 +19,7 @@ sp :: SrcSpan
 sp = SrcSpan (FileId 0) 0 1
 
 item :: Maybe Integer -> ListItem
-item n = ListItem (fromInteger <$> n) [Block sp Nothing (Paragraph Nothing [Text sp "x"])]
+item n = ListItem (fromInteger <$> n) [Block sp Nothing Nothing (Paragraph Nothing [Text sp "x"])]
 
 tests :: TestTree
 tests =
@@ -58,9 +58,9 @@ tests =
       testCase "a list deeper than the given styles keeps the last style" $
         map (atDepth (pure 'a' <> pure 'b')) [1, 2, 3] @?= "abb",
       testCase "numbered items are listed with their numbers and depths, at their first blocks" $ do
-        let inner = Block sp Nothing (OrderedList [item (Just 5)])
+        let inner = Block sp Nothing Nothing (OrderedList [item (Just 5)])
             second = SrcSpan (FileId 0) 3 4
-            outer = Block sp Nothing (OrderedList [item Nothing, ListItem Nothing [Block second Nothing (Paragraph Nothing []), inner]])
+            outer = Block sp Nothing Nothing (OrderedList [item Nothing, ListItem Nothing [Block second Nothing Nothing (Paragraph Nothing []), inner]])
         listSites [outer] @?= [ListSite 1 1 sp, ListSite 1 2 second, ListSite 2 5 sp],
       listNumberTests
     ]
@@ -81,7 +81,7 @@ listNumberTests =
     "G07029 (docs/adr/0192)"
     [ testCase "a number its format cannot write is G07029, at the item" $ do
         let at51 = SrcSpan (FileId 0) 5 6
-            list = Block sp Nothing (OrderedList [item Nothing, ListItem (Just 51) [Block at51 Nothing (Paragraph Nothing [Text at51 "x"])]])
+            list = Block sp Nothing Nothing (OrderedList [item Nothing, ListItem (Just 51) [Block at51 Nothing Nothing (Paragraph Nothing [Text at51 "x"])]])
             circled = parseNumberFormat "{①}"
         case circled of
           Right f ->
@@ -89,11 +89,11 @@ listNumberTests =
               @?= [("G07029", at51, "リストの番号 51 は、書式 {n:circled} で表せません")]
           Left e -> assertFailure (show e),
       testCase "without formats, the default of each writing mode decides" $ do
-        let list = Block sp Nothing (OrderedList [item Nothing, item (Just 100000)])
+        let list = Block sp Nothing Nothing (OrderedList [item Nothing, item (Just 100000)])
         sites (listNumberDiagnostics Nothing False (bookOf [list])) @?= []
         sites (listNumberDiagnostics Nothing True (bookOf [list])) @?= [],
       testCase "a book of numbers its formats can write has no G07029" $ do
-        let list = Block sp Nothing (OrderedList [item Nothing, item (Just 50)])
+        let list = Block sp Nothing Nothing (OrderedList [item Nothing, item (Just 50)])
         case parseNumberFormat "{①}" of
           Right f -> sites (listNumberDiagnostics (Just (f :| [])) False (bookOf [list])) @?= []
           Left e -> assertFailure (show e)

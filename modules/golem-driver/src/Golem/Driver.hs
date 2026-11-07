@@ -806,7 +806,7 @@ pluginImagePathDiagnostics :: Book -> [Diagnostic]
 pluginImagePathDiagnostics book =
   [ diagnostic "G08102" Error sp ("図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: " <> path)
   | Document _ bs <- bookDocs book,
-    Block sp _ (FigureBlock f) <- allFigures bs,
+    Block sp _ _ (FigureBlock f) <- allFigures bs,
     let path = fromMaybe (figSource f) (figWeb f),
     Right rel <- [normalizeRelative (T.unpack path)],
     "images/golem-plugin/" `isPrefixOf` rel
@@ -820,7 +820,7 @@ outside the root are left to the diagnostics about paths.
 -}
 activeContentDiagnostics :: FilePath -> Book -> IO [Diagnostic]
 activeContentDiagnostics root book = do
-  let figures = [(sp, webSource f) | Document _ bs <- bookDocs book, Block sp _ (FigureBlock f) <- allFigures bs, ".svg" `T.isSuffixOf` T.toLower (webSource f)]
+  let figures = [(sp, webSource f) | Document _ bs <- bookDocs book, Block sp _ _ (FigureBlock f) <- allFigures bs, ".svg" `T.isSuffixOf` T.toLower (webSource f)]
   checked <- forM (nub (map snd figures)) $ \path -> case Map.lookup path (bookImages book) of
     -- an image a plugin made (docs/adr/0123)
     Just bytes -> pure (path, activeMessage path (activeContent bytes))
@@ -1056,8 +1056,8 @@ htmlConfig dev e book missing bib =
       hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
       hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
       hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
-      hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ (ForcedBreak k) <- bs],
-      hcNoBreak = or [True | Document _ bs <- bookDocs book, Block _ _ (PageControl NoBreak) <- bs],
+      hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ _ (ForcedBreak k) <- bs],
+      hcNoBreak = or [True | Document _ bs <- bookDocs book, Block _ _ _ (PageControl NoBreak) <- bs],
       -- only a book with [lists] changes the markers (golem-driver ADR 0013)
       -- the paragraph style code for pre (golem-driver ADR 0017)
       hcCode =

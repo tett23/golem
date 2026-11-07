@@ -93,6 +93,8 @@ data Document = Document
 data Block = Block
   { blockSpan :: !SrcSpan,
     blockLabel :: !(Maybe Text),
+    -- | the language of the block, as written with @lang (docs/adr ADR 0187)
+    blockLang :: !(Maybe Text),
     blockBody :: !BlockBody
   }
   deriving stock (Eq, Show)
@@ -275,6 +277,8 @@ data InlineF r
     ChannelItem !SrcSpan !ChannelItem
   | -- | a link to an external URL, as written (docs/adr ADR 0182)
     Link !SrcSpan !Text [InlineF r]
+  | -- | a language span: the tag as written with [lang] (docs/adr ADR 0187)
+    Lang !SrcSpan !Text [InlineF r]
   deriving stock (Eq, Show)
 
 -- | The amount of an [aki]: in zw (the size of the type there), or absolute in sp.
@@ -366,6 +370,7 @@ noRuby = \case
   Aki s a -> Just (Aki s a)
   ChannelItem s c -> Just (ChannelItem s c)
   Link s u xs -> Link s u <$> traverse noRuby xs
+  Lang s l xs -> Lang s l <$> traverse noRuby xs
 
 {- | A title as it is copied elsewhere in the book (the table of contents,
 [ref-title]): without the inlines that tell a list where the text is,
@@ -373,6 +378,7 @@ index marks and channel items, at any depth (docs/adr/0145). A mark
 stands only where it was written, so a list never points at a copy. The
 notes are left as they are. A link gives its text without the link
 (docs/adr ADR 0182), so that a copy that becomes a link holds no link.
+A language span stays, with the rule inside it (docs/adr ADR 0187).
 -}
 withoutAnchors :: [InlineF r] -> [InlineF r]
 withoutAnchors = concatMap $ \case
@@ -383,6 +389,7 @@ withoutAnchors = concatMap $ \case
   Color sp c xs -> [Color sp c (withoutAnchors xs)]
   CharStyle sp c xs -> [CharStyle sp c (withoutAnchors xs)]
   Link _ _ xs -> withoutAnchors xs
+  Lang sp l xs -> [Lang sp l (withoutAnchors xs)]
   x -> [x]
 
 -- | Whether an inline is a line break.

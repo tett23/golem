@@ -52,6 +52,7 @@ import Data.Text.Unsafe (lengthWord8)
 import Golem.Doc.FigureWidth (parseFigureWidth)
 import Golem.Doc.IR
 import Golem.Doc.Url (UrlProblem (..), checkUrl, linkElements, urlProblemMessage)
+import Golem.Doc.Validate (langTagMessage)
 import Golem.Eval.Analysis (analyse)
 import Golem.Eval.Builtin
 import Golem.Eval.Expr
@@ -68,6 +69,7 @@ import Golem.Project.Imports (ImportSite (..), importSite)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
 import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Sp (..), Style, kentenShapeNames, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
 import Golem.Syntax
+import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Syntax.Text (isSpaceTab, tshow)
 import Numeric.Natural (Natural)
 
@@ -211,7 +213,13 @@ overridableCommands :: [Text]
 overridableCommands = [builtinName b | b@(Overridable _) <- allBuiltins]
 
 attributeCommands :: [Text]
-attributeCommands = ["label", "toc-title", "number", "nonumber", "notoc", "style", "caption"]
+attributeCommands = ["label", "toc-title", "number", "nonumber", "notoc", "style", "caption", "lang"]
+
+{- | The attributes that have a body form too: with a body, the command is
+a block of its own (docs/adr ADR 0005, ADR 0187).
+-}
+bodyFormCommands :: [Text]
+bodyFormCommands = ["style", "lang"]
 
 -- | The shapes of kenten (golem-driver ADR 0019); an unknown one is G02039.
 kentenShapes :: [Text]
@@ -278,7 +286,7 @@ unwritableText = concatMap blockDiags . docBlocks
     at sp t = case firstUnwritable t of
       Just c -> [diagnostic "G02089" Error sp ("出力に書けない文字（" <> codePointText c <> "）があります")]
       Nothing -> []
-    blockDiags (Block sp _ b) = case b of
+    blockDiags (Block sp _ _ b) = case b of
       Paragraph _ is -> inlines is
       Heading _ attrs is -> maybe [] inlines (haTocTitle attrs) <> inlines is
       BulletList items -> concatMap (concatMap blockDiags . itemBlocks) items
@@ -313,6 +321,7 @@ unwritableText = concatMap blockDiags . docBlocks
       Aki {} -> []
       ChannelItem sp c -> concatMap (at sp) (ciChannel c : maybe [] pure (ciKey c) <> maybe [] pure (ciReading c)) <> inlines (ciBody c)
       Link _ _ xs -> inlines xs
+      Lang _ _ xs -> inlines xs
 
 -- ------------------------------------------------------------------ newlines
 
@@ -457,7 +466,7 @@ env :: M Env
 env = gets (\s -> Env (stVars s) (stNamespaces s) (stFunctions s))
 
 block :: SrcSpan -> BlockBody -> Block
-block sp = Block sp Nothing
+block sp = Block sp Nothing Nothing
 
 evalBlock :: EvalContext -> A.Located A.Block -> M [Block]
 evalBlock ctx (A.Located sp b) = case b of
@@ -559,6 +568,7 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "table" -> csvTable ctx sp args
   "listing" -> listing ctx sp args
   "style" -> styleBody ctx sp (maximum (spanEnd nsp : map (spanEnd . A.locSpan) args)) args body
+  "lang" | not (null body) -> langBody ctx sp args body
   -- the file settings are read before the blocks; elsewhere they are errors (docs/adr ADR 0014)
   _ | name `elem` settingCommands -> misplacedSetting sp >> pure []
   _
@@ -590,17 +600,17 @@ pluginBlock ctx sp pb args body = do
     style in its caption is G02013, and is dropped, as @figure does
     (docs/adr/0123) -}
     pluginFigure body' imgs b = case b of
-      Block bsp lbl (FigureBlock f) | b `notElem` body' -> do
-        mapM_ (\_ -> err "G02013" sp "@style は図版のキャプションには付けられません") [() | Block _ _ (Paragraph (Just _) _) <- figCaption f]
+      Block bsp lbl lang (FigureBlock f) | b `notElem` body' -> do
+        mapM_ (\_ -> err "G02013" sp "@style は図版のキャプションには付けられません") [() | Block _ _ _ (Paragraph (Just _) _) <- figCaption f]
         let unstyle = \case
-              Block csp clbl (Paragraph (Just _) is) -> Block csp clbl (Paragraph Nothing is)
+              Block csp clbl clang (Paragraph (Just _) is) -> Block csp clbl clang (Paragraph Nothing is)
               c -> c
             f' = f {figCaption = map unstyle (figCaption f)}
         ok <- checkFigure sp (pure . (`Map.member` imgs)) f'
         if ok
           then do
             modify' (\s -> s {stImages = Map.union (stImages s) (Map.restrictKeys imgs (Set.fromList (figSource f' : maybe [] pure (figWeb f'))))})
-            pure [Block bsp lbl (FigureBlock f')]
+            pure [Block bsp lbl lang (FigureBlock f')]
           else pure []
       _ -> pure [b]
 
@@ -743,18 +753,18 @@ nameErrors ctx is bs =
       once xs = Set.toList (Set.fromList xs)
    in [("G02018", "定義されていない文字スタイルです: " <> x) | x <- once [x | CharStyle _ x _ <- inl], not (Set.member x (ctxCharStyles ctx))]
         <> [("G02017", "style.toml にないスウォッチです: " <> x) | x <- once [x | Color _ x _ <- inl], not (Set.member x (ctxSwatches ctx))]
-        <> [("G02047", "定義されていない段落スタイルです: " <> x) | x <- once [x | Block _ _ (Paragraph (Just x) _) <- universeBlocks bs], not (Map.member x (ctxParaStyles ctx))]
+        <> [("G02047", "定義されていない段落スタイルです: " <> x) | x <- once [x | Block _ _ _ (Paragraph (Just x) _) <- universeBlocks bs], not (Map.member x (ctxParaStyles ctx))]
         <> [("G02039", "未知の圏点の形です: " <> x) | x <- once [x | Kenten _ (Just x) _ <- inl], x `notElem` kentenShapes]
         <> [("G02021", "書誌データにないキーです: " <> x) | x <- once [x | Cite _ x <- inl], not (Set.member x (ctxCiteKeys ctx))]
   where
     universeBlocks = concatMap (\b -> b : universeBlocks (innerBlocks b))
-    innerBlocks (Block _ _ body) = case body of
+    innerBlocks (Block _ _ _ body) = case body of
       BulletList items -> concatMap itemBlocks items
       OrderedList items -> concatMap itemBlocks items
       DefList gs -> concat (concatMap dgDefs gs)
       FigureBlock f -> figCaption f
       _ -> []
-    blockInlines (Block _ _ body) = case body of
+    blockInlines (Block _ _ _ body) = case body of
       Paragraph _ xs -> xs
       Heading _ a xs -> fromMaybe [] (haTocTitle a) <> xs
       Table _ h rows -> concat h <> concat (concat rows)
@@ -770,6 +780,7 @@ nameErrors ctx is bs =
       Sidenote _ _ xs -> xs
       ChannelItem _ c -> ciBody c
       Link _ _ xs -> xs
+      Lang _ _ xs -> xs
       Ruby _ _ segs -> concat [mapMaybe withRubyInline (rsBase g) | g <- segs]
       _ -> []
     withRubyInline :: InlineNoRuby -> Maybe Inline
@@ -803,11 +814,12 @@ fillKenten ctx = \case
   Note s n xs -> Note s n (map (fillKenten ctx) xs)
   Sidenote s n xs -> Sidenote s n (map (fillKenten ctx) xs)
   Link s u xs -> Link s u (map (fillKenten ctx) xs)
+  Lang s l xs -> Lang s l (map (fillKenten ctx) xs)
   i -> i
 
 -- | 'fillKenten' in the inlines of blocks.
 fillKentenBlock :: EvalContext -> Block -> Block
-fillKentenBlock ctx (Block sp l body) = Block sp l $ case body of
+fillKentenBlock ctx (Block sp l lang body) = Block sp l lang $ case body of
   Paragraph st xs -> Paragraph st (map f xs)
   Heading lv a xs -> Heading lv a (map f xs)
   BulletList items -> BulletList [ListItem n (map (fillKentenBlock ctx) bs) | ListItem n bs <- items]
@@ -892,7 +904,7 @@ attributedGroup ctx sp cmds target = case target of
     before <- concat <$> mapM (evalBlock ctx) nonAttrs
     (before <>) <$> withAttrs (filter isAttr cmds) t
   where
-    isAttr c@(A.Located _ (A.BlockCommand (A.Located _ n) _ body)) = n `elem` attributeCommands && not (isStyleCommand c && not (null body))
+    isAttr (A.Located _ (A.BlockCommand (A.Located _ n) _ body)) = n `elem` attributeCommands && not (n `elem` bodyFormCommands && not (null body))
     isAttr _ = False
     isBlockCommand = \case
       A.Located _ (A.BlockCommand {}) -> True
@@ -915,15 +927,23 @@ attributedGroup ctx sp cmds target = case target of
                 _ -> b
           map styled <$> evalBlock ctx t
         (other, _) -> evalBlock ctx (joinTarget other)
+      -- the language of @lang, the one written last (docs/adr ADR 0187)
+      lang <- foldM' (\l (A.Located asp c) -> case c of A.BlockCommand (A.Located _ "lang") args _ -> maybe l Just <$> langTag asp args; _ -> pure l) Nothing attrs
       case targetBlocks of
-        (Block bsp _ body : rest) -> do
+        (Block bsp _ lang0 body : rest) -> do
           -- where G04007 points: the @number line (golem-syntax ADR 0002)
           case [asp | ("number", asp) <- named] of
             (asp : _) -> modify' (\s -> s {stNumberSites = Map.insert bsp asp (stNumberSites s)})
             [] -> pure ()
           (label, body') <- foldM' (applyAttr ctx) (Nothing, body) attrs
-          pure (Block bsp label body' : rest)
+          {- the blocks of a block command without a language of their own
+          take it; otherwise the block after the attributes (docs/adr ADR 0187) -}
+          let rest' = if isCommandTarget t then map (withLang lang) rest else rest
+          pure (withLang lang (Block bsp label lang0 body') : rest')
         [] -> pure []
+    isCommandTarget = \case
+      A.Located _ (A.BlockCommand {}) -> True
+      _ -> False
     -- a target that is not a paragraph keeps no newlines
     joinTarget = \case
       A.Located tsp (A.Paragraph is) -> A.Located tsp (A.Paragraph (joinSoftBreaks is))
@@ -1058,8 +1078,8 @@ the first.
 blankLinesInRow :: [Block] -> [Diagnostic]
 blankLinesInRow bs =
   [ notice "G02094" sp "続けて書いた @blank-line は @blank-line <N> にまとめて書けます"
-  | (i, Block sp _ (BlankLines _)) <- zip [0 :: Int ..] bs,
-    Block _ _ (BlankLines _) : _ <- [dropWhile control (reverse (take i bs))]
+  | (i, Block sp _ _ (BlankLines _)) <- zip [0 :: Int ..] bs,
+    Block _ _ _ (BlankLines _) : _ <- [dropWhile control (reverse (take i bs))]
   ]
   where
     control b = case blockBody b of
@@ -1072,9 +1092,9 @@ and page-lines between them (docs/adr ADR 0030).
 conflictingBreaks :: [Block] -> [Diagnostic]
 conflictingBreaks bs =
   [ diagnostic "G02072" Error sp ("@no-page-break と " <> breakName k <> " が同じ位置にあります")
-  | (i, Block sp _ (PageControl NoBreak)) <- zip [0 :: Int ..] bs,
+  | (i, Block sp _ _ (PageControl NoBreak)) <- zip [0 :: Int ..] bs,
     side <- [reverse (take i bs), drop (i + 1) bs],
-    Block _ _ (ForcedBreak k) : _ <- [dropWhile soft side]
+    Block _ _ _ (ForcedBreak k) : _ <- [dropWhile soft side]
   ]
   where
     soft b = case blockBody b of
@@ -1084,6 +1104,51 @@ conflictingBreaks bs =
     breakName = \case
       BreakColumn -> "@column-break"
       _ -> "@page-break"
+
+-- ------------------------------------------------------------------ languages
+
+{- | The tag of [lang] and @lang (docs/adr ADR 0187): one positional
+argument, a word or a string, and no keyword argument, else G02131; a
+tag of the form of BCP 47, else G02132. Nothing after an error.
+-}
+langTag :: SrcSpan -> [A.Located A.Argument] -> M (Maybe Text)
+langTag sp args = case args of
+  [A.Located _ (A.Positional v)]
+    | Just t <- nameArg v ->
+        if isLanguageTag t
+          then pure (Just t)
+          else err "G02132" sp (langTagMessage t) >> pure Nothing
+  _ -> err "G02131" sp "lang には言語のタグを一つ書きます" >> pure Nothing
+
+{- | @[lang タグ: 散文]@ (docs/adr ADR 0187): the prose in a language span;
+a slot that is not one is G02038. With a wrong tag the prose stays,
+without a span.
+-}
+langSpan :: EvalContext -> Bool -> SrcSpan -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
+langSpan ctx inHeading sp args slots = do
+  tag <- langTag sp args
+  case slots of
+    [s] -> do
+      is <- evalInlines ctx inHeading s
+      pure (maybe is (\t -> [Lang sp t is]) tag)
+    _ -> err "G02038" sp "lang には散文スロットが一つ必要です" >> pure []
+
+{- | The body form of @lang (docs/adr ADR 0187): each block at the top of
+the body takes the language, unless it has one of its own; no block wraps
+them. A forced break, a page control and blank lines in the body are not
+at the top of the document (G02059, G02071, G02093).
+-}
+langBody :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+langBody ctx sp args body = do
+  tag <- langTag sp args
+  bs <- evalBlocks ctx body
+  let (ds, bs') = concat <$> traverse belowTop bs
+  mapM_ report ds
+  pure (map (withLang tag) bs')
+
+-- | A block with a language, unless it has one of its own (docs/adr ADR 0187).
+withLang :: Maybe Text -> Block -> Block
+withLang l b = b {blockLang = blockLang b <|> l}
 
 {- | Forced breaks below the top of the document are dropped with G02059
 (docs/adr ADR 0017), the controls of page breaks with G02071 (docs/adr ADR
@@ -1096,10 +1161,14 @@ nestedBreaks bs = let (ds, bs') = concat <$> traverse top bs in (bs', ds)
       ForcedBreak _ -> ([], [b])
       PageControl _ -> ([], [b])
       BlankLines _ -> ([], [b])
-      _ -> inner b
-    -- the diagnostics and what is left of a block below the top
+      _ -> belowTop b
+
+-- | The diagnostics and what is left of a block below the top of the document ('nestedBreaks').
+belowTop :: Block -> ([Diagnostic], [Block])
+belowTop = inner
+  where
     inner :: Block -> ([Diagnostic], [Block])
-    inner b@(Block sp lbl body) = case body of
+    inner b@(Block sp lbl lang body) = case body of
       ForcedBreak _ -> ([diagnostic "G02059" Error sp "@page-break と @column-break は文書の最上位にだけ置けます"], [])
       PageControl _ -> ([diagnostic "G02071" Error sp "@no-page-break、@need-lines、@page-lines は文書の最上位にだけ置けます"], [])
       BlankLines _ -> ([diagnostic "G02093" Error sp "@blank-line は文書の最上位にだけ置けます"], [])
@@ -1109,7 +1178,7 @@ nestedBreaks bs = let (ds, bs') = concat <$> traverse top bs in (bs', ds)
       FigureBlock f -> rebuild (\c -> FigureBlock f {figCaption = c}) <$> nested (figCaption f)
       _ -> ([], [b])
       where
-        rebuild f x = [Block sp lbl (f x)]
+        rebuild f x = [Block sp lbl lang (f x)]
     item (ListItem n bs') = ListItem n <$> nested bs'
     nested bs' = concat <$> traverse inner bs'
 
@@ -1128,6 +1197,8 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
     ("notoc", Heading l a is) -> pure (label, Heading l a {haNoToc = True} is)
     -- the style of a paragraph is applied when the paragraph is evaluated
     ("style", Paragraph {}) -> pure (label, body)
+    -- the language goes to any block, after the other attributes (docs/adr ADR 0187)
+    ("lang", _) -> pure (label, body)
     -- the caption of a code block: the rest of the line, inlines included (golem-driver ADR 0023)
     ("caption", CodeBlock c)
       | null args -> err "G02069" sp "@caption には本文を書きます" >> pure (label, body)
@@ -1287,7 +1358,7 @@ hardLines ctx sp is = do
 unknownParaStyles :: EvalContext -> Document -> [Diagnostic]
 unknownParaStyles ctx (Document _ bs) = concatMap go bs
   where
-    go (Block sp _ body) = case body of
+    go (Block sp _ _ body) = case body of
       Paragraph (Just n) _ | Map.notMember n (ctxParaStyles ctx) -> [diagnostic "G02047" Error sp ("定義されていない段落スタイルです: " <> n)]
       BulletList items -> concatMap (concatMap go . itemBlocks) items
       OrderedList items -> concatMap (concatMap go . itemBlocks) items
@@ -2188,6 +2259,7 @@ builtinWith ctx inHeading sp b args slots = do
     Overridable BRuby -> ruby ctx sp slots
     Fixed BAki -> aki sp args slots
     Fixed BLink -> link ctx inHeading sp args slots
+    Fixed BLang -> langSpan ctx inHeading sp args slots
   where
     refTo k = \case
       [v] | validLabel (argText v) -> pure [Ref sp k (argText v)]

@@ -119,7 +119,7 @@ declarationErrors inp =
        ]
     <> [ diagnostic "G07103" Error sp ("PDF/UA では見出しの段を飛ばせません: " <> tshow' before <> " から " <> tshow' l)
        | isJust pdfUa,
-         let levels = [(l, sp) | Document _ bs <- bookDocs (piBook inp), Block sp _ (Heading l _ _) <- blocksWithin bs],
+         let levels = [(l, sp) | Document _ bs <- bookDocs (piBook inp), Block sp _ _ (Heading l _ _) <- blocksWithin bs],
          (before, (l, sp)) <- zip (0 : map fst levels) levels,
          l > before + 1
        ]

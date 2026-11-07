@@ -77,7 +77,7 @@ twoFiles lang na nb chapters =
     (bookOf [])
       { bookDocs =
           [ Document fid [para 0 [txt "甲", Note (at 1) na [txt "注甲。"]]],
-            Document fidB [Block (mkSpan fidB 0 1) Nothing (Paragraph Nothing [txt "乙", Note (mkSpan fidB 1 2) nb [txt "注乙。"]])]
+            Document fidB [Block (mkSpan fidB 0 1) Nothing Nothing (Paragraph Nothing [txt "乙", Note (mkSpan fidB 1 2) nb [txt "注乙。"]])]
           ],
         bookChapterOf = chapters
       }
@@ -90,7 +90,7 @@ tests =
       twoFiles "en" 1 1 [0, 1] @?= [("chapters/a.txt", "甲*1\n\nNotes\n*1 注甲。\n"), ("chapters/b.txt", "乙*1\n\nNotes\n*1 注乙。\n")],
     testCase "files after the chapters the manifest gives are each a chapter of their own" $
       let (fidC, ft3) = registerFile "chapters/c.gm" ft2
-          noted f n t = Document f [Block (mkSpan f 0 1) Nothing (Paragraph Nothing [txt t, Note (mkSpan f 1 2) n [txt ("注" <> t)]])]
+          noted f n t = Document f [Block (mkSpan f 0 1) Nothing Nothing (Paragraph Nothing [txt t, Note (mkSpan f 1 2) n [txt ("注" <> t)]])]
        in renderText "ja" "kanji" False (const (const (0, 0))) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft3 ((bookOf []) {bookDocs = [noted fid 1 "甲", noted fidB 2 "乙", noted fidC 3 "丙"], bookChapterOf = [0]})
             @?= [("chapters/a.txt", "甲*1\n\n注\n*1 注甲\n"), ("chapters/b.txt", "乙*2\n\n注\n*2 注乙\n"), ("chapters/c.txt", "丙*3\n\n注\n*3 注丙\n")],
     testCase "the title of the notes is 注 for any language that starts with ja, in any case" $
@@ -121,7 +121,7 @@ tests =
       let item n t = ChannelItem (at n) (ChannelItemData "people" (Just t) Nothing [Text (at n) t])
           entry t n = ChannelEntry (Just t) [Text (at n) t] [(fid, at n)]
           book =
-            (bookOf [para 0 [txt "本文", item 1 "甲", item 2 "乙"], Block (at 5) Nothing (ChannelOutput (CustomOutput "people" Nothing))])
+            (bookOf [para 0 [txt "本文", item 1 "甲", item 2 "乙"], Block (at 5) Nothing Nothing (ChannelOutput (CustomOutput "people" Nothing))])
               { bookChannels = [((fid, at 5), "people", [entry "甲" 1, entry "乙" 2])]
               }
        in only (horizontal book) @?= "本文\n\n甲\n乙\n",
@@ -181,36 +181,36 @@ tests =
       only (horizontal (bookOf [para 0 [txt "一行目", LineBreak (at 1), txt "二行目"]])) @?= "一行目\n二行目\n",
     testCase "a figure is one line of number and caption in corner brackets" $
       let fig = Figure "a.png" Nothing "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False
-          book = (bookOf [Block (at 0) Nothing (FigureBlock fig)]) {bookFigures = Map.fromList [(at 0, "図1-1")]}
+          book = (bookOf [Block (at 0) Nothing Nothing (FigureBlock fig)]) {bookFigures = Map.fromList [(at 0, "図1-1")]}
        in only (horizontal book) @?= "［図1-1　キャプション］\n",
     testCase "a bullet list is ・ and the item" $
       let items = [ListItem Nothing [para 1 [txt "りんご"]], ListItem Nothing [para 2 [txt "みかん"]]]
-       in only (horizontal (bookOf [Block (at 0) Nothing (BulletList items)])) @?= "・りんご\n・みかん\n",
+       in only (horizontal (bookOf [Block (at 0) Nothing Nothing (BulletList items)])) @?= "・りんご\n・みかん\n",
     testCase "an ordered list is 1. in horizontal text" $
       let items = [ListItem Nothing [para 1 [txt "一つ目"]], ListItem Nothing [para 2 [txt "二つ目"]]]
-       in only (horizontal (bookOf [Block (at 0) Nothing (OrderedList items)])) @?= "1. 一つ目\n2. 二つ目\n",
+       in only (horizontal (bookOf [Block (at 0) Nothing Nothing (OrderedList items)])) @?= "1. 一つ目\n2. 二つ目\n",
     testCase "an ordered list is 一、 in vertical text" $
       let items = [ListItem Nothing [para 1 [txt "一つ目"]], ListItem Nothing [para 2 [txt "二つ目"]]]
-       in only (vertical (bookOf [Block (at 0) Nothing (OrderedList items)])) @?= "一、一つ目\n二、二つ目\n",
+       in only (vertical (bookOf [Block (at 0) Nothing Nothing (OrderedList items)])) @?= "一、一つ目\n二、二つ目\n",
     testCase "a definition list indents the definition by one ideographic space" $
       let group = DefGroup [[txt "用語"]] [[para 2 [txt "説明。"]]]
-       in only (horizontal (bookOf [Block (at 0) Nothing (DefList [group])])) @?= "用語\n　説明。\n",
+       in only (horizontal (bookOf [Block (at 0) Nothing Nothing (DefList [group])])) @?= "用語\n　説明。\n",
     testCase "a table separates the cells by tabs" $
       let table = Table [] [[txt "名前"], [txt "値"]] [[[txt "a"], [txt "1"]]]
-       in only (horizontal (bookOf [Block (at 0) Nothing table])) @?= "名前\t値\na\t1\n",
+       in only (horizontal (bookOf [Block (at 0) Nothing Nothing table])) @?= "名前\t値\na\t1\n",
     testCase "a code block is written as it is" $
-      only (horizontal (bookOf [Block (at 0) Nothing (CodeBlock (Code (Just "haskell") Nothing Nothing Nothing False [CodeLine "main = pure ()" (Just 1) Nothing False []]))])) @?= "main = pure ()\n",
+      only (horizontal (bookOf [Block (at 0) Nothing Nothing (CodeBlock (Code (Just "haskell") Nothing Nothing Nothing False [CodeLine "main = pure ()" (Just 1) Nothing False []]))])) @?= "main = pure ()\n",
     testCase "a heading is its number, an ideographic space and its title" $
       let attrs = HeadingAttrs Nothing Nothing False False
           info = HeadingInfo 1 (Just [1]) (Just "第一章") [txt "はじめに"] "h-0-0" fid
-          book = (bookOf [Block (at 0) Nothing (Heading 1 attrs [txt "はじめに"])]) {bookHeadings = Map.fromList [(at 0, info)]}
+          book = (bookOf [Block (at 0) Nothing Nothing (Heading 1 attrs [txt "はじめに"])]) {bookHeadings = Map.fromList [(at 0, info)]}
        in only (horizontal book) @?= "第一章　はじめに\n",
     testCase "the table of contents lists number and title" $
       let entry = TocEntry 1 (Just "第一章") [txt "はじめに"] "intro" fid (at 9)
-          book = (bookOf [Block (at 0) Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry]}
+          book = (bookOf [Block (at 0) Nothing Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry]}
        in only (horizontal book) @?= "第一章　はじめに\n",
     testCase "the index and forced breaks write nothing" $
-      only (horizontal (bookOf [para 0 [txt "前"], Block (at 2) Nothing (ChannelOutput IndexOutput), Block (at 3) Nothing (ForcedBreak BreakPage), para 4 [txt "後"]]))
+      only (horizontal (bookOf [para 0 [txt "前"], Block (at 2) Nothing Nothing (ChannelOutput IndexOutput), Block (at 3) Nothing Nothing (ForcedBreak BreakPage), para 4 [txt "後"]]))
         @?= "前\n\n後\n",
     testProperty "a paragraph of plain words is the words and one newline" $ property $ do
       ws <- forAll (Gen.list (Range.linear 1 5) (Gen.text (Range.linear 1 6) (Gen.element ("あいう漢字abc" :: String))))

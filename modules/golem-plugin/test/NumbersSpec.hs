@@ -118,7 +118,7 @@ numberTests =
       testCase "NaN and the infinities in the answer of a filter" $
         mapM_
           ( \(t, v) -> do
-              let doc = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])]
+              let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])]
                   body = TList [TInt 10, TNull, deferredWith (floatExpr t)]
               docT <- case documentTerm doc of
                 TList [ver, f, TList [TList [s, l, _]]] -> pure (TList [ver, f, TList [TList [s, l, body]]])
@@ -139,7 +139,7 @@ numberTests =
         describePluginError (NonFiniteFloat "NaN") @?= "遅延した式に有限でない浮動小数点数（NaN）があります",
       testCase "nonfinite.wat answers a command and a filter with NaN, Infinity and -Infinity" $ do
         p <- load "nonfinite.wat"
-        let doc = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])]
+        let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])]
         mapM_
           ( \(name, v) -> do
               callCommand p name [] [] callSpan @?= Left (NonFiniteFloat v)

@@ -141,11 +141,11 @@ assembled bss = fst (assemble acfg (\_ _ _ -> Right "") [Document f bs | (f, bs)
 
 -- | A paragraph at offset s that cites the keys, one byte apart.
 citing :: FileId -> Int -> [Text] -> Block
-citing f s ks = Block (mkSpan f s (s + 1)) Nothing (Paragraph Nothing [Cite (mkSpan f (s + i) (s + i + 1)) k | (i, k) <- zip [0 ..] ks])
+citing f s ks = Block (mkSpan f s (s + 1)) Nothing Nothing (Paragraph Nothing [Cite (mkSpan f (s + i) (s + i + 1)) k | (i, k) <- zip [0 ..] ks])
 
 -- | A @bibliography at offset s.
 bib :: FileId -> Int -> Block
-bib f s = Block (mkSpan f s (s + 1)) Nothing (ChannelOutput BibliographyOutput)
+bib f s = Block (mkSpan f s (s + 1)) Nothing Nothing (ChannelOutput BibliographyOutput)
 
 -- | The lists of the channels of plugins (golem-doc ADR 0007).
 channelTests :: TestTree
@@ -172,7 +172,7 @@ channelTests =
     decls = [ChannelDecl "people" OrderDocument True, ChannelDecl "glossary" OrderReading False, ChannelDecl "a-1" OrderDocument True, ChannelDecl "a" OrderDocument True]
     withChannels bss = fst (assemble (AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" (Map.fromList [(channelName d, d) | d <- decls]) 40) (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
     item f s c t = ChannelItem (mkSpan f s (s + 1)) (ChannelItemData c (Just t) (Just t) [Text (mkSpan f s (s + 1)) t])
-    list f s c = Block (mkSpan f s (s + 1)) Nothing (ChannelOutput (CustomOutput c Nothing))
+    list f s c = Block (mkSpan f s (s + 1)) Nothing Nothing (ChannelOutput (CustomOutput c Nothing))
 
 -- | Links from a cite mark to the file of its bibliography (golem-html ADR 0003).
 citeLinkTests :: TestTree
@@ -192,7 +192,7 @@ citeLinkTests =
         bodyA cfg0 book @?= "<p><a class=\"cite\" href=\"b.xhtml#cite-k\">[1]</a></p>\n"
         assertBool (T.unpack bodyB) ("<a class=\"cite\" href=\"#cite-k-2\">[1]</a>" `T.isInfixOf` bodyB),
       testCase "a bibliography inside a list item of another file" $ do
-        let inList = Block (mkSpan fidB 0 1) Nothing (BulletList [ListItem Nothing [bib fidB 2]])
+        let inList = Block (mkSpan fidB 0 1) Nothing Nothing (BulletList [ListItem Nothing [bib fidB 2]])
         bodyA cfg0 (assembled [[citing fidA 0 ["k"]], [inList]])
           @?= "<p><a class=\"cite\" href=\"b.xhtml#cite-k\">[1]</a></p>\n"
     ]
@@ -207,7 +207,7 @@ twoFileBook na nb chapters =
   (bookOf [])
     { bookDocs =
         [ Document fidA [para 0 [txt "甲", Note (at 1) na [txt "注甲。"]]],
-          Document fidB [Block (atB 0) Nothing (Paragraph Nothing [txt "乙", Note (atB 1) nb [txt "注乙。"]])]
+          Document fidB [Block (atB 0) Nothing Nothing (Paragraph Nothing [txt "乙", Note (atB 1) nb [txt "注乙。"]])]
         ],
       bookChapterOf = chapters
     }
@@ -435,36 +435,36 @@ tests =
       num auto {hcVertical = False} 100 @?= "<p>100</p>\n",
     testCase "a heading is h1 with the anchor of the heading as id" $
       let info = HeadingInfo 1 Nothing Nothing [txt "はじめに"] "intro" fidA
-          book = (bookOf [Block (at 0) (Just "intro") (Heading 1 (HeadingAttrs Nothing Nothing True False) [txt "はじめに"])]) {bookHeadings = Map.fromList [(at 0, info)]}
+          book = (bookOf [Block (at 0) (Just "intro") Nothing (Heading 1 (HeadingAttrs Nothing Nothing True False) [txt "はじめに"])]) {bookHeadings = Map.fromList [(at 0, info)]}
        in bodyA cfg0 book @?= "<h1 id=\"intro\">はじめに</h1>\n",
     testCase "the first h1 is the title of the page" $
       let info = HeadingInfo 1 Nothing Nothing [txt "はじめに"] "intro" fidA
-          book = (bookOf [Block (at 0) Nothing (Heading 1 (HeadingAttrs Nothing Nothing True False) [txt "はじめに"])]) {bookHeadings = Map.fromList [(at 0, info)]}
+          book = (bookOf [Block (at 0) Nothing Nothing (Heading 1 (HeadingAttrs Nothing Nothing True False) [txt "はじめに"])]) {bookHeadings = Map.fromList [(at 0, info)]}
           page = fromMaybe "" (lookup "a.xhtml" (sitePages (renderXhtml cfg0 ft book)))
        in fst (T.breakOn "</title>" (T.drop 7 (snd (T.breakOn "<title>" page)))) @?= "はじめに",
     testGroup
       "the separator after a number (golem-html ADR 0002)"
       [ testCase "an ideographic space after the number of a heading in a Japanese book" $
           let info = HeadingInfo 1 (Just [1]) (Just "第一章") [txt "はじめに"] "intro" fidA
-              book = (bookOf [Block (at 0) (Just "intro") (Heading 1 noHeadingAttrs [txt "はじめに"])]) {bookHeadings = Map.fromList [(at 0, info)]}
+              book = (bookOf [Block (at 0) (Just "intro") Nothing (Heading 1 noHeadingAttrs [txt "はじめに"])]) {bookHeadings = Map.fromList [(at 0, info)]}
            in bodyA cfg0 book @?= "<h1 id=\"intro\"><span class=\"number\">第一章</span>\x3000はじめに</h1>\n",
         testCase "a space after the number of a heading in an English book" $
           let info = HeadingInfo 1 (Just [1]) (Just "1") [txt "Introduction"] "intro" fidA
-              book = (bookOf [Block (at 0) (Just "intro") (Heading 1 noHeadingAttrs [txt "Introduction"])]) {bookHeadings = Map.fromList [(at 0, info)]}
+              book = (bookOf [Block (at 0) (Just "intro") Nothing (Heading 1 noHeadingAttrs [txt "Introduction"])]) {bookHeadings = Map.fromList [(at 0, info)]}
            in bodyA cfg0 {hcLanguage = "en"} book @?= "<h1 id=\"intro\"><span class=\"number\">1</span> Introduction</h1>\n",
         testCase "nothing more after a number that ends with a space" $
           let info = HeadingInfo 1 (Just [1]) (Just "Chapter 1: ") [txt "Introduction"] "intro" fidA
-              book = (bookOf [Block (at 0) (Just "intro") (Heading 1 noHeadingAttrs [txt "Introduction"])]) {bookHeadings = Map.fromList [(at 0, info)]}
+              book = (bookOf [Block (at 0) (Just "intro") Nothing (Heading 1 noHeadingAttrs [txt "Introduction"])]) {bookHeadings = Map.fromList [(at 0, info)]}
            in bodyA cfg0 {hcLanguage = "en"} book @?= "<h1 id=\"intro\"><span class=\"number\">Chapter 1: </span>Introduction</h1>\n",
         testCase "an ideographic space after the number of a caption, outside the span" $
           let fig = Figure "images/a.png" Nothing "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False
-              book = (bookOf [Block (at 0) Nothing (FigureBlock fig)]) {bookFigures = Map.fromList [(at 0, "図1-1")]}
+              book = (bookOf [Block (at 0) Nothing Nothing (FigureBlock fig)]) {bookFigures = Map.fromList [(at 0, "図1-1")]}
            in bodyA cfg0 book @?= "<figure>\n<img src=\"images/a.png\" alt=\"代替\"/>\n<figcaption><span class=\"number\">図1-1</span>\x3000キャプション</figcaption>\n</figure>\n",
         -- docs/adr/0190
         testCase "the width of a figure: width and max-width in a horizontal book, height and max-height in a vertical one, in pt, em and %" $ do
           let imgOf cfg w wr =
                 let fig = Figure "images/a.png" Nothing "代替" wr w [] Nothing False
-                 in T.takeWhile (/= '\n') (T.drop 1 (T.dropWhile (/= '\n') (bodyA cfg (bookOf [Block (at 0) Nothing (FigureBlock fig)]))))
+                 in T.takeWhile (/= '\n') (T.drop 1 (T.dropWhile (/= '\n') (bodyA cfg (bookOf [Block (at 0) Nothing Nothing (FigureBlock fig)]))))
           imgOf cfg0 (Just "10zw") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 10em; max-width: 100%\"/>"
           imgOf cfg0 (Just "50%") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 50%; max-width: 100%\"/>"
           imgOf cfg0 (Just "12.5%") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 12.5%; max-width: 100%\"/>"
@@ -481,11 +481,11 @@ tests =
           imgOf cfg0 {hcVertical = True} Nothing Nothing @?= "<img src=\"images/a.png\" alt=\"代替\"/>",
         testCase "the table of contents" $
           let entry = TocEntry 1 (Just "第一章") [txt "はじめに"] "intro" fidA (at 9)
-              book = (bookOf [Block (at 0) Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry]}
+              book = (bookOf [Block (at 0) Nothing Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry]}
            in bodyA cfg0 book @?= "<nav epub:type=\"toc\" class=\"toc\">\n<ol>\n<li class=\"toc-1\"><a href=\"#intro\">第一章\x3000はじめに</a></li>\n</ol>\n</nav>\n"
       ],
     testCase "a labelled paragraph has the label as id" $
-      bodyA cfg0 (bookOf [Block (at 0) (Just "quote-1") (Paragraph Nothing [txt "引用"])]) @?= "<p id=\"quote-1\">引用</p>\n",
+      bodyA cfg0 (bookOf [Block (at 0) (Just "quote-1") Nothing (Paragraph Nothing [txt "引用"])]) @?= "<p id=\"quote-1\">引用</p>\n",
     testGroup
       "cross references"
       [ testCase "a page reference in the same file links to the anchor with the title of the target" $
@@ -502,11 +502,11 @@ tests =
     testCase "an index mark is an empty span with an id from its position" $
       bodyA cfg0 (bookOf [para 0 [txt "組版", IndexMark (at 7) (IndexEntry ["組版"] ["くみはん"])]]) @?= "<p>組版<span id=\"i-0-7\"></span></p>\n",
     testCase "the index links each location by its order" $
-      let book = (bookOf [Block (at 0) Nothing (ChannelOutput IndexOutput)]) {bookIndexes = [((fidA, at 0), [IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(fidA, at 7), (fidA, at 20)]])]}
+      let book = (bookOf [Block (at 0) Nothing Nothing (ChannelOutput IndexOutput)]) {bookIndexes = [((fidA, at 0), [IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(fidA, at 7), (fidA, at 20)]])]}
        in bodyA cfg0 book @?= "<section class=\"index\">\n<ul>\n<li>組版 / 和文組版 <a href=\"#i-0-7\">1</a>, <a href=\"#i-0-20\">2</a></li>\n</ul>\n</section>\n",
     testCase "a citation links to its numbered entry in the bibliography" $
       let book =
-            (bookOf [para 0 [txt "文献", Cite (at 1) "knuth1981"], Block (at 5) Nothing (ChannelOutput BibliographyOutput)])
+            (bookOf [para 0 [txt "文献", Cite (at 1) "knuth1981"], Block (at 5) Nothing Nothing (ChannelOutput BibliographyOutput)])
               { bookBibliographies = [(Just (fidA, at 5), [("knuth1981", 1)])],
                 bookCiteMarks = Map.fromList [((fidA, at 1), (Just (fidA, at 5), 1))]
               }
@@ -521,14 +521,14 @@ tests =
       bodyA cfg0 (bookOf [para 0 [Link (at 1) "https://example.com/?a=1&b=組" [txt "例"], Link (at 2) "https://example.com/" [CharStyle (at 2) "url" [txt "https://example.com/"]]]])
         @?= "<p><a href=\"https://example.com/?a=1&amp;b=組\">例</a><a href=\"https://example.com/\"><span class=\"cs-url\">https://example.com/</span></a></p>\n",
     testCase "a heading with a link: the link stays in the heading, and the copy in a table of contents has its text alone" $
-      let h = Block (at 0) (Just "intro") (Heading 1 noHeadingAttrs [txt "見出し", Link (at 1) "https://example.com/" [txt "例"]])
-          site = renderXhtml cfg0 ft (assembled [[h, Block (at 5) Nothing (ChannelOutput (TocOutput 2))]])
+      let h = Block (at 0) (Just "intro") Nothing (Heading 1 noHeadingAttrs [txt "見出し", Link (at 1) "https://example.com/" [txt "例"]])
+          site = renderXhtml cfg0 ft (assembled [[h, Block (at 5) Nothing Nothing (ChannelOutput (TocOutput 2))]])
           page = maybe "" bodyOf (lookup "a.xhtml" (sitePages site))
        in (T.count "<a href=\"https://example.com/\">" page, T.isInfixOf "<a href=\"https://example.com/\">例</a></h1>" page) @?= (1, True),
     -- golem-doc ADR 0005
     testCase "a URL of http or https in the bibliography is a link of class cs-url; another is a span" $
       let book =
-            (bookOf [para 0 [Cite (at 1) "a", Cite (at 2) "b"], Block (at 5) Nothing (ChannelOutput BibliographyOutput)])
+            (bookOf [para 0 [Cite (at 1) "a", Cite (at 2) "b"], Block (at 5) Nothing Nothing (ChannelOutput BibliographyOutput)])
               { bookBibliographies = [(Just (fidA, at 5), [("a", 1), ("b", 2)])],
                 bookCiteMarks = Map.fromList [((fidA, at 1), (Just (fidA, at 5), 1)), ((fidA, at 2), (Just (fidA, at 5), 2))]
               }
@@ -537,7 +537,7 @@ tests =
             @?= "<p><a class=\"cite\" href=\"#cite-a\">[1]</a><a class=\"cite\" href=\"#cite-b\">[2]</a></p>\n<ol class=\"bibliography\">\n<li id=\"cite-a\">A. <a class=\"cs-url\" href=\"HTTPS://example.com/?a=1&amp;b=2\">HTTPS://example.com/?a=1&amp;b=2</a></li>\n<li id=\"cite-b\">B. <span class=\"cs-url\">javascript:alert(1)</span></li>\n</ol>\n",
     testCase "a figure uses its web image and copies it as an asset" $
       let fig = Figure "images/a.pdf" (Just "images/a.png") "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False
-          site = renderXhtml cfg0 ft (bookOf [Block (at 0) Nothing (FigureBlock fig)])
+          site = renderXhtml cfg0 ft (bookOf [Block (at 0) Nothing Nothing (FigureBlock fig)])
        in (maybe "" bodyOf (lookup "a.xhtml" (sitePages site)), siteAssets site)
             @?= ("<figure>\n<img src=\"images/a.png\" alt=\"代替\"/>\n<figcaption>キャプション</figcaption>\n</figure>\n", [("images/a.png", "images/a.png")]),
     testCase "a line break is br" $
@@ -578,7 +578,7 @@ unescapeXml t = case T.uncons t of
 blockTests :: [TestTree]
 blockTests =
   [ testCase "a table: th in the head, td in the body, the class of each column's alignment" $
-      bodyA cfg0 (bookOf [Block (at 0) Nothing (Table [AlignRight, AlignCenter, AlignLeft, AlignDefault] [[txt "a"], [txt "b"], [txt "c"], [txt "d"]] [[[txt "1"], [txt "2"], [txt "3"], [txt "4"]]])])
+      bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (Table [AlignRight, AlignCenter, AlignLeft, AlignDefault] [[txt "a"], [txt "b"], [txt "c"], [txt "d"]] [[[txt "1"], [txt "2"], [txt "3"], [txt "4"]]])])
         @?= T.concat
           [ "<table>\n<thead>\n",
             "<tr><th class=\"align-right\">a</th><th class=\"align-center\">b</th><th class=\"align-left\">c</th><th>d</th></tr>\n",
@@ -587,17 +587,17 @@ blockTests =
             "</tbody>\n</table>\n"
           ],
     testCase "the cells after the last alignment are not dropped" $
-      bodyA cfg0 (bookOf [Block (at 0) (Just "t") (Table [AlignLeft] [[txt "a"], [txt "b"]] [[[txt "1"], [txt "2"]], [[txt "3"], [txt "4"]]])])
+      bodyA cfg0 (bookOf [Block (at 0) (Just "t") Nothing (Table [AlignLeft] [[txt "a"], [txt "b"]] [[[txt "1"], [txt "2"]], [[txt "3"], [txt "4"]]])])
         @?= "<table id=\"t\">\n<thead>\n<tr><th class=\"align-left\">a</th><th>b</th></tr>\n</thead>\n<tbody>\n<tr><td class=\"align-left\">1</td><td>2</td></tr>\n<tr><td class=\"align-left\">3</td><td>4</td></tr>\n</tbody>\n</table>\n",
     testCase "a numbered list starts at the number of its first item; a later number is the value of its item" $
-      bodyA cfg0 (bookOf [Block (at 0) Nothing (OrderedList [ListItem (Just 3) [para 1 [txt "三"]], ListItem Nothing [para 2 [txt "四"]], ListItem (Just 7) [para 3 [txt "七"]]])])
+      bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (OrderedList [ListItem (Just 3) [para 1 [txt "三"]], ListItem Nothing [para 2 [txt "四"]], ListItem (Just 7) [para 3 [txt "七"]]])])
         @?= "<ol start=\"3\">\n<li>三</li>\n<li>四</li>\n<li value=\"7\">七</li>\n</ol>\n",
     testCase "a numbered list without numbers has neither start nor value" $
-      bodyA cfg0 (bookOf [Block (at 0) Nothing (OrderedList [ListItem Nothing [para 1 [txt "一"]], ListItem Nothing [para 2 [txt "二"]]])])
+      bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (OrderedList [ListItem Nothing [para 1 [txt "一"]], ListItem Nothing [para 2 [txt "二"]]])])
         @?= "<ol>\n<li>一</li>\n<li>二</li>\n</ol>\n",
     testCase "an item of more than one block has its blocks inside; lists inside take the class of their depth, up to the last marker" $
       let lists = Just (HtmlLists ("・" :| ["◦"]) (defaultNumberFormat False :| []) Nothing)
-          ul n bs = Block (at n) Nothing (BulletList [ListItem Nothing bs])
+          ul n bs = Block (at n) Nothing Nothing (BulletList [ListItem Nothing bs])
           book = bookOf [ul 0 [para 1 [txt "a"], ul 2 [para 3 [txt "b"], ul 4 [para 5 [txt "c"]]]]]
        in bodyA cfg0 {hcLists = lists} book
             @?= T.concat
@@ -608,11 +608,11 @@ blockTests =
                 "</li>\n</ul>\n"
               ],
     testCase "a definition list: every term, then every definition, of each group" $
-      bodyA cfg0 (bookOf [Block (at 0) Nothing (DefList [DefGroup [[txt "HTTP"], [txt "HyperText"]] [[para 1 [txt "共有"]], [para 2 [txt "転送"]]], DefGroup [[txt "決定性"]] [[para 3 [txt "同じ出力"]]]])])
+      bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (DefList [DefGroup [[txt "HTTP"], [txt "HyperText"]] [[para 1 [txt "共有"]], [para 2 [txt "転送"]]], DefGroup [[txt "決定性"]] [[para 3 [txt "同じ出力"]]]])])
         @?= "<dl>\n<dt>HTTP</dt>\n<dt>HyperText</dt>\n<dd>\n<p>共有</p>\n</dd>\n<dd>\n<p>転送</p>\n</dd>\n<dt>決定性</dt>\n<dd>\n<p>同じ出力</p>\n</dd>\n</dl>\n",
     testCase "the table of contents takes the headings up to its depth, the depth itself included" $
       let entry l a = TocEntry l Nothing [txt a] a fidA (at 9)
-          book = (bookOf [Block (at 0) Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry 1 "h1", entry 2 "h2", entry 3 "h3", entry 2 "h2b"]}
+          book = (bookOf [Block (at 0) Nothing Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry 1 "h1", entry 2 "h2", entry 3 "h3", entry 2 "h2b"]}
        in bodyA cfg0 book
             @?= "<nav epub:type=\"toc\" class=\"toc\">\n<ol>\n<li class=\"toc-1\"><a href=\"#h1\">h1</a></li>\n<li class=\"toc-2\"><a href=\"#h2\">h2</a></li>\n<li class=\"toc-2\"><a href=\"#h2b\">h2b</a></li>\n</ol>\n</nav>\n",
     testCase "code lines: the number, the diff mark, the classes of a highlight and of the diff, and the callouts" $
@@ -629,7 +629,7 @@ blockTests =
                     CodeLine "c<" (Just 2) (Just DiffAdded) True [1, 2]
                   ]
               }
-       in bodyA cfg0 (bookOf [Block (at 0) Nothing (CodeBlock code)])
+       in bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (CodeBlock code)])
             @?= T.concat
               [ "<pre><code>",
                 "<span class=\"line\"><span class=\"ln\" aria-hidden=\"true\">1</span><span class=\"dm\" aria-hidden=\"true\"> </span>a</span>\n",
@@ -638,7 +638,7 @@ blockTests =
                 "</code></pre>\n"
               ],
     testCase "code without numbers, a diff or marks is its escaped text" $
-      bodyA cfg0 (bookOf [Block (at 0) (Just "c") (CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a & b" (Just 1) Nothing False [], CodeLine "c" (Just 2) Nothing False []]))])
+      bodyA cfg0 (bookOf [Block (at 0) (Just "c") Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a & b" (Just 1) Nothing False [], CodeLine "c" (Just 2) Nothing False []]))])
         @?= "<pre id=\"c\"><code>a &amp; b\nc</code></pre>\n"
   ]
 

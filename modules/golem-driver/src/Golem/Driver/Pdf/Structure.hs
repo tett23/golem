@@ -137,7 +137,7 @@ structureTree fe units figureAttrs =
        in P.structElem P.SDiv (caption <> file <> linesOf)
     -- a figure: the Figure with its alternate text, then its caption (golem-driver ADR 0005, 0010)
     figureElem i u fig =
-      let captionInlines = numberedTitle lang (uSpan u) (Map.lookup (uSpan u) (bookFigures book)) (concat [is | Block _ _ (Paragraph _ is) <- figCaption fig])
+      let captionInlines = numberedTitle lang (uSpan u) (Map.lookup (uSpan u) (bookFigures book)) (concat [is | Block _ _ _ (Paragraph _ is) <- figCaption fig])
           figure = (P.structElem P.SFigure [P.KidLeaf (P.LeafId (figureSite i <> [0]))]) {P.seAlt = Just (figAlt fig), P.seAttrs = figureAttrs i}
        in P.structElem P.SDiv (P.KidElem figure : [P.KidElem (P.structElem P.SCaption (content (captionEnv fe u) (captionSite i) captionInlines)) | not (null captionInlines)])
     -- the units in their frames, the frames made elements

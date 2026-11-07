@@ -143,4 +143,5 @@ linkElements = concatMap $ \case
   Kenten _ _ xs -> linkElements xs
   Color _ _ xs -> linkElements xs
   CharStyle _ _ xs -> linkElements xs
+  Lang _ _ xs -> linkElements xs
   _ -> []

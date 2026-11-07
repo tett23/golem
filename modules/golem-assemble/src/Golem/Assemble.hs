@@ -209,7 +209,7 @@ notesTitle lang = if "ja" `T.isPrefixOf` T.toLower lang then "注" else "Notes"
 definition lists, tables and captions (golem-driver ADR 0018, 0026).
 -}
 blockNotes :: Block -> [Inline]
-blockNotes (Block _ _ body) = case body of
+blockNotes (Block _ _ _ body) = case body of
   Paragraph _ is -> deep is
   Heading _ _ is -> deep is
   BulletList items -> concatMap (concatMap blockNotes . itemBlocks) items
@@ -224,6 +224,7 @@ blockNotes (Block _ _ body) = case body of
       Kenten _ _ xs -> deep xs
       Color _ _ xs -> deep xs
       CharStyle _ _ xs -> deep xs
+      Lang _ _ xs -> deep xs
       _ -> []
 
 -- | The notes of a document in order: their spans, numbers and bodies (golem-driver ADR 0026).
@@ -243,6 +244,7 @@ inlineText = \case
   Color _ _ xs -> foldMap inlineText xs
   CharStyle _ _ xs -> foldMap inlineText xs
   Link _ _ xs -> foldMap inlineText xs
+  Lang _ _ xs -> foldMap inlineText xs
   Tcy _ t -> t
   Number _ n _ -> T.pack (show n)
   _ -> ""
@@ -271,7 +273,7 @@ numberDocs :: AssembleConfig -> [Document] -> NumSt
 numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.empty Map.empty 0 Map.empty [])
   where
     doc (Document fid bs) = mapM_ (blk fid) bs
-    blk fid (Block sp lbl b) = case b of
+    blk fid (Block sp lbl lang b) = case b of
       Heading l a is -> do
         st <- get
         let cs = nsCounters st
@@ -287,7 +289,8 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.
             chapter = if l == 1 then head' <$> nums else nsChapter st
             figureReset = if l == 1 then 0 else nsFigure st
             -- the title of the copies, without the anchors of lists (docs/adr/0145)
-            info = HeadingInfo l nums numText (withoutAnchors (fromMaybe is (haTocTitle a))) (headingAnchor lbl sp) fid
+            -- the language of the heading wraps the whole title of the copies (docs/adr ADR 0187)
+            info = HeadingInfo l nums numText (inLang sp lang (withoutAnchors (fromMaybe is (haTocTitle a)))) (headingAnchor lbl sp) fid
             -- G04007: @number equal to the number it would get without it (golem-syntax ADR 0002)
             redundant = [redundantNumber cfg sp n | not (haNoNumber a), Just n <- [toInteger <$> haNumber a], n == cs !! (l - 1) + 1]
         put
@@ -345,7 +348,7 @@ assemble cfg evalDeferred docs0 =
       chapterCount = toInteger (length [() | HeadingInfo {hiLevel = 1, hiNumbers = Just _} <- Map.elems (nsHeadings ns)])
       dv = DocValues chapterCount
       (docs', (refd, resolveDiags)) = runState (mapM (resolveDoc labels dv evalDeferred) docs) (Set.empty, [])
-      tocs = [(d, sp) | Document _ bs <- docs, Block sp _ (ChannelOutput (TocOutput d)) <- allBlocks bs]
+      tocs = [(d, sp) | Document _ bs <- docs, Block sp _ _ (ChannelOutput (TocOutput d)) <- allBlocks bs]
       tocDiags = case tocs of
         ((_, firstToc) : rest) ->
           [ (diagnostic "G04002" Error sp "@toc は文書に一つだけ置けます") {diagRelated = [(firstToc, "最初の @toc")]}
@@ -355,7 +358,7 @@ assemble cfg evalDeferred docs0 =
       toc =
         [ TocEntry (hiLevel h) (hiNumberText h) (hiTitle h) (hiAnchor h) (hiFile h) sp
         | Document _ bs <- docs,
-          Block sp _ (Heading _ a _) <- allBlocks bs,
+          Block sp _ _ (Heading _ a _) <- allBlocks bs,
           not (haNoToc a),
           Just h <- [Map.lookup sp (nsHeadings ns)]
         ]
@@ -396,7 +399,7 @@ listNumberNotices :: AssembleConfig -> [Document] -> [Diagnostic]
 listNumberNotices cfg = concatMap (blocks . docBlocks)
   where
     blocks = snd . foldl step (Nothing, [])
-    step (prev, acc) (Block sp _ body) = case body of
+    step (prev, acc) (Block sp _ _ body) = case body of
       OrderedList items ->
         let start = maybe 1 (+ 1) prev
             nums = numbersFrom start items
@@ -417,7 +420,7 @@ listNumberNotices cfg = concatMap (blocks . docBlocks)
     numbersFrom _ [] = []
     numbersFrom next (ListItem n _ : rest) = let k = maybe next toInteger n in k : numbersFrom (k + 1) rest
     itemSpan sp it = case itemBlocks it of
-      (Block bsp _ _ : _) -> bsp
+      (Block bsp _ _ _ : _) -> bsp
       [] -> sp
     lastMaybe = \case
       [] -> Nothing
@@ -431,7 +434,7 @@ trailingBreaks :: [Document] -> [Diagnostic]
 trailingBreaks docs = case reverse docs of
   (Document _ bs : _) ->
     [ notice "G04008" sp "本の最後の改ページは効果がありません"
-    | Block sp _ _ <- reverse (takeWhile isBreak (reverse bs))
+    | Block sp _ _ _ <- reverse (takeWhile isBreak (reverse bs))
     ]
   [] -> []
   where
@@ -472,7 +475,7 @@ blankLinesOverPage pageLines docs =
         ]
       dropped = Set.fromList (map fst verdicts)
       keep i b = case b of
-        Block sp _ (BlankLines _) -> Set.notMember (i, sp) dropped
+        Block sp _ _ (BlankLines _) -> Set.notMember (i, sp) dropped
         _ -> True
    in ( [Document f [b | b <- bs, keep i b] | (i, Document f bs) <- zip [0 ..] docs],
         map snd verdicts
@@ -493,20 +496,20 @@ ineffectiveBlankLines docs =
       tails' = drop 1 (scanr (:) [] (map snd flat))
       verdicts =
         [ (key, diags)
-        | ((i, Block sp _ (BlankLines _)), after) <- zip flat tails',
+        | ((i, Block sp _ _ (BlankLines _)), after) <- zip flat tails',
           let key = (i, sp)
               rest = dropWhile soft after
               atEnd = all quiet after
               end = [notice "G04009" sp "本の最後の @blank-line は効果がありません" | atEnd]
               brk = case rest of
-                Block _ _ (ForcedBreak k) : _ -> [diagnostic "G04010" Warning sp ("@blank-line の直後に " <> breakName k <> " があります")]
+                Block _ _ _ (ForcedBreak k) : _ -> [diagnostic "G04010" Warning sp ("@blank-line の直後に " <> breakName k <> " があります")]
                 _ -> []
               diags = end <> brk,
           not (null diags)
         ]
       dropped = Set.fromList (map fst verdicts)
       keep i b = case b of
-        Block sp _ (BlankLines _) -> Set.notMember (i, sp) dropped
+        Block sp _ _ (BlankLines _) -> Set.notMember (i, sp) dropped
         _ -> True
    in ( [Document f [b | b <- bs, keep i b] | (i, Document f bs) <- zip [0 ..] docs],
         concatMap snd verdicts
@@ -527,7 +530,7 @@ ineffectiveBlankLines docs =
 allBlocks :: [Block] -> [Block]
 allBlocks = concatMap go
   where
-    go b@(Block _ _ body) =
+    go b@(Block _ _ _ body) =
       b : case body of
         BulletList items -> allBlocks (concatMap itemBlocks items)
         OrderedList items -> allBlocks (concatMap itemBlocks items)
@@ -541,7 +544,7 @@ collectLabels ns docs = foldl add (Map.empty, []) targets
     targets =
       [ (l, LabelTarget sp num title (headingAnchor (Just l) sp) fid)
       | Document fid bs <- docs,
-        Block sp (Just l) body <- allBlocks bs,
+        Block sp (Just l) _ body <- allBlocks bs,
         let (num, title) = describe sp body
       ]
     describe sp = \case
@@ -574,8 +577,8 @@ type R = State (Set Text, [Diagnostic])
 resolveDoc :: Map Text LabelTarget -> DocValues -> (DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text) -> Document -> R Document
 resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk bs
   where
-    blk (Block sp l body) =
-      Block sp l <$> case body of
+    blk (Block sp l lang body) =
+      Block sp l lang <$> case body of
         Paragraph st is -> Paragraph st <$> inls is
         Heading lv a is -> pure (Heading lv a is)
         BulletList items -> BulletList <$> mapM item items
@@ -612,6 +615,7 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
       Kenten sp s xs -> pure . Kenten sp s <$> inls xs
       Color sp c xs -> pure . Color sp c <$> inls xs
       CharStyle sp c xs -> pure . CharStyle sp c <$> inls xs
+      Lang sp t xs -> pure . Lang sp t <$> inls xs
       Note sp n xs -> pure . Note sp n <$> inls xs
       -- the body of an item resolves like the text around it (golem-doc ADR 0007)
       ChannelItem sp c -> (\b -> [ChannelItem sp c {ciBody = b}]) <$> inls (ciBody c)
@@ -635,8 +639,8 @@ renumberNotes cfg docs = evalState (zipWithM doc restarts docs) (0, 0)
     doc fresh (Document fid bs) = do
       when fresh (put (0, 0))
       Document fid <$> mapM blk bs
-    blk (Block sp l body) =
-      Block sp l <$> case body of
+    blk (Block sp l lang body) =
+      Block sp l lang <$> case body of
         Paragraph st is -> Paragraph st <$> inls is
         Heading lv a is -> Heading lv a <$> inls is
         BulletList items -> BulletList <$> mapM item items
@@ -660,6 +664,7 @@ renumberNotes cfg docs = evalState (zipWithM doc restarts docs) (0, 0)
       Kenten sp s xs -> Kenten sp s <$> inls xs
       Color sp c xs -> Color sp c <$> inls xs
       CharStyle sp c xs -> CharStyle sp c <$> inls xs
+      Lang sp t xs -> Lang sp t <$> inls xs
       other -> pure other
 
 -- | Give copied inlines the span of the reference that produced them.
@@ -680,7 +685,7 @@ scopes isList itemOf docs = close (foldl step ([], []) events)
     events =
       [ ev
       | Document fid bs <- docs,
-        Block sp _ body <- allBlocks bs,
+        Block sp _ _ body <- allBlocks bs,
         ev <- if isList body then [Left (fid, sp)] else map Right (concatMap (itemOf fid) (bodyInlines body))
       ]
     -- the lists so far (reversed) and the items waiting for a list (reversed)
@@ -722,7 +727,7 @@ channelLists decls docs =
   | (at, name) <- lists
   ]
   where
-    lists = [((fid, sp), n) | Document fid bs <- docs, Block sp _ (ChannelOutput (CustomOutput n _)) <- allBlocks bs]
+    lists = [((fid, sp), n) | Document fid bs <- docs, Block sp _ _ (ChannelOutput (CustomOutput n _)) <- allBlocks bs]
     scoped name =
       scopes
         (\case ChannelOutput (CustomOutput n _) -> n == name; _ -> False)
@@ -753,7 +758,7 @@ indexLists docs =
 
 -- | The groups of every index mark of the documents, whatever list they belong to.
 indexGroups :: [Document] -> [IndexGroup]
-indexGroups docs = groupMarks [((ieTerms e, ieReadings e), (fid, sp)) | Document fid bs <- docs, Block _ _ body <- allBlocks bs, IndexMark sp e <- bodyInlines body]
+indexGroups docs = groupMarks [((ieTerms e, ieReadings e), (fid, sp)) | Document fid bs <- docs, Block _ _ _ body <- allBlocks bs, IndexMark sp e <- bodyInlines body]
 
 -- | Index marks grouped by their terms and readings, in collation order.
 groupMarks :: [(([Text], [Text]), (FileId, SrcSpan))] -> [IndexGroup]
@@ -778,6 +783,15 @@ bodyInlines body = concatMap flatten $ case body of
         Color _ _ xs -> concatMap flatten xs
         CharStyle _ _ xs -> concatMap flatten xs
         Link _ _ xs -> concatMap flatten xs
+        Lang _ _ xs -> concatMap flatten xs
         Note _ _ xs -> concatMap flatten xs
         Sidenote _ _ xs -> concatMap flatten xs
         _ -> []
+
+{- | Inlines in a language span of the language of their block, if it has
+one (docs/adr ADR 0187): the title of a heading as it is copied.
+-}
+inLang :: SrcSpan -> Maybe Text -> [Inline] -> [Inline]
+inLang sp = \case
+  Just t -> \is -> [Lang sp t is]
+  Nothing -> id

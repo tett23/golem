@@ -11,7 +11,7 @@ span = [file: uint64, start: uint64, end: uint64]
 int64 = -9223372036854775808..9223372036854775807
 uint64 = 0..9223372036854775807
 
-block = [span, label: tstr / null, body: block-body]
+block = [span, label: tstr / null, lang: tstr / null, body: block-body]   ; lang: docs/adr ADR 0187
 
 block-body =
     [1, level: 1..3, heading-attrs, inlines]        ; heading
@@ -67,6 +67,7 @@ inline-no-ruby =
   / [18, span, zw: [uint64, 1..9223372036854775807] / null, sp: uint64 / null] ; aki: zw or sp, exactly one (docs/adr ADR 0019)
   / [19, span, channel: tstr, key: tstr / null, reading: tstr / null, inlines] ; channel item (golem-doc ADR 0007)
   / [20, span, uri: tstr, inlines]               ; link to an external URL (docs/adr ADR 0182)
+  / [21, span, lang: tstr, inlines]              ; language span (docs/adr ADR 0187)
 ; 1 (strong), 2 (bold) and 3 (italic) are retired: they are character styles (docs/adr ADR 0005)
 
 number-style = 0..2                                ; kanji, kanji-digits, tcy
