@@ -202,7 +202,10 @@ data PdfInput = PdfInput
     -} piStyleFile :: !FileId,
     {- | the variables of each chapter file that its running heads show,
     as text, by their names with the namespace (golem-driver ADR 0022)
-    -} piRunningVars :: !(Map FileId (Map [Text] Text))
+    -} piRunningVars :: !(Map FileId (Map [Text] Text)),
+    {- | the text of every value of [vars] of manifest.toml a running head
+    can show, by its path (docs/adr/0185, docs/adr/0196)
+    -} piProjectVars :: !(Map [Text] Text)
   }
 
 -- | The language of the book, [metadata] language (golem-html ADR 0002).

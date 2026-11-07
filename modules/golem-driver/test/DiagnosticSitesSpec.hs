@@ -11,7 +11,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
 import Golem.Driver.Version (golemVersion)
-import Golem.Project (ProjectFailure (..), styleFileId)
+import Golem.Project (Manifest (..), Project (..), ProjectFailure (..), styleFileId)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Golem.Typeset (PdfInput (..), labelSpans, renderPdf)
@@ -34,7 +34,7 @@ withMiniEvaluated style source k = withSystemTempDirectory "golem-sites" $ \tmp 
 -- | The PDF input the driver passes for an evaluated project.
 inputOf :: FilePath -> Evaluated -> IO PdfInput
 inputOf tmp e = case evBook e of
-  Just book -> pure (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty)
+  Just book -> pure (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))))
   Nothing -> assertFailure (show (evDiagnostics e))
 
 -- | The text of the source that a span covers.

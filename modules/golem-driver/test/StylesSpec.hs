@@ -13,7 +13,7 @@ import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..), Synthetic (..))
 import Golem.LayoutSpec (pageGeometry)
 import Golem.Length (Sp (..))
-import Golem.Project (ProjectFailure (..))
+import Golem.Project (Manifest (..), Project (..), ProjectFailure (..))
 import Golem.Project.Style (LocalStyles (..), ParaStyleDef (..), noLocalStyles, noParaDef, parseStyle)
 import Golem.Syntax
 import Golem.Typeset (PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), flowLines, layoutPdf, usedRoles)
@@ -36,7 +36,7 @@ evaluatedOk tmp = do
 chapterLines :: BS.ByteString -> [(FilePath, T.Text)] -> IO [(Sp, Sp)]
 chapterLines style chapters = withChapters style chapters [] $ \tmp -> do
   (e, book) <- evaluatedOk tmp
-  r <- flowLines fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty)
+  r <- flowLines fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))))
   either (assertFailure . show) (pure . snd) r
 
 -- | The PDF layout of the chapters.
@@ -45,7 +45,7 @@ chapterLayout style chapters files = withChapters style chapters [] $ \tmp -> do
   writeFiles tmp files
   (e, book) <- evaluatedOk tmp
   geom <- either (assertFailure . show) pure (pageGeometry (FileId 0) False (evStyle e))
-  r <- layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty) geom fakeFonts
+  r <- layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e))))) geom fakeFonts
   either (assertFailure . show) pure r
 
 -- | Regex styles (docs/adr ADR 0015).

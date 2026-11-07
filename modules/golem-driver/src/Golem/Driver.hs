@@ -25,6 +25,7 @@ module Golem.Driver
     localStylesOf,
     docStyles,
     runningVars,
+    projectVarTexts,
     sourceInfos,
     withEvaluatedSources,
     assetRefs,
@@ -64,7 +65,7 @@ import Golem.Doc.IR
 import Golem.Driver.Functions (LoadedFunctions (..), RequiredFiles (..), loadFunctions, loadRequiredFiles, requiredFileSet, requirementHandlers)
 import Golem.Driver.Html
 import Golem.Driver.Plugins (FunctionFilter, LoadedPlugins (..), loadPlugins)
-import Golem.Driver.ProjectVars (projectVarDiagnostics)
+import Golem.Driver.ProjectVars (projectVarDiagnostics, projectVarTexts)
 import Golem.Driver.Svg (activeMessage)
 import Golem.Driver.Version (golemVersion)
 import Golem.Emet (Handlers (..), Program)
@@ -1163,7 +1164,7 @@ writePdfTarget inMemory opts e diagFid book bib = do
       out = dir </> pdfFileName (mdId (manifestMetadata (projectManifest project)))
       -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
       inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
-  r <- renderPdfView golemVersion (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)))
+  r <- renderPdfView golemVersion (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)) (projectVarTexts (manifestVars (projectManifest project))))
   -- G08008: code in the body role without [fonts.code] (golem-driver ADR 0017)
   -- G07045: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
   let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book

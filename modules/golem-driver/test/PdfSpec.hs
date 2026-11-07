@@ -21,7 +21,7 @@ import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor
 import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Pdf qualified as P
-import Golem.Project (ProjectFailure (..))
+import Golem.Project (Manifest (..), Project (..), ProjectFailure (..))
 import Golem.Project.Style (dimToSp, parseDim, parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.ExternalTool (needsTool)
@@ -417,7 +417,7 @@ layoutHidden marks manifest style sources = withSystemTempDirectory "golem-hidde
     Right e -> case (evBook e, pageGeometry (FileId 0) (isJust marks) (evStyle e)) of
       _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> assertFailure (show errs)
       (Just book, Right geom) -> do
-        let inp = PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty marks (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty
+        let inp = PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty marks (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e))))
         r <- layoutPdf inp geom fakeFonts
         case r of
           Left ds -> assertFailure (show ds)
