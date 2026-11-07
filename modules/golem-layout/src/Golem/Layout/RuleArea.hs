@@ -41,7 +41,6 @@ data RuleSide = RuleSide
 linesFor :: Sp -> Sp -> Int
 linesFor (Sp p) (Sp n) = fromInteger (max 0 (negate (negate n `div` p)))
 
-
 {- | The rule before a paragraph inside a column, r the overhang of its
 first line: the grid lines k of the area and the place of the rule (the
 start of its weight) from the end of the em box of the line before.
