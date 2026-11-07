@@ -1850,7 +1850,7 @@ numberedLines fe nextId u c indentOf =
       marksOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [sp]) | (i, sp) <- cMarks c]
       boxes = [LineBox lid [NoteBody key (length nls) | (key, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then unitLabel u else []) (Map.findWithDefault [] k marksOf) (lineReach fe l) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
       -- a line not justified moves by its alignment (docs/adr/0189)
-      shiftOf k l = A.lineShift (layoutAlign (uKind u)) (k == length ls - 1) l
+      shiftOf k = A.lineShift (layoutAlign (uKind u)) (k == length ls - 1)
       set = Map.fromList [(lid, SetLine l size (indentOf k + shiftOf k l) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf) (spineOf (uKind u))) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
    in (boxes, set)
 
