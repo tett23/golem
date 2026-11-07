@@ -62,7 +62,12 @@ data BoxContent = BoxContent
     {- | the definition that decided the size of the box and where its
     characters are in the source (golem-cli ADR 0008), for golem preflight.
     The algorithm does not read it, and nothing that draws the box does.
-    -} bcSource :: !BoxSource
+    -} bcSource :: !BoxSource,
+    {- | where the first character of the box is in the source, a byte
+    offset in the file of the span of 'bcSource' (docs/adr ADR 0195): the
+    character itself, where the span is that of the whole text. The
+    algorithm does not read it, and nothing that draws the box does.
+    -} bcAt :: !Int
   }
   deriving stock (Eq, Show)
 

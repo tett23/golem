@@ -42,13 +42,14 @@ import Golem.Syntax
 stopped it.
 -}
 renderPdf :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic]))
-renderPdf provider inp = fmap (\(bytes, notices, _) -> (bytes, notices)) <$> renderPdfView provider inp
+renderPdf provider inp = fmap (\(bytes, notices, _, _) -> (bytes, notices)) <$> renderPdfView provider inp
 
 {- | 'renderPdf' with the view of the PDF that golem preflight checks
-(golem-cli ADR 0006). The view is lazy: golem build forces only the
-characters of its pages, for G08100 (docs/adr 0081).
+(golem-cli ADR 0006), and where each page starts in the source (docs/adr
+ADR 0195). The view is lazy: golem build forces only the characters of
+its pages, for G08100 (docs/adr 0081).
 -}
-renderPdfView :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View))
+renderPdfView :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, [Maybe (FileId, Int)]))
 renderPdfView provider inp0 = case checkedGeometry inp of
   Left ds -> pure (Left ds)
   Right geom -> do
@@ -75,7 +76,7 @@ renderPdfView provider inp0 = case checkedGeometry inp of
                     [] -> do
                       let (bytes, view) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
                       -- G07101: dashes without ink (docs/adr ADR 0172)
-                      pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout, view))
+                      pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout, view, pageStarts layout))
                     ds -> pure (Left ds)
                 ds -> pure (Left ds)
   where
