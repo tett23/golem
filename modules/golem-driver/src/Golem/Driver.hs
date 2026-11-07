@@ -57,7 +57,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
 import Golem.Assemble
-import Golem.Assemble.ListMarkers (defaultNumberFormat)
+import Golem.Assemble.ListMarkers (defaultNumberFormat, listNumberDiagnostics)
 import Golem.Bibliography (CslEntry (..), EntryPart, formatEntry)
 import Golem.Bibliography.Csl (CslJsonError (..), decodeCslJson)
 import Golem.Doc.IR
@@ -782,7 +782,7 @@ buildCore inMemory opts = do
                   else pure []
               let webWritable = [t | t <- writable, null activeDiags || t `notElem` [TargetHtml, TargetEpub]]
                   -- a list number its format cannot write stops every target (golem-driver ADR 0013)
-                  listDiags = listNumberDiagnostics (evStyle e) (maybe False pageVertical (stPage (evStyle e))) book
+                  listDiags = listNumberDiagnostics (lsNumbers (stLists (evStyle e))) (maybe False pageVertical (stPage (evStyle e))) book
               (written, outDiags, pdf) <-
                 if null listDiags || null webWritable
                   then writeTargets inMemory opts e diagFid book missing webWritable

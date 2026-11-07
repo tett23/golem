@@ -7,6 +7,7 @@ module Golem.Project
     ProjectFailure (..),
     loadProject,
     loadProjectWith,
+    styleFileId,
     module Golem.Project.Manifest,
     module Golem.Project.Imports,
   )
@@ -61,6 +62,10 @@ data Project = Project
     -- | how each source file is read (docs/adr ADR 0013)
     projectSourceSettings :: !(Map FileId SourceSettings)
   }
+
+-- | The FileId of style.toml: the one after the files of the project.
+styleFileId :: Project -> FileId
+styleFileId p = FileId (length (fileTableEntries (projectFiles p)))
 
 {- | Why a project could not be loaded (golem-project ADR 0006): the
 diagnostics, and the files registered so far, where they point:

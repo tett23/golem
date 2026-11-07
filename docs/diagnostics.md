@@ -7535,7 +7535,7 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 位置はその項目の最初のブロックであり、ブロックのない項目ではそのリストである。
 
 - メッセージ: `リストの番号 <番号> は、書式 <書式> で表せません`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- 段階とモジュール: 出力（golem-assemble の `Golem.Assemble.ListMarkers`、golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
 - ADR: [golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)
 
 ### 主な原因
