@@ -120,6 +120,7 @@ noticeCodes =
       "G02108", -- a range of lines separated by - (to be retired; docs/adr ADR 0113)
       "G03023", -- no style.toml
       "G03100", -- a zero indent of caption or sidenote (golem-driver ADR 0043)
+      "G03120", -- no paragraph-separator in [source] (docs/adr/0193)
       "G04007", -- @number equal to the automatic number
       "G04008", -- page breaks at the very end of the book
       "G04009", -- @blank-line at the very end of the book (docs/adr ADR 0046)

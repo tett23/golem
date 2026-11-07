@@ -51,13 +51,18 @@ chapters = [
 [code: \[source\]] には、原稿の読み方を書きます。
 今は、段落の区切り方を選ぶ [code: paragraph-separator] だけがあります。
 
+- [code: "line"]：改行ひとつで段落を区切ります。一行が一つの段落になります。書かなければこちらになります。
+- [code: "blank-line"]：空行で段落を区切ります。段落の中の改行は文字を生みません。
+
+空行で段落を区切って書いた原稿では、[code: "blank-line"] を書きます。
+
 ```toml
 [source]
-paragraph-separator = "line"
+paragraph-separator = "blank-line"
 ```
 
-- [code: "blank-line"]：空行で段落を区切ります。段落の中の改行は文字を生みません。書かなければこちらになります。
-- [code: "line"]：改行ひとつで段落を区切ります。一行が一つの段落になります。
+[code: golem new] で作ったプロジェクトの [code: manifest.toml] には、[code: paragraph-separator = "line"] が書いてあります。
+[code: \[source\]] に [code: paragraph-separator] を書かなければ、改行ひとつで段落を区切って読み、そのことを知らせるお知らせ（G03120）が出ます。
 
 [code: "line"] は、青空文庫の形式のように、一行を一つの段落として書く和文の原稿に向いています。
 ワープロや InDesign から書き出したテキストの多くも、この形です。

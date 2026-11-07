@@ -405,7 +405,7 @@ paragraph-separator = "line"
 
 | キー | 値 | 既定 | 意味 |
 |---|---|---|---|
-| `paragraph-separator` | `"blank-line"` か `"line"` | `"blank-line"` | `blank-line` は空行で段落を区切る空行の様式、`line` は改行ひとつで段落を区切る改行の様式 |
+| `paragraph-separator` | `"blank-line"` か `"line"` | `"line"` | `blank-line` は空行で段落を区切る空行の様式、`line` は改行ひとつで段落を区切る改行の様式 |
 
 ファイルごとに変えられる設定は、`[source]` のキーに限る。
 章の配列の項目にも `[source]` のキーを書け、その章のファイルにだけ適用される。
@@ -415,9 +415,17 @@ paragraph-separator = "line"
 `@manifest` で上書きできないキー（`title` など）は G02050、不正な値は G02051 とする。
 `@manifest` と `@style-def` の引数の誤りは原因ごとのコードとし、位置引数の数の誤りだけを G02052 とする（[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)）。
 
-既定を空行の様式とするのは、既存の原稿の出力を変えないためである。
+既定は改行の様式である（[docs/adr/0193](adr/0193-line-paragraph-separator-by-default.md)）。
+日本語の原稿は、一つの段落を一行に書き、改行で段落を区切ることが多いためである。
 `[metadata]` の `language` からは推定しない。
 言語を変えただけで段落の数が変わるのを避けるためである。
+英語の本も、`paragraph-separator` を書かなければ改行の様式になる。
+
+`[source]` に `paragraph-separator` を書いていないプロジェクトには、notice の G03120 を `manifest.toml` の先頭に出す（[docs/adr/0193](adr/0193-line-paragraph-separator-by-default.md)）。
+原稿の読み方が既定に依ることを、既定が変わったことを知らない書き手に知らせるためである。
+章の項目かファイルの中の上書きで、すべての原稿の値が決まっていても、`[source]` に書いていなければ出す。
+判定を `manifest.toml` だけで決めるためである。
+`golem new` の雛形の `manifest.toml` は、`[source]` に `paragraph-separator = "line"` を書く。
 
 未知のキーと不正な値は、マニフェストのほかの誤りと同じく G03001 とする。
 同じファイルを章の配列に二度並べ、項目の `[source]` のキーで適用される値が異なる場合も G03001 とする。
@@ -2201,7 +2209,7 @@ notice と info は、出力のバイト列を変えない。
 PDF、HTML、EPUB、プレーンテキストのバイト列は、notice と info を出すかどうかによらず、`silence-notices`、`silence-info`、`--no-notices`、`--verbose` の有無でも変わらない。
 `--verbose` は、出力を変えず、diagnostics の一覧だけを変えるオプションであり、同じ入力と同じオプションからは同じ info を同じ順で出す。
 これは golem-driver のテストが、すべての notice と info を出すプロジェクトで確かめる。
-今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、`caption` と `sidenote` の 0 の字下げ（G03100）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、`@page-lines` で減らした段の残りより高い見出し（G07100）、線のない字形のダッシュの二倍ダッシュ（G07101）、`[fonts.code]` のない本のコード（G08008）である。
+今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、`caption` と `sidenote` の 0 の字下げ（G03100）、`[source]` に `paragraph-separator` を書いていないプロジェクト（G03120）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、`@page-lines` で減らした段の残りより高い見出し（G07100）、線のない字形のダッシュの二倍ダッシュ（G07101）、`[fonts.code]` のない本のコード（G08008）である。
 
 diagnostics は、エラーと警告を先に、notice をその後に、info を最後に並べる（[docs/adr/0104](adr/0104-info-severity.md)）。
 エラーと警告のあいだは、コードの順、ファイルの順、開始位置の順、終了位置の順、メッセージの順で並べ、notice どうしと info どうしも同じ規則で並べる（[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
@@ -2265,8 +2273,8 @@ Golem は日本語の組版を主眼とし、日本語では行の折り返し�
 欧文の単語の途中や単語の間で改行すると、単語どうしが空白なしにつながる。
 詩や戯曲の韻文のように行分けを保つには、`line-breaks = "keep"` の段落スタイル（組み込みの `verse` など）を `@style verse` のように付ける（[docs/adr/0003](adr/0003-verse-line-breaks.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 
-これは、空行で段落を区切る空行の様式の規則である。
-マニフェストの `[source]` に `paragraph-separator = "line"` と書くと、改行ひとつで段落を区切る改行の様式になる（「原稿の読み方」の節、[docs/adr/0013](adr/0013-paragraph-separator.md)）。
+これは、マニフェストの `[source]` に `paragraph-separator = "blank-line"` と書いた、空行で段落を区切る空行の様式の規則である。
+既定は、改行ひとつで段落を区切る改行の様式である（「原稿の読み方」の節、[docs/adr/0013](adr/0013-paragraph-separator.md)、[docs/adr/0193](adr/0193-line-paragraph-separator-by-default.md)）。
 和文の原稿（青空文庫の形式など）は、一行を一つの段落として書くことが多いためである。
 改行の様式では、一行が一つの段落になり、空行は空きを生まずに無視される。
 見出しやリストなどのブロックの記法、`line-breaks = "keep"` の段落スタイルの段落の改行、散文スロットの中の改行は、二つの様式で変わらない。
