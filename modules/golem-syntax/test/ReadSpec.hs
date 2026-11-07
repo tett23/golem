@@ -5,6 +5,7 @@ golem-parser's 'readSource' and golem-emet's 'readEmet' gave before.
 module ReadSpec (tests) where
 
 import Data.ByteString (ByteString)
+import Data.Functor (void)
 import Data.Text.Encoding (encodeUtf8)
 import Golem.Syntax
 import Golem.Syntax.Read
@@ -20,7 +21,7 @@ invalid i = diagnostic "G01001" Error (mkSpan fid i (i + 1)) "UTF-8 として不
 cr i = (diagnostic "G01003" Error (mkSpan fid i (i + 1)) "改行に CR が含まれています。改行は LF に限ります") {diagFixes = [Fix "golem fmt で LF に直す" []]}
 
 readsAs :: ByteString -> Either [Diagnostic] () -> Assertion
-readsAs bs expected = (() <$ readSourceBytes fid bs) @?= expected
+readsAs bs expected = void (readSourceBytes fid bs) @?= expected
 
 tests :: TestTree
 tests =
