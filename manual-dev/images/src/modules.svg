@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1090" viewBox="0 0 1300 1090">
-  <!-- パッケージの依存（modules/*/*.cabal の build-depends から、ほかの依存を通して届く矢印と、golem-syntax と golem-length への矢印を除いたもの）。
+<svg xmlns="http://www.w3.org/2000/svg" width="1460" height="1090" viewBox="0 0 1460 1090">
+  <!-- パッケージの依存（modules/*/*.cabal のライブラリの build-depends から、ほかの依存を通して届く矢印と、golem-syntax と golem-length への矢印を除いたもの）。
        scripts/manual/outline-figures.sh で、文字を輪郭にした manual-dev/images/modules.svg にする。 -->
   <style>
     @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
@@ -20,82 +20,82 @@
       <path d="M0,0 L10,5 L0,10 z" fill="#444"/>
     </marker>
   </defs>
-  <rect width="1300" height="1090" fill="#fff"/>
+  <rect width="1460" height="1090" fill="#fff"/>
 
   <!-- edges -->
-  <line x1="650" y1="78" x2="650" y2="122"/>
-  <line x1="650" y1="178" x2="650" y2="222"/>
-  <line x1="690" y1="178" x2="985" y2="222"/>
-  <line x1="610" y1="278" x2="110" y2="342"/>
-  <line x1="620" y1="278" x2="300" y2="342"/>
-  <line x1="635" y1="278" x2="465" y2="342"/>
-  <line x1="650" y1="278" x2="630" y2="342"/>
-  <line x1="665" y1="278" x2="800" y2="342"/>
-  <line x1="680" y1="278" x2="975" y2="342"/>
-  <line x1="690" y1="278" x2="1160" y2="342"/>
-  <line x1="290" y1="398" x2="290" y2="462"/>
-  <line x1="95" y1="398" x2="250" y2="582"/>
-  <path class="edge" d="M45,398 V800 H700 V758"/>
-  <line x1="290" y1="518" x2="290" y2="582"/>
-  <line x1="340" y1="518" x2="680" y2="702"/>
-  <line x1="290" y1="638" x2="340" y2="702"/>
-  <line x1="365" y1="625" x2="455" y2="715"/>
-  <line x1="470" y1="398" x2="515" y2="462"/>
-  <line x1="620" y1="398" x2="550" y2="462"/>
-  <line x1="790" y1="398" x2="700" y2="582"/>
-  <line x1="960" y1="462" x2="980" y2="398"/>
-  <line x1="545" y1="518" x2="680" y2="582"/>
-  <line x1="880" y1="518" x2="720" y2="582"/>
-  <line x1="625" y1="610" x2="365" y2="610"/>
-  <line x1="725" y1="638" x2="980" y2="702"/>
-  <line x1="360" y1="758" x2="360" y2="822"/>
-  <line x1="360" y1="878" x2="360" y2="942"/>
-  <path class="edge" d="M1085,250 H1280 V850 H435"/>
-  <line x1="575" y1="250" x2="537" y2="250"/>
-  <path class="edge" d="M460,278 V310 H990 V342"/>
-  <path class="edge" d="M705,278 V296 H1262 V490 H1247"/>
-  <path class="edge" d="M725,266 H900 V462"/>
-  <path class="edge" d="M385,264 H375 V560 H650 V582"/>
+  <line x1="720" y1="78" x2="720" y2="122"/><!-- cli → lsp -->
+  <line x1="720" y1="178" x2="720" y2="222"/><!-- lsp → driver -->
+  <line x1="660" y1="178" x2="330" y2="222"/><!-- lsp → fmt -->
+  <line x1="650" y1="278" x2="120" y2="342"/><!-- driver → text -->
+  <line x1="665" y1="278" x2="310" y2="342"/><!-- driver → lint -->
+  <line x1="685" y1="278" x2="480" y2="342"/><!-- driver → plugin -->
+  <line x1="705" y1="278" x2="640" y2="342"/><!-- driver → emet -->
+  <line x1="740" y1="278" x2="790" y2="342"/><!-- driver → epub -->
+  <line x1="780" y1="265" x2="1000" y2="342"/><!-- driver → typeset -->
+  <line x1="330" y1="398" x2="410" y2="462"/><!-- lint → eval -->
+  <line x1="460" y1="398" x2="460" y2="462"/><!-- plugin → eval -->
+  <line x1="590" y1="398" x2="510" y2="462"/><!-- emet → eval -->
+  <line x1="800" y1="398" x2="800" y2="462"/><!-- epub → html -->
+  <line x1="965" y1="398" x2="860" y2="462"/><!-- typeset → html -->
+  <line x1="1000" y1="398" x2="975" y2="462"/><!-- typeset → preflight -->
+  <line x1="1055" y1="398" x2="1055" y2="582"/><!-- typeset → layout-spec -->
+  <line x1="1085" y1="398" x2="1130" y2="462"/><!-- typeset → layout -->
+  <line x1="1110" y1="385" x2="1300" y2="462"/><!-- typeset → font -->
+  <path class="edge" d="M1110,360 H1445 V610 H1420"/><!-- typeset → svg -->
+  <line x1="500" y1="518" x2="600" y2="582"/><!-- eval → project -->
+  <line x1="725" y1="505" x2="365" y2="600"/><!-- html → assemble -->
+  <line x1="790" y1="518" x2="745" y2="702"/><!-- html → bibliography -->
+  <line x1="915" y1="518" x2="705" y2="615"/><!-- preflight → project -->
+  <path class="edge" d="M1040,490 H1080 V702"/><!-- preflight → pdf -->
+  <path class="edge" d="M1165,518 V560 H680 V582"/><!-- layout → project -->
+  <line x1="890" y1="628" x2="705" y2="628"/><!-- layout-spec → project -->
+  <line x1="1030" y1="638" x2="1030" y2="702"/><!-- layout-spec → pdf -->
+  <line x1="555" y1="605" x2="365" y2="605"/><!-- project → assemble -->
+  <line x1="705" y1="632" x2="865" y2="702"/><!-- project → regex -->
+  <line x1="120" y1="398" x2="250" y2="582"/><!-- text → assemble -->
+  <path class="edge" d="M45,398 V790 H720 V758"/><!-- text → bibliography -->
+  <line x1="310" y1="638" x2="345" y2="702"/><!-- assemble → doc -->
+  <line x1="365" y1="625" x2="480" y2="702"/><!-- assemble → numerals -->
+  <line x1="360" y1="758" x2="360" y2="822"/><!-- doc → parser -->
+  <line x1="360" y1="878" x2="360" y2="942"/><!-- parser → syntax -->
+  <path class="edge" d="M215,250 H190 V850 H285"/><!-- fmt → parser -->
 
-  <!-- nodes: center x, y; width 150 (layout-spec 190) -->
-  <rect class="box tool" x="575" y="22" width="150" height="56"/><text class="name" x="650" y="50">cli</text>
-  <rect class="box tool" x="575" y="122" width="150" height="56"/><text class="name" x="650" y="150">lsp</text>
-  <rect class="box tool" x="575" y="222" width="150" height="56"/><text class="name" x="650" y="250">driver</text>
-  <rect class="box tool" x="935" y="222" width="150" height="56"/><text class="name" x="1010" y="250">fmt</text>
-  <rect class="box pdf" x="385" y="222" width="150" height="56"/><text class="name" x="460" y="250">preflight</text>
-
+  <!-- nodes: x, y, width; height 56 -->
+  <rect class="box tool" x="645" y="22" width="150" height="56"/><text class="name" x="720" y="50">cli</text>
+  <rect class="box tool" x="645" y="122" width="150" height="56"/><text class="name" x="720" y="150">lsp</text>
+  <rect class="box tool" x="215" y="222" width="150" height="56"/><text class="name" x="290" y="250">fmt</text>
+  <rect class="box tool" x="645" y="222" width="150" height="56"/><text class="name" x="720" y="250">driver</text>
   <rect class="box txt" x="20" y="342" width="150" height="56"/><text class="name" x="95" y="370">text</text>
-  <rect class="box web" x="215" y="342" width="150" height="56"/><text class="name" x="290" y="370">epub</text>
-  <rect class="box core" x="385" y="342" width="150" height="56"/><text class="name" x="460" y="370">lint</text>
-  <rect class="box core" x="555" y="342" width="150" height="56"/><text class="name" x="630" y="370">plugin</text>
-  <rect class="box pdf" x="735" y="342" width="150" height="56"/><text class="name" x="810" y="370">layout</text>
-  <rect class="box pdf" x="915" y="342" width="150" height="56"/><text class="name" x="990" y="370">pdf</text>
-  <rect class="box pdf" x="1095" y="342" width="150" height="56"/><text class="name" x="1170" y="370">font</text>
-
-  <rect class="box web" x="215" y="462" width="150" height="56"/><text class="name" x="290" y="490">html</text>
-  <rect class="box core" x="455" y="462" width="150" height="56"/><text class="name" x="530" y="490">eval</text>
-  <rect class="box pdf" x="805" y="462" width="190" height="56"/><text class="name" x="900" y="490">layout-spec</text>
-  <rect class="box pdf" x="1095" y="462" width="150" height="56"/><text class="name" x="1170" y="490">svg</text>
-
+  <rect class="box core" x="215" y="342" width="150" height="56"/><text class="name" x="290" y="370">lint</text>
+  <rect class="box core" x="385" y="342" width="150" height="56"/><text class="name" x="460" y="370">plugin</text>
+  <rect class="box core" x="555" y="342" width="150" height="56"/><text class="name" x="630" y="370">emet</text>
+  <rect class="box web" x="725" y="342" width="150" height="56"/><text class="name" x="800" y="370">epub</text>
+  <rect class="box pdf" x="960" y="342" width="150" height="56"/><text class="name" x="1035" y="370">typeset</text>
+  <rect class="box core" x="385" y="462" width="150" height="56"/><text class="name" x="460" y="490">eval</text>
+  <rect class="box web" x="725" y="462" width="150" height="56"/><text class="name" x="800" y="490">html</text>
+  <rect class="box pdf" x="900" y="462" width="140" height="56"/><text class="name" x="970" y="490">preflight</text>
+  <rect class="box pdf" x="1090" y="462" width="150" height="56"/><text class="name" x="1165" y="490">layout</text>
+  <rect class="box pdf" x="1270" y="462" width="150" height="56"/><text class="name" x="1345" y="490">font</text>
   <rect class="box core" x="215" y="582" width="150" height="56"/><text class="name" x="290" y="610">assemble</text>
-  <rect class="box core" x="625" y="582" width="150" height="56"/><text class="name" x="700" y="610">project</text>
-
+  <rect class="box core" x="555" y="582" width="150" height="56"/><text class="name" x="630" y="610">project</text>
+  <rect class="box pdf" x="890" y="582" width="170" height="56"/><text class="name" x="975" y="610">layout-spec</text>
+  <rect class="box pdf" x="1270" y="582" width="150" height="56"/><text class="name" x="1345" y="610">svg</text>
   <rect class="box core" x="285" y="702" width="150" height="56"/><text class="name" x="360" y="730">doc</text>
   <rect class="box core" x="455" y="702" width="150" height="56"/><text class="name" x="530" y="730">numerals</text>
   <rect class="box core" x="625" y="702" width="190" height="56"/><text class="name" x="720" y="730">bibliography</text>
-  <rect class="box core" x="925" y="702" width="150" height="56"/><text class="name" x="1000" y="730">regex</text>
-
+  <rect class="box core" x="835" y="702" width="120" height="56"/><text class="name" x="895" y="730">regex</text>
+  <rect class="box pdf" x="990" y="702" width="150" height="56"/><text class="name" x="1065" y="730">pdf</text>
   <rect class="box core" x="285" y="822" width="150" height="56"/><text class="name" x="360" y="850">parser</text>
   <rect class="box core" x="285" y="942" width="150" height="56"/><text class="name" x="360" y="970">syntax</text>
+  <rect class="box core" x="20" y="942" width="150" height="56"/><text class="name" x="95" y="970">length</text>
   <text class="note" x="455" y="962">regex、font、svg、length、numerals を</text>
   <text class="note" x="455" y="990">除くすべてが使う（この矢印は省いた）</text>
-  <rect class="box core" x="20" y="942" width="150" height="56"/><text class="name" x="95" y="970">length</text>
-  <text class="note" x="20" y="1040">length は doc、driver、html、layout、pdf、preflight、project が使う</text>
+  <text class="note" x="20" y="1040">length は doc、driver、html、layout、pdf、preflight、project、typeset が使う</text>
   <text class="note" x="20" y="1068">（この矢印も省いた）</text>
 
   <!-- legend -->
-  <rect class="box pdf" x="900" y="900" width="36" height="24"/><text class="note" x="946" y="920">PDF 経路</text>
-  <rect class="box web" x="1110" y="900" width="36" height="24"/><text class="note" x="1156" y="920">Web 経路</text>
-  <rect class="box txt" x="900" y="944" width="36" height="24"/><text class="note" x="946" y="964">テキスト経路</text>
-  <rect class="box core" x="1110" y="944" width="36" height="24"/><text class="note" x="1156" y="964">共通</text>
+  <rect class="box pdf" x="1040" y="900" width="36" height="24"/><text class="note" x="1086" y="920">PDF 経路</text>
+  <rect class="box web" x="1250" y="900" width="36" height="24"/><text class="note" x="1296" y="920">Web 経路</text>
+  <rect class="box txt" x="1040" y="944" width="36" height="24"/><text class="note" x="1086" y="964">テキスト経路</text>
+  <rect class="box core" x="1250" y="944" width="36" height="24"/><text class="note" x="1296" y="964">共通</text>
 </svg>

@@ -1,6 +1,6 @@
 # ADR 0202: wasm で組めなかったパッケージの扱い
 
-ステータス: 採択（未実装）→golem-driver の Template Haskell の扱いは [ADR 0203](0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)
+ステータス: 採択→golem-driver の Template Haskell の扱いは [ADR 0203](0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)
 
 ## 文脈
 
