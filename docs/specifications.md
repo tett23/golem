@@ -2123,6 +2123,8 @@ LSP は書きかけのファイルを常に扱うので、最初の構文エラ�
 コードは `G`、diagnostic を出す段階の 2 桁、番号の 3 桁からなる 5 桁である（G02058 など。[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)、[docs/adr/0061](adr/0061-five-digit-diagnostic-codes.md)）。
 番号の 000 から 099 は以前の 4 桁のコードを写したものであり、新しいコードには 100 から 999 を割り当てる。
 4 桁のコードは受け付けず、`golem explain` では使い方の誤り、`silence-notices` では G03024 とする。
+関数を書く言語 Emet のコードは `E` で始まり、`golem explain`、`silence-notices`、`silence-info` は `E` のコードも受け付ける（[docs/adr/0160](adr/0160-emet-function-language-core.md)）。
+コードの形の誤りのメッセージは、`G` か `E` の後に 5 桁の数字を続けることを示す（[docs/adr/0176](adr/0176-e-code-shape-message.md)）。
 diagnostic のコードの一覧と、コードごとの意味、原因、直し方は [docs/diagnostics.md](diagnostics.md) にまとめる（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
 この文書は golem-driver に埋め込み、`golem explain <コード>` で節をそのまま表示する。
 節の形（題、重大度、状態、意味、主な原因、直し方）はコンパイルのときに検査し、形の崩れた文書では golem をビルドできない。
@@ -2457,8 +2459,15 @@ U+2010 と U+2013 は、引用符や em ダッシュと同じく、どちらか�
 そのため `lime‐tree` や `1990–2000` は一つの語として組み、和欧間の空きを入れない。
 和文に挟まれたハイフン類は、今までどおり行頭禁則の文字として一字ずつ組む。
 
-ハイフンやダッシュを含む語には、TeX と同じく Liang のパターンを当てない。
-`well-known` は `well-` の後ろでだけ分けられ、`self-evident` の後半は分けない。
+ハイフンやダッシュを含む語は、明示のハイフンの直後で要素に分け、要素ごとに Liang のパターンを当てる（[docs/adr/0179](adr/0179-lines-ending-in-explicit-hyphens.md)）。
+パターンに渡すのは、要素から末尾のハイフンとダッシュの連なりを除いた部分であり、パターンはハイフンを見ない。
+除いた連なりは、分綴した最後の部分の後ろに戻す。
+`co-ordinate` は `co` と `ordinate` に分けてパターンを当て、`co-` の後ろと `ordinate` の中（`or-di-nate`）で分けられる。
+`well-known` の `well` と `known` は短いので、`well-` の後ろでだけ分けられる。
+要素の中の候補は、パターンによるハイフネーションの候補と同じく罰則を 50 とし、二回目の段階から使う。
+そのため、一回目の段階で収まる段落では、明示のハイフンの後ろでだけ分ける。
+`explicit-hyphen-penalty` が 10000 で語を一つの箱にする場合と、U+2011 を含む要素は分綴しない。
+TeX は明示のハイフンを含む語を分綴しないので、この点は TeX と異なる（[TeX と InDesign との差異](differences-from-tex-and-indesign.md#明示したハイフンを含む語の分綴)）。
 
 罰点の合計が最小の経路が複数あるときは、まず段落の最後の行の適合度の分類の番号が小さいもの（very loose の側）を選ぶ（[golem-layout ADR 0010](golem-layout/adr/0010-tie-breaking-tex.md)）。
 それでも複数あれば、各経路の分割の位置と適合度の分類の組を最後から二つ目の分割から段落の始まりへ並べた列を辞書式に比べ、大きいほうを選ぶ（[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。
@@ -3978,8 +3987,11 @@ Golem には二つのマニュアルがあり、どちらも Golem 自身で組�
 
 奥付の値は、`scripts/manual/build-info.sh PROJECT` が組む前に `PROJECT/common/build-info.gm` に書き、奥付が `@import` で読む。
 `edition` は、組むコミットに `v` で始まるタグがあればそのタグ、なければ `VERSION` の内容に「の開発版」を続けた文字列である。
-`commit` は `git rev-parse HEAD` の 40 桁のハッシュで、追跡しているファイルにコミットしていない変更があれば「（コミットしていない変更を含む）」を続ける。
-環境変数 `GOLEM_MANUAL_COMMIT` と `GOLEM_MANUAL_TAG` があれば、git を読まずにその値を使う。
+`commit` は `git rev-parse HEAD` の 40 桁のハッシュだけである。
+`uncommitted` は、追跡しているファイルにコミットしていない変更があれば「（コミットしていない変更を含む）」、なければ空の文字列である。
+奥付は、ハッシュだけを本文の中のコードにし、`uncommitted` を本文の文字として続ける（`コミット：[code: [= build.commit]][= build.uncommitted]`）。
+注記は和文として字のあいだで改行できるので、コミットの行は版面に収まる（[docs/adr/0178](adr/0178-colophon-commit-line-overflow.md)）。
+環境変数 `GOLEM_MANUAL_COMMIT` と `GOLEM_MANUAL_TAG` があれば、git を読まずにその値を使い、`uncommitted` は空の文字列にする。
 どちらもなく、ハッシュを読めない場合は、終了コード 1 で終わり、ファイルを書かない。
 `build-info.gm` は生成物であり、Git で管理しない。
 これがないまま `golem check` や LSP でマニュアルを開くと G03002 になるので、編集する前に一度 `build-info.sh` を実行する。

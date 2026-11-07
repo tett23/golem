@@ -746,17 +746,32 @@ padCode = \case
               q -> q
          in zipWith set [0 ..] run
 
-{- | A Latin word: broken after its explicit hyphens and dashes, or else
-where the patterns allow. A word with a hyphen or dash in it gets no
-pattern hyphens, as in TeX (golem-layout ADR 0008).
+{- | A Latin word: broken after its explicit hyphens and dashes (golem-layout
+ADR 0008), and inside each element where the patterns allow (docs/adr/0179).
+The patterns see each element without its trailing hyphens and dashes;
+an element with a hyphen or dash left in it, or a word kept whole by
+explicit-hyphen-penalty 10000, gets no pattern hyphens.
 -}
 wordItems :: ComposeEnv -> Look -> Text -> [Item]
 wordItems env lk word =
   let explicitP = ceExplicitHyphenPenalty env
-      (parts, pen)
-        | T.any (`elem` ("-‐‑–—" :: String)) word =
-            (if explicitP >= infPenalty then [word] else explicitParts word, Penalty 0 explicitP ExplicitHyphen)
-        | otherwise = (maybe [word] (`hyphenateUnits` word) (cePatterns env), Penalty (advance env lk '-') 50 (PatternHyphen (protAt snd '-')))
+      explicitPen = Penalty 0 explicitP ExplicitHyphen
+      patternPen = Penalty (advance env lk '-') 50 (PatternHyphen (protAt snd '-'))
+      isHyphen c = c `elem` ("-‐‑–—" :: String)
+      -- an element's pieces: the patterns' cuts, the trailing hyphens back on the last piece
+      pieces el =
+        let (stemUnits, runUnits) = spanEnd (\u -> let b = T.filter (not . isExtending) u in not (T.null b) && T.all isHyphen b) (clusters el)
+            (stem, run) = (T.concat stemUnits, T.concat runUnits)
+         in case cePatterns env of
+              Just p | not (T.null stem), not (T.any isHyphen stem) -> onLast (<> run) (hyphenateUnits p stem)
+              _ -> [el]
+      spanEnd f xs = let (b, a) = span f (reverse xs) in (reverse a, reverse b)
+      onLast f xs = case reverse xs of
+        x : rest -> reverse (f x : rest)
+        [] -> [f ""]
+      elements
+        | T.any isHyphen word = if explicitP >= infPenalty then [[word]] else map pieces (explicitParts word)
+        | otherwise = [pieces word]
       rotated = ceVertical env
       tag = fromEnum (if rotated then KindRotated else KindText)
       tr = tracking lk
@@ -768,7 +783,8 @@ wordItems env lk word =
          in Box (w + tr * fromIntegral (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0 (ceBoxSource env))
       -- the advance of the character at the line end, without tracking, by its ratio (golem-layout ADR 0014)
       protAt pick c = if ceProtrusion env then Sp (unSp (advance env lk c) * pick (protrusionRatio c) `div` 1000) else 0
-   in concat [box part : [pen | i < length parts - 1] | (i, part) <- zip [0 :: Int ..] parts]
+      withPens pen = concat . zipWith (\i x -> (if i > (0 :: Int) then pen else []) <> x) [0 ..]
+   in withPens [explicitPen] (map (withPens [patternPen] . map (pure . box)) elements)
 
 {- | A word cut after each run of hyphens and dashes that has a character
 before it and one after it (lime-|tree, a--|b; not -5 or pre-).
