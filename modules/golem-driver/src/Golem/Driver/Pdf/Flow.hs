@@ -60,7 +60,6 @@ import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.Char (isSpace)
 import Data.Containers.ListUtils (nubOrdOn)
-import Data.Either (fromRight, isLeft)
 import Data.Foldable (toList)
 import Data.Int (Int64)
 import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, zip4)
@@ -76,6 +75,7 @@ import Golem.Assemble
 import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (numberSeparator)
 import Golem.Bibliography (EntryPart (..))
+import Golem.Doc.FigureWidth (figureWidthSp, parseFigureWidth)
 import Golem.Doc.IR
 import Golem.Driver.Overhang (lineOverhang, reachesBackground)
 import Golem.Driver.Pdf.Fonts
@@ -192,7 +192,7 @@ data PlacedFigure = PlacedFigure
     -- | the page of a PDF figure, from 1 (golem-pdf ADR 0008)
     pfPage :: !Int,
     pfSpan :: !SrcSpan,
-    -- | along the lines before the figure was fitted: the measure (golem-driver ADR 0034)
+    -- | the measure the figure is set against: of the column, or of the frame (golem-driver ADR 0034, docs/adr/0190)
     pfFullAlong :: !Sp,
     -- | how a figure turned onto a page of its own is turned
     pfTurn :: !(Maybe P.Turn)
@@ -1495,10 +1495,12 @@ buildFlow inp geom fonts images assumed = do
       placeFigure u fig content =
         let -- a figure turned onto a page of its own is set in its frame (golem-driver ADR 0034)
             turned = figRotate fig && isNothing (figWrap fig)
-            along = case figWrap fig of
-              Nothing -> Right (if turned then frameAlong else measure)
-              Just _ -> maybe (Left ()) (Right . dimToSp fs) (figWidth fig >>= parseDim)
-            alongSp = fromRight measure along
+            -- the measure of the column, or of the frame (golem-driver ADR 0034)
+            lineLen = if turned then frameAlong else measure
+            -- the width along the lines as written, or the measure (docs/adr/0190); the evaluation has checked it (G02133)
+            written = figureWidthSp fs lineLen <$> (figWidth fig >>= parseFigureWidth)
+            -- along0: for a wrapped figure its width, for any other the width or the measure
+            alongSp = fromMaybe lineLen written
             -- the pixels of an image, the crop box of a PDF figure after its rotation (golem-pdf ADR 0008)
             (w, h) = figureProportions content
             -- across the lines for each sp along them
@@ -1513,15 +1515,16 @@ buildFlow inp geom fonts images assumed = do
             -- the grid lines a caption of k lines takes: the fewest that hold it, its pitch in the body's ratio of pitch to size
             captionSpanOf k = if k == 0 then (pitch, 0) else let cb' = headingBlock fs pitch cs k 1 in (hbPitch cb', hbSpan cb')
             -- the caption in the measure before fitting (golem-driver ADR 0034)
-            caption = captionAt alongSp
+            caption = captionAt (if isJust (figWrap fig) then alongSp else lineLen)
             captionMarks = [sp | AnchorIndex _ sp _ <- captionAnchors]
             n = length caption
             (cp, span') = captionSpanOf n
             -- the grid lines of the column, or of the frame
             gridLines = if turned then frameLines else capacity
             fitOf len k s = fitFigure ratio len k pitch fs (if s == 0 then Nothing else Just s)
+            -- step 1 of golem-driver ADR 0034 as docs/adr/0190 has it: along1 is along0 within the measure; fitted when the last along is shorter than along0
             (alongFit, across, fitted) = case figWrap fig of
-              Nothing -> fitOf alongSp gridLines span'
+              Nothing -> let (a, c, _) = fitOf (min alongSp lineLen) gridLines span' in (a, c, a < alongSp)
               Just _ -> (alongSp, Sp (floor (fromInteger (unSp alongSp) * ratio)), False)
             m = fromInteger (unSp (across + pitch - 1) `div` unSp pitch)
             -- the size the figure would take turned, to tell the writer (golem-driver ADR 0034)
@@ -1545,8 +1548,8 @@ buildFlow inp geom fonts images assumed = do
               (Just _, _)
                 | length (pgColumns geom) > 1 -> [diagnostic "G07026" Error (uSpan u) "段組みの版面では図版を回り込ませられません。wrap を外すか、columns を 1 にしてください"]
               (Just _, Just e)
-                | isLeft along || measure - exWidth e < 8 * fs ->
-                    [diagnostic "G07022" Error (uSpan u) ("回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
+                | isNothing written || measure - exWidth e < 8 * fs ->
+                    [diagnostic "G07022" Error (uSpan u) ("回り込む図版の幅が不正です。行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
                 | exLines e > capacity -> [diagnostic "G07023" Error (uSpan u) ("回り込む図版の除外領域が一ページの行数を超えます（" <> T.pack (show (exLines e)) <> " 行）")]
               -- a caption that leaves no line for the image (golem-driver ADR 0034)
               _
@@ -1556,7 +1559,7 @@ buildFlow inp geom fonts images assumed = do
               | not turned = Nothing
               | vertical = Just P.TurnedRight
               | otherwise = Just P.TurnedLeft
-         in (PlacedFigure content alongFit across (figWrap fig) m caption cs cp span' ex (figSource fig) (snd (figureKey fig)) (uSpan u) alongSp turn, errs, notices, captionMarks)
+         in (PlacedFigure content alongFit across (figWrap fig) m caption cs cp span' ex (figSource fig) (snd (figureKey fig)) (uSpan u) (if isJust (figWrap fig) then alongSp else lineLen) turn, errs, notices, captionMarks)
       figures = Map.fromList [(i, f) | (i, u@Unit {uKind = UFigure fig}) <- units, Just f <- [figureOf u fig]]
       figureNotices = concat [ns | (_, _, ns, _) <- Map.elems figures]
       {- the frame of a figure turned onto a page of its own (golem-driver

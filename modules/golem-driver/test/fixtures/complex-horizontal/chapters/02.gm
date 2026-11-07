@@ -62,7 +62,7 @@ make はこの方法を使っている。
 記録を信じすぎて、作り直すべきものを作り直さないほうが、ずっと困った事態になる。
 
 @label fig-photo
-@figure images/photo.jpg alt="小さな写真"
+@figure images/photo.jpg alt="小さな写真" width=60%
   記録のファイルを置いたディレクトリの写真（見本）。
 
 図[ref-number fig-photo]のように、記録のファイルはビルドの出力と同じ場所に置く。

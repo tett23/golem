@@ -49,7 +49,7 @@ application/epub+zip
 <body>
 <nav epub:type="toc" id="toc">
 <h1>町の活版所</h1>
-<ol><li><a href="chapters/01.xhtml#h-2-0">第一章　活字を拾う</a><ol><li><a href="chapters/01.xhtml#h-2-61">一　文選の棚</a></li><li><a href="chapters/01.xhtml#h-2-1889">二　活字の大きさ</a><ol><li><a href="chapters/01.xhtml#h-2-2546">（一）　字面と字送り</a></li></ol></li></ol></li><li><a href="chapters/02.xhtml#h-3-0">第二章　版を組む</a><ol><li><a href="chapters/02.xhtml#h-3-31">一　組版の手順</a><ol><li><a href="chapters/02.xhtml#h-3-1231">（一）　工程と日数</a></li></ol></li><li><a href="chapters/02.xhtml#h-3-1612">二　込め物の種類</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-0">第三章　刷りと校正</a><ol><li><a href="chapters/03.xhtml#h-4-32">一　校正の記号</a></li><li><a href="chapters/03.xhtml#h-4-682">二　赤字を写す</a><ol><li><a href="chapters/03.xhtml#h-4-719">（一）　刷りの控え</a></li><li><a href="chapters/03.xhtml#h-4-1733">（二）　版を崩す</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-4125">参考文献</a></li></ol></li><li><a href="back.xhtml#h-5-10">索引</a></li></ol>
+<ol><li><a href="chapters/01.xhtml#h-2-0">第一章　活字を拾う</a><ol><li><a href="chapters/01.xhtml#h-2-61">一　文選の棚</a></li><li><a href="chapters/01.xhtml#h-2-1889">二　活字の大きさ</a><ol><li><a href="chapters/01.xhtml#h-2-2557">（一）　字面と字送り</a></li></ol></li></ol></li><li><a href="chapters/02.xhtml#h-3-0">第二章　版を組む</a><ol><li><a href="chapters/02.xhtml#h-3-31">一　組版の手順</a><ol><li><a href="chapters/02.xhtml#h-3-1231">（一）　工程と日数</a></li></ol></li><li><a href="chapters/02.xhtml#h-3-1612">二　込め物の種類</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-0">第三章　刷りと校正</a><ol><li><a href="chapters/03.xhtml#h-4-32">一　校正の記号</a></li><li><a href="chapters/03.xhtml#h-4-682">二　赤字を写す</a><ol><li><a href="chapters/03.xhtml#h-4-719">（一）　刷りの控え</a></li><li><a href="chapters/03.xhtml#h-4-1733">（二）　版を崩す</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-4125">参考文献</a></li></ol></li><li><a href="back.xhtml#h-5-10">索引</a></li></ol>
 </nav>
 </body>
 </html>
@@ -115,7 +115,7 @@ code { padding-inline: 0.25em; }
 <li class="toc-1"><a href="chapters/01.xhtml#h-2-0">第一章　<span class="kenten kenten-sesame">活字を拾う</span></a></li>
 <li class="toc-2"><a href="chapters/01.xhtml#h-2-61">一　文選の<ruby class="mono">棚<rp>（</rp><rt>たな</rt><rp>）</rp></ruby></a></li>
 <li class="toc-2"><a href="chapters/01.xhtml#h-2-1889">二　活字の大きさ</a></li>
-<li class="toc-3"><a href="chapters/01.xhtml#h-2-2546">（一）　字面と<ruby>字送り<rp>（</rp><rt>じおくり</rt><rp>）</rp></ruby></a></li>
+<li class="toc-3"><a href="chapters/01.xhtml#h-2-2557">（一）　字面と<ruby>字送り<rp>（</rp><rt>じおくり</rt><rp>）</rp></ruby></a></li>
 <li class="toc-1"><a href="chapters/02.xhtml#h-3-0">第二章　<span class="kenten kenten-sesame">版を組む</span></a></li>
 <li class="toc-2"><a href="chapters/02.xhtml#h-3-31">一　<ruby class="mono">組<rp>（</rp><rt>くみ</rt><rp>）</rp>版<rp>（</rp><rt>はん</rt><rp>）</rp></ruby>の手順</a></li>
 <li class="toc-3"><a href="chapters/02.xhtml#h-3-1231">（一）　工程と<span class="kenten kenten-sesame">日数</span></a></li>
@@ -131,7 +131,7 @@ code { padding-inline: 0.25em; }
 </nav>
 </body>
 </html>
-== OEBPS/chapters/01.xhtml (deflate, time 315532800, 6497 bytes)
+== OEBPS/chapters/01.xhtml (deflate, time 315532800, 6575 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -170,17 +170,17 @@ code { padding-inline: 0.25em; }
 </table>
 <p>本文によく使われた五号の活字は、一本の値段が2銭ほどだった。</p>
 <figure>
-<img src="../images/type-case.png" alt="上から下へ色が淡くなる、縦に長い帯"/>
+<img src="../images/type-case.png" alt="上から下へ色が淡くなる、縦に長い帯" style="height: 12em; max-height: 100%"/>
 <figcaption><span class="number">図1-2</span>　活字の棚の色の<span class="kenten kenten-sesame">移り変わり</span>。上ほどよく使う字が並ぶ。</figcaption>
 </figure>
-<h3 id="h-2-2546"><span class="number">（一）</span>　字面と<ruby>字送り<rp>（</rp><rt>じおくり</rt><rp>）</rp></ruby></h3>
+<h3 id="h-2-2557"><span class="number">（一）</span>　字面と<ruby>字送り<rp>（</rp><rt>じおくり</rt><rp>）</rp></ruby></h3>
 <p>活字の一本は、字の形が載る面（<ruby class="mono">字<rp>（</rp><rt>じ</rt><rp>）</rp>面<rp>（</rp><rt>づら</rt><rp>）</rp></ruby>）と、それを支える<ruby class="mono">胴<rp>（</rp><rt>どう</rt><rp>）</rp></ruby>からできている。胴の幅を並べたものが字送りであり、和文の活字は胴が正方形なので、字送りは字の大きさに等しい。欧文の活字は字ごとに胴の幅が違い、「i」と「m」では三倍ほども差がある<a epub:type="noteref" class="noteref" href="#note-2" id="noteref-2">2</a>。</p>
 <figure id="fig-press">
-<img src="../images/press.svg" alt="手引きの印刷機を横から見た図"/>
+<img src="../images/press.svg" alt="手引きの印刷機を横から見た図" style="height: 10em; max-height: 100%"/>
 <figcaption><span class="number">図1-3</span>　手引きの印刷機。</figcaption>
 </figure>
-<p>手引きの印刷機（<a href="#fig-press">手引きの印刷機を横から見た図</a>ページの図1-3）は、版の上に紙を置き、上から<ruby class="mono">平<rp>（</rp><rt>ひら</rt><rp>）</rp>盤<rp>（</rp><rt>ばん</rt><rp>）</rp></ruby>を押し下げて刷る。一枚ずつ刷るので、一日に刷れる数は多くない。町の活版所の仕事の多くは、こうした端物と呼ばれる小さな刷り物である<span id="i-2-3562"></span>。</p>
-<p class="ps-box">大きな仕事が入ると、活版所は急に騒がしくなる。――棚の前に人が並び、ステッキの鳴る音が途切れなくなる。版を組む台の上には、組み終えたページが何枚も重ねられ、校正の刷りを待つ。その間も端物の注文は来るので、主人は夜遅くまで一人で刷り機を動かした<span id="i-2-3974"></span>。</p>
+<p>手引きの印刷機（<a href="#fig-press">手引きの印刷機を横から見た図</a>ページの図1-3）は、版の上に紙を置き、上から<ruby class="mono">平<rp>（</rp><rt>ひら</rt><rp>）</rp>盤<rp>（</rp><rt>ばん</rt><rp>）</rp></ruby>を押し下げて刷る。一枚ずつ刷るので、一日に刷れる数は多くない。町の活版所の仕事の多くは、こうした端物と呼ばれる小さな刷り物である<span id="i-2-3573"></span>。</p>
+<p class="ps-box">大きな仕事が入ると、活版所は急に騒がしくなる。――棚の前に人が並び、ステッキの鳴る音が途切れなくなる。版を組む台の上には、組み終えたページが何枚も重ねられ、校正の刷りを待つ。その間も端物の注文は来るので、主人は夜遅くまで一人で刷り機を動かした<span id="i-2-3985"></span>。</p>
 <section class="notes">
 <h2>注</h2>
 <aside epub:type="footnote" id="note-1"><a href="#noteref-1">1</a> 文選と植字を一人で兼ねる小さな活版所も多かった。仕事の分け方は、<a class="cite" href="../chapters/03.xhtml#cite-jlreq">[1]</a> の扱う範囲の外である。<span id="i-2-898"></span></aside>
@@ -359,8 +359,8 @@ code { padding-inline: 0.25em; }
 <li>植字 / 手順 <a href="chapters/02.xhtml#i-3-133">1</a></li>
 <li>植字 / 文選との違い <a href="chapters/01.xhtml#i-2-898">1</a></li>
 <li>全角 <a href="chapters/02.xhtml#i-3-2364">1</a></li>
-<li>帳簿 <a href="chapters/01.xhtml#i-2-3974">1</a></li>
-<li>端物 <a href="chapters/01.xhtml#i-2-3562">1</a></li>
+<li>帳簿 <a href="chapters/01.xhtml#i-2-3985">1</a></li>
+<li>端物 <a href="chapters/01.xhtml#i-2-3573">1</a></li>
 <li>文選 / 文選工 <a href="chapters/01.xhtml#i-2-557">1</a></li>
 </ul>
 </section>

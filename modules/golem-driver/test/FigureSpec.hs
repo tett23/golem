@@ -3,7 +3,7 @@ figures fitted to the column and turned onto a page of their own
 (golem-driver ADR 0034); SVG active content in HTML and EPUB (docs/adr
 ADR 0039).
 -}
-module FigureSpec (pdfFigureTests, svgFigureTests, fitFigureTests, turnedFigureTests, activeContentTests) where
+module FigureSpec (pdfFigureTests, svgFigureTests, fitFigureTests, figureWidthTests, turnedFigureTests, activeContentTests) where
 
 import Codec.Compression.Zlib qualified as Z
 import Control.Monad (forM_)
@@ -21,6 +21,7 @@ import Data.Word (Word8)
 import Golem.Driver
 import Golem.Driver.Pdf (PdfLayout (..), PlacedFigure (..), figureRect, fitFigure)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
+import Golem.Layout.Wrap (Exclusion (..))
 import Golem.Layout.Paginate (PageOut (..), Slotted (..), labelPages)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), columnsFor, typeAreaFor)
 import Golem.Length (Sp (..))
@@ -693,6 +694,102 @@ fitFigureTests =
       ],
     testCase "fitted and turned figures: parallel and sequential, and two builds, give the same bytes" $ do
       let source = "本文。\n\n" <> fig "wide" "" "キャプション。" <> fig "wide" " rotate=true" "回した図。" <> "後の本文。\n"
+      a <- miniPdf fakeProvider True (vertical10 60) source boxes
+      b <- miniPdf fakeProvider False (vertical10 60) source boxes
+      c <- miniPdf fakeProvider True (vertical10 60) source boxes
+      a @?= b
+      a @?= c
+      qpdfCheck a
+  ]
+  where
+    sides rs = [if rectX r == rectX col then "left" else if rectX r + rectW r == rectX col + rectW col then "right" else "neither" :: T.Text | (r, col) <- rs]
+
+-- ------------------------------------------------------------------ docs/adr/0190
+
+figureWidthTests :: [TestTree]
+figureWidthTests =
+  [ testGroup
+      "the size"
+      [ testCase "horizontal: width=10zw is 10 characters along the lines, its height in proportion, with no G07039" $ do
+          (_, pl) <- layoutOk (horizontal20 "left" 20) (fig "wide" " width=10zw" "") boxes
+          (pf, _, _) <- single (figuresIn pl)
+          (pfAlong pf, pfAcross pf) @?= (100 * pt, Sp (floor (fromInteger (unSp (100 * pt)) / 3 :: Rational)))
+          notices "G07039" pl @?= [],
+        testCase "vertical: width=10zw is 10 characters down the lines, its width in proportion, with no G07039" $ do
+          (_, pl) <- layoutOk (vertical10 60) (fig "tall" " width=10zw" "") boxes
+          (pf, _, _) <- single (figuresIn pl)
+          (pfAlong pf, pfAcross pf) @?= (100 * pt, Sp (floor (fromInteger (unSp (100 * pt)) / 3 :: Rational)))
+          notices "G07039" pl @?= [],
+        testCase "width=50% is half the measure, and 33% is truncated to sp" $ do
+          (_, pl) <- layoutOk (horizontal20 "left" 20) (fig "wide" " width=50%" "" <> fig "wide" " width=33%" "") boxes
+          map (\(pf, _, _) -> pfAlong pf) (figuresIn pl) @?= [120 * pt, Sp (unSp (240 * pt) * 33 `div` 100)]
+          notices "G07039" pl @?= [],
+        testCase "a turned figure: width=50% is half the line of the frame" $ do
+          (geom, pl) <- layoutOk (horizontal20 "left" 20) (fig "wide" " rotate=true width=50%" "") boxes
+          (pf, _, _) <- single (figuresIn pl)
+          pfAlong pf @?= Sp (unSp (rectH (pgTypeArea geom)) * 50 `div` 100)
+          pfFullAlong pf @?= rectH (pgTypeArea geom)
+          notices "G07039" pl @?= [],
+        testCase "a width beyond the measure is fitted to it, with G07039 for the share of the width" $ do
+          (_, pl) <- layoutOk (horizontal20 "left" 20) (fig "wide" " width=40zw" "") boxes
+          (pf, _, _) <- single (figuresIn pl)
+          (pfAlong pf, pfAcross pf) @?= (240 * pt, 80 * pt)
+          map diagMessage (notices "G07039" pl) @?= ["図版を段に収めるため 60% に縮めました。rotate=true で回して一ページに置くと、より大きく置けます"]
+          (_, pl') <- layoutOk (horizontal20 "left" 20) (fig "wide" " width=150%" "") boxes
+          map diagMessage (notices "G07039" pl') @?= ["図版を段に収めるため 66% に縮めました。rotate=true で回して一ページに置くと、より大きく置けます"],
+        testCase "a tall figure made narrower by width that is still deeper than the column is fitted again, with G07039" $ do
+          (_, pl) <- layoutOk (horizontal20 "left" 20) (fig "tall" " width=20zw" "") boxes
+          (pf, _, _) <- single (figuresIn pl)
+          pfAcross pf @?= 19 * 15 * pt
+          pfAlong pf @?= Sp (floor (fromInteger (unSp (19 * 15 * pt)) / 3 :: Rational))
+          map diagMessage (notices "G07039" pl) @?= ["図版を段に収めるため 47% に縮めました"],
+        testCase "the caption is set to the measure, whatever the width" $ do
+          (_, pl) <- layoutOk (horizontal20 "left" 20) (fig "wide" " width=10zw" (T.replicate 30 "あ")) boxes
+          (pf, _, _) <- single (figuresIn pl)
+          length (pfCaption pf) @?= 2
+          map lineTarget (pfCaption pf) @?= [240 * pt, 240 * pt]
+          v <- viewOf (horizontal20 "left" 40) (fig "wide" " width=10zw" "キャプション。") boxes
+          (geom, _) <- layoutOk (horizontal20 "left" 40) (fig "wide" " width=10zw" "キャプション。") boxes
+          [rectX (lvRect l) | pv <- vwPages v, l <- pvLines pv, lvKind l == "キャプションの行"] @?= [rectX (typeAreaFor geom 1)],
+        testCase "a wrapped figure of width=50% excludes half the measure" $ do
+          (_, pl) <- layoutOk (horizontal20 "left" 20) (fig "square" " wrap=end width=50%" "" <> "本文。\n") boxes
+          (_, pl') <- layoutOk (horizontal20 "left" 20) (fig "square" " wrap=end width=12zw" "" <> "本文。\n") boxes
+          (pf, _, _) <- single (figuresIn pl)
+          (pf', _, _) <- single (figuresIn pl')
+          pfAlong pf @?= 120 * pt
+          fmap exWidth (pfExclusion pf) @?= fmap exWidth (pfExclusion pf')
+          assertBool "an exclusion" (isJust (pfExclusion pf))
+      ],
+    testGroup
+      "the side: to the edge nearer the edge of the paper"
+      [ testCase "horizontal, bound on the left: odd pages to the left, even pages to the right; the gutter larger, the other way" $ do
+          let source = fig "wide" " width=10zw" "" <> "@page-break\n\n" <> fig "wide" " width=10zw" ""
+          (geom, pl) <- layoutOk (horizontal20 "left" 20) source boxes
+          map (\(_, p, _) -> poNumber p) (figuresIn pl) @?= [1, 2]
+          sides (placedRects geom pl) @?= ["left", "right"]
+          (geom', pl') <- layoutOk (horizontal20 "left" 40) source boxes
+          sides (placedRects geom' pl') @?= ["right", "left"],
+        testCase "vertical: to the top when the head margin is smaller, to the bottom when larger" $ do
+          let source = fig "tall" " width=10zw" "" <> "@page-break\n\n" <> fig "tall" " width=10zw" ""
+          (geom, pl) <- layoutOk (vertical10 60) source boxes
+          [rectY r + rectH r - (rectY col + rectH col) | (r, col) <- placedRects geom pl] @?= [0, 0]
+          (geom', pl') <- layoutOk (vertical10 100) source boxes
+          [rectY r - rectY col | (r, col) <- placedRects geom' pl'] @?= [0, 0],
+        testCase "two columns: the left column to the left, the right to the right; the upper to the top, the lower to the bottom" $ do
+          let source name = fig name " width=5zw" "" <> "@column-break\n\n" <> fig name " width=5zw" ""
+          (geom, pl) <- layoutOk (pageStyle "horizontal" "left" 12 20 2 20 25) (source "wide") boxes
+          map (\(_, p, _) -> poColumn p) (figuresIn pl) @?= [0, 1]
+          sides (placedRects geom pl) @?= ["left", "right"]
+          (geom', pl') <- layoutOk (pageStyle "vertical" "right" 12 10 2 75 40) (source "tall") boxes
+          map (\(_, p, _) -> poColumn p) (figuresIn pl') @?= [0, 1]
+          case placedRects geom' pl' of
+            [(r1, c1), (r2, c2)] -> do
+              rectY r1 + rectH r1 @?= rectY c1 + rectH c1
+              rectY r2 @?= rectY c2
+            other -> assertFailure (show other)
+      ],
+    testCase "figures with a width: parallel and sequential, and two builds, give the same bytes" $ do
+      let source = "本文。\n\n" <> fig "wide" " width=10zw" "キャプション。" <> fig "wide" " width=150%" "" <> fig "wide" " rotate=true width=50%" "回した図。" <> "後の本文。\n"
       a <- miniPdf fakeProvider True (vertical10 60) source boxes
       b <- miniPdf fakeProvider False (vertical10 60) source boxes
       c <- miniPdf fakeProvider True (vertical10 60) source boxes
