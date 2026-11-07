@@ -134,6 +134,13 @@ newTests =
         en <- readUtf8 (tmp </> "en/manifest.toml")
         (filter ("language = " `isPrefixOf`) (lines ja), filter ("language = " `isPrefixOf`) (lines en))
           @?= (["language = \"ja\""], ["language = \"en\""]),
+      testCase "the manifest writes paragraph-separator = \"line\" in [source] for ja and en (docs/adr/0193)" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+        _ <- golemAt tmp ["new", "ja", "--no-fonts"]
+        _ <- golemAt tmp ["new", "en", "--language", "en", "--no-fonts"]
+        let source = takeWhile (not . ("[" `isPrefixOf`)) . drop 1 . dropWhile (/= "[source]") . lines
+        ja <- source <$> readUtf8 (tmp </> "ja/manifest.toml")
+        en <- source <$> readUtf8 (tmp </> "en/manifest.toml")
+        (filter (not . null) ja, filter (not . null) en) @?= (["paragraph-separator = \"line\""], ["paragraph-separator = \"line\""]),
       testCase "two projects get different ids" $ withSystemTempDirectory "golem-new" $ \tmp -> do
         _ <- golemAt tmp ["new", "a", "--no-fonts"]
         _ <- golemAt tmp ["new", "b", "--no-fonts"]

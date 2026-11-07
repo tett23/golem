@@ -127,7 +127,8 @@ the second builds the other three.
 everyNoticeProjects :: [BS.ByteString -> [(FilePath, BS.ByteString)]]
 everyNoticeProjects =
   [ \extra -> [("manifest.toml", noticeManifest extra), ("style.toml", withBodyFont style), ("a.gm", TE.encodeUtf8 source), ("code.hs", "main = pure ()\n"), ("images/tall.svg", tall)] <> fakeFontFiles,
-    \extra -> [("manifest.toml", replaceIn "[targets.pdf]\n" "" (noticeManifest extra)), ("a.gm", "x\n")],
+    -- G03120 too: no [source] (docs/adr/0193)
+    \extra -> [("manifest.toml", replaceIn "\n[source]\nparagraph-separator = \"blank-line\"\n" "" (replaceIn "[targets.pdf]\n" "" (noticeManifest extra))), ("a.gm", "x\n")],
     -- the notice E02109 and the info E05108 of a .emet that a .gm calls (docs/adr/0162)
     \extra ->
       [ ("manifest.toml", replaceIn "[targets.pdf]\n" "" (noticeManifest extra) <> "\n[functions.requires]\nfile = [\"w.tsv\"]\n"),
@@ -275,8 +276,37 @@ noticeTests =
         -- no page either (G07001); the notice comes after the errors
         let cs = codesOf (nDiagnostics n)
         assertBool (show cs) ("G08007" `elem` cs)
-        drop (length cs - 1) cs @?= ["G03023"]
+        drop (length cs - 1) cs @?= ["G03023"],
+      testCase "G03120: no paragraph-separator in [source], at the start of manifest.toml (docs/adr/0193)" $ do
+        n <- buildNotified (separatorProject id "") id
+        [(diagCode d, diagSeverity d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- nDiagnostics n] @?= [(DiagnosticCode "G03120", Notice, 0, 0)],
+      testCase "G03120: none when [source] writes blank-line or line (docs/adr/0193)" $
+        mapM_
+          ( \v -> do
+              n <- buildNotified (separatorProject id ("\n[source]\nparagraph-separator = \"" <> v <> "\"\n")) id
+              codesOf (nDiagnostics n) @?= []
+          )
+          ["blank-line", "line"],
+      testCase "G03120: a chapter entry alone still gives it (docs/adr/0193)" $ do
+        let entry = replaceIn "chapters = [\"a.gm\"]" "chapters = [{ file = \"a.gm\", paragraph-separator = \"blank-line\" }]"
+        n <- buildNotified (separatorProject entry "") id
+        codesOf (nDiagnostics n) @?= ["G03120"],
+      testCase "G03120: silence-notices silences it (docs/adr/0193)" $ do
+        n <- buildNotified (separatorProject id "\n[diagnostics]\nsilence-notices = [\"G03120\"]\n") id
+        codesOf (nDiagnostics n) @?= [],
+      testCase "a paragraph of two lines is two paragraphs without paragraph-separator, one with blank-line (docs/adr/0193)" $ do
+        let paragraphs n = length [() | (p, o) <- nOutputs n, ".xhtml" `isSuffixOf` p, piece <- BC.split '<' o, "p>" `BS.isPrefixOf` piece || "p " `BS.isPrefixOf` piece, "line" `BS.isInfixOf` piece]
+        byDefault <- buildNotified (separatorProject id "") id
+        blank <- buildNotified (separatorProject id "\n[source]\nparagraph-separator = \"blank-line\"\n") id
+        (paragraphs byDefault, paragraphs blank) @?= (2, 1)
     ]
+  where
+    -- a project with style.toml (no G03023) and a paragraph of two lines, to HTML
+    separatorProject edit extra =
+      [ ("manifest.toml", edit (TE.encodeUtf8 (manifestToml testManifest {tmExtra = extra, tmSource = Nothing}))),
+        ("style.toml", ""),
+        ("a.gm", "first line\nsecond line\n")
+      ]
 
 -- * golem explain (golem-cli ADR 0005)
 

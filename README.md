@@ -93,8 +93,10 @@ golem new mybook
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する。コードを省くと一覧を表示する。複数のコードを渡すと、渡した順に空行一つで区切って標準出力に書く。Golem のコードは大文字に直して同じになるものを、プラグインのコードは綴りが同じものを、最初のものだけ扱う。未知のコードと形の誤ったコードは、正しいコードの説明の後に一つずつ一行で標準エラー出力に書き、終了コードを 2 にする |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
 
-原稿の段落は、既定では空行で区切る。
-一行を一つの段落として書く和文の原稿は、`manifest.toml` の `[source]` に `paragraph-separator = "line"` と書くと、改行ひとつで段落を区切って読む。
+原稿の段落は、既定では改行ひとつで区切り、一行を一つの段落として読む（[docs/adr/0193](docs/adr/0193-line-paragraph-separator-by-default.md)）。
+空行で段落を区切って書いた原稿は、`manifest.toml` の `[source]` に `paragraph-separator = "blank-line"` と書く。
+`[source]` に `paragraph-separator` を書かなければ、notice の G03120 が出る。
+`golem new` の雛形は `paragraph-separator = "line"` を書く。
 章の配列の項目（`{ file = "...", paragraph-separator = "blank-line" }`）で、章ごとに変えられる。
 段落を分けずに行を改めるには、行の末尾に `\` を書く（強制改行、[docs/adr/0016](docs/adr/0016-hard-line-breaks.md)）。
 

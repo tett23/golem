@@ -20,7 +20,7 @@ import Golem.Doc.IR (Block, BlockBody, blockBody, docBlocks)
 import Golem.Eval.File
 import Golem.Eval.Functions (noFunctions)
 import Golem.Parser (parseAst)
-import Golem.Parser.SourceSettings (defaultSourceSettings)
+import Golem.Parser.SourceSettings (ParagraphSeparator (..), SourceSettings (..))
 import Golem.Project.Style (defaultStyle)
 import Golem.Syntax
 
@@ -40,7 +40,8 @@ baseCtx =
       ctxCiteKeys = Set.empty,
       ctxAssets = Map.empty,
       ctxPlugins = noPlugins,
-      ctxSource = defaultSourceSettings,
+      -- the tests are written in the blank-line style, the default before docs/adr/0193
+      ctxSource = SourceSettings BlankLineSeparated,
       ctxStyle = defaultStyle,
       ctxFunctions = noFunctions
     }

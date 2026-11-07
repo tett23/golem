@@ -21,8 +21,9 @@ newtype SourceSettings = SourceSettings
   }
   deriving stock (Eq, Show)
 
+-- | The line style, one paragraph a line (docs/adr/0193).
 defaultSourceSettings :: SourceSettings
-defaultSourceSettings = SourceSettings BlankLineSeparated
+defaultSourceSettings = SourceSettings LineSeparated
 
 {- | The keys of [source] and how a string value of each changes the
 settings. An invalid value gives a message listing the accepted values.

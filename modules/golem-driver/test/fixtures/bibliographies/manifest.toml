@@ -13,3 +13,6 @@ date = 2026-10-19
 [targets.html]
 [targets.epub]
 [targets.text]
+
+[source]
+paragraph-separator = "blank-line"
