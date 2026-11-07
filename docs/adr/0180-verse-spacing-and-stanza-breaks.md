@@ -1,6 +1,6 @@
 # ADR 0180: 韻文の前後の空きと、連をページの境で分ける規則
 
-ステータス: 採択
+ステータス: 採択→`@no-page-break` の前の連の扱いは [ADR 0205](0205-rules-added-by-the-implementation-of-adr-0180.md)
 
 ## 文脈
 

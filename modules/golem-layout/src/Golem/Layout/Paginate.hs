@@ -29,6 +29,9 @@ module Golem.Layout.Paginate
     PlacedRule (..),
     HeadingBlock (..),
     headingBlock,
+    Need (..),
+    lookAhead,
+    keptLookAhead,
     paginate,
     paginateIn,
     paginateWithin,
@@ -66,6 +69,23 @@ headingBlock (Sp fs) (Sp p) (Sp s) m least =
       n = max (toInteger (max 1 least)) ((extent + p - fs + p - 1) `div` p)
       area = (n - 1) * p + fs
    in HeadingBlock (Sp hp) (fromInteger n) (Sp ((area - extent) `div` 2))
+
+{- | The first part of what follows that a heading keeps with it, in a
+column of @capacity@ grid lines: its grid lines and the lines of its
+notes (golem-layout ADR 0019, 0021).
+-}
+lookAhead :: Int -> [Flow] -> Need
+lookAhead = nextNeed . lookAheadEnv
+
+{- | What a paragraph before a no-break keeps with it, in a column of
+@capacity@ grid lines; nothing when no no-break follows (golem-layout ADR 0022).
+-}
+keptLookAhead :: Int -> [Flow] -> Maybe Need
+keptLookAhead = keptNeed . lookAheadEnv
+
+-- | A page of one column of @capacity@ grid lines.
+lookAheadEnv :: Int -> Env
+lookAheadEnv capacity = Env maxBound 1 (ColumnSet 1 0 0 0) capacity
 
 {- | Lays the flow out on pages of @columns@ columns of @capacity@ grid
 lines each (docs/adr ADR 0018).
@@ -170,6 +190,7 @@ adjustLines env st sp k =
 placeFlow :: Env -> St -> Flow -> [Flow] -> St
 placeFlow env st f rest = case (f, keptNeed env rest) of
   (FParagraph ls, Just n) -> placeKept env (placeLines env) st True ls n
+  -- a stanza keeps its last verse lines as a paragraph its last lines (docs/adr/0205)
   (FStanza vs, Just n) -> placeKept env (placeStanza env) st True vs n
   (FContinued ls, Just n) -> placeKept env (placeLines env) st False ls n
   (FDefTerm ls, Just n) -> placeKept env (placeLines env) (keep env st (needIn env st (termNeed ls) (nextNeed env rest))) True ls n
@@ -177,7 +198,7 @@ placeFlow env st f rest = case (f, keptNeed env rest) of
 
 {- | The last two lines, or the whole paragraph of three lines or fewer, go
 to the next column, not from an empty one; of a stanza, its verse lines
-(docs/adr/0180).
+(docs/adr/0205).
 -}
 placeKept :: Env -> (St -> Bool -> [a] -> St) -> St -> Bool -> [a] -> Need -> St
 placeKept env placeIn st isStart ls n =
@@ -312,8 +333,7 @@ placeLines _ st _ [] = st
 placeLines env st isStart ls =
   let n = length ls
       k0 = fitting env st ls
-      k1 = if n - k0 == 1 && k0 > 0 then k0 - 1 else k0 -- widow
-      k2 = if isStart && k1 == 1 && n >= 2 then 0 else k1 -- orphan
+      k2 = splitAtBreak isStart n k0
       -- a column of nothing but headings places a line as an empty one does,
       -- when the line and a line of its notes are left room (golem-layout ADR 0019)
       k = if k2 == 0 && (isEmpty st || (sHeadingOnly st && roomForLine env st ls)) then max 1 (min n k0) else k2
@@ -336,8 +356,7 @@ placeStanza env st isStart vs =
   let n = length vs
       room = fitting env st (concat vs)
       k0 = length (takeWhile (<= room) (drop 1 (scanl (+) 0 (map length vs))))
-      k1 = if n - k0 == 1 && k0 > 0 then k0 - 1 else k0 -- widow
-      k2 = if isStart && k1 == 1 && n >= 2 then 0 else k1 -- orphan
+      k2 = splitAtBreak isStart n k0
       putVerses s = foldl' (putLine env) s . concat
       split k = placeStanza env (nextColumn env (putVerses st (take k vs))) False (drop k vs)
    in if k2 >= n
