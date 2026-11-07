@@ -9,6 +9,8 @@ Golem の実行ファイルは、GitHub Releases で配布する。[index readin
 
 Golem のバージョンは [code: X.Y.Z] か、プレリリースの識別子を付けた [code: X.Y.Z-<識別子>]（例：[code: 0.1.0-rc1]）で表す。
 1.0.0 までは、原稿の記法、CLI、出力の互換性を壊す変更で [code: Y] を、それ以外の変更で [code: Z] を上げる。
+1.0.0 の後は、互換を壊す変更で [code: X] を、足すだけの変更、出力を変える変更、意味論 IR と ABI の変更、廃止の予告で [code: Y] を、出力を変えない修正で [code: Z] を上げる。
+1.0.0 から守る範囲と、互換を壊してよい条件は、互換性の文書 [code: docs/compatibility.md] にある。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0174-compatibility-promises-for-1-0.md]（docs/adr の ADR 0174「1.0.0 から互換を守る範囲と、廃止の手順」）]
 
 リポジトリのルートのファイル [code: VERSION] が、バージョンの正本である。[index reading="VERSION": VERSION]
 この値は golem-driver の [code: Golem.Driver.Version] がコンパイルの時点に埋め込み、[code: golem --version] と PDF の Producer が使う。
@@ -47,6 +49,8 @@ $ gh run rerun <実行の ID> --failed
 監査の記録と修正が [code: main] に入るまで、タグを付けない。
 リリースの前に、プラグインの ABI のバージョンを確かめる必要はない。
 直前のリリースからの ABI の変更に合っているかは、CI の [code: changes] ジョブの [code: scripts/ci/abi-version.sh] がプルリクエストごとに検査する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0052-plugin-abi-version-bump-rule.md]（docs/adr の ADR 0052「プラグインの ABI のバージョンは、リリースしたバージョンからだけ上げる」）]
+1.0.0 の後の minor のリリースでは、[code: docs/compatibility.md] の「予告している ABI の変更」と「廃止予定の書き方」を、リリースノートの「予告」と「変更」の項に合わせて直しておく。
+ABI を変えたリリースの後は、その予告を互換性の文書から消す。
 
 タグと [code: VERSION] が一致しないとき、タグのコミットが [code: main] に含まれないときは、ワークフローの [code: version] ジョブが失敗し、リリースは作られない。
 
@@ -62,7 +66,7 @@ $ gh workflow run release.yml --ref <ブランチ>
 | ジョブ | 内容 |
 | --- | --- |
 | [code: ci] | [code: ci.yml] を再利用可能なワークフローとして呼ぶ。CI と同じビルド、テスト、決定性の検査を通す |
-| [code: version] | [code: check-version.sh] で [code: VERSION] とタグを検査し、タグのコミットが [code: main] に含まれることを確かめる |
+| [code: version] | [code: check-version.sh] で [code: VERSION] とタグを検査し、タグのコミットが [code: main] に含まれることを確かめる。タグの push では、[code: scripts/release/check-patch.sh] で、[code: v1.0.0] 以降の直前のリリースの patch なら、見た目の回帰テストの参照と、出力のハッシュの一覧の PDF でない行が直前のリリースと同じであることも確かめる |
 | [code: build] | Linux の二つのアーキテクチャでは Alpine のコンテナの中で musl に静的にリンクし、macOS では [code: macos-15] でビルドしてアーカイブを作る |
 | [code: smoke] | アーカイブを別のランナーと、[code: alpine] と [code: debian:stable-slim] のコンテナの中で展開して動かす |
 | [code: determinism] | 三つの配布物と CI のビルドの、[code: scripts/determinism.sh] の出力を比べる |
