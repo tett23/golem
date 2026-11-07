@@ -17,7 +17,6 @@ module Golem.Driver.Pdf.Flow
     flowLines,
     layoutPdf,
     gridLine,
-    runningMetadata,
     runningHeadLines,
     numberedTitle,
     pagesOf,
@@ -35,18 +34,14 @@ module Golem.Driver.Pdf.Flow
     bibliographyLines,
     sidenoteMetrics,
     labelSpans,
-    listNumberDiagnostics,
     Assumed (..),
     fixpoint,
     rubyStyleOf,
-    listBullets,
-    textBullets,
     RuledInfo (..),
     fitFigure,
     figureRect,
     imageRect,
     turnedFrame,
-    styleFileId,
     pdfXPeople,
     loadIntent,
   )
@@ -63,7 +58,7 @@ import Data.Containers.ListUtils (nubOrdOn)
 import Data.Foldable (toList)
 import Data.Int (Int64)
 import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, zip4)
-import Data.List.NonEmpty (NonEmpty, nonEmpty)
+import Data.List.NonEmpty (nonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
@@ -423,7 +418,7 @@ flowLines provider inp0 = case checkedGeometry inp of
 layoutPdf :: PdfInput -> PageGeometry -> LoadedFonts -> IO (Either [Diagnostic] PdfLayout)
 layoutPdf inp0 geom fonts =
   let inp = codeInput inp0
-   in case sidenoteDiagnostics geom (piBook inp) <> listNumberDiagnostics (piStyle inp) (pgVertical geom) (piBook inp) of
+   in case sidenoteDiagnostics geom (piBook inp) <> listNumberDiagnostics (lsNumbers (stLists (piStyle inp))) (pgVertical geom) (piBook inp) of
         ds@(_ : _) -> pure (Left ds)
         [] -> do
           loaded <- loadFigures inp
@@ -562,21 +557,6 @@ and the levels below it have none.
 -}
 activeAfter :: Map Int (Maybe HeadingInfo) -> HeadingInfo -> Map Int (Maybe HeadingInfo)
 activeAfter m h = Map.insert (hiLevel h) (Just h) (Map.mapWithKey (\l v -> if l > hiLevel h then Nothing else v) m)
-
-{- | The text of the keys of [metadata] a running head can show
-(golem-driver ADR 0022): the keys of @meta@ but creators, an array.
--}
-runningMetadata :: Metadata -> Map Text Text
-runningMetadata md =
-  Map.fromList $
-    [ ("id", mdId md),
-      ("title", mdTitle md),
-      ("language", mdLanguage md),
-      ("date", T.pack (show (mdDate md)))
-    ]
-      <> [("title_reading", r) | Just r <- [mdTitleReading md]]
-      <> [("edition", e) | Just e <- [mdEdition md]]
-      <> [("publisher", p) | Just p <- [mdPublisher md]]
 
 {- | The lines of a running head drawn on a page (golem-driver ADR 0014,
 0022), from the text of the metadata, the variables of [vars] by their
@@ -932,19 +912,6 @@ labelSpans book = Map.fromListWith (\_ old -> old) (concatMap site (concat [bs |
         FigureBlock fig -> concatMap site (figCaption fig)
         _ -> []
 
-{- | Numbers of list items that the number format of their depth cannot
-write (golem-driver ADR 0013): G07029 at the item, whatever the target.
--}
-listNumberDiagnostics :: Style -> Bool -> Book -> [Diagnostic]
-listNumberDiagnostics style vertical book =
-  [ diagnostic "G07029" Error (lsiSpan s) ("リストの番号 " <> T.pack (show (lsiNumber s)) <> " は、書式 " <> renderNumberFormat f <> " で表せません")
-  | s <- listSites (concat [bs | Document _ bs <- bookDocs book]),
-    let f = atDepth formats (lsiDepth s),
-    null (formatListNumber (nfStyle f) (lsiNumber s))
-  ]
-  where
-    formats = fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))
-
 {- | Places the sidenotes of a page in its sidenote column (golem-driver
 ADR 0006): each wants the top of the line of its marker; they keep their
 order, half a body pitch apart. Takes the sidenote pitch and size of a
@@ -1198,19 +1165,6 @@ bodyLook style = styleLook style Nothing (bodyRole style)
 -- | A role at a size with the keys of a paragraph style (docs/adr/0020).
 styleLook :: Style -> Maybe Text -> Text -> Sp -> Look
 styleLook style st role size = withFeatures (paraStyle style st) (plainLook role size)
-
-{- | The bullets of [lists] by depth in PDF, HTML and EPUB: those written,
-or • without bullets (golem-driver ADR 0044).
--}
-listBullets :: ListStyle -> NonEmpty Text
-listBullets = bulletsOr "•"
-
--- | The bullets of [lists] by depth in plain text: those written, or ・ without bullets (golem-driver ADR 0044).
-textBullets :: ListStyle -> NonEmpty Text
-textBullets = bulletsOr "・"
-
-bulletsOr :: Text -> ListStyle -> NonEmpty Text
-bulletsOr def = fromMaybe (pure def) . lsBullets
 
 {- | The marker of an item of a list at a depth (golem-driver ADR 0013): the
 bullet of the depth, or the number in the format of the depth. @{n}@ is a
@@ -2505,10 +2459,6 @@ unturnRect :: P.Turn -> Rect -> Rect -> Rect
 unturnRect t (Rect x y w h) (Rect px py a b) = case t of
   P.TurnedRight -> Rect (y + h - py - b) (px - x) b a
   P.TurnedLeft -> Rect (py - y) (x + w - px - a) b a
-
--- | The FileId of style.toml: the one after the files of the project.
-styleFileId :: Project -> FileId
-styleFileId p = FileId (length (fileTableEntries (projectFiles p)))
 
 {- | The names XMP takes as dc:creator and dc:contributor: without the
 printer and the binder, without roles (docs/adr ADR 0033).
