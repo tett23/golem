@@ -16,6 +16,7 @@ import Data.ByteString qualified as BS
 import Data.IORef (modifyIORef, newIORef, readIORef)
 import Data.List (isPrefixOf)
 import Data.Text qualified as T
+import EnumSpec (enumTests)
 import Foreign.C.Types (CUInt (..))
 import GHC.Clock (getMonotonicTime)
 import Golem.TestSupport.Bytes
@@ -59,7 +60,8 @@ allTests =
         manifestTests,
         skippedTests,
         timeLimitTests,
-        watchdogTests
+        watchdogTests,
+        enumTests
       ]
 
 found, missing :: IO (Maybe FilePath)

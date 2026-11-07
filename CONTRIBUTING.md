@@ -132,6 +132,19 @@ PDF の見た目を意図して変えたときは、`scripts/visual/run.sh --acc
 二冊の参照（`scripts/visual/pages/complex-vertical.txt` と `complex-horizontal.txt`）か出力のゴールデン（`pdf-complex-*.txt` と `epub-complex-*.txt`）を書き直すプルリクエストは、説明に、変わったページと、変わった理由（どの機能の変更か）を書く。
 レビューでは、CI の要約と成果物 `visual-diff` にある、変わったページの前後の画像と差分の画像を見る（[docs/adr/0096](./docs/adr/0096-before-and-after-images-of-changed-pages.md)）。
 
+改ページの規則は、小さな入力のすべてで不変条件として確かめる（[docs/adr/0204](./docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)）。
+golem-layout のテストの「every input」が落ちたら、表示された最も小さい入力を、直すプルリクエストで次の手順で `modules/golem-layout/test/PaginateSpec.hs` の例にする。
+
+1. 失敗の表示の「As a case of PaginateSpec:」の後の `testCase` を、`PaginateSpec.hs` のその規則の `testGroup` に貼る。表示は、その入力を組む式（`paginateWithin` と `enumFlows` の要素の並び）と、今の出力の各段の中身である。
+2. `PaginateSpec.hs` に `import PaginateEnum (Element (..), enumFlows)` を足す。
+3. 期待する出力を、違反した不変条件（表示の `I1` から `I8`）が求める配置に書き直す。今の出力のままにすると、不具合を固定するテストになる。
+
+すぐに直さない違反は、例を貼らずに、仕様書の「既知の不具合」と docs/roadmap.md に項目を足し、`PaginateInvariantsSpec.hs` の `knownBugs` に、入力の形の条件と除く入力の数を足す。
+数は、テストが表示する数をそのまま固定する。
+直す ADR が入ったら、その項目を `knownBugs` から消す。
+
+手元では `GOLEM_ENUM_DEPTH=5 cabal test golem-layout-test --test-option=-p --test-option='/every input/'` のように、調べる要素の数を上げて走らせる。
+
 Golem は、同じ入力から常に同じバイト列を出力する。
 出力を変える変更は、x86-64 と aarch64 で同じ結果になることを CI の `determinism` ジョブで確かめる。
 時刻、乱数、ハッシュ表の走査順、ロケールのように、環境で変わるものを出力に混ぜないよう注意する。
