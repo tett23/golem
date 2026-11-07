@@ -1,7 +1,10 @@
-{- | The generators of the semantic IR, copied from the tests of golem-doc
-(docs/adr/0162: the property of the data types of .emet over any IR).
+{- | The hedgehog generators of the semantic IR (docs/adr/0191), which
+the test suite of golem-driver uses. Only test suites depend on this
+package (scripts/ci/test-only-deps.sh). The test suite of golem-doc has a
+copy, modules/golem-doc/test/Gen.hs: cabal rejects the cycle of a test
+of golem-doc that depends on this package, which depends on golem-doc.
 -}
-module IRGen (genDocument, genInline) where
+module Golem.DocGen (genDocument, genInline, genExpr, genInt64) where
 
 import Data.Text (Text)
 import Data.Void (Void)
