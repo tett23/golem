@@ -561,8 +561,8 @@ jobs:
       # builds toml-parser for wasm (docs/adr/0202 section 2). A hit needs
       # no native GHC at all
       - id: hosttools
-        name: Cache the native alex and happy (docs/adr/0202)
-        uses: actions/cache@v6
+        name: Restore the native alex and happy (docs/adr/0202)
+        uses: actions/cache/restore@v6
         with:
           path: third_party/hosttools
           key: hosttools-alex-3.5.4.2-happy-2.2-ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
@@ -585,13 +585,21 @@ jobs:
         run: |
           "$HOSTTOOLS/alex" --version | grep -F 'Alex version 3.5.4.2'
           "$HOSTTOOLS/happy" --version | grep -F 'Happy Version 2.2'
+      - if: steps.hosttools.outputs.cache-hit != 'true'
+        name: Save the native alex and happy
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/hosttools
+          key: ${{ steps.hosttools.outputs.cache-primary-key }}
       # the toolchain (scripts/fetch-ghc-wasm.sh), with the cabal store and
       # the index of the wasm build in third_party/ghc-wasm/.cabal; a
       # change of the project or its freeze restores the store of the same
-      # toolchain and saves a new one
+      # toolchain and saves a new one, after the build, whether or not it
+      # succeeded, so that a failure of golem-wasm does not build the store
+      # again
       - id: ghcwasm
-        name: Cache the wasm toolchain and its cabal store (docs/adr/0199)
-        uses: actions/cache@v6
+        name: Restore the wasm toolchain and its cabal store (docs/adr/0199)
+        uses: actions/cache/restore@v6
         with:
           path: third_party/ghc-wasm
           key: ghc-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze', 'scripts/fetch-wasm-packages.sh', 'scripts/wasm/patches/*') }}
@@ -609,10 +617,6 @@ jobs:
           wasm32-wasi-ghc --version
           wasm32-wasi-clang --version | head -1
           wasm32-wasi-ghc-pkg list --global --simple-output
-          # the license files of the GHC and the GMP it links (for the release, docs/adr/0199)
-          find third_party/ghc-wasm/wasm32-wasi-ghc -iname 'LICENSE*' | LC_ALL=C sort | head -80
-          find third_party/ghc-wasm/wasm32-wasi-ghc -name ghc-gmp.h -exec grep -H 'define __GNU_MP_VERSION' {} +
-          find third_party/ghc-wasm/wasi-sdk -iname 'LICENSE*' -o -iname 'COPYING*' | head
       - if: steps.ghcwasm.outputs.cache-hit != 'true'
         name: The Hackage index of the wasm build
         run: |
@@ -639,8 +643,14 @@ jobs:
           cp "$(wasm32-wasi-cabal --project-file=cabal.project.wasm --builddir=dist-wasm list-bin -v0 exe:golem-wasm)" golem.wasm
           ls -l golem.wasm
           if grep -qE '^\[ *[0-9]+ of [0-9]+\] Compiling ' "$RUNNER_TEMP/wasm-build.log"; then echo "compiled=true" >> "$GITHUB_OUTPUT"; fi
-      # cabal 3.14 plans and builds the build-tool-depends alex, happy and
-      # hsc2hs of the packages with the wasm GHC too: their executables in
+      - name: Save the wasm toolchain and its cabal store
+        if: always() && steps.ghcwasm.outputs.cache-hit != 'true' && steps.build.outcome != 'skipped'
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/ghc-wasm
+          key: ${{ steps.ghcwasm.outputs.cache-primary-key }}
+      # cabal 3.14 plans and builds the build-tool-depends alex and happy
+      # of the packages with the wasm GHC too: their executables in
       # the store are wasm modules (alex.wasm, happy.wasm), which cabal does
       # not take for alex and happy and which cannot run here, so the lexer
       # and the parser of toml-parser come from the native alex and happy on
