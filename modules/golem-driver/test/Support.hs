@@ -14,8 +14,8 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Doc.Assemble (inlineText)
-import Golem.Doc.Bibliography (EntryPart)
+import Golem.Assemble (inlineText)
+import Golem.Bibliography (EntryPart)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.Pdf (ClusterPart (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), Shaped (..), Shaping (..), flowLines, layoutPages, layoutPdf, runningHeads)
@@ -39,6 +39,10 @@ import Test.Tasty.HUnit
 
 fixture :: FilePath
 fixture = "test/fixtures/sample"
+
+-- | The codes of the diagnostics, in their order.
+codesOf :: [Diagnostic] -> [T.Text]
+codesOf ds = [c | d <- ds, let DiagnosticCode c = diagCode d]
 
 copyTree :: FilePath -> FilePath -> IO ()
 copyTree from to = do

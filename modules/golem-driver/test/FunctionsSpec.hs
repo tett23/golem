@@ -53,9 +53,6 @@ functionsOf tmp roots =
     Left f -> assertFailure (show (pfDiagnostics f)) >> fail "unreachable"
     Right p -> loadFunctions tmp Map.empty (FileId 1000000) (projectManifest p) roots
 
-codesOf :: [Diagnostic] -> [Text]
-codesOf ds = [c | d <- ds, let DiagnosticCode c = diagCode d]
-
 readA :: BS.ByteString
 readA = "pub f :: Nat -> <file \"data/a.tsv\"> String\nf _ = File.read \"data/a.tsv\"\n"
 

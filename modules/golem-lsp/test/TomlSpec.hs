@@ -5,8 +5,7 @@ strings, not built from the schemas.
 module TomlSpec (tomlTests) where
 
 import Data.ByteString qualified as BS
-import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -14,7 +13,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Lsp.Features
 import Golem.Lsp.Toml
 import Golem.Lsp.Workspace
-import Golem.Syntax
+import Support (codesOf)
 import System.FilePath ((</>))
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -46,9 +45,6 @@ including path t yes no = testCase (show t) $ do
   mapM_ (\x -> assertBool ("unexpected " <> T.unpack x <> " in " <> show got) (x `notElem` got)) no
 
 -- | The codes of the diagnostics of a file.
-codesOf :: Workspace -> FilePath -> [Text]
-codesOf ws p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
-
 tomlTests :: TestTree
 tomlTests =
   testGroup

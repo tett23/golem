@@ -852,6 +852,11 @@ if job_lines determinism | grep -qF 'run: sh scripts/ci/determinism-hashes.sh de
   job_lines determinism | grep -qF 'uses: actions/checkout@'; then ok; else
   ng "ci.yml: the determinism job compares the outputs with scripts/determinism/hashes.txt (docs/adr/0173)"
 fi
+# the build job checks the direction of the packages split from golem-doc
+# in the plan it built (docs/adr/0173)
+if job_lines build | grep -qF 'run: sh scripts/ci/doc-deps.sh dist-newstyle/cache/plan.json'; then ok; else
+  ng "ci.yml: the build job runs doc-deps.sh on the plan (docs/adr/0173)"
+fi
 # the lines of the build job of ci.yml
 build_lines() { job_lines build; }
 # the environment check has an x86-64 runner of its own (docs/adr/0097)
@@ -1225,7 +1230,8 @@ if visual_step "name: Upload the report of the changed pages" | grep -qxF "     
 # exit code of each build, and diagnostics is an input. The fake golem
 # writes build/out; in the folder named diagnostics it writes $FAKE_STDERR
 # to stderr and exits with 1. The manuals are empty projects under
-# GOLEM_MANUAL_ROOT with a LICENSE each, built without their fonts.
+# GOLEM_MANUAL_ROOT with a LICENSE each, built without their fonts. An
+# input built with fonts/ja.otf and fonts/latin.otf gets build/fonts too.
 DET=$WORK/determinism
 mkdir -p "$DET/bin" "$DET/root/manual" "$DET/root/manual-dev"
 : >"$DET/root/manual/manifest.toml"
@@ -1236,6 +1242,7 @@ cat >"$DET/bin/golem" <<'GOLEM'
 #!/bin/sh
 mkdir -p build
 printf 'out\n' >build/out
+if [ -f fonts/ja.otf ] && [ -f fonts/latin.otf ]; then printf 'fonts\n' >build/fonts; fi
 if [ "$(basename "$(pwd)")" = diagnostics ]; then
   printf '%s\n' "$FAKE_STDERR" >&2
   exit 1
@@ -1254,6 +1261,10 @@ expect "determinism: a build that exits with 1" 0
 if grep -qx 'exit 1  diagnostics' "$WORK/out"; then ok; else ng "determinism: the exit code of diagnostics"; fi
 if grep -qx 'exit 0  sample' "$WORK/out"; then ok; else ng "determinism: the exit code of sample"; fi
 if grep -qx 'exit 0  functions' "$WORK/out"; then ok; else ng "determinism: the fixture of the functions of .emet (docs/adr/0162)"; fi
+for book in complex-vertical complex-horizontal; do
+  if grep -qx "exit 0  $book" "$WORK/out" && grep -qE "^[0-9a-f]{64}  $book/stdout\$" "$WORK/out" && grep -qE "^[0-9a-f]{64}  $book/stderr\$" "$WORK/out"; then ok; else ng "determinism: the book $book (docs/adr/0175)"; fi
+  if grep -qE "^[0-9a-f]{64}  $book/build/fonts\$" "$WORK/out"; then ok; else ng "determinism: $book is built with the fonts copied in (docs/adr/0175)"; fi
+done
 if grep -qE '^[0-9a-f]{64}  diagnostics/stderr$' "$WORK/out"; then ok; else ng "determinism: the stderr of diagnostics"; fi
 if grep -qx 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  sample/stdout' "$WORK/out"; then ok; else ng "determinism: the empty stdout of sample"; fi
 if grep -qE '^[0-9a-f]{64}  manual/build/out$' "$WORK/out"; then ok; else ng "determinism: the files of a manual"; fi
@@ -1651,6 +1662,53 @@ run determinism_hashes "$HASHES/same.txt" "$WORK/no-such-hashes.txt"
 expect "determinism-hashes: no hashes.txt" 2
 run determinism_hashes "$HASHES/same.txt"
 expect "determinism-hashes: one argument" 2
+
+# ---------------------------------------------------------------- doc-deps.sh
+# (docs/adr/0173)
+
+DOC_PLANS=$HERE/testdata/doc-deps
+doc_deps() { sh "$HERE/doc-deps.sh" "$@"; }
+# docdeps NAME CODE PLAN [LINE...]: the exit code, and the lines on stderr
+# (exactly these, when the code is 1)
+docdeps() {
+  name=$1 code=$2 plan=$3
+  shift 3
+  : >"$WORK/in"
+  run doc_deps "$plan"
+  if [ "$CODE" != "$code" ]; then
+    ng "doc-deps: $name (exit code $CODE, expected $code)"
+    return 0
+  fi
+  for l in "$@"; do
+    if ! grep -qxF -- "$l" "$WORK/err"; then
+      ng "doc-deps: $name (\"$l\" is not on stderr)"
+      return 0
+    fi
+  done
+  if [ "$code" = 1 ] && [ "$(wc -l <"$WORK/err" | tr -d ' ')" != $# ]; then
+    ng "doc-deps: $name (stderr has not $# lines)"
+    return 0
+  fi
+  ok
+}
+docdeps "the four packages as the ADR has them" 0 "$DOC_PLANS/ok.json"
+docdeps "golem-doc depends on golem-assemble, and through it on golem-numerals" 1 "$DOC_PLANS/doc-assemble.json" \
+  "doc-deps: golem-doc depends on golem-assemble" "doc-deps: golem-doc depends on golem-numerals"
+docdeps "golem-doc reaches golem-numerals through another package" 1 "$DOC_PLANS/doc-numerals-through.json" \
+  "doc-deps: golem-doc depends on golem-numerals"
+docdeps "golem-bibliography depends on golem-doc" 1 "$DOC_PLANS/bibliography-doc.json" \
+  "doc-deps: golem-bibliography depends on golem-doc"
+docdeps "golem-numerals depends on golem-doc" 1 "$DOC_PLANS/numerals-doc.json" \
+  "doc-deps: golem-numerals depends on golem-doc"
+docdeps "the lib of a per-package element" 1 "$DOC_PLANS/per-package.json" \
+  "doc-deps: golem-doc depends on golem-bibliography"
+docdeps "a package missing from the plan" 2 "$DOC_PLANS/no-numerals.json"
+docdeps "no such file" 2 "$WORK/no-such-plan.json"
+printf 'not json\n' >"$WORK/bad.json"
+docdeps "not JSON" 2 "$WORK/bad.json"
+: >"$WORK/in"
+run doc_deps
+expect "doc-deps: no argument" 2
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"

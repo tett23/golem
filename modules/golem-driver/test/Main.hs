@@ -5,6 +5,7 @@ import CallsSpec (callsTests)
 import ChapterNotesSpec
 import CliSpec
 import ColophonSpec
+import ComplexFixtureSpec (complexFixtureTests)
 import DiagnosticSitesSpec
 import DiagnosticsSpec
 import DoubleDashSpec (doubleDashTests)
@@ -62,7 +63,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests]
+        <> [outputGoldenTests, complexFixtureTests]
         <> [ newProjectTests,
              allTargetsTests,
              pdfPipelineTests,

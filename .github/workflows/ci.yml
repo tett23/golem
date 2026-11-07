@@ -309,6 +309,11 @@ jobs:
       # on golem-test-support, which only the test suites use (docs/adr/0028)
       - name: Only the test suites depend on golem-test-support (docs/adr/0028)
         run: sh scripts/ci/test-only-deps.sh dist-newstyle/cache/plan.json
+      # golem-doc, the semantic IR and the plugin ABI, depends on none of
+      # the packages split from it, and golem-bibliography and
+      # golem-numerals do not depend on golem-doc (docs/adr/0173)
+      - name: The direction of the packages split from golem-doc (docs/adr/0173)
+        run: sh scripts/ci/doc-deps.sh dist-newstyle/cache/plan.json
       # cabal does not see a new libwasmtime.a under extra-lib-dirs, so a
       # golem of a restored dist-newstyle may keep an old one (docs/adr/0156)
       - name: golem is linked with the wasmtime of fetch-wasmtime.sh (docs/adr/0156)

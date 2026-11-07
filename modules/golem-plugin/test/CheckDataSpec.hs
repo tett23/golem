@@ -4,8 +4,7 @@ export golem_check_data, its request [data] and its response
 -}
 module CheckDataSpec (checkDataTests) where
 
-import Codec.CBOR.Term (Term (..), encodeTerm)
-import Codec.CBOR.Write (toStrictByteString)
+import Codec.CBOR.Term (Term (..))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Map.Strict qualified as Map
@@ -13,12 +12,10 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Plugin
 import Golem.Syntax (Severity (..))
+import Support (cbor)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Printf (printf)
-
-cbor :: Term -> ByteString
-cbor = toStrictByteString . encodeTerm
 
 {- | check-data.wat (or fixed.wat, without the export) with a description
 that declares the command shout and the data table, the response of
