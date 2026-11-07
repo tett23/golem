@@ -99,8 +99,7 @@ circledNotation =
   Notation
     "circled"
     ( Fixed
-        ( map T.singleton (['\x2460' .. '\x2473'] <> ['\x3251' .. '\x325F'] <> ['\x32B1' .. '\x32BF'])
-        )
+        (map T.singleton (['\x2460' .. '\x2473'] <> ['\x3251' .. '\x325F'] <> ['\x32B1' .. '\x32BF']))
     )
 
 lowerAlphaNotation :: Notation

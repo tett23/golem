@@ -315,7 +315,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: mark-format] | [code: "*{n}"] | PDF の注の印の書式です。番号の差し込み [code: {n}]（算用数字）か [code: {n:<表記>}] をちょうど一つ書きます。表記の名前は「寸法と番号の書式」の表のとおりです。注の本文の先頭の印にも使います。番号の傍注の印は番号だけです。表記で表せない番号の注があるとエラーになります。HTML と EPUB では、注へのリンクの文字が番号の表記になります。 |
 | [code: mark-style] | [code: "note-mark"] | PDF の本文の注の印と、番号の傍注の印に当てる文字スタイルの名前です。文字スタイルのどのキーも当たります。組み込みの [code: note-mark] は [code: size = "0.5zw"] です。 |
 | [code: body-mark-style] | なし | PDF の注の本文の先頭の印に当てる文字スタイルの名前です。なければ注の本文の文字のまま組みます。 |
-| [code: mark-size] | なし | 廃止予定です。書くと notice が出ます。本文の注の印の文字スタイルの [code: size] として読みます。[code: \[character-styles.note-mark\]] の [code: size] に書き換えます。 |
+| [code: mark-size] | なし | 廃止予定です。書くと notice が出ます。本文の注の印の文字スタイルの [code: size] として読みます。組み込みの文字スタイル [code: note-mark] の [code: size] に書き換えます。 |
 
 @nonumber
 ## [code: \[notes.rule\]]

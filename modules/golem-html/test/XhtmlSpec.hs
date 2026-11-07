@@ -10,8 +10,8 @@ import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Assemble.Formats (arabic, kanjiNotation)
 import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), LabelTarget (..), NoteNumbering (..), TocEntry (..), assemble)
+import Golem.Assemble.Formats (arabic, kanjiNotation)
 import Golem.Assemble.ListMarkers (defaultNumberFormat)
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR

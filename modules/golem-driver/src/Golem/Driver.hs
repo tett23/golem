@@ -65,7 +65,6 @@ import Golem.Driver.Fonts (cff2FontDiagnostics, golemFontProvider)
 import Golem.Driver.Functions (LoadedFunctions (..), RequiredFiles (..), loadFunctions, loadRequiredFiles, requiredFileSet, requirementHandlers)
 import Golem.Driver.Html
 import Golem.Driver.Pdf
-import Golem.Numerals.Format (MarkFormat (..))
 import Golem.Driver.Plugins (FunctionFilter, LoadedPlugins (..), loadPlugins)
 import Golem.Driver.Svg (activeMessage)
 import Golem.Emet (Handlers (..), Program)
@@ -77,6 +76,7 @@ import Golem.Eval.File
 import Golem.Eval.Functions (FunctionTable (..), noFunctions)
 import Golem.Eval.Value
 import Golem.Html
+import Golem.Numerals.Format (MarkFormat (..))
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)

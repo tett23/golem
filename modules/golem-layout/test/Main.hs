@@ -237,7 +237,7 @@ noteMarkTests =
           env = (defaultComposeEnv fs) {ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == half then 3 / 5 else 1)}
           markWidth e = [w | Box w c <- fst (composeInlines e [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark]
       markWidth env @?= [Sp (round (2 * 3 / 5 * toRational (unSp half) :: Rational))]
-      -- * turned as Latin text, 1 tate-chu-yoko an em of the mark (docs/adr/0177)
+      -- \* turned as Latin text, 1 tate-chu-yoko an em of the mark (docs/adr/0177)
       markWidth env {ceVertical = True} @?= [Sp (round (3 / 5 * toRational (unSp half) :: Rational)) + half],
     testCase "the look of mark-style: the box is measured in its face and size (docs/adr/0177)" $ do
       let m = dimToSp fs (Zw (65 % 100))

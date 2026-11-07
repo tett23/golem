@@ -13,8 +13,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (fromGregorian)
-import Golem.Assemble.Formats (arabic)
 import Golem.Assemble (Book (..), TocEntry (..))
+import Golem.Assemble.Formats (arabic)
 import Golem.Doc.IR
 import Golem.Epub
 import Golem.Html

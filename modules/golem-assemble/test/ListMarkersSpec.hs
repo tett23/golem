@@ -4,10 +4,10 @@ module ListMarkersSpec (tests) where
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble.ListMarkers
+import Golem.Doc.IR
 import Golem.Numerals (kanji)
 import Golem.Numerals.Format (Legacy (..))
 import Golem.Numerals.Notation
-import Golem.Doc.IR
 import Golem.Syntax.Span
 import Test.Tasty
 import Test.Tasty.HUnit
