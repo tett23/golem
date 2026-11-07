@@ -61,7 +61,7 @@ import Golem.Parser.SourceSettings (sourceKeys)
 import Golem.Preflight.Rules (rulesSchema)
 import Golem.Project
 import Golem.Project.Paths (normalizeRelative)
-import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), builtinAkiSetNames, builtinCharStyles, alignValues, builtinParaStyles, charStyleKeys, defaultStyle, lineBreaksValues, noLocalStyles, paraStyleKeys, regexStyleKeys, styleSchema)
+import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), alignValues, builtinAkiSetNames, builtinCharStyles, builtinParaStyles, charStyleKeys, defaultStyle, lineBreaksValues, noLocalStyles, paraStyleKeys, regexStyleKeys, styleSchema)
 import Golem.Project.TomlSchema (Leaf (..), Namespace (..), Node (..), nodeAt)
 import Golem.Syntax
 import Language.LSP.Protocol.Types (PositionEncodingKind (..), SemanticTokenAbsolute (..), SemanticTokenModifiers (..), SemanticTokenTypes (..))

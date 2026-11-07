@@ -2543,10 +2543,6 @@ bindingValues, writingModeValues, lineBreaksValues, pageBreakValues, monoAlignVa
 bindingValues = ["right", "left"]
 writingModeValues = ["vertical", "horizontal"]
 lineBreaksValues = ["join", "keep"]
-
--- | The values of align, in the order of 'ParaAlign' (docs/adr/0189).
-alignValues :: [Text]
-alignValues = ["left", "center", "right", "left-justified", "center-justified", "right-justified", "fully-justified", "towards-spine", "away-from-spine"]
 pageBreakValues = ["recto", "any"]
 monoAlignValues = ["center", "start"]
 groupAlignValues = ["1:2:1", "0:1:0", "center", "start"]
@@ -2560,6 +2556,10 @@ refPageValues = verticalValues <> ["sideways"]
 placementValues = ["page-foot", "chapter-end"]
 numberingValues = ["chapter", "file", "book"]
 leaderValues = ["dots", "none"]
+
+-- | The values of align, in the order of 'ParaAlign' (docs/adr/0189).
+alignValues :: [Text]
+alignValues = ["left", "center", "right", "left-justified", "center-justified", "right-justified", "fully-justified", "towards-spine", "away-from-spine"]
 
 -- | The values of kerning (docs/adr/0020).
 kerningValues :: [(Text, Kerning)]

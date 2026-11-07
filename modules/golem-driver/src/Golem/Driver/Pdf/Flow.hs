@@ -77,8 +77,8 @@ import Golem.Driver.Pdf.Fonts
 import Golem.Driver.ProjectVars (projectVarTexts)
 import Golem.Driver.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
 import Golem.Html (codeTokens)
-import Golem.Layout.Align qualified as A
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
+import Golem.Layout.Align qualified as A
 import Golem.Layout.Code
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
