@@ -160,10 +160,10 @@ l2LineStart :: Check
 l2LineStart _ p =
   [ Breach L2 (i + 1) ("line " <> show (i + 2) <> " starts with " <> show (textOf next))
   | (i, _, next) <- pairs p,
-    not (wide p next),
     Just c <- [firstBox next],
     Just k <- [startClass c],
-    lineStartProhibited (pStrict p) k
+    lineStartProhibited (pStrict p) k,
+    not (wide p next)
   ]
 
 -- | L3: no line but the last ends with an opening bracket, but a line wider than W.
@@ -171,10 +171,10 @@ l3LineEnd :: Check
 l3LineEnd _ p =
   [ Breach L3 i ("line " <> show (i + 1) <> " ends with " <> show (textOf l))
   | (i, l, _) <- pairs p,
-    not (wide p l),
     Just c <- [lastBox l],
     Just k <- [endClass c],
-    lineEndProhibited k
+    lineEndProhibited k,
+    not (wide p l)
   ]
 
 -- | L4: no line breaks between two inseparable characters.
@@ -381,7 +381,9 @@ l11Aki :: Check
 l11Aki _ p =
   concat
     [ [ Breach L11 i ("line " <> show (i + 1) <> ": " <> show (bcText a <> bcText b) <> " has " <> show between <> " between them, not " <> show want)
-      | (a, glues, b) <- neighbours (lineItems l),
+      | -- a line without a Latin word has no pair to judge
+        any bcExpandable (boxes l),
+        (a, glues, b) <- neighbours (lineItems l),
         -- with a space written between them, the specification does not say whether the space between Japanese and Latin text is added
         latinSpace p `notElem` glues,
         let between = filter (`elem` akiGlues) glues,
