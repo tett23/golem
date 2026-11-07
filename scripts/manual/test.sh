@@ -203,13 +203,13 @@ git -C "$B" add -A
 git -C "$B" commit -q -m init
 info() { sh "$HERE/build-info.sh" "$B/book"; }
 INFO=$B/book/common/build-info.gm
-# expected EDITION COMMIT: the whole file that build-info.sh writes
+# expected EDITION COMMIT UNCOMMITTED: the whole file that build-info.sh writes
 expected() {
-  printf '%%%% scripts/manual/build-info.sh が書いたファイル。手で編集しない %%%%\n@set edition = "%s"\n@set commit = "%s"\n' "$1" "$2"
+  printf '%%%% scripts/manual/build-info.sh が書いたファイル。手で編集しない %%%%\n@set edition = "%s"\n@set commit = "%s"\n@set uncommitted = "%s"\n' "$1" "$2" "$3"
 }
-# same NAME EDITION COMMIT: the file is the expected one
+# same NAME EDITION COMMIT UNCOMMITTED: the file is the expected one
 same() {
-  if [ -f "$INFO" ] && [ "$(cat "$INFO")" = "$(expected "$2" "$3")" ]; then ok; else
+  if [ -f "$INFO" ] && [ "$(cat "$INFO")" = "$(expected "$2" "$3" "$4")" ]; then ok; else
     ng "$1"
     [ ! -f "$INFO" ] || sed 's/^/  build-info.gm: /' "$INFO"
   fi
@@ -219,7 +219,7 @@ git -C "$B" tag v0.1.0-rc2
 HASH=$(git -C "$B" rev-parse HEAD)
 run info
 expect "build-info: a tagged commit" 0
-same "build-info: the tag and the hash" v0.1.0-rc2 "$HASH"
+same "build-info: the tag and the hash" v0.1.0-rc2 "$HASH" ""
 cp "$INFO" "$WORK/info-1" 2>/dev/null || : >"$WORK/info-1"
 run info
 check "build-info: the same file twice" cmp -s "$INFO" "$WORK/info-1"
@@ -230,14 +230,21 @@ git -C "$B" tag fixture-1
 HASH=$(git -C "$B" rev-parse HEAD)
 run info
 expect "build-info: a commit without a v tag" 0
-same "build-info: the development edition" "0.1.0-rc2 の開発版" "$HASH"
+same "build-info: the development edition" "0.1.0-rc2 の開発版" "$HASH" ""
 
 echo c >"$B/untracked.txt"
 run info
-same "build-info: an untracked file is not a change" "0.1.0-rc2 の開発版" "$HASH"
+same "build-info: an untracked file is not a change" "0.1.0-rc2 の開発版" "$HASH" ""
 echo c >>"$B/a.txt"
 run info
-same "build-info: an uncommitted change" "0.1.0-rc2 の開発版" "${HASH}（コミットしていない変更を含む）"
+same "build-info: an uncommitted change" "0.1.0-rc2 の開発版" "$HASH" "（コミットしていない変更を含む）"
+info_env_dirty() {
+  GOLEM_MANUAL_COMMIT=0123456789abcdef0123456789abcdef01234567 GOLEM_MANUAL_TAG=v9.9.9 \
+    sh "$HERE/build-info.sh" "$B/book"
+}
+run info_env_dirty
+expect "build-info: the environment with an uncommitted change" 0
+same "build-info: the environment ignores the change" v9.9.9 0123456789abcdef0123456789abcdef01234567 ""
 
 O=$WORK/outside
 mkdir -p "$O/book/common"
@@ -249,7 +256,7 @@ info_env() {
 run info_env
 expect "build-info: the environment outside a repository" 0
 INFO=$O/book/common/build-info.gm
-same "build-info: the values of the environment" v9.9.9 0123456789abcdef0123456789abcdef01234567
+same "build-info: the values of the environment" v9.9.9 0123456789abcdef0123456789abcdef01234567 ""
 rm -f "$INFO"
 info_none() { GIT_CEILING_DIRECTORIES=$WORK sh "$HERE/build-info.sh" "$O/book"; }
 run info_none

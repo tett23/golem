@@ -307,7 +307,7 @@ silenceList sl = \case
   where
     element = \case
       Text' l t
-        | not (isCodeShape t) -> warnAt l ("診断のコードは G と 5 桁の数字で書きます: " <> T.unpack t) >> pure Nothing
+        | not (isCodeShape t) -> warnAt l ("診断のコードは大文字の " <> T.unpack codeShapeWording <> "を続けて書きます: " <> T.unpack t) >> pure Nothing
         | DiagnosticCode t `notElem` slAccepts sl ->
             warnAt l (slRefusal sl <> T.unpack t <> (if DiagnosticCode t `elem` slOther sl then slOtherHint sl else "")) >> pure Nothing
         | otherwise -> pure (Just (DiagnosticCode t))

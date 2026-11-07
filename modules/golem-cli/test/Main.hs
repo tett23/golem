@@ -357,7 +357,17 @@ explainTests =
         (code, out, err) <- golemSplit ["explain", "G0258"]
         code @?= ExitFailure 2
         out @?= ""
-        assertBool err ("診断のコードは G と 5 桁の数字です: G0258" `isPrefixOf` err),
+        assertBool err ("診断のコードは G か E の後に 5 桁の数字を続けたものです: G0258" `isPrefixOf` err),
+      testCase "a code of E and four digits names G and E (docs/adr/0176)" $ do
+        (code, out, err) <- golemSplit ["explain", "E0101"]
+        code @?= ExitFailure 2
+        out @?= ""
+        err @?= "診断のコードは G か E の後に 5 桁の数字を続けたものです: E0101\n",
+      testCase "golem explain e01100 prints the section of E01100 (docs/adr/0176)" $ do
+        (code, out, err) <- golemSplit ["explain", "e01100"]
+        code @?= ExitSuccess
+        err @?= ""
+        assertBool out ("## E01100\n" `isPrefixOf` out),
       testCase "a code of a plugin is one line that it has no section here, and exits with 0 (docs/adr/0108)" $ do
         (code, out, err) <- golemSplit ["explain", "lookup/no-key"]
         code @?= ExitSuccess
@@ -446,7 +456,7 @@ pluginCodeOrderTests =
         (code, out, err) <- golemSplit ["explain", "nope", "NOPE"]
         code @?= ExitFailure 2
         out @?= ""
-        err @?= "診断のコードは G と 5 桁の数字です: nope\n",
+        err @?= "診断のコードは G か E の後に 5 桁の数字を続けたものです: nope\n",
       testCase "two or more slashes: / is only one" $
         forM_ ["a/b/c", "x/a/", "/a/b"] $ \c -> do
           (code, out, err) <- golemSplit ["explain", c]
@@ -497,12 +507,12 @@ severalCodesTests =
         (code, out, err) <- golemSplit ["explain", "G01017", "G0101", "nope", "G0101"]
         code @?= ExitFailure 2
         out @?= expected
-        lines err @?= ["診断のコードは G と 5 桁の数字です: G0101", "診断のコードは G と 5 桁の数字です: nope"],
+        lines err @?= ["診断のコードは G か E の後に 5 桁の数字を続けたものです: G0101", "診断のコードは G か E の後に 5 桁の数字を続けたものです: nope"],
       testCase "a code of four digits alone: 2, nothing on stdout, one line and no usage on stderr" $ do
         (code, out, err) <- golemSplit ["explain", "G0258"]
         code @?= ExitFailure 2
         out @?= ""
-        err @?= "診断のコードは G と 5 桁の数字です: G0258\n",
+        err @?= "診断のコードは G か E の後に 5 桁の数字を続けたものです: G0258\n",
       testCase "golem explain G01017 --format json is a usage error" $ do
         (code, out, _) <- golemSplit ["explain", "G01017", "--format", "json"]
         code @?= ExitFailure 2

@@ -7,6 +7,7 @@ module Golem.Syntax.Diagnostic
     Profile (..),
     diagnostic,
     isCodeShape,
+    codeShapeWording,
     notice,
     noticeCodes,
     silenceNotices,
@@ -87,6 +88,13 @@ data Profile = Dev | Prod
 -}
 isCodeShape :: Text -> Bool
 isCodeShape t = T.length t == 6 && T.take 1 t `elem` ["G", "E"] && T.all isDigit (T.drop 1 t)
+
+{- | How the messages on a text that is not 'isCodeShape' name the shape of
+a code (docs/adr/0176). It is next to 'isCodeShape' so that a new prefix
+changes both.
+-}
+codeShapeWording :: Text
+codeShapeWording = "G か E の後に 5 桁の数字"
 
 diagnostic :: Text -> Severity -> SrcSpan -> Text -> Diagnostic
 diagnostic code sev sp msg = Diagnostic (DiagnosticCode code) sev sp msg [] [] []
