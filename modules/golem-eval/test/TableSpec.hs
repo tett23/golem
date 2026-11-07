@@ -60,7 +60,13 @@ ctx =
             ("over-rows.tsv", AssetText (FileId 19) (T.unlines (replicate (tableMaxRows + 1) "a"))),
             ("max-cells.csv", AssetText (FileId 20) (T.intercalate "," (replicate tableMaxCells "a") <> "\n")),
             ("over-cells.csv", AssetText (FileId 21) (T.intercalate "," (replicate (tableMaxCells + 1) "a") <> "\n")),
-            ("too-large.csv", AssetTableTooLarge 16777217 Nothing)
+            ("too-large.csv", AssetTableTooLarge 16777217 Nothing),
+            -- the path as the first argument (docs/adr/0184)
+            ("data/t.csv", AssetText (FileId 22) "a,b,c\n1,2,3\n"),
+            ("data/a.csv", AssetText (FileId 23) "a,b\n1,2\n"),
+            ("data/b.csv", AssetText (FileId 24) "x,y\n3,4\n"),
+            ("data/export.txt", AssetText (FileId 25) "a\tb\tc\n1\t2\t3\n"),
+            ("data/x.TSV", AssetText (FileId 26) "a\tb\tc\n1\t2\t3\n")
           ]
     }
 
@@ -79,7 +85,7 @@ codes :: Text -> [Text]
 codes src = [c | (c, _, _, _) <- snd (run src)]
 
 tests :: TestTree
-tests = testGroup "tables (golem-eval ADR 0004)" [tsvTests, csvTests, argTests, roundTrips, limitTests, allocationTests]
+tests = testGroup "tables (golem-eval ADR 0004)" [tsvTests, csvTests, argTests, positionalTests, roundTrips, limitTests, allocationTests]
 
 {- | Rows of the same number of cells, at least @minCols@, the first cell not empty (an empty
 file is G02085), from characters that a table file treats in different ways.
@@ -197,55 +203,95 @@ csvTests =
       testCase "a BOM at the start is skipped" $ csv "\xFEFF\&a,b\n" @?= Right [["a", "b"]]
     ]
 
+-- | The table of a source without spans, whatever the diagnostics.
+tableOf :: Text -> Maybe ([Alignment], [[Text]], [[[Text]]])
+tableOf src = case fst (run src) of
+  [Table al h rs] -> Just (al, map texts h, map (map texts) rs)
+  _ -> Nothing
+  where
+    texts = map (\case Text _ t -> t; _ -> "?")
+
+-- | The path as the first argument, and src= to be retired (docs/adr/0184).
+positionalTests :: TestTree
+positionalTests =
+  testGroup
+    "the path as the first argument (docs/adr/0184)"
+    [ testCase "a positional path is the table of src=, without diagnostics" $ do
+        snd (run "@table data/t.csv\n") @?= []
+        table "@table data/t.csv\n" @?= tableOf "@table src=data/t.csv\n"
+        fmap (\(_, h, rs) -> (h, rs)) (table "@table data/t.csv\n") @?= Just ([["a"], ["b"], ["c"]], [[["1"], ["2"], ["3"]]])
+        table "@table \"data/t.csv\"\n" @?= table "@table data/t.csv\n",
+      testCase "src= reads the table as before, with the notice G02129 at the argument" $ do
+        tableOf "@table src=data/t.csv\n" @?= table "@table data/t.csv\n"
+        snd (run "@table src=data/t.csv\n") @?= [("G02129", "@table の src= は廃止予定です。パスを最初の引数に書きます", 7, 21)],
+      testCase "two paths are G02130 at the command, and no table" $ do
+        run "@table data/a.csv data/b.csv\n" @?= ([], [("G02130", "@table にはファイルのパスを一つ書きます", 0, 29)])
+        run "@table data/a.csv src=data/b.csv\n"
+          @?= ( [],
+                [ ("G02129", "@table の src= は廃止予定です。パスを最初の引数に書きます", 18, 32),
+                  ("G02130", "@table にはファイルのパスを一つ書きます", 0, 33)
+                ]
+              ),
+      testCase "no path is G02034, with the new message" $
+        run "@table\n" @?= ([], [("G02034", "@table にはファイルのパスが必要です", 0, 7)]),
+      testCase "format= and the extension apply to a positional path as to src=" $ do
+        snd (run "@table data/export.txt format=tsv\n") @?= []
+        table "@table data/export.txt format=tsv\n" @?= tableOf "@table src=data/export.txt format=tsv\n"
+        fmap (\(_, h, _) -> h) (table "@table data/export.txt format=tsv\n") @?= Just [["a"], ["b"], ["c"]]
+        snd (run "@table data/x.TSV\n") @?= []
+        table "@table data/x.TSV\n" @?= tableOf "@table src=data/x.TSV\n"
+        fmap (\(_, h, _) -> h) (table "@table data/x.TSV\n") @?= Just [["a"], ["b"], ["c"]]
+    ]
+
 argTests :: TestTree
 argTests =
   testGroup
     "format, align and cells"
     [ testCase "the extension tells TSV" $ do
-        fmap cellsOf (table "@table src=x.tsv\n") @?= Just abc
-        fmap cellsOf (table "@table src=x.TSV\n") @?= Just abc,
+        fmap cellsOf (table "@table x.tsv\n") @?= Just abc
+        fmap cellsOf (table "@table x.TSV\n") @?= Just abc,
       testCase "anything else is CSV" $ do
-        fmap cellsOf (table "@table src=x.csv\n") @?= Just abc
-        fmap cellsOf (table "@table src=x.txt\n") @?= Just abc,
+        fmap cellsOf (table "@table x.csv\n") @?= Just abc
+        fmap cellsOf (table "@table x.txt\n") @?= Just abc,
       testCase "format= comes first" $ do
-        fmap cellsOf (table "@table src=t.txt format=tsv\n") @?= Just abc
-        fmap cellsOf (table "@table src=c.tsv format=csv\n") @?= Just abc,
+        fmap cellsOf (table "@table t.txt format=tsv\n") @?= Just abc
+        fmap cellsOf (table "@table c.tsv format=csv\n") @?= Just abc,
       testCase "G02080" $
-        run "@table src=x.csv format=xml\n" @?= ([], [("G02080", "format は csv か tsv です: xml", 17, 27)]),
+        run "@table x.csv format=xml\n" @?= ([], [("G02080", "format は csv か tsv です: xml", 13, 23)]),
       testCase "the same CSV and TSV give the same table" $
-        fst (run "@table src=x.tsv\n") @?= fst (run "@table src=x.csv\n"),
+        fst (run "@table x.tsv\n") @?= fst (run "@table x.csv\n"),
       testCase "empty cells differ, on purpose" $ do
-        case run "@table src=empty-cell.tsv\n" of
+        case run "@table empty-cell.tsv\n" of
           ([Table _ _ [[c, _]]], []) -> c @?= []
           other -> assertFailure (show other)
-        case run "@table src=empty-cell.csv\n" of
+        case run "@table empty-cell.csv\n" of
           ([Table _ _ [[[Text _ ""], _]]], []) -> pure ()
           other -> assertFailure (show other),
       testCase "the default alignment" $
-        fmap alignOf (table "@table src=x.tsv\n") @?= Just [AlignDefault, AlignDefault, AlignDefault],
+        fmap alignOf (table "@table x.tsv\n") @?= Just [AlignDefault, AlignDefault, AlignDefault],
       testCase "align= by column" $ do
-        fmap alignOf (table "@table src=x.tsv align=left,center,right\n") @?= Just [AlignLeft, AlignCenter, AlignRight]
-        fmap alignOf (table "@table src=x.tsv align=\"left, default ,right\"\n") @?= Just [AlignLeft, AlignDefault, AlignRight],
+        fmap alignOf (table "@table x.tsv align=left,center,right\n") @?= Just [AlignLeft, AlignCenter, AlignRight]
+        fmap alignOf (table "@table x.tsv align=\"left, default ,right\"\n") @?= Just [AlignLeft, AlignDefault, AlignRight],
       testCase "one value for every column" $
-        fmap alignOf (table "@table src=x.tsv align=right\n") @?= Just [AlignRight, AlignRight, AlignRight],
+        fmap alignOf (table "@table x.tsv align=right\n") @?= Just [AlignRight, AlignRight, AlignRight],
       testCase "G02081: the number of values" $
-        run "@table src=x.tsv align=left,right\n" @?= ([], [("G02081", "align の値の数が表の列の数と違います（列は 3、align は 2）", 17, 33)]),
+        run "@table x.tsv align=left,right\n" @?= ([], [("G02081", "align の値の数が表の列の数と違います（列は 3、align は 2）", 13, 29)]),
       testCase "G02081: values" $ do
-        run "@table src=x.tsv align=left,,right\n" @?= ([], [("G02081", "align の値は left、center、right、default のどれかです: left,,right", 17, 34)])
-        codes "@table src=x.tsv align=middle\n" @?= ["G02081"]
-        codes "@table src=x.tsv align=Left\n" @?= ["G02081"]
-        codes "@table src=x.tsv align=[= \"left\"]\n" @?= ["G02081"],
+        run "@table x.tsv align=left,,right\n" @?= ([], [("G02081", "align の値は left、center、right、default のどれかです: left,,right", 13, 30)])
+        codes "@table x.tsv align=middle\n" @?= ["G02081"]
+        codes "@table x.tsv align=Left\n" @?= ["G02081"]
+        codes "@table x.tsv align=[= \"left\"]\n" @?= ["G02081"],
       testCase "cells=text is the default" $
-        table "@table src=x.tsv cells=text\n" @?= table "@table src=x.tsv\n",
+        table "@table x.tsv cells=text\n" @?= table "@table x.tsv\n",
       testCase "G02084" $ do
-        run "@table src=x.tsv cells=markup\n" @?= ([], [("G02084", "cells=markup はまだ実装していません", 17, 29)])
-        run "@table src=x.tsv cells=html\n" @?= ([], [("G02084", "cells は text です: html", 17, 27)]),
+        run "@table x.tsv cells=markup\n" @?= ([], [("G02084", "cells=markup はまだ実装していません", 13, 25)])
+        run "@table x.tsv cells=html\n" @?= ([], [("G02084", "cells は text です: html", 13, 23)]),
       testCase "CSV and TSV take the same alignment" $
-        fmap alignOf (table "@table src=x.tsv align=left,center,right\n") @?= fmap alignOf (table "@table src=x.csv align=left,center,right\n"),
+        fmap alignOf (table "@table x.tsv align=left,center,right\n") @?= fmap alignOf (table "@table x.csv align=left,center,right\n"),
       testCase "G02085 at the table file" $
-        snd (run "@table src=ragged.tsv\n") @?= [("G02085", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
+        snd (run "@table ragged.tsv\n") @?= [("G02085", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
       testCase "a file that failed the reading stage gives no table and no more diagnostics" $
-        run "@table src=bad.tsv\n" @?= ([], [])
+        run "@table bad.tsv\n" @?= ([], [])
     ]
   where
     abc = ([["a"], ["b"], ["c"]], [[["1"], ["2"], ["3"]]])
@@ -259,16 +305,16 @@ limitTests =
     "the limits of a table file (docs/adr ADR 0043)"
     [ testCase "the limits" $ (tableMaxBytes, tableMaxRows, tableMaxCells) @?= (16777216, 10000, 256),
       testCase "16 MiB is read, and one byte more is G02088 at @table" $ do
-        fmap (\(_, h, rs) -> (length h, length rs)) (table "@table src=max-bytes.tsv\n") @?= Just (1, 0)
-        run "@table src=over-bytes.tsv\n" @?= ([], [("G02088", "表のファイルが大きさの上限を超えます: over-bytes.tsv（16777217 バイト、上限は 16777216 バイト）", 0, 26)]),
+        fmap (\(_, h, rs) -> (length h, length rs)) (table "@table max-bytes.tsv\n") @?= Just (1, 0)
+        run "@table over-bytes.tsv\n" @?= ([], [("G02088", "表のファイルが大きさの上限を超えます: over-bytes.tsv（16777217 バイト、上限は 16777216 バイト）", 0, 22)]),
       testCase "a file the driver did not read for its size is G02088" $
-        run "@table src=too-large.csv\n" @?= ([], [("G02088", "表のファイルが大きさの上限を超えます: too-large.csv（16777217 バイト、上限は 16777216 バイト）", 0, 25)]),
+        run "@table too-large.csv\n" @?= ([], [("G02088", "表のファイルが大きさの上限を超えます: too-large.csv（16777217 バイト、上限は 16777216 バイト）", 0, 21)]),
       testCase "10,000 rows are read, and 10,001 are G02088" $ do
-        fmap (\(_, h, rs) -> (length h, length rs)) (table "@table src=max-rows.tsv\n") @?= Just (1, 9999)
-        run "@table src=over-rows.tsv\n" @?= ([], [("G02088", "表のファイルが行の数の上限を超えます: over-rows.tsv（10001 行目、上限は 10000 行）", 0, 25)]),
+        fmap (\(_, h, rs) -> (length h, length rs)) (table "@table max-rows.tsv\n") @?= Just (1, 9999)
+        run "@table over-rows.tsv\n" @?= ([], [("G02088", "表のファイルが行の数の上限を超えます: over-rows.tsv（10001 行目、上限は 10000 行）", 0, 21)]),
       testCase "256 cells are read, and 257 are G02088" $ do
-        fmap (\(_, h, _) -> length h) (table "@table src=max-cells.csv\n") @?= Just 256
-        run "@table src=over-cells.csv\n" @?= ([], [("G02088", "表のファイルがセルの数の上限を超えます: over-cells.csv（1 行目、上限は 1 行に 256 個）", 0, 26)]),
+        fmap (\(_, h, _) -> length h) (table "@table max-cells.csv\n") @?= Just 256
+        run "@table over-cells.csv\n" @?= ([], [("G02088", "表のファイルがセルの数の上限を超えます: over-cells.csv（1 行目、上限は 1 行に 256 個）", 0, 22)]),
       testCase "the rows and cells are counted as the file is read, and the rest is not" $ do
         -- a G02085 or G02083 after the row over the limit is not reached
         tsv (T.unlines (replicate (tableMaxRows + 1) "a") <> "a\tb\n") @?= Left ("G02088", "表のファイルが行の数の上限を超えます: t（10001 行目、上限は 10000 行）", 0, 0)

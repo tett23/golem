@@ -673,7 +673,8 @@ assetRefs (A.File _ bs) = concatMap blk bs
           kw k = [t | A.Located _ (A.Keyword (A.Located _ k') v) <- args, k' == k, Just t <- [txt v]]
        in case name of
             "figure" -> [(T.unpack p, UseImage) | p <- take 1 pos <> kw "web"]
-            "table" -> [(T.unpack p, UseTable) | p <- kw "src"]
+            -- the first argument, and src= to be retired (docs/adr/0184)
+            "table" -> [(T.unpack p, UseTable) | p <- take 1 pos <> kw "src"]
             "listing" -> [(T.unpack p, UseListing) | p <- take 1 pos <> kw "src"]
             _ -> []
     txt = \case

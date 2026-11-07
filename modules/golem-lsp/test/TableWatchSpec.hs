@@ -38,7 +38,7 @@ manifest = TE.encodeUtf8 (manifestToml testManifest)
 withTableProject :: (FilePath -> IO a) -> IO a
 withTableProject =
   withProject
-    [ ("a.gm", "@table src=data/x.tsv\n\n@table src=data/x.csv\n"),
+    [ ("a.gm", "@table data/x.tsv\n\n@table data/x.csv\n"),
       ("data/x.tsv", "a\tb\nc\n"),
       ("data/x.csv", "a,b\nc\n"),
       ("data/y.tsv", "a\tb\n1\t2\n")
@@ -77,6 +77,12 @@ tableWatchTests =
         tableFilesChanged ws {wsWatchedTables = tablesToWatch ws} ["data/y.tsv", "a.gm"] @?= False
         open <- updateFile ws "data/x.tsv" "a\tb\nc\n"
         tableFilesChanged open {wsWatchedTables = tablesToWatch ws} ["data/x.tsv"] @?= False,
+      -- docs/adr/0184
+      testCase "a table file written as the first argument is watched, as one written as src=" $
+        withProject [("a.gm", "@table data/p.tsv\n\n@table src=data/s.tsv\n"), ("data/p.tsv", "a\tb\n1\t2\n"), ("data/s.tsv", "a\tb\n1\t2\n")] $ \dir -> do
+          ws <- openWorkspace dir
+          tablesToWatch ws @?= Set.fromList ["data/p.tsv", "data/s.tsv"]
+          tableFilesChanged ws {wsWatchedTables = tablesToWatch ws} ["data/p.tsv"] @?= True,
       testCase "a client with dynamic registration watches the table files; a fixed file clears G02085" $ withTableProject $ \dir -> do
         (regs, cleared, afterSwitch, unchanged) <- lspSession True dir $ do
           _ <- waitDiagnostics dir "data/x.tsv" (not . null)
@@ -85,9 +91,9 @@ tableWatchTests =
           LT.sendNotification M.SMethod_WorkspaceDidChangeWatchedFiles (L.DidChangeWatchedFilesParams [L.FileEvent (L.filePathToUri (dir </> "data/x.tsv")) L.FileChangeType_Changed])
           cleared <- waitDiagnostics dir "data/x.tsv" null
           doc <- LT.openDoc "a.gm" "golem"
-          LT.changeDoc doc [L.TextDocumentContentChangeEvent (L.InR (L.TextDocumentContentChangeWholeDocument "@table src=data/y.tsv\n"))]
+          LT.changeDoc doc [L.TextDocumentContentChangeEvent (L.InR (L.TextDocumentContentChangeWholeDocument "@table data/y.tsv\n"))]
           afterSwitch <- waitRegistration
-          LT.changeDoc doc [L.TextDocumentContentChangeEvent (L.InR (L.TextDocumentContentChangeWholeDocument "本文。\n\n@table src=data/y.tsv\n"))]
+          LT.changeDoc doc [L.TextDocumentContentChangeEvent (L.InR (L.TextDocumentContentChangeWholeDocument "本文。\n\n@table data/y.tsv\n"))]
           unchanged <- registrationsUntilDiagnostics dir "a.gm"
           pure (regs, cleared, afterSwitch, unchanged)
         regs @?= ["data/x.csv", "data/x.tsv", "manifest.toml"]
@@ -96,7 +102,7 @@ tableWatchTests =
         unchanged @?= 0,
       -- security audit 2026-10-18, C14: the name of a table file is not a glob
       testCase "a table file named with * and ? is watched as that file, not as a glob" $
-        withProject [("a.gm", "@table src=data/x*y?.tsv\n"), ("data/x*y?.tsv", "a\tb\nc\n"), ("data/xZyQ.tsv", "a\tb\nc\td\n")] $ \dir -> do
+        withProject [("a.gm", "@table data/x*y?.tsv\n"), ("data/x*y?.tsv", "a\tb\nc\n"), ("data/xZyQ.tsv", "a\tb\nc\td\n")] $ \dir -> do
           regs <- lspSession True dir $ do
             _ <- waitDiagnostics dir "data/x*y?.tsv" (not . null)
             watched
@@ -141,9 +147,9 @@ tableWatchTests =
       testCase "a large table is G02088 at its @table (docs/adr ADR 0043)" $ withTableProject $ \dir -> do
         BS.writeFile (dir </> "data/big.tsv") (BS.concat (replicate 10001 "a\tb\n"))
         ws0 <- openWorkspace dir
-        ws <- updateFile ws0 "a.gm" "本文。\n\n@table src=data/big.tsv\n"
+        ws <- updateFile ws0 "a.gm" "本文。\n\n@table data/big.tsv\n"
         [(c, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
-          @?= [("G02088", 11, 35)]
+          @?= [("G02088", 11, 31)]
     ]
 
 -- | A session against the server, with or without dynamic registration of watched files.
