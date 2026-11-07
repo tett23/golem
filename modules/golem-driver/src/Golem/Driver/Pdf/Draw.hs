@@ -108,7 +108,9 @@ data LineRec = LineRec
     lrRect :: !(Maybe Rect),
     lrOverfull :: !(Maybe Sp),
     -- | the swatches of the backgrounds of inline code on the line (golem-driver ADR 0029)
-    lrBackgrounds :: ![P.Swatch]
+    lrBackgrounds :: ![P.Swatch],
+    -- | the rectangles of the links on the line, on the page, in the order of the line (docs/adr ADR 0182)
+    lrLinks :: ![(LinkTarget, Rect)]
   }
 
 -- | What one page draws.
@@ -120,7 +122,9 @@ data PageDrawn = PageDrawn
     pdRules :: [(Text, Rect, Sp)],
     pdBlank :: Bool,
     pdNumber :: Int,
-    pdBackgrounds :: [P.Swatch]
+    pdBackgrounds :: [P.Swatch],
+    -- | the links of the page, in the order drawn (docs/adr ADR 0182)
+    pdLinks :: [(LinkTarget, Rect)]
   }
 
 {- | What the drawing of a document shares: the input, the page geometry,
@@ -189,7 +193,7 @@ writeDocumentView inp geom fonts layout intent =
       formRefs = Map.fromList [(k, P.FormRef n) | ((k, _), n) <- zip formKeys [1 ..]]
       -- the bleed and the crop marks around each page (golem-pdf ADR 0004)
       bleed = maybe 0 pageBleed (stPage style)
-      pdfPages = [P.framePage (piMarks inp) bleed (pw, ph) (pdMarks pd) | pd <- drawn]
+      pdfPages = [P.framePageWith (piMarks inp) bleed (pw, ph) (pdMarks pd) [P.LinkAnnotation r (P.UriAction u) | (LinkUri u, r) <- pdLinks pd] | pd <- drawn]
       {- each glyph once per font, with the text of its cluster; a whole
       cluster wins, then the first drawn (golem-driver ADR 0030) -}
       used = Map.map toUnicodeOf (Map.fromListWith (<>) [(guRef u, [(guGlyph u, guText u, guPart u)]) | pd <- reverse drawn, u <- reverse (pdUses pd)])
@@ -482,7 +486,7 @@ entry :: DrawEnv -> Text -> SrcSpan -> Rect -> Sp -> SetLine -> (LineRec, ([P.Ma
 entry env kind sp ta cross = entryAt env kind sp (lineStart env ta cross)
 
 entryAt :: DrawEnv -> Text -> SrcSpan -> (Sp, Sp) -> SetLine -> (LineRec, ([P.Mark], [GlyphUse]))
-entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sl) (map fst (codeBackgrounds env start sl)), drawLineAt env start sl)
+entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl), drawLineAt env start sl)
 
 {- the backgrounds of inline code on a line (golem-driver ADR 0029): each
 run of boxes of one swatch, with the spaces between them, from the
@@ -495,9 +499,7 @@ codeBackgrounds env (x0, y0) sl =
       boxes = [(off, w, c) | (Box w c, off) <- placeLine (slLine sl)]
       breaksBefore (_, _, p) (_, _, c) = bcPadEnd p > 0 || bcPadStart c > 0 || lkBackground (bcLook p) /= lkBackground (bcLook c)
       runs = groupWhen (\a b -> not (breaksBefore a b)) boxes
-      rectOf s0 e0
-        | vertical = Rect (x0 - Sp (unSp size `div` 2)) (y0 - e0) size (e0 - s0)
-        | otherwise = Rect (x0 + s0) (y0 - (size - zwToSp size baselineRatio)) (e0 - s0) size
+      rectOf = faceRect vertical size (x0, y0)
    in [ (sw, rectOf (slIndent sl + s0) (slIndent sl + e0))
       | run@((s0, _, c) : _) <- runs,
         Just name <- [lkBackground (bcLook c)],
@@ -507,6 +509,29 @@ codeBackgrounds env (x0, y0) sl =
       ]
   where
     style = piStyle (deInput env)
+    vertical = pgVertical (deGeom env)
+
+{- the rectangle of the face of a line of a size from s0 to e0 along it: in
+horizontal text the height of the size, the baseline at the ratio; in
+vertical text the width of the size, centred on the line -}
+faceRect :: Bool -> Sp -> (Sp, Sp) -> Sp -> Sp -> Rect
+faceRect vertical size (x0, y0) s0 e0
+  | vertical = Rect (x0 - Sp (unSp size `div` 2)) (y0 - e0) size (e0 - s0)
+  | otherwise = Rect (x0 + s0) (y0 - (size - zwToSp size baselineRatio)) (e0 - s0) size
+
+{- the links on a line (docs/adr ADR 0182): each run of boxes of one
+target, with the glue between them, from the start of its first box to
+the end of its last, across the face of the line, as 'codeBackgrounds';
+the reading of a ruby is not in it -}
+linkRects :: DrawEnv -> (Sp, Sp) -> SetLine -> [(LinkTarget, Rect)]
+linkRects env start sl =
+  [ (t, faceRect vertical (slSize sl) start (slIndent sl + s0) (slIndent sl + e0))
+  | run@((s0, _, c) : _) <- groupWhen (\(_, _, p) (_, _, c) -> lkLink (bcLook p) == lkLink (bcLook c)) boxes,
+    Just t <- [lkLink (bcLook c)],
+    let e0 = maximum [o + w | (o, w, _) <- run]
+  ]
+  where
+    boxes = [(off, w, c) | (Box w c, off) <- placeLine (slLine sl)]
     vertical = pgVertical (deGeom env)
 
 -- the face of a line: from its first box to the end of its last, the height of its size
@@ -686,7 +711,7 @@ textAt env kind anchor size txt =
         LS.AlignCenter -> anX anchor - Sp (unSp w `div` 2)
         LS.AlignEnd -> anX anchor - w
       face = Rect x0 (anY anchor - (size - zwToSp size baselineRatio)) w size
-   in (LineRec kind styleSpan (Just face) Nothing [], runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt)
+   in (LineRec kind styleSpan (Just face) Nothing [] [], runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt)
   where
     fonts = deFonts env
     body = bodyRole (piStyle (deInput env))
@@ -769,7 +794,7 @@ drawColumn env p =
               (paper, area) = turnedFrame geom t pageTa pf
               imageR = imageRect geom paper area 0 pf
               captions = [entry env "キャプションの行" (pfSpan pf) area (captionLineAt env 0 pf j) (SetLine l (pfCaptionSize pf) 0 [] []) | (j, l) <- zip [0 ..] (pfCaption pf)]
-              onPage (rec, (_, uses)) = (rec {lrRect = P.turnRect t pageTa <$> lrRect rec}, ([], uses))
+              onPage (rec, (_, uses)) = (rec {lrRect = P.turnRect t pageTa <$> lrRect rec, lrLinks = [(lt, P.turnRect t pageTa r) | (lt, r) <- lrLinks rec]}, ([], uses))
            in (P.Turned t pageTa (figureMark env fid imageR pf : concatMap (fst . snd) captions), (P.turnRect t pageTa imageR, pf), map onPage captions)
         | (_, SPageFigure fid) <- poSlots p,
           Just pf <- [Map.lookup fid (plFigures layout)],
@@ -814,7 +839,7 @@ drawColumn env p =
 -- the columns of a page, its sidenotes and, once, its running head and folio
 drawPage :: DrawEnv -> [PageOut] -> Maybe MasterGeometry -> PageDrawn
 drawPage env ps master = case ps of
-  [] -> PageDrawn [] [] [] [] [] True 0 []
+  [] -> PageDrawn [] [] [] [] [] True 0 [] []
   (p : _) ->
     let n = poNumber p
         columns = map (drawColumn env) ps
@@ -843,7 +868,8 @@ drawPage env ps master = case ps of
             -- nothing but the master page (golem-cli ADR 0006)
             pdBlank = null columnParts && null sidenoteParts && null images && null rules && null backs,
             pdNumber = n,
-            pdBackgrounds = concat [snd b | (_, _, _, b) <- columns] <> concat [lrBackgrounds rec | (rec, _) <- allParts]
+            pdBackgrounds = concat [snd b | (_, _, _, b) <- columns] <> concat [lrBackgrounds rec | (rec, _) <- allParts],
+            pdLinks = concat [lrLinks rec | (rec, _) <- allParts]
           }
   where
     inp = deInput env

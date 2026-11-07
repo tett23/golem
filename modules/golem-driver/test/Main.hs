@@ -12,6 +12,7 @@ import DoubleDashSpec (doubleDashTests)
 import EmetSamplesSpec (emetSamplesTests)
 import FigureSpec
 import FunctionsSpec (functionsTests)
+import LinkSpec (linkTests)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
 import MemoSpec
 import OutputGoldenSpec
@@ -50,6 +51,7 @@ tests skips =
         testGroup "output and layout diagnostic codes (golem-driver ADR 0016)" outputDiagnosticTests,
         testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
         testGroup "the background of inline code (golem-driver ADR 0029)" inlineCodeBackgroundTests,
+        testGroup "the link annotations of the PDF (docs/adr ADR 0182)" linkTests,
         testGroup "ruby and kenten after a code block (golem-driver ADR 0033)" codeBlockRubyTests,
         testGroup "the text layer of ligatures (golem-driver ADR 0030)" ligatureTests,
         testGroup "combining characters (golem-driver ADR 0036)" combiningTests,

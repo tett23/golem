@@ -143,6 +143,7 @@ walkInline f st (Inline.Color name xs) = rewrap (one (Inline.Color name)) (walkI
 walkInline f st (Inline.Kenten shape xs) = rewrap (one (Inline.Kenten shape)) (walkInlines f st xs)
 walkInline f st (Inline.Note xs) = rewrap (one Inline.Note) (walkInlines f st xs)
 walkInline f st (Inline.Sidenote xs) = rewrap (one Inline.Sidenote) (walkInlines f st xs)
+walkInline f st (Inline.Link url xs) = rewrap (one (Inline.Link url)) (walkInlines f st xs)
 walkInline _ st _ = (Nothing, st)
 
 one :: (Inlines -> Inline.Inline) -> Inlines -> Inlines

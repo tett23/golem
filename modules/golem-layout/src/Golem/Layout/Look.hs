@@ -5,6 +5,7 @@ measuring functions and keeps them on the boxes for later stages.
 -}
 module Golem.Layout.Look
   ( Look (..),
+    LinkTarget (..),
     Kerning (..),
     Synthetic (..),
     plainLook,
@@ -129,13 +130,22 @@ data Look = Look
     0029); Nothing is no background
     -} lkBackground :: !(Maybe Text),
     -- | the padding before and after a run of code along the line, in sp (golem-driver ADR 0029)
-    lkPadding :: !Sp
+    lkPadding :: !Sp,
+    {- | the target of the link the text is in (docs/adr ADR 0182); Nothing
+    is no link. The line breaking does not read it -}
+    lkLink :: !(Maybe LinkTarget)
   }
+  deriving stock (Eq, Ord, Show)
+
+{- | Where a link goes (docs/adr ADR 0182): an external URL as written. A
+target inside the document is a constructor to come.
+-}
+newtype LinkTarget = LinkUri Text
   deriving stock (Eq, Ord, Show)
 
 {- | One role for both scripts at a size, upright, regular, default colour,
 metrics kerning, no tracking, no proportional metrics, no baseline shift,
-not code, not a URL, no kenten, no background and no padding.
+not code, not a URL, no kenten, no background, no padding and no link.
 -}
 plainLook :: Text -> Sp -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing

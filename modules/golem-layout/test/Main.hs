@@ -44,6 +44,7 @@ import RuleAreaSpec (ruleAreaTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
+import LinkSpec (linkTests)
 import UrlBreakSpec (urlBreakTests)
 
 main :: IO ()
@@ -333,6 +334,7 @@ tests =
       doubleDashTests,
       codeSpaceTests,
       urlBreakTests,
+      linkTests,
       combiningTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,

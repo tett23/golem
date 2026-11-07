@@ -1,6 +1,7 @@
 module Main (main) where
 
 import CborExprSpec qualified
+import LinkSpec qualified
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Control.Exception (ErrorCall, evaluate, try)
@@ -40,7 +41,7 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests]
+  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests]
 
 -- | The integers of the IR are int64 (golem-doc ADR 0006).
 int64Tests :: TestTree

@@ -201,6 +201,15 @@ callsTests =
           e <- evaluated tmp
           codesIn e @?= ["E06104"]
           [spanStart (diagSpan d) | d <- evDiagnostics e, diagCode d == DiagnosticCode "E06104"] @?= [0],
+      -- docs/adr ADR 0182
+      testCase "a filter of a .emet that makes a link of javascript: is E06104; one of https is a link"
+        $ withBook
+          [("a.gm", "本文。\n")]
+          [("functions/f.emet", "pub filter bad :: Blocks -> Blocks\nbad bs = bs ++ Block.paragraph [Inline.Link \"javascript:alert(1)\" (Inline.text \"x\")]\n\npub filter good :: Blocks -> Blocks\ngood bs = bs ++ Block.paragraph [Inline.Link \"https://example.com/\" (Inline.text \"x\")]\n")]
+          "[[filters]]\nfunction = \"functions/f.emet\"\nfilter = \"bad\"\nfiles = [\"a.gm\"]\n"
+        $ \tmp -> do
+          e <- evaluated tmp
+          codesIn e @?= ["E06104"],
       testCase "a filter of a .emet rewrites the document; a node it makes is at the top of the file"
         $ withBook
           [("a.gm", "本文。\n")]

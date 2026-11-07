@@ -434,6 +434,15 @@ tests =
     multipleBibliographyTests,
     citeLinkTests,
     channelTests,
+    -- docs/adr ADR 0182
+    testCase "a link is an a element with the URL as written, & as &amp;" $
+      bodyA cfg0 (bookOf [para 0 [Link (at 1) "https://example.com/?a=1&b=組" [txt "例"], Link (at 2) "https://example.com/" [CharStyle (at 2) "url" [txt "https://example.com/"]]]])
+        @?= "<p><a href=\"https://example.com/?a=1&amp;b=組\">例</a><a href=\"https://example.com/\"><span class=\"cs-url\">https://example.com/</span></a></p>\n",
+    testCase "a heading with a link: the link stays in the heading, and the copy in a table of contents has its text alone" $
+      let h = Block (at 0) (Just "intro") (Heading 1 noHeadingAttrs [txt "見出し", Link (at 1) "https://example.com/" [txt "例"]])
+          site = renderXhtml cfg0 ft (assembled [[h, Block (at 5) Nothing (ChannelOutput (TocOutput 2))]])
+          page = maybe "" bodyOf (lookup "a.xhtml" (sitePages site))
+       in (T.count "<a href=\"https://example.com/\">" page, T.isInfixOf "<a href=\"https://example.com/\">例</a></h1>" page) @?= (1, True),
     -- golem-doc ADR 0005
     testCase "a URL of http or https in the bibliography is a link of class cs-url; another is a span" $
       let book =

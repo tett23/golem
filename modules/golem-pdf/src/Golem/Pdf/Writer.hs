@@ -14,6 +14,9 @@ module Golem.Pdf.Writer
     turnRect,
     Mark (..),
     Page (..),
+    Annotation (..),
+    LinkAction (..),
+    asciiUri,
     FontProgram (..),
     Font (..),
     Document (..),
@@ -33,6 +36,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Builder qualified as B
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
+import Data.Char (isAscii)
 import Data.List (nub, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -152,9 +156,31 @@ data Page = Page
   { pageMediaBox :: !Rect,
     pageTrimBox :: !Rect,
     pageBleedBox :: !Rect,
-    pageContent :: ![Mark]
+    pageContent :: ![Mark],
+    -- | the annotations of the page, in the order drawn (docs/adr ADR 0182)
+    pageAnnots :: ![Annotation]
   }
   deriving stock (Eq, Show)
+
+{- | An annotation of a page (docs/adr ADR 0182): a link over a rectangle
+of the page, without a border or an appearance.
+-}
+data Annotation = LinkAnnotation !Rect !LinkAction
+  deriving stock (Eq, Show)
+
+-- | What a link does: open an external URL, as written.
+newtype LinkAction = UriAction Text
+  deriving stock (Eq, Show)
+
+{- | A URL in 7-bit ASCII (docs/adr ADR 0182): each character outside
+ASCII as the %XX of its UTF-8 bytes; the rest, a %XX written among it,
+as it is.
+-}
+asciiUri :: Text -> Text
+asciiUri = T.concatMap $ \c ->
+  if isAscii c
+    then T.singleton c
+    else T.concat [T.pack (printf "%%%02X" b) | b <- BS.unpack (TE.encodeUtf8 (T.singleton c))]
 
 {- | The embedded font program: a TrueType font goes into FontFile2, the
 bare CFF table of a font with CFF outlines into FontFile3 with the subtype
@@ -363,7 +389,8 @@ serializePdf (PdfObjects version objects trailerDict) =
 
 {- | The objects of the document. Objects are numbered: catalog, page tree,
 each page (with its content), fonts and images in order of first
-reference, then the document information.
+reference, the annotations of the pages in order (docs/adr ADR 0182),
+then the document information.
 -}
 documentObjects :: Document -> PdfObjects
 documentObjects doc =
@@ -412,7 +439,12 @@ documentObjects doc =
               ("Metadata", ORef (afterImages + 1))
             ]
           )
-      infoObj = afterImages + length xObjs
+      -- the annotations of each page, the pages in order (docs/adr ADR 0182)
+      annotBase = afterImages + length xObjs
+      annotNums = drop 1 (scanl (+) annotBase (map (length . pageAnnots) pages))
+      annotRefs = [[ORef n | n <- take (length (pageAnnots p)) [from ..]] | (p, from) <- zip pages (annotBase : annotNums)]
+      annotObjs = [annotationObject a | p <- pages, a <- pageAnnots p]
+      infoObj = annotBase + length annotObjs
       imageObjCount i = case Map.lookup i (docImages doc) of
         Just img -> 1 + maybe 0 (const 1) (imgIcc img) + maybe 0 (const 1) (imgAlpha img)
         Nothing -> 1
@@ -441,11 +473,14 @@ documentObjects doc =
                   ("BleedBox", rectObj (pageBleedBox p)),
                   ("Resources", resources),
                   ("Contents", ORef (pageObj i + 1))
-                ],
+                ]
+                  `withAnnots` refs,
               OStream [("Filter", OName "FlateDecode")] (flate (contentStreamWith fontNames imageNames formNames (pageContent p)))
             ]
-          | (i, p) <- zip [0 ..] pages
+          | (i, p, refs) <- zip3 [0 ..] pages annotRefs
           ]
+      withAnnots (ODict kvs) refs = ODict (kvs <> [("Annots", OArr refs) | not (null refs)])
+      withAnnots o _ = o
       fontObjsAll = concat [fontObjects (fontBase Map.! f) (docFonts doc Map.! f) | f <- fontOrder, Map.member f (docFonts doc)]
       imageObjsAll = concat [imageObjects srgbRef (imageBase Map.! i) img | i <- imageOrder, Just img <- [Map.lookup i (docImages doc)]]
       info =
@@ -458,7 +493,7 @@ documentObjects doc =
           `addInfo` [("Trapped", OName "False"), ("GTS_PDFXVersion", OStr "PDF/X-4")]
       addInfo (ODict kvs) extra = ODict (kvs <> (if isJust (docPdfX doc) then extra else []))
       addInfo o _ = o
-      objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> srgbObjs <> formObjsAll <> xObjs <> [info]
+      objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> srgbObjs <> formObjsAll <> xObjs <> annotObjs <> [info]
       size = length objects + 1
    in PdfObjects "1.6" objects (ODict [("Size", OInt (fromIntegral size)), ("Root", ORef 1), ("Info", ORef infoObj), ("ID", OArr [OHex (docId doc), OHex (docInstanceId doc)])])
   where
@@ -487,6 +522,21 @@ documentObjects doc =
       Translated _ _ ms -> concatMap formsOf ms
       Turned _ _ ms -> concatMap formsOf ms
       _ -> []
+
+{- | A link annotation (docs/adr ADR 0182): no border, no appearance, the
+print flag (PDF/A-2 asks for it; with no appearance nothing is printed),
+and the action that opens the URL in ASCII.
+-}
+annotationObject :: Annotation -> Obj
+annotationObject (LinkAnnotation r (UriAction u)) =
+  ODict
+    [ ("A", ODict [("S", OName "URI"), ("URI", OStr (TE.encodeUtf8 (asciiUri u)))]),
+      ("Border", OArr [OInt 0, OInt 0, OInt 0]),
+      ("F", OInt 4),
+      ("Rect", rectObj r),
+      ("Subtype", OName "Link"),
+      ("Type", OName "Annot")
+    ]
 
 {- | The Form XObjects of PDF figures from object @base@ (ADR 0008): each
 form, then the objects of its page not yet written, in the order of the

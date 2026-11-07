@@ -1174,7 +1174,9 @@ pluginTests =
              sort ds
                @?= sort
                  [ (DiagnosticCode "G06007", "組み込みのコマンドと衝突しています（overrides で宣言してください）: names.ruby"),
-                   (DiagnosticCode "G06007", "上書きできない組み込みのコマンドと衝突しています: names.note")
+                   (DiagnosticCode "G06007", "上書きできない組み込みのコマンドと衝突しています: names.note"),
+                   -- link is built in, and a plugin may not override it (docs/adr ADR 0182)
+                   (DiagnosticCode "G06007", "上書きできない組み込みのコマンドと衝突しています: names.link")
                  ],
          testCase "G06008: one per name in overrides" $ do
            let g06008 m = [(DiagnosticCode "G06008", m)]
