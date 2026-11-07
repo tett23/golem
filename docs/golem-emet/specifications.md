@@ -168,7 +168,7 @@ pub fn total :: List Nat -> Nat
 
 | データ型 | コンストラクタ |
 | --- | --- |
-| `Inline.Inline` | `Text String`、`Ruby (List RubySegment)`、`Kenten (Maybe String) Inlines`、`Color String Inlines`、`CharStyle String Inlines`、`Tcy String`、`Number Int (Maybe NumberStyle)`、`Ref RefKind String`、`Deferred Deferred`、`Note Inlines`、`Sidenote Inlines`、`IndexMark (List String) (List String)`、`Cite String`、`ProofComment String`、`LineBreak`、`Aki AkiAmount`、`ChannelItem String (Maybe String) (Maybe String) Inlines` |
+| `Inline.Inline` | `Text String`、`Ruby (List RubySegment)`、`Kenten (Maybe String) Inlines`、`Color String Inlines`、`CharStyle String Inlines`、`Tcy String`、`Number Int (Maybe NumberStyle)`、`Ref RefKind String`、`Deferred Deferred`、`Note Inlines`、`Sidenote Inlines`、`IndexMark (List String) (List String)`、`Cite String`、`ProofComment String`、`LineBreak`、`Aki AkiAmount`、`ChannelItem String (Maybe String) (Maybe String) Inlines`、`Link String Inlines`（[docs/adr/0182](../adr/0182-external-links.md)） |
 | `Inline.RubySegment` | `RubySegment Inlines (Maybe String)`（親文字と読み） |
 | `Inline.NumberStyle` | `Kanji`、`KanjiDigits`、`TateChuYoko` |
 | `Inline.RefKind` | `RefNumber`、`RefTitle`、`RefPage` |

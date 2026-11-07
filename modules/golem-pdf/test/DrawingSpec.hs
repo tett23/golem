@@ -36,7 +36,7 @@ redSquare =
 doc :: [Mark] -> [(FormRef, FormContent)] -> Map.Map ImageRef ImageData -> Document
 doc marks forms images =
   Document
-    { docPages = [Page box box box marks],
+    { docPages = [Page box box box marks []],
       docFonts = Map.empty,
       docImages = images,
       docForms = Map.fromList forms,

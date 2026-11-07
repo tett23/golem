@@ -28,6 +28,7 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (FigureContent (..), ImportedPage (..), Mark (..), Turn (..), contentStream)
 import Golem.Preflight.View (ImageView (..), LineView (..), PageView (..), View (..))
 import Golem.Syntax
+import LinkSpec (annotations)
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
 import System.FilePath ((</>))
@@ -844,6 +845,22 @@ turnedFigureTests =
     testCase "G07038: a caption as deep as the frame" $ do
       r <- layoutMini (pageStyle "horizontal" "left" 3 20 1 20 20) (fig "wide" " rotate=true" (T.replicate 70 "あ")) boxes
       layoutErrors r @?= [("G07038", "図版のキャプションがページの行数に達します（3 行。ページは 2 行）", FileId 1, 0, 257)],
+    -- docs/adr ADR 0182
+    testCase "a link in the caption of a turned figure: its annotation is on the turned caption line of the page" $
+      forM_ [vertical10 60, horizontal20 "left" 20] $ \style -> do
+        let source = fig "wide" " rotate=true" "[link \"https://example.com/\": キャプション]。"
+        v <- viewOf style source boxes
+        pdf <- miniPdf fakeProvider True style source boxes
+        let caps = [lvRect l | pv <- vwPages v, l <- pvLines pv, lvKind l == "キャプションの行"]
+            pt' (Sp n) = fromIntegral n / 65536 :: Double
+        case (caps, annotations pdf) of
+          ([Rect x y w h], [(_, [a0, b0, a1, b1])]) -> do
+            let (cx0, cy0, cx1, cy1) = (pt' x, pt' y, pt' (x + w), pt' (y + h))
+                e = 0.01
+            assertBool (show ((a0, b0, a1, b1), (cx0, cy0, cx1, cy1))) (a0 >= cx0 - e && b0 >= cy0 - e && a1 <= cx1 + e && b1 <= cy1 + e && a1 > a0 && b1 > b0)
+            -- the caption line runs the same way as the annotation on the page
+            (h > w) @?= (b1 - b0 > a1 - a0)
+          other -> assertFailure (show other),
     testCase "the image and the caption of a turned figure are inside the type area on the page; the caption is text" $ do
       let style = vertical10 60
           source = fig "wide" " rotate=true" "キャプション。"

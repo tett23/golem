@@ -1213,6 +1213,8 @@ HTML と EPUB では、ファイルの中のスタイルを持つ章の `<body>`
 組み込みの文字スタイルは `strong`、`bold`、`italic`、`code`、`url` の五つである。
 `bold` は合成の太字、`italic` は合成の斜体、`strong` は `bold` を基準にした文字スタイル、`code` は書体の役割 `code` で組む文字スタイル、`url` は参考文献の URL を組む文字スタイルである（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
 `url` には別名がなく、原稿では `[style url: ...]` と書く。
+`[style url: ...]` は見た目の指定であり、リンクにはならない。
+リンクにしたい URL は `[link]` で書く（「リンク」の節）。
 利用者が組み込みと同じ名前の表を書くと、書いたキーだけが組み込みの定義を上書きする。
 
 ### 圏点
@@ -1453,6 +1455,42 @@ PDF では、`style.toml` に `[sidenotes]` がない場合と、脚注の本文
 引用した文献は `@bibliography` の一覧に載る。
 `@bibliography` が二つ以上あれば、引用の印の後にある最初の一覧に載り、最後の一覧より後の印は最後の一覧に載る（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
 `[cite ...]` は散文スロットを取らず、`: ` の後に本文を書くとコンパイルエラーとなる（[golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)）。
+
+### リンク
+
+```
+[link "https://www.w3.org/TR/jlreq/": 日本語組版処理の要件]
+[link "https://www.w3.org/TR/jlreq/"]
+```
+
+外部の URL へのリンクを書く（[docs/adr/0182](adr/0182-external-links.md)）。
+最初の位置引数に URL を文字列で書き、散文スロットにリンクの文字を書く。
+URL は、文字列リテラルのほか、文字列を値に持つ式文脈（`[link [= values.site]: ...]`）でも書ける。
+命令文脈の `:` は散文スロットの始まりなので、URL は引用符で囲む。
+`[link https://...: ...]` と書くと、位置引数は語 `https` だけになり、[G02124](diagnostics.md#g02124) になる。
+散文スロットを省くと、URL そのものを文字スタイル `url` で組んだ文字がリンクの文字になる。
+位置引数は URL の一つだけで、キーワード引数は取らない。
+
+URL は、RFC 3986 の絶対 URI の形で（[G02125](diagnostics.md#g02125)）、scheme が `http` か `https` で（[G02126](diagnostics.md#g02126)）、ホストが ASCII でなければならない（[G02127](diagnostics.md#g02127)）。
+パス、クエリ、フラグメントには、ASCII でない文字をそのまま書ける。
+国際化ドメイン名は Punycode（`xn--`）で書く。
+リンクの中には、リンク、相互参照、脚注、傍注、引用を置けない（[G02128](diagnostics.md#g02128)）。
+ルビ、文字スタイル、索引の印は置ける。
+
+リンクは見た目を変えない。
+色、下線、枠を付けたいときは、`[link "URL": [style 名前: ...]]` のように文字スタイルを入れ子にする。
+PDF では、リンクの文字の上にリンクの注釈を置く。
+行をまたぐリンクは、行ごとの注釈になる。
+HTML と EPUB では `a` 要素になる。
+プレーンテキストでは `表示の文字（URL）` と書き、表示の文字が URL と同じなら URL だけを書く。
+目次、柱、`[ref-title]` の写しでは、リンクを外して文字だけを写す。
+
+リンクの中の欧文の語は、語の中で行を分けない（パターンの分綴も、書いたハイフンの後の改行もしない）。
+文字スタイル `url` の文字は、空白と `/.@!_|;>]),?&'+=#:` の後でハイフンを描かずに分け、`-` の前後と `%` の後では分けない（[golem-layout ADR 0018](golem-layout/adr/0018-url-line-breaks.md)）。
+地の文に書いた URL の文字列は、Golem には URL と分からないので、分綴されることがある。
+URL は `[link]` か `[style url: ...]` で書く。
+
+`link` は組み込みのコマンドであり、プラグインは上書きできない。
 
 ## 予約された記法
 

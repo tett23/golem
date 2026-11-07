@@ -71,7 +71,7 @@ withImage img = writePdf (document [Image (ImageRef 1) (Rect 0 0 65536 65536)]) 
 document :: [Mark] -> Document
 document marks =
   Document
-    { docPages = [Page box box box marks],
+    { docPages = [Page box box box marks []],
       docFonts = Map.empty,
       docImages = Map.empty,
       docForms = Map.empty,

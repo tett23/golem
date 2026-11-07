@@ -53,6 +53,7 @@ data InlineKind
   | KLineBreak
   | KAki
   | KChannelItem
+  | KLink
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 blockKind :: BlockBody -> BlockKind
@@ -89,6 +90,7 @@ inlineKind = \case
   LineBreak {} -> KLineBreak
   Aki {} -> KAki
   ChannelItem {} -> KChannelItem
+  Link {} -> KLink
 
 -- | The kinds of the blocks and the inlines in a document, at any depth.
 kinds :: Document -> (Set BlockKind, Set InlineKind)
@@ -122,6 +124,7 @@ kinds = foldMap block . docBlocks
       Note _ _ is -> inlines is
       Sidenote _ _ is -> inlines is
       ChannelItem _ c -> inlines (ciBody c)
+      Link _ _ is -> inlines is
       Text {} -> mempty
       Tcy {} -> mempty
       Number {} -> mempty

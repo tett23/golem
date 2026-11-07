@@ -273,6 +273,8 @@ data InlineF r
     Aki !SrcSpan !AkiAmount
   | -- | an item of a channel of a plugin (golem-doc ADR 0007)
     ChannelItem !SrcSpan !ChannelItem
+  | -- | a link to an external URL, as written (docs/adr ADR 0182)
+    Link !SrcSpan !Text [InlineF r]
   deriving stock (Eq, Show)
 
 -- | The amount of an [aki]: in zw (the size of the type there), or absolute in sp.
@@ -363,12 +365,14 @@ noRuby = \case
   LineBreak s -> Just (LineBreak s)
   Aki s a -> Just (Aki s a)
   ChannelItem s c -> Just (ChannelItem s c)
+  Link s u xs -> Link s u <$> traverse noRuby xs
 
 {- | A title as it is copied elsewhere in the book (the table of contents,
 [ref-title]): without the inlines that tell a list where the text is,
 index marks and channel items, at any depth (docs/adr/0145). A mark
 stands only where it was written, so a list never points at a copy. The
-notes are left as they are.
+notes are left as they are. A link gives its text without the link
+(docs/adr ADR 0182), so that a copy that becomes a link holds no link.
 -}
 withoutAnchors :: [InlineF r] -> [InlineF r]
 withoutAnchors = concatMap $ \case
@@ -378,6 +382,7 @@ withoutAnchors = concatMap $ \case
   Kenten sp s xs -> [Kenten sp s (withoutAnchors xs)]
   Color sp c xs -> [Color sp c (withoutAnchors xs)]
   CharStyle sp c xs -> [CharStyle sp c (withoutAnchors xs)]
+  Link _ _ xs -> withoutAnchors xs
   x -> [x]
 
 -- | Whether an inline is a line break.
