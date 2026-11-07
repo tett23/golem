@@ -5,7 +5,8 @@ docs/adr/0175). Their outputs are fixed by the goldens of
 @.emet@, @style.toml@ and @manifest.toml@) and checks that each feature the
 ADR lists is written there at least once, so that a later edit that drops
 a feature from a book fails a test instead of leaving the interaction
-unchecked.
+unchecked. It also checks that each manifest silences the notices G07030
+and G07046 and no other code (docs/adr/0198).
 
 The checks read the notation, not the output: a heading line is a line
 that starts with @#@, a table row one that starts with @|@, and the tables
@@ -45,10 +46,29 @@ book :: FilePath -> [Feature] -> TestTree
 book name features =
   testGroup
     name
-    [ testCase feature $ do
-        s <- readSources ("test/fixtures" </> name)
-        assertBool ("the book does not use: " <> feature) (check s)
-    | (feature, check) <- features
+    ( [ testCase feature $ do
+          s <- readSources ("test/fixtures" </> name)
+          assertBool ("the book does not use: " <> feature) (check s)
+      | (feature, check) <- features
+      ]
+        <> [silencedNotices name]
+    )
+
+{- | The table @[diagnostics]@ of the manifest has exactly one key,
+@silence-notices = ["G07030", "G07046"]@ (docs/adr/0198): the two notices
+the features of the books always give, and no other code. Blank lines and
+comment lines are left out. A third code, @silence-info@ or a manifest
+without @[diagnostics]@ fails here.
+-}
+silencedNotices :: FilePath -> TestTree
+silencedNotices name = testCase "the manifest silences G07030 and G07046 and nothing else (docs/adr/0198)" $ do
+  manifest <- TIO.readFile ("test/fixtures" </> name </> "manifest.toml")
+  assertEqual
+    "[diagnostics] of manifest.toml"
+    [["silence-notices = [\"G07030\", \"G07046\"]"]]
+    [ [l | l <- map T.strip body, not (T.null l), not ("#" `T.isPrefixOf` l)]
+    | (h, body) <- tables manifest,
+      h == "[diagnostics]"
     ]
 
 readSources :: FilePath -> IO Sources

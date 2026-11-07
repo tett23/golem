@@ -46,6 +46,7 @@ import Golem.Doc.IR
 import Golem.Length qualified as L
 import Golem.Length.Decimal (showRationalDigits)
 import Golem.Numerals
+import Golem.Numerals.Notation (Notation, notationName, writeNumber)
 import Golem.Syntax.Span
 import Golem.Syntax.Text (escapeXml, tshow)
 import Numeric (showHex)
@@ -85,7 +86,9 @@ data HtmlConfig = HtmlConfig
     -- | the paragraph style code: pre (golem-driver ADR 0017)
     hcCode :: !HtmlCode,
     -- | the rules before and after the headings of each level (golem-driver ADR 0027)
-    hcHeadingRules :: !(Map Int (Maybe HtmlRule, Maybe HtmlRule))
+    hcHeadingRules :: !(Map Int (Maybe HtmlRule, Maybe HtmlRule)),
+    -- | the notation of [notes] mark-format: the text of the links of notes (docs/adr/0177)
+    hcNoteNotation :: !Notation
   }
 
 {- | A rule before or after a paragraph or a heading as CSS (golem-driver
@@ -472,7 +475,9 @@ block c (Block sp lbl body) = case body of
   FigureBlock f ->
     let num = numberSpan c (Map.lookup sp (bookFigures (cBook c)))
         cap = T.concat [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
-     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webOutput f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"" <> figureWidthStyle (hcVertical (cCfg c)) (figWidth f) <> "/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
+        -- no figcaption without a number and a caption (docs/adr/0200)
+        figcaption = if T.null (num <> cap) then "" else "<figcaption>" <> num <> cap <> "</figcaption>\n"
+     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webOutput f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"" <> figureWidthStyle (hcVertical (cCfg c)) (figWidth f) <> "/>\n" <> figcaption <> "</figure>\n"
   ChannelOutput (TocOutput d) -> toc c (Just d)
   ChannelOutput IndexOutput -> index c sp
   ChannelOutput (CustomOutput name _) -> channelList c sp name
@@ -642,7 +647,7 @@ inline c = \case
   Deferred {} -> ""
   Note _ n _ ->
     let key = cnKey (cNotes c) n
-     in "<a epub:type=\"noteref\" class=\"noteref\" href=\"" <> linkTo c (cnHome (cNotes c)) ("note-" <> key) <> "\" id=\"noteref-" <> key <> "\">" <> tshow n <> "</a>"
+     in "<a epub:type=\"noteref\" class=\"noteref\" href=\"" <> linkTo c (cnHome (cNotes c)) ("note-" <> key) <> "\" id=\"noteref-" <> key <> "\">" <> noteText c n <> "</a>"
   Sidenote _ n _ -> "<sup class=\"sidenote-ref\">" <> tshow n <> "</sup>"
   IndexMark sp _ -> "<span id=\"" <> spanAnchor sp <> "\"></span>"
   -- an empty span with an id when the channel shows where its items are (golem-doc ADR 0007)
@@ -672,6 +677,12 @@ akiLength = \case
   AkiZw r -> L.emText r <> "em"
   AkiAbs x -> L.ptText x <> "pt"
 
+{- | The text of the links of a note, its mark and the way back (docs/adr/0177):
+its number in the notation of [notes] mark-format, without the text around it.
+-}
+noteText :: Ctx -> Int -> Text
+noteText c n = fromMaybe (tshow n) (writeNumber (hcNoteNotation (cCfg c)) (toInteger n))
+
 sidenotes :: Ctx -> [Inline] -> Text
 sidenotes c is = T.concat ["<aside class=\"sidenote\"><span class=\"number\">" <> tshow n <> "</span>" <> inlines c xs <> "</aside>\n" | Sidenote _ n xs <- is]
 
@@ -687,7 +698,7 @@ notesSection c =
         <> escapeXml (notesTitle (hcLanguage (cCfg c)))
         <> "</h2>\n"
         <> T.concat
-          [ "<aside epub:type=\"footnote\" id=\"note-" <> key n <> "\"><a href=\"" <> linkTo c f ("noteref-" <> key n) <> "\">" <> tshow n <> "</a> " <> inlines c xs <> "</aside>\n"
+          [ "<aside epub:type=\"footnote\" id=\"note-" <> key n <> "\"><a href=\"" <> linkTo c f ("noteref-" <> key n) <> "\">" <> noteText c n <> "</a> " <> inlines c xs <> "</aside>\n"
           | (f, key, n, xs) <- ns
           ]
         <> "</section>\n"
@@ -883,14 +894,12 @@ listRules cfg book ls =
             VerticalFixed StyleTcy -> extends "decimal"
             _ -> extends "japanese-informal"
         | otherwise -> extends "decimal"
-      NsArabic -> extends "decimal"
-      NsKanji -> extends "japanese-informal"
-      NsLowerAlpha -> extends "lower-alpha"
-      NsUpperAlpha -> extends "upper-alpha"
-      NsLowerRoman -> extends "lower-roman"
-      NsUpperRoman -> extends "upper-roman"
+      NsNotation n
+        -- the notations of the same rule as a counter style of CSS (docs/adr/0177)
+        | Just css <- lookup (notationName n) cssStyles -> extends css
       _ -> "system: fixed; symbols: " <> T.unwords [str (fromMaybe (tshow n) (formatListNumber st n)) | n <- [1 .. largest k]] <> ";"
     extends s = "system: extends " <> s <> ";"
+    cssStyles = [("arabic", "decimal"), ("kanji", "japanese-informal"), ("lower-alpha", "lower-alpha"), ("upper-alpha", "upper-alpha"), ("lower-roman", "lower-roman"), ("upper-roman", "upper-roman")]
     -- the space after a marker: the gap of [lists], or none after punctuation with its own space
     gapAfter m = if fromMaybe (not (endsWithSpacedPunctuation m)) (hlGap ls) then " " else ""
     str t = "\"" <> T.replace "\"" "\\\"" (T.replace "\\" "\\\\" t) <> "\""

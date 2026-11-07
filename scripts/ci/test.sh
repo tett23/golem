@@ -1293,6 +1293,54 @@ if job_of "$RELEASE_YML" release | grep -Eiq 'npm|mise|claude'; then ng "release
 if job_of "$RELEASE_YML" release | grep -q '^      - release$\|needs:.*notes'; then ok; else ng "release.yml: the release job needs the notes job"; fi
 if grep -q 'npm install' "$RELEASE_YML"; then ng "release.yml: no npm install"; else ok; fi
 
+# every job that runs haskell-actions/setup gives cabal CABAL_DIR=$HOME/.cabal
+# before it and checks the directories cabal uses after it, before the cache
+# of the Hackage index, under the same if: (docs/adr/0201)
+CABAL_DIR_RUN='run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"'
+step_line() { # step_line WORKFLOW JOB TEXT: the line in the job of the first step that has TEXT
+  job_of "$1" "$2" | awk -v t="$3" '/^      - / { s = NR } index($0, t) { print s; exit }'
+}
+step_cond() { # step_cond WORKFLOW JOB TEXT: the if: of the first step that has TEXT
+  job_of "$1" "$2" | awk -v t="$3" '
+    /^      - / { if (found) exit; c = "" }
+    { u = $0; sub(/^      - /, "        ", u) }
+    u ~ /^        if: / { c = u; sub(/^        if: /, "", c) }
+    index($0, t) { found = 1 }
+    END { if (found) print c }'
+}
+cabal_dir_case() { # cabal_dir_case WORKFLOW JOB NAME
+  if [ "$(grep -cF 'uses: haskell-actions/setup@v2' "$1")" = "$(grep -cF "$CABAL_DIR_RUN" "$1")" ]; then ok; else
+    ng "$3: as many steps give CABAL_DIR as run haskell-actions/setup (docs/adr/0201)"
+  fi
+  setup=$(step_line "$1" "$2" 'uses: haskell-actions/setup@v2')
+  give=$(step_line "$1" "$2" "$CABAL_DIR_RUN")
+  check=""
+  for key in config-file:config remote-repo-cache:packages store-dir:store; do
+    l=$(step_line "$1" "$2" "test \"\$(cabal path -z --${key%%:*})\" = \"\$HOME/.cabal/${key#*:}\"")
+    if [ -n "$l" ] && { [ -z "$check" ] || [ "$l" = "$check" ]; }; then check=$l; else check=none; fi
+  done
+  if [ -n "$setup" ] && [ -n "$give" ] && [ "$give" -lt "$setup" ]; then ok; else
+    ng "$3: CABAL_DIR is given before haskell-actions/setup (docs/adr/0201)"
+  fi
+  if [ -n "$setup" ] && [ "$check" != none ] && [ "$check" -gt "$setup" ]; then ok; else
+    ng "$3: a step after haskell-actions/setup checks that cabal uses ~/.cabal (docs/adr/0201)"
+  fi
+  if [ -n "$setup" ] && [ "$(step_cond "$1" "$2" "$CABAL_DIR_RUN")" = "$(step_cond "$1" "$2" 'uses: haskell-actions/setup@v2')" ] &&
+    [ "$(step_cond "$1" "$2" 'cabal path -z --config-file')" = "$(step_cond "$1" "$2" 'uses: haskell-actions/setup@v2')" ]; then ok; else
+    ng "$3: the steps of CABAL_DIR have the if: of haskell-actions/setup (docs/adr/0201)"
+  fi
+}
+cabal_dir_case "$CI_YML" build "ci.yml: build"
+cabal_dir_case "$HERE/../../.github/workflows/race.yml" race "race.yml: race"
+cabal_dir_case "$RELEASE_YML" build "release.yml: build"
+for w in "$CI_YML:build" "$HERE/../../.github/workflows/race.yml:race"; do
+  index=$(step_line "${w%:*}" "${w##*:}" 'path: ~/.cabal/packages/hackage.haskell.org')
+  check=$(step_line "${w%:*}" "${w##*:}" 'cabal path -z --config-file')
+  if [ -n "$index" ] && [ -n "$check" ] && [ "$check" -lt "$index" ]; then ok; else
+    ng "$(basename "${w%:*}"): ${w##*:}: cabal's directory is checked before the cache of the Hackage index (docs/adr/0201)"
+  fi
+done
+
 # mise itself is pinned to an exact version and the SHA-256 of its linux-x64
 # binary, with the same values in ci.yml and release.yml, and every step of
 # jdx/mise-action passes both (docs/adr/0085)
@@ -1371,10 +1419,10 @@ needs() { # needs NAME=RESULT...: the JSON of the needs context
   done
   printf '}\n'
 }
-needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success plugins=success editors=success >"$WORK/in"
+needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success plugins=success editors=success verapdf=success >"$WORK/in"
 run gate
 expect "gate: all succeeded" 0
-needs changes=success scripts-linux=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped plugins=skipped editors=success >"$WORK/in"
+needs changes=success scripts-linux=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped plugins=skipped editors=success verapdf=skipped >"$WORK/in"
 run gate
 expect "gate: docs only" 0
 needs changes=success scripts-linux=success build=failure determinism=skipped visual=skipped release-scripts=success scripts-macos=success format=success plugins=success editors=success >"$WORK/in"

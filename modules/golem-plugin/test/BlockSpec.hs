@@ -57,7 +57,7 @@ drawing bs imgs =
 
 -- | A figure of the call whose image is src.
 figureOf :: Text -> Block
-figureOf src = Block callSpan Nothing (FigureBlock (Figure src Nothing "棒グラフ" Nothing Nothing [] Nothing False))
+figureOf src = Block callSpan Nothing (FigureBlock (Figure src Nothing "棒グラフ" Nothing Nothing [] Nothing False False))
 
 svgBytes :: ByteString
 svgBytes = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 10 10\"><rect width=\"5\" height=\"5\"/></svg>"
@@ -151,13 +151,13 @@ blockTests =
         bad [figureOf "plugin:chart"] [("chart", "pdf", svgBytes)] "画像の形式は svg、png、jpeg のどれかです: pdf"
         bad [figureOf "plugin:Chart"] [("Chart", "svg", svgBytes)] "画像の名前が不正です: Chart"
         bad [figureOf "plugin:chart"] [("chart", "svg", svgBytes), ("chart", "svg", svgBytes)] "画像の名前が重複しています: chart"
-        let withWeb = Block callSpan Nothing (FigureBlock (Figure "plugin:chart" (Just "plugin:chart") "x" Nothing Nothing [] Nothing False))
+        let withWeb = Block callSpan Nothing (FigureBlock (Figure "plugin:chart" (Just "plugin:chart") "x" Nothing Nothing [] Nothing False False))
         bad [withWeb] [("chart", "svg", svgBytes)] "プラグインの図版は web を持てません"
         bad [Block callSpan Nothing (BulletList [ListItem Nothing [figureOf "plugin:chart"]])] [("chart", "svg", svgBytes)] "図版は出力の最上位にだけ置けます",
       -- the audit's F-26: a figure of the plugin in the caption of a figure at the top
       testCase "a caption with a figure or a list is bad output (docs/adr/0144)" $ do
         let bad bs imgs m = drawing bs imgs >>= \p -> badOutput m (callBlockCommand p "grid" [] [] callSpan)
-            captioned c = Block callSpan Nothing (FigureBlock (Figure "plugin:chart" Nothing "棒グラフ" Nothing Nothing c Nothing False))
+            captioned c = Block callSpan Nothing (FigureBlock (Figure "plugin:chart" Nothing "棒グラフ" Nothing Nothing c Nothing False False))
             para = Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])
         bad [captioned [figureOf "plugin:inner"]] [("chart", "svg", svgBytes), ("inner", "svg", svgBytes)] "図版のキャプションには段落だけを置けます"
         bad [captioned [para, Block callSpan Nothing (BulletList [ListItem Nothing [para]])]] [("chart", "svg", svgBytes)] "図版のキャプションには段落だけを置けます",

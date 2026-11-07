@@ -252,6 +252,10 @@ realProvider = optFonts (defaultOptions "")
 fakeProvider :: FontProvider
 fakeProvider = FontProvider (\_ _ _ _ -> pure (Right fakeFonts))
 
+-- | The fake fonts with the centres of the em boxes of their faces given (docs/adr/0177).
+fakeProviderCentral :: (Int -> Rational) -> FontProvider
+fakeProviderCentral central = FontProvider (\_ _ _ _ -> pure (Right fakeFonts {lfEmBoxCentral = central}))
+
 -- | Builds with no errors allowed and returns the PDF.
 miniPdf :: FontProvider -> Bool -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO BS.ByteString
 miniPdf fonts parallel style source files = do

@@ -16,6 +16,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import FunctionsSpec qualified
 import Golem.Assemble (NoteNumbering (..))
+import Golem.Assemble.Formats (MarkFormat (..), arabic, asterisksNotation, circledNotation, kanjiNotation, lowerAlphaNotation, noteSymbolsNotation)
 import Golem.Assemble.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Length qualified as L
 import Golem.Parser.SourceSettings
@@ -217,6 +218,32 @@ pluginDataTests =
   where
     parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] extra)
 
+-- | [targets.pdf] pdfa and pdfua (docs/adr ADR 0183).
+pdfConformanceTests :: TestTree
+pdfConformanceTests =
+  testGroup
+    "[targets.pdf] pdfa and pdfua (docs/adr ADR 0183)"
+    [ testCase "pdfa = \"2a\" and pdfua = \"1\" are read" $ do
+        fmap (conformance . manifestTargets) (parse "pdfa = \"2a\"\npdfua = \"1\"\n") @?= Right (Just PdfA2a, Just PdfUa1)
+        fmap (conformance . manifestTargets) (parse "pdfua = \"1\"\n") @?= Right (Nothing, Just PdfUa1)
+        fmap (conformance . manifestTargets) (parse "") @?= Right (Nothing, Nothing),
+      testCase "other values and values that are not strings are G03001" $
+        mapM_
+          (\v -> (v, codes (parse v)) @?= (v, ["G03001"]))
+          ["pdfa = \"2u\"\n", "pdfa = \"2b\"\n", "pdfa = \"4\"\n", "pdfa = true\n", "pdfua = \"2\"\n", "pdfua = 1\n"],
+      testCase "pdfa is not a key of [targets.epub]" $
+        codes (parseManifest (FileId 0) (manifestWith ["\"a.gm\""] "[targets.epub]\npdfa = \"2a\"\n")) @?= ["G03001"],
+      testCase "the span of a value of the manifest is at the value" $ do
+        let src = manifestWith ["\"a.gm\""] "[targets.pdf]\npdfa = \"2a\"\n"
+            at t = BS.length (TE.encodeUtf8 (fst (T.breakOn t src)))
+        fmap spanStart (manifestValueSpan (FileId 0) src ["targets", "pdf", "pdfa"]) @?= Just (at "\"2a\"")
+        fmap spanStart (manifestValueSpan (FileId 0) src ["metadata", "language"]) @?= Just (at "\"ja\"")
+        manifestValueSpan (FileId 0) src ["targets", "pdf", "pdfua"] @?= Nothing
+    ]
+  where
+    parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] ("[targets.pdf]\n" <> extra))
+    conformance t = (tgPdfA t, tgPdfUa t)
+
 -- | A plugin in the project, declared with path (docs/adr/0109).
 pluginPathTests :: TestTree
 pluginPathTests =
@@ -325,8 +352,12 @@ runningHeadTests =
       testCase "variables (ADR 0022)" $ do
         parseRunningFormat "{set.revision}" @?= Right [ref (RefVar ["revision"])]
         parseRunningFormat "{set.values.price}" @?= Right [ref (RefVar ["values", "price"])],
-      testCase "{{ and }} are braces (ADR 0022)" $
-        fmap (fmap rhOdd) (runningHead "content = [\"{{書名}}\"]") @?= Right (Just (one [PartText "{書名}"])),
+      testCase "{{ and }} are braces (ADR 0022), with the notice G03116 (docs/adr/0177)" $ do
+        fmap (fmap rhOdd) (runningHead "content = [\"{{書名}}\"]") @?= Right (Just (one [PartText "{書名}"]))
+        fmap (fmap rhOdd) (runningHead "content = ['\\{書名\\}']") @?= Right (Just (one [PartText "{書名}"]))
+        let notices v = map diagCode (styleNotices (FileId 0) ("[masters.a.running-head]\nposition = \"top-outside\"\ncontent = [" <> v <> "]\n"))
+        notices "\"{{x}}\"" @?= [DiagnosticCode "G03116"]
+        notices "'\\{x\\}'" @?= [],
       testCase "the vocabulary is read as formats (ADR 0022)" $ do
         fmap (fmap rhOdd) (runningHead "content = \"heading.1.short\"") @?= Right (Just (RunningLines ([PartRef (RefHeading 1 HeadShort PickFirst) False] :| [])))
         fmap (fmap rhOdd) (runningHead "content = \"title\"") @?= Right (Just (one [ref (RefMeta "title")]))
@@ -701,18 +732,13 @@ tests =
         fmap stNotesPlacement (parseStyle (FileId 0) "") @?= Right PlaceFoot
         fmap stNotesPlacement (parseStyle (FileId 0) "[notes]\nplacement = \"chapter-end\"\n") @?= Right PlaceChapterEnd
         codes (parseStyle (FileId 0) "[notes]\nchapter-end-title = \"注\"\n") @?= ["G03006"],
-      testCase "the size and format of note marks (golem-driver ADR 0025)" $ do
-        let notes src = either (const Nothing) (\s -> Just (stNotesMarkSize s, stNotesMarkFormat s)) (parseStyle (FileId 0) src)
-            sizeOf v = fst <$> notes ("[notes]\nmark-size = \"" <> v <> "\"\n")
-            formatOf v = snd <$> notes ("[notes]\nmark-format = \"" <> v <> "\"\n")
-        notes "" @?= Just (Zw (1 % 2), "*{n}")
-        sizeOf "0.65zw" @?= Just (Zw (65 % 100))
-        sizeOf "6pt" @?= parseDim "6pt"
-        sizeOf "8Q" @?= parseDim "8Q"
-        sizeOf "1zw" @?= Just (Zw 1)
-        mapM_ (\v -> codes (parseStyle (FileId 0) ("[notes]\nmark-size = \"" <> v <> "\"\n")) @?= ["G03006"]) ["0zw", "1.5zw", "abc", "0pt"]
-        mapM_ (\v -> formatOf v @?= Just v) ["注{n}", "{n})", "{n}"]
-        mapM_ (\v -> codes (parseStyle (FileId 0) ("[notes]\nmark-format = \"" <> v <> "\"\n")) @?= ["G03006"]) ["注", "{n}-{n}"],
+      testCase "the size of note marks (golem-driver ADR 0025), to be retired (docs/adr/0177)" $ do
+        let sizeOf v = either (const Nothing) (\s -> Just (stNotesMarkSize s, csSize =<< Map.lookup "note-mark" (stCharStyles s))) (parseStyle (FileId 0) ("[notes]\nmark-size = \"" <> v <> "\"\n"))
+        sizeOf "0.65zw" @?= Just (Just (Zw (65 % 100)), Just (Zw (65 % 100)))
+        sizeOf "6pt" @?= Just (parseDim "6pt", parseDim "6pt")
+        sizeOf "1zw" @?= Just (Just (Zw 1), Just (Zw 1))
+        mapM_ (\v -> codes (parseStyle (FileId 0) ("[notes]\nmark-size = \"" <> v <> "\"\n")) @?= ["G03006"]) ["0zw", "1.5zw", "abc", "0pt"],
+      noteMarkTests,
       indentTests,
       listTests,
       characterFeatureTests,
@@ -918,6 +944,7 @@ tests =
       silenceInfoTests,
       pluginDataTests,
       pluginPathTests,
+      pdfConformanceTests,
       indexStyleTests,
       hiddenFolioTests,
       findCycleTests,
@@ -1071,7 +1098,7 @@ styleTests =
         noBase (paraStyle s (Just "caption")) @?= noBase (paraStyle s Nothing)
         noBase (paraStyle s (Just "sidenote")) @?= noBase (paraStyle s Nothing)
         Map.keys (stParaStyles s) @?= ["body", "caption", "code", "sidenote", "verse"]
-        Map.keys (stCharStyles s) @?= ["bold", "code", "italic", "strong", "url"],
+        Map.keys (stCharStyles s) @?= ["bold", "code", "italic", "note-mark", "strong", "url"],
       testCase "a user definition overrides the keys it writes" $ do
         s <- parsed "[paragraph-styles.caption]\nsize = \"0.8zw\"\n"
         (paraStyle s (Just "caption") >>= psSize) @?= Just (Zw (4 / 5))
@@ -1118,6 +1145,65 @@ styleTests =
     messages = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
     hasAll ms needles = assertBool (show ms) (not (null ms) && all (\n -> any (n `T.isInfixOf`) ms) needles)
 
+-- | The marks of notes: their format, their character styles and mark-size (docs/adr/0177).
+noteMarkTests :: TestTree
+noteMarkTests =
+  testGroup
+    "the marks of notes (docs/adr/0177)"
+    [ testCase "without [notes]: *{n} in Arabic, note-mark and no character style for the body mark" $
+        case parseStyle (FileId 0) "" of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            stNotesMarkFormat s @?= MarkFormat "*" arabic ""
+            stNotesMarkStyle s @?= "note-mark"
+            stNotesBodyMarkStyle s @?= Nothing
+            stNotesMarkSize s @?= Nothing
+            (csSize =<< Map.lookup "note-mark" (stCharStyles s)) @?= Just (Zw (1 % 2)),
+      testCase "the formats of mark-format" $ do
+        let formatOf v = either (const Nothing) (Just . stNotesMarkFormat) (parseStyle (FileId 0) ("[notes]\nmark-format = " <> v <> "\n"))
+        formatOf "\"{n}\"" @?= Just (MarkFormat "" arabic "")
+        formatOf "'（{n:kanji}）'" @?= Just (MarkFormat "（" kanjiNotation "）")
+        formatOf "\"{n:circled}\"" @?= Just (MarkFormat "" circledNotation "")
+        formatOf "\"{n:asterisks}\"" @?= Just (MarkFormat "" asterisksNotation "")
+        formatOf "\"{n:note-symbols}\"" @?= Just (MarkFormat "" noteSymbolsNotation "")
+        formatOf "'\\{{n}\\}'" @?= Just (MarkFormat "{" arabic "}")
+        formatOf "\"注{n}\"" @?= Just (MarkFormat "注" arabic ""),
+      testCase "wrong formats of mark-format are G03006" $
+        mapM_
+          (\v -> codes (parseStyle (FileId 0) ("[notes]\nmark-format = " <> v <> "\n")) @?= ["G03006"])
+          ["\"注\"", "\"{n}-{n}\"", "\"{x}\"", "\"{n:x}\"", "\"{n}{x}\"", "\"{n\"", "\"{{n}}\"", "'{n}\\'"],
+      testCase "mark-style and body-mark-style take any character style" $ do
+        let src =
+              "[character-styles.mark]\nsize = \"0.6zw\"\nbaseline-shift = \"0.1zw\"\ntracking = 50\n"
+                <> "[notes]\nmark-style = \"mark\"\nbody-mark-style = \"code\"\n"
+        case parseStyle (FileId 0) src of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            stNotesMarkStyle s @?= "mark"
+            stNotesBodyMarkStyle s @?= Just "code"
+        codes (parseStyle (FileId 0) "[character-styles.mark]\ntracking = 50\n[notes]\nmark-style = \"mark\"\nbody-mark-style = \"mark\"\n") @?= [],
+      testCase "a character style that does not exist is G03013" $ do
+        codes (parseStyle (FileId 0) "[notes]\nmark-style = \"nothing\"\n") @?= ["G03013"]
+        codes (parseStyle (FileId 0) "[notes]\nbody-mark-style = \"nothing\"\n") @?= ["G03013"],
+      testCase "mark-size is G03117 and is the size of note-mark; with a mark-style of a size it is G03006" $ do
+        let src = "[notes]\nmark-size = \"0.6zw\"\n"
+        [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- styleNotices (FileId 0) src] @?= [(DiagnosticCode "G03117", Notice, 20)]
+        fmap (\s -> csSize =<< Map.lookup "note-mark" (stCharStyles s)) (first (const ()) (parseStyle (FileId 0) src)) @?= Right (Just (Zw (6 % 10)))
+        let both = "[character-styles.base]\nsize = \"0.6zw\"\n[character-styles.mark]\nbased-on = \"base\"\ncolor = \"red\"\n[color.swatches.red]\ncmyk = [0, 100, 100, 0]\n[notes]\nmark-size = \"0.5zw\"\nmark-style = \"mark\"\n"
+        codes (parseStyle (FileId 0) both) @?= ["G03006"]
+        let ms = either (map diagMessage) (const []) (parseStyle (FileId 0) both)
+        assertBool (show ms) (any ("[notes] の mark-size と、size を持つ mark-style mark は一緒に書けません" `T.isInfixOf`) ms)
+        -- a mark-style without a size takes mark-size
+        codes (parseStyle (FileId 0) "[character-styles.mark]\nsynthetic-bold = true\n[notes]\nmark-size = \"0.5zw\"\nmark-style = \"mark\"\n") @?= [],
+      testCase "the number formats read as the other formats" $ do
+        codes (parseStyle (FileId 0) "[headings.1]\nnumber = \"第{n:kanji}章\"\n") @?= []
+        codes (parseStyle (FileId 0) "[headings.1]\nnumber = \"{chapter:upper-roman}\"\n") @?= []
+        codes (parseStyle (FileId 0) "[figures]\nnumber = \"図{n:circled}\"\n") @?= []
+        codes (parseStyle (FileId 0) "[headings.1]\nnumber = \"{n}}\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[headings.1]\nnumber = '{n}\\'\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[headings.1]\nnumber = \"{n:x}\"\n") @?= ["G03006"]
+    ]
+
 -- | [lists] (golem-driver ADR 0013).
 listTests :: TestTree
 listTests =
@@ -1128,7 +1214,7 @@ listTests =
           Left ds -> assertFailure (show ds)
           Right s -> do
             lsBullets (stLists s) @?= Just ("・" :| ["◦"])
-            lsNumbers (stLists s) @?= Just (NumberFormat "" NsBook "." :| [NumberFormat "(" NsLowerAlpha ")"])
+            lsNumbers (stLists s) @?= Just (NumberFormat "" NsBook "." :| [NumberFormat "(" (NsNotation lowerAlphaNotation) ")"])
             lsGap (stLists s) @?= Just (Zw (1 / 2)),
       testCase "without [lists]: no bullets, no numbers and no gap (golem-driver ADR 0044)" $
         case parseStyle (FileId 0) "" of
@@ -1157,7 +1243,22 @@ listTests =
       testCase "literal braces in a number format" $
         case parseStyle (FileId 0) "[lists]\nnumbers = [\"{{{n}}}\"]\n" of
           Left ds -> assertFailure (show ds)
-          Right s -> lsNumbers (stLists s) @?= Just (NumberFormat "{" NsBook "}" :| [])
+          Right s -> lsNumbers (stLists s) @?= Just (NumberFormat "{" NsBook "}" :| []),
+      testCase "the old forms read as before, with the notices G03114 and G03115 (docs/adr/0177)" $ do
+        let numbersOf v = either (const Nothing) (lsNumbers . stLists) (parseStyle (FileId 0) ("[lists]\nnumbers = [" <> v <> "]\n"))
+            noticesOf v = map diagCode (styleNotices (FileId 0) ("[lists]\nnumbers = [" <> v <> "]\n"))
+        numbersOf "\"{{{n}}}\"" @?= Just (NumberFormat "{" NsBook "}" :| [])
+        noticesOf "\"{{{n}}}\"" @?= [DiagnosticCode "G03114"]
+        numbersOf "\"{一}\"" @?= numbersOf "\"{n:kanji}\""
+        noticesOf "\"{一}\"" @?= [DiagnosticCode "G03115"]
+        numbersOf "'\\{{n:kanji}\\}'" @?= Just (NumberFormat "{" (NsNotation kanjiNotation) "}" :| [])
+        noticesOf "'\\{{n:kanji}\\}'" @?= []
+        noticesOf "\"{n:kanji}\"" @?= []
+        map diagMessage (styleNotices (FileId 0) "[lists]\nnumbers = [\"{一}.\"]\n") @?= ["[lists] の numbers の {一} は廃止予定です。{n:kanji} と書きます: {一}."],
+      testCase "[lists] numbers takes the notations of the table (docs/adr/0177)" $
+        case parseStyle (FileId 0) "[lists]\nnumbers = [\"{n:asterisks}\"]\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> lsNumbers (stLists s) @?= Just (NumberFormat "" (NsNotation asterisksNotation) "" :| [])
     ]
 
 -- | Paragraph indents (docs/adr ADR 0006).

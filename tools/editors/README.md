@@ -36,6 +36,7 @@ semantic tokens の型ごとに、次のスコープと捕捉の名前で書く�
 | `function` | `entity.name.function` | `@function` |
 | `decorator` | `entity.name.tag` | `@attribute` |
 | `parameter` | `variable.parameter` | `@variable.parameter` |
+| `property` | `meta.key`（`.gm` の式のハッシュのキー） | なし |
 | `variable` | `variable.other` | `@variable` |
 | `type`、`typeParameter` | `entity.name.type` | `@type` |
 | `enumMember` | `constant.other` | `@constructor` |
@@ -54,7 +55,9 @@ TextMate の文法は行ごとの正規表現なので、次の点で粗い。
 
 ほかに、二つの形式とも、次の点で semantic tokens と違う。
 
-- `.gm` の `[= book.total(xs)]` の名前空間付きの呼び出しは、`book` と `total` の両方を `function` にする。semantic tokens は最初の `book` だけを `function` にする。
+- `.gm` のインラインのコマンドの `[`、`:`、`]` と、式の `.`、括弧、`,`、`:`、閉じの `]` に色を付けない。semantic tokens は `operator` にする（[golem-lsp ADR 0007](../../docs/golem-lsp/adr/0007-semantic-tokens-for-command-punctuation.md)）。
+- `.gm` のコマンドと式の中の空白、キーワード引数と `@set` の `=`、`*[` と `**[` とその閉じの `]` に色を付けない。semantic tokens は `operator` にする（[golem-lsp ADR 0008](../../docs/golem-lsp/adr/0008-semantic-tokens-for-whitespace-and-remaining-punctuation.md)）。
+- `.gm` の式のハッシュのキーの名前は、semantic tokens では `property` になる。tree-sitter の文法は色を付けず、TextMate の文法は `meta.key` にする。`@set` の名前は、semantic tokens では修飾子 `declaration` の付いた `variable` になる。定義リストの `=:` は、semantic tokens では `keyword` になる（[golem-lsp ADR 0008](../../docs/golem-lsp/adr/0008-semantic-tokens-for-whitespace-and-remaining-punctuation.md)）。
 
 ## tree-sitter の文法と Golem の構文解析の違い
 

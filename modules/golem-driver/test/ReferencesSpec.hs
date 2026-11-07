@@ -16,7 +16,7 @@ import Golem.Bibliography (EntryPart (..), entryText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLines, tocPage)
-import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..), glueRatio, placeLine)
+import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..), glueRatio, noLeaf, placeLine)
 import Golem.Layout.Look (Look (..), noBoxSource, plainLook)
 import Golem.Layout.Paginate (ColumnSet (..), PageOut (..), Slotted (..), labelPages, markPages)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, typeAreaFor)
@@ -308,9 +308,11 @@ bibliographyFormatTests =
     testCase "PDF: the URL of an entry is in the character style url, in a link (docs/adr ADR 0182)" $ do
       (_, m) <- bibPartsOf "bibliography = [\"refs.json\"]" [("refs.json", urlRefsJson)]
       case bibliographyLines m [("jlreq", 1)] of
-        [[Text _ before, Link _ u0 [CharStyle _ "url" [Text _ u]], Text _ rest]] -> do
+        -- the number its own inline: the label of the entry in the structure tree (docs/adr ADR 0183)
+        [[Text _ number, Text _ before, Link _ u0 [CharStyle _ "url" [Text _ u]], Text _ rest]] -> do
+          number @?= "[1] "
           u0 @?= u
-          before @?= "[1] 「日本語組版処理の要件」、W3C、2020、"
+          before @?= "「日本語組版処理の要件」、W3C、2020、"
           u @?= "https://www.w3.org/TR/jlreq/"
           rest @?= "（2026年10月16日閲覧）。"
         other -> assertFailure (show other)
@@ -322,7 +324,7 @@ urlRefsJson = TE.encodeUtf8 "[{\"id\": \"jlreq\", \"type\": \"webpage\", \"title
 
 -- | A line of one box of a width (a page number in the tests of tocPage).
 oneBoxLine :: Sp -> Line
-oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0 [] 0 0 noBoxSource)] 0 w 0 (0, 0) False (0, 0)
+oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)] 0 w 0 (0, 0) False (0, 0)
 
 -- | fs = 10pt, measure = 120pt, W = 15pt, g = 5pt, u = 10pt.
 tocGeom :: Bool -> TocGeometry

@@ -29,6 +29,7 @@ module Golem.Lsp.Features
     encodingKind,
     semanticTokens,
     semanticTokensOf,
+    commandBytes,
     emetSemanticTokens,
   )
 where
@@ -888,6 +889,41 @@ semanticTokens enc text = semanticTokensOf enc text (fst (parse (FileId 0) text)
 semanticTokensOf :: Encoding -> Text -> C.Node -> [SemanticTokenAbsolute]
 semanticTokensOf enc text root = placeTokens enc text (classify 0 root)
 
+{- | The byte ranges of a .gm text that semantic tokens cover (golem-lsp
+ADR 0008): the CST tokens whose parent is a command or an expression node,
+without their newlines, the indentation of a block command, and errors.
+The contents of a prose slot have the slot as their parent and are not in them.
+-}
+commandBytes :: Text -> [(Int, Int)]
+commandBytes text = concatMap (filter (uncurry (<)) . withoutNewlines) (walk 0 (fst (parse (FileId 0) text)))
+  where
+    bytes = TE.encodeUtf8 text
+    walk start n = go start True (C.nodeChildren n)
+      where
+        parent = C.nodeKind n
+        go _ _ [] = []
+        go off first (e : es) =
+          let w = C.elementWidth e
+           in case e of
+                C.ElemNode m -> walk off m <> go (off + w) False es
+                C.ElemToken (C.Token k _)
+                  | parent `elem` commandNodes || parent `elem` expressionNodes,
+                    k `notElem` [C.KNewline, C.KError],
+                    not (first && parent == C.NBlockCommand && k == C.KWhitespace) ->
+                      (off, off + w) : go (off + w) False es
+                  | otherwise -> go (off + w) False es
+    withoutNewlines (s, e) = case BS.elemIndex 10 (BS.take (e - s) (BS.drop s bytes)) of
+      Just i -> (s, s + i) : withoutNewlines (s + i + 1, e)
+      Nothing -> [(s, e)]
+
+-- | The nodes of commands and their arguments (golem-lsp ADR 0008).
+commandNodes :: [C.SyntaxKind]
+commandNodes = [C.NInlineCommand, C.NBlockCommand, C.NArgument, C.NKeywordArgument, C.NSplatArgument]
+
+-- | The nodes of expressions (golem-lsp ADR 0008).
+expressionNodes :: [C.SyntaxKind]
+expressionNodes = [C.NExpr, C.NBinaryExpr, C.NUnaryExpr, C.NCallExpr, C.NLiteral, C.NVarExpr, C.NArrayExpr, C.NHashExpr, C.NHashEntry, C.NParenExpr, C.NRangeExpr]
+
 {- | The semantic tokens of a .emet text (docs/adr/0170): the tokens of its
 lossless syntax tree, placed as those of a .gm.
 -}
@@ -929,32 +965,50 @@ placeTokens enc text = concatMap place
       Just i -> (s, s + i) : lineParts (s + i + 1) e
       Nothing -> [(s, e)]
 
--- | (start, end, type, modifiers) of each highlighted token under a node at the offset.
+{- | (start, end, type, modifiers) of each highlighted token under a node at
+the offset. A node inside an expression (NExpr, a splat argument, or an
+expression node) gives its punctuation the operator type (golem-lsp ADR 0007,
+golem-lsp ADR 0008); a prose slot or a command inside it does not.
+-}
 classify :: Int -> C.Node -> [(Int, Int, SemanticTokenTypes, [SemanticTokenModifiers])]
-classify start n = go start False False (C.nodeChildren n)
+classify = classifyIn False
+
+classifyIn :: Bool -> Int -> C.Node -> [(Int, Int, SemanticTokenTypes, [SemanticTokenModifiers])]
+classifyIn outer start n = go start True [] False (C.nodeChildren n)
   where
     parent = C.nodeKind n
-    go _ _ _ [] = []
-    go off ident word (e : es) =
+    inExpr = (outer || parent `elem` (C.NSplatArgument : expressionNodes)) && parent `notElem` [C.NProseSlot, C.NInlineCommand]
+    go _ _ _ _ [] = []
+    go off first idents word (e : es) =
       let w = C.elementWidth e
-          rest k = go (off + w) (ident || k == C.KIdent) (word || k == C.KWord) es
        in case e of
-            C.ElemNode m -> classify off m <> go (off + w) ident word es
-            C.ElemToken (C.Token k _) ->
-              maybe [] (\(ty, ms) -> [(off, off + w, ty, ms)]) (tokenType parent ident word k) <> rest k
+            C.ElemNode m -> classifyIn inExpr off m <> go (off + w) False idents word es
+            C.ElemToken (C.Token k t) ->
+              maybe [] (\(ty, ms) -> [(off, off + w, ty, ms)]) (tokenType (Place parent inExpr first idents word) k)
+                <> go (off + w) False (if k == C.KIdent then idents <> [t] else idents) (word || k == C.KWord) es
 
-{- | The type of a token from its kind, its parent's kind, and whether an
-identifier or a word came before it under the same parent.
+{- | Where a token is: its parent's kind, whether it is inside an expression,
+whether it is the first child, the identifiers before it, and whether a word
+came before it under the same parent.
 -}
-tokenType :: C.SyntaxKind -> Bool -> Bool -> C.SyntaxKind -> Maybe (SemanticTokenTypes, [SemanticTokenModifiers])
-tokenType parent ident word = \case
+data Place = Place C.SyntaxKind Bool Bool [Text] Bool
+
+-- | The type of a token from its kind and its place.
+tokenType :: Place -> C.SyntaxKind -> Maybe (SemanticTokenTypes, [SemanticTokenModifiers])
+tokenType (Place parent inExpr first idents word) = \case
   C.KComment -> plain SemanticTokenTypes_Comment
   C.KProofComment -> Just (SemanticTokenTypes_Comment, [SemanticTokenModifiers_Modification])
   C.KAt | parent == C.NBlockCommand -> plain SemanticTokenTypes_Decorator
   C.KIdent
-    | parent == C.NBlockCommand, not ident -> plain SemanticTokenTypes_Decorator
-    | parent `elem` [C.NInlineCommand, C.NCallExpr], not ident -> plain SemanticTokenTypes_Function
+    | parent == C.NBlockCommand, null idents -> plain SemanticTokenTypes_Decorator
+    -- the name of @set (golem-lsp ADR 0008)
+    | parent == C.NBlockCommand, idents == ["set"] -> Just (SemanticTokenTypes_Variable, [SemanticTokenModifiers_Declaration])
+    | parent == C.NInlineCommand, null idents -> plain SemanticTokenTypes_Function
+    -- both names of ns.f (golem-lsp ADR 0007)
+    | parent == C.NCallExpr -> plain SemanticTokenTypes_Function
     | parent == C.NVarExpr -> plain SemanticTokenTypes_Variable
+    -- the key of a hash (golem-lsp ADR 0008)
+    | parent == C.NHashEntry -> plain SemanticTokenTypes_Property
   C.KWord
     | parent == C.NKeywordArgument -> plain (if word then SemanticTokenTypes_String else SemanticTokenTypes_Parameter)
     | parent == C.NArgument -> plain SemanticTokenTypes_String
@@ -971,10 +1025,28 @@ tokenType parent ident word = \case
   C.KText | parent == C.NHeading -> plain SemanticTokenTypes_Namespace
   C.KDash | parent == C.NListItem -> plain SemanticTokenTypes_Keyword
   C.KPlus | parent == C.NListItem -> plain SemanticTokenTypes_Keyword
-  C.KEquals | parent == C.NDefTerm -> plain SemanticTokenTypes_Keyword
+  C.KEquals
+    | parent == C.NDefTerm -> plain SemanticTokenTypes_Keyword
+    -- the equals signs of keyword arguments and of @set (golem-lsp ADR 0008)
+    | parent `elem` [C.NKeywordArgument, C.NBlockCommand] -> plain SemanticTokenTypes_Operator
+  -- the mark of a new definition (golem-lsp ADR 0008)
+  C.KNewDefMark -> plain SemanticTokenTypes_Keyword
   C.KPipe -> plain SemanticTokenTypes_Operator
   C.KDelim -> plain SemanticTokenTypes_Operator
   C.KFence -> plain SemanticTokenTypes_Keyword
+  -- \*[ and **[ and their closing bracket (golem-lsp ADR 0008)
+  k | parent == C.NSplatArgument, k `elem` [C.KStar, C.KRBracket] -> plain SemanticTokenTypes_Operator
+  -- the spaces of commands and expressions, without the indentation of a
+  -- block command (golem-lsp ADR 0008)
+  C.KWhitespace
+    | parent `elem` commandNodes || parent `elem` expressionNodes,
+      not (first && parent == C.NBlockCommand) ->
+        plain SemanticTokenTypes_Operator
+  -- the brackets and the colon of an inline command (golem-lsp ADR 0007)
+  k | parent == C.NInlineCommand, k `elem` [C.KLBracket, C.KColon, C.KRBracket] -> plain SemanticTokenTypes_Operator
+  -- the punctuation of an expression (golem-lsp ADR 0007)
+  k | inExpr, k `elem` exprPunctuation -> plain SemanticTokenTypes_Operator
   _ -> Nothing
   where
     plain t = Just (t, [])
+    exprPunctuation = [C.KDot, C.KLParen, C.KRParen, C.KComma, C.KLBracket, C.KRBracket, C.KLBrace, C.KRBrace, C.KColon]

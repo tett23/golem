@@ -43,6 +43,7 @@ import LinkSpec (linkTests)
 import PaginateSpec (paginateTests)
 import PunctuationSpec (punctuationTests)
 import RuleAreaSpec (ruleAreaTests)
+import StructureSpec (structureTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
@@ -52,14 +53,14 @@ main :: IO ()
 main = defaultMain tests
 
 box :: Sp -> Item
-box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [] 0 0 noBoxSource)
+box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
 
 -- | Words of the given widths separated by interword glue.
 paragraph :: [Sp] -> [Item]
 paragraph ws = concat [box w : [Glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 refBox :: Text -> Sp -> Item
-refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource)
+refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
 
 knuthPlassWords, knuthPlassLog :: FilePath
 knuthPlassWords = "test/data/knuth-plass/frog-king.words"
@@ -220,6 +221,12 @@ legal items =
 nid :: Int -> NoteId
 nid k = NoteId (mkSpan (FileId 0) k (k + 1)) 0
 
+-- | Items with the leaves of their boxes cleared (docs/adr ADR 0183).
+withoutLeaves :: [Item] -> [Item]
+withoutLeaves = map $ \case
+  Box w c -> Box w c {bcLeaf = noLeaf}
+  x -> x
+
 noteMarkTests :: [TestTree]
 noteMarkTests =
   [ testCase "a note mark joins the character before it, without spacing" $ do
@@ -232,30 +239,59 @@ noteMarkTests =
           boxKind m @?= KindNoteMark
           [bcText c | Box _ c <- rest] @?= ["字"]
           -- after the mark, what comes between 漢 and 字 without it: no spacing of Latin text
-          rest @?= drop 1 (compose (defaultComposeEnv fs) "漢字")
+          -- the leaves aside: the text after a mark is a leaf of its own (docs/adr ADR 0183)
+          withoutLeaves rest @?= drop 1 (compose (defaultComposeEnv fs) "漢字")
         other -> assertFailure (show other),
-    testCase "the width of a mark: its advance at half the size across, half the size down" $ do
-      let env = (defaultComposeEnv fs) {ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == Sp (unSp fs `div` 2) then 3 / 5 else 1)}
+    testCase "the width of a mark: its advance at half the size across; its parts along the line in vertical text" $ do
+      let half = Sp (unSp fs `div` 2)
+          env = (defaultComposeEnv fs) {ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == half then 3 / 5 else 1)}
           markWidth e = [w | Box w c <- fst (composeInlines e [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark]
-      markWidth env @?= [Sp (round (2 * 3 / 5 * toRational (unSp fs `div` 2) :: Rational))]
-      markWidth env {ceVertical = True} @?= [Sp (unSp fs `div` 2)],
-    testCase "mark-size 0.65zw: the box is the advance at that size across, the size down (golem-driver ADR 0025)" $ do
+      markWidth env @?= [Sp (round (2 * 3 / 5 * toRational (unSp half) :: Rational))]
+      -- \* turned as Latin text, 1 tate-chu-yoko an em of the mark (docs/adr/0177)
+      markWidth env {ceVertical = True} @?= [Sp (round (3 / 5 * toRational (unSp half) :: Rational)) + half],
+    testCase "the look of mark-style: the box is measured in its face and size (docs/adr/0177)" $ do
       let m = dimToSp fs (Zw (65 % 100))
-          env = (defaultComposeEnv fs) {ceNoteMarkSize = Zw (65 % 100), ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == m then 3 / 5 else 1)}
-          markWidth e = [w | Box w c <- fst (composeInlines e [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark]
-      markWidth env @?= [Sp (round (2 * 3 / 5 * toRational (unSp m) :: Rational))]
-      markWidth env {ceVertical = True} @?= [m],
+          markLook lk = lk {lkSize = m, lkFace = "gothic", lkLatinFace = "gothic"}
+          env = (defaultComposeEnv fs) {ceNoteMarkLook = markLook, ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkFace lk == "gothic" then 3 / 5 else 1)}
+          marks e = [(w, bcLook c, mbPlace <$> bcMark c) | Box w c <- fst (composeInlines e [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark]
+      marks env @?= [(Sp (round (2 * 3 / 5 * toRational (unSp m) :: Rational)), markLook look0, Just look0)],
+    testCase "the tracking of mark-style, after each character but the last (docs/adr/0177)" $ do
+      let m = Sp (unSp fs `div` 2)
+          env = (defaultComposeEnv fs) {ceNoteMarkLook = \lk -> lk {lkSize = m, lkTracking = 100}, ceWordAdvance = \_ t -> fromIntegral (T.length t)}
+          tr = Sp (round (toRational (unSp m) / 10))
+          markWidth e = [w | Box w c <- fst (composeInlines e [sp0 "漢", note 12, sp0 "字"]), boxKind c == KindNoteMark]
+      markWidth env @?= [3 * m + 2 * tr],
     testCase "an absolute mark size is kept, but not above the size of the text (golem-driver ADR 0025)" $ do
       let q11 = Sp (round (11 / 4 * 72 * 65536 / (254 / 10) :: Rational)) :: Sp
       noteMarkSize (Abs (6 * 65536)) q11 @?= 6 * 65536
       noteMarkSize (Abs (20 * 65536)) q11 @?= q11
       noteMarkSize (Zw (1 % 2)) fs @?= Sp (unSp fs `div` 2),
     testCase "mark-format 注{n}: the box of the mark reads 注1 (golem-driver ADR 0025)" $ do
-      let env = (defaultComposeEnv fs) {ceNoteMarkFormat = "注{n}"}
+      fmt <- either (assertFailure . T.unpack) pure (parseMarkFormat "注{n}")
+      let env = (defaultComposeEnv fs) {ceNoteMarkFormat = fmt}
       [bcText c | Box _ c <- fst (composeInlines env [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark] @?= ["注1"],
-    testCase "a numbered sidenote mark takes mark-size and only its number (golem-driver ADR 0025)" $ do
+    testCase "mark-format （{n:kanji}）: the box of note 3 reads （三） (docs/adr/0177)" $ do
+      fmt <- either (assertFailure . T.unpack) pure (parseMarkFormat "（{n:kanji}）")
+      let env = (defaultComposeEnv fs) {ceNoteMarkFormat = fmt}
+      [bcText c | Box _ c <- fst (composeInlines env [sp0 "漢", note 3, sp0 "字"]), boxKind c == KindNoteMark] @?= ["（三）"],
+    testCase "a vertical mark: its characters along the line, an Arabic number of two digits tate-chu-yoko (docs/adr/0177)" $ do
+      fmt <- either (assertFailure . T.unpack) pure (parseMarkFormat "（{n}）")
+      let m = Sp (unSp fs `div` 2)
+          turned = Sp (round (3 / 2 * toRational (unSp m) :: Rational))
+          env = (defaultComposeEnv fs) {ceNoteMarkFormat = fmt, ceVertical = True, ceAdvance = \_ _ -> 1, ceWordAdvance = \_ t -> fromIntegral (T.length t) / 2}
+          marks n = [(w, mbParts <$> bcMark c) | Box w c <- fst (composeInlines env [sp0 "漢", note n, sp0 "字"]), boxKind c == KindNoteMark]
+      marks 12 @?= [(3 * m, Just [(fromEnum KindText, "（", 0), (fromEnum KindTcy, "12", m), (fromEnum KindText, "）", 2 * m)])]
+      marks 123 @?= [(m + turned + m, Just [(fromEnum KindText, "（", 0), (fromEnum KindRotated, "123", m), (fromEnum KindText, "）", m + turned)])],
+    testCase "the mark at the start of a note body in vertical text: 12 tate-chu-yoko, 123 turned Latin (docs/adr/0177)" $ do
+      arabic <- either (assertFailure . T.unpack) (pure . mfNotation) (parseMarkFormat "{n}")
+      let env = (defaultComposeEnv fs) {ceVertical = True}
+          kinds n = [(bcText c, boxKind c) | Box _ c <- fst (composeInlines env (markInlines (mkSpan (FileId 0) 0 1) (markParts True "" arabic n "")))]
+      kinds 12 @?= [("12", KindTcy)]
+      kinds 123 @?= [("123", KindRotated)],
+    testCase "a numbered sidenote mark takes the look of mark-style and only its number (golem-driver ADR 0025, docs/adr/0177)" $ do
+      fmt <- either (assertFailure . T.unpack) pure (parseMarkFormat "注{n:kanji}")
       let m = dimToSp fs (Zw (65 % 100))
-          env = (defaultComposeEnv fs) {ceNoteMarkSize = Zw (65 % 100), ceNoteMarkFormat = "注{n}", ceSidenoteMarker = MarkerNumber, ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == m then 3 / 5 else 1)}
+          env = (defaultComposeEnv fs) {ceNoteMarkLook = \lk -> lk {lkSize = m}, ceNoteMarkFormat = fmt, ceSidenoteMarker = MarkerNumber, ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == m then 3 / 5 else 1)}
           sn = Sidenote (mkSpan (FileId 0) 3 9) 2 [sp0 "注"]
       [(bcText c, w) | Box w c <- fst (composeInlines env [sp0 "漢", sn, sp0 "字"]), boxKind c == KindNoteMark] @?= [("2", Sp (round (3 / 5 * toRational (unSp m) :: Rational)))],
     testCase "the spacing of the pair around the mark comes after it" $ do
@@ -263,7 +299,7 @@ noteMarkTests =
           without = compose env "」あ"
           with = fst (composeInlines env [sp0 "」", note 1, sp0 "あ"])
           afterMark = drop 1 (dropWhile (\case Box _ c -> boxKind c /= KindNoteMark; _ -> True) with)
-      afterMark @?= drop 1 without,
+      withoutLeaves afterMark @?= drop 1 without,
     testCase "the mark of a paragraph start has no leading space, its line end edge is 0" $ do
       let with = fst (composeInlines (defaultComposeEnv fs) [note 1, sp0 "「あ」"])
           without = compose (defaultComposeEnv fs) "「あ」"
@@ -336,6 +372,7 @@ tests =
       codeSpaceTests,
       urlBreakTests,
       linkTests,
+      structureTests,
       combiningTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
@@ -697,12 +734,12 @@ tests =
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
             ws <- forAll (Gen.list (Range.linear 3 12) (Sp <$> Gen.integral (Range.linear 20 70)))
-            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource) | w <- ws] `interleave` Glue 6 3 2 <> finish
+            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | w <- ws] `interleave` Glue 6 3 2 <> finish
                 r = breakParagraph defaultParams {pExpansion = Just (20, 5)} (const 150) items
             mapM_ (\l -> assert (abs (lineExpansion l) <= 20 && lineExpansion l `mod` 5 == 0)) (brLines r),
           testCase "expansion lowers the spread of adjustment ratios" $ do
             let ws = [23, 41, 37, 19, 52, 33, 28, 45, 31, 26, 39, 22, 48, 35, 29, 41]
-                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource) | w <- ws] `interleave` Glue 600 300 200 <> finish
+                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | w <- ws] `interleave` Glue 600 300 200 <> finish
                 variance ps =
                   let rs = map glueRatio (init (brLines (breakParagraph ps (const 15000) items)))
                       m = sum rs / fromIntegral (length rs)
@@ -1300,10 +1337,11 @@ characterFeatureTests =
           gluesOf e = [w | Glue w _ _ <- take 3 (compose e "abc def")]
       wordBoxes env @?= [(w + 3 * tenth, negate tenth) | (w, _) <- wordBoxes plain]
       gluesOf env @?= [w + tenth | w <- gluesOf plain],
-    testCase "ruby, tate-chu-yoko and note marks get no tracking" $ do
+    testCase "ruby and tate-chu-yoko get no tracking; a note mark gets it after each character but the last (docs/adr/0177)" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
+          half = Sp (unSp fs `div` 2)
       [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Tcy sp "12"])] @?= [(fs, 0)]
-      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Note sp 1 []])] @?= [(Sp (unSp fs `div` 2), 0)],
+      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Note sp 1 []])] @?= [(half + Sp (unSp half `div` 10), 0)],
     testCase "with tracking, the last box of every line ends at the measure" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
           items = compose env (T.replicate 40 "あ")
@@ -1437,7 +1475,7 @@ rubyOf segs = Ruby sp () [RubySegment [Text sp b] r | (b, r) <- segs]
 
 -- | A box with edges (the overhang of a ruby).
 edgeBox :: Sp -> (Sp, Sp) -> Item
-edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [] 0 0 noBoxSource)
+edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [] 0 0 noBoxSource Nothing noLeaf 0)
 
 -- | The start and end of each box of a set line.
 boxSpans :: Line -> [(Sp, Sp)]
