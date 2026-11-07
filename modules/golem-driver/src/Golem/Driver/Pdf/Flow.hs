@@ -1070,7 +1070,7 @@ composeEnv style geom fonts assumed look =
             Just "none" -> MarkerNone
             _ -> MarkerNumber,
           -- Latin words: US English patterns (golem-layout ADR 0001)
-          cePatterns = Just englishUS,
+          cePatterns = const (Just englishUS),
           -- the set of body; a paragraph, a caption and a sidenote take their style's (docs/adr ADR 0019)
           ceAkiSet = akiSetOf style Nothing,
           -- the text of note marks (golem-driver ADR 0025) and their character style (docs/adr/0177)

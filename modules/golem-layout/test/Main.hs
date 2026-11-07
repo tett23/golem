@@ -39,6 +39,7 @@ import Hedgehog.Range qualified as Range
 import InseparableSpec (inseparableTests)
 import KnuthPlassReference
 import LineBreakingSpec (lineBreakingTests)
+import LangSpec (langTests)
 import LinkSpec (linkTests)
 import PaginateSpec (paginateTests)
 import PunctuationSpec (punctuationTests)
@@ -337,7 +338,7 @@ stripVs = \case
 
 -- | The environment with the bundled US English patterns.
 enUS :: ComposeEnv
-enUS = (defaultComposeEnv fs) {cePatterns = Just englishUS}
+enUS = (defaultComposeEnv fs) {cePatterns = const (Just englishUS)}
 
 -- | The composed items without the paragraph end: box texts and penalties.
 shape :: [Item] -> [String]
@@ -372,6 +373,7 @@ tests =
       codeSpaceTests,
       urlBreakTests,
       linkTests,
+      langTests,
       structureTests,
       combiningTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
@@ -602,7 +604,7 @@ tests =
             hyphenate englishUS "project" @?= ["project"]
             hyphenate englishUS "associates" @?= ["as", "so", "ciates"],
           testCase "composition offers flagged hyphen penalties inside words" $ do
-            let env = (defaultComposeEnv fs) {cePatterns = Just englishUS}
+            let env = (defaultComposeEnv fs) {cePatterns = const (Just englishUS)}
             length [() | Penalty _ 50 (PatternHyphen _) <- compose env "hyphenation"] @?= 2
         ],
       testGroup
@@ -1825,7 +1827,7 @@ codeTests =
       map poSlots (paginate 1 5 [FParagraph (ids 0 2), FCode g 0 1 True (ids 10 5)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SCode 10 2 3)], [(0, SCode 12 3 3)]]
       map poSlots (paginate 1 5 [FParagraph (ids 0 2), FCode g 0 1 False (ids 10 5)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SCode 10 3 3)], [(0, SCode 13 2 2)]],
     testCase "code: breaks only at spaces and after a slash, with no hyphen" $ do
-      let env = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True}, cePatterns = Just englishUS}
+      let env = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True}, cePatterns = const (Just englishUS)}
           its = compose env "modules/golem-driver/Pdf.hs"
       [h | Penalty _ p h <- its, abs p < infPenalty] @?= [NoHyphen, NoHyphen]
       [t | Box _ c <- its, let { t = bcText c }] @?= ["modules/", "golem-driver/", "Pdf.hs"]
@@ -1876,14 +1878,14 @@ codeTests =
       assertBool "not overfull" (not (any lineOverfull (brLines r))),
     -- golem-doc ADR 0005; a break after the dot too (golem-layout ADR 0018)
     testCase "url: breaks after the last slash of a run and at spaces, no hyphenation" $ do
-      let env = (defaultComposeEnv fs) {ceLook = look0 {lkUrl = True}, cePatterns = Just englishUS}
+      let env = (defaultComposeEnv fs) {ceLook = look0 {lkUrl = True}, cePatterns = const (Just englishUS)}
           its = compose env "https://example.com/a/b"
       [t | Box _ c <- its, let { t = bcText c }] @?= ["https://", "example.", "com/", "a/", "b"]
       [h | Penalty _ p h <- its, abs p < infPenalty] @?= [NoHyphen, NoHyphen, NoHyphen, NoHyphen]
       [h | Penalty _ p h <- compose env "typesetting", abs p < infPenalty, h /= NoHyphen] @?= []
       [w | Glue w _ _ <- takeWhile (not . isFinalPenalty) (compose env "a漢b")] @?= [],
     testCase "url: a narrow paragraph breaks after a slash and draws no hyphen" $ do
-      let env = (defaultComposeEnv fs) {ceLook = look0 {lkUrl = True}, cePatterns = Just englishUS}
+      let env = (defaultComposeEnv fs) {ceLook = look0 {lkUrl = True}, cePatterns = const (Just englishUS)}
           its = compose env "https://example.com/abcdefgh/ijklmnop"
           ls = brLines (breakParagraph defaultParams (const (12 * fs)) its)
           lastBox l = [bcText c | Box _ c <- reverse (lineItems l)]
@@ -1956,7 +1958,7 @@ protrusionAmountTests =
   ]
   where
     env = (defaultComposeEnv fs) {ceProtrusion = True}
-    hyphEnv = env {cePatterns = Just englishUS}
+    hyphEnv = env {cePatterns = const (Just englishUS)}
     ends e t = [bcProtrudeEnd c | Box _ c <- compose e t]
     -- the first line with a space that ends at a pattern hyphen, in a measure of five ems
     patternLine prot =
