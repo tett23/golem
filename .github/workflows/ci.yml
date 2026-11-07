@@ -686,7 +686,8 @@ jobs:
         run: sh scripts/wasm/compare.sh --check wasm-native-list.txt wasm-list.txt
       - name: Times
         if: always()
-        run: echo "the wasm job: $(( $(date +%s) - $(cat "$RUNNER_TEMP/t0") )) s"
+        run: |
+          echo "the wasm job: $(( $(date +%s) - $(cat "$RUNNER_TEMP/t0") )) s"
 
   determinism:
     needs: build
