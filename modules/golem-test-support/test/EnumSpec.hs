@@ -239,7 +239,7 @@ nubTests =
       testCase "E2: with a constant key, only the first value of the first tier stays" $
         upTo 4 (nubTiersOn (const ()) (listsOf bools)) @?= [[[]], [], [], [], []],
       testCase "E2: with the parity of the sum, the first even and the first odd value stay" $
-        upTo 4 (nubTiersOn (\xs -> even (sum xs)) (listsOf (intsIn 0 2))) @?= [[[]], [], [[1]], [], []],
+        upTo 4 (nubTiersOn (even . sum) (listsOf (intsIn 0 2))) @?= [[[]], [], [[1]], [], []],
       testCase "E2: the keys and the values kept are those built naively, for every key" $
         mapM_
           (\(name, key) -> (name, upTo 6 (nubTiersOn key (listsOf (intsIn 0 2)))) @?= (name, naiveNub key 6 (listsOf (intsIn 0 2))))
@@ -297,7 +297,7 @@ sampleTests =
       testCase "E3: nextBelow of 1 is 0 and leaves the generator as it is" $
         nextBelow 1 (mkSplitMix 5) @?= (0, mkSplitMix 5),
       testCase "E3: the generator moves by the golden gamma at each value" $
-        snd (nextWord64 (mkSplitMix 0)) @?= snd (nextWord64 (snd (nextWord64 (mkSplitMix (0 - goldenGamma)))))
+        snd (nextWord64 (mkSplitMix 0)) @?= snd (nextWord64 (snd (nextWord64 (mkSplitMix (negate goldenGamma)))))
     ]
   where
     goldenGamma = 0x9e3779b97f4a7c15 :: Word64

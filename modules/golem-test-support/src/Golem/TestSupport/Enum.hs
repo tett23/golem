@@ -226,7 +226,7 @@ tallyAllParWith workers chunk n xs check = tiersFrom 0 mempty (zip [0 :: Int ..]
                       Nothing -> combine (c' + checked) a'' ps
                       Just (x, vs) -> (Failed k x vs, a'')
            in sparkAll parts `pseq` combine c a parts
-    sparkAll = foldr (\p rest -> p `par` rest) ()
+    sparkAll = foldr par ()
 
 -- | A part checked: its first value with violations, the count of the values checked and their number.
 data Part a m = Part !(Maybe (a, [Violation])) !m !Int
