@@ -14,6 +14,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Doc.IR
+import Golem.DocGen (genDocument, genInline)
 import Golem.Driver
 import Golem.Emet.IR (decodeBlocks, decodeInlines, encodeBlocks, encodeInlines, runEnc)
 import Golem.Eval.File (EvalResult (..))
@@ -22,7 +23,6 @@ import Golem.Syntax
 import Hedgehog (forAll, property, (===))
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import Golem.DocGen (genDocument, genInline)
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.FilePath (takeDirectory, (</>))
