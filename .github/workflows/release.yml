@@ -198,6 +198,115 @@ jobs:
           name: determinism-${{ matrix.platform }}
           path: determinism-${{ matrix.platform }}.txt
 
+  # golem.wasm (docs/adr/0199): built as the job wasm of ci.yml builds it,
+  # checked under the node:wasi of Node LTS, its PDFs and diagnostics
+  # compared with those of the golem of the x86-64 Linux archive, and packed
+  # as golem-<tag>-wasm32-wasi.tar.gz with its licenses (package-wasm.sh)
+  wasm:
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+      GHC_VERSION: "9.10.3"
+      HOSTTOOLS: ${{ github.workspace }}/third_party/hosttools
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Image for the cache keys
+        run: |
+          test -n "$ImageOS"
+          echo "ImageOS=$ImageOS" >> "$GITHUB_ENV"
+      - id: hosttools
+        name: Cache the native alex and happy (docs/adr/0202)
+        uses: actions/cache@v6
+        with:
+          path: third_party/hosttools
+          key: hosttools-alex-3.5.4.2-happy-2.2-ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
+      - if: steps.hosttools.outputs.cache-hit != 'true'
+        name: cabal's directory (docs/adr/0201)
+        run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
+      - if: steps.hosttools.outputs.cache-hit != 'true'
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: ${{ env.GHC_VERSION }}
+          cabal-version: "3.16.1.0"
+          cabal-update: true
+      - if: steps.hosttools.outputs.cache-hit != 'true'
+        name: The native alex and happy (docs/adr/0202)
+        run: |
+          mkdir -p "$HOSTTOOLS" "$RUNNER_TEMP/hosttools-src"
+          cd "$RUNNER_TEMP/hosttools-src"
+          cabal install alex-3.5.4.2 happy-2.2 --installdir="$HOSTTOOLS" --install-method=copy --overwrite-policy=always
+      - name: The native alex and happy are those versions
+        run: |
+          "$HOSTTOOLS/alex" --version | grep -F 'Alex version 3.5.4.2'
+          "$HOSTTOOLS/happy" --version | grep -F 'Happy Version 2.2'
+      - id: ghcwasm
+        name: Cache the wasm toolchain and its cabal store (docs/adr/0199)
+        uses: actions/cache@v6
+        with:
+          path: third_party/ghc-wasm
+          key: ghc-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze', 'scripts/fetch-wasm-packages.sh', 'scripts/wasm/patches/*') }}
+          restore-keys: ghc-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-
+      - name: The wasm toolchain (docs/adr/0199)
+        run: timeout -k 10 900 sh scripts/fetch-ghc-wasm.sh
+      - name: skylighting 0.15 patched (docs/adr/0202)
+        run: timeout -k 10 300 sh scripts/fetch-wasm-packages.sh
+      - name: The versions of Hackage are those of cabal.project.freeze (docs/adr/0199)
+        run: sh scripts/ci/wasm-freeze.sh
+      - if: steps.ghcwasm.outputs.cache-hit != 'true'
+        name: The Hackage index of the wasm build
+        run: |
+          . third_party/ghc-wasm/env
+          wasm32-wasi-cabal update
+      # from nothing: no dist-wasm of an earlier build
+      - name: golem.wasm (docs/adr/0199)
+        shell: bash
+        run: |
+          . third_party/ghc-wasm/env
+          export PATH="$HOSTTOOLS:$PATH"
+          wasm32-wasi-cabal --project-file=cabal.project.wasm --builddir=dist-wasm build -v1 exe:golem-wasm
+          cp "$(wasm32-wasi-cabal --project-file=cabal.project.wasm --builddir=dist-wasm list-bin -v0 exe:golem-wasm)" golem.wasm
+          ls -l golem.wasm
+      - name: The checks of golem.wasm under node:wasi (docs/adr/0199)
+        run: node scripts/wasm/run.mjs check golem.wasm modules/golem-driver/test/fixtures/kanikosen
+      - uses: actions/download-artifact@v8
+        with:
+          name: archive-x86_64-linux
+          path: dist-native
+      - name: The PDFs and the diagnostics of golem.wasm are those of the golem of the x86-64 Linux archive (docs/adr/0199)
+        run: |
+          mkdir -p "$RUNNER_TEMP/native"
+          tar -xzf "dist-native/golem-$TAG-x86_64-linux.tar.gz" -C "$RUNNER_TEMP/native"
+          sh scripts/wasm/compare.sh --native "$RUNNER_TEMP/native/golem-$TAG-x86_64-linux/golem" > wasm-native-list.txt
+          sh scripts/wasm/compare.sh golem.wasm > wasm-list.txt
+          sh scripts/wasm/compare.sh --check wasm-native-list.txt wasm-list.txt
+      # the GMP of the wasm GHC, its source, and the documents of the wasm
+      # GHC for THIRD_PARTY_LICENSES/ (docs/adr/0007, docs/adr/0199)
+      - name: golem-<tag>-wasm32-wasi.tar.gz (docs/adr/0199)
+        run: |
+          . third_party/ghc-wasm/env
+          GMP_VERSION=$(GMP_GHC=wasm32-wasi-ghc sh scripts/release/gmp-version.sh)
+          sh scripts/release/fetch-gmp.sh "$GMP_VERSION" "$RUNNER_TEMP/gmp"
+          WASM_GHC_VERSION=$(wasm32-wasi-ghc --numeric-version)
+          GHC_DOCDIR=third_party/ghc-wasm/wasm32-wasi-ghc/lib/doc/wasm32-wasi-ghc-$WASM_GHC_VERSION-inplace
+          test -f "$GHC_DOCDIR/ghc-$WASM_GHC_VERSION/LICENSE"
+          GHC_VERSION=$WASM_GHC_VERSION GHC_DOCDIR="$PWD/$GHC_DOCDIR" GMP_VERSION=$GMP_VERSION \
+            GMP_SOURCE="$RUNNER_TEMP/gmp/gmp-$GMP_VERSION.tar.xz" CABAL_PACKAGES="$PWD/third_party/ghc-wasm/.cabal/packages/hackage.haskell.org" \
+            sh scripts/release/package-wasm.sh "$TAG" golem.wasm dist-wasm/cache/plan.json dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: archive-wasm32-wasi
+          path: |
+            dist/golem-*.tar.gz
+            dist/golem-*.tar.gz.sha256
+            dist/gmp-version-*.txt
+
   determinism:
     needs: [ci, smoke]
     runs-on: ubuntu-24.04
@@ -247,7 +356,7 @@ jobs:
 
   release:
     if: github.event_name == 'push' && github.ref_type == 'tag'
-    needs: [version, ci, build, smoke, determinism, notes]
+    needs: [version, ci, build, smoke, wasm, determinism, notes]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -316,6 +425,6 @@ jobs:
         run: |
           set -- --draft --verify-tag --title "$TAG" --notes-file notes.md
           if [ "$PRERELEASE" = true ]; then set -- "$@" --prerelease; fi
-          # dist/golem-*.tar.gz has the HTML of the two manuals and the license
-          # documents of the plugins too
+          # dist/golem-*.tar.gz has the archive of golem.wasm, the HTML of the two
+          # manuals and the license documents of the plugins too
           gh release create "$TAG" "$@" dist/golem-*.tar.gz dist/golem-manual-*.pdf dist/golem-dev-manual-*.pdf dist/*.wasm dist/SHA256SUMS dist/gmp-*.tar.xz

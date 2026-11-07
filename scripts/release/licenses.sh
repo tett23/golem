@@ -4,6 +4,20 @@
 # docs/adr/0007-third-party-licenses.md).
 #
 #   licenses.sh PLAN_JSON OUT TAG
+#   licenses.sh --wasm PLAN_JSON OUT TAG
+#
+# --wasm writes them for the archive of golem.wasm (docs/adr/0199,
+# docs/adr/0202): the packages that exe:golem-wasm of golem-wasm depends on
+# in the plan of cabal.project.wasm, the wasm GHC and its RTS, HarfBuzz,
+# FreeType, hyph-utf8, GMP, and licenses/wasi-sdk/ of the repository (the
+# wasi-libc, libc++, libc++abi, compiler-rt and libffi-wasm of the
+# toolchain of scripts/fetch-ghc-wasm.sh, whose wasi-sdk must be the one
+# of licenses/wasi-sdk/VERSION). A package of a source-repository-package
+# (cborg) gets a file SOURCE with its repository, commit and subdirectory;
+# a package patched by scripts/fetch-wasm-packages.sh (skylighting,
+# skylighting-core) gets its patch and a file SOURCE with the archive of
+# Hackage. No link map, no Alpine package, no wasmtime: LINK_MAP is not
+# read, and GHC_DOCDIR and GMP_VERSION are required.
 #
 # What goes in follows the link map of golem (LINK_MAP), through
 # link-components.sh:
@@ -33,7 +47,9 @@
 #   GOLEM_ROOT        the repository (default: two directories up)
 #   LINK_MAP          the link map of golem (required)
 #   CABAL_PACKAGES    the Hackage package cache (default: from cabal path)
-#   GHC_VERSION       default 9.10.3
+#   GHC_VERSION       default 9.10.3 (with --wasm, the version of the wasm GHC)
+#   SOURCE_REPOS      where cabal checked out the source-repository-packages
+#                     (default: dist-newstyle/src of GOLEM_ROOT)
 #   GHC_DOCDIR        share/doc/<arch>-ghc-<version> of GHC (default: found from
 #                     ghc-<version> --print-libdir, or ghc --print-libdir)
 #   GHC_LIBDIR        the libdir of GHC (default: ghc-<version> --print-libdir)
@@ -56,8 +72,13 @@ fail() {
   exit 1
 }
 
+WASM=false
+if [ "${1-}" = --wasm ]; then
+  WASM=true
+  shift
+fi
 [ $# -eq 3 ] || {
-  echo "usage: licenses.sh PLAN_JSON OUT TAG" >&2
+  echo "usage: licenses.sh [--wasm] PLAN_JSON OUT TAG" >&2
   exit 2
 }
 PLAN=$1
@@ -65,8 +86,16 @@ OUT=$2
 TAG=$3
 [ -f "$PLAN" ] || fail "no such file: $PLAN"
 command -v jq >/dev/null 2>&1 || fail "jq is needed"
-[ -n "${LINK_MAP:-}" ] || fail "LINK_MAP (the link map of golem) is needed"
-[ -f "$LINK_MAP" ] || fail "no such file: $LINK_MAP"
+if [ "$WASM" = true ]; then
+  [ -n "${GHC_DOCDIR:-}" ] || fail "GHC_DOCDIR (share/doc of the wasm GHC) is needed with --wasm"
+  [ -n "${GMP_VERSION:-}" ] || fail "GMP_VERSION (the GMP of the wasm GHC) is needed with --wasm"
+  ROOT_PKG=golem-wasm ROOT_COMP=exe:golem-wasm WHAT=golem.wasm LINKS=golem.wasm
+else
+  [ -n "${LINK_MAP:-}" ] || fail "LINK_MAP (the link map of golem) is needed"
+  [ -f "$LINK_MAP" ] || fail "no such file: $LINK_MAP"
+  ROOT_PKG=golem-cli ROOT_COMP=exe:golem WHAT="The golem executable" LINKS="This executable"
+fi
+SOURCE_REPOS=${SOURCE_REPOS:-$ROOT/dist-newstyle/src}
 APK_LICENSES=${APK_LICENSES:-/usr/share/licenses}
 
 if [ -z "${CABAL_PACKAGES:-}" ]; then
@@ -79,11 +108,11 @@ if [ -z "${CABAL_PACKAGES:-}" ]; then
     CABAL_PACKAGES=${XDG_CACHE_HOME:-$HOME/.cache}/cabal/packages/hackage.haskell.org
   fi
 fi
-if [ -z "${GHC_DOCDIR:-}" ] || [ -z "${GHC_LIBDIR:-}" ]; then
+if [ "$WASM" = false ] && { [ -z "${GHC_DOCDIR:-}" ] || [ -z "${GHC_LIBDIR:-}" ]; }; then
   if command -v "ghc-$GHC_VERSION" >/dev/null 2>&1; then GHC=ghc-$GHC_VERSION; else GHC=ghc; fi
   GHC_LIBDIR=${GHC_LIBDIR:-$("$GHC" --print-libdir)}
 fi
-export GHC_LIBDIR
+export GHC_LIBDIR=${GHC_LIBDIR:-}
 if [ -z "${GHC_DOCDIR:-}" ]; then
   LIBDIR=$GHC_LIBDIR
   for d in "$LIBDIR"/../../../share/doc/*-ghc-"$GHC_VERSION" "$LIBDIR"/../../share/doc/*-ghc-"$GHC_VERSION" "$LIBDIR"/../share/doc/*-ghc-"$GHC_VERSION"; do
@@ -107,29 +136,37 @@ TMP=$(mktemp -d)
 trap 'rm -rf "${TMP:?}"' EXIT
 MISSING=
 
-# the components of the link map (docs/adr/0007)
-sh "$HERE/link-components.sh" "$LINK_MAP" >"$TMP/components" || fail "cannot map $LINK_MAP to the components"
-sh "$HERE/link-components.sh" "$LINK_MAP" --apk >"$TMP/apk" || fail "cannot map $LINK_MAP to the Alpine packages"
+# the components of the link map (docs/adr/0007); golem.wasm has no link
+# map, and its components are fixed (docs/adr/0199)
+if [ "$WASM" = true ]; then
+  printf 'haskell\nghc\n' >"$TMP/components"
+  : >"$TMP/apk"
+else
+  sh "$HERE/link-components.sh" "$LINK_MAP" >"$TMP/components" || fail "cannot map $LINK_MAP to the components"
+  sh "$HERE/link-components.sh" "$LINK_MAP" --apk >"$TMP/apk" || fail "cannot map $LINK_MAP to the Alpine packages"
+fi
 has() { cut -f1 "$TMP/components" | grep -qxF "$1"; }
 
-# One line per package that exe:golem depends on, directly or not:
-# type<TAB>source type<TAB>name<TAB>version. The closure follows the
+# One line per package that exe:golem (exe:golem-wasm) depends on, directly
+# or not: type<TAB>source type<TAB>name<TAB>version<TAB>repository<TAB>
+# commit<TAB>subdirectory of a source-repository-package. The closure follows the
 # libraries (depends, and the depends of the lib components), not the
 # build tools (exe-depends) nor Setup.hs (setup).
-jq -r '
+jq -r --arg pkg "$ROOT_PKG" --arg comp "$ROOT_COMP" '
   ."install-plan" as $plan
   | (reduce $plan[] as $e ({}; .[$e.id] = $e)) as $by
   | def deps: (.depends // []) + [(.components // {}) | to_entries[] | select(.key | startswith("lib")) | .value.depends[]?];
     def fix(f): (f) as $n | if $n == . then . else ($n | fix(f)) end;
-    [$plan[] | select(."pkg-name" == "golem-cli" and ."component-name" == "exe:golem") | .id]
-  | if length == 0 then error("exe:golem of golem-cli is not in the plan") else . end
+    [$plan[] | select(."pkg-name" == $pkg and ."component-name" == $comp) | .id]
+  | if length == 0 then error($comp + " of " + $pkg + " is not in the plan") else . end
   | fix(. + [.[] | $by[.] // empty | deps[]] | unique)
   | [.[] | $by[.] // empty | select((."pkg-name" | startswith("golem-")) | not)
-     | [.type, (."pkg-src".type // "-"), ."pkg-name", ."pkg-version"] | @tsv]
-  | unique[]' "$PLAN" >"$TMP/packages" || fail "cannot read the dependencies of exe:golem from $PLAN"
+     | [.type, (."pkg-src".type // "-"), ."pkg-name", ."pkg-version",
+        (."pkg-src"."source-repo".location // "-"), (."pkg-src"."source-repo".tag // "-"), (."pkg-src"."source-repo".subdir // "-")] | @tsv]
+  | unique[]' "$PLAN" >"$TMP/packages" || fail "cannot read the dependencies of $ROOT_COMP from $PLAN"
 if has haskell; then mkdir -p "$OUT/haskell"; else : >"$TMP/packages"; fi
 
-while IFS='	' read -r type src name version; do
+while IFS='	' read -r type src name version location commit subdir; do
   dest=$OUT/haskell/$name-$version
   case "$type/$src" in
     pre-existing/*)
@@ -168,7 +205,7 @@ while IFS='	' read -r type src name version; do
       ;;
     configured/source-repo)
       found=
-      for d in "$ROOT"/dist-newstyle/src/peg-hs-*/packages/"$name" "$ROOT"/dist-newstyle/src/peg-hs-*; do
+      for d in "$SOURCE_REPOS"/peg-hs-*/packages/"$name" "$SOURCE_REPOS"/peg-hs-* "$SOURCE_REPOS"/*/"$name"; do
         [ -d "$d" ] || continue
         for f in "$d"/*; do
           [ -f "$f" ] || continue
@@ -181,6 +218,35 @@ while IFS='	' read -r type src name version; do
         [ -z "$found" ] || break
       done
       [ -n "$found" ] || MISSING="$MISSING $name-$version"
+      # the commit of the upstream, which is not a release (docs/adr/0202)
+      if [ -n "$found" ] && [ "$WASM" = true ]; then
+        printf 'the source-repository-package of cabal.project.wasm:\n  repository: %s\n  commit: %s\n  subdirectory: %s\n' "$location" "$commit" "$subdir" >"$dest/SOURCE"
+      fi
+      ;;
+    configured/local)
+      # the packages of Hackage that scripts/fetch-wasm-packages.sh patched
+      # (docs/adr/0202): their license, the patch and where the archive is
+      pdir=$ROOT/third_party/wasm-packages/$name-$version
+      patch=$ROOT/scripts/wasm/patches/$name-$version.patch
+      if [ "$WASM" = false ] || [ ! -d "$pdir" ] || [ ! -f "$patch" ]; then
+        MISSING="$MISSING $name-$version"
+        continue
+      fi
+      found=
+      for f in "$pdir"/*; do
+        [ -f "$f" ] || continue
+        if basename "$f" | grep -Eiq "$LICENSE_RE"; then
+          mkdir -p "$dest"
+          cp "$f" "$dest/"
+          found=1
+        fi
+      done
+      if [ -z "$found" ]; then
+        MISSING="$MISSING $name-$version"
+        continue
+      fi
+      cp "$patch" "$dest/"
+      printf 'https://hackage.haskell.org/package/%s/%s.tar.gz of Hackage, with %s applied\n(scripts/fetch-wasm-packages.sh of %s)\n' "$name-$version" "$name-$version" "$name-$version.patch" "$REPO_URL" >"$dest/SOURCE"
       ;;
     *)
       MISSING="$MISSING $name-$version"
@@ -207,6 +273,21 @@ copy "$ROOT/modules/golem-font/cbits/harfbuzz/COPYING" harfbuzz
 copy "$ROOT/modules/golem-font/cbits/freetype/LICENSE.TXT" freetype
 copy "$ROOT/modules/golem-font/cbits/freetype/docs/FTL.TXT" freetype
 copy "$ROOT/modules/golem-layout/data/hyphenation/LICENSE-hyph-en-us.txt" hyph-en-us
+# the wasi-sdk of the toolchain (docs/adr/0199): licenses/wasi-sdk/, whose
+# VERSION must be the wasi-sdk of scripts/fetch-ghc-wasm.sh
+if [ "$WASM" = true ]; then
+  WSDIR=$ROOT/licenses/wasi-sdk
+  [ -f "$WSDIR/VERSION" ] || fail "no licenses/wasi-sdk/VERSION"
+  SDK_URL=$(sed -n 's/^SDK_URL=\$BINDISTS\/\(.*\)$/\1/p' "$ROOT/scripts/fetch-ghc-wasm.sh")
+  [ -n "$SDK_URL" ] || fail "no SDK_URL in scripts/fetch-ghc-wasm.sh"
+  [ "$(cat "$WSDIR/VERSION")" = "$SDK_URL" ] ||
+    fail "licenses/wasi-sdk/ is for the wasi-sdk $(cat "$WSDIR/VERSION"), not $SDK_URL of scripts/fetch-ghc-wasm.sh: check its licenses"
+  for d in wasi-libc llvm libffi-wasm; do
+    [ -n "$(find "$WSDIR/$d" -type f 2>/dev/null | head -n 1)" ] || fail "no license in licenses/wasi-sdk/$d"
+    mkdir -p "$OUT/wasi-sdk/$d"
+    cp -R "$WSDIR/$d/." "$OUT/wasi-sdk/$d/"
+  done
+fi
 if has compiler-rt; then
   # compiler-rt of LLVM is under Apache-2.0 WITH LLVM-exception, the same
   # text as the LICENSE of wasmtime
@@ -335,6 +416,15 @@ FREETYPE_YEAR=$(sed -n 's/.*Copyright (C) 1996-\([0-9]\{4\}\).*/\1/p' "$ROOT/mod
     line '' 'crates/<crate>-<version>/, rust/)'
   fi
   line hyph-en-us/ 'the US English hyphenation patterns of hyph-utf8'
+  if [ -d "$OUT/wasi-sdk" ]; then
+    line wasi-sdk/wasi-libc/ 'wasi-libc (with musl, COPYRIGHT-musl) of wasi-sdk'
+    line wasi-sdk/llvm/ 'libc++, libc++abi and compiler-rt of LLVM, of wasi-sdk'
+    line wasi-sdk/libffi-wasm/ 'libffi-wasm, which the wasm GHC links'
+  fi
+  if ls "$OUT"/haskell/*/SOURCE >/dev/null 2>&1; then
+    line 'haskell/<package>/SOURCE' 'where a package that is not a release of Hackage'
+    line '' 'comes from, with the patch applied to it'
+  fi
   line gmp/ 'GNU MP (GMP)'
   if ls -d "$OUT"/haskell/zlib-clib-* >/dev/null 2>&1; then line 'haskell/zlib-clib-*/' 'zlib, through the zlib-clib package'; fi
   [ ! -d "$OUT/compiler-rt" ] || line compiler-rt/ 'compiler-rt of LLVM (Apache-2.0 WITH LLVM-exception)'
@@ -363,7 +453,7 @@ fi
 cat >"$OUT/README" <<EOF
 THIRD-PARTY LICENSES OF GOLEM $TAG
 
-The golem executable is distributed under the MIT License (LICENSE-golem).
+$WHAT is distributed under the MIT License (LICENSE-golem).
 It contains the following software, linked statically, and data. Each
 directory holds the license of one component.
 
@@ -378,7 +468,7 @@ All rights reserved.
 GNU MP
 ------
 
-This executable links GNU MP $GMP_VERSION statically. GNU MP is free
+$LINKS links GNU MP $GMP_VERSION statically. GNU MP is free
 software under the GNU Lesser General Public License, version 3
 (gmp/COPYING.LESSERv3), which builds on the GNU General Public License,
 version 3 (gmp/COPYINGv3).
