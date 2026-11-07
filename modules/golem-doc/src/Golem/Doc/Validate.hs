@@ -10,7 +10,7 @@ module Golem.Doc.Validate
   )
 where
 
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
@@ -79,6 +79,8 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
         maybe [] inl (codeCaption c)
           <> ["注釈の印の番号は 1 から 50 までです" | any (any (\n -> n < 1 || n > 50) . clCallouts) (codeLines c)]
           <> ["差分のコードの行には差分の印が、ほかのコードの行には印がありません" | any (\l -> isJust (clDiff l) /= codeDiff c) (codeLines c)]
+          -- only a code block with a caption has a number to go without (docs/adr/0200; G02134)
+          <> ["キャプションのないコードブロックは番号を持たないので、@nonumber は要りません" | codeNoNumber c, isNothing (codeCaption c)]
       -- a caption holds paragraphs only (docs/adr/0144)
       FigureBlock f -> captionErrors f <> concatMap blockErrors [b | b@(Block _ _ (Paragraph _ _)) <- figCaption f]
       ChannelOutput _ -> []
