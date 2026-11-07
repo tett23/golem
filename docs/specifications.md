@@ -1578,7 +1578,7 @@ InDesign の段落境界線にあたる。
 段落スタイルの `size` の `zw` は版面の文字の大きさを一字とし、版面の文字の大きさを超える値はエラー（G03011）とする。
 行送りの欄は設けない。
 PDF の本文を行の格子に載せるので、段落ごとに行送りを変えると見開きの行の位置がそろわなくなるためである。
-組み込みの段落スタイルは `body`、`verse`（`line-breaks = "keep"`、`space-between = 1`）、`caption`、`sidenote`、`code` の五つであり、段落スタイルを付けない段落は `body` で組む。
+組み込みの段落スタイルは `body`、`verse`（`line-breaks = "keep"`、`space-between = 1`、`space-before = 1`、`space-after = 1`）、`caption`、`sidenote`、`code` の五つであり、段落スタイルを付けない段落は `body` で組む。
 図版のキャプションは段落スタイル `caption` の `font` と `size` で組み、ほかの欄（`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ）はキャプションには適用されない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 傍注の本文も同じく、段落スタイル `sidenote` の `font` と `size` で組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 PDF のキャプションと傍注の本文には、ほかに `aki-set`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` を、どの出力でも `regex-styles` を適用する。
@@ -2712,6 +2712,14 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 段落の最初の 1 行だけが段の末尾に残る場合（孤立行）は、その行も次の段に送る。
 段落の最後の 1 行だけが次の段の先頭に送られる場合は、前の段の最後の行も次の段に送る。
 空の段では、この二つの規則で一行も置けなくなる場合は、入るだけの行を置く。
+`line-breaks = "keep"` の段落は、一つの連として扱い、韻文の行を単位にして同じ二つの規則を当てる（[docs/adr/0180](adr/0180-verse-spacing-and-stanza-breaks.md)）。
+連の最初の韻文の行だけを段の末尾に残さず、最後の韻文の行だけを次の段の先頭に送らない。
+送るほうが一つの韻文の行だけになる場合は、前の段の最後の韻文の行も次の段に送る。
+韻文の行を折り返した行のあいだでは、段を分けない。
+空の段で一つの韻文の行も置けなくなる場合は、入るだけの韻文の行を置き、最初の韻文の行が段より高ければ、その行を段落の行と同じ規則で分ける。
+見出しの直後と `@no-page-break` の前では、連の最初の 2 つの韻文の行を、後に続くものの量として数える。
+`@no-page-break` の前の連は、段落が最後の 2 行を後に続くものと同じ段に置くのと同じく、最後の 2 つの韻文の行（3 つ以下の連は連の全体）を後に続くものと同じ段に置く。
+罫線を持つ段落は、この規則によらず、罫線を持つ段落の規則で置く。
 見出しの直後では改ページしない。
 見出しは、続く見出しのすべてと、その後の段落の最初の 2 行までと同じ段に置く（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）。
 それらを合わせて段に収まらないときも、空の段からは送らない。

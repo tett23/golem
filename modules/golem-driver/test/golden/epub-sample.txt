@@ -44,7 +44,7 @@ application/epub+zip
 </nav>
 </body>
 </html>
-== OEBPS/style.css (deflate, time 315532800, 1693 bytes)
+== OEBPS/style.css (deflate, time 315532800, 1863 bytes)
 body { font-family: serif; }
 body.vertical { writing-mode: vertical-rl; -epub-writing-mode: vertical-rl; }
 pre, code { font-family: monospace; }
@@ -74,6 +74,9 @@ ruby.mono rt { ruby-align: center; }
 p.ps-verse { margin-block: 0; }
 p.ps-verse { padding-inline-start: 2em; text-indent: -2em; }
 p.ps-verse + p.ps-verse { margin-block-start: 1em; }
+p.ps-verse { margin-block-start: 1em; }
+p.ps-verse + :not(.ps-verse):not(.blank-line) { margin-block-start: 1em; }
+div.blank-line + p.ps-verse { margin-block-start: 0; }
 li p, li p[class] { padding-inline-start: 0; text-indent: 0; }
 .line { display: block; }
 .line + br { display: none; }

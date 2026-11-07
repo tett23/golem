@@ -32,6 +32,7 @@ paginateTests =
       testGroup "a heading with footnotes (golem-driver ADR 0003)" headingNoteTests,
       testGroup "keeping with what follows counts its footnotes (golem-layout ADR 0019)" keepNoteTests,
       testGroup "widows, orphans and the page end" widowOrphanTests,
+      testGroup "stanzas of verse (docs/adr/0180)" stanzaTests,
       testGroup "page references that do not settle (S2)" pageRefTests,
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
       testGroup "turned figures on pages of their own (golem-driver ADR 0034)" pageFigureTests,
@@ -194,6 +195,52 @@ keepNoteTests =
 -- | The line ids on each page.
 lineIds :: [PageOut] -> [[Int]]
 lineIds = map (\p -> [i | (_, SLine i) <- poSlots p])
+
+-- | A stanza of verse lines of the given numbers of lines, numbered from base.
+stanza :: Int -> [Int] -> Flow
+stanza base ns = FStanza [lines' (base + 10 * i) n | (i, n) <- zip [0 ..] ns]
+
+stanzaTests :: [TestTree]
+stanzaTests =
+  [ testCase "a stanza of four verse lines with three lines left: two here, two in the next column" $ do
+      let ps = paginate 1 5 [FParagraph (lines' 0 2), stanza 100 [1, 1, 1, 1]]
+      contents ps @?= [[SLine 0, SLine 1, SLine 100, SLine 110], [SLine 120, SLine 130]],
+    testCase "the same stanza with one line left goes whole to the next column" $ do
+      let ps = paginate 1 5 [FParagraph (lines' 0 4), stanza 100 [1, 1, 1, 1]]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 3], [SLine 100, SLine 110, SLine 120, SLine 130]],
+    testCase "a stanza of three verse lines stays with three lines left and goes whole with two" $ do
+      let three = paginate 1 5 [FParagraph (lines' 0 2), stanza 100 [1, 1, 1]]
+      contents three @?= [[SLine 0, SLine 1, SLine 100, SLine 110, SLine 120]]
+      let two = paginate 1 5 [FParagraph (lines' 0 3), stanza 100 [1, 1, 1]]
+      contents two @?= [[SLine 0, SLine 1, SLine 2], [SLine 100, SLine 110, SLine 120]],
+    testCase "a verse line broken into lines is not broken between columns" $ do
+      -- four lines left: the third verse line of four lines would start in them
+      let ps = paginate 1 8 [FParagraph (lines' 0 4), stanza 100 [1, 1, 4, 1, 1]]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 3, SLine 100, SLine 110], [SLine 120, SLine 121, SLine 122, SLine 123, SLine 130, SLine 140]],
+    testCase "the second verse line broken in two stays whole" $ do
+      let ps = paginate 1 5 [FParagraph (lines' 0 2), stanza 100 [1, 2, 1, 1]]
+      contents ps @?= [[SLine 0, SLine 1, SLine 100, SLine 110, SLine 111], [SLine 120, SLine 130]],
+    testCase "a stanza taller than an empty column: as many verse lines as fit" $ do
+      let ps = paginate 1 3 [stanza 100 [2, 2]]
+      contents ps @?= [[SLine 100, SLine 101], [SLine 110, SLine 111]],
+    testCase "a heading keeps the first two verse lines of the stanza after it" $ do
+      -- two lines left: the heading and one verse line would fit
+      let ps = paginate 1 5 [FParagraph (lines' 0 3), heading 20, stanza 100 [1, 1, 1, 1]]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 100, SLine 110, SLine 120, SLine 130]]
+      -- three lines left: the heading and two verse lines, the rest in the next column
+      let qs = paginate 1 5 [FParagraph (lines' 0 2), heading 20, stanza 100 [1, 1, 1, 1]]
+      contents qs @?= [[SLine 0, SLine 1, SHeading 20 1, SLine 100, SLine 110], [SLine 120, SLine 130]],
+    testCase "a heading keeps the space before the stanza and its first two verse lines (docs/adr/0189)" $ do
+      -- three lines left: the heading, the space and one verse line would fit
+      let ps = paginate 1 6 [FParagraph (lines' 0 3), heading 20, FSpace 1, stanza 100 [1, 1, 1, 1]]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 100, SLine 110, SLine 120, SLine 130]]
+      -- four lines left: they all fit after the heading
+      let qs = paginate 1 6 [FParagraph (lines' 0 2), heading 20, FSpace 1, stanza 100 [1, 1, 1, 1]]
+      contents qs @?= [[SLine 0, SLine 1, SHeading 20 1, SLine 100, SLine 110], [SLine 120, SLine 130]],
+    testCase "a stanza before a no-break keeps its last two verse lines with what follows" $ do
+      let ps = paginate 1 6 [FParagraph (lines' 0 1), stanza 100 [1, 1, 1, 1], FNoBreak mk, FParagraph (lines' 200 2)]
+      contents ps @?= [[SLine 0, SLine 100, SLine 110], [SLine 120, SLine 130, SLine 200, SLine 201]]
+  ]
 
 widowOrphanTests :: [TestTree]
 widowOrphanTests =

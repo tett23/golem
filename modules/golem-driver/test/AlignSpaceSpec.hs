@@ -152,8 +152,10 @@ alignSpaceTests =
       forM_ ["p.ps-quote { padding-inline-end: 2em; }", "p.ps-quote { margin-block-start: 1em; }", "p.ps-quote + :not(.ps-quote):not(.blank-line) { margin-block-start: 2em; }", "div.blank-line + p.ps-quote { margin-block-start: 0; }"] $ \r ->
         assertBool (T.unpack r) (r `T.isInfixOf` css)
       (_, plain) <- htmlMini horizontalStyle "あ\n"
-      forM_ ["text-align: justify", "text-align: start", "padding-inline-end", "blank-line +"] $ \r ->
+      forM_ ["text-align: justify", "text-align: start", "padding-inline-end"] $ \r ->
         assertBool (T.unpack r) (not (r `T.isInfixOf` plain))
+      -- only the built-in verse has spaces before and after (docs/adr/0180)
+      filter ("blank-line +" `T.isInfixOf`) (T.lines plain) @?= ["div.blank-line + p.ps-verse { margin-block-start: 0; }"]
   ]
   where
     nub' = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
