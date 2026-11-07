@@ -260,7 +260,7 @@ runningHeadTests =
           h12 = Map.fromList [(1, Just umi), (2, Just asa)]
           h12' = Map.fromList [(1, Just umi), (2, Just hiru)]
           h1' = Map.fromList [(1, Just yama), (2, Nothing)]
-          at c st hs = listToMaybe (runningHeadLines meta Map.empty c st hs)
+          at c st hs = listToMaybe (runningHeadLines meta Map.empty Map.empty c st hs)
       -- 海 and 一 朝 start on the page
       at (heading 1 HeadShort PickFirst) Map.empty [umi, asa] @?= Just "海"
       at (heading 2 HeadShort PickFirst) Map.empty [umi, asa] @?= Just "朝"
@@ -308,8 +308,8 @@ runningHeadTests =
       lines'' (fmt [["校正刷り"]]) Map.empty [] @?= ["校正刷り"]
       lines'' (fmt [["校正刷り"]]) Map.empty [umi] @?= ["校正刷り"],
     testCase "variables of the file (ADR 0022)" $ do
-      runningHeadLines meta (Map.fromList [(["revision"], "r1")]) (fmt [["{set.revision}"]]) Map.empty [] @?= ["r1"]
-      runningHeadLines meta (Map.fromList [(["values", "price"], "100")]) (fmt [["{set.values.price}"]]) Map.empty [] @?= ["100"]
+      runningHeadLines meta Map.empty (Map.fromList [(["revision"], "r1")]) (fmt [["{set.revision}"]]) Map.empty [] @?= ["r1"]
+      runningHeadLines meta Map.empty (Map.fromList [(["values", "price"], "100")]) (fmt [["{set.values.price}"]]) Map.empty [] @?= ["100"]
       forM_ [("\"r1\"", "r1"), ("3", "3"), ("0.5", "0.5")] $ \(v, shown) -> do
         (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "@set revision = " <> v <> "\n\n" <> twoChapters)]
         Map.lookup 2 heads @?= Just [shown],
@@ -429,7 +429,7 @@ runningHeadTests =
     hiru = info 2 2 "二" "昼"
     yama = info 1 2 "第二章" "山"
     meta = Map.fromList [("title", "書名"), ("language", "ja")]
-    lines'' = runningHeadLines meta Map.empty
+    lines'' = runningHeadLines meta Map.empty Map.empty
     heading l f p = RunningLines ([PartRef (RefHeading l f p) False] :| [])
     -- a format, read as style.toml reads it
     fmt ls = case traverse (fmap concat . traverse parseRunningFormat) ls of

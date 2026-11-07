@@ -14,6 +14,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Lsp.Features (hover)
 import Golem.Lsp.Server (runGolemLspWithHandles)
 import Golem.Lsp.Workspace
 import Golem.Syntax
@@ -71,7 +72,7 @@ tableWatchTests =
         codesOf ws "data/x.csv" @?= ["G02085"],
       testCase "the table files to watch, and which notifications re-evaluate" $ withTableProject $ \dir -> do
         ws <- openWorkspace dir
-        tablesToWatch ws @?= Set.fromList ["data/x.csv", "data/x.tsv"]
+        tablesToWatch ws @?= Set.fromList ["data/x.csv", "data/x.tsv", "manifest.toml"]
         tableFilesChanged ws {wsWatchedTables = tablesToWatch ws} ["data/x.tsv"] @?= True
         tableFilesChanged ws {wsWatchedTables = tablesToWatch ws} ["data/y.tsv", "a.gm"] @?= False
         open <- updateFile ws "data/x.tsv" "a\tb\nc\n"
@@ -80,7 +81,7 @@ tableWatchTests =
       testCase "a table file written as the first argument is watched, as one written as src=" $
         withProject [("a.gm", "@table data/p.tsv\n\n@table src=data/s.tsv\n"), ("data/p.tsv", "a\tb\n1\t2\n"), ("data/s.tsv", "a\tb\n1\t2\n")] $ \dir -> do
           ws <- openWorkspace dir
-          tablesToWatch ws @?= Set.fromList ["data/p.tsv", "data/s.tsv"]
+          tablesToWatch ws @?= Set.fromList ["data/p.tsv", "data/s.tsv", "manifest.toml"]
           tableFilesChanged ws {wsWatchedTables = tablesToWatch ws} ["data/p.tsv"] @?= True,
       testCase "a client with dynamic registration watches the table files; a fixed file clears G02085" $ withTableProject $ \dir -> do
         (regs, cleared, afterSwitch, unchanged) <- lspSession True dir $ do
@@ -95,9 +96,9 @@ tableWatchTests =
           LT.changeDoc doc [L.TextDocumentContentChangeEvent (L.InR (L.TextDocumentContentChangeWholeDocument "本文。\n\n@table data/y.tsv\n"))]
           unchanged <- registrationsUntilDiagnostics dir "a.gm"
           pure (regs, cleared, afterSwitch, unchanged)
-        regs @?= ["data/x.csv", "data/x.tsv"]
+        regs @?= ["data/x.csv", "data/x.tsv", "manifest.toml"]
         cleared @?= []
-        afterSwitch @?= ["data/y.tsv"]
+        afterSwitch @?= ["data/y.tsv", "manifest.toml"]
         unchanged @?= 0,
       -- security audit 2026-10-18, C14: the name of a table file is not a glob
       testCase "a table file named with * and ? is watched as that file, not as a glob" $
@@ -106,20 +107,38 @@ tableWatchTests =
             _ <- waitDiagnostics dir "data/x*y?.tsv" (not . null)
             watched
           -- the pattern itself: a watcher that registers nothing fails too (docs/adr/0066)
-          regs @?= ["data/x[*]y[?].tsv"],
+          regs @?= ["data/x[*]y[?].tsv", "manifest.toml"],
       -- docs/adr/0161
       testCase "the files of [functions.requires] are watched, and creating a missing one publishes the diagnostics again" $
         withProject [("a.gm", "一。\n"), ("manifest.toml", manifest <> "\n[functions.requires]\nfile = [\"data/words.tsv\"]\n")] $ \dir -> do
           ws <- openWorkspace dir
           -- with the notice of no style.toml
           codesOf ws "manifest.toml" @?= ["G03102", "G03023"]
-          tablesToWatch ws @?= Set.fromList ["data/words.tsv"]
+          tablesToWatch ws @?= Set.fromList ["data/words.tsv", "manifest.toml"]
           cleared <- lspSession True dir $ do
             _ <- waitDiagnostics dir "manifest.toml" (elem "G03102")
             liftIO (createDirectoryIfMissing True (dir </> "data") >> BS.writeFile (dir </> "data/words.tsv") "a\tb\n")
             LT.sendNotification M.SMethod_WorkspaceDidChangeWatchedFiles (L.DidChangeWatchedFilesParams [L.FileEvent (L.filePathToUri (dir </> "data/words.tsv")) L.FileChangeType_Created])
             waitDiagnostics dir "manifest.toml" (notElem "G03102")
           cleared @?= ["G03023"],
+      -- docs/adr/0185
+      testCase "manifest.toml is watched; a change of [vars] on the disk evaluates again" $
+        withProject [("a.gm", "[= vars.product]\n")] $ \dir -> do
+          ws <- openWorkspace dir
+          codesOf ws "a.gm" @?= ["G02002"]
+          assertBool "manifest.toml is watched" (Set.member "manifest.toml" (tablesToWatch ws))
+          tableFilesChanged ws {wsWatchedTables = tablesToWatch ws} ["manifest.toml"] @?= True
+          BS.writeFile (dir </> "manifest.toml") (manifest <> "\n[vars]\nproduct = \"Golem\"\n")
+          ws' <- reloadWorkspace ws
+          codesOf ws' "a.gm" @?= []
+          hover ws' "a.gm" 3 @?= Just "Golem"
+          BS.writeFile (dir </> "manifest.toml") manifest
+          cleared <- lspSession True dir $ do
+            _ <- waitDiagnostics dir "a.gm" (elem "G02002")
+            liftIO (BS.writeFile (dir </> "manifest.toml") (manifest <> "\n[vars]\nproduct = \"Golem\"\n"))
+            LT.sendNotification M.SMethod_WorkspaceDidChangeWatchedFiles (L.DidChangeWatchedFilesParams [L.FileEvent (L.filePathToUri (dir </> "manifest.toml")) L.FileChangeType_Changed])
+            waitDiagnostics dir "a.gm" null
+          cleared @?= [],
       testCase "a client without dynamic registration is not asked to watch" $ withTableProject $ \dir -> do
         regs <- lspSession False dir $ do
           _ <- waitDiagnostics dir "data/x.tsv" (not . null)
