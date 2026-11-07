@@ -1492,7 +1492,7 @@ csvTable ctx sp args = do
     (\asp -> report (notice "G02129" asp "@table の src= は廃止予定です。パスを最初の引数に書きます"))
     [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
   let arg k = listToMaybe [(asp, v) | A.Located asp (A.Keyword (A.Located _ k') v) <- args, k' == k]
-      paths = map argText [v | A.Located _ (A.Positional v) <- args] <> maybe [] pure (argText <$> lookup "src" kw)
+      paths = [argText v | A.Located _ (A.Positional v) <- args] <> maybe [] (pure . argText) (lookup "src" kw)
       src = listToMaybe paths
   format <- case arg "format" of
     Nothing -> pure (Just (tableFormat Nothing (fromMaybe "" src)))
