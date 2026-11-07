@@ -372,7 +372,7 @@ notice と info は別の重大度であり、どちらも「お知らせ」と�
 - 前付けの順（番号のない「はじめに」、目次）、索引の二段組み、奥付の版の表示をそろえる。
 - 注の印を `style.toml` の `[notes]` の `mark-size = "0.65zw"` で組む。二つのマニュアルの本文は 13Q なので、印はおよそ 6pt になる。JLReq の 4.2.3「合印の処理」が合印の大きさを 6 ポイント前後としているのに合わせる（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
 - 脚注の前に区切り線を引く。`style.toml` の `[notes.rule]` に、一行の字数の 4 分の 1 ほどの `length` と、前後の 0.5zw の間隔を書く（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
-- 奥付は `@import common/build-info.gm as build` で読み、`版：[= build.edition]` と `コミット：[code: [= build.commit]]` の二行を載せる。
+- 奥付は `@import common/build-info.gm as build` で読み、`版：[= build.edition]` と `コミット：[code: [= build.commit]][= build.uncommitted]` の二行を載せる。コミットの行は、ハッシュだけをコードにし、コミットしていない変更があることの注記を本文の文字として続ける（[docs/adr/0178](adr/0178-colophon-commit-line-overflow.md)）。
 - 奥付の書体の段落の後に、ライセンスの段落を置く。原稿と組んだ PDF と HTML を CC0 1.0 で公開すること、放棄できない著作者人格権を行使しないこと、条文の場所（各プロジェクトの `LICENSE`）、PDF に埋め込んだフォントと HTML と一緒に配るフォントは SIL Open Font License 1.1 で CC0 の対象でないこと、その全文を HTML の `fonts/` に置くことを書く（[docs/adr/0082](adr/0082-manuals-under-cc0.md)）。
 - コードブロックは組み込みの段落スタイル `code` で組み、背景のスウォッチ（`{ cmyk = [0, 0, 0, 8] }` を出発点にする）と内側の余白を付ける。
 - コードブロックの行番号（`numbers=true`）は、本文が行を番号で指すコードと、15 行ほどより長いプログラム、設定、原稿の例に付ける。長い例では、読み手が構造を追い、レビューで箇所を指すのに番号が役に立つ。一行の例、コマンドとその出力（`sh` と `console`）、短い断片には付けない。`@listing` で `lines=N-M` を書いたものは、番号がファイルの行番号と一致する。本文で行を指すときは「11 行目」のように、表示される番号で書く。

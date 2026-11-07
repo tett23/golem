@@ -569,11 +569,42 @@ tests =
         "explicit hyphens (golem-layout ADR 0008)"
         [ testCase "a hyphen in a word is a break with no added hyphen" $
             shape (compose enUS "lime-tree") @?= ["lime-", "pen 0 50 ExplicitHyphen", "tree"],
-          testCase "words with an explicit hyphen get no pattern hyphens" $ do
+          testCase "each element of a word with an explicit hyphen is hyphenated by the patterns (docs/adr/0179)" $ do
+            let parts = hyphenate englishUS "ordinate"
+                hy = "pen " <> show (Sp (unSp fs `div` 2)) <> " 50 PatternHyphen 0"
+            assertBool "ordinate has a pattern hyphen" (length parts >= 2)
+            shape (compose enUS "co-ordinate") @?= ["co-", "pen 0 50 ExplicitHyphen"] <> concat (zipWith (\i t -> [hy | i > (0 :: Int)] <> [T.unpack t]) [0 ..] parts),
+          testCase "the patterns see the elements, never the hyphen (docs/adr/0179)" $ do
             shape (compose enUS "well-known") @?= ["well-", "pen 0 50 ExplicitHyphen", "known"]
-            shape (compose enUS "self-evident") @?= ["self-", "pen 0 50 ExplicitHyphen", "evident"],
-          testCase "explicit-hyphen-penalty 10000 keeps the word whole" $
-            shape (compose enUS {ceExplicitHyphenPenalty = 10000} "lime-tree") @?= ["lime-tree"],
+            let ev = compose enUS "self-evident"
+                hyphens = [() | Penalty _ _ (PatternHyphen _) <- ev]
+            assertBool "evident has a pattern hyphen" (not (null hyphens))
+            take 3 (shape ev) @?= ["self-", "pen 0 50 ExplicitHyphen"] <> map T.unpack (take 1 (hyphenate englishUS "evident"))
+            length hyphens @?= length (hyphenate englishUS "evident") - 1,
+          testCase "explicit-hyphen-penalty 10000 keeps the word whole" $ do
+            shape (compose enUS {ceExplicitHyphenPenalty = 10000} "lime-tree") @?= ["lime-tree"]
+            shape (compose enUS {ceExplicitHyphenPenalty = 10000} "co-ordinate") @?= ["co-ordinate"],
+          testCase "a line ending in an explicit hyphen too loose for the tolerance breaks inside the next element (docs/adr/0179)" $ do
+            -- a character is 2 units, a space 1 unit (stretch 1/2, shrink 1/3), u = fs / 4
+            let u = Sp (unSp fs `div` 4)
+                items = compose enUS "a a a a a co-ordinate"
+                -- "a a a a a co-" is 21 units: on 31 units its badness is beyond the tolerance;
+                -- "a a a a a co-ordi-" is 31 units
+                loose = breakParagraph defaultParams (const (31 * u)) items
+                firstBreak r = take 1 [items !! i | i <- brPositions r]
+            brPass loose @?= 2
+            case firstBreak loose of
+              [Penalty _ 50 (PatternHyphen _)] -> pure ()
+              other -> assertFailure ("expected a pattern hyphen, found " <> show other)
+            case brLines loose of
+              (l : _) -> [bcText c | Box _ c <- lineItems l] @?= ["a", "a", "a", "a", "a", "co-", "or", "di"]
+              [] -> assertFailure "no lines"
+            -- on 22 units "a a a a a co-" fits within the pretolerance
+            let tight = breakParagraph defaultParams (const (22 * u)) items
+            brPass tight @?= 1
+            case firstBreak tight of
+              [Penalty _ 50 ExplicitHyphen] -> pure ()
+              other -> assertFailure ("expected the explicit hyphen, found " <> show other),
           testCase "no break after a leading or trailing hyphen; one after a run" $ do
             shape (compose enUS "-5") @?= ["-5"]
             shape (compose enUS "pre-") @?= ["pre-"]

@@ -1,6 +1,6 @@
 # ADR 0008: 明示のハイフンでの行分割と、罰点の等しい候補の選び方
 
-ステータス: 採択→罰点の等しい経路の選び方は [ADR 0010](0010-tie-breaking-tex.md)
+ステータス: 採択→罰点の等しい経路の選び方は [ADR 0010](0010-tie-breaking-tex.md)、明示のハイフンを含む語の分綴は [docs/adr/0179](../../adr/0179-lines-ending-in-explicit-hyphens.md)
 
 ## 文脈
 
