@@ -34,10 +34,12 @@ module Golem.Pdf.Writer
     rectObj,
     pdfTextString,
     documentId,
+    nameBasedUuid,
     instanceId,
   )
 where
 
+import Data.Bits ((.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Builder qualified as B
@@ -52,8 +54,6 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Data.UUID qualified as UUID
-import Data.UUID.V5 qualified as V5
 import Golem.Length (Sp (..))
 import Golem.Pdf.Drawing
 import Golem.Pdf.Image
@@ -61,6 +61,7 @@ import Golem.Pdf.Import
 import Golem.Pdf.Number
 import Golem.Pdf.Object
 import Golem.Pdf.Rect (Rect (..))
+import Golem.Pdf.Sha1 (sha1)
 import Golem.Pdf.Sha256 (sha256)
 import Golem.Pdf.Srgb (srgbProfile)
 import Golem.Pdf.Structure
@@ -276,9 +277,26 @@ data Document = Document
 
 -- ------------------------------------------------------------------ identifiers
 
--- | The document ID: a name-based UUID (v5) of the book's identifier.
+{- | The document ID: a name-based UUID (v5) of the book's identifier in
+the URL namespace, the 16 bytes that uuid's
+Data.UUID.V5.generateNamed namespaceURL gave (docs/adr ADR 0202).
+-}
 documentId :: Text -> ByteString
-documentId bookId = BL.toStrict (UUID.toByteString (V5.generateNamed V5.namespaceURL (BS.unpack (TE.encodeUtf8 bookId))))
+documentId = nameBasedUuid urlNamespace . TE.encodeUtf8
+
+-- | The URL namespace of RFC 9562 (section 6.6): 6ba7b811-9dad-11d1-80b4-00c04fd430c8.
+urlNamespace :: ByteString
+urlNamespace = BS.pack [0x6b, 0xa7, 0xb8, 0x11, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8]
+
+{- | A UUID version 5 (RFC 9562 section 5.5) of a name in a namespace, both
+as bytes: the first 16 bytes of the SHA-1 of the namespace and the name,
+with the version 5 in the high four bits of byte 6 and the variant 10 in
+the high two bits of byte 8.
+-}
+nameBasedUuid :: ByteString -> ByteString -> ByteString
+nameBasedUuid namespace name =
+  let h = BS.take 16 (sha1 (namespace <> name))
+   in BS.concat [BS.take 6 h, BS.singleton ((BS.index h 6 .&. 0x0f) .|. 0x50), BS.take 1 (BS.drop 7 h), BS.singleton ((BS.index h 8 .&. 0x3f) .|. 0x80), BS.drop 9 h]
 
 {- | The instance ID: the first 16 bytes of the SHA-256 of all inputs, each
 prefixed by its length.
