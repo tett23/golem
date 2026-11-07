@@ -262,6 +262,10 @@ G03010、G05004、G08100 は、[code: --profile dev] では警告、[code: --pro
   [code: wrap=start] か [code: wrap=end] にしてください。
 = [strong: G02031 [code: 回り込む図版には width が必要です]]
   [code: wrap] を書いた図版に、[code: width=] で幅を書いてください。
+= [strong: G02133 [code: 図版の width が読めません。寸法（10zw、50mm など）か行長の割合（50% など）で書きます: …]]
+  [code: @figure] の [code: width] が、寸法としても行長の割合としても読めないか、0 です。
+  [code: width=50] のように単位を書いていないときや、[code: em] のような使えない単位を書いたときに起きます。
+  [code: width=12zw]、[code: width=40mm] のような寸法か、[code: width=50%] のような行長の割合で書いてください。
 = [strong: G02032 [code: @figure には画像のパスを一つ書きます]]
   [code: @figure] の後に、画像のパスを一つだけ書いてください。
 = [strong: G02118 [code: 図版のキャプションには段落だけを書けます: …]]
@@ -285,6 +289,27 @@ G03010、G05004、G08100 は、[code: --profile dev] では警告、[code: --pro
 = [strong: G02132 [code: 言語のタグの形が誤っています: …]]
   [code: \[lang\]] か [code: @lang] のタグが、言語のタグの形ではありません。
   [code: en]、[code: en-US]、[code: zh-Hant-TW] のように書いてください。
+= [strong: G02124 [code: link の引数が誤っています]]
+  [code: \[link\]] に、URL を一つだけ、引用符で囲んで書いてください。
+  [code: \[link https://example.com/: 例\]] のように囲まずに書くと、[code: :] から後が本文になり、URL が読めません。
+  [code: \[link "https://example.com/": 例\]] と書きます。
+  リンクの文字は、[code: :] の後に書きます。
+= [strong: G02125 [code: URL の形が誤っています: …]]
+  [code: \[link\]] の URL に、空白や制御文字があるか、[code: https:///a] のようにホストがありません。
+  空白は [code: %20]、[code: %] そのものは [code: %25] と書いてください。
+= [strong: G02126 [code: リンクにできる URL は http と https だけです: …]]
+  リンクにできるのは、[code: http://] か [code: https://] で始まる URL だけです。
+  [code: https://] を書き忘れていないかを確かめてください。
+  [code: mailto:] などの URL は、リンクにせず、文字として書いてください。
+= [strong: G02127 [code: URL のホストは ASCII で書きます: …]]
+  URL のホストに、日本語のような ASCII でない文字があります。
+  日本語のドメイン名は、[code: xn--] で始まる形（Punycode）に直して書いてください。
+= [strong: G02128 [code: リンクの中にリンクになる要素は置けません: …]]
+  リンクの文字の中に、リンク、相互参照、脚注、傍注、引用を書いています。
+  それらはリンクの外に書いてください。
+= [strong: G02134 [code: キャプションのないコードブロックは番号を持たないので、@nonumber は要りません]]
+  キャプションのないコードブロックは、はじめから番号を持ちません。
+  キャプションを付けるなら [code: @caption] を書き、付けないなら [code: @nonumber] を消してください。
 = [strong: G02036 [code: @listing にはファイルのパスが必要です]]
   最初の引数に、載せるファイルのパスを書いてください。
 = [strong: G02037 [code: @listing の lines の範囲がファイルの行（1〜…）を外れています: …]]
@@ -527,6 +552,31 @@ G03010、G05004、G08100 は、[code: --profile dev] では警告、[code: --pro
   取り違えたときは、メッセージの後に正しい書き場所を示します。
   エラーと警告は止められないので、そのコードを消して原因を直してください。
   コードは大文字の [code: G] か [code: E] の後に 5 桁の数字を続けて書きます。
+= [strong: G03109 [code: … に浮動小数点数は書けません。\[vars\] の値は文字列、整数、真偽値、日付、配列、表のどれかです]] など
+  [code: \[vars\]] に、[code: 1.5] のような小数か、時刻か、日時を書いています。
+  小数は文字列で書くか、[code: @set] の式で作ってください。
+  日付は、時刻を付けずに [code: 2026-11-06] と書きます。
+= [strong: G03110 [code: … のキー … は式の名前の形（英字か _ で始まり、英数字と _ が続く）で書きます]]
+  [code: \[vars\]] のキーに、[code: -] を含む名前や、数字で始まる名前を書いています。
+  [code: edition_count] のように、[code: -] を [code: _] に替えるか、英字で始まる名前にしてください。
+= [strong: G03113 [code: PDF/A には \[color\] の intent が要ります]]
+  [code: \[targets.pdf\]] に [code: pdfa] を書いたのに、[code: style.toml] の [code: \[color\]] に [code: intent] がありません。
+  [code: intent] に CMYK の ICC プロファイルを書くか、PDF/A が要らなければ [code: pdfa] を消してください。
+  PDF は書きません。
+= [strong: G03119 [code: PDF/A と PDF/UA には、language を言語のタグの形で書きます: …]]
+  [code: pdfa] か [code: pdfua] を書いた本で、[code: \[metadata\]] の [code: language] が言語のタグの形ではありません。
+  [code: ja]、[code: en-US] のように書いてください。
+  [code: 日本語] や [code: ja_JP] は使えません。
+  PDF は書きません。
+= [strong: G07103 [code: PDF/UA では見出しの段を飛ばせません: … から …]]
+  [code: pdfua] を書いた本で、[code: #] の次に [code: ###] を置くように、見出しの段を飛ばしています。
+  最初の見出しは [code: #] にし、段を一つずつ深くしてください。
+  見た目を変えたいだけなら、[code: style.toml] の [code: \[headings\]] で変えます。
+  PDF は書きません。
+= [strong: G07104 [code: PDF/A-2a の PDF に私用領域の字は書けません: U+…]]
+  [code: pdfa] を書いた本で、外字などを、Unicode の私用領域の符号位置で書いています。
+  Unicode に符号位置のある字で書くか、図版にして [code: alt] で意味を書いてください。
+  PDF は書きません。
 
 @nonumber
 ## スタイルの設定（style.toml）
@@ -561,6 +611,13 @@ G03010、G05004、G08100 は、[code: --profile dev] では警告、[code: --pro
   変数のない章で柱の行を出さなくてよいなら、[code: {set.名前?}] と書きます。
 = [strong: G02068 [code: 柱に出せるのは文字列と数です: …]]
   柱の書式で参照する変数を、文字列か数にしてください。
+= [strong: G03111 [code: 柱が参照する変数 vars.… が、manifest.toml の \[vars\] にありません（マスターページ …）]]
+  柱の書式の [code: {vars.名前}] の名前が、[code: manifest.toml] の [code: \[vars\]] にありません。
+  [code: \[vars\]] に変数を書くか、名前の綴りを直してください。
+  値がなくてもよいなら、[code: {vars.名前?}] と書きます。
+= [strong: G03112 [code: 柱に出せるのは文字列と数です: vars.… は …（マスターページ …）]]
+  柱の書式の [code: {vars.名前}] の値が、真偽値、配列、表のどれかです。
+  表の中の値なら、[code: {vars.author.short}] のように値まで書いてください。
 = [strong: G03018 [code: 未知の位置です: …]]
   柱かノンブルの [code: position] を、[code: top-outside] などの六つのどれかにしてください。
 = [strong: G03019 [code: \[headings.… \] の running-head は廃止しました。…]]
@@ -616,8 +673,14 @@ PDF を組むときに出るエラーです。
 = [strong: G07029 [code: リストの番号 … は、書式 … で表せません]]
   丸数字（50 まで）のように表せる数に限りのある書式で、それを超える番号の項目があります。
   項目を減らすか、算用数字の書式に替えてください。
-= [strong: G07022 [code: 回り込む図版の幅が不正です。…]]
-  回り込ませる図版の [code: width] を寸法で書き、脇に本文の文字が八つ以上入る幅にしてください。
+= [strong: G07102 [code: 注の番号 … は、\[notes\] の mark-format … で表せません]]
+  [code: {n:note-symbols}] の記号（7 まで）や [code: {n:circled}] の丸数字（50 まで）のように、表せる数に限りのある表記で、それを超える番号の注があります。
+  [code: \[notes\]] の [code: numbering] で番号を振り直す範囲を狭めるか、[code: mark-format] を算用数字などの表記に替えてください。
+  PDF、HTML、EPUB、プレーンテキストのどれも書きません。
+= [strong: G07022 [code: 回り込む図版の幅が不正です。行の残りを本文の 8 字分以上にしてください: …]]
+  回り込ませる図版の脇に、本文の文字が八つ以上入りません。
+  図版の [code: width] を小さくしてください。
+  [code: width] が読めないときは、このエラーではなく、G02133 になります。
 = [strong: G07023 [code: 回り込む図版の除外領域が一ページの行数を超えます（…）]]
   回り込ませた図版とキャプションが一ページに収まりません。
   図版を小さくするか、キャプションを短くしてください。
@@ -910,6 +973,21 @@ G09001 のほかは、エラーか警告か、出すかどうかをプリフラ�
   段落スタイル [code: caption] か [code: sidenote] に、0 の [code: indent] か [code: first-line-indent] を書いています。
   キャプションと傍注ははじめから字下げをしないので、組んだ結果は変わりません。
   そのキーを消してください。
+= [strong: G03114 [code: \[lists\] の numbers の {{ と }} は廃止予定です。\\{ と \\} と書きます: …]]
+  [code: \[lists\]] の [code: numbers] の書式で、括弧そのものを [code: {{] と [code: }}] で書いています。
+  [code: '\\{{n}\\}'] のように、[code: \\{] と [code: \\}] をリテラル文字列で書いてください。
+  今のバージョンでは同じに組みますが、今後のバージョンでは使えなくなります。
+= [strong: G03115 [code: \[lists\] の numbers の {…} は廃止予定です。{n:…} と書きます: …]]
+  [code: \[lists\]] の [code: numbers] の書式で、[code: {一}] や [code: {a}] のような一字の見本で表記を選んでいます。
+  [code: {n:kanji}] や [code: {n:lower-alpha}] のように、表記の名前で書いてください。
+  今のバージョンでは同じに組みますが、今後のバージョンでは使えなくなります。
+= [strong: G03116 [code: 柱の書式の {{ と }} は廃止予定です。\\{ と \\} と書きます: …]]
+  柱の書式で、括弧そのものを [code: {{] と [code: }}] で書いています。
+  [code: \\{] と [code: \\}] をリテラル文字列で書いてください。
+  今のバージョンでは同じに組みますが、今後のバージョンでは使えなくなります。
+= [strong: G03117 [code: \[notes\] の mark-size は廃止予定です。\[character-styles.note-mark\] の size に書きます]]
+  [code: \[notes\]] の [code: mark-size] を消し、同じ値を [code: \[character-styles.note-mark\]] の [code: size] に書いてください。
+  今のバージョンでは同じに組みますが、今後のバージョンでは使えなくなります。
 = [strong: G03120 [code: 段落の区切り方を書いていないので、改行の様式（paragraph-separator = "line"）で読みます]]
   [code: manifest.toml] の [code: \[source\]] に [code: paragraph-separator] を書いていないので、改行ひとつで段落を区切って読みます。
   空行で段落を区切って書いた原稿なら、[code: \[source\]] に [code: paragraph-separator = "blank-line"] と書いてください。

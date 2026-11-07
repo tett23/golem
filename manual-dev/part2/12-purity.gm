@@ -105,7 +105,7 @@ Golem の構成は、IO を処理の両端に寄せ、そのあいだを純粋�
 @figure images/purity.svg alt="左に読む側の IO のエッジ（原稿と manifest.toml、プラグインの配布物、図版と書誌と CSV と TSV、フォント）、中央に純粋なカーネル（構文解析、S0 の evalFile、S1 の assemble、S2 の行分割と改ページ、直列化）、右に書く側の IO のエッジ（build/ の下の出力）を置いた図。中央には、wasmtime と HarfBuzz と FreeType を純粋な関数として包んだ箱が点線で描かれ、下の帯に、時計、乱数、環境変数、ロケール、タイムゾーン、ディレクトリの列挙、ネットワーク、システムのフォントを出力に影響させないことが書かれている"
   純粋なカーネルと、読む側と書く側の IO のエッジ。
 
-IO を持つのは、golem-driver の [code: evaluateProjectWith] と [code: buildCore]、golem-project の [code: loadProjectWith] と [code: resolveInRoot]、golem-font のフォントを開く [code: loadFont] とサブセットを作る [code: subsetFont]、golem-plugin のプラグインを読み込む [code: loadPlugin] と [code: Golem.Plugin.Lock] のキャッシュの読み書き、golem-epub の [code: writeEpub]、それに golem-cli と golem-lsp である。
+IO を持つのは、golem-driver の [code: evaluateProjectWith] と [code: buildCore]、golem-typeset の PDF を組む [code: renderPdf] と [code: renderPdfView]、golem-project の [code: loadProjectWith] と [code: resolveInRoot]、golem-font のフォントを開く [code: loadFont] とサブセットを作る [code: subsetFont]、golem-plugin のプラグインを読み込む [code: loadPlugin] と [code: Golem.Plugin.Lock] のキャッシュの読み書き、golem-epub の [code: writeEpub]、それに golem-cli と golem-lsp である。
 開発用の golem-fixtures と golem-test-support を除き、ほかのライブラリのモジュールは、公開する関数の型に [code: IO] を持たない。
 処理の各段階は、読み込みの済んだ値を受け取る純粋な関数として書いてある。
 主な関数の型は次のとおりである。
@@ -155,7 +155,7 @@ S0 の結果から S1 を組み直す [code: evReassemble] も、同じ形の純
 
 図版、取り込むコード、CSV と TSV は、golem-driver の [code: loadAssets] が、各ファイルの AST から [code: assetRefs] で集めたパスだけを読む。
 パスは golem-project の [code: normalizeRelative] で字句の上で正規化し、[code: resolveInRoot] でプロジェクトルートの外を指していないことを確かめる。
-PDF の経路は、図版のファイル（PNG、JPEG、PDF、SVG）を、golem-driver の [code: loadFigures] が S1 の結果の図版のブロックから集めたパスとページの組だけ読む。
+PDF の経路は、図版のファイル（PNG、JPEG、PDF、SVG）を、golem-typeset の [code: loadFigures] が S1 の結果の図版のブロックから集めたパスとページの組だけ読む。
 ディレクトリを列挙する [code: listDirectory] は、[code: golem new] が作る先のディレクトリが空かどうかを見る箇所と、LSP がワークスペースを探す箇所にしか現れない。
 どちらも出力の中身を決めない。
 
@@ -175,7 +175,7 @@ golem-plugin の [code: defaultCacheDir] は、[code: getXdgDirectory] でプラ
 ### C のライブラリを純粋な関数として包む
 
 C のライブラリを呼ぶ関数のうち、エッジで呼べるものは IO の関数にしてある。
-golem-font の [code: loadFont :: ByteString -> IO (Either FontError Font)] は、golem-driver の [code: Golem.Driver.Fonts] がフォントのファイルを読んだ直後に、IO の中で呼ぶ。
+golem-font の [code: loadFont :: ByteString -> IO (Either FontError Font)] は、golem-typeset の [code: Golem.Typeset.FontProvider] がフォントのファイルを読んだ直後に、IO の中で呼ぶ。
 フォントを開いた時点で決まる値（upem、範囲、PostScript 名、ROS、[code: fontEmBoxCentral]、CID-keyed のフォントの各グリフの CID）は、このときに読んで [code: Font] の値に持たせる。
 PDF に埋め込むサブセットを作る [code: subsetFont] も IO で、[code: renderPdfView] が組版を終えた後に、使ったグリフの表から呼ぶ。
 golem-plugin の [code: loadPlugin] と、テストでだけ使う [code: watToWasm] も IO である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0034-fewer-unsafe-perform-io.md]（docs/adr の ADR 0034「unsafePerformIO を減らし、残すものを検査で固定する」）]
@@ -198,7 +198,7 @@ golem-font ADR 0001 は、FFI の呼び出しを純粋な関数として見え�
 
 + 結果が引数だけで決まる。フォントは常にバイト列から読み（パスからは読まない）、C の側は呼び出しのあいだで結果を左右する状態を持たない。
 + 作用が外から観察できない。C の側のオブジェクトは [code: ForeignPtr] のファイナライザが解放し、例外は外に漏らさない。
-+ 境界を越える値が環境に依存しない。C の側からは整数のフォントの単位を受け取り、golem-font はそれをそのまま返す。字の大きさを掛けて sp にするのは golem-driver であり、golem-length の [code: Golem.Length] の規則で、最近接偶数丸めで一度だけ丸める。
++ 境界を越える値が環境に依存しない。C の側からは整数のフォントの単位を受け取り、golem-font はそれをそのまま返す。字の大きさを掛けて sp にするのは golem-typeset であり、golem-length の [code: Golem.Length] の規則で、最近接偶数丸めで一度だけ丸める。
 + 複数のスレッドから同時に呼んでも、一つずつ呼んだときと同じ結果になる。純粋な関数は、どの OS のスレッドで、いくつ同時に評価されてもよいからである。
 
 三つめは決定性のための条件でもある。
@@ -231,7 +231,7 @@ HarfBuzz のオブジェクト（blob、face、font）は開いた後は読む�
 
 ### メモ化
 
-golem-driver の [code: Golem.Driver.Fonts] は、字の送りと二字のカーニングの計算を、[code: Golem.Driver.Memo] の [code: memoWith] でメモ化している。
+golem-typeset の [code: Golem.Typeset.FontProvider] は、字の送りと二字のカーニングの計算を、[code: Golem.Typeset.Memo] の [code: memoWith] でメモ化している。
 [code: memoWith] は状態を持たない。
 キー（シェイピングの設定と文字列）を小さな整数の列に符号化し、ありうるすべての列の結果を、遅延評価の木の葉に評価していない式として置く。
 木は引いた経路の節点だけが作られ、葉は初めて引いたときに評価される。
@@ -259,7 +259,7 @@ tasty もこのスイートのテストを同時に走らせるので、環境�
 
 S2 の繰り返しも同じ構造をしている。
 golem-layout の [code: resolvePageRefs] は、仮のページ番号から組んだページへの関数を受け取り、ページ番号が変わらなくなるまで繰り返す純粋な関数である。
-golem-driver の [code: fixpoint] が同じ繰り返しを IO の中で回しているのは、一回の組版が [code: mapConcurrently] を使うからで、繰り返しの判定は仮の値と組んだ結果だけで決まる。
+golem-typeset の [code: fixpoint] が同じ繰り返しを IO の中で回しているのは、一回の組版が [code: mapConcurrently] を使うからで、繰り返しの判定は仮の値と組んだ結果だけで決まる。
 上限は 5 回で、収束しなければ G07021 のエラーにする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-layout/adr/0003-pagination-and-s2.md]（golem-layout ADR 0003「改ページ、脚注、ページ番号の解決」）]
 
 ### コンパイルの時点の IO
@@ -349,7 +349,7 @@ Golem は、長さと位置の計算に浮動小数点数を使わない。
 | --- | --- | --- |
 | 長さと位置（版面、行、ページの上の座標） | 整数の sp（[code: newtype Sp = Sp Integer]、1pt = 65536sp） | golem-length の [code: Golem.Length] が定め、golem-project、golem-layout-spec、golem-layout、golem-pdf などが使う |
 | [code: style.toml] の寸法 | sp の整数か、字の大きさに対する比（[code: Zw !Rational]） | golem-project の [code: parseDim] |
-| フォントの送り、カーニング、字面の位置 | フォントの単位の整数を、upem に対する比（有理数）にしてから sp に換算 | golem-font（フォントの単位）、golem-driver（比）、[code: Golem.Length] の [code: zwToSp]（sp） |
+| フォントの送り、カーニング、字面の位置 | フォントの単位の整数を、upem に対する比（有理数）にしてから sp に換算 | golem-font（フォントの単位）、golem-typeset（比）、[code: Golem.Length] の [code: zwToSp]（sp） |
 | 行の伸縮の比、デメリット | [code: Rational]（[code: lineRatio]）、[code: Integer] | golem-layout |
 | PDF に書く座標 | sp から pt への換算を整数で計算し、小数点以下 4 桁の十進で書く | golem-pdf |
 | 式の言語の数 | [code: Natural]（[code: VNat]）、[code: Integer]（[code: VInt]）、[code: Rational]（[code: VRat]） | golem-eval |
@@ -366,7 +366,7 @@ sp どうしの足し算と引き算、整数の倍はそのまま書けるが�
 HarfBuzz と FreeType についても、Golem が受け取る値は整数である。
 golem-font の C の側（[code: cbits/golem/golem_font.c]）は、HarfBuzz のフォントの拡大率をフォントの 1em の単位数（upem）に設定し、グリフの位置をフォントの単位の整数で受け取る。
 FreeType のグリフは [code: FT_LOAD_NO_SCALE] で読み、拡大しない整数のメトリクスを得る。
-字の大きさへの拡大は、Haskell の側で golem-driver が行う。
+字の大きさへの拡大は、Haskell の側で golem-typeset が行う。
 フォントの単位を upem に対する比（em の有理数）にし、それに文字の大きさを掛けて [code: zwToSp] で sp にする。
 ライブラリの内部の計算は Golem からは見えないので、C のソースを [code: -ffp-contract=off] でコンパイルし、バージョンを固定して同梱している。
 
@@ -399,7 +399,7 @@ golem-eval の [code: Golem.Eval.Analysis] は、評価の前に式の型を推�
 ## 決定性が純粋性に求めること
 
 逆向きに見ると、決定性は、すべての関数が純粋であることまでは求めていない。
-golem-driver は IO の関数であり、[code: fixpoint] も [code: buildFlow] も IO の中で動くが、出力は決定的である。
+golem-driver と golem-typeset は IO の関数を持ち、golem-typeset の [code: fixpoint] も [code: buildFlow] も IO の中で動くが、出力は決定的である。
 決定性に要るのは、IO が次の三つを満たすことである。
 
 + 読むものが ADR 0002 の入力の一覧に収まる。
@@ -416,7 +416,7 @@ ADR 0002 の各規則が、どこで、どの仕組みで守られているか�
 | 環境変数、ロケール | golem-project、golem-plugin | 原稿はバイト列で読む。[code: XDG_CACHE_HOME] は場所だけを決める |
 | ディレクトリを列挙しない | golem-driver | 読むファイルは [code: assetRefs] が原稿から集める |
 | 走査の順を固定する | すべて | [code: Data.Map]。freeze のフラグ |
-| 並列の結果の順 | golem-driver | [code: mapConcurrently] は入力の順で返す |
+| 並列の結果の順 | golem-typeset | [code: mapConcurrently] は入力の順で返す |
 | 浮動小数点数 | golem-eval、golem-layout、golem-font | 超越関数を持たない。sp と有理数。[code: -ffp-contract=off] |
 | ネイティブライブラリ | golem-font、golem-plugin、golem-pdf | 同梱してバージョンを固定する。純粋な関数として包む。wasmtime の設定 |
 

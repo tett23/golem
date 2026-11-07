@@ -20,6 +20,7 @@ ADR はコミットした後に変えられないので、下の層から順に�
 | golem-parser | PEG のパーサー。CST、AST |
 | golem-project | マニフェスト、[code: style.toml]、import の解決 |
 | golem-eval | 式の評価とプラグインの展開（S0） |
+| golem-emet | 関数を書く言語 Emet（[code: .emet]）の読み込み、型の検査、評価、整形 |
 | golem-doc | 意味論 IR とプラグインの ABI（CDDL のスキーマ、CBOR、検証） |
 | golem-numerals | 漢数字、丸数字、番号の書式。golem のどのパッケージにも依存しない最下層 |
 | golem-bibliography | 参考文献の CSL-JSON の読み取りと書式。golem-syntax だけに依存する |
@@ -33,6 +34,7 @@ ADR はコミットした後に変えられないので、下の層から順に�
 | golem-pdf | PDF/X-4 の決定的な直列化と、PDF の図版の読み込み |
 | golem-svg | SVG の図版の読み込み（XML、CSS、描画）。base、bytestring、containers、text だけに依存する |
 | golem-preflight | プリフライトの設定（[code: preflight.toml]）と検査。I/O を持たない純粋な関数だけからなる |
+| golem-typeset | PDF の組版。意味論 IR の本と [code: style.toml] から行とページを組み、PDF を書く |
 | golem-html | XHTML と CSS |
 | golem-epub | EPUB のパッケージ |
 | golem-text | プレーンテキスト（縦書きと横書き） |
@@ -48,21 +50,23 @@ ADR はコミットした後に変えられないので、下の層から順に�
 ほかの依存を通して届く依存の矢印は省いた。
 golem-syntax と golem-length への矢印も省いた。
 どちらも使うパッケージが多いからである。
-golem-length を使うのは、golem-doc、golem-driver、golem-html、golem-layout、golem-pdf、golem-preflight、golem-project である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0114-sp-in-a-length-package.md]（docs/adr ADR 0114「長さの型と変換を golem-length に移し、golem-font から使われない sp の API を消す」）]
+golem-length を使うのは、golem-doc、golem-driver、golem-html、golem-layout、golem-pdf、golem-preflight、golem-project、golem-typeset である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0114-sp-in-a-length-package.md]（docs/adr ADR 0114「長さの型と変換を golem-length に移し、golem-font から使われない sp の API を消す」）]
 たとえば golem-cli は golem-driver にも直接依存しているが、golem-lsp を通して届くので、矢印は golem-lsp への一本だけである。
 
 @label fig-modules
-@figure images/modules.svg alt="golem- の接頭辞を省いたパッケージの名前を箱にし、依存を矢印で結んだ図。cli が lsp を、lsp が driver と fmt を、driver が preflight、text、epub、lint、plugin、layout、layout-spec、pdf、font、svg を使い、preflight と layout-spec が pdf を使い、下の層は project、assemble、doc、parser、syntax と続く。text と html は assemble と bibliography を、assemble は doc と numerals を使う。length は syntax と並ぶ最下層に置き、どちらへの矢印も省いた。PDF 経路、Web 経路、テキスト経路のパッケージを色で分けている"
+@figure images/modules.svg alt="golem- の接頭辞を省いたパッケージの名前を箱にし、依存を矢印で結んだ図。cli が lsp を、lsp が driver と fmt を、driver が typeset、text、epub、lint、plugin、emet を使う。typeset は preflight、layout、layout-spec、font、svg、html を使い、preflight と layout-spec が pdf を使う。emet は eval を、lint と plugin は eval を使い、下の層は project、assemble、doc、parser、syntax と続く。text と html は assemble と bibliography を、assemble は doc と numerals を使う。length は syntax と並ぶ最下層に置き、どちらへの矢印も省いた。PDF 経路、Web 経路、テキスト経路のパッケージを色で分けている"
   パッケージの依存（golem- の接頭辞を省いた）。
 
-上から読むと、golem-cli が golem-lsp を通して golem-driver を使い、golem-driver が出力の各パッケージと golem-lint と golem-plugin を束ねる。
-golem-preflight は、golem-driver が PDF を書きながら作る組んだ結果の写し（[code: Golem.Preflight.View]）を、プリフライトの設定に従って検査する。
+上から読むと、golem-cli が golem-lsp を通して golem-driver を使い、golem-driver が出力の各パッケージと golem-lint、golem-plugin、golem-emet を束ねる。
+PDF の組版（行とページを組み、PDF を書くこと）は、golem-typeset が受け持つ。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0192-split-pdf-typesetting-from-golem-driver.md]（docs/adr の ADR 0192「PDF の組版を golem-driver から新しいパッケージに分ける」）]
+golem-emet は関数を書く言語 Emet を持ち、数の演算を golem-eval と共有する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0160-emet-function-language-core.md]（docs/adr の ADR 0160「関数を書く言語 Emet の核」）]
+golem-preflight は、golem-typeset が PDF を書きながら作る組んだ結果の写し（[code: Golem.Preflight.View]）を、プリフライトの設定に従って検査する。
 PDF/X-4 の要件の検査は、golem-pdf の [code: Golem.Pdf.X4.verify] が書く前の PDF のオブジェクトに対して行う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
 下の層は、golem-project、golem-assemble、golem-doc、golem-parser、golem-syntax の順に積み重なる。
 golem-project が golem-assemble に依存するのは、[code: style.toml] の [code: \[lists\]] の番号の書式を golem-assemble の型で読むからである。
 golem-doc は意味論 IR とプラグインの ABI だけを持ち、文書構造の集約（golem-assemble）、参考文献（golem-bibliography）、数の表記（golem-numerals）には依存しない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0173-rc4-refactoring.md]（docs/adr の ADR 0173「rc4 の前に、出力を変えずにコードを整理する」）]
 golem-eval が golem-project に依存するのは、ファイルの中の [code: @style-def] と正規表現スタイルを [code: style.toml] の型で扱い、import の先を golem-project の関数で解決するからである。
-PDF の経路のパッケージ（golem-layout-spec、golem-layout、golem-font、golem-pdf）だけが、レイアウト IR、シェイピング、フォントのサブセット化を扱う。
+PDF の経路のパッケージ（golem-typeset、golem-layout-spec、golem-layout、golem-font、golem-pdf）だけが、レイアウト IR、シェイピング、フォントのサブセット化を扱う。
 golem-layout は、段落を Knuth と Plass の方式で行に分け [cite knuth-plass]、和文は日本語組版処理の要件 [cite jlreq] に従って組む。
 golem-font のライブラリは Golem のほかのパッケージに依存しない。
 グリフの位置と寸法はフォントの単位で返し、長さを持たないので、golem-length にも依存しない。
@@ -75,7 +79,7 @@ golem-svg は、SVG の図版を XML と CSS から読み、パス、塗りと�
 数は有理数で計算し、三角関数と平方根も有理数の級数で求めるので、マシンによらず同じ値になる。
 有理数は桁に上限がないので、読む数を、0 か、絶対値が 10 の -9 乗以上 10 の 9 乗以下に限り、範囲の外の数は丸めずに G08011 にする。
 小さな数で割る計算（円弧の半径の補正や [code: viewBox] の倍率）で、桁が際限なく増えないためである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0083-svg-number-lower-limit.md]（docs/adr ADR 0083「SVG の図版の 0 でない数の絶対値に下限を設ける」）]
-golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画（[code: Golem.Pdf.Drawing]）に直す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0009-svg-figures.md]（golem-pdf ADR 0009「SVG の図版」）]
+golem-pdf は golem-svg に依存せず、golem-typeset が golem-svg の描画を golem-pdf の描画（[code: Golem.Pdf.Drawing]）に直す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0009-svg-figures.md]（golem-pdf ADR 0009「SVG の図版」）]
 [code: marker] の中身の描画は [code: marker] ごとに一度だけ作って置く場所で共有するが、PDF には置く場所ごとに書き出す。
 そのため、[code: marker] が描くパスの区間を置く回数の分だけ数え、延べ数が 100 万を超える図版を G08101 にする。
 数は描画を展開せず、[code: marker] の参照のグラフの上で [code: marker] ごとに一度だけ計算するので、手間は文書の大きさに比例する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0084-svg-marker-drawn-segment-limit.md]（docs/adr ADR 0084「SVG の図版の marker が描くパスの区間の延べ数に上限を設ける」）]
