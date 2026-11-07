@@ -96,7 +96,7 @@ foreign import capi unsafe "golem_font.h golem_font_is_cid_keyed" c_isCidKeyed :
 
 foreign import capi unsafe "golem_font.h golem_font_ros" c_ros :: Ptr CFont -> Ptr (ConstPtr CChar) -> Ptr (ConstPtr CChar) -> Ptr CInt -> IO CInt
 
-foreign import capi unsafe "golem_font.h golem_free" c_free :: Ptr Word8 -> IO ()
+foreign import capi unsafe "golem_font.h golem_font_free" c_free :: Ptr Word8 -> IO ()
 
 data Font = Font
   { fontPtr :: !(ForeignPtr CFont),

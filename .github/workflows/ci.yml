@@ -411,6 +411,18 @@ jobs:
         with:
           name: visual-pdfs
           path: visual-pdfs
+      # the PDFs, the diagnostics and the exit codes of the inputs of the
+      # comparison with golem.wasm, which the job wasm waits for and
+      # compares with its own list (docs/adr/0199)
+      - name: The native list of the comparison with golem.wasm (docs/adr/0199)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        run: sh scripts/wasm/compare.sh --native "$(cabal list-bin -v0 golem)" > wasm-native-list.txt
+      - name: Upload the native list of the comparison with golem.wasm
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: wasm-native-list
+          path: wasm-native-list.txt
       # the books that the job verapdf checks against PDF/A-2a and PDF/UA-1
       # (docs/adr/0183)
       - name: The PDFs that declare PDF/A-2a and PDF/UA-1 (docs/adr/0183)
@@ -516,6 +528,176 @@ jobs:
         with:
           path: dist-newstyle
           key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-pr-${{ github.event.pull_request.number }}-${{ github.sha }}-${{ github.run_attempt }}
+
+  # The PDF as a wasm reactor module (docs/adr/0199, docs/adr/0202):
+  # golem-wasm built with the wasm GHC of ghc-wasm-meta (the 9.10 flavour,
+  # scripts/fetch-ghc-wasm.sh), checked under the node:wasi of Node LTS,
+  # and its PDFs and diagnostics compared with those of the native golem of
+  # the x86-64 runner of the outputs, which uploads its list as
+  # wasm-native-list. The toolchain, the cabal store and the index of the
+  # wasm build are one cache; the native alex and happy, which toml-parser
+  # needs on the PATH, another; dist-wasm a third, by commit
+  wasm:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    timeout-minutes: 75
+    runs-on: ubuntu-24.04
+    env:
+      HOSTTOOLS: ${{ github.workspace }}/third_party/hosttools
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: date +%s > "$RUNNER_TEMP/t0"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Image for the cache keys
+        run: |
+          test -n "$ImageOS"
+          echo "ImageOS=$ImageOS" >> "$GITHUB_ENV"
+      # alex 3.5.4.2 and happy 2.2 (the versions of cabal.project.freeze),
+      # built with the native GHC: cabal finds them on the PATH when it
+      # builds toml-parser for wasm (docs/adr/0202 section 2). A hit needs
+      # no native GHC at all
+      - id: hosttools
+        name: Restore the native alex and happy (docs/adr/0202)
+        uses: actions/cache/restore@v6
+        with:
+          path: third_party/hosttools
+          key: hosttools-alex-3.5.4.2-happy-2.2-ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
+      - if: steps.hosttools.outputs.cache-hit != 'true'
+        name: cabal's directory (docs/adr/0201)
+        run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
+      - if: steps.hosttools.outputs.cache-hit != 'true'
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: ${{ env.GHC_VERSION }}
+          cabal-version: "3.16.1.0"
+          cabal-update: true
+      - if: steps.hosttools.outputs.cache-hit != 'true'
+        name: The native alex and happy (docs/adr/0202)
+        run: |
+          mkdir -p "$HOSTTOOLS" "$RUNNER_TEMP/hosttools-src"
+          cd "$RUNNER_TEMP/hosttools-src"
+          cabal install alex-3.5.4.2 happy-2.2 --installdir="$HOSTTOOLS" --install-method=copy --overwrite-policy=always
+      - name: The native alex and happy are those versions
+        run: |
+          "$HOSTTOOLS/alex" --version | grep -F 'Alex version 3.5.4.2'
+          "$HOSTTOOLS/happy" --version | grep -F 'Happy Version 2.2'
+      - if: steps.hosttools.outputs.cache-hit != 'true'
+        name: Save the native alex and happy
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/hosttools
+          key: ${{ steps.hosttools.outputs.cache-primary-key }}
+      # the toolchain (scripts/fetch-ghc-wasm.sh), with the cabal store and
+      # the index of the wasm build in third_party/ghc-wasm/.cabal; a
+      # change of the project or its freeze restores the store of the same
+      # toolchain and saves a new one, after the build, whether or not it
+      # succeeded, so that a failure of golem-wasm does not build the store
+      # again
+      - id: ghcwasm
+        name: Restore the wasm toolchain and its cabal store (docs/adr/0199)
+        uses: actions/cache/restore@v6
+        with:
+          path: third_party/ghc-wasm
+          key: ghc-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze', 'scripts/fetch-wasm-packages.sh', 'scripts/wasm/patches/*') }}
+          restore-keys: ghc-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-
+      # nothing is fetched when the cache has the VERSION of the script
+      - name: The wasm toolchain (docs/adr/0199)
+        run: timeout -k 10 900 sh scripts/fetch-ghc-wasm.sh
+      - name: skylighting 0.15 patched (docs/adr/0202)
+        run: timeout -k 10 300 sh scripts/fetch-wasm-packages.sh
+      - name: The versions of Hackage are those of cabal.project.freeze (docs/adr/0199)
+        run: sh scripts/ci/wasm-freeze.sh
+      - name: The versions of the toolchain and of the boot packages
+        run: |
+          . third_party/ghc-wasm/env
+          wasm32-wasi-ghc --version
+          wasm32-wasi-clang --version | head -1
+          wasm32-wasi-ghc-pkg list --global --simple-output
+      - if: steps.ghcwasm.outputs.cache-hit != 'true'
+        name: The Hackage index of the wasm build
+        run: |
+          . third_party/ghc-wasm/env
+          wasm32-wasi-cabal update
+      - name: Restore dist-wasm
+        uses: actions/cache/restore@v6
+        with:
+          path: dist-wasm
+          key: dist-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze') }}-${{ github.sha }}
+          restore-keys: dist-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze') }}-
+      - name: The setup-config of dist-wasm newer than the .cabal files (docs/adr/0147)
+        run: |
+          if [ -d dist-wasm ]; then find dist-wasm -name setup-config -exec touch {} +; fi
+      - id: build
+        name: golem.wasm (docs/adr/0199)
+        shell: bash
+        run: |
+          . third_party/ghc-wasm/env
+          export PATH="$HOSTTOOLS:$PATH"
+          s=$(date +%s)
+          wasm32-wasi-cabal --project-file=cabal.project.wasm --builddir=dist-wasm build -v1 exe:golem-wasm 2>&1 | tee "$RUNNER_TEMP/wasm-build.log"
+          echo "the wasm build: $(( $(date +%s) - s )) s"
+          cp "$(wasm32-wasi-cabal --project-file=cabal.project.wasm --builddir=dist-wasm list-bin -v0 exe:golem-wasm)" golem.wasm
+          ls -l golem.wasm
+          if grep -qE '^\[ *[0-9]+ of [0-9]+\] Compiling ' "$RUNNER_TEMP/wasm-build.log"; then echo "compiled=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Save the wasm toolchain and its cabal store
+        if: always() && steps.ghcwasm.outputs.cache-hit != 'true' && steps.build.outcome != 'skipped'
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/ghc-wasm
+          key: ${{ steps.ghcwasm.outputs.cache-primary-key }}
+      # cabal 3.14 plans and builds the build-tool-depends alex and happy
+      # of the packages with the wasm GHC too: their executables in
+      # the store are wasm modules (alex.wasm, happy.wasm), which cabal does
+      # not take for alex and happy and which cannot run here, so the lexer
+      # and the parser of toml-parser come from the native alex and happy on
+      # the PATH, of the versions of cabal.project.freeze
+      - name: The build tools in the wasm store are wasm, not run (docs/adr/0202)
+        run: |
+          find third_party/ghc-wasm/.cabal/store -path '*/bin/*' -type f
+          found=0
+          for f in $(find third_party/ghc-wasm/.cabal/store -path '*/bin/*' \( -name 'alex*' -o -name 'happy*' \)); do
+            found=$((found + 1))
+            test "$(od -An -tx1 -N4 "$f" | tr -d ' ')" = 0061736d
+            echo "$f: a wasm module"
+          done
+          test "$found" = 2
+      - name: Save dist-wasm
+        if: steps.build.outputs.compiled == 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: dist-wasm
+          key: dist-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze') }}-${{ github.sha }}
+      # the exports and the imports, an input it cannot read, a manifest
+      # with [plugins], and the same bytes again in one instance and in a
+      # new one (docs/adr/0199)
+      - name: The checks of golem.wasm under node:wasi (docs/adr/0199)
+        run: node scripts/wasm/run.mjs check golem.wasm modules/golem-driver/test/fixtures/kanikosen
+      - name: The PDFs and the diagnostics of golem.wasm (docs/adr/0199)
+        run: sh scripts/wasm/compare.sh golem.wasm > wasm-list.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: golem-wasm
+          path: |
+            golem.wasm
+            wasm-list.txt
+      - name: Wait for the native list of the outputs runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' wasm-native-list
+      - uses: actions/download-artifact@v8
+        with:
+          name: wasm-native-list
+      - name: The PDFs and the diagnostics of golem.wasm are those of golem (docs/adr/0199)
+        run: sh scripts/wasm/compare.sh --check wasm-native-list.txt wasm-list.txt
+      - name: Times
+        if: always()
+        run: |
+          echo "the wasm job: $(( $(date +%s) - $(cat "$RUNNER_TEMP/t0") )) s"
 
   determinism:
     needs: build
@@ -767,7 +949,7 @@ jobs:
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
   ci:
-    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins, editors, verapdf]
+    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins, editors, verapdf, wasm]
     if: always()
     runs-on: ubuntu-24.04
     steps:

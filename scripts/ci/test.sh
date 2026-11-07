@@ -1434,10 +1434,10 @@ needs() { # needs NAME=RESULT...: the JSON of the needs context
   done
   printf '}\n'
 }
-needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success plugins=success editors=success verapdf=success >"$WORK/in"
+needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success plugins=success editors=success verapdf=success wasm=success >"$WORK/in"
 run gate
 expect "gate: all succeeded" 0
-needs changes=success scripts-linux=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped plugins=skipped editors=success verapdf=skipped >"$WORK/in"
+needs changes=success scripts-linux=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped plugins=skipped editors=success verapdf=skipped wasm=skipped >"$WORK/in"
 run gate
 expect "gate: docs only" 0
 needs changes=success scripts-linux=success build=failure determinism=skipped visual=skipped release-scripts=success scripts-macos=success format=success plugins=success editors=success >"$WORK/in"
@@ -2006,6 +2006,109 @@ docdeps "not JSON" 2 "$WORK/bad.json"
 : >"$WORK/in"
 run doc_deps
 expect "doc-deps: no argument" 2
+
+# ---------------------------------------------------------------- wasm-freeze.sh
+# (docs/adr/0199 section 6, docs/adr/0202 section 2)
+
+WF_DATA=$HERE/testdata/wasm-freeze
+: >"$WORK/in"
+run sh "$HERE/wasm-freeze.sh" "$WF_DATA/native.freeze" "$WF_DATA/wasm.freeze"
+expect "wasm-freeze: the packages of both files have the same versions; cborg, skylighting, skylighting-core and the boot packages are not compared" 0
+run sh "$HERE/wasm-freeze.sh" "$WF_DATA/native.freeze" "$WF_DATA/wasm-other-zlib-clib.freeze"
+expect "wasm-freeze: another version of a package of both files fails" 1
+if grep -qF "zlib-clib: 1.3.2 (native), 1.3.1 (wasm)" "$WORK/err"; then ok; else ng "wasm-freeze: names the package and both versions"; fi
+# a boot package written in the wasm freeze is compared like the others:
+# the boot packages stay out of cabal.project.wasm.freeze
+run sh "$HERE/wasm-freeze.sh" "$WF_DATA/native.freeze" "$WF_DATA/wasm-with-time.freeze"
+expect "wasm-freeze: time of the wasm GHC written in the wasm freeze fails" 1
+run sh "$HERE/wasm-freeze.sh" "$WF_DATA/native.freeze" "$WORK/in"
+expect "wasm-freeze: a wasm freeze without versions fails" 1
+run sh "$HERE/wasm-freeze.sh"
+expect "wasm-freeze: cabal.project.wasm.freeze has the versions of cabal.project.freeze" 0
+
+# ---------------------------------------------------------------- wasm/compare.sh --check
+# (docs/adr/0199 section 7)
+
+WC_DATA=$HERE/testdata/wasm-compare
+run sh "$HERE/../wasm/compare.sh" --check "$WC_DATA/native.txt" "$WC_DATA/native.txt"
+expect "compare.sh --check: the same lists pass" 0
+run sh "$HERE/../wasm/compare.sh" --check "$WC_DATA/native.txt" "$WC_DATA/changed-pdf.txt"
+expect "compare.sh --check: a list with another SHA-256 of a PDF fails" 1
+if grep -qF "kanikosen/pdf" "$WORK/out"; then ok; else ng "compare.sh --check: shows the line that differs"; fi
+run sh "$HERE/../wasm/compare.sh" --check "$WC_DATA/native.txt"
+expect "compare.sh --check: one list is a usage error" 2
+run sh "$HERE/../wasm/compare.sh"
+expect "compare.sh: no argument is a usage error" 2
+
+# ---------------------------------------------------------------- fetch-wasm-packages.sh
+# (docs/adr/0202 section 2)
+
+# A fake root with the script, fake archives of the two packages, their
+# patches, and a fake curl that writes the archive of the URL to the file
+# of -o. The SHA-256 of the script are those of the fake archives.
+FW=$WORK/fetch-wasm
+mkdir -p "$FW/root/scripts/wasm/patches" "$FW/src/skylighting-core-0.15" "$FW/src/skylighting-0.15" "$FW/archives" "$FW/bin"
+printf 'module A\nimport Skylighting.Parser\n' >"$FW/src/skylighting-core-0.15/A.hs"
+printf 'module B\nimport Skylighting.Loader\n' >"$FW/src/skylighting-0.15/B.hs"
+for p in skylighting-core-0.15 skylighting-0.15; do (cd "$FW/src" && tar -czf "$FW/archives/$p.tar.gz" "$p"); done
+cat >"$FW/root/scripts/wasm/patches/skylighting-core-0.15.patch" <<'EOF'
+--- a/A.hs
++++ b/A.hs
+@@ -1,2 +1 @@
+ module A
+-import Skylighting.Parser
+EOF
+cat >"$FW/root/scripts/wasm/patches/skylighting-0.15.patch" <<'EOF'
+--- a/B.hs
++++ b/B.hs
+@@ -1,2 +1 @@
+ module B
+-import Skylighting.Loader
+EOF
+fw_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+sed -e "s/^CORE_SHA=.*/CORE_SHA=$(fw_sha "$FW/archives/skylighting-core-0.15.tar.gz")/" \
+  -e "s/^SKY_SHA=.*/SKY_SHA=$(fw_sha "$FW/archives/skylighting-0.15.tar.gz")/" \
+  "$HERE/../fetch-wasm-packages.sh" >"$FW/root/scripts/fetch-wasm-packages.sh"
+cat >"$FW/bin/curl" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "$*" >>"$CURL_LOG"
+out= url=
+while [ $# -gt 0 ]; do
+  case "$1" in -o) out=$2; shift ;; http*) url=$1 ;; esac
+  shift
+done
+cp "$FW_ARCHIVES/${url##*/}" "$out" || exit 22
+FAKE
+chmod +x "$FW/bin/curl"
+# fetch_wasm: runs the copy of the script with the fake curl
+fetch_wasm() { env PATH="$FW/bin:$PATH" CURL_LOG="$FW/curl.log" FW_ARCHIVES="$FW/archives" sh "$FW/root/scripts/fetch-wasm-packages.sh"; }
+# tree: every file under third_party/wasm-packages with its content
+fw_tree() { (cd "$FW/root/third_party/wasm-packages" && find . -type f | LC_ALL=C sort | while read -r f; do printf '%s\n' "$f"; cat "$f"; done); }
+: >"$FW/curl.log"
+run fetch_wasm
+expect "fetch-wasm-packages: the archives of the SHA-256 are unpacked and patched" 0
+if grep -qF "https://hackage.haskell.org/package/skylighting-core-0.15/skylighting-core-0.15.tar.gz" "$FW/curl.log" &&
+  grep -qF "https://hackage.haskell.org/package/skylighting-0.15/skylighting-0.15.tar.gz" "$FW/curl.log"; then ok; else ng "fetch-wasm-packages: the archives come from Hackage"; fi
+if [ "$(cat "$FW/root/third_party/wasm-packages/skylighting-core-0.15/A.hs")" = "module A" ] &&
+  [ "$(cat "$FW/root/third_party/wasm-packages/skylighting-0.15/B.hs")" = "module B" ]; then ok; else ng "fetch-wasm-packages: the patches are applied"; fi
+fw_tree >"$FW/tree1"
+run fetch_wasm
+expect "fetch-wasm-packages: a second run passes" 0
+fw_tree >"$FW/tree2"
+if cmp -s "$FW/tree1" "$FW/tree2"; then ok; else ng "fetch-wasm-packages: two runs make the same tree"; fi
+# one character of the SHA-256 changed: nothing is unpacked
+rm -rf "$FW/root/third_party"
+sed 's/^\(CORE_SHA=.\{63\}\)./\1x/' "$FW/root/scripts/fetch-wasm-packages.sh" >"$FW/bad-sha.sh"
+cp "$FW/root/scripts/fetch-wasm-packages.sh" "$FW/good.sh"
+cp "$FW/bad-sha.sh" "$FW/root/scripts/fetch-wasm-packages.sh"
+run fetch_wasm
+expect "fetch-wasm-packages: an archive of another SHA-256 fails" 1
+if [ ! -e "$FW/root/third_party/wasm-packages/skylighting-core-0.15" ]; then ok; else ng "fetch-wasm-packages: an archive of another SHA-256 is not unpacked"; fi
+cp "$FW/good.sh" "$FW/root/scripts/fetch-wasm-packages.sh"
+# a patch that does not apply fails
+printf -- '--- a/A.hs\n+++ b/A.hs\n@@ -1,2 +1 @@\n module X\n-import Y\n' >"$FW/root/scripts/wasm/patches/skylighting-core-0.15.patch"
+run fetch_wasm
+expect "fetch-wasm-packages: a patch that does not apply fails" 1
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
