@@ -115,14 +115,24 @@ isEmpty st = sUsed st == top st && null (sNotes st)
 addUnmet :: Unmet -> St -> St
 addUnmet u st = st {sUnmet = sUnmet st <> [u]}
 
--- | The next column, unless @n@ grid lines are free or the column is empty.
-keep :: Env -> St -> Int -> St
-keep env st n = if n > free env st && not (isEmpty st) then nextColumn env st else st
+{- | The next columns, until the grid lines the column needs are free or
+the column is empty: the figures sent on and the continued notes take
+the top of a column gone on to, so the need is found again there
+(golem-layout ADR 0023). Each column gone on to after the first places
+a figure or a note line waiting, or is empty.
+-}
+keep :: Env -> St -> (St -> Int) -> St
+keep env st need = if need st > free env st && not (isEmpty st) then keep env (nextColumn env st) need else st
 
--- | Start in column 0 of a page whose number satisfies p, after a blank page if needed.
+{- | Start in column 0 of a page whose number satisfies p, after a blank
+page if needed. The figures sent on and the continued notes are placed
+first, so the page started and a blank page hold nothing of them
+(golem-layout ADR 0024).
+-}
 parityStart :: Env -> (Int -> Bool) -> St -> St
 parityStart env p st =
-  let st1 = if isEmpty st && sColumn st == 0 then st else nextPage env st
+  let st0 = flushDeferred env st
+      st1 = if isEmpty st0 && sColumn st0 == 0 then st0 else nextPage env st0
    in if p (sPage st1) then st1 else blankPage env st1
 
 blankPage :: Env -> St -> St

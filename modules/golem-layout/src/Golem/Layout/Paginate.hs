@@ -198,7 +198,7 @@ placeFlow env st f rest = case (f, keptNeed env rest) of
   -- a stanza keeps its last verse lines as a paragraph its last lines (docs/adr/0205)
   (FStanza vs, Just n) -> placeKept env (placeStanza env) st True vs n
   (FContinued ls, Just n) -> placeKept env (placeLines env) st False ls n
-  (FDefTerm ls, Just n) -> placeKept env (placeLines env) (keep env st (needIn env st (termNeed ls) (nextNeed env rest))) True ls n
+  (FDefTerm ls, Just n) -> placeKept env (placeLines env) (keep env st (\s -> needIn env s (termNeed ls) (nextNeed env rest))) True ls n
   _ -> place env st f rest
 
 {- | The last two lines, or the whole paragraph of three lines or fewer, go
@@ -266,10 +266,10 @@ place env st f rest = case f of
           | sp + length h + maybe 0 length (listToMaybe rows) <= free env st || isEmpty st = st {sUsed = sUsed st + min sp (free env st)}
           | otherwise = nextColumn env st
      in placeTable env st1 i h rows
-  FDefTerm ls -> placeLines env (keep env st (needIn env st (termNeed ls) need)) True ls
+  FDefTerm ls -> placeLines env (keep env st (\s -> needIn env s (termNeed ls) need)) True ls
   -- the notes of a heading count as the notes of a line do (golem-layout ADR 0013)
   FHeading _ recto n ls ->
-    let st1 = if recto then parityStart env odd st else keep env st (needIn env st (Need n (noteLinesOf ls)) need)
+    let st1 = if recto then parityStart env odd st else keep env st (\s -> needIn env s (Need n (noteLinesOf ls)) need)
         st2 = if headingNeed env st1 n ls <= free env st1 || isEmpty st1 then st1 else nextColumn env st1
      in putBlock env st2 n ls
   -- figures keep the order written: after a figure sent on, the next ones wait too (golem-layout ADR 0015)
@@ -395,7 +395,7 @@ placeRuled env st fr rest = case sJoin st of
   Just _ -> placeRuled env (flushJoin env st) fr rest
   Nothing ->
     let st1 = if isRecto (frBody fr) then parityStart env odd st else st
-        st2 = if isHeadingBody (frBody fr) && not (isRecto (frBody fr)) then keep env st1 (needIn env st1 (planParts fr (planOf env st1 fr rest Nothing)) (nextNeed env rest)) else st1
+        st2 = if isHeadingBody (frBody fr) && not (isRecto (frBody fr)) then keep env st1 (\s -> needIn env s (planParts fr (planOf env s fr rest Nothing)) (nextNeed env rest)) else st1
         plan2 = planOf env st2 fr rest Nothing
      in if planNeed env st2 fr plan2 <= free env st2
           then commitRuled env st2 fr plan2
