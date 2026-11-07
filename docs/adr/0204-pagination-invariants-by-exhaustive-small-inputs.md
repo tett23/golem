@@ -1,6 +1,6 @@
 # ADR 0204: ページ分割の不変条件を、小さな入力のすべてで確かめる
 
-ステータス: 採択
+ステータス: 採択→（不変条件の I2、I4、I5、I6、I8 の読み方）は [ADR 0206](0206-pagination-points-the-invariants-did-not-decide.md)
 
 ## 文脈
 

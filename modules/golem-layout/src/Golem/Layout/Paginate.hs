@@ -104,6 +104,11 @@ paginateIn = paginateWithin maxBound
 
 {- | 'paginateIn' with the most grid lines a column may have after
 'FAdjustLines' (docs/adr ADR 0030).
+
+The figures given are assumed to be no taller than a column: golem-driver
+shrinks a figure to fit an empty column (golem-driver ADR 0034). A taller
+one is placed in an empty column, past its end; that is not a rule
+(docs/adr/0206).
 -}
 paginateWithin :: Int -> Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
 paginateWithin maxLines separatorLines base capacity flows =

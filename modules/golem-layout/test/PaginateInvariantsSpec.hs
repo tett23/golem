@@ -46,11 +46,12 @@ enumDepth =
 
 enumerationTests :: [TestTree]
 enumerationTests =
-  [ testCase "in columns of 3 grid lines there are 17 elements" $
+  [ testCase "I2: in columns of 3 grid lines there are 16 elements, no figure taller than the column" $ do
       -- paragraphs of 1 to 4 lines, with and without a note, a heading
-      -- with and without a note, a heading at a recto, figures of 1 to 4
-      -- lines, a space and a break
-      length (elementsFor 3) @?= 4 + 4 + 3 + (3 + 1) + 2,
+      -- with and without a note, a heading at a recto, figures of 1 to 3
+      -- lines, a space and a break (docs/adr/0206)
+      length (elementsFor 3) @?= 4 + 4 + 3 + 3 + 2
+      [n | EFigure n <- elementsFor 3] @?= [1 .. 3],
     testCase "in columns of 3 grid lines, the flows of up to 2 elements are as many as the elements allow" $ do
       let m = length (elementsFor 3)
           made = [i | t <- upTo 2 inputs, i <- t, inLines i == 3]
@@ -132,8 +133,8 @@ predicateTests =
           broken [FParagraph [notedLine 0]] [withNotes [(noteOf 0, 0, 1)] (column 1 0 3 [SLine 0])] @?= [],
         testCase "I2: a heading recorded as taller than its column is not judged" $
           broken [FHeading 2 False 4 (plainLines 0 1)] [(column 1 0 3 [SHeading 0 1]) {poUnmet = [TallHeading 0 4 3]}] @?= [],
-        testCase "I2: a figure taller than the column is not judged" $
-          broken [FFigure 1000 4 [] []] [column 1 0 3 [SFigure 1000]] @?= [],
+        testCase "I2: a figure taller than the column is broken" $
+          broken [FFigure 1000 4 [] []] [column 1 0 3 [SFigure 1000]] @?= [I2],
         testCase "I2: the first line of a paragraph in an empty column, its note continued, is not judged" $
           broken
             [FParagraph [LineBox 0 [NoteBody (noteOf 0) 5] [] [] 0]]
@@ -159,7 +160,7 @@ predicateTests =
           broken [para 0 1, para 1 3] [column 1 0 2 [SLine 0, SLine 1], column 1 1 2 [SLine 2, SLine 3]] @?= [I4],
         testCase "I4: the first line alone in an empty column is not broken" $
           broken [para 0 3] [column 1 0 3 [SLine 0], column 2 0 3 [SLine 1, SLine 2]] @?= [],
-        testCase "I4: the first line after nothing but a heading is not judged" $
+        testCase "I4: the first line after nothing but a heading is allowed, as in an empty column" $
           broken [heading 0, para 1 3] [column 1 0 2 [SHeading 0 1, SLine 1], column 2 0 2 [SLine 2, SLine 3]] @?= []
       ],
     testGroup
@@ -168,7 +169,7 @@ predicateTests =
           broken [para 0 1, para 1 3] [column 1 0 3 (map SLine [0 .. 2]), column 2 0 3 [SLine 3]] @?= [I5],
         testCase "I5: a paragraph that starts an empty column and fills it is not broken" $
           broken [para 0 4] [column 1 0 3 (map SLine [0 .. 2]), column 2 0 3 [SLine 3]] @?= [],
-        testCase "I5: the lines after nothing but a heading are not judged" $
+        testCase "I5: the lines after nothing but a heading are allowed, as in an empty column" $
           broken [heading 0, para 1 3] [column 1 0 3 [SHeading 0 1, SLine 1, SLine 2], column 2 0 3 [SLine 3]] @?= []
       ],
     testGroup
@@ -183,8 +184,14 @@ predicateTests =
           broken [heading 0, heading 1, para 2 2] [column 1 0 2 [SHeading 0 1], column 2 0 3 [SHeading 1 1, SLine 2, SLine 3]] @?= [],
         testCase "I6: a heading with a paragraph of one line in its column is not broken" $
           broken [para 0 1, heading 1, para 2 1] [column 1 0 3 [SLine 0, SHeading 1 1, SLine 2]] @?= [],
-        testCase "I6: a heading before a heading at a recto is not judged" $
-          broken [para 0 1, heading 1, recto 2] [column 1 0 2 [SLine 0, SHeading 1 1], blank 2, column 3 0 2 [SHeading 2 1]] @?= []
+        testCase "I6: a heading apart from the third line of a paragraph of three lines" $
+          broken [para 0 1, heading 1, para 2 3] [column 1 0 4 [SLine 0, SHeading 1 1, SLine 2, SLine 3], column 2 0 4 [SLine 4]] @?= [I5, I6],
+        testCase "I6: a heading apart from the third line of a paragraph of four lines is not broken" $
+          broken [para 0 1, heading 1, para 2 4] [column 1 0 4 [SLine 0, SHeading 1 1, SLine 2, SLine 3], column 2 0 4 [SLine 4, SLine 5]] @?= [],
+        testCase "I6: a heading before a heading at a recto, left at the end of its column, is not broken" $
+          broken [para 0 1, heading 1, recto 2, para 3 1] [column 1 0 2 [SLine 0, SHeading 1 1], blank 2, column 3 0 2 [SHeading 2 1, SLine 3]] @?= [],
+        testCase "I6: the headings before a heading at a recto, apart, are broken" $
+          broken [para 0 1, heading 1, heading 2, recto 3] [column 1 0 2 [SLine 0, SHeading 1 1], column 2 0 2 [SHeading 2 1], column 3 0 2 [SHeading 3 1]] @?= [I6]
       ],
     testGroup
       "I7 a note on the page of its mark"
@@ -208,8 +215,8 @@ predicateTests =
           broken [para 0 1, recto 1] [column 1 0 3 [SLine 0], column 1 1 3 [SHeading 1 1]] @?= [I8],
         testCase "I8: first on an odd page after a blank page is not broken" $
           broken [para 0 1, recto 1] [column 1 0 3 [SLine 0], blank 2, column 3 0 3 [SHeading 1 1]] @?= [],
-        testCase "I8: after the figures sent on is not judged" $
-          broken [para 0 1, FFigure 1000 1 [] [], recto 1] [column 1 0 3 [SLine 0], blank 2, column 3 0 3 [SFigure 1000, SHeading 1 1]] @?= []
+        testCase "I8: after the figures sent on is broken" $
+          broken [para 0 1, FFigure 1000 1 [] [], recto 1] [column 1 0 3 [SLine 0], blank 2, column 3 0 3 [SFigure 1000, SHeading 1 1]] @?= [I8]
       ],
     testCase "I6: the output before golem-layout ADR 0013 and ADR 0019, a heading alone at the end of a page, is broken" $ do
       -- five lines, a heading whose note did not count, two lines on the next page
@@ -238,19 +245,19 @@ knownBugs =
       { kbItem = "送った図版の後の改丁の見出しが、偶数ページに置かれる",
         kbShape = \i -> any (\(k, e) -> e == ERecto && any isFigure (take k (inElements i))) (zip [0 ..] (inElements i)),
         kbExcuses = \i b -> breachOf b `elem` [I6, I8] && maybe False (\k -> inElements i !! k == ERecto && any isFigure (take k (inElements i))) (elementOf i b),
-        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 420), (4, 24364), (5, 879272)]
+        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 582), (4, 29752), (5, 988136)]
       },
     KnownBug
       { kbItem = "送った図版の後の見出しの注が、次のページに送られる",
         kbShape = \i -> any (\(k, e) -> e == ENotedHeading && any isFigure (take k (inElements i))) (zip [0 ..] (inElements i)),
         kbExcuses = \i b -> breachOf b == I7 && maybe False (\k -> inElements i !! k == ENotedHeading && any isFigure (take k (inElements i))) (elementOf i b),
-        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 757), (5, 57686)]
+        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 344), (5, 26993)]
       },
     KnownBug
       { kbItem = "図版を追い越した見出しが、本文から離れる",
         kbShape = \i -> any (\(k, e) -> isHeadingElement e && any isFigure (take k (inElements i))) (zip [0 ..] (inElements i)),
         kbExcuses = \i b -> breachOf b == I6 && maybe False (\k -> isHeadingElement (inElements i !! k) && any isFigure (take k (inElements i))) (elementOf i b),
-        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 3654), (5, 239098)]
+        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 3156), (5, 191280)]
       }
   ]
 

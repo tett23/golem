@@ -2748,18 +2748,21 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 罫線を持つ段落は、この規則によらず、罫線を持つ段落の規則で置く。
 見出しの直後では改ページしない。
 見出しは、続く見出しのすべてと、その後の段落の最初の 2 行まで（3 行の段落では全体。孤立行と寡婦行の規則で 2 行だけを置けないため）と同じ段に置く（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）。
+改丁の見出しは、前の見出しの続く見出しに数えない。
+改丁の見出しの前の見出しは、`@page-break` の前の見出しと同じく、後に続くものを数えない（[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md)）。
 それらを合わせて段に収まらないときも、空の段からは送らない。
 続く見出しと行の量には、それらの注の本文の行と、その段で最初の注なら区切りの領域を数える（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
-段の先頭から見出しだけを置いた段では、見出しの後の行を空の段と同じく一行は置き、入らない注の本文を次の段に続ける（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
+段の先頭から見出しだけを置いた段では、空の段と同じく、孤立行と寡婦行の規則で一行も置けなくなる場合は、入るだけの行を置き、入らない注の本文を次の段に続ける（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md)）。
 
 これらの規則は、[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の I1 から I8 として、golem-layout のテストで確かめる。
+I2、I4、I5、I6、I8 は、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md) の「実装すること」の 6 の表のとおりに読む。
 述語は `modules/golem-layout/test/PaginateInvariants.hs` にあり、改ページの入力と出力だけを読む。
-`modules/golem-layout/test/PaginateInvariantsSpec.hs` は、段の行の数が 3 から 8、段の数が 1 と 2 の版面に、段落、注を持つ段落、見出し、注を持つ見出し、改丁の見出し、図版、一行の空き、改ページを並べた流れを、要素の少ない順にすべて組み、どの述語も違反を返さないことを確かめる。
+`modules/golem-layout/test/PaginateInvariantsSpec.hs` は、段の行の数が 3 から 8、段の数が 1 と 2 の版面に、段落、注を持つ段落、見出し、注を持つ見出し、改丁の見出し、段の行の数以下の図版、一行の空き、改ページを並べた流れを、要素の少ない順にすべて組み、どの述語も違反を返さないことを確かめる。
 プルリクエストの CI は要素 3 個まで、毎晩の `enum.yml` は要素 5 個まで調べる。
 違反があれば、最も小さい入力を表示する。
 「既知の不具合」に載せた違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
-仕様書の文から一つに決まらない場合は、述語が判定しない。
-段より高い図版を置いた段のあふれ、見出しだけを置いた段の後の孤立行と寡婦行、改丁の見出しが続く見出し、改丁の見出しの前に置いた送った図版がそれにあたる。
+述語が判定しない場合はない。
+改ページに渡す図版は、段の行の数以下であることを前提とする（図版を縮める規則は「図版」の節）。
 
 罫線を持つ段落と見出しは、前の罫線の領域、行、後の罫線の領域を合わせて一つのまとまりとして置き、改ページと改段で分けない（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 
