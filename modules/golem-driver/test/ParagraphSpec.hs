@@ -122,11 +122,11 @@ verseTests =
         assertBool "br rule" (".line + br { display: none; }" `T.isInfixOf` css)
         assertBool "hang" ("p.ps-verse { padding-inline-start: 3em; text-indent: -3em; }" `T.isInfixOf` css)
         assertBool "stanza gap" ("p.ps-verse + p.ps-verse { margin-block-start: 1em; }" `T.isInfixOf` css),
-    testCase "HTML: no space rule when space-between is 0" $
+    testCase "HTML: no space between stanzas when space-between is 0, against the spaces before and after (docs/adr/0180)" $
       withVerseProject "[paragraph-styles.verse]\nspace-between = 0\nindent = \"10.5pt\"\n" verseSource $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         css <- TIO.readFile (tmp </> "build/html/style.css")
-        assertBool "no stanza gap" (not ("p.ps-verse + p.ps-verse" `T.isInfixOf` css))
+        assertBool "no stanza gap" ("p.ps-verse + p.ps-verse { margin-block-start: 0; }" `T.isInfixOf` css)
         assertBool "margin" ("p.ps-verse { margin-block: 0; }" `T.isInfixOf` css)
         assertBool "indent" ("p.ps-verse { padding-inline-start: 10.5pt; text-indent: -2em; }" `T.isInfixOf` css),
     testCase "HTML: an indent of 3mm is 8.5039pt, at four decimals (docs/adr ADR 0103)" $
@@ -144,7 +144,7 @@ verseTests =
           fs = 655360
       (flow, ls) <- verseLines style ("@style verse\n  " <> T.replicate 45 "あ" <> "\n\n  い\n")
       ls @?= [(30 * fs, 0), (28 * fs, 2 * fs), (30 * fs, 0)]
-      [length bs | FParagraph bs <- flow] @?= [2, 1]
+      [map length vs | FStanza vs <- flow] @?= [[2], [1]]
       [n | FSpace n <- flow] @?= [1],
     testCase "PDF: the hang in vertical writing, and the space between stanzas from the style" $ do
       let fs = maybe 0 (dimToSp 0) (parseDim "13Q")
@@ -154,11 +154,37 @@ verseTests =
     testCase "PDF: the attribute form and a label" $ do
       (flow, ls) <- verseLines pdfStyle "@label song\n@style verse\nあ\nい\n"
       length ls @?= 2
-      [length bs | FParagraph bs <- flow] @?= [1, 1],
+      [map length vs | FStanza vs <- flow] @?= [[1, 1]],
+    testCase "PDF: a paragraph of line-breaks keep is one stanza of a verse line more than its line breaks (docs/adr/0180)" $ do
+      (flow, _) <- verseLines pdfStyle "@style verse\n  a\n  b\n  c\n"
+      [map length vs | FStanza vs <- flow] @?= [[1, 1, 1]]
+      [() | FParagraph _ <- flow] @?= [],
+    testCase "PDF: a line of space between verse and body, before and after (docs/adr/0180)" $ do
+      (after, _) <- verseLines pdfStyle "@style verse\n  a\n  b\n\nc\n"
+      map flowKind after @?= ["stanza", "space 1", "paragraph"]
+      (before, _) <- verseLines pdfStyle "c\n\n@style verse\n  a\n  b\n"
+      map flowKind before @?= ["paragraph", "space 1", "stanza"],
+    testCase "PDF: space-before = 0 and space-after = 0 of verse take the space away (docs/adr/0180)" $ do
+      let zero = pdfStyle <> "\n[paragraph-styles.verse]\nspace-before = 0\nspace-after = 0\n"
+      (after, _) <- verseLines zero "@style verse\n  a\n  b\n\nc\n"
+      map flowKind after @?= ["stanza", "paragraph"]
+      (before, _) <- verseLines zero "c\n\n@style verse\n  a\n  b\n"
+      map flowKind before @?= ["paragraph", "stanza"],
+    testCase "PDF: between two stanzas only the line of space-between (docs/adr/0180)" $ do
+      (flow, _) <- verseLines pdfStyle verseSource
+      map flowKind flow @?= ["stanza", "space 1", "stanza"],
     testCase "PDF: a verse line takes the look of its inline elements" $ do
       (_, layout) <- layoutOk horizontalStyle "@style verse\n  前の[bold: 本文]後\n" []
       [bcText c | sl <- Map.elems (plLines layout), Box _ c <- lineItems (slLine sl), synBold (lkSynthetic (bcLook c))] @?= ["本", "文"]
   ]
+
+-- | The kind of a flow, for the tests of the spaces around verse.
+flowKind :: Flow -> String
+flowKind = \case
+  FStanza _ -> "stanza"
+  FParagraph _ -> "paragraph"
+  FSpace n -> "space " <> show n
+  _ -> "other"
 
 indentTests :: [TestTree]
 indentTests =

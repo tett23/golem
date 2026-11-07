@@ -501,12 +501,12 @@ markSizeOver :: Maybe Dim -> Maybe Text -> Map Text CharStyleDef -> Map Text Cha
 markSizeOver (Just d) Nothing = Map.adjust (\c -> c {csSize = Just d}) "note-mark"
 markSizeOver _ _ = id
 
--- | The built-in paragraph styles: body, verse, caption, sidenote and code (golem-driver ADR 0017).
+-- | The built-in paragraph styles: body, verse (a line before and after it, docs/adr/0180), caption, sidenote and code (golem-driver ADR 0017).
 builtinParaStyles :: Map Text ParaStyleDef
 builtinParaStyles =
   Map.fromList
     [ ("body", bodyDefaults),
-      ("verse", noParaDef {psBasedOn = Just "body", psLineBreaks = Just KeepLines, psSpaceBetween = Just 1, psIndent = Just (Zw 2), psFirstLineIndent = Just (Zw (-2))}),
+      ("verse", noParaDef {psBasedOn = Just "body", psLineBreaks = Just KeepLines, psSpaceBetween = Just 1, psSpaceBefore = Just 1, psSpaceAfter = Just 1, psIndent = Just (Zw 2), psFirstLineIndent = Just (Zw (-2))}),
       -- caption and sidenote do not take the indents of body (golem-driver ADR 0043)
       ("caption", noIndents {psBasedOn = Just "body"}),
       ("sidenote", noIndents {psBasedOn = Just "body"}),

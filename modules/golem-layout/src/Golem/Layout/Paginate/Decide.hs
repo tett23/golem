@@ -58,6 +58,8 @@ nextNeed :: Env -> [Flow] -> Need
 nextNeed env = \case
   (FParagraph ls : _) -> linesNeed (take 2 ls)
   (FContinued ls : _) -> linesNeed (take 2 ls)
+  -- the first two verse lines of a stanza (docs/adr/0180)
+  (FStanza vs : _) -> linesNeed (concat (take 2 vs))
   (FTable _ sp h rows : _) -> grid (sp + length h + maybe 0 length (listToMaybe rows))
   (FDefTerm ls : _) -> termNeed ls
   -- a heading keeps what follows it, a heading after it too (golem-driver ADR 0032)
@@ -65,7 +67,8 @@ nextNeed env = \case
   (FFigure _ n _ _ : _) -> grid (min n capacity)
   (FPageFigure {} : _) -> mempty
   (FWrapped _ n _ _ ls : _) -> grid (max n (length ls))
-  (FSpace _ : _) -> mempty
+  -- the space before a paragraph goes with what follows it (docs/adr/0189)
+  (FSpace n : rest) -> let r = nextNeed env rest in r {needGrid = min capacity (max 0 n + needGrid r)}
   (FBreak _ : _) -> mempty
   -- the controls of page breaks are skipped (docs/adr ADR 0030)
   (FNoBreak _ : rest) -> nextNeed env rest
