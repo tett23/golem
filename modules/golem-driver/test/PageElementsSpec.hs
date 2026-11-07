@@ -83,7 +83,7 @@ footnoteTests =
       case (markOf '（', markOf '一', markOf '）', [d | d <- ds, dGlyph d == fromEnum '漢']) of
         ([open], [one], [close], [kan]) -> do
           map dFont [open, one, close] @?= replicate 3 (dFont kan)
-          map (ptToRational . dY) [open, one, close] @?= reverse (sort (map (ptToRational . dY) [open, one, close]))
+          map (ptToRational . dY) [open, one, close] @?= sortOn negate (map (ptToRational . dY) [open, one, close])
           forM_ [open, one, close] $ \d ->
             assertBool (show (ptToRational (dX d) + m / 2, ptToRational (dX kan) + s / 2)) (near (ptToRational (dX d) + m / 2) (ptToRational (dX kan) + s / 2))
         other -> assertFailure (show other),

@@ -712,7 +712,7 @@ markItem env place lk parts ps pe =
       latin u = maybe False ((== Western) . charClass . fst) (T.uncons u)
       chars = sum [k | (_, _, _, k) <- units]
       -- each unit after the one before it and the tracking of that one's characters
-      starts = scanl (\o (_, _, w, k) -> o + w + tr * fromIntegral k) ps units
+      starts = scanl (\o (_, _, u, k) -> o + u + tr * fromIntegral k) ps units
       parts' = [(fromEnum kind, t, o) | ((kind, t, _, _), o) <- zip units starts]
       w = sum [u | (_, _, u, _) <- units] + tr * fromIntegral (max 0 (chars - 1)) + ps + pe
    in Box w (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts')))

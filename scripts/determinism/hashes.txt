@@ -51,7 +51,7 @@ e1bb809e64e49d211d03c13462a09af57ed2d6347b57abe32ac93328824aeba3  emet-samples/b
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  emet-samples/stdout
 37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570  emet-samples/stderr
 exit 0  emet-samples
-22f55411a9331d1cf5330b077cf7ca6e18714de31072a978c3696a77f627c010  pdf/build/pdf/urn-uuid-11111111-2222-4333-8444-555555555555.pdf
+243bd85cd30e5bc376baeee3aa2b86b98b1549c237c8f724af5f8f9e6454e76c  pdf/build/pdf/urn-uuid-11111111-2222-4333-8444-555555555555.pdf
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  pdf/stdout
 bdc8b0d736d88a5d5f75c8823d14859bdb396c947983e9f1e2f4c2bed654a3d9  pdf/stderr
 exit 0  pdf
@@ -69,7 +69,7 @@ a34b1d35f517322be39e1271fed8a73bbe9e7fbbaa956b2fe20c15243ba35a1d  complex-vertic
 b1c6105d041106efb182f86e2bddf323847a329e2cfb6622a28a3b4ec4e2e091  complex-vertical/build/html/images/type-case.png
 b86e7a9add18376aa967f6e65cfef5e0da743230707b9fd91972debbd22f7314  complex-vertical/build/html/index.xhtml
 cab468a0330ecde3ed503a451656245b481ad37df86b8d0174fee36209bf4501  complex-vertical/build/html/style.css
-9c702ad761735c3e99686835056dd9f157af588b7296d983d4bb982cf0193226  complex-vertical/build/pdf/urn-uuid-00000000-0000-4000-8000-000000000175.pdf
+0bed3998a5146791f8770fb49ef61574b19116027d8be11c0e2a7237efe9fcc4  complex-vertical/build/pdf/urn-uuid-00000000-0000-4000-8000-000000000175.pdf
 bf616205608c6cf270f499c0cd692938a21604e910baeb75b7ffcc5964e79d1b  complex-vertical/build/text/horizontal/back.txt
 1dcc27d2a7b6164bcdb276b26f9140dc88cce83076cb12fa92776e2b2177183d  complex-vertical/build/text/horizontal/chapters/01.txt
 3b787939da66108ff8df302f5dd5fb802a5f29ee045ac39e2eda332e7f81d7e3  complex-vertical/build/text/horizontal/chapters/02.txt

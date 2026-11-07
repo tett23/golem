@@ -23,6 +23,7 @@ module Golem.Numerals.Format
   )
 where
 
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Numerals.Notation
@@ -147,7 +148,7 @@ parseMarkFormat :: Text -> Either Text MarkFormat
 parseMarkFormat t = do
   (ps, _) <- parseFormat EscapesOnly table t
   (pre, (), n, suf) <- singleNumber ps
-  pure (MarkFormat pre (maybe arabic id n) suf)
+  pure (MarkFormat pre (fromMaybe arabic n) suf)
   where
     table = \case
       "n" -> Right (NumberSlot ())
@@ -207,4 +208,4 @@ formatNumber fmt levels chapter = case parseNumberFormatText fmt of
       SlotChapter -> chapter
     written n k = case n of
       Nothing -> T.pack (show k)
-      Just x -> maybe (T.pack (show k)) id (writeNumber x k)
+      Just x -> fromMaybe (T.pack (show k)) (writeNumber x k)

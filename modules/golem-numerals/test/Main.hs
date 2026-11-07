@@ -3,6 +3,7 @@ module Main (main) where
 import Data.Char (isAsciiLower, isDigit)
 import Data.Either (isLeft)
 import Data.List (nub)
+import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
 import Golem.Numerals (kanji)
 import Golem.Numerals.Format
@@ -14,7 +15,7 @@ main :: IO ()
 main = defaultMain tests
 
 named :: T.Text -> Notation
-named t = maybe (error ("no notation " <> T.unpack t)) id (notationNamed t)
+named t = fromMaybe (error ("no notation " <> T.unpack t)) (notationNamed t)
 
 tests :: TestTree
 tests =
