@@ -329,8 +329,8 @@ i7NoteOnPage flows ps =
       | f <- flows,
         l <- flowLines f,
         nb <- lbNotes l,
-        Just (_, p) <- [Map.lookup (lbId l) places],
         let pg = firstPage (nbId nb),
+        Just (_, p) <- [Map.lookup (lbId l) places],
         pg /= Just (poNumber p)
       ]
 

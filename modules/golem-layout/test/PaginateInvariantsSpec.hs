@@ -27,12 +27,12 @@ invariantTests =
     ]
 
 {- | The elements of the flows of pull requests (docs/adr/0204, the
-decision 3 of the maintainer: 4 elements made the tests of golem-layout
-30 seconds longer, so the pull requests check 3).
-The nightly job raises it with GOLEM_ENUM_DEPTH.
+decision 3 of the maintainer: 5 elements take minutes, 4 make the tests
+of golem-layout less than 30 seconds longer). The nightly job raises it
+with GOLEM_ENUM_DEPTH.
 -}
 prDepth :: Int
-prDepth = 3
+prDepth = 4
 
 -- | The depth: GOLEM_ENUM_DEPTH, a whole number of 0 or more, or 'prDepth'.
 enumDepth :: IO Int
@@ -238,25 +238,19 @@ knownBugs =
       { kbItem = "送った図版の後の改丁の見出しが、偶数ページに置かれる",
         kbShape = \i -> any (\(k, e) -> e == ERecto && any isFigure (take k (inElements i))) (zip [0 ..] (inElements i)),
         kbExcuses = \i b -> breachOf b `elem` [I6, I8] && maybe False (\k -> inElements i !! k == ERecto && any isFigure (take k (inElements i))) (elementOf i b),
-        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 420), (4, 24364), (5, 879466)]
-      },
-    KnownBug
-      { kbItem = "見出しの後の 3 行の段落が、見出しを残して次の段に送られる (golem-layout ADR 0021)",
-        kbShape = \i -> any (\(k, e) -> isHeadingElement e && threeLinesAfter i k) (zip [0 ..] (inElements i)),
-        kbExcuses = \i b -> breachOf b == I6 && maybe False (threeLinesAfter i) (elementOf i b),
-        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 70), (4, 3566), (5, 138210)]
+        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 420), (4, 24364), (5, 879272)]
       },
     KnownBug
       { kbItem = "送った図版の後の見出しの注が、次のページに送られる",
         kbShape = \i -> any (\(k, e) -> e == ENotedHeading && any isFigure (take k (inElements i))) (zip [0 ..] (inElements i)),
         kbExcuses = \i b -> breachOf b == I7 && maybe False (\k -> inElements i !! k == ENotedHeading && any isFigure (take k (inElements i))) (elementOf i b),
-        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 757), (5, 57462)]
+        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 757), (5, 57686)]
       },
     KnownBug
       { kbItem = "図版を追い越した見出しが、本文から離れる",
         kbShape = \i -> any (\(k, e) -> isHeadingElement e && any isFigure (take k (inElements i))) (zip [0 ..] (inElements i)),
         kbExcuses = \i b -> breachOf b == I6 && maybe False (\k -> isHeadingElement (inElements i !! k) && any isFigure (take k (inElements i))) (elementOf i b),
-        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 26), (4, 4838), (5, 276342)]
+        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 3654), (5, 239098)]
       }
   ]
 
@@ -267,13 +261,6 @@ isFigure = \case
 
 isHeadingElement :: Element -> Bool
 isHeadingElement e = e == EHeading || e == ENotedHeading
-
--- | Whether the headings after the element k end in a paragraph of three lines.
-threeLinesAfter :: Input -> Int -> Bool
-threeLinesAfter i k = any isThreeLines (take 1 (dropWhile isHeadingElement (drop (k + 1) (inElements i))))
-
-isThreeLines :: Element -> Bool
-isThreeLines e = e == EPara 3 || e == ENotedPara 3
 
 -- | The lines of an element.
 elementLines :: Element -> Int

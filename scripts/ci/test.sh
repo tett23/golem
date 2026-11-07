@@ -1689,7 +1689,9 @@ run race_needed "$A" "${A%?}"
 expect "race-needed: a SHA that is not a commit" 2
 FAKE_GH_FAIL=1 run race_needed "$A" "$A"
 expect "race-needed: gh fails" 1
-# another workflow (docs/adr/0204)
+# another workflow (docs/adr/0204); the assignment before the function
+# call above stays set in some shells (bash in POSIX mode)
+unset FAKE_GH_FAIL
 race_needed_in() { GH=$RN/gh FAKE_HEAD=$1 sh "$HERE/race-needed.sh" "$2" "$3"; }
 run race_needed_in "$A" "$A" enum.yml
 expect "race-needed: enum.yml has not changed" 0 false

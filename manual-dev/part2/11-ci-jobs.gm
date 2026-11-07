@@ -390,7 +390,7 @@ tasty-hedgehog は、落ちたプロパティを再現する [code: --hedgehog-r
 改ページの規則は、小さな入力のすべてで不変条件として確かめる。[index reading="enum.yml": enum.yml]
 golem-layout のテストは、段の行の数が 3 から 8、段の数が 1 と 2 の版面に、段落、見出し、改丁の見出し、図版、空き、改ページを並べた流れを、要素の少ない順にすべて組み、仕様書の改ページの規則を述語にした I1 から I8 が成り立つことを確かめる。
 入力の数は、要素を一つ増やすと十数倍になる。
-プルリクエストの CI では要素 3 個まで調べ、[code: .github/workflows/enum.yml] は毎晩 [code: main] で、環境変数 [code: GOLEM_ENUM_DEPTH=5] で要素 5 個まで調べる。
+プルリクエストの CI では要素 4 個まで調べ、[code: .github/workflows/enum.yml] は毎晩 [code: main] で、環境変数 [code: GOLEM_ENUM_DEPTH=5] で要素 5 個まで調べる。
 走らせるかの判定と権限は [code: race.yml] と同じで、[code: scripts/ci/race-needed.sh] に [code: enum.yml] を渡す。
 
 違反があれば、テストは最も小さい入力を、[code: PaginateSpec] の例に貼れる形で表示する。
