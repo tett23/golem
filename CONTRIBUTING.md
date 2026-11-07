@@ -279,6 +279,12 @@ golem-driver では、そうしたテストを `-threaded` でない `golem-driv
 `-threaded` の `golem-driver-parallel-test` は、`modules/golem-test-support` の `Golem.TestSupport.Watchdog` にある `watchTests` で包む。
 Haskell のランタイムの外の POSIX のスレッドが実時間を測り、一つのテストが `GOLEM_RACE_TESTS` の値の 300 倍の秒数を超えるか、テストが終わってもプロセスが同じ秒数を超えて終わらないと、走っていたテストの名前とランタイムの心拍を標準エラー出力に書いて、プロセスを `abort()` で止める（[docs/adr/0117](./docs/adr/0117-watchdog-outside-the-runtime-for-threaded-tests.md)）。
 
+`golem-emet-test` も、木の全体を `watchTests 300` で包む。
+同じスイートは、木の全体を `localOption (NumThreads 1)` でも包み、テストを一つずつ走らせる。
+コマンドラインの `-j` は働かない。
+aarch64 の GHC の threaded のランタイムには、.emet を構文解析するテストが同じプロセスの中で同時に走ると、まれにすべての Haskell のスレッドが止まるか、SIGSEGV で落ちる不具合があるからである（GHC の issue #28001）。
+`-threaded` と `-N` は残すので、テストの中でスレッドを同時に走らせる並列の評価のテストは、複数のコアで走る（[docs/adr/0207](./docs/adr/0207-run-golem-emet-test-one-test-at-a-time-under-the-watchdog.md)）。
+
 監査の記録や性能計測のスナップショットは、`docs/` の下に用途ごとのディレクトリを作って置く。
 これらもコミットしたあとは変更しない。
 `docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/` に置いた記録は、フックと CI の `adr` ジョブがコミット後の変更、削除、移動を拒否する（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)）。
