@@ -436,7 +436,7 @@ lines of its column, is placed in a column that has N grid lines or more
 left before it, unless it is the first slot of a column with nothing in
 it. The grid lines left are counted from the end of the slots before it
 and the lines of the notes before it: the blank lines and the spaces
-after the need-lines are not counted (docs/specifications.md, 「行アキ」).
+after the need-lines are not counted (docs/adr ADR 0046).
 -}
 p1NeedLinesMet :: Int -> Check
 p1NeedLinesMet separator flows ps =
