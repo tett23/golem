@@ -13,7 +13,9 @@ golem-driver が golem-emet に依存し、関数の要求のハンドラを渡�
 - `Golem.Emet.Parse`：読み込みの段階（G01001 から G01003）と、文法による解析（E01100 から E01102）。構文の誤りのある文字列から、誤りの前の部分を読む `parsedPrefix`（下の「エディタ」）。
 - `Golem.Emet.Generated`：`grammar/Emet.hpeg` から peg-hs が生成したパーサー。生成物はコミットし、CI で `scripts/gen-parser.sh` で生成し直して一致を検査する。AST を返す入口と、fmt のためのロスレスな構文木を返す入口を持つ。
 - `Golem.Emet.Syntax`：AST。各ノードはファイルの中のバイトの範囲を持つが、範囲は等しさの比較に加わらない。データ型のコンストラクタは宣言の順に持つ。
+- `Golem.Emet.Literal`：数、文字列、文字のリテラルの値。数は `.gm` の式の文脈と同じ規則で読み（[docs/adr/0101](../adr/0101-rational-numbers-in-expressions.md)）、文字列と文字はエスケープを解く。
 - `Golem.Emet.Check`：`where` の位置（E01103）、名前（E0210x）、型、ガードの規則（E03102）、網羅性（E03100、E03101）の検査。検査を通ったモジュールを、名前を解決した中間の形（`Golem.Emet.Core`）にする。
+- `Golem.Emet.Core`：検査を通ったプログラムの形。名前はすべて解決し、レコードは位置で持ち、`True` と `False` は式の文脈の値とする。評価器はこの形を走らせる。
 - `Golem.Emet.Solve`：型の制約を解く。
 - `Golem.Emet.Exhaust`：パターンの行列に対するベクトルの有用性による網羅性の検査（Maranget, 2007）。
 - `Golem.Emet.Types`：型、要求の列、三つの述語、述語を満たす型の表。
