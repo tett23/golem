@@ -16,6 +16,15 @@ extra-source-files:
   VERSION
   diagnostics.md
 
+-- plugins (docs/adr/0199): the plugins of golem-plugin (wasmtime) and golem
+-- new. Without it, Golem.Driver.Plugins of src-no-plugins/ reports G06106
+-- for a project that uses a plugin; the wasm build turns it off
+-- (cabal.project.wasm). golem-cli and golem-lsp build with it.
+flag plugins
+  description: The plugins (golem-plugin, wasmtime) and golem new
+  default:     True
+  manual:      True
+
 common warnings
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
   default-extensions: DerivingStrategies LambdaCase OverloadedStrings
@@ -30,7 +39,6 @@ library
                     Golem.Driver.Functions
                     Golem.Driver.Html
                     Golem.Driver.Lint
-                    Golem.Driver.New
                     Golem.Driver.Plugins
                     Golem.Driver.Svg
                     Golem.Driver.Version
@@ -52,7 +60,6 @@ library
     , golem-length
     , golem-lint
     , golem-pdf
-    , golem-plugin
     , golem-parser
     , golem-preflight
     , golem-project
@@ -63,6 +70,13 @@ library
     , text          >=2.0  && <2.2
     , time          >=1.12 && <1.15
   default-language: GHC2021
+  -- the two Golem.Driver.Plugins export the same names and types (docs/adr/0199)
+  if flag(plugins)
+    hs-source-dirs:  src-plugins
+    exposed-modules: Golem.Driver.New
+    build-depends:   golem-plugin
+  else
+    hs-source-dirs:  src-no-plugins
 
 test-suite golem-driver-test
   import:           warnings
@@ -84,6 +98,7 @@ test-suite golem-driver-test
     FigureSpec
     FunctionsSpec
     HeadingLevelsSpec
+    InMemorySpec
     LinkSpec
     OutputGoldenSpec
     PageElementsSpec
@@ -150,6 +165,7 @@ test-suite golem-driver-global-test
   hs-source-dirs:   test
   main-is:          GlobalMain.hs
   other-modules:
+    InMemoryWritesSpec
     LocaleSpec
     PluginsSpec
     Support

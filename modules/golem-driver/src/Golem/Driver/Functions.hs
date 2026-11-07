@@ -29,13 +29,12 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Driver.Plugins (maxDataBytes)
 import Golem.Emet
-import Golem.Plugin (maxDataBytes)
+import Golem.Project.Files (Files (..))
 import Golem.Project.Manifest (Manifest (..))
-import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage, resolveInRoot)
+import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
 import Golem.Syntax
-import System.Directory (getFileSize)
-import System.FilePath ((</>))
 
 -- | The files of [functions.requires] read, and the errors of reading them.
 data RequiredFiles = RequiredFiles
@@ -55,15 +54,15 @@ requiredFileSet m = Set.fromList [rel | p <- fromMaybe [] (manifestRequiredFiles
 requirementHandlers :: RequiredFiles -> Handlers
 requirementHandlers = fileHandlers . rqTexts
 
-{- | Reads the files of [functions.requires] (the root of the project, the
+{- | Reads the files of [functions.requires] (the files of the project, the
 texts of the editor by their paths, the FileId of manifest.toml, where
 the errors point): G03003 for a path outside the root, G03004 for two
 paths that differ only in case, G03102 for a missing file, E05105 for a
 file over 'maxDataBytes', E05103 for one that is no UTF-8. A BOM at the
 start is skipped and CRLF becomes LF, as for the files of @table.
 -}
-loadRequiredFiles :: FilePath -> Map FilePath Text -> FileId -> Manifest -> IO RequiredFiles
-loadRequiredFiles root overlay mfid manifest = go [] [] Map.empty (nub (fromMaybe [] (manifestRequiredFiles manifest)))
+loadRequiredFiles :: Files -> Map FilePath Text -> FileId -> Manifest -> IO RequiredFiles
+loadRequiredFiles files overlay mfid manifest = go [] [] Map.empty (nub (fromMaybe [] (manifestRequiredFiles manifest)))
   where
     err code = diagnostic code Error (mkSpan mfid 0 0)
     go ds _ texts [] = pure (RequiredFiles (reverse ds) texts)
@@ -74,15 +73,15 @@ loadRequiredFiles root overlay mfid manifest = go [] [] Map.empty (nub (fromMayb
             go (err "G03004" (T.pack ("大文字と小文字だけが異なるパスです: " <> written <> " と " <> other)) : ds) seen texts rest
         | otherwise -> do
             let seen' = written : seen
-            resolveInRoot root p >>= \case
+            filesResolve files p >>= \case
               Left Missing -> go (err "G03102" ("[functions.requires] の file のファイルがありません: " <> T.pack p) : ds) seen' texts rest
               Left e -> go (err "G03003" (T.pack (pathErrorMessage e <> ": " <> p)) : ds) seen' texts rest
               Right rel -> do
-                size <- maybe (toInteger <$> getFileSize (root </> rel)) (pure . toInteger . BS.length . TE.encodeUtf8) (Map.lookup rel overlay)
+                size <- maybe (filesSize files rel) (pure . toInteger . BS.length . TE.encodeUtf8) (Map.lookup rel overlay)
                 if size > toInteger maxDataBytes
                   then go (err "E05105" ("要求したファイルが上限（" <> tshow maxDataBytes <> " バイト）を超えています: " <> T.pack p <> "（" <> tshow size <> " バイト）") : ds) seen' texts rest
                   else do
-                    bytes <- maybe (BS.readFile (root </> rel)) (pure . TE.encodeUtf8) (Map.lookup rel overlay)
+                    bytes <- maybe (filesRead files rel) (pure . TE.encodeUtf8) (Map.lookup rel overlay)
                     case TE.decodeUtf8' (fromMaybe bytes (BS.stripPrefix "\xEF\xBB\xBF" bytes)) of
                       Left _ -> go (err "E05103" ("要求したファイルが UTF-8 として読めません: " <> T.pack p) : ds) seen' texts rest
                       Right t -> go ds seen' (Map.insert (T.pack written) (T.replace "\r\n" "\n" t) texts) rest
@@ -106,21 +105,21 @@ data LoadedFunctions = LoadedFunctions
 
 {- | Loads the .emet of these root files (paths from the root of the
 project) and those they import, and checks the requirements of their
-signatures against [functions.requires] (E05104): the root of the
+signatures against [functions.requires] (E05104): the files of the
 project, the texts of the editor by their paths, the first FileId of the
 .emet, given in the order they are read, and the manifest. ADR 0162 calls
 it with the .emet that @import of .gm and [[filters]] reach.
 -}
-loadFunctions :: FilePath -> Map FilePath Text -> FileId -> Manifest -> [FilePath] -> IO LoadedFunctions
-loadFunctions root overlay (FileId base) manifest roots = do
+loadFunctions :: Files -> Map FilePath Text -> FileId -> Manifest -> [FilePath] -> IO LoadedFunctions
+loadFunctions files overlay (FileId base) manifest roots = do
   next <- newIORef base
   infos <- newIORef Map.empty
   let source p =
-        resolveInRoot root p >>= \case
+        filesResolve files p >>= \case
           Left Missing -> pure (Left MissingFile)
           Left _ -> pure (Left OutsideRoot)
           Right rel -> do
-            bytes <- maybe (BS.readFile (root </> rel)) (pure . TE.encodeUtf8) (Map.lookup rel overlay)
+            bytes <- maybe (filesRead files rel) (pure . TE.encodeUtf8) (Map.lookup rel overlay)
             n <- readIORef next
             modifyIORef' next (+ 1)
             modifyIORef' infos (Map.insert (FileId n) (SourceInfo rel (mkLineIndex (TE.decodeUtf8Lenient bytes))))

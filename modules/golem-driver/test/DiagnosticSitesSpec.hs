@@ -12,6 +12,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Driver
 import Golem.Driver.Version (golemVersion)
 import Golem.Project (Manifest (..), Project (..), ProjectFailure (..), styleFileId)
+import Golem.Project.Files (diskFiles)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Golem.Typeset (PdfInput (..), labelSpans, renderPdf)
@@ -34,7 +35,7 @@ withMiniEvaluated style source k = withSystemTempDirectory "golem-sites" $ \tmp 
 -- | The PDF input the driver passes for an evaluated project.
 inputOf :: FilePath -> Evaluated -> IO PdfInput
 inputOf tmp e = case evBook e of
-  Just book -> pure (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))))
+  Just book -> pure (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))))
   Nothing -> assertFailure (show (evDiagnostics e))
 
 -- | The text of the source that a span covers.
@@ -48,14 +49,14 @@ diagnosticSiteTests =
     [ testCase "G08002: the font provider by itself reports a missing font file once, at the top of the given file" $
         withSystemTempDirectory "golem-sites" $ \tmp -> do
           style <- either (assertFailure . show) pure (parseStyle (FileId 0) "[fonts.body]\nja = \"fonts/none.otf\"\nlatin = \"fonts/none.otf\"\n")
-          r <- loadFonts golemFontProvider tmp (FileId 7) style []
+          r <- loadFonts golemFontProvider (diskFiles tmp) (FileId 7) style []
           either (map (\d -> (diagCode d, diagSpan d, diagMessage d))) (const []) r
             @?= [(DiagnosticCode "G08002", mkSpan (FileId 7) 0 0, "フォントのファイルがありません: fonts/none.otf")],
       testCase "G08019: the font provider by itself rejects a CFF2 font (golem-font ADR 0003)" $
         withSystemTempDirectory "golem-sites" $ \tmp -> do
           BS.readFile "../golem-font/test/fonts/SourceSerif4Variable-Roman.otf" >>= BS.writeFile (tmp </> "v.otf")
           style <- either (assertFailure . show) pure (parseStyle (FileId 0) "[fonts.body]\nlatin = \"v.otf\"\n")
-          r <- loadFonts golemFontProvider tmp (FileId 7) style []
+          r <- loadFonts golemFontProvider (diskFiles tmp) (FileId 7) style []
           either (map (\d -> (diagCode d, diagSpan d))) (const []) r @?= [(DiagnosticCode "G08019", mkSpan (FileId 7) 0 0)],
       testCase "G08006: rendering a PDF whose output intent is missing stops at the top of style.toml" $
         withMiniEvaluated (horizontalStyle <> "\n[color]\nintent = \"icc/none.icc\"\n") "本文。\n" $ \tmp e -> do

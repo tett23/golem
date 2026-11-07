@@ -15,6 +15,7 @@ import FigureSpec
 import FunctionsSpec (functionsTests)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
 import HeadingLevelsSpec (headingLevelsTests)
+import InMemorySpec (inMemoryTests)
 import LinkSpec (linkTests)
 import OutputGoldenSpec
 import PageElementsSpec
@@ -65,6 +66,7 @@ tests skips =
         producerTests,
         securityTests,
         tableFileTests,
+        inMemoryTests,
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests

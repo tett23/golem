@@ -14,6 +14,7 @@ import Golem.Driver.Functions
 import Golem.Emet (Result (..), callFunction)
 import Golem.Eval.Value (Value (..))
 import Golem.Project (Project (..), ProjectFailure (..), loadProjectWith)
+import Golem.Project.Files (diskFiles)
 import Golem.Syntax
 import Support
 import System.Directory (createDirectoryIfMissing)
@@ -42,16 +43,16 @@ projectCodes tmp = do
 -- | The files of [functions.requires] of the project, read.
 required :: FilePath -> IO RequiredFiles
 required tmp =
-  loadProjectWith Map.empty tmp >>= \case
+  loadProjectWith (diskFiles tmp) Map.empty tmp >>= \case
     Left f -> assertFailure (show (pfDiagnostics f)) >> fail "unreachable"
-    Right p -> loadRequiredFiles tmp Map.empty (projectManifestFile p) (projectManifest p)
+    Right p -> loadRequiredFiles (diskFiles tmp) Map.empty (projectManifestFile p) (projectManifest p)
 
 -- | The functions of these .emet, with the requirements checked against the manifest.
 functionsOf :: FilePath -> [FilePath] -> IO LoadedFunctions
 functionsOf tmp roots =
-  loadProjectWith Map.empty tmp >>= \case
+  loadProjectWith (diskFiles tmp) Map.empty tmp >>= \case
     Left f -> assertFailure (show (pfDiagnostics f)) >> fail "unreachable"
-    Right p -> loadFunctions tmp Map.empty (FileId 1000000) (projectManifest p) roots
+    Right p -> loadFunctions (diskFiles tmp) Map.empty (FileId 1000000) (projectManifest p) roots
 
 readA :: BS.ByteString
 readA = "pub f :: Nat -> <file \"data/a.tsv\"> String\nf _ = File.read \"data/a.tsv\"\n"

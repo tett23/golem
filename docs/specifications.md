@@ -408,6 +408,27 @@ IR に構成子を足すと、このテストがコンパイルできなくな�
 リポジトリのライブラリと実行ファイル（golem-test-support と golem-doc-gen のものを除く）がこのパッケージに届かないことも、`scripts/ci/test-only-deps.sh` が確かめる。
 golem のパッケージに依存しないことの検査は golem-test-support だけに当て、golem-doc に依存する golem-doc-gen には当てない。
 
+golem-project は、プロジェクトのファイルの読み方を表す値 `Files` を持つ（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
+`Files` は、パスの解決、バイト列の読み込み、バイト数の三つの関数を持つレコードである。
+ディスクのルートの下から読む `diskFiles` と、パスとバイト列の表から読む `memoryFiles` がある。
+`diskFiles` のパスの解決は、ルートの外を指すシンボリックリンクを退ける今までの規則（`resolveInRoot`）である。
+`memoryFiles` は、パスを `normalizeRelative` で正規化して表のキーと比べ、表にないパスはファイルがないものとする。
+表にシンボリックリンクはないので、リンクをたどる処理はない。
+マニフェスト、章と import のファイル、`style.toml`、`plugins.lock`、図版、表、書誌、関数、フォント、出力インテントは、`Files` を通して読む。
+書き込み（`build/` の掃除と書き出し）は `Files` を通さない。
+golem-driver の `buildPdfInMemory` は、表のファイルから `golem build --target pdf` と同じ手順で PDF を組み、何も書き込まずに、PDF のバイト列と diagnostics を返す。
+PDF と diagnostics の JSON は、同じファイルを `golem build --target pdf --format json` で組んだものと同じになる。
+
+golem-driver の cabal は、プラグインの機能を外すフラグ `plugins` を持つ（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
+既定は真で、golem-plugin に依存し、`src-plugins/` の `Golem.Driver.Plugins` と `Golem.Driver.New`（`golem new`）を組む。
+偽のときは golem-plugin に依存せず、`src-no-plugins/` の `Golem.Driver.Plugins` を組み、`Golem.Driver.New` を組まない。
+二つの `Golem.Driver.Plugins` は同じ名前と型を export し、`Golem.Driver` と `Golem.Driver.Functions` が使う golem-plugin の型と値（`HostContext`、`defaultCacheDir`、`maxDataBytes`）も、このモジュールを通して取り込む。
+プラグインのない版は、`HostContext` を同じ形の型として、`maxDataBytes` を同じ値として持つ。
+プラグインのない版で組んだプロジェクトに `[plugins]` もプラグインのフィルタの `[[filters]]` もなければ、プラグインのある版と同じく、プラグインなしで `.emet` のフィルタだけを掛ける。
+どちらかがあれば、`manifest.toml` の先頭に G06106 のエラーを一つ出す。
+golem-cli と golem-lsp は golem-plugin に直接依存するので、フラグを使わない。
+フラグを偽にするのは wasm のビルドだけである。
+
 処理は `parse → eval → 意味論 IR → 各バックエンド` の順に流れ、分岐点は意味論 IR である（「処理の流れ」の節を参照）。
 
 PDF 経路と Web 経路は対称ではない。
@@ -2731,6 +2752,15 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 続く見出しと行の量には、それらの注の本文の行と、その段で最初の注なら区切りの領域を数える（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
 段の先頭から見出しだけを置いた段では、見出しの後の行を空の段と同じく一行は置き、入らない注の本文を次の段に続ける（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
 
+これらの規則は、[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の I1 から I8 として、golem-layout のテストで確かめる。
+述語は `modules/golem-layout/test/PaginateInvariants.hs` にあり、改ページの入力と出力だけを読む。
+`modules/golem-layout/test/PaginateInvariantsSpec.hs` は、段の行の数が 3 から 8、段の数が 1 と 2 の版面に、段落、注を持つ段落、見出し、注を持つ見出し、改丁の見出し、図版、一行の空き、改ページを並べた流れを、要素の少ない順にすべて組み、どの述語も違反を返さないことを確かめる。
+プルリクエストの CI は要素 3 個まで、毎晩の `enum.yml` は要素 5 個まで調べる。
+違反があれば、最も小さい入力を表示する。
+「既知の不具合」に載せた違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
+仕様書の文から一つに決まらない場合は、述語が判定しない。
+段より高い図版を置いた段のあふれ、見出しだけを置いた段の後の孤立行と寡婦行、改丁の見出しが続く見出し、改丁の見出しの前に置いた送った図版がそれにあたる。
+
 罫線を持つ段落と見出しは、前の罫線の領域、行、後の罫線の領域を合わせて一つのまとまりとして置き、改ページと改段で分けない（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 
 - 今の段に入らなければ、次の段から置く。罫線を持つ段落のまとまりが段に入るかは格子の行の数だけで決め、注の本文の行を数えない。段落はその位置に留まり、入らない注の本文を次のページに送る。
@@ -4389,7 +4419,7 @@ path = "plugins/local.wasm"
 - 取得した配布物はハッシュをキーに手元にキャッシュし、キャッシュがあればビルドはネットワークに接続しない。
 - `plugins.lock` の更新は、ユーザーが明示的に指示したときだけ行う。
 
-プラグインの読み込みと検査の誤りは、G06002 から G06012 と G06101 から G06105 の diagnostic で報告する（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)、[docs/adr/0105](adr/0105-plugin-data.md)、[docs/adr/0109](adr/0109-local-plugin-path.md)、[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)）。
+プラグインの読み込みと検査の誤りは、G06002 から G06012 と G06101 から G06106 の diagnostic で報告する（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)、[docs/adr/0105](adr/0105-plugin-data.md)、[docs/adr/0109](adr/0109-local-plugin-path.md)、[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)、[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
 プラグインが応答で返す diagnostic は、次の規則で検査する（[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)）。
 
 - コードは英小文字で始まり、英小文字、数字、`-` だけからなる列（データの名前と同じ形。[docs/adr/0139](adr/0139-plugin-diagnostic-code-starts-with-letter.md)）とし、ホストがその前に `manifest.toml` のプラグインの宣言の名前と `/` を置く。`lookup` と宣言したプラグインの `no-key` は `lookup/no-key` になる。ほかの形のコード（`G02022`、`Lookup/x`、`404`、`-x` など）は、不正な出力（G06009）にする。
@@ -4792,7 +4822,9 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 テストを足すときに見つかったものは、該当する場合をテストに入れずに残している。
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
-- **図版を追い越した見出しが、本文から離れる**：縦組みの本で、段に入らない図版の後に見出しと段落が続くと、見出しが図版を追い越して前のページの最後の行に置かれ、図版が次のページの先頭に、段落がその後に置かれる。見出しは、その後の段落の最初の 2 行と同じ段に置く（「改ページ」の節）という規則が、間に図版が入ると守られない。機能を組み合わせた fixture の `complex-vertical`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）の第一章の図 1-2 と「字面と字送り」の見出しで起き、ゴールデンと見た目の回帰テストの参照は、今の配置を固定している。
+- **図版を追い越した見出しが、本文から離れる**：縦組みの本で、段に入らない図版の後に見出しと段落が続くと、見出しが図版を追い越して前のページの最後の行に置かれ、図版が次のページの先頭に、段落がその後に置かれる。見出しは、その後の段落の最初の 2 行と同じ段に置く（「改ページ」の節）という規則が、間に図版が入ると守られない。機能を組み合わせた fixture の `complex-vertical`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）の第一章の図 1-2 と「字面と字送り」の見出しで起き、ゴールデンと見た目の回帰テストの参照は、今の配置を固定している。見出しは図版を追い越さなくても離れる。改ページの不変条件のテスト（[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)）で見つかった最も小さい例は、一段で段の行の数が 3 の版面に、2 行の段落、2 行の図版、見出し、1 行の段落を順に置いたもので、図版が 2 ページに送られ、見出しは 2 ページの図版の後の最後の行に、段落は 3 ページに置かれる。見出しを置くかを決めるときに、送った図版が次の段の先頭で取る行を数えていないためである（[golem-layout ADR 0015](golem-layout/adr/0015-figure-order.md) の「トレードオフ」）。見出しが図版を追い越す最も小さい例は、同じ版面に 2 行の段落、2 行の図版を二つ、見出し、1 行の段落を置いたもので、見出しは二つめの図版より前のページに置かれる。
+- **送った図版の後の改丁の見出しが、偶数ページに置かれる**：段に入らずに送った図版が待っているときに `page-break = "recto"` の見出しが来ると、図版を置いたページを白ページとして出力し、図版をその次のページに、見出しをさらに次のページに置く。見出しは偶数ページに置かれるか、見出しの後の段落と別のページに分かれる。改丁の見出しは奇数ページから始める（「改ページ」の節）という規則が守られない。改ページの不変条件のテストで見つかった最も小さい例は、一段で段の行の数が 3 の版面に、1 行の段落、3 行の図版、改丁の見出しを順に置いたもので、1 ページに段落、2 ページが白ページ、3 ページに図版、4 ページに見出しが置かれる。
+- **送った図版の後の見出しの注が、次のページに送られる**：送った図版で段の残りが減ると、注を持つ見出しを、注の本文が入らないまま置き、注の本文を次のページに置く。注の本文は合印のある行と同じページに置く（「脚注」の節）という規則が守られない。改ページの不変条件のテストで見つかった最も小さい例は、一段で段の行の数が 3 の版面に、1 行の段落、3 行の図版、1 行の図版、注を持つ見出しを順に置いたもので、見出しは 3 ページに、その注の本文は 4 ページに置かれる。
 - **`[ref-number]` の図番号とリスト番号が、`[figures]` と `[code]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックを `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 

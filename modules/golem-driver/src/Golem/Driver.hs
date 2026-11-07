@@ -14,6 +14,8 @@ module Golem.Driver
     PreflightResult (..),
     preflight,
     evaluateProject,
+    BuildInMemory (..),
+    buildPdfInMemory,
     hostContext,
     evaluateProjectWith,
     evaluateLoose,
@@ -66,7 +68,7 @@ import Golem.Bibliography.Csl (CslJsonError (..), decodeCslJson)
 import Golem.Doc.IR
 import Golem.Driver.Functions (LoadedFunctions (..), RequiredFiles (..), loadFunctions, loadRequiredFiles, requiredFileSet, requirementHandlers)
 import Golem.Driver.Html
-import Golem.Driver.Plugins (FunctionFilter, LoadedPlugins (..), loadPlugins)
+import Golem.Driver.Plugins (FunctionFilter, HostContext (..), LoadedPlugins (..), defaultCacheDir, loadPlugins)
 import Golem.Driver.ProjectVars (projectVarDiagnostics, projectVarTexts)
 import Golem.Driver.Svg (activeMessage)
 import Golem.Driver.Version (golemVersion)
@@ -84,20 +86,19 @@ import Golem.Parser.AST qualified as A
 import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
 import Golem.Parser.SourceSettings (SourceSettings, defaultSourceSettings)
 import Golem.Pdf qualified as P
-import Golem.Plugin (HostContext (..))
-import Golem.Plugin.Lock (defaultCacheDir)
 import Golem.Preflight (MissingGlyph (..), check, missingGlyphs)
 import Golem.Preflight.Rules (Rules (..), parseRules, printRules)
 import Golem.Preflight.View (View)
 import Golem.Project
-import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage, resolveInRoot)
+import Golem.Project.Files (Files (..), diskFiles, memoryFiles)
+import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
 import Golem.Project.Style
 import Golem.Svg.Active (activeContent)
 import Golem.Syntax
 import Golem.Text qualified as GT
 import Golem.Typeset
 import Golem.Typeset.FontProvider (cff2FontDiagnostics, golemFontProvider)
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getFileSize, pathIsSymbolicLink, removeDirectoryRecursive)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 
 data Target = TargetHtml | TargetEpub | TargetText | TargetPdf
@@ -115,6 +116,8 @@ data CropMarks = NoMarks | JapaneseMarks | WesternMarks
 
 data BuildOptions = BuildOptions
   { optRoot :: !FilePath,
+    -- | how the files of the project are read (docs/adr/0199); writing goes to optRoot
+    optFiles :: !Files,
     optTargets :: !(Maybe [Target]),
     optProfile :: !Profile,
     optCheckOnly :: !Bool,
@@ -130,7 +133,7 @@ data BuildOptions = BuildOptions
   }
 
 defaultOptions :: FilePath -> BuildOptions
-defaultOptions root = BuildOptions root Nothing Dev False golemFontProvider True NoMarks False False
+defaultOptions root = BuildOptions root (diskFiles root) Nothing Dev False golemFontProvider True NoMarks False False
 
 data BuildResult = BuildResult
   { brDiagnostics :: ![Diagnostic],
@@ -212,16 +215,18 @@ hostContext style = HostContext (if maybe False pageVertical (stPage style) then
 
 -- | Everything up to S1. Stops after a stage that produced errors.
 evaluateProject :: Profile -> FilePath -> IO (Either ProjectFailure Evaluated)
-evaluateProject = evaluateProjectWith Map.empty
+evaluateProject profile root = evaluateProjectWith (diskFiles root) Map.empty profile root
 
--- | @overlay@ replaces file contents (unsaved edits in the LSP).
-evaluateProjectWith :: Map FilePath Text -> Profile -> FilePath -> IO (Either ProjectFailure Evaluated)
-evaluateProjectWith overlay profile root = do
-  lp <- loadProjectWith overlay root
+{- | @files@ reads the files of the project (docs/adr/0199); @overlay@
+replaces file contents (unsaved edits in the LSP).
+-}
+evaluateProjectWith :: Files -> Map FilePath Text -> Profile -> FilePath -> IO (Either ProjectFailure Evaluated)
+evaluateProjectWith files overlay profile root = do
+  lp <- loadProjectWith files overlay root
   case lp of
     Left f -> pure (Left f)
     Right project -> do
-      styleBytes <- readMaybeBytes (root </> "style.toml")
+      styleBytes <- readMaybeBytes files "style.toml"
       let -- G03023: the default style, when there is no style.toml (golem-syntax ADR 0002)
           defaultStyleNotice = [notice "G03023" (mkSpan (projectManifestFile project) 0 0) "style.toml がないので、既定の体裁で組みます" | isNothing styleBytes]
           -- G03120: no paragraph-separator in [source], read in the line style (docs/adr/0193)
@@ -242,15 +247,15 @@ evaluateProjectWith overlay profile root = do
           reads the manifest, plugins.lock and the cache, not the sources
           (docs/adr ADR 0031) -}
           cacheDir <- defaultCacheDir
-          lockText <- readMaybeText (root </> "plugins.lock")
+          lockText <- readMaybeText files "plugins.lock"
           -- the files functions may read, whether or not a chapter calls a function (docs/adr/0161)
-          required <- loadRequiredFiles root overlay (projectManifestFile project) manifest0
+          required <- loadRequiredFiles files overlay (projectManifestFile project) manifest0
           -- the functions of the .emet of @import and [[filters]] (docs/adr/0162)
-          (filterRootDiags, emetRoots) <- functionRoots root project
+          (filterRootDiags, emetRoots) <- functionRoots files project
           functions <-
             if null emetRoots
               then pure (LoadedFunctions [] Map.empty Nothing)
-              else loadFunctions root overlay (functionsFileBase project) manifest0 emetRoots
+              else loadFunctions files overlay (functionsFileBase project) manifest0 emetRoots
           let handlers = requirementHandlers required
               table = functionTableOf handlers project emetRoots functions
               functionFilter = functionFilterOf handlers project (lfProgram functions)
@@ -270,9 +275,9 @@ evaluateProjectWith overlay profile root = do
               quiet = if null pluginErrors then id else \r -> r {erDiagnostics = filter ((`notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090", DiagnosticCode "G02009"]) . diagCode) (erDiagnostics r)}
           if hasErrors synDiags
             then do
-              loaded <- loadAssets overlay root project
+              loaded <- loadAssets files overlay project
               let assets = laAssets loaded
-              (bibDiags, citeKeys, _) <- loadBibliography root manifest0
+              (bibDiags, citeKeys, _) <- loadBibliography files manifest0
               let projectDiags = pluginDiags <> laDiagnostics loaded <> bibDiags <> runningVarDiags
               pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded <> pluginSources <> lfSources functions) (laTableFiles loaded <> pluginDataFiles manifest0 <> requiredFileSet manifest0 <> contextFiles <> functionFiles) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook table Map.empty f sf)) pluginCommands (lfProgram functions) (lfSources functions)))
             else do
@@ -283,10 +288,10 @@ evaluateProjectWith overlay profile root = do
                     | m <- nub [m | (_, Just m) <- projectChapters project],
                       not (Map.member m (stMasters style))
                     ]
-              loaded <- loadAssets overlay root project
+              loaded <- loadAssets files overlay project
               let assets = laAssets loaded
               -- G03026 and G03003 of the bibliography, for every target (golem-doc ADR 0004)
-              (bibDiags, citeKeys, _) <- loadBibliography root manifest
+              (bibDiags, citeKeys, _) <- loadBibliography files manifest
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook table)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
                   projectDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> masterDiags <> runningVarDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
@@ -326,15 +331,20 @@ assembleResults channels style manifest project projectDiags results
           (book, s1Diags) = assemble cfg evalDeferred (map fst chapterRuns)
        in (Just book {bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
 
-readMaybeText :: FilePath -> IO (Maybe Text)
-readMaybeText p = do
-  e <- doesFileExist p
-  if e then Just . TE.decodeUtf8Lenient <$> BS.readFile p else pure Nothing
+readMaybeText :: Files -> FilePath -> IO (Maybe Text)
+readMaybeText files p = fmap TE.decodeUtf8Lenient <$> readMaybeBytes files p
 
-readMaybeBytes :: FilePath -> IO (Maybe BS.ByteString)
-readMaybeBytes p = do
-  e <- doesFileExist p
-  if e then Just <$> BS.readFile p else pure Nothing
+{- | A file of the root by its name, when it is there; one that is a link
+out of the root is read, as before (docs/adr/0199).
+-}
+readMaybeBytes :: Files -> FilePath -> IO (Maybe BS.ByteString)
+readMaybeBytes files p = do
+  e <- isPresent files p
+  if e then Just <$> filesRead files p else pure Nothing
+
+-- | Whether a file of the root by its name is there: anything but Missing.
+isPresent :: Files -> FilePath -> IO Bool
+isPresent files p = (/= Left Missing) <$> filesResolve files p
 
 -- | golem fmt does not format style.toml, so its G01003 has no fix (golem-parser ADR 0009).
 noFix :: Diagnostic -> Diagnostic
@@ -535,13 +545,13 @@ those of @import of the sources, in the order of the files, then those of
 the root G03003, at the top of manifest.toml; the project checks those of
 @import as it checks the .gm.
 -}
-functionRoots :: FilePath -> Project -> IO ([Diagnostic], [FilePath])
-functionRoots root project = do
+functionRoots :: Files -> Project -> IO ([Diagnostic], [FilePath])
+functionRoots files project = do
   let imported = [p | sf <- Map.elems (projectSources project), site <- sfImports sf, ".emet" `T.isSuffixOf` isPath site, Right p <- [normalizeRelative (T.unpack (isPath site))]]
       filtered = nub [p | FilterDecl (FilterFunction p) _ _ <- manifestFilters (projectManifest project)]
       at = mkSpan (projectManifestFile project) 0 0
   checked <- forM filtered $ \p ->
-    resolveInRoot root p >>= \case
+    filesResolve files p >>= \case
       Left Missing -> pure (Left (diagnostic "G03002" Error at ("[[filters]] の function のファイルがありません: " <> T.pack p)))
       Left e -> pure (Left (diagnostic "G03003" Error at (T.pack (pathErrorMessage e <> ": " <> p))))
       Right rel -> pure (Right rel)
@@ -553,11 +563,12 @@ fmt without arguments.
 -}
 functionPaths :: FilePath -> Project -> IO [FilePath]
 functionPaths root project = do
-  (_, roots) <- functionRoots root project
+  let files = diskFiles root
+  (_, roots) <- functionRoots files project
   if null roots
     then pure []
     else do
-      lf <- loadFunctions root Map.empty (functionsFileBase project) (projectManifest project) roots
+      lf <- loadFunctions files Map.empty (functionsFileBase project) (projectManifest project) roots
       pure (sort [siPath si | si <- Map.elems (lfSources lf)])
 
 {- | The table of the functions for golem-eval (docs/adr/0162): the
@@ -621,8 +632,8 @@ has a FileId, from the one after plugins.lock's, in the order of the paths
 files ('readTableSource'); a listing is read as before. A table file
 over 'tableMaxBytes' is not read for the table (docs/adr ADR 0043).
 -}
-loadAssets :: Map FilePath Text -> FilePath -> Project -> IO LoadedAssets
-loadAssets overlay root project = do
+loadAssets :: Files -> Map FilePath Text -> Project -> IO LoadedAssets
+loadAssets files overlay project = do
   let refs = assetUses project
       FileId lock = lockFileId project
       fids = Map.fromList (zip (assetTextPaths project) (map FileId [lock + 1 ..]))
@@ -636,14 +647,14 @@ loadAssets overlay root project = do
       }
   where
     load fids path uses = do
-      r <- resolveInRoot root path
+      r <- filesResolve files path
       case (r, Map.lookup path fids) of
         (Left e, _) -> pure (AssetInvalid e, Nothing, [], Nothing)
         (Right rel, Just fid) -> do
           let open = Map.lookup rel overlay <|> Map.lookup path overlay
-              readBytes = maybe (BS.readFile (root </> rel)) (pure . TE.encodeUtf8) open
+              readBytes = maybe (filesRead files rel) (pure . TE.encodeUtf8) open
           -- the size of a table file is known before it is read (G02088, docs/adr ADR 0043)
-          size <- maybe (getFileSize (root </> rel)) (pure . toInteger . lengthWord8) open
+          size <- maybe (filesSize files rel) (pure . toInteger . lengthWord8) open
           if Set.member UseTable uses && size > toInteger tableMaxBytes
             then do
               -- a listing of the same file still reads it, as before
@@ -692,15 +703,15 @@ the output (docs/adr/0159), the keys, and the entries formatted by golem-doc
 (golem-doc ADR 0004, 0005). The diagnostics point at the head of manifest.toml,
 FileId 0, as G03002 does, because the manifest keeps no positions.
 -}
-loadBibliography :: FilePath -> Manifest -> IO ([Diagnostic], Set.Set Text, Map Text [EntryPart])
-loadBibliography root manifest = do
+loadBibliography :: Files -> Manifest -> IO ([Diagnostic], Set.Set Text, Map Text [EntryPart])
+loadBibliography files manifest = do
   results <- forM (manifestBibliography manifest) $ \p -> do
-    res <- resolveInRoot root p
+    res <- filesResolve files p
     case res of
       Left Missing -> pure (Left (unreadable ("参考文献のファイルがありません: " <> T.pack p)))
       Left e -> pure (Left (diagnostic "G03003" Error manifestHead (T.pack (pathErrorMessage e <> ": " <> p))))
       Right rel -> do
-        r <- try (BL.readFile (root </> rel)) :: IO (Either SomeException BL.ByteString)
+        r <- try (BL.fromStrict <$> filesRead files rel) :: IO (Either SomeException BL.ByteString)
         pure $ case decodeCslJson <$> r of
           Left _ -> Left (unreadable ("参考文献のファイルがありません: " <> T.pack p))
           Right (Left (CslNotJson err)) -> Left (unreadable ("参考文献のファイルを JSON として読めません: " <> T.pack p <> "（" <> T.pack err <> "）"))
@@ -732,19 +743,41 @@ targetsOf m =
 build :: BuildOptions -> IO BuildResult
 build opts = fst <$> buildCore False opts
 
+-- | The PDF of a project built from its files in memory (docs/adr/0199).
+data BuildInMemory = BuildInMemory
+  { -- | Nothing after an error
+    bimPdf :: !(Maybe BS.ByteString),
+    -- | after finishDiagnostics
+    bimDiagnostics :: ![Diagnostic],
+    -- | for renderJson
+    bimSources :: !(Map FileId SourceInfo)
+  }
+
+{- | The PDF of a project from a table of its files, by their paths from
+the root, normalised (docs/adr/0199): the build of golem build --target pdf
+with the defaults, in one thread, reading the table only and writing
+nothing. The PDF and the diagnostics are those of golem build --target pdf
+--format json on the same files.
+-}
+buildPdfInMemory :: Map FilePath BS.ByteString -> IO BuildInMemory
+buildPdfInMemory table = do
+  let opts = (defaultOptions ".") {optFiles = memoryFiles table, optTargets = Just [TargetPdf], optParallel = False}
+  (r, pdf) <- buildCore True opts
+  pure (BuildInMemory (fst <$> pdf) (brDiagnostics r) (brSources r))
+
 {- | The build; with @inMemory@, the PDF is not written but returned with
 its view (golem preflight, golem-cli ADR 0006).
 -}
 buildCore :: Bool -> BuildOptions -> IO (BuildResult, Maybe (BS.ByteString, View))
 buildCore inMemory opts = do
-  ev <- evaluateProject (optProfile opts) (optRoot opts)
+  ev <- evaluateProjectWith (optFiles opts) Map.empty (optProfile opts) (optRoot opts)
   case ev of
     Left f -> pure (BuildResult (finishWith Set.empty Set.empty (pfDiagnostics f)) (pfSources f) [], Nothing)
     Right e -> do
       let project = evProject e
           finish = finishWith (manifestSilencedNotices (projectManifest project)) (manifestSilencedInfo (projectManifest project))
           targets = fromMaybe (targetsOf (projectManifest project)) (optTargets opts)
-      hasStyle <- doesFileExist (optRoot opts </> "style.toml")
+      hasStyle <- isPresent (optFiles opts) "style.toml"
       let styleFid = evStyleFile e
           -- style.toml is a source of diagnostics (golem-project ADR 0004, G07002) when it exists
           infos =
@@ -757,14 +790,14 @@ buildCore inMemory opts = do
             cropMarkDiagnostics opts e diagFid targets
               <> (if TargetPdf `elem` targets then styleLayoutDiagnostics diagFid (isJust (markStyle (optMarks opts))) (evStyle e) (Map.elems (localStylesOf e)) else [])
       -- the files of style.toml, for the targets that use them (golem-project ADR 0004)
-      missing <- missingStyleFiles (optRoot opts) (evStyle e)
+      missing <- missingStyleFiles (optFiles opts) (evStyle e)
       -- without code in the book, the role code is not used (golem-driver ADR 0017)
       let fileStyle = maybe id (\b -> codeStyles (bookHasCode (docStyles e) b) (stFonts (evStyle e))) (evBook e) (evStyle e)
           locals = Map.elems (localStylesOf e)
       -- G08019: CFF2 fonts, which the PDF cannot embed; golem check reports them too (golem-font ADR 0003)
       cff2Diags <-
         if TargetPdf `elem` targets
-          then cff2FontDiagnostics (optRoot opts) diagFid [p | p <- pdfFontPaths fileStyle locals, Map.notMember p missing]
+          then cff2FontDiagnostics (optFiles opts) diagFid [p | p <- pdfFontPaths fileStyle locals, Map.notMember p missing]
           else pure []
       let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid fileStyle locals missing t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
@@ -782,7 +815,7 @@ buildCore inMemory opts = do
               -- and G08102, a figure of the source where they put the images of plugins (docs/adr/0123)
               activeDiags <-
                 if any (`elem` writable) [TargetHtml, TargetEpub]
-                  then (pluginImagePathDiagnostics book <>) <$> activeContentDiagnostics (optRoot opts) book
+                  then (pluginImagePathDiagnostics book <>) <$> activeContentDiagnostics (optFiles opts) book
                   else pure []
               let webWritable = [t | t <- writable, null activeDiags || t `notElem` [TargetHtml, TargetEpub]]
                   -- a list number its format cannot write stops every target (golem-driver ADR 0013)
@@ -820,16 +853,16 @@ that cannot be read; each file is read once, and each @figure that uses
 it gets its own diagnostic at its block. Files that are missing or
 outside the root are left to the diagnostics about paths.
 -}
-activeContentDiagnostics :: FilePath -> Book -> IO [Diagnostic]
-activeContentDiagnostics root book = do
+activeContentDiagnostics :: Files -> Book -> IO [Diagnostic]
+activeContentDiagnostics files book = do
   let figures = [(sp, webSource f) | Document _ bs <- bookDocs book, Block sp _ _ (FigureBlock f) <- allFigures bs, ".svg" `T.isSuffixOf` T.toLower (webSource f)]
   checked <- forM (nub (map snd figures)) $ \path -> case Map.lookup path (bookImages book) of
     -- an image a plugin made (docs/adr/0123)
     Just bytes -> pure (path, activeMessage path (activeContent bytes))
     Nothing -> do
-      resolved <- resolveInRoot root (T.unpack path)
+      resolved <- filesResolve files (T.unpack path)
       case resolved of
-        Right _ -> (path,) . activeMessage path . activeContent <$> BS.readFile (root </> T.unpack path)
+        Right rel -> (path,) . activeMessage path . activeContent <$> filesRead files rel
         Left _ -> pure (path, Nothing)
   let messages = Map.fromList checked
   pure [diagnostic "G08014" Error sp msg | (sp, path) <- figures, Just (Just msg) <- [Map.lookup path messages]]
@@ -908,10 +941,10 @@ preflight po = do
       pure (PreflightResult (sortDiagnostics (brDiagnostics r <> checks)) (brSources r) (fst <$> pdf) (snd <$> pdf) label (ruBasedOn rules))
 
 -- | Files of style.toml that cannot be used: path -> why (resolveInRoot).
-missingStyleFiles :: FilePath -> Style -> IO (Map FilePath PathError)
-missingStyleFiles root style = do
+missingStyleFiles :: Files -> Style -> IO (Map FilePath PathError)
+missingStyleFiles files style = do
   let paths = nub (map snd (fontFiles style) <> maybe [] pure (stIntent style))
-  resolved <- forM paths $ \p -> (p,) <$> resolveInRoot root p
+  resolved <- forM paths $ \p -> (p,) <$> filesResolve files p
   pure (Map.fromList [(p, err) | (p, Left err) <- resolved])
 
 {- | Diagnostics of the missing files for one target (golem-project ADR
@@ -1010,7 +1043,7 @@ writeTargetsChecked :: Bool -> BuildOptions -> Evaluated -> FileId -> Book -> Ma
 writeTargetsChecked inMemory opts e diagFid book missing targets = do
   let root = optRoot opts
       ft = projectFiles (evProject e)
-  (_, _, bib) <- loadBibliography root (projectManifest (evProject e))
+  (_, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
   let hcfg = htmlConfig (optProfile opts == Dev) e book missing bib
       site = renderXhtml hcfg ft book
   results <- forM targets $ \case
@@ -1198,20 +1231,20 @@ pdfInputOf opts e diagFid book bib =
   let project = evProject e
       -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
       inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
-   in PdfInput (optRoot opts) project (evStyle e) book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)) (projectVarTexts (manifestVars (projectManifest project)))
+   in PdfInput (optFiles opts) project (evStyle e) book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)) (projectVarTexts (manifestVars (projectManifest project)))
 
 {- | The structure tree of the PDF of a project as text (docs/adr ADR 0183),
 for the tests: what the PDF would be tagged with.
 -}
 pdfStructure :: BuildOptions -> IO (Either [Diagnostic] Text)
 pdfStructure opts = do
-  ev <- evaluateProject (optProfile opts) (optRoot opts)
+  ev <- evaluateProjectWith (optFiles opts) Map.empty (optProfile opts) (optRoot opts)
   case ev of
     Left f -> pure (Left (pfDiagnostics f))
     Right e -> case evBook e of
       Nothing -> pure (Left (evDiagnostics e))
       Just book -> do
-        (_, _, bib) <- loadBibliography (optRoot opts) (projectManifest (evProject e))
+        (_, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
         renderPdfStructure golemVersion (optFonts opts) (pdfInputOf opts e (evStyleFile e) book bib)
 
 -- | Removes a folder and what it holds, if it is there.

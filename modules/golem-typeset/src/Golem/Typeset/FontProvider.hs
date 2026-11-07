@@ -28,13 +28,13 @@ import Golem.Layout.CharClass (isDualCharacter)
 import Golem.Layout.Japanese (CharClass (..), charClass, isExtending, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
 import Golem.Pdf qualified as P
-import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
+import Golem.Project.Files (Files (..))
+import Golem.Project.Paths (PathError (..), pathErrorMessage)
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Typeset (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyFontDiagnostics, bodyRole, usedRoles)
 import Golem.Typeset.Memo (fromShapingTextKey, memoWith, shapingTextKey)
 import Golem.Typeset.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
-import System.FilePath ((</>))
 import Text.Printf (printf)
 
 {- | Every file that cannot be loaded is reported, once per path (G08002,
@@ -42,16 +42,16 @@ G08003, G08004); G08005 is checked only when all are loaded. The
 diagnostics are at the top of @fid@ (golem-driver ADR 0016).
 -}
 golemFontProvider :: FontProvider
-golemFontProvider = FontProvider $ \root fid style locals ->
+golemFontProvider = FontProvider $ \files fid style locals ->
   let body = bodyRole style
       err code = diagnostic code Error (mkSpan fid 0 0)
       load path = do
-        r <- resolveInRoot root path
+        r <- filesResolve files path
         case r of
           -- reported by the driver before the fonts are loaded; kept for a provider used alone
           Left e -> pure (Left (err "G08002" (T.pack ((if e == Missing then "フォントのファイルがありません" else pathErrorMessage e) <> ": " <> path))))
           Right rel -> do
-            bytes <- BS.readFile (root </> rel)
+            bytes <- filesRead files rel
             loaded <- loadFont bytes
             pure $ case loaded of
               Right f
@@ -100,15 +100,15 @@ cff2Diagnostic fid path =
 that golem check reports it too (golem-font ADR 0003). A file that cannot
 be read or loaded is left to the font provider (G08002, G08003, G08004).
 -}
-cff2FontDiagnostics :: FilePath -> FileId -> [FilePath] -> IO [Diagnostic]
-cff2FontDiagnostics root fid paths = concat <$> mapM one (nubOrd paths)
+cff2FontDiagnostics :: Files -> FileId -> [FilePath] -> IO [Diagnostic]
+cff2FontDiagnostics files fid paths = concat <$> mapM one (nubOrd paths)
   where
     one path = do
-      r <- resolveInRoot root path
+      r <- filesResolve files path
       case r of
         Left _ -> pure []
         Right rel -> do
-          loaded <- BS.readFile (root </> rel) >>= loadFont
+          loaded <- filesRead files rel >>= loadFont
           pure [cff2Diagnostic fid path | Right f <- [loaded], fontIsCff2 f]
 
 -- | The form of a face for golem preflight (golem-cli ADR 0006, golem-font ADR 0003).

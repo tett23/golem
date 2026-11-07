@@ -22,6 +22,7 @@ import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, typeAreaFor
 import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Project (Project (..), ProjectFailure (..))
+import Golem.Project.Files (diskFiles)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Golem.Typeset (PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLines, tocPage)
@@ -202,7 +203,7 @@ bibPartsOf bibLine files = withBibProject bibLine "本文。\n" files $ \tmp -> 
   case ev of
     Left f -> assertFailure (show (pfDiagnostics f))
     Right e -> do
-      (ds, _, m) <- loadBibliography tmp (projectManifest (evProject e))
+      (ds, _, m) <- loadBibliography (diskFiles tmp) (projectManifest (evProject e))
       pure (ds, m)
 
 -- | A Japanese entry, by a literal author, as CSL-JSON.

@@ -7,6 +7,10 @@ module Golem.Driver.Plugins
   ( loadPlugins,
     LoadedPlugins (..),
     FunctionFilter,
+    -- of golem-plugin, for Golem.Driver and Golem.Driver.Functions; src-no-plugins/ has its own (docs/adr/0199)
+    HostContext (..),
+    defaultCacheDir,
+    maxDataBytes,
   )
 where
 

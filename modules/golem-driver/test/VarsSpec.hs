@@ -7,6 +7,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
+import Golem.Project.Files (diskFiles)
 import Golem.Syntax
 import Support
 import System.FilePath ((</>))
@@ -47,7 +48,7 @@ buildWith opts manifest style files = withSystemTempDirectory "golem-vars" $ \tm
   BS.writeFile (tmp </> "style.toml") (withBodyFont style)
   writeFiles tmp (bodyFontFiles style)
   writeTexts tmp files
-  r <- build opts {optRoot = tmp, optFonts = fakeProvider}
+  r <- build opts {optRoot = tmp, optFiles = diskFiles tmp, optFonts = fakeProvider}
   written <- mapM (\p -> (p,) <$> BS.readFile p) (brWritten r)
   pure (brDiagnostics r, brSources r, [(drop (length tmp) p, b) | (p, b) <- written])
 

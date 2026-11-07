@@ -20,6 +20,7 @@ import Golem.Eval.File (EvalResult (..), PluginHook (..))
 import Golem.Plugin (HostContext (..), maxDataBytes, watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
 import Golem.Project (Manifest (..), Project (..), ProjectFailure (..), SourceFile (..))
+import Golem.Project.Files (diskFiles)
 import Golem.Project.Manifest (parseManifest)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
@@ -117,7 +118,7 @@ pdfPages tmp = do
   e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
   book <- maybe (assertFailure (show (evDiagnostics e))) pure (evBook e)
   assertEqual "no errors" [] (map diagCode (filter isError (evDiagnostics e)))
-  layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))))
+  layoutPages fakeProvider (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))))
     >>= either (assertFailure . show) pure
 
 -- | The channels of plugins (golem-doc ADR 0007).
@@ -198,7 +199,7 @@ withDataPlugin plugin decl source files k = withSystemTempDirectory "golem-data"
 -- | The S0 inlines of the paragraphs of a.gm, and every diagnostic.
 lookedUp :: Map.Map FilePath T.Text -> FilePath -> IO ([Inline], [(DiagnosticCode, T.Text)])
 lookedUp overlay tmp = do
-  e <- evaluateProjectWith overlay Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+  e <- evaluateProjectWith (diskFiles tmp) overlay Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
   let inls = [i | (fid, sf) <- Map.toList (projectSources (evProject e)), sfPath sf == "a.gm", Just r <- [Map.lookup fid (evResults e)], b <- docBlocks (erDocument r), Paragraph _ is <- [blockBody b], i <- is]
   pure (inls, [(diagCode d, diagMessage d) | d <- evDiagnostics e])
 
