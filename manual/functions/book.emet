@@ -1,0 +1,70 @@
+-- 付録J で使う関数
+
+-- 税込みの価格（1 円未満は切り捨て）
+pub fn taxIncluded :: Nat -> Nat -> Nat
+taxIncluded price rate =
+  div (price * (100 + rate)) 100
+
+-- 3 桁ごとにカンマを入れた金額
+pub inline yen :: Nat -> Inlines
+yen n = Inline.text (commas n ++ "円")
+
+commas :: Nat -> String
+commas n = n < 1000 ?
+  String.fromNat n :
+  commas (div n 1000) ++ "," ++ pad3 (n % 1000)
+
+pad3 :: Nat -> String
+pad3 n
+  | n < 10 = "00" ++ String.fromNat n
+  | n < 100 = "0" ++ String.fromNat n
+  | otherwise = String.fromNat n
+
+-- 定価の表示
+pub inline price :: Nat -> (tax :: Bool = True) -> Inlines
+price n tax = Inline.text (commas n ++ "円" ++ note tax)
+  where {
+    note True = "（税込）"
+    note False = "（税別）"
+  }
+
+-- 散文スロットの中身を【】で囲む
+pub inline boxed :: Inlines -> Inlines
+boxed xs = Inline.text "【" ++ xs ++ Inline.text "】"
+
+-- 確かめる項目の一覧
+pub block checklist :: Varargs String -> Blocks
+checklist items = Block.bullets (List.map item items)
+
+item :: String -> Blocks
+item s = Block.paragraph (Inline.text ("□ " ++ s))
+
+-- 本体の段落を段落スタイル memo で組む
+pub block memo :: Blocks -> Blocks
+memo body = List.map inMemo body
+
+inMemo :: Block.Block -> Block.Block
+inMemo (Block.Paragraph _ xs) =
+  Block.Paragraph (Just "memo") xs
+inMemo b = b
+
+-- data/units.tsv の 1 列目と 3 列目の表
+pub block "unit-table" unitTable ::
+  <file "data/units.tsv"> Blocks
+unitTable =
+  Block.table header (List.concatMap row (rows text))
+  where {
+    header =
+      [Inline.text "単位", Inline.text "ポイント"]
+    text = File.read "data/units.tsv"
+  }
+
+rows :: String -> List (List String)
+rows s = List.drop 1 (List.map cells (String.lines s))
+  where {
+    cells line = String.split "\t" line
+  }
+
+row :: List String -> List (List Inlines)
+row [unit, _, pt] = [[Inline.text unit, Inline.text pt]]
+row _ = []

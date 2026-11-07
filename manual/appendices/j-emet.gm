@@ -1,0 +1,405 @@
+@nonumber
+@label app-emet
+# 付録J 関数を書く言語 Emet
+
+@import functions/book.emet as book
+
+この付録は、本を作る人が自分の本のための小さな計算や書式を関数として書き、原稿から呼び出す方法を説明します。[index reading=かんすう: 関数]
+関数は、Emet[index reading=えめと: Emet] という言語で、拡張子が [code: .emet] のファイルに書きます。
+税込みの価格、3 桁ごとのカンマ、確かめる項目の一覧のように、組み込みのコマンドにはなく、かといってプラグインを作って配るほどでもない処理に使います。
+
+Emet は、Golem の 1.x のバージョンのあいだ、実験的な機能です。
+[code: .emet] のファイルの書き方、マニフェストの関数の設定、原稿から関数を呼ぶ書き方は、二つ目の数が上がったバージョンで使えなくなることがあります（第[ref-number git-ci]章の「[ref-title upgrade-golem]」）。
+
+@nonumber
+## 関数とプラグインの違い
+
+Golem に機能を足す仕組みには、関数とプラグイン（第[ref-number plugins]章「[ref-title plugins]」）の二つがあります。
+二つは、書く人と配り方が違います。
+
+| | 関数 | プラグイン |
+|:---|:---|:---|
+| 書く人 | その本を作る社内の使い手や組版のオペレーター | プログラムを書く技術者 |
+| 置き場所 | プロジェクトのフォルダの中の [code: .emet] のファイル | 配布物の [code: .wasm] のファイル |
+| 配り方 | 配らない。ほかの本で使うときはファイルをコピーする | URL で配り、[code: plugins.lock] でハッシュを固定する |
+| 原稿からの使い方 | [code: @import] で取り込む | [code: manifest.toml] の [code: \[plugins.名前\]] で宣言する |
+
+関数には、[code: plugins.lock] のような配布の仕組みがありません。
+関数のファイルは、プロジェクトのフォルダの中のパスでだけ指します。
+Golem は、関数のファイルがどこから来たかを記録しません。
+ほかの人に配って使ってもらう機能は、プラグインとして作ってください。
+
+@nonumber
+## 関数のファイルを置く
+
+関数のファイルは、プロジェクトのフォルダの中のどこに置いても構いません。
+このマニュアルでは、[code: functions/book.emet] に置いています。
+ファイルの決まりは原稿と同じで、文字コードは UTF-8、改行は LF、先頭に BOM を付けません（「[ref-title text-files]」、[ref-page text-files] ページ）。
+
+[code: --] から行末まではコメントで、組版にも計算にも使いません。
+[code: golem fmt] は、プロジェクトが使う [code: .emet] のファイルも整えます。
+字下げは [code: golem fmt] が決めるので、自分でそろえる必要はありません。
+LSP に対応したエディタでは、[code: .emet] のファイルでも誤りの表示と補完を使えます（第[ref-number editor]章「[ref-title editor]」）。
+
+@nonumber
+## 原稿から呼ぶ
+
+原稿からは、[code: @set] の変数を取り込むときと同じ [code: @import] で、関数のファイルを取り込みます（第[ref-number markup]章の「変数をファイルで共有する」）。
+この付録の原稿の先頭にも、次の一行があります。
+
+```
+@import functions/book.emet as book
+```
+
+取り込んだ関数は、[code: as] の後に書いた名前（ここでは [code: book]）と [code: .] を前に付けて呼びます。
+取り込んだ関数は、[code: @import] を書いたファイルの中でだけ使えます。
+ほかの章のファイルで使うときは、そのファイルにも [code: @import] を書きます。
+名前を前に付けるので、関数の名前が組み込みのコマンドやプラグインのコマンドと同じでも構いません。
+
+関数には、原稿からの呼び方で分けた四つの種類があります。
+種類は、関数のファイルの中で、関数の名前の前に書く語で決まります。
+
+| 書き方 | 種類 | 原稿からの呼び方 |
+|:---|:---|:---|
+| [code: pub inline] | 段落の中のコマンド | [code: \[book.名前 …\]] |
+| [code: pub block] | ブロックコマンド | 行頭の [code: @book.名前 …] |
+| [code: pub fn] | 式の関数 | [code: \[= book.名前(…)\]] |
+| [code: pub filter] | フィルタ | [code: \[\[filters\]\]] |
+
+[code: pub] は、ほかのファイルから使えるようにする（公開する）印です。
+種類の語のない [code: pub] だけの関数は、原稿からは呼べず、ほかの [code: .emet] のファイルからだけ使えます。
+[code: pub] のない関数は、そのファイルの中でだけ使えます。
+
+この付録では、三つの種類を実際に呼んでいます。
+段落の中のコマンドの [code: \[book.yen 1234567\]] は「[book.yen 1234567]」に、式の関数の [code: \[= book.taxIncluded(1800, 10)\]] は「[= book.taxIncluded(1800, 10)]」になります。
+ブロックコマンドの [code: @book.checklist 初校 再校 索引 奥付] は、次の箇条書きを組みます。
+フィルタは、この付録の「ファイルの全体を書き換える（フィルタ）」で説明します。
+
+@book.checklist 初校 再校 索引 奥付
+
+@nonumber
+## 関数の書き方
+
+関数は、型を書いた一行（シグネチャ）と、計算を書いた一行以上（等式）からなります。[index reading=しぐねちゃ: シグネチャ]
+税込みの価格を返す関数は、次のように書いています。
+
+@listing functions/book.emet lines=3...6 lang=haskell
+
+[code: ::] の左が関数の名前、右がその型です。
+型は、値の種類（数、文字列、本文の要素など）を表す名前です。
+[code: Nat -> Nat -> Nat] は、自然数を二つ受け取り、自然数を返すことを表します。
+最後の [code: ->] の右が返す値の型で、その前に並ぶのが受け取る値（引数）の型です。
+等式の [code: =] の左には関数の名前と引数の名前を、右には返す値の計算を書きます。
+[code: div] は、割り算の商を整数で返す関数です。
+
+Golem は、組む前に、すべての関数の計算が型に合っているかを確かめます（型の検査）。[index reading=かたのけんさ: 型の検査]
+文字列を受け取る引数に数を足すような書き方は、組む前にエラーになります。
+
+@nonumber
+### 型
+
+使える型は次のとおりです。
+
+| 型 | 値 |
+|:---|:---|
+| [code: Nat]、[code: Int]、[code: Rat] | 自然数（0 以上の整数）、整数、有理数（分数で書ける数）。式（付録A の「式」）の三つの数と同じで、丸めずに正確に計算します |
+| [code: Bool] | 真偽値。[code: True] と [code: False] |
+| [code: Char] | 一つの文字。[code: 'あ'] のように [code: '] で囲みます |
+| [code: String] | 文字列。[code: "円"] のように [code: "] で囲みます |
+| [code: List a] | 同じ型の値の並び（リスト）。[code: \[1, 2, 3\]] のように書きます |
+| [code: Maybe a] | 値があるか（[code: Just 値]）、ないか（[code: Nothing]） |
+| [code: (a, b)] | 二つ以上の値の組。[code: (1, "円")] のように書きます |
+| [code: Inlines]、[code: Blocks] | 本文の要素。[code: Inlines] は段落の中の文字やルビの並び、[code: Blocks] は段落や箇条書きのようなブロックの並び |
+
+[code: List a] の [code: a] には、要素の型が入ります（[code: List String] は文字列のリスト）。
+自然数は整数を、整数は有理数を求める位置に、そのまま渡せます。
+小数を丸めて扱う型（浮動小数点数）はありません。
+どのコンピューターで組んでも計算の結果が同じになるようにするためです。
+
+@nonumber
+### 演算子
+
+数の計算と比較には、式と同じ演算子を使います。
+
+| 演算子 | 意味 |
+|:---|:---|
+| [code: +]、[code: -]、[code: *]、[code: /] | 足し算、引き算、掛け算、割り算（[code: /] の結果は有理数） |
+| [code: div a b]、[code: %]、[code: **] | 整数の商、余り、累乗 |
+| [code: ==]、[code: /=]、[code: <]、[code: <=]、[code: >]、[code: >=] | 等しい、等しくない、大小 |
+| [code: &&]、[code: \|\|] | かつ、または |
+| [code: ++] | 文字列どうし、リストどうしをつなぐ |
+| [code: :] | 要素をリストの先頭に付ける |
+
+等しくないことは、[code: !=] ではなく [code: /=] と書きます。
+
+@nonumber
+### 場合分け
+
+Emet には、ほかの言語にある [code: if] と [code: for] がありません。
+場合分けは、引数の形（パターン）、条件（ガード）、[code: case]、三項演算子のどれかで書きます。
+
+ガードは、等式の後ろに [code: \|] と条件を並べる書き方です。[index reading=がーど: ガード]
+上から順に条件を調べ、最初に成り立った行の右辺を返します。
+次の関数は、3 桁に満たない数の前に 0 を補います。
+
+@listing functions/book.emet lines=17...21 lang=haskell
+
+ガードの並びの最後は、必ず [code: otherwise]（どれにも当たらなかったとき）にします。
+[code: otherwise] で終わらない並びは、値によっては返すものがなくなるので、エラー（E03102）になります。
+
+三項演算子は、[code: 条件 ? 成り立つときの値 : 成り立たないときの値] と書きます。
+3 桁ごとにカンマを入れる関数は、1000 より小さいかどうかで分けています。
+
+@listing functions/book.emet lines=12...15 lang=haskell
+
+この関数は、計算の中で自分自身を呼んでいます（再帰）。[index reading=さいき: 再帰]
+1000 以上の数は、1000 で割った商にカンマを入れたものと、余りを 3 桁にしたものをつなぎます。
+商が 1000 より小さくなるまで、同じ計算を繰り返すことになります。
+Emet では、繰り返しをこのように再帰で書きます。
+リストの要素ごとの処理は、[code: List.map] のような組み込みの関数で書けば、再帰を書かずに済みます（この付録の「組み込みの関数」）。
+
+パターンは、引数の値の形で等式を選ぶ書き方です。[index reading=ぱたーん: パターン]
+次の関数は、段落を受け取ったら段落スタイルを [code: memo] にし、ほかのブロックはそのまま返します。
+
+@listing functions/book.emet lines=46...49 lang=haskell
+
+上の等式から順に、引数がパターンの形に合うかを調べます。
+[code: Block.Paragraph _ xs] は「段落スタイルと中身を持つ段落」の形で、[code: _] は使わない値の印です。
+二つ目の等式の [code: b] は、どんな値にも合います。
+等式の並びは、すべての値を網羅しなければなりません。
+二つ目の等式がなければ、段落でないブロックに当たる等式がないので、エラー（E03100）になります。
+
+[code: case] は、式の途中でパターンによって分けるときに使います。
+
+```haskell
+label :: Maybe Nat -> String
+label n = case n of {
+  Just k -> "第" ++ String.fromNat k ++ "版"
+  Nothing -> "版なし"
+}
+```
+
+@nonumber
+### 行の区切りと続き
+
+Emet では、改行が等式や選択肢の区切りになります。
+字下げは区切りに関係しません。
+一つの式を次の行に続けるときは、次のどれかにします。
+
+- 行の最後に、演算子、[code: =]、[code: ->]、[code: ::]、[code: ,]、[code: ?]、[code: :] を置く。
+- 次の行を、[code: \|]、[code: -] 以外の演算子、[code: ?]、[code: :]、[code: where]、[code: ->] で始める。
+- 括弧の中で改行する。
+
+行頭の [code: -] は、引き算の続きではなく新しい行の始まりとして読みます。
+引き算を次の行に続けるときは、行の最後に [code: -] を置きます。
+[code: ;] で区切る書き方はありません。
+
+@nonumber
+### where
+
+関数の中でだけ使う名前は、関数の最後の等式の後ろの [code: where { }] に書きます。[index reading=うぇあ: where]
+定価の表示の関数は、税込みかどうかの注記を [code: where] の [code: note] で決めています。
+
+@listing functions/book.emet lines=23...29 lang=haskell
+
+[code: where] の中の名前は、使われたときに一度だけ計算します。
+[code: where] の中からは、等式の引数（ここでは [code: n] と [code: tax]）が見えません。
+引数の値を使うときは、この例の [code: note tax] のように、[code: where] の関数に引数として渡します。
+どこからも使われない [code: where] の名前は、お知らせ（E02109）になります。
+
+@nonumber
+### 組み込みの関数
+
+文字列とリストの操作は、組み込みの [code: String] と [code: List] の関数で行います。
+どちらも [code: String.length] のように、前に [code: String.] か [code: List.] を付けて呼びます。
+よく使うものを挙げます[note: すべての組み込みの関数は、golem-emet の仕様書の「組み込みのモジュール」の節にあります。[code: https://github.com/tett23/golem/blob/main/docs/golem-emet/specifications.md]]。
+
+| 関数 | 中身 |
+|:---|:---|
+| [code: String.length s] | 文字の数 |
+| [code: String.fromNat n] | 数を文字列にする（[code: fromInt]、[code: fromRat] も） |
+| [code: String.toNat s] | 数字だけの文字列を数にする。数でなければ [code: Nothing] |
+| [code: String.split sep s]、[code: String.join sep xs] | 区切りで分ける、区切りを挟んでつなぐ |
+| [code: String.lines s] | 行に分ける |
+| [code: String.replace a b s] | [code: a] を [code: b] に置き換える |
+| [code: String.startsWith a s] | [code: s] が [code: a] で始まるか（[code: endsWith]、[code: contains] も） |
+| [code: String.take n s]、[code: String.drop n s] | 先頭の [code: n] 文字、その後ろ |
+| [code: List.map f xs] | 各要素に [code: f] を当てたリスト |
+| [code: List.select f xs] | 条件 [code: f] に合う要素のリスト |
+| [code: List.foldl f a xs] | 要素を左から順に [code: a] にまとめる |
+| [code: List.length xs]、[code: List.at n xs] | 要素の数、0 から数えた [code: n] 番目（[code: Maybe]） |
+| [code: List.concatMap f xs] | 各要素に [code: f] を当てたリストをつなぐ |
+| [code: List.zip xs ys] | 二つのリストの要素の組のリスト |
+
+本文の要素は、組み込みの [code: Inline] と [code: Block] の関数で作ります。
+
+| 関数 | 作るもの |
+|:---|:---|
+| [code: Inline.text s] | 文字 |
+| [code: Inline.ruby 親文字 読み] | ルビ |
+| [code: Inline.style 名前 xs] | 文字スタイルを付けた要素 |
+| [code: Inline.kenten xs]、[code: Inline.tcy s] | 圏点、縦中横 |
+| [code: Inline.note xs] | 注 |
+| [code: Block.paragraph xs] | 段落 |
+| [code: Block.styled 名前 xs] | 段落スタイルを付けた段落 |
+| [code: Block.bullets xss]、[code: Block.numbered xss] | 箇条書き、番号付きの箇条書き |
+| [code: Block.table 見出し 行] | 表 |
+
+[code: Inline.Text] や [code: Block.Paragraph] のように大文字で始まる名前は、要素の形そのもの（コンストラクタ）です。
+パターンに書けば、受け取った本文の要素の中身を読めます。
+
+@nonumber
+### ほかの関数のファイルを使う
+
+ほかの [code: .emet] のファイルの [code: pub] の関数は、ファイルの先頭に [code: import "パス"] を書くと、名前をそのまま使えます。
+パスは、プロジェクトのフォルダからの相対パスです。
+
+```haskell
+import "functions/numbers.emet"
+```
+
+原稿の [code: @import] と違い、名前の前に何も付けません。
+取り込んだ名前が、ほかのファイルから取り込んだ名前や、そのファイルの名前と重なると、エラー（E02108）になります。
+
+@nonumber
+## 引数の受け取り方
+
+原稿から関数を呼ぶとき、原稿に書いた値は、次の型の引数として渡ります。
+
+| 原稿の値 | 関数の引数の型 |
+|:---|:---|
+| 数 | [code: Nat]、[code: Int]、[code: Rat] |
+| 文字列と語 | [code: String] |
+| [code: true] と [code: false] | [code: Bool] |
+| 配列 | [code: List a] |
+
+連想配列と [code: nil] は渡せません。
+引数の数が合わないとき（G02120）と、型に合わない値を渡したとき（G02121）は、関数を呼ばずにエラーにします。
+
+原稿の [code: キー=値] の形の引数（キーワード引数）は、シグネチャに [code: (名前 :: 型 = 省いたときの値)] と書いて受け取ります。
+定価の表示の関数（上の「where」の例）は、[code: tax] を省くと税込みとして組みます。
+[code: \[book.price 1800\]] は「[book.price 1800]」、[code: \[book.price 1800 tax=false\]] は「[book.price 1800 tax=false]」になります。
+シグネチャにない名前を書くと、エラー（G02119）になります。
+
+数の決まっていない引数（可変長引数）は、[code: Varargs String] のように書くと、残りの引数をまとめてリストで受け取ります。
+確かめる項目の一覧の関数は、こう書いています。
+
+@listing functions/book.emet lines=35...40 lang=haskell
+
+段落の中のコマンドの [code: :] の後ろの文章（散文スロット）は、最後の引数の [code: Inlines] で受け取ります。
+次の関数は、散文スロットを【】で囲みます。
+
+@listing functions/book.emet lines=31...33 lang=haskell
+
+[code: \[book.boxed: 校了\]] は「[book.boxed: 校了]」になります。
+
+ブロックコマンドの下に字下げして書いた本体は、最後の引数の [code: Blocks] で受け取ります。
+上の「場合分け」の [code: inMemo] を使う関数 [code: memo] は、本体の段落を段落スタイル [code: memo] で組みます。
+
+```
+@book.memo
+  この段落は、関数の memo で組んでいます。
+```
+
+@book.memo
+  この段落は、関数の memo で組んでいます。
+
+最後の引数が [code: Blocks] でない関数のブロックコマンドに本体を書くと、エラー（G02123）になります。
+
+原稿でのコマンドの名前は、英小文字、数字、[code: -] で書きます。
+Emet の関数の名前には [code: -] を使えないので、[code: -] を含む名前で呼ぶときは、種類の語の後ろに名前を文字列で書きます（次の節の [code: "unit-table"]）。
+
+@nonumber
+## ファイルを読む
+
+関数は、ふつうはファイルを読めません。
+読むファイルは、関数のシグネチャと [code: manifest.toml] の両方に書きます。
+次の関数は、[code: data/units.tsv] の 1 列目と 3 列目を表にします。
+
+@listing functions/book.emet lines=51...70 lang=haskell numbers=true
+
+53 行目の [code: <file "data/units.tsv">] が、この関数がファイルを読むことの宣言です（要求）。[index reading=ようきゅう: 要求]
+要求は、型の [code: ->] の後ろ、返す値の型の前に [code: < >] で囲んで書きます。
+[code: File.read] は、パスのファイルの中身を文字列で返します。
+パスは、文字列で直に書きます（変数に入れたパスは読めません）。
+シグネチャに書いていないファイルを読むと、エラー（E05101）になります。
+
+[code: manifest.toml] には、関数に読ませるファイルを [code: \[functions.requires\]] に並べます。
+
+```toml
+[functions.requires]
+file = ["data/units.tsv"]
+```
+
+ここにないファイルを関数が読もうとすると、エラー（E05104）になり、メッセージに [code: manifest.toml] に足す行が出ます。
+並べたファイルは、関数を呼ぶかどうかによらず、組み始めに一度だけ読みます。
+ファイルがなければエラー（G03102）です。
+UTF-8 でないファイル（E05103）と、64 MiB を超えるファイル（E05105）は読めません。
+
+この付録の原稿で [code: @book.unit-table] と書くと、次の表を組みます。
+
+@book.unit-table
+
+@nonumber
+## ファイルの全体を書き換える（フィルタ）
+
+フィルタは、原稿のファイル一つ分の本文を受け取り、書き換えた本文を返す関数です。
+型は [code: Blocks -> Blocks] にします。
+次のフィルタは、ファイルの中の段落のうち、段落スタイルのないものを段落スタイル [code: lead] で組みます。
+
+```haskell
+pub filter lead :: Blocks -> Blocks
+lead bs = List.map toLead bs
+
+toLead :: Block.Block -> Block.Block
+toLead (Block.Paragraph Nothing xs) =
+  Block.Paragraph (Just "lead") xs
+toLead b = b
+```
+
+どのファイルに当てるかは、[code: manifest.toml] の [code: \[\[filters\]\]] に、[code: plugin] の代わりに [code: function] で関数のファイルを書きます。
+
+```toml
+[[filters]]
+function = "functions/filters.emet"
+filter = "lead"
+files = ["chapters/00-preface.gm"]
+```
+
+プラグインのフィルタと関数のフィルタは、[code: \[\[filters\]\]] に書いた順に当てます。
+
+@nonumber
+## 関数にできないこと
+
+関数は、同じ引数からは必ず同じ結果を返します。
+組むたびに結果が変わらないように、関数にできることを限っています。
+
+- [code: manifest.toml] の [code: \[functions.requires\]] に並べたファイルのほかは、読めません。ネットワーク、今日の日付、ほかのプログラムにも触れられません。
+- 原稿の [code: @set] の変数と [code: manifest.toml] の [code: \[vars\]] は、関数の中から直に読めません。[code: vars.prices] のような値を、原稿から引数として渡します。
+- 関数を呼ぶのは、ページを組む前です。ページ番号の値は読めません。ページを指す相互参照の要素を返すことはできます。
+- ブロックコマンドの関数は、見出し、目次や索引の位置、改ページ、行アキ、図版を作れません。作るとエラー（E06104）になります。
+- 原稿から一回呼んだ関数の計算は、1 億手までです。フィルタは、当てる原稿のファイルが大きいほど上限が増えます。超えるとエラー（E04100）になります。止まらない再帰を書いたときに出ます。
+- 計算の途中で関数を呼ぶ深さは、1 万までです。超えるとエラー（E04101）になります。計算の最後で呼ぶ呼び出し（呼んだ結果をそのまま返すもの）は、深さを増やしません。長いリストは、組み込みの [code: List] の関数で処理すれば、この上限に当たりません。
+- 値を大きい順に並べ替える関数や、自分で作った型の値を [code: ==] で比べる書き方はありません。
+
+@nonumber
+## 関数の診断
+
+関数に関わる診断は、次のとおりです。
+コードごとの意味と直し方は、[ref-title app-errors]（[ref-page app-errors] ページ）の「関数（[code: .emet]）」の節にあります。
+[code: E] で始まる診断の位置は、[code: .emet] のファイルの中です。
+
+| コード | 原因 |
+|:---|:---|
+| E01100 から E01103 | 関数のファイルの書き方の誤り |
+| E02100 から E02108 | 名前と型の誤り |
+| E03100 から E03102 | 場合分けの漏れと、選ばれない場合分け |
+| E04100 から E04102 | 計算の手数と深さの上限、自分の値を求める [code: where] |
+| E05100 から E05108 | 要求とファイルの読み込み |
+| E06100 から E06106 | 原稿から呼ぶ関数の宣言と、関数が返した本文の要素 |
+| E07100 から E07102 | 使われていない宣言（[code: golem lint] とエディタだけが出す） |
+| G02119 から G02123 | 原稿からの呼び方の誤り（引数の数と型、散文スロット、本体） |
+| G03101、G03102 | [code: manifest.toml] の [code: \[functions.requires\]] の誤り |
+
+関数のファイルのどれか一つでも誤りがあると、原稿の中の関数の呼び出しは、未知のコマンドとしては報告しません。
+関数のファイルの誤りを先に直してください。

@@ -380,7 +380,8 @@ HTML と EPUB には [code: lang] の属性を、PDF にはタグ付き PDF の�
 本書は[= values.edition]です。
 ```
 
-[code: @import] で取り込めるのは、[code: @set] で定義した変数だけです。
+[code: @import] で取り込めるのは、[code: @set] で定義した変数と、関数を書くファイル（[code: .emet]）の関数です。
+関数は、[ref-title app-emet]（[ref-page app-emet] ページ）で説明します。
 取り込んだ変数は、[code: as] で付けた名前を前に付けて参照します。
 取り込むファイルは、章として [code: manifest.toml] に並べる必要はありません。
 このマニュアルも、版面の字数と行数を [code: common/values.gm] に書いて取り込み、ここで「一行 [= values.characters] 字、一ページ [= values.lines] 行」と組んでいます。

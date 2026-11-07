@@ -119,6 +119,7 @@
 = [strong: [code: @import パス as 名前]]
   別のファイルの [code: @set] の変数を、名前を付けて取り込みます。
   取り込んだ変数は [code: 名前.変数] で参照します。
+  パスの拡張子が [code: .emet] なら、関数を書くファイルの関数を取り込みます（付録J）。
   [code: as] と名前は省けません。
   パスはプロジェクトのフォルダからの相対パスで書きます。
   例：[code: @import common/values.gm as values]
