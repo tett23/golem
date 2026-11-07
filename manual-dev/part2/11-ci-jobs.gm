@@ -190,6 +190,16 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 [code: determinism] は、[code: build] の二つのランナーが上げた [code: scripts/determinism.sh] の出力を取り寄せ、[code: diff] で比べる。
 一行でも違えば失敗する。
 
+続けて、x86-64 の出力からマニュアルの行を除いたものを、コミットした [code: scripts/determinism/hashes.txt] と [code: scripts/ci/determinism-hashes.sh] で比べる。
+違えば、違う行を書いて失敗する。
+二つのアーキテクチャの比べは同じコミットの出力しか見ないので、コミットをまたいだ出力の変化は、こちらで見つける。
+マニュアルを除くのは、奥付に組んだコミットのハッシュが入り、一覧がコミットごとに変わるからである。
+マニュアルのページは [code: visual] が比べる。
+
+意図して出力を変えるプルリクエストは、同じプルリクエストで [code: hashes.txt] を書き直す。
+書き直すには、[code: scripts/determinism.sh --no-manuals] の出力を [code: hashes.txt] に書く。
+[code: VERSION] を上げると PDF の Producer とインスタンス ID が変わるので、リリースのプルリクエストも書き直す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0173-rc4-refactoring.md]（docs/adr の ADR 0173「rc4 の前に、出力を変えずにコードを整理する」）]
+
 [code: scripts/determinism.sh] は、決まった入力を組み、すべての出力のファイルの SHA-256 を一行に一つずつ書く。[index reading="determinism.sh": determinism.sh]
 入力は次のとおりである。
 

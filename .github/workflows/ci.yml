@@ -481,12 +481,18 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           pattern: determinism-*
           merge-multiple: true
       - name: Outputs are byte-identical on x86-64 and aarch64
         run: diff determinism-ubuntu-24.04.txt determinism-ubuntu-24.04-arm.txt
+      # the outputs but the manuals are those of the committed list; a pull
+      # request that changes the outputs on purpose writes the list again,
+      # with scripts/determinism.sh --no-manuals (docs/adr/0173)
+      - name: Outputs are those of scripts/determinism/hashes.txt (docs/adr/0173)
+        run: sh scripts/ci/determinism-hashes.sh determinism-ubuntu-24.04.txt scripts/determinism/hashes.txt
 
   # The visual regression test: the pages of the PDFs that the x86-64 runner
   # of the outputs built, rendered by shem at 72 dpi, against the references

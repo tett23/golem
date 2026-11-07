@@ -846,6 +846,12 @@ if step_if "name: Generated parser matches the grammar" "if: matrix.tests && mat
 if step_if "name: Outputs for the determinism check" "if: matrix.outputs"; then ok; else ng "ci.yml: the outputs are made on the runners of the outputs"; fi
 # the lines of the job $1 of ci.yml
 job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML"; }
+# the determinism job compares the list of x86-64 with the committed
+# hashes.txt, beside the two architectures (docs/adr/0173)
+if job_lines determinism | grep -qF 'run: sh scripts/ci/determinism-hashes.sh determinism-ubuntu-24.04.txt scripts/determinism/hashes.txt' &&
+  job_lines determinism | grep -qF 'uses: actions/checkout@'; then ok; else
+  ng "ci.yml: the determinism job compares the outputs with scripts/determinism/hashes.txt (docs/adr/0173)"
+fi
 # the lines of the build job of ci.yml
 build_lines() { job_lines build; }
 # the environment check has an x86-64 runner of its own (docs/adr/0097)
@@ -1256,6 +1262,23 @@ expect "determinism: another stderr" 0
 if [ "$(grep '  diagnostics/stderr$' "$DET/first")" != "$(grep '  diagnostics/stderr$' "$WORK/out")" ]; then ok; else ng "determinism: a change of one character in stderr changes the list"; fi
 if [ "$(grep -v '  diagnostics/stderr$' "$DET/first")" = "$(grep -v '  diagnostics/stderr$' "$WORK/out")" ]; then ok; else ng "determinism: the rest of the list stays"; fi
 
+# --no-manuals leaves out the manuals, whose colophon has the commit; the
+# rest of the list is the same (docs/adr/0173)
+determinism_no_manuals() {
+  GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root GOLEM_MANUAL_SKIP_FONTS=1 \
+    GOLEM_MANUAL_COMMIT=0 GOLEM_MANUAL_TAG=v0 FAKE_STDERR=$1 \
+    sh "$HERE/../determinism.sh" --no-manuals
+}
+run determinism_no_manuals '{"diagnostics":[{"code":"G00000"}]}'
+expect "determinism: --no-manuals" 0
+if grep -qE '  manual(-dev)?/' "$WORK/out"; then ng "determinism: --no-manuals lists no file of the manuals"; else ok; fi
+if [ "$(grep -vE '  manual(-dev)?/' "$DET/first")" = "$(cat "$WORK/out")" ]; then ok; else ng "determinism: --no-manuals is the list without the manuals"; fi
+determinism_unknown() {
+  GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root sh "$HERE/../determinism.sh" --no-such-option
+}
+run determinism_unknown
+expect "determinism: an unknown option" 2
+
 # ---------------------------------------------------------------- timings.sh
 
 timings() { sh "$HERE/timings.sh" "$@"; }
@@ -1584,6 +1607,50 @@ deps "no install-plan" 2 "$WORK/no-plan.json"
 : >"$WORK/in"
 run test_only_deps
 expect "test-only-deps: no argument" 2
+
+# ---------------------------------------------------------------- determinism-hashes.sh
+# (docs/adr/0173)
+
+HASHES=$HERE/testdata/determinism-hashes
+determinism_hashes() { sh "$HERE/determinism-hashes.sh" "$@"; }
+# hashes NAME CODE LIST [LINE...]: compares LIST with hashes.txt of the
+# testdata; the exit code, and the LINEs on stdout (exactly these, when the
+# code is 1)
+hashes() {
+  name=$1 code=$2 list=$3
+  shift 3
+  : >"$WORK/in"
+  run determinism_hashes "$HASHES/$list" "$HASHES/hashes.txt"
+  if [ "$CODE" != "$code" ]; then
+    ng "determinism-hashes: $name (exit code $CODE, expected $code)"
+    return 0
+  fi
+  for l in "$@"; do
+    if ! grep -qxF -- "$l" "$WORK/out"; then
+      ng "determinism-hashes: $name (\"$l\" is not on stdout)"
+      return 0
+    fi
+  done
+  if [ "$code" = 1 ] && [ "$(wc -l <"$WORK/out" | tr -d ' ')" != $# ]; then
+    ng "determinism-hashes: $name (stdout has not $# lines)"
+    return 0
+  fi
+  ok
+}
+A=1111111111111111111111111111111111111111111111111111111111111111
+C=3333333333333333333333333333333333333333333333333333333333333333
+E=4444444444444444444444444444444444444444444444444444444444444444
+hashes "the same list" 0 same.txt
+hashes "the manuals are left out" 0 manuals.txt
+hashes "one hash differs" 1 changed.txt "hashes.txt: $A  sample/build/html/index.html" "outputs: $E  sample/build/html/index.html"
+hashes "a line is missing" 1 missing.txt "hashes.txt: $C  sample/stderr"
+hashes "a line is more" 1 extra.txt "outputs: $E  sample/build/html/style.css"
+hashes "an exit code differs" 1 exit.txt "hashes.txt: exit 0  sample" "outputs: exit 1  sample"
+: >"$WORK/in"
+run determinism_hashes "$HASHES/same.txt" "$WORK/no-such-hashes.txt"
+expect "determinism-hashes: no hashes.txt" 2
+run determinism_hashes "$HASHES/same.txt"
+expect "determinism-hashes: one argument" 2
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
