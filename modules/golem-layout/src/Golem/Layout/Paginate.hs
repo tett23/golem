@@ -169,19 +169,23 @@ adjustLines env st sp k =
 -- | A paragraph before a no-break keeps its last lines with what follows.
 placeFlow :: Env -> St -> Flow -> [Flow] -> St
 placeFlow env st f rest = case (f, keptNeed env rest) of
-  (FParagraph ls, Just n) -> placeKept env st True ls n
-  (FContinued ls, Just n) -> placeKept env st False ls n
-  (FDefTerm ls, Just n) -> placeKept env (keep env st (needIn env st (termNeed ls) (nextNeed env rest))) True ls n
+  (FParagraph ls, Just n) -> placeKept env (placeLines env) st True ls n
+  (FStanza vs, Just n) -> placeKept env (placeStanza env) st True vs n
+  (FContinued ls, Just n) -> placeKept env (placeLines env) st False ls n
+  (FDefTerm ls, Just n) -> placeKept env (placeLines env) (keep env st (needIn env st (termNeed ls) (nextNeed env rest))) True ls n
   _ -> place env st f rest
 
--- | The last two lines, or the whole paragraph of three lines or fewer, go to the next column, not from an empty one.
-placeKept :: Env -> St -> Bool -> [LineBox] -> Need -> St
-placeKept env st isStart ls n =
-  let st1 = placeLines env st isStart ls
+{- | The last two lines, or the whole paragraph of three lines or fewer, go
+to the next column, not from an empty one; of a stanza, its verse lines
+(docs/adr/0180).
+-}
+placeKept :: Env -> (St -> Bool -> [a] -> St) -> St -> Bool -> [a] -> Need -> St
+placeKept env placeIn st isStart ls n =
+  let st1 = placeIn st isStart ls
       len = length ls
       (front, back) = splitAt (len - (if len <= 3 then len else 2)) ls
-      stA = placeLines env st isStart front
-      here = placeLines env stA (isStart && null front) back
+      stA = placeIn st isStart front
+      here = placeIn stA (isStart && null front) back
       fits s = needIn env s mempty n <= free env s
       fitsHere = sPage here == sPage stA && sColumn here == sColumn stA && fits here
    in if fits st1
@@ -189,7 +193,7 @@ placeKept env st isStart ls n =
         else
           if fitsHere
             then here
-            else if isEmpty stA then st1 else placeLines env (nextColumn env stA) (isStart && null front) back
+            else if isEmpty stA then st1 else placeIn (nextColumn env stA) (isStart && null front) back
 
 -- | The flow after a no-break must start in the column where the flow before it ended.
 checkNoBreak :: St -> St
@@ -227,6 +231,7 @@ place :: Env -> St -> Flow -> [Flow] -> St
 place env st f rest = case f of
   FRuled {} -> placeRuled env st f rest
   FParagraph ls -> placeLines env st True ls
+  FStanza vs -> placeStanza env st True vs
   FContinued ls -> placeLines env st False ls
   -- the space before a table only below the first line of a column (golem-driver ADR 0031)
   FTable i sp0 h rows ->
@@ -317,6 +322,35 @@ placeLines env st isStart ls =
         else
           let st1 = foldl' (putLine env) st (take k ls)
            in placeLines env (nextColumn env st1) (isStart && k == 0) (drop k ls)
+
+{- | The verse lines of a stanza (docs/adr/0180): a verse line is not
+broken between columns, and a column neither ends with the first verse
+line of a stanza alone nor starts with its last alone, as 'placeLines'
+counts lines. A stanza that cannot be placed so in an empty column, or in
+a column of nothing but headings, places as many verse lines as fit, or
+breaks its first verse line as a paragraph when none fits.
+-}
+placeStanza :: Env -> St -> Bool -> [[LineBox]] -> St
+placeStanza _ st _ [] = st
+placeStanza env st isStart vs =
+  let n = length vs
+      room = fitting env st (concat vs)
+      k0 = length (takeWhile (<= room) (drop 1 (scanl (+) 0 (map length vs))))
+      k1 = if n - k0 == 1 && k0 > 0 then k0 - 1 else k0 -- widow
+      k2 = if isStart && k1 == 1 && n >= 2 then 0 else k1 -- orphan
+      putVerses s = foldl' (putLine env) s . concat
+      split k = placeStanza env (nextColumn env (putVerses st (take k vs))) False (drop k vs)
+   in if k2 >= n
+        then putVerses st vs
+        else
+          if k2 > 0
+            then split k2
+            else
+              if isEmpty st || (sHeadingOnly st && roomForLine env st (concat vs))
+                then case vs of
+                  v : more | k0 == 0 -> placeStanza env (placeLines env st isStart v) False more
+                  _ -> split k0
+                else placeStanza env (nextColumn env st) isStart vs
 
 {- | A paragraph or heading with rules (golem-driver ADR 0027): the area of
 its rule before, its lines and the area of its rule after as one block.

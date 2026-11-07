@@ -57,7 +57,7 @@ import Data.Char (isSpace)
 import Data.Containers.ListUtils (nubOrdOn)
 import Data.Foldable (toList)
 import Data.Int (Int64)
-import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, zip4)
+import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, unsnoc, zip4)
 import Data.List.NonEmpty (nonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -1099,6 +1099,8 @@ data Unit = Unit
     uParaStyle :: Maybe Text,
     -- | the rules before and after a paragraph or a heading (golem-driver ADR 0027)
     uRules :: (Maybe RuleSpec, Maybe RuleSpec),
+    -- | the place of a verse line in its stanza, a paragraph of line-breaks = "keep" without rules (docs/adr/0180)
+    uStanza :: Maybe Int,
     -- | the definition that decided the size of 'uLook' (golem-cli ADR 0008)
     uSource :: SizeSource
   }
@@ -1271,8 +1273,8 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
       [] -> []
       ns@((sp, _, _) : _) ->
         let title = notesTitle lang
-         in Unit (UNotesTitle title) Nothing [Text sp title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing) (SourceHeading 2)
-              : [Unit (UPara noIndent) Nothing (withNoteMark nsp (stNotesMarkFormat style) n xs) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) SourceGrid | (nsp, n, xs) <- ns]
+         in Unit (UNotesTitle title) Nothing [Text sp title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing) Nothing (SourceHeading 2)
+              : [Unit (UPara noIndent) Nothing (withNoteMark nsp (stNotesMarkFormat style) n xs) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid | (nsp, n, xs) <- ns]
     {- a list of blocks inside the lists @ctx@, from the list number @n@,
     with the spaces before and after of paragraphs when @spaced@ (not in a
     definition list): in a list item, paragraphs are not indented by their
@@ -1284,7 +1286,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
       Just (Block _ _ a)
         | g <- gapLines style ctx spaced a b,
           g > 0 ->
-            [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) SourceGrid]
+            [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid]
       _ -> []
     {- the grid lines between two blocks (docs/adr/0189): only the blank
     lines across them; none before a forced break or a control of page
@@ -1308,7 +1310,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
       PageControl _ -> prev
       _ -> Just b
     block style ctx n (Block sp lbl body) =
-      let unit kind l is face = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing)
+      let unit kind l is face = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing) Nothing
           -- the body role at the size of the grid (golem-cli ADR 0008)
           plainUnit kind l is = unit kind l is (bodyLook style fs) SourceGrid
        in case body of
@@ -1323,7 +1325,9 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
                   -- a paragraph in a list has no rules (golem-driver ADR 0027)
                   (rb, ra) = if null ctx then paraRules style st else (Nothing, Nothing)
                   rulesOf i = (if i == 0 then rb else Nothing, if i == length parts - 1 then ra else Nothing)
-               in (n, [(unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face (paraSizeSource style st)) {uParaStyle = st, uRules = rulesOf i} | (i, part) <- zip [0 :: Int ..] parts])
+                  -- the verse lines of a paragraph without rules are one stanza (docs/adr/0180)
+                  stanzaOf i = if keeps && (rb, ra) == (Nothing, Nothing) then Just i else Nothing
+               in (n, [(unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face (paraSizeSource style st)) {uParaStyle = st, uRules = rulesOf i, uStanza = stanzaOf i} | (i, part) <- zip [0 :: Int ..] parts])
             Heading l attrs is ->
               let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
                   -- the number is at the heading (golem-cli ADR 0008)
@@ -1890,6 +1894,7 @@ spaceAfterCode pitch fs infos = \case
       FRuled {frBody = RuledLines (l : _)} -> Just l
       FRuled {frBody = RuledHeading _ _ (l : _)} -> Just l
       FParagraph (l : _) -> Just l
+      FStanza vs | l : _ <- concat vs -> Just l
       FHeading {fhLines = l : _} -> Just l
       FDefTerm (l : _) -> Just l
       FTable {ftSpaceBefore = 0, ftHeader = l : _} -> Just l
@@ -2054,6 +2059,11 @@ numberText fe u c nb =
         UNotesTitle _ -> [FHeading 2 False (hbSpan hb) boxes]
         UTerm _ -> [FDefTerm boxes]
         _ -> [FParagraph boxes]
+      -- a verse line after the first joins the stanza of the lines before it (docs/adr/0180)
+      flow' = case (uStanza u, unsnoc (nuFlow nb)) of
+        (Just i, Just (earlier, FStanza vs)) | i > 0 -> earlier <> [FStanza (vs <> [boxes])]
+        (Just _, _) -> nuFlow nb <> [FStanza [boxes]]
+        _ -> nuFlow nb <> flowOf
       (headAcc', errs') = case uKind u of
         -- the title of the notes is in neither the headings nor the running heads (golem-driver ADR 0026)
         k
@@ -2062,7 +2072,7 @@ numberText fe u c nb =
                 nuErrors nb <> [diagnostic "G07024" Error (uSpan u) ("見出しが版面に入りません（" <> name <> "）") | hbSpan hb > capacity]
               )
         _ -> (nuHeadings nb, nuErrors nb)
-   in nb {nuNext = nextId + length ls, nuFlow = nuFlow nb <> flowOf, nuLines = Map.union (nuLines nb) set, nuHeadings = headAcc', nuErrors = errs'}
+   in nb {nuNext = nextId + length ls, nuFlow = flow', nuLines = Map.union (nuLines nb) set, nuHeadings = headAcc', nuErrors = errs'}
 
 -- | The rules of a ruled unit, for the diagnostics of the layout (golem-driver ADR 0027).
 ruledInfoOf :: Unit -> RuledInfo
@@ -2149,6 +2159,7 @@ ruledLinks = go Nothing
       FRuled {frBody = RuledLines (l : _)} -> Just l
       FRuled {frBody = RuledHeading _ _ (l : _)} -> Just l
       FParagraph (l : _) -> Just l
+      FStanza vs | l : _ <- concat vs -> Just l
       FContinued (l : _) -> Just l
       FHeading {fhLines = l : _} -> Just l
       FDefTerm (l : _) -> Just l
