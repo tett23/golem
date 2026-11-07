@@ -12,8 +12,8 @@ module Golem.Driver.RuleShape
   )
 where
 
-import Golem.Length (divSp)
 import Golem.LayoutSpec (Rect (..))
+import Golem.Length (divSp)
 import Golem.Pdf qualified as P
 import Golem.Project.Style (RuleStyle (..), Sp (..))
 
