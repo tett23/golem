@@ -124,7 +124,7 @@ diagnostic のコードは、[code: G] と 5 桁の数字である。[index read
 | 01 | 構文（読み込みと解析） | golem-parser |
 | 02 | 評価 | golem-eval |
 | 03 | プロジェクト（マニフェスト、[code: style.toml]、import） | golem-project |
-| 04 | 文書の組み立て（ラベル、相互参照、目次） | golem-doc |
+| 04 | 文書の組み立て（ラベル、相互参照、目次） | golem-assemble |
 | 05 | lint | golem-lint |
 | 06 | プラグイン | golem-plugin、golem-driver |
 | 07 | レイアウト（版面、改ページ、傍注、表） | golem-layout |

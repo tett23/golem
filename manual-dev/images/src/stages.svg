@@ -51,7 +51,7 @@
   <line x1="520" y1="310" x2="520" y2="212"/>
   <text class="small" x="535" y="276">Doc.Book（ページへの参照だけが決まっていない）</text>
   <rect class="box" x="200" y="310" width="640" height="190"/>
-  <text class="c" x="520" y="342">全ファイルの結果の集約（golem-doc）</text>
+  <text class="c" x="520" y="342">全ファイルの結果の集約（golem-assemble）</text>
   <text class="c small" x="520" y="390">見出しと図の番号、目次</text>
   <text class="c small" x="520" y="424">ラベルから引く番号と題（ref-number、ref-title）</text>
   <text class="c small" x="520" y="458">doc の式、索引の並び、参考文献の番号</text>
