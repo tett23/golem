@@ -318,7 +318,7 @@ report k input vs =
     "\n"
     ( ("the smallest input that breaks an invariant has " <> show k <> " elements:")
         : map (\v -> "  " <> violationRule v <> ": " <> violationDetail v) vs
-        <> ["", "As a case of PaginateSpec:", "", renderCase name input]
+          <> ["", "As a case of PaginateSpec:", "", renderCase name input]
     )
   where
     name = case vs of
@@ -340,7 +340,9 @@ exhaustiveTests =
         then pure ()
         else
           assertFailure
-            ( "at depth " <> show depth <> ", the inputs a known bug excuses differ from the count pinned:\n"
+            ( "at depth "
+                <> show depth
+                <> ", the inputs a known bug excuses differ from the count pinned:\n"
                 <> intercalate "\n" [item <> ": pinned " <> maybe "nothing" show pinned <> ", counted " <> show n | (item, pinned, n) <- wrong]
             )
   ]
