@@ -118,7 +118,7 @@ parseFile :: FileId -> ByteString
 loadStyle :: FileId -> Maybe Text -> Either [Diagnostic] Style
 -- golem-eval（S0）
 evalFile :: EvalContext -> A.File -> EvalResult
--- golem-doc（S1）
+-- golem-assemble（S1）
 assemble :: AssembleConfig
          -> (DocValues -> SrcSpan -> DeferredExpr
              -> Either Diagnostic Text)
@@ -313,7 +313,7 @@ hashable には [code: random-initial-seed] というフラグがあり、これ
 純粋な関数がリストを返すとき、その順序も結果の値の一部である。
 [code: Data.Map.toList] はキーの順に並べ、[code: Text] の [code: Ord] は符号位置の順に比べる。
 どちらも、C の [code: strcoll] のようにロケールで順序が変わることはない。
-索引の読みの並べ替えは、golem-doc の [code: Golem.Doc.Collation.collationKey] が作るキーで行い、ロケールの照合の規則には頼らない。
+索引の読みの並べ替えは、golem-assemble の [code: Golem.Assemble.Collation.collationKey] が作るキーで行い、ロケールの照合の規則には頼らない。
 
 ## 数の表し方
 

@@ -103,6 +103,97 @@ done
 run check_version v0.1
 if [ "$(wc -l <"$WORK/err")" -eq 1 ] && [ ! -s "$WORK/out" ]; then ok; else ng "check-version: one line on stderr"; fi
 
+# ---------------------------------------------------------------- check-patch.sh
+# (docs/adr/0174-compatibility-promises-for-1-0.md): a patch release keeps
+# the pages of the visual regression test and the output hashes but the PDF
+
+PR=$WORK/patch
+pgit() {
+  GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+    GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_AUTHOR_DATE=2026-01-01T00:00:00Z \
+    GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com GIT_COMMITTER_DATE=2026-01-01T00:00:00Z \
+    git -C "$PR" "$@" >/dev/null
+}
+# patch_repo TAG [hashes]: a repository with the pages (and hashes.txt), tagged TAG
+patch_repo() {
+  rm -rf "$PR"
+  mkdir -p "$PR/scripts/visual/pages" "$PR/scripts/determinism"
+  pgit init -q -b main
+  printf '1 aaaa\n2 bbbb\n' >"$PR/scripts/visual/pages/book.txt"
+  printf '1 cccc\n' >"$PR/scripts/visual/pages/other.txt"
+  if [ "${2:-}" = hashes ]; then
+    printf '1111  sample/build/html/index.html\n2222  sample/stdout\nexit 0  sample\n3333  pdf/build/pdf/sample.pdf\nexit 0  pdf\n' >"$PR/scripts/determinism/hashes.txt"
+  fi
+  pgit add .
+  pgit commit -q -m release
+  pgit tag "$1"
+}
+# patch_tag TAG: commits the changes and tags TAG
+patch_tag() {
+  pgit add -A
+  pgit commit -q --allow-empty -m change
+  pgit tag "$1"
+}
+check_patch() { GOLEM_ROOT="$PR" sh "$HERE/check-patch.sh" "$@"; }
+patch_repo v1.0.0
+patch_tag v1.0.1
+run check_patch v1.0.1
+expect "check-patch: a patch with the same pages" 0
+patch_repo v1.0.0
+printf '1 aaaa\n2 dddd\n' >"$PR/scripts/visual/pages/book.txt"
+patch_tag v1.0.1
+run check_patch v1.0.1
+expect "check-patch: a patch with the hash of a page changed" 1
+if grep -qF 'book.txt' "$WORK/err"; then ok; else ng "check-patch: the changed page is named"; fi
+patch_repo v1.0.0
+printf '1 aaaa\n2 dddd\n' >"$PR/scripts/visual/pages/book.txt"
+patch_tag v1.1.0
+run check_patch v1.1.0
+expect "check-patch: a minor version with the hash of a page changed" 0
+patch_repo v1.0.0
+printf '1 aaaa\n2 dddd\n' >"$PR/scripts/visual/pages/book.txt"
+patch_tag v2.0.0
+run check_patch v2.0.0
+expect "check-patch: a major version with the hash of a page changed" 0
+patch_repo v0.1.0-rc3
+printf '1 aaaa\n2 dddd\n' >"$PR/scripts/visual/pages/book.txt"
+patch_tag v0.1.0-rc4
+run check_patch v0.1.0-rc4
+expect "check-patch: before v1.0.0" 0
+patch_repo v1.0.0-rc1
+printf '1 aaaa\n2 dddd\n' >"$PR/scripts/visual/pages/book.txt"
+patch_tag v1.0.0
+run check_patch v1.0.0
+expect "check-patch: after a prerelease of 1.0.0" 0
+patch_repo v1.0.0
+printf '1 aaaa\n2 dddd\n' >"$PR/scripts/visual/pages/book.txt"
+patch_tag v1.0.1-rc1
+run check_patch v1.0.1-rc1
+expect "check-patch: a prerelease of a patch with the hash of a page changed" 1
+patch_repo v1.0.0
+pgit tag -d v1.0.0
+patch_tag v1.0.1
+run check_patch v1.0.1
+expect "check-patch: no release before" 0
+patch_repo v1.0.0 hashes
+printf '1111  sample/build/html/index.html\n2222  sample/stdout\nexit 0  sample\n4444  pdf/build/pdf/sample.pdf\nexit 0  pdf\n' >"$PR/scripts/determinism/hashes.txt"
+patch_tag v1.0.1
+run check_patch v1.0.1
+expect "check-patch: a patch that changes the hash of the PDF only" 0
+patch_repo v1.0.0 hashes
+printf '1111  sample/build/html/index.html\n5555  sample/stdout\nexit 0  sample\n3333  pdf/build/pdf/sample.pdf\nexit 0  pdf\n' >"$PR/scripts/determinism/hashes.txt"
+patch_tag v1.0.1
+run check_patch v1.0.1
+expect "check-patch: a patch that changes another output hash" 1
+if grep -qF 'sample/stdout' "$WORK/err"; then ok; else ng "check-patch: the changed output is named"; fi
+patch_repo v1.0.0 hashes
+printf 'exit 1  sample\n' >>"$PR/scripts/determinism/hashes.txt"
+patch_tag v1.0.1
+run check_patch v1.0.1
+expect "check-patch: a patch that adds an output line" 1
+run check_patch
+expect "check-patch: no tag" 2
+
 # ---------------------------------------------------------------- notes.sh
 
 REPO=$WORK/repo

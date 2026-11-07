@@ -1339,7 +1339,7 @@ separatorTests =
           other -> assertFailure (show other),
       testCase "an evaluated file records the paragraph separator of its context" $ do
         erSource (evalResult lineCtx "a\n") @?= SourceSettings LineSeparated
-        erSource (evalResult ctx "a\n") @?= defaultSourceSettings
+        erSource (evalResult ctx "a\n") @?= SourceSettings BlankLineSeparated
     ]
 
 -- ------------------------------------------------------------------ hard breaks

@@ -15,3 +15,6 @@ role = "author"
 [targets.text]
 variants = ["horizontal"]
 [targets.pdf]
+
+[source]
+paragraph-separator = "blank-line"

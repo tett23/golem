@@ -214,11 +214,14 @@ tests =
             found = completions ws "b.gm"
         found (offsetIn src "@manifest \n" 10) @?= [Completion "paragraph-separator=" CkSettingKey]
         found (offsetIn src "separator=\n" 10) @?= [Completion "blank-line" CkSettingValue, Completion "line" CkSettingValue],
-      testCase "a file outside the project read in the line style has no G05001 (docs/adr ADR 0014)" $ do
+      -- outside the project the default is the line style too (docs/adr/0193)
+      testCase "a file outside the project read in the line style has no G05001 (docs/adr ADR 0014, docs/adr/0193)" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "loose.gm" "@manifest paragraph-separator=line\n\nFull fathom five\nOf his bones\n"
         [c | d <- fromMaybe [] (Map.lookup "loose.gm" (diagnosticsFor ws)), let { DiagnosticCode c = diagCode d }] @?= []
-        ws' <- updateFile ws0 "loose.gm" "Full fathom five\nOf his bones\n"
+        byDefault <- updateFile ws0 "loose.gm" "Full fathom five\nOf his bones\n"
+        [c | d <- fromMaybe [] (Map.lookup "loose.gm" (diagnosticsFor byDefault)), let { DiagnosticCode c = diagCode d }] @?= []
+        ws' <- updateFile ws0 "loose.gm" "@manifest paragraph-separator=blank-line\n\nFull fathom five\nOf his bones\n"
         [c | d <- fromMaybe [] (Map.lookup "loose.gm" (diagnosticsFor ws')), let { DiagnosticCode c = diagCode d }] @?= ["G05001"],
       -- golem-parser ADR 0009
       testCase "an empty expression outside the project is one G01020, and hover and completion still work" $ do
@@ -349,7 +352,7 @@ tests =
         BS.writeFile (tmp </> "manifest.toml") manifest
         ws0 <- openWorkspace tmp
         g05001 ws0 @?= ["G05001"]
-        BS.writeFile (tmp </> "manifest.toml") (manifest <> "\n[source]\nparagraph-separator = \"line\"\n")
+        BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "en", tmSource = Just "line"}))
         ws1 <- openWorkspace tmp
         assertBool "evaluated" (isJust (wsEvaluated ws1))
         g05001 ws1 @?= [],

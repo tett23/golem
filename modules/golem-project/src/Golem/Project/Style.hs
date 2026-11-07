@@ -2041,77 +2041,115 @@ parseStyle fid src = do
 the code, the name of the style it is about (empty when it is about no
 style), the path of the value to fix in style.toml (golem-project ADR
 0008) and the message. @owner@ starts the message of G03013: where the
-definitions were written.
+definitions were written. Each rule is a function of its own; the order
+of the diagnostics is that of the rules here (docs/adr/0173).
 -}
 styleChecks :: Text -> Style -> [(Text, Text, [Scope], Text)]
 styleChecks owner s =
-  [("G03006", "", path, m) | (path, m) <- numberChecks]
-    <> [("G03006", n, keys [kind, n], "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | (kind, n) <- map ("character-styles",) (Map.keys (stCharStyles s)) <> map ("paragraph-styles",) (Map.keys (stParaStyles s)), not (validStyleName n)]
-    <> [("G03006", "", path, m) | (path, m) <- checks]
-    <> [("G03006", n, path, m) | (n, path, m) <- codeChecks]
-    <> [("G03006", n, path, m) | (n, path, m) <- ruleChecks]
+  numberFormatChecks s
+    <> styleNameChecks s
+    <> compositionChecks s
+    <> codeStyleChecks s
+    <> ruleStyleChecks s
     <> [("G03029", "", path, m) | (path, m, _) <- hiddenFolioChecks (stHiddenFolio s)]
-    <> [("G03008", n, path, "style.toml にないフォントの役割です: " <> r) | (n, path, r) <- roles, Map.notMember r (stFonts s)]
-    <> [("G03013", n, path, owner <> "スタイルの参照が不正です: " <> m) | (n, path, m) <- referenceChecks]
-    <> [(code, n, path, m) | (n, ParaStyleDef {psRegexStyles = Just rs}) <- Map.toList (stParaStyles s), (i, r) <- zip [0 ..] rs, (code, path, m) <- regexStyleErrors owner s n i r]
-    <> [("G03011", n, para n "size", "段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks]
-    <> [("G03012", n, path, "段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: " <> n) | (n, path) <- indentChecks]
-    <> [("G03021", n, keys [kind, n, "kerning"], "v1 ではオプティカルカーニングを使えません（" <> word <> " " <> n <> " の kerning）") | (kind, word, n) <- opticals]
-    -- the spine is beside the lines only in horizontal writing (docs/adr/0189)
-    <> [ ("G03118", n, para n "align", "縦組みの本では、段落スタイル " <> n <> " の align に " <> v <> " を書けません。ノドと小口は横組みの本でだけ使えます")
-       | maybe False pageVertical (stPage s),
-         (n, ParaStyleDef {psAlign = Just a}) <- Map.toList (stParaStyles s),
-         (v, a') <- [("towards-spine", ParaTowardsSpine), ("away-from-spine", ParaAwayFromSpine)],
-         a == a'
-       ]
-  where
-    keys = map ScopeKey
-    para n k = keys ["paragraph-styles", n, k]
-    char n k = keys ["character-styles", n, k]
-    -- the first key of two that is written, the second when neither is
-    either2 at written a b = if written then at a else at b
-    -- optical kerning is a v2 item (docs/adr/0020)
-    opticals =
-      [("character-styles", "文字スタイル", n) | (n, CharStyleDef {csKerning = Just KernOptical}) <- Map.toList (stCharStyles s)]
-        <> [("paragraph-styles", "段落スタイル", n) | (n, ParaStyleDef {psKerning = Just KernOptical}) <- Map.toList (stParaStyles s)]
-    {- font roles named outside [fonts] must exist (golem-driver ADR 0003, 0004; docs/adr ADR 0005);
-    the role code of the styles code may be missing: the body role sets code (golem-driver ADR 0017) -}
-    roles =
-      [("", keys ["headings", T.pack (show l), "font"], f) | (l, HeadingStyle {hsFont = Just f}) <- Map.toList (stHeadings s)]
-        <> [(n, char n "font", f) | (n, CharStyleDef {csFont = Just f}) <- Map.toList (stCharStyles s), (n, f) /= ("code", "code")]
-        <> [(n, para n "font", f) | (n, ParaStyleDef {psFont = Just f}) <- Map.toList (stParaStyles s), (n, f) /= ("code", "code")]
-    {- the paragraph style code takes four keys; background and padding are
-    for code only; a padding is not negative (golem-driver ADR 0017) -}
-    codeChecks =
-      [ ("code", para "code" k, "段落スタイル code に書けるキーは " <> T.intercalate "、" codeParaKeys <> " だけです: " <> T.intercalate ", " ks)
+    <> fontRoleChecks s
+    <> styleReferenceChecks owner s
+    <> regexStyleChecks owner s
+    <> paraSizeChecks s
+    <> firstLineIndentChecks s
+    <> opticalKerningChecks s
+    <> spineAlignChecks s
+
+-- | The path of a key of style.toml.
+styleKeys :: [Text] -> [Scope]
+styleKeys = map ScopeKey
+
+-- | The path of a key of a paragraph style.
+paraKey :: Text -> Text -> [Scope]
+paraKey n k = styleKeys ["paragraph-styles", n, k]
+
+-- | The path of a key of a character style.
+charKey :: Text -> Text -> [Scope]
+charKey n k = styleKeys ["character-styles", n, k]
+
+-- | The first key of two that is written, the second when neither is.
+firstWritten :: (Text -> [Scope]) -> Bool -> Text -> Text -> [Scope]
+firstWritten at written a b = if written then at a else at b
+
+-- | G03006: the number formats of figures, listings and headings.
+numberFormatChecks :: Style -> [(Text, Text, [Scope], Text)]
+numberFormatChecks s =
+  [ ("G03006", "", path, m)
+  | (path, m) <-
+      [ (path, "番号の書式が不正です: " <> f)
+      | (path, f) <-
+          (styleKeys ["figures", "number"], stFigureNumber s)
+            : (styleKeys ["code", "number"], cdNumber (stCode s))
+            : [(styleKeys ["headings", T.pack (show l), "number"], n) | (l, HeadingStyle {hsNumber = Just n}) <- Map.toList (stHeadings s)],
+        not (validNumberFormat f)
+      ]
+        -- a listing number has a placeholder (golem-driver ADR 0023)
+        <> [(styleKeys ["code", "number"], "[code] の number には {n} などの差し込みを書きます: " <> cdNumber (stCode s)) | not ("{" `T.isInfixOf` cdNumber (stCode s))]
+  ]
+
+-- | G03006: the names of the character and paragraph styles.
+styleNameChecks :: Style -> [(Text, Text, [Scope], Text)]
+styleNameChecks s =
+  [("G03006", n, styleKeys [kind, n], "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | (kind, n) <- map ("character-styles",) (Map.keys (stCharStyles s)) <> map ("paragraph-styles",) (Map.keys (stParaStyles s)), not (validStyleName n)]
+
+-- | G03006: the ranges of the values of [composition].
+compositionChecks :: Style -> [(Text, Text, [Scope], Text)]
+compositionChecks s =
+  [ ("G03006", "", path, m)
+  | (path, m) <-
+      [ (styleKeys ["composition", "explicit-hyphen-penalty"], "explicit-hyphen-penalty は -9999 から 10000 までです: " <> T.pack (show p))
+      | let p = compExplicitHyphenPenalty (stComposition s),
+        p < -9999 || p > 10000
+      ]
+        <> [ (styleKeys ["composition", "ruby", "overhang"], "ルビのかけの量は 0 以上です（[composition.ruby] の overhang）")
+           | negativeDim (rdOverhang (compRuby (stComposition s)))
+           ]
+  ]
+
+{- | G03006: the paragraph style code takes four keys; background and
+padding are for code only; a padding is not negative (golem-driver ADR
+0017).
+-}
+codeStyleChecks :: Style -> [(Text, Text, [Scope], Text)]
+codeStyleChecks s =
+  [ ("G03006", n, path, m)
+  | (n, path, m) <-
+      [ ("code", paraKey "code" k, "段落スタイル code に書けるキーは " <> T.intercalate "、" codeParaKeys <> " だけです: " <> T.intercalate ", " ks)
       | Just d <- [Map.lookup "code" (stParaStyles s)],
         ks@(k : _) <- [writtenOtherKeys d]
       ]
-        <> [ (n, either2 (para n) (isJust (psBackground d)) "background" "padding", "background と padding は段落スタイル code にだけ書けます: " <> n)
+        <> [ (n, firstWritten (paraKey n) (isJust (psBackground d)) "background" "padding", "background と padding は段落スタイル code にだけ書けます: " <> n)
            | (n, d) <- Map.toList (stParaStyles s),
              n /= "code",
              isJust (psBackground d) || isJust (psPadding d)
            ]
-        <> [("code", para "code" "padding", "padding は 0 以上の寸法です") | Just ParaStyleDef {psPadding = Just p} <- [Map.lookup "code" (stParaStyles s)], negativeDim p]
+        <> [("code", paraKey "code" "padding", "padding は 0 以上の寸法です") | Just ParaStyleDef {psPadding = Just p} <- [Map.lookup "code" (stParaStyles s)], negativeDim p]
         -- the background and the padding of inline code are for code styles only (golem-driver ADR 0029)
-        <> [ (n, either2 (char n) (isJust (csBackground d)) "background" "padding", "文字スタイルの background と padding は code と based-on で code に行き着く文字スタイルにだけ書けます: " <> n)
+        <> [ (n, firstWritten (charKey n) (isJust (csBackground d)) "background" "padding", "文字スタイルの background と padding は code と based-on で code に行き着く文字スタイルにだけ書けます: " <> n)
            | (n, d) <- Map.toList (stCharStyles s),
              not (isCodeCharStyle s n),
              isJust (csBackground d) || isJust (csPadding d)
            ]
-        <> [(n, char n "padding", "文字スタイル " <> n <> " の padding は 0 以上の寸法です") | (n, CharStyleDef {csPadding = Just p}) <- Map.toList (stCharStyles s), negativeDim p]
+        <> [(n, charKey n "padding", "文字スタイル " <> n <> " の padding は 0 以上の寸法です") | (n, CharStyleDef {csPadding = Just p}) <- Map.toList (stCharStyles s), negativeDim p]
         -- the border is for code only, its width an absolute dimension (golem-driver ADR 0023)
-        <> [ (n, either2 (para n) (isJust (psBorder d)) "border" "border-width", "border と border-width は段落スタイル code にだけ書けます: " <> n)
+        <> [ (n, firstWritten (paraKey n) (isJust (psBorder d)) "border" "border-width", "border と border-width は段落スタイル code にだけ書けます: " <> n)
            | (n, d) <- Map.toList (stParaStyles s),
              n /= "code",
              isJust (psBorder d) || isJust (psBorderWidth d)
            ]
-        <> [ ("code", para "code" "border-width", "border-width は mm、pt、Q、H、in の寸法で書きます")
+        <> [ ("code", paraKey "code" "border-width", "border-width は mm、pt、Q、H、in の寸法で書きます")
            | Just ParaStyleDef {psBorderWidth = Just w} <- [Map.lookup "code" (stParaStyles s)],
              case w of
                Zw _ -> True
                Abs x -> x < 0
            ]
+  ]
+  where
     writtenOtherKeys d =
       [ k
       | (k, written) <-
@@ -2133,11 +2171,15 @@ styleChecks owner s =
           ],
         written
       ]
-    -- the rule written first of rule-before and rule-after
-    rulePath n d = either2 (para n) (isJust (psRuleBefore d)) "rule-before" "rule-after"
-    {- paragraph rules (golem-driver ADR 0027): not on caption, sidenote and
-    code; with a grid, a length left by the indents greater than 0 -}
-    ruleChecks =
+
+{- | G03006: paragraph rules (golem-driver ADR 0027): not on caption,
+sidenote and code; with a grid, a length left by the indents greater than
+0.
+-}
+ruleStyleChecks :: Style -> [(Text, Text, [Scope], Text)]
+ruleStyleChecks s =
+  [ ("G03006", n, path, m)
+  | (n, path, m) <-
       [ (n, rulePath n d, "段落スタイル " <> n <> " には rule-before と rule-after を書けません")
       | (n, d) <- Map.toList (stParaStyles s),
         n `elem` ["caption", "sidenote", "code"],
@@ -2145,7 +2187,7 @@ styleChecks owner s =
       ]
         <> case stPage s >>= pageGrid of
           Just Grid {gridFontSize = Abs fs, gridCharacters = chars} ->
-            [ (n, maybe (para n "rule-before") (rulePath n) (Map.lookup n (stParaStyles s)), "段落スタイル " <> n <> " の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください")
+            [ (n, maybe (paraKey n "rule-before") (rulePath n) (Map.lookup n (stParaStyles s)), "段落スタイル " <> n <> " の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください")
             | n <- Map.keys (stParaStyles s),
               Just d <- [paraStyle s (Just n)],
               let size = maybe fs (dimToSp fs) (psSize d),
@@ -2154,7 +2196,31 @@ styleChecks owner s =
               fromIntegral chars * fs - dimToSp size (rsStartIndent r) - maybe 0 (dimToSp size) (rsEndIndent r) <= 0
             ]
           _ -> []
-    -- based-on names an existing style without a cycle; body has none; colours exist (docs/adr ADR 0005)
+  ]
+  where
+    -- the rule written first of rule-before and rule-after
+    rulePath n d = firstWritten (paraKey n) (isJust (psRuleBefore d)) "rule-before" "rule-after"
+
+{- | G03008: font roles named outside [fonts] must exist (golem-driver ADR
+0003, 0004; docs/adr ADR 0005); the role code of the styles code may be
+missing: the body role sets code (golem-driver ADR 0017).
+-}
+fontRoleChecks :: Style -> [(Text, Text, [Scope], Text)]
+fontRoleChecks s =
+  [("G03008", n, path, "style.toml にないフォントの役割です: " <> r) | (n, path, r) <- roles, Map.notMember r (stFonts s)]
+  where
+    roles =
+      [("", styleKeys ["headings", T.pack (show l), "font"], f) | (l, HeadingStyle {hsFont = Just f}) <- Map.toList (stHeadings s)]
+        <> [(n, charKey n "font", f) | (n, CharStyleDef {csFont = Just f}) <- Map.toList (stCharStyles s), (n, f) /= ("code", "code")]
+        <> [(n, paraKey n "font", f) | (n, ParaStyleDef {psFont = Just f}) <- Map.toList (stParaStyles s), (n, f) /= ("code", "code")]
+
+{- | G03013: based-on names an existing style without a cycle; body has
+none; colours exist (docs/adr ADR 0005). @owner@ starts the message.
+-}
+styleReferenceChecks :: Text -> Style -> [(Text, Text, [Scope], Text)]
+styleReferenceChecks owner s =
+  [("G03013", n, path, owner <> "スタイルの参照が不正です: " <> m) | (n, path, m) <- referenceChecks]
+  where
     referenceChecks =
       let cs = stCharStyles s
           ps = stParaStyles s
@@ -2169,53 +2235,67 @@ styleChecks owner s =
           paraCycle = [n | n <- Map.keys ps, n /= "body", cyclic paraParent ps n]
           akiKnown n = n `elem` builtinAkiSetNames || Map.member n (stAkiSets s)
           akiCycle = [n | n <- Map.keys (stAkiSets s), cyclic (const asBasedOn) (stAkiSets s) n]
-       in [ (n, char n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
+       in [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
           | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
             Map.notMember b cs
           ]
-            <> [(n, char n "based-on", "文字スタイルの based-on が循環しています: " <> T.intercalate ", " charCycle) | n <- charCycle]
-            <> [(n, char n "color", "文字スタイル " <> n <> " の color のスウォッチがありません: " <> c) | (n, CharStyleDef {csColor = Just c}) <- Map.toList cs, Map.notMember c (stSwatches s)]
-            <> [(n, char n "background", "文字スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, CharStyleDef {csBackground = Just (Just c)}) <- Map.toList cs, Map.notMember c (stSwatches s)]
-            <> [("body", para "body" "based-on", "段落スタイル body には based-on を書けません") | Just ParaStyleDef {psBasedOn = Just _} <- [Map.lookup "body" ps]]
-            <> [ (n, para n "based-on", "段落スタイル " <> n <> " の based-on がありません: " <> b)
+            <> [(n, charKey n "based-on", "文字スタイルの based-on が循環しています: " <> T.intercalate ", " charCycle) | n <- charCycle]
+            <> [(n, charKey n "color", "文字スタイル " <> n <> " の color のスウォッチがありません: " <> c) | (n, CharStyleDef {csColor = Just c}) <- Map.toList cs, Map.notMember c (stSwatches s)]
+            <> [(n, charKey n "background", "文字スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, CharStyleDef {csBackground = Just (Just c)}) <- Map.toList cs, Map.notMember c (stSwatches s)]
+            <> [("body", paraKey "body" "based-on", "段落スタイル body には based-on を書けません") | Just ParaStyleDef {psBasedOn = Just _} <- [Map.lookup "body" ps]]
+            <> [ (n, paraKey n "based-on", "段落スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, ParaStyleDef {psBasedOn = Just b}) <- Map.toList ps,
                  n `notElem` ["body", "code"],
                  Map.notMember b ps
                ]
             -- code is not a base of other styles (golem-driver ADR 0017)
-            <> [ (n, para n "based-on", "段落スタイル code は based-on に書けません。コードブロックの段落スタイルです: " <> n)
+            <> [ (n, paraKey n "based-on", "段落スタイル code は based-on に書けません。コードブロックの段落スタイルです: " <> n)
                | (n, ParaStyleDef {psBasedOn = Just "code"}) <- Map.toList ps,
                  n /= "code"
                ]
             -- the swatch of a background (golem-driver ADR 0017)
-            <> [(n, para n "background", "段落スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBackground = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
-            <> [(n, para n "border", "段落スタイル " <> n <> " の border のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBorder = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
+            <> [(n, paraKey n "background", "段落スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBackground = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
+            <> [(n, paraKey n "border", "段落スタイル " <> n <> " の border のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBorder = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
             -- the swatch of a rule (golem-driver ADR 0028)
-            <> [("", keys ["notes", "rule", "color"], "[notes.rule] の color のスウォッチがありません: " <> c) | Just RuleSpec {rsColor = Just c} <- [stNotesRule s], Map.notMember c (stSwatches s)]
-            <> [ (n, keys ["paragraph-styles", n, k, "color"], "段落スタイル " <> n <> " の罫線の color のスウォッチがありません: " <> c)
+            <> [("", styleKeys ["notes", "rule", "color"], "[notes.rule] の color のスウォッチがありません: " <> c) | Just RuleSpec {rsColor = Just c} <- [stNotesRule s], Map.notMember c (stSwatches s)]
+            <> [ (n, styleKeys ["paragraph-styles", n, k, "color"], "段落スタイル " <> n <> " の罫線の color のスウォッチがありません: " <> c)
                | (n, d) <- Map.toList ps,
                  (k, Just (Just RuleSpec {rsColor = Just c})) <- [("rule-before", psRuleBefore d), ("rule-after", psRuleAfter d)],
                  Map.notMember c (stSwatches s)
                ]
-            <> [ ("", keys ["headings", T.pack (show l), k, "color"], "見出し " <> T.pack (show l) <> " の罫線の color のスウォッチがありません: " <> c)
+            <> [ ("", styleKeys ["headings", T.pack (show l), k, "color"], "見出し " <> T.pack (show l) <> " の罫線の color のスウォッチがありません: " <> c)
                | (l, h) <- Map.toList (stHeadings s),
                  (k, Just RuleSpec {rsColor = Just c}) <- [("rule-before", hsRuleBefore h), ("rule-after", hsRuleAfter h)],
                  Map.notMember c (stSwatches s)
                ]
             -- the swatches of [code] and [code.colors] (golem-driver ADR 0023)
             <> [("", ScopeKey "code" : path, "[code] の " <> k <> " のスウォッチがありません: " <> c) | (k, path, c) <- codeSwatches, Map.notMember c (stSwatches s)]
-            <> [(n, para n "based-on", "段落スタイルの based-on が循環しています: " <> T.intercalate ", " paraCycle) | n <- paraCycle]
+            <> [(n, paraKey n "based-on", "段落スタイルの based-on が循環しています: " <> T.intercalate ", " paraCycle) | n <- paraCycle]
             -- aki sets: aki-set and based-on name a set, without a cycle (docs/adr ADR 0019)
-            <> [ (n, para n "aki-set", "段落スタイル " <> n <> " の aki-set のアキ量のセットがありません: " <> a)
+            <> [ (n, paraKey n "aki-set", "段落スタイル " <> n <> " の aki-set のアキ量のセットがありません: " <> a)
                | (n, ParaStyleDef {psAkiSet = Just a}) <- Map.toList ps,
                  not (akiKnown a)
                ]
-            <> [ ("", keys ["aki-sets", n, "based-on"], "アキ量のセット " <> n <> " の based-on がありません: " <> b)
+            <> [ ("", styleKeys ["aki-sets", n, "based-on"], "アキ量のセット " <> n <> " の based-on がありません: " <> b)
                | (n, AkiSetDef {asBasedOn = Just b}) <- Map.toList (stAkiSets s),
                  not (akiKnown b)
                ]
-            <> [("", keys ["aki-sets", n, "based-on"], "アキ量のセットの based-on が循環しています: " <> T.intercalate ", " akiCycle) | n <- take 1 akiCycle]
-    -- a paragraph style no larger than the grid (docs/adr ADR 0005)
+            <> [("", styleKeys ["aki-sets", n, "based-on"], "アキ量のセットの based-on が循環しています: " <> T.intercalate ", " akiCycle) | n <- take 1 akiCycle]
+    codeSwatches =
+      let c = stCode s
+       in [(k, [ScopeKey k], v) | (k, Just v) <- [("line-number-color", cdLineNumberColor c), ("highlight", cdHighlight c), ("added", cdAdded c), ("removed", cdRemoved c)]]
+            <> [("colors." <> k, styleKeys ["colors", k], v) | (k, v) <- Map.toList (cdColors c)]
+
+-- | The checks of the regex styles of the paragraph styles (docs/adr ADR 0014).
+regexStyleChecks :: Text -> Style -> [(Text, Text, [Scope], Text)]
+regexStyleChecks owner s =
+  [(code, n, path, m) | (n, ParaStyleDef {psRegexStyles = Just rs}) <- Map.toList (stParaStyles s), (i, r) <- zip [0 ..] rs, (code, path, m) <- regexStyleErrors owner s n i r]
+
+-- | G03011: a paragraph style no larger than the grid (docs/adr ADR 0005).
+paraSizeChecks :: Style -> [(Text, Text, [Scope], Text)]
+paraSizeChecks s =
+  [("G03011", n, paraKey n "size", "段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks]
+  where
     sizeChecks = case stPage s >>= pageGrid of
       Just Grid {gridFontSize = Abs fs} ->
         [ n
@@ -2224,8 +2304,15 @@ styleChecks owner s =
           dimToSp fs d > fs
         ]
       _ -> []
-    {- the first line inside the type area: indent + first-line-indent >= 0
-    (docs/adr ADR 0006); zw and absolute lengths together only with a grid -}
+
+{- | G03012: the first line inside the type area: indent +
+first-line-indent >= 0 (docs/adr ADR 0006); zw and absolute lengths
+together only with a grid.
+-}
+firstLineIndentChecks :: Style -> [(Text, Text, [Scope], Text)]
+firstLineIndentChecks s =
+  [("G03012", n, path, "段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: " <> n) | (n, path) <- indentChecks]
+  where
     indentChecks =
       let gridSize = case stPage s >>= pageGrid of
             Just Grid {gridFontSize = Abs fs} -> Just fs
@@ -2236,29 +2323,26 @@ styleChecks owner s =
             (Just a, Just b) | Just fs <- gridSize -> let size = maybe fs (dimToSp fs) (psSize d) in dimToSp size a + dimToSp size b < 0
             _ -> False
           written n = maybe False (isJust . psFirstLineIndent) (Map.lookup n (stParaStyles s))
-       in [(n, either2 (para n) (written n) "first-line-indent" "indent") | n <- Map.keys (stParaStyles s), Just d <- [paraStyle s (Just n)], negative d]
-    numberChecks =
-      [ (path, "番号の書式が不正です: " <> f)
-      | (path, f) <-
-          (keys ["figures", "number"], stFigureNumber s)
-            : (keys ["code", "number"], cdNumber (stCode s))
-            : [(keys ["headings", T.pack (show l), "number"], n) | (l, HeadingStyle {hsNumber = Just n}) <- Map.toList (stHeadings s)],
-        not (validNumberFormat f)
-      ]
-        -- a listing number has a placeholder (golem-driver ADR 0023)
-        <> [(keys ["code", "number"], "[code] の number には {n} などの差し込みを書きます: " <> cdNumber (stCode s)) | not ("{" `T.isInfixOf` cdNumber (stCode s))]
-    codeSwatches =
-      let c = stCode s
-       in [(k, [ScopeKey k], v) | (k, Just v) <- [("line-number-color", cdLineNumberColor c), ("highlight", cdHighlight c), ("added", cdAdded c), ("removed", cdRemoved c)]]
-            <> [("colors." <> k, keys ["colors", k], v) | (k, v) <- Map.toList (cdColors c)]
-    checks =
-      [ (keys ["composition", "explicit-hyphen-penalty"], "explicit-hyphen-penalty は -9999 から 10000 までです: " <> T.pack (show p))
-      | let p = compExplicitHyphenPenalty (stComposition s),
-        p < -9999 || p > 10000
-      ]
-        <> [ (keys ["composition", "ruby", "overhang"], "ルビのかけの量は 0 以上です（[composition.ruby] の overhang）")
-           | negativeDim (rdOverhang (compRuby (stComposition s)))
-           ]
+       in [(n, firstWritten (paraKey n) (written n) "first-line-indent" "indent") | n <- Map.keys (stParaStyles s), Just d <- [paraStyle s (Just n)], negative d]
+
+-- | G03021: optical kerning is a v2 item (docs/adr/0020).
+opticalKerningChecks :: Style -> [(Text, Text, [Scope], Text)]
+opticalKerningChecks s =
+  [("G03021", n, styleKeys [kind, n, "kerning"], "v1 ではオプティカルカーニングを使えません（" <> word <> " " <> n <> " の kerning）") | (kind, word, n) <- opticals]
+  where
+    opticals =
+      [("character-styles", "文字スタイル", n) | (n, CharStyleDef {csKerning = Just KernOptical}) <- Map.toList (stCharStyles s)]
+        <> [("paragraph-styles", "段落スタイル", n) | (n, ParaStyleDef {psKerning = Just KernOptical}) <- Map.toList (stParaStyles s)]
+
+-- | G03118: the spine is beside the lines only in horizontal writing (docs/adr/0189).
+spineAlignChecks :: Style -> [(Text, Text, [Scope], Text)]
+spineAlignChecks s =
+  [ ("G03118", n, paraKey n "align", "縦組みの本では、段落スタイル " <> n <> " の align に " <> v <> " を書けません。ノドと小口は横組みの本でだけ使えます")
+  | maybe False pageVertical (stPage s),
+    (n, ParaStyleDef {psAlign = Just a}) <- Map.toList (stParaStyles s),
+    (v, a') <- [("towards-spine", ParaTowardsSpine), ("away-from-spine", ParaAwayFromSpine)],
+    a == a'
+  ]
 
 -- ------------------------------------------------------------------ styles in a file
 
