@@ -27,7 +27,7 @@ ROOT=$(cd "$HERE/../.." && pwd)
 FIX=$ROOT/modules/golem-driver/test/fixtures
 PD_BOOKS="elements-of-style frogs haru-to-shura ichiaku-no-suna koya-hijiri merry-wives nightmare-abbey snark taira-no-masakado ushiyama-hotel"
 list() {
-  printf '%s\n' sample figures kanikosen kanikosen-marks-japanese tempest
+  printf '%s\n' sample figures complex-vertical complex-horizontal kanikosen kanikosen-marks-japanese tempest
   for book in $PD_BOOKS; do printf 'pd-%s\n' "$book"; done
   printf '%s\n' manual manual-dev
 }
@@ -130,6 +130,12 @@ cp "$ROOT/scripts/determinism/pdf-style.toml" "$WORK/sample/style.toml"
 copy figures "$FIX/figures"
 fonts "$WORK/figures"
 
+# the two books that combine the features (docs/adr/0175)
+for book in complex-vertical complex-horizontal; do
+  copy "$book" "$FIX/$book"
+  fonts "$WORK/$book"
+done
+
 copy kanikosen "$FIX/kanikosen"
 
 # the Japanese crop marks with a bleed of 3 mm: the Separation colour of the
@@ -172,6 +178,8 @@ manuals() {
 job manuals manuals
 job sample pdf sample "$WORK/sample"
 job figures pdf figures "$WORK/figures"
+job complex-vertical pdf complex-vertical "$WORK/complex-vertical"
+job complex-horizontal pdf complex-horizontal "$WORK/complex-horizontal"
 job kanikosen pdf kanikosen "$WORK/kanikosen"
 job kanikosen-marks-japanese pdf kanikosen-marks-japanese "$WORK/kanikosen-marks-japanese" --marks japanese
 job tempest pdf tempest "$WORK/tempest"

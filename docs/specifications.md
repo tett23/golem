@@ -600,6 +600,7 @@ EPUB はパッケージである zip の中に時刻や並び順の揺れを含�
 
 実行の環境を変えて出力の一致を確かめる検査 `scripts/env-determinism/check.sh` がある（[ADR 0029](adr/0029-environment-variation-determinism-test.md)）。
 決まった入力を基準の環境で組み、タイムゾーン、ロケール、`SOURCE_DATE_EPOCH`、`HOME`、`XDG_*`、`PATH`、umask、プロジェクトの置き場所、ファイルの時刻、どこからも参照しないファイル、capability の数（`GHCRTS=-N1` と `-N2`、[docs/adr/0050](adr/0050-run-golem-on-every-processor.md)）を一つずつ変えて組み直し、`build/` の下のファイル、終了コード、標準出力、標準エラー出力（`--format json` の diagnostics）が一致することを確かめる。
+小さな入力は、`scripts/determinism` の式、`sample`（HTML、EPUB、テキストと、B6 の縦組みの PDF）、diagnostics を出す入力と、機能を組み合わせた二冊（`complex-vertical` と `complex-horizontal`、四つのターゲット、[ADR 0175](adr/0175-complex-typesetting-fixture.md)）であり、プルリクエストの `--quick` でも検査する。
 すべての変化を同時に当てる `combined` は、『テンペスト』、『蟹工船』、十冊のパブリックドメインの本、二つのマニュアルにも当てる。
 `combined` は capability を二つにして組む。
 この検査は EPUB も比べるので、v1 の EPUB にも事実上の決定性を求めるが、仕様としての EPUB の決定性の約束は v2 からのままである。
@@ -613,8 +614,8 @@ EPUB はパッケージである zip の中に時刻や並び順の揺れを含�
 一覧はハッシュなので、出力が変わったことは分かるが、どう変わったかは分からない。
 コミットをまたいで PDF の見た目が変わったことは、見た目の回帰テストが見つける（[ADR 0094](adr/0094-visual-regression-page-hashes-at-72-dpi.md)）。
 このテストは Golem 自身の開発のためのもので、利用者のためのページ画像の差分（「Golem が強いるワークフロー」の節）とは別である。
-入力は 17 の PDF である。
-`sample`（`scripts/determinism.sh` と同じ B6 の縦組み）、`figures`、『蟹工船』、`[page]` に `bleed = "3mm"` を足して `--marks japanese` で組んだ『蟹工船』、『テンペスト』、パブリックドメインの十冊、二つのマニュアルからなる。
+入力は 19 の PDF である。
+`sample`（`scripts/determinism.sh` と同じ B6 の縦組み）、`figures`、機能を組み合わせた二冊の `complex-vertical` と `complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）、『蟹工船』、`[page]` に `bleed = "3mm"` を足して `--marks japanese` で組んだ『蟹工船』、『テンペスト』、パブリックドメインの十冊、二つのマニュアルからなる。
 マニュアルは、奥付がコミットごとに変わらないように、`GOLEM_MANUAL_COMMIT` を 0 が 40 個の文字列に、`GOLEM_MANUAL_TAG` を `v0.0.0-visual` にして組む。
 `scripts/visual/build.sh` が、各プロジェクトを一時的なディレクトリに写して組み、リポジトリの `build/` には書かない。
 入力の一覧は `build.sh --list` が出す。
@@ -2082,6 +2083,7 @@ CSV は引用符の中の改行をセルの中の改行として残し、空の�
 `cells` のキーワード引数は、セルの読み方として予約し、今は `text` だけを受け付ける。
 `cells=markup` は名前だけを決めた値であり、まだ実装していないのでエラー（G02084）とする。
 セルの `Text` の位置は `@table` のコマンド全体であり、表のファイルの中の位置は、読み込みと表の形の diagnostics にだけ使う。
+読み込みは先頭の BOM と CRLF を受け付けるが、`golem fmt` で先頭の BOM を取り除き、CRLF と単独の CR を LF に直せる（[ADR 0186](adr/0186-fmt-table-files.md)、「fmt」の節）。
 
 表のファイルには三つの上限がある（[docs/adr/0043](adr/0043-table-file-size-limits.md)）。
 ファイルの大きさは 16 MiB（2^24 バイト、BOM を含む）以下、行の数は見出しの行を含めて 10,000 以下、1 行のセルの数は 256 以下とする。
@@ -2557,6 +2559,30 @@ AST はエスケープした文字を残すので、不要なエスケープを�
 G01003 のほかのエラーで読み込みが失敗したら、diagnostic を出し、何も書き換えずに終了コード 1 とする。
 `manifest.toml` の CR もこれに当たる。
 `golem fmt` は TOML を整形しない。
+
+`golem fmt` は、`@table` が読む CSV と TSV のファイル（表のファイル）の BOM と改行も直す（[ADR 0186](adr/0186-fmt-table-files.md)）。
+表のファイルの前処理（`Golem.Fmt.formatTable`）は、先頭の BOM を一つ取り除き、CRLF を LF に直し、残った単独の CR を LF に直す。
+表のファイルでは BOM と改行のほかを直さない。
+空白、空行、タブ、引用符、セルの区切りには触れず、原稿の前処理と違って行頭のタブも空白に直さない。
+CSV と TSV で前処理は同じである。
+読み手は引用符の中の CRLF を LF にしてセルに入れるので、BOM と CRLF を直しても、読み手が作る表は変わらない。
+単独の CR を直すと、G02082 で止まっていた表が組めるようになり、引用符の中の単独の CR はセルの中の改行になる。
+
+引数なしの `golem fmt` は、プロジェクトのソースが `@table` で読む表のファイルを、ビルドと同じく `assetRefs` で集めて整形する。
+原稿の G01003 で読み込み直したときは、読み込めた後のソースから集める。
+パスを式で書いた `@table` の表のファイル、ないファイル、プロジェクトのルートの外を指すファイルは整形せず、diagnostics も出さない（ビルドが出す）。
+`format=tsv` で読む `.txt` のように、拡張子が `.csv` と `.tsv` でない表のファイルも、表のファイルとして直す。
+同じファイルを `@listing` も読むときも表のファイルとして直すが、`@listing` だけが読むファイルは整形しない。
+表のファイルは読み込みの段階（`loadAssets`）を通さずに読むので、G02082 を出す表のファイルも前処理にかける。
+
+引数に渡したファイルは、拡張子で扱いを分ける。
+拡張子が `.csv` か `.tsv`（大文字と小文字を区別しない）のファイルは表のファイルの前処理だけにかけ、`.emet` のファイルは `.emet` の整形にかけ、ほかのファイルは原稿として整形する。
+同じ引数なら、どのディレクトリで動かしても同じ扱いになる。
+このため、別の拡張子の表のファイルを引数に渡すと原稿として整形され、セルの中身が変わることがある。
+別の拡張子の表のファイルは、引数なしの `golem fmt` で直す。
+
+`--check` は、BOM、CRLF、単独の CR のどれかを持つ表のファイルを整形されていないファイルとしてパスを示し、書き換えない。
+UTF-8 として読めない表のファイルは、原稿と同じく整形せず、終了コードを 1 とする。
 
 ## LSP
 
@@ -4023,6 +4049,9 @@ Git の `pre-push` のフック（`origin/main` からの分岐点で検査す�
 CI の `build` ジョブは、テストの後に `scripts/manual/build.sh` で二つのマニュアルを組み、x86-64 のジョブで成果物 `manual` と `manual-dev` を上げる。
 組んだ PDF と HTML のハッシュは `scripts/determinism.sh` の出力に入り、x86-64 と aarch64 で同じバイト列になることを `determinism` ジョブが確かめる。
 `scripts/determinism.sh` は、マニュアルのほかの入力では、出力のファイルに加えて `golem build --format json` の標準出力と標準エラー出力の SHA-256 と終了コードも書く。
+入力には、機能を組み合わせた二冊（`modules/golem-driver/test/fixtures/complex-vertical` と `complex-horizontal`）を四つのターゲットで組んだものも含む（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）。
+二冊は、縦組みの一段の本と横組みの二段の本で、ルビ、圏点、注、図版、表、コードブロック、罫線を持つ段落と見出し、目次、索引、参考文献、Emet の関数とフィルタを組み合わせる。
+二冊の PDF と EPUB は、golem-driver の出力のゴールデン（`OutputGoldenSpec`）も固定し、どのターゲットでも diagnostic を出さないことを確かめる。
 入力には diagnostics を出して終了コード 1 で終わる `scripts/env-determinism/diagnostics/` を含むので、二つのアーキテクチャの diagnostics と終了コードも比べることになる。
 マニュアルは diagnostic を一つでも出せば `scripts/manual/build.sh` が失敗にするので、diagnostics の比較の対象にしない（[ADR 0071](adr/0071-determinism-check-compares-diagnostics.md)）。
 docs/manual-policy.md は Golem の振る舞いを定めないので、ビルドが読む文書の一覧（`scripts/ci/needs-build.sh`）に入れない。
@@ -4058,6 +4087,8 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 テストを足すときに見つかったものは、該当する場合をテストに入れずに残している。
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
+- **図版を追い越した見出しが、本文から離れる**：縦組みの本で、段に入らない図版の後に見出しと段落が続くと、見出しが図版を追い越して前のページの最後の行に置かれ、図版が次のページの先頭に、段落がその後に置かれる。見出しは、その後の段落の最初の 2 行と同じ段に置く（「改ページ」の節）という規則が、間に図版が入ると守られない。機能を組み合わせた fixture の `complex-vertical`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）の第一章の図 1-2 と「字面と字送り」の見出しで起き、ゴールデンと見た目の回帰テストの参照は、今の配置を固定している。
+- **`[ref-number]` の図番号とリスト番号が、`[figures]` と `[code]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックを `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合

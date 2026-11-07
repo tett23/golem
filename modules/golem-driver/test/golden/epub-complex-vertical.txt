@@ -1,0 +1,413 @@
+== mimetype (stored, time 315532800, 20 bytes)
+application/epub+zip
+== META-INF/container.xml (deflate, time 315532800, 242 bytes)
+<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+<rootfiles><rootfile full-path="OEBPS/package.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>
+== OEBPS/package.opf (deflate, time 315532800, 1854 bytes)
+<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="ja">
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+<dc:identifier id="bookid">urn:uuid:00000000-0000-4000-8000-000000000175</dc:identifier>
+<dc:title id="title">町の活版所</dc:title>
+<meta refines="#title" property="file-as">まちのかっぱんじょ</meta>
+<dc:language>ja</dc:language>
+<dc:creator id="creator1">Golem プロジェクト</dc:creator>
+<meta refines="#creator1" property="role" scheme="marc:relators">aut</meta>
+<dc:publisher>Golem プロジェクト</dc:publisher>
+<meta property="dcterms:modified">2026-11-07T00:00:00Z</meta>
+</metadata>
+<manifest>
+<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+<item id="item1" href="front.xhtml" media-type="application/xhtml+xml"/>
+<item id="item2" href="chapters/01.xhtml" media-type="application/xhtml+xml"/>
+<item id="item3" href="chapters/02.xhtml" media-type="application/xhtml+xml"/>
+<item id="item4" href="chapters/03.xhtml" media-type="application/xhtml+xml"/>
+<item id="item5" href="back.xhtml" media-type="application/xhtml+xml"/>
+<item id="item6" href="style.css" media-type="text/css"/>
+<item id="item7" href="fonts/ja.otf" media-type="font/otf"/>
+<item id="item8" href="fonts/latin.otf" media-type="font/otf"/>
+<item id="item9" href="images/press.svg" media-type="image/svg+xml"/>
+<item id="item10" href="images/stick.svg" media-type="image/svg+xml"/>
+<item id="item11" href="images/timeline.svg" media-type="image/svg+xml"/>
+<item id="item12" href="images/type-case.png" media-type="image/png"/>
+</manifest>
+<spine page-progression-direction="rtl">
+<itemref idref="item1"/>
+<itemref idref="item2"/>
+<itemref idref="item3"/>
+<itemref idref="item4"/>
+<itemref idref="item5"/>
+</spine>
+</package>
+== OEBPS/nav.xhtml (deflate, time 315532800, 1439 bytes)
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
+<head><meta charset="UTF-8"/><title>町の活版所</title></head>
+<body>
+<nav epub:type="toc" id="toc">
+<h1>町の活版所</h1>
+<ol><li><a href="chapters/01.xhtml#h-2-0">第一章　活字を拾う</a><ol><li><a href="chapters/01.xhtml#h-2-61">一　文選の棚</a></li><li><a href="chapters/01.xhtml#h-2-1889">二　活字の大きさ</a><ol><li><a href="chapters/01.xhtml#h-2-2546">（一）　字面と字送り</a></li></ol></li></ol></li><li><a href="chapters/02.xhtml#h-3-0">第二章　版を組む</a><ol><li><a href="chapters/02.xhtml#h-3-31">一　組版の手順</a><ol><li><a href="chapters/02.xhtml#h-3-1231">（一）　工程と日数</a></li></ol></li><li><a href="chapters/02.xhtml#h-3-1612">二　込め物の種類</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-0">第三章　刷りと校正</a><ol><li><a href="chapters/03.xhtml#h-4-32">一　校正の記号</a></li><li><a href="chapters/03.xhtml#h-4-682">二　赤字を写す</a><ol><li><a href="chapters/03.xhtml#h-4-719">（一）　刷りの控え</a></li><li><a href="chapters/03.xhtml#h-4-1733">（二）　版を崩す</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-4125">参考文献</a></li></ol></li><li><a href="back.xhtml#h-5-10">索引</a></li></ol>
+</nav>
+</body>
+</html>
+== OEBPS/style.css (deflate, time 315532800, 2794 bytes)
+@font-face { font-family: "golem-body-latin"; src: url("fonts/latin.otf"); }
+@font-face { font-family: "golem-body-ja"; src: url("fonts/ja.otf"); }
+@font-face { font-family: "golem-code-latin"; src: url("fonts/latin.otf"); }
+@font-face { font-family: "golem-code-ja"; src: url("fonts/ja.otf"); }
+body { font-family: "golem-body-latin", "golem-body-ja", serif; }
+body.vertical { writing-mode: vertical-rl; -epub-writing-mode: vertical-rl; }
+pre, code { font-family: "golem-code-latin", "golem-code-ja", monospace; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; hyphens: none; font-kerning: none; font-size: 0.9231em; }
+strong { font-weight: bold; }
+.tcy { text-combine-upright: all; -epub-text-combine: horizontal; }
+.kenten { text-emphasis-style: sesame; -epub-text-emphasis-style: sesame; }
+.kenten-open-sesame { text-emphasis-style: open sesame; }
+.kenten-dot { text-emphasis-style: dot; }
+.kenten-open-dot { text-emphasis-style: open dot; }
+.kenten-circle { text-emphasis-style: circle; }
+.kenten-open-circle { text-emphasis-style: open circle; }
+.kenten-sesame { text-emphasis-style: sesame; -epub-text-emphasis-style: sesame; }
+.kenten-double-circle { text-emphasis-style: double-circle; }
+.kenten-open-double-circle { text-emphasis-style: open double-circle; }
+.kenten-triangle { text-emphasis-style: triangle; }
+.kenten-open-triangle { text-emphasis-style: open triangle; }
+.align-left { text-align: left; }
+.align-center { text-align: center; }
+.align-right { text-align: right; }
+.proof { background: #ffeb99; }
+ruby { ruby-align: space-around; }
+rt { ruby-align: space-around; }
+ruby.mono rt { ruby-align: center; }
+.sidenote { font-size: 0.85em; }
+@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }
+p { padding-inline-start: 0em; text-indent: 1em; }
+p.ps-box { padding-inline-start: 1em; text-indent: 0em; }
+p.ps-caption { padding-inline-start: 0em; text-indent: 0em; }
+p.ps-sidenote { padding-inline-start: 0em; text-indent: 0em; }
+p.ps-verse { margin-block: 0; }
+p.ps-verse { padding-inline-start: 2em; text-indent: -2em; }
+p.ps-verse + p.ps-verse { margin-block-start: 1em; }
+p.ps-box::before { content: ""; display: block; width: 100%; border-block-start: 0.5pt solid; margin-block: 0 4.6063pt; }
+p.ps-box::after { content: ""; display: block; width: 100%; border-block-start: 0.5pt dashed; margin-block: 4.6063pt 0; }
+h1::after { content: ""; display: block; width: 100%; border-block-start: 0.75pt double; margin-block: 4.6063pt 0; }
+h2::before { content: ""; display: block; width: 6em; border-block-start: 0.3pt solid; margin-block: 0 2.3031pt; }
+li p, li p[class] { padding-inline-start: 0; text-indent: 0; }
+.line { display: block; }
+.line + br { display: none; }
+code { padding-inline: 0.25em; }
+== OEBPS/front.xhtml (deflate, time 315532800, 2305 bytes)
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<title>目次</title>
+<link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body class="vertical">
+<h1 id="h-1-17">目次</h1>
+<nav epub:type="toc" class="toc">
+<ol>
+<li class="toc-1"><a href="chapters/01.xhtml#h-2-0">第一章　<span class="kenten kenten-sesame">活字を拾う</span></a></li>
+<li class="toc-2"><a href="chapters/01.xhtml#h-2-61">一　文選の<ruby class="mono">棚<rp>（</rp><rt>たな</rt><rp>）</rp></ruby></a></li>
+<li class="toc-2"><a href="chapters/01.xhtml#h-2-1889">二　活字の大きさ</a></li>
+<li class="toc-3"><a href="chapters/01.xhtml#h-2-2546">（一）　字面と<ruby>字送り<rp>（</rp><rt>じおくり</rt><rp>）</rp></ruby></a></li>
+<li class="toc-1"><a href="chapters/02.xhtml#h-3-0">第二章　<span class="kenten kenten-sesame">版を組む</span></a></li>
+<li class="toc-2"><a href="chapters/02.xhtml#h-3-31">一　<ruby class="mono">組<rp>（</rp><rt>くみ</rt><rp>）</rp>版<rp>（</rp><rt>はん</rt><rp>）</rp></ruby>の手順</a></li>
+<li class="toc-3"><a href="chapters/02.xhtml#h-3-1231">（一）　工程と<span class="kenten kenten-sesame">日数</span></a></li>
+<li class="toc-2"><a href="chapters/02.xhtml#h-3-1612">二　込め物の<ruby>種類<rp>（</rp><rt>しゅるい</rt><rp>）</rp></ruby></a></li>
+<li class="toc-1"><a href="chapters/03.xhtml#h-4-0">第三章　<span class="kenten kenten-sesame">刷りと校正</span></a></li>
+<li class="toc-2"><a href="chapters/03.xhtml#h-4-32">一　校正の記号</a></li>
+<li class="toc-2"><a href="chapters/03.xhtml#h-4-682">二　赤字を<ruby class="mono">写<rp>（</rp><rt>うつ</rt><rp>）</rp></ruby>す</a></li>
+<li class="toc-3"><a href="chapters/03.xhtml#h-4-719">（一）　刷りの<ruby class="mono">控<rp>（</rp><rt>ひか</rt><rp>）</rp>え<rp>（</rp><rt>え</rt><rp>）</rp></ruby></a></li>
+<li class="toc-3"><a href="chapters/03.xhtml#h-4-1733">（二）　版を崩す</a></li>
+<li class="toc-2"><a href="chapters/03.xhtml#h-4-4125">参考文献</a></li>
+<li class="toc-1"><a href="back.xhtml#h-5-10">索引</a></li>
+</ol>
+</nav>
+</body>
+</html>
+== OEBPS/chapters/01.xhtml (deflate, time 315532800, 6497 bytes)
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<title>活字を拾う</title>
+<link rel="stylesheet" type="text/css" href="../style.css"/>
+</head>
+<body class="vertical">
+<h1 id="h-2-0"><span class="number">第一章</span>　<span class="kenten kenten-sesame">活字を拾う</span></h1>
+<h2 id="h-2-61"><span class="number">一</span>　文選の<ruby class="mono">棚<rp>（</rp><rt>たな</rt><rp>）</rp></ruby></h2>
+<p>町の<ruby class="mono">活<rp>（</rp><rt>かっ</rt><rp>）</rp>版<rp>（</rp><rt>ぱん</rt><rp>）</rp>所<rp>（</rp><rt>じょ</rt><rp>）</rp></ruby><span id="i-2-143"></span>は、表の通りから見ると、ただの古い木造の家である。<span class="kenten kenten-sesame">戸を開けると</span>、油と鉛のにおいが混じった空気が流れてくる。奥の部屋には、<ruby>活字<rp>（</rp><rt>かつじ</rt><rp>）</rp></ruby>を収めた棚が壁いっぱいに並び、天井の近くまで届いている。棚の前に立つ人を<ruby class="mono">文<rp>（</rp><rt>ぶん</rt><rp>）</rp>選<rp>（</rp><rt>せん</rt><rp>）</rp>工<rp>（</rp><rt>こう</rt><rp>）</rp></ruby><span id="i-2-557"></span>と呼ぶ。文選工は、原稿を左手に持ち、右手で一本ずつ活字を拾って、小さな箱に並べていく<a epub:type="noteref" class="noteref" href="#note-1" id="noteref-1">1</a>。</p>
+<p>棚の並びは、文字の使われる多さで決まる。よく使う字は手の届きやすい中央に、まれな字は端の高いところに置く。一日に拾う活字は、熟練した人で八千本ほどだったという。「本当に覚えられるのか<span class="tcy">!?</span>」と、誰もがはじめは思う。目を閉じても手が字の位置に伸びるようになるまで、<span class="tcy">3</span>か月はかかる。</p>
+<figure id="fig-stick">
+<img src="../images/stick.svg" alt="細長い植字用のステッキに活字が並んだ図"/>
+<figcaption><span class="number">図1-1</span>　植字に使う<ruby class="mono">道<rp>（</rp><rt>どう</rt><rp>）</rp>具<rp>（</rp><rt>ぐ</rt><rp>）</rp></ruby>（ステッキ）。活字を一行分ずつ並べる。</figcaption>
+</figure>
+<p>図1-1は、拾った活字を一行分ずつ並べる道具を描いたものである。この道具の名前は「細長い植字用のステッキに活字が並んだ図」とは呼ばれず、現場ではただ「ステッキ」と言った。</p>
+<h2 id="h-2-1889"><span class="number">二</span>　活字の大きさ</h2>
+<p>活字の大きさは、号数とポイントの二つの単位で数えられてきた<span id="i-2-1999"></span>。二つの単位の関係は、次の表のとおりである。この表は、Emet の関数が TSV のファイルを読んで作っている。</p>
+<p>号数とポイントの対応（抜き書き）。</p>
+<table>
+<thead>
+<tr><th>号数</th><th>大きさ</th><th>主な使い道</th></tr>
+</thead>
+<tbody>
+<tr><td>初号</td><td>42ポイント</td><td>書名</td></tr>
+<tr><td>一号</td><td>27.5ポイント</td><td>大見出し</td></tr>
+<tr><td>二号</td><td>21ポイント</td><td>章の題</td></tr>
+<tr><td>三号</td><td>16ポイント</td><td>節の題</td></tr>
+<tr><td>四号</td><td>13.75ポイント</td><td>小見出し</td></tr>
+<tr><td>五号</td><td>10.5ポイント</td><td>本文</td></tr>
+<tr><td>六号</td><td>8ポイント</td><td>ルビと注</td></tr>
+<tr><td>七号</td><td>5.25ポイント</td><td>振り仮名</td></tr>
+</tbody>
+</table>
+<p>本文によく使われた五号の活字は、一本の値段が2銭ほどだった。</p>
+<figure>
+<img src="../images/type-case.png" alt="上から下へ色が淡くなる、縦に長い帯"/>
+<figcaption><span class="number">図1-2</span>　活字の棚の色の<span class="kenten kenten-sesame">移り変わり</span>。上ほどよく使う字が並ぶ。</figcaption>
+</figure>
+<h3 id="h-2-2546"><span class="number">（一）</span>　字面と<ruby>字送り<rp>（</rp><rt>じおくり</rt><rp>）</rp></ruby></h3>
+<p>活字の一本は、字の形が載る面（<ruby class="mono">字<rp>（</rp><rt>じ</rt><rp>）</rp>面<rp>（</rp><rt>づら</rt><rp>）</rp></ruby>）と、それを支える<ruby class="mono">胴<rp>（</rp><rt>どう</rt><rp>）</rp></ruby>からできている。胴の幅を並べたものが字送りであり、和文の活字は胴が正方形なので、字送りは字の大きさに等しい。欧文の活字は字ごとに胴の幅が違い、「i」と「m」では三倍ほども差がある<a epub:type="noteref" class="noteref" href="#note-2" id="noteref-2">2</a>。</p>
+<figure id="fig-press">
+<img src="../images/press.svg" alt="手引きの印刷機を横から見た図"/>
+<figcaption><span class="number">図1-3</span>　手引きの印刷機。</figcaption>
+</figure>
+<p>手引きの印刷機（<a href="#fig-press">手引きの印刷機を横から見た図</a>ページの図1-3）は、版の上に紙を置き、上から<ruby class="mono">平<rp>（</rp><rt>ひら</rt><rp>）</rp>盤<rp>（</rp><rt>ばん</rt><rp>）</rp></ruby>を押し下げて刷る。一枚ずつ刷るので、一日に刷れる数は多くない。町の活版所の仕事の多くは、こうした端物と呼ばれる小さな刷り物である<span id="i-2-3562"></span>。</p>
+<p class="ps-box">大きな仕事が入ると、活版所は急に騒がしくなる。――棚の前に人が並び、ステッキの鳴る音が途切れなくなる。版を組む台の上には、組み終えたページが何枚も重ねられ、校正の刷りを待つ。その間も端物の注文は来るので、主人は夜遅くまで一人で刷り機を動かした<span id="i-2-3974"></span>。</p>
+<section class="notes">
+<h2>注</h2>
+<aside epub:type="footnote" id="note-1"><a href="#noteref-1">1</a> 文選と植字を一人で兼ねる小さな活版所も多かった。仕事の分け方は、<a class="cite" href="../chapters/03.xhtml#cite-jlreq">[1]</a> の扱う範囲の外である。<span id="i-2-898"></span></aside>
+<aside epub:type="footnote" id="note-2"><a href="#noteref-2">2</a> 欧文の字の幅については <a class="cite" href="../chapters/03.xhtml#cite-bringhurst">[2]</a> の第二章が詳しい。</aside>
+</section>
+</body>
+</html>
+== OEBPS/chapters/02.xhtml (deflate, time 315532800, 8225 bytes)
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<title>版を組む</title>
+<link rel="stylesheet" type="text/css" href="../style.css"/>
+</head>
+<body class="vertical">
+<h1 id="h-3-0"><span class="number">第二章</span>　<span class="kenten kenten-sesame">版を組む</span></h1>
+<h2 id="h-3-31"><span class="number">一</span>　<ruby class="mono">組<rp>（</rp><rt>くみ</rt><rp>）</rp>版<rp>（</rp><rt>はん</rt><rp>）</rp></ruby>の手順</h2>
+<p>拾った活字は、植字工の手で版に組まれる<span id="i-3-133"></span>。植字工は、行の長さをそろえ、行と行のあいだに<ruby class="mono">込<rp>（</rp><rt>こ</rt><rp>）</rp>め<rp>（</rp><rt>め</rt><rp>）</rp>物<rp>（</rp><rt>もの</rt><rp>）</rp></ruby>を挟み、ページの形を作っていく。手順は、おおよそ次のとおりである。</p>
+<ol>
+<li>原稿に、字の大きさと行の長さを書き込む。</li>
+<li>文選工が拾った活字を、ステッキに一行ずつ移す。</li>
+<li>行の長さが足りなければ、字のあいだに薄い込め物を足して調える。</li>
+<li>一ページ分の行がそろったら、糸で縛って<ruby class="mono">組<rp>（</rp><rt>くみ</rt><rp>）</rp>版<rp>（</rp><rt>はん</rt><rp>）</rp></ruby>台に移す。</li>
+<li>試し刷りをして、校正に回す。</li>
+</ol>
+<p>三つめの手順が、いちばん手間のかかるところである。行末に句読点や括弧が来ると、そのままでは行の長さが合わなくなる。植字工は、句読点を半分の幅にしたり、字のあいだを少しずつ空けたりして、行をそろえた<a epub:type="noteref" class="noteref" href="#note-1" id="noteref-1">1</a>。</p>
+<h3 id="h-3-1231"><span class="number">（一）</span>　工程と<span class="kenten kenten-sesame">日数</span></h3>
+<p>一冊の本を作るのに要った日数を、ある活版所の記録から拾うと、次のようになる。この表は CSV のファイルから読んでいる。</p>
+<table>
+<thead>
+<tr><th class="align-left">工程</th><th class="align-left">人</th><th class="align-right">日数</th></tr>
+</thead>
+<tbody>
+<tr><td class="align-left">原稿の整理</td><td class="align-left">編集者</td><td class="align-right">2</td></tr>
+<tr><td class="align-left">文選</td><td class="align-left">文選工</td><td class="align-right">3</td></tr>
+<tr><td class="align-left">植字</td><td class="align-left">植字工</td><td class="align-right">4</td></tr>
+<tr><td class="align-left">校正</td><td class="align-left">校正者</td><td class="align-right">3</td></tr>
+<tr><td class="align-left">組版の直し</td><td class="align-left">植字工</td><td class="align-right">2</td></tr>
+<tr><td class="align-left">印刷</td><td class="align-left">印刷工</td><td class="align-right">2</td></tr>
+<tr><td class="align-left">製本</td><td class="align-left">製本工</td><td class="align-right">3</td></tr>
+</tbody>
+</table>
+<p>日数を足すと十九日になる。このうち、<span class="kenten kenten-sesame">文選と植字だけで七日</span>を使っている。</p>
+<h2 id="h-3-1612"><span class="number">二</span>　込め物の<ruby>種類<rp>（</rp><rt>しゅるい</rt><rp>）</rp></ruby></h2>
+<p>込め物は、字のないところを埋める材料である。形と大きさによって、次のように呼び分けられた<span id="i-3-1791"></span>。</p>
+<dl>
+<dt><ruby class="mono">全<rp>（</rp><rt>ぜん</rt><rp>）</rp>角<rp>（</rp><rt>かく</rt><rp>）</rp></ruby></dt>
+<dd>
+<p>字の大きさと同じ正方形の込め物。段落の一字下げに使う。</p>
+</dd>
+<dt>二分</dt>
+<dd>
+<p>全角の半分の幅の込め物。句読点の後ろの空きに使う。</p>
+</dd>
+<dt>四分</dt>
+<dd>
+<p>全角の四分の一の幅の込め物。和文と欧文のあいだの空きに使う。</p>
+</dd>
+<dt>インテル</dt>
+<dd>
+<p>行と行のあいだに挟む、薄く長い板。行の送りを決める。</p>
+</dd>
+</dl>
+<p>込め物の種類と使い道を、表にまとめておく。</p>
+<table>
+<thead>
+<tr><th class="align-left">名前</th><th class="align-left">幅</th><th class="align-left">主な使い道</th></tr>
+</thead>
+<tbody>
+<tr><td class="align-left">全角<span id="i-3-2364"></span></td><td class="align-left">一字</td><td class="align-left">段落の字下げ</td></tr>
+<tr><td class="align-left">二分</td><td class="align-left">半字</td><td class="align-left">句読点の後</td></tr>
+<tr><td class="align-left">三分</td><td class="align-left">三分の一字</td><td class="align-left">欧文の語のあいだ</td></tr>
+<tr><td class="align-left">四分<span id="i-3-2535"></span></td><td class="align-left">四分の一字</td><td class="align-left">和文と欧文のあいだ</td></tr>
+<tr><td class="align-left">八分</td><td class="align-left">八分の一字</td><td class="align-left">字の調整</td></tr>
+<tr><td class="align-left">インテル</td><td class="align-left">行の長さ</td><td class="align-left">行のあいだ</td></tr>
+<tr><td class="align-left">込め木</td><td class="align-left">ページの幅</td><td class="align-left">版の外の余り</td></tr>
+<tr><td class="align-left">クワタ</td><td class="align-left">数字</td><td class="align-left">行末の大きな余り</td></tr>
+</tbody>
+</table>
+<figure id="fig-timeline">
+<img src="../images/timeline.svg" alt="横に長い線の上に、四つの印と四つの箱を交互に置いた年表の図"/>
+<figcaption><span class="number">図2-1</span>　活版所の一年。版を組む仕事は、年末と年度の替わり目に集まる。</figcaption>
+</figure>
+<p>図2-1のとおり、仕事は季節によって大きく偏る。年末には年賀状と暦の注文が重なり、春には学校と役所の書類が続く。</p>
+<p class="ps-box">組版の台の上では、版はいつも裏返しに組まれる。刷ったときに正しい向きになるよう、字は左右が逆に彫られているからである。植字工は、逆さの字を逆さのまま読み、行の間違いを見つけなければならない。慣れた人は、鏡に映した新聞を読むように、版の上の字をすらすらと読んだという。それでも、似た形の字の取り違えはなくならない。「ぱ」と「ば」、「シ」と「ツ」、「未」と「末」は、校正の刷りで最もよく赤字の入る組み合わせだった。こうした間違いを減らすために、ある活版所では、似た字の棚を離して置き、拾うときに手が迷わないようにしていた。棚の配置そのものが、間違いを防ぐ仕組みになっていたのである。棚を並べ替えるのは大仕事で、何日も店を閉めなければならなかった。それでも、取り違えの数が目に見えて減ったので、主人は並べ替えてよかったと語っていた。同じ工夫は、ほかの町の活版所にも広まり、やがて棚の標準の配置として本にまとめられた。もっとも、標準の配置がそのまま使われた活版所は多くない。字の使われ方は、刷る物によって違うからである。名刺を多く刷る店では人名の漢字を、役所の書類を多く刷る店では「申」「請」「届」のような字を、手前の棚に置いた。標準の配置は出発点にすぎず、それぞれの店が自分の仕事に合わせて少しずつ崩していった。崩した配置は、その店の職人にしか分からない。よその店から来た職人は、腕がよくても、はじめの一月ほどは字を探して棚の前を行き来することになった。</p>
+<section class="notes">
+<h2>注</h2>
+<aside epub:type="footnote" id="note-1"><a href="#noteref-1">1</a> この調整の規則は、のちに <a class="cite" href="../chapters/03.xhtml#cite-jisx4051">[3]</a> にまとめられた。<span id="i-3-1160"></span></aside>
+</section>
+</body>
+</html>
+== OEBPS/chapters/03.xhtml (deflate, time 315532800, 6023 bytes)
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<title>刷りと校正</title>
+<link rel="stylesheet" type="text/css" href="../style.css"/>
+</head>
+<body class="vertical">
+<h1 id="h-4-0"><span class="number">第三章</span>　<span class="kenten kenten-sesame">刷りと校正</span></h1>
+<h2 id="h-4-32"><span class="number">一</span>　校正の記号<span id="i-4-50"></span></h2>
+<p>試し刷りの紙には、校正者が赤い字で直しを書き込む。直しの書き方には決まった記号があり、植字工はそれを見て版を直す。よく使う記号を、手引きの一部から抜き出して載せる。</p>
+<figure class="listing"><figcaption>リスト3-1　校正記号の手引き（抜き書き）</figcaption><pre><code>校正記号の一覧（抜き書き）
+トル　　　　　　　：字を削る
+イキ　　　　　　　：直しを取り消し、もとの字を生かす
+ママ　　　　　　　：疑わしいが原稿のとおりにする
+入レ替エ　　　　　：前後の字を入れ替える
+アキ　　　　　　　：字のあいだを空ける</code></pre></figure>
+<p>記号の意味を取り違えると、直したはずの字がかえって間違ってしまう。たとえば「イキ」は、一度入れた直しを取り消す記号であり、<span class="kenten kenten-sesame">字を足せという意味ではない</span>。</p>
+<h2 id="h-4-682"><span class="number">二</span>　赤字を<ruby class="mono">写<rp>（</rp><rt>うつ</rt><rp>）</rp></ruby>す</h2>
+<h3 id="h-4-719"><span class="number">（一）</span>　刷りの<ruby class="mono">控<rp>（</rp><rt>ひか</rt><rp>）</rp>え<rp>（</rp><rt>え</rt><rp>）</rp></ruby></h3>
+<p>活版所では、刷り上がった校正紙を、仕事ごとに束ねて控えにしていた。次の例は、ある束の表紙に書かれていた覚え書きを、そのまま写したものである。長い行は、ページの幅で折り返して載せている。</p>
+<pre><code>覚え書き（第三校）
+一、組み直しは第二ページの三行目から第四ページの終わりまで。行の送りが変わるので、後ろのページの見出しの位置も合わせて確かめること。
+二、図版の版は前の刷りのものを使う。
+三、校了の後、版は崩さずに十日置く。</code></pre>
+<p>校正は、たいてい三回か四回くり返された<a epub:type="noteref" class="noteref" href="#note-1" id="noteref-1">1</a>。一回めの校正では字の間違いを、二回めでは行の送りと見出しの位置を、三回めでは全体の体裁を見る。</p>
+<h3 id="h-4-1733"><span class="number">（二）</span>　版を崩す</h3>
+<p>校了になって刷り終えた版は、すぐには崩さない。増し刷りの注文が来るかもしれないからである。しばらく置いて注文がなければ、活字を一本ずつ棚に戻す。この仕事を「解版」と呼んだ<span id="i-4-2009"></span>。解版は文選の逆の手順で、拾ったときと同じ数の活字を、同じ棚に戻していく。</p>
+<p>次は、ある活版所の一日の仕事を、時刻の順に書き出したものである。</p>
+<pre><code>午前六時　　　戸を開け、床を掃く
+午前七時　　　火を起こし、地金を溶かす
+午前七時半　　前日の注文を帳場で確かめる
+午前八時　　　文選を始める
+午前九時　　　植字を始める
+午前十時　　　植字工が前日の版を直す
+午前十一時　　端物の版を刷り機にかける
+正午　　　　　昼食
+午後一時　　　試し刷りを校正者に回す
+午後二時　　　赤字の入った刷りを植字工に戻す
+午後三時　　　刷り機を動かす
+午後四時　　　刷り上がった紙を揃え、断ち落とす
+午後五時　　　解版
+午後五時半　　活字を棚に戻す
+午後六時　　　帳簿をつける
+午後六時半　　翌日の地金を量る
+午後七時　　　店を閉める</code></pre>
+<p class="ps-box">解版した活字は、そのまま棚に戻せるとは限らない。刷りを重ねた活字は、字面の角が丸くなり、細い線がかすれてくる。そうした活字は、棚に戻さずに箱に分けておき、まとめて鋳造所へ送って地金に戻した。鋳造所では、地金を溶かして新しい活字を鋳込み、活版所へ送り返す。一本の活字は、こうして何度も形を変えながら、町の中をめぐっていた。活版所の帳簿には、送った地金の重さと、戻ってきた活字の数が、月ごとに細かく書き留められている。重さと数の釣り合いが崩れると、どこかで活字がなくなったことになるので、主人は月の終わりに必ず棚を数え直した。</p>
+<p>活字の棚が空になることはなかった。拾っては戻し、戻しては拾う仕事が、毎日くり返された。町の活版所は、そうして百年近く、町の刷り物を作り続けてきたのである。</p>
+<h2 id="h-4-4125">参考文献</h2>
+<ol class="bibliography">
+<li id="cite-jlreq">『日本語組版処理の要件』、W3C、2020、<a class="cs-url" href="https://www.w3.org/TR/jlreq/">https://www.w3.org/TR/jlreq/</a>。</li>
+<li id="cite-bringhurst">Bringhurst Robert. The Elements of Typographic Style. Hartley &amp; Marks. 2012.</li>
+<li id="cite-jisx4051">JIS X 4051:2004 日本語文書の組版方法、日本規格協会、2004。</li>
+</ol>
+<section class="notes">
+<h2>注</h2>
+<aside epub:type="footnote" id="note-1"><a href="#noteref-1">1</a> 校正の回数と手順は活版所ごとに違った。<a class="cite" href="#cite-jlreq">[1]</a> は組版の結果を扱い、校正の手順は扱わない。</aside>
+</section>
+</body>
+</html>
+== OEBPS/back.xhtml (deflate, time 315532800, 1228 bytes)
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<title>索引</title>
+<link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body class="vertical">
+<h1 id="h-5-10">索引</h1>
+<section class="index">
+<ul>
+<li>解版 <a href="chapters/03.xhtml#i-4-2009">1</a></li>
+<li>活版所 <a href="chapters/01.xhtml#i-2-143">1</a></li>
+<li>行末 / 句読点 <a href="chapters/02.xhtml#i-3-1160">1</a></li>
+<li>号数 <a href="chapters/01.xhtml#i-2-1999">1</a></li>
+<li>校正 / 記号 <a href="chapters/03.xhtml#i-4-50">1</a></li>
+<li>込め物 <a href="chapters/02.xhtml#i-3-1791">1</a></li>
+<li>四分 <a href="chapters/02.xhtml#i-3-2535">1</a></li>
+<li>植字 / 手順 <a href="chapters/02.xhtml#i-3-133">1</a></li>
+<li>植字 / 文選との違い <a href="chapters/01.xhtml#i-2-898">1</a></li>
+<li>全角 <a href="chapters/02.xhtml#i-3-2364">1</a></li>
+<li>帳簿 <a href="chapters/01.xhtml#i-2-3974">1</a></li>
+<li>端物 <a href="chapters/01.xhtml#i-2-3562">1</a></li>
+<li>文選 / 文選工 <a href="chapters/01.xhtml#i-2-557">1</a></li>
+</ul>
+</section>
+</body>
+</html>
+== OEBPS/fonts/ja.otf (deflate, time 315532800, 6210492 bytes)
+[binary: 6210492 bytes, SHA-256 2c9a12dbd4f2408c4610c7ee84a108b62d7236c3775baed618c64d9cb44b2f04]
+== OEBPS/fonts/latin.otf (deflate, time 315532800, 220852 bytes)
+[binary: 220852 bytes, SHA-256 cd978d919f1c6015f2b61530ece710215762bc39ba54e0b977005582c9b86a1d]
+== OEBPS/images/press.svg (deflate, time 315532800, 553 bytes)
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="160" viewBox="0 0 120 160">
+  <rect x="20" y="10" width="80" height="12" fill="#3a3a3a"/>
+  <rect x="54" y="22" width="12" height="60" fill="#6b6b6b"/>
+  <rect x="25" y="82" width="70" height="14" fill="#3a3a3a"/>
+  <rect x="15" y="120" width="90" height="10" fill="#8a5a2b"/>
+  <rect x="10" y="130" width="10" height="25" fill="#3a3a3a"/>
+  <rect x="100" y="130" width="10" height="25" fill="#3a3a3a"/>
+  <circle cx="100" cy="40" r="14" fill="none" stroke="#3a3a3a" stroke-width="3"/>
+</svg>
+== OEBPS/images/stick.svg (deflate, time 315532800, 615 bytes)
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="320" viewBox="0 0 80 320">
+  <rect x="10" y="10" width="60" height="300" fill="#f4ead8" stroke="#5a3e1b" stroke-width="3"/>
+  <rect x="10" y="10" width="60" height="16" fill="#5a3e1b"/>
+  <g fill="#2b2b2b">
+    <rect x="22" y="40" width="36" height="22"/>
+    <rect x="22" y="70" width="36" height="22"/>
+    <rect x="22" y="100" width="36" height="22"/>
+    <rect x="22" y="130" width="36" height="22"/>
+    <rect x="22" y="160" width="36" height="22"/>
+  </g>
+  <path d="M40 200 L40 290" stroke="#5a3e1b" stroke-width="2" stroke-dasharray="6 4"/>
+</svg>
+== OEBPS/images/timeline.svg (deflate, time 315532800, 606 bytes)
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360">
+  <path d="M20 180 L460 180" stroke="#1d3557" stroke-width="4"/>
+  <g fill="#e63946">
+    <circle cx="60" cy="180" r="10"/>
+    <circle cx="170" cy="180" r="10"/>
+    <circle cx="280" cy="180" r="10"/>
+    <circle cx="390" cy="180" r="10"/>
+  </g>
+  <g fill="#a8dadc" stroke="#1d3557" stroke-width="2">
+    <rect x="30" y="70" width="60" height="40"/>
+    <rect x="140" y="250" width="60" height="40"/>
+    <rect x="250" y="70" width="60" height="40"/>
+    <rect x="360" y="250" width="60" height="40"/>
+  </g>
+</svg>
+== OEBPS/images/type-case.png (deflate, time 315532800, 133 bytes)
+[binary: 133 bytes, SHA-256 b1c6105d041106efb182f86e2bddf323847a329e2cfb6622a28a3b4ec4e2e091]

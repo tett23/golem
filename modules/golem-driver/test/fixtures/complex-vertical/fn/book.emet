@@ -1,0 +1,28 @@
+-- The functions of the vertical book of docs/adr/0175: an inline
+-- function, a block function that reads a TSV with File.read and makes a
+-- table, and a filter that changes the first heading of a file.
+
+pub inline price :: Nat -> (unit :: String = "円") -> Inlines
+price n unit = Inline.text (String.fromNat n ++ unit)
+
+pub block "type-table" typeTable :: Blocks -> <file "data/types.tsv"> Blocks
+typeTable body = body ++ table (rows (File.read "data/types.tsv"))
+
+table :: List (List String) -> Blocks
+table [] = []
+table (header : rest) = Block.table (List.map Inline.text header) (List.map row rest)
+
+rows :: String -> List (List String)
+rows text = List.map cells (List.select filled (String.lines text))
+  where {
+    cells line = String.split "\t" line
+    filled line = String.length line > 0
+  }
+
+row :: List String -> List Inlines
+row cells = List.map Inline.text cells
+
+-- kenten on the first heading of a file
+pub filter "mark-first" markFirst :: Blocks -> Blocks
+markFirst (Block.Heading l attrs xs : rest) = Block.Heading l attrs (Inline.kenten xs) : rest
+markFirst bs = bs

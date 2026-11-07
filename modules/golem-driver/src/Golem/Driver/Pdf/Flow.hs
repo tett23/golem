@@ -1855,9 +1855,7 @@ spaceAfterCode pitch fs infos = \case
 -- | Numbers the lines of the next unit in document order.
 numberUnit :: FlowEnv -> ComposedUnits -> Numbered -> (Int, Unit) -> Numbered
 numberUnit fe cu nb (i, u) = case uKind u of
-  UTable {} -> case Map.lookup i (cuTables cu) of
-    Just r -> numberTable fe u r nb
-    Nothing -> nb
+  UTable {} -> maybe nb (\r -> numberTable fe u r nb) (Map.lookup i (cuTables cu))
   _ -> headingAndTocLines (pgFontSize (feGeom fe)) cu (nuNext nb) i u (numberOther fe cu nb (i, u))
 
 -- | Numbers the lines of a table, or adds its error (G07041, G07042).
@@ -1922,13 +1920,9 @@ numberOther :: FlowEnv -> ComposedUnits -> Numbered -> (Int, Unit) -> Numbered
 numberOther fe cu nb (i, u)
   | Map.member i (cuBesides cu) = nb -- set beside its figure
   | otherwise = case uKind u of
-      UFigure _ -> case Map.lookup i (cuFigures cu) of
-        Nothing -> nb
-        Just placed -> numberFigure fe cu i u placed nb
+      UFigure _ -> maybe nb (\placed -> numberFigure fe cu i u placed nb) (Map.lookup i (cuFigures cu))
       UGap n -> nb {nuFlow = nuFlow nb <> [FSpace n]}
-      UCode {} -> case Map.lookup i (cuCodeBlocks cu) of
-        Nothing -> nb
-        Just cb -> numberCode u cb nb
+      UCode {} -> maybe nb (\cb -> numberCode u cb nb) (Map.lookup i (cuCodeBlocks cu))
       UBreak k -> nb {nuFlow = nuFlow nb <> [FBreak k]}
       UPageControl c ->
         let control = case c of

@@ -3934,6 +3934,8 @@ CRLF は誤りにしない。
 ### 直し方
 
 表のファイルの改行を LF か CRLF にして保存し直す。
+引数なしの `golem fmt` で、`@table` が読む表のファイルの単独の CR と CRLF を LF に直せる（[ADR 0186](adr/0186-fmt-table-files.md)）。
+拡張子が `.csv` か `.tsv` のファイルは、`golem fmt` の引数に渡しても直せる。
 
 ## G02083
 

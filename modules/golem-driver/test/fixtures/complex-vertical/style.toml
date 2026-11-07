@@ -1,0 +1,68 @@
+# 縦組みの一段の本（docs/adr/0175）
+[page]
+size = "B6"
+binding = "right"
+writing-mode = "vertical"
+
+[page.grid]
+font-size = "13Q"
+characters = 40
+lines = 15
+line-pitch = "24H"
+columns = 1
+position = { top = "20mm", gutter = "20mm" }
+
+[fonts.body]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[fonts.code]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[headings.1]
+number = "第{n:kanji}章"
+page-break = "recto"
+rule-after = { weight = "0.75pt", space-before = "0.5zw", style = "thick-thin" }
+
+[headings.2]
+number = "{n:kanji}"
+rule-before = { weight = "0.3pt", space-after = "0.25zw", length = "6zw" }
+
+[headings.3]
+number = "（{n:kanji}）"
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[paragraph-styles.box]
+indent = "1zw"
+first-line-indent = "0zw"
+rule-before = { weight = "0.5pt", space-after = "0.5zw" }
+rule-after = { weight = "0.5pt", space-before = "0.5zw", style = "dashed" }
+
+[paragraph-styles.code]
+size = "12Q"
+
+[composition]
+hanging-punctuation = true
+kenten = "sesame"
+
+[numbers]
+vertical = "kanji"
+
+[notes.rule]
+length = "8zw"
+space-before = "0.5zw"
+space-after = "0.5zw"
+
+[figures]
+number = "図{chapter}-{n}"
+
+[index]
+columns = 2
+column-gap = "2zw"
+
+[masters.body]
+running-head = { position = "top-outside", content = "heading.1.numbered" }
+folio = { position = "bottom-outside", format = "{n}" }
