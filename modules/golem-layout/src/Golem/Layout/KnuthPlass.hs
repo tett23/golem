@@ -9,6 +9,8 @@ module Golem.Layout.KnuthPlass
     Hyphen (..),
     isPatternHyphen,
     BoxContent (..),
+    Leaf (..),
+    noLeaf,
     Params (..),
     defaultParams,
     Line (..),
@@ -62,9 +64,27 @@ data BoxContent = BoxContent
     {- | the definition that decided the size of the box and where its
     characters are in the source (golem-cli ADR 0008), for golem preflight.
     The algorithm does not read it, and nothing that draws the box does.
-    -} bcSource :: !BoxSource
+    -} bcSource :: !BoxSource,
+    {- | the leaf of the structure tree of the PDF that the characters of
+    the box belong to (docs/adr ADR 0183); the reading of a ruby box is
+    the next leaf. The algorithm does not read it.
+    -} bcLeaf :: !Leaf
   }
   deriving stock (Eq, Show)
+
+{- | A leaf of the structure tree of the PDF (docs/adr ADR 0183): the place
+of the composition, which the caller names, and the leaf in it, numbered
+in the order of the inlines. A box of no place is not read: an artifact.
+-}
+data Leaf = Leaf
+  { leafSite :: ![Int],
+    leafIndex :: !Int
+  }
+  deriving stock (Eq, Ord, Show)
+
+-- | The leaf of a box of no place.
+noLeaf :: Leaf
+noLeaf = Leaf [] 0
 
 -- | What kind of break a penalty is (ADR 0008).
 data Hyphen

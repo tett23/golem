@@ -41,6 +41,7 @@ import LineBreakingSpec (lineBreakingTests)
 import PaginateSpec (paginateTests)
 import PunctuationSpec (punctuationTests)
 import RuleAreaSpec (ruleAreaTests)
+import StructureSpec (structureTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
@@ -50,14 +51,14 @@ main :: IO ()
 main = defaultMain tests
 
 box :: Sp -> Item
-box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [] 0 0 noBoxSource)
+box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [] 0 0 noBoxSource noLeaf)
 
 -- | Words of the given widths separated by interword glue.
 paragraph :: [Sp] -> [Item]
 paragraph ws = concat [box w : [Glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 refBox :: Text -> Sp -> Item
-refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource)
+refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource noLeaf)
 
 knuthPlassWords, knuthPlassLog :: FilePath
 knuthPlassWords = "test/data/knuth-plass/frog-king.words"
@@ -218,6 +219,12 @@ legal items =
 nid :: Int -> NoteId
 nid k = NoteId (mkSpan (FileId 0) k (k + 1)) 0
 
+-- | Items with the leaves of their boxes cleared (docs/adr ADR 0183).
+withoutLeaves :: [Item] -> [Item]
+withoutLeaves = map $ \case
+  Box w c -> Box w c {bcLeaf = noLeaf}
+  x -> x
+
 noteMarkTests :: [TestTree]
 noteMarkTests =
   [ testCase "a note mark joins the character before it, without spacing" $ do
@@ -230,7 +237,8 @@ noteMarkTests =
           boxKind m @?= KindNoteMark
           [bcText c | Box _ c <- rest] @?= ["字"]
           -- after the mark, what comes between 漢 and 字 without it: no spacing of Latin text
-          rest @?= drop 1 (compose (defaultComposeEnv fs) "漢字")
+          -- the leaves aside: the text after a mark is a leaf of its own (docs/adr ADR 0183)
+          withoutLeaves rest @?= drop 1 (compose (defaultComposeEnv fs) "漢字")
         other -> assertFailure (show other),
     testCase "the width of a mark: its advance at half the size across, half the size down" $ do
       let env = (defaultComposeEnv fs) {ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == Sp (unSp fs `div` 2) then 3 / 5 else 1)}
@@ -261,7 +269,7 @@ noteMarkTests =
           without = compose env "」あ"
           with = fst (composeInlines env [sp0 "」", note 1, sp0 "あ"])
           afterMark = drop 1 (dropWhile (\case Box _ c -> boxKind c /= KindNoteMark; _ -> True) with)
-      afterMark @?= drop 1 without,
+      withoutLeaves afterMark @?= drop 1 without,
     testCase "the mark of a paragraph start has no leading space, its line end edge is 0" $ do
       let with = fst (composeInlines (defaultComposeEnv fs) [note 1, sp0 "「あ」"])
           without = compose (defaultComposeEnv fs) "「あ」"
@@ -333,6 +341,7 @@ tests =
       doubleDashTests,
       codeSpaceTests,
       urlBreakTests,
+      structureTests,
       combiningTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
@@ -694,12 +703,12 @@ tests =
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
             ws <- forAll (Gen.list (Range.linear 3 12) (Sp <$> Gen.integral (Range.linear 20 70)))
-            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource) | w <- ws] `interleave` Glue 6 3 2 <> finish
+            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource noLeaf) | w <- ws] `interleave` Glue 6 3 2 <> finish
                 r = breakParagraph defaultParams {pExpansion = Just (20, 5)} (const 150) items
             mapM_ (\l -> assert (abs (lineExpansion l) <= 20 && lineExpansion l `mod` 5 == 0)) (brLines r),
           testCase "expansion lowers the spread of adjustment ratios" $ do
             let ws = [23, 41, 37, 19, 52, 33, 28, 45, 31, 26, 39, 22, 48, 35, 29, 41]
-                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource) | w <- ws] `interleave` Glue 600 300 200 <> finish
+                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource noLeaf) | w <- ws] `interleave` Glue 600 300 200 <> finish
                 variance ps =
                   let rs = map glueRatio (init (brLines (breakParagraph ps (const 15000) items)))
                       m = sum rs / fromIntegral (length rs)
@@ -1434,7 +1443,7 @@ rubyOf segs = Ruby sp () [RubySegment [Text sp b] r | (b, r) <- segs]
 
 -- | A box with edges (the overhang of a ruby).
 edgeBox :: Sp -> (Sp, Sp) -> Item
-edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [] 0 0 noBoxSource)
+edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [] 0 0 noBoxSource noLeaf)
 
 -- | The start and end of each box of a set line.
 boxSpans :: Line -> [(Sp, Sp)]

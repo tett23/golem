@@ -60,6 +60,58 @@ PDF の版（1.6）、各ページの `TrimBox` と `BleedBox`、フォントの
 意味内容は全媒体で同一とする。
 提示と、ページという概念に由来する派生物（ページ番号、柱[^running-head]、脚注の配置、相互参照の実現形）は媒体ごとに分岐する。
 
+### タグ付き PDF
+
+すべての PDF をタグ付き PDF にする（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
+カタログに `/MarkInfo << /Marked true >>` と `/StructTreeRoot` を書き、ページの内容はすべて、構造の要素の印付きの内容（`/<型> << /MCID n >> BDC` と `EMC`）か、アーティファクト（`/Artifact << /Type /Pagination >>` か `/Layout`）にする。
+MCID は、ページごとに 0 から内容のストリームの順に振る。
+一つの葉が二つのページに分かれれば、ページごとに別の MCID になり、構造の要素の子は `/Pg` を持つ `MCR` になる。
+`StructTreeRoot` は、`ParentTree`（ページの `StructParents` の番号から、MCID ごとの構造の要素を引く数の木）、`ParentTreeNextKey`、`Note` の `ID` を引く `IDTree` を持つ。
+構造の要素のオブジェクトは、今のオブジェクトの並びの後、文書情報辞書の前に、構造の木の前順で振る。
+
+構造の木は、意味論 IR から、ISO 32000-1 の標準の構造の型だけで作る。
+標準でない型を使わないので、`RoleMap` は書かない。
+構造の木の順は IR の順であり、読む順は構造の木の順である。
+内容のストリームに描く順は変えない。
+
+| IR の要素 | 構造の要素 |
+| --- | --- |
+| 文書の全体 | `Document`。縦組みの本は、属性 `/A << /O /Layout /WritingMode /TbRl >>` を持つ |
+| 段落 | `P`。行を保つ段落スタイルの段落も一つの `P` |
+| 見出し（段 n） | `Hn`。見出しの番号と題を含む |
+| 箇条書き、番号付きの箇条書き | `L`（`/A << /O /List /ListNumbering /Disc >>`、番号付きは `/Decimal`）、項目は `LI`、行頭の記号と番号は `Lbl`、項目のブロックは `LBody` |
+| 定義リスト | `L`（`/ListNumbering /None`）、組は `LI`、用語は `Lbl`、説明のブロックは `LBody` |
+| 表 | `Table`、行は `TR`、見出しの行のセルは `TH`（`/A << /O /Table /Scope /Column >>`）、ほかのセルは `TD` |
+| コードブロック | `Div`。キャプション（リスト番号を含む）は `Caption`、ファイル名と、コードの一行ずつ（折り返した行を含む）は `P` の中の `Code` |
+| 図版 | `Div` の中に、`Figure` とキャプションの `Caption`。`Figure` は `/Alt` に `alt` を、`/A << /O /Layout /BBox [...] /Placement /Block >>` に最初に描いたページの矩形を持つ |
+| 目次（`@toc`） | `TOC`、項目は `TOCI`。項目の題と番号とページ番号を含む |
+| 索引（`@index`） | `Index`、見出しの文字と項目の行は `P` |
+| 参考文献（`@bibliography`） | `L`（`/ListNumbering /None`）、項目は `LI`、番号は `Lbl`、項目の文は `LBody` の中の `BibEntry` |
+| プラグインのチャネルの一覧 | `Div`、項目は `P` |
+| ルビ（読みのある区切り一つ） | `Ruby`、親文字は `RB`、読みは `RT` |
+| 脚注、傍注、章末の注 | 本文の注の印は `Reference`、その直後に `Note`。`Note` は `ID`（`note-1` から文書の順）、注の側の印の `Lbl`、注の本文の `P` を持つ |
+| 相互参照（`[ref-*]`）、引用の印（`[cite]`） | `Reference` |
+| 文字スタイル `code`（と、それに行き着く文字スタイル） | `Code` |
+| ほかの文字スタイル、色、圏点の親文字、縦中横、数 | 親の構造の要素の中身のまま |
+
+読みのない区切りの親文字は `Ruby` を作らない。
+`RP` は使わない。
+章末の注の `Note` も、本文の注の印の直後に置く。
+プラグインと `.gm` の関数が返したブロックも、同じ対応で構造の要素にする。
+
+次のものはアーティファクトにする。
+
+| 描くもの | 種類 |
+| --- | --- |
+| 柱、ノンブル、隠しノンブル、トンボ | `Pagination` |
+| ページをまたいだ表の二ページめからの見出しの行 | `Pagination`。最初の見出しの行だけを `TH` にする |
+| ページをまたいだコードブロックの続きの表示 | `Pagination` |
+| 罫（段落と見出しの罫、表の罫、注の区切りの線）、コードの背景と枠、強調と差分の帯、行の中のコードの背景 | `Layout` |
+| コードの行番号と折り返した印、目次の項目のリーダー、圏点の印、章末の注の一覧の見出し | `Layout` |
+
+`Pagination` には `/Subtype` を書かない。
+取り込んだ PDF の図版は、`Figure` の印付きの内容の中に、ページの中身の Form として描く。
+
 ### PDF/A と PDF/UA の宣言
 
 `manifest.toml` の `[targets.pdf]` の `pdfa` と `pdfua` で、PDF/A-2a（ISO 19005-2）と PDF/UA-1（ISO 14289-1）を宣言する（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
@@ -100,6 +152,13 @@ PDF/A と PDF/UA の要件を Golem の中で一般に検査することはし�
 
 取り込んだ PDF の図版の内容のストリームからは、アーティファクトの印付きの内容と、`MCID` を持つ印付きの内容の、印の演算子（`BMC`、`BDC`、`EMC`）を取り除く。
 中の内容は残すので、図版の見た目は変わらない。
+
+CI の `verapdf` ジョブが、宣言した本の PDF を veraPDF で PDF/A-2a と PDF/UA-1 として検証する。
+`build` の x86-64 の `outputs` のランナーが、蟹工船、The Tempest、figures の fixture と、構造の要素をすべて含む `conformance` の fixture（横組みと縦組みの二通り）の写しに、出力インテントと `pdfa = "2a"`、`pdfua = "1"` を足して組み（`scripts/ci/conformance-pdfs.sh`）、成果物 `conformance-pdfs` として上げる。
+出力インテントには、`scripts/ci/testdata/conformance/golem-test-cmyk.icc`（Golem のために作った小さな CMYK のプロファイル）を使う。
+`verapdf` ジョブは、veraPDF を、版を固定した nixpkgs から Nix で取得し、ストアのパスが `ci.yml` の `VERAPDF_STORE_PATH` と違えば検証の前に失敗する。
+`scripts/ci/verapdf.sh` は、まずタグのない PDF（`scripts/ci/testdata/verapdf/untagged.pdf`）が PDF/UA-1 に適合しないことを確かめ、次にすべての PDF を `-f 2a` と `-f ua1` で検証し、どれかが適合しなければ、その PDF と規則の番号を書いて失敗する。
+`ci` ジョブはこのジョブも待つので、適合しない PDF を組む変更はマージできない。
 
 ## 処理の流れ
 

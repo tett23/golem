@@ -10,13 +10,14 @@ module Golem.Pdf.Marks
     sheet,
     markRules,
     framePage,
+    frameOrigin,
     registrationRects,
     checkRegistration,
   )
 where
 
 import Golem.Pdf.Rect (Rect (..))
-import Golem.Pdf.Writer (Mark (..), Page (..), Sp (..), turnRect)
+import Golem.Pdf.Writer (ArtifactKind (..), Content (..), Mark (..), Move (..), Page (..), Sp (..), turnRect)
 
 data MarkStyle = Japanese | Western
   deriving stock (Eq, Show)
@@ -109,24 +110,34 @@ markRules style bleed (w, h) = concatMap corner corners <> centres
 
 {- | A page of size @(w, h)@ with its content, framed by the bleed and the
 marks. The content is moved to the trimmed page; the marks are drawn
-after it in the registration colour (ADR 0007).
+after it in the registration colour (ADR 0007), as a Pagination artifact
+(docs/adr ADR 0183).
 -}
-framePage :: Maybe MarkStyle -> Sp -> (Sp, Sp) -> [Mark] -> Page
+framePage :: Maybe MarkStyle -> Sp -> (Sp, Sp) -> [Content] -> Page
 framePage marks bleed size content =
   let s = sheet marks bleed size
       m = shOrigin s
-      drawn = [RegistrationRules (markRules st bleed size) | Just st <- [marks]]
+      drawn = [Artifact Pagination [RegistrationRules (markRules st bleed size)] | Just st <- [marks]]
       content'
         | m == 0 = content
-        | otherwise = [Translated m m (content <> drawn)]
+        | otherwise = [Moved (MoveBy m m) (content <> drawn)]
    in Page (shMedia s) (shTrim s) (shBleed s) content'
+
+-- | Where 'framePage' moves the content of a page to: the lower left corner of the trimmed page, on both axes.
+frameOrigin :: Maybe MarkStyle -> Sp -> (Sp, Sp) -> Sp
+frameOrigin marks bleed size = shOrigin (sheet marks bleed size)
 
 {- | The rectangles of the 'RegistrationRules' in page content, in page
 coordinates: the moves of 'Translated' are added (ADR 0007).
 -}
-registrationRects :: [Mark] -> [Rect]
-registrationRects = concatMap (go 0 0)
+registrationRects :: [Content] -> [Rect]
+registrationRects = concatMap (content 0 0)
   where
+    content dx dy = \case
+      Tagged _ ms -> concatMap (go dx dy) ms
+      Artifact _ ms -> concatMap (go dx dy) ms
+      Moved (MoveBy x y) cs -> concatMap (content (dx + x) (dy + y)) cs
+      Moved (MoveTurn t (Rect x y w h)) cs -> map (turnRect t (Rect (x + dx) (y + dy) w h)) (concatMap (content 0 0) cs)
     go dx dy = \case
       RegistrationRules rs -> [Rect (x + dx) (y + dy) w h | Rect x y w h <- rs]
       Saved ms -> concatMap (go dx dy) ms

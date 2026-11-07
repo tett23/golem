@@ -55,6 +55,7 @@ module Golem.Driver.Pdf
     fitFigure,
     renderPdf,
     renderPdfView,
+    renderPdfStructure,
     flowLines,
     pdfFileName,
     instanceIdInputs,

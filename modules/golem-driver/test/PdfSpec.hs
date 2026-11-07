@@ -16,7 +16,7 @@ import Golem.Driver.New (Language (..), createProject, templateFiles)
 import Golem.Driver.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
 import Golem.Driver.Pdf (ClusterPart (..), CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
 import Golem.Layout.Japanese (BoxKind (..))
-import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
+import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), noLeaf, placeLine)
 import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook)
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
@@ -1588,7 +1588,7 @@ codeBlockRubyTests =
       lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|" []]) @?= 0,
     testCase "a kenten box overhangs only when its look has a mark" $ do
       let central = const (baselineRatio - 1 / 2)
-          kenten shape = Box (10 * pt) (BoxContent "漢" False 0 0 (fromEnum KindKenten) (plainLook "body" (10 * pt)) {lkKenten = shape} 0 0 [] 0 0 noBoxSource)
+          kenten shape = Box (10 * pt) (BoxContent "漢" False 0 0 (fromEnum KindKenten) (plainLook "body" (10 * pt)) {lkKenten = shape} 0 0 [] 0 0 noBoxSource noLeaf)
       lineOverhang False (10 * pt) central (lineOf [kenten (Just KentenSesame)]) @?= 5 * pt
       lineOverhang False (10 * pt) central (lineOf [kenten Nothing]) @?= 0,
     testCase "the overhang of a line is that of its highest box" $
@@ -1644,7 +1644,7 @@ codeBlockRubyTests =
     plainLine = Line [] 0 0 0 (0, 0) False (0, 0)
     lineOf items = Line items 0 0 0 (0, 0) False (0, 0)
     -- a ruby box of the kind set at 10pt, its reading at half that; its base characters at 10pt unless given
-    rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0 noBoxSource)
+    rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0 noBoxSource noLeaf)
     firstPage pl = take 1 (plPages pl)
     -- the grid line after the code block of the first page
     codeEnd pl = sum (take 1 [s + n | p <- firstPage pl, (s, SCode _ _ n) <- poSlots p])
@@ -1763,14 +1763,15 @@ ligatureTests =
           content = BS.concat [s | s <- streams, " Tf" `BS.isInfixOf` s]
       extractedText tu content @?= "officefluffyaffixfinalleft-hand"
       assertBool (show tu) (any ((>= 2) . T.length) (Map.elems tu))
-      assertBool "no BDC" (not ("BDC" `BS.isInfixOf` content)),
+      -- the marked content of the structure tree, but none with ActualText (docs/adr ADR 0183)
+      assertBool "no ActualText" (not ("ActualText" `BS.isInfixOf` content)),
     testCase "a glyph standing for two texts: the later one is in ActualText" $ do
       let shapeXY s t = [(sh {shGlyph = if c == 'y' then fromEnum 'x' else shGlyph sh}) | (sh, c) <- zip (lfShape fakeFonts s t) (T.unpack t)]
           provider = FontProvider (\_ _ _ _ -> pure (Right fakeFonts {lfShape = shapeXY}))
       pdf <- miniPdf provider True horizontalStyle "xy\n" []
       streams <- inflateAll pdf
       let content = BS.concat [s | s <- streams, " Tf" `BS.isInfixOf` s]
-      length (occurrences "BDC" content) @?= 1
+      length (occurrences "/ActualText" content) @?= 1
       assertBool (show content) ("/Span << /ActualText (y) >> BDC" `BS.isInfixOf` content)
       extractedText (toUnicodeEntries streams) content @?= "xy"
   ]

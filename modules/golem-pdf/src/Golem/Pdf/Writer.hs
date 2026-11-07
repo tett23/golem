@@ -13,6 +13,10 @@ module Golem.Pdf.Writer
     Turn (..),
     turnRect,
     Mark (..),
+    Content (..),
+    ArtifactKind (..),
+    Move (..),
+    contentMarks,
     Page (..),
     FontProgram (..),
     Font (..),
@@ -22,6 +26,9 @@ module Golem.Pdf.Writer
     documentObjects,
     writePdf,
     contentStream,
+    pageStream,
+    structureText,
+    rectObj,
     pdfTextString,
     documentId,
     instanceId,
@@ -33,10 +40,10 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Builder qualified as B
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
-import Data.List (nub, sortOn)
+import Data.List (mapAccumL, nub, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes, isJust)
+import Data.Maybe (catMaybes, isJust, mapMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -52,6 +59,7 @@ import Golem.Pdf.Object
 import Golem.Pdf.Rect (Rect (..))
 import Golem.Pdf.Sha256 (sha256)
 import Golem.Pdf.Srgb (srgbProfile)
+import Golem.Pdf.Structure
 import Golem.Pdf.X4
 import Golem.Syntax.Text (tshow)
 import Text.Printf (printf)
@@ -148,11 +156,37 @@ turnRect t (Rect x y w h) (Rect u v a b) = case t of
   TurnedRight -> Rect (x + v) (y + h - u - a) b a
   TurnedLeft -> Rect (x + w - v - b) (y + u) b a
 
+-- | What a page shows: each piece is real content of a structure element or an artifact (docs/adr ADR 0183).
+data Content
+  = -- | /<type> << /MCID n >> BDC ... EMC: the type is that of the element of the leaf
+    Tagged !LeafId ![Mark]
+  | -- | /Artifact << /Type /... >> BDC ... EMC
+    Artifact !ArtifactKind ![Mark]
+  | -- | q cm ... Q around content: a translation or a turn (golem-driver ADR 0034)
+    Moved !Move ![Content]
+  deriving stock (Eq, Show)
+
+-- | The kind of an artifact: Pagination (running heads, folios, crop marks) or Layout (rules, backgrounds).
+data ArtifactKind = Pagination | Layout
+  deriving stock (Eq, Show)
+
+-- | How 'Moved' moves its content: by x and y, or turned into a rectangle as 'Turned'.
+data Move = MoveBy !Sp !Sp | MoveTurn !Turn !Rect
+  deriving stock (Eq, Show)
+
+-- | The marks of content, in order.
+contentMarks :: Content -> [Mark]
+contentMarks = \case
+  Tagged _ ms -> ms
+  Artifact _ ms -> ms
+  Moved _ cs -> concatMap contentMarks cs
+
 data Page = Page
   { pageMediaBox :: !Rect,
     pageTrimBox :: !Rect,
     pageBleedBox :: !Rect,
-    pageContent :: ![Mark]
+    -- | tagged content and artifacts only: no content is outside both (docs/adr ADR 0183)
+    pageContent :: ![Content]
   }
   deriving stock (Eq, Show)
 
@@ -202,7 +236,9 @@ data Document = Document
     -- | the language of the book, the catalog's Lang (docs/adr ADR 0183)
     docLang :: !Text,
     -- | PDF/UA (docs/adr ADR 0183)
-    docPdfUa :: !(Maybe PdfUaPart)
+    docPdfUa :: !(Maybe PdfUaPart),
+    -- | the structure tree: its root, a Document element (docs/adr ADR 0183)
+    docStructure :: !StructElem
   }
 
 -- ------------------------------------------------------------------ identifiers
@@ -234,7 +270,38 @@ contentStream fontNames imageNames = contentStreamWith fontNames imageNames Map.
 
 -- | 'contentStream' with the names of the Form XObjects of PDF figures (ADR 0008).
 contentStreamWith :: Map FontRef Int -> Map ImageRef Int -> Map FormRef Int -> [Mark] -> ByteString
-contentStreamWith fontNames imageNames formNames marks = BL.toStrict (B.toLazyByteString (mconcat (map mark marks)))
+contentStreamWith fontNames imageNames formNames marks = BL.toStrict (B.toLazyByteString (mconcat (map (markBuilder fontNames imageNames formNames) marks)))
+
+{- | The content stream of a page of tagged content and artifacts (docs/adr
+ADR 0183), and the leaf of each MCID: the MCIDs are numbered from 0 in the
+order of the stream, each tagged piece with marks one. A piece without
+marks writes nothing. The tag of each leaf is the type of its element.
+-}
+pageStream :: Map FontRef Int -> Map ImageRef Int -> Map FormRef Int -> (LeafId -> Text) -> [Content] -> (ByteString, [LeafId])
+pageStream fontNames imageNames formNames tagOf contents =
+  let (leaves, b) = go [] contents
+   in (BL.toStrict (B.toLazyByteString b), reverse leaves)
+  where
+    marks = mconcat . map (markBuilder fontNames imageNames formNames)
+    nl = B.char7 '\n'
+    go acc = foldl (\(ls, b) c -> let (ls', b') = one ls c in (ls', b <> b')) (acc, mempty)
+    one ls = \case
+      Tagged _ [] -> (ls, mempty)
+      Artifact _ [] -> (ls, mempty)
+      Tagged l ms -> (l : ls, "/" <> B.byteString (TE.encodeUtf8 (tagOf l)) <> " << /MCID " <> B.intDec (length ls) <> " >> BDC" <> nl <> marks ms <> "EMC" <> nl)
+      Artifact k ms -> (ls, "/Artifact << /Type /" <> (case k of Pagination -> "Pagination"; Layout -> "Layout") <> " >> BDC" <> nl <> marks ms <> "EMC" <> nl)
+      Moved m cs ->
+        let (ls', inner) = go ls cs
+            open = case m of
+              MoveBy x y -> "q 1 0 0 1 " <> num x <> " " <> num y <> " cm" <> nl
+              -- as 'Turned'
+              MoveTurn TurnedRight (Rect x y _ h) -> "q 0 -1 1 0 " <> num x <> " " <> num (y + h) <> " cm" <> nl
+              MoveTurn TurnedLeft (Rect x y w _) -> "q 0 1 -1 0 " <> num (x + w) <> " " <> num y <> " cm" <> nl
+         in (ls', open <> inner <> "Q" <> nl)
+
+-- | The operators of a mark.
+markBuilder :: Map FontRef Int -> Map ImageRef Int -> Map FormRef Int -> Mark -> B.Builder
+markBuilder fontNames imageNames formNames = mark
   where
     sp = B.char7 ' '
     nl = B.char7 '\n'
@@ -372,11 +439,11 @@ reference, then the document information.
 documentObjects :: Document -> PdfObjects
 documentObjects doc =
   let pages = docPages doc
-      fontOrder = nub [f | p <- pages, m <- pageContent p, f <- fontsOf m]
-      imageOrder = nub [i | p <- pages, m <- pageContent p, i <- imagesOf m]
+      fontOrder = nub [f | p <- pages, m <- pageMarks p, f <- fontsOf m]
+      imageOrder = nub [i | p <- pages, m <- pageMarks p, i <- imagesOf m]
       fontNames = Map.fromList (zip fontOrder [1 ..])
       imageNames = Map.fromList (zip imageOrder [1 ..])
-      formOrder = filter (`Map.member` docForms doc) (nub [f | p <- pages, m <- pageContent p, f <- formsOf m])
+      formOrder = filter (`Map.member` docForms doc) (nub [f | p <- pages, m <- pageMarks p, f <- formsOf m])
       formNames = Map.fromList (zip formOrder [1 ..])
       nPages = length pages
       pageObj i = 3 + 2 * i
@@ -416,7 +483,12 @@ documentObjects doc =
                   ("Metadata", ORef (afterImages + 1))
                 ]
               )
-      infoObj = afterImages + length xObjs
+      -- the structure tree after the objects of the pages, before the information dictionary (docs/adr ADR 0183)
+      structBase = afterImages + length xObjs
+      (tree, tagOf) = withOrphans (docStructure doc) [l | p <- pages, l <- contentLeaves (pageContent p)]
+      streams = [pageStream fontNames imageNames formNames tagOf (pageContent p) | p <- pages]
+      structObjs = structureObjects structBase pageObj tree (map snd streams)
+      infoObj = structBase + length structObjs
       imageObjCount i = case Map.lookup i (docImages doc) of
         Just img -> 1 + maybe 0 (const 1) (imgIcc img) + maybe 0 (const 1) (imgAlpha img)
         Nothing -> 1
@@ -431,7 +503,7 @@ documentObjects doc =
                    )
                  | not (null imageOrder && null formOrder)
                  ]
-              <> [("ColorSpace", ODict [("Reg", registrationColorSpace)]) | any usesRegistration [m | p <- pages, m <- pageContent p]]
+              <> [("ColorSpace", ODict [("Reg", registrationColorSpace)]) | any usesRegistration [m | p <- pages, m <- pageMarks p]]
           )
       -- the language of the book and its title shown by viewers, in every PDF (docs/adr ADR 0183)
       catalog =
@@ -439,7 +511,9 @@ documentObjects doc =
           ( [ ("Type", OName "Catalog"),
               ("Pages", ORef 2),
               ("Lang", pdfTextString (docLang doc)),
-              ("ViewerPreferences", ODict [("DisplayDocTitle", OBool True)])
+              ("ViewerPreferences", ODict [("DisplayDocTitle", OBool True)]),
+              ("MarkInfo", ODict [("Marked", OBool True)]),
+              ("StructTreeRoot", ORef structBase)
             ]
               <> xCatalog
           )
@@ -453,11 +527,12 @@ documentObjects doc =
                   ("TrimBox", rectObj (pageTrimBox p)),
                   ("BleedBox", rectObj (pageBleedBox p)),
                   ("Resources", resources),
-                  ("Contents", ORef (pageObj i + 1))
+                  ("Contents", ORef (pageObj i + 1)),
+                  ("StructParents", OInt (fromIntegral i))
                 ],
-              OStream [("Filter", OName "FlateDecode")] (flate (contentStreamWith fontNames imageNames formNames (pageContent p)))
+              OStream [("Filter", OName "FlateDecode")] (flate stream)
             ]
-          | (i, p) <- zip [0 ..] pages
+          | (i, (p, (stream, _))) <- zip [0 ..] (zip pages streams)
           ]
       fontObjsAll = concat [fontObjects (fontBase Map.! f) (docFonts doc Map.! f) | f <- fontOrder, Map.member f (docFonts doc)]
       imageObjsAll = concat [imageObjects srgbRef (imageBase Map.! i) img | i <- imageOrder, Just img <- [Map.lookup i (docImages doc)]]
@@ -471,10 +546,11 @@ documentObjects doc =
           `addInfo` [("Trapped", OName "False"), ("GTS_PDFXVersion", OStr "PDF/X-4")]
       addInfo (ODict kvs) extra = ODict (kvs <> (if isJust (docPdfX doc) then extra else []))
       addInfo o _ = o
-      objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> srgbObjs <> formObjsAll <> xObjs <> [info]
+      objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> srgbObjs <> formObjsAll <> xObjs <> structObjs <> [info]
       size = length objects + 1
    in PdfObjects "1.6" objects (ODict [("Size", OInt (fromIntegral size)), ("Root", ORef 1), ("Info", ORef infoObj), ("ID", OArr [OHex (docId doc), OHex (docInstanceId doc)])])
   where
+    pageMarks = concatMap contentMarks . pageContent
     fontsOf = \case
       GlyphRun f _ _ -> [f]
       ScaledGlyphRun f _ _ _ -> [f]
@@ -500,6 +576,146 @@ documentObjects doc =
       Translated _ _ ms -> concatMap formsOf ms
       Turned _ _ ms -> concatMap formsOf ms
       _ -> []
+
+-- | The leaves of tagged content, in order.
+contentLeaves :: [Content] -> [LeafId]
+contentLeaves = concatMap $ \case
+  Tagged l (_ : _) -> [l]
+  Tagged _ [] -> []
+  Artifact _ _ -> []
+  Moved _ cs -> contentLeaves cs
+
+{- | The structure tree with the leaves the pages draw but the tree does
+not have, each a P at the end of the root in the order first drawn, and
+the type of the element of each leaf: the tag of its marked content
+(docs/adr ADR 0183).
+-}
+withOrphans :: StructElem -> [LeafId] -> (StructElem, LeafId -> Text)
+withOrphans root drawn =
+  let known = Map.fromList (parents root)
+      orphans = nub [l | l <- drawn, Map.notMember l known]
+      tree = root {seKids = seKids root <> [KidElem (structElem SP [KidLeaf l]) | l <- orphans]}
+      types = Map.fromList (parents tree)
+   in (tree, \l -> structTypeName (Map.findWithDefault SP l types))
+  where
+    parents e = [(l, seType e) | KidLeaf l <- seKids e] <> concat [parents c | KidElem c <- seKids e]
+
+{- | The objects of the structure tree from object @base@ (docs/adr ADR
+0183): the StructTreeRoot, then each element in preorder. The leaves of
+each page by MCID give the ParentTree, keyed by the page's StructParents
+(its index); a leaf on several pages, or on another page than its
+element's Pg, is an MCR. The IDs of the elements are in the IDTree.
+-}
+structureObjects :: Int -> (Int -> Int) -> StructElem -> [[LeafId]] -> [Obj]
+structureObjects base pageObj root pageLeaves =
+  let numbered = preorder root
+      -- the object of each element, in preorder after the root
+      objOf = zip [base + 1 ..] numbered
+      places = Map.fromListWith (flip (<>)) [(l, [(pg, mcid)]) | (pg, ls) <- zip [0 :: Int ..] pageLeaves, (mcid, l) <- zip [0 :: Int ..] ls]
+      elemOfLeaf = Map.fromList [(l, n) | (n, (e, _)) <- objOf, KidLeaf l <- seKids e]
+      childNumbers = Map.fromList [(path, n) | (n, (_, path)) <- objOf]
+      parentOf path = case path of
+        [] -> base
+        _ -> Map.findWithDefault base (init path) childNumbers
+      element (n, (e, path)) =
+        let direct = concat [Map.findWithDefault [] l places | KidLeaf l <- seKids e]
+            pg =
+              fst <$> case direct of
+                x : _ -> Just x
+                [] -> Nothing
+            kid i = \case
+              KidElem _ -> [ORef (Map.findWithDefault base (path <> [i]) childNumbers)]
+              KidLeaf l ->
+                [ if Just p == pg then OInt (fromIntegral mcid) else ODict [("Type", OName "MCR"), ("Pg", ORef (pageObj p)), ("MCID", OInt (fromIntegral mcid))]
+                | (p, mcid) <- Map.findWithDefault [] l places
+                ]
+              KidAnnot _ -> []
+            attrs = [ODict (("O", OName (atOwner a)) : atEntries a) | a <- seAttrs e]
+         in ( n,
+              ODict
+                ( [ ("Type", OName "StructElem"),
+                    ("S", OName (structTypeName (seType e))),
+                    ("P", ORef (if null path then base else parentOf path)),
+                    ("K", OArr (concat (zipWith kid [0 ..] (seKids e))))
+                  ]
+                    <> [("Pg", ORef (pageObj p)) | Just p <- [pg]]
+                    <> [("Lang", pdfTextString t) | Just t <- [seLang e]]
+                    <> [("Alt", pdfTextString t) | Just t <- [seAlt e]]
+                    <> [("ID", OStr (TE.encodeUtf8 t)) | Just t <- [seId e]]
+                    <> [("A", a) | [a] <- [attrs]]
+                    <> [("A", OArr attrs) | length attrs > 1]
+                )
+            )
+      ids = sortOn fst [(TE.encodeUtf8 t, n) | (n, (e, _)) <- objOf, Just t <- [seId e]]
+      rootObj =
+        ODict
+          ( [ ("Type", OName "StructTreeRoot"),
+              ("K", OArr [ORef (base + 1)]),
+              ("ParentTree", ODict [("Nums", OArr (concat [[OInt (fromIntegral pg), OArr [ORef (Map.findWithDefault (base + 1) l elemOfLeaf) | l <- ls]] | (pg, ls) <- zip [0 :: Int ..] pageLeaves]))]),
+              ("ParentTreeNextKey", OInt (fromIntegral (length pageLeaves)))
+            ]
+              <> [("IDTree", ODict [("Names", OArr (concat [[OStr k, ORef n] | (k, n) <- ids]))]) | not (null ids)]
+          )
+   in rootObj : map (snd . element) objOf
+  where
+    -- each element with the path of kid indices from the root
+    preorder = go []
+      where
+        go path x = (x, path) : concat [go (path <> [i]) c | (i, KidElem c) <- zip [0 ..] (seKids x)]
+
+{- | The structure tree as text, for tests and goldens (docs/adr ADR
+0183): each element on a line, indented by its depth, with its type,
+language, alternate text, ID and attributes, and each leaf with the text
+of the glyphs it draws (by the ToUnicode entries of their fonts, or their
+ActualText) on all pages.
+-}
+structureText :: Document -> Text
+structureText doc =
+  let pages = docPages doc
+      drawn = [(l, ms) | p <- pages, c <- pageContent p, (l, ms) <- tagged c]
+      (tree, _) = withOrphans (docStructure doc) (map fst drawn)
+      texts = Map.fromListWith (flip (<>)) [(l, marksText ms) | (l, ms) <- drawn]
+      entries = Map.map Map.fromList (Map.map fontToUnicode (docFonts doc))
+      glyphText f g = Map.findWithDefault "\xFFFD" g (Map.findWithDefault Map.empty f entries)
+      marksText = T.concat . map markText
+      markText = \case
+        GlyphRun f _ gs -> T.concat [glyphText f g | (g, _, _) <- gs]
+        ScaledGlyphRun f _ _ gs -> T.concat [glyphText f g | (g, _, _) <- gs]
+        RotatedGlyphRun f _ gs -> T.concat [glyphText f g | (g, _, _) <- gs]
+        StyledGlyphRun _ f _ gs -> T.concat [glyphText f g | (g, _, _) <- gs]
+        TransformedGlyphRun f _ _ gs -> T.concat [glyphText f g | (_, g, _, _) <- gs]
+        Saved ms -> marksText ms
+        Translated _ _ ms -> marksText ms
+        Turned _ _ ms -> marksText ms
+        ActualText t _ -> t
+        Image _ _ -> "[image]"
+        Form _ _ -> "[form]"
+        _ -> ""
+      line depth e =
+        T.replicate depth "  "
+          <> structTypeName (seType e)
+          <> T.concat [" Lang=" <> t | Just t <- [seLang e]]
+          <> T.concat [" Alt=" <> quoted t | Just t <- [seAlt e]]
+          <> T.concat [" ID=" <> t | Just t <- [seId e]]
+          <> T.concat [" /" <> atOwner a <> T.concat [" /" <> k <> " " <> objText v | (k, v) <- atEntries a] | a <- seAttrs e]
+      render depth e =
+        line depth e
+          : concat
+            [ case k of
+                KidElem c -> render (depth + 1) c
+                KidLeaf l -> [T.replicate (depth + 1) "  " <> quoted (Map.findWithDefault "" l texts) | Map.member l texts]
+                KidAnnot (AnnotId n) -> [T.replicate (depth + 1) "  " <> "annotation " <> tshow n]
+            | k <- seKids e
+            ]
+   in T.unlines (render 0 tree)
+  where
+    tagged = \case
+      Tagged l ms@(_ : _) -> [(l, ms)]
+      Tagged _ [] -> []
+      Artifact _ _ -> []
+      Moved _ cs -> concatMap tagged cs
+    objText o = TE.decodeUtf8 (BL.toStrict (B.toLazyByteString (serialize o)))
+    quoted t = "\"" <> t <> "\""
 
 {- | The Form XObjects of PDF figures from object @base@ (ADR 0008): each
 form, then the objects of its page not yet written, in the order of the

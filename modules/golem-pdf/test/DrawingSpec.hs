@@ -36,7 +36,7 @@ redSquare =
 doc :: [Mark] -> [(FormRef, FormContent)] -> Map.Map ImageRef ImageData -> Document
 doc marks forms images =
   Document
-    { docPages = [Page box box box marks],
+    { docPages = [Page box box box [Tagged (LeafId [0]) marks]],
       docFonts = Map.empty,
       docImages = images,
       docForms = Map.fromList forms,
@@ -47,7 +47,8 @@ doc marks forms images =
       docProducer = "Golem 0.0.0-test",
       docPdfX = Nothing,
       docLang = "ja",
-      docPdfUa = Nothing
+      docPdfUa = Nothing,
+      docStructure = structElem SDocument [KidLeaf (LeafId [0])]
     }
   where
     box = Rect 0 0 (100 * 65536) (100 * 65536)

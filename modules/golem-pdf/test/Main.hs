@@ -44,9 +44,10 @@ main = do
   defaultMainReportingSkips (const (tests tinyJpeg))
 
 page :: [Mark] -> Page
-page = Page box box box
-  where
-    box = Rect 0 0 (595 * 65536) (842 * 65536)
+page = Page a4 a4 a4 . pure . Tagged (LeafId [0])
+
+a4 :: Rect
+a4 = Rect 0 0 (595 * 65536) (842 * 65536)
 
 font :: Font
 font = Font "ABCDEF+Dummy" (TrueTypeProgram "not really a font") False [(1, 500), (2, 1000)] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 [(1, "A"), (2, "漢")] ("Adobe", "Identity", 0)
@@ -90,7 +91,8 @@ documentWith tinyJpeg ps =
       docProducer = testProducer,
       docPdfX = Nothing,
       docLang = "ja",
-      docPdfUa = Nothing
+      docPdfUa = Nothing,
+      docStructure = structElem SDocument [KidLeaf (LeafId [0])]
     }
 
 -- | A fixed Producer, so that the goldens do not change with the version (ADR 0005).
@@ -347,15 +349,15 @@ marksTests tinyJpeg =
           assertBool "Font" ("/Font << /F1 " `BS.isInfixOf` pdf)
           assertBool "jpeg" (jpeg tinyJpeg `BS.isInfixOf` pdf),
         testCase "a framed page without marks or bleed keeps its content" $ do
-          let content = [Rule (Rect 0 0 65536 65536)]
+          let content = [Tagged (LeafId [0]) [Rule (Rect 0 0 65536 65536)]]
           framePage Nothing 0 (w, h) content @?= Page (Rect 0 0 w h) (Rect 0 0 w h) (Rect 0 0 w h) content,
         testCase "a framed page with Japanese marks draws them in the registration colour over the moved content" $ do
-          let content = [Rule (Rect 0 0 65536 65536)]
+          let content = [Tagged (LeafId [0]) [Rule (Rect 0 0 65536 65536)]]
               m = b + mm13
           pageContent (framePage (Just Japanese) b (w, h) content)
-            @?= [Translated m m (content <> [RegistrationRules (markRules Japanese b (w, h))])],
+            @?= [Moved (MoveBy m m) (content <> [Artifact Pagination [RegistrationRules (markRules Japanese b (w, h))]])],
         testCase "a framed page without marks has no registration rules" $ do
-          let content = [Rule (Rect 0 0 65536 65536)]
+          let content = [Tagged (LeafId [0]) [Rule (Rect 0 0 65536 65536)]]
           forM_ [0, b] $ \bl ->
             registrationRects (pageContent (framePage Nothing bl (w, h) content)) @?= [],
         testCase "registration rules: q, the Separation All fill, the rectangles, Q" $
@@ -373,20 +375,20 @@ marksTests tinyJpeg =
           assertBool (show pdf) (registrationResource `BS.isInfixOf` pdf),
         testCase "framed pages keep the registration colour out of the BleedBox" $
           forM_ [(st, bl) | st <- [Japanese, Western], bl <- [0, b]] $ \(st, bl) ->
-            checkRegistration [framePage (Just st) bl (w, h) [Rule (Rect 0 0 65536 65536)]] @?= [],
+            checkRegistration [framePage (Just st) bl (w, h) [Tagged (LeafId [0]) [Rule (Rect 0 0 65536 65536)]]] @?= [],
         testCase "registration rules on the trimmed page are reported by page number" $ do
           let framed = framePage Nothing b (w, h) []
-              inside = framed {pageContent = [Translated b b [RegistrationRules [Rect 0 0 65536 65536]]]}
+              inside = framed {pageContent = [Artifact Layout [Translated b b [RegistrationRules [Rect 0 0 65536 65536]]]]}
           checkRegistration [framed, inside] @?= [2],
         testCase "registration rules inside Translated are found at their moved positions" $
-          registrationRects [Rule (Rect 0 0 1 1), Translated 10 20 [Saved [RegistrationRules [Rect 1 2 3 4]], Translated 100 200 [RegistrationRules [Rect 0 0 5 5]]]]
+          registrationRects [Artifact Layout [Rule (Rect 0 0 1 1), Translated 10 20 [Saved [RegistrationRules [Rect 1 2 3 4]], Translated 100 200 [RegistrationRules [Rect 0 0 5 5]]]]]
             @?= [Rect 11 22 3 4, Rect 110 220 5 5],
         needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
           testCase "qpdf --check accepts a page with Japanese marks" $ do
             exe <- qpdf
             withSystemTempDirectory "golem-pdf" $ \dir -> do
               let path = dir </> "marks.pdf"
-                  framed = framePage (Just Japanese) b (w, h) [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]
+                  framed = framePage (Just Japanese) b (w, h) [Tagged (LeafId [0]) [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]]
               BS.writeFile path (writePdf (documentWith tinyJpeg [framed]) {docPdfX = Just (PdfX "fake" "JC200103" [] [] Nothing)})
               (code, out, err) <- readProcessWithExitCode exe ["--check", path] ""
               assertEqual (out <> err) ExitSuccess code
@@ -484,6 +486,59 @@ conformanceTests tinyJpeg =
       assertBool "no PDF/X" (not ("GTS_PDFXVersion" `BS.isInfixOf` xmp))
       assertBool "no extension schema" (not ("pdfaExtension" `BS.isInfixOf` xmp))
       assertBool "xref" (xrefConsistent (writePdf (sample tinyJpeg) {docPdfUa = Just PdfUa1})),
+    testCase "tagged content is /<type> << /MCID n >> BDC ... EMC, from 0 on each page in the order of the stream; artifacts carry their type" $ do
+      let glyph = GlyphRun (FontRef 7) 65536 [(1, 0, 0)]
+          (stream, leaves) = pageStream (Map.fromList [(FontRef 7, 1)]) Map.empty Map.empty (\(LeafId l) -> if l == [1] then "H1" else "P") [Tagged (LeafId [1]) [glyph], Artifact Pagination [Rule (Rect 0 0 65536 65536)], Moved (MoveBy 65536 0) [Tagged (LeafId [2]) [glyph], Artifact Layout [glyph]], Tagged (LeafId [3]) []]
+      leaves @?= [LeafId [1], LeafId [2]]
+      stream
+        @?= BS.concat
+          [ "/H1 << /MCID 0 >> BDC\nBT /F1 1 Tf\n1 0 0 1 0 0 Tm <0001> Tj\nET\nEMC\n",
+            "/Artifact << /Type /Pagination >> BDC\n0 0 1 1 re f\nEMC\n",
+            "q 1 0 0 1 1 0 cm\n/P << /MCID 1 >> BDC\nBT /F1 1 Tf\n1 0 0 1 0 0 Tm <0001> Tj\nET\nEMC\n/Artifact << /Type /Layout >> BDC\nBT /F1 1 Tf\n1 0 0 1 0 0 Tm <0001> Tj\nET\nEMC\nQ\n"
+          ],
+    testCase "every PDF is marked and has a structure tree whose ParentTree reaches the elements; a leaf on two pages is an MCR on the second" $ do
+      let glyph = GlyphRun (FontRef 7) 65536 [(1, 0, 0)]
+          tree =
+            structElem SDocument [KidElem (structElem SP [KidLeaf (LeafId [1])]), KidElem ((structElem SNote [KidLeaf (LeafId [2])]) {seId = Just "note-1"})]
+          doc = (documentWith tinyJpeg [Page a4 a4 a4 [Tagged (LeafId [1]) [glyph]], Page a4 a4 a4 [Tagged (LeafId [1]) [glyph], Tagged (LeafId [2]) [glyph]]]) {docStructure = tree}
+          objs = documentObjects doc
+          at n = pdfObjects objs !! (n - 1)
+          dictAt n = case at n of
+            ODict kvs -> kvs
+            other -> error (show other)
+          cat = catalogOf objs
+          root = case lookup "StructTreeRoot" cat of
+            Just (ORef n) -> n
+            other -> error (show other)
+          pages = [kvs | ODict kvs <- pdfObjects objs, lookup "Type" kvs == Just (OName "Page")]
+      lookup "MarkInfo" cat @?= Just (ODict [("Marked", OBool True)])
+      lookup "Type" (dictAt root) @?= Just (OName "StructTreeRoot")
+      map (lookup "StructParents") pages @?= [Just (OInt 0), Just (OInt 1)]
+      -- the elements in preorder after the root: Document, P, Note
+      let docN = root + 1
+          pN = root + 2
+          noteN = root + 3
+          pageRef i = case [ORef n | (n, ODict kvs) <- zip [1 ..] (pdfObjects objs), lookup "Type" kvs == Just (OName "Page")] of
+            refs -> refs !! i
+      lookup "S" (dictAt docN) @?= Just (OName "Document")
+      lookup "P" (dictAt docN) @?= Just (ORef root)
+      lookup "P" (dictAt pN) @?= Just (ORef docN)
+      lookup "Pg" (dictAt pN) @?= Just (pageRef 0)
+      lookup "K" (dictAt pN) @?= Just (OArr [OInt 0, ODict [("Type", OName "MCR"), ("Pg", pageRef 1), ("MCID", OInt 0)]])
+      lookup "K" (dictAt noteN) @?= Just (OArr [OInt 1])
+      lookup "ID" (dictAt noteN) @?= Just (OStr "note-1")
+      lookup "ParentTree" (dictAt root) @?= Just (ODict [("Nums", OArr [OInt 0, OArr [ORef pN], OInt 1, OArr [ORef pN, ORef noteN]])])
+      lookup "ParentTreeNextKey" (dictAt root) @?= Just (OInt 2)
+      lookup "IDTree" (dictAt root) @?= Just (ODict [("Names", OArr [OStr "note-1", ORef noteN])])
+      assertBool "xref" (xrefConsistent (writePdf doc)),
+    testCase "a leaf drawn but not in the tree becomes a P at the end of the Document" $ do
+      let doc = (documentWith tinyJpeg [page [GlyphRun (FontRef 7) 65536 [(1, 0, 0)]]]) {docStructure = structElem SDocument []}
+      structureText doc @?= "Document\n  P\n    \"A\"\n",
+    testCase "structureText: types, attributes, IDs and the text of each leaf" $ do
+      let f = font {fontToUnicode = [(1, "あ"), (2, "い")]}
+          tree = (structElem SDocument [KidElem ((structElem SFigure [KidLeaf (LeafId [2])]) {seAlt = Just "絵"}), KidElem (structElem SP [KidLeaf (LeafId [1])])]) {seAttrs = [Attribute "Layout" [("WritingMode", OName "TbRl")]]}
+          doc = (documentWith tinyJpeg [Page a4 a4 a4 [Tagged (LeafId [1]) [GlyphRun (FontRef 7) 65536 [(1, 0, 0), (2, 0, 0)]]]]) {docFonts = Map.fromList [(FontRef 7, f)], docStructure = tree}
+      structureText doc @?= "Document /Layout /WritingMode /TbRl\n  Figure Alt=\"絵\"\n  P\n    \"あい\"\n",
     testCase "without PDF/X-4 and PDF/UA there is no XMP" $
       lookup "Metadata" (catalogOf (documentObjects (sample tinyJpeg))) @?= Nothing
   ]
@@ -529,7 +584,7 @@ tests tinyJpeg =
         assertBool "xref" (xrefConsistent pdf)
         assertBool "ID" ("/ID [<" `BS.isInfixOf` pdf)
         assertBool "dates from metadata" ("/CreationDate (D:20261011000000Z)" `BS.isInfixOf` pdf)
-        assertBool "sorted keys" ("<< /Lang (ja) /Pages 2 0 R /Type /Catalog /ViewerPreferences << /DisplayDocTitle true >> >>" `BS.isInfixOf` pdf),
+        assertBool "sorted keys" ("<< /Lang (ja) /MarkInfo << /Marked true >> /Pages 2 0 R /StructTreeRoot " `BS.isInfixOf` pdf),
       testCase "JPEG is embedded without decoding and keeps its ICC profile" $ do
         let pdf = writePdf (sample tinyJpeg)
         assertBool "jpeg bytes" (jpeg tinyJpeg `BS.isInfixOf` pdf)
