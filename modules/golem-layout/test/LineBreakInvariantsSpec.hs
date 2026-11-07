@@ -55,6 +55,15 @@ seconds on the x86-64 runner of CI (docs/adr/0209, its section 5). Past
 linesPrWidth :: Int
 linesPrWidth = 4
 
+{- | The parts up to which the normal form and vertical writing are
+checked: 2, as docs/adr/0209 asks, past 'linesPrDepth' (the nightly job);
+1 on pull requests, where checking every setting the normal form leaves
+out up to 2 parts took more than the 10 seconds of the area alone on the
+x86-64 runner of CI (docs/adr/0208, its section 4).
+-}
+formDepth :: Int -> Int
+formDepth depth = if depth > linesPrDepth then 2 else 1
+
 -- | The widest line at a depth.
 maxWidthAt :: Int -> Int
 maxWidthAt depth = if depth > linesPrDepth then 5 else linesPrWidth
@@ -146,14 +155,18 @@ enumerationTests =
           -- span, en and ja, with and without the expansion
           runs = 1 + 9 + 2 * 2 + 2 * 2 + 10 * (2 * 3 * 2)
       length made @?= placed * runs,
-    testCase "the normal form: up to 2 parts, the inputs it leaves out give 'breakParagraph' no value it is not given" $
+    testCase "the normal form: up to 2 parts (1 on pull requests), the inputs it leaves out give 'breakParagraph' no value it is not given" $ do
       -- the values (items, width, expansion and protrusion) of every
       -- setting are those of the normal form, run by run
-      checkAllPar 2 runsT (normalFormMisses linesPrWidth)
-        @?= Passed (length (concat (upTo 2 runsT))),
-    testCase "vertical writing: up to 2 parts, it gives 'breakParagraph' the same values" $
-      checkAllPar 2 runsT (\run -> [Violation "vertical" (show g) | g <- normalGroups linesPrWidth run, keysOf True g /= keysOf False g])
-        @?= Passed (length (concat (upTo 2 runsT))),
+      depth <- linesDepth
+      let d = formDepth depth
+      checkAllPar d runsT (normalFormMisses (maxWidthAt depth))
+        @?= Passed (length (concat (upTo d runsT))),
+    testCase "vertical writing: up to 2 parts (1 on pull requests), it gives 'breakParagraph' the same values" $ do
+      depth <- linesDepth
+      let d = formDepth depth
+      checkAllPar d runsT (\run -> [Violation "vertical" (show g) | g <- normalGroups (maxWidthAt depth) run, keysOf True g /= keysOf False g])
+        @?= Passed (length (concat (upTo d runsT))),
     testCase "the advances: table, hyphenation and lime-tree are broken where the patterns and the hyphen allow" $ do
       let s = Setting True False False Nothing
           shape = \case
@@ -457,8 +470,15 @@ regressionTests =
 
 -- | The paragraph of an input, for the predicates.
 paragraphOf :: Input -> Paragraph
-paragraphOf i =
-  let (its, ps, br) = breakInput i
+paragraphOf i = paragraphWith (itemsOf False (inSetting i) (inPre i) (inRun i) (inPost i)) i
+
+{- | The paragraph of an input whose items are given: those of its group,
+composed once for every width and expansion of it.
+-}
+paragraphWith :: [Item] -> Input -> Paragraph
+paragraphWith its i =
+  let ps = paramsOf (inSetting i) (inExpansion i) its
+      br = breakParagraph ps (const (lineWidth i)) its
    in Paragraph
         { pText = T.replicate (inPre i) "あ" <> T.concat (inRun i) <> T.replicate (inPost i) "い",
           pSize = fs,
@@ -544,8 +564,12 @@ shrunkWithoutGlue i k =
 
 -- | The breaches of an input no known bug excuses, and whether each known bug excuses one.
 judged :: Int -> Input -> ([Breach], [Bool])
-judged limit i =
-  let bs = breaches limit (paragraphOf i)
+judged limit i = judgedAs limit i (paragraphOf i)
+
+-- | 'judged' of the paragraph given for the input.
+judgedAs :: Int -> Input -> Paragraph -> ([Breach], [Bool])
+judgedAs limit i p =
+  let bs = breaches limit p
       excuses b br = lbShape b i && lbExcuses b i br
    in ([br | br <- bs, not (any (`excuses` br) lineBugs)], [lbShape b i && any (lbExcuses b i) bs | b <- lineBugs])
 
@@ -566,7 +590,8 @@ instance Monoid Excused where
 -- | The violations of the first input of a group that has some, and the known bugs that excuse its inputs.
 judgeGroup :: Int -> Group -> ([Violation], Excused)
 judgeGroup limit g =
-  let results = [(i, judged limit i) | i <- groupInputs g]
+  let its = itemsOf False (gSetting g) (gPre g) (gRun g) (gPost g)
+      results = [(i, judgedAs limit i (paragraphWith its i)) | i <- groupInputs g]
       excused = Excused (foldr (zipWith (+) . map fromEnum . snd . snd) (map (const 0) lineBugs) results)
    in case [(i, bs) | (i, (bs, _)) <- results, not (null bs)] of
         (i, bs) : _ -> ([Violation (show (breachOf b)) (breachWhy b) | b <- bs] <> [Violation "input" (show i)], excused)

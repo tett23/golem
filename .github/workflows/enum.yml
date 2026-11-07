@@ -129,4 +129,4 @@ jobs:
         env:
           GOLEM_ENUM_LINES_DEPTH: "3"
           GOLEM_ENUM_LINES_SAMPLES: "5000000"
-        run: cabal test golem-layout-test --test-option=-p --test-option='/line breaking invariants on/&&/every input/'
+        run: cabal test golem-layout-test --test-option=-p --test-option='/line breaking invariants on/'
