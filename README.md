@@ -152,8 +152,8 @@ diagnostic のコード（`G01001` など）の意味と直し方は [docs/diagn
 git config core.hooksPath .githooks
 ```
 
-フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.8.3 以降を呼び出すので、あらかじめインストールしておく（[docs/adr/0048](./docs/adr/0048-update-adr-guard-to-v0.8.3.md)）。
-ソースからは `cargo install --git https://github.com/tett23/adr-guard --tag v0.8.3` で入る。
+フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.10.0 以降を呼び出すので、あらかじめインストールしておく（[docs/adr/0194](./docs/adr/0194-update-adr-guard-to-v0.10.0.md)）。
+ソースからは `cargo install --git https://github.com/tett23/adr-guard --tag v0.10.0` で入る。
 `.githooks/pre-commit` は、コミット済みの ADR（`docs/adr/` と `docs/<モジュール>/adr/` の配下）への変更、削除、リネームを含むコミットを拒否する。
 例外は `ステータス:` で始まる行で、この行だけは変更できる（`--allow-status`）。
 リンクを付ける、外す、リンク先を変えるだけの変更も許す（`--allow-links`）。
@@ -165,12 +165,16 @@ ADR は、行頭が `ステータス:` のステータスの行をちょうど�
 記録には `--allow-status` と `--allow-links` の例外も適用されない。
 文書の中の ADR の参照（`ADR 0001` の形）には、ADR のファイルへのリンクを付ける。
 リンクのない参照は `adr-guard links` で一覧にでき、`adr-guard links --fix` で直せる。
+モジュールの ADR は `golem-driver ADR 0015` のようにモジュールの名前（`docs/adr ADR 0003` のようにディレクトリでもよい）で修飾して参照し、修飾子もリンクのテキストに含める。
+修飾子がリンクの外にある参照、リンク先が修飾子の ADR と異なるリンク、対象の無い修飾子付きの参照も `adr-guard links` が報告する。
+同じディレクトリの ADR の番号の重複は `adr-guard check-numbers` で一覧にでき、`adr-guard renumber` で直せる。
 ADR はコミット後に変更しない規約であり、変更が必要な場合は新しい連番の ADR を作成する（詳細は [CLAUDE.md](./CLAUDE.md)）。
 `.githooks/pre-push` は、`docs/markup.md` か `docs/specifications.md` を変えたのに `manual/` と `manual-dev/` のどちらも変えていないブランチと、`CONTRIBUTING.md` か `CONTRIBUTING.en.md` を変えたのに `manual-dev/` を変えていないブランチの push を止める（`scripts/manual/check-updated.sh`、[docs/adr/0024](./docs/adr/0024-manual-audiences-and-policy.md)）。
 マニュアルの変わらない変更では、コミットのメッセージの末尾に `Manual: unchanged` のトレーラーを書く。
 `main` への push とブランチの削除は検査しない。
 `core.hooksPath` はクローンごとのローカル設定であり、リポジトリには保存されないため、クローンのたびに実行が必要になる。
-同じ検査は CI の `adr` ジョブでも、adr-guard の v0.8.3 の action に `allow-status: true` と `allow-links: true` を付けて行う。
+同じ検査は CI の `adr` ジョブでも、adr-guard の v0.10.0 の action に `allow-status: true` と `allow-links: true` を付けて行う。
+この action は、ADR の参照のリンクと番号の重複も検査する。
 
 ### 固定しているネイティブライブラリ
 

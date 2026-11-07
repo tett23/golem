@@ -21,7 +21,7 @@
 - `parseDim` に `in` を加える。1in は 72pt であり、`r` in を `round (r × 72 × 65536)` sp に一度だけ丸める（ほかの単位と同じく、正確な有理数から一度だけ、等距離なら偶数の側へ丸める）。
 - `parseSignedDim` も `parseDim` を使うので、負の寸法（`-0.5in`）も書ける。
 - `in` は絶対的な寸法（`Abs`）であり、`zw` を拒む欄（判型など）でも使える。
-- [golem-pdf ADR 0010](../../golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md) の草案の英語の雛形の塗り足しを、`bleed = "9pt"` から `bleed = "0.125in"` に改める。この ADR と golem-pdf ADR 0010 を一緒に採択するときは、golem-pdf ADR 0010 の本文をこの値で書いてから採択する。
+- [golem-pdf ADR 0010](../../golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md) の草案の英語の雛形の塗り足しを、`bleed = "9pt"` から `bleed = "0.125in"` に改める。この ADR と [golem-pdf ADR 0010](../../golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md) を一緒に採択するときは、[golem-pdf ADR 0010](../../golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md) の本文をこの値で書いてから採択する。
 - 寸法として読めない値の diagnostic（G03006、G03017 など）のメッセージで、使える単位を並べている箇所に `in` を足す。
 
 ### ドキュメント
@@ -44,7 +44,7 @@
 - golem-project：`parseDim "1in"` が `Abs (72 × 65536)`、`"0.125in"` が `Abs (9 × 65536)`、`"8.5in"` が `parseDim "612pt"` と同じ値になること。`"0.1in"`（7.2pt）が `round (7.2 × 65536)` になること。
 - golem-project：`parseSignedDim "-0.5in"` が負の値になること。`"1 in"`（空白を挟む）と `"1In"`（大文字）は読めないこと（ほかの単位と同じ）。
 - golem-project：判型の `{ width = "5.5in", height = "8.5in" }` が、`{ width = "396pt", height = "612pt" }` と同じ判型になること。
-- golem-driver：英語の雛形で組んだ PDF の `BleedBox` が、0.125in（9pt）の塗り足しになること（golem-pdf ADR 0010 のテストを `0.125in` で書く）。
+- golem-driver：英語の雛形で組んだ PDF の `BleedBox` が、0.125in（9pt）の塗り足しになること（[golem-pdf ADR 0010](../../golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md) のテストを `0.125in` で書く）。
 
 ## トレードオフ
 

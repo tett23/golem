@@ -115,7 +115,7 @@ needIn st a b =
   - [ADR 0003](0003-pagination-and-s2.md)：末尾に「、見出しと用語の後の部分の量に注の本文を数えることは [ADR 0019](0019-keep-with-next-counts-footnotes.md)」。
   - [ADR 0013](0013-heading-footnotes.md)：「採択→後のブロックの注の本文を先読みの量に数えることは [ADR 0019](0019-keep-with-next-counts-footnotes.md)」。
   - [golem-driver ADR 0032](../../golem-driver/adr/0032-default-heading-styles.md)：「採択→続く見出しと段落の行の注の本文を数えることは [golem-layout ADR 0019](../../golem-layout/adr/0019-keep-with-next-counts-footnotes.md)」。
-  - [docs/adr/0030](../../adr/0030-manual-page-break-control.md)：末尾に「、後の最初の部分の量に注の本文を数えることは [golem-layout ADR 0019](../golem-layout/adr/0019-keep-with-next-counts-footnotes.md)」。
+  - [docs/adr/0030](../../adr/0030-manual-page-break-control.md)：末尾に「、後の最初の部分の量に注の本文を数えることは [golem-layout ADR 0019](0019-keep-with-next-counts-footnotes.md)」。
 
 ## 実装しないこと
 

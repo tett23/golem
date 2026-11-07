@@ -18,7 +18,7 @@ Golem への変更は、どれも ADR（Architecture Decision Record）から始
 git config core.hooksPath .githooks
 ```
 
-フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.8.3 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.3`）。
+フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.10.0 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.10.0`）。
 `.githooks/pre-push` は、仕様を変えたのにマニュアルを直していないブランチの push を止める（「ドキュメント」の節）。
 この設定はリポジトリに保存されないため、クローンのたびに実行する。
 
@@ -85,6 +85,13 @@ ADR は、行頭が `ステータス:` のステータスの行をちょうど�
 文書の中の ADR の参照にはリンクを付ける。
 リンクのない参照は CI の `adr` ジョブが拒否する。
 `adr-guard links --fix` で直せる。
+モジュールの ADR は、`golem-driver ADR 0015` のようにモジュールの名前を直前に置いて参照し、モジュールの名前もリンクのテキストに含める（`[golem-driver ADR 0015](...)`）。
+`docs/adr ADR 0003` のようにディレクトリで修飾するときも同じである。
+修飾子がリンクの外にある参照、リンク先が修飾子の ADR と異なるリンク、対象の無い修飾子付きの参照も、CI の `adr` ジョブが拒否する。
+ほかのリポジトリの ADR は、`[peg-hs ADR 0039](https://github.com/...)` のように、リンクのテキストごと絶対リンクにする。
+同じディレクトリの ADR に同じ番号を付けてはならない。
+番号の重複は CI の `adr` ジョブが拒否し、`adr-guard check-numbers` で一覧にでき、`adr-guard renumber` で直せる（[docs/adr/0194](./docs/adr/0194-update-adr-guard-to-v0.10.0.md)）。
+振りなおしのコミットには、一時的にフックと action に `--allow-renumber` を付ける。
 
 仕様を変えたくなったら、元の ADR を書き換えずに、新しい連番の ADR を書く。
 ADR をやめる場合は、ステータスを破棄にして、理由を [docs/specifications.md](./docs/specifications.md) に書く。

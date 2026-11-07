@@ -100,7 +100,7 @@ ADR はレビューを受けるまでコミットしない。
 ## adr-guard
 
 この規則は、adr-guard が自動で強制する。[index reading=adr-guard: adr-guard]
-今使っているバージョンは v0.8.3 である。[note: [style url: https://github.com/tett23/adr-guard]（adr-guard）、[style url: https://github.com/tett23/golem/blob/main/docs/adr/0048-update-adr-guard-to-v0.8.3.md]（docs/adr の ADR 0048「adr-guard を v0.8.3 に上げ、ステータスの候補に採択（未実装）を加える」）]
+今使っているバージョンは v0.10.0 である。[note: [style url: https://github.com/tett23/adr-guard]（adr-guard）、[style url: https://github.com/tett23/golem/blob/main/docs/adr/0194-update-adr-guard-to-v0.10.0.md]（docs/adr の ADR 0194「adr-guard を v0.10.0 に上げ、ADR の番号の重複と修飾子付きの参照を検査する」）]
 
 [code: .githooks/pre-commit] の中身は一行である。
 
@@ -118,13 +118,21 @@ exec adr-guard pre-commit --allow-status --allow-links
 監査の記録（[code: docs/audit/]、[code: docs/audits/]）と性能計測の記録（[code: docs/benchmarks/]、[code: docs/benchmark/]）も、コミットした後の変更、削除、移動を拒む。
 記録には、[code: --allow-status] と [code: --allow-links] の例外も適用されない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0011-update-adr-guard-to-v0.8.0.md]（docs/adr の ADR 0011「adr-guard を v0.8.0 に上げ、ステータスの行の数と記録の保護も検査する」）]
 
-同じ検査は、CI の [code: docs.yml] の [code: adr] ジョブでも、adr-guard の v0.8.3 の action に [code: allow-status: true] と [code: allow-links: true] を付けて行う。
+同じ検査は、CI の [code: docs.yml] の [code: adr] ジョブでも、adr-guard の v0.10.0 の action に [code: allow-status: true] と [code: allow-links: true] を付けて行う。
 フックは手元の設定なので外せるが、CI の検査は外せない。
 
 ## ADR の参照にはリンクを付ける
 
 文書の中で ADR を参照するとき（[code: ADR 0001] の形）は、ADR のファイルへのリンクを付ける。
 リンクのない参照は、CI の [code: adr] ジョブが拒む。
+モジュールの ADR は、[code: golem-driver ADR 0015] のようにモジュールの名前を直前に置いて参照し、モジュールの名前もリンクのテキストに含める。
+[code: docs/adr ADR 0003] のようにディレクトリで修飾するときも同じである。
+修飾子がリンクの外にある参照、リンク先が修飾子の ADR と異なるリンク、対象の無い修飾子付きの参照も、CI の [code: adr] ジョブが拒む。
+ほかのリポジトリの ADR は、リンクのテキストごとそのリポジトリへの絶対リンクにする。
+
+同じディレクトリの ADR に同じ番号を付けてはならない。
+別々のブランチで同じ番号の ADR を作ってマージすると重複が起き、CI の [code: adr] ジョブが拒む。
+振りなおしのコミットには、一時的にフックと action に [code: --allow-renumber] を付ける。
 adr-guard には、一覧を出す命令と直す命令がある。
 
 ```sh
@@ -132,6 +140,8 @@ $ adr-guard links          # リンクのない ADR の参照の一覧
 $ adr-guard links --fix    # リンクを付ける
 $ adr-guard check-status   # ステータスの行の数が誤った ADR の一覧
 $ adr-guard unimplemented  # ステータスが採択（未実装）の ADR の一覧
+$ adr-guard check-numbers  # 番号が重複した ADR の一覧
+$ adr-guard renumber       # 重複した番号を振りなおす
 ```
 
 ADR を書いた後と、仕様書や README を直した後は、[code: adr-guard links --fix] を実行してから確かめる。

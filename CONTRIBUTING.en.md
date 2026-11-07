@@ -18,7 +18,7 @@ After cloning, enable the Git hooks first.
 git config core.hooksPath .githooks
 ```
 
-The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.8.3 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.3`).
+The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.10.0 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.10.0`).
 This setting is not stored in the repository, so run it in every clone.
 `.githooks/pre-push` stops the push of a branch that changes the specification without updating the manual (see Documentation).
 
@@ -80,6 +80,10 @@ Once committed, an ADR cannot be changed except for its status line.
 Changes to the status line (`--allow-status`) and changes that only add, remove, or retarget links (`--allow-links`) are allowed ([docs/adr/0010](./docs/adr/0010-update-adr-guard-to-v0.5.0.md), [docs/adr/0032](./docs/adr/0032-update-adr-guard-to-v0.8.2.md)); changes to link text are not.
 Every ADR must have exactly one status line starting with `ステータス:`; the hook and the `adr` job in CI reject ADRs with none or more than one, and `adr-guard check-status` lists them ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)).
 ADR references in documents must link to the ADR file; the `adr` job in CI rejects unlinked ones, and `adr-guard links --fix` fixes them.
+Refer to a module ADR with the module name right before it, as in `golem-driver ADR 0015`, and put the module name inside the link text (`[golem-driver ADR 0015](...)`); the same goes for a directory qualifier such as `docs/adr ADR 0003`.
+The `adr` job in CI also rejects a qualifier outside the link, a link that points to an ADR other than the qualified one, and a qualified reference whose target does not exist.
+Link an ADR of another repository with an absolute link that includes the whole reference, as in `[peg-hs ADR 0039](https://github.com/...)`.
+Two ADRs in the same directory must not share a number; the `adr` job in CI rejects duplicates, `adr-guard check-numbers` lists them, and `adr-guard renumber` fixes them ([docs/adr/0194](./docs/adr/0194-update-adr-guard-to-v0.10.0.md)). The renumbering commit needs `--allow-renumber` on the hook and the action, added temporarily.
 
 To change the specification, do not rewrite the old ADR; write a new one with the next number.
 To abandon an ADR, set its status to 破棄 and record the reason in [docs/specifications.md](./docs/specifications.md).
