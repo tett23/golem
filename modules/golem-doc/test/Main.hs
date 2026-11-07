@@ -1,7 +1,6 @@
 module Main (main) where
 
 import CborExprSpec qualified
-import LinkSpec qualified
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Control.Exception (ErrorCall, evaluate, try)
@@ -15,6 +14,7 @@ import Golem.Syntax.Span
 import Golem.TestSupport.ExternalTool (needsTool)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import Hedgehog
+import LinkSpec qualified
 import System.Directory (findExecutable)
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))

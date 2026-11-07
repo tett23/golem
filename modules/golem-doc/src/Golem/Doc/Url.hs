@@ -50,7 +50,8 @@ parts u
   | T.count "#" u > 1 = Nothing
   | otherwise = case T.breakOn ":" u of
       (pre, rest)
-        | not (T.null rest), not (T.any (`elem` ("/?#" :: String)) pre) ->
+        | not (T.null rest),
+          not (T.any (`elem` ("/?#" :: String)) pre) ->
             if validScheme pre then afterScheme pre (T.drop 1 rest) else Nothing
         | otherwise -> if T.any (`elem` ("[]" :: String)) u then Nothing else Just (Nothing, Nothing)
   where

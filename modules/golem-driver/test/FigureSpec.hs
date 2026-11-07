@@ -6,7 +6,6 @@ ADR 0039).
 module FigureSpec (pdfFigureTests, svgFigureTests, fitFigureTests, figureWidthTests, turnedFigureTests, activeContentTests) where
 
 import Codec.Compression.Zlib qualified as Z
-import LinkSpec (annotations)
 import Control.Monad (forM_)
 import Data.Bits (shiftR)
 import Data.ByteString qualified as BS
@@ -29,6 +28,7 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (FigureContent (..), ImportedPage (..), Mark (..), Turn (..), contentStream)
 import Golem.Preflight.View (ImageView (..), LineView (..), PageView (..), View (..))
 import Golem.Syntax
+import LinkSpec (annotations)
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
 import System.FilePath ((</>))

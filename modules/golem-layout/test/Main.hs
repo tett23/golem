@@ -38,13 +38,13 @@ import Hedgehog.Range qualified as Range
 import InseparableSpec (inseparableTests)
 import KnuthPlassReference
 import LineBreakingSpec (lineBreakingTests)
+import LinkSpec (linkTests)
 import PaginateSpec (paginateTests)
 import PunctuationSpec (punctuationTests)
 import RuleAreaSpec (ruleAreaTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
-import LinkSpec (linkTests)
 import UrlBreakSpec (urlBreakTests)
 
 main :: IO ()

@@ -12,8 +12,8 @@ import DoubleDashSpec (doubleDashTests)
 import EmetSamplesSpec (emetSamplesTests)
 import FigureSpec
 import FunctionsSpec (functionsTests)
-import LinkSpec (linkTests)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
+import LinkSpec (linkTests)
 import MemoSpec
 import OutputGoldenSpec
 import PageElementsSpec

@@ -474,7 +474,7 @@ documentObjects doc =
                   ("Resources", resources),
                   ("Contents", ORef (pageObj i + 1))
                 ]
-                  `withAnnots` refs,
+                `withAnnots` refs,
               OStream [("Filter", OName "FlateDecode")] (flate (contentStreamWith fontNames imageNames formNames (pageContent p)))
             ]
           | (i, p, refs) <- zip3 [0 ..] pages annotRefs

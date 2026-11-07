@@ -132,8 +132,8 @@ data Look = Look
     -- | the padding before and after a run of code along the line, in sp (golem-driver ADR 0029)
     lkPadding :: !Sp,
     {- | the target of the link the text is in (docs/adr ADR 0182); Nothing
-    is no link. The line breaking does not read it -}
-    lkLink :: !(Maybe LinkTarget)
+    is no link. The line breaking does not read it
+    -} lkLink :: !(Maybe LinkTarget)
   }
   deriving stock (Eq, Ord, Show)
 
