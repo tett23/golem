@@ -9,6 +9,7 @@ module Golem.Layout.KnuthPlass
     Hyphen (..),
     isPatternHyphen,
     BoxContent (..),
+    MarkBox (..),
     Params (..),
     defaultParams,
     Line (..),
@@ -63,12 +64,26 @@ data BoxContent = BoxContent
     characters are in the source (golem-cli ADR 0008), for golem preflight.
     The algorithm does not read it, and nothing that draws the box does.
     -} bcSource :: !BoxSource,
+    {- | of the mark of a note (docs/adr/0177): the look of its place and its
+    parts; Nothing for any other box. The algorithm does not read it.
+    -} bcMark :: !(Maybe MarkBox),
     {- | where the first character of the box is in the source, a byte
     offset in the file of the span of 'bcSource' (docs/adr ADR 0195): the
     character itself, where the span is that of the whole text; -1 for
     characters the source does not have. The algorithm does not read it,
     and nothing that draws the box does.
     -} bcAt :: !Int
+  }
+  deriving stock (Eq, Show)
+
+{- | What the mark of a note keeps for its drawing (docs/adr/0177): the
+look of its place, whose size and face place the mark, and its parts,
+each with the kind of its box (the 'bcTag' of a box of its own), its text
+and where it starts along the line from the start of the box.
+-}
+data MarkBox = MarkBox
+  { mbPlace :: !Look,
+    mbParts :: ![(Int, Text, Sp)]
   }
   deriving stock (Eq, Show)
 

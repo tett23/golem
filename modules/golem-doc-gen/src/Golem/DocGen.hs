@@ -1,8 +1,9 @@
 {- | The hedgehog generators of the semantic IR (docs/adr/0191), which
-the test suite of golem-driver uses. Only test suites depend on this
-package (scripts/ci/test-only-deps.sh). The test suite of golem-doc has a
-copy, modules/golem-doc/test/Gen.hs: cabal rejects the cycle of a test
-of golem-doc that depends on this package, which depends on golem-doc.
+the test suites of golem-driver and of this package use. Only test suites
+depend on this package (scripts/ci/test-only-deps.sh). The test suite of
+golem-doc cannot depend on it, since cabal rejects the cycle with
+golem-doc: the properties of golem-doc that use the generators are in the
+test suite of this package (docs/adr/0197).
 -}
 module Golem.DocGen (genDocument, genInline, genExpr, genInt64) where
 

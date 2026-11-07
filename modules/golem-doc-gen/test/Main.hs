@@ -8,12 +8,15 @@ then fails with too little coverage until the generators make it.
 -}
 module Main (main) where
 
+import CborExprSpec qualified
+import CborSpec qualified
 import Data.Foldable (for_)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.String (fromString)
 import Golem.Doc.IR
 import Golem.DocGen (genDocument)
+import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
@@ -137,15 +140,20 @@ kinds = foldMap block . docBlocks
       Aki {} -> mempty
 
 main :: IO ()
-main =
-  defaultMain $
-    testGroup
-      "golem-doc-gen"
-      [ -- the rarest kinds are in about 5% of the documents (2026-11-07):
-        -- in 1000 documents, too few to cover 1% is far from chance,
-        -- where in the 100 of the default it is not (docs/adr/0191)
-        testProperty "the generators make every constructor of the IR" $ withTests 1000 $ property $ do
-          (bs, is) <- kinds <$> forAll genDocument
-          for_ [minBound .. maxBound] $ \k -> cover 1 (fromString ("block " <> show k)) (k `Set.member` bs)
-          for_ [minBound .. maxBound] $ \k -> cover 1 (fromString ("inline " <> show k)) (k `Set.member` is)
-      ]
+main = defaultMainReportingSkips (const tests)
+
+tests :: TestTree
+tests =
+  testGroup
+    "golem-doc-gen"
+    [ -- the rarest kinds are in about 5% of the documents (2026-11-07):
+      -- in 1000 documents, too few to cover 1% is far from chance,
+      -- where in the 100 of the default it is not (docs/adr/0191)
+      testProperty "the generators make every constructor of the IR" $ withTests 1000 $ property $ do
+        (bs, is) <- kinds <$> forAll genDocument
+        for_ [minBound .. maxBound] $ \k -> cover 1 (fromString ("block " <> show k)) (k `Set.member` bs)
+        for_ [minBound .. maxBound] $ \k -> cover 1 (fromString ("inline " <> show k)) (k `Set.member` is),
+      -- the properties of golem-doc that use the generators (docs/adr/0197)
+      CborSpec.tests,
+      CborExprSpec.tests
+    ]

@@ -1,6 +1,6 @@
 # ADR 0175: 機能を組み合わせた二冊の fixture で、機能のあいだの相互作用を固定する
 
-ステータス: 採択
+ステータス: 採択→diagnostics の条件（G07030 と G07046 を止めること）は [ADR 0198](0198-silenced-notices-of-complex-fixtures.md)
 
 ## 文脈
 
