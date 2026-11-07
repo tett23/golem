@@ -61,10 +61,12 @@ module Golem.Typeset
     pdfFileName,
     instanceIdInputs,
     producer,
+    pagesJson,
   )
 where
 
 import Golem.Typeset.Draw
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
+import Golem.Typeset.Pages (pagesJson)
 import Golem.Typeset.TextLayer (ClusterPart (..))

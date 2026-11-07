@@ -27,6 +27,7 @@ library
                     Golem.Typeset.Structure
                     Golem.Typeset.Flow
                     Golem.Typeset.Fonts
+                    Golem.Typeset.Pages
   build-depends:
     , async         >=2.2  && <2.3
     , base          >=4.20 && <4.21

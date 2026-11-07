@@ -72,7 +72,13 @@ data BoxContent = BoxContent
     {- | the leaf of the structure tree of the PDF that the characters of
     the box belong to (docs/adr ADR 0183); the reading of a ruby box is
     the next leaf. The algorithm does not read it.
-    -} bcLeaf :: !Leaf
+    -} bcLeaf :: !Leaf,
+    {- | where the first character of the box is in the source, a byte
+    offset in the file of the span of 'bcSource' (docs/adr ADR 0195): the
+    character itself, where the span is that of the whole text; -1 for
+    characters the source does not have. The algorithm does not read it,
+    and nothing that draws the box does.
+    -} bcAt :: !Int
   }
   deriving stock (Eq, Show)
 

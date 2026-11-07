@@ -59,7 +59,8 @@ pdfPipelineTests =
           sort [cp | (_, cp, _, _) <- g] @?= ["U+2022", "U+2026", "U+4E00", "U+4E09", "U+4E8C", "U+4FA1", "U+9014", "U+91CD"]
           sum [n | (_, _, n, _) <- g] @?= 105
           sort [at | (_, _, _, at) <- g] @?= sort (replicate 4 ("front.gm", 5) <> [("chapters/01.gm", 6), ("chapters/01.gm", 10), ("chapters/01.gm", 15), ("chapters/02.gm", 6)])
-          map takeFileName (brWritten r) @?= ["urn-uuid-11111111-2222-4333-8444-555555555555.pdf"],
+          -- the PDF and where its pages start (docs/adr ADR 0195)
+          map takeFileName (brWritten r) @?= ["urn-uuid-11111111-2222-4333-8444-555555555555.pdf", "pages.json"],
       testCase "G08100 in prod: errors, no PDF, and HTML is still written (docs/adr 0081)" $
         withMissingGlyphs subsetJa $ \tmp -> do
           -- the PDF of a dev build before does not stay
@@ -161,7 +162,7 @@ pdfPipelineTests =
           r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = FontProvider (\_ _ _ _ -> pure (Right fakeFonts))}
           assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
           case brWritten r of
-            [path] -> BS.readFile path
+            [path, _] -> BS.readFile path
             other -> assertFailure (show other)
         streams <- inflateAll pdf
         let content = BS.concat streams
@@ -780,8 +781,9 @@ buildRealPdf parallel = withSystemTempDirectory "golem-driver" $ \tmp -> do
   BS.writeFile (tmp </> "style.toml") (pdfStyle <> "\n[fonts.body]\nja = \"fonts/ja.otf\"\nlatin = \"fonts/latin.otf\"\n")
   r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optParallel = parallel}
   assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+  -- the PDF, then pages.json (docs/adr ADR 0195)
   case brWritten r of
-    [path] -> BS.readFile path
+    [path, _] -> BS.readFile path
     other -> assertFailure (show other)
 
 buildPdf :: Bool -> IO BS.ByteString
@@ -790,8 +792,9 @@ buildPdf parallel = withSystemTempDirectory "golem-driver" $ \tmp -> do
   writeStyleWithFont tmp pdfStyle
   r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = FontProvider (\_ _ _ _ -> pure (Right fakeFonts)), optParallel = parallel}
   assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+  -- the PDF, then pages.json (docs/adr ADR 0195)
   case brWritten r of
-    [path] -> BS.readFile path
+    [path, _] -> BS.readFile path
     other -> assertFailure (show other)
 
 {- | The font resources of a PDF: each name (such as @/F1@) with its Type0
@@ -1588,7 +1591,7 @@ codeBlockRubyTests =
       lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|" []]) @?= 0,
     testCase "a kenten box overhangs only when its look has a mark" $ do
       let central = const (baselineRatio - 1 / 2)
-          kenten shape = Box (10 * pt) (BoxContent "漢" False 0 0 (fromEnum KindKenten) (plainLook "body" (10 * pt)) {lkKenten = shape} 0 0 [] 0 0 noBoxSource Nothing noLeaf)
+          kenten shape = Box (10 * pt) (BoxContent "漢" False 0 0 (fromEnum KindKenten) (plainLook "body" (10 * pt)) {lkKenten = shape} 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
       lineOverhang False (10 * pt) central (lineOf [kenten (Just KentenSesame)]) @?= 5 * pt
       lineOverhang False (10 * pt) central (lineOf [kenten Nothing]) @?= 0,
     testCase "the overhang of a line is that of its highest box" $
@@ -1644,7 +1647,7 @@ codeBlockRubyTests =
     plainLine = Line [] 0 0 0 (0, 0) False (0, 0)
     lineOf items = Line items 0 0 0 (0, 0) False (0, 0)
     -- a ruby box of the kind set at 10pt, its reading at half that; its base characters at 10pt unless given
-    rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0 noBoxSource Nothing noLeaf)
+    rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0 noBoxSource Nothing noLeaf 0)
     firstPage pl = take 1 (plPages pl)
     -- the grid line after the code block of the first page
     codeEnd pl = sum (take 1 [s + n | p <- firstPage pl, (s, SCode _ _ n) <- poSlots p])
