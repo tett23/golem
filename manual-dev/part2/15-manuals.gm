@@ -194,7 +194,8 @@ URL を先に書けば、URL の行はそろわないまま残り、和文の名
 脚注のリンクは、引用とは別に今までどおり置く。
 
 この本の図は、[code: manual-dev/images/src/] の SVG を原稿にしている。[index reading=ず: 図]
-Golem は SVG の図版の文字を描かないので、原稿の文字を輪郭にした SVG を [code: manual-dev/images/] に置き、それを図版にする。
+使い手のマニュアルの SVG の図も同じで、原稿は [code: manual/images/src/] にある。
+Golem は SVG の図版の文字を描かないので、原稿の文字を輪郭にした SVG を [code: images/src/] の一つ上の [code: images/] に置き、それを図版にする。
 原稿の SVG を直したら [code: scripts/manual/outline-figures.sh] で輪郭の SVG を作り直し、両方をコミットする。
 このスクリプトは Inkscape 1.x で文字を輪郭にし、図の文字には組版と同じ Noto Sans JP だけを使う（マシンのフォントは使わない）。
 輪郭の SVG は手で直さない。
