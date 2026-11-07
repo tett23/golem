@@ -980,6 +980,85 @@ if [ -e "$L/out/wasmtime" ] || grep -q 'wasmtime' "$L/out/README"; then ng "lice
 rm -rf "${L:?}/out"
 LINKMAP=$LC/gnu.map
 
+# ---- licenses.sh --wasm (docs/adr/0199, docs/adr/0202)
+# The plan of cabal.project.wasm: exe:golem-wasm of golem-wasm over
+# golem-driver, a package of Hackage, cborg of a source-repository-package,
+# skylighting patched by fetch-wasm-packages.sh (a local package), and
+# the boot packages of the wasm GHC; the build tools and the tests are not
+# linked. No link map, no Alpine package, no wasmtime.
+LW=$L/wasm
+mkdir -p "$LW/ghcdoc/ghc-9.10.3.20260731" "$LW/ghcdoc/base-4.20.2.0" \
+  "$L/root/dist-wasm/src/cborg-6ef2/cborg" "$L/root/third_party/wasm-packages/skylighting-0.15" \
+  "$L/root/scripts/wasm/patches" "$L/root/licenses/wasi-sdk/wasi-libc" "$L/root/licenses/wasi-sdk/llvm" \
+  "$L/root/licenses/wasi-sdk/libffi-wasm"
+echo wasm-ghc >"$LW/ghcdoc/ghc-9.10.3.20260731/LICENSE"
+echo base >"$LW/ghcdoc/base-4.20.2.0/LICENSE"
+echo cborg >"$L/root/dist-wasm/src/cborg-6ef2/cborg/LICENSE.txt"
+echo skylighting >"$L/root/third_party/wasm-packages/skylighting-0.15/LICENSE"
+echo patch >"$L/root/scripts/wasm/patches/skylighting-0.15.patch"
+echo wasi-libc >"$L/root/licenses/wasi-sdk/wasi-libc/LICENSE-MIT"
+echo llvm >"$L/root/licenses/wasi-sdk/llvm/libcxx-LICENSE.TXT"
+echo libffi-wasm >"$L/root/licenses/wasi-sdk/libffi-wasm/LICENSE"
+echo readme >"$L/root/licenses/wasi-sdk/README.md"
+echo 20251219T213239/wasi-sdk.tar.gz >"$L/root/licenses/wasi-sdk/VERSION"
+mkdir -p "$L/root/scripts"
+printf 'BINDISTS=https://github.com/haskell-wasm/ghc-wasm-bindists/releases/download\nSDK_URL=$BINDISTS/20251219T213239/wasi-sdk.tar.gz\n' >"$L/root/scripts/fetch-ghc-wasm.sh"
+cat >"$LW/plan.json" <<'JSON'
+{"install-plan":[
+ {"type":"configured","id":"golem-wasm-exe","pkg-name":"golem-wasm","pkg-version":"0.1.0","pkg-src":{"type":"local"},"style":"local","component-name":"exe:golem-wasm","depends":["golem-driver-lib","golem-wasm-lib","base-1"],"exe-depends":["happy-1"]},
+ {"type":"configured","id":"golem-wasm-lib","pkg-name":"golem-wasm","pkg-version":"0.1.0","pkg-src":{"type":"local"},"style":"local","component-name":"lib","depends":["base-1"]},
+ {"type":"configured","id":"golem-driver-lib","pkg-name":"golem-driver","pkg-version":"0.1.0","pkg-src":{"type":"local"},"style":"local","component-name":"lib","depends":["foo-1","cborg-1","sky-1"]},
+ {"type":"configured","id":"foo-1","pkg-name":"foo","pkg-version":"1.0","pkg-src":{"type":"repo-tar"},"style":"global","depends":["base-1"]},
+ {"type":"configured","id":"cborg-1","pkg-name":"cborg","pkg-version":"0.2.10.0","pkg-src":{"type":"source-repo","source-repo":{"type":"git","location":"https://github.com/well-typed/cborg","tag":"6ef2791ca41b397a3e36c868ad3e66a0d09f19b2","subdir":"cborg"}},"style":"global","depends":["base-1"]},
+ {"type":"configured","id":"sky-1","pkg-name":"skylighting","pkg-version":"0.15","pkg-src":{"type":"local","path":"/x/third_party/wasm-packages/skylighting-0.15/."},"style":"local","component-name":"lib","depends":["base-1"]},
+ {"type":"configured","id":"happy-1","pkg-name":"happy","pkg-version":"2.2","pkg-src":{"type":"repo-tar"},"style":"global","depends":["base-1"]},
+ {"type":"pre-existing","id":"base-1","pkg-name":"base","pkg-version":"4.20.2.0","depends":["rts-1"]},
+ {"type":"pre-existing","id":"rts-1","pkg-name":"rts","pkg-version":"1.0.2","depends":[]}
+]}
+JSON
+licenses_wasm() {
+  GOLEM_ROOT="$L/root" CABAL_PACKAGES="$L/packages" GHC_DOCDIR="$LW/ghcdoc" GHC_VERSION=9.10.3.20260731 \
+    GMP_SOURCE="$L/gmp/gmp-6.3.0.tar.xz" GMP_VERSION=6.3.0 SOURCE_REPOS="$L/root/dist-wasm/src" \
+    sh "$HERE/licenses.sh" --wasm "$LW/plan.json" "$L/out" v0.1.0
+}
+rm -rf "${L:?}/out"
+run licenses_wasm
+expect "licenses --wasm: all found" 0
+for f in README LICENSE-golem haskell/foo-1.0/LICENSE haskell/base-4.20.2.0/LICENSE ghc/LICENSE \
+  haskell/cborg-0.2.10.0/LICENSE.txt haskell/cborg-0.2.10.0/SOURCE haskell/skylighting-0.15/LICENSE \
+  haskell/skylighting-0.15/skylighting-0.15.patch haskell/skylighting-0.15/SOURCE harfbuzz/COPYING \
+  freetype/LICENSE.TXT freetype/FTL.TXT hyph-en-us/LICENSE-hyph-en-us.txt gmp/COPYINGv3 gmp/COPYING.LESSERv3 \
+  wasi-sdk/wasi-libc/LICENSE-MIT wasi-sdk/llvm/libcxx-LICENSE.TXT wasi-sdk/libffi-wasm/LICENSE; do
+  if [ -f "$L/out/$f" ]; then ok; else ng "licenses --wasm: $f is written"; fi
+done
+if [ "$(cat "$L/out/ghc/LICENSE")" = wasm-ghc ]; then ok; else ng "licenses --wasm: the LICENSE of the wasm GHC"; fi
+if grep -q 'commit: 6ef2791ca41b397a3e36c868ad3e66a0d09f19b2' "$L/out/haskell/cborg-0.2.10.0/SOURCE" &&
+  grep -q 'subdirectory: cborg' "$L/out/haskell/cborg-0.2.10.0/SOURCE"; then ok; else ng "licenses --wasm: the commit of cborg"; fi
+if grep -q 'https://hackage.haskell.org/package/skylighting-0.15/skylighting-0.15.tar.gz' "$L/out/haskell/skylighting-0.15/SOURCE"; then ok; else ng "licenses --wasm: the archive of skylighting"; fi
+if grep -q '^golem.wasm is distributed under the MIT License' "$L/out/README" && grep -q 'golem.wasm links GNU MP 6.3.0' "$L/out/README" &&
+  grep -q 'wasi-sdk/wasi-libc/' "$L/out/README"; then ok; else ng "licenses --wasm: README"; fi
+for d in golem-wasm-0.1.0 golem-driver-0.1.0 happy-2.2 rts-1.0.2 wasmtime musl compiler-rt; do
+  if [ -e "$L/out/haskell/$d" ] || [ -e "$L/out/$d" ]; then ng "licenses --wasm: no $d"; else ok; fi
+done
+if [ -e "$L/out/wasi-sdk/README.md" ] || [ -e "$L/out/wasi-sdk/VERSION" ]; then ng "licenses --wasm: only the licenses of licenses/wasi-sdk/"; else ok; fi
+rm -rf "${L:?}/out"
+echo 20250101T000000/wasi-sdk.tar.gz >"$L/root/licenses/wasi-sdk/VERSION"
+run licenses_wasm
+expect "licenses --wasm: licenses/wasi-sdk of another wasi-sdk" 1
+if grep -q 'licenses/wasi-sdk' "$WORK/err"; then ok; else ng "licenses --wasm: names licenses/wasi-sdk"; fi
+echo 20251219T213239/wasi-sdk.tar.gz >"$L/root/licenses/wasi-sdk/VERSION"
+rm -rf "${L:?}/out"
+mv "$L/root/scripts/wasm/patches/skylighting-0.15.patch" "$L/patch.orig"
+run licenses_wasm
+expect "licenses --wasm: a patched package without its patch" 1
+if grep -q 'skylighting-0.15' "$WORK/err"; then ok; else ng "licenses --wasm: names the package without its patch"; fi
+mv "$L/patch.orig" "$L/root/scripts/wasm/patches/skylighting-0.15.patch"
+rm -rf "${L:?}/out"
+run env GOLEM_ROOT="$L/root" CABAL_PACKAGES="$L/packages" GHC_VERSION=9.10.3.20260731 GMP_SOURCE="$L/gmp/gmp-6.3.0.tar.xz" \
+  GMP_VERSION=6.3.0 SOURCE_REPOS="$L/root/dist-wasm/src" sh "$HERE/licenses.sh" --wasm "$LW/plan.json" "$L/out" v0.1.0
+expect "licenses --wasm: no GHC_DOCDIR" 1
+rm -rf "${L:?}/out"
+
 # ---------------------------------------------------------------- the scripts that run at a release
 # (docs/adr/0078-tests-for-release-and-hand-run-scripts.md): package.sh,
 # gmp-version.sh, fetch-gmp.sh, build-macos.sh, build-linux.sh and
@@ -1053,6 +1132,57 @@ if [ ! -e "$PK/out/golem-v1.2.3-linux-x86_64" ]; then ok; else ng "package: the 
 run sh "$PK/root/scripts/release/package.sh" v1.2.3 linux-x86_64 "$PK/golem.bin"
 expect "package: three arguments" 2
 
+# ---- package-wasm.sh (docs/adr/0199)
+
+PW=$WORK/package-wasm
+mkdir -p "$PW/root/scripts/release" "$PW/root/scripts/wasm" "$PW/bin"
+cp "$HERE/package-wasm.sh" "$PW/root/scripts/release/package-wasm.sh"
+printf 'MIT\n' >"$PW/root/LICENSE"
+printf 'the exports and the frames\n' >"$PW/root/scripts/wasm/README"
+# licenses.sh --wasm PLAN OUTDIR TAG writes the README of OUTDIR
+fake "$PW/root/scripts/release" licenses.sh '[ "$1" = --wasm ] || exit 9; mkdir -p "$3" && printf "licenses of %s from %s in %s\n" "$4" "$2" "$SOURCE_REPOS" >"$3/README"'
+# a tar that records its arguments and makes the archive with the tar of
+# the system, without the options that only GNU tar has
+cat >"$PW/bin/gnutar" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "$*" >"$TAR_LOG"
+n=$#
+for a in "$@"; do
+  case "$a" in --sort=* | --mtime=* | --owner=* | --group=* | --numeric-owner) ;; *) set -- "$@" "$a" ;; esac
+done
+shift "$n"
+exec tar "$@"
+FAKE
+chmod +x "$PW/bin/gnutar"
+printf '\000asm\001\000\000\000rest' >"$PW/golem.wasm"
+printf 'not wasm' >"$PW/not.wasm"
+: >"$PW/plan.json"
+package_wasm() {
+  rm -rf "$PW/out"
+  TAR="$PW/bin/gnutar" TAR_LOG="$PW/tar.log" GMP_VERSION=6.3.0 sh "$PW/root/scripts/release/package-wasm.sh" v1.2.3 "$1" "$PW/plan.json" "$PW/out"
+}
+run package_wasm "$PW/golem.wasm"
+expect "package-wasm: the archive is made" 0
+AW=$PW/out/golem-v1.2.3-wasm32-wasi.tar.gz
+mkdir -p "$PW/x"
+if [ -f "$AW" ] && tar -xzf "$AW" -C "$PW/x"; then ok; else ng "package-wasm: the archive is a tar.gz"; fi
+for f in golem.wasm LICENSE README THIRD_PARTY_LICENSES/README; do
+  if [ -f "$PW/x/golem-v1.2.3-wasm32-wasi/$f" ]; then ok; else ng "package-wasm: the archive has $f"; fi
+done
+if cmp -s "$PW/golem.wasm" "$PW/x/golem-v1.2.3-wasm32-wasi/golem.wasm"; then ok; else ng "package-wasm: golem.wasm as it was built"; fi
+if [ "$(cat "$PW/x/golem-v1.2.3-wasm32-wasi/README")" = 'the exports and the frames' ]; then ok; else ng "package-wasm: README is scripts/wasm/README"; fi
+if grep -q "licenses of v1.2.3 from $PW/plan.json in $PW/root/dist-wasm/src" "$PW/x/golem-v1.2.3-wasm32-wasi/THIRD_PARTY_LICENSES/README"; then ok; else ng "package-wasm: licenses.sh --wasm with the plan and dist-wasm/src"; fi
+if grep -q -- '--sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner' "$PW/tar.log"; then ok; else ng "package-wasm: tar --sort=name --mtime=@0"; fi
+if [ "$(cat "$AW.sha256" 2>/dev/null)" = "$(sha "$AW")  golem-v1.2.3-wasm32-wasi.tar.gz" ]; then ok; else ng "package-wasm: the .sha256 is that of the archive"; fi
+if [ "$(cat "$PW/out/gmp-version-wasm32-wasi.txt" 2>/dev/null)" = 6.3.0 ]; then ok; else ng "package-wasm: the version of GMP"; fi
+if [ ! -e "$PW/out/golem-v1.2.3-wasm32-wasi" ] && [ ! -e "$PW/out/golem-v1.2.3-wasm32-wasi.tar" ]; then ok; else ng "package-wasm: the stage and the tar are removed"; fi
+run package_wasm "$PW/not.wasm"
+expect "package-wasm: a file that is not wasm" 1
+run package_wasm "$PW/none.wasm"
+expect "package-wasm: no such file" 1
+run sh "$PW/root/scripts/release/package-wasm.sh" v1.2.3 "$PW/golem.wasm" "$PW/plan.json"
+expect "package-wasm: three arguments" 2
+
 # ---- gmp-version.sh
 
 GV=$WORK/gmp-version
@@ -1081,6 +1211,11 @@ rm -rf "$GV/libdir"
 mkdir -p "$GV/libdir"
 run gmp_version
 expect "gmp-version: no ghc-gmp.h" 1
+# GMP_GHC: the GMP of the wasm GHC, whose libdir has its own ghc-gmp.h (docs/adr/0199)
+fake "$GV/bin" wasm32-wasi-ghc "echo $GV/wasmlibdir"
+gmp_header "$GV/wasmlibdir/lib/wasm32-wasi-ghc-9.10.3.20260731/ghc-bignum-1.3/include/ghc-gmp.h" 6 3 0
+run env PATH="$GV/bin:$PATH" GMP_GHC=wasm32-wasi-ghc GHC_VERSION=0-test GMP_INCLUDE_DIRS="$GV/include" sh "$HERE/gmp-version.sh"
+expect "gmp-version: GMP_GHC reads the libdir of that GHC" 0 "6.3.0"
 
 # ---- fetch-gmp.sh
 

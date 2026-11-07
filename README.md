@@ -28,6 +28,7 @@ Golem は 1.0.0 から、原稿の記法、設定、CLI、出力、プラグイ�
 | `golem-<タグ>-x86_64-linux.tar.gz` | Linux の x86-64（musl で完全に静的にリンクしており、ディストリビューションを問わない） |
 | `golem-<タグ>-aarch64-linux.tar.gz` | Linux の aarch64（同上） |
 | `golem-<タグ>-aarch64-macos.tar.gz` | macOS 14 以降の Apple Silicon |
+| `golem-<タグ>-wasm32-wasi.tar.gz` | PDF の組版だけを行う WebAssembly の reactor モジュール `golem.wasm`（下の「wasm の版」） |
 
 Windows では、WSL2 の上で Linux のアーカイブを使う。
 x86-64 の macOS 向けの配布物はないので、[CLI のビルド](#cli-のビルド) の手順でソースからビルドする。
@@ -71,6 +72,35 @@ ca-certificates の入っていない最小構成のコンテナでは、ca-cert
 `BUILDINFO` には、ビルドしたコミットと環境を記録している。
 `share/golem/editors/` には、エディタが `.gm` と `.emet` を色付けするための TextMate と tree-sitter の構文の定義がある。
 使い方は、同じディレクトリの `README.md`（[tools/editors/README.md](./tools/editors/README.md)）にある。
+
+### wasm の版
+
+`golem-<タグ>-wasm32-wasi.tar.gz` の `golem.wasm` は、同じ版の `golem build --target pdf` と同じ手順で PDF を組む WebAssembly の reactor モジュールである（[docs/adr/0199](./docs/adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
+ファイルを読まず、プロジェクトのファイルをバイト列で受け取って、PDF と diagnostics の JSON を返す。
+インポートは WASI（preview 1）の `wasi_snapshot_preview1` だけで、前もって開くディレクトリ（preopen）を要らない。
+Node の `node:wasi`、wasmtime、Deno、`browser_wasi_shim` を使うブラウザで動かせる。
+プラグインの機能はなく、`[plugins]` かプラグインのフィルタの `[[filters]]` を書いたプロジェクトは G06106 になる。
+ビルドのオプション（プロファイル、トンボ、`--no-notices`、`--verbose`）は受け取らず、`golem build --target pdf` の既定で組む。
+
+エクスポートは C の ABI の次の五つと `hs_init` で、ホストは `_initialize` を一度、`hs_init(0, 0)` を一度呼んでから使う。
+
+| 名前 | 型（C） | 働き |
+|---|---|---|
+| `golem_alloc` | `uint8_t *golem_alloc(uint32_t len)` | 入力のバッファを確保する |
+| `golem_free` | `void golem_free(uint8_t *p)` | `golem_alloc` と結果のバッファを解放する |
+| `golem_build_pdf` | `uint8_t *golem_build_pdf(const uint8_t *in, uint32_t len)` | 入力の枠を読んで組み、結果の枠を返す |
+| `golem_result_len` | `uint32_t golem_result_len(const uint8_t *r)` | 結果の枠（と `golem_version` の値）の長さ |
+| `golem_version` | `uint8_t *golem_version(void)` | `VERSION` の値（UTF-8） |
+
+入力の枠は、ファイルごとに、パスの長さ（`uint32` のリトルエンディアン）、パス（UTF-8）、中身の長さ（同じ）、中身を続けたものである。
+パスはプロジェクトのルートからの相対パスで、`.` と `..` と空の区間を含まない正規化した形（`manifest.toml`、`fonts/NotoSerifJP-Regular.otf` など）とし、同じパスを二度書かない。
+結果の枠は、状態の 1 バイト、PDF の長さと PDF、diagnostics の JSON の長さと JSON である（長さはどれも `uint32` のリトルエンディアン）。
+状態 0 は組んだことを表し、エラーで PDF がなければ PDF の長さが 0 になる。
+状態 1 は入力の枠を読めないことを表し、二つの長さはどちらも 0 である。
+JSON は `golem build --target pdf --format json` が標準エラーに書くものと同じバイト列である。
+ホストの例は [scripts/wasm/run.mjs](./scripts/wasm/run.mjs) にあり、アーカイブの `README` にも同じことを書いている。
+アーカイブの `THIRD_PARTY_LICENSES/` には、`golem.wasm` にリンクしたもの（wasm の GHC の RTS と boot のパッケージ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc と libc++、GMP など）のライセンスがある。
+GMP のソースは、ネイティブのアーカイブと同じくリリースに添えている。
 
 ## Usage
 
@@ -204,11 +234,16 @@ ADR はコミット後に変更しない規約であり、変更が必要な場�
 | wasmtime | 49.0.5 |
 | zlib | 1.3.2 |
 | hyph-utf8（英語（米国）のハイフネーションのパターン） | コミット 5684c0f |
+| wasm のツールチェーン（ghc-wasm-meta の 9.10 の flavour） | ghc-wasm-meta のコミット 8079eb96、GHC 9.10.3.20260731、wasi-sdk（clang 21.1.8）、cabal 3.14.2.0 |
+| cborg（wasm の版だけ） | 上流のコミット 6ef2791c |
+| skylighting、skylighting-core（wasm の版だけ） | Hackage の 0.15 に `scripts/wasm/patches/` の差分を当てたもの |
 
 HarfBuzz と FreeType は、ソースを `modules/golem-font/cbits/` に同梱して静的にリンクする。
 zlib は Hackage の `zlib-clib` 1.3.2 を同梱するバージョンとして使う（`cabal.project` で固定）。
 wasmtime はプラットフォームごとの C API の配布物を `scripts/fetch-wasmtime.sh` で取得する（SHA-256 を検証し、`third_party/wasmtime` に置く。`third_party/wasmtime/VERSION` の名前と SHA-256 がスクリプトのものと一致しなければ取り直す）。
-`licenses/` には、配布物の `THIRD_PARTY_LICENSES/` に写すライセンスの文書のうち、ビルドの環境から取れないもの（`libwasmtime.a` に入った Rust のクレートなどの文書と、Alpine のパッケージが入れない文書）を置く（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
+wasm の版（`golem.wasm`）のツールチェーンは、ghc-wasm-meta の配布物を `scripts/fetch-ghc-wasm.sh` で x86-64 の Linux の向けだけ取得する（各アーカイブの SHA-256 と、`autogen.json` の SRI の値を 16 進に直したものを検証し、`third_party/ghc-wasm` に置く、[docs/adr/0199](./docs/adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
+wasm の版だけは、32 ビットで組めない cborg 0.2.10.0 の代わりに上流のコミット 6ef2791c を `cabal.project.wasm` の `source-repository-package` で使い、`network` に依存する `xml-conduit` を外すために、Hackage の `skylighting` 0.15 と `skylighting-core` 0.15 に `Skylighting.Parser` と `Skylighting.Loader` を除く差分（`scripts/wasm/patches/`）を当てたものを `scripts/fetch-wasm-packages.sh` で `third_party/wasm-packages/` に置いて使う（[docs/adr/0202](./docs/adr/0202-packages-that-do-not-build-for-wasm.md)）。
+`licenses/` には、配布物の `THIRD_PARTY_LICENSES/` に写すライセンスの文書のうち、ビルドの環境から取れないもの（`libwasmtime.a` に入った Rust のクレートなどの文書と、Alpine のパッケージが入れない文書と、wasi-sdk の配布物が持たない文書の `licenses/wasi-sdk/`）を置く（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
 `licenses/plugins/` には、見本のプラグインに入るものの著作権の表示とライセンスの文書を `scripts/plugin-licenses.sh` で生成して置く（[docs/adr/0133](./docs/adr/0133-third-party-licenses-of-sample-plugins.md)）。
 
 ### ビルドとテスト
@@ -447,6 +482,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 | `version` | `scripts/release/check-version.sh` で `VERSION` とタグを検査し、タグのコミットが `main` に含まれることを確かめる。タグの push では、`scripts/release/check-patch.sh` で、タグが `v1.0.0` 以降の直前のリリースの patch なら、見た目の回帰テストの参照（`scripts/visual/pages/`）と、出力のハッシュの一覧（`scripts/determinism/hashes.txt`）の PDF でない行が直前のリリースと同じであることも確かめる（[docs/adr/0174](./docs/adr/0174-compatibility-promises-for-1-0.md)） |
 | `build` | Linux の二つのアーキテクチャでは Alpine のコンテナの中で musl に静的にリンクして、macOS では `macos-15` でビルドし、アーカイブを作る。`THIRD_PARTY_LICENSES/` を決めたリンクマップも成果物として上げる |
 | `smoke` | アーカイブを別のランナーと、`alpine` と `debian:stable-slim` のコンテナの中で展開して動かす。`golem new` の雛形と sample のビルドが diagnostics を一つも出さない（notice も含む）こと、`golem new --no-fonts` が置くべきフォントの一覧のほかに何も書かないことを確かめる（[docs/adr/0080](./docs/adr/0080-release-smoke-checks-diagnostics.md)） |
+| `wasm` | `ci.yml` の `wasm` と同じ手順で `golem.wasm` を組み、`scripts/wasm/run.mjs` の検査を通し、x86-64 の Linux のアーカイブの `golem` と PDF と diagnostics が一致することを `scripts/wasm/compare.sh` で確かめてから、`scripts/release/package-wasm.sh` で `golem-<タグ>-wasm32-wasi.tar.gz`（`golem.wasm`、`LICENSE`、`THIRD_PARTY_LICENSES/`、`README`）を作る。`THIRD_PARTY_LICENSES/` は `scripts/release/licenses.sh --wasm` が作り、wasm の GHC の GMP の版は `scripts/release/gmp-version.sh` を `GMP_GHC=wasm32-wasi-ghc` で動かして調べる（[docs/adr/0199](./docs/adr/0199-pdf-typesetting-as-wasm-reactor.md)） |
 | `determinism` | 三つの配布物と CI のビルドの、`scripts/determinism.sh` の出力を比べる |
 | `notes` | `mise.toml` で固定した Claude Code を、版と SHA-256 で固定した mise（[docs/adr/0085](./docs/adr/0085-pin-mise-version-in-workflows.md)）で `jdx/mise-action` を使って入れ、`scripts/release/write-notes.sh` でリリースノートを書き、`notes.md` を成果物として上げる。権限は `contents: read` だけである（[docs/adr/0044](./docs/adr/0044-release-workflow-hardening.md)） |
 | `release` | タグの push のときだけ、`SHA256SUMS`、来歴の証明、GMP のソース、x86-64 の Linux の配布物で組んだ二つのマニュアルの PDF と HTML（`golem-manual-<タグ>` と `golem-dev-manual-<タグ>`）、コミットした見本のプラグイン（`plugins/wasm/*.wasm`、[docs/adr/0106](./docs/adr/0106-sample-plugins-in-rust.md)）、そのライセンスの文書のアーカイブ（`golem-plugins-licenses-<タグ>.tar.gz`、[docs/adr/0133](./docs/adr/0133-third-party-licenses-of-sample-plugins.md)）、`notes` が書いたリリースノートと共に下書きのリリースを作る。Node と Claude Code は入れない |

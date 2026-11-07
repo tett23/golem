@@ -4716,6 +4716,14 @@ Alpine のパッケージの文書は、そのパッケージの `-doc` から�
 `.github/workflows/release.yml` が、`v` で始まるタグの push で配布物を作り、検査し、下書きのリリースを作る。
 `workflow_dispatch` で起動したときは、配布物を作って検査し、リリースノートを書くところまでを行う。
 リリースの前に、CI と同じビルド、テスト、決定性の検査を通し、三つの配布物が CI のビルドと同じ出力を出すことを確かめる。
+wasm の版の配布物 `golem-<タグ>-wasm32-wasi.tar.gz` は、ジョブ `wasm` が CI と同じ手順で組み、x86-64 の Linux の配布物の `golem` と同じ PDF と diagnostics を返すことを確かめてから作る（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
+中身は `golem.wasm`、`LICENSE`、`THIRD_PARTY_LICENSES/`、エクスポートと枠の形を書いた `README` で、`--sort=name --mtime=@0` で固めた tar を gzip で圧縮する。
+`THIRD_PARTY_LICENSES/` には、wasm の GHC の RTS と boot のパッケージ、Hackage のパッケージ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc、libc++、libc++abi、compiler-rt、libffi-wasm、GMP のライセンスを入れる。
+上流のコミットを使う cborg には、そのリポジトリとコミットを、差分を当てた `skylighting` と `skylighting-core` には、その差分と元のアーカイブの URL を添える（[ADR 0202](adr/0202-packages-that-do-not-build-for-wasm.md)）。
+wasi-sdk の配布物はライセンスの文書を持たないので、上流から取った文書を `licenses/wasi-sdk/` に置き、その `VERSION` が `scripts/fetch-ghc-wasm.sh` の wasi-sdk と一致しなければ失敗する。
+wasm にリンクした GMP の版は、wasm の GHC の `ghc-gmp.h` から読む（`scripts/release/gmp-version.sh` を `GMP_GHC=wasm32-wasi-ghc` で動かす）。
+そのソースのアーカイブは、ネイティブの配布物の GMP と同じく `scripts/release/fetch-gmp.sh` で取ってリリースに添える。
+配布物の名前は `golem-*.tar.gz` に当たるので、`SHA256SUMS`、来歴の証明、下書きのリリースに、ほかの配布物と同じ規則で入る。
 タグのコミットが `main` に含まれないときは、リリースを作らない。
 リリースノートは AI が英語で書き、検査（`scripts/release/check-notes.sh`）に通らなければ変更の一覧をそのまま使う。
 人がリリースノートを読んで直してから公開する。
