@@ -5779,7 +5779,7 @@ PDF はフォントの設定がないので [G08007](#g08007) で止まるが、
 位置は一覧の値の中のそのコードである。
 誤った要素が複数あれば、それぞれに出す。
 
-- メッセージ: `抑制できるのはお知らせのコードだけです: <コード>`（`silence-notices` の誤り。情報のコードなら、後に `（情報のコードは silence-info に書きます）` を添える）、`silence-info に書けるのは情報のコードだけです: <コード>`（`silence-info` の誤り。お知らせのコードなら、後に `（お知らせのコードは silence-notices に書きます）` を添える）、`診断のコードは G と 5 桁の数字で書きます: <文字列>`、`診断のコードは文字列で書きます`。どのメッセージにも、[G03001](#g03001) と同じく ` (diagnostics.silence-notices[0])` のように経路を後ろに添える（[golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md)）
+- メッセージ: `抑制できるのはお知らせのコードだけです: <コード>`（`silence-notices` の誤り。情報のコードなら、後に `（情報のコードは silence-info に書きます）` を添える）、`silence-info に書けるのは情報のコードだけです: <コード>`（`silence-info` の誤り。お知らせのコードなら、後に `（お知らせのコードは silence-notices に書きます）` を添える）、`診断のコードは大文字の G か E の後に 5 桁の数字を続けて書きます: <文字列>`、`診断のコードは文字列で書きます`。どのメッセージにも、[G03001](#g03001) と同じく ` (diagnostics.silence-notices[0])` のように経路を後ろに添える（[golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md)）
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）
 - ADR: [golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)、[docs/adr/0061](adr/0061-five-digit-diagnostic-codes.md)（コードの形）、[docs/adr/0104](adr/0104-info-severity.md)（`silence-info` と一覧の取り違え）
 
@@ -5796,7 +5796,7 @@ PDF はフォントの設定がないので [G08007](#g08007) で止まるが、
 メッセージがもう一方の一覧を示していれば、そのコードをその一覧に移す。
 そうでなければ、そのコードを一覧から消す。
 エラーと警告は抑制できないので、原因を直す。
-コードは大文字の `G` と 5 桁の数字で書く。
+コードは大文字の `G` か `E` の後に 5 桁の数字を続けて書く。
 4 桁の古いコードは、段階の 2 桁の後に `0` を一つ足して 5 桁にする（`G0262` は `G02062`）。
 一覧の値そのものが配列でない場合（`silence-notices = "all"` など）は [G03001](#g03001) になる。
 すべてのお知らせを一度だけ止めたい場合は、コマンドに `--no-notices` を付ける。
