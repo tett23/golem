@@ -502,7 +502,7 @@ lineBugs =
       },
     LineBug
       { lbItem = "明示のハイフンの後の分割と両用の字の禁則",
-        lbShape = \i -> any (T.any isDualCharacter) (inRun i),
+        lbShape = any (T.any isDualCharacter) . inRun,
         lbExcuses = \i br -> case breachOf br of
           L2 -> breaksAtExplicitHyphen i (breachLine br - 1)
           L3 -> breaksAtExplicitHyphen i (breachLine br)

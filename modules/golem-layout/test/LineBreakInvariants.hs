@@ -35,7 +35,7 @@ module LineBreakInvariants
   )
 where
 
-import Data.Maybe (isJust)
+import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Layout.Aki (AkiPos (..), akiBetween, defaultAkiSet, noAki)
@@ -183,8 +183,8 @@ l4Inseparable _ p =
   [ Breach L4 i ("lines " <> show (i + 1) <> " and " <> show (i + 2) <> " break between " <> show (textOf l) <> " and " <> show (textOf next))
   | (i, l, next) <- pairs p,
     Just a <- [lastBox l],
-    Just b <- [firstBox next],
     endClass a == Just Inseparable,
+    Just b <- [firstBox next],
     startClass b == Just Inseparable
   ]
 
@@ -196,7 +196,7 @@ l5Width :: Check
 l5Width _ p =
   concat
     [ [Breach L5 i ("line " <> show (i + 1) <> " ends at " <> show (lineEnd l) <> ", past " <> show (pWidth p) <> ", and is not overfull") | not (lineOverfull l)]
-        <> [Breach L5 i ("line " <> show (i + 1) <> " is overfull, but would fit if it ended after " <> show (T.concat (map bcText [c | Box _ c <- take j (lineItems l)]))) | lineOverfull l, j <- take 1 (fittingBreaks p l)]
+        <> [Breach L5 i ("line " <> show (i + 1) <> " is overfull, but would fit if it ended after " <> show (T.concat [bcText c | Box _ c <- take j (lineItems l)])) | lineOverfull l, j <- take 1 (fittingBreaks p l)]
     | (i, l) <- zip [0 :: Int ..] (linesOf p),
       wide p l
     ]
@@ -329,7 +329,7 @@ l9Hyphens _ p =
             after = T.filter (not . isExtending) after0
         Just (Penalty _ _ ExplicitHyphen) ->
           [ Breach L9 i ("line " <> show (i + 1) <> " breaks after a written hyphen but ends with " <> show (textOf line))
-          | not (maybe False (\c -> maybe False ((`elem` ("-‐–—" :: String)) . snd) (T.unsnoc (bcText c))) (lastBox line))
+          | not (maybe False (maybe False ((`elem` ("-‐–—" :: String)) . snd) . T.unsnoc . bcText) (lastBox line))
           ]
             <> [Breach L9 i ("line " <> show (i + 1) <> " adds a hyphen after a written one") | any isPenalty (take 1 (reverse (lineItems line)))]
         _ -> []
@@ -366,7 +366,7 @@ l10Spaces _ p =
   [ Breach L10 i ("line " <> show (i + 1) <> " " <> where_ <> " with a space")
   | (i, l) <- zip [0 :: Int ..] (linesOf p),
     (where_, edge) <- [("starts", take 1 (lineItems l)) | i > 0] <> [("ends", take 1 (reverse (lineItems l)))],
-    any (== latinSpace p) edge
+    latinSpace p `elem` edge
   ]
 
 {- | L11: where a Japanese character (kana, an ideograph) and a Latin word
@@ -384,8 +384,8 @@ l11Aki _ p =
       | (a, glues, b) <- neighbours (lineItems l),
         -- with a space written between them, the specification does not say whether the space between Japanese and Latin text is added
         latinSpace p `notElem` glues,
-        Just want <- [expected a b],
         let between = filter (`elem` akiGlues) glues,
+        Just want <- [expected a b],
         between /= want
       ]
         <> [Breach L11 i ("line " <> show (i + 1) <> " starts or ends with the space between Japanese and Latin text") | any (`elem` akiGlues) (take 1 (lineItems l) <> take 1 (reverse (lineItems l)))]
@@ -395,7 +395,7 @@ l11Aki _ p =
     aki = akiBetween defaultAkiSet (AkiChar Ideograph) (AkiChar Western)
     akiGlue a = let z = L.zwToSp (pSize p) in Glue (z (A.akiOptimum a)) (z (A.akiMaximum a) - z (A.akiOptimum a)) (z (A.akiOptimum a) - z (A.akiMinimum a))
     akiGlues = [akiGlue aki | aki /= noAki]
-    japanese c = not (bcExpandable c) && all (`elem` [Kana, Ideograph]) [k | Just k <- [startClass c, endClass c]]
+    japanese c = not (bcExpandable c) && all (`elem` [Kana, Ideograph]) (catMaybes [startClass c, endClass c])
     -- what is between two boxes next to each other: the glue, when the pair is of a Japanese character and a Latin word
     expected a b
       | japanese a && bcExpandable b = Just (if maybe False (latinDual b . fst) (T.uncons (baseOf b)) then [] else akiGlues)
@@ -421,7 +421,7 @@ l12Expansion _ p =
   [ Breach L12 i ("line " <> show (i + 1) <> " is expanded by " <> show e)
   | (i, l) <- zip [0 :: Int ..] (linesOf p),
     let e = lineExpansion l,
-    e < -20 || e > 20 || e `mod` 5 /= 0 || (e /= 0 && (pExpansion (pParams p) == Nothing || not (any bcExpandable (boxes l))))
+    e < -20 || e > 20 || e `mod` 5 /= 0 || (e /= 0 && (isNothing (pExpansion (pParams p)) || not (any bcExpandable (boxes l))))
   ]
 
 {- | L13: without protrusion, no line protrudes; with it, a line protrudes
@@ -445,7 +445,7 @@ l13Protrusion _ p =
             Just (Penalty _ _ (PatternHyphen q)) | i < length (linesOf p) - 1 -> Just q
             _ -> Nothing
           wantS = maybe 0 bcProtrudeStart (firstBox l)
-          wantE = maybe (maybe 0 bcProtrudeEnd (lastBox l)) id hyphenEnd
+          wantE = fromMaybe (maybe 0 bcProtrudeEnd (lastBox l)) hyphenEnd
           -- the advance of the character, as the composition reads it for the protrusion (golem-layout ADR 0014)
           adv c ch = L.zwToSp (pSize p) (pAdvance p (lookClass (bcLook c) ch == Western) ch)
           capS = maybe 0 (\c -> maybe 0 (adv c . fst) (T.uncons (baseOf c))) (firstBox l)

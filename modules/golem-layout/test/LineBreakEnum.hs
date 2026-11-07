@@ -46,6 +46,7 @@ where
 
 import Data.Char (isSpace)
 import Data.List (intercalate)
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Fixtures (fs, sp)
@@ -108,7 +109,7 @@ normalSettings run = filter normal allSettings
     normal s =
       (sStrict s || any (`elem` ["ー", "ぁ"]) run)
         && (not (sHanging s) || any (`elem` ["。", "、"]) run)
-        && (hasLatin run || (not (sProtrusion s) && sLang s == Nothing))
+        && (hasLatin run || (not (sProtrusion s) && isNothing (sLang s)))
 
 -- | One paragraph: its setting, its expansion, the width of its lines in em, and its characters.
 data Input = Input
@@ -180,7 +181,7 @@ rawGroups maxWidth run =
     any (left (gSetting g)) [False, True]
   ]
   where
-    widthsOf g = foldr (\x acc -> x : filter (/= x) acc) [] (map fst (gCases g))
+    widthsOf g = foldr ((\x acc -> x : filter (/= x) acc) . fst) [] (gCases g)
     normal = normalSettings run
     -- whether the normal form leaves out a setting with an expansion
     left s e = s `notElem` normal || (e && not (hasLatin run))

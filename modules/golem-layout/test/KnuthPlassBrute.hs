@@ -94,7 +94,7 @@ feasiblePaths ps width pass items =
       Penalty _ _ h -> h /= NoHyphen
       _ -> False
     -- the demerits of the lines from the start to the breaks, or Nothing if one is not feasible
-    demeritsOf bs = go (-1) 2 False 0 bs
+    demeritsOf = go (-1) 2 False 0
       where
         go _ _ _ total [] = Just total
         go prev prevFit prevFlagged total (b : rest) =

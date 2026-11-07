@@ -2997,7 +2997,10 @@ TeX と Golem でハイフネーションのパターンが異なり、Golem は
 
 これらの規則は、[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の L1 から L13 として、golem-layout のテストで確かめる。
 述語は `modules/golem-layout/test/LineBreakInvariants.hs` にあり、行分割の入力（項目と段落の設定）と出力（`Breaks`）だけを読み、行の置き方は `placeLine` と `glueRatio` で読む。
-`modules/golem-layout/test/LineBreakInvariantsSpec.hs` は、和文の文字クラスごとの一字、`—`、欧文の語（`a`、`table`、`hyphenation`、`lime-tree`）、語間の空白、`.`、`“`、`”` の 23 の部品の並びの前に `あ` を、後に `い` を置いた段落を、組み方の環境（禁則の strict と loose、ぶら下げ、突き出し、字幅の伸縮、区間の言語のなし、`en`、`ja`）と 2 字から 5 字の行の幅のすべてで組み、部品の少ない順に、どの述語も違反を返さないことを確かめる。
+段落は、23 の部品の並びの前に `あ` を、後に `い` を置いたものである。
+部品は、和文の文字クラスごとの一字と `—` と、欧文の語の `a` と `table` と `hyphenation` と `lime-tree` と、語間の空白と `.` と `“` と `”` である。
+`modules/golem-layout/test/LineBreakInvariantsSpec.hs` は、この段落を組み方の環境と 2 字から 5 字の行の幅のすべてで組み、部品の少ない順に、どの述語も違反を返さないことを確かめる。
+組み方の環境は、禁則（strict か loose）とぶら下げと突き出しと字幅の伸縮の有無と、区間の言語（なし、`en`、`ja`）の組み合わせである。
 字の送りはフォントによらず、欧文の字を 1/4 em、1/2 em、3/4 em の三通りに、語間の空白を 1/4 em に、和文の字を 1 em にした表を `ceAdvance` と `ceWordAdvance` に渡す。
 並びの字が関わらない組み方の環境は組む前に一つにまとめ（正規形）、まとめた入力が `breakParagraph` に渡す値を変えないことを部品 2 個までテストする。
 縦組みも、部品 2 個までで `breakParagraph` に渡す値を変えないことだけを確かめる。
