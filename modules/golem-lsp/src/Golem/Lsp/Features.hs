@@ -61,7 +61,7 @@ import Golem.Parser.SourceSettings (sourceKeys)
 import Golem.Preflight.Rules (rulesSchema)
 import Golem.Project
 import Golem.Project.Paths (normalizeRelative)
-import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), builtinAkiSetNames, builtinCharStyles, builtinParaStyles, charStyleKeys, defaultStyle, lineBreaksValues, noLocalStyles, paraStyleKeys, regexStyleKeys, styleSchema)
+import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), builtinAkiSetNames, builtinCharStyles, alignValues, builtinParaStyles, charStyleKeys, defaultStyle, lineBreaksValues, noLocalStyles, paraStyleKeys, regexStyleKeys, styleSchema)
 import Golem.Project.TomlSchema (Leaf (..), Namespace (..), Node (..), nodeAt)
 import Golem.Syntax
 import Language.LSP.Protocol.Types (PositionEncodingKind (..), SemanticTokenAbsolute (..), SemanticTokenModifiers (..), SemanticTokenTypes (..))
@@ -620,6 +620,8 @@ styleDefCompletions style paraNames charNames rest =
       "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
       "style" | kind == "regex" -> [Completion n CkCharStyle | n <- charNames]
       "line-breaks" | kind == "paragraph" -> [Completion v CkSettingValue | v <- lineBreaksValues]
+      -- docs/adr/0189
+      "align" | kind == "paragraph" -> [Completion v CkSettingValue | v <- alignValues]
       _ -> []
 
 {- | The schema of a file of settings the language server completes

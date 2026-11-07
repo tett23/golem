@@ -81,6 +81,7 @@ import Golem.Driver.Overhang (lineOverhang, reachesBackground)
 import Golem.Driver.Pdf.Fonts
 import Golem.Driver.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
 import Golem.Html (codeTokens)
+import Golem.Layout.Align qualified as A
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
 import Golem.Layout.Code
 import Golem.Layout.Hyphenation.EnUs (englishUS)
@@ -115,7 +116,10 @@ data SetLine = SetLine
     -- | the footnotes marked in the line, by their keys (golem-driver ADR 0018)
     slNotes :: ![(NoteId, [Line])],
     -- | the sidenotes marked in the line, in order (golem-driver ADR 0006)
-    slSidenotes :: ![(SrcSpan, [Line])]
+    slSidenotes :: ![(SrcSpan, [Line])],
+    {- | a line aligned towards the spine (True) or away from it (False),
+    shifted when its page is known (docs/adr/0189)
+    -} slSpine :: !(Maybe Bool)
   }
   deriving stock (Show)
 
@@ -352,9 +356,10 @@ indentDiagnostics fid style locals geom =
     | st <- style : map (withLocalStyles style) locals,
       name <- Map.keys (stParaStyles st),
       name `notElem` ["caption", "sidenote", "code"],
-      let (lk, Indent s f) = paraLook st geom (Just name),
+      let (lk, Indent s f e _) = paraLook st geom (Just name),
       let size = lkSize lk,
-      columnMeasure geom - s - max 0 f < 8 * size
+      -- the end indent counts (docs/adr/0189)
+      columnMeasure geom - s - max 0 f - e < 8 * size
     ]
 
 -- | The page geometry, when style.toml passes 'styleLayoutDiagnostics'.
@@ -450,10 +455,12 @@ layoutFigures inp geom fonts figures = do
   result <- fixpoint labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
   pure $ case result of
     Left ds -> Left ds
-    Right (built, pages) ->
+    Right (built0, pages) ->
       -- sidenotes are placed once, on the settled pages (golem-driver ADR 0006)
       -- in the size of the document of each sidenote (docs/adr ADR 0014)
-      let metricsOf sp = let (_, size, pitch) = sidenoteMetrics (docStyle inp (spanFile sp)) geom in (pitch, size)
+      let -- the lines towards and away from the spine on their pages (docs/adr/0189)
+          built = built0 {bLines = alignToSpine geom pages (bLines built0)}
+          metricsOf sp = let (_, size, pitch) = sidenoteMetrics (docStyle inp (spanFile sp)) geom in (pitch, size)
           placed = [(poNumber p, placePageSidenotes geom metricsOf (bLines built) p) | p <- pages]
           -- the pages of the table of contents, once, on the settled pages (golem-driver ADR 0009)
           hPages = headingPages (bHeadingSpans built) pages
@@ -1131,12 +1138,55 @@ headingName = \case
   UNotesTitle title -> Just ("注の一覧の見出し: " <> title)
   _ -> Nothing
 
--- | The indent of the lines of a paragraph in sp (docs/adr ADR 0006). inFirst may be negative; inStart + inFirst >= 0.
-data Indent = Indent {inStart :: !Sp, inFirst :: !Sp}
+{- | The indent of the lines of a paragraph in sp (docs/adr ADR 0006). inFirst may be negative; inStart + inFirst >= 0.
+The end indent and the alignment of the lines (docs/adr/0189).
+-}
+data Indent = Indent {inStart :: !Sp, inFirst :: !Sp, inEnd :: !Sp, inAlign :: !ParaAlign}
   deriving stock (Eq, Show)
 
 noIndent :: Indent
-noIndent = Indent 0 0
+noIndent = Indent 0 0 0 ParaLeftJustified
+
+{- | How golem-layout breaks and sets the lines of a unit (docs/adr/0189): a
+paragraph by the align of its style, those towards and away from the
+spine as left until their page is known; any other unit left-justified.
+-}
+layoutAlign :: UnitKind -> A.ParaAlign
+layoutAlign = \case
+  UPara i -> case inAlign i of
+    ParaLeft -> A.Ragged A.LineStart
+    ParaCenter -> A.Ragged A.LineCenter
+    ParaRight -> A.Ragged A.LineEnd
+    ParaLeftJustified -> A.Justified (Just A.LineStart)
+    ParaCenterJustified -> A.Justified (Just A.LineCenter)
+    ParaRightJustified -> A.Justified (Just A.LineEnd)
+    ParaFullyJustified -> A.Justified Nothing
+    ParaTowardsSpine -> A.Ragged A.LineStart
+    ParaAwayFromSpine -> A.Ragged A.LineStart
+  _ -> A.Justified (Just A.LineStart)
+
+-- | Whether the lines of a unit go towards the spine (True) or away from it (False) (docs/adr/0189).
+spineOf :: UnitKind -> Maybe Bool
+spineOf = \case
+  UPara Indent {inAlign = ParaTowardsSpine} -> Just True
+  UPara Indent {inAlign = ParaAwayFromSpine} -> Just False
+  _ -> Nothing
+
+{- | The lines aligned towards or away from the spine, moved on the page
+they are set on (docs/adr/0189): to the side of the spine of the page or
+to the other side, by 'gutterSide' as the running heads and sidenotes.
+The books are horizontal, so the start of a line is its left.
+-}
+alignToSpine :: PageGeometry -> [PageOut] -> Map Int SetLine -> Map Int SetLine
+alignToSpine geom pages lines' = foldl' move lines' [(lid, poNumber p) | p <- pages, (_, SLine lid) <- poSlots p]
+  where
+    move m (lid, n) = Map.adjust (at n) lid m
+    at n sl = case slSpine sl of
+      Just towards ->
+        let gutterLeft = gutterSide (pgBindingRight geom) n == SideLeft
+            toEnd = towards /= gutterLeft
+         in sl {slIndent = slIndent sl + (if toEnd then A.lineSlack (slLine sl) else 0), slSpine = Nothing}
+      Nothing -> sl
 
 data UnitKind
   = UPara !Indent
@@ -1173,7 +1223,7 @@ paraLook style geom st =
   let d = paraStyle style st
       (role, size) = faceFor style geom (d >>= psFont) (d >>= psSize)
       sp' f = dimToSp size (fromMaybe (Zw 0) (d >>= f))
-   in (withFeatures d (plainLook role size), Indent (sp' psIndent) (sp' psFirstLineIndent))
+   in (withFeatures d (plainLook role size), Indent (sp' psIndent) (sp' psFirstLineIndent) (sp' psEndIndent) (fromMaybe ParaLeftJustified (d >>= psAlign)))
 
 {- | The look of code blocks (golem-driver ADR 0017): the role and size of
 the paragraph style code, no kerning.
@@ -1237,7 +1287,7 @@ unitsOf :: Text -> Book -> PageGeometry -> Maybe ColumnSet -> (FileId -> Style) 
 unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chapter 0 (bookChapters book)))
   where
     fs = pgFontSize geom
-    doc n (Document fid bs) = blocks (styleOf fid) [] n bs
+    doc n (Document fid bs) = blocks (styleOf fid) [] True n bs
     {- the documents of a chapter of the manifest; at the end of the chapter,
     before the breaks that end its last file, its notes when they are set
     there (golem-driver ADR 0026) -}
@@ -1262,16 +1312,36 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
         let title = notesTitle lang
          in Unit (UNotesTitle title) Nothing [Text sp title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing) (SourceHeading 2)
               : [Unit (UPara noIndent) Nothing (withNoteMark nsp (stNotesMarkFormat style) n xs) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) SourceGrid | (nsp, n, xs) <- ns]
-    {- a list of blocks inside the lists @ctx@, from the list number @n@:
-    paragraphs of the same style in a row are apart by its space-between
-    (docs/adr ADR 0005); in a list item, paragraphs are not indented by
-    their style (docs/adr ADR 0006) but by the lists (golem-driver ADR 0013) -}
-    blocks style ctx n bs =
-      let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore style ctx prev b <>) <$> block style ctx k b) n (zip (scanl before Nothing bs) bs)
+    {- a list of blocks inside the lists @ctx@, from the list number @n@,
+    with the spaces before and after of paragraphs when @spaced@ (not in a
+    definition list): in a list item, paragraphs are not indented by their
+    style (docs/adr ADR 0006) but by the lists (golem-driver ADR 0013) -}
+    blocks style ctx spaced n bs =
+      let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore style ctx spaced prev b <>) <$> block style ctx k b) n (zip (scanl before Nothing bs) bs)
        in (n', concat uss)
-    gapBefore style ctx (Just (Block _ _ (Paragraph s1 _))) (Block sp _ (Paragraph s2 _))
-      | s1 == s2, Just g <- paraStyle style s2 >>= psSpaceBetween, g > 0 = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) SourceGrid]
-    gapBefore _ _ _ _ = []
+    gapBefore style ctx spaced prev (Block sp _ b) = case prev of
+      Just (Block _ _ a)
+        | g <- gapLines style ctx spaced a b,
+          g > 0 ->
+            [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) SourceGrid]
+      _ -> []
+    {- the grid lines between two blocks (docs/adr/0189): only the blank
+    lines across them; none before a forced break or a control of page
+    breaks; between paragraphs of the same style its space-between (docs/adr
+    ADR 0005); otherwise the greater of the space after of the block before
+    and the space before of the block, which only paragraphs outside lists
+    and definition lists have -}
+    gapLines style ctx spaced a b = case (a, b) of
+      (BlankLines _, _) -> 0
+      (_, BlankLines _) -> 0
+      (_, ForcedBreak _) -> 0
+      (_, PageControl _) -> 0
+      (Paragraph s1 _, Paragraph s2 _) | s1 == s2 -> fromMaybe 0 (paraStyle style s2 >>= psSpaceBetween)
+      _ -> max (spaceOf psSpaceAfter a) (spaceOf psSpaceBefore b)
+      where
+        spaceOf key = \case
+          Paragraph st _ | spaced, null ctx -> fromMaybe 0 (paraStyle style st >>= key)
+          _ -> 0
     -- the block before, past the controls of page breaks (docs/adr ADR 0030)
     before prev b = case blockBody b of
       PageControl _ -> prev
@@ -1304,7 +1374,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
             OrderedList items -> list style ctx n (zip (map Just (itemNumbers items)) items)
             DefList gs ->
               let group k g = ([plainUnit (UTerm noIndent) Nothing t | t <- dgTerms g] <>) <$> blocksOf k (dgDefs g)
-                  blocksOf k ds = let (k', dss) = mapAccumL (blocks style ctx) k ds in (k', concat dss)
+                  blocksOf k ds = let (k', dss) = mapAccumL (blocks style ctx False) k ds in (k', concat dss)
                   (n', uss) = mapAccumL group n gs
                in (n', concat uss)
             Table aligns h rows -> (n, [plainUnit (UTable aligns h rows) lbl []])
@@ -1334,7 +1404,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
       let ctx' = ctx <> [n]
           marker = listMarker style (pgVertical geom) (length ctx')
           item k (num, it) =
-            let (k', us) = blocks style ctx' k (itemBlocks it)
+            let (k', us) = blocks style ctx' True k (itemBlocks it)
              in (k', if startsWithParagraph it then markFirst (marker num) us else us)
           (n', uss) = mapAccumL item (n + 1) items
        in (n', concat uss)
@@ -1431,20 +1501,24 @@ buildFlow inp geom fonts images assumed = do
       withListIndent u
         | null (uLists u) = u
         | otherwise = case uKind u of
-            UPara _ -> u {uKind = UPara (Indent (outerOf u) (if isJust (uMarker u) then negate (innerOf u) else 0))}
-            UTerm _ -> u {uKind = UTerm (Indent (outerOf u) 0)}
+            UPara _ -> u {uKind = UPara (Indent (outerOf u) (if isJust (uMarker u) then negate (innerOf u) else 0) 0 ParaLeftJustified)}
+            UTerm _ -> u {uKind = UTerm (Indent (outerOf u) 0 0 ParaLeftJustified)}
             UCode _ code -> u {uKind = UCode (outerOf u) code}
             _ -> u
       units = zip [0 :: Int ..] (map withListIndent rawUnits)
       unitAt = Map.fromList units
-      -- L*(i): the first line is shortened by the indent and the first-line indent, the others by the indent (docs/adr ADR 0006);
+      -- L*(i): the first line is shortened by the indent and the first-line indent, the others by the indent (docs/adr ADR 0006),
+      -- every line by the end indent (docs/adr/0189);
       -- a table of contents entry also by the reserve for its page number (golem-driver ADR 0009)
       widthOf kind k = case kind of
         UIndexEntry m -> m
-        _ -> measure - lineIndent kind k - (case kind of UTocEntry {} -> tocReserve; _ -> 0)
+        _ -> measure - lineIndent kind k - endIndent kind - (case kind of UTocEntry {} -> tocReserve; _ -> 0)
+      endIndent = \case
+        UPara i -> inEnd i
+        _ -> 0
       lineIndent = \case
-        UPara (Indent s f) -> \k -> if k == (0 :: Int) then s + f else s
-        UTerm (Indent s _) -> const s
+        UPara (Indent s f _ _) -> \k -> if k == (0 :: Int) then s + f else s
+        UTerm (Indent s _ _ _) -> const s
         UTocEntry l _ -> const (tocIndent l)
         _ -> const 0
       -- the role and size a unit is set in (docs/adr ADR 0005)
@@ -1465,7 +1539,7 @@ buildFlow inp geom fonts images assumed = do
             shift = length marker
             (textItems, anchors) = composeInlines env (uInlines u)
             items = marker <> textItems
-            lines' = brLines (breakParagraph params lineWidth items)
+            lines' = brLines (A.breakAligned (layoutAlign (uKind u)) params lineWidth items)
             -- notes at the end of the chapter are paragraphs of their own (golem-driver ADR 0026)
             notes = [(k, brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv' (withNoteMark (noteIdSpan k) (stNotesMarkFormat (uStyle u)) n nbody))))) | not atEnd, (_, k, n, nbody) <- noteAnchors anchors]
             sidenotes = [(i + shift, sp, sidenoteLines (uStyle u) sp n snBody) | AnchorSidenote i n sp snBody <- anchors]
@@ -1572,7 +1646,7 @@ buildFlow inp geom fonts images assumed = do
             | offset >= exLines ex = pure []
             -- a paragraph with rules is not set beside a figure (golem-driver ADR 0027)
             | Just u@Unit {uKind = UPara _, uRules = (Nothing, Nothing)} <- Map.lookup j unitAt = do
-                c <- force (compose (\k -> wrappedLineWidth measure ex offset k - lineIndent (uKind u) k) u)
+                c <- force (compose (\k -> wrappedLineWidth measure ex offset k - lineIndent (uKind u) k - endIndent (uKind u)) u)
                 ((j, (c, offset)) :) <$> go (j + 1) (offset + length (cLines c))
             | otherwise = pure []
       jobs = [(i, ex) | (i, (pf, [], _, _)) <- Map.toList figures, Just ex <- [pfExclusion pf]]
@@ -1641,7 +1715,9 @@ buildFlow inp geom fonts images assumed = do
             sidenoteLinesOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [(sp, sls)]) | (i, sp, sls) <- cSidenotes c]
             marksOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [sp]) | (i, sp) <- cMarks c]
             boxes = [LineBox lid [NoteBody key (length nls) | (key, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) (overhangOf l) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
-            set = Map.fromList [(lid, SetLine l size (indentOf k) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+            -- a line not justified moves by its alignment (docs/adr/0189)
+            shiftOf k l = A.lineShift (layoutAlign (uKind u)) (k == length ls - 1) l
+            set = Map.fromList [(lid, SetLine l size (indentOf k + shiftOf k l) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf) (spineOf (uKind u))) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
          in (boxes, set)
       emptyLine = Line [] 0 0 0 (0, 0) False (0, 0)
       {- a rule of a paragraph or heading for pagination (golem-driver ADR
@@ -1691,8 +1767,8 @@ buildFlow inp geom fonts images assumed = do
                       [ ( [ LineBox lid [NoteBody key (length nls) | (key, nls) <- ns] (if lid == nextId then label u else []) ms (maximum (0 : [overhangOf l | c <- cells, (j, l) <- zip [0 :: Int ..] (scLines c), j == k]))
                           | (k, (lid, (ns, _, ms))) <- zip [0 ..] (zip ids att)
                           ],
-                          Map.fromList [(lid, SetLine emptyLine fs 0 ns sn) | (lid, (ns, sn, _)) <- zip ids att],
-                          Map.fromList [(lid, [SetLine l fs (scOffset c + sh) [] [] | c <- cells, (j, (l, sh)) <- zip [0 :: Int ..] (zip (scLines c) (scShifts c)), j == k]) | (k, lid) <- zip [0 ..] ids]
+                          Map.fromList [(lid, SetLine emptyLine fs 0 ns sn Nothing) | (lid, (ns, sn, _)) <- zip ids att],
+                          Map.fromList [(lid, [SetLine l fs (scOffset c + sh) [] [] Nothing | c <- cells, (j, (l, sh)) <- zip [0 :: Int ..] (zip (scLines c) (scShifts c)), j == k]) | (k, lid) <- zip [0 ..] ids]
                         )
                       | (start, h, cells, att) <- zip4 starts heights (stHeader t : stRows t) atts,
                         let ids = [start .. start + h - 1]
@@ -1750,7 +1826,7 @@ buildFlow inp geom fonts images assumed = do
                                 then diagnostic "G07028" Error (uSpan (unitAt Map.! j)) "回り込む図版の脇で、字下げを引くと行が残りません"
                                 else listTooDeep (uSpan (unitAt Map.! j))
                             | (j, c, off) <- paras,
-                              any (\k -> wrappedLineWidth measure ex off k - lineIndent (uKind (unitAt Map.! j)) k <= 0) [0 .. length (cLines c) - 1]
+                              any (\k -> wrappedLineWidth measure ex off k - lineIndent (uKind (unitAt Map.! j)) k - endIndent (uKind (unitAt Map.! j)) <= 0) [0 .. length (cLines c) - 1]
                             ]
                           (nextId', allBoxes, sets) = foldl go (nextId + 1, [], Map.empty) paras
                           (beside, continued) = splitAt (exLines ex) allBoxes
@@ -1771,7 +1847,7 @@ buildFlow inp geom fonts images assumed = do
                 let ids = [nextId .. nextId + length (cbRows cb) - 1]
                     -- the label and the index marks of the caption on the first row (golem-driver ADR 0023)
                     boxes = [LineBox lid [] (if k == 0 then label u else []) (if k == 0 then cbMarks cb else []) 0 | (k, lid) <- zip [0 :: Int ..] ids]
-                    set = Map.fromList [(lid, SetLine l (cbSize cb) (cbIndent cb) [] []) | (lid, l) <- zip ids (cbRows cb)]
+                    set = Map.fromList [(lid, SetLine l (cbSize cb) (cbIndent cb) [] [] Nothing) | (lid, l) <- zip ids (cbRows cb)]
                     info = cbInfo cb
                  in (nextId + length ids, flows <> [FCode (ciGeometry info) (ciCaptionSpan info) (cbFirstRows cb) (isJust (ciContinued info)) boxes], Map.union lineAcc set, figAcc, headAcc, errs)
             UBreak k -> (nextId, flows <> [FBreak k], lineAcc, figAcc, headAcc, errs)

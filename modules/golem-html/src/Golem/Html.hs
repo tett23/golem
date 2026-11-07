@@ -6,6 +6,7 @@ module Golem.Html
     HtmlLists (..),
     HtmlCharStyle (..),
     HtmlParaStyle (..),
+    defaultAlignDecls,
     HtmlRule (..),
     HtmlFeatures (..),
     noFeatures,
@@ -193,9 +194,20 @@ data HtmlParaStyle = HtmlParaStyle
     hpsFeatures :: !HtmlFeatures,
     -- | the rules before and after (golem-driver ADR 0027)
     hpsRuleBefore :: !(Maybe HtmlRule),
-    hpsRuleAfter :: !(Maybe HtmlRule)
+    hpsRuleAfter :: !(Maybe HtmlRule),
+    -- | the declarations of the alignment, as 'defaultAlignDecls' for left-justified (docs/adr/0189)
+    hpsAlign :: ![Text],
+    -- | the grid lines before and after (docs/adr/0189)
+    hpsSpaceBefore :: !Int,
+    hpsSpaceAfter :: !Int,
+    -- | a CSS length (docs/adr/0189)
+    hpsEndIndent :: !Text
   }
   deriving stock (Eq)
+
+-- | The declarations of left-justified, the default of body (docs/adr/0189).
+defaultAlignDecls :: [Text]
+defaultAlignDecls = ["text-align: justify", "text-align-last: start"]
 
 {- | The styles a file defines, resolved, where they differ from those of
 style.toml (docs/adr ADR 0014): character and paragraph styles by name,
@@ -935,6 +947,8 @@ css cfg book =
          ]
       -- paragraph styles (docs/adr ADR 0005); body is the plain p
       <> concat [paraRules name ps | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
+      -- the spaces before and after (docs/adr/0189)
+      <> spaceRules "" True allStyles [(a, b) | a <- allStyles, b <- allStyles]
       -- the rules of paragraph styles and headings as pseudo-elements (golem-driver ADR 0027)
       <> concat [ruleRules (if name == "body" then "p:not([class])" else "p.ps-" <> name) (hpsRuleBefore ps) (hpsRuleAfter ps) | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
       <> concat [ruleRules ("h" <> tshow l) b a | (l, (b, a)) <- Map.toAscList (hcHeadingRules cfg)]
@@ -1066,17 +1080,61 @@ css cfg book =
     indentRule name ps
       | name == "body" = not (isZero (hpsIndent ps) && isZero (hpsFirstLineIndent ps))
       | otherwise = (hpsIndent ps, hpsFirstLineIndent ps) /= bodyIndent
+    {- the alignment and the end indent, on the same condition as the indent
+    (docs/adr/0189): body's when not the default, another's when it differs
+    from body's -}
+    bodyPara = Map.lookup "body" (hcParaStyles cfg)
+    alignRule name ps
+      | name == "body" = hpsAlign ps /= defaultAlignDecls
+      | otherwise = hpsAlign ps /= maybe defaultAlignDecls hpsAlign bodyPara
+    endIndentRule name ps
+      | name == "body" = not (isZero (hpsEndIndent ps))
+      | otherwise = hpsEndIndent ps /= maybe "0em" hpsEndIndent bodyPara
     paraRules name ps =
       let sel = if name == "body" then "p" else "p.ps-" <> name
+          -- the same style in a row: space-between, also 0 against the spaces before and after (docs/adr/0189)
+          spaced = hpsSpaceBefore ps > 0 || hpsSpaceAfter ps > 0
        in ["p.ps-" <> name <> " { font-family: " <> fontStack role <> "; }" | name /= "body", Just role <- [hpsFont ps]]
             <> [sel <> " { margin-block: 0; }" | hpsKeepLines ps]
             <> [ sel <> " { padding-inline-start: " <> hpsIndent ps <> "; text-indent: " <> hpsFirstLineIndent ps <> "; }"
                | indentRule name ps
                ]
-            <> [ sel <> " + " <> sel <> " { margin-block-start: " <> tshow (hpsSpaceBetween ps) <> "em; }"
-               | hpsSpaceBetween ps > 0
+            <> [rule sel (hpsAlign ps) | alignRule name ps]
+            <> [sel <> " { padding-inline-end: " <> hpsEndIndent ps <> "; }" | endIndentRule name ps]
+            <> [ sel <> " + " <> sel <> " { margin-block-start: " <> (if hpsSpaceBetween ps > 0 then tshow (hpsSpaceBetween ps) <> "em" else "0") <> "; }"
+               | hpsSpaceBetween ps > 0 || spaced
                ]
             <> [rule sel ds | let ds = featureDecls (hpsFeatures ps), not (null ds)]
+    {- the spaces before and after of the paragraph styles (docs/adr/0189),
+    under a prefix and over styles: the space before on the style, the
+    space after on the next element of another style that is not a blank
+    line, the greater of the two for a pair, after both, and none after a
+    blank line -}
+    spaceRules pre withBefore styles pairs =
+      let em n = tshow n <> "em"
+          at sel = if T.null pre then sel else T.intercalate ", " [pre <> " " <> x | x <- T.splitOn ", " sel]
+          -- the class of body is that it has none
+          own n = if n == "body" then "p:not([class])" else "p.ps-" <> n
+          beforeSel n = if n == "body" && T.null pre then "p" else own n
+          afterSel n
+            | n == "body" = "p:not([class]) + :not(p):not(.blank-line), p:not([class]) + p[class]"
+            | otherwise = "p.ps-" <> n <> " + :not(.ps-" <> n <> "):not(.blank-line)"
+          -- as strong as the rule of the space after, written after it
+          pairSel a b
+            | a == "body" = own a <> " + " <> own b
+            | otherwise = own a <> " + " <> own b <> ":not(.ps-" <> a <> ")"
+       in [at (beforeSel n) <> " { margin-block-start: " <> em b <> "; }" | withBefore, (n, ps) <- styles, let b = hpsSpaceBefore ps, b > 0]
+            <> [at (afterSel n) <> " { margin-block-start: " <> em a <> "; }" | (n, ps) <- styles, let a = hpsSpaceAfter ps, a > 0]
+            <> [ at (pairSel a b) <> " { margin-block-start: " <> em (max x y) <> "; }"
+               | ((a, pa), (b, pb)) <- pairs,
+                 a /= b,
+                 let x = hpsSpaceAfter pa
+                     y = hpsSpaceBefore pb,
+                 x > 0,
+                 y > 0
+               ]
+            <> [at ("div.blank-line + " <> beforeSel n) <> " { margin-block-start: 0; }" | (n, ps) <- styles, hpsSpaceBefore ps > 0]
+    allStyles = [(n, ps) | (n, ps) <- Map.toAscList (hcParaStyles cfg), n /= "code"]
     families role = case Map.lookup role (hcFonts cfg) of
       Just (ja, la) -> ["\"" <> cssString (family role "latin") <> "\"" | Just _ <- [la]] <> ["\"" <> cssString (family role "ja") <> "\"" | Just _ <- [ja]]
       Nothing -> []
@@ -1113,22 +1171,37 @@ css cfg book =
           paraOf name = if name == "body" then "p:not([class])" else "p.ps-" <> name
           paraSel name = pre <> " " <> paraOf name
           margin ps = if hpsKeepLines ps then "0" else "1em"
+          -- the alignment of the file's body, the default written as the initial values (docs/adr/0189)
+          fileBodyAlign = maybe defaultAlignDecls hpsAlign (Map.lookup "body" merged)
+          -- the styles of the page: the file's over those of style.toml
+          merged = Map.union (hlParaStyles l) (hcParaStyles cfg)
+          mergedList = [(m, ps) | (m, ps) <- Map.toAscList merged, m /= "code"]
+          alignOf ps
+            | hpsAlign ps == defaultAlignDecls && fileBodyAlign == defaultAlignDecls = ["text-align: start", "text-align-last: auto"]
+            | otherwise = hpsAlign ps
+          spaced ps = hpsSpaceBefore ps > 0 || hpsSpaceAfter ps > 0
+          locals = [(name, ps) | (name, ps) <- Map.toAscList (hlParaStyles l), name /= "code"]
           paraStyleRules =
             concat
               [ [ rule
                     (paraSel name)
                     ( [ "font-family: " <> stackOr (hpsFont ps),
-                        "margin-block: " <> margin ps,
-                        "padding-inline-start: " <> hpsIndent ps,
-                        "text-indent: " <> hpsFirstLineIndent ps
+                        "margin-block: " <> margin ps
                       ]
+                        <> ["margin-block-start: " <> tshow (hpsSpaceBefore ps) <> "em" | hpsSpaceBefore ps > 0]
+                        <> [ "padding-inline-start: " <> hpsIndent ps,
+                             "text-indent: " <> hpsFirstLineIndent ps,
+                             "padding-inline-end: " <> hpsEndIndent ps
+                           ]
+                        <> alignOf ps
                         <> featureDecls (hpsFeatures ps)
                     ),
-                  rule (paraSel name <> " + " <> paraOf name) ["margin-block-start: " <> (if hpsSpaceBetween ps > 0 then tshow (hpsSpaceBetween ps) <> "em" else margin ps)]
+                  rule (paraSel name <> " + " <> paraOf name) ["margin-block-start: " <> (if hpsSpaceBetween ps > 0 then tshow (hpsSpaceBetween ps) <> "em" else if spaced ps then "0" else margin ps)]
                 ]
-              | (name, ps) <- Map.toAscList (hlParaStyles l),
-                name /= "code"
+              | (name, ps) <- locals
               ]
+              -- the pairs of a style of the file and another
+              <> spaceRules pre False locals [(a, b) | a <- mergedList, b <- mergedList, Map.member (fst a) (hlParaStyles l) || Map.member (fst b) (hlParaStyles l)]
           faceDecls f = ["font-family: " <> stackOr (faFont f), "font-size: " <> fromMaybe "inherit" (faSize f)]
           faceRules =
             [rule (pre <> " figcaption") (faceDecls f) | Just f <- [hlCaptionFace l]]

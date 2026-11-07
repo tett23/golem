@@ -159,8 +159,12 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: size] | 文字の大きさです。本文の文字の大きさまでにします。 |
 | [code: indent] | すべての行の始まりの字下げです。既定は [code: "0zw"] です。 |
 | [code: first-line-indent] | 最初の行に [code: indent] へ加える字下げです。負の値はぶら下げになります。[code: indent] との和は 0 以上にします。既定は [code: "0zw"] です。 |
+| [code: end-indent] | すべての行の終わりの側の字下げです。縦組みでは地からの距離です。既定は [code: "0zw"] です。 |
+| [code: align] | 行揃えです。[code: "left"]、[code: "center"]、[code: "right"]、[code: "left-justified"]、[code: "center-justified"]、[code: "right-justified"]、[code: "fully-justified"]、[code: "towards-spine"]、[code: "away-from-spine"] のどれかを書きます。縦組みでは [code: "left"] が天付き、[code: "right"] が地付きです。最後の二つは横組みの本でだけ書けます。既定は [code: "left-justified"] です。 |
 | [code: line-breaks] | [code: "keep"] にすると、段落の中の改行を行の区切りにします。既定は [code: "join"] です。 |
 | [code: space-between] | 同じ段落スタイルの段落が続くときに、あいだに空ける行の数です。既定は [code: 0] です。 |
+| [code: space-before] | 段落の前に空ける行の数です。既定は [code: 0] です。 |
+| [code: space-after] | 段落の後に空ける行の数です。前の段落の [code: space-after] と次の段落の [code: space-before] は、大きいほうを取ります。既定は [code: 0] です。 |
 | [code: aki-set] | 字間の空きを決めるアキ量のセットの名前です。[code: \[aki-sets.名前\]] で定義したものか、組み込みのセットを書きます。書かなければ [code: body] と同じセットです。 |
 | [code: regex-styles] | 正規表現に一致した文字に文字スタイルを当てる組の配列です。[code: { pattern = '\[0-9\]+', style = "bold" }] のように書きます。既定は [code: \[\]] です。 |
 | [code: rule-before] | 段落の前に引く罫線です。罫線の表（次の表）か [code: false] を書きます。[code: false] は引き継いだ罫線を引きません。 |
@@ -198,14 +202,14 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 
 - [code: body]：本文です。ほかの段落スタイルの既定の引き継ぎ先です。
 - [code: verse]：韻文です。[code: line-breaks = "keep"]、[code: space-between = 1]、[code: indent = "2zw"]、[code: first-line-indent = "-2zw"] です。
-- [code: caption]：図版のキャプションです。[code: indent = "0zw"]、[code: first-line-indent = "0zw"] で、[code: body] の字下げを引き継ぎません。
+- [code: caption]：図版のキャプションです。[code: indent = "0zw"]、[code: first-line-indent = "0zw"]、[code: end-indent = "0zw"] で、[code: body] の字下げを引き継ぎません。
 - [code: sidenote]：傍注の本文です。[code: caption] と同じく、字下げは 0 です。
 
-[code: caption] と [code: sidenote] には、0 でない [code: indent] と [code: first-line-indent] を書けません。
+[code: caption] と [code: sidenote] には、0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書けません。
 書くとエラー（G03006）です。
 0 を書いたときは、組んだ結果が変わらないことを知らせるお知らせ（G03100）を出します。
 キャプションと傍注の本文に適用されるのは、[code: font]、[code: size]、[code: regex-styles] と、PDF では [code: aki-set] と文字の送りの四つのキーです。
-[code: line-breaks] と [code: space-between] は、原稿で [code: @style caption] のように付けた段落にだけ適用されます。
+[code: line-breaks]、[code: space-between]、[code: space-before]、[code: space-after]、[code: align] は、原稿で [code: @style caption] のように付けた段落にだけ適用されます。
 - [code: code]：コードブロックです。[code: font = "code"]、[code: padding = "0.5zw"] です。
 
 段落スタイル [code: code] に書けるキーは、次の六つだけです。

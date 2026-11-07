@@ -1,5 +1,6 @@
 module Main (main) where
 
+import AlignSpaceSpec (alignSpaceTests)
 import BuildSpec
 import CallsSpec (callsTests)
 import ChapterNotesSpec
@@ -115,6 +116,7 @@ tests skips =
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
              testGroup "the shapes of the line styles of a rule (ADR 0028)" ruleShapeTests,
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
+             testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
              publicDomainTests skips,
              diagnosticSiteTests
            ]
