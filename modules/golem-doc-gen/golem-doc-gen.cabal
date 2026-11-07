@@ -1,0 +1,49 @@
+cabal-version:      3.0
+name:               golem-doc-gen
+version:            0.1.0
+synopsis:           Hedgehog generators of the semantic IR of Golem
+description:
+  The hedgehog generators of the semantic IR of golem-doc, which the
+  test suite of golem-driver uses (docs/adr/0191). Only
+  test suites depend on it: no library nor executable of the repository
+  does, and it is not part of the release archives
+  (scripts/ci/test-only-deps.sh checks this).
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Testing
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:
+    Golem.DocGen
+  build-depends:
+    , base          >=4.20 && <4.21
+    , golem-doc
+    , golem-length
+    , golem-parser
+    , golem-syntax
+    , hedgehog      >=1.4  && <1.6
+    , text          >=2.0  && <2.2
+  default-language: GHC2021
+
+test-suite golem-doc-gen-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  build-depends:
+    , base
+    , containers
+    , golem-doc
+    , golem-doc-gen
+    , hedgehog
+    , tasty          >=1.4 && <1.6
+    , tasty-hedgehog >=1.4 && <1.5
+  default-language: GHC2021

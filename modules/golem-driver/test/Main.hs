@@ -26,6 +26,7 @@ import SecuritySpec
 import StylesSpec
 import TableFilesSpec
 import Test.Tasty
+import VarsSpec (varsTests)
 
 main :: IO ()
 main = defaultMainReportingSkips tests
@@ -47,6 +48,7 @@ tests skips =
         evalDiagnosticTests,
         functionsTests,
         callsTests,
+        varsTests,
         emetSamplesTests,
         testGroup "output and layout diagnostic codes (golem-driver ADR 0016)" outputDiagnosticTests,
         testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
@@ -83,6 +85,7 @@ tests skips =
              testGroup "SVG figures (golem-pdf ADR 0009)" svgFigureTests,
              testGroup "SVG active content in HTML and EPUB (docs/adr ADR 0039)" activeContentTests,
              testGroup "figures fitted to the column (golem-driver ADR 0034)" fitFigureTests,
+             testGroup "the width of figures (docs/adr/0190)" figureWidthTests,
              testGroup "turned figures (golem-driver ADR 0034)" turnedFigureTests,
              testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
              testGroup "PDF index and bibliography (ADR 0007)" indexTests,

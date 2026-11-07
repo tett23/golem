@@ -17,7 +17,6 @@ module Golem.Driver.Pdf.Flow
     flowLines,
     layoutPdf,
     gridLine,
-    runningMetadata,
     runningHeadLines,
     numberedTitle,
     pagesOf,
@@ -35,18 +34,14 @@ module Golem.Driver.Pdf.Flow
     bibliographyLines,
     sidenoteMetrics,
     labelSpans,
-    listNumberDiagnostics,
     Assumed (..),
     fixpoint,
     rubyStyleOf,
-    listBullets,
-    textBullets,
     RuledInfo (..),
     fitFigure,
     figureRect,
     imageRect,
     turnedFrame,
-    styleFileId,
     pdfXPeople,
     loadIntent,
   )
@@ -60,11 +55,10 @@ import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.Char (isSpace)
 import Data.Containers.ListUtils (nubOrdOn)
-import Data.Either (fromRight, isLeft)
 import Data.Foldable (toList)
 import Data.Int (Int64)
 import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, zip4)
-import Data.List.NonEmpty (NonEmpty, nonEmpty)
+import Data.List.NonEmpty (nonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
@@ -76,10 +70,12 @@ import Golem.Assemble
 import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (numberSeparator)
 import Golem.Bibliography (EntryPart (..))
+import Golem.Doc.FigureWidth (figureWidthSp, parseFigureWidth)
 import Golem.Doc.IR
 import Golem.Doc.Url (checkUrl)
 import Golem.Driver.Overhang (lineOverhang, reachesBackground)
 import Golem.Driver.Pdf.Fonts
+import Golem.Driver.ProjectVars (projectVarTexts)
 import Golem.Driver.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
 import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
@@ -193,7 +189,7 @@ data PlacedFigure = PlacedFigure
     -- | the page of a PDF figure, from 1 (golem-pdf ADR 0008)
     pfPage :: !Int,
     pfSpan :: !SrcSpan,
-    -- | along the lines before the figure was fitted: the measure (golem-driver ADR 0034)
+    -- | the measure the figure is set against: of the column, or of the frame (golem-driver ADR 0034, docs/adr/0190)
     pfFullAlong :: !Sp,
     -- | how a figure turned onto a page of its own is turned
     pfTurn :: !(Maybe P.Turn)
@@ -423,7 +419,7 @@ flowLines provider inp0 = case checkedGeometry inp of
 layoutPdf :: PdfInput -> PageGeometry -> LoadedFonts -> IO (Either [Diagnostic] PdfLayout)
 layoutPdf inp0 geom fonts =
   let inp = codeInput inp0
-   in case sidenoteDiagnostics geom (piBook inp) <> listNumberDiagnostics (piStyle inp) (pgVertical geom) (piBook inp) of
+   in case sidenoteDiagnostics geom (piBook inp) <> listNumberDiagnostics (lsNumbers (stLists (piStyle inp))) (pgVertical geom) (piBook inp) of
         ds@(_ : _) -> pure (Left ds)
         [] -> do
           loaded <- loadFigures inp
@@ -563,31 +559,16 @@ and the levels below it have none.
 activeAfter :: Map Int (Maybe HeadingInfo) -> HeadingInfo -> Map Int (Maybe HeadingInfo)
 activeAfter m h = Map.insert (hiLevel h) (Just h) (Map.mapWithKey (\l v -> if l > hiLevel h then Nothing else v) m)
 
-{- | The text of the keys of [metadata] a running head can show
-(golem-driver ADR 0022): the keys of @meta@ but creators, an array.
--}
-runningMetadata :: Metadata -> Map Text Text
-runningMetadata md =
-  Map.fromList $
-    [ ("id", mdId md),
-      ("title", mdTitle md),
-      ("language", mdLanguage md),
-      ("date", T.pack (show (mdDate md)))
-    ]
-      <> [("title_reading", r) | Just r <- [mdTitleReading md]]
-      <> [("edition", e) | Just e <- [mdEdition md]]
-      <> [("publisher", p) | Just p <- [mdPublisher md]]
-
 {- | The lines of a running head drawn on a page (golem-driver ADR 0014,
-0022), from the text of the metadata, the variables of the page's file,
-the content, the headings in effect at the start of the page by level,
+0022), from the text of the metadata, the variables of [vars] by their
+paths (docs/adr/0185), the variables of the page's file, the content, the headings in effect at the start of the page by level,
 and the headings that start on the page. A line with a slot without @?@
 and without a value is left out; a slot with @?@ and without a value is
 empty; a line is trimmed of spaces (U+0020, U+3000) and left out when
 nothing is left.
 -}
-runningHeadLines :: Map Text Text -> Map [Text] Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> [Text]
-runningHeadLines meta vars content start started = case content of
+runningHeadLines :: Map Text Text -> Map [Text] Text -> Map [Text] Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> [Text]
+runningHeadLines meta projectVars vars content start started = case content of
   RunningNone -> []
   RunningLines ls -> mapMaybe line (toList ls)
   where
@@ -603,6 +584,7 @@ runningHeadLines meta vars content start started = case content of
     value = \case
       RefMeta k -> Map.lookup k meta
       RefVar n -> Map.lookup n vars
+      RefProjectVar n -> Map.lookup n projectVars
       RefHeading l form pick ->
         let here = [h | h <- started, hiLevel h == l]
             atEnd = foldl' activeAfter start started
@@ -664,13 +646,14 @@ runningHeads inp geom layout =
       startedOn p = Map.findWithDefault [] (poNumber p) started
       starts = scanl (foldl' activeAfter) Map.empty (map startedOn pages)
       meta = runningMetadata (manifestMetadata (projectManifest (piProject inp)))
+      projectVars = projectVarTexts (manifestVars (projectManifest (piProject inp)))
       recto h = maybe False hsRectoBreak (Map.lookup (hiLevel h) (stHeadings (piStyle inp)))
       one p st m fid
         | poBlank p || any recto (startedOn p) = []
         | otherwise = case m >>= mgRunningHead of
             Nothing -> []
             Just (co, ce, _, _) ->
-              runningHeadLines meta (Map.findWithDefault Map.empty fid (piRunningVars inp)) (if odd (poNumber p) then co else ce) st (startedOn p)
+              runningHeadLines meta projectVars (Map.findWithDefault Map.empty fid (piRunningVars inp)) (if odd (poNumber p) then co else ce) st (startedOn p)
    in Map.fromList [(poNumber p, one p st m fid) | (p, st, m, fid) <- zip4 pages starts (pageMasters inp geom layout) (pageFiles inp layout)]
 
 {- | G07051 (golem-driver ADR 0022): a line of a running head wider than the
@@ -933,19 +916,6 @@ labelSpans book = Map.fromListWith (\_ old -> old) (concatMap site (concat [bs |
         FigureBlock fig -> concatMap site (figCaption fig)
         _ -> []
 
-{- | Numbers of list items that the number format of their depth cannot
-write (golem-driver ADR 0013): G07029 at the item, whatever the target.
--}
-listNumberDiagnostics :: Style -> Bool -> Book -> [Diagnostic]
-listNumberDiagnostics style vertical book =
-  [ diagnostic "G07029" Error (lsiSpan s) ("リストの番号 " <> T.pack (show (lsiNumber s)) <> " は、書式 " <> renderNumberFormat f <> " で表せません")
-  | s <- listSites (concat [bs | Document _ bs <- bookDocs book]),
-    let f = atDepth formats (lsiDepth s),
-    null (formatListNumber (nfStyle f) (lsiNumber s))
-  ]
-  where
-    formats = fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))
-
 {- | Places the sidenotes of a page in its sidenote column (golem-driver
 ADR 0006): each wants the top of the line of its marker; they keep their
 order, half a body pitch apart. Takes the sidenote pitch and size of a
@@ -1199,19 +1169,6 @@ bodyLook style = styleLook style Nothing (bodyRole style)
 -- | A role at a size with the keys of a paragraph style (docs/adr/0020).
 styleLook :: Style -> Maybe Text -> Text -> Sp -> Look
 styleLook style st role size = withFeatures (paraStyle style st) (plainLook role size)
-
-{- | The bullets of [lists] by depth in PDF, HTML and EPUB: those written,
-or • without bullets (golem-driver ADR 0044).
--}
-listBullets :: ListStyle -> NonEmpty Text
-listBullets = bulletsOr "•"
-
--- | The bullets of [lists] by depth in plain text: those written, or ・ without bullets (golem-driver ADR 0044).
-textBullets :: ListStyle -> NonEmpty Text
-textBullets = bulletsOr "・"
-
-bulletsOr :: Text -> ListStyle -> NonEmpty Text
-bulletsOr def = fromMaybe (pure def) . lsBullets
 
 {- | The marker of an item of a list at a depth (golem-driver ADR 0013): the
 bullet of the depth, or the number in the format of the depth. @{n}@ is a
@@ -1613,10 +1570,12 @@ placeFigure fe u fig content =
       (frameAlong, frameLines) = figurePageFrame geom
       -- a figure turned onto a page of its own is set in its frame (golem-driver ADR 0034)
       turned = figRotate fig && isNothing (figWrap fig)
-      along = case figWrap fig of
-        Nothing -> Right (if turned then frameAlong else measure)
-        Just _ -> maybe (Left ()) (Right . dimToSp fs) (figWidth fig >>= parseDim)
-      alongSp = fromRight measure along
+      -- the measure of the column, or of the frame (golem-driver ADR 0034)
+      lineLen = if turned then frameAlong else measure
+      -- the width along the lines as written, or the measure (docs/adr/0190); the evaluation has checked it (G02133)
+      written = figureWidthSp fs lineLen <$> (figWidth fig >>= parseFigureWidth)
+      -- along0: for a wrapped figure its width, for any other the width or the measure
+      alongSp = fromMaybe lineLen written
       -- the pixels of an image, the crop box of a PDF figure after its rotation (golem-pdf ADR 0008)
       (w, h) = figureProportions content
       -- across the lines for each sp along them
@@ -1631,15 +1590,16 @@ placeFigure fe u fig content =
       -- the grid lines a caption of k lines takes: the fewest that hold it, its pitch in the body's ratio of pitch to size
       captionSpanOf k = if k == 0 then (pitch, 0) else let cb' = headingBlock fs pitch cs k 1 in (hbPitch cb', hbSpan cb')
       -- the caption in the measure before fitting (golem-driver ADR 0034)
-      caption = captionAt alongSp
+      caption = captionAt (if isJust (figWrap fig) then alongSp else lineLen)
       captionMarks = [sp | AnchorIndex _ sp _ <- captionAnchors]
       n = length caption
       (cp, span') = captionSpanOf n
       -- the grid lines of the column, or of the frame
       gridLines = if turned then frameLines else capacity
       fitOf len k s = fitFigure ratio len k pitch fs (if s == 0 then Nothing else Just s)
+      -- step 1 of golem-driver ADR 0034 as docs/adr/0190 has it: along1 is along0 within the measure; fitted when the last along is shorter than along0
       (alongFit, across, fitted) = case figWrap fig of
-        Nothing -> fitOf alongSp gridLines span'
+        Nothing -> let (a, c, _) = fitOf (min alongSp lineLen) gridLines span' in (a, c, a < alongSp)
         Just _ -> (alongSp, Sp (floor (fromInteger (unSp alongSp) * ratio)), False)
       m = fromInteger (unSp (across + pitch - 1) `div` unSp pitch)
       -- the size the figure would take turned, to tell the writer (golem-driver ADR 0034)
@@ -1663,8 +1623,8 @@ placeFigure fe u fig content =
         (Just _, _)
           | length (pgColumns geom) > 1 -> [diagnostic "G07026" Error (uSpan u) "段組みの版面では図版を回り込ませられません。wrap を外すか、columns を 1 にしてください"]
         (Just _, Just e)
-          | isLeft along || measure - exWidth e < 8 * fs ->
-              [diagnostic "G07022" Error (uSpan u) ("回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
+          | isNothing written || measure - exWidth e < 8 * fs ->
+              [diagnostic "G07022" Error (uSpan u) ("回り込む図版の幅が不正です。行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
           | exLines e > capacity -> [diagnostic "G07023" Error (uSpan u) ("回り込む図版の除外領域が一ページの行数を超えます（" <> T.pack (show (exLines e)) <> " 行）")]
         -- a caption that leaves no line for the image (golem-driver ADR 0034)
         _
@@ -1674,7 +1634,7 @@ placeFigure fe u fig content =
         | not turned = Nothing
         | pgVertical geom = Just P.TurnedRight
         | otherwise = Just P.TurnedLeft
-   in (PlacedFigure content alongFit across (figWrap fig) m caption cs cp span' ex (figSource fig) (snd (figureKey fig)) (uSpan u) alongSp turn, errs, notices, captionMarks)
+   in (PlacedFigure content alongFit across (figWrap fig) m caption cs cp span' ex (figSource fig) (snd (figureKey fig)) (uSpan u) (if isJust (figWrap fig) then alongSp else lineLen) turn, errs, notices, captionMarks)
 
 {- | The paragraphs right after a wrapped figure, in order, composed beside
 its exclusion: each by its index, with the line of the exclusion it starts
@@ -2503,10 +2463,6 @@ unturnRect :: P.Turn -> Rect -> Rect -> Rect
 unturnRect t (Rect x y w h) (Rect px py a b) = case t of
   P.TurnedRight -> Rect (y + h - py - b) (px - x) b a
   P.TurnedLeft -> Rect (py - y) (x + w - px - a) b a
-
--- | The FileId of style.toml: the one after the files of the project.
-styleFileId :: Project -> FileId
-styleFileId p = FileId (length (fileTableEntries (projectFiles p)))
 
 {- | The names XMP takes as dc:creator and dc:contributor: without the
 printer and the binder, without roles (docs/adr ADR 0033).

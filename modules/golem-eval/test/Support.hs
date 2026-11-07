@@ -32,6 +32,7 @@ baseCtx =
       ctxPath = "ch/01.gm",
       ctxProfile = Dev,
       ctxMeta = Map.empty,
+      ctxVars = Map.empty,
       ctxImports = Map.empty,
       ctxSwatches = Set.empty,
       ctxCharStyles = Set.empty,

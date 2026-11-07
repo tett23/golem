@@ -544,7 +544,7 @@ tests of docs/adr/0110, 0119 and 0122 that need it.
 tsvTableTests :: [TestTree]
 tsvTableTests =
   [ testCase "@tsv-table makes the table @table makes of the same TSV, with align (docs/adr/0110)" $
-      withTsvTable "data = { sales = \"data/sales.tsv\" }\n" "@tsv-table sales align=left,right,center\n\n@table src=data/sales.tsv align=left,right,center\n" [("data/sales.tsv", salesTsv)] $ \tmp -> do
+      withTsvTable "data = { sales = \"data/sales.tsv\" }\n" "@tsv-table sales align=left,right,center\n\n@table data/sales.tsv align=left,right,center\n" [("data/sales.tsv", salesTsv)] $ \tmp -> do
         (bs, ds) <- blocksOf tmp
         ds @?= []
         case map (tableShape . blockBody) bs of

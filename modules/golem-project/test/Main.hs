@@ -26,6 +26,7 @@ import Golem.Project.Style
 import Golem.Syntax
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
+import SharedValuesSpec qualified
 import StylePositionSpec qualified
 import StyleSchemaSpec qualified
 import System.Directory (createDirectoryIfMissing, createFileLink)
@@ -34,6 +35,7 @@ import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
 import TomlMessageSpec qualified
+import VarsSpec qualified
 
 main :: IO ()
 main = defaultMain tests
@@ -646,10 +648,12 @@ tests =
       TomlMessageSpec.tests,
       ColophonSpec.tests,
       OutputCharsSpec.tests,
+      SharedValuesSpec.tests,
       StylePositionSpec.tests,
       StyleSchemaSpec.tests,
       NaturalKeySpec.tests,
       FunctionsSpec.tests,
+      VarsSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))

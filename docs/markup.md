@@ -189,7 +189,7 @@ dev ビルドでのみ出力に現れ、prod ビルドに残っていると警�
 
 見出しの中では、文書構造（S1）とレイアウト後（S2）の値を参照できない。
 具体的には、`doc` 名前空間、`[ref-number ...]`、`[ref-title ...]`、ページ番号への参照を見出しに書くとコンパイルエラーになる。
-変数、import した定義、`meta` 名前空間は見出しでも使える。
+変数、import した定義、`meta` と `vars` の名前空間は見出しでも使える。
 
 ### リスト
 
@@ -276,7 +276,7 @@ v1 で定めるブロックコマンドは次のとおりである。
 - `@bibliography`：参考文献の一覧を出力する。いくつでも置け、二つ以上あれば、それぞれにその範囲の引用を載せ、番号を一覧ごとに 1 から振る（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
 - `@printings`：マニフェストの `[[metadata.printings]]` から、発行の履歴（`2026年10月16日　初版第1刷発行` の形の段落）を一項目一段落で組む。引数と本体は取らない。日本語の本でだけ使える（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。
 - `@figure`：図版を置く（「図版」の節を参照）。
-- `@table src=path format=形式 align=揃え cells=text`：CSV か TSV のファイルから表を作る（「表」の節を参照）。`format`、`align`、`cells` は省ける（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
+- `@table path format=形式 align=揃え cells=text`：CSV か TSV のファイルから表を作る（「表」の節を参照）。パスは最初の引数に書く。`format`、`align`、`cells` は省ける（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。`src=path` とも書けるが廃止予定であり、notice（G02129）を出す（[ADR 0184](adr/0184-table-positional-path.md)）。
 - `@listing path lines=N...M lang=言語`：Golem 以外のファイルの内容をコードとして取り込む（「コードブロック」の節を参照）。`lines` は `N...M` で N 行めから M 行めまで、`N` で N 行めだけを取り込む。パスは最初の引数に書く。`lang` は色分けの言語の名前である。コードブロックの開始の行と同じキーワード引数も書ける。`src=path` とも書けるが廃止予定であり、notice（G02065）を出す（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 - `@style 名前`：段落に段落スタイルを付ける（「段落スタイル」の節を参照）。
 - `@blank-line`、`@blank-line N`：前後のブロックのあいだに一行か N 行の行アキを入れる（「行アキ」の節を参照）。
@@ -334,11 +334,29 @@ v1 で定めるブロックコマンドは次のとおりである。
 ```
 
 - `wrap=start` は行の始まりの側（横組みでは左、縦組みでは上）、`wrap=end` は行の終わりの側に図版を寄せる。
-- 回り込ませる図版には `width`（横組みでは幅、縦組みでは高さ）を必須とする。
+- 回り込ませる図版には `width`（横組みでは幅、縦組みでは高さ）を必須とする。書き方は、回り込ませない図版の `width` と同じである。
 - 回り込みは PDF でだけ行い、EPUB と HTML では回り込ませない通常の図版として出力する。
 
 回り込ませない図版は、PDF で行長にそろえ、段に収まらなければ縦横の比を保って縮める（[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）。
 縮めた図版は、notice の G07039 で知らせる。
+
+`width` は、回り込ませない図版にも書ける（[docs/adr/0190](adr/0190-non-wrapping-figure-width.md)）。
+図版の行の方向の長さ（横組みでは幅、縦組みでは高さ）を、行長の代わりに `width` にする。
+
+```
+@figure images/icon.png alt="アイコン" width=6zw
+  アイコンのキャプション。
+
+@figure images/screen.png alt="画面" width=50%
+  画面のキャプション。
+```
+
+- `width` は、`mm`、`pt`、`Q`、`H`、`in`、`zw` の寸法か、行長に対する割合（`%`）で書く。数は符号のない整数か小数である。`zw` は本文の文字の大きさを一字とする。回り込ませる図版の `width` も同じ書き方である。
+- `%` は、回り込ませない図版と回り込ませる図版では段の行長、回した図版（`rotate=true`）では回した図版を組む枠の行長に対する割合である。`50%` は行長の半分である。
+- 寸法としても割合としても読めない `width`（`width=50`、`width=3em` など）と、値が 0 の `width` は、コンパイルエラー（G02133）になる。どの出力を組んでも、`golem check` でも出る。
+- `width` を行長より大きく書いた図版は、PDF で行長に縮め、G07039 で知らせる。
+- `width` で行長より短くした図版は、PDF で縮めた図版と同じく、段の二つの端のうち紙の端に近いほうの端に寄せる。キャプションは、`width` によらず段の行長で組む。
+- HTML と EPUB では、`<img>` に横組みでは `width`、縦組みでは `height` の大きさを書く。`zw` は `em` に、`%` は `%` にする。HTML の `%` は `<figure>` の幅に対する割合なので、PDF の行長とは基準が違う。
 
 `rotate=true` を指定すると、PDF で図版とキャプションを一緒に 90 度回し、本文を持たない一ページに置く（[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）。
 
@@ -371,15 +389,20 @@ v1 で定めるブロックコマンドは次のとおりである。
 データの表は、`@table` で CSV か TSV のファイルから作れる（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
 
 ```
-@table src=data/sizes.tsv align=left,right,right
-@table src=data/export.txt format=tsv
+@table data/sizes.tsv align=left,right,right
+@table data/export.txt format=tsv
 ```
 
-キーワード引数は次の四つである。
+表のファイルのパスは、最初の引数に語か文字列で書く（[ADR 0184](adr/0184-table-positional-path.md)）。
+パスがなければエラー（G02034）になる。
+パスを二つ以上書くとエラー（G02130）になり、表を組まない。
+`src=path` とも書けるが廃止予定であり、`src=` の引数に notice（G02129）を出す。
+位置引数のパスと `src=` を両方書くのも、パスが二つあるので G02130 になる。
+
+キーワード引数は次の三つである。
 
 | 引数 | 値 | 既定 |
 |---|---|---|
-| `src` | 表のファイルのパス | なし（G02034） |
 | `format` | `csv` か `tsv` | パスの拡張子で決める |
 | `align` | 列の揃えのカンマ区切りの並び | すべての列が既定の揃え |
 | `cells` | `text` | `text` |
@@ -1122,7 +1145,7 @@ HTML と EPUB では、ファイルの中のスタイルを持つ章の `<body>`
 `lines` と `highlight` の語は、上の範囲の規則で読む。
 
 **評価の前の解析**：式は、評価する前に型を推論する。
-型は上の表の規則で決め、`@set` の名前と `meta` の値はその値の型、`doc` の名前は次の表の型とする。
+型は上の表の規則で決め、`@set` の名前と `meta` と `vars` の値はその値の型、`doc` の名前は次の表の型とする。
 範囲のリテラルの型は範囲であり、`@set r = 1...3` の `r` の型も範囲である。
 範囲の端の型が数でないと分かれば、解析の中で G02110 を出す。
 端の型が有理数でも、値が整数かどうかは評価で決まるので、解析では誤りにしない。
@@ -1141,12 +1164,13 @@ HTML と EPUB では、ファイルの中のスタイルを持つ章の `<body>`
 型が自然数でなく `doc` を参照する式（`[= round(1 / 3, doc.chapters.count - 5)]`）は、文書構造（S1）で評価するときに、同じコードとメッセージを同じ位置に出す。
 解析が diagnostic を出した式は、評価しない。
 
-予約された名前空間が二つある。
+予約された名前空間が三つある。
 
 - `meta`：マニフェストのメタデータ。ファイル内評価（S0）の値であり、どこでも参照できる。書名などのほか、役割ごとの関係者の名前の配列 `meta.roles.<役割>`、現在の刷 `meta.printing`、刷の履歴 `meta.printings`、発行人 `meta.publisher_person` を持つ（[仕様書の「本文からの参照」](specifications.md#本文からの参照)）。
+- `vars`：マニフェストの `[vars]` のプロジェクト全体の変数。`meta` と同じく S0 の値であり、どこでも `@import` なしで参照できる。表の中の値は `vars.author.short` で引く（[docs/adr/0185](adr/0185-project-wide-variables.md)、[仕様書の「本文からの参照」](specifications.md#本文からの参照)）。
 - `doc`：文書構造の値（章の数など）。文書構造（S1）の値であり、見出しの中では参照できない。
 
-`meta` と `doc` は import の名前空間には使えない。
+`meta`、`vars`、`doc` は予約語であり、`@set` の名前にも import の名前空間にも使えない。
 
 ### 命令文脈
 

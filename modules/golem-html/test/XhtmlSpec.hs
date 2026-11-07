@@ -397,6 +397,25 @@ tests =
           let fig = Figure "images/a.png" Nothing "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False
               book = (bookOf [Block (at 0) Nothing (FigureBlock fig)]) {bookFigures = Map.fromList [(at 0, "図1-1")]}
            in bodyA cfg0 book @?= "<figure>\n<img src=\"images/a.png\" alt=\"代替\"/>\n<figcaption><span class=\"number\">図1-1</span>\x3000キャプション</figcaption>\n</figure>\n",
+        -- docs/adr/0190
+        testCase "the width of a figure: width and max-width in a horizontal book, height and max-height in a vertical one, in pt, em and %" $ do
+          let imgOf cfg w wr =
+                let fig = Figure "images/a.png" Nothing "代替" wr w [] Nothing False
+                 in T.takeWhile (/= '\n') (T.drop 1 (T.dropWhile (/= '\n') (bodyA cfg (bookOf [Block (at 0) Nothing (FigureBlock fig)]))))
+          imgOf cfg0 (Just "10zw") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 10em; max-width: 100%\"/>"
+          imgOf cfg0 (Just "50%") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 50%; max-width: 100%\"/>"
+          imgOf cfg0 (Just "12.5%") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 12.5%; max-width: 100%\"/>"
+          imgOf cfg0 (Just "25.4mm") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 72pt; max-width: 100%\"/>"
+          imgOf cfg0 (Just "40Q") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 28.3465pt; max-width: 100%\"/>"
+          imgOf cfg0 (Just "1in") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 72pt; max-width: 100%\"/>"
+          imgOf cfg0 (Just "10.5pt") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 10.5pt; max-width: 100%\"/>"
+          imgOf cfg0 {hcVertical = True} (Just "1.5zw") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"height: 1.5em; max-height: 100%\"/>"
+          imgOf cfg0 {hcVertical = True} (Just "40mm") Nothing @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"height: 113.3858pt; max-height: 100%\"/>"
+          -- a wrapped figure is placed as any other, with its width
+          imgOf cfg0 (Just "8zw") (Just WrapEnd) @?= "<img src=\"images/a.png\" alt=\"代替\" style=\"width: 8em; max-width: 100%\"/>"
+          -- no width, no style
+          imgOf cfg0 Nothing Nothing @?= "<img src=\"images/a.png\" alt=\"代替\"/>"
+          imgOf cfg0 {hcVertical = True} Nothing Nothing @?= "<img src=\"images/a.png\" alt=\"代替\"/>",
         testCase "the table of contents" $
           let entry = TocEntry 1 (Just "第一章") [txt "はじめに"] "intro" fidA (at 9)
               book = (bookOf [Block (at 0) Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry]}
