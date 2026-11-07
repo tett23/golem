@@ -148,8 +148,20 @@ silenceTests =
         case parse "[diagnostics]\nsilence-notices = [\"G0262\"]\n" of
           Left [d] -> do
             diagCode d @?= DiagnosticCode "G03024"
-            assertBool (T.unpack (diagMessage d)) ("診断のコードは G と 5 桁の数字で書きます: G0262" `T.isInfixOf` diagMessage d)
+            assertBool (T.unpack (diagMessage d)) ("診断のコードは大文字の G か E の後に 5 桁の数字を続けて書きます: G0262" `T.isInfixOf` diagMessage d)
           other -> assertFailure (show (codes other)),
+      testCase "E and four digits, or a lower-case code, is G03024 naming G and E in upper case (docs/adr/0176)" $
+        mapM_
+          ( \(key, c) -> case parse ("[diagnostics]\n" <> key <> " = [\"" <> c <> "\"]\n") of
+              Left [d] -> do
+                diagCode d @?= DiagnosticCode "G03024"
+                assertBool (T.unpack (diagMessage d)) (("診断のコードは大文字の G か E の後に 5 桁の数字を続けて書きます: " <> c) `T.isInfixOf` diagMessage d)
+              other -> assertFailure (T.unpack c <> ": " <> show (codes other))
+          )
+          [("silence-notices", "E0210"), ("silence-notices", "e02109"), ("silence-info", "e05108")],
+      testCase "E02109 in silence-notices and E05108 in silence-info are no errors (docs/adr/0176)" $ do
+        fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"E02109\"]\n") @?= Right (Set.fromList [DiagnosticCode "E02109"])
+        fmap manifestSilencedInfo (parse "[diagnostics]\nsilence-info = [\"E05108\"]\n") @?= Right (Set.fromList [DiagnosticCode "E05108"]),
       testCase "a string instead of an array is G03001" $
         codes (parse "[diagnostics]\nsilence-notices = \"all\"\n") @?= ["G03001"],
       testCase "an unknown key of [diagnostics] is G03001" $
