@@ -133,7 +133,7 @@ Locally, each area's enumeration test takes its depth and its number of inputs d
 
 | Area | Test | Depth | Inputs drawn |
 |---|---|---|---|
-| Page breaking | `cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` | `GOLEM_ENUM_DEPTH` (3 on pull requests, 6 nightly) | `GOLEM_ENUM_PAGINATION_SAMPLES` (0 on pull requests, 5,000,000 nightly) |
+| Page breaking | `cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` | `GOLEM_ENUM_DEPTH` (3 on pull requests, 5 nightly) | `GOLEM_ENUM_PAGINATION_SAMPLES` (0 on pull requests, 5,000,000 nightly) |
 
 For example, raise the number of elements checked, as in `GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_PAGINATION_SAMPLES=100000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'`.
 The tests of golem-layout are built with `-threaded` and share the inputs among the processors.

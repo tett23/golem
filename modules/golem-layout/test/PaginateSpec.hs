@@ -24,6 +24,7 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import PaginateEnum (Element (..), Input (..), noteOf, paginateInput)
+import PaginateInvariants (Breach (..), Invariant (..), breaches)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -51,6 +52,7 @@ paginateTests =
       testGroup "a heading sent on is checked again after the figures sent on (golem-layout ADR 0023)" keepAfterFiguresTests,
       testGroup "keep goes on until the need fits (golem-layout ADR 0023)" keepTests,
       testGroup "a recto starts after the figures sent on and the continued notes (golem-layout ADR 0024)" rectoAfterFiguresTests,
+      testGroup "need-lines, blank lines, tables and wrapped figures go on after what is sent on (golem-layout ADR 0025)" afterSentOnTests,
       testGroup "invariants" propertyTests
     ]
 
@@ -1054,4 +1056,74 @@ rectoAfterFiguresTests =
       [(poNumber p, map snd (poSlots p), poFootnotes p) | p <- ps]
         @?= [(1, [SLine 0], [(nid 900, 0, 2)]), (2, [], [(nid 900, 2, 2)]), (3, [SHeading 1 1], [])]
       rectoChecks 1 ps
+  ]
+
+-- | Page, column and what starts in each column.
+placed :: [PageOut] -> [(Int, Int, [Slotted])]
+placed ps = [(poNumber p, poColumn p, map snd (poSlots p)) | p <- ps]
+
+-- | The invariants of the list broken by the output, with a separator of one grid line.
+brokenOf :: [Invariant] -> [Flow] -> [PageOut] -> [Invariant]
+brokenOf which flows ps = [breachOf b | b <- breaches 1 flows ps, breachOf b `elem` which]
+
+{- | golem-layout ADR 0025: the reproductions of its section 「文脈」, a
+paragraph of three lines and a figure of three lines sent on, in columns
+of four grid lines, and the smallest inputs found for tables and wrapped
+figures.
+-}
+afterSentOnTests :: [TestTree]
+afterSentOnTests =
+  [ testCase "P1: need-lines 2 after a figure sent on goes on past the column the figure takes, with no warning" $ do
+      let flows = [FParagraph (lines' 0 3), FFigure 1000 3 [] [], FNeedLines mk 2, FParagraph (lines' 3 1)]
+          ps = paginate 1 4 flows
+      placed ps @?= [(1, 0, map SLine [0 .. 2]), (2, 0, [SFigure 1000]), (3, 0, [SLine 3])]
+      unmets ps @?= []
+      brokenOf [P1, P2] flows ps @?= [],
+    testCase "P1: in two columns, need-lines 2 after a figure sent on goes on past its column" $ do
+      let flows = [FParagraph (lines' 0 3), FFigure 1000 3 [] [], FNeedLines mk 2, FParagraph (lines' 3 1)]
+          ps = paginate 2 4 flows
+      placed ps @?= [(1, 0, map SLine [0 .. 2]), (1, 1, [SFigure 1000]), (2, 0, [SLine 3])]
+      unmets ps @?= []
+      brokenOf [P1, P2] flows ps @?= [],
+    testCase "P2: need-lines 2 after a figure sent on is not recorded; need-lines 5 in columns of 4 is recorded once" $ do
+      unmets (paginate 1 4 [FParagraph (lines' 0 3), FFigure 1000 3 [] [], FNeedLines mk 2, FParagraph (lines' 3 1)]) @?= []
+      let flows = [FParagraph (lines' 0 3), FFigure 1000 3 [] [], FNeedLines mk 5, FParagraph (lines' 3 1)]
+          ps = paginate 1 4 flows
+      unmets ps @?= [UnmetNeedLines mk 5]
+      brokenOf [P2] flows ps @?= [],
+    testCase "P3: blank lines after a figure sent on do not overflow its column" $ do
+      let flows = [FParagraph (lines' 0 3), FFigure 1000 3 [] [], FBlank mk 2, FParagraph (lines' 3 1)]
+          ps = paginate 1 4 flows
+      brokenOf [I2, P3] flows ps @?= [],
+    testCase "P4: blank lines after a figure sent on are dropped at the top of the next column and recorded" $ do
+      let flows = [FParagraph (lines' 0 3), FFigure 1000 3 [] [], FBlank mk 2, FParagraph (lines' 3 1)]
+          ps = paginate 1 4 flows
+      placed ps @?= [(1, 0, map SLine [0 .. 2]), (2, 0, [SFigure 1000]), (3, 0, [SLine 3])]
+      gridLines ps @?= [[0, 1, 2], [0], [0]]
+      unmets ps @?= [DroppedBlank mk]
+      brokenOf [P3, P4] flows ps @?= [],
+    testCase "P4: blank lines and the paragraph that fit after a figure sent on are placed after it, in its column" $ do
+      -- 1 left on page 1: the figure is sent on, and 2 blank lines and the line take the 3 after it on page 2
+      let flows = [FParagraph (lines' 0 5), FFigure 1000 3 [] [], FBlank mk 2, FParagraph (lines' 5 1)]
+          ps = paginate 1 6 flows
+      placed ps @?= [(1, 0, map SLine [0 .. 4]), (2, 0, [SFigure 1000, SLine 5])]
+      gridLines ps @?= [[0 .. 4], [0, 5]]
+      unmets ps @?= []
+      brokenOf [P3, P4] flows ps @?= [],
+    testCase "I2: a table after a figure sent on goes on past the column the figure takes" $ do
+      let flows = [FParagraph (lines' 0 3), FFigure 1000 3 [] [], FTable 50 0 (lines' 10 1) [lines' 20 1, lines' 21 1]]
+          ps = paginate 1 4 flows
+      placed ps @?= [(1, 0, map SLine [0 .. 2]), (2, 0, [SFigure 1000]), (3, 0, [SLine 10, SLine 20, SLine 21])]
+      brokenOf [I2] flows ps @?= [],
+    testCase "I2: the part of a table after a figure sent on goes on past the column the figure takes, its header repeated" $ do
+      let flows = [FParagraph (lines' 0 2), FFigure 1000 3 [] [], FTable 50 0 (lines' 10 1) [lines' 20 1, lines' 21 1]]
+          ps = paginate 1 4 flows
+      placed ps @?= [(1, 0, [SLine 0, SLine 1, SLine 10, SLine 20]), (2, 0, [SFigure 1000]), (3, 0, [SLine 10, SLine 21])]
+      map (map tsFirst . poTables) ps @?= [[2], [], [0]]
+      brokenOf [I2] flows ps @?= [],
+    testCase "I2: a wrapped figure after a note continued goes on past the columns the note takes" $ do
+      let flows = [FParagraph [LineBox 0 [NoteBody (nid 900) 5] [] [] 0], FWrapped 2000 3 [] [] []]
+          ps = paginate 1 4 flows
+      [(poNumber p, map snd (poSlots p), poFootnotes p) | p <- ps]
+        @?= [(1, [SLine 0], [(nid 900, 0, 2)]), (2, [], [(nid 900, 2, 2)]), (3, [], [(nid 900, 4, 1)]), (4, [SWrapped 2000], [])]
   ]

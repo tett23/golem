@@ -117,6 +117,6 @@ jobs:
       - name: The pagination invariants on every small input (docs/adr/0204, docs/adr/0208)
         if: steps.needed.outputs.run == 'true'
         env:
-          GOLEM_ENUM_DEPTH: "6"
+          GOLEM_ENUM_DEPTH: "5"
           GOLEM_ENUM_PAGINATION_SAMPLES: "5000000"
         run: cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'

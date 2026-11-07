@@ -5,7 +5,8 @@
 
 {- | The invariants of pagination checked on every small input
 (docs/adr/0204): the enumeration of the inputs, the predicates I1 to I8
-on outputs made by hand, and every input up to the depth of
+and P1 to P4 (golem-layout ADR 0025) on outputs made by hand, and every
+input up to the depth of
 @GOLEM_ENUM_DEPTH@ elements, with the known bugs excluded by an explicit
 list whose counterexamples are counted.
 
@@ -73,12 +74,15 @@ wholeNumber name def =
 
 enumerationTests :: [TestTree]
 enumerationTests =
-  [ testCase "I2: in columns of 3 grid lines there are 16 elements, no figure taller than the column" $ do
+  [ testCase "I2: in columns of 3 grid lines there are 19 elements, no figure taller than the column" $ do
       -- paragraphs of 1 to 4 lines, with and without a note, a heading
       -- with and without a note, a heading at a recto, figures of 1 to 3
-      -- lines, a space and a break (docs/adr/0206)
-      length (elementsFor 3) @?= 4 + 4 + 3 + 3 + 2
+      -- lines, a space and a break (docs/adr/0206), need-lines of 2 and
+      -- blank lines of 1 and 2 lines (golem-layout ADR 0025)
+      length (elementsFor 3) @?= 4 + 4 + 3 + 3 + 2 + 3
       [n | EFigure n <- elementsFor 3] @?= [1 .. 3],
+    testCase "P1, P3: the need-lines is of 2 lines, the blank lines of 1 and 2 (golem-layout ADR 0025)" $
+      [e | e <- elementsFor 3, e `elem` [ENeedLines, EBlank 1, EBlank 2]] @?= [ENeedLines, EBlank 1, EBlank 2],
     testCase "in columns of 3 grid lines, the flows of up to 2 elements are as many as the elements allow" $ do
       let m = length (elementsFor 3)
           made = [i | t <- upTo 2 fullInputs, i <- t, inLines i == 3]
@@ -86,14 +90,17 @@ enumerationTests =
       length [i | i <- made, inColumns i == 2] @?= sum [m ^ n | n <- [0 .. 2 :: Int]],
     testCase "tier n holds the flows of n elements, over 6 sizes of column and 2 numbers of columns" $
       map length (upTo 2 fullInputs) @?= [12, sum [2 * length (elementsFor c) | c <- [3 .. 8]], sum [2 * length (elementsFor c) ^ (2 :: Int) | c <- [3 .. 8]]],
-    testCase "the lines are numbered from 0 in the order of the flow, the figures from 1000" $
-      enumFlows [EPara 2, EFigure 3, ENotedHeading, ESpace, EBreak, EFigure 1, ERecto]
+    testCase "the lines are numbered from 0 in the order of the flow, the figures from 1000, the controls from 0" $
+      enumFlows [EPara 2, EFigure 3, ENeedLines, ENotedHeading, ESpace, EBreak, EBlank 2, EFigure 1, EBlank 1, ERecto]
         @?= [ FParagraph [LineBox 0 [] [] [] 0, LineBox 1 [] [] [] 0],
               FFigure 1000 3 [] [],
+              FNeedLines (controlSpan 0) 2,
               FHeading 2 False 1 [LineBox 2 [NoteBody (noteOf 2) 1] [] [] 0],
               FSpace 1,
               FBreak BreakPage,
+              FBlank (controlSpan 1) 2,
               FFigure 1001 1 [] [],
+              FBlank (controlSpan 2) 1,
               FHeading 1 True 1 [LineBox 3 [] [] [] 0]
             ],
     testCase "the shortened enumeration has columns of 3 to 5 grid lines, and figures of 1, C - 1 and C lines (docs/adr/0208)" $ do
@@ -102,7 +109,7 @@ enumerationTests =
       [n | EFigure n <- shortElementsFor 5] @?= [1, 4, 5]
       [e | e <- shortElementsFor 5, not (isFigure e)] @?= [e | e <- elementsFor 5, not (isFigure e)]
       nub [(inLines i, inColumns i) | i <- concat (upTo 1 inputs)] @?= [(c, k) | c <- [3 .. 5], k <- [1, 2]]
-      map length (upTo 3 inputs) @?= [6, 96, 1536, 24576],
+      map length (upTo 3 inputs) @?= [6, 6 * 19, 6 * 19 ^ (2 :: Int), 6 * 19 ^ (3 :: Int)],
     testCase "E5: each input of the shortened enumeration up to 3 elements is in the same tier of the enumeration of docs/adr/0204" $
       sequence_
         [ assertBool ("tier " <> show k <> ": " <> show i) (show i `Set.member` full)
@@ -287,6 +294,43 @@ predicateTests =
         testCase "I8: after the figures sent on is broken" $
           broken [para 0 1, FFigure 1000 1 [] [], recto 1] [column 1 0 3 [SLine 0], blank 2, column 3 0 3 [SFigure 1000, SHeading 1 1]] @?= [I8]
       ],
+    testGroup
+      "P1 need-lines met"
+      [ testCase "P1: the block after need-lines 2 with one grid line left before it" $
+          broken [para 0 3, FNeedLines (controlSpan 0) 2, para 3 1] [column 1 0 4 (map SLine [0 .. 3])] @?= [P1],
+        testCase "P1: the block after need-lines 2 after a figure, one grid line left" $
+          broken [para 0 3, FFigure 1000 3 [] [], FNeedLines (controlSpan 0) 2, para 3 1] [column 1 0 4 (map SLine [0 .. 2]), columnAt 2 0 4 [(0, SFigure 1000), (3, SLine 3)]] @?= [P1],
+        testCase "P1: the block first in an empty column is not broken" $
+          broken [para 0 3, FNeedLines (controlSpan 0) 2, para 3 1] [column 1 0 4 (map SLine [0 .. 2]), column 2 0 4 [SLine 3]] @?= [],
+        testCase "P1: the notes before the block count" $
+          broken [FParagraph [notedLine 0], FNeedLines (controlSpan 0) 2, para 1 1] [withNotes [(noteOf 0, 0, 1)] (column 1 0 4 [SLine 0, SLine 1])] @?= [P1],
+        testCase "P1: a need-lines beyond the column is not judged" $
+          broken [para 0 3, FNeedLines (controlSpan 0) 5, para 3 1] [(column 1 0 4 (map SLine [0 .. 3])) {poUnmet = [UnmetNeedLines (controlSpan 0) 5]}] @?= []
+      ],
+    testGroup
+      "P2 need-lines recorded only when beyond the column"
+      [ testCase "P2: a need-lines met is recorded" $
+          broken [para 0 1, FNeedLines (controlSpan 0) 2, para 1 1] [(column 1 0 4 [SLine 0, SLine 1]) {poUnmet = [UnmetNeedLines (controlSpan 0) 2]}] @?= [P2],
+        testCase "P2: a need-lines beyond the column not recorded" $
+          broken [para 0 1, FNeedLines (controlSpan 0) 5, para 1 1] [column 1 0 4 [SLine 0], column 2 0 4 [SLine 1]] @?= [P2],
+        testCase "P2: a need-lines beyond the column recorded twice" $
+          broken [para 0 1, FNeedLines (controlSpan 0) 5, para 1 1] [(column 1 0 4 [SLine 0]) {poUnmet = [UnmetNeedLines (controlSpan 0) 5]}, (column 2 0 4 [SLine 1]) {poUnmet = [UnmetNeedLines (controlSpan 0) 5]}] @?= [P2]
+      ],
+    testGroup
+      "P3 and P4 blank lines"
+      [ testCase "P3, P4: blank lines not dropped and not before their block" $
+          broken [para 0 3, FFigure 1000 3 [] [], FBlank (controlSpan 0) 2, para 3 1] [column 1 0 4 (map SLine [0 .. 2]), column 2 0 4 [SFigure 1000], column 3 0 4 [SLine 3]] @?= [P3, P4],
+        testCase "P3: blank lines before their block, the column overflowing" $
+          broken [para 0 1, FBlank (controlSpan 0) 2, para 1 2] [columnAt 1 0 4 [(0, SLine 0), (3, SLine 1), (4, SLine 2)]] @?= [I2, P3],
+        testCase "P4: blank lines dropped, their block not first in its column" $
+          broken [para 0 1, FBlank (controlSpan 0) 1, para 1 1] [(column 1 0 4 [SLine 0, SLine 1]) {poUnmet = [DroppedBlank (controlSpan 0)]}] @?= [P4],
+        testCase "P4: one of two blank lines dropped" $
+          broken [para 0 1, FBlank (controlSpan 0) 1, FBlank (controlSpan 1) 1, para 1 1] [column 1 0 4 [SLine 0], (column 2 0 4 [SLine 1]) {poUnmet = [DroppedBlank (controlSpan 0)]}] @?= [P4],
+        testCase "P3, P4: blank lines dropped at the top of a column, recorded once each, are not broken" $
+          broken [para 0 4, FBlank (controlSpan 0) 1, FBlank (controlSpan 1) 1, para 4 1] [column 1 0 4 (map SLine [0 .. 3]), (column 2 0 4 [SLine 4]) {poUnmet = [DroppedBlank (controlSpan 0), DroppedBlank (controlSpan 1)]}] @?= [],
+        testCase "P3, P4: blank lines right before their block are not broken" $
+          broken [para 0 1, FBlank (controlSpan 0) 2, para 1 1] [columnAt 1 0 4 [(0, SLine 0), (3, SLine 1)]] @?= []
+      ],
     testCase "I6: the output before golem-layout ADR 0013 and ADR 0019, a heading alone at the end of a page, is broken" $ do
       -- five lines, a heading whose note did not count, two lines on the next page
       let flows = [para 0 5, FHeading 2 False 1 [notedLine 20], para 30 2]
@@ -308,9 +352,31 @@ data KnownBug = KnownBug
     kbCounts :: [(Int, Int)]
   }
 
--- | Empty: golem-layout ADR 0023 and 0024 fixed the last ones.
+-- | The known bugs, in the order of 「既知の不具合」.
 knownBugs :: [KnownBug]
-knownBugs = []
+knownBugs =
+  [ KnownBug
+      { kbItem = "送った図版の後で待つ図版の前の `@need-lines` と行アキが、その図版と別の段で扱われる",
+        kbShape = not . null . waitingFigures,
+        kbExcuses = \i b -> breachOf b `elem` [P1, P3, P4] && not (null (breachAt b)) && all (`elem` waitingFigures i) (breachAt b),
+        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 96), (5, 4482)]
+      }
+  ]
+
+{- | The figures after need-lines or blank lines, with a figure before
+them: they may wait behind a figure sent on (golem-layout ADR 0015).
+-}
+waitingFigures :: Input -> [Int]
+waitingFigures (Input _ _ es) = go False False (1000 :: Int) es
+  where
+    go _ _ _ [] = []
+    go seen controls j (e : rest) = case e of
+      EFigure _ -> [j | seen && controls] <> go True False (j + 1) rest
+      ENeedLines -> go seen True j rest
+      EBlank _ -> go seen True j rest
+      ESpace -> go seen controls j rest
+      EBreak -> go seen controls j rest
+      _ -> go seen False j rest
 
 -- | The breaches of an input.
 breachesOf :: Input -> [Breach]
@@ -394,7 +460,7 @@ report what input vs =
 
 exhaustiveTests :: [TestTree]
 exhaustiveTests =
-  [ testCase "I1 to I8 hold for every input up to GOLEM_ENUM_DEPTH elements, but the known bugs, which excuse as many inputs as pinned" $ do
+  [ testCase "I1 to I8 and P1 to P4 hold for every input up to GOLEM_ENUM_DEPTH elements, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- enumDepth
       -- built here, not in a value of its own, so that it is not held
       case tallyAllPar depth (inputsOver [3 .. 5] shortElementsFor) (judge knownBugs) of

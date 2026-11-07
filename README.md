@@ -455,7 +455,7 @@ Golem のビルドとテストは Node を使わない。
 | `ci.yml` | `ci` | `ci.yml` のほかのジョブがすべて成功したか、省かれたことを確かめる（`scripts/ci/gate.sh`） |
 | `advisories.yml` | `wasmtime` | 毎日一回と `workflow_dispatch` で、固定した wasmtime の版を bytecodealliance/wasmtime のリポジトリのアドバイザリと `scripts/wasmtime-advisories.sh` で照合する。当たるアドバイザリがあるか、読めないアドバイザリがあれば失敗し、スケジュールの実行の失敗の通知がメンテナーに届く。プルリクエストでは走らない。権限は `contents: read` だけである（[docs/adr/0157](./docs/adr/0157-check-wasmtime-pin-against-advisories.md)、[docs/adr/0166](./docs/adr/0166-read-wasmtime-advisory-ranges-as-written.md)） |
 | `race.yml` | `race` | 毎日一回 `main` で起動し、前回の成功した実行から `main` が変わっていれば（`scripts/ci/race-needed.sh`）、並行の競合を探すテスト（`golem-driver-parallel-test`、`golem-font-race-test`、`golem-font-test` の並行のテスト）を `GOLEM_RACE_TESTS=40` で走らせる。`workflow_dispatch` で手で起動すると、判定せずに走らせる。権限は `contents: read` と `actions: read` だけである（[docs/adr/0075](./docs/adr/0075-race-search-repetitions.md)） |
-| `enum.yml` | `enum` | 毎日一回 `main` で起動し、前回の成功した実行から `main` が変わっていれば（`scripts/ci/race-needed.sh` に `enum.yml` を渡す）、不変条件を小さな入力のすべてで確かめるテストを、範囲ごとの段（step）で走らせる。段ごとに、すべてを調べる上限と、その一つ上の段から抜き取る入力の数を環境の変数で渡し、すべての段の和を 60 分以内に収める（ジョブの上限は 90 分）。改ページの段は、golem-layout のテスト（「pagination invariants」の「every input」）を `GOLEM_ENUM_DEPTH=6` と `GOLEM_ENUM_PAGINATION_SAMPLES=5000000` で走らせる。プルリクエストの CI は、同じテストを要素 3 個まで調べ、抜き取らない。`workflow_dispatch` で手で起動すると、判定せずに走らせる。権限は `contents: read` と `actions: read` だけである（[docs/adr/0204](./docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)、[docs/adr/0208](./docs/adr/0208-widen-lightweight-formal-methods.md)） |
+| `enum.yml` | `enum` | 毎日一回 `main` で起動し、前回の成功した実行から `main` が変わっていれば（`scripts/ci/race-needed.sh` に `enum.yml` を渡す）、不変条件を小さな入力のすべてで確かめるテストを、範囲ごとの段（step）で走らせる。段ごとに、すべてを調べる上限と、その一つ上の段から抜き取る入力の数を環境の変数で渡し、すべての段の和を 60 分以内に収める（ジョブの上限は 90 分）。改ページの段は、golem-layout のテスト（「pagination invariants」の「every input」）を `GOLEM_ENUM_DEPTH=5` と `GOLEM_ENUM_PAGINATION_SAMPLES=5000000` で走らせる。プルリクエストの CI は、同じテストを要素 3 個まで調べ、抜き取らない。`workflow_dispatch` で手で起動すると、判定せずに走らせる。権限は `contents: read` と `actions: read` だけである（[docs/adr/0204](./docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)、[docs/adr/0208](./docs/adr/0208-widen-lightweight-formal-methods.md)） |
 
 変更が `docs/` の下のファイル、`tools/textlint/` の下のファイル、リポジトリの根の Markdown のファイルだけの場合、`build`、`determinism`、`visual`、`format`、`release-scripts`、`scripts-macos`、`plugins` は省かれる（[docs/adr/0009](./docs/adr/0009-ci-speed.md)、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。
 判定は `scripts/ci/needs-build.sh` が行い、プルリクエストの変更のパスは分岐点からの差分で取る（`scripts/ci/changed-paths.sh`）。
@@ -471,7 +471,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 `race.yml` が落ちたら、落ちたテストの名前と、ログに出たシードとサイズ（tasty-hedgehog が `--hedgehog-replay` に渡す形で書く）と、実行の URL と head のコミットを添えて issue を立てる。
 手元では、`GOLEM_RACE_TESTS=40 cabal test golem-driver-parallel-test` のように同じ回数で試し、`--hedgehog-replay` で落ちた例を再現する。
 `enum.yml` が落ちたら、表示された最も小さい入力と、実行の URL と head のコミットを添えて issue を立てる。
-手元では `GOLEM_ENUM_DEPTH=6 GOLEM_ENUM_PAGINATION_SAMPLES=5000000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` で同じ入力を調べる。
+手元では `GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_PAGINATION_SAMPLES=5000000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` で同じ入力を調べる。
 
 `.github/workflows/release.yml` は、`v` で始まるタグの push と `workflow_dispatch` で動く（[docs/adr/0004](./docs/adr/0004-binary-distribution-and-release.md)）。
 `workflow_dispatch` では、配布物を作って検査し、そのコミットのリリースノートを書くところまでを行い、リリースは作らない。
