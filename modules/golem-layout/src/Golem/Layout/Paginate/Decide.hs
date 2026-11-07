@@ -8,6 +8,7 @@ module Golem.Layout.Paginate.Decide
     noteLinesOf,
     nextNeed,
     keptNeed,
+    splitAtBreak,
     grid,
     termNeed,
     needIn,
@@ -24,7 +25,8 @@ module Golem.Layout.Paginate.Decide
   )
 where
 
-import Data.Maybe (isJust, listToMaybe)
+import Data.List (find)
+import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Golem.Layout.Code (codeSpan)
 import Golem.Layout.Paginate.State
 import Golem.Layout.Paginate.Types
@@ -56,10 +58,11 @@ noteLinesOf = sum . map nbLines . concatMap lbNotes
 -- | The first part of what follows, with the notes of its lines (golem-layout ADR 0019).
 nextNeed :: Env -> [Flow] -> Need
 nextNeed env = \case
-  (FParagraph ls : _) -> linesNeed (take 2 ls)
-  (FContinued ls : _) -> linesNeed (take 2 ls)
-  -- the first two verse lines of a stanza (docs/adr/0180)
-  (FStanza vs : _) -> linesNeed (concat (take 2 vs))
+  -- the first part that can be split from the rest (golem-layout ADR 0021)
+  (FParagraph ls : _) -> linesNeed (take (firstPart True (length ls)) ls)
+  (FContinued ls : _) -> linesNeed (take (firstPart False (length ls)) ls)
+  -- of a stanza, its verse lines (docs/adr/0180, golem-layout ADR 0021)
+  (FStanza vs : _) -> linesNeed (concat (take (firstPart True (length vs)) vs))
   (FTable _ sp h rows : _) -> grid (sp + length h + maybe 0 length (listToMaybe rows))
   (FDefTerm ls : _) -> termNeed ls
   -- a heading keeps what follows it, a heading after it too (golem-driver ADR 0032)
@@ -67,8 +70,8 @@ nextNeed env = \case
   (FFigure _ n _ _ : _) -> grid (min n capacity)
   (FPageFigure {} : _) -> mempty
   (FWrapped _ n _ _ ls : _) -> grid (max n (length ls))
-  -- the space before a paragraph goes with what follows it (docs/adr/0189)
-  (FSpace n : rest) -> let r = nextNeed env rest in r {needGrid = min capacity (max 0 n + needGrid r)}
+  -- the space before a paragraph goes with what follows it (docs/adr/0205)
+  (FSpace n : rest) -> spaced env n (nextNeed env rest)
   (FBreak _ : _) -> mempty
   -- the controls of page breaks are skipped (docs/adr ADR 0030)
   (FNoBreak _ : rest) -> nextNeed env rest
@@ -94,11 +97,41 @@ nextNeed env = \case
   where
     capacity = envCapacity env
 
--- | What a paragraph before a no-break keeps with it: the first part of what follows the no-break.
+{- | What a paragraph before a no-break keeps with it: the spaces before
+the no-break and the first part of what follows it, its spaces too, at
+most a column (golem-layout ADR 0022).
+-}
 keptNeed :: Env -> [Flow] -> Maybe Need
-keptNeed env rest = case dropWhile soft rest of
-  FNoBreak _ : more -> Just (nextNeed env (dropWhile soft more))
+keptNeed env rest = (\(before, after) -> spaced env (sum [max 0 n | FSpace n <- before]) (nextNeed env after)) <$> noBreakAhead rest
+
+{- | The flows before a no-break that the paragraph before waits past, and
+the flows after the no-break; nothing when the paragraph does not wait.
+-}
+noBreakAhead :: [Flow] -> Maybe ([Flow], [Flow])
+noBreakAhead rest = case span soft rest of
+  (before, FNoBreak _ : after) -> Just (before, after)
   _ -> Nothing
+
+-- | @n@ lines of space before what follows, at most a column.
+spaced :: Env -> Int -> Need -> Need
+spaced env n r = r {needGrid = min (envCapacity env) (max 0 n + needGrid r)}
+
+{- | Of @n@ lines (or verse lines) of which @k@ fit before a break, how
+many go before it (golem-layout ADR 0003): the last line does not go
+alone after the break (a widow), and the first line of a paragraph that
+starts here does not stay alone before it (an orphan).
+-}
+splitAtBreak :: Bool -> Int -> Int -> Int
+splitAtBreak isStart n k =
+  let k1 = if n - k == 1 && k > 0 then k - 1 else k -- widow
+   in if isStart && k1 == 1 && n >= 2 then 0 else k1 -- orphan
+
+{- | The first part of @n@ lines that what comes before keeps with it: the
+fewest lines, at least two, that 'splitAtBreak' places before a break
+(golem-layout ADR 0021). All of three lines or fewer, two of more.
+-}
+firstPart :: Bool -> Int -> Int
+firstPart isStart n = fromMaybe n (find (\k -> splitAtBreak isStart n k == k) [min 2 n .. n])
 
 -- | The flows a no-break looks past.
 soft :: Flow -> Bool

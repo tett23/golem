@@ -1,6 +1,6 @@
 # ADR 0205: [ADR 0180](0180-verse-spacing-and-stanza-breaks.md) の実装で足した二つの規則を記録する
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 
