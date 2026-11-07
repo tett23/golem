@@ -1,5 +1,5 @@
 -- | The font roles of the PDF and their diagnostics (golem-driver ADR 0002).
-module Golem.Driver.Pdf.Fonts
+module Golem.Typeset.Fonts
   ( Shaping (..),
     LoadedFonts (..),
     Shaped (..),
@@ -60,8 +60,6 @@ import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
-import Golem.Driver.TextLayer (ClusterPart (..))
-import Golem.Driver.Version (golemVersion)
 import Golem.Layout.CharClass (spanIsJapanese)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
@@ -74,6 +72,7 @@ import Golem.Pdf qualified as P
 import Golem.Project
 import Golem.Project.Style
 import Golem.Syntax
+import Golem.Typeset.TextLayer (ClusterPart (..))
 
 {- | How a text is shaped (docs/adr/0020): the font role (golem-driver ADR
 0003; a role that is not loaded is the body role), the direction, and
@@ -173,16 +172,17 @@ noFontProvider =
 
 {- | What the instance ID is computed from: the bytes of every input, the
 embedded font programs and, last, @golem-@ and the version of Golem
-(docs/adr/0004; the version is part of the input, docs/adr/0002).
+(docs/adr/0004; the version is part of the input, docs/adr/0002). The
+version is given by the caller (docs/adr/0192).
 -}
-instanceIdInputs :: [ByteString] -> [ByteString] -> [ByteString]
-instanceIdInputs inputs programs = inputs <> programs <> [TE.encodeUtf8 ("golem-" <> golemVersion)]
+instanceIdInputs :: Text -> [ByteString] -> [ByteString] -> [ByteString]
+instanceIdInputs version inputs programs = inputs <> programs <> [TE.encodeUtf8 ("golem-" <> version)]
 
 {- | The Producer of the PDF: @Golem @ and the version, from VERSION only
-(golem-pdf ADR 0005).
+(golem-pdf ADR 0005); the caller gives the version (docs/adr/0192).
 -}
-producer :: Text
-producer = "Golem " <> golemVersion
+producer :: Text -> Text
+producer version = "Golem " <> version
 
 data PdfInput = PdfInput
   { piRoot :: !FilePath,
@@ -205,7 +205,10 @@ data PdfInput = PdfInput
     -} piStyleFile :: !FileId,
     {- | the variables of each chapter file that its running heads show,
     as text, by their names with the namespace (golem-driver ADR 0022)
-    -} piRunningVars :: !(Map FileId (Map [Text] Text))
+    -} piRunningVars :: !(Map FileId (Map [Text] Text)),
+    {- | the text of every value of [vars] of manifest.toml a running head
+    can show, by its path (docs/adr/0185, docs/adr/0196)
+    -} piProjectVars :: !(Map [Text] Text)
   }
 
 -- | The language of the book, [metadata] language (golem-html ADR 0002).

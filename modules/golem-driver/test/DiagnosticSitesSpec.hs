@@ -10,11 +10,12 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
-import Golem.Driver.Fonts (golemFontProvider)
-import Golem.Driver.Pdf (PdfInput (..), labelSpans, renderPdf)
-import Golem.Project (ProjectFailure (..), styleFileId)
+import Golem.Driver.Version (golemVersion)
+import Golem.Project (Manifest (..), Project (..), ProjectFailure (..), styleFileId)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
+import Golem.Typeset (PdfInput (..), labelSpans, renderPdf)
+import Golem.Typeset.FontProvider (golemFontProvider)
 import Support
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -33,7 +34,7 @@ withMiniEvaluated style source k = withSystemTempDirectory "golem-sites" $ \tmp 
 -- | The PDF input the driver passes for an evaluated project.
 inputOf :: FilePath -> Evaluated -> IO PdfInput
 inputOf tmp e = case evBook e of
-  Just book -> pure (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty)
+  Just book -> pure (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))))
   Nothing -> assertFailure (show (evDiagnostics e))
 
 -- | The text of the source that a span covers.
@@ -59,7 +60,7 @@ diagnosticSiteTests =
       testCase "G08006: rendering a PDF whose output intent is missing stops at the top of style.toml" $
         withMiniEvaluated (horizontalStyle <> "\n[color]\nintent = \"icc/none.icc\"\n") "本文。\n" $ \tmp e -> do
           inp <- inputOf tmp e
-          r <- renderPdf fakeProvider inp
+          r <- renderPdf golemVersion fakeProvider inp
           either (map (\d -> (diagCode d, diagSpan d, diagMessage d))) (const []) r
             @?= [(DiagnosticCode "G08006", mkSpan (styleFileId (evProject e)) 0 0, "出力インテントの ICC プロファイルがありません: icc/none.icc")],
       testCase "G07021 points at the block a label is attached to" $ do

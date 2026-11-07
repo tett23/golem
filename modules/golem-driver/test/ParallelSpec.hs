@@ -27,9 +27,9 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
-import Golem.Driver.Pdf (Shaping (..))
 import Golem.Syntax
 import Golem.TestSupport.Parallel (inParallel)
+import Golem.Typeset (Shaping (..))
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range

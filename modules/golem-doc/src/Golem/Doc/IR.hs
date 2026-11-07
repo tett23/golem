@@ -208,7 +208,9 @@ data Code = Code
     codeFile :: !(Maybe Text),
     codeCaption :: !(Maybe [Inline]),
     codeDiff :: !Bool,
-    codeLines :: ![CodeLine]
+    codeLines :: ![CodeLine],
+    -- | whether a code block with a caption takes no listing number (docs/adr/0200)
+    codeNoNumber :: !Bool
   }
   deriving stock (Eq, Show)
 
@@ -246,7 +248,9 @@ data Figure = Figure
     -- | the page of a PDF figure, from 1 (golem-pdf ADR 0008)
     figPage :: !(Maybe Natural),
     -- | whether the PDF turns the figure and its caption onto a page of their own (golem-driver ADR 0034)
-    figRotate :: !Bool
+    figRotate :: !Bool,
+    -- | whether the figure takes no figure number (docs/adr/0200)
+    figNoNumber :: !Bool
   }
   deriving stock (Eq, Show)
 

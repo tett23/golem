@@ -515,7 +515,9 @@ blockHtml c (Block sp lbl blang body) = case body of
     let num = numberSpan c (Map.lookup sp (bookFigures (cBook c)))
         -- a paragraph of the caption with a language is a span of it (docs/adr ADR 0187)
         cap = T.concat [maybe id (\l x -> "<span" <> langAttrs l <> ">" <> x <> "</span>") pl (inlines c is) | Block _ _ pl (Paragraph _ is) <- figCaption f]
-     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webOutput f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"" <> figureWidthStyle (hcVertical (cCfg c)) (figWidth f) <> "/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
+        -- no figcaption without a number and a caption (docs/adr/0200)
+        figcaption = if T.null (num <> cap) then "" else "<figcaption>" <> num <> cap <> "</figcaption>\n"
+     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webOutput f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"" <> figureWidthStyle (hcVertical (cCfg c)) (figWidth f) <> "/>\n" <> figcaption <> "</figure>\n"
   ChannelOutput (TocOutput d) -> toc c (Just d)
   ChannelOutput IndexOutput -> index c sp
   ChannelOutput (CustomOutput name _) -> channelList c sp name

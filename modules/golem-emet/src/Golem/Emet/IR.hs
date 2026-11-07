@@ -177,12 +177,12 @@ encodeBlock (Block sp lbl blang body) = do
       hs <- listE encodeInlines h
       rs <- listE (listE encodeInlines) rows
       pure ("Table", [RList (map alignment al), hs, rs])
-    CodeBlock (Code lang nums file cap diff ls) -> do
+    CodeBlock (Code lang nums file cap diff ls nonum) -> do
       c <- maybeE encodeInlines cap
-      pure ("CodeBlock", [con "Code" [maybeR str lang, maybeR bool nums, maybeR str file, c, bool diff, RList (map codeLine ls)]])
-    FigureBlock (Figure src web alt wrap width cap page rot) -> do
+      pure ("CodeBlock", [con "Code" [maybeR str lang, maybeR bool nums, maybeR str file, c, bool diff, RList (map codeLine ls), bool nonum]])
+    FigureBlock (Figure src web alt wrap width cap page rot nonum) -> do
       c <- encodeBlocks cap
-      pure ("FigureBlock", [con "Figure" [str src, maybeR str web, str alt, maybeR wrapR wrap, maybeR str width, c, maybeR nat page, bool rot]])
+      pure ("FigureBlock", [con "Figure" [str src, maybeR str web, str alt, maybeR wrapR wrap, maybeR str width, c, maybeR nat page, bool rot, bool nonum]])
     ChannelOutput ch -> pure ("ChannelOutput", [channel ch])
     ForcedBreak k -> pure ("ForcedBreak", [con (breakKind k) []])
     PageControl pc -> pure ("PageControl", [pageControl pc])
@@ -418,7 +418,7 @@ blockD cx = \case
       RCon "AlignRight" [] -> pure AlignRight
       r -> bad ("揃えではない値です: " <> shown r)
     codeD = \case
-      RCon "Code" [lang, nums, file, cap, diff, ls] -> Code <$> maybeD strD lang <*> maybeD boolD nums <*> maybeD strD file <*> maybeD inls cap <*> boolD diff <*> listD codeLine ls
+      RCon "Code" [lang, nums, file, cap, diff, ls, nonum] -> Code <$> maybeD strD lang <*> maybeD boolD nums <*> maybeD strD file <*> maybeD inls cap <*> boolD diff <*> listD codeLine ls <*> boolD nonum
       r -> bad ("コードではない値です: " <> shown r)
     codeLine = \case
       RCon "CodeLine" [t, n, m, hl, cs] -> CodeLine <$> strD t <*> maybeD natD n <*> maybeD diffMark m <*> boolD hl <*> listD smallD cs
@@ -429,7 +429,7 @@ blockD cx = \case
       RCon "Unchanged" [] -> pure DiffContext
       r -> bad ("差分の印ではない値です: " <> shown r)
     figure = \case
-      RCon "Figure" [src, web, alt, wrap, width, cap, page, rot] -> Figure <$> strD src <*> maybeD strD web <*> strD alt <*> maybeD wrapD wrap <*> maybeD strD width <*> blocks cap <*> maybeD natD page <*> boolD rot
+      RCon "Figure" [src, web, alt, wrap, width, cap, page, rot, nonum] -> Figure <$> strD src <*> maybeD strD web <*> strD alt <*> maybeD wrapD wrap <*> maybeD strD width <*> blocks cap <*> maybeD natD page <*> boolD rot <*> boolD nonum
       r -> bad ("図版ではない値です: " <> shown r)
     wrapD = \case
       RCon "WrapStart" [] -> pure WrapStart

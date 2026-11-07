@@ -28,7 +28,7 @@ module Golem.Assemble
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (when, zipWithM)
+import Control.Monad (unless, when, zipWithM)
 import Control.Monad.State.Strict
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
@@ -309,13 +309,15 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.
               nsListing = if l == 1 then 0 else nsListing st,
               nsHeadings = Map.insert sp info (nsHeadings st)
             }
+      -- a figure with @nonumber takes no number and uses none up (docs/adr/0200)
       FigureBlock f -> do
-        st <- get
-        let n = nsFigure st + 1
-        put st {nsFigure = n, nsFigures = Map.insert sp (nsChapter st, n) (nsFigures st)}
+        unless (figNoNumber f) $ do
+          st <- get
+          let n = nsFigure st + 1
+          put st {nsFigure = n, nsFigures = Map.insert sp (nsChapter st, n) (nsFigures st)}
         mapM_ (blk fid) (figCaption f)
-      -- a code block with a caption has a listing number (golem-driver ADR 0023)
-      CodeBlock Code {codeCaption = Just _} -> do
+      -- a code block with a caption has a listing number (golem-driver ADR 0023), unless it has @nonumber (docs/adr/0200)
+      CodeBlock Code {codeCaption = Just _, codeNoNumber = False} -> do
         st <- get
         let n = nsListing st + 1
         put st {nsListing = n, nsListings = Map.insert sp (nsChapter st, n) (nsListings st)}
@@ -346,7 +348,7 @@ assemble cfg evalDeferred docs0 =
         Nothing -> Nothing
       -- G04004 for figures and code blocks (golem-driver ADR 0023)
       outside fmt numbered =
-        [ diagnostic "G04004" Error sp "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります"
+        [ diagnostic "G04004" Error sp "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます"
         | formatUsesChapter fmt,
           (sp, (Nothing, _)) <- Map.toList numbered
         ]

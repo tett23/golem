@@ -4,7 +4,7 @@ rectangles, discs and closed curves, never stroked, so that golem
 preflight sees the weights of filled shapes only. Every length is an
 'Sp', each division done once (docs/adr/0002).
 -}
-module Golem.Driver.RuleShape
+module Golem.Typeset.RuleShape
   ( RuleShape (..),
     ruleShapes,
     ruleThinnest,

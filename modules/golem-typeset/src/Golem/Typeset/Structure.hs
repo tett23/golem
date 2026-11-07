@@ -1,9 +1,9 @@
 {- | The structure tree of the PDF (docs/adr ADR 0183): the elements of the
 standard types that the blocks and inlines of the IR make, in the order of
-the IR, whose leaves are the places of composition that 'Golem.Driver.Pdf.Flow'
+the IR, whose leaves are the places of composition that 'Golem.Typeset.Flow'
 gives the boxes it composes.
 -}
-module Golem.Driver.Pdf.Structure
+module Golem.Typeset.Structure
   ( structureTree,
     linksOfLeaves,
   )
@@ -18,8 +18,6 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Doc.IR
-import Golem.Driver.Pdf.Flow
-import Golem.Driver.Pdf.Fonts
 import Golem.Layout.Japanese (ComposeEnv (..), InlineNode (..), InlineRole (..), SidenoteMarker (..), inlineStructure)
 import Golem.Layout.Look (Look (..))
 import Golem.Layout.Paginate (NoteId (..))
@@ -27,6 +25,8 @@ import Golem.LayoutSpec (PageGeometry (..))
 import Golem.Pdf qualified as P
 import Golem.Project.Style
 import Golem.Syntax
+import Golem.Typeset.Flow
+import Golem.Typeset.Fonts
 
 -- what a unit gives the tree before its frames are made elements
 data Node

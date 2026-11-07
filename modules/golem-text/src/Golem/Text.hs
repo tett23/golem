@@ -147,7 +147,9 @@ block c ind (Block sp _ _ body) = case body of
   FigureBlock f ->
     let num = Map.lookup sp (bookFigures (cBook c))
         cap = T.intercalate "" [inlines c is | Block _ _ _ (Paragraph _ is) <- figCaption f]
-     in "［" <> T.strip (numbered num <> cap) <> "］"
+        line = T.strip (numbered num <> cap)
+     in -- no line without a number and a caption (docs/adr/0200)
+        if T.null line then "" else "［" <> line <> "］"
   ChannelOutput (TocOutput d) ->
     T.intercalate "\n" [numbered (teNumber e) <> inlines c (teTitle e) | e <- bookToc (cBook c), teLevel e <= d]
   ChannelOutput IndexOutput -> ""

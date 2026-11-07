@@ -1,7 +1,7 @@
 {-# LANGUAGE MultiWayIf #-}
 
 -- | The flow of the PDF: composition, line breaking and pagination (golem-driver ADR 0002).
-module Golem.Driver.Pdf.Flow
+module Golem.Typeset.Flow
   ( SetLine (..),
     CodeInfo (..),
     PlacedSidenote (..),
@@ -99,11 +99,6 @@ import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.FigureWidth (figureWidthSp, parseFigureWidth)
 import Golem.Doc.IR
 import Golem.Doc.Url (checkUrl)
-import Golem.Driver.Overhang (lineOverhang, reachesBackground)
-import Golem.Driver.Pdf.Fonts
-import Golem.Driver.Pdf.Pages (sourceAt)
-import Golem.Driver.ProjectVars (projectVarTexts)
-import Golem.Driver.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
 import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
 import Golem.Layout.Align qualified as A
@@ -131,6 +126,10 @@ import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax
+import Golem.Typeset.Fonts
+import Golem.Typeset.Overhang (lineOverhang, reachesBackground)
+import Golem.Typeset.Pages (sourceAt)
+import Golem.Typeset.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
 import System.FilePath (takeBaseName)
 
 -- | One line of the flow, with what is needed to draw it.
@@ -713,7 +712,7 @@ runningHeads inp geom layout =
       startedOn p = Map.findWithDefault [] (poNumber p) started
       starts = scanl (foldl' activeAfter) Map.empty (map startedOn pages)
       meta = runningMetadata (manifestMetadata (projectManifest (piProject inp)))
-      projectVars = projectVarTexts (manifestVars (projectManifest (piProject inp)))
+      projectVars = piProjectVars inp
       recto h = maybe False hsRectoBreak (Map.lookup (hiLevel h) (stHeadings (piStyle inp)))
       one p st m fid
         | poBlank p || any recto (startedOn p) = []

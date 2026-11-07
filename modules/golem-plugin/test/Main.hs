@@ -162,7 +162,7 @@ tests =
         loadPlugin w >>= (@?= Left (AbiMismatch 7)) . void,
       testCase "a code block survives a filter unchanged (golem-driver ADR 0023)" $ do
         p <- load =<< compile =<< wat "identity.wat"
-        let code = Code (Just "haskell") (Just True) (Just "a.hs") (Just [Text callSpan "c"]) True [CodeLine "a" (Just 1) (Just DiffAdded) True [1], CodeLine "b" Nothing (Just DiffRemoved) False []]
+        let code = Code (Just "haskell") (Just True) (Just "a.hs") (Just [Text callSpan "c"]) True [CodeLine "a" (Just 1) (Just DiffAdded) True [1], CodeLine "b" Nothing (Just DiffRemoved) False []] False
             doc = Document (FileId 1) [Block callSpan (Just "l") Nothing (CodeBlock code)]
         fmap fst (applyFilter p "same" doc) @?= Right doc,
       testCase "a paragraph with aki survives a filter unchanged (docs/adr ADR 0019)" $ do
