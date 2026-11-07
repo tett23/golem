@@ -72,6 +72,7 @@ module Golem.Project.Style
     HeadForm (..),
     HeadPick (..),
     parseRunningFormat,
+    parseRunningFormatLegacy,
     runningFormatSites,
     runningRefs,
     Swatch (..),
@@ -109,7 +110,8 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble (NoteNumbering (..))
-import Golem.Assemble.ListMarkers (NumberFormat, parseNumberFormat)
+import Golem.Assemble.Formats (Braces (..), Legacy (..), MarkFormat, Piece (..), Slot (..), defaultMarkFormat, notationName, parseFormat, parseMarkFormat, parseNumberFormatText)
+import Golem.Assemble.ListMarkers (NumberFormat, parseNumberFormat, parseNumberFormatLegacy)
 import Golem.Length (Sp (..))
 import Golem.Length qualified as L
 import Golem.Project.Manifest (decodeStrictBy, decodeStrictWith, naturalIntOf, naturalOf, positionSpan, readTomlTable)
@@ -465,7 +467,7 @@ decimalOf s = case T.splitOn "." s of
   [i, f] | not (T.null i), not (T.null f), T.all isDigit (i <> f) -> Just (read (T.unpack (i <> f)) % (10 ^ T.length f))
   _ -> Nothing
 
--- | The built-in character styles: bold, italic, strong, code (golem-driver ADR 0017) and url (golem-doc ADR 0005).
+-- | The built-in character styles: bold, italic, strong, code (golem-driver ADR 0017), url (golem-doc ADR 0005) and note-mark (docs/adr/0177).
 builtinCharStyles :: Map Text CharStyleDef
 builtinCharStyles =
   Map.fromList
@@ -473,9 +475,31 @@ builtinCharStyles =
       -- the padding of inline code (golem-driver ADR 0029)
       ("code", noCharDef {csFont = Just "code", csPadding = Just (Zw (1 % 4))}),
       ("italic", noCharDef {csSyntheticItalic = Just True}),
+      -- the marks of notes in the text (docs/adr/0177): the size of the retired [notes] mark-size
+      ("note-mark", noCharDef {csSize = Just (Zw (1 % 2))}),
       ("strong", noCharDef {csBasedOn = Just "bold"}),
       ("url", noCharDef)
     ]
+
+{- | The character style of the marks of notes in the text, when its
+based-on chain writes a size besides [notes] mark-size (docs/adr/0177):
+the style of mark-style, or else the user's note-mark. The size of the
+built-in note-mark does not count; mark-size stands for it.
+-}
+markSizeConflict :: Map Text CharStyleDef -> Maybe Text -> Maybe Text
+markSizeConflict user markStyle =
+  let name = fromMaybe "note-mark" markStyle
+      builtins = Map.adjust (\c -> c {csSize = Nothing}) "note-mark" builtinCharStyles
+      styles = Map.unionWith overChar user builtins
+   in if any (isJust . csSize) (chainOf (const csBasedOn) styles name) then Just name else Nothing
+
+{- | The built-in note-mark at the size of [notes] mark-size, when
+mark-size is written and mark-style is not (docs/adr/0177): mark-size is
+short for the size of the character style of the marks.
+-}
+markSizeOver :: Maybe Dim -> Maybe Text -> Map Text CharStyleDef -> Map Text CharStyleDef
+markSizeOver (Just d) Nothing = Map.adjust (\c -> c {csSize = Just d}) "note-mark"
+markSizeOver _ _ = id
 
 -- | The built-in paragraph styles: body, verse, caption, sidenote and code (golem-driver ADR 0017).
 builtinParaStyles :: Map Text ParaStyleDef
@@ -516,21 +540,45 @@ zeroDim = \case
   Abs x -> x == 0
   Zw r -> r == 0
 
-{- | The notices of style.toml (golem-driver ADR 0043): G03100 for a zero
-indent or first-line-indent of caption or sidenote, at the value, with the
-value as written. A style.toml that does not parse has none.
+{- | The notices of style.toml: G03100 for a zero indent or
+first-line-indent of caption or sidenote, at the value, with the value as
+written (golem-driver ADR 0043); the ways of writing to be retired
+(docs/adr/0177), at the value: G03114 and G03115 for a format of [lists]
+numbers, G03116 for a line of a running head format, G03117 for [notes]
+mark-size. A style.toml that does not parse has none.
 -}
 styleNotices :: FileId -> Text -> [Diagnostic]
 styleNotices fid src = case Toml.parse src of
   Left _ -> []
   Right top ->
-    [ notice "G03100" (spanAt pos) (captionZeroIndentMessage n k ("\"" <> t <> "\""))
-    | n <- ["caption", "sidenote"],
-      k <- ["indent", "first-line-indent", "end-indent"],
-      Just (Text' pos t) <- [lookupValue (Table' (Position 0 1 1) top) ["paragraph-styles", n, k]],
-      Just v <- [parseSignedDim t],
-      zeroDim v
-    ]
+    let root = Table' (Position 0 1 1) top
+     in [ notice "G03100" (spanAt pos) (captionZeroIndentMessage n k ("\"" <> t <> "\""))
+        | n <- ["caption", "sidenote"],
+          k <- ["indent", "first-line-indent", "end-indent"],
+          Just (Text' pos t) <- [lookupValue root ["paragraph-styles", n, k]],
+          Just v <- [parseSignedDim t],
+          zeroDim v
+        ]
+          <> concat
+            [ [notice "G03114" (spanAt pos) ("[lists] の numbers の {{ と }} は廃止予定です。\\{ と \\} と書きます: " <> t) | LegacyBraces `elem` legacy]
+                <> [notice "G03115" (spanAt pos) ("[lists] の numbers の {" <> w <> "} は廃止予定です。{n:" <> notationName n <> "} と書きます: " <> t) | LegacySample w n <- take 1 [l | l@LegacySample {} <- legacy]]
+            | Just (List' _ xs) <- [lookupValue root ["lists", "numbers"]],
+              Text' pos t <- xs,
+              Right (_, legacy) <- [parseNumberFormatLegacy t]
+            ]
+          <> [ notice "G03116" (spanAt pos) ("柱の書式の {{ と }} は廃止予定です。\\{ と \\} と書きます: " <> t)
+             | Just (Table' _ (MkTable masters)) <- [lookupValue root ["masters"]],
+               (_, master) <- Map.elems masters,
+               k <- ["content", "even", "odd"],
+               Just (List' _ xs) <- [lookupValue master ["running-head", k]],
+               Text' pos t <- xs,
+               Right (_, legacy) <- [parseRunningFormatLegacy t],
+               LegacyBraces `elem` legacy
+             ]
+          <> [ notice "G03117" (spanAt pos) "[notes] の mark-size は廃止予定です。[character-styles.note-mark] の size に書きます"
+             | Just v <- [lookupValue root ["notes", "mark-size"]],
+               let pos = valueAnn v
+             ]
   where
     lookupValue v = \case
       [] -> Just v
@@ -1024,44 +1072,39 @@ runningMetaKeys :: [Text]
 runningMetaKeys = ["title", "title_reading", "edition", "publisher", "date", "language", "id"]
 
 {- | One line of a running head format (golem-driver ADR 0022): text and
-slots in braces, @{{@ and @}}@ for braces. 'Left' is the reason of G03014.
+slots in braces, escapes for braces (docs/adr/0177); @{{@ and @}}@ are
+read as braces until they are retired (G03116). 'Left' is the reason of
+G03014.
 -}
 parseRunningFormat :: Text -> Either Text [RunningPart]
-parseRunningFormat t0
+parseRunningFormat = fmap fst . parseRunningFormatLegacy
+
+-- | 'parseRunningFormat' with the forms to be retired the line uses (G03116).
+parseRunningFormatLegacy :: Text -> Either Text ([RunningPart], [Legacy])
+parseRunningFormatLegacy t0
   | T.null t0 = Left "空の行があります"
   | T.any (== '\n') t0 = Left "行の中に改行があります。行は配列の要素で分けてください"
-  | otherwise = merge <$> go t0
+  | otherwise = do
+      (ps, legacy) <- parseFormat DoubledToo (fmap TextSlot . slot) t0
+      pure (merge [part p | p <- ps], legacy)
   where
-    go t = case T.uncons t of
-      Nothing -> Right []
-      Just ('{', r)
-        | Just r' <- T.stripPrefix "{" r -> (PartText "{" :) <$> go r'
-        | otherwise ->
-            let (name, rest) = T.break (`elem` ['{', '}']) r
-             in case T.uncons rest of
-                  Just ('}', r') -> (:) <$> slot name <*> go r'
-                  _ -> Left "閉じていない { があります"
-      Just ('}', r)
-        | Just r' <- T.stripPrefix "}" r -> (PartText "}" :) <$> go r'
-        | otherwise -> Left "対にならない } があります。文字の } は }} と書きます"
-      Just _ ->
-        let (txt, rest) = T.break (`elem` ['{', '}']) t
-         in (PartText txt :) <$> go rest
+    part = \case
+      PLit t -> PartText t
+      PText r -> r
+      PNumber r _ -> r
     slot name0 =
       let (name, optional) = maybe (name0, False) (,True) (T.stripSuffix "?" name0)
           unknown = Left ("未知の差し込みです: {" <> name0 <> "}")
           ref r = Right (PartRef r optional)
-       in if T.null name0
-            then Left "空の差し込み {} があります"
-            else case T.splitOn "." name of
-              ["heading", l, f] -> maybe unknown ref (headingRef l f PickFirst)
-              ["heading", l, f, "last"] -> maybe unknown ref (headingRef l f PickLast)
-              ["meta", "creators"] -> Left "meta.creators は配列なので、柱に書けません。@set で文字列の変数を作ってください"
-              ["meta", k] | k `elem` runningMetaKeys -> ref (RefMeta k)
-              ("set" : ns@(_ : _)) | length ns <= 2 && all varName ns -> ref (RefVar ns)
-              -- a variable of [vars], in its tables too (docs/adr/0185)
-              ("vars" : ns@(_ : _)) | all varName ns -> ref (RefProjectVar ns)
-              _ -> unknown
+       in case T.splitOn "." name of
+            ["heading", l, f] -> maybe unknown ref (headingRef l f PickFirst)
+            ["heading", l, f, "last"] -> maybe unknown ref (headingRef l f PickLast)
+            ["meta", "creators"] -> Left "meta.creators は配列なので、柱に書けません。@set で文字列の変数を作ってください"
+            ["meta", k] | k `elem` runningMetaKeys -> ref (RefMeta k)
+            ("set" : ns@(_ : _)) | length ns <= 2 && all varName ns -> ref (RefVar ns)
+            -- a variable of [vars], in its tables too (docs/adr/0185)
+            ("vars" : ns@(_ : _)) | all varName ns -> ref (RefProjectVar ns)
+            _ -> unknown
     varName n = case T.uncons n of
       Just (c, r) -> (isAsciiLetter c || c == '_') && T.all (\x -> isAsciiLetter x || isDigit x || x == '_') r
       Nothing -> False
@@ -1249,10 +1292,16 @@ data Style = Style
     stNotesNumbering :: !NoteNumbering,
     -- | [notes.rule]: the rule before footnotes in the PDF, its length always there (golem-driver ADR 0024)
     stNotesRule :: !(Maybe RuleSpec),
-    -- | [notes] mark-size: the size of note marks in the PDF (golem-driver ADR 0025)
-    stNotesMarkSize :: !Dim,
-    -- | [notes] mark-format: the text of note marks in the PDF, {n} the number (golem-driver ADR 0025)
-    stNotesMarkFormat :: !Text,
+    {- | [notes] mark-size, to be retired (docs/adr/0177): the size of the
+    marks in the text in the PDF (golem-driver ADR 0025), over that of
+    their character style; Nothing when it is not written
+    -} stNotesMarkSize :: !(Maybe Dim),
+    -- | [notes] mark-format: the text of note marks in the PDF, the number in a notation (golem-driver ADR 0025, docs/adr/0177)
+    stNotesMarkFormat :: !MarkFormat,
+    -- | [notes] mark-style: the character style of the marks in the text in the PDF (docs/adr/0177)
+    stNotesMarkStyle :: !Text,
+    -- | [notes] body-mark-style: the character style of the marks at the start of note bodies in the PDF; Nothing is none (docs/adr/0177)
+    stNotesBodyMarkStyle :: !(Maybe Text),
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
     stWrapGap :: !Dim,
@@ -1291,8 +1340,10 @@ defaultStyle =
       stNotesPlacement = PlaceFoot,
       stNotesNumbering = NumberPerChapter,
       stNotesRule = Nothing,
-      stNotesMarkSize = Zw (1 % 2),
-      stNotesMarkFormat = "*{n}",
+      stNotesMarkSize = Nothing,
+      stNotesMarkFormat = defaultMarkFormat,
+      stNotesMarkStyle = "note-mark",
+      stNotesBodyMarkStyle = Nothing,
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
       stWrapGap = Zw 1,
@@ -1785,7 +1836,7 @@ instance FromValue EmphasisV where
 data NotesPlacement = PlaceFoot | PlaceChapterEnd
   deriving stock (Eq, Show)
 
-data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe Text)
+data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe MarkFormat) (Maybe Text) (Maybe Text)
 
 instance FromValue Notes where
   fromValue =
@@ -1796,6 +1847,8 @@ instance FromValue Notes where
           <*> optKeyOf "rule" noteRule
           <*> optKeyOf "mark-size" (withValue (\l (DimV d) -> markSize l d))
           <*> optKeyOf "mark-format" (withValue markFormat)
+          <*> optKey "mark-style"
+          <*> optKey "body-mark-style"
       )
     where
       {- the size of note marks (golem-driver ADR 0025): above 0, and at
@@ -1804,10 +1857,8 @@ instance FromValue Notes where
         Abs n | n > 0 -> pure d
         Zw r | r > 0 && r <= 1 -> pure d
         _ -> failAt l "[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です"
-      -- the format of note marks: {n} exactly once (golem-driver ADR 0025)
-      markFormat l f
-        | T.count "{n}" f == 1 = pure f
-        | otherwise = failAt l ("[notes] の mark-format には {n} をちょうど一つ書きます: " <> T.unpack f)
+      -- the format of note marks: one number, {n} or {n:<notation>} (golem-driver ADR 0025, docs/adr/0177)
+      markFormat l f = either (\why -> failAt l (T.unpack ("[notes] の mark-format が正しくありません（" <> why <> "）: " <> f))) pure (parseMarkFormat f)
       {- the rule before footnotes (golem-driver ADR 0024): length is
       required; a space not written is 0 when the other is written -}
       noteRule v = do
@@ -1946,7 +1997,13 @@ instance FromValue Style where
     Numbers nv nrp <- fromMaybe (Numbers Nothing Nothing) <$> optKey "numbers"
     -- the value of a retired table fails with how to rewrite it
     (_ :: Maybe EmphasisV) <- optKey "emphasis"
-    Notes np nn nr nms nmf <- fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing) <$> optKey "notes"
+    Notes np nn nr nms nmf nmst nbst <-
+      fmap (fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing Nothing Nothing)) . optKeyOf "notes" $ \v -> do
+        notes@(Notes _ _ _ size _ markStyle _) <- fromValue v
+        -- two values that decide the size of the marks: neither wins (docs/adr/0177)
+        case (size, markSizeConflict cstyles markStyle) of
+          (Just _, Just n) -> inKey "mark-size" (failAt (keyPosition v "mark-size") (T.unpack ("[notes] の mark-size と、size を持つ mark-style " <> n <> " は一緒に書けません")))
+          _ -> pure notes
     side <- optKey "sidenotes"
     Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
@@ -1969,7 +2026,7 @@ instance FromValue Style where
       Style
         { stPage = page,
           stFonts = fonts,
-          stCharStyles = Map.unionWith overChar cstyles builtinCharStyles,
+          stCharStyles = markSizeOver nms nmst (Map.unionWith overChar cstyles builtinCharStyles),
           stParaStyles = Map.unionWith overPara pstyles builtinParaStyles,
           stHeadings = Map.fromList hs,
           stComposition = comp,
@@ -1978,8 +2035,10 @@ instance FromValue Style where
           stNotesPlacement = maybe (stNotesPlacement d) (\p -> if p == "chapter-end" then PlaceChapterEnd else PlaceFoot) np,
           stNotesNumbering = fromMaybe (stNotesNumbering d) nn,
           stNotesRule = nr,
-          stNotesMarkSize = fromMaybe (stNotesMarkSize d) nms,
+          stNotesMarkSize = nms,
           stNotesMarkFormat = fromMaybe (stNotesMarkFormat d) nmf,
+          stNotesMarkStyle = fromMaybe (stNotesMarkStyle d) nmst,
+          stNotesBodyMarkStyle = nbst,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
           stWrapGap = fromMaybe (stWrapGap d) fgap,
@@ -2005,18 +2064,12 @@ negativeDim = \case
   Abs x -> x < 0
   Zw r -> r < 0
 
--- | Placeholders allowed in number formats.
+{- | Whether a number format reads (docs/adr/0177): the slots @{n}@,
+@{1}@, @{2}@ and @{chapter}@, each with a notation of the table after a
+colon or none, and the escapes.
+-}
 validNumberFormat :: Text -> Bool
-validNumberFormat = go
-  where
-    go t = case T.breakOn "{" t of
-      (_, rest)
-        | T.null rest -> True
-        | otherwise ->
-            let (inside, after) = T.breakOn "}" (T.drop 1 rest)
-             in not (T.null after)
-                  && inside `elem` ["n", "n:kanji", "1", "2", "chapter"]
-                  && go (T.drop 1 after)
+validNumberFormat = either (const False) (const True) . parseNumberFormatText
 
 {- | The position of the value at a path of a TOML table; without one,
 that of the table the path ends in (golem-project ADR 0008).
@@ -2115,7 +2168,7 @@ charKey n k = styleKeys ["character-styles", n, k]
 firstWritten :: (Text -> [Scope]) -> Bool -> Text -> Text -> [Scope]
 firstWritten at written a b = if written then at a else at b
 
--- | G03006: the number formats of figures, listings and headings.
+-- | G03006: the number formats of figures, listings, headings and folios (docs/adr/0177).
 numberFormatChecks :: Style -> [(Text, Text, [Scope], Text)]
 numberFormatChecks s =
   [ ("G03006", "", path, m)
@@ -2124,7 +2177,9 @@ numberFormatChecks s =
       | (path, f) <-
           (styleKeys ["figures", "number"], stFigureNumber s)
             : (styleKeys ["code", "number"], cdNumber (stCode s))
-            : [(styleKeys ["headings", T.pack (show l), "number"], n) | (l, HeadingStyle {hsNumber = Just n}) <- Map.toList (stHeadings s)],
+            : [(styleKeys ["headings", T.pack (show l), "number"], n) | (l, HeadingStyle {hsNumber = Just n}) <- Map.toList (stHeadings s)]
+              -- the format of a folio reads as the other number formats (docs/adr/0177)
+              <> [(styleKeys ["masters", m, "folio", "format"], f) | (m, MasterDef {mdFolio = Just (_, f)}) <- Map.toList (stMasters s)],
         not (validNumberFormat f)
       ]
         -- a listing number has a placeholder (golem-driver ADR 0023)
@@ -2274,10 +2329,15 @@ styleReferenceChecks owner s =
           paraCycle = [n | n <- Map.keys ps, n /= "body", cyclic paraParent ps n]
           akiKnown n = n `elem` builtinAkiSetNames || Map.member n (stAkiSets s)
           akiCycle = [n | n <- Map.keys (stAkiSets s), cyclic (const asBasedOn) (stAkiSets s) n]
-       in [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
-          | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
-            Map.notMember b cs
+       in [ ("", styleKeys ["notes", k], "[notes] の " <> k <> " の文字スタイルがありません: " <> n)
+          | -- the character styles of the marks of notes (docs/adr/0177)
+            (k, Just n) <- [("mark-style", Just (stNotesMarkStyle s)), ("body-mark-style", stNotesBodyMarkStyle s)],
+            Map.notMember n cs
           ]
+            <> [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
+               | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
+                 Map.notMember b cs
+               ]
             <> [(n, charKey n "based-on", "文字スタイルの based-on が循環しています: " <> T.intercalate ", " charCycle) | n <- charCycle]
             <> [(n, charKey n "color", "文字スタイル " <> n <> " の color のスウォッチがありません: " <> c) | (n, CharStyleDef {csColor = Just c}) <- Map.toList cs, Map.notMember c (stSwatches s)]
             <> [(n, charKey n "background", "文字スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, CharStyleDef {csBackground = Just (Just c)}) <- Map.toList cs, Map.notMember c (stSwatches s)]
@@ -2657,7 +2717,9 @@ styleSchema =
           -- the place of a rule in its column is for paragraphs and headings (golem-driver ADR 0027)
           ("rule", NTable ([kv | kv@(k, _) <- ruleKeys, k `notElem` columnKeys] <> [(k, NRejected) | k <- columnKeys])),
           ("mark-size", dim),
-          ("mark-format", str)
+          ("mark-format", str),
+          ("mark-style", ref CharStyles),
+          ("body-mark-style", ref CharStyles)
         ]
     columnKeys = ["start-indent", "end-indent", "keep-in-column"]
     masterNode =
