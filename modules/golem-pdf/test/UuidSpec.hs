@@ -41,7 +41,7 @@ genIdentifier :: Gen Text
 genIdentifier =
   Gen.choice
     [ Gen.filter ((<= 300) . BS.length . TE.encodeUtf8) (Gen.text (Range.linear 0 300) char),
-      (\n -> T.replicate n "a") <$> Gen.element boundaryLengths
+      (`T.replicate` "a") <$> Gen.element boundaryLengths
     ]
   where
     char = Gen.choice [Gen.ascii, Gen.enum 'ぁ' 'ヿ', Gen.enum '一' '龥', Gen.unicode]
