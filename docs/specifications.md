@@ -4339,6 +4339,9 @@ CI の `build` ジョブは、テストの後に `scripts/manual/build.sh` で�
 入力には、機能を組み合わせた二冊（`modules/golem-driver/test/fixtures/complex-vertical` と `complex-horizontal`）を四つのターゲットで組んだものも含む（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）。
 二冊は、縦組みの一段の本と横組みの二段の本で、ルビ、圏点、注、図版、表、コードブロック、罫線を持つ段落と見出し、目次、索引、参考文献、Emet の関数とフィルタを組み合わせる。
 二冊の PDF と EPUB は、golem-driver の出力のゴールデン（`OutputGoldenSpec`）も固定し、どのターゲットでも diagnostic を出さないことを確かめる。
+ただし、二冊が固定する機能のうち、コードブロックの行の折り返しと、ページか段の境で分けて組む罫線を持つ段落は、使えば必ず notice（G07030 と G07046）を出す。
+二冊の `manifest.toml` は、`[diagnostics]` の `silence-notices` にこの二つのコードだけを並べ、ほかの diagnostic を止める手段（ほかのコード、`silence-info`、`--no-notices`）を使わない（[ADR 0198](adr/0198-silenced-notices-of-complex-fixtures.md)）。
+golem-driver の `ComplexFixtureSpec` が、二冊の `[diagnostics]` の表がこの一つのキーだけを持つことを確かめる。
 入力には diagnostics を出して終了コード 1 で終わる `scripts/env-determinism/diagnostics/` を含むので、二つのアーキテクチャの diagnostics と終了コードも比べることになる。
 マニュアルは diagnostic を一つでも出せば `scripts/manual/build.sh` が失敗にするので、diagnostics の比較の対象にしない（[ADR 0071](adr/0071-determinism-check-compares-diagnostics.md)）。
 docs/manual-policy.md は Golem の振る舞いを定めないので、ビルドが読む文書の一覧（`scripts/ci/needs-build.sh`）に入れない。
