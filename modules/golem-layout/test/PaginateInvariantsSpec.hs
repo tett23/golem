@@ -27,12 +27,12 @@ invariantTests =
     ]
 
 {- | The elements of the flows of pull requests (docs/adr/0204, the
-decision 3 of the maintainer: 5 elements take minutes, 4 make the tests
-of golem-layout less than 30 seconds longer). The nightly job raises it
-with GOLEM_ENUM_DEPTH.
+decision 3 of the maintainer: 4 elements made the tests of golem-layout
+about 50 seconds longer on the x86-64 runner of CI, so the pull requests
+check 3). The nightly job raises it with GOLEM_ENUM_DEPTH.
 -}
 prDepth :: Int
-prDepth = 4
+prDepth = 3
 
 -- | The depth: GOLEM_ENUM_DEPTH, a whole number of 0 or more, or 'prDepth'.
 enumDepth :: IO Int
