@@ -1157,7 +1157,7 @@ reusedContent d resources parts
       pure $ case sequence shaped of
         Right rs
           | null taken,
-            all (\(_, _, _, sh) -> shClean sh) rs,
+            all (\(_, _, _, sh) -> shClean sh && not (shDangling sh)) rs,
             and [shClosed sh && shQuiet sh | (k, Right (_, _, _, sh)) <- Map.toList once, Map.member k repeated] ->
               let piece (key, _) (b, _, _, _) = case key of
                     Just k | Map.member k repeated -> TE.encodeUtf8 ("/" <> innerName k <> " Do")
@@ -1396,7 +1396,9 @@ text state outside q and Q).
 data Shape = Shape
   { shClean :: !Bool,
     shClosed :: !Bool,
-    shQuiet :: !Bool
+    shQuiet :: !Bool,
+    -- | whether marked content whose operators go is still open at the end (docs/adr ADR 0183)
+    shDangling :: !Bool
   }
   deriving stock (Eq, Show)
 
@@ -1416,7 +1418,7 @@ mkDepth st = st `shiftR` 34
 
 -- | 'rewriteContent' with the 'Shape' of the stream, read in the same pass.
 rewriteContentShaped :: ByteString -> R (ByteString, Bool, [ColorUse], Shape)
-rewriteContentShaped c = go 0 0 0 0 0 0 0 0 0 0 0 0 0 [] []
+rewriteContentShaped c = go [] 0 0 0 0 0 0 0 0 0 0 0 0 0 [] []
   where
     len = BS.length c
     at = BU.unsafeIndex c
@@ -1430,11 +1432,12 @@ rewriteContentShaped c = go 0 0 0 0 0 0 0 0 0 0 0 0 0 [] []
       where
         match !x = x >= BS.length kw || (at (s + x) == BU.unsafeIndex kw x && match (x + 1))
     addUse u us = if u `elem` us then us else us <> [u]
-    shapeOf !n !st =
+    shapeOf mk !n !st =
       Shape
         { shClean = n == 0 && st .&. (inTextBit .|. inPathBit .|. badEtBit) == 0,
           shClosed = st .&. badNestBit == 0 && qDepth st == 0 && mkDepth st == 0,
-          shQuiet = st .&. leakBit == 0
+          shQuiet = st .&. leakBit == 0,
+          shDangling = or mk
         }
     {- the state after the operator from i to j (docs/adr ADR 0051); the
     operators that set the graphics state or the text state leak it outside
@@ -1479,35 +1482,49 @@ rewriteContentShaped c = go 0 0 0 0 0 0 0 0 0 0 0 0 0 [] []
     are first used. Every step is a call with these as arguments, so that
     a step allocates nothing.
     -}
-    go :: Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> [ByteString] -> [ColorUse] -> R (ByteString, Bool, [ColorUse], Shape)
-    go !i !n !st !k1 !s1 !e1 !k2 !s2 !e2 !k3 !s3 !e3 !copied !out !uses
+    go :: [Bool] -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> [ByteString] -> [ColorUse] -> R (ByteString, Bool, [ColorUse], Shape)
+    go !mk !i !n !st !k1 !s1 !e1 !k2 !s2 !e2 !k3 !s3 !e3 !copied !out !uses
       | i >= len =
           if null out
-            then Right (c, False, uses, shapeOf n st)
-            else Right (BS.concat (reverse (BS.drop copied c : out)), True, uses, shapeOf n st)
-      | isWs (at i) = go (i + 1) n st k1 s1 e1 k2 s2 e2 k3 s3 e3 copied out uses
-      | at i == 37 = go (lineEnd i) n st k1 s1 e1 k2 s2 e2 k3 s3 e3 copied out uses
-      | at i == 47 = go (regularEnd (i + 1)) (min 4 (n + 1)) st 2 i (regularEnd (i + 1)) k1 s1 e1 k2 s2 e2 copied out uses
+            then Right (c, False, uses, shapeOf mk n st)
+            else Right (BS.concat (reverse (BS.drop copied c : out)), True, uses, shapeOf mk n st)
+      | isWs (at i) = go mk (i + 1) n st k1 s1 e1 k2 s2 e2 k3 s3 e3 copied out uses
+      | at i == 37 = go mk (lineEnd i) n st k1 s1 e1 k2 s2 e2 k3 s3 e3 copied out uses
+      | at i == 47 = go mk (regularEnd (i + 1)) (min 4 (n + 1)) st 2 i (regularEnd (i + 1)) k1 s1 e1 k2 s2 e2 copied out uses
       | at i == 40 || at i == 60 || at i == 91 = case parseObj 0 (BS.drop i c) of
           Left _ -> bad "内容のストリーム"
-          Right (_, after) -> let j = len - BS.length after in go j (min 4 (n + 1)) st 0 i j k1 s1 e1 k2 s2 e2 copied out uses
-      | at i == 123 || at i == 125 = go (i + 1) (min 4 (n + 1)) st 0 i (i + 1) k1 s1 e1 k2 s2 e2 copied out uses
-      | isNumChar (at i) = go (numberEnd i) (min 4 (n + 1)) st 1 i (numberEnd i) k1 s1 e1 k2 s2 e2 copied out uses
-      | isRegular (at i) = keyword' i (regularEnd i) n st k1 s1 e1 k2 s2 e2 k3 s3 e3 copied out uses
+          Right (_, after) -> let j = len - BS.length after in go mk j (min 4 (n + 1)) st 0 i j k1 s1 e1 k2 s2 e2 copied out uses
+      | at i == 123 || at i == 125 = go mk (i + 1) (min 4 (n + 1)) st 0 i (i + 1) k1 s1 e1 k2 s2 e2 copied out uses
+      | isNumChar (at i) = go mk (numberEnd i) (min 4 (n + 1)) st 1 i (numberEnd i) k1 s1 e1 k2 s2 e2 copied out uses
+      | isRegular (at i) = keyword' mk i (regularEnd i) n st k1 s1 e1 k2 s2 e2 k3 s3 e3 copied out uses
       | otherwise = bad "内容のストリーム"
     -- the keyword from i to j: an operator, or true, false and null as operands
-    keyword' !i !j !n !st0 !k1 !s1 !e1 !k2 !s2 !e2 !k3 !s3 !e3 !copied !out !uses
+    keyword' !mk !i !j !n !st0 !k1 !s1 !e1 !k2 !s2 !e2 !k3 !s3 !e3 !copied !out !uses
       | is i j "BI" = do
           (dict, k) <- inlineImage j
           u <- inlineUses dict
-          go k 0 st0 0 0 0 0 0 0 0 0 0 copied out (foldl (flip addUse) uses (reverse u))
-      | is i j "true" || is i j "false" || is i j "null" = go j (min 4 (n + 1)) st0 0 i j k1 s1 e1 k2 s2 e2 copied out uses
+          go mk k 0 st0 0 0 0 0 0 0 0 0 0 copied out (foldl (flip addUse) uses (reverse u))
+      | is i j "true" || is i j "false" || is i j "null" = go mk j (min 4 (n + 1)) st0 0 i j k1 s1 e1 k2 s2 e2 copied out uses
+      {- the marked content of an artifact, and marked content with an MCID:
+      its operators go, what is inside stays (docs/adr ADR 0183) -}
+      | is i j "BMC" && n == 1 && k1 == 2 =
+          if slice s1 e1 == "/Artifact"
+            then go (True : mk) j 0 st 0 0 0 0 0 0 0 0 0 (wsEnd j) (slice copied s1 : out) uses
+            else go (False : mk) j 0 st 0 0 0 0 0 0 0 0 0 copied out uses
+      | is i j "BDC" && n == 2 && k2 == 2 =
+          if slice s2 e2 == "/Artifact" || (slice s2 e2 /= "/OC" && hasMcid (slice s1 e1))
+            then go (True : mk) j 0 st 0 0 0 0 0 0 0 0 0 (wsEnd j) (slice copied s2 : out) uses
+            else go (False : mk) j 0 st 0 0 0 0 0 0 0 0 0 copied out uses
+      | is i j "EMC" = case mk of
+          True : rest -> go rest j 0 st 0 0 0 0 0 0 0 0 0 (wsEnd j) (slice copied i : out) uses
+          _ : rest -> go rest j 0 st 0 0 0 0 0 0 0 0 0 copied out uses
+          [] -> next copied out uses
       | (is i j "rg" || is i j "RG") && n == 3 && k1 == 1 && k2 == 1 && k3 == 1 =
           let (space, set) = if is i j "rg" then ("cs", "sc") else ("CS", "SC")
               r = "/GolemSRGB " <> space <> " " <> slice s3 e3 <> " " <> slice s2 e2 <> " " <> slice s1 e1 <> " " <> set
            in next j (r : slice copied s3 : out) (addUse UseRgb uses)
       | (is i j "cs" || is i j "CS") && n == 1 && k1 == 2 = case unescapeName (slice (s1 + 1) e1) of
-          "DeviceRGB" -> go j 0 st 0 0 0 0 0 0 0 0 0 e1 ("/GolemSRGB" : slice copied s1 : out) (addUse UseRgb uses)
+          "DeviceRGB" -> go mk j 0 st 0 0 0 0 0 0 0 0 0 e1 ("/GolemSRGB" : slice copied s1 : out) (addUse UseRgb uses)
           "DeviceGray" -> next copied out (addUse UseGray uses)
           "DeviceCMYK" -> next copied out (addUse UseCmyk uses)
           _ -> next copied out uses
@@ -1516,7 +1533,13 @@ rewriteContentShaped c = go 0 0 0 0 0 0 0 0 0 0 0 0 0 [] []
       | otherwise = next copied out uses
       where
         st = stepState i j st0
-        next = go j 0 st 0 0 0 0 0 0 0 0 0
+        next = go mk j 0 st 0 0 0 0 0 0 0 0 0
+        -- the white space after an operator taken out goes with it
+        wsEnd !x = if x < len && isWs (at x) then wsEnd (x + 1) else x
+        -- an inline property list with the key MCID
+        hasMcid b = case parseObj 0 b of
+          Right (VDict d, _) -> isJust (lookup "MCID" d)
+          _ -> False
     -- the dictionary of an inline image after BI, and the end of its EI
     inlineImage j = entries [] (BS.drop j c)
       where

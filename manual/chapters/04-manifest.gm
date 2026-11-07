@@ -243,6 +243,30 @@ variants = ["horizontal"]
 [code: golem build] は、[code: --target] を指定しなければ、ここに書いていない形式も含めて四つの形式をすべて作ります。
 このマニュアルは PDF と HTML だけを使うので、[code: golem build --target pdf --target html] で組んでいます。
 
+### PDF/A と PDF/UA
+
+PDF は、どの本もタグ付き PDF になります。
+見出し、段落、リスト、表、注などの構造と、[code: language] に書いた本の言語を PDF に書くので、スクリーンリーダーなどの支援技術で、構造をたどって読めます。
+柱やノンブルは、読み上げない内容として印を付けます。
+
+[code: \[targets.pdf\]] に [code: pdfa] と [code: pdfua] を書くと、長期保存のための規格の PDF/A-2a と、支援技術で読めるための規格の PDF/UA-1 に準拠した PDF を作ります。
+
+```toml
+[targets.pdf]
+pdfa = "2a"
+pdfua = "1"
+```
+
+- [code: pdfa] に書ける値は [code: "2a"] だけ、[code: pdfua] に書ける値は [code: "1"] だけです。ほかの値はエラー（G03001）になります。
+- 二つは別々に書けます。PDF/A は印刷用の PDF/X-4 の上に作るので、[code: pdfa] を書くときは、[code: style.toml] の [code: \[color\]] に [code: intent] を書きます。ないとエラー（G03113）になります。[code: pdfua] だけなら [code: intent] は要りません。
+- 二つのどちらかを書いた本では、[code: language] を [code: "ja"] や [code: "en-US"] のような言語のタグで書きます（G03119）。
+- [code: pdfua] を書いた本では、見出しの段を飛ばせません。最初の見出しは [code: #] にし、[code: #] の次に [code: ###] を置かずに [code: ##] を置きます（G07103）。浅くするほうは、いくつ段を戻ってもかまいません。
+- [code: pdfa] を書いた本では、Unicode の私用領域の字を書けません（G07104）。
+- これらのエラーのときは PDF を作らず、HTML、EPUB、プレーンテキストは作ります。
+
+Golem が検査するのは、原稿から決まる要件のうち、この三つだけです。
+入稿や保存の前には、veraPDF などの検証器で PDF を確かめてください。
+
 @label bibliography-data
 ## 参考文献のデータ
 

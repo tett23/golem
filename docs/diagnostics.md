@@ -5390,9 +5390,10 @@ manifest.toml の誤りです
 
 `manifest.toml` が TOML として読めないか、スキーマに合わないか、出力ターゲットが一つもない。
 `[source]` と章の項目の `[source]` のキー（`paragraph-separator` など）の未知のキーと不正な値、同じファイルを章の配列に二度並べて適用される `[source]` の値が異なる場合も、この誤りとする。
+`[targets.pdf]` の `pdfa` が `"2a"` でない場合と、`pdfua` が `"1"` でない場合（文字列でない値を含む）も、この誤りとする（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
 `[metadata]` の `creators` と `contributors` の `role` が役割の表の語でない場合、`name` が空の文字列の場合、`publisher-person` が空の文字列か改行を含む場合、`printings` の版か刷が 0 の場合（負の数は [G02103](#g02103)、[docs/adr/0102](adr/0102-natural-number-type.md)）、`printings` が版と刷の順に狭義に増えていない場合、`printings` の `date` が前の項目より前の場合も、この誤りとする。
 
-- メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、`章は、ファイルのパス、表、配列のどれかで書きます`、`役割は語で書きます。"<符号>" は "<語>" です`、`役割は <語の一覧> のどれかです: <値>`、`発行所は [metadata] の publisher に、発行人は publisher-person に書きます`、`name に空の文字列は書けません`、`publisher-person に空の文字列は書けません`、`publisher-person に改行は書けません`、`版と刷の番号は 1 以上の整数です`、`printings は版と刷の順に、同じ版と刷を二度書かずに並べます`、`printings の date が前の項目の date より前です`、または TOML のスキーマの誤りの文言（`知らないキーです: <経路>.<キー>`、`必須のキーがありません: <経路>.<キー>`、`<経路> には<型>を書きます（<型>が書かれています）`、`[source]` の不正な値など）。TOML の誤りの詳細は、`文字列が閉じていません`、`閉じた表にキーを足しています: <キー>` などの日本語の文言である。経路は `metadata.title` や `chapters[0]` の形で書く。Golem の検査の文言には、`(chapters[0])` のように経路を後ろに添える。経路が空のとき（ファイルの最上位の誤り）は添えない。
+- メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、`章は、ファイルのパス、表、配列のどれかで書きます`、`役割は語で書きます。"<符号>" は "<語>" です`、`役割は <語の一覧> のどれかです: <値>`、`発行所は [metadata] の publisher に、発行人は publisher-person に書きます`、`name に空の文字列は書けません`、`publisher-person に空の文字列は書けません`、`publisher-person に改行は書けません`、`版と刷の番号は 1 以上の整数です`、`printings は版と刷の順に、同じ版と刷を二度書かずに並べます`、`printings の date が前の項目の date より前です`、`pdfa に書けるのは "2a" だけです: <値>`、`pdfua に書けるのは "1" だけです: <値>`、または TOML のスキーマの誤りの文言（`知らないキーです: <経路>.<キー>`、`必須のキーがありません: <経路>.<キー>`、`<経路> には<型>を書きます（<型>が書かれています）`、`[source]` の不正な値など）。TOML の誤りの詳細は、`文字列が閉じていません`、`閉じた表にキーを足しています: <キー>` などの日本語の文言である。経路は `metadata.title` や `chapters[0]` の形で書く。Golem の検査の文言には、`(chapters[0])` のように経路を後ろに添える。経路が空のとき（ファイルの最上位の誤り）は添えない。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）。位置は、スキーマの誤りと Golem が値の読み込みで調べる誤り（章の項目、`[source]` の値など）では誤った値の位置、TOML の構文の誤りではその誤りの位置、それ以外（出力ターゲットが一つもないなど）では `manifest.toml` の先頭である
 - ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md) が触れ、[docs/adr/0013](adr/0013-paragraph-separator.md) が `[source]` の誤りの条件を加えた。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md) が役割、名前、発行人、刷の検査を加えた。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
@@ -6484,6 +6485,34 @@ TOML の浮動小数点数は `Double` を経て読むので、Golem の数（�
 表の中の値なら `{vars.author.short}` のように値まで書く。
 配列は、`[vars]` に柱に出す文字列を別に書く。
 
+## G03113
+
+PDF/A には [color] の intent が要ります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[targets.pdf]` に `pdfa` を書いたのに、`style.toml` に `[color]` の `intent` がない。
+PDF/A は PDF/X-4 の上にだけ書くので、出力インテントの ICC プロファイルが要る。
+PDF は書かず、HTML、EPUB、プレーンテキストは書く。
+dev と prod の両方でエラーである。
+位置は `pdfa` の値である。
+
+- メッセージ: `PDF/A には [color] の intent が要ります`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`）。PDF を書くときに、組む前に調べる
+- ADR: [docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)
+
+### 主な原因
+
+- PDF/A を宣言したが、出力インテントを用意していない。
+- 支援技術のための宣言のつもりで `pdfa` を書いた。PDF/UA だけなら `pdfua` を書く。
+
+### 直し方
+
+`style.toml` の `[color]` に `intent` を書き、CMYK の ICC プロファイルを置く。
+PDF/A が要らなければ、`pdfa` を消す。
 ## G03114
 
 [lists] の numbers の {{ と }} は廃止予定です
@@ -6689,6 +6718,35 @@ InDesign は縦組みのフレームではこの二つを適用しないが、Go
 縦組みの本なら、`align` を `"left"`（天付き）か `"right"`（地付き）などの値に変える。
 横組みの本にするなら、`writing-mode` を `"horizontal"` にする。
 
+## G03119
+
+PDF/A と PDF/UA には、language を言語のタグの形で書きます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[targets.pdf]` に `pdfa` か `pdfua` を書いた本で、`[metadata]` の `language` が BCP 47 の言語のタグの形でない。
+PDF のカタログの `/Lang` に書く値なので、PDF/A と PDF/UA はその形を調べる。
+調べるのは形だけで、IANA の登録簿に載っているかは調べない。
+`pdfa` も `pdfua` も書かない本では調べない。
+PDF は書かず、HTML、EPUB、プレーンテキストは書く。
+dev と prod の両方でエラーである。
+位置は `language` の値である。
+
+- メッセージ: `PDF/A と PDF/UA には、language を言語のタグの形で書きます: <値>`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`、形の検査は golem-syntax の `Golem.Syntax.LanguageTag`）。PDF を書くときに、組む前に調べる
+- ADR: [docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)
+
+### 主な原因
+
+- `language` に言語の名前（`日本語` など）を書いた。
+- 区切りに `_` を使った（`ja_JP`）。
+
+### 直し方
+
+`language` を `ja`、`en-US` のような言語のタグで書く。
 ## G03120
 
 段落の区切り方を書いていないので、改行の様式（paragraph-separator = "line"）で読みます
@@ -8524,6 +8582,69 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 ### 直し方
 
 `[notes]` の `numbering` で番号を振り直す範囲を狭めるか、`mark-format` の表記を算用数字（`{n}`）などの表せる表記に替える。
+## G07103
+
+PDF/UA では見出しの段を飛ばせません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[targets.pdf]` に `pdfua` を書いた本で、見出しの段が飛んでいる。
+最初の見出しが 1 の段でないか、ある見出しが前の見出しより二つ以上深い。
+PDF/UA-1 は、見出しの構造の要素（`H1` から）が段を飛ばさないことを求める。
+浅くなる向きには、いくつ段を戻ってもよい。
+最初の見出しでは、前の段を 0（文書）として述べる。
+`pdfua` を書かない本では調べない。
+PDF は書かず、HTML、EPUB、プレーンテキストは書く。
+dev と prod の両方でエラーである。
+位置はその見出しである。
+
+- メッセージ: `PDF/UA では見出しの段を飛ばせません: <前の段> から <この段>`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`）。PDF を書くときに、組む前に調べる
+- ADR: [docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)
+
+### 主な原因
+
+- 文字の大きさを変えるために、`#` の次に `###` を置いた。
+- 章の最初の見出しを `##` で始めた。
+
+### 直し方
+
+見出しの段を一つずつ深くする。
+見た目を変えたいだけなら、`style.toml` の `[headings]` で段の体裁を変える。
+
+## G07104
+
+PDF/A-2a の PDF に私用領域の字は書けません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[targets.pdf]` に `pdfa` を書いた本で、PDF に描く字が Unicode の私用領域（U+E000 から U+F8FF、U+F0000 から U+FFFFD、U+100000 から U+10FFFD）の字に対応づけられる。
+PDF/A-2a は、私用領域の字に、意味を表す代わりの文字（`ActualText`）を求める。
+Golem には私用領域の字の意味が分からないので、書かない。
+原稿の一つの位置につき、字ごとに一度出す。
+柱、ノンブルなど、Golem が描くすべての字を調べる。
+PDF は書かず、HTML、EPUB、プレーンテキストは書く。
+dev と prod の両方でエラーである。
+位置はその字を含む原稿の位置である。
+
+- メッセージ: `PDF/A-2a の PDF に私用領域の字は書けません: U+<符号位置>`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`）。組んだ後、フォントを埋め込む前に調べる
+- ADR: [docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)
+
+### 主な原因
+
+- 外字や記号を、フォントの私用領域の符号位置で書いた。
+
+### 直し方
+
+Unicode に符号位置のある字で書く。
+字形が要るなら、図版にして `alt` で意味を書く。
 
 ## G08001
 

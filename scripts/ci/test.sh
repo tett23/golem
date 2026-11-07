@@ -1371,10 +1371,10 @@ needs() { # needs NAME=RESULT...: the JSON of the needs context
   done
   printf '}\n'
 }
-needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success plugins=success editors=success >"$WORK/in"
+needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success plugins=success editors=success verapdf=success >"$WORK/in"
 run gate
 expect "gate: all succeeded" 0
-needs changes=success scripts-linux=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped plugins=skipped editors=success >"$WORK/in"
+needs changes=success scripts-linux=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped plugins=skipped editors=success verapdf=skipped >"$WORK/in"
 run gate
 expect "gate: docs only" 0
 needs changes=success scripts-linux=success build=failure determinism=skipped visual=skipped release-scripts=success scripts-macos=success format=success plugins=success editors=success >"$WORK/in"

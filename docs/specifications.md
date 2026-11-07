@@ -42,7 +42,7 @@ PDF/X-4 の適合を判定できる自由な検証ツールがないためであ
 PDF に PDF/X-4 の出力インテント[^intent]を書くのは、`style.toml` の `[color]` に `intent`（ICC プロファイルのパス）があるときだけである（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)、[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 `intent` があるときは、次の三つを書く。
 
-- **カタログの `OutputIntents`**：`S` を `GTS_PDFX` とした辞書を一つだけ置く。`DestOutputProfile` には、`intent` のファイルのバイト列を、`N` を 4 としたストリームとして埋め込む。`OutputConditionIdentifier` は、`intent` のパスが `JapanColor2001Coated` を含めば `JC200103`、含まなければファイル名から拡張子を除いたものとする。
+- **カタログの `OutputIntents`**：`S` を `GTS_PDFX` とした辞書を置く（PDF/A では二つめを足す。次の「PDF/A と PDF/UA の宣言」）。`DestOutputProfile` には、`intent` のファイルのバイト列を、`N` を 4 としたストリームとして埋め込む。`OutputConditionIdentifier` は、`intent` のパスが `JapanColor2001Coated` を含めば `JC200103`、含まなければファイル名から拡張子を除いたものとする。
 - **カタログの `Metadata`**：XMP のメタデータのストリームである。`pdfxid:GTS_PDFXVersion` を `PDF/X-4`、`pdf:Trapped` を `False` とし、題名、関係者の名前、日時、文書 ID とインスタンス ID、Producer を書く（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)、[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md)）。
 - **文書情報辞書の `Trapped` と `GTS_PDFXVersion`**：`Trapped` を `False`、`GTS_PDFXVersion` を `PDF/X-4` とする。
 
@@ -51,10 +51,119 @@ PDF に PDF/X-4 の出力インテント[^intent]を書くのは、`style.toml` 
 PDF の版（1.6）、各ページの `TrimBox` と `BleedBox`、フォントの埋め込み、文書情報辞書の `Title`、日時、`Producer` は、`intent` の有無によらず書く。
 `intent` のファイルがないときは G08006 のエラーとし、PDF を書かない（「style.toml」の節、[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
 
+すべての PDF のカタログに、`manifest.toml` の `[metadata]` の `language` を `/Lang` として書き、`/ViewerPreferences << /DisplayDocTitle true >>` を書く（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
+閲覧ソフトは、ファイルの名前の代わりに題を表示する。
+どちらも閲覧と読み上げにだけ働き、印刷の結果は変えない。
+
 これらは完全に同じ見た目にはならないし、それを目指さない。
 かわりに次の**媒体契約**を不変条件として固定する。
 意味内容は全媒体で同一とする。
 提示と、ページという概念に由来する派生物（ページ番号、柱[^running-head]、脚注の配置、相互参照の実現形）は媒体ごとに分岐する。
+
+### タグ付き PDF
+
+すべての PDF をタグ付き PDF にする（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
+カタログに `/MarkInfo << /Marked true >>` と `/StructTreeRoot` を書き、ページの内容はすべて、構造の要素の印付きの内容（`/<型> << /MCID n >> BDC` と `EMC`）か、アーティファクト（`/Artifact << /Type /Pagination >>` か `/Layout`）にする。
+MCID は、ページごとに 0 から内容のストリームの順に振る。
+一つの葉が二つのページに分かれれば、ページごとに別の MCID になり、構造の要素の子は `/Pg` を持つ `MCR` になる。
+`StructTreeRoot` は、`ParentTree`（ページの `StructParents` の番号から、MCID ごとの構造の要素を引く数の木）、`ParentTreeNextKey`、`Note` の `ID` を引く `IDTree` を持つ。
+構造の要素のオブジェクトは、今のオブジェクトの並びの後、文書情報辞書の前に、構造の木の前順で振る。
+
+構造の木は、意味論 IR から、ISO 32000-1 の標準の構造の型だけで作る。
+標準でない型を使わないので、`RoleMap` は書かない。
+構造の木の順は IR の順であり、読む順は構造の木の順である。
+内容のストリームに描く順は変えない。
+
+| IR の要素 | 構造の要素 |
+| --- | --- |
+| 文書の全体 | `Document`。縦組みの本は、属性 `/A << /O /Layout /WritingMode /TbRl >>` を持つ |
+| 段落 | `P`。行を保つ段落スタイルの段落も一つの `P` |
+| 見出し（段 n） | `Hn`。見出しの番号と題を含む |
+| 箇条書き、番号付きの箇条書き | `L`（`/A << /O /List /ListNumbering /Disc >>`、番号付きは `/Decimal`）、項目は `LI`、行頭の記号と番号は `Lbl`、項目のブロックは `LBody` |
+| 定義リスト | `L`（`/ListNumbering /None`）、組は `LI`、用語は `Lbl`、説明のブロックは `LBody` |
+| 表 | `Table`、行は `TR`、見出しの行のセルは `TH`（`/A << /O /Table /Scope /Column >>`）、ほかのセルは `TD` |
+| コードブロック | `Div`。キャプション（リスト番号を含む）は `Caption`、ファイル名と、コードの一行ずつ（折り返した行を含む）は `P` の中の `Code` |
+| 図版 | `Div` の中に、`Figure` とキャプションの `Caption`。`Figure` は `/Alt` に `alt` を、`/A << /O /Layout /BBox [...] /Placement /Block >>` に最初に描いたページの矩形を持つ |
+| 目次（`@toc`） | `TOC`、項目は `TOCI`。項目の題と番号とページ番号を含む |
+| 索引（`@index`） | `Index`、見出しの文字と項目の行は `P` |
+| 参考文献（`@bibliography`） | `L`（`/ListNumbering /None`）、項目は `LI`、番号は `Lbl`、項目の文は `LBody` の中の `BibEntry` |
+| プラグインのチャネルの一覧 | `Div`、項目は `P` |
+| ルビ（読みのある区切り一つ） | `Ruby`、親文字は `RB`、読みは `RT` |
+| 脚注、傍注、章末の注 | 本文の注の印は `Reference`、その直後に `Note`。`Note` は `ID`（`note-1` から文書の順）、注の側の印の `Lbl`、注の本文の `P` を持つ |
+| ページ番号の参照（`[ref-page]`）、引用の印（`[cite]`） | `Reference`。`[ref-number]` と `[ref-title]` は、PDF に届く前に番号と題の文字になるので、親の要素の中身になる |
+| 外部のリンク（`[link]`、[docs/adr/0182](adr/0182-external-links.md)） | `Link`。リンクの文字と、行ごとのリンクの注釈の `OBJR` を持つ |
+| 文字スタイル `code`（と、それに行き着く文字スタイル） | `Code` |
+| ほかの文字スタイル、色、圏点の親文字、縦中横、数 | 親の構造の要素の中身のまま |
+
+読みのない区切りの親文字は `Ruby` を作らない。
+`RP` は使わない。
+章末の注の `Note` も、本文の注の印の直後に置く。
+プラグインと `.gm` の関数が返したブロックも、同じ対応で構造の要素にする。
+
+次のものはアーティファクトにする。
+
+| 描くもの | 種類 |
+| --- | --- |
+| 柱、ノンブル、隠しノンブル、トンボ | `Pagination` |
+| ページをまたいだ表の二ページめからの見出しの行 | `Pagination`。最初の見出しの行だけを `TH` にする |
+| ページをまたいだコードブロックの続きの表示 | `Pagination` |
+| 罫（段落と見出しの罫、表の罫、注の区切りの線）、コードの背景と枠、強調と差分の帯、行の中のコードの背景 | `Layout` |
+| コードの行番号と折り返した印、目次の項目のリーダー、圏点の印、章末の注の一覧の見出し | `Layout` |
+
+`Pagination` には `/Subtype` を書かない。
+
+リンクの注釈は、`/StructParent` と、プレーンテキストのリンクの書き方の文字（散文スロットを書いたリンクは `表示の文字（URL）`、省いたリンクは URL）の `/Contents` を持つ。
+行をまたぐリンクも一つの `Link` になり、行ごとの注釈の `OBJR` を行の順に持つ。
+注釈のあるページの辞書は `/Tabs /S` を持つ。
+取り込んだ PDF の図版は、`Figure` の印付きの内容の中に、ページの中身の Form として描く。
+
+### PDF/A と PDF/UA の宣言
+
+`manifest.toml` の `[targets.pdf]` の `pdfa` と `pdfua` で、PDF/A-2a（ISO 19005-2）と PDF/UA-1（ISO 14289-1）を宣言する（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
+
+```toml
+[targets.pdf]
+pdfa = "2a"
+pdfua = "1"
+```
+
+`pdfa` に書ける値は `"2a"` だけ、`pdfua` に書ける値は `"1"` だけである。
+ほかの値と、文字列でない値は G03001 とする。
+二つは別々に書ける。
+PDF/A は PDF/X-4 の上にだけ書くので、`pdfa` には `style.toml` の `[color]` の `intent` が要る。
+ないときは G03113 とし、PDF を書かない。
+`pdfua` だけを書いた本は、出力インテントを要しない。
+
+宣言した本は、PDF を組む前に次のことを検査し、どれもエラーとして PDF を書かない。
+HTML、EPUB、プレーンテキストは書く。
+dev と prod の両方で同じである。
+
+- `pdfa` か `pdfua` を書いた本で、`language` が BCP 47 の言語のタグの形でなければ G03119 とする。形だけを調べ、登録簿は調べない。
+- `pdfua` を書いた本で、最初の見出しが 1 の段でないか、見出しが前の見出しより二つ以上深ければ G07103 とする。浅くなる向きには、いくつ段を戻ってもよい。
+- `pdfa` を書いた本で、PDF に描く字が Unicode の私用領域の字に対応づけられれば G07104 とする。
+
+`pdfa = "2a"` の PDF には、PDF/X-4 の PDF に次のものを足す。
+
+- カタログの `OutputIntents` の二つめに、`S` を `GTS_PDFA1` とした出力インテントを置く。`DestOutputProfile` と `OutputConditionIdentifier` は、`GTS_PDFX` の出力インテントと同じにする。
+- XMP に `pdfaid:part`（`2`）と `pdfaid:conformance`（`A`）を書き、PDF/A が定義しない `pdf:Trapped` と `pdfxid:GTS_PDFXVersion` を、PDF/A の拡張スキーマ（`pdfaExtension:schemas`）で定義する。値の型は `Text`、分類は `internal` である。
+
+`pdfua = "1"` の PDF には、XMP に `pdfuaid:part`（`1`）を書く。
+`pdfa` もある PDF では、`pdfuaid:part` も拡張スキーマで定義する。
+`intent` のない PDF にも、`pdfua` があれば XMP（題名、日時、文書 ID とインスタンス ID、Producer）を書く。
+文書 ID とインスタンス ID は入力全体のハッシュから作るので、宣言を変えれば ID も変わる。
+PDF の版（1.6）、フォント、色、画像の書き方は、宣言によらない。
+`golem preflight` の G09014 は、PDF/A-2a の PDF にも PDF/X-4 の要件を検査する。
+PDF/A と PDF/UA の要件を Golem の中で一般に検査することはしない。
+
+取り込んだ PDF の図版の内容のストリームからは、アーティファクトの印付きの内容と、`MCID` を持つ印付きの内容の、印の演算子（`BMC`、`BDC`、`EMC`）を取り除く。
+中の内容は残すので、図版の見た目は変わらない。
+
+CI の `verapdf` ジョブが、宣言した本の PDF を veraPDF で PDF/A-2a と PDF/UA-1 として検証する。
+`build` の x86-64 の `outputs` のランナーが、蟹工船、The Tempest、figures の fixture と、構造の要素をすべて含む `conformance` の fixture（横組みと縦組みの二通り）の写しに、出力インテントと `pdfa = "2a"`、`pdfua = "1"` を足して組み（`scripts/ci/conformance-pdfs.sh`）、成果物 `conformance-pdfs` として上げる。
+出力インテントには、`scripts/ci/testdata/conformance/golem-test-cmyk.icc`（Golem のために作った小さな CMYK のプロファイル）を使う。
+`verapdf` ジョブは、veraPDF を、版を固定した nixpkgs から Nix で取得し、ストアのパスが `ci.yml` の `VERAPDF_STORE_PATH` と違えば検証の前に失敗する。
+`scripts/ci/verapdf.sh` は、まずタグのない PDF（`scripts/ci/testdata/verapdf/untagged.pdf`）が PDF/UA-1 に適合しないことを確かめ、次にすべての PDF を `-f 2a` と `-f ua1` で検証し、どれかが適合しなければ、その PDF と規則の番号を書いて失敗する。
+`ci` ジョブはこのジョブも待つので、適合しない PDF を組む変更はマージできない。
 
 ## 処理の流れ
 
@@ -2989,6 +3098,8 @@ diagnostics がなくなったファイルには空の列を送り、一度も d
 | ブロックのコマンドの `@` と名前 | `decorator` |
 | インラインのコマンドの名前、式の呼び出しの名前（`book.liters` の `book` と `liters`） | `function` |
 | キーワード引数の名前 | `parameter` |
+| 式のハッシュのキーの名前（`{a: 1}` の `a`） | `property` |
+| `@set` の名前 | `variable`（修飾子 `declaration` を付ける） |
 | 引数の値、式の文字列 | `string` |
 | `[=`、式のキーワード | `keyword` |
 | 式の数、数の表記の中身 | `number` |
@@ -2996,14 +3107,19 @@ diagnostics がなくなったファイルには空の列を送り、一度も d
 | 式の演算子、数の表記の `##`、表の区切り | `operator` |
 | インラインのコマンドの `[`、`:`、`]`、散文スロットの区切りの `\|` | `operator` |
 | 式の `.`、括弧、`,`、`:`、`[`、`]`、`{`、`}`（閉じの `]` を含む） | `operator` |
+| キーワード引数の `=`、`@set` の `=`、`*[` と `**[` とその閉じの `]` | `operator` |
+| コマンドと式の中の空白（行頭の字下げを除き、ブロックのコマンドの行末の空白を含む） | `operator` |
 | エスケープ | `macro` |
-| 見出しの `#`、リストと定義リストの印、コードブロックの囲み | `keyword` |
+| 見出しの `#`、リストと定義リストの印（`=:` を含む）、コードブロックの囲み | `keyword` |
 | 見出しの文字 | `namespace` |
 | コードブロックの言語名 | `type` |
 
 地の文、散文スロットの中身、コードブロックの中身、構文エラーの箇所には、トークンを作らない。
 インラインのコマンドの角括弧と `:`、式の記号にもトークンを付ける（[golem-lsp ADR 0007](golem-lsp/adr/0007-semantic-tokens-for-command-punctuation.md)）。
-キーワード引数の `=`、`*[` と `**[` の引数の印とその閉じの `]`、式のハッシュのキーの名前、空白には、トークンを付けない。
+空白と、キーワード引数の `=`、`*[` と `**[`、ハッシュのキー、`@set` の名前、定義リストの `=:` にもトークンを付ける（[golem-lsp ADR 0008](golem-lsp/adr/0008-semantic-tokens-for-whitespace-and-remaining-punctuation.md)）。
+コマンドと式の中では、散文スロットの中身、行頭の字下げ、改行、構文エラーの箇所を除くすべての文字が、どれかのトークンに入る。
+空白の型を `operator` とするのは標準の型を借りたもので、凡例に独自の型は足さない。
+散文スロットの中、地の文、見出し、リスト、定義リスト、表の空白には、トークンを付けない。
 改行をまたぐトークンは、行ごとに分ける。
 `$/cancelRequest` は何もせずに受け取る。
 
