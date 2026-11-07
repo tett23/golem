@@ -15,10 +15,10 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble
-import Golem.Bibliography (EntryPart, entryText)
-import Golem.Doc.IR
 import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (numberSeparator)
+import Golem.Bibliography (EntryPart, entryText)
+import Golem.Doc.IR
 import Golem.Numerals
 import Golem.Syntax.Span
 import System.FilePath (replaceExtension)

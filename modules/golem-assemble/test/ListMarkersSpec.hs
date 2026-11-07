@@ -1,8 +1,8 @@
 -- | itemNumbers and the number formats of lists (golem-driver ADR 0013).
 module ListMarkersSpec (tests) where
 
-import Golem.Doc.IR
 import Golem.Assemble.ListMarkers
+import Golem.Doc.IR
 import Golem.Syntax.Span
 import Test.Tasty
 import Test.Tasty.HUnit

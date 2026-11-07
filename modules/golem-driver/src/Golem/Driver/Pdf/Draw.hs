@@ -17,7 +17,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (toGregorian)
 import Golem.Doc.IR
-import Golem.Numerals (formatNumber)
 import Golem.Driver.Overhang (kentenAcross, rubyAcross)
 import Golem.Driver.Pdf.Flow
 import Golem.Driver.Pdf.Fonts
@@ -32,6 +31,7 @@ import Golem.Layout.Ruby (RubyKind (..), RubyPlacement (..), placeRuby)
 import Golem.LayoutSpec (Anchor (..), HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, columnsFor, gutterSide, runningHeadBaselines, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Length (zwToSp)
+import Golem.Numerals (formatNumber)
 import Golem.Pdf qualified as P
 import Golem.Preflight.View qualified as V
 import Golem.Project

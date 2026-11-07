@@ -36,7 +36,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Unsafe (lengthWord8)
 import Golem.Doc.IR
-import Golem.Numerals (kanji, kanjiDigits)
 import Golem.Layout.Aki (AkiPos (..), AkiSet, akiBetween, defaultAkiSet, noAki)
 import Golem.Layout.Aki qualified as A
 import Golem.Layout.CharClass
@@ -45,6 +44,7 @@ import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
 import Golem.Layout.Ruby
 import Golem.Length qualified as L
+import Golem.Numerals (kanji, kanjiDigits)
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan (..), diagnostic, mkSpan, spanLength)
 
