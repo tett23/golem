@@ -89,6 +89,3 @@ fonts "$WORK/conformance-horizontal"
 declared conformance-vertical "$FIX/conformance" style-vertical.toml manifest-vertical.toml
 fonts "$WORK/conformance-vertical"
 for name in $(list); do pdf "$name" >"$WORK/log-$name" 2>&1 || { cat "$WORK/log-$name" >&2; exit 1; }; done
-
-# a PDF of golem before the structure tree, to show the job verapdf fail once (docs/adr/0183); reverted by the next commit
-cp "$HERE/testdata/verapdf/untagged.pdf" "$OUT/pre-tagging.pdf"
