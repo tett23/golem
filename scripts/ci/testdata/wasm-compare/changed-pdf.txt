@@ -1,0 +1,6 @@
+1304fa4df84dcefc10e629d9e9835c8f94c2269e2f3867e1302386f4a37f7e23  kanikosen/pdf
+4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945  kanikosen/diagnostics
+exit 0  kanikosen
+-  broken-style/pdf
+9b2a6d8b1f0c5b2d3e9a7c1f4e6d8b0a2c4e6f8a0b2d4f6a8c0e2f4a6b8d0f2a  broken-style/diagnostics
+exit 1  broken-style

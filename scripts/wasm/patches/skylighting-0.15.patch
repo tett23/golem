@@ -1,0 +1,43 @@
+diff -ruN a/skylighting.cabal b/skylighting.cabal
+--- a/skylighting.cabal	2026-11-07 23:40:34
++++ b/skylighting.cabal	2026-11-07 23:40:34
+@@ -39,7 +39,6 @@
+   reexported-modules:    skylighting-core:Skylighting.Core
+                        , skylighting-core:Skylighting.Types
+                        , skylighting-core:Skylighting.Regex
+-                       , skylighting-core:Skylighting.Parser
+                        , skylighting-core:Skylighting.Styles
+                        , skylighting-core:Skylighting.Tokenizer
+                        , skylighting-format-ansi:Skylighting.Format.ANSI
+diff -ruN a/src/Skylighting.hs b/src/Skylighting.hs
+--- a/src/Skylighting.hs	2026-11-07 23:40:34
++++ b/src/Skylighting.hs	2026-11-07 23:40:34
+@@ -10,7 +10,6 @@
+   -- Re-exports from the skylighting-core package
+   , module Skylighting.Types
+   , module Skylighting.Tokenizer
+-  , module Skylighting.Parser
+   , module Skylighting.Regex
+   , module Skylighting.Styles
+   , module Skylighting.Format.ANSI
+@@ -18,8 +17,6 @@
+   , module Skylighting.Format.HTML
+   , module Skylighting.Format.LaTeX
+   , module Skylighting.Format.Typst
+-  , module Skylighting.Loader
+-
+   )
+ where
+ 
+@@ -29,11 +26,9 @@
+ import Skylighting.Format.HTML
+ import Skylighting.Format.LaTeX
+ import Skylighting.Format.Typst
+-import Skylighting.Parser
+ import Skylighting.Regex
+ import Skylighting.Styles
+ import Skylighting.Tokenizer
+ import Skylighting.Types
+-import Skylighting.Loader
+ 
+ import Skylighting.Syntax

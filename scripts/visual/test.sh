@@ -411,8 +411,8 @@ pdfs "$CK/p"
 WT=$WORK/wait
 fake "$WT/bin" gh 'printf "%s\n" "$*" >>"$GH_LOG"
 case "$*" in
-  *"/artifacts?name=visual-pdfs"*)
-    n=$(grep -c "/artifacts?name=visual-pdfs" "$GH_LOG")
+  *"/artifacts?name="*)
+    n=$(grep -c "/artifacts?name=" "$GH_LOG")
     [ "$n" -le 20 ] || { echo "fake gh: asked for the artifact more than 20 times" >&2; exit 65; }
     if [ -n "$FAKE_ARTIFACT_AT" ] && [ "$n" -ge "$FAKE_ARTIFACT_AT" ]; then echo 1; else echo 0; fi ;;
   *"/jobs"*)
@@ -445,6 +445,15 @@ expect "wait-pdfs: no such job fails" 1
 if grep -q "has no job '$OUT'" "$WORK/err"; then ok; else ng "wait-pdfs: names the missing job"; fi
 run wait_pdfs 123 1
 expect "wait-pdfs: usage" 2
+# another artifact of the job: the job wasm waits for wasm-native-list (docs/adr/0199)
+FAKE_ARTIFACT_AT=2 FAKE_JOBS="$OUT${TAB}in_progress" run wait_pdfs 123 1 "$OUT" wasm-native-list
+expect "wait-pdfs: waits until the artifact given is uploaded" 0
+if [ "$(grep -c '^api repos/{owner}/{repo}/actions/runs/123/artifacts?name=wasm-native-list ' "$WT/gh.log")" = 2 ] && ! grep -q visual-pdfs "$WT/gh.log"; then ok; else ng "wait-pdfs: asks for the artifact given, not visual-pdfs"; fi
+FAKE_ARTIFACT_AT='' FAKE_JOBS="$OUT${TAB}completed" run wait_pdfs 123 1 "$OUT" wasm-native-list
+expect "wait-pdfs: the job completed without the artifact given fails" 1
+if grep -q "completed without uploading wasm-native-list" "$WORK/err"; then ok; else ng "wait-pdfs: names the artifact given"; fi
+run wait_pdfs 123 1 "$OUT" a b
+expect "wait-pdfs: usage with five arguments" 2
 
 # The jobs of release.yml, as the run 41918079466 named them: ci.yml is
 # called by the job ci, so its jobs are named "ci / ..." (docs/adr/0165).

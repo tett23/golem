@@ -316,6 +316,7 @@ PDF 経路のモジュールだけが、レイアウト IR、シェイピング[
 flowchart TD
     cli["golem-cli<br/>golem コマンド"]
     lsp["golem-lsp<br/>LSP サーバー"]
+    wasm["golem-wasm<br/>PDF を組む wasm の reactor モジュール"]
     driver["golem-driver<br/>パイプラインの束ね"]
     lint["golem-lint<br/>lint の規則"]
     fmt["golem-fmt<br/>CST の整形"]
@@ -369,6 +370,7 @@ flowchart TD
     lint --> eval
     lsp --> driver
     lsp --> fmt
+    wasm --> driver
     plugin --> eval
     preflight --> pdf
     preflight --> project
@@ -428,6 +430,42 @@ golem-driver の cabal は、プラグインの機能を外すフラグ `plugins
 どちらかがあれば、`manifest.toml` の先頭に G06106 のエラーを一つ出す。
 golem-cli と golem-lsp は golem-plugin に直接依存するので、フラグを使わない。
 フラグを偽にするのは wasm のビルドだけである。
+
+golem-wasm は、PDF の組版を、ファイルを読まない wasm の reactor モジュール（`golem.wasm`）にする（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
+ライブラリは、入力と結果のバイト列の枠を読み書きする純粋なモジュール `Golem.Wasm.Frame` だけを持ち、`base` と `bytestring` だけに依存する。
+ネイティブでも組み、テストする。
+実行ファイル `golem-wasm` は wasm32 の向けにだけ組み（`if !arch(wasm32)` で `buildable: False`）、`foreign export ccall` の関数を C の ABI で出す。
+エクスポートは `golem_alloc`、`golem_free`、`golem_build_pdf`、`golem_result_len`、`golem_version` の五つと `hs_init` に限る。
+ホストは、`_initialize` を一度、`hs_init(0, 0)` を一度呼んでから使う。
+`golem_alloc(len)` は入力のバッファを確保し、`golem_build_pdf(in, len)` は入力の枠を読んで組み、結果の枠のバッファを返す。
+`golem_version()` は `VERSION` の値を UTF-8 で返す。
+このモジュールが渡すバッファは、どれも直前の 4 バイトに長さを持つ。
+`golem_result_len(p)` はその長さを返し、`golem_free(p)` はどのバッファも解放する。
+
+入力の枠は、ファイルの並びである。
+ファイルごとに、パスの長さ（`uint32` のリトルエンディアン）、パス（UTF-8）、中身の長さ（同じ）、中身を続ける。
+パスはプロジェクトのルートからの相対パスで、`normalizeRelative` の結果と一致しなければならない。
+`Golem.Wasm.Frame` は、golem-project に依存しないように、この規則を写して持つ。
+結果の枠は、状態の 1 バイト、PDF の長さと PDF、diagnostics の JSON の長さと JSON である（長さはどれも `uint32` のリトルエンディアン）。
+状態 0 は組んだことを表し、error の diagnostic があって PDF がなければ、PDF の長さは 0 である。
+状態 1 は、入力の枠を読めない（長さが足りない、パスが UTF-8 でない、パスが正規化されていない、同じパスが二度ある）ことを表し、PDF と JSON の長さは 0 である。
+これはホストの誤りなので、diagnostic にはしない。
+組むのは golem-driver の `buildPdfInMemory` で、JSON は `renderJson` が書くもの、つまり `golem build --target pdf --format json` が標準エラーに書くものと同じバイト列である。
+入口はプロファイル、トンボ、`--no-notices`、`--verbose` を受け取らず、`golem build --target pdf` の既定と同じに組む。
+
+wasm のビルドは、別の cabal のプロジェクトのファイル `cabal.project.wasm` で行う。
+`packages:` には golem-wasm と、その依存の golem のパッケージだけを並べ、golem-driver のフラグ `plugins` を外し、テストを組まない。
+ツールチェーンは、ghc-wasm-meta（コミット `8079eb96`）の 9.10 の flavour の配布物（GHC `9.10.3.20260731`、wasi-sdk、libffi-wasm、cabal 3.14.2.0、Template Haskell を評価する Node）で、`scripts/fetch-ghc-wasm.sh` が x86-64 の Linux の向けだけを、SHA-256 と `autogen.json` の SRI の値（16 進に直したもの）で確かめて `third_party/ghc-wasm/` に取る。
+Hackage のパッケージの版は `cabal.project.freeze` と同じにする。
+`cabal.project.wasm.freeze` は、`cabal.project.freeze` から wasm の GHC の boot のパッケージと、cborg、`skylighting`、`skylighting-core` を除いたものである。
+boot のパッケージの版は wasm の GHC のものになる（`time` は 1.14 で、ネイティブの freeze は 1.12.2）ので、wasm の freeze に書かない。
+二つの freeze の両方にあるパッケージの版が一致することを、`scripts/ci/wasm-freeze.sh` が確かめる。
+cborg、`skylighting`、`skylighting-core` は、この比べから外す（[ADR 0202](adr/0202-packages-that-do-not-build-for-wasm.md)）。
+cborg は、32 ビットで組める上流のコミット `6ef2791c` を使う。
+`skylighting-core` 0.15 と `skylighting` 0.15 は、`scripts/fetch-wasm-packages.sh` が Hackage のアーカイブを SHA-256 で確かめて `third_party/wasm-packages/` に展開し、`Skylighting.Parser` と `Skylighting.Loader`、その再エクスポート、`xml-conduit` の依存を除く `scripts/wasm/patches/` の差分を当てる。
+golem-font は、wasm に向けて組むときだけ、FreeType を `-mllvm -wasm-enable-sjlj` でコンパイルし、wasi-sdk の `c++`、`c++abi`、`setjmp` をリンクする。
+`toml-parser` が使う `alex` と `happy` は、ネイティブの GHC で組んだ `alex` 3.5.4.2 と `happy` 2.2（`cabal.project.freeze` の版）を `PATH` に置いて使う。
+cabal 3.14.2.0 は、`build-tool-depends` の `alex`、`happy`、`hsc2hs` も wasm の GHC で組むが、それは wasm のモジュールなので、ビルドの中で動くのは `PATH` のものだけである。
 
 処理は `parse → eval → 意味論 IR → 各バックエンド` の順に流れ、分岐点は意味論 IR である（「処理の流れ」の節を参照）。
 

@@ -16,3 +16,4 @@ cabal.project.local
 /modules/golem-driver/test/fixtures/complex-horizontal/fonts/
 /tools/textlint/node_modules/
 /tools/editors/node_modules/
+/dist-wasm/
