@@ -1,0 +1,479 @@
+{- | The invariants of the line breaking (docs/adr/0209, its section
+「不変条件」), as predicates over a paragraph that goes in and the lines
+that come out. They read nothing of 'breakParagraph' but its input and
+its 'Breaks'; the lines are read with 'placeLine' and 'glueRatio'.
+
+The width of the lines is W. A line is one of 'brLines', the characters
+of a line those of the 'bcText' of its boxes, joined. The character at
+the start (end) of a line is the first (last) character of its first
+(last) box, its class that of its look, a character of both scripts in
+a Latin language span taking its Japanese class (docs/adr ADR 0187), as
+the composition reads it.
+-}
+module LineBreakInvariants
+  ( LineInvariant (..),
+    Breach (..),
+    Paragraph (..),
+    bruteLimit,
+    l1AllOnce,
+    l2LineStart,
+    l3LineEnd,
+    l4Inseparable,
+    l5Width,
+    l6Justified,
+    l7Optimal,
+    l8InsideWords,
+    l9Hyphens,
+    l10Spaces,
+    l11Aki,
+    l12Expansion,
+    l13Protrusion,
+    lineInvariants,
+    breaches,
+    lineEnd,
+    latinSpace,
+  )
+where
+
+import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
+import Data.Text (Text)
+import Data.Text qualified as T
+import Golem.Layout.Aki (AkiPos (..), akiBetween, defaultAkiSet, noAki)
+import Golem.Layout.Aki qualified as A
+import Golem.Layout.CharClass (dualJapaneseClass, isDualCharacter, isExtending, spanIsJapanese)
+import Golem.Layout.Japanese (CharClass (..), lineEndProhibited, lineStartProhibited, lookClass)
+import Golem.Layout.KnuthPlass
+import Golem.Layout.Look (Look (..))
+import Golem.Length qualified as L
+import KnuthPlassBrute (breakCandidates, bruteDemerits)
+
+-- | The invariants of docs/adr/0209, by their numbers.
+data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+-- | An invariant broken, the line it is broken at (from 0; -1 for the whole paragraph), and how.
+data Breach = Breach {breachOf :: !LineInvariant, breachLine :: !Int, breachWhy :: !String}
+  deriving stock (Eq, Show)
+
+{- | What a predicate reads: the characters of the paragraph, the font
+size, the width of its lines, the strictness of its kinsoku, its items,
+the parameters of its breaking and the breaks that came out, and the
+advance of a character in em (Latin text or not).
+-}
+data Paragraph = Paragraph
+  { pText :: !Text,
+    pSize :: !Sp,
+    pWidth :: !Sp,
+    pStrict :: !Bool,
+    pItems :: ![Item],
+    pParams :: !Params,
+    pBreaks :: !Breaks,
+    pAdvance :: Bool -> Char -> Rational
+  }
+
+-- | The breaks of a paragraph L7 brute-forces: up to 8 on pull requests (docs/adr/0209, its section 3).
+bruteLimit :: Int
+bruteLimit = 8
+
+type Check = Int -> Paragraph -> [Breach]
+
+-- * reading lines
+
+linesOf :: Paragraph -> [Line]
+linesOf = brLines . pBreaks
+
+boxes :: Line -> [BoxContent]
+boxes l = [c | Box _ c <- lineItems l]
+
+firstBox, lastBox :: Line -> Maybe BoxContent
+firstBox l = case boxes l of
+  c : _ -> Just c
+  [] -> Nothing
+lastBox l = case reverse (boxes l) of
+  c : _ -> Just c
+  [] -> Nothing
+
+-- | The text of a box without its combining characters, unless nothing else is left.
+baseOf :: BoxContent -> Text
+baseOf c = case T.filter (not . isExtending) (bcText c) of
+  t | T.null t -> bcText c
+  t -> t
+
+-- | Whether a character of a box is one of both scripts in a Latin language span.
+latinDual :: BoxContent -> Char -> Bool
+latinDual c ch = isDualCharacter ch && maybe False (not . spanIsJapanese) (lkLang (bcLook c))
+
+-- | The class of a character of a box, as the line breaking reads it.
+classOf :: BoxContent -> Char -> CharClass
+classOf c ch = if latinDual c ch then dualJapaneseClass ch else lookClass (bcLook c) ch
+
+startClass, endClass :: BoxContent -> Maybe CharClass
+startClass c = classOf c . fst <$> T.uncons (baseOf c)
+endClass c = classOf c . snd <$> T.unsnoc (baseOf c)
+
+-- | The text of a line.
+textOf :: Line -> Text
+textOf l = T.concat (map bcText (boxes l))
+
+-- | Where the last item of a line, as 'placeLine' places it, ends.
+lineEnd :: Line -> Sp
+lineEnd l = case reverse (placeLine l) of
+  [] -> fst (lineEdge l) - fst (lineProtrusion l)
+  (it, off) : _ ->
+    let ex = toRational (lineExpansion l) / 1000
+        g = glueRatio l
+        w = case it of
+          Box bw c -> toRational (unSp bw) * (if bcExpandable c then 1 + ex else 1)
+          Glue gw y z -> toRational (unSp gw) + (if g >= 0 then toRational (unSp y) else toRational (unSp z)) * g
+          Penalty pw _ _ -> toRational (unSp pw)
+     in Sp (unSp off + round w)
+
+-- | The protrusion at the end of a line.
+endProtrusion :: Line -> Sp
+endProtrusion = snd . lineProtrusion
+
+-- | The glue of a space between Latin words (golem-layout's Japanese composition): its width, half of it to stretch, a third to shrink.
+latinSpace :: Paragraph -> Item
+latinSpace p =
+  let sw = L.zwToSp (pSize p) (pAdvance p True ' ')
+   in Glue sw (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))
+
+-- | The lines but the last, each with the next.
+pairs :: Paragraph -> [(Int, Line, Line)]
+pairs p = let ls = linesOf p in zip3 [0 ..] ls (drop 1 ls)
+
+-- | Whether a line is wider than W: the exception of L5.
+wide :: Paragraph -> Line -> Bool
+wide p l = lineEnd l > pWidth p + endProtrusion l + 1
+
+-- * the invariants
+
+-- | L1: the characters of the lines, joined, are those of the paragraph, the spaces between Latin words left out.
+l1AllOnce :: Check
+l1AllOnce _ p =
+  let got = T.concat (map textOf (linesOf p))
+      want = T.filter (/= ' ') (pText p)
+   in [Breach L1 (-1) ("the lines hold " <> show got <> ", not " <> show want) | got /= want]
+
+-- | L2: no line after the first starts with a character of line-start prohibition, but a line wider than W.
+l2LineStart :: Check
+l2LineStart _ p =
+  [ Breach L2 (i + 1) ("line " <> show (i + 2) <> " starts with " <> show (textOf next))
+  | (i, _, next) <- pairs p,
+    Just c <- [firstBox next],
+    Just k <- [startClass c],
+    lineStartProhibited (pStrict p) k,
+    not (wide p next)
+  ]
+
+-- | L3: no line but the last ends with an opening bracket, but a line wider than W.
+l3LineEnd :: Check
+l3LineEnd _ p =
+  [ Breach L3 i ("line " <> show (i + 1) <> " ends with " <> show (textOf l))
+  | (i, l, _) <- pairs p,
+    Just c <- [lastBox l],
+    Just k <- [endClass c],
+    lineEndProhibited k,
+    not (wide p l)
+  ]
+
+-- | L4: no line breaks between two inseparable characters.
+l4Inseparable :: Check
+l4Inseparable _ p =
+  [ Breach L4 i ("lines " <> show (i + 1) <> " and " <> show (i + 2) <> " break between " <> show (textOf l) <> " and " <> show (textOf next))
+  | (i, l, next) <- pairs p,
+    Just a <- [lastBox l],
+    endClass a == Just Inseparable,
+    Just b <- [firstBox next],
+    startClass b == Just Inseparable
+  ]
+
+{- | L5: no line ends past W and its protrusion at the end, with 1 sp of
+rounding, but a line that is overfull and has no break where it would
+fit: ending it at any break of its own, it is still wider than W.
+-}
+l5Width :: Check
+l5Width _ p =
+  concat
+    [ [Breach L5 i ("line " <> show (i + 1) <> " ends at " <> show (lineEnd l) <> ", past " <> show (pWidth p) <> ", and is not overfull") | not (lineOverfull l)]
+        <> [Breach L5 i ("line " <> show (i + 1) <> " is overfull, but would fit if it ended after " <> show (T.concat [bcText c | Box _ c <- take j (lineItems l)])) | lineOverfull l, j <- take 1 (fittingBreaks p l)]
+    | (i, l) <- zip [0 :: Int ..] (linesOf p),
+      wide p l
+    ]
+
+{- | The breaks of a line, by the index of the item, where the line would
+end within W: the natural width of the items before them, with the
+hyphen of a break at a penalty, less all they can shrink, is W or less.
+-}
+fittingBreaks :: Paragraph -> Line -> [Int]
+fittingBreaks p l =
+  [ j
+  | j <- breakCandidates 2 its,
+    j > 0,
+    j < length its,
+    any isBox (take j its),
+    fits j
+  ]
+  where
+    its = lineItems l
+    ps = pParams p
+    isBox = \case
+      Box {} -> True
+      _ -> False
+    fits j =
+      let before = take j its
+          penW = case its !! j of
+            Penalty w _ _ -> w
+            _ -> 0
+          bs = [c | Box _ c <- before]
+          firstB = take 1 bs
+          lastB = take 1 (reverse bs)
+          protS = if pProtrusion ps then sum (map bcProtrudeStart firstB) else 0
+          protE
+            | not (pProtrusion ps) = 0
+            | otherwise = case its !! j of
+                Penalty _ _ (PatternHyphen q) -> q
+                _ -> sum (map bcProtrudeEnd lastB)
+          natural = sum [w | Box w _ <- before] + sum [w | Glue w _ _ <- before] + penW - protS - protE + sum (map bcEdgeStart firstB) + sum (map bcEdgeEnd lastB)
+          expandable = sum [w | Box w c <- before, bcExpandable c]
+          shrinkE = case pExpansion ps of
+            Just (limit, _) -> Sp (unSp expandable * toInteger limit `div` 1000)
+            Nothing -> 0
+          shrink = sum [z | Glue _ _ z <- before] + shrinkE
+       in natural - shrink <= pWidth p
+
+{- | L6: every line but the last that is not overfull ends at W and its
+protrusion at the end, with 1 sp of rounding. A line without glue that
+stretches is not judged when it is short: the specification spaces out
+a line pushed out as far as its stretch allows (「伸びの許すかぎり」,
+「行分割」), and the glyph expansion, the only stretch of such a line,
+stops at its limit.
+-}
+l6Justified :: Check
+l6Justified _ p =
+  [ Breach L6 i ("line " <> show (i + 1) <> " " <> show (textOf l) <> " ends at " <> show (lineEnd l) <> ", not at " <> show (pWidth p + endProtrusion l))
+  | (i, l, _) <- pairs p,
+    not (lineOverfull l),
+    let target = pWidth p + endProtrusion l,
+    abs (lineEnd l - target) > 1,
+    not (lineEnd l < target && noStretch l)
+  ]
+  where
+    noStretch l = all (<= 0) [y | Glue _ y _ <- lineItems l]
+
+{- | L7: in the first two passes, without glyph expansion and protrusion,
+and with no more breaks than the limit given, the demerits are the least
+of every way to break the paragraph in the tolerance of that pass.
+-}
+l7Optimal :: Check
+l7Optimal limit p
+  | brPass br `notElem` [1, 2] || isJust (pExpansion ps) || pProtrusion ps = []
+  | length (breakCandidates (brPass br) (pItems p)) > limit = []
+  | otherwise = case bruteDemerits ps (pWidth p) (brPass br) (pItems p) of
+      Just least | least == brDemerits br -> []
+      found -> [Breach L7 (-1) ("pass " <> show (brPass br) <> ": the demerits are " <> show (brDemerits br) <> ", the least of every way is " <> maybe "none" show found)]
+  where
+    br = pBreaks p
+    ps = pParams p
+
+{- | L8: a line breaks between two boxes of Latin text (two that take the
+glyph expansion) only at a hyphen of the patterns, after a hyphen or a
+dash written in the word, or at a space.
+-}
+l8InsideWords :: Check
+l8InsideWords _ p =
+  [ Breach L8 i ("lines " <> show (i + 1) <> " and " <> show (i + 2) <> " break inside " <> show (bcText a <> bcText b) <> " at " <> show at)
+  | (i, l, next) <- pairs p,
+    Just a <- [lastBox l],
+    Just b <- [firstBox next],
+    bcExpandable a && bcExpandable b,
+    let at = breakItem p i,
+    not (allowed at)
+  ]
+  where
+    allowed = \case
+      Just (Glue {}) -> True
+      Just (Penalty _ _ h) -> h /= NoHyphen
+      _ -> False
+
+-- | The index of the item a line breaks at.
+breakIndex :: Paragraph -> Int -> Maybe Int
+breakIndex p i = case drop i (brPositions (pBreaks p)) of
+  b : _ | b >= 0 && b < length (pItems p) -> Just b
+  _ -> Nothing
+
+-- | The item a line breaks at.
+breakItem :: Paragraph -> Int -> Maybe Item
+breakItem p i = (pItems p !!) <$> breakIndex p i
+
+{- | L9: a line broken at a hyphen of the patterns ends with the width of
+a hyphen, at least two characters of its element before the break and at
+least three after it; a line broken after a hyphen or dash written in
+the word ends with it and adds no hyphen; the first pass breaks at no
+hyphen of the patterns, nor does a word of a language span without
+patterns.
+-}
+l9Hyphens :: Check
+l9Hyphens _ p =
+  concat
+    [ case breakItem p i of
+        Just (Penalty w _ (PatternHyphen _)) ->
+          [Breach L9 i ("line " <> show (i + 1) <> " breaks at a hyphen of the patterns in the first pass") | brPass (pBreaks p) == 1]
+            <> [Breach L9 i ("line " <> show (i + 1) <> " breaks at a hyphen of the patterns in a span of " <> show l) | Just c <- [lastBox line], Just l <- [lkLang (bcLook c)], spanIsJapanese l]
+            <> [Breach L9 i ("line " <> show (i + 1) <> " does not end with the width of a hyphen") | lastItemWidth line /= Just hyphen || w /= hyphen]
+            <> [Breach L9 i ("line " <> show (i + 1) <> " breaks after " <> show before <> ", fewer than two characters of its element") | T.length before < 2]
+            <> [Breach L9 (i + 1) ("line " <> show (i + 2) <> " starts with " <> show after <> ", fewer than three characters of its element") | T.length after < 3]
+          where
+            (before0, after0) = maybe ("", "") (elementAround (pItems p)) (breakIndex p i)
+            before = T.filter (not . isExtending) before0
+            after = T.filter (not . isExtending) after0
+        Just (Penalty _ _ ExplicitHyphen) ->
+          [ Breach L9 i ("line " <> show (i + 1) <> " breaks after a written hyphen but ends with " <> show (textOf line))
+          | not (maybe False (maybe False ((`elem` ("-‐–—" :: String)) . snd) . T.unsnoc . bcText) (lastBox line))
+          ]
+            <> [Breach L9 i ("line " <> show (i + 1) <> " adds a hyphen after a written one") | any isPenalty (take 1 (reverse (lineItems line)))]
+        _ -> []
+    | (i, line, _) <- pairs p
+    ]
+  where
+    hyphen = L.zwToSp (pSize p) (pAdvance p True '-')
+    lastItemWidth l = case reverse (lineItems l) of
+      Penalty w _ _ : _ -> Just w
+      _ -> Nothing
+    isPenalty = \case
+      Penalty {} -> True
+      _ -> False
+
+{- | The characters of the element of a word on either side of a break,
+by the index of the break in the items: the boxes of Latin text before
+(after) it, through the other hyphens of the patterns, up to a break
+after a written hyphen, a space or anything else.
+-}
+elementAround :: [Item] -> Int -> (Text, Text)
+elementAround its b = (T.concat (reverse (go (reverse (take b its)))), T.concat (go (drop (b + 1) its)))
+  where
+    go = \case
+      Penalty _ _ (PatternHyphen _) : rest -> go rest
+      Box _ c : rest | bcExpandable c -> bcText c : go rest
+      _ -> []
+
+{- | L10: no line after the first starts with the glue of a space between
+Latin words, and no line ends with one: the space a line breaks at
+counts in neither line.
+-}
+l10Spaces :: Check
+l10Spaces _ p =
+  [ Breach L10 i ("line " <> show (i + 1) <> " " <> where_ <> " with a space")
+  | (i, l) <- zip [0 :: Int ..] (linesOf p),
+    (where_, edge) <- [("starts", take 1 (lineItems l)) | i > 0] <> [("ends", take 1 (reverse (lineItems l)))],
+    latinSpace p `elem` edge
+  ]
+
+{- | L11: where a Japanese character (kana, an ideograph) and a Latin word
+are next to each other in a line, there is exactly one glue between them,
+the space between Japanese and Latin text of the default aki set; none
+beside a character of both scripts in a Latin span. A pair with a space
+written between them is not judged: the specification does not say
+whether the space between Japanese and Latin text is added to it. No
+line starts or ends with the space between Japanese and Latin text.
+-}
+l11Aki :: Check
+l11Aki _ p =
+  concat
+    [ [ Breach L11 i ("line " <> show (i + 1) <> ": " <> show (bcText a <> bcText b) <> " has " <> show between <> " between them, not " <> show want)
+      | -- a line without a Latin word has no pair to judge
+        any bcExpandable (boxes l),
+        (a, glues, b) <- neighbours (lineItems l),
+        -- with a space written between them, the specification does not say whether the space between Japanese and Latin text is added
+        latinSpace p `notElem` glues,
+        let between = filter (`elem` akiGlues) glues,
+        Just want <- [expected a b],
+        between /= want
+      ]
+        <> [Breach L11 i ("line " <> show (i + 1) <> " starts or ends with the space between Japanese and Latin text") | any (`elem` akiGlues) (take 1 (lineItems l) <> take 1 (reverse (lineItems l)))]
+    | (i, l) <- zip [0 :: Int ..] (linesOf p)
+    ]
+  where
+    aki = akiBetween defaultAkiSet (AkiChar Ideograph) (AkiChar Western)
+    akiGlue a = let z = L.zwToSp (pSize p) in Glue (z (A.akiOptimum a)) (z (A.akiMaximum a) - z (A.akiOptimum a)) (z (A.akiOptimum a) - z (A.akiMinimum a))
+    akiGlues = [akiGlue aki | aki /= noAki]
+    japanese c = not (bcExpandable c) && all (`elem` [Kana, Ideograph]) (catMaybes [startClass c, endClass c])
+    -- what is between two boxes next to each other: the glue, when the pair is of a Japanese character and a Latin word
+    expected a b
+      | japanese a && bcExpandable b = Just (if maybe False (latinDual b . fst) (T.uncons (baseOf b)) then [] else akiGlues)
+      | bcExpandable a && japanese b = Just (if maybe False (latinDual a . snd) (T.unsnoc (baseOf a)) then [] else akiGlues)
+      | otherwise = Nothing
+    neighbours its = case its of
+      Box _ a : rest ->
+        let (mid, after) = break isBoxItem rest
+         in case after of
+              Box _ b : _ -> (a, [g | g@(Glue {}) <- mid], b) : neighbours after
+              _ -> []
+      _ : rest -> neighbours rest
+      [] -> []
+    isBoxItem = \case
+      Box {} -> True
+      _ -> False
+
+{- | L12: the expansion of a line is a multiple of 5 from −20 to 20, and 0
+without glyph expansion or in a line without a box that takes it.
+-}
+l12Expansion :: Check
+l12Expansion _ p =
+  [ Breach L12 i ("line " <> show (i + 1) <> " is expanded by " <> show e)
+  | (i, l) <- zip [0 :: Int ..] (linesOf p),
+    let e = lineExpansion l,
+    e < -20 || e > 20 || e `mod` 5 /= 0 || (e /= 0 && (isNothing (pExpansion (pParams p)) || not (any bcExpandable (boxes l))))
+  ]
+
+{- | L13: without protrusion, no line protrudes; with it, a line protrudes
+at its start by the amount of its first box, at its end by that of its
+last box, or of the hyphen where it breaks at a hyphen of the patterns,
+and by no more than the advance of that character: the advance of the
+character alone, as golem-layout ADR 0014 takes it ('ceAdvance').
+-}
+l13Protrusion :: Check
+l13Protrusion _ p =
+  concat
+    [ if not (pProtrusion (pParams p))
+        then [Breach L13 i ("line " <> show (i + 1) <> " protrudes by " <> show (lineProtrusion l) <> " without protrusion") | lineProtrusion l /= (0, 0)]
+        else
+          [Breach L13 i ("line " <> show (i + 1) <> " protrudes at its start by " <> show s <> ", not " <> show wantS) | s /= wantS]
+            <> [Breach L13 i ("line " <> show (i + 1) <> " protrudes at its end by " <> show e <> ", not " <> show wantE) | e /= wantE]
+            <> [Breach L13 i ("line " <> show (i + 1) <> " protrudes by more than the advance of its character") | s > capS || e > capE]
+    | (i, l) <- zip [0 :: Int ..] (linesOf p),
+      let (s, e) = lineProtrusion l
+          hyphenEnd = case breakItem p i of
+            Just (Penalty _ _ (PatternHyphen q)) | i < length (linesOf p) - 1 -> Just q
+            _ -> Nothing
+          wantS = maybe 0 bcProtrudeStart (firstBox l)
+          wantE = fromMaybe (maybe 0 bcProtrudeEnd (lastBox l)) hyphenEnd
+          -- the advance of the character, as the composition reads it for the protrusion (golem-layout ADR 0014)
+          adv c ch = L.zwToSp (pSize p) (pAdvance p (lookClass (bcLook c) ch == Western) ch)
+          capS = maybe 0 (\c -> maybe 0 (adv c . fst) (T.uncons (baseOf c))) (firstBox l)
+          capE = case hyphenEnd of
+            Just _ -> L.zwToSp (pSize p) (pAdvance p True '-')
+            Nothing -> maybe 0 (\c -> maybe 0 (adv c . snd) (T.unsnoc (baseOf c))) (lastBox l)
+    ]
+
+-- | Every invariant, with its check.
+lineInvariants :: [(LineInvariant, Check)]
+lineInvariants =
+  [ (L1, l1AllOnce),
+    (L2, l2LineStart),
+    (L3, l3LineEnd),
+    (L4, l4Inseparable),
+    (L5, l5Width),
+    (L6, l6Justified),
+    (L7, l7Optimal),
+    (L8, l8InsideWords),
+    (L9, l9Hyphens),
+    (L10, l10Spaces),
+    (L11, l11Aki),
+    (L12, l12Expansion),
+    (L13, l13Protrusion)
+  ]
+
+-- | The breaches of a paragraph, L7 brute-forcing up to the number of breaks given.
+breaches :: Int -> Paragraph -> [Breach]
+breaches limit p = concat [check limit p | (_, check) <- lineInvariants]

@@ -140,6 +140,12 @@ golem-layout のテストの「every input」が落ちたら、表示された�
 3. 期待する出力を、違反した不変条件（表示の `I1` から `I8`）が求める配置に書き直す。今の出力のままにすると、不具合を固定するテストになる。
 
 すぐに直さない違反は、例を貼らずに、仕様書の「既知の不具合」と docs/roadmap.md に項目を足し、`PaginateInvariantsSpec.hs` の `knownBugs` に、入力の形の条件と除く入力の数を足す。
+
+行分割の規則も、小さな入力のすべてで不変条件として確かめる（[docs/adr/0209](./docs/adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md)）。
+「line breaking invariants on every small input」の「every input」が落ちたら、「As a case of LineBreakingSpec:」の後の `testCase` を、`modules/golem-layout/test/LineBreakingSpec.hs` か `InseparableSpec.hs` に貼る。
+表示は、その入力（`LineBreakEnum` の `Input`）を `breakInput` で組む式と、今の各行の字である。
+貼る側に `import LineBreakEnum` を足し、期待する行を、違反した不変条件（表示の `L1` から `L13`）が求める分け方に書き直す。
+すぐに直さない違反は、改ページと同じく、`LineBreakInvariantsSpec.hs` の `lineBugs` に、入力の形の条件と除く入力の数を足す。
 数は、テストが表示する数をそのまま固定する。
 直す ADR が入ったら、その項目を `knownBugs` から消す。
 
@@ -153,6 +159,7 @@ golem-layout のテストの「every input」が落ちたら、表示された�
 | 範囲 | テスト | 上限 | 抜き取りの数 |
 |---|---|---|---|
 | 改ページ | `cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` | `GOLEM_ENUM_DEPTH`（プルリクエストは 3、毎晩は 5） | `GOLEM_ENUM_PAGINATION_SAMPLES`（プルリクエストは 0、毎晩は 500 万） |
+| 行分割 | `cabal test golem-layout-test --test-option=-p --test-option='/line breaking invariants on/'` | `GOLEM_ENUM_LINES_DEPTH`（プルリクエストは 2、毎晩は 3。2 までは 4 字までの行、3 からは 5 字までの行） | `GOLEM_ENUM_LINES_SAMPLES`（プルリクエストは 0、毎晩は 500 万） |
 
 たとえば `GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_PAGINATION_SAMPLES=100000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` のように、調べる要素の数を上げて走らせる。
 golem-layout のテストは `-threaded` で作り、入力をプロセッサの数に分けて調べる。

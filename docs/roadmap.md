@@ -99,6 +99,7 @@ v1.0.0 の後、v2 より前の minor のバージョンで扱う事項である
 - **評価と書き出しを分けること**：golem-lsp のライブラリは、golem-driver から評価とその結果の補助と lint だけを使い、PDF の組版を使わない。それでも、評価と書き出しが一つのモジュール `Golem.Driver` にあるので、golem-lsp は golem-driver を通して golem-typeset にも依存する。PDF の組版を golem-typeset に分けたときに、評価の部分が PDF のモジュールを使わないようにしたので、評価を別のパッケージに分けられる。`Evaluated` の型と、評価と書き出しの両方が使う補助（`docStyles`、`localStylesOf`、`runningVars` など）の境目を読み、ADR で決める（[ADR 0192](adr/0192-split-pdf-typesetting-from-golem-driver.md)）。
 
 - **不変条件のテストで見つかった改ページの不具合**：仕様書の「既知の不具合」の「`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる」を直す。空きを `@need-lines` の次のブロックに数えるかを ADR で決める（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の抜き取りで見つかった）。
+- **不変条件のテストで見つかった行分割の不具合**：仕様書の「既知の不具合」の「語間の空白の隣の禁則と分離禁止」、「字幅の伸縮の刻みで行長を超える行」、「明示のハイフンの後の分割と両用の字の禁則」を、それぞれ ADR を作って直す（[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の列挙で見つかった）。三つめは、明示のハイフンの後の分割の規則と両用の字の禁則のどちらを優先するかを先に決める。
 - **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲の ADR はまだない。上から順に、前の範囲の結果を見て書く。
   - **表の列の幅**：`Golem.Layout.Table` の列の幅（列ごとの最小の幅と自然な幅、使える幅）を整数の小さな組で列挙し、列の幅の和と最小の幅の不変条件で確かめる（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。
   - **パーサーと `golem fmt` の往復**：文法から作る短い原稿を列挙し、`golem fmt` の往復と diagnostics の位置の不変条件で確かめる。peg-hs の文法を読んで原稿を作る部品が先に要る。

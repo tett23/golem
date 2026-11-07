@@ -406,6 +406,13 @@ golem-layout のテストは、段の行の数が 3 から 5、段の数が 1 �
 仕様書の「既知の不具合」に載っている違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
 数が変われば、テストが落ちる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md]（docs/adr の ADR 0204「ページ分割の不変条件を、小さな入力のすべてで確かめる」）]
 
+行分割の規則も、同じやり方で確かめる。
+和文の文字クラスごとの一字、欧文の語、語間の空白、欧文の約物の 23 の部品を並べた段落を、組み方の環境と行の幅のすべてで組み、仕様書の行分割の規則を述語にした L1 から L13 が成り立つことを確かめる。
+字の送りはフォントを使わず、欧文の字を三通りの幅にした表で決める。
+L7 は、分割の候補の部分集合をすべて調べる素朴な探索と、罰点の和の最小を比べる。
+プルリクエストの CI では部品 2 個までを 4 字までの行で調べ、[code: enum.yml] は毎晩、環境変数 [code: GOLEM_ENUM_LINES_DEPTH=3] で部品 3 個までを 5 字までの行で調べ、[code: GOLEM_ENUM_LINES_SAMPLES] で部品 4 個の段落を 500 万抜き取る。
+違反があれば、テストは最も小さい入力を、[code: LineBreakingSpec] の例に貼れる形で表示する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md]（docs/adr の ADR 0209「和文と欧文の行分割の不変条件を、小さな入力のすべてで確かめる」）]
+
 ## 取り消しと時間
 
 同じプルリクエストに新しいコミットを push すると、走っている前の実行は取り消される。
