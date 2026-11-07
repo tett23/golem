@@ -180,7 +180,7 @@ tests =
               isCodeShape c && stage (DiagnosticCode c) `elem` stages (T.take 1 c)
         [c | c <- noticeCodes <> infoCodes <> profileDependentCodes <> preflightCodes, not (shaped c)] @?= []
         -- the stage that gives each of them
-        map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "02", "03", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "07", "08", "02"]
+        map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "02", "03", "03", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "07", "08", "02"]
         map stage infoCodes @?= ["07", "05"]
         map stage profileDependentCodes @?= ["05", "03", "08"]
         assertBool "preflight is 09" (all ((== "09") . stage) preflightCodes),
@@ -222,7 +222,7 @@ noticeTests =
       testCase "the wording of the shape of a code names G and E (docs/adr/0176)" $
         map (`T.isInfixOf` codeShapeWording) ["G", "E", "5 桁の数字"] @?= [True, True, True],
       testCase "the initial notice codes" $
-        noticeCodes @?= map DiagnosticCode ["G02062", "G02063", "G02064", "G02065", "G02079", "G02094", "G02108", "G03023", "G03100", "G04007", "G04008", "G04009", "G04011", "G07030", "G07039", "G07045", "G07046", "G07100", "G07101", "G08008", "E02109"],
+        noticeCodes @?= map DiagnosticCode ["G02062", "G02063", "G02064", "G02065", "G02079", "G02094", "G02108", "G03023", "G03100", "G03120", "G04007", "G04008", "G04009", "G04011", "G07030", "G07039", "G07045", "G07046", "G07100", "G07101", "G08008", "E02109"],
       testCase "a notice early in the file comes after an error late in it" $ do
         let n = notice "G02065" (mkSpan (FileId 0) 0 1) "n"
             e = diagnostic "G02001" Error (mkSpan (FileId 1) 50 51) "e"

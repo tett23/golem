@@ -66,6 +66,8 @@ data Manifest = Manifest
     manifestBibliography :: ![FilePath],
     -- | the [source] table (docs/adr ADR 0013)
     manifestSource :: !SourceSettings,
+    -- | whether [source] writes paragraph-separator; without it G03120 (docs/adr/0193)
+    manifestParagraphSeparatorWritten :: !Bool,
     -- | [diagnostics] silence-notices: codes of notices not shown (golem-syntax ADR 0002)
     manifestSilencedNotices :: !(Set DiagnosticCode),
     -- | [diagnostics] silence-info: codes of infos not shown, even with --verbose (docs/adr 0104)
@@ -262,6 +264,7 @@ instance FromValue Manifest where
           manifestFilters = fromMaybe [] fl,
           manifestBibliography = maybe [] (map T.unpack) bib,
           manifestSource = applyEdits (maybe [] sourceTableEdits src) defaultSourceSettings,
+          manifestParagraphSeparatorWritten = any ((== "paragraph-separator") . seKey) (maybe [] sourceTableEdits src),
           manifestSilencedNotices = maybe Set.empty silenced dg,
           manifestSilencedInfo = maybe Set.empty silencedInfo dg,
           manifestRequiredFiles = fns >>= \(FunctionsTable fs) -> fs

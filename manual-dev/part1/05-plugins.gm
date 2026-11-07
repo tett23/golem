@@ -147,11 +147,34 @@ WASI がないので、標準入出力やファイルを使うライブラリは
 読み込みの時点で、ホストは [code: golem_abi_version] を呼び、ホストの ABI のバージョンと比べる。
 今の ABI のバージョンは 8 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
 一致しなければ、読み込みの時点でエラー（G06005）になる。
+ABI のバージョンをいつ上げるかは、「[ref-title plugin-abi-notice]」の節で説明する。
 続けて [code: golem_describe] を呼び、プラグインが提供するコマンドとフィルタの名前と、宣言するチャネルを得る。
 チャネルの名前が予約した名前か形の誤った名前であるか、二つのプラグインが同じチャネルを宣言すると、G06012 のエラーになる。
 プラグインが [code: golem_check_data] を公開していれば、データを読んだ後に一度だけ呼ぶ。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0120-plugin-data-check-at-load.md]（docs/adr/0120「プラグインのデータを読み込みで一度だけ検査する」）]
 呼び方は [code: golem_invoke] と同じである。
 データの誤りをここで返せば、コマンドを書いた箇所の数によらず一度だけ報告され、コマンドを一度も書いていない本でも報告される。
+
+@label plugin-abi-notice
+## ABI のバージョンの上げ方と予告
+
+ABI のバージョンは、リリース（プレリリースを含む）を単位に上げる。
+ABI を変えたとき、今のバージョンがすでにリリースに含まれていれば一つ上げ、二つのリリースのあいだで二つ以上は上げない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0052-plugin-abi-version-bump-rule.md]（docs/adr の ADR 0052「プラグインの ABI のバージョンは、リリースしたバージョンからだけ上げる」）]
+意味論 IR は ABI の一部なので、IR を変えれば ABI も変わる。
+
+1.0.0 からは、ABI を予告した後でだけ変える。[index reading=ごかんせい: 互換性][note: [style url: https://github.com/tett23/golem/blob/main/docs/compatibility.md]（互換性の文書。ADR 0174「1.0.0 から互換を守る範囲と、廃止の手順」で決めた）]
+
++ ABI を変える ADR で、変更の中身を決める。
++ その ADR の後の最初の minor のリリースで、変更を予告する。予告は、互換性の文書 [code: docs/compatibility.md] の「予告している ABI の変更」の節と、リリースノートの「予告」の項に書く。このリリースでは ABI をまだ変えない。
++ 予告を載せたリリースより後の minor のリリースで、ABI を変え、ABI のバージョンを一つ上げる。
+
+予告は、新しい ABI のバージョンの番号を見出しにし（[code: ### ABI のバージョン 9] の形）、変わる CDDL の規則とその差分、変わる要求と応答、プラグインの側で直すこと、元になった ADR を書く。
+patch のバージョンは ABI を変えない。
+major のバージョンは、予告なしに ABI を変えてよい。
+ABI を変えたバージョンでは、古い ABI のプラグインは読み込めない。
+ホストが二つ以上の ABI のバージョンのプラグインを読み込むことはないので、プラグインの作者は、予告を見て、変更の後のバージョンに合わせて作り直す。
+
+CI の [code: changes] ジョブの [code: scripts/ci/abi-version.sh] は、ABI を変えたときにバージョンが一つ上がっていることを確かめる。
+直前のリリースが 1.0.0 以降なら、直前のリリースの互換性の文書に予告の見出しがあることと、patch のバージョンで ABI を変えていないことも確かめる。
 
 ## 受け渡す CBOR
 

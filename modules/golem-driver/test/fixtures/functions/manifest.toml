@@ -17,3 +17,6 @@ file = ["data/words.tsv"]
 function = "fn/book.emet"
 filter = "mark-first"
 files = ["a.gm"]
+
+[source]
+paragraph-separator = "blank-line"
