@@ -425,7 +425,7 @@ linkTests tinyJpeg =
           m = b + 2415027
       pageAnnots framed @?= [LinkAnnotation (Rect m m 65536 65536) (UriAction "https://example.com/")],
     testCase "X4.verify: the URI of the action of a link annotation is not a forbidden name" $ do
-      let objs = documentObjects (documentWith tinyJpeg [annotated "https://example.com/"]) {docPdfX = Just (PdfX "fake" "JC200103" [] [])}
+      let objs = documentObjects (documentWith tinyJpeg [annotated "https://example.com/"]) {docPdfX = Just (PdfX "fake" "JC200103" [] [] Nothing)}
       verify objs @?= []
       -- a /URI elsewhere (the base URI of the catalog) is reported as before
       let catalogUri = objs {pdfObjects = map (\case ODict kvs | lookup "Type" kvs == Just (OName "Catalog") -> ODict (kvs <> [("URI", ODict [("Base", OStr "https://example.com/")])]); o -> o) (pdfObjects objs)}
