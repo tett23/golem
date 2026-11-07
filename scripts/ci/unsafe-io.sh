@@ -6,7 +6,8 @@
 #   unsafe-io.sh [ROOT]
 #
 # A use is FILE:NAME, NAME being the top-level definition it is in, for the
-# Haskell files under ROOT/modules/*/src and ROOT/modules/*/app (tests are
+# Haskell files under ROOT/modules/*/src, ROOT/modules/*/src-* (the
+# sources a flag of cabal chooses, docs/adr/0199) and ROOT/modules/*/app (tests are
 # not checked). A use in an instance, a class or another declaration is
 # FILE:DECLARATION, the line that starts it up to its where (FILE:instance
 # Show T, say). Imports, comments, strings and characters are not uses; a
@@ -24,7 +25,7 @@ LIST=$ROOT/scripts/ci/unsafe-io-allowed.txt
 WORK=$(mktemp -d)
 trap 'rm -rf "${WORK:?}"' EXIT
 
-(cd "$ROOT" && find modules -path 'modules/*/src/*' -name '*.hs' -o -path 'modules/*/app/*' -name '*.hs') | LC_ALL=C sort | while read -r f; do
+(cd "$ROOT" && find modules -path 'modules/*/src/*' -name '*.hs' -o -path 'modules/*/src-*/*' -name '*.hs' -o -path 'modules/*/app/*' -name '*.hs') | LC_ALL=C sort | while read -r f; do
   LC_ALL=C awk -v file="$f" -v q="'" '
     BEGIN {
       ident = "[A-Za-z0-9_" q "]"

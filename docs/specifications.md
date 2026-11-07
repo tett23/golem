@@ -419,6 +419,16 @@ golem-project は、プロジェクトのファイルの読み方を表す値 `F
 golem-driver の `buildPdfInMemory` は、表のファイルから `golem build --target pdf` と同じ手順で PDF を組み、何も書き込まずに、PDF のバイト列と diagnostics を返す。
 PDF と diagnostics の JSON は、同じファイルを `golem build --target pdf --format json` で組んだものと同じになる。
 
+golem-driver の cabal は、プラグインの機能を外すフラグ `plugins` を持つ（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
+既定は真で、golem-plugin に依存し、`src-plugins/` の `Golem.Driver.Plugins` と `Golem.Driver.New`（`golem new`）を組む。
+偽のときは golem-plugin に依存せず、`src-no-plugins/` の `Golem.Driver.Plugins` を組み、`Golem.Driver.New` を組まない。
+二つの `Golem.Driver.Plugins` は同じ名前と型を export し、`Golem.Driver` と `Golem.Driver.Functions` が使う golem-plugin の型と値（`HostContext`、`defaultCacheDir`、`maxDataBytes`）も、このモジュールを通して取り込む。
+プラグインのない版は、`HostContext` を同じ形の型として、`maxDataBytes` を同じ値として持つ。
+プラグインのない版で組んだプロジェクトに `[plugins]` もプラグインのフィルタの `[[filters]]` もなければ、プラグインのある版と同じく、プラグインなしで `.emet` のフィルタだけを掛ける。
+どちらかがあれば、`manifest.toml` の先頭に G06106 のエラーを一つ出す。
+golem-cli と golem-lsp は golem-plugin に直接依存するので、フラグを使わない。
+フラグを偽にするのは wasm のビルドだけである。
+
 処理は `parse → eval → 意味論 IR → 各バックエンド` の順に流れ、分岐点は意味論 IR である（「処理の流れ」の節を参照）。
 
 PDF 経路と Web 経路は対称ではない。
@@ -4409,7 +4419,7 @@ path = "plugins/local.wasm"
 - 取得した配布物はハッシュをキーに手元にキャッシュし、キャッシュがあればビルドはネットワークに接続しない。
 - `plugins.lock` の更新は、ユーザーが明示的に指示したときだけ行う。
 
-プラグインの読み込みと検査の誤りは、G06002 から G06012 と G06101 から G06105 の diagnostic で報告する（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)、[docs/adr/0105](adr/0105-plugin-data.md)、[docs/adr/0109](adr/0109-local-plugin-path.md)、[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)）。
+プラグインの読み込みと検査の誤りは、G06002 から G06012 と G06101 から G06106 の diagnostic で報告する（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)、[docs/adr/0105](adr/0105-plugin-data.md)、[docs/adr/0109](adr/0109-local-plugin-path.md)、[docs/adr/0121](adr/0121-host-context-in-plugin-requests.md)、[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
 プラグインが応答で返す diagnostic は、次の規則で検査する（[docs/adr/0108](adr/0108-plugin-diagnostic-codes-and-spans.md)）。
 
 - コードは英小文字で始まり、英小文字、数字、`-` だけからなる列（データの名前と同じ形。[docs/adr/0139](adr/0139-plugin-diagnostic-code-starts-with-letter.md)）とし、ホストがその前に `manifest.toml` のプラグインの宣言の名前と `/` を置く。`lookup` と宣言したプラグインの `no-key` は `lookup/no-key` になる。ほかの形のコード（`G02022`、`Lookup/x`、`404`、`-x` など）は、不正な出力（G06009）にする。
