@@ -1,9 +1,11 @@
 name: Enum
 
-# The invariants of pagination on every small input, up to more elements
-# than the pull requests check (docs/adr/0204): once a day on main, on the
-# days main has changed since the last successful run of this workflow,
-# and whenever it is started by hand.
+# The invariants on every small input, up to more elements than the pull
+# requests check (docs/adr/0204, docs/adr/0208): once a day on main, on
+# the days main has changed since the last successful run of this
+# workflow, and whenever it is started by hand. One step for each area,
+# with its depth and the inputs it draws past the depth; all the steps
+# together within 60 minutes (docs/adr/0208, its section 4).
 on:
   schedule:
     - cron: "47 18 * * *"
@@ -104,10 +106,17 @@ jobs:
           path: dist-newstyle
           key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-${{ github.sha }}
           restore-keys: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-
-      # every input of up to GOLEM_ENUM_DEPTH elements; the pull requests
-      # check up to the depth of PaginateInvariantsSpec.prDepth
-      - name: The pagination invariants on every small input (docs/adr/0204)
+      # built apart, so that the time of each step below is its tests'
+      - name: Build the test suites
+        if: steps.needed.outputs.run == 'true'
+        run: cabal build golem-layout-test
+      # pagination: every input of the shortened enumeration of up to
+      # GOLEM_ENUM_DEPTH elements, and inputs of one element more drawn from
+      # the enumeration of docs/adr/0204; the pull requests check up to the
+      # depth of PaginateInvariantsSpec.prDepth and draw none
+      - name: The pagination invariants on every small input (docs/adr/0204, docs/adr/0208)
         if: steps.needed.outputs.run == 'true'
         env:
-          GOLEM_ENUM_DEPTH: "5"
-        run: cabal test golem-layout-test --test-option=-p --test-option='/every input/'
+          GOLEM_ENUM_DEPTH: "6"
+          GOLEM_ENUM_PAGINATION_SAMPLES: "5000000"
+        run: cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'

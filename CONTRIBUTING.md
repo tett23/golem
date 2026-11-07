@@ -143,7 +143,19 @@ golem-layout のテストの「every input」が落ちたら、表示された�
 数は、テストが表示する数をそのまま固定する。
 直す ADR が入ったら、その項目を `knownBugs` から消す。
 
-手元では `GOLEM_ENUM_DEPTH=5 cabal test golem-layout-test --test-option=-p --test-option='/every input/'` のように、調べる要素の数を上げて走らせる。
+毎晩の `enum.yml` は、すべての入力を調べる上限の一つ上の段から、入力を抜き取って調べる（[docs/adr/0208](./docs/adr/0208-widen-lightweight-formal-methods.md)）。
+抜き取りで見つけた違反は、最も小さいとは限らないので、テストが違反の残るかぎり要素を一つずつ取り除き、残った入力を同じ形で表示する。
+その入力も、上の手順で例にする。
+取り除いた後の入力は局所的に最も小さいだけなので、すべての入力を調べる上限を上げて、より小さい入力が見つかればそれを例にする。
+
+範囲ごとの列挙のテストは、手元では範囲ごとの環境の変数で上限と抜き取りの数を変えて走らせる。
+
+| 範囲 | テスト | 上限 | 抜き取りの数 |
+|---|---|---|---|
+| 改ページ | `cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` | `GOLEM_ENUM_DEPTH`（プルリクエストは 3、毎晩は 6） | `GOLEM_ENUM_PAGINATION_SAMPLES`（プルリクエストは 0、毎晩は 500 万） |
+
+たとえば `GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_PAGINATION_SAMPLES=100000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` のように、調べる要素の数を上げて走らせる。
+golem-layout のテストは `-threaded` で作り、入力をプロセッサの数に分けて調べる。
 
 Golem は、同じ入力から常に同じバイト列を出力する。
 出力を変える変更は、x86-64 と aarch64 で同じ結果になることを CI の `determinism` ジョブで確かめる。

@@ -124,7 +124,19 @@ A breach not fixed at once gets no example: add an item to "既知の不具合" 
 Pin the number the test prints.
 Remove the item from `knownBugs` when the ADR that fixes it is in.
 
-Locally, raise the number of elements checked, as in `GOLEM_ENUM_DEPTH=5 cabal test golem-layout-test --test-option=-p --test-option='/every input/'`.
+The nightly `enum.yml` also draws inputs from the tier one past the depth checked in full ([docs/adr/0208](./docs/adr/0208-widen-lightweight-formal-methods.md)).
+A breach found in an input drawn is not the smallest, so the test takes elements out one at a time as long as the breach stays, and shows what is left in the same form.
+Turn that input into an example by the same steps.
+It is only locally the smallest: raise the depth checked in full, and if a smaller input breaks the invariant, use that one.
+
+Locally, each area's enumeration test takes its depth and its number of inputs drawn from its own environment variables.
+
+| Area | Test | Depth | Inputs drawn |
+|---|---|---|---|
+| Page breaking | `cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` | `GOLEM_ENUM_DEPTH` (3 on pull requests, 6 nightly) | `GOLEM_ENUM_PAGINATION_SAMPLES` (0 on pull requests, 5,000,000 nightly) |
+
+For example, raise the number of elements checked, as in `GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_PAGINATION_SAMPLES=100000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'`.
+The tests of golem-layout are built with `-threaded` and share the inputs among the processors.
 
 Golem always produces the same bytes from the same input.
 Changes that affect output are checked by the `determinism` job in CI, which compares x86-64 and aarch64.

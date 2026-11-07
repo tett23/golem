@@ -97,6 +97,13 @@ v1.0.0 の後、v2 より前の minor のバージョンで扱う事項である
 - **より複雑な組版の fixture**：v0.1.0-rc4 で作る二冊の fixture（縦組みの一段の本と、横組みの二段の本）より複雑な組版の例を作り、fixture に入れる。二冊が組み合わせていない機能、たとえば縦組みの本文の段組みや、章ごとの書字方向と段数の切り替えのように後から足す機能を組み合わせ、機能のあいだの相互作用を、出力のゴールデン、決定性の検査、見た目の回帰テストで固定する。どの組み合わせを足すかと、fixture の数と大きさは、着手するときに ADR で決める。
 - **評価と書き出しを分けること**：golem-lsp のライブラリは、golem-driver から評価とその結果の補助と lint だけを使い、PDF の組版を使わない。それでも、評価と書き出しが一つのモジュール `Golem.Driver` にあるので、golem-lsp は golem-driver を通して golem-typeset にも依存する。PDF の組版を golem-typeset に分けたときに、評価の部分が PDF のモジュールを使わないようにしたので、評価を別のパッケージに分けられる。`Evaluated` の型と、評価と書き出しの両方が使う補助（`docStyles`、`localStylesOf`、`runningVars` など）の境目を読み、ADR で決める（[ADR 0192](adr/0192-split-pdf-typesetting-from-golem-driver.md)）。
 
+- **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲の ADR はまだない。上から順に、前の範囲の結果を見て書く。
+  - **表の列の幅**：`Golem.Layout.Table` の列の幅（列ごとの最小の幅と自然な幅、使える幅）を整数の小さな組で列挙し、列の幅の和と最小の幅の不変条件で確かめる（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。
+  - **パーサーと `golem fmt` の往復**：文法から作る短い原稿を列挙し、`golem fmt` の往復と diagnostics の位置の不変条件で確かめる。peg-hs の文法を読んで原稿を作る部品が先に要る。
+  - **位置の変換**：UTF-16 の列、`pages.json`、LSP の位置の変換を、サロゲートペアを含む短い文字列の列挙で確かめる。
+  - **長さの換算と丸め**：golem-length と `headingBlock` の丸めを、整数の範囲の列挙で確かめる。SBV を golem-length のテストにだけ入れるかを、この範囲の ADR で決める。
+  - **ページ分割の残りの要素**：罫線、コード、段の切り替え、手での制御を、改ページの列挙の要素に足す。
+
 ## v2 以降に回した事項
 
 v1 の範囲から外し、v2 以降に送ると決めた事項である。
@@ -221,7 +228,7 @@ v3 の GUI は、次の原則に従って作る。
 - **EPUB の検査と読書環境での見え方**：別のファイルの参考文献への引用のリンク、ナビゲーション文書の深さ、プラグインの独自のチャネルを使った EPUB を epubcheck にかけて RSC-012 などが出ないことと、ブラウザと読書環境で見え方を確かめていない（[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）。
 - **タグ付き PDF の読み上げ**：タグ付き PDF を、macOS の VoiceOver と Acrobat Reader、Windows の NVDA と Acrobat Reader で読み、縦組みの本文、ルビ（親文字の後に読み）、注（印の直後に注の本文）の読む順と、図版の代替テキストが読まれることを確かめていない。veraPDF が調べるのは PDF/UA-1 のうち自動で調べられる要件だけである（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
 - **PDF のリンクの注釈**：リンクを含む横組みと縦組みの PDF を、Acrobat Reader、macOS のプレビュー、Chrome の PDF ビューアで開き、リンクの矩形をクリックして URL が開くことを確かめていない。ISO 15930-7:2010（PDF/X-4）の本文で、注釈と URI のアクションを禁じる規定がないことも確かめていない。禁じる規定があれば、`[color] intent` のある本にリンクを書く扱いを改める ADR を作る（[docs/adr/0182](adr/0182-external-links.md)）。
-- **改ページの規則の Alloy のモデル**：改ページの規則を変える ADR では、`docs/golem-layout/models/pagination.als` のモデルを直して走らせ直し、両立しない規則の組と最も小さい例を `docs/golem-layout/models/README.md` に書き直す。モデルは CI で走らせないので、手で確かめる（[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)）。
+- **規則の Alloy のモデル**：規則を足すか変える ADR のうち、その範囲に Alloy のモデル（`docs/<モジュール>/models/`）があるものは、モデルを直して走らせ直し、両立しない規則の組と最も小さい例をモデルの README と ADR の「テスト設計」に書く。今モデルがあるのは改ページ（`docs/golem-layout/models/pagination.als`、結果は `docs/golem-layout/models/README.md`）だけである。モデルのない範囲では、規則が三つ以上のほかの規則と端で重なる ADR だけが、新しくモデルを書く。モデルは CI で走らせないので、手で確かめる（[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)、[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 5）。
 - **wasm の版のリリース**：`release.yml` のジョブ `wasm` を実際のタグで動かしていない。自動のテスト（`scripts/release/test.sh`）は、`licenses.sh --wasm` と `package-wasm.sh` を偽のコマンドと偽の入力で確かめただけである。`v` のタグの下書きのリリースに `golem-<タグ>-wasm32-wasi.tar.gz` があり、その `THIRD_PARTY_LICENSES/` が [ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md) の 8 の挙げるものを持ち、`SHA256SUMS` と `gh attestation verify` が通ることを確かめる（[docs/adr/0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
 - **wasm の版をブラウザで組むこと**：`browser_wasi_shim` を使い、Safari と Chrome で kanikosen を組み、PDF の SHA-256 がネイティブの `golem build --target pdf` と同じになることを確かめていない。CI は Node の `node:wasi` で確かめるだけである。結果をこの項目に書き、項目を外す（[docs/adr/0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
 - **epubcheck と apt の時間切れ**：epubcheck を配布元の release から取るようにした後の 30 回の `ci.yml` の実行で、apt と epubcheck の時間切れが一度も起きないことを確かめていない。結果は `docs/ci-timings/` に記録する（[docs/adr 0062](adr/0062-epubcheck-from-release-with-cache.md)）。

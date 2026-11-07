@@ -56,6 +56,10 @@ test-suite golem-layout-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  -- the invariants on every small input are checked on every processor
+  -- (docs/adr/0208): -threaded, and the parallel GC off with a larger
+  -- allocation area, without which the processors share less of the work
+  ghc-options:      -threaded "-with-rtsopts=-N -qg -A64m"
   other-modules:    AlignSpec
                     CodeSpaceSpec
                     CombiningSpec

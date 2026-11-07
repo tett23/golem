@@ -1,12 +1,25 @@
+-- the enumerations are built in the tests that check them, and must not
+-- be floated out into values that live as long as the program: those
+-- would hold every input checked (docs/adr/0208)
+{-# OPTIONS_GHC -fno-full-laziness -fno-cse #-}
+
 {- | The invariants of pagination checked on every small input
 (docs/adr/0204): the enumeration of the inputs, the predicates I1 to I8
 on outputs made by hand, and every input up to the depth of
 @GOLEM_ENUM_DEPTH@ elements, with the known bugs excluded by an explicit
 list whose counterexamples are counted.
+
+The enumeration is the one shortened by docs/adr/0208 (its section 3):
+columns of 3 to 5 grid lines and figures of 1, C − 1 and C lines, checked
+on every processor in one scan that also counts the known bugs. The
+inputs it leaves out are drawn from the enumeration of docs/adr/0204,
+one element past the depth: @GOLEM_ENUM_PAGINATION_SAMPLES@ of them.
 -}
 module PaginateInvariantsSpec (invariantTests, prDepth, KnownBug (..), knownBugs) where
 
-import Data.List (intercalate)
+import Data.List (intercalate, nub)
+import Data.Set qualified as Set
+import Data.Word (Word64)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Paginate
 import Golem.TestSupport.Enum
@@ -36,13 +49,27 @@ prDepth = 3
 
 -- | The depth: GOLEM_ENUM_DEPTH, a whole number of 0 or more, or 'prDepth'.
 enumDepth :: IO Int
-enumDepth =
-  lookupEnv "GOLEM_ENUM_DEPTH" >>= \case
-    Nothing -> pure prDepth
-    Just "" -> pure prDepth
+enumDepth = wholeNumber "GOLEM_ENUM_DEPTH" prDepth
+
+{- | The inputs drawn one element past the depth (docs/adr/0208):
+GOLEM_ENUM_PAGINATION_SAMPLES, or none.
+-}
+enumSamples :: IO Int
+enumSamples = wholeNumber "GOLEM_ENUM_PAGINATION_SAMPLES" 0
+
+-- | The seed of the inputs drawn: the same inputs on every run of a commit.
+sampleSeed :: Word64
+sampleSeed = 0x0208
+
+-- | A variable that holds a whole number of 0 or more, or the default when it is unset or empty.
+wholeNumber :: String -> Int -> IO Int
+wholeNumber name def =
+  lookupEnv name >>= \case
+    Nothing -> pure def
+    Just "" -> pure def
     Just s -> case readMaybe s of
       Just n | n >= 0 -> pure n
-      _ -> assertFailure ("GOLEM_ENUM_DEPTH is not a whole number of 0 or more: " <> show s)
+      _ -> assertFailure (name <> " is not a whole number of 0 or more: " <> show s)
 
 enumerationTests :: [TestTree]
 enumerationTests =
@@ -54,11 +81,11 @@ enumerationTests =
       [n | EFigure n <- elementsFor 3] @?= [1 .. 3],
     testCase "in columns of 3 grid lines, the flows of up to 2 elements are as many as the elements allow" $ do
       let m = length (elementsFor 3)
-          made = [i | t <- upTo 2 inputs, i <- t, inLines i == 3]
+          made = [i | t <- upTo 2 fullInputs, i <- t, inLines i == 3]
       length made @?= 2 * sum [m ^ n | n <- [0 .. 2 :: Int]]
       length [i | i <- made, inColumns i == 2] @?= sum [m ^ n | n <- [0 .. 2 :: Int]],
     testCase "tier n holds the flows of n elements, over 6 sizes of column and 2 numbers of columns" $
-      map length (upTo 2 inputs) @?= [12, sum [2 * length (elementsFor c) | c <- [3 .. 8]], sum [2 * length (elementsFor c) ^ (2 :: Int) | c <- [3 .. 8]]],
+      map length (upTo 2 fullInputs) @?= [12, sum [2 * length (elementsFor c) | c <- [3 .. 8]], sum [2 * length (elementsFor c) ^ (2 :: Int) | c <- [3 .. 8]]],
     testCase "the lines are numbered from 0 in the order of the flow, the figures from 1000" $
       enumFlows [EPara 2, EFigure 3, ENotedHeading, ESpace, EBreak, EFigure 1, ERecto]
         @?= [ FParagraph [LineBox 0 [] [] [] 0, LineBox 1 [] [] [] 0],
@@ -68,8 +95,50 @@ enumerationTests =
               FBreak BreakPage,
               FFigure 1001 1 [] [],
               FHeading 1 True 1 [LineBox 3 [] [] [] 0]
+            ],
+    testCase "the shortened enumeration has columns of 3 to 5 grid lines, and figures of 1, C - 1 and C lines (docs/adr/0208)" $ do
+      [n | EFigure n <- shortElementsFor 3] @?= [1, 2, 3]
+      [n | EFigure n <- shortElementsFor 4] @?= [1, 3, 4]
+      [n | EFigure n <- shortElementsFor 5] @?= [1, 4, 5]
+      [e | e <- shortElementsFor 5, not (isFigure e)] @?= [e | e <- elementsFor 5, not (isFigure e)]
+      nub [(inLines i, inColumns i) | i <- concat (upTo 1 inputs)] @?= [(c, k) | c <- [3 .. 5], k <- [1, 2]]
+      map length (upTo 3 inputs) @?= [6, 96, 1536, 24576],
+    testCase "E5: each input of the shortened enumeration up to 3 elements is in the same tier of the enumeration of docs/adr/0204" $
+      sequence_
+        [ assertBool ("tier " <> show k <> ": " <> show i) (show i `Set.member` full)
+        | (k, short, full) <- zip3 [0 :: Int ..] (upTo 3 inputs) (map (Set.fromList . map show) (upTo 3 fullInputs)),
+          i <- short
+        ],
+    testCase "E5: the shortened enumeration keeps the order of the enumeration of docs/adr/0204" $
+      sequence_
+        [ (k, short) @?= (k, filter (`elem` short) full)
+        | (k, short, full) <- zip3 [0 :: Int ..] (upTo 2 inputs) (upTo 2 fullInputs)
+        ],
+    testCase "E6: the smallest counterexamples of PR #641 are in the same tier of the shortened enumeration" $
+      sequence_
+        [ assertBool (name <> ": " <> show i) (i `elem` (upTo 4 inputs !! length (inElements i)))
+        | (name, i) <-
+            [ ("the heading past the figures (I6)", Input 3 1 [EPara 2, EFigure 2, EHeading, EPara 1]),
+              ("the heading at a recto after a figure sent on (I8)", Input 3 1 [EPara 1, EFigure 3, ERecto]),
+              ("the note of a heading after the figures sent on (I7)", Input 3 1 [EPara 1, EFigure 3, EFigure 1, ENotedHeading]),
+              ("the heading before a paragraph of three lines, before golem-layout ADR 0021 (I6)", Input 4 1 [EPara 1, EHeading, EPara 3])
             ]
+        ],
+    testCase "an input drawn has the elements given, from the enumeration of docs/adr/0204 (docs/adr/0208)" $ do
+      let drawn = sampleT 1 300 (drawInput 4)
+      length drawn @?= 300
+      assertBool "every input has 4 elements" (all ((== 4) . length . inElements) drawn)
+      assertBool "every element is of its column" (all (\i -> all (`elem` elementsFor (inLines i)) (inElements i)) drawn)
+      nub (map inLines drawn) `sameSet` [3 .. 8]
+      nub (map inColumns drawn) `sameSet` [1, 2]
+      assertBool "columns of 6 to 8 grid lines and figures left out of the shortened enumeration are drawn" (any (\i -> any (`notElem` shortElementsFor (inLines i)) (inElements i)) drawn)
+      drawn @?= sampleT 1 300 (drawInput 4)
   ]
+  where
+    isFigure = \case
+      EFigure _ -> True
+      _ -> False
+    sameSet as bs = assertBool (show as) (all (`elem` bs) as && all (`elem` as) bs)
 
 -- outputs made by hand
 
@@ -249,24 +318,72 @@ breachesOf input = breaches 1 (enumFlows (inElements input)) (paginateInput inpu
 
 -- | The breaches no known bug excuses.
 unexcused :: [KnownBug] -> Input -> [Breach]
-unexcused bugs input =
-  let excusing = [b | b <- bugs, kbShape b input]
-   in [br | br <- breachesOf input, not (any (\b -> kbExcuses b input br) excusing)]
+unexcused bugs input = fst (judged bugs input)
 
--- | How many inputs up to the depth each known bug excuses, in the order of the list.
-excusedCounts :: Int -> [KnownBug] -> [Int]
-excusedCounts depth bugs =
-  let excusedBy i =
-        let shaped = [b | b <- bugs, kbShape b i]
-            bs = if null shaped then [] else breachesOf i
-         in [not (null shaped) && kbShape b i && any (kbExcuses b i) bs | b <- bugs]
-   in foldl' (zipWith (\n e -> if e then n + 1 else n)) (map (const 0) bugs) (map excusedBy (concat (upTo depth inputs)))
+{- | The breaches no known bug excuses, and for each known bug, in the
+order of the list, whether it excuses a breach of the input: the input
+is laid out once for both (docs/adr/0208).
+-}
+judged :: [KnownBug] -> Input -> ([Breach], [Bool])
+judged bugs input =
+  let shaped = map (`kbShape` input) bugs
+      bs = breachesOf input
+      excuses b br = kbShape b input && kbExcuses b input br
+   in ( [br | br <- bs, not (any (`excuses` br) bugs)],
+        [sh && any (kbExcuses b input) bs | (b, sh) <- zip bugs shaped]
+      )
 
-report :: Int -> Input -> [Violation] -> String
-report k input vs =
+{- | The inputs each known bug excuses, in the order of the list. Strict,
+so that the count of millions of inputs is a list of numbers.
+-}
+newtype Excused = Excused [Int]
+  deriving stock (Eq, Show)
+
+instance Semigroup Excused where
+  Excused as <> Excused bs = let cs = add as bs in foldr seq () cs `seq` Excused cs
+    where
+      add (x : xs) (y : ys) = x + y : add xs ys
+      add xs [] = xs
+      add [] ys = ys
+
+instance Monoid Excused where
+  mempty = Excused []
+
+-- | The violations of an input and the known bugs that excuse it.
+judge :: [KnownBug] -> Input -> ([Violation], Excused)
+judge bugs input =
+  let (bs, excused) = judged bugs input
+   in (map (\b -> Violation (show (breachOf b)) (breachWhy b)) bs, Excused (map fromEnum excused))
+
+-- | Whether an input has a breach no known bug excuses.
+violates :: Input -> Bool
+violates = not . null . unexcused knownBugs
+
+{- | An input of n elements drawn from the enumeration of docs/adr/0204:
+its column of 3 to 8 grid lines, its pages of one or two columns, then
+each element.
+-}
+drawInput :: Int -> SplitMix -> (Input, SplitMix)
+drawInput n g0 =
+  let (c, g1) = oneOf [3 .. 8] g0
+      (k, g2) = oneOf [1, 2] g1
+      go 0 g = ([], g)
+      go m g = let (e, g') = oneOf (elementsFor c) g; (es, g'') = go (m - 1 :: Int) g' in (e : es, g'')
+      (els, g3) = go n g2
+   in (Input c k els, g3)
+
+{- | The input with elements taken out as long as it still breaks an
+invariant no known bug excuses ('shrinkList'): a counterexample drawn is
+not the smallest, and this one is smaller.
+-}
+shrinkInput :: Input -> Input
+shrinkInput (Input c k es) = Input c k (shrinkList (violates . Input c k) es)
+
+report :: String -> Input -> [Violation] -> String
+report what input vs =
   intercalate
     "\n"
-    ( ("the smallest input that breaks an invariant has " <> show k <> " elements:")
+    ( (what <> ":")
         : map (\v -> "  " <> violationRule v <> ": " <> violationDetail v) vs
           <> ["", "As a case of PaginateSpec:", "", renderCase name input]
     )
@@ -277,22 +394,48 @@ report k input vs =
 
 exhaustiveTests :: [TestTree]
 exhaustiveTests =
-  [ testCase "I1 to I8 hold for every input up to GOLEM_ENUM_DEPTH elements, but the known bugs" $ do
+  [ testCase "I1 to I8 hold for every input up to GOLEM_ENUM_DEPTH elements, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- enumDepth
-      case checkAll depth inputs (map (\b -> Violation (show (breachOf b)) (breachWhy b)) . unexcused knownBugs) of
+      -- built here, not in a value of its own, so that it is not held
+      case tallyAllPar depth (inputsOver [3 .. 5] shortElementsFor) (judge knownBugs) of
+        (Failed k input vs, _) -> assertFailure (report ("the smallest input that breaks an invariant has " <> show k <> " elements") input vs)
+        (Passed _, Excused counted) -> do
+          let wrong =
+                [ (kbItem b, lookup depth (kbCounts b), n)
+                | (b, n) <- zip knownBugs (counted <> repeat 0),
+                  lookup depth (kbCounts b) /= Just n
+                ]
+          if null wrong
+            then pure ()
+            else
+              assertFailure
+                ( "at depth "
+                    <> show depth
+                    <> ", the inputs a known bug excuses differ from the count pinned:\n"
+                    <> intercalate "\n" [item <> ": pinned " <> maybe "nothing" show pinned <> ", counted " <> show n | (item, pinned, n) <- wrong]
+                ),
+    testCase "I1 to I8 hold for every input drawn from the enumeration of docs/adr/0204 one element past GOLEM_ENUM_DEPTH, GOLEM_ENUM_PAGINATION_SAMPLES of them, but the known bugs" $ do
+      depth <- enumDepth
+      count <- enumSamples
+      let drawn = Tiers [sampleT sampleSeed count (drawInput (depth + 1))]
+      case checkAllPar 0 drawn (fst . judge knownBugs) of
         Passed _ -> pure ()
-        Failed k input vs -> assertFailure (report k input vs),
-    testCase "each known bug excuses as many inputs as pinned" $ do
-      depth <- enumDepth
-      let counted = zip knownBugs (excusedCounts depth knownBugs)
-          wrong = [(kbItem b, lookup depth (kbCounts b), n) | (b, n) <- counted, lookup depth (kbCounts b) /= Just n]
-      if null wrong
-        then pure ()
-        else
-          assertFailure
-            ( "at depth "
-                <> show depth
-                <> ", the inputs a known bug excuses differ from the count pinned:\n"
-                <> intercalate "\n" [item <> ": pinned " <> maybe "nothing" show pinned <> ", counted " <> show n | (item, pinned, n) <- wrong]
-            )
+        Failed _ input _ ->
+          let small = shrinkInput input
+           in assertFailure
+                ( report
+                    ( "an input drawn with "
+                        <> show (depth + 1)
+                        <> " elements breaks an invariant; with elements taken out as long as it still does, it has "
+                        <> show (length (inElements small))
+                    )
+                    small
+                    (fst (judge knownBugs small))
+                ),
+    testCase "a counterexample drawn is shrunk to one that breaks the invariant without any one of its elements" $ do
+      -- an input that breaks no invariant is left as it is; a predicate of
+      -- the input breaks with its elements taken out from the first on
+      shrinkInput (Input 3 1 [EPara 1, EPara 2]) @?= Input 3 1 [EPara 1, EPara 2]
+      let breaksWith4 (Input _ _ es) = length es >= 2 && EFigure 3 `elem` es
+      inElements (Input 3 1 (shrinkList (breaksWith4 . Input 3 1) [EPara 1, EFigure 3, EPara 2, EHeading])) @?= [EFigure 3, EHeading]
   ]
