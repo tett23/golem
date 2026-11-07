@@ -34,15 +34,19 @@
   <line x1="680" y1="278" x2="975" y2="342"/>
   <line x1="690" y1="278" x2="1160" y2="342"/>
   <line x1="290" y1="398" x2="290" y2="462"/>
-  <line x1="95" y1="398" x2="335" y2="702"/>
-  <line x1="300" y1="518" x2="350" y2="702"/>
+  <line x1="95" y1="398" x2="250" y2="582"/>
+  <path class="edge" d="M45,398 V800 H700 V758"/>
+  <line x1="290" y1="518" x2="290" y2="582"/>
+  <line x1="340" y1="518" x2="680" y2="702"/>
+  <line x1="290" y1="638" x2="340" y2="702"/>
+  <line x1="365" y1="625" x2="455" y2="715"/>
   <line x1="470" y1="398" x2="515" y2="462"/>
   <line x1="620" y1="398" x2="550" y2="462"/>
   <line x1="790" y1="398" x2="700" y2="582"/>
   <line x1="960" y1="462" x2="980" y2="398"/>
   <line x1="545" y1="518" x2="680" y2="582"/>
   <line x1="880" y1="518" x2="720" y2="582"/>
-  <line x1="680" y1="638" x2="390" y2="702"/>
+  <line x1="625" y1="610" x2="365" y2="610"/>
   <line x1="725" y1="638" x2="980" y2="702"/>
   <line x1="360" y1="758" x2="360" y2="822"/>
   <line x1="360" y1="878" x2="360" y2="942"/>
@@ -51,7 +55,7 @@
   <path class="edge" d="M460,278 V310 H990 V342"/>
   <path class="edge" d="M705,278 V296 H1262 V490 H1247"/>
   <path class="edge" d="M725,266 H900 V462"/>
-  <path class="edge" d="M385,264 H375 V610 H625"/>
+  <path class="edge" d="M385,264 H375 V560 H650 V582"/>
 
   <!-- nodes: center x, y; width 150 (layout-spec 190) -->
   <rect class="box tool" x="575" y="22" width="150" height="56"/><text class="name" x="650" y="50">cli</text>
@@ -73,15 +77,18 @@
   <rect class="box pdf" x="805" y="462" width="190" height="56"/><text class="name" x="900" y="490">layout-spec</text>
   <rect class="box pdf" x="1095" y="462" width="150" height="56"/><text class="name" x="1170" y="490">svg</text>
 
+  <rect class="box core" x="215" y="582" width="150" height="56"/><text class="name" x="290" y="610">assemble</text>
   <rect class="box core" x="625" y="582" width="150" height="56"/><text class="name" x="700" y="610">project</text>
 
   <rect class="box core" x="285" y="702" width="150" height="56"/><text class="name" x="360" y="730">doc</text>
+  <rect class="box core" x="455" y="702" width="150" height="56"/><text class="name" x="530" y="730">numerals</text>
+  <rect class="box core" x="625" y="702" width="190" height="56"/><text class="name" x="720" y="730">bibliography</text>
   <rect class="box core" x="925" y="702" width="150" height="56"/><text class="name" x="1000" y="730">regex</text>
 
   <rect class="box core" x="285" y="822" width="150" height="56"/><text class="name" x="360" y="850">parser</text>
   <rect class="box core" x="285" y="942" width="150" height="56"/><text class="name" x="360" y="970">syntax</text>
-  <text class="note" x="455" y="962">regex、font、svg を除くすべてが使う</text>
-  <text class="note" x="455" y="990">（この矢印は省いた）</text>
+  <text class="note" x="455" y="962">regex、font、svg、length、numerals を</text>
+  <text class="note" x="455" y="990">除くすべてが使う（この矢印は省いた）</text>
   <rect class="box core" x="20" y="942" width="150" height="56"/><text class="name" x="95" y="970">length</text>
   <text class="note" x="20" y="1040">length は doc、driver、html、layout、pdf、preflight、project が使う</text>
   <text class="note" x="20" y="1068">（この矢印も省いた）</text>
