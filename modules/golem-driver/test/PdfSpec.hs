@@ -11,10 +11,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
-import Golem.Driver.Fonts (actualTextOf, cffFontProgram, golemFontProvider, toUnicodeOf)
 import Golem.Driver.New (Language (..), createProject, templateFiles)
-import Golem.Driver.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
-import Golem.Driver.Pdf (ClusterPart (..), CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
 import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), noLeaf, placeLine)
 import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook)
@@ -24,10 +21,13 @@ import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor
 import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Pdf qualified as P
-import Golem.Project (ProjectFailure (..))
+import Golem.Project (Manifest (..), Project (..), ProjectFailure (..))
 import Golem.Project.Style (dimToSp, parseDim, parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.ExternalTool (needsTool)
+import Golem.Typeset (ClusterPart (..), CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
+import Golem.Typeset.FontProvider (actualTextOf, cffFontProgram, golemFontProvider, toUnicodeOf)
+import Golem.Typeset.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
 import Numeric (readHex)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, findExecutable)
@@ -418,7 +418,7 @@ layoutHidden marks manifest style sources = withSystemTempDirectory "golem-hidde
     Right e -> case (evBook e, pageGeometry (FileId 0) (isJust marks) (evStyle e)) of
       _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> assertFailure (show errs)
       (Just book, Right geom) -> do
-        let inp = PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty marks (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty
+        let inp = PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty marks (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e))))
         r <- layoutPdf inp geom fakeFonts
         case r of
           Left ds -> assertFailure (show ds)

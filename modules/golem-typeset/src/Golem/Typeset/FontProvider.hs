@@ -3,7 +3,7 @@ font roles of style.toml that the PDF uses, their Japanese and Latin
 faces, shaping, subsetting and the PDF font descriptions (golem-driver
 ADR 0002 and 0003, golem-font ADR 0001 and 0002).
 -}
-module Golem.Driver.Fonts
+module Golem.Typeset.FontProvider
   ( golemFontProvider,
     cffFontProgram,
     cff2FontDiagnostics,
@@ -23,9 +23,6 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Driver.Memo (fromShapingTextKey, memoWith, shapingTextKey)
-import Golem.Driver.Pdf (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyFontDiagnostics, bodyRole, usedRoles)
-import Golem.Driver.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 import Golem.Font
 import Golem.Layout.Japanese (CharClass (..), charClass, isExtending, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
@@ -33,6 +30,9 @@ import Golem.Pdf qualified as P
 import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Syntax
+import Golem.Typeset (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyFontDiagnostics, bodyRole, usedRoles)
+import Golem.Typeset.Memo (fromShapingTextKey, memoWith, shapingTextKey)
+import Golem.Typeset.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 import System.FilePath ((</>))
 import Text.Printf (printf)
 

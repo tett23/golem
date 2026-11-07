@@ -1,9 +1,13 @@
 #!/bin/sh
-# Checks the direction of the dependencies of the four packages split from
+# Checks the direction of the dependencies of the packages split from
 # golem-doc (docs/adr/0173): the library of golem-doc, the semantic IR and
 # the plugin ABI, depends on none of golem-assemble, golem-bibliography and
 # golem-numerals, and the libraries of golem-bibliography and
-# golem-numerals do not depend on golem-doc.
+# golem-numerals do not depend on golem-doc. The library of golem-typeset,
+# the PDF typesetting, depends on none of golem-driver, the evaluation
+# (golem-eval, golem-emet, golem-plugin), the other outputs (golem-epub,
+# golem-text) and the tools (golem-lint, golem-fmt, golem-lsp, golem-cli)
+# (docs/adr/0192).
 #
 #   doc-deps.sh PLAN_JSON
 #
@@ -17,7 +21,8 @@
 # Exit code 0: no library reaches a package it must not.
 # Exit code 1: some do; each is one line on stderr,
 #   `doc-deps: <package> depends on <package>`.
-# Exit code 2: the plan cannot be read, or one of the four libraries is
+# Exit code 2: the plan cannot be read, or the library of a package of
+# RULES (golem-doc, golem-bibliography, golem-numerals, golem-typeset) is
 # not in it.
 set -eu
 
@@ -37,7 +42,8 @@ jq -e '(type == "object") and (."install-plan" | type == "array")' "$PLAN" >/dev
 # the package, then the packages its library must not reach
 RULES='golem-doc golem-assemble golem-bibliography golem-numerals
 golem-bibliography golem-doc
-golem-numerals golem-doc'
+golem-numerals golem-doc
+golem-typeset golem-driver golem-eval golem-emet golem-plugin golem-epub golem-text golem-lint golem-fmt golem-lsp golem-cli'
 
 # reached PACKAGE: the pkg-names of the local packages that the library of
 # PACKAGE reaches, one per line; exit code 3 when it has no library

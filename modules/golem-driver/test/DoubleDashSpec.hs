@@ -11,9 +11,9 @@ import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
-import Golem.Driver.Pdf (Shaped (..), Shaping (..))
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
+import Golem.Typeset (Shaped (..), Shaping (..))
 import PdfSpec (fontResources)
 import Support
 import System.FilePath ((</>))

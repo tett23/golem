@@ -77,6 +77,12 @@ varsTests =
     [ testCase "{vars.product} of a running head shows the value, numbers and tables too" $ do
         (heads, _) <- layoutHeads pdfManifest (headsStyle "content = [\"{vars.product} {vars.count} {vars.author.short}\"]") [("a.gm", twoChapters)]
         Map.lookup 2 heads @?= Just ["Golem 3 tett23"],
+      testCase "a running head shows the texts of [vars] given in the PdfInput (docs/adr/0196)" $ do
+        (heads, _) <- layoutHeadsWith (Just (Map.fromList [(["product"], "差し替え")])) miniManifest (headsStyle "content = [\"{vars.product?}\"]") [("a.gm", twoChapters)]
+        Map.lookup 2 heads @?= Just ["差し替え"],
+      testCase "a running head does not read [vars] of the manifest again (docs/adr/0196)" $ do
+        (heads, _) <- layoutHeadsWith (Just Map.empty) pdfManifest (headsStyle "content = [\"x{vars.product?}\"]") [("a.gm", twoChapters)]
+        Map.lookup 2 heads @?= Just ["x"],
       testCase "{vars.missing?} is empty, without diagnostics" $ do
         (heads, _) <- layoutHeads pdfManifest (headsStyle "content = [\"{vars.missing?}{vars.product}\"]") [("a.gm", twoChapters)]
         Map.lookup 2 heads @?= Just ["Golem"]

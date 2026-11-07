@@ -1,10 +1,10 @@
 -- | The shapes of the line styles of a rule (golem-driver ADR 0028).
 module RuleShapeSpec (ruleShapeTests) where
 
-import Golem.Driver.RuleShape
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf qualified as P
 import Golem.Project.Style (RuleStyle (..), Sp (..))
+import Golem.Typeset.RuleShape
 import Test.Tasty
 import Test.Tasty.HUnit
 

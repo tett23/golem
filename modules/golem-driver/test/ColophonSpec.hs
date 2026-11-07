@@ -7,7 +7,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
-import Golem.Driver.Pdf (pdfXPeople)
 import Golem.Epub (packageDocument)
 import Golem.Eval.Expr (evalExpr, plainEnv)
 import Golem.Eval.Value (Value (..))
@@ -15,6 +14,7 @@ import Golem.Parser (parseAst)
 import Golem.Parser.AST
 import Golem.Project (Manifest (..), Metadata, parseManifest)
 import Golem.Syntax
+import Golem.Typeset (pdfXPeople)
 import Support
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
