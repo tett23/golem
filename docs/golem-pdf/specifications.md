@@ -109,13 +109,15 @@ tRNS の置き場所（PLTE の前や IDAT の後）は調べない。
 ## リンクの注釈
 
 リンクの注釈（[docs/adr/0182](../adr/0182-external-links.md)）は、`Page` の `pageAnnots :: [Annotation]` が持つ。
-`data Annotation = LinkAnnotation Rect LinkAction`、`data LinkAction = UriAction Text` である。
+`data Annotation = LinkAnnotation { annotRect, annotAction, annotLink, annotContents }`、`data LinkAction = UriAction Text` である。
+`annotLink` は注釈の属する構造の木の `Link`（`KidAnnot` の `AnnotId`）を、`annotContents` は `/Contents` に書くリンクの文字を持つ（[docs/adr/0183](../adr/0183-tagged-pdf-and-pdf-a.md)）。
 v1.0.0 の文書の中のリンクは、`LinkAction` に行先へのアクションを足す。
 
 - `framePageWith` は、内容と同じだけ注釈の矩形を動かす（塗り足しとトンボの分）。
 - `framePage` は、注釈のないページを作る。
-- `documentObjects` は、注釈を PDF/X-4 の出力インテントと XMP の後、文書情報の前に、ページの順、ページの中の順で書く。
-- 注釈のあるページの辞書は、`/Annots` を持つ。
+- `documentObjects` は、注釈を PDF/X-4 の出力インテントと XMP の後、構造の木と文書情報の前に、ページの順、ページの中の順で書く。
+- 注釈のあるページの辞書は、`/Annots` と `/Tabs /S` を持つ。
+- `annotLink` のある注釈は `/StructParent` を持つ。番号は、ページの `StructParents`（ページの番号）の後に、注釈の順に振る。`ParentTree` はその番号から `Link` を引き、`Link` の `KidAnnot` は注釈ごとの `OBJR` になる（[docs/adr/0183](../adr/0183-tagged-pdf-and-pdf-a.md)）。
 - 注釈のない PDF のオブジェクトの番号とバイト列は変わらない。
 - `asciiUri` は、URL の ASCII でない文字を UTF-8 のバイトごとに `%XX`（大文字）にし、ASCII の文字は `%XX` を含めてそのまま残す。
 - `X4.verify` は、ページの `/Annots` が指すオブジェクトのうち `/Subtype /Link` のものについて、`/A` の辞書が `/S /URI` なら、その `/S` と `/URI` を禁止の名前として数えない。

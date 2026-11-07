@@ -68,6 +68,8 @@ main = do
 
 二つめの段落である[note: 二つめの注。]。
 
+外部のリンクを置く。[link "https://www.w3.org/TR/jlreq/": 日本語組版処理の要件]は行をまたぐことがある長い題のリンクとして書き、[link "https://example.com/"]は URL だけのリンクである。
+
 @nonumber
 # 索引
 

@@ -301,6 +301,16 @@ Document
       P
         "二つめの注。"
     "。"
+  P
+    "外部のリンクを置く。"
+    Link
+      "日本語組版処理の要件"
+      OBJR 1
+    "は行をまたぐことがある長い題のリンクとして書き、"
+    Link
+      "https://example.com/"
+      OBJR 1
+    "はURLだけのリンクである。"
   H1
     "索引"
   Index

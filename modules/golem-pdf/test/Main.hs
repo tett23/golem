@@ -588,6 +588,30 @@ conformanceTests tinyJpeg =
       lookup "ParentTreeNextKey" (dictAt root) @?= Just (OInt 2)
       lookup "IDTree" (dictAt root) @?= Just (ODict [("Names", OArr [OStr "note-1", ORef noteN])])
       assertBool "xref" (xrefConsistent (writePdf doc)),
+    testCase "a Link has an OBJR for each annotation of its lines; the annotation has Contents and StructParent; the page /Tabs /S" $ do
+      let glyph = GlyphRun (FontRef 7) 65536 [(1, 0, 0)]
+          aid = AnnotId [5]
+          link = LinkAnnotation (Rect 0 0 65536 65536) (UriAction "https://example.com/") (Just aid) (Just "見本（https://example.com/）")
+          tree = structElem SDocument [KidElem (structElem SP [KidElem (structElem SLink [KidLeaf (LeafId [1]), KidAnnot aid])])]
+          doc = (documentWith tinyJpeg [Page a4 a4 a4 [Tagged (LeafId [1]) [glyph]] [link], Page a4 a4 a4 [Tagged (LeafId [1]) [glyph]] [link]]) {docStructure = tree}
+          objs = documentObjects doc
+          dictAt n = case pdfObjects objs !! (n - 1) of
+            ODict kvs -> kvs
+            other -> error (show other)
+          numbered = zip [1 ..] (pdfObjects objs)
+          annots = [n | (n, ODict kvs) <- numbered, lookup "Subtype" kvs == Just (OName "Link")]
+          pages = [n | (n, ODict kvs) <- numbered, lookup "Type" kvs == Just (OName "Page")]
+          linkElem = [n | (n, ODict kvs) <- numbered, lookup "S" kvs == Just (OName "Link")]
+      length annots @?= 2
+      map (lookup "StructParent" . dictAt) annots @?= [Just (OInt 2), Just (OInt 3)]
+      map (lookup "Contents" . dictAt) annots @?= replicate 2 (Just (pdfTextString "見本（https://example.com/）"))
+      map (lookup "Tabs" . dictAt) pages @?= replicate 2 (Just (OName "S"))
+      case linkElem of
+        [l] ->
+          lookup "K" (dictAt l)
+            @?= Just (OArr ([OInt 0, ODict [("Type", OName "MCR"), ("Pg", ORef (pages !! 1)), ("MCID", OInt 0)]] <> [ODict [("Type", OName "OBJR"), ("Obj", ORef a), ("Pg", ORef p)] | (a, p) <- zip annots pages]))
+        other -> assertFailure (show other)
+      assertBool "xref" (xrefConsistent (writePdf doc)),
     testCase "a leaf drawn but not in the tree becomes a P at the end of the Document" $ do
       let doc = (documentWith tinyJpeg [page [GlyphRun (FontRef 7) 65536 [(1, 0, 0)]]]) {docStructure = structElem SDocument []}
       structureText doc @?= "Document\n  P\n    \"A\"\n",
