@@ -6,12 +6,12 @@ import Data.ByteString qualified as BS
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Golem.Driver
-import Golem.Typeset (PdfLayout (..), PlacedFigure (..), SetLine (..))
 import Golem.Layout.KnuthPlass (Line (..))
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Length (Sp (..))
 import Golem.Project.Style (dimToSp, parseDim)
 import Golem.Syntax
+import Golem.Typeset (PdfLayout (..), PlacedFigure (..), SetLine (..))
 import Support
 import Test.Tasty
 import Test.Tasty.HUnit
