@@ -21,6 +21,7 @@ module Golem.Driver.Pdf.Flow
     numberedTitle,
     pagesOf,
     pageMasters,
+    pageStarts,
     runningHeads,
     runningHeadNotices,
     plainWidth,
@@ -90,6 +91,7 @@ import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (numberSeparator)
@@ -99,6 +101,7 @@ import Golem.Doc.IR
 import Golem.Doc.Url (checkUrl)
 import Golem.Driver.Overhang (lineOverhang, reachesBackground)
 import Golem.Driver.Pdf.Fonts
+import Golem.Driver.Pdf.Pages (sourceAt)
 import Golem.Driver.ProjectVars (projectVarTexts)
 import Golem.Driver.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
 import Golem.Html (codeTokens)
@@ -663,6 +666,29 @@ pageFiles inp layout = drop 1 (scanl next firstFile (pagesOf (plPages layout)))
     firstLine ps = listToMaybe [lid | p <- ps, (_, s) <- poSlots p, lid <- case s of SLine l -> [l]; SHeading l _ -> [l]; SCode l _ _ -> [l]; _ -> []]
     next prev p = fromMaybe prev (firstLine p >>= \lid -> snd <$> Map.lookupLE lid (plLineFiles layout))
 
+{- | Where each page starts in the source, in order (docs/adr ADR 0195):
+the first character of its first line (through the columns of the page
+in order, as 'pageFiles'), as a file and a byte offset. Characters the
+source does not have (the number of a heading, a list marker) are
+skipped; without a character of the source inside the block of the line
+(a table of contents entry, the cells of a table read from a file), the
+start of the block. A page without lines has none.
+-}
+pageStarts :: PdfLayout -> [Maybe (FileId, Int)]
+pageStarts layout = map start (pagesOf (plPages layout))
+  where
+    start ps = listToMaybe [lid | p <- ps, (_, s) <- poSlots p, lid <- case s of { SLine l -> [l]; SHeading l _ -> [l]; SCode l _ _ -> [l]; _ -> [] }] >>= lineStart
+    lineStart lid =
+      let block = snd <$> Map.lookupLE lid (plLineSpans layout)
+          sets = fromMaybe (maybe [] pure (Map.lookup lid (plLines layout))) (Map.lookup lid (plTableLines layout))
+          -- a block of no length (a heading) holds whatever of its file its line shows
+          inside b c = spanFile (snd (bcSource c)) == spanFile b && bcAt c >= 0 && (spanLength b == 0 || (spanStart b <= bcAt c && bcAt c <= spanEnd b))
+       in case block of
+            Just b -> case [bcAt c | sl <- sets, Box _ c <- lineItems (slLine sl), inside b c] of
+              off : _ -> Just (spanFile b, off)
+              [] -> Just (spanFile b, spanStart b)
+            Nothing -> Nothing
+
 {- | The master page of each page, in order: the one its file names in the
 manifest, otherwise @body@, otherwise the first by name.
 -}
@@ -797,7 +823,7 @@ tocPage tg e number =
       le = tgMeasure tg - max (tgReserve tg) w - g
       k0 = if tgLeaders tg && u > 0 then max 0 (unSp (le - (e + g)) `div` unSp u) else 0
       (ns, k) = if ns0 < e + g then (e + g, 0) else (ns0, k0)
-      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource Nothing noLeaf) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) False (0, 0)
+      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) False (0, 0)
    in TocPage (le - fromInteger k * u) leader ns number
 
 -- | The measure of a column of the page.
@@ -1596,7 +1622,9 @@ data FlowEnv = FlowEnv
     -- | the composition of the body size of style.toml
     feBodyEnv :: ComposeEnv,
     -- | the reserve for the page number of a table of contents entry: W and two em (golem-driver ADR 0009)
-    feTocReserve :: Sp
+    feTocReserve :: Sp,
+    -- | where the characters of a text are in the sources (docs/adr ADR 0195)
+    feSourceAt :: SrcSpan -> Text -> Int -> Int
   }
 
 flowEnv :: PdfInput -> PageGeometry -> LoadedFonts -> Assumed -> FlowEnv
@@ -1615,12 +1643,13 @@ flowEnv inp geom fonts assumed = fe
           feMeasure = columnMeasure geom,
           feNotesAtEnd = stNotesPlacement style == PlaceChapterEnd,
           feBodyEnv = body,
-          feTocReserve = fst (tocMetrics body) + 2 * fs
+          feTocReserve = fst (tocMetrics body) + 2 * fs,
+          feSourceAt = sourceAt (Map.map (TE.encodeUtf8 . sfText) (projectSources (piProject inp)))
         }
 
 -- | The composition of a look; citations show their numbers (golem-driver ADR 0007).
 lookEnv :: FlowEnv -> Look -> ComposeEnv
-lookEnv fe lk = (composeEnv (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe))}
+lookEnv fe lk = (composeEnv (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe)), ceSourceAt = feSourceAt fe}
 
 -- | A composition with the character styles of the style of a document (docs/adr ADR 0014).
 withDocStyle :: Style -> ComposeEnv -> ComposeEnv
@@ -1710,7 +1739,7 @@ markerItems env inner u = case uMarker u of
   Just m ->
     let boxes = [b | b@Box {} <- fst (composeInlines env {ceSite = markerSite (uIndex u), ceLabelInlines = 0} m)]
         w = sum (map itemWidth boxes)
-     in boxes <> [Box (inner - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0 [] 0 0 (uSource u, uSpan u) Nothing noLeaf)]
+     in boxes <> [Box (inner - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0 [] 0 0 (uSource u, uSpan u) Nothing noLeaf (spanStart (uSpan u)))]
 
 -- | Composes a unit and breaks it into lines of the widths, with its notes, sidenotes and index marks.
 composeUnit :: FlowEnv -> Map Int Sp -> (Int -> Sp) -> Unit -> Composed
@@ -2465,7 +2494,7 @@ codeBlockOf geom fonts measure capacity u lead code caption =
       lookOf col = lk {lkColor = col}
       -- the size of the paragraph style code, at the code block (golem-cli ADR 0008)
       source = (uSource u, uSpan u)
-      emptyBox w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [] 0 0 source Nothing noLeaf)
+      emptyBox w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [] 0 0 source Nothing noLeaf (spanStart (snd source)))
       {- pieces at offsets from the padding: (offset, text, width, Latin,
       swatch, leaf); line numbers and wrap marks are of no leaf: artifacts
       (docs/adr ADR 0183) -}
@@ -2473,7 +2502,7 @@ codeBlockOf geom fonts measure capacity u lead code caption =
         let go _ [] = []
             go x ((o, t, w, latin, col, leaf) : rest) =
               [emptyBox (o - x) | o > x]
-                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf)]
+                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf (spanStart (snd source)))]
                 <> go (o + w) rest
          in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) False (0, 0)
       at leaf o col t = [(o + cpOffset p, cpText p, cpWidth p, cpLatin p, col, leaf) | p <- oneRow t]

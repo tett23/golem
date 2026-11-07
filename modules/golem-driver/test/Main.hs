@@ -19,6 +19,7 @@ import LinkSpec (linkTests)
 import MemoSpec
 import OutputGoldenSpec
 import PageElementsSpec
+import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
 import ParagraphSpec
 import PdfSpec
@@ -101,6 +102,7 @@ tests skips =
              testGroup "vertical glyphs turned without a vertical form (ADR 0015)" turnedTests,
              testGroup "kenten in the PDF (golem-driver ADR 0019)" kentenTests,
              testGroup "double dashes drawn as one line (docs/adr ADR 0172)" doubleDashTests,
+             pageStartsTests,
              testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
              testGroup "hard line breaks (docs/adr ADR 0016)" hardBreakTests,
              testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,

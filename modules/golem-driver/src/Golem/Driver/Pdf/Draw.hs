@@ -48,21 +48,22 @@ import Text.Printf (printf)
 stopped it.
 -}
 renderPdf :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic]))
-renderPdf provider inp = fmap (\(bytes, notices, _) -> (bytes, notices)) <$> renderPdfView provider inp
+renderPdf provider inp = fmap (\(bytes, notices, _, _) -> (bytes, notices)) <$> renderPdfView provider inp
 
 {- | 'renderPdf' with the view of the PDF that golem preflight checks
-(golem-cli ADR 0006). The view is lazy: golem build forces only the
-characters of its pages, for G08100 (docs/adr 0081).
+(golem-cli ADR 0006), and where each page starts in the source (docs/adr
+ADR 0195). The view is lazy: golem build forces only the characters of
+its pages, for G08100 (docs/adr 0081).
 -}
-renderPdfView :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View))
-renderPdfView provider inp = fmap (\(bytes, notices, view, _) -> (bytes, notices, view)) <$> renderPdfAll provider inp
+renderPdfView :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, [Maybe (FileId, Int)]))
+renderPdfView provider inp = fmap (\(bytes, notices, view, _, starts) -> (bytes, notices, view, starts)) <$> renderPdfAll provider inp
 
 -- | The structure tree of the PDF as text (docs/adr ADR 0183), for the tests.
 renderPdfStructure :: FontProvider -> PdfInput -> IO (Either [Diagnostic] Text)
-renderPdfStructure provider inp = fmap (\(_, _, _, st) -> st) <$> renderPdfAll provider inp
+renderPdfStructure provider inp = fmap (\(_, _, _, st, _) -> st) <$> renderPdfAll provider inp
 
--- | The PDF, its notices, its view and its structure tree as text.
-renderPdfAll :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Text))
+-- | The PDF, its notices, its view, its structure tree as text and where its pages start.
+renderPdfAll :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Text, [Maybe (FileId, Int)]))
 renderPdfAll provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
   (ds, Left gs) -> pure (Left (ds <> gs))
   (ds@(_ : _), Right _) -> pure (Left ds)
@@ -94,7 +95,7 @@ renderPdfAll provider inp0 = case (declarationErrors inp, checkedGeometry inp) o
                         [] -> do
                           let (bytes, view, structure) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
                           -- G07101: dashes without ink (docs/adr ADR 0172)
-                          pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout, view, structure))
+                          pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout, view, structure, pageStarts layout))
                         ds -> pure (Left ds)
                 ds -> pure (Left ds)
   where
