@@ -57,6 +57,10 @@ tests =
         para digits [ruby [(["東京12"], Just "とうきょう")]] @?= [ruby' [([Text sp "東京", CharStyle sp "n" [Text sp "12"]], Just "とうきょう")]],
       testCase "a ruby whose whole base matches is wrapped as a whole" $
         para digits [ruby [(["12"], Just "じゅうに")]] @?= [cs "n" [ruby [(["12"], Just "じゅうに")]]],
+      testCase "the text of a link is matched; the link is not split (docs/adr ADR 0182)" $ do
+        let l = Link sp "https://example.com/"
+        para digits [l [t "第12章"]] @?= [l [t "第", cs "n" [t "12"], t "章"]]
+        para digits [l [t "12"]] @?= [cs "n" [l [t "12"]]],
       testCase "the reading is not matched" $
         para digits [ruby [(["東京"], Just "12")]] @?= [ruby [(["東京"], Just "12")]],
       testCase "a ruby of several segments split by the match" $

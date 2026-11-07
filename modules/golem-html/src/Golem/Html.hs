@@ -652,6 +652,8 @@ inline c = \case
   LineBreak _ -> "<br/>"
   -- an empty span with a margin; word joiners keep the line from breaking around it (docs/adr ADR 0019)
   Aki _ a -> "&#x2060;<span class=\"aki\" style=\"margin-inline-start: " <> akiLength a <> "\"></span>&#x2060;"
+  -- the URL as written: an IRI is a valid href (docs/adr ADR 0182)
+  Link _ u xs -> "<a href=\"" <> escapeXml u <> "\">" <> inlines c xs <> "</a>"
 
 {- | The CSS length of an aki: zw in em, an absolute amount in pt, at most
 four decimals (docs/adr ADR 0103).

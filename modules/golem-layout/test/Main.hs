@@ -38,6 +38,7 @@ import Hedgehog.Range qualified as Range
 import InseparableSpec (inseparableTests)
 import KnuthPlassReference
 import LineBreakingSpec (lineBreakingTests)
+import LinkSpec (linkTests)
 import PaginateSpec (paginateTests)
 import PunctuationSpec (punctuationTests)
 import RuleAreaSpec (ruleAreaTests)
@@ -361,6 +362,7 @@ tests =
       doubleDashTests,
       codeSpaceTests,
       urlBreakTests,
+      linkTests,
       combiningTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,

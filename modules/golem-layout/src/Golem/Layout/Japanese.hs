@@ -295,6 +295,8 @@ piecesOf env inl = case inl of
   Text sp t -> [((ceSizeSource env, pieceSpan sp t i p), p) | (i, p) <- textPiecesAt lk t]
   Color _ _ xs -> restyled xs
   CharStyle _ _ xs -> restyled xs
+  -- the target of a link is a look of the characters inside (docs/adr ADR 0182)
+  Link _ _ xs -> restyled xs
   -- the shape is a look of the characters inside; the inner kenten wins (golem-driver ADR 0019)
   Kenten _ sh xs -> concatMap (piecesOf env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}}) xs
   Ruby sp _ segs -> at sp (rubyPieces env segs)
@@ -493,6 +495,7 @@ baseChars env lk inl = case inl of
   Text _ t -> each t
   Color _ _ xs -> inner xs
   CharStyle _ _ xs -> inner xs
+  Link _ _ xs -> inner xs
   Kenten _ _ xs -> concatMap (baseChars env lk) xs
   Tcy _ t -> each t
   Number _ n _ -> each (T.pack (show n))
@@ -521,6 +524,7 @@ withRuby = \case
   LineBreak s -> LineBreak s
   Aki s a -> Aki s a
   ChannelItem s c -> ChannelItem s c
+  Link s u xs -> Link s u (map withRuby xs)
 
 -- | The advance of a character in a look, in sp.
 advance :: ComposeEnv -> Look -> Char -> Sp
@@ -822,7 +826,8 @@ padCode = \case
 ADR 0008), and inside each element where the patterns allow (docs/adr/0179).
 The patterns see each element without its trailing hyphens and dashes;
 an element with a hyphen or dash left in it, or a word kept whole by
-explicit-hyphen-penalty 10000, gets no pattern hyphens.
+explicit-hyphen-penalty 10000, gets no pattern hyphens. A word of a link
+is one box (docs/adr ADR 0182).
 -}
 wordItems :: ComposeEnv -> Look -> Text -> [Item]
 wordItems env lk word =
@@ -842,6 +847,7 @@ wordItems env lk word =
         x : rest -> reverse (f x : rest)
         [] -> [f ""]
       elements
+        | isJust (lkLink lk) = [[word]]
         | T.any isHyphen word = if explicitP >= infPenalty then [[word]] else map pieces (explicitParts word)
         | otherwise = [pieces word]
       rotated = ceVertical env

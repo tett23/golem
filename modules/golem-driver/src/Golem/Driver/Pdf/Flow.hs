@@ -73,6 +73,7 @@ import Golem.Assemble.Numbering (numberSeparator)
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.FigureWidth (figureWidthSp, parseFigureWidth)
 import Golem.Doc.IR
+import Golem.Doc.Url (checkUrl)
 import Golem.Driver.Overhang (lineOverhang, reachesBackground)
 import Golem.Driver.Pdf.Fonts
 import Golem.Driver.ProjectVars (projectVarTexts)
@@ -852,7 +853,8 @@ channelLines vertical pageOf locators = map line
        in ceBody e <> (if not locators || null ps then [] else Text sp0 "　" : intercalate [Text sp0 (if vertical then "、" else ", ")] [[Number sp0 n Nothing] | n <- ps])
 
 {- | The lines of the bibliography: @[n] @ and the entry, or the key when
-it has none; a URL is in the character style url (golem-doc ADR 0005).
+it has none; a URL is in the character style url (golem-doc ADR 0005),
+and a link when it passes the checks of [link] (docs/adr ADR 0182).
 -}
 bibliographyLines :: Map Text [EntryPart] -> [(Text, Int)] -> [[Inline]]
 bibliographyLines bib cites =
@@ -864,7 +866,9 @@ bibliographyLines bib cites =
     merged = \case
       EntryText a : EntryText b : rest -> merged (EntryText (a <> b) : rest)
       EntryText a : rest -> Text sp0 a : merged rest
-      EntryUrl u : rest -> CharStyle sp0 "url" [Text sp0 u] : merged rest
+      EntryUrl u : rest
+        | Nothing <- checkUrl u -> Link sp0 u [CharStyle sp0 "url" [Text sp0 u]] : merged rest
+        | otherwise -> CharStyle sp0 "url" [Text sp0 u] : merged rest
       [] -> []
 
 {- | The role, size and line pitch of sidenotes: the role and size of the

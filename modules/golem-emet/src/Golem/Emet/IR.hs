@@ -114,6 +114,7 @@ withRuby = \case
   LineBreak s -> LineBreak s
   Aki s a -> Aki s a
   ChannelItem s c -> ChannelItem s c
+  Link s u xs -> Link s u (map withRuby xs)
 
 encodeInline :: Inline -> Enc Result
 encodeInline = \case
@@ -139,6 +140,8 @@ encodeInline = \case
   LineBreak sp -> at sp "LineBreak" []
   Aki sp a -> at sp "Aki" [aki a]
   ChannelItem sp (ChannelItemData c k r body) -> encodeInlines body >>= \b -> at sp "ChannelItem" [str c, maybeR str k, maybeR str r, b]
+  -- a link to an external URL (docs/adr ADR 0182)
+  Link sp u xs -> encodeInlines xs >>= \b -> at sp "Link" [str u, b]
   where
     at sp c fs = node c fs (Hidden sp Nothing 0)
     numberStyle = \case
@@ -312,6 +315,7 @@ inlineD cx = \case
     "ChannelItem" -> one 4 $ \s -> \case
       [ch, k, r, xs] -> (\a b d e -> ChannelItem s (ChannelItemData a b d e)) <$> strD ch <*> maybeD strD k <*> maybeD strD r <*> inlinesD cx xs
       _ -> arity
+    "Link" -> one2 $ \s u xs -> Link s <$> strD u <*> inlinesD cx xs
     _ -> bad ("インラインではない値です: " <> c)
     where
       arity = bad ("欄の数が合いません: " <> c)

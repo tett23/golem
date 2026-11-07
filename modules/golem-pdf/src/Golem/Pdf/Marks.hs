@@ -10,13 +10,14 @@ module Golem.Pdf.Marks
     sheet,
     markRules,
     framePage,
+    framePageWith,
     registrationRects,
     checkRegistration,
   )
 where
 
 import Golem.Pdf.Rect (Rect (..))
-import Golem.Pdf.Writer (Mark (..), Page (..), Sp (..), turnRect)
+import Golem.Pdf.Writer (Annotation (..), Mark (..), Page (..), Sp (..), turnRect)
 
 data MarkStyle = Japanese | Western
   deriving stock (Eq, Show)
@@ -112,14 +113,19 @@ marks. The content is moved to the trimmed page; the marks are drawn
 after it in the registration colour (ADR 0007).
 -}
 framePage :: Maybe MarkStyle -> Sp -> (Sp, Sp) -> [Mark] -> Page
-framePage marks bleed size content =
+framePage marks bleed size content = framePageWith marks bleed size content []
+
+-- | 'framePage' with the annotations of the page, moved with the content (docs/adr ADR 0182).
+framePageWith :: Maybe MarkStyle -> Sp -> (Sp, Sp) -> [Mark] -> [Annotation] -> Page
+framePageWith marks bleed size content annots =
   let s = sheet marks bleed size
       m = shOrigin s
       drawn = [RegistrationRules (markRules st bleed size) | Just st <- [marks]]
       content'
         | m == 0 = content
         | otherwise = [Translated m m (content <> drawn)]
-   in Page (shMedia s) (shTrim s) (shBleed s) content'
+      moved (LinkAnnotation (Rect x y w h) a) = LinkAnnotation (Rect (x + m) (y + m) w h) a
+   in Page (shMedia s) (shTrim s) (shBleed s) content' (map moved annots)
 
 {- | The rectangles of the 'RegistrationRules' in page content, in page
 coordinates: the moves of 'Translated' are added (ADR 0007).
