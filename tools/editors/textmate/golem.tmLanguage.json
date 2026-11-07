@@ -63,7 +63,7 @@
     },
     "heading": {
       "name": "markup.heading.golem",
-      "begin": "^(\\s*)(#{1,3})(?=[ \\t])",
+      "begin": "^(\\s*)(#{1,6})(?=[ \\t])",
       "beginCaptures": {
         "2": {
           "name": "keyword.control.heading.golem"

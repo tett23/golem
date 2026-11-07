@@ -13,6 +13,7 @@ import DoubleDashSpec (doubleDashTests)
 import EmetSamplesSpec (emetSamplesTests)
 import FigureSpec
 import FunctionsSpec (functionsTests)
+import HeadingLevelsSpec (headingLevelsTests)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
 import LinkSpec (linkTests)
 import MemoSpec
@@ -80,6 +81,7 @@ tests skips =
              testGroup "styles defined in a file (docs/adr ADR 0014)" inFileTests,
              testGroup "regex styles (docs/adr ADR 0015)" regexStyleTests,
              testGroup "PDF headings (ADR 0003)" headingTests,
+             testGroup "headings of six levels (docs/adr/0188)" headingLevelsTests,
              testGroup "PDF emphasis, character styles and colour (ADR 0004)" emphasisTests,
              testGroup "PDF wrapped figures (ADR 0005)" wrapTests,
              testGroup "PDF captions (ADR 0010)" captionTests,
