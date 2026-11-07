@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="180" viewBox="0 0 300 180">
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="#264653"/>
+    </marker>
+  </defs>
+  <g fill="#e9f5f2" stroke="#264653" stroke-width="2">
+    <rect x="120" y="10" width="60" height="30" rx="4"/>
+    <rect x="30" y="80" width="60" height="30" rx="4"/>
+    <rect x="210" y="80" width="60" height="30" rx="4"/>
+    <rect x="120" y="140" width="60" height="30" rx="4"/>
+  </g>
+  <g stroke="#264653" stroke-width="2" fill="none" marker-end="url(#a)">
+    <path d="M140 40 L75 78"/>
+    <path d="M160 40 L225 78"/>
+    <path d="M60 110 L135 138"/>
+    <path d="M240 110 L165 138"/>
+  </g>
+</svg>

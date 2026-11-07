@@ -6,6 +6,8 @@
 | `functions/` | a small project that uses functions of `.emet` of every kind, a keyword and a variable argument, a filter, `File.read` of a TSV and a tail recursion; built by the determinism check ([docs/adr/0162](../../../../docs/adr/0162-calling-emet-functions-from-gm.md)) |
 | `emet-samples/` | a library of twenty functions of `.emet` an editor or an operator of a Japanese book would use (prices, kansuji, the Japanese era, ruby, a glossary and a table from TSV, filters for first-occurrence ruby, variant spellings and full-width letters), split by theme under `fn/`, with a chapter that calls each; the golem-driver test `EmetSamplesSpec` checks what each gives, and the determinism check builds it |
 | `figures/` | a small project with an SVG, a PDF and a JPEG figure, for the goldens of the PDF and the EPUB (`OutputGoldenSpec`); the test copies its fonts in as `fonts/ja.otf` and `fonts/latin.otf` |
+| `complex-vertical/` | a book that combines the features on a vertical page of one column (B6): ruby, kenten, tate-chu-yoko, notes, SVG, PNG, wrapped and turned figures, tables, code blocks, rules of headings and paragraphs, the contents, the index in two columns, the bibliography, functions and a filter of `.emet` ([docs/adr/0175](../../../../docs/adr/0175-complex-typesetting-fixture.md)); see "The two books that combine the features" |
+| `complex-horizontal/` | the same on a horizontal page of two columns (A5), with notes at the foot of a column, figures fitted to a column, hyphenated Latin words and the index in three columns ([docs/adr/0175](../../../../docs/adr/0175-complex-typesetting-fixture.md)) |
 | `tempest/` | *The Tempest* by William Shakespeare, set horizontally |
 | `kanikosen/` | 『蟹工船』小林多喜二, set vertically |
 | `pd/` | ten public-domain books that are hard to set ([docs/adr/0026](../../../../docs/adr/0026-ten-public-domain-fixtures.md)) |
@@ -25,6 +27,68 @@ GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
 ```
 
 The source texts are not committed.
+
+## The two books that combine the features
+
+`complex-vertical/` and `complex-horizontal/` fix the interactions between
+the features of Golem
+([docs/adr/0175](../../../../docs/adr/0175-complex-typesetting-fixture.md)).
+Their manuscripts are written by hand for this purpose (the vertical book is
+a short Japanese essay on a letterpress shop, the horizontal one a short
+technical book on a build tool); they are not converted from other texts.
+
+They are two books, not one, because the writing mode is one for a whole
+book (`writing-mode` of `[page]`) and because a wrapped figure cannot be
+set on a page of two columns or more (G07026): the vertical book has one
+column and a wrapped figure, the horizontal one two columns and none.
+Neither has sidenotes, which no vertical page and no page of columns can
+hold (G07001). Each book is 16 to 24 pages.
+
+Both use: three levels of numbered headings with `rule-before` and
+`rule-after`; a paragraph style with rules, with a paragraph split at the
+end of a page or a column; running heads with the number and the title of
+the chapter, and folios; `@toc`; mono and group ruby and kenten, in
+headings too; footnotes with `[notes.rule]` and a `[cite ...]` in a
+footnote; an SVG figure and a PNG or JPEG figure with figure numbers,
+`[ref-number]` and `[ref-title]`; a table from a file and one written in
+the manuscript, split at the end of a page or a column; `@listing` and code
+blocks with wrapped lines, split at the end of a page or a column; a
+numbered and a definition list; index marks of two levels, in a heading, a
+footnote and a table cell; `@bibliography` of CSL-JSON; an inline and a
+block function of `.emet` (the block one reads a TSV with `File.read` and
+makes a table), and a filter of `[[filters]]` that puts kenten on the
+first heading of each chapter, which the contents and the running heads
+show. The vertical book also has `[tcy: ...]`, `[number-text ... style=tcy]`,
+a wrapped figure followed by a paragraph with rules, a turned figure
+(`rotate=true`) and a double dash; the horizontal book notes at the foot of
+a column, figures fitted to a column and hyphenated Latin words. The
+golem-driver test `ComplexFixtureSpec` checks that the sources still use
+each of these.
+
+Neither book gives a diagnostic on any target. Two features always give a
+notice, a wrapped line of a code block (G07030) and a paragraph with rules
+split across pages or columns (G07046), so each manifest silences these two
+codes and no other. The PDF and the EPUB of each book are goldens of
+`OutputGoldenSpec` (`test/golden/pdf-complex-*.txt` and
+`epub-complex-*.txt`); `scripts/determinism.sh`, `scripts/env-determinism/check.sh`
+and the visual regression test (`scripts/visual/build.sh`) build them too.
+A pull request that writes their goldens or references again says in its
+description which pages changed and why (`CONTRIBUTING.md`).
+
+The fonts are not committed. The tests and the scripts copy Noto Serif JP
+of `kanikosen/fonts/` and Source Sans Pro of golem-font in as
+`fonts/ja.otf` and `fonts/latin.otf`, as for `figures/`. To build a book by
+hand:
+
+```sh
+cd modules/golem-driver/test/fixtures/complex-vertical
+mkdir -p fonts
+cp ../kanikosen/fonts/NotoSerifJP-Regular.otf fonts/ja.otf
+cp ../../../../golem-font/test/fonts/SourceSansPro-Regular.otf fonts/latin.otf
+golem build
+```
+
+`fonts/` and `build/` are ignored by git.
 
 ## Sources
 

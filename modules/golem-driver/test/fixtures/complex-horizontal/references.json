@@ -1,0 +1,29 @@
+[
+  {
+    "id": "make",
+    "type": "book",
+    "author": [{"family": "Stallman", "given": "Richard M."}, {"family": "McGrath", "given": "Roland"}, {"family": "Smith", "given": "Paul D."}],
+    "title": "GNU Make: A Program for Directing Recompilation",
+    "publisher": "Free Software Foundation",
+    "issued": {"date-parts": [[2023]]},
+    "URL": "https://www.gnu.org/software/make/manual/"
+  },
+  {
+    "id": "build-systems",
+    "type": "article-journal",
+    "author": [{"family": "Mokhov", "given": "Andrey"}, {"family": "Mitchell", "given": "Neil"}, {"family": "Peyton Jones", "given": "Simon"}],
+    "title": "Build Systems à la Carte",
+    "container-title": "Proceedings of the ACM on Programming Languages",
+    "volume": "2",
+    "issued": {"date-parts": [[2018]]}
+  },
+  {
+    "id": "knuth-plass",
+    "type": "article-journal",
+    "author": [{"family": "Knuth", "given": "Donald E."}, {"family": "Plass", "given": "Michael F."}],
+    "title": "Breaking Paragraphs into Lines",
+    "container-title": "Software: Practice and Experience",
+    "volume": "11",
+    "issued": {"date-parts": [[1981]]}
+  }
+]
