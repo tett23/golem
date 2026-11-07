@@ -30,6 +30,7 @@ library
                     Golem.Layout.Look
                     Golem.Layout.Orientation
                     Golem.Layout.Paginate
+                    Golem.Layout.Paginate.State
                     Golem.Layout.Ruby
                     Golem.Layout.RuleArea
                     Golem.Layout.Sidenotes
@@ -37,7 +38,6 @@ library
                     Golem.Layout.Wrap
   other-modules:    Golem.Layout.Orientation.Table
                     Golem.Layout.Paginate.Decide
-                    Golem.Layout.Paginate.State
                     Golem.Layout.Paginate.Types
   build-depends:
     , base               >=4.20 && <4.21

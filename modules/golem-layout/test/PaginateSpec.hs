@@ -9,18 +9,21 @@ separator takes.
 -}
 module PaginateSpec (paginateTests) where
 
+import Control.Monad (replicateM)
+import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry (..))
 import Golem.Layout.Paginate
+import Golem.Layout.Paginate.State qualified as S
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Length (Sp)
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import PaginateEnum (Element (..), Input (..), paginateInput)
+import PaginateEnum (Element (..), Input (..), noteOf, paginateInput)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -45,6 +48,9 @@ paginateTests =
       testGroup "paragraphs and headings with rules (golem-driver ADR 0027)" ruledTests,
       testGroup "a heading taller than its column (golem-layout ADR 0020)" tallHeadingTests,
       testGroup "the points the invariants did not decide (docs/adr/0206)" undecidedPointTests,
+      testGroup "a heading sent on is checked again after the figures sent on (golem-layout ADR 0023)" keepAfterFiguresTests,
+      testGroup "keep goes on until the need fits (golem-layout ADR 0023)" keepTests,
+      testGroup "a recto starts after the figures sent on and the continued notes (golem-layout ADR 0024)" rectoAfterFiguresTests,
       testGroup "invariants" propertyTests
     ]
 
@@ -924,4 +930,128 @@ undecidedPointTests =
     testCase "D2: a column of nothing but a heading places the lines of the paragraph after it, as an empty column does" $
       placedIn (Input 3 1 [EHeading, EPara 3])
         @?= [(1, 0, [SHeading 0 1, SLine 1, SLine 2]), (2, 0, [SLine 3])]
+  ]
+
+-- | The page, column, slots and notes of each column.
+placedWithNotes :: [PageOut] -> [(Int, Int, [Slotted], [NoteId])]
+placedWithNotes ps = [(poNumber p, poColumn p, map snd (poSlots p), [n | (n, _, _) <- poFootnotes p]) | p <- ps]
+
+-- | A term of one line.
+term :: Int -> Flow
+term i = FDefTerm (lines' i 1)
+
+-- | A ruled heading of one line without rules.
+ruledHeading :: Bool -> Int -> Flow
+ruledHeading recto i = FRuled i Nothing Nothing False ruleGrid 0 (RuledHeading recto 1 (lines' i 1))
+
+keepAfterFiguresTests :: [TestTree]
+keepAfterFiguresTests =
+  [ testCase "F1: a heading after a figure sent on goes on past it with its paragraph" $
+      placedIn (Input 3 1 [EPara 2, EFigure 2, EHeading, EPara 1])
+        @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SFigure 1000]), (3, 0, [SHeading 2 1, SLine 3])],
+    testCase "F1: a heading after two figures sent on goes on past both" $
+      placedIn (Input 3 1 [EPara 2, EFigure 2, EFigure 2, EHeading, EPara 1])
+        @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SFigure 1000]), (3, 0, [SFigure 1001]), (4, 0, [SHeading 2 1, SLine 3])],
+    testCase "F1: in two columns, a heading after a figure sent on goes on past it" $
+      placedIn (Input 3 2 [EPara 2, EFigure 2, EHeading, EPara 1])
+        @?= [(1, 0, [SLine 0, SLine 1]), (1, 1, [SFigure 1000]), (2, 0, [SHeading 2 1, SLine 3])],
+    testCase "F1: in two columns, a heading after two figures sent on goes on past both" $
+      placedIn (Input 3 2 [EPara 2, EFigure 2, EFigure 2, EHeading, EPara 1])
+        @?= [(1, 0, [SLine 0, SLine 1]), (1, 1, [SFigure 1000]), (2, 0, [SFigure 1001]), (2, 1, [SHeading 2 1, SLine 3])],
+    testCase "F2: a heading with a note after a figure sent on goes on with its note" $
+      placedWithNotes (paginateInput (Input 3 1 [EPara 1, EFigure 3, EFigure 1, ENotedHeading]))
+        @?= [(1, 0, [SLine 0], []), (2, 0, [SFigure 1000], []), (3, 0, [SFigure 1001], []), (4, 0, [SHeading 1 1], [noteOf 1])],
+    testCase "F1: a term after a figure sent on goes on past it with what follows" $
+      contents (paginate 1 3 [FParagraph (lines' 0 2), FFigure 1000 2 [] [], term 2, FParagraph (lines' 3 1)])
+        @?= [[SLine 0, SLine 1], [SFigure 1000], [SLine 2, SLine 3]],
+    testCase "F1: a ruled heading after a figure sent on goes on past it with what follows" $
+      contents (paginate 1 3 [FParagraph (lines' 0 2), FFigure 1000 2 [] [], ruledHeading False 2, FParagraph (lines' 3 1)])
+        @?= [[SLine 0, SLine 1], [SFigure 1000], [SHeading 2 1, SLine 3]]
+  ]
+
+{- | 'S.keep' from a column with one line, the figures of the lengths
+given and a continued note of the lines given waiting, and a need.
+-}
+keepFrom :: Int -> Int -> [Int] -> Int -> Int -> (S.St, S.St)
+keepFrom cols c figs noteLen need =
+  let env = S.Env maxBound 1 (ColumnSet cols 0 0 0) c
+      st0 = S.putLine env (S.initialState env) (LineBox 0 [] [] [] 0)
+      st = st0 {S.sDeferred = [FFigure (1000 + j) n [] [] | (j, n) <- zip [0 ..] figs], S.sPendingNotes = [(nid 900, 0, noteLen) | noteLen > 0]}
+   in (st, S.keep env st (const need))
+
+keepTests :: [TestTree]
+keepTests =
+  [ -- golem-layout ADR 0023 bounds the columns gone on by the figures and
+    -- note lines waiting; the first column gone on, from the column that
+    -- the need does not fit, takes none of them, so one more
+    testCase "F3, F4: keep stops where the need fits or the column is empty, after one column and a column at most for each figure and note line waiting" $
+      sequence_
+        [ assertBool (show (cols, c, figs, noteLen, need, advanced)) (fitsOrEmpty && advanced <= 1 + length figs + noteLen)
+        | cols <- [1, 2],
+          c <- [3 .. 5],
+          k <- [0 .. 3],
+          figs <- replicateM k [1 .. c],
+          noteLen <- [0 .. 2],
+          need <- [1 .. c + 1],
+          let (st, r) = keepFrom cols c figs noteLen need
+              env = S.Env maxBound 1 (ColumnSet cols 0 0 0) c
+              fitsOrEmpty = need <= S.free env r || S.isEmpty r
+              advanced = (S.sPage r - S.sPage st) * cols + S.sColumn r - S.sColumn st
+        ]
+  ]
+
+{- | R3 and R4: a blank page holds nothing, and every figure is in a
+column before the column of the line given (the heading at a recto, or
+the first line after a break).
+-}
+rectoChecks :: Int -> [PageOut] -> Assertion
+rectoChecks marker ps = do
+  let cols = zip [0 :: Int ..] (sortOn (\p -> (poNumber p, poColumn p)) ps)
+      at f = [c | (c, p) <- cols, (_, s) <- poSlots p, f s]
+      lineAt = at (\case SLine i -> i == marker; SHeading i _ -> i == marker; _ -> False)
+      figures = at (\case SFigure _ -> True; _ -> False)
+  assertEqual "R3: the blank pages hold nothing" [] [poNumber p | (_, p) <- cols, poBlank p, not (null (poSlots p) && null (poFootnotes p))]
+  case lineAt of
+    [c] -> assertBool ("R4: the figures are before column " <> show c) (all (< c) figures)
+    found -> assertFailure ("line " <> show marker <> " is in the columns " <> show found)
+
+rectoAfterFiguresTests :: [TestTree]
+rectoAfterFiguresTests =
+  [ testCase "R1: a figure sent on before a heading at a recto takes the page before it" $ do
+      let input = Input 3 1 [EPara 1, EFigure 3, ERecto]
+      placedIn input @?= [(1, 0, [SLine 0]), (2, 0, [SFigure 1000]), (3, 0, [SHeading 1 1])]
+      rectoChecks 1 (paginateInput input),
+    testCase "R1: a figure sent on to an odd page before a heading at a recto, a blank page after it" $ do
+      let input = Input 3 1 [EPara 3, EPara 1, EFigure 3, ERecto, EPara 1]
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1, SLine 2]), (2, 0, [SLine 3]), (3, 0, [SFigure 1000]), (4, 0, []), (5, 0, [SHeading 4 1, SLine 5])]
+      rectoChecks 4 (paginateInput input),
+    testCase "R1: in two columns, a figure sent on before a heading at a recto takes the next column" $ do
+      let input = Input 3 2 [EPara 1, EFigure 3, ERecto]
+      placedIn input @?= [(1, 0, [SLine 0]), (1, 1, [SFigure 1000]), (2, 0, []), (3, 0, [SHeading 1 1])]
+      rectoChecks 1 (paginateInput input),
+    testCase "R1: a ruled heading at a recto after a figure sent on" $ do
+      let ps = paginate 1 3 [FParagraph (lines' 0 1), FFigure 1000 3 [] [], ruledHeading True 1]
+      contents ps @?= [[SLine 0], [SFigure 1000], [SHeading 1 1]]
+      rectoChecks 1 ps,
+    testCase "R2: a recto break after a figure sent on, the new page odd" $ do
+      let ps = paginate 1 3 [FParagraph (lines' 0 1), FFigure 1000 3 [] [], FBreak BreakRecto, FParagraph (lines' 1 1)]
+      [(poNumber p, map snd (poSlots p)) | p <- ps] @?= [(1, [SLine 0]), (2, [SFigure 1000]), (3, [SLine 1])]
+      rectoChecks 1 ps,
+    testCase "R2: a recto break after a figure sent on, the new page even" $ do
+      let ps = paginate 1 3 [FParagraph (lines' 0 3), FParagraph (lines' 3 1), FFigure 1000 3 [] [], FBreak BreakRecto, FParagraph (lines' 4 1)]
+      [(poNumber p, map snd (poSlots p)) | p <- ps] @?= [(1, map SLine [0 .. 2]), (2, [SLine 3]), (3, [SFigure 1000]), (4, []), (5, [SLine 4])]
+      rectoChecks 4 ps,
+    testCase "R2: a verso break after a figure sent on, the new page odd" $ do
+      let ps = paginate 1 3 [FParagraph (lines' 0 1), FFigure 1000 3 [] [], FBreak BreakVerso, FParagraph (lines' 1 1)]
+      [(poNumber p, map snd (poSlots p)) | p <- ps] @?= [(1, [SLine 0]), (2, [SFigure 1000]), (3, []), (4, [SLine 1])]
+      rectoChecks 1 ps,
+    testCase "R2: a verso break after a figure sent on, the new page even" $ do
+      let ps = paginate 1 3 [FParagraph (lines' 0 3), FParagraph (lines' 3 1), FFigure 1000 3 [] [], FBreak BreakVerso, FParagraph (lines' 4 1)]
+      [(poNumber p, map snd (poSlots p)) | p <- ps] @?= [(1, map SLine [0 .. 2]), (2, [SLine 3]), (3, [SFigure 1000]), (4, [SLine 4])]
+      rectoChecks 4 ps,
+    testCase "R3: a note continued before a heading at a recto ends on the page before it" $ do
+      let ps = paginate 1 4 [FParagraph [LineBox 0 [NoteBody (nid 900) 4] [] [] 0], FHeading 1 True 1 (lines' 1 1)]
+      [(poNumber p, map snd (poSlots p), poFootnotes p) | p <- ps]
+        @?= [(1, [SLine 0], [(nid 900, 0, 2)]), (2, [], [(nid 900, 2, 2)]), (3, [SHeading 1 1], [])]
+      rectoChecks 1 ps
   ]

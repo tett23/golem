@@ -4,7 +4,7 @@ on outputs made by hand, and every input up to the depth of
 @GOLEM_ENUM_DEPTH@ elements, with the known bugs excluded by an explicit
 list whose counterexamples are counted.
 -}
-module PaginateInvariantsSpec (invariantTests, prDepth) where
+module PaginateInvariantsSpec (invariantTests, prDepth, KnownBug (..), knownBugs) where
 
 import Data.List (intercalate)
 import Golem.Doc.IR (BreakKind (..))
@@ -239,53 +239,9 @@ data KnownBug = KnownBug
     kbCounts :: [(Int, Int)]
   }
 
+-- | Empty: golem-layout ADR 0023 and 0024 fixed the last ones.
 knownBugs :: [KnownBug]
-knownBugs =
-  [ KnownBug
-      { kbItem = "送った図版の後の改丁の見出しが、偶数ページに置かれる",
-        kbShape = \i -> any (\(k, e) -> e == ERecto && any isFigure (take k (inElements i))) (zip [0 ..] (inElements i)),
-        kbExcuses = \i b -> breachOf b `elem` [I6, I8] && maybe False (\k -> inElements i !! k == ERecto && any isFigure (take k (inElements i))) (elementOf i b),
-        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 582), (4, 29752), (5, 988136)]
-      },
-    KnownBug
-      { kbItem = "送った図版の後の見出しの注が、次のページに送られる",
-        kbShape = \i -> any (\(k, e) -> e == ENotedHeading && any isFigure (take k (inElements i))) (zip [0 ..] (inElements i)),
-        kbExcuses = \i b -> breachOf b == I7 && maybe False (\k -> inElements i !! k == ENotedHeading && any isFigure (take k (inElements i))) (elementOf i b),
-        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 344), (5, 26993)]
-      },
-    KnownBug
-      { kbItem = "図版を追い越した見出しが、本文から離れる",
-        kbShape = \i -> any (\(k, e) -> isHeadingElement e && any isFigure (take k (inElements i))) (zip [0 ..] (inElements i)),
-        kbExcuses = \i b -> breachOf b == I6 && maybe False (\k -> isHeadingElement (inElements i !! k) && any isFigure (take k (inElements i))) (elementOf i b),
-        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 3156), (5, 191280)]
-      }
-  ]
-
-isFigure :: Element -> Bool
-isFigure = \case
-  EFigure _ -> True
-  _ -> False
-
-isHeadingElement :: Element -> Bool
-isHeadingElement e = e == EHeading || e == ENotedHeading
-
--- | The lines of an element.
-elementLines :: Element -> Int
-elementLines = \case
-  EPara n -> n
-  ENotedPara n -> n
-  EHeading -> 1
-  ENotedHeading -> 1
-  ERecto -> 1
-  _ -> 0
-
--- | The index of the element whose first line is the first line of the breach.
-elementOf :: Input -> Breach -> Maybe Int
-elementOf i b = case breachAt b of
-  l : _ ->
-    let starts = scanl (+) 0 (map elementLines (inElements i))
-     in lookup l [(st, k) | (k, (st, e)) <- zip [0 ..] (zip starts (inElements i)), elementLines e > 0]
-  [] -> Nothing
+knownBugs = []
 
 -- | The breaches of an input.
 breachesOf :: Input -> [Breach]
