@@ -28,6 +28,7 @@ import ImageSpec qualified
 import ImportSpec qualified
 import Numeric (readHex)
 import SecuritySpec qualified
+import UuidSpec qualified
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -792,6 +793,7 @@ tests tinyJpeg =
       ImageSpec.tests,
       ImportSpec.tests,
       SecuritySpec.tests,
+      UuidSpec.tests,
       DrawingSpec.tests,
       testGroup
         "CIDSystemInfo (ADR 0006)"

@@ -1,6 +1,6 @@
 # ADR 0199: PDF の組版をファイルを読まない wasm の reactor モジュールにして配る
 
-ステータス: 採択（未実装）
+ステータス: 採択（未実装）→組めなかったパッケージの扱いは [ADR 0202](0202-packages-that-do-not-build-for-wasm.md)
 
 ## 文脈
 
