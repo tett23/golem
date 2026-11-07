@@ -121,7 +121,7 @@ numberTests =
               let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])]
                   body = TList [TInt 10, TNull, deferredWith (floatExpr t)]
               docT <- case documentTerm doc of
-                TList [ver, f, TList [TList [s, l, _]]] -> pure (TList [ver, f, TList [TList [s, l, body]]])
+                TList [ver, f, TList [TList [s, l, g, _]]] -> pure (TList [ver, f, TList [TList [s, l, g, body]]])
                 other -> assertFailure (show other)
               p <- answering (cbor (TList [docT, TList []]))
               applyFilter p "upper" doc @?= Left (NonFiniteFloat v)

@@ -185,6 +185,8 @@ impl Flat {
                 Inline::Color { body, .. } => self.run(body, editable),
                 // the text of a link is set as that of a character style (docs/adr ADR 0182)
                 Inline::Link { body, .. } => self.run(body, editable),
+                // the text of a language span likewise (docs/adr ADR 0187)
+                Inline::Lang { body, .. } => self.run(body, editable),
                 Inline::Kenten { body, .. } => self.run(body, false),
                 Inline::Ruby { segments, .. } => {
                     for s in segments {
@@ -310,6 +312,7 @@ fn rebuild(xs: Vec<Inline>, edits: &Edits, count: &mut usize) -> Vec<Inline> {
             Inline::CharStyle { span, style, body } => out.push(Inline::CharStyle { span, style, body: rebuild(body, edits, count) }),
             Inline::Color { span, swatch, body } => out.push(Inline::Color { span, swatch, body: rebuild(body, edits, count) }),
             Inline::Link { span, uri, body } => out.push(Inline::Link { span, uri, body: rebuild(body, edits, count) }),
+            Inline::Lang { span, lang, body } => out.push(Inline::Lang { span, lang, body: rebuild(body, edits, count) }),
             Inline::Kenten { span, shape, body } => out.push(Inline::Kenten { span, shape, body: rebuild(body, edits, count) }),
             Inline::Ruby { span, segments } => out.push(Inline::Ruby {
                 span,
@@ -541,7 +544,7 @@ mod tests {
 
     #[test]
     fn the_filter_rewrites_paragraphs_and_reports_the_config() {
-        let doc = Document { file: 3, blocks: vec![Block { span: S, label: None, body: BlockBody::Paragraph { style: None, inlines: vec![t("第12回")] } }] };
+        let doc = Document { file: 3, blocks: vec![Block { span: S, label: None, lang: None, body: BlockBody::Paragraph { style: None, inlines: vec![t("第12回")] } }] };
         let req_in = |mode: &str, data: Vec<(String, Vec<u8>)>| {
             Request::Filter(FilterRequest {
                 name: "auto-tcy".into(),

@@ -108,7 +108,7 @@ import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
 import Golem.Layout.Align qualified as A
 import Golem.Layout.Code
-import Golem.Layout.Hyphenation.EnUs (englishUS)
+import Golem.Layout.Hyphenation.Languages (patternsFor)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look hiding (Kerning (..))
@@ -742,7 +742,7 @@ runningHeadNotices inp geom fonts layout =
 
 -- | The width of a text set in a role at a size, unjustified.
 plainWidth :: LoadedFonts -> Text -> Sp -> Text -> Sp
-plainWidth fonts role size txt = sum [L.zwToSp size (shAdvance g) | g <- lfShape fonts (Shaping role False []) txt]
+plainWidth fonts role size txt = sum [L.zwToSp size (shAdvance g) | g <- lfShape fonts (Shaping role False [] False) txt]
 
 {- | Whether a page gets its folio (golem-driver ADR 0021): not a blank
 page, and its master page has a folio. 'masterMarks' and 'hiddenFolios'
@@ -1075,7 +1075,7 @@ composeEnv style geom fonts assumed look =
       shaping = shapingOf (pgVertical geom)
    in (defaultComposeEnv (lkSize look))
         { ceAdvance = \lk c -> lfAdvance fonts (shaping lk c) c,
-          ceWordAdvance = \lk t -> lfWordAdvance fonts (maybe (Shaping (lkLatinFace lk) False []) (shaping lk . fst) (T.uncons t)) t,
+          ceWordAdvance = \lk t -> lfWordAdvance fonts (maybe (Shaping (lkLatinFace lk) False [] False) (shaping lk . fst) (T.uncons t)) t,
           ceKern = \lk a b -> lfPairKern fonts (shaping lk a) a b,
           ceLook = look,
           ceRestyle = restyle style,
@@ -1095,8 +1095,8 @@ composeEnv style geom fonts assumed look =
             Just "symbol" -> MarkerSymbol
             Just "none" -> MarkerNone
             _ -> MarkerNumber,
-          -- Latin words: US English patterns (golem-layout ADR 0001)
-          cePatterns = const (Just englishUS),
+          -- Latin words: the patterns of the language of their span, US English outside one (golem-layout ADR 0001, docs/adr ADR 0187)
+          cePatterns = patternsFor,
           -- the set of body; a paragraph, a caption and a sidenote take their style's (docs/adr ADR 0019)
           ceAkiSet = akiSetOf style Nothing,
           -- the text of note marks (golem-driver ADR 0025) and their character style (docs/adr/0177)
@@ -1205,15 +1205,22 @@ data Unit = Unit
     -- | the frames of the structure tree around the unit, outermost first (docs/adr ADR 0183)
     uFrames :: [Frame],
     -- | the place of the unit among the units of the book, from 0 (docs/adr ADR 0183)
-    uIndex :: Int
+    uIndex :: Int,
+    -- | the /Lang of the element of the unit, of a block with a language (docs/adr ADR 0187)
+    uLang :: Maybe Text
   }
 
 {- | A frame of the structure tree of the PDF around units (docs/adr ADR
 0183): a list, an item, the table of contents and so on. Its number tells
-it from the frames of the same kind next to it.
+it from the frames of the same kind next to it, and its language the
+/Lang of its element, of a block with a language (docs/adr ADR 0187).
 -}
-data Frame = Frame !Int !FrameKind
+data Frame = Frame !Int !FrameKind !(Maybe Text)
   deriving stock (Eq, Show)
+
+-- | A frame of no language of its own: its element takes that of the element around it (docs/adr ADR 0187).
+frame :: Int -> FrameKind -> Frame
+frame n k = Frame n k Nothing
 
 data FrameKind
   = -- | a list, numbered or not
@@ -1444,8 +1451,8 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
       [] -> []
       ns@((sp, _, _) : _) ->
         let title = notesTitle lang
-         in Unit (UNotesTitle title) Nothing [Text sp title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing) (SourceHeading 2) [] 0
-              : [Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n xs) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) SourceGrid [Frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n))] 0 | (nsp, n, xs) <- ns]
+         in Unit (UNotesTitle title) Nothing [Text sp title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing) (SourceHeading 2) [] 0 Nothing
+              : [Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n xs) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) SourceGrid [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n))] 0 Nothing | (nsp, n, xs) <- ns]
     {- a list of blocks inside the lists @ctx@, from the list number @n@,
     with the spaces before and after of paragraphs when @spaced@ (not in a
     definition list): in a list item, paragraphs are not indented by their
@@ -1457,7 +1464,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
       Just (Block _ _ _ a)
         | g <- gapLines style ctx spaced a b,
           g > 0 ->
-            [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) SourceGrid [] 0]
+            [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) SourceGrid [] 0 Nothing]
       _ -> []
     {- the grid lines between two blocks (docs/adr/0189): only the blank
     lines across them; none before a forced break or a control of page
@@ -1480,8 +1487,10 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
     before prev b = case blockBody b of
       PageControl _ -> prev
       _ -> Just b
-    block style ctx n (Block sp lbl lang body) =
-      let unit kind l is face src = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing) src [] 0
+    -- a block with a language: the language of its characters and the /Lang of its element (docs/adr ADR 0187)
+    block style ctx n b = withBlockLang (blockLang b) <$> blockUnits style ctx n b
+    blockUnits style ctx n (Block sp lbl _ body) =
+      let unit kind l is face src = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing) src [] 0 Nothing
           -- the body role at the size of the grid (golem-cli ADR 0008)
           plainUnit kind l is = unit kind l is (bodyLook style fs) SourceGrid
        in case body of
@@ -1498,7 +1507,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
                   rulesOf i = (if i == 0 then rb else Nothing, if i == length parts - 1 then ra else Nothing)
                   us = [(unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face (paraSizeSource style st)) {uParaStyle = st, uRules = rulesOf i} | (i, part) <- zip [0 :: Int ..] parts]
                in -- the lines of the paragraph are one P (docs/adr ADR 0183)
-                  if length parts > 1 then (n + 1, inFrame (Frame n FPara) us) else (n, us)
+                  if length parts > 1 then (n + 1, inFrame (frame n FPara) us) else (n, us)
             Heading l attrs is ->
               let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
                   -- the number is at the heading (golem-cli ADR 0008)
@@ -1509,18 +1518,18 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
             BulletList items -> list style ctx n (map (Nothing,) items)
             OrderedList items -> list style ctx n (zip (map Just (itemNumbers items)) items)
             DefList gs ->
-              let group k (j, g) = (\us -> inFrame (Frame j FDefItem) ([plainUnit (UTerm noIndent) Nothing t | t <- dgTerms g] <> inFrame (Frame 0 FDefBody) us)) <$> blocksOf k (dgDefs g)
+              let group k (j, g) = (\us -> inFrame (frame j FDefItem) ([plainUnit (UTerm noIndent) Nothing t | t <- dgTerms g] <> inFrame (frame 0 FDefBody) us)) <$> blocksOf k (dgDefs g)
                   blocksOf k ds = let (k', dss) = mapAccumL (blocks style ctx False) k ds in (k', concat dss)
                   (n', uss) = mapAccumL group (n + 1) (zip [0 ..] gs)
-               in (n', inFrame (Frame n FDefList) (concat uss))
+               in (n', inFrame (frame n FDefList) (concat uss))
             Table aligns h rows -> (n, [plainUnit (UTable aligns h rows) lbl []])
             -- always in the paragraph style code (golem-driver ADR 0017)
             CodeBlock code -> (n, [unit (UCode 0 code) lbl [] (codeLook style geom) (paraSizeSource style (Just "code"))])
             FigureBlock fig -> (n, [plainUnit (UFigure fig) lbl []])
             -- S1 has dropped the index marks and channel items of the title (docs/adr/0145)
-            ChannelOutput (TocOutput depth) -> (n + 1, inFrame (Frame n FToc) [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (numberedTitle lang (teSpan e) (teNumber e) (teTitle e)) | e <- bookToc book, teLevel e <= depth])
+            ChannelOutput (TocOutput depth) -> (n + 1, inFrame (frame n FToc) [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (numberedTitle lang (teSpan e) (teNumber e) (teTitle e)) | e <- bookToc book, teLevel e <= depth])
             ChannelOutput IndexOutput ->
-              let entries kind = inFrame (Frame n FIndex) [plainUnit kind Nothing is | is <- indexLines (pgVertical geom) pageOf (indexAt book sp)]
+              let entries kind = inFrame (frame n FIndex) [plainUnit kind Nothing is | is <- indexLines (pgVertical geom) pageOf (indexAt book sp)]
                in case indexSet of
                     Nothing -> (n + 1, entries (UPara noIndent))
                     -- the index in its own columns (docs/adr ADR 0025)
@@ -1529,8 +1538,8 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
             ChannelOutput (CustomOutput name st) ->
               let (face, ind) = paraLook style geom st
                   locators = maybe False channelLocators (Map.lookup name (bookChannelDecls book))
-               in (n + 1, inFrame (Frame n FChannel) [(unit (UPara (if null ctx then ind else noIndent)) Nothing is face (paraSizeSource style st)) {uParaStyle = st} | is <- channelLines (pgVertical geom) pageOf locators (channelAt book sp)])
-            ChannelOutput BibliographyOutput -> (n + 1, inFrame (Frame n FBibliography) [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bibliographyAt book sp)])
+               in (n + 1, inFrame (frame n FChannel) [(unit (UPara (if null ctx then ind else noIndent)) Nothing is face (paraSizeSource style st)) {uParaStyle = st} | is <- channelLines (pgVertical geom) pageOf locators (channelAt book sp)])
+            ChannelOutput BibliographyOutput -> (n + 1, inFrame (frame n FBibliography) [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bibliographyAt book sp)])
             ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])
             PageControl c -> (n, [plainUnit (UPageControl c) Nothing []])
             BlankLines k -> (n, [plainUnit (UBlank k) Nothing []])
@@ -1541,10 +1550,10 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
           marker = listMarker style (pgVertical geom) (length ctx')
           item k (j, (num, it)) =
             let (k', us) = blocks style ctx' True k (itemBlocks it)
-             in (k', inFrame (Frame j FItem) (if startsWithParagraph it then markFirst (marker num) us else us))
+             in (k', inFrame (frame j FItem) (if startsWithParagraph it then markFirst (marker num) us else us))
           (n', uss) = mapAccumL item (n + 1) (zip [0 ..] items)
           numbered = any (isJust . fst) items
-       in (n', inFrame (Frame n (FList numbered)) (concat uss))
+       in (n', inFrame (frame n (FList numbered)) (concat uss))
     startsWithParagraph it = case itemBlocks it of
       (Block _ _ _ (Paragraph {}) : _) -> True
       _ -> False
@@ -1563,6 +1572,33 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
     isBreak = \case
       LineBreak _ -> True
       _ -> False
+
+{- | The units of a block with a language (docs/adr ADR 0187): the
+characters of each unit in it, unless the unit is of a block inside of a
+language of its own; the /Lang on the element of the block, the frame it
+makes (a list, a paragraph that keeps its lines, a list of a channel) or
+else its unit.
+-}
+withBlockLang :: Maybe Text -> [Unit] -> [Unit]
+withBlockLang lang us = case lang of
+  Nothing -> us
+  Just l ->
+    let looked = [u {uLook = (uLook u) {lkLang = lkLang (uLook u) <|> Just l}} | u <- us]
+        made = case [f | u <- us, f@(Frame _ k _) : _ <- [uFrames u], outer k] of
+          f : _ -> Just f
+          [] -> Nothing
+        outer = \case
+          FList _ -> True
+          FDefList -> True
+          FToc -> True
+          FIndex -> True
+          FChannel -> True
+          FBibliography -> True
+          FPara -> True
+          _ -> False
+     in case made of
+          Just f@(Frame j k _) -> [case uFrames u of g : rest | g == f -> u {uFrames = Frame j k (Just l) : rest}; _ -> u | u <- looked]
+          Nothing -> [u {uLang = Just l} | u <- looked]
 
 {- | The marker width M of each list, by its number (golem-driver ADR 0013):
 the widest marker w of the list and the gap G, rounded up to whole
@@ -1664,7 +1700,7 @@ unitEnv fe u = (withDocStyle (uStyle u) (lookEnv fe (uLook u))) {ceAkiSet = akiS
 number of an entry of the bibliography.
 -}
 unitLabelInlines :: Unit -> Int
-unitLabelInlines u = case [k | Frame _ k <- uFrames u] of
+unitLabelInlines u = case [k | Frame _ k _ <- uFrames u] of
   ks
     | (k : _) <- [k | FEndNote _ k <- ks] -> k
     | FBibliography `elem` ks -> 1
@@ -1769,11 +1805,11 @@ place of the caption (docs/adr ADR 0183).
 captionEnv :: FlowEnv -> Unit -> ComposeEnv
 captionEnv fe u =
   let (captionRole, cs) = paraFace (uStyle u) (feGeom fe) "caption"
-   in (withDocStyle (uStyle u) (lookEnv fe (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption"), ceSizeSource = paraSizeSource (uStyle u) (Just "caption"), ceSite = captionSite (uIndex u)}
+   in (withDocStyle (uStyle u) (lookEnv fe ((styleLook (uStyle u) (Just "caption") captionRole cs) {lkLang = lkLang (uLook u)}))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption"), ceSizeSource = paraSizeSource (uStyle u) (Just "caption"), ceSite = captionSite (uIndex u)}
 
--- | The composition of the cells of a table: the body size, no hanging punctuation (golem-driver ADR 0008).
-tableEnv :: FlowEnv -> Style -> ComposeEnv
-tableEnv fe st = (withDocStyle st (feBodyEnv fe)) {ceHanging = False}
+-- | The composition of the cells of a table: the body size, no hanging punctuation (golem-driver ADR 0008), in the language of the table (docs/adr ADR 0187).
+tableEnv :: FlowEnv -> Style -> Maybe Text -> ComposeEnv
+tableEnv fe st lang = let env = withDocStyle st (feBodyEnv fe) in env {ceHanging = False, ceLook = (ceLook env) {lkLang = lang}}
 
 -- | The composition of the notes and sidenotes of a unit: the body size of its document's style.
 noteEnv :: FlowEnv -> Style -> ComposeEnv
@@ -1957,9 +1993,9 @@ forceComposed c = evaluate (length (show (map lineRatio (cLines c))) + length (c
 (golem-driver ADR 0008), with the notes, sidenotes and index marks of each
 line of each row, the header row first.
 -}
-composeTable :: FlowEnv -> Int -> Style -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
-composeTable fe i st aligns h rows =
-  let env = tableEnv fe st
+composeTable :: FlowEnv -> Int -> Style -> Maybe Text -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
+composeTable fe i st lang aligns h rows =
+  let env = tableEnv fe st lang
       -- no break between the last two Japanese characters of a cell (golem-driver ADR 0037); each cell its place (docs/adr ADR 0183)
       cellOf r c is = first keepLastTwo (composeInlines env {ceSite = cellSite i r c} is)
       hCells = zipWith (cellOf 0) [0 ..] h
@@ -2322,10 +2358,10 @@ buildFlow inp geom fonts images assumed = do
       isTable u = case uKind u of
         UTable {} -> True
         _ -> False
-      tableUnits = [(i, uStyle u, aligns, h, rows) | (i, u@Unit {uKind = UTable aligns h rows}) <- units]
+      tableUnits = [(i, uStyle u, lkLang (uLook u), aligns, h, rows) | (i, u@Unit {uKind = UTable aligns h rows}) <- units]
   _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (\(_, u) -> forceComposed (composeUnit fe widths (unitLineWidth fe (uKind u)) u)) rest
-  tables <- Map.fromList <$> mapper (\(i, st, aligns, h, rows) -> let r = composeTable fe i st aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) tableUnits
+  tables <- Map.fromList <$> mapper (\(i, st, l, aligns, h, rows) -> let r = composeTable fe i st l aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) tableUnits
   -- 3. number the lines in document order
   let codeBlocks = codeBlocksOf fe units
       composed = ComposedUnits unitAt besides figures singles tables codeBlocks
@@ -2621,7 +2657,7 @@ keepLastTwo items = case reverse boxes of
     boxes = [i | (i, Box {}) <- zip [0 :: Int ..] items]
     jaBoxes = [i | (i, Box _ c) <- zip [0 :: Int ..] items, japanese c]
     japanese c = case T.unpack (bcText c) of
-      [ch] -> boxKind c `elem` [KindText, KindPunctuation, KindKenten] && charClass ch /= Western
+      [ch] -> boxKind c `elem` [KindText, KindPunctuation, KindKenten] && lookClass (bcLook c) ch /= Western
       _ -> False
     hold = \case
       Penalty w p h | p < infPenalty -> [Penalty w infPenalty h]

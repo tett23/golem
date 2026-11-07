@@ -8,7 +8,7 @@
 # Each book is a copy of a fixture with an output intent added to its
 # style.toml ([color] intent, the profile of scripts/ci/testdata/conformance)
 # and pdfa = "2a" and pdfua = "1" added to [targets.pdf] of its
-# manifest.toml. The figures and the conformance fixture take the fonts of
+# manifest.toml. The figures, the conformance and the languages fixtures take the fonts of
 # the other fixtures as fonts/ja.otf and fonts/latin.otf, as
 # scripts/visual/build.sh does; the conformance fixture is set horizontally
 # with its manifest.toml and style.toml, and vertically with its
@@ -22,7 +22,7 @@ ROOT=$(cd "$HERE/../.." && pwd)
 FIX=$ROOT/modules/golem-driver/test/fixtures
 PROFILE=$HERE/testdata/conformance/golem-test-cmyk.icc
 list() {
-  printf '%s\n' kanikosen tempest figures conformance-horizontal conformance-vertical
+  printf '%s\n' kanikosen tempest figures conformance-horizontal conformance-vertical languages
 }
 case "${1-}" in
   --list) list; exit 0 ;;
@@ -88,4 +88,6 @@ declared conformance-horizontal "$FIX/conformance"
 fonts "$WORK/conformance-horizontal"
 declared conformance-vertical "$FIX/conformance" style-vertical.toml manifest-vertical.toml
 fonts "$WORK/conformance-vertical"
+declared languages "$FIX/languages"
+fonts "$WORK/languages"
 for name in $(list); do pdf "$name" >"$WORK/log-$name" 2>&1 || { cat "$WORK/log-$name" >&2; exit 1; }; done

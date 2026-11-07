@@ -1,0 +1,80 @@
+Document
+  H1
+    "1　両用の文字"
+  P
+    "区間の外では、最も近い文字で決める。“東京”と“Hel”loと言った。«Bonjour»とwait…whatと‹a›を組む。"
+  P
+    "英語の区間では、"
+    Span Lang=en
+      "“東京”"
+    "の引用符が欧文になる。"
+    Span Lang=en
+      "wait…what"
+    "の三点リーダーは語に入る。"
+  P
+    "和文の区間では、"
+    Span Lang=ja
+      "“Hello”"
+    "の引用符が和文の括弧になり、"
+    Span Lang=ja
+      "‹a›"
+    "も括弧になる。"
+  P
+    "フランス語の区間では、"
+    Span Lang=fr
+      "«Bonjour»"
+    "の山括弧が欧文になる。"
+    Span Lang=en
+      "AnoteinEnglish"
+      Reference
+        "*1"
+      Note ID=note-1
+        Lbl
+          "*1"
+        P
+          Span Lang=en
+            "Thebodyofthenoteisinthelanguageofitsmark,“theplace”."
+      "."
+  H1
+    "2　"
+    Span Lang=en
+      "Thelanguageofblocks"
+  P Lang=en
+    "Hesaidnothing,andthesilencewastheanswer.“東京”issetasEnglishhere;"
+    Span Lang=ja
+      "“東京”"
+    "isJapanese."
+  L Lang=fr /List /ListNumbering /Disc
+    LI
+      Lbl
+        "•"
+      LBody
+        P
+          "Bonjour."
+    LI
+      Lbl
+        "•"
+      LBody
+        P
+          "Merci."
+  P Lang=en
+    "Thefirstparagraphofalongquotation."
+  P Lang=en
+    "Thesecondparagraphofthequotation."
+  L Lang=en /List /ListNumbering /Disc
+    LI
+      Lbl
+        "•"
+      LBody
+        P
+          "Alistinsideit."
+  P Lang=de
+    "EinAbsatzaufDeutsch."
+  H1
+    "3　分綴"
+  P Lang=en
+    "HyphenationfollowstheEnglishpatternsinanEnglishparagraph:hy-phenation,typesetting,extraordinary."
+  P Lang=fr
+    "Lesmotslongsnesontpascoupésenfrançais:anticonstitutionnellement,extraordinairement,porte-monnaie."
+  P
+    "Horsdubloc:hyphenation,typesetting,extraordinary."

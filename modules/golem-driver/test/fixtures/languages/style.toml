@@ -1,0 +1,23 @@
+# 横組みの本：和文と欧文のフォントを分ける（docs/adr/0187）
+[page]
+size = "A5"
+binding = "left"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "12Q"
+characters = 30
+lines = 16
+line-pitch = "20H"
+columns = 1
+position = { top = "24mm", gutter = "20mm" }
+
+[fonts.body]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[masters.body]
+folio = { position = "bottom-outside", format = "{n}" }

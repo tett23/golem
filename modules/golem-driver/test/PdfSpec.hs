@@ -224,58 +224,58 @@ characterFeatureTests :: [TestTree]
 characterFeatureTests =
   [ testCase "a Latin word is kerned unless -kern is added" $ do
       fonts <- featureFonts
-      let s = Shaping "body" False
+      let s e = Shaping "body" False e False
           apart extra = lfAdvance fonts (s extra) 'A' + lfAdvance fonts (s extra) 'V'
       lfWordAdvance fonts (s ["-kern"]) "AV" @?= apart ["-kern"]
       assertBool "kerned" (lfWordAdvance fonts (s []) "AV" < apart []),
     -- the subset of Source Han Sans has no palt; Noto Serif JP of the 蟹工船 fixture has
     testCase "palt narrows a bracket; -palt after the role's palt undoes it" $ do
       fonts <- notoPaltFonts
-      assertBool "palt" (lfAdvance fonts (Shaping "body" False ["palt"]) '「' < 1)
-      lfAdvance fonts (Shaping "body" False ["-palt"]) '「' @?= 1
-      assertBool "the role's palt" (lfAdvance fonts (Shaping "palt" False []) '「' < 1)
-      lfAdvance fonts (Shaping "palt" False ["-palt"]) '「' @?= 1,
+      assertBool "palt" (lfAdvance fonts (Shaping "body" False ["palt"] False) '「' < 1)
+      lfAdvance fonts (Shaping "body" False ["-palt"] False) '「' @?= 1
+      assertBool "the role's palt" (lfAdvance fonts (Shaping "palt" False [] False) '「' < 1)
+      lfAdvance fonts (Shaping "palt" False ["-palt"] False) '「' @?= 1,
     testCase "vpal narrows a bracket in vertical shaping" $ do
       fonts <- featureFonts
-      lfAdvance fonts (Shaping "body" True []) '「' @?= 1
-      assertBool "vpal" (lfAdvance fonts (Shaping "body" True ["vpal"]) '「' < 1),
+      lfAdvance fonts (Shaping "body" True [] False) '「' @?= 1
+      assertBool "vpal" (lfAdvance fonts (Shaping "body" True ["vpal"] False) '「' < 1),
     testCase "the kerning of a pair is the pair shaped together less the two shaped apart" $ do
       fonts <- featureFonts
-      let s = Shaping "body" False []
+      let s = Shaping "body" False [] False
           together = lfWordAdvance fonts s "AV"
       lfPairKern fonts s 'A' 'V' @?= together - lfAdvance fonts s 'A' - lfAdvance fonts s 'V'
       assertBool "negative" (lfPairKern fonts s 'A' 'V' < 0)
-      lfPairKern fonts (Shaping "body" False ["-kern"]) 'A' 'V' @?= 0,
+      lfPairKern fonts (Shaping "body" False ["-kern"] False) 'A' 'V' @?= 0,
     testCase "each kerning method and proportional metrics turn on their OpenType features" $ do
       let lk k p = (plainLook "body" 655360) {lkKerning = k, lkProportional = p}
-      shapingOf False (lk KernMetrics False) 'あ' @?= Shaping "body" False []
-      shapingOf False (lk KernMetrics True) 'あ' @?= Shaping "body" False ["palt"]
-      shapingOf True (lk KernMetrics True) 'あ' @?= Shaping "body" True ["vpal"]
-      shapingOf False (lk KernNone False) 'あ' @?= Shaping "body" False ["-kern", "-vkrn"]
-      shapingOf True (lk KernNone True) 'あ' @?= Shaping "body" True ["-kern", "-vkrn", "vpal"]
-      shapingOf False (lk KernJapaneseEqualWidth True) 'あ' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"]
-      shapingOf False (lk KernNone True) 'a' @?= Shaping "body" False ["-kern"]
-      shapingOf False (lk KernJapaneseEqualWidth True) 'a' @?= Shaping "body" False []
+      shapingOf False (lk KernMetrics False) 'あ' @?= Shaping "body" False [] False
+      shapingOf False (lk KernMetrics True) 'あ' @?= Shaping "body" False ["palt"] False
+      shapingOf True (lk KernMetrics True) 'あ' @?= Shaping "body" True ["vpal"] False
+      shapingOf False (lk KernNone False) 'あ' @?= Shaping "body" False ["-kern", "-vkrn"] False
+      shapingOf True (lk KernNone True) 'あ' @?= Shaping "body" True ["-kern", "-vkrn", "vpal"] False
+      shapingOf False (lk KernJapaneseEqualWidth True) 'あ' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"] False
+      shapingOf False (lk KernNone True) 'a' @?= Shaping "body" False ["-kern"] False
+      shapingOf False (lk KernJapaneseEqualWidth True) 'a' @?= Shaping "body" False [] False
       -- Latin in vertical text is turned and measured horizontally
-      shapingOf True (lk KernMetrics False) 'a' @?= Shaping "body" False [],
+      shapingOf True (lk KernMetrics False) 'a' @?= Shaping "body" False [] False,
     testCase "punctuation JLReq spaces gets -palt and -vpal by every kerning method (docs/adr ADR 0053)" $ do
       let lk k p = (plainLook "body" 655360) {lkKerning = k, lkProportional = p}
-      shapingOf False (lk KernMetrics True) '「' @?= Shaping "body" False ["-palt", "-vpal"]
-      shapingOf True (lk KernMetrics True) '「' @?= Shaping "body" True ["-palt", "-vpal"]
+      shapingOf False (lk KernMetrics True) '「' @?= Shaping "body" False ["-palt", "-vpal"] False
+      shapingOf True (lk KernMetrics True) '「' @?= Shaping "body" True ["-palt", "-vpal"] False
       -- the role's palt is undone even without proportional-metrics
-      shapingOf False (lk KernMetrics False) '「' @?= Shaping "body" False ["-palt", "-vpal"]
-      mapM_ (\c -> shapingOf False (lk KernMetrics True) c @?= Shaping "body" False ["-palt", "-vpal"]) ['」', '。', '、', '・', '：', '；']
-      shapingOf False (lk KernNone True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"]
-      shapingOf False (lk KernJapaneseEqualWidth True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"]
+      shapingOf False (lk KernMetrics False) '「' @?= Shaping "body" False ["-palt", "-vpal"] False
+      mapM_ (\c -> shapingOf False (lk KernMetrics True) c @?= Shaping "body" False ["-palt", "-vpal"] False) ['」', '。', '、', '・', '：', '；']
+      shapingOf False (lk KernNone True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"] False
+      shapingOf False (lk KernJapaneseEqualWidth True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"] False
       -- what JLReq does not space keeps palt
-      shapingOf False (lk KernMetrics True) '？' @?= Shaping "body" False ["palt"]
-      shapingOf False (lk KernMetrics True) '…' @?= Shaping "body" False ["palt"],
+      shapingOf False (lk KernMetrics True) '？' @?= Shaping "body" False ["palt"] False
+      shapingOf False (lk KernMetrics True) '…' @?= Shaping "body" False ["palt"] False,
     testCase "the role's palt leaves a bracket its full width, a kana its palt width (docs/adr ADR 0053)" $ do
       fonts <- notoPaltFonts
       let lk = plainLook "palt" 655360
           advance c = lfAdvance fonts (shapingOf False lk c) c
       advance '「' @?= 1
-      advance 'あ' @?= lfAdvance fonts (Shaping "palt" False []) 'あ',
+      advance 'あ' @?= lfAdvance fonts (Shaping "palt" False [] False) 'あ',
     testCase "brackets are as wide with the role's palt or proportional-metrics as without (docs/adr ADR 0053)" $ do
       noto <- notoBytes
       let fonts = "\n[fonts.body]\nja = \"fonts/noto.otf\"\n\n[fonts.palt]\nja = \"fonts/noto.otf\"\nfeatures = [\"palt\"]\n\n[character-styles.p]\nfont = \"palt\"\n\n[character-styles.q]\nproportional-metrics = true\n"
@@ -301,17 +301,17 @@ characterFeatureTests =
       han <- featureFonts
       let txt = "漢「字」、。ー\x2014 AVa"
       sequence_
-        [ assertEqual (show (fonts', v)) [] [g | g <- lfShape fonts (Shaping "body" v []) txt, shOffset g /= (0, 0)]
+        [ assertEqual (show (fonts', v)) [] [g | g <- lfShape fonts (Shaping "body" v [] False) txt, shOffset g /= (0, 0)]
         | (fonts, fonts') <- [(noto, "noto" :: String), (han, "han")],
           v <- [False, True]
         ],
     testCase "palt and vpal move a bracket within its box (golem-driver ADR 0020)" $ do
       noto <- notoPaltFonts
       han <- featureFonts
-      case lfShape noto (Shaping "body" False ["palt"]) "「" of
+      case lfShape noto (Shaping "body" False ["palt"] False) "「" of
         [g] -> assertBool (show g) (fst (shOffset g) /= 0)
         other -> assertFailure (show other)
-      case lfShape han (Shaping "body" True ["vpal"]) "「" of
+      case lfShape han (Shaping "body" True ["vpal"] False) "「" of
         [g] -> assertBool (show g) (snd (shOffset g) /= 0)
         other -> assertFailure (show other),
     testCase "PDF: a glyph is drawn at its box moved by its offset; other glyphs stay (golem-driver ADR 0020)" $ do
@@ -382,7 +382,7 @@ variationTests :: [TestTree]
 variationTests =
   [ testCase "a base character and its variation selector are shaped together" $ do
       fonts <- notoFonts
-      [(shGlyph g, shText g) | g <- lfShape fonts (Shaping "body" False []) "葛\xE0100"] @?= [(16314, "葛")],
+      [(shGlyph g, shText g) | g <- lfShape fonts (Shaping "body" False [] False) "葛\xE0100"] @?= [(16314, "葛")],
     testCase "the variant glyph is drawn and maps back to its base character" $ do
       noto <- BS.readFile "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
       let body = "\n[fonts.body]\nja = \"fonts/noto.otf\"\n"
@@ -822,7 +822,7 @@ fontResources pdf = do
 
 -- | The glyph of a character in Noto Serif JP, shaped horizontally or vertically: its id and its code in the PDF.
 notoGlyph :: LoadedFonts -> Bool -> Char -> IO (Int, Int)
-notoGlyph fonts v c = case lfShape fonts (Shaping "body" v []) (T.singleton c) of
+notoGlyph fonts v c = case lfShape fonts (Shaping "body" v [] False) (T.singleton c) of
   [g] -> pure (shGlyph g, lfCode fonts (shFace g) (shGlyph g))
   other -> assertFailure (show other)
 
@@ -943,25 +943,25 @@ turnedTests :: [TestTree]
 turnedTests =
   [ testCase "vertical shaping turns an em dash that has no vertical form" $ do
       fonts <- notoFonts
-      case lfShape fonts (Shaping "body" True []) "\x2014" of
+      case lfShape fonts (Shaping "body" True [] False) "\x2014" of
         [g] -> (shGlyph g, shAdvance g, shTurned g) @?= (466, 890 / 1000, True)
         other -> assertFailure (show other),
     testCase "characters with vertical forms stay upright" $ do
       fonts <- notoFonts
-      let one c = case lfShape fonts (Shaping "body" True []) (T.singleton c) of
+      let one c = case lfShape fonts (Shaping "body" True [] False) (T.singleton c) of
             [g] -> pure g
             other -> assertFailure (show other)
       gs <- mapM one "\x2015\x2026\x301C"
       map shGlyph gs @?= [15282, 15280, 17592]
       comma <- one '、'
-      horizontalComma <- case lfShape fonts (Shaping "body" False []) "、" of
+      horizontalComma <- case lfShape fonts (Shaping "body" False [] False) "、" of
         [g] -> pure g
         other -> assertFailure (show other)
       assertBool "vertical form of 、" (shGlyph comma /= shGlyph horizontalComma)
       map shTurned (comma : gs) @?= replicate 4 False,
     testCase "a variation selector stays in the cluster of a turned character (golem-pdf ADR 0006)" $ do
       fonts <- notoFonts
-      let gs = lfShape fonts (Shaping "body" True []) "\x2014\xFE00漢"
+      let gs = lfShape fonts (Shaping "body" True [] False) "\x2014\xFE00漢"
           dash = [g | g <- gs, shText g == "\x2014"]
       -- the selector is in the dash's cluster (HarfBuzz may give it a glyph of its own) and turns with it
       map shGlyph (take 1 dash) @?= [466]
@@ -969,9 +969,9 @@ turnedTests =
       [shTurned g | g <- gs, shText g == "漢"] @?= [False],
     testCase "ideographs are upright; horizontal shaping never turns" $ do
       fonts <- notoFonts
-      map shTurned (lfShape fonts (Shaping "body" True []) "漢") @?= [False]
-      assertBool "horizontal" (not (any shTurned (lfShape fonts (Shaping "body" False []) "——漁夫は―…〜、漢「」ー")))
-      assertBool "horizontal Latin" (not (any shTurned (lfShape fonts (Shaping "body" False []) "Golem --"))),
+      map shTurned (lfShape fonts (Shaping "body" True [] False) "漢") @?= [False]
+      assertBool "horizontal" (not (any shTurned (lfShape fonts (Shaping "body" False [] False) "——漁夫は―…〜、漢「」ー")))
+      assertBool "horizontal Latin" (not (any shTurned (lfShape fonts (Shaping "body" False [] False) "Golem --"))),
     testCase "turned dashes are drawn with the horizontal font, centred on the line" $ do
       noto <- notoBytes
       fonts <- notoFonts
@@ -1809,7 +1809,7 @@ combiningTests =
         writeFiles tmp files
         style <- either (assertFailure . show) pure (parseStyle (FileId 0) "[fonts.body]\nja = \"fonts/noto.otf\"\nlatin = \"fonts/serif.ttf\"\n")
         fonts <- loadFonts golemFontProvider tmp (FileId 0) style [] >>= either (assertFailure . show) pure
-        let faceOf t = nub (map shFace (lfShape fonts (Shaping "body" False []) t))
+        let faceOf t = nub (map shFace (lfShape fonts (Shaping "body" False [] False) t))
         faceOf "cafe\x301" @?= faceOf "cafe"
   ]
   where

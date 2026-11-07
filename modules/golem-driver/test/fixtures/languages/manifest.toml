@@ -1,0 +1,16 @@
+# 原稿の中の言語の切り替えの fixture（docs/adr/0187）。
+# 両用の文字を区間の中と外で組み、ブロックの言語と分綴を見る。
+# フォントはコミットしない。組む前に fonts/ja.otf と fonts/latin.otf を写す（README）。
+chapters = ["languages.gm"]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000187"
+title = "言語の見本"
+language = "ja"
+date = 2026-11-07
+
+[source]
+paragraph-separator = "blank-line"
+
+[targets.pdf]
+[targets.html]

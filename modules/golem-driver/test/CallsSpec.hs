@@ -164,6 +164,16 @@ callsTests =
           e <- evaluated tmp
           codesIn e @?= []
           [(l, t) | Block _ l Nothing (Paragraph _ [Text _ t]) <- take 2 (blocksOf e "a.gm")] @?= [(Just "words", "語彙"), (Nothing, "本体。")],
+      -- docs/adr ADR 0187
+      testCase "a block passed through a function keeps its language; a block the function makes has none, and takes @lang written on the call" $ do
+        withBook [("a.gm", imported "@book.word-table 語彙\n  @lang de\n  Deutsch.\n")] [("functions/book.emet", book)] "" $ \tmp -> do
+          e <- evaluated tmp
+          codesIn e @?= []
+          [(l, t) | Block _ _ l (Paragraph _ [Text _ t]) <- blocksOf e "a.gm"] @?= [(Nothing, "語彙"), (Just "de", "Deutsch.")]
+        withBook [("a.gm", imported "@lang en\n@book.word-table 語彙\n  @lang de\n  Deutsch.\n")] [("functions/book.emet", book)] "" $ \tmp -> do
+          e <- evaluated tmp
+          codesIn e @?= []
+          [(l, t) | Block _ _ l (Paragraph _ [Text _ t]) <- blocksOf e "a.gm"] @?= [(Just "en", "語彙"), (Just "de", "Deutsch.")],
       testCase "keyword arguments: the defaults, the values given, and G02119" $
         withBook [("a.gm", imported "[book.price 1000]\n\n[book.price 1000 tax=false unit=\" 円\"]\n")] [("functions/book.emet", book)] "" $ \tmp -> do
           e <- evaluated tmp

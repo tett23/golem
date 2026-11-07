@@ -96,6 +96,18 @@ structureTests =
     structureGolden "structure-kanikosen.txt" "kanikosen" Nothing Nothing,
     structureGolden "structure-conformance-horizontal.txt" "conformance" Nothing Nothing,
     structureGolden "structure-conformance-vertical.txt" "conformance" (Just "style-vertical.toml") (Just "manifest-vertical.toml"),
+    -- docs/adr ADR 0187
+    structureGolden "structure-languages.txt" "languages" Nothing Nothing,
+    testCase "a language span is a Span of its /Lang; a block with @lang has it on its own element" $ do
+      t <- treeLines <$> miniStructure horizontalStyle "本文[lang fr: x]。\n\n@lang en\nText.\n\n@lang en\n- a\n- b\n\n@lang en\n  One.\n\n  Two.\n"
+      assertBool (show t) ("Span Lang=fr" `elem` t)
+      [l | l <- t, "P Lang=" `T.isPrefixOf` l] @?= ["P Lang=en", "P Lang=en", "P Lang=en"]
+      [l | l <- t, "L " `T.isPrefixOf` l] @?= ["L Lang=en /List /ListNumbering /Disc"]
+      -- the items of the list take its language from it
+      length [l | l <- t, "LI" `T.isPrefixOf` l, "Lang" `T.isInfixOf` l] @?= 0,
+    testCase "a book without [lang] and @lang has no /Lang in its tree" $ do
+      t <- fixtureStructure "conformance" Nothing Nothing
+      assertBool "no Lang" (not ("Lang=" `T.isInfixOf` t)),
     testCase "the elements of each kind of block and inline of the conformance fixture" $ do
       h <- treeLines <$> fixtureStructure "conformance" Nothing Nothing
       let has t = assertBool (T.unpack t) (t `elem` h)
