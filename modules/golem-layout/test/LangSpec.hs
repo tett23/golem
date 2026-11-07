@@ -5,6 +5,7 @@ as before; the patterns are those of the language of the span.
 -}
 module LangSpec (langTests) where
 
+import Data.Functor (void)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Fixtures (fs, look0, sp)
@@ -143,5 +144,5 @@ langTests =
       testCase "the patterns of a language: English for en, en-GB and outside a span, none for fr and ja" $ do
         map (isJust . patternsFor) [Just "en", Just "en-GB", Just "EN-us", Nothing] @?= [True, True, True, True]
         map (isNothing . patternsFor) [Just "fr", Just "ja", Just "de-CH-1996"] @?= [True, True, True]
-        fmap (const ()) (patternsFor Nothing) @?= fmap (const ()) (Just englishUS)
+        void (patternsFor Nothing) @?= void (Just englishUS)
     ]
