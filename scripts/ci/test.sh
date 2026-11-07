@@ -1826,6 +1826,11 @@ deps "golem-test-support is not in the plan" 0 "$PLANS/absent.json"
 deps "golem-test-support depends on a local package" 1 "$PLANS/support-local-direct.json" golem-syntax,
 deps "golem-test-support reaches a local package through Hackage" 1 "$PLANS/support-local-through-hackage.json" golem-syntax,
 deps "golem-test-support depends on Hackage packages only" 0 "$PLANS/support-hackage-only.json"
+# golem-doc-gen, the generators of the semantic IR, is only for the test
+# suites too, and may depend on golem-doc (docs/adr/0191)
+deps "a library depends directly on golem-doc-gen" 1 "$PLANS/docgen-direct.json" golem-driver:lib
+deps "a library reaches golem-doc-gen through another package" 1 "$PLANS/docgen-transitive.json" golem-driver:lib golem-plugin:lib
+deps "only test suites depend on golem-doc-gen, which depends on golem-doc" 0 "$PLANS/docgen-test-only.json"
 deps "no such file" 2 "$WORK/no-such-plan.json"
 printf 'not json\n' >"$WORK/bad.json"
 deps "not JSON" 2 "$WORK/bad.json"

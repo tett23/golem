@@ -1,0 +1,12 @@
+{"cabal-version":"3.16.1.0","install-plan":[
+ {"type":"pre-existing","id":"base-4.20.2.0-754f","pkg-name":"base","pkg-version":"4.20.2.0","depends":[]},
+ {"type":"configured","id":"hdghg-1.5-0a1b2c3d","pkg-name":"hedgehog","pkg-version":"1.5","style":"global","pkg-src":{"type":"repo-tar"},"components":{"lib":{"depends":["base-4.20.2.0-754f"],"exe-depends":[]}}},
+ {"type":"configured","id":"golem-test-support-0.1.0-inplace","pkg-name":"golem-test-support","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","hdghg-1.5-0a1b2c3d"],"exe-depends":[],"component-name":"lib"},
+ {"type":"configured","id":"golem-doc-0.1.0-inplace","pkg-name":"golem-doc","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f"],"exe-depends":[],"component-name":"lib"},
+ {"type":"configured","id":"golem-doc-gen-0.1.0-inplace","pkg-name":"golem-doc-gen","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-doc-0.1.0-inplace","hdghg-1.5-0a1b2c3d"],"exe-depends":[],"component-name":"lib"},
+ {"type":"configured","id":"golem-doc-gen-0.1.0-inplace-golem-doc-gen-test","pkg-name":"golem-doc-gen","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-doc-0.1.0-inplace","golem-doc-gen-0.1.0-inplace"],"exe-depends":[],"component-name":"test:golem-doc-gen-test"},
+ {"type":"configured","id":"golem-doc-0.1.0-inplace-golem-doc-test","pkg-name":"golem-doc","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-doc-0.1.0-inplace","golem-doc-gen-0.1.0-inplace","golem-test-support-0.1.0-inplace"],"exe-depends":[],"component-name":"test:golem-doc-test"},
+ {"type":"configured","id":"golem-driver-0.1.0-inplace","pkg-name":"golem-driver","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-doc-0.1.0-inplace"],"exe-depends":[],"component-name":"lib"},
+ {"type":"configured","id":"golem-driver-0.1.0-inplace-golem-driver-test","pkg-name":"golem-driver","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-driver-0.1.0-inplace","golem-doc-gen-0.1.0-inplace","golem-test-support-0.1.0-inplace"],"exe-depends":[],"component-name":"test:golem-driver-test"},
+ {"type":"configured","id":"golem-cli-0.1.0-inplace-golem","pkg-name":"golem-cli","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-driver-0.1.0-inplace"],"exe-depends":[],"component-name":"exe:golem"}
+]}

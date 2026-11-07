@@ -22,7 +22,7 @@ import Golem.Syntax
 import Hedgehog (forAll, property, (===))
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import IRGen (genDocument, genInline)
+import Golem.DocGen (genDocument, genInline)
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.FilePath (takeDirectory, (</>))
