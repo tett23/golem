@@ -26,6 +26,7 @@ import Golem.Project.Style
 import Golem.Syntax
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
+import SharedValuesSpec qualified
 import StylePositionSpec qualified
 import StyleSchemaSpec qualified
 import System.Directory (createDirectoryIfMissing, createFileLink)
@@ -646,6 +647,7 @@ tests =
       TomlMessageSpec.tests,
       ColophonSpec.tests,
       OutputCharsSpec.tests,
+      SharedValuesSpec.tests,
       StylePositionSpec.tests,
       StyleSchemaSpec.tests,
       NaturalKeySpec.tests,

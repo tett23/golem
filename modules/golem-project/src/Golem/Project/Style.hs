@@ -74,6 +74,8 @@ module Golem.Project.Style
     Swatch (..),
     ListStyle (..),
     defaultListStyle,
+    listBullets,
+    textBullets,
     RuleSpec (..),
     RuleStyle (..),
     paraRules,
@@ -941,6 +943,19 @@ data ListStyle = ListStyle
 -- | No [lists]: the bullet of the output, the numbers and the gap of the writing mode.
 defaultListStyle :: ListStyle
 defaultListStyle = ListStyle Nothing Nothing Nothing
+
+{- | The bullets of [lists] by depth in PDF, HTML and EPUB: those written,
+or • without bullets (golem-driver ADR 0044).
+-}
+listBullets :: ListStyle -> NonEmpty Text
+listBullets = bulletsOr "•"
+
+-- | The bullets of [lists] by depth in plain text: those written, or ・ without bullets (golem-driver ADR 0044).
+textBullets :: ListStyle -> NonEmpty Text
+textBullets = bulletsOr "・"
+
+bulletsOr :: Text -> ListStyle -> NonEmpty Text
+bulletsOr def = fromMaybe (pure def) . lsBullets
 
 {- | A content value of a running head: @heading.<l>.short@,
 @heading.<l>.numbered@ (either with @.last@), @title@ or @none@
