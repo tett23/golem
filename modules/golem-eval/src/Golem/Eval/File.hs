@@ -49,7 +49,6 @@ import Data.Text qualified as T
 import Data.Text.Array qualified as TA
 import Data.Text.Internal qualified as TI
 import Data.Text.Unsafe (lengthWord8)
-import Golem.Doc.Assemble (ChannelDecl)
 import Golem.Doc.IR
 import Golem.Eval.Analysis (analyse)
 import Golem.Eval.Builtin

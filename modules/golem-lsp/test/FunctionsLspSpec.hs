@@ -10,14 +10,12 @@ import Data.ByteString qualified as BS
 import Data.Either (isRight)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Lsp.Features
 import Golem.Lsp.Server (runGolemLspWithHandles)
 import Golem.Lsp.Workspace
-import Golem.Syntax
 import Golem.TestSupport.Gen (genText)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import Hedgehog (forAll, property, (===))
@@ -26,6 +24,7 @@ import Hedgehog.Range qualified as Range
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
+import Support (codesOf)
 import System.Directory (canonicalizePath, createDirectoryIfMissing)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
@@ -80,9 +79,6 @@ withFunctions act = withSystemTempDirectory "golem-lsp-functions" $ \tmp0 -> do
 -- | The offset of a needle in a text, and a number of bytes further.
 offsetIn :: Text -> Text -> Int -> Int
 offsetIn text needle k = BS.length (TE.encodeUtf8 (fst (T.breakOn needle text))) + k
-
-codesOf :: Workspace -> FilePath -> [Text]
-codesOf ws p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
 
 functionsLspTests :: TestTree
 functionsLspTests =

@@ -11,14 +11,14 @@ module Golem.Parser.Read
 where
 
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding (decodeUtf8', decodeUtf8Lenient, encodeUtf8)
+import Data.Text.Encoding (decodeUtf8', decodeUtf8Lenient)
 import Data.Text.Unsafe (lengthWord8)
 import Golem.Syntax
+import Golem.Syntax.Read (checkSourceText, invalidOffset, readSourceBytes)
 
 {- | A failure of the reading stage ('readSource'). The file that failed is
 in the table too, with its line index, so that the diagnostics show where
@@ -30,18 +30,11 @@ data ReadFailure = ReadFailure
   }
 
 {- | Rejects a BOM at the start, invalid UTF-8 and any CR, in this order;
-only the first that applies is reported.
+only the first that applies is reported (golem-syntax's 'readSourceBytes',
+shared with golem-emet, docs/adr/0173).
 -}
 readSource :: FileId -> ByteString -> Either [Diagnostic] Text
-readSource fid bs
-  | "\xEF\xBB\xBF" `BS.isPrefixOf` bs = Left [bomDiagnostic fid]
-  | otherwise = case decodeUtf8' bs of
-      Left _ ->
-        let bad = invalidOffset bs
-         in Left [diagnostic "G01001" Error (mkSpan fid bad (bad + 1)) "UTF-8 として不正なバイト列があります"]
-      Right t -> case checkText fid t of
-        [] -> Right t
-        ds -> Left ds
+readSource = readSourceBytes
 
 {- | The reading stage of a table file, a CSV or a TSV (golem-eval ADR
 0004): invalid UTF-8 is G01001, as in a source file; a BOM at the start is
@@ -91,39 +84,4 @@ readInfo path = SourceInfo path . mkLineIndex . decodeUtf8Lenient
 start) and CR. At most one diagnostic.
 -}
 checkText :: FileId -> Text -> [Diagnostic]
-checkText fid t
-  | "\xFEFF" `T.isPrefixOf` t = [bomDiagnostic fid]
-  | otherwise = case T.breakOn "\r" t of
-      (pre, rest)
-        | T.null rest -> []
-        | otherwise ->
-            let i = BS.length (encodeUtf8 pre)
-             in [ (diagnostic "G01003" Error (mkSpan fid i (i + 1)) "改行に CR が含まれています。改行は LF に限ります")
-                    { diagFixes = [Fix "golem fmt で LF に直す" []]
-                    }
-                ]
-
-bomDiagnostic :: FileId -> Diagnostic
-bomDiagnostic fid = diagnostic "G01002" Error (mkSpan fid 0 3) "ファイルの先頭に BOM があります。BOM を取り除いてください"
-
--- | The first byte offset at which UTF-8 decoding fails.
-invalidOffset :: ByteString -> Int
-invalidOffset bs = go 0
-  where
-    n = BS.length bs
-    go i
-      | i >= n = n
-      | otherwise =
-          let b = BS.index bs i
-              len
-                | b < 0x80 = 1
-                | b >= 0xC2 && b < 0xE0 = 2
-                | b >= 0xE0 && b < 0xF0 = 3
-                | b >= 0xF0 && b < 0xF5 = 4
-                | otherwise = 0
-           in if len == 0 || i + len > n || not (validSeq (BS.take len (BS.drop i bs)))
-                then i
-                else go (i + len)
-    validSeq s = case decodeUtf8' s of
-      Left _ -> False
-      Right _ -> True
+checkText = checkSourceText

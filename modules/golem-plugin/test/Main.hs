@@ -2,8 +2,7 @@ module Main (main) where
 
 import BlockSpec (blockTests)
 import CheckDataSpec (checkDataTests)
-import Codec.CBOR.Term (Term (..), encodeTerm)
-import Codec.CBOR.Write (toStrictByteString)
+import Codec.CBOR.Term (Term (..))
 import ConcurrencySpec (concurrencyTests)
 import ContextSpec (contextTests)
 import Control.Concurrent.Async
@@ -26,7 +25,6 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import DataSpec (dataTests, describeTests)
 import FuelSpec (fuelTests)
-import Golem.Doc.Assemble (ChannelDecl (..))
 import Golem.Doc.Cbor (documentTerm, inlinesTerm)
 import Golem.Doc.IR
 import Golem.Eval.Value (PluginArg (..), Value (..))
@@ -46,6 +44,7 @@ import Network.Wai.Handler.Warp qualified as Warp
 import Network.Wai.Handler.WarpTLS qualified as WT
 import NumbersSpec (numberTests)
 import ResponseSpec (responseTests)
+import Support (callSpan, cbor)
 import System.Directory
   ( doesFileExist,
     findExecutable,
@@ -62,9 +61,6 @@ import Text.Printf (printf)
 main :: IO ()
 main = defaultMainReportingSkips (const (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests, numberTests, dataTests, describeTests, checkDataTests, contextTests, blockTests, fuelTests]))
 
-callSpan :: SrcSpan
-callSpan = mkSpan (FileId 1) 10 20
-
 wat :: FilePath -> IO Text
 wat name = TIO.readFile ("test/plugins/" <> name)
 
@@ -73,9 +69,6 @@ compile src = watToWasm src >>= either (assertFailure . T.unpack) pure
 
 escape :: ByteString -> Text
 escape = T.pack . concatMap (printf "\\%02x") . BS.unpack
-
-cbor :: Term -> ByteString
-cbor = toStrictByteString . encodeTerm
 
 -- | The ABI version of the host, as the fixed-response plugin's argument.
 abi :: Int

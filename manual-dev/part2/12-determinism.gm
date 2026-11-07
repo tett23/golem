@@ -70,8 +70,8 @@ PDF の Producer とインスタンス ID には Golem のバージョンが入�
 
 二つのマニュアルの奥付には、組んだコミットのハッシュが入る。
 このため、マニュアルの PDF と HTML は、内容を変えていないコミットでも奥付の分だけバイト列が変わる。
-CI の [code: determinism] ジョブは、同じコミットを二つのアーキテクチャで組んで比べるので、この影響を受けない。
-異なるコミットのマニュアルのバイト列を比べる仕組みは今はなく、作るときは奥付を除いて比べる必要がある。
+CI の [code: determinism] ジョブは、二つのアーキテクチャの比べにはマニュアルを含め、コミットした一覧との比べからはマニュアルを除く。
+異なるコミットのマニュアルは、見た目の回帰テストがページの画像で比べる。
 
 ## 範囲
 
@@ -101,7 +101,7 @@ EPUB の決定性（zip のエントリの時刻と順序の固定）は v2 で�
 - [code: decoys]：どこからも参照しないファイルを置き、写す順を逆にする。ディレクトリを列挙して入力を決めていれば、結果が変わる。
 - [code: caps-one]、[code: caps-two]：[code: GHCRTS=-N1] と [code: GHCRTS=-N2] で、[code: golem] の capability の数を一つと二つにする。基準の環境は [code: GHCRTS] を与えないので、[code: golem] はすべてのプロセッサの上で動く。一つは並列のない場合、二つは並列のある最小の数で、基準と仕事の分かれ方が変わる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0050-run-golem-on-every-processor.md]（docs/adr の ADR 0050「golem をすべてのプロセッサの上で動かし、環境を変える検査で capability の数を変える」）]
 
-一つずつの変化は小さな入力（[code: scripts/determinism/]、テストのサンプル、その PDF の版、diagnostics を出す小さなプロジェクト）にだけ当てる。
+一つずつの変化は小さな入力（[code: scripts/determinism/]、テストのサンプル、その PDF の版、diagnostics を出す小さなプロジェクト、機能を組み合わせた二冊の fixture）にだけ当てる。
 すべての変化を同時に当てる [code: combined] は、小さな入力に加えて、『テンペスト』、『蟹工船』、十冊のパブリックドメインの本、二つのマニュアルにも当てる。
 [code: combined] は [code: GHCRTS=-N2] で組み、大きな入力も並列に組んだまま、基準と違う capability の数で確かめる。
 許容の一覧はなく、どの変化のどの入力でも、基準と違えば失敗する。
@@ -141,8 +141,8 @@ HTML と EPUB の見た目は、まだ比べない。
 ### 決定性の検査との違い
 
 決定性の検査は、同じコミットを二回、または二つのアーキテクチャで組み、バイト列が一致することを確かめる。
-異なるコミットの出力は比べない。
-このため、組版を崩す変更でも、どちらのアーキテクチャでも同じように崩れれば検査は通る。
+異なるコミットの出力は、コミットしたハッシュの一覧（[code: scripts/determinism/hashes.txt]）で比べるが、意図して出力を変えるプルリクエストは一覧を書き直す。
+一覧で分かるのは出力が変わったことだけなので、組版を崩す変更でも、一覧を書き直せば検査は通る。
 表の罫線が前の行に接する、ページの末尾に数行の空きが残る、といったフィクスチャの崩れは、どれも目で見て見つけたものである。
 見た目の回帰テストは、前のコミットの出力とページごとに比べ、見た目が変わったページを知らせる。
 
@@ -214,11 +214,12 @@ Golem はテストと CI から shem をコマンドとして呼び、golem の�
 Golem は三つめの、ページの画像の SHA-256 の一覧をコミットする方法を採った。
 一覧は 1,779 ページで約 135 KB で、shem の決定性により、どの環境で作っても同じになる。
 
-入力は次の 17 の PDF である。
+入力は次の 19 の PDF である。
 入力の一覧は [code: scripts/visual/build.sh --list] が出す。
 
 - [code: sample]：[code: scripts/determinism.sh] と同じ B6 の縦組み。
 - [code: figures]：画像と図版の fixture。
+- [code: complex-vertical] と [code: complex-horizontal]：機能を組み合わせた二冊の fixture。縦組みの一段の本と、横組みの二段の本で、ルビ、圏点、注、図版、表、コードブロック、罫線を持つ段落と見出し、目次、索引、参考文献、Emet の関数とフィルタを一冊の中で組み合わせる。二冊の参照を書き直すプルリクエストは、説明に、変わったページと変わった理由を書く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0175-complex-typesetting-fixture.md]（docs/adr の ADR 0175「機能を組み合わせた二冊の fixture で、機能のあいだの相互作用を固定する」）]
 - 『蟹工船』と、その [code: \[page\]] に [code: bleed = "3mm"] を足して [code: --marks japanese] で組んだもの。トンボの Separation の色と、塗り足しの付いた [code: MediaBox] は、ほかの入力にない。
 - 『テンペスト』と、パブリックドメインの十冊。
 - 二つのマニュアル。奥付がコミットごとに変わらないように、[code: GOLEM_MANUAL_COMMIT] を 0 が 40 個の文字列に、[code: GOLEM_MANUAL_TAG] を [code: v0.0.0-visual] にして組む。
@@ -290,5 +291,5 @@ CI の [code: visual] ジョブは、比べる手順が失敗すると、変わ�
 [code: figures] の図版の中身は、出力のゴールデンのハッシュが固定している。
 PDF の Producer とインスタンス ID は画像に現れないので、[code: VERSION] だけを変えても参照は変わらない。
 
-手元の Apple silicon の macOS（10 コア）では、17 の入力を組むのに約 20 秒、描いて比べるのに約 1.5 秒かかった。
+手元の Apple silicon の macOS（10 コア）では、二冊の fixture を加える前の 17 の入力を組むのに約 20 秒、描いて比べるのに約 1.5 秒かかった。
 CI の [code: visual] ジョブでは、描いて比べる手順が数秒で終わり、[code: visual] の予算の 2 分に収まる（第[ref-number ci-jobs]章）。

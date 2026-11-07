@@ -3,9 +3,9 @@ module Main (main) where
 
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
-import Data.Char (isDigit, isSpace)
+import Data.Char (isDigit, isSpace, toLower)
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
-import Data.Either (partitionEithers)
+import Data.Either (partitionEithers, rights)
 import Data.List (intercalate, isPrefixOf, isSuffixOf, stripPrefix)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
@@ -21,7 +21,7 @@ import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
 import Golem.Driver.Version (golemVersion)
 import Golem.Eval.File (EvalResult (..))
-import Golem.Fmt (FormatResult (..), format, preprocess)
+import Golem.Fmt (FormatResult (..), format, formatTable, preprocess)
 import Golem.Lsp.Server (runGolemLsp)
 import Golem.Parser (parseAst, parseFile)
 import Golem.Parser.CST (pretty)
@@ -30,6 +30,7 @@ import Golem.Plugin (pluginCodeForm)
 import Golem.Plugin.Lock (defaultCacheDir, fetchPlugins, httpsFetcher, lockPlugins, parseLock, renderLock)
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..), loadProjectWith)
 import Golem.Project.Manifest (Manifest (..), PluginDecl (..), PluginSource (..), parseManifest)
+import Golem.Project.Paths (resolveInRoot)
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
 import Golem.Syntax.ShowTree (showTree)
@@ -38,7 +39,7 @@ import Options.Applicative.Extra (helperWith)
 import System.Directory (doesFileExist, getCurrentDirectory)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
-import System.FilePath (joinPath, makeRelative, splitDirectories, (</>))
+import System.FilePath (joinPath, makeRelative, splitDirectories, takeExtension, (</>))
 import System.IO (hFlush, hPutStrLn, hSetEncoding, stderr, stdout, utf8)
 import Text.Printf (printf)
 
@@ -149,7 +150,7 @@ arguments, so that it reports every bad one (golem-cli ADR 0009).
 checkCode :: T.Text -> Either T.Text T.Text
 checkCode s
   | not (isCodeShape code) =
-      Left ("診断のコードは G と 5 桁の数字です: " <> s)
+      Left ("診断のコードは " <> codeShapeWording <> "を続けたものです: " <> s)
   | Map.member code catalog = Right code
   | otherwise = Left ("未知の診断のコードです: " <> s <> "。プラグインが出す診断は、プラグインの文書を参照してください")
   where
@@ -432,6 +433,9 @@ newProject dir lang noFonts = do
         forM_ fonts $ \f -> TIO.hPutStrLn stderr ("  " <> T.pack (dir </> fsPath f) <> " (" <> fsUrl f <> ")")
       pure ExitSuccess
 
+-- | How golem fmt formats a file: as a source, or as a table file (docs/adr/0186).
+data FmtKind = FmtSource | FmtTable
+
 -- | golem fmt (golem-fmt ADR 0001).
 formatFiles :: Bool -> [FilePath] -> IO ExitCode
 formatFiles check files0 = do
@@ -440,22 +444,33 @@ formatFiles check files0 = do
       then
         projectSourcePaths >>= \case
           Left f -> putHuman (pfSources f) (pfDiagnostics f) >> pure Nothing
-          -- and the .emet the project uses (docs/adr/0162)
-          Right ps -> Just . (ps <>) <$> (loadProjectWith Map.empty "." >>= either (const (pure [])) (functionPaths "."))
-      else pure (Just files0)
+          Right (project, ps) -> do
+            -- and the .emet the project uses (docs/adr/0162)
+            emets <- loadProjectWith Map.empty "." >>= either (const (pure [])) (functionPaths ".")
+            -- and the table files the sources read by @table (docs/adr/0186)
+            tables <- tablePaths project
+            let others = ps <> emets
+            pure (Just (map (,FmtSource) others <> [(t, FmtTable) | t <- tables, t `notElem` others]))
+      else pure (Just [(f, kindOf f) | f <- files0])
   case files of
     Nothing -> pure (ExitFailure 1)
     Just fs -> do
-      results <- mapM one fs
+      results <- mapM (uncurry one) fs
       pure (if and results then ExitSuccess else ExitFailure 1)
   where
+    -- a file given is a table file by its extension (docs/adr/0186)
+    kindOf path
+      | map toLower (takeExtension path) `elem` [".csv", ".tsv"] = FmtTable
+      | otherwise = FmtSource
     -- a file that is not there is G03002, and the others are formatted (golem-cli ADR 0007)
-    one path =
+    one path kind =
       readArgument path >>= \case
         Nothing -> missingArgument path >> pure False
         Just bytes -> case TE.decodeUtf8' bytes of
           Left _ -> TIO.hPutStrLn stderr (T.pack path <> ": UTF-8 として読めないため整形しません") >> pure False
-          Right src -> formatOne path bytes src
+          Right src -> case kind of
+            FmtTable -> written path bytes (formatTable src)
+            FmtSource -> formatOne path bytes src
     formatOne path bytes src
       -- a .emet, through golem-driver (docs/adr/0162)
       | ".emet" `isSuffixOf` path = case formatFunctionFile src of
@@ -473,6 +488,17 @@ formatFiles check files0 = do
       | check = putStrLn path >> pure False
       | otherwise = BS.writeFile path (TE.encodeUtf8 out) >> pure True
 
+{- | The table files the sources read by @table, as the build collects them
+('assetRefs'), without reading them (docs/adr/0186): those whose path is
+written as an expression are not known, and a missing one and one outside
+the root are left to the build, which reports them.
+-}
+tablePaths :: Project -> IO [FilePath]
+tablePaths project = do
+  let paths = nubOrd [p | sf <- Map.elems (projectSources project), (p, UseTable) <- assetRefs (sfAst sf)]
+  resolved <- mapM (resolveInRoot ".") paths
+  pure (nubOrd (rights resolved))
+
 {- | The sources of the project in the current directory, for golem fmt
 without arguments (golem-fmt ADR 0004). When the load stops only at the CR
 of sources (G01003 in chapters and imported files), those sources go
@@ -480,12 +506,12 @@ preprocessed into the overlay and the project is loaded again. Each retry
 adds a file to the overlay, so the retries end; a file that is G01003 again
 after it was overlaid ends them with the failure.
 -}
-projectSourcePaths :: IO (Either ProjectFailure [FilePath])
+projectSourcePaths :: IO (Either ProjectFailure (Project, [FilePath]))
 projectSourcePaths = go Map.empty
   where
     go overlay =
       loadProjectWith overlay "." >>= \case
-        Right p -> pure (Right (map sfPath (Map.elems (projectSources p))))
+        Right p -> pure (Right (p, map sfPath (Map.elems (projectSources p))))
         Left f -> case crSources f of
           Just paths
             | not (any (`Map.member` overlay) paths) -> do

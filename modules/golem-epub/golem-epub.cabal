@@ -21,7 +21,7 @@ library
     , bytestring    >=0.11 && <0.13
     , containers    >=0.6  && <0.8
     , filepath      >=1.4  && <1.6
-    , golem-doc
+    , golem-assemble
     , golem-html
     , golem-syntax
     , text          >=2.0  && <2.2
@@ -40,6 +40,7 @@ test-suite golem-epub-test
     , bytestring
     , containers
     , filepath
+    , golem-assemble
     , golem-doc
     , golem-epub
     , golem-html

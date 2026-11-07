@@ -11,9 +11,23 @@
 # The lines are `<SHA-256>  <input>/<file>`, `<SHA-256>  <input>/stdout`,
 # `<SHA-256>  <input>/stderr` and `exit <code>  <input>`.
 #
+# --no-manuals leaves the manuals out. Their colophons have the commit, so
+# their lines change with every commit; the list without them is the one
+# that CI compares with the committed scripts/determinism/hashes.txt
+# (docs/adr/0173). The visual regression test compares their pages.
+#
 # GOLEM chooses the golem to run. For the tests: GOLEM_MANUAL_ROOT is the
 # folder that holds the manuals, as in scripts/manual/build.sh.
 set -eu
+MANUALS_TOO=1
+case "${1:-}" in
+  "") ;;
+  --no-manuals) MANUALS_TOO=0 ;;
+  *)
+    printf 'determinism.sh: unknown option: %s\n' "$1" >&2
+    exit 2
+    ;;
+esac
 if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum -a 256"; fi
 GOLEM=${GOLEM:-golem}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -58,11 +72,22 @@ cp "$ROOT/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular
 cp "$ROOT/modules/golem-font/test/fonts/SourceSansPro-Regular.otf" "$WORK/pdf/fonts/latin.otf"
 cp "$ROOT/scripts/determinism/pdf-style.toml" "$WORK/pdf/style.toml"
 build pdf "$WORK/pdf" --target pdf
+# the two books that combine the features (docs/adr/0175), to every target,
+# with the same fonts
+for book in complex-vertical complex-horizontal; do
+  cp -R "$ROOT/modules/golem-driver/test/fixtures/$book" "$WORK/$book"
+  rm -rf "$WORK/$book/build"
+  mkdir -p "$WORK/$book/fonts"
+  cp "$ROOT/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" "$WORK/$book/fonts/ja.otf"
+  cp "$ROOT/modules/golem-font/test/fonts/SourceSansPro-Regular.otf" "$WORK/$book/fonts/latin.otf"
+  build "$book" "$WORK/$book" --target pdf --target html --target epub --target text
+done
 # the input that gives diagnostics and ends in an error (docs/adr/0029,
 # docs/adr/0071)
 cp -R "$ROOT/scripts/env-determinism/diagnostics" "$WORK/diagnostics"
 build diagnostics "$WORK/diagnostics"
 # the manuals (docs/adr/0022, docs/adr/0024)
+[ "$MANUALS_TOO" = 1 ] || exit 0
 GOLEM=$GOLEM sh "$ROOT/scripts/manual/build.sh" manual manual-dev
 for manual in manual manual-dev; do
   files "$manual" "$MANUALS/$manual"

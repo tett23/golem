@@ -56,11 +56,11 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
-import Golem.Doc.Assemble
-import Golem.Doc.Bibliography (CslEntry (..), EntryPart, formatEntry)
-import Golem.Doc.Bibliography.Csl (CslJsonError (..), decodeCslJson)
+import Golem.Assemble
+import Golem.Assemble.ListMarkers (defaultNumberFormat)
+import Golem.Bibliography (CslEntry (..), EntryPart, formatEntry)
+import Golem.Bibliography.Csl (CslJsonError (..), decodeCslJson)
 import Golem.Doc.IR
-import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Driver.Fonts (cff2FontDiagnostics, golemFontProvider)
 import Golem.Driver.Functions (LoadedFunctions (..), RequiredFiles (..), loadFunctions, loadRequiredFiles, requiredFileSet, requirementHandlers)
 import Golem.Driver.Html

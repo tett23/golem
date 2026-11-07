@@ -20,6 +20,8 @@ module Golem.Doc.IR
     noHeadingAttrs,
     ChannelBlock (..),
     ChannelItem (..),
+    ChannelOrder (..),
+    ChannelDecl (..),
     Code (..),
     CodeLine (..),
     DiffMark (..),
@@ -177,6 +179,20 @@ data ChannelItem = ChannelItemData
     ciKey :: !(Maybe Text),
     ciReading :: !(Maybe Text),
     ciBody :: ![Inline]
+  }
+  deriving stock (Eq, Show)
+
+-- | How the entries of a channel of a plugin are ordered (golem-doc ADR 0007).
+data ChannelOrder = OrderDocument | OrderReading
+  deriving stock (Eq, Show, Enum, Bounded)
+
+{- | A channel a plugin declares (golem-doc ADR 0007): its name, the order
+of its entries, and whether an entry shows where its items are.
+-}
+data ChannelDecl = ChannelDecl
+  { channelName :: !Text,
+    channelOrder :: !ChannelOrder,
+    channelLocators :: !Bool
   }
   deriving stock (Eq, Show)
 

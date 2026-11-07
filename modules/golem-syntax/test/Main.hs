@@ -14,6 +14,7 @@ import Golem.TestSupport.Gen (genText)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import ReadSpec qualified
 import RenderSpec qualified
 import ShowTreeSpec qualified
 import Test.Tasty
@@ -190,6 +191,7 @@ tests =
       noticeTests,
       infoTests,
       orderTests,
+      ReadSpec.tests,
       RenderSpec.tests,
       ShowTreeSpec.tests
     ]
@@ -215,6 +217,8 @@ noticeTests =
         [c | c <- noticeCodes, c `elem` profileDependentCodes] @?= [],
       testCase "the codes of the shape of a code (docs/adr/0160)" $
         map isCodeShape ["G01001", "E02109", "G0101", "E021090", "e02109", "X01001", "G0100a"] @?= [True, True, False, False, False, False, False],
+      testCase "the wording of the shape of a code names G and E (docs/adr/0176)" $
+        map (`T.isInfixOf` codeShapeWording) ["G", "E", "5 桁の数字"] @?= [True, True, True],
       testCase "the initial notice codes" $
         noticeCodes @?= map DiagnosticCode ["G02062", "G02063", "G02064", "G02065", "G02079", "G02094", "G02108", "G03023", "G03100", "G04007", "G04008", "G04009", "G04011", "G07030", "G07039", "G07045", "G07046", "G07100", "G07101", "G08008", "E02109"],
       testCase "a notice early in the file comes after an error late in it" $ do

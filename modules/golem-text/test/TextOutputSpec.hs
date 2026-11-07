@@ -8,7 +8,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.Assemble (Book (..), ChannelEntry (..), HeadingInfo (..), LabelTarget (..), TocEntry (..))
+import Golem.Assemble (Book (..), ChannelEntry (..), HeadingInfo (..), LabelTarget (..), TocEntry (..))
 import Golem.Doc.IR
 import Golem.Syntax.Span
 import Golem.Text

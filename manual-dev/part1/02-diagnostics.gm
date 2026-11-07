@@ -113,11 +113,12 @@ notice を後に回すのは、notice の多いプロジェクトで、ビルド
 
 ## diagnostic のコード
 
-diagnostic のコードは、[code: G] と 5 桁の数字である。[index reading="diagnosticのこーど": diagnostic のコード]
+diagnostic のコードは、[code: G] か [code: E] の後に 5 桁の数字を続けたものである。[index reading="diagnosticのこーど": diagnostic のコード]
 上 2 桁が diagnostic を出す段階を表し、下 3 桁がその段階の中の番号である。
 番号の 000 から 099 は、以前の 4 桁のコードを写したものに取っておき、新しいコードには 100 から 999 を割り当てる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0061-five-digit-diagnostic-codes.md]（docs/adr 0061「diagnostic のコードを、段階の 2 桁と番号の 3 桁の 5 桁にする」）]
 4 桁のコードは、段階の 2 桁と番号の 2 桁のあいだに [code: 0] を一つ足せば 5 桁のコードになる（[code: G0258] は [code: G02058]）。
 監査の記録などコミットの後に書き換えない文書には、4 桁のコードが残っている。
+[code: E] で始まるコードは関数を書く言語 Emet の diagnostic のもので、その段階の表は [code: docs/diagnostics.md] にある。
 
 | 上 2 桁 | 段階 | 主なモジュール |
 | --- | --- | --- |
@@ -166,7 +167,7 @@ $ golem explain G07030 G01017    # 渡した順に、空行で区切って続け
 廃止したコードには題の後に「（廃止）」が付く。
 複数のコードを渡すと、節をコマンドラインの順に、空行一つで区切って書く。
 大文字と小文字だけが違うものも含め、同じコードは最初の一つだけを書く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0009-explain-several-codes.md]（golem-cli ADR 0009「golem explain に複数のコードを渡す」）]
-形の誤った値（4 桁の古いコードを含め、[code: G] と 5 桁の数字でないもの）と、文書にないコードは使い方の誤りであり、終了コード 2 で終わる。
+形の誤った値（4 桁の古いコードを含め、[code: G] か [code: E] の後に 5 桁の数字を続けたものでないもの）と、文書にないコードは使い方の誤りであり、終了コード 2 で終わる。
 誤ったコードが混じっていても途中では止めず、正しいコードの節を標準出力に書いてから、誤ったコードを一つずつ一行で標準エラー出力に書く。
 
 ```text
@@ -174,7 +175,7 @@ $ golem explain G01017 G99999 G0101
 ## G01017
 …（G01017 の節）
 未知の診断のコードです: G99999。プラグインが出す診断は、プラグインの文書を参照してください
-診断のコードは G と 5 桁の数字です: G0101
+診断のコードは G か E の後に 5 桁の数字を続けたものです: G0101
 $ echo $?
 2
 ```

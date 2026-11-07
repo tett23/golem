@@ -1,0 +1,50 @@
+cabal-version:      3.0
+name:               golem-assemble
+version:            0.1.0
+synopsis:           Document assembly of Golem (S1): the values of the whole document
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Text
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:
+    Golem.Assemble
+    Golem.Assemble.Collation
+    Golem.Assemble.ListMarkers
+    Golem.Assemble.Numbering
+  build-depends:
+    , base          >=4.20 && <4.21
+    , bytestring    >=0.11 && <0.13
+    , containers    >=0.6  && <0.8
+    , golem-doc
+    , golem-numerals
+    , golem-syntax
+    , mtl           >=2.3  && <2.4
+    , text          >=2.0  && <2.2
+  default-language: GHC2021
+
+test-suite golem-assemble-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    AssembleSpec ListMarkersSpec NumberingSpec
+  build-depends:
+    , base
+    , containers
+    , golem-assemble
+    , golem-doc
+    , golem-numerals
+    , golem-syntax
+    , tasty          >=1.4 && <1.6
+    , tasty-hunit    >=0.10 && <0.11
+    , text
+  default-language: GHC2021

@@ -6,26 +6,22 @@ puts into it.
 -}
 module ResponseSpec (responseTests) where
 
-import Codec.CBOR.Term (Term (..), encodeTerm)
-import Codec.CBOR.Write (toStrictByteString)
+import Codec.CBOR.Term (Term (..))
 import Control.Monad (void)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.Cbor (documentTerm, inlinesTerm)
 import Golem.Doc.IR
 import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Plugin
 import Golem.Syntax
+import Support (callSpan, cbor)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Printf (printf)
-
-cbor :: Term -> ByteString
-cbor = toStrictByteString . encodeTerm
 
 {- | The usual description: one command, shout, one filter, upper, and two
 channels, glossary in reading order and people in document order with
@@ -57,9 +53,6 @@ answering :: ByteString -> IO Plugin
 answering response = do
   wasm <- fixedPlugin shoutAndUpper response
   loadPlugin wasm >>= either (assertFailure . show) pure
-
-callSpan :: SrcSpan
-callSpan = mkSpan (FileId 1) 10 20
 
 -- | The command shout, called at callSpan with one slot.
 shout :: Plugin -> Either PluginError ([Inline], [Diagnostic])

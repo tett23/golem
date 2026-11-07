@@ -34,9 +34,6 @@ withTables chapters files act = withSystemTempDirectory "golem-tables" $ \tmp ->
 check :: FilePath -> IO BuildResult
 check tmp = build (defaultOptions tmp) {optCheckOnly = True, optTargets = Just [TargetHtml]}
 
-codesOf :: BuildResult -> [Text]
-codesOf r = [c | d <- brDiagnostics r, let DiagnosticCode c = diagCode d]
-
 -- | The blocks of each chapter, by path.
 blocksOf :: FilePath -> IO (Map.Map FilePath [BlockBody])
 blocksOf tmp = do
@@ -46,7 +43,7 @@ blocksOf tmp = do
 oneTable :: FilePath -> BS.ByteString -> IO [BlockBody]
 oneTable path bytes = withTables [("a.gm", TE.encodeUtf8 ("@table src=" <> T.pack path <> "\n"))] [(path, bytes)] $ \tmp -> do
   r <- check tmp
-  codesOf r @?= []
+  codesOf (brDiagnostics r) @?= []
   Map.findWithDefault [] "a.gm" <$> blocksOf tmp
 
 headerTexts :: [BlockBody] -> [[Text]]
@@ -70,7 +67,7 @@ tableFileTests =
       testCase "a BOM at the start of a source file is still G01002" $
         withTables [("a.gm", "\xEF\xBB\xBF\&x\n")] [] $ \tmp -> do
           r <- check tmp
-          codesOf r @?= ["G01002"],
+          codesOf (brDiagnostics r) @?= ["G01002"],
       testCase "U+FEFF elsewhere stays in the cell" $ do
         bs <- oneTable "data/x.tsv" "a\tb\xEF\xBB\xBF\n1\t2\n"
         headerTexts bs @?= [["a"], ["b\xFEFF"]],
@@ -83,12 +80,12 @@ tableFileTests =
         forM_ ["data/x.tsv", "data/x.csv"] $ \p ->
           withTables [("a.gm", TE.encodeUtf8 ("@table src=" <> T.pack p <> "\n"))] [(p, "a\rb\n")] $ \tmp -> do
             r <- check tmp
-            codesOf r @?= ["G02082"],
+            codesOf (brDiagnostics r) @?= ["G02082"],
       testCase "Shift_JIS is G01001" $
         forM_ ["data/x.tsv", "data/x.csv"] $ \p ->
           withTables [("a.gm", TE.encodeUtf8 ("@table src=" <> T.pack p <> "\n"))] [(p, "\x95\x5C\n")] $ \tmp -> do
             r <- check tmp
-            codesOf r @?= ["G01001"],
+            codesOf (brDiagnostics r) @?= ["G01001"],
       testCase "the table file is shown in human and JSON output" $
         withTables [("a.gm", "@table src=data/x.tsv\n\n@table src=data/x.csv\n")] [("data/x.tsv", "a\tb\nc\n"), ("data/x.csv", "a,b\nc\n")] $ \tmp -> do
           r <- check tmp
@@ -100,7 +97,7 @@ tableFileTests =
       testCase "a file referred to twice gives its reading error once" $
         withTables [("a.gm", "@table src=data/x.tsv\n\n@table src=data/x.tsv\n")] [("data/x.tsv", "a\rb\n")] $ \tmp -> do
           r <- check tmp
-          codesOf r @?= ["G02082"],
+          codesOf (brDiagnostics r) @?= ["G02082"],
       testCase "FileIds do not depend on the order the files were made" $ do
         let files = [("data/b.tsv", "a\tb\nc\n"), ("data/a.csv", "a,b\nc\n"), ("src/x.hs", "x\n")]
             src = "@table src=data/b.tsv\n\n@table src=data/a.csv\n\n@listing src/x.hs\n"
@@ -113,14 +110,14 @@ tableFileTests =
       testCase "a table file that fails to be read makes no table; the other chapters are evaluated" $
         withTables [("a.gm", "@table src=data/x.tsv\n"), ("b.gm", TE.encodeUtf8 "本文。\n")] [("data/x.tsv", "a\rb\n")] $ \tmp -> do
           r <- check tmp
-          codesOf r @?= ["G02082"]
+          codesOf (brDiagnostics r) @?= ["G02082"]
           byPath <- blocksOf tmp
           Map.lookup "a.gm" byPath @?= Just []
           fmap length (Map.lookup "b.gm" byPath) @?= Just 1,
       testCase "@listing of a table file reads it as before, BOM included" $
         withTables [("a.gm", "@table src=data/x.csv\n\n@listing data/x.csv\n")] [("data/x.csv", "\xEF\xBB\xBF\&a,b\n1,2\n")] $ \tmp -> do
           r <- check tmp
-          codesOf r @?= []
+          codesOf (brDiagnostics r) @?= []
           bs <- Map.findWithDefault [] "a.gm" <$> blocksOf tmp
           [codeText c | CodeBlock c <- bs] @?= ["\xFEFF\&a,b\n1,2"],
       testCase "align=right reaches HTML, and the PDF sets it as a | table with ---:" $ do
@@ -147,5 +144,5 @@ tableFileTests =
       testCase "a table file of 16 MiB is read" $
         withTables [("a.gm", "@table src=data/big.csv\n")] [("data/big.csv", BS.replicate (2 ^ (24 :: Int) - 1) 0x61 <> "\n")] $ \tmp -> do
           r <- check tmp
-          codesOf r @?= []
+          codesOf (brDiagnostics r) @?= []
     ]

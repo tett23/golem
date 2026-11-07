@@ -5,8 +5,7 @@ floats a plugin writes in a deferred expression.
 module NumbersSpec (numberTests) where
 
 import Codec.CBOR.Read (deserialiseFromBytes)
-import Codec.CBOR.Term (Term (..), decodeTerm, encodeTerm)
-import Codec.CBOR.Write (toStrictByteString)
+import Codec.CBOR.Term (Term (..), decodeTerm)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
@@ -20,15 +19,10 @@ import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Parser.AST qualified as A
 import Golem.Plugin
 import Golem.Syntax
+import Support (callSpan, cbor)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Printf (printf)
-
-cbor :: Term -> ByteString
-cbor = toStrictByteString . encodeTerm
-
-callSpan :: SrcSpan
-callSpan = mkSpan (FileId 1) 10 20
 
 load :: FilePath -> IO Plugin
 load name = do

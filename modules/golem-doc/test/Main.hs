@@ -1,25 +1,19 @@
 module Main (main) where
 
-import AssembleSpec qualified
-import BibliographySpec qualified
 import CborExprSpec qualified
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Control.Exception (ErrorCall, evaluate, try)
-import CslSpec qualified
 import Data.ByteString qualified as BS
 import Gen
 import Golem.Doc.Cbor
 import Golem.Doc.IR
-import Golem.Doc.Numerals (kanji)
 import Golem.Doc.Validate
 import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
 import Golem.TestSupport.ExternalTool (needsTool)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import Hedgehog
-import ListMarkersSpec qualified
-import NumberingSpec qualified
 import System.Directory (findExecutable)
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
@@ -46,7 +40,7 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, AssembleSpec.tests, BibliographySpec.tests, CslSpec.tests, ListMarkersSpec.tests, CborExprSpec.tests, NumberingSpec.tests, verticalNumbers, int64Tests]
+  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests]
 
 -- | The integers of the IR are int64 (golem-doc ADR 0006).
 int64Tests :: TestTree
@@ -77,11 +71,7 @@ int64Tests =
         r <- try (evaluate (BS.length (encodeInlines [Number sp (2 ^ (63 :: Int)) Nothing])))
         case r of
           Left (_ :: ErrorCall) -> pure ()
-          Right _ -> assertFailure "encoded",
-      testCase "kanji up to the ends of int64" $ do
-        kanji (2 ^ (63 :: Int) - 1) @?= "九百二十二京三千三百七十二兆三百六十八億五千四百七十七万五千八百七"
-        kanji (negate (2 ^ (63 :: Int))) @?= "マイナス九百二十二京三千三百七十二兆三百六十八億五千四百七十七万五千八百八"
-        kanji (10 ^ (16 :: Int)) @?= "一京"
+          Right _ -> assertFailure "encoded"
     ]
   where
     spT = TList [TInt 0, TInt 0, TInt 1]

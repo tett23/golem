@@ -20,8 +20,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Calendar (Day, showGregorian)
-import Golem.Doc.Assemble
-import Golem.Doc.Numbering (numberSeparator)
+import Golem.Assemble
+import Golem.Assemble.Numbering (numberSeparator)
 import Golem.Html
 import Golem.Syntax.Span
 import System.FilePath (takeExtension, (</>))

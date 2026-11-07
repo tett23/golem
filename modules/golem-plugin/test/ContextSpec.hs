@@ -4,8 +4,7 @@ context of golem_describe, and the context in a request, before the data.
 module ContextSpec (contextTests) where
 
 import Codec.CBOR.Read (deserialiseFromBytes)
-import Codec.CBOR.Term (Term (..), decodeTerm, encodeTerm)
-import Codec.CBOR.Write (toStrictByteString)
+import Codec.CBOR.Term (Term (..), decodeTerm)
 import Control.Monad (void)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -17,15 +16,10 @@ import Golem.Doc.Cbor (documentTerm)
 import Golem.Doc.IR hiding (abiVersion)
 import Golem.Plugin
 import Golem.Syntax
+import Support (callSpan, cbor)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Printf (printf)
-
-cbor :: Term -> ByteString
-cbor = toStrictByteString . encodeTerm
-
-callSpan :: SrcSpan
-callSpan = mkSpan (FileId 1) 10 20
 
 -- | fixed.wat with a description; it answers every call with an empty response.
 describing :: Term -> IO (Either PluginError Plugin)

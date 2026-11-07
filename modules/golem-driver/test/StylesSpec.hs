@@ -6,7 +6,7 @@ import Data.List (nub)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import Golem.Doc.Assemble (Book)
+import Golem.Assemble (Book)
 import Golem.Driver
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), flowLines, layoutPdf, usedRoles)

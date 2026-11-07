@@ -18,7 +18,7 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Project.Style (dimToSp, parseDim)
 import Golem.Syntax
-import Support
+import Support hiding (codesOf)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
