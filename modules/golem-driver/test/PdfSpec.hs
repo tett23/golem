@@ -22,6 +22,7 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Pdf qualified as P
 import Golem.Project (Manifest (..), Project (..), ProjectFailure (..))
+import Golem.Project.Files (diskFiles)
 import Golem.Project.Style (dimToSp, parseDim, parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.ExternalTool (needsTool)
@@ -121,9 +122,9 @@ pdfPipelineTests =
         -- the embedding is replaced by one that always fails: no project font
         -- is known to reach G08018 through the real provider (golem-pdf ADR 0013)
         let failing =
-              FontProvider $ \root fid style locals ->
+              FontProvider $ \files fid style locals ->
                 fmap (\lf -> lf {lfEmbed = \_ _ _ -> pure (Left (diagnostic "G08018" Error (mkSpan fid 0 0) "フォントから CFF の表を取り出せません: fonts/sans.otf"))})
-                  <$> loadFonts golemFontProvider root fid style locals
+                  <$> loadFonts golemFontProvider files fid style locals
         b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = failing}) (Just sansStyle) [("fonts/sans.otf", sans)]
         map diagCode (bErrors b) @?= [DiagnosticCode "G08018"]
         map (whereIs b) (bErrors b) @?= [(Just "style.toml", 0)]
@@ -210,14 +211,14 @@ featureFonts = do
             "features = [\"palt\"]"
           ]
   style <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
-  loadFonts golemFontProvider "../golem-font/test" (FileId 0) style [] >>= either (assertFailure . show) pure
+  loadFonts golemFontProvider (diskFiles "../golem-font/test") (FileId 0) style [] >>= either (assertFailure . show) pure
 
 -- | Noto Serif JP of the 蟹工船 fixture as the body role, and as the role palt with the feature palt (a style uses it, so that it is loaded).
 notoPaltFonts :: IO LoadedFonts
 notoPaltFonts = do
   let src = "[fonts.body]\nja = \"fonts/NotoSerifJP-Regular.otf\"\n\n[fonts.palt]\nja = \"fonts/NotoSerifJP-Regular.otf\"\nfeatures = [\"palt\"]\n\n[character-styles.p]\nfont = \"palt\"\n"
   style <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
-  loadFonts golemFontProvider "test/fixtures/kanikosen" (FileId 0) style [] >>= either (assertFailure . show) pure
+  loadFonts golemFontProvider (diskFiles "test/fixtures/kanikosen") (FileId 0) style [] >>= either (assertFailure . show) pure
 
 -- | Kerning, proportional metrics and baseline shift (docs/adr/0020).
 characterFeatureTests :: [TestTree]
@@ -418,7 +419,7 @@ layoutHidden marks manifest style sources = withSystemTempDirectory "golem-hidde
     Right e -> case (evBook e, pageGeometry (FileId 0) (isJust marks) (evStyle e)) of
       _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> assertFailure (show errs)
       (Just book, Right geom) -> do
-        let inp = PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty marks (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e))))
+        let inp = PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty marks (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e))))
         r <- layoutPdf inp geom fakeFonts
         case r of
           Left ds -> assertFailure (show ds)
@@ -1808,7 +1809,7 @@ combiningTests =
         files <- combiningFiles
         writeFiles tmp files
         style <- either (assertFailure . show) pure (parseStyle (FileId 0) "[fonts.body]\nja = \"fonts/noto.otf\"\nlatin = \"fonts/serif.ttf\"\n")
-        fonts <- loadFonts golemFontProvider tmp (FileId 0) style [] >>= either (assertFailure . show) pure
+        fonts <- loadFonts golemFontProvider (diskFiles tmp) (FileId 0) style [] >>= either (assertFailure . show) pure
         let faceOf t = nub (map shFace (lfShape fonts (Shaping "body" False [] False) t))
         faceOf "cafe\x301" @?= faceOf "cafe"
   ]

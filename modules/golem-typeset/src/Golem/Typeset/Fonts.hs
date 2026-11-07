@@ -70,6 +70,7 @@ import Golem.LayoutSpec (PageGeometry (..))
 import Golem.Length (zwToSp)
 import Golem.Pdf qualified as P
 import Golem.Project
+import Golem.Project.Files (Files)
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Typeset.TextLayer (ClusterPart (..))
@@ -160,9 +161,10 @@ offsetOrigin size frame (dx, dy) (gx, gy) = case frame of
     sp = zwToSp size
 
 newtype FontProvider = FontProvider
-  { {- | the root, style.toml and the styles of the files (docs/adr ADR 0014)
-    and the file of the diagnostics about style.toml (golem-driver ADR 0016)
-    -} loadFonts :: FilePath -> FileId -> Style -> [LocalStyles] -> IO (Either [Diagnostic] LoadedFonts)
+  { {- | the files of the project (docs/adr/0199), style.toml and the styles
+    of the files (docs/adr ADR 0014) and the file of the diagnostics about
+    style.toml (golem-driver ADR 0016)
+    -} loadFonts :: Files -> FileId -> Style -> [LocalStyles] -> IO (Either [Diagnostic] LoadedFonts)
   }
 
 noFontProvider :: FontProvider
@@ -185,7 +187,8 @@ producer :: Text -> Text
 producer version = "Golem " <> version
 
 data PdfInput = PdfInput
-  { piRoot :: !FilePath,
+  { -- | how the files of the project are read (docs/adr/0199)
+    piFiles :: !Files,
     piProject :: !Project,
     piStyle :: !Style,
     piBook :: !Book,

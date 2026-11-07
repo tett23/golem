@@ -77,7 +77,6 @@ import Control.Concurrent.Async (mapConcurrently)
 import Control.Exception (evaluate)
 import Control.Monad (join, mfilter)
 import Data.Bifunctor (first)
-import Data.ByteString qualified as BS
 import Data.Char (isSpace)
 import Data.Containers.ListUtils (nubOrdOn)
 import Data.Foldable (toList)
@@ -122,7 +121,8 @@ import Golem.Numerals.Format (renderMarkFormat)
 import Golem.Numerals.Notation (writeNumber)
 import Golem.Pdf qualified as P
 import Golem.Project
-import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
+import Golem.Project.Files (Files (..))
+import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
 import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax
@@ -446,7 +446,7 @@ flowLines :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ([Flow], [(Sp, 
 flowLines provider inp0 = case checkedGeometry inp of
   Left ds -> pure (Left ds)
   Right geom -> do
-    lf <- loadFonts provider (piRoot inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
+    lf <- loadFonts provider (piFiles inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
     case lf of
       Left ds -> pure (Left ds)
       Right fonts -> do
@@ -859,7 +859,7 @@ layoutPages :: FontProvider -> PdfInput -> IO (Either [Diagnostic] [[Text]])
 layoutPages provider inp0 = case checkedGeometry inp of
   Left ds -> pure (Left ds)
   Right geom -> do
-    lf <- loadFonts provider (piRoot inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
+    lf <- loadFonts provider (piFiles inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
     case lf of
       Left ds -> pure (Left ds)
       Right fonts -> fmap texts <$> layoutPdf inp geom fonts
@@ -2694,7 +2694,9 @@ loadFigures inp = do
   where
     loadOne (s, page) = do
       -- the image a plugin made, or the file (docs/adr/0123)
-      bytes <- maybe (BS.readFile (piRoot inp <> "/" <> T.unpack s)) pure (Map.lookup s (bookImages (piBook inp)))
+      -- the path as golem-eval resolved it, normalised (docs/adr/0199)
+      let path = T.unpack s
+      bytes <- maybe (filesRead (piFiles inp) (either (const path) id (normalizeRelative path))) pure (Map.lookup s (bookImages (piBook inp)))
       pure $
         if
           | ".pdf" `T.isSuffixOf` T.toLower s -> case P.importPage page bytes of
@@ -2826,11 +2828,11 @@ loadIntent :: PdfInput -> IO (Either [Diagnostic] (Maybe P.PdfX))
 loadIntent inp = case stIntent (piStyle inp) of
   Nothing -> pure (Right Nothing)
   Just path -> do
-    r <- resolveInRoot (piRoot inp) path
+    r <- filesResolve (piFiles inp) path
     case r of
       Left e -> pure (Left [diagnostic "G08006" Error (mkSpan (styleFileId (piProject inp)) 0 0) (T.pack (intentMessage e <> ": " <> path))])
       Right rel -> do
-        bytes <- BS.readFile (piRoot inp <> "/" <> rel)
+        bytes <- filesRead (piFiles inp) rel
         let md = manifestMetadata (projectManifest (piProject inp))
             condition = if "JapanColor2001Coated" `T.isInfixOf` T.pack path then "JC200103" else T.pack (takeBaseName path)
             -- PDF/A on top of PDF/X-4 (docs/adr ADR 0183)

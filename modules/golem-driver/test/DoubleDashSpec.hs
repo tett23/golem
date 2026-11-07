@@ -11,6 +11,7 @@ import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
+import Golem.Project.Files (diskFiles)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Golem.Typeset (Shaped (..), Shaping (..))
@@ -37,7 +38,7 @@ fontsOf :: BS.ByteString -> [(FilePath, BS.ByteString)] -> IO LoadedFonts
 fontsOf style files = withSystemTempDirectory "golem-dash" $ \tmp -> do
   writeFiles tmp files
   st <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 style))
-  loadFonts realProvider tmp (FileId 0) st [] >>= either (assertFailure . show) pure
+  loadFonts realProvider (diskFiles tmp) (FileId 0) st [] >>= either (assertFailure . show) pure
 
 -- | The source of a paragraph of 漢, the dashes in a role (body or sans), and 漢.
 dashSource :: T.Text -> T.Text -> T.Text

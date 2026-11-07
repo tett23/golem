@@ -69,7 +69,7 @@ renderPdfAll version provider inp0 = case (declarationErrors inp, checkedGeometr
   (ds, Left gs) -> pure (Left (ds <> gs))
   (ds@(_ : _), Right _) -> pure (Left ds)
   ([], Right geom) -> do
-    lf <- loadFonts provider (piRoot inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
+    lf <- loadFonts provider (piFiles inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
     case lf of
       Left ds -> pure (Left ds)
       Right fonts -> do
