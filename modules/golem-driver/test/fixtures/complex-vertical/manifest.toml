@@ -1,0 +1,39 @@
+# 縦組みの一段の本：機能のあいだの相互作用を固定する fixture（docs/adr/0175）。
+# フォントはコミットしない。組む前に fonts/ja.otf と fonts/latin.otf を写す（README）。
+chapters = ["front.gm", "chapters/01.gm", "chapters/02.gm", "chapters/03.gm", "back.gm"]
+bibliography = ["references.json"]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000175"
+title = "町の活版所"
+title-reading = "まちのかっぱんじょ"
+language = "ja"
+date = 2026-11-07
+publisher = "Golem プロジェクト"
+
+[[metadata.creators]]
+name = "Golem プロジェクト"
+role = "author"
+
+# ADR 0193 で既定が変わっても、この本は空行で段落を区切る。
+[source]
+paragraph-separator = "blank-line"
+
+[targets.pdf]
+[targets.html]
+[targets.epub]
+[targets.text]
+
+[functions.requires]
+file = ["data/types.tsv"]
+
+[[filters]]
+function = "fn/book.emet"
+filter = "mark-first"
+files = ["chapters/01.gm", "chapters/02.gm", "chapters/03.gm"]
+
+# コードブロックの行の折り返し（G07030）と、ページの境で分けて組む罫線を持つ
+# 段落（G07046）は、この本が固定する機能である。この二つの notice だけを止め、
+# ほかの diagnostic はゴールデンのテストで出ないことを確かめる。
+[diagnostics]
+silence-notices = ["G07030", "G07046"]

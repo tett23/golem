@@ -6,6 +6,7 @@ that removes escapes is checked with the escapes it may remove made text
 -}
 module Golem.Fmt
   ( preprocess,
+    formatTable,
     format,
     FormatResult (..),
     astFingerprint,
@@ -36,14 +37,21 @@ data FormatResult
 made one LF before the lone CRs, or it would become two line breaks.
 -}
 preprocess :: Text -> Text
-preprocess t0 =
-  let t1 = fromMaybe t0 (T.stripPrefix "\xFEFF" t0)
-      t2 = T.replace "\r" "\n" (T.replace "\r\n" "\n" t1)
-   in T.intercalate "\n" (map untab (T.splitOn "\n" t2))
+preprocess = T.intercalate "\n" . map untab . T.splitOn "\n" . formatTable
   where
     untab l =
       let (ind, rest) = T.span (\c -> c == ' ' || c == '\t') l
        in T.concatMap (\c -> if c == '\t' then "  " else T.singleton c) ind <> rest
+
+{- | The preprocessing of a table file of @table (docs/adr/0186): the BOM
+at the start is removed, CRLF becomes LF, then a lone CR becomes LF. Tabs,
+spaces, blank lines, quotes and separators are kept, so the reader makes
+the same table, and a lone CR in quotes becomes a line break in the cell.
+-}
+formatTable :: Text -> Text
+formatTable t0 =
+  let t1 = fromMaybe t0 (T.stripPrefix "\xFEFF" t0)
+   in T.replace "\r" "\n" (T.replace "\r\n" "\n" t1)
 
 -- | The AST without source positions.
 astFingerprint :: Text -> Text

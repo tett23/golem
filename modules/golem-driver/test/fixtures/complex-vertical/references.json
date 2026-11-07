@@ -1,0 +1,26 @@
+[
+  {
+    "id": "jlreq",
+    "type": "report",
+    "title": "日本語組版処理の要件",
+    "publisher": "W3C",
+    "issued": {"date-parts": [[2020]]},
+    "URL": "https://www.w3.org/TR/jlreq/"
+  },
+  {
+    "id": "jisx4051",
+    "type": "standard",
+    "title": "JIS X 4051:2004 日本語文書の組版方法",
+    "publisher": "日本規格協会",
+    "issued": {"date-parts": [[2004]]}
+  },
+  {
+    "id": "bringhurst",
+    "type": "book",
+    "author": [{"family": "Bringhurst", "given": "Robert"}],
+    "title": "The Elements of Typographic Style",
+    "publisher": "Hartley & Marks",
+    "edition": "4",
+    "issued": {"date-parts": [[2012]]}
+  }
+]

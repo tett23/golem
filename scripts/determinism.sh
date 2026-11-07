@@ -72,6 +72,16 @@ cp "$ROOT/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular
 cp "$ROOT/modules/golem-font/test/fonts/SourceSansPro-Regular.otf" "$WORK/pdf/fonts/latin.otf"
 cp "$ROOT/scripts/determinism/pdf-style.toml" "$WORK/pdf/style.toml"
 build pdf "$WORK/pdf" --target pdf
+# the two books that combine the features (docs/adr/0175), to every target,
+# with the same fonts
+for book in complex-vertical complex-horizontal; do
+  cp -R "$ROOT/modules/golem-driver/test/fixtures/$book" "$WORK/$book"
+  rm -rf "$WORK/$book/build"
+  mkdir -p "$WORK/$book/fonts"
+  cp "$ROOT/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" "$WORK/$book/fonts/ja.otf"
+  cp "$ROOT/modules/golem-font/test/fonts/SourceSansPro-Regular.otf" "$WORK/$book/fonts/latin.otf"
+  build "$book" "$WORK/$book" --target pdf --target html --target epub --target text
+done
 # the input that gives diagnostics and ends in an error (docs/adr/0029,
 # docs/adr/0071)
 cp -R "$ROOT/scripts/env-determinism/diagnostics" "$WORK/diagnostics"

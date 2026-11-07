@@ -13,7 +13,9 @@
 #                  to it, a large one too
 #
 # Each change but combined is applied to the small inputs (exprs, sample,
-# sample-pdf, diagnostics); combined, every change at once, to all inputs.
+# sample-pdf, diagnostics, and the two books that combine the features,
+# complex-vertical and complex-horizontal, docs/adr/0175); combined, every
+# change at once, to all inputs.
 # caps-one and caps-two set GHCRTS=-N1 and -N2, the number of capabilities
 # of golem (docs/adr/0050); the base gives no GHCRTS, so golem runs on every
 # processor, as -with-rtsopts=-N says; combined uses -N2.
@@ -57,7 +59,7 @@ trap 'chmod -R u+rwX "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/home-a" "$WORK/home-b" "$WORK/xdg/cache" "$WORK/xdg/config" "$WORK/xdg/data" "$WORK/stage" "$WORK/lists"
 FAILED=0
 FIX=$ROOT/modules/golem-driver/test/fixtures
-SMALL="exprs sample sample-pdf diagnostics"
+SMALL="exprs sample sample-pdf diagnostics complex-vertical complex-horizontal"
 BOOKS="merry-wives frogs snark elements-of-style nightmare-abbey koya-hijiri ichiaku-no-suna haru-to-shura taira-no-masakado ushiyama-hotel"
 LARGE="tempest kanikosen $BOOKS manual manual-dev"
 CHANGES="tz-east tz-west tz-unset locale-c locale-eucjp locale-ja locale-unset sde-zero sde-future home-other home-unset xdg path-empty umask root-path mtime-past mtime-future decoys caps-one caps-two combined"
@@ -116,6 +118,13 @@ stage() {
       printf '\n[targets.pdf]\n' >>"$d/manifest.toml"
       ;;
     diagnostics) cp -R "$HERE/diagnostics" "$d" ;;
+    complex-vertical | complex-horizontal)
+      # every target of the manifest, with the fonts of sample-pdf
+      cp -R "$FIX/$1" "$d"
+      mkdir -p "$d/fonts"
+      cp "$FIX/kanikosen/fonts/NotoSerifJP-Regular.otf" "$d/fonts/ja.otf"
+      cp "$ROOT/modules/golem-font/test/fonts/SourceSansPro-Regular.otf" "$d/fonts/latin.otf"
+      ;;
     tempest | kanikosen) cp -R "$FIX/$1" "$d" ;;
     merry-wives | frogs | snark | elements-of-style | nightmare-abbey)
       cp -R "$FIX/pd/$1" "$d"

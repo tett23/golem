@@ -15,6 +15,7 @@ import Data.Maybe (isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import FmtTableSpec (fmtTableTests)
 import Golem.Driver.Explain (catalog)
 import Golem.Driver.Version (golemVersion)
 import Golem.Syntax.Sha256 (sha256)
@@ -163,6 +164,7 @@ tests =
         code' @?= ExitSuccess
         readFile (tmp </> "a.gm") >>= (@?= "@verse\n  Full fathom five\n"),
       fmtCrTests,
+      fmtTableTests,
       missingFontTests,
       marksTests,
       preflightTests,

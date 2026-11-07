@@ -1,0 +1,70 @@
+# 横組みの二段の本（docs/adr/0175）
+[page]
+size = "A5"
+binding = "left"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "12Q"
+characters = 18
+lines = 30
+line-pitch = "19H"
+columns = 2
+column-gap = "2zw"
+position = { top = "24mm", gutter = "17mm" }
+
+[fonts.body]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[fonts.code]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[headings.1]
+number = "第{n}章"
+page-break = "recto"
+size = "1.5zw"
+rule-before = { weight = "1pt", space-after = "0.5zw" }
+rule-after = { weight = "0.3pt", space-before = "0.5zw", style = "thin-thin" }
+
+[headings.2]
+number = "{1}.{n}"
+rule-after = { weight = "0.3pt", space-before = "0.25zw", length = "4zw" }
+
+[headings.3]
+number = "{1}.{2}.{n}"
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[paragraph-styles.box]
+first-line-indent = "0zw"
+rule-before = { weight = "0.5pt", space-after = "0.5zw", style = "dotted" }
+rule-after = { weight = "0.5pt", space-before = "0.5zw" }
+
+[paragraph-styles.code]
+size = "10Q"
+
+[composition]
+hanging-punctuation = true
+kenten = "dot"
+
+[notes.rule]
+length = "6zw"
+space-before = "0.5zw"
+space-after = "0.5zw"
+
+[figures]
+number = "図{chapter}.{n}"
+
+[code]
+number = "リスト{chapter}.{n}"
+
+[index]
+columns = 3
+column-gap = "1zw"
+
+[masters.body]
+running-head = { position = "top-outside", content = ["{heading.1.number?}　{heading.1.short}"] }
+folio = { position = "bottom-outside", format = "{n}" }
