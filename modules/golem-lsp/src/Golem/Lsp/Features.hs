@@ -895,7 +895,7 @@ without their newlines, the indentation of a block command, and errors.
 The contents of a prose slot have the slot as their parent and are not in them.
 -}
 commandBytes :: Text -> [(Int, Int)]
-commandBytes text = filter (uncurry (<)) (concatMap withoutNewlines (walk 0 (fst (parse (FileId 0) text))))
+commandBytes text = concatMap (filter (uncurry (<)) . withoutNewlines) (walk 0 (fst (parse (FileId 0) text)))
   where
     bytes = TE.encodeUtf8 text
     walk start n = go start True (C.nodeChildren n)
