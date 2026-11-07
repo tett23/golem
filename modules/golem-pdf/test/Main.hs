@@ -44,7 +44,7 @@ main = do
   defaultMainReportingSkips (const (tests tinyJpeg))
 
 page :: [Mark] -> Page
-page = Page box box box
+page m = Page box box box m []
   where
     box = Rect 0 0 (595 * 65536) (842 * 65536)
 
@@ -346,7 +346,7 @@ marksTests tinyJpeg =
           assertBool "jpeg" (jpeg tinyJpeg `BS.isInfixOf` pdf),
         testCase "a framed page without marks or bleed keeps its content" $ do
           let content = [Rule (Rect 0 0 65536 65536)]
-          framePage Nothing 0 (w, h) content @?= Page (Rect 0 0 w h) (Rect 0 0 w h) (Rect 0 0 w h) content,
+          framePage Nothing 0 (w, h) content @?= Page (Rect 0 0 w h) (Rect 0 0 w h) (Rect 0 0 w h) content [],
         testCase "a framed page with Japanese marks draws them in the registration colour over the moved content" $ do
           let content = [Rule (Rect 0 0 65536 65536)]
               m = b + mm13
@@ -389,6 +389,63 @@ marksTests tinyJpeg =
               (code, out, err) <- readProcessWithExitCode exe ["--check", path] ""
               assertEqual (out <> err) ExitSuccess code
       ]
+
+-- | The link annotations of pages (docs/adr ADR 0182).
+linkTests :: ByteString -> [TestTree]
+linkTests tinyJpeg =
+  [ testCase "a link annotation: its dictionary, referred to from the /Annots of its page" $ do
+      let pdf = writePdf (documentWith tinyJpeg [annotated "https://example.com/"])
+      assertBool (show pdf) ("<< /A << /S /URI /URI (https://example.com/) >> /Border [0 0 0] /F 4 /Rect [72 700 172 710] /Subtype /Link /Type /Annot >>" `BS.isInfixOf` pdf)
+      -- the catalog, the page tree, the page, its content, the font (5): the annotation after them, before the information
+      assertBool (show pdf) ("/Annots [10 0 R]" `BS.isInfixOf` pdf)
+      assertBool (show pdf) ("\n10 0 obj\n<< /A << /S /URI" `BS.isInfixOf` pdf)
+      assertBool "no /AP" (not ("/AP" `BS.isInfixOf` pdf))
+      assertBool "xref" (xrefConsistent pdf),
+    testCase "a page without annotations has no /Annots, and the PDF is the same as before" $ do
+      let pdf = writePdf (documentWith tinyJpeg [page [Rule (Rect 0 0 65536 65536)]])
+      assertBool "no Annots" (not ("/Annots" `BS.isInfixOf` pdf))
+      writePdf (documentWith tinyJpeg [(page []) {pageAnnots = []}]) @?= writePdf (documentWith tinyJpeg [page []]),
+    testCase "the annotations of each page in order, the pages in order" $ do
+      let two = (page []) {pageAnnots = [LinkAnnotation r (UriAction "https://a.example/"), LinkAnnotation r (UriAction "https://b.example/")]}
+          pdf = writePdf (documentWith tinyJpeg [two, annotated "https://c.example/"])
+      assertBool (show pdf) ("/Annots [12 0 R 13 0 R]" `BS.isInfixOf` pdf && "/Annots [14 0 R]" `BS.isInfixOf` pdf)
+      map (\u -> BS.length (fst (BS.breakSubstring u pdf))) ["(https://a.example/)", "(https://b.example/)", "(https://c.example/)"]
+        @?= sort (map (\u -> BS.length (fst (BS.breakSubstring u pdf))) ["(https://a.example/)", "(https://b.example/)", "(https://c.example/)"])
+      assertBool "xref" (xrefConsistent pdf),
+    testCase "a URL outside ASCII as the %XX of its UTF-8 bytes, the %XX written kept" $ do
+      asciiUri "https://ja.wikipedia.org/wiki/組版" @?= "https://ja.wikipedia.org/wiki/%E7%B5%84%E7%89%88"
+      asciiUri "https://example.com/%E7%B5%84版?q=a&r=%41" @?= "https://example.com/%E7%B5%84%E7%89%88?q=a&r=%41"
+      let pdf = writePdf (documentWith tinyJpeg [annotated "https://example.com/%E7%B5%84版"])
+      assertBool (show pdf) ("/URI (https://example.com/%E7%B5%84%E7%89%88)" `BS.isInfixOf` pdf),
+    testCase "a framed page moves its annotations with its content" $ do
+      let b = 3 * 65536
+          framed = framePageWith (Just Japanese) b (100 * 65536, 100 * 65536) [] [LinkAnnotation (Rect 0 0 65536 65536) (UriAction "https://example.com/")]
+          m = b + 2415027
+      pageAnnots framed @?= [LinkAnnotation (Rect m m 65536 65536) (UriAction "https://example.com/")],
+    testCase "X4.verify: the URI of the action of a link annotation is not a forbidden name" $ do
+      let objs = documentObjects (documentWith tinyJpeg [annotated "https://example.com/"]) {docPdfX = Just (PdfX "fake" "JC200103" [] [])}
+      verify objs @?= []
+      -- a /URI elsewhere (the base URI of the catalog) is reported as before
+      let catalogUri = objs {pdfObjects = map (\case ODict kvs | lookup "Type" kvs == Just (OName "Catalog") -> ODict (kvs <> [("URI", ODict [("Base", OStr "https://example.com/")])]); o -> o) (pdfObjects objs)}
+      map x4Detail (verify catalogUri) @?= ["URI があります"]
+      -- an annotation that the pages do not refer to is not excused
+      let loose = objs {pdfObjects = map (\case ODict kvs | lookup "Type" kvs == Just (OName "Page") -> ODict (filter ((/= "Annots") . fst) kvs); o -> o) (pdfObjects objs)}
+      map x4Detail (verify loose) @?= ["URI があります"]
+      -- JavaScript in the action of a link annotation is reported
+      let js = objs {pdfObjects = map (\case ODict kvs | lookup "Subtype" kvs == Just (OName "Link") -> ODict [(k, if k == "A" then ODict [("S", OName "JavaScript"), ("JS", OStr "x")] else v) | (k, v) <- kvs]; o -> o) (pdfObjects objs)}
+      map x4Detail (verify js) @?= ["JS、JavaScript があります"],
+    needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
+      testCase "qpdf --check accepts a PDF with link annotations" $ do
+        exe <- qpdf
+        withSystemTempDirectory "golem-pdf" $ \dir -> do
+          let path = dir </> "links.pdf"
+          BS.writeFile path (writePdf (documentWith tinyJpeg [annotated "https://ja.wikipedia.org/wiki/組版", annotated "https://example.com/?a=(1)"]))
+          (code, out, err) <- readProcessWithExitCode exe ["--check", path] ""
+          assertEqual (out <> err) ExitSuccess code
+  ]
+  where
+    r = Rect (72 * 65536) (700 * 65536) (100 * 65536) (10 * 65536)
+    annotated u = (page [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]) {pageAnnots = [LinkAnnotation r (UriAction u)]}
 
 producerTests :: ByteString -> [TestTree]
 producerTests tinyJpeg =
@@ -596,6 +653,7 @@ tests tinyJpeg =
       testGroup "X4.verify (golem-cli ADR 0006)" (verifyTests tinyJpeg),
       testGroup "crop marks and bleed (ADR 0004)" (marksTests tinyJpeg),
       testGroup "Producer (ADR 0005)" (producerTests tinyJpeg),
+      testGroup "link annotations (docs/adr ADR 0182)" (linkTests tinyJpeg),
       ImageSpec.tests,
       ImportSpec.tests,
       SecuritySpec.tests,

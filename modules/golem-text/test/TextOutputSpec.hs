@@ -105,6 +105,10 @@ tests =
       let indented ns = only (renderText "ja" "kanji" False (const (const ns)) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft (bookOf [para 0 [txt "一行目", LineBreak (at 1), txt "二行目"]]))
       indented (1, 0) @?= "　一行目\n二行目\n"
       indented (1, 1) @?= "　一行目\n　二行目\n",
+    testCase "a link: the text and the URL in full-width parentheses; the URL alone when the text is the URL (docs/adr ADR 0182)" $ do
+      only (horizontal (bookOf [para 0 [Link (at 1) "https://example.com/" [txt "例"]]])) @?= "例（https://example.com/）\n"
+      only (horizontal (bookOf [para 0 [Link (at 1) "https://example.com/" [CharStyle (at 1) "url" [txt "https://example.com/"]]]])) @?= "https://example.com/\n"
+      only (horizontal (bookOf [para 0 [Link (at 1) "https://example.com/" [txt "https://example.com/"]]])) @?= "https://example.com/\n",
     testCase "blocks are separated by one blank line" $
       only (horizontal (bookOf [para 0 [txt "一つ目。"], para 5 [txt "二つ目。"]])) @?= "一つ目。\n\n二つ目。\n",
     testCase "a page reference is the title of the target in corner brackets" $

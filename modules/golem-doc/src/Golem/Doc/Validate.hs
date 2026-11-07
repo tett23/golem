@@ -6,6 +6,7 @@ module Golem.Doc.Validate
     validateDocument,
     validateBlocks,
     captionErrors,
+    linkErrors,
   )
 where
 
@@ -13,6 +14,7 @@ import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
+import Golem.Doc.Url
 import Golem.Syntax.Span
 
 {- | @fileSize@ gives the byte length of each known file. @allowed@ are the
@@ -117,6 +119,7 @@ breakErrors top is =
       CharStyle _ _ xs -> deep xs
       Note _ _ xs -> deep xs
       Sidenote _ _ xs -> deep xs
+      Link _ _ xs -> deep xs
       _ -> False
     deep :: [InlineF r] -> Bool
     deep = any (\x -> isBreak x || nested x)
@@ -144,6 +147,8 @@ inlineErrors fileSize allowed i =
       sub (ciBody c)
         <> breakErrors False (ciBody c)
         <> ["チャネルの項目の本文に置けない要素があります" | any sends (ciBody c)]
+    -- a URL that passes the checks, and no element inside that is a link itself (docs/adr ADR 0182)
+    Link _ u xs -> linkOwnErrors u xs <> sub xs
     _ -> []
   where
     sub :: [InlineF q] -> [Text]
@@ -159,10 +164,32 @@ inlineErrors fileSize allowed i =
       Kenten _ _ xs -> any sends xs
       Color _ _ xs -> any sends xs
       CharStyle _ _ xs -> any sends xs
+      Link _ _ xs -> any sends xs
       _ -> False
     negativeAki = \case
       AkiZw r -> r < 0
       AkiAbs x -> x < 0
+
+-- | The errors of a link itself: its URL, and the elements inside it that are links (docs/adr ADR 0182).
+linkOwnErrors :: Text -> [InlineF r] -> [Text]
+linkOwnErrors u xs =
+  [urlProblemMessage p u | Just p <- [checkUrl u]]
+    <> ["リンクの中にリンクになる要素は置けません: " <> e | e <- linkElements xs]
+
+{- | The errors of the links among inlines at any depth (docs/adr ADR
+0182), for the inlines a command of a plugin puts out.
+-}
+linkErrors :: [InlineF r] -> [Text]
+linkErrors = concatMap $ \case
+  Link _ u xs -> linkOwnErrors u xs <> linkErrors xs
+  Ruby _ _ segs -> concatMap (linkErrors . rsBase) segs
+  Kenten _ _ xs -> linkErrors xs
+  Color _ _ xs -> linkErrors xs
+  CharStyle _ _ xs -> linkErrors xs
+  Note _ _ xs -> linkErrors xs
+  Sidenote _ _ xs -> linkErrors xs
+  ChannelItem _ c -> linkErrors (ciBody c)
+  _ -> []
 
 inlineSpan :: InlineF r -> SrcSpan
 inlineSpan = \case
@@ -183,3 +210,4 @@ inlineSpan = \case
   LineBreak s -> s
   Aki s _ -> s
   ChannelItem s _ -> s
+  Link s _ _ -> s
