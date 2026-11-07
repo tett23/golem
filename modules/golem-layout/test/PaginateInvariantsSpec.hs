@@ -110,10 +110,18 @@ enumerationTests =
       [e | e <- shortElementsFor 5, not (isFigure e)] @?= [e | e <- elementsFor 5, not (isFigure e)]
       nub [(inLines i, inColumns i) | i <- concat (upTo 1 inputs)] @?= [(c, k) | c <- [3 .. 5], k <- [1, 2]]
       map length (upTo 3 inputs) @?= [6, 6 * 19, 6 * 19 ^ (2 :: Int), 6 * 19 ^ (3 :: Int)],
-    testCase "E5: each input of the shortened enumeration up to 3 elements is in the same tier of the enumeration of docs/adr/0204" $
+    testCase "E5: each input of the shortened enumeration up to 3 elements is in the same tier of the enumeration of docs/adr/0204" $ do
+      -- tier n of the enumeration of docs/adr/0204 holds the flows of n of
+      -- the elements of their column, in columns of 3 to 8 lines, of one or
+      -- two columns: up to 2 elements, against the tiers themselves
+      let inTier n i = inLines i `elem` [3 .. 8] && inColumns i `elem` [1, 2] && length (inElements i) == n && all (`elem` elementsFor (inLines i)) (inElements i)
       sequence_
-        [ assertBool ("tier " <> show k <> ": " <> show i) (show i `Set.member` full)
-        | (k, short, full) <- zip3 [0 :: Int ..] (upTo 3 inputs) (map (Set.fromList . map show) (upTo 3 fullInputs)),
+        [ (k, Set.fromList (map show full)) @?= (k, Set.fromList [show i | i <- concat (upTo 2 fullInputs), inTier k i])
+        | (k, full) <- zip [0 :: Int ..] (upTo 2 fullInputs)
+        ]
+      sequence_
+        [ assertBool ("tier " <> show k <> ": " <> show i) (inTier k i)
+        | (k, short) <- zip [0 :: Int ..] (upTo 3 inputs),
           i <- short
         ],
     testCase "E5: the shortened enumeration keeps the order of the enumeration of docs/adr/0204" $
