@@ -28,7 +28,6 @@ import ImageSpec qualified
 import ImportSpec qualified
 import Numeric (readHex)
 import SecuritySpec qualified
-import UuidSpec qualified
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -38,6 +37,7 @@ import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
+import UuidSpec qualified
 
 main :: IO ()
 main = do
