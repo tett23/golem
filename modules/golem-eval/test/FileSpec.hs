@@ -473,6 +473,31 @@ tests =
         rotateOf "@figure images/a.png alt=\"x\"\n" >>= (@?= False)
         msgs "@figure images/a.png alt=\"x\" rotate=yes\n" @?= [("G02087", "rotate は true か false です: yes")]
         msgs "@figure images/a.png alt=\"x\" rotate=true wrap=end width=4zw\n" @?= [("G02087", "回して置く図版は回り込ませられません")],
+      -- docs/adr/0190
+      testCase "G02133: a width that is neither a length nor a percentage of the measure, or 0, at the width, for every kind of figure" $
+        mapM_
+          ( \(extra, w) -> do
+              let src = "@figure images/a.png alt=x" <> extra <> " width=" <> w <> "\n"
+                  start = T.length (fst (T.breakOn "width=" src))
+              diags src @?= [("G02133", "図版の width が読めません。寸法（10zw、50mm など）か行長の割合（50% など）で書きます: " <> w, start, start + T.length "width=" + T.length w)]
+          )
+          [(extra, w) | extra <- ["", " wrap=end", " wrap=start", " rotate=true"], w <- ["abc", "0zw", "0%", "-3zw", "50", "0.0mm", "%", "zw"]],
+      testCase "widths in lengths and percentages are not errors, and stay as written (docs/adr/0190)" $
+        mapM_
+          ( \(extra, w) -> do
+              let src = "@figure images/a.png alt=x" <> extra <> " width=" <> w <> "\n"
+              errs src @?= []
+              map (\case FigureBlock f -> figWidth f; _ -> Nothing) (body src) @?= [Just w]
+          )
+          [(extra, w) | extra <- ["", " wrap=end", " rotate=true"], w <- ["12zw", "40mm", "50%", "150%", "10.5pt", "0.5in", "20Q", "20H", "12.5%"]],
+      testCase "a wrapped figure whose width cannot be read is G02133, not G07022 (docs/adr/0190)" $
+        map (\(c, _, _, _) -> c) (diags "@figure images/a.png alt=x wrap=end width=abc\n") @?= ["G02133"],
+      testCase "a figure of a plugin with a width that cannot be read is G02133 at the call (docs/adr/0190)" $ do
+        let src = "golem-plugin-image://00.svg"
+            drawn w = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (Figure src Nothing "x" Nothing (Just w) [] Nothing False))], Map.fromList [(src, "<svg/>")], [])))]}
+        diagsWith ctx {ctxPlugins = drawn "abc"} "@chart\n" @?= [("G02133", "図版の width が読めません。寸法（10zw、50mm など）か行長の割合（50% など）で書きます: abc", 0, 7)]
+        fst (run ctx {ctxPlugins = drawn "abc"} "@chart\n") @?= []
+        diagsWith ctx {ctxPlugins = drawn "50%"} "@chart\n" @?= [],
       testCase "csv tables and listings" $ do
         case body "@table data.csv\n" of
           [Table _ h [r]] -> (map stripSpans h, map stripSpans r) @?= ([["a"], ["b"]], [["1"], ["x,y"]])

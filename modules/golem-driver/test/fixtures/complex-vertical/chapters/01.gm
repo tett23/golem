@@ -41,7 +41,7 @@
 
 本文によく使われた五号の活字は、一本の値段が[book.price 2 unit="銭"]ほどだった。
 
-@figure images/type-case.png alt="上から下へ色が淡くなる、縦に長い帯"
+@figure images/type-case.png alt="上から下へ色が淡くなる、縦に長い帯" width=12zw
   活字の棚の色の[kenten: 移り変わり]。上ほどよく使う字が並ぶ。
 
 ### 字面と[ruby: 字送り | じおくり]

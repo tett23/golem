@@ -82,6 +82,7 @@ tests skips =
              testGroup "SVG figures (golem-pdf ADR 0009)" svgFigureTests,
              testGroup "SVG active content in HTML and EPUB (docs/adr ADR 0039)" activeContentTests,
              testGroup "figures fitted to the column (golem-driver ADR 0034)" fitFigureTests,
+             testGroup "the width of figures (docs/adr/0190)" figureWidthTests,
              testGroup "turned figures (golem-driver ADR 0034)" turnedFigureTests,
              testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
              testGroup "PDF index and bibliography (ADR 0007)" indexTests,

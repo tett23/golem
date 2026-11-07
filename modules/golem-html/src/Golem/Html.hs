@@ -41,8 +41,10 @@ import Golem.Assemble
 import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (numberSeparator)
 import Golem.Bibliography (EntryPart (..))
+import Golem.Doc.FigureWidth (FigureWidth (..), parseFigureWidth)
 import Golem.Doc.IR
 import Golem.Length qualified as L
+import Golem.Length.Decimal (showRationalDigits)
 import Golem.Numerals
 import Golem.Syntax.Span
 import Golem.Syntax.Text (escapeXml, tshow)
@@ -470,7 +472,7 @@ block c (Block sp lbl body) = case body of
   FigureBlock f ->
     let num = numberSpan c (Map.lookup sp (bookFigures (cBook c)))
         cap = T.concat [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
-     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webOutput f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
+     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webOutput f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"" <> figureWidthStyle (hcVertical (cCfg c)) (figWidth f) <> "/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
   ChannelOutput (TocOutput d) -> toc c (Just d)
   ChannelOutput IndexOutput -> index c sp
   ChannelOutput (CustomOutput name _) -> channelList c sp name
@@ -1241,3 +1243,19 @@ indexPage cfg ft book =
           items,
           "</ol>\n</nav>\n</body>\n</html>\n"
         ]
+
+{- | The size of the image of a figure with a width (docs/adr/0190): in a
+horizontal book its width, in a vertical one its height, each with the
+maximum of 100% of the same direction, so that a width beyond the measure
+fits it as in the PDF. A length in pt, zw in em, a percentage in %.
+-}
+figureWidthStyle :: Bool -> Maybe Text -> Text
+figureWidthStyle vertical width = case width >>= parseFigureWidth of
+  Nothing -> ""
+  Just w ->
+    let prop = if vertical then "height" else "width"
+        len = case w of
+          WidthLength x -> L.ptText x <> "pt"
+          WidthZw r -> L.emText r <> "em"
+          WidthPercent r -> showRationalDigits 4 r <> "%"
+     in " style=\"" <> prop <> ": " <> len <> "; max-" <> prop <> ": 100%\""

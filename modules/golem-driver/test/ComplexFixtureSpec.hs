@@ -158,6 +158,7 @@ common =
     ("a citation in a footnote", commandWith "note" "[cite "),
     ("an SVG figure", figureOf [".svg"]),
     ("a PNG or JPEG figure", figureOf [".png", ".jpg", ".jpeg"]),
+    ("a figure with a width that does not wrap (docs/adr/0190)", \s -> or ["width=" `T.isInfixOf` l && not ("wrap=" `T.isInfixOf` l) | l <- gmLines s, "@figure " `T.isPrefixOf` T.stripStart l]),
     ("ref-number and ref-title", \s -> commands "ref-number" s /= [] && commands "ref-title" s /= []),
     ("a table from a file", hasGm "@table data/"),
     ("a table written in the manuscript", \s -> any ("|---" `T.isInfixOf`) (gmLines s) || any ("|:---" `T.isInfixOf`) (gmLines s)),
