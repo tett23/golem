@@ -677,10 +677,10 @@ start of the block. A page without lines has none.
 pageStarts :: PdfLayout -> [Maybe (FileId, Int)]
 pageStarts layout = map start (pagesOf (plPages layout))
   where
-    start ps = listToMaybe [lid | p <- ps, (_, s) <- poSlots p, lid <- case s of SLine l -> [l]; SHeading l _ -> [l]; SCode l _ _ -> [l]; _ -> []] >>= lineStart
+    start ps = listToMaybe [lid | p <- ps, (_, s) <- poSlots p, lid <- case s of { SLine l -> [l]; SHeading l _ -> [l]; SCode l _ _ -> [l]; _ -> [] }] >>= lineStart
     lineStart lid =
       let block = snd <$> Map.lookupLE lid (plLineSpans layout)
-          sets = maybe (maybe [] pure (Map.lookup lid (plLines layout))) id (Map.lookup lid (plTableLines layout))
+          sets = fromMaybe (maybe [] pure (Map.lookup lid (plLines layout))) (Map.lookup lid (plTableLines layout))
           -- a block of no length (a heading) holds whatever of its file its line shows
           inside b c = spanFile (snd (bcSource c)) == spanFile b && bcAt c >= 0 && (spanLength b == 0 || (spanStart b <= bcAt c && bcAt c <= spanEnd b))
        in case block of

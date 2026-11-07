@@ -2,8 +2,8 @@
 module PageStartsSpec (pageStartsTests) where
 
 import Data.ByteString qualified as BS
-import Data.Map.Strict qualified as Map
 import Data.List (isSuffixOf)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE

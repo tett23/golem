@@ -36,9 +36,9 @@ sourceAt sources sp t = case Map.lookup (spanFile sp) sources >>= align . slice 
     slice src = BS.take (spanEnd sp - spanStart sp) (BS.drop (spanStart sp) src)
     align bs = U.fromList <$> go bs 0 (T.unpack t)
     go _ _ [] = Just []
-    go bs cur (c : cs) = case find bs (TE.encodeUtf8 (T.singleton c)) cur of
-      Just p -> (p :) <$> go bs (p + BS.length (TE.encodeUtf8 (T.singleton c))) cs
-      Nothing -> Nothing
+    go bs cur (c : cs) =
+      let enc = TE.encodeUtf8 (T.singleton c)
+       in find bs enc cur >>= \p -> (p :) <$> go bs (p + BS.length enc) cs
     -- the first byte of a character is never inside another character
     find bs enc cur = case BS.elemIndex (BS.head enc) (BS.drop cur bs) of
       Just k
