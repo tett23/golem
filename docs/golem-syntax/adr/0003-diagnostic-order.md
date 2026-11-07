@@ -70,7 +70,7 @@ G03026 のメッセージは書誌のファイルの名前を持つので、G020
 - 次のコミット済みの ADR のステータスの行に、この ADR へのリンクを書き足す。
   - [ADR 0001](0001-source-spans-and-diagnostics.md)：末尾に「、並び順は [ADR 0003](0003-diagnostic-order.md)」。
   - [ADR 0002](0002-notice-severity.md)：末尾に「、エラーと警告のあいだとお知らせどうしの並び順は [ADR 0003](0003-diagnostic-order.md)」。
-  - [docs/adr/0002](../../adr/0002-determinism.md)：末尾に「、診断の出力順は [golem-syntax ADR 0003](../golem-syntax/adr/0003-diagnostic-order.md)」。
+  - [docs/adr/0002](../../adr/0002-determinism.md)：末尾に「、診断の出力順は [golem-syntax ADR 0003](0003-diagnostic-order.md)」。
   - [golem-doc ADR 0004](../../golem-doc/adr/0004-bibliography-formatting.md)：末尾に「、G03026 と G02021 の並び順は [golem-syntax ADR 0003](../../golem-syntax/adr/0003-diagnostic-order.md)」。
 
 ## 実装しないこと

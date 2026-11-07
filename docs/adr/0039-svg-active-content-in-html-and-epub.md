@@ -76,7 +76,7 @@ Golem は、利用者の入力を黙って別のものに変えない（[docs/ad
 - 仕様書の [「図版」の節](../specifications.md#図版) の、HTML と EPUB での SVG の扱いに、G08014 の検査を書く。
 - `docs/markup.md` の「図版」の節と、利用者向けマニュアルの図版の章と diagnostic の付録に、HTML と EPUB に写せない SVG を書く。
 - 開発者向けマニュアルの、SVG の図版を扱う章に、検査の場所と表を書く。
-- この ADR をコミットするプルリクエストで、`docs/adr/0021-docs-workflow-and-ci-gate.md` の 199 行目の「peg-hs ADR 0039」に、peg-hs のその ADR への絶対リンクを付ける。adr-guard は、この ADR を足すと、その「ADR 0039」をこの ADR への参照と読み、リンクがないと指摘するためである。リンクを付けるだけの変更なので、`--allow-links` で許される。
+- この ADR をコミットするプルリクエストで、`docs/adr/0021-docs-workflow-and-ci-gate.md` の 199 行目の「[peg-hs ADR 0039](https://github.com/tett23/peg-hs/blob/main/docs/adr/0039-faster-ci.md)」に、peg-hs のその ADR への絶対リンクを付ける。adr-guard は、この ADR を足すと、その「ADR 0039」をこの ADR への参照と読み、リンクがないと指摘するためである。リンクを付けるだけの変更なので、`--allow-links` で許される。
 
 ## 実装しないこと
 

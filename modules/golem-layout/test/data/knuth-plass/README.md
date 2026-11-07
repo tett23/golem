@@ -9,7 +9,7 @@ Knuth と Plass の論文（"Breaking Paragraphs into Lines", Software: Practice
 | `frog-king.tex` | 生成に使う plain TeX のファイル |
 | `frog-king.words` | TeX が測った語間の空き、字下げ、段落全体の幅、語ごとの幅（sp） |
 | `frog-king.log` | TeX のログ。`\tracingparagraphs` の分割の候補と、`\showbox` の各行のグルーの設定 |
-| `ties.tex` | 罰点の等しい経路を TeX がどう選ぶかを確かめる三つの段落（golem-layout [ADR 0008](../../../../../docs/golem-layout/adr/0008-explicit-hyphens.md)、[ADR 0010](../../../../../docs/golem-layout/adr/0010-tie-breaking-tex.md)） |
+| `ties.tex` | 罰点の等しい経路を TeX がどう選ぶかを確かめる三つの段落（[golem-layout ADR 0008](../../../../../docs/golem-layout/adr/0008-explicit-hyphens.md)、[ADR 0010](../../../../../docs/golem-layout/adr/0010-tie-breaking-tex.md)） |
 | `ties.log` | `ties.tex` のログ。テストは読まない |
 
 ## 段落の出典
@@ -44,9 +44,9 @@ CTAN のパッケージのページ（https://ctan.org/pkg/cm ）は確かめて
 
 ## 組版の条件
 
-`frog-king.tex` は golem-layout [ADR 0007](../../../../../docs/golem-layout/adr/0007-knuth-plass-reference-test.md) の「TeX との対応」の表のとおりに設定する。
+`frog-king.tex` は [golem-layout ADR 0007](../../../../../docs/golem-layout/adr/0007-knuth-plass-reference-test.md) の「TeX との対応」の表のとおりに設定する。
 ハイフネーションは `\hyphenpenalty=10000` で止め、`\frenchspacing` で語間の空きを一つの値にする。
-明示のハイフンでの分割は止めず、`\exhyphenpenalty=50`（plain TeX の値）とする（golem-layout [ADR 0008](../../../../../docs/golem-layout/adr/0008-explicit-hyphens.md)）。
+明示のハイフンでの分割は止めず、`\exhyphenpenalty=50`（plain TeX の値）とする（[golem-layout ADR 0008](../../../../../docs/golem-layout/adr/0008-explicit-hyphens.md)）。
 さらに `\lefthyphenmin=64` で、TeX が語をハイフネーションすること自体を止める。
 ハイフネーションをすると、二回目の段階のトレースは `wish-ing` のように語をハイフンで区切って印字し、明示のハイフンと見分けられなくなるためである。
 罰則が 10000 のハイフネーションの候補は分割の位置にならないので、分割、罰点、グルーの設定は変わらない。

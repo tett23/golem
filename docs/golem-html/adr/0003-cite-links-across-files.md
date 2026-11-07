@@ -59,7 +59,7 @@ CI の epubcheck にかける fixture（`modules/golem-driver/test/fixtures/samp
 bibliographyHome :: Book -> CiteMark -> Maybe FileId
 ```
 
-どの一覧に載るかの情報は、golem-doc [ADR 0008](../../adr/0008-first-release-verification.md) が `Book` に加えるものを使う。
+どの一覧に載るかの情報は、[golem-doc ADR 0008](../../golem-doc/adr/0008-multiple-index-and-bibliography.md) が `Book` に加えるものを使う。
 意味論の IR は変えない。
 IR と CBOR を変えないので、プラグインの ABI は 7 のままである。
 
@@ -74,7 +74,7 @@ EPUB では、`OEBPS/` の下のページのパスが HTML の `build/html/` の
   一つの文献は本文の何か所からも引用されるので、戻り先が一つに決まらない。
 - `@bibliography` がない本で `[cite ...]` を使ったときの diagnostic。
   PDF もこの場合に番号だけを組んでおり、出力の間で振る舞いをそろえる。
-- `@bibliography` を複数置いたときの番号と `id` の扱い（golem-doc [ADR 0008](../../adr/0008-first-release-verification.md) で定める）。
+- `@bibliography` を複数置いたときの番号と `id` の扱い（[golem-doc ADR 0008](../../golem-doc/adr/0008-multiple-index-and-bibliography.md) で定める）。
 
 ## テスト設計
 
@@ -85,7 +85,7 @@ EPUB では、`OEBPS/` の下のページのパスが HTML の `build/html/` の
 - 二つの文書からなる `Book` で、一つ目の文書に `Cite` があり、二つ目の文書に `BibliographyOutput` があるとき、一つ目のページの印が、二つ目のページへの相対パスに `#cite-<キー>` を付けたリンクであること。
 - 同じ文書に `Cite` と `BibliographyOutput` があるとき、印のリンクが今と同じ `#cite-<キー>` であること（今の二つのテストがこれに当たり、変えずに通ること）。
 - `BibliographyOutput` がどの文書にもないとき、印が `<span class="cite">[1]</span>` であり、`href` を含まないこと。
-- `BibliographyOutput` を二つの文書に置いたとき、それぞれの印が golem-doc [ADR 0008](../../adr/0008-first-release-verification.md) の規則で決まる一覧の文書へリンクすること。
+- `BibliographyOutput` を二つの文書に置いたとき、それぞれの印が [golem-doc ADR 0008](../../golem-doc/adr/0008-multiple-index-and-bibliography.md) の規則で決まる一覧の文書へリンクすること。
 - `BibliographyOutput` が箇条書きの項目の中にあるときも、その文書へリンクすること。
 
 `modules/golem-driver/test/Main.hs`：
@@ -100,7 +100,7 @@ EPUB では、`OEBPS/` の下のページのパスが HTML の `build/html/` の
 
 ## トレードオフ
 
-リンクの先を決める規則を golem-doc [ADR 0008](../../adr/0008-first-release-verification.md) に任せるので、二つの ADR は同じ時期に採択し、実装する必要がある。
+リンクの先を決める規則を [golem-doc ADR 0008](../../golem-doc/adr/0008-multiple-index-and-bibliography.md) に任せるので、二つの ADR は同じ時期に採択し、実装する必要がある。
 
 先のファイルを golem-html で求めるので、ほかの出力が同じ情報を要るようになれば、`Book` に移すことになる。
 今それを要るのは HTML と EPUB だけであり、`Book` を広げるより局所的に済ませる。
