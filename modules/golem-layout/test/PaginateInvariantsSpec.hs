@@ -288,7 +288,7 @@ knownBugs :: [KnownBug]
 knownBugs =
   [ KnownBug
       { kbItem = "送った図版の後で待つ図版の前の `@need-lines` と行アキが、その図版と別の段で扱われる",
-        kbShape = \i -> not (null (waitingFigures i)),
+        kbShape = not . null . waitingFigures,
         kbExcuses = \i b -> breachOf b `elem` [P1, P3, P4] && not (null (breachAt b)) && all (`elem` waitingFigures i) (breachAt b),
         kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 1302), (5, 72668)]
       }
