@@ -29,8 +29,10 @@ separatorTests =
   [ testCase "HTML: one newline separates paragraphs in the line style; a chapter entry keeps the blank-line style" $
       withSystemTempDirectory "golem-separator" $ \tmp -> do
         manifest <- TIO.readFile (fixture </> "manifest.toml")
-        let rest = T.dropWhile (/= '\n') manifest
-        TIO.writeFile (tmp </> "manifest.toml") ("chapters = [\"l.gm\", { file = \"b.gm\", paragraph-separator = \"blank-line\" }]\n" <> rest <> "\n[source]\nparagraph-separator = \"line\"\n")
+        -- the [source] of the fixture, blank-line, made line
+        let rest = T.replace "paragraph-separator = \"blank-line\"" "paragraph-separator = \"line\"" (T.dropWhile (/= '\n') manifest)
+        assertBool "the fixture has [source]" ("paragraph-separator = \"line\"" `T.isInfixOf` rest)
+        TIO.writeFile (tmp </> "manifest.toml") ("chapters = [\"l.gm\", { file = \"b.gm\", paragraph-separator = \"blank-line\" }]\n" <> rest)
         TIO.writeFile (tmp </> "l.gm") "一行目。\n二行目。\n三行目。\n"
         TIO.writeFile (tmp </> "b.gm") "前の行\n後の行\n"
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}

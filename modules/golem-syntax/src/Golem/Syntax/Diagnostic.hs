@@ -124,6 +124,7 @@ noticeCodes =
       "G03115", -- a sample in braces in [lists] numbers (to be retired; docs/adr/0177)
       "G03116", -- {{ and }} in a running head format (to be retired; docs/adr/0177)
       "G03117", -- [notes] mark-size (to be retired; docs/adr/0177)
+      "G03120", -- no paragraph-separator in [source] (docs/adr/0193)
       "G04007", -- @number equal to the automatic number
       "G04008", -- page breaks at the very end of the book
       "G04009", -- @blank-line at the very end of the book (docs/adr ADR 0046)
