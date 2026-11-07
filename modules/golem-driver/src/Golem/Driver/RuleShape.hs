@@ -13,6 +13,7 @@ module Golem.Driver.RuleShape
 where
 
 import Golem.LayoutSpec (Rect (..))
+import Golem.Length (divSp)
 import Golem.Pdf qualified as P
 import Golem.Project.Style (RuleStyle (..), Sp (..))
 
@@ -113,10 +114,6 @@ reverseCurves start cs =
 -- | How many times b goes into a, rounded half up, for positive b.
 roundDiv :: Sp -> Sp -> Integer
 roundDiv (Sp a) (Sp b) = (2 * a + b) `div` (2 * b)
-
--- | Sp divided by a whole number, rounded toward negative infinity.
-divSp :: Sp -> Integer -> Sp
-divSp (Sp x) n = Sp (x `div` n)
 
 -- | x × num / den in one division, rounded toward negative infinity.
 scaleSp :: Sp -> Sp -> Sp -> Sp

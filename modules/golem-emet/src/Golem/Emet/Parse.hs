@@ -24,56 +24,21 @@ import Data.Text.Encoding qualified as TE
 import Golem.Emet.Generated qualified as G
 import Golem.Emet.Syntax
 import Golem.Syntax
+import Golem.Syntax.Read (checkSourceText, readSourceBytes)
 import Numeric (readHex)
 import Peg.Runtime (Expected (..), ParseError (..), Pos (..))
 
 {- | The reading stage of a .emet file: G01002 for a BOM, G01001 for invalid
 UTF-8, G01003 for a CR, as for a .gm file (golem-parser ADR 0009); the
-causes are the same, and so are the codes.
+causes are the same, and so are the codes, and the check is golem-syntax's
+(docs/adr/0173).
 -}
 readEmet :: FileId -> ByteString -> Either [Diagnostic] Text
-readEmet fid bs
-  | "\xEF\xBB\xBF" `BS.isPrefixOf` bs = Left [bomDiagnostic fid]
-  | otherwise = case decodeUtf8' bs of
-      Left _ ->
-        let bad = invalidOffset bs
-         in Left [diagnostic "G01001" Error (mkSpan fid bad (bad + 1)) "UTF-8 として不正なバイト列があります"]
-      Right t -> case checkEmetText fid t of
-        [] -> Right t
-        ds -> Left ds
+readEmet = readSourceBytes
 
 -- | The checks of 'readEmet' on a decoded text: a BOM, then a CR.
 checkEmetText :: FileId -> Text -> [Diagnostic]
-checkEmetText fid t
-  | "\xFEFF" `T.isPrefixOf` t = [bomDiagnostic fid]
-  | otherwise = case T.breakOn "\r" t of
-      (pre, rest)
-        | T.null rest -> []
-        | otherwise ->
-            let i = BS.length (encodeUtf8 pre)
-             in [(diagnostic "G01003" Error (mkSpan fid i (i + 1)) "改行に CR が含まれています。改行は LF に限ります") {diagFixes = [Fix "golem fmt で LF に直す" []]}]
-
-bomDiagnostic :: FileId -> Diagnostic
-bomDiagnostic fid = diagnostic "G01002" Error (mkSpan fid 0 3) "ファイルの先頭に BOM があります。BOM を取り除いてください"
-
--- | The first byte offset at which UTF-8 decoding fails (as golem-parser's).
-invalidOffset :: ByteString -> Int
-invalidOffset bs = go 0
-  where
-    n = BS.length bs
-    go i
-      | i >= n = n
-      | otherwise =
-          let b = BS.index bs i
-              len
-                | b < 0x80 = 1
-                | b >= 0xC2 && b < 0xE0 = 2
-                | b >= 0xE0 && b < 0xF0 = 3
-                | b >= 0xF0 && b < 0xF5 = 4
-                | otherwise = 0
-           in if len == 0 || i + len > n || either (const True) (const False) (decodeUtf8' (BS.take len (BS.drop i bs)))
-                then i
-                else go (i + len)
+checkEmetText = checkSourceText
 
 {- | Parses a .emet file after the checks of reading. The first error only:
 the grammar has no recovery (docs/adr/0160).

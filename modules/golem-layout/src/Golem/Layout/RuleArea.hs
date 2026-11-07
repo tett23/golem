@@ -17,7 +17,7 @@ module Golem.Layout.RuleArea
   )
 where
 
-import Golem.Length (Sp (..))
+import Golem.Length (Sp (..), divSp)
 
 -- | The line pitch p and the height h of the em box of a grid line, in sp.
 data RuleGrid = RuleGrid {rgPitch :: !Sp, rgFace :: !Sp}
@@ -40,10 +40,6 @@ data RuleSide = RuleSide
 -- | The fewest whole lines that hold n sp, not fewer than 0.
 linesFor :: Sp -> Sp -> Int
 linesFor (Sp p) (Sp n) = fromInteger (max 0 (negate (negate n `div` p)))
-
--- | Sp divided by a whole number, rounded toward negative infinity.
-divSp :: Sp -> Integer -> Sp
-divSp (Sp x) n = Sp (x `div` n)
 
 {- | The rule before a paragraph inside a column, r the overhang of its
 first line: the grid lines k of the area and the place of the rule (the
