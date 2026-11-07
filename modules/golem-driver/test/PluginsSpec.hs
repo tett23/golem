@@ -1186,9 +1186,11 @@ pluginTests =
            withPluginProject (pluginDeclWith "overrides = [\"xyz\"]\n") $ \tmp -> do
              r <- build (defaultOptions tmp)
              atManifestTop r >>= (@?= g06008 "プラグインが提供していないコマンドを overrides に書いています: identity.xyz")
-           withPlugins [("names", "builtin-names.wat")] (pluginDeclOf "names" "overrides = [\"note\", \"ruby\"]\n") $ \tmp -> do
+           -- link may not be overridden either (docs/adr ADR 0182)
+           withPlugins [("names", "builtin-names.wat")] (pluginDeclOf "names" "overrides = [\"note\", \"ruby\", \"link\"]\n") $ \tmp -> do
              r <- build (defaultOptions tmp)
-             atManifestTop r >>= (@?= g06008 "上書きできる組み込みのコマンドではありません: names.note"),
+             ds <- atManifestTop r
+             sort ds @?= sort (g06008 "上書きできる組み込みのコマンドではありません: names.note" <> g06008 "上書きできる組み込みのコマンドではありません: names.link"),
          -- docs/adr ADR 0031
          testCase "overrides = [\"code\"] loads; overrides = [\"aki\"] is G06008" $ do
            withPlugins [("cd", "override-code.wat")] (pluginDeclOf "cd" "overrides = [\"code\"]\n") $ \tmp -> do

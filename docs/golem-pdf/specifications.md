@@ -112,7 +112,11 @@ tRNS の置き場所（PLTE の前や IDAT の後）は調べない。
 `data Annotation = LinkAnnotation Rect LinkAction`、`data LinkAction = UriAction Text` である。
 v1.0.0 の文書の中のリンクは、`LinkAction` に行先へのアクションを足す。
 
-- `framePageWith` は、内容と同じだけ注釈の矩形を動かす（塗り足しとトンボの分）。`framePage` は注釈のないページである。
-- `documentObjects` は、注釈を PDF/X-4 の出力インテントと XMP の後、文書情報の前に、ページの順、ページの中の順で書く。注釈のあるページの辞書は、`/Contents` の後に `/Annots` を持つ。注釈のない PDF のオブジェクトの番号とバイト列は変わらない。
-- `asciiUri` は、URL の ASCII でない文字を UTF-8 のバイトごとに `%XX`（大文字）にする。ASCII の文字は、`%XX` を含めてそのまま残す。
-- `X4.verify` は、ページの `/Annots` が指すオブジェクトのうち `/Subtype /Link` のものについて、`/A` の辞書が `/S /URI` なら、その `/S` と `/URI` を禁止の名前として数えない。`/A` が間接参照のときは除かない。
+- `framePageWith` は、内容と同じだけ注釈の矩形を動かす（塗り足しとトンボの分）。
+- `framePage` は、注釈のないページを作る。
+- `documentObjects` は、注釈を PDF/X-4 の出力インテントと XMP の後、文書情報の前に、ページの順、ページの中の順で書く。
+- 注釈のあるページの辞書は、`/Annots` を持つ。
+- 注釈のない PDF のオブジェクトの番号とバイト列は変わらない。
+- `asciiUri` は、URL の ASCII でない文字を UTF-8 のバイトごとに `%XX`（大文字）にし、ASCII の文字は `%XX` を含めてそのまま残す。
+- `X4.verify` は、ページの `/Annots` が指すオブジェクトのうち `/Subtype /Link` のものについて、`/A` の辞書が `/S /URI` なら、その `/S` と `/URI` を禁止の名前として数えない。
+- `/A` が間接参照のときは、除かない。
