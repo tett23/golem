@@ -247,11 +247,13 @@ inlineText = \case
   Number _ n _ -> T.pack (show n)
   _ -> ""
 
+-- | @{n}@, @{1}.{n}@, ... @{1}.{2}.{3}.{4}.{5}.{n}@ by the level (docs/adr/0188).
 defaultHeadingFormat :: Int -> Text
-defaultHeadingFormat = \case
-  1 -> "{n}"
-  2 -> "{1}.{n}"
-  _ -> "{1}.{2}.{n}"
+defaultHeadingFormat l = T.intercalate "." ([T.pack ("{" <> show k <> "}") | k <- [1 .. min 5 (l - 1)]] <> ["{n}"])
+
+-- | The levels of headings (docs/adr/0188).
+headingLevels :: Int
+headingLevels = 6
 
 -- ------------------------------------------------------------------ numbering
 
@@ -268,7 +270,7 @@ data NumSt = NumSt
   }
 
 numberDocs :: AssembleConfig -> [Document] -> NumSt
-numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.empty Map.empty 0 Map.empty [])
+numberDocs cfg docs = execState (mapM_ doc docs) (NumSt (replicate headingLevels 0) Nothing 0 Map.empty Map.empty 0 Map.empty [])
   where
     doc (Document fid bs) = mapM_ (blk fid) bs
     blk fid (Block sp lbl b) = case b of
@@ -280,7 +282,7 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.
               | otherwise =
                   let cur = cs !! (l - 1)
                       n = maybe (cur + 1) toInteger (haNumber a)
-                      upd = take (l - 1) cs <> [n] <> replicate (3 - l) 0
+                      upd = take (l - 1) cs <> [n] <> replicate (headingLevels - l) 0
                    in (upd, Just (take l upd))
             fmt = fromMaybe (defaultHeadingFormat l) (Map.lookup l (acHeadingFormats cfg))
             numText = (\ns -> formatNumber fmt ns (Just (head' ns))) <$> nums

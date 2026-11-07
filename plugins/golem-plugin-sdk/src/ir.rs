@@ -124,7 +124,7 @@ pub struct DefGroup {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BlockBody {
-    /// 1: level 1..3, the attributes as they came in
+    /// 1: level 1..6 (docs/adr/0188), the attributes as they came in
     Heading { level: u8, attrs: Value, inlines: Vec<Inline> },
     /// 2
     BulletList(Vec<ListItem>),

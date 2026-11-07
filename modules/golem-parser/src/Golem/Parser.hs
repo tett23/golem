@@ -43,7 +43,7 @@ labelCode :: Maybe Text -> (Text, Text)
 labelCode = \case
   Just "block" -> ("G01010", "このブロックを解釈できません")
   Just "indent" -> ("G01011", "インデントが不正です（タブ、またはブロックの深さより多い空白）")
-  Just "heading_level" -> ("G01012", "見出しの階層は 3 までです")
+  Just "heading_level" -> ("G01012", "見出しの階層は 6 までです")
   Just "def_orphan" -> ("G01013", "用語のない =: があります")
   Just "table_delimiter" -> ("G01014", "表の 2 行目は区切りの行でなければなりません")
   Just "table_cells" -> ("G01015", "表のセルの数が見出しの行と一致しません")

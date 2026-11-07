@@ -64,7 +64,7 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
           <> concatMap (inlineErrors fileSize allowed) is
           <> breakErrors True is
       Heading l a is ->
-        ["見出しの階層が範囲外です: " <> T.pack (show l) | l < 1 || l > 3]
+        ["見出しの階層が範囲外です: " <> T.pack (show l) | l < 1 || l > 6]
           <> maybe [] inl (haTocTitle a)
           <> inl is
       BulletList items -> concatMap (concatMap blockErrors . itemBlocks) items

@@ -130,8 +130,8 @@ tests =
       testCase "a bare bracket is an error" $ do
         let (_, ds) = parse fid "本文 [ だけ\n"
         map diagCode ds @?= [DiagnosticCode "G01021"],
-      testCase "heading level four is an error and the next block survives" $ do
-        let (cst, ds) = parse fid "#### 深すぎる\n\n# 正しい\n"
+      testCase "heading level seven is an error and the next block survives" $ do
+        let (cst, ds) = parse fid "####### 深すぎる\n\n# 正しい\n"
         map diagCode ds @?= [DiagnosticCode "G01012"]
         assertBool "heading parsed" (NHeading `elem` kinds cst),
       testCase "tab indentation is an error" $ do
@@ -441,10 +441,19 @@ numberShorthandTests =
           [Golem.Parser.AST.Located _ (Golem.Parser.AST.Heading 2 is)] ->
             map Golem.Parser.AST.locValue is @?= [Golem.Parser.AST.Text "第", Golem.Parser.AST.NumberShorthand "##1##", Golem.Parser.AST.Text "節"]
           other -> assertFailure (show other),
-      testCase "###1## and #1 are G01010, #### is G01012 as before" $ do
+      testCase "###1## and #1 are G01010, ####### is G01012" $ do
         codes "###1##\n" @?= [DiagnosticCode "G01010"]
         codes "#1\n" @?= [DiagnosticCode "G01010"]
-        codes "#### x\n" @?= [DiagnosticCode "G01012"],
+        codes "####### x\n" @?= [DiagnosticCode "G01012"],
+      testCase "####, ##### and ###### are headings of levels 4, 5 and 6 (ADR 0188)" $
+        mapM_
+          ( \(src, l) -> case astOf src of
+              [Golem.Parser.AST.Located _ (Golem.Parser.AST.Heading l' is)] -> do
+                l' @?= l
+                map Golem.Parser.AST.locValue is @?= [Golem.Parser.AST.Text "見出し"]
+              other -> assertFailure (show other)
+          )
+          [("#### 見出し\n", 4), ("##### 見出し\n", 5), ("###### 見出し\n", 6)],
       testCase "the contents are not checked by the grammar" $ do
         mapM_ (\src -> (src, codes src, length (shorthandNodes src)) @?= (src, [], 1)) ["##0##\n", "##007##\n", "##1.5##\n", "##1,000##\n", "##1 2##\n", "##12年\n"]
         shorthandNodes "##12年\n" @?= [[(KNumberMark, "##"), (KNumberBody, "12年")]],
@@ -520,7 +529,10 @@ codeTests =
         map (\(c, s, _) -> (c, s)) (parsed "- a\n\t- b\n") @?= [(g "G01011", 4)]
         messageOf "  二つ空け\n" "インデントが不正です（タブ、またはブロックの深さより多い空白）",
       testCase "three spaces continue an item" $ parsed "- a\n   - b\n" @?= [],
-      testCase "G01012 starts at the fourth #" $ map (\(c, s, _) -> (c, s)) (parsed "#### x\n") @?= [(g "G01012", 3)],
+      testCase "G01012 starts at the seventh #, with its message" $ do
+        map (\(c, s, _) -> (c, s)) (parsed "####### x\n") @?= [(g "G01012", 6)]
+        map (\(c, s, _) -> (c, s)) (parsed "######## x\n") @?= [(g "G01012", 6)]
+        messageOf "####### x\n" "見出しの階層は 6 までです",
       testCase "G01013 starts at =:" $ map (\(c, s, _) -> (c, s)) (parsed "=:\n  説明\n") @?= [(g "G01013", 0)],
       testCase "G01014 starts at the second line" $ do
         map (\(c, s, _) -> (c, s)) (parsed "| a |\n") @?= [(g "G01014", 6)]

@@ -408,6 +408,11 @@ tests =
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "# a\\[b\n"
         map olTitle (outline ws "b.gm") @?= ["a[b"],
+      testCase "outline: the headings of levels 4 to 6 are children of their parents (docs/adr/0188)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "# 一\n\n## 二\n\n### 三\n\n#### 四\n\n##### 五\n\n###### 六\n\n#### 四の二\n"
+        let tree o = olTitle o <> foldMap (\c -> "(" <> tree c <> ")") (olChildren o)
+        map tree (outline ws "b.gm") @?= ["一(二(三(四(五(六)))(四の二)))"],
       testCase "UTF-8 and UTF-16 positions on a line with Japanese and a 4-byte character" $ do
         ws <- openWorkspace root
         let src = textOf ws "a.gm"

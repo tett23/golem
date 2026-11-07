@@ -38,7 +38,19 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests]
+  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, headingLevelTests]
+
+-- | The levels of a heading are 1 to 6 (docs/adr/0188).
+headingLevelTests :: TestTree
+headingLevelTests =
+  testGroup
+    "the levels of a heading are 1 to 6 (docs/adr/0188)"
+    [ testCase "Validate takes the levels 1 to 6 and rejects 0 and 7" $ do
+        let errs l = validateDocument (const (Just 1)) [] (Document (FileId 0) [Block sp Nothing (Heading l noHeadingAttrs [Text sp "a"])])
+        mapM_ (\l -> (l, errs l) @?= (l, [])) [1 .. 6]
+        errs 7 @?= ["見出しの階層が範囲外です: 7"]
+        errs 0 @?= ["見出しの階層が範囲外です: 0"]
+    ]
 
 -- | The integers of the IR are int64 (golem-doc ADR 0006).
 int64Tests :: TestTree
