@@ -15,7 +15,6 @@ where
 
 import Control.Monad (foldM)
 import Data.Bifunctor (first)
-import Data.ByteString qualified as BS
 import Data.Char (toLower)
 import Data.Either (fromRight, lefts, rights)
 import Data.List.NonEmpty (NonEmpty (..))
@@ -32,12 +31,11 @@ import Golem.Parser.CST (Node)
 import Golem.Parser.Lower (lower)
 import Golem.Parser.Read (ReadFailure (..), checkText, readSourceFile)
 import Golem.Parser.SourceSettings (SourceSettings)
+import Golem.Project.Files
 import Golem.Project.Imports
 import Golem.Project.Manifest
 import Golem.Project.Paths
 import Golem.Syntax
-import System.Directory (doesFileExist)
-import System.FilePath ((</>))
 
 data SourceFile = SourceFile
   { sfPath :: !FilePath,
@@ -84,24 +82,28 @@ readFailure :: ReadFailure -> ProjectFailure
 readFailure rf = ProjectFailure (rfDiagnostics rf) (rfSources rf)
 
 loadProject :: FilePath -> IO (Either ProjectFailure Project)
-loadProject = loadProjectWith Map.empty
+loadProject root = loadProjectWith (diskFiles root) Map.empty root
 
--- | @overlay@ replaces file contents (used by the LSP for unsaved edits).
-loadProjectWith :: Map FilePath Text -> FilePath -> IO (Either ProjectFailure Project)
-loadProjectWith overlay root = do
+{- | @files@ reads the files of the project (docs/adr/0199); @overlay@
+replaces file contents (used by the LSP for unsaved edits); @root@ is the
+root of the project.
+-}
+loadProjectWith :: Files -> Map FilePath Text -> FilePath -> IO (Either ProjectFailure Project)
+loadProjectWith files overlay root = do
   let (mfid, ft0) = registerFile "manifest.toml" emptyFileTable
-  exists <- doesFileExist (root </> "manifest.toml")
+  -- a manifest.toml outside the root through a link is read, as before
+  exists <- (/= Left Missing) <$> filesResolve files "manifest.toml"
   if not exists
     then pure (Left (ProjectFailure [diagnostic "G03016" Error (mkSpan mfid 0 0) "manifest.toml がありません"] Map.empty))
     else do
-      mbytes <- BS.readFile (root </> "manifest.toml")
+      mbytes <- filesRead files "manifest.toml"
       let mtext = TE.decodeUtf8Lenient mbytes
           manifestInfo = Map.singleton mfid (SourceInfo "manifest.toml" (mkLineIndex mtext))
           failure ds infos = Left (ProjectFailure ds (Map.union manifestInfo infos))
       case first readFailure (readSourceFile mfid "manifest.toml" mbytes) >>= first (`ProjectFailure` Map.empty) . parseManifest mfid of
         Left f -> pure (failure (pfDiagnostics f) (pfSources f))
         Right manifest -> do
-          r <- loadSources overlay root mfid ft0 manifest
+          r <- loadSources files overlay mfid ft0 manifest
           pure $ case r of
             Left (ds, infos) -> failure ds infos
             Right (ft, chapters, sources, graph, settings) ->
@@ -169,8 +171,8 @@ caseDiagnostic sp (later, earlier) = diagnostic "G03004" Error sp (T.pack ("大�
 writtenPath :: FilePath -> FilePath
 writtenPath p = fromRight p (normalizeRelative p)
 
-loadSources :: Map FilePath Text -> FilePath -> FileId -> FileTable -> Manifest -> IO (Either LoadFailure Loaded)
-loadSources overlay root mfid ft0 manifest = do
+loadSources :: Files -> Map FilePath Text -> FileId -> FileTable -> Manifest -> IO (Either LoadFailure Loaded)
+loadSources files overlay mfid ft0 manifest = do
   -- chapters first, in manifest order
   r <- foldM addChapter (Right (ft0, [], Seen Map.empty Map.empty, Map.empty)) (chapterFiles (manifestChapters manifest))
   case r of
@@ -190,7 +192,7 @@ loadSources overlay root mfid ft0 manifest = do
     addChapter acc (p, master, edits) = case acc of
       Left ds -> pure (Left ds)
       Right (ft, chs, seen, settings) -> do
-        res <- resolveInRoot root p
+        res <- filesResolve files p
         pure $ case res of
           Left e -> Left [pathDiagnostic manifestSpan p e]
           Right rel -> case caseCollision seen (writtenPath p) rel of
@@ -211,7 +213,7 @@ loadSources overlay root mfid ft0 manifest = do
           -- an unsaved buffer is checked but not stopped (golem-parser ADR 0009)
           content <- case Map.lookup path overlay of
             Just t -> pure (Right (t, checkText fid t))
-            Nothing -> fmap (,[]) . readSourceFile fid path <$> BS.readFile (root </> path)
+            Nothing -> fmap (,[]) . readSourceFile fid path <$> filesRead files path
           -- the sources read so far and this one, where the errors point (ADR 0006)
           let known = Map.map sourceInfoOf sources
           case content of
@@ -226,7 +228,7 @@ loadSources overlay root mfid ft0 manifest = do
               if not (null bad)
                 then failed bad
                 else do
-                  resolved <- traverse (\s -> fmap (s,) (resolveInRoot root (T.unpack (isPath s)))) goods
+                  resolved <- traverse (\s -> fmap (s,) (filesResolve files (T.unpack (isPath s)))) goods
                   case [pathDiagnostic (isSpan s) (T.unpack (isPath s)) e | (s, Left e) <- resolved] of
                     errs@(_ : _) -> failed errs
                     [] -> do

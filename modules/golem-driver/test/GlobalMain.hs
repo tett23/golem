@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
+import InMemoryWritesSpec (inMemoryWritesTests)
 import LocaleSpec
 import PluginsSpec
 import System.Environment (lookupEnv)
@@ -22,5 +23,6 @@ tests cacheHome =
     "golem-driver: the tests that change the state of the process (docs/adr/0146)"
     [ testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       cacheHomeRestored cacheHome,
-      localeTests
+      localeTests,
+      inMemoryWritesTests
     ]

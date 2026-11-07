@@ -14,6 +14,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import FilesSpec qualified
 import FunctionsSpec qualified
 import Golem.Assemble (NoteNumbering (..))
 import Golem.Assemble.Formats (MarkFormat (..), arabic, asterisksNotation, circledNotation, kanjiNotation, lowerAlphaNotation, noteSymbolsNotation)
@@ -690,6 +691,7 @@ tests =
       StyleSchemaSpec.tests,
       NaturalKeySpec.tests,
       FunctionsSpec.tests,
+      FilesSpec.tests,
       VarsSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)

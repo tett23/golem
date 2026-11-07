@@ -29,6 +29,7 @@ import Golem.Parser.Read (readInfo)
 import Golem.Plugin (pluginCodeForm)
 import Golem.Plugin.Lock (defaultCacheDir, fetchPlugins, httpsFetcher, lockPlugins, parseLock, renderLock)
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..), loadProjectWith)
+import Golem.Project.Files (diskFiles)
 import Golem.Project.Manifest (Manifest (..), PluginDecl (..), PluginSource (..), parseManifest)
 import Golem.Project.Paths (resolveInRoot)
 import Golem.Syntax
@@ -446,7 +447,7 @@ formatFiles check files0 = do
           Left f -> putHuman (pfSources f) (pfDiagnostics f) >> pure Nothing
           Right (project, ps) -> do
             -- and the .emet the project uses (docs/adr/0162)
-            emets <- loadProjectWith Map.empty "." >>= either (const (pure [])) (functionPaths ".")
+            emets <- loadProjectWith (diskFiles ".") Map.empty "." >>= either (const (pure [])) (functionPaths ".")
             -- and the table files the sources read by @table (docs/adr/0186)
             tables <- tablePaths project
             let others = ps <> emets
@@ -510,7 +511,7 @@ projectSourcePaths :: IO (Either ProjectFailure (Project, [FilePath]))
 projectSourcePaths = go Map.empty
   where
     go overlay =
-      loadProjectWith overlay "." >>= \case
+      loadProjectWith (diskFiles ".") overlay "." >>= \case
         Right p -> pure (Right (p, map sfPath (Map.elems (projectSources p))))
         Left f -> case crSources f of
           Just paths

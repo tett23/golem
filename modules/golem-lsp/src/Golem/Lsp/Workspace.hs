@@ -43,6 +43,7 @@ import Golem.Parser.CST (Node)
 import Golem.Parser.Read (checkText)
 import Golem.Parser.SourceSettings
 import Golem.Project
+import Golem.Project.Files (diskFiles)
 import Golem.Project.Style (defaultStyle, withLocalStyles)
 import Golem.Syntax
 import System.Directory (doesDirectoryExist, listDirectory)
@@ -131,7 +132,7 @@ listSources root = map (makeRelative root) <$> go root
 
 fullEvaluate :: Workspace -> IO Workspace
 fullEvaluate ws = do
-  r <- evaluateProjectWith (wsOverlay ws) Dev (wsRoot ws)
+  r <- evaluateProjectWith (diskFiles (wsRoot ws)) (wsOverlay ws) Dev (wsRoot ws)
   let ws' = ws {wsFullEvaluations = wsFullEvaluations ws + 1}
   pure . rememberFunctions . rebuildLines $ case r of
     Left f -> refreshLoose ws' {wsEvaluated = Nothing, wsProjectErrors = pfDiagnostics f, wsProjectSources = pfSources f}

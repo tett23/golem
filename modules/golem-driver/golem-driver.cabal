@@ -84,6 +84,7 @@ test-suite golem-driver-test
     FigureSpec
     FunctionsSpec
     HeadingLevelsSpec
+    InMemorySpec
     LinkSpec
     OutputGoldenSpec
     PageElementsSpec
@@ -150,6 +151,7 @@ test-suite golem-driver-global-test
   hs-source-dirs:   test
   main-is:          GlobalMain.hs
   other-modules:
+    InMemoryWritesSpec
     LocaleSpec
     PluginsSpec
     Support
