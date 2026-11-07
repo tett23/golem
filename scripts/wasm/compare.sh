@@ -76,7 +76,8 @@ for name in kanikosen determinism pdf complex-vertical complex-horizontal broken
     (cd "$dir" && "$PROGRAM" build --target pdf --format json >/dev/null 2>"$WORK/json") || code=$?
     pdf=$(find "$dir/build/pdf" -name '*.pdf' 2>/dev/null | head -1)
   else
-    node "$ROOT/scripts/wasm/run.mjs" build "$PROGRAM" "$dir" "$WORK/out.pdf" 2>"$WORK/json" || code=$?
+    # without the warning that WASI is experimental, which would go into the JSON
+    node --no-warnings "$ROOT/scripts/wasm/run.mjs" build "$PROGRAM" "$dir" "$WORK/out.pdf" 2>"$WORK/json" || code=$?
     pdf=$WORK/out.pdf
     [ -f "$pdf" ] || pdf=
   fi
