@@ -193,6 +193,7 @@ ghcup を上げるときは、`scripts/release/build-linux.sh` の ghcup のバ�
 Haskell のコードは fourmolu 0.21.0.0 で整形し、hlint 3.10 の指摘をなくす。
 どちらも CI の `format` ジョブで検査する。
 生成したパーサー（`modules/golem-parser/src/Golem/Parser/Generated.hs`）と、ラベルを外した文法（`modules/golem-parser/test/StrippedGrammar.hs`）は対象外である。
+`scripts/gen-embedded.sh` が生成する golem-driver の二つのモジュール（`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` と `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs`）も対象外である。
 
 文法（`modules/golem-parser/grammar/Golem.hpeg`）を変えたら、`scripts/gen-parser.sh` で生成し直して、生成物もコミットする。
 このスクリプトは、ラベルを外した文法も生成する。
@@ -210,6 +211,10 @@ ADR で仕様が変わったら、同じプルリクエストで [docs/specifica
 
 仕様書から ADR を参照するときは、ADR のファイルへのリンクを付ける。
 新しい用語を導入したら、[docs/glossary.md](./docs/glossary.md) にも加える。
+
+[docs/diagnostics.md](./docs/diagnostics.md) を変えたら、同じ変更で `sh scripts/gen-embedded.sh` を走らせ、生成し直した `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs` もコミットする。
+golem-driver は、この生成したモジュールで文書を埋め込む（[docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）。
+生成し直すのを忘れると、golem-driver のテストと CI の `build` ジョブが失敗する。
 
 マニュアルは、使い手のマニュアル `manual/` と開発者のマニュアル `manual-dev/` の二つで、どちらも Golem のプロジェクトとして書き、Golem で組む（[docs/adr/0024](./docs/adr/0024-manual-audiences-and-policy.md)）。
 読み手、文体、説明の厚さ、根拠と脚注の書き方、章立て、コードの表示は、方針の文書 [docs/manual-policy.md](./docs/manual-policy.md) に従う。
@@ -310,7 +315,7 @@ CI の `textlint` ジョブ（`docs.yml`）も同じスクリプトを走らせ�
 リリースの手順は次のとおりである（[docs/adr/0004](./docs/adr/0004-binary-distribution-and-release.md)）。
 
 1. セキュリティ監査をする（[docs/adr/0035](./docs/adr/0035-security-hardening.md)）。プレリリース（`rc` などの識別子が付くタグ）を含め、`v` で始まるタグのリリースのたびに行う。前の監査からの変更を中心に、信頼できない入力（原稿、TOML、画像、フォント、CSL-JSON、プラグイン、シンボリックリンク）と CI のワークフローを調べる。結果は `docs/audits/<日付>-security-audit.md` に日本語で記録し、プルリクエストで `main` に入れる。記録はコミットしたあとは変更しない。見つかった問題は、失敗するテストを先に書いてから直す。仕様を変える修正には ADR を書く。監査の記録と修正が `main` に入るまで、タグを付けない。
-2. バージョンを上げるプルリクエストを作る。リポジトリの根の `VERSION` を新しいバージョン（例：`0.1.0-rc1`）に書き換え、識別子を除いた `X.Y.Z` を全パッケージの cabal ファイルの `version` に書く。CI の `release-scripts` ジョブが、二つの一致を検査する。
+2. バージョンを上げるプルリクエストを作る。リポジトリの根の `VERSION` を新しいバージョン（例：`0.1.0-rc1`）に書き換え、識別子を除いた `X.Y.Z` を全パッケージの cabal ファイルの `version` に書く。CI の `release-scripts` ジョブが、二つの一致を検査する。`VERSION` を書き換えた後に `sh scripts/gen-embedded.sh` を走らせ、生成し直した `modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` も同じプルリクエストに入れる（[docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）。
 3. プルリクエストを `main` にマージする。
 4. マージしたコミットに、`v` に `VERSION` の内容を続けたタグ（例：`v0.1.0-rc1`）を付けて push する。タグと `VERSION` が一致しないとき、タグのコミットが `main` に含まれないときは、ワークフローの `version` ジョブが失敗し、リリースは作られない。
 5. `.github/workflows/release.yml` が、配布物を作って検査し、下書きのリリースを作る。プレリリースのタグでは、プレリリースの印が付く。

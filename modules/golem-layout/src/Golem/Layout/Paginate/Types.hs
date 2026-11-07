@@ -51,6 +51,12 @@ data LineBox = LineBox
 
 data Flow
   = FParagraph [LineBox]
+  | {- | a stanza of verse, a paragraph of line-breaks = "keep": its verse
+    lines, each the lines it is broken into (docs/adr/0180). A verse line
+    is not broken between columns; a column does not end or start with a
+    single verse line of a stanza.
+    -}
+    FStanza [[LineBox]]
   | -- | a heading, placed whole over 'fhSpan' grid lines (golem-driver ADR 0003)
     FHeading {fhLevel :: !Int, fhRecto :: !Bool, fhSpan :: !Int, fhLines :: [LineBox]}
   | FDefTerm [LineBox]

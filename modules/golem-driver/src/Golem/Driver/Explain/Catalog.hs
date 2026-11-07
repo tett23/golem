@@ -1,6 +1,6 @@
 {- | The form of docs/diagnostics.md, the explanations of the diagnostic
-codes (golem-cli ADR 0005). A module of its own because Golem.Driver.Explain
-calls 'parseCatalog' from Template Haskell when compiling.
+codes (golem-cli ADR 0005). A module of its own, which the tests of
+golem-driver use to check the form of the document (docs/adr/0203).
 
 The document is read line by line; only the lines that start with @## @,
 @### @, @- 重大度: @ and @- 状態: @ (outside fenced code blocks) carry the

@@ -52,7 +52,7 @@ application/epub+zip
 </nav>
 </body>
 </html>
-== OEBPS/style.css (deflate, time 315532800, 3539 bytes)
+== OEBPS/style.css (deflate, time 315532800, 3845 bytes)
 @font-face { font-family: "golem-body-latin"; src: url("fonts/latin.otf"); }
 @font-face { font-family: "golem-body-ja"; src: url("fonts/ja.otf"); }
 @font-face { font-family: "golem-code-latin"; src: url("fonts/latin.otf"); }
@@ -99,8 +99,13 @@ p.ps-verse { margin-block: 0; }
 p.ps-verse { padding-inline-start: 2em; text-indent: -2em; }
 p.ps-verse + p.ps-verse { margin-block-start: 1em; }
 p.ps-quote { margin-block-start: 1em; }
+p.ps-verse { margin-block-start: 1em; }
 p.ps-quote + :not(.ps-quote):not(.blank-line) { margin-block-start: 1em; }
+p.ps-verse + :not(.ps-verse):not(.blank-line) { margin-block-start: 1em; }
+p.ps-quote + p.ps-verse:not(.ps-quote) { margin-block-start: 1em; }
+p.ps-verse + p.ps-quote:not(.ps-verse) { margin-block-start: 1em; }
 div.blank-line + p.ps-quote { margin-block-start: 0; }
+div.blank-line + p.ps-verse { margin-block-start: 0; }
 p.ps-box::before { content: ""; display: block; width: 100%; border-block-start: 0.5pt dotted; margin-block: 0 4.252pt; }
 p.ps-box::after { content: ""; display: block; width: 100%; border-block-start: 0.5pt solid; margin-block: 4.252pt 0; }
 h1::before { content: ""; display: block; width: 100%; border-block-start: 1pt solid; margin-block: 0 4.252pt; }

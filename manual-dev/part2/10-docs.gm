@@ -71,7 +71,14 @@ diagnostic のコードを足すときは、同じ変更で [code: docs/diagnost
 - 使用中のコードの節は、「意味」「主な原因」「直し方」の三つの小見出しをこの順に持ち、どれも空にしない。
 - 節はコードの昇順に並べる。
 
-この文書は golem-driver にコンパイルのときに埋め込まれ、形が崩れていると golem をビルドできない。
+この文書は、[code: scripts/gen-embedded.sh] が生成してコミットしたモジュール（[code: modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs]）で golem-driver に埋め込まれる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md]（docs/adr の ADR 0203「golem-driver の Template Haskell を、生成してコミットしたモジュールにする」）]
+文書を変えたら、同じ変更でこのスクリプトを走らせ、生成し直したモジュールもコミットする。
+
+```sh
+$ sh scripts/gen-embedded.sh
+```
+
+golem-driver のテストは、生成したモジュールが文書とバイト単位で一致し、文書の形が崩れていないことを確かめる。
 加えて、golem-driver のテストが次の一致を確かめる。
 
 - ソースで使うコードが、すべて使用中の節を持つ。

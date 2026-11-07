@@ -30,7 +30,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 | --- | --- |
 | [code: changes] | ビルドが読む文書の一覧の検査、不完全なパターンをエラーにするフラグの検査、capability の数を実行中に変えないことの検査、プラグインの ABI のバージョンの検査、diagnostic のコードの約束の検査、ビルドの要否の判定 |
 | [code: scripts-linux] | Linux での、スクリプトのテスト |
-| [code: build] | x86-64 と aarch64 でのビルドとテスト、生成したパーサーの検査、二つのマニュアル、見た目の回帰テストの PDF、実行の環境を変える検査 |
+| [code: build] | x86-64 と aarch64 でのビルドとテスト、生成したパーサーと golem-driver の生成したモジュールの検査、二つのマニュアル、見た目の回帰テストの PDF、実行の環境を変える検査 |
 | [code: determinism] | 二つのアーキテクチャの出力のハッシュの比較 |
 | [code: visual] | 見た目の回帰テスト（PDF のページの画像と、コミットした参照の比較） |
 | [code: release-scripts] | [code: VERSION] と全パッケージのバージョンの一致、リリースのスクリプトのテスト |
@@ -117,7 +117,7 @@ aarch64 では三つのランナーでビルドし、x86-64 と同じく [code: 
 + [code: scripts/fetch-wasmtime.sh] で wasmtime を取得する。
 + テストを受け持つランナーでは、[code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
 + [code: cabal build all] を実行し、テストを受け持つランナーでは続けて [code: cabal test] を実行する。どちらのアーキテクチャでも、[code: tests-driver] は golem-driver のスイートを、[code: tests-rest] はそのほかのすべてのスイートを実行する。二つへの振り分けは [code: scripts/ci/test-suites.sh] が [code: modules/] の [code: .cabal] のファイルから決めるので、新しいスイートはどこにも書かなくても [code: tests-rest] で走る。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。テストには [code: GOLEM_PD_BOOKS] を付け、フィクスチャの十冊をすべてのターゲットに組む（第[ref-number fixtures]章）。[code: TASTY_NO_CREATE=true] も付け、ゴールデンのファイルが欠けていれば失敗にする（第[ref-number build-test]章）。ビルドとテストのあいだで、[code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることと、golem-test-support が golem のパッケージに依存しないことを確かめる。
-+ テストを受け持つランナー（[code: tests-driver] を除く）では、[code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
++ テストを受け持つランナー（[code: tests-driver] を除く）では、[code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。続けて [code: scripts/gen-embedded.sh] で golem-driver の二つのモジュールを生成し直し、同じく差分がないことを確かめる。
 + 出力を受け持つランナーと [code: env] では、二つのマニュアルのフォントをキャッシュから戻す。
 + x86-64 の出力を受け持つランナーでは、[code: scripts/visual/build.sh] で見た目の回帰テストの 19 の PDF を組み、成果物 [code: visual-pdfs] として上げる。比べるのは [code: visual] ジョブで、この成果物だけを待つので、出力の手順のうちで最初に組む。
 + x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
