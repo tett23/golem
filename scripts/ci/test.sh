@@ -1062,6 +1062,21 @@ if step_if "name: Generated parser matches the grammar" "if: matrix.tests && mat
 if step_if "name: Outputs for the determinism check" "if: matrix.outputs"; then ok; else ng "ci.yml: the outputs are made on the runners of the outputs"; fi
 # the lines of the job $1 of ci.yml
 job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML"; }
+# the generated modules of golem-driver are checked in the same way, right
+# after the parser (docs/adr/0203)
+EMBEDDED_STEP="name: Generated modules match VERSION and docs/diagnostics.md"
+if step_if "$EMBEDDED_STEP" "if: matrix.tests && matrix.suites != 'driver'" &&
+  step_has "$EMBEDDED_STEP" "sh scripts/gen-embedded.sh" &&
+  step_has "$EMBEDDED_STEP" "git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs" &&
+  [ "$(awk '/^      - name: / { print }' "$CI_YML" | grep -A1 -F "name: Generated parser matches the grammar" | sed -n 2p)" = "      - $EMBEDDED_STEP" ]; then ok; else
+  ng "ci.yml: the step after the generated parser runs gen-embedded.sh and checks that the generated modules of golem-driver have no diff (docs/adr/0203)"
+fi
+# the format job leaves the generated modules to the script, like the parser
+for f in modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs; do
+  if job_lines format | grep -qF -- "!$f" && job_lines format | grep -qF -- "--ignore-glob=\"$f\""; then ok; else
+    ng "ci.yml: fourmolu and hlint skip $f (docs/adr/0203)"
+  fi
+done
 # the determinism job compares the list of x86-64 with the committed
 # hashes.txt, beside the two architectures (docs/adr/0173)
 if job_lines determinism | grep -qF 'run: sh scripts/ci/determinism-hashes.sh determinism-ubuntu-24.04.txt scripts/determinism/hashes.txt' &&

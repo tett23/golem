@@ -158,6 +158,7 @@ When raising ghcup, change the ghcup version, the commit of the bootstrap script
 Format Haskell code with fourmolu 0.21.0.0 and resolve every hlint 3.10 hint.
 The `format` job in CI checks both.
 The generated parser (`modules/golem-parser/src/Golem/Parser/Generated.hs`) and the grammar without its labels (`modules/golem-parser/test/StrippedGrammar.hs`) are excluded.
+So are the two modules of golem-driver that `scripts/gen-embedded.sh` generates (`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` and `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs`).
 
 After changing the grammar (`modules/golem-parser/grammar/Golem.hpeg`), regenerate the parser with `scripts/gen-parser.sh` and commit the generated files.
 The script also generates the grammar without its labels; the golem-parser tests check that both grammars accept the same inputs.
@@ -174,6 +175,10 @@ When an item is implemented, remove it from roadmap.md and describe the behavior
 
 References to ADRs from the specification must link to the ADR file.
 When introducing a new term, add it to [docs/glossary.md](./docs/glossary.md).
+
+When you change [docs/diagnostics.md](./docs/diagnostics.md), run `sh scripts/gen-embedded.sh` in the same change and commit the regenerated `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs`.
+golem-driver embeds the document through this generated module ([docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)).
+If you forget to regenerate it, the tests of golem-driver and the `build` job of CI fail.
 
 There are two manuals, the user manual `manual/` and the developer manual `manual-dev/`; both are written as Golem projects and typeset with Golem ([docs/adr/0024](./docs/adr/0024-manual-audiences-and-policy.md)).
 Their readers, style, depth of explanation, grounds and footnotes, structure and code display follow the policy [docs/manual-policy.md](./docs/manual-policy.md).
@@ -273,7 +278,7 @@ Group the changes under headings such as Added, Changed, Removed, and Fixed, and
 A release goes as follows ([docs/adr/0004](./docs/adr/0004-binary-distribution-and-release.md)).
 
 1. Run a security audit ([docs/adr/0035](./docs/adr/0035-security-hardening.md)). It is done for every release of a tag starting with `v`, pre-releases (tags with an identifier such as `rc`) included. Look at untrusted input (sources, TOML, images, fonts, CSL-JSON, plugins, symbolic links) and the CI workflows, mainly what changed since the previous audit. Record the results in `docs/audits/<date>-security-audit.md`, in Japanese, and merge it into `main` through a pull request; the record is not changed once committed. Fix each problem found with a failing test first; a fix that changes the specification needs an ADR. Do not tag before the record and the fixes are on `main`.
-2. Open a pull request that raises the version. Write the new version (for example `0.1.0-rc1`) into `VERSION` at the root of the repository, and its `X.Y.Z` without the identifier into the `version` of every package's cabal file. The `release-scripts` job of CI checks that the two agree.
+2. Open a pull request that raises the version. Write the new version (for example `0.1.0-rc1`) into `VERSION` at the root of the repository, and its `X.Y.Z` without the identifier into the `version` of every package's cabal file. The `release-scripts` job of CI checks that the two agree. After rewriting `VERSION`, run `sh scripts/gen-embedded.sh` and put the regenerated `modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` in the same pull request ([docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)).
 3. Merge the pull request into `main`.
 4. Tag the merge commit with `v` followed by the content of `VERSION` (for example `v0.1.0-rc1`) and push the tag. When the tag does not match `VERSION`, or its commit is not on `main`, the `version` job of the workflow fails and no release is made.
 5. `.github/workflows/release.yml` builds and checks the archives and makes a draft release. A pre-release tag makes a draft marked as a pre-release.
