@@ -27,3 +27,6 @@ files = ["filters.gm"]
 function = "fn/filters.emet"
 filter = "first-ruby"
 files = ["filters.gm"]
+
+[source]
+paragraph-separator = "blank-line"

@@ -29,12 +29,14 @@ data TestManifest = TestManifest
     tmLanguage :: Text,
     -- | The text put after the line of the date, as it is.
     tmExtra :: Text,
+    -- | The paragraph-separator of [source], after the extra text; Nothing writes no [source] (docs/adr/0193).
+    tmSource :: Maybe Text,
     -- | The targets, each a section of its own.
     tmTargets :: [Text]
   }
   deriving stock (Eq, Show)
 
--- | The chapter @a.gm@, the title @T@, the language @ja@ and the target @html@.
+-- | The chapter @a.gm@, the title @T@, the language @ja@, the target @html@ and [source] of the blank-line style (docs/adr/0193).
 testManifest :: TestManifest
 testManifest =
   TestManifest
@@ -42,10 +44,11 @@ testManifest =
       tmTitle = "T",
       tmLanguage = "ja",
       tmExtra = "",
+      tmSource = Just "blank-line",
       tmTargets = ["html"]
     }
 
--- | The text of the manifest: chapters, the metadata, the extra text, the targets.
+-- | The text of the manifest: chapters, the metadata, the extra text, [source], the targets.
 manifestToml :: TestManifest -> Text
 manifestToml m =
   "chapters = ["
@@ -58,4 +61,5 @@ manifestToml m =
     <> tmLanguage m
     <> "\"\ndate = 2026-10-11\n"
     <> tmExtra m
+    <> maybe "" (\s -> "\n[source]\nparagraph-separator = \"" <> s <> "\"\n") (tmSource m)
     <> T.concat ["\n[targets." <> t <> "]\n" | t <- tmTargets m]

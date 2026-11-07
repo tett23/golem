@@ -170,7 +170,7 @@ EPUB と HTML はリフローであり、位置情報が意味論に混入した
 
 モジュールの依存の関係を次に示す。
 矢印は、元のモジュールが先のモジュールを使うことを表す。
-golem-syntax は golem-regex、golem-font、golem-svg、golem-fixtures、golem-test-support を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
+golem-syntax は golem-regex、golem-font、golem-svg、golem-length、golem-numerals、golem-fixtures、golem-test-support を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
 golem-length は長さの型 `Sp`、単位の変換、長さと十進の数の表記を持ち、golem のどのパッケージにも依存しない（[docs/adr/0114](adr/0114-sp-in-a-length-package.md)）。
 golem-length も、golem-syntax と同じく使うモジュール（golem-doc、golem-driver、golem-html、golem-layout、golem-pdf、golem-preflight、golem-project）が多いので、矢印を省く。
 golem-font は長さを持たず、位置と寸法をフォントの単位で返すので、golem-length に依存しない。
@@ -182,6 +182,11 @@ golem-emet は golem-doc にも依存し、意味論 IR を `.emet` のデータ
 golem-driver は golem-emet に依存し、関数の要求を処理するハンドラを持ち、`.gm` が使う関数の表を golem-emet から作る（[docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)、[ADR 0162](adr/0162-calling-emet-functions-from-gm.md)）。
 関数の表の型は golem-eval が持ち、golem-eval は golem-emet に依存しない。
 golem-html は golem-project に依存せず、golem-driver が `style.toml` の値を golem-html の設定の型に直す（[ADR 0090](adr/0090-html-settings-conversion-stays-in-driver.md)）。
+golem-doc は意味論 IR とプラグインの ABI（`schema/golem-doc.cddl`）だけを持つ。
+文書構造（S1）の集約は golem-assemble、参考文献の読み込みと書式は golem-bibliography、漢数字、丸数字、番号の書式は golem-numerals が持つ（[ADR 0173](adr/0173-rc4-refactoring.md)）。
+golem-numerals は golem のどのパッケージにも依存せず、golem-bibliography は golem-syntax だけに依存する。
+golem-doc はこの三つに依存せず、golem-bibliography と golem-numerals は golem-doc に依存しない。
+この向きは、cabal が解決した計画を読む `scripts/ci/doc-deps.sh` が CI の `build` ジョブで確かめる。
 ほかの依存を通して届く依存の矢印も省いている。
 PDF 経路のモジュールだけが、レイアウト IR、シェイピング[^shaping]、フォントのサブセット化[^subset]を扱う。
 プラグイン[^wasm]は wasm のモジュールとして配布し、取得した配布物のハッシュをロックファイルに記録する。
@@ -199,7 +204,10 @@ flowchart TD
     parser["golem-parser<br/>PEG パーサー"]
     eval["golem-eval<br/>式の評価とプラグインの展開"]
     emet["golem-emet<br/>関数の言語 Emet"]
-    doc["golem-doc<br/>意味論 IR と文書構造（S1）の集約"]
+    doc["golem-doc<br/>意味論 IR とプラグインの ABI"]
+    assemble["golem-assemble<br/>文書構造（S1）の集約"]
+    bibliography["golem-bibliography<br/>参考文献"]
+    numerals["golem-numerals<br/>数の表記（最下層）"]
     syntax["golem-syntax<br/>diagnostic とソース位置（最下層）"]
     length["golem-length<br/>長さの型と単位の変換（最下層）"]
     preflight["golem-preflight<br/>プリフライトの設定と検査"]
@@ -217,6 +225,8 @@ flowchart TD
     subgraph textpath["テキスト経路"]
         text["golem-text<br/>プレーンテキスト（縦書きと横書き）"]
     end
+    assemble --> doc
+    assemble --> numerals
     cli --> lsp
     doc --> parser
     driver --> epub
@@ -234,7 +244,8 @@ flowchart TD
     epub --> html
     eval --> project
     fmt --> parser
-    html --> doc
+    html --> assemble
+    html --> bibliography
     layout --> project
     layoutspec --> pdf
     layoutspec --> project
@@ -244,9 +255,10 @@ flowchart TD
     plugin --> eval
     preflight --> pdf
     preflight --> project
-    project --> doc
+    project --> assemble
     project --> regex
-    text --> doc
+    text --> assemble
+    text --> bibliography
     parser --> syntax
 ```
 
@@ -417,7 +429,7 @@ paragraph-separator = "line"
 
 | キー | 値 | 既定 | 意味 |
 |---|---|---|---|
-| `paragraph-separator` | `"blank-line"` か `"line"` | `"blank-line"` | `blank-line` は空行で段落を区切る空行の様式、`line` は改行ひとつで段落を区切る改行の様式 |
+| `paragraph-separator` | `"blank-line"` か `"line"` | `"line"` | `blank-line` は空行で段落を区切る空行の様式、`line` は改行ひとつで段落を区切る改行の様式 |
 
 ファイルごとに変えられる設定は、`[source]` のキーに限る。
 章の配列の項目にも `[source]` のキーを書け、その章のファイルにだけ適用される。
@@ -427,9 +439,17 @@ paragraph-separator = "line"
 `@manifest` で上書きできないキー（`title` など）は G02050、不正な値は G02051 とする。
 `@manifest` と `@style-def` の引数の誤りは原因ごとのコードとし、位置引数の数の誤りだけを G02052 とする（[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)）。
 
-既定を空行の様式とするのは、既存の原稿の出力を変えないためである。
+既定は改行の様式である（[docs/adr/0193](adr/0193-line-paragraph-separator-by-default.md)）。
+日本語の原稿は、一つの段落を一行に書き、改行で段落を区切ることが多いためである。
 `[metadata]` の `language` からは推定しない。
 言語を変えただけで段落の数が変わるのを避けるためである。
+英語の本も、`paragraph-separator` を書かなければ改行の様式になる。
+
+`[source]` に `paragraph-separator` を書いていないプロジェクトには、notice の G03120 を `manifest.toml` の先頭に出す（[docs/adr/0193](adr/0193-line-paragraph-separator-by-default.md)）。
+原稿の読み方が既定に依ることを、既定が変わったことを知らない書き手に知らせるためである。
+章の項目かファイルの中の上書きで、すべての原稿の値が決まっていても、`[source]` に書いていなければ出す。
+判定を `manifest.toml` だけで決めるためである。
+`golem new` の雛形の `manifest.toml` は、`[source]` に `paragraph-separator = "line"` を書く。
 
 未知のキーと不正な値は、マニフェストのほかの誤りと同じく G03001 とする。
 同じファイルを章の配列に二度並べ、項目の `[source]` のキーで適用される値が異なる場合も G03001 とする。
@@ -2224,7 +2244,7 @@ notice と info は、出力のバイト列を変えない。
 PDF、HTML、EPUB、プレーンテキストのバイト列は、notice と info を出すかどうかによらず、`silence-notices`、`silence-info`、`--no-notices`、`--verbose` の有無でも変わらない。
 `--verbose` は、出力を変えず、diagnostics の一覧だけを変えるオプションであり、同じ入力と同じオプションからは同じ info を同じ順で出す。
 これは golem-driver のテストが、すべての notice と info を出すプロジェクトで確かめる。
-今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、`caption` と `sidenote` の 0 の字下げ（G03100）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、`@page-lines` で減らした段の残りより高い見出し（G07100）、線のない字形のダッシュの二倍ダッシュ（G07101）、`[fonts.code]` のない本のコード（G08008）である。
+今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、`caption` と `sidenote` の 0 の字下げ（G03100）、`[source]` に `paragraph-separator` を書いていないプロジェクト（G03120）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、`@page-lines` で減らした段の残りより高い見出し（G07100）、線のない字形のダッシュの二倍ダッシュ（G07101）、`[fonts.code]` のない本のコード（G08008）である。
 
 diagnostics は、エラーと警告を先に、notice をその後に、info を最後に並べる（[docs/adr/0104](adr/0104-info-severity.md)）。
 エラーと警告のあいだは、コードの順、ファイルの順、開始位置の順、終了位置の順、メッセージの順で並べ、notice どうしと info どうしも同じ規則で並べる（[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
@@ -2252,7 +2272,7 @@ info を止める手段は、マニフェストの `[diagnostics]` の `silence-
 原稿の中で notice と info を止める指示と、`style.toml` の設定は設けない。
 LSP は `silence-notices` と `silence-info` に従い、抑制した notice と info を公開しない。
 LSP には `--no-notices` と `--verbose` に当たる設定を設けず、`silence-info` にない info はつねに `Hint` として公開する。
-記法と設定のキーを廃止するときは、まず廃止予定の notice を少なくとも一つの minor のバージョンで出し、次の ADR でエラーにする（手順は [docs/diagnostics.md](diagnostics.md) の「お知らせ」の節）。
+記法と設定のキーを廃止する手順は、互換性の文書 [docs/compatibility.md](compatibility.md) の「廃止の手順」にある（[docs/adr/0174](adr/0174-compatibility-promises-for-1-0.md)）。
 
 diagnostic は、プログラムが読む事実（`diagFacts`）を持てる（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 事実は名前と値（整数、文字列、整数の配列、文字列の配列）の組の並びで、今はプリフライトの diagnostics と、フォントにない字の G08100（[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）だけが、ページ番号（`pdf-pages`）や測った値（`ppi` など）を持つ。
@@ -2288,8 +2308,8 @@ Golem は日本語の組版を主眼とし、日本語では行の折り返し�
 欧文の単語の途中や単語の間で改行すると、単語どうしが空白なしにつながる。
 詩や戯曲の韻文のように行分けを保つには、`line-breaks = "keep"` の段落スタイル（組み込みの `verse` など）を `@style verse` のように付ける（[docs/adr/0003](adr/0003-verse-line-breaks.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 
-これは、空行で段落を区切る空行の様式の規則である。
-マニフェストの `[source]` に `paragraph-separator = "line"` と書くと、改行ひとつで段落を区切る改行の様式になる（「原稿の読み方」の節、[docs/adr/0013](adr/0013-paragraph-separator.md)）。
+これは、マニフェストの `[source]` に `paragraph-separator = "blank-line"` と書いた、空行で段落を区切る空行の様式の規則である。
+既定は、改行ひとつで段落を区切る改行の様式である（「原稿の読み方」の節、[docs/adr/0013](adr/0013-paragraph-separator.md)、[docs/adr/0193](adr/0193-line-paragraph-separator-by-default.md)）。
 和文の原稿（青空文庫の形式など）は、一行を一つの段落として書くことが多いためである。
 改行の様式では、一行が一つの段落になり、空行は空きを生まずに無視される。
 見出しやリストなどのブロックの記法、`line-breaks = "keep"` の段落スタイルの段落の改行、散文スロットの中の改行は、二つの様式で変わらない。
@@ -2956,7 +2976,7 @@ v1 の引用の書式は、処理系が持つ一種類だけとする。
 書式の選択は後のバージョンで扱う。
 
 参考文献の一件は、著者、題、掲載先（誌名、巻と号、ページ）、発行者、発行の年、URL と閲覧日の順に、空でない欄を並べる（[golem-doc ADR 0004](golem-doc/adr/0004-bibliography-formatting.md)、[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
-書式は golem-doc の `Golem.Doc.Bibliography` が決め、HTML、EPUB、PDF、プレーンテキストが同じ文字列を使う。
+書式は golem-bibliography の `Golem.Bibliography` が決め、HTML、EPUB、PDF、プレーンテキストが同じ文字列を使う。
 一件は文字列と URL の部分の列であり、URL の部分だけを出力が区別して組む。
 参考文献のスタイル（誌ごとの書式、TeX と互換の書式）は v1.0.0 で扱う予定であり、今の書式はそのときの既定のスタイルになる。
 書誌データにないキーは、キーをそのまま出す。
@@ -3037,7 +3057,7 @@ JSON として読めた配列は、値の全体をたどり、すべての文字
 括弧の中は RFC 6901 の JSON Pointer で、ファイルの根から数え、キーの中の `~` と `/` は `~0` と `~1` と書く。
 キーの中の文字なら、そのキーを指す。
 項目の `id` で示さないのは、`id` のない項目と、`id` そのものに書けない文字がある項目があるためである。
-検査は golem-doc の `Golem.Doc.Bibliography.Csl.decodeCslJson` が行い（`CslUnwritable`）、golem-driver の `loadBibliography` が G03108 にする。
+検査は golem-bibliography の `Golem.Bibliography.Csl.decodeCslJson` が行い（`CslUnwritable`）、golem-driver の `loadBibliography` が G03108 にする。
 dev と prod の両方でエラーであり、ターゲットを問わず出し、LSP も出す。
 
 ### プラグインとの関係
@@ -3454,6 +3474,8 @@ ABI を変えるとき、今のバージョンがすでにリリースに含ま�
 二つのリリースのあいだで、バージョンは高々一つしか上がらず、リリースに含まれたバージョンの ABI は後から変えない。
 ABI の変更には、CDDL の変更、`Golem.Doc.Validate` の不変条件の変更、プラグインが export する関数の取り決めの変更、形を変えずに欄の値の意味を変えることを含める。
 CI の `changes` ジョブの `scripts/ci/abi-version.sh` は、直前のリリースのタグと比べて、CDDL と `Golem.Doc.Validate` がコメントと空白を除いて同じならバージョンも同じであり、違えばバージョンが一つ上がっていることを確かめる。
+1.0.0 の後は、ABI を予告した後の minor のバージョンでだけ変え、patch のバージョンでは変えない（[docs/compatibility.md](compatibility.md) の「予告している ABI の変更」、[docs/adr/0174](adr/0174-compatibility-promises-for-1-0.md)）。
+`scripts/ci/abi-version.sh` は、直前のリリースが `v1.0.0` 以降なら、この予告と patch の規則も確かめる。
 
 ### 呼び出し規約
 
@@ -3589,7 +3611,7 @@ data = { terms = "data/terms.tsv" }
 ```
 
 - `terms` は UTF-8 の TSV で、一行が一語である。欄は、語、読み、定義、参照するラベルの順で、ラベルは省ける。空の行と `#` で始まる行は読み飛ばす。
-- 読みには、ひらがな、カタカナ、長音符、ASCII の英数字だけを書ける。照合（`Golem.Doc.Collation`）は漢字をすべてのかなの後に並べるので、読みに漢字を書くと黙って末尾へ回る。それを誤りとして止めるためである。
+- 読みには、ひらがな、カタカナ、長音符、ASCII の英数字だけを書ける。照合（`Golem.Assemble.Collation`）は漢字をすべてのかなの後に並べるので、読みに漢字を書くと黙って末尾へ回る。それを誤りとして止めるためである。
 - 読みは空にでき、そのときは語そのものを読みとする。ただし、語が漢字（CJK 統合漢字とその拡張、CJK 互換漢字、「々」）を含むときは誤りである。語から読みを作るときは、かなと英字のほかの記号も許す。
 - `[term: 語]` は散文スロットを一つだけ取り、そのインラインを本文にそのまま出す。散文スロットの文字列（テキスト、ルビの親文字、文字スタイルの中の文字）を語として TSV から引き、ある語なら本文の後にチャネル `glossary` の項目を足す。キーは語、読みは TSV の読み（空なら語）である。
 - 項目の本文は、語、全角の空白、定義である。ラベルの欄があれば、その後に `（→`、ラベルへのページ番号の参照、`）` を足す。参照の表示は媒体で違う（PDF はページ番号、HTML と EPUB は題へのリンク、プレーンテキストは「」で括った題）ので、文言は矢印と括弧だけにしている。
@@ -3603,7 +3625,7 @@ data = { terms = "data/terms.tsv" }
 
 - 位置引数は整数か有理数を一つ取る。キーワード引数は `style`（`kanji`、`kanji-digits`、`tcy`）と `form`（`decimal` が既定、`fraction`）で、散文スロットは取らない。
 - `style` のない数（`##N##` を含む）の表記は、`vertical-numbers`（`[numbers]` の `vertical`）で決める。`auto` と `auto-digits` は組み込みと同じく、0 以上 99 以下を縦中横にする。
-- 縦組みでは、整数を `kanji` の位取り（`百二十三`、`一万`）か `kanji-digits` の一字ずつ（`一二三`）で書く。位取りは `Golem.Doc.Numerals` と同じで、十、百、千の前の「一」を書かず、万、億、兆、京の前の「一」を書く。負の数は前に「マイナス」を付ける。
+- 縦組みでは、整数を `kanji` の位取り（`百二十三`、`一万`）か `kanji-digits` の一字ずつ（`一二三`）で書く。位取りは `Golem.Numerals` と同じで、十、百、千の前の「一」を書かず、万、億、兆、京の前の「一」を書く。負の数は前に「マイナス」を付ける。
 - 十進で有限に書ける有理数は、整数の部分を `style` の表記で、小数点を「・」、小数の部分を一字ずつの漢数字で書く（`三・一四`）。ほかの有理数と `form=fraction` は「（分母）分の（分子）」と書く（`三分の二`）。値が整数の有理数は整数として書く。
 - `tcy` は、IR の数のノード（`number-style` は 2）を返す。整数でない数の `tcy` は、横組みでも誤りにする。
 - 横組みでは、`style` によらず、整数を表記のない数のノードで返し、有理数を算用数字の `3.14`、`-0.125`、`2/3` で書く。
@@ -3950,6 +3972,7 @@ Linux を glibc にリンクしないのは、古い glibc の環境で起動で
 
 Golem のバージョンは `X.Y.Z` か、プレリリースの識別子を付けた `X.Y.Z-<識別子>`（例：`0.1.0-rc1`）で表す。
 1.0.0 までは、原稿の記法、CLI、出力の互換性を壊す変更で `Y` を、それ以外の変更で `Z` を上げる。
+1.0.0 の後のバージョンの付け方と、1.0.0 から互換を守る範囲は、互換性の文書 [docs/compatibility.md](compatibility.md) にある（[docs/adr/0174](adr/0174-compatibility-promises-for-1-0.md)）。
 バージョンの正本はリポジトリの根の `VERSION` であり、golem-driver の `Golem.Driver.Version` がコンパイルの時点に埋め込む。
 全パッケージの cabal ファイルの `version` は、`VERSION` から識別子を除いた `X.Y.Z` と同じにする。
 `scripts/release/check-version.sh` が、この一致と、タグと `VERSION` の一致を検査する。

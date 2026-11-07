@@ -48,7 +48,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | 01 | 構文（読み込みと解析） | golem-parser |
 | 02 | 評価 | golem-eval（プラグインのコマンドは golem-driver） |
 | 03 | プロジェクト（`manifest.toml`、`style.toml`、import） | golem-project、golem-driver、golem-eval |
-| 04 | 文書の組み立て（ラベル、相互参照、目次） | golem-doc |
+| 04 | 文書の組み立て（ラベル、相互参照、目次） | golem-assemble |
 | 05 | lint | golem-lint |
 | 06 | プラグイン | golem-plugin、golem-driver |
 | 07 | レイアウト（版面、改ページ、傍注、表） | golem-layout-spec、golem-layout、golem-driver |
@@ -94,7 +94,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 人が読む形式と JSON の形式では、エラーと警告の後、情報の前に並ぶ。
 
 お知らせのコードは `Golem.Syntax.Diagnostic.noticeCodes` にまとめてある。
-今は次の二十一である。
+今は次の二十二である。
 
 | コード | 種類 | 段階 |
 | --- | --- | --- |
@@ -107,6 +107,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | [G02108](#g02108) | 廃止予定 | 評価 |
 | [G03023](#g03023) | 既定の使用 | プロジェクト |
 | [G03100](#g03100) | 効果のない書き方 | プロジェクト、評価 |
+| [G03120](#g03120) | 既定の使用 | プロジェクト |
 | [G04007](#g04007) | 効果のない書き方 | 文書の組み立て |
 | [G04008](#g04008) | 効果のない書き方 | 文書の組み立て |
 | [G04009](#g04009) | 効果のない書き方 | 文書の組み立て |
@@ -131,11 +132,12 @@ silence-notices = ["G02062", "G04007"]
 
 ### 廃止予定の手順
 
-記法と設定のキーを廃止するときは、次の順に進める。
+記法と設定のキーを廃止するときは、次の順に進める（[docs/adr/0174](adr/0174-compatibility-promises-for-1-0.md)）。
+いつ予告し、いつエラーにしてよいかは、互換性の文書 [docs/compatibility.md](compatibility.md) の「廃止の手順」に従う。
 
 1. 廃止を決める ADR で、廃止予定のお知らせのコードを決める。メッセージは「〜は廃止予定です」で始め、代わりの書き方を続ける。この文書の節の「直し方」に、書き換えの前と後の例を置く。
-2. お知らせを出すバージョンを、少なくとも一つの minor のバージョンとしてリリースする。プレリリース（`-rc` など）だけでは数えない。リリースノートの「変更」の項に、廃止予定の書き方を挙げる。
-3. 次の ADR で、その書き方をエラーにする。エラーには新しいコードを割り当て、お知らせのコードは状態を「廃止」にする。番号は使い回さない。
+2. 1.0.0 の後は、そのお知らせを minor のバージョンで出し始めることで、廃止を予告する。予告した書き方は、1.x のあいだ受け付け続ける。リリースノートの「変更」の項と、互換性の文書の廃止予定の一覧に挙げる。1.0.0 より前は、プレリリースを含むリリースで一度お知らせを出せば、次のリリースでエラーにしてよい。
+3. 1.0.0 の後は次の major のバージョンで、ADR を作ってその書き方をエラーにする。エラーには新しいコードを割り当て、お知らせのコードは状態を「廃止」にする。番号は使い回さない。`silence-notices` にそのコードを書いたプロジェクトは [G03024](#g03024) になるので、リリースノートに、その行を消すよう書く。
 
 ## 情報
 
@@ -4672,7 +4674,7 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 今は `-` で区切った範囲も同じ行を取り込み、強調する。
 お知らせは引数ごとに一つであり、メッセージの範囲はその引数の最初の `-` の範囲である。
 位置は引数である。
-`-` の範囲をエラーにする時期は、[docs/roadmap.md](roadmap.md) の未決事項にある。
+`-` の範囲をエラーにする時期は、[docs/compatibility.md](compatibility.md) の「廃止予定の書き方」にある。
 
 - メッセージ: `- で区切った範囲は廃止予定です。<a>...<b> のように ... で区切ります`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
@@ -6062,7 +6064,7 @@ dev と prod の両方でエラーであり、ターゲットを問わず出す�
 LSP も同じく出す。
 
 - メッセージ: `参考文献のファイルに出力に書けない文字（<符号位置>）があります: <パス>（<JSON Pointer>）、ほか <n> 件`（例: `参考文献のファイルに出力に書けない文字（U+0001）があります: refs.json（/0/title）`）。ほかになければ `、ほか <n> 件` を書かない
-- 段階とモジュール: プロジェクト（golem-doc の `Golem.Doc.Bibliography.Csl.decodeCslJson`、golem-driver の `Golem.Driver.loadBibliography`）。`golem check` とどのターゲットのビルドも出す
+- 段階とモジュール: プロジェクト（golem-bibliography の `Golem.Bibliography.Csl.decodeCslJson`、golem-driver の `Golem.Driver.loadBibliography`）。`golem check` とどのターゲットのビルドも出す
 - ADR: [docs/adr/0159](adr/0159-unwritable-characters-in-csl-json.md)
 
 ### 主な原因
@@ -6189,6 +6191,39 @@ TOML の浮動小数点数は `Double` を経て読むので、Golem の数（�
 表の中の値なら `{vars.author.short}` のように値まで書く。
 配列は、`[vars]` に柱に出す文字列を別に書く。
 
+## G03120
+
+段落の区切り方を書いていないので、改行の様式（paragraph-separator = "line"）で読みます
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[source]` に `paragraph-separator` を書いていない。
+段落の区切り方の既定は、改行ひとつで段落を区切る改行の様式である。
+空行の様式で書いた原稿で一つの段落を複数の行に折り返していると、行ごとに別の段落になる。
+既定が空行の様式から改行の様式に変わったことを知らない書き手に、原稿の読み方が既定に依ることを知らせる。
+章の項目かファイルの中の上書き（`@manifest`）で、すべての原稿の値が決まっていても、`[source]` に書いていなければ出す。
+判定を `manifest.toml` だけで決めるためである。
+位置は `manifest.toml` の先頭である。
+
+- メッセージ: `段落の区切り方を書いていないので、改行の様式（paragraph-separator = "line"）で読みます`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver`）
+- ADR: [docs/adr/0193](adr/0193-line-paragraph-separator-by-default.md)
+
+### 主な原因
+
+- 段落の区切り方の既定が空行の様式だったころに作ったプロジェクトで、`[source]` を書いていない。
+- `golem new` を使わずに `manifest.toml` を書いた。
+
+### 直し方
+
+空行で段落を区切って書いた原稿なら、`[source]` に `paragraph-separator = "blank-line"` と書く。
+原稿は書き換えなくてよい。
+改行で段落を区切って書いた原稿なら、`[source]` に `paragraph-separator = "line"` と書く。
+既定に任せるなら、`silence-notices` に `"G03120"` を加えると、このお知らせを出さなくなる。
+
 ## G04001
 
 ラベルが重複しています
@@ -6203,7 +6238,7 @@ TOML の浮動小数点数は `Double` を経て読むので、Golem の数（�
 位置はラベルを付けたブロックであり、関連情報に最初の定義の位置を示す。
 
 - メッセージ: `ラベルが重複しています: <ラベル>`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)
 
 ### 主な原因
@@ -6228,7 +6263,7 @@ TOML の浮動小数点数は `Double` を経て読むので、Golem の数（�
 関連情報に、一つ目の `@toc` の位置を示す。
 
 - メッセージ: `@toc は文書に一つだけ置けます`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)
 
 ### 主な原因
@@ -6254,7 +6289,7 @@ TOML の浮動小数点数は `Double` を経て読むので、Golem の数（�
 位置は参照であり、参照は何も出力しない。
 
 - メッセージ: `存在しないラベルへの参照です: <ラベル>`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md) がテストの例として触れる）
 
 ### 主な原因
@@ -6283,7 +6318,7 @@ TOML の浮動小数点数は `Double` を経て読むので、Golem の数（�
 位置は図版かコードブロックのブロックである。
 
 - メッセージ: `章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)（コードブロックの条件は [golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md) が加えた）
 
 ### 主な原因
@@ -6309,7 +6344,7 @@ TOML の浮動小数点数は `Double` を経て読むので、Golem の数（�
 位置は参照であり、参照は何も出力しない。
 
 - メッセージ: `番号を持たない要素への参照です: <ラベル>`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)、[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)（コードブロック）
 
 ### 主な原因
@@ -6336,7 +6371,7 @@ TOML の浮動小数点数は `Double` を経て読むので、Golem の数（�
 位置は参照であり、参照は何も出力しない。
 
 - メッセージ: `題を持たない要素への参照です: <ラベル>`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)、[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)（コードブロック）
 
 ### 主な原因
@@ -6366,7 +6401,7 @@ TOML の浮動小数点数は `Double` を経て読むので、Golem の数（�
 位置は `@number` の行である。
 
 - メッセージ: `@number <N> は自動で振られる番号と同じです`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)
 
 ### 主な原因
@@ -6395,7 +6430,7 @@ TOML の浮動小数点数は `Double` を経て読むので、Golem の数（�
 位置は改ページのコマンドの行である。
 
 - メッセージ: `本の最後の改ページは効果がありません`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)、[docs/adr/0017](adr/0017-forced-page-breaks.md)
 
 ### 主な原因
@@ -6424,7 +6459,7 @@ TOML の浮動小数点数は `Double` を経て読むので、Golem の数（�
 位置は `@blank-line` の行である。
 
 - メッセージ: `本の最後の @blank-line は効果がありません`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [docs/adr/0046](adr/0046-blank-line-command.md)
 
 ### 主な原因
@@ -6454,7 +6489,7 @@ HTML、EPUB、プレーンテキストで空きが出ると媒体のあいだで
 本の最後では [G04009](#g04009) も出る。
 
 - メッセージ: `@blank-line の直後に @page-break があります`、`@blank-line の直後に @column-break があります`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [docs/adr/0046](adr/0046-blank-line-command.md)
 
 ### 主な原因
@@ -6488,7 +6523,7 @@ HTML、EPUB、プレーンテキストに残ると、媒体のあいだで結果
 [G04009](#g04009) か [G04010](#g04010) で捨てる行アキには出さない。
 
 - メッセージ: `@blank-line の行数 <n> がページの行数 <L> 以上なので捨てます`。`<n>` は続けて書いた `@blank-line` の行数の和、`<L>` はページの行数である。
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [docs/adr/0047](adr/0047-blank-line-limit.md)
 
 ### 主な原因

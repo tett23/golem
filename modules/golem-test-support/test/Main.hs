@@ -276,16 +276,16 @@ manifestTests =
     "manifestToml (docs/adr ADR 0087)"
     [ testCase "testManifest: the manifest of golem-lsp's TableWatchSpec" $
         manifestToml testManifest
-          @?= "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n",
+          @?= "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[source]\nparagraph-separator = \"blank-line\"\n\n[targets.html]\n",
       testCase "three targets: the manifest of golem-driver's DiagnosticsSpec" $
         manifestToml testManifest {tmTargets = ["html", "epub", "text"]}
-          @?= "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n\n[targets.epub]\n\n[targets.text]\n",
+          @?= "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[source]\nparagraph-separator = \"blank-line\"\n\n[targets.html]\n\n[targets.epub]\n\n[targets.text]\n",
       testCase "two chapters: golem-cli's manifestWith of a.gm and b.gm" $
         manifestToml testManifest {tmChapters = ["a.gm", "b.gm"]}
           @?= T.pack
             ( "chapters = "
                 <> "[\"a.gm\", \"b.gm\"]"
-                <> "\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n"
+                <> "\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[source]\nparagraph-separator = \"blank-line\"\n\n[targets.html]\n"
             ),
       testCase "sections after the date: the manifest of golem-lsp's creators test" $
         manifestToml
@@ -293,7 +293,12 @@ manifestTests =
             { tmTitle = "LSP",
               tmExtra = "\n[[metadata.creators]]\nname = \"A\"\nrole = \"author\"\n\n[[metadata.contributors]]\nname = \"B\"\nrole = \"cover-designer\"\n\n[[metadata.printings]]\nedition = 1\nprinting = 1\ndate = 2026-10-16\n"
             }
-          @?= "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[[metadata.creators]]\nname = \"A\"\nrole = \"author\"\n\n[[metadata.contributors]]\nname = \"B\"\nrole = \"cover-designer\"\n\n[[metadata.printings]]\nedition = 1\nprinting = 1\ndate = 2026-10-16\n\n[targets.html]\n",
+          @?= "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[[metadata.creators]]\nname = \"A\"\nrole = \"author\"\n\n[[metadata.contributors]]\nname = \"B\"\nrole = \"cover-designer\"\n\n[[metadata.printings]]\nedition = 1\nprinting = 1\ndate = 2026-10-16\n\n[source]\nparagraph-separator = \"blank-line\"\n\n[targets.html]\n",
+      testCase "tmSource: another separator, or no [source] (docs/adr/0193)" $ do
+        manifestToml testManifest {tmSource = Just "line"}
+          @?= "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[source]\nparagraph-separator = \"line\"\n\n[targets.html]\n"
+        manifestToml testManifest {tmSource = Nothing}
+          @?= "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n",
       testCase "testBookId" $ testBookId @?= "urn:uuid:11111111-2222-4333-8444-555555555555"
     ]
 

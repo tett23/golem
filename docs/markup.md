@@ -41,11 +41,12 @@ Golem は[ruby: 組/版|くみ/はん]の結果を、同じ入力から常に同
 
 段落の区切り方には、空行の様式と改行の様式の二つがある。
 どちらを使うかは、マニフェストの `[source]` の `paragraph-separator` で選ぶ（[docs/adr/0013](adr/0013-paragraph-separator.md)）。
-既定は空行の様式である。
+既定は改行の様式である（[docs/adr/0193](adr/0193-line-paragraph-separator-by-default.md)）。
+空行の様式を使うには、次のように書く。
 
 ```toml
 [source]
-paragraph-separator = "line"
+paragraph-separator = "blank-line"
 ```
 
 | 値 | 様式 |

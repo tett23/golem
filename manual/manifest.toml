@@ -39,3 +39,6 @@ role = "author"
 [targets.pdf]
 
 [targets.html]
+
+[source]
+paragraph-separator = "blank-line"
