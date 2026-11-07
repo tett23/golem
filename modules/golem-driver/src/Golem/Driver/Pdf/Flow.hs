@@ -78,8 +78,8 @@ import Golem.Assemble.Numbering (numberSeparator)
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
 import Golem.Driver.Overhang (lineOverhang, reachesBackground)
-import Golem.Driver.ProjectVars (projectVarTexts)
 import Golem.Driver.Pdf.Fonts
+import Golem.Driver.ProjectVars (projectVarTexts)
 import Golem.Driver.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
 import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)

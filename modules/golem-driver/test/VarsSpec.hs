@@ -99,7 +99,7 @@ varsTests =
         let style = headsStyle "content = [\"{vars.missing}\"]"
             manifest = TE.encodeUtf8 (T.replace "chapters = [\"a.gm\"]" "chapters = [\"a.gm\", \"b.gm\"]" (TE.decodeUtf8 pdfManifest))
         (ds, _, _) <- buildWith pdfBuild manifest style [("a.gm", twoChapters), ("b.gm", twoChapters)]
-        [c | d <- ds, isError d, let DiagnosticCode c = diagCode d] @?= ["G03111"],
+        map diagCode (filter isError ds) @?= [DiagnosticCode "G03111"],
       testCase "dev and prod read the same values of [vars]" $ do
         let manifest = TE.encodeUtf8 (manifestToml' "html") <> varsToml
             src = [("a.gm", "[= vars.product] [= vars.count]\n")]

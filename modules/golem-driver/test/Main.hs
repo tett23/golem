@@ -24,8 +24,8 @@ import RuleShapeSpec
 import SecuritySpec
 import StylesSpec
 import TableFilesSpec
-import VarsSpec (varsTests)
 import Test.Tasty
+import VarsSpec (varsTests)
 
 main :: IO ()
 main = defaultMainReportingSkips tests
