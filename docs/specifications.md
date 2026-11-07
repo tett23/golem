@@ -172,11 +172,11 @@ EPUB と HTML はリフローであり、位置情報が意味論に混入した
 矢印は、元のモジュールが先のモジュールを使うことを表す。
 golem-syntax は golem-regex、golem-font、golem-svg、golem-length、golem-numerals、golem-fixtures、golem-test-support を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
 golem-length は長さの型 `Sp`、単位の変換、長さと十進の数の表記を持ち、golem のどのパッケージにも依存しない（[docs/adr/0114](adr/0114-sp-in-a-length-package.md)）。
-golem-length も、golem-syntax と同じく使うモジュール（golem-doc、golem-driver、golem-html、golem-layout、golem-pdf、golem-preflight、golem-project）が多いので、矢印を省く。
+golem-length も、golem-syntax と同じく使うモジュール（golem-doc、golem-driver、golem-html、golem-layout、golem-pdf、golem-preflight、golem-project、golem-typeset）が多いので、矢印を省く。
 golem-font は長さを持たず、位置と寸法をフォントの単位で返すので、golem-length に依存しない。
 golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
 golem-svg は base、bytestring、containers、text だけに依存し、SVG の図版を PDF に描ける形に読む（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、仕様は [golem-svg の仕様書](golem-svg/specifications.md)）。
-golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画に直す。
+golem-pdf は golem-svg に依存せず、golem-typeset が golem-svg の描画を golem-pdf の描画に直す。
 golem-emet は関数を書く言語 Emet（`.emet`）の読み込み、型の検査、評価、整形を持ち、数の演算を golem-eval と共有する（[docs/adr/0160](adr/0160-emet-function-language-core.md)、仕様は [golem-emet の仕様書](golem-emet/specifications.md)）。
 golem-emet は golem-doc にも依存し、意味論 IR を `.emet` のデータ型に写す（[ADR 0162](adr/0162-calling-emet-functions-from-gm.md)）。
 golem-driver は golem-emet に依存し、関数の要求を処理するハンドラを持ち、`.gm` が使う関数の表を golem-emet から作る（[docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)、[ADR 0162](adr/0162-calling-emet-functions-from-gm.md)）。
@@ -212,6 +212,7 @@ flowchart TD
     length["golem-length<br/>長さの型と単位の変換（最下層）"]
     preflight["golem-preflight<br/>プリフライトの設定と検査"]
     subgraph pdfpath["PDF 経路"]
+        typeset["golem-typeset<br/>PDF の組版と描画"]
         layoutspec["golem-layout-spec<br/>レイアウト IR"]
         layout["golem-layout<br/>行分割、禁則、改ページ"]
         font["golem-font<br/>シェイピング、サブセット化、埋め込み"]
@@ -230,16 +231,11 @@ flowchart TD
     cli --> lsp
     doc --> parser
     driver --> epub
-    driver --> font
-    driver --> layout
-    driver --> layoutspec
     driver --> emet
     driver --> lint
-    driver --> pdf
     driver --> plugin
-    driver --> preflight
-    driver --> svg
     driver --> text
+    driver --> typeset
     emet --> eval
     epub --> html
     eval --> project
@@ -259,6 +255,12 @@ flowchart TD
     project --> regex
     text --> assemble
     text --> bibliography
+    typeset --> font
+    typeset --> html
+    typeset --> layout
+    typeset --> layoutspec
+    typeset --> preflight
+    typeset --> svg
     parser --> syntax
 ```
 

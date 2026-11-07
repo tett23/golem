@@ -14,7 +14,6 @@ import Data.Text.IO qualified as TIO
 import Golem.Assemble (HeadingInfo (..))
 import Golem.Doc.IR (InlineF (..))
 import Golem.Driver
-import Golem.Driver.Pdf (PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), figureRect, headingDefaults, runningHeadLines, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, usedRoles)
 import Golem.Layout.Japanese (BoxKind (..), boxKind)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Paginate (HeadingBlock (..), PageOut (..), Slotted (..))
@@ -24,6 +23,7 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Project.Style (Dim (..), HeadForm (..), HeadPick (..), RunningContent (..), RunningPart (..), RunningRef (..), dimToSp, parseDim, parseRunningFormat, parseStyle)
 import Golem.Syntax
+import Golem.Typeset (PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), figureRect, headingDefaults, runningHeadLines, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, usedRoles)
 import Support
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))

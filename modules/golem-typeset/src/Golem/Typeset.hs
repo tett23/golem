@@ -7,7 +7,7 @@ Fonts come from a 'FontProvider'. The real provider is golem-font
 (HarfBuzz and FreeType, golem-font ADR 0001 and 0002), which is not
 implemented yet; 'noFontProvider' reports that.
 -}
-module Golem.Driver.Pdf
+module Golem.Typeset
   ( FontProvider (..),
     LoadedFonts (..),
     Shaped (..),
@@ -62,7 +62,7 @@ module Golem.Driver.Pdf
   )
 where
 
-import Golem.Driver.Pdf.Draw
-import Golem.Driver.Pdf.Flow
-import Golem.Driver.Pdf.Fonts
-import Golem.Driver.TextLayer (ClusterPart (..))
+import Golem.Typeset.Draw
+import Golem.Typeset.Flow
+import Golem.Typeset.Fonts
+import Golem.Typeset.TextLayer (ClusterPart (..))

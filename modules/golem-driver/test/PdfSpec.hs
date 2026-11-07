@@ -11,10 +11,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
-import Golem.Driver.Fonts (actualTextOf, cffFontProgram, golemFontProvider, toUnicodeOf)
 import Golem.Driver.New (Language (..), createProject, templateFiles)
-import Golem.Driver.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
-import Golem.Driver.Pdf (ClusterPart (..), CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
 import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook)
@@ -28,6 +25,9 @@ import Golem.Project (ProjectFailure (..))
 import Golem.Project.Style (dimToSp, parseDim, parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.ExternalTool (needsTool)
+import Golem.Typeset (ClusterPart (..), CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
+import Golem.Typeset.FontProvider (actualTextOf, cffFontProgram, golemFontProvider, toUnicodeOf)
+import Golem.Typeset.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
 import Numeric (readHex)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, findExecutable)

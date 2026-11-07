@@ -61,12 +61,11 @@ import Golem.Assemble.ListMarkers (defaultNumberFormat, listNumberDiagnostics)
 import Golem.Bibliography (CslEntry (..), EntryPart, formatEntry)
 import Golem.Bibliography.Csl (CslJsonError (..), decodeCslJson)
 import Golem.Doc.IR
-import Golem.Driver.Fonts (cff2FontDiagnostics, golemFontProvider)
 import Golem.Driver.Functions (LoadedFunctions (..), RequiredFiles (..), loadFunctions, loadRequiredFiles, requiredFileSet, requirementHandlers)
 import Golem.Driver.Html
-import Golem.Driver.Pdf
 import Golem.Driver.Plugins (FunctionFilter, LoadedPlugins (..), loadPlugins)
 import Golem.Driver.Svg (activeMessage)
+import Golem.Driver.Version (golemVersion)
 import Golem.Emet (Handlers (..), Program)
 import Golem.Emet.Gm (filterOf, functionNamespaces)
 import Golem.Epub
@@ -92,6 +91,8 @@ import Golem.Project.Style
 import Golem.Svg.Active (activeContent)
 import Golem.Syntax
 import Golem.Text qualified as GT
+import Golem.Typeset
+import Golem.Typeset.FontProvider (cff2FontDiagnostics, golemFontProvider)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getFileSize, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 
@@ -113,7 +114,7 @@ data BuildOptions = BuildOptions
     optTargets :: !(Maybe [Target]),
     optProfile :: !Profile,
     optCheckOnly :: !Bool,
-    -- | where fonts come from (golem-font; see Golem.Driver.Pdf)
+    -- | where fonts come from (golem-font; see Golem.Typeset)
     optFonts :: !FontProvider,
     optParallel :: !Bool,
     -- | the crop marks of the PDF (golem-pdf ADR 0004)
@@ -1158,7 +1159,7 @@ writePdfTarget inMemory opts e diagFid book bib = do
       out = dir </> pdfFileName (mdId (manifestMetadata (projectManifest project)))
       -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
       inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
-  r <- renderPdfView (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)))
+  r <- renderPdfView golemVersion (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)))
   -- G08008: code in the body role without [fonts.code] (golem-driver ADR 0017)
   -- G07045: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
   let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book

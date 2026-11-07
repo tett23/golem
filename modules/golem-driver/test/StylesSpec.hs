@@ -9,7 +9,6 @@ import Data.Text.IO qualified as TIO
 import Golem.Assemble (Book)
 import Golem.Driver
 import Golem.Driver.Lint (lintProject)
-import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), flowLines, layoutPdf, usedRoles)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..), Synthetic (..))
 import Golem.LayoutSpec (pageGeometry)
@@ -17,6 +16,7 @@ import Golem.Length (Sp (..))
 import Golem.Project (ProjectFailure (..))
 import Golem.Project.Style (LocalStyles (..), ParaStyleDef (..), noLocalStyles, noParaDef, parseStyle)
 import Golem.Syntax
+import Golem.Typeset (PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), flowLines, layoutPdf, usedRoles)
 import Support
 import System.FilePath ((</>))
 import Test.Tasty

@@ -15,7 +15,6 @@ import Golem.Assemble (IndexGroup (..))
 import Golem.Bibliography (EntryPart (..), entryText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
-import Golem.Driver.Pdf (PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLines, tocPage)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..), glueRatio, placeLine)
 import Golem.Layout.Look (Look (..), noBoxSource, plainLook)
 import Golem.Layout.Paginate (ColumnSet (..), PageOut (..), Slotted (..), labelPages, markPages)
@@ -25,6 +24,7 @@ import Golem.Pdf (spToPt)
 import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
+import Golem.Typeset (PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLines, tocPage)
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.FilePath ((</>))

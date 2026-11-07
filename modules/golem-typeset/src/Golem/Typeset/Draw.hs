@@ -1,5 +1,5 @@
 -- | The drawing of the PDF: the pages as drawn and the PDF written (golem-driver ADR 0002).
-module Golem.Driver.Pdf.Draw
+module Golem.Typeset.Draw
   ( renderPdf,
     renderPdfView,
   )
@@ -17,11 +17,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (toGregorian)
 import Golem.Doc.IR
-import Golem.Driver.Overhang (kentenAcross, rubyAcross)
-import Golem.Driver.Pdf.Flow
-import Golem.Driver.Pdf.Fonts
-import Golem.Driver.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
-import Golem.Driver.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 import Golem.Layout.Code
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
@@ -37,19 +32,25 @@ import Golem.Preflight.View qualified as V
 import Golem.Project
 import Golem.Project.Style
 import Golem.Syntax
+import Golem.Typeset.Flow
+import Golem.Typeset.Fonts
+import Golem.Typeset.Overhang (kentenAcross, rubyAcross)
+import Golem.Typeset.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
+import Golem.Typeset.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 
 {- | The PDF and the notices of its layout (G07030), or the errors that
-stopped it.
+stopped it. The first argument is the version of Golem, for the Producer
+and the instance ID (docs/adr/0192).
 -}
-renderPdf :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic]))
-renderPdf provider inp = fmap (\(bytes, notices, _) -> (bytes, notices)) <$> renderPdfView provider inp
+renderPdf :: Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic]))
+renderPdf version provider inp = fmap (\(bytes, notices, _) -> (bytes, notices)) <$> renderPdfView version provider inp
 
 {- | 'renderPdf' with the view of the PDF that golem preflight checks
 (golem-cli ADR 0006). The view is lazy: golem build forces only the
 characters of its pages, for G08100 (docs/adr 0081).
 -}
-renderPdfView :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View))
-renderPdfView provider inp0 = case checkedGeometry inp of
+renderPdfView :: Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View))
+renderPdfView version provider inp0 = case checkedGeometry inp of
   Left ds -> pure (Left ds)
   Right geom -> do
     lf <- loadFonts provider (piRoot inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
@@ -67,7 +68,7 @@ renderPdfView provider inp0 = case checkedGeometry inp of
               Left ds -> pure (Left ds)
               Right layout -> case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
                 [] -> do
-                  let (used, finish) = writeDocumentView inp geom fonts layout intent
+                  let (used, finish) = writeDocumentView version inp geom fonts layout intent
                   -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
                   embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
                   -- a face used horizontally and vertically is reported once
@@ -156,8 +157,8 @@ embedded in IO between the two halves (docs/adr ADR 0034): the glyphs
 used in each font and their text, then the PDF and its view from the
 embedded fonts.
 -}
-writeDocumentView :: PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], Map P.FontRef P.Font -> (ByteString, V.View))
-writeDocumentView inp geom fonts layout intent =
+writeDocumentView :: Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], Map P.FontRef P.Font -> (ByteString, V.View))
+writeDocumentView version inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
       -- the master page of each page (golem-driver ADR 0014)
@@ -208,8 +209,8 @@ writeDocumentView inp geom fonts layout intent =
                   P.docTitle = mdTitle md,
                   P.docDate = (y, mo, d),
                   P.docId = P.documentId (mdId md),
-                  P.docInstanceId = P.instanceId (instanceIdInputs (piInputs inp) programs),
-                  P.docProducer = producer,
+                  P.docInstanceId = P.instanceId (instanceIdInputs version (piInputs inp) programs),
+                  P.docProducer = producer version,
                   P.docPdfX = intent
                 }
             bytes = P.writePdf doc

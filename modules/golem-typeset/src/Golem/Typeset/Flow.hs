@@ -1,7 +1,7 @@
 {-# LANGUAGE MultiWayIf #-}
 
 -- | The flow of the PDF: composition, line breaking and pagination (golem-driver ADR 0002).
-module Golem.Driver.Pdf.Flow
+module Golem.Typeset.Flow
   ( SetLine (..),
     CodeInfo (..),
     PlacedSidenote (..),
@@ -72,9 +72,6 @@ import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (numberSeparator)
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
-import Golem.Driver.Overhang (lineOverhang, reachesBackground)
-import Golem.Driver.Pdf.Fonts
-import Golem.Driver.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
 import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
 import Golem.Layout.Code
@@ -99,6 +96,9 @@ import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax
+import Golem.Typeset.Fonts
+import Golem.Typeset.Overhang (lineOverhang, reachesBackground)
+import Golem.Typeset.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
 import System.FilePath (takeBaseName)
 
 -- | One line of the flow, with what is needed to draw it.

@@ -13,12 +13,12 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescriptionUrl, explainHint, lookupExplanation, parseCatalog)
-import Golem.Driver.Fonts (golemFontProvider)
-import Golem.Driver.Pdf (Assumed (..), fixpoint)
 import Golem.Layout.Paginate (ColumnSet (..), PageOut (..))
 import Golem.Project (ProjectFailure (..))
 import Golem.Syntax
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
+import Golem.Typeset (Assumed (..), fixpoint)
+import Golem.Typeset.FontProvider (golemFontProvider)
 import Support
 import System.Directory (createDirectoryIfMissing, createFileLink, doesDirectoryExist, listDirectory)
 import System.FilePath ((</>))

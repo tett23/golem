@@ -25,24 +25,14 @@ library
   exposed-modules:  Golem.Driver
                     Golem.Driver.Explain
                     Golem.Driver.Explain.Catalog
-                    Golem.Driver.Fonts
                     Golem.Driver.Functions
                     Golem.Driver.Html
                     Golem.Driver.Lint
-                    Golem.Driver.Memo
                     Golem.Driver.New
-                    Golem.Driver.Overhang
-                    Golem.Driver.Pdf
                     Golem.Driver.Plugins
-                    Golem.Driver.RuleShape
                     Golem.Driver.Svg
-                    Golem.Driver.TextLayer
                     Golem.Driver.Version
-  other-modules:    Golem.Driver.Pdf.Draw
-                    Golem.Driver.Pdf.Flow
-                    Golem.Driver.Pdf.Fonts
   build-depends:
-    , async         >=2.2  && <2.3
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
     , containers    >=0.6  && <0.8
@@ -54,13 +44,9 @@ library
     , golem-emet
     , golem-epub
     , golem-eval
-    , golem-font
     , golem-html
-    , golem-layout
-    , golem-layout-spec
     , golem-length
     , golem-lint
-    , golem-numerals
     , golem-pdf
     , golem-plugin
     , golem-parser
@@ -69,10 +55,10 @@ library
     , golem-svg
     , golem-syntax
     , golem-text
+    , golem-typeset
     , template-haskell
     , text          >=2.0  && <2.2
     , time          >=1.12 && <1.15
-    , vector        >=0.13 && <0.14
   default-language: GHC2021
 
 test-suite golem-driver-test
@@ -93,14 +79,12 @@ test-suite golem-driver-test
     EmetSamplesSpec
     FigureSpec
     FunctionsSpec
-    MemoSpec
     OutputGoldenSpec
     PageElementsSpec
     ParagraphRuleSpec
     ParagraphSpec
     PdfSpec
     ReferencesSpec
-    RuleShapeSpec
     SecuritySpec
     StylesSpec
     TableFilesSpec
@@ -134,6 +118,7 @@ test-suite golem-driver-test
     , golem-project
     , golem-syntax
     , golem-test-support
+    , golem-typeset
     , hedgehog       >=1.4 && <1.6
     , process
     , zlib
@@ -181,6 +166,7 @@ test-suite golem-driver-global-test
     , golem-project
     , golem-syntax
     , golem-test-support
+    , golem-typeset
     , process
     , zlib
     , tasty          >=1.4 && <1.6
@@ -220,6 +206,7 @@ test-suite golem-driver-parallel-test
     , golem-project
     , golem-syntax
     , golem-test-support
+    , golem-typeset
     , hedgehog       >=1.4 && <1.6
     , process
     , zlib

@@ -14,7 +14,6 @@ import Data.Text.IO qualified as TIO
 import Golem.Assemble (Book (..), inlineText)
 import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), NumberStyle (..), RubySegment (..))
 import Golem.Driver
-import Golem.Driver.Pdf (PdfInput (..), layoutPages)
 import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
 import Golem.Eval.Builtin (BuiltinInline (..), builtinName, unPluginCommandName)
 import Golem.Eval.File (EvalResult (..), PluginHook (..))
@@ -27,6 +26,7 @@ import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
 import Golem.TestSupport.Env (withEnv)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
+import Golem.Typeset (PdfInput (..), layoutPages)
 import Support
 import System.Directory (createFileLink, listDirectory)
 import System.Environment (lookupEnv)

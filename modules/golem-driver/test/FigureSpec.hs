@@ -19,7 +19,6 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import Golem.Driver
-import Golem.Driver.Pdf (PdfLayout (..), PlacedFigure (..), figureRect, fitFigure)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Paginate (PageOut (..), Slotted (..), labelPages)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), columnsFor, typeAreaFor)
@@ -27,6 +26,7 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (FigureContent (..), ImportedPage (..), Mark (..), Turn (..), contentStream)
 import Golem.Preflight.View (ImageView (..), LineView (..), PageView (..), View (..))
 import Golem.Syntax
+import Golem.Typeset (PdfLayout (..), PlacedFigure (..), figureRect, fitFigure)
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
 import System.FilePath ((</>))

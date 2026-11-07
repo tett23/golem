@@ -5,8 +5,8 @@ import Control.Exception (evaluate)
 import Control.Monad (forM_)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.Text qualified as T
-import Golem.Driver.Memo
-import Golem.Driver.Pdf (Shaping (..))
+import Golem.Typeset (Shaping (..))
+import Golem.Typeset.Memo
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit

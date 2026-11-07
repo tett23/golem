@@ -3,7 +3,7 @@ entries of the glyphs drawn and the clusters that need ActualText. Each
 glyph stands for its whole cluster; of a cluster of several glyphs, the
 first one has the text.
 -}
-module Golem.Driver.TextLayer
+module Golem.Typeset.TextLayer
   ( ClusterPart (..),
     toUnicodeOf,
     actualTextOf,

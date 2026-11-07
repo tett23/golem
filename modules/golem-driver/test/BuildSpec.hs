@@ -15,7 +15,6 @@ import Golem.Assemble (Book (..), HeadingInfo (..))
 import Golem.Doc.IR (InlineF (..))
 import Golem.Driver
 import Golem.Driver.New
-import Golem.Driver.Pdf (CodeInfo (..), PdfLayout (..), instanceIdInputs, numberedTitle, producer, runningHeadLines)
 import Golem.Driver.Version (golemVersion)
 import Golem.Epub (EpubConfig (..), navDocument)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
@@ -25,6 +24,7 @@ import Golem.Project.Style (HeadForm (..), HeadPick (..), RunningContent (..), R
 import Golem.Syntax
 import Golem.TestSupport.Env (envFlag)
 import Golem.TestSupport.Skipped (Skips, countSkipped)
+import Golem.Typeset (CodeInfo (..), PdfLayout (..), instanceIdInputs, numberedTitle, producer, runningHeadLines)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.FilePath ((</>))
@@ -46,7 +46,7 @@ versionTests =
         v <- T.strip <$> TIO.readFile "../../VERSION"
         golemVersion @?= v,
       testCase "the PDF instance ID is computed from golem- and the version, last" $ do
-        let inputs = instanceIdInputs ["input"] ["font program"]
+        let inputs = instanceIdInputs golemVersion ["input"] ["font program"]
         inputs @?= ["input", "font program", TE.encodeUtf8 ("golem-" <> golemVersion)]
         last inputs @?= TE.encodeUtf8 ("golem-" <> golemVersion)
     ]
@@ -56,7 +56,7 @@ producerTests =
   testGroup
     "Producer (golem-pdf ADR 0005)"
     [ testCase "the Producer is Golem and the version" $
-        producer @?= "Golem " <> golemVersion,
+        producer golemVersion @?= "Golem " <> golemVersion,
       testCase "the version has the form check-version.sh accepts" $ do
         let (core, pre) = T.breakOn "-" golemVersion
             numbers = T.splitOn "." core
@@ -65,11 +65,11 @@ producerTests =
         assertBool (T.unpack golemVersion) (length numbers == 3 && all (\n -> not (T.null n) && T.all isDigit n) numbers && preOk),
       testCase "the PDF has the Producer in the information dictionary, and in XMP with an output intent" $ do
         plain <- miniPdf fakeProvider True horizontalStyle "x\n" []
-        assertBool "Info" (TE.encodeUtf8 ("/Producer (" <> producer <> ")") `BS.isInfixOf` plain)
+        assertBool "Info" (TE.encodeUtf8 ("/Producer (" <> producer golemVersion <> ")") `BS.isInfixOf` plain)
         assertBool "no XMP" (not ("<pdf:Producer>" `BS.isInfixOf` plain))
         x4 <- miniPdf fakeProvider True (horizontalStyle <> "\n[color]\nintent = \"x.icc\"\n") "x\n" [("x.icc", "fake profile")]
-        assertBool "Info with an intent" (TE.encodeUtf8 ("/Producer (" <> producer <> ")") `BS.isInfixOf` x4)
-        assertBool "XMP" (TE.encodeUtf8 ("<pdf:Producer>" <> producer <> "</pdf:Producer>") `BS.isInfixOf` x4)
+        assertBool "Info with an intent" (TE.encodeUtf8 ("/Producer (" <> producer golemVersion <> ")") `BS.isInfixOf` x4)
+        assertBool "XMP" (TE.encodeUtf8 ("<pdf:Producer>" <> producer golemVersion <> "</pdf:Producer>") `BS.isInfixOf` x4)
     ]
 
 buildTests :: [TestTree]

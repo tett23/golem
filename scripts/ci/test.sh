@@ -1923,6 +1923,10 @@ docdeps "golem-numerals depends on golem-doc" 1 "$DOC_PLANS/numerals-doc.json" \
   "doc-deps: golem-numerals depends on golem-doc"
 docdeps "the lib of a per-package element" 1 "$DOC_PLANS/per-package.json" \
   "doc-deps: golem-doc depends on golem-bibliography"
+# the library of golem-typeset reaches none of the evaluation, the other
+# outputs and the tools (docs/adr/0192)
+docdeps "golem-typeset depends on golem-eval" 1 "$DOC_PLANS/typeset-eval.json" \
+  "doc-deps: golem-typeset depends on golem-eval"
 docdeps "a package missing from the plan" 2 "$DOC_PLANS/no-numerals.json"
 docdeps "no such file" 2 "$WORK/no-such-plan.json"
 printf 'not json\n' >"$WORK/bad.json"
