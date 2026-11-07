@@ -50,10 +50,32 @@ htmlParaStyles style =
           (htmlFeatures (psKerning d) (psTracking d) (psProportional d) (psBaselineShift d))
           (htmlRule style <$> join (psRuleBefore d))
           (htmlRule style <$> join (psRuleAfter d))
+          (alignDecls bindingRight (fromMaybe ParaLeftJustified (psAlign d)))
+          (fromMaybe 0 (psSpaceBefore d))
+          (fromMaybe 0 (psSpaceAfter d))
+          (cssLength (fromMaybe (Zw 0) (psEndIndent d)))
       )
     | n <- Map.keys (stParaStyles style),
       Just d <- [paraStyle style (Just n)]
     ]
+  where
+    bindingRight = maybe False pageBindingRight (stPage style)
+
+{- | The declarations of an alignment (docs/adr/0189): start and end follow
+the writing; the spine is that of the first page, the left of a book
+bound on the left.
+-}
+alignDecls :: Bool -> ParaAlign -> [Text]
+alignDecls bindingRight = \case
+  ParaLeft -> ["text-align: start"]
+  ParaCenter -> ["text-align: center"]
+  ParaRight -> ["text-align: end"]
+  ParaLeftJustified -> defaultAlignDecls
+  ParaCenterJustified -> ["text-align: justify", "text-align-last: center"]
+  ParaRightJustified -> ["text-align: justify", "text-align-last: end"]
+  ParaFullyJustified -> ["text-align: justify", "text-align-last: justify"]
+  ParaTowardsSpine -> [if bindingRight then "text-align: right" else "text-align: left"]
+  ParaAwayFromSpine -> [if bindingRight then "text-align: left" else "text-align: right"]
 
 {- | A rule of a paragraph style or a heading for CSS (golem-driver ADR
 0027, 0028, 0035): zw of the length and the indents as em, the line style as one of the border styles of CSS

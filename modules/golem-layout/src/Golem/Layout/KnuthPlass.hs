@@ -123,12 +123,16 @@ data Params = Params
     pAdjDemerits :: !Int,
     -- | glyph expansion: (limit, step) in permille (ADR 0005)
     pExpansion :: !(Maybe (Int, Int)),
-    pProtrusion :: !Bool
+    pProtrusion :: !Bool,
+    {- | the stretch at the end of every line, of a paragraph whose lines are
+    not justified (docs/adr/0189): 'filStretch' there, 0 otherwise. It
+    counts in the badness of a line only, not in its ratio
+    -} pEndStretch :: !Sp
   }
   deriving stock (Eq, Show)
 
 defaultParams :: Params
-defaultParams = Params 100 200 0 10 10000 10000 Nothing False
+defaultParams = Params 100 200 0 10 10000 10000 Nothing False 0
 
 data Line = Line
   { -- | the items of the line, discardable items after the break removed
@@ -341,7 +345,7 @@ breakParagraph ps lineWidth items =
           (edgeS, edgeE) = edgesOf s b
           natural = tW tw - tW ts + penW - protS - protE + edgeS + edgeE
           (ey, ez) = expansionOf (tE tw - tE ts)
-          stretch = tY tw - tY ts + emergency + ey
+          stretch = tY tw - tY ts + emergency + ey + pEndStretch ps
           shrink = tZ tw - tZ ts + ez
           shortfall = lineWidth (nLine a) - natural
           (bad, shrinking, overfull)

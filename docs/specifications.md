@@ -1367,7 +1367,7 @@ PDF では、`url` と、`based-on` をたどって `url` に行き着く文字�
 `[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
 `[character-styles.strong] based-on = "italic"` は、`[strong: ...]` を斜体で表す。
 
-段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、段落の前と後に引く罫線の `rule-before` と `rule-after` である。
+段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、段落の前と後に引く罫線の `rule-before` と `rule-after` である。
 
 `rule-before` と `rule-after` は、「罫線の指定」の表か `false` をとる（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 InDesign の段落境界線にあたる。
@@ -1389,18 +1389,18 @@ InDesign の段落境界線にあたる。
 行送りの欄は設けない。
 PDF の本文を行の格子に載せるので、段落ごとに行送りを変えると見開きの行の位置がそろわなくなるためである。
 組み込みの段落スタイルは `body`、`verse`（`line-breaks = "keep"`、`space-between = 1`）、`caption`、`sidenote`、`code` の五つであり、段落スタイルを付けない段落は `body` で組む。
-図版のキャプションは段落スタイル `caption` の `font` と `size` で組み、ほかの欄（`line-breaks`、`space-between`、字下げ）はキャプションには適用されない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
+図版のキャプションは段落スタイル `caption` の `font` と `size` で組み、ほかの欄（`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ）はキャプションには適用されない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 傍注の本文も同じく、段落スタイル `sidenote` の `font` と `size` で組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 PDF のキャプションと傍注の本文には、ほかに `aki-set`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` を、どの出力でも `regex-styles` を適用する。
-`line-breaks` と `space-between` は、`@style caption` や `@style sidenote` を付けた原稿の段落には適用される。
+`line-breaks`、`space-between`、`space-before`、`space-after`、`align` は、`@style caption` や `@style sidenote` を付けた原稿の段落には適用される。
 `caption` と `sidenote` は、`body` の字下げを引き継がない（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
-組み込みの定義が `indent = "0zw"` と `first-line-indent = "0zw"` を持ち、書いた値が引き継いだ値に勝つ `based-on` の規則により、`body` の字下げは及ばない。
+組み込みの定義が `indent = "0zw"`、`first-line-indent = "0zw"`、`end-indent = "0zw"` を持ち、書いた値が引き継いだ値に勝つ `based-on` の規則により、`body` の字下げは及ばない。
 `@style caption` や `@style sidenote` を付けた原稿の段落も、字下げなしで組む。
-`caption` と `sidenote` に 0 でない `indent` か `first-line-indent` を書くと G03006 とする（`style.toml` でも `@style-def` でも）。
+`caption` と `sidenote` に 0 でない `indent`、`first-line-indent`、`end-indent` を書くと G03006 とする（`style.toml` でも `@style-def` でも）。
 値が 0（`"0zw"`、`"0mm"` など）なら組版は変わらないので、誤りとせず、効果がないことを notice（G03100）で知らせる。
 G03100 の位置は、`style.toml` では値、`@style-def` ではそのキーの引数である。
-二つに書けないキーは、0 でない `indent` と `first-line-indent`、`rule-before`、`rule-after`、`background`、`padding`、`border`、`border-width` である。
-`based-on`、`font`、`size`、`line-breaks`、`space-between`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` は書ける。
+二つに書けないキーは、0 でない `indent`、`first-line-indent`、`end-indent`、`rule-before`、`rule-after`、`background`、`padding`、`border`、`border-width` である。
+`based-on`、`font`、`size`、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` は書ける。
 HTML と EPUB でも、`caption` の `font` と `size` を `figcaption` の CSS に、`sidenote` の `font` と `size` を `.sidenote` の CSS に書く。
 `sidenote` の `size` がなければ、HTML の傍注は本文の 0.85 倍の大きさにする。
 `size` が絶対の大きさで `[page.grid]` の `font-size` も絶対の大きさなら、その比を `em` で書き、`[page.grid]` がなければ `pt` で書く。
@@ -1516,14 +1516,18 @@ PDF では、本文の中のコードの背景と余白を次のように扱う�
 
 段落スタイルの `indent` はすべての行の始まりの字下げ（InDesign の左インデント）、`first-line-indent` は最初の行に `indent` へ加える量（1 行目左インデント）であり、負ならぶら下げになる（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
 どちらも行の始まりの側から測るので、縦組みでは天からの距離になる。
+`end-indent` はすべての行の終わりの側の字下げ（InDesign の右インデント）であり、縦組みでは地からの距離になる（[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。
+`end-indent` は負の値を書けず、負の値は G03006 とする。
 `zw` は段落の文字の大きさを一字とする。
-`indent` と `first-line-indent` の和が負になる段落スタイルはエラー（G03012）、字下げの後の行長が段落の文字の大きさの 8 字分に満たない段落スタイルは PDF でエラー（G07025）とする。
+PDF の行長は、最初の行が「段の行長 − `indent` − `first-line-indent` − `end-indent`」、ほかの行が「段の行長 − `indent` − `end-indent`」であり、回り込ませる図版の脇の行では脇の行の長さから同じく引く。
+`indent` と `first-line-indent` の和が負になる段落スタイルはエラー（G03012）、「段の行長 − `indent` − max(0, `first-line-indent`) − `end-indent`」が段落の文字の大きさの 8 字分に満たない段落スタイルは PDF でエラー（G07025）とする。
+回り込ませる図版の脇で、字下げを引くと行が残らない段落も、`end-indent` を引いた長さで判定する（G07028）。
 G07025 は `style.toml` だけで決まるので、PDF をターゲットに含むビルドと `golem check`（四つのターゲットを検査するので、つねに PDF を含む）が報告し、位置は `style.toml` の先頭とする（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 G07025 は、段落に字下げを掛ける段落スタイルだけを検査し、字下げをしない `caption` と `sidenote`、G07043 が検査する `code` を除く（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
 一つの段落スタイルの字下げが大きすぎるとき、それを `based-on` で引き継ぐほかの段落スタイルにも G07025 を出す。
 `line-breaks = "keep"` の段落では、改行で区切った各行が段落の始まりと同じく最初の行の字下げを受け、折り返した部分は `indent` の位置から始まる。
 組み込みの `verse` は `indent = "2zw"`、`first-line-indent = "-2zw"` で、各行の折り返した部分をぶら下げる。
-字下げは、文書の最上位の段落、`@style` の本体の段落、定義リストの説明の段落に適用され、リストの項目の中の段落と、図版のキャプション、脚注と傍注の本文、表、見出し、目次、索引、参考文献には適用されない。
+字下げと行揃え（`align`）は、文書の最上位の段落、`@style` の本体の段落、定義リストの説明の段落に適用され、リストの項目の中の段落と、図版のキャプション、脚注と傍注の本文、表、見出し、目次、索引、参考文献には適用されない。
 リストの項目の段落は段落スタイルの字下げを受けず、リストの字下げで組む（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
 PDF では、項目の印を行の始まりにぶら下げ、項目の二行目以降、二つ目以降の段落、項目の中のコードブロックと定義リストの行を、本文の始まりにそろえる。
 入れ子のリストは、外の項目の本文の始まりから下げる。
@@ -1537,6 +1541,48 @@ PDF では、項目の印を行の始まりにぶら下げ、項目の二行目�
 段落の最初の行には、二つの和の整数部の数を置く。
 `line-breaks = "keep"` の段落では、`LineBreak` の後の各行にも同じ数を置く。
 それ以外の段落では、強制改行の後の行に `indent` の整数部の数を置く。
+
+段落スタイルの `align` は段落の行揃えであり、値は InDesign の行揃えの名前を kebab-case にしたものである（[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。
+既定は `"left-justified"` で、これまでの組み方と同じである。
+
+| 値 | 最後のほかの行 | 最後の行 | InDesign |
+| --- | --- | --- | --- |
+| `left` | 行の始まりに寄せる | 行の始まりに寄せる | 左揃え |
+| `center` | 中央に置く | 中央に置く | 中央揃え |
+| `right` | 行の終わりに寄せる | 行の終わりに寄せる | 右揃え |
+| `left-justified` | 両端を揃える | 行の始まりに寄せる | 均等配置（最終行左揃え） |
+| `center-justified` | 両端を揃える | 中央に置く | 均等配置（最終行中央揃え） |
+| `right-justified` | 両端を揃える | 行の終わりに寄せる | 均等配置（最終行右揃え） |
+| `fully-justified` | 両端を揃える | 両端を揃える | 両端揃え |
+| `towards-spine` | ノドの側に寄せる | ノドの側に寄せる | ノド側に揃える |
+| `away-from-spine` | 小口の側に寄せる | 小口の側に寄せる | 小口側に揃える |
+
+縦組みでは、`left` を天付き、`right` を地付きと読む。
+ほかの値は G03006 とする。
+揃えの基準は、字下げを引いた後の行の領域であり、`center` はその中央に置く。
+ぶら下げた段落では、最初の行と折り返した行とで領域が違うので、中央の位置も行ごとに違う。
+
+両端を揃えない行は、`left`、`center`、`right`、ノド側と小口側の揃えの段落の行と、均等配置の段落の最後の行である。
+これらの行は自然な幅で組み、行の領域と内容の幅の差を置く。
+`left` なら差を行の終わりの側に、`right` なら行の始まりの側に、`center` なら両側に半分ずつ置く。
+差が奇数の sp なら、余りの 1sp を行の終わりの側に置く。
+`left`、`center`、`right`、ノド側と小口側の揃えの段落は、LaTeX の `\raggedright` と同じく、段落の中のグルーの伸びを 0 にし（縮みとアキ量のセットの詰めは残す）、各行の端に `filStretch` の伸びを足して行に分ける。
+どの行も不良度が 0 になるので、行分割は行の数とペナルティの和が最も小さい分け方を選ぶ。
+字幅の伸縮は使わない。
+禁則、ぶら下げ組、突き出し、ハイフネーションは使うが、伸びを使わない行では、分綴よりも次の行に送る分け方が選ばれやすい。
+均等配置の三つの値は、最後のほかの行をこれまでのとおり両端揃えで組む。
+`fully-justified` は、最後の行の段落の終わりのグルーの伸びを 0 にして、最後の行もほかの行と同じく行の領域いっぱいに伸ばす。
+行の分け方は `left-justified` と同じである。
+伸びるグルーを持たない最後の行（欧文の一語だけの行など）は伸ばせないので、行の始まりに寄せる。
+`line-breaks = "keep"` の段落は、改行で区切った一行ずつを単位として揃え、`fully-justified` は各単位の最後の行も伸ばす。
+
+`towards-spine` と `away-from-spine` は横組みの本で、行を、その行が置かれたページのノドの側か小口の側に寄せる。
+行の分け方は `left` と同じであり、ページが決まった後に、ノドの側（柱と傍注と同じく `[page]` の `binding` とページの番号の偶奇から決める）が左なら `towards-spine` を `left`、`away-from-spine` を `right` と同じ位置にずらし、右なら逆にする。
+ずらしても改ページは変わらず、二つのページにまたがる段落では、ページごとに寄せる側が変わる。
+段組みの版面でも、段によらずページのノドの側に寄せる。
+縦組みの本でこの二つを書くと、エラー（G03118）とする。
+縦組みの行は天から地へ進み、ノドと小口が行の方向に交わらないためである。
+位置は `align` の値（`@style-def` ではそのキーの引数）とする。
 
 段落スタイルの `regex-styles` は正規表現スタイル（InDesign の正規表現スタイル、英語版の GREP スタイル）の並びであり、段落の中で正規表現に一致した文字に文字スタイルを当てる（[docs/adr/0015](adr/0015-regex-styles.md)）。
 値は `{ pattern = '正規表現', style = "文字スタイル" }` の表の配列であり、正規表現は TOML のリテラル文字列（`'...'`）で書くと `\` をそのまま書ける。
@@ -1698,7 +1744,21 @@ HTML と EPUB では、組み込みの文字スタイルのうち `strong`、`bo
 `[code.colors]` があれば `code span.<短い class>` の `color` を書き、なければ字句の色を書かない。
 `wrap-mark` と `continued` は HTML と EPUB には出さない。
 プレーンテキストには、キャプションの行、ファイル名の行、差分の印のついた行、行末に空白一つを空けた丸数字の注釈の印を出し、行番号、強調、色は出さない。
-文字スタイルの `font`、合成の太字と斜体、`color`、段落スタイルの `font`、行の字下げ、`space-between` を CSS に書き、`size` はキャプションと傍注のほかは CSS に書かない。
+文字スタイルの `font`、合成の太字と斜体、`color`、段落スタイルの `font`、行の字下げ、`space-between`、`space-before`、`space-after`、`align`、`end-indent` を CSS に書き、`size` はキャプションと傍注のほかは CSS に書かない。
+段落スタイルの `align` と `end-indent` は、字下げと同じく、`body` では既定の値でないとき、ほかのスタイルでは `body` と値が違うときに書く（[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。
+`left` は `text-align: start`、`center` は `text-align: center`、`right` は `text-align: end`、均等配置の三つは `text-align: justify` と `text-align-last`（`start`、`center`、`end`）、`fully-justified` は `text-align: justify; text-align-last: justify` とする。
+`towards-spine` と `away-from-spine` は、本の最初のページ（1 ページ）のノドの側で読み替え、左綴じの本では `towards-spine` を `text-align: left`、`away-from-spine` を `text-align: right`、右綴じの本では逆にする。
+`end-indent` は `padding-inline-end` に書く。
+既定の値の本には `text-align` を書かないので、`left-justified` の本文はブラウザーの既定のとおり行の終わりを揃えずに表示され、`body` に別の値を書いてほかのスタイルで `left-justified` に戻したときだけ両端を揃える。
+`text-align-last` を読書環境が読むかは確かめていない。
+段落の前後のアキは、行の数を `em` にして、隣り合う兄弟の要素のセレクターで書く。
+前のアキは `p.ps-<名前>`、後のアキは `p.ps-<名前> + :not(.ps-<名前>):not(.blank-line)` の `margin-block-start` に書く。
+`body` の前のアキは `p`、後のアキは `p:not([class]) + :not(p):not(.blank-line), p:not([class]) + p[class]` に書く。
+後のアキを持つスタイルと前のアキを持つスタイルの組には、大きいほうの値を `p.ps-A + p.ps-B:not(.ps-A)`（`body` の後では `p:not([class]) + p.ps-B`、`body` の前では `p.ps-A + p:not([class]):not(.ps-A)`）に書き、前の二つの規則に勝たせる。
+前後のアキを持つスタイルでは、同じスタイルの段落のあいだの規則を `space-between` が 0 でも書き（`margin-block-start: 0`）、前のアキを持つスタイルごとに `div.blank-line + p.ps-<名前> { margin-block-start: 0; }` を書く。
+ファイルの段落スタイルの規則（`body.file-<n>` で始まる規則）は、行揃え、`padding-inline-end`、前のアキ、同じスタイルの段落のあいだ、後のアキ、組、行アキの後の規則をそのファイルの定義で書き直す。
+既定の値の行揃えは `text-align: start; text-align-last: auto` と書く。
+style.toml の後のアキを、ファイルの定義で 0 に戻しても、style.toml の後のアキの規則は残る。
 段落スタイルと見出しの罫線は、前の罫線を `::before`、後の罫線を `::after` の擬似要素として書く（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 `content: ""`、`display: block`、`border-block-start`、`margin-block`（`space-before` と `space-after`、書かなければ 0）を書き、`width` は `length` があればその寸法、`start-indent` か `end-indent` を書けば書かず、どちらもなければ `100%` とする。
 `start-indent` と `end-indent` は `margin-inline-start` と `margin-inline-end` に書く。
@@ -2403,11 +2463,30 @@ PDF では、行アキを、次に置くもの（行、見出し、図版、表�
 5. 置くものを置く。
 
 行アキが段に入りきらない場合も段の先頭で捨てるので、行アキを途中で切り詰めることはない。
-段の先頭の空きは前の段の終わりの余白と見分けられず、前後のブロックの区切りにならないためであり、段落スタイルの `space-between` の空きと同じ規則である。
+段の先頭の空きは前の段の終わりの余白と見分けられず、前後のブロックの区切りにならないためであり、段落スタイルの `space-between`、`space-before`、`space-after` の空きと同じ規則である。
 書き手の入力と違う出力になるので、黙って捨てずに notice で知らせる。
 
 - 見出しを後と離さない規則と `@no-page-break` の先読みは、行アキの行数を後のものの量に足す。足した量は段の行の格子の数を上限とする。行アキを置いたことは、`@no-page-break` が待つものを置いたことにならない。
-- 間に行アキを挟んだ二つの段落は、続いた段落として扱わない。`space-between` の空きと行アキは足さず、行アキだけが入る。
+- 間に行アキを挟んだ二つの段落は、続いた段落として扱わない。`space-between`、`space-before`、`space-after` の空きと行アキは足さず、行アキだけが入る。
+
+段落スタイルの `space-before` と `space-after` は、段落の前と後に空ける行の格子の行の数であり、0 以上の整数である（既定は 0、負の数は G03006。[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。
+空きは `space-between` と同じく、ブロックのあいだの空きの行として置き、行の格子を崩さない。
+続いた二つのブロック A と B のあいだの空きの行の数は、次のように決める。
+
+1. A と B のあいだに行アキがあれば、行アキの行だけを空ける。
+2. A と B が同じ段落スタイルの段落なら、`space-between` の行を空け、A の `space-after` と B の `space-before` は使わない。
+3. それ以外は、A が段落なら A の `space-after`、B が段落なら B の `space-before` を取り、大きいほうの行を空ける。段落でないブロック（見出し、図版、表、コードブロック、リストなど）は 0 とする。
+
+改ページと改ページの手での制御の直前には空きを置かない。
+段の先頭に来た空きは捨て、diagnostic を出さない。
+段落の後のアキで段が終わる場合も、空きは次の段の先頭に来て捨てられる。
+G07047 は原稿に書いた `@blank-line` だけを対象とする。
+見出しを後と離さない規則と `@no-page-break` の先読みは、空きの行を後のものの量に足す。
+`line-breaks = "keep"` の段落では、`space-before` を最初の行の前に、`space-after` を最後の行の後に置き、行のあいだには置かない。
+罫線を持つ段落では、前後のアキの行を罫線の領域の外に置き、罫線の領域とは別に数える。
+前後のアキは、段落の罫線を引く段落（文書の最上位の段落と `@style` の本体の段落）に適用し、リストの項目、表のセル、注の本文、定義リストの中の段落には適用しない。
+`code` に `space-before`、`space-after`、`align`、`end-indent` を書くと G03006 とする。
+プレーンテキストでは、`space-between` と同じく、`space-before`、`space-after`、`align`、`end-indent` を使わない。
 - 表の前の一行の空きは、行アキの後でも取る。
 - コードブロックの直後の行のルビと圏点のための空きの行（[golem-driver ADR 0033](golem-driver/adr/0033-ruby-after-code-block.md)）は、コードブロックの直後に行アキがあれば足さない。
 - 段組み、縦組みでも同じ規則とする。縦組みでは、行アキは行の進む方向に空く。
@@ -2877,19 +2956,23 @@ diagnostics がなくなったファイルには空の列を送り、一度も d
 | --- | --- |
 | コメント | `comment`（校正のコメントは修飾子 `modification` を付ける） |
 | ブロックのコマンドの `@` と名前 | `decorator` |
-| インラインのコマンドの名前、式の呼び出しの名前 | `function` |
+| インラインのコマンドの名前、式の呼び出しの名前（`book.liters` の `book` と `liters`） | `function` |
 | キーワード引数の名前 | `parameter` |
 | 引数の値、式の文字列 | `string` |
 | `[=`、式のキーワード | `keyword` |
 | 式の数、数の表記の中身 | `number` |
 | 式の変数 | `variable` |
 | 式の演算子、数の表記の `##`、表の区切り | `operator` |
+| インラインのコマンドの `[`、`:`、`]`、散文スロットの区切りの `\|` | `operator` |
+| 式の `.`、括弧、`,`、`:`、`[`、`]`、`{`、`}`（閉じの `]` を含む） | `operator` |
 | エスケープ | `macro` |
 | 見出しの `#`、リストと定義リストの印、コードブロックの囲み | `keyword` |
 | 見出しの文字 | `namespace` |
 | コードブロックの言語名 | `type` |
 
 地の文、散文スロットの中身、コードブロックの中身、構文エラーの箇所には、トークンを作らない。
+インラインのコマンドの角括弧と `:`、式の記号にもトークンを付ける（[golem-lsp ADR 0007](golem-lsp/adr/0007-semantic-tokens-for-command-punctuation.md)）。
+キーワード引数の `=`、`*[` と `**[` の引数の印とその閉じの `]`、式のハッシュのキーの名前、空白には、トークンを付けない。
 改行をまたぐトークンは、行ごとに分ける。
 `$/cancelRequest` は何もせずに受け取る。
 

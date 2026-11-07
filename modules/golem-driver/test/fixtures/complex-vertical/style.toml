@@ -41,6 +41,23 @@ first-line-indent = "0zw"
 rule-before = { weight = "0.5pt", space-after = "0.5zw" }
 rule-after = { weight = "0.5pt", space-before = "0.5zw", style = "dashed" }
 
+# 扉、署名、前後を空けて両側を下げた引用（docs/adr/0189）
+[paragraph-styles.title]
+first-line-indent = "0zw"
+align = "center"
+
+[paragraph-styles.signature]
+first-line-indent = "0zw"
+end-indent = "1zw"
+align = "right"
+
+[paragraph-styles.quote]
+indent = "2zw"
+first-line-indent = "0zw"
+end-indent = "2zw"
+space-before = 1
+space-after = 1
+
 [paragraph-styles.code]
 size = "12Q"
 
