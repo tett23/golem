@@ -78,6 +78,7 @@ import Golem.Assemble.Numbering (numberSeparator)
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
 import Golem.Driver.Overhang (lineOverhang, reachesBackground)
+import Golem.Driver.ProjectVars (projectVarTexts)
 import Golem.Driver.Pdf.Fonts
 import Golem.Driver.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
 import Golem.Html (codeTokens)
@@ -578,15 +579,15 @@ runningMetadata md =
       <> [("publisher", p) | Just p <- [mdPublisher md]]
 
 {- | The lines of a running head drawn on a page (golem-driver ADR 0014,
-0022), from the text of the metadata, the variables of the page's file,
-the content, the headings in effect at the start of the page by level,
+0022), from the text of the metadata, the variables of [vars] by their
+paths (docs/adr/0185), the variables of the page's file, the content, the headings in effect at the start of the page by level,
 and the headings that start on the page. A line with a slot without @?@
 and without a value is left out; a slot with @?@ and without a value is
 empty; a line is trimmed of spaces (U+0020, U+3000) and left out when
 nothing is left.
 -}
-runningHeadLines :: Map Text Text -> Map [Text] Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> [Text]
-runningHeadLines meta vars content start started = case content of
+runningHeadLines :: Map Text Text -> Map [Text] Text -> Map [Text] Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> [Text]
+runningHeadLines meta projectVars vars content start started = case content of
   RunningNone -> []
   RunningLines ls -> mapMaybe line (toList ls)
   where
@@ -602,6 +603,7 @@ runningHeadLines meta vars content start started = case content of
     value = \case
       RefMeta k -> Map.lookup k meta
       RefVar n -> Map.lookup n vars
+      RefProjectVar n -> Map.lookup n projectVars
       RefHeading l form pick ->
         let here = [h | h <- started, hiLevel h == l]
             atEnd = foldl' activeAfter start started
@@ -663,13 +665,14 @@ runningHeads inp geom layout =
       startedOn p = Map.findWithDefault [] (poNumber p) started
       starts = scanl (foldl' activeAfter) Map.empty (map startedOn pages)
       meta = runningMetadata (manifestMetadata (projectManifest (piProject inp)))
+      projectVars = projectVarTexts (manifestVars (projectManifest (piProject inp)))
       recto h = maybe False hsRectoBreak (Map.lookup (hiLevel h) (stHeadings (piStyle inp)))
       one p st m fid
         | poBlank p || any recto (startedOn p) = []
         | otherwise = case m >>= mgRunningHead of
             Nothing -> []
             Just (co, ce, _, _) ->
-              runningHeadLines meta (Map.findWithDefault Map.empty fid (piRunningVars inp)) (if odd (poNumber p) then co else ce) st (startedOn p)
+              runningHeadLines meta projectVars (Map.findWithDefault Map.empty fid (piRunningVars inp)) (if odd (poNumber p) then co else ce) st (startedOn p)
    in Map.fromList [(poNumber p, one p st m fid) | (p, st, m, fid) <- zip4 pages starts (pageMasters inp geom layout) (pageFiles inp layout)]
 
 {- | G07051 (golem-driver ADR 0022): a line of a running head wider than the

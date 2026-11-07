@@ -24,6 +24,7 @@ import RuleShapeSpec
 import SecuritySpec
 import StylesSpec
 import TableFilesSpec
+import VarsSpec (varsTests)
 import Test.Tasty
 
 main :: IO ()
@@ -46,6 +47,7 @@ tests skips =
         evalDiagnosticTests,
         functionsTests,
         callsTests,
+        varsTests,
         emetSamplesTests,
         testGroup "output and layout diagnostic codes (golem-driver ADR 0016)" outputDiagnosticTests,
         testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,

@@ -66,6 +66,7 @@ import Golem.Driver.Functions (LoadedFunctions (..), RequiredFiles (..), loadFun
 import Golem.Driver.Html
 import Golem.Driver.Pdf
 import Golem.Driver.Plugins (FunctionFilter, LoadedPlugins (..), loadPlugins)
+import Golem.Driver.ProjectVars (projectVarDiagnostics)
 import Golem.Driver.Svg (activeMessage)
 import Golem.Emet (Handlers (..), Program)
 import Golem.Emet.Gm (filterOf, functionNamespaces)
@@ -254,6 +255,8 @@ evaluateProjectWith overlay profile root = do
               pluginDiags = pluginErrors <> checkWarnings <> rqDiagnostics required <> filterRootDiags <> lfDiagnostics functions <> filterNameDiags
               functionFiles = Set.fromList [siPath si | si <- Map.elems (lfSources functions)]
               pluginCommands = sort (map unPluginCommandName (Map.keys (phCommands hook)))
+              -- G03111 and G03112 of {vars.<name>} of the running heads, once for the project (docs/adr/0185)
+              runningVarDiags = projectVarDiagnostics styleFid (fromMaybe "" styleText) (manifestVars manifest0)
               -- style.toml, which the context comes from, when a plugin asks for it: the LSP watches it (docs/adr/0121)
               contextFiles = Set.fromList ["style.toml" | not (null (phContextNames hook))]
               -- no G02022 after the plugins failed to load (golem-plugin ADR 0003), nor G02090 (golem-doc ADR 0007),
@@ -264,7 +267,7 @@ evaluateProjectWith overlay profile root = do
               loaded <- loadAssets overlay root project
               let assets = laAssets loaded
               (bibDiags, citeKeys, _) <- loadBibliography root manifest0
-              let projectDiags = pluginDiags <> laDiagnostics loaded <> bibDiags
+              let projectDiags = pluginDiags <> laDiagnostics loaded <> bibDiags <> runningVarDiags
               pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded <> pluginSources <> lfSources functions) (laTableFiles loaded <> pluginDataFiles manifest0 <> requiredFileSet manifest0 <> contextFiles <> functionFiles) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook table Map.empty f sf)) pluginCommands (lfProgram functions) (lfSources functions)))
             else do
               let manifest = manifest0
@@ -280,7 +283,7 @@ evaluateProjectWith overlay profile root = do
               (bibDiags, citeKeys, _) <- loadBibliography root manifest
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook table)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
-                  projectDiags = defaultStyleNotice <> styleNoticeDiags <> masterDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
+                  projectDiags = defaultStyleNotice <> styleNoticeDiags <> masterDiags <> runningVarDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
                   reassemble = assembleResults (phChannels hook) style manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook table results f sf)
@@ -365,6 +368,7 @@ reeval profile project style assets citeKeys hook table acc fid sf =
             ctxPath = sfPath sf,
             ctxProfile = profile,
             ctxMeta = meta,
+            ctxVars = projectVarValues (manifestVars (projectManifest project)),
             ctxImports = exports,
             ctxSwatches = Map.keysSet (stSwatches style),
             ctxCharStyles = Map.keysSet (stCharStyles style),
@@ -391,7 +395,7 @@ evaluateLoose path text =
   let fid = FileId 0
       (ast, _, synDiags) = parseAst fid text
       -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
-      ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle noFunctions
+      ctx = EvalContext fid path Dev Map.empty Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle noFunctions
       res = evalFile ctx ast
       syntax = checkText fid text <> synDiags
    in res {erDiagnostics = if hasErrors syntax then syntax else syntax <> erDiagnostics res}

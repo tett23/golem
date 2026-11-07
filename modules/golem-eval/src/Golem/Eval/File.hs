@@ -106,6 +106,8 @@ data EvalContext = EvalContext
     ctxPath :: !FilePath,
     ctxProfile :: !Profile,
     ctxMeta :: !(Map Text Value),
+    -- | the namespace vars, the values of [vars] of manifest.toml (docs/adr/0185)
+    ctxVars :: !(Map Text Value),
     ctxImports :: !(Map FilePath (Map Text Value)), -- exported variables by file
     ctxSwatches :: !(Set Text),
     -- | the character styles, built-in ones included (docs/adr ADR 0005)
@@ -214,7 +216,7 @@ kentenShapes :: [Text]
 kentenShapes = kentenShapeNames
 
 reservedNames :: [Text]
-reservedNames = ["doc", "meta", "true", "false", "nil"]
+reservedNames = ["doc", "meta", "vars", "true", "false", "nil"]
 
 evalFile :: EvalContext -> A.File -> EvalResult
 evalFile ctx0 (A.File fid blocks0) =
@@ -224,7 +226,8 @@ evalFile ctx0 (A.File fid blocks0) =
       (local, styleDiags) = fileStyles (ctxStyle ctx0) header
       ctx = (withFileStyles local ctx0) {ctxSource = source}
       blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
-      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty Map.empty
+      -- meta and vars, which every file reads without @import (docs/adr/0185)
+      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty Map.empty
       (bs0, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
       (bs, nestedDiags) = nestedBreaks bs0
       breakDiags = nestedDiags <> conflictingBreaks bs <> blankLinesInRow bs
