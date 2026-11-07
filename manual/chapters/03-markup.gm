@@ -391,11 +391,11 @@ PDF では、傍注は版面の外の傍注の領域に、注の印のある行�
 セルの中には、段落の中の要素だけを書けます。
 セルの結合はできません。
 
-データが CSV のファイルにあるときは、[code: @table src=data/sizes.csv] のように書くと、そのファイルから表を作ります。
+データが CSV のファイルにあるときは、[code: @table data/sizes.csv] のように最初の引数にファイルのパスを書くと、そのファイルから表を作ります。
 CSV の一行目が見出しの行になります。
 次の表は、このマニュアルの原稿にある CSV のファイルから作っています。
 
-@table src=data/sizes.csv
+@table data/sizes.csv
 
 タブで区切ったファイル（TSV）からも表を作れます。
 拡張子が [code: .tsv] のファイルは TSV として読み、ほかの拡張子のファイルは CSV として読みます。
@@ -403,9 +403,9 @@ CSV の一行目が見出しの行になります。
 [code: align] には、列の揃えを左の列から順にカンマで区切って書きます。
 値は [code: left]（左寄せ）、[code: center]（中央）、[code: right]（右寄せ）、[code: default]（既定）です。
 値を一つだけ書くと、すべての列がその揃えになります。
-次の表は、このマニュアルの原稿にある TSV のファイルから、[code: @table src=data/units.tsv align=left,left,right] で作っています。
+次の表は、このマニュアルの原稿にある TSV のファイルから、[code: @table data/units.tsv align=left,left,right] で作っています。
 
-@table src=data/units.tsv align=left,left,right
+@table data/units.tsv align=left,left,right
 
 表計算のソフトから書き出したファイルは、UTF-8 で保存してください。
 改行は LF でも CRLF でもかまいません。

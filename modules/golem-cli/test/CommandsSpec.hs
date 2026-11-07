@@ -21,7 +21,7 @@ import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..))
 import Golem.Syntax (Diagnostic (..), FileId (..), Profile (..))
 import Golem.Syntax.ShowTree (showTree)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory, removeDirectoryRecursive)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
@@ -34,7 +34,7 @@ commandsTests :: TestTree
 commandsTests =
   testGroup
     "commands on a project"
-    [newTests, templateBuildTests, inspectTests, fmtTests, pluginTests, preflightTests]
+    [newTests, templateBuildTests, tablePathTests, inspectTests, fmtTests, pluginTests, preflightTests]
 
 -- ------------------------------------------------------------------ helpers
 
@@ -224,6 +224,50 @@ templateBuildTests =
           ("en", ["--language", "en"], "SourceSerif4-Regular.otf", "../golem-font/test/fonts/SourceSansPro-Regular.otf")
         ]
     ]
+
+{- | The path of @table as the first argument builds the same outputs as
+src=, byte for byte, in the four targets; src= gives the notice G02129
+(docs/adr/0184). The instance ID of the PDF (the second of /ID) is the
+hash of the bytes of every input (docs/adr/0004), the source among them,
+and differs with the source; it alone is left out of the comparison.
+-}
+tablePathTests :: TestTree
+tablePathTests =
+  testGroup
+    "the path of @table as the first argument (docs/adr/0184)"
+    [ testCase "golem build writes the same files for @table data/t.csv and @table src=data/t.csv" $ withSystemTempDirectory "golem-table" $ \tmp -> do
+        -- one project for both, as golem new gives each project its own identifier
+        _ <- golemAt tmp ["new", "book", "--language", "en", "--no-fonts"]
+        font <- BL.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf"
+        createDirectoryIfMissing True (tmp </> "book/fonts")
+        BL.writeFile (tmp </> "book/fonts/SourceSerif4-Regular.otf") font
+        chapter <- readUtf8 (tmp </> "book/chapters/01.gm")
+        let buildWith line = do
+              writeFiles (tmp </> "book") [("chapters/01.gm", chapter <> "\n" <> line <> "\n"), ("data/t.csv", "Name,Size\nA,1\nB,2\n")]
+              (code, _, err) <- golemAt (tmp </> "book") ["build", "--format", "json"]
+              assertEqual err ExitSuccess code
+              files <- filesUnder (tmp </> "book/build")
+              outputs <- mapM (\p -> (p,) <$> BS.readFile (tmp </> "book/build" </> p)) files
+              removeDirectoryRecursive (tmp </> "book/build")
+              pure (Map.fromList outputs, err)
+        (positional, perr) <- buildWith "@table data/t.csv"
+        (keyword, kerr) <- buildWith "@table src=data/t.csv"
+        perr @?= "[]\n"
+        assertBool kerr ("G02129" `isInfixOf` kerr)
+        forM_ ["html", "epub", "text", "pdf"] $ \t ->
+          assertBool ("no " <> t <> " output") (any ((t <> "/") `isPrefixOf`) (Map.keys positional))
+        Map.keys positional @?= Map.keys keyword
+        forM_ (Map.toList positional) $ \(p, bytes) -> assertBool p (fmap withoutInstanceId (Map.lookup p keyword) == Just (withoutInstanceId bytes))
+    ]
+  where
+    -- /ID [<document ID> <instance ID>], the instance ID as zeros
+    withoutInstanceId bytes = case BS.breakSubstring "/ID [<" bytes of
+      (before, rest) | not (BS.null rest) ->
+        let (docId, afterDoc) = BS.break (== 0x3E) (BS.drop 6 rest)
+            (sep, instanceAndRest) = BS.break (== 0x3C) afterDoc
+            (instanceId, after) = BS.break (== 0x3E) (BS.drop 1 instanceAndRest)
+         in BS.concat [before, "/ID [<", docId, sep, "<", BS.map (const 0x30) instanceId, after]
+      _ -> bytes
 
 -- ------------------------------------------------------------------ golem inspect (golem-cli ADR 0001)
 

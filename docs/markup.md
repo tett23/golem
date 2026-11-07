@@ -275,7 +275,7 @@ v1 で定めるブロックコマンドは次のとおりである。
 - `@bibliography`：参考文献の一覧を出力する。いくつでも置け、二つ以上あれば、それぞれにその範囲の引用を載せ、番号を一覧ごとに 1 から振る（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
 - `@printings`：マニフェストの `[[metadata.printings]]` から、発行の履歴（`2026年10月16日　初版第1刷発行` の形の段落）を一項目一段落で組む。引数と本体は取らない。日本語の本でだけ使える（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。
 - `@figure`：図版を置く（「図版」の節を参照）。
-- `@table src=path format=形式 align=揃え cells=text`：CSV か TSV のファイルから表を作る（「表」の節を参照）。`format`、`align`、`cells` は省ける（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
+- `@table path format=形式 align=揃え cells=text`：CSV か TSV のファイルから表を作る（「表」の節を参照）。パスは最初の引数に書く。`format`、`align`、`cells` は省ける（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。`src=path` とも書けるが廃止予定であり、notice（G02129）を出す（[ADR 0184](adr/0184-table-positional-path.md)）。
 - `@listing path lines=N...M lang=言語`：Golem 以外のファイルの内容をコードとして取り込む（「コードブロック」の節を参照）。`lines` は `N...M` で N 行めから M 行めまで、`N` で N 行めだけを取り込む。パスは最初の引数に書く。`lang` は色分けの言語の名前である。コードブロックの開始の行と同じキーワード引数も書ける。`src=path` とも書けるが廃止予定であり、notice（G02065）を出す（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 - `@style 名前`：段落に段落スタイルを付ける（「段落スタイル」の節を参照）。
 - `@blank-line`、`@blank-line N`：前後のブロックのあいだに一行か N 行の行アキを入れる（「行アキ」の節を参照）。
@@ -370,15 +370,20 @@ v1 で定めるブロックコマンドは次のとおりである。
 データの表は、`@table` で CSV か TSV のファイルから作れる（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
 
 ```
-@table src=data/sizes.tsv align=left,right,right
-@table src=data/export.txt format=tsv
+@table data/sizes.tsv align=left,right,right
+@table data/export.txt format=tsv
 ```
 
-キーワード引数は次の四つである。
+表のファイルのパスは、最初の引数に語か文字列で書く（[ADR 0184](adr/0184-table-positional-path.md)）。
+パスがなければエラー（G02034）になる。
+パスを二つ以上書くとエラー（G02130）になり、表を組まない。
+`src=path` とも書けるが廃止予定であり、`src=` の引数に notice（G02129）を出す。
+位置引数のパスと `src=` を両方書くのも、パスが二つあるので G02130 になる。
+
+キーワード引数は次の三つである。
 
 | 引数 | 値 | 既定 |
 |---|---|---|
-| `src` | 表のファイルのパス | なし（G02034） |
 | `format` | `csv` か `tsv` | パスの拡張子で決める |
 | `align` | 列の揃えのカンマ区切りの並び | すべての列が既定の揃え |
 | `cells` | `text` | `text` |

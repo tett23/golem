@@ -528,7 +528,7 @@ tableTests =
       (e2, p2) @?= ([DiagnosticCode "G07042"], Nothing)
       layoutMini fiveLines tall [] >>= (@?= [("G07042", "表の 1 行目が見出しの行とともに一ページに収まりません", FileId 1, 0, 216)]) . layoutErrors,
     testCase "a table from CSV is set the same way" $ do
-      content <- miniPdf fakeProvider True horizontalStyle "@table src=data.csv\n" [("data.csv", TE.encodeUtf8 "項目,値\n幅,10\n")] >>= fmap BS.concat . inflateAll
+      content <- miniPdf fakeProvider True horizontalStyle "@table data.csv\n" [("data.csv", TE.encodeUtf8 "項目,値\n幅,10\n")] >>= fmap BS.concat . inflateAll
       length (rulesIn content) @?= 3
       assertBool "cells" (fromEnum '幅' `elem` map dGlyph (drawnGlyphs content)),
     testCase "a table has a grid line of space before and after it (golem-driver ADR 0031)" $ do

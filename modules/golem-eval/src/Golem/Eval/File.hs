@@ -1478,15 +1478,22 @@ figure ctx sp args body = do
 
 -- ------------------------------------------------------------------ tables (golem-eval ADR 0004)
 
-{- | @table: a table of a CSV or a TSV file. The arguments are checked
-before the file is read: format= (G02080), align= (G02081) and cells=
-(G02084); the number of align= values is checked against the header row.
+{- | @table: a table of a CSV or a TSV file. The path is the first argument;
+src= is to be retired (G02129), and two paths are G02130 (docs/adr/0184).
+The arguments are checked before the file is read: format= (G02080),
+align= (G02081) and cells= (G02084); the number of align= values is
+checked against the header row.
 -}
 csvTable :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
 csvTable ctx sp args = do
   kw <- keywords ctx args
+  -- G02129: the path as src= is to be retired (docs/adr/0184)
+  mapM_
+    (\asp -> report (notice "G02129" asp "@table の src= は廃止予定です。パスを最初の引数に書きます"))
+    [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
   let arg k = listToMaybe [(asp, v) | A.Located asp (A.Keyword (A.Located _ k') v) <- args, k' == k]
-      src = argText <$> lookup "src" kw
+      paths = map argText [v | A.Located _ (A.Positional v) <- args] <> maybe [] pure (argText <$> lookup "src" kw)
+      src = listToMaybe paths
   format <- case arg "format" of
     Nothing -> pure (Just (tableFormat Nothing (fromMaybe "" src)))
     Just (asp, v) -> case tableFormat (Just (argText v)) (fromMaybe "" src) of
@@ -1503,9 +1510,10 @@ csvTable ctx sp args = do
       Right CellsText -> pure True
       Right CellsMarkup -> err "G02084" asp "cells=markup はまだ実装していません" >> pure False
       Left bad -> err "G02084" asp ("cells は text です: " <> bad) >> pure False
-  case src of
-    Nothing -> err "G02034" sp "@table には src が必要です" >> pure []
-    Just path -> case (format, align) of
+  case paths of
+    [] -> err "G02034" sp "@table にはファイルのパスが必要です" >> pure []
+    _ : _ : _ -> err "G02130" sp "@table にはファイルのパスを一つ書きます" >> pure []
+    [path] -> case (format, align) of
       (Just (Right fmt), Just al)
         | cells ->
             asset ctx sp path >>= \case

@@ -32,7 +32,7 @@ make はこの方法を使っている。
 結果は次の表のとおりである。
 この表は CSV のファイルから読んでいる。
 
-@table src=data/timings.csv align=left,right,right
+@table data/timings.csv align=left,right,right
 
 ハッシュの計算は、時刻の比較の二十倍以上の時間がかかる。
 それでも、コンパイルの時間に比べれば小さい。
