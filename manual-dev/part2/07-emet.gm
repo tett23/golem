@@ -1,0 +1,284 @@
+@label emet
+# 関数の言語 Emet
+
+Emet は、[code: .emet] のファイルに関数を書く言語である。[index reading=えめと: Emet]
+[code: .gm] は、[code: .emet] の関数を、インラインのコマンド、ブロックコマンド、式の関数、フィルタとして使う。
+golem-emet が言語の全体（読み込み、型の検査、評価、整形）を持ち、golem-driver が要求のハンドラと [code: .gm] から使う関数の表を作る。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#関数の言語-emet]（仕様書の「関数の言語 Emet」の節）]
+この章は、Emet の設計の理由と、それを実装するモジュールの分け方を説明する。
+文法、型の規則、組み込みの関数の一覧は、golem-emet の仕様書にある。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-emet/specifications.md]（golem-emet の仕様書）]
+使い手から見た書き方は、使い手のマニュアルの付録J「関数を書く言語 Emet」にある。
+
+Emet は 1.x のあいだ実験的な機能であり、互換の約束に含めない。
+[code: E] で始まる diagnostic のコードも約束しない（第[ref-number diagnostics]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0174-compatibility-promises-for-1-0.md]（docs/adr の ADR 0174「1.0.0 から互換を守る範囲と、廃止の手順」）]
+
+## 関数とプラグインの立ち位置
+
+Golem に機能を足す仕組みは、関数とプラグイン（第[ref-number plugins]章）の二つある。
+二つは、書く人と配り方で分けた。
+関数は、社内の使い手や組版のオペレーターが、手元の小さな計算や書式のために書く。
+プラグインは、技術者が作って配る。
+
+この分け方から、関数には配布の仕組みを持たせなかった。
+[code: plugins.lock] もレジストリもなく、関数のファイルはプロジェクトのルートの中のパスでだけ指す。
+ほかのプロジェクトで使うには、ファイルをコピーする。
+Golem は関数の出どころを記録しない。
+配る必要が出た機能は、プラグインとして作るべきものである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0162-calling-emet-functions-from-gm.md]（docs/adr の ADR 0162「.gm から Emet の関数を使う」）]
+
+プラグインは wasm で隔離するが、関数は Golem の中で評価する。
+関数を Golem の言語として持つので、隔離をランタイムに頼らず、言語の設計で同じ性質を保つ必要がある。
+次の三つが、その性質である。
+
+- 純粋であること。関数は、要求（後の「[ref-title emet-requirements]」の節）を通さずに外の値を読めない。
+- 止まること。評価の手数と深さに上限を設け、上限はマシンによらず言語の意味だけで数える。
+- 誤りを組む前に見つけること。型を静的に検査し、パターンマッチの網羅を検査する。
+
+## 言語の形
+
+Emet は Haskell の方言であり、[code: .gm] の [code: \[...\]] と [code: @] の記法を使わない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0160-emet-function-language-core.md]（docs/adr の ADR 0160「関数を書く言語 Emet の核」）]
+メンテナーの案は、Haskell の構文の多くを残したまま、次の点を変えた。
+
+- 正格評価にする。ただし [code: where] の束縛は、使ったときに一度だけ評価する。
+- オフサイドルール（字下げで構造を決める規則）を採らない。字下げを決めるのは [code: golem fmt] であり、字下げが意味を持つと整形と相性が悪いからである。
+- [code: if] と [code: for] を持たない。分岐はパターンマッチ、ガード、[code: case]、三項演算子で、繰り返しは再帰で書く。
+- パターンマッチは網羅していなければならない。
+- 関数が処理系に求めるもの（要求）を、シグネチャに書く。
+- 型クラスを持たない。ただし、後から足すための余地を残す。
+
+オフサイドルールを採らないので、項目の区切りは改行で示す。
+Go や Kotlin と同じく、改行を区切りとして読み、続きの行であることが字句で分かる場合だけ改行を空白として読む。
+行の最後が二項演算子、[code: =]、[code: ->]、[code: ::]、[code: ,]、[code: ?]、[code: :] か、次の行の最初が [code: \|]、[code: -] を除く二項演算子、[code: ?]、[code: :]、[code: where]、[code: ->] なら続きの行であり、括弧の中の改行も空白である。
+どの改行が区切りかは前後の字句と括弧の入れ子だけで決まり、行頭の桁によらない。
+そのため、[code: golem fmt] が字下げを変えても区切りは変わらない。
+[code: ;] は字句として持たない。
+
+## モジュール
+
+golem-emet のモジュールは、処理の段階ごとに分けてある。
+
+| モジュール | 役割 |
+| --- | --- |
+| [code: Golem.Emet] | 入口。[code: loadProgram]、[code: callFunction]、[code: fileHandlers]、[code: programRequirements] など |
+| [code: Golem.Emet.Path] | [code: import] と要求 [code: file] のパスの正規化 |
+| [code: Golem.Emet.Parse] | 読み込み（G01001 から G01003）と文法による解析（E01100 から E01102） |
+| [code: Golem.Emet.Generated] | [code: grammar/Emet.hpeg] から peg-hs が生成したパーサー |
+| [code: Golem.Emet.Syntax] | AST |
+| [code: Golem.Emet.Literal] | 数、文字列、文字のリテラルの値 |
+| [code: Golem.Emet.Check] | 名前、型の制約の収集、ガードと網羅の検査。検査を通ったモジュールを [code: Golem.Emet.Core] の形にする |
+| [code: Golem.Emet.Solve] | 型の制約を解く |
+| [code: Golem.Emet.Exhaust] | パターンの網羅性の検査 |
+| [code: Golem.Emet.Types] | 型、要求の列、三つの述語 |
+| [code: Golem.Emet.Core] | 名前を解決した中間の形。評価器はこれを評価する |
+| [code: Golem.Emet.Eval] | 評価器 |
+| [code: Golem.Emet.Builtins]、[code: Golem.Emet.Prim] | 組み込みのモジュールの [code: .emet] の原文と、Haskell で書いたプリミティブ |
+| [code: Golem.Emet.IR] | 意味論 IR と、組み込みのモジュール [code: Inline] と [code: Block] の値のあいだの変換 |
+| [code: Golem.Emet.Gm] | [code: .gm] が使う関数の表とフィルタ |
+| [code: Golem.Emet.Fmt]、[code: Golem.Emet.Lint] | 整形と lint |
+| [code: Golem.Emet.Ide]、[code: Golem.Emet.Highlight]、[code: Golem.Emet.Outline]、[code: Golem.Emet.Rename] | LSP のための純粋な関数 |
+
+golem-emet が依存する golem のパッケージは、golem-syntax、golem-eval、golem-doc である（第[ref-number modules]章の図[ref-number fig-modules]）。
+golem-eval の数の演算を使うので、[code: .emet] の数の規則と、数の演算の diagnostic（G02003 など）は [code: .gm] の式文脈と同じになる。
+golem-emet はファイルシステムに触れない。
+読むファイルは、呼び出し側（golem-driver と golem-lsp）が関数として渡す。
+
+## 文法と構文解析
+
+文法は [code: modules/golem-emet/grammar/Emet.hpeg] に peg-hs の記法で書き、[code: scripts/gen-parser.sh] が [code: Golem.Emet.Generated] を生成する。[index reading="Emet.hpeg": Emet.hpeg]
+Golem の [code: .gm] の文法と同じく生成物をコミットし、CI が生成し直して差分がないことを確かめる（第[ref-number build-test]章「[ref-title build-test]」）。
+生成したパーサーは、AST を返す入口と、[code: golem fmt] のためのロスレスな構文木を返す入口を持つ。
+
+改行の規則は、peg-hs の引数付きの規則で書く。
+式、パターン、型の規則は、括弧の中かどうかを表す引数 [code: nl] を取る。
+字句の後ろの空白を、[code: nl] が真なら改行とコメントを含めて読み、偽なら空白とコメントだけを読む。
+[code: nl] が偽の位置で読まれずに残った改行が、項目の区切り（[code: SepNl]）になる。
+続きの行を示す字句は、後ろの改行（行の最後の演算子）か、前の改行（次の行の最初の演算子）をつねに読む。
+前の改行を読んでから字句に一致しなければ、後戻りして改行を区切りとして読み直す。
+PEG は順序付きの選択と後戻りを持つので、この規則を字句解析器の状態なしに書ける。
+
+文法は誤りからの回復を持たない。
+一つのファイルに出す構文の誤り（E01100）は最初の一つだけである。
+LSP の色付けとアウトラインは、誤りのある文字列でも誤りの前の部分を使う。
+[code: Golem.Emet.Parse] の [code: parsedPrefix] は、文字列を宣言の初めの行で区切り、区切りごとに解析して、読める部分の終わりを探す。
+各区切りの解析は区切りの長さに比例するので、誤りが文字列の初めにあっても、全体の長さの二乗にはならない。
+
+## 型の検査
+
+最上位の関数はシグネチャを必ず持つ（E02102）。
+型の推論は、[code: where] の中の束縛と式の中にとどまる。
+シグネチャを必須にしたのは、[code: .gm] から呼ぶ関数の引数の種類（位置引数、キーワード引数、散文スロットなど）をシグネチャから決めるためと、誤りの位置を関数の中に閉じ込めるためである。
+
+型の検査は、制約を集める段（[code: Golem.Emet.Check]）と解く段（[code: Golem.Emet.Solve]）に分けた。
+集める段は構文をたどって制約を出すだけで、単一化をしない。
+制約は次の五つである。
+
+- 等しさ：二つの型が同じである。単一化で解く。
+- 広がり：一つめの型の値を、二つめの型を求める位置に渡せる。数は自然数、整数、有理数の順で広がり、[code: List]、[code: Maybe]、組の中にも及ぶ。
+- 述語：型が「数」「比べられる型」「つなげる型」のどれかを満たす。
+- 算術：算術の演算子の左右の型と結果の型。左右が決まってから結果を決める。
+- 符号の反転：単項の [code: -] の型と結果の型。
+
+解く段は、決められる制約がなくなるまで繰り返し、残った型変数を既定の規則で決める。
+算術の左右がどちらも型変数のまま残れば [code: Rat] にするのは、Haskell の [code: default] 宣言と同じ働きである。
+
+段を分けたのは、型クラスを後から足せるようにするためである。
+述語の三つは閉じた組み込みの制約で、満たす型は [code: Golem.Emet.Types] の表で引く。
+型クラスを足すときは、この三つを組み込みの型クラスとして開き、述語を解く規則にインスタンスを足せば済む。
+単一化の中で述語をその場で決める形にしていたら、型の検査を書き直すことになる。
+同じ理由で、[code: class]、[code: instance]、[code: deriving]、[code: default] を予約語にし（使えば E01102）、データ型のコンストラクタの宣言の順を AST に残している。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0160-emet-function-language-core.md#型クラスの余地]（docs/adr の ADR 0160 の「型クラスの余地」）]
+
+パターンマッチの網羅性は、[code: Golem.Emet.Exhaust] がパターンの行列に対するベクトルの有用性で検査する（Maranget の方法）。
+網羅していなければ E03100 とし、どれにも当たらない値の形の例をメッセージに添える。
+ガードの条件は意味で解析せず、構文の規則で扱う。
+ガードの並びの最後は [code: otherwise] でなければならない（E03102）。
+条件の意味を解析すると、どの条件の組を網羅と見なすかが解析の強さで決まり、その範囲を仕様の言葉で書きにくいからである。
+
+@label emet-requirements
+## 要求とハンドラ
+
+関数が処理系に求めるもの（要求）は、Koka にならい、シグネチャの矢印の後ろ、結果の型の前に列で書く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0161-emet-requirements-and-driver-handlers.md]（docs/adr の ADR 0161「Emet の関数の要求と driver のハンドラ」）]
+代数的エフェクトを部分的に実装したものであり、ハンドラは golem-driver だけが持ち、利用者は書けない。
+
+```haskell
+lookupReading :: String -> <file "data/words.tsv"> Maybe String
+```
+
+v1 の要求は [code: file "パス"] だけである。
+[code: File.read "パス"] の型は [code: <file "パス"> String] で、引数は文字列のリテラルに限る（E05107）。
+読むファイルを型の検査の時点で決めるので、[code: manifest.toml] と突き合わせる検査を、関数を呼ぶ前に行える。
+
+列は型 [code: TF] の矢印ごとに持ち、要求の集合と開いた列の変数からなる。
+本体の列（等式の引数の数を n として、n 個目の矢印の列）を、本体を検査するあいだの「囲む列」とする。
+矢印を一つ適用するたびに、その矢印の列が囲む列に含まれるという制約を出す。
+部分適用は本体の矢印まで適用しないので、要求を持たない。
+[code: List.map] のような組み込みの高階の関数は、渡された関数の列の変数を自分の列にするので、要求を持つ関数も渡せる。
+囲む列にない要求を使えば E05101、本体の前の矢印に列を書けば E05106 である。
+
+ハンドラは golem-driver の [code: Golem.Driver.Functions] が作る。
+[code: manifest.toml] の [code: \[functions.requires\]] の [code: file] のファイルを、関数を呼ぶかどうかによらず、プロジェクトを読み込む時点で一度だけ読む。
+評価のあいだ、[code: File.read] はハンドラから読んだ文字列を受け取るだけで、ファイルシステムに触れない。
+同じパスは一回のビルドの中でいつも同じ値になるので、ファイルを並列に評価しても結果は変わらない。
+golem-driver は、[code: .gm] の [code: @import] と [code: \[\[filters\]\]] から [code: import] でたどれるすべての [code: .emet] のシグネチャの要求（[code: programRequirements]）を [code: \[functions.requires\]] と突き合わせ、ないものを E05104 にする。
+[code: \[functions.requires\]] の誤りは、プロジェクトの段階のコード（G03101、G03102）である。
+
+## 評価
+
+評価器（[code: Golem.Emet.Eval]）は、継続を明示したスタックを持つ抽象的な計算機である。[index reading="Emetのひょうかき": Emet の評価器]
+GHC のスタックに深さを任せると、深さの上限がランタイムの設定で変わるからである。
+末尾の位置（等式の右辺、[code: case] の選択肢とガードの右辺、三項演算子の枝、[code: &&] と [code: \|\|] の右辺）の呼び出しは、呼び出し元の枠を置き換え、深さを増やさない。
+これは最適化ではなく言語の約束である。
+末尾でない呼び出しの深さが 10000 を超えると E04101 にする。
+
+手数は、関数の呼び出し、プリミティブの呼び出し、コンストラクタの適用、演算子、等式と選択肢の選択、[code: where] の束縛の評価を一つずつ数える。
+[code: ++] と、文字列とリストを作るプリミティブは、作った値の長さも足す。
+[code: s ++ s] を繰り返して、手数の小さいまま巨大な値を作ることを防ぐためである。
+[code: .gm] からの一つの呼び出しの手数が 100,000,000 を超えると E04100 にする。
+フィルタの上限は、当てる [code: .gm] のバイト数に 10000 を掛けたものを足した値である（[code: Golem.Emet.Gm.filterFuel]）。
+手数は言語の意味で数えるので、止まる位置と diagnostic はマシンによらない。
+
+上限の値は、正常に終わる仕事の手数を測って、その最大の約 3 倍とした。
+測った仕事は、golem-emet のテスト「the measured work is a third of the limit or less」が確かめている。
+
+| 仕事 | 手数 |
+| --- | --- |
+| 見本のプラグイン [code: kansuji] と同じ仕事（19 桁の自然数を漢数字にする） | 408 |
+| 見本のプラグイン [code: first-ruby] と同じ仕事を文字列で行うもの | 20,312 |
+| 1000 万回の末尾再帰 | 30,000,002 |
+
+利用者が [code: manifest.toml] で上限を変える手段は設けていない。
+本ごとに上限が変わると、同じ関数が本によって動いたり止まったりするからである。
+
+[code: where] の束縛は関数が呼ばれるたびに作り、値の束縛は最初に使ったときに一度だけ評価して結果を残す。
+束縛を評価している途中で同じ束縛の値を求めたら、手数の上限を待たずに E04102 で止める。
+比較、算術、[code: ++] の演算子は、左の値の型から実装の表（[code: instancesOf]）を引いて呼ぶ。
+型クラスの辞書渡しと同じ形であり、型クラスを足すときは表に利用者のインスタンスを足す。
+
+## .gm からの呼び出し
+
+[code: .gm] は、[code: @import functions/book.emet as book] で [code: .emet] を取り込む。
+パスの拡張子が [code: .emet] なら関数の取り込み、そうでなければ変数の取り込みである。
+取り込んだ関数は名前空間を通してだけ参照するので、組み込みのコマンドやプラグインのコマンドと名前が重ならない。
+関数の種類は、シグネチャの [code: pub] の後ろの語（[code: inline]、[code: block]、[code: filter]、[code: fn]）で決まる。
+[code: .emet] の識別子は [code: -] を持てないので、[code: .gm] に出す名前は種類の語の後ろに文字列で書ける（[code: pub inline "tax-included" taxIncluded]）。
+
+関数の表の型（[code: FunctionNamespace]）は golem-eval の [code: Golem.Eval.Functions] が持ち、golem-eval は golem-emet に依存しない。
+golem-emet の [code: Golem.Emet.Gm] がこの型の値を作り、golem-driver がそれを [code: EvalContext] に入れる。
+依存をこの向きにしたので、[code: .gm] の評価器は関数の言語を知らずに済む。
+同じ [code: .emet] を多くのファイルが取り込んでも、読み込みと型の検査は一度だけ行う。
+
+関数を呼ぶのは、プラグインと同じくファイル内評価（S0）だけである（第[ref-number ir]章の「[ref-title stages]」の節）。
+引数は組み込みのコマンドと同じく評価してから、型に写して渡す。
+数、文字列、真偽値、配列だけが渡せ、写せなければ関数を呼ばずに G02119 から G02123 にする。
+引数の並び（位置引数、可変長引数、キーワード引数、散文スロットか本体）と、渡せない型の引数は、宣言の時点で E06100 から E06106 として検査する。
+誤りのない宣言だけが [code: programExports] に入る。
+
+組み込みのモジュール [code: Inline] と [code: Block] は、意味論 IR を表すデータ型を持つ（第[ref-number ir]章）。
+コンストラクタの範囲は、プラグインとの ABI のシリアライズ形式と同じである。
+[code: Golem.Emet.IR] が意味論 IR と [code: .emet] の値を相互に変換する。
+ソースの位置、ブロックのラベルと言語、注の番号は、データ型の欄に出さない。
+外から来たノードは、宣言の欄の後ろに、それらを引く添字を一つ多く持つので、受け取ったまま返したノードは元の値を保つ。
+遅延した値（[code: Inline.Deferred]）は中身の読めない値で、関数は返すか動かすことしかできない。
+関数が返した値は [code: Golem.Doc.Validate] で検査し、違反は E06104 にする。
+意味論 IR の不変条件を型で防がないのは、プラグインの出力と同じ検査を共有するためである。
+
+フィルタは、[code: manifest.toml] の [code: \[\[filters\]\]] に [code: plugin] の代わりに [code: function] を書いて宣言する。
+プラグインのフィルタと関数のフィルタは、宣言の順に一つの並びとして当てる。
+
+## lint と fmt
+
+[code: Golem.Emet.Lint] は、使われていない [code: pub] のない最上位の宣言（E07100）、使われていない [code: import]（E07101）、使われていないパターンの変数（E07102）を見つける。
+どれもエラーで、[code: golem lint] と LSP が、プロジェクトの使う [code: .emet] に当てる。
+読み込みか型の検査に誤りのあるファイルには当てない。
+使われていない [code: where] の束縛（E02109）は lint ではなく型の検査の notice であり、[code: golem build] も出す。
+
+[code: Golem.Emet.Fmt] の [code: formatEmet] は、ロスレスな構文木の字句の上で整形するので、コメントは元の位置に残る。
+構文木は、区切りの改行（[code: SepNl]）と空白の改行を別の種類の字句として持つ。
+区切りの改行の後ろの行はブロックの段に、空白の改行の後ろの行（続きの行）は一段下げて置く。
+足す改行は [code: {] の後ろ、[code: }] の前、ガードの [code: \|] の前だけで、どれも文法の読み方を変えない。
+書き手の改行は残し、行の長さで折り返さない。
+引数なしの [code: golem fmt] は、プロジェクトの使う [code: .emet] も整形する。
+
+LSP は、[code: .emet] の diagnostics、補完、宣言への移動、参照の検索、ホバー、色付け、アウトライン、名前の変更を持つ（第[ref-number lsp]章）。
+どれも golem-emet の純粋な関数が作り、golem-lsp が LSP の形にする。
+LSP は、プロジェクトの使う [code: .emet] と [code: \[functions.requires\]] のファイルを、[code: @table] の表のファイルと同じ仕組みで監視し、変われば、それを使う [code: .gm] を評価し直す。
+
+@label emet-codes
+## diagnostics のコード
+
+Emet の diagnostic のコードは、[code: E] と 5 桁の数字である。[index reading="Eのこーど": E のコード]
+形は [code: G] のコードと同じで、上 2 桁が段階、下 3 桁が段階の中の番号であり、番号は 100 から使う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/diagnostics.md]（docs/diagnostics.md）]
+
+| 上 2 桁 | 段階 | 主なモジュール |
+| --- | --- | --- |
+| 01 | 構文 | golem-emet |
+| 02 | 名前と型 | golem-emet |
+| 03 | パターンマッチの網羅性 | golem-emet |
+| 04 | 評価の上限と循環 | golem-emet |
+| 05 | 要求 | golem-emet、golem-driver |
+| 06 | [code: .gm] から使う関数の宣言と出力 | golem-emet |
+| 07 | lint | golem-emet、golem-driver |
+
+原因が [code: .gm] と同じ誤りは、[code: G] のコードを使う。
+読み込みの誤り（G01001 から G01003）、[code: import] と要求のパスの誤り（G03002 から G03004）、数の演算の誤り（G02003 など）がそれに当たり、位置は [code: .emet] の中を指す。
+[code: .gm] の側の呼び出しの誤り（G02119 から G02123）と、[code: \[functions.requires\]] の誤り（G03101、G03102）も [code: G] のコードである。
+一つの原因に一つのコードを割り当てるので、同じ種類の誤りでも直す人とファイルが違えば、コードを分けている（G03101 と E05100）。
+
+E04100、E04101、E04102 の位置は、評価を始めた [code: .gm] の呼び出しである。
+同じ関数でも、止まるかどうかは呼び出しの引数で決まるからである。
+[code: .emet] の中を指すと、一つの誤りが呼び出しの数だけ LSP に並ぶ。
+[code: .emet] のどれか一つに読み込みか型の検査の誤りがあれば、[code: .emet] の関数を通した呼び出しで G02022、G02009、G02002 を報告しない。
+原因は [code: .emet] の誤りであり、呼び出しの側の誤りを重ねて出さないためである。
+
+## テスト
+
+golem-emet のテストスイートは、言語（[code: LanguageSpec]）、要求（[code: RequirementSpec]）、[code: .gm] から使う関数の宣言（[code: ExportSpec]）、lint（[code: LintSpec]）、整形（[code: FmtSpec]）、エディタの機能（[code: IdeSpec]）に分かれる。
+ADR のテスト設計に書いた例は、ここにある。
+
+```sh
+$ cabal test golem-emet
+```
+
+[code: .gm] からの呼び出しは、golem-eval の [code: FunctionSpec] と、golem-driver の [code: FunctionsSpec]、[code: EmetSamplesSpec]、[code: CallsSpec] が確かめる。
+golem-driver のフィクスチャ [code: emet-samples] は、税込みの価格、漢数字、ルビのフィルタ、TSV の表のような、使い手が書きそうな関数を集めた見本である。
+機能を組み合わせた二冊のフィクスチャ（[code: complex-vertical] と [code: complex-horizontal]）も Emet の関数とフィルタを使い、見た目の回帰テストに入っている（第[ref-number determinism]章）。
+LSP の機能は golem-lsp の [code: FunctionsLspSpec] が、tree-sitter の文法は CI の [code: editors] ジョブが確かめる。
+[code: editors] ジョブは、二つのマニュアルの [code: .emet] も読む。
+使い手のマニュアルの付録J は、[code: manual/functions/book.emet] の関数を本文で呼んでいるので、マニュアルを組む CI のジョブがその関数も確かめる。

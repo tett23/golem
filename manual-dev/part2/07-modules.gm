@@ -59,7 +59,7 @@ golem-length を使うのは、golem-doc、golem-driver、golem-html、golem-lay
 
 上から読むと、golem-cli が golem-lsp を通して golem-driver を使い、golem-driver が出力の各パッケージと golem-lint、golem-plugin、golem-emet を束ねる。
 PDF の組版（行とページを組み、PDF を書くこと）は、golem-typeset が受け持つ。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0192-split-pdf-typesetting-from-golem-driver.md]（docs/adr の ADR 0192「PDF の組版を golem-driver から新しいパッケージに分ける」）]
-golem-emet は関数を書く言語 Emet を持ち、数の演算を golem-eval と共有する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0160-emet-function-language-core.md]（docs/adr の ADR 0160「関数を書く言語 Emet の核」）]
+golem-emet は関数を書く言語 Emet を持ち、数の演算を golem-eval と共有する（第[ref-number emet]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0160-emet-function-language-core.md]（docs/adr の ADR 0160「関数を書く言語 Emet の核」）]
 golem-preflight は、golem-typeset が PDF を書きながら作る組んだ結果の写し（[code: Golem.Preflight.View]）を、プリフライトの設定に従って検査する。
 PDF/X-4 の要件の検査は、golem-pdf の [code: Golem.Pdf.X4.verify] が書く前の PDF のオブジェクトに対して行う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
 下の層は、golem-project、golem-assemble、golem-doc、golem-parser、golem-syntax の順に積み重なる。
@@ -157,7 +157,7 @@ golem-lsp も golem-driver に依存し、ファイルの変更ごとに S0 と�
 ファイルをまたぐ操作には、性質の違う二つがある。
 章を並べて一冊にする内容の合成と、共通の変数を使えるようにする定義の取り込みである。
 内容の合成はマニフェストの章の配列で表し、原稿がほかの原稿の内容を取り込む記法は持たない。
-定義の取り込みは [code: @import path as ns] で書き、取り込めるのは [code: @set] の変数だけである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#プロジェクトの構成と-import]（仕様書の「プロジェクトの構成と import」の節）]
+定義の取り込みは [code: @import path as ns] で書き、取り込めるのは [code: @set] の変数と、[code: .emet] の関数だけである（第[ref-number emet]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#プロジェクトの構成と-import]（仕様書の「プロジェクトの構成と import」の節）]
 
 この分け方のおかげで、内容の循環は構造の上で起こりえず、各ファイルは単独で検査できる単位になる。
 この単位が、並列のビルドと LSP の再評価の土台である。
