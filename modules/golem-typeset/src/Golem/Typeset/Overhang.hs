@@ -4,7 +4,7 @@ text, right of it in vertical text. The drawing of the PDF places the
 readings and the marks with the same functions, so that the overhang the
 layout reckons is the one drawn.
 -}
-module Golem.Driver.Overhang
+module Golem.Typeset.Overhang
   ( rubyAcross,
     rubyOverhang,
     kentenAcross,

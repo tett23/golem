@@ -7,7 +7,7 @@ no mutable state, so the table needs neither IO nor unsafePerformIO, and
 threads that look up the same key at once at worst evaluate one pure
 thunk twice.
 -}
-module Golem.Driver.Memo
+module Golem.Typeset.Memo
   ( memoWith,
     digitLimit,
     textDigits,
@@ -21,7 +21,7 @@ import Data.Char (ord)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
-import Golem.Driver.Pdf (Shaping (..))
+import Golem.Typeset (Shaping (..))
 
 -- | Each digit of a key is below this: 2^24, above every Unicode code point.
 digitLimit :: Int

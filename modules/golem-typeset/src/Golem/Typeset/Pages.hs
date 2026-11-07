@@ -2,7 +2,7 @@
 where a character of a text is in the source, and the JSON of the start
 of each page that golem build writes next to the PDF.
 -}
-module Golem.Driver.Pdf.Pages
+module Golem.Typeset.Pages
   ( sourceAt,
     pagesJson,
   )

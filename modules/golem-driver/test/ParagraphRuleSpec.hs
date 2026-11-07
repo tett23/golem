@@ -8,9 +8,9 @@ import Data.List (isSuffixOf)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Driver.Pdf (PdfLayout (..))
 import Golem.Layout.Paginate (HeadingBlock (..), PageOut (..), Slotted (..))
 import Golem.Syntax
+import Golem.Typeset (PdfLayout (..))
 import Support
 import Test.Tasty
 import Test.Tasty.HUnit

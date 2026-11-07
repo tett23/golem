@@ -16,7 +16,6 @@ import FunctionsSpec (functionsTests)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
 import HeadingLevelsSpec (headingLevelsTests)
 import LinkSpec (linkTests)
-import MemoSpec
 import OutputGoldenSpec
 import PageElementsSpec
 import PageStartsSpec (pageStartsTests)
@@ -24,7 +23,6 @@ import ParagraphRuleSpec
 import ParagraphSpec
 import PdfSpec
 import ReferencesSpec
-import RuleShapeSpec
 import SecuritySpec
 import StylesSpec
 import TableFilesSpec
@@ -64,7 +62,6 @@ tests skips =
         testGroup "the separator after a number (golem-html ADR 0002)" numberSeparatorTests,
         testGroup "the default bullet by the output (golem-driver ADR 0044)" bulletTests,
         versionTests,
-        memoTests,
         producerTests,
         securityTests,
         tableFileTests,
@@ -124,7 +121,6 @@ tests skips =
              testGroup "footnote marks and numbers (ADR 0018)" footnoteTests,
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
-             testGroup "the shapes of the line styles of a rule (ADR 0028)" ruleShapeTests,
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
              testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
              publicDomainTests skips,

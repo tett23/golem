@@ -1,6 +1,6 @@
 # ADR 0196: `[vars]` の文字列を、golem-driver が評価して `PdfInput` で golem-typeset に渡す
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 
