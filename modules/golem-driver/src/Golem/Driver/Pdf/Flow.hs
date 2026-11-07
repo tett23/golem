@@ -634,10 +634,11 @@ pageFiles inp layout = drop 1 (scanl next firstFile (pagesOf (plPages layout)))
 
 {- | Where each page starts in the source, in order (docs/adr ADR 0195):
 the first character of its first line (through the columns of the page
-in order, as 'pageFiles'), as a file and a byte offset. A character
-outside the block of the line (the number of a heading, a table of
-contents entry, the cells of a table read from a file) gives the start
-of the block. A page without lines has none.
+in order, as 'pageFiles'), as a file and a byte offset. Characters the
+source does not have (the number of a heading, a list marker) are
+skipped; without a character of the source inside the block of the line
+(a table of contents entry, the cells of a table read from a file), the
+start of the block. A page without lines has none.
 -}
 pageStarts :: PdfLayout -> [Maybe (FileId, Int)]
 pageStarts layout = map start (pagesOf (plPages layout))
@@ -646,7 +647,8 @@ pageStarts layout = map start (pagesOf (plPages layout))
     lineStart lid =
       let block = snd <$> Map.lookupLE lid (plLineSpans layout)
           sets = maybe (maybe [] pure (Map.lookup lid (plLines layout))) id (Map.lookup lid (plTableLines layout))
-          inside b c = spanFile (snd (bcSource c)) == spanFile b && spanStart b <= bcAt c && bcAt c <= spanEnd b
+          -- a block of no length (a heading) holds whatever of its file its line shows
+          inside b c = spanFile (snd (bcSource c)) == spanFile b && bcAt c >= 0 && (spanLength b == 0 || (spanStart b <= bcAt c && bcAt c <= spanEnd b))
        in case block of
             Just b -> case [bcAt c | sl <- sets, Box _ c <- lineItems (slLine sl), inside b c] of
               off : _ -> Just (spanFile b, off)

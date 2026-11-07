@@ -18,7 +18,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
 
 box :: Sp -> Item
-box w = Box w (BoxContent "w" True 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource)
+box w = Box w (BoxContent "w" True 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource 0)
 
 -- | Words of the given widths with glue of width 6, the stretch and the shrink given between them.
 words' :: Sp -> Sp -> [Sp] -> [Item]

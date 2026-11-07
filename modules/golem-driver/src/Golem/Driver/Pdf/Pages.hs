@@ -22,15 +22,16 @@ import Golem.Syntax (FileId, LineCol (..), SrcSpan (..), jsonString, mkLineIndex
 the source, as a byte offset in the file of its span. The text is the
 source of the span with characters dropped (the newlines of a paragraph,
 the backslashes of escapes); each character is matched with the first
-of its bytes in the source after the character before it. A text that
-does not come from its span that way (a value, a heading number) and a
-span outside the sources start at the start of the span. Applied to a
-span and a text, the offsets are found once for all the characters.
+of its bytes in the source after the character before it. The
+characters of a text that does not come from its span that way (a
+value, the number of a heading) or of a span outside the sources are
+not in the source: -1. Applied to a span and a text, the offsets are
+found once for all the characters.
 -}
 sourceAt :: Map FileId ByteString -> SrcSpan -> Text -> Int -> Int
 sourceAt sources sp t = case Map.lookup (spanFile sp) sources >>= align . slice of
   Just offs -> \i -> spanStart sp + (if i >= 0 && i < U.length offs then offs U.! i else 0)
-  Nothing -> const (spanStart sp)
+  Nothing -> const (-1)
   where
     slice src = BS.take (spanEnd sp - spanStart sp) (BS.drop (spanStart sp) src)
     align bs = U.fromList <$> go bs 0 (T.unpack t)

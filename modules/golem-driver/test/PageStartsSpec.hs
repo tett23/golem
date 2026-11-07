@@ -97,6 +97,13 @@ pageStartsTests =
             assertBool "on the first line" (ch `T.isInfixOf` firstLine)
             assertBool (T.unpack json) (("{\"page\":2,\"file\":\"a.gm\",\"line\":0,\"character\":" <> T.pack (show (cps + 1)) <> "}") `T.isInfixOf` json)
           _ -> assertFailure "one page",
+      testCase "the number of a heading is not in the source: the page starts at its title" $ withSystemTempDirectory "golem-pages" $ \tmp -> do
+        writeProject tmp miniManifest (threeLines <> "\n[headings.1]\nnumber = \"{n}.\"\n") "\n\n# 見出し\n\n本文。\n" fakeFontFiles
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
+        assertEqual "no errors" [] [diagMessage d | d <- brDiagnostics r, isError d]
+        json <- TE.decodeUtf8 <$> BS.readFile (tmp </> "build/pdf/pages.json")
+        -- the heading fills the first page; the paragraph starts the second
+        json @?= "[{\"page\":1,\"file\":\"a.gm\",\"line\":2,\"character\":2},{\"page\":2,\"file\":\"a.gm\",\"line\":4,\"character\":0}]\n",
       testCase "the same file in parallel and in sequence" $ do
         (_, a) <- buildPages True
         (_, b) <- buildPages False

@@ -135,9 +135,10 @@ data ComposeEnv = ComposeEnv
     ceBoxSource :: !BoxSource,
     {- | where a character of a text is in the source (docs/adr ADR 0195):
     the span and the text of a 'Text' inline and the index of a character
-    in the text give a byte offset in the file of the span. The text may
-    not be the source as it is (newlines dropped, escapes, values); the
-    default is the start of the span. Applied to a span and a text once
+    in the text give a byte offset in the file of the span, or -1 when the
+    source does not have the character. The text may not be the source
+    as it is (newlines dropped, escapes, values); the default is the
+    start of the span. Applied to a span and a text once
     per inline, so that the work can be shared.
     -} ceSourceAt :: SrcSpan -> Text -> Int -> Int,
     -- | where the character at an index of the piece 'itemsFor' makes is in the source; set by 'composeInlines'

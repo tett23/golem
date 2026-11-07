@@ -65,8 +65,9 @@ data BoxContent = BoxContent
     -} bcSource :: !BoxSource,
     {- | where the first character of the box is in the source, a byte
     offset in the file of the span of 'bcSource' (docs/adr ADR 0195): the
-    character itself, where the span is that of the whole text. The
-    algorithm does not read it, and nothing that draws the box does.
+    character itself, where the span is that of the whole text; -1 for
+    characters the source does not have. The algorithm does not read it,
+    and nothing that draws the box does.
     -} bcAt :: !Int
   }
   deriving stock (Eq, Show)
