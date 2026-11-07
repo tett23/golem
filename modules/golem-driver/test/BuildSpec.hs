@@ -16,6 +16,7 @@ import Golem.Doc.IR (InlineF (..))
 import Golem.Driver
 import Golem.Driver.New
 import Golem.Driver.Version (golemVersion)
+import Golem.Driver.Version.Embedded (versionText)
 import Golem.Epub (EpubConfig (..), navDocument)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Project (Project (..), ProjectFailure (..))
@@ -45,6 +46,13 @@ versionTests =
     [ testCase "the version Golem reports is the content of VERSION" $ do
         v <- T.strip <$> TIO.readFile "../../VERSION"
         golemVersion @?= v,
+      testCase "versionText is VERSION byte for byte, and golemVersion is it without the spaces around (docs/adr/0203)" $ do
+        -- modules/golem-driver/VERSION links to VERSION at the root
+        file <- BS.readFile "VERSION"
+        assertBool
+          "Golem.Driver.Version.Embedded differs from VERSION; run sh scripts/gen-embedded.sh"
+          (TE.encodeUtf8 versionText == file)
+        golemVersion @?= T.strip (TE.decodeUtf8 file),
       testCase "the PDF instance ID is computed from golem- and the version, last" $ do
         let inputs = instanceIdInputs golemVersion ["input"] ["font program"]
         inputs @?= ["input", "font program", TE.encodeUtf8 ("golem-" <> golemVersion)]

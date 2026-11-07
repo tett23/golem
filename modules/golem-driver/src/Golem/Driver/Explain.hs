@@ -1,9 +1,8 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 {- | The explanations of the diagnostic codes (golem-cli ADR 0005), shown by
-golem explain and linked from the LSP. docs/diagnostics.md is embedded when
-compiling; a document that breaks the form of "Golem.Driver.Explain.Catalog"
-fails the compilation, so no executable carries a malformed one.
+golem explain and linked from the LSP. scripts/gen-embedded.sh writes
+docs/diagnostics.md into "Golem.Driver.Explain.Embedded" (docs/adr/0203);
+the tests of golem-driver check that the module is the document and that
+the document has the form of "Golem.Driver.Explain.Catalog".
 -}
 module Golem.Driver.Explain
   ( catalog,
@@ -14,31 +13,18 @@ module Golem.Driver.Explain
   )
 where
 
-import Data.ByteString qualified as BS
 import Data.Either (fromRight)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Golem.Driver.Explain.Catalog
+import Golem.Driver.Explain.Embedded (documentText)
 import Golem.Syntax (Diagnostic (..), DiagnosticCode (..))
-import Language.Haskell.TH (litE, stringL)
-import Language.Haskell.TH.Syntax (addDependentFile, runIO)
 
--- | The content of docs/diagnostics.md, checked by 'parseCatalog' when compiling.
+-- | The content of docs/diagnostics.md.
 document :: Text
-document =
-  T.pack
-    $( do
-         -- modules/golem-driver/diagnostics.md links to docs/diagnostics.md
-         let path = "diagnostics.md"
-         addDependentFile path
-         text <- runIO (TE.decodeUtf8 <$> BS.readFile path)
-         case parseCatalog text of
-           Left e -> fail (T.unpack e)
-           Right _ -> litE (stringL (T.unpack text))
-     )
+document = documentText
 
 -- | Every section of docs/diagnostics.md by its code.
 catalog :: Map Text Explanation

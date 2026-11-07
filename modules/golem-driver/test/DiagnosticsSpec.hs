@@ -13,6 +13,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescriptionUrl, explainHint, lookupExplanation, parseCatalog)
+import Golem.Driver.Explain.Embedded (documentText)
 import Golem.Layout.Paginate (ColumnSet (..), PageOut (..))
 import Golem.Project (ProjectFailure (..))
 import Golem.Syntax
@@ -322,6 +323,19 @@ explainTests =
   testGroup
     "explanations of the diagnostic codes (golem-cli ADR 0005)"
     [ testGroup
+        "the generated module of docs/diagnostics.md (docs/adr/0203)"
+        [ testCase "documentText is docs/diagnostics.md byte for byte" $ do
+            -- modules/golem-driver/diagnostics.md links to docs/diagnostics.md
+            file <- BS.readFile "diagnostics.md"
+            assertBool
+              "Golem.Driver.Explain.Embedded differs from docs/diagnostics.md; run sh scripts/gen-embedded.sh"
+              (TE.encodeUtf8 documentText == file),
+          testCase "documentText has the form of the catalog, with a section or more" $
+            case parseCatalog documentText of
+              Left e -> assertFailure ("docs/diagnostics.md breaks the form of the catalog: " <> T.unpack e)
+              Right es -> assertBool "no section" (not (null es))
+        ],
+      testGroup
         "docs/diagnostics.md covers the codes in the sources"
         [ testCase "every code in the sources is in the catalog and in use" $ do
             used <- sourceCodes

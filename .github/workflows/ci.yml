@@ -382,6 +382,13 @@ jobs:
         run: |
           scripts/gen-parser.sh
           git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs modules/golem-emet/src/Golem/Emet/Generated.hs
+      # the modules that embed VERSION and docs/diagnostics.md in golem-driver
+      # in place of Template Haskell (docs/adr/0203)
+      - name: Generated modules match VERSION and docs/diagnostics.md
+        if: matrix.tests && matrix.suites != 'driver'
+        run: |
+          sh scripts/gen-embedded.sh
+          git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs
       - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
         if: matrix.outputs || matrix.env
         uses: actions/cache@v6
@@ -665,11 +672,13 @@ jobs:
             !modules/golem-parser/src/Golem/Parser/Generated.hs
             !modules/golem-parser/test/StrippedGrammar.hs
             !modules/golem-emet/src/Golem/Emet/Generated.hs
+            !modules/golem-driver/src/Golem/Driver/Version/Embedded.hs
+            !modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs
       # the release of hlint, not a build of it with GHC (docs/adr/0009)
       - name: hlint 3.10
         run: sh scripts/ci/fetch-hlint.sh
       # -j checks the files on every core of the runner (docs/adr/0037)
-      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs" --ignore-glob="modules/golem-emet/src/Golem/Emet/Generated.hs"'
+      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs" --ignore-glob="modules/golem-emet/src/Golem/Emet/Generated.hs" --ignore-glob="modules/golem-driver/src/Golem/Driver/Version/Embedded.hs" --ignore-glob="modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs"'
 
   # The sample plugins and their helper crate (docs/adr/0106): the tests of
   # the crates, and the committed plugins/wasm/*.wasm are the bytes the
