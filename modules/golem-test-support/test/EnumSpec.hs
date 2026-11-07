@@ -83,7 +83,7 @@ baseTests =
       testCase "filterT keeps the tier of each value it keeps" $
         upTo 4 (filterT odd (intsIn 0 4)) @?= [[], [1], [], [3], []],
       testCase "the sum puts each tier of the left before the same tier of the right" $
-        upTo 3 (Tiers [[1], [2]] \/ Tiers [[10], [], [30]]) @?= [[1, 10], [2], [30]],
+        upTo 3 (Tiers [[1], [2]] \/ Tiers [[10], [], [30 :: Int]]) @?= [[1, 10], [2], [30]],
       testCase "the product puts the pairs of the smaller left part first" $
         upTo 2 (intsIn 0 2 >< intsIn 0 2) @?= [[(0, 0)], [(0, 1), (1, 0)], [(0, 2), (1, 1), (2, 0)]]
     ]

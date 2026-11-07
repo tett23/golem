@@ -220,10 +220,10 @@ predicateTests =
 
 -- every input
 
-{- | A known bug (the specification, 「既知の不具合」): the shape of the
-inputs it is excused in, the breaches it excuses there, and how many
-inputs up to each depth have them. The item goes when the ADR that fixes
-the bug is in.
+{- | A known bug: its item in 「既知の不具合」 of the specification, the
+shape of the inputs it is excused in, the breaches it excuses there, and
+how many inputs up to each depth have them. The item goes when the ADR
+that fixes the bug is in.
 -}
 data KnownBug = KnownBug
   { kbItem :: String,
@@ -235,28 +235,28 @@ data KnownBug = KnownBug
 knownBugs :: [KnownBug]
 knownBugs =
   [ KnownBug
-      { kbItem = "BUG-A recto after a figure sent on",
+      { kbItem = "送った図版の後の改丁の見出しが、偶数ページに置かれる",
         kbShape = \i -> any (\(k, e) -> e == ERecto && any isFigure (take k (inElements i))) (zip [0 ..] (inElements i)),
         kbExcuses = \i b -> breachOf b `elem` [I6, I8] && maybe False (\k -> inElements i !! k == ERecto && any isFigure (take k (inElements i))) (elementOf i b),
-        kbCounts = []
+        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 420), (4, 24364), (5, 879466)]
       },
     KnownBug
-      { kbItem = "BUG-B heading before a paragraph of three lines",
+      { kbItem = "見出しの後の 3 行の段落が、見出しを残して次の段に送られる (golem-layout ADR 0021)",
         kbShape = \i -> any (\(k, e) -> isHeadingElement e && threeLinesAfter i k) (zip [0 ..] (inElements i)),
         kbExcuses = \i b -> breachOf b == I6 && maybe False (threeLinesAfter i) (elementOf i b),
-        kbCounts = []
+        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 70), (4, 3566), (5, 138210)]
       },
     KnownBug
-      { kbItem = "BUG-C note of a heading after figures sent on",
+      { kbItem = "送った図版の後の見出しの注が、次のページに送られる",
         kbShape = \i -> any (\(k, e) -> e == ENotedHeading && any isFigure (take k (inElements i))) (zip [0 ..] (inElements i)),
         kbExcuses = \i b -> breachOf b == I7 && maybe False (\k -> inElements i !! k == ENotedHeading && any isFigure (take k (inElements i))) (elementOf i b),
-        kbCounts = []
+        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 757), (5, 57462)]
       },
     KnownBug
-      { kbItem = "BUG-D heading after a figure",
+      { kbItem = "図版を追い越した見出しが、本文から離れる",
         kbShape = \i -> any (\(k, e) -> isHeadingElement e && any isFigure (take k (inElements i))) (zip [0 ..] (inElements i)),
         kbExcuses = \i b -> breachOf b == I6 && maybe False (\k -> isHeadingElement (inElements i !! k) && any isFigure (take k (inElements i))) (elementOf i b),
-        kbCounts = []
+        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 26), (4, 4838), (5, 276342)]
       }
   ]
 
@@ -340,7 +340,7 @@ exhaustiveTests =
         then pure ()
         else
           assertFailure
-            ( "at depth " <> show depth <> ", the inputs each known bug excuses differ from the counts pinned (item, pinned, counted):\n"
-                <> intercalate "\n" (map show wrong)
+            ( "at depth " <> show depth <> ", the inputs a known bug excuses differ from the count pinned:\n"
+                <> intercalate "\n" [item <> ": pinned " <> maybe "nothing" show pinned <> ", counted " <> show n | (item, pinned, n) <- wrong]
             )
   ]

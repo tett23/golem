@@ -133,39 +133,47 @@ pred keepHeading[p: Placement] {
   }
 }
 
--- nothing is sent on from an empty column
+-- nothing is sent on from an empty column: the first item stays
 pred noSendFromEmpty[p: Placement] {
-  (Col.used = 0 and some Text) implies p.brk >= 1
+  Col.used = 0 implies all i: Item | i.pos = 0 implies (i in Text implies p.brk >= 1 else i in p.kept)
 }
 
 pred all7[p: Placement] {
   fits[p] and greedy[p] and order[p] and figure[p] and orphan[p] and widow[p] and keepHeading[p] and noSendFromEmpty[p]
 }
 
+-- the inputs the specification allows: a figure always fits an empty
+-- column (it is shrunk, 「図版」 in docs/specifications.md)
+pred inDomain { all f: Figure | f.size <= Col.cap }
+
 -- the commands
 
 -- the model is not empty: with no rule but fitting, a placement exists
-run someFits { some p: Placement | fits[p] } for 6 but 5 Int, 7 Placement
+run someFits { some p: Placement | fits[p] } for 5 but 5 Int, 14 Placement
 
 -- the model is not all false: every rule together fails on some input
-run noneMeetsAll { no p: Placement | all7[p] } for 6 but 5 Int, 14 Placement
+run noneMeetsAll { inDomain and (no p: Placement | all7[p]) } for 5 but 5 Int, 14 Placement
 
 -- every rule but the greedy fill together: the fill gives way to the others
 run noneMeetsAllButGreedy {
+  inDomain
   no p: Placement | fits[p] and order[p] and figure[p] and orphan[p] and widow[p] and keepHeading[p] and noSendFromEmpty[p]
-} for 6 but 5 Int, 14 Placement
+} for 5 but 5 Int, 14 Placement
 
 -- the pairs: an input where some placement meets each rule, and none meets both
-run greedyOrphan { (some p: Placement | fits[p] and greedy[p]) and (some p: Placement | fits[p] and orphan[p]) and no p: Placement | fits[p] and greedy[p] and orphan[p] } for 6 but 5 Int, 14 Placement
-run greedyWidow { (some p: Placement | fits[p] and greedy[p]) and (some p: Placement | fits[p] and widow[p]) and no p: Placement | fits[p] and greedy[p] and widow[p] } for 6 but 5 Int, 14 Placement
-run greedyKeepHeading { (some p: Placement | fits[p] and greedy[p]) and (some p: Placement | fits[p] and keepHeading[p]) and no p: Placement | fits[p] and greedy[p] and keepHeading[p] } for 6 but 5 Int, 14 Placement
-run greedyFigure { (some p: Placement | fits[p] and greedy[p]) and (some p: Placement | fits[p] and figure[p]) and no p: Placement | fits[p] and greedy[p] and figure[p] } for 6 but 5 Int, 14 Placement
-run orphanEmpty { (some p: Placement | fits[p] and orphan[p]) and (some p: Placement | fits[p] and noSendFromEmpty[p]) and no p: Placement | fits[p] and orphan[p] and noSendFromEmpty[p] } for 6 but 5 Int, 14 Placement
-run widowEmpty { (some p: Placement | fits[p] and widow[p]) and (some p: Placement | fits[p] and noSendFromEmpty[p]) and no p: Placement | fits[p] and widow[p] and noSendFromEmpty[p] } for 6 but 5 Int, 14 Placement
-run keepHeadingEmpty { (some p: Placement | fits[p] and keepHeading[p]) and (some p: Placement | fits[p] and noSendFromEmpty[p]) and no p: Placement | fits[p] and keepHeading[p] and noSendFromEmpty[p] } for 6 but 5 Int, 14 Placement
-run orphanWidow { (some p: Placement | fits[p] and orphan[p]) and (some p: Placement | fits[p] and widow[p]) and no p: Placement | fits[p] and orphan[p] and widow[p] } for 6 but 5 Int, 14 Placement
-run keepHeadingOrphan { (some p: Placement | fits[p] and keepHeading[p]) and (some p: Placement | fits[p] and orphan[p]) and no p: Placement | fits[p] and keepHeading[p] and orphan[p] } for 6 but 5 Int, 14 Placement
-run keepHeadingWidow { (some p: Placement | fits[p] and keepHeading[p]) and (some p: Placement | fits[p] and widow[p]) and no p: Placement | fits[p] and keepHeading[p] and widow[p] } for 6 but 5 Int, 14 Placement
-run keepHeadingFigure { (some p: Placement | fits[p] and keepHeading[p]) and (some p: Placement | fits[p] and figure[p]) and no p: Placement | fits[p] and keepHeading[p] and figure[p] } for 6 but 5 Int, 14 Placement
-run figureOrder { (some p: Placement | fits[p] and figure[p]) and (some p: Placement | fits[p] and order[p]) and no p: Placement | fits[p] and figure[p] and order[p] } for 6 but 5 Int, 14 Placement
-run figureEmpty { (some p: Placement | fits[p] and figure[p]) and (some p: Placement | fits[p] and noSendFromEmpty[p]) and no p: Placement | fits[p] and figure[p] and noSendFromEmpty[p] } for 6 but 5 Int, 14 Placement
+run greedyOrphan { inDomain and ((some p: Placement | fits[p] and greedy[p]) and (some p: Placement | fits[p] and orphan[p]) and no p: Placement | fits[p] and greedy[p] and orphan[p]) } for 5 but 5 Int, 14 Placement
+run greedyWidow { inDomain and ((some p: Placement | fits[p] and greedy[p]) and (some p: Placement | fits[p] and widow[p]) and no p: Placement | fits[p] and greedy[p] and widow[p]) } for 5 but 5 Int, 14 Placement
+run greedyKeepHeading { inDomain and ((some p: Placement | fits[p] and greedy[p]) and (some p: Placement | fits[p] and keepHeading[p]) and no p: Placement | fits[p] and greedy[p] and keepHeading[p]) } for 5 but 5 Int, 14 Placement
+run greedyFigure { inDomain and ((some p: Placement | fits[p] and greedy[p]) and (some p: Placement | fits[p] and figure[p]) and no p: Placement | fits[p] and greedy[p] and figure[p]) } for 5 but 5 Int, 14 Placement
+run orphanEmpty { inDomain and ((some p: Placement | fits[p] and orphan[p]) and (some p: Placement | fits[p] and noSendFromEmpty[p]) and no p: Placement | fits[p] and orphan[p] and noSendFromEmpty[p]) } for 5 but 5 Int, 14 Placement
+run widowEmpty { inDomain and ((some p: Placement | fits[p] and widow[p]) and (some p: Placement | fits[p] and noSendFromEmpty[p]) and no p: Placement | fits[p] and widow[p] and noSendFromEmpty[p]) } for 5 but 5 Int, 14 Placement
+run keepHeadingEmpty { inDomain and ((some p: Placement | fits[p] and keepHeading[p]) and (some p: Placement | fits[p] and noSendFromEmpty[p]) and no p: Placement | fits[p] and keepHeading[p] and noSendFromEmpty[p]) } for 5 but 5 Int, 14 Placement
+run orphanWidow { inDomain and ((some p: Placement | fits[p] and orphan[p]) and (some p: Placement | fits[p] and widow[p]) and no p: Placement | fits[p] and orphan[p] and widow[p]) } for 5 but 5 Int, 14 Placement
+run keepHeadingOrphan { inDomain and ((some p: Placement | fits[p] and keepHeading[p]) and (some p: Placement | fits[p] and orphan[p]) and no p: Placement | fits[p] and keepHeading[p] and orphan[p]) } for 5 but 5 Int, 14 Placement
+run keepHeadingWidow { inDomain and ((some p: Placement | fits[p] and keepHeading[p]) and (some p: Placement | fits[p] and widow[p]) and no p: Placement | fits[p] and keepHeading[p] and widow[p]) } for 5 but 5 Int, 14 Placement
+run keepHeadingFigure { inDomain and ((some p: Placement | fits[p] and keepHeading[p]) and (some p: Placement | fits[p] and figure[p]) and no p: Placement | fits[p] and keepHeading[p] and figure[p]) } for 5 but 5 Int, 14 Placement
+run figureOrder { inDomain and ((some p: Placement | fits[p] and figure[p]) and (some p: Placement | fits[p] and order[p]) and no p: Placement | fits[p] and figure[p] and order[p]) } for 5 but 5 Int, 14 Placement
+run figureEmpty { inDomain and ((some p: Placement | fits[p] and figure[p]) and (some p: Placement | fits[p] and noSendFromEmpty[p]) and no p: Placement | fits[p] and figure[p] and noSendFromEmpty[p]) } for 5 but 5 Int, 14 Placement
+
+-- a figure taller than the column, outside the inputs the specification allows
+run tallFigure { not inDomain and (no p: Placement | fits[p] and figure[p] and noSendFromEmpty[p]) } for 5 but 5 Int, 14 Placement
