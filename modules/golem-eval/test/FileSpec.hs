@@ -314,7 +314,7 @@ outputCharTests =
       testCase "one G02089 for each string, with the first character" $
         [(c, "U+0001" `T.isInfixOf` m) | (c, m, _, _) <- diags "a\SOHb\USc\n\n# d\SOe\n"] @?= [("G02089", True), ("G02089", False)],
       testCase "U+0002 in a cell of a table file is G02089" $
-        [(c, "U+0002" `T.isInfixOf` m) | (c, m, _, _) <- diags "@table src=ctl.csv\n"] @?= [("G02089", True)],
+        [(c, "U+0002" `T.isInfixOf` m) | (c, m, _, _) <- diags "@table ctl.csv\n"] @?= [("G02089", True)],
       testCase "U+0003 in the file of @listing is G02089" $
         [(c, "U+0003" `T.isInfixOf` m) | (c, m, _, _) <- diags "@listing ctl.hs\n"] @?= [("G02089", True)],
       testCase "a tab and a newline pass" $ do
@@ -473,8 +473,33 @@ tests =
         rotateOf "@figure images/a.png alt=\"x\"\n" >>= (@?= False)
         msgs "@figure images/a.png alt=\"x\" rotate=yes\n" @?= [("G02087", "rotate は true か false です: yes")]
         msgs "@figure images/a.png alt=\"x\" rotate=true wrap=end width=4zw\n" @?= [("G02087", "回して置く図版は回り込ませられません")],
+      -- docs/adr/0190
+      testCase "G02133: a width that is neither a length nor a percentage of the measure, or 0, at the width, for every kind of figure" $
+        mapM_
+          ( \(extra, w) -> do
+              let src = "@figure images/a.png alt=x" <> extra <> " width=" <> w <> "\n"
+                  start = T.length (fst (T.breakOn "width=" src))
+              diags src @?= [("G02133", "図版の width が読めません。寸法（10zw、50mm など）か行長の割合（50% など）で書きます: " <> w, start, start + T.length "width=" + T.length w)]
+          )
+          [(extra, w) | extra <- ["", " wrap=end", " wrap=start", " rotate=true"], w <- ["abc", "0zw", "0%", "-3zw", "50", "0.0mm", "%", "zw"]],
+      testCase "widths in lengths and percentages are not errors, and stay as written (docs/adr/0190)" $
+        mapM_
+          ( \(extra, w) -> do
+              let src = "@figure images/a.png alt=x" <> extra <> " width=" <> w <> "\n"
+              errs src @?= []
+              map (\case FigureBlock f -> figWidth f; _ -> Nothing) (body src) @?= [Just w]
+          )
+          [(extra, w) | extra <- ["", " wrap=end", " rotate=true"], w <- ["12zw", "40mm", "50%", "150%", "10.5pt", "0.5in", "20Q", "20H", "12.5%"]],
+      testCase "a wrapped figure whose width cannot be read is G02133, not G07022 (docs/adr/0190)" $
+        map (\(c, _, _, _) -> c) (diags "@figure images/a.png alt=x wrap=end width=abc\n") @?= ["G02133"],
+      testCase "a figure of a plugin with a width that cannot be read is G02133 at the call (docs/adr/0190)" $ do
+        let src = "golem-plugin-image://00.svg"
+            drawn w = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (Figure src Nothing "x" Nothing (Just w) [] Nothing False))], Map.fromList [(src, "<svg/>")], [])))]}
+        diagsWith ctx {ctxPlugins = drawn "abc"} "@chart\n" @?= [("G02133", "図版の width が読めません。寸法（10zw、50mm など）か行長の割合（50% など）で書きます: abc", 0, 7)]
+        fst (run ctx {ctxPlugins = drawn "abc"} "@chart\n") @?= []
+        diagsWith ctx {ctxPlugins = drawn "50%"} "@chart\n" @?= [],
       testCase "csv tables and listings" $ do
-        case body "@table src=data.csv\n" of
+        case body "@table data.csv\n" of
           [Table _ h [r]] -> (map stripSpans h, map stripSpans r) @?= ([["a"], ["b"]], [["1"], ["x,y"]])
           other -> assertFailure (show other)
         map (fmap codeText . codeOf) (body "@listing src/Main.hs lines=2...3\n") @?= [Just "l2\nl3"]
@@ -1726,11 +1751,11 @@ diagnosticTests =
         msgs "@figure images/a.png alt=x wrap=left width=10mm\n" @?= [("G02030", "wrap は start か end です: left")]
         msgs "@figure alt=x\n" @?= [("G02032", "@figure には画像のパスを一つ書きます")]
         errs "@figure images/a.png images/b.png alt=x\n" @?= ["G02032"]
-        msgs "@table data.csv\n" @?= [("G02034", "@table には src が必要です")],
+        msgs "@table\n" @?= [("G02034", "@table にはファイルのパスが必要です")],
       testCase "G02085: CSV that is not a table, in the file (golem-eval ADR 0004)" $ do
-        msgs "@table src=empty.csv\n" @?= [("G02085", "CSV が空です")]
-        msgs "@table src=blank.csv\n" @?= [("G02085", "CSV が空です")]
-        diags "@table src=ragged.csv\n" @?= [("G02085", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
+        msgs "@table empty.csv\n" @?= [("G02085", "CSV が空です")]
+        msgs "@table blank.csv\n" @?= [("G02085", "CSV が空です")]
+        diags "@table ragged.csv\n" @?= [("G02085", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
       testCase "G02036: @listing without a path" $ do
         msgs "@listing\n" @?= [("G02036", "@listing にはファイルのパスが必要です")]
         -- src= is read, with the notice G02065 (golem-syntax ADR 0002)
@@ -1828,7 +1853,7 @@ diagnosticTests =
         diags "[nope: x]\n" @?= [("G02022", "未知のコマンドです: nope", 1, 5)],
       testCase "G02033: missing files" $ do
         msgs "@listing images/none.txt\n" @?= [("G02033", "ファイルがありません: images/none.txt")]
-        msgs "@table src=none.csv\n" @?= [("G02033", "ファイルがありません: none.csv")]
+        msgs "@table none.csv\n" @?= [("G02033", "ファイルがありません: none.csv")]
         msgs "@listing gone.txt\n" @?= [("G02033", "ファイルがありません: gone.txt")],
       testCase "G02060: paths that cannot be used" $ do
         msgs "@figure /tmp/a.png alt=x\n" @?= [("G02060", "絶対パスは使えません: /tmp/a.png")]

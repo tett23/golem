@@ -260,7 +260,7 @@ runningHeadTests =
           h12 = Map.fromList [(1, Just umi), (2, Just asa)]
           h12' = Map.fromList [(1, Just umi), (2, Just hiru)]
           h1' = Map.fromList [(1, Just yama), (2, Nothing)]
-          at c st hs = listToMaybe (runningHeadLines meta Map.empty c st hs)
+          at c st hs = listToMaybe (runningHeadLines meta Map.empty Map.empty c st hs)
       -- 海 and 一 朝 start on the page
       at (heading 1 HeadShort PickFirst) Map.empty [umi, asa] @?= Just "海"
       at (heading 2 HeadShort PickFirst) Map.empty [umi, asa] @?= Just "朝"
@@ -308,8 +308,8 @@ runningHeadTests =
       lines'' (fmt [["校正刷り"]]) Map.empty [] @?= ["校正刷り"]
       lines'' (fmt [["校正刷り"]]) Map.empty [umi] @?= ["校正刷り"],
     testCase "variables of the file (ADR 0022)" $ do
-      runningHeadLines meta (Map.fromList [(["revision"], "r1")]) (fmt [["{set.revision}"]]) Map.empty [] @?= ["r1"]
-      runningHeadLines meta (Map.fromList [(["values", "price"], "100")]) (fmt [["{set.values.price}"]]) Map.empty [] @?= ["100"]
+      runningHeadLines meta Map.empty (Map.fromList [(["revision"], "r1")]) (fmt [["{set.revision}"]]) Map.empty [] @?= ["r1"]
+      runningHeadLines meta Map.empty (Map.fromList [(["values", "price"], "100")]) (fmt [["{set.values.price}"]]) Map.empty [] @?= ["100"]
       forM_ [("\"r1\"", "r1"), ("3", "3"), ("0.5", "0.5")] $ \(v, shown) -> do
         (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "@set revision = " <> v <> "\n\n" <> twoChapters)]
         Map.lookup 2 heads @?= Just [shown],
@@ -429,7 +429,7 @@ runningHeadTests =
     hiru = info 2 2 "二" "昼"
     yama = info 1 2 "第二章" "山"
     meta = Map.fromList [("title", "書名"), ("language", "ja")]
-    lines'' = runningHeadLines meta Map.empty
+    lines'' = runningHeadLines meta Map.empty Map.empty
     heading l f p = RunningLines ([PartRef (RefHeading l f p) False] :| [])
     -- a format, read as style.toml reads it
     fmt ls = case traverse (fmap concat . traverse parseRunningFormat) ls of
@@ -792,19 +792,21 @@ wrapTests =
       rectX r + rectW r @?= rectX ta + rectW ta - fromIntegral slot * pgLinePitch geom
       ex <- maybe (assertFailure "no exclusion") pure (pfExclusion pf)
       map (slIndent . snd) (take (exLines ex) (linesFrom pl p slot)) @?= replicate (exLines ex) (5 * fs),
-    testCase "a width that is not a length, or leaves too short lines, is G07022" $ do
+    testCase "a width that leaves too short lines is G07022; one that is not a length is G02133 (docs/adr/0190)" $ do
       img <- tinyImage
       a <- layoutMini horizontal24 (wrapped "end" "3em" <> longPara 3) img
-      layoutErrors a @?= [("G07022", "回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: 3em", FileId 1, 0, 75)]
+      map (\(c, _, _, _, _) -> c) (layoutErrors a) @?= ["G02133"]
       b <- layoutMini horizontal24 (wrapped "end" "22zw" <> longPara 3) img
-      layoutErrors b @?= [("G07022", "回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: 22zw", FileId 1, 0, 76)],
+      layoutErrors b @?= [("G07022", "回り込む図版の幅が不正です。行の残りを本文の 8 字分以上にしてください: 22zw", FileId 1, 0, 76)]
+      c <- layoutMini horizontal24 (wrapped "end" "70%" <> longPara 3) img
+      map (\(code, m, _, _, _) -> (code, m)) (layoutErrors c) @?= [("G07022", "回り込む図版の幅が不正です。行の残りを本文の 8 字分以上にしてください: 70%")],
     testCase "a wrapped figure that leaves exactly 8 characters beside it is not G07022; one character wider is" $ do
       -- 24 characters: the width, the gap of 1zw and 8 characters
       img <- tinyImage
       a <- layoutMini horizontal24 (wrapped "end" "15zw" <> longPara 3) img
       layoutErrors a @?= []
       b <- layoutMini horizontal24 (wrapped "end" "16zw" <> longPara 3) img
-      map (\(c, m, _, _, _) -> (c, m)) (layoutErrors b) @?= [("G07022", "回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: 16zw")],
+      map (\(c, m, _, _, _) -> (c, m)) (layoutErrors b) @?= [("G07022", "回り込む図版の幅が不正です。行の残りを本文の 8 字分以上にしてください: 16zw")],
     testCase "an exclusion longer than the page is G07023 at the figure" $ do
       img <- tinyImage
       let source = "前の段落。\n\n" <> wrapped "end" "10zw" <> longPara 3

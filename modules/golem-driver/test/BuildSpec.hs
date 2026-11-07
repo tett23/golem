@@ -406,8 +406,8 @@ numberSeparatorTests =
       rendered (numberedTitle "ja" sp0 (Just "第一章") [Text sp0 "海"]) @?= "第一章\x3000海"
       rendered (numberedTitle "en" sp0 Nothing [Text sp0 "Preface"]) @?= "Preface",
     testCase "PDF: the running head heading.1.numbered" $ do
-      listToMaybe (runningHeadLines (Map.fromList [("title", "T"), ("language", "en")]) Map.empty (RunningLines ([PartRef (RefHeading 1 HeadNumbered PickFirst) False] :| [])) Map.empty [HeadingInfo 1 (Just [1]) (Just "1") [Text sp0 "Introduction"] "Introduction" (FileId 0)]) @?= Just "1 Introduction"
-      listToMaybe (runningHeadLines (Map.fromList [("title", "T"), ("language", "en")]) Map.empty (RunningLines ([PartRef (RefHeading 1 HeadNumbered PickFirst) False] :| [])) Map.empty [HeadingInfo 1 (Just [1]) (Just "Chapter 1: ") [Text sp0 "Introduction"] "Introduction" (FileId 0)]) @?= Just "Chapter 1: Introduction",
+      listToMaybe (runningHeadLines (Map.fromList [("title", "T"), ("language", "en")]) Map.empty Map.empty (RunningLines ([PartRef (RefHeading 1 HeadNumbered PickFirst) False] :| [])) Map.empty [HeadingInfo 1 (Just [1]) (Just "1") [Text sp0 "Introduction"] "Introduction" (FileId 0)]) @?= Just "1 Introduction"
+      listToMaybe (runningHeadLines (Map.fromList [("title", "T"), ("language", "en")]) Map.empty Map.empty (RunningLines ([PartRef (RefHeading 1 HeadNumbered PickFirst) False] :| [])) Map.empty [HeadingInfo 1 (Just [1]) (Just "Chapter 1: ") [Text sp0 "Introduction"] "Introduction" (FileId 0)]) @?= Just "Chapter 1: Introduction",
     testCase "PDF: an English book has no ideographic space after the number" $ do
       let style =
             BS.concat

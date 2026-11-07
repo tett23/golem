@@ -334,6 +334,30 @@ HTML と EPUB では同じ幅の余白になります。
 取り込むファイルは、章として [code: manifest.toml] に並べる必要はありません。
 このマニュアルも、版面の字数と行数を [code: common/values.gm] に書いて取り込み、ここで「一行 [= values.characters] 字、一ページ [= values.lines] 行」と組んでいます。
 
+本の全体で使う値は、[code: manifest.toml] の [code: \[vars\]] に書けます。
+ここに書いた値は、どのファイルからも [code: @import] なしで、[code: vars] を前に付けて参照できます。
+
+```toml
+[vars]
+product = "Golem"
+version = "0.1.0"
+
+[vars.author]
+short = "tett23"
+```
+
+```
+[= vars.product] [= vars.version] の使い方
+著者　[= vars.author.short]
+```
+
+値には、文字列、整数、真偽値、日付と、それらの配列と表を書けます。
+小数、時刻、日時は書けません（G03109）。
+キーは英字か [code: _] で始め、英数字と [code: _] で書きます（G03110）。
+[code: edition-count] のように [code: -] を含むキーは書けないので、[code: edition_count] と書きます。
+[code: vars] は予約語で、[code: @set] の名前にも [code: @import] の名前にも使えません。
+柱には [code: {vars.product}] のように書いて出せます。
+
 ## 注
 
 段落の中に [code: \[note: 注の本文\]] と書くと、その位置に注の番号が付き、本文はページの下（脚注[index reading=きゃくちゅう: 脚注]）に組まれます。
@@ -393,11 +417,11 @@ PDF では、傍注は版面の外の傍注の領域に、注の印のある行�
 セルの中には、段落の中の要素だけを書けます。
 セルの結合はできません。
 
-データが CSV のファイルにあるときは、[code: @table src=data/sizes.csv] のように書くと、そのファイルから表を作ります。
+データが CSV のファイルにあるときは、[code: @table data/sizes.csv] のように最初の引数にファイルのパスを書くと、そのファイルから表を作ります。
 CSV の一行目が見出しの行になります。
 次の表は、このマニュアルの原稿にある CSV のファイルから作っています。
 
-@table src=data/sizes.csv
+@table data/sizes.csv
 
 タブで区切ったファイル（TSV）からも表を作れます。
 拡張子が [code: .tsv] のファイルは TSV として読み、ほかの拡張子のファイルは CSV として読みます。
@@ -405,9 +429,9 @@ CSV の一行目が見出しの行になります。
 [code: align] には、列の揃えを左の列から順にカンマで区切って書きます。
 値は [code: left]（左寄せ）、[code: center]（中央）、[code: right]（右寄せ）、[code: default]（既定）です。
 値を一つだけ書くと、すべての列がその揃えになります。
-次の表は、このマニュアルの原稿にある TSV のファイルから、[code: @table src=data/units.tsv align=left,left,right] で作っています。
+次の表は、このマニュアルの原稿にある TSV のファイルから、[code: @table data/units.tsv align=left,left,right] で作っています。
 
-@table src=data/units.tsv align=left,left,right
+@table data/units.tsv align=left,left,right
 
 表計算のソフトから書き出したファイルは、UTF-8 で保存してください。
 改行は LF でも CRLF でもかまいません。

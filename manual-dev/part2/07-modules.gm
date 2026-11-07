@@ -41,6 +41,7 @@ ADR はコミットした後に変えられないので、下の層から順に�
 | golem-cli | [code: golem] コマンド |
 | golem-fixtures | テストのフィクスチャの変換（開発用） |
 | golem-test-support | テストの補助（テストスイートだけが使う） |
+| golem-doc-gen | 意味論 IR の hedgehog の生成器（テストスイートだけが使う） |
 
 図[ref-number fig-modules]は、パッケージの依存の関係である。
 矢印は、元のパッケージが先のパッケージを使うこと（cabal のファイルの [code: build-depends]）を表す。

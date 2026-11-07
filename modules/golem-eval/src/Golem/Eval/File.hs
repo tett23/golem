@@ -49,6 +49,7 @@ import Data.Text qualified as T
 import Data.Text.Array qualified as TA
 import Data.Text.Internal qualified as TI
 import Data.Text.Unsafe (lengthWord8)
+import Golem.Doc.FigureWidth (parseFigureWidth)
 import Golem.Doc.IR
 import Golem.Eval.Analysis (analyse)
 import Golem.Eval.Builtin
@@ -106,6 +107,8 @@ data EvalContext = EvalContext
     ctxPath :: !FilePath,
     ctxProfile :: !Profile,
     ctxMeta :: !(Map Text Value),
+    -- | the namespace vars, the values of [vars] of manifest.toml (docs/adr/0185)
+    ctxVars :: !(Map Text Value),
     ctxImports :: !(Map FilePath (Map Text Value)), -- exported variables by file
     ctxSwatches :: !(Set Text),
     -- | the character styles, built-in ones included (docs/adr ADR 0005)
@@ -214,7 +217,7 @@ kentenShapes :: [Text]
 kentenShapes = kentenShapeNames
 
 reservedNames :: [Text]
-reservedNames = ["doc", "meta", "true", "false", "nil"]
+reservedNames = ["doc", "meta", "vars", "true", "false", "nil"]
 
 evalFile :: EvalContext -> A.File -> EvalResult
 evalFile ctx0 (A.File fid blocks0) =
@@ -224,7 +227,8 @@ evalFile ctx0 (A.File fid blocks0) =
       (local, styleDiags) = fileStyles (ctxStyle ctx0) header
       ctx = (withFileStyles local ctx0) {ctxSource = source}
       blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
-      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty Map.empty
+      -- meta and vars, which every file reads without @import (docs/adr/0185)
+      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty Map.empty
       (bs0, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
       (bs, nestedDiags) = nestedBreaks bs0
       breakDiags = nestedDiags <> conflictingBreaks bs <> blankLinesInRow bs
@@ -1340,7 +1344,7 @@ checkFigure sp exists f = do
     else
       if not (null fmts && pageOk && files)
         then pure False
-        else case figureLayoutError sp (figWrap f) (figRotate f) (figWidth f) of
+        else case figureLayoutError sp sp (figWrap f) (figRotate f) (figWidth f) of
           Just d -> report d >> pure False
           Nothing -> pure True
 
@@ -1378,11 +1382,15 @@ isPdfFigure path = figureExtension path == ".pdf"
 figureNeedsWeb :: Text -> Maybe Text -> Bool
 figureNeedsWeb path web = isPdfFigure path && isNothing web
 
--- | G02087 for a figure both turned and wrapped, G02031 for a wrapped figure without a width.
-figureLayoutError :: SrcSpan -> Maybe Wrap -> Bool -> Maybe Text -> Maybe Diagnostic
-figureLayoutError sp wr rot width
+{- | G02087 for a figure both turned and wrapped, G02031 for a wrapped
+figure without a width, G02133 at the width (@wsp@) for a width that is
+neither a length nor a percentage of the measure, or 0 (docs/adr/0190).
+-}
+figureLayoutError :: SrcSpan -> SrcSpan -> Maybe Wrap -> Bool -> Maybe Text -> Maybe Diagnostic
+figureLayoutError sp wsp wr rot width
   | rot && isJust wr = Just (diagnostic "G02087" Error sp "回して置く図版は回り込ませられません")
   | isJust wr && isNothing width = Just (diagnostic "G02031" Error sp "回り込む図版には width が必要です")
+  | Just w <- width, isNothing (parseFigureWidth w) = Just (diagnostic "G02133" Error wsp ("図版の width が読めません。寸法（10zw、50mm など）か行長の割合（50% など）で書きます: " <> w))
   | otherwise = Nothing
 
 -- | The extension of a path in lower case, with its dot.
@@ -1438,7 +1446,7 @@ figure ctx sp args body = do
               case (wrap, rotate) of
                 (Left w, _) -> err "G02030" sp ("wrap は start か end です: " <> w) >> pure []
                 (_, Left r) -> err "G02087" sp ("rotate は true か false です: " <> r) >> pure []
-                (Right wr, Right rot) -> case figureLayoutError sp wr rot (look "width") of
+                (Right wr, Right rot) -> case figureLayoutError sp (maybe sp (\(A.Located wsp _) -> wsp) (keywordAt "width" args)) wr rot (look "width") of
                   Just d -> report d >> pure []
                   Nothing -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page) rot))]
     _ -> err "G02032" sp "@figure には画像のパスを一つ書きます" >> pure []
@@ -1478,15 +1486,22 @@ figure ctx sp args body = do
 
 -- ------------------------------------------------------------------ tables (golem-eval ADR 0004)
 
-{- | @table: a table of a CSV or a TSV file. The arguments are checked
-before the file is read: format= (G02080), align= (G02081) and cells=
-(G02084); the number of align= values is checked against the header row.
+{- | @table: a table of a CSV or a TSV file. The path is the first argument;
+src= is to be retired (G02129), and two paths are G02130 (docs/adr/0184).
+The arguments are checked before the file is read: format= (G02080),
+align= (G02081) and cells= (G02084); the number of align= values is
+checked against the header row.
 -}
 csvTable :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
 csvTable ctx sp args = do
   kw <- keywords ctx args
+  -- G02129: the path as src= is to be retired (docs/adr/0184)
+  mapM_
+    (\asp -> report (notice "G02129" asp "@table の src= は廃止予定です。パスを最初の引数に書きます"))
+    [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
   let arg k = listToMaybe [(asp, v) | A.Located asp (A.Keyword (A.Located _ k') v) <- args, k' == k]
-      src = argText <$> lookup "src" kw
+      paths = [argText v | A.Located _ (A.Positional v) <- args] <> maybe [] (pure . argText) (lookup "src" kw)
+      src = listToMaybe paths
   format <- case arg "format" of
     Nothing -> pure (Just (tableFormat Nothing (fromMaybe "" src)))
     Just (asp, v) -> case tableFormat (Just (argText v)) (fromMaybe "" src) of
@@ -1503,9 +1518,10 @@ csvTable ctx sp args = do
       Right CellsText -> pure True
       Right CellsMarkup -> err "G02084" asp "cells=markup はまだ実装していません" >> pure False
       Left bad -> err "G02084" asp ("cells は text です: " <> bad) >> pure False
-  case src of
-    Nothing -> err "G02034" sp "@table には src が必要です" >> pure []
-    Just path -> case (format, align) of
+  case paths of
+    [] -> err "G02034" sp "@table にはファイルのパスが必要です" >> pure []
+    _ : _ : _ -> err "G02130" sp "@table にはファイルのパスを一つ書きます" >> pure []
+    [path] -> case (format, align) of
       (Just (Right fmt), Just al)
         | cells ->
             asset ctx sp path >>= \case
