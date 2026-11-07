@@ -121,6 +121,12 @@ When the "every input" test of golem-layout fails, the pull request that fixes i
 3. Rewrite the expected output to the placement the broken invariant (`I1` to `I8` in the message) asks for. Keeping the output as it is would pin the bug.
 
 A breach not fixed at once gets no example: add an item to "既知の不具合" (known bugs) of the specification and to docs/roadmap.md, and add the shape of its inputs and the number of inputs it excuses to `knownBugs` in `PaginateInvariantsSpec.hs`.
+
+The rules of line breaking are checked as invariants on every small input too ([docs/adr/0209](./docs/adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md)).
+When "every input" of "line breaking invariants on every small input" fails, paste the `testCase` shown after "As a case of LineBreakingSpec:" into `modules/golem-layout/test/LineBreakingSpec.hs` or `InseparableSpec.hs`.
+It holds the expression that breaks the input (an `Input` of `LineBreakEnum`, with `breakInput`) and the characters of each line now.
+Add `import LineBreakEnum` there and rewrite the expected lines to the breaks the broken invariant (`L1` to `L13` in the message) asks for.
+A breach not fixed at once goes, as for page breaking, to `lineBugs` in `LineBreakInvariantsSpec.hs` with the shape of its inputs and the number of inputs it excuses.
 Pin the number the test prints.
 Remove the item from `knownBugs` when the ADR that fixes it is in.
 
@@ -134,6 +140,7 @@ Locally, each area's enumeration test takes its depth and its number of inputs d
 | Area | Test | Depth | Inputs drawn |
 |---|---|---|---|
 | Page breaking | `cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` | `GOLEM_ENUM_DEPTH` (3 on pull requests, 5 nightly) | `GOLEM_ENUM_PAGINATION_SAMPLES` (0 on pull requests, 5,000,000 nightly) |
+| Line breaking | `cabal test golem-layout-test --test-option=-p --test-option='/line breaking invariants on/&&/every input/'` | `GOLEM_ENUM_LINES_DEPTH` (2 on pull requests, 3 nightly; lines of up to 4 em up to 2, of up to 5 em from 3) | `GOLEM_ENUM_LINES_SAMPLES` (0 on pull requests, 5,000,000 nightly) |
 
 For example, raise the number of elements checked, as in `GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_PAGINATION_SAMPLES=100000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'`.
 The tests of golem-layout are built with `-threaded` and share the inputs among the processors.

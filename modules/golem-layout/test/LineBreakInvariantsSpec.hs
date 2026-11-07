@@ -1,0 +1,649 @@
+-- the enumerations are built in the tests that check them, and must not
+-- be floated out into values that live as long as the program: those
+-- would hold every input checked (docs/adr/0208)
+{-# OPTIONS_GHC -fno-full-laziness -fno-cse #-}
+
+{- | The invariants of the line breaking checked on every small input
+(docs/adr/0209): the enumeration of the paragraphs and its normal form,
+the predicates L1 to L13 on outputs made by hand, the naive search of
+L7, the regressions, and every input up to @GOLEM_ENUM_LINES_DEPTH@
+parts with @GOLEM_ENUM_LINES_SAMPLES@ inputs drawn one part past it,
+the known bugs excluded by an explicit list whose inputs are counted.
+-}
+module LineBreakInvariantsSpec (lineInvariantTests, linesPrDepth, LineBug (..), lineBugs) where
+
+import Data.List (intercalate, nub)
+import Data.Map.Strict qualified as Map
+import Data.Text (Text)
+import Data.Text qualified as T
+import Data.Word (Word64)
+import Fixtures (fs)
+import Golem.Layout.CharClass (isDualCharacter)
+import Golem.Layout.KnuthPlass
+import Golem.Layout.Look (Look (..))
+import Golem.TestSupport.Enum
+import KnuthPlassBrute
+import LineBreakEnum
+import LineBreakInvariants
+import System.Environment (lookupEnv)
+import Test.Tasty
+import Test.Tasty.HUnit
+import Text.Read (readMaybe)
+
+lineInvariantTests :: TestTree
+lineInvariantTests =
+  testGroup
+    "line breaking invariants on every small input (docs/adr/0209)"
+    [ testGroup "the enumeration of the inputs" enumerationTests,
+      testGroup "the predicates" predicateTests,
+      testGroup "the naive search" bruteTests,
+      testGroup "the regressions" regressionTests,
+      testGroup "every input" exhaustiveTests
+    ]
+
+{- | The parts of the runs of pull requests (docs/adr/0209, the decision 8
+of the maintainer). The nightly job raises it with GOLEM_ENUM_LINES_DEPTH.
+-}
+linesPrDepth :: Int
+linesPrDepth = 2
+
+{- | The widest line of pull requests, in em: 4, not the 5 of the
+enumeration, which made the line breaking tests take more than 10
+seconds on the x86-64 runner of CI (docs/adr/0209, its section 5). Past
+'linesPrDepth', as the nightly job checks, lines up to 5 em.
+-}
+linesPrWidth :: Int
+linesPrWidth = 4
+
+-- | The widest line at a depth.
+maxWidthAt :: Int -> Int
+maxWidthAt depth = if depth > linesPrDepth then 5 else linesPrWidth
+
+-- | The depth: GOLEM_ENUM_LINES_DEPTH, or 'linesPrDepth'.
+linesDepth :: IO Int
+linesDepth = wholeNumber "GOLEM_ENUM_LINES_DEPTH" linesPrDepth
+
+-- | The inputs drawn one part past the depth: GOLEM_ENUM_LINES_SAMPLES, or none.
+linesSamples :: IO Int
+linesSamples = wholeNumber "GOLEM_ENUM_LINES_SAMPLES" 0
+
+{- | The breaks L7 brute-forces: up to 8 on pull requests, up to 16 past
+their depth, as the nightly job checks (docs/adr/0209, its section 3).
+-}
+bruteLimitAt :: Int -> Int
+bruteLimitAt depth = if depth > linesPrDepth then 16 else bruteLimit
+
+-- | The seed of the inputs drawn: the same inputs on every run of a commit.
+sampleSeed :: Word64
+sampleSeed = 0x0209
+
+-- | A variable that holds a whole number of 0 or more, or the default when it is unset or empty.
+wholeNumber :: String -> Int -> IO Int
+wholeNumber name def =
+  lookupEnv name >>= \case
+    Nothing -> pure def
+    Just "" -> pure def
+    Just s -> case readMaybe s of
+      Just n | n >= 0 -> pure n
+      _ -> assertFailure (name <> " is not a whole number of 0 or more: " <> show s)
+
+-- * the enumeration
+
+-- | What 'breakParagraph' reads of an item: the boxes without their looks and kinds.
+type Key = (Integer, [(Int, Integer, Integer, Integer, Text, Bool, Integer, Integer, Integer, Integer, Int)], Maybe (Int, Int), Bool)
+
+keyOf :: Sp -> Params -> [Item] -> Key
+keyOf w ps its = (unSp w, map item its, pExpansion ps, pProtrusion ps)
+  where
+    item = \case
+      Box (Sp bw) c -> (0, bw, 0, 0, bcText c, bcExpandable c, unSp (bcProtrudeStart c), unSp (bcProtrudeEnd c), unSp (bcEdgeStart c), unSp (bcEdgeEnd c), 0)
+      Glue (Sp gw) (Sp y) (Sp z) -> (1, gw, y, z, "", False, 0, 0, 0, 0, 0)
+      Penalty (Sp pw) p h -> (2, pw, case h of NoHyphen -> 0; ExplicitHyphen -> 1; PatternHyphen _ -> 2, 0, "", False, case h of PatternHyphen (Sp q) -> q; _ -> 0, 0, 0, 0, p)
+
+-- | The values 'breakParagraph' is given for the inputs of a group, vertical or not.
+keysOf :: Bool -> Group -> [Key]
+keysOf vertical g =
+  let its = itemsOf vertical (gSetting g) (gPre g) (gRun g) (gPost g)
+   in [keyOf (fromIntegral w * fs) (paramsOf (gSetting g) e its) its | (w, e) <- gCases g]
+
+{- | The settings the normal form leaves out that give 'breakParagraph'
+another value than the setting of the normal form for them, in lines up
+to the width given.
+-}
+normalFormMisses :: Int -> [Text] -> [Violation]
+normalFormMisses maxWidth run =
+  [ Violation "normal form" (show (gSetting g, gPre g, gPost g, w, e) <> " gives another value than " <> show normal)
+  | (g, normal) <- rawGroups maxWidth run,
+    let its = itemsOf False (gSetting g) (gPre g) run (gPost g),
+    (w, e) <- gCases g,
+    let width = fromIntegral w * fs
+        e' = e && hasLatin run,
+    case Map.lookup (normal, gPre g, gPost g) composed of
+      Nothing -> True
+      Just nits -> keyOf width (paramsOf (gSetting g) e its) its /= keyOf width (paramsOf normal e' nits) nits
+  ]
+  where
+    composed = Map.fromList [((gSetting g, gPre g, gPost g), itemsOf False (gSetting g) (gPre g) run (gPost g)) | g <- normalGroups maxWidth run]
+
+-- | Every run up to a tier, each in its own value: the tests compare the keys of each run.
+runsT :: Tiers [Text]
+runsT = listsOf (Tiers [parts])
+
+enumerationTests :: [TestTree]
+enumerationTests =
+  [ testCase "there are 23 parts: 15 Japanese characters, 4 Latin words and 4 Latin signs" $ do
+      length jaParts @?= 15
+      length latinParts @?= 8
+      length (nub parts) @?= 23,
+    testCase "in lines of 2 em, the inputs of up to 1 part are as many as the parts and the settings allow" $ do
+      let made = [i | t <- upTo 1 (groupT (normalGroups 5)), g <- t, i <- groupInputs g, inWidth i == 2]
+          -- before the run 0 or 1 'あ', after it none or 2 'い'
+          placed = 2 * 2
+          -- the empty run; 9 Japanese parts of one setting (漢あ「」〜！・ゝ and the
+          -- ideographic space); ー and ぁ, strict and loose; 。 and 、, with
+          -- and without hanging; 10 parts of Latin text or of both scripts
+          -- (… — and the 8 Latin parts), with and without protrusion, in no
+          -- span, en and ja, with and without the expansion
+          runs = 1 + 9 + 2 * 2 + 2 * 2 + 10 * (2 * 3 * 2)
+      length made @?= placed * runs,
+    testCase "the normal form: up to 2 parts, the inputs it leaves out give 'breakParagraph' no value it is not given" $
+      -- the values (items, width, expansion and protrusion) of every
+      -- setting are those of the normal form, run by run
+      checkAllPar 2 runsT (normalFormMisses linesPrWidth)
+        @?= Passed (length (concat (upTo 2 runsT))),
+    testCase "vertical writing: up to 2 parts, it gives 'breakParagraph' the same values" $
+      checkAllPar 2 runsT (\run -> [Violation "vertical" (show g) | g <- normalGroups linesPrWidth run, keysOf True g /= keysOf False g])
+        @?= Passed (length (concat (upTo 2 runsT))),
+    testCase "the advances: table, hyphenation and lime-tree are broken where the patterns and the hyphen allow" $ do
+      let s = Setting True False False Nothing
+          shape = \case
+            Box _ c -> T.unpack (bcText c)
+            Glue {} -> "_"
+            Penalty _ p h -> case h of
+              PatternHyphen _ -> "|P"
+              ExplicitHyphen -> "|E"
+              NoHyphen -> if p >= infPenalty then "|X" else "|" <> show p
+          shapes run = map shape (itemsOf False s 0 run 0)
+      -- each, then the paragraph end: no break, the fil glue, the forced break
+      shapes ["table"] @?= ["ta", "|P", "ble", "|X", "_", "|-10000"]
+      shapes ["hyphenation"] @?= ["hy", "|P", "phen", "|P", "ation", "|X", "_", "|-10000"]
+      shapes ["lime-tree"] @?= ["lime-", "|E", "tree", "|X", "_", "|-10000"]
+      -- 漢 and a, with the space between Japanese and Latin text
+      shapes ["漢", "a"] @?= ["漢", "_", "a", "|X", "_", "|-10000"],
+    testCase "the advances: a quarter, a half and three quarters of an em for Latin text, an em for Japanese text" $ do
+      let s = Setting True False False Nothing
+          widths run = [unSp w | Box w _ <- itemsOf False s 0 run 0]
+          em = unSp fs
+      widths ["a"] @?= [em `div` 2]
+      widths ["table"] @?= [em `div` 4 + em `div` 2, em `div` 2 + em `div` 4 + em `div` 2]
+      widths ["漢"] @?= [em]
+      widths ["m", " ", "w"] @?= [em * 3 `div` 4, em * 3 `div` 4]
+      widths ["“", "a", "”"] @?= [em `div` 2 * 3]
+  ]
+
+-- * the predicates on outputs made by hand
+
+-- | The setting of the defaults: strict kinsoku, no hanging, no protrusion, no span.
+plain :: Setting
+plain = Setting True False False Nothing
+
+-- | The paragraph of a run without 'あ' before it nor 'い' after it, in the setting, the expansion and the width given.
+paragraphIn :: Setting -> Bool -> Int -> [Text] -> Paragraph
+paragraphIn s e w run = paragraphOf (Input s e w 0 run 0)
+
+-- | The paragraph broken again after its items are changed: what the predicates read of it changes with them.
+rebroken :: ([Item] -> [Item]) -> Paragraph -> Paragraph
+rebroken f p =
+  let its = f (pItems p)
+   in p {pItems = its, pBreaks = breakParagraph (pParams p) (const (pWidth p)) its}
+
+{- | The items with a break allowed before each box of the text given
+where a prohibition kept it: in place of the infinite penalty, or
+between two boxes with nothing between them.
+-}
+allowBefore :: Text -> [Item] -> [Item]
+allowBefore t = \case
+  Penalty _ p _ : rest@(Box _ c : _) | p >= infPenalty && bcText c == t -> Penalty 0 0 NoHyphen : allowBefore t rest
+  b@(Box {}) : rest@(Box _ c : _) | bcText c == t -> b : Penalty 0 0 NoHyphen : allowBefore t rest
+  x : rest -> x : allowBefore t rest
+  [] -> []
+
+-- | The items with a break allowed after each box of the text given where a prohibition kept it.
+allowAfter :: Text -> [Item] -> [Item]
+allowAfter t = \case
+  b@(Box _ c) : Penalty _ p _ : rest | p >= infPenalty && bcText c == t -> b : Penalty 0 0 NoHyphen : allowAfter t rest
+  b@(Box _ c) : rest@(Box {} : _) | bcText c == t -> b : Penalty 0 0 NoHyphen : allowAfter t rest
+  x : rest -> x : allowAfter t rest
+  [] -> []
+
+-- | The lines of a paragraph changed.
+withLines :: ([Line] -> [Line]) -> Paragraph -> Paragraph
+withLines f p = p {pBreaks = (pBreaks p) {brLines = f (brLines (pBreaks p))}}
+
+-- | The line k changed.
+atLine :: Int -> (Line -> Line) -> [Line] -> [Line]
+atLine k f ls = [if i == k then f l else l | (i, l) <- zip [0 ..] ls]
+
+-- | The invariants a paragraph breaks, L7 not brute-forced.
+broken :: Paragraph -> [LineInvariant]
+broken = map breachOf . breaches 0
+
+-- | The invariants a paragraph breaks, L7 brute-forced.
+brokenAll :: Paragraph -> [LineInvariant]
+brokenAll = map breachOf . breaches bruteLimit
+
+-- | The paragraph a predicate test starts from, and that it breaks no invariant.
+sound :: Paragraph -> Assertion
+sound p = brokenAll p @?= []
+
+predicateTests :: [TestTree]
+predicateTests =
+  [ testCase "L1: two characters of a line swapped" $ do
+      let p = paragraphIn plain False 2 ["あ", "い", "う", "え"]
+          swap l =
+            l
+              { lineItems = case lineItems l of
+                  Box w a : g : Box w' b : rest -> Box w' b : g : Box w a : rest
+                  its -> its
+              }
+      sound p
+      broken (withLines (atLine 0 swap) p) @?= [L1],
+    testCase "L2: a line that starts with a full stop" $ do
+      let p = paragraphIn plain False 2 ["あ", "あ", "。"]
+      sound p
+      broken (rebroken (allowBefore "。") p) @?= [L2],
+    testCase "L2: a line that starts with a prolonged sound mark breaks strict kinsoku only" $ do
+      let strict = paragraphIn plain False 2 ["あ", "あ", "ー"]
+          loose = paragraphIn plain {sStrict = False} False 2 ["あ", "あ", "ー"]
+      sound strict
+      broken (rebroken (allowBefore "ー") strict) @?= [L2]
+      broken loose @?= []
+      map lineText (brLines (pBreaks loose)) @?= ["ああ", "ー"],
+    testCase "L3: a line that ends with an opening bracket" $ do
+      -- あ, the space before 「 and 「 fill 2 em
+      let p = paragraphIn plain False 2 ["あ", "「", "あ"]
+      sound p
+      broken (rebroken (allowAfter "「") p) @?= [L3],
+    testCase "L4: a line that breaks between two ellipses" $ do
+      let p = paragraphIn plain False 2 ["あ", "…", "…"]
+      sound p
+      broken (rebroken (allowBefore "…") p) @?= [L4],
+    testCase "L5: a line past W that is not overfull" $ do
+      -- the last line, set an em wider than W: its glue stretches to the end
+      let p = paragraphIn plain False 2 ["漢", "漢", "漢"]
+      sound p
+      broken (withLines (atLine 1 (\l -> l {lineTarget = lineTarget l + fs})) p) @?= [L5],
+    testCase "L5: a line made overfull, with a break where it fits" $ do
+      let p = paragraphIn plain False 2 ["あ", "い", "う", "え"]
+          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) True (0, 0)]
+      broken (withLines joined p) @?= [L5],
+    testCase "L5: an overfull line with no break where it fits is not broken" $ do
+      let p = paragraphIn plain False 2 ["」", "」", "」", "」", "」"]
+      map lineOverfull (brLines (pBreaks p)) @?= [True]
+      broken p @?= [],
+    testCase "L6: a line but the last that does not reach W" $ do
+      -- the space stretches the first line to the target, an eighth of an em short of W
+      let p = paragraphIn plain False 3 ["a", " ", "table", " ", "a", " ", "table"]
+      sound p
+      map lineText (brLines (pBreaks p)) @?= ["atable", "atable"]
+      broken (withLines (atLine 0 (\l -> l {lineTarget = lineTarget l - Sp (unSp fs `div` 8)})) p) @?= [L6],
+    testCase "L6: a line without glue that stretches, short of W, is not judged" $ do
+      let p = paragraphIn plain False 2 ["「", "あ", "あ"]
+      broken p @?= [],
+    testCase "L7: demerits more than the least" $ do
+      let p = paragraphIn plain False 2 ["あ", "い", "う", "え"]
+      sound p
+      brokenAll p {pBreaks = (pBreaks p) {brDemerits = brDemerits (pBreaks p) + 1}} @?= [L7],
+    testCase "L8: a break between two boxes of a word, not at a hyphen" $ do
+      let p = paragraphIn plain False 4 ["a", " ", "hyphenation"]
+          unhyphen = map (\case Penalty w q (PatternHyphen _) -> Penalty w q NoHyphen; it -> it)
+      sound p
+      broken p {pItems = unhyphen (pItems p)} @?= [L8],
+    testCase "L9: a break at a hyphen of the patterns in the first pass" $ do
+      let p = paragraphIn plain False 4 ["a", " ", "hyphenation"]
+      sound p
+      brPass (pBreaks p) @?= 2
+      broken p {pBreaks = (pBreaks p) {brPass = 1}} @?= [L9],
+    testCase "L9: a break at a hyphen of the patterns in a span of ja" $ do
+      let p = paragraphIn plain False 4 ["a", " ", "hyphenation"]
+          ja c = c {bcLook = (bcLook c) {lkLang = Just "ja"}}
+          inJa = map (\case Box w c -> Box w (ja c); it -> it)
+      sound p
+      broken (withLines (atLine 0 (\l -> l {lineItems = inJa (lineItems l)})) p) @?= [L9],
+    testCase "L10: a line that starts with a space" $ do
+      let p = paragraphIn plain False 2 ["a", " ", "table"]
+          lastLine = length (brLines (pBreaks p)) - 1
+      sound p
+      broken (withLines (atLine lastLine (\l -> l {lineItems = latinSpace p : lineItems l})) p) @?= [L10],
+    testCase "L11: no space between a Japanese character and a Latin word" $ do
+      let p = paragraphIn plain False 3 ["漢", "a"]
+          noGlue = filter (\case Glue _ y _ -> y >= filStretch; _ -> True)
+      sound p
+      broken (withLines (atLine 0 (\l -> l {lineItems = noGlue (lineItems l)})) p) @?= [L11],
+    testCase "L11: no space between a Japanese character and a character of both scripts in a Latin span" $ do
+      let p = paragraphIn plain {sLang = Just "en"} False 3 ["あ", "“", "a"]
+      broken p @?= [],
+    testCase "L12: an expansion without the glyph expansion" $ do
+      let p = paragraphIn plain False 2 ["あ", "い", "う", "え"]
+      sound p
+      broken (withLines (atLine 0 (\l -> l {lineExpansion = 5})) p) @?= [L12],
+    testCase "L12: an expansion of no multiple of 5" $ do
+      -- one line, the last: its glue takes up what the expansion changes
+      let p = paragraphIn plain True 3 ["table", " ", "a"]
+      sound p
+      pExpansion (pParams p) @?= Just (20, 5)
+      broken (withLines (atLine 0 (\l -> l {lineExpansion = 3})) p) @?= [L12],
+    testCase "L13: a protrusion without protrusion" $ do
+      let p = paragraphIn plain False 3 ["漢", "a"]
+      sound p
+      broken (withLines (atLine 0 (\l -> l {lineProtrusion = (0, 100)})) p) @?= [L13],
+    testCase "L13: a full stop hung at the line end is not broken" $ do
+      let p = paragraphIn plain {sHanging = True} False 2 ["あ", "あ", "。", "あ"]
+      map lineText (brLines (pBreaks p)) @?= ["ああ。", "あ"]
+      brokenAll p @?= [],
+    testCase "L13: a hyphen of the patterns protruding at the line end is not broken" $ do
+      -- seven tenths of the quarter em of the hyphen
+      let p = paragraphIn plain {sProtrusion = True} False 3 ["table", " ", "table"]
+      map (snd . lineProtrusion) (brLines (pBreaks p)) @?= [Sp (unSp fs * 7 `div` 40), 0]
+      brokenAll p @?= []
+  ]
+
+-- * the naive search
+
+-- | A box of a width in sp, for the paragraphs made by hand.
+boxOf :: Integer -> Item
+boxOf w = Box (Sp w) content
+  where
+    content = case [c | Box _ c <- itemsOf False plain 0 ["a"] 0] of
+      c : _ -> c
+      [] -> error "no box"
+
+-- | The end of a paragraph, as the composition makes it: no break, the glue that fills the last line, the forced break.
+paragraphEnd :: [Item]
+paragraphEnd = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+
+-- | Words of the widths given, with glue of 5, stretching 10 and shrinking 2 between them, and the end of a paragraph.
+wordsOf :: [Integer] -> [Item]
+wordsOf ws = concat (zipWith (\i w -> [Glue 5 10 2 | i > (0 :: Int)] <> [boxOf w]) [0 ..] ws) <> paragraphEnd
+
+bruteTests :: [TestTree]
+bruteTests =
+  [ testCase "L7: items with no break have no way to be broken" $ do
+      feasiblePaths defaultParams 100 2 [boxOf 30] @?= []
+      bruteDemerits defaultParams 100 2 [boxOf 30] @?= Nothing,
+    testCase "L7: one item, the forced break, makes a line of nothing, which is not feasible" $
+      bruteDemerits defaultParams 100 2 [Penalty 0 (negate infPenalty) NoHyphen] @?= Nothing,
+    testCase "L7: one box makes one line of badness 0: (10 + 0) squared" $ do
+      bruteDemerits defaultParams 100 1 (boxOf 30 : paragraphEnd) @?= Just 100
+      brDemerits (breakParagraph defaultParams (const 100) (boxOf 30 : paragraphEnd)) @?= 100,
+    testCase "L7: a paragraph of three lines, its demerits counted by hand" $ do
+      -- lines of 100: "30 30 25" is 95 wide with a stretch of 20, badness
+      -- (5 * 297 div 20)^3 + 2^17, divided by 2^18, is 2, demerits (10 +
+      -- 2)^2 = 144; twice, then the last line of badness 0, 100; no line
+      -- of two words is within the tolerance (badness 4279) and no line of
+      -- four fits (124 when shrunk)
+      let its = wordsOf [30, 30, 25, 30, 30, 25, 10]
+      map pathDemerits (feasiblePaths defaultParams 100 1 its) @?= [388]
+      bruteDemerits defaultParams 100 1 its @?= Just 388
+      let br = breakParagraph defaultParams (const 100) its
+      (brPass br, brDemerits br) @?= (1, 388),
+    testCase "L7: breaks whose demerits leave out the formulas, or are not the least, are broken" $ do
+      -- as a breakParagraph that added 0 for lineDemerits would report its
+      -- path, and as one that chose the worst feasible path would: six
+      -- words of 30 in lines of 100, with glue that stretches 60, break
+      -- three and three, two, two and two, and other ways in the first pass
+      let its = concat (zipWith (\i w -> [Glue 5 60 2 | i > (0 :: Int)] <> [boxOf w]) [0 ..] (replicate 6 30)) <> paragraphEnd
+          p = handParagraph 100 its
+          br = pBreaks p
+          ds = map pathDemerits (feasiblePaths (pParams p) (pWidth p) (brPass br) its)
+      sound p
+      assertBool ("more than one way: " <> show ds) (length (nub ds) > 1)
+      brDemerits br @?= minimum ds
+      brokenAll p {pBreaks = br {brDemerits = 0}} @?= [L7]
+      brokenAll p {pBreaks = br {brDemerits = maximum ds}} @?= [L7]
+  ]
+
+-- | A paragraph of items made by hand, of boxes of "a", in lines of the width given.
+handParagraph :: Sp -> [Item] -> Paragraph
+handParagraph w its =
+  Paragraph
+    { pText = T.concat [bcText c | Box _ c <- its],
+      pSize = fs,
+      pWidth = w,
+      pStrict = True,
+      pItems = its,
+      pParams = defaultParams,
+      pBreaks = breakParagraph defaultParams (const w) its,
+      pAdvance = advance
+    }
+
+-- * the regressions
+
+-- | The items of a line with the break after the box of the text given put back as the break after a written hyphen.
+restoreAfter :: Text -> [Item] -> [Item]
+restoreAfter t = \case
+  b@(Box _ c) : Penalty _ p NoHyphen : rest | p >= infPenalty && bcText c == t -> b : Penalty 0 50 ExplicitHyphen : rest
+  x : rest -> x : restoreAfter t rest
+  [] -> []
+
+regressionTests :: [TestTree]
+regressionTests =
+  [ testCase "golem-layout ADR 0016: the output before it, a full stop apart from the ellipsis before it, is broken by L2" $ do
+      -- the test design of docs/adr/0209 names L4 for it, but a full stop
+      -- is not inseparable: it is the line-start prohibition that it breaks
+      let p = paragraphIn plain False 2 ["あ", "…", "。"]
+      sound p
+      broken (rebroken (allowBefore "。") p) @?= [L2],
+    testCase "golem-layout ADR 0016: an output that breaks between two ellipses is broken by L4" $ do
+      let p = paragraphIn plain False 2 ["あ", "…", "…", "。"]
+      sound p
+      broken (rebroken (allowBefore "…") p) @?= [L4],
+    testCase "the output before what does not fit was pushed out in the last pass, a line past W where a break fits, is broken by L5" $ do
+      let p = paragraphIn plain False 2 ["あ", "い", "う", "え", "お"]
+          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) True (0, 0)]
+      sound p
+      broken (withLines joined p) @?= [L5],
+    testCase "golem-layout ADR 0008: the output before it, a word with a hyphen sent whole to the next line past W, is broken by L5" $ do
+      let p = paragraphIn plain False 2 ["lime-tree"]
+          noExplicit = map (\case Penalty w _ ExplicitHyphen -> Penalty w infPenalty NoHyphen; it -> it)
+          before = rebroken noExplicit p
+      sound p
+      map lineText (brLines (pBreaks p)) @?= ["lime-", "tree"]
+      map lineText (brLines (pBreaks before)) @?= ["lime-tree"]
+      broken (withLines (map (\l -> l {lineItems = restoreAfter "lime-" (lineItems l)})) before {pItems = pItems p}) @?= [L5]
+  ]
+
+-- * every input
+
+-- | The paragraph of an input, for the predicates.
+paragraphOf :: Input -> Paragraph
+paragraphOf i =
+  let (its, ps, br) = breakInput i
+   in Paragraph
+        { pText = T.replicate (inPre i) "あ" <> T.concat (inRun i) <> T.replicate (inPost i) "い",
+          pSize = fs,
+          pWidth = lineWidth i,
+          pStrict = sStrict (inSetting i),
+          pItems = its,
+          pParams = ps,
+          pBreaks = br,
+          pAdvance = advance
+        }
+
+{- | A known bug: its item in 「既知の不具合」 of the specification, the
+shape of the inputs it is excused in, the breaches it excuses there, and
+how many inputs up to each depth have them. The item goes when the ADR
+that fixes the bug is in.
+-}
+data LineBug = LineBug
+  { lbItem :: String,
+    lbShape :: Input -> Bool,
+    lbExcuses :: Input -> Breach -> Bool,
+    lbCounts :: [(Int, Int)]
+  }
+
+lineBugs :: [LineBug]
+lineBugs =
+  [ LineBug
+      { lbItem = "語間の空白の隣の禁則と分離禁止",
+        lbShape = \i -> " " `elem` inRun i,
+        lbExcuses = \i br -> case breachOf br of
+          L2 -> breaksAtSpace i (breachLine br - 1)
+          L3 -> breaksAtSpace i (breachLine br)
+          L4 -> breaksAtSpace i (breachLine br)
+          _ -> False,
+        lbCounts = [(0, 0), (1, 0), (2, 432), (3, 64114)]
+      },
+    LineBug
+      { lbItem = "字幅の伸縮の刻みで行長を超える行",
+        lbShape = inExpansion,
+        lbExcuses = \i br -> breachOf br `elem` [L5, L6] && shrunkWithoutGlue i (breachLine br),
+        lbCounts = [(0, 0), (1, 0), (2, 32), (3, 2923)]
+      },
+    LineBug
+      { lbItem = "明示のハイフンの後の分割と両用の字の禁則",
+        lbShape = \i -> any (T.any isDualCharacter) (inRun i),
+        lbExcuses = \i br -> case breachOf br of
+          L2 -> breaksAtExplicitHyphen i (breachLine br - 1)
+          L3 -> breaksAtExplicitHyphen i (breachLine br)
+          L4 -> breaksAtExplicitHyphen i (breachLine br)
+          _ -> False,
+        lbCounts = [(0, 0), (1, 0), (2, 0), (3, 448)]
+      }
+  ]
+
+-- | Whether line k of an input ends after a hyphen or a dash written in a Latin word.
+breaksAtExplicitHyphen :: Input -> Int -> Bool
+breaksAtExplicitHyphen i k =
+  let p = paragraphOf i
+   in case drop k (brPositions (pBreaks p)) of
+        b : _ | b >= 0 && b < length (pItems p) -> case pItems p !! b of
+          Penalty _ _ ExplicitHyphen -> True
+          _ -> False
+        _ -> False
+
+-- | Whether line k of an input ends at a space between Latin words.
+breaksAtSpace :: Input -> Int -> Bool
+breaksAtSpace i k =
+  let p = paragraphOf i
+   in case drop k (brPositions (pBreaks p)) of
+        b : _ | b >= 0 && b < length (pItems p) -> pItems p !! b == latinSpace p
+        _ -> False
+
+{- | Whether line k of an input is shrunk by the glyph expansion, and its
+glue cannot shrink further: none of it shrinks, or all of it is shrunk
+as far as it can. The expansion, a multiple of its step rounded towards
+0, leaves the line wider than W.
+-}
+shrunkWithoutGlue :: Input -> Int -> Bool
+shrunkWithoutGlue i k =
+  let (_, _, br) = breakInput i
+   in case drop k (brLines br) of
+        l : _ -> lineExpansion l < 0 && (all (<= 0) [z | Glue _ _ z <- lineItems l] || glueRatio l <= -1)
+        [] -> False
+
+-- | The breaches of an input no known bug excuses, and whether each known bug excuses one.
+judged :: Int -> Input -> ([Breach], [Bool])
+judged limit i =
+  let bs = breaches limit (paragraphOf i)
+      excuses b br = lbShape b i && lbExcuses b i br
+   in ([br | br <- bs, not (any (`excuses` br) lineBugs)], [lbShape b i && any (lbExcuses b i) bs | b <- lineBugs])
+
+-- | The inputs each known bug excuses. Strict, so that the count of millions of inputs is a list of numbers.
+newtype Excused = Excused [Int]
+  deriving stock (Eq, Show)
+
+instance Semigroup Excused where
+  Excused as <> Excused bs = let cs = add as bs in foldr seq () cs `seq` Excused cs
+    where
+      add (x : xs) (y : ys) = x + y : add xs ys
+      add xs [] = xs
+      add [] ys = ys
+
+instance Monoid Excused where
+  mempty = Excused []
+
+-- | The violations of the first input of a group that has some, and the known bugs that excuse its inputs.
+judgeGroup :: Int -> Group -> ([Violation], Excused)
+judgeGroup limit g =
+  let results = [(i, judged limit i) | i <- groupInputs g]
+      excused = Excused (foldr (zipWith (+) . map fromEnum . snd . snd) (map (const 0) lineBugs) results)
+   in case [(i, bs) | (i, (bs, _)) <- results, not (null bs)] of
+        (i, bs) : _ -> ([Violation (show (breachOf b)) (breachWhy b) | b <- bs] <> [Violation "input" (show i)], excused)
+        [] -> ([], excused)
+
+-- | The first input of a group that breaks an invariant no known bug excuses.
+firstBroken :: Int -> Group -> Maybe Input
+firstBroken limit g = case [i | i <- groupInputs g, not (null (fst (judged limit i)))] of
+  i : _ -> Just i
+  [] -> Nothing
+
+{- | An input of n parts drawn from the enumeration: its run, a setting of
+its normal form, a placing, one of its widths and an expansion.
+-}
+drawInput :: Int -> Int -> SplitMix -> (Input, SplitMix)
+drawInput maxWidth n g0 =
+  let go 0 g = ([], g)
+      go m g = let (x, g') = oneOf parts g; (xs, g'') = go (m - 1 :: Int) g' in (x : xs, g'')
+      (run, g1) = go n g0
+      (s, g2) = oneOf (normalSettings run) g1
+      (placing, g3) = oneOf (placings maxWidth) g2
+      (pre, post, ws) = placing
+      (w, g4) = oneOf ws g3
+      (e, g5) = if hasLatin run then oneOf [False, True] g4 else (False, g4)
+   in (Input s e w pre run post, g5)
+
+-- | The input with parts of its run taken out as long as it still breaks an invariant no known bug excuses.
+shrinkInput :: Int -> Input -> Input
+shrinkInput limit i = i {inRun = shrinkList (\run -> not (null (fst (judged limit i {inRun = run})))) (inRun i)}
+
+report :: Int -> String -> Input -> String
+report limit what input =
+  intercalate
+    "\n"
+    ( (what <> ":")
+        : ["  " <> show (breachOf b) <> ": " <> breachWhy b | b <- bs]
+          <> ["", "As a case of LineBreakingSpec:", "", renderCase name input]
+    )
+  where
+    bs = fst (judged limit input)
+    name = case bs of
+      b : _ -> show (breachOf b) <> ": " <> breachWhy b
+      [] -> "no violation"
+
+exhaustiveTests :: [TestTree]
+exhaustiveTests =
+  [ testCase "L1 to L13 hold for every input up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
+      depth <- linesDepth
+      let limit = bruteLimitAt depth
+      -- built here, not in a value of its own, so that it is not held
+      case tallyAllPar depth (groupT (normalGroups (maxWidthAt depth))) (judgeGroup limit) of
+        (Failed k g _, _) -> case firstBroken limit g of
+          Just i -> assertFailure (report limit ("the smallest input that breaks an invariant has " <> show k <> " parts") i)
+          Nothing -> assertFailure "a group broke an invariant, but none of its inputs does"
+        (Passed _, Excused counted) -> do
+          let wrong =
+                [ (lbItem b, lookup depth (lbCounts b), n)
+                | (b, n) <- zip lineBugs (counted <> repeat 0),
+                  lookup depth (lbCounts b) /= Just n
+                ]
+          if null wrong
+            then pure ()
+            else
+              assertFailure
+                ( "at depth "
+                    <> show depth
+                    <> ", the inputs a known bug excuses differ from the count pinned:\n"
+                    <> intercalate "\n" [item <> ": pinned " <> maybe "nothing" show pinned <> ", counted " <> show n | (item, pinned, n) <- wrong]
+                ),
+    testCase "L1 to L13 hold for every input drawn one part past GOLEM_ENUM_LINES_DEPTH, GOLEM_ENUM_LINES_SAMPLES of them, but the known bugs" $ do
+      depth <- linesDepth
+      count <- linesSamples
+      let limit = bruteLimitAt depth
+          drawn = Tiers [sampleT sampleSeed count (drawInput (maxWidthAt depth) (depth + 1))]
+      case checkAllPar 0 drawn (map (\b -> Violation (show (breachOf b)) (breachWhy b)) . fst . judged limit) of
+        Passed _ -> pure ()
+        Failed _ input _ ->
+          let small = shrinkInput limit input
+           in assertFailure (report limit ("an input drawn with " <> show (depth + 1) <> " parts breaks an invariant; with parts taken out as long as it still does, it has " <> show (length (inRun small))) small)
+  ]
