@@ -36,7 +36,7 @@ application/epub+zip
 <itemref idref="item1"/>
 </spine>
 </package>
-== OEBPS/nav.xhtml (deflate, time 315532800, 375 bytes)
+== OEBPS/nav.xhtml (deflate, time 315532800, 433 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -44,7 +44,7 @@ application/epub+zip
 <body>
 <nav epub:type="toc" id="toc">
 <h1>図版の本</h1>
-<ol><li><a href="figures.xhtml#h-1-0">1　図版</a></li></ol>
+<ol><li><a href="figures.xhtml#h-1-0">1　図版</a></li><li><a href="figures.xhtml#h-1-1434">あとがき</a></li></ol>
 </nav>
 </body>
 </html>
@@ -84,7 +84,7 @@ li p, li p[class] { padding-inline-start: 0; text-indent: 0; }
 .line { display: block; }
 .line + br { display: none; }
 code { padding-inline: 0.25em; }
-== OEBPS/figures.xhtml (deflate, time 315532800, 2678 bytes)
+== OEBPS/figures.xhtml (deflate, time 315532800, 3043 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -143,6 +143,15 @@ code { padding-inline: 0.25em; }
 <figure>
 <img src="images/trns-rgb16.png" alt="透明の画素と黒"/>
 <figcaption><span class="number">図11</span>　tRNS のある 16 ビットの RGB の PNG。</figcaption>
+</figure>
+<h1 id="h-1-1434">あとがき</h1>
+<p>章の外の図版は、@nonumber を付けると番号なしで組む（docs/adr/0200）。</p>
+<figure>
+<img src="images/diagram.svg" alt="番号のない図版"/>
+<figcaption>番号のない図版。</figcaption>
+</figure>
+<figure>
+<img src="images/diagram.svg" alt="番号もキャプションもない図版"/>
 </figure>
 </body>
 </html>

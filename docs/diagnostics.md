@@ -2088,16 +2088,18 @@ dev では出力に残し、診断は出さない。
 ### 意味
 
 その種類のブロックに付けられない属性を付けた。
-たとえば、見出しでないブロックへの `@notoc`、段落でないブロックへの `@style`、図版のキャプションの中の `@style`、コードブロックでないブロックへの `@caption` である。
+たとえば、見出しでないブロックへの `@notoc`、段落でないブロックへの `@style`、図版のキャプションの中の `@style`、コードブロックでないブロックへの `@caption`、見出しと図版とコードブロックのほかのブロック（段落、リスト、表など）への `@nonumber` である。
+キャプションのないコードブロックへの `@nonumber` は、付けられる種類のブロックに付けたが意味がないので、このコードではなく [G02134](#g02134) である。
 
 - メッセージ: `@<名前> はこのブロックには付けられません`、`@style は図版のキャプションには付けられません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が `@style` の条件を加えた。[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md) も触れる）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が `@style` の条件を加えた。[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md) も触れる。[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md) が `@nonumber` を図版とコードブロックに広げた）
 
 ### 主な原因
 
 - 見出しでないブロックに `@notoc` を付けた。
 - 段落でないブロックか、図版のキャプションに `@style` を付けた。
+- 段落や表に `@nonumber` を付けた。
 
 ### 直し方
 
@@ -5348,6 +5350,35 @@ dev と prod の両方でエラーである。
 `width` を、`12zw`、`40mm` のような寸法か、`50%` のような行長の割合で書く。
 割合は、回り込ませない図版と回り込ませる図版では段の行長、回した図版では枠の行長に対する割合である。
 
+## G02134
+
+キャプションのないコードブロックへの @nonumber は要りません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+キャプション（`@caption`）のないコードブロック（```` ``` ```` か `@listing`）に `@nonumber` を付けた。
+リスト番号を持つのはキャプションのあるコードブロックだけなので、キャプションのないコードブロックには、振らないでおく番号がない。
+`@caption` と `@nonumber` のどちらを先に書いても同じく、そのブロックの属性をすべて当てた後で判定する。
+コードブロックは、`@nonumber` がないものとして組む。
+位置は `@nonumber` の行である。
+
+- メッセージ: `キャプションのないコードブロックは番号を持たないので、@nonumber は要りません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)
+
+### 主な原因
+
+- キャプションを付けるつもりで、`@caption` を書き忘れた。
+- 番号のない図版にならって、キャプションのないコードブロックにも `@nonumber` を書いた。
+
+### 直し方
+
+キャプションを付けるなら `@caption` を書く。
+キャプションが要らないなら `@nonumber` を消す。
+
 ## G03001
 
 manifest.toml の誤りです
@@ -6839,12 +6870,12 @@ dev と prod の両方でエラーである。
 リスト番号の書式（`[code]` の `number`、既定 `リスト{chapter}-{n}`）が `{chapter}` を使うのに、章の番号を持たない、キャプションのあるコードブロックがある場合も、この誤りとする。
 章は、番号を持つ階層 1 の見出しから、次の階層 1 の見出しまでである。
 最初の章の見出しより前の図版とコードブロックと、`@nonumber` の階層 1 の見出し（あとがきなど）の後のものが、章の外になる。
-キャプションのないコードブロックは番号を持たないので、この誤りにならない。
+キャプションのないコードブロックと、`@nonumber` を付けた図版とコードブロックは番号を持たないので、この誤りにならない（[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)）。
 位置は図版かコードブロックのブロックである。
 
-- メッセージ: `章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります`
+- メッセージ: `章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます`
 - 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
-- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)（コードブロックの条件は [golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md) が加えた）
+- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)（コードブロックの条件は [golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md) が加えた。メッセージの `@nonumber` の案内は [docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md) が足した）
 
 ### 主な原因
 
@@ -6854,6 +6885,7 @@ dev と prod の両方でエラーである。
 ### 直し方
 
 図版とコードブロックを章の中に移すか、番号の書式から `{chapter}` を外す。
+番号の要らない図版とコードブロック（前付けや後書きの図など）なら、`@nonumber` を付ける。
 
 ## G04005
 
@@ -6865,16 +6897,16 @@ dev と prod の両方でエラーである。
 ### 意味
 
 `ref-number` が、番号を持たない要素を指す。
-番号を持つのは、`@nonumber` のない見出し、図版、キャプションを付けたコードブロックである。
+番号を持つのは、`@nonumber` のない見出し、`@nonumber` のない図版、`@nonumber` のない、キャプションを付けたコードブロックである。
 位置は参照であり、参照は何も出力しない。
 
 - メッセージ: `番号を持たない要素への参照です: <ラベル>`
 - 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
-- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)、[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)（コードブロック）
+- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)、[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)（コードブロック）、[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)（`@nonumber` の図版とコードブロック）
 
 ### 主な原因
 
-- `ref-number` で、番号のない見出しなど、番号を持たない要素を指した。
+- `ref-number` で、番号のない見出しや `@nonumber` の図版など、番号を持たない要素を指した。
 
 ### 直し方
 
@@ -7369,6 +7401,7 @@ overrides に書けない名前です
 ブロックコマンドの不正な出力の詳細は、`ブロックコマンドの出力は [ブロックの列, 画像の列] です`、`ブロックコマンドが返せないブロックです: <種類>`（見出し、一覧の出力、改ページ、改ページの制御、行アキ）、`ブロックコマンドの出力はラベルを持てません` である。
 プラグインが作った画像の図版（[docs/adr/0123](adr/0123-figures-from-plugins.md)）の不正な出力の詳細は、`画像の形が不正です`、`画像の名前が不正です: <名前>`、`画像の名前が重複しています: <名前>`、`画像の大きさの合計が上限（67108864 バイト）を超えています`、`どの図版も使っていない画像があります: <名前>`、`画像の形式は svg、png、jpeg のどれかです: <形式>`、`プラグインの図版は web を持てません`、`応答にない画像です: <src>`、`プラグインの図版は plugin:<名前> で画像を指します: <src>`、`図版は出力の最上位にだけ置けます` である。
 図版のキャプションに段落でないブロックを置いた出力（ブロックコマンドとフィルタ）の詳細は、`図版のキャプションには段落だけを置けます` である（[docs/adr/0144](adr/0144-figure-captions-hold-paragraphs-only.md)）。
+`nonumber` が真で `caption` が null のコードブロックを返した出力の詳細は、`キャプションのないコードブロックは番号を持たないので、@nonumber は要りません` である（[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)）。
 
 - メッセージ: `<プラグイン>.<コマンド>: <理由>`、`<プラグイン>.<ブロックコマンド>: <理由>`、`<プラグイン>.<フィルタ>: <理由>`、`<プラグイン>.golem_check_data: <理由>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
