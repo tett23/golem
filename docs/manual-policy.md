@@ -370,7 +370,7 @@ notice と info は別の重大度であり、どちらも「お知らせ」と�
 - 「効く」（「効いて」「効かない」「効き」）は使わない。指す内容の定まらない、書き流した印象を与える語だからである。文ごとに、設定が及ぶことなら「適用される」、値や指定が意味を持つことなら「有効」、結果を変えることなら「左右する」、役立つことなら「役に立つ」のように、正確な語を選ぶ。
 - 本と作品の題は『』で囲む（『高野聖』『蟹工船』『The Elements of Style』）。フィクスチャの作品も、本として指すときの二つのマニュアルも同じである。「」は、引用、節や章の題、語そのものを指すときに使う。
 - 前付けの順（番号のない「はじめに」、目次）、索引の二段組み、奥付の版の表示をそろえる。
-- 注の印を `style.toml` の `[notes]` の `mark-size = "0.65zw"` で組む。二つのマニュアルの本文は 13Q なので、印はおよそ 6pt になる。JLReq の 4.2.3「合印の処理」が合印の大きさを 6 ポイント前後としているのに合わせる（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
+- 注の印を `style.toml` の `[character-styles.note-mark]` の `size = "0.65zw"` で組む（[ADR 0177](adr/0177-note-mark-style-and-numerals.md) で `[notes]` の `mark-size` を廃止予定にした）。二つのマニュアルの本文は 13Q なので、印はおよそ 6pt になる。JLReq の 4.2.3「合印の処理」が合印の大きさを 6 ポイント前後としているのに合わせる（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
 - 脚注の前に区切り線を引く。`style.toml` の `[notes.rule]` に、一行の字数の 4 分の 1 ほどの `length` と、前後の 0.5zw の間隔を書く（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 - 奥付は `@import common/build-info.gm as build` で読み、`版：[= build.edition]` と `コミット：[code: [= build.commit]][= build.uncommitted]` の二行を載せる。コミットの行は、ハッシュだけをコードにし、コミットしていない変更があることの注記を本文の文字として続ける（[docs/adr/0178](adr/0178-colophon-commit-line-overflow.md)）。
 - 奥付の書体の段落の後に、ライセンスの段落を置く。原稿と組んだ PDF と HTML を CC0 1.0 で公開すること、放棄できない著作者人格権を行使しないこと、条文の場所（各プロジェクトの `LICENSE`）、PDF に埋め込んだフォントと HTML と一緒に配るフォントは SIL Open Font License 1.1 で CC0 の対象でないこと、その全文を HTML の `fonts/` に置くことを書く（[docs/adr/0082](adr/0082-manuals-under-cc0.md)）。

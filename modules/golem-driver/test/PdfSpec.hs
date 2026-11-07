@@ -1588,7 +1588,7 @@ codeBlockRubyTests =
       lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|" []]) @?= 0,
     testCase "a kenten box overhangs only when its look has a mark" $ do
       let central = const (baselineRatio - 1 / 2)
-          kenten shape = Box (10 * pt) (BoxContent "漢" False 0 0 (fromEnum KindKenten) (plainLook "body" (10 * pt)) {lkKenten = shape} 0 0 [] 0 0 noBoxSource)
+          kenten shape = Box (10 * pt) (BoxContent "漢" False 0 0 (fromEnum KindKenten) (plainLook "body" (10 * pt)) {lkKenten = shape} 0 0 [] 0 0 noBoxSource Nothing)
       lineOverhang False (10 * pt) central (lineOf [kenten (Just KentenSesame)]) @?= 5 * pt
       lineOverhang False (10 * pt) central (lineOf [kenten Nothing]) @?= 0,
     testCase "the overhang of a line is that of its highest box" $
@@ -1644,7 +1644,7 @@ codeBlockRubyTests =
     plainLine = Line [] 0 0 0 (0, 0) False (0, 0)
     lineOf items = Line items 0 0 0 (0, 0) False (0, 0)
     -- a ruby box of the kind set at 10pt, its reading at half that; its base characters at 10pt unless given
-    rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0 noBoxSource)
+    rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0 noBoxSource Nothing)
     firstPage pl = take 1 (plPages pl)
     -- the grid line after the code block of the first page
     codeEnd pl = sum (take 1 [s + n | p <- firstPage pl, (s, SCode _ _ n) <- poSlots p])

@@ -97,6 +97,6 @@ folio = { position = "bottom-outside", format = "{n}" }
 position = "top-outside"
 content = "heading.1.short"
 
-# 注の印を本文の 0.65 倍の大きさで組む（golem-driver ADR 0025、docs/manual-policy.md）。
-[notes]
-mark-size = "0.65zw"
+# 注の印を本文の 0.65 倍の大きさで組む（golem-driver ADR 0025、docs/adr/0177、docs/manual-policy.md）。
+[character-styles.note-mark]
+size = "0.65zw"

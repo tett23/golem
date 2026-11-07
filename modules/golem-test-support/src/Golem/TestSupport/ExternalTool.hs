@@ -8,8 +8,8 @@ Where it is not, each test skipped is counted in the 'SkipCounter' of the
 run ("Golem.TestSupport.Skipped"), and the suite writes the counts after
 its results (docs/adr ADR 0074).
 
-The test suites of golem-doc, golem-pdf, golem-driver and golem-plugin
-use it (docs/adr/0028).
+The test suites of golem-doc, golem-doc-gen, golem-pdf, golem-driver
+and golem-plugin use it (docs/adr/0028, docs/adr/0197).
 -}
 module Golem.TestSupport.ExternalTool
   ( needsTool,

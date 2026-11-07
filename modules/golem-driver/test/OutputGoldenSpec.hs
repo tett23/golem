@@ -122,9 +122,10 @@ figuresOutput target = withSystemTempDirectory "golem-golden" $ \tmp -> do
 
 {- | One of the two books that combine the features (docs/adr/0175):
 complex-vertical (B6, vertical, one column) and complex-horizontal (A5,
-horizontal, two columns), with the fonts of 'copyFonts'. Neither gives a
-diagnostic on any target: a change that makes one give a notice fails
-here.
+horizontal, two columns), with the fonts of 'copyFonts'. With the notices
+G07030 and G07046 silenced by their manifests (docs/adr/0198), neither
+gives a diagnostic on any target: a change that makes one give any other
+diagnostic fails here.
 -}
 complexOutput :: FilePath -> Target -> IO BS.ByteString
 complexOutput name target = withSystemTempDirectory "golem-golden" $ \tmp -> do

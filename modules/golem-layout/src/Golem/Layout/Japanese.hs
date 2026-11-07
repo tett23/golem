@@ -18,7 +18,13 @@ module Golem.Layout.Japanese
     boxKind,
     joinedDashes,
     noteMarkSize,
-    noteMarkText,
+    MarkPart (..),
+    markParts,
+    markInlines,
+    markPartsText,
+    -- | the format of [notes] mark-format, for the users of 'ComposeEnv' (docs/adr/0177)
+    MarkFormat (..),
+    parseMarkFormat,
     composeInlines,
     lineStartProhibited,
     lineEndProhibited,
@@ -45,6 +51,8 @@ import Golem.Layout.Look
 import Golem.Layout.Ruby
 import Golem.Length qualified as L
 import Golem.Numerals (kanji, kanjiDigits)
+import Golem.Numerals.Format (MarkFormat (..), defaultMarkFormat, parseMarkFormat)
+import Golem.Numerals.Notation (Notation, arabic, writeNumber)
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan (..), diagnostic, mkSpan, spanLength)
 
@@ -123,10 +131,12 @@ data ComposeEnv = ComposeEnv
     -} ceExplicitHyphenPenalty :: !Int,
     -- | the aki set of the paragraph (docs/adr ADR 0019)
     ceAkiSet :: !AkiSet,
-    -- | [notes] mark-size: the size of note marks (golem-driver ADR 0025)
-    ceNoteMarkSize :: !Dim,
-    -- | [notes] mark-format: the text of a note mark, {n} its number (golem-driver ADR 0025)
-    ceNoteMarkFormat :: !Text,
+    -- | [notes] mark-format: the text of a note mark, its number in a notation (golem-driver ADR 0025, docs/adr/0177)
+    ceNoteMarkFormat :: !MarkFormat,
+    -- | the look of a mark in the text from the look of its place: [notes] mark-style applied (docs/adr/0177)
+    ceNoteMarkLook :: Look -> Look,
+    -- | the size source of a mark in the text from that of its place (golem-cli ADR 0008, docs/adr/0177)
+    ceNoteMarkSource :: SizeSource -> SizeSource,
     -- | the definition that decided the size of 'ceLook' (golem-cli ADR 0008)
     ceSizeSource :: !SizeSource,
     -- | the size source inside an inline element, as 'ceRestyle' is the look inside it
@@ -161,8 +171,9 @@ defaultComposeEnv fs =
       ceCiteNumber = \_ _ -> Nothing,
       ceExplicitHyphenPenalty = 50,
       ceAkiSet = defaultAkiSet,
-      ceNoteMarkSize = Zw (1 % 2),
-      ceNoteMarkFormat = "*{n}",
+      ceNoteMarkFormat = defaultMarkFormat,
+      ceNoteMarkLook = \lk -> lk {lkSize = noteMarkSize (Zw (1 % 2)) (lkSize lk)},
+      ceNoteMarkSource = const SourceNoteMark,
       ceSizeSource = SourceGrid,
       ceSizeSourceOf = const,
       ceBoxSource = noBoxSource
@@ -225,6 +236,7 @@ data Piece
   | PAki !Look !AkiAmount -- [aki]: a fixed space, no break around it (docs/adr ADR 0019)
   | PCode !Look !Text !Sp !Sp -- a run of code without spaces and tabs (golem-driver ADR 0017), the padding before and after it (golem-driver ADR 0029)
   | PDashes !Look !Text -- a run of two or more full-width dashes: one box, an em for each (docs/adr ADR 0172)
+  | PMark !Look !Look ![MarkPart] !Sp !Sp -- the mark of a note in the text: the look of its place, its own, its parts and the padding of code before and after it (docs/adr/0177)
   | PAnchor (Int -> Anchor)
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
@@ -299,11 +311,14 @@ piecesOf env inl = case inl of
      in at sp (PAnchor (`AnchorPageRef` l) : digits)
   Ref sp _ l -> at sp (textPieces lk l)
   Deferred {} -> []
-  -- a mark is set at the mark size of [notes] (golem-driver ADR 0025)
-  Note sp n body -> [((ceSizeSource env, sp), PAnchor (\i -> AnchorNote i n sp body)), ((SourceNoteMark, sp), markPiece (noteMarkText (ceNoteMarkFormat env) n))]
+  -- a mark is set in the character style of [notes] mark-style (docs/adr/0177)
+  Note sp n body ->
+    let MarkFormat pre notation suf = ceNoteMarkFormat env
+     in [((ceSizeSource env, sp), PAnchor (\i -> AnchorNote i n sp body)), ((markSource, sp), markPiece (markParts (ceVertical env) pre notation (toInteger n) suf))]
   Sidenote sp n body ->
     ((ceSizeSource env, sp), PAnchor (\i -> AnchorSidenote i n sp body)) : case ceSidenoteMarker env of
-      MarkerNumber -> [((SourceNoteMark, sp), markPiece (T.pack (show n)))]
+      -- the number alone, neither the format nor the notation of [notes] (docs/adr/0177)
+      MarkerNumber -> [((markSource, sp), markPiece (markParts (ceVertical env) "" arabic (toInteger n) ""))]
       MarkerSymbol -> at sp [PBox lk "※" KindText (lkSize lk)]
       MarkerNone -> []
   IndexMark sp e -> at sp [PAnchor (\i -> AnchorIndex i sp e)]
@@ -320,15 +335,9 @@ piecesOf env inl = case inl of
     at sp = map ((ceSizeSource env, sp),)
     -- the look inside: the inner setting wins, the rest is inherited (golem-driver ADR 0004)
     restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl, ceSizeSource = ceSizeSourceOf env (ceSizeSource env) inl})
-    {- the mark of a note or a numbered sidenote (golem-driver ADR 0018):
-    set at the mark size (golem-driver ADR 0025), as wide as its advance
-    across, the mark size down; the box keeps the look of its place -}
-    markPiece t =
-      let m = noteMarkSize (ceNoteMarkSize env) (lkSize lk)
-          w
-            | ceVertical env = m
-            | otherwise = L.zwToSp m (ceWordAdvance env lk {lkSize = m} t)
-       in PBox lk t KindNoteMark w
+    -- the mark of a note or a numbered sidenote (golem-driver ADR 0018) in the look of mark-style (docs/adr/0177)
+    markPiece parts = PMark lk (ceNoteMarkLook env lk) parts 0 0
+    markSource = ceNoteMarkSource env (ceSizeSource env)
 
 {- | The size of a note mark in text of a size (golem-driver ADR 0018,
 0025): the mark size of style.toml, at least 1sp and at most the size of
@@ -337,9 +346,36 @@ the text.
 noteMarkSize :: Dim -> Sp -> Sp
 noteMarkSize d s = max 1 (min s (dimToSp s d))
 
--- | The text of a note mark: {n} of the format replaced by the number (golem-driver ADR 0025).
-noteMarkText :: Text -> Int -> Text
-noteMarkText format n = T.replace "{n}" (T.pack (show n)) format
+-- | A part of a mark (docs/adr/0177): text set as other text, or a number set tate-chu-yoko.
+data MarkPart = MarkText !Text | MarkTcy !Text
+  deriving stock (Eq, Show)
+
+{- | The parts of a mark of a number (docs/adr/0177): the text before, the
+number in its notation and the text after. In vertical text an Arabic
+number of up to two digits is tate-chu-yoko, as the number of a marker
+of a list (golem-driver ADR 0013); longer ones are Latin text. A number
+the notation cannot write (G07029, G07102) is in Arabic numerals.
+-}
+markParts :: Bool -> Text -> Notation -> Integer -> Text -> [MarkPart]
+markParts vertical pre notation n suf =
+  let written = fromMaybe (T.pack (show n)) (writeNumber notation n)
+      number
+        | vertical, notation == arabic, n >= 0, T.length written <= 2 = MarkTcy written
+        | otherwise = MarkText written
+   in case number of
+        -- text around text is one text, as the format writes it
+        MarkText t -> [MarkText (pre <> t <> suf)]
+        _ -> [MarkText pre | not (T.null pre)] <> [number] <> [MarkText suf | not (T.null suf)]
+
+-- | The parts of a mark as inlines: text, and tate-chu-yoko (docs/adr/0177).
+markInlines :: SrcSpan -> [MarkPart] -> [Inline]
+markInlines sp = map $ \case
+  MarkText t -> Text sp t
+  MarkTcy t -> Tcy sp t
+
+-- | The text of the parts of a mark.
+markPartsText :: [MarkPart] -> Text
+markPartsText = T.concat . map (\case MarkText t -> t; MarkTcy t -> t)
 
 {- | The source of a piece of a text at a character of it: the run of
 dashes itself when the text is its source byte for byte (G07101, docs/adr
@@ -599,14 +635,14 @@ itemsFor env prev p next = case p of
           | pre + post > 0 = KindPunctuation
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
-     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0 (ceBoxSource env))]
+     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing)]
   PWord lk word -> wordItems env lk word
   PSpace lk ->
     let sw = advance env lk ' '
      in if lkCode lk
           then [Glue (sw + tracking lk) 0 0] -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
           else [Glue (sw + tracking lk) (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))]
-  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env))]
+  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env) Nothing)]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
         rp = placeRuby style kind (baseAdvances env lk looks base) (readingAdvances env lk reading) (allowance True prev, allowance False next)
@@ -630,7 +666,7 @@ itemsFor env prev p next = case p of
         tag = case kind of
           MonoRuby -> KindRuby
           GroupRuby -> KindGroupRuby
-     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp) looks 0 0 (ceBoxSource env))]
+     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp) looks 0 0 (ceBoxSource env) Nothing)]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
   -- normalize sees no box next to these items: the spacing is that of the line's edge
   PForcedBreak -> lineEnd
@@ -639,7 +675,7 @@ itemsFor env prev p next = case p of
     let w = case a of
           AkiZw r -> L.zwToSp (lkSize lk) r
           AkiAbs x -> x
-     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0 (ceBoxSource env))]
+     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0 (ceBoxSource env) Nothing)]
   PCode lk run ps pe -> codeItems env lk run ps pe
   {- a run of dashes: an em for each, whatever the font's advance; inseparable
   at both ends, so the spacing and the breaks around it are those of one
@@ -647,8 +683,43 @@ itemsFor env prev p next = case p of
   PDashes lk d ->
     let t = tracking lk
         w = lkSize lk * fromIntegral (T.length d)
-     in [Box (w + t) (BoxContent d False 0 0 (fromEnum KindDashes) lk 0 (negate t) [] 0 0 (ceBoxSource env))]
+     in [Box (w + t) (BoxContent d False 0 0 (fromEnum KindDashes) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing)]
+  PMark place lk parts ps pe -> [markItem env place lk parts ps pe]
   PAnchor _ -> []
+
+{- | The box of the mark of a note in the text (golem-driver ADR 0018,
+docs/adr/0177): one box, nothing breaks it and no aki set spaces it. Its
+characters in the look of the mark, with its kerning, tracking and
+proportional metrics; the tracking after each character but the last.
+Across in horizontal text, as wide as its text; along the line in
+vertical text, each part in its own box: a Japanese character upright,
+Latin text turned, a tate-chu-yoko number an em of the mark.
+-}
+markItem :: ComposeEnv -> Look -> Look -> [MarkPart] -> Sp -> Sp -> Item
+markItem env place lk parts ps pe =
+  let m = lkSize lk
+      tr = tracking lk
+      txt = markPartsText parts
+      units
+        | ceVertical env = concatMap vertical parts
+        | otherwise = [(KindText, txt, L.zwToSp m (ceWordAdvance env lk txt), T.length txt)]
+      vertical = \case
+        MarkTcy t -> [(KindTcy, t, m, 1)]
+        MarkText t -> concatMap units' (groupBy (\a b -> latin a == latin b) (clusters t))
+      -- a run of Latin text is turned as one; each other character stands in its own box
+      units' us@(u : _)
+        | latin u = let run = T.concat us in [(KindRotated, run, L.zwToSp m (ceWordAdvance env lk run), T.length run)]
+      units' us = [(KindText, u, advanceOf u, T.length u) | u <- us]
+      advanceOf u = case T.unpack u of
+        [c] -> advance env lk c
+        _ -> L.zwToSp m (ceWordAdvance env lk u)
+      latin u = maybe False ((== Western) . charClass . fst) (T.uncons u)
+      chars = sum [k | (_, _, _, k) <- units]
+      -- each unit after the one before it and the tracking of that one's characters
+      starts = scanl (\o (_, _, u, k) -> o + u + tr * fromIntegral k) ps units
+      parts' = [(fromEnum kind, t, o) | ((kind, t, _, _), o) <- zip units starts]
+      w = sum [u | (_, _, u, _) <- units] + tr * fromIntegral (max 0 (chars - 1)) + ps + pe
+   in Box w (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts')))
 
 {- | A run of code (golem-driver ADR 0017): a box for each part of Latin or
 other text, cut after each slash; 'normalize' allows a break after a
@@ -657,7 +728,7 @@ expansion.
 -}
 codeItems :: ComposeEnv -> Look -> Text -> Sp -> Sp -> [Item]
 codeItems env lk run padStart padEnd =
-  [ Box (w + tr * fromIntegral (T.length seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env))
+  [ Box (w + tr * fromIntegral (T.length seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env) Nothing)
   | let segs = [seg | part <- slashParts run, seg <- T.groupBy sameSide part]
         lastIx = length segs - 1,
     (i, seg) <- zip [0 :: Int ..] segs,
@@ -731,7 +802,7 @@ padCode = \case
       PCode l _ _ _ -> key l
       PSpace l -> key l
       PChar l _ _ -> key l
-      PBox l _ KindNoteMark _ -> key l
+      PMark _ l _ _ _ -> key l
       PRuby l _ _ _ _ -> key l
       PRubyBreak -> Nothing
       _ -> Nothing
@@ -747,6 +818,7 @@ padCode = \case
         let lastIx = last ixs
             set i = \case
               PCode l t _ _ -> PCode l t (if i == firstIx then lkPadding l else 0) (if i == lastIx then lkPadding l else 0)
+              PMark p l parts _ _ -> PMark p l parts (if i == firstIx then lkPadding l else 0) (if i == lastIx then lkPadding l else 0)
               q -> q
          in zipWith set [0 ..] run
 
@@ -786,7 +858,7 @@ wordItems env lk word =
         let w = L.zwToSp (lkSize lk) (ceWordAdvance env lk t)
             ps = maybe 0 (min w . protAt fst . fst) (T.uncons t)
             pe = maybe 0 (min w . protAt snd . snd) (T.unsnoc t)
-         in Box (w + tr * fromIntegral (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0 (ceBoxSource env))
+         in Box (w + tr * fromIntegral (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0 (ceBoxSource env) Nothing)
       -- the advance of the character at the line end, without tracking, by its ratio (golem-layout ADR 0014)
       protAt pick c = if ceProtrusion env then Sp (unSp (advance env lk c) * pick (protrusionRatio c) `div` 1000) else 0
       withPens pen = concat . zipWith (\i x -> (if i > (0 :: Int) then pen else []) <> x) [0 ..]
