@@ -6,14 +6,13 @@ for some rows, the path at the end of the message.
 -}
 module StylePositionSpec (tests) where
 
-import Data.ByteString qualified as BS
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Golem.Project
 import Golem.Project.Style
 import Golem.Syntax
+import Support (offsetOf)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Toml qualified
@@ -24,9 +23,6 @@ import Toml.Syntax (Position (..))
 data Row = Row Text Text Text Text Int (Maybe Text)
 
 -- | The byte offset of the first occurrence of a needle.
-offsetOf :: Text -> Text -> Int
-offsetOf src needle = BS.length (TE.encodeUtf8 (fst (T.breakOn needle src)))
-
 -- | A page with a grid of 10pt, 40 characters, for the checks that need one.
 grid :: Text
 grid = "[page]\nsize = \"A5\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 40\nlines = 30\nline-pitch = \"16pt\"\nposition = { top = \"14mm\", gutter = \"14mm\" }\n"

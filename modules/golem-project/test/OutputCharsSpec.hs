@@ -5,12 +5,11 @@ the title is refused when it is read, so it never reaches XMP or OPF.
 -}
 module OutputCharsSpec (tests) where
 
-import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Golem.Project
 import Golem.Syntax
+import Support (offsetOf)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -31,9 +30,6 @@ manifestOf title extra =
     ]
 
 -- | The byte offset of the first occurrence of a needle.
-offsetOf :: Text -> Text -> Int
-offsetOf needle src = BS.length (TE.encodeUtf8 (fst (T.breakOn needle src)))
-
 -- | The code, the start and the message of each diagnostic of a failed parse.
 failures :: Text -> [(DiagnosticCode, Int, Text)]
 failures src = case parseManifest (FileId 0) src of
@@ -48,14 +44,14 @@ tests =
         let src = manifestOf "\"t\\u0001t\"" ""
         case failures src of
           [(c, at, msg)] -> do
-            (c, at) @?= (DiagnosticCode "G03028", offsetOf "\"t\\u0001t\"" src)
+            (c, at) @?= (DiagnosticCode "G03028", offsetOf src "\"t\\u0001t\"")
             assertBool (T.unpack msg) ("title" `T.isInfixOf` msg && "U+0001" `T.isInfixOf` msg)
           other -> assertFailure (show other),
       testCase "C15: \\u0000 in an element of creators is G03028" $ do
         let src = manifestOf "\"t\"" "\n[[metadata.creators]]\nname = \"a\\u0000b\"\nrole = \"author\"\n"
         case failures src of
           [(c, at, msg)] -> do
-            (c, at) @?= (DiagnosticCode "G03028", offsetOf "\"a\\u0000b\"" src)
+            (c, at) @?= (DiagnosticCode "G03028", offsetOf src "\"a\\u0000b\"")
             assertBool (T.unpack msg) ("name" `T.isInfixOf` msg && "U+0000" `T.isInfixOf` msg)
           other -> assertFailure (show other),
       testCase "U+FFFE in publisher is G03028" $ do

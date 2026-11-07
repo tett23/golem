@@ -10,7 +10,7 @@ import Golem.Driver
 import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), SetLine (..), layoutPages)
 import Golem.Project (ProjectFailure (..))
 import Golem.Syntax
-import Support
+import Support hiding (codesOf)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty

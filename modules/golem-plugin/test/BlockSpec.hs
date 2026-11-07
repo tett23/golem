@@ -5,8 +5,7 @@ command may put out.
 module BlockSpec (blockTests) where
 
 import Codec.CBOR.Read (deserialiseFromBytes)
-import Codec.CBOR.Term (Term (..), decodeTerm, encodeTerm)
-import Codec.CBOR.Write (toStrictByteString)
+import Codec.CBOR.Term (Term (..), decodeTerm)
 import Control.Monad (void)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -21,15 +20,10 @@ import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Plugin
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
+import Support (callSpan, cbor)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Printf (printf)
-
-cbor :: Term -> ByteString
-cbor = toStrictByteString . encodeTerm
-
-callSpan :: SrcSpan
-callSpan = mkSpan (FileId 1) 10 20
 
 -- | fixed.wat with a description and a response.
 fixed :: Term -> Term -> IO (Either PluginError Plugin)

@@ -21,6 +21,7 @@ import Golem.TestSupport.Manifest (manifestToml, testManifest)
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
+import Support (codesOf)
 import System.Directory (canonicalizePath, createDirectoryIfMissing)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
@@ -49,9 +50,6 @@ withProject files act = withSystemTempDirectory "golem-lsp-tables" $ \tmp0 -> do
   forM_ (("manifest.toml", manifest) : files) $
     \(p, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> p)) >> BS.writeFile (tmp </> p) bytes
   act tmp
-
-codesOf :: Workspace -> FilePath -> [Text]
-codesOf ws p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
 
 tableWatchTests :: TestTree
 tableWatchTests =
