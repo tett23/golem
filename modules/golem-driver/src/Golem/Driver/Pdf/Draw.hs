@@ -862,7 +862,7 @@ drawColumn env p =
           {- the leader and page number of a table of contents entry (golem-driver
           ADR 0009): the page number in the leaf of the end of the entry, the
           leader an artifact (docs/adr ADR 0183) -}
-          <> [ entry env "目次の行" (spanOfLine env lid) ta (gridAt slot) (SetLine l (pgFontSize geom) start [] [])
+          <> [ entry env "目次の行" (spanOfLine env lid) ta (gridAt slot) (SetLine l (pgFontSize geom) start [] [] Nothing)
              | (slot, SLine lid) <- poSlots p,
                let lastLeaf = listToMaybe (reverse [bcLeaf c | Just sl <- [Map.lookup lid (plLines layout)], Box _ c <- lineItems (slLine sl), bcLeaf c /= noLeaf]),
                Just tp <- [Map.lookup lid (plTocPages layout)],
@@ -874,7 +874,7 @@ drawColumn env p =
                Just hb <- [Map.lookup lid (plHeadings layout)],
                (j, Just sl) <- [(j, Map.lookup (lid + j) (plLines layout)) | j <- [0 .. m - 1]]
              ]
-          <> [ entry env "キャプションの行" (pfSpan pf) ta (captionLineAt env slot pf j) (SetLine l (pfCaptionSize pf) (captionIndent env ta pf) [] [])
+          <> [ entry env "キャプションの行" (pfSpan pf) ta (captionLineAt env slot pf j) (SetLine l (pfCaptionSize pf) (captionIndent env ta pf) [] [] Nothing)
              | (slot, fid) <- placedFigures p,
                Just pf <- [Map.lookup fid (plFigures layout)],
                (j, l) <- zip [0 ..] (pfCaption pf)
@@ -893,9 +893,9 @@ drawColumn env p =
                let (_, codeSlot, k', cont) = codePartOf slot lid k ci,
                cont,
                Just l <- [ciContinued ci],
-               let sl = SetLine l (ciSize ci) (ciIndent ci) [] []
+               let sl = SetLine l (ciSize ci) (ciIndent ci) [] [] Nothing
              ]
-          <> [ entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionLineAt env slot ci j) (SetLine l (ciCaptionSize ci) (ciStart ci) [] [])
+          <> [ entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionLineAt env slot ci j) (SetLine l (ciCaptionSize ci) (ciStart ci) [] [] Nothing)
              | (slot, SCode lid _ _) <- poSlots p,
                Just ci <- [Map.lookup lid (plCodes layout)],
                lid == ciFirst ci,
@@ -926,7 +926,7 @@ drawColumn env p =
         [ let pageTa = typeAreaFor geom n
               (paper, area) = turnedFrame geom t pageTa pf
               imageR = imageRect geom paper area 0 pf
-              captions = [entry env "キャプションの行" (pfSpan pf) area (captionLineAt env 0 pf j) (SetLine l (pfCaptionSize pf) 0 [] []) | (j, l) <- zip [0 ..] (pfCaption pf)]
+              captions = [entry env "キャプションの行" (pfSpan pf) area (captionLineAt env 0 pf j) (SetLine l (pfCaptionSize pf) 0 [] [] Nothing) | (j, l) <- zip [0 ..] (pfCaption pf)]
               onPage (rec, (_, uses)) = (rec {lrRect = P.turnRect t pageTa <$> lrRect rec, lrLinks = [(lt, lf, P.turnRect t pageTa r) | (lt, lf, r) <- lrLinks rec]}, ([], uses))
            in (P.Moved (P.MoveTurn t pageTa) (figureMark env fid imageR pf : concatMap (fst . snd) captions), (P.turnRect t pageTa imageR, pf), map onPage captions)
         | (_, SPageFigure fid) <- poSlots p,
@@ -938,7 +938,7 @@ drawColumn env p =
       noteLines = concat [[(nid, l) | l <- take cnt (drop from (Map.findWithDefault [] nid (deNoteBodies env)))] | (nid, from, cnt) <- poFootnotes p]
       -- the foot of the column, of its lines with @page-lines (docs/adr ADR 0030)
       bottomSlots = drop (poLines p - length noteLines) [0 .. poLines p - 1]
-      noteParts = [entry env "脚注の行" (noteSpan env nid) ta (gridAt slot) (SetLine l (pgFontSize geom) 0 [] []) | (slot, (nid, l)) <- zip bottomSlots noteLines]
+      noteParts = [entry env "脚注の行" (noteSpan env nid) ta (gridAt slot) (SetLine l (pgFontSize geom) 0 [] [] Nothing) | (slot, (nid, l)) <- zip bottomSlots noteLines]
       {- each rule with its band, the weight of its thinnest part, its
       marks and its swatch (golem-driver ADR 0028) -}
       rules =
@@ -982,7 +982,7 @@ drawPage env ps master = case ps of
         hiddenParts = hiddenMarks env n
         -- sidenotes in the sidenote column of the page (golem-driver ADR 0006)
         sidenoteParts =
-          [ entryAt env "傍注の行" (psSpan ps') (rectX area, rectY area + rectH area - (psTop ps' + fromIntegral j * snPitch + zwToSp snSize' baselineRatio)) (SetLine l snSize' 0 [] [])
+          [ entryAt env "傍注の行" (psSpan ps') (rectX area, rectY area + rectH area - (psTop ps' + fromIntegral j * snPitch + zwToSp snSize' baselineRatio)) (SetLine l snSize' 0 [] [] Nothing)
           | Just area <- [sidenoteAreaFor geom n],
             ps' <- Map.findWithDefault [] n (plSidenotes layout),
             let (_, snSize', snPitch) = sidenoteMetrics (docStyle inp (spanFile (psSpan ps'))) geom,

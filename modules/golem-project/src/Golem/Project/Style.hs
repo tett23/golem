@@ -19,6 +19,8 @@ module Golem.Project.Style
     CharStyleDef (..),
     Kerning (..),
     LineBreaks (..),
+    ParaAlign (..),
+    alignValues,
     ParaStyleDef (..),
     CodeStyle (..),
     defaultCodeStyle,
@@ -242,6 +244,22 @@ data CharStyleDef = CharStyleDef
 data LineBreaks = JoinLines | KeepLines
   deriving stock (Eq, Show)
 
+{- | How the lines of a paragraph are aligned (docs/adr/0189): the
+alignments of InDesign. In vertical writing left is the top and right the
+bottom of the line.
+-}
+data ParaAlign
+  = ParaLeft
+  | ParaCenter
+  | ParaRight
+  | ParaLeftJustified
+  | ParaCenterJustified
+  | ParaRightJustified
+  | ParaFullyJustified
+  | ParaTowardsSpine
+  | ParaAwayFromSpine
+  deriving stock (Eq, Show, Enum, Bounded)
+
 -- | [paragraph-styles.<name>] (docs/adr ADR 0005).
 data ParaStyleDef = ParaStyleDef
   { psBasedOn :: !(Maybe Text),
@@ -272,7 +290,14 @@ data ParaStyleDef = ParaStyleDef
     {- | the rules before and after the paragraph (golem-driver ADR 0027):
     Nothing inherits, Just Nothing is false
     -} psRuleBefore :: !(Maybe (Maybe RuleSpec)),
-    psRuleAfter :: !(Maybe (Maybe RuleSpec))
+    psRuleAfter :: !(Maybe (Maybe RuleSpec)),
+    -- | the alignment of the lines (docs/adr/0189)
+    psAlign :: !(Maybe ParaAlign),
+    -- | the grid lines before and after the paragraph (docs/adr/0189)
+    psSpaceBefore :: !(Maybe Int),
+    psSpaceAfter :: !(Maybe Int),
+    -- | the end of every line (docs/adr/0189)
+    psEndIndent :: !(Maybe Dim)
   }
   deriving stock (Eq, Show)
 
@@ -345,9 +370,9 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
--- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020).
+-- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
 bodyDefaults =
   noParaDef
@@ -359,7 +384,11 @@ bodyDefaults =
       psKerning = Just KernMetrics,
       psTracking = Just 0,
       psProportional = Just False,
-      psBaselineShift = Just (Abs 0)
+      psBaselineShift = Just (Abs 0),
+      psAlign = Just ParaLeftJustified,
+      psSpaceBefore = Just 0,
+      psSpaceAfter = Just 0,
+      psEndIndent = Just (Zw 0)
     }
 
 {- | An aki amount (docs/adr ADR 0019): a name (ベタ, 全角, 二分, 三分, 四分,
@@ -460,7 +489,7 @@ builtinParaStyles =
       ("code", noParaDef {psFont = Just "code", psPadding = Just (Zw (1 % 2))})
     ]
   where
-    noIndents = noParaDef {psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0)}
+    noIndents = noParaDef {psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0), psEndIndent = Just (Zw 0)}
 
 {- | The non-zero indent keys written for caption or sidenote, which do not
 indent (golem-driver ADR 0043): (the name of the style, the key). A zero
@@ -480,7 +509,7 @@ captionZeroIndentKeys :: Text -> ParaStyleDef -> [Text]
 captionZeroIndentKeys n d = [k | n `elem` ["caption", "sidenote"], (k, Just v) <- indentKeysOf d, zeroDim v]
 
 indentKeysOf :: ParaStyleDef -> [(Text, Maybe Dim)]
-indentKeysOf d = [("indent", psIndent d), ("first-line-indent", psFirstLineIndent d)]
+indentKeysOf d = [("indent", psIndent d), ("first-line-indent", psFirstLineIndent d), ("end-indent", psEndIndent d)]
 
 zeroDim :: Dim -> Bool
 zeroDim = \case
@@ -497,7 +526,7 @@ styleNotices fid src = case Toml.parse src of
   Right top ->
     [ notice "G03100" (spanAt pos) (captionZeroIndentMessage n k ("\"" <> t <> "\""))
     | n <- ["caption", "sidenote"],
-      k <- ["indent", "first-line-indent"],
+      k <- ["indent", "first-line-indent", "end-indent"],
       Just (Text' pos t) <- [lookupValue (Table' (Position 0 1 1) top) ["paragraph-styles", n, k]],
       Just v <- [parseSignedDim t],
       zeroDim v
@@ -517,7 +546,7 @@ captionZeroIndentMessage n k v = "キャプションと傍注は字下げを掛�
 
 -- | The message of an indent key of caption or sidenote (golem-driver ADR 0043).
 captionIndentMessage :: Text -> Text -> Text
-captionIndentMessage n k = "段落スタイル " <> n <> " には 0 でない indent と first-line-indent を書けません。キャプションと傍注は字下げをしません: " <> k
+captionIndentMessage n k = "段落スタイル " <> n <> " には 0 でない indent、first-line-indent、end-indent を書けません。キャプションと傍注は字下げをしません: " <> k
 
 -- | The keys the paragraph style code takes (golem-driver ADR 0017).
 codeParaKeys :: [Text]
@@ -592,6 +621,10 @@ overPara u b =
     (psBorderWidth u <|> psBorderWidth b)
     (psRuleBefore u <|> psRuleBefore b)
     (psRuleAfter u <|> psRuleAfter b)
+    (psAlign u <|> psAlign b)
+    (psSpaceBefore u <|> psSpaceBefore b)
+    (psSpaceAfter u <|> psSpaceAfter b)
+    (psEndIndent u <|> psEndIndent b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -1535,7 +1568,13 @@ instance FromValue ParaStyleDef where
     bw <- dimKey "border-width"
     rb <- optKeyOf "rule-before" ruleOrFalse
     ra <- optKeyOf "rule-after" ruleOrFalse
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw rb ra)
+    -- the alignment, the spaces before and after and the end indent (docs/adr/0189)
+    al <- enumKey "align" alignValues
+    sbefore <- optKeyOf "space-before" (withValue (\l x -> if x < 0 then failAt l "space-before は 0 以上です" else pure x))
+    safter <- optKeyOf "space-after" (withValue (\l x -> if x < 0 then failAt l "space-after は 0 以上です" else pure x))
+    endInd <- dimKey "end-indent"
+    let align = al >>= \v -> lookup v (zip alignValues [minBound .. maxBound])
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw rb ra align sbefore safter endInd)
 
 {- | A dimension that may be negative, read in its key so that an error is
 at the value and names the key (golem-project ADR 0008).
@@ -2058,6 +2097,7 @@ styleChecks owner s =
     <> paraSizeChecks s
     <> firstLineIndentChecks s
     <> opticalKerningChecks s
+    <> spineAlignChecks s
 
 -- | The path of a key of style.toml.
 styleKeys :: [Text] -> [Scope]
@@ -2162,7 +2202,11 @@ codeStyleChecks s =
             ("kerning", isJust (psKerning d)),
             ("tracking", isJust (psTracking d)),
             ("proportional-metrics", isJust (psProportional d)),
-            ("baseline-shift", isJust (psBaselineShift d))
+            ("baseline-shift", isJust (psBaselineShift d)),
+            ("align", isJust (psAlign d)),
+            ("space-before", isJust (psSpaceBefore d)),
+            ("space-after", isJust (psSpaceAfter d)),
+            ("end-indent", isJust (psEndIndent d))
           ],
         written
       ]
@@ -2328,6 +2372,16 @@ opticalKerningChecks s =
     opticals =
       [("character-styles", "文字スタイル", n) | (n, CharStyleDef {csKerning = Just KernOptical}) <- Map.toList (stCharStyles s)]
         <> [("paragraph-styles", "段落スタイル", n) | (n, ParaStyleDef {psKerning = Just KernOptical}) <- Map.toList (stParaStyles s)]
+
+-- | G03118: the spine is beside the lines only in horizontal writing (docs/adr/0189).
+spineAlignChecks :: Style -> [(Text, Text, [Scope], Text)]
+spineAlignChecks s =
+  [ ("G03118", n, paraKey n "align", "縦組みの本では、段落スタイル " <> n <> " の align に " <> v <> " を書けません。ノドと小口は横組みの本でだけ使えます")
+  | maybe False pageVertical (stPage s),
+    (n, ParaStyleDef {psAlign = Just a}) <- Map.toList (stParaStyles s),
+    (v, a') <- [("towards-spine", ParaTowardsSpine), ("away-from-spine", ParaAwayFromSpine)],
+    a == a'
+  ]
 
 -- ------------------------------------------------------------------ styles in a file
 
@@ -2503,6 +2557,10 @@ placementValues = ["page-foot", "chapter-end"]
 numberingValues = ["chapter", "file", "book"]
 leaderValues = ["dots", "none"]
 
+-- | The values of align, in the order of 'ParaAlign' (docs/adr/0189).
+alignValues :: [Text]
+alignValues = ["left", "center", "right", "left-justified", "center-justified", "right-justified", "fully-justified", "towards-spine", "away-from-spine"]
+
 -- | The values of kerning (docs/adr/0020).
 kerningValues :: [(Text, Kerning)]
 kerningValues = [("metrics", KernMetrics), ("japanese-equal-width", KernJapaneseEqualWidth), ("none", KernNone), ("optical", KernOptical)]
@@ -2666,8 +2724,12 @@ paraStyleNode =
         ("size", dim),
         ("line-breaks", enum lineBreaksValues),
         ("space-between", int),
+        ("space-before", int),
+        ("space-after", int),
+        ("align", enum alignValues),
         ("indent", dim),
         ("first-line-indent", dim),
+        ("end-indent", dim),
         ("regex-styles", NArray regexStyleNode),
         ("aki-set", ref AkiSets)
       ]

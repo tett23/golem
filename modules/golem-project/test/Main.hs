@@ -744,6 +744,7 @@ tests =
       characterFeatureTests,
       codeStyleTests,
       captionSidenoteTests,
+      alignSpaceTests,
       testCase "side of [sidenotes] takes only outside, the default (golem-project ADR 0009)" $ do
         let sn = "[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\n"
             sidenotesOf t = either (const Nothing) stSidenotes (parseStyle (FileId 0) t)
@@ -1365,6 +1366,82 @@ captionSidenoteTests =
     styleOf t = either (\ds -> assertFailure (show ds) >> pure defaultStyle) pure (parseStyle (FileId 0) t)
     messages = either (map diagMessage) (const [])
 
+{- | align, space-before, space-after and end-indent of a paragraph style
+(docs/adr/0189).
+-}
+alignSpaceTests :: TestTree
+alignSpaceTests =
+  testGroup
+    "align, space-before, space-after and end-indent (docs/adr/0189)"
+    [ testCase "the four keys are read and inherited through based-on; body has the defaults" $ do
+        s <- styleOf "[paragraph-styles.quote]\nalign = \"center\"\nspace-before = 1\nspace-after = 2\nend-indent = \"2zw\"\n\n[paragraph-styles.letter]\nbased-on = \"quote\"\n"
+        forM_ ["quote", "letter"] $ \n -> do
+          (paraStyle s (Just n) >>= psAlign) @?= Just ParaCenter
+          (paraStyle s (Just n) >>= psSpaceBefore) @?= Just 1
+          (paraStyle s (Just n) >>= psSpaceAfter) @?= Just 2
+          (paraStyle s (Just n) >>= psEndIndent) @?= Just (Zw 2)
+        b <- styleOf ""
+        (paraStyle b (Just "body") >>= psAlign) @?= Just ParaLeftJustified
+        (paraStyle b (Just "body") >>= psSpaceBefore) @?= Just 0
+        (paraStyle b (Just "body") >>= psSpaceAfter) @?= Just 0
+        (paraStyle b (Just "body") >>= psEndIndent) @?= Just (Zw 0)
+        (paraStyle b (Just "verse") >>= psAlign) @?= Just ParaLeftJustified,
+      testCase "the nine values of align" $
+        forM_ (zip alignValues [ParaLeft, ParaCenter, ParaRight, ParaLeftJustified, ParaCenterJustified, ParaRightJustified, ParaFullyJustified, ParaTowardsSpine, ParaAwayFromSpine]) $ \(v, a) -> do
+          s <- styleOf ("[paragraph-styles.quote]\nalign = \"" <> v <> "\"\n")
+          (paraStyle s (Just "quote") >>= psAlign) @?= Just a,
+      testCase "another align, a negative space and a negative end-indent are G03006" $
+        forM_ ["align = \"justify\"", "align = \"Center\"", "space-before = -1", "space-after = -1", "end-indent = \"-1zw\"", "end-indent = \"x\""] $ \kv ->
+          codes (parseStyle (FileId 0) ("[paragraph-styles.quote]\n" <> kv <> "\n")) @?= ["G03006"],
+      testCase "@style-def reads the four keys and rejects the same values" $ do
+        localStyleDef ParagraphKind [("align", LocalWord "right"), ("space-before", LocalWord "1"), ("space-after", LocalWord "2"), ("end-indent", LocalWord "1zw")]
+          @?= Right (Right noParaDef {psAlign = Just ParaRight, psSpaceBefore = Just 1, psSpaceAfter = Just 2, psEndIndent = Just (Zw 1)})
+        forM_ [("align", "justify"), ("space-before", "-1"), ("space-after", "-1"), ("end-indent", "-1zw")] $ \(k, v) ->
+          case localStyleDef ParagraphKind [(k, LocalWord v)] of
+            Left es -> map fst es @?= ["G03006"]
+            other -> assertFailure (show other),
+      testCase "towards-spine and away-from-spine are G03118 in a vertical book, at the value" $ do
+        let vertical = "[page]\nsize = \"B6\"\nwriting-mode = \"vertical\"\n\n"
+        forM_ ["towards-spine", "away-from-spine"] $ \v -> do
+          let src = vertical <> "[paragraph-styles.quote]\nalign = \"" <> v <> "\"\n"
+              r = parseStyle (FileId 0) src
+          codes r @?= ["G03118"]
+          either (map diagMessage) (const []) r @?= ["縦組みの本では、段落スタイル quote の align に " <> v <> " を書けません。ノドと小口は横組みの本でだけ使えます"]
+          either (map (spanStart . diagSpan)) (const []) r @?= [BS.length (TE.encodeUtf8 (fst (T.breakOnEnd "align = " src)))]
+          codes (parseStyle (FileId 0) ("[page]\nsize = \"B6\"\nwriting-mode = \"horizontal\"\n\n[paragraph-styles.quote]\nalign = \"" <> v <> "\"\n")) @?= []
+          codes (parseStyle (FileId 0) ("[paragraph-styles.quote]\nalign = \"" <> v <> "\"\n")) @?= []
+          codes (parseStyle (FileId 0) (vertical <> "[paragraph-styles.quote]\nalign = \"right\"\n")) @?= [],
+      testCase "@style-def towards-spine and away-from-spine are G03118 in a vertical book" $ do
+        vertical <- styleOf "[page]\nsize = \"B6\"\nwriting-mode = \"vertical\"\n"
+        horizontal <- styleOf "[page]\nsize = \"B6\"\n"
+        forM_ [ParaTowardsSpine, ParaAwayFromSpine] $ \a -> do
+          let ls = noLocalStyles {lsParaStyles = Map.fromList [("quote", noParaDef {psAlign = Just a})]}
+          [(c, n) | (c, n, _) <- checkLocalStyles vertical ls] @?= [("G03118", "quote")]
+          [(c, n) | (c, n, _) <- checkLocalStyles horizontal ls] @?= [],
+      testCase "the four keys of code are G03006" $
+        forM_ ["align = \"center\"", "space-before = 1", "space-after = 1", "end-indent = \"1zw\""] $ \kv ->
+          codes (parseStyle (FileId 0) ("[paragraph-styles.code]\n" <> kv <> "\n")) @?= ["G03006"],
+      testCase "a non-zero end-indent of caption and sidenote is G03006, a zero one the notice G03100" $
+        forM_ ["caption", "sidenote"] $ \n -> do
+          codes (parseStyle (FileId 0) ("[paragraph-styles." <> n <> "]\nend-indent = \"1zw\"\n")) @?= ["G03006"]
+          let src = "[paragraph-styles." <> n <> "]\nend-indent = \"0zw\"\n"
+          codes (parseStyle (FileId 0) src) @?= []
+          [(diagCode d, diagMessage d) | d <- styleNotices (FileId 0) src] @?= [(DiagnosticCode "G03100", "キャプションと傍注は字下げを掛けないので、" <> n <> ".end-indent = \"0zw\" は効果がありません")]
+          base <- styleOf ""
+          [c | (c, _, _) <- checkLocalStyles base noLocalStyles {lsParaStyles = Map.fromList [(n, noParaDef {psEndIndent = Just (Zw 1)})]}] @?= ["G03006"]
+          [c | (c, _, _) <- checkLocalStyles base noLocalStyles {lsParaStyles = Map.fromList [(n, noParaDef {psEndIndent = Just (Zw 0)})]}] @?= []
+          captionZeroIndentKeys n noParaDef {psEndIndent = Just (Zw 0)} @?= ["end-indent"],
+      testCase "align, space-before, space-after and end-indent of caption and sidenote are not errors besides" $
+        forM_ ["caption", "sidenote"] $ \n ->
+          forM_ ["align = \"center\"", "space-before = 1", "space-after = 1"] $ \kv ->
+            codes (parseStyle (FileId 0) ("[paragraph-styles." <> n <> "]\n" <> kv <> "\n")) @?= [],
+      testCase "the keys of the schema for completion" $ do
+        forM_ ["align", "space-before", "space-after", "end-indent"] $ \k -> assertBool (T.unpack k) (k `elem` paraStyleKeys)
+        alignValues @?= ["left", "center", "right", "left-justified", "center-justified", "right-justified", "fully-justified", "towards-spine", "away-from-spine"]
+    ]
+  where
+    styleOf t = either (\ds -> assertFailure (show ds) >> pure defaultStyle) pure (parseStyle (FileId 0) t)
+
 codeStyleTests :: TestTree
 codeStyleTests =
   testGroup
@@ -1751,6 +1828,10 @@ localStyleTests =
               "synthetic-italic" -> "true"
               "line-breaks" -> "keep"
               "space-between" -> "1"
+              "space-before" -> "1"
+              "space-after" -> "1"
+              "align" -> "center"
+              "end-indent" -> "1zw"
               "size" -> "1zw"
               "indent" -> "1zw"
               "first-line-indent" -> "1zw"

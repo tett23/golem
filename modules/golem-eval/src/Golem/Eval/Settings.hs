@@ -163,8 +163,8 @@ fileStyles style header =
       -- the checks again until no definition is dropped
       checked ls acc =
         let cs = checkLocalStyles style ls
-            ds = [err code (positionOf ls name) m | (code, name, m) <- cs]
-            wrong = [localsOf ls name | (code, name, _) <- cs, code `elem` ["G03006", "G03008", "G03013"]]
+            ds = [err code (positionFor code ls name) m | (code, name, m) <- cs]
+            wrong = [localsOf ls name | (code, name, _) <- cs, code `elem` ["G03006", "G03008", "G03013", "G03118"]]
             ls' =
               ls
                 { lsCharStyles = foldr Map.delete (lsCharStyles ls) (concatMap snd wrong),
@@ -186,6 +186,10 @@ fileStyles style header =
           go seen m
             | m `elem` seen = []
             | otherwise = m : maybe [] (go (m : seen)) (parent m)
+      -- G03118 is at the argument of align of the definition (docs/adr/0189)
+      positionFor code ls name = case code of
+        "G03118" | ksp : _ <- [ksp | (Def _ ParagraphKind n _, kvs) <- defKeys, n == name, (k, ksp, _) <- kvs, k == "align"] -> ksp
+        _ -> positionOf ls name
       -- where a diagnostic about a name is reported: the @style-def of the name it stands for
       positionOf ls name =
         let (ps, cs) = localsOf ls name
