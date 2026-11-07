@@ -65,7 +65,11 @@ outputGoldenTests =
     [ goldenDiff "pdf-sample.txt" (pdfDump <$> sampleOutput TargetPdf),
       goldenDiff "epub-sample.txt" (epubDump <$> sampleOutput TargetEpub),
       goldenDiff "pdf-figures.txt" (pdfDump <$> figuresOutput TargetPdf),
-      goldenDiff "epub-figures.txt" (epubDump <$> figuresOutput TargetEpub)
+      goldenDiff "epub-figures.txt" (epubDump <$> figuresOutput TargetEpub),
+      goldenDiff "pdf-complex-vertical.txt" (pdfDump <$> complexOutput "complex-vertical" TargetPdf),
+      goldenDiff "epub-complex-vertical.txt" (epubDump <$> complexOutput "complex-vertical" TargetEpub),
+      goldenDiff "pdf-complex-horizontal.txt" (pdfDump <$> complexOutput "complex-horizontal" TargetPdf),
+      goldenDiff "epub-complex-horizontal.txt" (epubDump <$> complexOutput "complex-horizontal" TargetEpub)
     ]
 
 {- | One golden of test/golden/. A mismatch prints the unified diff of the
@@ -115,6 +119,18 @@ figuresOutput target = withSystemTempDirectory "golem-golden" $ \tmp -> do
   copyTree "test/fixtures/figures" tmp
   copyFonts tmp
   buildOne tmp target ["G07039" | target == TargetPdf]
+
+{- | One of the two books that combine the features (docs/adr/0175):
+complex-vertical (B6, vertical, one column) and complex-horizontal (A5,
+horizontal, two columns), with the fonts of 'copyFonts'. Neither gives a
+diagnostic on any target: a change that makes one give a notice fails
+here.
+-}
+complexOutput :: FilePath -> Target -> IO BS.ByteString
+complexOutput name target = withSystemTempDirectory "golem-golden" $ \tmp -> do
+  copyTree ("test/fixtures" </> name) tmp
+  copyFonts tmp
+  buildOne tmp target []
 
 -- | Builds one target, with exactly the diagnostics given (by code).
 buildOne :: FilePath -> Target -> [T.Text] -> IO BS.ByteString
