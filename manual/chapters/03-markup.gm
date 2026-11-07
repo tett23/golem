@@ -347,7 +347,8 @@ short = "tett23"
 ```
 
 ```
-[= vars.product] [= vars.version] の使い方（[= vars.author.short]）
+[= vars.product] [= vars.version] の使い方
+著者　[= vars.author.short]
 ```
 
 値には、文字列、整数、真偽値、日付と、それらの配列と表を書けます。
