@@ -218,6 +218,32 @@ pluginDataTests =
   where
     parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] extra)
 
+-- | [targets.pdf] pdfa and pdfua (docs/adr ADR 0183).
+pdfConformanceTests :: TestTree
+pdfConformanceTests =
+  testGroup
+    "[targets.pdf] pdfa and pdfua (docs/adr ADR 0183)"
+    [ testCase "pdfa = \"2a\" and pdfua = \"1\" are read" $ do
+        fmap (conformance . manifestTargets) (parse "pdfa = \"2a\"\npdfua = \"1\"\n") @?= Right (Just PdfA2a, Just PdfUa1)
+        fmap (conformance . manifestTargets) (parse "pdfua = \"1\"\n") @?= Right (Nothing, Just PdfUa1)
+        fmap (conformance . manifestTargets) (parse "") @?= Right (Nothing, Nothing),
+      testCase "other values and values that are not strings are G03001" $
+        mapM_
+          (\v -> (v, codes (parse v)) @?= (v, ["G03001"]))
+          ["pdfa = \"2u\"\n", "pdfa = \"2b\"\n", "pdfa = \"4\"\n", "pdfa = true\n", "pdfua = \"2\"\n", "pdfua = 1\n"],
+      testCase "pdfa is not a key of [targets.epub]" $
+        codes (parseManifest (FileId 0) (manifestWith ["\"a.gm\""] "[targets.epub]\npdfa = \"2a\"\n")) @?= ["G03001"],
+      testCase "the span of a value of the manifest is at the value" $ do
+        let src = manifestWith ["\"a.gm\""] "[targets.pdf]\npdfa = \"2a\"\n"
+            at t = BS.length (TE.encodeUtf8 (fst (T.breakOn t src)))
+        fmap spanStart (manifestValueSpan (FileId 0) src ["targets", "pdf", "pdfa"]) @?= Just (at "\"2a\"")
+        fmap spanStart (manifestValueSpan (FileId 0) src ["metadata", "language"]) @?= Just (at "\"ja\"")
+        manifestValueSpan (FileId 0) src ["targets", "pdf", "pdfua"] @?= Nothing
+    ]
+  where
+    parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] ("[targets.pdf]\n" <> extra))
+    conformance t = (tgPdfA t, tgPdfUa t)
+
 -- | A plugin in the project, declared with path (docs/adr/0109).
 pluginPathTests :: TestTree
 pluginPathTests =
@@ -304,6 +330,12 @@ runningHeadTests =
         codes (runningHead "content = \"heading.1.long\"") @?= ["G03014"]
         codes (runningHead "content = \"chapter\"") @?= ["G03014"]
         codes (runningHead "even = \"title\", odd = \"heading.x.short\"") @?= ["G03014"],
+      testCase "heading.6 is taken, heading.7 is G03014 (docs/adr/0188)" $ do
+        fmap (fmap rhOdd) (runningHead "content = \"heading.6.short\"") @?= Right (Just (one [ref (RefHeading 6 HeadShort PickFirst)]))
+        codes (runningHead "content = \"heading.7.short\"") @?= ["G03014"]
+        codes (runningHead "content = \"heading.9.short\"") @?= ["G03014"]
+        codes (runningHead "content = [\"{heading.6.short}\"]") @?= []
+        codes (runningHead "content = [\"{heading.7.short}\"]") @?= ["G03014"],
       testCase "content with even or odd, one of even and odd, or none is G03014" $ do
         codes (runningHead "content = \"title\", odd = \"title\"") @?= ["G03014"]
         codes (runningHead "even = \"title\"") @?= ["G03014"]
@@ -537,7 +569,7 @@ diagnosticCodeTests =
         has "[page]\nsize = \"A6\"\nbleed = \"abc\"\n" "長さの書き方が不正です: abc（13Q や 20mm のように書きます）"
         has "[page]\nsize = \"A6\"\nbleed = 3\n" "長さは文字列で書きます"
         has "[color.swatches]\na = { cmyk = [0, 0, 0, 101] }\n" "cmyk は 0 から 100 までの整数四つです"
-        has "[headings.4]\n" "見出しの段は 1、2、3 のどれかです: 4",
+        has "[headings.7]\n" "見出しの段は 1 から 6 のどれかです: 7",
       testCase "the checks after reading" $ do
         msgs (parseStyle (FileId 0) "[figures]\nnumber = \"{x}\"\n") @?= ["番号の書式が不正です: {x}"]
         msgs (parseStyle (FileId 0) "[character-styles.Bad]\nsynthetic-bold = true\n") @?= ["スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: Bad"]
@@ -918,6 +950,7 @@ tests =
       silenceInfoTests,
       pluginDataTests,
       pluginPathTests,
+      pdfConformanceTests,
       indexStyleTests,
       hiddenFolioTests,
       findCycleTests,
@@ -1174,7 +1207,25 @@ noteMarkTests =
         codes (parseStyle (FileId 0) "[figures]\nnumber = \"図{n:circled}\"\n") @?= []
         codes (parseStyle (FileId 0) "[headings.1]\nnumber = \"{n}}\"\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[headings.1]\nnumber = '{n}\\'\n") @?= ["G03006"]
-        codes (parseStyle (FileId 0) "[headings.1]\nnumber = \"{n:x}\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[headings.1]\nnumber = \"{n:x}\"\n") @?= ["G03006"],
+      -- docs/adr/0188
+      testCase "[headings.6] is taken, [headings.7] and [headings.0] are G03006 (docs/adr/0188)" $ do
+        codes (parseStyle (FileId 0) "[headings.4]\nsize = \"1zw\"\n[headings.5]\nlines = 1\n[headings.6]\nnumber = \"{n}\"\n") @?= []
+        codes (parseStyle (FileId 0) "[headings.7]\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[headings.0]\n") @?= ["G03006"]
+        let ms = msgs (parseStyle (FileId 0) "[headings.7]\n")
+        assertBool (show ms) (any ("見出しの段は 1 から 6 のどれかです: 7" `T.isInfixOf`) ms),
+      testCase "{k} of a heading's format is below its level (docs/adr/0188)" $ do
+        codes (parseStyle (FileId 0) "[headings.2]\nnumber = \"{2}.{n}\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[headings.1]\nnumber = \"{2}\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[headings.1]\nnumber = \"{1}\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[headings.5]\nnumber = \"{4}.{n}\"\n") @?= []
+        codes (parseStyle (FileId 0) "[headings.6]\nnumber = \"{1}.{2}.{3}.{4}.{5}.{n}\"\n") @?= []
+        codes (parseStyle (FileId 0) "[headings.6]\nnumber = \"{6}.{n}\"\n") @?= ["G03006"],
+      testCase "the slots of [figures] and [code] do not change (docs/adr/0188)" $ do
+        codes (parseStyle (FileId 0) "[figures]\nnumber = \"図{1}-{2}\"\n") @?= []
+        codes (parseStyle (FileId 0) "[figures]\nnumber = \"図{3}\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[code]\nnumber = \"リスト{4}\"\n") @?= ["G03006"]
     ]
 
 -- | [lists] (golem-driver ADR 0013).

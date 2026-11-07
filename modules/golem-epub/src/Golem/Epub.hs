@@ -128,7 +128,8 @@ navDocument cfg ft book =
         <> escapeXml (teAnchor e)
         <> "\">"
         <> maybe "" (\n -> escapeXml (n <> numberSeparator (epLanguage cfg) n)) (teNumber e)
-        <> escapeXml (T.concat (map inlineText (teTitle e)))
+        -- the language spans stay, for assistive technologies (docs/adr ADR 0187)
+        <> titleWithLanguages (teTitle e)
         <> "</a>"
     nested [] = "<ol><li><a href=\"#toc\">" <> escapeXml (epTitle cfg) <> "</a></li></ol>"
     nested es = "<ol>" <> go es <> "</ol>"

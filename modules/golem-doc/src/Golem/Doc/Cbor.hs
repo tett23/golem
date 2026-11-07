@@ -95,7 +95,7 @@ documentTerm :: Document -> Term
 documentTerm (Document (FileId f) bs) = TList [int abiVersion, int f, list blockT bs]
 
 blockT :: Block -> Term
-blockT (Block sp lbl body) = TList [spanT sp, opt text lbl, bodyT body]
+blockT (Block sp lbl lang body) = TList [spanT sp, opt text lbl, opt text lang, bodyT body]
 
 bodyT :: BlockBody -> Term
 bodyT = \case
@@ -119,8 +119,8 @@ pageControlT = \case
   AdjustLines n -> TList [int (2 :: Int), int n]
 
 codeT :: Code -> Term
-codeT (Code lang nums file cap diff ls) =
-  TList [opt text lang, opt TBool nums, opt text file, opt inlinesTerm cap, TBool diff, list lineT ls]
+codeT (Code lang nums file cap diff ls nn) =
+  TList [opt text lang, opt TBool nums, opt text file, opt inlinesTerm cap, TBool diff, list lineT ls, TBool nn]
   where
     lineT (CodeLine t n d h cs) = TList [text t, opt int n, opt (int . fromEnum) d, TBool h, list int cs]
 
@@ -131,8 +131,8 @@ itemT :: ListItem -> Term
 itemT (ListItem n bs) = TList [opt int n, list blockT bs]
 
 figureT :: Figure -> Term
-figureT (Figure src web alt wr w cap pg rot) =
-  TList [text src, opt text web, text alt, opt (int . fromEnum) wr, opt text w, list blockT cap, opt int pg, TBool rot]
+figureT (Figure src web alt wr w cap pg rot nn) =
+  TList [text src, opt text web, text alt, opt (int . fromEnum) wr, opt text w, list blockT cap, opt int pg, TBool rot, TBool nn]
 
 channelT :: ChannelBlock -> Term
 channelT = \case
@@ -166,6 +166,8 @@ inlineT rt = \case
   ChannelItem s (ChannelItemData c k r body) -> tagged 19 [spanT s, text c, opt text k, opt text r, inlinesTerm body]
   -- a link to an external URL (docs/adr ADR 0182)
   Link s u xs -> tagged 20 [spanT s, text u, sub xs]
+  -- a language span (docs/adr ADR 0187)
+  Lang s l xs -> tagged 21 [spanT s, text l, sub xs]
   where
     sub = list (inlineT rt)
 
@@ -337,7 +339,7 @@ termBlocksE t = asList t >>= traverse termBlock
 termBlock :: Term -> D Block
 termBlock t =
   asList t >>= \case
-    [sp, lbl, body] -> Block <$> termSpan sp <*> asOpt asText lbl <*> termBody body
+    [sp, lbl, lang, body] -> Block <$> termSpan sp <*> asOpt asText lbl <*> asOpt asText lang <*> termBody body
     _ -> bad "ブロック"
 
 termBody :: Term -> D BlockBody
@@ -377,7 +379,7 @@ termPageControl t =
 termCode :: Term -> D Code
 termCode t =
   asList t >>= \case
-    [l, n, f, c, d, ls] -> Code <$> asOpt asText l <*> asOpt asBool n <*> asOpt asText f <*> asOpt termInlinesE c <*> asBool d <*> (asList ls >>= traverse termLine)
+    [l, n, f, c, d, ls, nn] -> Code <$> asOpt asText l <*> asOpt asBool n <*> asOpt asText f <*> asOpt termInlinesE c <*> asBool d <*> (asList ls >>= traverse termLine) <*> asBool nn
     _ -> bad "コードブロック"
   where
     termLine x =
@@ -406,8 +408,8 @@ termGroup t =
 termFigure :: Term -> D Figure
 termFigure t =
   asList t >>= \case
-    [src, web, alt, wr, w, cap, pg, rot] ->
-      Figure <$> asText src <*> asOpt asText web <*> asText alt <*> asOpt asEnum wr <*> asOpt asText w <*> (asList cap >>= traverse termBlock) <*> asOpt asNatural pg <*> asBool rot
+    [src, web, alt, wr, w, cap, pg, rot, nn] ->
+      Figure <$> asText src <*> asOpt asText web <*> asText alt <*> asOpt asEnum wr <*> asOpt asText w <*> (asList cap >>= traverse termBlock) <*> asOpt asNatural pg <*> asBool rot <*> asBool nn
     _ -> bad "図版"
 
 termChannel :: Term -> D ChannelBlock
@@ -467,6 +469,8 @@ termInline rd t =
         (19, [c, k, r, x]) -> fmap (ChannelItem s) (ChannelItemData <$> asText c <*> asOpt asText k <*> asOpt asText r <*> termInlinesE x)
         -- a link to an external URL (docs/adr ADR 0182)
         (20, [u, x]) -> Link s <$> asText u <*> sub x
+        -- a language span (docs/adr ADR 0187)
+        (21, [l, x]) -> Lang s <$> asText l <*> sub x
         -- 1, 2 and 3 (strong, bold, italic) are retired: they are character styles (docs/adr ADR 0005)
         _ -> bad "インラインの種類"
     _ -> bad "インライン"

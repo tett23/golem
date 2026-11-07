@@ -96,7 +96,7 @@ blocksOf e path = concat [docBlocks (erDocument r) | (fid, sf) <- Map.toList (pr
 
 -- | The texts of the paragraphs of a file, a paragraph a list.
 texts :: Evaluated -> FilePath -> [[Text]]
-texts e path = [concatMap inlineTexts is | Block _ _ (Paragraph _ is) <- blocksOf e path]
+texts e path = [concatMap inlineTexts is | Block _ _ _ (Paragraph _ is) <- blocksOf e path]
   where
     inlineTexts = \case
       Text _ t -> [t]
@@ -148,7 +148,7 @@ callsTests =
           codesIn e @?= []
           texts e "a.gm" @?= [["1100円"]]
           let start = BS.length (TE.encodeUtf8 (imported ""))
-          [(spanStart sp, spanEnd sp) | Block _ _ (Paragraph _ is) <- blocksOf e "a.gm", Text sp _ <- is] @?= [(start, start + T.length "[book.tax-included 1000]")],
+          [(spanStart sp, spanEnd sp) | Block _ _ _ (Paragraph _ is) <- blocksOf e "a.gm", Text sp _ <- is] @?= [(start, start + T.length "[book.tax-included 1000]")],
       testCase "the namespace is the file's: a file without @import has G02022" $
         withBook [("a.gm", imported "[book.tax-included 1000]\n"), ("b.gm", "[book.tax-included 1000]\n")] [("functions/book.emet", book)] "" $ \tmp -> do
           e <- evaluated tmp
@@ -158,12 +158,22 @@ callsTests =
           e <- evaluated tmp
           codesIn e @?= []
           texts e "a.gm" @?= [["本文", "本文"], ["[語]"]]
-          length [() | Block _ _ (Paragraph _ [CharStyle _ _ xs]) <- blocksOf e "a.gm", Note {} <- xs] @?= 2,
+          length [() | Block _ _ _ (Paragraph _ [CharStyle _ _ xs]) <- blocksOf e "a.gm", Note {} <- xs] @?= 2,
       testCase "the body of a block command, and @label on the first block it returns" $
         withBook [("a.gm", imported "@label words\n@book.word-table 語彙\n  本体。\n")] [("functions/book.emet", book)] "" $ \tmp -> do
           e <- evaluated tmp
           codesIn e @?= []
-          [(l, t) | Block _ l (Paragraph _ [Text _ t]) <- take 2 (blocksOf e "a.gm")] @?= [(Just "words", "語彙"), (Nothing, "本体。")],
+          [(l, t) | Block _ l Nothing (Paragraph _ [Text _ t]) <- take 2 (blocksOf e "a.gm")] @?= [(Just "words", "語彙"), (Nothing, "本体。")],
+      -- docs/adr ADR 0187
+      testCase "a block passed through a function keeps its language; a block the function makes has none, and takes @lang written on the call" $ do
+        withBook [("a.gm", imported "@book.word-table 語彙\n  @lang de\n  Deutsch.\n")] [("functions/book.emet", book)] "" $ \tmp -> do
+          e <- evaluated tmp
+          codesIn e @?= []
+          [(l, t) | Block _ _ l (Paragraph _ [Text _ t]) <- blocksOf e "a.gm"] @?= [(Nothing, "語彙"), (Just "de", "Deutsch.")]
+        withBook [("a.gm", imported "@lang en\n@book.word-table 語彙\n  @lang de\n  Deutsch.\n")] [("functions/book.emet", book)] "" $ \tmp -> do
+          e <- evaluated tmp
+          codesIn e @?= []
+          [(l, t) | Block _ _ l (Paragraph _ [Text _ t]) <- blocksOf e "a.gm"] @?= [(Just "en", "語彙"), (Just "de", "Deutsch.")],
       testCase "keyword arguments: the defaults, the values given, and G02119" $
         withBook [("a.gm", imported "[book.price 1000]\n\n[book.price 1000 tax=false unit=\" 円\"]\n")] [("functions/book.emet", book)] "" $ \tmp -> do
           e <- evaluated tmp
@@ -219,9 +229,9 @@ callsTests =
           e <- evaluated tmp
           codesIn e @?= []
           texts e "a.gm" @?= [["本文。"], ["終"]]
-          [spanStart sp | Block sp _ (Paragraph _ [Text _ "終"]) <- blocksOf e "a.gm"] @?= [0]
-          [spanStart sp | Block sp _ (Paragraph _ [Text _ "本文。"]) <- blocksOf e "a.gm"] @?= [0]
-          [spanEnd sp > 0 | Block sp _ (Paragraph _ [Text _ "本文。"]) <- blocksOf e "a.gm"] @?= [True],
+          [spanStart sp | Block sp _ _ (Paragraph _ [Text _ "終"]) <- blocksOf e "a.gm"] @?= [0]
+          [spanStart sp | Block sp _ _ (Paragraph _ [Text _ "本文。"]) <- blocksOf e "a.gm"] @?= [0]
+          [spanEnd sp > 0 | Block sp _ _ (Paragraph _ [Text _ "本文。"]) <- blocksOf e "a.gm"] @?= [True],
       testCase "plugin and function both, or neither, in [[filters]] are G03001" $ do
         withBook [("a.gm", "x\n")] [] "[[filters]]\nplugin = \"p\"\nfunction = \"f.emet\"\nfilter = \"x\"\nfiles = [\"a.gm\"]\n" $ \tmp ->
           evaluateProject Dev tmp >>= \case

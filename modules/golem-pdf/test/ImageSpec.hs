@@ -71,7 +71,7 @@ withImage img = writePdf (document [Image (ImageRef 1) (Rect 0 0 65536 65536)]) 
 document :: [Mark] -> Document
 document marks =
   Document
-    { docPages = [Page box box box marks []],
+    { docPages = [Page box box box [Tagged (LeafId [0]) marks] []],
       docFonts = Map.empty,
       docImages = Map.empty,
       docForms = Map.empty,
@@ -80,7 +80,10 @@ document marks =
       docId = documentId "urn:uuid:11111111-2222-4333-8444-555555555555",
       docInstanceId = instanceId ["source"],
       docProducer = "Golem 0.0.0-test",
-      docPdfX = Nothing
+      docPdfX = Nothing,
+      docLang = "ja",
+      docPdfUa = Nothing,
+      docStructure = structElem SDocument [KidLeaf (LeafId [0])]
     }
   where
     box = Rect 0 0 (100 * 65536) (100 * 65536)
@@ -310,7 +313,7 @@ scaledRunTests =
         pdf `contains` "/BaseFont /ABCDEF+Dummy",
       testCase "the page content of a scaled run sets Tz in percent" $ do
         let pdf = writePdf (document [ScaledGlyphRun (FontRef 7) (9 * 65536) 1015 [(1, 65536, 2 * 65536)]]) {docFonts = Map.fromList [(FontRef 7, font)]}
-        streamOf 4 pdf @?= "BT /F1 9 Tf 101.5 Tz\n1 0 0 1 1 2 Tm <0001> Tj\nET\n"
+        streamOf 4 pdf @?= "/Document << /MCID 0 >> BDC\nBT /F1 9 Tf 101.5 Tz\n1 0 0 1 1 2 Tm <0001> Tj\nET\nEMC\n"
     ]
 
 tests :: TestTree

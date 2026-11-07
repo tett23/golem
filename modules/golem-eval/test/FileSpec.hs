@@ -6,6 +6,7 @@ import Data.ByteString qualified as BS
 import Data.Either (lefts)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -81,7 +82,7 @@ diagsWith c = map diagSite . fst . evalSource c
 
 -- | A PNG figure of images/a.png with the alt text x.
 fig0 :: Figure
-fig0 = Figure "images/a.png" Nothing "x" Nothing Nothing [] Nothing False
+fig0 = Figure "images/a.png" Nothing "x" Nothing Nothing [] Nothing False False
 
 -- | The diagnostics golem-project's importsOf gives the @import of a source (golem-project ADR 0006).
 importSites :: Text -> [(Text, Text, Int, Int)]
@@ -113,7 +114,7 @@ key (or -) and value, and a paragraph of each block of its body.
 gridCommand :: PluginBlockCommand
 gridCommand = PluginBlockCommand $ \args bodyBlocks sp ->
   Right
-    ( Block sp Nothing (Table [AlignDefault, AlignDefault] [[Text sp "k"], [Text sp "v"]] [[[Text sp (argKey a)], [Text sp (T.pack (show (pluginArgValue a)))]] | a <- args]) : bodyBlocks,
+    ( Block sp Nothing Nothing (Table [AlignDefault, AlignDefault] [[Text sp "k"], [Text sp "v"]] [[[Text sp (argKey a)], [Text sp (T.pack (show (pluginArgValue a)))]] | a <- args]) : bodyBlocks,
       Map.empty,
       [diagnostic "grid-called" Warning sp "grid"]
     )
@@ -154,7 +155,7 @@ pluginBlockTests =
         let (bs, ds) = run ctx {ctxPlugins = gridHook} "- 項目\n\n  @grid\n"
         ds @?= ["grid-called"]
         case bs of
-          [BulletList [ListItem _ [_, Block _ _ (Table {})]]] -> pure ()
+          [BulletList [ListItem _ [_, Block _ _ _ (Table {})]]] -> pure ()
           other -> assertFailure (show other),
       testCase "@label gives the label to the first block" $
         map blockLabel (resultBlocks (evalResult ctx {ctxPlugins = gridHook} "@label t\n@grid\n")) @?= [Just "t"],
@@ -169,8 +170,8 @@ pluginBlockTests =
       -- docs/adr/0123
       testCase "a figure of a plugin keeps its image and goes through the checks of @figure" $ do
         let src = "golem-plugin-image://00.svg"
-            drawn f = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (f sp))], Map.fromList [(src, "<svg/>")], [])))]}
-            plain sp = Figure src Nothing "棒グラフ" Nothing Nothing [Block sp Nothing (Paragraph Nothing [Text sp "図"])] Nothing False
+            drawn f = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing Nothing (FigureBlock (f sp))], Map.fromList [(src, "<svg/>")], [])))]}
+            plain sp = Figure src Nothing "棒グラフ" Nothing Nothing [Block sp Nothing Nothing (Paragraph Nothing [Text sp "図"])] Nothing False False
             r = evalResult ctx {ctxPlugins = drawn plain} "@label c\n@chart\n"
         map blockLabel (resultBlocks r) @?= [Just "c"]
         map blockBody (resultBlocks r) @?= [FigureBlock (plain (mkSpan (FileId 1) 9 16))]
@@ -184,19 +185,19 @@ pluginBlockTests =
         map (\(c, _, _, _) -> c) (diagsWith ctx {ctxPlugins = drawn (\sp -> (plain sp) {figPage = Just 2})} "@chart\n") @?= ["G02075"],
       testCase "the image of a figure that fails the checks is not kept" $ do
         let src = "golem-plugin-image://00.svg"
-            drawn = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (Figure src Nothing "x" (Just WrapEnd) Nothing [] Nothing False))], Map.fromList [(src, "<svg/>")], [])))]}
+            drawn = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing Nothing (FigureBlock (Figure src Nothing "x" (Just WrapEnd) Nothing [] Nothing False False))], Map.fromList [(src, "<svg/>")], [])))]}
         erImages (evalResult ctx {ctxPlugins = drawn} "@chart\n") @?= Map.empty,
       testCase "a paragraph style in the caption of a figure of a plugin is G02013 and is dropped, as @figure" $ do
         let src = "golem-plugin-image://00.svg"
-            styled sp = Figure src Nothing "x" Nothing Nothing [Block sp Nothing (Paragraph (Just "quote") [Text sp "図"])] Nothing False
-            hook = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (styled sp))], Map.fromList [(src, "<svg/>")], [])))]}
+            styled sp = Figure src Nothing "x" Nothing Nothing [Block sp Nothing Nothing (Paragraph (Just "quote") [Text sp "図"])] Nothing False False
+            hook = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing Nothing (FigureBlock (styled sp))], Map.fromList [(src, "<svg/>")], [])))]}
             (bs, ds) = run ctx {ctxPlugins = hook} "@chart\n"
         ds @?= ["G02013"]
         case bs of
           [FigureBlock f] -> map blockBody (figCaption f) @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 7) "図"]]
           other -> assertFailure (show other),
       testCase "a paragraph style the file does not define is G02047" $ do
-        let styled = noPlugins {phBlocks = Map.fromList [("grid", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (Paragraph (Just "nope") [])], Map.empty, [])))]}
+        let styled = noPlugins {phBlocks = Map.fromList [("grid", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing Nothing (Paragraph (Just "nope") [])], Map.empty, [])))]}
         snd (run ctx {ctxPlugins = styled} "@grid\n") @?= ["G02047"],
       -- set is the name of @set name = 式, which the parser reads apart
       testCase "no name of builtinBlockCommands but set is an unknown block command" $
@@ -397,6 +398,27 @@ tests =
         errs "@label a\n" @?= ["G02010"]
         errs "@nonumber\n本文。\n" @?= ["G02013"]
         errs "@label a\n@set x = 1\n# x\n" @?= ["G02011"],
+      -- docs/adr/0200
+      testCase "@nonumber on a figure: figNoNumber, no diagnostic" $ do
+        let src = "@nonumber\n@figure images/a.png alt=x\n  キャプション。\n"
+        errs src @?= []
+        map (\case FigureBlock f -> Just (figNoNumber f); _ -> Nothing) (body src) @?= [Just True]
+        map (\case FigureBlock f -> Just (figNoNumber f); _ -> Nothing) (body "@figure images/a.png alt=x\n") @?= [Just False],
+      testCase "@nonumber on a code block with @caption, in either order, and on @listing" $ do
+        let noNumber src = map (fmap (\c -> (codeNoNumber c, isJust (codeCaption c))) . codeOf) (body src)
+        noNumber "@caption 例\n@nonumber\n```\nx\n```\n" @?= [Just (True, True)]
+        noNumber "@nonumber\n@caption 例\n```\nx\n```\n" @?= [Just (True, True)]
+        noNumber "@caption 例\n```\nx\n```\n" @?= [Just (False, True)]
+        noNumber "@nonumber\n@caption 例\n@listing src/Main.hs\n" @?= [Just (True, True)]
+        errs "@caption 例\n@nonumber\n```\nx\n```\n" @?= []
+        errs "@nonumber\n@caption 例\n@listing src/Main.hs\n" @?= [],
+      testCase "G02134: @nonumber on a code block without a caption, at the @nonumber line" $ do
+        let src = "@label c\n@nonumber\n```\nx\n```\n"
+        diags src @?= [("G02134", "キャプションのないコードブロックは番号を持たないので、@nonumber は要りません", fst (spanOf src "@nonumber"), fst (spanOf src "@nonumber\n") + 10)]
+        errs "@nonumber\n@listing src/Main.hs\n" @?= ["G02134"],
+      testCase "@nonumber on a paragraph or a table is G02013 still" $ do
+        errs "@nonumber\n本文。\n" @?= ["G02013"]
+        errs "@nonumber\n| a |\n|---|\n| b |\n" @?= ["G02013"],
       testCase "figures" $ do
         errs "@figure images/a.png alt=\"x\"\n  キャプション。\n" @?= []
         errs "@figure images/a.png\n" @?= ["G02028"]
@@ -494,7 +516,7 @@ tests =
         map (\(c, _, _, _) -> c) (diags "@figure images/a.png alt=x wrap=end width=abc\n") @?= ["G02133"],
       testCase "a figure of a plugin with a width that cannot be read is G02133 at the call (docs/adr/0190)" $ do
         let src = "golem-plugin-image://00.svg"
-            drawn w = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing (FigureBlock (Figure src Nothing "x" Nothing (Just w) [] Nothing False))], Map.fromList [(src, "<svg/>")], [])))]}
+            drawn w = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing Nothing (FigureBlock (Figure src Nothing "x" Nothing (Just w) [] Nothing False False))], Map.fromList [(src, "<svg/>")], [])))]}
         diagsWith ctx {ctxPlugins = drawn "abc"} "@chart\n" @?= [("G02133", "図版の width が読めません。寸法（10zw、50mm など）か行長の割合（50% など）で書きます: abc", 0, 7)]
         fst (run ctx {ctxPlugins = drawn "abc"} "@chart\n") @?= []
         diagsWith ctx {ctxPlugins = drawn "50%"} "@chart\n" @?= [],
@@ -592,13 +614,13 @@ styleTests =
         labels "@label song\n@style verse\n  A\n\n  B\n" @?= [Just "song", Nothing]
         errs "@label fig\n@figure images/a.png alt=x\n  キャプション。\n" @?= []
         case blocksOf "@label fig\n@figure images/a.png alt=x\n  キャプション。\n" of
-          [Block _ (Just "fig") (FigureBlock _)] -> pure ()
+          [Block _ (Just "fig") Nothing (FigureBlock _)] -> pure ()
           other -> assertFailure (show other)
         errs "@label a\n@set x = 1\n@figure images/a.png alt=x\n" @?= ["G02011"],
       testCase "a style inside a caption" $
         errs "@figure images/a.png alt=x\n  @style quote\n  キャプション。\n" @?= ["G02013"],
       testCase "a filter must not invent paragraph styles" $ do
-        let hook = noPlugins {phApplyFilters = \_ (Document f bs) -> Right (Document f (bs <> [Block (mkSpan f 0 1) Nothing (Paragraph (Just "nope") [])]), [])}
+        let hook = noPlugins {phApplyFilters = \_ (Document f bs) -> Right (Document f (bs <> [Block (mkSpan f 0 1) Nothing Nothing (Paragraph (Just "nope") [])]), [])}
         snd (run ctx {ctxPlugins = hook} "x\n") @?= ["G02047"]
     ]
   where
@@ -1233,7 +1255,7 @@ settingsTests =
         ds @?= []
         map stripped bs @?= [(Nothing, ["第", "<bold>", "12", "章"])],
       testCase "the text a filter gives is matched too" $ do
-        let hook = noPlugins {phApplyFilters = \_ (Document f bs0) -> Right (Document f (bs0 <> [Block (mkSpan f 0 1) Nothing (Paragraph Nothing [Text (mkSpan f 0 1) "x9"])]), [])}
+        let hook = noPlugins {phApplyFilters = \_ (Document f bs0) -> Right (Document f (bs0 <> [Block (mkSpan f 0 1) Nothing Nothing (Paragraph Nothing [Text (mkSpan f 0 1) "x9"])]), [])}
             (bs, ds, _) = runS sctx {ctxPlugins = hook} "@style-def regex body pattern=\"[0-9]\" style=bold\n\na\n"
         ds @?= []
         map stripped bs @?= [(Nothing, ["a"]), (Nothing, ["x", "<bold>", "9"])],
@@ -1285,7 +1307,7 @@ settingsTests =
         map stripped bs @?= [(Just "letter", ["a"]), (Nothing, ["b"])]
         ds @?= [],
       testCase "a filter may give the paragraph styles of the file" $ do
-        let hook = noPlugins {phApplyFilters = \_ (Document f bs) -> Right (Document f (bs <> [Block (mkSpan f 0 1) Nothing (Paragraph (Just "letter") [])]), [])}
+        let hook = noPlugins {phApplyFilters = \_ (Document f bs) -> Right (Document f (bs <> [Block (mkSpan f 0 1) Nothing Nothing (Paragraph (Just "letter") [])]), [])}
         codesS "x\n" @?= []
         let (_, ds, _) = runS sctx {ctxPlugins = hook} "@style-def paragraph letter\n\nx\n"
         ds @?= []
@@ -1408,7 +1430,7 @@ hardBreakTests =
                 ( \src -> do
                     let (bs, es) = run c src
                     assertEqual (show src) ["G02057"] es
-                    validateDocument (const (Just 1000)) [] (Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing b | b <- bs]) @?= []
+                    validateDocument (const (Just 1000)) [] (Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing Nothing b | b <- bs]) @?= []
                 )
                 ["\\\na\n", "a\\\n\\\nb\n", "a\\\n%% c %%\nb\n"]
           )
@@ -1474,7 +1496,7 @@ breakTests =
       Heading {} -> "heading"
       Paragraph {} -> "paragraph"
       other -> T.pack (show other)
-    hasBreak (Block _ _ b) = case b of
+    hasBreak (Block _ _ _ b) = case b of
       ForcedBreak _ -> True
       BulletList items -> any (any hasBreak . itemBlocks) items
       OrderedList items -> any (any hasBreak . itemBlocks) items
@@ -1604,7 +1626,7 @@ blankLineTests =
       Heading {} -> "heading"
       other -> T.pack (show other)
     labelled src = let (ds, r) = evalSource ctx src in ([(blockLabel b, shape (blockBody b)) | b <- resultBlocks r], map diagCodeText ds)
-    hasBlank (Block _ _ b) = case b of
+    hasBlank (Block _ _ _ b) = case b of
       BlankLines _ -> True
       BulletList items -> any (any hasBlank . itemBlocks) items
       OrderedList items -> any (any hasBlank . itemBlocks) items
@@ -1727,7 +1749,7 @@ codeTests =
         codeFile l @?= Just "x.hs",
       testCase "a code block without arguments is as before" $ do
         c <- oneCode "```hs\na\n  b\n```\n"
-        c @?= Code (Just "hs") Nothing Nothing Nothing False [CodeLine "a" (Just 1) Nothing False [], CodeLine "  b" (Just 2) Nothing False []]
+        c @?= Code (Just "hs") Nothing Nothing Nothing False [CodeLine "a" (Just 1) Nothing False [], CodeLine "  b" (Just 2) Nothing False []] False
     ]
 
 -- | The codes, messages and positions of golem-eval ADR 0003.
@@ -1739,10 +1761,13 @@ diagnosticTests =
         diags "@set doc = 1\n" @?= [("G02023", "予約語は変数の名前に使えません: doc", 5, 8)]
         diags "@import common/values.gm as meta\n" @?= [("G02023", "予約語は名前空間に使えません: meta", 28, 32)],
       testCase "G02025: the depth of @toc" $ do
-        mapM_ (\src -> (src, errs src) @?= (src, ["G02025"])) ["@toc depth=0\n", "@toc depth=4\n", "@toc depth=x\n"]
-        msgs "@toc depth=0\n" @?= [("G02025", "@toc の depth は 1 から 3 の整数です")]
+        mapM_ (\src -> (src, errs src) @?= (src, ["G02025"])) ["@toc depth=0\n", "@toc depth=7\n", "@toc depth=x\n"]
+        msgs "@toc depth=0\n" @?= [("G02025", "@toc の depth は 1 から 6 の整数です")]
         errs "@toc\n" @?= []
-        errs "@toc depth=3\n" @?= [],
+        errs "@toc depth=3\n" @?= []
+        -- docs/adr/0188
+        errs "@toc depth=4\n" @?= []
+        errs "@toc depth=6\n" @?= [],
       testCase "G02026: the names of labels" $ do
         let labelMsg = "@label にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます"
             refMsg = "参照にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます"

@@ -29,7 +29,7 @@ loadWat name = do
 
 -- | A one-paragraph document whose text is the number.
 numbered :: Int -> Document
-numbered i = Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing (Paragraph Nothing [Text (mkSpan (FileId 1) 0 1) (T.pack (show i))])]
+numbered i = Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing Nothing (Paragraph Nothing [Text (mkSpan (FileId 1) 0 1) (T.pack (show i))])]
 
 -- | Whether a call ran out of fuel.
 outOfFuel :: Either PluginError ByteString -> Bool

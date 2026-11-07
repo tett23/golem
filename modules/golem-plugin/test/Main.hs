@@ -162,32 +162,32 @@ tests =
         loadPlugin w >>= (@?= Left (AbiMismatch 7)) . void,
       testCase "a code block survives a filter unchanged (golem-driver ADR 0023)" $ do
         p <- load =<< compile =<< wat "identity.wat"
-        let code = Code (Just "haskell") (Just True) (Just "a.hs") (Just [Text callSpan "c"]) True [CodeLine "a" (Just 1) (Just DiffAdded) True [1], CodeLine "b" Nothing (Just DiffRemoved) False []]
-            doc = Document (FileId 1) [Block callSpan (Just "l") (CodeBlock code)]
+        let code = Code (Just "haskell") (Just True) (Just "a.hs") (Just [Text callSpan "c"]) True [CodeLine "a" (Just 1) (Just DiffAdded) True [1], CodeLine "b" Nothing (Just DiffRemoved) False []] False
+            doc = Document (FileId 1) [Block callSpan (Just "l") Nothing (CodeBlock code)]
         fmap fst (applyFilter p "same" doc) @?= Right doc,
       testCase "a paragraph with aki survives a filter unchanged (docs/adr ADR 0019)" $ do
         p <- load =<< compile =<< wat "identity.wat"
-        let doc = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a", Aki callSpan (AkiZw (1 / 5)), Aki callSpan (AkiAbs 65536)])]
+        let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a", Aki callSpan (AkiZw (1 / 5)), Aki callSpan (AkiAbs 65536)])]
         fmap fst (applyFilter p "same" doc) @?= Right doc,
       testCase "a document with forced breaks survives a filter unchanged (docs/adr ADR 0017)" $ do
         p <- load =<< compile =<< wat "identity.wat"
-        let blk k = Block callSpan Nothing (ForcedBreak k)
-            doc = Document (FileId 1) ([blk k | k <- [minBound .. maxBound]] <> [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])])
+        let blk k = Block callSpan Nothing Nothing (ForcedBreak k)
+            doc = Document (FileId 1) ([blk k | k <- [minBound .. maxBound]] <> [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])])
         fmap fst (applyFilter p "same" doc) @?= Right doc,
       testCase "a document with page controls survives a filter unchanged (docs/adr ADR 0030)" $ do
         p <- load =<< compile =<< wat "identity.wat"
-        let doc = Document (FileId 1) ([Block callSpan Nothing (PageControl c) | c <- [NoBreak, NeedLines 3, AdjustLines (-1)]] <> [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])])
+        let doc = Document (FileId 1) ([Block callSpan Nothing Nothing (PageControl c) | c <- [NoBreak, NeedLines 3, AdjustLines (-1)]] <> [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])])
         fmap fst (applyFilter p "same" doc) @?= Right doc,
       testCase "a filter that puts a page control below the top gives bad output (docs/adr ADR 0030)" $ do
-        let para = Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])
-            nested = Document (FileId 1) [Block callSpan Nothing (BulletList [ListItem Nothing [Block callSpan Nothing (PageControl NoBreak)]])]
+        let para = Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])
+            nested = Document (FileId 1) [Block callSpan Nothing Nothing (BulletList [ListItem Nothing [Block callSpan Nothing Nothing (PageControl NoBreak)]])]
         p <- load =<< fixed abi (responseWith (documentTerm nested))
         case applyFilter p "upper" (Document (FileId 1) [para]) of
           Left (BadOutput _) -> pure ()
           other -> assertFailure (show other),
       testCase "a filter that puts a forced break below the top gives bad output (docs/adr ADR 0017)" $ do
-        let para = Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])
-            nested = Document (FileId 1) [Block callSpan Nothing (BulletList [ListItem Nothing [Block callSpan Nothing (ForcedBreak BreakPage)]])]
+        let para = Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])
+            nested = Document (FileId 1) [Block callSpan Nothing Nothing (BulletList [ListItem Nothing [Block callSpan Nothing Nothing (ForcedBreak BreakPage)]])]
         p <- load =<< fixed abi (responseWith (documentTerm nested))
         case applyFilter p "upper" (Document (FileId 1) [para]) of
           Left (BadOutput _) -> pure ()

@@ -14,19 +14,19 @@ import Data.Text.IO qualified as TIO
 import Golem.Assemble (Book (..), inlineText)
 import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), NumberStyle (..), RubySegment (..))
 import Golem.Driver
-import Golem.Driver.Pdf (PdfInput (..), layoutPages)
 import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
 import Golem.Eval.Builtin (BuiltinInline (..), builtinName, unPluginCommandName)
 import Golem.Eval.File (EvalResult (..), PluginHook (..))
 import Golem.Plugin (HostContext (..), maxDataBytes, watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
-import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..))
+import Golem.Project (Manifest (..), Project (..), ProjectFailure (..), SourceFile (..))
 import Golem.Project.Manifest (parseManifest)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
 import Golem.TestSupport.Env (withEnv)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
+import Golem.Typeset (PdfInput (..), layoutPages)
 import Support
 import System.Directory (createFileLink, listDirectory)
 import System.Environment (lookupEnv)
@@ -117,7 +117,7 @@ pdfPages tmp = do
   e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
   book <- maybe (assertFailure (show (evDiagnostics e))) pure (evBook e)
   assertEqual "no errors" [] (map diagCode (filter isError (evDiagnostics e)))
-  layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty)
+  layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))))
     >>= either (assertFailure . show) pure
 
 -- | The channels of plugins (golem-doc ADR 0007).
@@ -288,7 +288,7 @@ blockCommandTests =
         (bs, ds) <- blocksOf tmp
         ds @?= []
         case map blockBody bs of
-          [BulletList [ListItem _ [_, Block _ (Just "t") (Paragraph _ [Text _ "表"])]]] -> pure ()
+          [BulletList [ListItem _ [_, Block _ (Just "t") Nothing (Paragraph _ [Text _ "表"])]]] -> pure ()
           other -> assertFailure (show other)
   ]
 
@@ -556,7 +556,7 @@ tsvTableTests =
       withTsvTable "data = { sales = \"s.tsv\" }\n" "@tsv-table sales\n" [("s.tsv", "a\nb\n")] $ \tmp -> do
         (bs, _) <- blocksOf tmp
         case bs of
-          [Block sp _ (Table _ [[Text csp "a"]] [[[Text rsp "b"]]])] -> do
+          [Block sp _ _ (Table _ [[Text csp "a"]] [[[Text rsp "b"]]])] -> do
             (spanStart sp, spanEnd sp) @?= (0, 17)
             csp @?= sp
             rsp @?= sp
@@ -580,7 +580,7 @@ tsvTableTests =
         (bs, ds) <- blocksOf tmp
         ds @?= []
         case map blockBody bs of
-          [BulletList [ListItem _ [_, Block _ _ (Table {})]]] -> pure ()
+          [BulletList [ListItem _ [_, Block _ _ _ (Table {})]]] -> pure ()
           other -> assertFailure (show other),
     testCase "the errors of the TSV are the plugin's, at the call, and give no table" $
       withTsvTable "data = { sales = \"s.tsv\" }\n" "@tsv-table sales\n\n@tsv-table costs\n" [("s.tsv", "a\tb\n1\n")] $ \tmp -> do

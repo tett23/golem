@@ -72,7 +72,7 @@ import Foreign.C.String (CString, peekCString, withCString, withCStringLen)
 import Foreign.C.Types
 import Golem.Doc.Cbor
 import Golem.Doc.IR hiding (abiVersion)
-import Golem.Doc.Validate (captionErrors, linkErrors, validateBlocks, validateDocument)
+import Golem.Doc.Validate (captionErrors, langErrors, linkErrors, validateBlocks, validateDocument)
 import Golem.Eval.Builtin (builtinBlockCommands)
 import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Syntax
@@ -533,8 +533,8 @@ callCommand plugin name args slots sp = do
       allowedDeferred = concatMap (concatMap inlineDeferred) slots
   checkOutput allowedSpans allowedDeferred (concatMap inlineSpans inls) (concatMap inlineDeferred inls)
   checkDiagnosticSpans allowedSpans diags
-  -- the links it makes pass the checks of [link] (docs/adr ADR 0182)
-  case linkErrors inls of
+  -- the links it makes pass the checks of [link] (docs/adr ADR 0182), its language spans those of [lang] (docs/adr ADR 0187)
+  case linkErrors inls <> langErrors inls of
     [] -> Right (inls, diags)
     errs -> Left (BadOutput (T.intercalate "、" errs))
 
@@ -558,7 +558,7 @@ callBlockCommand plugin name args body sp = do
   bs0 <- decoded (termBlocksE blocksT)
   images <- mapM image imagesT
   -- a caption holds paragraphs only, so a figure in it is that error, not one of its image (docs/adr/0144)
-  case concat [captionErrors f | Block _ _ (FigureBlock f) <- bs0] of
+  case concat [captionErrors f | Block _ _ _ (FigureBlock f) <- bs0] of
     e : _ -> Left (BadOutput e)
     [] -> Right ()
   (bs, used) <- placeImages body images bs0
@@ -600,7 +600,7 @@ placeImages body images bs = do
     else Right ()
   mapM_ nested bs
   bs' <- mapM (place named) bs
-  let usedNames = [n | b@(Block _ _ (FigureBlock f)) <- bs, b `notElem` body, Just n <- [T.stripPrefix "plugin:" (figSource f)]]
+  let usedNames = [n | b@(Block _ _ _ (FigureBlock f)) <- bs, b `notElem` body, Just n <- [T.stripPrefix "plugin:" (figSource f)]]
   case [n | (n, _, _) <- images, n `notElem` usedNames] of
     (n : _) -> Left (BadOutput ("どの図版も使っていない画像があります: " <> n))
     [] -> Right ()
@@ -611,17 +611,17 @@ placeImages body images bs = do
       Nothing -> Left (BadOutput ("画像の形式は svg、png、jpeg のどれかです: " <> f))
     hexOf = T.pack . concatMap (\w -> [hexDigit (w `div` 16), hexDigit (w `mod` 16)]) . BS.unpack
     hexDigit w = "0123456789abcdef" !! fromIntegral w
-    place named b@(Block bsp lbl (FigureBlock f))
+    place named b@(Block bsp lbl lang (FigureBlock f))
       | b `elem` body = Right b
       | Just _ <- figWeb f = Left (BadOutput "プラグインの図版は web を持てません")
       | Just n <- T.stripPrefix "plugin:" (figSource f) = case lookup n named of
-          Just (p, _) -> Right (Block bsp lbl (FigureBlock f {figSource = p}))
+          Just (p, _) -> Right (Block bsp lbl lang (FigureBlock f {figSource = p}))
           Nothing -> Left (BadOutput ("応答にない画像です: " <> figSource f))
       | otherwise = Left (BadOutput ("プラグインの図版は plugin:<名前> で画像を指します: " <> figSource f))
     place _ b = Right b
     -- a figure of its own below the top of the output
-    nested (Block _ _ b) = mapM_ deep (inner b)
-    deep blk@(Block _ _ b) = case b of
+    nested (Block _ _ _ b) = mapM_ deep (inner b)
+    deep blk@(Block _ _ _ b) = case b of
       FigureBlock _ | blk `notElem` body -> Left (BadOutput "図版は出力の最上位にだけ置けます")
       _ -> mapM_ deep (inner b)
     inner = \case
@@ -634,7 +634,7 @@ placeImages body images bs = do
 (docs/adr/0122).
 -}
 blockKind :: Block -> Either PluginError ()
-blockKind (Block _ lbl body)
+blockKind (Block _ lbl _ body)
   | Just _ <- lbl = Left (BadOutput "ブロックコマンドの出力はラベルを持てません")
   | otherwise = case body of
       Paragraph _ _ -> Right ()
@@ -744,6 +744,7 @@ checkItems plugin given = mapM_ check
       Color _ _ xs -> any sends xs
       CharStyle _ _ xs -> any sends xs
       Link _ _ xs -> any sends xs
+      Lang _ _ xs -> any sends xs
       _ -> False
 
 -- | The items of channels among inlines, with their spans.
@@ -755,6 +756,7 @@ inlineItems = \case
   Color _ _ xs -> concatMap inlineItems xs
   CharStyle _ _ xs -> concatMap inlineItems xs
   Link _ _ xs -> concatMap inlineItems xs
+  Lang _ _ xs -> concatMap inlineItems xs
   Note _ _ xs -> concatMap inlineItems xs
   Sidenote _ _ xs -> concatMap inlineItems xs
   _ -> []
@@ -782,6 +784,7 @@ inlineSpans = \case
   Aki s _ -> [s]
   ChannelItem s c -> s : concatMap inlineSpans (ciBody c)
   Link s _ xs -> s : concatMap inlineSpans xs
+  Lang s _ xs -> s : concatMap inlineSpans xs
 
 inlineDeferred :: InlineF r -> [DeferredExpr]
 inlineDeferred = \case
@@ -794,6 +797,7 @@ inlineDeferred = \case
   Sidenote _ _ xs -> concatMap inlineDeferred xs
   ChannelItem _ c -> concatMap inlineDeferred (ciBody c)
   Link _ _ xs -> concatMap inlineDeferred xs
+  Lang _ _ xs -> concatMap inlineDeferred xs
   _ -> []
 
 blocksOf :: Document -> [Block]

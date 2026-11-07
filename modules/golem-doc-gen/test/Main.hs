@@ -57,6 +57,7 @@ data InlineKind
   | KAki
   | KChannelItem
   | KLink
+  | KLang
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 blockKind :: BlockBody -> BlockKind
@@ -94,6 +95,7 @@ inlineKind = \case
   Aki {} -> KAki
   ChannelItem {} -> KChannelItem
   Link {} -> KLink
+  Lang {} -> KLang
 
 -- | The kinds of the blocks and the inlines in a document, at any depth.
 kinds :: Document -> (Set BlockKind, Set InlineKind)
@@ -128,6 +130,7 @@ kinds = foldMap block . docBlocks
       Sidenote _ _ is -> inlines is
       ChannelItem _ c -> inlines (ciBody c)
       Link _ _ is -> inlines is
+      Lang _ _ is -> inlines is
       Text {} -> mempty
       Tcy {} -> mempty
       Number {} -> mempty

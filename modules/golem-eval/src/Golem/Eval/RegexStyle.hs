@@ -79,6 +79,7 @@ applyRegexStyles rules d
       Color sp c xs -> Color sp c (map sidenotes xs)
       CharStyle sp c xs -> CharStyle sp c (map sidenotes xs)
       Link sp u xs -> Link sp u (map sidenotes xs)
+      Lang sp l xs -> Lang sp l (map sidenotes xs)
       Ruby sp r segs -> Ruby sp r [s {rsBase = map sidenotes (rsBase s)} | s <- segs]
       other -> other
 
@@ -109,6 +110,8 @@ targetOf = \case
   CharStyle _ _ xs -> T.concat (map targetOf xs)
   -- the text of a link, as that of a character style (docs/adr ADR 0182)
   Link _ _ xs -> T.concat (map targetOf xs)
+  -- the text of a language span, likewise (docs/adr ADR 0187)
+  Lang _ _ xs -> T.concat (map targetOf xs)
   LineBreak _ -> "\n"
   IndexMark _ _ -> ""
   ChannelItem _ _ -> ""
@@ -178,6 +181,12 @@ piecesOfOne labels p = \case
     l : rest
       | all (== l) rest -> [(Just l, x)]
       | otherwise -> [(Nothing, Link sp u (wrapRuns labels p xs))]
+  -- a language span likewise, so that it stays one span as written (docs/adr ADR 0187)
+  x@(Lang sp l xs) -> case [labelAt labels i | i <- [p .. p + width x - 1]] of
+    [] -> [(Just [], x)]
+    lb : rest
+      | all (== lb) rest -> [(Just lb, x)]
+      | otherwise -> [(Nothing, Lang sp l (wrapRuns labels p xs))]
   x@(LineBreak _) -> [(Nothing, x)]
   x@(Note {}) -> [(Nothing, x)]
   x@(Sidenote {}) -> [(Nothing, x)]
@@ -211,3 +220,4 @@ spanOf = \case
   Aki s _ -> s
   ChannelItem s _ -> s
   Link s _ _ -> s
+  Lang s _ _ -> s

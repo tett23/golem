@@ -176,6 +176,12 @@ tests =
             @?= ["<ol><li><a href=\"a.xhtml#intro\">第一章\x3000はじめに</a></li></ol>"]
           linesWith "<ol>" (navDocument cfg0 {epLanguage = "en"} ft emptyBook {bookToc = [numbered "1"]})
             @?= ["<ol><li><a href=\"a.xhtml#intro\">1 はじめに</a></li></ol>"],
+        -- docs/adr ADR 0187
+        testCase "a language span stays in the title, character styles drop out" $ do
+          let sp = mkSpan fidA 0 1
+              e = (entry 1 fidA "intro" "はじめに") {teTitle = [Text sp "見出し", Lang sp "en" [CharStyle sp "strong" [Text sp "Tokyo"]], Lang sp "x&" [Text sp "y"]]}
+          linesWith "<ol>" (navDocument cfg0 ft emptyBook {bookToc = [e]})
+            @?= ["<ol><li><a href=\"a.xhtml#intro\">見出し<span lang=\"en\" xml:lang=\"en\">Tokyo</span><span lang=\"x&amp;\" xml:lang=\"x&amp;\">y</span></a></li></ol>"],
         testCase "the nav element is the toc" $
           linesWith "<nav" (navDocument cfg0 ft emptyBook) @?= ["<nav epub:type=\"toc\" id=\"toc\">"],
         -- golem-epub ADR 0002

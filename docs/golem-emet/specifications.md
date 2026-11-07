@@ -168,7 +168,7 @@ pub fn total :: List Nat -> Nat
 
 | データ型 | コンストラクタ |
 | --- | --- |
-| `Inline.Inline` | `Text String`、`Ruby (List RubySegment)`、`Kenten (Maybe String) Inlines`、`Color String Inlines`、`CharStyle String Inlines`、`Tcy String`、`Number Int (Maybe NumberStyle)`、`Ref RefKind String`、`Deferred Deferred`、`Note Inlines`、`Sidenote Inlines`、`IndexMark (List String) (List String)`、`Cite String`、`ProofComment String`、`LineBreak`、`Aki AkiAmount`、`ChannelItem String (Maybe String) (Maybe String) Inlines`、`Link String Inlines`（[docs/adr/0182](../adr/0182-external-links.md)） |
+| `Inline.Inline` | `Text String`、`Ruby (List RubySegment)`、`Kenten (Maybe String) Inlines`、`Color String Inlines`、`CharStyle String Inlines`、`Tcy String`、`Number Int (Maybe NumberStyle)`、`Ref RefKind String`、`Deferred Deferred`、`Note Inlines`、`Sidenote Inlines`、`IndexMark (List String) (List String)`、`Cite String`、`ProofComment String`、`LineBreak`、`Aki AkiAmount`、`ChannelItem String (Maybe String) (Maybe String) Inlines`、`Link String Inlines`（[docs/adr/0182](../adr/0182-external-links.md)）、`Lang String Inlines`（[docs/adr/0187](../adr/0187-inline-language-switch.md)。組み込みの `plain` は中の文字を返す） |
 | `Inline.RubySegment` | `RubySegment Inlines (Maybe String)`（親文字と読み） |
 | `Inline.NumberStyle` | `Kanji`、`KanjiDigits`、`TateChuYoko` |
 | `Inline.RefKind` | `RefNumber`、`RefTitle`、`RefPage` |
@@ -179,10 +179,10 @@ pub fn total :: List Nat -> Nat
 | `Block.ListItem` | `ListItem (Maybe Nat) (List Block)`（番号と中身） |
 | `Block.DefGroup` | `DefGroup (List Inlines) (List Blocks)`（語と定義） |
 | `Block.Alignment` | `AlignDefault`、`AlignLeft`、`AlignCenter`、`AlignRight` |
-| `Block.Code` | `Code { lang :: Maybe String, numbers :: Maybe Bool, file :: Maybe String, caption :: Maybe Inlines, diff :: Bool, lines :: List CodeLine }` |
+| `Block.Code` | `Code { lang :: Maybe String, numbers :: Maybe Bool, file :: Maybe String, caption :: Maybe Inlines, diff :: Bool, lines :: List CodeLine, nonumber :: Bool }` |
 | `Block.CodeLine` | `CodeLine { text :: String, number :: Maybe Nat, mark :: Maybe DiffMark, highlight :: Bool, callouts :: List Nat }` |
 | `Block.DiffMark` | `Added`、`Removed`、`Unchanged` |
-| `Block.Figure` | `Figure { source :: String, web :: Maybe String, alt :: String, wrap :: Maybe Wrap, width :: Maybe String, caption :: Blocks, page :: Maybe Nat, rotate :: Bool }` |
+| `Block.Figure` | `Figure { source :: String, web :: Maybe String, alt :: String, wrap :: Maybe Wrap, width :: Maybe String, caption :: Blocks, page :: Maybe Nat, rotate :: Bool, nonumber :: Bool }` |
 | `Block.Wrap` | `WrapStart`、`WrapEnd` |
 | `Block.Channel` | `TocOutput Nat`、`IndexOutput`、`BibliographyOutput`、`CustomOutput String (Maybe String)` |
 | `Block.BreakKind` | `BreakPage`、`BreakRecto`、`BreakVerso`、`BreakColumn` |
@@ -208,10 +208,11 @@ ADR は注と傍注の本文を `Blocks` と書くが、ABI と意味論 IR の�
 | `Block.table` | `List Inlines -> List (List Inlines) -> Blocks` | 見出しの行と本体の行の表 |
 | `Block.definitions` | `List (Inlines, Blocks) -> Blocks` | 定義リスト |
 
-値の中のソースの位置、ブロックのラベル、注の番号、遅延した式は、データ型の欄に出さない（`Golem.Emet.IR`）。
+値の中のソースの位置、ブロックのラベルと言語（[docs/adr/0187](../adr/0187-inline-language-switch.md)）、注の番号、遅延した式は、データ型の欄に出さない（`Golem.Emet.IR`）。
 外から来たノードは、宣言の欄の後ろに、それらを引く添字を一つ多く持つ。
 パターンは宣言の欄だけを照合するので、関数からは見えない。
 関数が作ったノードは添字を持たず、呼び出しの位置（フィルタではファイルの先頭）を持つ。
+関数が作ったブロックは言語を持たず、外のブロックの言語を受け継ぐ。
 `Inline.Deferred` のコンストラクタ `Opaque` は利用者に見せず、値は遅延した式の添字である。
 
 高階の関数は、渡された関数の要求をそのまま自分の要求にする型を持つ（[docs/adr/0161](../adr/0161-emet-requirements-and-driver-handlers.md)）。

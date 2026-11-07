@@ -110,7 +110,7 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble (NoteNumbering (..))
-import Golem.Assemble.Formats (Braces (..), Legacy (..), MarkFormat, Piece (..), Slot (..), defaultMarkFormat, notationName, parseFormat, parseMarkFormat, parseNumberFormatText)
+import Golem.Assemble.Formats (Braces (..), Legacy (..), MarkFormat, NumberSlotName (..), Piece (..), Slot (..), defaultMarkFormat, notationName, parseFormat, parseHeadingNumberFormatText, parseMarkFormat, parseNumberFormatText)
 import Golem.Assemble.ListMarkers (NumberFormat, parseNumberFormat, parseNumberFormatLegacy)
 import Golem.Length (Sp (..))
 import Golem.Length qualified as L
@@ -1056,7 +1056,7 @@ parseRunningContent = \case
   where
     oneRef r = RunningLines ([PartRef r False] :| [])
 
--- | @heading.<l>.<form>@ of a level of 1 or more.
+-- | @heading.<l>.<form>@ of a level of 1 to 6 (docs/adr/0188).
 headingRef :: Text -> Text -> HeadPick -> Maybe RunningRef
 headingRef l f pick = do
   level <- if not (T.null l) && T.all isDigit l then Just (read (T.unpack l)) else Nothing
@@ -1065,7 +1065,7 @@ headingRef l f pick = do
     "numbered" -> Just HeadNumbered
     "number" -> Just HeadNumber
     _ -> Nothing
-  if level >= 1 then Just (RefHeading level form pick) else Nothing
+  if level >= 1 && level <= 6 then Just (RefHeading level form pick) else Nothing
 
 -- | The keys of [metadata] a running head can show (golem-driver ADR 0022).
 runningMetaKeys :: [Text]
@@ -2053,11 +2053,10 @@ instance FromValue Style where
           stHiddenFolio = hidden
         }
     where
-      headingLevel v (k, h) = case k of
-        "1" -> pure (1, h)
-        "2" -> pure (2, h)
-        "3" -> pure (3, h)
-        _ -> inKey k (failAt (keyPosition v k) ("見出しの段は 1、2、3 のどれかです: " <> T.unpack k))
+      -- the levels 1 to 6 (docs/adr/0188)
+      headingLevel v (k, h) = case T.unpack k of
+        [c] | c >= '1', c <= '6' -> pure (fromEnum c - fromEnum '0', h)
+        _ -> inKey k (failAt (keyPosition v k) ("見出しの段は 1 から 6 のどれかです: " <> T.unpack k))
 
 negativeDim :: Dim -> Bool
 negativeDim = \case
@@ -2070,6 +2069,17 @@ colon or none, and the escapes.
 -}
 validNumberFormat :: Text -> Bool
 validNumberFormat = either (const False) (const True) . parseNumberFormatText
+
+{- | What is wrong with the number format of a heading of a level
+(docs/adr/0188): one that does not read, or a slot @{k}@ of a level k not
+above the heading's, whose value would always be empty.
+-}
+headingFormatError :: Int -> Text -> Maybe Text
+headingFormatError l f = case parseHeadingNumberFormatText f of
+  Left _ -> Just ("番号の書式が不正です: " <> f)
+  Right ps -> case [k + 1 | PNumber (SlotLevel k) _ <- ps, k + 1 >= l] of
+    k : _ -> Just ("見出しの番号の書式の {" <> T.pack (show k) <> "} は上の階層の番号です。階層 " <> T.pack (show l) <> " の見出しには書けません: " <> f)
+    [] -> Nothing
 
 {- | The position of the value at a path of a TOML table; without one,
 that of the table the path ends in (golem-project ADR 0008).
@@ -2177,11 +2187,14 @@ numberFormatChecks s =
       | (path, f) <-
           (styleKeys ["figures", "number"], stFigureNumber s)
             : (styleKeys ["code", "number"], cdNumber (stCode s))
-            : [(styleKeys ["headings", T.pack (show l), "number"], n) | (l, HeadingStyle {hsNumber = Just n}) <- Map.toList (stHeadings s)]
-              -- the format of a folio reads as the other number formats (docs/adr/0177)
-              <> [(styleKeys ["masters", m, "folio", "format"], f) | (m, MasterDef {mdFolio = Just (_, f)}) <- Map.toList (stMasters s)],
+            -- the format of a folio reads as the other number formats (docs/adr/0177)
+            : [(styleKeys ["masters", m, "folio", "format"], f) | (m, MasterDef {mdFolio = Just (_, f)}) <- Map.toList (stMasters s)],
         not (validNumberFormat f)
       ]
+        <> [ (styleKeys ["headings", T.pack (show l), "number"], m)
+           | (l, HeadingStyle {hsNumber = Just n}) <- Map.toList (stHeadings s),
+             Just m <- [headingFormatError l n]
+           ]
         -- a listing number has a placeholder (golem-driver ADR 0023)
         <> [(styleKeys ["code", "number"], "[code] の number には {n} などの差し込みを書きます: " <> cdNumber (stCode s)) | not ("{" `T.isInfixOf` cdNumber (stCode s))]
   ]

@@ -34,8 +34,8 @@ book =
       fnBlock =
         Map.fromList
           [ ("word-table", BlockFunction (Params [ArgString] Nothing []) True "" (\_ body _ -> Right body)),
-            ("rule", BlockFunction noParams False "" (\_ _ sp -> Right [Block sp Nothing (Paragraph Nothing [Text sp "―"])])),
-            ("styled", BlockFunction noParams False "" (\_ _ sp -> Right [Block sp Nothing (Paragraph (Just "nonexistent") [Text sp "x"])]))
+            ("rule", BlockFunction noParams False "" (\_ _ sp -> Right [Block sp Nothing Nothing (Paragraph Nothing [Text sp "―"])])),
+            ("styled", BlockFunction noParams False "" (\_ _ sp -> Right [Block sp Nothing Nothing (Paragraph (Just "nonexistent") [Text sp "x"])]))
           ],
       fnExpr =
         Map.fromList
@@ -66,7 +66,7 @@ codesOf :: Text -> [Text]
 codesOf src = map diagCodeText (fst (evalSource functionCtx (withImport src)))
 
 texts :: Text -> [Text]
-texts src = [t | Block _ _ (Paragraph _ is) <- resultBlocks (evalResult functionCtx (withImport src)), Text _ t <- is]
+texts src = [t | Block _ _ _ (Paragraph _ is) <- resultBlocks (evalResult functionCtx (withImport src)), Text _ t <- is]
 
 tests :: TestTree
 tests =
@@ -99,16 +99,16 @@ tests =
         codesOf "[book.tags ・ 1]\n" @?= ["G02121"],
       testCase "the prose slots go to the function, and the number of them is G02122" $ do
         let r = evalResult functionCtx (withImport "[book.emph-twice: 本文[note: 注]]\n")
-        [length xs | Block _ _ (Paragraph _ [CharStyle _ _ xs]) <- resultBlocks r] @?= [2]
-        [n | Block _ _ (Paragraph _ [CharStyle _ _ [_, Note _ n _]]) <- resultBlocks r] @?= [1]
+        [length xs | Block _ _ _ (Paragraph _ [CharStyle _ _ xs]) <- resultBlocks r] @?= [2]
+        [n | Block _ _ _ (Paragraph _ [CharStyle _ _ [_, Note _ n _]]) <- resultBlocks r] @?= [1]
         codesOf "[book.emph-twice]\n" @?= ["G02122"],
       testCase "the body goes to a block command; a body to one that takes none is G02123" $ do
         let r = evalResult functionCtx (withImport "@book.word-table data/words.tsv\n  本体\n")
-        [t | Block _ _ (Paragraph _ [Text _ t]) <- resultBlocks r] @?= ["本体"]
+        [t | Block _ _ _ (Paragraph _ [Text _ t]) <- resultBlocks r] @?= ["本体"]
         codesOf "@book.rule\n  本体\n" @?= ["G02123"],
       testCase "@label goes to the first block a block command returns" $ do
         let r = evalResult functionCtx (withImport "@label rule\n@book.rule\n")
-        [l | Block _ l _ <- resultBlocks r] @?= [Just "rule"],
+        [l | Block _ l Nothing _ <- resultBlocks r] @?= [Just "rule"],
       testCase "the names a function returns are checked as those of the built-in commands" $ do
         codesOf "[book.styled]\n" @?= ["G02018"]
         codesOf "@book.styled\n" @?= ["G02047"],

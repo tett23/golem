@@ -12,6 +12,8 @@ module Golem.Project.Manifest
     ChapterEntry (..),
     SourceEdit (..),
     Targets (..),
+    PdfAPart (..),
+    PdfUaPart (..),
     TextVariant (..),
     PluginDecl (..),
     PluginSource (..),
@@ -19,6 +21,7 @@ module Golem.Project.Manifest
     FilterSource (..),
     ProjectVar (..),
     parseManifest,
+    manifestValueSpan,
     chapterFiles,
     applyEdits,
     decodeStrict,
@@ -205,8 +208,20 @@ data Targets = Targets
   { tgPdf :: !(Maybe (Maybe Text)), -- enabled, ISBN
     tgEpub :: !(Maybe (Maybe Text)),
     tgHtml :: !Bool,
-    tgText :: ![TextVariant]
+    tgText :: ![TextVariant],
+    -- | [targets.pdf] pdfa: the PDF/A the PDF declares (docs/adr ADR 0183)
+    tgPdfA :: !(Maybe PdfAPart),
+    -- | [targets.pdf] pdfua: the PDF/UA the PDF declares (docs/adr ADR 0183)
+    tgPdfUa :: !(Maybe PdfUaPart)
   }
+  deriving stock (Eq, Show)
+
+-- | The parts and levels of PDF/A a book can declare: pdfa = "2a" (docs/adr ADR 0183).
+data PdfAPart = PdfA2a
+  deriving stock (Eq, Show)
+
+-- | The parts of PDF/UA a book can declare: pdfua = "1" (docs/adr ADR 0183).
+data PdfUaPart = PdfUa1
   deriving stock (Eq, Show)
 
 data PluginDecl = PluginDecl
@@ -421,7 +436,7 @@ manifestCode = \case
   _ -> "G03001"
 
 defaultTargets :: Targets
-defaultTargets = Targets Nothing Nothing True []
+defaultTargets = Targets Nothing Nothing True [] Nothing Nothing
 
 instance FromValue Metadata where
   fromValue = parseTableFromValue $ do
@@ -519,11 +534,36 @@ instance FromValue Targets where
     txt <- optKey "text"
     pure
       Targets
-        { tgPdf = fmap isbnOf pdf,
+        { tgPdf = fmap ptIsbn pdf,
           tgEpub = fmap isbnOf epub,
           tgHtml = isJust (html :: Maybe EmptyTable),
-          tgText = maybe [] textVariants txt
+          tgText = maybe [] textVariants txt,
+          tgPdfA = pdf >>= ptPdfA,
+          tgPdfUa = pdf >>= ptPdfUa
         }
+
+-- | [targets.pdf]: the ISBN, and the PDF/A and PDF/UA it declares (docs/adr ADR 0183).
+data PdfTable = PdfTable
+  { ptIsbn :: Maybe Text,
+    ptPdfA :: Maybe PdfAPart,
+    ptPdfUa :: Maybe PdfUaPart
+  }
+
+{- | pdfa takes "2a" alone and pdfua "1" alone; any other value, and a
+value that is not a string, is G03001 at the value (docs/adr ADR 0183).
+The values are strings so that parts and levels can be added later.
+-}
+instance FromValue PdfTable where
+  fromValue = parseTableFromValue (PdfTable <$> optKey "isbn" <*> optKeyOf "pdfa" pdfa <*> optKeyOf "pdfua" pdfua)
+    where
+      pdfa = \case
+        Text' _ "2a" -> pure PdfA2a
+        Text' l v -> failAt l (T.unpack ("pdfa に書けるのは \"2a\" だけです: " <> v))
+        v -> typeError "string" v
+      pdfua = \case
+        Text' _ "1" -> pure PdfUa1
+        Text' l v -> failAt l (T.unpack ("pdfua に書けるのは \"1\" だけです: " <> v))
+        v -> typeError "string" v
 
 newtype IsbnTable = IsbnTable (Maybe Text)
 
@@ -651,6 +691,23 @@ parseManifest fid src = do
   if tgHtml t || not (null (tgText t)) || isJust (tgPdf t) || isJust (tgEpub t)
     then Right m
     else Left [diagnostic "G03001" Error (mkSpan fid 0 0) "出力ターゲットが一つもありません"]
+
+{- | The span of a value of manifest.toml by the keys of its tables and its
+key, such as @["targets", "pdf", "pdfa"]@: at the start of the value, as
+the schema messages are (docs/adr ADR 0183). Nothing when the key is not
+there or the TOML does not read.
+-}
+manifestValueSpan :: FileId -> Text -> [Text] -> Maybe SrcSpan
+manifestValueSpan fid src keys = case parseToml src of
+  Left _ -> Nothing
+  Right tab -> positionSpan fid src . Just <$> go tab keys
+  where
+    go (MkTable kvs) = \case
+      [k] -> valueAnn . snd <$> Map.lookup k kvs
+      k : rest -> case snd <$> Map.lookup k kvs of
+        Just (Table' _ t) -> go t rest
+        _ -> Nothing
+      [] -> Nothing
 
 {- | G03028 at each string of a TOML table with a character that cannot be
 written to the output (docs/adr ADR 0042), in the order of the file: one

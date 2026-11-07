@@ -7,9 +7,9 @@ import Data.List (findIndex, isSuffixOf)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Golem.Driver
-import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), SetLine (..), layoutPages)
-import Golem.Project (ProjectFailure (..))
+import Golem.Project (Manifest (..), Project (..), ProjectFailure (..))
 import Golem.Syntax
+import Golem.Typeset (PdfInput (..), PdfLayout (..), SetLine (..), layoutPages)
 import Support hiding (codesOf)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -39,7 +39,7 @@ pagesOf manifest style sources = withSystemTempDirectory "golem-chapter-notes" $
   case ev of
     Left f -> assertFailure (show (pfDiagnostics f))
     Right e -> case (evBook e, filter isError (evDiagnostics e)) of
-      (Just book, []) -> layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty) >>= either (assertFailure . show) pure
+      (Just book, []) -> layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e))))) >>= either (assertFailure . show) pure
       (_, ds) -> assertFailure (show ds)
 
 {- | Builds the project for the targets: its diagnostics and the contents

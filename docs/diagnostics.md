@@ -51,8 +51,8 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | 04 | 文書の組み立て（ラベル、相互参照、目次） | golem-assemble |
 | 05 | lint | golem-lint |
 | 06 | プラグイン | golem-plugin、golem-driver |
-| 07 | レイアウト（版面、改ページ、傍注、表） | golem-layout-spec、golem-layout、golem-driver |
-| 08 | 出力（フォント、出力インテント） | golem-driver |
+| 07 | レイアウト（版面、改ページ、傍注、表） | golem-layout-spec、golem-layout、golem-typeset、golem-assemble、golem-driver |
+| 08 | 出力（フォント、出力インテント） | golem-typeset、golem-driver |
 | 09 | プリフライト | golem-preflight |
 
 関数を書く言語 Emet（`.emet`）のコードは、`E` と 5 桁の数字からなる（[docs/adr/0160](adr/0160-emet-function-language-core.md)）。
@@ -1377,28 +1377,28 @@ LSP では、エディタで開いているファイルにも出す。
 
 ## G01012
 
-見出しの階層は 3 までです
+見出しの階層は 6 までです
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`####` 以上の見出しがある。
-位置は 4 つ目の `#` から始まる。
+`#######` 以上の見出しがある。
+位置は 7 つ目の `#` から始まる。
 
-- メッセージ: `見出しの階層は 3 までです`
+- メッセージ: `見出しの階層は 6 までです`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)。上限を 6 にしたのは [ADR 0188](adr/0188-headings-beyond-level-3.md) である
 
 ### 主な原因
 
-- `####` 以上の見出しを書いた。
+- `#######` 以上の見出しを書いた。
 
 ### 直し方
 
-見出しは `#` から `###` までである。
-構成を 3 階層に収める。
+見出しは `#` から `######` までである。
+構成を 6 階層に収める。
 
 ## G01013
 
@@ -2088,16 +2088,18 @@ dev では出力に残し、診断は出さない。
 ### 意味
 
 その種類のブロックに付けられない属性を付けた。
-たとえば、見出しでないブロックへの `@notoc`、段落でないブロックへの `@style`、図版のキャプションの中の `@style`、コードブロックでないブロックへの `@caption` である。
+たとえば、見出しでないブロックへの `@notoc`、段落でないブロックへの `@style`、図版のキャプションの中の `@style`、コードブロックでないブロックへの `@caption`、見出しと図版とコードブロックのほかのブロック（段落、リスト、表など）への `@nonumber` である。
+キャプションのないコードブロックへの `@nonumber` は、付けられる種類のブロックに付けたが意味がないので、このコードではなく [G02134](#g02134) である。
 
 - メッセージ: `@<名前> はこのブロックには付けられません`、`@style は図版のキャプションには付けられません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が `@style` の条件を加えた。[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md) も触れる）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が `@style` の条件を加えた。[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md) も触れる。[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md) が `@nonumber` を図版とコードブロックに広げた）
 
 ### 主な原因
 
 - 見出しでないブロックに `@notoc` を付けた。
 - 段落でないブロックか、図版のキャプションに `@style` を付けた。
+- 段落や表に `@nonumber` を付けた。
 
 ### 直し方
 
@@ -2383,20 +2385,20 @@ number-text の引数が不正です
 
 ## G02025
 
-@toc の depth は 1 から 3 の整数です
+@toc の depth は 1 から 6 の整数です
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@toc` の `depth` が 1 から 3 の整数でない。
+`@toc` の `depth` が 1 から 6 の整数でない。
 `depth` は語か式で書く。
 負の数は [G02103](#g02103)、整数でない数は [G02104](#g02104) である（[docs/adr/0102](adr/0102-natural-number-type.md)）。
 
-- メッセージ: `@toc の depth は 1 から 3 の整数です`
+- メッセージ: `@toc の depth は 1 から 6 の整数です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)。上限を 6 にしたのは [ADR 0188](adr/0188-headings-beyond-level-3.md) である
 
 ### 主な原因
 
@@ -5318,6 +5320,63 @@ URL のホストは ASCII で書きます
 組みたい表のファイルのパスを一つだけ、最初の引数に書く。
 二つの表を組むときは、`@table` を二つ書く。
 
+## G02131
+
+lang には言語のタグを一つ書きます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+インラインのコマンド `[lang]` かブロックコマンド `@lang` の引数が、言語のタグ一つではない。
+位置引数は、語か文字列で書いた言語のタグちょうど一つである。
+位置引数がない、二つ以上ある、キーワード引数がある、式やコマンドで書いた、のどれかである。
+`[lang]` は散文を区間なしで残し、`@lang` はブロックに言語を付けない。
+位置はコマンドである。
+
+- メッセージ: `lang には言語のタグを一つ書きます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0187](adr/0187-inline-language-switch.md)
+
+### 主な原因
+
+- `[lang: ...]` のように、タグを書き忘れた。
+- `[lang en fr: ...]` のように、二つの言語を書いた。
+
+### 直し方
+
+言語のタグを一つ書く（`[lang en: ...]`、`@lang fr`）。
+二つの言語の部分は、`[lang]` を二つに分けて書く。
+
+## G02132
+
+言語のタグの形が誤っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[lang]` か `@lang` に書いた言語のタグが、BCP 47（RFC 5646）の形ではない。
+検査するのは形だけで、IANA の登録簿に載っているかは調べない。
+`[lang]` は散文を区間なしで残し、`@lang` はブロックに言語を付けない。
+位置はコマンドである。
+
+- メッセージ: `言語のタグの形が誤っています: <タグ>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0187](adr/0187-inline-language-switch.md)
+
+### 主な原因
+
+- `e_n` のように、区切りに `-` でない文字を使った。
+- `en-` のように、タグが `-` で終わる。
+- `123` のように、言語の副タグが英字ではない。
+
+### 直し方
+
+`ja`、`en-US`、`zh-Hant-TW` のように、BCP 47 の形で書く。
+
 ## G02133
 
 図版の width が読めません
@@ -5348,6 +5407,35 @@ dev と prod の両方でエラーである。
 `width` を、`12zw`、`40mm` のような寸法か、`50%` のような行長の割合で書く。
 割合は、回り込ませない図版と回り込ませる図版では段の行長、回した図版では枠の行長に対する割合である。
 
+## G02134
+
+キャプションのないコードブロックへの @nonumber は要りません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+キャプション（`@caption`）のないコードブロック（```` ``` ```` か `@listing`）に `@nonumber` を付けた。
+リスト番号を持つのはキャプションのあるコードブロックだけなので、キャプションのないコードブロックには、振らないでおく番号がない。
+`@caption` と `@nonumber` のどちらを先に書いても同じく、そのブロックの属性をすべて当てた後で判定する。
+コードブロックは、`@nonumber` がないものとして組む。
+位置は `@nonumber` の行である。
+
+- メッセージ: `キャプションのないコードブロックは番号を持たないので、@nonumber は要りません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)
+
+### 主な原因
+
+- キャプションを付けるつもりで、`@caption` を書き忘れた。
+- 番号のない図版にならって、キャプションのないコードブロックにも `@nonumber` を書いた。
+
+### 直し方
+
+キャプションを付けるなら `@caption` を書く。
+キャプションが要らないなら `@nonumber` を消す。
+
 ## G03001
 
 manifest.toml の誤りです
@@ -5359,9 +5447,10 @@ manifest.toml の誤りです
 
 `manifest.toml` が TOML として読めないか、スキーマに合わないか、出力ターゲットが一つもない。
 `[source]` と章の項目の `[source]` のキー（`paragraph-separator` など）の未知のキーと不正な値、同じファイルを章の配列に二度並べて適用される `[source]` の値が異なる場合も、この誤りとする。
+`[targets.pdf]` の `pdfa` が `"2a"` でない場合と、`pdfua` が `"1"` でない場合（文字列でない値を含む）も、この誤りとする（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
 `[metadata]` の `creators` と `contributors` の `role` が役割の表の語でない場合、`name` が空の文字列の場合、`publisher-person` が空の文字列か改行を含む場合、`printings` の版か刷が 0 の場合（負の数は [G02103](#g02103)、[docs/adr/0102](adr/0102-natural-number-type.md)）、`printings` が版と刷の順に狭義に増えていない場合、`printings` の `date` が前の項目より前の場合も、この誤りとする。
 
-- メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、`章は、ファイルのパス、表、配列のどれかで書きます`、`役割は語で書きます。"<符号>" は "<語>" です`、`役割は <語の一覧> のどれかです: <値>`、`発行所は [metadata] の publisher に、発行人は publisher-person に書きます`、`name に空の文字列は書けません`、`publisher-person に空の文字列は書けません`、`publisher-person に改行は書けません`、`版と刷の番号は 1 以上の整数です`、`printings は版と刷の順に、同じ版と刷を二度書かずに並べます`、`printings の date が前の項目の date より前です`、または TOML のスキーマの誤りの文言（`知らないキーです: <経路>.<キー>`、`必須のキーがありません: <経路>.<キー>`、`<経路> には<型>を書きます（<型>が書かれています）`、`[source]` の不正な値など）。TOML の誤りの詳細は、`文字列が閉じていません`、`閉じた表にキーを足しています: <キー>` などの日本語の文言である。経路は `metadata.title` や `chapters[0]` の形で書く。Golem の検査の文言には、`(chapters[0])` のように経路を後ろに添える。経路が空のとき（ファイルの最上位の誤り）は添えない。
+- メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、`章は、ファイルのパス、表、配列のどれかで書きます`、`役割は語で書きます。"<符号>" は "<語>" です`、`役割は <語の一覧> のどれかです: <値>`、`発行所は [metadata] の publisher に、発行人は publisher-person に書きます`、`name に空の文字列は書けません`、`publisher-person に空の文字列は書けません`、`publisher-person に改行は書けません`、`版と刷の番号は 1 以上の整数です`、`printings は版と刷の順に、同じ版と刷を二度書かずに並べます`、`printings の date が前の項目の date より前です`、`pdfa に書けるのは "2a" だけです: <値>`、`pdfua に書けるのは "1" だけです: <値>`、または TOML のスキーマの誤りの文言（`知らないキーです: <経路>.<キー>`、`必須のキーがありません: <経路>.<キー>`、`<経路> には<型>を書きます（<型>が書かれています）`、`[source]` の不正な値など）。TOML の誤りの詳細は、`文字列が閉じていません`、`閉じた表にキーを足しています: <キー>` などの日本語の文言である。経路は `metadata.title` や `chapters[0]` の形で書く。Golem の検査の文言には、`(chapters[0])` のように経路を後ろに添える。経路が空のとき（ファイルの最上位の誤り）は添えない。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）。位置は、スキーマの誤りと Golem が値の読み込みで調べる誤り（章の項目、`[source]` の値など）では誤った値の位置、TOML の構文の誤りではその誤りの位置、それ以外（出力ターゲットが一つもないなど）では `manifest.toml` の先頭である
 - ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md) が触れ、[docs/adr/0013](adr/0013-paragraph-separator.md) が `[source]` の誤りの条件を加えた。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md) が役割、名前、発行人、刷の検査を加えた。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
@@ -5505,9 +5594,9 @@ style.toml の誤りです
 `@style-def` の名前と欄の誤りにも出る。
 誤りのある定義は捨てる。
 
-- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1、2、3 のどれかです: <段>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format が正しくありません（<理由>）: <書式>`、`[notes] の mark-size と、size を持つ mark-style <名前> は一緒に書けません`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル <名前> には 0 でない indent と first-line-indent を書けません。キャプションと傍注は字下げをしません: <キー>`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
+- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1 から 6 のどれかです: <段>`、`見出しの番号の書式の {<k>} は上の階層の番号です。階層 <段> の見出しには書けません: <書式>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format が正しくありません（<理由>）: <書式>`、`[notes] の mark-size と、size を持つ mark-style <名前> は一緒に書けません`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル <名前> には 0 でない indent と first-line-indent を書けません。キャプションと傍注は字下げをしません: <キー>`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りと Golem が値の読み込みで調べる誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置である。二つのキーの組み合わせの誤りは、文言が直すよう求めているキーの値の位置（`columns` と `column-gap` では `columns`）に出す。読み込んだ後の検査では、直すべき値の位置であり、その値が書かれていなければそのスタイルなどの表の見出しの位置、それもなければ `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0118](adr/0118-ref-page-numerals-in-vertical-text.md)（`[numbers]` の `ref-page`）である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0118](adr/0118-ref-page-numerals-in-vertical-text.md)（`[numbers]` の `ref-page`）、[ADR 0188](adr/0188-headings-beyond-level-3.md)（`[headings.N]` の階層と見出しの番号の書式の `{k}`）である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -5526,6 +5615,7 @@ style.toml の誤りです
 - 罫線の指定（`[notes.rule]`）で、`length` が寸法として読めないか 0 以下、`weight` が寸法として読めないか 0 以下か `zw`、`space-before` か `space-after` が寸法として読めないか負である。未知のキーを書いた。`[notes.rule]` に `length` を書いていない（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 - 罫線の指定で、`style` に線の種類の表にない値を書いた。`dash` か `gap` が寸法として読めないか、0 以下か、`zw` である。`dash` を `"dashed"` のほかの線の種類に、`gap` を `"dashed"`、`"dotted"`、`"japanese-dots"` のほかの線の種類に書いた。`color` を文字列で書いていない（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
 - 段落スタイルか `[headings.N]` の `rule-before`、`rule-after` に、表と `false` のほかの値（`true` を含む）を書いた。組み込みの段落スタイル `caption`、`sidenote`、`code` に書いた。`@style-def` に書いた。`length` と `end-indent` を一緒に書いた。`start-indent` と `end-indent` を引くと罫線の長さが 0 以下になる。`[notes.rule]` に `start-indent`、`end-indent`、`keep-in-column` を書いた（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
+- `[headings.N]` の N に 1 から 6 のほかの値を書いた。見出しの番号の書式に、その見出しの階層より小さくない `{k}` を書いた（`[headings.2]` の `{2}`、`[headings.1]` の `{1}` など）。図版、コードブロック、ノンブルの番号の書式に `{3}` から `{5}` を書いた（[ADR 0188](adr/0188-headings-beyond-level-3.md)）。
 - `[notes]` の `mark-format` に数の差し込みを書かなかったか、二つ以上書いたか、表にない差し込みか表記の名前を書いたか、`{{`、閉じていない `{`、対応のない `}`、誤ったエスケープ（`\a`、末尾の `\`）を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 - `[notes]` の `mark-size` と、`size` を持つ文字スタイルを指す `mark-style` を一緒に書いた。`mark-style` を書かずに `[character-styles.note-mark]` の `size` と `mark-size` を一緒に書いた場合も同じである（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 - 見出し、図版、コードブロック、ノンブルの番号の書式に、表にない差し込みか表記の名前、閉じていない `{`、対応のない `}`、誤ったエスケープを書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
@@ -5747,12 +5837,12 @@ style.toml のスタイルの参照が不正です
 
 - メッセージ: 語彙と組み合わせの誤りは `柱の内容が正しくありません: <値>。heading.<階層>.short か heading.<階層>.numbered（末尾に .last を付けられます）、title、none のどれかを、content に一つ、または even と odd の両方に書いてください`。組み合わせの誤りでは、`<値>` に書いた欄と値を並べ、どれも書いていなければ `（なし）` とする。書式の誤りは `柱の書式が正しくありません: <理由>`。どちらも誤った箇所の経路を添える。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)、[golem-driver ADR 0022](golem-driver/adr/0022-running-head-formats.md)
+- ADR: [golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)、[golem-driver ADR 0022](golem-driver/adr/0022-running-head-formats.md)、[ADR 0188](adr/0188-headings-beyond-level-3.md)（見出しの階層を 1 から 6 に限った）
 
 ### 主な原因
 
 - 内容の値の綴りを誤った（`heading.1.long`、`chapter` など）。
-- 見出しの階層に 0 や数でないものを書いた。
+- 見出しの階層に 0、7 以上、数でないものを書いた。階層は 1 から 6 である（[ADR 0188](adr/0188-headings-beyond-level-3.md)）。
 - 書式を配列でなく文字列で書いた（`"{meta.title}　{heading.1.short}"`）。
 - 書式の `{` を閉じていないか、文字の `}` を `\}` と書いていないか、`{}` を書いたか、`\` の後に `{`、`}`、`\` のほかの字を書いたか、行の末尾に `\` を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 - 差し込みに表記を書いた（`{heading.1.short:kanji}`）。
@@ -6453,6 +6543,34 @@ TOML の浮動小数点数は `Double` を経て読むので、Golem の数（�
 表の中の値なら `{vars.author.short}` のように値まで書く。
 配列は、`[vars]` に柱に出す文字列を別に書く。
 
+## G03113
+
+PDF/A には [color] の intent が要ります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[targets.pdf]` に `pdfa` を書いたのに、`style.toml` に `[color]` の `intent` がない。
+PDF/A は PDF/X-4 の上にだけ書くので、出力インテントの ICC プロファイルが要る。
+PDF は書かず、HTML、EPUB、プレーンテキストは書く。
+dev と prod の両方でエラーである。
+位置は `pdfa` の値である。
+
+- メッセージ: `PDF/A には [color] の intent が要ります`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset`）。PDF を書くときに、組む前に調べる
+- ADR: [docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)
+
+### 主な原因
+
+- PDF/A を宣言したが、出力インテントを用意していない。
+- 支援技術のための宣言のつもりで `pdfa` を書いた。PDF/UA だけなら `pdfua` を書く。
+
+### 直し方
+
+`style.toml` の `[color]` に `intent` を書き、CMYK の ICC プロファイルを置く。
+PDF/A が要らなければ、`pdfa` を消す。
 ## G03114
 
 [lists] の numbers の {{ と }} は廃止予定です
@@ -6658,6 +6776,35 @@ InDesign は縦組みのフレームではこの二つを適用しないが、Go
 縦組みの本なら、`align` を `"left"`（天付き）か `"right"`（地付き）などの値に変える。
 横組みの本にするなら、`writing-mode` を `"horizontal"` にする。
 
+## G03119
+
+PDF/A と PDF/UA には、language を言語のタグの形で書きます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[targets.pdf]` に `pdfa` か `pdfua` を書いた本で、`[metadata]` の `language` が BCP 47 の言語のタグの形でない。
+PDF のカタログの `/Lang` に書く値なので、PDF/A と PDF/UA はその形を調べる。
+調べるのは形だけで、IANA の登録簿に載っているかは調べない。
+`pdfa` も `pdfua` も書かない本では調べない。
+PDF は書かず、HTML、EPUB、プレーンテキストは書く。
+dev と prod の両方でエラーである。
+位置は `language` の値である。
+
+- メッセージ: `PDF/A と PDF/UA には、language を言語のタグの形で書きます: <値>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset`、形の検査は golem-syntax の `Golem.Syntax.LanguageTag`）。PDF を書くときに、組む前に調べる
+- ADR: [docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)
+
+### 主な原因
+
+- `language` に言語の名前（`日本語` など）を書いた。
+- 区切りに `_` を使った（`ja_JP`）。
+
+### 直し方
+
+`language` を `ja`、`en-US` のような言語のタグで書く。
 ## G03120
 
 段落の区切り方を書いていないので、改行の様式（paragraph-separator = "line"）で読みます
@@ -6781,12 +6928,12 @@ InDesign は縦組みのフレームではこの二つを適用しないが、Go
 リスト番号の書式（`[code]` の `number`、既定 `リスト{chapter}-{n}`）が `{chapter}` を使うのに、章の番号を持たない、キャプションのあるコードブロックがある場合も、この誤りとする。
 章は、番号を持つ階層 1 の見出しから、次の階層 1 の見出しまでである。
 最初の章の見出しより前の図版とコードブロックと、`@nonumber` の階層 1 の見出し（あとがきなど）の後のものが、章の外になる。
-キャプションのないコードブロックは番号を持たないので、この誤りにならない。
+キャプションのないコードブロックと、`@nonumber` を付けた図版とコードブロックは番号を持たないので、この誤りにならない（[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)）。
 位置は図版かコードブロックのブロックである。
 
-- メッセージ: `章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります`
+- メッセージ: `章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます`
 - 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
-- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)（コードブロックの条件は [golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md) が加えた）
+- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)（コードブロックの条件は [golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md) が加えた。メッセージの `@nonumber` の案内は [docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md) が足した）
 
 ### 主な原因
 
@@ -6796,6 +6943,7 @@ InDesign は縦組みのフレームではこの二つを適用しないが、Go
 ### 直し方
 
 図版とコードブロックを章の中に移すか、番号の書式から `{chapter}` を外す。
+番号の要らない図版とコードブロック（前付けや後書きの図など）なら、`@nonumber` を付ける。
 
 ## G04005
 
@@ -6807,16 +6955,16 @@ InDesign は縦組みのフレームではこの二つを適用しないが、Go
 ### 意味
 
 `ref-number` が、番号を持たない要素を指す。
-番号を持つのは、`@nonumber` のない見出し、図版、キャプションを付けたコードブロックである。
+番号を持つのは、`@nonumber` のない見出し、`@nonumber` のない図版、`@nonumber` のない、キャプションを付けたコードブロックである。
 位置は参照であり、参照は何も出力しない。
 
 - メッセージ: `番号を持たない要素への参照です: <ラベル>`
 - 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
-- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)、[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)（コードブロック）
+- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)、[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)（コードブロック）、[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)（`@nonumber` の図版とコードブロック）
 
 ### 主な原因
 
-- `ref-number` で、番号のない見出しなど、番号を持たない要素を指した。
+- `ref-number` で、番号のない見出しや `@nonumber` の図版など、番号を持たない要素を指した。
 
 ### 直し方
 
@@ -7311,6 +7459,7 @@ overrides に書けない名前です
 ブロックコマンドの不正な出力の詳細は、`ブロックコマンドの出力は [ブロックの列, 画像の列] です`、`ブロックコマンドが返せないブロックです: <種類>`（見出し、一覧の出力、改ページ、改ページの制御、行アキ）、`ブロックコマンドの出力はラベルを持てません` である。
 プラグインが作った画像の図版（[docs/adr/0123](adr/0123-figures-from-plugins.md)）の不正な出力の詳細は、`画像の形が不正です`、`画像の名前が不正です: <名前>`、`画像の名前が重複しています: <名前>`、`画像の大きさの合計が上限（67108864 バイト）を超えています`、`どの図版も使っていない画像があります: <名前>`、`画像の形式は svg、png、jpeg のどれかです: <形式>`、`プラグインの図版は web を持てません`、`応答にない画像です: <src>`、`プラグインの図版は plugin:<名前> で画像を指します: <src>`、`図版は出力の最上位にだけ置けます` である。
 図版のキャプションに段落でないブロックを置いた出力（ブロックコマンドとフィルタ）の詳細は、`図版のキャプションには段落だけを置けます` である（[docs/adr/0144](adr/0144-figure-captions-hold-paragraphs-only.md)）。
+`nonumber` が真で `caption` が null のコードブロックを返した出力の詳細は、`キャプションのないコードブロックは番号を持たないので、@nonumber は要りません` である（[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)）。
 
 - メッセージ: `<プラグイン>.<コマンド>: <理由>`、`<プラグイン>.<ブロックコマンド>: <理由>`、`<プラグイン>.<フィルタ>: <理由>`、`<プラグイン>.golem_check_data: <理由>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
@@ -7657,7 +7806,7 @@ PDF を書かない。
 位置は並びの最初のもの（ラベルならそのラベルを付けたブロック、索引の語ならその印）で、二つ目以降のものの位置を関連情報に `ページが定まりません` として載せる。
 
 - メッセージ: `ページ番号の参照が収束しません: <ラベルと索引の語>`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md) がメッセージに索引の語を加えた。[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md) も触れる）
 
 ### 主な原因
@@ -7681,7 +7830,7 @@ PDF を書かない。
 `width` が読めない場合は、評価の [G02133](#g02133) であり、このコードではない（[docs/adr/0190](adr/0190-non-wrapping-figure-width.md)）。
 
 - メッセージ: `回り込む図版の幅が不正です。行の残りを本文の 8 字分以上にしてください: <幅>`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[docs/adr/0190](adr/0190-non-wrapping-figure-width.md)
 
 ### 主な原因
@@ -7705,7 +7854,7 @@ PDF を書かない。
 回り込む図版とキャプションの占める行数が、一ページの行数を超える。
 
 - メッセージ: `回り込む図版の除外領域が一ページの行数を超えます（<行数> 行）`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)
 
 ### 主な原因
@@ -7730,7 +7879,7 @@ PDF を書かない。
 一ページには入るが、`@page-lines` で行数を減らした段に入らない見出しは、このエラーではなく、お知らせの [G07100](#g07100) である。
 
 - メッセージ: `見出しが版面に入りません（<階層> の見出し: <題>）`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)
 
 ### 主な原因
@@ -7760,7 +7909,7 @@ LSP は出さない。
 回り込む図版の脇で行が残らない場合は [G07028](#g07028) である。
 
 - メッセージ: `段落スタイルの字下げが大きすぎます。行長を段落の文字の大きさの 8 字分以上残してください: <名前>`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset`）
 - ADR: [docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)
 
 ### 主な原因
@@ -7785,7 +7934,7 @@ LSP は出さない。
 段組みの版面での回り込みの形は決まっていないので、黙って一段組みの形で組まずに止める。
 
 - メッセージ: `段組みの版面では図版を回り込ませられません。wrap を外すか、columns を 1 にしてください`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [docs/adr/0018](adr/0018-multi-column-layout.md)
 
 ### 主な原因
@@ -7812,7 +7961,7 @@ PDF で、入れ子のリストの字下げの後に残る項目の本文の行�
 位置はその項目の段落である。
 
 - メッセージ: `リストの入れ子が深く、項目の本文の行長が足りません。行長を本文の文字の大きさの 8 字分以上残してください`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)
 
 ### 主な原因
@@ -7840,7 +7989,7 @@ PDF で、回り込む図版の脇の段落に、図版の脇の行の長さか�
 リストの項目の段落では、代わりに [G07027](#g07027) を報告する。
 
 - メッセージ: `回り込む図版の脇で、字下げを引くと行が残りません`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
 
 ### 主な原因
@@ -7866,7 +8015,7 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 位置はその項目の最初のブロックであり、ブロックのない項目ではそのリストである。
 
 - メッセージ: `リストの番号 <番号> は、書式 <書式> で表せません`
-- 段階とモジュール: 出力（golem-assemble の `Golem.Assemble.ListMarkers`、golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- 段階とモジュール: 出力（golem-assemble の `Golem.Assemble.ListMarkers`、golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)
 
 ### 主な原因
@@ -7895,7 +8044,7 @@ PDF は書く。
 お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 
 - メッセージ: `コードの行を折り返しました（<n> 行）`。`<n>` は折り返した元の行の数
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`、golem-layout の `Golem.Layout.Code`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`、golem-layout の `Golem.Layout.Code`）
 - ADR: [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)
 
 ### 主な原因
@@ -7927,7 +8076,7 @@ PDF を書かない。
 位置は傍注の位置である。
 
 - メッセージ: `縦組みの版面では傍注を使えません。脚注に替えてください`
-- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Japanese`、golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Japanese`、golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md) と [golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md) が条件を定めた）
 
 ### 主な原因
@@ -7951,7 +8100,7 @@ PDF を書かない。
 ページごとに最初の一つだけを報告する。
 
 - メッセージ: `傍注が傍注の領域より高く、収まりません`、`このページの傍注が傍注の領域に収まりません`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)
 
 ### 主な原因
@@ -7975,7 +8124,7 @@ PDF を書かない。
 `[sidenotes]` のない横組みの版面で傍注を使った。
 
 - メッセージ: `傍注の領域（style.toml の [sidenotes]）のない版面では傍注を使えません`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)
 
 ### 主な原因
@@ -7999,7 +8148,7 @@ PDF を書かない。
 これらの行は本文の流れの外にあるので、傍注の高さを決められない。
 
 - メッセージ: `PDF では、脚注の本文と図版のキャプションの中に傍注を置けません`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)
 
 ### 主な原因
@@ -8028,7 +8177,7 @@ PDF の改ページで、`@no-page-break`、`@need-lines`、`@page-lines` の指
 - `@page-lines`：増減の結果の行数が、裁ち落としを除いたページの内側に収まる行数を超えるか、その段にすでに置いた行の数より少ない。収まる数に切り詰めた。
 
 - メッセージ: `ここで改ページを止められませんでした`、`@need-lines <N> は段の行数 <M> を超えます`、`<理由>@page-lines の増減を <K> 行に切り詰めました`。`<理由>` は、切り詰めた理由で、`段に余りがないため、`（ページの内側にそれ以上の行が入らない）、`段にすでに行を置いているため、`（置いた行より少なくできない）、`段には少なくとも 1 行を残すため、` のどれかである
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`、golem-layout の `Golem.Layout.Paginate`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`、golem-layout の `Golem.Layout.Paginate`）
 - ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)
 
 ### 主な原因
@@ -8055,7 +8204,7 @@ PDF の改ページで、`@no-page-break`、`@need-lines`、`@page-lines` の指
 dev と prod の両方でエラーになる。
 
 - メッセージ: `図版のキャプションが段の行数に達します（<s> 行。段は <L> 行）`、`図版のキャプションがページの行数に達します（<s> 行。ページは <L> 行）`。`<s>` はキャプションが占める格子の行の数、`<L>` は段か枠の行の数
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)
 
 ### 主な原因
@@ -8087,7 +8236,7 @@ PDF は書く。
 お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 
 - メッセージ: `図版を段に収めるため <r>% に縮めました`、回した図版では `図版をページに収めるため <r>% に縮めました`。`<r>` は縮めた後の行の方向の長さを、`width` の長さ（なければ行長）で割った百分率の切り捨て。回さずに置いた図版が、回せばより大きく置ける場合は、`。rotate=true で回して一ページに置くと、より大きく置けます` が続く
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)、[docs/adr/0190](adr/0190-non-wrapping-figure-width.md)
 
 ### 主な原因
@@ -8117,7 +8266,7 @@ PDF は書く。
 セルの最後の二つの和文の字は、一つの区間として数える（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。
 
 - メッセージ: `表の列の最小の幅の合計（<幅>）が使える幅（<幅>）に収まりません`。幅は mm で、小数点以下 2 桁に、等距離なら偶数の側へ丸めて書く（例: `表の列の最小の幅の合計（42.33mm）が使える幅（24.69mm）に収まりません`。[docs/adr/0103](adr/0103-single-place-for-unit-conversions.md)）
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)、[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)
 
 ### 主な原因
@@ -8142,7 +8291,7 @@ PDF は書く。
 表の行の途中では改ページしない。
 
 - メッセージ: `表の <番号> 行目が見出しの行とともに一ページに収まりません`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)
 
 ### 主な原因
@@ -8170,7 +8319,7 @@ PDF のコードブロックについて、行長から左右の `padding` を�
 PDF を書かない。
 
 - メッセージ: `コードブロックの行長が足りません` または `コードブロックの一行が一ページに収まりません`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)
 
 ### 主な原因
@@ -8198,7 +8347,7 @@ PDF を書かない。
 位置は `[index]` の `columns` の値である。
 
 - メッセージ: `索引の段の行長が足りません。columns を減らすか column-gap を狭めてください`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset`）
 - ADR: [docs/adr/0025](adr/0025-index-columns.md)
 
 ### 主な原因
@@ -8227,7 +8376,7 @@ PDF は書く。
 お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 
 - メッセージ: `ルビの親文字の圏点は PDF では描きません`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)
 
 ### 主な原因
@@ -8261,7 +8410,7 @@ PDF は書く。
 お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 
 - メッセージ: `罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（段落スタイル <名前>）`、`罫線を持つ見出しが版面に入らないため、罫線を省きました（見出し <階層>）`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)、[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)（分けて組んだ段落の罫線）
 
 ### 主な原因
@@ -8295,7 +8444,7 @@ PDF で、行アキが段の先頭に来たので、空きを取らずに捨て�
 情報なので、コマンドに `--verbose`（`-v`）を付けたときにだけ出し、ビルドの成否と出力に影響しない（[docs/adr/0104](adr/0104-info-severity.md)）。
 
 - メッセージ: `段の先頭に来た @blank-line の空きを捨てました`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`、golem-layout の `Golem.Layout.Paginate`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`、golem-layout の `Golem.Layout.Paginate`）
 - ADR: [docs/adr/0046](adr/0046-blank-line-command.md)、[docs/adr/0104](adr/0104-info-severity.md)（重大度）
 
 ### 主な原因
@@ -8326,7 +8475,7 @@ PDF を書かない。
 位置は `style.toml` の先頭である。
 
 - メッセージ: `隠しノンブルが版面に重なります。[hidden-folio] の gutter を小さくするか、ノドの余白を広げてください`
-- 段階とモジュール: レイアウト（golem-layout-spec の `Golem.LayoutSpec`、golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-layout-spec の `Golem.LayoutSpec`、golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0041](golem-driver/adr/0041-hidden-folio-overlap-check-by-size.md)（数字の列の幅を `size` で測ること）
 
 ### 主な原因
@@ -8354,7 +8503,7 @@ PDF に描く柱の行の幅が、そのページの版面の幅を超える。
 位置は `style.toml` の先頭である。
 
 - メッセージ: `柱の行が版面の幅を超えています（<ページ> ページ）: <行の文字列>`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0022](golem-driver/adr/0022-running-head-formats.md)
 
 ### 主な原因
@@ -8417,7 +8566,7 @@ PDF で、見出しが占める格子の行が、見出しを置いた空の段�
 お知らせなので、ビルドの成否と出力に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 
 - メッセージ: `見出しが段に入りません（<階層> の見出し: <題>。見出しは <n> 行、段の残りは <m> 行）`。注の一覧の見出しでは、括弧の中の前半を `注の一覧の見出し: <題>` とする。
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`、golem-layout の `Golem.Layout.Paginate`）
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`、golem-layout の `Golem.Layout.Paginate`）
 - ADR: [golem-layout ADR 0020](golem-layout/adr/0020-heading-taller-than-column.md)
 
 ### 主な原因
@@ -8449,7 +8598,7 @@ PDF で、和文の中の全角のダッシュの連なり（二倍ダッシュ�
 お知らせなので、ビルドの成否と出力に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 
 - メッセージ: `ダッシュの字形に線がないので、二倍ダッシュの線をつながずに描きます: <コードポイント>（<フォントのパス>）`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset`）
 - ADR: [docs/adr/0172](adr/0172-continuous-double-dashes.md)
 
 ### 主な原因
@@ -8481,7 +8630,7 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 リストの番号の [G07029](#g07029) とは、直すキーが違うのでコードを分ける。
 
 - メッセージ: `注の番号 <番号> は、[notes] の mark-format <書式> で表せません`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset`）
 - ADR: [docs/adr/0177](adr/0177-note-mark-style-and-numerals.md)
 
 ### 主な原因
@@ -8491,6 +8640,69 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 ### 直し方
 
 `[notes]` の `numbering` で番号を振り直す範囲を狭めるか、`mark-format` の表記を算用数字（`{n}`）などの表せる表記に替える。
+## G07103
+
+PDF/UA では見出しの段を飛ばせません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[targets.pdf]` に `pdfua` を書いた本で、見出しの段が飛んでいる。
+最初の見出しが 1 の段でないか、ある見出しが前の見出しより二つ以上深い。
+PDF/UA-1 は、見出しの構造の要素（`H1` から）が段を飛ばさないことを求める。
+浅くなる向きには、いくつ段を戻ってもよい。
+最初の見出しでは、前の段を 0（文書）として述べる。
+`pdfua` を書かない本では調べない。
+PDF は書かず、HTML、EPUB、プレーンテキストは書く。
+dev と prod の両方でエラーである。
+位置はその見出しである。
+
+- メッセージ: `PDF/UA では見出しの段を飛ばせません: <前の段> から <この段>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset`）。PDF を書くときに、組む前に調べる
+- ADR: [docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)
+
+### 主な原因
+
+- 文字の大きさを変えるために、`#` の次に `###` を置いた。
+- 章の最初の見出しを `##` で始めた。
+
+### 直し方
+
+見出しの段を一つずつ深くする。
+見た目を変えたいだけなら、`style.toml` の `[headings]` で段の体裁を変える。
+
+## G07104
+
+PDF/A-2a の PDF に私用領域の字は書けません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[targets.pdf]` に `pdfa` を書いた本で、PDF に描く字が Unicode の私用領域（U+E000 から U+F8FF、U+F0000 から U+FFFFD、U+100000 から U+10FFFD）の字に対応づけられる。
+PDF/A-2a は、私用領域の字に、意味を表す代わりの文字（`ActualText`）を求める。
+Golem には私用領域の字の意味が分からないので、書かない。
+原稿の一つの位置につき、字ごとに一度出す。
+柱、ノンブルなど、Golem が描くすべての字を調べる。
+PDF は書かず、HTML、EPUB、プレーンテキストは書く。
+dev と prod の両方でエラーである。
+位置はその字を含む原稿の位置である。
+
+- メッセージ: `PDF/A-2a の PDF に私用領域の字は書けません: U+<符号位置>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset`）。組んだ後、フォントを埋め込む前に調べる
+- ADR: [docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)
+
+### 主な原因
+
+- 外字や記号を、フォントの私用領域の符号位置で書いた。
+
+### 直し方
+
+Unicode に符号位置のある字で書く。
+字形が要るなら、図版にして `alt` で意味を書く。
 
 ## G08001
 
@@ -8507,7 +8719,7 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
 
 - メッセージ: `フォントを読まない設定（noFontProvider）では PDF を出力できません`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
 
 ### 主な原因
@@ -8536,7 +8748,7 @@ LSP は出さない。
 本文のフォントの設定がない場合は [G08007](#g08007) である。
 
 - メッセージ: `フォントのファイルがありません: <パス>`、またはパスの誤りの文言（`絶対パスは使えません: <パス>` など）
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Fonts`）
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset.FontProvider`）
 - ADR: [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)（ターゲットごとの検査を定めた）、[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（本文のフォントの設定の欠けを G08007 に分けた。[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md) も触れる）
 
 ### 主な原因
@@ -8563,7 +8775,7 @@ PDF を書かない。
 位置は `style.toml` の先頭である。
 
 - メッセージ: `フォントを読み込めません: <パス>`。パスは `style.toml` に書いたとおりである。
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`）
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`）
 - ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
 
 ### 主な原因
@@ -8596,7 +8808,7 @@ PDF を書かない。
 位置は `style.toml` の先頭である。
 
 - メッセージ: `ライセンスが埋め込みを禁じているフォントです（fsType <値>）: <パス>`。値は `0x0102` のように `0x` と 4 桁の大文字の 16 進数で書く。
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`、golem-font の `Golem.Font`）
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font`）
 - ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md) がエラーにすると定めた）
 
 ### 主な原因
@@ -8621,7 +8833,7 @@ PostScript 名が同じ異なるフォントがあります
 位置は `style.toml` の先頭である。
 
 - メッセージ: `PostScript 名が同じ異なるフォントがあります: <名前>（<パス>、<パス>）`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`）
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`）
 - ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)（位置は [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）
 
 ### 主な原因
@@ -8646,7 +8858,7 @@ PDF を書かない。
 LSP は出さない。
 
 - メッセージ: `出力インテントの ICC プロファイルがありません: <パス>`、またはパスの誤りの文言（`絶対パスは使えません: <パス>` など）
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset`）
 - ADR: [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)
 
 ### 主な原因
@@ -8703,7 +8915,7 @@ PDF はコードを本文の役割で組む。
 お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 
 - メッセージ: `コードの書体の役割 code がないので、本文の書体で組みます`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)
 
 ### 主な原因
@@ -8732,7 +8944,7 @@ PDF を書かない。
 位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
 
 - メッセージ: `役割 <役割> の和文の書体に圏点の形 <形> の字（U+<符号位置>）がありません`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset`）
 - ADR: [golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)
 
 ### 主な原因
@@ -8798,7 +9010,7 @@ HTML、EPUB、プレーンテキストでは出さない。
 位置は、その `@figure` のブロックである。
 
 - メッセージ: `図版を PDF に置けません: <パス>（<理由>）`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`、golem-pdf の `Golem.Pdf.Image` と `Golem.Pdf.Import`、golem-svg の `Golem.Svg`）
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset`、golem-pdf の `Golem.Pdf.Image` と `Golem.Pdf.Import`、golem-svg の `Golem.Svg`）
 - ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[docs/adr/0040](adr/0040-pdf-import-resource-limits.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（SVG の大きさの数）、[docs/adr/0083](adr/0083-svg-number-lower-limit.md)（SVG の大きさの小さすぎる数）、[golem-pdf ADR 0014](golem-pdf/adr/0014-png-trns-transparency.md)（PNG の tRNS）
 
 ### 主な原因
@@ -8846,7 +9058,7 @@ HTML と EPUB は SVG を PDF の部分集合では検査せず、動的なコ�
 位置は、その `@figure` のブロックである。
 
 - メッセージ: `SVG の図版に扱えないものがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。文字なら `（<名前>: 文字は輪郭にして書き出してください）`。ほかになければ `ほか <n> 件` を書かない。
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg`）
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset` と `Golem.Typeset.Svg`、golem-svg の `Golem.Svg`）
 - ADR: [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（読めない数）、[docs/adr/0054](adr/0054-svg-marker-cycle-and-depth-codes.md)（`marker` の循環と入れ子を G08016 と G08017 に分けた）、[docs/adr/0083](adr/0083-svg-number-lower-limit.md)（小さすぎる読めない数）
 
 ### 主な原因
@@ -8949,7 +9161,7 @@ PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出
 位置は、その `@figure` のブロックである。
 
 - メッセージ: `図版の PDF のページの内容をつなぐと 256 MiB を超えます: <パス>`
-- 段階とモジュール: 出力（golem-pdf の `Golem.Pdf.Import`、golem-driver の `Golem.Driver.Pdf`）
+- 段階とモジュール: 出力（golem-pdf の `Golem.Pdf.Import`、golem-typeset の `Golem.Typeset`）
 - ADR: [docs/adr/0051](adr/0051-reuse-repeated-pdf-content-streams.md)
 
 ### 主な原因
@@ -8982,7 +9194,7 @@ PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出
 位置は、その `@figure` のブロックである。
 
 - メッセージ: `SVG の図版の marker が循環しています: <パス>:<行>:<桁>（<id>）ほか <n> 件`。ほかになければ `ほか <n> 件` を書かない。
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg`）
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset` と `Golem.Typeset.Svg`、golem-svg の `Golem.Svg`）
 - ADR: [docs/adr/0054](adr/0054-svg-marker-cycle-and-depth-codes.md)
 
 ### 主な原因
@@ -9016,7 +9228,7 @@ PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出
 位置は、その `@figure` のブロックである。
 
 - メッセージ: `SVG の図版の marker の入れ子が 9 段を超えます: <パス>:<行>:<桁>（<id>）ほか <n> 件`。ほかになければ `ほか <n> 件` を書かない。
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg`）
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset` と `Golem.Typeset.Svg`、golem-svg の `Golem.Svg`）
 - ADR: [docs/adr/0054](adr/0054-svg-marker-cycle-and-depth-codes.md)
 
 ### 主な原因
@@ -9046,7 +9258,7 @@ PDF を組むとき（`golem build` の PDF と `golem preflight`）に出し、
 このエラーは、開けたフォントの埋め込みの処理（サブセットや表の取り出し）が `CFF ` の表を失ったとき、OpenType のまま黙って埋め込むのを防ぐ。
 
 - メッセージ: `フォントから CFF の表を取り出せません: <パス>`。パスは `style.toml` に書いたとおりである。
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`、`Golem.Driver.Pdf`）
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、`Golem.Typeset`）
 - ADR: [golem-pdf ADR 0011](golem-pdf/adr/0011-cff-fontfile3-subtype.md)、[golem-pdf ADR 0013](golem-pdf/adr/0013-renamed-cff-table-is-g08003.md)
 
 ### 主な原因
@@ -9077,7 +9289,7 @@ HTML と EPUB はフォントのファイルをそのまま同梱し、ブラウ
 位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
 
 - メッセージ: `CFF2 の輪郭のフォントは PDF に埋め込めません: <パス>。CFF か TrueType の輪郭のフォントを使ってください`。パスは `style.toml` に書いたとおりである。
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Fonts`、golem-font の `Golem.Font`）
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font`）
 - ADR: [golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)
 
 ### 主な原因
@@ -9149,7 +9361,7 @@ HTML と EPUB は SVG を写すだけで、`marker` を展開しないためで�
 位置は、その `@figure` のブロックである。
 
 - メッセージ: `SVG の図版の marker が描くパスの区間が 1000000 を超えます: <パス>（<n>）`。`<n>` は延べ数である。延べ数は図版の全体の数であり、一つの図形の位置に帰せないので、SVG のファイルの中の行と桁は書かない。
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg`）
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset` と `Golem.Typeset.Svg`、golem-svg の `Golem.Svg`）
 - ADR: [docs/adr/0084](adr/0084-svg-marker-drawn-segment-limit.md)
 
 ### 主な原因
@@ -9548,7 +9760,7 @@ Knuth-Plass の行分割は、最後の段で行長を超える行を許す。
 位置は、その行を含む原稿のブロックである。
 
 - メッセージ: `行が行長から <量> はみ出しています（PDF の <ページ> ページ目）`（例: `行が行長から 1.24mm はみ出しています（PDF の 1 ページ目）`）。事実の `overfull` は、メッセージと同じ表記の `<量>` である
-- 段階とモジュール: プリフライト（golem-driver の `Golem.Driver.Pdf`、golem-preflight の `Golem.Preflight`）
+- 段階とモジュール: プリフライト（golem-typeset の `Golem.Typeset`、golem-preflight の `Golem.Preflight`）
 - ADR: [golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)
 
 ### 主な原因
@@ -9660,7 +9872,7 @@ Golem は右起こしの改ページで空白のページを意図して作る�
 位置は `manifest.toml` の先頭である。
 
 - メッセージ: `空白のページです（PDF の <ページ> ページ目）`
-- 段階とモジュール: プリフライト（golem-driver の `Golem.Driver.Pdf`、golem-preflight の `Golem.Preflight`）
+- 段階とモジュール: プリフライト（golem-typeset の `Golem.Typeset`、golem-preflight の `Golem.Preflight`）
 - ADR: [golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)
 
 ### 主な原因

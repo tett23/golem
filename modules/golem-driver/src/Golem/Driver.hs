@@ -19,12 +19,14 @@ module Golem.Driver
     evaluateLoose,
     functionPaths,
     loadBibliography,
+    pdfStructure,
     metadataValues,
     epubConfig,
     Evaluated (..),
     localStylesOf,
     docStyles,
     runningVars,
+    projectVarTexts,
     sourceInfos,
     withEvaluatedSources,
     assetRefs,
@@ -57,17 +59,17 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
 import Golem.Assemble
+import Golem.Assemble.Formats (MarkFormat (..))
 import Golem.Assemble.ListMarkers (defaultNumberFormat, listNumberDiagnostics)
 import Golem.Bibliography (CslEntry (..), EntryPart, formatEntry)
 import Golem.Bibliography.Csl (CslJsonError (..), decodeCslJson)
 import Golem.Doc.IR
-import Golem.Driver.Fonts (cff2FontDiagnostics, golemFontProvider)
 import Golem.Driver.Functions (LoadedFunctions (..), RequiredFiles (..), loadFunctions, loadRequiredFiles, requiredFileSet, requirementHandlers)
 import Golem.Driver.Html
-import Golem.Driver.Pdf
 import Golem.Driver.Plugins (FunctionFilter, LoadedPlugins (..), loadPlugins)
-import Golem.Driver.ProjectVars (projectVarDiagnostics)
+import Golem.Driver.ProjectVars (projectVarDiagnostics, projectVarTexts)
 import Golem.Driver.Svg (activeMessage)
+import Golem.Driver.Version (golemVersion)
 import Golem.Emet (Handlers (..), Program)
 import Golem.Emet.Gm (filterOf, functionNamespaces)
 import Golem.Epub
@@ -77,7 +79,6 @@ import Golem.Eval.File
 import Golem.Eval.Functions (FunctionTable (..), noFunctions)
 import Golem.Eval.Value
 import Golem.Html
-import Golem.Numerals.Format (MarkFormat (..))
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
@@ -94,6 +95,8 @@ import Golem.Project.Style
 import Golem.Svg.Active (activeContent)
 import Golem.Syntax
 import Golem.Text qualified as GT
+import Golem.Typeset
+import Golem.Typeset.FontProvider (cff2FontDiagnostics, golemFontProvider)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getFileSize, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 
@@ -115,7 +118,7 @@ data BuildOptions = BuildOptions
     optTargets :: !(Maybe [Target]),
     optProfile :: !Profile,
     optCheckOnly :: !Bool,
-    -- | where fonts come from (golem-font; see Golem.Driver.Pdf)
+    -- | where fonts come from (golem-font; see Golem.Typeset)
     optFonts :: !FontProvider,
     optParallel :: !Bool,
     -- | the crop marks of the PDF (golem-pdf ADR 0004)
@@ -805,7 +808,7 @@ pluginImagePathDiagnostics :: Book -> [Diagnostic]
 pluginImagePathDiagnostics book =
   [ diagnostic "G08102" Error sp ("図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: " <> path)
   | Document _ bs <- bookDocs book,
-    Block sp _ (FigureBlock f) <- allFigures bs,
+    Block sp _ _ (FigureBlock f) <- allFigures bs,
     let path = fromMaybe (figSource f) (figWeb f),
     Right rel <- [normalizeRelative (T.unpack path)],
     "images/golem-plugin/" `isPrefixOf` rel
@@ -819,7 +822,7 @@ outside the root are left to the diagnostics about paths.
 -}
 activeContentDiagnostics :: FilePath -> Book -> IO [Diagnostic]
 activeContentDiagnostics root book = do
-  let figures = [(sp, webSource f) | Document _ bs <- bookDocs book, Block sp _ (FigureBlock f) <- allFigures bs, ".svg" `T.isSuffixOf` T.toLower (webSource f)]
+  let figures = [(sp, webSource f) | Document _ bs <- bookDocs book, Block sp _ _ (FigureBlock f) <- allFigures bs, ".svg" `T.isSuffixOf` T.toLower (webSource f)]
   checked <- forM (nub (map snd figures)) $ \path -> case Map.lookup path (bookImages book) of
     -- an image a plugin made (docs/adr/0123)
     Just bytes -> pure (path, activeMessage path (activeContent bytes))
@@ -1055,8 +1058,8 @@ htmlConfig dev e book missing bib =
       hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
       hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
       hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
-      hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ (ForcedBreak k) <- bs],
-      hcNoBreak = or [True | Document _ bs <- bookDocs book, Block _ _ (PageControl NoBreak) <- bs],
+      hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ _ (ForcedBreak k) <- bs],
+      hcNoBreak = or [True | Document _ bs <- bookDocs book, Block _ _ _ (PageControl NoBreak) <- bs],
       -- only a book with [lists] changes the markers (golem-driver ADR 0013)
       -- the paragraph style code for pre (golem-driver ADR 0017)
       hcCode =
@@ -1153,8 +1156,9 @@ writeTextTarget root dev e bib ft book = do
       pure (dir </> sub </> p)
   pure (concat files, [], Nothing)
 
-{- | Writes the PDF to build/pdf, or keeps it in memory with its view for
-golem preflight (@inMemory@), with the notices of the PDF.
+{- | Writes the PDF to build/pdf with pages.json, where each of its pages
+starts in the source (docs/adr ADR 0195), or keeps it in memory with its
+view for golem preflight (@inMemory@), with the notices of the PDF.
 -}
 writePdfTarget :: Bool -> BuildOptions -> Evaluated -> FileId -> Book -> Map Text [EntryPart] -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
 writePdfTarget inMemory opts e diagFid book bib = do
@@ -1163,15 +1167,14 @@ writePdfTarget inMemory opts e diagFid book bib = do
       style = evStyle e
       dir = root </> "build" </> "pdf"
       out = dir </> pdfFileName (mdId (manifestMetadata (projectManifest project)))
-      -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
-      inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
-  r <- renderPdfView (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)))
+      pagesOut = dir </> "pages.json"
+  r <- renderPdfView golemVersion (optFonts opts) (pdfInputOf opts e diagFid book bib)
   -- G08008: code in the body role without [fonts.code] (golem-driver ADR 0017)
   -- G07045: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
   let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book
   case r of
     Left ds -> pure ([], ds <> fontNotice, Nothing)
-    Right (bytes, notices, view)
+    Right (bytes, notices, view, starts)
       -- golem preflight keeps the PDF in memory (golem-cli ADR 0006)
       | inMemory -> pure ([], notices <> fontNotice <> glyphs, Just (bytes, view))
       -- G08100 is an error in prod and stops the PDF; the PDF of an earlier build goes too (docs/adr 0081)
@@ -1182,10 +1185,34 @@ writePdfTarget inMemory opts e diagFid book bib = do
           cleanDir dir
           createDirectoryIfMissing True dir
           BS.writeFile out bytes
-          pure ([out], notices <> fontNotice <> glyphs, Nothing)
+          -- where each page starts in the source, next to the PDF (docs/adr ADR 0195)
+          writeUtf8File pagesOut (pagesJson (Map.map (\sf -> (sfPath sf, sfText sf)) (projectSources project)) starts)
+          pure ([out, pagesOut], notices <> fontNotice <> glyphs, Nothing)
       where
         -- G08100: the characters drawn as glyph 0, from the characters of the view (docs/adr 0081)
         glyphs = [(diagnostic "G08100" Warning (mgSpan m) (mgMessage m)) {diagFacts = mgFacts m} | m <- missingGlyphs view]
+
+-- | The input of the PDF of an evaluated project.
+pdfInputOf :: BuildOptions -> Evaluated -> FileId -> Book -> Map Text [EntryPart] -> PdfInput
+pdfInputOf opts e diagFid book bib =
+  let project = evProject e
+      -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
+      inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
+   in PdfInput (optRoot opts) project (evStyle e) book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)) (projectVarTexts (manifestVars (projectManifest project)))
+
+{- | The structure tree of the PDF of a project as text (docs/adr ADR 0183),
+for the tests: what the PDF would be tagged with.
+-}
+pdfStructure :: BuildOptions -> IO (Either [Diagnostic] Text)
+pdfStructure opts = do
+  ev <- evaluateProject (optProfile opts) (optRoot opts)
+  case ev of
+    Left f -> pure (Left (pfDiagnostics f))
+    Right e -> case evBook e of
+      Nothing -> pure (Left (evDiagnostics e))
+      Just book -> do
+        (_, _, bib) <- loadBibliography (optRoot opts) (projectManifest (evProject e))
+        renderPdfStructure golemVersion (optFonts opts) (pdfInputOf opts e (evStyleFile e) book bib)
 
 -- | Removes a folder and what it holds, if it is there.
 cleanDir :: FilePath -> IO ()

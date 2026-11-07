@@ -11,10 +11,10 @@ span = [file: uint64, start: uint64, end: uint64]
 int64 = -9223372036854775808..9223372036854775807
 uint64 = 0..9223372036854775807
 
-block = [span, label: tstr / null, body: block-body]
+block = [span, label: tstr / null, lang: tstr / null, body: block-body]   ; lang: docs/adr ADR 0187
 
 block-body =
-    [1, level: 1..3, heading-attrs, inlines]        ; heading
+    [1, level: 1..6, heading-attrs, inlines]        ; heading
   / [2, [* list-item]]                             ; bullet list
   / [3, [* list-item]]                             ; ordered list
   / [4, [* def-group]]                             ; definition list
@@ -36,8 +36,8 @@ page-control = [0]                                 ; no page break
              / [1, 1..9223372036854775807]         ; need lines
              / [2, -9223372036854775808..-1 / 1..9223372036854775807] ; adjust the lines of the column
 alignment = 0..3                                   ; default, left, center, right
-figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: tstr / null, caption: [* block], page: uint64 / null, rotate: bool] ; page: golem-pdf ADR 0008; rotate: golem-driver ADR 0034
-code = [lang: tstr / null, numbers: bool / null, file: tstr / null, caption: inlines / null, diff: bool, lines: [* code-line]]
+figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: tstr / null, caption: [* block], page: uint64 / null, rotate: bool, nonumber: bool] ; page: golem-pdf ADR 0008; rotate: golem-driver ADR 0034; nonumber: docs/adr/0200
+code = [lang: tstr / null, numbers: bool / null, file: tstr / null, caption: inlines / null, diff: bool, lines: [* code-line], nonumber: bool] ; nonumber: docs/adr/0200
 code-line = [text: tstr, number: uint64 / null, diff-mark: (0..2) / null, highlight: bool, callouts: [* 1..50]] ; added, removed, context
 channel = [0, depth: uint64] / [1] / [2]           ; toc, index, bibliography
         / [3, name: tstr, style: tstr / null]      ; a channel of a plugin (golem-doc ADR 0007)
@@ -67,6 +67,7 @@ inline-no-ruby =
   / [18, span, zw: [uint64, 1..9223372036854775807] / null, sp: uint64 / null] ; aki: zw or sp, exactly one (docs/adr ADR 0019)
   / [19, span, channel: tstr, key: tstr / null, reading: tstr / null, inlines] ; channel item (golem-doc ADR 0007)
   / [20, span, uri: tstr, inlines]               ; link to an external URL (docs/adr ADR 0182)
+  / [21, span, lang: tstr, inlines]              ; language span (docs/adr ADR 0187)
 ; 1 (strong), 2 (bold) and 3 (italic) are retired: they are character styles (docs/adr ADR 0005)
 
 number-style = 0..2                                ; kanji, kanji-digits, tcy

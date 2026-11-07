@@ -14,18 +14,19 @@ import EmetSamplesSpec (emetSamplesTests)
 import FigureSpec
 import FunctionsSpec (functionsTests)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
+import HeadingLevelsSpec (headingLevelsTests)
 import LinkSpec (linkTests)
-import MemoSpec
 import OutputGoldenSpec
 import PageElementsSpec
+import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
 import ParagraphSpec
 import PdfSpec
 import ReferencesSpec
-import RuleShapeSpec
 import SecuritySpec
 import StylesSpec
 import TableFilesSpec
+import TaggedPdfSpec (taggedPdfTests)
 import Test.Tasty
 import VarsSpec (varsTests)
 
@@ -61,14 +62,13 @@ tests skips =
         testGroup "the separator after a number (golem-html ADR 0002)" numberSeparatorTests,
         testGroup "the default bullet by the output (golem-driver ADR 0044)" bulletTests,
         versionTests,
-        memoTests,
         producerTests,
         securityTests,
         tableFileTests,
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests]
         <> [ newProjectTests,
              allTargetsTests,
              pdfPipelineTests,
@@ -79,6 +79,7 @@ tests skips =
              testGroup "styles defined in a file (docs/adr ADR 0014)" inFileTests,
              testGroup "regex styles (docs/adr ADR 0015)" regexStyleTests,
              testGroup "PDF headings (ADR 0003)" headingTests,
+             testGroup "headings of six levels (docs/adr/0188)" headingLevelsTests,
              testGroup "PDF emphasis, character styles and colour (ADR 0004)" emphasisTests,
              testGroup "PDF wrapped figures (ADR 0005)" wrapTests,
              testGroup "PDF captions (ADR 0010)" captionTests,
@@ -98,6 +99,7 @@ tests skips =
              testGroup "vertical glyphs turned without a vertical form (ADR 0015)" turnedTests,
              testGroup "kenten in the PDF (golem-driver ADR 0019)" kentenTests,
              testGroup "double dashes drawn as one line (docs/adr ADR 0172)" doubleDashTests,
+             pageStartsTests,
              testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
              testGroup "hard line breaks (docs/adr ADR 0016)" hardBreakTests,
              testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
@@ -119,7 +121,6 @@ tests skips =
              testGroup "footnote marks and numbers (ADR 0018)" footnoteTests,
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
-             testGroup "the shapes of the line styles of a rule (ADR 0028)" ruleShapeTests,
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
              testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
              publicDomainTests skips,

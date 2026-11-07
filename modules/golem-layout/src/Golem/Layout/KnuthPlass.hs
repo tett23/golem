@@ -9,6 +9,8 @@ module Golem.Layout.KnuthPlass
     Hyphen (..),
     isPatternHyphen,
     BoxContent (..),
+    Leaf (..),
+    noLeaf,
     MarkBox (..),
     Params (..),
     defaultParams,
@@ -66,7 +68,17 @@ data BoxContent = BoxContent
     -} bcSource :: !BoxSource,
     {- | of the mark of a note (docs/adr/0177): the look of its place and its
     parts; Nothing for any other box. The algorithm does not read it.
-    -} bcMark :: !(Maybe MarkBox)
+    -} bcMark :: !(Maybe MarkBox),
+    {- | the leaf of the structure tree of the PDF that the characters of
+    the box belong to (docs/adr ADR 0183); the reading of a ruby box is
+    the next leaf. The algorithm does not read it.
+    -} bcLeaf :: !Leaf,
+    {- | where the first character of the box is in the source, a byte
+    offset in the file of the span of 'bcSource' (docs/adr ADR 0195): the
+    character itself, where the span is that of the whole text; -1 for
+    characters the source does not have. The algorithm does not read it,
+    and nothing that draws the box does.
+    -} bcAt :: !Int
   }
   deriving stock (Eq, Show)
 
@@ -80,6 +92,20 @@ data MarkBox = MarkBox
     mbParts :: ![(Int, Text, Sp)]
   }
   deriving stock (Eq, Show)
+
+{- | A leaf of the structure tree of the PDF (docs/adr ADR 0183): the place
+of the composition, which the caller names, and the leaf in it, numbered
+in the order of the inlines. A box of no place is not read: an artifact.
+-}
+data Leaf = Leaf
+  { leafSite :: ![Int],
+    leafIndex :: !Int
+  }
+  deriving stock (Eq, Ord, Show)
+
+-- | The leaf of a box of no place.
+noLeaf :: Leaf
+noLeaf = Leaf [] 0
 
 -- | What kind of break a penalty is (ADR 0008).
 data Hyphen

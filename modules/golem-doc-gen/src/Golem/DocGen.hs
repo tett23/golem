@@ -58,7 +58,9 @@ genInlineWith mr =
       Note <$> genSpan <*> Gen.int (Range.linear 1 99) <*> sub,
       Sidenote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> sub,
       -- a link to an external URL (docs/adr ADR 0182)
-      Link <$> genSpan <*> genText <*> sub
+      Link <$> genSpan <*> genText <*> sub,
+      -- a language span (docs/adr ADR 0187)
+      Lang <$> genSpan <*> genText <*> sub
     ]
   where
     sub = Gen.list (Range.linear 0 3) (genInlineWith mr)
@@ -135,6 +137,8 @@ genBlock =
   Block
     <$> genSpan
     <*> Gen.maybe genText
+    -- the language of the block (docs/adr ADR 0187)
+    <*> Gen.maybe genText
     <*> Gen.recursive
       Gen.choice
       [ Paragraph <$> Gen.maybe genText <*> inl,
@@ -146,21 +150,24 @@ genBlock =
       [ BulletList <$> Gen.list (Range.linear 1 3) (ListItem <$> Gen.maybe genNat <*> Gen.list (Range.linear 0 2) genBlock),
         OrderedList <$> Gen.list (Range.linear 1 3) (ListItem Nothing <$> Gen.list (Range.linear 0 2) genBlock),
         DefList <$> Gen.list (Range.linear 1 2) (DefGroup <$> Gen.list (Range.linear 1 2) inl <*> Gen.list (Range.linear 1 2) (Gen.list (Range.linear 0 2) genBlock)),
-        FigureBlock <$> (Figure <$> genText <*> Gen.maybe genText <*> genText <*> Gen.maybe Gen.enumBounded <*> Gen.maybe genText <*> Gen.list (Range.linear 0 1) genBlock <*> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.bool)
+        FigureBlock <$> (Figure <$> genText <*> Gen.maybe genText <*> genText <*> Gen.maybe Gen.enumBounded <*> Gen.maybe genText <*> Gen.list (Range.linear 0 1) genBlock <*> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.bool <*> Gen.bool)
       ]
   where
     inl = Gen.list (Range.linear 0 3) genInline
     attrs = HeadingAttrs <$> Gen.maybe inl <*> Gen.maybe genNat <*> Gen.bool <*> Gen.bool
 
+-- | A code block; nonumber only with a caption, as Golem.Doc.Validate wants (docs/adr/0200).
 genCode :: Gen Code
-genCode =
+genCode = do
+  cap <- Gen.maybe (Gen.list (Range.linear 0 2) genInline)
   Code
     <$> Gen.maybe genText
     <*> Gen.maybe Gen.bool
     <*> Gen.maybe genText
-    <*> Gen.maybe (Gen.list (Range.linear 0 2) genInline)
+    <*> pure cap
     <*> Gen.bool
     <*> Gen.list (Range.linear 0 3) (CodeLine <$> genText <*> Gen.maybe genNat <*> Gen.maybe Gen.enumBounded <*> Gen.bool <*> Gen.list (Range.linear 0 2) (Gen.int (Range.linear 1 50)))
+    <*> maybe (pure False) (const Gen.bool) cap
 
 genDocument :: Gen Document
 genDocument = Document (FileId 0) <$> Gen.list (Range.linear 0 5) genTopBlock
@@ -170,11 +177,12 @@ genTopBlock :: Gen Block
 genTopBlock =
   Gen.frequency
     [ (5, genBlock),
-      (1, Block <$> genSpan <*> pure Nothing <*> (ForcedBreak <$> Gen.enumBounded)),
+      (1, Block <$> genSpan <*> pure Nothing <*> pure Nothing <*> (ForcedBreak <$> Gen.enumBounded)),
       -- a manual control of page breaks (docs/adr ADR 0030)
       ( 1,
         Block
           <$> genSpan
+          <*> pure Nothing
           <*> pure Nothing
           <*> ( PageControl
                   <$> Gen.choice
@@ -185,5 +193,5 @@ genTopBlock =
               )
       ),
       -- blank lines (docs/adr ADR 0046)
-      (1, Block <$> genSpan <*> pure Nothing <*> (BlankLines <$> Gen.int64 (Range.exponential 1 maxBound)))
+      (1, Block <$> genSpan <*> pure Nothing <*> pure Nothing <*> (BlankLines <$> Gen.int64 (Range.exponential 1 maxBound)))
     ]

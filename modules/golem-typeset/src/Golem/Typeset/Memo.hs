@@ -7,7 +7,7 @@ no mutable state, so the table needs neither IO nor unsafePerformIO, and
 threads that look up the same key at once at worst evaluate one pure
 thunk twice.
 -}
-module Golem.Driver.Memo
+module Golem.Typeset.Memo
   ( memoWith,
     digitLimit,
     textDigits,
@@ -21,7 +21,7 @@ import Data.Char (ord)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
-import Golem.Driver.Pdf (Shaping (..))
+import Golem.Typeset (Shaping (..))
 
 -- | Each digit of a key is below this: 2^24, above every Unicode code point.
 digitLimit :: Int
@@ -77,26 +77,27 @@ memoWith encode decode f = \k ->
 textDigits :: Text -> [Int]
 textDigits t = T.length t : map ord (T.unpack t)
 
-{- | A shaping and a text as digits: whether vertical, the role, the number
+{- | A shaping and a text as digits: whether vertical, whether the
+characters of both scripts are Latin, the role, the number
 of extra features, each feature, then the text.
 -}
 shapingTextKey :: (Shaping, Text) -> [Int]
-shapingTextKey (Shaping role vertical extra, t) =
-  fromEnum vertical : textDigits role <> (length extra : concatMap textDigits extra) <> textDigits t
+shapingTextKey (Shaping role vertical extra dual, t) =
+  fromEnum vertical : fromEnum dual : textDigits role <> (length extra : concatMap textDigits extra) <> textDigits t
 
 -- | The inverse of 'shapingTextKey' on the keys it gives.
 fromShapingTextKey :: [Int] -> (Shaping, Text)
 fromShapingTextKey ds0 =
-  let (vertical, ds1) = case ds0 of
-        (v : rest) -> (v /= 0, rest)
-        [] -> (False, [])
+  let (vertical, dual, ds1) = case ds0 of
+        (v : d : rest) -> (v /= 0, d /= 0, rest)
+        _ -> (False, False, [])
       (role, ds2) = takeText ds1
       (n, ds3) = case ds2 of
         (k : rest) -> (k, rest)
         [] -> (0, [])
       (extra, ds4) = takeTexts n ds3
       (t, _) = takeText ds4
-   in (Shaping role vertical extra, t)
+   in (Shaping role vertical extra dual, t)
   where
     takeText = \case
       (k : rest) -> let (cs, rest') = splitAt k rest in (T.pack (map toEnum cs), rest')

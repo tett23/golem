@@ -19,10 +19,10 @@ sp :: Int -> Int -> SrcSpan
 sp f s = mkSpan (FileId f) s (s + 1)
 
 heading :: Int -> Int -> Int -> HeadingAttrs -> Maybe Text -> Text -> Block
-heading f s l a lbl t = Block (sp f s) lbl (Heading l a [Text (sp f s) t])
+heading f s l a lbl t = Block (sp f s) lbl Nothing (Heading l a [Text (sp f s) t])
 
 para :: Int -> Int -> [Inline] -> Block
-para f s is = Block (sp f s) Nothing (Paragraph Nothing is)
+para f s is = Block (sp f s) Nothing Nothing (Paragraph Nothing is)
 
 noEval :: DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text
 noEval dv _ _ = Right ("count=" <> T.pack (show (dvChapterCount dv)))
@@ -48,6 +48,7 @@ tests =
             nums = map (hiNumberText . snd) (Map.toAscList (bookHeadings book))
         ds @?= []
         nums @?= [Nothing, Just "第一章", Just "1.1", Just "第五章", Just "5.1", Just "第六章"],
+      sixLevelTests,
       testCase "labels: cross-file references, duplicates, missing" $ do
         let docs =
               [ Document (FileId 1) [heading 1 0 1 noHeadingAttrs (Just "intro") "はじめに"],
@@ -56,27 +57,27 @@ tests =
             (book, ds) = assemble cfg noEval docs
         ds @?= []
         case bookDocs book of
-          [_, Document _ [Block _ _ (Paragraph Nothing is)]] -> is @?= [Number (sp 2 0) 1 Nothing, Text (sp 2 1) "はじめに", Ref (sp 2 2) RefPage "intro"]
+          [_, Document _ [Block _ _ _ (Paragraph Nothing is)]] -> is @?= [Number (sp 2 0) 1 Nothing, Text (sp 2 1) "はじめに", Ref (sp 2 2) RefPage "intro"]
           other -> assertFailure (show other)
         codes (snd (assemble cfg noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs (Just "a") "x", heading 1 5 1 noHeadingAttrs (Just "a") "y"]])) @?= ["G04001"]
         codes (snd (assemble cfg noEval [Document (FileId 1) [para 1 0 [Ref (sp 1 0) RefTitle "nope"]]])) @?= ["G04003"],
       testCase "deferred expressions see the chapter count" $ do
         let docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "a", heading 1 5 1 noHeadingAttrs Nothing "b", para 1 9 [Deferred (sp 1 9) (DeferredExpr undefined)]]]
         case bookDocs (fst (assemble cfg noEval docs)) of
-          [Document _ [_, _, Block _ _ (Paragraph Nothing is)]] -> is @?= [Text (sp 1 9) "count=2"]
+          [Document _ [_, _, Block _ _ _ (Paragraph Nothing is)]] -> is @?= [Text (sp 1 9) "count=2"]
           other -> assertFailure (show other),
       testCase "figure numbers restart per chapter" $ do
-        let fig f s = Block (sp f s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False))
+        let fig f s = Block (sp f s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
             docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", fig 1 2, fig 1 4, heading 1 6 1 noHeadingAttrs Nothing "二", fig 1 8]]
             (book, ds) = assemble cfg noEval docs
         ds @?= []
         Map.elems (bookFigures book) @?= ["図1-1", "図1-2", "図2-1"]
         codes (snd (assemble cfg noEval [Document (FileId 1) [fig 1 0]])) @?= ["G04004"],
       testCase "only one @toc" $ do
-        let toc s = Block (sp 1 s) Nothing (ChannelOutput (TocOutput 2))
+        let toc s = Block (sp 1 s) Nothing Nothing (ChannelOutput (TocOutput 2))
         codes (snd (assemble cfg noEval [Document (FileId 1) [toc 0, toc 5]])) @?= ["G04002"],
       testCase "toc entries carry the span of their heading block (golem-driver ADR 0009)" $ do
-        let toc = Block (sp 1 0) Nothing (ChannelOutput (TocOutput 2))
+        let toc = Block (sp 1 0) Nothing Nothing (ChannelOutput (TocOutput 2))
             docs = [Document (FileId 1) [toc, heading 1 10 1 noHeadingAttrs Nothing "一", heading 1 20 2 noHeadingAttrs Nothing "節", heading 1 30 1 noHeadingAttrs {haNoToc = True} Nothing "外"]]
             book = fst (assemble cfg noEval docs)
         map teSpan (bookToc book) @?= [sp 1 10, sp 1 20]
@@ -84,7 +85,7 @@ tests =
         assertBool "notoc" (sp 1 30 `notElem` map teSpan (bookToc book)),
       testCase "index order: kana, voicing, small kana, long vowel, latin before kana" $ do
         let mark s t r = IndexMark (sp 1 s) (IndexEntry [t] [r])
-            docs = [Document (FileId 1) [para 1 0 [mark 0 "ガ" "が", mark 1 "カ" "か", mark 2 "パ" "ぱ", mark 3 "ハ" "は", mark 4 "バ" "ば", mark 5 "API" "API", mark 6 "ツ" "つ", mark 7 "ッ" "っ", mark 8 "カ" "か"], Block (sp 1 50) Nothing (ChannelOutput IndexOutput)]]
+            docs = [Document (FileId 1) [para 1 0 [mark 0 "ガ" "が", mark 1 "カ" "か", mark 2 "パ" "ぱ", mark 3 "ハ" "は", mark 4 "バ" "ば", mark 5 "API" "API", mark 6 "ツ" "つ", mark 7 "ッ" "っ", mark 8 "カ" "か"], Block (sp 1 50) Nothing Nothing (ChannelOutput IndexOutput)]]
             book = fst (assemble cfg noEval docs)
         map igTerms (concatMap snd (bookIndexes book)) @?= [["API"], ["カ"], ["ガ"], ["ツ"], ["ッ"], ["ハ"], ["バ"], ["パ"]]
         map (length . igLocations) (concatMap snd (bookIndexes book)) @?= [1, 2, 1, 1, 1, 1, 1, 1]
@@ -97,7 +98,7 @@ tests =
       titleCopyTests,
       testCase "tocWithinDepth: every entry without @toc, those within its depth in order with it (golem-epub ADR 0002)" $ do
         let docs d =
-              [ Document (FileId 1) ([Block (sp 1 0) Nothing (ChannelOutput (TocOutput n)) | Just n <- [d]] <> [heading 1 10 1 noHeadingAttrs Nothing "一", heading 1 20 2 noHeadingAttrs Nothing "節", heading 1 30 3 noHeadingAttrs Nothing "項", heading 1 40 1 noHeadingAttrs Nothing "二"])
+              [ Document (FileId 1) ([Block (sp 1 0) Nothing Nothing (ChannelOutput (TocOutput n)) | Just n <- [d]] <> [heading 1 10 1 noHeadingAttrs Nothing "一", heading 1 20 2 noHeadingAttrs Nothing "節", heading 1 30 3 noHeadingAttrs Nothing "項", heading 1 40 1 noHeadingAttrs Nothing "二"])
               ]
             levels d = map teLevel (tocWithinDepth (fst (assemble cfg noEval (docs d))))
         levels Nothing @?= [1, 2, 3, 1]
@@ -106,6 +107,27 @@ tests =
         levels (Just 3) @?= [1, 2, 3, 1],
       diagnosticCodes
     ]
+
+-- | The numbers of headings of levels 4 to 6 (docs/adr/0188).
+sixLevelTests :: TestTree
+sixLevelTests =
+  testGroup
+    "headings of six levels (docs/adr/0188)"
+    [ testCase "levels 1 to 6 by the default formats" $
+        numbersOf Map.empty [1, 2, 3, 4, 5, 6] @?= [Just "1", Just "1.1", Just "1.1.1", Just "1.1.1.1", Just "1.1.1.1.1", Just "1.1.1.1.1.1"],
+      testCase "a level 4 after a level 2 counts the deeper levels from 0" $
+        numbersOf Map.empty [1, 2, 3, 4, 5, 2, 4, 6] @?= [Just "1", Just "1.1", Just "1.1.1", Just "1.1.1.1", Just "1.1.1.1.1", Just "1.2", Just "1.2.0.1", Just "1.2.0.1.0.1"],
+      testCase "[headings.4] number = \"{1}-{3}-{n}\" writes as written" $
+        numbersOf (Map.fromList [(4, "{1}-{3}-{n}")]) [1, 2, 3, 3, 4, 4] @?= [Just "1", Just "1.1", Just "1.1.1", Just "1.1.2", Just "1-2-1", Just "1-2-2"],
+      testCase "a level 6 right after a level 3 is numbered, the levels 4 and 5 being 0" $
+        numbersOf Map.empty [1, 2, 3, 6] @?= [Just "1", Just "1.1", Just "1.1.1", Just "1.1.1.0.0.1"]
+    ]
+  where
+    numbersOf fmts ls =
+      let c = AssembleConfig fmts "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" Map.empty 16
+          docs = [Document (FileId 1) [heading 1 (i * 10) l noHeadingAttrs Nothing "見出し" | (i, l) <- zip [0 ..] ls]]
+          (book, ds) = assemble c noEval docs
+       in if null ds then map (hiNumberText . snd) (Map.toAscList (bookHeadings book)) else error (show ds)
 
 {- | The copies of a title (the table of contents, [ref-title]) have no
 index marks and no channel items, at any depth; the heading keeps them
@@ -119,23 +141,55 @@ titleCopyTests =
         let mark = IndexMark (sp 1 3) (IndexEntry ["組"] ["くみ"])
             itm = ChannelItem (sp 1 4) (ChannelItemData "glossary" (Just "k") (Just "か") [Text (sp 1 4) "組版"])
             title = [CharStyle (sp 1 2) "strong" [mark, Text (sp 1 2) "と"], itm, Kenten (sp 1 5) Nothing [itm], Text (sp 1 6) "の章"]
-            h = Block (sp 1 1) (Just "h") (Heading 1 noHeadingAttrs title)
-            docs = [Document (FileId 1) [Block (sp 1 0) Nothing (ChannelOutput (TocOutput 2)), h, para 1 7 [Ref (sp 1 8) RefTitle "h"]]]
+            h = Block (sp 1 1) (Just "h") Nothing (Heading 1 noHeadingAttrs title)
+            docs = [Document (FileId 1) [Block (sp 1 0) Nothing Nothing (ChannelOutput (TocOutput 2)), h, para 1 7 [Ref (sp 1 8) RefTitle "h"]]]
             book = fst (assemble cfg noEval docs)
             stripped = [CharStyle (sp 1 2) "strong" [Text (sp 1 2) "と"], Kenten (sp 1 5) Nothing [], Text (sp 1 6) "の章"]
         map teTitle (bookToc book) @?= [stripped]
         case bookDocs book of
-          [Document _ [_, Block _ _ (Heading _ _ is), Block _ _ (Paragraph _ copied)]] -> do
+          [Document _ [_, Block _ _ _ (Heading _ _ is), Block _ _ _ (Paragraph _ copied)]] -> do
             is @?= title
             copied @?= [CharStyle (sp 1 2) "strong" [Text (sp 1 2) "と"], Kenten (sp 1 5) Nothing [], Text (sp 1 8) "の章"]
           other -> assertFailure (show other),
       testCase "the label's title of a captioned code block has no marks" $ do
         let mark = IndexMark (sp 1 3) (IndexEntry ["組"] ["くみ"])
-            code = Block (sp 1 1) (Just "c") (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 2) "例", mark]) False []))
+            code = Block (sp 1 1) (Just "c") Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 2) "例", mark]) False [] False))
             docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", code, para 1 7 [Ref (sp 1 8) RefTitle "c"]]]
         case bookDocs (fst (assemble cfg noEval docs)) of
-          [Document _ [_, _, Block _ _ (Paragraph _ copied)]] -> copied @?= [Text (sp 1 8) "例"]
-          other -> assertFailure (show other)
+          [Document _ [_, _, Block _ _ _ (Paragraph _ copied)]] -> copied @?= [Text (sp 1 8) "例"]
+          other -> assertFailure (show other),
+      -- docs/adr ADR 0187
+      testCase "a language span in a title stays in the toc entry and the copy of [ref-title]" $ do
+        let title = [Lang (sp 1 2) "en" [Text (sp 1 2) "Tokyo"], Text (sp 1 3) "の話"]
+            h = Block (sp 1 1) (Just "h") Nothing (Heading 1 noHeadingAttrs title)
+            docs = [Document (FileId 1) [Block (sp 1 0) Nothing Nothing (ChannelOutput (TocOutput 2)), h, para 1 7 [Ref (sp 1 8) RefTitle "h"]]]
+            book = fst (assemble cfg noEval docs)
+        map teTitle (bookToc book) @?= [title]
+        case bookDocs book of
+          [Document _ [_, _, Block _ _ _ (Paragraph _ copied)]] -> copied @?= [Lang (sp 1 2) "en" [Text (sp 1 2) "Tokyo"], Text (sp 1 8) "の話"]
+          other -> assertFailure (show other),
+      testCase "the language of a heading wraps the whole title of the toc entry and of the copy of [ref-title]" $ do
+        let h = Block (sp 1 1) (Just "h") (Just "en") (Heading 1 noHeadingAttrs [Text (sp 1 2) "Tokyo"])
+            docs = [Document (FileId 1) [Block (sp 1 0) Nothing Nothing (ChannelOutput (TocOutput 2)), h, para 1 7 [Ref (sp 1 8) RefTitle "h"]]]
+            book = fst (assemble cfg noEval docs)
+        map teTitle (bookToc book) @?= [[Lang (sp 1 1) "en" [Text (sp 1 2) "Tokyo"]]]
+        case bookDocs book of
+          [Document _ [_, _, Block _ _ _ (Paragraph _ copied)]] -> copied @?= [Lang (sp 1 1) "en" [Text (sp 1 2) "Tokyo"]]
+          other -> assertFailure (show other),
+      testCase "the body of a note is in the language of the place of its mark" $ do
+        let note n = Note (sp 1 n) n [Text (sp 1 n) "注"]
+            docs =
+              Document
+                (FileId 1)
+                [ para 1 0 [note 1, Lang (sp 1 2) "fr" [note 2]],
+                  Block (sp 1 3) Nothing (Just "en") (BulletList [ListItem Nothing [para 1 4 [note 3, Lang (sp 1 5) "de" [note 4]]]])
+                ]
+        [body | (_, _, body) <- documentNotes docs]
+          @?= [ [Text (sp 1 1) "注"],
+                [Lang (sp 1 2) "fr" [Text (sp 1 2) "注"]],
+                [Lang (sp 1 3) "en" [Text (sp 1 3) "注"]],
+                [Lang (sp 1 4) "de" [Text (sp 1 4) "注"]]
+              ]
     ]
 
 -- | The channels of plugins (golem-doc ADR 0007).
@@ -175,7 +229,7 @@ channelTests =
   where
     ccfg = cfg {acChannels = Map.fromList [(channelName d, d) | d <- [ChannelDecl "glossary" OrderReading False, ChannelDecl "people" OrderDocument True]]}
     item f s c k r t = ChannelItem (sp f s) (ChannelItemData c k r [Text (sp f s) t])
-    list f s c = Block (sp f s) Nothing (ChannelOutput (CustomOutput c Nothing))
+    list f s c = Block (sp f s) Nothing Nothing (ChannelOutput (CustomOutput c Nothing))
     entries book = [(at, c, [(ceKey e, [t | Text _ t <- ceBody e], ceLocations e) | e <- es]) | (at, c, es) <- bookChannels book]
 
 -- | Several @index and @bibliography in a book (golem-doc ADR 0008).
@@ -218,7 +272,7 @@ multipleListTests =
         map snd (bookBibliographies book) @?= [[("N", 1)], [("M", 1)]],
       testCase "each @index has the marks of its own range" $ do
         let mark f s t = IndexMark (sp f s) (IndexEntry [t] [t])
-            idx f s = Block (sp f s) Nothing (ChannelOutput IndexOutput)
+            idx f s = Block (sp f s) Nothing Nothing (ChannelOutput IndexOutput)
             docs =
               [ Document (FileId 1) [para 1 0 [mark 1 0 "か", mark 1 1 "あ"], idx 1 5],
                 Document (FileId 2) [para 2 0 [mark 2 0 "か"], idx 2 5, para 2 6 [mark 2 6 "さ"]]
@@ -234,11 +288,11 @@ multipleListTests =
         bookBibliographies book @?= [(Nothing, [("b", 1), ("a", 2)])]
         Map.lookup (FileId 2, sp 2 1) (bookCiteMarks book) @?= Just (Nothing, 1),
       testCase "two @toc are still G04002" $ do
-        let toc s = Block (sp 1 s) Nothing (ChannelOutput (TocOutput 2))
+        let toc s = Block (sp 1 s) Nothing Nothing (ChannelOutput (TocOutput 2))
         codes (snd (assemble cfg noEval [Document (FileId 1) [toc 0, bib 1 2, bib 1 3, toc 5]])) @?= ["G04002"]
     ]
   where
-    bib f s = Block (sp f s) Nothing (ChannelOutput BibliographyOutput)
+    bib f s = Block (sp f s) Nothing Nothing (ChannelOutput BibliographyOutput)
 
 -- | The diagnostics of document assembly (golem-doc ADR 0003).
 diagnosticCodes :: TestTree
@@ -254,7 +308,7 @@ diagnosticCodes =
         let cross = snd (assemble cfg noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs (Just "a") "x"], Document (FileId 2) [heading 2 0 1 noHeadingAttrs (Just "a") "y"]])
         map summary cross @?= [("G04001", Error, sp 2 0, "ラベルが重複しています: a", [(sp 1 0, "最初の定義")])],
       testCase "G04002: every later @toc, related to the first" $ do
-        let toc s = Block (sp 1 s) Nothing (ChannelOutput (TocOutput 2))
+        let toc s = Block (sp 1 s) Nothing Nothing (ChannelOutput (TocOutput 2))
             ds = snd (assemble cfg noEval [Document (FileId 1) [toc 0, toc 5, toc 9]])
         map summary ds
           @?= [ ("G04002", Error, sp 1 5, "@toc は文書に一つだけ置けます", [(sp 1 0, "最初の @toc")]),
@@ -262,7 +316,7 @@ diagnosticCodes =
               ],
       testCase "G04003: references of every kind to a missing label, also inside a list item" $ do
         let refs = [Ref (sp 1 1) RefNumber "nope", Ref (sp 1 2) RefTitle "nope", Ref (sp 1 3) RefPage "nope"]
-            listed = Block (sp 1 4) Nothing (BulletList [ListItem Nothing [para 1 5 [Ref (sp 1 6) RefNumber "gone"]]])
+            listed = Block (sp 1 4) Nothing Nothing (BulletList [ListItem Nothing [para 1 5 [Ref (sp 1 6) RefNumber "gone"]]])
             (book, ds) = assemble cfg noEval [Document (FileId 1) [para 1 0 refs, listed]]
         map summary ds
           @?= [ ("G04003", Error, sp 1 1, "存在しないラベルへの参照です: nope", []),
@@ -271,18 +325,44 @@ diagnosticCodes =
                 ("G04003", Error, sp 1 6, "存在しないラベルへの参照です: gone", [])
               ]
         case bookDocs book of
-          [Document _ (Block _ _ (Paragraph Nothing is) : _)] -> is @?= []
+          [Document _ (Block _ _ _ (Paragraph Nothing is) : _)] -> is @?= []
           other -> assertFailure (show other),
       testCase "G04004: figures outside a chapter, before the first and after a @nonumber chapter" $ do
-        let fig s = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False))
+        let fig s = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
             docs = [Document (FileId 1) [fig 0, heading 1 2 1 noHeadingAttrs Nothing "一", fig 4, heading 1 6 1 noHeadingAttrs {haNoNumber = True} Nothing "あとがき", fig 8]]
-            msg = "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります"
+            msg = "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます"
         map summary (snd (assemble cfg noEval docs))
           @?= [("G04004", Error, sp 1 0, msg, []), ("G04004", Error, sp 1 8, msg, [])]
         snd (assemble cfg {acFigureFormat = "{n}"} noEval docs) @?= [],
+      -- docs/adr/0200
+      testCase "@nonumber figures and code blocks outside a chapter: no G04004, not in bookFigures nor bookListings" $ do
+        let fig s nn = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False nn))
+            code s nn = Block (sp 1 s) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 s) "a"]) False [] nn))
+            (book, ds) = assemble cfg noEval [Document (FileId 1) [fig 0 True, code 1 True, heading 1 2 1 noHeadingAttrs {haNoNumber = True} Nothing "あとがき", fig 3 True, code 4 True]]
+        ds @?= []
+        bookFigures book @?= Map.empty
+        bookListings book @?= Map.empty,
+      testCase "@nonumber figures and code blocks in a chapter take no number" $ do
+        let fig s nn = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False nn))
+            code s nn = Block (sp 1 s) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 s) "a"]) False [] nn))
+            (book, ds) = assemble cfg noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", fig 1 False, fig 2 True, fig 3 False, code 4 False, code 5 True, code 6 False]]
+        ds @?= []
+        Map.toAscList (bookFigures book) @?= [(sp 1 1, "図1-1"), (sp 1 3, "図1-2")]
+        Map.toAscList (bookListings book) @?= [(sp 1 4, "リスト1-1"), (sp 1 6, "リスト1-2")],
+      testCase "ref-number to a @nonumber figure or code block is G04005; ref-title gives the alt text and the caption" $ do
+        let fig = Block (sp 1 1) (Just "f") Nothing (FigureBlock (Figure "a.png" Nothing "代替" Nothing Nothing [] Nothing False True))
+            code = Block (sp 1 2) (Just "c") Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 2) "設定"]) False [] True))
+            docs refs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", fig, code, para 1 3 refs]]
+        map summary (snd (assemble cfg noEval (docs [Ref (sp 1 4) RefNumber "f", Ref (sp 1 5) RefNumber "c"])))
+          @?= [("G04005", Error, sp 1 4, "番号を持たない要素への参照です: f", []), ("G04005", Error, sp 1 5, "番号を持たない要素への参照です: c", [])]
+        let (book, ds) = assemble cfg noEval (docs [Ref (sp 1 4) RefTitle "f", Ref (sp 1 5) RefTitle "c"])
+        ds @?= []
+        case bookDocs book of
+          [Document _ [_, _, _, Block _ _ _ (Paragraph Nothing is)]] -> is @?= [Text (sp 1 4) "代替", Text (sp 1 5) "設定"]
+          other -> assertFailure (show other),
       testCase "listing numbers: per chapter, apart from figures, only with a caption (golem-driver ADR 0023)" $ do
-        let fig s = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False))
-            code s cap = Block (sp 1 s) Nothing (CodeBlock (Code Nothing Nothing Nothing cap False [CodeLine "x" (Just 1) Nothing False []]))
+        let fig s = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
+            code s cap = Block (sp 1 s) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing cap False [CodeLine "x" (Just 1) Nothing False []] False))
             capt t = Just [Text (sp 1 0) t]
             docs =
               [ Document
@@ -294,14 +374,14 @@ diagnosticCodes =
         Map.toAscList (bookListings book) @?= [(sp 1 2, "リスト1-1"), (sp 1 4, "リスト1-2"), (sp 1 6, "リスト2-1")]
         Map.elems (bookFigures book) @?= ["図1-1"],
       testCase "G04004: a captioned code block outside a chapter; not with a format without {chapter} (golem-driver ADR 0023)" $ do
-        let code = Block (sp 1 0) Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 0) "a"]) False []))
-            plain = Block (sp 1 1) Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False []))
+        let code = Block (sp 1 0) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 0) "a"]) False [] False))
+            plain = Block (sp 1 1) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [] False))
         map summary (snd (assemble cfg noEval [Document (FileId 1) [code, plain]]))
-          @?= [("G04004", Error, sp 1 0, "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります", [])]
+          @?= [("G04004", Error, sp 1 0, "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます", [])]
         snd (assemble cfg {acListingFormat = "リスト{n}"} noEval [Document (FileId 1) [code]]) @?= []
         Map.elems (bookListings (fst (assemble cfg {acListingFormat = "リスト{n}"} noEval [Document (FileId 1) [code]]))) @?= ["リスト1"],
       testCase "references to a captioned code block; ref-number to one without a caption is G04005 (golem-driver ADR 0023)" $ do
-        let code s lbl cap = Block (sp 1 s) (Just lbl) (CodeBlock (Code Nothing Nothing Nothing cap False []))
+        let code s lbl cap = Block (sp 1 s) (Just lbl) Nothing (CodeBlock (Code Nothing Nothing Nothing cap False [] False))
             docs =
               [ Document
                   (FileId 1)
@@ -314,7 +394,7 @@ diagnosticCodes =
             (book, ds) = assemble cfg noEval docs
         ds @?= []
         case bookDocs book of
-          [Document _ [_, _, _, Block _ _ (Paragraph Nothing is)]] -> is @?= [Text (sp 1 4) "1-1", Text (sp 1 5) "設定"]
+          [Document _ [_, _, _, Block _ _ _ (Paragraph Nothing is)]] -> is @?= [Text (sp 1 4) "1-1", Text (sp 1 5) "設定"]
           other -> assertFailure (show other)
         map summary (snd (assemble cfg noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", code 2 "b" Nothing, para 1 3 [Ref (sp 1 4) RefNumber "b"]]]))
           @?= [("G04005", Error, sp 1 4, "番号を持たない要素への参照です: b", [])],
@@ -323,19 +403,19 @@ diagnosticCodes =
             (book, ds) = assemble cfg noEval [Document (FileId 1) [h, para 1 5 [Ref (sp 1 6) RefNumber "pre"]]]
         map summary ds @?= [("G04005", Error, sp 1 6, "番号を持たない要素への参照です: pre", [])]
         case bookDocs book of
-          [Document _ [_, Block _ _ (Paragraph Nothing is)]] -> is @?= []
+          [Document _ [_, Block _ _ _ (Paragraph Nothing is)]] -> is @?= []
           other -> assertFailure (show other)
         snd (assemble cfg noEval [Document (FileId 1) [h, para 1 5 [Ref (sp 1 6) RefTitle "pre"]]]) @?= [],
       testCase "G04006: ref-title to an element without a title" $ do
-        let p = Block (sp 1 0) (Just "p") (Paragraph Nothing [Text (sp 1 0) "本文"])
+        let p = Block (sp 1 0) (Just "p") Nothing (Paragraph Nothing [Text (sp 1 0) "本文"])
             (book, ds) = assemble cfg noEval [Document (FileId 1) [p, para 1 5 [Ref (sp 1 6) RefTitle "p"]]]
         map summary ds @?= [("G04006", Error, sp 1 6, "題を持たない要素への参照です: p", [])]
         case bookDocs book of
-          [Document _ [_, Block _ _ (Paragraph Nothing is)]] -> is @?= []
+          [Document _ [_, Block _ _ _ (Paragraph Nothing is)]] -> is @?= []
           other -> assertFailure (show other)
         snd (assemble cfg noEval [Document (FileId 1) [p, para 1 5 [Ref (sp 1 6) RefPage "p"]]]) @?= []
         let h = heading 1 0 1 noHeadingAttrs (Just "h") "一"
-            f = Block (sp 1 2) (Just "f") (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False))
+            f = Block (sp 1 2) (Just "f") Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
         snd (assemble cfg noEval [Document (FileId 1) [h, f, para 1 5 [Ref (sp 1 6) RefTitle "h", Ref (sp 1 7) RefTitle "f"]]]) @?= []
     ]
 
@@ -439,10 +519,10 @@ noticeTests =
     notices docs = [(c, diagMessage d, diagSpan d) | d <- snd (assemble cfg noEval docs), diagSeverity d == Notice, let DiagnosticCode c = diagCode d]
     warnings docs = [(c, diagMessage d, diagSpan d) | d <- snd (assemble cfg noEval docs), diagSeverity d == Warning, let DiagnosticCode c = diagCode d]
     books docs = map docBlocks (bookDocs (fst (assemble cfg noEval docs)))
-    blank f s n = Block (sp f s) Nothing (BlankLines n)
-    ctl f s c = Block (sp f s) Nothing (PageControl c)
-    olist f s ns = Block (sp f s) Nothing (OrderedList [ListItem n [para f (s + 1) []] | n <- ns])
-    brk f s k = Block (sp f s) Nothing (ForcedBreak k)
+    blank f s n = Block (sp f s) Nothing Nothing (BlankLines n)
+    ctl f s c = Block (sp f s) Nothing Nothing (PageControl c)
+    olist f s ns = Block (sp f s) Nothing Nothing (OrderedList [ListItem n [para f (s + 1) []] | n <- ns])
+    brk f s k = Block (sp f s) Nothing Nothing (ForcedBreak k)
 
 -- | Renumbering notes in S1 (golem-driver ADR 0018).
 noteNumberTests :: TestTree
@@ -467,7 +547,7 @@ noteNumberTests =
       testCase "notes inside containers and list items are renumbered" $ do
         let docs =
               [ Document (FileId 1) [para 1 0 [note 1 1 1]],
-                Document (FileId 2) [Block (sp 2 0) Nothing (BulletList [ListItem Nothing [para 2 1 [Kenten (sp 2 2) (Just "sesame") [note 2 3 1]]]])]
+                Document (FileId 2) [Block (sp 2 0) Nothing Nothing (BulletList [ListItem Nothing [para 2 1 [Kenten (sp 2 2) (Just "sesame") [note 2 3 1]]]])]
               ]
         numbersOf NumberPerBook [0, 0] docs @?= [1, 2]
     ]
@@ -486,7 +566,7 @@ noteNumberTests =
     collect m ch docs =
       let book = fst (assemble cfg {acNoteNumbering = m, acChapterOf = ch} noEval docs)
        in concatMap (\(Document _ bs) -> concatMap notesOf bs) (bookDocs book)
-    notesOf (Block _ _ body) = case body of
+    notesOf (Block _ _ _ body) = case body of
       Paragraph _ is -> concatMap inl is
       BulletList items -> concatMap (concatMap notesOf . itemBlocks) items
       _ -> []

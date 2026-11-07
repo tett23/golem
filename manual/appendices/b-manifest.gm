@@ -103,7 +103,7 @@ chapters = [
 
 | キー | 意味 |
 |:---|:---|
-| [code: \[targets.pdf\]] | PDF の設定です。[code: isbn] に紙の本の ISBN を書けます。 |
+| [code: \[targets.pdf\]] | PDF の設定です。[code: isbn] に紙の本の ISBN を書けます。[code: pdfa = "2a"] で PDF/A-2a に、[code: pdfua = "1"] で PDF/UA-1 に準拠させます。 |
 | [code: \[targets.epub\]] | EPUB の設定です。[code: isbn] に電子版の ISBN を書けます。書けば EPUB の識別子に使います。 |
 | [code: \[targets.html\]] | HTML の設定です。書けるキーはありません。 |
 | [code: \[targets.text\]] | プレーンテキストの設定です。[code: variants] に [code: "vertical"]（縦書き用）と [code: "horizontal"]（横書き用）の一方か両方を並べます。省くと両方を作ります。 |

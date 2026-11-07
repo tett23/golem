@@ -23,6 +23,8 @@ module Golem.Html
     escapeXml,
     cmykToRgb,
     indexPage,
+    langAttrs,
+    titleWithLanguages,
   )
 where
 
@@ -302,7 +304,7 @@ renderXhtml cfg ft book =
         sortOn fst
           $ Map.toList
           $ Map.fromList
-          $ [(T.unpack (webOutput f), T.unpack (webSource f)) | Document _ bs <- bookDocs book, Block _ _ (FigureBlock f) <- allFigures bs]
+          $ [(T.unpack (webOutput f), T.unpack (webSource f)) | Document _ bs <- bookDocs book, Block _ _ _ (FigureBlock f) <- allFigures bs]
             <> [(fontOut p, p) | (ja, la) <- Map.elems (hcFonts cfg), Just p <- [ja, la]]
     }
 
@@ -323,7 +325,7 @@ fontOut p = "fonts" </> takeFileName p
 allFigures :: [Block] -> [Block]
 allFigures = concatMap go
   where
-    go b@(Block _ _ body) = case body of
+    go b@(Block _ _ _ body) = case body of
       FigureBlock _ -> [b]
       BulletList items -> allFigures (concatMap itemBlocks items)
       OrderedList items -> allFigures (concatMap itemBlocks items)
@@ -343,7 +345,7 @@ page cfg ft book notes (Document fid bs) =
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
       body = topBlocks c bs <> notesSection c
-      title = case [hiTitle h | Block sp _ (Heading 1 _ _) <- bs, Just h <- [Map.lookup sp (bookHeadings book)]] of
+      title = case [hiTitle h | Block sp _ _ (Heading 1 _ _) <- bs, Just h <- [Map.lookup sp (bookHeadings book)]] of
         (t : _) -> T.concat (map plain t)
         [] -> hcTitle cfg
    in T.concat
@@ -369,6 +371,37 @@ plain = inlineText
 idAttr :: Maybe Text -> Text
 idAttr = maybe "" (\l -> " id=\"" <> escapeXml l <> "\"")
 
+-- | The attributes of a language: lang and xml:lang, as the html element has them (docs/adr ADR 0187).
+langAttrs :: Text -> Text
+langAttrs l = " lang=\"" <> escapeXml l <> "\" xml:lang=\"" <> escapeXml l <> "\""
+
+{- | A title as escaped text, for the table of contents page and the
+navigation document: the language spans kept as spans with lang and
+xml:lang, every other inline its text (docs/adr ADR 0187).
+-}
+titleWithLanguages :: [InlineF r] -> Text
+titleWithLanguages = T.concat . map one
+  where
+    one :: InlineF r -> Text
+    one = \case
+      Lang _ l xs -> "<span" <> langAttrs l <> ">" <> titleWithLanguages xs <> "</span>"
+      Ruby _ _ segs -> T.concat [titleWithLanguages b | RubySegment b _ <- segs]
+      Kenten _ _ xs -> titleWithLanguages xs
+      Color _ _ xs -> titleWithLanguages xs
+      CharStyle _ _ xs -> titleWithLanguages xs
+      Link _ _ xs -> titleWithLanguages xs
+      x -> escapeXml (inlineText x)
+
+-- | The attributes of a language after the name of the first start tag of the HTML of a block (docs/adr ADR 0187).
+withLangAttrs :: Maybe Text -> Text -> Text
+withLangAttrs lang html = case lang of
+  Nothing -> html
+  Just l -> case T.breakOn ">" html of
+    (open, after)
+      | T.null after -> html
+      | "/" `T.isSuffixOf` open -> T.dropEnd 1 open <> langAttrs l <> "/" <> after
+      | otherwise -> open <> langAttrs l <> after
+
 {- | The blocks at the top of a document: the block after forced breaks
 carries the kind of the last of them on its outermost element; a break
 at the end writes nothing, and a column break nothing (docs/adr ADR 0017).
@@ -382,10 +415,10 @@ topBlocks c = go Nothing Nothing
   where
     -- the break pending, and the blank lines pending after a block (Nothing before one)
     go _ _ [] = ""
-    go _ _ (Block _ _ (ForcedBreak k) : rest) = go (breakName k) Nothing rest
-    go _ blanks (Block _ _ (PageControl NoBreak) : rest) = go (Just "avoid") blanks rest
-    go pending blanks (Block _ _ (PageControl _) : rest) = go pending blanks rest
-    go pending blanks (Block _ _ (BlankLines n) : rest) = go pending ((+ toInteger n) <$> blanks) rest
+    go _ _ (Block _ _ _ (ForcedBreak k) : rest) = go (breakName k) Nothing rest
+    go _ blanks (Block _ _ _ (PageControl NoBreak) : rest) = go (Just "avoid") blanks rest
+    go pending blanks (Block _ _ _ (PageControl _) : rest) = go pending blanks rest
+    go pending blanks (Block _ _ _ (BlankLines n) : rest) = go pending ((+ toInteger n) <$> blanks) rest
     go pending blanks (b : rest) = blankLines (fromMaybe 0 blanks) <> withBreak pending (block c b) <> go Nothing (Just 0) rest
     blankLines n
       | n > 0 = "<div class=\"blank-line\">" <> T.replicate (fromInteger n) "<br/>" <> "</div>\n"
@@ -405,8 +438,14 @@ breakName = \case
   BreakVerso -> Just "verso"
   BreakColumn -> Nothing
 
+{- | A block. A block with a language has it on its outermost element
+(docs/adr ADR 0187).
+-}
 block :: Ctx -> Block -> Text
-block c (Block sp lbl body) = case body of
+block c b@(Block _ _ lang _) = withLangAttrs lang (blockHtml c b)
+
+blockHtml :: Ctx -> Block -> Text
+blockHtml c (Block sp lbl blang body) = case body of
   Paragraph st is ->
     let cls = maybe "" (\n -> " class=\"ps-" <> escapeXml n <> "\"") st
         -- the lines of a paragraph that keeps them, each a span; br is for readers without CSS (docs/adr ADR 0005).
@@ -414,7 +453,7 @@ block c (Block sp lbl body) = case body of
         content
           | keepsLines c st = T.intercalate "<br/>\n" ["<span class=\"line\">" <> inlines c l <> "</span>" | l <- splitAtLineBreaks is]
           | otherwise = inlines c is
-     in "<p" <> idAttr lbl <> cls <> ">" <> content <> "</p>\n" <> sidenotes c is
+     in "<p" <> idAttr lbl <> cls <> ">" <> content <> "</p>\n" <> sidenotes c blang is
   Heading l _ is ->
     let tag = "h" <> T.pack (show l)
         info = Map.lookup sp (bookHeadings (cBook c))
@@ -474,8 +513,11 @@ block c (Block sp lbl body) = case body of
           else pre <> "\n"
   FigureBlock f ->
     let num = numberSpan c (Map.lookup sp (bookFigures (cBook c)))
-        cap = T.concat [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
-     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webOutput f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"" <> figureWidthStyle (hcVertical (cCfg c)) (figWidth f) <> "/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
+        -- a paragraph of the caption with a language is a span of it (docs/adr ADR 0187)
+        cap = T.concat [maybe id (\l x -> "<span" <> langAttrs l <> ">" <> x <> "</span>") pl (inlines c is) | Block _ _ pl (Paragraph _ is) <- figCaption f]
+        -- no figcaption without a number and a caption (docs/adr/0200)
+        figcaption = if T.null (num <> cap) then "" else "<figcaption>" <> num <> cap <> "</figcaption>\n"
+     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webOutput f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"" <> figureWidthStyle (hcVertical (cCfg c)) (figWidth f) <> "/>\n" <> figcaption <> "</figure>\n"
   ChannelOutput (TocOutput d) -> toc c (Just d)
   ChannelOutput IndexOutput -> index c sp
   ChannelOutput (CustomOutput name _) -> channelList c sp name
@@ -513,7 +555,8 @@ numberSpan c = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</sp
 item :: Ctx -> Maybe Integer -> ListItem -> Text
 item c value (ListItem _ bs) =
   "<li" <> maybe "" (\n -> " value=\"" <> T.pack (show n) <> "\"") value <> ">" <> case bs of
-    [Block _ _ (Paragraph Nothing is)] | not (keepsLines c Nothing) -> inlines c is <> "</li>\n"
+    -- a paragraph of a language of its own keeps its element (docs/adr ADR 0187)
+    [Block _ _ Nothing (Paragraph Nothing is)] | not (keepsLines c Nothing) -> inlines c is <> "</li>\n"
     _ -> "\n" <> T.concat (map (block c) bs) <> "</li>\n"
 
 -- | Whether the paragraph style keeps the lines of its paragraphs (docs/adr ADR 0005).
@@ -666,6 +709,8 @@ inline c = \case
   Aki _ a -> "&#x2060;<span class=\"aki\" style=\"margin-inline-start: " <> akiLength a <> "\"></span>&#x2060;"
   -- the URL as written: an IRI is a valid href (docs/adr ADR 0182)
   Link _ u xs -> "<a href=\"" <> escapeXml u <> "\">" <> inlines c xs <> "</a>"
+  -- the tag as written, even the language of the book (docs/adr ADR 0187)
+  Lang _ l xs -> "<span" <> langAttrs l <> ">" <> inlines c xs <> "</span>"
 
 {- | The CSS length of an aki: zw in em, an absolute amount in pt, at most
 four decimals (docs/adr ADR 0103).
@@ -681,8 +726,9 @@ its number in the notation of [notes] mark-format, without the text around it.
 noteText :: Ctx -> Int -> Text
 noteText c n = fromMaybe (tshow n) (writeNumber (hcNoteNotation (cCfg c)) (toInteger n))
 
-sidenotes :: Ctx -> [Inline] -> Text
-sidenotes c is = T.concat ["<aside class=\"sidenote\"><span class=\"number\">" <> tshow n <> "</span>" <> inlines c xs <> "</aside>\n" | Sidenote _ n xs <- is]
+-- | The sidenotes of a paragraph after it, in the language of the paragraph (docs/adr ADR 0187).
+sidenotes :: Ctx -> Maybe Text -> [Inline] -> Text
+sidenotes c lang is = T.concat ["<aside class=\"sidenote\"" <> maybe "" langAttrs lang <> "><span class=\"number\">" <> tshow n <> "</span>" <> inlines c xs <> "</aside>\n" | Sidenote _ n xs <- is]
 
 {- | The notes of the chapter at the end of its last page, after a title
 (golem-driver ADR 0026); each links back to its mark, on whichever page.
@@ -847,7 +893,7 @@ codeRules cfg book =
   where
     co = hcCode cfg
     codes = [c | Document _ bs <- bookDocs book, c <- concatMap codesIn bs]
-    codesIn (Block _ _ body) = case body of
+    codesIn (Block _ _ _ body) = case body of
       CodeBlock c -> [c]
       BulletList items -> concatMap (concatMap codesIn . itemBlocks) items
       OrderedList items -> concatMap (concatMap codesIn . itemBlocks) items
@@ -1234,7 +1280,7 @@ indexPage cfg ft book =
               <> escapeXml (teAnchor te)
               <> "\">"
               <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage cfg) n)) (teNumber te)
-              <> escapeXml (T.concat (map inlineText (teTitle te)))
+              <> titleWithLanguages (teTitle te)
               <> "</a></li>\n"
           | -- within the depth of @toc (golem-epub ADR 0002)
             te <- tocWithinDepth book

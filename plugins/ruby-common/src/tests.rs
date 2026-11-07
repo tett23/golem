@@ -121,7 +121,7 @@ impl Visitor for Seen {
 }
 
 fn block(body: BlockBody) -> Block {
-    Block { span: SP, label: None, body }
+    Block { span: SP, label: None, lang: None, body }
 }
 
 fn para(xs: Vec<Inline>) -> Block {

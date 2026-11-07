@@ -88,8 +88,8 @@ topText c = T.concat . go False Nothing
   where
     -- whether a block was written, and the empty lines pending after a block (Nothing after a break)
     go _ _ [] = []
-    go written _ (Block _ _ (ForcedBreak _) : rest) = go written Nothing rest
-    go written blanks (Block _ _ (BlankLines n) : rest) = go written ((+ toInteger n) <$> blanks) rest
+    go written _ (Block _ _ _ (ForcedBreak _) : rest) = go written Nothing rest
+    go written blanks (Block _ _ _ (BlankLines n) : rest) = go written ((+ toInteger n) <$> blanks) rest
     go written blanks (b : rest) =
       let t = block c 0 b
           sep = if written then "\n\n" <> T.replicate (fromInteger (fromMaybe 0 blanks)) "\n" else ""
@@ -112,7 +112,7 @@ indentBy :: Int -> Text
 indentBy n = T.replicate n "　"
 
 block :: Ctx -> Int -> Block -> Text
-block c ind (Block sp _ body) = case body of
+block c ind (Block sp _ _ body) = case body of
   -- a line break is a newline and the nesting indent (docs/adr ADR 0005); the first line starts
   -- with the first indent, each line after a line break with the second (docs/adr ADR 0006, 0049)
   Paragraph st is ->
@@ -146,8 +146,10 @@ block c ind (Block sp _ body) = case body of
      in T.intercalate "\n" (caption <> maybe [] pure (codeFile code) <> map line (codeLines code))
   FigureBlock f ->
     let num = Map.lookup sp (bookFigures (cBook c))
-        cap = T.intercalate "" [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
-     in "［" <> T.strip (numbered num <> cap) <> "］"
+        cap = T.intercalate "" [inlines c is | Block _ _ _ (Paragraph _ is) <- figCaption f]
+        line = T.strip (numbered num <> cap)
+     in -- no line without a number and a caption (docs/adr/0200)
+        if T.null line then "" else "［" <> line <> "］"
   ChannelOutput (TocOutput d) ->
     T.intercalate "\n" [numbered (teNumber e) <> inlines c (teTitle e) | e <- bookToc (cBook c), teLevel e <= d]
   ChannelOutput IndexOutput -> ""
@@ -179,13 +181,13 @@ block c ind (Block sp _ body) = case body of
        in if gap then m <> (if cVariant c == Vertical then "　" else " ") else m
     inItem = c {cInList = True, cDepth = depth}
     itemText i (ListItem _ bs) = case bs of
-      (Block _ _ (Paragraph Nothing is) : rest) | not (any isLineBreak is) -> T.intercalate "\n" (inlines c is : map (block inItem i) rest)
+      (Block _ _ _ (Paragraph Nothing is) : rest) | not (any isLineBreak is) -> T.intercalate "\n" (inlines c is : map (block inItem i) rest)
       _ -> T.intercalate "\n" (map (block inItem i) bs)
     sidenotes is =
       T.concat ["\n※" <> T.pack (show n) <> " " <> inlines c xs | Sidenote _ n xs <- is]
 
 blockInlines :: Block -> [Inline]
-blockInlines (Block _ _ body) = case body of
+blockInlines (Block _ _ _ body) = case body of
   Paragraph _ is -> deep is
   Heading _ _ is -> deep is
   BulletList items -> concatMap (concatMap blockInlines . itemBlocks) items
@@ -201,6 +203,7 @@ blockInlines (Block _ _ body) = case body of
       Color _ _ xs -> deep xs
       CharStyle _ _ xs -> deep xs
       Link _ _ xs -> deep xs
+      Lang _ _ xs -> deep xs
       _ -> []
 
 inlines :: Ctx -> [InlineF r] -> Text
@@ -236,6 +239,8 @@ inline c = \case
   Link _ u xs ->
     let t = inlines c xs
      in if t == u then u else t <> "（" <> u <> "）"
+  -- the characters of a language span as they are (docs/adr ADR 0187)
+  Lang _ _ xs -> inlines c xs
 
 {- | Ruby as 「対象（読み）」. Consecutive segments with readings are joined;
 segments without a reading are written as they are.

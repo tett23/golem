@@ -103,12 +103,24 @@ jobs:
             -e COMMIT="$GITHUB_SHA" -e ALPINE_IMAGE -e ImageOS -e ImageVersion \
             "$ALPINE_IMAGE" sh scripts/release/build-linux.sh "$TAG" "$PLATFORM"
           sudo chown -R "$(id -u):$(id -g)" .
+      # cabal reads and writes everything under ~/.cabal, whatever the
+      # image and haskell-actions/setup leave in ~/.config/cabal
+      # (docs/adr/0201)
+      - name: cabal's directory (docs/adr/0201)
+        if: runner.os == 'macOS'
+        run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
       - id: setup
         if: runner.os == 'macOS'
         uses: haskell-actions/setup@v2
         with:
           ghc-version: "9.10.3"
           cabal-version: "3.16.1.0"
+      - name: cabal uses ~/.cabal (docs/adr/0201)
+        if: runner.os == 'macOS'
+        run: |
+          test "$(cabal path -z --config-file)" = "$HOME/.cabal/config"
+          test "$(cabal path -z --remote-repo-cache)" = "$HOME/.cabal/packages"
+          test "$(cabal path -z --store-dir)" = "$HOME/.cabal/store"
       - name: Build (macOS 14 or later)
         if: runner.os == 'macOS'
         env:

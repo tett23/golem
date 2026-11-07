@@ -25,6 +25,7 @@ library
                     Golem.Layout.Code
                     Golem.Layout.Hyphenation
                     Golem.Layout.Hyphenation.EnUs
+                    Golem.Layout.Hyphenation.Languages
                     Golem.Layout.Japanese
                     Golem.Layout.Look
                     Golem.Layout.Orientation
@@ -66,7 +67,9 @@ test-suite golem-layout-test
                     PaginateSpec
                     PunctuationSpec
                     RuleAreaSpec
+                    LangSpec
                     LinkSpec
+                    StructureSpec
                     UrlBreakSpec
   build-depends:
     , base

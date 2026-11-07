@@ -94,20 +94,22 @@ typedef struct {
 } LineStart;
 
 /* What the line at the lexer starts with (BlockStart of Golem.hpeg): #
- * (but not ##N), - and +, = and =:, |, ```, @name and @!. Only looks: the
- * caller has marked the end of its token. */
+ * (but not ##N, and not seven # or more, which Golem rejects as G01012 and
+ * the editors do not show as a heading, docs/adr/0188), - and +, = and =:,
+ * |, ```, @name and @!. Only looks: the caller has marked the end of its
+ * token. */
 static LineStart line_start(TSLexer *lexer) {
   LineStart r = {false, false};
   switch (lexer->lookahead) {
-    case '#':
-      advance(lexer);
-      if (lexer->lookahead != '#') {
-        r.block_start = true;
-        return r;
+    case '#': {
+      int n = 0;
+      while (lexer->lookahead == '#' && n < 7) {
+        advance(lexer);
+        n++;
       }
-      advance(lexer);
-      r.block_start = !is_digit(lexer->lookahead);
+      r.block_start = n == 2 ? !is_digit(lexer->lookahead) : n < 7;
       return r;
+    }
     case '-':
     case '+':
       advance(lexer);

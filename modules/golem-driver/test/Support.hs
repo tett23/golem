@@ -11,6 +11,7 @@ import Data.Char (isDigit)
 import Data.IORef (IORef, modifyIORef')
 import Data.List (isSuffixOf, nub, sort)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
@@ -18,16 +19,16 @@ import Golem.Assemble (inlineText)
 import Golem.Bibliography (EntryPart)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
-import Golem.Driver.Pdf (ClusterPart (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), Shaped (..), Shaping (..), flowLines, layoutPages, layoutPdf, runningHeads)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..))
 import Golem.LayoutSpec (PageGeometry (..), pageGeometry)
 import Golem.Pdf (Font (..), FontProgram (..))
-import Golem.Project (Project (..), ProjectFailure (..))
+import Golem.Project (Manifest (..), Project (..), ProjectFailure (..))
 import Golem.Project.Style (Sp (..), parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.ExternalTool (optionalTool)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
+import Golem.Typeset (ClusterPart (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), Shaped (..), Shaping (..), flowLines, layoutPages, layoutPdf, runningHeads)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
@@ -122,7 +123,7 @@ verseLines style src = withVerseProject style src $ \tmp -> do
     Right e -> case evBook e of
       Nothing -> assertFailure (show (map diagCode (evDiagnostics e)))
       Just book -> do
-        r <- flowLines (FontProvider (\_ _ _ _ -> pure (Right fakeFonts))) (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty)
+        r <- flowLines (FontProvider (\_ _ _ _ -> pure (Right fakeFonts))) (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))))
         either (assertFailure . show) pure r
 
 -- | horizontalStyle with 30 characters a line (300pt), and more.
@@ -363,7 +364,7 @@ layoutMiniFonts provider manifest style source files = withSystemTempDirectory "
           Left ds -> pure (Left ds)
           Right fonts -> do
             (_, _, bib) <- loadBibliography tmp (projectManifest (evProject e))
-            fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] bib Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty) geom fonts
+            fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] bib Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e))))) geom fonts
       (_, Left ds) -> pure (Left ds)
       (Nothing, _) -> pure (Left (filter isError (evDiagnostics e)))
 
@@ -375,7 +376,13 @@ chapterMasters p = Map.fromList [(fid, m) | (fid, Just m) <- projectChapters p]
 returns the running head of each page and the layout (ADR 0014).
 -}
 layoutHeads :: BS.ByteString -> BS.ByteString -> [(FilePath, T.Text)] -> IO (Map.Map Int [T.Text], PdfLayout)
-layoutHeads manifest style sources = withSystemTempDirectory "golem-heads" $ \tmp -> do
+layoutHeads = layoutHeadsWith Nothing
+
+{- | 'layoutHeads' with the texts of [vars] given in place of those the
+driver passes, when given (docs/adr/0196).
+-}
+layoutHeadsWith :: Maybe (Map.Map [T.Text] T.Text) -> BS.ByteString -> BS.ByteString -> [(FilePath, T.Text)] -> IO (Map.Map Int [T.Text], PdfLayout)
+layoutHeadsWith projectVars manifest style sources = withSystemTempDirectory "golem-heads" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") manifest
   BS.writeFile (tmp </> "style.toml") style
   writeTexts tmp sources
@@ -387,7 +394,7 @@ layoutHeads manifest style sources = withSystemTempDirectory "golem-heads" $ \tm
       (Just book, Right geom) -> do
         -- the variables of the running heads, as the driver passes them (golem-driver ADR 0022)
         let (vars, varDiags) = runningVars e
-            inp = PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) vars
+            inp = PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) vars (fromMaybe (projectVarTexts (manifestVars (projectManifest (evProject e)))) projectVars)
         assertEqual "running head variables" [] varDiags
         r <- layoutPdf inp geom fakeFonts
         case r of
@@ -467,7 +474,7 @@ pagesMini manifestExtra style source files bib = withSystemTempDirectory "golem-
   case ev of
     Left f -> pure (Left (pfDiagnostics f))
     Right e -> case (evBook e, filter isError (evDiagnostics e)) of
-      (Just book, []) -> layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] bib Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty)
+      (Just book, []) -> layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] bib Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))))
       (_, ds) -> pure (Left ds)
 
 {- | Headings of the body size on the body grid, as before the defaults of

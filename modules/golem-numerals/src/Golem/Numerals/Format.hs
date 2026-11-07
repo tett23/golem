@@ -19,6 +19,8 @@ module Golem.Numerals.Format
     NumberSlotName (..),
     numberFormatSlots,
     parseNumberFormatText,
+    headingNumberFormatSlots,
+    parseHeadingNumberFormatText,
     formatUsesChapter,
   )
 where
@@ -163,7 +165,7 @@ renderMarkFormat (MarkFormat pre n suf) =
 data NumberSlotName = SlotOwn | SlotLevel Int | SlotChapter
   deriving stock (Eq, Show)
 
--- | The slots of the number formats: @{n}@, @{1}@, @{2}@ and @{chapter}@.
+-- | The slots of the number formats of figures, code blocks and folios: @{n}@, @{1}@, @{2}@ and @{chapter}@.
 numberFormatSlots :: Text -> Either Text (Slot NumberSlotName)
 numberFormatSlots = \case
   "n" -> Right (NumberSlot SlotOwn)
@@ -175,6 +177,22 @@ numberFormatSlots = \case
 -- | Reads a number format; 'Left' is the reason, in Japanese.
 parseNumberFormatText :: Text -> Either Text [Piece NumberSlotName]
 parseNumberFormatText t = fst <$> parseFormat EscapesOnly numberFormatSlots t
+
+{- | The slots of the number formats of headings (docs/adr/0188): @{n}@,
+@{1}@ to @{5}@ and @{chapter}@. Which of @{1}@ to @{5}@ a heading may
+use depends on its level; style.toml checks that.
+-}
+headingNumberFormatSlots :: Text -> Either Text (Slot NumberSlotName)
+headingNumberFormatSlots = \case
+  "n" -> Right (NumberSlot SlotOwn)
+  "chapter" -> Right (NumberSlot SlotChapter)
+  name
+    | [c] <- T.unpack name, c >= '1', c <= '5' -> Right (NumberSlot (SlotLevel (fromEnum c - fromEnum '1')))
+    | otherwise -> Left ("表にない差し込みです: {" <> name <> "}。{n}、{1} から {5}、{chapter} のどれかを書きます")
+
+-- | Reads a number format of a heading; 'Left' is the reason, in Japanese.
+parseHeadingNumberFormatText :: Text -> Either Text [Piece NumberSlotName]
+parseHeadingNumberFormatText t = fst <$> parseFormat EscapesOnly headingNumberFormatSlots t
 
 -- | Whether a number format has a slot of the chapter (G04004).
 formatUsesChapter :: Text -> Bool
@@ -188,10 +206,11 @@ formatUsesChapter t = either (const False) (any isChapter) (parseNumberFormatTex
 numbers of the levels and that of the chapter, each in its notation,
 Arabic without one. A slot without its number writes nothing; a number
 its notation cannot write is written in Arabic numerals. A format that
-does not read is its text.
+does not read is its text. It reads the slots of headings, which hold
+those of the other number formats.
 -}
 formatNumber :: Text -> [Integer] -> Maybe Integer -> Text
-formatNumber fmt levels chapter = case parseNumberFormatText fmt of
+formatNumber fmt levels chapter = case parseHeadingNumberFormatText fmt of
   Left _ -> fmt
   Right ps -> T.concat (map fill ps)
   where

@@ -1,27 +1,40 @@
 #!/bin/sh
-# Outlines the figures of the developer manual (golem-pdf ADR 0009):
-# manual-dev/images/src/NAME.svg, the source with its text, becomes
-# manual-dev/images/NAME.svg, with the text as paths. Golem places SVG
+# Outlines the figures of the manuals (golem-pdf ADR 0009):
+# PROJECT/images/src/NAME.svg, the source with its text, becomes
+# PROJECT/images/NAME.svg, with the text as paths. Golem places SVG
 # figures without text, so the sources are kept for editing and the
 # outlined files are committed next to them. Do not edit the outlined
 # files by hand; scripts/manual/check-figures.sh checks that each was made
 # from its source as it is.
 #
-#   outline-figures.sh [NAME...]    all the SVG files by default
+#   outline-figures.sh                     all the figures of both manuals
+#   outline-figures.sh PROJECT [NAME...]   PROJECT is manual or manual-dev;
+#                                          all its figures by default
 #
 # It uses Inkscape 1.x (INKSCAPE chooses the executable) and only the fonts
 # of the manual (scripts/manual/fetch-fonts.sh): a fontconfig of its own
-# names manual-dev/fonts alone and maps the family of the sources, Fig
-# Sans, to Noto Sans JP, so the fonts of the machine are never used.
+# names PROJECT/fonts alone and maps the family of the sources, Fig Sans,
+# to Noto Sans JP, so the fonts of the machine are never used.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
-DIR=$(cd "$HERE/../../manual-dev" && pwd)
+ROOT=$(cd "$HERE/../.." && pwd)
 INKSCAPE=${INKSCAPE:-inkscape}
 command -v "$INKSCAPE" >/dev/null 2>&1 || { echo "outline-figures: no Inkscape; set INKSCAPE" >&2; exit 1; }
+if [ $# -eq 0 ]; then
+  sh "$0" manual
+  exec sh "$0" manual-dev
+fi
+case "$1" in
+  manual | manual-dev) ;;
+  *) echo "usage: outline-figures.sh [manual|manual-dev [NAME...]]; unknown: $1" >&2; exit 2 ;;
+esac
+PROJECT=$1
+shift
+DIR=$ROOT/$PROJECT
 sh "$HERE/fetch-fonts.sh" "$DIR/fonts"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-cat > "$TMP/fonts.conf" <<EOF
+cat > "$TMP/fonts.conf" <<CONF
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <fontconfig>
@@ -29,10 +42,11 @@ cat > "$TMP/fonts.conf" <<EOF
   <cachedir>$TMP/cache</cachedir>
   <alias binding="same"><family>Fig Sans</family><prefer><family>Noto Sans JP</family></prefer></alias>
 </fontconfig>
-EOF
+CONF
 VERSION=$(FONTCONFIG_FILE="$TMP/fonts.conf" HOME="$TMP" "$INKSCAPE" --version 2>/dev/null | head -n 1)
 if [ $# -eq 0 ]; then
   for f in "$DIR"/images/src/*.svg; do
+    [ -f "$f" ] || continue
     n=${f##*/}
     set -- "$@" "${n%.svg}"
   done
@@ -50,5 +64,5 @@ for name in "$@"; do
     printf '<!-- Made by scripts/manual/outline-figures.sh from images/src/%s.svg (sha256 %s) with %s. Do not edit by hand. -->\n' "$name" "$SUM" "$VERSION"
     sed '1{/^<?xml/d}' "$TMP/$name.out.svg"
   } > "$DIR/images/$name.svg"
-  echo "$name.svg"
+  echo "$PROJECT/images/$name.svg"
 done

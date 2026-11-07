@@ -118,6 +118,9 @@ PDF のリストは項目の印をぶら下げ、入れ子のリストを外の�
 原稿の任意の位置には、`3[aki 四分]kg` のように固定の空きを置ける。
 外部の URL へのリンクは `[link "https://www.w3.org/TR/jlreq/": 日本語組版処理の要件]` と書き、PDF ではリンクの注釈に、HTML と EPUB では `a` 要素になる。
 リンクは見た目を変えない（[docs/adr/0182](./docs/adr/0182-external-links.md)）。
+原稿の一部の言語は `[lang en: “Tokyo”]` と、ブロックの言語は `@lang en` と書く。
+PDF では引用符、ダッシュ、三点リーダーをその言語で欧文か和文として組み、英語のほかの言語では分綴しない。
+HTML と EPUB には `lang` と `xml:lang` を、PDF には `/Lang` を書く（[docs/adr/0187](./docs/adr/0187-inline-language-switch.md)）。
 一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ適用される（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
 段落スタイルの `regex-styles = [{ pattern = '[0-9]+', style = "bold" }]` のような正規表現スタイルは、段落の中で正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル、[docs/adr/0015](./docs/adr/0015-regex-styles.md)）。
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
@@ -129,9 +132,13 @@ PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折�
 PDF の索引は、`[index]` の `columns` と `column-gap` で、一段組みの本でも二段のように版面と異なる段数で組める（[docs/adr/0025](docs/adr/0025-index-columns.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
+どの PDF もタグ付き PDF で、`manifest.toml` の `[targets.pdf]` に `pdfa = "2a"` と `pdfua = "1"` を書けば PDF/A-2a と PDF/UA-1 に準拠させる。
+CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tagged-pdf-and-pdf-a.md)）。
 PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には `golem preflight --marks japanese` を通し、その後に商用のプリフライト（Acrobat や pdfToolbox など）で確認する（[docs/golem-cli/adr/0006](docs/golem-cli/adr/0006-preflight.md)）。
 入稿する PDF は `golem build --target pdf --profile prod` で作る。
 `golem preflight` の要約の SHA-256 は、この PDF と一致する。
+PDF と同じ `build/pdf/` には、各ページの最初の行が原稿のどのファイルの何行何列から始まるかを LSP の位置で表す `pages.json` も書く。
+エディタが改ページの位置の印を出すためのものである（[docs/adr/0195](./docs/adr/0195-page-start-positions-of-pdf.md)）。
 
 日本の印刷所に入稿する PDF は、`style.toml` の `[page]` に `bleed = "3mm"` を書き、`golem build --target pdf --marks japanese` で作る。
 塗り足しのない日本式のトンボはエラー（G07002）になる。
@@ -360,8 +367,8 @@ GOLEM="$(cabal list-bin golem)" sh scripts/manual/build.sh manual-dev  # 一冊�
 Git のリポジトリの外で組むときは、環境変数 `GOLEM_MANUAL_COMMIT` と `GOLEM_MANUAL_TAG` で値を渡す。
 スクリプトのテストは `scripts/manual/test.sh` にある。
 
-開発者のマニュアルの図は、`manual-dev/images/src/` の SVG が原稿である。
-SVG を直したら、`sh scripts/manual/outline-figures.sh` で、文字を輪郭にした `manual-dev/images/` の SVG を作り直し、両方をコミットする。
+二つのマニュアルの SVG の図は、`manual/images/src/` と `manual-dev/images/src/` の SVG が原稿である。
+SVG を直したら、`sh scripts/manual/outline-figures.sh` で、文字を輪郭にした一つ上の `images/` の SVG を作り直し、両方をコミットする（`sh scripts/manual/outline-figures.sh manual workflow` のように、マニュアルと図を選べる）。
 このスクリプトは Inkscape 1.x を使うので、図を直すときだけ Inkscape を入れておく（`INKSCAPE` で実行ファイルを選べる）。
 組むときには実行しないので、マニュアルを組むだけなら Inkscape は要らない。
 輪郭の SVG が原稿から作られたことは、`sh scripts/manual/check-figures.sh` で確かめられる（CI も確かめる）。

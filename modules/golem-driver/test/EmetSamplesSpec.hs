@@ -51,29 +51,29 @@ emetSamplesTests =
           [map segment segs | Ruby _ _ segs <- inlinesOf text] @?= [[("漢", Just "かん"), ("字", Just "じ")]]
           -- 10. see: a reference to the page of a label
           [(k, l) | Ref _ k l <- inlinesOf text] @?= [(RefPage, "terms")]
-          [l | Block _ (Just l) _ <- text] @?= ["terms"]
+          [l | Block _ (Just l) Nothing _ <- text] @?= ["terms"]
           -- 11. term: an index entry with its reading, and the index
           [(ieTerms i, ieReadings i) | IndexMark _ i <- inlinesOf text] @?= [(["組版"], ["くみはん"])]
-          [() | Block _ _ (ChannelOutput IndexOutput) <- text] @?= [()]
+          [() | Block _ _ _ (ChannelOutput IndexOutput) <- text] @?= [()]
           -- 12. box: the title and the body in their paragraph styles
-          [(s, plainOf is) | Block _ _ (Paragraph s is) <- blocks]
+          [(s, plainOf is) | Block _ _ _ (Paragraph s is) <- blocks]
             @?= [ (Just "box-title", "【注意】"),
                   (Just "box", "刷り直しのたびに奥付を確かめます。"),
                   (Just "box-title", "【コラム】"),
                   (Just "box", "活版の時代には、組版は職人の仕事でした。")
                 ]
           -- 13. glossary: a definition list whose terms have ruby
-          [[map segment segs | [Ruby _ _ segs] <- ts] | Block _ _ (DefList gs) <- blocks, DefGroup ts _ <- gs]
+          [[map segment segs | [Ruby _ _ segs] <- ts] | Block _ _ _ (DefList gs) <- blocks, DefGroup ts _ <- gs]
             @?= [[[("組版", Just "くみはん")]], [[("禁則", Just "きんそく")]], [[("校正", Just "こうせい")]]]
           -- 14. price-table: the numeric columns aligned right
-          [as | Block _ _ (Table as _ _) <- blocks] @?= [[AlignDefault, AlignRight, AlignRight]]
+          [as | Block _ _ _ (Table as _ _) <- blocks] @?= [[AlignDefault, AlignRight, AlignRight]]
           -- 15. checklist: a bullet list of four items
-          [length items | Block _ _ (BulletList items) <- blocks] @?= [4]
+          [length items | Block _ _ _ (BulletList items) <- blocks] @?= [4]
           -- 18. first-ruby: the first occurrence of each word, the longest word first
           [map segment segs | Ruby _ _ segs <- inlinesOf filters]
             @?= [[("薔薇", Just "ばら")], [("檸檬水", Just "れもんすい")], [("檸檬", Just "れもん")], [("苺", Just "いちご")]]
           -- 20. halfwidth: the code block is left alone
-          [map clText (codeLines c) | Block _ _ (CodeBlock c) <- filters] @?= [["ＧＯＬＥＭ"]]
+          [map clText (codeLines c) | Block _ _ _ (CodeBlock c) <- filters] @?= [["ＧＯＬＥＭ"]]
     ]
 
 withSamples :: (FilePath -> IO a) -> IO a
@@ -173,7 +173,7 @@ blocksOf e path = concat [docBlocks (erDocument r) | (fid, sf) <- Map.toList (pr
 
 -- | Every inline of the blocks, in paragraphs, lists, definition lists and tables, and the inlines in them.
 inlinesOf :: [Block] -> [Inline]
-inlinesOf = concatMap (\(Block _ _ b) -> inBody b)
+inlinesOf = concatMap (\(Block _ _ _ b) -> inBody b)
   where
     inBody = \case
       Paragraph _ is -> deep is

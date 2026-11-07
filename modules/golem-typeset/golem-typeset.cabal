@@ -1,0 +1,73 @@
+cabal-version:      3.0
+name:               golem-typeset
+version:            0.1.0
+synopsis:           PDF typesetting of Golem: the lines and pages of the semantic IR, and the PDF
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Text
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+-- The PDF typesetting, split from golem-driver (docs/adr/0192).
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Golem.Typeset
+                    Golem.Typeset.FontProvider
+                    Golem.Typeset.Memo
+                    Golem.Typeset.Overhang
+                    Golem.Typeset.RuleShape
+                    Golem.Typeset.Svg
+                    Golem.Typeset.TextLayer
+  other-modules:    Golem.Typeset.Draw
+                    Golem.Typeset.Structure
+                    Golem.Typeset.Flow
+                    Golem.Typeset.Fonts
+                    Golem.Typeset.Pages
+  build-depends:
+    , async         >=2.2  && <2.3
+    , base          >=4.20 && <4.21
+    , bytestring    >=0.11 && <0.13
+    , containers    >=0.6  && <0.8
+    , filepath      >=1.4  && <1.6
+    , golem-assemble
+    , golem-bibliography
+    , golem-doc
+    , golem-font
+    , golem-html
+    , golem-layout
+    , golem-layout-spec
+    , golem-length
+    , golem-numerals
+    , golem-pdf
+    , golem-preflight
+    , golem-project
+    , golem-svg
+    , golem-syntax
+    , text          >=2.0  && <2.2
+    , time          >=1.12 && <1.15
+    , vector        >=0.13 && <0.14
+  default-language: GHC2021
+
+test-suite golem-typeset-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:
+    MemoSpec
+    RuleShapeSpec
+  build-depends:
+    , base
+    , golem-layout-spec
+    , golem-pdf
+    , golem-project
+    , golem-typeset
+    , tasty          >=1.4 && <1.6
+    , tasty-hunit    >=0.10 && <0.11
+    , text
+  default-language: GHC2021

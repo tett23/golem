@@ -382,10 +382,10 @@ notice と info は別の重大度であり、どちらも「お知らせ」と�
 - フォントの役割 `code` には、欧文に Source Code Pro の Regular、和文に Noto Sans JP の Regular を使う。
 - フォントはリポジトリに入れず、`scripts/manual/fetch-fonts.sh` がバージョンを固定した URL から取得して SHA-256 を確かめる。どれも SIL Open Font License 1.1 である。
 - 本文が拠りどころにする規格と文献は、最初に出る箇所で `[cite キー]` で引用し、巻末の参考文献（`@bibliography`）に載せる。書誌のデータは、各マニュアルの `references.json` に置く。リンクは今までどおり脚注に置く。参考文献の一覧は引用した文献だけを並べるので、脚注にだけ書いた規格は一覧に載らない。
-- 開発者のマニュアルの図は、`manual-dev/images/src/` の編集できる SVG を原稿とし、`scripts/manual/outline-figures.sh` で文字を輪郭にした SVG を `manual-dev/images/` に作り、両方をコミットする（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。輪郭の SVG は手で直さない。図は SVG の図版としてベクターのまま置き、`web` の画像は置かない。図の文字は、組版と同じ Noto Sans JP で輪郭にする。輪郭の SVG が原稿から作られたことは、`scripts/manual/check-figures.sh` が CI で確かめる。
+- 二つのマニュアルの SVG の図は、`manual/images/src/` と `manual-dev/images/src/` の編集できる SVG を原稿とし、`scripts/manual/outline-figures.sh` で文字を輪郭にした SVG を一つ上の `images/` に作り、両方をコミットする（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。輪郭の SVG は手で直さない。図は SVG の図版としてベクターのまま置き、`web` の画像は置かない。図の文字は、組版と同じ Noto Sans JP で輪郭にする。輪郭の SVG が原稿から作られたことは、`scripts/manual/check-figures.sh` が CI で確かめる。
 - マニュアルは画面で読む PDF と HTML として配るので、印刷用の設定（塗り足しと出力インテント）を持たせない。出力インテントに要る ICC プロファイルは配布の条件のためリポジトリに入れられず、塗り足しだけを持たせても PDF/X-4 の要件は満たせない。
 - 各マニュアルのルートの `preflight.toml` は、組み込みの `print` を元にして、印刷のための検査（図版の色空間と ICC プロファイル、塗り足し、PDF/X-4 の要件）を `off` にする。はみ出し、グリフの欠け、図版の解像度は検査に残す。
-- 開発者のマニュアルの図版は、sRGB の SVG である。
+- 二つのマニュアルの SVG の図版の色は、sRGB である。
 
 ## マニュアルの外の文書の用語
 

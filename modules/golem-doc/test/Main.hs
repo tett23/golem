@@ -12,6 +12,7 @@ import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
 import Golem.TestSupport.ExternalTool (needsTool)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
+import LangSpec qualified
 import LinkSpec qualified
 import System.Directory (findExecutable)
 import System.Environment (lookupEnv)
@@ -38,7 +39,19 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests]
+  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, headingLevelTests]
+
+-- | The levels of a heading are 1 to 6 (docs/adr/0188).
+headingLevelTests :: TestTree
+headingLevelTests =
+  testGroup
+    "the levels of a heading are 1 to 6 (docs/adr/0188)"
+    [ testCase "Validate takes the levels 1 to 6 and rejects 0 and 7" $ do
+        let errs l = validateDocument (const (Just 1)) [] (Document (FileId 0) [Block sp Nothing Nothing (Heading l noHeadingAttrs [Text sp "a"])])
+        mapM_ (\l -> (l, errs l) @?= (l, [])) [1 .. 6]
+        errs 7 @?= ["見出しの階層が範囲外です: 7"]
+        errs 0 @?= ["見出しの階層が範囲外です: 0"]
+    ]
 
 -- | The integers of the IR are int64 (golem-doc ADR 0006).
 int64Tests :: TestTree
@@ -59,9 +72,9 @@ int64Tests =
         inl (TList [TInt 0, TList [TInt 0, TInteger (2 ^ (64 :: Int) + 5), TInteger (2 ^ (64 :: Int) + 6)], TString "a"]) @?= Left outOfRange,
       testCase "the other integers: @number, aki, a code line, an expression" $ do
         let big = TInteger (2 ^ (63 :: Int))
-            doc body = decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, body]]])))
+            doc body = decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, TNull, body]]])))
         doc (TList [TInt 1, TInt 1, TList [TNull, big, TBool False, TBool False], TList []]) @?= Left outOfRange
-        doc (TList [TInt 6, TList [TNull, TNull, TNull, TNull, TBool False, TList [TList [TString "a", big, TNull, TBool False, TList []]]]]) @?= Left outOfRange
+        doc (TList [TInt 6, TList [TNull, TNull, TNull, TNull, TBool False, TList [TList [TString "a", big, TNull, TBool False, TList []]], TBool False]]) @?= Left outOfRange
         inl (TList [TInt 18, spT, TNull, big]) @?= Left outOfRange
         inl (TList [TInt 18, spT, TList [TInt 1, big], TNull]) @?= Left outOfRange
         inl (TList [TInt 11, spT, TList [TInt 0, spT, big]]) @?= Left outOfRange,
@@ -109,12 +122,12 @@ naturalFields =
   where
     para i = TList [TInt 10, TNull, TList [i]]
     attrs n = TList [TNull, n, TBool False, TBool False]
-    figure p = TList [TString "a.pdf", TString "a.png", TString "alt", TNull, TNull, TList [], p, TBool False]
-    codeLine n = TList [TNull, TNull, TNull, TNull, TBool False, TList [TList [TString "x", n, TNull, TBool False, TList []]]]
+    figure p = TList [TString "a.pdf", TString "a.png", TString "alt", TNull, TNull, TList [], p, TBool False, TBool False]
+    codeLine n = TList [TNull, TNull, TNull, TNull, TBool False, TList [TList [TString "x", n, TNull, TBool False, TList []]], TBool False]
 
 -- | The CBOR of a document of one block with the body.
 naturalFieldDocument :: Term -> BS.ByteString
-naturalFieldDocument body = toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [zeroSpanT, TNull, body]]]))
+naturalFieldDocument body = toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [zeroSpanT, TNull, TNull, body]]]))
 
 -- | The span [0, 0, 1].
 zeroSpanT :: Term
@@ -154,8 +167,8 @@ cbor =
       testCase "retired tags are rejected (docs/adr ADR 0005)" $ do
         let spT = TList [TInt 0, TInt 0, TInt 1]
             text = TList [TInt 0, spT, TString "a"]
-            doc body = toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, body]]]))
-            one body = Right (Document (FileId 0) [Block sp Nothing body])
+            doc body = toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, TNull, body]]]))
+            one body = Right (Document (FileId 0) [Block sp Nothing Nothing body])
         decodeDocument (doc (TList [TInt 10, TString "verse", TList [text]])) @?= one (Paragraph (Just "verse") [Text sp "a"])
         decodeDocument (doc (TList [TInt 10, TNull, TList [text, TList [TInt 17, spT], text]])) @?= one (Paragraph Nothing [Text sp "a", LineBreak sp, Text sp "a"])
         decodeDocument (doc (TList [TInt 0, TList [text]])) @?= Left "スキーマに合いません: ブロックの種類"
@@ -166,7 +179,7 @@ cbor =
       testCase "line breaks only between inlines at the top of a paragraph (docs/adr ADR 0005)" $ do
         let size (FileId 0) = Just 10
             size _ = Nothing
-            para st is = Document (FileId 0) [Block sp Nothing (Paragraph st is)]
+            para st is = Document (FileId 0) [Block sp Nothing Nothing (Paragraph st is)]
             a = Text sp "a"
             br = LineBreak sp
         validateDocument size [] (para (Just "verse") [a, br, a]) @?= []
@@ -183,9 +196,21 @@ cbor =
         -- the next version is not accepted either
         decodeDocument (toStrictByteString (encodeTerm (TList [TInt 9, TInt 0, TList []]))) @?= Left "ABI のバージョンが異なります: 9",
       testCase "a figure with its page and rotate survives the CBOR round trip (golem-pdf ADR 0008, golem-driver ADR 0034)" $ do
-        let fig = Figure "images/a.pdf" (Just "images/a.png") "alt" Nothing Nothing [] (Just 3) True
-            doc = Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing (FigureBlock fig)]
+        let fig = Figure "images/a.pdf" (Just "images/a.png") "alt" Nothing Nothing [] (Just 3) True False
+            doc = Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing Nothing (FigureBlock fig)]
         decodeDocument (encodeDocument doc) @?= Right doc,
+      testCase "a figure and a code block with nonumber survive the CBOR round trip (docs/adr/0200)" $ do
+        let fig = Figure "images/a.png" Nothing "alt" Nothing Nothing [] Nothing False True
+            code = Code Nothing Nothing Nothing (Just [Text sp "例"]) False [CodeLine "a" (Just 1) Nothing False []] True
+            doc = Document (FileId 0) [Block sp Nothing Nothing (FigureBlock fig), Block sp Nothing Nothing (CodeBlock code)]
+        decodeDocument (encodeDocument doc) @?= Right doc,
+      testCase "nonumber on a code block without a caption is invalid (docs/adr/0200)" $ do
+        let size (FileId 0) = Just 10
+            size _ = Nothing
+            code cap nn = Document (FileId 0) [Block sp Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing cap False [] nn))]
+        validateDocument size [] (code Nothing True) @?= ["キャプションのないコードブロックは番号を持たないので、@nonumber は要りません"]
+        validateDocument size [] (code (Just [Text sp "例"]) True) @?= []
+        validateDocument size [] (code Nothing False) @?= [],
       testCase "a code block survives the CBOR round trip (golem-driver ADR 0023)" $ do
         let code =
               Code
@@ -198,9 +223,10 @@ cbor =
                     [ CodeLine "a" (Just 10) (Just DiffAdded) True [1, 2],
                       CodeLine "b" Nothing (Just DiffRemoved) False [],
                       CodeLine "" (Just 11) (Just DiffContext) False [50]
-                    ]
+                    ],
+                  codeNoNumber = False
                 }
-            doc = Document (FileId 0) [Block sp (Just "l") (CodeBlock code)]
+            doc = Document (FileId 0) [Block sp (Just "l") Nothing (CodeBlock code)]
         decodeDocument (encodeDocument doc) @?= Right doc,
       testCase "aki survives the CBOR round trip as tag 18 (docs/adr ADR 0019)" $ do
         let is = [Aki sp (AkiZw (1 / 5)), Aki sp (AkiZw 0), Aki sp (AkiAbs 185795)]
@@ -222,27 +248,27 @@ cbor =
         validateInlines size [] [Aki sp (AkiZw (-1))] @?= ["アキの量が負です"]
         validateInlines size [] [Aki sp (AkiAbs (-1))] @?= ["アキの量が負です"],
       testCase "every kind of forced break survives the CBOR round trip (docs/adr ADR 0017)" $ do
-        let d = Document (FileId 0) [Block sp Nothing (ForcedBreak k) | k <- [minBound .. maxBound]]
+        let d = Document (FileId 0) [Block sp Nothing Nothing (ForcedBreak k) | k <- [minBound .. maxBound]]
         decodeDocument (encodeDocument d) @?= Right d
         [minBound .. maxBound :: BreakKind] @?= [BreakPage, BreakRecto, BreakVerso, BreakColumn],
       testCase "forced breaks only at the top of a document, without a label (docs/adr ADR 0017)" $ do
         let size (FileId 0) = Just 10
             size _ = Nothing
-            brk = Block sp Nothing (ForcedBreak BreakPage)
+            brk = Block sp Nothing Nothing (ForcedBreak BreakPage)
             doc = Document (FileId 0)
             msgNested = "改ページは文書の最上位にだけ置けます"
             msgLabel = "改ページはラベルを持てません"
         validateDocument size [] (doc [brk]) @?= []
-        validateDocument size [] (doc [Block sp Nothing (BulletList [ListItem Nothing [brk]])]) @?= [msgNested]
-        validateDocument size [] (doc [Block sp Nothing (DefList [DefGroup [[]] [[brk]]])]) @?= [msgNested]
+        validateDocument size [] (doc [Block sp Nothing Nothing (BulletList [ListItem Nothing [brk]])]) @?= [msgNested]
+        validateDocument size [] (doc [Block sp Nothing Nothing (DefList [DefGroup [[]] [[brk]]])]) @?= [msgNested]
         -- a caption holds paragraphs only (docs/adr/0144)
-        validateDocument size [] (doc [Block sp Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing [brk] Nothing False))]) @?= ["図版のキャプションには段落だけを置けます"]
-        validateDocument size [] (doc [Block sp (Just "x") (ForcedBreak BreakRecto)]) @?= [msgLabel],
+        validateDocument size [] (doc [Block sp Nothing Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing [brk] Nothing False False))]) @?= ["図版のキャプションには段落だけを置けます"]
+        validateDocument size [] (doc [Block sp (Just "x") Nothing (ForcedBreak BreakRecto)]) @?= [msgLabel],
       testCase "a caption holds paragraphs only (docs/adr/0144)" $ do
         let size (FileId 0) = Just 10
             size _ = Nothing
-            fig c = Block sp Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing c Nothing False))
-            par = Block sp Nothing (Paragraph Nothing [Text sp "a"])
+            fig c = Block sp Nothing Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing c Nothing False False))
+            par = Block sp Nothing Nothing (Paragraph Nothing [Text sp "a"])
             msg = "図版のキャプションには段落だけを置けます"
         mapM_
           ( \b -> do
@@ -250,45 +276,45 @@ cbor =
               validateBlocks size [] [fig [b]] @?= [msg]
           )
           [ fig [],
-            Block sp Nothing (BulletList [ListItem Nothing [par]]),
-            Block sp Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False []))
+            Block sp Nothing Nothing (BulletList [ListItem Nothing [par]]),
+            Block sp Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [] False))
           ]
         validateDocument size [] (Document (FileId 0) [fig [par, par]]) @?= []
         validateBlocks size [] [fig [par]] @?= [],
       testCase "every page control survives the CBOR round trip (docs/adr ADR 0030)" $ do
-        let d = Document (FileId 0) [Block sp Nothing (PageControl c) | c <- [NoBreak, NeedLines 5, AdjustLines 1, AdjustLines (-2)]]
+        let d = Document (FileId 0) [Block sp Nothing Nothing (PageControl c) | c <- [NoBreak, NeedLines 5, AdjustLines 1, AdjustLines (-2)]]
         decodeDocument (encodeDocument d) @?= Right d,
       testCase "page controls only at the top of a document, without a label, with valid counts (docs/adr ADR 0030)" $ do
         let size (FileId 0) = Just 10
             size _ = Nothing
-            ctl = Block sp Nothing (PageControl NoBreak)
+            ctl = Block sp Nothing Nothing (PageControl NoBreak)
             doc = Document (FileId 0)
-        validateDocument size [] (doc [ctl, Block sp Nothing (PageControl (NeedLines 1)), Block sp Nothing (PageControl (AdjustLines (-1)))]) @?= []
-        validateDocument size [] (doc [Block sp Nothing (BulletList [ListItem Nothing [ctl]])]) @?= ["改ページの制御は文書の最上位にだけ置けます"]
-        validateDocument size [] (doc [Block sp (Just "x") (PageControl NoBreak)]) @?= ["改ページの制御はラベルを持てません"]
-        validateDocument size [] (doc [Block sp Nothing (PageControl (NeedLines 0))]) @?= ["@need-lines の行数は 1 以上です"]
-        validateDocument size [] (doc [Block sp Nothing (PageControl (AdjustLines 0))]) @?= ["@page-lines の増減は 0 でない整数です"],
+        validateDocument size [] (doc [ctl, Block sp Nothing Nothing (PageControl (NeedLines 1)), Block sp Nothing Nothing (PageControl (AdjustLines (-1)))]) @?= []
+        validateDocument size [] (doc [Block sp Nothing Nothing (BulletList [ListItem Nothing [ctl]])]) @?= ["改ページの制御は文書の最上位にだけ置けます"]
+        validateDocument size [] (doc [Block sp (Just "x") Nothing (PageControl NoBreak)]) @?= ["改ページの制御はラベルを持てません"]
+        validateDocument size [] (doc [Block sp Nothing Nothing (PageControl (NeedLines 0))]) @?= ["@need-lines の行数は 1 以上です"]
+        validateDocument size [] (doc [Block sp Nothing Nothing (PageControl (AdjustLines 0))]) @?= ["@page-lines の増減は 0 でない整数です"],
       testCase "blank lines survive the CBOR round trip as tag 13 (docs/adr ADR 0046)" $ do
-        let d = Document (FileId 0) [Block sp Nothing (BlankLines n) | n <- [1, 9223372036854775807]]
+        let d = Document (FileId 0) [Block sp Nothing Nothing (BlankLines n) | n <- [1, 9223372036854775807]]
             spT = TList [TInt 0, TInt 0, TInt 1]
         decodeDocument (encodeDocument d) @?= Right d
-        decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, TList [TInt 13, TInt 2]]]])))
-          @?= Right (Document (FileId 0) [Block sp Nothing (BlankLines 2)]),
+        decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, TNull, TList [TInt 13, TInt 2]]]])))
+          @?= Right (Document (FileId 0) [Block sp Nothing Nothing (BlankLines 2)]),
       testCase "blank lines only at the top of a document, without a label, of one line or more (docs/adr ADR 0046)" $ do
         let size (FileId 0) = Just 10
             size _ = Nothing
-            blank = Block sp Nothing (BlankLines 1)
+            blank = Block sp Nothing Nothing (BlankLines 1)
             doc = Document (FileId 0)
-        validateDocument size [] (doc [blank, Block sp Nothing (BlankLines 3)]) @?= []
-        validateDocument size [] (doc [Block sp Nothing (BlankLines 0)]) @?= ["行アキの行数は 1 以上です"]
-        validateDocument size [] (doc [Block sp Nothing (BulletList [ListItem Nothing [blank]])]) @?= ["行アキは文書の最上位にだけ置けます"]
-        validateDocument size [] (doc [Block sp (Just "x") (BlankLines 1)]) @?= ["行アキはラベルを持てません"],
+        validateDocument size [] (doc [blank, Block sp Nothing Nothing (BlankLines 3)]) @?= []
+        validateDocument size [] (doc [Block sp Nothing Nothing (BlankLines 0)]) @?= ["行アキの行数は 1 以上です"]
+        validateDocument size [] (doc [Block sp Nothing Nothing (BulletList [ListItem Nothing [blank]])]) @?= ["行アキは文書の最上位にだけ置けます"]
+        validateDocument size [] (doc [Block sp (Just "x") Nothing (BlankLines 1)]) @?= ["行アキはラベルを持てません"],
       testCase "trailing bytes are rejected" $
         decodeInlines (encodeInlines [] <> "\0") @?= Left "CBOR の後に余分なバイト列があります",
       testCase "an enumeration out of its range is rejected (forced breaks)" $ do
         let spT = TList [TInt 0, TInt 0, TInt 1]
-            doc body = decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, body]]])))
-        doc (TList [TInt 11, TInt 3]) @?= Right (Document (FileId 0) [Block sp Nothing (ForcedBreak BreakColumn)])
+            doc body = decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, TNull, body]]])))
+        doc (TList [TInt 11, TInt 3]) @?= Right (Document (FileId 0) [Block sp Nothing Nothing (ForcedBreak BreakColumn)])
         doc (TList [TInt 11, TInt 4]) @?= Left "スキーマに合いません: 列挙の範囲"
         doc (TList [TInt 11, TInt (-1)]) @?= Left "スキーマに合いません: 列挙の範囲",
       -- docs/adr ADR 0102
