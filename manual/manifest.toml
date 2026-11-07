@@ -20,6 +20,7 @@ chapters = [
   "appendices/g-glossary.gm",
   "appendices/h-roadmap.gm",
   "appendices/i-known-issues.gm",
+  "appendices/j-emet.gm",
   "back.gm",
 ]
 bibliography = ["references.json"]
@@ -39,6 +40,9 @@ role = "author"
 [targets.pdf]
 
 [targets.html]
+
+[functions.requires]
+file = ["data/units.tsv"]
 
 [source]
 paragraph-separator = "blank-line"
