@@ -28,10 +28,11 @@ inBlock l = env {ceLook = look0 {lkLang = Just l}}
 
 -- | The nodes of a structure, at any depth.
 nodes :: InlineNode -> [InlineNode]
-nodes n = n : case n of
-  NodeElem _ ns -> concatMap nodes ns
-  NodeLink _ _ ns -> concatMap nodes ns
-  _ -> []
+nodes n =
+  n : case n of
+    NodeElem _ ns -> concatMap nodes ns
+    NodeLink _ _ ns -> concatMap nodes ns
+    _ -> []
 
 lang :: Text -> [IR.Inline] -> IR.Inline
 lang = IR.Lang sp

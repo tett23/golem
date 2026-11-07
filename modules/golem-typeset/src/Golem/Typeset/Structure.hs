@@ -112,15 +112,15 @@ structureTree fe units figureAttrs =
             x -> x
        in marker <> map own (unitKids i u text)
     unitKids i u text = case uKind u of
-            UPara _ -> [NKid (P.KidElem (P.structElem P.SP text))]
-            UIndexEntry _ -> [NKid (P.KidElem (P.structElem P.SP text))]
-            UHeading l _ _ -> [NKid (P.KidElem (P.structElem (headingType l) text))]
-            UTerm _ -> [NTerm text]
-            UTocEntry _ _ -> [NKid (P.KidElem (P.structElem P.STOCI text))]
-            UTable _ h rows -> [NKid (P.KidElem (tableElem i u h rows))]
-            UCode _ code -> [NKid (P.KidElem (codeElem i u code))]
-            UFigure fig -> [NKid (P.KidElem (figureElem i u fig))]
-            _ -> []
+      UPara _ -> [NKid (P.KidElem (P.structElem P.SP text))]
+      UIndexEntry _ -> [NKid (P.KidElem (P.structElem P.SP text))]
+      UHeading l _ _ -> [NKid (P.KidElem (P.structElem (headingType l) text))]
+      UTerm _ -> [NTerm text]
+      UTocEntry _ _ -> [NKid (P.KidElem (P.structElem P.STOCI text))]
+      UTable _ h rows -> [NKid (P.KidElem (tableElem i u h rows))]
+      UCode _ code -> [NKid (P.KidElem (codeElem i u code))]
+      UFigure fig -> [NKid (P.KidElem (figureElem i u fig))]
+      _ -> []
     headingType = \case
       1 -> P.SH1
       2 -> P.SH2

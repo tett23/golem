@@ -38,8 +38,8 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import InseparableSpec (inseparableTests)
 import KnuthPlassReference
-import LineBreakingSpec (lineBreakingTests)
 import LangSpec (langTests)
+import LineBreakingSpec (lineBreakingTests)
 import LinkSpec (linkTests)
 import PaginateSpec (paginateTests)
 import PunctuationSpec (punctuationTests)
