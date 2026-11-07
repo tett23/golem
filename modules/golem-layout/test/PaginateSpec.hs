@@ -33,6 +33,9 @@ paginateTests =
       testGroup "keeping with what follows counts its footnotes (golem-layout ADR 0019)" keepNoteTests,
       testGroup "widows, orphans and the page end" widowOrphanTests,
       testGroup "stanzas of verse (docs/adr/0180)" stanzaTests,
+      testGroup "the look-ahead counts the first part that can be split (golem-layout ADR 0021)" splitPartTests,
+      testGroup "the look-ahead of a no-break counts the spaces (golem-layout ADR 0022)" keptSpaceTests,
+      testGroup "the rules added by the implementation of ADR 0180 (docs/adr/0205)" addedRuleTests,
       testGroup "page references that do not settle (S2)" pageRefTests,
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
       testGroup "turned figures on pages of their own (golem-driver ADR 0034)" pageFigureTests,
@@ -230,14 +233,14 @@ stanzaTests =
       -- three lines left: the heading and two verse lines, the rest in the next column
       let qs = paginate 1 5 [FParagraph (lines' 0 2), heading 20, stanza 100 [1, 1, 1, 1]]
       contents qs @?= [[SLine 0, SLine 1, SHeading 20 1, SLine 100, SLine 110], [SLine 120, SLine 130]],
-    testCase "a heading keeps the space before the stanza and its first two verse lines (docs/adr/0189)" $ do
+    testCase "a heading keeps the space before the stanza and its first two verse lines (docs/adr/0205)" $ do
       -- three lines left: the heading, the space and one verse line would fit
       let ps = paginate 1 6 [FParagraph (lines' 0 3), heading 20, FSpace 1, stanza 100 [1, 1, 1, 1]]
       contents ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 100, SLine 110, SLine 120, SLine 130]]
       -- four lines left: they all fit after the heading
       let qs = paginate 1 6 [FParagraph (lines' 0 2), heading 20, FSpace 1, stanza 100 [1, 1, 1, 1]]
       contents qs @?= [[SLine 0, SLine 1, SHeading 20 1, SLine 100, SLine 110], [SLine 120, SLine 130]],
-    testCase "a stanza before a no-break keeps its last two verse lines with what follows" $ do
+    testCase "a stanza before a no-break keeps its last two verse lines with what follows (docs/adr/0205)" $ do
       let ps = paginate 1 6 [FParagraph (lines' 0 1), stanza 100 [1, 1, 1, 1], FNoBreak mk, FParagraph (lines' 200 2)]
       contents ps @?= [[SLine 0, SLine 100, SLine 110], [SLine 120, SLine 130, SLine 200, SLine 201]]
   ]
@@ -784,4 +787,120 @@ ruledTests =
       let ps = paginate 1 4 [ruled Nothing (Just (spaced 5 30)) (lines' 0 3)]
       gridLines ps @?= [[0, 1, 2]]
       map poRules ps @?= [[PlacedRule 0 False (2 * 17 * 65536 + 10 * 65536 + 5 * 65536)]]
+  ]
+
+-- | The flows of n lines of each kind a heading keeps the first part of, numbered from 30.
+splittable :: Int -> [(String, Flow)]
+splittable n = [("paragraph", FParagraph (lines' 30 n)), ("continued", FContinued (lines' 30 n)), ("stanza", stanza 30 (replicate n 1))]
+
+-- | The lines a look-ahead keeps of n lines (or verse lines): all of three or fewer, two of more.
+keptOf :: Int -> Int
+keptOf n = if n >= 4 then 2 else n
+
+-- | The ids of the lines from 30 on, on each page.
+laterIds :: [PageOut] -> [[Int]]
+laterIds = map (filter (>= 30)) . lineIds
+
+splitPartTests :: [TestTree]
+splitPartTests =
+  [ testCase "K3: the look-ahead counts all of three lines or fewer and two of more" $
+      sequence_
+        [ assertEqual (kind <> " of " <> show n) (keptOf n) (needGrid (lookAhead 20 [f]))
+        | n <- [1 .. 6],
+          (kind, f) <- splittable n
+        ],
+    testCase "K3: the look-ahead of a stanza counts the lines its verse lines are broken into" $ do
+      needGrid (lookAhead 20 [stanza 30 [1, 2, 1]]) @?= 4
+      needGrid (lookAhead 20 [stanza 30 [2, 1, 1, 1]]) @?= 3
+      needGrid (lookAhead 20 [stanza 30 [1, 1, 3, 1, 1]]) @?= 2,
+    testCase "K3: the look-ahead counts the notes of the lines it counts" $ do
+      needNotes (lookAhead 20 [FParagraph (lines' 30 1 <> [noted 31 2] <> lines' 32 1)]) @?= 2
+      needNotes (lookAhead 20 [FParagraph (lines' 30 2 <> [noted 32 2] <> lines' 33 1)]) @?= 0,
+    testCase "K2: with room for the look-ahead, at least the first two lines are placed in the column" $
+      sequence_
+        [ assertBool (kind <> " of " <> show n <> " with " <> show r <> " lines left") (length (concat (take 1 (laterIds ps))) >= min 2 n)
+        | n <- [1 .. 6],
+          r <- [0 .. 8],
+          (kind, f) <- splittable n,
+          r >= needGrid (lookAhead 10 [f]),
+          let ps = paginate 1 10 [FParagraph (lines' 0 (10 - r)), f]
+        ],
+    testCase "K1: a heading goes on with a paragraph of three lines that cannot leave two of them" $
+      contents (paginate 1 8 [FParagraph (lines' 0 5), heading 20, FParagraph (lines' 30 3)])
+        @?= [map SLine [0 .. 4], [SHeading 20 1, SLine 30, SLine 31, SLine 32]],
+    testCase "K1: a heading goes on with the three lines that continue a paragraph after a figure" $
+      contents (paginate 1 8 [FParagraph (lines' 0 5), heading 20, FContinued (lines' 30 3)])
+        @?= [map SLine [0 .. 4], [SHeading 20 1, SLine 30, SLine 31, SLine 32]],
+    testCase "K1: a heading goes on with a stanza of three verse lines" $
+      contents (paginate 1 8 [FParagraph (lines' 0 5), heading 20, stanza 30 [1, 1, 1]])
+        @?= [map SLine [0 .. 4], [SHeading 20 1, SLine 30, SLine 40, SLine 50]],
+    testCase "K1: a paragraph before a no-break goes on with a paragraph of three lines" $ do
+      let ps = paginate 1 8 [FParagraph (lines' 0 4), FParagraph (lines' 20 2), FNoBreak mk, FParagraph (lines' 30 3)]
+      lineIds ps @?= [[0 .. 3], [20, 21, 30, 31, 32]]
+      unmets ps @?= [],
+    testCase "K1: a heading goes on with a paragraph of three lines whose second line has a note" $ do
+      -- 5 left: heading 1 + three lines + note 1 + separator 1 = 6; two lines would fit but leave a widow
+      let ps = paginate 1 10 [FParagraph (lines' 0 5), heading 20, FParagraph (lines' 30 1 <> [noted 31 1] <> lines' 32 1)]
+      contents ps @?= [map SLine [0 .. 4], [SHeading 20 1, SLine 30, SLine 31, SLine 32]]
+      notesByPage ps @?= [(1, []), (2, [nid 900])],
+    testCase "K1: a heading still stays with the first two lines of a paragraph of four" $
+      contents (paginate 1 8 [FParagraph (lines' 0 5), heading 20, FParagraph (lines' 30 4)])
+        @?= [map SLine [0 .. 4] <> [SHeading 20 1, SLine 30, SLine 31], [SLine 32, SLine 33]]
+  ]
+
+keptSpaceTests :: [TestTree]
+keptSpaceTests =
+  [ testCase "N1: the look-ahead of a no-break counts the spaces before and after it, at most a column" $
+      sequence_
+        [ assertEqual (show (a, b)) (Just (min 10 (sum a + sum b + 2))) (needGrid <$> keptLookAhead 10 flows)
+        | a <- spaces,
+          b <- spaces,
+          before <- [map FSpace a, [FNeedLines mk 1] <> map FSpace a <> [FAdjustLines mk 0]],
+          let flows = before <> [FNoBreak mk] <> map FSpace b <> [FParagraph (lines' 30 5)]
+        ],
+    testCase "N1: without a no-break after the spaces nothing is kept" $
+      needGrid <$> keptLookAhead 10 [FSpace 1, FParagraph (lines' 30 5)] @?= Nothing,
+    testCase "N2: the last two lines go on with the space and the first two lines after the no-break" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 8), FNoBreak mk, FSpace 1, FParagraph (lines' 10 5)]
+      lineIds ps @?= [[0 .. 5], [6, 7, 10, 11, 12, 13, 14]]
+      gridLines ps @?= [[0 .. 5], [0, 1, 3, 4, 5, 6, 7]]
+      unmets ps @?= [],
+    testCase "N2: the same with the space before the no-break" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 8), FSpace 1, FNoBreak mk, FParagraph (lines' 10 5)]
+      lineIds ps @?= [[0 .. 5], [6, 7, 10, 11, 12, 13, 14]]
+      unmets ps @?= [],
+    testCase "N2: the lines stay when the space and the first two lines after it just fit" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 7), FNoBreak mk, FSpace 1, FParagraph (lines' 10 5)]
+      lineIds ps @?= [[0 .. 6] <> [10, 11], [12, 13, 14]]
+      unmets ps @?= []
+  ]
+  where
+    -- no space, and spaces of 1, C - 1, C and C + 1 lines in a column of 10
+    spaces = [[], [1], [9], [10], [11]]
+
+addedRuleTests :: [TestTree]
+addedRuleTests =
+  [ testCase "R1: the space after a heading counts in what follows, at most a column" $ do
+      needGrid (lookAhead 10 [FParagraph (lines' 30 5)]) @?= 2
+      needGrid (lookAhead 10 [FSpace 1, FParagraph (lines' 30 5)]) @?= 3
+      needGrid (lookAhead 10 [FSpace 9, FParagraph (lines' 30 5)]) @?= 10
+      needGrid (lookAhead 10 [FSpace 10, FParagraph (lines' 30 5)]) @?= 10,
+    testCase "R2: a stanza before a no-break keeps its last part with what follows" $
+      sequence_
+        [ assertEqual (show v <> " verse lines") [[0 .. f - 1] <> take (v - k) verses, drop (v - k) verses <> [200, 201]] (lineIds ps)
+        | v <- [1 .. 4],
+          let k = if v <= 3 then v else 2
+              f = 5 - v
+              verses = [100 + 10 * i | i <- [0 .. v - 1]]
+              ps = paginate 1 6 [FParagraph (lines' 0 f), stanza 100 (replicate v 1), FNoBreak mk, FParagraph (lines' 200 2)]
+        ],
+    testCase "R2: a stanza stays when its last part and what follows just fit" $
+      sequence_
+        [ assertEqual (show v <> " verse lines") [[0 .. 3 - v] <> [100 + 10 * i | i <- [0 .. v - 1]] <> [200, 201]] (lineIds (paginate 1 6 [FParagraph (lines' 0 (4 - v)), stanza 100 (replicate v 1), FNoBreak mk, FParagraph (lines' 200 2)]))
+        | v <- [1 .. 3]
+        ],
+    testCase "R2: a stanza from an empty column is not sent on" $ do
+      let ps = paginate 1 4 [stanza 100 [1, 1, 1], FNoBreak mk, FParagraph (lines' 200 2)]
+      lineIds ps @?= [[100, 110, 120], [200, 201]]
+      unmets ps @?= [UnmetNoBreak mk]
   ]

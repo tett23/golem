@@ -244,6 +244,7 @@ v1 より後のバージョンのための事項には、そのバージョン�
 - **Emet の要求の種類**：Emet の関数が求められる要求は、v0.1.0-rc4 ではファイルを読むこと（`file`）だけである（[ADR 0161](adr/0161-emet-requirements-and-driver-handlers.md)）。書字方向や数の表記のような本の文脈を読む要求を足すかと、利用者がハンドラを書けるようにするかが決まっていない。
 - **Emet の関数から `@set` の変数を読むこと**：Emet の関数は、`.gm` の `@set` の変数を直接読めず、引数として受け取る（[ADR 0162](adr/0162-calling-emet-functions-from-gm.md)）。読めるようにすると、関数の結果が呼び出しの位置の変数の状態に依存し、同じ引数でも結果が変わる。読む手段を要求の種類として足すかが決まっていない。プロジェクト全体の変数（`manifest.toml` の `[vars]`）は、Emet の関数から直接読まず、引数として渡す（[docs/adr/0185](adr/0185-project-wide-variables.md)）。`vars` の値は本の全体で一つに決まり、呼び出しの位置によらないので、この「呼び出しの位置の変数の状態に依存する」問題は `vars` にはない。`vars` を読む要求の種類を足すかは、「Emet の要求の種類」とあわせて決める。
 - **golem-eval の責務**：Emet の関数の表は golem-eval の `EvalContext` に置く（[ADR 0162](adr/0162-calling-emet-functions-from-gm.md)）。golem-eval は、式文脈の評価、ファイル内評価、プラグインと Emet の関数の呼び出しを抱えている。golem-eval をこのまま広げるか、関数の呼び出しなどの責務を別のパッケージに分けるかが決まっていない。
+- **段落と `@no-page-break` のあいだの行アキ**：段落と `@no-page-break` のあいだに行アキ（`@blank-line`）があると、段落は後を待たず、最後の行を後と同じ段に置こうとしない（[golem-layout ADR 0022](golem-layout/adr/0022-no-page-break-counts-spaces.md)）。段落の前後の空きは飛ばして後を待つので、二つの扱いが違う。仕様書はこの場合を決めていない。行アキを挟んでも後を待つかと、待つなら行アキの行を後の量に足すかが決まっていない。
 - **GUI と Golem のあいだの通信の取り決め（v3）**：GUI（「GUI の作り方」）と Golem の本体のあいだで、何をどう受け渡すか。今の LSP を広げるのか、別の取り決めを作るのかが決まっていない。
 - **描画の内容を渡す API（v3）**：GUI の canvas に、グリフのアウトラインを座標付きで渡すのか、ページの画像を渡すのか、その両方か。見た目の回帰テストで PDF を画像にする shem（[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）と共有できるかも含めて決まっていない。
 
