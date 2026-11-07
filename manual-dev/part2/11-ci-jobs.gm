@@ -11,8 +11,8 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 一方、コードのビルドはドキュメントだけの変更では省きたい。
 ワークフローを分ければ、[code: ci.yml] の古い実行が取り消されても、[code: adr] の結果は残る。
 
-ほかに、夜間に [code: main] で動く [code: .github/workflows/race.yml] がある。
-これはプルリクエストを止めないので、後の「race.yml」の節で別に説明する。
+ほかに、夜間に [code: main] で動く [code: .github/workflows/race.yml] と [code: .github/workflows/enum.yml] がある。
+これらはプルリクエストを止めないので、後の「race.yml」と「enum.yml」の節で別に説明する。
 
 ## ジョブの一覧
 
@@ -384,6 +384,18 @@ hlint は [code: -j] でランナーのすべてのコアを使う。
 [code: race.yml] が落ちたら、落ちたテストの名前、ログに出たシードとサイズ、実行の URL、コミットを添えて issue を立てる。
 tasty-hedgehog は、落ちたプロパティを再現する [code: --hedgehog-replay] の引数をログに書く。
 手元では [code: GOLEM_RACE_TESTS=40] を付けて同じスイートを走らせ、その引数で落ちた例を再現する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0075-race-search-repetitions.md]（docs/adr の ADR 0075「並行の競合を探すテストの回数を、CI の夜間の実行で増やす」）]
+
+## enum.yml
+
+改ページの規則は、小さな入力のすべてで不変条件として確かめる。[index reading="enum.yml": enum.yml]
+golem-layout のテストは、段の行の数が 3 から 8、段の数が 1 と 2 の版面に、段落、見出し、改丁の見出し、図版、空き、改ページを並べた流れを、要素の少ない順にすべて組み、仕様書の改ページの規則を述語にした I1 から I8 が成り立つことを確かめる。
+入力の数は、要素を一つ増やすと十数倍になる。
+プルリクエストの CI では要素 3 個まで調べ、[code: .github/workflows/enum.yml] は毎晩 [code: main] で、環境変数 [code: GOLEM_ENUM_DEPTH=5] で要素 5 個まで調べる。
+走らせるかの判定と権限は [code: race.yml] と同じで、[code: scripts/ci/race-needed.sh] に [code: enum.yml] を渡す。
+
+違反があれば、テストは最も小さい入力を、[code: PaginateSpec] の例に貼れる形で表示する。
+仕様書の「既知の不具合」に載っている違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
+数が変われば、テストが落ちる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md]（docs/adr の ADR 0204「ページ分割の不変条件を、小さな入力のすべてで確かめる」）]
 
 ## 取り消しと時間
 

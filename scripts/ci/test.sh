@@ -1674,6 +1674,13 @@ run race_needed "$A" "${A%?}"
 expect "race-needed: a SHA that is not a commit" 2
 FAKE_GH_FAIL=1 run race_needed "$A" "$A"
 expect "race-needed: gh fails" 1
+# another workflow (docs/adr/0204)
+race_needed_in() { GH=$RN/gh FAKE_HEAD=$1 sh "$HERE/race-needed.sh" "$2" "$3"; }
+run race_needed_in "$A" "$A" enum.yml
+expect "race-needed: enum.yml has not changed" 0 false
+if [ "$(cat "$WORK/gh.args" 2>/dev/null)" = "run list --workflow enum.yml --branch main --status success --limit 1 --json headSha --jq .[0].headSha" ]; then ok; else ng "race-needed: the last successful run of enum.yml on main"; fi
+run race_needed_in "$A" "$A" enum
+expect "race-needed: a workflow that is not a file" 2
 
 # ---------------------------------------------------------------- race.yml
 # (docs/adr/0075-race-search-repetitions.md)

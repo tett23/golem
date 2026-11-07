@@ -113,6 +113,19 @@ CI runs the tests with `TASTY_NO_CREATE=true`, so a deleted or misnamed golden f
 When you change the look of the PDF on purpose, rewrite the references of the visual regression test (`scripts/visual/pages/`) with `scripts/visual/run.sh --accept` and put them in the same pull request ([docs/adr/0094](./docs/adr/0094-visual-regression-page-hashes-at-72-dpi.md)).
 The diff of the references records which pages changed.
 
+The rules of page breaking are checked as invariants on every small input ([docs/adr/0204](./docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)).
+When the "every input" test of golem-layout fails, the pull request that fixes it turns the smallest input shown into an example of `modules/golem-layout/test/PaginateSpec.hs`:
+
+1. Paste the `testCase` shown after "As a case of PaginateSpec:" into the `testGroup` of that rule in `PaginateSpec.hs`. It holds the expression that lays the input out (`paginateWithin` and the elements given to `enumFlows`) and what each column holds now.
+2. Add `import PaginateEnum (Element (..), enumFlows)` to `PaginateSpec.hs`.
+3. Rewrite the expected output to the placement the broken invariant (`I1` to `I8` in the message) asks for. Keeping the output as it is would pin the bug.
+
+A breach not fixed at once gets no example: add an item to "既知の不具合" (known bugs) of the specification and to docs/roadmap.md, and add the shape of its inputs and the number of inputs it excuses to `knownBugs` in `PaginateInvariantsSpec.hs`.
+Pin the number the test prints.
+Remove the item from `knownBugs` when the ADR that fixes it is in.
+
+Locally, raise the number of elements checked, as in `GOLEM_ENUM_DEPTH=5 cabal test golem-layout-test --test-option=-p --test-option='/every input/'`.
+
 Golem always produces the same bytes from the same input.
 Changes that affect output are checked by the `determinism` job in CI, which compares x86-64 and aarch64.
 Keep anything that depends on the environment out of the output: time, random numbers, hash-table iteration order, locale.

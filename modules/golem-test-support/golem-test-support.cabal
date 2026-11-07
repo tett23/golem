@@ -24,6 +24,7 @@ library
   hs-source-dirs:   src
   exposed-modules:
     Golem.TestSupport.Bytes
+    Golem.TestSupport.Enum
     Golem.TestSupport.Env
     Golem.TestSupport.ExternalTool
     Golem.TestSupport.ExternalTool.Internal
@@ -49,6 +50,7 @@ test-suite golem-test-support-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    EnumSpec
   build-depends:
     , base
     , bytestring

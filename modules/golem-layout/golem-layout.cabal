@@ -64,6 +64,9 @@ test-suite golem-layout-test
                     InseparableSpec
                     KnuthPlassReference
                     LineBreakingSpec
+                    PaginateEnum
+                    PaginateInvariants
+                    PaginateInvariantsSpec
                     PaginateSpec
                     PunctuationSpec
                     RuleAreaSpec
@@ -79,6 +82,7 @@ test-suite golem-layout-test
     , golem-length
     , golem-project
     , golem-syntax
+    , golem-test-support
     , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6
     , tasty-hedgehog >=1.4 && <1.5
