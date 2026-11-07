@@ -54,7 +54,7 @@ TextMate の文法は行ごとの正規表現なので、次の点で粗い。
 
 ほかに、二つの形式とも、次の点で semantic tokens と違う。
 
-- `.gm` の `[= book.total(xs)]` の名前空間付きの呼び出しは、`book` と `total` の両方を `function` にする。semantic tokens は最初の `book` だけを `function` にする。
+- `.gm` のインラインのコマンドの `[`、`:`、`]` と、式の `.`、括弧、`,`、`:`、閉じの `]` に色を付けない。semantic tokens は `operator` にする（[golem-lsp ADR 0007](../../docs/golem-lsp/adr/0007-semantic-tokens-for-command-punctuation.md)）。
 
 ## tree-sitter の文法と Golem の構文解析の違い
 

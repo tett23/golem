@@ -18,6 +18,8 @@ library
   hs-source-dirs:   src
   exposed-modules:
     Golem.Numerals
+    Golem.Numerals.Format
+    Golem.Numerals.Notation
   build-depends:
     , base  >=4.20 && <4.21
     , text  >=2.0  && <2.2
@@ -31,6 +33,7 @@ test-suite golem-numerals-test
   build-depends:
     , base
     , golem-numerals
+    , text
     , tasty          >=1.4 && <1.6
     , tasty-hunit    >=0.10 && <0.11
   default-language: GHC2021

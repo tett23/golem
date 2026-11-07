@@ -18,6 +18,7 @@ library
   exposed-modules:
     Golem.Assemble
     Golem.Assemble.Collation
+    Golem.Assemble.Formats
     Golem.Assemble.ListMarkers
     Golem.Assemble.Numbering
   build-depends:

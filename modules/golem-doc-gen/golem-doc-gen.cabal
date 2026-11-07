@@ -4,7 +4,10 @@ version:            0.1.0
 synopsis:           Hedgehog generators of the semantic IR of Golem
 description:
   The hedgehog generators of the semantic IR of golem-doc, which the
-  test suite of golem-driver uses (docs/adr/0191). Only
+  test suite of golem-driver uses (docs/adr/0191). The test suite of this
+  package has the properties of the CBOR and the CDDL of golem-doc that
+  use the generators, since the test suite of golem-doc cannot depend on
+  this package (docs/adr/0197). Only
   test suites depend on it: no library nor executable of the repository
   does, and it is not part of the release archives
   (scripts/ci/test-only-deps.sh checks this).
@@ -38,12 +41,22 @@ test-suite golem-doc-gen-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    CborExprSpec CborSpec
   build-depends:
     , base
+    , bytestring
+    , cborg
     , containers
+    , directory
+    , filepath
     , golem-doc
     , golem-doc-gen
+    , golem-parser
+    , golem-syntax
+    , golem-test-support
     , hedgehog
+    , process
     , tasty          >=1.4 && <1.6
     , tasty-hedgehog >=1.4 && <1.5
+    , temporary
   default-language: GHC2021
