@@ -71,7 +71,9 @@ each of these.
 Neither book gives a diagnostic on any target. Two features always give a
 notice, a wrapped line of a code block (G07030) and a paragraph with rules
 split across pages or columns (G07046), so each manifest silences these two
-codes and no other. The PDF and the EPUB of each book are goldens of
+codes and no other. `ComplexFixtureSpec` checks that the table `[diagnostics]`
+of each manifest has the one key `silence-notices = ["G07030", "G07046"]`
+(docs/adr/0198). The PDF and the EPUB of each book are goldens of
 `OutputGoldenSpec` (`test/golden/pdf-complex-*.txt` and
 `epub-complex-*.txt`); `scripts/determinism.sh`, `scripts/env-determinism/check.sh`
 and the visual regression test (`scripts/visual/build.sh`) build them too.

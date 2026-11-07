@@ -35,7 +35,7 @@ import Golem.Layout.Ruby (RubyKind (..), RubyPlacement (..), placeRuby)
 import Golem.LayoutSpec (Anchor (..), HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, columnsFor, gutterSide, runningHeadBaselines, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Length (zwToSp)
-import Golem.Numerals (formatNumber)
+import Golem.Numerals.Format (formatNumber)
 import Golem.Pdf qualified as P
 import Golem.Preflight.View qualified as V
 import Golem.Project
@@ -754,19 +754,27 @@ drawLineAt env (x0, y0) sl =
                       (b2, u2) = maybe ([], []) (\sh -> usesOf (whoOf V.PartKenten c) (look {lkSize = d}) (kentenMark env (lkFace look) sh d centre)) (lkKenten look)
                    in ([(leaf, b1), (Nothing, b2)], u1 <> u2)
                 KindNoteMark ->
-                  {- a note mark at the mark size, aligned to the em box of the
-                  text: its top in horizontal text, its right end in vertical
-                  text, where it is set across as horizontal text (golem-driver ADR 0018) -}
-                  let m = noteMarkSize (stNotesMarkSize style) size
-                      markLook = look {lkSize = m}
-                      txt = bcText c
-                      central = lfEmBoxCentral fonts (japaneseFace env look)
+                  {- the mark of a note in the look of mark-style (docs/adr/0177),
+                  placed by the look of its place, the size s of the text and m of
+                  the mark: in horizontal text the top of its em box at the top of
+                  that of the text, s × (c_t + 1/2) − m × (c_m + 1/2) above the
+                  baseline; in vertical text its parts along the line, their
+                  column right-aligned with the em box of the text, (s − m)/2
+                  right of the centre line (golem-driver ADR 0018). The baseline
+                  shift of the mark moves it further, as other text. -}
+                  let place = maybe look mbPlace (bcMark c)
+                      s = lkSize place
                       (ox, oy) = origin off
-                      markWidth = toSp m (lfWordAdvance fonts (shapingOf False markLook (maybe '0' fst (T.uncons txt))) txt)
+                      emCentre lk = lfEmBoxCentral fonts (japaneseFace env lk)
+                      above = Sp (round (toRational (unSp s) * (emCentre place + 1 / 2) - toRational (unSp size) * (emCentre look + 1 / 2)))
+                      column = ox + Sp (unSp (s - size) `div` 2)
+                      part (tag, t, o)
+                        | toEnum tag == KindRotated = runAtU env (whoOf V.PartBase c) look True True 0 (column - Sp (unSp (size * 3) `div` 10), oy - o) t
+                        | otherwise = runAtU env (whoOf V.PartBase c) look True False 0 (column, oy - o) t
                    in whole $
                         if vertical
-                          then runAtU env (whoOf V.PartBase c) markLook {lkBaselineShift = 0} False False 0 (ox + Sp (unSp size `div` 2) - markWidth + lkBaselineShift look, oy - Sp (unSp m `div` 2) - toSp m central) txt
-                          else runAtU env (whoOf V.PartBase c) markLook False False 0 (ox, oy + toSp (size - m) (central + 1 / 2)) txt
+                          then mconcat (map part (maybe [(fromEnum KindText, bcText c, bcPadStart c)] mbParts (bcMark c)))
+                          else runAtU env (whoOf V.PartBase c) look False False 0 (ox + bcPadStart c, oy + above) (bcText c)
                 -- the empty box of an [aki] draws nothing (golem-layout ADR 0012)
                 KindAki -> ([], [])
                 -- a run of full-width dashes: one line from end to end of its box (docs/adr ADR 0172)

@@ -59,7 +59,7 @@ footnoteTests =
           assertBool (show (ys - yk)) (abs (ys - yk - (38 / 100 + 1 / 2) * (s - m)) < 1 / 100)
           assertBool (show (x1, xj)) (xj >= x1 + m / 2)
         other -> assertFailure (show other),
-    testCase "PDF: vertical, the mark is horizontal text whose right end is half the size right of the centre line" $ do
+    testCase "PDF: vertical, the mark is along the line: * turned Latin, 1 tate-chu-yoko, its right end half the size right of the centre line (docs/adr/0177)" $ do
       content <- miniPdf fakeProvider True pdfStyle "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           s = toRational (unSp (maybe 0 (dimToSp 0) (parseDim "13Q"))) / 65536
@@ -68,11 +68,59 @@ footnoteTests =
           markOf c = [d | d <- ds, dGlyph d == fromEnum c, near (ptToRational (dSize d)) m]
       case (markOf '*', markOf '1', [d | d <- ds, dGlyph d == fromEnum '漢']) of
         ([star], [one], [kan]) -> do
-          assertBool "the horizontal font" (dFont star /= dFont kan)
-          dMatrix star @?= ["1", "0", "0", "1"]
+          assertBool "* is turned" (dMatrix star /= ["1", "0", "0", "1"])
+          assertBool "1 after * along the line" (ptToRational (dY one) < ptToRational (dY star))
           let right = ptToRational (dX one) + m / 2
           assertBool (show (right, ptToRational (dX kan) + s / 2)) (near right (ptToRational (dX kan) + s / 2))
         other -> assertFailure (show other),
+    testCase "PDF: vertical, （{n:kanji}）: the mark in the vertical font, its column's right end at the right end of the em box (docs/adr/0177)" $ do
+      content <- miniPdf fakeProvider True (pdfStyle <> TE.encodeUtf8 "\n[notes]\nmark-format = '（{n:kanji}）'\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          s = toRational (unSp (maybe 0 (dimToSp 0) (parseDim "13Q"))) / 65536
+          m = toRational (unSp (maybe 0 (dimToSp 0) (parseDim "13Q")) `div` 2) / 65536
+          near a b = abs (a - b) < 1 / 100
+          markOf c = [d | d <- ds, dGlyph d == fromEnum c, near (ptToRational (dSize d)) m]
+      case (markOf '（', markOf '一', markOf '）', [d | d <- ds, dGlyph d == fromEnum '漢']) of
+        ([open], [one], [close], [kan]) -> do
+          map dFont [open, one, close] @?= replicate 3 (dFont kan)
+          map (ptToRational . dY) [open, one, close] @?= sortOn negate (map (ptToRational . dY) [open, one, close])
+          forM_ [open, one, close] $ \d ->
+            assertBool (show (ptToRational (dX d) + m / 2, ptToRational (dX kan) + s / 2)) (near (ptToRational (dX d) + m / 2) (ptToRational (dX kan) + s / 2))
+        other -> assertFailure (show other),
+    testCase "PDF: horizontal, mark-style of another font: the top of its em box at that of the text, and its baseline shift above (docs/adr/0177)" $ do
+      let provider = fakeProviderCentral (\ix -> if ix == 4 then 3 / 10 else 38 / 100)
+          style shift = horizontalStyle <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\nlatin = \"fonts/h.otf\"\n\n[character-styles.mk]\nfont = \"heading\"\nsize = \"0.6zw\"\n" <> shift <> "\n[notes]\nmark-style = \"mk\"\n"
+          s = 10 :: Rational
+          m = 6
+          near a b = abs (a - b) < 1 / 100
+          raised shift = do
+            ds <- drawnGlyphs . BS.concat <$> (miniPdf provider True (style shift) "漢[note: 注。]字\n" fakeFontFiles >>= inflateAll)
+            case ([d | d <- ds, dGlyph d == fromEnum '*', near (ptToRational (dSize d)) m], [d | d <- ds, dGlyph d == fromEnum '漢']) of
+              ([star], [kan]) -> do
+                assertBool "the font of mark-style" (dFont star /= dFont kan)
+                pure (ptToRational (dY star) - ptToRational (dY kan))
+              other -> assertFailure (show other)
+      plain <- raised ""
+      assertBool (show plain) (near plain (s * (38 / 100 + 1 / 2) - m * (3 / 10 + 1 / 2)))
+      shifted <- raised "baseline-shift = \"0.1zw\"\n"
+      assertBool (show shifted) (near shifted (plain + m / 10)),
+    testCase "PDF: the colour of mark-style on the mark in the text, of body-mark-style on the mark of the note (docs/adr/0177)" $ do
+      let style = horizontalStyle <> "\n[color.swatches]\nred = { cmyk = [0, 100, 100, 0] }\nblue = { cmyk = [100, 50, 0, 0] }\n\n[character-styles.mk]\ncolor = \"red\"\nsize = \"0.5zw\"\n\n[character-styles.bm]\ncolor = \"blue\"\n\n[notes]\nmark-style = \"mk\"\nbody-mark-style = \"bm\"\n"
+      content <- BS.concat <$> (miniPdf fakeProvider True style "漢[note: 注。]字\n" [] >>= inflateAll)
+      let after colour = snd (BS.breakSubstring colour content)
+          firstGlyphs colour = [dGlyph d | d <- take 2 (drawnGlyphs (after colour))]
+      firstGlyphs "0 1 1 0 k" @?= map fromEnum "*1"
+      firstGlyphs "1 0.5 0 0 k" @?= map fromEnum "*1",
+    testCase "note-symbols: an eighth note is G07102 and no target is written (docs/adr/0177)" $
+      withSystemTempDirectory "golem-note-symbols" $ \tmp -> do
+        BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n\n[targets.text]\nvariants = [\"horizontal\"]\n")
+        BS.writeFile (tmp </> "style.toml") (withBodyFont horizontalStyle <> "\n[notes]\nmark-format = \"{n:note-symbols}\"\n")
+        writeFiles tmp (bodyFontFiles horizontalStyle)
+        BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 (T.concat (replicate 8 "一[note: 注。]") <> "\n"))
+        forM_ [[TargetPdf], [TargetHtml], [TargetEpub], [TargetText]] $ \targets -> do
+          r <- build (defaultOptions tmp) {optTargets = Just targets, optFonts = fakeProvider}
+          [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d] @?= [(DiagnosticCode "G07102", "注の番号 8 は、[notes] の mark-format {n:note-symbols} で表せません")]
+          brWritten r @?= [],
     testCase "PDF: horizontal, mark-size 0.65zw sets the mark at that size, raised to the top of the em box (golem-driver ADR 0025)" $ do
       content <- miniPdf fakeProvider True (horizontalStyle <> "\n[notes]\nmark-size = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
@@ -86,7 +134,7 @@ footnoteTests =
           assertBool (show (ys - yk)) (abs (ys - yk - (38 / 100 + 1 / 2) * (s - m)) < 1 / 100)
           assertBool (show (x1, xj)) (xj >= x1 + m / 2)
         other -> assertFailure (show other),
-    testCase "PDF: vertical, mark-size 0.65zw keeps the right end of the mark half the size right of the centre line (golem-driver ADR 0025)" $ do
+    testCase "PDF: vertical, mark-size 0.65zw keeps the right end of the mark column half the size right of the centre line (golem-driver ADR 0025, docs/adr/0177)" $ do
       content <- miniPdf fakeProvider True (pdfStyle <> "\n[notes]\nmark-size = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           sSp = maybe 0 (dimToSp 0) (parseDim "13Q")

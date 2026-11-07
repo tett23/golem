@@ -78,6 +78,7 @@ import Golem.Eval.File
 import Golem.Eval.Functions (FunctionTable (..), noFunctions)
 import Golem.Eval.Value
 import Golem.Html
+import Golem.Numerals.Format (MarkFormat (..))
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
@@ -783,7 +784,7 @@ buildCore inMemory opts = do
                   else pure []
               let webWritable = [t | t <- writable, null activeDiags || t `notElem` [TargetHtml, TargetEpub]]
                   -- a list number its format cannot write stops every target (golem-driver ADR 0013)
-                  listDiags = listNumberDiagnostics (lsNumbers (stLists (evStyle e))) (maybe False pageVertical (stPage (evStyle e))) book
+                  listDiags = listNumberDiagnostics (lsNumbers (stLists (evStyle e))) (maybe False pageVertical (stPage (evStyle e))) book <> noteNumberDiagnostics (evStyle e) book
               (written, outDiags, pdf) <-
                 if null listDiags || null webWritable
                   then writeTargets inMemory opts e diagFid book missing webWritable
@@ -1086,7 +1087,9 @@ htmlConfig dev e book missing bib =
           [ (l, (htmlRule style <$> hsRuleBefore h, htmlRule style <$> hsRuleAfter h))
           | (l, h) <- Map.toList (stHeadings style),
             isJust (hsRuleBefore h) || isJust (hsRuleAfter h)
-          ]
+          ],
+      -- the links of notes in the notation of [notes] mark-format (docs/adr/0177)
+      hcNoteNotation = mfNotation (stNotesMarkFormat style)
     }
   where
     style = evStyle e

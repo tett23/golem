@@ -34,6 +34,7 @@ module Golem.Driver.Pdf.Flow
     bibliographyLines,
     sidenoteMetrics,
     labelSpans,
+    noteNumberDiagnostics,
     Assumed (..),
     fixpoint,
     rubyStyleOf,
@@ -57,6 +58,7 @@ module Golem.Driver.Pdf.Flow
     captionEnv,
     tableEnv,
     withNoteMark,
+    noteMarkCount,
     unitSite,
     markerSite,
     cellSite,
@@ -118,6 +120,8 @@ import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
 import Golem.LayoutSpec (HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, gutterSide, pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.Length qualified as L
 import Golem.Numerals (circled)
+import Golem.Numerals.Format (renderMarkFormat)
+import Golem.Numerals.Notation (writeNumber)
 import Golem.Pdf qualified as P
 import Golem.Project
 import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
@@ -454,7 +458,7 @@ flowLines provider inp0 = case checkedGeometry inp of
 layoutPdf :: PdfInput -> PageGeometry -> LoadedFonts -> IO (Either [Diagnostic] PdfLayout)
 layoutPdf inp0 geom fonts =
   let inp = codeInput inp0
-   in case sidenoteDiagnostics geom (piBook inp) <> listNumberDiagnostics (lsNumbers (stLists (piStyle inp))) (pgVertical geom) (piBook inp) of
+   in case sidenoteDiagnostics geom (piBook inp) <> listNumberDiagnostics (lsNumbers (stLists (piStyle inp))) (pgVertical geom) (piBook inp) <> noteNumberDiagnostics (piStyle inp) (piBook inp) of
         ds@(_ : _) -> pure (Left ds)
         [] -> do
           loaded <- loadFigures inp
@@ -793,7 +797,7 @@ tocPage tg e number =
       le = tgMeasure tg - max (tgReserve tg) w - g
       k0 = if tgLeaders tg && u > 0 then max 0 (unSp (le - (e + g)) `div` unSp u) else 0
       (ns, k) = if ns0 < e + g then (e + g, 0) else (ns0, k0)
-      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource noLeaf) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) False (0, 0)
+      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource Nothing noLeaf) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) False (0, 0)
    in TocPage (le - fromInteger k * u) leader ns number
 
 -- | The measure of a column of the page.
@@ -954,6 +958,19 @@ labelSpans book = Map.fromListWith (\_ old -> old) (concatMap site (concat [bs |
         FigureBlock fig -> concatMap site (figCaption fig)
         _ -> []
 
+{- | Numbers of notes that the notation of [notes] mark-format cannot
+write (docs/adr/0177): G07102 at the note, whatever the target.
+-}
+noteNumberDiagnostics :: Style -> Book -> [Diagnostic]
+noteNumberDiagnostics style book =
+  [ diagnostic "G07102" Error sp ("注の番号 " <> T.pack (show n) <> " は、[notes] の mark-format " <> renderMarkFormat fmt <> " で表せません")
+  | d <- bookDocs book,
+    (sp, n, _) <- documentNotes d,
+    null (writeNumber (mfNotation fmt) (toInteger n))
+  ]
+  where
+    fmt = stNotesMarkFormat style
+
 {- | Places the sidenotes of a page in its sidenote column (golem-driver
 ADR 0006): each wants the top of the line of its marker; they keep their
 order, half a body pitch apart. Takes the sidenote pitch and size of a
@@ -1056,10 +1073,29 @@ composeEnv style geom fonts assumed look =
           cePatterns = Just englishUS,
           -- the set of body; a paragraph, a caption and a sidenote take their style's (docs/adr ADR 0019)
           ceAkiSet = akiSetOf style Nothing,
-          -- the size and text of note marks (golem-driver ADR 0025)
-          ceNoteMarkSize = stNotesMarkSize style,
-          ceNoteMarkFormat = stNotesMarkFormat style
+          -- the text of note marks (golem-driver ADR 0025) and their character style (docs/adr/0177)
+          ceNoteMarkFormat = stNotesMarkFormat style,
+          ceNoteMarkLook = noteMarkLook style,
+          ceNoteMarkSource = noteMarkSource style
         }
+
+{- | The look of the mark of a note in the text from the look of its place
+(docs/adr/0177): [notes] mark-style applied as any character style; the
+retired mark-size, when written, is its size, at most that of the place
+(golem-driver ADR 0025). Measuring and drawing the mark both take it.
+-}
+noteMarkLook :: Style -> Look -> Look
+noteMarkLook style lk =
+  let styled = restyle style lk (CharStyle noSpan (stNotesMarkStyle style) [])
+   in maybe styled (\d -> styled {lkSize = noteMarkSize d (lkSize lk)}) (stNotesMarkSize style)
+  where
+    noSpan = mkSpan (FileId 0) 0 0
+
+-- | The size source of the mark of a note in the text (golem-cli ADR 0008): mark-size, or what decides the size of mark-style (docs/adr/0177).
+noteMarkSource :: Style -> SizeSource -> SizeSource
+noteMarkSource style src = case stNotesMarkSize style of
+  Just _ -> SourceNoteMark
+  Nothing -> restyleSource style src (CharStyle (mkSpan (FileId 0) 0 0) (stNotesMarkStyle style) [])
 
 {- | The aki set of a paragraph style (docs/adr ADR 0019): its aki-set,
 inherited through based-on; Nothing is body.
@@ -1084,8 +1120,16 @@ noteAnchors anchors = snd (mapAccumL key Map.empty [(i, n, sp, b) | AnchorNote i
 body apart from the mark: it neither stretches nor breaks (golem-layout
 ADR 0018).
 -}
-withNoteMark :: SrcSpan -> Text -> Int -> [Inline] -> [Inline]
-withNoteMark sp format n body = Text sp (noteMarkText format n) : Aki sp (AkiZw (1 / 4)) : body
+withNoteMark :: Style -> Bool -> SrcSpan -> Int -> [Inline] -> [Inline]
+withNoteMark style vertical sp n body = styled (markInlines sp (markParts vertical pre notation (toInteger n) suf)) <> (Aki sp (AkiZw (1 / 4)) : body)
+  where
+    MarkFormat pre notation suf = stNotesMarkFormat style
+    -- in the character style of [notes] body-mark-style (docs/adr/0177)
+    styled xs = maybe xs (\name -> [CharStyle sp name xs]) (stNotesBodyMarkStyle style)
+
+-- | How many inlines the mark of a note is in 'withNoteMark': the label of the Note (docs/adr ADR 0183).
+noteMarkCount :: Style -> Bool -> SrcSpan -> Int -> Int
+noteMarkCount style vertical sp n = length (withNoteMark style vertical sp n []) - 1
 
 {- | The placement of ruby from [composition.ruby] (golem-layout ADR
 0009); @zw@ is the size of the paragraph.
@@ -1159,8 +1203,9 @@ data FrameKind
   | FChannel
   | -- | the lines of a paragraph of a style that keeps its lines
     FPara
-  | -- | a note at the end of a chapter, by its span: in the tree after its mark
-    FEndNote !SrcSpan
+  | {- | a note at the end of a chapter, by its span, and how many inlines
+    its mark is: in the tree after its mark -}
+    FEndNote !SrcSpan !Int
   deriving stock (Eq, Show)
 
 -- | The place of the text of a unit (docs/adr ADR 0183).
@@ -1333,12 +1378,10 @@ listMarker style vertical depth = \case
   Nothing -> [Text sp0 (atDepth (listBullets (stLists style)) depth)]
   Just n ->
     let NumberFormat pre st suf = atDepth (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) depth
-        written = fromMaybe (T.pack (show n)) (formatListNumber st n)
-        number = case st of
-          NsBook -> Number sp0 n Nothing
-          NsArabic | vertical, n >= 0, T.length written <= 2 -> Tcy sp0 written
-          _ -> Text sp0 written
-     in [Text sp0 pre | not (T.null pre)] <> [number] <> [Text sp0 suf | not (T.null suf)]
+     in case st of
+          NsBook -> [Text sp0 pre | not (T.null pre)] <> [Number sp0 n Nothing] <> [Text sp0 suf | not (T.null suf)]
+          -- set as the marks of notes are (docs/adr/0177)
+          NsNotation notation -> markInlines sp0 (markParts vertical pre notation n suf)
   where
     sp0 = mkSpan (FileId 0) 0 0
 
@@ -1375,7 +1418,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
       ns@((sp, _, _) : _) ->
         let title = notesTitle lang
          in Unit (UNotesTitle title) Nothing [Text sp title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing) (SourceHeading 2) [] 0
-              : [Unit (UPara noIndent) Nothing (withNoteMark nsp (stNotesMarkFormat style) n xs) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) SourceGrid [Frame 0 (FEndNote nsp)] 0 | (nsp, n, xs) <- ns]
+              : [Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n xs) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) SourceGrid [Frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n))] 0 | (nsp, n, xs) <- ns]
     {- a list of blocks inside the lists @ctx@, from the list number @n@,
     with the spaces before and after of paragraphs when @spaced@ (not in a
     definition list): in a list item, paragraphs are not indented by their
@@ -1593,7 +1636,7 @@ number of an entry of the bibliography.
 unitLabelInlines :: Unit -> Int
 unitLabelInlines u = case [k | Frame _ k <- uFrames u] of
   ks
-    | any (\case FEndNote _ -> True; _ -> False) ks -> 2
+    | (k : _) <- [k | FEndNote _ k <- ks] -> k
     | FBibliography `elem` ks -> 1
     | otherwise -> 0
 
@@ -1666,7 +1709,7 @@ markerItems env inner u = case uMarker u of
   Just m ->
     let boxes = [b | b@Box {} <- fst (composeInlines env {ceSite = markerSite (uIndex u), ceLabelInlines = 0} m)]
         w = sum (map itemWidth boxes)
-     in boxes <> [Box (inner - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0 [] 0 0 (uSource u, uSpan u) noLeaf)]
+     in boxes <> [Box (inner - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0 [] 0 0 (uSource u, uSpan u) Nothing noLeaf)]
 
 -- | Composes a unit and breaks it into lines of the widths, with its notes, sidenotes and index marks.
 composeUnit :: FlowEnv -> Map Int Sp -> (Int -> Sp) -> Unit -> Composed
@@ -1709,7 +1752,7 @@ noteEnv fe st = (withDocStyle st (lookEnv fe (bodyLook st (pgFontSize (feGeom fe
 -- | The footnotes of a unit, each a paragraph of its own; none when the notes are at the end of the chapter (golem-driver ADR 0026).
 unitNotes :: FlowEnv -> Unit -> [Golem.Layout.Japanese.Anchor] -> [(NoteId, [Line])]
 unitNotes fe u anchors =
-  [ (k, brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines (noteEnv fe (uStyle u)) {ceSite = noteSite k, ceLabelInlines = 2} (withNoteMark (noteIdSpan k) (stNotesMarkFormat (uStyle u)) n nbody)))))
+  [ (k, brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines (noteEnv fe (uStyle u)) {ceSite = noteSite k, ceLabelInlines = noteMarkCount (uStyle u) (pgVertical (feGeom fe)) (noteIdSpan k) n} (withNoteMark (uStyle u) (pgVertical (feGeom fe)) (noteIdSpan k) n nbody)))))
   | not (feNotesAtEnd fe),
     (_, k, n, nbody) <- noteAnchors anchors
   ]
@@ -1761,7 +1804,7 @@ anchoredByLine :: FlowEnv -> Style -> [Item] -> [Golem.Layout.Japanese.Anchor] -
 anchoredByLine fe st items anchors ls =
   let lineOf = lineIndexOfItems items ls
       env = withDocStyle st (feBodyEnv fe)
-      noteBody k n b = brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines env {ceSite = noteSite k, ceLabelInlines = 2} (withNoteMark (noteIdSpan k) (stNotesMarkFormat (piStyle (feInput fe))) n b))))
+      noteBody k n b = brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines env {ceSite = noteSite k, ceLabelInlines = noteMarkCount (piStyle (feInput fe)) (ceVertical env) (noteIdSpan k) n} (withNoteMark (piStyle (feInput fe)) (ceVertical env) (noteIdSpan k) n b))))
       marksIn b = [sp | AnchorIndex _ sp _ <- snd (composeInlines env b)]
       atEnd = feNotesAtEnd fe
    in ( Map.fromListWith (flip (<>)) [(lineOf i, [(k, noteBody k n b)]) | not atEnd, (i, k, n, b) <- noteAnchors anchors],
@@ -2421,7 +2464,7 @@ codeBlockOf geom fonts measure capacity u lead code caption =
       lookOf col = lk {lkColor = col}
       -- the size of the paragraph style code, at the code block (golem-cli ADR 0008)
       source = (uSource u, uSpan u)
-      emptyBox w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [] 0 0 source noLeaf)
+      emptyBox w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [] 0 0 source Nothing noLeaf)
       {- pieces at offsets from the padding: (offset, text, width, Latin,
       swatch, leaf); line numbers and wrap marks are of no leaf: artifacts
       (docs/adr ADR 0183) -}
@@ -2429,7 +2472,7 @@ codeBlockOf geom fonts measure capacity u lead code caption =
         let go _ [] = []
             go x ((o, t, w, latin, col, leaf) : rest) =
               [emptyBox (o - x) | o > x]
-                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source leaf)]
+                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf)]
                 <> go (o + w) rest
          in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) False (0, 0)
       at leaf o col t = [(o + cpOffset p, cpText p, cpWidth p, cpLatin p, col, leaf) | p <- oneRow t]

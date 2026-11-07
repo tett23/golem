@@ -53,9 +53,9 @@ structureTree fe units figureAttrs =
     book = piBook inp
     lang = bookLanguage inp
     atEnd = feNotesAtEnd fe
-    isEndNote u = any (\case Frame _ (FEndNote _) -> True; _ -> False) (uFrames u)
+    isEndNote u = any (\case Frame _ (FEndNote _ _) -> True; _ -> False) (uFrames u)
     -- the units of the notes at the end of chapters by their spans, in order
-    endNotes = Map.fromListWith (flip (<>)) [(sp, [(i, u)]) | (i, u) <- units, Frame _ (FEndNote sp) <- uFrames u]
+    endNotes = Map.fromListWith (flip (<>)) [(sp, [(i, u)]) | (i, u) <- units, Frame _ (FEndNote sp _) <- uFrames u]
     content env site inls = [toKid (site, n) | n <- inlineStructure env inls]
     toKid (site, n) = case n of
       NodeLeaf k -> P.KidLeaf (P.LeafId (site <> [k]))
@@ -85,12 +85,13 @@ structureTree fe units figureAttrs =
       _ -> P.structElem P.SNote [P.KidElem (P.structElem P.SP kids)]
     noteElem sp k num nbody
       | atEnd = case drop k (Map.findWithDefault [] sp endNotes) of
-          (j, u) : _ -> noteFrom (content ((unitEnv fe u) {ceLabelInlines = 2}) (unitSite j) (uInlines u))
+          (j, u) : _ -> noteFrom (content (unitEnv fe u) (unitSite j) (uInlines u))
           [] -> P.structElem P.SNote []
       | otherwise =
           let key = NoteId sp k
               st = piStyle inp
-           in noteFrom (content ((noteEnv fe (styleOfSpan sp)) {ceLabelInlines = 2}) (noteSite key) (withNoteMark (noteIdSpan key) (stNotesMarkFormat st) num nbody))
+              vertical = pgVertical geom
+           in noteFrom (content ((noteEnv fe (styleOfSpan sp)) {ceLabelInlines = noteMarkCount st vertical (noteIdSpan key) num}) (noteSite key) (withNoteMark st vertical (noteIdSpan key) num nbody))
     sidenoteElem sp num snBody =
       let st = styleOfSpan sp
           prefix = sidenotePrefix fe sp num
@@ -175,7 +176,7 @@ structureTree fe units figureAttrs =
         ]
       -- the lines of a paragraph of a style that keeps its lines: one P
       FPara -> [elemNode (P.structElem P.SP (concat [if P.seType e == P.SP then P.seKids e else [P.KidElem e] | P.KidElem e <- concatMap nodeKids inner]))]
-      FEndNote _ -> []
+      FEndNote _ _ -> []
     elemNode = NKid . P.KidElem
     listElem numbering = (\e -> e {P.seAttrs = [P.Attribute "List" [("ListNumbering", P.OName numbering)]]}) . P.structElem P.SL
     isMarker = \case

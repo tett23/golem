@@ -1,10 +1,10 @@
 {- | Number notations: positional kanji (十、百二十), digit-by-digit kanji
-(一〇、一二〇) and the number formats of style.toml.
+(一〇、一二〇). The table of notations is "Golem.Numerals.Notation" and
+the formats of style.toml "Golem.Numerals.Format" (docs/adr/0177).
 -}
 module Golem.Numerals
   ( kanji,
     kanjiDigits,
-    formatNumber,
     circled,
   )
 where
@@ -57,25 +57,3 @@ kanjiDigits :: Integer -> Text
 kanjiDigits n
   | n < 0 = "マイナス" <> kanjiDigits (negate n)
   | otherwise = T.map (\c -> digitChar (read [c])) (T.pack (show n))
-
--- | Fills @{n}@, @{n:kanji}@, @{1}@, @{2}@ and @{chapter}@.
-formatNumber :: Text -> [Integer] -> Maybe Integer -> Text
-formatNumber fmt levels chapter = go fmt
-  where
-    own = if null levels then 0 else last levels
-    go t = case T.breakOn "{" t of
-      (pre, rest)
-        | T.null rest -> pre
-        | otherwise ->
-            let (key, after) = T.breakOn "}" (T.drop 1 rest)
-             in pre <> fill key <> go (T.drop 1 after)
-    fill = \case
-      "n" -> T.pack (show own)
-      "n:kanji" -> kanji own
-      "1" -> maybe "" (T.pack . show) (nth 0)
-      "2" -> maybe "" (T.pack . show) (nth 1)
-      "chapter" -> maybe "" (T.pack . show) chapter
-      other -> "{" <> other <> "}"
-    nth i = case drop i levels of
-      (x : _) -> Just x
-      [] -> Nothing
