@@ -108,7 +108,7 @@ keptNeed env rest = (\(before, after) -> spaced env (sum [max 0 n | FSpace n <- 
 the flows after the no-break; nothing when the paragraph does not wait.
 -}
 noBreakAhead :: [Flow] -> Maybe ([Flow], [Flow])
-noBreakAhead rest = case break (not . soft) rest of
+noBreakAhead rest = case span soft rest of
   (before, FNoBreak _ : after) -> Just (before, after)
   _ -> Nothing
 

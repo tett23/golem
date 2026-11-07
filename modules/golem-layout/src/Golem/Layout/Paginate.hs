@@ -83,9 +83,9 @@ lookAhead = nextNeed . lookAheadEnv
 keptLookAhead :: Int -> [Flow] -> Maybe Need
 keptLookAhead = keptNeed . lookAheadEnv
 
--- | A page of one column of @capacity@ grid lines.
+-- | A page of one column of the given grid lines.
 lookAheadEnv :: Int -> Env
-lookAheadEnv capacity = Env maxBound 1 (ColumnSet 1 0 0 0) capacity
+lookAheadEnv = Env maxBound 1 (ColumnSet 1 0 0 0)
 
 {- | Lays the flow out on pages of @columns@ columns of @capacity@ grid
 lines each (docs/adr ADR 0018).
