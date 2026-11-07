@@ -17,7 +17,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ## v0.1.0-rc4
 
-- **リファクタリング**：v0.1.0-rc4 の作業を始める前に、v0.1.0-rc3 までに入れたコードを整理する。モジュールの境界、重複した処理、大きくなった関数とテストの補助を見直し、rc4 のプラグインの仕上げに備える。出力は変えず、決定性の検査で確かめる。
 - **注の印の文字スタイル**：注の印に文字スタイル（`[notes]` の `mark-style`）を当てられるようにする。印の大きさと書式は `mark-size` と `mark-format` で指定できる（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
 - **注の印の数字の表記**：注の印の番号を、算用数字のほかに、漢数字や記号の連なり（JLReq の 4.2.2 が挙げる形）で組めるようにする。今の `mark-format` は算用数字の番号だけを置き換える（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
 

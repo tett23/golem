@@ -48,7 +48,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | 01 | 構文（読み込みと解析） | golem-parser |
 | 02 | 評価 | golem-eval（プラグインのコマンドは golem-driver） |
 | 03 | プロジェクト（`manifest.toml`、`style.toml`、import） | golem-project、golem-driver、golem-eval |
-| 04 | 文書の組み立て（ラベル、相互参照、目次） | golem-doc |
+| 04 | 文書の組み立て（ラベル、相互参照、目次） | golem-assemble |
 | 05 | lint | golem-lint |
 | 06 | プラグイン | golem-plugin、golem-driver |
 | 07 | レイアウト（版面、改ページ、傍注、表） | golem-layout-spec、golem-layout、golem-driver |
@@ -6063,7 +6063,7 @@ dev と prod の両方でエラーであり、ターゲットを問わず出す�
 LSP も同じく出す。
 
 - メッセージ: `参考文献のファイルに出力に書けない文字（<符号位置>）があります: <パス>（<JSON Pointer>）、ほか <n> 件`（例: `参考文献のファイルに出力に書けない文字（U+0001）があります: refs.json（/0/title）`）。ほかになければ `、ほか <n> 件` を書かない
-- 段階とモジュール: プロジェクト（golem-doc の `Golem.Doc.Bibliography.Csl.decodeCslJson`、golem-driver の `Golem.Driver.loadBibliography`）。`golem check` とどのターゲットのビルドも出す
+- 段階とモジュール: プロジェクト（golem-bibliography の `Golem.Bibliography.Csl.decodeCslJson`、golem-driver の `Golem.Driver.loadBibliography`）。`golem check` とどのターゲットのビルドも出す
 - ADR: [docs/adr/0159](adr/0159-unwritable-characters-in-csl-json.md)
 
 ### 主な原因
@@ -6090,7 +6090,7 @@ LSP も同じく出す。
 位置はラベルを付けたブロックであり、関連情報に最初の定義の位置を示す。
 
 - メッセージ: `ラベルが重複しています: <ラベル>`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)
 
 ### 主な原因
@@ -6115,7 +6115,7 @@ LSP も同じく出す。
 関連情報に、一つ目の `@toc` の位置を示す。
 
 - メッセージ: `@toc は文書に一つだけ置けます`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)
 
 ### 主な原因
@@ -6141,7 +6141,7 @@ LSP も同じく出す。
 位置は参照であり、参照は何も出力しない。
 
 - メッセージ: `存在しないラベルへの参照です: <ラベル>`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md) がテストの例として触れる）
 
 ### 主な原因
@@ -6170,7 +6170,7 @@ LSP も同じく出す。
 位置は図版かコードブロックのブロックである。
 
 - メッセージ: `章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)（コードブロックの条件は [golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md) が加えた）
 
 ### 主な原因
@@ -6196,7 +6196,7 @@ LSP も同じく出す。
 位置は参照であり、参照は何も出力しない。
 
 - メッセージ: `番号を持たない要素への参照です: <ラベル>`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)、[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)（コードブロック）
 
 ### 主な原因
@@ -6223,7 +6223,7 @@ LSP も同じく出す。
 位置は参照であり、参照は何も出力しない。
 
 - メッセージ: `題を持たない要素への参照です: <ラベル>`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)、[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)（コードブロック）
 
 ### 主な原因
@@ -6253,7 +6253,7 @@ LSP も同じく出す。
 位置は `@number` の行である。
 
 - メッセージ: `@number <N> は自動で振られる番号と同じです`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)
 
 ### 主な原因
@@ -6282,7 +6282,7 @@ LSP も同じく出す。
 位置は改ページのコマンドの行である。
 
 - メッセージ: `本の最後の改ページは効果がありません`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)、[docs/adr/0017](adr/0017-forced-page-breaks.md)
 
 ### 主な原因
@@ -6311,7 +6311,7 @@ LSP も同じく出す。
 位置は `@blank-line` の行である。
 
 - メッセージ: `本の最後の @blank-line は効果がありません`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [docs/adr/0046](adr/0046-blank-line-command.md)
 
 ### 主な原因
@@ -6341,7 +6341,7 @@ HTML、EPUB、プレーンテキストで空きが出ると媒体のあいだで
 本の最後では [G04009](#g04009) も出る。
 
 - メッセージ: `@blank-line の直後に @page-break があります`、`@blank-line の直後に @column-break があります`
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [docs/adr/0046](adr/0046-blank-line-command.md)
 
 ### 主な原因
@@ -6375,7 +6375,7 @@ HTML、EPUB、プレーンテキストに残ると、媒体のあいだで結果
 [G04009](#g04009) か [G04010](#g04010) で捨てる行アキには出さない。
 
 - メッセージ: `@blank-line の行数 <n> がページの行数 <L> 以上なので捨てます`。`<n>` は続けて書いた `@blank-line` の行数の和、`<L>` はページの行数である。
-- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- 段階とモジュール: 文書の組み立て（golem-assemble の `Golem.Assemble`）
 - ADR: [docs/adr/0047](adr/0047-blank-line-limit.md)
 
 ### 主な原因
