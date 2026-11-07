@@ -37,6 +37,7 @@ import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
+import UuidSpec qualified
 
 main :: IO ()
 main = do
@@ -792,6 +793,7 @@ tests tinyJpeg =
       ImageSpec.tests,
       ImportSpec.tests,
       SecuritySpec.tests,
+      UuidSpec.tests,
       DrawingSpec.tests,
       testGroup
         "CIDSystemInfo (ADR 0006)"
