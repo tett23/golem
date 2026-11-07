@@ -1,7 +1,9 @@
 {- | The invariants of pagination (docs/adr/0204, its section 「不変条件」),
 as predicates over the flow that goes in and the columns that come out,
-read as docs/adr/0206 (its section 6) decides. They read nothing of the
-paginator but its input and output, and every case is judged.
+read as docs/adr/0206 (its section 6) decides, and the invariants P1 to
+P4 of need-lines and blank lines (golem-layout ADR 0025, its section
+「不変条件」). They read nothing of the paginator but its input and
+output, and every case is judged.
 
 The columns are taken in the order of their page and their column. A
 grid line, a heading or a figure is at a place: its column in that
@@ -19,6 +21,10 @@ module PaginateInvariants
     i6HeadingKept,
     i7NoteOnPage,
     i8Recto,
+    p1NeedLinesMet,
+    p2NeedLinesRecorded,
+    p3BlankNoOverflow,
+    p4BlankWithNext,
     invariants,
     breaches,
   )
@@ -27,11 +33,12 @@ where
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (listToMaybe, mapMaybe)
 import Golem.Layout.Paginate
+import Golem.Syntax (SrcSpan)
 
--- | The invariants of docs/adr/0204, by their numbers.
-data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8
+-- | The invariants of docs/adr/0204 and of golem-layout ADR 0025, by their numbers.
+data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken: the lines or figures concerned, and how.
@@ -51,7 +58,11 @@ invariants separator =
     (I5, i5NoWidow),
     (I6, i6HeadingKept),
     (I7, i7NoteOnPage),
-    (I8, i8Recto)
+    (I8, i8Recto),
+    (P1, p1NeedLinesMet separator),
+    (P2, p2NeedLinesRecorded),
+    (P3, p3BlankNoOverflow separator),
+    (P4, p4BlankWithNext)
   ]
 
 -- | The breaches of every invariant, I1 first.
@@ -327,3 +338,215 @@ i8Recto flows ps =
         Just ((_, k), p) <- [Map.lookup (lbId l) places],
         even (poNumber p) || poColumn p /= 0 || k /= 0
       ]
+
+-- need-lines and blank lines (golem-layout ADR 0025)
+
+{- | Whether a flow waits for the next one: the breaks, the controls of
+page breaks, the blank lines and the spaces place nothing of their own
+before it (docs/adr ADR 0017, 0030, 0046).
+-}
+waits :: Flow -> Bool
+waits = \case
+  FBreak _ -> True
+  FNoBreak _ -> True
+  FNeedLines _ _ -> True
+  FAdjustLines _ _ -> True
+  FBlank _ _ -> True
+  FSpace _ -> True
+  _ -> False
+
+{- | Each flow that places something, with the flows that wait for it, in
+the order of the flow. The flows left waiting at the end of the book have
+nothing to wait for and are dropped.
+-}
+waiting :: [Flow] -> [([Flow], Flow)]
+waiting = go []
+  where
+    go _ [] = []
+    go ws (f : rest)
+      | waits f = go (ws <> [f]) rest
+      | otherwise = (ws, f) : go [] rest
+
+-- | The lines of a block, in their order.
+blockLines :: Flow -> [LineBox]
+blockLines = \case
+  FStanza vs -> concat vs
+  FTable {ftHeader = h, ftRows = rows} -> h <> concat rows
+  FCode {fcRows = ls} -> ls
+  FRuled {frBody = RuledLines ls} -> ls
+  FRuled {frBody = RuledHeading {rhLines = ls}} -> ls
+  f -> flowLines f
+
+-- | The first line of a block, or the figure it is.
+blockIds :: Flow -> [Int]
+blockIds = \case
+  FFigure {ffId = i} -> [i]
+  FWrapped {fwId = i} -> [i]
+  FPageFigure {fpId = i} -> [i]
+  f -> map lbId (take 1 (blockLines f))
+
+-- | Whether a slot is the first of a block.
+startsBlock :: Flow -> Slotted -> Bool
+startsBlock f s = case (f, s) of
+  (FFigure {ffId = i}, SFigure j) -> i == j
+  (FWrapped {fwId = i}, SWrapped j) -> i == j
+  (FPageFigure {fpId = i}, SPageFigure j) -> i == j
+  (_, SLine j) -> first == Just j
+  (_, SHeading j _) -> first == Just j
+  (_, SCode j _ _) -> first == Just j
+  _ -> False
+  where
+    first = lbId <$> listToMaybe (blockLines f)
+
+-- | The first slot of a block: its column, its slot in the column and the column.
+firstSlotOf :: [PageOut] -> Flow -> Maybe (Int, Int, PageOut)
+firstSlotOf ps f = listToMaybe [(c, k, p) | ((c, k), p, s) <- slots ps, startsBlock f s]
+
+-- | The grid lines a slot takes, as 'i2NoOverflow' counts them.
+extentIn :: [Flow] -> Slotted -> Int
+extentIn flows =
+  let spans = headingSpans flows
+      figures = Map.fromList (inputFigures flows)
+   in \case
+        SHeading l _ -> Map.findWithDefault 1 l spans
+        SFigure i -> Map.findWithDefault 1 i figures
+        _ -> 1
+
+-- | The grid line after the slots of the column before the slot k: the first grid line of the column if none.
+endBefore :: [Flow] -> PageOut -> Int -> Int
+endBefore flows p k = maximum (csFirstLine (poColumnSet p) : [at + extentIn flows s | (at, s) <- take k (poSlots p)])
+
+-- | The line that has the mark of each note.
+noteMarks :: [Flow] -> Map NoteId Int
+noteMarks flows = Map.fromList [(nbId nb, lbId l) | f <- flows, l <- blockLines f, nb <- lbNotes l]
+
+{- | The lines of the notes of the column before the slot k, and the
+separator if there are any: the notes continued from a column before and
+the notes of the lines of the slots before k.
+-}
+notesBefore :: Int -> [Flow] -> PageOut -> Int -> Int
+notesBefore separator flows p k =
+  let marks = noteMarks flows
+      before = concatMap (slotLines . snd) (take k (poSlots p))
+      counted = [n | (note, from, n) <- poFootnotes p, from > 0 || maybe False (`elem` before) (Map.lookup note marks)]
+   in if null counted then 0 else sum counted + separator
+
+{- | P1: the first block after @need-lines N@, N no more than the grid
+lines of its column, is placed in a column that has N grid lines or more
+left before it, unless it is the first slot of a column with nothing in
+it. The grid lines left are counted from the end of the slots before it
+and the lines of the notes before it: the blank lines and the spaces
+after the need-lines are not counted (docs/specifications.md, 「行アキ」).
+-}
+p1NeedLinesMet :: Int -> Check
+p1NeedLinesMet separator flows ps =
+  [ Breach P1 (blockIds b) ("need-lines " <> show n <> " has " <> show room <> " grid lines left before its block on page " <> show (poNumber p) <> " column " <> show (poColumn p))
+  | (ws, b) <- waiting flows,
+    FNeedLines _ n <- ws,
+    Just (_, k, p) <- [firstSlotOf ps b],
+    n <= poLines p,
+    let notes = notesBefore separator flows p k
+        room = poLines p - endBefore flows p k - notes,
+    k > 0 || notes > 0,
+    room < n
+  ]
+
+{- | P2: a need-lines is recorded as unmet only when it asks for more
+than the grid lines of the column it is recorded in, once, and of the
+need-lines before a block one asking for more than the grid lines of the
+column of the block is recorded (the larger of two in a row applies,
+docs/adr ADR 0030).
+-}
+p2NeedLinesRecorded :: Check
+p2NeedLinesRecorded flows ps =
+  let recorded = [(sp, n, p) | p <- ordered ps, UnmetNeedLines sp n <- poUnmet p]
+      written = [(sp, n) | FNeedLines sp n <- flows]
+      counts = Map.fromListWith (+) [(sp, 1 :: Int) | (sp, _, _) <- recorded]
+      wrong =
+        [ Breach P2 [] ("need-lines " <> show n <> " is recorded in page " <> show (poNumber p) <> " column " <> show (poColumn p) <> " of " <> show (poLines p) <> " grid lines")
+        | (sp, n, p) <- recorded,
+          n <= poLines p || (sp, n) `notElem` written
+        ]
+      twice = [Breach P2 [] ("need-lines at " <> show sp <> " is recorded " <> show c <> " times") | (sp, c) <- Map.toList counts, c > 1]
+      missing =
+        [ Breach P2 [] ("need-lines " <> show [n | (_, n) <- big] <> " is not recorded")
+        | (ws, b) <- waiting flows,
+          Just (_, _, p) <- [firstSlotOf ps b],
+          let big = [(sp, n) | FNeedLines sp n <- ws, n > poLines p],
+          not (null big),
+          not (any ((`Map.member` counts) . fst) big)
+        ]
+   in wrong <> twice <> missing
+
+-- | The blank lines before each block: the spans, the grid lines of all of them as the paginator counts them, and the block.
+blanksBefore :: [Flow] -> [PageOut] -> [([SrcSpan], Int, Flow)]
+blanksBefore flows ps =
+  let capacity = maximum (1 : map poLines ps)
+   in [ (map fst bs, foldl' (\a (_, n) -> min capacity (a + min capacity n)) 0 bs, b)
+      | (ws, b) <- waiting flows,
+        let bs = [(sp, n) | FBlank sp n <- ws],
+        not (null bs)
+      ]
+
+-- | The blank lines recorded as dropped, by their span.
+droppedBlanks :: [PageOut] -> Map SrcSpan Int
+droppedBlanks ps = Map.fromListWith (+) [(sp, 1 :: Int) | p <- ps, DroppedBlank sp <- poUnmet p]
+
+{- | P3: blank lines that are not dropped do not overflow their column:
+the grid lines placed in it, the blank lines, the lines of its notes and
+the separator do not exceed its grid lines. The output shows blank lines
+only as the grid lines left empty before the block after them, so blank
+lines not dropped and not seen there are a breach: no column is seen to
+hold them.
+-}
+p3BlankNoOverflow :: Int -> Check
+p3BlankNoOverflow separator flows ps =
+  let dropped = droppedBlanks ps
+   in [ Breach P3 ids why
+      | (sps, total, b) <- blanksBefore flows ps,
+        not (any (`Map.member` dropped) sps),
+        Just (_, k, p) <- [firstSlotOf ps b],
+        let ids = blockIds b
+            start = maybe 0 fst (listToMaybe (drop k (poSlots p)))
+            before = endBefore flows p k
+            used = maximum (0 : [at + extentIn flows s | (at, s) <- poSlots p])
+            notes = sum [n | (_, _, n) <- poFootnotes p]
+            sep = if null (poFootnotes p) then 0 else separator
+            whole = max used (before + total) + notes + sep,
+        why <-
+          [ "the blank lines of " <> show total <> " grid lines are not before their block on page " <> show (poNumber p) <> " column " <> show (poColumn p)
+          | start - before < total
+          ]
+            <> [ "page " <> show (poNumber p) <> " column " <> show (poColumn p) <> " uses " <> show whole <> " of " <> show (poLines p) <> " grid lines with its blank lines"
+               | start - before >= total,
+                 whole > poLines p
+               ]
+      ]
+
+{- | P4: blank lines are in the column of the block after them, right
+before its first slot, or dropped at the top of a column, its first slot
+being the first of the column, each @blank-line recorded once as
+dropped. A blank line is recorded only when it is dropped.
+-}
+p4BlankWithNext :: Check
+p4BlankWithNext flows ps =
+  let dropped = droppedBlanks ps
+      written = [sp | FBlank sp _ <- flows]
+      judged =
+        [ Breach P4 ids why
+        | (sps, total, b) <- blanksBefore flows ps,
+          Just (_, k, p) <- [firstSlotOf ps b],
+          let ids = blockIds b
+              counts = map (\sp -> Map.findWithDefault 0 sp dropped) sps
+              start = maybe 0 fst (listToMaybe (drop k (poSlots p)))
+              at = "page " <> show (poNumber p) <> " column " <> show (poColumn p),
+          why <-
+            if all (== 1) counts
+              then ["the blank lines are dropped, and their block is after slot " <> show k <> " of " <> at | k > 0]
+              else
+                if all (== 0) counts
+                  then ["the blank lines are not in the column of their block, " <> at | start - endBefore flows p k < total]
+                  else ["the blank lines are recorded as dropped " <> show counts <> " times"]
+        ]
+      stray = [Breach P4 [] ("a blank line at " <> show sp <> " not written is recorded as dropped") | sp <- Map.keys dropped, sp `notElem` written]
+   in judged <> stray

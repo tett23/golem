@@ -153,7 +153,11 @@ ready env = applyNeed env . applyBreaks env
 
 {- | The blank lines go in the column of the first part of what follows;
 at the top of a column they are dropped and recorded, never cut
-(docs/adr ADR 0046). A heading at a recto starts its page first.
+(docs/adr ADR 0046). A heading at a recto starts its page first. The
+next columns are gone on to until the blank lines and the first part fit
+or the column is at its top: the figures sent on take the top of a
+column gone on to and the continued notes its foot, and a column with
+figures sent on is not at its top (golem-layout ADR 0025).
 -}
 placeBlank :: Env -> St -> Flow -> [Flow] -> St
 placeBlank env st0 f rest = case sBlank st0 of
@@ -162,11 +166,17 @@ placeBlank env st0 f rest = case sBlank st0 of
     let capacity = envCapacity env
         st1 = if startsRecto f then parityStart env odd st0 else st0
         total = foldl' (\a (_, n) -> min capacity (a + min capacity n)) 0 blanks
-        st2 = if sUsed st1 /= top st1 && total + needIn env st1 mempty (nextNeed env (f : rest)) > free env st1 then nextColumn env st1 else st1
+        -- at the top of a column the blank lines are dropped: nothing more is needed for them
+        st2 = keep env st1 (\s -> if sUsed s == top s then 0 else total + needIn env s mempty (nextNeed env (f : rest)))
      in if sUsed st2 == top st2
           then foldl' (\s' (sp, _) -> addUnmet (DroppedBlank sp) s') st2 {sBlank = []} blanks
           else st2 {sUsed = sUsed st2 + total, sBlank = []}
 
+{- | A need-lines beyond the grid lines of the column is unmet and goes to
+the next column; any other goes on until its lines are free or the
+column is empty, the figures sent on and the continued notes counted in
+the columns gone on to (golem-layout ADR 0025).
+-}
 applyNeed :: Env -> St -> St
 applyNeed env st = case sNeed st of
   Nothing -> st
@@ -174,8 +184,7 @@ applyNeed env st = case sNeed st of
     | n > cap env st ->
         let st1 = addUnmet (UnmetNeedLines sp n) st {sNeed = Nothing}
          in if isEmpty st1 then st1 else nextColumn env st1
-    | free env st < n && not (isEmpty st) -> nextColumn env st {sNeed = Nothing}
-    | otherwise -> st {sNeed = Nothing}
+    | otherwise -> keep env st {sNeed = Nothing} (const n)
 
 -- | At least one line and the lines placed, at most maxLines.
 adjustLines :: Env -> St -> SrcSpan -> Int -> St
@@ -259,12 +268,14 @@ place env st f rest = case f of
   FParagraph ls -> placeLines env st True ls
   FStanza vs -> placeStanza env st True vs
   FContinued ls -> placeLines env st False ls
-  -- the space before a table only below the first line of a column (golem-driver ADR 0031)
+  -- the space before a table only below the first line of a column (golem-driver ADR 0031);
+  -- in the columns gone on to, the header and the first row are kept together (golem-layout ADR 0025)
   FTable i sp0 h rows ->
     let sp = if sUsed st == top st then 0 else sp0
+        headed = length h + maybe 0 length (listToMaybe rows)
         st1
-          | sp + length h + maybe 0 length (listToMaybe rows) <= free env st || isEmpty st = st {sUsed = sUsed st + min sp (free env st)}
-          | otherwise = nextColumn env st
+          | sp + headed <= free env st || isEmpty st = st {sUsed = sUsed st + min sp (free env st)}
+          | otherwise = keep env (nextColumn env st) (const headed)
      in placeTable env st1 i h rows
   FDefTerm ls -> placeLines env (keep env st (\s -> needIn env s (termNeed ls) need)) True ls
   -- the notes of a heading count as the notes of a line do (golem-layout ADR 0013)
@@ -284,7 +295,8 @@ place env st f rest = case f of
   FWrapped i n labels marks beside ->
     let st0 = flushFigures env st
         size = max n (length beside)
-        st1 = if size <= free env st0 || isEmpty st0 then st0 else nextColumn env st0
+        -- the continued notes take the foot of the columns gone on to (golem-layout ADR 0025)
+        st1 = keep env st0 (const size)
         st2 = putSlot st1 0 (SWrapped i) labels marks
      in (placeLines env st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines env st2 False beside))}
   FBreak k -> st {sBreaks = sBreaks st <> [k]}
@@ -447,7 +459,9 @@ flushJoin env st = case sJoin st of
      in st {sRules = sRules st <> [PlacedRule aid False (fromIntegral aLast * p + h + off)], sUsed = sUsed st + min k (free env st), sJoin = Nothing}
 
 {- | A table: rows whole, a page break between rows repeats the header
-without its labels, notes and marks (golem-driver ADR 0008).
+without its labels, notes and marks (golem-driver ADR 0008). The
+repeated header and the next row go on past the columns that the figures
+sent on and the continued notes leave too little of (golem-layout ADR 0025).
 -}
 placeTable :: Env -> St -> Int -> [LineBox] -> [[LineBox]] -> St
 placeTable env st i h rows =
@@ -458,7 +472,7 @@ placeTable env st i h rows =
         | fitting env stc r >= length r || sUsed stc == first + length h = rowsFrom (foldl' (putLine env) stc r) first rest
         | otherwise =
             let closed = segment stc first
-                fresh = nextColumn env closed
+                fresh = keep env (nextColumn env closed) (const (length h + length r))
                 repeated = foldl' (putLine env) fresh [l {lbNotes = [], lbLabels = [], lbMarks = []} | l <- h]
              in rowsFrom repeated (sUsed fresh) (r : rest)
       headerEnd first = if null h then Nothing else Just (first + length h - 1)

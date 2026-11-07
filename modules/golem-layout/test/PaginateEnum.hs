@@ -5,7 +5,9 @@ holding the flows of n elements.
 
 The lines are numbered from 0 in the order of the flow, the figures
 from 1000. A paragraph with a note has it on its first line; a note
-takes one line, and its marker is named after the line.
+takes one line, and its marker is named after the line. A need-lines and
+blank lines have the span of their place among the controls of the flow
+(golem-layout ADR 0025).
 -}
 module PaginateEnum
   ( Element (..),
@@ -15,6 +17,7 @@ module PaginateEnum
     enumFlows,
     paginateInput,
     noteOf,
+    controlSpan,
     renderInput,
     renderCase,
   )
@@ -23,7 +26,7 @@ where
 import Data.List (intercalate)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Paginate
-import Golem.Syntax (FileId (..), mkSpan)
+import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Golem.TestSupport.Enum
 
 -- | One element of a flow.
@@ -44,6 +47,10 @@ data Element
     ESpace
   | -- | a page break
     EBreak
+  | -- | @need-lines 2@ (golem-layout ADR 0025)
+    ENeedLines
+  | -- | blank lines of n lines (golem-layout ADR 0025)
+    EBlank !Int
   deriving stock (Eq, Show)
 
 -- | The grid lines of a column, the columns of a page and the elements of the flow.
@@ -52,7 +59,8 @@ data Input = Input {inLines :: !Int, inColumns :: !Int, inElements :: ![Element]
 
 {- | The elements of a flow in columns of c grid lines: figures of up to
 c lines, as golem-driver shrinks a figure to fit an empty column
-(docs/adr/0206).
+(docs/adr/0206), and need-lines of 2 and blank lines of 1 and 2 lines
+(golem-layout ADR 0025).
 -}
 elementsFor :: Int -> [Element]
 elementsFor c =
@@ -61,6 +69,7 @@ elementsFor c =
     <> [EHeading, ENotedHeading, ERecto]
     <> map EFigure [1 .. c]
     <> [ESpace, EBreak]
+    <> [ENeedLines, EBlank 1, EBlank 2]
 
 {- | Every input, tier n holding the flows of n elements, the columns of
 fewer grid lines and the pages of fewer columns first.
@@ -72,21 +81,27 @@ inputs = foldr1 (\/) [mapT (Input c k) (listsOf (Tiers [elementsFor c])) | c <- 
 noteOf :: Int -> NoteId
 noteOf i = NoteId (mkSpan (FileId 0) i (i + 1)) 0
 
--- | The flow of the elements: lines numbered from 0, figures from 1000.
+-- | The span of the control m of a flow, from 0.
+controlSpan :: Int -> SrcSpan
+controlSpan m = mkSpan (FileId 1) m (m + 1)
+
+-- | The flow of the elements: lines numbered from 0, figures from 1000, controls from 0.
 enumFlows :: [Element] -> [Flow]
-enumFlows = go 0 1000
+enumFlows = go 0 1000 0
   where
-    go :: Int -> Int -> [Element] -> [Flow]
-    go _ _ [] = []
-    go i j (e : rest) = case e of
-      EPara n -> FParagraph (plain i n) : go (i + n) j rest
-      ENotedPara n -> FParagraph (noted i : plain (i + 1) (n - 1)) : go (i + n) j rest
-      EHeading -> FHeading 2 False 1 (plain i 1) : go (i + 1) j rest
-      ENotedHeading -> FHeading 2 False 1 [noted i] : go (i + 1) j rest
-      ERecto -> FHeading 1 True 1 (plain i 1) : go (i + 1) j rest
-      EFigure n -> FFigure j n [] [] : go i (j + 1) rest
-      ESpace -> FSpace 1 : go i j rest
-      EBreak -> FBreak BreakPage : go i j rest
+    go :: Int -> Int -> Int -> [Element] -> [Flow]
+    go _ _ _ [] = []
+    go i j m (e : rest) = case e of
+      EPara n -> FParagraph (plain i n) : go (i + n) j m rest
+      ENotedPara n -> FParagraph (noted i : plain (i + 1) (n - 1)) : go (i + n) j m rest
+      EHeading -> FHeading 2 False 1 (plain i 1) : go (i + 1) j m rest
+      ENotedHeading -> FHeading 2 False 1 [noted i] : go (i + 1) j m rest
+      ERecto -> FHeading 1 True 1 (plain i 1) : go (i + 1) j m rest
+      EFigure n -> FFigure j n [] [] : go i (j + 1) m rest
+      ESpace -> FSpace 1 : go i j m rest
+      EBreak -> FBreak BreakPage : go i j m rest
+      ENeedLines -> FNeedLines (controlSpan m) 2 : go i j (m + 1) rest
+      EBlank n -> FBlank (controlSpan m) n : go i j (m + 1) rest
     plain base n = [LineBox (base + k) [] [] [] 0 | k <- [0 .. n - 1]]
     noted i = LineBox i [NoteBody (noteOf i) 1] [] [] 0
 
