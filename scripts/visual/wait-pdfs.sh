@@ -3,10 +3,12 @@
 # visual regression test has uploaded the artifact visual-pdfs, so that
 # visual does not wait for the whole build matrix (docs/adr/0099).
 #
-#   wait-pdfs.sh RUN ATTEMPT JOB
+#   wait-pdfs.sh RUN ATTEMPT JOB [ARTIFACT]
 #
 # RUN and ATTEMPT are those of this workflow run (GITHUB_RUN_ID,
 # GITHUB_RUN_ATTEMPT), JOB the name of the job that uploads visual-pdfs.
+# ARTIFACT waits for another artifact of JOB instead: the job wasm waits
+# so for wasm-native-list (docs/adr/0199).
 # gh reads the repository from GH_REPO and the token from GH_TOKEN. Every
 # WAIT_INTERVAL seconds (10 by default) it asks for the artifact; it exits
 # 0 once the run has it, and 1 when JOB is completed without it, or when
@@ -20,13 +22,13 @@
 # is not the job. When two or more jobs match, it exits 1 with their names
 # instead of choosing one.
 set -eu
-[ $# -eq 3 ] || { echo "usage: wait-pdfs.sh RUN ATTEMPT JOB" >&2; exit 2; }
-RUN=$1 ATTEMPT=$2 JOB=$3
+[ $# -eq 3 ] || [ $# -eq 4 ] || { echo "usage: wait-pdfs.sh RUN ATTEMPT JOB [ARTIFACT]" >&2; exit 2; }
+RUN=$1 ATTEMPT=$2 JOB=$3 ARTIFACT=${4:-visual-pdfs}
 INTERVAL=${WAIT_INTERVAL:-10}
 while :; do
-  n=$(gh api "repos/{owner}/{repo}/actions/runs/$RUN/artifacts?name=visual-pdfs" --jq '[.artifacts[] | select(.expired | not)] | length')
+  n=$(gh api "repos/{owner}/{repo}/actions/runs/$RUN/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')
   if [ "$n" -gt 0 ]; then
-    echo "wait-pdfs: visual-pdfs is uploaded" >&2
+    echo "wait-pdfs: $ARTIFACT is uploaded" >&2
     exit 0
   fi
   jobs=$(gh api --paginate "repos/{owner}/{repo}/actions/runs/$RUN/attempts/$ATTEMPT/jobs" --jq '.jobs[] | [.name, .status] | @tsv')
@@ -51,9 +53,9 @@ while :; do
   status=$(printf '%s\n' "$found" | cut -f 2)
   if [ "$status" = completed ]; then
     # the artifact is uploaded before the job completes; ask once more
-    n=$(gh api "repos/{owner}/{repo}/actions/runs/$RUN/artifacts?name=visual-pdfs" --jq '[.artifacts[] | select(.expired | not)] | length')
+    n=$(gh api "repos/{owner}/{repo}/actions/runs/$RUN/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')
     if [ "$n" -gt 0 ]; then exit 0; fi
-    echo "wait-pdfs: '$name' completed without uploading visual-pdfs" >&2
+    echo "wait-pdfs: '$name' completed without uploading $ARTIFACT" >&2
     exit 1
   fi
   sleep "$INTERVAL"

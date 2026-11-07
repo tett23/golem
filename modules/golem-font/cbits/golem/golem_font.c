@@ -239,4 +239,4 @@ char *golem_font_postscript_name(golem_font *f) {
   return (char *)(n ? n : "");
 }
 
-void golem_free(void *p) { free(p); }
+void golem_font_free(void *p) { free(p); }

@@ -4,10 +4,12 @@
 # (macOS) installs the GMP header as ghc-gmp.h; GHC with the system GMP
 # (Alpine) has ghc-gmp.h include <gmp.h>, which is looked for in the
 # folders of GMP_INCLUDE_DIRS (by default /usr/include /usr/local/include;
-# the tests set it, docs/adr/0078).
+# the tests set it, docs/adr/0078). GMP_GHC chooses another GHC: the wasm
+# GHC (wasm32-wasi-ghc) for the GMP of golem.wasm (docs/adr/0199), which
+# it builds from its own copy (ghc-gmp.h).
 set -eu
 GHC_VERSION=${GHC_VERSION:-9.10.3}
-if command -v "ghc-$GHC_VERSION" >/dev/null 2>&1; then GHC=ghc-$GHC_VERSION; else GHC=ghc; fi
+if [ -n "${GMP_GHC:-}" ]; then GHC=$GMP_GHC; elif command -v "ghc-$GHC_VERSION" >/dev/null 2>&1; then GHC=ghc-$GHC_VERSION; else GHC=ghc; fi
 LIBDIR=$("$GHC" --print-libdir)
 version() { # version HEADER
   major=$(sed -n 's/^#define __GNU_MP_VERSION[[:space:]]*\([0-9]*\)$/\1/p' "$1")

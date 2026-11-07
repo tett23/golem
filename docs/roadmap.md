@@ -222,6 +222,8 @@ v3 の GUI は、次の原則に従って作る。
 - **タグ付き PDF の読み上げ**：タグ付き PDF を、macOS の VoiceOver と Acrobat Reader、Windows の NVDA と Acrobat Reader で読み、縦組みの本文、ルビ（親文字の後に読み）、注（印の直後に注の本文）の読む順と、図版の代替テキストが読まれることを確かめていない。veraPDF が調べるのは PDF/UA-1 のうち自動で調べられる要件だけである（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
 - **PDF のリンクの注釈**：リンクを含む横組みと縦組みの PDF を、Acrobat Reader、macOS のプレビュー、Chrome の PDF ビューアで開き、リンクの矩形をクリックして URL が開くことを確かめていない。ISO 15930-7:2010（PDF/X-4）の本文で、注釈と URI のアクションを禁じる規定がないことも確かめていない。禁じる規定があれば、`[color] intent` のある本にリンクを書く扱いを改める ADR を作る（[docs/adr/0182](adr/0182-external-links.md)）。
 - **改ページの規則の Alloy のモデル**：改ページの規則を変える ADR では、`docs/golem-layout/models/pagination.als` のモデルを直して走らせ直し、両立しない規則の組と最も小さい例を `docs/golem-layout/models/README.md` に書き直す。モデルは CI で走らせないので、手で確かめる（[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)）。
+- **wasm の版のリリース**：`release.yml` のジョブ `wasm` を実際のタグで動かしていない。自動のテスト（`scripts/release/test.sh`）は、`licenses.sh --wasm` と `package-wasm.sh` を偽のコマンドと偽の入力で確かめただけである。`v` のタグの下書きのリリースに `golem-<タグ>-wasm32-wasi.tar.gz` があり、その `THIRD_PARTY_LICENSES/` が [ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md) の 8 の挙げるものを持ち、`SHA256SUMS` と `gh attestation verify` が通ることを確かめる（[docs/adr/0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
+- **wasm の版をブラウザで組むこと**：`browser_wasi_shim` を使い、Safari と Chrome で kanikosen を組み、PDF の SHA-256 がネイティブの `golem build --target pdf` と同じになることを確かめていない。CI は Node の `node:wasi` で確かめるだけである。結果をこの項目に書き、項目を外す（[docs/adr/0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
 - **epubcheck と apt の時間切れ**：epubcheck を配布元の release から取るようにした後の 30 回の `ci.yml` の実行で、apt と epubcheck の時間切れが一度も起きないことを確かめていない。結果は `docs/ci-timings/` に記録する（[docs/adr 0062](adr/0062-epubcheck-from-release-with-cache.md)）。
 
 ## 未決事項

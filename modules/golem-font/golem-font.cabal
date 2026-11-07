@@ -66,8 +66,16 @@ library
   cxx-sources:
     cbits/harfbuzz/src/harfbuzz-world.cc
   cxx-options:      -DHB_HAS_SUBSET -ffp-contract=off -std=c++11 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2
+  -- wasm32-wasi (docs/adr/0199, docs/adr/0202): FreeType reads setjmp.h,
+  -- which wasi-sdk takes only with the exception handling of wasm
+  -- (-mllvm -wasm-enable-sjlj and the library setjmp); the C++ library of
+  -- wasi-sdk is libc++ with libc++abi. The native builds do not change
+  if os(wasi)
+    cc-options:      -mllvm -wasm-enable-sjlj
   if os(darwin)
     extra-libraries: c++
+  elif os(wasi)
+    extra-libraries: c++ c++abi setjmp
   else
     extra-libraries: stdc++
 

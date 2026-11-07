@@ -1,0 +1,71 @@
+golem.wasm: the PDF of Golem as a WebAssembly reactor module
+==============================================================
+
+golem.wasm builds the PDF of a Golem project from the bytes of its files,
+with the same build as `golem build --target pdf` of the native golem of
+the same version, and reads no file. It is a WASI (preview 1) reactor
+module: it imports only wasi_snapshot_preview1, and needs no preopened
+directory. It runs under the node:wasi of Node, wasmtime, Deno and, with
+browser_wasi_shim, in a browser. It has no plugins (golem-plugin): a
+project with [plugins] or a plugin filter in [[filters]] gives the error
+G06106 and no PDF.
+
+Exports
+-------
+
+The functions use the C ABI. The host calls _initialize once, then
+hs_init(0, 0) once, then the others.
+
+  uint8_t *golem_alloc(uint32_t len)
+      a buffer of len bytes for the input
+  void golem_free(uint8_t *p)
+      frees a buffer of golem_alloc, golem_build_pdf or golem_version
+  uint8_t *golem_build_pdf(const uint8_t *in, uint32_t len)
+      reads the input frame, builds the PDF and returns the result frame
+  uint32_t golem_result_len(const uint8_t *r)
+      the length of a buffer of golem_build_pdf or golem_version
+  uint8_t *golem_version(void)
+      VERSION of Golem, in UTF-8 (its length is golem_result_len)
+
+The module exports memory too, where the host writes the input and reads
+the results.
+
+The input frame
+---------------
+
+A sequence of files. Each file is the length of its path (uint32,
+little-endian), its path (UTF-8), the length of its content (uint32,
+little-endian) and its content. A path is relative to the root of the
+project and normalised: no "." nor ".." segment, no empty segment, not
+absolute, not a URL (manifest.toml, style.toml, chapter.gm,
+fonts/NotoSerifJP-Regular.otf). No path comes twice. The files are those
+of the project folder: manifest.toml, style.toml, the sources, the fonts,
+the figures, the tables, the bibliographies and the .emet.
+
+The result frame
+----------------
+
+One byte of status, the length of the PDF (uint32, little-endian), the
+PDF, the length of the JSON of the diagnostics (uint32, little-endian) and
+the JSON.
+
+  status 0  built. A PDF of length 0: an error stopped it, and the JSON
+            says why.
+  status 1  the input frame cannot be read (a length beyond the end, a
+            path that is not UTF-8 or not normalised, a path twice). Both
+            lengths are 0.
+
+The JSON is that of `golem build --target pdf --format json` on its
+standard error: one object for each diagnostic, with the code, the
+severity, the span (file, line, column) and the message. The build is that
+of `golem build --target pdf` with its defaults: the profile dev, no crop
+marks, the notices and the infos as by default.
+
+Licenses
+--------
+
+golem.wasm is under the MIT License (LICENSE). It links the software in
+THIRD_PARTY_LICENSES/, whose README lists them; GNU MP is under the LGPL,
+and its source is attached to the GitHub release.
+
+The documentation of Golem: https://github.com/tett23/golem
