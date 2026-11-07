@@ -201,8 +201,10 @@ tallyAllPar = tallyAllParWith numCapabilities parChunk
 checks at a time given.
 
 Each tier is taken in blocks of @workers * chunk@ values, in order. A
-block is cut into parts of @chunk@ values that follow one another, and
-each part is checked by a spark, up to its first value with violations.
+block is cut into four parts for each worker, of values that follow one
+another (fewer when the block has fewer values), so that a worker that
+ends its part early takes another, and each part is checked by a spark,
+up to its first value with violations.
 The first part of the block with such a value holds the first such
 value of the block: the block before it is passed, and the value is the
 one 'tallyAll' returns. Only one block is held at a time, so that the
@@ -212,13 +214,15 @@ tallyAllParWith :: (Monoid m) => Int -> Int -> Int -> Tiers a -> (a -> ([Violati
 tallyAllParWith workers chunk n xs check = tiersFrom 0 mempty (zip [0 :: Int ..] (upTo n xs))
   where
     size = max 1 workers * max 1 chunk
+    partsPerBlock = 4 * max 1 workers
     tiersFrom count acc [] = (Passed count, acc)
     tiersFrom count acc ((k, t) : rest) = blocks count acc t
       where
         blocks c a [] = tiersFrom c a rest
         blocks c a ys =
           let (block, more) = splitAt size ys
-              parts = map (checkPart check) (chunksOf (max 1 chunk) block)
+              perPart = max 1 ((length block + partsPerBlock - 1) `div` partsPerBlock)
+              parts = map (checkPart check) (chunksOf perPart block)
               combine c' a' [] = blocks c' a' more
               combine c' a' (Part found m checked : ps) =
                 let a'' = a' <> m
