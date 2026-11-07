@@ -129,7 +129,8 @@ PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折�
 PDF の索引は、`[index]` の `columns` と `column-gap` で、一段組みの本でも二段のように版面と異なる段数で組める（[docs/adr/0025](docs/adr/0025-index-columns.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
-どの PDF もタグ付き PDF で、`manifest.toml` の `[targets.pdf]` に `pdfa = "2a"` と `pdfua = "1"` を書けば PDF/A-2a と PDF/UA-1 に準拠させる。CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tagged-pdf-and-pdf-a.md)）。
+どの PDF もタグ付き PDF で、`manifest.toml` の `[targets.pdf]` に `pdfa = "2a"` と `pdfua = "1"` を書けば PDF/A-2a と PDF/UA-1 に準拠させる。
+CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tagged-pdf-and-pdf-a.md)）。
 PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には `golem preflight --marks japanese` を通し、その後に商用のプリフライト（Acrobat や pdfToolbox など）で確認する（[docs/golem-cli/adr/0006](docs/golem-cli/adr/0006-preflight.md)）。
 入稿する PDF は `golem build --target pdf --profile prod` で作る。
 `golem preflight` の要約の SHA-256 は、この PDF と一致する。

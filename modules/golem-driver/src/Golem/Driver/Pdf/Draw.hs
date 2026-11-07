@@ -183,8 +183,8 @@ data LineRec = LineRec
     -- | the swatches of the backgrounds of inline code on the line (golem-driver ADR 0029)
     lrBackgrounds :: ![P.Swatch],
     {- | the rectangles of the links on the line, on the page, in the order of
-    the line (docs/adr ADR 0182), each with the leaf of its first box (docs/adr ADR 0183) -}
-    lrLinks :: ![(LinkTarget, Maybe Leaf, Rect)]
+    the line (docs/adr ADR 0182), each with the leaf of its first box (docs/adr ADR 0183)
+    -} lrLinks :: ![(LinkTarget, Maybe Leaf, Rect)]
   }
 
 -- | What one page draws.

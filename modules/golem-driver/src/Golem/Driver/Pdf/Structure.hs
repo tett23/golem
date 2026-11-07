@@ -70,8 +70,8 @@ structureTree fe units figureAttrs =
             _ -> 0
           shown = T.concat (map inlineText xs)
           contents = if shown == u then u else shown <> "（" <> u <> "）"
-          -- the text rides in an attribute of no owner of the PDF until 'withoutTexts' takes it out
-       in (P.structElem P.SLink (kids <> [P.KidAnnot (P.AnnotId (site <> [first]))])) {P.seAttrs = [P.Attribute "Golem" [("Contents", P.OStr (TE.encodeUtf8 contents))]]}
+       in -- the text rides in an attribute of no owner of the PDF until 'withoutTexts' takes it out
+          (P.structElem P.SLink (kids <> [P.KidAnnot (P.AnnotId (site <> [first]))])) {P.seAttrs = [P.Attribute "Golem" [("Contents", P.OStr (TE.encodeUtf8 contents))]]}
     roleType = \case
       RoleLabel -> P.SLbl
       RoleRuby -> P.SRuby
