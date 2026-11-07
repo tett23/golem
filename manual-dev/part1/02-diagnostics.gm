@@ -128,8 +128,8 @@ diagnostic のコードは、[code: G] か [code: E] の後に 5 桁の数字を
 | 04 | 文書の組み立て（ラベル、相互参照、目次） | golem-assemble |
 | 05 | lint | golem-lint |
 | 06 | プラグイン | golem-plugin、golem-driver |
-| 07 | レイアウト（版面、改ページ、傍注、表） | golem-layout |
-| 08 | 出力（フォント、出力インテント） | golem-driver |
+| 07 | レイアウト（版面、改ページ、傍注、表） | golem-layout、golem-typeset |
+| 08 | 出力（フォント、出力インテント） | golem-typeset、golem-driver |
 | 09 | プリフライト | golem-preflight |
 
 一度割り当てたコードは、別の意味に再利用しない。
@@ -218,7 +218,7 @@ notice には、ほかの二つと違う性質が三つある。
 - 出力のバイト列を変えない。抑制しても、しなくても、PDF は同じである。
 
 人が読む形式では [code: notice\[G07030\]] のように書き、JSON では [code: "severity":"notice"] と書く。
-今の notice は次の二十二である。
+今の notice は次の二十七である。
 
 | コード | 内容 |
 | --- | --- |
@@ -229,8 +229,13 @@ notice には、ほかの二つと違う性質が三つある。
 | G02079 | 行を保つ段落の行末のエスケープした空白 |
 | G02094 | 続けて書いた [code: @blank-line] |
 | G02108 | [code: -] で区切った行の範囲（廃止予定） |
+| G02129 | [code: @table] の [code: src=]（廃止予定） |
 | G03023 | [code: style.toml] のないプロジェクト |
 | G03100 | キャプションと傍注の字下げ 0 |
+| G03114 | [code: \[lists\]] の [code: numbers] の [code: {{] と [code: }}]（廃止予定） |
+| G03115 | [code: \[lists\]] の [code: numbers] の一字の見本の差し込み（廃止予定） |
+| G03116 | 柱の書式の [code: {{] と [code: }}]（廃止予定） |
+| G03117 | [code: \[notes\]] の [code: mark-size]（廃止予定） |
 | G03120 | [code: \[source\]] に [code: paragraph-separator] のないプロジェクト |
 | G04007 | 自動の番号と同じ [code: @number] |
 | G04008 | 本の最後の改ページ |
