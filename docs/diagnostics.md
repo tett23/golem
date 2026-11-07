@@ -8481,7 +8481,7 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 リストの番号の [G07029](#g07029) とは、直すキーが違うのでコードを分ける。
 
 - メッセージ: `注の番号 <番号> は、[notes] の mark-format <書式> で表せません`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset`）
 - ADR: [docs/adr/0177](adr/0177-note-mark-style-and-numerals.md)
 
 ### 主な原因

@@ -58,6 +58,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
 import Golem.Assemble
+import Golem.Assemble.Formats (MarkFormat (..))
 import Golem.Assemble.ListMarkers (defaultNumberFormat, listNumberDiagnostics)
 import Golem.Bibliography (CslEntry (..), EntryPart, formatEntry)
 import Golem.Bibliography.Csl (CslJsonError (..), decodeCslJson)
@@ -77,7 +78,6 @@ import Golem.Eval.File
 import Golem.Eval.Functions (FunctionTable (..), noFunctions)
 import Golem.Eval.Value
 import Golem.Html
-import Golem.Numerals.Format (MarkFormat (..))
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
