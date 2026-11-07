@@ -81,7 +81,7 @@ tableWatchTests =
       testCase "a table file written as the first argument is watched, as one written as src=" $
         withProject [("a.gm", "@table data/p.tsv\n\n@table src=data/s.tsv\n"), ("data/p.tsv", "a\tb\n1\t2\n"), ("data/s.tsv", "a\tb\n1\t2\n")] $ \dir -> do
           ws <- openWorkspace dir
-          tablesToWatch ws @?= Set.fromList ["data/p.tsv", "data/s.tsv"]
+          tablesToWatch ws @?= Set.fromList ["data/p.tsv", "data/s.tsv", "manifest.toml"]
           tableFilesChanged ws {wsWatchedTables = tablesToWatch ws} ["data/p.tsv"] @?= True,
       testCase "a client with dynamic registration watches the table files; a fixed file clears G02085" $ withTableProject $ \dir -> do
         (regs, cleared, afterSwitch, unchanged) <- lspSession True dir $ do
