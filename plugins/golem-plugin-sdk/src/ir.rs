@@ -341,7 +341,8 @@ fn items_value(items: &[ListItem]) -> Value {
 
 /// A figure (tag 7) of an image the response carries: its source
 /// `plugin:<image>`, no web image, the alt text and the caption; not
-/// wrapped, of no width, not turned (docs/adr/0123).
+/// wrapped, of no width, not turned (docs/adr/0123), numbered
+/// (docs/adr/0200).
 pub fn figure(span: Span, image: &str, alt: &str, caption: Vec<Block>) -> Block {
     let body = Value::Array(vec![
         int(7u8),
@@ -353,6 +354,7 @@ pub fn figure(span: Span, image: &str, alt: &str, caption: Vec<Block>) -> Block 
             Value::Null,
             blocks_value(&caption),
             Value::Null,
+            Value::Bool(false),
             Value::Bool(false),
         ]),
     ]);

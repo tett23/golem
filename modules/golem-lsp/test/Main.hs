@@ -314,6 +314,22 @@ tests =
         assertBool "evaluated" (isJust (wsEvaluated ws))
         -- the G05004 of line 1 after the G04003 of line 4, an error of the assembly that keeps the book for lint
         codesOf ws "a.gm" @?= ["G04003", "G05004"],
+      testCase "a @nonumber figure in a preface: no G04004, and G04005 at a ref-number to it (docs/adr/0200)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "ja"})
+            src = "@nonumber\n# はじめに\n\n@label fig-flow\n@nonumber\n@figure images/flow.svg alt=\"流れ\"\n  仕事の流れ。\n\n# 一\n\n本文。\n" :: Text
+            ref = "\n図は[ref-number fig-flow]。\n" :: Text
+        createDirectoryIfMissing True (tmp </> "images")
+        BS.writeFile (tmp </> "images/flow.svg") "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"/>\n"
+        BS.writeFile (tmp </> "manifest.toml") manifest
+        BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 src)
+        ws <- openWorkspace tmp
+        assertBool "evaluated" (isJust (wsEvaluated ws))
+        -- no G04004; only the lint of the label not referred to yet
+        codesOf ws "a.gm" @?= ["G05004"]
+        ws' <- updateFile ws "a.gm" (src <> ref)
+        let at = BS.length (TE.encodeUtf8 (src <> fst (T.breakOn "[ref-number" ref)))
+        [(c, spanStart (diagSpan d)) | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws')), let DiagnosticCode c = diagCode d]
+          @?= [("G04005", at)],
       testCase "a notice is published as Information (golem-syntax ADR 0002)" $ do
         lspSeverity Notice @?= L.DiagnosticSeverity_Information
         lspSeverity Warning @?= L.DiagnosticSeverity_Warning

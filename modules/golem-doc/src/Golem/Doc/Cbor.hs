@@ -119,8 +119,8 @@ pageControlT = \case
   AdjustLines n -> TList [int (2 :: Int), int n]
 
 codeT :: Code -> Term
-codeT (Code lang nums file cap diff ls) =
-  TList [opt text lang, opt TBool nums, opt text file, opt inlinesTerm cap, TBool diff, list lineT ls]
+codeT (Code lang nums file cap diff ls nn) =
+  TList [opt text lang, opt TBool nums, opt text file, opt inlinesTerm cap, TBool diff, list lineT ls, TBool nn]
   where
     lineT (CodeLine t n d h cs) = TList [text t, opt int n, opt (int . fromEnum) d, TBool h, list int cs]
 
@@ -131,8 +131,8 @@ itemT :: ListItem -> Term
 itemT (ListItem n bs) = TList [opt int n, list blockT bs]
 
 figureT :: Figure -> Term
-figureT (Figure src web alt wr w cap pg rot) =
-  TList [text src, opt text web, text alt, opt (int . fromEnum) wr, opt text w, list blockT cap, opt int pg, TBool rot]
+figureT (Figure src web alt wr w cap pg rot nn) =
+  TList [text src, opt text web, text alt, opt (int . fromEnum) wr, opt text w, list blockT cap, opt int pg, TBool rot, TBool nn]
 
 channelT :: ChannelBlock -> Term
 channelT = \case
@@ -377,7 +377,7 @@ termPageControl t =
 termCode :: Term -> D Code
 termCode t =
   asList t >>= \case
-    [l, n, f, c, d, ls] -> Code <$> asOpt asText l <*> asOpt asBool n <*> asOpt asText f <*> asOpt termInlinesE c <*> asBool d <*> (asList ls >>= traverse termLine)
+    [l, n, f, c, d, ls, nn] -> Code <$> asOpt asText l <*> asOpt asBool n <*> asOpt asText f <*> asOpt termInlinesE c <*> asBool d <*> (asList ls >>= traverse termLine) <*> asBool nn
     _ -> bad "コードブロック"
   where
     termLine x =
@@ -406,8 +406,8 @@ termGroup t =
 termFigure :: Term -> D Figure
 termFigure t =
   asList t >>= \case
-    [src, web, alt, wr, w, cap, pg, rot] ->
-      Figure <$> asText src <*> asOpt asText web <*> asText alt <*> asOpt asEnum wr <*> asOpt asText w <*> (asList cap >>= traverse termBlock) <*> asOpt asNatural pg <*> asBool rot
+    [src, web, alt, wr, w, cap, pg, rot, nn] ->
+      Figure <$> asText src <*> asOpt asText web <*> asText alt <*> asOpt asEnum wr <*> asOpt asText w <*> (asList cap >>= traverse termBlock) <*> asOpt asNatural pg <*> asBool rot <*> asBool nn
     _ -> bad "図版"
 
 termChannel :: Term -> D ChannelBlock

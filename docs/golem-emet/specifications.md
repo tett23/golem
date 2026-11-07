@@ -179,10 +179,10 @@ pub fn total :: List Nat -> Nat
 | `Block.ListItem` | `ListItem (Maybe Nat) (List Block)`（番号と中身） |
 | `Block.DefGroup` | `DefGroup (List Inlines) (List Blocks)`（語と定義） |
 | `Block.Alignment` | `AlignDefault`、`AlignLeft`、`AlignCenter`、`AlignRight` |
-| `Block.Code` | `Code { lang :: Maybe String, numbers :: Maybe Bool, file :: Maybe String, caption :: Maybe Inlines, diff :: Bool, lines :: List CodeLine }` |
+| `Block.Code` | `Code { lang :: Maybe String, numbers :: Maybe Bool, file :: Maybe String, caption :: Maybe Inlines, diff :: Bool, lines :: List CodeLine, nonumber :: Bool }` |
 | `Block.CodeLine` | `CodeLine { text :: String, number :: Maybe Nat, mark :: Maybe DiffMark, highlight :: Bool, callouts :: List Nat }` |
 | `Block.DiffMark` | `Added`、`Removed`、`Unchanged` |
-| `Block.Figure` | `Figure { source :: String, web :: Maybe String, alt :: String, wrap :: Maybe Wrap, width :: Maybe String, caption :: Blocks, page :: Maybe Nat, rotate :: Bool }` |
+| `Block.Figure` | `Figure { source :: String, web :: Maybe String, alt :: String, wrap :: Maybe Wrap, width :: Maybe String, caption :: Blocks, page :: Maybe Nat, rotate :: Bool, nonumber :: Bool }` |
 | `Block.Wrap` | `WrapStart`、`WrapEnd` |
 | `Block.Channel` | `TocOutput Nat`、`IndexOutput`、`BibliographyOutput`、`CustomOutput String (Maybe String)` |
 | `Block.BreakKind` | `BreakPage`、`BreakRecto`、`BreakVerso`、`BreakColumn` |

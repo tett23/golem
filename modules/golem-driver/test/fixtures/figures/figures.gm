@@ -44,3 +44,15 @@ tRNS で透過する PNG も、PDF で透過を保つ。
 
 @figure images/trns-rgb16.png alt="透明の画素と黒"
   tRNS のある 16 ビットの RGB の PNG。
+
+@nonumber
+# あとがき
+
+章の外の図版は、@nonumber を付けると番号なしで組む（docs/adr/0200）。
+
+@nonumber
+@figure images/diagram.svg alt="番号のない図版"
+  番号のない図版。
+
+@nonumber
+@figure images/diagram.svg alt="番号もキャプションもない図版"

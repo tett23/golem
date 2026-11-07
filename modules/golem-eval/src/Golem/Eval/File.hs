@@ -922,7 +922,15 @@ attributedGroup ctx sp cmds target = case target of
             (asp : _) -> modify' (\s -> s {stNumberSites = Map.insert bsp asp (stNumberSites s)})
             [] -> pure ()
           (label, body') <- foldM' (applyAttr ctx) (Nothing, body) attrs
-          pure (Block bsp label body' : rest)
+          -- G02134: @nonumber on a code block without a caption, whichever line comes first (docs/adr/0200)
+          body'' <- case body' of
+            CodeBlock c
+              | codeNoNumber c,
+                Nothing <- codeCaption c -> do
+                  mapM_ (\asp -> err "G02134" asp "キャプションのないコードブロックは番号を持たないので、@nonumber は要りません") (take 1 [asp | ("nonumber", asp) <- named])
+                  pure (CodeBlock c {codeNoNumber = False})
+            _ -> pure body'
+          pure (Block bsp label body'' : rest)
         [] -> pure []
     -- a target that is not a paragraph keeps no newlines
     joinTarget = \case
@@ -1125,6 +1133,9 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
     ("number", Heading l a is) -> withNumber $ \n -> Heading l a {haNumber = Just n} is
     ("number", OrderedList (ListItem _ bs : rest)) -> withNumber $ \n -> OrderedList (ListItem (Just n) bs : rest)
     ("nonumber", Heading l a is) -> pure (label, Heading l a {haNoNumber = True} is)
+    -- a figure and a code block without a number (docs/adr/0200); G02134 is decided after every attribute
+    ("nonumber", FigureBlock f) -> pure (label, FigureBlock f {figNoNumber = True})
+    ("nonumber", CodeBlock c) -> pure (label, CodeBlock c {codeNoNumber = True})
     ("notoc", Heading l a is) -> pure (label, Heading l a {haNoToc = True} is)
     -- the style of a paragraph is applied when the paragraph is evaluated
     ("style", Paragraph {}) -> pure (label, body)
@@ -1452,7 +1463,7 @@ figure ctx sp args body = do
                 (_, Left r) -> err "G02087" sp ("rotate は true か false です: " <> r) >> pure []
                 (Right wr, Right rot) -> case figureLayoutError sp (maybe sp (\(A.Located wsp _) -> wsp) (keywordAt "width" args)) wr rot (look "width") of
                   Just d -> report d >> pure []
-                  Nothing -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page) rot))]
+                  Nothing -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page) rot False))]
     _ -> err "G02032" sp "@figure には画像のパスを一つ書きます" >> pure []
   where
     check p = isJust <$> asset ctx sp p
@@ -1917,7 +1928,8 @@ codeOf bsp ca0 start lang ls = do
         codeFile = caFile ca,
         codeCaption = Nothing,
         codeDiff = caDiff ca,
-        codeLines = [l {clHighlight = maybe False ((`Set.member` hl) . toInteger) (clNumber l)} | l <- numbered]
+        codeLines = [l {clHighlight = maybe False ((`Set.member` hl) . toInteger) (clNumber l)} | l <- numbered],
+        codeNoNumber = False
       }
   where
     firstOf c = case caNumbers c of

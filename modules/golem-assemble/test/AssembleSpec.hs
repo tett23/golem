@@ -67,7 +67,7 @@ tests =
           [Document _ [_, _, Block _ _ (Paragraph Nothing is)]] -> is @?= [Text (sp 1 9) "count=2"]
           other -> assertFailure (show other),
       testCase "figure numbers restart per chapter" $ do
-        let fig f s = Block (sp f s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False))
+        let fig f s = Block (sp f s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
             docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", fig 1 2, fig 1 4, heading 1 6 1 noHeadingAttrs Nothing "二", fig 1 8]]
             (book, ds) = assemble cfg noEval docs
         ds @?= []
@@ -153,7 +153,7 @@ titleCopyTests =
           other -> assertFailure (show other),
       testCase "the label's title of a captioned code block has no marks" $ do
         let mark = IndexMark (sp 1 3) (IndexEntry ["組"] ["くみ"])
-            code = Block (sp 1 1) (Just "c") (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 2) "例", mark]) False []))
+            code = Block (sp 1 1) (Just "c") (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 2) "例", mark]) False [] False))
             docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", code, para 1 7 [Ref (sp 1 8) RefTitle "c"]]]
         case bookDocs (fst (assemble cfg noEval docs)) of
           [Document _ [_, _, Block _ _ (Paragraph _ copied)]] -> copied @?= [Text (sp 1 8) "例"]
@@ -296,15 +296,41 @@ diagnosticCodes =
           [Document _ (Block _ _ (Paragraph Nothing is) : _)] -> is @?= []
           other -> assertFailure (show other),
       testCase "G04004: figures outside a chapter, before the first and after a @nonumber chapter" $ do
-        let fig s = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False))
+        let fig s = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
             docs = [Document (FileId 1) [fig 0, heading 1 2 1 noHeadingAttrs Nothing "一", fig 4, heading 1 6 1 noHeadingAttrs {haNoNumber = True} Nothing "あとがき", fig 8]]
-            msg = "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります"
+            msg = "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます"
         map summary (snd (assemble cfg noEval docs))
           @?= [("G04004", Error, sp 1 0, msg, []), ("G04004", Error, sp 1 8, msg, [])]
         snd (assemble cfg {acFigureFormat = "{n}"} noEval docs) @?= [],
+      -- docs/adr/0200
+      testCase "@nonumber figures and code blocks outside a chapter: no G04004, not in bookFigures nor bookListings" $ do
+        let fig s nn = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False nn))
+            code s nn = Block (sp 1 s) Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 s) "a"]) False [] nn))
+            (book, ds) = assemble cfg noEval [Document (FileId 1) [fig 0 True, code 1 True, heading 1 2 1 noHeadingAttrs {haNoNumber = True} Nothing "あとがき", fig 3 True, code 4 True]]
+        ds @?= []
+        bookFigures book @?= Map.empty
+        bookListings book @?= Map.empty,
+      testCase "@nonumber figures and code blocks in a chapter take no number" $ do
+        let fig s nn = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False nn))
+            code s nn = Block (sp 1 s) Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 s) "a"]) False [] nn))
+            (book, ds) = assemble cfg noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", fig 1 False, fig 2 True, fig 3 False, code 4 False, code 5 True, code 6 False]]
+        ds @?= []
+        Map.toAscList (bookFigures book) @?= [(sp 1 1, "図1-1"), (sp 1 3, "図1-2")]
+        Map.toAscList (bookListings book) @?= [(sp 1 4, "リスト1-1"), (sp 1 6, "リスト1-2")],
+      testCase "ref-number to a @nonumber figure or code block is G04005; ref-title gives the alt text and the caption" $ do
+        let fig = Block (sp 1 1) (Just "f") (FigureBlock (Figure "a.png" Nothing "代替" Nothing Nothing [] Nothing False True))
+            code = Block (sp 1 2) (Just "c") (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 2) "設定"]) False [] True))
+            docs refs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", fig, code, para 1 3 refs]]
+        map summary (snd (assemble cfg noEval (docs [Ref (sp 1 4) RefNumber "f", Ref (sp 1 5) RefNumber "c"])))
+          @?= [("G04005", Error, sp 1 4, "番号を持たない要素への参照です: f", []), ("G04005", Error, sp 1 5, "番号を持たない要素への参照です: c", [])]
+        let (book, ds) = assemble cfg noEval (docs [Ref (sp 1 4) RefTitle "f", Ref (sp 1 5) RefTitle "c"])
+        ds @?= []
+        case bookDocs book of
+          [Document _ [_, _, _, Block _ _ (Paragraph Nothing is)]] -> is @?= [Text (sp 1 4) "代替", Text (sp 1 5) "設定"]
+          other -> assertFailure (show other),
       testCase "listing numbers: per chapter, apart from figures, only with a caption (golem-driver ADR 0023)" $ do
-        let fig s = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False))
-            code s cap = Block (sp 1 s) Nothing (CodeBlock (Code Nothing Nothing Nothing cap False [CodeLine "x" (Just 1) Nothing False []]))
+        let fig s = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
+            code s cap = Block (sp 1 s) Nothing (CodeBlock (Code Nothing Nothing Nothing cap False [CodeLine "x" (Just 1) Nothing False []] False))
             capt t = Just [Text (sp 1 0) t]
             docs =
               [ Document
@@ -316,14 +342,14 @@ diagnosticCodes =
         Map.toAscList (bookListings book) @?= [(sp 1 2, "リスト1-1"), (sp 1 4, "リスト1-2"), (sp 1 6, "リスト2-1")]
         Map.elems (bookFigures book) @?= ["図1-1"],
       testCase "G04004: a captioned code block outside a chapter; not with a format without {chapter} (golem-driver ADR 0023)" $ do
-        let code = Block (sp 1 0) Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 0) "a"]) False []))
-            plain = Block (sp 1 1) Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False []))
+        let code = Block (sp 1 0) Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 0) "a"]) False [] False))
+            plain = Block (sp 1 1) Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [] False))
         map summary (snd (assemble cfg noEval [Document (FileId 1) [code, plain]]))
-          @?= [("G04004", Error, sp 1 0, "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります", [])]
+          @?= [("G04004", Error, sp 1 0, "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます", [])]
         snd (assemble cfg {acListingFormat = "リスト{n}"} noEval [Document (FileId 1) [code]]) @?= []
         Map.elems (bookListings (fst (assemble cfg {acListingFormat = "リスト{n}"} noEval [Document (FileId 1) [code]]))) @?= ["リスト1"],
       testCase "references to a captioned code block; ref-number to one without a caption is G04005 (golem-driver ADR 0023)" $ do
-        let code s lbl cap = Block (sp 1 s) (Just lbl) (CodeBlock (Code Nothing Nothing Nothing cap False []))
+        let code s lbl cap = Block (sp 1 s) (Just lbl) (CodeBlock (Code Nothing Nothing Nothing cap False [] False))
             docs =
               [ Document
                   (FileId 1)
@@ -357,7 +383,7 @@ diagnosticCodes =
           other -> assertFailure (show other)
         snd (assemble cfg noEval [Document (FileId 1) [p, para 1 5 [Ref (sp 1 6) RefPage "p"]]]) @?= []
         let h = heading 1 0 1 noHeadingAttrs (Just "h") "一"
-            f = Block (sp 1 2) (Just "f") (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False))
+            f = Block (sp 1 2) (Just "f") (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
         snd (assemble cfg noEval [Document (FileId 1) [h, f, para 1 5 [Ref (sp 1 6) RefTitle "h", Ref (sp 1 7) RefTitle "f"]]]) @?= []
     ]
 

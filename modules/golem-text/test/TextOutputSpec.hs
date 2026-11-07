@@ -180,9 +180,14 @@ tests =
     testCase "a line break is a newline" $
       only (horizontal (bookOf [para 0 [txt "一行目", LineBreak (at 1), txt "二行目"]])) @?= "一行目\n二行目\n",
     testCase "a figure is one line of number and caption in corner brackets" $
-      let fig = Figure "a.png" Nothing "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False
+      let fig = Figure "a.png" Nothing "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False False
           book = (bookOf [Block (at 0) Nothing (FigureBlock fig)]) {bookFigures = Map.fromList [(at 0, "図1-1")]}
        in only (horizontal book) @?= "［図1-1　キャプション］\n",
+    -- docs/adr/0200
+    testCase "a figure without a number is its caption in corner brackets; without a caption either, no line" $ do
+      let fig cap = Figure "a.png" Nothing "代替" Nothing Nothing cap Nothing False True
+      only (horizontal (bookOf [Block (at 0) Nothing (FigureBlock (fig [para 3 [txt "キャプション"]]))])) @?= "［キャプション］\n"
+      only (horizontal (bookOf [para 0 [txt "前"], Block (at 1) Nothing (FigureBlock (fig [])), para 2 [txt "後"]])) @?= "前\n\n後\n",
     testCase "a bullet list is ・ and the item" $
       let items = [ListItem Nothing [para 1 [txt "りんご"]], ListItem Nothing [para 2 [txt "みかん"]]]
        in only (horizontal (bookOf [Block (at 0) Nothing (BulletList items)])) @?= "・りんご\n・みかん\n",
@@ -199,7 +204,7 @@ tests =
       let table = Table [] [[txt "名前"], [txt "値"]] [[[txt "a"], [txt "1"]]]
        in only (horizontal (bookOf [Block (at 0) Nothing table])) @?= "名前\t値\na\t1\n",
     testCase "a code block is written as it is" $
-      only (horizontal (bookOf [Block (at 0) Nothing (CodeBlock (Code (Just "haskell") Nothing Nothing Nothing False [CodeLine "main = pure ()" (Just 1) Nothing False []]))])) @?= "main = pure ()\n",
+      only (horizontal (bookOf [Block (at 0) Nothing (CodeBlock (Code (Just "haskell") Nothing Nothing Nothing False [CodeLine "main = pure ()" (Just 1) Nothing False []] False))])) @?= "main = pure ()\n",
     testCase "a heading is its number, an ideographic space and its title" $
       let attrs = HeadingAttrs Nothing Nothing False False
           info = HeadingInfo 1 (Just [1]) (Just "第一章") [txt "はじめに"] "h-0-0" fid
