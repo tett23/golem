@@ -42,7 +42,7 @@ PDF/X-4 の適合を判定できる自由な検証ツールがないためであ
 PDF に PDF/X-4 の出力インテント[^intent]を書くのは、`style.toml` の `[color]` に `intent`（ICC プロファイルのパス）があるときだけである（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)、[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 `intent` があるときは、次の三つを書く。
 
-- **カタログの `OutputIntents`**：`S` を `GTS_PDFX` とした辞書を一つだけ置く。`DestOutputProfile` には、`intent` のファイルのバイト列を、`N` を 4 としたストリームとして埋め込む。`OutputConditionIdentifier` は、`intent` のパスが `JapanColor2001Coated` を含めば `JC200103`、含まなければファイル名から拡張子を除いたものとする。
+- **カタログの `OutputIntents`**：`S` を `GTS_PDFX` とした辞書を置く（PDF/A では二つめを足す。次の「PDF/A と PDF/UA の宣言」）。`DestOutputProfile` には、`intent` のファイルのバイト列を、`N` を 4 としたストリームとして埋め込む。`OutputConditionIdentifier` は、`intent` のパスが `JapanColor2001Coated` を含めば `JC200103`、含まなければファイル名から拡張子を除いたものとする。
 - **カタログの `Metadata`**：XMP のメタデータのストリームである。`pdfxid:GTS_PDFXVersion` を `PDF/X-4`、`pdf:Trapped` を `False` とし、題名、関係者の名前、日時、文書 ID とインスタンス ID、Producer を書く（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)、[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md)）。
 - **文書情報辞書の `Trapped` と `GTS_PDFXVersion`**：`Trapped` を `False`、`GTS_PDFXVersion` を `PDF/X-4` とする。
 
@@ -51,10 +51,55 @@ PDF に PDF/X-4 の出力インテント[^intent]を書くのは、`style.toml` 
 PDF の版（1.6）、各ページの `TrimBox` と `BleedBox`、フォントの埋め込み、文書情報辞書の `Title`、日時、`Producer` は、`intent` の有無によらず書く。
 `intent` のファイルがないときは G08006 のエラーとし、PDF を書かない（「style.toml」の節、[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
 
+すべての PDF のカタログに、`manifest.toml` の `[metadata]` の `language` を `/Lang` として書き、`/ViewerPreferences << /DisplayDocTitle true >>` を書く（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
+閲覧ソフトは、ファイルの名前の代わりに題を表示する。
+どちらも閲覧と読み上げにだけ働き、印刷の結果は変えない。
+
 これらは完全に同じ見た目にはならないし、それを目指さない。
 かわりに次の**媒体契約**を不変条件として固定する。
 意味内容は全媒体で同一とする。
 提示と、ページという概念に由来する派生物（ページ番号、柱[^running-head]、脚注の配置、相互参照の実現形）は媒体ごとに分岐する。
+
+### PDF/A と PDF/UA の宣言
+
+`manifest.toml` の `[targets.pdf]` の `pdfa` と `pdfua` で、PDF/A-2a（ISO 19005-2）と PDF/UA-1（ISO 14289-1）を宣言する（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
+
+```toml
+[targets.pdf]
+pdfa = "2a"
+pdfua = "1"
+```
+
+`pdfa` に書ける値は `"2a"` だけ、`pdfua` に書ける値は `"1"` だけである。
+ほかの値と、文字列でない値は G03001 とする。
+二つは別々に書ける。
+PDF/A は PDF/X-4 の上にだけ書くので、`pdfa` には `style.toml` の `[color]` の `intent` が要る。
+ないときは G03113 とし、PDF を書かない。
+`pdfua` だけを書いた本は、出力インテントを要しない。
+
+宣言した本は、PDF を組む前に次のことを検査し、どれもエラーとして PDF を書かない。
+HTML、EPUB、プレーンテキストは書く。
+dev と prod の両方で同じである。
+
+- `pdfa` か `pdfua` を書いた本で、`language` が BCP 47 の言語のタグの形でなければ G03119 とする。形だけを調べ、登録簿は調べない。
+- `pdfua` を書いた本で、最初の見出しが 1 の段でないか、見出しが前の見出しより二つ以上深ければ G07103 とする。浅くなる向きには、いくつ段を戻ってもよい。
+- `pdfa` を書いた本で、PDF に描く字が Unicode の私用領域の字に対応づけられれば G07104 とする。
+
+`pdfa = "2a"` の PDF には、PDF/X-4 の PDF に次のものを足す。
+
+- カタログの `OutputIntents` の二つめに、`S` を `GTS_PDFA1` とした出力インテントを置く。`DestOutputProfile` と `OutputConditionIdentifier` は、`GTS_PDFX` の出力インテントと同じにする。
+- XMP に `pdfaid:part`（`2`）と `pdfaid:conformance`（`A`）を書き、PDF/A が定義しない `pdf:Trapped` と `pdfxid:GTS_PDFXVersion` を、PDF/A の拡張スキーマ（`pdfaExtension:schemas`）で定義する。値の型は `Text`、分類は `internal` である。
+
+`pdfua = "1"` の PDF には、XMP に `pdfuaid:part`（`1`）を書く。
+`pdfa` もある PDF では、`pdfuaid:part` も拡張スキーマで定義する。
+`intent` のない PDF にも、`pdfua` があれば XMP（題名、日時、文書 ID とインスタンス ID、Producer）を書く。
+文書 ID とインスタンス ID は入力全体のハッシュから作るので、宣言を変えれば ID も変わる。
+PDF の版（1.6）、フォント、色、画像の書き方は、宣言によらない。
+`golem preflight` の G09014 は、PDF/A-2a の PDF にも PDF/X-4 の要件を検査する。
+PDF/A と PDF/UA の要件を Golem の中で一般に検査することはしない。
+
+取り込んだ PDF の図版の内容のストリームからは、アーティファクトの印付きの内容と、`MCID` を持つ印付きの内容の、印の演算子（`BMC`、`BDC`、`EMC`）を取り除く。
+中の内容は残すので、図版の見た目は変わらない。
 
 ## 処理の流れ
 

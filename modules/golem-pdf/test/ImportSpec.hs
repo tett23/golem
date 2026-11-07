@@ -150,7 +150,8 @@ tests =
       testGroup "what is refused" refusalTests,
       testGroup "colours" colourTests,
       testGroup "content streams named more than once (docs/adr ADR 0051)" reuseTests,
-      testGroup "writing" writingTests
+      testGroup "writing" writingTests,
+      testGroup "marked content (docs/adr ADR 0183)" markedTests
     ]
 
 xrefTests :: [TestTree]
@@ -378,6 +379,37 @@ reuseTests =
       ]
   ]
 
+{- | The operators of the marked content of artifacts and of marked content
+with an MCID are taken out of the content of a PDF figure; the content
+inside them and the rest stay (docs/adr ADR 0183). A page with optional
+content is refused before (OptionalContent), so its /OC is not tried here.
+-}
+markedTests :: [TestTree]
+markedTests =
+  [ testCase name $ do
+      p <- importOk 1 (classicPdf "" (onePage resources content))
+      ipContent p @?= expected
+  | (name, resources, content, expected) <-
+      [ ("an artifact with BMC", "<< >>", "/Artifact BMC 0 0 1 1 re f EMC 1 1 1 1 re f", "0 0 1 1 re f 1 1 1 1 re f"),
+        ("an artifact with properties", "<< >>", "/Artifact << /Type /Pagination >> BDC 0 0 1 1 re f EMC", "0 0 1 1 re f "),
+        ("marked content with an MCID", "<< >>", "/P << /MCID 0 >> BDC BT /F1 1 Tf (a) Tj ET EMC", "BT /F1 1 Tf (a) Tj ET "),
+        ("a span with ActualText stays", "<< >>", "/Span << /ActualText (fi) >> BDC 0 0 1 1 re f EMC", "/Span << /ActualText (fi) >> BDC 0 0 1 1 re f EMC"),
+        ("a tag of its own without an MCID stays", "<< >>", "/Golem BMC 0 0 1 1 re f EMC", "/Golem BMC 0 0 1 1 re f EMC"),
+        ("nested: the outer goes, the inner stays", "<< >>", "/Artifact BMC /Span << /Lang (en) >> BDC 0 0 1 1 re f EMC EMC", "/Span << /Lang (en) >> BDC 0 0 1 1 re f EMC "),
+        ("an EMC without its marked content stays", "<< >>", "0 0 1 1 re f EMC", "0 0 1 1 re f EMC")
+      ]
+  ]
+    <> [ testCase "a stream named twice whose artifact closes in another stream is joined" $ do
+           p <- importOk 1 (contentsPage "<< >>" "4 0 R 4 0 R 5 0 R 6 0 R" [(4, stream "" "q 0 0 1 1 re f Q"), (5, stream "" "/Artifact BMC 0 0 1 1 re f"), (6, stream "" "EMC")])
+           ipContent p @?= "q 0 0 1 1 re f Q\nq 0 0 1 1 re f Q\n0 0 1 1 re f\n",
+         testCase "a stream named twice with an artifact of its own is one inner Form without the artifact" $ do
+           p <- importOk 1 (contentsPage "<< >>" "4 0 R 4 0 R" [(4, stream "" "q /Artifact BMC 0 0 1 1 re f EMC Q")])
+           ipContent p @?= "/GolemC4 Do\n/GolemC4 Do"
+           case [b | (_, OStream _ b) <- ipObjects p] of
+             (b : _) -> inflate b @?= "q 0 0 1 1 re f Q"
+             [] -> assertFailure "no inner Form"
+       ]
+
 colourTests :: [TestTree]
 colourTests =
   [ testCase "DeviceRGB in the content becomes the sRGB ICCBased" $ do
@@ -447,7 +479,9 @@ golemDoc =
       docId = documentId "urn:uuid:11111111-2222-4333-8444-555555555555",
       docInstanceId = instanceId ["source"],
       docProducer = "Golem 0.0.0-test",
-      docPdfX = Nothing
+      docPdfX = Nothing,
+      docLang = "ja",
+      docPdfUa = Nothing
     }
   where
     box = Rect 0 0 (100 * 65536) (100 * 65536)
@@ -507,7 +541,7 @@ writingTests =
       Right p @?= importPage 1 rgbPdf,
     testCase "X4.verify finds nothing in a PDF figure with RGB" $ do
       p <- importOk 1 rgbPdf
-      let doc = (formDoc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, p)]) {docPdfX = Just (PdfX "fake-cmyk-profile" "JC200103" [] [])}
+      let doc = (formDoc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, p)]) {docPdfX = Just (PdfX "fake-cmyk-profile" "JC200103" [] [] Nothing)}
       verify (documentObjects doc) @?= [],
     needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
       testCase "qpdf --check accepts a PDF figure" $ do

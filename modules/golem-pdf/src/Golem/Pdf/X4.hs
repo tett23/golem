@@ -3,6 +3,8 @@ Trapped, and the checks of the requirements Golem can verify itself.
 -}
 module Golem.Pdf.X4
   ( PdfX (..),
+    PdfALevel (..),
+    PdfUaPart (..),
     xmpPacket,
     checkPdfX,
     uuidText,
@@ -29,8 +31,18 @@ data PdfX = PdfX
     pxCondition :: !Text,
     pxCreators :: ![Text],
     -- | dc:contributor, names without roles (docs/adr ADR 0033)
-    pxContributors :: ![Text]
+    pxContributors :: ![Text],
+    -- | PDF/A on top of PDF/X-4: there is no PDF/A without PDF/X-4 (docs/adr ADR 0183)
+    pxPdfA :: !(Maybe PdfALevel)
   }
+  deriving stock (Eq, Show)
+
+-- | The PDF/A a PDF conforms to (docs/adr ADR 0183).
+data PdfALevel = PdfA2a
+  deriving stock (Eq, Show)
+
+-- | The PDF/UA a PDF conforms to (docs/adr ADR 0183).
+data PdfUaPart = PdfUa1
   deriving stock (Eq, Show)
 
 -- | 16 bytes as a UUID string.
@@ -40,27 +52,72 @@ uuidText b =
    in T.intercalate "-" [T.take 8 h, T.take 4 (T.drop 8 h), T.take 4 (T.drop 12 h), T.take 4 (T.drop 16 h), T.drop 20 h]
 
 {- | The XMP packet: title, Producer (ADR 0005), date, document and instance
-IDs. Fixed key order and layout, so it is deterministic.
+IDs; with PDF/X-4 its version and Trapped, and with PDF/A and PDF/UA their
+identification and the extension schemas PDF/A asks for the properties of
+schemas it does not define (docs/adr ADR 0183). Fixed key order and
+layout, so it is deterministic.
 -}
-xmpPacket :: PdfX -> Text -> Text -> (Integer, Int, Int) -> ByteString -> ByteString -> ByteString
-xmpPacket px title producer (y, m, d) docId inst =
+xmpPacket :: Maybe PdfX -> Maybe PdfUaPart -> Text -> Text -> (Integer, Int, Int) -> ByteString -> ByteString -> ByteString
+xmpPacket mpx ua title producer (y, m, d) docId inst =
   let date = T.pack (printf "%04d-%02d-%02dT00:00:00Z" y m d)
-      creators =
-        [ "   <dc:creator><rdf:Seq>" <> T.concat ["<rdf:li>" <> escapeXml c <> "</rdf:li>" | c <- pxCreators px] <> "</rdf:Seq></dc:creator>"
-        | not (null (pxCreators px))
+      creators = maybe [] pxCreators mpx
+      contributors = maybe [] pxContributors mpx
+      pdfA = mpx >>= pxPdfA
+      people =
+        [ "   <dc:creator><rdf:Seq>" <> T.concat ["<rdf:li>" <> escapeXml c <> "</rdf:li>" | c <- creators] <> "</rdf:Seq></dc:creator>"
+        | not (null creators)
         ]
-          <> [ "   <dc:contributor><rdf:Bag>" <> T.concat ["<rdf:li>" <> escapeXml c <> "</rdf:li>" | c <- pxContributors px] <> "</rdf:Bag></dc:contributor>"
-             | not (null (pxContributors px))
+          <> [ "   <dc:contributor><rdf:Bag>" <> T.concat ["<rdf:li>" <> escapeXml c <> "</rdf:li>" | c <- contributors] <> "</rdf:Bag></dc:contributor>"
+             | not (null contributors)
              ]
+      namespaces =
+        T.concat
+          ( [" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" xmlns:xmpMM=\"http://ns.adobe.com/xap/1.0/mm/\" xmlns:pdf=\"http://ns.adobe.com/pdf/1.3/\""]
+              <> [" xmlns:pdfxid=\"http://www.npes.org/pdfx/ns/id/\"" | Just _ <- [mpx]]
+              <> [" xmlns:pdfaid=\"http://www.aiim.org/pdfa/ns/id/\"" | Just _ <- [pdfA]]
+              <> [" xmlns:pdfuaid=\"http://www.aiim.org/pdfua/ns/id/\"" | Just _ <- [ua]]
+          )
+      -- the properties PDF/A-2 does not define, each of the type Text and the category internal (docs/adr ADR 0183)
+      extensions =
+        [ ("Adobe PDF Schema", "http://ns.adobe.com/pdf/1.3/", "pdf", "Trapped", "Whether the document has been trapped")
+        | Just _ <- [mpx]
+        ]
+          <> [("PDF/X ID Schema", "http://www.npes.org/pdfx/ns/id/", "pdfxid", "GTS_PDFXVersion", "The version of PDF/X") | Just _ <- [mpx]]
+          <> [("PDF/UA Universal Accessibility Schema", "http://www.aiim.org/pdfua/ns/id/", "pdfuaid", "part", "The part of PDF/UA") | Just _ <- [ua]]
+      schema (name, uri, prefix, property, description) =
+        [ "     <rdf:li rdf:parseType=\"Resource\">",
+          "      <pdfaSchema:schema>" <> name <> "</pdfaSchema:schema>",
+          "      <pdfaSchema:namespaceURI>" <> uri <> "</pdfaSchema:namespaceURI>",
+          "      <pdfaSchema:prefix>" <> prefix <> "</pdfaSchema:prefix>",
+          "      <pdfaSchema:property><rdf:Seq><rdf:li rdf:parseType=\"Resource\">",
+          "       <pdfaProperty:name>" <> property <> "</pdfaProperty:name>",
+          "       <pdfaProperty:valueType>Text</pdfaProperty:valueType>",
+          "       <pdfaProperty:category>internal</pdfaProperty:category>",
+          "       <pdfaProperty:description>" <> description <> "</pdfaProperty:description>",
+          "      </rdf:li></rdf:Seq></pdfaSchema:property>",
+          "     </rdf:li>"
+        ]
+      extensionDescription = case pdfA of
+        Nothing -> []
+        Just _ ->
+          [ "  <rdf:Description rdf:about=\"\" xmlns:pdfaExtension=\"http://www.aiim.org/pdfa/ns/extension/\" xmlns:pdfaSchema=\"http://www.aiim.org/pdfa/ns/schema#\" xmlns:pdfaProperty=\"http://www.aiim.org/pdfa/ns/property#\">",
+            "   <pdfaExtension:schemas>",
+            "    <rdf:Bag>"
+          ]
+            <> concatMap schema extensions
+            <> [ "    </rdf:Bag>",
+                 "   </pdfaExtension:schemas>",
+                 "  </rdf:Description>"
+               ]
    in TE.encodeUtf8 . T.unlines $
         [ "<?xpacket begin=\"\xFEFF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>",
           "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">",
           " <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">",
-          "  <rdf:Description rdf:about=\"\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" xmlns:xmpMM=\"http://ns.adobe.com/xap/1.0/mm/\" xmlns:pdf=\"http://ns.adobe.com/pdf/1.3/\" xmlns:pdfxid=\"http://www.npes.org/pdfx/ns/id/\">",
+          "  <rdf:Description rdf:about=\"\"" <> namespaces <> ">",
           "   <dc:format>application/pdf</dc:format>",
           "   <dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">" <> escapeXml title <> "</rdf:li></rdf:Alt></dc:title>"
         ]
-          <> creators
+          <> people
           <> [ "   <xmp:CreateDate>" <> date <> "</xmp:CreateDate>",
                "   <xmp:ModifyDate>" <> date <> "</xmp:ModifyDate>",
                "   <xmp:MetadataDate>" <> date <> "</xmp:MetadataDate>",
@@ -68,11 +125,19 @@ xmpPacket px title producer (y, m, d) docId inst =
                "   <xmpMM:InstanceID>uuid:" <> uuidText inst <> "</xmpMM:InstanceID>",
                "   <xmpMM:VersionID>1</xmpMM:VersionID>",
                "   <xmpMM:RenditionClass>default</xmpMM:RenditionClass>",
-               "   <pdf:Producer>" <> escapeXml producer <> "</pdf:Producer>",
-               "   <pdf:Trapped>False</pdf:Trapped>",
-               "   <pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>",
-               "  </rdf:Description>",
-               " </rdf:RDF>",
+               "   <pdf:Producer>" <> escapeXml producer <> "</pdf:Producer>"
+             ]
+          <> concat
+            [ [ "   <pdf:Trapped>False</pdf:Trapped>",
+                "   <pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>"
+              ]
+            | Just _ <- [mpx]
+            ]
+          <> concat [["   <pdfaid:part>2</pdfaid:part>", "   <pdfaid:conformance>A</pdfaid:conformance>"] | Just PdfA2a <- [pdfA]]
+          <> ["   <pdfuaid:part>1</pdfuaid:part>" | Just PdfUa1 <- [ua]]
+          <> ["  </rdf:Description>"]
+          <> extensionDescription
+          <> [ " </rdf:RDF>",
                "</x:xmpmeta>",
                "<?xpacket end=\"w\"?>"
              ]

@@ -197,8 +197,12 @@ data Document = Document
     docInstanceId :: !ByteString,
     -- | the Producer, such as @Golem 0.1.0@ (ADR 0005); written as given
     docProducer :: !Text,
-    -- | PDF/X-4 (golem-pdf ADR 0002)
-    docPdfX :: !(Maybe PdfX)
+    -- | PDF/X-4 (golem-pdf ADR 0002), and PDF/A on top of it (docs/adr ADR 0183)
+    docPdfX :: !(Maybe PdfX),
+    -- | the language of the book, the catalog's Lang (docs/adr ADR 0183)
+    docLang :: !Text,
+    -- | PDF/UA (docs/adr ADR 0183)
+    docPdfUa :: !(Maybe PdfUaPart)
   }
 
 -- ------------------------------------------------------------------ identifiers
@@ -392,26 +396,26 @@ documentObjects doc =
       srgbObjs = [OStream [("N", OInt 3), ("Filter", OName "FlateDecode")] (flate srgbProfile) | needSrgb]
       -- the Form XObjects of PDF figures and drawings, each followed by the objects it brings that are not yet written (ADR 0008)
       (formBase, formObjsAll, afterImages) = formObjects srgbRef (afterImages0 + length srgbObjs) forms
-      -- PDF/X-4: the output profile and the XMP metadata come last before the information dictionary
-      (xObjs, xCatalog) = case docPdfX doc of
-        Nothing -> ([], [])
-        Just px ->
-          ( [ OStream [("N", OInt 4), ("Filter", OName "FlateDecode")] (flate (pxProfile px)),
-              OStream [("Type", OName "Metadata"), ("Subtype", OName "XML")] (xmpPacket px (docTitle doc) (docProducer doc) (docDate doc) (docId doc) (docInstanceId doc))
-            ],
-            [ ( "OutputIntents",
-                OArr
-                  [ ODict
-                      [ ("Type", OName "OutputIntent"),
-                        ("S", OName "GTS_PDFX"),
-                        ("OutputConditionIdentifier", OStr (TE.encodeUtf8 (pxCondition px))),
-                        ("DestOutputProfile", ORef afterImages)
-                      ]
+      {- PDF/X-4: the output profile and the XMP metadata come last before
+      the information dictionary; PDF/A adds its output intent on the same
+      profile, and PDF/UA alone writes XMP too (docs/adr ADR 0183) -}
+      xmp = OStream [("Type", OName "Metadata"), ("Subtype", OName "XML")] (xmpPacket (docPdfX doc) (docPdfUa doc) (docTitle doc) (docProducer doc) (docDate doc) (docId doc) (docInstanceId doc))
+      (xObjs, xCatalog) = case (docPdfX doc, docPdfUa doc) of
+        (Nothing, Nothing) -> ([], [])
+        (Nothing, Just _) -> ([xmp], [("Metadata", ORef afterImages)])
+        (Just px, _) ->
+          let intent s' =
+                ODict
+                  [ ("Type", OName "OutputIntent"),
+                    ("S", OName s'),
+                    ("OutputConditionIdentifier", OStr (TE.encodeUtf8 (pxCondition px))),
+                    ("DestOutputProfile", ORef afterImages)
                   ]
-              ),
-              ("Metadata", ORef (afterImages + 1))
-            ]
-          )
+           in ( [OStream [("N", OInt 4), ("Filter", OName "FlateDecode")] (flate (pxProfile px)), xmp],
+                [ ("OutputIntents", OArr (intent "GTS_PDFX" : [intent "GTS_PDFA1" | Just _ <- [pxPdfA px]])),
+                  ("Metadata", ORef (afterImages + 1))
+                ]
+              )
       infoObj = afterImages + length xObjs
       imageObjCount i = case Map.lookup i (docImages doc) of
         Just img -> 1 + maybe 0 (const 1) (imgIcc img) + maybe 0 (const 1) (imgAlpha img)
@@ -429,7 +433,16 @@ documentObjects doc =
                  ]
               <> [("ColorSpace", ODict [("Reg", registrationColorSpace)]) | any usesRegistration [m | p <- pages, m <- pageContent p]]
           )
-      catalog = ODict ([("Type", OName "Catalog"), ("Pages", ORef 2)] <> xCatalog)
+      -- the language of the book and its title shown by viewers, in every PDF (docs/adr ADR 0183)
+      catalog =
+        ODict
+          ( [ ("Type", OName "Catalog"),
+              ("Pages", ORef 2),
+              ("Lang", pdfTextString (docLang doc)),
+              ("ViewerPreferences", ODict [("DisplayDocTitle", OBool True)])
+            ]
+              <> xCatalog
+          )
       pageTree = ODict [("Type", OName "Pages"), ("Kids", OArr [ORef (pageObj i) | i <- [0 .. nPages - 1]]), ("Count", OInt (fromIntegral nPages))]
       pageObjs =
         concat

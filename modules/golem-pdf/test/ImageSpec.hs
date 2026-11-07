@@ -80,7 +80,9 @@ document marks =
       docId = documentId "urn:uuid:11111111-2222-4333-8444-555555555555",
       docInstanceId = instanceId ["source"],
       docProducer = "Golem 0.0.0-test",
-      docPdfX = Nothing
+      docPdfX = Nothing,
+      docLang = "ja",
+      docPdfUa = Nothing
     }
   where
     box = Rect 0 0 (100 * 65536) (100 * 65536)

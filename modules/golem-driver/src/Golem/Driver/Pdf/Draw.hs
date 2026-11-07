@@ -11,11 +11,12 @@ import Data.Either (lefts)
 import Data.List (groupBy, nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (toGregorian)
+import Golem.Assemble (Book (..))
 import Golem.Doc.IR
 import Golem.Driver.Overhang (kentenAcross, rubyAcross)
 import Golem.Driver.Pdf.Flow
@@ -37,6 +38,8 @@ import Golem.Preflight.View qualified as V
 import Golem.Project
 import Golem.Project.Style
 import Golem.Syntax
+import Golem.Syntax.LanguageTag (isLanguageTag)
+import Text.Printf (printf)
 
 {- | The PDF and the notices of its layout (G07030), or the errors that
 stopped it.
@@ -49,9 +52,10 @@ renderPdf provider inp = fmap (\(bytes, notices, _) -> (bytes, notices)) <$> ren
 characters of its pages, for G08100 (docs/adr 0081).
 -}
 renderPdfView :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View))
-renderPdfView provider inp0 = case checkedGeometry inp of
-  Left ds -> pure (Left ds)
-  Right geom -> do
+renderPdfView provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
+  (ds, Left gs) -> pure (Left (ds <> gs))
+  (ds@(_ : _), Right _) -> pure (Left ds)
+  ([], Right geom) -> do
     lf <- loadFonts provider (piRoot inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
     case lf of
       Left ds -> pure (Left ds)
@@ -67,19 +71,77 @@ renderPdfView provider inp0 = case checkedGeometry inp of
               Left ds -> pure (Left ds)
               Right layout -> case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
                 [] -> do
-                  let (used, finish) = writeDocumentView inp geom fonts layout intent
-                  -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
-                  embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
-                  -- a face used horizontally and vertically is reported once
-                  case nub (lefts (Map.elems embedded)) of
-                    [] -> do
-                      let (bytes, view) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
-                      -- G07101: dashes without ink (docs/adr ADR 0172)
-                      pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout, view))
-                    ds -> pure (Left ds)
+                  let (used, privateUse, finish) = writeDocumentView inp geom fonts layout intent
+                  -- G07104 stops the PDF/A-2a before its fonts are embedded (docs/adr ADR 0183)
+                  if not (null privateUse)
+                    then pure (Left privateUse)
+                    else do
+                      -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
+                      embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
+                      -- a face used horizontally and vertically is reported once
+                      case nub (lefts (Map.elems embedded)) of
+                        [] -> do
+                          let (bytes, view) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
+                          -- G07101: dashes without ink (docs/adr ADR 0172)
+                          pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout, view))
+                        ds -> pure (Left ds)
                 ds -> pure (Left ds)
   where
     inp = codeInput inp0
+
+{- | What a book that declares PDF/A or PDF/UA must meet before its PDF is
+set (docs/adr ADR 0183), in dev and prod alike: an output intent for PDF/A
+(G03113, at the value of pdfa), [metadata] language in the form of a
+language tag (G03119, at its value), and for PDF/UA headings that start at
+level 1 and never go two levels deeper (G07103, at the heading). The
+document itself is level 0 before the first heading.
+-}
+declarationErrors :: PdfInput -> [Diagnostic]
+declarationErrors inp =
+  [ diagnostic "G03113" Error (valueSpan ["targets", "pdf", "pdfa"]) "PDF/A には [color] の intent が要ります"
+  | isJust pdfA,
+    isNothing (stIntent (piStyle inp))
+  ]
+    <> [ diagnostic "G03119" Error (valueSpan ["metadata", "language"]) ("PDF/A と PDF/UA には、language を言語のタグの形で書きます: " <> mdLanguage md)
+       | isJust pdfA || isJust pdfUa,
+         not (isLanguageTag (mdLanguage md))
+       ]
+    <> [ diagnostic "G07103" Error sp ("PDF/UA では見出しの段を飛ばせません: " <> tshow' before <> " から " <> tshow' l)
+       | isJust pdfUa,
+         let levels = [(l, sp) | Document _ bs <- bookDocs (piBook inp), Block sp _ (Heading l _ _) <- blocksWithin bs],
+         (before, (l, sp)) <- zip (0 : map fst levels) levels,
+         l > before + 1
+       ]
+  where
+    project = piProject inp
+    manifest = projectManifest project
+    md = manifestMetadata manifest
+    pdfA = tgPdfA (manifestTargets manifest)
+    pdfUa = tgPdfUa (manifestTargets manifest)
+    fid = projectManifestFile project
+    valueSpan keys = fromMaybe (mkSpan fid 0 0) (manifestValueSpan fid (projectManifestText project) keys)
+    tshow' = T.pack . show
+
+-- | Every block in document order, with the blocks inside lists and figures.
+blocksWithin :: [Block] -> [Block]
+blocksWithin = concatMap $ \b ->
+  b : case blockBody b of
+    BulletList items -> blocksWithin (concatMap itemBlocks items)
+    OrderedList items -> blocksWithin (concatMap itemBlocks items)
+    DefList gs -> blocksWithin (concat (concatMap dgDefs gs))
+    FigureBlock f -> blocksWithin (figCaption f)
+    _ -> []
+
+{- | G07104 (docs/adr ADR 0183): each character of the private use area a
+glyph of a PDF/A-2a stands for, once for each place in the source.
+-}
+privateUseErrors :: [(Text, SrcSpan)] -> [Diagnostic]
+privateUseErrors uses =
+  [ diagnostic "G07104" Error sp (T.pack (printf "PDF/A-2a の PDF に私用領域の字は書けません: U+%04X" (fromEnum c)))
+  | (c, sp) <- nubOrdOn id [(c, sp) | (t, sp) <- uses, c <- T.unpack t, privateUse c]
+  ]
+  where
+    privateUse c = (c >= '\xE000' && c <= '\xF8FF') || (c >= '\xF0000' && c <= '\xFFFFD') || (c >= '\x100000' && c <= '\x10FFFD')
 
 {- | A glyph drawn: its font reference, glyph and text (for embedding),
 and its face, size and swatch (for the view of golem preflight).
@@ -156,7 +218,7 @@ embedded in IO between the two halves (docs/adr ADR 0034): the glyphs
 used in each font and their text, then the PDF and its view from the
 embedded fonts.
 -}
-writeDocumentView :: PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], Map P.FontRef P.Font -> (ByteString, V.View))
+writeDocumentView :: PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], Map P.FontRef P.Font -> (ByteString, V.View))
 writeDocumentView inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
@@ -210,7 +272,11 @@ writeDocumentView inp geom fonts layout intent =
                   P.docId = P.documentId (mdId md),
                   P.docInstanceId = P.instanceId (instanceIdInputs (piInputs inp) programs),
                   P.docProducer = producer,
-                  P.docPdfX = intent
+                  P.docPdfX = intent,
+                  P.docLang = mdLanguage md,
+                  P.docPdfUa = case tgPdfUa (manifestTargets (projectManifest (piProject inp))) of
+                    Just PdfUa1 -> Just P.PdfUa1
+                    Nothing -> Nothing
                 }
             bytes = P.writePdf doc
             -- the view of golem preflight (golem-cli ADR 0006)
@@ -255,7 +321,11 @@ writeDocumentView inp geom fonts layout intent =
                   V.vwManifestSpan = mkSpan (projectManifestFile (piProject inp)) 0 0
                 }
          in (bytes, view)
-   in (used, finish)
+      -- the characters of the private use area in a PDF/A-2a (G07104, docs/adr ADR 0183)
+      privateUse = case P.pxPdfA =<< intent of
+        Just _ -> privateUseErrors [(guText u, guSpan u) | pd <- drawn, u <- pdUses pd]
+        Nothing -> []
+   in (used, privateUse, finish)
 
 -- font index × direction: even refs horizontal, odd refs vertical
 ref :: Int -> Bool -> P.FontRef

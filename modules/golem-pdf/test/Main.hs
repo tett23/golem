@@ -88,7 +88,9 @@ documentWith tinyJpeg ps =
       docId = documentId "urn:uuid:11111111-2222-4333-8444-555555555555",
       docInstanceId = instanceId ["source", "manifest"],
       docProducer = testProducer,
-      docPdfX = Nothing
+      docPdfX = Nothing,
+      docLang = "ja",
+      docPdfUa = Nothing
     }
 
 -- | A fixed Producer, so that the goldens do not change with the version (ADR 0005).
@@ -235,7 +237,7 @@ verifyTests tinyJpeg =
       map x4Requirement ps @?= ["TrimBox"]
   ]
   where
-    x4px = PdfX "fake-japan-color-profile" "JC200103" [] []
+    x4px = PdfX "fake-japan-color-profile" "JC200103" [] [] Nothing
     x4Sample = (sample tinyJpeg) {docPdfX = Just x4px}
     x4Twopage = (documentWith tinyJpeg [framePage Nothing 0 (100 * 65536, 100 * 65536) [], framePage Nothing 0 (100 * 65536, 100 * 65536) []]) {docPdfX = Just x4px}
     one name requirement f =
@@ -325,7 +327,7 @@ marksTests tinyJpeg =
           -- hexadecimal digits are case-insensitive in PDF; the writer writes them in lower case
           assertBool (show cs) ("/SPAN << /ACTUALTEXT <FEFF00E9> >> BDC\n" `BS.isPrefixOf` BC.map toUpper cs),
         testCase "a page with ActualText passes the PDF/X-4 checks, its font a resource" $ do
-          let doc = (documentWith tinyJpeg [page [ActualText "ffi" [GlyphRun (FontRef 7) (10 * 65536) [(1, 0, 0)]]]]) {docPdfX = Just (PdfX "fake-japan-color-profile" "JC200103" [] [])}
+          let doc = (documentWith tinyJpeg [page [ActualText "ffi" [GlyphRun (FontRef 7) (10 * 65536) [(1, 0, 0)]]]]) {docPdfX = Just (PdfX "fake-japan-color-profile" "JC200103" [] [] Nothing)}
           verify (documentObjects doc) @?= []
           assertBool "the font is a resource" ("/Font <<" `BS.isInfixOf` writePdf doc),
         testCase "a translated mark moves the origin inside q and Q" $
@@ -385,7 +387,7 @@ marksTests tinyJpeg =
             withSystemTempDirectory "golem-pdf" $ \dir -> do
               let path = dir </> "marks.pdf"
                   framed = framePage (Just Japanese) b (w, h) [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]
-              BS.writeFile path (writePdf (documentWith tinyJpeg [framed]) {docPdfX = Just (PdfX "fake" "JC200103" [] [])})
+              BS.writeFile path (writePdf (documentWith tinyJpeg [framed]) {docPdfX = Just (PdfX "fake" "JC200103" [] [] Nothing)})
               (code, out, err) <- readProcessWithExitCode exe ["--check", path] ""
               assertEqual (out <> err) ExitSuccess code
       ]
@@ -396,7 +398,7 @@ producerTests tinyJpeg =
       let info = infoDict (writePdf (sample tinyJpeg))
       assertBool (show info) ("/Producer (Golem 0.0.0-test)" `BS.isInfixOf` info),
     testCase "with an output intent, the information dictionary and XMP both have the Producer" $ do
-      let pdf = writePdf (sample tinyJpeg) {docPdfX = Just (PdfX "fake" "JC200103" [] [])}
+      let pdf = writePdf (sample tinyJpeg) {docPdfX = Just (PdfX "fake" "JC200103" [] [] Nothing)}
       assertBool "Info" ("/Producer (Golem 0.0.0-test)" `BS.isInfixOf` infoDict pdf)
       assertBool "XMP" ("<pdf:Producer>Golem 0.0.0-test</pdf:Producer>" `BS.isInfixOf` pdf),
     testCase "a PDF text string is literal for printable ASCII, otherwise UTF-16BE with a byte order mark" $ do
@@ -405,16 +407,16 @@ producerTests tinyJpeg =
         OHex b -> BS.take 2 b @?= BS.pack [0xFE, 0xFF]
         other -> assertFailure (show other),
     testCase "the Producer is escaped in XMP" $ do
-      let x = xmpPacket (PdfX "" "JC200103" [] []) "t" "a<b&c" (2026, 10, 11) (documentId "x") (instanceId ["a"])
+      let x = xmpPacket (Just (PdfX "" "JC200103" [] [] Nothing)) Nothing "t" "a<b&c" (2026, 10, 11) (documentId "x") (instanceId ["a"])
       assertBool (show x) ("<pdf:Producer>a&lt;b&amp;c</pdf:Producer>" `BS.isInfixOf` x),
     -- docs/adr ADR 0033
     testCase "contributors are a dc:contributor Bag in XMP, none without them" $ do
-      let x = xmpPacket (PdfX "" "JC200103" ["著者"] ["編集 & 者", "装丁者"]) "t" "p" (2026, 10, 11) (documentId "x") (instanceId ["a"])
+      let x = xmpPacket (Just (PdfX "" "JC200103" ["著者"] ["編集 & 者", "装丁者"] Nothing)) Nothing "t" "p" (2026, 10, 11) (documentId "x") (instanceId ["a"])
       assertBool (show x) (TE.encodeUtf8 "   <dc:contributor><rdf:Bag><rdf:li>編集 &amp; 者</rdf:li><rdf:li>装丁者</rdf:li></rdf:Bag></dc:contributor>\n" `BS.isInfixOf` x)
-      let y = xmpPacket (PdfX "" "JC200103" ["著者"] []) "t" "p" (2026, 10, 11) (documentId "x") (instanceId ["a"])
+      let y = xmpPacket (Just (PdfX "" "JC200103" ["著者"] [] Nothing)) Nothing "t" "p" (2026, 10, 11) (documentId "x") (instanceId ["a"])
       assertBool (show y) (not ("dc:contributor" `BS.isInfixOf` y)),
     testCase "the information dictionary and XMP agree" $ do
-      let pdf = writePdf (sample tinyJpeg) {docPdfX = Just (PdfX "fake" "JC200103" ["山田 太郎"] [])}
+      let pdf = writePdf (sample tinyJpeg) {docPdfX = Just (PdfX "fake" "JC200103" ["山田 太郎"] [] Nothing)}
           info = infoDict pdf
           infoStr k = fromMaybe "" (between ("/" <> k <> " (") ")" info)
           xmp k = maybe "" TE.decodeUtf8 (between ("<" <> k <> ">") ("</" <> k <> ">") pdf)
@@ -435,6 +437,60 @@ producerTests tinyJpeg =
       TE.decodeUtf8 trapped @?= xmp "pdf:Trapped"
       xmp "pdf:Trapped" @?= "False"
   ]
+
+-- | The catalog, the output intents and XMP of every PDF, of PDF/A-2a and of PDF/UA-1 (docs/adr ADR 0183).
+conformanceTests :: ByteString -> [TestTree]
+conformanceTests tinyJpeg =
+  [ testCase "every PDF has the language of the book and shows its title" $ do
+      let cat = catalogOf (documentObjects (sample tinyJpeg))
+      lookup "Lang" cat @?= Just (OStr "ja")
+      lookup "ViewerPreferences" cat @?= Just (ODict [("DisplayDocTitle", OBool True)])
+      let en = catalogOf (documentObjects (sample tinyJpeg) {docLang = "en-US"})
+      lookup "Lang" en @?= Just (OStr "en-US"),
+    testCase "PDF/A-2a: two output intents, GTS_PDFX and GTS_PDFA1, on the same profile" $ do
+      let objs = documentObjects (sample tinyJpeg) {docPdfX = Just (PdfX "fake" "JC200103" [] [] (Just PdfA2a))}
+          intents = case lookup "OutputIntents" (catalogOf objs) of
+            Just (OArr xs) -> [kvs | ODict kvs <- xs]
+            other -> error (show other)
+      map (lookup "S") intents @?= [Just (OName "GTS_PDFX"), Just (OName "GTS_PDFA1")]
+      map (lookup "OutputConditionIdentifier") intents @?= replicate 2 (Just (OStr "JC200103"))
+      case map (lookup "DestOutputProfile") intents of
+        [Just (ORef a), Just (ORef b)] -> a @?= b
+        other -> assertFailure (show other)
+      -- the PDF/X-4 checks still pass (golem-cli ADR 0006)
+      verify objs @?= [],
+    testCase "PDF/X-4 alone has one output intent" $ do
+      let objs = documentObjects (sample tinyJpeg) {docPdfX = Just (PdfX "fake" "JC200103" [] [] Nothing)}
+      case lookup "OutputIntents" (catalogOf objs) of
+        Just (OArr [_]) -> pure ()
+        other -> assertFailure (show other),
+    testCase "XMP: pdfaid:conformance is A; with PDF/UA-1 the extension schemas define pdfuaid:part" $ do
+      let x = xmpPacket (Just (PdfX "" "JC200103" [] [] (Just PdfA2a))) (Just PdfUa1) "t" "p" (2026, 10, 11) (documentId "x") (instanceId ["a"])
+      assertBool "part" ("<pdfaid:part>2</pdfaid:part>" `BS.isInfixOf` x)
+      assertBool "conformance" ("<pdfaid:conformance>A</pdfaid:conformance>" `BS.isInfixOf` x)
+      assertBool "pdfuaid" ("<pdfuaid:part>1</pdfuaid:part>" `BS.isInfixOf` x)
+      assertBool "the schema of pdfuaid" ("<pdfaSchema:namespaceURI>http://www.aiim.org/pdfua/ns/id/</pdfaSchema:namespaceURI>" `BS.isInfixOf` x)
+      assertBool "the schema of pdfxid" ("<pdfaSchema:namespaceURI>http://www.npes.org/pdfx/ns/id/</pdfaSchema:namespaceURI>" `BS.isInfixOf` x)
+      assertBool "the schema of pdf" ("<pdfaSchema:namespaceURI>http://ns.adobe.com/pdf/1.3/</pdfaSchema:namespaceURI>" `BS.isInfixOf` x),
+    testCase "PDF/UA-1 without an output intent has XMP with the title and pdfuaid, and no PDF/X" $ do
+      let objs = documentObjects (sample tinyJpeg) {docPdfUa = Just PdfUa1}
+          cat = catalogOf objs
+          xmp = case lookup "Metadata" cat of
+            Just (ORef n) | OStream _ b <- pdfObjects objs !! (n - 1) -> b
+            other -> error (show other)
+      lookup "OutputIntents" cat @?= Nothing
+      assertBool "title" (TE.encodeUtf8 "<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">見本</rdf:li></rdf:Alt></dc:title>" `BS.isInfixOf` xmp)
+      assertBool "pdfuaid" ("<pdfuaid:part>1</pdfuaid:part>" `BS.isInfixOf` xmp)
+      assertBool "no PDF/X" (not ("GTS_PDFXVersion" `BS.isInfixOf` xmp))
+      assertBool "no extension schema" (not ("pdfaExtension" `BS.isInfixOf` xmp))
+      assertBool "xref" (xrefConsistent (writePdf (sample tinyJpeg) {docPdfUa = Just PdfUa1})),
+    testCase "without PDF/X-4 and PDF/UA there is no XMP" $
+      lookup "Metadata" (catalogOf (documentObjects (sample tinyJpeg))) @?= Nothing
+  ]
+  where
+    catalogOf objs = case pdfTrailer objs of
+      ODict t | Just (ORef n) <- lookup "Root" t, ODict kvs <- pdfObjects objs !! (n - 1) -> kvs
+      other -> error (show other)
 
 tests :: ByteString -> TestTree
 tests tinyJpeg =
@@ -473,7 +529,7 @@ tests tinyJpeg =
         assertBool "xref" (xrefConsistent pdf)
         assertBool "ID" ("/ID [<" `BS.isInfixOf` pdf)
         assertBool "dates from metadata" ("/CreationDate (D:20261011000000Z)" `BS.isInfixOf` pdf)
-        assertBool "sorted keys" ("<< /Pages 2 0 R /Type /Catalog >>" `BS.isInfixOf` pdf),
+        assertBool "sorted keys" ("<< /Lang (ja) /Pages 2 0 R /Type /Catalog /ViewerPreferences << /DisplayDocTitle true >> >>" `BS.isInfixOf` pdf),
       testCase "JPEG is embedded without decoding and keeps its ICC profile" $ do
         let pdf = writePdf (sample tinyJpeg)
         assertBool "jpeg bytes" (jpeg tinyJpeg `BS.isInfixOf` pdf)
@@ -558,7 +614,7 @@ tests tinyJpeg =
         marks <- forAll (Gen.list (Range.linear 0 20) mark)
         assert (xrefConsistent (writePdf (documentWith tinyJpeg [page marks]))),
       testCase "PDF/X-4: output intent, XMP version, Trapped, boxes, embedded fonts, nothing forbidden" $ do
-        let px = PdfX "fake-japan-color-profile" "JC200103" ["山田 太郎"] []
+        let px = PdfX "fake-japan-color-profile" "JC200103" ["山田 太郎"] [] Nothing
             pdf = writePdf (sample tinyJpeg) {docPdfX = Just px}
         BS.take 9 pdf @?= "%PDF-1.6\n"
         assertBool "output intent" ("/S /GTS_PDFX" `BS.isInfixOf` pdf && "/DestOutputProfile" `BS.isInfixOf` pdf)
@@ -611,8 +667,15 @@ tests tinyJpeg =
           testCase "Adobe-Identity-0 is written as before" $
             assertBool "Identity" ("/CIDSystemInfo << /Ordering (Identity) /Registry (Adobe) /Supplement 0 >>" `BS.isInfixOf` writePdf (sample tinyJpeg))
         ],
+      testGroup "PDF/A-2a and PDF/UA-1 (docs/adr ADR 0183)" (conformanceTests tinyJpeg),
+      goldenVsString "XMP packet of PDF/A-2a and PDF/UA-1 (docs/adr ADR 0183)" "test/golden/xmp-pdfa-pdfua.xml" $
+        pure (BL.fromStrict (xmpPacket (Just (PdfX "" "JC200103" ["山田 太郎"] [] (Just PdfA2a))) (Just PdfUa1) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
+      goldenVsString "XMP packet of PDF/A-2a (docs/adr ADR 0183)" "test/golden/xmp-pdfa.xml" $
+        pure (BL.fromStrict (xmpPacket (Just (PdfX "" "JC200103" ["山田 太郎"] [] (Just PdfA2a))) Nothing "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
+      goldenVsString "XMP packet of PDF/UA-1 without an output intent (docs/adr ADR 0183)" "test/golden/xmp-pdfua.xml" $
+        pure (BL.fromStrict (xmpPacket Nothing (Just PdfUa1) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
       goldenVsString "XMP packet" "test/golden/xmp.xml" $
-        pure (BL.fromStrict (xmpPacket (PdfX "" "JC200103" ["山田 太郎"] []) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
+        pure (BL.fromStrict (xmpPacket (Just (PdfX "" "JC200103" ["山田 太郎"] [] Nothing)) Nothing "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
       needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
         testCase "qpdf --check accepts the output" $ do
           exe <- qpdf

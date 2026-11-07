@@ -2524,7 +2524,11 @@ loadIntent inp = case stIntent (piStyle inp) of
         bytes <- BS.readFile (piRoot inp <> "/" <> rel)
         let md = manifestMetadata (projectManifest (piProject inp))
             condition = if "JapanColor2001Coated" `T.isInfixOf` T.pack path then "JC200103" else T.pack (takeBaseName path)
-        pure (Right (Just (uncurry (P.PdfX bytes condition) (pdfXPeople md))))
+            -- PDF/A on top of PDF/X-4 (docs/adr ADR 0183)
+            pdfA = case tgPdfA (manifestTargets (projectManifest (piProject inp))) of
+              Just PdfA2a -> Just P.PdfA2a
+              Nothing -> Nothing
+        pure (Right (Just (uncurry (P.PdfX bytes condition) (pdfXPeople md) pdfA)))
   where
     intentMessage = \case
       Missing -> "出力インテントの ICC プロファイルがありません"
