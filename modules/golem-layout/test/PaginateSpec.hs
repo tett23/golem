@@ -20,6 +20,7 @@ import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import PaginateEnum (Element (..), Input (..), paginateInput)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -43,6 +44,7 @@ paginateTests =
       testGroup "blank lines (docs/adr ADR 0046)" blankLineTests,
       testGroup "paragraphs and headings with rules (golem-driver ADR 0027)" ruledTests,
       testGroup "a heading taller than its column (golem-layout ADR 0020)" tallHeadingTests,
+      testGroup "the points the invariants did not decide (docs/adr/0206)" undecidedPointTests,
       testGroup "invariants" propertyTests
     ]
 
@@ -903,4 +905,23 @@ addedRuleTests =
       let ps = paginate 1 4 [stanza 100 [1, 1, 1], FNoBreak mk, FParagraph (lines' 200 2)]
       lineIds ps @?= [[100, 110, 120], [200, 201]]
       unmets ps @?= [UnmetNoBreak mk]
+  ]
+
+-- | Page, column and the slots of each column of an input of PaginateEnum.
+placedIn :: Input -> [(Int, Int, [Slotted])]
+placedIn input = [(poNumber p, poColumn p, map snd (poSlots p)) | p <- paginateInput input]
+
+undecidedPointTests :: [TestTree]
+undecidedPointTests =
+  [ testCase "D1: a heading before a heading at a recto counts nothing after it" $ do
+      let flows = [heading 20, FHeading 1 True 1 (lines' 21 1), FParagraph (lines' 30 1)]
+      needGrid (lookAhead 3 flows) @?= 1
+      needNotes (lookAhead 3 flows) @?= 0
+      needGrid (lookAhead 3 [FHeading 1 True 1 (lines' 21 1), FParagraph (lines' 30 1)]) @?= 0,
+    testCase "D1: a heading before a heading at a recto stays at the end of its page" $
+      placedIn (Input 3 1 [EPara 2, EHeading, ERecto, EPara 1])
+        @?= [(1, 0, [SLine 0, SLine 1, SHeading 2 1]), (2, 0, []), (3, 0, [SHeading 3 1, SLine 4])],
+    testCase "D2: a column of nothing but a heading places the lines of the paragraph after it, as an empty column does" $
+      placedIn (Input 3 1 [EHeading, EPara 3])
+        @?= [(1, 0, [SHeading 0 1, SLine 1, SLine 2]), (2, 0, [SLine 3])]
   ]

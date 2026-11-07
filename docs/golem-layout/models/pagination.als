@@ -33,6 +33,9 @@ sig Line extends Text {
 
 sig Heading extends Text {}
 
+-- a heading at a recto (docs/adr/0206)
+sig Recto extends Heading {}
+
 sig Figure extends Item {
   size: one Int
 }
@@ -177,3 +180,72 @@ run figureEmpty { inDomain and ((some p: Placement | fits[p] and figure[p]) and 
 
 -- a figure taller than the column, outside the inputs the specification allows
 run tallFigure { not inDomain and (no p: Placement | fits[p] and figure[p] and noSendFromEmpty[p]) } for 5 but 5 Int, 14 Placement
+
+-- the decisions of docs/adr/0206
+
+-- nothing but headings is before the item in the column, from its top
+pred afterHeadingsOnly[p: Placement, i: Item] {
+  Col.used = 0
+  all t: Text | (t.pos < i.pos and here[p, t]) implies t in Heading
+  no p.kept or p.kept.pos > i.pos
+}
+
+-- 「段の先頭から見出しだけを置いた段では、見出しの後の行を一行は置き」
+pred lineAfterHeadings[p: Placement] {
+  (Col.used = 0 and p.brk >= 1 and no p.kept and (all t: Text | here[p, t] implies t in Heading))
+    implies (no l: Line | tpos[l] = p.brk)
+}
+
+-- I4 and I5 with the column of nothing but headings counted as empty (decision 2)
+pred orphanH[p: Placement] {
+  all q: Para | #para.q >= 2 and here[p, first[q]] and not here[p, second[q]]
+    implies afterHeadingsOnly[p, first[q]]
+}
+pred widowH[p: Placement] {
+  all q: Para | #para.q >= 2 and here[p, beforeLast[q]] and not here[p, last[q]]
+    implies afterHeadingsOnly[p, first[q]]
+}
+
+-- the lines a heading keeps: all of a paragraph of three lines or fewer, else two (golem-layout ADR 0021)
+pred keptLines[p: Placement, q: Para] {
+  #para.q <= 3 implies (all l: para.q | here[p, l]) else (here[p, first[q]] and here[p, second[q]])
+}
+
+-- I6 as the specification says it after golem-layout ADR 0021, a recto heading counted as any heading
+pred keepHeading21[p: Placement] {
+  all h: Heading | (here[p, h] and not startsColumn[p, h]) implies {
+    all t: Text | (t.pos > h.pos and (all i: Item | (i.pos > h.pos and i.pos < t.pos) implies i in Heading)) implies {
+      t in Heading implies here[p, t]
+      t in Line implies keptLines[p, t.para]
+    }
+  }
+}
+
+-- I6 whose run of headings ends before a recto heading (decision 4)
+pred keepHeadingR[p: Placement] {
+  all h: Heading - Recto | (here[p, h] and not startsColumn[p, h]) implies {
+    all t: Text | (t.pos > h.pos and (all i: Item | (i.pos > h.pos and i.pos < t.pos) implies i in Heading - Recto)) implies {
+      t in Heading - Recto implies here[p, t]
+      t in Line implies keptLines[p, t.para]
+    }
+  }
+}
+
+-- I8 at one boundary: a recto heading starts a column with nothing before it
+pred recto[p: Placement] {
+  all r: Recto | here[p, r] implies startsColumn[p, r]
+}
+
+pred base[p: Placement] { fits[p] and order[p] and figure[p] and noSendFromEmpty[p] }
+
+-- decision 2: the line after headings with the strict orphan and widow rules has no placement on some input
+run strictAfterHeadings { inDomain and no Recto and (no p: Placement | base[p] and orphan[p] and widow[p] and keepHeading21[p] and lineAfterHeadings[p]) } for 5 but 5 Int, 14 Placement
+-- and with the column of nothing but headings counted as empty, every input has one
+run relaxedAfterHeadings { inDomain and no Recto and (no p: Placement | base[p] and orphanH[p] and widowH[p] and keepHeading21[p] and lineAfterHeadings[p]) } for 5 but 5 Int, 14 Placement
+-- decision 4: a heading kept with the recto heading after it cannot meet I8
+run rectoKept { inDomain and (no p: Placement | base[p] and orphanH[p] and widowH[p] and keepHeading21[p] and lineAfterHeadings[p] and recto[p]) } for 5 but 5 Int, 14 Placement
+run rectoEnds { inDomain and (no p: Placement | base[p] and orphanH[p] and widowH[p] and keepHeadingR[p] and lineAfterHeadings[p] and recto[p]) } for 5 but 5 Int, 14 Placement
+-- decision 5: I6 with the whole of a three-line paragraph, every rule but the greedy fill
+run keep21 { inDomain and no Recto and (no p: Placement | base[p] and orphan[p] and widow[p] and keepHeading21[p]) } for 5 but 5 Int, 14 Placement
+-- the model is not empty with the decisions
+run decidedSome { inDomain and some Recto and some Line and (some p: Placement | base[p] and orphanH[p] and widowH[p] and keepHeadingR[p] and lineAfterHeadings[p] and recto[p]) } for 5 but 5 Int, 14 Placement

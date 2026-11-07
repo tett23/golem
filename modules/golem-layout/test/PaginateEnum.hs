@@ -50,13 +50,16 @@ data Element
 data Input = Input {inLines :: !Int, inColumns :: !Int, inElements :: ![Element]}
   deriving stock (Eq, Show)
 
--- | The elements of a flow in columns of c grid lines: figures up to one line more than the column.
+{- | The elements of a flow in columns of c grid lines: figures of up to
+c lines, as golem-driver shrinks a figure to fit an empty column
+(docs/adr/0206).
+-}
 elementsFor :: Int -> [Element]
 elementsFor c =
   map EPara [1 .. 4]
     <> map ENotedPara [1 .. 4]
     <> [EHeading, ENotedHeading, ERecto]
-    <> map EFigure [1 .. c + 1]
+    <> map EFigure [1 .. c]
     <> [ESpace, EBreak]
 
 {- | Every input, tier n holding the flows of n elements, the columns of

@@ -58,6 +58,8 @@ noteLinesOf = sum . map nbLines . concatMap lbNotes
 -- | The first part of what follows, with the notes of its lines (golem-layout ADR 0019).
 nextNeed :: Env -> [Flow] -> Need
 nextNeed env = \case
+  -- a heading at a recto starts a page of its own: nothing before it keeps it (docs/adr/0206)
+  (f : _) | startsRecto f -> mempty
   -- the first part that can be split from the rest (golem-layout ADR 0021)
   (FParagraph ls : _) -> linesNeed (take (firstPart True (length ls)) ls)
   (FContinued ls : _) -> linesNeed (take (firstPart False (length ls)) ls)

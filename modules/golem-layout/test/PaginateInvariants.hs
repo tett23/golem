@@ -1,25 +1,11 @@
 {- | The invariants of pagination (docs/adr/0204, its section 「不変条件」),
-as predicates over the flow that goes in and the columns that come out.
-They read nothing of the paginator but its input and output.
+as predicates over the flow that goes in and the columns that come out,
+read as docs/adr/0206 (its section 6) decides. They read nothing of the
+paginator but its input and output, and every case is judged.
 
 The columns are taken in the order of their page and their column. A
 grid line, a heading or a figure is at a place: its column in that
 order and its slot in the column.
-
-Where the specification does not decide a case, the predicate does not
-judge it, and the case is named in the comment of the predicate:
-
-* I2 does not judge a column with a figure taller than the column. The
-  specification says a figure always fits an empty column (the section
-  「図版」), so the paginator never gets one; the enumeration does.
-* I4 and I5 do not judge a column that holds nothing but headings
-  before the paragraph. The specification places the line after such
-  headings 「空の段と同じく」 (golem-layout ADR 0019), which may or may not
-  lift the orphan and widow rules as an empty column does.
-* I6 does not judge a heading followed by a heading at a recto, which
-  starts a page of its own (I8).
-* I8 does not judge the figures sent on before a heading at a recto: the
-  specification places them on the page after a break (「改ページ」).
 -}
 module PaginateInvariants
   ( Invariant (..),
@@ -163,10 +149,11 @@ i1PlacedOnce flows ps =
 {- | I2: the grid lines placed in a column, the lines of its notes and
 the separator, if it has notes, do not exceed its grid lines.
 
-Not judged: a column with a heading taller than an empty column
-(recorded as 'TallHeading'), a column whose first slot is the first
-line of a paragraph whose note continues in a later column, and a
-column with a figure taller than the column (see the module header).
+Allowed: a column with a heading taller than an empty column (recorded
+as 'TallHeading'), and a column whose first slot is the first line of a
+paragraph whose note continues in a later column. A figure is never
+taller than the column: golem-driver shrinks it to fit an empty one, and
+the input of pagination has none (docs/adr/0206).
 -}
 i2NoOverflow :: Int -> Check
 i2NoOverflow separator flows ps =
@@ -182,7 +169,6 @@ i2NoOverflow separator flows ps =
       noteContinues c p = case poSlots p of
         (_, SLine i) : _ -> or [continuedLater c (nbId nb) | l <- firstLines, lbId l == i, nb <- lbNotes l]
         _ -> False
-      tooTall p = or [n > poLines p | (_, SFigure i) <- poSlots p, Just n <- [Map.lookup i figures]]
       tall p = or [True | TallHeading {} <- poUnmet p]
       check (c, p) =
         let used = maximum (0 : [k + extent s | (k, s) <- poSlots p])
@@ -193,7 +179,6 @@ i2NoOverflow separator flows ps =
             | not (poBlank p),
               total > poLines p,
               not (tall p),
-              not (tooTall p),
               not (noteContinues c p)
             ]
    in concatMap check (zip [0 ..] cols)
@@ -240,10 +225,9 @@ paragraphs flows = [map lbId ls | FParagraph ls <- flows, length ls >= 2]
 
 {- | I4: the first line of a paragraph of two lines or more is not left
 alone at the end of a column with the rest in a later column, unless
-nothing is before it in its column (an empty column).
-
-Not judged: a column with nothing but headings before the line (see the
-module header).
+nothing is before it in its column (an empty column), or nothing but
+headings placed from the top of the column: such a column places lines
+as an empty one does (docs/adr/0206).
 -}
 i4NoOrphan :: Check
 i4NoOrphan flows ps =
@@ -259,11 +243,9 @@ i4NoOrphan flows ps =
       ]
 
 {- | I5: the last line of a paragraph of two lines or more is not alone
-in a column, unless the column before starts empty and holds nothing
-but lines of the paragraph.
-
-Not judged: a column before with nothing but headings before the lines
-of the paragraph (see the module header).
+in a column, unless the column before starts empty, or with nothing but
+headings, and holds nothing else but lines of the paragraph: such a
+column places lines as an empty one does (docs/adr/0206).
 -}
 i5NoWidow :: Check
 i5NoWidow flows ps =
@@ -280,34 +262,34 @@ i5NoWidow flows ps =
         not own
       ]
 
-{- | I6: a heading is in the column of the headings that follow it and of
-the first two lines (or the only line) of the paragraph after them,
+{- | I6: a heading is in the column of the headings that follow it, up
+to a heading at a recto, and of the first part of the paragraph after
+them (golem-layout ADR 0021: all of three lines or fewer, two of more),
 unless it is the first slot of its column (nothing is sent on from an
-empty column).
-
-Not judged: a heading followed by a heading at a recto (see the module
-header).
+empty column). A heading at a recto ends the run: the paragraph after
+it is not counted (docs/adr/0206).
 -}
 i6HeadingKept :: Check
 i6HeadingKept flows ps =
   let places = linePlaces ps
       isHeading = \case
-        FHeading {} -> True
+        FHeading {fhRecto = False} -> True
         _ -> False
+      firstPart ls = if length ls <= 3 then ls else take 2 ls
       kept rest =
         let run = takeWhile isHeading rest
             after = drop (length run) rest
             para = case after of
-              FParagraph ls : _ -> map lbId (take 2 ls)
+              FParagraph ls : _ -> map lbId (firstPart ls)
               _ -> []
-         in if any fhRecto run then Nothing else Just (mapMaybe (fmap lbId . firstLine) run <> para)
+         in mapMaybe (fmap lbId . firstLine) run <> para
       firstLine f = case flowLines f of
         l : _ -> Just l
         [] -> Nothing
       go [] = []
       go (f : rest) = case f of
         FHeading {fhLines = l : _}
-          | Just members <- kept rest,
+          | let members = kept rest,
             Just ((c, k), p) <- Map.lookup (lbId l) places,
             k > 0,
             let away = [m | m <- members, Just cm <- [columnOf places m], cm /= c],
@@ -334,17 +316,14 @@ i7NoteOnPage flows ps =
         pg /= Just (poNumber p)
       ]
 
-{- | I8: a heading at a recto is on an odd page, in its first column,
-before every line of the column.
-
-Not judged: figures sent on before it (see the module header).
+{- | I8: a heading at a recto is on an odd page, in its first column, its
+first slot: no line and no figure sent on is before it (docs/adr/0206).
 -}
 i8Recto :: Check
 i8Recto flows ps =
   let places = linePlaces ps
-   in [ Breach I8 [lbId l] ("heading " <> show (lbId l) <> " at a recto is on page " <> show (poNumber p) <> " column " <> show (poColumn p) <> " after " <> show (length textBefore) <> " lines")
+   in [ Breach I8 [lbId l] ("heading " <> show (lbId l) <> " at a recto is on page " <> show (poNumber p) <> " column " <> show (poColumn p) <> " after " <> show k <> " slots")
       | FHeading {fhRecto = True, fhLines = l : _} <- flows,
         Just ((_, k), p) <- [Map.lookup (lbId l) places],
-        let textBefore = filter (not . null . slotLines) (slotsBefore p k),
-        even (poNumber p) || poColumn p /= 0 || not (null textBefore)
+        even (poNumber p) || poColumn p /= 0 || k /= 0
       ]
