@@ -13,16 +13,20 @@ module Golem.Assemble.ListMarkers
     endsWithSpacedPunctuation,
     ListSite (..),
     listSites,
+    listNumberDiagnostics,
   )
 where
 
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Assemble (Book (..))
 import Golem.Doc.IR
 import Golem.Numerals.Format
 import Golem.Numerals.Notation
+import Golem.Syntax.Diagnostic (Diagnostic, Severity (..), diagnostic)
 import Golem.Syntax.Span
 import Golem.Syntax.Text (tshow)
 
@@ -146,3 +150,18 @@ listSites = concatMap (go 0)
     itemSpan sp it = case itemBlocks it of
       (Block bsp _ _ : _) -> bsp
       [] -> sp
+
+{- | Numbers of list items that the number format of their depth cannot
+write (golem-driver ADR 0013): G07029 at the item, whatever the target.
+@formats@ are the number formats of @[lists] numbers@; without them, the
+default of the writing mode (docs/adr/0192).
+-}
+listNumberDiagnostics :: Maybe (NonEmpty NumberFormat) -> Bool -> Book -> [Diagnostic]
+listNumberDiagnostics numbers vertical book =
+  [ diagnostic "G07029" Error (lsiSpan s) ("リストの番号 " <> T.pack (show (lsiNumber s)) <> " は、書式 " <> renderNumberFormat f <> " で表せません")
+  | s <- listSites (concat [bs | Document _ bs <- bookDocs book]),
+    let f = atDepth formats (lsiDepth s),
+    null (formatListNumber (nfStyle f) (lsiNumber s))
+  ]
+  where
+    formats = fromMaybe (pure (defaultNumberFormat vertical)) numbers

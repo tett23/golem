@@ -7,6 +7,7 @@ module Golem.Project.Manifest
     roleWord,
     marcRelator,
     inMetadata,
+    runningMetadata,
     Printing (..),
     ChapterEntry (..),
     SourceEdit (..),
@@ -98,6 +99,21 @@ data Metadata = Metadata
     mdPrintings :: ![Printing]
   }
   deriving stock (Eq, Show)
+
+{- | The text of the keys of [metadata] a running head can show
+(golem-driver ADR 0022): the keys of @meta@ but creators, an array.
+-}
+runningMetadata :: Metadata -> Map Text Text
+runningMetadata md =
+  Map.fromList $
+    [ ("id", mdId md),
+      ("title", mdTitle md),
+      ("language", mdLanguage md),
+      ("date", T.pack (show (mdDate md)))
+    ]
+      <> [("title_reading", r) | Just r <- [mdTitleReading md]]
+      <> [("edition", e) | Just e <- [mdEdition md]]
+      <> [("publisher", p) | Just p <- [mdPublisher md]]
 
 -- | A creator or a contributor (docs/adr ADR 0033).
 data Creator = Creator

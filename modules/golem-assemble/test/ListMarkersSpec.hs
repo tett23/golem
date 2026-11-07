@@ -1,14 +1,17 @@
 -- | itemNumbers and the number formats of lists (golem-driver ADR 0013).
 module ListMarkersSpec (tests) where
 
+import Data.List.NonEmpty (NonEmpty (..))
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Assemble (AssembleConfig (..), Book, NoteNumbering (..), assemble)
 import Golem.Assemble.ListMarkers
 import Golem.Doc.IR
 import Golem.Numerals (kanji)
 import Golem.Numerals.Format (Legacy (..))
 import Golem.Numerals.Notation
-import Golem.Syntax.Span
+import Golem.Syntax
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -58,7 +61,42 @@ tests =
         let inner = Block sp Nothing (OrderedList [item (Just 5)])
             second = SrcSpan (FileId 0) 3 4
             outer = Block sp Nothing (OrderedList [item Nothing, ListItem Nothing [Block second Nothing (Paragraph Nothing []), inner]])
-        listSites [outer] @?= [ListSite 1 1 sp, ListSite 1 2 second, ListSite 2 5 sp]
+        listSites [outer] @?= [ListSite 1 1 sp, ListSite 1 2 second, ListSite 2 5 sp],
+      listNumberTests
+    ]
+
+-- | A book of the blocks of one file.
+bookOf :: [Block] -> Book
+bookOf bs = fst (assemble cfg (\_ _ _ -> Right "") [Document (FileId 0) bs])
+  where
+    cfg = AssembleConfig Map.empty "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" Map.empty 16
+
+-- | The code, the span and the message of each diagnostic.
+sites :: [Diagnostic] -> [(Text, SrcSpan, Text)]
+sites = map (\d -> let DiagnosticCode c = diagCode d in (c, diagSpan d, diagMessage d))
+
+listNumberTests :: TestTree
+listNumberTests =
+  testGroup
+    "G07029 (docs/adr/0192)"
+    [ testCase "a number its format cannot write is G07029, at the item" $ do
+        let at51 = SrcSpan (FileId 0) 5 6
+            list = Block sp Nothing (OrderedList [item Nothing, ListItem (Just 51) [Block at51 Nothing (Paragraph Nothing [Text at51 "x"])]])
+            circled = parseNumberFormat "{①}"
+        case circled of
+          Right f ->
+            sites (listNumberDiagnostics (Just (f :| [])) False (bookOf [list]))
+              @?= [("G07029", at51, "リストの番号 51 は、書式 {n:circled} で表せません")]
+          Left e -> assertFailure (show e),
+      testCase "without formats, the default of each writing mode decides" $ do
+        let list = Block sp Nothing (OrderedList [item Nothing, item (Just 100000)])
+        sites (listNumberDiagnostics Nothing False (bookOf [list])) @?= []
+        sites (listNumberDiagnostics Nothing True (bookOf [list])) @?= [],
+      testCase "a book of numbers its formats can write has no G07029" $ do
+        let list = Block sp Nothing (OrderedList [item Nothing, item (Just 50)])
+        case parseNumberFormat "{①}" of
+          Right f -> sites (listNumberDiagnostics (Just (f :| [])) False (bookOf [list])) @?= []
+          Left e -> assertFailure (show e)
     ]
 
 -- | The notations of formatListNumber before docs/adr/0177, as it was: the reference of the table.

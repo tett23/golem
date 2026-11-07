@@ -11,8 +11,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
 import Golem.Driver.Fonts (golemFontProvider)
-import Golem.Driver.Pdf (PdfInput (..), labelSpans, renderPdf, styleFileId)
-import Golem.Project (ProjectFailure (..))
+import Golem.Driver.Pdf (PdfInput (..), labelSpans, renderPdf)
+import Golem.Project (ProjectFailure (..), styleFileId)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Support
