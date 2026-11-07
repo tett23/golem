@@ -91,6 +91,7 @@ test-suite golem-driver-test
     SecuritySpec
     StylesSpec
     TableFilesSpec
+    TaggedPdfSpec
     VarsSpec
     Support
   -- -threaded: tasty runs the tests at the same time on every processor;

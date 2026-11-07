@@ -32,6 +32,11 @@ env:
   # version and the SHA-256 of its linux-x64 binary (docs/adr/0085)
   MISE_VERSION: "2026.10.18"
   MISE_SHA256: "e97c38973336aa2ff350fea50f47b412b266fe263b102b7200ff1e9b118c6942"
+  # veraPDF from nixpkgs at a fixed commit, and the store path of its
+  # x86-64 Linux output there; a pull request changes both to move it
+  # (docs/adr/0183)
+  VERAPDF_NIXPKGS_REV: "1d060086d60cb76a40cf37109f979d88a5bd6396"
+  VERAPDF_STORE_PATH: "/nix/store/6bmwf91qar7fx3kcmq402mbh1k7ihwyk-verapdf-1.30.2"
 
 jobs:
   # Whether the change needs the build and the checks: not when it touches
@@ -224,12 +229,22 @@ jobs:
         with:
           path: ${{ env.GHC_DIR }}
           key: ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-slim
+      # cabal reads and writes everything under ~/.cabal, whatever the
+      # image and haskell-actions/setup leave in ~/.config/cabal
+      # (docs/adr/0201)
+      - name: cabal's directory (docs/adr/0201)
+        run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
       - id: setup
         uses: haskell-actions/setup@v2
         with:
           ghc-version: ${{ env.GHC_VERSION }}
           cabal-version: "3.16.1.0"
           cabal-update: false
+      - name: cabal uses ~/.cabal (docs/adr/0201)
+        run: |
+          test "$(cabal path -z --config-file)" = "$HOME/.cabal/config"
+          test "$(cabal path -z --remote-repo-cache)" = "$HOME/.cabal/packages"
+          test "$(cabal path -z --store-dir)" = "$HOME/.cabal/store"
       - name: The files of GHC that CI does not read (docs/adr/0141)
         if: steps.ghc.outputs.cache-hit != 'true'
         run: |
@@ -389,6 +404,17 @@ jobs:
         with:
           name: visual-pdfs
           path: visual-pdfs
+      # the books that the job verapdf checks against PDF/A-2a and PDF/UA-1
+      # (docs/adr/0183)
+      - name: The PDFs that declare PDF/A-2a and PDF/UA-1 (docs/adr/0183)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        run: GOLEM="$(cabal list-bin -v0 golem)" sh scripts/ci/conformance-pdfs.sh conformance-pdfs
+      - name: Upload the PDFs that declare PDF/A-2a and PDF/UA-1
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: conformance-pdfs
+          path: conformance-pdfs
       # the EPUB of aarch64 is the same, by the determinism job
       - name: The EPUB passes epubcheck
         if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
@@ -702,10 +728,37 @@ jobs:
       - name: Tests of the editor grammars (docs/adr/0170)
         run: sh tools/editors/test.sh
 
+  # veraPDF checks the PDFs of conformance-pdfs against PDF/A-2a and
+  # PDF/UA-1 (docs/adr/0183). veraPDF comes from nixpkgs at a fixed commit,
+  # from the signed cache of cache.nixos.org, and must be the store path of
+  # VERAPDF_STORE_PATH; the Nix store is not cached
+  verapdf:
+    needs: build
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+      - name: veraPDF from nixpkgs, at the store path of VERAPDF_STORE_PATH
+        run: |
+          out=$(nix build --no-link --print-out-paths "github:NixOS/nixpkgs/$VERAPDF_NIXPKGS_REV#verapdf")
+          if [ "$out" != "$VERAPDF_STORE_PATH" ]; then
+            echo "veraPDF is $out, not $VERAPDF_STORE_PATH" >&2
+            exit 1
+          fi
+      - uses: actions/download-artifact@v8
+        with:
+          name: conformance-pdfs
+          path: conformance-pdfs
+      - name: The PDFs pass PDF/A-2a and PDF/UA-1
+        run: sh scripts/ci/verapdf.sh "$VERAPDF_STORE_PATH/bin/verapdf" conformance-pdfs
+
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
   ci:
-    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins, editors]
+    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins, editors, verapdf]
     if: always()
     runs-on: ubuntu-24.04
     steps:

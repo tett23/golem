@@ -23,7 +23,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **本文の中のコードの和文の改行**：和文を含む長い本文の中のコードは、空白と `/` の後でしか改行しないので、版面の右にはみ出す。利用者のマニュアルの付録 E で、`golem preflight` が 4 か所に G09013 を出す（[docs/adr/0178](adr/0178-colophon-commit-line-overflow.md)）。
 - **韻文の後の空き**：韻文の段落と、その直後の本文の段落とのあいだに空きがない（fixture の The Hunting of the Snark）。
 - **連の分割**：韻文の連が、ページの境で 2 行ずつに分かれる（fixture の The Hunting of the Snark）。
-- **タグ付き PDF と PDF/A**：PDF に構造のタグ（`/StructTreeRoot`）を書かず、PDF/UA と PDF/A に対応しない。
 
 ### 記法と設定
 
@@ -195,6 +194,7 @@ v3 の GUI は、次の原則に従って作る。
 - **リストの字下げ**：入れ子のリストと 10 項目を超える番号付きリストを、横組みと縦組みで PDF と EPUB にして目で見ることと、決定性の検査の蟹工船とテンペストの出力が変わらないことの確かめが残っている（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
 - **段組みの脚注**：段組みの版面で、脚注がその段の下に組まれることを PDF で目で確かめていない。自動のテストでだけ確かめている（[docs/adr/0018](adr/0018-multi-column-layout.md)）。
 - **LSP の notice**：Neovim で、notice が Information として表示され、問題の一覧に載ることと、`silence-notices` に加えると保存の後に消えることを確かめていない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+- **コマンドの中の空白の semantic tokens の見え方**：Ghostty の Neovim の本人のテーマで、コマンドと式の中の空白（型は `operator`）に背景や下線が出ないことを確かめていない（[golem-lsp ADR 0008](golem-lsp/adr/0008-semantic-tokens-for-whitespace-and-remaining-punctuation.md)）。
 - **style.toml と preflight.toml の補完**：ヘッドレスの Neovim 0.12.6 で補完の要求を送り、候補が返ることは確かめたが、ふつうに起動した Neovim で、候補の一覧が出ること、引用符を付けた候補を選んだときと開いた引用符の中で選んだときに正しく入ること、`manifest.toml` とルートの外の TOML のファイルで何も出ないことを目で確かめていない（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
 - **diagnostic の説明へのリンク**：GitHub の上で `docs/diagnostics.md#g01017` を開き、G01017 の節に移ることを確かめていない（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
 - **コードブロックの見え方**：コードブロックの PDF を Acrobat の出力プレビューで開き、背景の色が DeviceCMYK の版だけに出ることと、コードの書体が埋め込まれていることを確かめていない。HTML と EPUB の `pre` と `code` の見え方も、Safari と Chrome で確かめていない（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
@@ -225,6 +225,7 @@ v3 の GUI は、次の原則に従って作る。
   - 開発者のマニュアルの 22 ページのコードの空白と前後の空き、利用者のマニュアルの 285 ページの参照の 11、12、14。
   - 図版を段に収めて回す試料（縦組みと横組み）で、縮めた図版が版面に収まり、回した図版がキャプションと一緒に回ること（[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）。
 - **EPUB の検査と読書環境での見え方**：別のファイルの参考文献への引用のリンク、ナビゲーション文書の深さ、プラグインの独自のチャネルを使った EPUB を epubcheck にかけて RSC-012 などが出ないことと、ブラウザと読書環境で見え方を確かめていない（[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）。
+- **タグ付き PDF の読み上げ**：タグ付き PDF を、macOS の VoiceOver と Acrobat Reader、Windows の NVDA と Acrobat Reader で読み、縦組みの本文、ルビ（親文字の後に読み）、注（印の直後に注の本文）の読む順と、図版の代替テキストが読まれることを確かめていない。veraPDF が調べるのは PDF/UA-1 のうち自動で調べられる要件だけである（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
 - **PDF のリンクの注釈**：リンクを含む横組みと縦組みの PDF を、Acrobat Reader、macOS のプレビュー、Chrome の PDF ビューアで開き、リンクの矩形をクリックして URL が開くことを確かめていない。ISO 15930-7:2010（PDF/X-4）の本文で、注釈と URI のアクションを禁じる規定がないことも確かめていない。禁じる規定があれば、`[color] intent` のある本にリンクを書く扱いを改める ADR を作る（[docs/adr/0182](adr/0182-external-links.md)）。
 - **epubcheck と apt の時間切れ**：epubcheck を配布元の release から取るようにした後の 30 回の `ci.yml` の実行で、apt と epubcheck の時間切れが一度も起きないことを確かめていない。結果は `docs/ci-timings/` に記録する（[docs/adr 0062](adr/0062-epubcheck-from-release-with-cache.md)）。
 

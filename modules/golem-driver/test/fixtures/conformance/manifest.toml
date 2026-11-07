@@ -1,0 +1,18 @@
+# タグ付き PDF と PDF/A-2a、PDF/UA-1 の検証のための fixture（docs/adr/0183）。
+# 構造の木のすべての要素を一冊に含む。manifest.toml と style.toml で横組みに、
+# manifest-vertical.toml と style-vertical.toml で縦組みに組む。傍注は横組みにだけある。
+# フォントはコミットしない。組む前に fonts/ja.otf と fonts/latin.otf を写す（README）。
+chapters = ["conformance.gm", "sidenotes.gm"]
+bibliography = ["references.json"]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000183"
+title = "構造の見本"
+language = "ja"
+date = 2026-11-07
+
+[source]
+paragraph-separator = "blank-line"
+
+[targets.pdf]
+[targets.html]

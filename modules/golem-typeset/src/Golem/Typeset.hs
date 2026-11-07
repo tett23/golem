@@ -56,6 +56,7 @@ module Golem.Typeset
     fitFigure,
     renderPdf,
     renderPdfView,
+    renderPdfStructure,
     flowLines,
     pdfFileName,
     instanceIdInputs,

@@ -44,9 +44,10 @@ main = do
   defaultMainReportingSkips (const (tests tinyJpeg))
 
 page :: [Mark] -> Page
-page m = Page box box box m []
-  where
-    box = Rect 0 0 (595 * 65536) (842 * 65536)
+page m = Page a4 a4 a4 [Tagged (LeafId [0]) m] []
+
+a4 :: Rect
+a4 = Rect 0 0 (595 * 65536) (842 * 65536)
 
 font :: Font
 font = Font "ABCDEF+Dummy" (TrueTypeProgram "not really a font") False [(1, 500), (2, 1000)] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 [(1, "A"), (2, "漢")] ("Adobe", "Identity", 0)
@@ -88,7 +89,10 @@ documentWith tinyJpeg ps =
       docId = documentId "urn:uuid:11111111-2222-4333-8444-555555555555",
       docInstanceId = instanceId ["source", "manifest"],
       docProducer = testProducer,
-      docPdfX = Nothing
+      docPdfX = Nothing,
+      docLang = "ja",
+      docPdfUa = Nothing,
+      docStructure = structElem SDocument [KidLeaf (LeafId [0])]
     }
 
 -- | A fixed Producer, so that the goldens do not change with the version (ADR 0005).
@@ -235,7 +239,7 @@ verifyTests tinyJpeg =
       map x4Requirement ps @?= ["TrimBox"]
   ]
   where
-    x4px = PdfX "fake-japan-color-profile" "JC200103" [] []
+    x4px = PdfX "fake-japan-color-profile" "JC200103" [] [] Nothing
     x4Sample = (sample tinyJpeg) {docPdfX = Just x4px}
     x4Twopage = (documentWith tinyJpeg [framePage Nothing 0 (100 * 65536, 100 * 65536) [], framePage Nothing 0 (100 * 65536, 100 * 65536) []]) {docPdfX = Just x4px}
     one name requirement f =
@@ -325,7 +329,7 @@ marksTests tinyJpeg =
           -- hexadecimal digits are case-insensitive in PDF; the writer writes them in lower case
           assertBool (show cs) ("/SPAN << /ACTUALTEXT <FEFF00E9> >> BDC\n" `BS.isPrefixOf` BC.map toUpper cs),
         testCase "a page with ActualText passes the PDF/X-4 checks, its font a resource" $ do
-          let doc = (documentWith tinyJpeg [page [ActualText "ffi" [GlyphRun (FontRef 7) (10 * 65536) [(1, 0, 0)]]]]) {docPdfX = Just (PdfX "fake-japan-color-profile" "JC200103" [] [])}
+          let doc = (documentWith tinyJpeg [page [ActualText "ffi" [GlyphRun (FontRef 7) (10 * 65536) [(1, 0, 0)]]]]) {docPdfX = Just (PdfX "fake-japan-color-profile" "JC200103" [] [] Nothing)}
           verify (documentObjects doc) @?= []
           assertBool "the font is a resource" ("/Font <<" `BS.isInfixOf` writePdf doc),
         testCase "a translated mark moves the origin inside q and Q" $
@@ -345,15 +349,15 @@ marksTests tinyJpeg =
           assertBool "Font" ("/Font << /F1 " `BS.isInfixOf` pdf)
           assertBool "jpeg" (jpeg tinyJpeg `BS.isInfixOf` pdf),
         testCase "a framed page without marks or bleed keeps its content" $ do
-          let content = [Rule (Rect 0 0 65536 65536)]
+          let content = [Tagged (LeafId [0]) [Rule (Rect 0 0 65536 65536)]]
           framePage Nothing 0 (w, h) content @?= Page (Rect 0 0 w h) (Rect 0 0 w h) (Rect 0 0 w h) content [],
         testCase "a framed page with Japanese marks draws them in the registration colour over the moved content" $ do
-          let content = [Rule (Rect 0 0 65536 65536)]
+          let content = [Tagged (LeafId [0]) [Rule (Rect 0 0 65536 65536)]]
               m = b + mm13
           pageContent (framePage (Just Japanese) b (w, h) content)
-            @?= [Translated m m (content <> [RegistrationRules (markRules Japanese b (w, h))])],
+            @?= [Moved (MoveBy m m) (content <> [Artifact Pagination [RegistrationRules (markRules Japanese b (w, h))]])],
         testCase "a framed page without marks has no registration rules" $ do
-          let content = [Rule (Rect 0 0 65536 65536)]
+          let content = [Tagged (LeafId [0]) [Rule (Rect 0 0 65536 65536)]]
           forM_ [0, b] $ \bl ->
             registrationRects (pageContent (framePage Nothing bl (w, h) content)) @?= [],
         testCase "registration rules: q, the Separation All fill, the rectangles, Q" $
@@ -371,21 +375,21 @@ marksTests tinyJpeg =
           assertBool (show pdf) (registrationResource `BS.isInfixOf` pdf),
         testCase "framed pages keep the registration colour out of the BleedBox" $
           forM_ [(st, bl) | st <- [Japanese, Western], bl <- [0, b]] $ \(st, bl) ->
-            checkRegistration [framePage (Just st) bl (w, h) [Rule (Rect 0 0 65536 65536)]] @?= [],
+            checkRegistration [framePage (Just st) bl (w, h) [Tagged (LeafId [0]) [Rule (Rect 0 0 65536 65536)]]] @?= [],
         testCase "registration rules on the trimmed page are reported by page number" $ do
           let framed = framePage Nothing b (w, h) []
-              inside = framed {pageContent = [Translated b b [RegistrationRules [Rect 0 0 65536 65536]]]}
+              inside = framed {pageContent = [Artifact Layout [Translated b b [RegistrationRules [Rect 0 0 65536 65536]]]]}
           checkRegistration [framed, inside] @?= [2],
         testCase "registration rules inside Translated are found at their moved positions" $
-          registrationRects [Rule (Rect 0 0 1 1), Translated 10 20 [Saved [RegistrationRules [Rect 1 2 3 4]], Translated 100 200 [RegistrationRules [Rect 0 0 5 5]]]]
+          registrationRects [Artifact Layout [Rule (Rect 0 0 1 1), Translated 10 20 [Saved [RegistrationRules [Rect 1 2 3 4]], Translated 100 200 [RegistrationRules [Rect 0 0 5 5]]]]]
             @?= [Rect 11 22 3 4, Rect 110 220 5 5],
         needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
           testCase "qpdf --check accepts a page with Japanese marks" $ do
             exe <- qpdf
             withSystemTempDirectory "golem-pdf" $ \dir -> do
               let path = dir </> "marks.pdf"
-                  framed = framePage (Just Japanese) b (w, h) [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]
-              BS.writeFile path (writePdf (documentWith tinyJpeg [framed]) {docPdfX = Just (PdfX "fake" "JC200103" [] [])})
+                  framed = framePage (Just Japanese) b (w, h) [Tagged (LeafId [0]) [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]]
+              BS.writeFile path (writePdf (documentWith tinyJpeg [framed]) {docPdfX = Just (PdfX "fake" "JC200103" [] [] Nothing)})
               (code, out, err) <- readProcessWithExitCode exe ["--check", path] ""
               assertEqual (out <> err) ExitSuccess code
       ]
@@ -406,7 +410,7 @@ linkTests tinyJpeg =
       assertBool "no Annots" (not ("/Annots" `BS.isInfixOf` pdf))
       writePdf (documentWith tinyJpeg [(page []) {pageAnnots = []}]) @?= writePdf (documentWith tinyJpeg [page []]),
     testCase "the annotations of each page in order, the pages in order" $ do
-      let two = (page []) {pageAnnots = [LinkAnnotation r (UriAction "https://a.example/"), LinkAnnotation r (UriAction "https://b.example/")]}
+      let two = (page []) {pageAnnots = [LinkAnnotation r (UriAction "https://a.example/") Nothing Nothing, LinkAnnotation r (UriAction "https://b.example/") Nothing Nothing]}
           pdf = writePdf (documentWith tinyJpeg [two, annotated "https://c.example/"])
       assertBool (show pdf) ("/Annots [12 0 R 13 0 R]" `BS.isInfixOf` pdf && "/Annots [14 0 R]" `BS.isInfixOf` pdf)
       map (\u -> BS.length (fst (BS.breakSubstring u pdf))) ["(https://a.example/)", "(https://b.example/)", "(https://c.example/)"]
@@ -419,11 +423,11 @@ linkTests tinyJpeg =
       assertBool (show pdf) ("/URI (https://example.com/%E7%B5%84%E7%89%88)" `BS.isInfixOf` pdf),
     testCase "a framed page moves its annotations with its content" $ do
       let b = 3 * 65536
-          framed = framePageWith (Just Japanese) b (100 * 65536, 100 * 65536) [] [LinkAnnotation (Rect 0 0 65536 65536) (UriAction "https://example.com/")]
+          framed = framePageWith (Just Japanese) b (100 * 65536, 100 * 65536) [] [LinkAnnotation (Rect 0 0 65536 65536) (UriAction "https://example.com/") Nothing Nothing]
           m = b + 2415027
-      pageAnnots framed @?= [LinkAnnotation (Rect m m 65536 65536) (UriAction "https://example.com/")],
+      pageAnnots framed @?= [LinkAnnotation (Rect m m 65536 65536) (UriAction "https://example.com/") Nothing Nothing],
     testCase "X4.verify: the URI of the action of a link annotation is not a forbidden name" $ do
-      let objs = documentObjects (documentWith tinyJpeg [annotated "https://example.com/"]) {docPdfX = Just (PdfX "fake" "JC200103" [] [])}
+      let objs = documentObjects (documentWith tinyJpeg [annotated "https://example.com/"]) {docPdfX = Just (PdfX "fake" "JC200103" [] [] Nothing)}
       verify objs @?= []
       -- a /URI elsewhere (the base URI of the catalog) is reported as before
       let catalogUri = objs {pdfObjects = map (\case ODict kvs | lookup "Type" kvs == Just (OName "Catalog") -> ODict (kvs <> [("URI", ODict [("Base", OStr "https://example.com/")])]); o -> o) (pdfObjects objs)}
@@ -445,7 +449,7 @@ linkTests tinyJpeg =
   ]
   where
     r = Rect (72 * 65536) (700 * 65536) (100 * 65536) (10 * 65536)
-    annotated u = (page [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]) {pageAnnots = [LinkAnnotation r (UriAction u)]}
+    annotated u = (page [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]) {pageAnnots = [LinkAnnotation r (UriAction u) Nothing Nothing]}
 
 producerTests :: ByteString -> [TestTree]
 producerTests tinyJpeg =
@@ -453,7 +457,7 @@ producerTests tinyJpeg =
       let info = infoDict (writePdf (sample tinyJpeg))
       assertBool (show info) ("/Producer (Golem 0.0.0-test)" `BS.isInfixOf` info),
     testCase "with an output intent, the information dictionary and XMP both have the Producer" $ do
-      let pdf = writePdf (sample tinyJpeg) {docPdfX = Just (PdfX "fake" "JC200103" [] [])}
+      let pdf = writePdf (sample tinyJpeg) {docPdfX = Just (PdfX "fake" "JC200103" [] [] Nothing)}
       assertBool "Info" ("/Producer (Golem 0.0.0-test)" `BS.isInfixOf` infoDict pdf)
       assertBool "XMP" ("<pdf:Producer>Golem 0.0.0-test</pdf:Producer>" `BS.isInfixOf` pdf),
     testCase "a PDF text string is literal for printable ASCII, otherwise UTF-16BE with a byte order mark" $ do
@@ -462,16 +466,16 @@ producerTests tinyJpeg =
         OHex b -> BS.take 2 b @?= BS.pack [0xFE, 0xFF]
         other -> assertFailure (show other),
     testCase "the Producer is escaped in XMP" $ do
-      let x = xmpPacket (PdfX "" "JC200103" [] []) "t" "a<b&c" (2026, 10, 11) (documentId "x") (instanceId ["a"])
+      let x = xmpPacket (Just (PdfX "" "JC200103" [] [] Nothing)) Nothing "t" "a<b&c" (2026, 10, 11) (documentId "x") (instanceId ["a"])
       assertBool (show x) ("<pdf:Producer>a&lt;b&amp;c</pdf:Producer>" `BS.isInfixOf` x),
     -- docs/adr ADR 0033
     testCase "contributors are a dc:contributor Bag in XMP, none without them" $ do
-      let x = xmpPacket (PdfX "" "JC200103" ["著者"] ["編集 & 者", "装丁者"]) "t" "p" (2026, 10, 11) (documentId "x") (instanceId ["a"])
+      let x = xmpPacket (Just (PdfX "" "JC200103" ["著者"] ["編集 & 者", "装丁者"] Nothing)) Nothing "t" "p" (2026, 10, 11) (documentId "x") (instanceId ["a"])
       assertBool (show x) (TE.encodeUtf8 "   <dc:contributor><rdf:Bag><rdf:li>編集 &amp; 者</rdf:li><rdf:li>装丁者</rdf:li></rdf:Bag></dc:contributor>\n" `BS.isInfixOf` x)
-      let y = xmpPacket (PdfX "" "JC200103" ["著者"] []) "t" "p" (2026, 10, 11) (documentId "x") (instanceId ["a"])
+      let y = xmpPacket (Just (PdfX "" "JC200103" ["著者"] [] Nothing)) Nothing "t" "p" (2026, 10, 11) (documentId "x") (instanceId ["a"])
       assertBool (show y) (not ("dc:contributor" `BS.isInfixOf` y)),
     testCase "the information dictionary and XMP agree" $ do
-      let pdf = writePdf (sample tinyJpeg) {docPdfX = Just (PdfX "fake" "JC200103" ["山田 太郎"] [])}
+      let pdf = writePdf (sample tinyJpeg) {docPdfX = Just (PdfX "fake" "JC200103" ["山田 太郎"] [] Nothing)}
           info = infoDict pdf
           infoStr k = fromMaybe "" (between ("/" <> k <> " (") ")" info)
           xmp k = maybe "" TE.decodeUtf8 (between ("<" <> k <> ">") ("</" <> k <> ">") pdf)
@@ -492,6 +496,137 @@ producerTests tinyJpeg =
       TE.decodeUtf8 trapped @?= xmp "pdf:Trapped"
       xmp "pdf:Trapped" @?= "False"
   ]
+
+-- | The catalog, the output intents and XMP of every PDF, of PDF/A-2a and of PDF/UA-1 (docs/adr ADR 0183).
+conformanceTests :: ByteString -> [TestTree]
+conformanceTests tinyJpeg =
+  [ testCase "every PDF has the language of the book and shows its title" $ do
+      let cat = catalogOf (documentObjects (sample tinyJpeg))
+      lookup "Lang" cat @?= Just (OStr "ja")
+      lookup "ViewerPreferences" cat @?= Just (ODict [("DisplayDocTitle", OBool True)])
+      let en = catalogOf (documentObjects (sample tinyJpeg) {docLang = "en-US"})
+      lookup "Lang" en @?= Just (OStr "en-US"),
+    testCase "PDF/A-2a: two output intents, GTS_PDFX and GTS_PDFA1, on the same profile" $ do
+      let objs = documentObjects (sample tinyJpeg) {docPdfX = Just (PdfX "fake" "JC200103" [] [] (Just PdfA2a))}
+          intents = case lookup "OutputIntents" (catalogOf objs) of
+            Just (OArr xs) -> [kvs | ODict kvs <- xs]
+            other -> error (show other)
+      map (lookup "S") intents @?= [Just (OName "GTS_PDFX"), Just (OName "GTS_PDFA1")]
+      map (lookup "OutputConditionIdentifier") intents @?= replicate 2 (Just (OStr "JC200103"))
+      case map (lookup "DestOutputProfile") intents of
+        [Just (ORef a), Just (ORef b)] -> a @?= b
+        other -> assertFailure (show other)
+      -- the PDF/X-4 checks still pass (golem-cli ADR 0006)
+      verify objs @?= [],
+    testCase "PDF/X-4 alone has one output intent" $ do
+      let objs = documentObjects (sample tinyJpeg) {docPdfX = Just (PdfX "fake" "JC200103" [] [] Nothing)}
+      case lookup "OutputIntents" (catalogOf objs) of
+        Just (OArr [_]) -> pure ()
+        other -> assertFailure (show other),
+    testCase "XMP: pdfaid:conformance is A; with PDF/UA-1 the extension schemas define pdfuaid:part" $ do
+      let x = xmpPacket (Just (PdfX "" "JC200103" [] [] (Just PdfA2a))) (Just PdfUa1) "t" "p" (2026, 10, 11) (documentId "x") (instanceId ["a"])
+      assertBool "part" ("<pdfaid:part>2</pdfaid:part>" `BS.isInfixOf` x)
+      assertBool "conformance" ("<pdfaid:conformance>A</pdfaid:conformance>" `BS.isInfixOf` x)
+      assertBool "pdfuaid" ("<pdfuaid:part>1</pdfuaid:part>" `BS.isInfixOf` x)
+      assertBool "the schema of pdfuaid" ("<pdfaSchema:namespaceURI>http://www.aiim.org/pdfua/ns/id/</pdfaSchema:namespaceURI>" `BS.isInfixOf` x)
+      assertBool "the schema of pdfxid" ("<pdfaSchema:namespaceURI>http://www.npes.org/pdfx/ns/id/</pdfaSchema:namespaceURI>" `BS.isInfixOf` x)
+      assertBool "the schema of pdf" ("<pdfaSchema:namespaceURI>http://ns.adobe.com/pdf/1.3/</pdfaSchema:namespaceURI>" `BS.isInfixOf` x),
+    testCase "PDF/UA-1 without an output intent has XMP with the title and pdfuaid, and no PDF/X" $ do
+      let objs = documentObjects (sample tinyJpeg) {docPdfUa = Just PdfUa1}
+          cat = catalogOf objs
+          xmp = case lookup "Metadata" cat of
+            Just (ORef n) | OStream _ b <- pdfObjects objs !! (n - 1) -> b
+            other -> error (show other)
+      lookup "OutputIntents" cat @?= Nothing
+      assertBool "title" (TE.encodeUtf8 "<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">見本</rdf:li></rdf:Alt></dc:title>" `BS.isInfixOf` xmp)
+      assertBool "pdfuaid" ("<pdfuaid:part>1</pdfuaid:part>" `BS.isInfixOf` xmp)
+      assertBool "no PDF/X" (not ("GTS_PDFXVersion" `BS.isInfixOf` xmp))
+      assertBool "no extension schema" (not ("pdfaExtension" `BS.isInfixOf` xmp))
+      assertBool "xref" (xrefConsistent (writePdf (sample tinyJpeg) {docPdfUa = Just PdfUa1})),
+    testCase "tagged content is /<type> << /MCID n >> BDC ... EMC, from 0 on each page in the order of the stream; artifacts carry their type" $ do
+      let glyph = GlyphRun (FontRef 7) 65536 [(1, 0, 0)]
+          (stream, leaves) = pageStream (Map.fromList [(FontRef 7, 1)]) Map.empty Map.empty (\(LeafId l) -> if l == [1] then "H1" else "P") [Tagged (LeafId [1]) [glyph], Artifact Pagination [Rule (Rect 0 0 65536 65536)], Moved (MoveBy 65536 0) [Tagged (LeafId [2]) [glyph], Artifact Layout [glyph]], Tagged (LeafId [3]) []]
+      leaves @?= [LeafId [1], LeafId [2]]
+      stream
+        @?= BS.concat
+          [ "/H1 << /MCID 0 >> BDC\nBT /F1 1 Tf\n1 0 0 1 0 0 Tm <0001> Tj\nET\nEMC\n",
+            "/Artifact << /Type /Pagination >> BDC\n0 0 1 1 re f\nEMC\n",
+            "q 1 0 0 1 1 0 cm\n/P << /MCID 1 >> BDC\nBT /F1 1 Tf\n1 0 0 1 0 0 Tm <0001> Tj\nET\nEMC\n/Artifact << /Type /Layout >> BDC\nBT /F1 1 Tf\n1 0 0 1 0 0 Tm <0001> Tj\nET\nEMC\nQ\n"
+          ],
+    testCase "every PDF is marked and has a structure tree whose ParentTree reaches the elements; a leaf on two pages is an MCR on the second" $ do
+      let glyph = GlyphRun (FontRef 7) 65536 [(1, 0, 0)]
+          tree =
+            structElem SDocument [KidElem (structElem SP [KidLeaf (LeafId [1])]), KidElem ((structElem SNote [KidLeaf (LeafId [2])]) {seId = Just "note-1"})]
+          doc = (documentWith tinyJpeg [Page a4 a4 a4 [Tagged (LeafId [1]) [glyph]] [], Page a4 a4 a4 [Tagged (LeafId [1]) [glyph], Tagged (LeafId [2]) [glyph]] []]) {docStructure = tree}
+          objs = documentObjects doc
+          at n = pdfObjects objs !! (n - 1)
+          dictAt n = case at n of
+            ODict kvs -> kvs
+            other -> error (show other)
+          cat = catalogOf objs
+          root = case lookup "StructTreeRoot" cat of
+            Just (ORef n) -> n
+            other -> error (show other)
+          pages = [kvs | ODict kvs <- pdfObjects objs, lookup "Type" kvs == Just (OName "Page")]
+      lookup "MarkInfo" cat @?= Just (ODict [("Marked", OBool True)])
+      lookup "Type" (dictAt root) @?= Just (OName "StructTreeRoot")
+      map (lookup "StructParents") pages @?= [Just (OInt 0), Just (OInt 1)]
+      -- the elements in preorder after the root: Document, P, Note
+      let docN = root + 1
+          pN = root + 2
+          noteN = root + 3
+          pageRef i = case [ORef n | (n, ODict kvs) <- zip [1 ..] (pdfObjects objs), lookup "Type" kvs == Just (OName "Page")] of
+            refs -> refs !! i
+      lookup "S" (dictAt docN) @?= Just (OName "Document")
+      lookup "P" (dictAt docN) @?= Just (ORef root)
+      lookup "P" (dictAt pN) @?= Just (ORef docN)
+      lookup "Pg" (dictAt pN) @?= Just (pageRef 0)
+      lookup "K" (dictAt pN) @?= Just (OArr [OInt 0, ODict [("Type", OName "MCR"), ("Pg", pageRef 1), ("MCID", OInt 0)]])
+      lookup "K" (dictAt noteN) @?= Just (OArr [OInt 1])
+      lookup "ID" (dictAt noteN) @?= Just (OStr "note-1")
+      lookup "ParentTree" (dictAt root) @?= Just (ODict [("Nums", OArr [OInt 0, OArr [ORef pN], OInt 1, OArr [ORef pN, ORef noteN]])])
+      lookup "ParentTreeNextKey" (dictAt root) @?= Just (OInt 2)
+      lookup "IDTree" (dictAt root) @?= Just (ODict [("Names", OArr [OStr "note-1", ORef noteN])])
+      assertBool "xref" (xrefConsistent (writePdf doc)),
+    testCase "a Link has an OBJR for each annotation of its lines; the annotation has Contents and StructParent; the page /Tabs /S" $ do
+      let glyph = GlyphRun (FontRef 7) 65536 [(1, 0, 0)]
+          aid = AnnotId [5]
+          link = LinkAnnotation (Rect 0 0 65536 65536) (UriAction "https://example.com/") (Just aid) (Just "見本（https://example.com/）")
+          tree = structElem SDocument [KidElem (structElem SP [KidElem (structElem SLink [KidLeaf (LeafId [1]), KidAnnot aid])])]
+          doc = (documentWith tinyJpeg [Page a4 a4 a4 [Tagged (LeafId [1]) [glyph]] [link], Page a4 a4 a4 [Tagged (LeafId [1]) [glyph]] [link]]) {docStructure = tree}
+          objs = documentObjects doc
+          dictAt n = case pdfObjects objs !! (n - 1) of
+            ODict kvs -> kvs
+            other -> error (show other)
+          numbered = zip [1 ..] (pdfObjects objs)
+          annots = [n | (n, ODict kvs) <- numbered, lookup "Subtype" kvs == Just (OName "Link")]
+          pages = [n | (n, ODict kvs) <- numbered, lookup "Type" kvs == Just (OName "Page")]
+          linkElem = [n | (n, ODict kvs) <- numbered, lookup "S" kvs == Just (OName "Link")]
+      length annots @?= 2
+      map (lookup "StructParent" . dictAt) annots @?= [Just (OInt 2), Just (OInt 3)]
+      map (lookup "Contents" . dictAt) annots @?= replicate 2 (Just (pdfTextString "見本（https://example.com/）"))
+      map (lookup "Tabs" . dictAt) pages @?= replicate 2 (Just (OName "S"))
+      case linkElem of
+        [l] ->
+          lookup "K" (dictAt l)
+            @?= Just (OArr ([OInt 0, ODict [("Type", OName "MCR"), ("Pg", ORef (pages !! 1)), ("MCID", OInt 0)]] <> [ODict [("Type", OName "OBJR"), ("Obj", ORef a), ("Pg", ORef p)] | (a, p) <- zip annots pages]))
+        other -> assertFailure (show other)
+      assertBool "xref" (xrefConsistent (writePdf doc)),
+    testCase "a leaf drawn but not in the tree becomes a P at the end of the Document" $ do
+      let doc = (documentWith tinyJpeg [page [GlyphRun (FontRef 7) 65536 [(1, 0, 0)]]]) {docStructure = structElem SDocument []}
+      structureText doc @?= "Document\n  P\n    \"A\"\n",
+    testCase "structureText: types, attributes, IDs and the text of each leaf" $ do
+      let f = font {fontToUnicode = [(1, "あ"), (2, "い")]}
+          tree = (structElem SDocument [KidElem ((structElem SFigure [KidLeaf (LeafId [2])]) {seAlt = Just "絵"}), KidElem (structElem SP [KidLeaf (LeafId [1])])]) {seAttrs = [Attribute "Layout" [("WritingMode", OName "TbRl")]]}
+          doc = (documentWith tinyJpeg [Page a4 a4 a4 [Tagged (LeafId [1]) [GlyphRun (FontRef 7) 65536 [(1, 0, 0), (2, 0, 0)]]] []]) {docFonts = Map.fromList [(FontRef 7, f)], docStructure = tree}
+      structureText doc @?= "Document /Layout /WritingMode /TbRl\n  Figure Alt=\"絵\"\n  P\n    \"あい\"\n",
+    testCase "without PDF/X-4 and PDF/UA there is no XMP" $
+      lookup "Metadata" (catalogOf (documentObjects (sample tinyJpeg))) @?= Nothing
+  ]
+  where
+    catalogOf objs = case pdfTrailer objs of
+      ODict t | Just (ORef n) <- lookup "Root" t, ODict kvs <- pdfObjects objs !! (n - 1) -> kvs
+      other -> error (show other)
 
 tests :: ByteString -> TestTree
 tests tinyJpeg =
@@ -530,7 +665,7 @@ tests tinyJpeg =
         assertBool "xref" (xrefConsistent pdf)
         assertBool "ID" ("/ID [<" `BS.isInfixOf` pdf)
         assertBool "dates from metadata" ("/CreationDate (D:20261011000000Z)" `BS.isInfixOf` pdf)
-        assertBool "sorted keys" ("<< /Pages 2 0 R /Type /Catalog >>" `BS.isInfixOf` pdf),
+        assertBool "sorted keys" ("<< /Lang (ja) /MarkInfo << /Marked true >> /Pages 2 0 R /StructTreeRoot " `BS.isInfixOf` pdf),
       testCase "JPEG is embedded without decoding and keeps its ICC profile" $ do
         let pdf = writePdf (sample tinyJpeg)
         assertBool "jpeg bytes" (jpeg tinyJpeg `BS.isInfixOf` pdf)
@@ -615,7 +750,7 @@ tests tinyJpeg =
         marks <- forAll (Gen.list (Range.linear 0 20) mark)
         assert (xrefConsistent (writePdf (documentWith tinyJpeg [page marks]))),
       testCase "PDF/X-4: output intent, XMP version, Trapped, boxes, embedded fonts, nothing forbidden" $ do
-        let px = PdfX "fake-japan-color-profile" "JC200103" ["山田 太郎"] []
+        let px = PdfX "fake-japan-color-profile" "JC200103" ["山田 太郎"] [] Nothing
             pdf = writePdf (sample tinyJpeg) {docPdfX = Just px}
         BS.take 9 pdf @?= "%PDF-1.6\n"
         assertBool "output intent" ("/S /GTS_PDFX" `BS.isInfixOf` pdf && "/DestOutputProfile" `BS.isInfixOf` pdf)
@@ -669,8 +804,15 @@ tests tinyJpeg =
           testCase "Adobe-Identity-0 is written as before" $
             assertBool "Identity" ("/CIDSystemInfo << /Ordering (Identity) /Registry (Adobe) /Supplement 0 >>" `BS.isInfixOf` writePdf (sample tinyJpeg))
         ],
+      testGroup "PDF/A-2a and PDF/UA-1 (docs/adr ADR 0183)" (conformanceTests tinyJpeg),
+      goldenVsString "XMP packet of PDF/A-2a and PDF/UA-1 (docs/adr ADR 0183)" "test/golden/xmp-pdfa-pdfua.xml" $
+        pure (BL.fromStrict (xmpPacket (Just (PdfX "" "JC200103" ["山田 太郎"] [] (Just PdfA2a))) (Just PdfUa1) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
+      goldenVsString "XMP packet of PDF/A-2a (docs/adr ADR 0183)" "test/golden/xmp-pdfa.xml" $
+        pure (BL.fromStrict (xmpPacket (Just (PdfX "" "JC200103" ["山田 太郎"] [] (Just PdfA2a))) Nothing "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
+      goldenVsString "XMP packet of PDF/UA-1 without an output intent (docs/adr ADR 0183)" "test/golden/xmp-pdfua.xml" $
+        pure (BL.fromStrict (xmpPacket Nothing (Just PdfUa1) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
       goldenVsString "XMP packet" "test/golden/xmp.xml" $
-        pure (BL.fromStrict (xmpPacket (PdfX "" "JC200103" ["山田 太郎"] []) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
+        pure (BL.fromStrict (xmpPacket (Just (PdfX "" "JC200103" ["山田 太郎"] [] Nothing)) Nothing "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
       needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
         testCase "qpdf --check accepts the output" $ do
           exe <- qpdf

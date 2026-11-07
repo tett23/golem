@@ -2,20 +2,23 @@
 module Golem.Typeset.Draw
   ( renderPdf,
     renderPdfView,
+    renderPdfStructure,
   )
 where
 
+import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.Containers.ListUtils (nubOrdOn)
 import Data.Either (lefts)
 import Data.List (groupBy, nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (toGregorian)
+import Golem.Assemble (Book (..))
 import Golem.Doc.IR
 import Golem.Layout.Code
 import Golem.Layout.Japanese
@@ -32,11 +35,14 @@ import Golem.Preflight.View qualified as V
 import Golem.Project
 import Golem.Project.Style
 import Golem.Syntax
+import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
 import Golem.Typeset.Overhang (kentenAcross, rubyAcross)
 import Golem.Typeset.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
+import Golem.Typeset.Structure (linksOfLeaves, structureTree)
 import Golem.Typeset.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
+import Text.Printf (printf)
 
 {- | The PDF and the notices of its layout (G07030), or the errors that
 stopped it. The first argument is the version of Golem, for the Producer
@@ -50,9 +56,18 @@ renderPdf version provider inp = fmap (\(bytes, notices, _) -> (bytes, notices))
 characters of its pages, for G08100 (docs/adr 0081).
 -}
 renderPdfView :: Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View))
-renderPdfView version provider inp0 = case checkedGeometry inp of
-  Left ds -> pure (Left ds)
-  Right geom -> do
+renderPdfView version provider inp = fmap (\(bytes, notices, view, _) -> (bytes, notices, view)) <$> renderPdfAll version provider inp
+
+-- | The structure tree of the PDF as text (docs/adr ADR 0183), for the tests.
+renderPdfStructure :: Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] Text)
+renderPdfStructure version provider inp = fmap (\(_, _, _, st) -> st) <$> renderPdfAll version provider inp
+
+-- | The PDF, its notices, its view and its structure tree as text.
+renderPdfAll :: Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Text))
+renderPdfAll version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
+  (ds, Left gs) -> pure (Left (ds <> gs))
+  (ds@(_ : _), Right _) -> pure (Left ds)
+  ([], Right geom) -> do
     lf <- loadFonts provider (piRoot inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
     case lf of
       Left ds -> pure (Left ds)
@@ -68,19 +83,77 @@ renderPdfView version provider inp0 = case checkedGeometry inp of
               Left ds -> pure (Left ds)
               Right layout -> case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
                 [] -> do
-                  let (used, finish) = writeDocumentView version inp geom fonts layout intent
-                  -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
-                  embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
-                  -- a face used horizontally and vertically is reported once
-                  case nub (lefts (Map.elems embedded)) of
-                    [] -> do
-                      let (bytes, view) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
-                      -- G07101: dashes without ink (docs/adr ADR 0172)
-                      pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout, view))
-                    ds -> pure (Left ds)
+                  let (used, privateUse, finish) = writeDocumentView version inp geom fonts layout intent
+                  -- G07104 stops the PDF/A-2a before its fonts are embedded (docs/adr ADR 0183)
+                  if not (null privateUse)
+                    then pure (Left privateUse)
+                    else do
+                      -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
+                      embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
+                      -- a face used horizontally and vertically is reported once
+                      case nub (lefts (Map.elems embedded)) of
+                        [] -> do
+                          let (bytes, view, structure) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
+                          -- G07101: dashes without ink (docs/adr ADR 0172)
+                          pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout, view, structure))
+                        ds -> pure (Left ds)
                 ds -> pure (Left ds)
   where
     inp = codeInput inp0
+
+{- | What a book that declares PDF/A or PDF/UA must meet before its PDF is
+set (docs/adr ADR 0183), in dev and prod alike: an output intent for PDF/A
+(G03113, at the value of pdfa), [metadata] language in the form of a
+language tag (G03119, at its value), and for PDF/UA headings that start at
+level 1 and never go two levels deeper (G07103, at the heading). The
+document itself is level 0 before the first heading.
+-}
+declarationErrors :: PdfInput -> [Diagnostic]
+declarationErrors inp =
+  [ diagnostic "G03113" Error (valueSpan ["targets", "pdf", "pdfa"]) "PDF/A には [color] の intent が要ります"
+  | isJust pdfA,
+    isNothing (stIntent (piStyle inp))
+  ]
+    <> [ diagnostic "G03119" Error (valueSpan ["metadata", "language"]) ("PDF/A と PDF/UA には、language を言語のタグの形で書きます: " <> mdLanguage md)
+       | isJust pdfA || isJust pdfUa,
+         not (isLanguageTag (mdLanguage md))
+       ]
+    <> [ diagnostic "G07103" Error sp ("PDF/UA では見出しの段を飛ばせません: " <> tshow' before <> " から " <> tshow' l)
+       | isJust pdfUa,
+         let levels = [(l, sp) | Document _ bs <- bookDocs (piBook inp), Block sp _ (Heading l _ _) <- blocksWithin bs],
+         (before, (l, sp)) <- zip (0 : map fst levels) levels,
+         l > before + 1
+       ]
+  where
+    project = piProject inp
+    manifest = projectManifest project
+    md = manifestMetadata manifest
+    pdfA = tgPdfA (manifestTargets manifest)
+    pdfUa = tgPdfUa (manifestTargets manifest)
+    fid = projectManifestFile project
+    valueSpan keys = fromMaybe (mkSpan fid 0 0) (manifestValueSpan fid (projectManifestText project) keys)
+    tshow' = T.pack . show
+
+-- | Every block in document order, with the blocks inside lists and figures.
+blocksWithin :: [Block] -> [Block]
+blocksWithin = concatMap $ \b ->
+  b : case blockBody b of
+    BulletList items -> blocksWithin (concatMap itemBlocks items)
+    OrderedList items -> blocksWithin (concatMap itemBlocks items)
+    DefList gs -> blocksWithin (concat (concatMap dgDefs gs))
+    FigureBlock f -> blocksWithin (figCaption f)
+    _ -> []
+
+{- | G07104 (docs/adr ADR 0183): each character of the private use area a
+glyph of a PDF/A-2a stands for, once for each place in the source.
+-}
+privateUseErrors :: [(Text, SrcSpan)] -> [Diagnostic]
+privateUseErrors uses =
+  [ diagnostic "G07104" Error sp (T.pack (printf "PDF/A-2a の PDF に私用領域の字は書けません: U+%04X" (fromEnum c)))
+  | (c, sp) <- nubOrdOn id [(c, sp) | (t, sp) <- uses, c <- T.unpack t, privateUse c]
+  ]
+  where
+    privateUse c = (c >= '\xE000' && c <= '\xF8FF') || (c >= '\xF0000' && c <= '\xFFFFD') || (c >= '\x100000' && c <= '\x10FFFD')
 
 {- | A glyph drawn: its font reference, glyph and text (for embedding),
 and its face, size and swatch (for the view of golem preflight).
@@ -110,13 +183,14 @@ data LineRec = LineRec
     lrOverfull :: !(Maybe Sp),
     -- | the swatches of the backgrounds of inline code on the line (golem-driver ADR 0029)
     lrBackgrounds :: ![P.Swatch],
-    -- | the rectangles of the links on the line, on the page, in the order of the line (docs/adr ADR 0182)
-    lrLinks :: ![(LinkTarget, Rect)]
+    {- | the rectangles of the links on the line, on the page, in the order of
+    the line (docs/adr ADR 0182), each with the leaf of its first box (docs/adr ADR 0183)
+    -} lrLinks :: ![(LinkTarget, Maybe Leaf, Rect)]
   }
 
 -- | What one page draws.
 data PageDrawn = PageDrawn
-  { pdMarks :: [P.Mark],
+  { pdContent :: [P.Content],
     pdUses :: [GlyphUse],
     pdLines :: [(LineRec, [GlyphUse])],
     pdImages :: [(Rect, PlacedFigure)],
@@ -125,7 +199,7 @@ data PageDrawn = PageDrawn
     pdNumber :: Int,
     pdBackgrounds :: [P.Swatch],
     -- | the links of the page, in the order drawn (docs/adr ADR 0182)
-    pdLinks :: [(LinkTarget, Rect)]
+    pdLinks :: [(LinkTarget, Maybe Leaf, Rect)]
   }
 
 {- | What the drawing of a document shares: the input, the page geometry,
@@ -152,7 +226,9 @@ data DrawEnv = DrawEnv
     -- | each digit of the hidden folio of each page and its point (golem-driver ADR 0021)
     deHidden :: Map Int [(Char, (Sp, Sp))],
     -- | the Form XObject of each file and page of the PDF figures (golem-pdf ADR 0008)
-    deFormRefs :: Map (Text, Int) P.FormRef
+    deFormRefs :: Map (Text, Int) P.FormRef,
+    -- | the page and column where each line of the flow is first drawn (docs/adr ADR 0183)
+    deFirstPlace :: Map Int (Int, Int)
   }
 
 {- | The PDF and its view for golem preflight (golem-cli ADR 0006), from the
@@ -161,7 +237,7 @@ embedded in IO between the two halves (docs/adr ADR 0034): the glyphs
 used in each font and their text, then the PDF and its view from the
 embedded fonts.
 -}
-writeDocumentView :: Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], Map P.FontRef P.Font -> (ByteString, V.View))
+writeDocumentView :: Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], Map P.FontRef P.Font -> (ByteString, V.View, Text))
 writeDocumentView version inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
@@ -181,7 +257,8 @@ writeDocumentView version inp geom fonts layout intent =
             deNoteBodies = Map.fromList [note | sl <- Map.elems (plLines layout), note <- slNotes sl],
             deTableInks = Map.mapWithKey (tableInk env) (plTables layout),
             deHidden = hiddenFolios inp geom layout,
-            deFormRefs = formRefs
+            deFormRefs = formRefs,
+            deFirstPlace = Map.fromListWith (\_ old -> old) [(lid, (poNumber p, poColumn p)) | p <- plPages layout, (_, SLine lid) <- poSlots p]
           }
       -- the columns of a page come together from 'paginate' (docs/adr ADR 0018)
       drawn = zipWith (drawPage env) (pagesOf (plPages layout)) masters
@@ -194,7 +271,18 @@ writeDocumentView version inp geom fonts layout intent =
       formRefs = Map.fromList [(k, P.FormRef n) | ((k, _), n) <- zip formKeys [1 ..]]
       -- the bleed and the crop marks around each page (golem-pdf ADR 0004)
       bleed = maybe 0 pageBleed (stPage style)
-      pdfPages = [P.framePageWith (piMarks inp) bleed (pw, ph) (pdMarks pd) [P.LinkAnnotation r (P.UriAction u) | (LinkUri u, r) <- pdLinks pd] | pd <- drawn]
+      -- the link annotations, each of the Link of the structure tree that holds the first box of its line (docs/adr ADR 0183)
+      pdfPages =
+        [ P.framePageWith (piMarks inp) bleed (pw, ph) (pdContent pd) [P.LinkAnnotation r (P.UriAction u) aid (aid >>= (`Map.lookup` linkContents)) | (LinkUri u, lf, r) <- pdLinks pd, let aid = lf >>= leafOf >>= (`Map.lookup` linkOfLeaf)]
+        | pd <- drawn
+        ]
+      (structure, linkContents) = structureTree (plFlowEnv layout) (plUnits layout) figureAttrs
+      linkOfLeaf = linksOfLeaves structure
+      {- the BBox of the Figure of each figure where it is first drawn, in the
+      space of its page, and its placement (docs/adr ADR 0183) -}
+      origin = P.frameOrigin (piMarks inp) bleed (pw, ph)
+      figureBoxes = Map.fromListWith (\_ old -> old) [(pfUnit pf, r) | pd <- drawn, (r, pf) <- pdImages pd]
+      figureAttrs i = [P.Attribute "Layout" [("BBox", P.rectObj (r {rectX = rectX r + origin, rectY = rectY r + origin})), ("Placement", P.OName "Block")] | Just r <- [Map.lookup i figureBoxes]]
       {- each glyph once per font, with the text of its cluster; a whole
       cluster wins, then the first drawn (golem-driver ADR 0030) -}
       used = Map.map toUnicodeOf (Map.fromListWith (<>) [(guRef u, [(guGlyph u, guText u, guPart u)]) | pd <- reverse drawn, u <- reverse (pdUses pd)])
@@ -215,7 +303,12 @@ writeDocumentView version inp geom fonts layout intent =
                   P.docId = P.documentId (mdId md),
                   P.docInstanceId = P.instanceId (instanceIdInputs version (piInputs inp) programs),
                   P.docProducer = producer version,
-                  P.docPdfX = intent
+                  P.docPdfX = intent,
+                  P.docLang = mdLanguage md,
+                  P.docPdfUa = case tgPdfUa (manifestTargets (projectManifest (piProject inp))) of
+                    Just PdfUa1 -> Just P.PdfUa1
+                    Nothing -> Nothing,
+                  P.docStructure = structure
                 }
             bytes = P.writePdf doc
             -- the view of golem preflight (golem-cli ADR 0006)
@@ -259,8 +352,12 @@ writeDocumentView version inp geom fonts layout intent =
                   V.vwStyleSpan = styleSpan,
                   V.vwManifestSpan = mkSpan (projectManifestFile (piProject inp)) 0 0
                 }
-         in (bytes, view)
-   in (used, finish)
+         in (bytes, view, P.structureText doc)
+      -- the characters of the private use area in a PDF/A-2a (G07104, docs/adr ADR 0183)
+      privateUse = case P.pxPdfA =<< intent of
+        Just _ -> privateUseErrors [(guText u, guSpan u) | pd <- drawn, u <- pdUses pd]
+        Nothing -> []
+   in (used, privateUse, finish)
 
 -- font index × direction: even refs horizontal, odd refs vertical
 ref :: Int -> Bool -> P.FontRef
@@ -483,10 +580,10 @@ lineStart env ta cross
     vertical = pgVertical (deGeom env)
 
 -- a line drawn with its record for the view (golem-cli ADR 0006)
-entry :: DrawEnv -> Text -> SrcSpan -> Rect -> Sp -> SetLine -> (LineRec, ([P.Mark], [GlyphUse]))
+entry :: DrawEnv -> Text -> SrcSpan -> Rect -> Sp -> SetLine -> (LineRec, ([P.Content], [GlyphUse]))
 entry env kind sp ta cross = entryAt env kind sp (lineStart env ta cross)
 
-entryAt :: DrawEnv -> Text -> SrcSpan -> (Sp, Sp) -> SetLine -> (LineRec, ([P.Mark], [GlyphUse]))
+entryAt :: DrawEnv -> Text -> SrcSpan -> (Sp, Sp) -> SetLine -> (LineRec, ([P.Content], [GlyphUse]))
 entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl), drawLineAt env start sl)
 
 {- the backgrounds of inline code on a line (golem-driver ADR 0029): each
@@ -524,9 +621,9 @@ faceRect vertical size (x0, y0) s0 e0
 target, with the glue between them, from the start of its first box to
 the end of its last, across the face of the line, as 'codeBackgrounds';
 the reading of a ruby is not in it -}
-linkRects :: DrawEnv -> (Sp, Sp) -> SetLine -> [(LinkTarget, Rect)]
+linkRects :: DrawEnv -> (Sp, Sp) -> SetLine -> [(LinkTarget, Maybe Leaf, Rect)]
 linkRects env start sl =
-  [ (t, faceRect vertical (slSize sl) start (slIndent sl + s0) (slIndent sl + e0))
+  [ (t, Just (bcLeaf c), faceRect vertical (slSize sl) start (slIndent sl + s0) (slIndent sl + e0))
   | run@((s0, _, c) : _) <- groupWhen (\(_, _, p) (_, _, c) -> lkLink (bcLook p) == lkLink (bcLook c)) boxes,
     let e0 = maximum [o + w | (o, w, _) <- run],
     Just t <- [lkLink (bcLook c)]
@@ -575,7 +672,13 @@ noteSpan env nid = case [lid | (lid, sl) <- Map.toList (plLines layout), (nid', 
     styleSpan = mkSpan (piStyleFile (deInput env)) 0 0
 
 -- a line from its start point: on the baseline, or on the centre line
-drawLineAt :: DrawEnv -> (Sp, Sp) -> SetLine -> ([P.Mark], [GlyphUse])
+
+{- | A line from its start point: its tagged content and artifacts
+(docs/adr ADR 0183). The boxes of one leaf next to each other are one
+piece of tagged content; the reading of a ruby is the leaf after its base;
+the mark of kenten and the backgrounds of inline code are artifacts.
+-}
+drawLineAt :: DrawEnv -> (Sp, Sp) -> SetLine -> ([P.Content], [GlyphUse])
 drawLineAt env (x0, y0) sl =
   let l = slLine sl
       origin off0
@@ -603,6 +706,8 @@ drawLineAt env (x0, y0) sl =
           let look = bcLook c
               size = lkSize look
               half = look {lkSize = Sp (unSp size `div` 2)}
+              leaf = leafOf (bcLeaf c)
+              whole r = ([(leaf, fst r)], snd r)
            in (,) (lkColor look) $ case boxKind c of
                 kind
                   | kind `elem` [KindRuby, KindGroupRuby] ->
@@ -631,7 +736,7 @@ drawLineAt env (x0, y0) sl =
                             | otherwise = (marks, glyphs)
                           placed1 = [inColour lk (runAtU env (whoOf V.PartBase c) lk vertical False 0 (origin (off + pos)) u) | (u, lk, pos) <- zip3 baseUnits baseLooks (rpBase rp)]
                           placed2 = [runAtU env (whoOf V.PartRuby c) half vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
-                       in (concatMap fst (placed1 <> placed2), concatMap snd (placed1 <> placed2))
+                       in ([(leaf, concatMap fst placed1), (leafOf (rubyTextLeaf (bcLeaf c)), concatMap fst placed2)], concatMap snd (placed1 <> placed2))
                 KindKenten ->
                   {- the character, and the mark of its shape, half its size, the
                   centre of its ink box beside the em box (golem-driver ADR 0019):
@@ -648,7 +753,7 @@ drawLineAt env (x0, y0) sl =
                                 central = maybe 0 (lfEmBoxCentral fonts . shFace) (listToMaybe parent)
                              in beside (origin (off + Sp (unSp adv `div` 2))) (shift + kentenAcross False size central d)
                       (b2, u2) = maybe ([], []) (\sh -> usesOf (whoOf V.PartKenten c) (look {lkSize = d}) (kentenMark env (lkFace look) sh d centre)) (lkKenten look)
-                   in (b1 <> b2, u1 <> u2)
+                   in ([(leaf, b1), (Nothing, b2)], u1 <> u2)
                 KindNoteMark ->
                   {- the mark of a note in the look of mark-style (docs/adr/0177),
                   placed by the look of its place, the size s of the text and m of
@@ -667,13 +772,14 @@ drawLineAt env (x0, y0) sl =
                       part (tag, t, o)
                         | toEnum tag == KindRotated = runAtU env (whoOf V.PartBase c) look True True 0 (column - Sp (unSp (size * 3) `div` 10), oy - o) t
                         | otherwise = runAtU env (whoOf V.PartBase c) look True False 0 (column, oy - o) t
-                   in if vertical
-                        then mconcat (map part (maybe [(fromEnum KindText, bcText c, bcPadStart c)] mbParts (bcMark c)))
-                        else runAtU env (whoOf V.PartBase c) look False False 0 (ox + bcPadStart c, oy + above) (bcText c)
+                   in whole $
+                        if vertical
+                          then mconcat (map part (maybe [(fromEnum KindText, bcText c, bcPadStart c)] mbParts (bcMark c)))
+                          else runAtU env (whoOf V.PartBase c) look False False 0 (ox + bcPadStart c, oy + above) (bcText c)
                 -- the empty box of an [aki] draws nothing (golem-layout ADR 0012)
                 KindAki -> ([], [])
                 -- a run of full-width dashes: one line from end to end of its box (docs/adr ADR 0172)
-                KindDashes -> usesOf (whoOf V.PartBase c) look (dashesAt env look vertical (origin off) (bcText c))
+                KindDashes -> whole (usesOf (whoOf V.PartBase c) look (dashesAt env look vertical (origin off) (bcText c)))
                 _ ->
                   let pre = case T.unpack (bcText c) of
                         [ch] | boxKind c == KindPunctuation -> toSp size (fst (punctSpace (charClass ch)))
@@ -685,26 +791,36 @@ drawLineAt env (x0, y0) sl =
                       pt
                         | vertical && rotated = (ox - Sp (unSp (size * 3) `div` 10), oy)
                         | otherwise = (ox, oy) -- Identity-V: the origin is the top centre of the em box
-                   in runAtU env (whoOf V.PartBase c) look vertical rotated (if bcExpandable c then lineExpansion l else 0) pt (bcText c)
+                   in whole (runAtU env (whoOf V.PartBase c) look vertical rotated (if bcExpandable c then lineExpansion l else 0) pt (bcText c))
         -- a word broken at the line end gets its hyphen
         Penalty hw _ (PatternHyphen _)
           | i == lastIx && hw > 0 ->
               let (ox, oy) = origin off
                   look = lookBefore i
                   size = lkSize look
-               in (lkColor look, runAtU env (whoBefore i) look vertical vertical 0 (if vertical then (ox - Sp (unSp (size * 3) `div` 10), oy) else (ox, oy)) "-")
+                  -- the hyphen is of the leaf of the box before it
+                  leafBefore = case [bcLeaf c | (Box _ c, _) <- reverse (take i placed)] of
+                    (lf : _) -> leafOf lf
+                    [] -> Nothing
+                  r = runAtU env (whoBefore i) look vertical vertical 0 (if vertical then (ox - Sp (unSp (size * 3) `div` 10), oy) else (ox, oy)) "-"
+               in (lkColor look, ([(leafBefore, fst r)], snd r))
         _ -> (Nothing, ([], []))
       -- by the glyphs used, not the marks: the marks need the ToUnicode entries of every page (golem-driver ADR 0030)
       parts = filter (not . null . snd . snd) (zipWith (curry boxRun) [0 ..] placed)
-      -- boxes of the same swatch in a row share one saved colour
-      coloured = groupBy (\a b -> fst a == fst b) parts
-      marksOf grp = case grp of
-        ((Just name, _) : _)
-          | Just sw <- swatchOf env (plainLook body 0) {lkColor = Just name} -> [P.Saved (P.SetColor sw : concatMap (fst . snd) grp)]
-        _ -> concatMap (fst . snd) grp
+      -- each piece of a box with its leaf and swatch, in order
+      pieces = [(lf, col, ms) | (col, (ps, _)) <- parts, (lf, ms) <- ps, not (null ms)]
+      -- boxes of the same swatch in a row share one saved colour, inside the content of their leaf
+      coloured grp = case grp of
+        ((_, Just name, _) : _)
+          | Just sw <- swatchOf env (plainLook body 0) {lkColor = Just name} -> [P.Saved (P.SetColor sw : concat [ms | (_, _, ms) <- grp])]
+        _ -> concat [ms | (_, _, ms) <- grp]
+      contentOf grp@((lf, _, _) : _) =
+        let ms = concatMap coloured (groupBy (\(_, a, _) (_, b, _) -> a == b) grp)
+         in maybe (P.Artifact P.Layout ms) (`P.Tagged` ms) lf
+      contentOf [] = P.Artifact P.Layout []
       -- the backgrounds of inline code before the text of the line (golem-driver ADR 0029)
-      backs = [P.Saved [P.SetColor sw, P.Rule r] | (sw, r) <- codeBackgrounds env (x0, y0) sl]
-   in (backs <> concatMap marksOf coloured, concatMap (snd . snd) parts)
+      backs = [P.Artifact P.Layout [P.Saved [P.SetColor sw, P.Rule rr] | (sw, rr) <- codeBackgrounds env (x0, y0) sl] | not (null (codeBackgrounds env (x0, y0) sl))]
+   in (backs <> map contentOf (groupBy (\(a, _, _) (b, _, _) -> a == b) pieces), concatMap (snd . snd) parts)
   where
     fonts = deFonts env
     style = piStyle (deInput env)
@@ -712,7 +828,18 @@ drawLineAt env (x0, y0) sl =
     body = bodyRole (piStyle (deInput env))
     styleSpan = mkSpan (piStyleFile (deInput env)) 0 0
 
-textAt :: DrawEnv -> Text -> LS.Anchor -> Sp -> Text -> (LineRec, ([P.Mark], [GlyphUse]))
+-- | The leaf of the structure tree of a box: none for a box of no place, an artifact (docs/adr ADR 0183).
+leafOf :: Leaf -> Maybe P.LeafId
+leafOf = \case
+  Leaf [] _ -> Nothing
+  Leaf site k -> Just (P.LeafId (site <> [k]))
+
+-- | The leaf of the reading of a ruby box: the one after its base (golem-layout 'composeInlinesTree').
+rubyTextLeaf :: Leaf -> Leaf
+rubyTextLeaf (Leaf site k) = Leaf site (k + 1)
+
+-- | A running head or a folio: an artifact of pagination (docs/adr ADR 0183).
+textAt :: DrawEnv -> Text -> LS.Anchor -> Sp -> Text -> (LineRec, ([P.Content], [GlyphUse]))
 textAt env kind anchor size txt =
   let w = plainWidth fonts body size txt
       x0 = case anAlign anchor of
@@ -720,7 +847,7 @@ textAt env kind anchor size txt =
         LS.AlignCenter -> anX anchor - Sp (unSp w `div` 2)
         LS.AlignEnd -> anX anchor - w
       face = Rect x0 (anY anchor - (size - zwToSp size baselineRatio)) w size
-   in (LineRec kind styleSpan (Just face) Nothing [] [], runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt)
+   in (LineRec kind styleSpan (Just face) Nothing [] [], first (pure . P.Artifact P.Pagination) (runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt))
   where
     fonts = deFonts env
     body = bodyRole (piStyle (deInput env))
@@ -728,7 +855,7 @@ textAt env kind anchor size txt =
 
 {- one column of a page, against the rectangle of the column (docs/adr
 ADR 0018): its text, its images and its rules -}
-drawColumn :: DrawEnv -> PageOut -> ([(LineRec, ([P.Mark], [GlyphUse]))], ([P.Mark], [(Rect, PlacedFigure)]), ([P.Mark], [(Text, Rect, Sp)]), ([P.Mark], [P.Swatch]))
+drawColumn :: DrawEnv -> PageOut -> ([(LineRec, ([P.Content], [GlyphUse]))], ([P.Content], [(Rect, PlacedFigure)]), ([P.Content], [(Text, Rect, Sp)]), ([P.Content], [P.Swatch]))
 drawColumn env p =
   let n = poNumber p
       -- the columns of the page, or of the index (docs/adr ADR 0025)
@@ -736,15 +863,21 @@ drawColumn env p =
       ta = case drop (poColumn p) rects of
         (c : _) -> c
         [] -> typeAreaFor geom n
+      -- a line drawn again on a later page, the header row of a table, is an artifact (docs/adr ADR 0183)
+      again lid = maybe False (/= (n, poColumn p)) (Map.lookup lid (deFirstPlace env))
+      orAgain lid e = if again lid then asArtifact P.Pagination e else e
       lineParts =
-        [entry env (if Map.member lid (plTocPages layout) then "目次の行" else "本文の行") (spanOfLine env lid) ta (gridAt slot) sl | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines layout)]]
-          -- the leader and page number of a table of contents entry env (golem-driver ADR 0009)
+        [orAgain lid (entry env (if Map.member lid (plTocPages layout) then "目次の行" else "本文の行") (spanOfLine env lid) ta (gridAt slot) sl) | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines layout)]]
+          {- the leader and page number of a table of contents entry (golem-driver
+          ADR 0009): the page number in the leaf of the end of the entry, the
+          leader an artifact (docs/adr ADR 0183) -}
           <> [ entry env "目次の行" (spanOfLine env lid) ta (gridAt slot) (SetLine l (pgFontSize geom) start [] [] Nothing)
              | (slot, SLine lid) <- poSlots p,
+               let lastLeaf = listToMaybe (reverse [bcLeaf c | Just sl <- [Map.lookup lid (plLines layout)], Box _ c <- lineItems (slLine sl), bcLeaf c /= noLeaf]),
                Just tp <- [Map.lookup lid (plTocPages layout)],
-               (l, start) <- [(tpLeader tp, tpLeaderStart tp), (tpNumber tp, tpNumberStart tp)]
+               (l, start) <- [(tpLeader tp, tpLeaderStart tp), (maybe id withLeaf lastLeaf (tpNumber tp), tpNumberStart tp)]
              ]
-          <> [entry env "表の行" (spanOfLine env lid) ta (gridAt slot) cell | (slot, SLine lid) <- poSlots p, cell <- Map.findWithDefault [] lid (plTableLines layout)]
+          <> [orAgain lid (entry env "表の行" (spanOfLine env lid) ta (gridAt slot) cell) | (slot, SLine lid) <- poSlots p, cell <- Map.findWithDefault [] lid (plTableLines layout)]
           <> [ entry env "見出しの行" (spanOfLine env lid) ta (headingLineAt env slot hb j sl) sl
              | (slot, SHeading lid m) <- poSlots p,
                Just hb <- [Map.lookup lid (plHeadings layout)],
@@ -762,8 +895,8 @@ drawColumn env p =
                let (_, codeSlot, k', _) = codePartOf slot lid k ci,
                (j, Just sl) <- [(j, Map.lookup (lid + j) (plLines layout)) | j <- [0 .. k - 1]]
              ]
-          -- the text at the end of a part that continues, and the caption above the first part (golem-driver ADR 0023)
-          <> [ entry env "コードの行" (spanOfLine env lid) ta (codeRowAt env codeSlot (ciGeometry ci) k' k sl) sl
+          -- the text at the end of a part that continues (an artifact, docs/adr ADR 0183), and the caption above the first part (golem-driver ADR 0023)
+          <> [ asArtifact P.Pagination (entry env "コードの行" (spanOfLine env lid) ta (codeRowAt env codeSlot (ciGeometry ci) k' k sl) sl)
              | (slot, SCode lid k _) <- poSlots p,
                Just ci <- [Map.lookup lid (plCodes layout)],
                let (_, codeSlot, k', cont) = codePartOf slot lid k ci,
@@ -803,8 +936,8 @@ drawColumn env p =
               (paper, area) = turnedFrame geom t pageTa pf
               imageR = imageRect geom paper area 0 pf
               captions = [entry env "キャプションの行" (pfSpan pf) area (captionLineAt env 0 pf j) (SetLine l (pfCaptionSize pf) 0 [] [] Nothing) | (j, l) <- zip [0 ..] (pfCaption pf)]
-              onPage (rec, (_, uses)) = (rec {lrRect = P.turnRect t pageTa <$> lrRect rec, lrLinks = [(lt, P.turnRect t pageTa r) | (lt, r) <- lrLinks rec]}, ([], uses))
-           in (P.Turned t pageTa (figureMark env fid imageR pf : concatMap (fst . snd) captions), (P.turnRect t pageTa imageR, pf), map onPage captions)
+              onPage (rec, (_, uses)) = (rec {lrRect = P.turnRect t pageTa <$> lrRect rec, lrLinks = [(lt, lf, P.turnRect t pageTa r) | (lt, lf, r) <- lrLinks rec]}, ([], uses))
+           in (P.Moved (P.MoveTurn t pageTa) (figureMark env fid imageR pf : concatMap (fst . snd) captions), (P.turnRect t pageTa imageR, pf), map onPage captions)
         | (_, SPageFigure fid) <- poSlots p,
           Just pf <- [Map.lookup fid (plFigures layout)],
           Just t <- [pfTurn pf]
@@ -835,8 +968,9 @@ drawColumn env p =
              ]
    in ( lineParts <> noteParts <> concat [cs | (_, _, cs) <- turnedOut],
         (figMarks <> [m | (m, _, _) <- turnedOut], [(r, pf) | (_, r, pf) <- figures] <> [i | (_, i, _) <- turnedOut]),
-        (concat [ms | (_, _, _, ms, _) <- rules], [(k, r, t) | (k, r, t, _, _) <- rules]),
-        (map snd backgrounds, map fst backgrounds <> [sw | (_, _, _, _, Just sw) <- rules])
+        -- rules and the backgrounds of code are artifacts of layout (docs/adr ADR 0183)
+        ([P.Artifact P.Layout (concat [ms | (_, _, _, ms, _) <- rules]) | not (null rules)], [(k, r, t) | (k, r, t, _, _) <- rules]),
+        ([P.Artifact P.Layout (map snd backgrounds) | not (null backgrounds)], map fst backgrounds <> [sw | (_, _, _, _, Just sw) <- rules])
       )
   where
     geom = deGeom env
@@ -869,7 +1003,7 @@ drawPage env ps master = case ps of
         rules = concat [snd r | (_, _, r, _) <- columns]
         backs = concat [fst b | (_, _, _, b) <- columns]
      in PageDrawn
-          { pdMarks = backs <> concatMap (fst . snd) allParts <> concat [fst f | (_, f, _, _) <- columns] <> concat [fst r | (_, _, r, _) <- columns] <> concatMap fst hiddenParts,
+          { pdContent = backs <> concatMap (fst . snd) allParts <> concat [fst f | (_, f, _, _) <- columns] <> concat [fst r | (_, _, r, _) <- columns] <> concatMap fst hiddenParts,
             pdUses = concatMap (snd . snd) allParts <> concatMap snd hiddenParts,
             pdLines = [(rec, snd part) | (rec, part) <- allParts],
             pdImages = images,
@@ -1074,9 +1208,10 @@ captionIndent env ta pf
     vertical = pgVertical (deGeom env)
 
 -- each digit of a hidden folio, its advance centred on its point (golem-driver ADR 0021)
-hiddenMarks :: DrawEnv -> Int -> [([P.Mark], [GlyphUse])]
+hiddenMarks :: DrawEnv -> Int -> [([P.Content], [GlyphUse])]
 hiddenMarks env n =
-  [ runAtU env (SourceHiddenFolio, V.PartBase, styleSpan) (plainLook body size) False False 0 (cx - Sp (unSp w `div` 2), cy + Sp (unSp size `div` 2) - zwToSp size baselineRatio) txt
+  [ first (pure . P.Artifact P.Pagination) $
+      runAtU env (SourceHiddenFolio, V.PartBase, styleSpan) (plainLook body size) False False 0 (cx - Sp (unSp w `div` 2), cy + Sp (unSp size `div` 2) - zwToSp size baselineRatio) txt
   | Just hg <- [pgHiddenFolio geom],
     let size = hgSize hg,
     (c, (cx, cy)) <- Map.findWithDefault [] n (deHidden env),
@@ -1089,7 +1224,7 @@ hiddenMarks env n =
     body = bodyRole (piStyle (deInput env))
     styleSpan = mkSpan (piStyleFile (deInput env)) 0 0
 
-masterMarks :: DrawEnv -> Int -> Bool -> Maybe MasterGeometry -> [Text] -> [(LineRec, ([P.Mark], [GlyphUse]))]
+masterMarks :: DrawEnv -> Int -> Bool -> Maybe MasterGeometry -> [Text] -> [(LineRec, ([P.Content], [GlyphUse]))]
 masterMarks env n blank master headLines = case master of
   Nothing -> []
   Just m ->
@@ -1109,10 +1244,19 @@ masterMarks env n blank master headLines = case master of
     geom = deGeom env
     ph = snd (pgPageSize (deGeom env))
 
-figureMark :: DrawEnv -> Int -> Rect -> PlacedFigure -> P.Mark
-figureMark env fid r pf = case pfContent pf of
+-- | The image of a figure: the content of its Figure (docs/adr ADR 0183).
+figureMark :: DrawEnv -> Int -> Rect -> PlacedFigure -> P.Content
+figureMark env fid r pf = P.Tagged (P.LeafId (figureSite (pfUnit pf) <> [0])) $ pure $ case pfContent pf of
   P.RasterFigure _ -> P.Image (P.ImageRef fid) r
   _ -> P.Form (Map.findWithDefault (P.FormRef 0) (pfSource pf, pfPage pf) (deFormRefs env)) r
+
+-- | A line drawn as an artifact of a kind (docs/adr ADR 0183).
+asArtifact :: P.ArtifactKind -> (LineRec, ([P.Content], [GlyphUse])) -> (LineRec, ([P.Content], [GlyphUse]))
+asArtifact k (rec, (cs, us)) = (rec, ([P.Artifact k (concatMap P.contentMarks cs) | not (null cs)], us))
+
+-- | A line whose boxes are all of one leaf.
+withLeaf :: Leaf -> Line -> Line
+withLeaf lf l = l {lineItems = [case it of Box w c -> Box w c {bcLeaf = lf}; x -> x | it <- lineItems l]}
 
 -- | Groups of neighbours: a new group starts where the predicate fails between two neighbours.
 groupWhen :: (a -> a -> Bool) -> [a] -> [[a]]

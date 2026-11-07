@@ -24,6 +24,7 @@ library
                     Golem.Typeset.Svg
                     Golem.Typeset.TextLayer
   other-modules:    Golem.Typeset.Draw
+                    Golem.Typeset.Structure
                     Golem.Typeset.Flow
                     Golem.Typeset.Fonts
   build-depends:

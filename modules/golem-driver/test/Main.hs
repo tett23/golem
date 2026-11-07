@@ -24,6 +24,7 @@ import ReferencesSpec
 import SecuritySpec
 import StylesSpec
 import TableFilesSpec
+import TaggedPdfSpec (taggedPdfTests)
 import Test.Tasty
 import VarsSpec (varsTests)
 
@@ -65,7 +66,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests]
         <> [ newProjectTests,
              allTargetsTests,
              pdfPipelineTests,

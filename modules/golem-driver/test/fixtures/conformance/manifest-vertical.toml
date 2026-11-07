@@ -1,0 +1,17 @@
+# タグ付き PDF と PDF/A-2a、PDF/UA-1 の検証のための fixture（docs/adr/0183）。
+# 縦組みの写し：傍注の章を除く（manifest.toml）。
+# フォントはコミットしない。組む前に fonts/ja.otf と fonts/latin.otf を写す（README）。
+chapters = ["conformance.gm"]
+bibliography = ["references.json"]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000183"
+title = "構造の見本"
+language = "ja"
+date = 2026-11-07
+
+[source]
+paragraph-separator = "blank-line"
+
+[targets.pdf]
+[targets.html]

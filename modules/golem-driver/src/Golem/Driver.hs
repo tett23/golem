@@ -19,6 +19,7 @@ module Golem.Driver
     evaluateLoose,
     functionPaths,
     loadBibliography,
+    pdfStructure,
     metadataValues,
     epubConfig,
     Evaluated (..),
@@ -1165,9 +1166,7 @@ writePdfTarget inMemory opts e diagFid book bib = do
       style = evStyle e
       dir = root </> "build" </> "pdf"
       out = dir </> pdfFileName (mdId (manifestMetadata (projectManifest project)))
-      -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
-      inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
-  r <- renderPdfView golemVersion (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)) (projectVarTexts (manifestVars (projectManifest project))))
+  r <- renderPdfView golemVersion (optFonts opts) (pdfInputOf opts e diagFid book bib)
   -- G08008: code in the body role without [fonts.code] (golem-driver ADR 0017)
   -- G07045: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
   let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book
@@ -1188,6 +1187,28 @@ writePdfTarget inMemory opts e diagFid book bib = do
       where
         -- G08100: the characters drawn as glyph 0, from the characters of the view (docs/adr 0081)
         glyphs = [(diagnostic "G08100" Warning (mgSpan m) (mgMessage m)) {diagFacts = mgFacts m} | m <- missingGlyphs view]
+
+-- | The input of the PDF of an evaluated project.
+pdfInputOf :: BuildOptions -> Evaluated -> FileId -> Book -> Map Text [EntryPart] -> PdfInput
+pdfInputOf opts e diagFid book bib =
+  let project = evProject e
+      -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
+      inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
+   in PdfInput (optRoot opts) project (evStyle e) book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)) (projectVarTexts (manifestVars (projectManifest project)))
+
+{- | The structure tree of the PDF of a project as text (docs/adr ADR 0183),
+for the tests: what the PDF would be tagged with.
+-}
+pdfStructure :: BuildOptions -> IO (Either [Diagnostic] Text)
+pdfStructure opts = do
+  ev <- evaluateProject (optProfile opts) (optRoot opts)
+  case ev of
+    Left f -> pure (Left (pfDiagnostics f))
+    Right e -> case evBook e of
+      Nothing -> pure (Left (evDiagnostics e))
+      Just book -> do
+        (_, _, bib) <- loadBibliography (optRoot opts) (projectManifest (evProject e))
+        renderPdfStructure golemVersion (optFonts opts) (pdfInputOf opts e (evStyleFile e) book bib)
 
 -- | Removes a folder and what it holds, if it is there.
 cleanDir :: FilePath -> IO ()

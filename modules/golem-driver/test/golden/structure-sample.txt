@@ -1,0 +1,81 @@
+Document /Layout /WritingMode /TbRl
+  H1
+    "目次"
+  TOC
+    TOCI
+      "第一章　はじめに二"
+    TOCI
+      "第二章　設計三"
+    TOCI
+      "2.1　節三"
+  H1
+    "第一章　はじめに"
+  P
+    "Golemは"
+    Ruby
+      RB
+        "組"
+      RT
+        "くみ"
+    Ruby
+      RB
+        "版"
+      RT
+        "はん"
+    "の結果を、同じ入力から常に同じバイト列として出力する"
+    Reference
+      "*1"
+    Note ID=note-1
+      Lbl
+        "*1"
+      P
+        "この性質を決定性と呼ぶ。"
+    "。本書は第1.0版、価格は2.68である。全2章。"
+  P
+    "詳しくは第二章「設計」で説明する。重要、十。"
+  L /List /ListNumbering /None
+    LI
+      Lbl
+        "決定性"
+      LBody
+        P
+          "同じ入力から同じ出力を得る性質。"
+  L /List /ListNumbering /Disc
+    LI
+      Lbl
+        "•"
+      LBody
+        P
+          "一"
+    LI
+      Lbl
+        "•"
+      LBody
+        P
+          "二"
+        L /List /ListNumbering /Decimal
+          LI
+            Lbl
+              "一、"
+            LBody
+              P
+                "入れ子"
+  H1
+    "第二章　設計"
+  H2
+    "2.1　節"
+  Table
+    TR
+      TH /Table /Scope /Column
+        "形式"
+      TH /Table /Scope /Column
+        "用途"
+    TR
+      TD
+        "PDF"
+      TD
+        "印刷"
+  Div
+    P
+      Code
+        "main=pure()"

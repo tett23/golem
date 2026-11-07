@@ -1,0 +1,42 @@
+# 横組みの本：脚注はページの下、傍注は小口の余白（docs/adr/0183）
+[page]
+size = "A5"
+binding = "left"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "12Q"
+characters = 30
+lines = 16
+line-pitch = "20H"
+columns = 1
+position = { top = "24mm", gutter = "20mm" }
+
+[fonts.body]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[fonts.code]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[headings.1]
+number = "第{n}章"
+
+[headings.2]
+number = "{1}.{n}"
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[code]
+number = "リスト{chapter}.{n}"
+line-numbers = true
+
+[masters.body]
+running-head = { position = "top-outside", content = ["{heading.1.short}"] }
+folio = { position = "bottom-outside", format = "{n}" }
+
+[sidenotes]
+width = "8zw"
+gap = "1zw"
