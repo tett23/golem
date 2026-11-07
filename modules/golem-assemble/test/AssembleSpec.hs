@@ -135,7 +135,39 @@ titleCopyTests =
             docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", code, para 1 7 [Ref (sp 1 8) RefTitle "c"]]]
         case bookDocs (fst (assemble cfg noEval docs)) of
           [Document _ [_, _, Block _ _ _ (Paragraph _ copied)]] -> copied @?= [Text (sp 1 8) "例"]
-          other -> assertFailure (show other)
+          other -> assertFailure (show other),
+      -- docs/adr ADR 0187
+      testCase "a language span in a title stays in the toc entry and the copy of [ref-title]" $ do
+        let title = [Lang (sp 1 2) "en" [Text (sp 1 2) "Tokyo"], Text (sp 1 3) "の話"]
+            h = Block (sp 1 1) (Just "h") Nothing (Heading 1 noHeadingAttrs title)
+            docs = [Document (FileId 1) [Block (sp 1 0) Nothing Nothing (ChannelOutput (TocOutput 2)), h, para 1 7 [Ref (sp 1 8) RefTitle "h"]]]
+            book = fst (assemble cfg noEval docs)
+        map teTitle (bookToc book) @?= [title]
+        case bookDocs book of
+          [Document _ [_, _, Block _ _ _ (Paragraph _ copied)]] -> copied @?= [Lang (sp 1 2) "en" [Text (sp 1 2) "Tokyo"], Text (sp 1 8) "の話"]
+          other -> assertFailure (show other),
+      testCase "the language of a heading wraps the whole title of the toc entry and of the copy of [ref-title]" $ do
+        let h = Block (sp 1 1) (Just "h") (Just "en") (Heading 1 noHeadingAttrs [Text (sp 1 2) "Tokyo"])
+            docs = [Document (FileId 1) [Block (sp 1 0) Nothing Nothing (ChannelOutput (TocOutput 2)), h, para 1 7 [Ref (sp 1 8) RefTitle "h"]]]
+            book = fst (assemble cfg noEval docs)
+        map teTitle (bookToc book) @?= [[Lang (sp 1 1) "en" [Text (sp 1 2) "Tokyo"]]]
+        case bookDocs book of
+          [Document _ [_, _, Block _ _ _ (Paragraph _ copied)]] -> copied @?= [Lang (sp 1 1) "en" [Text (sp 1 2) "Tokyo"]]
+          other -> assertFailure (show other),
+      testCase "the body of a note is in the language of the place of its mark" $ do
+        let note n = Note (sp 1 n) n [Text (sp 1 n) "注"]
+            docs =
+              Document
+                (FileId 1)
+                [ para 1 0 [note 1, Lang (sp 1 2) "fr" [note 2]],
+                  Block (sp 1 3) Nothing (Just "en") (BulletList [ListItem Nothing [para 1 4 [note 3, Lang (sp 1 5) "de" [note 4]]]])
+                ]
+        [body | (_, _, body) <- documentNotes docs]
+          @?= [ [Text (sp 1 1) "注"],
+                [Lang (sp 1 2) "fr" [Text (sp 1 2) "注"]],
+                [Lang (sp 1 3) "en" [Text (sp 1 3) "注"]],
+                [Lang (sp 1 4) "de" [Text (sp 1 4) "注"]]
+              ]
     ]
 
 -- | The channels of plugins (golem-doc ADR 0007).

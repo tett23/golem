@@ -201,6 +201,7 @@ blockInlines (Block _ _ _ body) = case body of
       Color _ _ xs -> deep xs
       CharStyle _ _ xs -> deep xs
       Link _ _ xs -> deep xs
+      Lang _ _ xs -> deep xs
       _ -> []
 
 inlines :: Ctx -> [InlineF r] -> Text
@@ -236,6 +237,8 @@ inline c = \case
   Link _ u xs ->
     let t = inlines c xs
      in if t == u then u else t <> "（" <> u <> "）"
+  -- the characters of a language span as they are (docs/adr ADR 0187)
+  Lang _ _ xs -> inlines c xs
 
 {- | Ruby as 「対象（読み）」. Consecutive segments with readings are joined;
 segments without a reading are written as they are.

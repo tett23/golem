@@ -27,6 +27,7 @@ module Golem.Assemble
   )
 where
 
+import Control.Applicative ((<|>))
 import Control.Monad (when, zipWithM)
 import Control.Monad.State.Strict
 import Data.Bifunctor (first)
@@ -206,30 +207,36 @@ notesTitle :: Text -> Text
 notesTitle lang = if "ja" `T.isPrefixOf` T.toLower lang then "注" else "Notes"
 
 {- | The inlines of a block, the notes among them, in order, through lists,
-definition lists, tables and captions (golem-driver ADR 0018, 0026).
+definition lists, tables and captions (golem-driver ADR 0018, 0026), each
+with the language of its place: that of the innermost language span or
+block around it (docs/adr ADR 0187).
 -}
-blockNotes :: Block -> [Inline]
-blockNotes (Block _ _ _ body) = case body of
-  Paragraph _ is -> deep is
-  Heading _ _ is -> deep is
-  BulletList items -> concatMap (concatMap blockNotes . itemBlocks) items
-  OrderedList items -> concatMap (concatMap blockNotes . itemBlocks) items
-  DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap deep ts <> concatMap (concatMap blockNotes) ds) gs
-  Table _ h rows -> concatMap deep h <> concatMap (concatMap deep) rows
-  FigureBlock f -> concatMap blockNotes (figCaption f)
+blockNotes :: Maybe Text -> Block -> [(Maybe Text, Inline)]
+blockNotes outer (Block _ _ blang body) = case body of
+  Paragraph _ is -> deep l is
+  Heading _ _ is -> deep l is
+  BulletList items -> concatMap (concatMap (blockNotes l) . itemBlocks) items
+  OrderedList items -> concatMap (concatMap (blockNotes l) . itemBlocks) items
+  DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap (deep l) ts <> concatMap (concatMap (blockNotes l)) ds) gs
+  Table _ h rows -> concatMap (deep l) h <> concatMap (concatMap (deep l)) rows
+  FigureBlock f -> concatMap (blockNotes l) (figCaption f)
   _ -> []
   where
-    deep = concatMap (\i -> i : nested i)
-    nested = \case
-      Kenten _ _ xs -> deep xs
-      Color _ _ xs -> deep xs
-      CharStyle _ _ xs -> deep xs
-      Lang _ _ xs -> deep xs
+    l = blang <|> outer
+    deep at = concatMap (\i -> (at, i) : nested at i)
+    nested at = \case
+      Kenten _ _ xs -> deep at xs
+      Color _ _ xs -> deep at xs
+      CharStyle _ _ xs -> deep at xs
+      Lang _ t xs -> deep (Just t) xs
       _ -> []
 
--- | The notes of a document in order: their spans, numbers and bodies (golem-driver ADR 0026).
+{- | The notes of a document in order: their spans, numbers and bodies
+(golem-driver ADR 0026). A body is in a language span of the language of
+the place of its mark, if that has one (docs/adr ADR 0187).
+-}
 documentNotes :: Document -> [(SrcSpan, Int, [Inline])]
-documentNotes (Document _ bs) = [(sp, n, xs) | Note sp n xs <- concatMap blockNotes bs]
+documentNotes (Document _ bs) = [(sp, n, inLang sp l xs) | (l, Note sp n xs) <- concatMap (blockNotes Nothing) bs]
 
 headingAnchor :: Maybe Text -> SrcSpan -> Text
 headingAnchor (Just l) _ = l

@@ -49,7 +49,7 @@ bookOf bs =
     }
 
 para :: Int -> [Inline] -> Block
-para n = Block (at n) Nothing . Paragraph Nothing
+para n = Block (at n) Nothing Nothing . Paragraph Nothing
 
 txt :: Text -> Inline
 txt = Text (at 0)
@@ -109,6 +109,8 @@ tests =
       only (horizontal (bookOf [para 0 [Link (at 1) "https://example.com/" [txt "例"]]])) @?= "例（https://example.com/）\n"
       only (horizontal (bookOf [para 0 [Link (at 1) "https://example.com/" [CharStyle (at 1) "url" [txt "https://example.com/"]]]])) @?= "https://example.com/\n"
       only (horizontal (bookOf [para 0 [Link (at 1) "https://example.com/" [txt "https://example.com/"]]])) @?= "https://example.com/\n",
+    testCase "a language span: its characters as they are (docs/adr ADR 0187)" $
+      only (horizontal (bookOf [para 0 [txt "英語では", Lang (at 1) "en" [txt "“Tokyo”", Lang (at 2) "fr" [txt " « oui »"]], txt "と書く。"]])) @?= "英語では“Tokyo” « oui »と書く。\n",
     testCase "blocks are separated by one blank line" $
       only (horizontal (bookOf [para 0 [txt "一つ目。"], para 5 [txt "二つ目。"]])) @?= "一つ目。\n\n二つ目。\n",
     testCase "a page reference is the title of the target in corner brackets" $

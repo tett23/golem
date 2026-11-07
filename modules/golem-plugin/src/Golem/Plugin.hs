@@ -72,7 +72,7 @@ import Foreign.C.String (CString, peekCString, withCString, withCStringLen)
 import Foreign.C.Types
 import Golem.Doc.Cbor
 import Golem.Doc.IR hiding (abiVersion)
-import Golem.Doc.Validate (captionErrors, linkErrors, validateBlocks, validateDocument)
+import Golem.Doc.Validate (captionErrors, langErrors, linkErrors, validateBlocks, validateDocument)
 import Golem.Eval.Builtin (builtinBlockCommands)
 import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Syntax
@@ -533,8 +533,8 @@ callCommand plugin name args slots sp = do
       allowedDeferred = concatMap (concatMap inlineDeferred) slots
   checkOutput allowedSpans allowedDeferred (concatMap inlineSpans inls) (concatMap inlineDeferred inls)
   checkDiagnosticSpans allowedSpans diags
-  -- the links it makes pass the checks of [link] (docs/adr ADR 0182)
-  case linkErrors inls of
+  -- the links it makes pass the checks of [link] (docs/adr ADR 0182), its language spans those of [lang] (docs/adr ADR 0187)
+  case linkErrors inls <> langErrors inls of
     [] -> Right (inls, diags)
     errs -> Left (BadOutput (T.intercalate "、" errs))
 
@@ -634,7 +634,7 @@ placeImages body images bs = do
 (docs/adr/0122).
 -}
 blockKind :: Block -> Either PluginError ()
-blockKind (Block _ lbl lang body)
+blockKind (Block _ lbl _ body)
   | Just _ <- lbl = Left (BadOutput "ブロックコマンドの出力はラベルを持てません")
   | otherwise = case body of
       Paragraph _ _ -> Right ()
@@ -744,6 +744,7 @@ checkItems plugin given = mapM_ check
       Color _ _ xs -> any sends xs
       CharStyle _ _ xs -> any sends xs
       Link _ _ xs -> any sends xs
+      Lang _ _ xs -> any sends xs
       _ -> False
 
 -- | The items of channels among inlines, with their spans.
@@ -755,6 +756,7 @@ inlineItems = \case
   Color _ _ xs -> concatMap inlineItems xs
   CharStyle _ _ xs -> concatMap inlineItems xs
   Link _ _ xs -> concatMap inlineItems xs
+  Lang _ _ xs -> concatMap inlineItems xs
   Note _ _ xs -> concatMap inlineItems xs
   Sidenote _ _ xs -> concatMap inlineItems xs
   _ -> []
@@ -782,6 +784,7 @@ inlineSpans = \case
   Aki s _ -> [s]
   ChannelItem s c -> s : concatMap inlineSpans (ciBody c)
   Link s _ xs -> s : concatMap inlineSpans xs
+  Lang s _ xs -> s : concatMap inlineSpans xs
 
 inlineDeferred :: InlineF r -> [DeferredExpr]
 inlineDeferred = \case
@@ -794,6 +797,7 @@ inlineDeferred = \case
   Sidenote _ _ xs -> concatMap inlineDeferred xs
   ChannelItem _ c -> concatMap inlineDeferred (ciBody c)
   Link _ _ xs -> concatMap inlineDeferred xs
+  Lang _ _ xs -> concatMap inlineDeferred xs
   _ -> []
 
 blocksOf :: Document -> [Block]

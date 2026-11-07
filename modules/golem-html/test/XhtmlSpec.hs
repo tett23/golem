@@ -86,7 +86,7 @@ bookOf bs =
     }
 
 para :: Int -> [Inline] -> Block
-para n = Block (at n) Nothing . Paragraph Nothing
+para n = Block (at n) Nothing Nothing . Paragraph Nothing
 
 txt :: Text -> Inline
 txt = Text (at 0)
@@ -676,5 +676,51 @@ indexPageTests =
             ]
         }
 
+-- | Language spans and the language of blocks (docs/adr ADR 0187).
+langTests :: TestTree
+langTests =
+  testGroup
+    "the language of spans and blocks (docs/adr ADR 0187)"
+    [ testCase "a language span is a span with lang and xml:lang, even in the language of the book" $
+        bodyA cfg0 (bookOf [para 0 [Lang (at 1) "fr" [txt "x"], Lang (at 2) "ja" [txt "和"]]])
+          @?= "<p><span lang=\"fr\" xml:lang=\"fr\">x</span><span lang=\"ja\" xml:lang=\"ja\">和</span></p>\n",
+      testCase "the tag is escaped" $
+        bodyA cfg0 (bookOf [para 0 [Lang (at 1) "x-a&b" [txt "x"]]]) @?= "<p><span lang=\"x-a&amp;b\" xml:lang=\"x-a&amp;b\">x</span></p>\n",
+      testCase "the outermost element of a block with a language has lang and xml:lang" $ do
+        let withLang l b = b {blockLang = Just l}
+        bodyA cfg0 (bookOf [withLang "en" (para 0 [txt "a"])]) @?= "<p lang=\"en\" xml:lang=\"en\">a</p>\n"
+        bodyA cfg0 (bookOf [withLang "en" (Block (at 0) (Just "h") Nothing (Heading 1 noHeadingAttrs [txt "a"]))]) @?= "<h1 id=\"h\" lang=\"en\" xml:lang=\"en\">a</h1>\n"
+        bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (BulletList [ListItem Nothing [para 1 [txt "a"]]]))]) @?= "<ul lang=\"en\" xml:lang=\"en\">\n<li>a</li>\n</ul>\n"
+        bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (OrderedList [ListItem Nothing [para 1 [txt "a"]]]))]) @?= "<ol lang=\"en\" xml:lang=\"en\">\n<li>a</li>\n</ol>\n"
+        bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (DefList [DefGroup [[txt "t"]] [[para 1 [txt "d"]]]]))]) @?= "<dl lang=\"en\" xml:lang=\"en\">\n<dt>t</dt>\n<dd>\n<p>d</p>\n</dd>\n</dl>\n"
+        assertBool "table" ("<table lang=\"en\" xml:lang=\"en\">" `T.isPrefixOf` bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (Table [AlignDefault] [[txt "a"]] [[[txt "b"]]]))]))
+        bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a" (Just 1) Nothing False []])))]) @?= "<pre lang=\"en\" xml:lang=\"en\"><code>a</code></pre>\n",
+      testCase "the blocks of the body of @lang: each with its own attributes, nothing around them" $
+        bodyA cfg0 (bookOf [(para 0 [txt "a"]) {blockLang = Just "en"}, (para 1 [txt "b"]) {blockLang = Just "en"}])
+          @?= "<p lang=\"en\" xml:lang=\"en\">a</p>\n<p lang=\"en\" xml:lang=\"en\">b</p>\n",
+      testCase "a paragraph of its own language in an item keeps its element" $
+        bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (BulletList [ListItem Nothing [(para 1 [txt "a"]) {blockLang = Just "de"}]])])
+          @?= "<ul>\n<li>\n<p lang=\"de\" xml:lang=\"de\">a</p>\n</li>\n</ul>\n",
+      testCase "the sidenotes of a paragraph with a language have it too" $
+        bodyA cfg0 (bookOf [(para 0 [txt "a", Sidenote (at 1) 1 [txt "s"]]) {blockLang = Just "en"}])
+          @?= "<p lang=\"en\" xml:lang=\"en\">a<sup class=\"sidenote-ref\">1</sup></p>\n<aside class=\"sidenote\" lang=\"en\" xml:lang=\"en\"><span class=\"number\">1</span>s</aside>\n",
+      testCase "the spans stay in the items of @toc, the toc page and the copies; character styles drop out of the toc page" $ do
+        let title = [txt "見出し", Lang (at 1) "en" [CharStyle (at 1) "strong" [txt "Tokyo"]]]
+            h = Block (at 0) (Just "intro") Nothing (Heading 1 noHeadingAttrs title)
+            book = assembled [[h, Block (at 5) Nothing Nothing (ChannelOutput (TocOutput 2))]]
+            body = bodyA cfg0 book
+        assertBool (T.unpack body) ("<span lang=\"en\" xml:lang=\"en\"><strong>Tokyo</strong></span></a>" `T.isInfixOf` body)
+        let page = indexPage cfg0 ft book
+        assertBool (T.unpack page) ("見出し<span lang=\"en\" xml:lang=\"en\">Tokyo</span></a></li>" `T.isInfixOf` page),
+      testCase "the toc page writes the language of a heading around its title" $ do
+        let h = Block (at 0) (Just "intro") (Just "en") (Heading 1 noHeadingAttrs [txt "Tokyo"])
+            page = indexPage cfg0 ft (assembled [[h]])
+        assertBool (T.unpack page) ("<a href=\"a.xhtml#intro\">1\x3000<span lang=\"en\" xml:lang=\"en\">Tokyo</span></a>" `T.isInfixOf` page),
+      testCase "the body of a note is in the language of its mark" $ do
+        let book = assembled [[para 0 [txt "本文", Lang (at 1) "en" [txt "text", Note (at 2) 1 [txt "a note"]]]]]
+            body = bodyA cfg0 book
+        assertBool (T.unpack body) ("</a> <span lang=\"en\" xml:lang=\"en\">a note</span></aside>" `T.isInfixOf` body)
+    ]
+
 xhtmlTests :: TestTree
-xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests])
+xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests])
