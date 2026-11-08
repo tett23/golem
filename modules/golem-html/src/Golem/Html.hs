@@ -1005,7 +1005,7 @@ css cfg book =
       -- paragraph styles (docs/adr ADR 0005); body is the plain p
       <> concat [paraRules name ps | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
       -- the spaces before and after (docs/adr/0189)
-      <> spaceRules "" True allStyles [(a, b) | a <- allStyles, b <- allStyles]
+      <> spaceRules outside True allStyles [(a, b) | a <- allStyles, b <- allStyles]
       -- the rules of paragraph styles and headings as pseudo-elements (golem-driver ADR 0027)
       <> concat [ruleRules (if name == "body" then "p:not([class])" else "p.ps-" <> name) (hpsRuleBefore ps) (hpsRuleAfter ps) | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
       <> concat [ruleRules ("h" <> tshow l) b a | (l, (b, a)) <- Map.toAscList (hcHeadingRules cfg)]
@@ -1158,7 +1158,7 @@ css cfg book =
                ]
             <> [rule sel (hpsAlign ps) | alignRule name ps]
             <> [sel <> " { padding-inline-end: " <> hpsEndIndent ps <> "; }" | endIndentRule name ps]
-            <> [ sel <> " + " <> sel <> " { margin-block-start: " <> (if hpsSpaceBetween ps > 0 then tshow (hpsSpaceBetween ps) <> "em" else "0") <> "; }"
+            <> [ prefixed (outside [name | name /= "body"]) (sel <> " + " <> sel) <> " { margin-block-start: " <> (if hpsSpaceBetween ps > 0 then tshow (hpsSpaceBetween ps) <> "em" else "0") <> "; }"
                | hpsSpaceBetween ps > 0 || spaced
                ]
             <> [rule sel ds | let ds = featureDecls (hpsFeatures ps), not (null ds)]
@@ -1167,12 +1167,16 @@ css cfg book =
     space after on the next element of another style that is not a blank
     line, the greater of the two for a pair, after both, and none after a
     blank line -}
-    spaceRules pre withBefore styles pairs =
+    spaceRules preOf withBefore styles pairs =
       let em n = tshow n <> "em"
-          at sel = if T.null pre then sel else T.intercalate ", " [pre <> " " <> x | x <- T.splitOn ", " sel]
+          at ns sel = prefixed (preOf ns) sel
+          -- the rule p of body and the rule after a blank line that goes with it are on every page
+          atBefore n = if n == "body" && global then prefixed "" else at [n]
+          -- the rules of style.toml, not those of a file
+          global = T.null (preOf [])
           -- the class of body is that it has none
           own n = if n == "body" then "p:not([class])" else "p.ps-" <> n
-          beforeSel n = if n == "body" && T.null pre then "p" else own n
+          beforeSel n = if n == "body" && global then "p" else own n
           afterSel n
             | n == "body" = "p:not([class]) + :not(p):not(.blank-line), p:not([class]) + p[class]"
             | otherwise = "p.ps-" <> n <> " + :not(.ps-" <> n <> "):not(.blank-line)"
@@ -1180,9 +1184,9 @@ css cfg book =
           pairSel a b
             | a == "body" = own a <> " + " <> own b
             | otherwise = own a <> " + " <> own b <> ":not(.ps-" <> a <> ")"
-       in [at (beforeSel n) <> " { margin-block-start: " <> em b <> "; }" | withBefore, (n, ps) <- styles, let b = hpsSpaceBefore ps, b > 0]
-            <> [at (afterSel n) <> " { margin-block-start: " <> em a <> "; }" | (n, ps) <- styles, let a = hpsSpaceAfter ps, a > 0]
-            <> [ at (pairSel a b) <> " { margin-block-start: " <> em (max x y) <> "; }"
+       in [atBefore n (beforeSel n) <> " { margin-block-start: " <> em b <> "; }" | withBefore, (n, ps) <- styles, let b = hpsSpaceBefore ps, b > 0]
+            <> [at [n] (afterSel n) <> " { margin-block-start: " <> em a <> "; }" | (n, ps) <- styles, let a = hpsSpaceAfter ps, a > 0]
+            <> [ at [a, b] (pairSel a b) <> " { margin-block-start: " <> em (max x y) <> "; }"
                | ((a, pa), (b, pb)) <- pairs,
                  a /= b,
                  let x = hpsSpaceAfter pa
@@ -1190,7 +1194,16 @@ css cfg book =
                  x > 0,
                  y > 0
                ]
-            <> [at ("div.blank-line + " <> beforeSel n) <> " { margin-block-start: 0; }" | (n, ps) <- styles, hpsSpaceBefore ps > 0]
+            <> [atBefore n ("div.blank-line + " <> beforeSel n) <> " { margin-block-start: 0; }" | (n, ps) <- styles, hpsSpaceBefore ps > 0]
+    {- a selector list under a prefix: each selector of the list starts
+    with it -}
+    prefixed pre sel = if T.null pre then sel else T.intercalate ", " [pre <> " " <> x | x <- T.splitOn ", " sel]
+    {- the rules of style.toml for the spaces of these paragraph styles are
+    not on the pages of the files that define any of them (docs/adr/0217):
+    body:not(.file-n1):not(.file-n2)..., or nothing when no file does -}
+    outside names = case [k | (k, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)], any (`Map.member` hlParaStyles l) names] of
+      [] -> ""
+      ks -> "body" <> T.concat [":not(.file-" <> tshow k <> ")" | k <- ks]
     allStyles = [(n, ps) | (n, ps) <- Map.toAscList (hcParaStyles cfg), n /= "code"]
     families role = case Map.lookup role (hcFonts cfg) of
       Just (ja, la) -> ["\"" <> cssString (family role "latin") <> "\"" | Just _ <- [la]] <> ["\"" <> cssString (family role "ja") <> "\"" | Just _ <- [ja]]
@@ -1258,7 +1271,7 @@ css cfg book =
               | (name, ps) <- locals
               ]
               -- the pairs of a style of the file and another
-              <> spaceRules pre False locals [(a, b) | a <- mergedList, b <- mergedList, Map.member (fst a) (hlParaStyles l) || Map.member (fst b) (hlParaStyles l)]
+              <> spaceRules (const pre) False locals [(a, b) | a <- mergedList, b <- mergedList, Map.member (fst a) (hlParaStyles l) || Map.member (fst b) (hlParaStyles l)]
           faceDecls f = ["font-family: " <> stackOr (faFont f), "font-size: " <> fromMaybe "inherit" (faSize f)]
           faceRules =
             [rule (pre <> " figcaption") (faceDecls f) | Just f <- [hlCaptionFace l]]
