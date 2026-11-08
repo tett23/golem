@@ -46,6 +46,12 @@ sig Figure extends Item {
 -- a blank line of one grid line, @blank-line (docs/adr/0046)
 sig Blank extends Item {}
 
+-- a space of one grid line between blocks, placed as text is (golem-layout ADR 0027)
+sig Space extends Text {}
+
+-- @need-lines 2 (docs/adr/0030)
+sig Need extends Item {}
+
 sig Placement {
   brk: one Int,
   kept: set Figure,
@@ -59,6 +65,8 @@ fact input {
   Col.used >= 0 and Col.used <= Col.cap
   #Figure <= 2
   lone Blank
+  lone Space
+  lone Need
   all f: Figure | f.size >= 1 and f.size <= plus[Col.cap, 1]
   -- the items take the places 0 .. #Item - 1, one each
   all i: Item | i.pos >= 0 and i.pos < #Item
@@ -149,9 +157,9 @@ pred keepHeading[p: Placement] {
   }
 }
 
--- nothing is sent on from an empty column: the first item stays (a blank line places nothing of its own)
+-- nothing is sent on from an empty column: the first item stays (a blank line and a need-lines place nothing of their own)
 pred noSendFromEmpty[p: Placement] {
-  Col.used = 0 implies all i: Item - Blank | (no j: Item - Blank | j.pos < i.pos) implies (i in Text implies p.brk >= 1 else i in p.kept)
+  Col.used = 0 implies all i: Item - Blank - Need | (no j: Item - Blank - Need | j.pos < i.pos) implies (i in Text implies p.brk >= 1 else i in p.kept)
 }
 
 pred all7[p: Placement] {
@@ -162,7 +170,7 @@ pred all7[p: Placement] {
 pred figuresFit { all f: Figure | f.size <= Col.cap }
 
 -- the inputs the commands of docs/adr/0204 and docs/adr/0206 allow: at most one figure, no blank line
-pred inDomain { figuresFit and lone Figure and no Blank }
+pred inDomain { figuresFit and lone Figure and no Blank and no Space and no Need }
 
 -- the commands
 
@@ -194,7 +202,7 @@ run figureOrder { inDomain and ((some p: Placement | fits[p] and figure[p]) and 
 run figureEmpty { inDomain and ((some p: Placement | fits[p] and figure[p]) and (some p: Placement | fits[p] and noSendFromEmpty[p]) and no p: Placement | fits[p] and figure[p] and noSendFromEmpty[p]) } for 5 but 5 Int, 14 Placement
 
 -- a figure taller than the column, outside the inputs the specification allows
-run tallFigure { lone Figure and no Blank and not figuresFit and (no p: Placement | fits[p] and figure[p] and noSendFromEmpty[p]) } for 5 but 5 Int, 14 Placement
+run tallFigure { lone Figure and no Blank and no Space and no Need and not figuresFit and (no p: Placement | fits[p] and figure[p] and noSendFromEmpty[p]) } for 5 but 5 Int, 14 Placement
 
 -- the decisions of docs/adr/0206
 
@@ -268,7 +276,7 @@ run decidedSome { inDomain and some Recto and some Line and (some p: Placement |
 -- golem-layout ADR 0026: figures that wait, and the blank line before them
 
 -- the inputs of the commands of golem-layout ADR 0026: two figures or a blank line may be there
-pred inDomain26 { figuresFit }
+pred inDomain26 { figuresFit and no Space and no Need }
 
 -- the figures sent on after a figure sent on: they wait (golem-layout ADR 0015)
 fun waitingIn[p: Placement]: set Figure {
@@ -277,8 +285,8 @@ fun waitingIn[p: Placement]: set Figure {
 
 -- the next block of a blank line: the first item after it that is not a figure that waits
 fun nextOf[p: Placement, b: Blank]: set Item {
-  {i: Item - Blank - waitingIn[p] | i.pos > b.pos and
-    no j: Item - Blank - waitingIn[p] | j.pos > b.pos and j.pos < i.pos}
+  {i: Item - Blank - Need - waitingIn[p] | i.pos > b.pos and
+    no j: Item - Blank - Need - waitingIn[p] | j.pos > b.pos and j.pos < i.pos}
 }
 
 -- the next block of a blank line before golem-layout ADR 0026: the first item after it
@@ -360,3 +368,100 @@ run blankBeforeWaiting25 {
 
 -- and the rules of golem-layout ADR 0026 and before it give placements on the same inputs
 run blankRules25 { inDomain26 and (no p: Placement | base26[p] and blankWithNext25[p]) } for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
+-- golem-layout ADR 0027: need-lines and the spaces after it
+
+-- the inputs of the commands of golem-layout ADR 0027: a need-lines, a space, a blank line and two figures may be there
+pred inDomain27 { figuresFit }
+
+-- the next block of a need-lines: the first item after it that is not a space, a blank line or a figure that waits
+fun needNext[p: Placement, n: Need]: set Item {
+  {i: Item - Space - Blank - Need - waitingIn[p] | i.pos > n.pos and
+    no j: Item - Space - Blank - Need - waitingIn[p] | j.pos > n.pos and j.pos < i.pos}
+}
+
+-- the grid lines placed in the column before an item, the spaces and the blank lines not counted
+fun placedBefore[p: Placement, i: Item]: Int {
+  plus[plus[Col.used, #{t: Text - Space | t.pos < i.pos and here[p, t]}], (sum g: {g: p.kept | g.pos < i.pos} | g.size)]
+}
+
+-- the grid lines in the column before an item, the spaces counted, and the blank lines before it not at the top of the column:
+-- a blank line goes with its next block, and the two fit together or go on together (docs/adr/0046)
+fun loadBefore[p: Placement, i: Item]: Int {
+  plus[plus[plus[Col.used, #{t: Text | t.pos < i.pos and here[p, t]}], (sum g: {g: p.kept | g.pos < i.pos} | g.size)], #{b: Blank | b.pos < i.pos and not blankAtTop[p, b]}]
+}
+
+-- the first part of a block: of a paragraph, all of three lines or fewer, else two (golem-layout ADR 0021); a heading's line; a figure
+fun firstPart[i: Item]: Int {
+  i in Line implies (#para.(i.para) <= 3 implies #para.(i.para) else 2)
+  else (i in Figure implies i.size else 1)
+}
+
+-- nothing but spaces is before the item in the column, and the column was empty
+pred firstInColumn[p: Placement, i: Item] {
+  Col.used = 0
+  no t: Text - Space | t.pos < i.pos and here[p, t]
+  no g: p.kept | g.pos < i.pos
+}
+
+-- P1: the next block of a need-lines, placed in this column but not first in it, has 2 grid lines or more before it, the spaces and the blank lines not counted
+pred needMet[p: Placement] {
+  all n: Need | all b: needNext[p, n] |
+    (inColumn[p, b] and not firstInColumn[p, b]) implies minus[Col.cap, placedBefore[p, b]] >= 2
+}
+
+-- P7: when need-lines is met where it is written and the first part of its next block fits after the spaces, the block is in this column
+pred spaceKeeps[p: Placement] {
+  all n: Need | all b: needNext[p, n] |
+    (minus[Col.cap, placedBefore[p, n]] >= 2
+      and (all t: Text | t.pos < n.pos implies here[p, t])
+      and (all g: Figure - waitingIn[p] | g.pos < n.pos implies g in p.kept)
+      and plus[loadBefore[p, b], firstPart[b]] <= Col.cap
+      and (b in Line implies b = first[b.para]))
+      implies inColumn[p, b]
+}
+
+-- the figures as 'figures' places them, and a figure that is the next block of a need-lines not met goes to the next column:
+-- need-lines applies before the block is placed (docs/adr/0030)
+pred figures27[p: Placement] {
+  all f: Figure |
+    (f in p.kept) iff (
+      (all t: Text | t.pos < f.pos implies here[p, t])
+      and (all g: Figure | g.pos < f.pos implies g in p.kept)
+      and plus[plus[plus[plus[Col.used, #{t: Text | t.pos < f.pos}], (sum g: {g: Figure | g.pos < f.pos} | g.size)], #{b: Blank | b.pos < f.pos and not blankAtTop[p, b]}], f.size] <= Col.cap
+      and (all n: Need | f in needNext[p, n] implies (minus[Col.cap, placedBefore[p, f]] >= 2 or firstInColumn[p, f])))
+}
+
+pred base27[p: Placement] { fits[p] and order[p] and figures27[p] and figureOrder[p] and noSendFromEmpty[p] and blankWithNext[p] }
+
+-- the shape of golem-layout ADR 0027 is an input: need-lines, a space, and the block after them in this column
+run needSpaceSome {
+  inDomain27
+  some p: Placement, n: Need, sp: Space, b: Text - Space |
+    base27[p] and needMet[p] and spaceKeeps[p] and n.pos < sp.pos and sp.pos < b.pos and b in needNext[p, n] and here[p, sp] and here[p, b]
+} for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
+-- need-lines, the spaces, the blank line and the figures together: no input has no placement
+run needSpaceNone { inDomain27 and (no p: Placement | base27[p] and needMet[p] and spaceKeeps[p]) } for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
+-- with the rules of the lines and the headings but the greedy fill
+run needSpaceAllButGreedy {
+  inDomain27
+  no p: Placement | base27[p] and needMet[p] and spaceKeeps[p] and orphan[p] and widow[p] and keepHeading21[p]
+} for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
+-- the pair: need-lines and placing a figure where it fits, which gives way to need-lines
+run needFigure {
+  inDomain27
+  (some p: Placement | fits[p] and figures[p] and figureOrder[p])
+  (some p: Placement | fits[p] and needMet[p])
+  no p: Placement | fits[p] and figures[p] and figureOrder[p] and needMet[p]
+} for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
+-- the pair: need-lines and the greedy fill, which gives way to need-lines
+run needGreedy {
+  inDomain27
+  (some p: Placement | fits[p] and greedy[p])
+  (some p: Placement | fits[p] and needMet[p])
+  no p: Placement | fits[p] and greedy[p] and needMet[p]
+} for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank

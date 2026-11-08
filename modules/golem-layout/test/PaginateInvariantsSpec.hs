@@ -412,20 +412,9 @@ data KnownBug = KnownBug
     kbCounts :: [(Int, Int)]
   }
 
--- | The known bugs, in the order of 「既知の不具合」.
+-- | The known bugs, in the order of 「既知の不具合」: none since golem-layout ADR 0027.
 knownBugs :: [KnownBug]
-knownBugs =
-  [ KnownBug
-      { kbItem = "`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる",
-        kbShape = needLinesBeforeSpace,
-        kbExcuses = \_ b -> breachOf b == P1,
-        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0)]
-      }
-  ]
-
--- | Whether a need-lines is right before a space, as in the inputs drawn by the nightly job of 2026-11-08.
-needLinesBeforeSpace :: Input -> Bool
-needLinesBeforeSpace i = or (zipWith (\a b -> a == ENeedLines && b == ESpace) (inElements i) (drop 1 (inElements i)))
+knownBugs = []
 
 -- | The breaches of an input.
 breachesOf :: Input -> [Breach]

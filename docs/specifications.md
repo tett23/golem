@@ -2853,7 +2853,7 @@ I2、I4、I5、I6、I8 は、[docs/adr/0206](adr/0206-pagination-points-the-inva
 違反があれば、最も小さい入力を表示する。
 抜き取りで見つけた違反は、違反が残るかぎり要素を一つずつ取り除いた入力を表示する。
 「既知の不具合」に載せた違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
-今の一覧には、「`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる」の一つがある。
+今の一覧に項目はない（[golem-layout ADR 0027](golem-layout/adr/0027-need-lines-judged-again-after-spaces.md) で最後の項目を直した）。
 述語が判定しない場合はない。
 行アキは、出力では後のブロックの前の空いた格子の行としてしか見えないので、捨てていない行アキが後のブロックの前に見えなければ、P3 も違反とする。
 改ページに渡す図版は、段の行の数以下であることを前提とする（図版を縮める規則は「図版」の節）。
@@ -2899,7 +2899,7 @@ EPUB の読書環境は文書の境界で改ページし、見開きの左右も
 行数は版面の格子の行数という抽象的な数であり、ページの大きさや位置ではない。
 
 - `@no-page-break` の前が段落か定義リストの用語なら、改ページは、前の最後の 2 行（3 行以下の段落では全体。[docs/adr/0055](adr/0055-no-page-break-moves-short-paragraphs-whole.md)）を次の段に送り、後の最初の部分（`nextNeed` と同じ量。3 行の段落では全体とする。その部分の行の注の本文と、その段で最初の注なら区切りの領域を含む。[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）と同じ段に置く。`@no-page-break` の前と後にある空き（`space-between`、`space-before`、`space-after`）の行も、後の最初の部分の量に足す。足した量は段の行の格子の数を上限とする（[golem-layout ADR 0022](golem-layout/adr/0022-no-page-break-counts-spaces.md)）。空の段からは送らない。前が見出しなら今の規則のとおりで、そのほかのブロックなら置き方を変えない。
-- `@need-lines` は、改ページの印と同じくためておき、次のブロックを置く直前に、改ページの印の後で判定する。次の段へ進んだら、送った図版と続きの脚注をその段に置いた後の残りで数え直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。待つ図版（「図版」の節）は次のブロックに数えず、その後の、待つ図版でないブロックの直前で判定する（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。
+- `@need-lines` は、改ページの印と同じくためておき、次のブロックを置く直前に、改ページの印の後で判定する。次の段へ進んだら、送った図版と続きの脚注をその段に置いた後の残りで数え直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。待つ図版（「図版」の節）は次のブロックに数えず、その後の、待つ図版でないブロックの直前で判定する（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。空き（改ページに渡す一行の空き。表とコードブロックの後や、`space-before` を持つ段落の前に入る）も、行アキと同じく次のブロックに数えず、判定の残りに数えない。`@need-lines` の後に空きがあれば、空きの前の位置で判定する。判定した段で、空きを置いた後の残りに次のブロックの最初の部分が入れば、ブロックはその段に置く。入らずにブロックが後の段に移れば、移った段で送った図版と続きの脚注を置いた後の残りで N 行を判定し直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0027](golem-layout/adr/0027-need-lines-judged-again-after-spaces.md)）。
 - `@page-lines` は、ためた改ページの印を先に適用してから、今の段の行数に足す。段を進めると増減は 0 に戻る。増やした行は、版面の行の格子を行の進む方向に延ばした位置に置く。行数の上限は、行の字面が裁ち落としを除いたページの内側に収まる行の数である。増やした行と、ノンブル、柱、傍注の領域との重なりは検査しない。
 - 見出しを後のブロックと離さない規則の先読みは、三つの印を飛ばす。
 - 守れなかった指定は、改ページの繰り返し（S2）の最後の回の結果から、印の位置の警告（G07037）にする。
@@ -5019,7 +5019,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
 - **`[ref-number]` の図番号とリスト番号が、`[figures]` と `[code]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックを `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
-- **`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる**：`@need-lines` を今の段で判定した後に空き（改ページに渡す一行の空き。表とコードブロックの後などに入る）が続き、空きが今の段を埋めると、次のブロックは、送った図版を置いた次の段の、残りが `@need-lines` の行数より少ない位置に置かれる。[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の P1 が守られない。毎晩の `enum.yml` の抜き取り（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md)）が、段の行の数が 6 の版面で見つけた。最も小さい例は、一段で段の行の数が 4 の版面に、2 行の段落、3 行の図版、`@need-lines 2`、二つの一行の空き、1 行の段落を順に置いたもので、最後の段落は 2 ページの図版の後の、残りが 1 行の位置に置かれる。要素が 6 個なので、毎晩のすべての入力を調べる上限（5 個）の外にある。空きを `@need-lines` の「次のブロック」に数えるかを、仕様は定めていない。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。

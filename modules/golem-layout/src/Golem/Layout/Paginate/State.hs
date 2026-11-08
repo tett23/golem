@@ -76,6 +76,9 @@ data St = St
     -} sJoin :: !(Maybe (Int, RuleGrid, RuleSide, Int)),
     -- | the largest need-lines not applied yet (docs/adr ADR 0030)
     sNeed :: !(Maybe (SrcSpan, Int)),
+    {- | the page and column the need-lines was judged in before the spaces
+    after it, judged again for the block after them (golem-layout ADR 0027)
+    -} sNeedAt :: !(Maybe (Int, Int)),
     -- | the grid lines the current column is changed by
     sAdjust :: !Int,
     -- | the controls not met, for the next column closed
@@ -94,7 +97,7 @@ data St = St
 
 -- | Page 1, column 0, nothing placed, in the columns of the page.
 initialState :: Env -> St
-initialState env = St 1 0 0 0 [] [] [] [] [] [] [] [] [] (envBase env) {csFirstLine = 0} 0 [] Nothing Nothing 0 [] Nothing [] False False False
+initialState env = St 1 0 0 0 [] [] [] [] [] [] [] [] [] (envBase env) {csFirstLine = 0} 0 [] Nothing Nothing Nothing 0 [] Nothing [] False False False
 
 -- | The first grid line of the set of columns on this page.
 top :: St -> Int
