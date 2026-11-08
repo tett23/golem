@@ -5,6 +5,7 @@ import MemoSpec (memoTests)
 import RuleShapeSpec (ruleShapeTests)
 import TcySpec (tcyTests)
 import Test.Tasty
+import WrapMarkSpec (wrapMarkTests)
 
 main :: IO ()
 main = defaultMain tests
@@ -17,5 +18,6 @@ tests =
     [ memoTests,
       testGroup "the shapes of the line styles of a rule (ADR 0028)" ruleShapeTests,
       testGroup "the glyph runs of a box in the order of its text (docs/adr ADR 0227)" glyphRunsTests,
-      testGroup "the fit of a tate-chu-yoko in its box (golem-driver ADR 0045)" tcyTests
+      testGroup "the fit of a tate-chu-yoko in its box (golem-driver ADR 0045)" tcyTests,
+      testGroup "the shape and the colour of the wrap mark of inline code (golem-layout ADR 0042)" wrapMarkTests
     ]

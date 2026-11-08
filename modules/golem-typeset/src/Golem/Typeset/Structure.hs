@@ -13,17 +13,16 @@ import Data.Char (isSpace)
 import Data.List (mapAccumL)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Doc.IR
-import Golem.Layout.Japanese (ComposeEnv (..), InlineNode (..), InlineRole (..), SidenoteMarker (..), inlineStructure)
+import Golem.Layout.Japanese (ComposeEnv (..), InlineNode (..), InlineRole (..), inlineStructure)
 import Golem.Layout.Look (Look (..))
 import Golem.Layout.Paginate (NoteId (..))
 import Golem.LayoutSpec (PageGeometry (..))
 import Golem.Pdf qualified as P
-import Golem.Project.Style
 import Golem.Syntax
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
@@ -132,8 +131,9 @@ structureTree fe units figureAttrs =
     tableElem i u h rows =
       let env = tableEnv fe (uStyle u) (lkLang (uLook u))
           blankRow = all (T.all isSpace . T.concat . map inlineText) h
-          cell r c t is = P.KidElem (P.structElem t (content env (cellSite i r c) is))
-          header = [P.KidElem (P.structElem P.STR [(\(P.KidElem e) -> P.KidElem e {P.seAttrs = [P.Attribute "Table" [("Scope", P.OName "Column")]]}) (cell 0 c P.STH is) | (c, is) <- zip [0 ..] h]) | not blankRow]
+          cellElem r c t is = P.structElem t (content env (cellSite i r c) is)
+          cell r c t is = P.KidElem (cellElem r c t is)
+          header = [P.KidElem (P.structElem P.STR [P.KidElem (cellElem 0 c P.STH is) {P.seAttrs = [P.Attribute "Table" [("Scope", P.OName "Column")]]} | (c, is) <- zip [0 ..] h]) | not blankRow]
           body = [P.KidElem (P.structElem P.STR [cell r c P.STD is | (c, is) <- zip [0 ..] row]) | (r, row) <- zip [1 ..] rows]
        in P.structElem P.STable (header <> body)
     -- a code block: its caption, its file name and each line a P of Code (golem-driver ADR 0017, 0023)

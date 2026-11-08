@@ -22,7 +22,7 @@ import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesFileExist, listDirectory)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
-import Test.Tasty
+import Test.Tasty hiding (after)
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
 
@@ -83,7 +83,7 @@ fixtureStructure name style manifest = withSystemTempDirectory "golem-structure"
 
 -- | The golden of the structure tree of a fixture (docs/adr ADR 0183).
 structureGolden :: String -> FilePath -> Maybe FilePath -> Maybe FilePath -> TestTree
-structureGolden golden name style manifest = goldenVsString golden ("test/golden/" <> golden) (BL.fromStrict . TE.encodeUtf8 <$> fixtureStructure name style manifest)
+structureGolden goldenName name style manifest = goldenVsString goldenName ("test/golden/" <> goldenName) (BL.fromStrict . TE.encodeUtf8 <$> fixtureStructure name style manifest)
 
 -- | The structure tree of a one-chapter project.
 miniStructure :: BS.ByteString -> T.Text -> IO T.Text

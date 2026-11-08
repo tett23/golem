@@ -21,7 +21,7 @@ import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
-import Test.Tasty
+import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
 

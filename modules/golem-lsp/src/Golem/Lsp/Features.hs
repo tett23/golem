@@ -518,7 +518,7 @@ completions ws path off = case sourceOf ws path of
                               Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
                               Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
                               -- the keys of [vars] and of its tables (docs/adr/0185)
-                              Just ("vars" : path@(_ : _)) | Just keys <- varKeys projectVars (init path) -> [Completion k CkSettingKey | k <- keys]
+                              Just ("vars" : keyPath@(_ : _)) | Just keys <- varKeys projectVars (init keyPath) -> [Completion k CkSettingKey | k <- keys]
                               _ -> case ws' of
                                 [] -> commandNames
                                 [_] | not (T.isSuffixOf " " lastOpen) -> commandNames

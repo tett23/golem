@@ -296,8 +296,8 @@ loadPluginWith fuel memory wasm = do
                   described <- callMode plugin 1 BS.empty
                   pure $ do
                     (bytes, _) <- described
-                    (cmds, filts, chans, names, ctx, blocks) <- decodeDescription bytes
-                    Right plugin {pluginCommands = cmds, pluginFilters = filts, pluginChannels = chans, pluginDataNames = names, pluginContextNames = ctx, pluginBlocks = blocks}
+                    (cmds, filts, chans, dataNames, ctx, blocks) <- decodeDescription bytes
+                    Right plugin {pluginCommands = cmds, pluginFilters = filts, pluginChannels = chans, pluginDataNames = dataNames, pluginContextNames = ctx, pluginBlocks = blocks}
 
 -- | No data, no context: the empty array.
 noData :: ByteString
@@ -474,9 +474,9 @@ termValue = \case
   where
     int64 = \case
       TInt i -> Just (toInteger i)
-      TInteger i | inInt64 i -> Just i
+      TInteger i | fitsInt64 i -> Just i
       _ -> Nothing
-    inInt64 i = i >= -9223372036854775808 && i <= 9223372036854775807
+    fitsInt64 i = i >= -9223372036854775808 && i <= 9223372036854775807
 
 {- | The CBOR of a command request (golem-doc.cddl @command-request@), with
 the data of the plugin at the end (docs/adr/0105).

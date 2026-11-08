@@ -329,9 +329,9 @@ tests =
         -- no G04004; only the lint of the label not referred to yet
         codesOf ws "a.gm" @?= ["G05004"]
         ws' <- updateFile ws "a.gm" (src <> ref)
-        let at = BS.length (TE.encodeUtf8 (src <> fst (T.breakOn "[ref-number" ref)))
+        let offset = BS.length (TE.encodeUtf8 (src <> fst (T.breakOn "[ref-number" ref)))
         [(c, spanStart (diagSpan d)) | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws')), let DiagnosticCode c = diagCode d]
-          @?= [("G04005", at)],
+          @?= [("G04005", offset)],
       testCase "a notice is published as Information (golem-syntax ADR 0002)" $ do
         lspSeverity Notice @?= L.DiagnosticSeverity_Information
         lspSeverity Warning @?= L.DiagnosticSeverity_Warning

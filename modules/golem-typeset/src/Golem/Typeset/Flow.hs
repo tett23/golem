@@ -990,7 +990,7 @@ sidenoteDiagnostics geom book
 labelSpans :: Book -> Map Text SrcSpan
 labelSpans book = Map.fromListWith (\_ old -> old) (concatMap site (concat [bs | Document _ bs <- bookDocs book]))
   where
-    site (Block sp l lang body) =
+    site (Block sp l _ body) =
       [(name, sp) | Just name <- [l]] <> case body of
         BulletList items -> concatMap (concatMap site . itemBlocks) items
         OrderedList items -> concatMap (concatMap site . itemBlocks) items
@@ -2876,20 +2876,20 @@ when that is nearer the edge of the paper and the figure leaves room.
 turnedFrame :: PageGeometry -> P.Turn -> Rect -> PlacedFigure -> (Rect, Rect)
 turnedFrame geom t ta pf =
   let vertical = pgVertical geom
-      frame = Rect 0 0 (rectH ta) (rectW ta)
+      turned = Rect 0 0 (rectH ta) (rectW ta)
       paper = unturnRect t ta (paperOf geom)
       depth
         | null (pfCaption pf) = pfAcross pf
         | otherwise = fromIntegral (pfImageLines pf) * pgLinePitch geom + fromIntegral (length (pfCaption pf) - 1) * pfCaptionPitch pf + pfCaptionSize pf
-      spare = max 0 ((if vertical then rectW frame else rectH frame) - depth)
+      spare = max 0 ((if vertical then rectW turned else rectH turned) - depth)
       -- the end across the lines: the left of the frame in vertical text, its bottom in horizontal text
       endNearer
-        | vertical = rectX frame - rectX paper < (rectX paper + rectW paper) - (rectX frame + rectW frame)
-        | otherwise = rectY frame - rectY paper < (rectY paper + rectH paper) - (rectY frame + rectH frame)
+        | vertical = rectX turned - rectX paper < (rectX paper + rectW paper) - (rectX turned + rectW turned)
+        | otherwise = rectY turned - rectY paper < (rectY paper + rectH paper) - (rectY turned + rectH turned)
       shift = if spare > 0 && endNearer then spare else 0
       area
-        | vertical = frame {rectW = rectW frame - shift}
-        | otherwise = frame {rectH = rectH frame - shift}
+        | vertical = turned {rectW = rectW turned - shift}
+        | otherwise = turned {rectH = rectH turned - shift}
    in (paper, area)
 
 -- | Where a rectangle of the page is in the frame of 'P.Turned': the inverse of 'P.turnRect'.

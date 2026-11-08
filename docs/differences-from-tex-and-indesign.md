@@ -187,8 +187,10 @@ JLReq の表 2 は、cl-27 と平仮名、片仮名、漢字等のあいだを�
 コードの中には、和文の字のあいだにも境にも、アキ量のセットの空きを入れない。
 空白でない位置で改行した行の行末には、文字スタイル `code` の `wrap-mark`（既定は `⏎`）を描く。
 空白で改行した行には描かない。
+印は、コードの字の 3/5 の大きさで、コードの色の半分の色で描く。
+既定の `⏎` は、書体の字形でなく、細い線の小さな矢印の図形で描く。
 
-この振る舞いは [golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) で決めた。
+この振る舞いは [golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) で決め、印の描き方は [golem-layout ADR 0042](golem-layout/adr/0042-draw-the-wrap-mark-of-inline-code-small-and-light.md) で決めた。
 
 TeX と InDesign と比べると、次のようになる。
 TeX の列は `\texttt` の振る舞いであり、五つの組で同じだった。
@@ -214,6 +216,7 @@ pTeX と LuaTeX-ja は、`kinsoku.tex` と `ltj-kinsoku.tex` で ASCII の記号
 
 - [golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)
 - [golem-layout ADR 0031](golem-layout/adr/0031-line-breaks-after-low-lines-in-identifiers.md)（`_` の連なりの後の改行）
+- [golem-layout ADR 0042](golem-layout/adr/0042-draw-the-wrap-mark-of-inline-code-small-and-light.md)（改行の印の描き方）
 
 ### 書き手が気をつけること
 
@@ -223,6 +226,10 @@ pLaTeX から移るときは、`x = "日本語"` のようなコードで、`"` 
 コードの中の和文と欧文のあいだにはアキが付かないので、TeX で組んだときより詰まって見える。
 空白でない位置で改行したコードの行末には、`⏎` が付く。
 fvextra の `breaklines` は続きの行の行頭に印を付けるが、Golem は改行した行の行末に付ける。
+印の大きさと線の細さは fvextra と同じ考え方である。
+fvextra の既定の印（`breakanywheresymbolpre`）は、10pt の文書で 6pt の、細い線の `⌋` である。
+Golem の既定の印も、コードの字の 3/5 の大きさの、細い線の矢印であり、本文の字より明らかに小さく細く描く。
+fvextra の印の色は本文と同じだが、Golem は印をコードの色の半分の色で淡く描く。
 印を描きたくなければ、`[character-styles.code]` に `wrap-mark = ""` と書く。
 `\verb` と違い、Golem の本文の中のコードは空白でも改行する。
 

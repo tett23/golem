@@ -19,7 +19,7 @@ import Support
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Mem (getAllocationCounter, setAllocationCounter)
-import Test.Tasty
+import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
 
 manifestOf :: [FilePath] -> BS.ByteString

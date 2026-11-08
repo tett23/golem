@@ -1,0 +1,27 @@
+bi-no-id-ei: Nothing (13 bytes)
+bi-no-ei: Nothing (1000011 bytes)
+bi-id-only: Nothing (8 bytes)
+many-bi: 200000 ops (3400000 bytes)
+open-string: Nothing (5000001 bytes)
+open-array: Nothing (2000000 bytes)
+open-dict: Nothing (2000000 bytes)
+content-probe: Heap exhausted;
+content-probe: Current maximum heap size is 536870912 bytes (512 MB).
+content-probe: Use `+RTS -M<size>' to increase it.
+exit=251 wall=2s
+== deep-nums
+deep-nums: 2000000 ops (26000000 bytes)
+ 516,002,856 bytes maximum residency (10 sample(s))
+exit=0 wall=2s
+== bad-hex
+bad-hex: Nothing (5000001 bytes)
+ 5,003,888 bytes maximum residency (2 sample(s))
+exit=0 wall=1s
+== nested-id-ei
+nested-id-ei: 500000 ops (4500000 bytes)
+ 10,441,808 bytes maximum residency (4 sample(s))
+exit=0 wall=1s
+== random-delims
+random-delims: 0 ops (5000000 bytes)
+ 44,328 bytes maximum residency (1 sample(s))
+exit=0 wall=1s

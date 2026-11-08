@@ -285,7 +285,7 @@ TASTY_NO_CREATE=true cabal test all
 ```
 
 出力を意図して変えたときは、パッケージを指定して `--accept` を付け、ゴールデンを書き直す。
-`--accept` は tasty-golden を使うテストのスイートだけが受け付ける（`golem-cli-test`、`golem-driver-test`、`golem-fmt-test`、`golem-font-test`、`golem-lsp-test`、`golem-pdf-test`、`golem-svg-test`）。
+`--accept` は tasty-golden を使うテストのスイートだけが受け付ける（`golem-cli-test`、`golem-driver-test`、`golem-fmt-test`、`golem-font-test`、`golem-layout-test`、`golem-lsp-test`、`golem-pdf-test`、`golem-svg-test`）。
 golem-driver と golem-font はほかのスイートも持ち、そちらは `--accept` を拒むので、スイートの名前まで指定する。
 書き直したファイルの差分を読み、意図した変更だけであることを確かめてからコミットする。
 
@@ -425,8 +425,13 @@ Inkscape に渡す前に、`scripts/manual/outline-prepare.sh` が原稿の写�
 縦書きの文字列に、隣り合う全角の約物を置かない（置くとスクリプトが止まる）。
 図の隣り合う約物は、本文と同じ空きで組む（[docs/adr/0239](./docs/adr/0239-decide-the-conditions-of-the-outlined-figure-check-and-the-punctuation-of-figure-sources.md)）。
 原稿の `<style>` に `text { text-spacing-trim: space-all; }` と `tspan.halt { font-feature-settings: "halt"; }` を一行ずつ置き、半角に詰める約物を `<tspan class="halt">（</tspan>` のように一字ずつ包む。
-包むのは、終わり括弧類、句点類、読点類の前の終わり括弧類、句点類、読点類と、それらの後ろの始め括弧類である。
-どの字を包むかは `scripts/manual/check-figures.sh` が確かめ、中点類と隣り合う約物と、表にない組み合わせはエラーにする。
+包む字は、本文の既定のアキ量のセットから決まる（[docs/adr/0241](./docs/adr/0241-derive-the-punctuation-of-figure-sources-from-the-default-aki-set.md)）。
+隣り合う二つの約物では、前の字の後ろと後ろの字の前の墨の外の空きの和から、本文の最適の空きを引いた量を詰める。
+詰める量が 0 なら包まず、後ろの字の前の空きと等しければ後ろの字を、前の字の後ろの空きと等しければ前の字を包む。
+中点類は包まない。
+どの字を包むかは `scripts/manual/check-figures.sh` が確かめ、どちらの字を包んでも本文と同じ空きにならない組と、縦書きの中の隣り合う約物はエラーにする。
+既定のアキ量のセットの値は、golem-layout のテストが書く `modules/golem-layout/test/golden/default-aki-set.tsv` から読む。
+既定のアキ量のセットを変えたら、`cabal test golem-layout:golem-layout-test --test-options=--accept` でこのファイルを書き直し、`check-figures.sh` が失敗すれば図の原稿を直して輪郭を作り直す。
 原稿を開いて確かめるブラウザーは Chromium の系統のものにする（Safari では縦書きが輪郭と違って描かれる）。
 組むときには実行しないので、マニュアルを組むだけなら Inkscape は要らない。
 輪郭の SVG が原稿から作られたことは、`sh scripts/manual/check-figures.sh` で確かめられる（CI も確かめる）。

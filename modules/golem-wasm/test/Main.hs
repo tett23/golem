@@ -42,13 +42,13 @@ readFilesByList = go [] []
       | otherwise = do
           (rawPath, rest) <- field bs
           (content, rest') <- field rest
-          path <- either (const (Left (NotUtf8 rawPath))) Right (readPath rawPath)
-          if not (isNormalized path)
-            then Left (NotNormalized path)
+          p <- either (const (Left (NotUtf8 rawPath))) Right (readPath rawPath)
+          if not (isNormalized p)
+            then Left (NotNormalized p)
             else
-              if path `elem` seen
-                then Left (Duplicate path)
-                else go (path : seen) ((path, content) : acc) rest'
+              if p `elem` seen
+                then Left (Duplicate p)
+                else go (p : seen) ((p, content) : acc) rest'
     field bs
       | BS.length bs < 4 = Left Truncated
       | otherwise =

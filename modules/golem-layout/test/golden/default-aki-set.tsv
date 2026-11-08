@@ -1,0 +1,359 @@
+# The default aki set (gyomatsu-yakumono-hankaku) for scripts/manual/outline-prepare.sh, written by golem-layout-test (docs/adr/0241); rewrite it with: cabal test golem-layout:golem-layout-test --test-options=--accept
+char	　	ideographic-space	0	0
+char	、	comma	0	1/2
+char	。	full-stop	0	1/2
+char	〈	opening	1/2	0
+char	〉	closing	0	1/2
+char	《	opening	1/2	0
+char	》	closing	0	1/2
+char	「	opening	1/2	0
+char	」	closing	0	1/2
+char	『	opening	1/2	0
+char	』	closing	0	1/2
+char	【	opening	1/2	0
+char	】	closing	0	1/2
+char	〔	opening	1/2	0
+char	〕	closing	0	1/2
+char	〖	opening	1/2	0
+char	〗	closing	0	1/2
+char	〘	opening	1/2	0
+char	〙	closing	0	1/2
+char	〝	opening	1/2	0
+char	〟	closing	0	1/2
+char	・	middle-dot	1/4	1/4
+char	（	opening	1/2	0
+char	）	closing	0	1/2
+char	，	comma	0	1/2
+char	．	full-stop	0	1/2
+char	：	middle-dot	1/4	1/4
+char	；	middle-dot	1/4	1/4
+char	［	opening	1/2	0
+char	］	closing	0	1/2
+char	｛	opening	1/2	0
+char	｝	closing	0	1/2
+char	｟	opening	1/2	0
+char	｠	closing	0	1/2
+aki	opening	opening	0	0	0
+aki	opening	closing	0	0	0
+aki	opening	hyphen	0	0	0
+aki	opening	dividing	0	0	0
+aki	opening	middle-dot	0	1/4	1/4
+aki	opening	full-stop	0	0	0
+aki	opening	comma	0	0	0
+aki	opening	inseparable	0	0	0
+aki	opening	iteration	0	0	0
+aki	opening	prolonged-sound	0	0	0
+aki	opening	small-kana	0	0	0
+aki	opening	ideographic-space	0	0	0
+aki	opening	kana	0	0	0
+aki	opening	ideograph	0	0	0
+aki	opening	western	0	0	0
+aki	opening	line-start	0	0	0
+aki	opening	paragraph-start	0	0	0
+aki	opening	line-end	0	0	0
+aki	closing	opening	0	1/2	1/2
+aki	closing	closing	0	0	0
+aki	closing	hyphen	0	1/2	1/2
+aki	closing	dividing	0	1/2	1/2
+aki	closing	middle-dot	0	1/4	1/4
+aki	closing	full-stop	0	0	0
+aki	closing	comma	0	0	0
+aki	closing	inseparable	0	1/2	1/2
+aki	closing	iteration	0	1/2	1/2
+aki	closing	prolonged-sound	0	1/2	1/2
+aki	closing	small-kana	0	1/2	1/2
+aki	closing	ideographic-space	0	0	0
+aki	closing	kana	0	1/2	1/2
+aki	closing	ideograph	0	1/2	1/2
+aki	closing	western	0	1/2	1/2
+aki	closing	line-start	0	0	0
+aki	closing	paragraph-start	0	0	0
+aki	closing	line-end	0	0	0
+aki	hyphen	opening	0	1/2	1/2
+aki	hyphen	closing	0	0	0
+aki	hyphen	hyphen	0	0	0
+aki	hyphen	dividing	0	0	0
+aki	hyphen	middle-dot	0	1/4	1/4
+aki	hyphen	full-stop	0	0	0
+aki	hyphen	comma	0	0	0
+aki	hyphen	inseparable	0	0	1/10
+aki	hyphen	iteration	0	0	0
+aki	hyphen	prolonged-sound	0	0	0
+aki	hyphen	small-kana	0	0	0
+aki	hyphen	ideographic-space	0	0	0
+aki	hyphen	kana	0	0	1/10
+aki	hyphen	ideograph	0	0	1/10
+aki	hyphen	western	1/8	1/4	1/2
+aki	hyphen	line-start	0	0	0
+aki	hyphen	paragraph-start	0	0	0
+aki	hyphen	line-end	0	0	0
+aki	dividing	opening	0	1/2	1/2
+aki	dividing	closing	0	0	0
+aki	dividing	hyphen	0	0	0
+aki	dividing	dividing	0	0	0
+aki	dividing	middle-dot	0	1/4	1/4
+aki	dividing	full-stop	0	0	0
+aki	dividing	comma	0	0	0
+aki	dividing	inseparable	0	0	1/10
+aki	dividing	iteration	0	0	0
+aki	dividing	prolonged-sound	0	0	0
+aki	dividing	small-kana	0	0	0
+aki	dividing	ideographic-space	0	0	0
+aki	dividing	kana	0	0	1/10
+aki	dividing	ideograph	0	0	1/10
+aki	dividing	western	1/8	1/4	1/2
+aki	dividing	line-start	0	0	0
+aki	dividing	paragraph-start	0	0	0
+aki	dividing	line-end	0	0	0
+aki	middle-dot	opening	0	1/4	1/4
+aki	middle-dot	closing	0	1/4	1/4
+aki	middle-dot	hyphen	0	1/4	1/4
+aki	middle-dot	dividing	0	1/4	1/4
+aki	middle-dot	middle-dot	0	1/2	1/2
+aki	middle-dot	full-stop	0	1/4	1/4
+aki	middle-dot	comma	0	1/4	1/4
+aki	middle-dot	inseparable	0	1/4	1/4
+aki	middle-dot	iteration	0	1/4	1/4
+aki	middle-dot	prolonged-sound	0	1/4	1/4
+aki	middle-dot	small-kana	0	1/4	1/4
+aki	middle-dot	ideographic-space	0	1/4	1/4
+aki	middle-dot	kana	0	1/4	1/4
+aki	middle-dot	ideograph	0	1/4	1/4
+aki	middle-dot	western	0	1/4	1/4
+aki	middle-dot	line-start	0	0	0
+aki	middle-dot	paragraph-start	0	0	0
+aki	middle-dot	line-end	0	0	0
+aki	full-stop	opening	0	1/2	1/2
+aki	full-stop	closing	0	0	0
+aki	full-stop	hyphen	0	1/2	1/2
+aki	full-stop	dividing	0	1/2	1/2
+aki	full-stop	middle-dot	0	3/4	3/4
+aki	full-stop	full-stop	0	0	0
+aki	full-stop	comma	0	0	0
+aki	full-stop	inseparable	0	1/2	1/2
+aki	full-stop	iteration	0	1/2	1/2
+aki	full-stop	prolonged-sound	0	1/2	1/2
+aki	full-stop	small-kana	0	1/2	1/2
+aki	full-stop	ideographic-space	0	1/2	1/2
+aki	full-stop	kana	0	1/2	1/2
+aki	full-stop	ideograph	0	1/2	1/2
+aki	full-stop	western	0	1/2	1/2
+aki	full-stop	line-start	0	0	0
+aki	full-stop	paragraph-start	0	0	0
+aki	full-stop	line-end	0	0	0
+aki	comma	opening	0	1/2	1/2
+aki	comma	closing	0	0	0
+aki	comma	hyphen	0	1/2	1/2
+aki	comma	dividing	0	1/2	1/2
+aki	comma	middle-dot	0	3/4	3/4
+aki	comma	full-stop	0	0	0
+aki	comma	comma	0	0	0
+aki	comma	inseparable	0	1/2	1/2
+aki	comma	iteration	0	1/2	1/2
+aki	comma	prolonged-sound	0	1/2	1/2
+aki	comma	small-kana	0	1/2	1/2
+aki	comma	ideographic-space	0	1/2	1/2
+aki	comma	kana	0	1/2	1/2
+aki	comma	ideograph	0	1/2	1/2
+aki	comma	western	0	1/2	1/2
+aki	comma	line-start	0	0	0
+aki	comma	paragraph-start	0	0	0
+aki	comma	line-end	0	0	0
+aki	inseparable	opening	0	1/2	1/2
+aki	inseparable	closing	0	0	0
+aki	inseparable	hyphen	0	0	0
+aki	inseparable	dividing	0	0	0
+aki	inseparable	middle-dot	0	1/4	1/4
+aki	inseparable	full-stop	0	0	0
+aki	inseparable	comma	0	0	0
+aki	inseparable	inseparable	0	0	0
+aki	inseparable	iteration	0	0	0
+aki	inseparable	prolonged-sound	0	0	0
+aki	inseparable	small-kana	0	0	0
+aki	inseparable	ideographic-space	0	0	0
+aki	inseparable	kana	0	0	1/10
+aki	inseparable	ideograph	0	0	1/10
+aki	inseparable	western	1/8	1/4	1/2
+aki	inseparable	line-start	0	0	0
+aki	inseparable	paragraph-start	0	0	0
+aki	inseparable	line-end	0	0	0
+aki	iteration	opening	0	1/2	1/2
+aki	iteration	closing	0	0	0
+aki	iteration	hyphen	0	0	0
+aki	iteration	dividing	0	0	0
+aki	iteration	middle-dot	0	1/4	1/4
+aki	iteration	full-stop	0	0	0
+aki	iteration	comma	0	0	0
+aki	iteration	inseparable	0	0	1/10
+aki	iteration	iteration	0	0	0
+aki	iteration	prolonged-sound	0	0	0
+aki	iteration	small-kana	0	0	0
+aki	iteration	ideographic-space	0	0	0
+aki	iteration	kana	0	0	1/10
+aki	iteration	ideograph	0	0	1/10
+aki	iteration	western	1/8	1/4	1/2
+aki	iteration	line-start	0	0	0
+aki	iteration	paragraph-start	0	0	0
+aki	iteration	line-end	0	0	0
+aki	prolonged-sound	opening	0	1/2	1/2
+aki	prolonged-sound	closing	0	0	0
+aki	prolonged-sound	hyphen	0	0	0
+aki	prolonged-sound	dividing	0	0	0
+aki	prolonged-sound	middle-dot	0	1/4	1/4
+aki	prolonged-sound	full-stop	0	0	0
+aki	prolonged-sound	comma	0	0	0
+aki	prolonged-sound	inseparable	0	0	1/10
+aki	prolonged-sound	iteration	0	0	0
+aki	prolonged-sound	prolonged-sound	0	0	0
+aki	prolonged-sound	small-kana	0	0	0
+aki	prolonged-sound	ideographic-space	0	0	0
+aki	prolonged-sound	kana	0	0	1/10
+aki	prolonged-sound	ideograph	0	0	1/10
+aki	prolonged-sound	western	1/8	1/4	1/2
+aki	prolonged-sound	line-start	0	0	0
+aki	prolonged-sound	paragraph-start	0	0	0
+aki	prolonged-sound	line-end	0	0	0
+aki	small-kana	opening	0	1/2	1/2
+aki	small-kana	closing	0	0	0
+aki	small-kana	hyphen	0	0	0
+aki	small-kana	dividing	0	0	0
+aki	small-kana	middle-dot	0	1/4	1/4
+aki	small-kana	full-stop	0	0	0
+aki	small-kana	comma	0	0	0
+aki	small-kana	inseparable	0	0	1/10
+aki	small-kana	iteration	0	0	0
+aki	small-kana	prolonged-sound	0	0	0
+aki	small-kana	small-kana	0	0	0
+aki	small-kana	ideographic-space	0	0	0
+aki	small-kana	kana	0	0	1/10
+aki	small-kana	ideograph	0	0	1/10
+aki	small-kana	western	1/8	1/4	1/2
+aki	small-kana	line-start	0	0	0
+aki	small-kana	paragraph-start	0	0	0
+aki	small-kana	line-end	0	0	0
+aki	ideographic-space	opening	0	0	0
+aki	ideographic-space	closing	0	0	0
+aki	ideographic-space	hyphen	0	0	0
+aki	ideographic-space	dividing	0	0	0
+aki	ideographic-space	middle-dot	0	1/4	1/4
+aki	ideographic-space	full-stop	0	0	0
+aki	ideographic-space	comma	0	0	0
+aki	ideographic-space	inseparable	0	0	0
+aki	ideographic-space	iteration	0	0	0
+aki	ideographic-space	prolonged-sound	0	0	0
+aki	ideographic-space	small-kana	0	0	0
+aki	ideographic-space	ideographic-space	0	0	0
+aki	ideographic-space	kana	0	0	0
+aki	ideographic-space	ideograph	0	0	0
+aki	ideographic-space	western	0	0	0
+aki	ideographic-space	line-start	0	0	0
+aki	ideographic-space	paragraph-start	0	0	0
+aki	ideographic-space	line-end	0	0	0
+aki	kana	opening	0	1/2	1/2
+aki	kana	closing	0	0	0
+aki	kana	hyphen	0	0	0
+aki	kana	dividing	0	0	0
+aki	kana	middle-dot	0	1/4	1/4
+aki	kana	full-stop	0	0	0
+aki	kana	comma	0	0	0
+aki	kana	inseparable	0	0	1/10
+aki	kana	iteration	0	0	0
+aki	kana	prolonged-sound	0	0	0
+aki	kana	small-kana	0	0	0
+aki	kana	ideographic-space	0	0	0
+aki	kana	kana	0	0	1/10
+aki	kana	ideograph	0	0	1/10
+aki	kana	western	1/8	1/4	1/2
+aki	kana	line-start	0	0	0
+aki	kana	paragraph-start	0	0	0
+aki	kana	line-end	0	0	0
+aki	ideograph	opening	0	1/2	1/2
+aki	ideograph	closing	0	0	0
+aki	ideograph	hyphen	0	0	0
+aki	ideograph	dividing	0	0	0
+aki	ideograph	middle-dot	0	1/4	1/4
+aki	ideograph	full-stop	0	0	0
+aki	ideograph	comma	0	0	0
+aki	ideograph	inseparable	0	0	1/10
+aki	ideograph	iteration	0	0	0
+aki	ideograph	prolonged-sound	0	0	0
+aki	ideograph	small-kana	0	0	0
+aki	ideograph	ideographic-space	0	0	0
+aki	ideograph	kana	0	0	1/10
+aki	ideograph	ideograph	0	0	1/10
+aki	ideograph	western	1/8	1/4	1/2
+aki	ideograph	line-start	0	0	0
+aki	ideograph	paragraph-start	0	0	0
+aki	ideograph	line-end	0	0	0
+aki	western	opening	0	1/2	1/2
+aki	western	closing	0	0	0
+aki	western	hyphen	1/8	1/4	1/2
+aki	western	dividing	1/8	1/4	1/2
+aki	western	middle-dot	0	1/4	1/4
+aki	western	full-stop	0	0	0
+aki	western	comma	0	0	0
+aki	western	inseparable	1/8	1/4	1/2
+aki	western	iteration	1/8	1/4	1/2
+aki	western	prolonged-sound	1/8	1/4	1/2
+aki	western	small-kana	1/8	1/4	1/2
+aki	western	ideographic-space	0	0	0
+aki	western	kana	1/8	1/4	1/2
+aki	western	ideograph	1/8	1/4	1/2
+aki	western	western	0	0	0
+aki	western	line-start	0	0	0
+aki	western	paragraph-start	0	0	0
+aki	western	line-end	0	0	0
+aki	line-start	opening	0	0	0
+aki	line-start	closing	0	0	0
+aki	line-start	hyphen	0	0	0
+aki	line-start	dividing	0	0	0
+aki	line-start	middle-dot	0	0	0
+aki	line-start	full-stop	0	0	0
+aki	line-start	comma	0	0	0
+aki	line-start	inseparable	0	0	0
+aki	line-start	iteration	0	0	0
+aki	line-start	prolonged-sound	0	0	0
+aki	line-start	small-kana	0	0	0
+aki	line-start	ideographic-space	0	0	0
+aki	line-start	kana	0	0	0
+aki	line-start	ideograph	0	0	0
+aki	line-start	western	0	0	0
+aki	line-start	line-start	0	0	0
+aki	line-start	paragraph-start	0	0	0
+aki	line-start	line-end	0	0	0
+aki	paragraph-start	opening	0	1/2	1/2
+aki	paragraph-start	closing	0	0	0
+aki	paragraph-start	hyphen	0	0	0
+aki	paragraph-start	dividing	0	0	0
+aki	paragraph-start	middle-dot	0	1/4	1/4
+aki	paragraph-start	full-stop	0	0	0
+aki	paragraph-start	comma	0	0	0
+aki	paragraph-start	inseparable	0	0	0
+aki	paragraph-start	iteration	0	0	0
+aki	paragraph-start	prolonged-sound	0	0	0
+aki	paragraph-start	small-kana	0	0	0
+aki	paragraph-start	ideographic-space	0	0	0
+aki	paragraph-start	kana	0	0	0
+aki	paragraph-start	ideograph	0	0	0
+aki	paragraph-start	western	0	0	0
+aki	paragraph-start	line-start	0	0	0
+aki	paragraph-start	paragraph-start	0	0	0
+aki	paragraph-start	line-end	0	0	0
+aki	line-end	opening	0	0	0
+aki	line-end	closing	0	0	0
+aki	line-end	hyphen	0	0	0
+aki	line-end	dividing	0	0	0
+aki	line-end	middle-dot	0	0	0
+aki	line-end	full-stop	0	0	0
+aki	line-end	comma	0	0	0
+aki	line-end	inseparable	0	0	0
+aki	line-end	iteration	0	0	0
+aki	line-end	prolonged-sound	0	0	0
+aki	line-end	small-kana	0	0	0
+aki	line-end	ideographic-space	0	0	0
+aki	line-end	kana	0	0	0
+aki	line-end	ideograph	0	0	0
+aki	line-end	western	0	0	0
+aki	line-end	line-start	0	0	0
+aki	line-end	paragraph-start	0	0	0
+aki	line-end	line-end	0	0	0

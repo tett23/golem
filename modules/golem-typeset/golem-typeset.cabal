@@ -25,6 +25,7 @@ library
                     Golem.Typeset.Svg
                     Golem.Typeset.Tcy
                     Golem.Typeset.TextLayer
+                    Golem.Typeset.WrapMark
   other-modules:    Golem.Typeset.Draw
                     Golem.Typeset.Structure
                     Golem.Typeset.Flow
@@ -65,6 +66,7 @@ test-suite golem-typeset-test
     MemoSpec
     RuleShapeSpec
     TcySpec
+    WrapMarkSpec
   build-depends:
     , base
     , golem-layout-spec

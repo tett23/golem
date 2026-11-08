@@ -19,6 +19,9 @@ module Golem.Layout.Japanese
     boxKind,
     joinedDashes,
     noteMarkSize,
+    wrapMarkScale,
+    wrapMarkSize,
+    shapedWrapMark,
     MarkPart (..),
     markParts,
     markInlines,
@@ -1289,8 +1292,14 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
     wrap mark of the box before it, which the line ends with when it
     breaks there (golem-layout ADR 0034) -}
     codeBreak p n
-      | codeOnly p, let m = lkWrapMark (bcLook p), not (T.null m) = Penalty (L.zwToSp (lkSize (bcLook p)) (ceWordAdvance env (bcLook p) m)) n (WrapMark m)
+      | codeOnly p, let m = lkWrapMark (bcLook p), not (T.null m) = Penalty (wrapMarkWidth (bcLook p) m) n (WrapMark m)
       | otherwise = Penalty 0 n NoHyphen
+    {- the width of the wrap mark, 3/5 of the size of the code: the square
+    of the shape of the default mark, or the advance of the text of another
+    at that size (golem-layout ADR 0042) -}
+    wrapMarkWidth lk m
+      | m == shapedWrapMark = wrapMarkSize (lkSize lk)
+      | otherwise = L.zwToSp (wrapMarkSize (lkSize lk)) (ceWordAdvance env lk m)
     -- the glue of a space between words: it stretches, but not as the glue that fills the last line; a space of code does not
     wordSpace = \case
       Glue _ y _ -> y > 0 && y < filStretch
@@ -1409,3 +1418,20 @@ verticalSidenotes env inls
       Resolved _ _ _ xs -> concatMap go xs
       Note _ _ xs -> concatMap go xs
       _ -> []
+
+{- | The size of the wrap mark of inline code against the size of the code
+(golem-layout ADR 0042): the breaking of lines and the drawing both use it.
+-}
+wrapMarkScale :: Rational
+wrapMarkScale = 3 / 5
+
+-- | The size of the wrap mark of code of the size given: 'wrapMarkScale' of it, rounded down (golem-layout ADR 0042).
+wrapMarkSize :: Sp -> Sp
+wrapMarkSize (Sp s) = Sp (floor (toRational s * wrapMarkScale))
+
+{- | The wrap mark drawn as a shape, not as a glyph: U+23CE, the default of
+the character style code. Any other text is drawn in its glyphs
+(golem-layout ADR 0042).
+-}
+shapedWrapMark :: Text
+shapedWrapMark = "\x23CE"

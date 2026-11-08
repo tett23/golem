@@ -48,6 +48,7 @@ import Golem.Typeset.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
 import Golem.Typeset.Structure (linksOfLeaves, structureTree)
 import Golem.Typeset.Tcy (TcyFit (..), squeezed, tcyFit)
 import Golem.Typeset.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
+import Golem.Typeset.WrapMark (wrapMarkFills, wrapMarkPolygons, wrapMarkSwatch)
 import Text.Printf (printf)
 
 {- | The PDF and the notices of its layout (G07030), or the errors that
@@ -946,20 +947,39 @@ drawLineAt env (x0, y0) sl =
                   r = runAtU env (whoBefore i) look vertical vertical 0 (if vertical then (ox - Sp (unSp (size * 3) `div` 10), oy) else (ox, oy)) "-"
                in (lkColor look, ([(leafBefore, fst r)], inLeaf leafBefore (snd r)))
         {- a line broken inside inline code other than at a space ends with
-        the wrap mark, in the look of the code before it, an artifact:
-        upright in vertical text but Latin text, which is turned
-        (golem-layout ADR 0034) -}
+        the wrap mark, an artifact (golem-layout ADR 0034), small and
+        light (golem-layout ADR 0042): the default mark a shape, another
+        its glyphs, 3/5 of the size of the code before it, centred on its
+        em box across the line, in half of its colour; upright in vertical
+        text but Latin text, which is turned -}
         Penalty hw _ (WrapMark m)
           | i == lastIx && hw > 0 ->
               let (ox, oy) = origin off
                   look = lookBefore i
                   size = lkSize look
+                  small = look {lkSize = wrapMarkSize size}
                   rotated = vertical && T.all (isLatin look) m
-                  r = runAtU env (whoBefore i) look vertical rotated 0 (if rotated then (ox - Sp (unSp (size * 3) `div` 10), oy) else (ox, oy)) m
-               in (lkColor look, ([(Nothing, fst r)], snd r))
+                  -- the em box of the mark centred where that of the code is: raised by (1 − 3/5)(0.88 − 1/2) of the size
+                  lift = Sp (floor ((1 - wrapMarkScale) * (baselineRatio - 1 / 2) * toRational (unSp size)))
+                  pt
+                    | rotated = (ox - Sp (unSp (lkSize small * 3) `div` 10), oy)
+                    | vertical = (ox, oy)
+                    | otherwise = (ox, oy + lift)
+                  colour = P.SetColor (wrapMarkSwatch (swatchOf env look))
+                  r
+                    | m == shapedWrapMark = (wrapMarkFills (wrapMarkPolygons vertical (ox, oy) size), [])
+                    | otherwise = runAtU env (whoBefore i) small vertical rotated 0 pt m
+               in (Nothing, ([(Nothing, [P.Saved (colour : fst r)])], snd r))
         _ -> (Nothing, ([], []))
-      -- by the glyphs used, not the marks: the marks need the ToUnicode entries of every page (golem-driver ADR 0030)
-      parts = filter (not . null . snd . snd) (zipWith (curry boxRun) [0 ..] placed)
+      -- the default wrap mark at the end of the line, a shape of no glyph (golem-layout ADR 0042)
+      shapedMark j =
+        j == lastIx && case drop j placed of
+          (Penalty hw _ (WrapMark m), _) : _ -> hw > 0 && m == shapedWrapMark
+          _ -> False
+      {- by the glyphs used, not the marks: the marks need the ToUnicode
+      entries of every page (golem-driver ADR 0030); the shape of the
+      default wrap mark uses none, and is drawn (golem-layout ADR 0042) -}
+      parts = [r | (j, r) <- zip [0 :: Int ..] (zipWith (curry boxRun) [0 ..] placed), not (null (snd (snd r))) || shapedMark j]
       -- each piece of a box with its leaf and swatch, in order
       pieces = [(lf, col, ms) | (col, (ps, _)) <- parts, (lf, ms) <- ps, not (null ms)]
       -- boxes of the same swatch in a row share one saved colour, inside the content of their leaf

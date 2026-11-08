@@ -1,0 +1,18 @@
+== empty
+Left EmptyPath
+exit=0 wall=1s
+== 10000
+10000 files, 138894 bytes: 10000 read in 0.010473s
+exit=0 wall=1s
+== 20000
+20000 files, 288894 bytes: 20000 read in 0.019267s
+exit=0 wall=1s
+== 40000
+40000 files, 588894 bytes: 40000 read in 0.041047s
+exit=0 wall=1s
+== 80000
+80000 files, 1188894 bytes: 80000 read in 0.084209s
+exit=0 wall=1s
+== 160000
+160000 files, 2448895 bytes: 160000 read in 0.186726s
+exit=0 wall=1s

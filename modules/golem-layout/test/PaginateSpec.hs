@@ -1271,14 +1271,14 @@ largerNeedTests =
     feasible m k = case [r | r <- [m, m - 1], let p = c - k - r, p >= 1, c - p >= 2] of
       [] -> [c - k - 1]
       rs -> rs
-    flowsOf m k r block = [FParagraph (lines' 0 (c - k - r)), FNeedLines mk 2] <> replicate k (FSpace 1) <> [FNeedLines mk2 m, FSpace 1, block]
+    boundaryFlows m k r block = [FParagraph (lines' 0 (c - k - r)), FNeedLines mk 2] <> replicate k (FSpace 1) <> [FNeedLines mk2 m, FSpace 1, block]
     pageOfBlock ps = last [poNumber p | p <- ps, not (null (poSlots p))]
     boundary (m, k, r, name, block) =
-      testCase (label m k r name) $ do
+      testCase (boundaryName m k r name) $ do
         brokenOf [P1, P2] flows ps @?= []
         placement
       where
-        flows = flowsOf m k r block
+        flows = boundaryFlows m k r block
         ps = paginate 1 c flows
         placement
           | m <= 2 = ps @?= paginate 1 c (filter (/= FNeedLines mk2 m) flows)
@@ -1286,7 +1286,7 @@ largerNeedTests =
               unmets ps @?= [UnmetNeedLines mk2 m]
               pageOfBlock ps @?= 2
           | otherwise = pageOfBlock ps @?= (if r >= m then 1 else 2)
-    label m k r name =
+    boundaryName m k r name =
       (if m <= 2 then "N2: " else "N1: ")
         <> ("need-lines " <> show m <> " after " <> show k <> " spaces, " <> show r <> " grid lines left, before " <> name)
 

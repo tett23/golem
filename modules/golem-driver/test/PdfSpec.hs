@@ -1252,6 +1252,113 @@ codeTests =
       (_, pl) <- layoutOk (horizontal30 "\n[character-styles.code]\nwrap-mark = \"\"\n") ("[code: " <> msg <> "]\n") []
       assertBool (show (lineTexts pl)) (length (lineTexts pl) > 1)
       [() | sl <- Map.elems (plLines pl), Penalty _ _ (WrapMark _) <- lineItems (slLine sl)] @?= [],
+    testCase "W1, W5, W7, W8 (golem-layout ADR 0042): the default mark is four filled parts in black 50%, in the square of 3/5 of the size, centred on the em box of the code, an artifact" $ do
+      contents <- miniPdf fakeProvider False (horizontal30 "") ("[code: " <> wrapMsg <> "]\n") [] >>= pageContents
+      let content = BS.concat contents
+          parts = markPaths content
+          glyphs = drawnGlyphs content
+          w = 6 :: Double
+      assertBool "parts" (not (null parts) && length parts `mod` 4 == 0)
+      -- no glyph of the mark is drawn
+      [() | d <- glyphs, dGlyph d == 0x23CE] @?= []
+      forM_ parts $ \(_, colour, artifact) -> do
+        colour @?= Just [0, 0, 0, 0.5]
+        artifact @?= True
+      forM_ (groupsOf4 [ps | (ps, _, _) <- parts]) $ \g -> do
+        let xs = map fst (concat g)
+            ys = map snd (concat g)
+            base = maximum [ptD (dY d) | d <- glyphs, ptD (dY d) <= minimum ys]
+        assertBool (show g) (maximum xs - minimum xs <= w + 0.001 && maximum ys - minimum ys <= w + 0.001)
+        case g of
+          [stem, along, _, _] -> do
+            -- the line along is 0.30 of the square up, the stem 1/20 of the size thick
+            let ays = map snd along
+                sxs = map fst stem
+            assertBool (show (base, ays)) (abs ((minimum ays + maximum ays) / 2 - (base + 3.8 - 0.2 * w)) < 0.001)
+            assertBool (show sxs) (abs (maximum sxs - minimum sxs - 0.5) < 0.001)
+          _ -> assertFailure (show g),
+    testCase "W7 (golem-layout ADR 0042): the mark of code in a swatch of odd values is half of each, rounded down" $ do
+      let style = horizontal30 "\n[color.swatches]\nx = { cmyk = [45, 25, 0, 15] }\n\n[character-styles.code]\ncolor = \"x\"\n"
+      contents <- miniPdf fakeProvider False style ("[code: " <> wrapMsg <> "]\n") [] >>= pageContents
+      let parts = markPaths (BS.concat contents)
+      assertBool "parts" (not (null parts))
+      nub [c | (_, c, _) <- parts] @?= [Just [0.22, 0.12, 0, 0.07]],
+    testCase "W1, W5, W6 (golem-layout ADR 0042): vertical, the mark is turned, its square on the centre line of the code" $ do
+      contents <- miniPdf fakeProvider False pdfStyle ("[code: " <> T.replicate 3 wrapMsg <> "]\n") [] >>= pageContents
+      let content = BS.concat contents
+          parts = markPaths content
+          glyphs = [d | d <- drawnGlyphs content, dGlyph d == fromEnum '罫']
+      assertBool "parts" (not (null parts))
+      forM_ (groupsOf4 [ps | (ps, _, _) <- parts]) $ \case
+        [stem, along, _, _] -> do
+          let s = case glyphs of
+                (d : _) -> ptD (dSize d)
+                [] -> 0
+              w = s * 3 / 5
+              axs = map fst along
+              mid = (minimum axs + maximum axs) / 2
+              -- the centre line of the column nearest to the mark
+              col = snd (minimum [(abs (ptD (dX d) - mid), ptD (dX d)) | d <- glyphs])
+              sys = map snd stem
+          -- turned: the line along is upright, 0.2 of the square left of the centre line; the stem lies across
+          assertBool (show (col, axs)) (abs (mid - (col - 0.2 * w)) < 0.01)
+          assertBool (show sys) (abs (maximum sys - minimum sys - s / 20) < 0.01)
+        g -> assertFailure (show g),
+    testCase "W2, W5 (golem-layout ADR 0042): a mark of another character is its glyph at 3/5 of the size, centred on the em box, in black 50%" $ do
+      let style = horizontal30 (TE.encodeUtf8 "\n[character-styles.code]\nwrap-mark = \"→\"\n")
+      contents <- miniPdf fakeProvider False style ("[code: " <> wrapMsg <> "]\n") [] >>= pageContents
+      let content = BS.concat contents
+          glyphs = drawnGlyphs content
+          marks = [d | d <- glyphs, dGlyph d == 0x2192]
+      assertBool "marks" (not (null marks))
+      markPaths content @?= []
+      forM_ marks $ \d -> do
+        ptD (dSize d) @?= 6
+        let base = maximum [ptD (dY g) | g <- glyphs, dGlyph g /= 0x2192, ptD (dY g) <= ptD (dY d)]
+        -- the baseline raised by (1 - 3/5) (0.88 - 1/2) of the size
+        assertBool (show (base, dY d)) (abs (ptD (dY d) - (base + 1.52)) < 0.001)
+      nub (glyphColours 0x2192 content) @?= [Just [0, 0, 0, 0.5]],
+    testCase "W2, W5 (golem-layout ADR 0042): vertical, a mark of Latin text is turned at 3/5 of the size, beside the centre line as turned code of that size" $ do
+      let style = pdfStyle <> "\n[character-styles.code]\nwrap-mark = \"\\\\\"\n"
+      contents <- miniPdf fakeProvider False style ("[code: " <> T.replicate 3 wrapMsg <> "]\n") [] >>= pageContents
+      let glyphs = drawnGlyphs (BS.concat contents)
+          code = [d | d <- glyphs, dGlyph d == fromEnum '罫']
+          marks = [d | d <- glyphs, dGlyph d == fromEnum '\\']
+      assertBool "marks" (not (null marks))
+      forM_ marks $ \d -> do
+        let s = case code of
+              (c : _) -> ptD (dSize c)
+              [] -> 0
+            col = snd (minimum [(abs (ptD (dX c) - ptD (dX d)), ptD (dX c)) | c <- code])
+        assertBool (show (dSize d, s)) (abs (ptD (dSize d) - s * 3 / 5) < 0.001)
+        -- turned: the matrix of a turned glyph, its baseline 3/10 of its size left of the centre line
+        dMatrix d @?= ["0", "-1", "1", "0"]
+        assertBool (show (col, dX d)) (abs (ptD (dX d) - (col - 0.3 * s * 3 / 5)) < 0.01),
+    testCase "W3 (golem-layout ADR 0042): a mark of two characters is drawn as its glyphs at 3/5 of the size" $ do
+      let style = horizontal30 "\n[character-styles.code]\nwrap-mark = \"->\"\n"
+      contents <- miniPdf fakeProvider False style ("[code: " <> wrapMsg <> "]\n") [] >>= pageContents
+      let glyphs = drawnGlyphs (BS.concat contents)
+      assertBool "marks" (any ((== fromEnum '>') . dGlyph) glyphs)
+      nub [ptD (dSize d) | d <- glyphs, dGlyph d `elem` map fromEnum "->"] @?= [6],
+    testCase "W8 (golem-layout ADR 0042): the shape of the mark adds nothing to ToUnicode and to the text of the leaves" $ do
+      pdf <- miniPdf fakeProvider False (horizontal30 "") ("[code: " <> wrapMsg <> "]\n") []
+      streams <- inflateAll pdf
+      let tu = toUnicodeEntries streams
+      assertBool "ToUnicode" (T.pack "罫" `elem` Map.elems tu)
+      assertBool (show tu) (T.pack "\x23CE" `notElem` Map.elems tu)
+      leaves <- withSystemTempDirectory "golem-wrap-mark" $ \tmp -> do
+        writeProject tmp miniManifest (horizontal30 "") ("[code: " <> wrapMsg <> "]\n") []
+        pdfLeafTexts (defaultOptions tmp) {optFonts = fakeProvider} >>= either (\ds -> assertFailure (show ds) >> pure []) pure
+      assertBool "leaves" (not (null leaves))
+      [() | (_, a, b) <- leaves, T.any (== '\x23CE') (a <> b)] @?= [],
+    testCase "W11 (golem-layout ADR 0042): the wrap mark of a code block is its glyph at the size of the code, in line-number-color" $ do
+      let style = horizontalStyle <> TE.encodeUtf8 "\n[color.swatches]\nln = { cmyk = [45, 25, 0, 15] }\n\n[code]\nwrap-mark = \"→\"\nline-number-color = \"ln\"\n"
+      contents <- miniPdf fakeProvider False style "```\nabcdefghijklmnopqrstuvwxyzabcd\n```\n" [] >>= pageContents
+      let content = BS.concat contents
+          marks = [d | d <- drawnGlyphs content, dGlyph d == 0x2192]
+      map (ptD . dSize) marks @?= [10]
+      nub (glyphColours 0x2192 content) @?= [Just [0.45, 0.25, 0, 0.15]]
+      markPaths content @?= [],
     testCase "a path in [code: ...] breaks after a slash, with no hyphen" $ do
       (_, pl) <- layoutOk horizontalStyle "あいうえお[code: modules/golem-driver/src/Golem/Driver/Pdf.hs]\n" []
       assertSlashBreaks pl,
@@ -1911,3 +2018,59 @@ asCollection font =
 
 be32 :: Int -> BS.ByteString
 be32 v = BS.pack [fromIntegral (v `div` 16777216 `mod` 256), fromIntegral (v `div` 65536 `mod` 256), fromIntegral (v `div` 256 `mod` 256), fromIntegral (v `mod` 256)]
+
+-- ------------------------------------------------------------------ the wrap mark of inline code (golem-layout ADR 0042)
+
+-- | A message of Japanese text in code, longer than a line of 30.
+wrapMsg :: T.Text
+wrapMsg = T.replicate 4 "罫線を持つ段落が版面に入らないため、"
+
+-- | A number of a content stream in points.
+ptD :: BS.ByteString -> Double
+ptD = fromRational . ptToRational
+
+-- | Groups of four.
+groupsOf4 :: [a] -> [[a]]
+groupsOf4 = \case
+  [] -> []
+  xs -> take 4 xs : groupsOf4 (drop 4 xs)
+
+{- | The filled paths of straight edges of a content stream (m, c and h f),
+each with its points, the fill colour it is drawn in (CMYK, none if not
+set) and whether it is inside an artifact.
+-}
+markPaths :: BS.ByteString -> [([(Double, Double)], Maybe [Double], Bool)]
+markPaths content = go [] Nothing [] Nothing (BC.lines content)
+  where
+    go _ _ _ _ [] = []
+    go saved colour bdc path (l : rest) = case BC.words l of
+      ["q"] -> go (colour : saved) colour bdc path rest
+      ["Q"] -> case saved of
+        c : more -> go more c bdc path rest
+        [] -> go [] colour bdc path rest
+      ws
+        | length ws == 10, ws !! 4 == "k", ws !! 9 == "K" -> go saved (Just (map ptD (take 4 ws))) bdc path rest
+        | "BDC" `elem` ws -> go saved colour (("/Artifact" `elem` ws) : bdc) path rest
+        | ws == ["EMC"] -> go saved colour (drop 1 bdc) path rest
+        | [x, y, "m"] <- ws -> go saved colour bdc (Just [(ptD x, ptD y)]) rest
+        | [_, _, _, _, x, y, "c"] <- ws -> go saved colour bdc (fmap (<> [(ptD x, ptD y)]) path) rest
+        | ws == ["h", "f"], Just ps <- path -> (dropClosing ps, colour, or bdc) : go saved colour bdc Nothing rest
+        | otherwise -> go saved colour bdc path rest
+    dropClosing ps = case (ps, reverse ps) of
+      (p0 : _, pl : more) | p0 == pl -> reverse more
+      _ -> ps
+
+-- | The fill colours the glyph given is drawn in.
+glyphColours :: Int -> BS.ByteString -> [Maybe [Double]]
+glyphColours g content = go [] Nothing (BC.lines content)
+  where
+    go _ _ [] = []
+    go saved colour (l : rest) = case BC.words l of
+      ["q"] -> go (colour : saved) colour rest
+      ["Q"] -> case saved of
+        c : more -> go more c rest
+        [] -> go [] colour rest
+      ws
+        | length ws == 10, ws !! 4 == "k", ws !! 9 == "K" -> go saved (Just (map ptD (take 4 ws))) rest
+        | [d] <- drawnGlyphs l, dGlyph d == g -> colour : go saved colour rest
+        | otherwise -> go saved colour rest
