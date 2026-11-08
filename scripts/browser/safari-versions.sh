@@ -18,7 +18,8 @@ set -u
 SW_VERS=${SW_VERS:-sw_vers}
 PLIST=${SAFARI_PLIST:-/Applications/Safari.app/Contents/Info.plist}
 or_dash() { if [ -n "$1" ]; then printf '%s' "$1"; else printf -- '-'; fi; }
-plist() { plutil -extract "$1" raw -o - "$PLIST" 2>/dev/null || true; }
+# plutil writes its errors to stdout on some versions of macOS
+plist() { out=$(plutil -extract "$1" raw -o - "$PLIST" 2>/dev/null) && printf '%s' "$out"; }
 echo '| What | Version |'
 echo '| --- | --- |'
 echo "| macOS | $(or_dash "$("$SW_VERS" -productVersion 2>/dev/null || true)") |"
