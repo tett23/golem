@@ -380,6 +380,9 @@ CI を待つ時間は、変更を一つ入れるたびにかかるので、CI �
 このプロジェクトは開発の速さをいちばん大事にしているので、CI の遅さを後回しにしない。
 プルリクエストの CI が 5 分を超えたら、ほかの作業を止めて、まず CI を改善する（ジョブの分割、キャッシュ、変更のないモジュールの検査を省くことなど）。
 最適化の前後の時間は `docs/ci-timings/` に記録する。
+例外は、wasm のツールチェーン（`scripts/fetch-ghc-wasm.sh`）か wasm の freeze（`cabal.project.wasm.freeze`）を替えるプルリクエストで、`wasm` ジョブの最初の実行はキャッシュがないので 5 分を超えてよい。
+そのプルリクエストは、キャッシュのない実行とキャッシュのある実行の時間を `docs/ci-timings/` に記録する。
+キャッシュが消されて 5 分を超えた実行は、この例外に当たらないので、CI を直す（キャッシュの量を減らす）作業を先にする（[docs/adr/0219](./docs/adr/0219-frequency-of-the-wasm-job-and-its-uncached-runs.md)）。
 
 CI の `build` ジョブは、EPUB を検査する epubcheck を apt から入れない。
 配布元（GitHub の w3c/epubcheck）の release の zip を取り、`ci.yml` に書いた SHA-256 で検査してから、ランナーにもとからある Java 17（`JAVA_HOME_17_X64`）で動かす。

@@ -613,9 +613,22 @@ conformanceTests tinyJpeg =
             @?= Just (OArr ([OInt 0, ODict [("Type", OName "MCR"), ("Pg", ORef (pages !! 1)), ("MCID", OInt 0)]] <> [ODict [("Type", OName "OBJR"), ("Obj", ORef a), ("Pg", ORef p)] | (a, p) <- zip annots pages]))
         other -> assertFailure (show other)
       assertBool "xref" (xrefConsistent (writePdf doc)),
-    testCase "a leaf drawn but not in the tree becomes a P at the end of the Document" $ do
+    testCase "withOrphans is total: a leaf drawn but not in the tree becomes a P at the end of the Document (golem checks G07107 first, docs/adr ADR 0216)" $ do
       let doc = (documentWith tinyJpeg [page [GlyphRun (FontRef 7) 65536 [(1, 0, 0)]]]) {docStructure = structElem SDocument []}
       structureText doc @?= "Document\n  P\n    \"A\"\n",
+    testGroup
+      "orphanLeaves: the leaves drawn that the tree has not, in the order first drawn (docs/adr ADR 0216)"
+      [ testCase "S1: none when every leaf drawn is in the tree" $
+          orphanLeaves (structElem SDocument [KidElem (structElem SP [KidLeaf (LeafId [1]), KidLeaf (LeafId [2])])]) [LeafId [2], LeafId [1], LeafId [2]] @?= [],
+        testCase "S2: one orphan" $
+          orphanLeaves (structElem SDocument [KidElem (structElem SP [KidLeaf (LeafId [1])])]) [LeafId [1], LeafId [5]] @?= [LeafId [5]],
+        testCase "S2: two orphans in the order first drawn, one drawn on two pages counted once" $
+          let leaves = [l | p <- [Page a4 a4 a4 [Tagged (LeafId [9]) [glyph], Tagged (LeafId [1]) [glyph]] [], Page a4 a4 a4 [Tagged (LeafId [3]) [glyph], Tagged (LeafId [9]) [glyph]] []], l <- contentLeaves (pageContent p)]
+              glyph = GlyphRun (FontRef 7) 65536 [(1, 0, 0)]
+           in orphanLeaves (structElem SDocument [KidElem (structElem SP [KidLeaf (LeafId [1])])]) leaves @?= [LeafId [9], LeafId [3]],
+        testCase "contentLeaves: tagged content without marks is no leaf drawn" $
+          contentLeaves [Tagged (LeafId [4]) [], Moved (MoveBy 0 0) [Tagged (LeafId [5]) [GlyphRun (FontRef 7) 65536 [(1, 0, 0)]]]] @?= [LeafId [5]]
+      ],
     testCase "structureText: types, attributes, IDs and the text of each leaf" $ do
       let f = font {fontToUnicode = [(1, "あ"), (2, "い")]}
           tree = (structElem SDocument [KidElem ((structElem SFigure [KidLeaf (LeafId [2])]) {seAlt = Just "絵"}), KidElem (structElem SP [KidLeaf (LeafId [1])])]) {seAttrs = [Attribute "Layout" [("WritingMode", OName "TbRl")]]}

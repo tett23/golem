@@ -13,6 +13,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import DoubleDashSpec (doubleDashTests)
+import ExpansionStepSpec (expansionStepTests)
 import Fixtures (compose, fs, look0, sp, sp0)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiSet, akiPositions, builtinAkiSets, defaultAkiSet, withAkiRule)
@@ -369,7 +370,7 @@ tests =
     [ testGroup "kenten shapes (golem-driver ADR 0019)" kentenTests,
       testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
       testGroup "note marks and note keys (golem-driver ADR 0018)" noteMarkTests,
-      testGroup "boundaries and invariants" [paginateTests, invariantTests, punctuationTests, lineBreakingTests, lineInvariantTests, overflowTests, alignTests],
+      testGroup "boundaries and invariants" [paginateTests, invariantTests, punctuationTests, lineBreakingTests, lineInvariantTests, overflowTests, alignTests, expansionStepTests],
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       inseparableTests,
       doubleDashTests,
@@ -1926,8 +1927,8 @@ protrusionAmountTests =
       ends env "a;" @?= [163840],
     testCase "the box before an explicit hyphen protrudes by 70% of the hyphen" $
       take 1 (ends env "well-known") @?= [229376],
-    testCase "the advance of the character at the end, not of the box, is the base" $ do
-      let narrow = env {ceAdvance = \lk c -> if c == '.' then 1 / 4 else ceAdvance env lk c}
+    testCase "the advance of the character at the end, not of the box, is the base: in the font of the word (docs/adr/0222)" $ do
+      let narrow = env {ceWordCharAdvance = \lk t c -> if c == '.' then 1 / 4 else ceWordCharAdvance env lk t c}
       ends narrow "end." @?= [114688],
     testCase "a quote at the start of a word protrudes by its share of its advance" $
       -- U+201C is an opening bracket of Japanese text and never starts a Latin word box, so the straight quote stands in

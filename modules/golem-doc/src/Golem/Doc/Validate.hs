@@ -80,6 +80,8 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
       -- the caption, the callouts and the diff marks (golem-driver ADR 0023)
       CodeBlock c ->
         maybe [] inl (codeCaption c)
+          -- the span of each line, as any other span (docs/adr/0218)
+          <> concat [spanErrors fileSize lsp | Just lsp <- map clSpan (codeLines c)]
           <> ["注釈の印の番号は 1 から 50 までです" | any (any (\n -> n < 1 || n > 50) . clCallouts) (codeLines c)]
           <> ["差分のコードの行には差分の印が、ほかのコードの行には印がありません" | any (\l -> isJust (clDiff l) /= codeDiff c) (codeLines c)]
           -- only a code block with a caption has a number to go without (docs/adr/0200; G02134)

@@ -1002,6 +1002,17 @@ keepTests =
               env = S.Env maxBound 1 (ColumnSet cols 0 0 0) c
               fitsOrEmpty = need <= S.free env r || S.isEmpty r
               advanced = (S.sPage r - S.sPage st) * cols + S.sColumn r - S.sColumn st
+        ],
+    -- A6 of docs/adr/0211: with nothing waiting, a need that does not fit
+    -- goes on one column, to an empty one, and no more
+    testCase "A6: keep with nothing waiting and a need that does not fit goes on exactly one column" $
+      sequence_
+        [ assertEqual (show (cols, c, need)) 1 advanced
+        | cols <- [1, 2],
+          c <- [3 .. 5],
+          need <- [c, c + 1],
+          let (st, r) = keepFrom cols c [] 0 need
+              advanced = (S.sPage r - S.sPage st) * cols + S.sColumn r - S.sColumn st
         ]
   ]
 
@@ -1112,6 +1123,20 @@ afterSentOnTests =
       placed ps @?= [(1, 0, map SLine [0 .. 4]), (2, 0, [SFigure 1000, SLine 5])]
       gridLines ps @?= [[0 .. 4], [0, 5]]
       unmets ps @?= []
+      brokenOf [P3, P4] flows ps @?= [],
+    -- A5 of docs/adr/0211: a column that holds only continued notes is at
+    -- its top; the blank lines after a figure sent on are dropped there and
+    -- recorded, and the column is not gone past
+    testCase "A5: blank lines at the top of a column of continued notes only are dropped and recorded there" $ do
+      let flows = [FParagraph [LineBox 0 [NoteBody (nid 900) 5] [] [] 0], FFigure 1000 3 [] [], FBlank mk 2, FParagraph (lines' 1 1)]
+          ps = paginate 1 4 flows
+      -- page 1: the line and 2 lines of the note, 1 left; the figure is
+      -- sent on and the blank lines and the line do not fit. Page 2 holds
+      -- the continued note only: its top, where the blank lines are dropped
+      -- and the line is set, not on page 3
+      [(poNumber p, map snd (poSlots p)) | p <- ps] @?= [(1, [SLine 0]), (2, [SLine 1]), (3, []), (4, [SFigure 1000])]
+      gridLines ps @?= [[0], [0], [], [0]]
+      unmets ps @?= [DroppedBlank mk]
       brokenOf [P3, P4] flows ps @?= [],
     testCase "I2: a table after a figure sent on goes on past the column the figure takes" $ do
       let flows = [FParagraph (lines' 0 3), FFigure 1000 3 [] [], FTable 50 0 (lines' 10 1) [lines' 20 1, lines' 21 1]]

@@ -35,6 +35,7 @@ module LineBreakInvariants
   )
 where
 
+import Data.Char (isLetter)
 import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -177,7 +178,11 @@ l3LineEnd _ p =
     not (wide p l)
   ]
 
--- | L4: no line breaks between two inseparable characters.
+{- | L4: no line breaks between two inseparable characters next to each
+other, a break after a hyphen or a dash written in a word among them; a
+line may break at a space between two (golem-layout ADR 0028, its
+section 4).
+-}
 l4Inseparable :: Check
 l4Inseparable _ p =
   [ Breach L4 i ("lines " <> show (i + 1) <> " and " <> show (i + 2) <> " break between " <> show (textOf l) <> " and " <> show (textOf next))
@@ -185,7 +190,8 @@ l4Inseparable _ p =
     Just a <- [lastBox l],
     endClass a == Just Inseparable,
     Just b <- [firstBox next],
-    startClass b == Just Inseparable
+    startClass b == Just Inseparable,
+    breakItem p i /= Just (latinSpace p)
   ]
 
 {- | L5: no line ends past W and its protrusion at the end, with 1 sp of
@@ -237,29 +243,40 @@ fittingBreaks p l =
           natural = sum [w | Box w _ <- before] + sum [w | Glue w _ _ <- before] + penW - protS - protE + sum (map bcEdgeStart firstB) + sum (map bcEdgeEnd lastB)
           expandable = sum [w | Box w c <- before, bcExpandable c]
           shrinkE = case pExpansion ps of
-            Just (limit, _) -> Sp (unSp expandable * toInteger limit `div` 1000)
+            -- the limit the steps reach (golem-layout ADR 0029)
+            Just (limit, stp) -> Sp (unSp expandable * toInteger (reachedLimit limit stp) `div` 1000)
             Nothing -> 0
           shrink = sum [z | Glue _ _ z <- before] + shrinkE
        in natural - shrink <= pWidth p
 
 {- | L6: every line but the last that is not overfull ends at W and its
 protrusion at the end, with 1 sp of rounding. A line without glue that
-stretches is not judged when it is short: the specification spaces out
-a line pushed out as far as its stretch allows (「伸びの許すかぎり」,
-「行分割」), and the glyph expansion, the only stretch of such a line,
-stops at its limit.
+stretches may end before it (docs/adr/0222, D1): the specification
+spaces out a line pushed out as far as its stretch allows; but where it
+has boxes that take the glyph expansion and the expansion is short of
+its limit, it is short by less than a step of the expansion (golem-layout
+ADR 0029, E6).
 -}
 l6Justified :: Check
 l6Justified _ p =
-  [ Breach L6 i ("line " <> show (i + 1) <> " " <> show (textOf l) <> " ends at " <> show (lineEnd l) <> ", not at " <> show (pWidth p + endProtrusion l))
+  [ Breach L6 i ("line " <> show (i + 1) <> " " <> show (textOf l) <> " ends at " <> show (lineEnd l) <> ", not at " <> show target)
   | (i, l, _) <- pairs p,
     not (lineOverfull l),
     let target = pWidth p + endProtrusion l,
     abs (lineEnd l - target) > 1,
-    not (lineEnd l < target && noStretch l)
+    not (lineEnd l < target && noStretch l && shortByLessThanAStep l (target - lineEnd l))
   ]
   where
     noStretch l = all (<= 0) [y | Glue _ y _ <- lineItems l]
+    -- short by less than a step of the expansion where it has not reached its limit
+    shortByLessThanAStep l short = case pExpansion (pParams p) of
+      Just (limit, stp)
+        | x > 0,
+          abs (lineExpansion l) < reachedLimit limit stp ->
+            toInteger (unSp short) < unSp x * toInteger stp `div` 1000 + 1
+      _ -> True
+      where
+        x = sum [w | Box w c <- lineItems l, bcExpandable c]
 
 {- | L7: in the first two passes, without glyph expansion and protrusion,
 and with no more breaks than the limit given, the demerits are the least
@@ -321,12 +338,13 @@ l9Hyphens _ p =
           [Breach L9 i ("line " <> show (i + 1) <> " breaks at a hyphen of the patterns in the first pass") | brPass (pBreaks p) == 1]
             <> [Breach L9 i ("line " <> show (i + 1) <> " breaks at a hyphen of the patterns in a span of " <> show l) | Just c <- [lastBox line], Just l <- [lkLang (bcLook c)], spanIsJapanese l]
             <> [Breach L9 i ("line " <> show (i + 1) <> " does not end with the width of a hyphen") | lastItemWidth line /= Just hyphen || w /= hyphen]
-            <> [Breach L9 i ("line " <> show (i + 1) <> " breaks after " <> show before <> ", fewer than two characters of its element") | T.length before < 2]
-            <> [Breach L9 (i + 1) ("line " <> show (i + 2) <> " starts with " <> show after <> ", fewer than three characters of its element") | T.length after < 3]
+            <> [Breach L9 i ("line " <> show (i + 1) <> " breaks after " <> show before <> ", fewer than two letters of its element") | T.length before < 2]
+            <> [Breach L9 (i + 1) ("line " <> show (i + 2) <> " starts with " <> show after <> ", fewer than three letters of its element") | T.length after < 3]
           where
             (before0, after0) = maybe ("", "") (elementAround (pItems p)) (breakIndex p i)
-            before = T.filter (not . isExtending) before0
-            after = T.filter (not . isExtending) after0
+            -- the letters the patterns see (docs/adr/0222, D4)
+            before = T.filter isLetter before0
+            after = T.filter isLetter after0
         Just (Penalty _ _ ExplicitHyphen) ->
           [ Breach L9 i ("line " <> show (i + 1) <> " breaks after a written hyphen but ends with " <> show (textOf line))
           | not (maybe False (maybe False ((`elem` ("-‐–—" :: String)) . snd) . T.unsnoc . bcText) (lastBox line))
@@ -372,10 +390,11 @@ l10Spaces _ p =
 {- | L11: where a Japanese character (kana, an ideograph) and a Latin word
 are next to each other in a line, there is exactly one glue between them,
 the space between Japanese and Latin text of the default aki set; none
-beside a character of both scripts in a Latin span. A pair with a space
-written between them is not judged: the specification does not say
-whether the space between Japanese and Latin text is added to it. No
-line starts or ends with the space between Japanese and Latin text.
+beside a character of both scripts in a Latin span. With a space written
+between them, the glue of the space is the only glue between them, and
+the space between Japanese and Latin text is not added (docs/adr/0222,
+D2). No line starts or ends with the space between Japanese and Latin
+text.
 -}
 l11Aki :: Check
 l11Aki _ p =
@@ -384,10 +403,10 @@ l11Aki _ p =
       | -- a line without a Latin word has no pair to judge
         any bcExpandable (boxes l),
         (a, glues, b) <- neighbours (lineItems l),
-        -- with a space written between them, the specification does not say whether the space between Japanese and Latin text is added
-        latinSpace p `notElem` glues,
-        let between = filter (`elem` akiGlues) glues,
-        Just want <- [expected a b],
+        -- with a space written between them, the space alone (docs/adr/0222, D2)
+        let spaced = latinSpace p `elem` glues
+            between = if spaced then glues else filter (`elem` akiGlues) glues,
+        Just want <- [if spaced then [latinSpace p] <$ expected a b else expected a b],
         between /= want
       ]
         <> [Breach L11 i ("line " <> show (i + 1) <> " starts or ends with the space between Japanese and Latin text") | any (`elem` akiGlues) (take 1 (lineItems l) <> take 1 (reverse (lineItems l)))]
@@ -430,7 +449,10 @@ l12Expansion _ p =
 at its start by the amount of its first box, at its end by that of its
 last box, or of the hyphen where it breaks at a hyphen of the patterns,
 and by no more than the advance of that character: the advance of the
-character alone, as golem-layout ADR 0014 takes it ('ceAdvance').
+character alone, as golem-layout ADR 0014 takes it ('ceAdvance'), and
+for a box of a Latin word that of the character alone in the font of the
+word ('ceWordCharAdvance', docs/adr/0222, D3), Latin text in the advances
+of the tests.
 -}
 l13Protrusion :: Check
 l13Protrusion _ p =
@@ -449,7 +471,7 @@ l13Protrusion _ p =
           wantS = maybe 0 bcProtrudeStart (firstBox l)
           wantE = fromMaybe (maybe 0 bcProtrudeEnd (lastBox l)) hyphenEnd
           -- the advance of the character, as the composition reads it for the protrusion (golem-layout ADR 0014)
-          adv c ch = L.zwToSp (pSize p) (pAdvance p (lookClass (bcLook c) ch == Western) ch)
+          adv c ch = L.zwToSp (pSize p) (pAdvance p (bcExpandable c || lookClass (bcLook c) ch == Western) ch)
           capS = maybe 0 (\c -> maybe 0 (adv c . fst) (T.uncons (baseOf c))) (firstBox l)
           capE = case hyphenEnd of
             Just _ -> L.zwToSp (pSize p) (pAdvance p True '-')
