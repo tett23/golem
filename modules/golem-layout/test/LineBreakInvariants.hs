@@ -177,7 +177,11 @@ l3LineEnd _ p =
     not (wide p l)
   ]
 
--- | L4: no line breaks between two inseparable characters.
+{- | L4: no line breaks between two inseparable characters next to each
+other, a break after a hyphen or a dash written in a word among them; a
+line may break at a space between two (golem-layout ADR 0028, its
+section 4).
+-}
 l4Inseparable :: Check
 l4Inseparable _ p =
   [ Breach L4 i ("lines " <> show (i + 1) <> " and " <> show (i + 2) <> " break between " <> show (textOf l) <> " and " <> show (textOf next))
@@ -185,7 +189,8 @@ l4Inseparable _ p =
     Just a <- [lastBox l],
     endClass a == Just Inseparable,
     Just b <- [firstBox next],
-    startClass b == Just Inseparable
+    startClass b == Just Inseparable,
+    breakItem p i /= Just (latinSpace p)
   ]
 
 {- | L5: no line ends past W and its protrusion at the end, with 1 sp of
@@ -237,7 +242,8 @@ fittingBreaks p l =
           natural = sum [w | Box w _ <- before] + sum [w | Glue w _ _ <- before] + penW - protS - protE + sum (map bcEdgeStart firstB) + sum (map bcEdgeEnd lastB)
           expandable = sum [w | Box w c <- before, bcExpandable c]
           shrinkE = case pExpansion ps of
-            Just (limit, _) -> Sp (unSp expandable * toInteger limit `div` 1000)
+            -- the limit the steps reach (golem-layout ADR 0029)
+            Just (limit, stp) -> Sp (unSp expandable * toInteger (reachedLimit limit stp) `div` 1000)
             Nothing -> 0
           shrink = sum [z | Glue _ _ z <- before] + shrinkE
        in natural - shrink <= pWidth p
