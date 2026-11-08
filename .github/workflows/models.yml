@@ -30,7 +30,22 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # the archives of the downloads, from the cache of main; each is checked
+      # by its SHA-256 before it is used (docs/adr/0243)
+      - id: downloads
+        name: Restore the archives of the downloads (docs/adr/0243)
+        uses: actions/cache/restore@v6
+        with:
+          path: third_party/downloads
+          key: downloads-models-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/models/check.sh') }}
       # the jar of Alloy 6.2.0, checked by its SHA-256 in check.sh, under
       # the Java 17 of the runner
       - name: The commands of the models give the results of expected.txt (docs/adr/0235)
         run: JAVA="$JAVA_HOME_17_X64/bin/java" sh scripts/models/check.sh
+      # a push to main saves the archives it fetched (docs/adr/0228, docs/adr/0243)
+      - name: Save the archives of the downloads (docs/adr/0243)
+        if: github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/downloads
+          key: ${{ steps.downloads.outputs.cache-primary-key }}

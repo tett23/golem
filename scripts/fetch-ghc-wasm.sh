@@ -13,7 +13,11 @@
 # which setup.sh of ghc-wasm-meta copies for the 9.10 flavour, is taken
 # from the same commit and checked by its SHA-256. bootstrap.sh is not
 # run: the part of setup.sh that unpacks the archives and writes env is
-# copied below. Nothing is written to ~/.ghc-wasm.
+# copied below. Nothing is written to ~/.ghc-wasm. scripts/ci/fetch-url.sh
+# fetches each file, with retries, into GOLEM_DOWNLOADS
+# (third_party/downloads by default) under its name in the URL, and checks
+# its SHA-256; a file there of the SHA-256 is not fetched again
+# (docs/adr/0243). CI caches third_party/ghc-wasm, not these files.
 #
 # third_party/ghc-wasm/VERSION holds the commit and the SHA-256 of the
 # archives; the directory is used as it is only when it is the line of this
@@ -62,14 +66,16 @@ digest() { # ALG FILE: the hex digest
 }
 TMP=$(mktemp -d)
 trap 'rm -rf "${TMP:?}"' EXIT
-# fetch URL SHA256 SRI FILE: the file, checked by both values
+DOWNLOADS=${GOLEM_DOWNLOADS:-$ROOT/third_party/downloads}
+# fetch URL SHA256 SRI FILE: the file of the URL in DOWNLOADS, checked by
+# both values, linked as FILE in TMP
 fetch() {
-  curl -sSfL --retry 5 -o "$TMP/$4" "$1"
-  got=$(digest sha256 "$TMP/$4")
-  if [ "$got" != "$2" ]; then echo "SHA-256 mismatch for $1: $got" >&2; exit 1; fi
+  f=$DOWNLOADS/${1##*/}
+  sh "$ROOT/scripts/ci/fetch-url.sh" "$f" "$2" "$1"
   alg=${3%%:*}
-  got=$(digest "$alg" "$TMP/$4")
+  got=$(digest "$alg" "$f")
   if [ "$got" != "${3#*:}" ]; then echo "the SRI hash of autogen.json ($alg) does not match $1: $got" >&2; exit 1; fi
+  ln -s "$f" "$TMP/$4"
   echo "fetched $1 (sha256 $2)"
 }
 fetch "$GHC_URL" "$GHC_SHA" "$GHC_SRI" ghc.tar.xz
@@ -77,9 +83,8 @@ fetch "$SDK_URL" "$SDK_SHA" "$SDK_SRI" wasi-sdk.tar.gz
 fetch "$FFI_URL" "$FFI_SHA" "$FFI_SRI" libffi-wasm.zip
 fetch "$CABAL_URL" "$CABAL_SHA" "$CABAL_SRI" cabal.tar.xz
 fetch "$NODE_URL" "$NODE_SHA" "$NODE_SRI" node.tar.xz
-curl -sSfL --retry 5 -o "$TMP/cabal.th.config" "$META_RAW/cabal.th.config"
-got=$(digest sha256 "$TMP/cabal.th.config")
-if [ "$got" != "$TH_CONFIG_SHA" ]; then echo "SHA-256 mismatch for cabal.th.config: $got" >&2; exit 1; fi
+sh "$ROOT/scripts/ci/fetch-url.sh" "$DOWNLOADS/cabal.th.config" "$TH_CONFIG_SHA" "$META_RAW/cabal.th.config"
+ln -s "$DOWNLOADS/cabal.th.config" "$TMP/cabal.th.config"
 
 # what setup.sh does for the 9.10 flavour on x86-64 Linux, without
 # wasmtime, binaryen, wasm-run and the npm packages for browsers

@@ -99,8 +99,9 @@ jobs:
           path: browser-inputs
 
   # chrome-headless-shell of scripts/browser/fetch-chromium.sh, Deno of
-  # scripts/wasm/fetch-deno.sh; both cached by the hash of their script.
-  # The C API of wasmtime of scripts/fetch-wasmtime.sh (docs/adr/0238)
+  # scripts/wasm/fetch-deno.sh, and the C API of wasmtime of
+  # scripts/fetch-wasmtime.sh (docs/adr/0238); their archives are cached
+  # by the hash of the three scripts (docs/adr/0243)
   chromium:
     needs: prepare
     if: needs.prepare.outputs.run == 'true'
@@ -118,37 +119,26 @@ jobs:
           name: browser-inputs
           path: browser-inputs
       # restored and saved apart, so that a run whose checks fail saves
-      # them too; only the runs of main save (docs/adr/0228)
-      - id: chromium-cache
-        name: Restore chrome-headless-shell (docs/adr/0234)
+      # them too; only the runs of main save (docs/adr/0228). Each archive
+      # is checked by its SHA-256 before it is unpacked (docs/adr/0243)
+      - id: downloads
+        name: Restore the archives of the downloads (docs/adr/0243)
         uses: actions/cache/restore@v6
         with:
-          path: third_party/chromium
-          key: chromium-${{ hashFiles('scripts/browser/fetch-chromium.sh') }}
-      - id: deno-cache
-        name: Restore deno (docs/adr/0234)
-        uses: actions/cache/restore@v6
-        with:
-          path: third_party/deno
-          key: deno-${{ hashFiles('scripts/wasm/fetch-deno.sh') }}
+          path: third_party/downloads
+          key: downloads-chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/browser/fetch-chromium.sh', 'scripts/wasm/fetch-deno.sh', 'scripts/fetch-wasmtime.sh') }}
       - name: chrome-headless-shell and deno, pinned by version and SHA-256
         run: |
           timeout -k 10 300 sh scripts/browser/fetch-chromium.sh
           timeout -k 10 300 sh scripts/wasm/fetch-deno.sh
       - name: The C API of wasmtime, pinned by version and SHA-256 (docs/adr/0238)
         run: timeout -k 10 300 sh scripts/fetch-wasmtime.sh
-      - name: Save chrome-headless-shell
-        if: steps.chromium-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+      - name: Save the archives of the downloads (docs/adr/0243)
+        if: github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
-          path: third_party/chromium
-          key: ${{ steps.chromium-cache.outputs.cache-primary-key }}
-      - name: Save deno
-        if: steps.deno-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v6
-        with:
-          path: third_party/deno
-          key: ${{ steps.deno-cache.outputs.cache-primary-key }}
+          path: third_party/downloads
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
       - name: browser_wasi_shim
         working-directory: scripts/browser
         run: npm ci --ignore-scripts

@@ -948,6 +948,192 @@ expect "apt-install: a failed update fails" 1
 if ! grep -q 'apt-get install' "$SUDO_LOG"; then ok; else ng "apt-install: nothing is installed after a failed update"; fi
 unset SUDO_LOG
 
+# ---------------------------------------------------------------- fetch-url.sh
+# (docs/adr/0243): a fake curl on PATH records its arguments, fails
+# FAKE_FAILS times with the exit code FAKE_CODE, then writes FAKE_FILE to
+# the file of -o; a fake sleep records its seconds and does not sleep
+
+FU=$WORK/fetch-url
+mkdir -p "$FU/bin"
+cat >"$FU/bin/curl" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "$*" >>"$FU_LOG"
+n=$(($(cat "$FU_COUNT" 2>/dev/null || echo 0) + 1))
+echo "$n" >"$FU_COUNT"
+out=
+while [ $# -gt 0 ]; do
+  case "$1" in -o) out=$2; shift ;; esac
+  shift
+done
+# a failed transfer may leave a partial file
+if [ "$n" -le "${FAKE_FAILS:-0}" ]; then printf 'partial' >"$out"; exit "${FAKE_CODE:-22}"; fi
+cp "$FAKE_FILE" "$out"
+FAKE
+cat >"$FU/bin/sleep" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "$1" >>"$FU_SLEEPS"
+FAKE
+chmod +x "$FU/bin/curl" "$FU/bin/sleep"
+printf 'the archive\n' >"$FU/good"
+: >"$FU/empty"
+fu_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+FU_SHA=$(fu_sha "$FU/good")
+FU_EMPTY_SHA=$(fu_sha "$FU/empty")
+export FU_LOG="$FU/curl.log" FU_COUNT="$FU/count" FU_SLEEPS="$FU/sleeps"
+# fetch_url ENV... -- ARG...: runs fetch-url.sh with the fakes, after
+# clearing the records of the fakes and the downloads
+fu_reset() { rm -rf "$FU/d"; : >"$FU_LOG"; : >"$FU_SLEEPS"; rm -f "$FU_COUNT"; }
+fetch_url() { env PATH="$FU/bin:$PATH" FAKE_FILE="${FAKE_FILE:-$FU/good}" "$@"; }
+fu_calls() { wc -l <"$FU_LOG" | tr -d ' '; }
+fu_sleeps() { tr '\n' ' ' <"$FU_SLEEPS" | sed 's/ $//'; }
+fu_none() { [ ! -e "$FU/d/a.tar.gz" ] && [ ! -e "$FU/d/a.tar.gz.part" ]; }
+URL1=https://example.org/1/a.tar.gz
+URL2=https://example.org/2/a.tar.gz
+: >"$WORK/in"
+
+run sh "$HERE/fetch-url.sh"
+expect "fetch-url: no argument is a usage error" 2
+run sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA"
+expect "fetch-url: no URL is a usage error" 2
+if grep -qF 'usage: fetch-url.sh FILE SHA256 URL [URL...]' "$WORK/err"; then ok; else ng "fetch-url: the usage is written"; fi
+
+# I1, I2: a FILE of the SHA-256 is used, and curl is not called
+fu_reset
+mkdir -p "$FU/d"
+cp "$FU/good" "$FU/d/a.tar.gz"
+run fetch_url sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 0 ] && [ "$(fu_calls)" = 0 ] && [ "$(fu_sha "$FU/d/a.tar.gz")" = "$FU_SHA" ]; then ok; else ng "fetch-url: a FILE of the SHA-256 is not fetched (I1, I2)"; fi
+# a FILE of another SHA-256 is fetched again
+fu_reset
+mkdir -p "$FU/d"
+printf 'old\n' >"$FU/d/a.tar.gz"
+run fetch_url sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 0 ] && [ "$(fu_calls)" = 1 ] && [ "$(fu_sha "$FU/d/a.tar.gz")" = "$FU_SHA" ]; then ok; else ng "fetch-url: a FILE of another SHA-256 is fetched again (I1)"; fi
+# a FILE.part alone is fetched again and overwritten
+fu_reset
+mkdir -p "$FU/d"
+printf 'half' >"$FU/d/a.tar.gz.part"
+run fetch_url sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 0 ] && [ "$(fu_sha "$FU/d/a.tar.gz")" = "$FU_SHA" ] && [ ! -e "$FU/d/a.tar.gz.part" ]; then ok; else ng "fetch-url: a FILE.part left is fetched again"; fi
+# the directory of FILE is made
+fu_reset
+run fetch_url sh "$HERE/fetch-url.sh" "$FU/d/x/y/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 0 ] && [ "$(fu_sha "$FU/d/x/y/a.tar.gz")" = "$FU_SHA" ]; then ok; else ng "fetch-url: the directory of FILE is made"; fi
+# the arguments of curl
+if grep -qF -- "--proto =https --tlsv1.2 -fsSL --connect-timeout 30 --max-time 120 -o $FU/d/x/y/a.tar.gz.part $URL1" "$FU_LOG"; then ok; else ng "fetch-url: curl has --proto =https, --tlsv1.2, --connect-timeout 30 and --max-time 120"; fi
+run fetch_url FETCH_MAX_TIME=7 sh "$HERE/fetch-url.sh" "$FU/d/z/a.tar.gz" "$FU_SHA" "$URL1"
+if grep -qF -- "--max-time 7 " "$FU_LOG"; then ok; else ng "fetch-url: FETCH_MAX_TIME sets --max-time"; fi
+
+# I3: the attempts and the waits
+fu_reset
+run fetch_url FETCH_ATTEMPTS=3 FETCH_WAITS="1 2" FAKE_FAILS=2 sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 0 ] && [ "$(fu_calls)" = 3 ] && [ "$(fu_sleeps)" = "1 2" ] && [ "$(fu_sha "$FU/d/a.tar.gz")" = "$FU_SHA" ]; then ok; else ng "fetch-url: two failures and a success in three attempts, after waits of 1 and 2 (I1, I3)"; fi
+if [ "$(grep -c "^fetch-url: $URL1: curl exited with 22" "$WORK/err")" = 2 ] && grep -qF 'next in 2 seconds' "$WORK/err"; then ok; else ng "fetch-url: each failed attempt says the URL, the exit code of curl and the next wait (I3)"; fi
+fu_reset
+run fetch_url FETCH_ATTEMPTS=3 FETCH_WAITS="1 2" FAKE_FAILS=3 sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 1 ] && [ "$(fu_calls)" = 3 ] && [ "$(fu_sleeps)" = "1 2" ] && fu_none; then ok; else ng "fetch-url: three failures in three attempts fail, and leave no FILE nor FILE.part (I3)"; fi
+fu_reset
+run fetch_url FETCH_WAITS=5 FAKE_FAILS=2 sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 0 ] && [ "$(fu_calls)" = 3 ] && [ "$(fu_sleeps)" = "5 5" ]; then ok; else ng "fetch-url: three attempts by default, and the last wait is used again (I3)"; fi
+fu_reset
+run fetch_url FETCH_WAITS="1 2 3" FAKE_FAILS=2 sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 0 ] && [ "$(fu_sleeps)" = "1 2" ]; then ok; else ng "fetch-url: the waits in their order, as many as needed (I3)"; fi
+fu_reset
+run fetch_url FETCH_WAITS="" FAKE_FAILS=1 sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 0 ] && [ "$(fu_sleeps)" = 0 ]; then ok; else ng "fetch-url: no wait is a wait of 0 seconds (I3)"; fi
+fu_reset
+run fetch_url FAKE_FAILS=2 sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 0 ] && [ "$(fu_sleeps)" = "10 30" ]; then ok; else ng "fetch-url: the waits are 10 and 30 seconds by default (I3)"; fi
+fu_reset
+run fetch_url FETCH_ATTEMPTS=1 FAKE_FAILS=1 sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 1 ] && [ "$(fu_calls)" = 1 ] && [ ! -s "$FU_SLEEPS" ] && fu_none; then ok; else ng "fetch-url: one attempt that fails does not wait (I3)"; fi
+fu_reset
+run fetch_url FETCH_ATTEMPTS=2 FETCH_WAITS=1 FAKE_FAILS=1 sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 0 ] && [ "$(fu_calls)" = 2 ] && [ "$(fu_sleeps)" = 1 ]; then ok; else ng "fetch-url: one failure in two attempts (I3)"; fi
+for c in 22 56 28 6; do
+  fu_reset
+  run fetch_url FETCH_WAITS=0 FAKE_FAILS=1 FAKE_CODE=$c sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+  if [ "$CODE" = 0 ] && [ "$(fu_calls)" = 2 ] && grep -qF "curl exited with $c " "$WORK/err"; then ok; else ng "fetch-url: the exit code $c of curl is retried (I3)"; fi
+done
+for v in 0 x; do
+  run fetch_url FETCH_ATTEMPTS=$v sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+  expect "fetch-url: FETCH_ATTEMPTS=$v is a usage error" 2
+done
+run fetch_url FETCH_WAITS="1 x" sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+expect "fetch-url: a wait that is not an integer is a usage error" 2
+
+# I4: a file of another SHA-256 is not retried
+fu_reset
+run fetch_url FAKE_FILE="$FU/empty" sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1" "$URL2"
+if [ "$CODE" = 1 ] && [ "$(fu_calls)" = 1 ] && [ ! -s "$FU_SLEEPS" ] && fu_none; then ok; else ng "fetch-url: an empty file of another SHA-256 fails at once, and leaves no FILE nor FILE.part (I4)"; fi
+if grep -qF "$FU_EMPTY_SHA" "$WORK/err" && grep -qF "expected $FU_SHA" "$WORK/err"; then ok; else ng "fetch-url: the actual and the expected SHA-256 are written (I4)"; fi
+printf 'replaced\n' >"$FU/replaced"
+fu_reset
+run fetch_url FAKE_FILE="$FU/replaced" sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 1 ] && [ "$(fu_calls)" = 1 ] && fu_none && grep -qF "$(fu_sha "$FU/replaced")" "$WORK/err"; then ok; else ng "fetch-url: a replaced file fails at once (I4)"; fi
+
+# I5: the URLs in their order, until one answers
+fu_reset
+run fetch_url FAKE_FAILS=1 sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1" "$URL2"
+if [ "$CODE" = 0 ] && [ "$(fu_calls)" = 2 ] && sed -n 1p "$FU_LOG" | grep -qF "$URL1" && sed -n 2p "$FU_LOG" | grep -qF "$URL2" && [ ! -s "$FU_SLEEPS" ]; then ok; else ng "fetch-url: the second URL is tried in the same attempt when the first fails (I5)"; fi
+fu_reset
+run fetch_url sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1" "$URL2"
+if [ "$CODE" = 0 ] && [ "$(fu_calls)" = 1 ] && ! grep -qF "$URL2" "$FU_LOG"; then ok; else ng "fetch-url: the URLs after the one that answered are not tried (I5)"; fi
+fu_reset
+run fetch_url FETCH_ATTEMPTS=3 FETCH_WAITS=0 FAKE_FAILS=6 sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1" "$URL2"
+if [ "$CODE" = 1 ] && [ "$(fu_calls)" = 6 ] && [ "$(fu_sleeps)" = "0 0" ] && fu_none; then ok; else ng "fetch-url: both URLs fail in each of the attempts (I3, I5)"; fi
+unset FU_LOG FU_COUNT FU_SLEEPS
+
+# ---------------------------------------------------------------- fetch-hlint.sh, fetch-nvim.sh
+# (docs/adr/0009, docs/adr/0231, docs/adr/0243): the archive is fetched by
+# scripts/ci/fetch-url.sh into third_party/downloads, and one there of the
+# SHA-256 is unpacked without curl. A copy of each script in a fake root
+# pins the SHA-256 of a small archive of the layout of the release; a fake
+# uname answers x86-64 Linux, and a fake curl writes the archive
+FN=$WORK/fetch-nh
+mkdir -p "$FN/bin" "$FN/src/hlint-3.10/data" "$FN/src/nvim-linux-x86_64/bin"
+printf '#!/bin/sh\necho "HLint v3.10"\n' >"$FN/src/hlint-3.10/hlint"
+: >"$FN/src/hlint-3.10/data/hlint.yaml"
+printf '#!/bin/sh\necho "NVIM v%s"\n' "$(sed -n 's/^VERSION=//p' "$HERE/../../tools/editors/fetch-nvim.sh")" >"$FN/src/nvim-linux-x86_64/bin/nvim"
+chmod +x "$FN/src/hlint-3.10/hlint" "$FN/src/nvim-linux-x86_64/bin/nvim"
+(cd "$FN/src" && tar -czf "$FN/hlint-3.10-x86_64-linux.tar.gz" hlint-3.10 && tar -czf "$FN/nvim-linux-x86_64.tar.gz" nvim-linux-x86_64)
+printf '#!/bin/sh\ncase "$1" in -s) echo Linux ;; -m) echo x86_64 ;; *) exit 1 ;; esac\n' >"$FN/bin/uname"
+cat >"$FN/bin/curl" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "$*" >>"$FN_LOG"
+url=
+for a in "$@"; do url=$a; done
+while [ $# -gt 0 ]; do
+  case "$1" in -o) cp "$FN_ARCHIVES/${url##*/}" "$2" || exit 22; shift ;; esac
+  shift
+done
+FAKE
+chmod +x "$FN/bin/uname" "$FN/bin/curl"
+mkdir -p "$FN/root/scripts/ci" "$FN/root/tools/editors"
+cp "$HERE/fetch-url.sh" "$FN/root/scripts/ci/"
+sed "s/^SHA=.*/SHA=$(fu_sha "$FN/hlint-3.10-x86_64-linux.tar.gz")/" "$HERE/fetch-hlint.sh" >"$FN/root/scripts/ci/fetch-hlint.sh"
+sed "s/\(Linux-x86_64) NAME=nvim-linux-x86_64; SHA=\)[0-9a-f]*/\1$(fu_sha "$FN/nvim-linux-x86_64.tar.gz")/" "$HERE/../../tools/editors/fetch-nvim.sh" >"$FN/root/tools/editors/fetch-nvim.sh"
+if ! cmp -s "$HERE/fetch-hlint.sh" "$FN/root/scripts/ci/fetch-hlint.sh" && ! cmp -s "$HERE/../../tools/editors/fetch-nvim.sh" "$FN/root/tools/editors/fetch-nvim.sh"; then ok; else ng "fetch-hlint, fetch-nvim: the copies pin the fixtures"; fi
+fn_run() { env PATH="$FN/bin:$PATH" HOME="$FN/home" FN_LOG="$FN/curl.log" FN_ARCHIVES="$FN" sh "$FN/root/$1"; }
+for sa in "scripts/ci/fetch-hlint.sh hlint-3.10-x86_64-linux.tar.gz home/.local/lib/hlint-3.10" \
+  "tools/editors/fetch-nvim.sh nvim-linux-x86_64.tar.gz root/third_party/nvim"; do
+  set -- $sa
+  f=$1 a=$2 tree=$FN/$3 n=${1##*/}
+  : >"$FN/curl.log"
+  run fn_run "$f"
+  if [ "$CODE" = 0 ] && [ -d "$tree" ] && cmp -s "$FN/$a" "$FN/root/third_party/downloads/$a"; then ok; else ng "$n: the archive is unpacked and kept in third_party/downloads (docs/adr/0243)"; fi
+  if grep -qF -- "--proto =https --tlsv1.2 -fsSL --connect-timeout 30 --max-time 120 -o $FN/root/third_party/downloads/$a.part https://github.com/" "$FN/curl.log"; then ok; else ng "$n: scripts/ci/fetch-url.sh fetches the archive from its release (docs/adr/0243)"; fi
+  rm -rf "$tree"
+  : >"$FN/curl.log"
+  run fn_run "$f"
+  if [ "$CODE" = 0 ] && [ -d "$tree" ] && [ ! -s "$FN/curl.log" ]; then ok; else ng "$n: an archive of the SHA-256 in third_party/downloads is unpacked without curl (docs/adr/0243)"; fi
+  rm -rf "$tree"
+  printf 'other\n' >"$FN/root/third_party/downloads/$a"
+  run fn_run "$f"
+  if [ "$CODE" = 0 ] && [ -s "$FN/curl.log" ] && cmp -s "$FN/$a" "$FN/root/third_party/downloads/$a"; then ok; else ng "$n: an archive of another SHA-256 in third_party/downloads is fetched again (docs/adr/0243)"; fi
+done
+if [ "$("$FN/home/.local/bin/hlint" --version 2>/dev/null)" = "HLint v3.10" ]; then ok; else ng "fetch-hlint: hlint is installed in ~/.local/bin"; fi
+
 # ---------------------------------------------------------------- epubcheck-install.sh
 # (docs/adr/0062-epubcheck-from-release-with-cache.md)
 
@@ -979,8 +1165,9 @@ FAKE
 chmod +x "$EC/fakebin/curl" "$EC/java/bin/java"
 export CURL_LOG="$EC/curl.log" CURL_ZIP="$EC/release.zip"
 # epubcheck_install HOME VERSION SHA: runs the script with the fakes
+# (fetch-url.sh tries once, without waits)
 epubcheck_install() {
-  env PATH="$EC/fakebin:$PATH" EPUBCHECK_HOME="$1" JAVA_HOME_17_X64="$EC/java" sh "$HERE/epubcheck-install.sh" "$2" "$3"
+  env PATH="$EC/fakebin:$PATH" FETCH_ATTEMPTS=1 EPUBCHECK_HOME="$1" JAVA_HOME_17_X64="$EC/java" sh "$HERE/epubcheck-install.sh" "$2" "$3"
 }
 : >"$WORK/in"
 run sh "$HERE/epubcheck-install.sh"
@@ -1009,14 +1196,17 @@ run epubcheck_install "$EC/h3" 9.9.9 "$EC_SHA"
 expect "epubcheck-install: a cached zip is installed" 0
 if [ ! -s "$CURL_LOG" ]; then ok; else ng "epubcheck-install: a cached zip is not fetched again"; fi
 if [ -x "$EC/h3/bin/epubcheck" ]; then ok; else ng "epubcheck-install: epubcheck is installed from the cached zip"; fi
-# a cached zip of a wrong SHA-256 fails
+# a cached zip of a wrong SHA-256 is fetched again with fetch-url.sh
+# (docs/adr/0243)
 mkdir -p "$EC/h4/zip"
 printf 'not a zip\n' >"$EC/h4/zip/epubcheck-9.9.9.zip"
+: >"$CURL_LOG"
 run epubcheck_install "$EC/h4" 9.9.9 "$EC_SHA"
-expect "epubcheck-install: a cached zip of a wrong SHA-256 fails" 1
-if [ ! -e "$EC/h4/bin/epubcheck" ]; then ok; else ng "epubcheck-install: nothing is installed from a cached zip of a wrong SHA-256"; fi
+expect "epubcheck-install: a cached zip of a wrong SHA-256 is fetched again" 0
+if [ -s "$CURL_LOG" ] && cmp -s "$EC/release.zip" "$EC/h4/zip/epubcheck-9.9.9.zip" && [ -x "$EC/h4/bin/epubcheck" ]; then ok; else ng "epubcheck-install: the zip fetched again replaces the cached zip of a wrong SHA-256 (docs/adr/0243)"; fi
+if grep -qF -- "--proto =https --tlsv1.2 -fsSL --connect-timeout 30 --max-time 120 -o $EC/h4/zip/epubcheck-9.9.9.zip.part" "$CURL_LOG"; then ok; else ng "epubcheck-install: the zip is fetched with fetch-url.sh (docs/adr/0243)"; fi
 # a failed download fails
-run env PATH="$EC/fakebin:$PATH" CURL_ZIP="$EC/no-such.zip" EPUBCHECK_HOME="$EC/h5" JAVA_HOME_17_X64="$EC/java" sh "$HERE/epubcheck-install.sh" 9.9.9 "$EC_SHA"
+run env PATH="$EC/fakebin:$PATH" FETCH_ATTEMPTS=1 CURL_ZIP="$EC/no-such.zip" EPUBCHECK_HOME="$EC/h5" JAVA_HOME_17_X64="$EC/java" sh "$HERE/epubcheck-install.sh" 9.9.9 "$EC_SHA"
 if [ "$CODE" != 0 ] && [ ! -e "$EC/h5/bin/epubcheck" ]; then ok; else ng "epubcheck-install: a failed download fails"; fi
 # no Java at JAVA_HOME_17_X64
 run env PATH="$EC/fakebin:$PATH" EPUBCHECK_HOME="$EC/h6" JAVA_HOME_17_X64="$EC/no-java" sh "$HERE/epubcheck-install.sh" 9.9.9 "$EC_SHA"
@@ -1324,13 +1514,14 @@ if grep -qxF "        run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh \"\
 if grep -qF "name: build (\${{ matrix.runner }}, \${{ matrix.part }})" "$CI_YML" && awk '/^          - runner: ubuntu-24.04$/ { r = 1; next } r && /part: outputs$/ { f = 1 } { r = 0 } END { exit !f }' "$CI_YML"; then ok; else ng "ci.yml: the job that wait-pdfs.sh waits for is named build (ubuntu-24.04, outputs)"; fi
 # visual_step NAME: the lines of the step of visual that starts at a line with NAME
 visual_step() { awk -v s="$1" 'index($0, s) { on = 1; print; next } on && /^      - / { on = 0 } on' "$VJ"; }
-if visual_step "name: Cache shem" | grep -qF 'uses: actions/cache@' &&
-  visual_step "name: Cache shem" | grep -qxF '          path: third_party/shem' &&
-  visual_step "name: Cache shem" | grep -qxF "          key: shem-\${{ hashFiles('scripts/visual/fetch-shem.sh') }}"; then ok; else
-  ng "ci.yml: visual caches third_party/shem by the hash of fetch-shem.sh"
+# the archive of shem is cached by the hash of fetch-shem.sh (docs/adr/0243)
+if visual_step "name: Restore the archives of the downloads" | grep -qF 'uses: actions/cache/restore@' &&
+  visual_step "name: Restore the archives of the downloads" | grep -qxF '          path: third_party/downloads' &&
+  visual_step "name: Restore the archives of the downloads" | grep -qxF "          key: downloads-visual-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('scripts/visual/fetch-shem.sh') }}"; then ok; else
+  ng "ci.yml: visual restores the archive of shem by the hash of fetch-shem.sh (docs/adr/0243)"
 fi
-if grep -qxF '        run: timeout -k 10 300 sh scripts/visual/fetch-shem.sh' "$VJ"; then ok; else ng "ci.yml: visual runs fetch-shem.sh under timeout"; fi
-CACHE_AT=$(grep -n 'name: Cache shem' "$VJ" | head -1 | cut -d: -f1)
+if grep -qxF '        run: sh scripts/visual/fetch-shem.sh' "$VJ" && visual_step "name: shem (docs/adr/0093)" | grep -qxF '        timeout-minutes: 10'; then ok; else ng "ci.yml: visual runs fetch-shem.sh with a timeout of 10 minutes (docs/adr/0243)"; fi
+CACHE_AT=$(grep -n 'name: Restore the archives of the downloads' "$VJ" | head -1 | cut -d: -f1)
 FETCH_AT=$(grep -n 'sh scripts/visual/fetch-shem.sh' "$VJ" | head -1 | cut -d: -f1)
 CHECK_AT=$(grep -n 'sh scripts/visual/check.sh' "$VJ" | head -1 | cut -d: -f1)
 if [ -n "$CACHE_AT" ] && [ -n "$FETCH_AT" ] && [ -n "$CHECK_AT" ] && [ "$CACHE_AT" -lt "$FETCH_AT" ] && [ "$FETCH_AT" -lt "$CHECK_AT" ]; then ok; else ng "ci.yml: visual restores the cache, fetches shem, then checks"; fi
@@ -1412,6 +1603,95 @@ if [ -n "$VP_NIX_AT" ] && [ -n "$VP_BUILD_AT" ] && [ -n "$VP_WAIT_AT" ] && [ -n 
   ng "ci.yml: verapdf installs Nix and veraPDF, waits for conformance-pdfs, then downloads and checks it (docs/adr/0244, I4)"
 fi
 if grep -qxF '          GH_TOKEN: ${{ github.token }}' "$VPJ" && grep -qxF '          GH_REPO: ${{ github.repository }}' "$VPJ"; then ok; else ng "ci.yml: the wait of verapdf has GH_TOKEN and GH_REPO (docs/adr/0244)"; fi
+
+# ---------------------------------------------------------------- the workflows and the downloads
+# (docs/adr/0243)
+
+WORKFLOWS=$HERE/../../.github/workflows
+# cache_paths FILE...: the paths of the steps of actions/cache,
+# actions/cache/restore and actions/cache/save, one per line, as
+# "FILE:LINE PATH"; a path: | block gives one line per path
+cache_paths() {
+  awk '
+    function flush() { if (cache) for (i = 1; i <= n; i++) print FILENAME ":" at[i] " " p[i]; cache = 0; n = 0; block = 0 }
+    FNR == 1 { flush() }
+    /^ *- / && match($0, /^ */) && RLENGTH <= 6 { flush() }
+    /^  [a-z]/ { flush() }
+    /uses: actions\/cache(\/restore|\/save)?@/ { cache = 1 }
+    block && /^ *[a-z-]+:/ { block = 0 }
+    block && NF { v = $0; sub(/^ */, "", v); n++; p[n] = v; at[n] = FNR; next }
+    /^ +path: *\|$/ { block = 1; next }
+    /^ +path: / { v = $0; sub(/^ +path: */, "", v); n++; p[n] = v; at[n] = FNR }
+    END { flush() }
+  ' "$@"
+}
+# I6: under third_party/, the caches hold the archives, the toolchain of
+# wasm and the host tools only
+if cache_paths "$WORKFLOWS"/*.yml | awk '$2 ~ /^third_party\// && $2 != "third_party/downloads" && $2 != "third_party/ghc-wasm" && $2 != "third_party/hosttools"' | grep -q .; then
+  cache_paths "$WORKFLOWS"/*.yml | awk '$2 ~ /^third_party\// && $2 != "third_party/downloads" && $2 != "third_party/ghc-wasm" && $2 != "third_party/hosttools"' | sed 's/^/  /'
+  ng "workflows: no cache holds an unpacked tree of third_party/ (docs/adr/0243, I6)"
+else ok; fi
+printf '      - uses: actions/cache@v6\n        with:\n          path: |\n            third_party/downloads\n            third_party/shem\n          key: k\n      - uses: actions/cache/save@v6\n        with:\n          path: third_party/nvim\n' >"$WORK/paths.yml"
+if [ "$(cache_paths "$WORK/paths.yml" | awk '{print $2}' | tr '\n' ' ')" = "third_party/downloads third_party/shem third_party/nvim " ]; then ok; else ng "test.sh: cache_paths reads a path and the lines of a path block"; fi
+# saves_of_downloads FILE...: "FILE:LINE IF" of each step of
+# actions/cache/save whose path is third_party/downloads
+saves_of_downloads() {
+  awk '
+    function flush() { if (save && dl) print FILENAME ":" at " " cond; save = 0; dl = 0; cond = "" }
+    FNR == 1 { flush() }
+    /^ *- / && match($0, /^ */) && RLENGTH <= 6 { flush(); at = FNR }
+    /^  [a-z]/ { flush() }
+    /uses: actions\/cache\/save@/ { save = 1 }
+    /third_party\/downloads/ { dl = 1 }
+    /^ +if: / { cond = $0 }
+  ' "$@"
+}
+# I7: only a push to main saves the archives
+SAVES=$(saves_of_downloads "$WORKFLOWS"/*.yml)
+if [ -n "$SAVES" ] && ! printf '%s\n' "$SAVES" | grep -vF "github.ref == 'refs/heads/main'" | grep -q .; then ok; else
+  printf '%s\n' "$SAVES" | sed 's/^/  /'
+  ng "workflows: each save of third_party/downloads is on main only (docs/adr/0243, I7)"
+fi
+# each job that fetches restores the archives of its own key, without
+# restore-keys, and saves them on main
+for jk in "ci.yml build downloads-build-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('scripts/fetch-wasmtime.sh') }}" \
+  "ci.yml format downloads-format-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('scripts/ci/fetch-hlint.sh') }}" \
+  "ci.yml visual downloads-visual-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('scripts/visual/fetch-shem.sh') }}" \
+  "ci.yml editors downloads-editors-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('tools/editors/helix/test.sh') }}" \
+  "ci.yml editors-lsp downloads-editors-lsp-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('tools/editors/fetch-nvim.sh') }}" \
+  "models.yml models downloads-models-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('scripts/models/check.sh') }}"; do
+  set -- $jk
+  wf=$1 job=$2
+  shift 2
+  key=$*
+  JL=$(awk -v j="  $job:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$WORKFLOWS/$wf")
+  if printf '%s\n' "$JL" | grep -A4 'uses: actions/cache/restore@' | grep -qxF "          key: $key" &&
+    printf '%s\n' "$JL" | grep -A4 'uses: actions/cache/save@' | grep -qxF '          path: third_party/downloads'; then ok; else
+    ng "$wf: $job restores third_party/downloads by $key and saves it (docs/adr/0243)"
+  fi
+done
+if grep -q 'restore-keys: downloads-' "$WORKFLOWS"/*.yml; then ng "workflows: the archives have no restore-keys (docs/adr/0243)"; else ok; fi
+# the archives of build are restored before the wasmtime C API, and saved
+# by the runner that saves, on a push to main
+BJ=$(job_lines build)
+DL_AT=$(printf '%s\n' "$BJ" | grep -n 'key: downloads-build-' | head -1 | cut -d: -f1)
+WT_AT=$(printf '%s\n' "$BJ" | grep -n 'name: wasmtime C API' | head -1 | cut -d: -f1)
+if [ -n "$DL_AT" ] && [ -n "$WT_AT" ] && [ "$DL_AT" -lt "$WT_AT" ]; then ok; else ng "ci.yml: build restores the archives before the wasmtime C API (docs/adr/0243)"; fi
+if printf '%s\n' "$BJ" | grep -B2 -A3 'uses: actions/cache/save@' | grep -A5 -F 'third_party/downloads' >/dev/null &&
+  printf '%s\n' "$BJ" | awk '/^      - /{ s = "" } { s = s $0 "\n" } /path: third_party\/downloads/ && s ~ /cache\/save/ { print s }' | grep -qF 'matrix.save'; then ok; else
+  ng "ci.yml: the runner of build that saves saves the archives (docs/adr/0243)"
+fi
+# the steps that fetch have a timeout-minutes, and no timeout of 300
+# seconds around them
+for f in scripts/fetch-wasmtime.sh scripts/ci/fetch-hlint.sh scripts/visual/fetch-shem.sh tools/editors/fetch-nvim.sh tools/editors/helix/test.sh scripts/fetch-wasm-packages.sh; do
+  STEP=$(awk -v s="$f" '/^      - /{ if (found) exit; s0 = "" } { s0 = s0 $0 "\n" } index($0, s) && /run: / { found = 1 } END { if (found) printf "%s", s0 }' "$CI_YML")
+  if printf '%s\n' "$STEP" | grep -Eq '^        timeout-minutes: [0-9]+$' && ! printf '%s\n' "$STEP" | grep -q 'timeout -k 10 300'; then ok; else
+    ng "ci.yml: the step that runs $f has a timeout-minutes, and no timeout -k 10 300 (docs/adr/0243)"
+  fi
+done
+# the nix of verapdf fetches nixpkgs with the token of the job
+VB=$(job_lines verapdf | awk '/^      - /{ if (found) exit; s = "" } { s = s $0 "\n" } /nix build / { found = 1 } END { if (found) printf "%s", s }')
+if printf '%s\n' "$VB" | grep -qxF '          NIX_CONFIG: access-tokens = github.com=${{ github.token }}'; then ok; else ng "ci.yml: the nix build of verapdf has NIX_CONFIG with access-tokens = github.com= (docs/adr/0243)"; fi
 
 # ---------------------------------------------------------------- ci.yml and the caches of GHC and the index
 # (docs/adr/0141-smaller-ghc-and-hackage-index-caches.md)
@@ -2238,6 +2518,40 @@ for model in "$HERE"/../../docs/*/models/*.als; do
   if [ -s "$WORK/model-commands" ] && [ "$(sort -u "$WORK/listed-commands")" = "$(cat "$WORK/model-commands")" ] &&
     [ -z "$(uniq -d "$WORK/listed-commands")" ]; then ok; else ng "models: I2 each command of $name is in exactly one of expected.txt and nightly.txt"; fi
 done
+# the jar: fetched by scripts/ci/fetch-url.sh into GOLEM_DOWNLOADS, by its
+# name of the release, and one there of the SHA-256 is used without curl
+# (docs/adr/0243). A copy of check.sh pins the SHA-256 of a fake jar
+mkdir -p "$MC/fr/scripts/models" "$MC/fr/scripts/ci"
+cp "$HERE/fetch-url.sh" "$MC/fr/scripts/ci/"
+printf 'a jar\n' >"$MC/fake.jar"
+sed "s/^ALLOY_SHA256=.*/ALLOY_SHA256=$(fu_sha "$MC/fake.jar")/" "$HERE/../models/check.sh" >"$MC/fr/scripts/models/check.sh"
+cat >"$MC/bin/curl" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "$*" >>"$MC_CURL_LOG"
+while [ $# -gt 0 ]; do
+  case "$1" in -o) cp "$MC_JAR" "$2" || exit 22; shift ;; esac
+  shift
+done
+FAKE
+chmod +x "$MC/bin/curl"
+mc_fetch() { env PATH="$MC/bin:$PATH" MC_CURL_LOG="$MC/curl.log" GOLEM_ROOT="$MC/root" JAVA="$MC/bin/java" JOBS=2 FAKE_FOUND="one three" "$@" sh "$MC/fr/scripts/models/check.sh"; }
+MC_DL=$MC/fr/third_party/downloads/org.alloytools.alloy.dist.jar
+: >"$MC/curl.log"
+run mc_fetch MC_JAR="$MC/fake.jar"
+if [ "$CODE" = 0 ] && cmp -s "$MC/fake.jar" "$MC_DL" && grep -qF "https://github.com/AlloyTools/org.alloytools.alloy/releases/download/v6.2.0/org.alloytools.alloy.dist.jar" "$MC/curl.log"; then ok; else ng "models: the jar is fetched into third_party/downloads (docs/adr/0243)"; fi
+: >"$MC/curl.log"
+run mc_fetch MC_JAR="$MC/fake.jar"
+if [ "$CODE" = 0 ] && [ ! -s "$MC/curl.log" ]; then ok; else ng "models: a jar of the SHA-256 in third_party/downloads is not fetched again (docs/adr/0243)"; fi
+printf 'other\n' >"$MC_DL"
+run mc_fetch MC_JAR="$MC/fake.jar"
+if [ "$CODE" = 0 ] && [ -s "$MC/curl.log" ] && cmp -s "$MC/fake.jar" "$MC_DL"; then ok; else ng "models: a jar of another SHA-256 in third_party/downloads is fetched again (docs/adr/0243)"; fi
+rm -rf "$MC/elsewhere"
+run mc_fetch MC_JAR="$MC/fake.jar" GOLEM_DOWNLOADS="$MC/elsewhere"
+if [ "$CODE" = 0 ] && cmp -s "$MC/fake.jar" "$MC/elsewhere/org.alloytools.alloy.dist.jar"; then ok; else ng "models: GOLEM_DOWNLOADS is where the jar is kept (docs/adr/0243)"; fi
+printf 'replaced\n' >"$MC/replaced.jar"
+rm -rf "$MC/fr/third_party"
+run mc_fetch MC_JAR="$MC/replaced.jar" FETCH_ATTEMPTS=1
+if [ "$CODE" = 1 ] && [ ! -e "$MC_DL" ] && grep -qF 'SHA-256 mismatch' "$WORK/err"; then ok; else ng "models: a jar of another SHA-256 fails, and is not kept"; fi
 # I6 models.yml runs expected.txt, models-nightly.yml runs nightly.txt, only
 # on a schedule and by hand, reading the repository and the runs
 MODELS_YML=$HERE/../../.github/workflows/models.yml
@@ -2647,7 +2961,8 @@ expect "legacy-eh: two arguments are a usage error" 2
 # patches, and a fake curl that writes the archive of the URL to the file
 # of -o. The SHA-256 of the script are those of the fake archives.
 FW=$WORK/fetch-wasm
-mkdir -p "$FW/root/scripts/wasm/patches" "$FW/src/skylighting-core-0.15" "$FW/src/skylighting-0.15" "$FW/archives" "$FW/bin"
+mkdir -p "$FW/root/scripts/wasm/patches" "$FW/root/scripts/ci" "$FW/src/skylighting-core-0.15" "$FW/src/skylighting-0.15" "$FW/archives" "$FW/bin"
+cp "$HERE/fetch-url.sh" "$FW/root/scripts/ci/"
 printf 'module A\nimport Skylighting.Parser\n' >"$FW/src/skylighting-core-0.15/A.hs"
 printf 'module B\nimport Skylighting.Loader\n' >"$FW/src/skylighting-0.15/B.hs"
 for p in skylighting-core-0.15 skylighting-0.15; do (cd "$FW/src" && tar -czf "$FW/archives/$p.tar.gz" "$p"); done
@@ -2692,15 +3007,25 @@ if grep -qF "https://hackage.haskell.org/package/skylighting-core-0.15/skylighti
 if [ "$(cat "$FW/root/third_party/wasm-packages/skylighting-core-0.15/A.hs")" = "module A" ] &&
   [ "$(cat "$FW/root/third_party/wasm-packages/skylighting-0.15/B.hs")" = "module B" ]; then ok; else ng "fetch-wasm-packages: the patches are applied"; fi
 fw_tree >"$FW/tree1"
+# the archives are kept in third_party/downloads, and not fetched again
+# (docs/adr/0243)
+if cmp -s "$FW/archives/skylighting-core-0.15.tar.gz" "$FW/root/third_party/downloads/skylighting-core-0.15.tar.gz" &&
+  cmp -s "$FW/archives/skylighting-0.15.tar.gz" "$FW/root/third_party/downloads/skylighting-0.15.tar.gz"; then ok; else ng "fetch-wasm-packages: the archives are kept in third_party/downloads (docs/adr/0243)"; fi
+: >"$FW/curl.log"
 run fetch_wasm
 expect "fetch-wasm-packages: a second run passes" 0
 fw_tree >"$FW/tree2"
 if cmp -s "$FW/tree1" "$FW/tree2"; then ok; else ng "fetch-wasm-packages: two runs make the same tree"; fi
+if [ ! -s "$FW/curl.log" ]; then ok; else ng "fetch-wasm-packages: the archives in third_party/downloads are not fetched again (docs/adr/0243)"; fi
+printf 'other\n' >"$FW/root/third_party/downloads/skylighting-0.15.tar.gz"
+run fetch_wasm
+if [ "$CODE" = 0 ] && [ "$(grep -c . "$FW/curl.log")" = 1 ] && cmp -s "$FW/archives/skylighting-0.15.tar.gz" "$FW/root/third_party/downloads/skylighting-0.15.tar.gz"; then ok; else ng "fetch-wasm-packages: an archive of another SHA-256 in third_party/downloads is fetched again (docs/adr/0243)"; fi
 # one character of the SHA-256 changed: nothing is unpacked
 rm -rf "$FW/root/third_party"
 sed 's/^\(CORE_SHA=.\{63\}\)./\1x/' "$FW/root/scripts/fetch-wasm-packages.sh" >"$FW/bad-sha.sh"
 cp "$FW/root/scripts/fetch-wasm-packages.sh" "$FW/good.sh"
 cp "$FW/bad-sha.sh" "$FW/root/scripts/fetch-wasm-packages.sh"
+rm -rf "$FW/root/third_party"
 run fetch_wasm
 expect "fetch-wasm-packages: an archive of another SHA-256 fails" 1
 if [ ! -e "$FW/root/third_party/wasm-packages/skylighting-core-0.15" ]; then ok; else ng "fetch-wasm-packages: an archive of another SHA-256 is not unpacked"; fi
@@ -2947,17 +3272,61 @@ for f in browser/fetch-chromium.sh wasm/fetch-deno.sh; do
   if [ "$CODE" = 0 ] && grep -Eqx '[0-9.]+ [0-9a-f]{64}' "$WORK/out"; then ok; else ng "$n --expected: the version and the SHA-256"; fi
   if [ "$(uname -s)-$(uname -m)" = Linux-x86_64 ]; then
     rm -rf "$FC/root"
-    mkdir -p "$FC/root/scripts/browser" "$FC/root/scripts/wasm"
+    mkdir -p "$FC/root/scripts/browser" "$FC/root/scripts/wasm" "$FC/root/scripts/ci"
     cp "$HERE/../$f" "$FC/root/scripts/$f"
+    cp "$HERE/fetch-url.sh" "$FC/root/scripts/ci/"
     run env PATH="$FC/bin:$PATH" sh "$FC/root/scripts/$f"
     expect "$n: a zip of another SHA-256 fails" 1
-    if grep -qF 'SHA-256 mismatch' "$WORK/err" && [ ! -e "$FC/root/third_party" ]; then ok; else ng "$n: a zip of another SHA-256 is not unpacked"; fi
+    if grep -qF 'SHA-256 mismatch' "$WORK/err" && [ -z "$(find "$FC/root/third_party" -type f 2>/dev/null)" ]; then ok; else ng "$n: a zip of another SHA-256 is not unpacked nor kept"; fi
   else
     run sh "$HERE/../$f"
     expect "$n: another platform than x86-64 Linux fails" 1
     skip 2 "$n: the SHA-256 is checked on x86-64 Linux only"
   fi
 done
+# the zip is kept in third_party/downloads, and one there of the SHA-256 is
+# unpacked without curl (docs/adr/0243): a copy of each script pins the
+# SHA-256 of a small zip of the layout of the release
+if [ "$(uname -s)-$(uname -m)" = Linux-x86_64 ] && command -v zip >/dev/null 2>&1; then
+  mkdir -p "$FC/src/chromium/chrome-headless-shell-linux64" "$FC/src/deno"
+  printf '#!/bin/sh\n' >"$FC/src/chromium/chrome-headless-shell-linux64/chrome-headless-shell"
+  DENO_VERSION=$(sed -n 's/^VERSION=//p' "$HERE/../wasm/fetch-deno.sh")
+  printf '#!/bin/sh\necho "deno %s (stable, release, x86_64-unknown-linux-gnu)"\n' "$DENO_VERSION" >"$FC/src/deno/deno"
+  (cd "$FC/src/chromium" && zip -qr "$FC/chrome-headless-shell-linux64.zip" chrome-headless-shell-linux64)
+  (cd "$FC/src/deno" && zip -q "$FC/deno-x86_64-unknown-linux-gnu.zip" deno)
+  cat >"$FC/bin/curl" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "$*" >>"$FC_LOG"
+url=
+for a in "$@"; do url=$a; done
+while [ $# -gt 0 ]; do
+  case "$1" in -o) cp "$FC_ZIPS/${url##*/}" "$2" || exit 22; shift ;; esac
+  shift
+done
+FAKE
+  for fz in "browser/fetch-chromium.sh chrome-headless-shell-linux64.zip third_party/chromium chrome-headless-shell-linux64/chrome-headless-shell" \
+    "wasm/fetch-deno.sh deno-x86_64-unknown-linux-gnu.zip third_party/deno deno"; do
+    set -- $fz
+    f=$1 z=$2 dest=$3 bin=$3/$4 n=${1##*/}
+    rm -rf "$FC/root"
+    mkdir -p "$FC/root/scripts/browser" "$FC/root/scripts/wasm" "$FC/root/scripts/ci"
+    cp "$HERE/fetch-url.sh" "$FC/root/scripts/ci/"
+    sed "s/^SHA256=.*/SHA256=$(fu_sha "$FC/$z")/" "$HERE/../$f" >"$FC/root/scripts/$f"
+    : >"$FC/curl.log"
+    run env PATH="$FC/bin:$PATH" FC_LOG="$FC/curl.log" FC_ZIPS="$FC" sh "$FC/root/scripts/$f"
+    if [ "$CODE" = 0 ] && [ -f "$FC/root/$bin" ] && cmp -s "$FC/$z" "$FC/root/third_party/downloads/$z"; then ok; else ng "$n: the zip is unpacked and kept in third_party/downloads (docs/adr/0243)"; fi
+    rm -rf "$FC/root/$dest"
+    : >"$FC/curl.log"
+    run env PATH="$FC/bin:$PATH" FC_LOG="$FC/curl.log" FC_ZIPS="$FC" sh "$FC/root/scripts/$f"
+    if [ "$CODE" = 0 ] && [ -f "$FC/root/$bin" ] && [ ! -s "$FC/curl.log" ]; then ok; else ng "$n: a zip of the SHA-256 in third_party/downloads is unpacked without curl (docs/adr/0243)"; fi
+    rm -rf "$FC/root/$dest"
+    printf 'other\n' >"$FC/root/third_party/downloads/$z"
+    run env PATH="$FC/bin:$PATH" FC_LOG="$FC/curl.log" FC_ZIPS="$FC" sh "$FC/root/scripts/$f"
+    if [ "$CODE" = 0 ] && [ -s "$FC/curl.log" ] && cmp -s "$FC/$z" "$FC/root/third_party/downloads/$z"; then ok; else ng "$n: a zip of another SHA-256 in third_party/downloads is fetched again (docs/adr/0243)"; fi
+  done
+else
+  skip 6 "fetch-chromium, fetch-deno: the archives are of x86-64 Linux, and zip is needed"
+fi
 
 # ---------------------------------------------------------------- browser/safari-versions.sh
 # (docs/adr/0234 section 6, I7): the table of the versions of the safari

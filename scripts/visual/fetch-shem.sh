@@ -8,9 +8,12 @@
 #   fetch-shem.sh --expected  print the VERSION line it expects
 #
 # third_party/shem/VERSION holds the name of the archive and its SHA-256.
-# When they are those of this script, nothing is fetched. The SHA256SUMS of
-# the release is not read: a list from the same release says nothing about
-# an archive replaced there.
+# When they are those of this script, nothing is fetched. The archive is
+# kept in GOLEM_DOWNLOADS (third_party/downloads by default), which CI
+# caches; scripts/ci/fetch-url.sh fetches it, with retries, only when the
+# archive there is not of the SHA-256 below (docs/adr/0243). The
+# SHA256SUMS of the release is not read: a list from the same release says
+# nothing about an archive replaced there.
 #
 # A platform without an archive of shem (x86-64 macOS, Windows) fails: build
 # the pinned tag of shem yourself and give its path in SHEM to the scripts
@@ -43,14 +46,12 @@ NAME=shem-v$VERSION-$TARGET
 if [ "$EXPECTED_ONLY" = true ]; then printf '%s %s\n' "$NAME.tar.gz" "$SHA"; exit 0; fi
 DEST=$ROOT/third_party/shem
 if [ -f "$DEST/VERSION" ] && [ "$(cat "$DEST/VERSION")" = "$NAME.tar.gz $SHA" ]; then exit 0; fi
+ARCHIVE=${GOLEM_DOWNLOADS:-$ROOT/third_party/downloads}/$NAME.tar.gz
+sh "$ROOT/scripts/ci/fetch-url.sh" "$ARCHIVE" "$SHA" "https://github.com/tett23/shem/releases/download/v$VERSION/$NAME.tar.gz"
 TMP=$(mktemp -d)
 trap 'rm -rf "${TMP:?}"' EXIT
-
-curl -fsSL --connect-timeout 30 --retry 3 -o "$TMP/archive" "https://github.com/tett23/shem/releases/download/v$VERSION/$NAME.tar.gz"
-if command -v sha256sum >/dev/null 2>&1; then ACTUAL=$(sha256sum "$TMP/archive" | cut -d' ' -f1); else ACTUAL=$(shasum -a 256 "$TMP/archive" | cut -d' ' -f1); fi
-if [ "$ACTUAL" != "$SHA" ]; then echo "fetch-shem: SHA-256 mismatch for $NAME.tar.gz: $ACTUAL, expected $SHA" >&2; exit 1; fi
 mkdir -p "$TMP/x"
-tar -xzf "$TMP/archive" -C "$TMP/x"
+tar -xzf "$ARCHIVE" -C "$TMP/x"
 if [ ! -f "$TMP/x/$NAME/shem" ]; then echo "fetch-shem: $NAME.tar.gz has no $NAME/shem" >&2; exit 1; fi
 chmod +x "$TMP/x/$NAME/shem"
 # the version is checked before anything is installed

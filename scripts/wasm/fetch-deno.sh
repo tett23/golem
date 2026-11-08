@@ -9,7 +9,10 @@
 #   fetch-deno.sh --expected  print the VERSION line it expects
 #
 # third_party/deno/VERSION holds the version and the SHA-256 of the zip.
-# When they are those of this script, nothing is fetched. The zip is checked
+# When they are those of this script, nothing is fetched. The zip is kept
+# in GOLEM_DOWNLOADS (third_party/downloads by default), which browser.yml
+# caches; scripts/ci/fetch-url.sh fetches it, with retries, only when the
+# zip there is not of the SHA-256 below (docs/adr/0243). The zip is checked
 # against the SHA-256 below, not against the .sha256sum of the release: a
 # file of the same release says nothing about a zip replaced there.
 #
@@ -33,14 +36,12 @@ esac
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 DEST=$ROOT/third_party/deno
 if [ -f "$DEST/VERSION" ] && [ "$(cat "$DEST/VERSION")" = "$VERSION $SHA256" ]; then exit 0; fi
+ZIP=${GOLEM_DOWNLOADS:-$ROOT/third_party/downloads}/deno-x86_64-unknown-linux-gnu.zip
+sh "$ROOT/scripts/ci/fetch-url.sh" "$ZIP" "$SHA256" "https://github.com/denoland/deno/releases/download/v$VERSION/deno-x86_64-unknown-linux-gnu.zip"
 TMP=$(mktemp -d)
 trap 'rm -rf "${TMP:?}"' EXIT
-
-curl -fsSL --connect-timeout 30 --retry 3 -o "$TMP/zip" "https://github.com/denoland/deno/releases/download/v$VERSION/deno-x86_64-unknown-linux-gnu.zip"
-if command -v sha256sum >/dev/null 2>&1; then ACTUAL=$(sha256sum "$TMP/zip" | cut -d' ' -f1); else ACTUAL=$(shasum -a 256 "$TMP/zip" | cut -d' ' -f1); fi
-if [ "$ACTUAL" != "$SHA256" ]; then echo "fetch-deno: SHA-256 mismatch for deno $VERSION: $ACTUAL, expected $SHA256" >&2; exit 1; fi
 mkdir -p "$TMP/x"
-unzip -q "$TMP/zip" -d "$TMP/x"
+unzip -q "$ZIP" -d "$TMP/x"
 chmod +x "$TMP/x/deno"
 GOT=$("$TMP/x/deno" --version 2>/dev/null | head -n 1 || true)
 case "$GOT" in

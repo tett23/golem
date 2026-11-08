@@ -9,7 +9,10 @@
 #
 # third_party/wasmtime/VERSION holds the name of the archive and its
 # SHA-256. The directory is used as it is only when both are those of this
-# script; otherwise the archive is fetched again (docs/adr/0044).
+# script; otherwise the archive is unpacked again (docs/adr/0044). The
+# archive is kept in GOLEM_DOWNLOADS (third_party/downloads by default),
+# which CI caches; scripts/ci/fetch-url.sh fetches it, with retries, only
+# when the archive there is not of the SHA-256 below (docs/adr/0243).
 set -eu
 EXPECTED_ONLY=false
 case ${1:-} in
@@ -41,14 +44,12 @@ write_local() {
   fi
 }
 if [ -f "$DEST/VERSION" ] && [ "$(cat "$DEST/VERSION")" = "$NAME $SHA" ]; then write_local; exit 0; fi
+ARCHIVE=${GOLEM_DOWNLOADS:-$ROOT/third_party/downloads}/$NAME.tar.xz
+sh "$ROOT/scripts/ci/fetch-url.sh" "$ARCHIVE" "$SHA" "https://github.com/bytecodealliance/wasmtime/releases/download/v$VERSION/$NAME.tar.xz"
 TMP=$(mktemp -d)
 trap 'rm -rf "${TMP:?}"' EXIT
-
-curl -sSfL -o "$TMP/$NAME.tar.xz" "https://github.com/bytecodealliance/wasmtime/releases/download/v$VERSION/$NAME.tar.xz"
-if command -v sha256sum >/dev/null 2>&1; then ACTUAL=$(sha256sum "$TMP/$NAME.tar.xz" | cut -d' ' -f1); else ACTUAL=$(shasum -a 256 "$TMP/$NAME.tar.xz" | cut -d' ' -f1); fi
-if [ "$ACTUAL" != "$SHA" ]; then echo "SHA-256 mismatch for $NAME: $ACTUAL" >&2; exit 1; fi
 mkdir -p "$TMP/x"
-tar -xf "$TMP/$NAME.tar.xz" -C "$TMP/x"
+tar -xf "$ARCHIVE" -C "$TMP/x"
 rm -rf "${DEST:?}"
 mkdir -p "$DEST"
 cp -R "$TMP/x/$NAME/include" "$DEST/include"

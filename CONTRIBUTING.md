@@ -408,6 +408,15 @@ Alloy のモデルを走らせるには 5 分を大きく超える時間がか�
 `.github/workflows/models-nightly.yml` は、夜間に `main` でだけ走り、プルリクエストを待たせないので、この方針に関わらない。
 一つのコマンドの上限は 5.5 時間である（[docs/adr/0242](./docs/adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
 
+CI が配布元から取るファイル（wasmtime の C API、hlint、shem、Neovim、Helix、Chromium、Deno、Alloy の jar、GMP のソースなど）は、`scripts/ci/fetch-url.sh` で取る。
+`fetch-url.sh` は、`curl` のどの誤りも再試行する。
+試行は 3 回、試行のあいだの待ちは 10 秒と 30 秒、一回の `curl` の上限は 120 秒で、それぞれ `FETCH_ATTEMPTS`、`FETCH_WAITS`、`FETCH_MAX_TIME` で変えられる。
+取ったファイルの SHA-256 が取得のスクリプトに書いた値と違えば、再試行せずに失敗する。
+アーカイブは `third_party/downloads`（`GOLEM_DOWNLOADS` で変えられる）に置き、ワークフローはこのディレクトリをキャッシュする。
+展開した木はキャッシュしない。
+キャッシュから戻したアーカイブは、使う前に必ず SHA-256 を照合し、合わなければ取り直す。
+キャッシュを保存するのは `main` の実行だけで、プルリクエストは `main` のキャッシュを戻す（[docs/adr/0243](./docs/adr/0243-retry-every-download-and-cache-the-archives-checked-by-sha-256.md)）。
+
 CI の `build` ジョブは、EPUB を検査する epubcheck を apt から入れない。
 配布元（GitHub の w3c/epubcheck）の release の zip を取り、`ci.yml` に書いた SHA-256 で検査してから、ランナーにもとからある Java 17（`JAVA_HOME_17_X64`）で動かす。
 zip は版と SHA-256 をキーにキャッシュするので、取りに行くのは版を上げたときとキャッシュが消えたときだけである。

@@ -9,6 +9,8 @@
 #
 # A file that is already there is only checked. A file whose SHA-256 does
 # not match is removed, and the exit code is 1; run it again to fetch it.
+# A missing file is fetched, with retries, by scripts/ci/fetch-url.sh,
+# which moves it into DIR only when its SHA-256 matches (docs/adr/0243).
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 DEST=${1:-$HERE/../../manual/fonts}
@@ -50,16 +52,8 @@ for name_sha in $(printf '%s\n' "$FILES" | awk 'NF { print $1 "=" $2 }'); do
 done
 [ -z "$BAD" ] || { echo "fetch-fonts: run it again to fetch the removed files" >&2; exit 1; }
 
-TMP=$(mktemp -d)
-trap 'rm -rf "${TMP:?}"' EXIT
 printf '%s\n' "$FILES" | while read -r name sha url; do
   [ -n "$name" ] || continue
   [ ! -e "$DEST/$name" ] || continue
-  curl -sSfL --retry 3 -o "$TMP/$name" "$url" || { echo "fetch-fonts: could not fetch $url" >&2; exit 1; }
-  actual=$(sha256 "$TMP/$name")
-  if [ "$actual" != "$sha" ]; then
-    echo "fetch-fonts: the SHA-256 of $url is $actual, not $sha" >&2
-    exit 1
-  fi
-  mv "$TMP/$name" "$DEST/$name"
+  sh "$HERE/../ci/fetch-url.sh" "$DEST/$name" "$sha" "$url" || { echo "fetch-fonts: could not fetch $url" >&2; exit 1; }
 done

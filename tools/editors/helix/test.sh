@@ -9,6 +9,10 @@
 # version and the SHA-256 of each archive, as tools/editors/fetch-nvim.sh
 # does for Neovim. third_party/helix/VERSION holds the name of the archive
 # and its SHA-256; when they are those of this script, nothing is fetched.
+# The archive is kept in GOLEM_DOWNLOADS (third_party/downloads by
+# default), which CI caches; scripts/ci/fetch-url.sh fetches it, with
+# retries, only when the archive there is not of the SHA-256 below
+# (docs/adr/0243).
 # The archives are pinned for x86-64 Linux and arm64 macOS; another
 # platform fails.
 #
@@ -54,11 +58,10 @@ trap 'remove "$WORK"' EXIT
 
 # ---- Helix
 if [ ! -f "$DEST/VERSION" ] || [ "$(cat "$DEST/VERSION")" != "$NAME.tar.xz $SHA" ] || [ ! -x "$DEST/hx" ]; then
-  curl -fsSL --connect-timeout 30 --retry 3 -o "$WORK/archive" "https://github.com/helix-editor/helix/releases/download/$VERSION/$NAME.tar.xz"
-  if command -v sha256sum >/dev/null 2>&1; then ACTUAL=$(sha256sum "$WORK/archive" | cut -d' ' -f1); else ACTUAL=$(shasum -a 256 "$WORK/archive" | cut -d' ' -f1); fi
-  if [ "$ACTUAL" != "$SHA" ]; then echo "helix: SHA-256 mismatch for $NAME.tar.xz: $ACTUAL, expected $SHA" >&2; exit 1; fi
+  ARCHIVE=${GOLEM_DOWNLOADS:-$ROOT/third_party/downloads}/$NAME.tar.xz
+  sh "$ROOT/scripts/ci/fetch-url.sh" "$ARCHIVE" "$SHA" "https://github.com/helix-editor/helix/releases/download/$VERSION/$NAME.tar.xz"
   mkdir "$WORK/x"
-  tar -xJf "$WORK/archive" -C "$WORK/x"
+  tar -xJf "$ARCHIVE" -C "$WORK/x"
   if [ ! -x "$WORK/x/$NAME/hx" ] || [ ! -d "$WORK/x/$NAME/runtime" ]; then echo "helix: $NAME.tar.xz has no $NAME/hx or $NAME/runtime" >&2; exit 1; fi
   # the version is checked before anything is installed
   GOT=$("$WORK/x/$NAME/hx" --version 2>/dev/null | cut -d' ' -f1-2 || true)

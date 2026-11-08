@@ -102,12 +102,14 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: wasmtime C API built for musl (scripts/fetch-wasmtime.sh)
-        if: runner.os == 'Linux'
-        uses: actions/cache@v6
+      # the archives of the downloads, from the cache of main; each is checked
+      # by its SHA-256 before it is used (docs/adr/0243)
+      - id: downloads
+        name: Restore the archives of the downloads (docs/adr/0243)
+        uses: actions/cache/restore@v6
         with:
-          path: third_party/wasmtime
-          key: wasmtime-${{ matrix.platform }}-musl-${{ hashFiles('scripts/fetch-wasmtime.sh') }}
+          path: third_party/downloads
+          key: downloads-release-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-wasmtime.sh', 'scripts/release/fetch-gmp.sh') }}
       - name: Build in Alpine (musl, static)
         if: runner.os == 'Linux'
         run: |
@@ -138,6 +140,14 @@ jobs:
         env:
           COMMIT: ${{ github.sha }}
         run: sh scripts/release/build-macos.sh "$TAG" "$PLATFORM"
+      # a run on main (workflow_dispatch) saves the archives it fetched
+      # (docs/adr/0228, docs/adr/0243)
+      - name: Save the archives of the downloads (docs/adr/0243)
+        if: github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/downloads
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
       - uses: actions/upload-artifact@v7
         with:
           name: archive-${{ matrix.platform }}

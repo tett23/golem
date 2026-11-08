@@ -67,6 +67,14 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # the jar that models.yml saved on main, checked by its SHA-256 in
+      # check.sh before it is used; the jobs of the matrix restore it and do
+      # not save it (docs/adr/0243)
+      - name: Restore the archives of the downloads (docs/adr/0243)
+        uses: actions/cache/restore@v6
+        with:
+          path: third_party/downloads
+          key: downloads-models-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/models/check.sh') }}
       # the jar of Alloy 6.2.0, checked by its SHA-256 in check.sh, under
       # the Java 17 of the runner; exit code 3 is a time-out alone
       - name: The command gives the result of nightly.txt (docs/adr/0242)

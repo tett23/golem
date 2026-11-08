@@ -8,6 +8,9 @@
 #
 # gmplib.org often refuses connections from CI runners, so the GNU mirrors
 # are tried after it. The SHA-256 is checked whichever served the file.
+# scripts/ci/fetch-url.sh fetches it, with retries, into GOLEM_DOWNLOADS
+# (third_party/downloads by default), which CI caches; an archive there of
+# the SHA-256 is not fetched again (docs/adr/0243).
 #
 # Add a line to the table below for a new version of GMP.
 set -eu
@@ -25,26 +28,15 @@ case "$VERSION" in
     ;;
 esac
 NAME=gmp-$VERSION.tar.xz
-mkdir -p "$DIR"
-if [ ! -f "$DIR/$NAME" ]; then
-  for url in "https://gmplib.org/download/gmp/$NAME" \
-    "https://ftpmirror.gnu.org/gmp/$NAME" \
-    "https://ftp.gnu.org/gnu/gmp/$NAME"; do
-    if curl -sSfL --connect-timeout 20 --retry 2 -o "$DIR/$NAME.part" "$url"; then
-      mv "$DIR/$NAME.part" "$DIR/$NAME"
-      break
-    fi
-    echo "fetch-gmp: could not download $url" >&2
-  done
-  [ -f "$DIR/$NAME" ] || {
-    rm -f "$DIR/$NAME.part"
-    echo "fetch-gmp: no source of $NAME answered" >&2
-    exit 1
-  }
-fi
-if command -v sha256sum >/dev/null 2>&1; then ACTUAL=$(sha256sum "$DIR/$NAME" | cut -d' ' -f1); else ACTUAL=$(shasum -a 256 "$DIR/$NAME" | cut -d' ' -f1); fi
-if [ "$ACTUAL" != "$SHA" ]; then
-  rm -f "$DIR/$NAME"
-  echo "fetch-gmp: SHA-256 mismatch for $NAME: $ACTUAL" >&2
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+ARCHIVE=${GOLEM_DOWNLOADS:-$ROOT/third_party/downloads}/$NAME
+sh "$ROOT/scripts/ci/fetch-url.sh" "$ARCHIVE" "$SHA" \
+  "https://gmplib.org/download/gmp/$NAME" \
+  "https://ftpmirror.gnu.org/gmp/$NAME" \
+  "https://ftp.gnu.org/gnu/gmp/$NAME" || {
+  echo "fetch-gmp: no source of $NAME answered with its SHA-256" >&2
   exit 1
-fi
+}
+mkdir -p "$DIR"
+cp "$ARCHIVE" "$DIR/$NAME.part"
+mv "$DIR/$NAME.part" "$DIR/$NAME"

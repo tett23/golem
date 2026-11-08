@@ -9,9 +9,13 @@
 #
 # third_party/chromium/VERSION holds the version and the SHA-256 of the
 # zip. When they are those of this script, nothing is fetched. The zip is
-# checked against the SHA-256 below before anything is unpacked; Chrome for
-# Testing publishes no checksum, so the SHA-256 is that of the zip of the
-# version when it was pinned, and a zip replaced at the same URL fails.
+# kept in GOLEM_DOWNLOADS (third_party/downloads by default), which
+# browser.yml caches; scripts/ci/fetch-url.sh fetches it, with retries,
+# only when the zip there is not of the SHA-256 below (docs/adr/0243). The
+# zip is checked against the SHA-256 below before anything is unpacked;
+# Chrome for Testing publishes no checksum, so the SHA-256 is that of the
+# zip of the version when it was pinned, and a zip replaced at the same URL
+# fails.
 #
 # Chrome for Testing is "Google Chrome for Testing" under the Google Chrome
 # Terms of Service (the ABOUT of the zip; its LICENSE.headless_shell lists
@@ -39,14 +43,12 @@ esac
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 DEST=$ROOT/third_party/chromium
 if [ -f "$DEST/VERSION" ] && [ "$(cat "$DEST/VERSION")" = "$VERSION $SHA256" ]; then exit 0; fi
+ZIP=${GOLEM_DOWNLOADS:-$ROOT/third_party/downloads}/chrome-headless-shell-linux64.zip
+sh "$ROOT/scripts/ci/fetch-url.sh" "$ZIP" "$SHA256" "https://storage.googleapis.com/chrome-for-testing-public/$VERSION/linux64/chrome-headless-shell-linux64.zip"
 TMP=$(mktemp -d)
 trap 'rm -rf "${TMP:?}"' EXIT
-
-curl -fsSL --connect-timeout 30 --retry 3 -o "$TMP/zip" "https://storage.googleapis.com/chrome-for-testing-public/$VERSION/linux64/chrome-headless-shell-linux64.zip"
-if command -v sha256sum >/dev/null 2>&1; then ACTUAL=$(sha256sum "$TMP/zip" | cut -d' ' -f1); else ACTUAL=$(shasum -a 256 "$TMP/zip" | cut -d' ' -f1); fi
-if [ "$ACTUAL" != "$SHA256" ]; then echo "fetch-chromium: SHA-256 mismatch for chrome-headless-shell $VERSION: $ACTUAL, expected $SHA256" >&2; exit 1; fi
 mkdir -p "$TMP/x"
-unzip -q "$TMP/zip" -d "$TMP/x"
+unzip -q "$ZIP" -d "$TMP/x"
 if [ ! -f "$TMP/x/chrome-headless-shell-linux64/chrome-headless-shell" ]; then echo "fetch-chromium: the zip has no chrome-headless-shell-linux64/chrome-headless-shell" >&2; exit 1; fi
 rm -rf "${DEST:?}"
 mkdir -p "$DEST"

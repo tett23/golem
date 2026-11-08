@@ -113,8 +113,9 @@ if [ ${#REAL_SHA} = 64 ]; then ok; else ng "fetch-shem: the SHA-256 of the archi
 # root DIR SHA: a fake root at DIR whose copy of the script pins SHA for
 # Darwin-arm64
 root() {
-  mkdir -p "$1/scripts/visual"
+  mkdir -p "$1/scripts/visual" "$1/scripts/ci"
   sed "s/$REAL_SHA/$2/" "$HERE/fetch-shem.sh" >"$1/scripts/visual/fetch-shem.sh"
+  cp "$HERE/../ci/fetch-url.sh" "$1/scripts/ci/"
 }
 # fetch ROOT ARCHIVE [ARG...]: runs the copy at ROOT on a Darwin-arm64 that
 # downloads ARCHIVE
@@ -133,7 +134,8 @@ expect "fetch-shem: an archive of the pinned SHA-256 is installed" 0
 if [ -x "$FS/r1/third_party/shem/shem" ] && [ "$("$FS/r1/third_party/shem/shem" --version)" = "shem $VERSION" ]; then ok; else ng "fetch-shem: third_party/shem/shem is the shem of the archive"; fi
 if [ "$(cat "$FS/r1/third_party/shem/VERSION" 2>/dev/null)" = "shem-v$VERSION-aarch64-apple-darwin.tar.gz $GOOD_SHA" ]; then ok; else ng "fetch-shem: VERSION has the name of the archive and its SHA-256"; fi
 if grep -qF "https://github.com/tett23/shem/releases/download/v$VERSION/shem-v$VERSION-aarch64-apple-darwin.tar.gz" "$FS/curl.log"; then ok; else ng "fetch-shem: the archive comes from the release of tett23/shem"; fi
-if grep -q -- '-fsSL --connect-timeout 30 --retry 3 ' "$FS/curl.log"; then ok; else ng "fetch-shem: curl fails on an HTTP error, gives up a stalled connection in 30 seconds and retries 3 times"; fi
+if grep -qF -- "--proto =https --tlsv1.2 -fsSL --connect-timeout 30 --max-time 120 -o $FS/r1/third_party/downloads/shem-v$VERSION-aarch64-apple-darwin.tar.gz.part " "$FS/curl.log"; then ok; else ng "fetch-shem: scripts/ci/fetch-url.sh fetches the archive into third_party/downloads (docs/adr/0243)"; fi
+if cmp -s "$FS/good.tar.gz" "$FS/r1/third_party/downloads/shem-v$VERSION-aarch64-apple-darwin.tar.gz"; then ok; else ng "fetch-shem: the archive is kept in third_party/downloads (docs/adr/0243)"; fi
 if grep -q SHA256SUMS "$FS/curl.log"; then ng "fetch-shem: the SHA256SUMS of the release is not fetched"; else ok; fi
 
 # VERSION of the script: nothing is fetched
@@ -146,13 +148,28 @@ echo "shem-v0.0.0-aarch64-apple-darwin.tar.gz $GOOD_SHA" >"$FS/r1/third_party/sh
 : >"$FS/curl.log"
 run fetch "$FS/r1" "$FS/good.tar.gz"
 expect "fetch-shem: an installed shem of another VERSION is replaced" 0
-if [ -s "$FS/curl.log" ] && [ "$(cat "$FS/r1/third_party/shem/VERSION")" = "shem-v$VERSION-aarch64-apple-darwin.tar.gz $GOOD_SHA" ]; then ok; else ng "fetch-shem: another VERSION is fetched again"; fi
+if [ ! -s "$FS/curl.log" ] && [ "$(cat "$FS/r1/third_party/shem/VERSION")" = "shem-v$VERSION-aarch64-apple-darwin.tar.gz $GOOD_SHA" ]; then ok; else ng "fetch-shem: another VERSION is unpacked again from the archive in third_party/downloads (docs/adr/0243)"; fi
+# the tree gone, as CI restores the archive only: unpacked without curl
+rm -rf "$FS/r1/third_party/shem"
+: >"$FS/curl.log"
+run fetch "$FS/r1" "$FS/good.tar.gz"
+if [ "$CODE" = 0 ] && [ ! -s "$FS/curl.log" ] && [ -x "$FS/r1/third_party/shem/shem" ]; then ok; else ng "fetch-shem: an archive of the SHA-256 in third_party/downloads is unpacked without curl (docs/adr/0243)"; fi
+# an archive of another SHA-256 there: fetched again
+rm -rf "$FS/r1/third_party/shem"
+printf 'other\n' >"$FS/r1/third_party/downloads/shem-v$VERSION-aarch64-apple-darwin.tar.gz"
+: >"$FS/curl.log"
+run fetch "$FS/r1" "$FS/good.tar.gz"
+if [ "$CODE" = 0 ] && [ -s "$FS/curl.log" ] && cmp -s "$FS/good.tar.gz" "$FS/r1/third_party/downloads/shem-v$VERSION-aarch64-apple-darwin.tar.gz"; then ok; else ng "fetch-shem: an archive of another SHA-256 in third_party/downloads is fetched again (docs/adr/0243)"; fi
+# GOLEM_DOWNLOADS: the archive elsewhere
+rm -rf "$FS/r1/third_party/shem" "$FS/elsewhere"
+run env GOLEM_DOWNLOADS="$FS/elsewhere" PATH="$FS/bin:$PATH" FAKE_UNAME_S=Darwin FAKE_UNAME_M=arm64 CURL_LOG="$FS/curl.log" FAKE_ARCHIVE="$FS/good.tar.gz" sh "$FS/r1/scripts/visual/fetch-shem.sh"
+if [ "$CODE" = 0 ] && cmp -s "$FS/good.tar.gz" "$FS/elsewhere/shem-v$VERSION-aarch64-apple-darwin.tar.gz"; then ok; else ng "fetch-shem: GOLEM_DOWNLOADS is where the archive is kept (docs/adr/0243)"; fi
 
 # another SHA-256: exit 1, and nothing is installed
 root "$FS/r2" "$GOOD_SHA"
 run fetch "$FS/r2" "$FS/other.tar.gz"
 expect "fetch-shem: an archive of another SHA-256 fails" 1
-if [ ! -e "$FS/r2/third_party/shem" ]; then ok; else ng "fetch-shem: nothing is left in third_party/shem after a SHA-256 mismatch"; fi
+if [ ! -e "$FS/r2/third_party/shem" ] && [ -z "$(find "$FS/r2/third_party" -type f 2>/dev/null)" ]; then ok; else ng "fetch-shem: nothing is left in third_party after a SHA-256 mismatch"; fi
 
 # the shem of the archive answers another version: exit 1, nothing installed
 root "$FS/r3" "$OTHER_SHA"
