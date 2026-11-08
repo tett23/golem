@@ -546,7 +546,8 @@ sizeTests =
           Left PrimOverLimit -> success
           _ -> failure_ name,
       testCase "S2, S3: a call of List.range takes exactly the steps it is counted" $
-        forM_ [0, 1, 2, 10, 50] $ \n -> limits rangeSrc [int n],
+        forM_ [0, 1, 2, 10, 50] $
+          \n -> limits rangeSrc [int n],
       testCase "S2, S3: String.replace, String.join, List.concat and ++ take exactly the steps they are counted" $ do
         -- from empty, no occurrence, to shorter than from, longer
         forM_ [("", "x", "abc"), ("q", "xy", "abc"), ("ab", "x", "ababab"), ("a", "xyz", "banana")] $ \(a, b, c) ->

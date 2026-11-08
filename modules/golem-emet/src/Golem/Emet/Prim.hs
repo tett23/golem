@@ -26,9 +26,10 @@ data PrimValue
   = PV !Value
   | PCh !Char
   | PC !Text ![PrimValue]
-  | -- | a list and its length, which is found without converting its
-    -- elements: a list shared many times inside another is converted once
-    -- for each time, and its length is wanted before (docs/adr/0223)
+  | {- | a list and its length, which is found without converting its
+    elements: a list shared many times inside another is converted once
+    for each time, and its length is wanted before (docs/adr/0223)
+    -}
     PL Integer [PrimValue]
   | PT ![PrimValue]
   | PFun

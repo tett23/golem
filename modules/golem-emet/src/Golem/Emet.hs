@@ -44,8 +44,8 @@ module Golem.Emet
 where
 
 import Control.Monad (foldM)
-import Data.Int (Int64)
 import Data.ByteString (ByteString)
+import Data.Int (Int64)
 import Data.List (intercalate)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
