@@ -1997,8 +1997,29 @@ forceComposed c = evaluate (length (show (map lineRatio (cLines c))) + length (c
 (golem-driver ADR 0008), with the notes, sidenotes and index marks of each
 line of each row, the header row first.
 -}
-composeTable :: FlowEnv -> Int -> Style -> Maybe Text -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
-composeTable fe i st lang aligns h rows =
+composeTable :: FlowEnv -> Int -> Style -> Maybe Text -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
+composeTable fe i st lang aligns h rows
+  -- counted before any cell is composed (docs/adr/0224)
+  | cells > maxTableCells = Left (TooManyCells cells)
+  | otherwise = first LayoutRefused (composeTableCells fe i st lang aligns h rows)
+  where
+    -- a header row of empty cells too, which is composed
+    cells = length h + sum (map length rows)
+
+{- | The most cells of a table set in PDF, the header row's included
+(docs/adr/0224, G07108).
+-}
+maxTableCells :: Int
+maxTableCells = 100000
+
+-- | Why a table is not set: too many cells (G07108), or its layout (G07041).
+data TableRefusal
+  = TooManyCells !Int
+  | LayoutRefused !TableError
+  deriving stock (Show)
+
+composeTableCells :: FlowEnv -> Int -> Style -> Maybe Text -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
+composeTableCells fe i st lang aligns h rows =
   let env = tableEnv fe st lang
       -- no break between the last two Japanese characters of a cell (golem-driver ADR 0037); each cell its place (docs/adr ADR 0183)
       cellOf r c is = first keepLastTwo (composeInlines env {ceSite = cellSite i r c} is)
@@ -2070,7 +2091,7 @@ data ComposedUnits = ComposedUnits
     cuFigures :: Map Int (PlacedFigure, [Diagnostic], [Diagnostic], [SrcSpan]),
     -- | the other units of text
     cuSingles :: Map Int Composed,
-    cuTables :: Map Int (Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])),
+    cuTables :: Map Int (Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])),
     cuCodeBlocks :: Map Int SetCode
   }
 
@@ -2163,10 +2184,12 @@ numberUnit fe cu nb (i, u) = case uKind u of
   UTable {} -> maybe nb (\r -> numberTable fe u r nb) (Map.lookup i (cuTables cu))
   _ -> headingAndTocLines (pgFontSize (feGeom fe)) cu (nuNext nb) i u (numberOther fe cu nb (i, u))
 
--- | Numbers the lines of a table, or adds its error (G07041, G07042).
-numberTable :: FlowEnv -> Unit -> Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]]) -> Numbered -> Numbered
+-- | Numbers the lines of a table, or adds its error (G07108, G07041, G07042).
+numberTable :: FlowEnv -> Unit -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]]) -> Numbered -> Numbered
 numberTable fe u r nb = case r of
-  Left (ColumnsTooWide mn avail) ->
+  Left (TooManyCells n) ->
+    nb {nuErrors = nuErrors nb <> [diagnostic "G07108" Error (uSpan u) ("表のセルが多すぎて PDF に組めません（" <> T.pack (show n) <> " 個、上限は " <> T.pack (show maxTableCells) <> " 個）")]}
+  Left (LayoutRefused (ColumnsTooWide mn avail)) ->
     nb {nuErrors = nuErrors nb <> [diagnostic "G07041" Error (uSpan u) ("表の列の最小の幅の合計（" <> L.mmText mn <> "）が使える幅（" <> L.mmText avail <> "）に収まりません")]}
   Right (t, atts)
     | tall@(_ : _) <- [row | (row, h) <- zip [1 :: Int ..] (stRowLines t), stHeaderLines t + h > capacity] ->
