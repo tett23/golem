@@ -81,7 +81,8 @@ library
 test-suite golem-driver-test
   import:           warnings
   type:             exitcode-stdio-1.0
-  hs-source-dirs:   test
+  -- CssCascade is in the tests of golem-html (docs/adr/0217)
+  hs-source-dirs:   test ../golem-html/test
   main-is:          Main.hs
   other-modules:
     AlignSpaceSpec
@@ -89,6 +90,7 @@ test-suite golem-driver-test
     CallsSpec
     ChapterNotesSpec
     ColophonSpec
+    CssCascade
     CliSpec
     ComplexFixtureSpec
     DiagnosticSitesSpec
@@ -96,6 +98,7 @@ test-suite golem-driver-test
     DoubleDashSpec
     EmetSamplesSpec
     FigureSpec
+    FileSpacesSpec
     FunctionsSpec
     HeadingLevelsSpec
     InMemorySpec
@@ -112,6 +115,7 @@ test-suite golem-driver-test
     StylesSpec
     TableFilesSpec
     TaggedPdfSpec
+    UnwritableNumbersSpec
     VarsSpec
     Support
   -- -threaded: tasty runs the tests at the same time on every processor;

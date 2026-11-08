@@ -32,7 +32,9 @@ data ParaAlign = Ragged LineAlign | Justified (Maybe LineAlign)
 its glue is 0 (its shrink stays), no expansion, 'filStretch' at the end
 of every line. A fully justified one is broken as the others; the stretch
 of the glue that ends it is taken from its last line, so that the other
-glue of the line takes up the rest.
+glue of the line takes up the rest (docs/adr/0211: without the glue at
+the end, a short last line has the badness 10000 and the breaker splits
+a one-line paragraph).
 -}
 breakAligned :: ParaAlign -> Params -> (Int -> Sp) -> [Item] -> Breaks
 breakAligned a ps lineWidth items = case a of

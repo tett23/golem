@@ -18,7 +18,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word64)
 import Fixtures (fs)
-import Golem.Layout.CharClass (isDualCharacter)
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..))
 import Golem.TestSupport.Enum
@@ -183,6 +182,17 @@ enumerationTests =
       shapes ["lime-tree"] @?= ["lime-", "|E", "tree", "|X", "_", "|-10000"]
       -- 漢 and a, with the space between Japanese and Latin text
       shapes ["漢", "a"] @?= ["漢", "_", "a", "|X", "_", "|-10000"],
+    testCase "D4, D5 (docs/adr/0222): the patterns see the letters of a word only, without the characters before and after them" $ do
+      let s = Setting True False False Nothing
+          cuts run = [T.unpack (bcText c) | Box _ c <- itemsOf False s 0 run 0]
+          hyphens run = length [() | Penalty _ _ (PatternHyphen _) <- itemsOf False s 0 run 0]
+      cuts ["table", "."] @?= ["ta", "ble."]
+      cuts ["“", "table", "”"] @?= ["“ta", "ble”"]
+      cuts ["table,"] @?= ["ta", "ble,"]
+      cuts ["hyphenation", "."] @?= ["hy", "phen", "ation."]
+      cuts ["hyphenation"] @?= ["hy", "phen", "ation"]
+      cuts ["I’ll"] @?= ["I’ll"]
+      map hyphens [["table", "."], ["“", "table", "”"], ["table,"]] @?= [1, 1, 1],
     testCase "the advances: a quarter, a half and three quarters of an em for Latin text, an em for Japanese text" $ do
       let s = Setting True False False Nothing
           widths run = [unSp w | Box w _ <- itemsOf False s 0 run 0]
@@ -227,6 +237,13 @@ allowAfter t = \case
   b@(Box _ c) : Penalty _ p _ : rest | p >= infPenalty && bcText c == t -> b : Penalty 0 0 NoHyphen : allowAfter t rest
   b@(Box _ c) : rest@(Box {} : _) | bcText c == t -> b : Penalty 0 0 NoHyphen : allowAfter t rest
   x : rest -> x : allowAfter t rest
+  [] -> []
+
+-- | The items with a break after a written hyphen put after each box of the text given that a box follows.
+explicitAfter :: Text -> [Item] -> [Item]
+explicitAfter t = \case
+  b@(Box _ c) : rest@(Box {} : _) | bcText c == t -> b : Penalty 0 50 ExplicitHyphen : explicitAfter t rest
+  x : rest -> x : explicitAfter t rest
   [] -> []
 
 -- | The lines of a paragraph changed.
@@ -281,6 +298,14 @@ predicateTests =
       let p = paragraphIn plain False 2 ["あ", "…", "…"]
       sound p
       broken (rebroken (allowBefore "…") p) @?= [L4],
+    testCase "L4: a line that breaks at a space between two ellipses is not broken (golem-layout ADR 0028, K4)" $ do
+      let p = paragraphIn plain False 2 ["…", " ", "…"]
+      map lineText (brLines (pBreaks p)) @?= ["…", "…"]
+      brokenAll p @?= [],
+    testCase "L4: a line that breaks after a dash written in a word between two ellipses (golem-layout ADR 0028, K3)" $ do
+      let p = paragraphOf (Input plain {sLang = Just "en"} False 2 1 ["…", "—", "…"] 0)
+      sound p
+      broken (rebroken (explicitAfter "…—") p) @?= [L4],
     testCase "L5: a line past W that is not overfull" $ do
       -- the last line, set an em wider than W: its glue stretches to the end
       let p = paragraphIn plain False 2 ["漢", "漢", "漢"]
@@ -290,7 +315,7 @@ predicateTests =
       let p = paragraphIn plain False 2 ["あ", "い", "う", "え"]
           joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0)]
       broken (withLines joined p) @?= [L5],
-    testCase "L5: an overfull line with no break where it fits is not broken" $ do
+    testCase "L5, D6 (docs/adr/0222): an overfull line with no break where it fits is not broken, and is not broken inside the run of line-start prohibitions" $ do
       let p = paragraphIn plain False 2 ["」", "」", "」", "」", "」"]
       map lineOverfull (brLines (pBreaks p)) @?= [True]
       broken p @?= [],
@@ -300,9 +325,21 @@ predicateTests =
       sound p
       map lineText (brLines (pBreaks p)) @?= ["atable", "atable"]
       broken (withLines (atLine 0 (\l -> l {lineTarget = lineTarget l - Sp (unSp fs `div` 8)})) p) @?= [L6],
-    testCase "L6: a line without glue that stretches, short of W, is not judged" $ do
+    testCase "L6, D1 (docs/adr/0222): a line of one Japanese character without glue that stretches, short of W, is not broken" $ do
       let p = paragraphIn plain False 2 ["「", "あ", "あ"]
       broken p @?= [],
+    testCase "L6, D1 (docs/adr/0222): a line of one word without glue that stretches, short of W by a step or more while the expansion is short of its limit" $ do
+      -- 10000 in 10120: 12 permille to stretch, rounded down to 10, 20 sp short; a step is 50 sp
+      let its = [boxOf 10000, Glue 0 0 0, boxOf 10000] <> paragraphEnd
+          ps = defaultParams {pExpansion = Just (20, 5)}
+          p = (handParagraph 10120 its) {pParams = ps, pBreaks = breakParagraph ps (const 10120) its}
+      map lineExpansion (brLines (pBreaks p)) @?= [10, 0]
+      sound p
+      broken (withLines (atLine 0 (\l -> l {lineExpansion = 0})) p) @?= [L6]
+      -- at the limit, the line may be short by more
+      let wide = (handParagraph 10400 its) {pParams = ps, pBreaks = breakParagraph ps (const 10400) its}
+      map lineExpansion (brLines (pBreaks wide)) @?= [20, 0]
+      broken wide @?= [],
     testCase "L7: demerits more than the least" $ do
       let p = paragraphIn plain False 2 ["あ", "い", "う", "え"]
       sound p
@@ -333,6 +370,17 @@ predicateTests =
           noGlue = filter (\case Glue _ y _ -> y >= filStretch; _ -> True)
       sound p
       broken (withLines (atLine 0 (\l -> l {lineItems = noGlue (lineItems l)})) p) @?= [L11],
+    testCase "L11, D2 (docs/adr/0222): the space between Japanese and Latin text added to a space written between them" $ do
+      let p = paragraphIn plain False 3 ["漢", " ", "a"]
+          aki = case [g | g@(Glue {}) <- pItems (paragraphIn plain False 3 ["漢", "a"])] of
+            g : _ -> g
+            [] -> error "no glue"
+          addAki = \case
+            g : rest | g == latinSpace p -> g : aki : rest
+            x : rest -> x : addAki rest
+            [] -> []
+      sound p
+      broken (withLines (atLine 0 (\l -> l {lineItems = addAki (lineItems l)})) p) @?= [L11],
     testCase "L11: no space between a Japanese character and a character of both scripts in a Latin span" $ do
       let p = paragraphIn plain {sLang = Just "en"} False 3 ["あ", "“", "a"]
       broken p @?= [],
@@ -353,6 +401,11 @@ predicateTests =
     testCase "L13: a full stop hung at the line end is not broken" $ do
       let p = paragraphIn plain {sHanging = True} False 2 ["あ", "あ", "。", "あ"]
       map lineText (brLines (pBreaks p)) @?= ["ああ。", "あ"]
+      brokenAll p @?= [],
+    testCase "L13, D3 (docs/adr/0222): a character of both scripts at the end of a word protrudes by its advance in the font of the word" $ do
+      -- seven tenths of the half em of ” in a Latin word, not of the em of ” alone
+      let p = paragraphIn plain {sProtrusion = True} False 3 ["a", "”"]
+      map (snd . lineProtrusion) (brLines (pBreaks p)) @?= [Sp (unSp fs * 7 `div` 20)]
       brokenAll p @?= [],
     testCase "L13: a hyphen of the patterns protruding at the line end is not broken" $ do
       -- seven tenths of the quarter em of the hyphen
@@ -505,62 +558,25 @@ data LineBug = LineBug
 lineBugs :: [LineBug]
 lineBugs =
   [ LineBug
-      { lbItem = "語間の空白の隣の禁則と分離禁止",
+      { lbItem = "段落の終わりの語間の空白の前の行末禁則",
         lbShape = \i -> " " `elem` inRun i,
-        lbExcuses = \i br -> case breachOf br of
-          L2 -> breaksAtSpace i (breachLine br - 1)
-          L3 -> breaksAtSpace i (breachLine br)
-          L4 -> breaksAtSpace i (breachLine br)
-          _ -> False,
-        lbCounts = [(0, 0), (1, 0), (2, 432), (3, 64114)]
-      },
-    LineBug
-      { lbItem = "字幅の伸縮の刻みで行長を超える行",
-        lbShape = inExpansion,
-        lbExcuses = \i br -> breachOf br `elem` [L5, L6] && shrunkWithoutGlue i (breachLine br),
-        lbCounts = [(0, 0), (1, 0), (2, 32), (3, 2923)]
-      },
-    LineBug
-      { lbItem = "明示のハイフンの後の分割と両用の字の禁則",
-        lbShape = any (T.any isDualCharacter) . inRun,
-        lbExcuses = \i br -> case breachOf br of
-          L2 -> breaksAtExplicitHyphen i (breachLine br - 1)
-          L3 -> breaksAtExplicitHyphen i (breachLine br)
-          L4 -> breaksAtExplicitHyphen i (breachLine br)
-          _ -> False,
-        lbCounts = [(0, 0), (1, 0), (2, 0), (3, 448)]
+        lbExcuses = \i br -> breachOf br == L3 && breaksAtTrailingSpace i (breachLine br),
+        lbCounts = [(0, 0), (1, 0), (2, 0), (3, 576)]
       }
   ]
 
--- | Whether line k of an input ends after a hyphen or a dash written in a Latin word.
-breaksAtExplicitHyphen :: Input -> Int -> Bool
-breaksAtExplicitHyphen i k =
-  let p = paragraphOf i
-   in case drop k (brPositions (pBreaks p)) of
-        b : _ | b >= 0 && b < length (pItems p) -> case pItems p !! b of
-          Penalty _ _ ExplicitHyphen -> True
-          _ -> False
-        _ -> False
-
--- | Whether line k of an input ends at a space between Latin words.
-breaksAtSpace :: Input -> Int -> Bool
-breaksAtSpace i k =
-  let p = paragraphOf i
-   in case drop k (brPositions (pBreaks p)) of
-        b : _ | b >= 0 && b < length (pItems p) -> pItems p !! b == latinSpace p
-        _ -> False
-
-{- | Whether line k of an input is shrunk by the glyph expansion, and its
-glue cannot shrink further: none of it shrinks, or all of it is shrunk
-as far as it can. The expansion, a multiple of its step rounded towards
-0, leaves the line wider than W.
+{- | Whether line k of an input ends at a space between words that no box
+follows: the space at the end of the paragraph.
 -}
-shrunkWithoutGlue :: Input -> Int -> Bool
-shrunkWithoutGlue i k =
-  let (_, _, br) = breakInput i
-   in case drop k (brLines br) of
-        l : _ -> lineExpansion l < 0 && (all (<= 0) [z | Glue _ _ z <- lineItems l] || glueRatio l <= -1)
-        [] -> False
+breaksAtTrailingSpace :: Input -> Int -> Bool
+breaksAtTrailingSpace i k =
+  let p = paragraphOf i
+      isBox = \case
+        Box {} -> True
+        _ -> False
+   in case drop k (brPositions (pBreaks p)) of
+        b : _ | b >= 0 && b < length (pItems p) -> pItems p !! b == latinSpace p && not (any isBox (drop (b + 1) (pItems p)))
+        _ -> False
 
 -- | The breaches of an input no known bug excuses, and whether each known bug excuses one.
 judged :: Int -> Input -> ([Breach], [Bool])

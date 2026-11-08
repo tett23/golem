@@ -150,14 +150,17 @@ diagnostic の位置と同じ単位で、プラグインの出力の位置の検
 どの出力もキャプションの段落だけを組むので、評価は原稿のほかのブロックを G02118 で除き、プラグインの出力のほかのブロックは不変条件の違反（G06009）にする。
 CDDL の型は [code: \[* block\]] のままで、この制約は不変条件の側が受け持つ。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0144-figure-captions-hold-paragraphs-only.md]（docs/adr/0144「図版のキャプションには段落だけを置く」）]
 
-コードブロックの行は、差分の印と注釈の印を取り除いた文字列、行番号（削除した行は [code: null]）、差分の印（追加、削除、変わらないの 0 から 2、差分でなければ [code: null]）、強調するか、注釈の印の番号の列である。
+コードブロックの行は、差分の印と注釈の印を取り除いた文字列、行番号（削除した行は [code: null]）、差分の印（追加、削除、変わらないの 0 から 2、差分でなければ [code: null]）、強調するか、注釈の印の番号の列、行の本文の原稿の範囲である。
 行番号、差分、注釈の印、強調は評価の段階で決め、PDF、HTML、プレーンテキストが同じ読み方を共有する。
+原稿の範囲は、差分の印の後から、注釈の印を外す前の行の終わりまでで、[code: @listing] の行と Emet の関数が作った行では [code: null] である。
+PDF の組版はこの範囲で、コードブロックの途中で始まるページの [code: pages.json] の位置を決める。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0218-page-starts-inside-code-blocks.md]（docs/adr/0218「コードブロックの途中で始まるページの pages.json に、そのページの最初の行の位置を書く」）]
 
 ```cddl
 code = [lang: tstr / null, numbers: bool / null, file: tstr / null,
-        caption: inlines / null, diff: bool, lines: [* code-line]]
+        caption: inlines / null, diff: bool, lines: [* code-line],
+        nonumber: bool]
 code-line = [text: tstr, number: uint64 / null, diff-mark: (0..2) / null,
-             highlight: bool, callouts: [* 1..50]]
+             highlight: bool, callouts: [* 1..50], span: span / null]
 ```
 
 見出しの属性は、短い題、[code: @number] の番号、[code: @nonumber]、[code: @notoc] の四つである。

@@ -122,3 +122,12 @@ v1.0.0 の文書の中のリンクは、`LinkAction` に行先へのアクショ
 - `asciiUri` は、URL の ASCII でない文字を UTF-8 のバイトごとに `%XX`（大文字）にし、ASCII の文字は `%XX` を含めてそのまま残す。
 - `X4.verify` は、ページの `/Annots` が指すオブジェクトのうち `/Subtype /Link` のものについて、`/A` の辞書が `/S /URI` なら、その `/S` と `/URI` を禁止の名前として数えない。
 - `/A` が間接参照のときは、除かない。
+
+## 構造の木と描いた葉
+
+`contentLeaves` は、ページの内容から、中身のある印付きの内容（`Tagged`）の葉を、描いた順に返す。
+`orphanLeaves` は、構造の木と描いた葉の並びから、木にない葉（孤立した葉）を、最初に描いた順に、重ねずに返す（[docs/adr/0216](../adr/0216-drawn-content-missing-from-the-structure-tree-is-an-error.md)）。
+golem-typeset は、PDF を書く前に `orphanLeaves` で調べ、孤立した葉があれば G07107 で PDF を書かない。
+
+- 書き手の `withOrphans` は、関数を全域に保つために、孤立した葉を一つずつ `P` にして `Document` の子の最後に足す。golem は G07107 の検査の後でしか書き手を呼ばないので、golem の PDF にこの `P` は現れない。
+- 木にあって描かない葉は、今のとおり書かない。

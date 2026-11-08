@@ -3,6 +3,8 @@ module Golem.Typeset.Draw
   ( renderPdf,
     renderPdfView,
     renderPdfStructure,
+    renderPdfWithTree,
+    orphanErrors,
   )
 where
 
@@ -10,7 +12,7 @@ import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.Containers.ListUtils (nubOrdOn)
 import Data.Either (lefts)
-import Data.List (groupBy, nub)
+import Data.List (groupBy, nub, nubBy)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
@@ -29,7 +31,7 @@ import Golem.Layout.Ruby (RubyKind (..), RubyPlacement (..), placeRuby)
 import Golem.LayoutSpec (Anchor (..), HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, columnsFor, gutterSide, runningHeadBaselines, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Length (zwToSp)
-import Golem.Numerals.Format (formatNumber)
+import Golem.Numerals.Format (Unwritable (..), formatNumber)
 import Golem.Pdf qualified as P
 import Golem.Preflight (OverfullLine (..), overfullLine)
 import Golem.Preflight.View qualified as V
@@ -64,9 +66,21 @@ renderPdfView version provider inp = fmap (\(bytes, notices, view, _, starts) ->
 renderPdfStructure :: Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] Text)
 renderPdfStructure version provider inp = fmap (\(_, _, _, st, _) -> st) <$> renderPdfAll version provider inp
 
+{- | 'renderPdf' with the structure tree changed by a function before the
+PDF is checked and written: for the tests only, as a stand-in for a
+mistake of Golem that leaves drawn content out of the tree (G07107,
+docs/adr ADR 0216).
+-}
+renderPdfWithTree :: (P.StructElem -> P.StructElem) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] ByteString)
+renderPdfWithTree tamper version provider inp = fmap (\(bytes, _, _, _, _) -> bytes) <$> renderPdfAllWith tamper version provider inp
+
 -- | The PDF, its notices, its view, its structure tree as text and where its pages start.
 renderPdfAll :: Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Text, [Maybe (FileId, Int)]))
-renderPdfAll version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
+renderPdfAll = renderPdfAllWith id
+
+-- | 'renderPdfAll' with the structure tree changed by a function (the tests of G07107 only).
+renderPdfAllWith :: (P.StructElem -> P.StructElem) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Text, [Maybe (FileId, Int)]))
+renderPdfAllWith tamper version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
   (ds, Left gs) -> pure (Left (ds <> gs))
   (ds@(_ : _), Right _) -> pure (Left ds)
   ([], Right geom) -> do
@@ -83,12 +97,15 @@ renderPdfAll version provider inp0 = case (declarationErrors inp, checkedGeometr
             -- a kenten shape the font has no glyph for stops the PDF (G08009, golem-driver ADR 0019)
             case laid of
               Left ds -> pure (Left ds)
+              -- G07106: a folio its format cannot write stops the PDF before the folios are drawn (docs/adr/0213)
+              Right layout | ds@(_ : _) <- folioErrors inp geom layout -> pure (Left ds)
               Right layout -> case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
                 [] -> do
-                  let (used, privateUse, overfull, finish) = writeDocumentView version inp geom fonts layout intent
-                  -- G07104 stops the PDF/A-2a before its fonts are embedded (docs/adr ADR 0183)
-                  if not (null privateUse)
-                    then pure (Left privateUse)
+                  let (used, stops, overfull, finish) = writeDocumentView tamper version inp geom fonts layout intent
+                  {- G07104 stops the PDF/A-2a before its fonts are embedded (docs/adr ADR 0183);
+                  G07107, content drawn but not in the structure tree, stops every PDF (docs/adr ADR 0216) -}
+                  if not (null stops)
+                    then pure (Left stops)
                     else do
                       -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
                       embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
@@ -103,6 +120,44 @@ renderPdfAll version provider inp0 = case (declarationErrors inp, checkedGeometr
                 ds -> pure (Left ds)
   where
     inp = codeInput inp0
+
+{- | G07106 (docs/adr/0213): for each master page, the first page that
+draws its folio and whose number the format of the folio cannot write, at
+the value of the format in style.toml, in the order of those pages.
+-}
+folioErrors :: PdfInput -> PageGeometry -> PdfLayout -> [Diagnostic]
+folioErrors inp geom layout =
+  [ diagnostic "G07106" Error (valueSpan name) ("[masters." <> name <> "] の folio の format " <> fmt <> " の {" <> uwSlot u <> "} では、ノンブル " <> T.pack (show (uwNumber u)) <> " を表せません")
+  | (name, fmt, u) <- nubBy (\(a, _, _) (b, _, _) -> a == b) failing
+  ]
+  where
+    failing =
+      [ (name, fmt, u)
+      | (p : _, Just (name, m)) <- zip (pagesOf (plPages layout)) (pageMasterNames inp geom layout),
+        drawsFolio (poBlank p) (Just m),
+        Just (fmt, _, _) <- [mgFolio m],
+        Left u <- [formatNumber fmt [toInteger (poNumber p)] Nothing]
+      ]
+    valueSpan name = fromMaybe (mkSpan (piStyleFile inp) 0 0) (manifestValueSpan (piStyleFile inp) (piStyleText inp) ["masters", name, "folio", "format"])
+
+{- | G07107 (docs/adr ADR 0216): one error for the leaves drawn that the
+structure tree has not, given in the order first drawn, at the place of
+the first: the block of a leaf of a unit (by the units' spans), the note
+of a leaf of a footnote or a sidenote, and the fallback (the start of
+manifest.toml) for any other. None for no orphan.
+-}
+orphanErrors :: SrcSpan -> Map Int SrcSpan -> [P.LeafId] -> [Diagnostic]
+orphanErrors fallback units = \case
+  [] -> []
+  ls@(P.LeafId site : _) ->
+    [ diagnostic "G07107" Error (fromMaybe fallback (siteSpan site)) ("構造の木にない内容を描きました（" <> T.pack (show (length (nub ls))) <> " か所）。Golem の誤りです。この入力を添えて報告してください")
+    ]
+  where
+    -- the places of 'unitSite', 'noteSite' and 'sidenoteSite' (golem-typeset's Flow)
+    siteSpan = \case
+      k : f : s : e : _ | k == -8 || k == -9, s >= 0, e >= s -> Just (mkSpan (FileId f) s e)
+      i : _ | i >= 0 -> Map.lookup i units
+      _ -> Nothing
 
 {- | G07105 (docs/adr ADR 0210): a warning for each line drawn past its
 measure, with the message and the facts of G09013, on each page it is drawn.
@@ -247,8 +302,8 @@ embedded in IO between the two halves (docs/adr ADR 0034): the glyphs
 used in each font and their text, then the PDF and its view from the
 embedded fonts.
 -}
-writeDocumentView :: Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [OverfullLine], Map P.FontRef P.Font -> (ByteString, V.View, Text))
-writeDocumentView version inp geom fonts layout intent =
+writeDocumentView :: (P.StructElem -> P.StructElem) -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [OverfullLine], Map P.FontRef P.Font -> (ByteString, V.View, Text))
+writeDocumentView tamper version inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
       -- the master page of each page (golem-driver ADR 0014)
@@ -286,7 +341,7 @@ writeDocumentView version inp geom fonts layout intent =
         [ P.framePageWith (piMarks inp) bleed (pw, ph) (pdContent pd) [P.LinkAnnotation r (P.UriAction u) aid (aid >>= (`Map.lookup` linkContents)) | (LinkUri u, lf, r) <- pdLinks pd, let aid = lf >>= leafOf >>= (`Map.lookup` linkOfLeaf)]
         | pd <- drawn
         ]
-      (structure, linkContents) = structureTree (plFlowEnv layout) (plUnits layout) figureAttrs
+      (structure, linkContents) = first tamper (structureTree (plFlowEnv layout) (plUnits layout) figureAttrs)
       linkOfLeaf = linksOfLeaves structure
       {- the BBox of the Figure of each figure where it is first drawn, in the
       space of its page, and its placement (docs/adr ADR 0183) -}
@@ -369,7 +424,13 @@ writeDocumentView version inp geom fonts layout intent =
         Nothing -> []
       -- the lines past their measure on each page they are drawn on (G07105 and G09013, docs/adr ADR 0210)
       overfull = [overfullLine i amount sp | (i, pd) <- zip [1 ..] drawn, (rec, _) <- pdLines pd, Just (amount, sp) <- [lrOverfull rec]]
-   in (used, privateUse, overfull, finish)
+      -- the leaves drawn that the structure tree has not, after every page is drawn (G07107, docs/adr ADR 0216)
+      orphans =
+        orphanErrors
+          (mkSpan (projectManifestFile (piProject inp)) 0 0)
+          (Map.fromList [(i, uSpan u) | (i, u) <- plUnits layout])
+          (P.orphanLeaves structure [l | p <- pdfPages, l <- P.contentLeaves (P.pageContent p)])
+   in (used, privateUse <> orphans, overfull, finish)
 
 -- font index × direction: even refs horizontal, odd refs vertical
 ref :: Int -> Bool -> P.FontRef
@@ -1249,7 +1310,7 @@ masterMarks env n blank master headLines = case master of
   Just m ->
     let pick a1 a2 = if odd n then a1 else a2
         size = pgFontSize geom
-        folio = [textAt env "ノンブル" (pick a1 a2) size (formatNumber fmt [toInteger n] Nothing) | drawsFolio blank master, Just (fmt, a1, a2) <- [mgFolio m]]
+        folio = [textAt env "ノンブル" (pick a1 a2) size t | drawsFolio blank master, Just (fmt, a1, a2) <- [mgFolio m], Right t <- [formatNumber fmt [toInteger n] Nothing]]
         -- the lines of the running head from the type area out (golem-driver ADR 0022)
         runningHead =
           [ textAt env "柱" a {anY = hy} size h

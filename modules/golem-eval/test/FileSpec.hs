@@ -723,7 +723,7 @@ int64Tests =
         let src = "``` numbers=9223372036854775807\na\nb\n```\n"
             (bs, ds) = run ctx src
         ds @?= ["G02091"]
-        bs @?= fst (run ctx "```\na\nb\n```\n")
+        noLineSpans bs @?= noLineSpans (fst (run ctx "```\na\nb\n```\n"))
         [c | (c, _, s, _) <- diags src, s == 0] @?= ["G02091"]
         snd (run ctx "``` numbers=9223372036854775806\na\nb\n```\n") @?= [],
       testCase "an aki beyond int64 is G02091 and puts out nothing" $ do
@@ -891,7 +891,7 @@ spreadTests =
       testCase "block commands and the opening line of a code block" $ do
         fst (run ctx "@page-break *[[\"recto\"]]\n") @?= [ForcedBreak BreakRecto]
         fst (run ctx "@blank-line *[[2]]\n") @?= fst (run ctx "@blank-line 2\n")
-        fst (run ctx "```haskell **[{numbers: true}]\nx\n```\n") @?= fst (run ctx "```haskell numbers=true\nx\n```\n"),
+        noLineSpans (fst (run ctx "```haskell **[{numbers: true}]\nx\n```\n")) @?= noLineSpans (fst (run ctx "```haskell numbers=true\nx\n```\n")),
       testCase "an attribute" $ do
         map blockLabel (resultBlocks (evalResult ctx "@label *[[\"p\"]]\na\n")) @?= [Just "p"]
         errs "@label *[[\"p\"]]\na\n" @?= [],
@@ -1749,8 +1749,38 @@ codeTests =
         codeFile l @?= Just "x.hs",
       testCase "a code block without arguments is as before" $ do
         c <- oneCode "```hs\na\n  b\n```\n"
-        c @?= Code (Just "hs") Nothing Nothing Nothing False [CodeLine "a" (Just 1) Nothing False [], CodeLine "  b" (Just 2) Nothing False []] False
+        c {codeLines = [l {clSpan = Nothing} | l <- codeLines c]} @?= Code (Just "hs") Nothing Nothing Nothing False [CodeLine "a" (Just 1) Nothing False [] Nothing, CodeLine "  b" (Just 2) Nothing False [] Nothing] False,
+      testCase "the span of a line of code is its text in the source, after the diff mark (docs/adr/0218)" $ do
+        let spansOf src = do
+              c <- oneCode src
+              pure [(clText l, sliceOf src <$> clSpan l) | l <- codeLines c]
+        spansOf "```hs\na\n  b\n\n```\n" >>= (@?= [("a", Just "a"), ("  b", Just "  b"), ("", Just "")])
+        -- the diff mark is not in the span; a text that starts with + is
+        spansOf "``` diff=true\n++x\n-y\n z\n\n```\n" >>= (@?= [("+x", Just "+x"), ("y", Just "y"), ("z", Just "z"), ("", Just "")])
+        -- the callouts are taken off the text, not off the span
+        spansOf "``` callouts=true\nab <1>\n```\n" >>= (@?= [("ab", Just "ab <1>")])
+        -- characters outside the BMP and tabs
+        spansOf "```\n\t\x20BB7x\n```\n" >>= (@?= [("\t\x20BB7x", Just "\t\x20BB7x")]),
+      testCase "the span of a line of code in a list item starts after the indent of the block (docs/adr/0218)" $ do
+        let src = "- x\n\n  ```hs\n  a\n    b\n  ```\n"
+        case run ctx src of
+          ([BulletList [ListItem _ [_, Block _ _ _ (CodeBlock c)]]], []) ->
+            [(clText l, sliceOf src <$> clSpan l) | l <- codeLines c] @?= [("a", Just "a"), ("  b", Just "  b")]
+          other -> assertFailure (show other),
+      testCase "the lines of @listing have no span (docs/adr/0218)" $ do
+        c <- oneCode "@listing x.hs lines=1...1\n"
+        map clSpan (codeLines c) @?= [Nothing]
     ]
+
+-- | Code blocks without the spans of their lines, which differ with the opening line (docs/adr/0218).
+noLineSpans :: [BlockBody] -> [BlockBody]
+noLineSpans = map $ \case
+  CodeBlock c -> CodeBlock c {codeLines = [l {clSpan = Nothing} | l <- codeLines c]}
+  b -> b
+
+-- | The text of a span of a source.
+sliceOf :: Text -> SrcSpan -> Text
+sliceOf src sp = TE.decodeUtf8 (BS.take (spanEnd sp - spanStart sp) (BS.drop (spanStart sp) (TE.encodeUtf8 src)))
 
 -- | The codes, messages and positions of golem-eval ADR 0003.
 diagnosticTests :: TestTree
