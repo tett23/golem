@@ -322,6 +322,7 @@ unwritableText = concatMap blockDiags . docBlocks
       ChannelItem sp c -> concatMap (at sp) (ciChannel c : maybe [] pure (ciKey c) <> maybe [] pure (ciReading c)) <> inlines (ciBody c)
       Link _ _ xs -> inlines xs
       Lang _ _ xs -> inlines xs
+      Resolved _ _ _ xs -> inlines xs
 
 -- ------------------------------------------------------------------ newlines
 
@@ -781,6 +782,7 @@ nameErrors ctx is bs =
       ChannelItem _ c -> ciBody c
       Link _ _ xs -> xs
       Lang _ _ xs -> xs
+      Resolved _ _ _ xs -> xs
       Ruby _ _ segs -> concat [mapMaybe withRubyInline (rsBase g) | g <- segs]
       _ -> []
     withRubyInline :: InlineNoRuby -> Maybe Inline
@@ -815,6 +817,7 @@ fillKenten ctx = \case
   Sidenote s n xs -> Sidenote s n (map (fillKenten ctx) xs)
   Link s u xs -> Link s u (map (fillKenten ctx) xs)
   Lang s l xs -> Lang s l (map (fillKenten ctx) xs)
+  Resolved s k l xs -> Resolved s k l (map (fillKenten ctx) xs)
   i -> i
 
 -- | 'fillKenten' in the inlines of blocks.

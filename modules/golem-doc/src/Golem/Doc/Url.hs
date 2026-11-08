@@ -144,4 +144,5 @@ linkElements = concatMap $ \case
   Color _ _ xs -> linkElements xs
   CharStyle _ _ xs -> linkElements xs
   Lang _ _ xs -> linkElements xs
+  Resolved _ k _ _ -> [case k of RefNumber -> "ref-number"; RefTitle -> "ref-title"; RefPage -> "ref-page"]
   _ -> []

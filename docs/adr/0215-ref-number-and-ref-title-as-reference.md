@@ -1,6 +1,6 @@
 # ADR 0215: `[ref-number]` と `[ref-title]` をタグ付き PDF の `Reference` にする
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 
