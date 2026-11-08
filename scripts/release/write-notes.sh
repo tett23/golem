@@ -32,6 +32,9 @@ sh "$HERE/notes.sh" "$PREVIOUS" "$TAG" >"$WORK/list.md"
 
 fallback() {
   cp "$WORK/list.md" "$OUT"
+  # the reason goes to the job log as well as to the summary, which the
+  # API does not serve
+  [ "$SUMMARY" = /dev/stderr ] || printf 'write-notes: the notes are the list of notes.sh: %s\n' "$1" >&2
   printf '### Release notes\n\nThe notes are the list of notes.sh: %s\n' "$1" >>"$SUMMARY"
   exit 0
 }
@@ -83,7 +86,9 @@ if ! env -u GH_TOKEN -u GITHUB_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTION
   -u GITHUB_ENV -u GITHUB_PATH -u GITHUB_OUTPUT -u GITHUB_STATE -u GITHUB_STEP_SUMMARY \
   claude -p --tools '' --strict-mcp-config --model "$CLAUDE_MODEL" "Write the release notes as the input says." \
   <"$WORK/prompt.md" >"$WORK/ai.md" 2>"$WORK/ai.err"; then
-  fallback "Claude Code failed: $(head -c 500 "$WORK/ai.err")"
+  # claude -p writes the errors of the API (an authentication that fails,
+  # for one) to stdout, not to stderr
+  fallback "Claude Code failed (the prompt is $(wc -c <"$WORK/prompt.md" | tr -d ' ') bytes): stdout: $(head -c 500 "$WORK/ai.md") stderr: $(head -c 500 "$WORK/ai.err")"
 fi
 if ! sh "$HERE/check-notes.sh" "$WORK/ai.md" "$WORK/list.md" 2>"$WORK/check.err"; then
   fallback "the AI's notes did not pass check-notes.sh: $(cat "$WORK/check.err")"

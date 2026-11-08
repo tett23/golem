@@ -335,6 +335,14 @@ commit_file() { # commit_file PATH MESSAGE
   git_ commit -q -m "$2"
 }
 merge_pr() { # merge_pr N TITLE PATH: a branch with one commit, merged with no-ff
+  # as GitHub merges it: the subject names the branch, the title is the
+  # first line of the body
+  git_ checkout -q -b "pr$1"
+  commit_file "$3" "change for $2"
+  git_ checkout -q main
+  git_ merge -q --no-ff -m "Merge pull request #$1 from t/pr$1" -m "$2" "pr$1"
+}
+merge_pr_local() { # merge_pr_local N TITLE PATH: merged by hand in the old shape "#N: TITLE"
   git_ checkout -q -b "pr$1"
   commit_file "$3" "change for $2"
   git_ checkout -q main
@@ -347,7 +355,8 @@ merge_pr 2 "old" docs/adr/0000-old.md
 git_ tag v0.0.9
 merge_pr 3 "a" docs/adr/0001-x.md
 commit_file direct.txt "a commit that is not a merge"
-merge_pr 4 "b" docs/golem-cli/adr/0002-y.md
+commit_file other.txt "Merge pull request #9 from t/not-a-merge"
+merge_pr_local 4 "b" docs/golem-cli/adr/0002-y.md
 merge_pr 5 "not an ADR" docs/adr/notes.txt
 git_ tag v0.1.0
 
@@ -585,6 +594,7 @@ if [ "${1:-}" = --help ]; then
   exit 0
 fi
 for a in "$@"; do printf '[%s]\n' "$a"; done >"$FAKE_LOG/args"
+if [ -n "${FAKE_FAIL:-}" ]; then echo "Prompt is too long"; echo "fake error on stderr" >&2; exit 1; fi
 env >"$FAKE_LOG/env"
 cat >"$FAKE_LOG/prompt"
 if [ -n "${FAKE_NOTES:-}" ]; then cat "$FAKE_NOTES"; else printf '## Added\n\n- something\n'; fi
@@ -644,6 +654,23 @@ unset FAKE_OLD_HELP
 expect "write-notes: a Claude Code without the flags" 0
 if [ ! -e "$FAKE_LOG/args" ]; then ok; else ng "write-notes: claude -p is not run without the flags"; fi
 if grep -q -- '--tools' "$WORK/gh-summary"; then ok; else ng "write-notes: the summary names the missing flags"; fi
+# a Claude Code that fails: the notes are the list, and the reason, with
+# what claude wrote to stdout and stderr, goes to the job log (stderr) as
+# well as to the summary
+rm -f "$WORK/gh-summary"
+FAKE_FAIL=1
+export FAKE_FAIL
+run write_notes
+unset FAKE_FAIL
+expect "write-notes: a Claude Code that fails" 0
+if cmp -s "$WORK/written.md" "$HERE/testdata/notes-first.md"; then ok; else ng "write-notes: the list when Claude Code fails"; fi
+if grep -q 'Prompt is too long' "$WORK/err"; then ok; else ng "write-notes: the log has what claude wrote to stdout"; fi
+if grep -q 'fake error on stderr' "$WORK/err"; then ok; else ng "write-notes: the log has what claude wrote to stderr"; fi
+if grep -q 'Prompt is too long' "$WORK/gh-summary"; then ok; else ng "write-notes: the summary has what claude wrote to stdout"; fi
+# a check that fails: the reason goes to the log too
+rm -f "$WORK/gh-summary"
+run write_notes
+if grep -q 'did not pass check-notes.sh' "$WORK/err"; then ok; else ng "write-notes: the log says the check failed"; fi
 
 # ---------------------------------------------------------------- fetch-wasmtime.sh
 # (docs/adr/0044-release-workflow-hardening.md): the cache is used only

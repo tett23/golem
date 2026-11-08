@@ -40,8 +40,31 @@ else
 fi
 
 printf '## Added\n\n## Changed\n\n## Removed\n\n## Fixed\n\n## Unsorted\n\n'
-git log --first-parent --merges --reverse --format='%s' "$RANGE" |
-  sed -n "s|^Merge pull request #\([0-9][0-9]*\): \(.*\)\$|- \2 ([#\1]($REPO_URL/pull/\1))|p"
+# Two shapes of merge commits: GitHub writes "Merge pull request #N from
+# OWNER/BRANCH" with the title of the pull request as the first line of
+# the body; a merge by hand writes "Merge pull request #N: TITLE". Each
+# commit starts with a line holding the record separator (\036), then the
+# subject, then the body. C locale: macOS awk stops at bytes that are not
+# UTF-8.
+git log --first-parent --merges --reverse --format='%x1e%n%s%n%b' "$RANGE" |
+  LC_ALL=C awk -v url="$REPO_URL" '
+    function flush() {
+      if (n != "") printf "- %s ([#%s](%s/pull/%s))\n", (title != "" ? title : subject), n, url, n
+      n = ""
+    }
+    $0 == "\036" { flush(); line = 0; next }
+    { line++ }
+    line == 1 {
+      subject = $0; title = ""
+      if (match($0, /^Merge pull request #[0-9]+ from [^ ]+$/)) {
+        n = substr($0, 21); sub(/ .*/, "", n); subject = substr($0, index($0, " from ") + 6)
+      } else if (match($0, /^Merge pull request #[0-9]+: /)) {
+        n = substr($0, 21, RLENGTH - 22); title = substr($0, RLENGTH + 1)
+      }
+      next
+    }
+    line > 1 && n != "" && title == "" && $0 != "" { title = $0 }
+    END { flush() }'
 
 printf '\n## ADRs\n\n'
 git diff --name-only --diff-filter=A "$BASE" "$TAG" |
