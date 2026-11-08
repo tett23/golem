@@ -17,7 +17,6 @@
 # GOLEM chooses the golem to run. A book that does not build fails the
 # script with exit code 1 and the output of golem on stderr.
 set -eu
-exit 1 # TEMPORARY: the check of docs/adr/0244 that verapdf fails without conformance-pdfs
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 FIX=$ROOT/modules/golem-driver/test/fixtures
