@@ -11,7 +11,8 @@ CI では走らせない。
 一つの段と次の段の境目だけを扱う。
 
 - 入力は、格子の行の数 `cap`（3 から 6）の段と、その段で既に使った行の数 `used`（0 なら空の段）と、流れの順に並んだ要素である。
-- 要素は、段落の行（`Line`。同じ段落の行は続けて並ぶ）、一行の見出し（`Heading`）、高々二つの図版（`Figure`、1 行から `cap + 1` 行）、高々一つの一行の行アキ（`Blank`）である。図版を二つと行アキは、[golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) で足した。
+- 要素は、段落の行（`Line`。同じ段落の行は続けて並ぶ）、一行の見出し（`Heading`）、高々二つの図版（`Figure`、1 行から `cap + 1` 行）、高々一つの一行の行アキ（`Blank`）、高々一つの一行の空き（`Space`）、高々一つの `@need-lines 2`（`Need`）である。図版を二つと行アキは [golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) で、空きと `@need-lines` は [golem-layout ADR 0027](../adr/0027-need-lines-judged-again-after-spaces.md) で足した。
+- 空きは本文の一種として置き、`brk` の前ならこの段の一行を取る。
 - 改丁の見出し（`Recto`）は、見出しの一種である。[docs/adr/0206](../../adr/0206-pagination-points-the-invariants-did-not-decide.md) の決めたことを調べる述語だけが、ほかの見出しと区別する。
 - 配置（`Placement`）は、本文の要素を `brk` の前までこの段に、残りを次の段に置き、それぞれの図版をこの段に置く（`kept`）か次の段に送り、行アキをこの段に置く（`placed`）か置かない。
 - 入力ごとに、すべての配置を原子として持つ（事実 `allPlacements`）。そのため「どの配置も規則を満たさない」を一階の論理で書ける。
@@ -56,8 +57,19 @@ CI では走らせない。
 | `blankWithNext25` | `blankWithNext` の次のブロックを、待つ図版も含めた最初の要素にしたもの（この ADR の前の読み方） |
 | `base26` | `fits`、`order`、`figures`、`figureOrder`、`noSendFromEmpty` を合わせたもの |
 
-`noSendFromEmpty` は、行アキを段の最初の要素に数えない。
-行アキはそれだけでは何も置かないからである。
+`noSendFromEmpty` は、行アキと `@need-lines` を段の最初の要素に数えない。
+どちらもそれだけでは何も置かないからである。
+[docs/adr/0204](../../adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)、[docs/adr/0206](../../adr/0206-pagination-points-the-invariants-did-not-decide.md)、[golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) のコマンドは、空きと `@need-lines` のない入力だけを調べる。
+
+[golem-layout ADR 0027](../adr/0027-need-lines-judged-again-after-spaces.md) の規則を調べるために、次の述語を足した。
+
+| 述語 | 規則 |
+| --- | --- |
+| `needNext` | `@need-lines` の次のブロック：空き、行アキ、待つ図版を飛ばした最初の要素 |
+| `needMet` | `@need-lines` の次のブロックをこの段に置き、段の最初でなければ、ブロックの前の残りは 2 行以上ある。残りは空きと行アキを数えない（P1） |
+| `spaceKeeps` | `@need-lines` が書いた位置で守られ、次のブロックの最初の部分が空きと行アキの後に入れば、ブロックをこの段に置く（P7） |
+| `figures27` | `figures` に、`@need-lines` の次のブロックである図版は、`@need-lines` が守られなければ次の段に送ることを足したもの |
+| `base27` | `fits`、`order`、`figures27`、`figureOrder`、`noSendFromEmpty`、`blankWithNext` を合わせたもの |
 
 ## 走らせ方
 
@@ -182,4 +194,39 @@ docs/roadmap.md の「未決事項」に足す組はない。
 最初に走らせたとき、`waitingBlankNone` は、段の行の数が 3 で 1 行を使った段に、行アキと 2 行の図版が来る入力を返した。
 図版の規則が、置いた行アキだけを数え、置くかどうかを図版で決める行アキを数えていなかったためである。
 改ページの実装（`placeBlank`）は、行アキと次の最初の部分の和で量るので、モデルの誤りとして `figures` を直した。
+
+### [golem-layout ADR 0027](../adr/0027-need-lines-judged-again-after-spaces.md) のコマンド
+
+2026-11-08 に、スコープ 2 から 3 まで（要素は 3 個まで、整数は 5 ビット）で走らせた結果である。
+`@need-lines`、空き、次のブロックの 3 個で、この ADR の形を作れる。
+`needSpaceNone` のスコープ 3 に SAT4J が 33 分かかったので、スコープ 4 は走らせていない。
+「なし」は、スコープ 3 までに解がなかったことを示す。
+
+| コマンド | 調べること | 最も小さい例のスコープ |
+| --- | --- | --- |
+| `needSpaceSome` | `@need-lines`、空き、次のブロックがあり、`base27`、`needMet`、`spaceKeeps` を満たし、空きと次のブロックをこの段に置く配置がある入力があるか | 3 |
+| `needFigure` | `needMet` と、`figures` と `figureOrder` の組 | 2 |
+| `needGreedy` | `needMet` と `greedy` の組 | 2 |
+| `needSpaceNone` | `base27`、`needMet`、`spaceKeeps` を満たす配置がない入力があるか | なし |
+| `needSpaceAllButGreedy` | `needSpaceNone` に `orphan`、`widow`、`keepHeading21` を足したもの | NEEDSPACEALLBUTGREEDY |
+
+`needSpaceSome` の最も小さい例は、段の行の数が 3 で 1 行を使った段に、`@need-lines 2`、空き、見出しが来るものである。
+`@need-lines` は空きの前で守られ、見出しは空きの後に入る。
+モデルは空ではなく、この ADR の形を入力に持つ。
+
+両立しない組は二つ出た。
+
+- `needFigure`：段の行の数が 5 で 4 行を使った段に、`@need-lines 2` と 1 行の図版が来る。図版は残りの 1 行に入るが、`@need-lines` は 2 行を求める。
+- `needGreedy`：段の行の数が 3 で 2 行を使った段に、`@need-lines 2` と見出しが来る。貪欲法は見出しを残りの 1 行に置くが、`@need-lines` は 2 行を求める。
+
+どちらも、ブロックを入る位置に置く規則と `@need-lines` の組であり、`@need-lines` が段を改めるという指定そのものである。
+仕様書は、`@need-lines` を次のブロックを置く直前に判定すると決めているので、`@need-lines` を優先する。
+`figures27` は、この順をモデルに書いたものである。
+`@need-lines`、空きを段の先頭で捨てる規則、送った図版の規則を合わせても、規則を満たす配置のない入力はない（`needSpaceNone`、`needSpaceAllButGreedy`）。
+[docs/roadmap.md](../../roadmap.md) の「未決事項」に足す組はない。
+
+最初に走らせたとき、`needSpaceNone` は二つの入力を返した。
+一つは、空の段に `@need-lines` だけが来る入力で、`noSendFromEmpty` が `@need-lines` を段の最初の要素に数えていたためである。
+もう一つは、段の行の数が 5 で 1 行を使った段に、`@need-lines 2`、行アキ、4 行の図版が来る入力で、`spaceKeeps` が、次のブロックとともに量る行アキを数えていなかったためである。
+どちらもモデルの誤りとして直した。
 
