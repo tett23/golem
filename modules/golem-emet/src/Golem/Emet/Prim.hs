@@ -28,7 +28,9 @@ data PrimValue
   | PC !Text ![PrimValue]
   | {- | a list and its length, which is found without converting its
     elements: a list shared many times inside another is converted once
-    for each time, and its length is wanted before (docs/adr/0223)
+    for each time, and its length is wanted before (docs/adr/0223); without
+    the length, counting List.concat of a shared list exhausts the heap
+    (docs/adr/0236)
     -}
     PL Integer [PrimValue]
   | PT ![PrimValue]

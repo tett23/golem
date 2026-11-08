@@ -1,6 +1,6 @@
 # ADR 0223: Emet の組み込みの関数と `++` が作る値の長さを、作る前に任意精度で求めて手数の残りと比べる
 
-ステータス: 採択
+ステータス: 採択→リストの長さ、割り当ての上限、wasm32、S5 の上限は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
 
 ## 文脈
 

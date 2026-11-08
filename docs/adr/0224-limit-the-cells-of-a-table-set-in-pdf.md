@@ -1,6 +1,6 @@
 # ADR 0224: PDF に組む表のセルの数に上限を置き、セルを組む前に調べる
 
-ステータス: 採択
+ステータス: 採択→割り当ての測り方、作れない入力、数える場所は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
 
 ## 文脈
 
