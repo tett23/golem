@@ -4,7 +4,8 @@
 規則どうしが両立しない入力を探すための道具であり、Golem の実装を確かめるものではない。
 実装は golem-layout のテスト（`modules/golem-layout/test/PaginateInvariantsSpec.hs`）が確かめる。
 CI の `.github/workflows/models.yml` が、モデルを変えたプルリクエストと `main` への push と週に一度、`scripts/models/check.sh` で `expected.txt` に挙げたコマンドを走らせ、解の有無を `expected.txt` と比べる（[docs/adr/0235](../../adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)）。
-改ページの規則を変える ADR では、モデルを直して走らせ直し、この文書の結果と `expected.txt` を書き直す（[CONTRIBUTING.md](../../../CONTRIBUTING.md) の「規則の Alloy のモデル」）。
+`expected.txt` には重すぎるコマンドは `nightly.txt` に挙げ、`.github/workflows/models-nightly.yml` が毎晩走らせる（[docs/adr/0242](../../adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
+改ページの規則を変える ADR では、モデルを直して走らせ直し、この文書の結果と `expected.txt` と `nightly.txt` を書き直す（[CONTRIBUTING.md](../../../CONTRIBUTING.md) の「規則の Alloy のモデル」）。
 
 ## モデル
 
@@ -109,10 +110,15 @@ for c in $(grep -E '^run [A-Za-z0-9]+' pagination.als | awk '{print $2}'); do
 done
 ```
 
-## CI の検査と expected.txt
+## CI の検査と expected.txt と nightly.txt
 
-`expected.txt` は、一行に一つのコマンドの名前と、解の有無（`found` か `none`）を書く。
+`expected.txt` と `nightly.txt` は、一行に一つのコマンドの名前と、解の有無（`found` か `none`）を書く。
+`nightly.txt` は、三つめの欄に走らせるスコープを書ける。
+書いたコマンドは、モデルの写しの `for <数> but` の数をすべてそのスコープに替えて走らせる。
 `#` で始まる行は注である。
+モデルのどのコマンドも、二つの一覧のちょうど一方にある（`scripts/ci/test.sh` が確かめる）。
+
+### expected.txt
 値は、下の「結果」の表の、スコープ 5（モデルに書いたスコープ）での解の有無から作る。
 表の最も小さい例のスコープが数のコマンドは `found`、「なし」のコマンドは `none` である。
 最も小さい例を探し直すこと（スコープを 2 から上げること）は、検査の範囲に入れない。
@@ -120,11 +126,19 @@ done
 `scripts/models/check.sh` は、コマンドごとに Alloy を一つのプロセスで走らせ、ランナーのコアの数まで並べる。
 Alloy は、GitHub の AlloyTools/org.alloytools.alloy の 6.2.0 のリリースの `org.alloytools.alloy.dist.jar` を、スクリプトに書いた SHA-256 で検査してから使う。
 `expected.txt` にないコマンドは走らせず、その名前を標準出力に書く。
-
-[golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) と [golem-layout ADR 0027](../adr/0027-need-lines-judged-again-after-spaces.md) で足した 11 のコマンドは、`expected.txt` に入れていない。
-結果はスコープ 4 か 3 までしかなく、スコープ 5 での解の有無がわからないからである。
-解のないコマンドはスコープ 4 で 2 分から 20 分、`needSpaceNone` はスコープ 3 で 33 分かかったので、スコープ 5 では検査の上限の 30 分に収まらない見込みが高い。
 2026-11-08 に、手元の macOS（Apple Silicon）で、`expected.txt` の 23 のコマンドを並べて走らせると、139 秒で終わり、すべて `expected.txt` のとおりだった。
+
+### nightly.txt
+
+[golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)、[golem-layout ADR 0027](../adr/0027-need-lines-judged-again-after-spaces.md)、[golem-layout ADR 0035](../adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md) で足した 14 のコマンドは、`models.yml` の 30 分に収まらないので、`nightly.txt` に挙げる。
+`models-nightly.yml` は、一つのジョブに一つのコマンドを走らせ（`check.sh -f nightly.txt <コマンド>`）、一つのコマンドの上限を 5.5 時間とする。
+時間切れは失敗にせず、注釈とジョブの要約に書く。
+結果が `nightly.txt` と違うときと、Alloy が失敗したときだけ、失敗にする。
+
+値は、2026-11-09 にランナー（`ubuntu-24.04`、Java 17、SAT4J）で走らせた結果である。
+`needMoreNone` は、スコープ 5 がランナーで 5 時間 55 分（ジョブの上限）を過ぎても終わらなかったので、スコープ 4 で走らせる。
+ほかの 13 のコマンドは、モデルのスコープ（5）で走らせる。
+時間は [docs/ci-timings/2026-11-09-models-nightly.md](../../ci-timings/2026-11-09-models-nightly.md) にある。
 
 ## 結果
 
@@ -194,6 +208,9 @@ docs/roadmap.md の「未決事項」に足す組はない。
 スコープ 4 で、解のないコマンドに SAT4J が 2 分から 20 分かかったので、スコープ 5 は走らせていない。
 `blankFigureOrder` のスコープ 4 は 1 時間を超えても終わらなかったので打ち切り、スコープ 3 までの結果を書いた。
 「なし」は、スコープ 4 までに解がなかったことを示す。
+2026-11-09 に、6 のコマンドをスコープ 5 でも走らせた（[docs/adr/0242](../../adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
+解の有無は表と同じで、「なし」のコマンドはスコープ 5 までに解がない。
+`blankFigureOrder` も、スコープ 5 はランナーで 648 秒で終わり、解はない。
 
 | コマンド | 調べること | 最も小さい例のスコープ |
 | --- | --- | --- |
@@ -226,6 +243,10 @@ docs/roadmap.md の「未決事項」に足す組はない。
 `@need-lines`、空き、次のブロックの 3 個で、この ADR の形を作れる。
 `needSpaceNone` のスコープ 3 に SAT4J が 33 分かかったので、スコープ 4 は走らせていない。
 「なし」は、スコープ 3 までに解がなかったことを示す。
+2026-11-09 に、5 のコマンドをスコープ 5 でも走らせ、`needSpaceAllButGreedy` をスコープ 4 でも走らせた（[docs/adr/0242](../../adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
+`needSpaceAllButGreedy` には、スコープ 4 で解があった（下）。
+ほかの 4 のコマンドの解の有無は、スコープ 5 でも表と同じである。
+`needSpaceNone` のスコープ 5 は、ランナーで 3 時間 39 分かかり、解はない。
 
 | コマンド | 調べること | 最も小さい例のスコープ |
 | --- | --- | --- |
@@ -233,7 +254,7 @@ docs/roadmap.md の「未決事項」に足す組はない。
 | `needFigure` | `needMet` と、`figures` と `figureOrder` の組 | 2 |
 | `needGreedy` | `needMet` と `greedy` の組 | 2 |
 | `needSpaceNone` | `base27`、`needMet`、`spaceKeeps` を満たす配置がない入力があるか | なし |
-| `needSpaceAllButGreedy` | `needSpaceNone` に `orphan`、`widow`、`keepHeading21` を足したもの | なし |
+| `needSpaceAllButGreedy` | `needSpaceNone` に `orphan`、`widow`、`keepHeading21` を足したもの | 4 |
 
 `needSpaceSome` の最も小さい例は、段の行の数が 3 で 1 行を使った段に、`@need-lines 2`、空き、見出しが来るものである。
 `@need-lines` は空きの前で守られ、見出しは空きの後に入る。
@@ -247,8 +268,17 @@ docs/roadmap.md の「未決事項」に足す組はない。
 どちらも、ブロックを入る位置に置く規則と `@need-lines` の組であり、`@need-lines` が段を改めるという指定そのものである。
 仕様書は、`@need-lines` を次のブロックを置く直前に判定すると決めているので、`@need-lines` を優先する。
 `figures27` は、この順をモデルに書いたものである。
-`@need-lines`、空きを段の先頭で捨てる規則、送った図版の規則を合わせても、規則を満たす配置のない入力はない（`needSpaceNone`、`needSpaceAllButGreedy`）。
-[docs/roadmap.md](../../roadmap.md) の「未決事項」に足す組はない。
+`@need-lines`、空きを段の先頭で捨てる規則、送った図版の規則を合わせても、規則を満たす配置のない入力はない（`needSpaceNone`）。
+
+孤立行、寡婦行、見出しの規則を足すと、規則を満たす配置のない入力がある（`needSpaceAllButGreedy`、スコープ 4）。
+最も小さい例は、段の行の数が 4 で 2 行を使った段に、`@need-lines 2`、見出し、改丁の見出し、改丁の見出しが来るものである。
+空きはない。
+
+- `@need-lines` は書いた位置で守られ（残りは 2 行）、次のブロック（一つめの見出し）の最初の部分が入るので、`spaceKeeps`（P7）は一つめの見出しをこの段に置くことを求める。モデルの `firstPart` は、見出しの最初の部分を見出しの 1 行とする。
+- 一つめの見出しは段の最初ではないので、`keepHeading21` は続く二つの見出しも同じ段に求める。3 行は残りの 2 行に入らない。
+- 三つとも次の段に送れば、P7 を破る。
+
+`firstPart` が、`keepHeading21` が一緒に置くことを求める見出しの並びを数えないことが、モデルの書き方の誤りか、P7 と見出しの規則が両立しない組かは、決まっていない（[docs/roadmap.md](../../roadmap.md) の「未決事項」）。
 
 最初に走らせたとき、`needSpaceNone` は二つの入力を返した。
 一つは、空の段に `@need-lines` だけが来る入力で、`noSendFromEmpty` が `@need-lines` を段の最初の要素に数えていたためである。
@@ -263,6 +293,9 @@ docs/roadmap.md の「未決事項」に足す組はない。
 そのためスコープ 4 まで走らせた。
 `needMoreNone` のスコープ 3 は約 2 分、スコープ 4 は約 14 分かかった。
 「なし」は、スコープ 4 までに解がなかったことを示す。
+2026-11-09 に、`needMoreSome` と `needMore27` をスコープ 5 でも走らせ、解があった（[docs/adr/0242](../../adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
+`needMoreNone` のスコープ 5 は、ランナーで 5 時間 55 分（ジョブの上限）を過ぎても終わらなかった。
+毎晩の検査は、`needMoreNone` をスコープ 4 で走らせる。
 
 | コマンド | 調べること | 最も小さい例のスコープ |
 | --- | --- | --- |

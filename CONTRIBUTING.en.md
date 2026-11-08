@@ -94,10 +94,14 @@ A proposal can only be revised until it is committed.
 ### Alloy models of the rules
 
 An ADR that adds or changes rules covered by an Alloy model (`docs/<module>/models/`) fixes the model, runs it again, and writes the incompatible pairs of rules and their smallest examples in the README of the model and in the test design of the ADR.
-When it changes whether a command of the model has a solution, it also fixes `expected.txt` in the same directory.
+When it changes whether a command of the model has a solution, it also fixes `expected.txt` or `nightly.txt` in the same directory (the one with the command).
+A new command goes in `expected.txt` if it fits the 30 minutes of `models.yml` on the runner, and in `nightly.txt` if it does not.
+Every command is in exactly one of the two lists (`scripts/ci/test.sh` checks it).
 The only model now is that of pagination (`docs/golem-layout/models/pagination.als`, with its results in `docs/golem-layout/models/README.md`).
 Where there is no model, only an ADR whose rule overlaps at the edges with three or more other rules writes a new model ([docs/adr/0204](./docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md), 5 of [docs/adr/0208](./docs/adr/0208-widen-lightweight-formal-methods.md)).
 `.github/workflows/models.yml` runs the commands of the models with `scripts/models/check.sh` and compares whether each has a solution with `expected.txt` ([docs/adr/0235](./docs/adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)).
+`.github/workflows/models-nightly.yml` runs the commands of `nightly.txt` every night ([docs/adr/0242](./docs/adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)).
+A change of a model that changes a result shows the night after the merge, so run the model locally before rewriting the lists.
 
 ## Tests and implementation
 
@@ -380,6 +384,7 @@ A run that exceeds 5 minutes because the cache was evicted is not covered by thi
 `.github/workflows/models.yml` is another exception to this policy.
 Running the Alloy models takes far longer than 5 minutes, so the workflow runs only on pull requests and pushes to `main` that change a model (`docs/*/models/`) and once a week, with a limit of 30 minutes.
 A pull request that changes a model waits for it ([docs/adr/0235](./docs/adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)).
+`.github/workflows/models-nightly.yml` runs at night on `main` only and keeps no pull request waiting, so the policy does not concern it; the limit of one command is five and a half hours ([docs/adr/0242](./docs/adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)).
 
 ## License
 

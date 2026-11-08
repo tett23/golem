@@ -1,0 +1,83 @@
+name: Models nightly
+
+# The commands of the Alloy models of docs/*/models/ listed in nightly.txt,
+# too long for models.yml (docs/adr/0242): whether each has a solution at
+# the scope of nightly.txt or of the model, against nightly.txt. Once a day
+# on main, on the days main has changed since the last successful run of
+# this workflow, and whenever it is started by hand; never on pull
+# requests. One job for each command, all at a time; a command is stopped
+# after five and a half hours, and a time-out is a warning, not a failure:
+# only a wrong result or a run of Alloy that fails is a failure
+# (docs/adr/0242, its section 4).
+on:
+  schedule:
+    - cron: "53 19 * * *"
+  workflow_dispatch:
+
+# It reads the repository, and the runs of this workflow for
+# scripts/ci/race-needed.sh (gh run list); it writes nothing.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: models-nightly
+  cancel-in-progress: false
+
+jobs:
+  # whether main has changed, and the commands of nightly.txt as a JSON array
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      run: ${{ steps.needed.outputs.run }}
+      commands: ${{ steps.commands.outputs.commands }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: needed
+        name: Whether main has changed since the last successful run (docs/adr/0075)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA" models-nightly.yml); fi
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+      - id: commands
+        name: The commands of nightly.txt
+        run: |
+          COMMANDS=$(cat docs/*/models/nightly.txt | awk '$1 !~ /^#/ && NF { print $1 }' | jq -R . | jq -sc .)
+          echo "commands=$COMMANDS" >> "$GITHUB_OUTPUT"
+
+  nightly:
+    needs: prepare
+    if: needs.prepare.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    # the stop when the time-out of check.sh (TIMEOUT, five and a half
+    # hours) does not work; the longest command, needSpaceNone, took
+    # 13,138 s (docs/ci-timings/2026-11-09-models-nightly.md)
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      matrix:
+        command: ${{ fromJSON(needs.prepare.outputs.commands) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # the jar of Alloy 6.2.0, checked by its SHA-256 in check.sh, under
+      # the Java 17 of the runner; exit code 3 is a time-out alone
+      - name: The command gives the result of nightly.txt (docs/adr/0242)
+        env:
+          COMMAND: ${{ matrix.command }}
+        run: |
+          CODE=0
+          TIMEOUT=19800 JAVA="$JAVA_HOME_17_X64/bin/java" sh scripts/models/check.sh -f nightly.txt "$COMMAND" || CODE=$?
+          if [ "$CODE" -eq 3 ]; then
+            echo "::warning title=Alloy time-out::$COMMAND did not end within 19800 s; its result is not decided (docs/adr/0242)"
+            echo "- $COMMAND: time-out after 19800 s, not decided" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          exit "$CODE"

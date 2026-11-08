@@ -102,10 +102,14 @@ ADR はレビューを受けるまでコミットしない。
 ### 規則の Alloy のモデル
 
 規則を足すか変える ADR のうち、その範囲に Alloy のモデル（`docs/<モジュール>/models/`）があるものは、モデルを直して走らせ直し、両立しない規則の組と最も小さい例をモデルの README と ADR の「テスト設計」に書く。
-モデルのコマンドの解の有無を変えたときは、同じディレクトリの `expected.txt` も直す。
+モデルのコマンドの解の有無を変えたときは、同じディレクトリの `expected.txt` か `nightly.txt`（コマンドのある方）も直す。
+コマンドを足すときは、ランナーで 30 分の `models.yml` に収まるものを `expected.txt` に、収まらないものを `nightly.txt` に挙げる。
+どのコマンドも、二つの一覧のちょうど一方にある（`scripts/ci/test.sh` が確かめる）。
 今モデルがあるのは改ページ（`docs/golem-layout/models/pagination.als`、結果は `docs/golem-layout/models/README.md`）だけである。
 モデルのない範囲では、規則が三つ以上のほかの規則と端で重なる ADR だけが、新しくモデルを書く（[docs/adr/0204](./docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)、[docs/adr/0208](./docs/adr/0208-widen-lightweight-formal-methods.md) の 5）。
 `.github/workflows/models.yml` が、`scripts/models/check.sh` でモデルのコマンドを走らせ、解の有無を `expected.txt` と比べる（[docs/adr/0235](./docs/adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)）。
+`nightly.txt` のコマンドは、`.github/workflows/models-nightly.yml` が毎晩走らせる（[docs/adr/0242](./docs/adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
+結果を変えるモデルの変更は、マージした次の夜にわかるので、手元で走らせてから一覧を書き直す。
 
 ## テストと実装
 
@@ -401,6 +405,8 @@ CI を待つ時間は、変更を一つ入れるたびにかかるので、CI �
 `.github/workflows/models.yml` も、この方針の例外である。
 Alloy のモデルを走らせるには 5 分を大きく超える時間がかかるので、モデル（`docs/*/models/`）を変えたプルリクエストと `main` への push と週に一度だけ走り、上限を 30 分とする。
 モデルを変えるプルリクエストは、その時間を待つ（[docs/adr/0235](./docs/adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)）。
+`.github/workflows/models-nightly.yml` は、夜間に `main` でだけ走り、プルリクエストを待たせないので、この方針に関わらない。
+一つのコマンドの上限は 5.5 時間である（[docs/adr/0242](./docs/adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
 
 CI の `build` ジョブは、EPUB を検査する epubcheck を apt から入れない。
 配布元（GitHub の w3c/epubcheck）の release の zip を取り、`ci.yml` に書いた SHA-256 で検査してから、ランナーにもとからある Java 17（`JAVA_HOME_17_X64`）で動かす。
