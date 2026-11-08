@@ -202,8 +202,9 @@ groupT groups = let Tiers xss = listsOf (Tiers [parts]) in Tiers (map (concatMap
 {- | The advance of a character in em (docs/adr/0209): Latin text a
 quarter em for i, l, t, f, the full stop, the comma, the hyphen and the
 apostrophe, three quarters for m and w, a half for the rest, the
-characters of both scripts in a Latin word among them; the space a
-quarter em; the Japanese characters an em.
+characters of both scripts in a Latin word among them, as one
+character of a word alone ('ceWordCharAdvance', docs/adr/0222); the
+space a quarter em; the Japanese characters an em.
 -}
 advance :: Bool -> Char -> Rational
 advance latin c
@@ -223,7 +224,8 @@ composeEnv vertical s =
       ceProtrusion = sProtrusion s,
       cePatterns = patternsFor,
       ceAdvance = \lk c -> advance (latinIn lk c) c,
-      ceWordAdvance = \_ t -> sum (map (advance True) (T.unpack t))
+      ceWordAdvance = \_ t -> sum (map (advance True) (T.unpack t)),
+      ceWordCharAdvance = \_ _ -> advance True
     }
   where
     latinIn :: Look -> Char -> Bool
