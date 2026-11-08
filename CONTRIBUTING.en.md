@@ -103,6 +103,13 @@ Where there is no model, only an ADR whose rule overlaps at the edges with three
 
 Write the tests from the ADR's test design first, confirm that they fail, and then implement.
 For changes that cannot be tested automatically, such as configuration values, the test design says how to check them, and they are checked by running them after implementation.
+A check that the test design of an accepted ADR states as a time, such as "within 10 seconds" or "within 5 seconds", is read as meant to detect a computation that does not stop: give the test a time-out of 30 seconds, and assert that the limit refused the input ([docs/adr/0073](./docs/adr/0073-time-bounds-in-tests.md)).
+This is the rule for the tests outside golem-pdf, golem-svg and golem-driver.
+The tests of golem-pdf and golem-svg bound their time with `withinTimeLimits hangLimits` of `Golem.TestSupport.TimeLimit` in `modules/golem-test-support`, which stops them at 60 seconds of CPU time of the process or 300 seconds of real time.
+A test with a time bound takes at most 10 seconds of CPU time when run alone ([docs/adr/0091](./docs/adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)).
+The tests of golem-driver-test bound their time with `hangTimeout` of `modules/golem-driver/test/Support.hs` (300 seconds of real time), and do not write the value themselves.
+The tests run at the same time on the threaded RTS, so they are not measured by CPU time ([docs/adr/0237](./docs/adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)).
+If a module other than `Support.hs` has `mkTimeout`, `scripts/ci/test.sh` fails.
 
 Write a test that uses an external tool (such as `cddl`, `qpdf` or `openssl`) with `needsTool` or `optionalTool` of `Golem.TestSupport.ExternalTool` in `modules/golem-test-support` ([docs/adr/0028](./docs/adr/0028-shared-test-support-package.md)).
 Where the tool is missing, the test is reported as `SKIP`, and with `GOLEM_REQUIRE_EXTERNAL_TOOLS=1` it fails.
