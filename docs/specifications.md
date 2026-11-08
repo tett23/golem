@@ -2042,7 +2042,7 @@ HTML と EPUB では、組み込みの文字スタイルのうち `strong`、`bo
 style.toml の前後のアキの規則のうち、段落スタイル S を含むもの（S の前のアキ、S の後のアキ、S を含む組、S の行アキの後の規則、S の同じスタイルの段落のあいだの規則）は、S を `@style-def` で改めたファイルのページに当てない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md)）。
 S を改めたファイルの番号が n₁、n₂、… なら、その規則のセレクターの前に `body:not(.file-n₁):not(.file-n₂)…` を付ける。
 そのページでは、ファイルの規則が、そのファイルの定義と style.toml の定義を合わせたスタイルで空きを書き直す。
-`body` の前のアキの規則 `p`、`body` の同じスタイルの段落のあいだの規則 `p + p`、`body` の行アキの後の規則 `div.blank-line + p` には付けない。
+`body` の前のアキの規則 `p`、`body` の同じスタイルの段落のあいだの規則 `p + p`、`body` の行アキの後の規則 `div.blank-line + p` には付けない（[docs/adr/0236](adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)）。
 付けると詳細度が `p.ps-<名前>` の規則より高くなり、ほかのページでほかのスタイルの前のアキに勝つからである。
 ファイルのページの `body` の段落には、ファイルの規則（`body.file-<n> p:not([class])`）がこの三つに勝つ。
 段落スタイルを改めたファイルのない本では、`style.css` はこの規則の前と同じである。

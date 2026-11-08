@@ -1,6 +1,6 @@
 # ADR 0026: 待つ図版は、前の `@need-lines` と行アキの「次のブロック」にならない
 
-ステータス: 採択
+ステータス: 採択→Alloy のスコープと行アキを捨てる段は [ADR 0236](../../adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
 
 ## 文脈
 
