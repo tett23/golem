@@ -56,6 +56,7 @@ paginateTests =
       testGroup "the figures that wait take no need-lines and no blank lines before them (golem-layout ADR 0026)" waitingFigureTests,
       testGroup "need-lines is judged again in the column a block goes on to after spaces (golem-layout ADR 0027)" spaceAfterNeedTests,
       testGroup "the figures that wait are read from the placement (golem-layout ADR 0033)" waitingReadTests,
+      testGroup "a larger need-lines after one judged is judged again (golem-layout ADR 0035)" largerNeedTests,
       testGroup "invariants" propertyTests
     ]
 
@@ -1239,6 +1240,55 @@ waitingReadTests =
         waitingFigures (enumFlows (inElements input)) (paginateInput input) @?= []
         brokenIn [P3, P4, P5] input @?= []
   ]
+
+{- | golem-layout ADR 0035: need-lines 2 judged before a space, then k
+spaces, a second need-lines of m lines, a space and a block, in one
+column of 6 grid lines. r grid lines are left where the second is judged,
+the spaces before it placed. A larger second one is judged again (N1); a
+second one no larger changes nothing (N2).
+-}
+largerNeedTests :: [TestTree]
+largerNeedTests =
+  [ testCase "N1: need-lines 4 after need-lines 2 judged, one grid line left after the space, sends the paragraph to the next column" $ do
+      let flows = [FParagraph (lines' 0 3), FNeedLines mk 2, FSpace 1, FNeedLines mk2 4, FSpace 1, FParagraph (lines' 3 1)]
+          ps = paginate 1 6 flows
+      placed ps @?= [(1, 0, map SLine [0 .. 2]), (2, 0, [SLine 3])]
+      unmets ps @?= []
+      brokenOf [P1, P2] flows ps @?= [],
+    testGroup "the boundary inputs" (map boundary cases)
+  ]
+  where
+    c = 6
+    blocks = [("a paragraph", FParagraph (lines' 100 1)), ("a figure", FFigure 1000 1 [] []), ("a table", FTable 50 0 [] [lines' 200 1])]
+    cases =
+      [ (m, k, r, name, block)
+      | m <- [1, 2, 3, c, c + 1],
+        k <- [0, 1, 2],
+        r <- feasible m k,
+        (name, block) <- blocks
+      ]
+    -- the lines left where the second is judged: m and one fewer, those the paragraph before can leave with need-lines 2 met before the spaces
+    feasible m k = case [r | r <- [m, m - 1], let p = c - k - r, p >= 1, c - p >= 2] of
+      [] -> [c - k - 1]
+      rs -> rs
+    flowsOf m k r block = [FParagraph (lines' 0 (c - k - r)), FNeedLines mk 2] <> replicate k (FSpace 1) <> [FNeedLines mk2 m, FSpace 1, block]
+    pageOfBlock ps = last [poNumber p | p <- ps, not (null (poSlots p))]
+    boundary (m, k, r, name, block) =
+      testCase (label m k r name) $ do
+        brokenOf [P1, P2] flows ps @?= []
+        placement
+      where
+        flows = flowsOf m k r block
+        ps = paginate 1 c flows
+        placement
+          | m <= 2 = ps @?= paginate 1 c (filter (/= FNeedLines mk2 m) flows)
+          | m > c = do
+              unmets ps @?= [UnmetNeedLines mk2 m]
+              pageOfBlock ps @?= 2
+          | otherwise = pageOfBlock ps @?= (if r >= m then 1 else 2)
+    label m k r name =
+      (if m <= 2 then "N2: " else "N1: ")
+        <> ("need-lines " <> show m <> " after " <> show k <> " spaces, " <> show r <> " grid lines left, before " <> name)
 
 {- | golem-layout ADR 0027: the reproductions of its section 「確かめたこと」
 and the cases of its section 「テスト設計」. Need-lines is judged before

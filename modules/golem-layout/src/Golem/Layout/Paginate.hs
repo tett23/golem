@@ -146,7 +146,8 @@ placeAll env st (f : rest) = case f of
   FNoBreak sp
     | not (sSeen st) || sLastDeferred st -> placeAll env (addUnmet (UnmetNoBreak sp) st) rest
     | otherwise -> placeAll env st {sNoBreak = Just (sp, sPage st, sColumn st, length (sSlots st))} rest
-  FNeedLines sp n -> placeAll env st {sNeed = Just (maybe (sp, n) (\(s0, n0) -> if n > n0 then (sp, n) else (s0, n0)) (sNeed st))} rest
+  -- the larger need-lines is kept; one larger than the need-lines judged is judged again (golem-layout ADR 0035)
+  FNeedLines sp n -> placeAll env (needMore sp n st) rest
   FAdjustLines sp k -> placeAll env (adjustLines env (applyBreaks env st) sp k) rest
   -- blank lines with nothing after them that places anything are the end of the book's (docs/adr ADR 0046)
   FBlank sp n
@@ -169,6 +170,18 @@ placeAll env st (f : rest) = case f of
           FPageFigure {} -> True
           _ -> False
      in placeAll env st1 {sSeen = True, sLastDeferred = deferred} rest
+
+{- | Need-lines after need-lines, with no block between: the larger is
+kept. When it is larger than the one judged before a space, the column
+it was judged in is forgotten, so that the larger is judged before the
+next space or before the block (golem-layout ADR 0035); one no larger is
+met already.
+-}
+needMore :: SrcSpan -> Int -> St -> St
+needMore sp n st = case sNeed st of
+  Just (_, n0)
+    | n <= n0 -> st
+  _ -> st {sNeed = Just (sp, n), sNeedAt = Nothing}
 
 {- | Need-lines before a space is judged there, the space not counted,
 and kept with the column it was judged in: the block after the spaces is
