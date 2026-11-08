@@ -2110,6 +2110,31 @@ printf -- '--- a/A.hs\n+++ b/A.hs\n@@ -1,2 +1 @@\n module X\n-import Y\n' >"$FW/
 run fetch_wasm
 expect "fetch-wasm-packages: a patch that does not apply fails" 1
 
+# ---------------------------------------------------------------- wasm-cache.sh
+# (docs/adr/0219): why the toolchain cache of the wasm job missed, from
+# the hit and whether the toolchain and the project are those of main
+
+wasm_cache() { sh "$HERE/wasm-cache.sh" "$@"; }
+: >"$WORK/in"
+for t in true false; do
+  for p in true false; do
+    run wasm_cache true "$t" "$p"
+    expect "wasm-cache: a hit (toolchain the same: $t, project the same: $p)" 0 "wasm-cache: the toolchain cache was restored"
+  done
+done
+run wasm_cache false false true
+expect "wasm-cache: the toolchain changed" 0 "wasm-cache: missed, as scripts/fetch-ghc-wasm.sh differs from main (the toolchain changed)"
+run wasm_cache false false false
+expect "wasm-cache: the toolchain and the project changed" 0 "wasm-cache: missed, as scripts/fetch-ghc-wasm.sh differs from main (the toolchain changed)"
+run wasm_cache false true false
+expect "wasm-cache: the project changed" 0 "wasm-cache: missed, as the project or its freeze differs from main"
+run wasm_cache false true true
+expect "wasm-cache: evicted" 0 "::warning::wasm-cache: missed, though the toolchain, the project and its freeze are those of main: the cache was evicted (docs/adr/0219)"
+run wasm_cache false
+expect "wasm-cache: too few arguments" 2
+run wasm_cache yes true true
+expect "wasm-cache: not true nor false" 2
+
 # ----------------------------------------------------------------
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]
