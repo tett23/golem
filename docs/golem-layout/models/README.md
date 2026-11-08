@@ -208,7 +208,7 @@ docs/roadmap.md の「未決事項」に足す組はない。
 | `needFigure` | `needMet` と、`figures` と `figureOrder` の組 | 2 |
 | `needGreedy` | `needMet` と `greedy` の組 | 2 |
 | `needSpaceNone` | `base27`、`needMet`、`spaceKeeps` を満たす配置がない入力があるか | なし |
-| `needSpaceAllButGreedy` | `needSpaceNone` に `orphan`、`widow`、`keepHeading21` を足したもの | NEEDSPACEALLBUTGREEDY |
+| `needSpaceAllButGreedy` | `needSpaceNone` に `orphan`、`widow`、`keepHeading21` を足したもの | なし |
 
 `needSpaceSome` の最も小さい例は、段の行の数が 3 で 1 行を使った段に、`@need-lines 2`、空き、見出しが来るものである。
 `@need-lines` は空きの前で守られ、見出しは空きの後に入る。
