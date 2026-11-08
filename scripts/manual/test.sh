@@ -417,6 +417,158 @@ for font in NotoSerifJP-Regular.otf SourceCodePro-Regular.otf NotoSansJP-Regular
   err_has "fetch-fonts: $font is named" "$font"
 done
 
+# ---------------------------------------------------------------- outline-prepare.sh
+
+# prep NAME: the source $WORK/fig.svg through outline-prepare.sh, into $WORK/out
+prep() { sh "$HERE/outline-prepare.sh" <"$WORK/fig.svg"; }
+# figure STYLE TEXT...: a source with the rules STYLE (one per line) and
+# the lines TEXT
+figure() {
+  style=$1
+  shift
+  {
+    echo '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
+    echo '  <!-- 図（説明）。 -->'
+    echo '  <style>'
+    echo '    @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }'
+    printf '%s\n' "$style"
+    echo '  </style>'
+    printf '%s\n' "$@"
+    echo '</svg>'
+  } >"$WORK/fig.svg"
+}
+# text_is NAME CONTENT: the text element of the last run is CONTENT inside
+# the tspan of golem-outline with no attribute but its class
+H='<tspan class="golem-halt">'
+text_is() {
+  want="<text x=\"1\" y=\"2\"><tspan class=\"golem-outline\">$2</tspan></text>"
+  if grep -qF -- "$want" "$WORK/out"; then ok; else ng "$1 (no '$want')"; fi
+}
+out_has() { if grep -qF -- "$2" "$WORK/out"; then ok; else ng "$1 (stdout has no '$2')"; fi; }
+out_lacks() { if grep -qF -- "$2" "$WORK/out"; then ng "$1 (stdout has '$2')"; else ok; fi; }
+
+T='    text { font-family: "Fig Sans"; }'
+# the trimming of adjacent fullwidth punctuation that Chromium does by
+# text-spacing-trim: normal (I1 to I5 of the comment of outline-prepare.sh)
+for case in \
+  'close before close|（G02014）。|（G02014'"$H"'）</tspan>。' \
+  'close before a middle dot|）・あ|'"$H"'）</tspan>・あ' \
+  'close before an ideographic space|）　あ|'"$H"'）</tspan>　あ' \
+  'close before a narrow close|」)|'"$H"'」</tspan>)' \
+  'a dot before close|。」|'"$H"'。</tspan>」' \
+  'open after close|「行分割」（階層 1）|「行分割」'"$H"'（</tspan>階層 1）' \
+  'open after open|（「あ|（'"$H"'「</tspan>あ' \
+  'open after a middle dot|：（あ|：'"$H"'（</tspan>あ' \
+  'open after a narrow open|(「あ|('"$H"'「</tspan>あ' \
+  'a chain of three|あ）」。|あ'"$H"'）</tspan>'"$H"'」</tspan>。' \
+  'open after close after close|」」「あ|'"$H"'」</tspan>」'"$H"'「</tspan>あ' \
+  'open at the start|（G|（G' \
+  'close at the end|あ）|あ）' \
+  'close before a narrow open|）(|）(' \
+  'open before close|（）|（）' \
+  'close before a letter|）A|）A' \
+  'a letter before open|A（|A（' \
+  'a space between|） （|） （' \
+  'no punctuation|golem build の PDF|golem build の PDF'; do
+  name=${case%%|*}
+  rest=${case#*|}
+  figure "$T" "  <text x=\"1\" y=\"2\">${rest%%|*}</text>"
+  run prep
+  expect "outline-prepare: $name: exit code" 0
+  text_is "outline-prepare: $name" "${rest#*|}"
+done
+
+figure "$T" '  <rect x="0"/><text x="1" y="2">あ）。</text><text x="1" y="2">い」「</text>'
+run prep
+text_is "outline-prepare: the first of two text elements on a line" "あ${H}）</tspan>。"
+text_is "outline-prepare: the second of two text elements on a line" "い」${H}「</tspan>"
+out_has "outline-prepare: the other elements are kept" '<rect x="0"/>'
+out_has "outline-prepare: comments are kept as they are" '<!-- 図（説明）。 -->'
+out_lacks "outline-prepare: @font-face is removed" '@font-face'
+
+figure "$T
+    .c { text-anchor: middle; dominant-baseline: central; }
+    .a, text.b { dominant-baseline: central }
+    .v { writing-mode: tb; text-anchor: middle; }
+    .h { fill: #333; }" '  <text class="c" x="1" y="2">あ</text>'
+run prep
+expect "outline-prepare: rules: exit code" 0
+out_has "outline-prepare: the rules begin" '    /* golem-outline: begin */'
+out_has "outline-prepare: the rule of halt" '    tspan.golem-halt { font-feature-settings: "halt"; baseline-shift: 0; }'
+out_has "outline-prepare: central is lowered" '    .c > tspan.golem-outline { baseline-shift: -0.056em; }'
+out_has "outline-prepare: each selector of a list (1)" '    .a > tspan.golem-outline { baseline-shift: -0.056em; }'
+out_has "outline-prepare: each selector of a list (2)" '    text.b > tspan.golem-outline { baseline-shift: -0.056em; }'
+out_has "outline-prepare: vertical text is not lowered" '    .v > tspan.golem-outline { baseline-shift: 0; }'
+out_lacks "outline-prepare: vertical text has no rule of vhal" 'vhal'
+out_has "outline-prepare: the rules end" '    /* golem-outline: end */'
+out_lacks "outline-prepare: other rules add nothing" '.h >'
+if [ "$(sed -n '/golem-outline: end/{n;p;}' "$WORK/out")" = '  </style>' ]; then ok; else ng "outline-prepare: the rules are the last of the style sheet"; fi
+if [ "$(grep -n 'vertical text is not lowered\|\.v > tspan' "$WORK/out" | cut -d: -f1)" -gt "$(grep -n '\.c > tspan' "$WORK/out" | cut -d: -f1)" ]; then ok; else ng "outline-prepare: the rules of vertical text follow those of central"; fi
+out_has "outline-prepare: a text of a class is wrapped" '<text class="c" x="1" y="2"><tspan class="golem-outline">あ</tspan></text>'
+
+figure "$T" '  <text x="1" y="2" dominant-baseline="central">あ</text>' \
+  '  <text x="1" y="3" style="dominant-baseline: central">い</text>' \
+  '  <text x="1" y="4" style="writing-mode: tb" dominant-baseline="central">う）</text>'
+run prep
+out_has "outline-prepare: the attribute central is lowered" '<text x="1" y="2" dominant-baseline="central"><tspan class="golem-outline" baseline-shift="-0.056em">あ</tspan></text>'
+out_has "outline-prepare: central in style is lowered" '<text x="1" y="3" style="dominant-baseline: central"><tspan class="golem-outline" baseline-shift="-0.056em">い</tspan></text>'
+out_has "outline-prepare: vertical text of its own is not lowered" '<text x="1" y="4" style="writing-mode: tb" dominant-baseline="central"><tspan class="golem-outline">う）</tspan></text>'
+
+# vertical text with marks of I1 or I2: Inkscape does not place vhal as
+# Chromium does, so it stops
+for v in 'class="v"' 'class="x v"' 'style="writing-mode: tb"' 'writing-mode="tb"'; do
+  figure "$T
+    .v { writing-mode: tb; }" "  <text $v x=\"1\" y=\"2\">あ）。</text>"
+  run prep
+  expect "outline-prepare: vertical text ($v) with ）。: exit code" 1
+  err_has "outline-prepare: vertical text ($v) with ）。: the message" 'vertical text with fullwidth punctuation'
+done
+figure "$T
+    .v { writing-mode: tb; }" '  <text class="v" x="1" y="2">あ）い。</text>'
+run prep
+expect "outline-prepare: vertical text without marks of I1 or I2: exit code" 0
+figure "$T
+    #v { writing-mode: tb; }" '  <text x="1" y="2">あ</text>'
+run prep
+expect "outline-prepare: a selector of vertical text it does not read: exit code" 1
+err_has "outline-prepare: a selector of vertical text it does not read: the message" '#v'
+
+for case in \
+  'markup inside a text element|  <text x="1" y="2">あ<tspan>い</tspan></text>|has markup inside' \
+  'a text element over two lines|  <text x="1" y="2">あ|is not on one line' \
+  'a rule over two lines|    .c {|one line'; do
+  name=${case%%|*}
+  rest=${case#*|}
+  if [ "$name" = 'a rule over two lines' ]; then
+    figure "$T
+    .c {
+      dominant-baseline: central; }" '  <text x="1" y="2">あ</text>'
+  else
+    figure "$T" "${rest%%|*}" '</text>'
+  fi
+  run prep
+  expect "outline-prepare: $name: exit code" 1
+  err_has "outline-prepare: $name: the message" "${rest#*|}"
+done
+{
+  echo '<svg xmlns="http://www.w3.org/2000/svg">'
+  echo '  <style>text { fill: #000; }</style>'
+  echo '  <style>.c { fill: #000; }</style>'
+  echo '</svg>'
+} >"$WORK/fig.svg"
+run prep
+expect "outline-prepare: two style elements: exit code" 1
+err_has "outline-prepare: two style elements: the message" "one style element"
+
+# --strip removes the rules from what Inkscape wrote
+printf '%s\n' '<svg>' '  <style' '     id="style1">' '    text { fill: #222; }' \
+  '    /* golem-outline: begin */' '    tspan.golem-halt { font-feature-settings: "halt"; baseline-shift: 0; }' \
+  '    /* golem-outline: end */' '  </style>' '</svg>' >"$WORK/in"
+run sh "$HERE/outline-prepare.sh" --strip
+expect "outline-prepare --strip: exit code" 0
+check "outline-prepare --strip: the rules are removed" test "$(cat "$WORK/out")" = "$(printf '%s\n' '<svg>' '  <style' '     id="style1">' '    text { fill: #222; }' '  </style>' '</svg>')"
+: >"$WORK/in"
+
 # ----------------------------------------------------------------
 printf '%s tests, %s failures\n' "$COUNT" "$FAILURES"
 [ "$FAILURES" -eq 0 ]

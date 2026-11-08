@@ -198,6 +198,7 @@ URL を先に書けば、URL の行はそろわないまま残り、和文の名
 Golem は SVG の図版の文字を描かないので、原稿の文字を輪郭にした SVG を [code: images/src/] の一つ上の [code: images/] に置き、それを図版にする。
 原稿の SVG を直したら [code: scripts/manual/outline-figures.sh] で輪郭の SVG を作り直し、両方をコミットする。
 このスクリプトは Inkscape 1.x で文字を輪郭にし、図の文字には組版と同じ Noto Sans JP だけを使う（マシンのフォントは使わない）。
+輪郭の文字がブラウザーで原稿を描いた位置に来るよう、Inkscape に渡す前に [code: scripts/manual/outline-prepare.sh] が原稿の写しを直す。
 輪郭の SVG は手で直さない。
 その先頭のコメントには原稿の SHA-256 があり、[code: scripts/manual/check-figures.sh] が CI でそれを原稿と比べる。
 組むときには実行しないので、マニュアルを組むだけなら Inkscape は要らない。
