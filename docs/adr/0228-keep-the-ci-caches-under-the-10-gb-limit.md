@@ -1,6 +1,6 @@
 # ADR 0228: CI のキャッシュの量を 10 GB の上限の下に保つ
 
-ステータス: 採択
+ステータス: 採択→記録の時期は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
 
 ## 文脈
 

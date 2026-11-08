@@ -1,6 +1,6 @@
 # ADR 0219: CI の wasm のジョブを走らせる頻度と、キャッシュのない実行の扱い
 
-ステータス: 採択
+ステータス: 採択→比べる基準と試していない行は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
 
 ## 文脈
 
