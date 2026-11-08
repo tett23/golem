@@ -90,7 +90,7 @@ MCID は、ページごとに 0 から内容のストリームの順に振る。
 | プラグインのチャネルの一覧 | `Div`、項目は `P` |
 | ルビ（読みのある区切り一つ） | `Ruby`、親文字は `RB`、読みは `RT` |
 | 脚注、傍注、章末の注 | 本文の注の印は `Reference`、その直後に `Note`。`Note` は `ID`（`note-1` から文書の順）、注の側の印の `Lbl`、注の本文の `P` を持つ |
-| ページ番号の参照（`[ref-page]`）、引用の印（`[cite]`） | `Reference`。`[ref-number]` と `[ref-title]` は、PDF に届く前に番号と題の文字になるので、親の要素の中身になる |
+| 相互参照（`[ref-number]`、`[ref-title]`、`[ref-page]`）、引用の印（`[cite]`） | `Reference`（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)） |
 | 外部のリンク（`[link]`、[docs/adr/0182](adr/0182-external-links.md)） | `Link`。リンクの文字と、行ごとのリンクの注釈の `OBJR` を持つ |
 | 言語の区間（`[lang]`、[docs/adr/0187](adr/0187-inline-language-switch.md)） | `/Lang` を持つ `Span`。`@lang` を付けたブロックは、その要素が `/Lang` を持つ |
 | 文字スタイル `code`（と、それに行き着く文字スタイル） | `Code` |
@@ -4252,6 +4252,12 @@ NaN と、正と負の無限大は有理数を持たないので、G06100 のエ
 
 ブロックは `[span, label, lang, body]` であり、`lang` はブロックの言語（`@lang`）のタグか null である（[docs/adr/0187](adr/0187-inline-language-switch.md)）。
 言語の区間は `[21, span, lang, inlines]` である。
+文書の組み立てが番号と題に置き換えた `[ref-number]` と `[ref-title]` は、`[22, span, ref-kind, label, inlines]`（Haskell では `Resolved !SrcSpan !RefKind !Text [InlineF r]`）であり、中のインラインは置き換えた番号と題の文字である（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)）。
+これを作るのは組み立てだけで、評価（S0）の IR には現れないので、プラグインと `golem inspect` と Emet の関数に渡る IR は変わらない。
+プラグインの出力にあれば、不変条件の違反（`解決した参照は文書の組み立てだけが作ります`、G06009）とする。
+プラグインの SDK は、受け取ることも作ることもないので、この要素を持たない。
+PDF は中のインラインを今までと同じく組み、構造の木では `Reference` の子にする。
+HTML、EPUB、プレーンテキストは、中のインラインを今までと同じく書く。
 プラグインの SDK の `Block` の `lang` と `Inline::Lang { span, lang, body }` も、同じバイト列を読み書きする。
 
 コードの行は `[text, number, diff-mark, highlight, callouts, span]` であり、`span` は行の本文の原稿の範囲か null である（[docs/adr/0218](adr/0218-page-starts-inside-code-blocks.md)）。

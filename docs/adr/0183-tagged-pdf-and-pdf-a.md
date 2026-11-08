@@ -1,6 +1,6 @@
 # ADR 0183: タグ付き PDF と、PDF/A-2a と PDF/UA-1 への準拠
 
-ステータス: 採択→構造の木にない内容の扱いは [ADR 0216](0216-drawn-content-missing-from-the-structure-tree-is-an-error.md)、CI の ICC プロファイル、最初の見出しの G07103 のメッセージ、校正のコメントの行は [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
+ステータス: 採択→構造の木にない内容の扱いは [ADR 0216](0216-drawn-content-missing-from-the-structure-tree-is-an-error.md)、CI の ICC プロファイル、最初の見出しの G07103 のメッセージ、校正のコメントの行は [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)、`[ref-number]` と `[ref-title]` の `Reference` は [ADR 0215](0215-ref-number-and-ref-title-as-reference.md) で実装
 
 ## 文脈
 
