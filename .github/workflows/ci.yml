@@ -449,6 +449,13 @@ jobs:
         run: |
           "$(cabal list-bin -v0 golem)" build --target epub
           epubcheck build/epub/book.epub
+      # [lang] and @lang give xml:lang and lang in the XHTML (docs/adr/0187)
+      - name: The EPUB with languages passes epubcheck
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        working-directory: modules/golem-driver/test/fixtures/languages
+        run: |
+          "$(cabal list-bin -v0 golem)" build --target epub
+          epubcheck build/epub/book.epub
       # scripts/determinism.sh builds the two manuals with
       # scripts/manual/build.sh, which fails on a single diagnostic,
       # notices included, and lists the hashes of their outputs; the
