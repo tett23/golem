@@ -5065,6 +5065,12 @@ wasm にリンクした GMP の版は、wasm の GHC の `ghc-gmp.h` から読�
 タグのコミットが `main` に含まれないときは、リリースを作らない。
 リリースノートは AI が英語で書き、検査（`scripts/release/check-notes.sh`）に通らなければ変更の一覧をそのまま使う。
 人がリリースノートを読んで直してから公開する。
+変更の一覧（`scripts/release/notes.sh`）は、`main` の first-parent のマージのコミットからプルリクエストを拾う（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
+GitHub がマージした `Merge pull request #N from <所有者>/<ブランチ>` の形では、本文の 1 行目をプルリクエストの題名とする。
+手でマージした `Merge pull request #N: <題名>` の形も拾う。
+AI の実行か検査に失敗したときは、その理由をジョブの要約とジョブのログの両方に書く。
+理由には、`claude -p` が標準出力と標準エラーに書いたものの先頭と、プロンプトのバイト数を含める。
+`claude -p` は API のエラーを標準出力に書くためである。
 
 リリースノートは、配布物を公開するジョブ `release` とは別のジョブ `notes` で書く（[docs/adr/0044](adr/0044-release-workflow-hardening.md)）。
 `notes` の権限は `contents: read` だけであり、OIDC のトークンと来歴の証明の権限を持たない。
