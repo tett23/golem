@@ -514,27 +514,17 @@ jobs:
           path: |
             manual-dev/build/pdf
             manual-dev/build/html
-      # pushes to main only: a pull request's cache would serve that pull
-      # request alone, under a key that changes with every commit. The
+      # pushes to main only, when GHC compiled a module: a pull request
+      # restores the dist-newstyle of main and saves none, and a run that
+      # compiled nothing would save what it restored under a new key. The
       # runner of matrix.save saves it: tests-driver on each architecture
-      # (docs/adr/0045, docs/adr/0140, docs/adr/0155)
+      # (docs/adr/0045, docs/adr/0140, docs/adr/0155, docs/adr/0228)
       - name: Save dist-newstyle (docs/adr/0009)
-        if: success() && matrix.save && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: success() && matrix.save && steps.build.outputs.compiled == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v6
         with:
           path: dist-newstyle
           key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-${{ github.sha }}
-      # A pull request saves its own dist-newstyle when cabal build has
-      # compiled something, even when a later step fails, so that its next
-      # push or a rerun builds on it. Restore dist-newstyle above looks in
-      # the caches of the pull request first and then in those of main
-      # (docs/adr/0045)
-      - name: Save dist-newstyle of the pull request (docs/adr/0045)
-        if: always() && matrix.save && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'
-        uses: actions/cache/save@v6
-        with:
-          path: dist-newstyle
-          key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-pr-${{ github.event.pull_request.number }}-${{ github.sha }}-${{ github.run_attempt }}
 
   # The PDF as a wasm reactor module (docs/adr/0199, docs/adr/0202):
   # golem-wasm built with the wasm GHC of ghc-wasm-meta (the 9.10 flavour,
@@ -971,6 +961,60 @@ jobs:
           path: conformance-pdfs
       - name: The PDFs pass PDF/A-2a and PDF/UA-1
         run: sh scripts/ci/verapdf.sh "$VERAPDF_STORE_PATH/bin/verapdf" conformance-pdfs
+
+  # The stale dist- caches of main, after the saves of build and wasm, so
+  # that the caches of the repository stay under the limit of 10 GB: the
+  # newest of each family of the current keys (the dist-newstyle of x86-64
+  # and of aarch64, and dist-wasm) is kept, and the other dist- caches of
+  # main are deleted (scripts/ci/stale-dist-caches.sh). The one job with a
+  # write permission (the actions scope, to delete caches); it runs on pushes to
+  # main only, builds and tests nothing, and ci does not need it: a cache
+  # it failed to delete goes at the next push (docs/adr/0228)
+  caches:
+    needs: [changes, build, wasm]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Delete the stale dist- caches of main (docs/adr/0228)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # the keys of the saves of build and wasm without the commit hash
+          X64: dist-Linux-X64-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-
+          ARM64: dist-Linux-ARM64-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-
+          WASM: dist-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze') }}-
+        run: |
+          set -eu
+          usage() { gh api 'repos/{owner}/{repo}/actions/cache/usage' --jq '"\(.active_caches_size_in_bytes) bytes in \(.active_caches_count) caches"'; }
+          BEFORE=$(usage)
+          gh cache list --ref refs/heads/main --key dist- --limit 100 --json id,key,createdAt --jq '.[] | [.id, .createdAt, .key] | @tsv' > "$RUNNER_TEMP/dist-caches.tsv"
+          sh scripts/ci/stale-dist-caches.sh "$X64" "$ARM64" "$WASM" < "$RUNNER_TEMP/dist-caches.tsv" > "$RUNNER_TEMP/stale.txt"
+          {
+            echo "## The stale dist- caches of main (docs/adr/0228)"
+            echo
+            echo "Before: $BEFORE"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          while IFS= read -r id; do
+            key=$(awk -F '\t' -v id="$id" '$1 == id { print $3 }' "$RUNNER_TEMP/dist-caches.tsv")
+            gh cache delete "$id" < /dev/null
+            echo "Deleted $id $key"
+            echo "- deleted \`$key\` ($id)" >> "$GITHUB_STEP_SUMMARY"
+          done < "$RUNNER_TEMP/stale.txt"
+          if [ ! -s "$RUNNER_TEMP/stale.txt" ]; then echo "- nothing to delete" >> "$GITHUB_STEP_SUMMARY"; fi
+          # the usage of the API is updated about every five minutes, and
+          # may not show the deletions yet
+          {
+            echo
+            echo "After: $(usage)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
