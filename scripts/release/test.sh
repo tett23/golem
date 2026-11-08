@@ -1184,6 +1184,65 @@ run env GOLEM_ROOT="$L/root" CABAL_PACKAGES="$L/packages" GHC_VERSION=9.10.3.202
 expect "licenses --wasm: no GHC_DOCDIR" 1
 rm -rf "${L:?}/out"
 
+# ---- system-cxx-std-lib, the virtual package of GHC without code
+# (docs/adr/0240): with --wasm it is not copied, and the libc++ and
+# libc++abi licenses of licenses/wasi-sdk/llvm/ cover it; any other
+# pre-existing package without a license, and system-cxx-std-lib without
+# --wasm, is an error
+cp "$LW/plan.json" "$LW/plan.json.orig"
+CXX='{"type":"pre-existing","id":"cxx-1","pkg-name":"system-cxx-std-lib","pkg-version":"1.0","depends":[]}'
+# cxx_plan PLAN DEPS-OF-BASE EXTRA-ENTRY...: PLAN from PLAN.orig, with the
+# depends of base and the extra entries
+cxx_plan() {
+  p=$1 deps=$2
+  shift 2
+  extra=$(IFS=,; printf '[%s]' "$*")
+  jq --argjson deps "[$deps]" --argjson extra "$extra" \
+    '."install-plan" |= (map(if ."pkg-name" == "base" then .depends = $deps else . end) + $extra)' "$p.orig" >"$p"
+}
+echo llvm-abi >"$L/root/licenses/wasi-sdk/llvm/libcxxabi-LICENSE.TXT"
+cxx_plan "$LW/plan.json" '"rts-1","cxx-1"' "$CXX"
+if [ "$(jq -c '."install-plan"[] | select(."pkg-name" == "base") | .depends' "$LW/plan.json")" = '["rts-1","cxx-1"]' ]; then ok; else ng "licenses --wasm: the plan with system-cxx-std-lib"; fi
+rm -rf "${L:?}/out"
+run licenses_wasm
+expect "licenses --wasm: I1 system-cxx-std-lib with the licenses of libc++ and libc++abi (docs/adr/0240)" 0
+if [ -e "$L/out/haskell/system-cxx-std-lib-1.0" ]; then ng "licenses --wasm: I2 no haskell/system-cxx-std-lib-1.0"; else ok; fi
+if [ "$(cat "$L/out/wasi-sdk/llvm/libcxx-LICENSE.TXT" 2>/dev/null)" = llvm ] &&
+  [ "$(cat "$L/out/wasi-sdk/llvm/libcxxabi-LICENSE.TXT" 2>/dev/null)" = llvm-abi ]; then ok; else ng "licenses --wasm: I3 the licenses of libc++ and libc++abi are written"; fi
+for f in libcxxabi-LICENSE.TXT libcxx-LICENSE.TXT; do
+  mv "$L/root/licenses/wasi-sdk/llvm/$f" "$L/$f.orig"
+  rm -rf "${L:?}/out"
+  run licenses_wasm
+  expect "licenses --wasm: I5 system-cxx-std-lib without $f" 1
+  if grep -q 'system-cxx-std-lib-1.0' "$WORK/err"; then ok; else ng "licenses --wasm: I5 names system-cxx-std-lib-1.0 without $f"; fi
+  mv "$L/$f.orig" "$L/root/licenses/wasi-sdk/llvm/$f"
+done
+# in the plan, but not a dependency of exe:golem-wasm
+cxx_plan "$LW/plan.json" '"rts-1"' "$CXX"
+rm -rf "${L:?}/out"
+mv "$L/root/licenses/wasi-sdk/llvm/libcxxabi-LICENSE.TXT" "$L/libcxxabi.orig"
+run licenses_wasm
+expect "licenses --wasm: I1 system-cxx-std-lib outside the closure" 0
+if [ -e "$L/out/haskell/system-cxx-std-lib-1.0" ]; then ng "licenses --wasm: I2 nothing for system-cxx-std-lib outside the closure"; else ok; fi
+mv "$L/libcxxabi.orig" "$L/root/licenses/wasi-sdk/llvm/libcxxabi-LICENSE.TXT"
+# another pre-existing package without a directory in GHC_DOCDIR
+cxx_plan "$LW/plan.json" '"rts-1","cxx-1","fake-1"' "$CXX" '{"type":"pre-existing","id":"fake-1","pkg-name":"ghc-fake","pkg-version":"1.0","depends":[]}'
+rm -rf "${L:?}/out"
+run licenses_wasm
+expect "licenses --wasm: I4 a pre-existing package without a license" 1
+if grep -q 'no license file for:.*ghc-fake-1.0' "$WORK/err" && ! grep -q 'system-cxx-std-lib' "$WORK/err"; then ok; else ng "licenses --wasm: I4 names ghc-fake-1.0 only"; fi
+mv "$LW/plan.json.orig" "$LW/plan.json"
+rm -f "$L/root/licenses/wasi-sdk/llvm/libcxxabi-LICENSE.TXT"
+# without --wasm, system-cxx-std-lib is not in the set of packages without code
+cp "$L/plan.json" "$L/plan.json.orig"
+cxx_plan "$L/plan.json" '"rts-1","cxx-1"' "$CXX"
+rm -rf "${L:?}/out"
+run licenses
+expect "licenses: I4 system-cxx-std-lib without --wasm" 1
+if grep -q 'no license file for:.*system-cxx-std-lib-1.0' "$WORK/err"; then ok; else ng "licenses: I4 names system-cxx-std-lib-1.0 without --wasm"; fi
+mv "$L/plan.json.orig" "$L/plan.json"
+rm -rf "${L:?}/out"
+
 # ---------------------------------------------------------------- the scripts that run at a release
 # (docs/adr/0078-tests-for-release-and-hand-run-scripts.md): package.sh,
 # gmp-version.sh, fetch-gmp.sh, build-macos.sh, build-linux.sh and

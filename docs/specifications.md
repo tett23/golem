@@ -5021,6 +5021,9 @@ Alpine のパッケージの文書は、そのパッケージの `-doc` から�
 wasm の版の配布物 `golem-<タグ>-wasm32-wasi.tar.gz` は、ジョブ `wasm` が CI と同じ手順で組み、x86-64 の Linux の配布物の `golem` と同じ PDF と diagnostics を返すことを確かめてから作る（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
 中身は `golem.wasm`、`LICENSE`、`THIRD_PARTY_LICENSES/`、エクスポートと枠の形を書いた `README` で、`--sort=name --mtime=@0` で固めた tar を gzip で圧縮する。
 `THIRD_PARTY_LICENSES/` には、wasm の GHC の RTS と boot のパッケージ、Hackage のパッケージ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc、libc++、libc++abi、compiler-rt、libffi-wasm、GMP のライセンスを入れる。
+GHC の仮想のパッケージ `system-cxx-std-lib` は、C++ の標準ライブラリにリンクする設定だけを持ち、コードを持たない。
+そのライセンスは同梱した libc++ と libc++abi のものなので、`rts` と同じく `haskell/` の下に置かず、`licenses/wasi-sdk/llvm/` に二つの文書がなければ失敗する（[ADR 0240](adr/0240-skip-the-code-less-system-cxx-std-lib-in-the-licenses-of-golem-wasm.md)）。
+ネイティブの配布物の依存に `system-cxx-std-lib` が入れば、ライセンスの文書のないほかのパッケージと同じく失敗する。
 上流のコミットを使う cborg には、そのリポジトリとコミットを、差分を当てた `skylighting` と `skylighting-core` には、その差分と元のアーカイブの URL を添える（[ADR 0202](adr/0202-packages-that-do-not-build-for-wasm.md)）。
 wasi-sdk の配布物はライセンスの文書を持たないので、上流から取った文書を `licenses/wasi-sdk/` に置き、その `VERSION` が `scripts/fetch-ghc-wasm.sh` の wasi-sdk と一致しなければ失敗する。
 wasm にリンクした GMP の版は、wasm の GHC の `ghc-gmp.h` から読む（`scripts/release/gmp-version.sh` を `GMP_GHC=wasm32-wasi-ghc` で動かす）。
