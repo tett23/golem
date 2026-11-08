@@ -20,7 +20,7 @@ glyphRunsTests =
     testCase "R2: a glyph of synthetic bold in a word is a run of its own" $
       glyphRuns (zip [latin, bold, latin] "xyz") @?= [(latin, "x"), (bold, "y"), (latin, "z")],
     testCase "R4: a box of one face (Hello) is one run" $
-      glyphRuns (zip (repeat latin) "Hello") @?= [(latin, "Hello")],
+      glyphRuns (map (latin,) "Hello") @?= [(latin, "Hello")],
     testCase "R4: a box without glyphs has no run" $
       glyphRuns ([] :: [((Int, (Bool, Int), Bool), Char)]) @?= []
   ]
