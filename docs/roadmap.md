@@ -174,6 +174,13 @@ v2.0.0-rc1 は、数式の組版かその下準備、あるいはその両方を
 - **分離禁止文字と禁則の見直し**：分離禁止文字と禁則の文字の分類を、JLReq の文字クラスに照らして見直す。U+2015 の `――` は v0.1.0-rc3 で分離禁止文字に加える（[golem-layout ADR 0016](golem-layout/adr/0016-ellipsis-before-full-stop.md)）ので、この項目はそれ以外の文字を扱う。v2 の後半に置く。
 - **箱の単位と書記素クラスタの食い違い**：行分割の箱は、基底の字と続く結合文字（一般カテゴリーが Mn、Mc、Me の字）を一つにまとめて作る（[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）。ハングルの音節、ZWJ でつないだ絵文字、地域指示子の組、インド系の文字の子音の結合のように、HarfBuzz のクラスタや UAX #29 の拡張書記素クラスタがこの単位と一致しない文字では、一つの字が二つの箱に分かれうる。日本語と欧文のほかの言語を組むときに、箱の単位をシェイピングの結果か UAX #29 から決める仕組みを扱う。
 
+## v3 より前（時期は未定）
+
+v1.x から v2 のあいだのどこかで扱う。
+時期は決めていないが、v1.x で扱う見込みが高い。
+
+- **HarfBuzz と FreeType の置き換え（sofer）**：シェイピングとフォントの読み込みを、Golem 自身の実装 sofer に置き換える。名前は、聖典を一字ずつ書き写す書記（ソフェル）から取った。今は、バージョンを固定した HarfBuzz と FreeType を同梱して使う（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)）。C のライブラリは wasm の版でツールチェーンの回避策を要している（[docs/adr/0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)、[docs/adr/0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。置き換えれば、この回避策は要らなくなる。範囲（シェイピング、フォントの読み込み、ラスタライズ）、見た目の回帰テストのラスタライザ shem と共有するか、パッケージの置き場所（golem のモジュールか、peg-hs のような別のリポジトリか）を ADR で決める。名前は crates.io と Hackage では使われていない（2026-11-08 に確かめた）。
+
 ## v3 以降に回した事項
 
 v3 の GUI は、次の原則に従って作る。
@@ -186,7 +193,6 @@ v3 の GUI は、次の原則に従って作る。
 - **アクセシビリティの基準**：GUI が満たすアクセシビリティの基準（準拠する規格と水準、キーボードだけでの操作、スクリーンリーダー、色のコントラスト、文字の拡大など）を定める。デザインシステムの構築と同時に決め、デザインシステムの部品はこの基準を満たすように作る。
 - **GUI**：原稿とスタイルを編集し、組版の結果を確かめる画面。v2 までの Golem は CLI と CI で完結させる。ページ画像の差分を取る仕組みを自前で持つ場合も、GUI より後に扱う。
 - **GUI の作り方**：GUI は Tauri で作り、すべての描画を canvas に任せる。描く内容は Golem が決め、canvas はそれを描くだけにする（グリフのアウトラインを座標と一緒に受け取ってパスとして描くか、Golem がページを画像にしたものを並べる）。ブラウザの文字の描画（`fillText`）には頼らないので、プレビューは PDF と同じ見た目になり、OS ごとの WebView の違いは表示の速さしか左右しない。Golem の本体は今のまま CLI と LSP で動かし、GUI はそれと通信する別のプロセスにする。原稿の入力欄には WebView の入力の仕組みを使い、日本語の IME と縦書きの入力を扱う。Linux の WebKitGTK の canvas の性能が足りなければ、そのときに代わりを検討する。着手するときに ADR を作成する。
-- **HarfBuzz と FreeType の置き換え**：シェイピングとフォントの読み込みを Golem 自身の実装に置き換える。v2 までは、バージョンを固定した HarfBuzz と FreeType を同梱して使う（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)）。
 
 ## 手で確かめる項目
 
@@ -207,7 +213,6 @@ v3 の GUI は、次の原則に従って作る。
 - **マニュアルの中の InDesign の記述**（v1.0.0 のリリースで確かめる）：利用者向けのマニュアルの InDesign との対応と比較の記述（「はじめに」と付録 E）を、InDesign に詳しい人が確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 
 - **v0.1.0-rc4 のリリースの前のマニュアルの目視**：rc3 の作業でマニュアルを直した箇所を、組んだ PDF と HTML で目で確かめていない。v0.1.0-rc3 のリリース（2026-10-24）までに見られなかったので、メンテナーが v0.1.0-rc4 のリリースの前にまとめて確かめる（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
-  - 開発者のマニュアルの「純粋な関数」の章で、コードの中に `\|` と書いた `|k|` が、`|` として表示されること（[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)）。この小項目は、[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md) の Poppler の `pdftotext` で開発者のマニュアルの PDF から文字列を取り出すテストにする（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
   - 行番号を付けたコードブロック。利用者のマニュアルの第 1 章の『高野聖』の原稿で、本文の「11 行目と 20 行目」が行番号と合っていること。第 4 章、第 5 章、第 8 章、開発者のマニュアルの `.wat`、チャネルの例、関数の型の一覧、ADR の雛形も見ること。
   - 利用者のマニュアルの第 3 章で、行アキの上限（G04011、[docs/adr 0047](adr/0047-blank-line-limit.md)）、回した図版を待つあいだの改段と白ページ、「数と式」に足した散文スロットの段落と、付録 E の G04011 の項。
   - 開発者のマニュアルのチャネルの図（`channels` と `channels-example`）のラベル（[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）。

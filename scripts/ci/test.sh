@@ -1057,6 +1057,43 @@ expect "pdf-fonts.sh: no PDF is a usage error" 2
 run sh "$HERE/pdf-fonts.sh" "$WORK/no-such.pdf"
 if command -v qpdf >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then expect "pdf-fonts.sh: a missing PDF exits with 2" 2; else expect "pdf-fonts.sh: without qpdf or jq it exits with 2" 2; fi
 
+# ---------------------------------------------------------------- pdf-text.sh
+# (docs/adr/0233): the text of a PDF by pdftotext, and the strings it has
+# and lacks
+# text_pdf FILE TEXT: a PDF of one page with TEXT in Helvetica, TEXT
+# without parentheses and backslashes but \| for a backslash and a bar
+text_pdf() {
+  stream="BT /F1 12 Tf 10 20 Td ($2) Tj ET"
+  {
+    printf '%%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n'
+    printf '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 50] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n'
+    printf '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n'
+    printf '5 0 obj\n<< /Length %s >>\nstream\n%s\nendstream\nendobj\n' "$(printf '%s' "$stream" | wc -c | tr -d ' ')" "$stream"
+    printf 'trailer\n<< /Root 1 0 R >>\n%%%%EOF\n'
+  } >"$1"
+}
+if command -v pdftotext >/dev/null 2>&1; then
+  text_pdf "$WORK/bar.pdf" 'the guard | and a || b'
+  text_pdf "$WORK/escaped.pdf" 'the guard \\| and a \\|\\| b'
+  run sh "$HERE/pdf-text.sh" "$WORK/bar.pdf"
+  if [ "$CODE" = 0 ] && grep -qF 'the guard | and a || b' "$WORK/out"; then ok; else ng "pdf-text.sh: without a check it writes the text"; fi
+  run sh "$HERE/pdf-text.sh" "$WORK/bar.pdf" --has 'guard |' --has 'a || b' --lacks '\|'
+  expect "pdf-text.sh: a bar shown as a bar passes" 0
+  run sh "$HERE/pdf-text.sh" "$WORK/escaped.pdf" --has 'guard |' --has 'a || b' --lacks '\|'
+  expect "pdf-text.sh: a bar shown with its backslash fails" 1
+  if grep -qF 'does not have: a || b' "$WORK/err" && grep -qF 'has: \|' "$WORK/err"; then ok; else ng "pdf-text.sh: the strings missing and the strings found are named"; fi
+  run sh "$HERE/pdf-text.sh" "$WORK/no-such.pdf" --has x
+  expect "pdf-text.sh: a missing PDF exits with 2" 2
+else
+  skip 5 "pdf-text.sh: pdftotext is not installed"
+fi
+run sh "$HERE/pdf-text.sh"
+expect "pdf-text.sh: no PDF is a usage error" 2
+run sh "$HERE/pdf-text.sh" "$WORK/bar.pdf" --has
+expect "pdf-text.sh: a check without its text is a usage error" 2
+run sh "$HERE/pdf-text.sh" "$WORK/bar.pdf" --contains x
+expect "pdf-text.sh: an unknown check is a usage error" 2
+
 # ---------------------------------------------------------------- ci.yml and cabal
 # (docs/adr/0037-ci-build-job-speedup.md)
 
@@ -1226,6 +1263,9 @@ if step_if "name: qpdf is installed" "$QPDF_IF" && step_has "name: qpdf is insta
 MANUAL_IF="if: matrix.runner == 'ubuntu-24.04' && matrix.outputs"
 if step_if "name: The preflight of the manuals" "$MANUAL_IF" && step_has "name: The preflight of the manuals" 'preflight --rules ../scripts/ci/manual-preflight.toml'; then ok; else ng "ci.yml: the x86-64 runner of the outputs runs golem preflight on the manuals"; fi
 if step_if "name: The typefaces of the manuals are their fonts" "$MANUAL_IF" && step_has "name: The typefaces of the manuals are their fonts" 'sh scripts/ci/pdf-fonts.sh'; then ok; else ng "ci.yml: the x86-64 runner of the outputs checks the typefaces of the manuals"; fi
+# the code of the developer manual written \| shows | in its PDF, by
+# pdftotext (docs/adr/0233)
+if step_if "name: The bars of the code of the developer manual" "$MANUAL_IF" && step_has "name: The bars of the code of the developer manual" "sh scripts/ci/pdf-text.sh \"\$pdf\"" && step_has "name: The bars of the code of the developer manual" "--lacks '\\|'"; then ok; else ng "ci.yml: the x86-64 runner of the outputs checks the bars of the developer manual with pdftotext"; fi
 # release-scripts installs the pinned Claude Code with mise before test.sh
 # and requires it (docs/adr/0058)
 RS=$WORK/release-scripts.yml
