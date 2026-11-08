@@ -1203,7 +1203,7 @@ if step_has "$TEST_STEP" 'TASTY_NO_CREATE: "true"'; then ok; else ng "ci.yml: ca
 # the outputs (docs/adr/0232); epubcheck comes from its release, cached by
 # its version and SHA-256, on the x86-64 runner of the outputs (docs/adr/0062)
 QPDF_IF="if: matrix.tests || (matrix.runner == 'ubuntu-24.04' && matrix.outputs)"
-if step_if "name: qpdf in the background" "$QPDF_IF" && step_has "name: qpdf in the background" "apt-install.sh qpdf"; then ok; else ng "ci.yml: apt installs qpdf on the runners of the tests and the x86-64 runner of the outputs"; fi
+if step_if "name: qpdf in the background" "$QPDF_IF" && step_has "name: qpdf in the background" "apt-install.sh qpdf poppler-utils"; then ok; else ng "ci.yml: apt installs qpdf and Poppler on the runners of the tests and the x86-64 runner of the outputs in one apt-get"; fi
 if grep -n 'apt-install\.sh' "$CI_YML" | grep -q epubcheck || grep -q "'epubcheck'" "$CI_YML"; then ng "ci.yml: apt does not install epubcheck"; else ok; fi
 if grep -Eq '^  EPUBCHECK_VERSION: "[0-9]+\.[0-9]+\.[0-9]+"$' "$CI_YML" && grep -Eq '^  EPUBCHECK_SHA256: "[0-9a-f]{64}"$' "$CI_YML"; then ok; else ng "ci.yml: the version and the SHA-256 of epubcheck are pinned"; fi
 EPUBCHECK_IF="if: matrix.runner == 'ubuntu-24.04' && matrix.outputs"
@@ -1217,6 +1217,9 @@ if step_if "name: epubcheck in the background" "$EPUBCHECK_IF" &&
   ng "ci.yml: epubcheck-install.sh runs in the background with the pinned version on the x86-64 runner of the outputs"
 fi
 if step_if "name: epubcheck is installed" "$EPUBCHECK_IF" && step_has "name: epubcheck is installed" "bg.sh wait epubcheck"; then ok; else ng "ci.yml: the x86-64 runner of the outputs waits for epubcheck"; fi
+# the four EPUBs of the fixtures pass epubcheck; epub-forms takes glossary
+# from plugins/wasm through a cache (docs/adr/0232)
+if step_if "name: The EPUB of epub-forms passes epubcheck" "$EPUBCHECK_IF" && step_has "name: The EPUB of epub-forms passes epubcheck" 'XDG_CACHE_HOME="$cache"' && step_has "name: The EPUB of epub-forms passes epubcheck" "epubcheck build/epub/book.epub"; then ok; else ng "ci.yml: the EPUB of epub-forms passes epubcheck on the x86-64 runner of the outputs"; fi
 if step_if "name: qpdf is installed" "$QPDF_IF" && step_has "name: qpdf is installed" "bg.sh wait apt"; then ok; else ng "ci.yml: the runners of the tests and the x86-64 runner of the outputs wait for qpdf"; fi
 # the manuals pass golem preflight with the rules of CI, and their PDFs
 # name no typeface but the fonts of their fonts/ (docs/adr/0232)
@@ -2113,6 +2116,15 @@ GLOBAL_STATE=$(for m in $(modules_of golem-driver-test) Main; do
 done)
 if [ -n "$(modules_of golem-driver-test)" ] && [ -z "$GLOBAL_STATE" ]; then ok; else
   ng "golem-driver-test: no test changes the state of the process ($GLOBAL_STATE)"
+fi
+# the time-out of the tests is hangTimeout of Support.hs, in one place
+# (docs/adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)
+OWN_TIMEOUT=$(for m in $(modules_of golem-driver-test) Main; do
+  [ "$m" = Support ] || grep -lw 'mkTimeout' "$HERE/../../modules/golem-driver/test/$m.hs" 2>/dev/null
+done)
+if [ -n "$(modules_of golem-driver-test)" ] && [ -z "$OWN_TIMEOUT" ] &&
+  grep -qw 'hangTimeout' "$HERE/../../modules/golem-driver/test/Support.hs"; then ok; else
+  ng "golem-driver-test: no module but Support.hs has mkTimeout, and Support.hs has hangTimeout ($OWN_TIMEOUT)"
 fi
 
 # ---------------------------------------------------------------- test-only-deps.sh

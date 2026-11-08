@@ -11,6 +11,7 @@ import DiagnosticSitesSpec
 import DiagnosticsSpec
 import DoubleDashSpec (doubleDashTests)
 import EmetSamplesSpec (emetSamplesTests)
+import FigureExternalSpec (figureExternalTests)
 import FigureSpec
 import FileSpacesSpec (fileSpacesTests)
 import FunctionLibrarySpec (functionLibraryTests)
@@ -27,6 +28,7 @@ import ParagraphRuleSpec
 import ParagraphSpec
 import PdfSpec
 import PlatesSpec (platesTests)
+import PopplerSpec (popplerTests)
 import ReferencesSpec
 import SecuritySpec
 import SpecimenGeometrySpec (specimenGeometryTests)
@@ -131,6 +133,8 @@ tests skips =
              testGroup "running heads (ADR 0014)" runningHeadTests,
              testGroup "golem preflight (golem-cli ADR 0006)" preflightTests,
              testGroup "the plates of the PDF and G09019 to G09021 (docs/adr ADR 0232)" platesTests,
+             testGroup "the PDF as Poppler reads it (docs/adr ADR 0232)" popplerTests,
+             testGroup "figures written by other tools (docs/adr ADR 0232)" figureExternalTests,
              testGroup "footnote marks and numbers (ADR 0018)" footnoteTests,
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,

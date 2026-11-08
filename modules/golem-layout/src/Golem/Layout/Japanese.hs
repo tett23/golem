@@ -952,15 +952,16 @@ markItem env place lk parts ps pe =
       w = sum [u | (_, _, u, _) <- units] + tr * fromIntegral (max 0 (chars - 1)) + ps + pe
    in Box w (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts')) (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))
 
-{- | A run of code (golem-driver ADR 0017): a box for each part of Latin or
-other text, cut after each slash; 'normalize' allows a break after a
-slash and nothing else between the boxes. No hyphenation, protrusion or
-expansion.
+{- | A run of code (golem-driver ADR 0017): a box for each part of Latin
+text, cut after each slash and run of low lines, and in code a box for
+each character of other text, a base character with its combining
+characters (golem-layout ADR 0034); 'normalize' decides the breaks
+between the boxes. No hyphenation, protrusion or expansion.
 -}
 codeItems :: ComposeEnv -> Look -> Text -> Sp -> Sp -> [Item]
 codeItems env lk run padStart padEnd =
   [ Box (w + tr * fromIntegral (T.length seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env k))
-  | let segs = [seg | part <- slashParts run, seg <- T.groupBy sameSide part]
+  | let segs = [unit | part <- slashParts run, seg <- T.groupBy sameSide part, unit <- if isCodeJapanese seg then clusters seg else [seg]]
         lastIx = length segs - 1,
     -- the index of the first character of each part in the run (docs/adr ADR 0195)
     (i, k, seg) <- zip3 [0 :: Int ..] (scanl (\n x -> n + T.length x) 0 segs) segs,
@@ -973,6 +974,8 @@ codeItems env lk run padStart padEnd =
   where
     tr = tracking lk
     sameSide a b = isExtending b || (lookClass lk a == Western) == (lookClass lk b == Western)
+    -- a run of Japanese characters of code, not of a URL (golem-layout ADR 0034)
+    isCodeJapanese seg = lkCode lk && not (lkUrl lk) && maybe False ((/= Western) . lookClass lk . fst) (T.uncons seg)
     slashParts = if lkUrl lk then urlParts else codeParts
     -- code breaks after each slash (golem-driver ADR 0017) and after the runs of low lines of the run but its first and its last (golem-layout ADR 0031)
     codeParts t = concatMap slashes (splitAtCuts (lowLineCuts t) 0 t)
@@ -1223,10 +1226,16 @@ normalize env = go AtStart True
               {- inside code: also a break of 100 after a run of low lines, but
               the first of the run, a box of low lines alone with no box before
               it (golem-layout ADR 0031) -}
+              {- inside code, where a Japanese character is on either side: a
+              break where no prohibition applies, of 100 after a low line and
+              0 otherwise, the only one there (golem-layout ADR 0034) -}
+              AfterBox p _
+                | codeOnly p && codeOnly c && japaneseAt (lastClass p) (firstClass c) ->
+                    [codeBreak p (if "_" `T.isSuffixOf` baseOf p then 100 else 0) | not (prohibitedAcross True p c)]
               AfterBox p afterBox
                 | breaksAsCode (bcLook p) && breaksAsCode (bcLook c) ->
-                    [Penalty 0 0 NoHyphen | "/" `T.isSuffixOf` bcText p]
-                      <> [Penalty 0 100 NoHyphen | "_" `T.isSuffixOf` baseOf p, afterBox || T.any (/= '_') (baseOf p)]
+                    [codeBreak p 0 | "/" `T.isSuffixOf` bcText p]
+                      <> [codeBreak p 100 | "_" `T.isSuffixOf` baseOf p, afterBox || T.any (/= '_') (baseOf p)]
               AfterBox p _ -> between p c
               AtStart -> leading c
               -- the space of the paragraph start, after the mark: no break there
@@ -1254,6 +1263,15 @@ normalize env = go AtStart True
     isBoxBefore = \case
       AfterBox {} -> True
       _ -> False
+    -- a box of code, not of a URL (golem-layout ADR 0034)
+    codeOnly b = lkCode (bcLook b) && not (lkUrl (bcLook b))
+    japaneseAt a b = maybe False (/= Western) a || maybe False (/= Western) b
+    {- a break inside code other than at a space: in code, as wide as the
+    wrap mark of the box before it, which the line ends with when it
+    breaks there (golem-layout ADR 0034) -}
+    codeBreak p n
+      | codeOnly p, let m = lkWrapMark (bcLook p), not (T.null m) = Penalty (L.zwToSp (lkSize (bcLook p)) (ceWordAdvance env (bcLook p) m)) n (WrapMark m)
+      | otherwise = Penalty 0 n NoHyphen
     -- the glue of a space between words: it stretches, but not as the glue that fills the last line; a space of code does not
     wordSpace = \case
       Glue _ y _ -> y > 0 && y < filStretch

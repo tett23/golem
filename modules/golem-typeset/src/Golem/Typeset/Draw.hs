@@ -945,6 +945,18 @@ drawLineAt env (x0, y0) sl =
                     [] -> Nothing
                   r = runAtU env (whoBefore i) look vertical vertical 0 (if vertical then (ox - Sp (unSp (size * 3) `div` 10), oy) else (ox, oy)) "-"
                in (lkColor look, ([(leafBefore, fst r)], inLeaf leafBefore (snd r)))
+        {- a line broken inside inline code other than at a space ends with
+        the wrap mark, in the look of the code before it, an artifact:
+        upright in vertical text but Latin text, which is turned
+        (golem-layout ADR 0034) -}
+        Penalty hw _ (WrapMark m)
+          | i == lastIx && hw > 0 ->
+              let (ox, oy) = origin off
+                  look = lookBefore i
+                  size = lkSize look
+                  rotated = vertical && T.all (isLatin look) m
+                  r = runAtU env (whoBefore i) look vertical rotated 0 (if rotated then (ox - Sp (unSp (size * 3) `div` 10), oy) else (ox, oy)) m
+               in (lkColor look, ([(Nothing, fst r)], snd r))
         _ -> (Nothing, ([], []))
       -- by the glyphs used, not the marks: the marks need the ToUnicode entries of every page (golem-driver ADR 0030)
       parts = filter (not . null . snd . snd) (zipWith (curry boxRun) [0 ..] placed)

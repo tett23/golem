@@ -185,11 +185,12 @@ jobs:
       # restored and cabal builds, and the step before the tests waits for
       # it. A stalled mirror fails it in 5 minutes (docs/adr/0009,
       # docs/adr/0037)
-      # the tests need qpdf, and so does the check of the typefaces of the
-      # manuals on the x86-64 runner of the outputs (docs/adr/0232)
+      # the tests need qpdf and Poppler (pdftoppm and pdfinfo), and the
+      # check of the typefaces of the manuals on the x86-64 runner of the
+      # outputs needs qpdf (docs/adr/0232); one apt-get for both
       - name: qpdf in the background (golem-pdf ADR 0001)
         if: matrix.tests || (matrix.runner == 'ubuntu-24.04' && matrix.outputs)
-        run: sh scripts/ci/bg.sh start apt timeout -k 10 300 sh scripts/ci/apt-install.sh qpdf
+        run: sh scripts/ci/bg.sh start apt timeout -k 10 300 sh scripts/ci/apt-install.sh qpdf poppler-utils
       # epubcheck checks the EPUB of x86-64. It comes from the release zip
       # of w3c/epubcheck, not from apt, and runs with the Java of the
       # runner image; the zip is cached by its version and SHA-256
@@ -468,6 +469,20 @@ jobs:
         working-directory: modules/golem-driver/test/fixtures/languages
         run: |
           "$(cabal list-bin -v0 golem)" build --target epub
+          epubcheck build/epub/book.epub
+      # a citation of @bibliography in another file, a navigation of depth
+      # 1 and the channel of the sample plugin glossary, put in a cache by
+      # the SHA-256 of plugins.lock so that its url is not fetched
+      # (docs/adr/0232)
+      - name: The EPUB of epub-forms passes epubcheck (docs/adr/0232)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        working-directory: modules/golem-driver/test/fixtures/epub-forms
+        run: |
+          cache="$RUNNER_TEMP/epub-forms-cache"
+          mkdir -p "$cache/golem/plugins"
+          sha=$(sed -n 's/^sha256 = "\([0-9a-f]*\)"$/\1/p' plugins.lock)
+          cp "$GITHUB_WORKSPACE/plugins/wasm/glossary.wasm" "$cache/golem/plugins/$sha.wasm"
+          XDG_CACHE_HOME="$cache" "$(cabal list-bin -v0 golem)" build --target epub
           epubcheck build/epub/book.epub
       # scripts/determinism.sh builds the two manuals with
       # scripts/manual/build.sh, which fails on a single diagnostic,

@@ -136,8 +136,8 @@ tableFileTests =
         fromCsv <- miniPdf fakeProvider True horizontalStyle "@table data.csv align=right\n" [("data.csv", TE.encodeUtf8 "項目,値\n幅,10\n")] >>= fmap BS.concat . inflateAll
         fromBars <- miniPdf fakeProvider True horizontalStyle "| 項目 | 値 |\n|---:|---:|\n| 幅 | 10 |\n" [] >>= fmap BS.concat . inflateAll
         sort (drawnGlyphs fromCsv) @?= sort (drawnGlyphs fromBars),
-      -- the time-out detects a build that does not stop (docs/adr ADR 0073)
-      localOption (mkTimeout 30000000) $
+      -- the time-out detects a build that does not stop (docs/adr/0073, docs/adr/0237)
+      localOption hangTimeout $
         testCase "a large table is G02088, and the text build ends (docs/adr ADR 0043)" $
           withTables [("a.gm", "@table data/big.tsv\n")] [("data/big.tsv", BS.concat (replicate 200000 "a\tb\tc\n"))] $ \tmp -> do
             r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
@@ -164,8 +164,11 @@ cellLimitTests :: TestTree
 cellLimitTests =
   testGroup
     "the cells of a table set in PDF (docs/adr/0224)"
-    [ -- the time-out detects a table composed before it is refused (docs/adr ADR 0073)
-      localOption (mkTimeout 30000000) $
+    [ -- the time-out stops a build that does not stop, and nothing else
+      -- (docs/adr/0073, docs/adr/0237); that a table is composed before it
+      -- is refused, the diagnostics (G07108 alone, no G07041) and the
+      -- bound of the allocation of T2 find
+      localOption hangTimeout $
         testCase "T1, T2: a table of 10,000 rows of 256 cells is G07108 alone, without composing its cells" $ do
           -- the security audit of 2026-11-08, T-01: 57 s and 96 GB before G07041.
           -- Not in parallel, so that the allocation counter of this thread
@@ -177,7 +180,7 @@ cellLimitTests =
           (ds, bytes) <- allocatedBy (pdfDiagnostics False [("a.gm", "@table data/max.csv\n"), ("data/max.csv", csvOf (replicate 10000 256))])
           [(c, m) | (c, m, _) <- ds] @?= [("G07108", tooMany 2560000)]
           assertBool ("allocated " <> show bytes <> " bytes") (bytes <= 8 * 2 ^ (30 :: Int)),
-      localOption (mkTimeout 30000000) $
+      localOption hangTimeout $
         testCase "T1, T3: N cells are composed as before (G07041); N + 1 are G07108 alone, at the block of the table" $ do
           atN <- pdfDiagnostics False [("a.gm", "@table data/t.csv\n"), ("data/t.csv", csvOf (replicate 400 250))]
           [c | (c, _, _) <- atN] @?= ["G07041"]
@@ -185,14 +188,14 @@ cellLimitTests =
           [(c, m) | (c, m, _) <- overN] @?= [("G07108", tooMany 100001)]
           -- at the block of the table, where G07041 is
           [sp | (_, _, sp) <- overN] @?= [sp | (_, _, sp) <- atN],
-      localOption (mkTimeout 30000000) $
+      localOption hangTimeout $
         testCase "T1: the cells of a header row of empty cells, a table without a header row, are counted" $ do
           ds <- pdfDiagnostics False [("a.gm", fromEmet "blank-header"), emetFile]
           [(c, m) | (c, m, _) <- ds] @?= [("G07108", tooMany 100001)],
       -- every source makes rows as long as the header row (G02085, G01015,
       -- E06104, and the output of a plugin), so no test of rows of
       -- different lengths reaches the PDF
-      localOption (mkTimeout 30000000) $
+      localOption hangTimeout $
         testCase "T4: a table of N + 1 cells from a CSV, a TSV, a | table of .gm and Block.table of Emet is the same G07108" $ do
           -- 100,001 = 9,091 rows of 11 cells, the header row one of them
           let rows = replicate 9091 11
@@ -201,14 +204,14 @@ cellLimitTests =
           bars <- pdfDiagnostics False [("a.gm", barsOf rows)]
           emet <- pdfDiagnostics False [("a.gm", fromEmet "big"), emetFile]
           forM_ [csv, tsv, bars, emet] $ \ds -> [(c, m) | (c, m, _) <- ds] @?= [("G07108", tooMany 100001)],
-      localOption (mkTimeout 30000000) $
+      localOption hangTimeout $
         testCase "T5: HTML and text set a table of N + 1 cells without G07108" $
           forM_ [TargetHtml, TargetText] $ \target ->
             withTables [("a.gm", "@table data/t.csv\n")] [("data/t.csv", csvOf (replicate 9091 11))] $ \tmp -> do
               r <- build (defaultOptions tmp) {optTargets = Just [target]}
               codesOf (brDiagnostics r) @?= []
               assertBool (show target <> " writes its output") (not (null (brWritten r))),
-      localOption (mkTimeout 30000000) $
+      localOption hangTimeout $
         testCase "T6: the diagnostics of a table over N and a small one are the same in parallel and not" $ do
           let files = [("a.gm", "@table data/big.csv\n\n@table data/small.csv\n"), ("data/big.csv", csvOf (replicate 9091 11)), ("data/small.csv", csvOf [2, 2])]
           one <- pdfDiagnostics False files

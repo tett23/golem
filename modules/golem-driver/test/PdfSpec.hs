@@ -25,6 +25,7 @@ import Golem.Project (Manifest (..), Project (..), ProjectFailure (..))
 import Golem.Project.Files (diskFiles)
 import Golem.Project.Style (dimToSp, parseDim, parseStyle)
 import Golem.Syntax
+import Golem.TestSupport.CffRos (withRos)
 import Golem.TestSupport.ExternalTool (needsTool)
 import Golem.Typeset (ClusterPart (..), CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
 import Golem.Typeset.FontProvider (actualTextOf, cffFontProgram, golemFontProvider, toUnicodeOf)
@@ -401,7 +402,19 @@ variationTests =
         qpdfCheck pdf,
     testCase "the CIDFont of 蟹工船 stays Adobe-Identity-0" $ do
       (_, pdf, _) <- buildBook "kanikosen"
-      assertBool "Identity" ("/CIDSystemInfo << /Ordering (Identity) /Registry (Adobe) /Supplement 0 >>" `BS.isInfixOf` pdf)
+      assertBool "Identity" ("/CIDSystemInfo << /Ordering (Identity) /Registry (Adobe) /Supplement 0 >>" `BS.isInfixOf` pdf),
+    testCase "I10: a paragraph of 蟹工船 in a font of Adobe-Japan1-7 gives its CIDFont that ROS (docs/adr ADR 0232)" $ do
+      han <- BS.readFile "../golem-font/test/fonts/SourceHanSans-Regular_subset.otf"
+      font <- maybe (assertFailure "the ROS could not be rewritten") pure (withRos "Adobe" "Japan1" 7 han)
+      book <- TIO.readFile "test/fixtures/kanikosen/kanikosen.gm"
+      -- the paragraph after the opening line, with its ruby
+      let paragraph = T.takeWhile (/= '\n') (T.drop 1 (T.dropWhile (/= '\n') (snd (T.breakOn "「おい地獄さ" book))))
+      assertBool (T.unpack paragraph) (T.length paragraph > 100)
+      (_, pdf) <- buildMini realProvider True (pdfStyle <> "\n[fonts.body]\nja = \"fonts/ja.otf\"\n") (paragraph <> "\n") [("fonts/ja.otf", font)]
+      pdf' <- maybe (assertFailure "no PDF") pure pdf
+      assertBool "Japan1" ("/CIDSystemInfo << /Ordering (Japan1) /Registry (Adobe) /Supplement 7 >>" `BS.isInfixOf` pdf')
+      assertBool "no Identity" (not ("/Ordering (Identity)" `BS.isInfixOf` pdf'))
+      qpdfCheck pdf'
   ]
 
 {- | Lays out a project (manifest, style, sources) with the fake fonts and
@@ -1188,6 +1201,21 @@ codeTests =
           text = T.replicate 20 "あ"
       ts <- listPages style (text <> " [code: \"severity\":\"notice123\"] と書く。\n")
       ts @?= [text, "\"severity\":\"notice123\"と書く。"],
+    testCase "C8 (golem-layout ADR 0034): [code: ...] of Japanese text longer than a line breaks between its characters, the lines ending with the wrap mark" $ do
+      let msg = T.replicate 4 "罫線を持つ段落が版面に入らないため、"
+      (_, pl) <- layoutOk (horizontal30 "") ("[code: " <> msg <> "]\n") []
+      let ls = [slLine sl | sl <- Map.elems (plLines pl)]
+          marks l = [m | Penalty _ _ (WrapMark m) <- take 1 (reverse (lineItems l))]
+      assertBool (show (lineTexts pl)) (length ls > 1)
+      T.concat (lineTexts pl) @?= msg
+      map marks ls @?= map (const ["\x23CE"]) (drop 1 ls) <> [[]]
+      r <- buildAll (horizontal30 "") ("[code: " <> msg <> "]\n") []
+      diagnosticsOf "G07105" (brDiagnostics r) @?= [],
+    testCase "C8 (golem-layout ADR 0034): wrap-mark = \"\" draws no mark" $ do
+      let msg = T.replicate 4 "罫線を持つ段落が版面に入らないため、"
+      (_, pl) <- layoutOk (horizontal30 "\n[character-styles.code]\nwrap-mark = \"\"\n") ("[code: " <> msg <> "]\n") []
+      assertBool (show (lineTexts pl)) (length (lineTexts pl) > 1)
+      [() | sl <- Map.elems (plLines pl), Penalty _ _ (WrapMark _) <- lineItems (slLine sl)] @?= [],
     testCase "a path in [code: ...] breaks after a slash, with no hyphen" $ do
       (_, pl) <- layoutOk horizontalStyle "あいうえお[code: modules/golem-driver/src/Golem/Driver/Pdf.hs]\n" []
       assertSlashBreaks pl,
