@@ -1,0 +1,44 @@
+== cost
+10 elements; charged=10
+9223372036854775808 elements; PrimOverLimit
+18446744073709551616 elements; PrimOverLimit
+exit=0 wall=1s
+== control
+(Left (Diagnostic {diagCode = DiagnosticCode "E04100", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 1, spanStart = 0, spanEnd = 1}, diagMessage = "\38306\25968\12398\35413\20385\12398\25163\25968\12364\19978\38480\65288\&100000000 \25163\65289\12434\36229\12360\12414\12375\12383: f\65288main.emet:1\65289", diagRelated = [], diagFixes = [], diagFacts = []}),100000001)
+exit=0 wall=1s
+== take
+(Left (Diagnostic {diagCode = DiagnosticCode "E04100", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 1, spanStart = 0, spanEnd = 1}, diagMessage = "\38306\25968\12398\35413\20385\12398\25163\25968\12364\19978\38480\65288\&100000000 \25163\65289\12434\36229\12360\12414\12375\12383: f\65288main.emet:1\65289", diagRelated = [], diagFixes = [], diagFacts = []}),100000001)
+exit=0 wall=1s
+== length
+(Left (Diagnostic {diagCode = DiagnosticCode "E04100", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 1, spanStart = 0, spanEnd = 1}, diagMessage = "\38306\25968\12398\35413\20385\12398\25163\25968\12364\19978\38480\65288\&100000000 \25163\65289\12434\36229\12360\12414\12375\12383: f\65288main.emet:1\65289", diagRelated = [], diagFixes = [], diagFacts = []}),100000001)
+exit=0 wall=1s
+== replace
+(Left (Diagnostic {diagCode = DiagnosticCode "E04100", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 1, spanStart = 0, spanEnd = 1}, diagMessage = "\38306\25968\12398\35413\20385\12398\25163\25968\12364\19978\38480\65288\&100000000 \25163\65289\12434\36229\12360\12414\12375\12383: f\65288main.emet:1\65289", diagRelated = [], diagFixes = [], diagFacts = []}),100000001)
+exit=0 wall=1s
+== join
+[Diagnostic {diagCode = DiagnosticCode "E01100", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 100, spanStart = 53, spanEnd = 54}, diagMessage = "\27083\25991\12398\35492\12426\12391\12377\12290'\"'\12289'('\12289'-'\12289'--'\12289'['\12289'\\''\12289'\\n'\12289'case'\12289[ \\t]\12289[0-9]\12289[A-Z]\12289[a-z_] \12364\35201\12426\12414\12377", diagRelated = [], diagFixes = [], dia
+exit=0 wall=1s
+== concat
+[Diagnostic {diagCode = DiagnosticCode "E01100", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 100, spanStart = 41, spanEnd = 42}, diagMessage = "\27083\25991\12398\35492\12426\12391\12377\12290'\"'\12289'('\12289'-'\12289'--'\12289'['\12289'\\''\12289'\\n'\12289'case'\12289[ \\t]\12289[0-9]\12289[A-Z]\12289[a-z_] \12364\35201\12426\12414\12377", diagRelated = [], diagFixes = [], dia
+exit=0 wall=1s
+== append
+[Diagnostic {diagCode = DiagnosticCode "E01102", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 100, spanStart = 76, spanEnd = 78}, diagMessage = "if \12399 .emet \12391\20351\12360\12394\12356\20104\32004\35486\12391\12377\12290\20998\23696\12399\12460\12540\12489\12289case\12289\19977\38917\28436\31639\23376\12391\26360\12365\12414\12377", diagRelated = [], diagFixes = [], diagFacts
+exit=0 wall=1s
+== fromChars
+[Diagnostic {diagCode = DiagnosticCode "E01100", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 100, spanStart = 44, spanEnd = 45}, diagMessage = "\27083\25991\12398\35492\12426\12391\12377\12290'\"'\12289'('\12289'-'\12289'--'\12289'['\12289'\\''\12289'\\n'\12289'case'\12289[ \\t]\12289[0-9]\12289[A-Z]\12289[a-z_] \12364\35201\12426\12414\12377", diagRelated = [], diagFixes = [], dia
+exit=0 wall=1s
+== join
+[Diagnostic {diagCode = DiagnosticCode "E02101", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 100, spanStart = 61, spanEnd = 81}, diagMessage = "\22411\12364\21512\12356\12414\12379\12435: Nat \12434\27714\12417\12427\20301\32622\12395 Int \12364\12354\12426\12414\12377", diagRelated 
+exit=0 wall=1s
+== concat
+(Left (Diagnostic {diagCode = DiagnosticCode "E04100", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 1, spanStart = 0, spanEnd = 1}, diagMessage = "\38306\25968\12398\35413\20385\12398\25163\25968\12364\19978\38480\65288\&100000000 \25163\65289\12434\36229\12360\12414\12375\12383: rng\
+exit=0 wall=1s
+== append
+[Diagnostic {diagCode = DiagnosticCode "E02101", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 100, spanStart = 91, spanEnd = 98}, diagMessage = "\22411\12364\21512\12356\12414\12379\12435: Nat \12434\27714\12417\12427\20301\32622\12395 Int \12364\12354\12426\12414\12377", diagRelated 
+exit=0 wall=1s
+== join
+(Left (Diagnostic {diagCode = DiagnosticCode "E04100", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 1, spanStart = 0, spanEnd = 1}, diagMessage = "\38306\25968\12398\35413\20385\12398\25163\25968\12364\19978\38480\65288\&100000000 \25163\65289\12434\36229\12360\12414\12375\12383: f\65
+exit=0 wall=2s
+== append
+(Left (Diagnostic {diagCode = DiagnosticCode "E04100", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 1, spanStart = 0, spanEnd = 1}, diagMessage = "\38306\25968\12398\35413\20385\12398\25163\25968\12364\19978\38480\65288\&100000000 \25163\65289\12434\36229\12360\12414\12375\12383: go\6
+exit=0 wall=1s

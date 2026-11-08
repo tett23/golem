@@ -25,6 +25,7 @@ v1.0.0 のリリースまでに、次の項目を扱う。
 v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 仕様や機能を変える項目は、着手するときに ADR を作成する。
 
+- **2026-11-09 の監査の情報の所見**：v0.1.0-rc4 のリリースの後に扱う（[2026-11-09 の監査](audits/2026-11-09-security-audit.md)）。上限内の表のメモリ（T-02）、`release.yml` の `ci` に渡す `actions: write` と [docs/adr/0228](adr/0228-keep-the-ci-caches-under-the-10-gb-limit.md) の記述のずれ（CI-01）、キャッシュから戻した実行ファイルを再ハッシュしないこと（CI-02）、外部 action のタグ参照（CI-03）、ブラウザーの検査のサーバーがシンボリックリンクをたどること（B-01）、wasmtime の C ホストの資源の上限（WT-01、WT-02）である。振る舞いを変えるものは ADR を作る。
 - **リンクの注釈についての ISO 15930-7 の照合**：v1.0.0 のタグを打つ前に、メンテナーが ISO 15930-7:2010 の本文を入手し、リンクの注釈、URI のアクション、仕上がりの線の内側の印刷する注釈、外観のストリームのない注釈の四つの問いと、[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) の要件の一覧を照合する。結果は `docs/audits/<日付>-iso-15930-7-check.md` に記録する。今の出力が規格に反すると分かれば、[docs/adr/0182](adr/0182-external-links.md) の PDF/X-4 の節を改める ADR を作り、その実装がマージされるまで v1.0.0 のタグを打たない。タグを打つ前に、記録があり、この項目が消えていることを確かめる（[docs/adr/0221](adr/0221-check-iso-15930-7-for-link-annotations-before-rc4.md)、[docs/adr/0226](adr/0226-move-the-iso-15930-7-check-to-before-v1.md)）。v1.0.0 の前のリリースのリリースノートには、照合を済ませていないことを既知の問題として書く。
 - **Adobe の製品で確かめる見た目**：Adobe の製品を使う手の確かめは、費用がかかるので、v1.0.0 のリリースのときにメンテナーがまとめて行う（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md) の「決めたことの記録」）。見本は、見た目の回帰テストの入力の `specimens-horizontal` と `specimens-vertical` を使える。
   - 縦組みのダッシュを、InDesign の縦組みと比べること（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
