@@ -55,7 +55,7 @@ export function asyncScript(expression) {
   return `const done = arguments[arguments.length - 1];
 Promise.resolve().then(() => (${expression})).then(
   (v) => done({ ok: true, v }),
-  (e) => done({ ok: false, e: String(e && e.stack || e) }));`;
+  (e) => done({ ok: false, e: String(e) + (e && e.stack ? '\\n' + e.stack : '') }));`;
 }
 
 // The script timeout of WebDriver is 30 s by default; golem.wasm builds a

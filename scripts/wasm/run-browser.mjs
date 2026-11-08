@@ -69,8 +69,7 @@ if (command === 'build' && args.length === 3) {
     process.stderr.write(`run-browser: ${e.stack ?? e}\n`);
     process.exitCode = 3;
   }
-}
-else {
+} else {
   process.stderr.write('usage: node run-browser.mjs build BROWSER WASM DIR\n');
   process.exitCode = 2;
 }

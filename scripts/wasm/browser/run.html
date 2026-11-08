@@ -31,15 +31,23 @@ function frame(files) {
 
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 
-window.golemBuild = async () => {
+// The steps of a build, so that an error says in which it was thrown.
+let step = '';
+window.golemBuild = () => build().catch((e) => { throw new Error(`${step}: ${e}`); });
+
+async function build() {
+  step = 'fetch the files';
   const paths = await (await fetch('files.json')).json();
   const files = await Promise.all(paths.map(async (p) => [p, new Uint8Array(await (await fetch('/' + p.split('/').map(encodeURIComponent).join('/'))).arrayBuffer())]));
   const fds = [new OpenFile(new File([])), ConsoleStdout.lineBuffered(() => {}), ConsoleStdout.lineBuffered(() => {})];
   const wasi = new WASI(['golem.wasm'], [], fds);
+  step = 'instantiate golem.wasm';
   const { instance } = await WebAssembly.instantiateStreaming(fetch('golem.wasm'), { wasi_snapshot_preview1: wasi.wasiImport });
+  step = 'initialize';
   wasi.initialize(instance);
   const ex = instance.exports;
   ex.hs_init(0, 0);
+  step = 'golem_build_pdf';
   const input = frame(files);
   const ptr = ex.golem_alloc(input.length);
   new Uint8Array(ex.memory.buffer, ptr, input.length).set(input);
@@ -54,8 +62,9 @@ window.golemBuild = async () => {
   const pdf = r.subarray(5, 5 + pdfLen);
   const jsonLen = view.getUint32(5 + pdfLen, true);
   const json = new TextDecoder().decode(r.subarray(9 + pdfLen, 9 + pdfLen + jsonLen));
+  step = 'the SHA-256 of the PDF';
   const sha = pdfLen === 0 ? null : hex(await crypto.subtle.digest('SHA-256', pdf));
   return { status, sha, pdfLen, json };
-};
+}
 window.golemReady = true;
 </script></body></html>
