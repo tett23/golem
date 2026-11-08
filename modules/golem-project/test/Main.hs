@@ -611,6 +611,10 @@ tests =
         normalizeRelative "../x.gm" @?= Left EscapesRoot
         normalizeRelative "/etc/passwd" @?= Left Absolute
         normalizeRelative "https://example.com/a.gm" @?= Left Url,
+      testCase "F4: normalizeRelative makes the empty path the empty path (docs/adr/0225)" $ do
+        normalizeRelative "" @?= Right ""
+        normalizeRelative "." @?= Right ""
+        normalizeRelative "a/.." @?= Right "",
       testCase "loads chapters and imports in a deterministic order"
         $ withProject
           [ ("manifest.toml", manifest ["\"ch/01.gm\"", "[\"ch/02.gm\", { file = \"ch/03.gm\", master = \"body\" }]"]),
