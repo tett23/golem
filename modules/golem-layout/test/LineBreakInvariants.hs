@@ -28,6 +28,7 @@ module LineBreakInvariants
     l11Aki,
     l12Expansion,
     l13Protrusion,
+    t1LastLineBoxes,
     lineInvariants,
     breaches,
     lineEnd,
@@ -48,8 +49,8 @@ import Golem.Layout.Look (Look (..))
 import Golem.Length qualified as L
 import KnuthPlassBrute (breakCandidates, bruteDemerits)
 
--- | The invariants of docs/adr/0209, by their numbers.
-data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13
+-- | The invariants of docs/adr/0209, by their numbers, and T1 of golem-layout ADR 0032.
+data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken, the line it is broken at (from 0; -1 for the whole paragraph), and how.
@@ -478,6 +479,32 @@ l13Protrusion _ p =
             Nothing -> maybe 0 (\c -> maybe 0 (adv c . snd) (T.unsnoc (baseOf c))) (lastBox l)
     ]
 
+{- | T1 (golem-layout ADR 0032): the last line, and a line that ends at a
+forced break, holds a box, but where no box comes since the start of the
+paragraph or the forced break before it.
+-}
+t1LastLineBoxes :: Check
+t1LastLineBoxes _ p =
+  [ Breach T1 i ("line " <> show (i + 1) <> " ends the paragraph or a forced break and holds no box")
+  | (i, l) <- zip [0 :: Int ..] ls,
+    i == length ls - 1 || forced i,
+    null (boxes l),
+    any isBox (take (end i - start i) (drop (start i) (pItems p)))
+  ]
+  where
+    ls = linesOf p
+    forced i = case breakItem p i of
+      Just (Penalty _ q _) -> q <= negate infPenalty && i < length ls - 1
+      _ -> False
+    -- the items since the forced break before a line, and up to its end
+    end i = maybe (length (pItems p)) (+ 1) (breakIndex p i)
+    start i = case [b + 1 | j <- [0 .. i - 1], forced j, Just b <- [breakIndex p j]] of
+      [] -> 0
+      bs -> last bs
+    isBox = \case
+      Box {} -> True
+      _ -> False
+
 -- | Every invariant, with its check.
 lineInvariants :: [(LineInvariant, Check)]
 lineInvariants =
@@ -493,7 +520,8 @@ lineInvariants =
     (L10, l10Spaces),
     (L11, l11Aki),
     (L12, l12Expansion),
-    (L13, l13Protrusion)
+    (L13, l13Protrusion),
+    (T1, t1LastLineBoxes)
   ]
 
 -- | The breaches of a paragraph, L7 brute-forcing up to the number of breaks given.

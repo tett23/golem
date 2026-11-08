@@ -555,28 +555,9 @@ data LineBug = LineBug
     lbCounts :: [(Int, Int)]
   }
 
+-- | The known bugs, in the order of 「既知の不具合」: none since golem-layout ADR 0032.
 lineBugs :: [LineBug]
-lineBugs =
-  [ LineBug
-      { lbItem = "段落の終わりの語間の空白の前の行末禁則",
-        lbShape = \i -> " " `elem` inRun i,
-        lbExcuses = \i br -> breachOf br == L3 && breaksAtTrailingSpace i (breachLine br),
-        lbCounts = [(0, 0), (1, 0), (2, 0), (3, 576)]
-      }
-  ]
-
-{- | Whether line k of an input ends at a space between words that no box
-follows: the space at the end of the paragraph.
--}
-breaksAtTrailingSpace :: Input -> Int -> Bool
-breaksAtTrailingSpace i k =
-  let p = paragraphOf i
-      isBox = \case
-        Box {} -> True
-        _ -> False
-   in case drop k (brPositions (pBreaks p)) of
-        b : _ | b >= 0 && b < length (pItems p) -> pItems p !! b == latinSpace p && not (any isBox (drop (b + 1) (pItems p)))
-        _ -> False
+lineBugs = []
 
 -- | The breaches of an input no known bug excuses, and whether each known bug excuses one.
 judged :: Int -> Input -> ([Breach], [Bool])
@@ -654,7 +635,7 @@ report limit what input =
 
 exhaustiveTests :: [TestTree]
 exhaustiveTests =
-  [ testCase "L1 to L13 hold for every input up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
+  [ testCase "L1 to L13 and T1 hold for every input up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- linesDepth
       let limit = bruteLimitAt depth
       -- built here, not in a value of its own, so that it is not held
@@ -677,7 +658,7 @@ exhaustiveTests =
                     <> ", the inputs a known bug excuses differ from the count pinned:\n"
                     <> intercalate "\n" [item <> ": pinned " <> maybe "nothing" show pinned <> ", counted " <> show n | (item, pinned, n) <- wrong]
                 ),
-    testCase "L1 to L13 hold for every input drawn one part past GOLEM_ENUM_LINES_DEPTH, GOLEM_ENUM_LINES_SAMPLES of them, but the known bugs" $ do
+    testCase "L1 to L13 and T1 hold for every input drawn one part past GOLEM_ENUM_LINES_DEPTH, GOLEM_ENUM_LINES_SAMPLES of them, but the known bugs" $ do
       depth <- linesDepth
       count <- linesSamples
       let limit = bruteLimitAt depth

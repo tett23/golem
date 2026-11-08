@@ -40,6 +40,7 @@ module Golem.Layout.Japanese
 where
 
 import Data.Char (GeneralCategory (..), generalCategory, isLetter, isSpace)
+import Data.IntSet qualified as IntSet
 import Data.List (groupBy, mapAccumL, zip5)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
@@ -304,10 +305,13 @@ composeInlinesTree env inls =
         _ -> True
       prevs = scanl (\acc p -> if solid p then Just p else acc) Nothing pieces
       nexts = drop 1 (scanr (\p acc -> if solid p then Just p else acc) Nothing pieces)
-      normalized = normalize env (kernPairs env items)
-      -- anchors index the normalized items: the spacing inserted before a box shifts it
-      positions = alignPositions items normalized
-      at i = fromMaybe (length normalized) (lookup i positions)
+      spaced = normalize env (kernPairs env items)
+      -- the spaces between words before the end of the paragraph and before a forced break go (golem-layout ADR 0032)
+      dropped = trailingSpaces spaced
+      normalized = [x | (k, x) <- zip [0 ..] spaced, not (IntSet.member k dropped)]
+      -- anchors index the normalized items: the spacing inserted before a box shifts it, a space taken out the items after it
+      positions = alignPositions items spaced
+      at i = let j = fromMaybe (length spaced) (lookup i positions) in j - IntSet.size (fst (IntSet.split j dropped))
    in (finish normalized, [f (at i) | (i, f) <- reverse anchors], nodes)
   where
     finish its = its <> lineEnd
@@ -431,6 +435,36 @@ walk env st@(LeafState next cur seen) inl = case inl of
 -- | The end of a paragraph, and of a line broken by a hard break: the rest of the line is fill.
 lineEnd :: [Item]
 lineEnd = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+
+{- | The items of the spaces between words before the end of a paragraph
+and before each forced break (golem-layout ADR 0032), by their indices:
+where no box comes between a space and the end, the glue of each space
+between words there and the penalties of 10000 kinsoku put before them
+(golem-layout ADR 0028). A space of code, which does not stretch, stays;
+so does all else.
+-}
+trailingSpaces :: [Item] -> IntSet.IntSet
+trailingSpaces its = IntSet.fromList (concatMap before ends)
+  where
+    indexed = zip [0 :: Int ..] its
+    ends = [k | (k, _) <- indexed, isLineEnd (drop k its)] <> [length its]
+    -- the items back from an end to the box or the line end before it
+    before e =
+      let run = takeWhile (not . stops . snd) (reverse (take e indexed))
+       in if any (isWordSpace . snd) run then [k | (k, x) <- run, isWordSpace x || isKept x] else []
+    stops = \case
+      Box {} -> True
+      Penalty _ p _ -> p <= negate infPenalty
+      _ -> False
+    isKept = \case
+      Penalty _ p NoHyphen -> p >= infPenalty
+      _ -> False
+    isLineEnd = \case
+      Penalty _ p NoHyphen : Glue 0 y 0 : Penalty _ q NoHyphen : _ -> p >= infPenalty && y == filStretch && q <= negate infPenalty
+      _ -> False
+    isWordSpace = \case
+      Glue _ y _ -> y > 0 && y < filStretch
+      _ -> False
 
 {- | Where each item ends up after 'normalize', which only inserts items
 before boxes and spaces and takes out the breaks after written hyphens

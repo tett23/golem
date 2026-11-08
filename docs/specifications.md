@@ -2996,6 +2996,12 @@ dev と prod の両方で警告で、PDF を書き、notice ではないので `
 区間の外と欧文の区間で同じ規則を当て、本の言語は見ない。
 和文の区間の `’` は欧文の語の箱に入らないので、終わり括弧類のままである。
 空白を改行の位置から外しても、空白の幅と伸縮は変えず、和欧間の空きとアキ量のセットの空きを足さない。
+段落の終わりと強制改行の前の語間の空白は、行分割の前に捨てる（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md)）。
+空白と行の終わりのあいだに箱がなければ捨て、あいだに内容を描かないコマンド（索引の印など）があっても捨てる。
+空白の前に置いた、改行を禁じる罰点も捨てる。
+コードの空白は、背景を塗って紙面に見えるので捨てない。
+全角の空白（U+3000）は和文の字なので捨てない。
+原稿の字は変えず、HTML、EPUB、プレーンテキストには今のとおり空白を書く。
 そのため「……。」は、「……」の前で改行してよく、「…」と「…」のあいだと「…」と「。」のあいだでは改行しない。
 U+2015 HORIZONTAL BAR も分離禁止文字に含め、`――` を U+2014 の `——` と同じく二字のあいだで分けない（[golem-layout ADR 0016](golem-layout/adr/0016-ellipsis-before-full-stop.md)）。
 
@@ -3082,7 +3088,7 @@ TeX と Golem でハイフネーションのパターンが異なり、Golem は
 明示のハイフンでの分割は止めず、`lime-tree` の `lime-` の後ろで分ける行長も比べる（[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。
 期待値の生成の手順と出所は、テストのデータのディレクトリ（`modules/golem-layout/test/data/knuth-plass/`）の README に書いている。
 
-これらの規則は、[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の L1 から L13 として、golem-layout のテストで確かめる。
+これらの規則は、[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の L1 から L13 と、[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md) の T1（最後の行と強制改行で終わる行は箱を一つ以上持つ）として、golem-layout のテストで確かめる。
 述語は `modules/golem-layout/test/LineBreakInvariants.hs` にあり、行分割の入力（項目と段落の設定）と出力（`Breaks`）だけを読み、行の置き方は `placeLine` と `glueRatio` で読む。
 段落は、23 の部品の並びの前に `あ` を、後に `い` を置いたものである。
 部品は、和文の文字クラスごとの一字と `—` と、欧文の語の `a` と `table` と `hyphenation` と `lime-tree` と、語間の空白と `.` と `“` と `”` である。
@@ -3096,7 +3102,7 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 毎晩の `enum.yml` は部品 3 個までを 5 字までの行で調べ、分割の候補が 16 以下の入力で L7 を調べ、部品 4 個の入力を 500 万、種を固定した擬似乱数で抜き取って調べる。
 違反があれば、最も小さい入力を表示する。
 「既知の不具合」に載せた違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
-今の一覧には、「段落の終わりの語間の空白の前の行末禁則」の一つがある。
+今の一覧は空である（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md) で、一覧にあった「段落の終わりの語間の空白の前の行末禁則」を直した）。
 
 述語が判定しない場合はない（[docs/adr/0222](adr/0222-line-breaking-points-the-invariants-did-not-decide.md)）。
 L6 は、伸びるグルーのない行を行長に足りなくてよいとし、字幅の伸縮が限度に達していなければ、足りない量が刻み一つ分の伸縮より小さいことを確かめる。
@@ -5013,7 +5019,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
 - **`[ref-number]` の図番号とリスト番号が、`[figures]` と `[code]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックを `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
-- **段落の終わりの語間の空白の前の行末禁則**：段落の最後に書いた語間の空白は、後に箱がなくても分割の候補のままである。始め括弧類の後の空白で段落が終わると、そこで分けて空の最後の行を作り、前の行が始め括弧類で終わる（[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の L3）。[golem-layout ADR 0028](golem-layout/adr/0028-kinsoku-across-spaces-and-explicit-hyphens.md) は、空白の前と後の二つの箱の組で禁則を判定すると決め、後に箱がない空白を決めていない。最も小さい例は、2 字の行に `あ「「 ` を組むもので、1 行めが `あ「「` で終わり、2 行めは空になる。除いた入力は、部品 3 個までで 576 である。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。

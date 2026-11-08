@@ -8,6 +8,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Fixtures (fs, look0, sp)
 import Golem.Doc.IR qualified as IR
+import Golem.Layout.Align (LineAlign (..), ParaAlign (..), breakAligned, lineShift)
 import Golem.Layout.Japanese (ComposeEnv (..), composeInlines, defaultComposeEnv)
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (LinkTarget (..), Look (..), noBoxSource)
@@ -16,7 +17,7 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import KnuthPlassReference (finish, referenceLook)
-import LineBreakEnum (Input (..), Setting (..), advance, breakInput, composeEnv, inlinesOf, itemsOf, lineText)
+import LineBreakEnum (Input (..), Setting (..), advance, breakInput, composeEnv, inlinesOf, itemsOf, lineText, paramsOf)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -71,6 +72,7 @@ lineBreakingTests =
         let r = breakParagraph defaultParams (const target) (paragraph ws)
         [w | l <- brLines r, Box w _ <- lineItems l] === ws,
       kinsokuTests,
+      trailingSpaceTests,
       lowLineTests,
       apostropheTests
     ]
@@ -136,6 +138,40 @@ kinsokuTests =
       testCase "K7: where a space is no longer a break, it is the only glue between the two characters" $
         -- the space of the paragraph start before 「, as before
         take 4 (drop 1 (shapes plain ["「", " ", "a"])) @?= ["「", "|10000", space, "a"]
+    ]
+
+-- | The items of inlines in the setting given, as 'shapes' writes them.
+shapesOf :: [IR.Inline] -> [String]
+shapesOf is = map shapeOf (fst (composeInlines (composeEnv False plain) is))
+
+{- | Word spaces before the end of a paragraph and before a forced break
+are dropped before the line breaking (golem-layout ADR 0032), on lines of
+2 em.
+-}
+trailingSpaceTests :: TestTree
+trailingSpaceTests =
+  testGroup
+    "word spaces before the end of a paragraph (golem-layout ADR 0032)"
+    [ testCase "T1: ああ and あ「「 with a space after them are one line, no empty line after it" $ do
+        linesIn plain 2 ["あ", "あ", " "] @?= ["ああ"]
+        linesIn plain 2 ["あ", "「", "「", " "] @?= ["あ「「"],
+      testCase "T2: the items of ああ with a space after it are those of ああ" $
+        shapes plain ["あ", "あ", " "] @?= shapes plain ["あ", "あ"],
+      testCase "T2: the space after a Latin word before the end goes, and the penalty before it after an opening bracket" $ do
+        shapes plain ["a", " "] @?= shapes plain ["a"]
+        shapes plain ["あ", "「", " "] @?= shapes plain ["あ", "「"],
+      testCase "T2: a space before a forced break goes, the space after it stays a break" $
+        shapesOf [IR.Text sp "ああ ", IR.LineBreak sp, IR.Text sp "いい"] @?= shapesOf [IR.Text sp "ああ", IR.LineBreak sp, IR.Text sp "いい"],
+      testCase "T3: a space of code at the end stays" $ do
+        let items = fst (composeInlines (defaultComposeEnv fs) {ceLook = look0 {lkCode = True}} [IR.Text sp "a "])
+        [() | Glue _ 0 0 <- items] @?= [()],
+      testCase "T1: a centred last line of ああ and a space is where that of ああ is" $ do
+        let centred = Ragged LineCenter
+            lastLine run =
+              let its = itemsOf False plain 0 run 0
+               in last (brLines (breakAligned centred (paramsOf plain False its) (const (4 * fs)) its))
+            at = lineShift centred True
+        at (lastLine ["あ", "あ", " "]) @?= at (lastLine ["あ", "あ"])
     ]
 
 -- | The items of a run as 'shapes' gives them, with explicit-hyphen-penalty 10000.

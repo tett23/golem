@@ -500,7 +500,22 @@ blankLineTests =
 
 breakTests :: [TestTree]
 breakTests =
-  [ testCase "A5: a paragraph with ’tis and ’90s breaks the same in a book of en and in one of ja (golem-layout ADR 0030)" $ do
+  [ testCase "T5: a space before an index mark at the paragraph end stays in plain text and HTML; in the PDF the full line is the last and the index gives its page (golem-layout ADR 0032)" $ do
+      -- twelve characters fill the line of horizontalStyle: the space after them made an empty last line
+      let source = "ああああああああああああ [index reading=あ: あ]\n\n@page-break\n\n@index\n"
+      withSystemTempDirectory "golem-trailing" $ \tmp -> do
+        writeProject tmp (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["pdf", "html", "text"]})) horizontalStyle source []
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml, TargetText], optFonts = fakeProvider}
+        map diagCode (filter isError (brDiagnostics r)) @?= []
+        let readText p = TE.decodeUtf8 <$> BS.readFile p
+        txt <- mapM readText [p | p <- brWritten r, "a.txt" `isSuffixOf` p]
+        html <- mapM readText [p | p <- brWritten r, "a.xhtml" `isSuffixOf` p]
+        assertBool (show txt) (not (null txt) && all ("ああ " `T.isInfixOf`) txt)
+        assertBool (show html) (not (null html) && all ("ああ " `T.isInfixOf`) html)
+      pages <- pagesMini "" horizontalStyle source [] Map.empty >>= either (assertFailure . show) pure
+      take 1 pages @?= [["ああああああああああああ"]]
+      assertBool (show pages) (any (any (\l -> "あ" `T.isPrefixOf` l && "1" `T.isSuffixOf` l)) (drop 1 pages)),
+    testCase "A5: a paragraph with ’tis and ’90s breaks the same in a book of en and in one of ja (golem-layout ADR 0030)" $ do
       -- digits, which the patterns do not break: 20 of them are 10 em of the 12 of a line, and ’tis after a space does not fit
       let para = "12345678901234567890 ’tis 12345678901234567890 ’90s\n"
           linesOf lang = do
