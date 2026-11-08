@@ -9,8 +9,9 @@
 // scripts/browser/browsers.mjs) and builds the PDF there. It prints the
 // SHA-256 of the PDF, or - when there is none, on stdout, and the JSON of
 // the diagnostics on stderr; it exits 1 when the JSON has an error, as
-// golem build does, and 2 when the module cannot read the input frame
-// (status 1). The browser_wasi_shim of scripts/browser/package-lock.json
+// golem build does, 2 when the module cannot read the input frame
+// (status 1), and 3 when the browser or the page failed (the error on
+// stderr). The browser_wasi_shim of scripts/browser/package-lock.json
 // must be installed (npm ci in scripts/browser).
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -61,7 +62,14 @@ async function build(browser, wasmPath, dir) {
 }
 
 const [command, ...args] = process.argv.slice(2);
-if (command === 'build' && args.length === 3) process.exitCode = await build(...args);
+if (command === 'build' && args.length === 3) {
+  try {
+    process.exitCode = await build(...args);
+  } catch (e) {
+    process.stderr.write(`run-browser: ${e.stack ?? e}\n`);
+    process.exitCode = 3;
+  }
+}
 else {
   process.stderr.write('usage: node run-browser.mjs build BROWSER WASM DIR\n');
   process.exitCode = 2;

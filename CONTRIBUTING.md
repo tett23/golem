@@ -391,6 +391,15 @@ zip は版と SHA-256 をキーにキャッシュするので、取りに行く�
 今の版は 5.4.0 である。
 版を上げるときは、`ci.yml` の `EPUBCHECK_VERSION` と `EPUBCHECK_SHA256` を変えるプルリクエストを出す（[docs/adr/0062](./docs/adr/0062-epubcheck-from-release-with-cache.md)）。
 
+夜ごとの `browser.yml` は、golem の HTML と `golem.wasm` を、Chromium、Safari、Deno で確かめる（[docs/adr/0234](./docs/adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)）。
+プルリクエストでは走らず、前の成功した実行から `main` が進んだ日と、`workflow_dispatch` で走る。
+Chromium は Chrome for Testing の `chrome-headless-shell` を、Deno は GitHub のリリースの zip を、版と SHA-256 で固定する（`scripts/browser/fetch-chromium.sh`、`scripts/wasm/fetch-deno.sh`）。
+版を上げるときは、版と SHA-256 を同じプルリクエストで変え、`workflow_dispatch` で `browser.yml` が通ることを確かめる。
+Safari の版は固定せず、macOS のランナーの像に従う。
+`safari` のジョブの要約には、macOS、像、Safari、WebDriver の `browserVersion` の版の表が残る。
+`safari` のジョブが失敗したら、まずこの表を前の成功した実行の表と比べ、Safari か像の版が変わっていれば Safari の更新を疑う。
+検査を緩めるか外すときは、その変更のプルリクエストに理由を書く。
+
 ## ライセンス
 
 二つのマニュアル（`manual/` と `manual-dev/`。`fonts/` を除く）への貢献は、[CC0 1.0](./manual/LICENSE) のもとで配布される（[docs/adr/0082](./docs/adr/0082-manuals-under-cc0.md)）。

@@ -82,7 +82,9 @@ ca-certificates の入っていない最小構成のコンテナでは、ca-cert
 ファイルを読まず、プロジェクトのファイルをバイト列で受け取って、PDF と diagnostics の JSON を返す。
 インポートは WASI（preview 1）の `wasi_snapshot_preview1` だけで、前もって開くディレクトリ（preopen）を要らない。
 Node の `node:wasi` で動くことを CI で確かめている。
-wasmtime、Deno、`browser_wasi_shim` を使うブラウザでも動く見込みだが、確かめていない（[docs/roadmap.md](./docs/roadmap.md) の「手で確かめる項目」）。
+夜ごとの `.github/workflows/browser.yml` が、Deno 2.9.8 の `node:wasi` と、`browser_wasi_shim` を使う Chromium（Chrome for Testing 157.0.8103.38）と Safari（macOS のランナーのもの）でも、ネイティブの `golem` と同じ PDF と diagnostics を返すことを確かめている（[docs/adr/0234](./docs/adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)）。
+wasmtime 49.0.5 の CLI では動かない。
+例外処理の古い形（legacy exceptions）を読まないためである（[docs/roadmap.md](./docs/roadmap.md)）。
 プラグインの機能はなく、`[plugins]` かプラグインのフィルタの `[[filters]]` を書いたプロジェクトは G06106 になる。
 ビルドのオプション（プロファイル、トンボ、`--no-notices`、`--verbose`）は受け取らず、`golem build --target pdf` の既定で組む。
 
@@ -438,7 +440,7 @@ Golem のビルドとテストは Node を使わない。
 
 プルリクエストと `main` への push で走る CI は、二つのワークフローからなる。
 `.github/workflows/docs.yml` は ADR とドキュメントを、`.github/workflows/ci.yml` はコードを検査する（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)）。
-ほかに、夜間に `main` で走る `.github/workflows/race.yml` と `.github/workflows/enum.yml` と、毎日一回 wasmtime のアドバイザリを照合する `.github/workflows/advisories.yml` がある。
+ほかに、夜間に `main` で走る `.github/workflows/race.yml` と `.github/workflows/enum.yml` と `.github/workflows/browser.yml` と、毎日一回 wasmtime のアドバイザリを照合する `.github/workflows/advisories.yml` がある。
 
 | ワークフロー | ジョブ | 内容 |
 |---|---|---|
@@ -461,6 +463,7 @@ Golem のビルドとテストは Node を使わない。
 | `advisories.yml` | `wasmtime` | 毎日一回と `workflow_dispatch` で、固定した wasmtime の版を bytecodealliance/wasmtime のリポジトリのアドバイザリと `scripts/wasmtime-advisories.sh` で照合する。当たるアドバイザリがあるか、読めないアドバイザリがあれば失敗し、スケジュールの実行の失敗の通知がメンテナーに届く。プルリクエストでは走らない。権限は `contents: read` だけである（[docs/adr/0157](./docs/adr/0157-check-wasmtime-pin-against-advisories.md)、[docs/adr/0166](./docs/adr/0166-read-wasmtime-advisory-ranges-as-written.md)） |
 | `race.yml` | `race` | 毎日一回 `main` で起動し、前回の成功した実行から `main` が変わっていれば（`scripts/ci/race-needed.sh`）、並行の競合を探すテスト（`golem-driver-parallel-test`、`golem-font-race-test`、`golem-font-test` の並行のテスト）を `GOLEM_RACE_TESTS=40` で走らせる。`workflow_dispatch` で手で起動すると、判定せずに走らせる。権限は `contents: read` と `actions: read` だけである（[docs/adr/0075](./docs/adr/0075-race-search-repetitions.md)） |
 | `enum.yml` | `enum` | 毎日一回 `main` で起動し、前回の成功した実行から `main` が変わっていれば（`scripts/ci/race-needed.sh` に `enum.yml` を渡す）、不変条件を小さな入力のすべてで確かめるテストを、範囲ごとの段（step）で走らせる。段ごとに、すべてを調べる上限と、その一つ上の段から抜き取る入力の数を環境の変数で渡し、すべての段の和を 60 分以内に収める（ジョブの上限は 90 分）。改ページの段は、golem-layout のテスト（「pagination invariants」の「every input」）を `GOLEM_ENUM_DEPTH=5` と `GOLEM_ENUM_PAGINATION_SAMPLES=5000000` で走らせる。2026-11-08 に手で起動した最初の三回の実行では、この段は 2 分 14 秒、2 分 43 秒、2 分 53 秒だった。プルリクエストの CI は、同じテストを要素 3 個まで調べ、抜き取らない。行分割の段は、golem-layout のテスト（「line breaking invariants on every small input」）を `GOLEM_ENUM_LINES_DEPTH=3` と `GOLEM_ENUM_LINES_SAMPLES=5000000` で走らせる。2026-11-08 に手で起動した最初の三回の実行では、この段は 12 分 48 秒、11 分 49 秒、8 分 58 秒だった。プルリクエストの CI は、同じテストを部品 2 個まで 4 字までの行で調べ（正規形と縦組みは部品 1 個まで）、抜き取らない（[docs/adr/0209](./docs/adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md)）。`workflow_dispatch` で手で起動すると、判定せずに走らせる。権限は `contents: read` と `actions: read` だけである（[docs/adr/0204](./docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)、[docs/adr/0208](./docs/adr/0208-widen-lightweight-formal-methods.md)） |
+| `browser.yml` | `prepare`、`chromium`、`safari` | 毎日一回 `main` で起動し、前回の成功した実行から `main` が変わっていれば（`scripts/ci/race-needed.sh` に `browser.yml` を渡す）走る。`workflow_dispatch` で手で起動すると、判定せずに走らせる。ビルドはしない。`prepare` は、成果物 `golem-wasm`、`wasm-native-list`、`manual`、`manual-dev`、`golem-linux-x86_64` のそろった最新の成功した `main` の `ci.yml` の実行からそれらを取り、`scripts/browser/fixtures/` と figures の fixture の HTML を組んで、成果物 `browser-inputs` として上げる。偽の WebDriver のサーバーに対する `scripts/browser/test/unit.test.mjs` もここで走る。`chromium`（`ubuntu-24.04`）は、版と SHA-256 で固定した `chrome-headless-shell` と Deno で、HTML の検査、輪郭の SVG の文字の検査、`scripts/browser/test/` の手で書いたページの検査、Deno と Chromium の `golem.wasm` の一覧の比べ合わせを走らせる。`safari`（`macos-15`）は、`sudo safaridriver --enable` の後に、同じ検査を Safari で走らせ、macOS、像、Safari、`browserVersion` の版の表をジョブの要約に書く。Safari の版は固定しない。どの検査も前の検査の失敗で止まらず、`safari` の失敗も再実行も無視もしない。権限は `contents: read` と `actions: read` だけである（[docs/adr/0234](./docs/adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)） |
 
 変更が `docs/` の下のファイル、`tools/textlint/` の下のファイル、リポジトリの根の Markdown のファイルだけの場合、`build`、`determinism`、`visual`、`format`、`release-scripts`、`scripts-macos`、`plugins` は省かれる（[docs/adr/0009](./docs/adr/0009-ci-speed.md)、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。
 判定は `scripts/ci/needs-build.sh` が行い、プルリクエストの変更のパスは分岐点からの差分で取る（`scripts/ci/changed-paths.sh`）。
