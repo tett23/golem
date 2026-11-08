@@ -298,6 +298,13 @@ characterFeatureTests =
               other -> assertFailure (show other)
       at dY horizontalStyle >>= (@?= 2)
       at dX pdfStyle >>= (@?= 2),
+    testCase "PDF: 「 follows （ by the half-em box of （, with no aki between them (golem-layout ADR 0039 B6)" $ do
+      content <- miniPdf fakeProvider True horizontalStyle "漢（「あ」）漢\n" [] >>= fmap BS.concat . inflateAll
+      let pos c = [ptToRational (dX d) | d <- drawnGlyphs content, dGlyph d == fromEnum c]
+      case (pos '（', pos '「') of
+        -- 10pt: the box of （ is 5pt
+        ([a], [b]) -> b - a @?= 5
+        other -> assertFailure (show other),
     testCase "shaping without palt or vpal gives no offsets, horizontal or vertical (golem-driver ADR 0020)" $ do
       noto <- notoFonts
       han <- featureFonts
