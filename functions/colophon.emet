@@ -1,0 +1,101 @@
+-- 奥付とカバーに載せる項目：ISBN、定価、版と刷、発行の日付と刷の履歴。
+-- 原稿では `@import functions/colophon.emet as colophon` で取り込む。
+-- functions/numbers.emet と functions/dates.emet を使う。
+
+import "functions/numbers.emet"
+import "functions/dates.emet"
+
+-- ISBN。ハイフンで区切った 12 桁には、検査数字を計算して足す。13 桁は
+-- 検査数字を確かめ、合えばそのまま書く。検査数字が合わない 13 桁と、
+-- 数字とハイフンのほかの字を含むものは、後ろに〓を付けて書くので、
+-- 校正で見つけられる。
+-- >>> [colophon.isbn 978-4-00-310101]
+-- ISBN978-4-00-310101-8
+-- >>> [colophon.isbn 978-4-00-310101-8]
+-- ISBN978-4-00-310101-8
+-- >>> [colophon.isbn 978-4-00-310101-0]
+-- ISBN978-4-00-310101-0〓
+pub inline isbn :: String -> Inlines
+isbn s = Inline.text ("ISBN" ++ isbnString s)
+
+isbnString :: String -> String
+isbnString s = case isbnDigits s of {
+  Just ds -> List.length ds == 12 ? s ++ "-" ++ String.fromNat (checkDigit ds) : (validIsbn ds ? s : s ++ "〓")
+  Nothing -> s ++ "〓"
+}
+
+-- ハイフンを除いた数字の並び。数字でない字があれば Nothing。
+isbnDigits :: String -> Maybe (List Nat)
+isbnDigits s = digitsOf (List.select notHyphen (String.chars s)) []
+  where {
+    notHyphen c = c /= '-'
+  }
+
+digitsOf :: List Char -> List Nat -> Maybe (List Nat)
+digitsOf [] acc = Just (List.reverse acc)
+digitsOf (c : cs) acc = case String.toNat (String.fromChar c) of {
+  Just d -> digitsOf cs (d : acc)
+  Nothing -> Nothing
+}
+
+-- ISBN-13 の検査数字：12 桁に 1 と 3 を交互に掛けた和を 10 から引いた
+-- 一の位。
+pub checkDigit :: List Nat -> Nat
+checkDigit ds = (10 - weighted ds True 0 % 10) % 10
+
+weighted :: List Nat -> Bool -> Nat -> Nat
+weighted [] _ acc = acc
+weighted (d : ds) True acc = weighted ds False (acc + d)
+weighted (d : ds) False acc = weighted ds True (acc + 3 * d)
+
+validIsbn :: List Nat -> Bool
+validIsbn ds = List.length ds == 13 && sameDigit (List.at 12 ds) (checkDigit (List.take 12 ds))
+
+sameDigit :: Maybe Nat -> Nat -> Bool
+sameDigit (Just a) b = a == b
+sameDigit Nothing _ = False
+
+-- 定価。本体の価格に税を足した総額を書き、本体と税率を括弧で添える。
+-- 1 円未満は切り捨てる。`total=false` なら総額を書かない。
+-- >>> [colophon.price 1800]
+-- 定価1,980円（本体1,800円＋税10%）
+-- >>> [colophon.price 1800 total=false]
+-- 定価（本体1,800円＋税）
+pub inline price :: Nat -> (rate :: Nat = 10) -> (total :: Bool = True) -> Inlines
+price n rate True = Inline.text ("定価" ++ commas (div (n * (100 + rate)) 100) ++ "円（本体" ++ commas n ++ "円＋税" ++ String.fromNat rate ++ "%）")
+price n _ False = Inline.text ("定価（本体" ++ commas n ++ "円＋税）")
+
+-- 版と刷。第 1 版は初版と書く。
+-- >>> [= colophon.edition(1, 3)]
+-- 初版第3刷
+-- >>> [= colophon.edition(2, 1)]
+-- 第2版第1刷
+pub fn edition :: Nat -> Nat -> String
+edition 1 p = "初版第" ++ String.fromNat p ++ "刷"
+edition e p = "第" ++ String.fromNat e ++ "版第" ++ String.fromNat p ++ "刷"
+
+-- 発行の行：ISO 8601 の日付、版と刷。`wareki=true` なら日付を和暦で書く。
+-- >>> [colophon.issued "2026-11-08"]
+-- 2026年11月8日　初版第1刷発行
+-- >>> [colophon.issued "2027-03-01" edition=2 printing=4 wareki=true]
+-- 令和9年3月1日　第2版第4刷発行
+pub inline issued :: String -> (edition :: Nat = 1) -> (printing :: Nat = 1) -> (wareki :: Bool = False) -> Inlines
+issued date e p w = Inline.text (issuedLine w date e p)
+
+issuedLine :: Bool -> String -> Nat -> Nat -> String
+issuedLine w date e p = (w ? isoWareki date : isoDate date) ++ "　" ++ edition e p ++ "発行"
+
+-- 刷の履歴：刷ごとの発行の日付を古い順に並べると、一つめを第1刷として、
+-- 一行ずつ発行の行を書いた段落を組む。刷り直すたびに日付を一つ足す。
+-- >>> @colophon.printings "2026-11-08" "2027-01-20" "2027-06-10"
+-- 2026年11月8日　初版第1刷発行
+-- 2027年1月20日　初版第2刷発行
+-- 2027年6月10日　初版第3刷発行
+pub block printings :: Varargs String -> (edition :: Nat = 1) -> (wareki :: Bool = False) -> Blocks
+printings dates e w = Block.paragraph (history dates 1 e w)
+
+-- 日付ごとに、第 i 刷から順に発行の行を書き、改行を挟んで並べる。
+history :: List String -> Nat -> Nat -> Bool -> Inlines
+history [] _ _ _ = []
+history [date] i e w = Inline.text (issuedLine w date e i)
+history (date : rest) i e w = Inline.text (issuedLine w date e i) ++ [Inline.LineBreak] ++ history rest (i + 1) e w

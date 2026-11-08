@@ -1,0 +1,75 @@
+-- 数の書き方：3 桁ごとのカンマ、金額、万と億の単位、漢数字。
+-- 原稿では `@import functions/numbers.emet as numbers` で取り込む。
+
+-- 3 桁ごとにカンマを入れた数。
+-- >>> [= numbers.commas(1234567)]
+-- 1,234,567
+-- >>> [= numbers.commas(980)]
+-- 980
+pub fn commas :: Nat -> String
+commas n = n < 1000 ? String.fromNat n : commas (div n 1000) ++ "," ++ pad3 (n % 1000)
+
+pad3 :: Nat -> String
+pad3 n
+  | n < 10 = "00" ++ String.fromNat n
+  | n < 100 = "0" ++ String.fromNat n
+  | otherwise = String.fromNat n
+
+-- 万、億、兆、京の単位で区切った数。4 桁ごとの位を算用数字で書き、
+-- 0 の位は書かない。新聞や白書の「1億2000万」の書き方である。京より
+-- 上の位は〓になる。
+-- >>> [= numbers.withUnits(123456789)]
+-- 1億2345万6789
+-- >>> [= numbers.withUnits(300000000)]
+-- 3億
+-- >>> [= numbers.withUnits(9999)]
+-- 9999
+pub fn withUnits :: Nat -> String
+withUnits 0 = "0"
+withUnits n = unitGroups n 0 ""
+
+unitGroups :: Nat -> Nat -> String -> String
+unitGroups 0 _ acc = acc
+unitGroups n i acc = unitGroups (div n 10000) (i + 1) (unitGroup (n % 10000) i ++ acc)
+
+unitGroup :: Nat -> Nat -> String
+unitGroup 0 _ = ""
+unitGroup g i = String.fromNat g ++ bigUnit i
+
+bigUnit :: Nat -> String
+bigUnit i = case List.at i ["", "万", "億", "兆", "京"] of {
+  Just u -> u
+  Nothing -> "〓"
+}
+
+-- 金額。ふつうは 3 桁ごとのカンマで、`units=true` なら万と億の単位で書く。
+-- >>> [numbers.yen 1980]
+-- 1,980円
+-- >>> [numbers.yen 125000000 units=true]
+-- 1億2500万円
+pub inline yen :: Nat -> (units :: Bool = False) -> Inlines
+yen n units = Inline.text ((units ? withUnits n : commas n) ++ "円")
+
+-- 位取りの漢数字（千二百三十四）。0 は〇、京の位まで。
+-- 原稿からは呼べず、ほかの .emet のファイルが使う。数を漢数字で組む
+-- コマンドは、見本のプラグイン kansuji にある。
+pub kanji :: Nat -> String
+kanji 0 = "〇"
+kanji n = kanjiGroups n 0 ""
+
+kanjiGroups :: Nat -> Nat -> String -> String
+kanjiGroups 0 _ acc = acc
+kanjiGroups n i acc = kanjiGroups (div n 10000) (i + 1) (kanjiGroup (n % 10000) i ++ acc)
+
+kanjiGroup :: Nat -> Nat -> String
+kanjiGroup 0 _ = ""
+kanjiGroup g i = place (div g 1000) "千" ++ place (div (g % 1000) 100) "百" ++ place (div (g % 100) 10) "十" ++ digit (g % 10) ++ bigUnit i
+
+place :: Nat -> String -> String
+place 0 _ = ""
+place 1 unit = unit
+place d unit = digit d ++ unit
+
+digit :: Nat -> String
+digit 0 = ""
+digit d = String.take 1 (String.drop d "〇一二三四五六七八九")
