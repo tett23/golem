@@ -1974,13 +1974,11 @@ marks and the callouts taken off, each line numbered from the first
 number, a removed line not counted, and the lines of highlight marked.
 @start@ is the first line of lines= of @listing. A number of numbers=
 that takes a line out of int64 is G02091 at the block @bsp@, and the lines
-are numbered as without numbers= (golem-doc ADR 0006).
--}
-{- | The code of a block from its lines, each with the span diagnostics
-point at and its text. With @inSource@, the span of a line is the line in
-the source, and the text of each 'CodeLine' keeps where it is: from after
-the diff mark to the end of the line (docs/adr/0218); the text of a line
-is the end of its line in the source, after the indent of the block.
+are numbered as without numbers= (golem-doc ADR 0006). With @inSource@,
+the span of a line is its line in the source, and each 'CodeLine' keeps
+where its text is: from after the diff mark to the end of the line
+(docs/adr/0218); the text of a line is the end of its line in the
+source, after the indent of the block.
 -}
 codeOf :: SrcSpan -> CodeArgs -> Maybe Integer -> Maybe Text -> Bool -> [(SrcSpan, Text)] -> M Code
 codeOf bsp ca0 start lang inSource ls = do

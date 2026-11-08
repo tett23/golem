@@ -229,10 +229,7 @@ data CodeLine = CodeLine
     clDiff :: !(Maybe DiffMark),
     clHighlight :: !Bool,
     clCallouts :: ![Int],
-    {- | the text in the source: from after the diff mark to the end of
-    the line before the callouts are taken off; Nothing for a line of
-    @listing or of an Emet function (docs/adr/0218)
-    -}
+    -- | the text in the source, from after the diff mark to the end of the line before the callouts are taken off; Nothing for a line of @listing or of an Emet function (docs/adr/0218)
     clSpan :: !(Maybe SrcSpan)
   }
   deriving stock (Eq, Show)

@@ -5,7 +5,7 @@ import Data.ByteString qualified as BS
 import Data.Char (isDigit)
 import Data.List (isSuffixOf)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (listToMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
@@ -132,12 +132,7 @@ checkCode src fence firstRow textOf starts pages = do
 
 -- | The first of a list that is not empty.
 firstOf :: [T.Text] -> T.Text
-firstOf = maybe "" fst . uncons'
-
-uncons' :: [a] -> Maybe (a, [a])
-uncons' = \case
-  x : xs -> Just (x, xs)
-  [] -> Nothing
+firstOf = fromMaybe "" . listToMaybe
 
 -- | horizontalStyle with five lines a page and the body font.
 fiveLinesFont :: BS.ByteString
