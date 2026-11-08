@@ -32,10 +32,10 @@ import PopplerSpec (popplerTests)
 import ReferencesSpec
 import SecuritySpec
 import SpecimenGeometrySpec (specimenGeometryTests)
-import TateChuYokoSpec (tateChuYokoTests)
 import StylesSpec
 import TableFilesSpec
 import TaggedPdfSpec (taggedPdfTests)
+import TateChuYokoSpec (tateChuYokoTests)
 import Test.Tasty
 import UnwritableNumbersSpec (unwritableNumbersTests)
 import VarsSpec (varsTests)
