@@ -1,4 +1,4 @@
-module ParagraphSpec (verseTests, indentTests, listTests, separatorTests, hardBreakTests, akiTests, breakTests, pageControlTests, blankLineTests, columnTests, inseparableTests, codeSpaceTests) where
+module ParagraphSpec (verseTests, indentTests, listTests, separatorTests, hardBreakTests, akiTests, breakTests, pageControlTests, blankLineTests, columnTests, inseparableTests, codeSpaceTests, protrusionTests) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
@@ -17,7 +17,7 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Project.Style (dimToSp, parseDim)
 import Golem.Syntax
-import Golem.Typeset (PdfLayout (..), SetLine (..))
+import Golem.Typeset (PdfLayout (..), SetLine (..), Shaping (..))
 import Support hiding (codesOf)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -685,4 +685,30 @@ codeSpaceTests =
           length gaps @?= 2
           mapM_ (uncurry (@?=)) gaps
         [] -> assertFailure "no line"
+  ]
+
+protrusionTests :: [TestTree]
+protrusionTests =
+  [ testCase "PDF: a closing quotation mark at the end of a word protrudes by seven tenths of its advance in the shaping of the word, not alone (docs/adr/0222, D3)" $ do
+      -- ” is an em wide alone, where its shaping turns proportional metrics
+      -- off as for Japanese punctuation, and half an em in the shaping of
+      -- the word (the role's features, palt among them in a real font)
+      let fonts =
+            fakeFonts
+              { lfAdvance = \sh c ->
+                  if c == '\x201D'
+                    then (if "-palt" `elem` shExtra sh then 1 else 1 / 2)
+                    else lfAdvance fakeFonts sh c
+              }
+          src = T.unwords (replicate 80 "said\x201D") <> "\n"
+      r <- layoutMiniFonts (FontProvider (\_ _ _ _ -> pure (Right fonts))) miniManifest (pdfStyle <> "\n[composition]\nprotrusion = true\n") src []
+      (_, pl) <- either (assertFailure . show) pure r
+      let ends =
+            [ (bcProtrudeEnd c, Sp (unSp (lkSize (bcLook c)) `div` 2 * 700 `div` 1000))
+            | sl <- Map.elems (plLines pl),
+              Box _ c : _ <- [reverse (lineItems (slLine sl))],
+              bcText c == "said\x201D"
+            ]
+      assertBool "a line ends with said”" (not (null ends))
+      mapM_ (uncurry (@?=)) ends
   ]

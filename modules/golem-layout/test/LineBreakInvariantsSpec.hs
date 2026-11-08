@@ -182,6 +182,17 @@ enumerationTests =
       shapes ["lime-tree"] @?= ["lime-", "|E", "tree", "|X", "_", "|-10000"]
       -- 漢 and a, with the space between Japanese and Latin text
       shapes ["漢", "a"] @?= ["漢", "_", "a", "|X", "_", "|-10000"],
+    testCase "D4, D5 (docs/adr/0222): the patterns see the letters of a word only, without the characters before and after them" $ do
+      let s = Setting True False False Nothing
+          cuts run = [T.unpack (bcText c) | Box _ c <- itemsOf False s 0 run 0]
+          hyphens run = length [() | Penalty _ _ (PatternHyphen _) <- itemsOf False s 0 run 0]
+      cuts ["table", "."] @?= ["ta", "ble."]
+      cuts ["“", "table", "”"] @?= ["“ta", "ble”"]
+      cuts ["table,"] @?= ["ta", "ble,"]
+      cuts ["hyphenation", "."] @?= ["hy", "phen", "ation."]
+      cuts ["hyphenation"] @?= ["hy", "phen", "ation"]
+      cuts ["I’ll"] @?= ["I’ll"]
+      map hyphens [["table", "."], ["“", "table", "”"], ["table,"]] @?= [1, 1, 1],
     testCase "the advances: a quarter, a half and three quarters of an em for Latin text, an em for Japanese text" $ do
       let s = Setting True False False Nothing
           widths run = [unSp w | Box w _ <- itemsOf False s 0 run 0]
@@ -304,7 +315,7 @@ predicateTests =
       let p = paragraphIn plain False 2 ["あ", "い", "う", "え"]
           joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0)]
       broken (withLines joined p) @?= [L5],
-    testCase "L5: an overfull line with no break where it fits is not broken" $ do
+    testCase "L5, D6 (docs/adr/0222): an overfull line with no break where it fits is not broken, and is not broken inside the run of line-start prohibitions" $ do
       let p = paragraphIn plain False 2 ["」", "」", "」", "」", "」"]
       map lineOverfull (brLines (pBreaks p)) @?= [True]
       broken p @?= [],
@@ -314,9 +325,21 @@ predicateTests =
       sound p
       map lineText (brLines (pBreaks p)) @?= ["atable", "atable"]
       broken (withLines (atLine 0 (\l -> l {lineTarget = lineTarget l - Sp (unSp fs `div` 8)})) p) @?= [L6],
-    testCase "L6: a line without glue that stretches, short of W, is not judged" $ do
+    testCase "L6, D1 (docs/adr/0222): a line of one Japanese character without glue that stretches, short of W, is not broken" $ do
       let p = paragraphIn plain False 2 ["「", "あ", "あ"]
       broken p @?= [],
+    testCase "L6, D1 (docs/adr/0222): a line of one word without glue that stretches, short of W by a step or more while the expansion is short of its limit" $ do
+      -- 10000 in 10120: 12 permille to stretch, rounded down to 10, 20 sp short; a step is 50 sp
+      let its = [boxOf 10000, Glue 0 0 0, boxOf 10000] <> paragraphEnd
+          ps = defaultParams {pExpansion = Just (20, 5)}
+          p = (handParagraph 10120 its) {pParams = ps, pBreaks = breakParagraph ps (const 10120) its}
+      map lineExpansion (brLines (pBreaks p)) @?= [10, 0]
+      sound p
+      broken (withLines (atLine 0 (\l -> l {lineExpansion = 0})) p) @?= [L6]
+      -- at the limit, the line may be short by more
+      let wide = (handParagraph 10400 its) {pParams = ps, pBreaks = breakParagraph ps (const 10400) its}
+      map lineExpansion (brLines (pBreaks wide)) @?= [20, 0]
+      broken wide @?= [],
     testCase "L7: demerits more than the least" $ do
       let p = paragraphIn plain False 2 ["あ", "い", "う", "え"]
       sound p
@@ -347,6 +370,17 @@ predicateTests =
           noGlue = filter (\case Glue _ y _ -> y >= filStretch; _ -> True)
       sound p
       broken (withLines (atLine 0 (\l -> l {lineItems = noGlue (lineItems l)})) p) @?= [L11],
+    testCase "L11, D2 (docs/adr/0222): the space between Japanese and Latin text added to a space written between them" $ do
+      let p = paragraphIn plain False 3 ["漢", " ", "a"]
+          aki = case [g | g@(Glue {}) <- pItems (paragraphIn plain False 3 ["漢", "a"])] of
+            g : _ -> g
+            [] -> error "no glue"
+          addAki = \case
+            g : rest | g == latinSpace p -> g : aki : rest
+            x : rest -> x : addAki rest
+            [] -> []
+      sound p
+      broken (withLines (atLine 0 (\l -> l {lineItems = addAki (lineItems l)})) p) @?= [L11],
     testCase "L11: no space between a Japanese character and a character of both scripts in a Latin span" $ do
       let p = paragraphIn plain {sLang = Just "en"} False 3 ["あ", "“", "a"]
       broken p @?= [],
@@ -367,6 +401,11 @@ predicateTests =
     testCase "L13: a full stop hung at the line end is not broken" $ do
       let p = paragraphIn plain {sHanging = True} False 2 ["あ", "あ", "。", "あ"]
       map lineText (brLines (pBreaks p)) @?= ["ああ。", "あ"]
+      brokenAll p @?= [],
+    testCase "L13, D3 (docs/adr/0222): a character of both scripts at the end of a word protrudes by its advance in the font of the word" $ do
+      -- seven tenths of the half em of ” in a Latin word, not of the em of ” alone
+      let p = paragraphIn plain {sProtrusion = True} False 3 ["a", "”"]
+      map (snd . lineProtrusion) (brLines (pBreaks p)) @?= [Sp (unSp fs * 7 `div` 20)]
       brokenAll p @?= [],
     testCase "L13: a hyphen of the patterns protruding at the line end is not broken" $ do
       -- seven tenths of the quarter em of the hyphen

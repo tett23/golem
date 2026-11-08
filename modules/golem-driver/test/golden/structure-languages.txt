@@ -2,7 +2,7 @@ Document
   H1
     "1　両用の文字"
   P
-    "区間の外では、最も近い文字で決める。“東京”と“Hel”loと言った。«Bonjour»とwait…whatと‹a›を組む。"
+    "区間の外では、最も近い文字で決める。“東京”と“”Helloと言った。«Bonjour»とwait…whatと‹a›を組む。"
   P
     "英語の区間では、"
     Span Lang=en

@@ -108,6 +108,7 @@ tests skips =
              testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
              testGroup "inseparable characters at the line edges (golem-layout ADR 0016)" inseparableTests,
              testGroup "spaces inside inline code (golem-layout ADR 0017)" codeSpaceTests,
+             testGroup "protrusion at the ends of Latin words (docs/adr/0222)" protrusionTests,
              testGroup "line breaks inside a URL and the space after a note mark (golem-layout ADR 0018)" urlBreakTests,
              testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
              testGroup "hidden folios (ADR 0021)" hiddenFolioTests,
