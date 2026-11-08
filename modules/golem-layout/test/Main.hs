@@ -1710,26 +1710,28 @@ trailingRoom l = case reverse [(it, x) | (it@Box {}, x) <- placeLine l] of
 
 akiTests :: [TestTree]
 akiTests =
-  [ testCase "gyomatsu-yakumono-hankaku composes as before but for 「「, 」・, ・「, ・」, ・。 and ・、 (kinsoku strict; golem-layout ADR 0039 B1-B3, ADR 0040 A1)" $ do
+  [ testCase "gyomatsu-yakumono-hankaku composes as before but for 「「, 」・, ・「, ・」, ・。, ・、 and the pairs of the ideographic space (kinsoku strict; golem-layout ADR 0039 B1-B3, ADR 0040 A1, ADR 0041 S1 S2)" $ do
       let env = akiEnv defaultAkiSet
-      [t | t <- akiTexts, compose env t /= referenceNormalize env (compose env t)] @?= jlreqPairs
-      forM_ jlreqPairs $ \t -> between (compose env t) @?= jlreqBetween t,
-    testCase "with kinsoku loose only Japanese before small kana and the long vowel mark, and 「「, 」・, ・「, ・」, ・。 and ・、 differ (golem-layout ADR 0039, ADR 0040 A1)" $ do
+      [t | t <- akiTexts, compose env t /= referenceNormalize env (compose env t)] @?= (jlreqPairs <> spacePairs) `orderedAs` akiTexts
+      forM_ jlreqPairs $ \t -> between (compose env t) @?= jlreqBetween t
+      forM_ spacePairs $ \t -> (t, between (compose env t)) @?= (t, [Penalty 0 0 NoHyphen]),
+    testCase "with kinsoku loose only Japanese before small kana and the long vowel mark, and 「「, 」・, ・「, ・」, ・。, ・、 and the pairs of the ideographic space differ (golem-layout ADR 0039, ADR 0040 A1, ADR 0041 S1 S2)" $ do
       let env = (akiEnv defaultAkiSet) {ceKinsokuStrict = False}
           differ = [t | t <- akiTexts, compose env t /= referenceNormalize env (compose env t)]
           ja = filter (`notElem` ("「」・。、A" :: String)) akiRepresentatives
-      differ @?= ([T.pack [a, b] | a <- ja, b <- "ーぁ"] <> jlreqPairs) `orderedAs` akiTexts
+      differ @?= ([T.pack [a, b] | a <- ja, b <- "ーぁ"] <> jlreqPairs <> spacePairs) `orderedAs` akiTexts
       forM_ jlreqPairs $ \t -> between (compose env t) @?= jlreqBetween t
+      forM_ spacePairs $ \t -> (t, between (compose env t)) @?= (t, [Penalty 0 0 NoHyphen])
       let stretch = Glue 0 (Sp (unSp fs `div` 10)) 0
           asBreak it = if it == stretch then Penalty 0 0 NoHyphen else it
-      [t | t <- differ, t `notElem` jlreqPairs, compose env t /= map asBreak (referenceNormalize env (compose env t))] @?= [],
+      [t | t <- differ, t `notElem` jlreqPairs, t `notElem` spacePairs, compose env t /= map asBreak (referenceNormalize env (compose env t))] @?= [],
     testCase "B1: no aki between two opening brackets in gyomatsu-yakumono-hankaku (golem-layout ADR 0039)" $
       Aki.akiBetween defaultAkiSet (Aki.AkiChar Opening) (Aki.AkiChar Opening) @?= Aki.Aki 0 0 0,
     testCase "B2: a quarter em between a closing bracket and a middle dot (golem-layout ADR 0039)" $
       Aki.akiBetween defaultAkiSet (Aki.AkiChar Closing) (Aki.AkiChar MiddleDot) @?= Aki.Aki 0 (1 / 4) (1 / 4),
     testCase "B3: a quarter em between a middle dot and an opening bracket (golem-layout ADR 0039)" $
       Aki.akiBetween defaultAkiSet (Aki.AkiChar MiddleDot) (Aki.AkiChar Opening) @?= Aki.Aki 0 (1 / 4) (1 / 4),
-    testCase "B4, A2: every other pair of positions keeps the aki of the set before golem-layout ADR 0039 and ADR 0040" $
+    testCase "B4, A2, S5: every other pair of positions keeps the aki of the set before golem-layout ADR 0039, ADR 0040 and ADR 0041" $
       [ (x, y)
       | x <- allAkiPositions,
         y <- allAkiPositions,
@@ -1737,7 +1739,7 @@ akiTests =
         Aki.akiBetween defaultAkiSet x y /= Aki.akiBetween oldDefaultAkiSet x y
       ]
         @?= [],
-    testCase "B5, A3: gyomatsu-yakumono-zenkaku is gyomatsu-yakumono-hankaku but at the line end (golem-layout ADR 0039, ADR 0040)" $ do
+    testCase "B5, A3, S6: gyomatsu-yakumono-zenkaku is gyomatsu-yakumono-hankaku but at the line end (golem-layout ADR 0039, ADR 0040, ADR 0041)" $ do
       zenkaku <- maybe (assertFailure "no zenkaku" >> error "unreachable") pure (Map.lookup "gyomatsu-yakumono-zenkaku" builtinAkiSets)
       let lineEnd = \case
             Aki.AkiChar c | c `elem` [Closing, FullStop, Comma] -> Aki.Aki (1 / 2) (1 / 2) (1 / 2)
@@ -1764,6 +1766,27 @@ akiTests =
     testCase "A5: a set based on the default with a rule for middle-dot and closing keeps its value (golem-layout ADR 0040)" $ do
       let s = akiWith ["middle-dot"] ["closing"] (Aki.Aki 0 0 0)
       between (compose (akiEnv s) "・」") @?= [],
+    testCase "S1: no aki between a closing bracket and an ideographic space, an ideographic space and an opening bracket, and an ideographic space and Latin (golem-layout ADR 0041)" $
+      [Aki.akiBetween defaultAkiSet x y | (x, y) <- [(akc Closing, ids), (ids, akc Opening), (ids, akc Western), (akc Western, ids)]] @?= replicate 4 Aki.noAki,
+    testCase "S2: no aki between an ideographic space and a Japanese class but full stops, commas and middle dots (golem-layout ADR 0041)" $ do
+      [x | x <- [minBound .. maxBound], x `notElem` [Western, FullStop, Comma, MiddleDot], Aki.akiBetween defaultAkiSet (akc x) ids /= Aki.noAki] @?= []
+      [y | y <- [minBound .. maxBound], y `notElem` [Western, MiddleDot], Aki.akiBetween defaultAkiSet ids (akc y) /= Aki.noAki] @?= [],
+    testCase "S3: a half em after a full stop and a comma before an ideographic space (golem-layout ADR 0041)" $
+      [Aki.akiBetween defaultAkiSet (akc x) ids | x <- [FullStop, Comma]] @?= replicate 2 (Aki.Aki 0 (1 / 2) (1 / 2)),
+    testCase "S4: a quarter em between a middle dot and an ideographic space, both ways (golem-layout ADR 0041)" $
+      [Aki.akiBetween defaultAkiSet (akc MiddleDot) ids, Aki.akiBetween defaultAkiSet ids (akc MiddleDot)] @?= replicate 2 (Aki.Aki 0 (1 / 4) (1 / 4)),
+    testCase "S7: an opening bracket after k ideographic spaces at the paragraph start is k zw from the line start, with no glue before it (golem-layout ADR 0041)" $
+      forM_ [(1, "　「あ"), (2, "　　（あ")] $ \(k, t) -> do
+        let items = compose (akiEnv defaultAkiSet) t
+            beforeBracket = takeWhile (\case Box _ bc -> bcText bc == "　"; _ -> True) items
+        (t, [g | g@Glue {} <- beforeBracket]) @?= (t, [])
+        case brLines (breakParagraph defaultParams (const (10 * fs)) items) of
+          [l] -> (t, take 1 [x | (Box _ bc, x) <- placeLine l, bcText bc `elem` ["「", "（"]]) @?= (t, [Sp (k * unSp fs)])
+          ls -> assertFailure (show (length ls)),
+    testCase "S8: a set based on the default with a rule for ideographic-space and opening keeps its value (golem-layout ADR 0041)" $ do
+      let s = akiWith ["ideographic-space"] ["opening"] (Aki.Aki 0 (1 / 2) (1 / 2))
+          half = Sp (unSp fs `div` 2)
+      between (compose (akiEnv s) "　「") @?= [Glue half 0 half],
     testCase "B6: nothing between consecutive opening brackets; the first keeps its aki (golem-layout ADR 0039)" $ do
       let env = akiEnv defaultAkiSet
           half = Sp (unSp fs `div` 2)
@@ -1870,8 +1893,13 @@ akiTests =
     isBox = \case
       Box {} -> True
       _ -> False
-    -- golem-layout ADR 0039, then golem-layout ADR 0040
-    changedPairs = [(Aki.AkiChar Opening, Aki.AkiChar Opening), (Aki.AkiChar Closing, Aki.AkiChar MiddleDot), (Aki.AkiChar MiddleDot, Aki.AkiChar Opening)] <> [(Aki.AkiChar MiddleDot, Aki.AkiChar y) | y <- [Closing, FullStop, Comma]]
+    -- golem-layout ADR 0039, then golem-layout ADR 0040, then golem-layout ADR 0041
+    changedPairs = [(akc Opening, akc Opening), (akc Closing, akc MiddleDot), (akc MiddleDot, akc Opening)] <> [(akc MiddleDot, akc y) | y <- [Closing, FullStop, Comma]] <> [p | x <- [minBound .. maxBound], p <- [(akc x, ids), (ids, akc x)]]
+    akc = Aki.AkiChar
+    ids = Aki.AkiChar IdeographicSpace
+    -- the pairs of representatives with an ideographic space that golem-layout
+    -- ADR 0041 changes: a break with no glue in place of the aki or the stretch
+    spacePairs = ["」　", "゠　", "！　", "…　", "々　", "ー　", "ぁ　", "　　", "あ　", "漢　", "A　", "　「", "　…", "　あ", "　漢", "　A"] `orderedAs` akiTexts
     -- the items between each box and the next
     gaps its = case [i | (i, Box {}) <- zip [0 :: Int ..] its] of
       ixs -> zipWith (\a b -> take (b - a - 1) (drop (a + 1) its)) ixs (drop 1 ixs)

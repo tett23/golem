@@ -983,7 +983,7 @@ captionTests =
           source = "@figure images/tiny.jpg alt=\"t\" wrap=end width=4zw\n  " <> T.replicate 14 "甲" <> "\n\n" <> longPara 2
       (errs, _) <- buildMini fakeProvider True short source img
       errs @?= [DiagnosticCode "G07023"]
-      layoutMini short source img >>= (@?= [("G07023", "回り込む図版の除外領域が一ページの行数を超えます（10 行）", FileId 1, 0, 96)]) . layoutErrors
+      layoutMini short source img >>= (@?= [("G07023", "回り込む図版の除外領域が一ページの行数を超えます（9 行）", FileId 1, 0, 96)]) . layoutErrors
       (errs', _) <- buildMini fakeProvider True (short <> "\n[paragraph-styles.caption]\nsize = \"5pt\"\n") source img
       errs' @?= [],
     testCase "vertical: the caption is in the type area, its first centre line half its size from the grid" $ do
