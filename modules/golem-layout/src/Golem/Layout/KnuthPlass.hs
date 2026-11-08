@@ -331,7 +331,7 @@ breakParagraph ps lineWidth items =
                 forced = case at b of
                   Penalty _ p _ -> p <= negate infPenalty
                   _ -> False
-                -- a node whose line is already overfull, but the width of the penalty at b, can never be used again
+                -- a node whose line is already overfull, but the width of the penalty at b, can never be used again (golem-layout ADR 0036)
                 survivors = if forced then [] else [a | (a, Eval _ _ _ _ _ alive) <- evals, alive]
                 newNodes =
                   Map.elems $
@@ -414,9 +414,9 @@ breakParagraph ps lineWidth items =
               + (if nFlagged a && flaggedAt b then toInteger (pDoubleHyphenDemerits ps) else 0)
               + (if abs (fit - nFit a) > 1 then toInteger (pAdjDemerits ps) else 0)
           {- the node lives on while the line to b, but the width of the
-          penalty at b, does not overflow: a line that ends at a later break
-          does not hold that width, the wrap mark of code (golem-layout ADR
-          0034) as wide as the text after it -}
+          penalty at b, does not overflow (golem-layout ADR 0036): a line that
+          ends at a later break does not hold that width, the wrap mark of
+          code (golem-layout ADR 0034) as wide as the text after it -}
           alive = negate (shortfall + penW) <= shrink
        in Eval bad fit d (not overfull && bad <= tol) (not overfull) alive
     flaggedAt i = itemFlagged (at i)
