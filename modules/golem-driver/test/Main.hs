@@ -26,6 +26,7 @@ import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
 import ParagraphSpec
 import PdfSpec
+import PlatesSpec (platesTests)
 import ReferencesSpec
 import SecuritySpec
 import SpecimenGeometrySpec (specimenGeometryTests)
@@ -128,6 +129,7 @@ tests skips =
              testGroup "kerning, proportional metrics and baseline shift (docs/adr/0020)" characterFeatureTests,
              testGroup "running heads (ADR 0014)" runningHeadTests,
              testGroup "golem preflight (golem-cli ADR 0006)" preflightTests,
+             testGroup "the plates of the PDF and G09019 to G09021 (docs/adr ADR 0232)" platesTests,
              testGroup "footnote marks and numbers (ADR 0018)" footnoteTests,
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,

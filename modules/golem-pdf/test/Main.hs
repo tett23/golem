@@ -27,6 +27,7 @@ import Hedgehog.Range qualified as Range
 import ImageSpec qualified
 import ImportSpec qualified
 import Numeric (readHex)
+import PaintSpec qualified
 import SecuritySpec qualified
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (..))
@@ -808,6 +809,7 @@ tests tinyJpeg =
       SecuritySpec.tests,
       UuidSpec.tests,
       DrawingSpec.tests,
+      PaintSpec.tests,
       testGroup
         "CIDSystemInfo (ADR 0006)"
         [ testCase "the CIDFont carries the ROS of the font" $ do

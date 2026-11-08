@@ -40,8 +40,26 @@
 | [code: \[glyph-missing\]] | [code: "error"] | フォントにグリフのない文字（G09002）。同じ文字はビルドの G08100 のエラーでも出て、この設定では消えません |
 | [code: \[image-icc\]] | [code: "warning"] | 出力インテントと違う ICC プロファイルを持つ CMYK の図版（G09009） |
 | [code: \[overfull-lines\]] | [code: "warning"] | 行長からはみ出す行（G09013）。同じ行はビルドの G07105 の警告でも出て、この設定では消えません |
-| [code: \[pdf-x\]] | [code: "error"] | PDF/X-4 の要件（G09014） |
+| [code: \[pdf-x\]] | [code: "error"] | PDF/X-4 の要件（G09014）。フォントの埋め込みは、この表でなく [code: \[font-embedding\]] で検査します |
 | [code: \[blank-pages\]] | [code: "off"] | 空白のページ（G09017） |
+| [code: \[font-embedding\]] | [code: "error"] | 埋め込んでいないフォント（G09019）。出力インテントがなくても検査します |
+| [code: \[spot-colors\]] | [code: "error"] | 特色の色空間（G09020）。トンボのレジストレーションの色は数えません |
+| [code: \[cmy-plates\]] | [code: "off"] | C、M、Y の版に出る色（G09021）。墨一色で刷る本のための検査です |
+
+[code: \[pdf-x\]] を [code: "error"]、[code: \[font-embedding\]] を [code: "off"] にすると、埋め込んでいないフォントはどちらの検査でも報告されません。
+一つの原因を一つの診断だけで報告するためです。
+
+[code: \[cmy-plates\]] は、ページに描く文字、罫線、地の色だけを検査します。
+PDF と SVG の図版の色と、画像の色は検査しません。
+図版は [code: \[image-color-space\]] で検査するので、墨一色の本では次のように二つの検査を合わせて書きます。
+
+```toml
+[cmy-plates]
+severity = "error"
+
+[image-color-space]
+allowed = ["gray"]
+```
 
 @nonumber
 ## [code: \[font-formats\]]
@@ -192,6 +210,9 @@ PDF の図版の中の色の情報を持たない RGB の色と、SVG の図版�
 | [code: page-count] | off | off |
 | [code: blank-pages] | off | off |
 | [code: stroke-weight] | off | warning（0.1mm 未満） |
+| [code: font-embedding] | error | error |
+| [code: spot-colors] | off | error |
+| [code: cmy-plates] | off | off |
 
 [code: basic] は、InDesign の \[基本\] のプロファイルに当たります。
 [code: none] は、すべての検査を [code: off] にした設定です。

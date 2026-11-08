@@ -21,6 +21,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Pdf.Object
+import Golem.Pdf.Paint (unembeddedFonts)
 import Golem.Pdf.Rect (Rect (..))
 import Golem.Syntax.Text (escapeXml)
 import Text.Printf (printf)
@@ -226,15 +227,7 @@ verify (PdfObjects version objects trailer) =
       _ -> Nothing
     inside (x0, y0, x1, y1) (ox0, oy0, ox1, oy1) = x0 >= ox0 && y0 >= oy0 && x1 <= ox1 && y1 <= oy1
     pagesText = T.intercalate "、" . map (T.pack . show)
-    unembedded =
-      [ maybe "名前のないフォント" nameText (look "FontName" o)
-      | o <- objects,
-        look "Type" o == Just (OName "FontDescriptor"),
-        not (any (`hasKey` o) ["FontFile", "FontFile2", "FontFile3"])
-      ]
-    nameText = \case
-      OName n -> n
-      _ -> "名前のないフォント"
+    unembedded = unembeddedFonts (PdfObjects version objects trailer)
     usesDeviceRgb = \case
       OName "DeviceRGB" -> True
       ODict kvs -> any (usesDeviceRgb . snd) kvs
