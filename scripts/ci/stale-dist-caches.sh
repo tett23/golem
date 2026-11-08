@@ -27,6 +27,10 @@ if [ $# -eq 0 ]; then
 fi
 for p in "$@"; do
   case "$p" in
+    *[[:space:]]*)
+      echo "stale-dist-caches: the prefix has a space: $p" >&2
+      exit 2
+      ;;
     dist-?*) ;;
     *)
       echo "stale-dist-caches: the prefix does not start with dist-: $p" >&2
@@ -34,9 +38,10 @@ for p in "$@"; do
       ;;
   esac
 done
-PREFIXES=$(printf '%s\n' "$@")
+# separated by spaces: awk -v takes no newline in some awk (macOS)
+PREFIXES=$(printf '%s ' "$@")
 STALE=$(awk -F '\t' -v prefixes="$PREFIXES" '
-  BEGIN { n = split(prefixes, prefix, "\n") }
+  BEGIN { n = split(prefixes, prefix, " ") }
   # the time as a string that sorts as the time: the fraction of the
   # second padded with zeros to nine digits
   function stamp(t,   frac, i) {

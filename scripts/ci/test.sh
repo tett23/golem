@@ -2295,6 +2295,8 @@ run stale
 expect "stale-dist-caches: no prefix" 2
 run stale ghc-Linux-X64-
 expect "stale-dist-caches: a prefix that does not start with dist-" 2
+run stale "dist-wasm- x"
+expect "stale-dist-caches: a prefix with a space" 2
 printf '1\t2026-11-08T03:00:00Z\n' >"$WORK/in"
 run stale "$X64"
 expect "stale-dist-caches: a line without a key" 1
