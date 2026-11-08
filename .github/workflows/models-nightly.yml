@@ -10,9 +10,6 @@ name: Models nightly
 # only a wrong result or a run of Alloy that fails is a failure
 # (docs/adr/0242, its section 4).
 on:
-  # TEMPORARY: the pull request of docs/adr/0242 runs it once on its branch; removed before the merge
-  push:
-    branches: [impl-0242]
   schedule:
     - cron: "53 19 * * *"
   workflow_dispatch:
@@ -46,7 +43,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           EVENT: ${{ github.event_name }}
         run: |
-          if [ "$EVENT" = workflow_dispatch ] || [ "$EVENT" = push ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA" models-nightly.yml); fi
+          if [ "$EVENT" = workflow_dispatch ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA" models-nightly.yml); fi
           echo "run=$RUN" >> "$GITHUB_OUTPUT"
       - id: commands
         name: The commands of nightly.txt

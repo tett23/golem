@@ -136,7 +136,7 @@ Alloy は、GitHub の AlloyTools/org.alloytools.alloy の 6.2.0 のリリース
 結果が `nightly.txt` と違うときと、Alloy が失敗したときだけ、失敗にする。
 
 値は、2026-11-09 にランナー（`ubuntu-24.04`、Java 17、SAT4J）で走らせた結果である。
-`needMoreNone` は、スコープ 5 がランナーで 4 時間を過ぎても終わらなかったので、スコープ 4 で走らせる。
+`needMoreNone` は、スコープ 5 がランナーで 5 時間 55 分（ジョブの上限）を過ぎても終わらなかったので、スコープ 4 で走らせる。
 ほかの 13 のコマンドは、モデルのスコープ（5）で走らせる。
 時間は [docs/ci-timings/2026-11-09-models-nightly.md](../../ci-timings/2026-11-09-models-nightly.md) にある。
 
@@ -294,7 +294,7 @@ docs/roadmap.md の「未決事項」に足す組はない。
 `needMoreNone` のスコープ 3 は約 2 分、スコープ 4 は約 14 分かかった。
 「なし」は、スコープ 4 までに解がなかったことを示す。
 2026-11-09 に、`needMoreSome` と `needMore27` をスコープ 5 でも走らせ、解があった（[docs/adr/0242](../../adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
-`needMoreNone` のスコープ 5 は、ランナーで 4 時間を過ぎても終わらなかった。
+`needMoreNone` のスコープ 5 は、ランナーで 5 時間 55 分（ジョブの上限）を過ぎても終わらなかった。
 毎晩の検査は、`needMoreNone` をスコープ 4 で走らせる。
 
 | コマンド | 調べること | 最も小さい例のスコープ |

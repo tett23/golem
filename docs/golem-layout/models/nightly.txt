@@ -8,7 +8,7 @@ waitingBlankAllButGreedy none
 blankFigureOrder none
 blankBeforeWaiting25 found
 blankRules25 none
-needSpaceSome none
+needSpaceSome found
 needSpaceNone none
 needSpaceAllButGreedy found
 needFigure found
