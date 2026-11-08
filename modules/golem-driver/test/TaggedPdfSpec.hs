@@ -7,6 +7,7 @@ module TaggedPdfSpec (taggedPdfTests) where
 import Control.Monad (filterM, forM_, unless)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
+import Data.Char (isSpace)
 import Data.Either (isRight)
 import Data.List (isInfixOf, isSuffixOf)
 import Data.Map.Strict qualified as Map
@@ -86,10 +87,34 @@ structureGolden golden name style manifest = goldenVsString golden ("test/golden
 
 -- | The structure tree of a one-chapter project.
 miniStructure :: BS.ByteString -> T.Text -> IO T.Text
-miniStructure style source = withSystemTempDirectory "golem-structure" $ \tmp -> do
-  writeProject tmp miniManifest style source []
+miniStructure style source = miniStructureWith style source []
+
+-- | 'miniStructure' with the files given.
+miniStructureWith :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO T.Text
+miniStructureWith style source files = withSystemTempDirectory "golem-structure" $ \tmp -> do
+  writeProject tmp miniManifest style source files
   r <- pdfStructure (defaultOptions tmp) {optFonts = fakeProvider}
   either (\ds -> assertFailure (show (map diagCode ds)) >> pure "") pure r
+
+{- | The leaves of the PDF of a copy of a fixture, as 'fixtureStructure'
+makes it, whose text in the order of the content streams is not the text
+of their glyphs in the order of the text, spaces left out (docs/adr ADR
+0227, R1); a leaf of no glyph (an image) is left out.
+-}
+fixtureLeavesOutOfOrder :: FilePath -> IO [(LeafId, T.Text, T.Text)]
+fixtureLeavesOutOfOrder name = withSystemTempDirectory "golem-structure" $ \tmp -> do
+  copyTree ("test/fixtures/" <> name) tmp
+  createDirectoryIfMissing True (tmp </> "fonts")
+  copyFile "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" (tmp </> "fonts/ja.otf")
+  copyFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" (tmp </> "fonts/latin.otf")
+  r <- pdfLeafTexts (defaultOptions tmp)
+  leaves <- either (\ds -> assertFailure (show (map diagCode ds)) >> pure []) pure r
+  let bare = T.filter (not . isSpace)
+  pure [(l, a, b) | (l, a, b) <- leaves, not (T.null b), bare a /= bare b]
+
+-- | The style of the tests of the order of the glyphs of a box: a Latin face of its own, and synthetic bold on the Japanese side only.
+orderStyle :: BS.ByteString
+orderStyle = horizontal30 (fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[character-styles.lat]\nfont = \"wide\"\n\n[character-styles.lb]\nfont = \"wide\"\nsynthetic-bold = true\n")
 
 -- | The lines of a structure tree without their indentation.
 treeLines :: T.Text -> [T.Text]
@@ -103,6 +128,16 @@ structureTests =
     structureGolden "structure-conformance-vertical.txt" "conformance" (Just "style-vertical.toml") (Just "manifest-vertical.toml"),
     -- docs/adr ADR 0187
     structureGolden "structure-languages.txt" "languages" Nothing Nothing,
+    -- docs/adr ADR 0227
+    testCase "R1: the glyphs of a box of two faces and of synthetic bold are drawn in the order of its text" $ do
+      t <- miniStructureWith orderStyle "前[style lat: “a—b”]と[lang ja: [style lat: “Hello”]]と[style lb: “Hello”]、[style lb: x“y”z]。\n" fakeFontFiles
+      assertBool (T.unpack t) ("“a—b”" `T.isInfixOf` t)
+      length (T.breakOnAll "“Hello”" t) @?= 2
+      assertBool (T.unpack t) ("x“y”z" `T.isInfixOf` t),
+    testCase "R1: each leaf of the fixtures languages, complex-horizontal and complex-vertical draws its glyphs in the order of its text" $
+      forM_ ["languages", "complex-horizontal", "complex-vertical"] $ \name -> do
+        bad <- fixtureLeavesOutOfOrder name
+        assertEqual name [] bad,
     testCase "a language span is a Span of its /Lang; a block with @lang has it on its own element" $ do
       t <- treeLines <$> miniStructure horizontalStyle "本文[lang fr: x]。\n\n@lang en\nText.\n\n@lang en\n- a\n- b\n\n@lang en\n  One.\n\n  Two.\n"
       assertBool (show t) ("Span Lang=fr" `elem` t)

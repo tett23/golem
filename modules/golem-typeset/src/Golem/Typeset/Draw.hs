@@ -3,6 +3,7 @@ module Golem.Typeset.Draw
   ( renderPdf,
     renderPdfView,
     renderPdfStructure,
+    renderPdfLeafTexts,
     renderPdfWithTree,
     orphanErrors,
   )
@@ -41,6 +42,7 @@ import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
+import Golem.Typeset.GlyphRuns (glyphRuns)
 import Golem.Typeset.Overhang (kentenAcross, rubyAcross)
 import Golem.Typeset.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
 import Golem.Typeset.Structure (linksOfLeaves, structureTree)
@@ -64,7 +66,17 @@ renderPdfView version provider inp = fmap (\(bytes, notices, view, _, starts) ->
 
 -- | The structure tree of the PDF as text (docs/adr ADR 0183), for the tests.
 renderPdfStructure :: Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] Text)
-renderPdfStructure version provider inp = fmap (\(_, _, _, st, _) -> st) <$> renderPdfAll version provider inp
+renderPdfStructure version provider inp = fmap (\(_, _, _, st, _) -> fst st) <$> renderPdfAll version provider inp
+
+{- | Each leaf of the structure tree with the text its glyphs draw in the
+order of the content streams, and the text of its glyphs in the order of
+the text of its boxes, for the tests (docs/adr ADR 0227, R1).
+-}
+renderPdfLeafTexts :: Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] [(P.LeafId, Text, Text)])
+renderPdfLeafTexts version provider inp = fmap (\(_, _, _, st, _) -> snd st) <$> renderPdfAll version provider inp
+
+-- | The structure tree as text, and the texts of its leaves ('renderPdfLeafTexts'), for the tests.
+type Structure = (Text, [(P.LeafId, Text, Text)])
 
 {- | 'renderPdf' with the structure tree changed by a function before the
 PDF is checked and written: for the tests only, as a stand-in for a
@@ -74,12 +86,12 @@ docs/adr ADR 0216).
 renderPdfWithTree :: (P.StructElem -> P.StructElem) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] ByteString)
 renderPdfWithTree tamper version provider inp = fmap (\(bytes, _, _, _, _) -> bytes) <$> renderPdfAllWith tamper version provider inp
 
--- | The PDF, its notices, its view, its structure tree as text and where its pages start.
-renderPdfAll :: Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Text, [Maybe (FileId, Int)]))
+-- | The PDF, its notices, its view, its structure tree as text with the texts of its leaves, and where its pages start.
+renderPdfAll :: Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
 renderPdfAll = renderPdfAllWith id
 
 -- | 'renderPdfAll' with the structure tree changed by a function (the tests of G07107 only).
-renderPdfAllWith :: (P.StructElem -> P.StructElem) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Text, [Maybe (FileId, Int)]))
+renderPdfAllWith :: (P.StructElem -> P.StructElem) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
 renderPdfAllWith tamper version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
   (ds, Left gs) -> pure (Left (ds <> gs))
   (ds@(_ : _), Right _) -> pure (Left ds)
@@ -234,7 +246,9 @@ data GlyphUse = GlyphUse
     -- | the definition that decided the size, the part and the place in the source (golem-cli ADR 0008)
     guSizeSource :: !SizeSource,
     guGlyphPart :: !V.GlyphPart,
-    guSpan :: !SrcSpan
+    guSpan :: !SrcSpan,
+    -- | the leaf of the structure tree the glyph is drawn in, if any (docs/adr ADR 0183, ADR 0227)
+    guLeaf :: !(Maybe P.LeafId)
   }
 
 {- | A line drawn, for the view of golem preflight (golem-cli ADR 0006): what
@@ -302,7 +316,7 @@ embedded in IO between the two halves (docs/adr ADR 0034): the glyphs
 used in each font and their text, then the PDF and its view from the
 embedded fonts.
 -}
-writeDocumentView :: (P.StructElem -> P.StructElem) -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [OverfullLine], Map P.FontRef P.Font -> (ByteString, V.View, Text))
+writeDocumentView :: (P.StructElem -> P.StructElem) -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [OverfullLine], Map P.FontRef P.Font -> (ByteString, V.View, Structure))
 writeDocumentView tamper version inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
@@ -417,7 +431,10 @@ writeDocumentView tamper version inp geom fonts layout intent =
                   V.vwStyleSpan = styleSpan,
                   V.vwManifestSpan = mkSpan (projectManifestFile (piProject inp)) 0 0
                 }
-         in (bytes, view, P.structureText doc)
+            -- each leaf with the text it draws in the order of the content streams and that of its glyphs in the order of the text (docs/adr ADR 0227)
+            inOrder = Map.fromListWith (flip (<>)) [(l, guText u) | pd <- drawn, u <- pdUses pd, Just l <- [guLeaf u]]
+            leaves = Map.toList (Map.unionWith (\(a, _) (_, b) -> (a, b)) (Map.map (,"") (P.leafTexts doc)) (Map.map ("",) inOrder))
+         in (bytes, view, (P.structureText doc, [(l, a, b) | (l, (a, b)) <- leaves]))
       -- the characters of the private use area in a PDF/A-2a (G07104, docs/adr ADR 0183)
       privateUse = case P.pxPdfA =<< intent of
         Just _ -> privateUseErrors [(guText u, guSpan u) | pd <- drawn, u <- pdUses pd]
@@ -489,8 +506,8 @@ runAt env look v rotated scale (bx, by) txt =
       advs = scanl (+) 0 [toSp size a + extra | (_, _, a, _, _, _, extra, _, _) <- gs]
       -- a glyph turned in vertical text: drawn with the horizontal font (golem-driver ADR 0015)
       placed = [(ix, g, t, sb, tu && v && not rotated, off, o, part) | ((ix, g, _, t, sb, tu, _, o, part), off) <- zip gs advs]
-      byFont seg = Map.fromListWith (flip (<>)) [((ix, sb, tu), [(g, t, off, o)]) | (ix, g, t, sb, tu, off, o, _) <- seg]
-      marksOf seg = [mark k xs | (k, xs) <- Map.toList (byFont seg)]
+      -- the glyphs of a font in a row are one run, in the order of the text (docs/adr ADR 0227)
+      marksOf seg = [mark k xs | (k, xs) <- glyphRuns [((ix, sb, tu), (g, t, off, o)) | (ix, g, t, sb, tu, off, o, _) <- seg]]
       refOf ix tu = ref ix (v && not rotated && not tu)
       {- the occurrences of the clusters drawn, each with its text when the
       ToUnicode entries of its font do not give it back: such a cluster
@@ -638,7 +655,11 @@ runAtU :: DrawEnv -> (SizeSource, V.GlyphPart, SrcSpan) -> Look -> Bool -> Bool 
 runAtU env who look v rotated scale pt txt = usesOf who look (runAt env look v rotated scale pt txt)
 
 usesOf :: (SizeSource, V.GlyphPart, SrcSpan) -> Look -> ([P.Mark], [(P.FontRef, Int, Text, ClusterPart)]) -> ([P.Mark], [GlyphUse])
-usesOf (src, gp, sp) look (ms, us) = (ms, [GlyphUse r g t (k `div` 2) (lkSize look) (lkColor look) part src gp sp | (r@(P.FontRef k), g, t, part) <- us])
+usesOf (src, gp, sp) look (ms, us) = (ms, [GlyphUse r g t (k `div` 2) (lkSize look) (lkColor look) part src gp sp Nothing | (r@(P.FontRef k), g, t, part) <- us])
+
+-- | The uses of glyphs drawn in a leaf (docs/adr ADR 0227).
+inLeaf :: Maybe P.LeafId -> [GlyphUse] -> [GlyphUse]
+inLeaf lf = map (\u -> u {guLeaf = lf})
 
 -- the glyphs of a box, of a part
 whoOf :: V.GlyphPart -> BoxContent -> (SizeSource, V.GlyphPart, SrcSpan)
@@ -787,7 +808,7 @@ drawLineAt env (x0, y0) sl =
               size = lkSize look
               half = look {lkSize = Sp (unSp size `div` 2)}
               leaf = leafOf (bcLeaf c)
-              whole r = ([(leaf, fst r)], snd r)
+              whole r = ([(leaf, fst r)], inLeaf leaf (snd r))
            in (,) (lkColor look) $ case boxKind c of
                 kind
                   | kind `elem` [KindRuby, KindGroupRuby] ->
@@ -816,7 +837,8 @@ drawLineAt env (x0, y0) sl =
                             | otherwise = (marks, glyphs)
                           placed1 = [inColour lk (runAtU env (whoOf V.PartBase c) lk vertical False 0 (origin (off + pos)) u) | (u, lk, pos) <- zip3 baseUnits baseLooks (rpBase rp)]
                           placed2 = [runAtU env (whoOf V.PartRuby c) half vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
-                       in ([(leaf, concatMap fst placed1), (leafOf (rubyTextLeaf (bcLeaf c)), concatMap fst placed2)], concatMap snd (placed1 <> placed2))
+                          readingLeaf = leafOf (rubyTextLeaf (bcLeaf c))
+                       in ([(leaf, concatMap fst placed1), (readingLeaf, concatMap fst placed2)], inLeaf leaf (concatMap snd placed1) <> inLeaf readingLeaf (concatMap snd placed2))
                 KindKenten ->
                   {- the character, and the mark of its shape, half its size, the
                   centre of its ink box beside the em box (golem-driver ADR 0019):
@@ -833,7 +855,7 @@ drawLineAt env (x0, y0) sl =
                                 central = maybe 0 (lfEmBoxCentral fonts . shFace) (listToMaybe parent)
                              in beside (origin (off + Sp (unSp adv `div` 2))) (shift + kentenAcross False size central d)
                       (b2, u2) = maybe ([], []) (\sh -> usesOf (whoOf V.PartKenten c) (look {lkSize = d}) (kentenMark env (lkFace look) sh d centre)) (lkKenten look)
-                   in ([(leaf, b1), (Nothing, b2)], u1 <> u2)
+                   in ([(leaf, b1), (Nothing, b2)], inLeaf leaf u1 <> u2)
                 KindNoteMark ->
                   {- the mark of a note in the look of mark-style (docs/adr/0177),
                   placed by the look of its place, the size s of the text and m of
@@ -883,7 +905,7 @@ drawLineAt env (x0, y0) sl =
                     (lf : _) -> leafOf lf
                     [] -> Nothing
                   r = runAtU env (whoBefore i) look vertical vertical 0 (if vertical then (ox - Sp (unSp (size * 3) `div` 10), oy) else (ox, oy)) "-"
-               in (lkColor look, ([(leafBefore, fst r)], snd r))
+               in (lkColor look, ([(leafBefore, fst r)], inLeaf leafBefore (snd r)))
         _ -> (Nothing, ([], []))
       -- by the glyphs used, not the marks: the marks need the ToUnicode entries of every page (golem-driver ADR 0030)
       parts = filter (not . null . snd . snd) (zipWith (curry boxRun) [0 ..] placed)
@@ -1332,7 +1354,7 @@ figureMark env fid r pf = P.Tagged (P.LeafId (figureSite (pfUnit pf) <> [0])) $ 
 
 -- | A line drawn as an artifact of a kind (docs/adr ADR 0183).
 asArtifact :: P.ArtifactKind -> (LineRec, ([P.Content], [GlyphUse])) -> (LineRec, ([P.Content], [GlyphUse]))
-asArtifact k (rec, (cs, us)) = (rec, ([P.Artifact k (concatMap P.contentMarks cs) | not (null cs)], us))
+asArtifact k (rec, (cs, us)) = (rec, ([P.Artifact k (concatMap P.contentMarks cs) | not (null cs)], inLeaf Nothing us))
 
 -- | A line whose boxes are all of one leaf.
 withLeaf :: Leaf -> Line -> Line
