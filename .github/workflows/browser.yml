@@ -13,9 +13,6 @@ on:
   schedule:
     - cron: "17 20 * * *"
   workflow_dispatch:
-  # TEMPORARY (measurement of ADR 0238): removed before merge
-  push:
-    branches: [impl-0238]
 
 # It reads the repository and the runs and artifacts of ci.yml and of this
 # workflow; it writes nothing but its own artifact and its caches.
@@ -28,7 +25,9 @@ concurrency:
   cancel-in-progress: false
 
 # The times of the jobs are twice those measured in the pull request of the
-# implementation (docs/ci-timings/2026-11-08-browser-workflow.md).
+# implementation (docs/ci-timings/2026-11-08-browser-workflow.md); that of
+# chromium, with wasmtime, in the pull request of docs/adr/0238
+# (docs/ci-timings/2026-11-08-wasmtime-in-browser-workflow.md).
 jobs:
   # the inputs of both browsers: golem.wasm, the native list, the HTML of
   # the manuals and of the fixtures of scripts/browser/fixtures, built with
@@ -51,7 +50,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           EVENT: ${{ github.event_name }}
         run: |
-          if [ "$EVENT" = workflow_dispatch ] || [ "$EVENT" = push ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA" browser.yml); fi
+          if [ "$EVENT" = workflow_dispatch ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA" browser.yml); fi
           echo "run=$RUN" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v7
         if: steps.needed.outputs.run == 'true'
@@ -71,7 +70,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           RUN=
-          for id in $(gh run list --workflow ci.yml --branch impl-0238 --event pull_request --status success --limit 30 --json databaseId --jq '.[].databaseId'); do
+          for id in $(gh run list --workflow ci.yml --branch main --event push --status success --limit 30 --json databaseId --jq '.[].databaseId'); do
             names=" $(gh api "repos/$GH_REPO/actions/runs/$id/artifacts?per_page=100" --jq '[.artifacts[] | select(.expired | not) | .name] | join(" ")') "
             all=true
             for a in golem-wasm wasm-native-list manual manual-dev golem-linux-x86_64; do
@@ -106,7 +105,7 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.run == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 11
     steps:
       - uses: actions/checkout@v7
         with:
