@@ -515,7 +515,7 @@ decimal t0 =
         _ -> (1, t0)
       (i, f) = T.breakOn "." t
       f' = T.drop 1 f
-      digits x = T.all (`elem` ['0' .. '9']) x
+      digits = T.all (`elem` ['0' .. '9'])
       value x = if T.null x then 0 else read (T.unpack x) :: Integer
    in if digits i && digits f' && not (T.null i && T.null f') && T.length t <= 40
         then Just (sign * (fromInteger (value i) + fromInteger (value f') / 10 ^ T.length f'))

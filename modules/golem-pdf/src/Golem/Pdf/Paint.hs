@@ -66,7 +66,7 @@ data Paint = Paint
 
 -- ------------------------------------------------------------------ objects
 
-data Objs = Objs !(Array Int Obj)
+newtype Objs = Objs (Array Int Obj)
 
 objsOf :: PdfObjects -> Objs
 objsOf (PdfObjects _ os _) = Objs (listArray (1, length os) os)
@@ -137,9 +137,7 @@ spaceOf os res nameObj = case nameObj of
   OName "DeviceRGB" -> (PsDeviceRgb, ["0", "0", "0"])
   OName "DeviceCMYK" -> (PsDeviceCmyk, ["0", "0", "0", "1"])
   OName "Pattern" -> (PsPattern, [])
-  OName n -> case look os "ColorSpace" res >>= look os n of
-    Just o -> family o
-    Nothing -> (PsUnknown n, [])
+  OName n -> maybe (PsUnknown n, []) family (look os "ColorSpace" res >>= look os n)
   o -> family o
   where
     family o = case deref os o of

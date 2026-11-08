@@ -4,6 +4,7 @@ The numbers of the tests are those of the invariants of the ADR.
 -}
 module PlatesSpec (tests, viewWith) where
 
+import Control.Monad (replicateM)
 import Data.List (nub, sort)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -172,7 +173,7 @@ smallViews :: [View]
 smallViews =
   [ viewWith ps fonts spots
   | n <- [0 .. 3],
-    ps <- sequence (replicate n paints),
+    ps <- replicateM n paints,
     (fonts, spots) <- [([], []), (["A", "B", "A"], ["Gold"])]
   ]
   where
