@@ -185,10 +185,12 @@ jobs:
       # restored and cabal builds, and the step before the tests waits for
       # it. A stalled mirror fails it in 5 minutes (docs/adr/0009,
       # docs/adr/0037)
-      # the tests need qpdf
+      # the tests need qpdf and Poppler (pdftoppm and pdfinfo), and the
+      # check of the typefaces of the manuals on the x86-64 runner of the
+      # outputs needs qpdf (docs/adr/0232); one apt-get for both
       - name: qpdf in the background (golem-pdf ADR 0001)
-        if: matrix.tests
-        run: sh scripts/ci/bg.sh start apt timeout -k 10 300 sh scripts/ci/apt-install.sh qpdf
+        if: matrix.tests || (matrix.runner == 'ubuntu-24.04' && matrix.outputs)
+        run: sh scripts/ci/bg.sh start apt timeout -k 10 300 sh scripts/ci/apt-install.sh qpdf poppler-utils
       # epubcheck checks the EPUB of x86-64. It comes from the release zip
       # of w3c/epubcheck, not from apt, and runs with the Java of the
       # runner image; the zip is cached by its version and SHA-256
@@ -348,7 +350,7 @@ jobs:
           name: golem-linux-x86_64
           path: golem-linux-x86_64
       - name: qpdf is installed
-        if: matrix.tests
+        if: matrix.tests || (matrix.runner == 'ubuntu-24.04' && matrix.outputs)
         timeout-minutes: 5
         run: sh scripts/ci/bg.sh wait apt
       # epubcheck goes on PATH here, after cabal build: cabal keeps PATH in
@@ -468,6 +470,20 @@ jobs:
         run: |
           "$(cabal list-bin -v0 golem)" build --target epub
           epubcheck build/epub/book.epub
+      # a citation of @bibliography in another file, a navigation of depth
+      # 1 and the channel of the sample plugin glossary, put in a cache by
+      # the SHA-256 of plugins.lock so that its url is not fetched
+      # (docs/adr/0232)
+      - name: The EPUB of epub-forms passes epubcheck (docs/adr/0232)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        working-directory: modules/golem-driver/test/fixtures/epub-forms
+        run: |
+          cache="$RUNNER_TEMP/epub-forms-cache"
+          mkdir -p "$cache/golem/plugins"
+          sha=$(sed -n 's/^sha256 = "\([0-9a-f]*\)"$/\1/p' plugins.lock)
+          cp "$GITHUB_WORKSPACE/plugins/wasm/glossary.wasm" "$cache/golem/plugins/$sha.wasm"
+          XDG_CACHE_HOME="$cache" "$(cabal list-bin -v0 golem)" build --target epub
+          epubcheck build/epub/book.epub
       # scripts/determinism.sh builds the two manuals with
       # scripts/manual/build.sh, which fails on a single diagnostic,
       # notices included, and lists the hashes of their outputs; the
@@ -481,6 +497,28 @@ jobs:
         with:
           name: determinism-${{ matrix.runner }}
           path: determinism-${{ matrix.runner }}.txt
+      # the PDFs of the two manuals embed their fonts and have no spot
+      # colour space, by golem preflight with the rules of CI; they use no
+      # typeface but the fonts of their fonts/, by the BaseFonts the PDF
+      # names (docs/adr/0232)
+      - name: The preflight of the manuals (docs/adr/0232)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        run: |
+          GOLEM="$(cabal list-bin -v0 golem)"
+          for project in manual manual-dev; do
+            (cd "$project" && "$GOLEM" preflight --rules ../scripts/ci/manual-preflight.toml)
+          done
+      - name: The typefaces of the manuals are their fonts (docs/adr/0232)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        run: |
+          for project in manual manual-dev; do
+            fonts=$(for f in "$project"/fonts/*.otf; do basename "$f" .otf; done)
+            for pdf in "$project"/build/pdf/*.pdf; do
+              # one font per word
+              # shellcheck disable=SC2086
+              sh scripts/ci/pdf-fonts.sh "$pdf" $fonts
+            done
+          done
       # the outputs do not change with the time zone, the locale,
       # SOURCE_DATE_EPOCH, HOME, XDG_*, PATH, the umask, the path of the
       # project, the times of its files and files nothing refers to; the

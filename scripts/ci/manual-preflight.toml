@@ -1,0 +1,11 @@
+# The preflight of the two manuals in CI (docs/adr/0232): their fonts are
+# embedded and they have no spot colour space. Nothing else is checked;
+# the manuals carry no print setup (manual/preflight.toml).
+name = "manual-ci"
+based-on = "none"
+
+[font-embedding]
+severity = "error"
+
+[spot-colors]
+severity = "error"

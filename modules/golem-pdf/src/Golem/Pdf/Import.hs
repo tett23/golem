@@ -22,6 +22,8 @@ module Golem.Pdf.Import
     FormContent (..),
     importPage,
     importErrorText,
+    contentOperations,
+    unescapeName,
   )
 where
 
@@ -374,6 +376,44 @@ parseObj depth s0
       case BS.uncons t3 of
         Just (82, t4) | maybe True (not . isRegular . fst) (BS.uncons t4) -> Just t4
         _ -> Nothing
+
+{- | The operations of a content stream, read with the lexing above
+(docs/adr ADR 0232): each operator with its operands as written. An
+inline image is the operator @BI@ alone; its dictionary and data are
+skipped. Nothing when the stream is broken.
+-}
+contentOperations :: ByteString -> Maybe [(ByteString, [ByteString])]
+contentOperations = go [] []
+  where
+    go acc ops s0 =
+      let s = skipWs s0
+       in case BS.uncons s of
+            Nothing -> Just (reverse acc)
+            Just (w, r)
+              | w == 47 -> let (n, rest) = BS.span isRegular r in go acc (BS.take (1 + BS.length n) s : ops) rest
+              | w == 40 || w == 60 || w == 91 -> case parseObj 0 s of
+                  Right (_, rest) -> go acc (BS.take (BS.length s - BS.length rest) s : ops) rest
+                  Left _ -> Nothing
+              | w == 123 || w == 125 -> go acc (BS.take 1 s : ops) r
+              | isNumChar w -> let (tok, rest) = BS.span isNumChar s in go acc (tok : ops) rest
+              | isRegular w ->
+                  let (kw, rest) = BS.span isRegular s
+                   in if
+                        | kw `elem` ["true", "false", "null"] -> go acc (kw : ops) rest
+                        | kw == "BI" -> skipInline rest >>= go (("BI", []) : acc) []
+                        | otherwise -> go ((kw, reverse ops) : acc) [] rest
+              | otherwise -> Nothing
+    -- the rest after the EI of an inline image: its dictionary to ID, then its data
+    skipInline t = case BS.breakSubstring "ID" t of
+      (before, found)
+        | BS.null found -> Nothing
+        | maybe True (not . isRegular . snd) (BS.unsnoc before) && maybe False (isWs . fst) (BS.uncons (BS.drop 2 found)) -> findEi (BS.drop 3 found)
+        | otherwise -> skipInline (BS.drop 2 found)
+    findEi t = case BS.breakSubstring "EI" t of
+      (before, found)
+        | BS.null found -> Nothing
+        | maybe True (isWs . snd) (BS.unsnoc before) && maybe True (not . isRegular . fst) (BS.uncons (BS.drop 2 found)) -> Just (BS.drop 2 found)
+        | otherwise -> findEi (BS.drop 2 found)
 
 -- | A name with its #xx escapes undone.
 unescapeName :: ByteString -> ByteString

@@ -577,6 +577,14 @@ qpdfCheck pdf = do
       (code, out, err) <- readProcessWithExitCode exe ["--check", dir </> "out.pdf"] ""
       assertEqual (out <> err) ExitSuccess code
 
+{- | pdftoppm and pdfinfo of Poppler (docs/adr ADR 0232), found as
+'qpdfCheck' finds qpdf: a missing one is a failure with
+GOLEM_REQUIRE_EXTERNAL_TOOLS=1.
+-}
+pdftoppmTool, pdfinfoTool :: IO (Maybe FilePath)
+pdftoppmTool = optionalTool "pdftoppm" (findExecutable "pdftoppm")
+pdfinfoTool = optionalTool "pdfinfo" (findExecutable "pdfinfo")
+
 -- | Every Flate stream of a PDF, inflated (others as they are).
 inflateAll :: BS.ByteString -> IO [BS.ByteString]
 inflateAll pdf = case BS.breakSubstring "stream\n" pdf of

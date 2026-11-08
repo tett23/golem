@@ -12,6 +12,7 @@ import Golem.Preflight
 import Golem.Preflight.Rules
 import Golem.Preflight.View
 import Golem.Syntax
+import PlatesSpec qualified
 import RulesSchemaSpec qualified
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -49,7 +50,10 @@ emptyView =
       vwX4 = [],
       vwPdf = "%PDF-1.6",
       vwStyleSpan = styleSpan,
-      vwManifestSpan = manifestSpan
+      vwManifestSpan = manifestSpan,
+      vwPaints = [],
+      vwUnembeddedFonts = [],
+      vwSpotColorants = []
     }
 
 withPages :: [PageView] -> View
@@ -107,7 +111,8 @@ tests =
     [ rulesTests,
       testGroup "checks" checkTests,
       auditTests,
-      RulesSchemaSpec.tests
+      RulesSchemaSpec.tests,
+      PlatesSpec.tests
     ]
 
 -- | G08100 of golem build groups the glyphs of a whole book: in time n log n (security audit 2026-10-24).
@@ -145,14 +150,17 @@ rulesTests =
                 ruInkCoverage r,
                 ruPageCount r,
                 ruBlankPages r,
-                ruStrokeWeight r
+                ruStrokeWeight r,
+                ruFontEmbedding r,
+                ruSpotColors r,
+                ruCmyPlates r
               ]
             e = LevelError
             w = LevelWarning
             o = LevelOff
-        levels basicRules @?= [e, o, o, o, o, o, o, o, o, w, e, o, o, o, o]
-        levels printRules @?= [e, o, w, o, w, w, e, e, w, w, e, w, o, o, w]
-        levels noneRules @?= replicate 15 o
+        levels basicRules @?= [e, o, o, o, o, o, o, o, o, w, e, o, o, o, o, e, o, o]
+        levels printRules @?= [e, o, w, o, w, w, e, e, w, w, e, w, o, o, w, e, e, o]
+        levels noneRules @?= replicate 18 o
         (ruResolutionColor printRules, ruResolutionGray printRules, ruResolutionBitmap printRules) @?= (Tier 150 300, Tier 150 300, Tier 600 1200)
         (ruResolutionColor basicRules, ruResolutionBitmap noneRules) @?= (Tier 0 0, Tier 0 0)
         (ruTypeSizeMin printRules, ruTypeSizeMultiInkOnly printRules) @?= (pt 5, True)
@@ -200,7 +208,10 @@ rulesTests =
                 "[ink-coverage]\nseverity = \"error\"\nmax = 301",
                 "[page-count]\nseverity = \"warning\"\nmultiple-of = 16",
                 "[blank-pages]\nseverity = \"warning\"",
-                "[stroke-weight]\nseverity = \"error\"\nmin = \"4pt\""
+                "[stroke-weight]\nseverity = \"error\"\nmin = \"4pt\"",
+                "[font-embedding]\nseverity = \"warning\"",
+                "[spot-colors]\nseverity = \"warning\"",
+                "[cmy-plates]\nseverity = \"error\""
               ]
           )
           @?= Rules
@@ -236,7 +247,10 @@ rulesTests =
               ruPageMultiple = 16,
               ruBlankPages = LevelWarning,
               ruStrokeWeight = LevelError,
-              ruStrokeMin = pt 4
+              ruStrokeMin = pt 4,
+              ruFontEmbedding = LevelWarning,
+              ruSpotColors = LevelWarning,
+              ruCmyPlates = LevelError
             },
       testCase "the edges of the numbers: error-below may equal warning-below, a million is the largest count" $ do
         ruResolutionColor (parsed "[image-resolution]\ncolor = { error-below = 300, warning-below = 300 }\n") @?= Tier 300 300
