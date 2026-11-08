@@ -93,7 +93,7 @@ tests :: TestTree
 tests =
   testGroup
     "golem-wasm: the frames (docs/adr/0199)"
-    [ testProperty "the files written and read again are the same" $ property $ do
+    [ testProperty "F3: the files written and read again are the same" $ property $ do
         fs <- forAll files
         readFiles (writeFiles fs) === Right fs,
       testCase "an input frame is lengths, paths and contents, little-endian" $
@@ -121,7 +121,30 @@ tests =
         readFiles (writeFiles [("a.gm", ""), ("./b.gm", ""), ("a.gm", "")]) @?= Left (NotNormalized "./b.gm")
         readFiles (writeFiles [("a.gm", ""), ("a.gm", ""), ("./b.gm", "")]) @?= Left (Duplicate "a.gm")
         readFiles (writeFiles [("a.gm", ""), ("a.gm", "")] <> BS.pack [1]) @?= Left (Duplicate "a.gm"),
-      testProperty "every frame is read as the quadratic check of duplicates read it" $ withTests 1000 $ property $ do
+      testCase "F1: an empty path is refused (docs/adr/0225)" $
+        readFiles (writeFiles [("", "x")]) @?= Left EmptyPath,
+      testCase "F1, F2: the error of the first file that cannot be taken, and of the first of its conditions (docs/adr/0225)" $ do
+        -- the paths of the boundaries: "." and "a/.." are made "" by
+        -- normalizeRelative but are not "", "/" is absolute
+        readFiles (writeFiles [(".", "")]) @?= Left (NotNormalized ".")
+        readFiles (writeFiles [("a/..", "")]) @?= Left (NotNormalized "a/..")
+        readFiles (writeFiles [("/", "")]) @?= Left (NotNormalized "/")
+        readFiles (writeFiles [("a", "")]) @?= Right [("a", "")]
+        -- the empty path first, in the middle and last; the content empty or one byte
+        readFiles (writeFiles [("", ""), ("a.gm", "1")]) @?= Left EmptyPath
+        readFiles (writeFiles [("a.gm", "1"), ("", "x"), ("b.gm", "")]) @?= Left EmptyPath
+        readFiles (writeFiles [("a.gm", ""), ("b.gm", ""), ("", "")]) @?= Left EmptyPath
+        -- a duplicate before the empty path comes first; after it, the empty path
+        readFiles (writeFiles [("a.gm", ""), ("a.gm", ""), ("", "")]) @?= Left (Duplicate "a.gm")
+        readFiles (writeFiles [("a.gm", ""), ("", ""), ("a.gm", "")]) @?= Left EmptyPath
+        -- the empty path twice: the first
+        readFiles (writeFiles [("", ""), ("", "")]) @?= Left EmptyPath
+        -- a file cut short before it
+        readFiles (BS.pack (le32 100 <> [0x61]) <> writeFiles [("", "")]) @?= Left Truncated
+        readFiles (writeFiles [("", "")] <> BS.pack [1]) @?= Left EmptyPath
+        -- a path not UTF-8 before it
+        readFiles (BS.pack (le32 1 <> [0xFF] <> le32 0) <> writeFiles [("", "")]) @?= Left (NotUtf8 (BS.pack [0xFF])),
+      testProperty "F3: every frame is read as the quadratic check of duplicates read it" $ withTests 1000 $ property $ do
         frame <- forAll anyFrame
         readFiles frame === readFilesByList frame,
       -- 200,000 files take minutes with a check of every earlier path (the
@@ -136,6 +159,7 @@ tests =
           [ BS.pack [1, 2],
             writeFiles [("./a.gm", "")],
             writeFiles [("a.gm", ""), ("a.gm", "")],
+            writeFiles [("", "x")],
             BS.pack (le32 1 <> [0xFF] <> le32 0)
           ],
       testCase "the result frames (golden)" $ do
