@@ -15,8 +15,8 @@ import Data.Text.Encoding qualified as TE
 import Golem.Driver
 import Golem.Pdf (LeafId (..), StructElem (..), StructKid (..), StructType (..))
 import Golem.Syntax
-import Golem.Typeset (orphanErrors)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
+import Golem.Typeset (orphanErrors)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesFileExist, listDirectory)
 import System.FilePath ((</>))
