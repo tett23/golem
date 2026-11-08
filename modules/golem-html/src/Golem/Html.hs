@@ -943,7 +943,7 @@ listRules cfg book ls =
         | otherwise -> extends "decimal"
       NsNotation n
         -- the notations of the same rule as a counter style of CSS (docs/adr/0177)
-        | Just css <- lookup (notationName n) cssStyles -> extends css
+        | Just cssName <- lookup (notationName n) cssStyles -> extends cssName
       _ -> "system: fixed; symbols: " <> T.unwords [str (fromMaybe (tshow n) (formatListNumber st n)) | n <- [1 .. largest k]] <> ";"
     extends s = "system: extends " <> s <> ";"
     cssStyles = [("arabic", "decimal"), ("kanji", "japanese-informal"), ("lower-alpha", "lower-alpha"), ("upper-alpha", "upper-alpha"), ("lower-roman", "lower-roman"), ("upper-roman", "upper-roman")]

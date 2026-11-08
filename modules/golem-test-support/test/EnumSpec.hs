@@ -243,7 +243,7 @@ nubTests =
       testCase "E2: the keys and the values kept are those built naively, for every key" $
         mapM_
           (\(name, key) -> (name, upTo 6 (nubTiersOn key (listsOf (intsIn 0 2)))) @?= (name, naiveNub key 6 (listsOf (intsIn 0 2))))
-          [ ("the list itself, in base 4", foldr (\x a -> a * 4 + x + 1) 0),
+          [ ("the list itself, in base 4" :: String, foldr (\x a -> a * 4 + x + 1) 0),
             ("constant", const 0),
             ("parity", (`mod` 2) . sum),
             ("the sum", sum),

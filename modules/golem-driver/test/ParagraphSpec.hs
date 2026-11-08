@@ -22,7 +22,7 @@ import Golem.Typeset (PdfLayout (..), SetLine (..), Shaping (..))
 import Support hiding (codesOf)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
-import Test.Tasty
+import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
 
 separatorTests :: [TestTree]

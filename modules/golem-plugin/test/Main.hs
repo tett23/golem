@@ -115,8 +115,8 @@ watBlocks :: [Text] -> [Text]
 watBlocks ls = case break opens ls of
   (_, []) -> []
   (_, _ : rest) ->
-    let (body, after) = break (== "```") rest
-     in T.unlines body : watBlocks (drop 1 after)
+    let (body, closing) = break (== "```") rest
+     in T.unlines body : watBlocks (drop 1 closing)
   where
     opens l = l == "```wat" || "```wat " `T.isPrefixOf` l
 

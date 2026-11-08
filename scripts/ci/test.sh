@@ -1148,7 +1148,7 @@ if [ "$(matrix_rows "$CI_YML" | awk '$7 == "true" { print $1 }' | sort | uniq -c
 fi
 # the step that starts at a line that matches $1 has a line that matches $2
 step_has() {
-  awk -v s="$1" -v c="$2" 'index($0, s) { on = 1; print; next } on && /^      - / { on = 0 } on' "$CI_YML" | grep -qF -- "$2"
+  awk -v s="$1" 'index($0, s) { on = 1; print; next } on && /^      - / { on = 0 } on' "$CI_YML" | grep -qF -- "$2"
 }
 # the step after a line that matches $1 has the condition $2
 step_if() { awk -v s="$1" -v c="$2" 'index($0, s) { getline; if (index($0, c)) found = 1 } END { exit !found }' "$CI_YML"; }
@@ -1396,7 +1396,7 @@ if step_has "$INDEX_STEP" '          path: ~/.cabal/packages/hackage.haskell.org
 fi
 UPDATE_STEP="- if: steps.index.outputs.cache-hit != 'true'"
 UPD_AT=$(build_lines | grep -nF -- "$UPDATE_STEP" | head -1 | cut -d: -f1)
-if [ -n "$UPD_AT" ] && build_lines | sed -n "$UPD_AT,\$p" | awk 'NR > 1 && /^      - / { exit } { print }' >"$WORK/update-step" &&
+if [ -n "$UPD_AT" ] && build_lines | sed -n "$UPD_AT,\$p" | awk 'NR > 1 && /^      - / { done = 1 } !done { print }' >"$WORK/update-step" &&
   grep -n 'cabal update' "$WORK/update-step" >/dev/null &&
   [ "$(grep -n '^ *cabal update$' "$WORK/update-step" | cut -d: -f1)" -lt "$(grep -n '^ *rm ~/.cabal/packages/hackage.haskell.org/01-index.tar.gz$' "$WORK/update-step" | cut -d: -f1)" ]; then ok; else
   ng "ci.yml: the step of cabal update removes 01-index.tar.gz after cabal update"

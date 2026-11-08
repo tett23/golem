@@ -13,7 +13,7 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import KnuthPlassReference (finish, referenceLook)
-import Test.Tasty
+import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
 

@@ -3,7 +3,7 @@ module Main (main) where
 
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
-import Data.Char (isDigit, isSpace, toLower)
+import Data.Char (isSpace, toLower)
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Either (partitionEithers, rights)
 import Data.List (intercalate, isPrefixOf, isSuffixOf, stripPrefix)

@@ -15,7 +15,7 @@ import Golem.Lsp.Toml
 import Golem.Lsp.Workspace
 import Support (codesOf)
 import System.FilePath ((</>))
-import Test.Tasty
+import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
 
 root :: FilePath

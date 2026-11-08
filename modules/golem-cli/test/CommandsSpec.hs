@@ -274,8 +274,8 @@ tablePathTests =
         | not (BS.null rest) ->
             let (docId, afterDoc) = BS.break (== 0x3E) (BS.drop 6 rest)
                 (sep, instanceAndRest) = BS.break (== 0x3C) afterDoc
-                (instanceId, after) = BS.break (== 0x3E) (BS.drop 1 instanceAndRest)
-             in BS.concat [before, "/ID [<", docId, sep, "<", BS.map (const 0x30) instanceId, after]
+                (instanceId, afterInstance) = BS.break (== 0x3E) (BS.drop 1 instanceAndRest)
+             in BS.concat [before, "/ID [<", docId, sep, "<", BS.map (const 0x30) instanceId, afterInstance]
       _ -> bytes
 
 -- ------------------------------------------------------------------ golem inspect (golem-cli ADR 0001)

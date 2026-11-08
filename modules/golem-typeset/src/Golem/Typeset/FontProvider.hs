@@ -67,15 +67,15 @@ golemFontProvider = FontProvider $ \files fid style locals ->
               paths = nubOrd (concat [catMaybes [frJa fr, frLatin fr] | (_, fr) <- roles])
           loadedPaths <- Map.fromList <$> mapM (\p -> (p,) <$> load p) paths
           let side f fr = f fr >>= \p -> either (const Nothing) Just =<< Map.lookup p loadedPaths
-              files = [(r, fr, side frJa fr, side frLatin fr) | (r, fr) <- roles]
+              roleFiles = [(r, fr, side frJa fr, side frLatin fr) | (r, fr) <- roles]
           pure $ case [d | p <- paths, Just (Left d) <- [Map.lookup p loadedPaths]] of
             ds@(_ : _) -> Left ds
             [] ->
               let -- faces in order: body Japanese, body Latin, then the other roles by name; the same bytes are one face
-                  ordered = concat [catMaybes [ja, la] | (_, _, ja, la) <- files]
+                  ordered = concat [catMaybes [ja, la] | (_, _, ja, la) <- roleFiles]
                   faces = nubOrdOn (\(b, _, _) -> b) ordered
                   faceOf (b, _, _) = length (takeWhile (\(b', _, _) -> b' /= b) faces)
-                  roleFaces = Map.fromList [(r, (faceOf <$> ja, faceOf <$> la, frFeatures fr)) | (r, fr, ja, la) <- files]
+                  roleFaces = Map.fromList [(r, (faceOf <$> ja, faceOf <$> la, frFeatures fr)) | (r, fr, ja, la) <- roleFiles]
                   clashes =
                     [ (n, p1, p2)
                     | ((_, f1, p1), i) <- zip faces [0 :: Int ..],

@@ -28,7 +28,7 @@ import Support
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
-import Test.Tasty
+import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
 
 -- | Footnote marks, note bodies and note numbers (golem-driver ADR 0018).

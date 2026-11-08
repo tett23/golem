@@ -221,7 +221,7 @@ escapeText b = case BS.span plain b of
     plain w = w >= 0x20 && w < 0x7F && w /= 0x5C || w == 0x09 || w == 0x0A
     special rest = case BS.uncons rest of
       Nothing -> mempty
-      Just (0x5C, r) -> (if "x" `BS.isPrefixOf` r then hex 0x5C else "\\") <> escapeText r
+      Just (0x5C, r) -> (if "x" `BS.isPrefixOf` r then hex (0x5C :: Integer) else "\\") <> escapeText r
       Just (w, r)
         | Just n <- utf8Length w,
           Right t <- TE.decodeUtf8' (BS.take n rest),

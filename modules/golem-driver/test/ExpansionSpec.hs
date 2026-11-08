@@ -26,7 +26,7 @@ import System.Directory (copyFile, createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import TateChuYokoSpec (Glyph (..), fontEncodings, glyphsOf, pdfOf)
-import Test.Tasty
+import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
 
 expansionTests :: TestTree
@@ -42,7 +42,7 @@ expansionTests =
           look <- case [bcLook c | sl <- Map.elems (plLines pl), (Box _ c, _) <- placeLine (slLine sl), not (T.null (bcText c)), T.all (\ch -> isAscii ch && isLetter ch) (bcText c)] of
             l : _ -> pure l
             [] -> assertFailure "no Latin box"
-          let codesOf ch = [lfCode fonts (shFace g) (shGlyph g) | g <- lfShape fonts (Shaping (lkFace look) False [] False) (T.singleton ch)]
+          let glyphCodes ch = [lfCode fonts (shFace g) (shGlyph g) | g <- lfShape fonts (Shaping (lkFace look) False [] False) (T.singleton ch)]
               pages = [(gs, ownScales c) | c <- contents, let gs = glyphsOf encodings c]
           assertBool "a page" (not (null pages))
           forM_ (zip [1 :: Int ..] pages) $ \(n, (gs, own)) -> do
@@ -56,9 +56,9 @@ expansionTests =
               unscaled = [g | (g, o) <- after, o == 1000]
               lowest = minimum (map gY unscaled)
           assertBool "an expanded line" (not (null scaledYs))
-          assertBool "the line-end hyphen of an expanded line" (any (\g -> gCode g `elem` codesOf '-' && gY g `elem` scaledYs) unscaled)
-          assertBool "Japanese" (any (\g -> gCode g `elem` codesOf '和') unscaled)
-          assertBool "the folio" (any (\g -> gCode g `elem` codesOf '1' && gY g == lowest) unscaled)
+          assertBool "the line-end hyphen of an expanded line" (any (\g -> gCode g `elem` glyphCodes '-' && gY g `elem` scaledYs) unscaled)
+          assertBool "Japanese" (any (\g -> gCode g `elem` glyphCodes '和') unscaled)
+          assertBool "the folio" (any (\g -> gCode g `elem` glyphCodes '1' && gY g == lowest) unscaled)
           assertBool "the last line" (any (\g -> gY g < minimum scaledYs && gY g > lowest) unscaled)
     ]
 

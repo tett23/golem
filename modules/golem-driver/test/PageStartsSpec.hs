@@ -163,10 +163,10 @@ pageStartsTests =
         (_, json) <- buildPages True
         pages <- pagesMini "" threeLines source fakeFontFiles Map.empty >>= either (assertFailure . show) pure
         -- the page starts after 𠮷, two code units, and \[, two bytes for one character
-        let firstOf = T.take 1 . T.concat . take 1 . filter (not . T.null)
+        let firstChar = T.take 1 . T.concat . take 1 . filter (not . T.null)
         case (drop 1 pages, T.lines source) of
           (p : _, firstLine : _) -> do
-            let ch = firstOf p
+            let ch = firstChar p
                 cps = T.length (fst (T.breakOn ch firstLine))
             assertBool "on the first line" (ch `T.isInfixOf` firstLine)
             assertBool (T.unpack json) (("{\"page\":2,\"file\":\"a.gm\",\"line\":0,\"character\":" <> T.pack (show (cps + 1)) <> "}") `T.isInfixOf` json)

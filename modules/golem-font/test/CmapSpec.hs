@@ -17,7 +17,7 @@ import Data.ByteString.Unsafe (unsafeUseAsCStringLen)
 import Data.Word (Word8)
 import Foreign.C.Types (CInt (..), CSize (..))
 import Foreign.Ptr (Ptr, castPtr)
-import Test.Tasty
+import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
 
 foreign import ccall safe "golem_test_num_charmaps" c_numCharmaps :: Ptr Word8 -> CSize -> IO CInt
