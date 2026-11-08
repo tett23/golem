@@ -385,9 +385,10 @@ fun placedBefore[p: Placement, i: Item]: Int {
   plus[plus[Col.used, #{t: Text - Space | t.pos < i.pos and here[p, t]}], (sum g: {g: p.kept | g.pos < i.pos} | g.size)]
 }
 
--- the grid lines in the column before an item, the spaces and the blank lines placed counted
+-- the grid lines in the column before an item, the spaces counted, and the blank lines before it not at the top of the column:
+-- a blank line goes with its next block, and the two fit together or go on together (docs/adr/0046)
 fun loadBefore[p: Placement, i: Item]: Int {
-  plus[plus[plus[Col.used, #{t: Text | t.pos < i.pos and here[p, t]}], (sum g: {g: p.kept | g.pos < i.pos} | g.size)], #{b: p.placed | b.pos < i.pos}]
+  plus[plus[plus[Col.used, #{t: Text | t.pos < i.pos and here[p, t]}], (sum g: {g: p.kept | g.pos < i.pos} | g.size)], #{b: Blank | b.pos < i.pos and not blankAtTop[p, b]}]
 }
 
 -- the first part of a block: of a paragraph, all of three lines or fewer, else two (golem-layout ADR 0021); a heading's line; a figure
