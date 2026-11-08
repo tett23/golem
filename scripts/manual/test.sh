@@ -603,18 +603,24 @@ for case in \
   'ADR0239-I4: P P without halt|（G02014）。|1|line 9: ） needs a tspan of halt' \
   'ADR0239-I4: P O with the second in halt|「行分割」'"$H"'（</tspan>階層 1）|0|' \
   'ADR0239-I4: P O with the first in halt|「行分割'"$H"'」</tspan>（階層 1）|1|line 9: 」 has a tspan of halt that it does not need' \
-  'ADR0239-I4: P S with nothing in halt|作る）　乱数|0|' \
-  'ADR0239-I4: P S with the first in halt|作る'"$H"'）</tspan>　乱数|1|has a tspan of halt that it does not need' \
-  'ADR0239-I4: P O O with the second in halt|あ」'"$H"'（</tspan>「い|0|' \
-  'ADR0239-I4: P O O with the third in halt|あ」'"$H"'（</tspan>'"$H"'「</tspan>い|1|「 has a tspan of halt' \
+  'ADR0241-F3: C S with nothing in halt|作る）　乱数|1|line 9: ） needs a tspan of halt' \
+  'ADR0241-F3: C S with the first in halt|作る'"$H"'）</tspan>　乱数|0|' \
+  'ADR0241-F3: C O O with the second in halt|あ」'"$H"'（</tspan>「い|1|line 9: 「 needs a tspan of halt' \
+  'ADR0241-F3: C O O with the second and the third in halt|あ」'"$H"'（</tspan>'"$H"'「</tspan>い|0|' \
   'ADR0239-I4: P P P with the first two in halt|あ'"$H"'）</tspan>'"$H"'」</tspan>。|0|' \
   'ADR0239-I4: P P P with the first in halt|あ'"$H"'）</tspan>」。|1|」 needs a tspan of halt' \
   'ADR0239-I4: O P|あ（）|0|' \
-  'ADR0239-I4: S O|あ　（い）|0|' \
+  'ADR0241-F3: S O with nothing in halt|あ　（い）|1|line 9: （ needs a tspan of halt' \
+  'ADR0241-F3: S O with the second in halt|あ　'"$H"'（</tspan>い）|0|' \
   'ADR0239-I4: a halt on a lone mark|'"$H"'（</tspan>G02014）|1|has a tspan of halt that it does not need' \
-  'ADR0239-I4: O S is not in the table|（　あ|1|not in the table' \
-  'ADR0239-I4: S P is not in the table|あ　。|1|not in the table' \
-  'ADR0239-I7: P and a middle dot|あ）・い|1|line 9: a middle dot next to punctuation (）・)'; do
+  'ADR0241-F1: O S|（　あ|0|' \
+  'ADR0241-F1: S F|あ　。|0|' \
+  'ADR0241-F3: C M with nothing in halt|あ）・い|1|line 9: ） needs a tspan of halt' \
+  'ADR0241-F2: C M with the first in halt|あ'"$H"'）</tspan>・い|0|' \
+  'ADR0241-F3: O O with the second in halt|（'"$H"'「</tspan>あ」|0|' \
+  'ADR0241-F3: O O with nothing in halt|（「あ」|1|line 9: 「 needs a tspan of halt' \
+  'ADR0241-F2: M C with the middle dot in halt|あ'"$H"'・</tspan>）|1|line 9: ・ has a tspan of halt that it does not need' \
+  'ADR0241-F5: 」〚 is not punctuation|あ」〚い〛|0|'; do
   name=${case%%|*}
   rest=${case#*|}
   text=${rest%%|*}
@@ -659,6 +665,132 @@ $SA" '  <text x="1" y="2">（G02014'"$H"'）</tspan>。</text>'
 run cf
 expect "ADR0239-I5: a halt without the rule of halt: exit code" 1
 err_has "ADR0239-I5: a halt without the rule of halt: the message" 'tspan.halt { font-feature-settings: "halt"; }'
+
+# every pair of the six classes, and the boundaries of three marks, with
+# each way of halt (ADR0241-F1, F2, F3; docs/adr/0204, docs/adr/0241): one
+# way passes, or none when the procedure stops on the pair; the way that
+# passes leaves the optimum aki between each two marks, which the test
+# reads from the table itself; no way with a middle dot in halt passes
+AKI=$ROOT/modules/golem-layout/test/golden/default-aki-set.tsv
+# f1 A B HA HB: whether A B, with HA (HB) 1 when A (B) is in halt, leave
+# the optimum aki of the table between them (LC_ALL=C: the awk of macOS
+# compares strings by the collation of the locale, where 「 is 」)
+f1() {
+  LC_ALL=C awk -F '\t' -v a="$1" -v b="$2" -v ha="$3" -v hb="$4" '
+    function num(s,   p) { if (split(s, p, "/") == 1) return s + 0; return p[1] / p[2] }
+    $1 == "char" && $2 == a { ca = $3; aa = num($5) }
+    $1 == "char" && $2 == b { cb = $3; bb = num($4) }
+    $1 == "aki" { opt[$2, $3] = num($5) }
+    END { s = (ha ? 0 : aa) + (hb ? 0 : bb) - opt[ca, cb]; exit (s < 1e-9 && s > -1e-9) ? 0 : 1 }' "$AKI"
+}
+middot() { [ "$(LC_ALL=C awk -F '\t' -v c="$1" '$1 == "char" && $2 == c { print $3 }' "$AKI")" = middle-dot ]; }
+bit() { echo $((($1 >> ($2 - 1)) & 1)); }
+# ways NAME MARKS...: runs check-figures on あMARKSい with each way of halt;
+# PASSED is the number of ways that pass and WAY the last of them
+ways() {
+  wname=$1
+  shift
+  n=$#
+  mask=0
+  PASSED=0
+  WAY=
+  while [ "$mask" -lt $((1 << n)) ]; do
+    text=
+    i=1
+    for m in "$@"; do
+      if [ "$(bit "$mask" "$i")" = 1 ]; then text="$text$H$m</tspan>"; else text="$text$m"; fi
+      i=$((i + 1))
+    done
+    source_is "$T
+$SA
+$HR" "  <text x=\"1\" y=\"2\">あ${text}い</text>"
+    run cf
+    if [ "$CODE" = 0 ]; then
+      PASSED=$((PASSED + 1))
+      WAY=$mask
+      i=1
+      prev=
+      for m in "$@"; do
+        if [ "$(bit "$mask" "$i")" = 1 ] && middot "$m"; then ng "ADR0241-F2: $wname: a middle dot in halt passes ($text)"; else ok; fi
+        if [ -n "$prev" ]; then
+          if f1 "$prev" "$m" "$(bit "$mask" $((i - 1)))" "$(bit "$mask" "$i")"; then ok; else ng "ADR0241-F1: $wname: $text passes without the optimum aki of $prev$m"; fi
+        fi
+        prev=$m
+        i=$((i + 1))
+      done
+    fi
+    mask=$((mask + 1))
+  done
+}
+SP=$(printf '\343\200\200')
+for a in 「 」 ・ 。 、 "$SP"; do
+  for b in 「 」 ・ 。 、 "$SP"; do
+    # the procedure sets the pair when one of the ways with one mark or
+    # none in halt, and no middle dot in halt, leaves the optimum aki
+    want=0
+    for w in '0 0' '1 0' '0 1'; do
+      set -- $w
+      if { [ "$1" = 0 ] || ! middot "$a"; } && { [ "$2" = 0 ] || ! middot "$b"; } && f1 "$a" "$b" "$1" "$2"; then want=1; fi
+    done
+    ways "$a$b" "$a" "$b"
+    if [ "$PASSED" = "$want" ]; then ok; else ng "ADR0241-F3: $a$b: $PASSED ways of halt pass, expected $want"; fi
+  done
+done
+# NAME|MARKS|WAY: the one way that passes (bit 1 is the first mark)
+for case in \
+  '」（「|」 （ 「|6' \
+  '（（（|（ （ （|6' \
+  '）」。|） 」 。|3'; do
+  name=${case%%|*}
+  rest=${case#*|}
+  # shellcheck disable=SC2086
+  ways "$name" ${rest%%|*}
+  if [ "$PASSED" = 1 ] && [ "$WAY" = "${rest#*|}" ]; then ok; else ng "ADR0241-F3: $name: $PASSED ways pass, the last $WAY, expected the one ${rest#*|}"; fi
+done
+
+# the table of another set (GOLEM_AKI_TABLE): a pair that halt does not
+# set as the table says stops, as does a table that is missing or has a
+# line that it does not read (ADR0241-F6)
+# fixture NAME AWK: the table with AWK applied to its lines
+fixture() { awk -F '\t' -v OFS='\t' "$2" "$AKI" >"$WORK/$1.tsv"; }
+fixture cc '$1 == "aki" && $2 == "closing" && $3 == "closing" { $5 = "1/4"; $6 = "1/4" } { print }'
+fixture co '$1 == "aki" && $2 == "closing" && $3 == "opening" { $5 = "3/2"; $6 = "3/2" } { print }'
+fixture mc '$1 == "aki" && $2 == "middle-dot" && $3 == "closing" { $5 = "0"; $6 = "0" } { print }'
+for case in \
+  'cc|））|the space to trim is 1/4 em' \
+  'co|」（|the space to trim is -1/2 em' \
+  'mc|・）|the space to trim is 1/4 em'; do
+  t=${case%%|*}
+  rest=${case#*|}
+  source_is "$T
+$SA" "  <text x=\"1\" y=\"2\">あ${rest%%|*}い</text>"
+  CODE=0
+  GOLEM_AKI_TABLE=$WORK/$t.tsv sh "$HERE/check-figures.sh" "$CF" >"$WORK/out" 2>"$WORK/err" || CODE=$?
+  expect "ADR0241-F6: the table $t and ${rest%%|*}: exit code" 1
+  err_has "ADR0241-F6: the table $t and ${rest%%|*}: the message" "line 8: a pair of punctuation that a tspan of halt does not set as the body text (${rest%%|*}): ${rest#*|}"
+done
+source_is "$T
+$SA" '  <text x="1" y="2">あい</text>'
+CODE=0
+GOLEM_AKI_TABLE=$WORK/none.tsv sh "$HERE/check-figures.sh" "$CF" >"$WORK/out" 2>"$WORK/err" || CODE=$?
+expect "ADR0241-F6: no table: exit code" 1
+err_has "ADR0241-F6: no table: the message" "$WORK/none.tsv: no such file"
+cp "$AKI" "$WORK/five.tsv"
+printf 'aki\tclosing\tclosing\t0\t0\n' >>"$WORK/five.tsv"
+CODE=0
+GOLEM_AKI_TABLE=$WORK/five.tsv sh "$HERE/check-figures.sh" "$CF" >"$WORK/out" 2>"$WORK/err" || CODE=$?
+expect "ADR0241-F6: an aki row of five columns: exit code" 1
+err_has "ADR0241-F6: an aki row of five columns: the line" "$WORK/five.tsv: line $(wc -l <"$WORK/five.tsv" | tr -d ' '): a line that it does not read"
+
+# the same table and source, the same exit code and messages (ADR0241-F7)
+source_is "$T
+$SA" '  <text x="1" y="2">あ）。（「い</text>'
+run cf
+cp "$WORK/err" "$WORK/err1"
+code1=$CODE
+run cf
+check "ADR0241-F7: the same exit code twice" test "$code1" = "$CODE" -a "$CODE" = 1
+check "ADR0241-F7: the same messages twice" cmp -s "$WORK/err1" "$WORK/err"
 
 # the sources of the repository pass
 run sh "$HERE/check-figures.sh"

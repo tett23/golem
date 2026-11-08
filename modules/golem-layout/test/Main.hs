@@ -1,5 +1,6 @@
 module Main (main) where
 
+import AkiTableSpec (akiTableTests)
 import AlignSpec (alignTests)
 import CodeJapaneseSpec (codeJapaneseTests)
 import CodeSpaceSpec (codeSpaceTests)
@@ -385,6 +386,7 @@ tests =
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
+      akiTableTests,
       testGroup
         "Knuth-Plass (ADR 0001)"
         [ testCase "TeX badness" $ do

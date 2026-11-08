@@ -87,7 +87,7 @@
   <!-- what is not read -->
   <rect x="10" y="650" width="1280" height="200" rx="10" fill="#f2f2f2" stroke="#888" stroke-width="1.5" stroke-dasharray="4 6"/>
   <text class="band" x="40" y="692">入力の外にあり、出力に影響させないもの</text>
-  <text x="40" y="740">時計（日時は metadata.date から作る）　乱数（golem new の id だけが golem-cli で使う）</text>
+  <text x="40" y="740">時計（日時は metadata.date から作る<tspan class="halt">）</tspan>　乱数（golem new の id だけが golem-cli で使う）</text>
   <text x="40" y="782">環境変数、ロケール、タイムゾーン　ディレクトリの列挙　ネットワーク　システムのフォント</text>
   <text x="40" y="824" class="label">XDG_CACHE_HOME はプラグインのキャッシュの場所を決めるだけで、中身はハッシュで照合する</text>
 </svg>
