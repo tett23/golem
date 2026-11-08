@@ -1,6 +1,6 @@
 # ADR 0031: 欧文の語とコードの中の `_` の後で、ハイフンを描かずに改行できるようにする
 
-ステータス: 採択
+ステータス: 採択→連なりを数える単位と U3 の行の幅は [ADR 0236](../../adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
 
 ## 文脈
 

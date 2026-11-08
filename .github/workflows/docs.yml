@@ -89,3 +89,38 @@ jobs:
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: sh scripts/ci/textlint.sh "$BASE"
+
+  # Every diagnostic code of docs/diagnostics.md has its anchor in the HTML
+  # that GitHub renders of the file, where the URL of golem explain points
+  # (docs/adr/0235): on a pull request that changes docs/diagnostics.md or
+  # Explain.hs, and on every push to main. A commit of a fork that the API
+  # does not give is skipped; the push to main checks it.
+  anchors:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: changed
+        name: docs/diagnostics.md or Explain.hs changed
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          run=true
+          if [ "$EVENT" = pull_request ]; then
+            # exit code 3 (no range) or a failure of git: check
+            if paths=$(sh scripts/ci/changed-paths.sh "$EVENT" "$BASE" "$HEAD"); then
+              printf '%s\n' "$paths" | grep -qx -e docs/diagnostics.md -e modules/golem-driver/src/Golem/Driver/Explain.hs || run=false
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - if: steps.changed.outputs.run == 'true'
+        name: The diagnostic codes have their anchors on GitHub (docs/adr/0235)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          GITHUB_ANCHORS_SKIP_UNREACHABLE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '1' || '' }}
+        run: sh scripts/ci/github-anchors.sh "$COMMIT"

@@ -9,7 +9,7 @@ separator takes.
 -}
 module PaginateSpec (paginateTests) where
 
-import Control.Monad (replicateM)
+import Control.Monad (forM_, replicateM)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -24,7 +24,7 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import PaginateEnum (Element (..), Input (..), controlSpan, enumFlows, noteOf, paginateInput)
-import PaginateInvariants (Breach (..), Invariant (..), breaches)
+import PaginateInvariants (Breach (..), Invariant (..), breaches, waitingFigures)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -55,6 +55,8 @@ paginateTests =
       testGroup "need-lines, blank lines, tables and wrapped figures go on after what is sent on (golem-layout ADR 0025)" afterSentOnTests,
       testGroup "the figures that wait take no need-lines and no blank lines before them (golem-layout ADR 0026)" waitingFigureTests,
       testGroup "need-lines is judged again in the column a block goes on to after spaces (golem-layout ADR 0027)" spaceAfterNeedTests,
+      testGroup "the figures that wait are read from the placement (golem-layout ADR 0033)" waitingReadTests,
+      testGroup "a larger need-lines after one judged is judged again (golem-layout ADR 0035)" largerNeedTests,
       testGroup "invariants" propertyTests
     ]
 
@@ -1217,6 +1219,76 @@ waitingFigureTests =
       unmets ps @?= []
       brokenOf [P3, P4, P5] flows ps @?= []
   ]
+
+{- | golem-layout ADR 0033: the three counterexamples of its section
+「文脈」, which the reading of golem-layout ADR 0026 got wrong. The
+figures that wait are read from the input and the output (W1, W2), and
+P1', P4' and P5 hold for them.
+-}
+waitingReadTests :: [TestTree]
+waitingReadTests =
+  [ testCase "W1, P4': a figure that waits is placed before the paragraph after it, which goes on to the next column" $ do
+      let input = Input 6 1 [EPara 2, EFigure 5, EBlank 2, EFigure 1, ENotedPara 2]
+      waitingFigures (enumFlows (inElements input)) (paginateInput input) @?= [1001]
+      brokenIn [P3, P4, P5] input @?= [],
+    testCase "W1, P1': a figure sent on by itself after a break does not wait, the figure after it does" $ do
+      let input = Input 7 1 [EFigure 6, EFigure 6, EBreak, EFigure 6, ENeedLines, EFigure 1]
+      waitingFigures (enumFlows (inElements input)) (paginateInput input) @?= [1003]
+      brokenIn [P1, P2] input @?= [],
+    testCase "W1, P5: a figure at the end of the book that fits where it is written does not wait" $
+      forM_ [Input l c [EPara 1, EBlank 1, EFigure 1] | l <- [3 .. 5], c <- [1, 2]] $ \input -> do
+        waitingFigures (enumFlows (inElements input)) (paginateInput input) @?= []
+        brokenIn [P3, P4, P5] input @?= []
+  ]
+
+{- | golem-layout ADR 0035: need-lines 2 judged before a space, then k
+spaces, a second need-lines of m lines, a space and a block, in one
+column of 6 grid lines. r grid lines are left where the second is judged,
+the spaces before it placed. A larger second one is judged again (N1); a
+second one no larger changes nothing (N2).
+-}
+largerNeedTests :: [TestTree]
+largerNeedTests =
+  [ testCase "N1: need-lines 4 after need-lines 2 judged, one grid line left after the space, sends the paragraph to the next column" $ do
+      let flows = [FParagraph (lines' 0 3), FNeedLines mk 2, FSpace 1, FNeedLines mk2 4, FSpace 1, FParagraph (lines' 3 1)]
+          ps = paginate 1 6 flows
+      placed ps @?= [(1, 0, map SLine [0 .. 2]), (2, 0, [SLine 3])]
+      unmets ps @?= []
+      brokenOf [P1, P2] flows ps @?= [],
+    testGroup "the boundary inputs" (map boundary cases)
+  ]
+  where
+    c = 6
+    blocks = [("a paragraph", FParagraph (lines' 100 1)), ("a figure", FFigure 1000 1 [] []), ("a table", FTable 50 0 [] [lines' 200 1])]
+    cases =
+      [ (m, k, r, name, block)
+      | m <- [1, 2, 3, c, c + 1],
+        k <- [0, 1, 2],
+        r <- feasible m k,
+        (name, block) <- blocks
+      ]
+    -- the lines left where the second is judged: m and one fewer, those the paragraph before can leave with need-lines 2 met before the spaces
+    feasible m k = case [r | r <- [m, m - 1], let p = c - k - r, p >= 1, c - p >= 2] of
+      [] -> [c - k - 1]
+      rs -> rs
+    flowsOf m k r block = [FParagraph (lines' 0 (c - k - r)), FNeedLines mk 2] <> replicate k (FSpace 1) <> [FNeedLines mk2 m, FSpace 1, block]
+    pageOfBlock ps = last [poNumber p | p <- ps, not (null (poSlots p))]
+    boundary (m, k, r, name, block) =
+      testCase (label m k r name) $ do
+        brokenOf [P1, P2] flows ps @?= []
+        placement
+      where
+        flows = flowsOf m k r block
+        ps = paginate 1 c flows
+        placement
+          | m <= 2 = ps @?= paginate 1 c (filter (/= FNeedLines mk2 m) flows)
+          | m > c = do
+              unmets ps @?= [UnmetNeedLines mk2 m]
+              pageOfBlock ps @?= 2
+          | otherwise = pageOfBlock ps @?= (if r >= m then 1 else 2)
+    label m k r name =
+      (if m <= 2 then "N2: " else "N1: ")
+        <> ("need-lines " <> show m <> " after " <> show k <> " spaces, " <> show r <> " grid lines left, before " <> name)
 
 {- | golem-layout ADR 0027: the reproductions of its section 「確かめたこと」
 and the cases of its section 「テスト設計」. Need-lines is judged before
