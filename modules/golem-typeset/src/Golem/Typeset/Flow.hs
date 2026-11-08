@@ -701,7 +701,7 @@ pageMasterNames :: PdfInput -> PageGeometry -> PdfLayout -> [Maybe (Text, Master
 pageMasterNames inp geom layout = map masterOf (pageFiles inp layout)
   where
     ms = pgMasters geom
-    named n = (\g -> (n, g)) <$> Map.lookup n ms
+    named n = (n,) <$> Map.lookup n ms
     masterOf fid =
       (Map.lookup fid (piMasters inp) >>= named)
         <|> named "body"
