@@ -1,0 +1,24 @@
+== proj-max ( 5120000 bytes)
+kanikosen.gm:3:1: error[G07108]: 表のセルが多すぎて PDF に組めません（2560000 個、上限は 100000 個）
+コードの説明は golem explain <コード> で表示できます（例: golem explain G07108）
+   4,597,470,928 bytes allocated in the heap
+     521,125,720 bytes maximum residency (9 sample(s))
+  Total   time    4.059s  (  2.857s elapsed)
+exit=1 wall=5s
+== proj-c11 (  220000 bytes)
+kanikosen.gm:3:1: error[G07108]: 表のセルが多すぎて PDF に組めません（110000 個、上限は 100000 個）
+コードの説明は golem explain <コード> で表示できます（例: golem explain G07108）
+     240,353,848 bytes allocated in the heap
+      24,891,056 bytes maximum residency (6 sample(s))
+  Total   time    0.274s  (  0.152s elapsed)
+exit=1 wall=1s
+== proj-c10 (  200000 bytes)
+  23,911,650,240 bytes allocated in the heap
+     401,951,472 bytes maximum residency (12 sample(s))
+  Total   time    9.737s  (  7.420s elapsed)
+exit=0 wall=8s
+== proj-c8 (  160000 bytes)
+  19,235,065,616 bytes allocated in the heap
+     329,629,960 bytes maximum residency (12 sample(s))
+  Total   time    7.982s  (  5.945s elapsed)
+exit=0 wall=6s
