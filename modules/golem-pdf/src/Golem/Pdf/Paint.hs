@@ -235,15 +235,22 @@ paintsOf pdf =
                 _ | op `elem` ["S", "s"] -> emit [paint op (gsStroke gs)]
                 _ | op `elem` ["B", "B*", "b", "b*"] -> emit (fillAndStroke op gs)
                 _ | op `elem` ["Tj", "TJ", "'", "\""] -> emit (textPaints op gs)
-                "sh" | [a] <- args, Just n <- nameOperand a ->
-                  emit [paint op (maybe (gsFill gs) (spaceOf os res) (look os "Shading" res >>= look os n >>= look os "ColorSpace"))]
-                "Do" | [a] <- args, Just n <- nameOperand a, depth < maxFormDepth, Just x <- look os "XObject" res >>= look os n, look os "Subtype" x == Just (OName "Form") ->
-                  let inner = case src of
-                        PageContent -> FormXObject [n]
-                        FormXObject ns -> FormXObject (ns <> [n])
-                      res' = fromMaybe res (look os "Resources" x)
-                      (_, ps) = run page inner (depth + 1) res' gs (fromMaybe "" (streamData os x))
-                   in emit ps
+                "sh"
+                  | [a] <- args,
+                    Just n <- nameOperand a ->
+                      emit [paint op (maybe (gsFill gs) (spaceOf os res) (look os "Shading" res >>= look os n >>= look os "ColorSpace"))]
+                "Do"
+                  | [a] <- args,
+                    Just n <- nameOperand a,
+                    depth < maxFormDepth,
+                    Just x <- look os "XObject" res >>= look os n,
+                    look os "Subtype" x == Just (OName "Form") ->
+                      let inner = case src of
+                            PageContent -> FormXObject [n]
+                            FormXObject ns -> FormXObject (ns <> [n])
+                          res' = fromMaybe res (look os "Resources" x)
+                          (_, ps) = run page inner (depth + 1) res' gs (fromMaybe "" (streamData os x))
+                       in emit ps
                 _ -> same
         show' = T.unpack . TE.decodeLatin1
 

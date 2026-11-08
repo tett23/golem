@@ -5,7 +5,6 @@ import BuildSpec
 import CallsSpec (callsTests)
 import ChapterNotesSpec
 import CliSpec
-import PlatesSpec (platesTests)
 import ColophonSpec
 import ComplexFixtureSpec (complexFixtureTests)
 import DiagnosticSitesSpec
@@ -27,6 +26,7 @@ import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
 import ParagraphSpec
 import PdfSpec
+import PlatesSpec (platesTests)
 import ReferencesSpec
 import SecuritySpec
 import StylesSpec

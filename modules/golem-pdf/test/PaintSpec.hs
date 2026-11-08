@@ -84,7 +84,8 @@ tests =
       testCase "cs DeviceCMYK sets its initial colour, scn the components" $
         map paComponents (paintsOf (onePage "/DeviceCMYK cs 0 0 1 1 re f 0 0 0.2 1 scn 0 0 1 1 re f" [] [])) @?= [["0", "0", "0", "1"], ["0", "0", "0.2", "1"]],
       testCase "CS and SCN for the stroke, Separation, DeviceN, Lab, Indexed and Pattern" $
-        map paSpace
+        map
+          paSpace
           ( paintsOf
               ( onePage
                   "/Sp CS 0 0 m 1 1 l S /Dn cs 0 0 1 1 re f /Lb cs 0 0 1 1 re f /Ix cs 0 0 1 1 re f /Pattern cs /P1 scn 0 0 1 1 re f"

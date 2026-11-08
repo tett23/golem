@@ -481,11 +481,11 @@ cmyPlates r v
   -- off reads no content stream (the view is lazy)
   | ruCmyPlates r == LevelOff = []
   | otherwise =
-  concat
-    [ at (ruCmyPlates r) "G09021" (vwStyleSpan v) ("C、M、Y の版に出る色があります: " <> swatch sp cs <> color <> "（" <> pagesPhrase ps <> "）") [("color", FactText color), pagesFact ps]
-    | ((sp, cs), ps, _) <- groups [((paSpace p, paComponents p), paPage p, ()) | p <- vwPaints v, paSource p == PageContent, onCmy (paSpace p) (paComponents p)],
-      let color = T.unwords (spaceName sp : cs)
-    ]
+      concat
+        [ at (ruCmyPlates r) "G09021" (vwStyleSpan v) ("C、M、Y の版に出る色があります: " <> swatch sp cs <> color <> "（" <> pagesPhrase ps <> "）") [("color", FactText color), pagesFact ps]
+        | ((sp, cs), ps, _) <- groups [((paSpace p, paComponents p), paPage p, ()) | p <- vwPaints v, paSource p == PageContent, onCmy (paSpace p) (paComponents p)],
+          let color = T.unwords (spaceName sp : cs)
+        ]
   where
     swatch sp cs = case (sp, mapM decimal cs) of
       (PsDeviceCmyk, Just [c, m, y, k]) ->

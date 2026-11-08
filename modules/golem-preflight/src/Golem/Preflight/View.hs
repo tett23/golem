@@ -50,8 +50,8 @@ data View = View
     vwManifestSpan :: !SrcSpan,
     {- | the fills and strokes of the pages (Golem.Pdf.paintsOf, docs/adr
     ADR 0232); lazy, as are the two below, so that golem build, which reads
-    only the glyphs of a view, does not read the content streams -}
-    vwPaints :: [Paint],
+    only the glyphs of a view, does not read the content streams
+    -} vwPaints :: [Paint],
     -- | the FontName of the fonts not embedded (Golem.Pdf.unembeddedFonts)
     vwUnembeddedFonts :: [Text],
     -- | the spot colorants of the colour spaces (Golem.Pdf.spotColorants)
