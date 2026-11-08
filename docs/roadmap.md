@@ -211,7 +211,6 @@ v3 の GUI は、次の原則に従って作る。
 - **マニュアルの中の InDesign の記述**（v1.0.0 のリリースで確かめる）：利用者向けのマニュアルの InDesign との対応と比較の記述（「はじめに」と付録 E）を、InDesign に詳しい人が確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 
 - **v0.1.0-rc4 のリリースの前のマニュアルの目視**：rc3 の作業でマニュアルを直した箇所を、組んだ PDF と HTML で目で確かめていない。v0.1.0-rc3 のリリース（2026-10-24）までに見られなかったので、メンテナーが v0.1.0-rc4 のリリースの前にまとめて確かめる（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
-  - 開発者のマニュアルの「純粋な関数」の章で、コードの中に `\|` と書いた `|k|` が、`|` として表示されること（[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)）。この小項目は、[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md) の Poppler の `pdftotext` で開発者のマニュアルの PDF から文字列を取り出すテストにする（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
   - 行番号を付けたコードブロック。利用者のマニュアルの第 1 章の『高野聖』の原稿で、本文の「11 行目と 20 行目」が行番号と合っていること。第 4 章、第 5 章、第 8 章、開発者のマニュアルの `.wat`、チャネルの例、関数の型の一覧、ADR の雛形も見ること。
   - 利用者のマニュアルの第 3 章で、行アキの上限（G04011、[docs/adr 0047](adr/0047-blank-line-limit.md)）、回した図版を待つあいだの改段と白ページ、「数と式」に足した散文スロットの段落と、付録 E の G04011 の項。
   - 開発者のマニュアルのチャネルの図（`channels` と `channels-example`）のラベル（[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）。

@@ -897,6 +897,9 @@ CI の `build` の x86-64 の `outputs` のランナーは、二冊のマニュ�
 `pdf-fonts.sh` は、PDF のフォントの辞書の `BaseFont` を `qpdf --json` で読み、サブセットの印（六つの大文字と `+`）を除いた名前を、並べ替えて一度ずつ書く。
 書体の名前を引数に与えると、それ以外の書体があれば失敗する。
 CI は、そのマニュアルの `fonts/` の OpenType のファイルの名前（`.otf` を除いたもの）を与える。
+同じランナーは、`scripts/ci/pdf-text.sh` で、開発者のマニュアルの PDF の文字列を Poppler の `pdftotext` で取り出し、原稿のコードに `\|` と書いた箇所が `|` と表示されることを確かめる（[ADR 0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
+`pdf-text.sh` は、`--has` に与えた文字列を含む行がないときと、`--lacks` に与えた文字列を含む行があるときに失敗する。
+CI は、`\|` と書いた四つの箇所の前後の文字列を `--has` に、`\|` を `--lacks` に与える。
 テストのランナーは、qpdf と同じ一回の apt-get で Ubuntu の `poppler-utils` を入れ、golem-driver のテストが Poppler で Golem の PDF を読む（[ADR 0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
 `pdftoppm` で figures の fixture を 72 dpi の画像にし、tRNS を持つ PNG の透明の画素が白になり、半透明の画素が色と白をアルファで混ぜた値から 2 以内になることを確かめる。
 `pdfinfo -url` で、横組みと縦組みの PDF のリンクの注釈の URL とページが原稿のとおりであることを確かめる。
