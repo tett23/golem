@@ -1,6 +1,6 @@
 # ADR 0025: 送った図版の後でも、`@need-lines` と行アキが段に入るまで進む
 
-ステータス: 採択
+ステータス: 採択→行アキの手順 3 が段の先頭で止まること、続きの注の後の回り込む図版、P4 の 6 行の例、P3 の読み方は [ADR 0211](../../adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
 
 ## 文脈
 

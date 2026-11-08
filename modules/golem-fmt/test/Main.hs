@@ -200,6 +200,12 @@ tableTests =
       testCase "tabs, spaces, blank lines and quotes are kept" $ do
         formatTable "a\tb\n\tz  \n" @?= "a\tb\n\tz  \n"
         formatTable "a,b\n\"x\n\n\ny  \",1\n\n\n  c ,\"d\"\"\"\n" @?= "a,b\n\"x\n\n\ny  \",1\n\n\n  c ,\"d\"\"\"\n",
+      -- A4 of docs/adr/0211: 0, 1 and 2 BOMs at the start lose 0, 1 and 1
+      testCase "A4: of 0, 1 and 2 BOMs at the start, formatTable removes 0, 1 and 1" $ do
+        formatTable "a,b\n" @?= "a,b\n"
+        formatTable "\xFEFF\&a,b\n" @?= "a,b\n"
+        formatTable "\xFEFF\xFEFF\&a,b\n" @?= "\xFEFF\&a,b\n"
+        formatTable (formatTable "\xFEFF\&a,b\n") @?= formatTable "\xFEFF\&a,b\n",
       testCase "only the BOM at the start, and only one, is removed" $ do
         formatTable "a\xFEFF\&b\n" @?= "a\xFEFF\&b\n"
         formatTable "\xFEFF\xFEFF\&a\n" @?= "\xFEFF\&a\n",

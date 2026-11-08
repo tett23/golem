@@ -5,12 +5,14 @@ import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Driver
 import Golem.Layout.KnuthPlass (Line (..))
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Length (Sp (..))
 import Golem.Project.Style (dimToSp, parseDim)
 import Golem.Syntax
+import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import Golem.Typeset (PdfLayout (..), PlacedFigure (..), SetLine (..))
 import Support
 import Test.Tasty
@@ -61,6 +63,28 @@ alignSpaceTests =
       (_, pl) <- layoutOk style "あ\n\nい\n\nう\n\nえ\n\n@style quote\nお\n\nか\n" []
       map (map fst . poSlots) (plPages pl) @?= [[0, 1, 2, 3, 4], [0]]
       plNotices pl @?= [],
+    -- A2 of docs/adr/0211: no space after right before a break or a
+    -- control of page breaks, and none across the boundary of two files
+    testCase "A2: PDF: no space of space-after 1 and C (5) right before @page-break, @need-lines and @no-page-break" $
+      forM_ [(1 :: Int, [[0, 2]], [[0, 1, 2], [0, 2]]), (5, [[0], [0]], [[0, 1, 2], [0], [0]])] $ \(n, needLines, noBreak) -> do
+        let style = fiveLines <> "\n[paragraph-styles.quote]\nspace-after = " <> TE.encodeUtf8 (T.pack (show n)) <> "\n"
+        -- the space is not put before the break: no page of spaces, and the
+        -- line after the break is the top of the next page
+        slotsOf style "@style quote\nあ\n\n@page-break\n\nい\n" >>= (@?= [[0], [0]])
+        -- @need-lines 4 counts the 4 lines after the line, not the space,
+        -- which comes after the control: 1 line apart, or 5, dropped at the
+        -- top of the next page
+        slotsOf style "@style quote\nあ\n\n@need-lines 4\n\nい\n" >>= (@?= needLines)
+        -- @no-page-break: the column ends after the three lines, without the
+        -- space; the space comes after the control, before the last line
+        slotsOf style "あ\n\nい\n\nう\n\n@style quote\nえ\n\n@no-page-break\n\nお\n" >>= (@?= noBreak),
+    testCase "A2: PDF: no space across the boundary of two files; the same pair in one file has it" $ do
+      let style = styled "[paragraph-styles.quote]\nspace-after = 2\n"
+          manifest = TE.encodeUtf8 (manifestToml testManifest {tmChapters = ["a.gm", "b.gm"], tmTargets = ["pdf"]})
+      (_, two) <- layoutMiniWith manifest style "@style quote\nあ\n" [("b.gm", "い\n")] >>= either (assertFailure . show) pure
+      (_, one) <- layoutMiniWith manifest style "@style quote\nあ\n\nい\n" [("b.gm", "う\n")] >>= either (assertFailure . show) pure
+      take 1 (map (map fst . poSlots) (plPages one)) @?= [[0, 3, 4]]
+      map (map fst . poSlots) (plPages two) @?= [[0, 1]],
     testCase "PDF: a paragraph that keeps its lines has its spaces before the first line and after the last" $
       slotsOf (styled "[paragraph-styles.poem]\nline-breaks = \"keep\"\nspace-before = 1\nspace-after = 2\n") "あ\n\n@style poem\nい\nろ\nは\n\nう\n" >>= (@?= [[0, 2, 3, 4, 7]]),
     testCase "PDF: the spaces of a paragraph with rules are outside the area of its rules" $ do

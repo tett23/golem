@@ -1,6 +1,6 @@
 # ADR 0186: `golem fmt` で表のファイルの BOM と改行を直す
 
-ステータス: 採択
+ステータス: 採択→二つめの BOM と冪等性、`@listing` と共有するファイルの BOM は [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
 
 ## 文脈
 
