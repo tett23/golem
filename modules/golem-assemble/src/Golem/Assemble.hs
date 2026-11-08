@@ -229,6 +229,8 @@ blockNotes outer (Block _ _ blang body) = case body of
       Color _ _ xs -> deep at xs
       CharStyle _ _ xs -> deep at xs
       Lang _ t xs -> deep (Just t) xs
+      -- the title a [ref-title] copies may hold notes (docs/adr/0215)
+      Resolved _ _ _ xs -> deep at xs
       _ -> []
 
 {- | The notes of a document in order: their spans, numbers and bodies
@@ -252,6 +254,7 @@ inlineText = \case
   CharStyle _ _ xs -> foldMap inlineText xs
   Link _ _ xs -> foldMap inlineText xs
   Lang _ _ xs -> foldMap inlineText xs
+  Resolved _ _ _ xs -> foldMap inlineText xs
   Tcy _ t -> t
   Number _ n _ -> T.pack (show n)
   _ -> ""
@@ -609,8 +612,9 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
           (Nothing, _) -> do
             modify' (\(s, ds) -> (s, ds <> [diagnostic "G04003" Error sp ("存在しないラベルへの参照です: " <> l)]))
             pure []
+          -- the text of the number or the title, in the reference it resolves (docs/adr/0215)
           (Just t, RefNumber) -> case ltNumber t of
-            Just n -> pure [relocate sp n]
+            Just n -> pure [Resolved sp RefNumber l [relocate sp n]]
             Nothing -> do
               modify' (\(s, ds) -> (s, ds <> [diagnostic "G04005" Error sp ("番号を持たない要素への参照です: " <> l)]))
               pure []
@@ -618,7 +622,7 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
             [] -> do
               modify' (\(s, ds) -> (s, ds <> [diagnostic "G04006" Error sp ("題を持たない要素への参照です: " <> l)]))
               pure []
-            title -> pure (map (relocate sp) title)
+            title -> pure [Resolved sp RefTitle l (map (relocate sp) title)]
           (Just _, RefPage) -> pure [Ref sp k l]
       Deferred sp e -> case evalDeferred dv sp e of
         Left d -> modify' (\(s, ds) -> (s, ds <> [d])) >> pure []
@@ -627,6 +631,7 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
       Color sp c xs -> pure . Color sp c <$> inls xs
       CharStyle sp c xs -> pure . CharStyle sp c <$> inls xs
       Lang sp t xs -> pure . Lang sp t <$> inls xs
+      Resolved sp k l xs -> pure . Resolved sp k l <$> inls xs
       Note sp n xs -> pure . Note sp n <$> inls xs
       -- the body of an item resolves like the text around it (golem-doc ADR 0007)
       ChannelItem sp c -> (\b -> [ChannelItem sp c {ciBody = b}]) <$> inls (ciBody c)
@@ -676,6 +681,7 @@ renumberNotes cfg docs = evalState (zipWithM doc restarts docs) (0, 0)
       Color sp c xs -> Color sp c <$> inls xs
       CharStyle sp c xs -> CharStyle sp c <$> inls xs
       Lang sp t xs -> Lang sp t <$> inls xs
+      Resolved sp k l xs -> Resolved sp k l <$> inls xs
       other -> pure other
 
 -- | Give copied inlines the span of the reference that produced them.
@@ -795,6 +801,7 @@ bodyInlines body = concatMap flatten $ case body of
         CharStyle _ _ xs -> concatMap flatten xs
         Link _ _ xs -> concatMap flatten xs
         Lang _ _ xs -> concatMap flatten xs
+        Resolved _ _ _ xs -> concatMap flatten xs
         Note _ _ xs -> concatMap flatten xs
         Sidenote _ _ xs -> concatMap flatten xs
         _ -> []

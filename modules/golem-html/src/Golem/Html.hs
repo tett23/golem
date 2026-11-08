@@ -390,6 +390,7 @@ titleWithLanguages = T.concat . map one
       Color _ _ xs -> titleWithLanguages xs
       CharStyle _ _ xs -> titleWithLanguages xs
       Link _ _ xs -> titleWithLanguages xs
+      Resolved _ _ _ xs -> titleWithLanguages xs
       x -> escapeXml (inlineText x)
 
 -- | The attributes of a language after the name of the first start tag of the HTML of a block (docs/adr ADR 0187).
@@ -711,6 +712,8 @@ inline c = \case
   Link _ u xs -> "<a href=\"" <> escapeXml u <> "\">" <> inlines c xs <> "</a>"
   -- the tag as written, even the language of the book (docs/adr ADR 0187)
   Lang _ l xs -> "<span" <> langAttrs l <> ">" <> inlines c xs <> "</span>"
+  -- the text the reference resolved to, as before; no link yet (docs/adr/0215)
+  Resolved _ _ _ xs -> inlines c xs
 
 {- | The CSS length of an aki: zw in em, an absolute amount in pt, at most
 four decimals (docs/adr ADR 0103).

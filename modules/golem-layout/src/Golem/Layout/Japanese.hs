@@ -390,6 +390,8 @@ walk env st@(LeafState next cur seen) inl = case inl of
         (st2, after) = freshLeaf (LeafState next1 cur seen1)
      in (st2, [NodeLink u xs (NodeLeaf next : ns), after], ps)
   Ref {} -> element RoleReference (\st' -> (st', [], [(leafOf st', src, p) | (src, p) <- piecesOf env inl]))
+  -- [ref-number] and [ref-title] resolved: a reference, with what it holds inside (docs/adr/0215)
+  Resolved _ _ _ xs -> element RoleReference (\st' -> walkAll env st' xs)
   Cite {} -> element RoleReference (\st' -> (st', [], [(leafOf st', src, p) | (src, p) <- piecesOf env inl]))
   _ -> (st, [], [(cur, src, p) | (src, p) <- piecesOf env inl])
   where
@@ -465,6 +467,8 @@ piecesOf env inl = case inl of
   Link _ _ xs -> restyled xs
   -- the language likewise; the inner span wins (docs/adr ADR 0187)
   Lang _ l xs -> concatMap (piecesOf env {ceLook = lk {lkLang = Just l}}) xs
+  -- a resolved reference is set as what it holds (docs/adr/0215)
+  Resolved _ _ _ xs -> concatMap (piecesOf env) xs
   -- the shape is a look of the characters inside; the inner kenten wins (golem-driver ADR 0019)
   Kenten _ sh xs -> concatMap (piecesOf env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}}) xs
   Ruby sp _ segs -> at sp (rubyPieces env segs)
@@ -674,6 +678,7 @@ baseChars env lk inl = case inl of
   Link _ _ xs -> inner xs
   -- a language span in a base: the look of its characters is of its language (docs/adr ADR 0187)
   Lang _ l xs -> concatMap (baseChars env lk {lkLang = Just l}) xs
+  Resolved _ _ _ xs -> concatMap (baseChars env lk) xs
   Kenten _ _ xs -> concatMap (baseChars env lk) xs
   Tcy _ t -> each t
   Number _ n _ -> each (T.pack (show n))
@@ -704,6 +709,7 @@ withRuby = \case
   ChannelItem s c -> ChannelItem s c
   Link s u xs -> Link s u (map withRuby xs)
   Lang s l xs -> Lang s l (map withRuby xs)
+  Resolved s k l xs -> Resolved s k l (map withRuby xs)
 
 -- | The advance of a character in a look, in sp.
 advance :: ComposeEnv -> Look -> Char -> Sp
@@ -1217,5 +1223,6 @@ verticalSidenotes env inls
       Color _ _ xs -> concatMap go xs
       CharStyle _ _ xs -> concatMap go xs
       Lang _ _ xs -> concatMap go xs
+      Resolved _ _ _ xs -> concatMap go xs
       Note _ _ xs -> concatMap go xs
       _ -> []

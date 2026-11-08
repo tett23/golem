@@ -80,6 +80,7 @@ applyRegexStyles rules d
       CharStyle sp c xs -> CharStyle sp c (map sidenotes xs)
       Link sp u xs -> Link sp u (map sidenotes xs)
       Lang sp l xs -> Lang sp l (map sidenotes xs)
+      Resolved sp k l xs -> Resolved sp k l (map sidenotes xs)
       Ruby sp r segs -> Ruby sp r [s {rsBase = map sidenotes (rsBase s)} | s <- segs]
       other -> other
 
@@ -112,6 +113,8 @@ targetOf = \case
   Link _ _ xs -> T.concat (map targetOf xs)
   -- the text of a language span, likewise (docs/adr ADR 0187)
   Lang _ _ xs -> T.concat (map targetOf xs)
+  -- the text of a resolved reference, likewise (docs/adr/0215)
+  Resolved _ _ _ xs -> T.concat (map targetOf xs)
   LineBreak _ -> "\n"
   IndexMark _ _ -> ""
   ChannelItem _ _ -> ""
@@ -187,6 +190,12 @@ piecesOfOne labels p = \case
     lb : rest
       | all (== lb) rest -> [(Just lb, x)]
       | otherwise -> [(Nothing, Lang sp l (wrapRuns labels p xs))]
+  -- a resolved reference likewise, so that it stays one reference (docs/adr/0215)
+  x@(Resolved sp k l xs) -> case [labelAt labels i | i <- [p .. p + width x - 1]] of
+    [] -> [(Just [], x)]
+    lb : rest
+      | all (== lb) rest -> [(Just lb, x)]
+      | otherwise -> [(Nothing, Resolved sp k l (wrapRuns labels p xs))]
   x@(LineBreak _) -> [(Nothing, x)]
   x@(Note {}) -> [(Nothing, x)]
   x@(Sidenote {}) -> [(Nothing, x)]
@@ -221,3 +230,4 @@ spanOf = \case
   ChannelItem s _ -> s
   Link s _ _ -> s
   Lang s _ _ -> s
+  Resolved s _ _ _ -> s

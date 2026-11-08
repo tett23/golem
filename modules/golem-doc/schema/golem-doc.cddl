@@ -68,6 +68,7 @@ inline-no-ruby =
   / [19, span, channel: tstr, key: tstr / null, reading: tstr / null, inlines] ; channel item (golem-doc ADR 0007)
   / [20, span, uri: tstr, inlines]               ; link to an external URL (docs/adr ADR 0182)
   / [21, span, lang: tstr, inlines]              ; language span (docs/adr ADR 0187)
+  / [22, span, ref-kind, label: tstr, inlines]   ; [ref-number] or [ref-title] that the assembly resolved, never in a request nor a response of a plugin (docs/adr/0215)
 ; 1 (strong), 2 (bold) and 3 (italic) are retired: they are character styles (docs/adr ADR 0005)
 
 number-style = 0..2                                ; kanji, kanji-digits, tcy
