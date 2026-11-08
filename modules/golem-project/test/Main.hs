@@ -611,6 +611,10 @@ tests =
         normalizeRelative "../x.gm" @?= Left EscapesRoot
         normalizeRelative "/etc/passwd" @?= Left Absolute
         normalizeRelative "https://example.com/a.gm" @?= Left Url,
+      testCase "F4: normalizeRelative makes the empty path the empty path (docs/adr/0225)" $ do
+        normalizeRelative "" @?= Right ""
+        normalizeRelative "." @?= Right ""
+        normalizeRelative "a/.." @?= Right "",
       testCase "loads chapters and imports in a deterministic order"
         $ withProject
           [ ("manifest.toml", manifest ["\"ch/01.gm\"", "[\"ch/02.gm\", { file = \"ch/03.gm\", master = \"body\" }]"]),
@@ -1190,6 +1194,10 @@ noteMarkTests =
             stNotesMarkStyle s @?= "mark"
             stNotesBodyMarkStyle s @?= Just "code"
         codes (parseStyle (FileId 0) "[character-styles.mark]\ntracking = 50\n[notes]\nmark-style = \"mark\"\nbody-mark-style = \"mark\"\n") @?= [],
+      testCase "mark-style takes the built-in code too (docs/adr/0177)" $ do
+        codes (parseStyle (FileId 0) "[notes]\nmark-style = \"code\"\n") @?= []
+        fmap stNotesMarkStyle (first (const ()) (parseStyle (FileId 0) "[notes]\nmark-style = \"code\"\nbody-mark-style = \"code\"\n")) @?= Right "code"
+        fmap stNotesBodyMarkStyle (first (const ()) (parseStyle (FileId 0) "[notes]\nmark-style = \"code\"\nbody-mark-style = \"code\"\n")) @?= Right (Just "code"),
       testCase "a character style that does not exist is G03013" $ do
         codes (parseStyle (FileId 0) "[notes]\nmark-style = \"nothing\"\n") @?= ["G03013"]
         codes (parseStyle (FileId 0) "[notes]\nbody-mark-style = \"nothing\"\n") @?= ["G03013"],

@@ -15,6 +15,7 @@ module Golem.Layout.KnuthPlass
     Params (..),
     defaultParams,
     Line (..),
+    lineOverfull,
     Breaks (..),
     breakParagraph,
     badness,
@@ -181,12 +182,18 @@ data Line = Line
     lineExpansion :: !Int,
     -- | protrusion at the start and the end
     lineProtrusion :: !(Sp, Sp),
-    -- | the natural width exceeds the target even when fully shrunk
-    lineOverfull :: !Bool,
+    {- | how far the line sticks out past its target (docs/adr ADR 0210):
+    its natural width, every shrink and the compression of the glyphs
+    taken, less the target; 0 when it fits
+    -} lineOverflow :: !Sp,
     -- | the edges of the first and the last box (golem-layout ADR 0009)
     lineEdge :: !(Sp, Sp)
   }
   deriving stock (Eq, Show)
+
+-- | The natural width exceeds the target even when fully shrunk: 'lineOverflow' is positive.
+lineOverfull :: Line -> Bool
+lineOverfull = (> 0) . lineOverflow
 
 data Breaks = Breaks
   { brLines :: ![Line],
@@ -449,11 +456,11 @@ breakParagraph ps lineWidth items =
             | shortfall > 0 && stretch > 0 = unSp shortfall % unSp stretch
             | shortfall < 0 && shrink > 0 = max (-1) (unSp shortfall % unSp shrink)
             | otherwise = 0
-          overfull = shortfall < 0 && negate shortfall > shrink
+          overflow = max 0 (natural - shrink - target)
           expansion = case pExpansion ps of
             Just (limit, stp) | e > 0 -> expansionStep limit stp ratio
             _ -> 0
-       in Line its ratio target expansion (protS, protE) overfull edges
+       in Line its ratio target expansion (protS, protE) overflow edges
 
 {- | The expansion of a line in permille: the ratio times the limit,
 rounded towards zero to a multiple of the step, with integer arithmetic.

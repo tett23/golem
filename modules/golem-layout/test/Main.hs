@@ -42,6 +42,7 @@ import LangSpec (langTests)
 import LineBreakInvariantsSpec (lineInvariantTests)
 import LineBreakingSpec (lineBreakingTests)
 import LinkSpec (linkTests)
+import OverflowSpec (overflowTests)
 import PaginateInvariantsSpec (invariantTests)
 import PaginateSpec (paginateTests)
 import PunctuationSpec (punctuationTests)
@@ -368,7 +369,7 @@ tests =
     [ testGroup "kenten shapes (golem-driver ADR 0019)" kentenTests,
       testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
       testGroup "note marks and note keys (golem-driver ADR 0018)" noteMarkTests,
-      testGroup "boundaries and invariants" [paginateTests, invariantTests, punctuationTests, lineBreakingTests, lineInvariantTests, alignTests],
+      testGroup "boundaries and invariants" [paginateTests, invariantTests, punctuationTests, lineBreakingTests, lineInvariantTests, overflowTests, alignTests],
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       inseparableTests,
       doubleDashTests,

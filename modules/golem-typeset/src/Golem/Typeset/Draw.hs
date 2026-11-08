@@ -31,6 +31,7 @@ import Golem.LayoutSpec qualified as LS
 import Golem.Length (zwToSp)
 import Golem.Numerals.Format (formatNumber)
 import Golem.Pdf qualified as P
+import Golem.Preflight (OverfullLine (..), overfullLine)
 import Golem.Preflight.View qualified as V
 import Golem.Project
 import Golem.Project.Style
@@ -84,7 +85,7 @@ renderPdfAll version provider inp0 = case (declarationErrors inp, checkedGeometr
               Left ds -> pure (Left ds)
               Right layout -> case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
                 [] -> do
-                  let (used, privateUse, finish) = writeDocumentView version inp geom fonts layout intent
+                  let (used, privateUse, overfull, finish) = writeDocumentView version inp geom fonts layout intent
                   -- G07104 stops the PDF/A-2a before its fonts are embedded (docs/adr ADR 0183)
                   if not (null privateUse)
                     then pure (Left privateUse)
@@ -96,11 +97,18 @@ renderPdfAll version provider inp0 = case (declarationErrors inp, checkedGeometr
                         [] -> do
                           let (bytes, view, structure) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
                           -- G07101: dashes without ink (docs/adr ADR 0172)
-                          pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout, view, structure, pageStarts layout))
+                          -- G07105: the lines past their measure, from the lines drawn, not from the view (docs/adr ADR 0210)
+                          pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout <> overfullWarnings overfull, view, structure, pageStarts layout))
                         ds -> pure (Left ds)
                 ds -> pure (Left ds)
   where
     inp = codeInput inp0
+
+{- | G07105 (docs/adr ADR 0210): a warning for each line drawn past its
+measure, with the message and the facts of G09013, on each page it is drawn.
+-}
+overfullWarnings :: [OverfullLine] -> [Diagnostic]
+overfullWarnings os = [(diagnostic "G07105" Warning (olSpan o) (olMessage o)) {diagFacts = olFacts o} | o <- os]
 
 {- | What a book that declares PDF/A or PDF/UA must meet before its PDF is
 set (docs/adr ADR 0183), in dev and prod alike: an output intent for PDF/A
@@ -175,13 +183,14 @@ data GlyphUse = GlyphUse
   }
 
 {- | A line drawn, for the view of golem preflight (golem-cli ADR 0006): what
-it is, its block, its face and how far it sticks out of its measure.
+it is, its block, its face, and how far it sticks out of its measure and
+where (docs/adr ADR 0210).
 -}
 data LineRec = LineRec
   { lrKind :: !Text,
     lrSpan :: !SrcSpan,
     lrRect :: !(Maybe Rect),
-    lrOverfull :: !(Maybe Sp),
+    lrOverfull :: !(Maybe (Sp, SrcSpan)),
     -- | the swatches of the backgrounds of inline code on the line (golem-driver ADR 0029)
     lrBackgrounds :: ![P.Swatch],
     {- | the rectangles of the links on the line, on the page, in the order of
@@ -238,7 +247,7 @@ embedded in IO between the two halves (docs/adr ADR 0034): the glyphs
 used in each font and their text, then the PDF and its view from the
 embedded fonts.
 -}
-writeDocumentView :: Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], Map P.FontRef P.Font -> (ByteString, V.View, Text))
+writeDocumentView :: Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [OverfullLine], Map P.FontRef P.Font -> (ByteString, V.View, Text))
 writeDocumentView version inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
@@ -358,7 +367,9 @@ writeDocumentView version inp geom fonts layout intent =
       privateUse = case P.pxPdfA =<< intent of
         Just _ -> privateUseErrors [(guText u, guSpan u) | pd <- drawn, u <- pdUses pd]
         Nothing -> []
-   in (used, privateUse, finish)
+      -- the lines past their measure on each page they are drawn on (G07105 and G09013, docs/adr ADR 0210)
+      overfull = [overfullLine i amount sp | (i, pd) <- zip [1 ..] drawn, (rec, _) <- pdLines pd, Just (amount, sp) <- [lrOverfull rec]]
+   in (used, privateUse, overfull, finish)
 
 -- font index × direction: even refs horizontal, odd refs vertical
 ref :: Int -> Bool -> P.FontRef
@@ -586,7 +597,7 @@ entry :: DrawEnv -> Text -> SrcSpan -> Rect -> Sp -> SetLine -> (LineRec, ([P.Co
 entry env kind sp ta cross = entryAt env kind sp (lineStart env ta cross)
 
 entryAt :: DrawEnv -> Text -> SrcSpan -> (Sp, Sp) -> SetLine -> (LineRec, ([P.Content], [GlyphUse]))
-entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl), drawLineAt env start sl)
+entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sp sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl), drawLineAt env start sl)
 
 {- the backgrounds of inline code on a line (golem-driver ADR 0029): each
 run of boxes of one swatch, with the spaces between them, from the
@@ -652,11 +663,17 @@ lineFace env (x0, y0) sl =
   where
     vertical = pgVertical (deGeom env)
 
-overfullOf :: SetLine -> Maybe Sp
-overfullOf sl =
+{- how far a line sticks out of its measure, 'lineOverflow', and where
+(docs/adr ADR 0210): the first character of the first box whose end is
+past the measure, or the block of the line when that box has no
+characters in the source or no box ends past the measure -}
+overfullOf :: SrcSpan -> SetLine -> Maybe (Sp, SrcSpan)
+overfullOf block sl =
   let l = slLine sl
-      end = maximum (0 : [o + w | (Box w _, o) <- placeLine l])
-   in if lineOverfull l then Just (max 0 (end - lineTarget l)) else Nothing
+      at = case [c | (Box w c, o) <- placeLine l, o + w > lineTarget l] of
+        c : _ | bcAt c >= 0 -> mkSpan (spanFile (snd (bcSource c))) (bcAt c) (bcAt c)
+        _ -> block
+   in if lineOverflow l > 0 then Just (lineOverflow l, at) else Nothing
 
 -- the block of a line: the unit whose first line is at or before it
 spanOfLine :: DrawEnv -> Int -> SrcSpan

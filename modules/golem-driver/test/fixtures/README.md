@@ -68,7 +68,8 @@ first heading of each chapter, which the contents and the running heads
 show. The vertical book also has `[tcy: ...]`, `[number-text ... style=tcy]`,
 a wrapped figure followed by a paragraph with rules, a turned figure
 (`rotate=true`) and a double dash; the horizontal book notes at the foot of
-a column, figures fitted to a column and hyphenated Latin words. The
+a column, figures fitted to a column, hyphenated Latin words and a Latin
+compound with a hyphen written in it (`well-understood`). The
 golem-driver test `ComplexFixtureSpec` checks that the sources still use
 each of these.
 

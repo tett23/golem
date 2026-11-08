@@ -199,8 +199,44 @@ common =
           && all (\k -> isJust (styleValue "[paragraph-styles.quote]" k s)) ["indent", "end-indent", "space-before", "space-after"]
           && all (\n -> lineStarts ("@style " <> n) s) ["title", "signature", "quote"]
     ),
-    ("a filter of [[filters]] that changes headings", \s -> "[[filters]]" `T.isInfixOf` srcManifest s && "pub filter" `T.isInfixOf` srcEmet s && "Block.Heading" `T.isInfixOf` srcEmet s)
+    ("a filter of [[filters]] that changes headings", \s -> "[[filters]]" `T.isInfixOf` srcManifest s && "pub filter" `T.isInfixOf` srcEmet s && "Block.Heading" `T.isInfixOf` srcEmet s),
+    ("[fonts.code] with the same two fonts as [fonts.body], and no G08008", \s -> tableBody "[fonts.code]" s /= [] && tableBody "[fonts.code]" s == tableBody "[fonts.body]" s),
+    ("no sidenotes: no [sidenotes] and no [sidenote ...] (G07001)", \s -> not (any (("[sidenotes" `T.isPrefixOf`) . fst) (srcStyle s)) && null (commands "sidenote" s))
   ]
+
+-- | The lines of the table of the header, without blank lines and comments.
+tableBody :: Text -> Sources -> [Text]
+tableBody header s = [l | (h, body) <- srcStyle s, h == header, l <- map T.strip body, not (T.null l), not ("#" `T.isPrefixOf` l)]
+
+{- | The paragraph styles with @rule-before@ or @rule-after@, by name: the
+header @[paragraph-styles.<name>]@.
+-}
+ruledStyles :: Sources -> [Text]
+ruledStyles s =
+  [ name
+  | (h, body) <- srcStyle s,
+    Just rest <- [T.stripPrefix "[paragraph-styles." h],
+    let name = T.dropEnd 1 rest,
+    any (\l -> any (`T.isPrefixOf` T.strip l) ["rule-before", "rule-after"]) body
+  ]
+
+{- | A wrapped figure whose following blocks, before the next heading or
+figure, include a paragraph of a style with rules (@\@style <name>@): the
+paragraph is set after the figure, not beside it.
+-}
+ruledAfterWrapped :: Sources -> Bool
+ruledAfterWrapped s = any (go . T.lines) (srcGm s)
+  where
+    ruled = ruledStyles s
+    isFigure l = "@figure " `T.isPrefixOf` T.stripStart l
+    go [] = False
+    go (l : ls)
+      | isFigure l && "wrap=" `T.isInfixOf` l =
+          any isRuled (takeWhile (\x -> not ("#" `T.isPrefixOf` x) && not (isFigure x)) ls) || go ls
+      | otherwise = go ls
+    isRuled l = case T.words l of
+      ("@style" : name : _) -> name `elem` ruled
+      _ -> False
 
 -- | The features of the vertical book only.
 vertical :: [Feature]
@@ -209,15 +245,28 @@ vertical =
     ("[tcy: ...]", \s -> commands "tcy" s /= []),
     ("[number-text ... style=tcy]", commandWith "number-text" "style=tcy"),
     ("a wrapped figure", lineWith "@figure" "wrap="),
+    ("a paragraph with rules after a wrapped figure", ruledAfterWrapped),
+    ("a figure turned to fit the column (rotate=true, golem-driver ADR 0034)", lineWith "@figure" "rotate=true"),
     ("double dashes", hasGm "――"),
     ("an index of two columns", \s -> styleValue "[index]" "columns" s == Just "2")
   ]
+
+{- | A word of Latin letters with a hyphen between two of them, such as
+@well-understood@, with any punctuation after it.
+-}
+compound :: Text -> Bool
+compound w = case T.splitOn "-" (T.dropWhileEnd (`elem` (",.;:" :: String)) w) of
+  parts@(_ : _ : _) -> all (\p -> not (T.null p) && T.all (`elem` ['a' .. 'z']) (T.toLower p)) parts
+  _ -> False
 
 -- | The features of the horizontal book only.
 horizontal :: [Feature]
 horizontal =
   [ ("horizontal writing on A5, two columns", \s -> styleValue "[page]" "writing-mode" s == Just "\"horizontal\"" && styleValue "[page]" "size" s == Just "\"A5\"" && styleValue "[page.grid]" "columns" s == Just "2"),
     ("no wrapped figure", not . lineWith "@figure" "wrap="),
+    ("footnotes on a page of two columns, set at the foot of a column", \s -> commands "note" s /= [] && styleValue "[page.grid]" "columns" s == Just "2"),
+    ("a figure without a width, fitted to the line length of a column", \s -> or [not ("width=" `T.isInfixOf` l) | l <- gmLines s, "@figure " `T.isPrefixOf` T.stripStart l]),
     ("an index of three columns", \s -> styleValue "[index]" "columns" s == Just "3"),
-    ("Latin words long enough to be hyphenated", any (any (\w -> T.length w >= 14 && T.all (`elem` ['a' .. 'z']) w) . T.words) . gmLines)
+    ("Latin words long enough to be hyphenated", any (any (\w -> T.length w >= 14 && T.all (`elem` ['a' .. 'z']) w) . T.words) . gmLines),
+    ("a Latin compound with a hyphen written in the source (docs/adr/0179)", any (any compound . T.words) . gmLines)
   ]

@@ -182,6 +182,13 @@ tests =
               e = (entry 1 fidA "intro" "はじめに") {teTitle = [Text sp "見出し", Lang sp "en" [CharStyle sp "strong" [Text sp "Tokyo"]], Lang sp "x&" [Text sp "y"]]}
           linesWith "<ol>" (navDocument cfg0 ft emptyBook {bookToc = [e]})
             @?= ["<ol><li><a href=\"a.xhtml#intro\">見出し<span lang=\"en\" xml:lang=\"en\">Tokyo</span><span lang=\"x&amp;\" xml:lang=\"x&amp;\">y</span></a></li></ol>"],
+        -- docs/adr ADR 0182
+        testCase "a link in a title drops out: its text alone, no a element in the a of the entry" $ do
+          let sp = mkSpan fidA 0 1
+              e = (entry 1 fidA "intro" "はじめに") {teTitle = [Text sp "章", Link sp "https://example.com/" [Text sp "題"]]}
+              nav = navDocument cfg0 ft emptyBook {bookToc = [e]}
+          linesWith "<ol>" nav @?= ["<ol><li><a href=\"a.xhtml#intro\">章題</a></li></ol>"]
+          assertBool "no URL in the navigation document" (not ("example.com" `T.isInfixOf` nav)),
         testCase "the nav element is the toc" $
           linesWith "<nav" (navDocument cfg0 ft emptyBook) @?= ["<nav epub:type=\"toc\" id=\"toc\">"],
         -- golem-epub ADR 0002

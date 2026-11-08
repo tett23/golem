@@ -339,6 +339,33 @@ abi_git tag v1.0.0-rc1
 abi_version 1.0.0
 abi_new_abi
 abi_change "after v1.0.0-rc1: a new ABI, not announced" 0
+# the patch rule of docs/adr/0212: X.Y.Z is a patch when X and Z are 1 or
+# more, and its base is the latest release of X.Y that is not a prerelease
+abi_v1 '### ABI のバージョン 9'
+abi_git tag -d v1.0.0
+abi_git tag v1.1.0-rc1
+abi_version 1.1.0
+abi_new_abi
+abi_change "after v1.1.0-rc1: 1.1.0 with a new ABI that v1.1.0-rc1 announced" 0
+abi_v1
+abi_git tag -d v1.0.0
+abi_git tag v1.1.0-rc1
+abi_version 1.1.0
+abi_new_abi
+abi_change "after v1.1.0-rc1: 1.1.0 with a new ABI that v1.1.0-rc1 did not announce" 1 "docs/compatibility.md"
+abi_v1
+abi_git tag v1.0.1-rc1
+abi_version 1.0.1
+abi_change "after v1.0.0 and v1.0.1-rc1: 1.0.1 with the same ABI" 0
+abi_v1
+abi_git tag -d v1.0.0
+abi_git tag v1.0.1-rc1
+abi_version 1.0.1
+abi_change "after v1.0.1-rc1 only: the patch 1.0.1 has no base" 1 "1.0.1"
+abi_v1
+abi_version 1.0.1-rc1
+abi_new_abi
+abi_change "1.0.1-rc1: a prerelease of a patch keeps the ABI" 1 "patch"
 
 # ---------------------------------------------------------------- diagnostic-codes.sh
 # (docs/adr/0174-compatibility-promises-for-1-0.md)
@@ -1082,6 +1109,27 @@ done
 if job_lines determinism | grep -qF 'run: sh scripts/ci/determinism-hashes.sh determinism-ubuntu-24.04.txt scripts/determinism/hashes.txt' &&
   job_lines determinism | grep -qF 'uses: actions/checkout@'; then ok; else
   ng "ci.yml: the determinism job compares the outputs with scripts/determinism/hashes.txt (docs/adr/0173)"
+fi
+# every checkout of every workflow leaves no token in .git/config (the
+# security audit of 2026-11-08, CI-01): the lines of the step, those indented
+# more than its "- uses:", have persist-credentials: false
+checkouts_without() {
+  awk '
+    function flush() { if (on && !seen) print FILENAME ":" at; on = 0 }
+    FNR == 1 { flush() }
+    on && NF > 0 && match($0, /^ */) && RLENGTH <= indent { flush() }
+    on && /^ *persist-credentials: false *$/ { seen = 1 }
+    /^ *- uses: actions\/checkout@/ { flush(); on = 1; seen = 0; at = FNR; match($0, /^ */); indent = RLENGTH }
+    END { flush() }
+  ' "$@"
+}
+missing=$(checkouts_without "$HERE"/../../.github/workflows/*.yml)
+if [ -z "$missing" ]; then ok; else
+  ng "workflows: a checkout without persist-credentials: false: $(echo "$missing" | sed 's#.*/\.github/#.github/#' | tr '\n' ' ')"
+fi
+printf '      - uses: actions/checkout@v7\n        with:\n          fetch-depth: 0\n      - run: true\n      - uses: actions/checkout@v7\n        with:\n          persist-credentials: false\n' >"$WORK/checkouts.yml"
+if [ "$(checkouts_without "$WORK/checkouts.yml")" = "$WORK/checkouts.yml:1" ]; then ok; else
+  ng "test.sh: checkouts_without finds the checkout without persist-credentials: false, and only it"
 fi
 # the build job checks the direction of the packages split from golem-doc
 # in the plan it built (docs/adr/0173)
