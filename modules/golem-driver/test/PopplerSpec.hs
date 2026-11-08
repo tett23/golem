@@ -37,7 +37,7 @@ pixelColours :: ImageData -> [(Int, Int, Int)]
 pixelColours img =
   [ colour (rowSamples r)
   | r <- [0 .. imgHeight img - 1],
-    colour <- [\ss -> pixel (take comps (drop (c * comps) ss)) | c <- [0 .. imgWidth img - 1]]
+    colour <- [pixel . take comps . drop (c * comps) | c <- [0 .. imgWidth img - 1]]
   ]
   where
     bits = imgBits img
