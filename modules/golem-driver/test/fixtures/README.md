@@ -9,7 +9,7 @@
 | `complex-vertical/` | a book that combines the features on a vertical page of one column (B6): ruby, kenten, tate-chu-yoko, notes, SVG, PNG, wrapped and turned figures, tables, code blocks, rules of headings and paragraphs, the contents, the index in two columns, the bibliography, functions and a filter of `.emet` ([docs/adr/0175](../../../../docs/adr/0175-complex-typesetting-fixture.md)); see "The two books that combine the features" |
 | `complex-horizontal/` | the same on a horizontal page of two columns (A5), with notes at the foot of a column, figures fitted to a column, hyphenated Latin words and the index in three columns ([docs/adr/0175](../../../../docs/adr/0175-complex-typesetting-fixture.md)) |
 | `conformance/` | a small book with every element of the structure tree of a tagged PDF: headings, nested lists, a definition list, a table across pages, a code block with a caption and line numbers, notes, a sidenote, external links, the contents, the index and the bibliography; set horizontally with `manifest.toml` and `style.toml`, and vertically, its notes at the end of the chapter and without the chapter of the sidenote, with `manifest-vertical.toml` and `style-vertical.toml`. `scripts/ci/conformance-pdfs.sh` declares PDF/A-2a and PDF/UA-1 for the CI job verapdf, and `TaggedPdfSpec` fixes its structure trees ([docs/adr/0183](../../../../docs/adr/0183-tagged-pdf-and-pdf-a.md)); the test copies its fonts in as `fonts/ja.otf` and `fonts/latin.otf` |
-| `languages/` | a small horizontal book of the characters of both scripts (quotation marks, dashes, the ellipsis, guillemets) in and out of `[lang]` spans, `@lang` on blocks and its body form, and the hyphenation of English and French paragraphs; `TaggedPdfSpec` fixes its structure tree, `scripts/ci/conformance-pdfs.sh` declares PDF/A-2a and PDF/UA-1 for the CI job verapdf, and the visual regression test builds it ([docs/adr/0187](../../../../docs/adr/0187-inline-language-switch.md)); the tests copy its fonts in as `fonts/ja.otf` and `fonts/latin.otf` |
+| `languages/` | a small horizontal book of the characters of both scripts (quotation marks, dashes, the ellipsis, guillemets) in and out of `[lang]` spans, `@lang` on blocks and its body form, and the hyphenation of English and French paragraphs; `TaggedPdfSpec` fixes its structure tree, `scripts/ci/conformance-pdfs.sh` declares PDF/A-2a and PDF/UA-1 for the CI job verapdf, CI runs epubcheck on its EPUB, and the visual regression test builds it ([docs/adr/0187](../../../../docs/adr/0187-inline-language-switch.md)); the tests copy its fonts in as `fonts/ja.otf` and `fonts/latin.otf` |
 | `tempest/` | *The Tempest* by William Shakespeare, set horizontally |
 | `kanikosen/` | 『蟹工船』小林多喜二, set vertically |
 | `pd/` | ten public-domain books that are hard to set ([docs/adr/0026](../../../../docs/adr/0026-ten-public-domain-fixtures.md)) |
@@ -44,7 +44,10 @@ book (`writing-mode` of `[page]`) and because a wrapped figure cannot be
 set on a page of two columns or more (G07026): the vertical book has one
 column and a wrapped figure, the horizontal one two columns and none.
 Neither has sidenotes, which no vertical page and no page of columns can
-hold (G07001). Each book is 16 to 24 pages.
+hold (G07001). Each book is to be 16 to 24 pages (docs/adr/0175). The
+vertical book has been 25 pages since the paragraph spacing of
+docs/adr/0189; whether to cut the book or to change the range is left to
+an ADR, and this range stays as it is until then.
 
 Both use: three levels of numbered headings with `rule-before` and
 `rule-after`; a paragraph style with rules, with a paragraph split at the
@@ -65,7 +68,8 @@ first heading of each chapter, which the contents and the running heads
 show. The vertical book also has `[tcy: ...]`, `[number-text ... style=tcy]`,
 a wrapped figure followed by a paragraph with rules, a turned figure
 (`rotate=true`) and a double dash; the horizontal book notes at the foot of
-a column, figures fitted to a column and hyphenated Latin words. The
+a column, figures fitted to a column, hyphenated Latin words and a Latin
+compound with a hyphen written in it (`well-understood`). The
 golem-driver test `ComplexFixtureSpec` checks that the sources still use
 each of these.
 

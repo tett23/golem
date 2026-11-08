@@ -1,0 +1,62 @@
+# link probe: kanikosen.gm replaced by eight [link] with URLs of other schemes and of special characters; golem build --target pdf --target html, +RTS -M1g, 60 s
+$ cat kanikosen.gm
+# リンク
+
+[link "javascript:alert(1)": 一]
+
+[link "https://example.invalid/a)b\\c(d": 二]
+
+[link "https://example.invalid/x<script>": 三]
+
+[link "https://example.invalid/%e3%81%82?q=\"": 四]
+
+[link "HTTPS://EXAMPLE.INVALID/é": 五]
+
+[link "https://example.invalid/あ": 六]
+
+[link "data:text/html,x": 七]
+
+[link "file:///etc/passwd": 八]
+$ golem build --target pdf --target html
+kanikosen.gm:5:1: error[G02125]: URL の形が誤っています: https://example.invalid/a)b\c(d
+  | [link "https://example.invalid/a)b\\c(d": 二]
+kanikosen.gm:7:1: error[G02125]: URL の形が誤っています: https://example.invalid/x<script>
+  | [link "https://example.invalid/x<script>": 三]
+kanikosen.gm:9:1: error[G02125]: URL の形が誤っています: https://example.invalid/%e3%81%82?q="
+  | [link "https://example.invalid/%e3%81%82?q=\"": 四]
+kanikosen.gm:17:1: error[G02125]: URL の形が誤っています: file:///etc/passwd
+  | [link "file:///etc/passwd": 八]
+kanikosen.gm:3:1: error[G02126]: リンクにできる URL は http と https だけです: javascript:alert(1)
+  | [link "javascript:alert(1)": 一]
+kanikosen.gm:15:1: error[G02126]: リンクにできる URL は http と https だけです: data:text/html,x
+  | [link "data:text/html,x": 七]
+コードの説明は golem explain <コード> で表示できます（例: golem explain G02125）
+exit=1 wall=1s
+$ ls build
+ls: build: No such file or directory
+
+# link probe 2: URLs that pass the checks
+$ cat kanikosen.gm
+# リンク
+
+[link "https://example.invalid/a(b)c": 一]
+
+[link "HTTPS://EXAMPLE.INVALID/é?a=1&b=2#f": 二]
+
+[link "https://example.invalid/あ": 三]
+$ golem build --target pdf --target html
+exit=0 wall=1s
+$ strings of /URI in the PDF
+/URI (https://example.invalid/a\(b\)c)
+/URI (HTTPS://EXAMPLE.INVALID/%C3%A9?a=1&b=2#f)
+/URI (https://example.invalid/%E3%81%82)
+<< /A << /S /URI /URI (https://example.invalid/a\(b\)c) >> /Border [0 0 0] /Contents <feff4e00ff0800680074007400700073003a002f002f006500780061006d0070006c0065002e0069006e00760061006c00690064002f006100
+<< /A << /S /URI /URI (HTTPS://EXAMPLE.INVALID/%C3%A9?a=1&b=2#f) >> /Border [0 0 0] /Contents <feff4e8cff0800480054005400500053003a002f002f004500580041004d0050004c0045002e0049004e00560041004c004900440
+<< /A << /S /URI /URI (https://example.invalid/%E3%81%82) >> /Border [0 0 0] /Contents <feff4e09ff0800680074007400700073003a002f002f006500780061006d0070006c0065002e0069006e00760061006c00690064002f3042
+$ href in the HTML
+$ href in the HTML
+build/html/kanikosen.xhtml
+build/html/index.xhtml
+<a href="HTTPS://EXAMPLE.INVALID/é?a=1&amp;b=2#f"
+<a href="https://example.invalid/a(b)c"
+<a href="https://example.invalid/あ"

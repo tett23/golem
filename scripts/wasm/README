@@ -5,10 +5,11 @@ golem.wasm builds the PDF of a Golem project from the bytes of its files,
 with the same build as `golem build --target pdf` of the native golem of
 the same version, and reads no file. It is a WASI (preview 1) reactor
 module: it imports only wasi_snapshot_preview1, and needs no preopened
-directory. It runs under the node:wasi of Node, wasmtime, Deno and, with
-browser_wasi_shim, in a browser. It has no plugins (golem-plugin): a
-project with [plugins] or a plugin filter in [[filters]] gives the error
-G06106 and no PDF.
+directory. CI runs it under the node:wasi of Node. It is expected to run
+under wasmtime, Deno and, with browser_wasi_shim, in a browser too, but
+that is not verified (docs/roadmap.md, the items to check by hand). It has
+no plugins (golem-plugin): a project with [plugins] or a plugin filter in
+[[filters]] gives the error G06106 and no PDF.
 
 Exports
 -------

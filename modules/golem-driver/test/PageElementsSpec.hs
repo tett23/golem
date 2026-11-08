@@ -157,6 +157,13 @@ footnoteTests =
             _ -> Nothing
       marks @?= ["1)"]
       map start firsts @?= [Just ("1)", "甲")],
+    testCase "PDF: mark-size 0.65zw alone gives the page contents of the size of note-mark 0.65zw (docs/adr/0177)" $ do
+      let src = "漢[note: 注。]字\n"
+      a <- miniPdf fakeProvider True (horizontalStyle <> "\n[notes]\nmark-size = \"0.65zw\"\n") src [] >>= inflateAll
+      b <- miniPdf fakeProvider True (horizontalStyle <> "\n[character-styles.note-mark]\nsize = \"0.65zw\"\n") src [] >>= inflateAll
+      c <- miniPdf fakeProvider True horizontalStyle src [] >>= inflateAll
+      a @?= b
+      assertBool "the size changes the page contents" (a /= c),
     testCase "PDF: the default values written give the same page contents as none (golem-driver ADR 0025)" $ do
       a <- miniPdf fakeProvider True horizontalStyle "漢[note: 注。]字\n" [] >>= inflateAll
       b <- miniPdf fakeProvider True (horizontalStyle <> "\n[notes]\nmark-size = \"0.5zw\"\nmark-format = \"*{n}\"\n") "漢[note: 注。]字\n" [] >>= inflateAll

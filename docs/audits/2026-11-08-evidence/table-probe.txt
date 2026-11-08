@@ -1,0 +1,13 @@
+# table probes: golem build --target pdf, +RTS -M1g, 90 s limit
+## wide: one row of 4,000,001 empty cells (4 MB)
+kanikosen.gm:3:1: error[G02088]: 表のファイルがセルの数の上限を超えます: data/wide.csv（1 行目、上限は 1 行に 256 個）
+  | @table data/wide.csv
+コードの説明は golem explain <コード> で表示できます（例: golem explain G02088）
+exit=1 wall=1s
+ls: build/pdf: No such file or directory
+## tall: 2,000,000 rows of a,b (8 MB)
+kanikosen.gm:3:1: error[G02088]: 表のファイルが行の数の上限を超えます: data/tall.csv（10001 行目、上限は 10000 行）
+  | @table data/tall.csv
+コードの説明は golem explain <コード> で表示できます（例: golem explain G02088）
+exit=1 wall=1s
+ls: build/pdf: No such file or directory

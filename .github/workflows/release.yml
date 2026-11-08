@@ -273,6 +273,22 @@ jobs:
           wasm32-wasi-cabal --project-file=cabal.project.wasm --builddir=dist-wasm build -v1 exe:golem-wasm
           cp "$(wasm32-wasi-cabal --project-file=cabal.project.wasm --builddir=dist-wasm list-bin -v0 exe:golem-wasm)" golem.wasm
           ls -l golem.wasm
+      # cabal 3.14 plans and builds the build-tool-depends alex and happy
+      # of the packages with the wasm GHC too: their executables in
+      # the store are wasm modules (alex.wasm, happy.wasm), which cabal does
+      # not take for alex and happy and which cannot run here, so the lexer
+      # and the parser of toml-parser come from the native alex and happy on
+      # the PATH, of the versions of cabal.project.freeze
+      - name: The build tools in the wasm store are wasm, not run (docs/adr/0202)
+        run: |
+          find third_party/ghc-wasm/.cabal/store -path '*/bin/*' -type f
+          found=0
+          for f in $(find third_party/ghc-wasm/.cabal/store -path '*/bin/*' \( -name 'alex*' -o -name 'happy*' \)); do
+            found=$((found + 1))
+            test "$(od -An -tx1 -N4 "$f" | tr -d ' ')" = 0061736d
+            echo "$f: a wasm module"
+          done
+          test "$found" = 2
       - name: The checks of golem.wasm under node:wasi (docs/adr/0199)
         run: node scripts/wasm/run.mjs check golem.wasm modules/golem-driver/test/fixtures/kanikosen
       - uses: actions/download-artifact@v8

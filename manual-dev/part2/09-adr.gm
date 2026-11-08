@@ -36,6 +36,10 @@ CPU 時間は待たされても延びないが、CPU を使わずに待ち続け
 [code: -threaded] の [code: golem-driver-parallel-test] は、[code: watchTests] で包む。
 Haskell のランタイムの外の POSIX のスレッドが実時間を測り、一つのテストが [code: GOLEM_RACE_TESTS] の値の 300 倍の秒数を超えるか、テストが終わってもプロセスが同じ秒数を超えて終わらないと、走っていたテストの名前とランタイムの心拍を書いてプロセスを止める。
 ランタイムそのものが止まっても働くので、tasty の時間切れでは捕まえられない止まり方も、名前つきの失敗になる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0117-watchdog-outside-the-runtime-for-threaded-tests.md]（docs/adr の ADR 0117「golem-driver-parallel-test に、Haskell のランタイムの外で実時間を測る見張りを付ける」）]
+[code: golem-emet-test] も、木の全体を [code: watchTests] で包み、さらに [code: localOption (NumThreads 1)] で包んでテストを一つずつ走らせる。
+aarch64 の GHC の threaded のランタイムには、.emet を構文解析するテストが同じプロセスの中で同時に走ると、まれにすべての Haskell のスレッドが止まるか、プロセスが落ちる不具合があるからである。
+[code: -threaded] と [code: -N] は残すので、テストの中でスレッドを同時に走らせる並列の評価のテストは、複数のコアで走る。
+この制限は GHC の不具合を避けるためのもので、不具合が直った GHC を使うようになったら、外すかどうかを ADR で決め直す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0207-run-golem-emet-test-one-test-at-a-time-under-the-watchdog.md]（docs/adr の ADR 0207「aarch64 の GHC の不具合が直るまで、golem-emet-test を一つずつ走らせ、見張りを付ける」）]
 
 ## 置き場所と名前
 

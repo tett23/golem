@@ -926,9 +926,11 @@ undecidedPointTests =
       needGrid (lookAhead 3 flows) @?= 1
       needNotes (lookAhead 3 flows) @?= 0
       needGrid (lookAhead 3 [FHeading 1 True 1 (lines' 21 1), FParagraph (lines' 30 1)]) @?= 0,
-    testCase "D1: a heading before a heading at a recto stays at the end of its page" $
-      placedIn (Input 3 1 [EPara 2, EHeading, ERecto, EPara 1])
-        @?= [(1, 0, [SLine 0, SLine 1, SHeading 2 1]), (2, 0, []), (3, 0, [SHeading 3 1, SLine 4])],
+    testCase "D1: a heading before a heading at a recto stays at the end of its page, and page 2 is blank" $ do
+      let input = Input 3 1 [EPara 2, EHeading, ERecto, EPara 1]
+      placedIn input
+        @?= [(1, 0, [SLine 0, SLine 1, SHeading 2 1]), (2, 0, []), (3, 0, [SHeading 3 1, SLine 4])]
+      [(poNumber p, poBlank p) | p <- paginateInput input] @?= [(1, False), (2, True), (3, False)],
     testCase "D2: a column of nothing but a heading places the lines of the paragraph after it, as an empty column does" $
       placedIn (Input 3 1 [EHeading, EPara 3])
         @?= [(1, 0, [SHeading 0 1, SLine 1, SLine 2]), (2, 0, [SLine 3])]
