@@ -1,6 +1,6 @@
 # ADR 0026: 待つ図版は、前の `@need-lines` と行アキの「次のブロック」にならない
 
-ステータス: 採択
+ステータス: 採択→「実装すること」の 3 の待つ図版の定義は [golem-layout ADR 0033](0033-read-waiting-figures-from-the-placement.md)
 
 ## 文脈
 

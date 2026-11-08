@@ -9,7 +9,7 @@ separator takes.
 -}
 module PaginateSpec (paginateTests) where
 
-import Control.Monad (replicateM)
+import Control.Monad (forM_, replicateM)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -24,7 +24,7 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import PaginateEnum (Element (..), Input (..), controlSpan, enumFlows, noteOf, paginateInput)
-import PaginateInvariants (Breach (..), Invariant (..), breaches)
+import PaginateInvariants (Breach (..), Invariant (..), breaches, waitingFigures)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -55,6 +55,7 @@ paginateTests =
       testGroup "need-lines, blank lines, tables and wrapped figures go on after what is sent on (golem-layout ADR 0025)" afterSentOnTests,
       testGroup "the figures that wait take no need-lines and no blank lines before them (golem-layout ADR 0026)" waitingFigureTests,
       testGroup "need-lines is judged again in the column a block goes on to after spaces (golem-layout ADR 0027)" spaceAfterNeedTests,
+      testGroup "the figures that wait are read from the placement (golem-layout ADR 0033)" waitingReadTests,
       testGroup "invariants" propertyTests
     ]
 
@@ -1216,6 +1217,27 @@ waitingFigureTests =
       gridLines ps @?= [[0 .. 3], [0, 4, 5], [0]]
       unmets ps @?= []
       brokenOf [P3, P4, P5] flows ps @?= []
+  ]
+
+{- | golem-layout ADR 0033: the three counterexamples of its section
+「文脈」, which the reading of golem-layout ADR 0026 got wrong. The
+figures that wait are read from the input and the output (W1, W2), and
+P1', P4' and P5 hold for them.
+-}
+waitingReadTests :: [TestTree]
+waitingReadTests =
+  [ testCase "W1, P4': a figure that waits is placed before the paragraph after it, which goes on to the next column" $ do
+      let input = Input 6 1 [EPara 2, EFigure 5, EBlank 2, EFigure 1, ENotedPara 2]
+      waitingFigures (enumFlows (inElements input)) (paginateInput input) @?= [1001]
+      brokenIn [P3, P4, P5] input @?= [],
+    testCase "W1, P1': a figure sent on by itself after a break does not wait, the figure after it does" $ do
+      let input = Input 7 1 [EFigure 6, EFigure 6, EBreak, EFigure 6, ENeedLines, EFigure 1]
+      waitingFigures (enumFlows (inElements input)) (paginateInput input) @?= [1003]
+      brokenIn [P1, P2] input @?= [],
+    testCase "W1, P5: a figure at the end of the book that fits where it is written does not wait" $
+      forM_ [Input l c [EPara 1, EBlank 1, EFigure 1] | l <- [3 .. 5], c <- [1, 2]] $ \input -> do
+        waitingFigures (enumFlows (inElements input)) (paginateInput input) @?= []
+        brokenIn [P3, P4, P5] input @?= []
   ]
 
 {- | golem-layout ADR 0027: the reproductions of its section 「確かめたこと」
