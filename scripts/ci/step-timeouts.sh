@@ -5,9 +5,9 @@
 #
 #   step-timeouts.sh SINCE COUNT
 #
-# reads the runs of ci.yml created after SINCE (YYYY-MM-DD, or
-# YYYY-MM-DDTHH:MM:SSZ), newest first, and writes one tab-separated row per
-# run that ran either step, until COUNT rows:
+# reads the runs of ci.yml created after SINCE (YYYY-MM-DDTHH:MM:SSZ, or
+# YYYY-MM-DD for the start of that day), newest first, and writes one
+# tab-separated row per run that ran either step, until COUNT rows:
 #
 #   run  created  qpdf is installed  epubcheck is installed
 #
@@ -17,8 +17,10 @@
 # step ran (build skipped, for documents only) is left out and not counted.
 # A step that runs over its timeout-minutes ends with "failure".
 #
-# GH chooses the gh to run (for the tests); GITHUB_REPOSITORY the
-# repository (tett23/golem unless set). A gh that fails fails the script.
+# The runs are read page by page, without the filter created of the API,
+# which gives at most 1000 runs, until a page ends before SINCE. GH chooses
+# the gh to run (for the tests); GITHUB_REPOSITORY the repository
+# (tett23/golem unless set). A gh that fails fails the script.
 set -eu
 usage() {
   echo "usage: step-timeouts.sh SINCE COUNT" >&2
@@ -41,10 +43,21 @@ REPO=${GITHUB_REPOSITORY:-tett23/golem}
 TMP=$(mktemp -d)
 trap 'rm -rf "${TMP:?}"' EXIT
 
-# the pages of the runs, one JSON document each (--paginate)
-$GH api -X GET --paginate "repos/$REPO/actions/workflows/ci.yml/runs" -f "created=>$SINCE" -f per_page=100 >"$TMP/runs"
+# the runs, newest first, a page at a time until a page has a run created
+# before SINCE or no run; the created_at of the API and SINCE compare as
+# strings, and a date is before every time of that day
 TAB=$(printf '\t')
-jq -r '.workflow_runs[]? | [.id, .created_at] | @tsv' "$TMP/runs" | sort -t "$TAB" -k2,2r -k1,1nr >"$TMP/list"
+: >"$TMP/all"
+page=1
+while :; do
+  $GH api -X GET "repos/$REPO/actions/workflows/ci.yml/runs" -f per_page=100 -f "page=$page" >"$TMP/page"
+  jq -r '.workflow_runs[]? | [.id, .created_at] | @tsv' "$TMP/page" >"$TMP/rows"
+  [ -s "$TMP/rows" ] || break
+  cat "$TMP/rows" >>"$TMP/all"
+  [ -z "$(awk -F '\t' -v s="$SINCE" '$2 <= s' "$TMP/rows")" ] || break
+  page=$((page + 1))
+done
+awk -F '\t' -v s="$SINCE" '$2 > s' "$TMP/all" | sort -u | sort -t "$TAB" -k2,2r -k1,1nr >"$TMP/list"
 
 printf 'run\tcreated\tqpdf is installed\tepubcheck is installed\n'
 n=0

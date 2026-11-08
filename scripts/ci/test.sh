@@ -1524,7 +1524,9 @@ printf '%s\n' "\$*" >>"$WORK/gh.args"
 [ -z "\${FAKE_GH_FAIL-}" ] || exit 1
 for a in "\$@"; do
   case \$a in
-    repos/tett23/golem/actions/workflows/ci.yml/runs) cat "$STD/runs.json" "$STD/runs-2.json"; exit 0 ;;
+    page=1) cat "$STD/runs.json"; exit 0 ;;
+    page=2) cat "$STD/runs-2.json"; exit 0 ;;
+    page=*) echo '{"total_count":5,"workflow_runs":[]}'; exit 0 ;;
     repos/tett23/golem/actions/runs/*/jobs)
       id=\${a#repos/tett23/golem/actions/runs/}
       cat "$STD/jobs-\${id%/jobs}.json"; exit ;;
@@ -1541,7 +1543,7 @@ expect "step-timeouts: the runs with the steps, newest first" 0 "run${TAB}create
 42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1
 42475288545${TAB}2026-11-08T11:20:12Z${TAB}success=8${TAB}success=2
 1${TAB}2026-11-08T11:00:00Z${TAB}cancelled=1${TAB}failure=1 success=1"
-if grep -qF -- 'repos/tett23/golem/actions/workflows/ci.yml/runs -f created=>2026-10-23 -f per_page=100' "$WORK/gh.args" 2>/dev/null; then ok; else ng "step-timeouts: the runs of ci.yml created after the date"; fi
+if grep -qxF -- 'api -X GET repos/tett23/golem/actions/workflows/ci.yml/runs -f per_page=100 -f page=3' "$WORK/gh.args" 2>/dev/null; then ok; else ng "step-timeouts: the runs of ci.yml page by page until a page without a run"; fi
 if grep -qF -- 'repos/tett23/golem/actions/runs/42475288545/jobs -f filter=all -f per_page=100' "$WORK/gh.args" 2>/dev/null; then ok; else ng "step-timeouts: the jobs of every attempt of a run"; fi
 # the runs without the steps (build skipped for documents only) are not
 # counted: two runs are the two newest that have the steps
@@ -1553,6 +1555,16 @@ if ! grep -qF 'actions/runs/1/jobs' "$WORK/gh.args" 2>/dev/null; then ok; else n
 run step_timeouts 2026-10-23T00:00:00Z 1
 expect "step-timeouts: a date and time" 0 "run${TAB}created${TAB}qpdf is installed${TAB}epubcheck is installed
 42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1"
+# the runs created after the time only, and no page after the one that
+# reaches it: the filter created of the API gives at most 1000 runs
+run step_timeouts 2026-11-08T11:30:00Z 10
+expect "step-timeouts: the runs after a time" 0 "run${TAB}created${TAB}qpdf is installed${TAB}epubcheck is installed
+42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1"
+if ! grep -q 'page=2' "$WORK/gh.args" 2>/dev/null && ! grep -q 'created' "$WORK/gh.args" 2>/dev/null; then ok; else ng "step-timeouts: no page after the one that reaches the time, and no filter created"; fi
+run step_timeouts 2026-11-08T11:00:00Z 10
+expect "step-timeouts: a run created at the time is not after it" 0 "run${TAB}created${TAB}qpdf is installed${TAB}epubcheck is installed
+42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1
+42475288545${TAB}2026-11-08T11:20:12Z${TAB}success=8${TAB}success=2"
 run step_timeouts 2026-10-23
 expect "step-timeouts: one argument" 2
 run step_timeouts 2026-10-23 x
