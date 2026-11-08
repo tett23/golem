@@ -276,6 +276,36 @@ golem-driver は、これを `manifest.toml` の `[functions.requires]` と突�
 `++` と、文字列とリストを作るプリミティブは、作った値の長さも足す。
 手数が上限の 100,000,000 を超えると E04100 とする。
 
+値の長さは、値を作る前に、引数だけから任意精度の整数（`Integer`）で求める（[docs/adr/0223](../adr/0223-emet-sizes-before-building-values.md)）。
+評価器は、プリミティブか `++` を当てるたびに、残りの手数（上限 − 今の手数 − 1）を任意精度で求め、長さが残りを超えれば、値を作らずに E04100 とする。
+超えなければ値を作り、1 と長さを手数に足す。
+E04100 のコード、メッセージ、位置は、上限を超えたのが簡約か長さかによらない。
+E04100 で止まった呼び出しの手数（`evalCallCounted` が返す値）は、上限 + 1 である。
+手数と上限は、どのターゲットでも 64 ビットの `Int64` で表す。
+wasm32 の `Int` は 32 ビットなので、`Int` で数えると、ネイティブと止まる位置が変わりうるためである。
+フィルタの上限（`filterFuel`）も任意精度で求め、`Int64` の最大値で頭打ちにする。
+長さを求めるために引数を走査する手間は、引数がすでに手数に数えてあるので、手数に足さない。
+`PrimValue` のリストは自分の長さを持つので、別の値の中で何度も共有されたリストの長さも、その要素を変換せずに求まる。
+
+| 操作 | 値の長さ |
+| --- | --- |
+| `List.range x y` | max(0, y − x + 1) |
+| `String.replace from to s` | `from` が空なら \|s\|、そうでなければ \|s\| + c × (\|to\| − \|from\|)。c は `Data.Text` の `count` が数える、`s` の中の重ならない `from` の数 |
+| `String.join sep xs` | Σ\|x\| + \|sep\| × max(0, n − 1)。n は `xs` の要素の数 |
+| `List.concat xss` | Σ\|xs\| |
+| `++`（文字列とリスト） | \|a\| + \|b\| |
+| `:` | 1 |
+| `String.fromChars xs` | `xs` の字の数 |
+| `String.chars s` | \|s\| |
+| `String.split sep s` | `sep` が空なら \|s\|、そうでなければ `sep` の重ならない数 + 1 |
+| `String.lines s` | LF の数。`s` が空でなく LF で終わらなければ、それに 1 を足す |
+| `String.trim s` | 前後の空白を除いた長さ |
+| `String.take n s`、`String.drop n s`、`List.take n xs`、`List.drop n xs` | 取る、または残る字か要素の数 |
+| `List.reverse xs` | \|xs\| |
+| `String.fromChar c` | 1 |
+| `String.fromNat`、`String.fromInt`、`String.fromRat` | 数を書いた文字列の長さ（数は 2^4096 未満、小数点以下は 1000 桁まで） |
+| `List.length`、`List.at`、`String.length`、`String.startsWith` など | 0 |
+
 上限は、[docs/adr/0160](../adr/0160-emet-function-language-core.md) の決め方に従い、正常に終わる仕事の手数を測って、その最大の約 3 倍とした。
 測った仕事と手数は次のとおりである（golem-emet のテスト「the measured work is a third of the limit or less」）。
 
