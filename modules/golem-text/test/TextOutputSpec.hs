@@ -206,7 +206,7 @@ tests =
       let table = Table [] [[txt "名前"], [txt "値"]] [[[txt "a"], [txt "1"]]]
        in only (horizontal (bookOf [Block (at 0) Nothing Nothing table])) @?= "名前\t値\na\t1\n",
     testCase "a code block is written as it is" $
-      only (horizontal (bookOf [Block (at 0) Nothing Nothing (CodeBlock (Code (Just "haskell") Nothing Nothing Nothing False [CodeLine "main = pure ()" (Just 1) Nothing False []] False))])) @?= "main = pure ()\n",
+      only (horizontal (bookOf [Block (at 0) Nothing Nothing (CodeBlock (Code (Just "haskell") Nothing Nothing Nothing False [CodeLine "main = pure ()" (Just 1) Nothing False [] Nothing] False))])) @?= "main = pure ()\n",
     testCase "a heading is its number, an ideographic space and its title" $
       let attrs = HeadingAttrs Nothing Nothing False False
           info = HeadingInfo 1 (Just [1]) (Just "第一章") [txt "はじめに"] "h-0-0" fid

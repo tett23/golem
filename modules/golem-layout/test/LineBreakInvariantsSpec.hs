@@ -18,7 +18,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word64)
 import Fixtures (fs)
-import Golem.Layout.CharClass (isDualCharacter)
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..))
 import Golem.TestSupport.Enum
@@ -229,6 +228,13 @@ allowAfter t = \case
   x : rest -> x : allowAfter t rest
   [] -> []
 
+-- | The items with a break after a written hyphen put after each box of the text given that a box follows.
+explicitAfter :: Text -> [Item] -> [Item]
+explicitAfter t = \case
+  b@(Box _ c) : rest@(Box {} : _) | bcText c == t -> b : Penalty 0 50 ExplicitHyphen : explicitAfter t rest
+  x : rest -> x : explicitAfter t rest
+  [] -> []
+
 -- | The lines of a paragraph changed.
 withLines :: ([Line] -> [Line]) -> Paragraph -> Paragraph
 withLines f p = p {pBreaks = (pBreaks p) {brLines = f (brLines (pBreaks p))}}
@@ -281,6 +287,14 @@ predicateTests =
       let p = paragraphIn plain False 2 ["あ", "…", "…"]
       sound p
       broken (rebroken (allowBefore "…") p) @?= [L4],
+    testCase "L4: a line that breaks at a space between two ellipses is not broken (golem-layout ADR 0028, K4)" $ do
+      let p = paragraphIn plain False 2 ["…", " ", "…"]
+      map lineText (brLines (pBreaks p)) @?= ["…", "…"]
+      brokenAll p @?= [],
+    testCase "L4: a line that breaks after a dash written in a word between two ellipses (golem-layout ADR 0028, K3)" $ do
+      let p = paragraphOf (Input plain {sLang = Just "en"} False 2 1 ["…", "—", "…"] 0)
+      sound p
+      broken (rebroken (explicitAfter "…—") p) @?= [L4],
     testCase "L5: a line past W that is not overfull" $ do
       -- the last line, set an em wider than W: its glue stretches to the end
       let p = paragraphIn plain False 2 ["漢", "漢", "漢"]
@@ -505,62 +519,25 @@ data LineBug = LineBug
 lineBugs :: [LineBug]
 lineBugs =
   [ LineBug
-      { lbItem = "語間の空白の隣の禁則と分離禁止",
+      { lbItem = "段落の終わりの語間の空白の前の行末禁則",
         lbShape = \i -> " " `elem` inRun i,
-        lbExcuses = \i br -> case breachOf br of
-          L2 -> breaksAtSpace i (breachLine br - 1)
-          L3 -> breaksAtSpace i (breachLine br)
-          L4 -> breaksAtSpace i (breachLine br)
-          _ -> False,
-        lbCounts = [(0, 0), (1, 0), (2, 432), (3, 64114)]
-      },
-    LineBug
-      { lbItem = "字幅の伸縮の刻みで行長を超える行",
-        lbShape = inExpansion,
-        lbExcuses = \i br -> breachOf br `elem` [L5, L6] && shrunkWithoutGlue i (breachLine br),
-        lbCounts = [(0, 0), (1, 0), (2, 32), (3, 2923)]
-      },
-    LineBug
-      { lbItem = "明示のハイフンの後の分割と両用の字の禁則",
-        lbShape = any (T.any isDualCharacter) . inRun,
-        lbExcuses = \i br -> case breachOf br of
-          L2 -> breaksAtExplicitHyphen i (breachLine br - 1)
-          L3 -> breaksAtExplicitHyphen i (breachLine br)
-          L4 -> breaksAtExplicitHyphen i (breachLine br)
-          _ -> False,
-        lbCounts = [(0, 0), (1, 0), (2, 0), (3, 448)]
+        lbExcuses = \i br -> breachOf br == L3 && breaksAtTrailingSpace i (breachLine br),
+        lbCounts = [(0, 0), (1, 0), (2, 0), (3, 576)]
       }
   ]
 
--- | Whether line k of an input ends after a hyphen or a dash written in a Latin word.
-breaksAtExplicitHyphen :: Input -> Int -> Bool
-breaksAtExplicitHyphen i k =
-  let p = paragraphOf i
-   in case drop k (brPositions (pBreaks p)) of
-        b : _ | b >= 0 && b < length (pItems p) -> case pItems p !! b of
-          Penalty _ _ ExplicitHyphen -> True
-          _ -> False
-        _ -> False
-
--- | Whether line k of an input ends at a space between Latin words.
-breaksAtSpace :: Input -> Int -> Bool
-breaksAtSpace i k =
-  let p = paragraphOf i
-   in case drop k (brPositions (pBreaks p)) of
-        b : _ | b >= 0 && b < length (pItems p) -> pItems p !! b == latinSpace p
-        _ -> False
-
-{- | Whether line k of an input is shrunk by the glyph expansion, and its
-glue cannot shrink further: none of it shrinks, or all of it is shrunk
-as far as it can. The expansion, a multiple of its step rounded towards
-0, leaves the line wider than W.
+{- | Whether line k of an input ends at a space between words that no box
+follows: the space at the end of the paragraph.
 -}
-shrunkWithoutGlue :: Input -> Int -> Bool
-shrunkWithoutGlue i k =
-  let (_, _, br) = breakInput i
-   in case drop k (brLines br) of
-        l : _ -> lineExpansion l < 0 && (all (<= 0) [z | Glue _ _ z <- lineItems l] || glueRatio l <= -1)
-        [] -> False
+breaksAtTrailingSpace :: Input -> Int -> Bool
+breaksAtTrailingSpace i k =
+  let p = paragraphOf i
+      isBox = \case
+        Box {} -> True
+        _ -> False
+   in case drop k (brPositions (pBreaks p)) of
+        b : _ | b >= 0 && b < length (pItems p) -> pItems p !! b == latinSpace p && not (any isBox (drop (b + 1) (pItems p)))
+        _ -> False
 
 -- | The breaches of an input no known bug excuses, and whether each known bug excuses one.
 judged :: Int -> Input -> ([Breach], [Bool])

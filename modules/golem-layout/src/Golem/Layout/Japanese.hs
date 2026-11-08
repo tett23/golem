@@ -428,8 +428,10 @@ lineEnd :: [Item]
 lineEnd = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
 
 {- | Where each item ends up after 'normalize', which only inserts items
-before boxes: a box is the next box of the normalized items, anything
-else is the next item.
+before boxes and spaces and takes out the breaks after written hyphens
+that a prohibition applies across (golem-layout ADR 0028): a box is the
+next box of the normalized items, a break taken out the place of the
+next item, anything else is the next item.
 -}
 alignPositions :: [Item] -> [Item] -> [(Int, Int)]
 alignPositions = go 0 0
@@ -439,11 +441,16 @@ alignPositions = go 0 0
       Box {} -> case break isBox ys of
         (skipped, _ : rest) -> let j' = j + length skipped in (i, j') : go (i + 1) (j' + 1) xs rest
         (_, []) -> []
+      Penalty _ _ ExplicitHyphen | not (isExplicit ys) -> (i, j) : go (i + 1) j xs ys
+      Glue {} | Penalty _ p NoHyphen : y : rest <- ys, p >= infPenalty, y == x -> (i, j + 1) : go (i + 1) (j + 2) xs rest
       _ -> case ys of
         (_ : rest) -> (i, j) : go (i + 1) (j + 1) xs rest
         [] -> []
     isBox = \case
       Box {} -> True
+      _ -> False
+    isExplicit = \case
+      Penalty _ _ ExplicitHyphen : _ -> True
       _ -> False
 
 {- | The source of a piece (golem-cli ADR 0008), and where each of its
@@ -1136,7 +1143,40 @@ normalize env = go AtStart True
                 l -> Penalty 0 infPenalty NoHyphen : l
               AfterAki -> []
          in spacing <> [Box w (withEdges first c)] <> go (AfterBox c) False rest
+      {- a space between words: no break at it where the character after it
+      may not start a line or the one before it may not end one; its width
+      and the spacing after it as before (golem-layout ADR 0028) -}
+      Glue {}
+        | wordSpace x,
+          AfterBox p <- before,
+          Just c <- nextBox rest,
+          prohibitedAcross False p c ->
+            Penalty 0 infPenalty NoHyphen : x : go AtStart first rest
+      -- a break after a written hyphen or dash: none where a prohibition applies across it (golem-layout ADR 0028)
+      Penalty _ _ ExplicitHyphen
+        | AfterBox p <- before,
+          Box _ c : _ <- rest,
+          prohibitedAcross True p c ->
+            go AtStart first rest
       _ -> x : go AtStart first rest
+    -- the glue of a space between words: it stretches, but not as the glue that fills the last line; a space of code does not
+    wordSpace = \case
+      Glue _ y _ -> y > 0 && y < filStretch
+      _ -> False
+    -- the box after the spaces, if a box of text comes next
+    nextBox = \case
+      g : more | wordSpace g -> nextBox more
+      Box _ c : _ | boxKind c `notElem` [KindAki, KindNoteMark] -> Just c
+      _ -> Nothing
+    {- the prohibitions across a space or a written hyphen: the line start
+    and the line end, and two inseparable characters across a written
+    hyphen only; not the rule that keeps two Latin words together -}
+    prohibitedAcross hyphen p c =
+      let pk = breakClass lastChar lastClass p
+          ck = breakClass firstChar firstClass c
+       in maybe False (lineStartProhibited (ceKinsokuStrict env)) ck
+            || maybe False lineEndProhibited pk
+            || (hyphen && pk == Just Inseparable && ck == Just Inseparable)
     sizeOf = lkSize . bcLook
     glueOf base (A.Aki n o m) =
       let sp = L.zwToSp base
@@ -1166,7 +1206,7 @@ normalize env = go AtStart True
     lastClass c = lookClass (bcLook c) <$> lastChar c
     {- a character of both scripts in a Latin span (docs/adr ADR 0187): no
     aki beside it, and the line breaks beside it as beside the Japanese
-    character -}
+    character, by the kinsoku of its Japanese class (docs/adr/0211) -}
     latinDual c = \case
       Just ch -> isDualCharacter ch && maybe False (not . spanIsJapanese) (lkLang (bcLook c))
       Nothing -> False

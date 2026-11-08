@@ -122,7 +122,7 @@ codeT :: Code -> Term
 codeT (Code lang nums file cap diff ls nn) =
   TList [opt text lang, opt TBool nums, opt text file, opt inlinesTerm cap, TBool diff, list lineT ls, TBool nn]
   where
-    lineT (CodeLine t n d h cs) = TList [text t, opt int n, opt (int . fromEnum) d, TBool h, list int cs]
+    lineT (CodeLine t n d h cs lsp) = TList [text t, opt int n, opt (int . fromEnum) d, TBool h, list int cs, opt spanT lsp]
 
 attrsT :: HeadingAttrs -> Term
 attrsT (HeadingAttrs tt n nn nt) = TList [opt inlinesTerm tt, opt int n, TBool nn, TBool nt]
@@ -385,7 +385,7 @@ termCode t =
   where
     termLine x =
       asList x >>= \case
-        [s, n, d, h, cs] -> CodeLine <$> asText s <*> asOpt asNatural n <*> asOpt asEnum d <*> asBool h <*> (asList cs >>= traverse asIntI)
+        [s, n, d, h, cs, lsp] -> CodeLine <$> asText s <*> asOpt asNatural n <*> asOpt asEnum d <*> asBool h <*> (asList cs >>= traverse asIntI) <*> asOpt termSpan lsp
         _ -> bad "コードの行"
 
 termAttrs :: Term -> D HeadingAttrs

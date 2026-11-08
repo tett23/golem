@@ -77,6 +77,7 @@ import Control.Concurrent.Async (mapConcurrently)
 import Control.Exception (evaluate)
 import Control.Monad (join, mfilter)
 import Data.Bifunctor (first)
+import Data.ByteString qualified as BS
 import Data.Char (isSpace)
 import Data.Containers.ListUtils (nubOrdOn)
 import Data.Either (fromRight)
@@ -672,18 +673,24 @@ in order, as 'pageFiles'), as a file and a byte offset. Characters the
 source does not have (the number of a heading, a list marker) are
 skipped; without a character of the source inside the block of the line
 (a table of contents entry, the cells of a table read from a file), the
-start of the block. A page without lines has none.
+start of the block. A page that starts with the first part of a code
+block starts at the block; one that starts with a later part, at the
+first character of its first row (docs/adr/0218). A page without lines
+has none.
 -}
 pageStarts :: PdfLayout -> [Maybe (FileId, Int)]
 pageStarts layout = map start (pagesOf (plPages layout))
   where
     start ps = listToMaybe [lid | p <- ps, (_, s) <- poSlots p, lid <- case s of { SLine l -> [l]; SHeading l _ -> [l]; SCode l _ _ -> [l]; _ -> [] }] >>= lineStart
+    -- the first part of a code block: the caption and the file name come before its lines (docs/adr/0218)
+    firstPart lid = maybe False ((== lid) . ciFirst) (Map.lookup lid (plCodes layout))
     lineStart lid =
       let block = snd <$> Map.lookupLE lid (plLineSpans layout)
           sets = fromMaybe (maybe [] pure (Map.lookup lid (plLines layout))) (Map.lookup lid (plTableLines layout))
           -- a block of no length (a heading) holds whatever of its file its line shows
           inside b c = spanFile (snd (bcSource c)) == spanFile b && bcAt c >= 0 && (spanLength b == 0 || (spanStart b <= bcAt c && bcAt c <= spanEnd b))
        in case block of
+            Just b | firstPart lid -> Just (spanFile b, spanStart b)
             Just b -> case [bcAt c | sl <- sets, Box _ c <- lineItems (slLine sl), inside b c] of
               off : _ -> Just (spanFile b, off)
               [] -> Just (spanFile b, spanStart b)
@@ -1474,7 +1481,9 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
     breaks; between paragraphs of the same style its space-between (docs/adr
     ADR 0005); otherwise the greater of the space after of the block before
     and the space before of the block, which only paragraphs outside lists
-    and definition lists have -}
+    and definition lists have. Nothing before the breaks, and nothing
+    across the boundary of two files, whose blocks are not siblings
+    (docs/adr/0211) -}
     gapLines style ctx spaced a b = case (a, b) of
       (BlankLines _, _) -> 0
       (_, BlankLines _) -> 0
@@ -1998,8 +2007,29 @@ forceComposed c = evaluate (length (show (map lineRatio (cLines c))) + length (c
 (golem-driver ADR 0008), with the notes, sidenotes and index marks of each
 line of each row, the header row first.
 -}
-composeTable :: FlowEnv -> Int -> Style -> Maybe Text -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
-composeTable fe i st lang aligns h rows =
+composeTable :: FlowEnv -> Int -> Style -> Maybe Text -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
+composeTable fe i st lang aligns h rows
+  -- counted before any cell is composed (docs/adr/0224)
+  | cells > maxTableCells = Left (TooManyCells cells)
+  | otherwise = first LayoutRefused (composeTableCells fe i st lang aligns h rows)
+  where
+    -- a header row of empty cells too, which is composed
+    cells = length h + sum (map length rows)
+
+{- | The most cells of a table set in PDF, the header row's included
+(docs/adr/0224, G07108).
+-}
+maxTableCells :: Int
+maxTableCells = 100000
+
+-- | Why a table is not set: too many cells (G07108), or its layout (G07041).
+data TableRefusal
+  = TooManyCells !Int
+  | LayoutRefused !TableError
+  deriving stock (Show)
+
+composeTableCells :: FlowEnv -> Int -> Style -> Maybe Text -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
+composeTableCells fe i st lang aligns h rows =
   let env = tableEnv fe st lang
       -- no break between the last two Japanese characters of a cell (golem-driver ADR 0037); each cell its place (docs/adr ADR 0183)
       cellOf r c is = first keepLastTwo (composeInlines env {ceSite = cellSite i r c} is)
@@ -2042,7 +2072,7 @@ codeCaptionOf fe u lead code = case codeCaption code of
 -- | The code blocks of the units, set line by line, by the index of their units (golem-driver ADR 0017).
 codeBlocksOf :: FlowEnv -> [(Int, Unit)] -> Map Int SetCode
 codeBlocksOf fe units =
-  Map.fromList [(i, codeBlockOf (feGeom fe) (feFonts fe) (feMeasure fe) (length (pgLineGrid (feGeom fe))) u lead code (codeCaptionOf fe u lead code)) | (i, u@Unit {uKind = UCode lead code}) <- units]
+  Map.fromList [(i, codeBlockOf (feSourceAt fe) (feGeom fe) (feFonts fe) (feMeasure fe) (length (pgLineGrid (feGeom fe))) u lead code (codeCaptionOf fe u lead code)) | (i, u@Unit {uKind = UCode lead code}) <- units]
 
 -- | G07027: the text of a list item leaves 8 characters of the type area (golem-driver ADR 0013).
 listTooDeep :: SrcSpan -> Diagnostic
@@ -2071,7 +2101,7 @@ data ComposedUnits = ComposedUnits
     cuFigures :: Map Int (PlacedFigure, [Diagnostic], [Diagnostic], [SrcSpan]),
     -- | the other units of text
     cuSingles :: Map Int Composed,
-    cuTables :: Map Int (Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])),
+    cuTables :: Map Int (Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])),
     cuCodeBlocks :: Map Int SetCode
   }
 
@@ -2164,10 +2194,12 @@ numberUnit fe cu nb (i, u) = case uKind u of
   UTable {} -> maybe nb (\r -> numberTable fe u r nb) (Map.lookup i (cuTables cu))
   _ -> headingAndTocLines (pgFontSize (feGeom fe)) cu (nuNext nb) i u (numberOther fe cu nb (i, u))
 
--- | Numbers the lines of a table, or adds its error (G07041, G07042).
-numberTable :: FlowEnv -> Unit -> Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]]) -> Numbered -> Numbered
+-- | Numbers the lines of a table, or adds its error (G07108, G07041, G07042).
+numberTable :: FlowEnv -> Unit -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]]) -> Numbered -> Numbered
 numberTable fe u r nb = case r of
-  Left (ColumnsTooWide mn avail) ->
+  Left (TooManyCells n) ->
+    nb {nuErrors = nuErrors nb <> [diagnostic "G07108" Error (uSpan u) ("表のセルが多すぎて PDF に組めません（" <> T.pack (show n) <> " 個、上限は " <> T.pack (show maxTableCells) <> " 個）")]}
+  Left (LayoutRefused (ColumnsTooWide mn avail)) ->
     nb {nuErrors = nuErrors nb <> [diagnostic "G07041" Error (uSpan u) ("表の列の最小の幅の合計（" <> L.mmText mn <> "）が使える幅（" <> L.mmText avail <> "）に収まりません")]}
   Right (t, atts)
     | tall@(_ : _) <- [row | (row, h) <- zip [1 :: Int ..] (stRowLines t), stHeaderLines t + h > capacity] ->
@@ -2478,8 +2510,8 @@ are lined up after the longest line that has one when they fit; the wrap
 mark ends the rows that continue; the tokens of [code.colors] are in
 their swatches (golem-driver ADR 0023).
 -}
-codeBlockOf :: PageGeometry -> LoadedFonts -> Sp -> Int -> Unit -> Sp -> Code -> CodeCaption -> SetCode
-codeBlockOf geom fonts measure capacity u lead code caption =
+codeBlockOf :: (SrcSpan -> Text -> Int -> Int) -> PageGeometry -> LoadedFonts -> Sp -> Int -> Unit -> Sp -> Code -> CodeCaption -> SetCode
+codeBlockOf atSource geom fonts measure capacity u lead code caption =
   let lk = uLook u
       size = lkSize lk
       vertical = pgVertical geom
@@ -2502,7 +2534,7 @@ codeBlockOf geom fonts measure capacity u lead code caption =
         [] -> 0
       widthOf = endOf . oneRow
       ls = case codeLines code of
-        [] -> [CodeLine "" (Just 1) Nothing False []]
+        [] -> [CodeLine "" (Just 1) Nothing False [] Nothing]
         xs -> xs
       numbered = fromMaybe (cdLineNumbers cs) (codeNumbers code)
       numberWidth = maximum (0 : [widthOf (T.pack (show n)) | numbered, Just n <- map clNumber ls])
@@ -2542,22 +2574,25 @@ codeBlockOf geom fonts measure capacity u lead code caption =
       lookOf col = lk {lkColor = col}
       -- the size of the paragraph style code, at the code block (golem-cli ADR 0008)
       source = (uSource u, uSpan u)
-      emptyBox w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [] 0 0 source Nothing noLeaf (spanStart (snd source)))
+      blockStart = spanStart (snd source)
+      emptyBox off w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [] 0 0 source Nothing noLeaf off)
       {- pieces at offsets from the padding: (offset, text, width, Latin,
       swatch, leaf); line numbers and wrap marks are of no leaf: artifacts
-      (docs/adr ADR 0183) -}
-      lineOf pieces =
+      (docs/adr ADR 0183); every box of a row is at the source of its row
+      (docs/adr/0218) -}
+      lineOf off pieces =
         let go _ [] = []
             go x ((o, t, w, latin, col, leaf) : rest) =
-              [emptyBox (o - x) | o > x]
-                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf (spanStart (snd source)))]
+              [emptyBox off (o - x) | o > x]
+                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf off)]
                 <> go (o + w) rest
          in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) 0 (0, 0)
       at leaf o col t = [(o + cpOffset p, cpText p, cpWidth p, cpLatin p, col, leaf) | p <- oneRow t]
       rowLeaf j = Leaf (codeRowSite (uIndex u) j) 0
       lineNumberColor = cdLineNumberColor cs
-      rowLine j l n (i, (row, markAt)) =
+      rowLine j l n off (i, (row, markAt)) =
         lineOf
+          off
           ( concat [at noLeaf (numberWidth - widthOf num) lineNumberColor num | i == 0, numbered, Just k <- [clNumber l], let num = T.pack (show k)]
               <> concat [at (rowLeaf j) numberColumn Nothing m | i == 0, Just m <- [diffMark (clDiff l)]]
               <> [(codeStart + cpOffset p, cpText p, cpWidth p, cpLatin p, cpColor p, rowLeaf j) | p <- crPieces row]
@@ -2568,8 +2603,22 @@ codeBlockOf geom fonts measure capacity u lead code caption =
         Just DiffAdded -> Just "+"
         Just DiffRemoved -> Just "-"
         _ -> Nothing
-      fileRows = [lineOf (at (Leaf (codeFileSite (uIndex u)) 0) codeStart Nothing f) | Just f <- [codeFile code]]
-      codeRows = concat [zipWith (curry (rowLine j l (length rs))) [0 :: Int ..] rs | (j, (l, rs)) <- zip [0 ..] (zip ls perLine)]
+      fileRows = [lineOf blockStart (at (Leaf (codeFileSite (uIndex u)) 0) codeStart Nothing f) | Just f <- [codeFile code]]
+      codeRows = concat [zipWith3 (\i a r -> rowLine j l (length rs) a (i, r)) [0 :: Int ..] (rowSources l atoms rs) rs | (j, (l, atoms, rs)) <- zip [0 ..] (zip3 ls atomsOf perLine)]
+      {- where each row of a line starts in the source (docs/adr/0218): the
+      first character of its text, the start of the line when it is empty,
+      the block when the line is not in the source (@listing, Emet) -}
+      rowSources l atoms rs = case clSpan l of
+        Nothing -> map (const blockStart) rs
+        Just lsp
+          | T.null (clText l) -> map (const (spanStart lsp)) rs
+          | otherwise ->
+              let t = clText l
+                  find = atSource lsp t
+                  lastAt = find (T.length t - 1) + BS.length (TE.encodeUtf8 (T.takeEnd 1 t))
+                  offAt i = if i < T.length t then find i else lastAt
+                  ok o = if o < 0 then blockStart else o
+               in map (ok . offAt) (codeRowStarts atoms [r | (r, _) <- rs])
       -- the bands of the highlight (K 15% by default) and of the diff
       bandOf l
         | clHighlight l = Just (fromMaybe (P.Swatch 0 0 0 15) (cdHighlight cs >>= swatchOf))
@@ -2579,7 +2628,7 @@ codeBlockOf geom fonts measure capacity u lead code caption =
       firsts = scanl (+) (length fileRows) (map length perLine)
       bands = [(r0, length rs, sw) | (l, rs, r0) <- zip3 ls perLine firsts, Just sw <- [bandOf l]]
       continued = cdContinued cs
-      continuedLine = if T.null continued then Nothing else Just (lineOf (at noLeaf (codeStart + full - widthOf continued) Nothing continued))
+      continuedLine = if T.null continued then Nothing else Just (lineOf blockStart (at noLeaf (codeStart + full - widthOf continued) Nothing continued))
       g = codeGeometry (pgFontSize geom) (pgLinePitch geom) size pad
       codeStyle = paraStyle st (Just "code")
       background = codeStyle >>= psBackground >>= swatchOf
@@ -2616,6 +2665,30 @@ codeBlockOf geom fonts measure capacity u lead code caption =
           cbErrors = take 1 errs,
           cbNotices = [notice "G07030" (uSpan u) ("コードの行を折り返しました（" <> T.pack (show wrapped) <> " 行）") | wrapped > 0]
         }
+
+{- | The index in the text of a line of code of the first character of
+each of its rows (docs/adr/0218): a row after the first starts at the
+glyph after those of the rows before it, since 'layoutCodeLine' starts a
+row at a glyph only; a row without glyphs after them (the callouts on a
+row of their own) at the end of the text.
+-}
+codeRowStarts :: [CodeAtom] -> [CodeRow] -> [Int]
+codeRowStarts atoms rows = zipWith startOf [0 :: Int ..] (scanl (+) 0 (map glyphs rows))
+  where
+    glyphs = sum . map (T.length . cpText) . crPieces
+    total = sum [atomLength a | a <- atoms]
+    atomLength = \case
+      AGlyph t _ _ _ -> T.length t
+      _ -> 1
+    -- the index of each glyph atom and the glyph characters before it
+    glyphAt = go 0 0 atoms
+      where
+        go _ _ [] = []
+        go i g (a : rest) = case a of
+          AGlyph t _ _ _ -> (g, i) : go (i + T.length t) (g + T.length t) rest
+          _ -> go (i + 1) g rest
+    startOf 0 _ = 0
+    startOf _ g = maybe total snd (listToMaybe [x | x@(g', _) <- glyphAt, g' == g])
 
 -- | Which line (0-based) contains the item at an index.
 lineIndexOfItems :: [Item] -> [Line] -> Int -> Int

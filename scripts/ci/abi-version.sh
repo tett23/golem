@@ -13,17 +13,21 @@
 # error too: when a file moves, change the paths here in the same change.
 # Without a tag v* there is nothing to compare, and the check passes.
 #
-# From v1.0.0 on (docs/adr/0174-compatibility-promises-for-1-0.md), when
-# the release is v1.0.0 or later and VERSION has its X:
+# From v1.0.0 on (docs/adr/0174-compatibility-promises-for-1-0.md), the
+# VERSION X.Y.Z[-PRE] of HEAD is a patch when X and Z are 1 or more, the
+# prerelease part not looked at (docs/adr/0212). A patch keeps the ABI and
+# its version: abiVersion is the one of the release. A patch needs a base,
+# the latest tag HEAD reaches that is not a prerelease, not vVERSION, with
+# the X.Y of VERSION; without one, the check fails. The rule is copied
+# from scripts/release/check-patch.sh, without a file the two share
+# (docs/adr/0212); change both together.
 #
-#   VERSION has its Y too   (a patch) abiVersion is the one of the release
-#   another Y               a new abiVersion needs the heading
-#                           "### ABI のバージョン <new>" in the
-#                           docs/compatibility.md of the release (the
-#                           announcement)
-#
-# A prerelease of 1.0.0 (v1.0.0-rc1) comes before v1.0.0. Another X (a
-# major version) follows the rule of one more per release only.
+# Not a patch, when the release is v1.0.0 or later and VERSION has its X
+# (a minor version, or its prerelease): a new abiVersion needs the heading
+# "### ABI のバージョン <new>" in the docs/compatibility.md of the release
+# (the announcement). A prerelease of 1.0.0 (v1.0.0-rc1) comes before
+# v1.0.0. Another X (a major version) follows the rule of one more per
+# release only.
 #
 # GOLEM_ROOT sets the root of the repository (the tests use it).
 set -u
@@ -125,21 +129,41 @@ since_1() {
   [ "$x" -ge 1 ] || return 1
   [ "$core" != 1.0.0 ] || [ "$v" = "$core" ]
 }
-# xy VERSION: X.Y of X.Y.Z[-PRE]
+# is_patch VERSION: X.Y.Z[-PRE], with or without v, has X and Z of 1 or more
+# (docs/adr/0212)
+is_patch() {
+  core=${1#v}
+  core=${core%%-*}
+  x=${core%%.*}
+  z=${core##*.}
+  case $x$z in '' | *[!0-9]*) return 1 ;; esac
+  [ "$x" -ge 1 ] && [ "$z" -ge 1 ]
+}
+# xy VERSION: X.Y of X.Y.Z[-PRE], with or without v
 xy() {
-  core=${1%%-*}
+  core=${1#v}
+  core=${core%%-*}
   printf '%s' "${core%.*}"
+}
+# patch_base REV VERSION: the latest tag REV reaches, not a prerelease, not
+# vVERSION, with the X.Y of VERSION; fails when there is none
+patch_base() {
+  b=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' --exclude "v${2#v}" "$1" 2>/dev/null) || return 1
+  [ "$(xy "$b")" = "$(xy "$2")" ] || return 1
+  printf '%s\n' "$b"
 }
 
 if since_1 "$TAG"; then
   [ -f VERSION ] || fail "VERSION is missing"
   HEAD_VERSION=$(cat VERSION)
   RELEASE_VERSION=${TAG#v}
-  if [ "${HEAD_VERSION%%.*}" = "${RELEASE_VERSION%%.*}" ]; then
-    if [ "$(xy "$HEAD_VERSION")" = "$(xy "$RELEASE_VERSION")" ]; then
-      [ "$NEW" -eq "$OLD" ] && [ -z "$DIFFERS" ] ||
-        fail "VERSION $HEAD_VERSION is a patch of the release $TAG, and a patch version does not change the ABI (docs/compatibility.md); keep the ABI and its version $OLD"
-    elif [ "$NEW" -ne "$OLD" ]; then
+  if is_patch "$HEAD_VERSION"; then
+    BASE=$(patch_base HEAD "$HEAD_VERSION") ||
+      fail "VERSION $HEAD_VERSION is a patch, but HEAD reaches no release v$(xy "$HEAD_VERSION").N other than v$HEAD_VERSION that is not a prerelease; a patch is checked against one (docs/adr/0212)"
+    [ "$NEW" -eq "$OLD" ] && [ -z "$DIFFERS" ] ||
+      fail "VERSION $HEAD_VERSION is a patch of the release $BASE, and a patch version does not change the ABI (docs/compatibility.md); keep the ABI and its version $OLD of the release $TAG"
+  elif [ "${HEAD_VERSION%%.*}" = "${RELEASE_VERSION%%.*}" ]; then
+    if [ "$NEW" -ne "$OLD" ]; then
       HEADING="### ABI のバージョン $NEW"
       git show "$TAG:docs/compatibility.md" 2>/dev/null | grep -qxF -- "$HEADING" ||
         fail "the ABI version is $NEW, but the docs/compatibility.md of the release $TAG does not announce it (no heading \"$HEADING\"); a minor version changes the ABI only after a release announced it"

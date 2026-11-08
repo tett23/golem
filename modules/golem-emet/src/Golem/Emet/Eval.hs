@@ -5,8 +5,11 @@ not depend on the stack of the runtime: a call in a tail position
 replaces the frame of its caller, and only the others count towards the
 limit of depth (E04101). Every reduction counts towards the limit of
 steps (E04100), and so does the length of every string or list a
-built-in operation makes. Both limits are counted by the meaning of the
-program alone, so where evaluation stops does not depend on the machine.
+built-in operation makes. That length is found, as an Integer, before
+the value is made, and a value longer than the steps left is not made
+(docs/adr/0223); the steps are an Int64 on every target. Both limits are
+counted by the meaning of the program alone, so where evaluation stops
+does not depend on the machine.
 
 The operators of the three predicates of the checker (numbers, types that
 compare, types that join) are called through a table of their
@@ -33,13 +36,14 @@ module Golem.Emet.Eval
 where
 
 import Control.Monad.ST (ST, runST)
+import Data.Int (Int64)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Emet.Core
-import Golem.Emet.Prim (PrimValue (..), runPrim)
+import Golem.Emet.Prim (PrimStop (..), PrimValue (..), runPrim)
 import Golem.Emet.Syntax (BinOp (..), Loc (..), Name, binOpText)
 import Golem.Eval.Expr (binaryAt)
 import Golem.Eval.Expr qualified as E
@@ -65,7 +69,7 @@ type Globals = Map GKey Global
 {- | The most steps of one call from .gm (docs/adr/0160): about three times
 the largest work measured, a tail recursion of ten million calls.
 -}
-stepLimit :: Int
+stepLimit :: Int64
 stepLimit = 100000000
 
 -- | The most frames of calls that are not tail calls.
@@ -127,7 +131,7 @@ data Frame s
     KGuard !(Env s) !CExpr ![(Maybe CExpr, CExpr)] !(Sel s)
 
 -- | What applying a function does: the next control and stack, the steps and the change of depth.
-data Step s = Step !(Ctl s) ![Frame s] !Int !Int
+data Step s = Step !(Ctl s) ![Frame s] !Int64 !Int
 
 {- | The handlers of the requirements (docs/adr/0161), which the driver
 gives: @file@ returns the text of a file by its path from the root, read
@@ -150,17 +154,17 @@ evalCall :: Handlers -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Re
 evalCall hs globals files at key args = fst (evalCallCounted hs globals files at key args)
 
 -- | 'evalCall' with the steps the call took, to measure the work of functions against 'stepLimit'.
-evalCallCounted :: Handlers -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> (Either Diagnostic Result, Int)
+evalCallCounted :: Handlers -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> (Either Diagnostic Result, Int64)
 evalCallCounted = evalCallLimited stepLimit
 
 {- | 'evalCallCounted' with another limit of steps: that of a filter grows
 with the document (docs/adr/0162).
 -}
-evalCallLimited :: Int -> Handlers -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> (Either Diagnostic Result, Int)
+evalCallLimited :: Int64 -> Handlers -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> (Either Diagnostic Result, Int64)
 evalCallLimited limit hs globals files at key args = case Map.lookup key globals of
   Nothing -> (Left (diagnostic "E02100" Error at ("未定義の関数 " <> snd key <> " です")), 0)
   Just g -> runST $ do
-    Step c k n d <- apply (Loc 0 0) (globalValue g) (map fromResult args) []
+    Step c k n d <- apply 0 (Loc 0 0) (globalValue g) (map fromResult args) []
     (r, used) <- loop c k n d
     pure (toResult <$> r, used)
   where
@@ -169,15 +173,23 @@ evalCallLimited limit hs globals files at key args = case Map.lookup key globals
     spanAt :: FilePath -> Loc -> SrcSpan
     spanAt path (Loc s e) = mkSpan (Map.findWithDefault (spanFile at) path files) s (max s e)
 
-    loop :: Ctl s -> [Frame s] -> Int -> Int -> ST s (Either Diagnostic (V s), Int)
+    loop :: Ctl s -> [Frame s] -> Int64 -> Int -> ST s (Either Diagnostic (V s), Int64)
     loop ctl k !steps !depth
-      | steps > limit = stop steps (diagnostic "E04100" Error at ("関数の評価の手数が上限（" <> T.pack (show limit) <> " 手）を超えました: " <> current k))
+      | steps > limit = stop (limit + 1) (overLimit k)
       | depth > depthLimit = stop steps (diagnostic "E04101" Error at ("末尾でない呼び出しの深さが上限（" <> T.pack (show depthLimit) <> "）を超えました: " <> current k))
       | otherwise = case ctl of
           Eval env e -> evalE env e k steps depth
           Ret v -> ret v k steps depth
           Fail d -> stop steps d
           Choose sel -> select sel k steps depth
+
+    -- E04100, whether a reduction or the size of a value is over the limit (S6)
+    overLimit k = diagnostic "E04100" Error at ("関数の評価の手数が上限（" <> T.pack (show limit) <> " 手）を超えました: " <> current k)
+
+    {- the steps left before one more step: a value longer than this is not
+    made (docs/adr/0223), and the steps of the call are then limit + 1 (S5) -}
+    roomAt :: Int64 -> Integer
+    roomAt steps = toInteger limit - toInteger steps - 1
 
     current k = case [m | KCall m <- k] of
       m : _ -> metaText m
@@ -202,7 +214,7 @@ evalCallLimited limit hs globals files at key args = case Map.lookup key globals
       CGlobal l g -> case Map.lookup g globals of
         -- a function of no arguments is called where it is named
         Just gl@(GFun f) | cfArity f == 0 -> do
-          Step c k' n d <- apply l (globalValue gl) [] k
+          Step c k' n d <- apply steps l (globalValue gl) [] k
           loop c k' (steps + n) (depth + d)
         Just gl -> loop (Ret (globalValue gl)) k steps depth
         Nothing -> stop steps (diagnostic "E02100" Error at ("未定義の関数 " <> snd g <> " です"))
@@ -251,7 +263,7 @@ evalCallLimited limit hs globals files at key args = case Map.lookup key globals
         KUpdate _ _ ref -> writeSTRef ref (Done v) >> loop (Ret v) rest steps depth
         KArgs l _ done [] -> case reverse (v : done) of
           f : as -> do
-            Step c k' n d <- apply l f as rest
+            Step c k' n d <- apply steps l f as rest
             loop c k' (steps + n) (depth + d)
           [] -> loop (Ret v) rest steps depth
         KArgs l env done (x : xs) -> loop (Eval env x) (KArgs l env (v : done) xs : rest) steps depth
@@ -264,9 +276,15 @@ evalCallLimited limit hs globals files at key args = case Map.lookup key globals
           (OpOr, VP (VBool True)) -> loop (Ret v) rest (steps + 1) depth
           _ -> loop (Eval env b) rest (steps + 1) depth
         KBinL l op env b -> loop (Eval env b) (KBinR l op v : rest) steps depth
-        KBinR l op a -> case binop op a v of
-          Right (r, size) -> loop (Ret r) rest (steps + 1 + size) depth
-          Left d -> loop (fault rest l d) rest steps depth
+        KBinR l op a
+          -- the size first: a value longer than the steps left is not made (docs/adr/0223)
+          -- (a size of 0 is caught by the check of the next step, as a reduction)
+          | size > 0 && size > roomAt steps -> loop (Fail (overLimit rest)) rest (limit + 1) depth
+          | otherwise -> case binop op a v of
+              Right r -> loop (Ret r) rest (steps + 1 + fromInteger size) depth
+              Left d -> loop (fault rest l d) rest steps depth
+          where
+            size = binopSize op a v
         KNeg l -> case v of
           VP x | Just (t, q) <- numberOf x -> loop (Ret (VP (mkNumber (max TInt t) (negate q)))) rest (steps + 1) depth
           _ -> loop (fault rest l (diagnostic "G02001" Error at "- は数にだけ使えます")) rest steps depth
@@ -275,7 +293,7 @@ evalCallLimited limit hs globals files at key args = case Map.lookup key globals
           _ -> loop (Eval env b) rest (steps + 1) depth
         KCase env alts -> select (Sel env [CEq [p] r | CAlt p r <- alts] [v]) rest (steps + 1) depth
         KMore l more -> do
-          Step c k' n d <- apply l v more rest
+          Step c k' n d <- apply steps l v more rest
           loop c k' (steps + n) (depth + d)
         KGuard env body guards sel -> case v of
           VP (VBool True) -> loop (Eval env body) rest steps depth
@@ -298,8 +316,8 @@ evalCallLimited limit hs globals files at key args = case Map.lookup key globals
       (Just c, body) : more -> loop (Eval env c) (KGuard env body more sel : k) steps depth
 
     -- applying a function value to arguments
-    apply :: Loc -> V s -> [V s] -> [Frame s] -> ST s (Step s)
-    apply l f given k = case f of
+    apply :: Int64 -> Loc -> V s -> [V s] -> [Frame s] -> ST s (Step s)
+    apply steps l f given k = case f of
       VF fn held -> do
         let all' = held <> given
             n = arity fn
@@ -308,7 +326,7 @@ evalCallLimited limit hs globals files at key args = case Map.lookup key globals
           else do
             let (now, more) = splitAt n all'
                 k' = if null more then k else KMore l more : k
-            enter l fn now k'
+            enter steps l fn now k'
       _ -> pure (Step (Ret f) k 0 0)
 
     arity = \case
@@ -316,7 +334,7 @@ evalCallLimited limit hs globals files at key args = case Map.lookup key globals
       FnPrim _ n -> n
       FnCon _ n -> n
 
-    enter l fn vs k = case fn of
+    enter steps l fn vs k = case fn of
       FnCon c _ -> pure (Step (Ret (VC c vs)) k 1 0)
       -- the text the driver read (docs/adr/0161): one step, as it makes no new string
       FnPrim "File.read" _ -> pure $ case vs of
@@ -324,9 +342,11 @@ evalCallLimited limit hs globals files at key args = case Map.lookup key globals
           Just t -> Step (Ret (VP (VString t))) k 1 0
           Nothing -> Step (Fail (diagnostic "E05104" Error at ("manifest.toml の [functions.requires] の file にないファイルです: " <> p))) k 1 0
         _ -> Step (fault k l (diagnostic "G02007" Error at "File.read の引数が不正です")) k 1 0
-      FnPrim name _ -> pure $ case runPrim name (map toPrim vs) of
+      FnPrim name _ -> pure $ case runPrim (roomAt steps) name (map toPrim vs) of
         Right (pv, size) -> Step (Ret (fromPrim pv)) k (1 + size) 0
-        Left d -> Step (fault k l d) k 1 0
+        Left (PrimFailed d) -> Step (fault k l d) k 1 0
+        -- not made: the call stops at limit + 1 steps
+        Left PrimOverLimit -> Step (Fail (overLimit k)) k (limit + 1 - steps) 0
       FnClo c -> do
         let meta = cloMeta c
             (k', d) = case k of
@@ -348,12 +368,12 @@ evalCallLimited limit hs globals files at key args = case Map.lookup key globals
 
     binop op a b = case op of
       OpCons -> case b of
-        VL xs -> Right (VL (a : xs), 1)
+        VL xs -> Right (VL (a : xs))
         _ -> bad
       OpAppend -> maybe bad Right (instConcat (instancesOf a) >>= \f -> f a b)
-      _ | Just test <- cmpOf op -> maybe bad (\c -> Right (VP (VBool (test (c a b))), 0)) (instOrd (instancesOf a))
+      _ | Just test <- cmpOf op -> maybe bad (\c -> Right (VP (VBool (test (c a b))))) (instOrd (instancesOf a))
       _ -> case (a, b, golemOp op) of
-        (VP x, VP y, Just o) | Just arith <- instNum (instancesOf a) -> (\r -> (VP r, 0)) <$> arith o x y
+        (VP x, VP y, Just o) | Just arith <- instNum (instancesOf a) -> VP <$> arith o x y
         _ -> bad
       where
         bad = Left (diagnostic "G02001" Error at (binOpText op <> " を使えない値です"))
@@ -369,13 +389,24 @@ evalCallLimited limit hs globals files at key args = case Map.lookup key globals
       _ -> Instances Nothing Nothing Nothing
 
 {- | The implementations of the operators for one type: arithmetic,
-comparison, and joining with the size of what it makes.
+comparison, and joining.
 -}
 data Instances s = Instances
   { instNum :: !(Maybe (E.BinaryOp -> Value -> Value -> Either Diagnostic Value)),
     instOrd :: !(Maybe (V s -> V s -> Ordering)),
-    instConcat :: !(Maybe (V s -> V s -> Maybe (V s, Int)))
+    instConcat :: !(Maybe (V s -> V s -> Maybe (V s)))
   }
+
+{- | The size of what an operator makes, found before it is made
+(docs/adr/0223): 1 for the cell of @:@, the length of what @++@ makes,
+nothing for the others.
+-}
+binopSize :: BinOp -> V s -> V s -> Integer
+binopSize op a b = case (op, a, b) of
+  (OpCons, _, _) -> 1
+  (OpAppend, VP (VString x), VP (VString y)) -> toInteger (T.length x) + toInteger (T.length y)
+  (OpAppend, VL x, VL y) -> toInteger (length x) + toInteger (length y)
+  _ -> 0
 
 -- | Numbers by their values, whatever their types.
 numOrder :: V s -> V s -> Ordering
@@ -395,12 +426,12 @@ charOrder :: V s -> V s -> Ordering
 charOrder (VCh a) (VCh b) = compare a b
 charOrder _ _ = EQ
 
-stringJoin :: V s -> V s -> Maybe (V s, Int)
-stringJoin (VP (VString x)) (VP (VString y)) = let r = x <> y in Just (VP (VString r), T.length r)
+stringJoin :: V s -> V s -> Maybe (V s)
+stringJoin (VP (VString x)) (VP (VString y)) = Just (VP (VString (x <> y)))
 stringJoin _ _ = Nothing
 
-listJoin :: V s -> V s -> Maybe (V s, Int)
-listJoin (VL x) (VL y) = Just (VL (x <> y), length x + length y)
+listJoin :: V s -> V s -> Maybe (V s)
+listJoin (VL x) (VL y) = Just (VL (x <> y))
 listJoin _ _ = Nothing
 
 cmpOf :: BinOp -> Maybe (Ordering -> Bool)
@@ -456,7 +487,8 @@ toPrim = \case
   VP v -> PV v
   VCh c -> PCh c
   VC c vs -> PC c (map toPrim vs)
-  VL vs -> PL (map toPrim vs)
+  -- the length of the list itself, so that a size does not convert its elements
+  VL vs -> PL (toInteger (length vs)) (map toPrim vs)
   VT vs -> PT (map toPrim vs)
   VF {} -> PFun
 
@@ -465,7 +497,7 @@ fromPrim = \case
   PV v -> VP v
   PCh c -> VCh c
   PC c vs -> VC c (map fromPrim vs)
-  PL vs -> VL (map fromPrim vs)
+  PL _ vs -> VL (map fromPrim vs)
   PT vs -> VT (map fromPrim vs)
   PFun -> VP VNil
 

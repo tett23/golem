@@ -100,7 +100,7 @@ tests =
             render "en" "{n}" [heading 0 noHeadingAttrs "A", figure 5 "Cap"] @?= ["1 A", "", "［図1-1 Cap］"]
             render "ja" "{n}" [heading 0 noHeadingAttrs "A", figure 5 "キャプション"] @?= ["1\x3000\&A", "", "［図1-1\x3000キャプション］"],
           testCase "the caption of a code block (golem-driver ADR 0042)" $ do
-            let listing s cap = Block (sp s) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp s) cap]) False [CodeLine "x" Nothing Nothing False []] False))
+            let listing s cap = Block (sp s) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp s) cap]) False [CodeLine "x" Nothing Nothing False [] Nothing] False))
             render "en" "{n}" [heading 0 noHeadingAttrs "A", listing 5 "設定の読み込み"] @?= ["1 A", "", "リスト1-1 設定の読み込み", "x"]
             render "ja" "{n}" [heading 0 noHeadingAttrs "A", listing 5 "設定の読み込み"] @?= ["1\x3000\&A", "", "リスト1-1\x3000設定の読み込み", "x"]
         ],
@@ -114,17 +114,17 @@ tests =
                   codeCaption = Just [Text sp0 "設定の読み込み"],
                   codeDiff = True,
                   codeLines =
-                    [ CodeLine "main = do" (Just 1) (Just DiffContext) True [],
-                      CodeLine "  old" Nothing (Just DiffRemoved) False [],
-                      CodeLine "  new" (Just 2) (Just DiffAdded) False [1, 2],
-                      CodeLine "" (Just 3) (Just DiffContext) False []
+                    [ CodeLine "main = do" (Just 1) (Just DiffContext) True [] Nothing,
+                      CodeLine "  old" Nothing (Just DiffRemoved) False [] Nothing,
+                      CodeLine "  new" (Just 2) (Just DiffAdded) False [1, 2] Nothing,
+                      CodeLine "" (Just 3) (Just DiffContext) False [] Nothing
                     ],
                   codeNoNumber = False
                 }
         renderBlocks Map.empty [] (Map.fromList [(0, "リスト1-1")]) [CodeBlock code]
           @?= [("a.txt", "リスト1-1　設定の読み込み\nsrc/Main.hs\n main = do\n-  old\n+  new ① ②\n \n")],
       testCase "a code block with none of them is its text (golem-driver ADR 0023)" $
-        renderBlocks Map.empty [] Map.empty [CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a <1>" (Just 1) Nothing False [], CodeLine "b" (Just 2) Nothing False []] False)]
+        renderBlocks Map.empty [] Map.empty [CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a <1>" (Just 1) Nothing False [] Nothing, CodeLine "b" (Just 2) Nothing False [] Nothing] False)]
           @?= [("a.txt", "a <1>\nb\n")],
       textOutputTests
     ]

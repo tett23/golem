@@ -1,6 +1,6 @@
 # ADR 0174: 1.0.0 から互換を守る範囲と、廃止の手順
 
-ステータス: 採択
+ステータス: 採択→patch の検査の判定と比べ方は [ADR 0212](0212-patch-release-check-on-the-inputs-of-the-previous-release.md)
 
 ## 文脈
 

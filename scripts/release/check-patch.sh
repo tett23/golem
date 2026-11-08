@@ -1,31 +1,31 @@
 #!/bin/sh
-# Checks that a patch release does not change the output
-# (docs/adr/0174-compatibility-promises-for-1-0.md, docs/compatibility.md).
+# Decides whether a release is a patch, and the release a patch is checked
+# against (docs/adr/0174-compatibility-promises-for-1-0.md,
+# docs/adr/0212-patch-release-check-on-the-inputs-of-the-previous-release.md,
+# docs/compatibility.md).
 #
 #   check-patch.sh TAG
 #
-# The release before TAG is the latest tag v* that the commit of TAG
-# reaches, TAG left out. When it is v1.0.0 or later (a prerelease of 1.0.0
-# comes before it) and TAG has its X and Y (TAG is a patch of it), the
-# check compares the two commits:
+# TAG vX.Y.Z[-PRE] is a patch when X and Z are 1 or more; the prerelease
+# part is not looked at (v1.0.1-rc1 is a patch). The base of a patch is the
+# latest tag that the commit of TAG reaches, not a prerelease, other than
+# TAG, with the X.Y of TAG. For a patch with a base, the base is the one
+# line of stdout; the patch job of the release workflow builds the inputs
+# of the base with the golem of TAG and compares the result with the
+# references of the base (scripts/release/check-patch-output.sh).
 #
-#   - the references of the visual regression test, scripts/visual/pages/,
-#     are the same (docs/adr/0094);
-#   - when both have the list of output hashes,
-#     scripts/determinism/hashes.txt (docs/adr/0173), the lists are the
-#     same but the lines of PDF files: the Producer and the instance ID of
-#     a PDF hold the version of Golem.
+# Not a patch: one line on stdout says why, and nothing is compared.
+# A patch without a base (no v1.0.0 before v1.0.1) is a mistake of the
+# tags: it is said on stderr, and the exit code is 1. A missing TAG is exit
+# code 2.
 #
-# Otherwise the check passes without comparing. What differs goes to
-# stderr, and the exit code is 1; a missing TAG is exit code 2.
+# The rule is copied in scripts/ci/abi-version.sh, without a file the two
+# share (docs/adr/0212); change both together.
 #
 # GOLEM_ROOT sets the root of the repository (the tests use it).
 set -u
 ROOT=${GOLEM_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}
 cd "$ROOT" || exit 2
-
-PAGES=scripts/visual/pages
-HASHES=scripts/determinism/hashes.txt
 
 [ $# -eq 1 ] || {
   echo "usage: check-patch.sh TAG" >&2
@@ -37,55 +37,36 @@ git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || {
   exit 2
 }
 
-if ! PREV=$(git describe --tags --abbrev=0 --match 'v*' --exclude "$TAG" "$TAG" 2>/dev/null); then
-  echo "check-patch: no release before $TAG; the output is not compared"
-  exit 0
-fi
-
-# since_1 TAG: the tag vX.Y.Z[-PRE] is v1.0.0 or later
-since_1() {
-  v=${1#v}
-  core=${v%%-*}
+# is_patch VERSION: X.Y.Z[-PRE], with or without v, has X and Z of 1 or more
+# (docs/adr/0212)
+is_patch() {
+  core=${1#v}
+  core=${core%%-*}
   x=${core%%.*}
-  case $x in '' | *[!0-9]*) return 1 ;; esac
-  [ "$x" -ge 1 ] || return 1
-  [ "$core" != 1.0.0 ] || [ "$v" = "$core" ]
+  z=${core##*.}
+  case $x$z in '' | *[!0-9]*) return 1 ;; esac
+  [ "$x" -ge 1 ] && [ "$z" -ge 1 ]
 }
-# xy TAG: X.Y of vX.Y.Z[-PRE]
+# xy VERSION: X.Y of X.Y.Z[-PRE], with or without v
 xy() {
   core=${1#v}
   core=${core%%-*}
   printf '%s' "${core%.*}"
 }
+# patch_base REV VERSION: the latest tag REV reaches, not a prerelease, not
+# vVERSION, with the X.Y of VERSION; fails when there is none
+patch_base() {
+  b=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' --exclude "v${2#v}" "$1" 2>/dev/null) || return 1
+  [ "$(xy "$b")" = "$(xy "$2")" ] || return 1
+  printf '%s\n' "$b"
+}
 
-if ! since_1 "$PREV"; then
-  echo "check-patch: the release $PREV comes before v1.0.0; the output is not compared"
+if ! is_patch "$TAG"; then
+  echo "check-patch: $TAG is not a patch (X or Z is 0); the output is not compared"
   exit 0
 fi
-if [ "$(xy "$TAG")" != "$(xy "$PREV")" ]; then
-  echo "check-patch: $TAG is not a patch of $PREV; the output is not compared"
-  exit 0
+if ! BASE=$(patch_base "$TAG" "$TAG"); then
+  printf 'check-patch: %s is a patch, but it reaches no release v%s.N other than itself that is not a prerelease; a patch is compared with one, so tag it first (docs/adr/0212)\n' "$TAG" "$(xy "$TAG")" >&2
+  exit 1
 fi
-
-STATUS=0
-CHANGED=$(git diff --name-only "$PREV" "$TAG" -- "$PAGES") || exit 2
-if [ -n "$CHANGED" ]; then
-  printf 'check-patch: %s is a patch of %s, and a patch version does not change the output; these pages of the visual regression test differ:\n' "$TAG" "$PREV" >&2
-  printf '%s\n' "$CHANGED" | sed 's/^/  /' >&2
-  STATUS=1
-fi
-
-T=$(mktemp -d)
-trap 'rm -rf "${T:?}"' EXIT
-if git cat-file -e "$PREV:$HASHES" 2>/dev/null && git cat-file -e "$TAG:$HASHES" 2>/dev/null; then
-  git show "$PREV:$HASHES" | grep -v '\.pdf$' >"$T/old"
-  git show "$TAG:$HASHES" | grep -v '\.pdf$' >"$T/new"
-  if ! cmp -s "$T/old" "$T/new"; then
-    printf 'check-patch: %s is a patch of %s, and a patch version does not change the output; these lines of %s differ (- %s, + %s):\n' "$TAG" "$PREV" "$HASHES" "$PREV" "$TAG" >&2
-    diff "$T/old" "$T/new" | grep '^[<>]' | sed 's/^</  -/; s/^>/  +/' >&2
-    STATUS=1
-  fi
-fi
-
-[ "$STATUS" -ne 0 ] || echo "check-patch: $TAG is a patch of $PREV with the same output"
-exit "$STATUS"
+printf '%s\n' "$BASE"

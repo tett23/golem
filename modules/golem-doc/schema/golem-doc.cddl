@@ -38,7 +38,7 @@ page-control = [0]                                 ; no page break
 alignment = 0..3                                   ; default, left, center, right
 figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: tstr / null, caption: [* block], page: uint64 / null, rotate: bool, nonumber: bool] ; page: golem-pdf ADR 0008; rotate: golem-driver ADR 0034; nonumber: docs/adr/0200
 code = [lang: tstr / null, numbers: bool / null, file: tstr / null, caption: inlines / null, diff: bool, lines: [* code-line], nonumber: bool] ; nonumber: docs/adr/0200
-code-line = [text: tstr, number: uint64 / null, diff-mark: (0..2) / null, highlight: bool, callouts: [* 1..50]] ; added, removed, context
+code-line = [text: tstr, number: uint64 / null, diff-mark: (0..2) / null, highlight: bool, callouts: [* 1..50], span: span / null] ; added, removed, context; span: docs/adr/0218
 channel = [0, depth: uint64] / [1] / [2]           ; toc, index, bibliography
         / [3, name: tstr, style: tstr / null]      ; a channel of a plugin (golem-doc ADR 0007)
 
