@@ -1,6 +1,6 @@
 # ADR 0019: アキの量を文字のクラスの組ごとに設定し、原稿にアキを入れる
 
-ステータス: 採択→`[aki]` の行分割の項目の形は [golem-layout ADR 0012](../golem-layout/adr/0012-aki-glue-marker.md)、傍注の本文のアキ量のセットは、本文の食い違う二つの記述のうち「傍注の本文は `sidenote` の段落スタイルのセットで組む」を採る、既定のセットの始め括弧類どうし、終わり括弧類と中点類、中点類と始め括弧類の空きは [golem-layout ADR 0039](../golem-layout/adr/0039-set-consecutive-opening-brackets-and-brackets-beside-middle-dots-as-jlreq.md)
+ステータス: 採択→`[aki]` の行分割の項目の形は [golem-layout ADR 0012](../golem-layout/adr/0012-aki-glue-marker.md)、傍注の本文のアキ量のセットは、本文の食い違う二つの記述のうち「傍注の本文は `sidenote` の段落スタイルのセットで組む」を採る、既定のセットの始め括弧類どうし、終わり括弧類と中点類、中点類と始め括弧類の空きは [golem-layout ADR 0039](../golem-layout/adr/0039-set-consecutive-opening-brackets-and-brackets-beside-middle-dots-as-jlreq.md)、既定のセットの中点類の後ろの終わり括弧類と句読点の空きは [golem-layout ADR 0040](../golem-layout/adr/0040-put-a-quarter-em-after-a-middle-dot-before-closing-brackets-and-full-stops.md)
 
 ## 文脈
 
