@@ -10,11 +10,20 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Emet
+import Golem.Emet.Gm (filterFuel)
+import Golem.Emet.Prim (PrimStop (..), PrimValue (..), primList, runPrim)
 import Golem.Emet.Syntax
+import Golem.Eval.Value (Value (..))
 import Golem.Syntax
+import Hedgehog (Gen, annotate, forAll, property, success, withTests, (===))
+import Hedgehog qualified
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
 import Support
+import System.Mem (getAllocationCounter, setAllocationCounter)
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Hedgehog (testProperty)
 
 languageTests :: TestTree
 languageTests =
@@ -514,8 +523,180 @@ limitTests =
         diagMessage d @?= "関数の評価の手数が上限（" <> T.pack (show stepLimit) <> " 手）を超えました: spin（main.emet:1）",
       testCase "doubling a string is E04100 before the memory runs out" $ do
         d <- call "grow :: String -> String\ngrow s = grow (s ++ s)\n" "grow" [str "ab"] >>= failure
-        diagCode d @?= DiagnosticCode "E04100"
+        diagCode d @?= DiagnosticCode "E04100",
+      sizeTests
     ]
+
+{- | The sizes of what the built-in functions and @++@ make, found before
+they make it (docs/adr/0223). Each test that refuses a value bounds the
+allocation of its thread by 64 MiB; the time-out of the watchdog and of
+'within' bounds the time.
+-}
+sizeTests :: TestTree
+sizeTests =
+  testGroup
+    "the sizes before the values (docs/adr/0223)"
+    [ testProperty "S1: the size of every built-in function is the length of what it makes" $ withTests 2000 $ property $ do
+        (name, args) <- forAll primCall
+        case runPrim (2 ^ (80 :: Int)) name args of
+          Right (v, n) -> toInteger n === lengthOf v
+          Left _ -> failure_ name
+        -- and one step less is refused
+        case runPrim (toInteger (either (const 0) snd (runPrim (2 ^ (80 :: Int)) name args)) - 1) name args of
+          Left PrimOverLimit -> success
+          _ -> failure_ name,
+      testCase "S2, S3: a call of List.range takes exactly the steps it is counted" $
+        forM_ [0, 1, 2, 10, 50] $ \n -> limits rangeSrc [int n],
+      testCase "S2, S3: String.replace, String.join, List.concat and ++ take exactly the steps they are counted" $ do
+        -- from empty, no occurrence, to shorter than from, longer
+        forM_ [("", "x", "abc"), ("q", "xy", "abc"), ("ab", "x", "ababab"), ("a", "xyz", "banana")] $ \(a, b, c) ->
+          limits replaceSrc [str a, str b, str c]
+        -- no element, one, an empty separator, a long one
+        forM_ [("", []), (",", ["a"]), ("", ["ab", "c"]), ("-----", ["ab", "c", "d"])] $ \(sep, xs) ->
+          limits joinSrc [str sep, RList (map str xs)]
+        forM_ [[], [[]], [[1], [], [2, 3]]] $ \xss -> limits concatSrc [RList [RList (map int xs) | xs <- xss]]
+        forM_ [("", ""), ("", "ab"), ("abc", "de")] $ \(a, b) -> limits appendSrc [str a, str b]
+        forM_ [([], []), ([1], [2, 3])] $ \(a, b) -> limits appendListSrc [RList (map int a), RList (map int b)],
+      testCase "S3, S4: List.range of 2^63, 2^64 and 2^4097 elements is E04100, given to List.take 3 or to List.length" $
+        forM_ [2 ^ (63 :: Int), 2 ^ (64 :: Int), 2 ^ (4097 :: Int)] $ \n ->
+          forM_ [takeSrc, lengthSrc] $ \src -> do
+            (r, bytes) <- allocated (call src "f" [int n])
+            fmap diagCode (either Just (const Nothing) r) @?= Just (DiagnosticCode "E04100")
+            assertBool ("allocated " <> show bytes) (bytes <= 64 * 2 ^ (20 :: Int)),
+      testCase "S3, S4: List.range of 2^31, 2^32 and 2^63 - 1 elements is E04100" $
+        forM_ [2 ^ (31 :: Int), 2 ^ (32 :: Int), 2 ^ (63 :: Int) - 1] $ \n -> do
+          (r, bytes) <- allocated (call takeSrc "f" [int n])
+          fmap diagCode (either Just (const Nothing) r) @?= Just (DiagnosticCode "E04100")
+          assertBool ("allocated " <> show bytes) (bytes <= 64 * 2 ^ (20 :: Int)),
+      -- the remaining steps exactly and one more are the tests of S2 and S3
+      -- above, with small limits: a range that fills the default limit is
+      -- 10^8 values
+      testCase "S4: a limit of the largest Int64 - 10 and List.range of 2^63 - 1 elements is E04100" $ do
+        (r, bytes) <- allocated (limited (maxBound - 10) takeSrc [int (2 ^ (63 :: Int) - 1)])
+        fmap diagCode (either Just (const Nothing) r) @?= Just (DiagnosticCode "E04100")
+        assertBool ("allocated " <> show bytes) (bytes <= 64 * 2 ^ (20 :: Int)),
+      testCase "S3: String.replace of 400,000,000 characters is E04100 (the security audit of 2026-11-06, E-02)" $ do
+        (r, bytes) <- allocated (call replaceSrc "f" [str "a", str (T.replicate 20000 "b"), str (T.replicate 20000 "a")])
+        fmap diagCode (either Just (const Nothing) r) @?= Just (DiagnosticCode "E04100")
+        assertBool ("allocated " <> show bytes) (bytes <= 64 * 2 ^ (20 :: Int)),
+      testCase "S3: String.join and List.concat of a value shared 20,000 times are E04100" $ do
+        {- the 20,000 calls of rep allocate some 50 MB themselves, the same
+        for a value of one element: the bound is 64 MiB over that -}
+        _ <- allocated (call repSrc "joined" [int 0, str "x"])
+        (_, jBase) <- allocated (call repSrc "joined" [int 20000, str "x"])
+        (j, jb) <- allocated (call repSrc "joined" [int 20000, str (T.replicate 20000 "x")])
+        fmap diagCode (either Just (const Nothing) j) @?= Just (DiagnosticCode "E04100")
+        assertBool ("allocated " <> show jb <> ", for one character " <> show jBase) (jb <= jBase + 64 * 2 ^ (20 :: Int))
+        (_, cBase) <- allocated (call repSrc "concatenated" [int 20000, RList [int 1]])
+        (c, cb) <- allocated (call repSrc "concatenated" [int 20000, RList (replicate 20000 (int 1))])
+        fmap diagCode (either Just (const Nothing) c) @?= Just (DiagnosticCode "E04100")
+        assertBool ("allocated " <> show cb <> ", for one element " <> show cBase) (cb <= cBase + 64 * 2 ^ (20 :: Int))
+        -- ten times is no error
+        small <- call repSrc "joined" [int 10, str (T.replicate 20000 "x")]
+        case small of
+          Right (RPrim (VString t)) -> T.length t @?= 200000
+          other -> assertFailure (show other),
+      testCase "S5: a call stopped by E04100 took the limit + 1 steps, by a reduction or by a size" $ do
+        (spin, spun) <- stepsOf "spin :: Nat -> Nat\nspin n = spin (n + 1)\n" "spin" [nat 0]
+        fmap diagCode (either Just (const Nothing) spin) @?= Just (DiagnosticCode "E04100")
+        spun @?= stepLimit + 1
+        (range, ranged) <- stepsOf takeSrc "f" [int (2 ^ (64 :: Int))]
+        fmap diagCode (either Just (const Nothing) range) @?= Just (DiagnosticCode "E04100")
+        ranged @?= stepLimit + 1,
+      testCase "S6: E04100 of a size is at the call, with the name and the line of the function, the same twice" $ do
+        a <- call takeSrc "f" [int (2 ^ (64 :: Int))]
+        b <- call takeSrc "f" [int (2 ^ (64 :: Int))]
+        a @?= b
+        d <- failure a
+        diagCode d @?= DiagnosticCode "E04100"
+        diagSpan d @?= callSpan
+        diagMessage d @?= "関数の評価の手数が上限（" <> T.pack (show stepLimit) <> " 手）を超えました: f（main.emet:1）",
+      testCase "S6: the limit of a filter is that of a command and 10000 steps a byte, up to the largest Int64" $ do
+        filterFuel 0 @?= stepLimit
+        filterFuel 204748 @?= 2147480000
+        filterFuel 204749 @?= 2147490000
+        filterFuel maxBound @?= maxBound
+    ]
+  where
+    failure_ name = annotate (T.unpack name) >> Hedgehog.failure
+    rangeSrc = "f :: Int -> List Int\nf n = List.range 1 n\n"
+    takeSrc = "f :: Int -> List Int\nf n = List.take 3 (List.range 1 n)\n"
+    lengthSrc = "f :: Int -> Nat\nf n = List.length (List.range 1 n)\n"
+    replaceSrc = "f :: String -> String -> String -> String\nf a b c = String.replace a b c\n"
+    joinSrc = "f :: String -> List String -> String\nf sep xs = String.join sep xs\n"
+    concatSrc = "f :: List (List Int) -> List Int\nf xss = List.concat xss\n"
+    appendSrc = "f :: String -> String -> String\nf a b = a ++ b\n"
+    appendListSrc = "f :: List Int -> List Int -> List Int\nf a b = a ++ b\n"
+    -- the functions of 「確かめたこと」 of the ADR
+    repSrc =
+      T.unlines
+        [ "rep :: Int -> String -> List String -> List String",
+          "rep 0 s acc = acc",
+          "rep n s acc = rep (n - 1) s (s : acc)",
+          "repl :: Int -> List Int -> List (List Int) -> List (List Int)",
+          "repl 0 s acc = acc",
+          "repl n s acc = repl (n - 1) s (s : acc)",
+          "joined :: Int -> String -> String",
+          "joined n x = String.join \"\" (rep n x [])",
+          "concatenated :: Int -> List Int -> Nat",
+          "concatenated n xs = List.length (List.concat (repl n xs []))"
+        ]
+    -- the call succeeds with the limit of the steps it took, and is E04100 with one less
+    limits src args = do
+      (r, c) <- stepsOf src "f" args
+      fmap (const ()) r @?= Right ()
+      atC <- limited c src args
+      atC @?= r
+      below <- limited (c - 1) src args
+      fmap diagCode (either Just (const Nothing) below) @?= Just (DiagnosticCode "E04100")
+    limited limit src args = case load src of
+      (ds, Just p) | not (any isError ds) -> pure (callFunctionLimited limit noHandlers p callSpan "main.emet" "f" args)
+      (ds, _) -> assertFailure (show ds) >> fail "unreachable"
+    -- the result forced, and the bytes this thread allocated for it
+    allocated act = do
+      setAllocationCounter 0
+      r <- act >>= evaluate . forceEither
+      left <- getAllocationCounter
+      pure (r, negate left)
+    forceEither r = case r of
+      Left d -> length (show d) `seq` r
+      Right v -> length (show v) `seq` r
+
+-- | A built-in function that makes a value, with small arguments of its types.
+primCall :: Gen (Text, [PrimValue])
+primCall =
+  Gen.choice
+    [ (\a b -> ("List.range", [PV (VInt a), PV (VInt b)])) <$> small <*> small,
+      (\a b c -> ("String.replace", [s' a, s' b, s' c])) <$> text' <*> text' <*> text',
+      (\a xs -> ("String.join", [s' a, primList (map s' xs)])) <$> text' <*> Gen.list (Range.linear 0 20) text',
+      (\xss -> ("List.concat", [primList [primList (map (PV . VInt) xs) | xs <- xss]])) <$> Gen.list (Range.linear 0 20) (Gen.list (Range.linear 0 20) small),
+      (\cs -> ("String.fromChars", [primList (map PCh cs)])) <$> Gen.string (Range.linear 0 20) charG,
+      (\c -> ("String.fromChar", [PCh c])) <$> charG,
+      (\a -> ("String.chars", [s' a])) <$> text',
+      (\a b -> ("String.split", [s' a, s' b])) <$> text' <*> text',
+      (\a -> ("String.lines", [s' a])) <$> text',
+      (\a -> ("String.trim", [s' a])) <$> text',
+      (\n a -> ("String.take", [PV (VInt n), s' a])) <$> small <*> text',
+      (\n a -> ("String.drop", [PV (VInt n), s' a])) <$> small <*> text',
+      (\xs -> ("List.reverse", [primList (map (PV . VInt) xs)])) <$> Gen.list (Range.linear 0 20) small,
+      (\n xs -> ("List.take", [PV (VInt n), primList (map (PV . VInt) xs)])) <$> small <*> Gen.list (Range.linear 0 20) small,
+      (\n xs -> ("List.drop", [PV (VInt n), primList (map (PV . VInt) xs)])) <$> small <*> Gen.list (Range.linear 0 20) small,
+      (\n -> ("String.fromNat", [PV (VNat (fromInteger (abs n)))])) <$> Gen.integral (Range.linear 0 (10 ^ (30 :: Int))),
+      (\n -> ("String.fromInt", [PV (VInt n)])) <$> Gen.integral (Range.linearFrom 0 (negate (10 ^ (30 :: Int))) (10 ^ (30 :: Int))),
+      (\a b -> ("String.fromRat", [PV (VRat (fromInteger a / fromInteger (max 1 b)))])) <$> small <*> Gen.integral (Range.linear 1 64)
+    ]
+  where
+    small = Gen.integral (Range.linearFrom 0 (-50) 50)
+    charG = Gen.element ("ab\n あ" :: String)
+    text' = Gen.text (Range.linear 0 20) charG
+    s' = PV . VString
+
+-- | The length of a value a built-in function made: of a string or a list.
+lengthOf :: PrimValue -> Integer
+lengthOf = \case
+  PV (VString t) -> toInteger (T.length t)
+  PL _ xs -> toInteger (length xs)
+  _ -> 0
 
 determinismTests :: TestTree
 determinismTests =

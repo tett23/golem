@@ -44,6 +44,7 @@ module Golem.Emet
 where
 
 import Control.Monad (foldM)
+import Data.Int (Int64)
 import Data.ByteString (ByteString)
 import Data.List (intercalate)
 import Data.Map.Strict (Map)
@@ -265,9 +266,9 @@ callFunction :: Handlers -> Program -> SrcSpan -> FilePath -> Name -> [Result] -
 callFunction hs p at path name = evalCall hs (prGlobals p) (prFiles p) at (path, name)
 
 -- | 'callFunction' with another limit of steps (docs/adr/0162: a filter's grows with the document).
-callFunctionLimited :: Int -> Handlers -> Program -> SrcSpan -> FilePath -> Name -> [Result] -> Either Diagnostic Result
+callFunctionLimited :: Int64 -> Handlers -> Program -> SrcSpan -> FilePath -> Name -> [Result] -> Either Diagnostic Result
 callFunctionLimited limit hs p at path name = fst . evalCallLimited limit hs (prGlobals p) (prFiles p) at (path, name)
 
 -- | 'callFunction' with the steps the call took (for measuring the work of functions).
-callFunctionCounted :: Handlers -> Program -> SrcSpan -> FilePath -> Name -> [Result] -> (Either Diagnostic Result, Int)
+callFunctionCounted :: Handlers -> Program -> SrcSpan -> FilePath -> Name -> [Result] -> (Either Diagnostic Result, Int64)
 callFunctionCounted hs p at path name = evalCallCounted hs (prGlobals p) (prFiles p) at (path, name)
