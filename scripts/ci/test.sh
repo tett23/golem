@@ -1789,10 +1789,26 @@ if [ "$(basename "$(pwd)")" = diagnostics ]; then
 fi
 GOLEM
 chmod +x "$DET/bin/golem"
+# determinism.sh builds in the fixtures of its repository and removes their
+# build/: here it runs in a copy of what it reads, so that it never writes
+# into the fixtures of this repository while scripts/release/test.sh copies
+# them at the same time (scripts-macos runs the two at once, run
+# 42492125517); the fonts are empty files, which the fake golem does not read
+DR=$DET/repo
+mkdir -p "$DR/scripts/env-determinism" "$DR/modules/golem-driver/test/fixtures/kanikosen/fonts" "$DR/modules/golem-font/test/fonts"
+cp "$HERE/../determinism.sh" "$DR/scripts/"
+cp -R "$HERE/../determinism" "$HERE/../manual" "$DR/scripts/"
+cp -R "$HERE/../env-determinism/diagnostics" "$DR/scripts/env-determinism/"
+for f in sample functions emet-samples complex-vertical complex-horizontal; do
+  cp -R "$HERE/../../modules/golem-driver/test/fixtures/$f" "$DR/modules/golem-driver/test/fixtures/"
+  rm -rf "${DR:?}/modules/golem-driver/test/fixtures/$f/build"
+done
+: >"$DR/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
+: >"$DR/modules/golem-font/test/fonts/SourceSansPro-Regular.otf"
 determinism() {
   GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root GOLEM_MANUAL_SKIP_FONTS=1 \
     GOLEM_MANUAL_COMMIT=0 GOLEM_MANUAL_TAG=v0 FAKE_STDERR=$1 \
-    sh "$HERE/../determinism.sh"
+    sh "$DR/scripts/determinism.sh"
 }
 : >"$WORK/in"
 run determinism '{"diagnostics":[{"code":"G00000"}]}'
@@ -1818,14 +1834,14 @@ if [ "$(grep -v '  diagnostics/stderr$' "$DET/first")" = "$(grep -v '  diagnosti
 determinism_no_manuals() {
   GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root GOLEM_MANUAL_SKIP_FONTS=1 \
     GOLEM_MANUAL_COMMIT=0 GOLEM_MANUAL_TAG=v0 FAKE_STDERR=$1 \
-    sh "$HERE/../determinism.sh" --no-manuals
+    sh "$DR/scripts/determinism.sh" --no-manuals
 }
 run determinism_no_manuals '{"diagnostics":[{"code":"G00000"}]}'
 expect "determinism: --no-manuals" 0
 if grep -qE '  manual(-dev)?/' "$WORK/out"; then ng "determinism: --no-manuals lists no file of the manuals"; else ok; fi
 if [ "$(grep -vE '  manual(-dev)?/' "$DET/first")" = "$(cat "$WORK/out")" ]; then ok; else ng "determinism: --no-manuals is the list without the manuals"; fi
 determinism_unknown() {
-  GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root sh "$HERE/../determinism.sh" --no-such-option
+  GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root sh "$DR/scripts/determinism.sh" --no-such-option
 }
 run determinism_unknown
 expect "determinism: an unknown option" 2
