@@ -12,6 +12,9 @@ on:
   schedule:
     - cron: "17 20 * * *"
   workflow_dispatch:
+  # TEMPORARY: the verification of the implementation pull request
+  push:
+    branches: [impl-0234]
 
 # It reads the repository and the runs and artifacts of ci.yml and of this
 # workflow; it writes nothing but its own artifact and its caches.
@@ -45,7 +48,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           EVENT: ${{ github.event_name }}
         run: |
-          if [ "$EVENT" = workflow_dispatch ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA" browser.yml); fi
+          if [ "$EVENT" = workflow_dispatch ] || [ "$EVENT" = push ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA" browser.yml); fi
           echo "run=$RUN" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v7
         if: steps.needed.outputs.run == 'true'
@@ -64,8 +67,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          RUN=
-          for id in $(gh run list --workflow ci.yml --branch main --event push --status success --limit 30 --json databaseId --jq '.[].databaseId'); do
+          RUN=42478712741
+          [ -n "$RUN" ] || for id in $(gh run list --workflow ci.yml --branch main --event push --status success --limit 30 --json databaseId --jq '.[].databaseId'); do
             names=" $(gh api "repos/$GH_REPO/actions/runs/$id/artifacts?per_page=100" --jq '[.artifacts[] | select(.expired | not) | .name] | join(" ")') "
             all=true
             for a in golem-wasm wasm-native-list manual manual-dev golem-linux-x86_64; do
