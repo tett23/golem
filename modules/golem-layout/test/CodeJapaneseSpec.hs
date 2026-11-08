@@ -11,6 +11,7 @@ import Golem.Doc.IR qualified as IR
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..))
+import Golem.Length qualified as L
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -46,9 +47,19 @@ shape = \case
     | NoHyphen <- h, w == 0 -> "|" <> show p <> "-"
     | otherwise -> "|?" <> show (w, p, h)
 
--- | The width of the mark: an em, as the default advance of a character not Latin.
+{- | The width of the mark: the square of the shape of the default mark,
+3/5 of the size of the code, rounded down (golem-layout ADR 0042, W3).
+-}
 markWidth :: Sp
-markWidth = fs
+markWidth = Sp ((unSp fs * 3) `div` 5)
+
+-- | The size of a mark drawn as glyphs: 3/5 of the size of the code, rounded down (golem-layout ADR 0042, W2).
+markSize :: Sp
+markSize = Sp ((unSp fs * 3) `div` 5)
+
+-- | The lines of the inlines in lines of the width given.
+linesInSp :: ComposeEnv -> Sp -> [IR.Inline] -> [Line]
+linesInSp e w is = brLines (breakParagraph defaultParams (const w) (fst (composeInlines e is)))
 
 shapesIn :: ComposeEnv -> Text -> [String]
 shapesIn e t = map shape (itemsIn e [code t])
@@ -173,6 +184,7 @@ codeJapaneseTests =
       testCase "C8: an empty wrap mark draws no mark" $ do
         let its = fst (composeInlines (envWith "") [code "あいうえおかきくけこ"])
         [() | Penalty _ _ (WrapMark _) <- its] @?= [],
+      wrapMarkWidthTests,
       kinsokuAcrossSpaceTests
     ]
 
@@ -218,4 +230,33 @@ kinsokuAcrossSpaceTests =
         map endsWithMark ls @?= map (const False) ls,
       testCase "S6: in a span of en, “ before a space is judged as an opening quotation mark" $
         inLang "en" "“ あ" @?= ["“", "|X", "_", "あ"]
+    ]
+
+{- | The width of the wrap mark (golem-layout ADR 0042, W3): 3/5 of the
+size of the code for the default mark, drawn as a shape; the advance of
+its text at 3/5 of the size for a mark drawn as glyphs.
+-}
+wrapMarkWidthTests :: TestTree
+wrapMarkWidthTests =
+  testGroup
+    "the width of the wrap mark (golem-layout ADR 0042)"
+    [ testCase "W3: the break of the default mark is 3/5 em wide, rounded down" $
+        [w | Penalty w _ (WrapMark m) <- itemsIn env [code "あい"], m == mark] @?= [markWidth],
+      testCase "W3: the break of a mark of glyphs is the advance of its text at 3/5 of the size" $
+        mapM_
+          ( \m -> do
+              let e = envWith m
+                  lk = look0 {lkCode = True, lkWrapMark = m}
+              [w | Penalty w _ (WrapMark m') <- itemsIn e [code "あい"], m' == m] @?= [L.zwToSp markSize (ceWordAdvance e lk m)]
+          )
+          ["→", "->"],
+      testCase "W3: a line that fits with the mark of 3/5 em but not with one of an em breaks at the break of code" $ do
+        let ls = linesInSp env (3 * fs + markWidth) [code "あいうえおかきくけこ"]
+        take 1 (map lineText ls) @?= ["あいう"]
+        take 1 (map endsWithMark ls) @?= [True]
+        map lineOverflow ls @?= map (const 0) ls,
+      testCase "W3: a line that the mark of 3/5 em makes 1 sp too long does not break there" $ do
+        let ls = linesInSp env (3 * fs + markWidth - 1) [code "あいうえおかきくけこ"]
+        take 1 (map lineText ls) @?= ["あい"]
+        map lineOverflow ls @?= map (const 0) ls
     ]

@@ -671,7 +671,7 @@ c7Widths _ p =
 
 {- | C8: a line broken at a break of code other than a space ends with the
 wrap mark, once: the penalty it breaks at, as wide as the mark in the look
-of the box before it. No other line ends with a mark.
+of the box before it (3/5 of its size, golem-layout ADR 0042). No other line ends with a mark.
 -}
 c8WrapMark :: Text -> Check
 c8WrapMark m _ p =
@@ -688,8 +688,12 @@ c8WrapMark m _ p =
   ]
   where
     codeBreaks = [j | (_, _, mid, _) <- codePairs (pItems p), (j, _) <- candidates mid]
+    -- the default mark is a shape 3/5 of the size wide; another is its text at 3/5 of the size (golem-layout ADR 0042, W3)
+    markSize = Sp ((unSp (pSize p) * 3) `div` 5)
     markWidth l = case lastBox l of
-      Just c -> Just (L.zwToSp (pSize p) (sum [pAdvance p (lookClass (bcLook c) ch == Western) ch | ch <- T.unpack m]))
+      Just c
+        | m == "\x23CE" -> Just markSize
+        | otherwise -> Just (L.zwToSp markSize (sum [pAdvance p (lookClass (bcLook c) ch == Western) ch | ch <- T.unpack m]))
       Nothing -> Nothing
 
 -- | The invariants of code of golem-layout ADR 0034, the wrap mark given, with their checks.
