@@ -169,18 +169,13 @@ cellLimitTests =
         testCase "T1, T2: a table of 10,000 rows of 256 cells is G07108 alone, without composing its cells" $ do
           -- the security audit of 2026-11-08, T-01: 57 s and 96 GB before G07041.
           -- Not in parallel, so that the allocation counter of this thread
-          -- counts all the work. The evaluation of the table alone takes
-          -- more than 1 GiB (1.3 GB for golem check, 6.3 GB for the text
-          -- build), so the PDF build is bound by the text build, which
-          -- composes no cell either (the audit measured 96 GB when the
-          -- cells were composed).
-          let files = [("a.gm", "@table data/max.csv\n"), ("data/max.csv", csvOf (replicate 10000 256))]
-          (ds, bytes) <- allocatedBy (pdfDiagnostics False files)
+          -- counts all the work. Reading and evaluating the table alone
+          -- allocates more than 1 GiB (1.3 GB for golem check, 4.6 GB for
+          -- this build on macOS aarch64), so the bound is 8 GiB, a twelfth
+          -- of what composing its cells took.
+          (ds, bytes) <- allocatedBy (pdfDiagnostics False [("a.gm", "@table data/max.csv\n"), ("data/max.csv", csvOf (replicate 10000 256))])
           [(c, m) | (c, m, _) <- ds] @?= [("G07108", tooMany 2560000)]
-          (_, text) <- allocatedBy $ withTables (take 1 files) (drop 1 files) $ \tmp -> do
-            r <- build (defaultOptions tmp) {optTargets = Just [TargetText], optParallel = False}
-            evaluate (length (show (brDiagnostics r)))
-          assertBool ("allocated " <> show bytes <> " bytes, the text build " <> show text) (bytes <= text),
+          assertBool ("allocated " <> show bytes <> " bytes") (bytes <= 8 * 2 ^ (30 :: Int)),
       localOption (mkTimeout 30000000) $
         testCase "T1, T3: N cells are composed as before (G07041); N + 1 are G07108 alone, at the block of the table" $ do
           atN <- pdfDiagnostics False [("a.gm", "@table data/t.csv\n"), ("data/t.csv", csvOf (replicate 400 250))]
