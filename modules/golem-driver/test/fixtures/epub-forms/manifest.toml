@@ -1,0 +1,25 @@
+chapters = ["chapters/00.gm", "chapters/01.gm", "chapters/99.gm"]
+bibliography = ["refs.json"]
+
+# The three forms CI runs epubcheck on (docs/adr/0232): a citation with
+# @bibliography in another file (golem-html ADR 0003), a navigation
+# document of depth 1 over headings of three levels (golem-epub ADR 0002)
+# and a channel of a sample plugin (golem-doc ADR 0007). The sample plugin
+# glossary comes from plugins/wasm through the cache of plugins.lock;
+# the url is not fetched
+
+[metadata]
+id = "urn:uuid:11111111-2222-4333-8444-777777777777"
+title = "EPUB の形の試験"
+language = "ja"
+date = 2026-11-08
+
+[targets.html]
+[targets.epub]
+
+[source]
+paragraph-separator = "blank-line"
+
+[plugins.glossary]
+url = "https://github.com/tett23/golem/releases/download/v0.1.0-rc4/glossary.wasm"
+data = { terms = "data/terms.tsv" }

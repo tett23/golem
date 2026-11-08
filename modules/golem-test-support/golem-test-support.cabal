@@ -24,6 +24,7 @@ library
   hs-source-dirs:   src
   exposed-modules:
     Golem.TestSupport.Bytes
+    Golem.TestSupport.CffRos
     Golem.TestSupport.Enum
     Golem.TestSupport.Env
     Golem.TestSupport.ExternalTool

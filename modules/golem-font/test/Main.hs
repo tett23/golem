@@ -10,6 +10,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Font
+import Golem.TestSupport.CffRos (withRos)
 import Golem.TestSupport.Parallel (raceFactor)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
@@ -40,6 +41,12 @@ withFsType v font =
    in case lookup "OS/2" records of
         Just off -> BS.take (off + 8) font <> BS.pack [fromIntegral (v `div` 256), fromIntegral v] <> BS.drop (off + 10) font
         Nothing -> font
+
+-- | The font with its ROS rewritten to Adobe-Japan1-7 in memory (docs/adr ADR 0232).
+japan1 :: Font -> IO Font
+japan1 f = case withRos "Adobe" "Japan1" 7 (fontBytes f) of
+  Nothing -> assertFailure "the ROS could not be rewritten"
+  Just b -> loadFont b >>= either (assertFailure . show) pure
 
 render :: [(Int, Int, (Int, Int, Int, Int))] -> Text
 render gs = T.unlines [T.pack (show g <> " @" <> show c <> " " <> show p) | (g, c, p) <- gs]
@@ -142,6 +149,18 @@ tests race han sans serif noto =
             f <- loadFont sub >>= either (assertFailure . show) pure
             fontCidSystemInfo f @?= fontCidSystemInfo han
             map (glyphCid f) used @?= map (glyphCid han) used,
+          testCase "I10: the ROS rewritten to Adobe-Japan1-7 is the ROS of the font (docs/adr ADR 0232)" $ do
+            f <- japan1 han
+            fontCidSystemInfo f @?= Just (CidSystemInfo "Adobe" "Japan1" 7)
+            fontNumGlyphs f @?= fontNumGlyphs han,
+          testCase "I10: a subset of the font of Adobe-Japan1-7 keeps its ROS (docs/adr ADR 0232)" $ do
+            f <- japan1 han
+            let used = [g | (g, _, _) <- shapeUnits f (shapeRequest "「日本語の組版」、ー。")]
+            used @?= [g | (g, _, _) <- shapeUnits han (shapeRequest "「日本語の組版」、ー。")]
+            sub <- subsetFont f used >>= maybe (assertFailure "subset failed") pure
+            s <- loadFont sub >>= either (assertFailure . show) pure
+            fontCidSystemInfo s @?= Just (CidSystemInfo "Adobe" "Japan1" 7)
+            map (glyphCid s) used @?= map (glyphCid han) used,
           testCase "a glyph id outside a CID-keyed font is its own CID (docs/adr ADR 0034)" $ do
             let n = fontNumGlyphs han
             map (glyphCid han) [n, n + 1, n + 1000] @?= [n, n + 1, n + 1000]

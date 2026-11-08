@@ -105,6 +105,7 @@ Write the tests from the ADR's test design first, confirm that they fail, and th
 For changes that cannot be tested automatically, such as configuration values, the test design says how to check them, and they are checked by running them after implementation.
 
 Write a test that uses an external tool (such as `cddl`, `qpdf` or `openssl`) with `needsTool` or `optionalTool` of `Golem.TestSupport.ExternalTool` in `modules/golem-test-support` ([docs/adr/0028](./docs/adr/0028-shared-test-support-package.md)).
+The tests of golem-driver also use `pdftoppm` and `pdfinfo` of Poppler, so install `poppler-utils` on your machine too ([docs/adr/0232](./docs/adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)).
 Where the tool is missing, the test is reported as `SKIP`, and with `GOLEM_REQUIRE_EXTERNAL_TOOLS=1` it fails.
 Only test suites may depend on golem-test-support; if a library or an executable does, `scripts/ci/test-only-deps.sh` in the `build` job of CI fails.
 Any test suite may add golem-test-support to its build-depends without an ADR ([docs/adr/0086](./docs/adr/0086-any-test-suite-may-depend-on-test-support.md)).
