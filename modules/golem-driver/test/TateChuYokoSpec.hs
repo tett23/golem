@@ -19,7 +19,7 @@ import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.List (isSuffixOf, tails)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (listToMaybe, mapMaybe)
+import Data.Maybe (isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
@@ -183,7 +183,7 @@ occurrencesOf dir = do
         Nothing -> []
       -- upright text is shaped vertically; turned Latin and tate-chu-yoko horizontally
       codes u = [lfCode fonts (shFace g) (shGlyph g) | g <- shaped (uKind u `notElem` [KindRotated, KindTcy]) u]
-      upright u = uKind u == KindText && T.length (uText u) == 1 && null (uMark u) && fmap shTurned (shaped True u) == [False]
+      upright u = uKind u == KindText && T.length (uText u) == 1 && isNothing (uMark u) && fmap shTurned (shaped True u) == [False]
       opaque u = uKind u `elem` [KindRuby, KindGroupRuby, KindKenten, KindDashes]
       -- the nearest upright character before (or else after) a unit, with the units between
       anchored us i =
@@ -197,8 +197,8 @@ occurrencesOf dir = do
               Nothing -> (\(a, between) -> (a, codes (us !! i) <> concatMap codes between <> codes a)) <$> nearest following
       found = mapMaybe (match drawn) [(us !! i, a, seqCodes, length (codes (us !! i)), before) | l <- linesOf pl, let us = unitsOf l, (i, u) <- zip [0 ..] us, uKind u == KindTcy, Just (a, seqCodes) <- [anchored us i], let before = uOff a < uOff u]
       match ds (u, a, seqCodes, n, before) = case [take (length seqCodes) t | t <- tails ds, map gCode (take (length seqCodes) t) == seqCodes] of
-        [run] ->
-          let (anchorGlyph, glyphs) = if before then (run !! 0, take n (drop (length seqCodes - n) run)) else (last run, take n run)
+        [run@(firstGlyph : _)] ->
+          let (anchorGlyph, glyphs) = if before then (firstGlyph, take n (drop (length seqCodes - n) run)) else (last run, take n run)
               look = uLook u
               s = sp (lkSize look)
               y0 = gY anchorGlyph - sp (uOff u - uOff a)
@@ -206,7 +206,7 @@ occurrencesOf dir = do
                 Just mb -> gX anchorGlyph + sp (Sp (unSp (lkSize (mbPlace mb) - lkSize look) `div` 2))
                 Nothing -> gX anchorGlyph
               jaFace = maybe 0 shFace (listToMaybe (lfShape fonts (Shaping (lkFace look) False [] False) "漢"))
-           in Just (Occurrence (uText u) (not (null (uMark u))) s y0 xc (lfEmBoxCentral fonts jaFace) [s * shAdvance g | g <- shaped False u] glyphs)
+           in Just (Occurrence (uText u) (isJust (uMark u)) s y0 xc (lfEmBoxCentral fonts jaFace) [s * shAdvance g | g <- shaped False u] glyphs)
         _ -> Nothing
   pure found
 
