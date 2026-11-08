@@ -9,7 +9,10 @@ category:           Text
 build-type:         Simple
 extra-source-files:
   data/hyphenation/*.txt
-  test/data/knuth-plass/*
+  test/data/knuth-plass/*.log
+  test/data/knuth-plass/*.md
+  test/data/knuth-plass/*.tex
+  test/data/knuth-plass/*.words
   test/golden/*.tsv
 
 common warnings
