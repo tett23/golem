@@ -3553,9 +3553,14 @@ body-mark-style = "strong"
 `mark-style` を書かない本では、組み込みの `note-mark` の `size` を `mark-size` の値に替えて組むので、今の本の印の大きさは変わらない。
 `mark-size` の `zw` は 0 より大きく 1 以下とし、絶対の寸法が印の位置の文字の大きさを超える場合はその大きさで組む。
 この検査と規則は `mark-size` に限る。
-`mark-size` と、`size` を持つ（`based-on` の先を含む）文字スタイルを指す `mark-style` を一緒に書くと G03006 とする。
-`mark-style` を書かずに、`[character-styles.note-mark]` に `size` を書いた場合も同じである。
+本文の印の文字スタイルは、`mark-style` を書けばその名前、書かなければ `note-mark` である。
+`mark-size` と、`size` を書いた定義に `based-on` で行き着く本文の印の文字スタイルを一緒に書くと G03006 とする（[ADR 0214](adr/0214-mark-size-conflict-names-the-style-that-writes-the-size.md)）。
+`mark-style` を書かずに、`[character-styles.note-mark]`（とその `based-on` の先）に `size` を書いた場合も、これに当たる。
+組み込みの `note-mark` の `size` は、`mark-size` がその代わりなので数えない。
 大きさを決める値が二つあると、どちらかを黙って捨てることになるためである。
+メッセージは、`based-on` の鎖を本文の印の文字スタイルからたどって最初に `size` を書いた定義の名前を示し、`mark-size` を消すよう求める。
+`mark-style` を書いたときは `[notes] の mark-size と、mark-style <名前> の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`、書かないときは `[notes] の mark-size と、注の印の文字スタイル note-mark の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します` である。
+位置は `mark-size` の値である。
 
 印の中の字は、ふつうの文字と同じく、文字スタイルのカーニング、トラッキング、プロポーショナルメトリクスで送る。
 印の最後の字の後のトラッキングは足さない。

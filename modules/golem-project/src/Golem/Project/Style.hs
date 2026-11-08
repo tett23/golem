@@ -101,7 +101,7 @@ import Control.Monad (join, unless, when)
 import Data.Bifunctor (bimap)
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Foldable (toList)
-import Data.List (nub, nubBy)
+import Data.List (find, nub, nubBy)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -481,17 +481,27 @@ builtinCharStyles =
       ("url", noCharDef)
     ]
 
-{- | The character style of the marks of notes in the text, when its
-based-on chain writes a size besides [notes] mark-size (docs/adr/0177):
-the style of mark-style, or else the user's note-mark. The size of the
-built-in note-mark does not count; mark-size stands for it.
+{- | The first definition that writes a size on the based-on chain of the
+character style of the marks of notes in the text, which [notes]
+mark-size cannot be written with (docs/adr/0177, docs/adr/0214): the
+chain starts at the style of mark-style, or else at note-mark. The size of
+the built-in note-mark does not count; mark-size stands for it.
 -}
 markSizeConflict :: Map Text CharStyleDef -> Maybe Text -> Maybe Text
 markSizeConflict user markStyle =
-  let name = fromMaybe "note-mark" markStyle
-      builtins = Map.adjust (\c -> c {csSize = Nothing}) "note-mark" builtinCharStyles
+  let builtins = Map.adjust (\c -> c {csSize = Nothing}) "note-mark" builtinCharStyles
       styles = Map.unionWith overChar user builtins
-   in if any (isJust . csSize) (chainOf (const csBasedOn) styles name) then Just name else Nothing
+      chain = chainOf (const (csBasedOn . snd)) (Map.mapWithKey (,) styles) (fromMaybe "note-mark" markStyle)
+   in fst <$> find (isJust . csSize . snd) chain
+
+-- | The message of 'markSizeConflict' for the style that writes the size (docs/adr/0214).
+markSizeConflictMessage :: Maybe Text -> Text -> Text
+markSizeConflictMessage markStyle definer =
+  "[notes] の mark-size と、"
+    <> maybe "注の印の文字スタイル note-mark" ("mark-style " <>) markStyle
+    <> " の size（[character-styles."
+    <> definer
+    <> "] に書いたもの）は一緒に書けません。mark-size を消します"
 
 {- | The built-in note-mark at the size of [notes] mark-size, when
 mark-size is written and mark-style is not (docs/adr/0177): mark-size is
@@ -2002,7 +2012,7 @@ instance FromValue Style where
         notes@(Notes _ _ _ size _ markStyle _) <- fromValue v
         -- two values that decide the size of the marks: neither wins (docs/adr/0177)
         case (size, markSizeConflict cstyles markStyle) of
-          (Just _, Just n) -> inKey "mark-size" (failAt (keyPosition v "mark-size") (T.unpack ("[notes] の mark-size と、size を持つ mark-style " <> n <> " は一緒に書けません")))
+          (Just _, Just d) -> inKey "mark-size" (failAt (keyPosition v "mark-size") (T.unpack (markSizeConflictMessage markStyle d)))
           _ -> pure notes
     side <- optKey "sidenotes"
     Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
