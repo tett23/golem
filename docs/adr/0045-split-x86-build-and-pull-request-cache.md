@@ -1,6 +1,6 @@
 # ADR 0045: x86-64 の build をテストと出力の二つのランナーに分け、プルリクエストの dist-newstyle を残す
 
-ステータス: 採択→aarch64 の build を一つのランナーのままにすること、x86-64 でテストを受け持つランナーの数、dist-newstyle を保存するランナーは [ADR 0140](0140-ci-split-test-runners-and-visual-pdfs-first.md)
+ステータス: 採択→aarch64 の build を一つのランナーのままにすること、x86-64 でテストを受け持つランナーの数、dist-newstyle を保存するランナーは [ADR 0140](0140-ci-split-test-runners-and-visual-pdfs-first.md)、プルリクエストの `dist-newstyle` の保存は [ADR 0228](0228-keep-the-ci-caches-under-the-10-gb-limit.md) がやめた
 
 ## 文脈
 

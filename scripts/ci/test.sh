@@ -1273,8 +1273,26 @@ if [ -n "$DET_AT" ] && [ -n "$EPUB_AT" ] && [ -n "$VB_AT" ] && [ -n "$VU_AT" ] &
 fi
 if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?visual([],].*)?$'; then ok; else ng "ci.yml: ci needs visual"; fi
 if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?scripts-macos([],].*)?$'; then ok; else ng "ci.yml: ci needs scripts-macos"; fi
-if grep -qF "matrix.save && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'" "$CI_YML"; then ok; else ng "ci.yml: a pull request saves dist-newstyle when GHC compiled, from the runner that saves (docs/adr/0140)"; fi
-if grep -qF "if: success() && matrix.save && github.event_name == 'push' && github.ref == 'refs/heads/main'" "$CI_YML"; then ok; else ng "ci.yml: a push to main saves dist-newstyle from the runner that saves (docs/adr/0140)"; fi
+# no step of actions/cache/save has a condition on pull_request: a pull
+# request saves no dist- cache, and restores those of main (docs/adr/0228, I1)
+cache_saves_on_pull_requests() {
+  awk '
+    function flush() { if (save && pr) print at; save = 0; pr = 0 }
+    /^      - / { flush(); at = FNR }
+    /^  [a-z]/ { flush() }
+    /uses: actions\/cache\/save@/ { save = 1 }
+    /github\.event_name == .pull_request./ { pr = 1 }
+    END { flush() }
+  ' "$1"
+}
+if [ -z "$(cache_saves_on_pull_requests "$CI_YML")" ]; then ok; else ng "ci.yml: no step of actions/cache/save runs on pull requests (docs/adr/0228, I1)"; fi
+printf '      - name: Save\n        if: github.event_name == '"'"'pull_request'"'"'\n        uses: actions/cache/save@v6\n      - name: Restore\n        if: github.event_name == '"'"'pull_request'"'"'\n        uses: actions/cache/restore@v6\n' >"$WORK/saves.yml"
+if [ "$(cache_saves_on_pull_requests "$WORK/saves.yml")" = 1 ]; then ok; else
+  ng "test.sh: cache_saves_on_pull_requests finds the save on pull requests, and not the restore"
+fi
+# a push to main saves dist-newstyle only when GHC compiled a module
+# (docs/adr/0228, I2)
+if step_if "name: Save dist-newstyle (docs/adr/0009)" "if: success() && matrix.save && steps.build.outputs.compiled == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'"; then ok; else ng "ci.yml: a push to main saves dist-newstyle from the runner that saves, when GHC compiled (docs/adr/0140, docs/adr/0228, I2)"; fi
 if grep -n 'Save dist-newstyle' -A 1 "$CI_YML" | grep -q 'matrix.tests'; then ng "ci.yml: the saves of dist-newstyle do not depend on matrix.tests"; else ok; fi
 
 # ---------------------------------------------------------------- ci.yml and the caches of GHC and the index
@@ -1511,7 +1529,8 @@ echo 'not json' >"$WORK/in"
 run gate
 expect "gate: not JSON" 1
 
-# the jobs of ci.yml, but ci itself, are the jobs that gate.sh knows
+# the jobs of ci.yml, but ci itself and caches, which ci does not need
+# (docs/adr/0228), are the jobs that gate.sh knows
 ci_jobs() { # ci_jobs WORKFLOW: the names of its jobs
   awk '/^jobs:/ { on = 1; next } on && /^[^ #]/ { on = 0 } on && /^  [a-z][a-z0-9-]*:$/ { sub(/^  /, ""); sub(/:$/, ""); print }' "$1"
 }
@@ -1519,7 +1538,7 @@ ci_jobs() { # ci_jobs WORKFLOW: the names of its jobs
 names_match() {
   : >"$WORK/in"
   run sh "$1" --names
-  [ "$CODE" = 0 ] && [ "$(sort "$WORK/out")" = "$(ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx ci | sort)" ]
+  [ "$CODE" = 0 ] && [ "$(sort "$WORK/out")" = "$(ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx -e ci -e caches | sort)" ]
 }
 if names_match "$HERE/gate.sh"; then ok; else ng "gate: the names are the jobs of ci.yml"; fi
 # the same comparison finds a job missing from the names, in a copy of
@@ -1541,7 +1560,26 @@ if [ "$(perms_of "$CI_YML" visual)" = "contents: read
 actions: read" ]; then ok; else ng "ci.yml: visual has contents: read and actions: read"; fi
 ACTIONS_READ_JOBS=$(ci_jobs "$CI_YML" | while IFS= read -r j; do if perms_of "$CI_YML" "$j" | grep -qx 'actions: read'; then printf '%s\n' "$j"; fi; done)
 if [ "$ACTIONS_READ_JOBS" = visual ]; then ok; else ng "ci.yml: no job but visual has actions: read"; fi
-if grep -qE ': *write' "$CI_YML"; then ng "ci.yml: no write permission"; else ok; fi
+# caches alone has a write permission, actions: write, to delete the stale
+# dist- caches of main; it runs on pushes to main only, after the saves of
+# build and wasm, and uses no action but checkout (docs/adr/0228)
+WRITE_JOBS=$(ci_jobs "$CI_YML" | while IFS= read -r j; do if perms_of "$CI_YML" "$j" | grep -q ': *write'; then printf '%s\n' "$j"; fi; done)
+if [ "$WRITE_JOBS" = caches ] && [ "$(perms_of "$CI_YML" caches)" = "contents: read
+actions: write" ]; then ok; else ng "ci.yml: no job but caches has a write permission, and caches has contents: read and actions: write (docs/adr/0228)"; fi
+if [ "$(grep -cE ': *write' "$CI_YML")" = 1 ]; then ok; else ng "ci.yml: one write permission, that of caches (docs/adr/0228)"; fi
+CACHES_IF=$(job_lines caches | sed -n 's/^    if: //p')
+case "$CACHES_IF" in
+  *"github.event_name == 'push' && github.ref == 'refs/heads/main'"*) ok ;;
+  *) ng "ci.yml: caches runs on pushes to main only (docs/adr/0228)" ;;
+esac
+if job_lines caches | grep -Eq '^    needs: \[(.*[ ,])?build([],].*)?$' &&
+  job_lines caches | grep -Eq '^    needs: \[(.*[ ,])?wasm([],].*)?$'; then ok; else ng "ci.yml: caches needs build and wasm (docs/adr/0228)"; fi
+if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?caches([],].*)?$'; then ng "ci.yml: ci does not need caches (docs/adr/0228)"; else ok; fi
+if [ "$(job_lines caches | grep -E '^ +(- )?uses: ' | grep -vE '^ +(- )?uses: actions/checkout@')" = "" ] &&
+  job_lines caches | grep -qE '^ +(- )?uses: actions/checkout@'; then ok; else ng "ci.yml: caches uses no action but actions/checkout (docs/adr/0228)"; fi
+if job_lines caches | grep -qF 'gh cache list --ref refs/heads/main --key dist- --limit 100 --json id,key,createdAt' &&
+  job_lines caches | grep -qF 'sh scripts/ci/stale-dist-caches.sh' &&
+  job_lines caches | grep -qF 'gh cache delete'; then ok; else ng "ci.yml: caches lists the dist- caches of main, and deletes those that stale-dist-caches.sh writes (docs/adr/0228)"; fi
 if visual_step "uses: actions/checkout@" | grep -qxF '          fetch-depth: 0'; then ok; else ng "ci.yml: visual checks out the whole history"; fi
 REPORT_IF="if: failure() && steps.check.outcome == 'failure'"
 if visual_step "name: The pages match the references" | grep -qxF '      - id: check' || grep -B1 'name: The pages match the references' "$VJ" | grep -qxF '      - id: check'; then ok; else ng "ci.yml: the step of check.sh has the id check"; fi
@@ -2186,6 +2224,86 @@ run wasm_cache false
 expect "wasm-cache: too few arguments" 2
 run wasm_cache yes true true
 expect "wasm-cache: not true nor false" 2
+
+
+# ---------------------------------------------------------------- stale-dist-caches.sh
+# (docs/adr/0228): the IDs of the dist- caches of main to delete, from the
+# list of gh cache list and the prefixes of the three families of the
+# current keys (the keys without the commit hash)
+
+stale() { sh "$HERE/stale-dist-caches.sh" "$@"; }
+X64=dist-Linux-X64-ghc-9.10.3-aaaa-bbbb-
+ARM=dist-Linux-ARM64-ghc-9.10.3-aaaa-bbbb-
+WASM=dist-wasm-cccc-dddd-
+# cache_rows ID DATE KEY [ID DATE KEY ...]: the list, one cache a line
+cache_rows() {
+  while [ $# -ge 3 ]; do
+    printf '%s\t%s\t%s\n' "$1" "$2" "$3"
+    shift 3
+  done
+}
+: >"$WORK/in"
+run stale "$X64" "$ARM" "$WASM"
+expect "stale-dist-caches: an empty list writes nothing" 0 ""
+cache_rows 11 2026-11-08T03:00:00Z "${X64}sha1" 12 2026-11-08T03:00:00Z "${ARM}sha1" 13 2026-11-08T03:00:00Z "${WASM}sha1" >"$WORK/in"
+run stale "$X64" "$ARM" "$WASM"
+expect "stale-dist-caches: one cache of each family writes nothing" 0 ""
+cache_rows 21 2026-11-08T01:00:00Z "${ARM}sha1" 23 2026-11-08T03:00:00Z "${ARM}sha3" 22 2026-11-08T02:00:00Z "${ARM}sha2" >"$WORK/in"
+run stale "$X64" "$ARM" "$WASM"
+expect "stale-dist-caches: of three caches of a family, the two older are written" 0 "21
+22"
+cache_rows 32 2026-11-08T03:00:00Z "${WASM}sha1" 31 2026-11-08T03:00:00Z "${WASM}sha2" >"$WORK/in"
+run stale "$X64" "$ARM" "$WASM"
+expect "stale-dist-caches: of two caches made at the same time, the smaller ID is written" 0 "31"
+# the times of the API have a fraction of the second of any length:
+# .72 is after .7, and a time without a fraction is before one with it
+cache_rows 41 2026-11-08T03:22:56.72Z "${X64}sha1" 42 2026-11-08T03:22:56.7Z "${X64}sha2" 43 2026-11-08T03:22:56Z "${X64}sha3" >"$WORK/in"
+run stale "$X64" "$ARM" "$WASM"
+expect "stale-dist-caches: the fractions of the second are compared as numbers" 0 "42
+43"
+cache_rows 51 2026-11-08T03:00:00Z "${X64}sha1" 52 2026-11-08T04:00:00Z dist-Linux-X64-ghc-9.10.2-aaaa-bbbb-sha2 53 2026-11-08T04:00:00Z dist-wasm-eeee-dddd-sha2 >"$WORK/in"
+run stale "$X64" "$ARM" "$WASM"
+expect "stale-dist-caches: the dist- caches of no family are written, even the newest" 0 "52
+53"
+cache_rows 61 2026-11-08T01:00:00Z ghc-Linux-X64-9.10.3-x 62 2026-11-08T01:00:00Z cabal-store-Linux-X64-ghc-9.10.3-x 63 2026-11-08T01:00:00Z "x${X64}sha1" 64 2026-11-08T03:00:00Z "${X64}sha2" >"$WORK/in"
+run stale "$X64" "$ARM" "$WASM"
+expect "stale-dist-caches: no key that does not start with dist- is written (I4)" 0 ""
+cache_rows 71 2026-11-08T03:00:00Z "${ARM}sha1" 72 2026-11-08T01:00:00Z "${X64}sha1" >"$WORK/in"
+run stale "$X64" "$ARM" "$WASM"
+expect "stale-dist-caches: the prefix of x86-64 does not take the keys of aarch64" 0 ""
+cache_rows 81 2026-11-08T01:00:00Z "${X64}sha1" 82 2026-11-08T02:00:00Z "${ARM}sha1" 83 2026-11-08T03:00:00Z "${X64}sha2" 84 2026-11-08T04:00:00Z "${ARM}sha2" >"$WORK/in"
+run stale "$X64" "$ARM" "$WASM"
+expect "stale-dist-caches: each family keeps its own newest (I3)" 0 "81
+82"
+# the response of gh cache list --json id,key,createdAt on main on
+# 2026-11-08 (testdata), through the --jq of the caches job of ci.yml:
+# two caches of each family a commit older than the newest, and a third
+# dist-wasm (docs/adr/0078)
+SDC_JQ='.[] | [.id, .createdAt, .key] | @tsv'
+if job_lines caches | grep -qF -- "--jq '$SDC_JQ'"; then ok; else ng "ci.yml: caches writes the list with the --jq that the test of stale-dist-caches.sh reads"; fi
+jq -r "$SDC_JQ" "$HERE/testdata/stale-dist-caches/main.json" >"$WORK/in"
+run stale dist-Linux-X64-ghc-9.10.3-7641a7fffe79bb804fb6b4eccd3ed17d09ca861e25a646df9755060fa0b0ca62-e91b163216f435f37015ff67453bb2dff95f296da7a2e104b497e72e3247d12b- \
+  dist-Linux-ARM64-ghc-9.10.3-7641a7fffe79bb804fb6b4eccd3ed17d09ca861e25a646df9755060fa0b0ca62-e91b163216f435f37015ff67453bb2dff95f296da7a2e104b497e72e3247d12b- \
+  dist-wasm-02dd81e3eb0b193db19d41bed81ccb417e863b5bdfadc16d7cea7831b763eea0-06ccaeeceea4f2a730d1cd5041e88231d24171038588d870df08b367f536a362-
+expect "stale-dist-caches: the caches of main of 2026-11-08" 0 "10180575021
+10180816659
+10180857328
+10180865217"
+# the input and the arguments are checked
+: >"$WORK/in"
+run stale
+expect "stale-dist-caches: no prefix" 2
+run stale ghc-Linux-X64-
+expect "stale-dist-caches: a prefix that does not start with dist-" 2
+printf '1\t2026-11-08T03:00:00Z\n' >"$WORK/in"
+run stale "$X64"
+expect "stale-dist-caches: a line without a key" 1
+printf 'x1\t2026-11-08T03:00:00Z\t%ssha1\n' "$X64" >"$WORK/in"
+run stale "$X64"
+expect "stale-dist-caches: an ID that is not a number" 1
+printf '1\tyesterday\t%ssha1\n' "$X64" >"$WORK/in"
+run stale "$X64"
+expect "stale-dist-caches: a time that is not of the API" 1
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
