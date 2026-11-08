@@ -1169,7 +1169,7 @@ css cfg book =
     blank line -}
     spaceRules preOf withBefore styles pairs =
       let em n = tshow n <> "em"
-          at ns sel = prefixed (preOf ns) sel
+          at ns = prefixed (preOf ns)
           -- the rule p of body and the rule after a blank line that goes with it are on every page
           atBefore n = if n == "body" && global then prefixed "" else at [n]
           -- the rules of style.toml, not those of a file
