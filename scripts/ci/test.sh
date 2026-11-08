@@ -2117,6 +2117,15 @@ done)
 if [ -n "$(modules_of golem-driver-test)" ] && [ -z "$GLOBAL_STATE" ]; then ok; else
   ng "golem-driver-test: no test changes the state of the process ($GLOBAL_STATE)"
 fi
+# the time-out of the tests is hangTimeout of Support.hs, in one place
+# (docs/adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)
+OWN_TIMEOUT=$(for m in $(modules_of golem-driver-test) Main; do
+  [ "$m" = Support ] || grep -lw 'mkTimeout' "$HERE/../../modules/golem-driver/test/$m.hs" 2>/dev/null
+done)
+if [ -n "$(modules_of golem-driver-test)" ] && [ -z "$OWN_TIMEOUT" ] &&
+  grep -qw 'hangTimeout' "$HERE/../../modules/golem-driver/test/Support.hs"; then ok; else
+  ng "golem-driver-test: no module but Support.hs has mkTimeout, and Support.hs has hangTimeout ($OWN_TIMEOUT)"
+fi
 
 # ---------------------------------------------------------------- test-only-deps.sh
 

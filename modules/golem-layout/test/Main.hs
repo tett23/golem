@@ -1,6 +1,7 @@
 module Main (main) where
 
 import AlignSpec (alignTests)
+import CodeJapaneseSpec (codeJapaneseTests)
 import CodeSpaceSpec (codeSpaceTests)
 import CombiningSpec (combiningTests)
 import Control.Monad (forM_)
@@ -375,6 +376,7 @@ tests =
       inseparableTests,
       doubleDashTests,
       codeSpaceTests,
+      codeJapaneseTests,
       urlBreakTests,
       linkTests,
       langTests,

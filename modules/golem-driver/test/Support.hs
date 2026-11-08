@@ -39,6 +39,16 @@ import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
 
+{- | The time-out of the tests of golem-driver-test: 300 s of real time
+(docs/adr/0237). It stops a test whose build does not stop (docs/adr/0073),
+and nothing else: the tests run at the same time on the threaded RTS
+(docs/adr/0146), so a test that ends takes far longer in the suite, and
+longer still when other processes share the machine. The value is here
+alone; scripts/ci/test.sh checks that no other module has mkTimeout.
+-}
+hangTimeout :: Timeout
+hangTimeout = mkTimeout 300000000
+
 fixture :: FilePath
 fixture = "test/fixtures/sample"
 
