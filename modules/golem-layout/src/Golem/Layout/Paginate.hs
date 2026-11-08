@@ -122,11 +122,25 @@ paginateWithin maxLines separatorLines base capacity flows =
         [] -> [PageOut 1 0 False [] [] [] [] [] base [] capacity leftover]
         lastPage : earlier -> reverse (lastPage {poUnmet = poUnmet lastPage <> leftover} : earlier)
 
--- | Each flow in turn. Breaks, need-lines and blank lines left at the end of the book are dropped (docs/adr ADR 0017, 0030, 0046).
+{- | Each flow in turn. Breaks, need-lines and blank lines left at the end
+of the book are dropped (docs/adr ADR 0017, 0030, 0046). The blank lines
+left there passed over figures that wait, with nothing after them to go
+with: those at the end of the book are dropped where they are written.
+They are dropped at the top of the column the figures waiting start in,
+or of the column a break placed them in, and recorded (golem-layout ADR
+0026).
+-}
 placeAll :: Env -> St -> [Flow] -> St
 placeAll env st [] =
   let st1 = maybe st (\(sp, _, _, _) -> addUnmet (UnmetNoBreak sp) st) (sNoBreak st)
-   in flushDeferred env st1 {sBreaks = [], sNeed = Nothing, sNoBreak = Nothing, sBlank = []}
+      st2 = st1 {sBreaks = [], sNeed = Nothing, sNoBreak = Nothing, sBlank = []}
+      dropBlanks s = foldl' (\s' (sp, _) -> addUnmet (DroppedBlank sp) s') s (sBlank st1)
+   in if null (sBlank st1)
+        then flushDeferred env st2
+        else
+          if null (sDeferred st2)
+            then flushDeferred env (dropBlanks st2)
+            else flushDeferred env (dropBlanks (nextColumn env st2))
 placeAll env st (f : rest) = case f of
   -- a no-break with nothing before it, or after a figure sent on, cannot be met
   FNoBreak sp
@@ -134,12 +148,20 @@ placeAll env st (f : rest) = case f of
     | otherwise -> placeAll env st {sNoBreak = Just (sp, sPage st, sColumn st, length (sSlots st))} rest
   FNeedLines sp n -> placeAll env st {sNeed = Just (maybe (sp, n) (\(s0, n0) -> if n > n0 then (sp, n) else (s0, n0)) (sNeed st))} rest
   FAdjustLines sp k -> placeAll env (adjustLines env (applyBreaks env st) sp k) rest
-  FBlank sp n -> placeAll env st {sBlank = sBlank st <> [(sp, n)]} rest
+  -- blank lines with nothing after them that places anything are the end of the book's (docs/adr ADR 0046)
+  FBlank sp n
+    | all waitsFor rest -> placeAll env st rest
+    | otherwise -> placeAll env st {sBlank = sBlank st <> [(sp, n)]} rest
   FBreak _ -> placeAll env (place env st f rest) rest
   -- the space between paragraphs is not the flow a no-break waits for
   FSpace _ -> placeAll env (place env (ready env st) f rest) rest
   _ ->
-    let st1 = checkNoBreak (placeFlow env (placeBlank env (ready env st) f rest) f rest)
+    let -- the breaks first: going on to the next page places the figures waiting, and this one may not wait
+        stB = applyBreaks env st
+        -- a figure that waits takes neither the need-lines nor the blank lines before it (golem-layout ADR 0026)
+        st1
+          | waitsBehind stB f = checkNoBreak (place env stB f rest)
+          | otherwise = checkNoBreak (placeFlow env (placeBlank env (applyNeed env stB) f rest) f rest)
         deferred = case f of
           FFigure i _ _ _ -> any (\case FFigure j _ _ _ -> i == j; _ -> False) (sDeferred st1)
           -- the flow after a turned figure is never on its page
@@ -150,6 +172,27 @@ placeAll env st (f : rest) = case f of
 -- | The breaks written so far, then the need-lines, apply before anything but another break.
 ready :: Env -> St -> St
 ready env = applyNeed env . applyBreaks env
+
+{- | Whether a figure waits, placing nothing where it is in the flow: a
+figure after a figure sent on, or a turned figure that cannot take the
+page now ('place', golem-layout ADR 0015, golem-driver ADR 0034).
+-}
+waitsBehind :: St -> Flow -> Bool
+waitsBehind st = \case
+  FFigure {} -> not (null (sDeferred st))
+  FPageFigure {} -> not (null (sDeferred st) && sColumn st == 0 && sUsed st == 0 && null (sNotes st) && sNoteLines st == 0)
+  _ -> False
+
+-- | The flows that place nothing of their own: the breaks, the controls of page breaks, the blank lines and the spaces.
+waitsFor :: Flow -> Bool
+waitsFor = \case
+  FBreak _ -> True
+  FNoBreak _ -> True
+  FNeedLines _ _ -> True
+  FAdjustLines _ _ -> True
+  FBlank _ _ -> True
+  FSpace _ -> True
+  _ -> False
 
 {- | The blank lines go in the column of the first part of what follows;
 at the top of a column they are dropped and recorded, never cut
