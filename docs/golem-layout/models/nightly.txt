@@ -1,0 +1,18 @@
+# Whether each command of pagination.als too long for expected.txt has a
+# solution, at the scope of the third field if there is one, else at that
+# of the model (5); measured on the runner on 2026-11-09
+# (.github/workflows/models-nightly.yml, docs/adr/0242)
+waitingBlankSome found
+waitingBlankNone none
+waitingBlankAllButGreedy none
+blankFigureOrder none
+blankBeforeWaiting25 found
+blankRules25 none
+needSpaceSome found
+needSpaceNone none
+needSpaceAllButGreedy found
+needFigure found
+needGreedy found
+needMoreSome found
+needMore27 found
+needMoreNone none 4

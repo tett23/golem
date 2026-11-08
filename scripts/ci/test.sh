@@ -2065,23 +2065,28 @@ expect "github-anchors: a commit that is not a SHA" 2
 # (docs/adr/0235)
 
 # The fake java writes ---Trace--- for the commands of $FAKE_FOUND and
-# nothing for the others, as Alloy does; FAKE_JAVA_FAIL makes it fail. A
+# nothing for the others, as Alloy does; FAKE_JAVA_FAIL makes it fail,
+# FAKE_SLOW sleeps for its commands until it is stopped, FAKE_CALLS counts
+# the calls, and FAKE_MODELS writes the scopes of the model it was given. A
 # model of three commands and its expected.txt.
 MC=$WORK/models
 mkdir -p "$MC/root/docs/m/models" "$MC/bin"
 : >"$MC/alloy.jar"
 cat >"$MC/root/docs/m/models/a.als" <<'ALS'
 sig A {}
-run one { some A } for 3
-run two { no A } for 3
-check three { some A } for 3
+run one { some A } for 3 but 2 Int
+run two { no A } for 3 but 2 Int
+check three { some A } for 3 but 2 Int
 ALS
 cat >"$MC/bin/java" <<'JAVA'
 #!/bin/sh
 [ -z "${FAKE_JAVA_FAIL-}" ] || { echo "java: failed" >&2; exit 1; }
+[ -z "${FAKE_CALLS-}" ] || echo call >>"$FAKE_CALLS"
 while [ $# -gt 0 ]; do
-  case $1 in -c) cmd=$2; shift 2 ;; *) shift ;; esac
+  case $1 in -c) cmd=$2; shift 2 ;; *) model=$1; shift ;; esac
 done
+[ -z "${FAKE_MODELS-}" ] || echo "$cmd $(grep -o ' for [0-9]* but ' "$model" | sort -u | tr -d '\n')" >>"$FAKE_MODELS"
+case " ${FAKE_SLOW-} " in *" $cmd "*) exec sleep 30 ;; esac
 case " $FAKE_FOUND " in *" $cmd "*) printf '%s\n' '---Trace---' 'univ={A$0}' ;; esac
 exit 0
 JAVA
@@ -2121,6 +2126,97 @@ run models_check
 expect "models: a model without expected.txt" 1
 run models_check x
 expect "models: an argument" 2
+# the lists and the commands (docs/adr/0242): -f LIST reads another list,
+# COMMANDs run only those, TIMEOUT stops a command and is exit code 3
+printf 'one found\ntwo none\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+printf 'two none\n' >"$MC/root/docs/m/models/other.txt"
+run models_check -f other.txt
+expect "models: -f reads the list of that name" 0 "check: not in other.txt, not run: docs/m/models/a.als one
+check: not in other.txt, not run: docs/m/models/a.als three
+docs/m/models/a.als two none"
+run models_check -f missing.txt
+expect "models: a model without the list of -f" 1
+if grep -q 'a.als has no missing.txt' "$WORK/err"; then ok; else ng "models: names the list the model does not have"; fi
+run models_check -f
+expect "models: -f without a list" 2
+run models_check three
+expect "models: I5 one COMMAND runs that command only" 0 "docs/m/models/a.als three found"
+run models_check three one
+expect "models: I5 two COMMANDs run those two only" 0 "docs/m/models/a.als one found
+docs/m/models/a.als three found"
+: >"$MC/calls"
+FAKE_CALLS=$MC/calls run models_check one four
+expect "models: I5 a COMMAND in no list is an error of the usage" 2
+if [ ! -s "$MC/calls" ]; then ok; else ng "models: I5 nothing runs when a COMMAND is in no list"; fi
+FAKE_CALLS=$MC/calls run models_check one
+unset FAKE_CALLS
+if [ "$(wc -l <"$MC/calls" | tr -d ' ')" = 1 ]; then ok; else ng "models: the fake java counts its calls"; fi
+FAKE_SLOW=two TIMEOUT=1 run models_check
+unset FAKE_SLOW TIMEOUT
+expect "models: I3 I4 a time-out alone is exit code 3" 3 "docs/m/models/a.als one found
+check: time-out after 1 s, not decided: docs/m/models/a.als two
+docs/m/models/a.als three found"
+if grep -qE 'a\.als two (found|none)' "$WORK/out" "$WORK/err"; then ng "models: I3 a time-out is neither found nor none"; else ok; fi
+printf 'one none\ntwo none\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+FAKE_SLOW=two TIMEOUT=1 run models_check
+unset FAKE_SLOW TIMEOUT
+expect "models: I4 a time-out does not hide a wrong result" 1
+if grep -q 'a.als one: found, but expected.txt says none' "$WORK/err" && grep -q 'time-out after 1 s, not decided: docs/m/models/a.als two' "$WORK/out"; then ok; else ng "models: I4 the wrong result and the time-out are both written"; fi
+printf 'one found\ntwo none\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+TIMEOUT=0 run models_check
+unset TIMEOUT
+expect "models: TIMEOUT=0 is no limit" 0 "docs/m/models/a.als one found
+docs/m/models/a.als two none
+docs/m/models/a.als three found"
+TIMEOUT= run models_check
+unset TIMEOUT
+expect "models: an empty TIMEOUT is no limit" 0 "docs/m/models/a.als one found
+docs/m/models/a.als two none
+docs/m/models/a.als three found"
+TIMEOUT=x run models_check
+unset TIMEOUT
+expect "models: a TIMEOUT that is not a number" 2
+rm "$MC/root/docs/m/models/other.txt"
+# a scope in the list runs a copy of the model at that scope
+: >"$MC/models"
+printf 'one found 2\ntwo none\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+FAKE_MODELS=$MC/models run models_check
+unset FAKE_MODELS
+expect "models: a command with a scope in the list" 0 "docs/m/models/a.als one found
+docs/m/models/a.als two none
+docs/m/models/a.als three found"
+if grep -qx 'one  for 2 but ' "$MC/models" && grep -qx 'two  for 3 but ' "$MC/models"; then ok; else ng "models: the scope of the list replaces that of the model for its command only"; fi
+printf 'one found x\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: a scope that is not a number" 1
+if grep -q 'one: not a scope: x' "$WORK/err"; then ok; else ng "models: names the scope that is not a number"; fi
+printf 'one found 2 more\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: more than a command, its result and its scope" 1
+printf 'one found\ntwo none\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+
+# the models of the repository (docs/adr/0242): I2 each command of a model
+# is in exactly one of expected.txt and nightly.txt
+for model in "$HERE"/../../docs/*/models/*.als; do
+  [ -f "$model" ] || continue
+  dir=$(dirname "$model")
+  name=${model#"$HERE"/../../}
+  sed -n 's/^run[[:space:]][[:space:]]*\([A-Za-z_][A-Za-z0-9_]*\).*/\1/p; s/^check[[:space:]][[:space:]]*\([A-Za-z_][A-Za-z0-9_]*\).*/\1/p' "$model" | sort -u >"$WORK/model-commands"
+  cat "$dir/expected.txt" "$dir/nightly.txt" 2>/dev/null | awk '$1 !~ /^#/ && NF { print $1 }' | sort >"$WORK/listed-commands"
+  if [ -s "$WORK/model-commands" ] && [ "$(sort -u "$WORK/listed-commands")" = "$(cat "$WORK/model-commands")" ] &&
+    [ -z "$(uniq -d "$WORK/listed-commands")" ]; then ok; else ng "models: I2 each command of $name is in exactly one of expected.txt and nightly.txt"; fi
+done
+# I6 models.yml runs expected.txt, models-nightly.yml runs nightly.txt, only
+# on a schedule and by hand, reading the repository and the runs
+MODELS_YML=$HERE/../../.github/workflows/models.yml
+NIGHTLY_YML=$HERE/../../.github/workflows/models-nightly.yml
+if grep -q 'sh scripts/models/check.sh$' "$MODELS_YML" && ! grep -q 'check.sh -f' "$MODELS_YML"; then ok; else ng "models.yml: I6 check.sh reads expected.txt"; fi
+if grep -qF 'sh scripts/models/check.sh -f nightly.txt "$COMMAND"' "$NIGHTLY_YML"; then ok; else ng "models-nightly.yml: I6 check.sh reads nightly.txt, one command a job"; fi
+if [ "$(awk '/^on:/ { on = 1; next } on && /^[^ ]/ { on = 0 } on && /^  [a-z_]/' "$NIGHTLY_YML")" = "  schedule:
+  workflow_dispatch:" ]; then ok; else ng "models-nightly.yml: I6 only schedule and workflow_dispatch"; fi
+if [ "$(awk '/^permissions:/ { on = 1; next } on && /^[^ ]/ { on = 0 } on && /^  [a-z]/' "$NIGHTLY_YML")" = "  contents: read
+  actions: read" ]; then ok; else ng "models-nightly.yml: the permissions are contents: read and actions: read"; fi
+if grep -qF 'sh scripts/ci/race-needed.sh "$GITHUB_SHA" models-nightly.yml' "$NIGHTLY_YML"; then ok; else ng "models-nightly.yml: race-needed.sh decides whether it runs"; fi
 
 # ---------------------------------------------------------------- race.yml
 # (docs/adr/0075-race-search-repetitions.md)
