@@ -214,7 +214,7 @@ Golem はテストと CI から shem をコマンドとして呼び、golem の�
 Golem は三つめの、ページの画像の SHA-256 の一覧をコミットする方法を採った。
 一覧は 1,779 ページで約 135 KB で、shem の決定性により、どの環境で作っても同じになる。
 
-入力は次の 20 の PDF である。
+入力は次の 23 の PDF である。
 入力の一覧は [code: scripts/visual/build.sh --list] が出す。
 
 - [code: sample]：[code: scripts/determinism.sh] と同じ B6 の縦組み。
@@ -223,6 +223,7 @@ Golem は三つめの、ページの画像の SHA-256 の一覧をコミット�
 - 『蟹工船』と、その [code: \[page\]] に [code: bleed = "3mm"] を足して [code: --marks japanese] で組んだもの。トンボの Separation の色と、塗り足しの付いた [code: MediaBox] は、ほかの入力にない。
 - 『テンペスト』と、パブリックドメインの十冊。
 - [code: languages]：和文と欧文の両方で使う引用符、ダッシュ、三点リーダー、ギュメを、言語を切り替える範囲の内と外に置いた fixture。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0187-inline-language-switch.md]（docs/adr の ADR 0187「原稿の一部の言語を [code: \[lang\]] と [code: @lang] で指定する」）]
+- [code: specimens-horizontal] と [code: specimens-vertical]：目で見て確かめる見た目の見本だけを集めた、横組みと縦組みの二段の本。縦組みのダッシュ、リストの字下げ、段組みの脚注、圏点の十の形、[code: palt] と [code: vpal]、ルビの親文字の一部の太字、縦組みの注の印、参考文献の一件の中の空き、段落と見出しの罫線、12 の線の種類と色、段に収めて回す図版を組む。見本は ADR ごとに見出しを立て、見出しの下にその ADR の番号を書く。縦組みの本は、[code: \[page\]] に [code: bleed = "3mm"] を足して [code: --marks japanese] でも組み（[code: specimens-vertical-marks-japanese]）、すべてのページに隠しノンブルを入れる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md]（docs/adr の ADR 0233「目で見る項目の見本を見た目の回帰のテストに加え、幾何の性質をテストにする」）]
 - 二つのマニュアル。奥付がコミットごとに変わらないように、[code: GOLEM_MANUAL_COMMIT] を 0 が 40 個の文字列に、[code: GOLEM_MANUAL_TAG] を [code: v0.0.0-visual] にして組む。
 
 [code: scripts/visual/build.sh] は、各プロジェクトを一時的なディレクトリに写して組み、リポジトリの [code: build/] には書かない。
@@ -279,6 +280,29 @@ CI の [code: visual] ジョブは、比べる手順が失敗すると、変わ�
 受け入れるなら、手元で [code: scripts/visual/run.sh --accept] を実行するか、成果物の [code: pages/] を [code: scripts/visual/pages/] に写す。
 どちらでも同じ参照になる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0096-before-and-after-images-of-changed-pages.md]（docs/adr の ADR 0096「見た目の回帰テストで変わったページの前後の画像と差分の画像を、CI の成果物と要約にする」）]
 
+### 見本の参照を受け入れるときに見ること
+
+見本の本（[code: specimens-horizontal]、[code: specimens-vertical]、[code: specimens-vertical-marks-japanese]）は、目で見て確かめる項目のうち、幾何に言い直せない見た目を集めたものである。
+二倍ダッシュが一本の線に見えるか、圏点の点が丸いか、波線がつながるか、技術書として読める見た目か、は人が決める。
+罫が字面に接しないこと、脚注がその段の下にあること、縮めた図版が版面に収まることのような幾何の性質は、golem-driver のテスト（[code: SpecimenGeometrySpec]）が組んだ結果の矩形で確かめる。
+
+見本のページの参照が変わったときは、[code: visual-diff] の後の画像を開き、見出しの下の ADR の番号で何の見本かを確かめて、次のことを見る。
+
+- 縦組みのダッシュと二倍ダッシュが行の方向に引かれ、二倍ダッシュが一本の線に見えること。
+- 入れ子のリストが外の項目の本文の行頭から始まり、10 番目からの項目の本文が 1 番目から 9 番目と同じ位置から始まること。
+- 圏点の十の形が、親文字の中央の上（縦組みでは右）に、親文字に重ならずに置かれること。
+- [code: palt] と [code: vpal] の段落で、括弧と句読点が詰めた箱の中で正しい側に寄り、隣の字に重ならないこと。
+- ルビの親文字の一部の太字が、その字だけに付くこと。
+- 縦組みの注の印と、注の本文の前の番号が、本文の字に重ならないこと。
+- 参考文献の一件の中の空きが、項目のあいだで揃うこと。
+- 段落と見出しの罫線が、格子の行を崩さず、段の端で版面の外に出ないこと。
+- 12 の線の種類の破線と点線の両端、点の丸さ、波線のつながり、多重線の比と、色が付いていること。
+- 回した図版のキャプションが、図版と一緒に回ること。shem は画像と図版を箱で描くので、図版の中身の向きは画像では見えない。
+
+受け入れたら、プルリクエストの説明に、見たページと、何を見て受け入れたかをページごとに書く。
+見本のページの画像は CI の成果物に残るので、後から同じ画像を見直せる。
+InDesign の出力との比べ合わせは、このテストでは行わない。
+
 ### 費用と注意
 
 完全な一致で比べるので、目で見分けられないずれでもテストは失敗する。
@@ -293,4 +317,5 @@ CI の [code: visual] ジョブは、比べる手順が失敗すると、変わ�
 PDF の Producer とインスタンス ID は画像に現れないので、[code: VERSION] だけを変えても参照は変わらない。
 
 手元の Apple silicon の macOS（10 コア）では、二冊の fixture を加える前の 17 の入力を組むのに約 20 秒、描いて比べるのに約 1.5 秒かかった。
+三つの見本は合わせて 20 ページで、見本を加えた 23 の入力を描いて比べるのに、同じ環境で約 7 秒かかった。
 CI の [code: visual] ジョブでは、描いて比べる手順が数秒で終わり、[code: visual] の予算の 2 分に収まる（第[ref-number ci-jobs]章）。

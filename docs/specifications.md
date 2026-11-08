@@ -861,8 +861,11 @@ EPUB はパッケージである zip の中に時刻や並び順の揺れを含�
 一覧はハッシュなので、出力が変わったことは分かるが、どう変わったかは分からない。
 コミットをまたいで PDF の見た目が変わったことは、見た目の回帰テストが見つける（[ADR 0094](adr/0094-visual-regression-page-hashes-at-72-dpi.md)）。
 このテストは Golem 自身の開発のためのもので、利用者のためのページ画像の差分（「Golem が強いるワークフロー」の節）とは別である。
-入力は 20 の PDF である。
-`sample`（`scripts/determinism.sh` と同じ B6 の縦組み）、`figures`、機能を組み合わせた二冊の `complex-vertical` と `complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）、『蟹工船』、`[page]` に `bleed = "3mm"` を足して `--marks japanese` で組んだ『蟹工船』、『テンペスト』、和文と欧文の両方で使う引用符やダッシュを言語を切り替える範囲の内と外に置いた `languages`（[ADR 0187](adr/0187-inline-language-switch.md)）、パブリックドメインの十冊、二つのマニュアルからなる。
+入力は 23 の PDF である。
+`sample`（`scripts/determinism.sh` と同じ B6 の縦組み）、`figures`、機能を組み合わせた二冊の `complex-vertical` と `complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）、『蟹工船』、`[page]` に `bleed = "3mm"` を足して `--marks japanese` で組んだ『蟹工船』、『テンペスト』、和文と欧文の両方で使う引用符やダッシュを言語を切り替える範囲の内と外に置いた `languages`（[ADR 0187](adr/0187-inline-language-switch.md)）、目で見て確かめる見た目の見本の二冊 `specimens-horizontal` と `specimens-vertical`、`specimens-vertical` の `[page]` に `bleed = "3mm"` を足して `--marks japanese` で組み、すべてのページに隠しノンブルを入れたもの（[ADR 0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）、パブリックドメインの十冊、二つのマニュアルからなる。
+見本の二冊は、ADR ごとに見出しを立て、見出しの下にその ADR の番号を書く。
+見本の見た目のうち、人の判断を要るもの（二倍ダッシュが一本の線に見えるか、点の丸さ、波線のつながりなど）は、参照を受け入れるときに一度だけ人が見て、その後はこのテストが変わらないことを守る。
+罫が字面に接しないこと、表の前後の空き、段落の罫線の位置、段組みの脚注の位置、縮めた図版と回した図版、番号付きリストの本文の行頭のような幾何の性質は、golem-driver のテストが組んだ結果の矩形で確かめる。
 マニュアルは、奥付がコミットごとに変わらないように、`GOLEM_MANUAL_COMMIT` を 0 が 40 個の文字列に、`GOLEM_MANUAL_TAG` を `v0.0.0-visual` にして組む。
 `scripts/visual/build.sh` が、各プロジェクトを一時的なディレクトリに写して組み、リポジトリの `build/` には書かない。
 入力の一覧は `build.sh --list` が出す。

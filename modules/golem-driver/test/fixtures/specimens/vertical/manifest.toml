@@ -1,0 +1,33 @@
+# 目で見る項目の見本の縦組みの本（docs/adr/0233）。見た目の回帰のテストが組む。
+# フォントはコミットしない。組む前に fonts/ja.otf と fonts/latin.otf を写す（../README.md）。
+chapters = [
+  "chapters/01-dashes.gm",
+  "chapters/02-lists.gm",
+  "chapters/03-column-notes.gm",
+  "chapters/04-kenten.gm",
+  "chapters/05-vpal.gm",
+  "chapters/06-ruby-bold.gm",
+  "chapters/07-note-marks.gm",
+  "chapters/08-rules.gm",
+  "chapters/09-figures.gm",
+]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-100000000233"
+title = "目で見る項目の見本（縦組み）"
+language = "ja"
+date = 2026-11-08
+publisher = "Golem プロジェクト"
+
+[[metadata.creators]]
+name = "Golem プロジェクト"
+role = "author"
+
+[source]
+paragraph-separator = "blank-line"
+
+[targets.pdf]
+
+# 図版を段に収めて縮めたお知らせ（G07039）は、この本が見せる機能である。
+[diagnostics]
+silence-notices = ["G07039"]

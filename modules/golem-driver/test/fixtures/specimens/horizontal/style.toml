@@ -1,0 +1,112 @@
+# 目で見る項目の見本の横組みの二段の本（docs/adr/0233）
+[page]
+size = "A5"
+binding = "left"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "12Q"
+characters = 18
+lines = 30
+line-pitch = "19H"
+columns = 2
+column-gap = "2zw"
+position = { top = "24mm", gutter = "17mm" }
+
+[fonts.body]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[headings.1]
+page-break = "any"
+size = "1.5zw"
+rule-after = { weight = "0.5pt", space-before = "0.5zw" }
+
+[headings.2]
+rule-after = { weight = "0.3pt", space-before = "0.25zw", length = "4zw" }
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[paragraph-styles.adr]
+first-line-indent = "0zw"
+
+[paragraph-styles.section]
+first-line-indent = "1zw"
+rule-before = { weight = "0.5pt", space-before = "0.5zw", space-after = "0.5zw" }
+
+[paragraph-styles.palt]
+first-line-indent = "0zw"
+proportional-metrics = true
+
+[paragraph-styles.full]
+first-line-indent = "0zw"
+
+[color.swatches]
+red = { cmyk = [0, 100, 100, 0] }
+blue = { cmyk = [100, 60, 0, 0] }
+green = { cmyk = [80, 0, 100, 0] }
+
+# 12 の線の種類（golem-driver ADR 0028）。段落の罫線と脚注の区切り線は同じ形で描く
+[paragraph-styles.rule-solid]
+first-line-indent = "0zw"
+rule-before = { weight = "1pt", space-before = "0.5zw", space-after = "0.25zw", style = "solid" }
+
+[paragraph-styles.rule-thin-thin]
+first-line-indent = "0zw"
+rule-before = { weight = "1.5pt", space-before = "0.5zw", space-after = "0.25zw", style = "thin-thin", color = "red" }
+
+[paragraph-styles.rule-thick-thick]
+first-line-indent = "0zw"
+rule-before = { weight = "2.5pt", space-before = "0.5zw", space-after = "0.25zw", style = "thick-thick", color = "blue" }
+
+[paragraph-styles.rule-thick-thin]
+first-line-indent = "0zw"
+rule-before = { weight = "2pt", space-before = "0.5zw", space-after = "0.25zw", style = "thick-thin", color = "green" }
+
+[paragraph-styles.rule-thin-thick]
+first-line-indent = "0zw"
+rule-before = { weight = "2pt", space-before = "0.5zw", space-after = "0.25zw", style = "thin-thick" }
+
+[paragraph-styles.rule-thick-thin-thick]
+first-line-indent = "0zw"
+rule-before = { weight = "3.5pt", space-before = "0.5zw", space-after = "0.25zw", style = "thick-thin-thick", color = "red" }
+
+[paragraph-styles.rule-thin-thick-thin]
+first-line-indent = "0zw"
+rule-before = { weight = "3pt", space-before = "0.5zw", space-after = "0.25zw", style = "thin-thick-thin", color = "blue" }
+
+[paragraph-styles.rule-triple]
+first-line-indent = "0zw"
+rule-before = { weight = "2.5pt", space-before = "0.5zw", space-after = "0.25zw", style = "triple", color = "green" }
+
+[paragraph-styles.rule-dashed]
+first-line-indent = "0zw"
+rule-before = { weight = "1pt", space-before = "0.5zw", space-after = "0.25zw", style = "dashed" }
+
+[paragraph-styles.rule-dotted]
+first-line-indent = "0zw"
+rule-before = { weight = "1pt", space-before = "0.5zw", space-after = "0.25zw", style = "dotted", color = "red" }
+
+[paragraph-styles.rule-japanese-dots]
+first-line-indent = "0zw"
+rule-before = { weight = "1pt", space-before = "0.5zw", space-after = "0.25zw", style = "japanese-dots", color = "blue" }
+
+[paragraph-styles.rule-wavy]
+first-line-indent = "0zw"
+rule-before = { weight = "1.5pt", space-before = "0.5zw", space-after = "0.25zw", style = "wavy", color = "green" }
+
+[composition]
+hanging-punctuation = true
+
+[notes.rule]
+length = "8zw"
+weight = "1pt"
+space-before = "0.5zw"
+space-after = "0.5zw"
+style = "wavy"
+color = "red"
+
+[masters.body]
+running-head = { position = "top-outside", content = "heading.1.short" }
+folio = { position = "bottom-outside", format = "{n}" }
