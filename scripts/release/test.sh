@@ -104,8 +104,10 @@ run check_version v0.1
 if [ "$(wc -l <"$WORK/err")" -eq 1 ] && [ ! -s "$WORK/out" ]; then ok; else ng "check-version: one line on stderr"; fi
 
 # ---------------------------------------------------------------- check-patch.sh
-# (docs/adr/0174-compatibility-promises-for-1-0.md): a patch release keeps
-# the pages of the visual regression test and the output hashes but the PDF
+# (docs/adr/0174-compatibility-promises-for-1-0.md,
+# docs/adr/0212-patch-release-check-on-the-inputs-of-the-previous-release.md):
+# a tag X.Y.Z with X and Z 1 or more is a patch; its base is the latest
+# release, not a prerelease, with the same X.Y that the tag reaches
 
 PR=$WORK/patch
 pgit() {
@@ -114,16 +116,12 @@ pgit() {
     GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com GIT_COMMITTER_DATE=2026-01-01T00:00:00Z \
     git -C "$PR" "$@" >/dev/null
 }
-# patch_repo TAG [hashes]: a repository with the pages (and hashes.txt), tagged TAG
+# patch_repo TAG: a repository with the pages of the visual regression test, tagged TAG
 patch_repo() {
   rm -rf "$PR"
-  mkdir -p "$PR/scripts/visual/pages" "$PR/scripts/determinism"
+  mkdir -p "$PR/scripts/visual/pages"
   pgit init -q -b main
   printf '1 aaaa\n2 bbbb\n' >"$PR/scripts/visual/pages/book.txt"
-  printf '1 cccc\n' >"$PR/scripts/visual/pages/other.txt"
-  if [ "${2:-}" = hashes ]; then
-    printf '1111  sample/build/html/index.html\n2222  sample/stdout\nexit 0  sample\n3333  pdf/build/pdf/sample.pdf\nexit 0  pdf\n' >"$PR/scripts/determinism/hashes.txt"
-  fi
   pgit add .
   pgit commit -q -m release
   pgit tag "$1"
@@ -134,65 +132,192 @@ patch_tag() {
   pgit commit -q --allow-empty -m change
   pgit tag "$1"
 }
+# patch_page: changes a page of the references
+patch_page() { printf '1 aaaa\n2 dddd\n' >"$PR/scripts/visual/pages/book.txt"; }
 check_patch() { GOLEM_ROOT="$PR" sh "$HERE/check-patch.sh" "$@"; }
+# not_compared NAME: the last run passed and wrote one line that is not a tag
+not_compared() {
+  if [ "$CODE" = 0 ] && [ "$(wc -l <"$WORK/out")" -eq 1 ] && ! grep -q '^v' "$WORK/out"; then ok; else ng "$1"; fi
+}
+
 patch_repo v1.0.0
 patch_tag v1.0.1
 run check_patch v1.0.1
-expect "check-patch: a patch with the same pages" 0
+expect "check-patch: the base of v1.0.1 is v1.0.0" 0 "v1.0.0"
 patch_repo v1.0.0
-printf '1 aaaa\n2 dddd\n' >"$PR/scripts/visual/pages/book.txt"
+patch_page
 patch_tag v1.0.1
 run check_patch v1.0.1
-expect "check-patch: a patch with the hash of a page changed" 1
-if grep -qF 'book.txt' "$WORK/err"; then ok; else ng "check-patch: the changed page is named"; fi
+expect "check-patch: the references do not decide (they are not compared)" 0 "v1.0.0"
 patch_repo v1.0.0
-printf '1 aaaa\n2 dddd\n' >"$PR/scripts/visual/pages/book.txt"
-patch_tag v1.1.0
-run check_patch v1.1.0
-expect "check-patch: a minor version with the hash of a page changed" 0
-patch_repo v1.0.0
-printf '1 aaaa\n2 dddd\n' >"$PR/scripts/visual/pages/book.txt"
-patch_tag v2.0.0
-run check_patch v2.0.0
-expect "check-patch: a major version with the hash of a page changed" 0
-patch_repo v0.1.0-rc3
-printf '1 aaaa\n2 dddd\n' >"$PR/scripts/visual/pages/book.txt"
-patch_tag v0.1.0-rc4
-run check_patch v0.1.0-rc4
-expect "check-patch: before v1.0.0" 0
-patch_repo v1.0.0-rc1
-printf '1 aaaa\n2 dddd\n' >"$PR/scripts/visual/pages/book.txt"
-patch_tag v1.0.0
-run check_patch v1.0.0
-expect "check-patch: after a prerelease of 1.0.0" 0
-patch_repo v1.0.0
-printf '1 aaaa\n2 dddd\n' >"$PR/scripts/visual/pages/book.txt"
 patch_tag v1.0.1-rc1
 run check_patch v1.0.1-rc1
-expect "check-patch: a prerelease of a patch with the hash of a page changed" 1
+expect "check-patch: a prerelease of a patch is a patch (P1)" 0 "v1.0.0"
+# P2: the base is not a prerelease
+patch_repo v1.0.0
+patch_tag v1.0.1-rc1
+patch_tag v1.0.1
+run check_patch v1.0.1
+expect "check-patch: v1.0.1 after v1.0.0 and v1.0.1-rc1 has the base v1.0.0 (P2)" 0 "v1.0.0"
+patch_repo v1.0.0
+patch_tag v1.0.1-rc1
+pgit tag -d v1.0.0
+patch_tag v1.0.1
+run check_patch v1.0.1
+expect "check-patch: v1.0.1 after v1.0.1-rc1 only has no base and fails (P2)" 1
+if [ -s "$WORK/err" ] && [ ! -s "$WORK/out" ]; then ok; else ng "check-patch: a patch without a base is said on stderr"; fi
 patch_repo v1.0.0
 pgit tag -d v1.0.0
 patch_tag v1.0.1
 run check_patch v1.0.1
-expect "check-patch: no release before" 0
-patch_repo v1.0.0 hashes
-printf '1111  sample/build/html/index.html\n2222  sample/stdout\nexit 0  sample\n4444  pdf/build/pdf/sample.pdf\nexit 0  pdf\n' >"$PR/scripts/determinism/hashes.txt"
+expect "check-patch: a patch without any release before fails (P2)" 1
+patch_repo v1.0.0
+patch_tag v1.1.1
+run check_patch v1.1.1
+expect "check-patch: a patch whose X.Y has no release fails (P2)" 1
+patch_repo v1.0.0
 patch_tag v1.0.1
-run check_patch v1.0.1
-expect "check-patch: a patch that changes the hash of the PDF only" 0
-patch_repo v1.0.0 hashes
-printf '1111  sample/build/html/index.html\n5555  sample/stdout\nexit 0  sample\n3333  pdf/build/pdf/sample.pdf\nexit 0  pdf\n' >"$PR/scripts/determinism/hashes.txt"
-patch_tag v1.0.1
-run check_patch v1.0.1
-expect "check-patch: a patch that changes another output hash" 1
-if grep -qF 'sample/stdout' "$WORK/err"; then ok; else ng "check-patch: the changed output is named"; fi
-patch_repo v1.0.0 hashes
-printf 'exit 1  sample\n' >>"$PR/scripts/determinism/hashes.txt"
-patch_tag v1.0.1
-run check_patch v1.0.1
-expect "check-patch: a patch that adds an output line" 1
+patch_tag v1.0.2
+run check_patch v1.0.2
+expect "check-patch: the base is the latest release of X.Y" 0 "v1.0.1"
+# P1, P3: not a patch, and the pages may differ
+for pair in v1.1.0-rc1:v1.1.0 v1.1.0-rc1:v1.1.0-rc2 v2.0.0-rc1:v2.0.0 v1.0.0-rc1:v1.0.0 v1.0.0:v1.1.0 v1.0.0:v2.0.0 v1.0.3:v1.1.0-rc1 v0.1.0-rc3:v0.1.0-rc4 v0.1.0:v0.1.1; do
+  prev=${pair%%:*} tag=${pair#*:}
+  patch_repo "$prev"
+  patch_page
+  patch_tag "$tag"
+  run check_patch "$tag"
+  not_compared "check-patch: $tag after $prev is not a patch and passes (P1, P3)"
+done
+patch_repo v1.0.0
+pgit tag -d v1.0.0
+patch_tag v1.1.0
+run check_patch v1.1.0
+not_compared "check-patch: a minor version without a release before passes"
 run check_patch
 expect "check-patch: no tag" 2
+run check_patch v9.9.9
+expect "check-patch: a tag that is not there" 2
+
+# ---------------------------------------------------------------- check-patch-output.sh
+# (docs/adr/0212): the golem of the tag builds the inputs of the base
+# release with the scripts of the base release, and the result is compared
+# with the references of the base release. The scripts of the base here are
+# fakes: build.sh writes one "PDF" per file of book/ from the output of
+# GOLEM, check.sh compares their hashes with scripts/visual/pages/, and
+# determinism.sh lists the output of GOLEM for every file of book/ with a
+# PDF line that holds the version of the golem
+
+PO=$WORK/patch-output
+ogit() {
+  GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+    GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_AUTHOR_DATE=2026-01-01T00:00:00Z \
+    GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com GIT_COMMITTER_DATE=2026-01-01T00:00:00Z \
+    git -C "$PO" "$@" >/dev/null
+}
+FAKE_GOLEM=$WORK/fake-golem
+# the fake golem: the "output" of a file is its first line, with
+# FAKE_CHANGE=<file> changing the output of that file, and --version the
+# version of the golem
+cat >"$FAKE_GOLEM" <<'G'
+#!/bin/sh
+case $1 in
+  --version) echo "golem ${FAKE_VERSION:-1.0.1}"; exit 0 ;;
+esac
+out=$(head -n 1 "$1")
+[ "$(basename "$1")" != "${FAKE_CHANGE:-}" ] || out="$out changed"
+printf '%s\n' "$out"
+G
+chmod +x "$FAKE_GOLEM"
+# out_repo [hashes]: the base release v1.0.0 with its fake scripts and its
+# references made with the fake golem
+out_repo() {
+  rm -rf "$PO"
+  mkdir -p "$PO/book" "$PO/scripts/visual/pages" "$PO/scripts/determinism"
+  ogit init -q -b main
+  printf 'manual\n' >"$PO/book/manual.gm"
+  printf 'sample\n' >"$PO/book/sample.gm"
+  cat >"$PO/scripts/visual/build.sh" <<'B'
+#!/bin/sh
+set -eu
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+mkdir -p "$1"
+for f in "$ROOT"/book/*.gm; do
+  n=$(basename "$f" .gm)
+  "$GOLEM" "$f" >"$1/$n.pdf"
+done
+B
+  cat >"$PO/scripts/visual/check.sh" <<'C'
+#!/bin/sh
+set -eu
+HERE=$(cd "$(dirname "$0")" && pwd)
+[ -f "$HERE/../../shem-fetched" ] || { echo "check: no shem" >&2; exit 1; }
+code=0
+for p in "$1"/*.pdf; do
+  n=$(basename "$p" .pdf)
+  [ "$(cat "$p")" = "$(cat "$HERE/pages/$n.txt")" ] || { echo "changed $n page-1"; code=1; }
+done
+exit $code
+C
+  cat >"$PO/scripts/visual/fetch-shem.sh" <<'F'
+#!/bin/sh
+: >"$(cd "$(dirname "$0")/../.." && pwd)/shem-fetched"
+F
+  for f in "$PO"/book/*.gm; do
+    "$FAKE_GOLEM" "$f" >"$PO/scripts/visual/pages/$(basename "$f" .gm).txt"
+  done
+  if [ "${1:-}" = hashes ]; then
+    cat >"$PO/scripts/determinism.sh" <<'D'
+#!/bin/sh
+set -eu
+[ "${1:-}" = --no-manuals ] || { echo "determinism.sh: not --no-manuals" >&2; exit 2; }
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+for f in "$ROOT"/book/*.gm; do
+  n=$(basename "$f" .gm)
+  printf '%s  %s/stdout\n' "$("$GOLEM" "$f" | cksum | cut -d' ' -f1)" "$n"
+done
+printf '%s  pdf/build/pdf/sample.pdf\n' "$("$GOLEM" --version | cksum | cut -d' ' -f1)"
+D
+    FAKE_VERSION=1.0.0 GOLEM=$FAKE_GOLEM sh "$PO/scripts/determinism.sh" --no-manuals >"$PO/scripts/determinism/hashes.txt"
+  fi
+  ogit add .
+  ogit commit -q -m release
+  ogit tag v1.0.0
+}
+check_output() { GOLEM_ROOT="$PO" sh "$HERE/check-patch-output.sh" "$@"; }
+
+out_repo
+run check_output v1.0.0 "$FAKE_GOLEM"
+expect "check-patch-output: the same output passes (P4)" 0
+run env FAKE_CHANGE=manual.gm GOLEM_ROOT="$PO" sh "$HERE/check-patch-output.sh" v1.0.0 "$FAKE_GOLEM"
+expect "check-patch-output: one page changed by the golem fails (P4)" 1
+if grep -qF 'changed manual page-1' "$WORK/err"; then ok; else ng "check-patch-output: the changed page is named on stderr"; fi
+# P5: the manual and its reference changed after the base, the golem not
+out_repo
+printf 'manual, fixed\n' >"$PO/book/manual.gm"
+"$FAKE_GOLEM" "$PO/book/manual.gm" >"$PO/scripts/visual/pages/manual.txt"
+ogit add -A
+ogit commit -q -m 'fix the manual'
+ogit tag v1.0.1
+run check_output v1.0.0 "$FAKE_GOLEM"
+expect "check-patch-output: the inputs changed after the base, the output of the golem not (P5)" 0
+if [ "$(git -C "$PO" worktree list | wc -l)" -eq 1 ]; then ok; else ng "check-patch-output: the worktree of the base is removed"; fi
+if [ -z "$(git -C "$PO" status --porcelain)" ]; then ok; else ng "check-patch-output: the working tree is left as it was"; fi
+# hashes.txt: the lines but the PDF ones are compared
+out_repo hashes
+run env FAKE_VERSION=1.0.1 GOLEM_ROOT="$PO" sh "$HERE/check-patch-output.sh" v1.0.0 "$FAKE_GOLEM"
+expect "check-patch-output: hashes.txt differs in the PDF line only (P4)" 0
+run env FAKE_CHANGE=sample.gm GOLEM_ROOT="$PO" sh "$HERE/check-patch-output.sh" v1.0.0 "$FAKE_GOLEM"
+expect "check-patch-output: a page and a line of hashes.txt changed (P4)" 1
+if grep -qF 'sample/stdout' "$WORK/err" && grep -qF 'changed sample page-1' "$WORK/err"; then ok; else ng "check-patch-output: the page and the line of hashes.txt are named"; fi
+# a base without hashes.txt runs no determinism.sh (it has none here)
+out_repo
+run check_output v1.0.0 "$FAKE_GOLEM"
+expect "check-patch-output: a base without hashes.txt" 0
+run check_output v1.0.0
+expect "check-patch-output: no golem" 2
+run check_output v9.9.9 "$FAKE_GOLEM"
+expect "check-patch-output: no base tag" 2
 
 # ---------------------------------------------------------------- notes.sh
 
