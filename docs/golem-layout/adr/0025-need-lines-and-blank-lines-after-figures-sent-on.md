@@ -1,6 +1,6 @@
 # ADR 0025: 送った図版の後でも、`@need-lines` と行アキが段に入るまで進む
 
-ステータス: 採択
+ステータス: 採択→P1、P3、P4 の「次のブロック」は [golem-layout ADR 0026](0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)
 
 ## 文脈
 

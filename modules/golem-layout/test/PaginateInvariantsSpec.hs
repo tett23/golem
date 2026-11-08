@@ -4,8 +4,9 @@
 {-# OPTIONS_GHC -fno-full-laziness -fno-cse #-}
 
 {- | The invariants of pagination checked on every small input
-(docs/adr/0204): the enumeration of the inputs, the predicates I1 to I8
-and P1 to P4 (golem-layout ADR 0025) on outputs made by hand, and every
+(docs/adr/0204): the enumeration of the inputs, the predicates I1 to I8,
+P1 to P4 (golem-layout ADR 0025) and P5 (golem-layout ADR 0026) on
+outputs made by hand, and every
 input up to the depth of
 @GOLEM_ENUM_DEPTH@ elements, with the known bugs excluded by an explicit
 list whose counterexamples are counted.
@@ -339,6 +340,57 @@ predicateTests =
         testCase "P3, P4: blank lines right before their block are not broken" $
           broken [para 0 1, FBlank (controlSpan 0) 2, para 1 1] [columnAt 1 0 4 [(0, SLine 0), (3, SLine 1)]] @?= []
       ],
+    testGroup
+      "the figures that wait are passed over (golem-layout ADR 0026)"
+      [ testCase "P1': a figure sent on by itself does not wait, the figure after it does" $
+          waitingFigures [para 0 2, FFigure 1000 3 [] [], FFigure 1001 1 [] [], para 2 1] [column 1 0 4 (map SLine [0 .. 2]), columnAt 2 0 4 [(0, SFigure 1000), (3, SFigure 1001)]] @?= [1001],
+        testCase "P1': a figure that waits placed before the paragraph after it, which goes on to the next column, waits" $
+          -- page 1 has 2 grid lines left: the figure of 3 is sent on, the figure of 1 waits, and the paragraph of 3 lines goes to page 2 after them
+          waitingFigures [para 0 2, FFigure 1000 3 [] [], FFigure 1001 1 [] [], para 2 3] [column 1 0 4 [SLine 0, SLine 1], columnAt 2 0 4 [(0, SFigure 1000), (3, SFigure 1001)], column 3 0 4 (map SLine [2 .. 4])] @?= [1001],
+        testCase "P1': a figure moved by the need-lines before it does not wait, nor does the figure after it" $
+          waitingFigures [para 0 3, FNeedLines (controlSpan 0) 2, FFigure 1000 3 [] [], FFigure 1001 1 [] []] [column 1 0 4 (map SLine [0 .. 2]), columnAt 2 0 4 [(0, SFigure 1000), (3, SFigure 1001)]] @?= [],
+        testCase "P1': a figure placed before the paragraph written after it does not wait" $
+          waitingFigures [para 0 1, FFigure 1000 1 [] [], para 1 1] [column 1 0 3 [SLine 0, SFigure 1000, SLine 1]] @?= [],
+        testCase "P5: a figure at the end of the book placed where the flow before it ends does not wait" $
+          waitingFigures [para 0 1, FFigure 1000 1 [] []] [column 1 0 3 [SLine 0, SFigure 1000]] @?= [],
+        testCase "P5: the figure at the end of the book after a figure sent on waits" $
+          waitingFigures [para 0 2, FFigure 1000 3 [] [], FFigure 1001 1 [] []] [column 1 0 3 [SLine 0, SLine 1], column 2 0 3 [SFigure 1000], column 3 0 3 [SFigure 1001]] @?= [1001],
+        testCase "P1': need-lines before a figure that waits is judged for the paragraph after it, not for the figure" $
+          broken
+            [para 0 2, FFigure 1000 3 [] [], FNeedLines (controlSpan 0) 2, FFigure 1001 1 [] [], para 2 1]
+            [column 1 0 4 (map SLine [0 .. 2]), columnAt 2 0 4 [(0, SFigure 1000), (3, SFigure 1001)]]
+            @?= [],
+        testCase "P1': need-lines before a figure that waits, the paragraph after it with one grid line left, is broken" $
+          broken
+            [para 0 3, FFigure 1000 3 [] [], FNeedLines (controlSpan 0) 2, FFigure 1001 1 [] [], para 3 1]
+            [column 1 0 4 (map SLine [0 .. 3]), column 2 0 4 [SFigure 1000], column 3 0 4 [SFigure 1001]]
+            @?= [P1],
+        testCase "P4': blank lines before a figure that waits are judged with the paragraph after it" $
+          broken
+            [para 0 2, FFigure 1000 3 [] [], FBlank (controlSpan 0) 1, FFigure 1001 2 [] [], para 2 1]
+            [columnAt 1 0 4 [(0, SLine 0), (1, SLine 1), (3, SLine 2)], column 2 0 4 [SFigure 1000], column 3 0 4 [SFigure 1001]]
+            @?= [],
+        testCase "P5: blank lines before figures that wait to the end of the book, not recorded, are broken" $
+          broken
+            [para 0 1, FFigure 1000 3 [] [], FBlank (controlSpan 0) 1, FFigure 1001 1 [] []]
+            [column 1 0 3 [SLine 0], column 2 0 3 [SFigure 1000], column 3 0 3 [SFigure 1001]]
+            @?= [P5],
+        testCase "P5: blank lines before figures that wait to the end of the book, recorded twice, are broken" $
+          broken
+            [para 0 1, FFigure 1000 3 [] [], FBlank (controlSpan 0) 1, FFigure 1001 1 [] []]
+            [column 1 0 3 [SLine 0], (column 2 0 3 [SFigure 1000]) {poUnmet = [DroppedBlank (controlSpan 0), DroppedBlank (controlSpan 0)]}, column 3 0 3 [SFigure 1001]]
+            @?= [P5],
+        testCase "P5: blank lines before figures that wait to the end of the book, recorded once, are not broken" $
+          broken
+            [para 0 1, FFigure 1000 3 [] [], FBlank (controlSpan 0) 1, FFigure 1001 1 [] []]
+            [column 1 0 3 [SLine 0], (column 2 0 3 [SFigure 1000]) {poUnmet = [DroppedBlank (controlSpan 0)]}, column 3 0 3 [SFigure 1001]]
+            @?= [],
+        testCase "P5: blank lines at the end of the book, after the figures that wait, are not judged" $
+          broken
+            [para 0 1, FFigure 1000 3 [] [], FBlank (controlSpan 0) 1]
+            [column 1 0 3 [SLine 0], column 2 0 3 [SFigure 1000]]
+            @?= []
+      ],
     testCase "I6: the output before golem-layout ADR 0013 and ADR 0019, a heading alone at the end of a page, is broken" $ do
       -- five lines, a heading whose note did not count, two lines on the next page
       let flows = [para 0 5, FHeading 2 False 1 [notedLine 20], para 30 2]
@@ -364,37 +416,16 @@ data KnownBug = KnownBug
 knownBugs :: [KnownBug]
 knownBugs =
   [ KnownBug
-      { kbItem = "送った図版の後で待つ図版の前の `@need-lines` と行アキが、その図版と別の段で扱われる",
-        kbShape = not . null . waitingFigures,
-        kbExcuses = \i b -> breachOf b `elem` [P1, P3, P4] && not (null (breachAt b)) && all (`elem` waitingFigures i) (breachAt b),
-        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 96), (5, 4482)]
-      },
-    KnownBug
       { kbItem = "`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる",
         kbShape = needLinesBeforeSpace,
         kbExcuses = \_ b -> breachOf b == P1,
-        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 14)]
+        kbCounts = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0)]
       }
   ]
 
 -- | Whether a need-lines is right before a space, as in the inputs drawn by the nightly job of 2026-11-08.
 needLinesBeforeSpace :: Input -> Bool
 needLinesBeforeSpace i = or (zipWith (\a b -> a == ENeedLines && b == ESpace) (inElements i) (drop 1 (inElements i)))
-
-{- | The figures after need-lines or blank lines, with a figure before
-them: they may wait behind a figure sent on (golem-layout ADR 0015).
--}
-waitingFigures :: Input -> [Int]
-waitingFigures (Input _ _ es) = go False False (1000 :: Int) es
-  where
-    go _ _ _ [] = []
-    go seen controls j (e : rest) = case e of
-      EFigure _ -> [j | seen && controls] <> go True False (j + 1) rest
-      ENeedLines -> go seen True j rest
-      EBlank _ -> go seen True j rest
-      ESpace -> go seen controls j rest
-      EBreak -> go seen controls j rest
-      _ -> go seen False j rest
 
 -- | The breaches of an input.
 breachesOf :: Input -> [Breach]
@@ -478,7 +509,7 @@ report what input vs =
 
 exhaustiveTests :: [TestTree]
 exhaustiveTests =
-  [ testCase "I1 to I8 and P1 to P4 hold for every input up to GOLEM_ENUM_DEPTH elements, but the known bugs, which excuse as many inputs as pinned" $ do
+  [ testCase "I1 to I8 and P1 to P5 hold for every input up to GOLEM_ENUM_DEPTH elements, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- enumDepth
       -- built here, not in a value of its own, so that it is not held
       case tallyAllPar depth (inputsOver [3 .. 5] shortElementsFor) (judge knownBugs) of

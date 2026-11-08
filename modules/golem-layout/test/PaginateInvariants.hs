@@ -2,7 +2,8 @@
 as predicates over the flow that goes in and the columns that come out,
 read as docs/adr/0206 (its section 6) decides, and the invariants P1 to
 P4 of need-lines and blank lines (golem-layout ADR 0025, its section
-「不変条件」). They read nothing of the paginator but its input and
+「不変条件」), their next block read as golem-layout ADR 0026 decides
+(P1′, P3′ and P4′ of its section 「不変条件」), with its P5. They read nothing of the paginator but its input and
 output, and every case is judged.
 
 The columns are taken in the order of their page and their column. A
@@ -25,20 +26,22 @@ module PaginateInvariants
     p2NeedLinesRecorded,
     p3BlankNoOverflow,
     p4BlankWithNext,
+    p5BlankBeforeWaiting,
+    waitingFigures,
     invariants,
     breaches,
   )
 where
 
-import Data.List (sortOn)
+import Data.List (sortOn, tails)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (listToMaybe, mapMaybe)
+import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Golem.Layout.Paginate
 import Golem.Syntax (SrcSpan)
 
--- | The invariants of docs/adr/0204 and of golem-layout ADR 0025, by their numbers.
-data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4
+-- | The invariants of docs/adr/0204 and of golem-layout ADR 0025 and 0026, by their numbers.
+data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken: the lines or figures concerned, and how.
@@ -62,7 +65,8 @@ invariants separator =
     (P1, p1NeedLinesMet separator),
     (P2, p2NeedLinesRecorded),
     (P3, p3BlankNoOverflow separator),
-    (P4, p4BlankWithNext)
+    (P4, p4BlankWithNext),
+    (P5, p5BlankBeforeWaiting)
   ]
 
 -- | The breaches of every invariant, I1 first.
@@ -356,16 +360,143 @@ waits = \case
   _ -> False
 
 {- | Each flow that places something, with the flows that wait for it, in
-the order of the flow. The flows left waiting at the end of the book have
-nothing to wait for and are dropped.
+the order of the flow: its next block. The figures that wait are passed
+over (golem-layout ADR 0026): they are not the next block of the flows
+before them, and those wait on for the block after them. The flows left
+waiting at the end of the book have nothing to wait for and are dropped.
 -}
-waiting :: [Flow] -> [([Flow], Flow)]
-waiting = go []
+waiting :: [Flow] -> [PageOut] -> [([Flow], Flow)]
+waiting flows ps = fst (waitingAndLeft flows ps)
+
+{- | 'waiting', and the flows left waiting at the end of the book, in their
+order, with the figures that wait passed over among them.
+-}
+waitingAndLeft :: [Flow] -> [PageOut] -> ([([Flow], Flow)], [Flow])
+waitingAndLeft flows ps = go [] flows
   where
-    go _ [] = []
-    go ws (f : rest)
-      | waits f = go (ws <> [f]) rest
-      | otherwise = (ws, f) : go [] rest
+    passed = waitingFigures flows ps
+    -- the flows that wait and the figures passed over since the last block
+    go held [] = ([], held)
+    go held (f : rest)
+      | waits f || any (`elem` passed) (figureIds f) = go (held <> [f]) rest
+      | otherwise = let (bs, end) = go [] rest in ((filter waits held, f) : bs, end)
+
+-- | The figure a flow is.
+figureIds :: Flow -> [Int]
+figureIds = \case
+  FFigure {ffId = i} -> [i]
+  FPageFigure {fpId = i} -> [i]
+  _ -> []
+
+{- | The figures that wait, read from the output (golem-layout ADR 0026,
+its section 「実装すること」 3), in the order of the flow: the figures
+written while a figure before them is held, not yet placed, and the
+turned figures that cannot take the page where they are written.
+
+A figure is held from where it is written until it is placed. One that
+waits is held; so is one sent on by itself, placed in a column after the
+column the flow has come to with nothing right before it to move it
+there, or placed after the first part of the next block written after it
+that is not a figure. A figure held is placed when it is in a column no
+later than the one the flow has come to.
+
+The column the flow has come to is that of the last slot placed of the
+blocks before and of the figures placed where they are written, or of the
+first column of the page each break written after them goes on to.
+Blank lines right before a figure that does not wait move it; a
+need-lines does when the grid lines left after the last slot, its notes
+and their separator counted, are fewer than it asks for. A need-lines
+before a space is judged there (docs/adr ADR 0030): with fewer lines
+left, the flow comes to the next column.
+
+The ADR reads a figure as waiting when it is placed after the first part
+of the block written after it. That misses a figure that waits and is
+placed before that block, when the block goes on to a later column and
+places the figures waiting first, and it counts a figure sent on by
+itself, to which the need-lines before it applies; the figures read here
+are those 'place' makes wait.
+-}
+waitingFigures :: [Flow] -> [PageOut] -> [Int]
+waitingFigures flows ps = go Nothing 0 Nothing [] flows
+  where
+    cols = ordered ps
+    places = [((c, k), s) | ((c, k), _, s) <- slots ps]
+    placeOf f = listToMaybe [pl | (pl, s) <- places, startsBlock f s]
+    lastOf f = case [pl | (pl, s) <- places, ownedBy f s] of
+      [] -> Nothing
+      pls -> Just (maximum pls)
+    -- a column the flow has come to may make no output: it is after the last one
+    pageOf c = maybe (maximum (0 : map poNumber cols) + 1) poNumber (listToMaybe (drop c cols))
+    -- the grid lines left after a slot in its column, its notes and their separator counted
+    leftAt place = do
+      (c, k) <- place
+      p <- listToMaybe (drop c cols)
+      let notes = sum [n | (_, _, n) <- poFootnotes p]
+      pure (poLines p - endBefore flows p (k + 1) - notes - (if notes > 0 then 1 else 0))
+    -- the column the flow has come to: of the last line placed, or of the first column of the page the breaks after it go on to
+    reached lastText breaks = case lastText of
+      Nothing -> Nothing
+      Just (c, _)
+        | breaks == 0 -> Just c
+        | otherwise -> listToMaybe [c' | (c', p) <- zip [0 ..] cols, poNumber p >= pageOf c + breaks]
+    -- the last line placed, the breaks after it, the figure held, the controls right before, the flows left
+    go _ _ _ _ [] = []
+    go lastText breaks held before (f : rest) = case f of
+      FBreak _ -> go lastText (breaks + 1) held (before <> [f]) rest
+      -- a need-lines is judged before a space: with fewer lines left, the flow goes on to the next column, and the figures held are placed there
+      FSpace _
+        | breaks == 0,
+          Just (c, _) <- lastText,
+          ns@(_ : _) <- [n | FNeedLines _ n <- before],
+          maybe False (< maximum ns) (leftAt lastText) ->
+            let held' = case held of
+                  Just (hc, _) | hc > c + 1 -> held
+                  _ -> Nothing
+             in go (Just (c + 1, -1)) 0 held' (filter (\case FNeedLines _ _ -> False; _ -> True) before <> [f]) rest
+      _
+        | waits f -> go lastText breaks held (before <> [f]) rest
+        | [i] <- figureIds f,
+          Just at@(c, _) <- placeOf f ->
+            let came = reached lastText breaks
+                later = maybe False (c >) came
+                stillHeld = case held of
+                  Just (hc, _) -> maybe True (hc >) came
+                  Nothing -> False
+                next = listToMaybe [pl | b <- rest, not (waits b), null (figureIds b), Just pl <- [placeOf b]]
+                afterNext = maybe False (at >) next
+                -- blank lines move a figure that does not wait; need-lines only when the lines left are fewer
+                needs = [n | FNeedLines _ n <- before]
+                moved =
+                  not (null [() | FBlank _ _ <- before])
+                    || (not (null needs) && maybe True (< maximum needs) (leftAt lastText))
+                turned = case f of
+                  FPageFigure {} -> True
+                  _ -> False
+                waitsHere
+                  | turned = stillHeld || maybe False (\cc -> pageOf c > pageOf cc) came
+                  | otherwise = stillHeld
+                bySelf = not waitsHere && not turned && (afterNext || (later && not moved))
+                held' = if waitsHere || bySelf then Just at else Nothing
+                -- a figure placed where it is written is where the flow has come to
+                (lastText', breaks') = if waitsHere || isJust held' then (lastText, breaks) else (Just at, 0)
+             in [i | waitsHere] <> go lastText' breaks' held' [] rest
+        | null (figureIds f),
+          Just end <- lastOf f ->
+            let held' = case held of
+                  Just h | h > end -> held
+                  _ -> Nothing
+             in go (Just end) 0 held' [] rest
+        | otherwise -> go lastText breaks held [] rest
+
+-- | Whether a slot holds part of a block.
+ownedBy :: Flow -> Slotted -> Bool
+ownedBy f s = case s of
+  SLine j -> j `elem` ids
+  SHeading j _ -> j `elem` ids
+  SCode j _ _ -> j `elem` ids
+  _ -> startsBlock f s
+  where
+    ids = map lbId (blockLines f)
 
 -- | The lines of a block, in their order.
 blockLines :: Flow -> [LineBox]
@@ -441,7 +572,7 @@ after the need-lines are not counted (docs/adr ADR 0046).
 p1NeedLinesMet :: Int -> Check
 p1NeedLinesMet separator flows ps =
   [ Breach P1 (blockIds b) ("need-lines " <> show n <> " has " <> show room <> " grid lines left before its block on page " <> show (poNumber p) <> " column " <> show (poColumn p))
-  | (ws, b) <- waiting flows,
+  | (ws, b) <- waiting flows ps,
     FNeedLines _ n <- ws,
     Just (_, k, p) <- [firstSlotOf ps b],
     n <= poLines p,
@@ -470,7 +601,7 @@ p2NeedLinesRecorded flows ps =
       twice = [Breach P2 [] ("need-lines at " <> show sp <> " is recorded " <> show c <> " times") | (sp, c) <- Map.toList counts, c > 1]
       missing =
         [ Breach P2 [] ("need-lines " <> show [n | (_, n) <- big] <> " is not recorded")
-        | (ws, b) <- waiting flows,
+        | (ws, b) <- waiting flows ps,
           Just (_, _, p) <- [firstSlotOf ps b],
           let big = [(sp, n) | FNeedLines sp n <- ws, n > poLines p],
           not (null big),
@@ -483,7 +614,7 @@ blanksBefore :: [Flow] -> [PageOut] -> [([SrcSpan], Int, Flow)]
 blanksBefore flows ps =
   let capacity = maximum (1 : map poLines ps)
    in [ (map fst bs, foldl' (\a (_, n) -> min capacity (a + min capacity n)) 0 bs, b)
-      | (ws, b) <- waiting flows,
+      | (ws, b) <- waiting flows ps,
         let bs = [(sp, n) | FBlank sp n <- ws],
         not (null bs)
       ]
@@ -550,3 +681,19 @@ p4BlankWithNext flows ps =
         ]
       stray = [Breach P4 [] ("a blank line at " <> show sp <> " not written is recorded as dropped") | sp <- Map.keys dropped, sp `notElem` written]
    in judged <> stray
+
+{- | P5 (golem-layout ADR 0026): blank lines with no next block, nothing
+but figures that wait after them to the end of the book, are placed in
+no column: each @blank-line is recorded once as dropped.
+-}
+p5BlankBeforeWaiting :: Check
+p5BlankBeforeWaiting flows ps =
+  let dropped = droppedBlanks ps
+      (_, left) = waitingAndLeft flows ps
+   in [ Breach P5 figs ("the blank line at " <> show sp <> " before the figures that wait " <> show figs <> " is recorded as dropped " <> show c <> " times")
+      | (FBlank sp _, after) <- zip left (drop 1 (tails left)),
+        let figs = concatMap figureIds after,
+        not (null figs),
+        let c = Map.findWithDefault 0 sp dropped,
+        c /= 1
+      ]
