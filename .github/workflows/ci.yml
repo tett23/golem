@@ -672,8 +672,11 @@ jobs:
             echo "$f: a wasm module"
           done
           test "$found" = 2
+      # only a push to main saves dist-wasm; a pull request restores the
+      # one of main and builds the packages it changed, without saving
+      # (docs/adr/0219)
       - name: Save dist-wasm
-        if: steps.build.outputs.compiled == 'true'
+        if: steps.build.outputs.compiled == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v6
         with:
           path: dist-wasm
@@ -701,10 +704,24 @@ jobs:
           name: wasm-native-list
       - name: The PDFs and the diagnostics of golem.wasm are those of golem (docs/adr/0199)
         run: sh scripts/wasm/compare.sh --check wasm-native-list.txt wasm-list.txt
+      # why the toolchain cache missed: the toolchain or the project
+      # differs from main (the base of a pull request, the commit before a
+      # push), or neither and the cache was evicted, a warning annotation
+      # that does not fail the job (docs/adr/0219)
       - name: Times
         if: always()
+        env:
+          HIT: ${{ steps.ghcwasm.outputs.cache-hit }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: |
           echo "the wasm job: $(( $(date +%s) - $(cat "$RUNNER_TEMP/t0") )) s"
+          [ "$HIT" = true ] || HIT=false
+          if [ -n "$BASE_SHA" ] && git fetch -q --depth=1 origin "$BASE_SHA"; then
+            same() { if git diff --quiet FETCH_HEAD HEAD -- "$@"; then echo true; else echo false; fi; }
+            sh scripts/ci/wasm-cache.sh "$HIT" "$(same scripts/fetch-ghc-wasm.sh)" "$(same cabal.project.wasm cabal.project.wasm.freeze scripts/fetch-wasm-packages.sh scripts/wasm/patches)"
+          else
+            echo "wasm-cache: the commit of main to compare with cannot be fetched; why the cache missed is not known"
+          fi
 
   determinism:
     needs: build
