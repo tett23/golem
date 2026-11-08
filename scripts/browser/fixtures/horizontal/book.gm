@@ -1,0 +1,28 @@
+# ブラウザの検査
+
+行番号と差分の印のあるコードブロック。
+
+```haskell numbers=10 diff=true
+ main :: IO ()
+-main = print 1
++main = do
++  print 2
+```
+
+一行のコードブロック。
+
+``` numbers=true
+only one line
+```
+
+空のコードブロック。
+
+``` numbers=true
+```
+
+圏点の十の形。
+
+[kenten shape=sesame: 胡麻]、[kenten shape=open-sesame: 白胡麻]、[kenten shape=dot: 黒丸]、[kenten shape=open-dot: 白丸]、[kenten shape=circle: 二重]、[kenten shape=open-circle: 白二重]、[kenten shape=double-circle: 蛇の目]、[kenten shape=open-double-circle: 白蛇の目]、[kenten shape=triangle: 三角]、[kenten shape=open-triangle: 白三角]。
+
+@style box
+罫線のある段落。

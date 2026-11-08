@@ -11,6 +11,7 @@
 | `conformance/` | a small book with every element of the structure tree of a tagged PDF: headings, nested lists, a definition list, a table across pages, a code block with a caption and line numbers, notes, a sidenote, external links, the contents, the index and the bibliography; set horizontally with `manifest.toml` and `style.toml`, and vertically, its notes at the end of the chapter and without the chapter of the sidenote, with `manifest-vertical.toml` and `style-vertical.toml`. `scripts/ci/conformance-pdfs.sh` declares PDF/A-2a and PDF/UA-1 for the CI job verapdf, and `TaggedPdfSpec` fixes its structure trees ([docs/adr/0183](../../../../docs/adr/0183-tagged-pdf-and-pdf-a.md)); the test copies its fonts in as `fonts/ja.otf` and `fonts/latin.otf` |
 | `languages/` | a small horizontal book of the characters of both scripts (quotation marks, dashes, the ellipsis, guillemets) in and out of `[lang]` spans, `@lang` on blocks and its body form, and the hyphenation of English and French paragraphs; `TaggedPdfSpec` fixes its structure tree, `scripts/ci/conformance-pdfs.sh` declares PDF/A-2a and PDF/UA-1 for the CI job verapdf, CI runs epubcheck on its EPUB, and the visual regression test builds it ([docs/adr/0187](../../../../docs/adr/0187-inline-language-switch.md)); the tests copy its fonts in as `fonts/ja.otf` and `fonts/latin.otf` |
 | `epub-forms/` | a small book of three files with the forms CI runs epubcheck on: a citation whose `@bibliography` is in another file, `@toc depth=1` over headings of three levels, and the channel of the sample plugin `glossary`, read from `plugins/wasm/glossary.wasm` through a cache named by the SHA-256 of its `plugins.lock` (the url is not fetched); `PluginsSpec` of golem-driver-global-test checks the three forms in its EPUB ([docs/adr/0232](../../../../docs/adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)) |
+| `specimens/` | two small books of the specimens of what was checked by eye (`horizontal/`, `vertical/`), built by the visual regression test ([docs/adr/0233](../../../../docs/adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)); see "The specimens" |
 | `tempest/` | *The Tempest* by William Shakespeare, set horizontally |
 | `kanikosen/` | 『蟹工船』小林多喜二, set vertically |
 | `pd/` | ten public-domain books that are hard to set ([docs/adr/0026](../../../../docs/adr/0026-ten-public-domain-fixtures.md)) |
@@ -101,6 +102,55 @@ golem build
 ```
 
 `fonts/` and `build/` are ignored by git.
+
+## The specimens
+
+`specimens/horizontal/` and `specimens/vertical/` hold the specimens of
+the looks the roadmap asked to check by eye in a PDF
+([docs/adr/0233](../../../../docs/adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)),
+and only those the other inputs of the visual regression test do not
+have. Both are books of two columns (A5), so that the footnotes of each
+column and the figures fitted to a column can be seen. Each specimen is a
+chapter whose heading names what it shows, with the number of its ADR
+under the heading, so that a page of the references can be told by its
+heading.
+
+| Specimen | Horizontal | Vertical | ADR |
+|---|---|---|---|
+| vertical dashes (`―`, `—`, double dashes) | | yes | [golem-driver ADR 0015](../../../../docs/golem-driver/adr/0015-vertical-dashes.md) |
+| nested lists and a numbered list of twelve items | yes | yes | [golem-driver ADR 0013](../../../../docs/golem-driver/adr/0013-list-indents.md) |
+| footnotes in columns | yes | yes | [docs/adr/0018](../../../../docs/adr/0018-multi-column-layout.md) |
+| the ten shapes of kenten | yes | yes | [golem-driver ADR 0019](../../../../docs/golem-driver/adr/0019-pdf-kenten-shapes.md) |
+| `palt` and `vpal`, the kerning of double dashes | yes | yes | [golem-driver ADR 0020](../../../../docs/golem-driver/adr/0020-glyph-positioning-and-dash-kerning.md) |
+| bold in part of the base of ruby | yes | yes | [golem-layout ADR 0011](../../../../docs/golem-layout/adr/0011-ruby-base-character-styles.md) |
+| note marks in vertical text | | yes | [golem-driver ADR 0018](../../../../docs/golem-driver/adr/0018-footnote-marks-and-numbers.md) |
+| the spaces inside an entry of the bibliography | yes | | [golem-doc ADR 0004](../../../../docs/golem-doc/adr/0004-bibliography-formatting.md) |
+| the rules of sections and under headings | yes | yes | [golem-driver ADR 0027](../../../../docs/golem-driver/adr/0027-paragraph-style-rules.md) |
+| the twelve styles of rules with colours, and the footnote separator | yes | | [golem-driver ADR 0028](../../../../docs/golem-driver/adr/0028-rule-colour-and-style.md) |
+| figures fitted to the column and turned | yes | yes | [golem-driver ADR 0034](../../../../docs/golem-driver/adr/0034-fit-figures-to-column.md) |
+
+A book has one footnote separator (`[notes.rule]`), so the twelve styles
+of rules are shown as the rules before twelve paragraphs, which are
+drawn by the same shapes; the footnote separator of the horizontal book
+is one of them (wavy, in a colour). The hidden folios are shown by the
+visual regression test building the vertical book with Japanese crop
+marks and a bleed of 3 mm (`specimens-vertical-marks-japanese`); its
+`[hidden-folio]` puts them on every page, as every page has a folio.
+The figures are small PNG images; shem draws images as boxes, so the
+references show the place and the size of a figure, and its turned
+caption, not its content.
+
+What a page of these books shows is accepted by eye once, when its
+reference is written (the pull request says what was looked at on each
+page). The geometric properties of the same looks are checked by the
+golem-driver test `SpecimenGeometrySpec`, from the composed result of
+these books and of other inputs.
+
+The fonts are not committed: the visual regression test and the tests
+copy Noto Serif JP of `kanikosen/fonts/` and Source Sans Pro of
+golem-font in as `fonts/ja.otf` and `fonts/latin.otf`, as for the two
+books above. The specimens are not in `scripts/determinism/hashes.txt`;
+the references of the visual regression test keep their pages.
 
 ## Sources
 

@@ -54,6 +54,10 @@ data Element
     EBreak
   | -- | @need-lines 2@ (golem-layout ADR 0025)
     ENeedLines
+  | {- | @need-lines n@ of n = c − 1 lines in columns of c grid lines, more
+    than 'ENeedLines' (golem-layout ADR 0035)
+    -}
+    ENeedLinesMore !Int
   | -- | blank lines of n lines (golem-layout ADR 0025)
     EBlank !Int
   deriving stock (Eq, Show)
@@ -64,8 +68,9 @@ data Input = Input {inLines :: !Int, inColumns :: !Int, inElements :: ![Element]
 
 {- | The elements of a flow in columns of c grid lines: figures of up to
 c lines, as golem-driver shrinks a figure to fit an empty column
-(docs/adr/0206), and need-lines of 2 and blank lines of 1 and 2 lines
-(golem-layout ADR 0025).
+(docs/adr/0206), need-lines of 2 and blank lines of 1 and 2 lines
+(golem-layout ADR 0025), and need-lines of c − 1 lines in columns of more
+than 2 grid lines (golem-layout ADR 0035).
 -}
 elementsFor :: Int -> [Element]
 elementsFor c =
@@ -74,7 +79,9 @@ elementsFor c =
     <> [EHeading, ENotedHeading, ERecto]
     <> map EFigure [1 .. c]
     <> [ESpace, EBreak]
-    <> [ENeedLines, EBlank 1, EBlank 2]
+    <> [ENeedLines]
+    <> [ENeedLinesMore (c - 1) | c > 2]
+    <> [EBlank 1, EBlank 2]
 
 {- | The elements of the flows of the shortened enumeration (docs/adr/0208,
 its section 3): those of 'elementsFor', with the figures of 1, c − 1 and
@@ -134,6 +141,7 @@ enumFlows = go 0 1000 0
       ESpace -> FSpace 1 : go i j m rest
       EBreak -> FBreak BreakPage : go i j m rest
       ENeedLines -> FNeedLines (controlSpan m) 2 : go i j (m + 1) rest
+      ENeedLinesMore n -> FNeedLines (controlSpan m) n : go i j (m + 1) rest
       EBlank n -> FBlank (controlSpan m) n : go i j (m + 1) rest
     plain base n = [LineBox (base + k) [] [] [] 0 | k <- [0 .. n - 1]]
     noted i = LineBox i [NoteBody (noteOf i) 1] [] [] 0
