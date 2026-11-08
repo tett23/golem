@@ -21,6 +21,11 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 ### PDF
 
 - **本文の中のコードの和文の改行**：和文を含む長い本文の中のコードは、空白と `/` の後でしか改行しないので、版面の右にはみ出す。利用者のマニュアルの付録 E では、はみ出す六つの項目のメッセージの後ろを `…` で略して避けている（[docs/adr/0178](adr/0178-colophon-commit-line-overflow.md)、[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。はみ出す行は、`golem build` が G07105 の警告で報告する。
+- **リンクの注釈についての ISO 15930-7 の照合**：v0.1.0-rc4 はリンクの注釈を含む最初のリリースなので、タグを打つ前に、メンテナーが ISO 15930-7:2010 の本文を入手し、リンクの注釈、URI のアクション、仕上がりの線の内側の印刷する注釈、外観のストリームのない注釈の四つの問いと、[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) の要件の一覧を照合する。結果は `docs/audits/<日付>-iso-15930-7-check.md` に記録する。今の出力が規格に反すると分かれば、[docs/adr/0182](adr/0182-external-links.md) の PDF/X-4 の節を改める ADR を作り、その実装がマージされるまで v0.1.0-rc4 のタグを打たない。タグを打つ前に、記録があり、この項目が消えていることを確かめる（[docs/adr/0221](adr/0221-check-iso-15930-7-for-link-annotations-before-rc4.md)）。
+
+### CI
+
+- **CI のキャッシュの量を 10 GB の上限の下に保つこと**：2026-11-08 のリポジトリのキャッシュは 10 GB の上限を超えていて、GitHub は使われていない順に消す。量のほとんどは、`build` ジョブがプルリクエストごとに保存する `dist-…` である。[docs/adr/0219](adr/0219-frequency-of-the-wasm-job-and-its-uncached-runs.md) は `wasm` ジョブの保存だけを扱ったので、`build` の保存の扱いは別の ADR で決める。
 
 ## v1.0.0
 
@@ -101,7 +106,7 @@ v1.0.0 の後、v2 より前の minor のバージョンで扱う事項である
 
 - **送った図版の後で待つ図版の前の `@need-lines` と行アキ**：仕様書の「既知の不具合」の「送った図版の後で待つ図版の前の `@need-lines` と行アキが、その図版と別の段で扱われる」を直す。待つ図版の前の `@need-lines` と行アキをどの段で扱うかを ADR で決める。[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の P1、P3、P4 は、この形の入力を除いたまま採択した。
 - **不変条件のテストで見つかった改ページの不具合**：仕様書の「既知の不具合」の「`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる」を直す。空きを `@need-lines` の次のブロックに数えるかを ADR で決める（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の抜き取りで見つかった）。
-- **不変条件のテストで見つかった行分割の不具合**：仕様書の「既知の不具合」の「語間の空白の隣の禁則と分離禁止」、「字幅の伸縮の刻みで行長を超える行」、「明示のハイフンの後の分割と両用の字の禁則」を、それぞれ ADR を作って直す（[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の列挙で見つかった）。三つめは、明示のハイフンの後の分割の規則と両用の字の禁則のどちらを優先するかを先に決める。
+- **不変条件のテストで見つかった行分割の不具合**：仕様書の「既知の不具合」の「段落の終わりの語間の空白の前の行末禁則」を直す（[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の列挙で見つかった）。後に箱がない空白に行末禁則を当てるか、段落の終わりの空白を捨てるかを ADR で決める。
 - **`manifest.toml` の `language` の形の検査**：`language` が BCP 47 の言語のタグの形であることは、`pdfa` か `pdfua` を書いた本でだけ調べる（G03119、[ADR 0183](adr/0183-tagged-pdf-and-pdf-a.md)）。`[lang]` と `@lang` の言語のタグは形を調べる（G02132）ので、ほかの本の `language` の形も調べるかを ADR で決める。今の本が組めなくなりうるので、[ADR 0187](adr/0187-inline-language-switch.md) は扱わなかった。
 - **`golem check` が G01012 を二度出す件**：[ADR 0188](adr/0188-headings-beyond-level-3.md) の調査で、`golem check` が同じ見出しの G01012 を二度ずつ出し、`golem build --target html` は一度ずつ出した。`golem new` で作ったプロジェクトと、golem-driver の `sample` の fixture の写しに `#######` の行を足しただけでは、どちらのコマンドも一度だけ出す。二度出る条件を調べて直す。
 - **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲の ADR はまだない。上から順に、前の範囲の結果を見て書く。
@@ -234,7 +239,7 @@ v3 の GUI は、次の原則に従って作る。
   - 図版を段に収めて回す試料（縦組みと横組み）で、縮めた図版が版面に収まり、回した図版がキャプションと一緒に回ること（[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）。
 - **EPUB の検査と読書環境での見え方**：別のファイルの参考文献への引用のリンク、ナビゲーション文書の深さ、プラグインの独自のチャネルを使った EPUB を epubcheck にかけて RSC-012 などが出ないことと、ブラウザと読書環境で見え方を確かめていない（[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）。
 - **タグ付き PDF の読み上げ**：タグ付き PDF を、macOS の VoiceOver と Acrobat Reader、Windows の NVDA と Acrobat Reader で読み、縦組みの本文、ルビ（親文字の後に読み）、注（印の直後に注の本文）の読む順と、図版の代替テキストが読まれることを確かめていない。veraPDF が調べるのは PDF/UA-1 のうち自動で調べられる要件だけである（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
-- **PDF のリンクの注釈**：リンクを含む横組みと縦組みの PDF を、Acrobat Reader、macOS のプレビュー、Chrome の PDF ビューアで開き、リンクの矩形をクリックして URL が開くことを確かめていない。ISO 15930-7:2010（PDF/X-4）の本文で、注釈と URI のアクションを禁じる規定がないことも確かめていない。禁じる規定があれば、`[color] intent` のある本にリンクを書く扱いを改める ADR を作る（[docs/adr/0182](adr/0182-external-links.md)）。
+- **PDF のリンクの注釈**：リンクを含む横組みと縦組みの PDF を、Acrobat Reader、macOS のプレビュー、Chrome の PDF ビューアで開き、リンクの矩形をクリックして URL が開くことを確かめていない。ISO 15930-7:2010（PDF/X-4）の本文で、注釈と URI のアクションを禁じる規定がないことも確かめていない。この照合は、v0.1.0-rc4 のタグの前にメンテナーが行い、`docs/audits/` に記録する（[docs/adr/0221](adr/0221-check-iso-15930-7-for-link-annotations-before-rc4.md)）。禁じる規定があれば、`[color] intent` のある本にリンクを書く扱いを改める ADR を作る（[docs/adr/0182](adr/0182-external-links.md)）。
 - **規則の Alloy のモデル**：規則を足すか変える ADR のうち、その範囲に Alloy のモデル（`docs/<モジュール>/models/`）があるものは、モデルを直して走らせ直し、両立しない規則の組と最も小さい例をモデルの README と ADR の「テスト設計」に書く。今モデルがあるのは改ページ（`docs/golem-layout/models/pagination.als`、結果は `docs/golem-layout/models/README.md`）だけである。モデルのない範囲では、規則が三つ以上のほかの規則と端で重なる ADR だけが、新しくモデルを書く。モデルは CI で走らせないので、手で確かめる（[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)、[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 5）。
 - **wasm の版のリリース**：`release.yml` のジョブ `wasm` を実際のタグで動かしていない。自動のテスト（`scripts/release/test.sh`）は、`licenses.sh --wasm` と `package-wasm.sh` を偽のコマンドと偽の入力で確かめただけである。`v` のタグの下書きのリリースに `golem-<タグ>-wasm32-wasi.tar.gz` があり、その `THIRD_PARTY_LICENSES/` が [ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md) の 8 の挙げるものを持ち、`SHA256SUMS` と `gh attestation verify` が通ることを確かめる（[docs/adr/0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
 - **wasm の版をブラウザで組むこと**：`browser_wasi_shim` を使い、Safari と Chrome で kanikosen を組み、PDF の SHA-256 がネイティブの `golem build --target pdf` と同じになることを確かめていない。CI は Node の `node:wasi` で確かめるだけであり、wasmtime と Deno で動くことも確かめていない（README と `scripts/wasm/README` は、どちらも見込みとして書く）。結果をこの項目に書き、項目を外す（[docs/adr/0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。

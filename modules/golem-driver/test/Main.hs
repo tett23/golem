@@ -12,6 +12,7 @@ import DiagnosticsSpec
 import DoubleDashSpec (doubleDashTests)
 import EmetSamplesSpec (emetSamplesTests)
 import FigureSpec
+import FileSpacesSpec (fileSpacesTests)
 import FunctionsSpec (functionsTests)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
 import HeadingLevelsSpec (headingLevelsTests)
@@ -126,6 +127,7 @@ tests skips =
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
              testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
+             testGroup "the spaces of paragraph styles redefined in files (docs/adr/0217)" fileSpacesTests,
              publicDomainTests skips,
              diagnosticSiteTests
            ]
