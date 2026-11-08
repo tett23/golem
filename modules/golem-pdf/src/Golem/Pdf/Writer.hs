@@ -363,8 +363,9 @@ markBuilder fontNames imageNames formNames = mark
     glyphs gs = mconcat ["1 0 0 1 " <> num x <> sp <> num y <> " Tm <" <> hex4 g <> "> Tj" <> nl | (g, x, y) <- gs]
     mark = \case
       GlyphRun f size gs -> "BT " <> fontName' f <> sp <> num size <> " Tf" <> nl <> glyphs gs <> "ET" <> nl
+      -- inside q and Q, so that the scaling does not outlive the run (golem-pdf ADR 0015)
       ScaledGlyphRun f size scale gs ->
-        "BT " <> fontName' f <> sp <> num size <> " Tf " <> ratio (toInteger scale % 10) <> " Tz" <> nl <> glyphs gs <> "ET" <> nl
+        "q BT " <> fontName' f <> sp <> num size <> " Tf " <> ratio (toInteger scale % 10) <> " Tz" <> nl <> glyphs gs <> "ET Q" <> nl
       RotatedGlyphRun f size gs ->
         "BT " <> fontName' f <> sp <> num size <> " Tf" <> nl <> mconcat ["0 -1 1 0 " <> num x <> sp <> num y <> " Tm <" <> hex4 g <> "> Tj" <> nl | (g, x, y) <- gs] <> "ET" <> nl
       Rule (Rect x y w h) -> num x <> sp <> num y <> sp <> num w <> sp <> num h <> " re f" <> nl

@@ -24,6 +24,7 @@ import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import HorizontalScalingSpec qualified
 import ImageSpec qualified
 import ImportSpec qualified
 import Numeric (readHex)
@@ -719,7 +720,7 @@ tests tinyJpeg =
         assertBool ("Info points at the Info dictionary, object " <> show info) ("/CreationDate" `BS.isInfixOf` BS.take 300 (objectAt info)),
       testCase "content stream: glyph positions, colour, horizontal scaling" $ do
         let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [SetColor (Swatch 0 80 100 0), ScaledGlyphRun (FontRef 7) (10 * 65536) 985 [(2, 65536, -65536)]]
-        cs @?= "0 0.8 1 0 k 0 0.8 1 0 K\nBT /F1 10 Tf 98.5 Tz\n1 0 0 1 1 -1 Tm <0002> Tj\nET\n",
+        cs @?= "0 0.8 1 0 k 0 0.8 1 0 K\nq BT /F1 10 Tf 98.5 Tz\n1 0 0 1 1 -1 Tm <0002> Tj\nET Q\n",
       testGroup
         "styled glyph runs and saved state (golem-driver ADR 0004)"
         [ testCase "a slanted, emboldened run sets its text matrix and stroke inside q and Q" $ do
@@ -809,6 +810,7 @@ tests tinyJpeg =
       SecuritySpec.tests,
       UuidSpec.tests,
       DrawingSpec.tests,
+      HorizontalScalingSpec.tests,
       PaintSpec.tests,
       testGroup
         "CIDSystemInfo (ADR 0006)"

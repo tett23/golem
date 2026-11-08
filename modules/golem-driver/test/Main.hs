@@ -11,6 +11,7 @@ import DiagnosticSitesSpec
 import DiagnosticsSpec
 import DoubleDashSpec (doubleDashTests)
 import EmetSamplesSpec (emetSamplesTests)
+import ExpansionSpec (expansionTests)
 import FigureExternalSpec (figureExternalTests)
 import FigureSpec
 import FileSpacesSpec (fileSpacesTests)
@@ -81,7 +82,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests, tateChuYokoTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests, tateChuYokoTests, expansionTests]
         <> [ newProjectTests,
              allTargetsTests,
              pdfPipelineTests,

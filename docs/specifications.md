@@ -1260,6 +1260,7 @@ folio = { position = "bottom-outside", format = "{n}" }
 `expansion` は、欧文のグリフの幅を行ごとに伸び縮みさせる。
 `limit` は伸縮の限度、`step` は刻みで、どちらも千分率の整数である（[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md)）。
 省けば伸縮しない。
+PDF では、伸縮した行の欧文のグリフを水平の比率（`Tz`）で描き、その比率を後に描く字と図版に残さない（[golem-pdf ADR 0015](golem-pdf/adr/0015-scaled-glyph-run-restores-horizontal-scaling.md)）。
 縮める行は刻みに切り上げ、伸ばす行は刻みに切り捨てる（[golem-layout ADR 0029](golem-layout/adr/0029-expansion-steps-never-overflow-the-line.md)）。
 限度は刻みの整数倍に切り捨てた値として使う。
 `limit = 22, step = 5` の限度は 20 であり、`step` が `limit` より大きい設定と、`step` が 0 以下の設定では伸縮しない。
