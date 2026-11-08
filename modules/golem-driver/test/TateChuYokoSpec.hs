@@ -288,11 +288,11 @@ violations n o = [show n <> " " <> T.unpack (oText o) <> ": " <> e | e <- check 
       -- 6: the advances and the em box of the glyphs inside the box
       6 ->
         let s = oS o
-            extent (g, a)
+            extent g a
               | gEncoding g == "Identity-V" = (gX g - s / 2, gX g + s / 2, gY g - s, gY g)
               | otherwise = (gX g, gX g + a * gScale g / 1000, gY g + oC o * s - s / 2, gY g + oC o * s + s / 2)
          in [ show (x1, x2, y1, y2)
-            | (x1, x2, y1, y2) <- map extent (zip gs (oAdvances o)),
+            | (x1, x2, y1, y2) <- zipWith extent gs (oAdvances o),
               x1 < oXc o - s / 2 - tolerance || x2 > oXc o + s / 2 + tolerance || y1 < oY0 o - s - tolerance || y2 > oY0 o + tolerance
             ]
       _ -> []
@@ -311,7 +311,7 @@ breakAll name = breakSome name [1 .. 6]
 -- | Each invariant of the numbers is broken by some occurrence.
 breakSome :: String -> [Int] -> [Occurrence] -> IO ()
 breakSome name ns occs = forM_ ns $ \n ->
-  assertBool (name <> ": nothing breaks I" <> show n) (any (not . null . violations n) occs)
+  assertBool (name <> ": nothing breaks I" <> show n) (not (all (null . violations n) occs))
 
 {- | The glyphs of an occurrence as the drawing before the ADR placed them:
 in the vertical font, upright, on the centre line, each its advance
