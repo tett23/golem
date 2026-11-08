@@ -18,7 +18,6 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (Alpha (..), ColorSpace (..), FigureContent (..), ImageData (..))
 import Golem.Pdf.Rect (Rect (..))
 import Golem.Preflight.View (ImageView (..), PageView (..), View (..))
-
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing)
 import System.Exit (ExitCode (..))
