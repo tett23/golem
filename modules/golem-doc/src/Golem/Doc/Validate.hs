@@ -160,7 +160,7 @@ inlineErrors fileSize allowed i =
     Link _ u xs -> linkOwnErrors u xs <> sub xs
     -- a tag of the form of BCP 47 (docs/adr ADR 0187)
     Lang _ l xs -> langTagErrors (Just l) <> sub xs
-    -- only the assembly resolves a reference, after the plugins (docs/adr/0215)
+    -- only the assembly resolves a reference, after the plugins (docs/adr/0215, 0229)
     Resolved {} -> ["解決した参照は文書の組み立てだけが作ります"]
     _ -> []
   where

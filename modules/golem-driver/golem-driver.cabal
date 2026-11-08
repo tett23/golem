@@ -81,7 +81,7 @@ library
 test-suite golem-driver-test
   import:           warnings
   type:             exitcode-stdio-1.0
-  -- CssCascade is in the tests of golem-html (docs/adr/0217)
+  -- CssCascade is in the tests of golem-html (docs/adr/0217, 0229)
   hs-source-dirs:   test ../golem-html/test
   main-is:          Main.hs
   other-modules:

@@ -22,10 +22,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - **本文の中のコードの和文の改行**：和文を含む長い本文の中のコードは、空白と `/` の後でしか改行しないので、版面の右にはみ出す。利用者のマニュアルの付録 E では、はみ出す六つの項目のメッセージの後ろを `…` で略して避けている（[docs/adr/0178](adr/0178-colophon-commit-line-overflow.md)、[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。はみ出す行は、`golem build` が G07105 の警告で報告する。
 
-### CI
-
-- **CI のキャッシュの量を 10 GB の上限の下に保つこと**：2026-11-08 のリポジトリのキャッシュは 10 GB の上限を超えていて、GitHub は使われていない順に消す。量のほとんどは、`build` ジョブがプルリクエストごとに保存する `dist-…` である。[docs/adr/0219](adr/0219-frequency-of-the-wasm-job-and-its-uncached-runs.md) は `wasm` ジョブの保存だけを扱ったので、`build` の保存の扱いは別の ADR で決める。
-
 ## v1.0.0
 
 v1.0.0 のリリースまでに、次の項目を扱う。
@@ -33,6 +29,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 仕様や機能を変える項目は、着手するときに ADR を作成する。
 
 - **リンクの注釈についての ISO 15930-7 の照合**：v1.0.0 のタグを打つ前に、メンテナーが ISO 15930-7:2010 の本文を入手し、リンクの注釈、URI のアクション、仕上がりの線の内側の印刷する注釈、外観のストリームのない注釈の四つの問いと、[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) の要件の一覧を照合する。結果は `docs/audits/<日付>-iso-15930-7-check.md` に記録する。今の出力が規格に反すると分かれば、[docs/adr/0182](adr/0182-external-links.md) の PDF/X-4 の節を改める ADR を作り、その実装がマージされるまで v1.0.0 のタグを打たない。タグを打つ前に、記録があり、この項目が消えていることを確かめる（[docs/adr/0221](adr/0221-check-iso-15930-7-for-link-annotations-before-rc4.md)、[docs/adr/0226](adr/0226-move-the-iso-15930-7-check-to-before-v1.md)）。v1.0.0 の前のリリースのリリースノートには、照合を済ませていないことを既知の問題として書く。
+- **ルビの親文字の中の参照**：ルビの親文字の中の `[ref-number]` と `[ref-title]` は、タグ付き PDF の構造の木で `Reference` にならない（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)、[docs/adr/0229](adr/0229-record-the-procedures-adr-0215-and-0217-departed-from.md)）。親文字の中の参照をどの構造の要素にするかを ADR で決める。
 - **可変フォント**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。今は可変フォントを既定のインスタンスとして組むが、サブセットで軸を固定しないので、使わない可変のデータ（fvar、gvar、HVAR、MVAR など）も PDF に埋め込んでいる。glyf の可変フォントで軸を既定の値に固定すると、描画を変えずに PDF が 35K から 8K に縮んだ。CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、それまでは PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、描画を比べる回帰テストで確かめてからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 - **番号と題のあいだの区切りの設定**：見出し、図版、コードブロックのキャプションの番号と題のあいだの区切りを、段落スタイルで決められるようにする。今は本の言語で一つに決まり、コードブロックのリスト番号も同じ規則に従う（草案の ADR で決める）。
 - **廃止予定の書き方をエラーにすること**：1.0.0 には廃止予定の書き方を残さない（[ADR 0174](adr/0174-compatibility-promises-for-1-0.md)）。`@listing` の `src=`（G02065）と、`-` で区切った範囲（G02108）を、それぞれ ADR を作ってエラーにする。[ADR 0184](adr/0184-table-positional-path.md) が廃止予定にした `@table` の `src=`（G02129）も同じである。[ADR 0177](adr/0177-note-mark-style-and-numerals.md) が廃止予定にした、`[lists]` の `numbers` の `{{` と `}}`（G03114）と一字の見本の差し込み（G03115）、柱の書式の `{{` と `}}`（G03116）、`[notes]` の `mark-size`（G03117）も同じである。G02065 は v0.1.0-rc2 と v0.1.0-rc3 で notice を出したので、v0.1.0-rc4 からエラーにしてよい。G02108 と G02129 は v0.1.0-rc4 で初めて notice を出すので、v0.1.0-rc4 の後にエラーにする（未決事項の「`-` で区切った範囲をエラーにするリリース」）。
@@ -104,9 +101,9 @@ v1.0.0 の後、v2 より前の minor のバージョンで扱う事項である
 - **より複雑な組版の fixture**：v0.1.0-rc4 で作る二冊の fixture（縦組みの一段の本と、横組みの二段の本）より複雑な組版の例を作り、fixture に入れる。二冊が組み合わせていない機能、たとえば縦組みの本文の段組みや、章ごとの書字方向と段数の切り替えのように後から足す機能を組み合わせ、機能のあいだの相互作用を、出力のゴールデン、決定性の検査、見た目の回帰テストで固定する。どの組み合わせを足すかと、fixture の数と大きさは、着手するときに ADR で決める。
 - **評価と書き出しを分けること**：golem-lsp のライブラリは、golem-driver から評価とその結果の補助と lint だけを使い、PDF の組版を使わない。それでも、評価と書き出しが一つのモジュール `Golem.Driver` にあるので、golem-lsp は golem-driver を通して golem-typeset にも依存する。PDF の組版を golem-typeset に分けたときに、評価の部分が PDF のモジュールを使わないようにしたので、評価を別のパッケージに分けられる。`Evaluated` の型と、評価と書き出しの両方が使う補助（`docStyles`、`localStylesOf`、`runningVars` など）の境目を読み、ADR で決める（[ADR 0192](adr/0192-split-pdf-typesetting-from-golem-driver.md)）。
 
-- **送った図版の後で待つ図版の前の `@need-lines` と行アキ**：仕様書の「既知の不具合」の「送った図版の後で待つ図版の前の `@need-lines` と行アキが、その図版と別の段で扱われる」を直す。待つ図版の前の `@need-lines` と行アキをどの段で扱うかを ADR で決める。[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の P1、P3、P4 は、この形の入力を除いたまま採択した。
 - **不変条件のテストで見つかった改ページの不具合**：仕様書の「既知の不具合」の「`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる」を直す。空きを `@need-lines` の次のブロックに数えるかを ADR で決める（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の抜き取りで見つかった）。
 - **不変条件のテストで見つかった行分割の不具合**：仕様書の「既知の不具合」の「段落の終わりの語間の空白の前の行末禁則」を直す（[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の列挙で見つかった）。後に箱がない空白に行末禁則を当てるか、段落の終わりの空白を捨てるかを ADR で決める。
+- **HTML の本文の段落の空きの規則**：仕様書の「既知の不具合」の「HTML で本文の段落の前の空きが、すべての段落に当たる」と「HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる」を直す。本文の規則を `p` ではなく `p:not([class])` に当てる案があるが、詳細度で [docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の H1 を破らないかを確かめてから ADR で決める。
 - **語の最初の字が両用の字の語の書体**：区間の外の `“said` は、`ceWordAdvance` が語の最初の字の `“` でシェイピングを選ぶので、語の幅と端の字の送りを和文の書体で測る可能性がある。描く側の書体の選び方と合うかを調べ、ADR で決める（[docs/adr/0222](adr/0222-line-breaking-points-the-invariants-did-not-decide.md) の「メンテナーが決めること」の 6）。
 - **`manifest.toml` の `language` の形の検査**：`language` が BCP 47 の言語のタグの形であることは、`pdfa` か `pdfua` を書いた本でだけ調べる（G03119、[ADR 0183](adr/0183-tagged-pdf-and-pdf-a.md)）。`[lang]` と `@lang` の言語のタグは形を調べる（G02132）ので、ほかの本の `language` の形も調べるかを ADR で決める。今の本が組めなくなりうるので、[ADR 0187](adr/0187-inline-language-switch.md) は扱わなかった。
 - **`golem check` が G01012 を二度出す件**：[ADR 0188](adr/0188-headings-beyond-level-3.md) の調査で、`golem check` が同じ見出しの G01012 を二度ずつ出し、`golem build --target html` は一度ずつ出した。`golem new` で作ったプロジェクトと、golem-driver の `sample` の fixture の写しに `#######` の行を足しただけでは、どちらのコマンドも一度だけ出す。二度出る条件を調べて直す。
@@ -273,6 +270,7 @@ v1 より後のバージョンのための事項には、そのバージョン�
 - **本番で .emet の構文解析が同時に走る経路**：言語サーバーは、semantic tokens の要求ごとにスレッドを立て、.emet の構文木を作る。構文解析が複数のスレッドで同時に走るので、golem-emet-test と同じ GHC の不具合に当たりうる（[docs/adr/0207](adr/0207-run-golem-emet-test-one-test-at-a-time-under-the-watchdog.md)）。macOS で 1,200 回の試しでは再現しなかったが、起きないとは言えない。組版の並列が .emet の評価を同時に起こすかどうかも調べていない。これらの経路がこの不具合に当たるかどうかが決まっていない。
 - **golem のコードを使わない、GHC の不具合の再現**：GHC の issue #28001 の症状を、golem のコードを使わずに再現するプログラムはまだない（[docs/adr/0207](adr/0207-run-golem-emet-test-one-test-at-a-time-under-the-watchdog.md)）。今ある最小の再現は、golem-emet と peg-runtime を要する。上流の切り分けに使える再現を作れるかどうかが決まっていない。
 - **段落と `@no-page-break` のあいだの行アキ**：段落と `@no-page-break` のあいだに行アキ（`@blank-line`）があると、段落は後を待たず、最後の行を後と同じ段に置こうとしない（[golem-layout ADR 0022](golem-layout/adr/0022-no-page-break-counts-spaces.md)）。段落の前後の空きは飛ばして後を待つので、二つの扱いが違う。仕様書はこの場合を決めていない。行アキを挟んでも後を待つかと、待つなら行アキの行を後の量に足すかが決まっていない。
+- **自ら送られる図版の前の行アキ**：段に入らない図版の直前に行アキがあると、改ページは、行アキと図版の和が入る段まで進む。一段で段の行の数が 4 の版面に、1 行の段落、1 行の行アキ、3 行の図版、2 行の段落を置くと、図版は 2 ページに置かれ、1 ページの 3 行が空く。行アキと図版は同じ段にあり、どの不変条件も破らないので、[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) は変えなかった。自ら送られる図版も待つ図版と同じに扱えば段の末尾の空きは減るが、行アキと図版のどちらが先に段を移るかという、別の規則を決めることになる。変えるかどうかが決まっていない。
 - **GUI と Golem のあいだの通信の取り決め（v3）**：GUI（「GUI の作り方」）と Golem の本体のあいだで、何をどう受け渡すか。今の LSP を広げるのか、別の取り決めを作るのかが決まっていない。
 - **描画の内容を渡す API（v3）**：GUI の canvas に、グリフのアウトラインを座標付きで渡すのか、ページの画像を渡すのか、その両方か。見た目の回帰テストで PDF を画像にする shem（[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）と共有できるかも含めて決まっていない。
 

@@ -17,6 +17,7 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Project.Style (dimToSp, parseDim)
 import Golem.Syntax
+import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import Golem.Typeset (PdfLayout (..), SetLine (..), Shaping (..))
 import Support hiding (codesOf)
 import System.FilePath ((</>))
@@ -499,7 +500,17 @@ blankLineTests =
 
 breakTests :: [TestTree]
 breakTests =
-  [ testCase "PDF: a page break puts the second paragraph on the first line of page 2" $ do
+  [ testCase "A5: a paragraph with ’tis and ’90s breaks the same in a book of en and in one of ja (golem-layout ADR 0030)" $ do
+      -- digits, which the patterns do not break: 20 of them are 10 em of the 12 of a line, and ’tis after a space does not fit
+      let para = "12345678901234567890 ’tis 12345678901234567890 ’90s\n"
+          linesOf lang = do
+            r <- layoutMiniWith (TE.encodeUtf8 (manifestToml testManifest {tmLanguage = lang, tmTargets = ["pdf"]})) horizontalStyle para []
+            either (assertFailure . show) (pure . lineTexts . snd) r
+      en <- linesOf "en"
+      ja <- linesOf "ja"
+      en @?= ja
+      en @?= ["12345678901234567890", "’tis", "12345678901234567890", "’90s"],
+    testCase "PDF: a page break puts the second paragraph on the first line of page 2" $ do
       r <- pagesMini "" fiveLines "あ\n\n@page-break\n\nい\n" [] Map.empty
       pages <- either (assertFailure . show) pure r
       length pages @?= 2

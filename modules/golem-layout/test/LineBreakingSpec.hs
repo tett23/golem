@@ -71,7 +71,8 @@ lineBreakingTests =
         let r = breakParagraph defaultParams (const target) (paragraph ws)
         [w | l <- brLines r, Box w _ <- lineItems l] === ws,
       kinsokuTests,
-      lowLineTests
+      lowLineTests,
+      apostropheTests
     ]
 
 -- | The setting of the defaults: strict kinsoku, no hanging, no protrusion, no span.
@@ -216,4 +217,45 @@ lowLineTests =
         breaksIn look0 {lkUrl = True} "THIRD_PARTY_LICENSES/x" @?= [("THIRD_", 100), ("THIRD_PARTY_", 100), ("THIRD_PARTY_LICENSES/", 0)],
       testCase "U6: in code, a break after a slash is 0 as before" $
         breaksIn look0 {lkCode = True} "a/b" @?= [("a/", 0)]
+    ]
+
+-- | Whether the space after a box of the text given is no break: a penalty of 10000 right before its glue.
+noBreakBefore :: String -> [String] -> Bool
+noBreakBefore t xs = or [a == t && p == "|10000" && g == space | (a, p, g) <- zip3 xs (drop 1 xs) (drop 2 xs)]
+
+{- | An apostrophe at the start of a word (golem-layout ADR 0030): U+2019
+first in a Latin word, a letter or a digit after it, is a Latin character
+for kinsoku, on lines of 2 em.
+-}
+apostropheTests :: TestTree
+apostropheTests =
+  testGroup
+    "apostrophes at word starts are not closing brackets (golem-layout ADR 0030)"
+    [ testCase "A1: aaa ’tis and aaa ’90 break at the space before the apostrophe, in no span and in en" $
+        sequence_
+          [ do
+              linesIn plain {sLang = l} 2 ["aaa", " ", "’tis"] @?= ["aaa", "’tis"]
+              linesIn plain {sLang = l} 2 ["aaa", " ", "’Tis"] @?= ["aaa", "’Tis"]
+              linesIn plain {sLang = l} 2 ["aaa", " ", "’90"] @?= ["aaa", "’90"]
+          | l <- [Nothing, Just "en"]
+          ],
+      testCase "A1: a letter with a combining character after the apostrophe is a letter" $
+        linesIn plain 2 ["aaa", " ", "’e\x0301tis"] @?= ["aaa", "’e\x0301tis"],
+      testCase "A1: a space after a box that ends in an opening bracket is still no break" $
+        assertBool "no break" (noBreakBefore "a“" (shapes plain ["a“", " ", "’tis"])),
+      testCase "A2: no penalty of 10000 between あ and ’tis" $
+        let xs = shapes plain ["あ", "’tis"] in filter (== "|10000") (take (length xs - 3) xs) @?= [],
+      testCase "A3: ’ alone, ’” and ’. after a space are still closing brackets: no break at the space" $
+        sequence_
+          [ assertBool (show (r, l)) (noBreakBefore "aaa" (shapes plain {sLang = l} ("aaa" : " " : r)))
+          | r <- [["’"], ["’", "”"], ["’", "."]],
+            l <- [Nothing, Just "en"]
+          ],
+      testCase "A4: in a span of ja, ’ is a closing bracket: no break before it" $
+        assertBool "no break" (noBreakBefore "aaa" (shapes plain {sLang = Just "ja"} ["aaa", " ", "’tis"])),
+      testCase "A1: in a span of fr, the apostrophe at a word start is Latin" $
+        linesIn plain {sLang = Just "fr"} 2 ["aaa", " ", "’tis"] @?= ["aaa", "’tis"],
+      testCase "A6: an apostrophe inside a word and at its end is as before" $ do
+        shapes plain ["I’ll"] @?= ["I’ll", "|10000", fil, "|-10000"]
+        linesIn plain 2 ["aaa", " ", "as’"] @?= ["aaa", "as’"]
     ]
