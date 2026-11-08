@@ -32,3 +32,10 @@ based-on = "print"
 # [page-count]
 # severity = "error"
 # multiple-of = 16
+
+# For a book printed in black alone, take the # off the lines below. They find colours on the C, M and Y plates, and figures that are not grayscale.
+# [cmy-plates]
+# severity = "error"
+#
+# [image-color-space]
+# allowed = ["gray"]

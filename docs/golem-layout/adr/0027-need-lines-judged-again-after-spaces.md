@@ -1,6 +1,6 @@
 # ADR 0027: `@need-lines` の後の空きでブロックが段を移れば、移った段で判定し直す
 
-ステータス: 採択
+ステータス: 採択→Alloy のスコープは [ADR 0236](../../adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
 
 ## 文脈
 

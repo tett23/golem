@@ -172,7 +172,8 @@ cellLimitTests =
           -- counts all the work. Reading and evaluating the table alone
           -- allocates more than 1 GiB (1.3 GB for golem check, 4.6 GB for
           -- this build on macOS aarch64), so the bound is 8 GiB, a twelfth
-          -- of what composing its cells took.
+          -- of what composing its cells took. The bound and its measure by the
+          -- counter of this thread, not GHC.Stats, are docs/adr/0236.
           (ds, bytes) <- allocatedBy (pdfDiagnostics False [("a.gm", "@table data/max.csv\n"), ("data/max.csv", csvOf (replicate 10000 256))])
           [(c, m) | (c, m, _) <- ds] @?= [("G07108", tooMany 2560000)]
           assertBool ("allocated " <> show bytes <> " bytes") (bytes <= 8 * 2 ^ (30 :: Int)),

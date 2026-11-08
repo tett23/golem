@@ -1,0 +1,233 @@
+name: Browser
+
+# The HTML of golem and golem.wasm in browsers and other hosts of WASI
+# (docs/adr/0234): the checks of scripts/browser/ in chrome-headless-shell
+# pinned by version and SHA-256 and in the Safari of the macOS runner, and
+# golem.wasm under Deno and with browser_wasi_shim in both browsers, against
+# the native list of the same commit. Once a day on main, on the days main
+# has changed since the last successful run of this workflow, and whenever
+# it is started by hand; never on pull requests. It builds nothing: the
+# inputs are the artifacts of the last successful ci.yml of main.
+on:
+  schedule:
+    - cron: "17 20 * * *"
+  workflow_dispatch:
+
+# It reads the repository and the runs and artifacts of ci.yml and of this
+# workflow; it writes nothing but its own artifact and its caches.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: browser
+  cancel-in-progress: false
+
+# The times of the jobs are twice those measured in the pull request of the
+# implementation (docs/ci-timings/2026-11-08-browser-workflow.md).
+jobs:
+  # the inputs of both browsers: golem.wasm, the native list, the HTML of
+  # the manuals and of the fixtures of scripts/browser/fixtures, built with
+  # the golem of ci.yml (golem-linux-x86_64, docs/adr/0231)
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      run: ${{ steps.needed.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # a scheduled run compares its commit with the head of the last
+      # successful run; a run started by hand always runs the checks
+      - id: needed
+        name: Whether main has changed since the last successful run (docs/adr/0075)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA" browser.yml); fi
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v7
+        if: steps.needed.outputs.run == 'true'
+        with:
+          node-version: lts/*
+      # the commands of webdriver.mjs against a fake WebDriver server, and
+      # the parts of the checks that need no browser
+      - name: The tests that need no browser (docs/adr/0234)
+        if: steps.needed.outputs.run == 'true'
+        run: node --test scripts/browser/test/unit.test.mjs
+      # the last successful push to main whose run still has every
+      # artifact; a push that changed docs only builds nothing
+      - name: The artifacts of the last successful ci.yml of main
+        if: steps.needed.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          RUN=
+          for id in $(gh run list --workflow ci.yml --branch main --event push --status success --limit 30 --json databaseId --jq '.[].databaseId'); do
+            names=" $(gh api "repos/$GH_REPO/actions/runs/$id/artifacts?per_page=100" --jq '[.artifacts[] | select(.expired | not) | .name] | join(" ")') "
+            all=true
+            for a in golem-wasm wasm-native-list manual manual-dev golem-linux-x86_64; do
+              case "$names" in *" $a "*) ;; *) all=false ;; esac
+            done
+            if [ "$all" = true ]; then RUN=$id; break; fi
+          done
+          test -n "$RUN" || { echo "no successful run of ci.yml on main has the artifacts" >&2; exit 1; }
+          echo "ci.yml run $RUN, commit $(gh run view "$RUN" --json headSha --jq .headSha)" | tee -a "$GITHUB_STEP_SUMMARY"
+          gh run download "$RUN" -n golem-wasm -n wasm-native-list -n manual -n manual-dev -n golem-linux-x86_64 -D "$RUNNER_TEMP/ci"
+      - name: The HTML of the fixtures, and the inputs of the browsers
+        if: steps.needed.outputs.run == 'true'
+        run: |
+          GOLEM=$(find "$RUNNER_TEMP/ci/golem-linux-x86_64" -type f -name golem | head -n 1)
+          test -n "$GOLEM"
+          chmod +x "$GOLEM"
+          GOLEM="$GOLEM" sh scripts/browser/build-fixtures.sh browser-inputs
+          mkdir -p browser-inputs/manual browser-inputs/manual-dev
+          cp -R "$RUNNER_TEMP/ci/manual/html" browser-inputs/manual/html
+          cp -R "$RUNNER_TEMP/ci/manual-dev/html" browser-inputs/manual-dev/html
+          cp "$RUNNER_TEMP/ci/golem-wasm/golem.wasm" "$RUNNER_TEMP/ci/wasm-native-list/wasm-native-list.txt" browser-inputs/
+      - uses: actions/upload-artifact@v7
+        if: steps.needed.outputs.run == 'true'
+        with:
+          name: browser-inputs
+          path: browser-inputs
+
+  # chrome-headless-shell of scripts/browser/fetch-chromium.sh, Deno of
+  # scripts/wasm/fetch-deno.sh; both cached by the hash of their script
+  chromium:
+    needs: prepare
+    if: needs.prepare.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - uses: actions/download-artifact@v8
+        with:
+          name: browser-inputs
+          path: browser-inputs
+      # restored and saved apart, so that a run whose checks fail saves
+      # them too; only the runs of main save (docs/adr/0228)
+      - id: chromium-cache
+        name: Restore chrome-headless-shell (docs/adr/0234)
+        uses: actions/cache/restore@v6
+        with:
+          path: third_party/chromium
+          key: chromium-${{ hashFiles('scripts/browser/fetch-chromium.sh') }}
+      - id: deno-cache
+        name: Restore deno (docs/adr/0234)
+        uses: actions/cache/restore@v6
+        with:
+          path: third_party/deno
+          key: deno-${{ hashFiles('scripts/wasm/fetch-deno.sh') }}
+      - name: chrome-headless-shell and deno, pinned by version and SHA-256
+        run: |
+          timeout -k 10 300 sh scripts/browser/fetch-chromium.sh
+          timeout -k 10 300 sh scripts/wasm/fetch-deno.sh
+      - name: Save chrome-headless-shell
+        if: steps.chromium-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/chromium
+          key: ${{ steps.chromium-cache.outputs.cache-primary-key }}
+      - name: Save deno
+        if: steps.deno-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/deno
+          key: ${{ steps.deno-cache.outputs.cache-primary-key }}
+      - name: browser_wasi_shim
+        working-directory: scripts/browser
+        run: npm ci --ignore-scripts
+      - id: ready
+        name: The versions
+        run: |
+          {
+            echo "| What | Version |"
+            echo "| --- | --- |"
+            echo "| chrome-headless-shell | $(third_party/chromium/chrome-headless-shell-linux64/chrome-headless-shell --version) |"
+            echo "| chrome-headless-shell zip | $(sh scripts/browser/fetch-chromium.sh --expected) |"
+            echo "| Deno | $(third_party/deno/deno --version | head -n 1) |"
+            echo "| Node | $(node --version) |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The HTML of golem (docs/adr/0234 section 3)
+        if: always() && steps.ready.outcome == 'success'
+        run: node scripts/browser/run.mjs chromium html browser-inputs
+      - name: The text of the outlined figures (docs/adr/0234 section 4)
+        if: always() && steps.ready.outcome == 'success'
+        run: node scripts/browser/run.mjs chromium svg manual-dev/images browser-inputs/manual-dev/html/fonts
+      - name: The checks on the pages of scripts/browser/test (docs/adr/0234)
+        if: always() && steps.ready.outcome == 'success'
+        env:
+          BROWSER: chromium
+        run: node --test scripts/browser/test/browser.test.mjs
+      - name: golem.wasm under Deno is the native golem (docs/adr/0234 section 5)
+        if: always() && steps.ready.outcome == 'success'
+        run: |
+          DENO=third_party/deno/deno sh scripts/wasm/compare.sh --deno browser-inputs/golem.wasm > deno-list.txt
+          sh scripts/wasm/compare.sh --check browser-inputs/wasm-native-list.txt deno-list.txt
+      - name: golem.wasm in Chromium is the native golem (docs/adr/0234 section 5)
+        if: always() && steps.ready.outcome == 'success'
+        run: |
+          sh scripts/wasm/compare.sh --browser chromium browser-inputs/golem.wasm > chromium-list.txt
+          sh scripts/wasm/compare.sh --check browser-inputs/wasm-native-list.txt chromium-list.txt
+
+  # the Safari of the image of the runner, not pinned: the versions are
+  # written to the summary of the job, whether the checks pass or fail. A
+  # failure is not retried nor ignored (docs/adr/0234 section 6)
+  safari:
+    needs: prepare
+    if: needs.prepare.outputs.run == 'true'
+    runs-on: macos-15
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: The versions of macOS, the image and Safari (docs/adr/0234 section 6)
+        run: sh scripts/browser/safari-versions.sh
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - uses: actions/download-artifact@v8
+        with:
+          name: browser-inputs
+          path: browser-inputs
+      - name: browser_wasi_shim
+        working-directory: scripts/browser
+        run: npm ci --ignore-scripts
+      - id: ready
+        name: Remote automation of Safari
+        run: sudo safaridriver --enable
+      - name: The HTML of golem (docs/adr/0234 section 3)
+        if: always() && steps.ready.outcome == 'success'
+        env:
+          BROWSER_VERSION_FILE: ${{ runner.temp }}/browser-version
+        run: node scripts/browser/run.mjs safari html browser-inputs
+      - name: The text of the outlined figures (docs/adr/0234 section 4)
+        if: always() && steps.ready.outcome == 'success'
+        run: node scripts/browser/run.mjs safari svg manual-dev/images browser-inputs/manual-dev/html/fonts
+      - name: The checks on the pages of scripts/browser/test (docs/adr/0234)
+        if: always() && steps.ready.outcome == 'success'
+        env:
+          BROWSER: safari
+        run: node --test scripts/browser/test/browser.test.mjs
+      - name: golem.wasm in Safari is the native golem (docs/adr/0234 section 5)
+        if: always() && steps.ready.outcome == 'success'
+        run: |
+          sh scripts/wasm/compare.sh --browser safari browser-inputs/golem.wasm > safari-list.txt
+          sh scripts/wasm/compare.sh --check browser-inputs/wasm-native-list.txt safari-list.txt
+      # the table with the browserVersion of the WebDriver session, when
+      # one was made (I7)
+      - name: The versions in the summary
+        if: always()
+        env:
+          BROWSER_VERSION_FILE: ${{ runner.temp }}/browser-version
+        run: sh scripts/browser/safari-versions.sh "$(cat "$BROWSER_VERSION_FILE" 2>/dev/null || true)" >> "$GITHUB_STEP_SUMMARY"

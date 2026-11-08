@@ -1,0 +1,36 @@
+# The Alloy models of docs/*/models/: whether each command has a solution,
+# against expected.txt of the model (docs/adr/0235). The models do not read
+# the implementation, so the check runs when a model changes and once a week.
+# It takes longer than the five minutes of the pull requests, an exception to
+# the policy of CONTRIBUTING.md.
+name: Models
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/*/models/**"]
+  pull_request:
+    paths: ["docs/*/models/**"]
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('models-pr-{0}', github.event.pull_request.number) || format('models-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  models:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # the jar of Alloy 6.2.0, checked by its SHA-256 in check.sh, under
+      # the Java 17 of the runner
+      - name: The commands of the models give the results of expected.txt (docs/adr/0235)
+        run: JAVA="$JAVA_HOME_17_X64/bin/java" sh scripts/models/check.sh

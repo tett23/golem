@@ -14,6 +14,9 @@ cabal.project.local
 # the fonts copied into the two books of docs/adr/0175 to build them by hand
 /modules/golem-driver/test/fixtures/complex-vertical/fonts/
 /modules/golem-driver/test/fixtures/complex-horizontal/fonts/
+# the fonts copied into the specimens of docs/adr/0233 to build them by hand
+/modules/golem-driver/test/fixtures/specimens/*/fonts/
 /tools/textlint/node_modules/
 /tools/editors/node_modules/
 /dist-wasm/
+/scripts/browser/node_modules/

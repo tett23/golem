@@ -414,7 +414,8 @@ of the block written after it. That misses a figure that waits and is
 placed before that block, when the block goes on to a later column and
 places the figures waiting first, and it counts a figure sent on by
 itself, to which the need-lines before it applies; the figures read here
-are those 'place' makes wait.
+are those 'place' makes wait. golem-layout ADR 0033 records this
+reading: the figures are read from the flow and the output only (W1, W2).
 -}
 waitingFigures :: [Flow] -> [PageOut] -> [Int]
 waitingFigures flows ps = go Nothing 0 Nothing [] flows

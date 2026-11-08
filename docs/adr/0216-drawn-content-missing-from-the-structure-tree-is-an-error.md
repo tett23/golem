@@ -1,6 +1,6 @@
 # ADR 0216: 構造の木にない内容を描いた PDF をエラーにする
 
-ステータス: 採択
+ステータス: 採択→テストの置き場所とテスト用の関数は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
 
 ## 文脈
 

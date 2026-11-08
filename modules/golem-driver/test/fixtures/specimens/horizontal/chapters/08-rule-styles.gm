@@ -1,0 +1,42 @@
+# 12 の線の種類と色
+
+@style adr
+golem-driver ADR 0028
+
+各段落の前の罫線が、線の種類の一つを見せる。脚注の区切り線は、波線と色で引く[note: 脚注の区切り線は、この脚注の上にある。]。
+
+@style rule-solid
+solid
+
+@style rule-thin-thin
+thin-thin
+
+@style rule-thick-thick
+thick-thick
+
+@style rule-thick-thin
+thick-thin
+
+@style rule-thin-thick
+thin-thick
+
+@style rule-thick-thin-thick
+thick-thin-thick
+
+@style rule-thin-thick-thin
+thin-thick-thin
+
+@style rule-triple
+triple
+
+@style rule-dashed
+dashed
+
+@style rule-dotted
+dotted
+
+@style rule-japanese-dots
+japanese-dots
+
+@style rule-wavy
+wavy

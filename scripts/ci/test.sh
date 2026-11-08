@@ -1020,6 +1020,43 @@ run env PATH="$EC/fakebin:$PATH" EPUBCHECK_HOME="$EC/h6" JAVA_HOME_17_X64="$EC/n
 if [ "$CODE" != 0 ] && [ ! -e "$EC/h6/bin/epubcheck" ]; then ok; else ng "epubcheck-install: no Java fails"; fi
 unset CURL_LOG CURL_ZIP
 
+# ---------------------------------------------------------------- pdf-fonts.sh
+# (docs/adr/0232): the typefaces of a PDF, and none but the fonts given
+# fonts_pdf FILE FACE...: a PDF of one page with a font dictionary of each FACE
+fonts_pdf() {
+  out=$1
+  shift
+  {
+    printf '%%PDF-1.6\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n'
+    printf '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] /Resources << /Font <<'
+    n=4
+    for face in "$@"; do printf ' /F%s %s 0 R' "$n" "$n"; n=$((n + 1)); done
+    printf ' >> >> >>\nendobj\n'
+    n=4
+    for face in "$@"; do printf '%s 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /%s >>\nendobj\n' "$n" "$face"; n=$((n + 1)); done
+    printf 'trailer\n<< /Root 1 0 R >>\n%%%%EOF\n'
+  } >"$out"
+}
+: >"$WORK/in"
+if command -v qpdf >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+  fonts_pdf "$WORK/listed.pdf" ABCDEF+NotoSerifJP-Regular GHIJKL+SourceCodePro-Regular ABCDEF+NotoSerifJP-Regular
+  run sh "$HERE/pdf-fonts.sh" "$WORK/listed.pdf"
+  expect "pdf-fonts.sh: the BaseFonts without the tags of the subsets, sorted, each once" 0 "NotoSerifJP-Regular
+SourceCodePro-Regular"
+  run sh "$HERE/pdf-fonts.sh" "$WORK/listed.pdf" NotoSerifJP-Regular SourceCodePro-Regular SourceSerif4-Regular
+  expect "pdf-fonts.sh: a PDF of the fonts listed alone passes" 0
+  fonts_pdf "$WORK/other.pdf" ABCDEF+NotoSerifJP-Regular Helvetica
+  run sh "$HERE/pdf-fonts.sh" "$WORK/other.pdf" NotoSerifJP-Regular SourceCodePro-Regular
+  expect "pdf-fonts.sh: a typeface not listed fails" 1
+  if grep -qF 'has Helvetica, which is not a font of the list' "$WORK/err"; then ok; else ng "pdf-fonts.sh: the typeface not listed is named"; fi
+else
+  skip 4 "pdf-fonts.sh: qpdf or jq is not installed"
+fi
+run sh "$HERE/pdf-fonts.sh"
+expect "pdf-fonts.sh: no PDF is a usage error" 2
+run sh "$HERE/pdf-fonts.sh" "$WORK/no-such.pdf"
+if command -v qpdf >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then expect "pdf-fonts.sh: a missing PDF exits with 2" 2; else expect "pdf-fonts.sh: without qpdf or jq it exits with 2" 2; fi
+
 # ---------------------------------------------------------------- ci.yml and cabal
 # (docs/adr/0037-ci-build-job-speedup.md)
 
@@ -1162,10 +1199,11 @@ if step_has "$TEST_STEP" 'GOLEM_PD_BOOKS: "1"'; then ok; else ng "ci.yml: cabal 
 # (tasty-golden's --no-create, given by the environment: a suite without
 # tasty-golden would reject the flag on its command line)
 if step_has "$TEST_STEP" 'TASTY_NO_CREATE: "true"'; then ok; else ng "ci.yml: cabal test all has TASTY_NO_CREATE"; fi
-# apt installs qpdf on the runners of the tests only; epubcheck comes from
-# its release, cached by its version and SHA-256, on the x86-64 runner of
-# the outputs (docs/adr/0062)
-if step_if "name: qpdf in the background" "if: matrix.tests" && step_has "name: qpdf in the background" "apt-install.sh qpdf"; then ok; else ng "ci.yml: apt installs qpdf on the runners of the tests"; fi
+# apt installs qpdf on the runners of the tests and the x86-64 runner of
+# the outputs (docs/adr/0232); epubcheck comes from its release, cached by
+# its version and SHA-256, on the x86-64 runner of the outputs (docs/adr/0062)
+QPDF_IF="if: matrix.tests || (matrix.runner == 'ubuntu-24.04' && matrix.outputs)"
+if step_if "name: qpdf in the background" "$QPDF_IF" && step_has "name: qpdf in the background" "apt-install.sh qpdf"; then ok; else ng "ci.yml: apt installs qpdf on the runners of the tests and the x86-64 runner of the outputs"; fi
 if grep -n 'apt-install\.sh' "$CI_YML" | grep -q epubcheck || grep -q "'epubcheck'" "$CI_YML"; then ng "ci.yml: apt does not install epubcheck"; else ok; fi
 if grep -Eq '^  EPUBCHECK_VERSION: "[0-9]+\.[0-9]+\.[0-9]+"$' "$CI_YML" && grep -Eq '^  EPUBCHECK_SHA256: "[0-9a-f]{64}"$' "$CI_YML"; then ok; else ng "ci.yml: the version and the SHA-256 of epubcheck are pinned"; fi
 EPUBCHECK_IF="if: matrix.runner == 'ubuntu-24.04' && matrix.outputs"
@@ -1179,7 +1217,12 @@ if step_if "name: epubcheck in the background" "$EPUBCHECK_IF" &&
   ng "ci.yml: epubcheck-install.sh runs in the background with the pinned version on the x86-64 runner of the outputs"
 fi
 if step_if "name: epubcheck is installed" "$EPUBCHECK_IF" && step_has "name: epubcheck is installed" "bg.sh wait epubcheck"; then ok; else ng "ci.yml: the x86-64 runner of the outputs waits for epubcheck"; fi
-if step_if "name: qpdf is installed" "if: matrix.tests" && step_has "name: qpdf is installed" "bg.sh wait apt"; then ok; else ng "ci.yml: the runners of the tests wait for qpdf"; fi
+if step_if "name: qpdf is installed" "$QPDF_IF" && step_has "name: qpdf is installed" "bg.sh wait apt"; then ok; else ng "ci.yml: the runners of the tests and the x86-64 runner of the outputs wait for qpdf"; fi
+# the manuals pass golem preflight with the rules of CI, and their PDFs
+# name no typeface but the fonts of their fonts/ (docs/adr/0232)
+MANUAL_IF="if: matrix.runner == 'ubuntu-24.04' && matrix.outputs"
+if step_if "name: The preflight of the manuals" "$MANUAL_IF" && step_has "name: The preflight of the manuals" 'preflight --rules ../scripts/ci/manual-preflight.toml'; then ok; else ng "ci.yml: the x86-64 runner of the outputs runs golem preflight on the manuals"; fi
+if step_if "name: The typefaces of the manuals are their fonts" "$MANUAL_IF" && step_has "name: The typefaces of the manuals are their fonts" 'sh scripts/ci/pdf-fonts.sh'; then ok; else ng "ci.yml: the x86-64 runner of the outputs checks the typefaces of the manuals"; fi
 # release-scripts installs the pinned Claude Code with mise before test.sh
 # and requires it (docs/adr/0058)
 RS=$WORK/release-scripts.yml
@@ -1504,10 +1547,10 @@ needs() { # needs NAME=RESULT...: the JSON of the needs context
   done
   printf '}\n'
 }
-needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success plugins=success editors=success verapdf=success wasm=success >"$WORK/in"
+needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success plugins=success editors=success editors-lsp=success verapdf=success wasm=success >"$WORK/in"
 run gate
 expect "gate: all succeeded" 0
-needs changes=success scripts-linux=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped plugins=skipped editors=success verapdf=skipped wasm=skipped >"$WORK/in"
+needs changes=success scripts-linux=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped plugins=skipped editors=success editors-lsp=skipped verapdf=skipped wasm=skipped >"$WORK/in"
 run gate
 expect "gate: docs only" 0
 needs changes=success scripts-linux=success build=failure determinism=skipped visual=skipped release-scripts=success scripts-macos=success format=success plugins=success editors=success >"$WORK/in"
@@ -1788,6 +1831,133 @@ expect "race-needed: enum.yml has not changed" 0 false
 if [ "$(cat "$WORK/gh.args" 2>/dev/null)" = "run list --workflow enum.yml --branch main --status success --limit 1 --json headSha --jq .[0].headSha" ]; then ok; else ng "race-needed: the last successful run of enum.yml on main"; fi
 run race_needed_in "$A" "$A" enum
 expect "race-needed: a workflow that is not a file" 2
+
+# ---------------------------------------------------------------- github-anchors.sh
+# (docs/adr/0235)
+
+# A docs/diagnostics.md of three codes, and headings that are not of a code
+# (another level, more than the code); the fake gh prints $FAKE_HTML, a
+# small HTML of GitHub, and writes its arguments to $WORK/gh.args.
+GA=$WORK/github-anchors
+mkdir -p "$GA/root/docs"
+cat >"$GA/root/docs/diagnostics.md" <<'MD'
+# diagnostics
+
+## G01001
+
+a
+
+### G01004
+
+## G01002
+
+b
+
+## G01005（説明）
+
+## G01003
+MD
+cat >"$GA/gh" <<GH
+#!/bin/sh
+printf '%s\n' "\$*" >"$WORK/gh.args"
+[ -z "\${FAKE_GH_FAIL-}" ] || exit 1
+cat "\$FAKE_HTML"
+GH
+chmod +x "$GA/gh"
+ga_html() { # ga_html CODE...: the HTML with the ids of the codes
+  for c in "$@"; do
+    printf '<div class="markdown-heading"><h2 class="heading-element">%s</h2><a id="user-content-%s" class="anchor" href="#%s"></a></div>\n' "$c" "$(printf '%s' "$c" | tr G g)" "$(printf '%s' "$c" | tr G g)"
+  done >"$GA/html"
+}
+github_anchors() { GH=$GA/gh FAKE_HTML=$GA/html GOLEM_ROOT=$GA/root GITHUB_REPOSITORY=tett23/golem sh "$HERE/github-anchors.sh" "$@"; }
+SHA_GA=0123456789abcdef0123456789abcdef01234567
+: >"$WORK/in"
+ga_html G01001 G01002 G01003
+run github_anchors "$SHA_GA"
+expect "github-anchors: I2 every code has its id" 0
+if [ "$(cat "$WORK/gh.args" 2>/dev/null)" = "api repos/tett23/golem/contents/docs/diagnostics.md?ref=$SHA_GA -H Accept: application/vnd.github.html" ]; then ok; else ng "github-anchors: the HTML of docs/diagnostics.md of the commit, rendered by GitHub"; fi
+ga_html G01001 G01003
+run github_anchors "$SHA_GA"
+expect "github-anchors: I2 a code without its id" 1
+if grep -q 'G01002' "$WORK/err" && ! grep -q 'G01001\|G01003' "$WORK/err"; then ok; else ng "github-anchors: names the code without its id, and only it"; fi
+# ### G01004 and ## G01005（説明） are not headings of a code: their ids
+# are not asked for above
+if ! grep -q 'G01004\|G01005' "$WORK/err"; then ok; else ng "github-anchors: ### G01004 and ## G01005（説明） are not codes"; fi
+: >"$GA/html"
+run github_anchors "$SHA_GA"
+expect "github-anchors: an HTML without any id (a file over the size GitHub renders)" 1
+ga_html G01001 G01002 G01003
+FAKE_GH_FAIL=1 run github_anchors "$SHA_GA"
+expect "github-anchors: a commit the API does not give" 1
+FAKE_GH_FAIL=1 GITHUB_ANCHORS_SKIP_UNREACHABLE=1 run github_anchors "$SHA_GA"
+expect "github-anchors: a commit the API does not give, of a fork" 0
+if grep -q 'skipped' "$WORK/out"; then ok; else ng "github-anchors: says that it skipped"; fi
+unset FAKE_GH_FAIL GITHUB_ANCHORS_SKIP_UNREACHABLE
+run github_anchors
+expect "github-anchors: no commit" 2
+run github_anchors main
+expect "github-anchors: a commit that is not a SHA" 2
+
+# ---------------------------------------------------------------- scripts/models/check.sh
+# (docs/adr/0235)
+
+# The fake java writes ---Trace--- for the commands of $FAKE_FOUND and
+# nothing for the others, as Alloy does; FAKE_JAVA_FAIL makes it fail. A
+# model of three commands and its expected.txt.
+MC=$WORK/models
+mkdir -p "$MC/root/docs/m/models" "$MC/bin"
+: >"$MC/alloy.jar"
+cat >"$MC/root/docs/m/models/a.als" <<'ALS'
+sig A {}
+run one { some A } for 3
+run two { no A } for 3
+check three { some A } for 3
+ALS
+cat >"$MC/bin/java" <<'JAVA'
+#!/bin/sh
+[ -z "${FAKE_JAVA_FAIL-}" ] || { echo "java: failed" >&2; exit 1; }
+while [ $# -gt 0 ]; do
+  case $1 in -c) cmd=$2; shift 2 ;; *) shift ;; esac
+done
+case " $FAKE_FOUND " in *" $cmd "*) printf '%s\n' '---Trace---' 'univ={A$0}' ;; esac
+exit 0
+JAVA
+chmod +x "$MC/bin/java"
+models_check() { GOLEM_ROOT=$MC/root ALLOY_JAR=$MC/alloy.jar JAVA=$MC/bin/java JOBS=2 FAKE_FOUND="one three" sh "$HERE/../models/check.sh" "$@"; }
+printf 'one found\ntwo none\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: I3 every command as expected.txt says" 0 "docs/m/models/a.als one found
+docs/m/models/a.als two none
+docs/m/models/a.als three found"
+printf 'one none\ntwo none\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: I3 a command with a solution that expected.txt says none" 1
+if grep -q 'a.als one: found, but expected.txt says none' "$WORK/err"; then ok; else ng "models: names the command"; fi
+printf 'one found\ntwo found\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: I3 a command without a solution that expected.txt says found" 1
+if grep -q 'a.als two: none, but expected.txt says found' "$WORK/err"; then ok; else ng "models: names the command without a solution"; fi
+printf '# the results\none found\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: a command not in expected.txt is not run" 0 "check: not in expected.txt, not run: docs/m/models/a.als two
+docs/m/models/a.als one found
+docs/m/models/a.als three found"
+printf 'one found\nfour none\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: a command of expected.txt that the model does not have" 1
+if grep -q 'no command four' "$WORK/err"; then ok; else ng "models: names the command the model does not have"; fi
+printf 'one maybe\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: a result that is not found nor none" 1
+printf 'one found\ntwo none\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+FAKE_JAVA_FAIL=1 run models_check
+expect "models: a run of Alloy that fails is not none" 1
+unset FAKE_JAVA_FAIL
+rm "$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: a model without expected.txt" 1
+run models_check x
+expect "models: an argument" 2
 
 # ---------------------------------------------------------------- race.yml
 # (docs/adr/0075-race-search-repetitions.md)
@@ -2306,6 +2476,124 @@ expect "stale-dist-caches: an ID that is not a number" 1
 printf '1\tyesterday\t%ssha1\n' "$X64" >"$WORK/in"
 run stale "$X64"
 expect "stale-dist-caches: a time that is not of the API" 1
+
+# ---------------------------------------------------------------- wasm/compare.sh --deno, --browser
+# (docs/adr/0234 section 5): the lists of Deno and of the browsers have the
+# form of that of node:wasi, from a fake deno and a fake node
+
+CB=$WORK/compare-hosts
+mkdir -p "$CB/bin"
+# deno run --allow-read --allow-write RUN.MJS build WASM DIR PDF: a PDF of
+# the name of DIR, the warning of Deno and an empty JSON on stderr
+cat >"$CB/deno" <<'FAKE'
+#!/bin/sh
+printf '%%PDF %s\n' "${7##*/}" >"$8"
+printf '(node:123) ExperimentalWarning: WASI is an experimental feature and might change at any time\n[]\n' >&2
+FAKE
+# node RUN-BROWSER.MJS build BROWSER WASM DIR: the SHA-256 of a PDF on
+# stdout, an empty JSON on stderr, for safari only; the input missing-font
+# fails
+cat >"$CB/bin/node" <<'FAKE'
+#!/bin/sh
+[ "$3" = safari ] || exit 9
+case "$5" in
+  */missing-font) printf -- '-\n'; printf '[{"severity":"error"}]' >&2; exit 1 ;;
+esac
+echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+printf '[]' >&2
+FAKE
+chmod +x "$CB/deno" "$CB/bin/node"
+cb_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi; }
+: >"$WORK/in"
+# the form of the lists: three lines for each of the seven inputs
+cb_form() {
+  for name in kanikosen determinism pdf complex-vertical complex-horizontal broken-style missing-font; do
+    grep -Eq "^([0-9a-f]{64}|-)  $name/pdf\$" "$1" && grep -Eq "^[0-9a-f]{64}  $name/diagnostics\$" "$1" && grep -Eq "^exit [0-9]+  $name\$" "$1" || return 1
+  done
+  [ "$(wc -l <"$1" | tr -d ' ')" = 21 ]
+}
+run env DENO="$CB/deno" sh "$HERE/../wasm/compare.sh" --deno golem.wasm
+cp "$WORK/out" "$CB/deno.txt"
+expect "compare.sh --deno: runs every input" 0
+if cb_form "$CB/deno.txt"; then ok; else ng "compare.sh --deno: the list has the form of that of node:wasi"; fi
+if grep -qxF "$(printf '%%PDF kanikosen\n' | cb_sha)  kanikosen/pdf" "$CB/deno.txt"; then ok; else ng "compare.sh --deno: the SHA-256 of the PDF that run.mjs wrote"; fi
+if grep -qxF "$(printf '[]\n' | cb_sha)  kanikosen/diagnostics" "$CB/deno.txt"; then ok; else ng "compare.sh --deno: the warning of Deno is not in the JSON"; fi
+run env PATH="$CB/bin:$PATH" sh "$HERE/../wasm/compare.sh" --browser safari golem.wasm
+cp "$WORK/out" "$CB/browser.txt"
+expect "compare.sh --browser: runs every input" 0
+if cb_form "$CB/browser.txt"; then ok; else ng "compare.sh --browser: the list has the form of that of node:wasi"; fi
+if grep -qxF "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  kanikosen/pdf" "$CB/browser.txt"; then ok; else ng "compare.sh --browser: the SHA-256 that the page gave, of the browser asked"; fi
+if grep -qxF -- "-  missing-font/pdf" "$CB/browser.txt" && grep -qxF "exit 1  missing-font" "$CB/browser.txt"; then ok; else ng "compare.sh --browser: no PDF and the exit code of a build with an error"; fi
+run sh "$HERE/../wasm/compare.sh" --browser firefox golem.wasm
+expect "compare.sh --browser: a browser that is not chromium nor safari is a usage error" 2
+run sh "$HERE/../wasm/compare.sh" --browser chromium
+expect "compare.sh --browser: without WASM is a usage error" 2
+run sh "$HERE/../wasm/compare.sh" --deno
+expect "compare.sh --deno: without WASM is a usage error" 2
+
+# ---------------------------------------------------------------- fetch-chromium.sh, fetch-deno.sh
+# (docs/adr/0234 sections 1 and 5): the arguments, and a zip of another
+# SHA-256, from a fake curl, is not unpacked
+
+FC=$WORK/fetch-pinned
+mkdir -p "$FC/bin"
+cat >"$FC/bin/curl" <<'FAKE'
+#!/bin/sh
+while [ $# -gt 0 ]; do
+  case "$1" in -o) printf 'not the pinned zip\n' >"$2"; shift ;; esac
+  shift
+done
+FAKE
+chmod +x "$FC/bin/curl"
+for f in browser/fetch-chromium.sh wasm/fetch-deno.sh; do
+  n=${f##*/}
+  run sh "$HERE/../$f" --bogus
+  expect "$n: an unknown argument is a usage error" 2
+  run sh "$HERE/../$f" --expected
+  if [ "$CODE" = 0 ] && grep -Eqx '[0-9.]+ [0-9a-f]{64}' "$WORK/out"; then ok; else ng "$n --expected: the version and the SHA-256"; fi
+  if [ "$(uname -s)-$(uname -m)" = Linux-x86_64 ]; then
+    rm -rf "$FC/root"
+    mkdir -p "$FC/root/scripts/browser" "$FC/root/scripts/wasm"
+    cp "$HERE/../$f" "$FC/root/scripts/$f"
+    run env PATH="$FC/bin:$PATH" sh "$FC/root/scripts/$f"
+    expect "$n: a zip of another SHA-256 fails" 1
+    if grep -qF 'SHA-256 mismatch' "$WORK/err" && [ ! -e "$FC/root/third_party" ]; then ok; else ng "$n: a zip of another SHA-256 is not unpacked"; fi
+  else
+    run sh "$HERE/../$f"
+    expect "$n: another platform than x86-64 Linux fails" 1
+    skip 2 "$n: the SHA-256 is checked on x86-64 Linux only"
+  fi
+done
+
+# ---------------------------------------------------------------- browser/safari-versions.sh
+# (docs/adr/0234 section 6, I7): the table of the versions of the safari
+# job, from an Info.plist of the fixture and the variables of the runner.
+# plutil is of macOS: scripts-macos runs these
+
+if [ "$(uname -s)" = Darwin ]; then
+  SV=$WORK/safari-versions
+  mkdir -p "$SV"
+  printf '#!/bin/sh\ncase "$1" in -productVersion) echo 15.8.2 ;; -buildVersion) echo 24H232 ;; esac\n' >"$SV/sw_vers"
+  chmod +x "$SV/sw_vers"
+  sv() { env SW_VERS="$SV/sw_vers" SAFARI_PLIST="$HERE/testdata/safari-versions/Info.plist" ImageOS=macos15 ImageVersion=20261104.0514.1 sh "$HERE/../browser/safari-versions.sh" "$@"; }
+  run sv 27.2
+  expect "safari-versions: the versions of macOS, the image, Safari and the session (I7)" 0 "| What | Version |
+| --- | --- |
+| macOS | 15.8.2 |
+| macOS build | 24H232 |
+| ImageOS | macos15 |
+| ImageVersion | 20261104.0514.1 |
+| Safari CFBundleShortVersionString | 27.2 |
+| Safari CFBundleVersion | 20625.2.8.18.4 |
+| WebDriver browserVersion | 27.2 |"
+  # the session was not made: the other rows are there (I7)
+  run sv ""
+  if [ "$CODE" = 0 ] && [ "$(wc -l <"$WORK/out" | tr -d ' ')" = 8 ] && ! grep -q browserVersion "$WORK/out"; then ok; else ng "safari-versions: without browserVersion, the other rows"; fi
+  run env SW_VERS=/nonexistent SAFARI_PLIST=/nonexistent ImageOS= ImageVersion= sh "$HERE/../browser/safari-versions.sh"
+  if [ "$CODE" = 0 ] && [ "$(grep -c ' - |$' "$WORK/out")" = 6 ]; then ok; else ng "safari-versions: what cannot be read is -, and the table is written"; fi
+else
+  skip 3 "safari-versions: plutil is of macOS"
+fi
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"

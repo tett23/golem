@@ -111,8 +111,10 @@ test-suite golem-driver-test
     ParagraphRuleSpec
     ParagraphSpec
     PdfSpec
+    PlatesSpec
     ReferencesSpec
     SecuritySpec
+    SpecimenGeometrySpec
     StylesSpec
     TableFilesSpec
     TaggedPdfSpec

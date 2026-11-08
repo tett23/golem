@@ -426,11 +426,17 @@ writeDocumentView tamper version inp geom fonts layout intent =
                   V.vwSwatchesUsed = Map.fromList (mapMaybe swatchOfName used'),
                   V.vwBleed = bleed,
                   V.vwIntentProfile = P.pxProfile <$> intent,
-                  V.vwX4 = P.verify (P.documentObjects doc),
+                  V.vwX4 = P.verify objects,
                   V.vwPdf = bytes,
                   V.vwStyleSpan = styleSpan,
-                  V.vwManifestSpan = mkSpan (projectManifestFile (piProject inp)) 0 0
+                  V.vwManifestSpan = mkSpan (projectManifestFile (piProject inp)) 0 0,
+                  -- lazy fields: golem build does not read the content streams (docs/adr ADR 0232)
+                  V.vwPaints = P.paintsOf objects,
+                  V.vwUnembeddedFonts = P.unembeddedFonts objects,
+                  V.vwSpotColorants = P.spotColorants objects
                 }
+            -- the objects the PDF is written from, for the checks of golem preflight (golem-cli ADR 0006)
+            objects = P.documentObjects doc
             -- each leaf with the text it draws in the order of the content streams and that of its glyphs in the order of the text (docs/adr ADR 0227)
             inOrder = Map.fromListWith (flip (<>)) [(l, guText u) | pd <- drawn, u <- pdUses pd, Just l <- [guLeaf u]]
             leaves = Map.toList (Map.unionWith (\(a, _) (_, b) -> (a, b)) (Map.map (,"") (P.leafTexts doc)) (Map.map ("",) inOrder))
