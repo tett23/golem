@@ -862,14 +862,17 @@ if command -v timeout >/dev/null 2>&1; then
   : >"$WORK/in"
   run suite_timeout true
   expect "suite-timeout: a suite that passes" 0
+  # the seconds of each suite that finished, one line on stderr, to choose
+  # the suites of each runner of the tests (docs/adr/0244)
+  if [ "$(wc -l <"$WORK/err" | tr -d ' ')" = 1 ] && grep -Eqx 'true: finished in [0-9]+ seconds' "$WORK/err"; then ok; else ng "suite-timeout: the seconds of a suite that passed are one line"; fi
   run suite_timeout sh -c 'exit 3'
   expect "suite-timeout: a suite that fails keeps its exit code" 3
-  if [ ! -s "$WORK/err" ]; then ok; else ng "suite-timeout: nothing is said of a suite that finished"; fi
+  if [ "$(wc -l <"$WORK/err" | tr -d ' ')" = 1 ] && grep -Eqx 'sh: finished in [0-9]+ seconds' "$WORK/err"; then ok; else ng "suite-timeout: the seconds of a suite that failed are one line"; fi
   run suite_timeout sleep 30
   expect "suite-timeout: a suite that does not finish is stopped" 124
-  if grep -qx 'sleep: did not finish in 1 seconds' "$WORK/err"; then ok; else ng "suite-timeout: the suite that did not finish is named"; fi
+  if grep -qx 'sleep: did not finish in 1 seconds' "$WORK/err" && ! grep -q 'finished in' "$WORK/err"; then ok; else ng "suite-timeout: the suite that did not finish is named, without seconds"; fi
 else
-  skip 4 "suite-timeout (no timeout command)"
+  skip 5 "suite-timeout (no timeout command)"
 fi
 
 # ---------------------------------------------------------------- bg.sh
@@ -1380,6 +1383,35 @@ fi
 # (docs/adr/0228, I2)
 if step_if "name: Save dist-newstyle (docs/adr/0009)" "if: success() && matrix.save && steps.build.outputs.compiled == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'"; then ok; else ng "ci.yml: a push to main saves dist-newstyle from the runner that saves, when GHC compiled (docs/adr/0140, docs/adr/0228, I2)"; fi
 if grep -n 'Save dist-newstyle' -A 1 "$CI_YML" | grep -q 'matrix.tests'; then ng "ci.yml: the saves of dist-newstyle do not depend on matrix.tests"; else ok; fi
+
+# ---------------------------------------------------------------- ci.yml and verapdf
+# (docs/adr/0183, docs/adr/0244)
+
+VPJ=$WORK/verapdf.yml
+job_lines verapdf >"$VPJ"
+if [ -s "$VPJ" ]; then ok; else ng "ci.yml: there is a verapdf job"; fi
+# I3: verapdf does not need build, and ci needs verapdf
+if grep -qx '    needs: \[changes\]' "$VPJ" && grep -qxF "    if: needs.changes.outputs.build == 'true'" "$VPJ"; then ok; else ng "ci.yml: verapdf needs only changes and is skipped as build is (docs/adr/0244, I3)"; fi
+if grep -Eq '^    needs: .*build' "$VPJ"; then ng "ci.yml: verapdf does not need build (docs/adr/0244, I3)"; else ok; fi
+if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?verapdf([],].*)?$'; then ok; else ng "ci.yml: ci needs verapdf (docs/adr/0244, I3)"; fi
+if grep -qx '    timeout-minutes: 75' "$VPJ"; then ok; else ng "ci.yml: verapdf has a timeout of 75 minutes, as visual (docs/adr/0244)"; fi
+# I1, I2: verapdf waits for conformance-pdfs of the outputs runner
+if grep -qxF "        run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh \"\$GITHUB_RUN_ID\" \"\$GITHUB_RUN_ATTEMPT\" 'build (ubuntu-24.04, outputs)' conformance-pdfs" "$VPJ"; then ok; else
+  ng "ci.yml: verapdf waits for conformance-pdfs of build (ubuntu-24.04, outputs) (docs/adr/0244, I1, I2)"
+fi
+# I4: what verapdf takes from the network comes before the wait; the
+# download of the artifact and the check after it
+VP_NIX_AT=$(grep -n 'uses: cachix/install-nix-action@' "$VPJ" | head -1 | cut -d: -f1)
+VP_BUILD_AT=$(grep -n 'nix build ' "$VPJ" | head -1 | cut -d: -f1)
+VP_WAIT_AT=$(grep -n 'sh scripts/visual/wait-pdfs.sh' "$VPJ" | head -1 | cut -d: -f1)
+VP_DOWNLOAD_AT=$(grep -n 'uses: actions/download-artifact@' "$VPJ" | head -1 | cut -d: -f1)
+VP_CHECK_AT=$(grep -n 'sh scripts/ci/verapdf.sh' "$VPJ" | head -1 | cut -d: -f1)
+if [ -n "$VP_NIX_AT" ] && [ -n "$VP_BUILD_AT" ] && [ -n "$VP_WAIT_AT" ] && [ -n "$VP_DOWNLOAD_AT" ] && [ -n "$VP_CHECK_AT" ] &&
+  [ "$VP_NIX_AT" -lt "$VP_WAIT_AT" ] && [ "$VP_BUILD_AT" -lt "$VP_WAIT_AT" ] &&
+  [ "$VP_WAIT_AT" -lt "$VP_DOWNLOAD_AT" ] && [ "$VP_DOWNLOAD_AT" -lt "$VP_CHECK_AT" ]; then ok; else
+  ng "ci.yml: verapdf installs Nix and veraPDF, waits for conformance-pdfs, then downloads and checks it (docs/adr/0244, I4)"
+fi
+if grep -qxF '          GH_TOKEN: ${{ github.token }}' "$VPJ" && grep -qxF '          GH_REPO: ${{ github.repository }}' "$VPJ"; then ok; else ng "ci.yml: the wait of verapdf has GH_TOKEN and GH_REPO (docs/adr/0244)"; fi
 
 # ---------------------------------------------------------------- ci.yml and the caches of GHC and the index
 # (docs/adr/0141-smaller-ghc-and-hackage-index-caches.md)

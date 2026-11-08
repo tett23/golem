@@ -3,15 +3,21 @@
 # when it has not finished in SUITE_TIMEOUT seconds (600 by default), so
 # that a hung suite fails in minutes and says so, instead of holding the
 # job until its timeout. A deadlocked RTS cannot handle SIGTERM, so SIGKILL
-# follows 10 seconds later.
+# follows 10 seconds later. A suite that finished, passed or failed, is
+# said on stderr with its seconds, so that the times of the suites can be
+# gathered from the logs to choose the suites of each runner of the tests
+# (docs/adr/0244).
 #
 #   cabal test all --test-wrapper="$PWD/scripts/ci/suite-timeout.sh"
 #   suite-timeout.sh PROGRAM [ARGUMENTS...]
 set -u
 LIMIT=${SUITE_TIMEOUT:-600}
 CODE=0
+START=$(date +%s)
 timeout -k 10 "$LIMIT" "$@" || CODE=$?
 if [ "$CODE" -eq 124 ] || [ "$CODE" -eq 137 ]; then
   printf '%s: did not finish in %s seconds\n' "$(basename "$1")" "$LIMIT" >&2
+else
+  printf '%s: finished in %s seconds\n' "$(basename "$1")" "$(($(date +%s) - START))" >&2
 fi
 exit "$CODE"

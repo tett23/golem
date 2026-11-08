@@ -1065,10 +1065,14 @@ jobs:
   # veraPDF checks the PDFs of conformance-pdfs against PDF/A-2a and
   # PDF/UA-1 (docs/adr/0183). veraPDF comes from nixpkgs at a fixed commit,
   # from the signed cache of cache.nixos.org, and must be the store path of
-  # VERAPDF_STORE_PATH; the Nix store is not cached
+  # VERAPDF_STORE_PATH; the Nix store is not cached. As visual, it waits
+  # for its artifact of the outputs runner, not for the whole of build, and
+  # installs Nix and veraPDF while it waits, so that it is off the critical
+  # path of CI (docs/adr/0244)
   verapdf:
-    needs: build
-    timeout-minutes: 30
+    needs: [changes]
+    if: needs.changes.outputs.build == 'true'
+    timeout-minutes: 75
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -1082,6 +1086,12 @@ jobs:
             echo "veraPDF is $out, not $VERAPDF_STORE_PATH" >&2
             exit 1
           fi
+      # fails when the outputs runner ended without conformance-pdfs
+      - name: Wait for conformance-pdfs of the outputs runner (docs/adr/0244)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' conformance-pdfs
       - uses: actions/download-artifact@v8
         with:
           name: conformance-pdfs
