@@ -8,6 +8,11 @@
 #                               JSON on stderr)
 #   compare.sh WASM             builds each input with golem.wasm under
 #                               node:wasi (scripts/wasm/run.mjs)
+#   compare.sh --deno WASM      the same with run.mjs under the node:wasi of
+#                               Deno (DENO chooses the deno to run)
+#   compare.sh --browser BROWSER WASM
+#                               the same in chromium or safari, with
+#                               browser_wasi_shim (scripts/wasm/run-browser.mjs)
 #   compare.sh --check A B      the two lists are the same (diff); the CI
 #                               compares the native list with the wasm one
 #
@@ -19,7 +24,7 @@
 # `<SHA-256>  <input>/diagnostics` and `exit <code>  <input>`.
 set -eu
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-usage() { echo "usage: compare.sh --native GOLEM | compare.sh WASM | compare.sh --check A B" >&2; exit 2; }
+usage() { echo "usage: compare.sh --native GOLEM | compare.sh WASM | compare.sh --deno WASM | compare.sh --browser chromium|safari WASM | compare.sh --check A B" >&2; exit 2; }
 case ${1:-} in
   --check)
     [ $# = 3 ] || usage
@@ -30,6 +35,15 @@ case ${1:-} in
   --native)
     [ $# = 2 ] || usage
     MODE=native PROGRAM=$2
+    ;;
+  --deno)
+    [ $# = 2 ] || usage
+    MODE=deno PROGRAM=$2
+    ;;
+  --browser)
+    [ $# = 3 ] || usage
+    case $2 in chromium | safari) ;; *) usage ;; esac
+    MODE=browser BROWSER=$2 PROGRAM=$3
     ;;
   "" | -*) usage ;;
   *)
@@ -75,13 +89,27 @@ for name in kanikosen determinism pdf complex-vertical complex-horizontal broken
   if [ "$MODE" = native ]; then
     (cd "$dir" && "$PROGRAM" build --target pdf --format json >/dev/null 2>"$WORK/json") || code=$?
     pdf=$(find "$dir/build/pdf" -name '*.pdf' 2>/dev/null | head -1)
+  elif [ "$MODE" = browser ]; then
+    # the page gives the SHA-256 of the PDF, not the PDF
+    node "$ROOT/scripts/wasm/run-browser.mjs" build "$BROWSER" "$PROGRAM" "$dir" >"$WORK/sha" 2>"$WORK/json" || code=$?
+    pdf=
+  elif [ "$MODE" = deno ]; then
+    # Deno writes the warning that WASI is experimental to stderr, which
+    # NODE_NO_WARNINGS does not stop; that line alone is taken out of the JSON
+    "${DENO:-deno}" run --allow-read --allow-write "$ROOT/scripts/wasm/run.mjs" build "$PROGRAM" "$dir" "$WORK/out.pdf" 2>"$WORK/raw" || code=$?
+    grep -v '^(node:[0-9]*) ExperimentalWarning: WASI is an experimental feature and might change at any time$' "$WORK/raw" >"$WORK/json" || true
+    pdf=$WORK/out.pdf
+    [ -f "$pdf" ] || pdf=
   else
     # without the warning that WASI is experimental, which would go into the JSON
     node --no-warnings "$ROOT/scripts/wasm/run.mjs" build "$PROGRAM" "$dir" "$WORK/out.pdf" 2>"$WORK/json" || code=$?
     pdf=$WORK/out.pdf
     [ -f "$pdf" ] || pdf=
   fi
-  if [ -n "$pdf" ]; then printf '%s  %s\n' "$(sha "$pdf")" "$name/pdf"; else printf '%s  %s\n' - "$name/pdf"; fi
+  if [ "$MODE" = browser ]; then
+    sha_line=$(head -n 1 "$WORK/sha")
+    printf '%s  %s\n' "${sha_line:--}" "$name/pdf"
+  elif [ -n "$pdf" ]; then printf '%s  %s\n' "$(sha "$pdf")" "$name/pdf"; else printf '%s  %s\n' - "$name/pdf"; fi
   printf '%s  %s\n' "$(sha "$WORK/json")" "$name/diagnostics"
   printf 'exit %s  %s\n' "$code" "$name"
   rm -f "$WORK/out.pdf"
