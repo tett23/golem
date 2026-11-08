@@ -515,6 +515,18 @@ breakTests =
       pages <- pagesMini "" horizontalStyle source [] Map.empty >>= either (assertFailure . show) pure
       take 1 pages @?= [["ああああああああああああ"]]
       assertBool (show pages) (any (any (\l -> "あ" `T.isPrefixOf` l && "1" `T.isSuffixOf` l)) (drop 1 pages)),
+    testCase "B5: a space of code at the paragraph end stays in plain text and HTML (golem-layout ADR 0037)" $ do
+      -- the notation drops the spaces before the closing bracket, so the space is written with a backslash
+      let source = "あ[code: 漢\\ ]\n"
+      withSystemTempDirectory "golem-trailing-code" $ \tmp -> do
+        writeProject tmp (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["pdf", "html", "text"]})) horizontalStyle source []
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml, TargetText], optFonts = fakeProvider}
+        map diagCode (filter isError (brDiagnostics r)) @?= []
+        let readText p = TE.decodeUtf8 <$> BS.readFile p
+        txt <- mapM readText [p | p <- brWritten r, "a.txt" `isSuffixOf` p]
+        html <- mapM readText [p | p <- brWritten r, "a.xhtml" `isSuffixOf` p]
+        assertBool (show txt) (not (null txt) && all ("漢 " `T.isInfixOf`) txt)
+        assertBool (show html) (not (null html) && all ("<code>漢 </code>" `T.isInfixOf`) html),
     testCase "A5: a paragraph with ’tis and ’90s breaks the same in a book of en and in one of ja (golem-layout ADR 0030)" $ do
       -- digits, which the patterns do not break: 20 of them are 10 em of the 12 of a line, and ’tis after a space does not fit
       let para = "12345678901234567890 ’tis 12345678901234567890 ’90s\n"

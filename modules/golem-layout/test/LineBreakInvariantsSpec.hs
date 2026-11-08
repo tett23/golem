@@ -717,8 +717,8 @@ c4Misses g
 
 {- | The known bugs the runs of code find, in the order of 「既知の不具合」:
 a line broken at a space of code, which no prohibition keeps (golem-layout
-ADR 0028 left the spaces of code to their own rule), and the space of code
-at the end of a paragraph, which makes a last line of no box.
+ADR 0028 left the spaces of code to their own rule). The space of code at
+the end of a paragraph went with golem-layout ADR 0037.
 -}
 codeLineBugs :: [LineBug]
 codeLineBugs =
@@ -726,13 +726,7 @@ codeLineBugs =
       { lbItem = "本文の中のコードの空白で、禁則に当たる位置でも改行する",
         lbShape = elem " " . inRun,
         lbExcuses = \i b -> breachOf b `elem` [L2, L3, L4] && atCodeSpace (codeParagraphOf i) (if breachOf b == L2 then breachLine b - 1 else breachLine b),
-        lbCounts = [(2, 39), (3, 2703)]
-      },
-    LineBug
-      { lbItem = "段落の終わりの本文の中のコードの空白で改行し、箱のない最後の行を作る",
-        lbShape = \i -> inPost i == 0 && take 1 (reverse (inRun i)) == [" "],
-        lbExcuses = \_ b -> breachOf b == T1,
-        lbCounts = [(2, 36), (3, 525)]
+        lbCounts = [(2, 36), (3, 2692)]
       }
   ]
   where
@@ -815,7 +809,7 @@ codeTests =
           keys v g = let its = codeItemsOf v (gSetting g) (gPre g) (gRun g) (gPost g) in [keyOf (fromIntegral w * fs) (paramsOf (gSetting g) e its) its | (w, e) <- gCases g]
       checkAllPar d codeRunsT (\run -> [Violation "vertical" (show g) | g <- codeGroupsOf (maxWidthAt depth) run, keys True g /= keys False g])
         @?= Passed (length (concat (upTo d codeRunsT))),
-    testCase "L1 to L13, T1 and C1 to C8 hold for every input of code up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
+    testCase "golem-layout ADR 0037 B1: L1 to L13, T1 and C1 to C8 hold for every input of code up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- linesDepth
       let limit = bruteLimitAt depth
       case tallyAllPar depth (codeGroupT (maxWidthAt depth)) (judgeCodeGroup limit) of

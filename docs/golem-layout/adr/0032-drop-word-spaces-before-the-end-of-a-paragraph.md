@@ -1,6 +1,6 @@
 # ADR 0032: 段落の終わりと強制改行の前の語間の空白を、行分割の前に捨てる
 
-ステータス: 採択
+ステータス: 採択→コードの空白（T3 と「実装すること」の 1 のコードの空白の文）は [golem-layout ADR 0037](0037-drop-spaces-of-code-before-the-end-of-a-paragraph.md)
 
 ## 文脈
 
