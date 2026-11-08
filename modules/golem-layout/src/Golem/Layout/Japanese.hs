@@ -1188,7 +1188,7 @@ normalize env = go AtStart True
     hyphen only; not the rule that keeps two Latin words together -}
     prohibitedAcross hyphen p c =
       let pk = breakClass lastChar lastClass p
-          ck = breakClass firstChar firstClass c
+          ck = startClass c
        in maybe False (lineStartProhibited (ceKinsokuStrict env)) ck
             || maybe False lineEndProhibited pk
             || (hyphen && pk == Just Inseparable && ck == Just Inseparable)
@@ -1226,6 +1226,17 @@ normalize env = go AtStart True
       Just ch -> isDualCharacter ch && maybe False (not . spanIsJapanese) (lkLang (bcLook c))
       Nothing -> False
     breakClass edge cls c = if latinDual c (edge c) then dualJapaneseClass <$> edge c else cls c
+    {- the class of the first character of a box for kinsoku: an apostrophe
+    at the start of a Latin word, U+2019 with a letter or a digit after it
+    (its combining characters left out), is Latin, in no span and in a
+    Latin one alike (golem-layout ADR 0030) -}
+    startClass c
+      | bcExpandable c,
+        Just ('\x2019', more) <- T.uncons (baseOf c),
+        Just (n, _) <- T.uncons more,
+        isLetter n || generalCategory n == DecimalNumber =
+          Just Western
+      | otherwise = breakClass firstChar firstClass c
     isRuby c = boxKind c `elem` [KindRuby, KindGroupRuby]
     -- a Latin word is Latin text at both ends, quotation marks and dashes included
     akiFirst c = if bcExpandable c then Just Western else firstClass c
@@ -1235,7 +1246,7 @@ normalize env = go AtStart True
       let pc = lastClass p
           cc = firstClass c
           pk = breakClass lastChar lastClass p
-          ck = breakClass firstChar firstClass c
+          ck = startClass c
           strict = ceKinsokuStrict env
           noBreak =
             maybe False (lineStartProhibited strict) ck
