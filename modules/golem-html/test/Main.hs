@@ -1,5 +1,6 @@
 module Main (main) where
 
+import CssCascadeSpec (cssCascadeTests)
 import Test.Tasty
 import XhtmlSpec (xhtmlTests)
 
@@ -10,5 +11,6 @@ tests :: TestTree
 tests =
   testGroup
     "golem-html"
-    [ xhtmlTests
+    [ xhtmlTests,
+      cssCascadeTests
     ]

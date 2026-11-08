@@ -35,7 +35,10 @@ test-suite golem-html-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    XhtmlSpec
+  other-modules:
+    CssCascade
+    CssCascadeSpec
+    XhtmlSpec
   build-depends:
     , base
     , containers

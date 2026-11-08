@@ -4,16 +4,21 @@ XMP of the PDF.
 -}
 module TaggedPdfSpec (taggedPdfTests) where
 
+import Control.Monad (filterM, forM_, unless)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
+import Data.Either (isRight)
 import Data.List (isInfixOf, isSuffixOf)
+import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
+import Golem.Pdf (LeafId (..), StructElem (..), StructKid (..), StructType (..))
 import Golem.Syntax
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
+import Golem.Typeset (orphanErrors)
 import Support
-import System.Directory (copyFile, createDirectoryIfMissing)
+import System.Directory (copyFile, createDirectoryIfMissing, doesFileExist, listDirectory)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -149,6 +154,7 @@ taggedPdfTests =
   testGroup
     "tagged PDF, PDF/A-2a and PDF/UA-1 (docs/adr ADR 0183)"
     $ structureTests
+      <> orphanTests
       <> [ testCase "pdfa = \"2a\" without [color] intent is G03113 at the value, with no PDF but HTML and plain text, in dev and prod" $
              mapM_
                ( \profile -> do
@@ -205,3 +211,102 @@ taggedPdfTests =
                p <- preflight (defaultPreflightOptions tmp) {poFonts = fakeProvider}
                [c | c <- codesOf (prDiagnostics p), c == "G09014"] @?= []
          ]
+
+{- | The PDF of a one-chapter project with its structure tree changed
+before it is written, as a test-only stand-in for a mistake of Golem
+(docs/adr ADR 0216).
+-}
+tamperedPdf :: Profile -> BS.ByteString -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (StructElem -> StructElem) -> IO (Either [Diagnostic] BS.ByteString)
+tamperedPdf profile manifest style source files f = withSystemTempDirectory "golem-orphans" $ \tmp -> do
+  writeProject tmp manifest style source files
+  pdfWithTree f (defaultOptions tmp) {optFonts = fakeProvider, optProfile = profile}
+
+-- | The tree without its last element under the Document.
+withoutLast :: StructElem -> StructElem
+withoutLast root = root {seKids = take (length (seKids root) - 1) (seKids root)}
+
+-- | The tree without its Note elements, at every depth.
+withoutNotes :: StructElem -> StructElem
+withoutNotes e = e {seKids = [k' | k <- seKids e, Just k' <- [keep k]]}
+  where
+    keep = \case
+      KidElem c | seType c == SNote -> Nothing
+      KidElem c -> Just (KidElem (withoutNotes c))
+      k -> Just k
+
+-- | The message of G07107 for n orphans.
+orphanMessage :: Int -> T.Text
+orphanMessage n = "構造の木にない内容を描きました（" <> T.pack (show n) <> " か所）。Golem の誤りです。この入力を添えて報告してください"
+
+-- | The fixtures of test/fixtures that are books, but the public-domain books (BuildSpec builds them).
+fixtureBooks :: IO [FilePath]
+fixtureBooks = do
+  names <- listDirectory "test/fixtures"
+  filterM (\n -> doesFileExist ("test/fixtures" </> n </> "manifest.toml")) (filter (/= "pd") names)
+
+orphanTests :: [TestTree]
+orphanTests =
+  [ testCase "G07107 S2 S3 S4: a unit drawn but missing from the tree is one G07107 at the unit, with no PDF, in dev and prod, with and without pdfa and pdfua" $ do
+      let source = "一つめ。\n\n二つめの段落。\n"
+          cases =
+            [ (TE.encodeUtf8 (declaredManifest "ja" ""), horizontalStyle, []),
+              (TE.encodeUtf8 (declaredManifest "ja" "pdfa = \"2a\"\n"), intentStyle, intentFiles),
+              (TE.encodeUtf8 (declaredManifest "ja" "pdfua = \"1\"\n"), horizontalStyle, [])
+            ]
+      forM_ [(p, c) | p <- [Dev, Prod], c <- cases] $ \(profile, (manifest, style, files)) -> do
+        -- the leaves the tree loses, from the tree as it is
+        whole <- tamperedPdf profile manifest style source files id
+        assertBool "S1: the whole tree gives a PDF" (isRight whole)
+        r <- tamperedPdf profile manifest style source files withoutLast
+        case r of
+          Left ds -> do
+            [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- ds] @?= [(DiagnosticCode "G07107", Error, offsetOf "二つめの段落。" source)]
+            map diagMessage ds @?= [orphanMessage 1]
+          Right _ -> assertFailure "a PDF was written",
+    testCase "G07107 S2 S3: the body of a footnote missing from the tree is one G07107 at the note" $ do
+      let source = "本文[note: 注の本文。]の後。\n"
+      r <- tamperedPdf Dev miniManifest horizontalStyle source [] withoutNotes
+      case r of
+        Left ds -> [(diagCode d, spanStart (diagSpan d)) | d <- ds] @?= [(DiagnosticCode "G07107", offsetOf "[note:" source)]
+        Right _ -> assertFailure "a PDF was written",
+    testCase "G07107 S2 S3: the count is of the different leaves; a leaf of no place found is at the start of manifest.toml" $ do
+      let manifestSpan = mkSpan (FileId 0) 0 0
+          unitSpan = mkSpan (FileId 3) 10 20
+          noteSpan = mkSpan (FileId 4) 5 9
+          at = map (\d -> (diagCode d, diagSpan d, diagMessage d))
+      at (orphanErrors manifestSpan (Map.fromList [(2, unitSpan)]) []) @?= []
+      at (orphanErrors manifestSpan (Map.fromList [(2, unitSpan)]) [LeafId [2, 0, 1], LeafId [7, 0, 0]]) @?= [(DiagnosticCode "G07107", unitSpan, orphanMessage 2)]
+      at (orphanErrors manifestSpan Map.empty [LeafId [-8, 4, 5, 9, 0, 1]]) @?= [(DiagnosticCode "G07107", noteSpan, orphanMessage 1)]
+      at (orphanErrors manifestSpan Map.empty [LeafId [-9, 4, 5, 9, 1, 0]]) @?= [(DiagnosticCode "G07107", noteSpan, orphanMessage 1)]
+      at (orphanErrors manifestSpan Map.empty [LeafId [7, 0, 0]]) @?= [(DiagnosticCode "G07107", manifestSpan, orphanMessage 1)]
+      at (orphanErrors manifestSpan Map.empty [LeafId []]) @?= [(DiagnosticCode "G07107", manifestSpan, orphanMessage 1)],
+    testCase "G07107 S5: no fixture book draws content missing from its tree" $ do
+      books <- fixtureBooks
+      assertBool (show books) (length books >= 10)
+      failures <- concat <$> mapM fixtureOrphans books
+      failures @?= []
+  ]
+
+{- | Builds a fixture book to PDF, with the fonts of the other fixtures as
+fonts/ja.otf and fonts/latin.otf, the sample with the page of its PDF
+golden (OutputGoldenSpec) and a book of no page with the page of
+'horizontalStyle': what went wrong, if it gave G07107 or no PDF.
+-}
+fixtureOrphans :: FilePath -> IO [String]
+fixtureOrphans name = withSystemTempDirectory "golem-orphans" $ \tmp -> do
+  copyTree ("test/fixtures" </> name) tmp
+  createDirectoryIfMissing True (tmp </> "fonts")
+  copyFile "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" (tmp </> "fonts/ja.otf")
+  copyFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" (tmp </> "fonts/latin.otf")
+  if name == "sample"
+    then do
+      st <- BS.readFile "../../scripts/determinism/pdf-style.toml"
+      BS.writeFile (tmp </> "style.toml") (st <> "\n[fonts.code]\nja = \"fonts/ja.otf\"\nlatin = \"fonts/latin.otf\"\n")
+    else do
+      -- a book of no page (the fixtures of HTML and of functions) takes one with the fonts
+      st <- BS.readFile (tmp </> "style.toml")
+      unless ("[page]" `BS.isInfixOf` st) $
+        BS.writeFile (tmp </> "style.toml") (st <> "\n" <> horizontalStyle <> "\n[fonts.body]\nja = \"fonts/ja.otf\"\nlatin = \"fonts/latin.otf\"\n\n[fonts.code]\nja = \"fonts/ja.otf\"\nlatin = \"fonts/latin.otf\"\n")
+  r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf]}
+  let codes = map diagCode (brDiagnostics r)
+  pure ([name <> ": " <> show codes | DiagnosticCode "G07107" `elem` codes || not (any (".pdf" `isSuffixOf`) (brWritten r))])
