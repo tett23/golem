@@ -448,37 +448,27 @@ out_has() { if grep -qF -- "$2" "$WORK/out"; then ok; else ng "$1 (stdout has no
 out_lacks() { if grep -qF -- "$2" "$WORK/out"; then ng "$1 (stdout has '$2')"; else ok; fi; }
 
 T='    text { font-family: "Fig Sans"; }'
-# the trimming of adjacent fullwidth punctuation that Chromium does by
-# text-spacing-trim: normal (I1 to I5 of the comment of outline-prepare.sh)
+SA='    text { text-spacing-trim: space-all; }'
+HR='    tspan.halt { font-feature-settings: "halt"; }'
+# the text of the sources goes to Inkscape as it is, with the tspans of
+# halt that the sources have (docs/adr/0239 section 3)
+H='<tspan class="halt">'
 for case in \
-  'close before close|（G02014）。|（G02014'"$H"'）</tspan>。' \
-  'close before a middle dot|）・あ|'"$H"'）</tspan>・あ' \
-  'close before an ideographic space|）　あ|'"$H"'）</tspan>　あ' \
-  'close before a narrow close|」)|'"$H"'」</tspan>)' \
-  'a dot before close|。」|'"$H"'。</tspan>」' \
-  'open after close|「行分割」（階層 1）|「行分割」'"$H"'（</tspan>階層 1）' \
-  'open after open|（「あ|（'"$H"'「</tspan>あ' \
-  'open after a middle dot|：（あ|：'"$H"'（</tspan>あ' \
-  'open after a narrow open|(「あ|('"$H"'「</tspan>あ' \
-  'a chain of three|あ）」。|あ'"$H"'）</tspan>'"$H"'」</tspan>。' \
-  'open after close after close|」」「あ|'"$H"'」</tspan>」'"$H"'「</tspan>あ' \
-  'open at the start|（G|（G' \
-  'close at the end|あ）|あ）' \
-  'close before a narrow open|）(|）(' \
-  'open before close|（）|（）' \
-  'close before a letter|）A|）A' \
-  'a letter before open|A（|A（' \
-  'a space between|） （|） （' \
+  'a halt kept as it is|（G02014'"$H"'）</tspan>。|（G02014'"$H"'）</tspan>。' \
+  'two halts|あ'"$H"'）</tspan>'"$H"'」</tspan>。|あ'"$H"'）</tspan>'"$H"'」</tspan>。' \
+  'no halt is added|「行分割」（階層 1）|「行分割」（階層 1）' \
   'no punctuation|golem build の PDF|golem build の PDF'; do
   name=${case%%|*}
   rest=${case#*|}
-  figure "$T" "  <text x=\"1\" y=\"2\">${rest%%|*}</text>"
+  figure "$T
+$SA
+$HR" "  <text x=\"1\" y=\"2\">${rest%%|*}</text>"
   run prep
   expect "outline-prepare: $name: exit code" 0
   text_is "outline-prepare: $name" "${rest#*|}"
 done
 
-figure "$T" '  <rect x="0"/><text x="1" y="2">あ）。</text><text x="1" y="2">い」「</text>'
+figure "$T" '  <rect x="0"/><text x="1" y="2">あ<tspan class="halt">）</tspan>。</text><text x="1" y="2">い」<tspan class="halt">「</tspan></text>'
 run prep
 text_is "outline-prepare: the first of two text elements on a line" "あ${H}）</tspan>。"
 text_is "outline-prepare: the second of two text elements on a line" "い」${H}「</tspan>"
@@ -487,6 +477,8 @@ out_has "outline-prepare: comments are kept as they are" '<!-- 図（説明）�
 out_lacks "outline-prepare: @font-face is removed" '@font-face'
 
 figure "$T
+$SA
+$HR
     .c { text-anchor: middle; dominant-baseline: central; }
     .a, text.b { dominant-baseline: central }
     .v { writing-mode: tb; text-anchor: middle; }
@@ -494,7 +486,10 @@ figure "$T
 run prep
 expect "outline-prepare: rules: exit code" 0
 out_has "outline-prepare: the rules begin" '    /* golem-outline: begin */'
-out_has "outline-prepare: the rule of halt" '    tspan.golem-halt { font-feature-settings: "halt"; baseline-shift: 0; }'
+out_has "ADR0239-I6: the tspans of halt are not shifted" '    tspan.halt { baseline-shift: 0; }'
+out_lacks "ADR0239-I6: text-spacing-trim is removed" 'text-spacing-trim'
+out_has "ADR0239-I6: the rule of halt of the source is kept" "$HR"
+out_lacks "ADR0239-I6: no rule of golem-halt" 'golem-halt'
 out_has "outline-prepare: central is lowered" '    .c > tspan.golem-outline { baseline-shift: -0.056em; }'
 out_has "outline-prepare: each selector of a list (1)" '    .a > tspan.golem-outline { baseline-shift: -0.056em; }'
 out_has "outline-prepare: each selector of a list (2)" '    text.b > tspan.golem-outline { baseline-shift: -0.056em; }'
@@ -514,19 +509,19 @@ out_has "outline-prepare: the attribute central is lowered" '<text x="1" y="2" d
 out_has "outline-prepare: central in style is lowered" '<text x="1" y="3" style="dominant-baseline: central"><tspan class="golem-outline" baseline-shift="-0.056em">い</tspan></text>'
 out_has "outline-prepare: vertical text of its own is not lowered" '<text x="1" y="4" style="writing-mode: tb" dominant-baseline="central"><tspan class="golem-outline">う）</tspan></text>'
 
-# vertical text with marks of I1 or I2: Inkscape does not place vhal as
-# Chromium does, so it stops
+# a halt in vertical text: Inkscape does not place vhal as Chromium does,
+# so it stops (ADR0239-I7)
 for v in 'class="v"' 'class="x v"' 'style="writing-mode: tb"' 'writing-mode="tb"'; do
   figure "$T
-    .v { writing-mode: tb; }" "  <text $v x=\"1\" y=\"2\">あ）。</text>"
+    .v { writing-mode: tb; }" "  <text $v x=\"1\" y=\"2\">あ<tspan class=\"halt\">）</tspan>。</text>"
   run prep
-  expect "outline-prepare: vertical text ($v) with ）。: exit code" 1
-  err_has "outline-prepare: vertical text ($v) with ）。: the message" 'vertical text with fullwidth punctuation'
+  expect "ADR0239-I7: outline-prepare: a halt in vertical text ($v): exit code" 1
+  err_has "ADR0239-I7: outline-prepare: a halt in vertical text ($v): the message" 'line 8: a tspan of halt in vertical text'
 done
 figure "$T
     .v { writing-mode: tb; }" '  <text class="v" x="1" y="2">あ）い。</text>'
 run prep
-expect "outline-prepare: vertical text without marks of I1 or I2: exit code" 0
+expect "outline-prepare: vertical text without a halt: exit code" 0
 figure "$T
     #v { writing-mode: tb; }" '  <text x="1" y="2">あ</text>'
 run prep
@@ -535,6 +530,9 @@ err_has "outline-prepare: a selector of vertical text it does not read: the mess
 
 for case in \
   'markup inside a text element|  <text x="1" y="2">あ<tspan>い</tspan></text>|has markup inside' \
+  'ADR0239-I7: a tspan of another class|  <text x="1" y="2">あ<tspan class="b">）</tspan>。</text>|has markup inside' \
+  'ADR0239-I7: a halt around two characters|  <text x="1" y="2">あ<tspan class="halt">）。</tspan></text>|one fullwidth punctuation mark' \
+  'a text-spacing-trim it does not read|    text { fill: #000; text-spacing-trim: space-all; }|text-spacing-trim' \
   'a text element over two lines|  <text x="1" y="2">あ|is not on one line' \
   'a rule over two lines|    .c {|one line'; do
   name=${case%%|*}
@@ -543,6 +541,8 @@ for case in \
     figure "$T
     .c {
       dominant-baseline: central; }" '  <text x="1" y="2">あ</text>'
+  elif [ "$name" = 'a text-spacing-trim it does not read' ]; then
+    figure "${rest%%|*}" '  <text x="1" y="2">あ</text>'
   else
     figure "$T" "${rest%%|*}" '</text>'
   fi
@@ -562,12 +562,107 @@ err_has "outline-prepare: two style elements: the message" "one style element"
 
 # --strip removes the rules from what Inkscape wrote
 printf '%s\n' '<svg>' '  <style' '     id="style1">' '    text { fill: #222; }' \
-  '    /* golem-outline: begin */' '    tspan.golem-halt { font-feature-settings: "halt"; baseline-shift: 0; }' \
+  '    /* golem-outline: begin */' '    tspan.halt { baseline-shift: 0; }' \
   '    /* golem-outline: end */' '  </style>' '</svg>' >"$WORK/in"
 run sh "$HERE/outline-prepare.sh" --strip
 expect "outline-prepare --strip: exit code" 0
 check "outline-prepare --strip: the rules are removed" test "$(cat "$WORK/out")" = "$(printf '%s\n' '<svg>' '  <style' '     id="style1">' '    text { fill: #222; }' '  </style>' '</svg>')"
 : >"$WORK/in"
+
+# the same source, the same bytes (ADR0239-I8)
+figure "$T
+$SA
+$HR
+    .c { text-anchor: middle; dominant-baseline: central; }" '  <text class="c" x="1" y="2">あ<tspan class="halt">）</tspan>。</text>'
+prep >"$WORK/prep1"
+prep >"$WORK/prep2"
+check "ADR0239-I8: outline-prepare makes the same bytes twice" cmp -s "$WORK/prep1" "$WORK/prep2"
+
+# ---------------------------------------------------------------- check-figures.sh
+
+# the punctuation of the sources (docs/adr/0239 section 3): CF/images/src
+# holds one source and CF/images its outline, whose comment names the
+# SHA-256 of the source, so that only the punctuation can fail
+CF=$WORK/cf
+sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d ' ' -f 1; else shasum -a 256 "$1" | cut -d ' ' -f 1; fi; }
+# source STYLE TEXT...: CF with the source of figure STYLE TEXT...
+source_is() {
+  figure "$@"
+  rm -rf "$CF"
+  mkdir -p "$CF/images/src"
+  cp "$WORK/fig.svg" "$CF/images/src/x.svg"
+  printf '<!-- Made by scripts/manual/outline-figures.sh from images/src/x.svg (sha256 %s) with test. -->\n<svg/>\n' "$(sha256 "$CF/images/src/x.svg")" >"$CF/images/x.svg"
+}
+cf() { sh "$HERE/check-figures.sh" "$CF"; }
+# horizontal text: NAME|TEXT|EXIT|MESSAGE (MESSAGE is checked when EXIT is 1)
+for case in \
+  'ADR0239-I4: latin only|golem build の PDF|0|' \
+  'ADR0239-I4: one mark|（G02014）|0|' \
+  'ADR0239-I4: an empty text element||0|' \
+  'ADR0239-I4: P P with the first in halt|（G02014'"$H"'）</tspan>。|0|' \
+  'ADR0239-I4: P P without halt|（G02014）。|1|line 9: ） needs a tspan of halt' \
+  'ADR0239-I4: P O with the second in halt|「行分割」'"$H"'（</tspan>階層 1）|0|' \
+  'ADR0239-I4: P O with the first in halt|「行分割'"$H"'」</tspan>（階層 1）|1|line 9: 」 has a tspan of halt that it does not need' \
+  'ADR0239-I4: P S with nothing in halt|作る）　乱数|0|' \
+  'ADR0239-I4: P S with the first in halt|作る'"$H"'）</tspan>　乱数|1|has a tspan of halt that it does not need' \
+  'ADR0239-I4: P O O with the second in halt|あ」'"$H"'（</tspan>「い|0|' \
+  'ADR0239-I4: P O O with the third in halt|あ」'"$H"'（</tspan>'"$H"'「</tspan>い|1|「 has a tspan of halt' \
+  'ADR0239-I4: P P P with the first two in halt|あ'"$H"'）</tspan>'"$H"'」</tspan>。|0|' \
+  'ADR0239-I4: P P P with the first in halt|あ'"$H"'）</tspan>」。|1|」 needs a tspan of halt' \
+  'ADR0239-I4: O P|あ（）|0|' \
+  'ADR0239-I4: S O|あ　（い）|0|' \
+  'ADR0239-I4: a halt on a lone mark|'"$H"'（</tspan>G02014）|1|has a tspan of halt that it does not need' \
+  'ADR0239-I4: O S is not in the table|（　あ|1|not in the table' \
+  'ADR0239-I4: S P is not in the table|あ　。|1|not in the table' \
+  'ADR0239-I7: P and a middle dot|あ）・い|1|line 9: a middle dot next to punctuation (）・)'; do
+  name=${case%%|*}
+  rest=${case#*|}
+  text=${rest%%|*}
+  rest=${rest#*|}
+  want=${rest%%|*}
+  msg=${rest#*|}
+  source_is "$T
+$SA
+$HR" "  <text x=\"1\" y=\"2\">$text</text>"
+  run cf
+  expect "$name: exit code" "$want"
+  if [ "$want" = 1 ]; then err_has "$name: the message" "$msg"; fi
+done
+
+# vertical text with adjacent marks stops (ADR0239-I7)
+source_is "$T
+$SA
+    .v { writing-mode: tb; }" '  <text class="v" x="1" y="2">あ」（い</text>'
+run cf
+expect "ADR0239-I7: vertical 」（: exit code" 1
+err_has "ADR0239-I7: vertical 」（: the message" 'line 9: vertical text with punctuation next to another (」（)'
+source_is "$T
+$SA
+    .v { writing-mode: tb; }" '  <text class="v" x="1" y="2">あ）い。</text>'
+run cf
+expect "ADR0239-I7: vertical text without adjacent marks: exit code" 0
+
+# markup other than halt (ADR0239-I7)
+source_is "$T
+$SA" '  <text x="1" y="2">あ<tspan class="b">）</tspan>。</text>'
+run cf
+expect "ADR0239-I7: a tspan of another class: exit code" 1
+err_has "ADR0239-I7: a tspan of another class: the message" 'line 8: a text element has markup inside'
+
+# the rules of the style sheet (ADR0239-I5)
+source_is "$T" '  <text x="1" y="2">あ</text>'
+run cf
+expect "ADR0239-I5: a source without space-all: exit code" 1
+err_has "ADR0239-I5: a source without space-all: the message" 'text { text-spacing-trim: space-all; }'
+source_is "$T
+$SA" '  <text x="1" y="2">（G02014'"$H"'）</tspan>。</text>'
+run cf
+expect "ADR0239-I5: a halt without the rule of halt: exit code" 1
+err_has "ADR0239-I5: a halt without the rule of halt: the message" 'tspan.halt { font-feature-settings: "halt"; }'
+
+# the sources of the repository pass
+run sh "$HERE/check-figures.sh"
+expect "check-figures: the sources of the manuals" 0
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures\n' "$COUNT" "$FAILURES"

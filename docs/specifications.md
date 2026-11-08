@@ -931,11 +931,19 @@ x86-64 の `outputs` のランナーは、`sample`、`bibliographies`、`languag
 
 HTML は、夜ごとの `.github/workflows/browser.yml` が、版と SHA-256 で固定した Chrome for Testing の `chrome-headless-shell`（`scripts/browser/fetch-chromium.sh`）と、macOS のランナーの Safari で開いて確かめる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)）。
 Chromium は Chrome DevTools Protocol で、Safari は `safaridriver` の W3C WebDriver で操り、どちらのクライアントも Node の組み込みだけで書く（`scripts/browser/cdp.mjs`、`scripts/browser/webdriver.mjs`）。
-検査は二つのブラウザで同じ関数で走り、同じ基準を当てる。
+検査は二つのブラウザで同じ関数で走り、同じ基準を当てる（例外は、下の Chromium の起動の引数と Safari の縦書きである）。
 確かめるのは、技術書のコードブロックの選択とコピーに行番号と差分の印が入らないこと、`pre` の `white-space` とコードの書体、縦組みのダッシュの墨が縦に長いこと、圏点の十の形の `text-emphasis-style`、段落の罫線が段落の前後にあること、tRNS の透明の画素でページの背景が見えること、二冊のマニュアルのすべてのページで画像とスタイルシートと書体が読み込まれ、`#` のリンクの先があることである（`scripts/browser/html-checks.mjs`）。
 Chromium では、加えてコンソールの誤りと読み込みの失敗がないことを確かめる。
 WebDriver にはそれを受け取る命令がないので、Safari では確かめない。
-開発者のマニュアルの輪郭の SVG の文字は、原稿の SVG を同じブラウザで描いた文字と、位置と大きさが CSS の 1 画素以下の差であることを確かめる（`scripts/browser/svg-text.mjs`）。
+開発者のマニュアルの輪郭の SVG の文字は、原稿の SVG を同じブラウザで描いた文字と比べ、墨の外接矩形の中心の差が CSS の 1 画素以下、大きさの差が CSS の 2 画素以下であることを確かめる（`scripts/browser/svg-text.mjs`、[ADR 0239](adr/0239-decide-the-conditions-of-the-outlined-figure-check-and-the-punctuation-of-figure-sources.md)）。
+この検査の Chromium だけは、`--font-render-hinting=none` で起動する（`scripts/browser/browsers.mjs` の `chromiumArgs`）。
+輪郭のパスはヒンティングを受けないためである。
+`chromium` のジョブは、この起動の引数を版の表に書く。
+Safari では、縦書きの文字列を測るが判定には含めず、その数と差の最大をジョブの要約に書く。
+Safari は、SVG の縦書きの正立の字を Chromium と Inkscape と違う量で送るためである。
+Safari の横書きの文字列は、中心と大きさの差の上限を CSS の 8 画素として判定する（`scripts/browser/svg-text.mjs` の `SAFARI`）。
+Safari は、Chromium に合わせた輪郭から、横書きの文字列を最大で 5.5 画素離して描く。
+8 画素の上限は、`halt` が当たらずに約物が全角のまま残る誤り（20px の字で 20 画素）や、別のフォントで描かれた図を見つけるためのものである。
 Safari の版は固定せず、ランナーの像に従う。
 `safari` のジョブは、macOS の版、像の版、Safari の版、WebDriver の `browserVersion` の表をジョブの要約に書き、検査が失敗しても表を残す（`scripts/browser/safari-versions.sh`）。
 

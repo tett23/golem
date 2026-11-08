@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Made by scripts/manual/outline-figures.sh from images/src/stages.svg (sha256 4fa923922c986777274a3710499d4348abbb8768d91ee56c581dca3806467fd0) with Inkscape 1.4.4 (dcaf3e7d9e, 2026-05-05). Do not edit by hand. -->
+<!-- Made by scripts/manual/outline-figures.sh from images/src/stages.svg (sha256 e011ea4da1388e13a3c8b1c96b27775158d8d3a870fb90f0b0efa271778fa22b) with Inkscape 1.4.4 (dcaf3e7d9e, 2026-05-05). Do not edit by hand. -->
 <svg
    width="1300"
    height="920"
@@ -13,6 +13,7 @@
   <style
      id="style1">
     text { font-family: &quot;Fig Sans&quot;, sans-serif; font-size: 24px; fill: #222; }
+    tspan.halt { font-feature-settings: &quot;halt&quot;; }
     .c { text-anchor: middle; dominant-baseline: central; }
     .band-name { font-size: 34px; font-weight: bold; }
     .band-sub { font-size: 22px; fill: #444; }
