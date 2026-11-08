@@ -35,7 +35,7 @@ withMiniEvaluated style source k = withSystemTempDirectory "golem-sites" $ \tmp 
 -- | The PDF input the driver passes for an evaluated project.
 inputOf :: FilePath -> Evaluated -> IO PdfInput
 inputOf tmp e = case evBook e of
-  Just book -> pure (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))))
+  Just book -> pure (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))) (evStyleText e))
   Nothing -> assertFailure (show (evDiagnostics e))
 
 -- | The text of the source that a span covers.

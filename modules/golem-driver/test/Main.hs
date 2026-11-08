@@ -31,6 +31,7 @@ import StylesSpec
 import TableFilesSpec
 import TaggedPdfSpec (taggedPdfTests)
 import Test.Tasty
+import UnwritableNumbersSpec (unwritableNumbersTests)
 import VarsSpec (varsTests)
 
 main :: IO ()
@@ -54,6 +55,7 @@ tests skips =
         functionsTests,
         callsTests,
         varsTests,
+        unwritableNumbersTests,
         emetSamplesTests,
         testGroup "output and layout diagnostic codes (golem-driver ADR 0016)" outputDiagnosticTests,
         testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,

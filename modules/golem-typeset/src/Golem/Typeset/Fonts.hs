@@ -211,7 +211,9 @@ data PdfInput = PdfInput
     -} piRunningVars :: !(Map FileId (Map [Text] Text)),
     {- | the text of every value of [vars] of manifest.toml a running head
     can show, by its path (docs/adr/0185, docs/adr/0196)
-    -} piProjectVars :: !(Map [Text] Text)
+    -} piProjectVars :: !(Map [Text] Text),
+    -- | the text of style.toml, empty without one: where G07106 points (docs/adr/0213)
+    piStyleText :: !Text
   }
 
 -- | The language of the book, [metadata] language (golem-html ADR 0002).

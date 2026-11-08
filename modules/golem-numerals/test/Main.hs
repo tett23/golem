@@ -97,11 +97,39 @@ tests =
             parseFormat DoubledToo table "{一}" @?= Right ([PNumber () (Just kanjiNotation)], [LegacySample "一" kanjiNotation])
             assertBool "{{ without doubled braces" (isLeft (parseFormat EscapesOnly table "{{n}}")),
           testCase "number formats" $ do
-            formatNumber "第{n:kanji}章" [3] Nothing @?= "第三章"
-            formatNumber "{1}.{2}" [3, 4] Nothing @?= "3.4"
-            formatNumber "図{chapter}-{n}" [2] (Just 5) @?= "図5-2"
-            formatNumber "{chapter:upper-roman}" [] (Just 4) @?= "IV"
-            formatNumber "\\{{n}\\}" [7] Nothing @?= "{7}"
-            renderMarkFormat (MarkFormat "{" kanjiNotation "）") @?= "\\{{n:kanji}）"
+            formatNumber "第{n:kanji}章" [3] Nothing @?= Right "第三章"
+            formatNumber "{1}.{2}" [3, 4] Nothing @?= Right "3.4"
+            formatNumber "図{chapter}-{n}" [2] (Just 5) @?= Right "図5-2"
+            formatNumber "{chapter:upper-roman}" [] (Just 4) @?= Right "IV"
+            formatNumber "\\{{n}\\}" [7] Nothing @?= Right "{7}"
+            renderMarkFormat (MarkFormat "{" kanjiNotation "）") @?= "\\{{n:kanji}）",
+          -- docs/adr/0213
+          testCase "N6: formatNumber writes the ends of each notation and returns Left past them" $ do
+            let ends =
+                  [ ("circled", [1, 50], [0, 51]),
+                    ("iroha", [47], [48]),
+                    ("aiueo", [46], [47]),
+                    ("note-symbols", [7], [8]),
+                    ("upper-roman", [1, 3999], [0, 4000]),
+                    ("lower-roman", [1, 3999], [0, 4000]),
+                    ("lower-alpha", [1, 26, 27], [0]),
+                    ("arabic", [0], []),
+                    ("kanji", [0], []),
+                    ("kanji-digits", [0], [])
+                  ]
+            sequence_
+              [ do
+                  mapM_ (\k -> assertBool (T.unpack (name <> " " <> T.pack (show k))) (either (const False) (const True) (formatNumber ("{n:" <> name <> "}") [k] Nothing))) ins
+                  mapM_ (\k -> formatNumber ("{n:" <> name <> "}") [k] Nothing @?= Left (Unwritable ("n:" <> name) k)) outs
+              | (name, ins, outs) <- ends
+              ]
+            formatNumber "{n:lower-alpha}" [27] Nothing @?= Right "aa",
+          testCase "N3: the Left is the first slot from the left the notation cannot write" $ do
+            formatNumber "{1:upper-roman}-{n:circled}" [0, 51] Nothing @?= Left (Unwritable "1:upper-roman" 0)
+            formatNumber "{1}-{n:note-symbols}" [51, 8] Nothing @?= Left (Unwritable "n:note-symbols" 8)
+            formatNumber "{chapter:iroha}-{n:circled}" [51] (Just 48) @?= Left (Unwritable "chapter:iroha" 48)
+            formatNumber "{n:circled}" [50] Nothing @?= Right "㊿"
+            -- a slot without its number writes nothing and is never unwritable
+            formatNumber "{chapter:circled}{n}" [3] Nothing @?= Right "3"
         ]
     ]

@@ -684,6 +684,16 @@ PDF を組むときに出るエラーです。
   [code: {n:note-symbols}] の記号（7 まで）や [code: {n:circled}] の丸数字（50 まで）のように、表せる数に限りのある表記で、それを超える番号の注があります。
   [code: \[notes\]] の [code: numbering] で番号を振り直す範囲を狭めるか、[code: mark-format] を算用数字などの表記に替えてください。
   PDF、HTML、EPUB、プレーンテキストのどれも書きません。
+= [strong: G04012 [code: \[headings.…\] の number … の {…} では、… を表せません]]、[strong: G04013 [code: \[figures\] の number … の {…} では、… を表せません]]、[strong: G04014 [code: \[code\] の number … の {…} では、… を表せません]]
+  見出し、図版、コードブロックの番号の書式の表記で表せない番号があります。
+  たとえば [code: {n:circled}] の丸数字は 50 まで、[code: {n:note-symbols}] の記号は 7 までで、どちらも 0 を表せません。
+  G04012 は [code: \[headings\]]、G04013 は [code: \[figures\]]、G04014 は [code: \[code\]] の [code: number] を、算用数字などの表せる表記に替えるか、原稿の [code: @number] を直してください。
+  PDF、HTML、EPUB、プレーンテキストのどれも書きません。
+= [strong: G07106 [code: \[masters.…\] の folio の format … の {…} では、ノンブル … を表せません]]
+  ノンブルの書式の表記で表せないページがあります。
+  マスターページごとに、表せない最初のページを一度だけ知らせます。
+  [code: \[masters\]] の [code: folio] の [code: format] を、算用数字などの表せる表記に替えてください。
+  PDF を書きません。
 = [strong: G07022 [code: 回り込む図版の幅が不正です。行の残りを本文の 8 字分以上にしてください: …]]
   回り込ませる図版の脇に、本文の文字が八つ以上入りません。
   図版の [code: width] を小さくしてください。
