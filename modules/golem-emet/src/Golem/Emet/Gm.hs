@@ -15,6 +15,7 @@ module Golem.Emet.Gm
   )
 where
 
+import Data.Int (Int64)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -154,10 +155,12 @@ blockKind (Block _ _ _ body) = case body of
 
 {- | The most steps of a filter over a .gm of this many bytes (docs/adr/0162):
 the limit of a command and 10000 steps for each byte, as the fuel of the
-filters of plugins (docs/adr/0124).
+filters of plugins (docs/adr/0124). Found as an Integer, at most the
+largest Int64, so that it does not wrap round where Int has 32 bits
+(wasm32, docs/adr/0223).
 -}
-filterFuel :: Int -> Int
-filterFuel bytes = stepLimit + 10000 * bytes
+filterFuel :: Int -> Int64
+filterFuel bytes = fromInteger (min (toInteger (maxBound :: Int64)) (toInteger stepLimit + 10000 * toInteger bytes))
 
 {- | The filter of a name of a module of the program: given the size of the
 .gm in bytes, the document of the file and what it returns. A node the

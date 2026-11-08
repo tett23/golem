@@ -23,6 +23,7 @@ module Support
 where
 
 import Data.Functor.Identity (runIdentity)
+import Data.Int (Int64)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -72,7 +73,7 @@ callWith hs files f args = case loadMany files of
   (ds, _) -> assertFailure ("the source did not load: " <> show ds) >> fail "unreachable"
 
 -- | The steps of a call of main.emet.
-stepsOf :: Text -> Text -> [Result] -> IO (Either Diagnostic Result, Int)
+stepsOf :: Text -> Text -> [Result] -> IO (Either Diagnostic Result, Int64)
 stepsOf src f args = case load src of
   (ds, Just p) | not (any isError ds) -> pure (callFunctionCounted noHandlers p callSpan "main.emet" f args)
   (ds, _) -> assertFailure (show ds) >> fail "unreachable"
