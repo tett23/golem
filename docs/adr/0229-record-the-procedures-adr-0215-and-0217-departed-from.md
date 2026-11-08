@@ -1,6 +1,6 @@
 # ADR 0229: [ADR 0215](0215-ref-number-and-ref-title-as-reference.md) と 0217 の実装が手順から外れた点を記録する
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 
