@@ -1083,6 +1083,8 @@ composeEnv style geom fonts assumed look =
    in (defaultComposeEnv (lkSize look))
         { ceAdvance = \lk c -> lfAdvance fonts (shaping lk c) c,
           ceWordAdvance = \lk t -> lfWordAdvance fonts (maybe (Shaping (lkLatinFace lk) False [] False) (shaping lk . fst) (T.uncons t)) t,
+          -- a character of a word alone, in the shaping of the word (docs/adr/0222)
+          ceWordCharAdvance = \lk t c -> lfAdvance fonts (maybe (Shaping (lkLatinFace lk) False [] False) (shaping lk . fst) (T.uncons t)) c,
           ceKern = \lk a b -> lfPairKern fonts (shaping lk a) a b,
           ceLook = look,
           ceRestyle = restyle style,
