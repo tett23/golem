@@ -312,7 +312,7 @@ composeInlinesTree env inls =
         _ -> True
       prevs = scanl (\acc p -> if solid p then Just p else acc) Nothing pieces
       nexts = drop 1 (scanr (\p acc -> if solid p then Just p else acc) Nothing pieces)
-      spaced = normalize env (kernPairs env items)
+      spaced = normalize env codeSpaces (kernPairs env items)
       -- anchors index the normalized items: the spacing inserted before a box shifts it, a space taken out the items after it
       positions = alignPositions items spaced
       {- the spaces between words (golem-layout ADR 0032) and the spaces of
@@ -1214,16 +1214,18 @@ no break where a prohibition applies (golem-layout ADR 0002), and the
 spacing of the aki set of the paragraph (docs/adr ADR 0019). The spaces
 of the line start and the line end are the edges of the boxes. An [aki]
 is an empty box between its neighbours: the set adds no space there, and
-it has no edges (golem-layout ADR 0012).
+it has no edges (golem-layout ADR 0012). The indices given are those of
+the glue of the spaces of inline code among the items (golem-layout ADR
+0038).
 -}
-normalize :: ComposeEnv -> [Item] -> [Item]
-normalize env = go AtStart True
+normalize :: ComposeEnv -> IntSet.IntSet -> [Item] -> [Item]
+normalize env codeSpaces = go (0 :: Int) AtStart True
   where
     set = ceAkiSet env
-    go _ _ [] = []
-    go before first (x : rest) = case x of
+    go _ _ _ [] = []
+    go k before first (x : rest) = case x of
       -- an [aki]: no spacing around it, no edges; the paragraph's first character is still to come
-      Box _ c | boxKind c == KindAki -> x : go AfterAki first rest
+      Box _ c | boxKind c == KindAki -> x : go (k + 1) AfterAki first rest
       {- a note mark joins the box before it (golem-driver ADR 0018): no
       break and no spacing before it, and the spacing of the pair around
       it after it; it has no edges -}
@@ -1232,7 +1234,7 @@ normalize env = go AtStart True
             let before' = case before of
                   AtStart -> AfterStartMark
                   other -> other
-             in Penalty 0 infPenalty NoHyphen : Box w c {bcEdgeStart = 0, bcEdgeEnd = 0} : go before' first rest
+             in Penalty 0 infPenalty NoHyphen : Box w c {bcEdgeStart = 0, bcEdgeEnd = 0} : go (k + 1) before' first rest
       Box w c ->
         let spacing = case before of
               -- inside code: a break after a slash, no spacing (golem-driver ADR 0017)
@@ -1258,23 +1260,25 @@ normalize env = go AtStart True
                 [] -> []
                 l -> Penalty 0 infPenalty NoHyphen : l
               AfterAki -> []
-         in spacing <> [Box w (withEdges first c)] <> go (AfterBox c (isBoxBefore before)) False rest
+         in spacing <> [Box w (withEdges first c)] <> go (k + 1) (AfterBox c (isBoxBefore before)) False rest
       {- a space between words: no break at it where the character after it
       may not start a line or the one before it may not end one; its width
-      and the spacing after it as before (golem-layout ADR 0028) -}
+      and the spacing after it as before (golem-layout ADR 0028); a space
+      of inline code likewise, which still neither stretches nor shrinks
+      (golem-layout ADR 0038) -}
       Glue {}
-        | wordSpace x,
+        | wordSpace x || IntSet.member k codeSpaces,
           AfterBox p _ <- before,
           Just c <- nextBox rest,
           prohibitedAcross False p c ->
-            Penalty 0 infPenalty NoHyphen : x : go AtStart first rest
+            Penalty 0 infPenalty NoHyphen : x : go (k + 1) AtStart first rest
       -- a break after a written hyphen or dash: none where a prohibition applies across it (golem-layout ADR 0028)
       Penalty _ _ ExplicitHyphen
         | AfterBox p _ <- before,
           Box _ c : _ <- rest,
           prohibitedAcross True p c ->
-            go AtStart first rest
-      _ -> x : go AtStart first rest
+            go (k + 1) AtStart first rest
+      _ -> x : go (k + 1) AtStart first rest
     isBoxBefore = \case
       AfterBox {} -> True
       _ -> False

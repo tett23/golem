@@ -172,5 +172,50 @@ codeJapaneseTests =
         map endsWithMark ls @?= map (const False) ls,
       testCase "C8: an empty wrap mark draws no mark" $ do
         let its = fst (composeInlines (envWith "") [code "あいうえおかきくけこ"])
-        [() | Penalty _ _ (WrapMark _) <- its] @?= []
+        [() | Penalty _ _ (WrapMark _) <- its] @?= [],
+      kinsokuAcrossSpaceTests
+    ]
+
+{- | Kinsoku across the spaces of inline code (golem-layout ADR 0038, S1 to
+S6): no break at a space of code where the character after it may not
+start a line or the one before it may not end one.
+-}
+kinsokuAcrossSpaceTests :: TestTree
+kinsokuAcrossSpaceTests =
+  testGroup
+    "kinsoku across the spaces of inline code (golem-layout ADR 0038)"
+    [ testCase "S1: no break at the space before a closing bracket, a full stop or a comma" $ do
+        shapes "a 」" @?= ["a", "|X", "_", "」"]
+        shapes "漢 。" @?= ["漢", "|X", "_", "。"]
+        shapes "漢 、" @?= ["漢", "|X", "_", "、"],
+      testCase "S1: no break before a prolonged sound mark in strict kinsoku, a break in loose kinsoku" $ do
+        shapes "あ ー" @?= ["あ", "|X", "_", "ー"]
+        shapesIn loose "あ ー" @?= ["あ", "_", "ー"],
+      testCase "S2: no break at the space after an opening bracket" $ do
+        shapes "「 a" @?= ["_", "「", "|X", "_", "a"]
+        shapes "「 漢" @?= ["_", "「", "|X", "_", "漢"],
+      testCase "S1, S2: a space between code and a box outside it, and two spaces" $ do
+        map shape (itemsIn env [IR.Text sp "あ", code "a ", IR.Text sp "」"]) @?= ["あ", "_", "a", "|X", "_", "」"]
+        map shape (itemsIn env [IR.Text sp "「", code " a"]) @?= ["_", "「", "|X", "_", "a"]
+        shapes "漢  。" @?= ["漢", "|X", "_", "。"],
+      testCase "S1, S2: the paragraphs of the context in lines of 2 em end no line with 「 and start none with 」 or 。" $
+        mapM_
+          ( \is -> do
+              let ls = map lineText (linesIn env 2 is)
+              assertBool (show ls) (not (any ("「" `T.isSuffixOf`) ls))
+              assertBool (show ls) (not (any (\l -> any (`T.isPrefixOf` l) ["」", "。"]) ls))
+          )
+          [[IR.Text sp "あ", code "「 a"], [IR.Text sp "あ", code "a 」"], [code "漢 。"], [code "「 漢"]],
+      testCase "S3: the space between two ellipses stays a break" $ do
+        shapes "… …" @?= ["…", "_", "…"]
+        map lineText (linesIn env 1 [code "… …"]) @?= ["…", "…"],
+      testCase "S4, S5: the spaces no prohibition applies to are as before, and a line broken at one has no mark" $ do
+        shapes "a b" @?= ["a", "_", "b"]
+        shapes "漢 a" @?= ["漢", "_", "a"]
+        shapes "( a" @?= ["(", "_", "a"]
+        let ls = linesIn env 2 [code "漢 。 a b"]
+        assertBool (show (map lineText ls)) (length ls > 1)
+        map endsWithMark ls @?= map (const False) ls,
+      testCase "S6: in a span of en, “ before a space is judged as an opening quotation mark" $
+        inLang "en" "“ あ" @?= ["“", "|X", "_", "あ"]
     ]

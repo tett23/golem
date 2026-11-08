@@ -143,6 +143,14 @@ latinSpace p =
   let sw = L.zwToSp (pSize p) (pAdvance p True ' ')
    in Glue sw (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))
 
+{- | The glue of a space of inline code (golem-layout ADR 0017): the
+advance of a space in the font of code, neither stretching nor shrinking.
+The paragraphs of the predicates have no tracking, and their code is set
+in the advances of the paragraph.
+-}
+codeSpace :: Paragraph -> Item
+codeSpace p = Glue (L.zwToSp (pSize p) (pAdvance p True ' ')) 0 0
+
 -- | The lines but the last, each with the next.
 pairs :: Paragraph -> [(Int, Line, Line)]
 pairs p = let ls = linesOf p in zip3 [0 ..] ls (drop 1 ls)
@@ -185,7 +193,8 @@ l3LineEnd _ p =
 {- | L4: no line breaks between two inseparable characters next to each
 other, a break after a hyphen or a dash written in a word among them; a
 line may break at a space between two (golem-layout ADR 0028, its
-section 4).
+section 4), a space of inline code too (golem-layout ADR 0038, its
+section 2).
 -}
 l4Inseparable :: Check
 l4Inseparable _ p =
@@ -195,7 +204,7 @@ l4Inseparable _ p =
     endClass a == Just Inseparable,
     Just b <- [firstBox next],
     startClass b == Just Inseparable,
-    breakItem p i /= Just (latinSpace p)
+    breakItem p i `notElem` map Just [latinSpace p, codeSpace p]
   ]
 
 {- | L5: no line ends past W and its protrusion at the end, with 1 sp of
