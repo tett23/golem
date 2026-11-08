@@ -1,6 +1,6 @@
 # ADR 0036: [golem-layout ADR 0034](0034-line-breaks-between-japanese-characters-in-inline-code.md) の実装が決めた点を記録する
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 

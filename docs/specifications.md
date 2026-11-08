@@ -1831,7 +1831,7 @@ HTML と EPUB には印を出さない。
 二つのキーは、文字スタイル `code` と、`based-on` をたどって `code` に行き着く文字スタイルにだけ書ける。
 コードの文字スタイルは、改行の印のキー `wrap-mark`（文字列）も持つ（[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)）。
 既定は `"⏎"`（U+23CE）であり、`""` を書けば印を描かない。
-ADR は既定を `"↩"`（U+21A9）としたが、二つのマニュアルのコードの書体（Noto Sans JP と Source Code Pro）がその字形を持たないので、ADR の定めに従い、Noto Sans JP が字形を持つ U+23CE を既定にした。
+ADR は既定を `"↩"`（U+21A9）としたが、二つのマニュアルのコードの書体（Noto Sans JP と Source Code Pro）がその字形を持たないので、ADR の定めに従い、Noto Sans JP が字形を持つ U+23CE を既定にした（[golem-layout ADR 0036](golem-layout/adr/0036-record-what-the-implementation-of-0034-decided.md)）。
 `wrap-mark` も `based-on` でキーごとに引き継ぎ、コードでない文字スタイルに書くとエラー（G03006）とする。
 ほかの文字スタイルに書くとエラー（G03006）とする。
 型は文字スタイルの全体に持たせ、実装をコードに絞る（「設計原則」の「広い型、狭い実装」）。
@@ -3029,7 +3029,7 @@ PDF 経路の段落は、Knuth と Plass の方式で行に分ける（[golem-la
 不良度が上限の 10000 に達する行は、罰点が上限で頭打ちになり、数文字だけの行と行長に近い行を区別できない。
 そのため、この段階でも不良度が 10000 の行は罰点の比較では採らない。
 分割の候補が幅を持つ罰点（パターンの分綴のハイフン、本文の中のコードの改行の印）のとき、その幅を足すと行長からはみ出す行は、その候補では終えない。
-ただし、その幅を除けば行長に収まるなら、同じ行の始まりから後ろの候補で行を終える道は残す（[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の実装で、印の幅のために収まる一行の分割を見落とすことが列挙の L7 で見つかった）。
+ただし、その幅を除けば行長に収まるなら、同じ行の始まりから後ろの候補で行を終える道は残す（[golem-layout ADR 0036](golem-layout/adr/0036-record-what-the-implementation-of-0034-decided.md)。[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の実装で、印の幅のために収まる一行の分割を見落とすことが列挙の L7 で見つかった）。
 TeX は、この場合にも行の始まりの候補を捨てる。
 行長に収まる分割がなくなった位置では、収まらない箱を次の行へ送り出し、その前のいちばん後ろの分割の候補で行を終える（JLReq の追い出し）。
 送り出した行は伸びの許すかぎり字間を空けて行長にそろえ、分割はその行の後ろからやり直す。

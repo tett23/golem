@@ -74,7 +74,8 @@ lineBreakingTests =
       kinsokuTests,
       trailingSpaceTests,
       lowLineTests,
-      apostropheTests
+      apostropheTests,
+      penaltyWidthTests
     ]
 
 -- | The setting of the defaults: strict kinsoku, no hanging, no protrusion, no span.
@@ -298,3 +299,34 @@ apostropheTests =
         shapes plain ["I’ll"] @?= ["I’ll", "|10000", fil, "|-10000"]
         linesIn plain 2 ["aaa", " ", "as’"] @?= ["aaa", "as’"]
     ]
+
+{- | The node a line overfull only by the width of the penalty at a break
+stays alive (golem-layout ADR 0036): the items of its N1 to N3 by hand, a
+box of 1 em, a penalty of 0 as wide as given, a box of 1/2 em, the same
+penalty, a box of the width given and the end, in lines of 2 em.
+-}
+penaltyWidthTests :: TestTree
+penaltyWidthTests =
+  testGroup
+    "the width of a penalty (golem-layout ADR 0036)"
+    [ testCase "N1, N2: a penalty of 1 em, wider than the box after it, leaves the line of the whole paragraph, which fits" $
+        linesOf half em @?= [[em, half, half]],
+      testCase "N1, N2: a penalty of 1/4 em gives the one line too" $
+        linesOf half quarter @?= [[em, half, half]],
+      testCase "N1: when the line overflows even without the penalty, the paragraph is broken at the first penalty, the line holding its width within the measure" $ do
+        let br = breakWidths em em
+        map boxesOf (brLines br) @?= [[em], [half, em]]
+        filter lineOverfull (brLines br) @?= []
+        [sum (map itemWidth (lineItems l)) | l <- take 1 (brLines br)] @?= [2 * em],
+      testCase "N3: with penalties of no width, the line of the whole paragraph, as when a node overfull at a break dies" $
+        linesOf half 0 @?= [[em, half, half]]
+    ]
+  where
+    em = fs
+    half = Sp (unSp fs `div` 2)
+    quarter = Sp (unSp fs `div` 4)
+    box w = Box w (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
+    itemsWith lastBox penW = [box em, Penalty penW 0 NoHyphen, box half, Penalty penW 0 NoHyphen, box lastBox] <> finish
+    breakWidths lastBox penW = breakParagraph defaultParams (const (2 * em)) (itemsWith lastBox penW)
+    boxesOf l = [w | Box w _ <- lineItems l]
+    linesOf lastBox penW = map boxesOf (brLines (breakWidths lastBox penW))
