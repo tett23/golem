@@ -15,6 +15,18 @@
 //                                     the same bytes from DIR twice in one
 //                                     instance and once in a new one
 //
+// The other hosts (scripts/wasm/run-wasmtime.sh, docs/adr/0238) read and
+// write the frames here, so that one implementation does it:
+//
+//   node run.mjs frame DIR            writes the input frame of the files
+//                                     under DIR to stdout
+//   node run.mjs result PDF           reads a result frame from stdin and
+//                                     does with it what build does
+//   node run.mjs call WASM            passes the input frame of stdin to
+//                                     golem_build_pdf of a new instance and
+//                                     writes its result frame to stdout, as
+//                                     run-wasmtime.c call does
+//
 // An input frame that the module cannot read (status 1) exits 2.
 import { WASI } from 'node:wasi';
 import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -54,13 +66,30 @@ function frame(files) {
   }));
 }
 
-// The result of one call of golem_build_pdf: { status, pdf, json }.
-function buildFrame(ex, input) {
+// The result frame of one call of golem_build_pdf.
+function call(ex, input) {
   const ptr = ex.golem_alloc(input.length);
   new Uint8Array(ex.memory.buffer, ptr, input.length).set(input);
   const out = ex.golem_build_pdf(ptr, input.length);
   ex.golem_free(ptr);
-  const r = take(ex, out);
+  return take(ex, out);
+}
+
+// The result of one call of golem_build_pdf: { status, pdf, json }.
+function buildFrame(ex, input) {
+  return parseResult(call(ex, input));
+}
+
+// Whether the bytes are one whole result frame, no more.
+function wellFormed(r) {
+  if (r.length < 9) return false;
+  const pdfLen = r.readUInt32LE(1);
+  if (r.length < 9 + pdfLen) return false;
+  return r.length === 9 + pdfLen + r.readUInt32LE(5 + pdfLen);
+}
+
+// The parts of a result frame: { status, pdf, json }.
+function parseResult(r) {
   const status = r[0];
   const pdfLen = r.readUInt32LE(1);
   const pdf = r.subarray(5, 5 + pdfLen);
@@ -89,7 +118,12 @@ function hasError(json) {
 
 async function build(wasmPath, dir, pdfPath) {
   const ex = await instantiate(await WebAssembly.compile(await readFile(wasmPath)));
-  const r = buildFrame(ex, frame(await filesOf(dir)));
+  return writeResult(buildFrame(ex, frame(await filesOf(dir))), pdfPath);
+}
+
+// The PDF to PDF (removed when there is none), the JSON to stderr, and the
+// exit code of golem build; 2 for status 1.
+async function writeResult(r, pdfPath) {
   if (r.status !== 0) {
     process.stderr.write(`the module could not read the input frame (status ${r.status})\n`);
     return 2;
@@ -135,10 +169,31 @@ async function check(wasmPath, dir) {
   return failures.length === 0 ? 0 : 1;
 }
 
+async function stdin() {
+  const chunks = [];
+  for await (const c of process.stdin) chunks.push(c);
+  return Buffer.concat(chunks);
+}
+
+async function writeStdout(bytes) {
+  await new Promise((resolve, reject) => process.stdout.write(bytes, (e) => (e ? reject(e) : resolve())));
+}
+
 const [command, ...args] = process.argv.slice(2);
 if (command === 'build' && args.length === 3) process.exitCode = await build(...args);
 else if (command === 'check' && args.length === 2) process.exitCode = await check(...args);
-else {
-  process.stderr.write('usage: node run.mjs build WASM DIR PDF | node run.mjs check WASM DIR\n');
+else if (command === 'frame' && args.length === 1) await writeStdout(frame(await filesOf(args[0])));
+else if (command === 'result' && args.length === 1) {
+  const r = await stdin();
+  if (!wellFormed(r)) {
+    process.stderr.write(`not a result frame (${r.length} bytes)\n`);
+    process.exitCode = 2;
+  } else process.exitCode = await writeResult(parseResult(r), args[0]);
+}
+else if (command === 'call' && args.length === 1) {
+  const ex = await instantiate(await WebAssembly.compile(await readFile(args[0])));
+  await writeStdout(call(ex, await stdin()));
+} else {
+  process.stderr.write('usage: node run.mjs build WASM DIR PDF | node run.mjs check WASM DIR | node run.mjs frame DIR | node run.mjs result PDF | node run.mjs call WASM\n');
   process.exitCode = 2;
 }

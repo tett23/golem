@@ -98,6 +98,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # the node of the tests of scripts/wasm/legacy-eh.sh (docs/adr/0238)
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
       - name: Tests of the CI scripts (docs/adr/0009)
         run: sh scripts/ci/test.sh
       - name: Tests of the scripts of the manuals (docs/adr/0022, docs/adr/0024)
@@ -703,6 +707,11 @@ jobs:
           cp "$(wasm32-wasi-cabal --project-file=cabal.project.wasm --builddir=dist-wasm list-bin -v0 exe:golem-wasm)" golem.wasm
           ls -l golem.wasm
           if grep -qE '^\[ *[0-9]+ of [0-9]+\] Compiling ' "$RUNNER_TEMP/wasm-build.log"; then echo "compiled=true" >> "$GITHUB_OUTPUT"; fi
+      # Node validates golem.wasm with and without the legacy exception
+      # handling of V8; browsers and wasmtime read the standard one alone
+      # (docs/adr/0238 section 2, I1)
+      - name: golem.wasm has no instruction of the legacy exception handling (docs/adr/0238)
+        run: sh scripts/wasm/legacy-eh.sh golem.wasm
       - name: Save the wasm toolchain and its cabal store
         if: always() && steps.ghcwasm.outputs.cache-hit != 'true' && steps.build.outcome != 'skipped'
         uses: actions/cache/save@v6

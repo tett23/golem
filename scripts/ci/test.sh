@@ -1578,6 +1578,91 @@ fi
 if [ "$(job_of "$RELEASE_YML" notes | grep -cx '    runs-on: ubuntu-24.04')" -eq 1 ]; then ok; else ng "release.yml: the notes job runs on ubuntu-24.04"; fi
 if [ "$(job_of "$CI_YML" release-scripts | grep -cx '    runs-on: ubuntu-24.04')" -eq 1 ]; then ok; else ng "ci.yml: release-scripts runs on ubuntu-24.04"; fi
 
+# the checks of the release (docs/adr/0230): the wasm archive is checked
+# right after package-wasm.sh makes it, and the attestations after the draft
+# release is made, with the SHA256SUMS of the release against dist/
+wasm_pack=$(step_line "$RELEASE_YML" wasm 'sh scripts/release/package-wasm.sh')
+wasm_check=$(step_line "$RELEASE_YML" wasm 'sh scripts/release/check-wasm-archive.sh')
+if [ -n "$wasm_pack" ] && [ -n "$wasm_check" ] && [ "$wasm_check" -gt "$wasm_pack" ]; then ok; else ng "release.yml: the wasm job runs check-wasm-archive.sh after package-wasm.sh (docs/adr/0230)"; fi
+rel_create=$(step_line "$RELEASE_YML" release 'gh release create')
+rel_verify=$(step_line "$RELEASE_YML" release 'gh attestation verify')
+if [ -n "$rel_create" ] && [ -n "$rel_verify" ] && [ "$rel_verify" -gt "$rel_create" ]; then ok; else ng "release.yml: the release job runs gh attestation verify after gh release create (docs/adr/0230)"; fi
+if job_of "$RELEASE_YML" release | awk -v s="$rel_verify" 'NR >= s' | grep -q 'gh attestation verify "$f" -R tett23/golem' &&
+  job_of "$RELEASE_YML" release | awk -v s="$rel_verify" 'NR >= s' | grep -q 'gh release download "$TAG" -p SHA256SUMS' &&
+  job_of "$RELEASE_YML" release | awk -v s="$rel_verify" 'NR >= s' | grep -q 'sha256sum -c'; then ok; else
+  ng "release.yml: the step of gh attestation verify checks dist/ against the SHA256SUMS of the release (docs/adr/0230)"
+fi
+
+# ---------------------------------------------------------------- step-timeouts.sh
+# (docs/adr/0230)
+
+# The fake gh answers with the copies of the API in testdata/step-timeouts/:
+# runs.json and jobs-<id>.json are answers of GitHub of 2026-11-08, cut to
+# the fields read; runs-2.json and jobs-1.json, a second page with a run
+# whose steps failed and were cancelled, are made by hand. Every call is
+# written to $WORK/gh.args.
+ST=$WORK/step-timeouts
+STD=$HERE/testdata/step-timeouts
+mkdir -p "$ST"
+cat >"$ST/gh" <<GH
+#!/bin/sh
+printf '%s\n' "\$*" >>"$WORK/gh.args"
+[ -z "\${FAKE_GH_FAIL-}" ] || exit 1
+for a in "\$@"; do
+  case \$a in
+    page=1) cat "$STD/runs.json"; exit 0 ;;
+    page=2) cat "$STD/runs-2.json"; exit 0 ;;
+    page=*) echo '{"total_count":5,"workflow_runs":[]}'; exit 0 ;;
+    repos/tett23/golem/actions/runs/*/jobs)
+      id=\${a#repos/tett23/golem/actions/runs/}
+      cat "$STD/jobs-\${id%/jobs}.json"; exit ;;
+  esac
+done
+exit 1
+GH
+chmod +x "$ST/gh"
+step_timeouts() { rm -f "$WORK/gh.args"; GH=$ST/gh GITHUB_REPOSITORY=tett23/golem sh "$HERE/step-timeouts.sh" "$@"; }
+: >"$WORK/in"
+TAB=$(printf '\t')
+run step_timeouts 2026-10-23 10
+expect "step-timeouts: the runs with the steps, newest first" 0 "run${TAB}created${TAB}qpdf is installed${TAB}epubcheck is installed
+42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1
+42475288545${TAB}2026-11-08T11:20:12Z${TAB}success=8${TAB}success=2
+1${TAB}2026-11-08T11:00:00Z${TAB}cancelled=1${TAB}failure=1 success=1"
+if grep -qxF -- 'api -X GET repos/tett23/golem/actions/workflows/ci.yml/runs -f per_page=100 -f page=3' "$WORK/gh.args" 2>/dev/null; then ok; else ng "step-timeouts: the runs of ci.yml page by page until a page without a run"; fi
+if grep -qF -- 'repos/tett23/golem/actions/runs/42475288545/jobs -f filter=all -f per_page=100' "$WORK/gh.args" 2>/dev/null; then ok; else ng "step-timeouts: the jobs of every attempt of a run"; fi
+# the runs without the steps (build skipped for documents only) are not
+# counted: two runs are the two newest that have the steps
+run step_timeouts 2026-10-23 2
+expect "step-timeouts: two runs with the steps" 0 "run${TAB}created${TAB}qpdf is installed${TAB}epubcheck is installed
+42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1
+42475288545${TAB}2026-11-08T11:20:12Z${TAB}success=8${TAB}success=2"
+if ! grep -qF 'actions/runs/1/jobs' "$WORK/gh.args" 2>/dev/null; then ok; else ng "step-timeouts: no run is read after the count is reached"; fi
+run step_timeouts 2026-10-23T00:00:00Z 1
+expect "step-timeouts: a date and time" 0 "run${TAB}created${TAB}qpdf is installed${TAB}epubcheck is installed
+42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1"
+# the runs created after the time only, and no page after the one that
+# reaches it: the filter created of the API gives at most 1000 runs
+run step_timeouts 2026-11-08T11:30:00Z 10
+expect "step-timeouts: the runs after a time" 0 "run${TAB}created${TAB}qpdf is installed${TAB}epubcheck is installed
+42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1"
+if ! grep -q 'page=2' "$WORK/gh.args" 2>/dev/null && ! grep -q 'created' "$WORK/gh.args" 2>/dev/null; then ok; else ng "step-timeouts: no page after the one that reaches the time, and no filter created"; fi
+run step_timeouts 2026-11-08T11:00:00Z 10
+expect "step-timeouts: a run created at the time is not after it" 0 "run${TAB}created${TAB}qpdf is installed${TAB}epubcheck is installed
+42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1
+42475288545${TAB}2026-11-08T11:20:12Z${TAB}success=8${TAB}success=2"
+run step_timeouts 2026-10-23
+expect "step-timeouts: one argument" 2
+run step_timeouts 2026-10-23 x
+expect "step-timeouts: a count that is not a number" 2
+run step_timeouts 2026-10-23 0
+expect "step-timeouts: a count of zero" 2
+run step_timeouts yesterday 10
+expect "step-timeouts: a date that is not of the API" 2
+FAKE_GH_FAIL=1 run step_timeouts 2026-10-23 10
+expect "step-timeouts: gh fails" 1
+unset FAKE_GH_FAIL
+
 # ---------------------------------------------------------------- gate.sh
 
 gate() { sh "$HERE/gate.sh" "$@"; }
@@ -1704,10 +1789,26 @@ if [ "$(basename "$(pwd)")" = diagnostics ]; then
 fi
 GOLEM
 chmod +x "$DET/bin/golem"
+# determinism.sh builds in the fixtures of its repository and removes their
+# build/: here it runs in a copy of what it reads, so that it never writes
+# into the fixtures of this repository while scripts/release/test.sh copies
+# them at the same time (scripts-macos runs the two at once, run
+# 42492125517); the fonts are empty files, which the fake golem does not read
+DR=$DET/repo
+mkdir -p "$DR/scripts/env-determinism" "$DR/modules/golem-driver/test/fixtures/kanikosen/fonts" "$DR/modules/golem-font/test/fonts"
+cp "$HERE/../determinism.sh" "$DR/scripts/"
+cp -R "$HERE/../determinism" "$HERE/../manual" "$DR/scripts/"
+cp -R "$HERE/../env-determinism/diagnostics" "$DR/scripts/env-determinism/"
+for f in sample functions emet-samples complex-vertical complex-horizontal; do
+  cp -R "$HERE/../../modules/golem-driver/test/fixtures/$f" "$DR/modules/golem-driver/test/fixtures/"
+  rm -rf "${DR:?}/modules/golem-driver/test/fixtures/$f/build"
+done
+: >"$DR/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
+: >"$DR/modules/golem-font/test/fonts/SourceSansPro-Regular.otf"
 determinism() {
   GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root GOLEM_MANUAL_SKIP_FONTS=1 \
     GOLEM_MANUAL_COMMIT=0 GOLEM_MANUAL_TAG=v0 FAKE_STDERR=$1 \
-    sh "$HERE/../determinism.sh"
+    sh "$DR/scripts/determinism.sh"
 }
 : >"$WORK/in"
 run determinism '{"diagnostics":[{"code":"G00000"}]}'
@@ -1733,14 +1834,14 @@ if [ "$(grep -v '  diagnostics/stderr$' "$DET/first")" = "$(grep -v '  diagnosti
 determinism_no_manuals() {
   GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root GOLEM_MANUAL_SKIP_FONTS=1 \
     GOLEM_MANUAL_COMMIT=0 GOLEM_MANUAL_TAG=v0 FAKE_STDERR=$1 \
-    sh "$HERE/../determinism.sh" --no-manuals
+    sh "$DR/scripts/determinism.sh" --no-manuals
 }
 run determinism_no_manuals '{"diagnostics":[{"code":"G00000"}]}'
 expect "determinism: --no-manuals" 0
 if grep -qE '  manual(-dev)?/' "$WORK/out"; then ng "determinism: --no-manuals lists no file of the manuals"; else ok; fi
 if [ "$(grep -vE '  manual(-dev)?/' "$DET/first")" = "$(cat "$WORK/out")" ]; then ok; else ng "determinism: --no-manuals is the list without the manuals"; fi
 determinism_unknown() {
-  GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root sh "$HERE/../determinism.sh" --no-such-option
+  GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root sh "$DR/scripts/determinism.sh" --no-such-option
 }
 run determinism_unknown
 expect "determinism: an unknown option" 2
@@ -1831,6 +1932,25 @@ if grep -qx '| `build (ubuntu-24.04)` | `Run haskell-actions/setup@v2` | 143 | 1
 : >"$WORK/in"
 run timings --bogus
 expect "timings: an unknown option" 2
+
+# ---------------------------------------------------------------- release.yml calls ci.yml
+# A called workflow gets at most the permissions of the job that calls it,
+# and a job of ci.yml that asks for more makes every run of release.yml
+# end in startup_failure, whether the job would run or not: the ci job of
+# release.yml grants each permission that a job of ci.yml asks for, at the
+# same level or write (run 42480681991, the caches job of docs/adr/0228)
+CI_CALLER=$(perms_of "$RELEASE_YML" ci)
+CI_ASKED=$(ci_jobs "$CI_YML" | while IFS= read -r j; do perms_of "$CI_YML" "$j"; done | sort -u)
+missing=
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  scope=${p%%:*}
+  level=${p#*: }
+  if printf '%s\n' "$CI_CALLER" | grep -qx "$scope: $level" || printf '%s\n' "$CI_CALLER" | grep -qx "$scope: write"; then :; else missing="$missing $p"; fi
+done <<PERMS
+$CI_ASKED
+PERMS
+if [ -z "$missing" ]; then ok; else ng "release.yml: the ci job grants what the jobs of ci.yml ask for (missing:$missing)"; fi
 
 # ---------------------------------------------------------------- race-needed.sh
 # (docs/adr/0075-race-search-repetitions.md)
@@ -2352,6 +2472,46 @@ expect "compare.sh --check: one list is a usage error" 2
 run sh "$HERE/../wasm/compare.sh"
 expect "compare.sh: no argument is a usage error" 2
 
+# ---------------------------------------------------------------- wasm/legacy-eh.sh
+# (docs/adr/0238 section 2, I1): small modules written as bytes. Each has
+# one function of type [] -> []; the module with throw has one tag of it.
+#   none     nop only
+#   try      try catch_all end (the legacy exception handling)
+#   exnref   block (result exnref) try_table (catch_all_ref 0) end
+#            unreachable end throw_ref (the standard exception handling)
+#   throw    throw 0 (in both forms)
+#   broken   a header and a byte that is no section
+
+if command -v node >/dev/null 2>&1 && node --v8-options 2>/dev/null | grep -q -- '--experimental-wasm-legacy-eh '; then
+  LE=$WORK/legacy-eh
+  mkdir -p "$LE"
+  le_head='\000asm\001\000\000\000\001\004\001\140\000\000\003\002\001\000'
+  printf "$le_head"'\012\004\001\002\000\013' >"$LE/none.wasm"
+  printf "$le_head"'\012\010\001\006\000\006\100\031\013\013' >"$LE/try.wasm"
+  printf "$le_head"'\012\017\001\015\000\002\151\037\100\001\003\000\013\000\013\012\013' >"$LE/exnref.wasm"
+  printf "$le_head"'\015\003\001\000\000\012\006\001\004\000\010\000\013' >"$LE/throw.wasm"
+  printf '\000asm\001\000\000\000\377' >"$LE/broken.wasm"
+  run sh "$HERE/../wasm/legacy-eh.sh" "$LE/none.wasm"
+  expect "legacy-eh: a module without exception handling passes (I1)" 0
+  run sh "$HERE/../wasm/legacy-eh.sh" "$LE/try.wasm"
+  expect "legacy-eh: a module with one try fails (I1)" 1
+  if grep -qF 'legacy exception handling' "$WORK/err"; then ok; else ng "legacy-eh: says that the module has the legacy exception handling (I1)"; fi
+  run sh "$HERE/../wasm/legacy-eh.sh" "$LE/exnref.wasm"
+  expect "legacy-eh: a module with try_table and throw_ref only passes (I1)" 0
+  run sh "$HERE/../wasm/legacy-eh.sh" "$LE/throw.wasm"
+  expect "legacy-eh: a module with throw only passes (I1)" 0
+  run sh "$HERE/../wasm/legacy-eh.sh" "$LE/broken.wasm"
+  expect "legacy-eh: bytes that the default Node does not validate are another error (I1)" 2
+  run sh "$HERE/../wasm/legacy-eh.sh" "$LE/nonexistent.wasm"
+  expect "legacy-eh: a file that cannot be read is another error (I1)" 2
+else
+  skip 7 "legacy-eh: no node with --experimental-wasm-legacy-eh"
+fi
+run sh "$HERE/../wasm/legacy-eh.sh"
+expect "legacy-eh: no argument is a usage error" 2
+run sh "$HERE/../wasm/legacy-eh.sh" a.wasm b.wasm
+expect "legacy-eh: two arguments are a usage error" 2
+
 # ---------------------------------------------------------------- fetch-wasm-packages.sh
 # (docs/adr/0202 section 2)
 
@@ -2557,12 +2717,12 @@ FAKE
 chmod +x "$CB/deno" "$CB/bin/node"
 cb_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi; }
 : >"$WORK/in"
-# the form of the lists: three lines for each of the seven inputs
+# the form of the lists: three lines for each of the eight inputs
 cb_form() {
-  for name in kanikosen determinism pdf complex-vertical complex-horizontal broken-style missing-font; do
+  for name in kanikosen determinism pdf complex-vertical complex-horizontal broken-style missing-font broken-cmap; do
     grep -Eq "^([0-9a-f]{64}|-)  $name/pdf\$" "$1" && grep -Eq "^[0-9a-f]{64}  $name/diagnostics\$" "$1" && grep -Eq "^exit [0-9]+  $name\$" "$1" || return 1
   done
-  [ "$(wc -l <"$1" | tr -d ' ')" = 21 ]
+  [ "$(wc -l <"$1" | tr -d ' ')" = 24 ]
 }
 run env DENO="$CB/deno" sh "$HERE/../wasm/compare.sh" --deno golem.wasm
 cp "$WORK/out" "$CB/deno.txt"
@@ -2582,6 +2742,60 @@ run sh "$HERE/../wasm/compare.sh" --browser chromium
 expect "compare.sh --browser: without WASM is a usage error" 2
 run sh "$HERE/../wasm/compare.sh" --deno
 expect "compare.sh --deno: without WASM is a usage error" 2
+
+# ---------------------------------------------------------------- wasm/compare.sh --wasmtime, broken-cmap
+# (docs/adr/0238 sections 3 and 4): a fake root with compare.sh, the
+# fixtures of the repository and a fake run-wasmtime.sh, whose PDF is the
+# two bytes of Noto Serif JP at 30205 in hex; and a fake root whose Noto
+# Serif JP is not the font that broken-cmap breaks
+
+CW=$WORK/compare-wasmtime
+mkdir -p "$CW/root/scripts/wasm"
+cp "$HERE/../wasm/compare.sh" "$CW/root/scripts/wasm/compare.sh"
+cp -R "$HERE/../determinism" "$CW/root/scripts/determinism"
+ln -s "$HERE/../../modules" "$CW/root/modules"
+cat >"$CW/root/scripts/wasm/run-wasmtime.sh" <<FAKE
+#!/bin/sh
+case "\$1" in
+  compile) echo "compile \$2" >>"$CW/calls"; mkdir -p "\$3" && : >"\$3/golem.cwasm" ;;
+  build)
+    [ -f "\$2/golem.cwasm" ] || exit 9
+    f=\$3/fonts/NotoSerifJP-Regular.otf
+    if [ -f "\$f" ]; then od -An -tx1 -j30205 -N2 "\$f" | tr -d ' \n' >"\$4"; else rm -f "\$4"; fi
+    printf '[]' >&2 ;;
+  *) exit 9 ;;
+esac
+FAKE
+run sh "$CW/root/scripts/wasm/compare.sh" --wasmtime golem.wasm
+cp "$WORK/out" "$CW/list.txt"
+expect "compare.sh --wasmtime: runs every input" 0
+if cb_form "$CW/list.txt"; then ok; else ng "compare.sh --wasmtime: the list has the form of that of node:wasi"; fi
+if [ "$(cat "$CW/calls")" = "compile golem.wasm" ]; then ok; else ng "compare.sh --wasmtime: golem.wasm is compiled once"; fi
+if grep -qxF "$(printf '0001' | cb_sha)  kanikosen/pdf" "$CW/list.txt" && grep -qxF "$(printf 'ffff' | cb_sha)  broken-cmap/pdf" "$CW/list.txt"; then ok; else ng "compare.sh: broken-cmap is kanikosen with FF FF at 30205 of Noto Serif JP (I3)"; fi
+if grep -qxF -- "-  missing-font/pdf" "$CW/list.txt"; then ok; else ng "compare.sh --wasmtime: no PDF"; fi
+run sh "$HERE/../wasm/compare.sh" --wasmtime
+expect "compare.sh --wasmtime: without WASM is a usage error" 2
+run sh "$HERE/../wasm/compare.sh" --wasmtime a.wasm b.wasm
+expect "compare.sh --wasmtime: two modules are a usage error" 2
+CS=$WORK/compare-sha
+mkdir -p "$CS/scripts/wasm" "$CS/modules/golem-driver/test/fixtures/kanikosen/fonts"
+cp "$HERE/../wasm/compare.sh" "$CS/scripts/wasm/compare.sh"
+printf 'not the font\n' >"$CS/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
+run sh "$CS/scripts/wasm/compare.sh" --native /nonexistent/golem
+expect "compare.sh: another Noto Serif JP than the one broken-cmap breaks fails" 1
+if grep -qF 'SHA-256' "$WORK/err"; then ok; else ng "compare.sh: says that the SHA-256 of the font differs"; fi
+
+# ---------------------------------------------------------------- wasm/run-wasmtime.sh
+# (docs/adr/0238 section 4): the arguments
+
+run sh "$HERE/../wasm/run-wasmtime.sh"
+expect "run-wasmtime: no argument is a usage error" 2
+run sh "$HERE/../wasm/run-wasmtime.sh" compile golem.wasm
+expect "run-wasmtime: compile without the folder is a usage error" 2
+run sh "$HERE/../wasm/run-wasmtime.sh" build host dir
+expect "run-wasmtime: build without the PDF is a usage error" 2
+run sh "$HERE/../wasm/run-wasmtime.sh" run a b c
+expect "run-wasmtime: an unknown command is a usage error" 2
 
 # ---------------------------------------------------------------- fetch-chromium.sh, fetch-deno.sh
 # (docs/adr/0234 sections 1 and 5): the arguments, and a zip of another

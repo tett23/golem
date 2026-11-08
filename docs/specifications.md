@@ -475,14 +475,29 @@ boot のパッケージの版は wasm の GHC のものになる（`time` は 1.
 cborg、`skylighting`、`skylighting-core` は、この比べから外す（[ADR 0202](adr/0202-packages-that-do-not-build-for-wasm.md)）。
 cborg は、32 ビットで組める上流のコミット `6ef2791c` を使う。
 `skylighting-core` 0.15 と `skylighting` 0.15 は、`scripts/fetch-wasm-packages.sh` が Hackage のアーカイブを SHA-256 で確かめて `third_party/wasm-packages/` に展開し、`Skylighting.Parser` と `Skylighting.Loader`、その再エクスポート、`xml-conduit` の依存を除く `scripts/wasm/patches/` の差分を当てる。
-golem-font は、wasm に向けて組むときだけ、FreeType を `-mllvm -wasm-enable-sjlj` でコンパイルし、wasi-sdk の `c++`、`c++abi`、`setjmp` をリンクする。
+golem-font は、wasm に向けて組むときだけ、FreeType を `-mllvm -wasm-enable-sjlj` と `-mllvm -wasm-use-legacy-eh=false` でコンパイルし、wasi-sdk の `c++`、`c++abi`、`setjmp` をリンクする。
+FreeType の `setjmp` と `longjmp` は、wasm の例外処理の標準化された形（exnref の形、`try_table` と `throw_ref`）で実装される（[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+古い形（`try`、`catch`、`catch_all`、`delegate`、`rethrow`）の命令は使わない。
+このため、`golem.wasm` を動かす実行環境は、標準化された例外処理に対応した版でなければならない。
+対応した最初の版は、Chrome 137、Firefox 131、Safari 18.4、Node 24.15、Deno 2.3.2、wasmtime 47 である。
 `toml-parser` が使う `alex` と `happy` は、ネイティブの GHC で組んだ `alex` 3.5.4.2 と `happy` 2.2（`cabal.project.freeze` の版）を `PATH` に置いて使う。
 cabal 3.14.2.0 は、`build-tool-depends` の `alex` と `happy` も wasm の GHC で組んで store に `alex.wasm` と `happy.wasm` を置くが、それは wasm のモジュールで、cabal は `alex` と `happy` として使わないので、ビルドの中で動くのは `PATH` のものだけである。
 `hsc2hs` は、`wasm32-wasi-cabal` が `--with-hsc2hs` で渡す wasm の GHC のものを使う。
 
-CI の `wasm` ジョブは、`golem.wasm` を Node の `node:wasi` で動かす。
-夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` を Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno` と `--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)）。
-wasmtime 49.0.5 の CLI は、`golem.wasm` の例外処理の古い形（legacy exceptions）を読まないので、wasmtime では動かさない。
+CI の `wasm` ジョブは、組んだ直後の `golem.wasm` に古い形の例外処理の命令がないことを `scripts/wasm/legacy-eh.sh` で確かめる（[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md) の I1）。
+このスクリプトは、モジュールを Node で二度検証し、既定の Node では正しく、`--no-experimental-wasm-legacy-eh` を付けた Node では正しくないとき 1 で終わる。
+既定の Node でも正しくないモジュールは、別の誤りとして 2 で終わる。
+その後、`golem.wasm` を Node の `node:wasi` で動かす。
+`scripts/wasm/compare.sh` の入力には、FreeType が cmap の部分表を `longjmp` で退ける `broken-cmap` がある。
+kanikosen を写し、NotoSerifJP-Regular.otf の SHA-256 を確かめてから、Macintosh の format 6 の部分表の `entryCount`（ファイルの先頭から 30205 バイトめからの 2 バイト）を `FF FF` にしたものである。
+SHA-256 が違えば、`compare.sh` は失敗する。
+golem-font のテストが、このフォントの `num_charmaps` が元のフォントより一つ少ないことを確かめる。
+夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` を Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、wasmtime 49.0.5 の C API と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno`、`--wasmtime`、`--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+wasmtime のホストは、`scripts/fetch-wasmtime.sh` が取る C API にリンクする C のプログラム `scripts/wasm/run-wasmtime.c` である。
+`golem.wasm` を一度だけコンパイルして直列化し、入力ごとに、`run.mjs frame` が書く入力の枠を `golem_build_pdf` に渡して結果の枠を書き、`run.mjs result` がそれを読む（`scripts/wasm/run-wasmtime.sh`）。
+WASI には引数 `golem.wasm` だけを渡し、ディレクトリを開かず、環境変数を渡さない。
+wasmtime の CLI は、メモリにバイト列を書いて渡す手段がないので使わない。
+同じ `chromium` のジョブで、正規化されていないパスの入力の枠、ファイルのない入力の枠、kanikosen の入力の枠に、`run-wasmtime.c` と `run.mjs` の `call` が同じバイト列の結果の枠を返すことを `cmp` で確かめる（I5）。
 
 処理は `parse → eval → 意味論 IR → 各バックエンド` の順に流れ、分岐点は意味論 IR である（「処理の流れ」の節を参照）。
 
@@ -916,11 +931,19 @@ x86-64 の `outputs` のランナーは、`sample`、`bibliographies`、`languag
 
 HTML は、夜ごとの `.github/workflows/browser.yml` が、版と SHA-256 で固定した Chrome for Testing の `chrome-headless-shell`（`scripts/browser/fetch-chromium.sh`）と、macOS のランナーの Safari で開いて確かめる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)）。
 Chromium は Chrome DevTools Protocol で、Safari は `safaridriver` の W3C WebDriver で操り、どちらのクライアントも Node の組み込みだけで書く（`scripts/browser/cdp.mjs`、`scripts/browser/webdriver.mjs`）。
-検査は二つのブラウザで同じ関数で走り、同じ基準を当てる。
+検査は二つのブラウザで同じ関数で走り、同じ基準を当てる（例外は、下の Chromium の起動の引数と Safari の縦書きである）。
 確かめるのは、技術書のコードブロックの選択とコピーに行番号と差分の印が入らないこと、`pre` の `white-space` とコードの書体、縦組みのダッシュの墨が縦に長いこと、圏点の十の形の `text-emphasis-style`、段落の罫線が段落の前後にあること、tRNS の透明の画素でページの背景が見えること、二冊のマニュアルのすべてのページで画像とスタイルシートと書体が読み込まれ、`#` のリンクの先があることである（`scripts/browser/html-checks.mjs`）。
 Chromium では、加えてコンソールの誤りと読み込みの失敗がないことを確かめる。
 WebDriver にはそれを受け取る命令がないので、Safari では確かめない。
-開発者のマニュアルの輪郭の SVG の文字は、原稿の SVG を同じブラウザで描いた文字と、位置と大きさが CSS の 1 画素以下の差であることを確かめる（`scripts/browser/svg-text.mjs`）。
+開発者のマニュアルの輪郭の SVG の文字は、原稿の SVG を同じブラウザで描いた文字と比べ、墨の外接矩形の中心の差が CSS の 1 画素以下、大きさの差が CSS の 2 画素以下であることを確かめる（`scripts/browser/svg-text.mjs`、[ADR 0239](adr/0239-decide-the-conditions-of-the-outlined-figure-check-and-the-punctuation-of-figure-sources.md)）。
+この検査の Chromium だけは、`--font-render-hinting=none` で起動する（`scripts/browser/browsers.mjs` の `chromiumArgs`）。
+輪郭のパスはヒンティングを受けないためである。
+`chromium` のジョブは、この起動の引数を版の表に書く。
+Safari では、縦書きの文字列を測るが判定には含めず、その数と差の最大をジョブの要約に書く。
+Safari は、SVG の縦書きの正立の字を Chromium と Inkscape と違う量で送るためである。
+Safari の横書きの文字列は、中心と大きさの差の上限を CSS の 8 画素として判定する（`scripts/browser/svg-text.mjs` の `SAFARI`）。
+Safari は、Chromium に合わせた輪郭から、横書きの文字列を最大で 5.5 画素離して描く。
+8 画素の上限は、`halt` が当たらずに約物が全角のまま残る誤り（20px の字で 20 画素）や、別のフォントで描かれた図を見つけるためのものである。
 Safari の版は固定せず、ランナーの像に従う。
 `safari` のジョブは、macOS の版、像の版、Safari の版、WebDriver の `browserVersion` の表をジョブの要約に書き、検査が失敗しても表を残す（`scripts/browser/safari-versions.sh`）。
 
@@ -4993,6 +5016,10 @@ wasi-sdk の配布物はライセンスの文書を持たないので、上流�
 wasm にリンクした GMP の版は、wasm の GHC の `ghc-gmp.h` から読む（`scripts/release/gmp-version.sh` を `GMP_GHC=wasm32-wasi-ghc` で動かす）。
 そのソースのアーカイブは、ネイティブの配布物の GMP と同じく `scripts/release/fetch-gmp.sh` で取ってリリースに添える。
 配布物の名前は `golem-*.tar.gz` に当たるので、`SHA256SUMS`、来歴の証明、下書きのリリースに、ほかの配布物と同じ規則で入る。
+ジョブ `wasm` は、アーカイブを作った直後に `scripts/release/check-wasm-archive.sh` で中身を確かめる（[ADR 0230](adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)）。
+最上位のディレクトリに `golem.wasm`、`LICENSE`、`README`、`THIRD_PARTY_LICENSES/` がなく、`THIRD_PARTY_LICENSES/` に wasm の GHC と RTS、boot のパッケージ（`base`、`ghc-prim`、`ghc-bignum`、`ghc-internal`）、HarfBuzz、FreeType、hyph-utf8、zlib（`zlib-clib`）、wasi-libc、libc++、GMP の文書がなく、または `.sha256` がアーカイブの SHA-256 と違えば、ジョブは失敗し、`release` は走らない。
+`workflow_dispatch` でも走るので、タグを打つ前に確かめられる。
+`release` は、下書きのリリースを作った後に、その `SHA256SUMS` を下ろして `dist/` のファイルを `sha256sum -c` で照らし、`dist/` のアーカイブのそれぞれに `gh attestation verify <ファイル> -R tett23/golem` を走らせる（[ADR 0230](adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)）。
 タグのコミットが `main` に含まれないときは、リリースを作らない。
 リリースノートは AI が英語で書き、検査（`scripts/release/check-notes.sh`）に通らなければ変更の一覧をそのまま使う。
 人がリリースノートを読んで直してから公開する。
@@ -5143,8 +5170,8 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **本文の中のコードの空白で、禁則に当たる位置でも改行する**：本文の中のコードの空白（[golem-layout ADR 0017](golem-layout/adr/0017-spaces-inside-inline-code.md)）は伸び縮みしないグルーであり、語間の空白の前後の禁則（[golem-layout ADR 0028](golem-layout/adr/0028-kinsoku-across-spaces-and-explicit-hyphens.md)）が当たらない。`[code: 「 a]` は `「` の後の空白で、`[code: a 」]` は `」` の前の空白で、`[code: … …]` は二つの `…` のあいだの空白で改行できる。0028 はコードの空白を列挙の外として変えなかったが、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) がコードの並びを列挙に足し、L2、L3、L4 の違反として見つかった（実装で見つかった）。
 - **段落の終わりの本文の中のコードの空白で改行し、箱のない最後の行を作る**：段落の終わりの `[code: 漢 ]` のように、コードの最後に空白があると、その空白で改行し、箱のない最後の行ができることがある。段落の終わりの語間の空白は捨てる（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md)）が、コードの空白は捨てない。T1 の違反として見つかった（[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の実装で見つかった）。
-- **既定のアキ量のセットで、中点類の後ろの終わり括弧類と句読点の前に空きがない**：`gyomatsu-yakumono-hankaku` は、`・」` と `・。` のように中点類の後ろに終わり括弧類、句点類、読点類が続く組に規則を持たないので、その字間は 0 になる。JLReq の付録 B の表 1（cl-05 の行）は、この組に四分を置く。和文組版は JLReq に従うという原則（「仕様が不明瞭な場合」）と食い違う。Chrome の既定は表 1 と同じ四分で組むので、PDF と HTML でも組み方が違う（[golem-layout ADR 0039](golem-layout/adr/0039-set-consecutive-opening-brackets-and-brackets-beside-middle-dots-as-jlreq.md) の「表 1 とのほかの食い違い」）。
-- **既定のアキ量のセットで、和字間隔の前後の括弧類に二分を置く**：`gyomatsu-yakumono-hankaku` は和字間隔を和文の字（`j`）として扱うので、`」　` の終わり括弧類の後ろと、`　「` の始め括弧類の前に二分を置く。JLReq の付録 B の表 1（cl-02 の行と cl-14 の行）は、どちらもベタ組とする。和文組版は JLReq に従うという原則と食い違い、Chrome の既定とも違う。段落の字下げに和字間隔を使う原稿の見た目にも関わる（[golem-layout ADR 0039](golem-layout/adr/0039-set-consecutive-opening-brackets-and-brackets-beside-middle-dots-as-jlreq.md) の「表 1 とのほかの食い違い」）。
+- **既定のアキ量のセットで、中点類の後ろの終わり括弧類と句読点の前に空きがない**：`gyomatsu-yakumono-hankaku` は、`・」` と `・。` のように中点類の後ろに終わり括弧類、句点類、読点類が続く組に規則を持たないので、その字間は 0 になる。JLReq の付録 B の表 1（cl-05 の行）は、この組に四分を置く。和文組版は JLReq に従うという原則（「仕様が不明瞭な場合」）と食い違う。Chrome の既定は表 1 と同じ四分で組むので、PDF と HTML でも組み方が違う（[golem-layout ADR 0039](golem-layout/adr/0039-set-consecutive-opening-brackets-and-brackets-beside-middle-dots-as-jlreq.md) の「表 1 とのほかの食い違い」）。[golem-layout ADR 0040](golem-layout/adr/0040-put-a-quarter-em-after-a-middle-dot-before-closing-brackets-and-full-stops.md) で直す（未実装）。
+- **既定のアキ量のセットで、和字間隔の前後の括弧類に二分を置く**：`gyomatsu-yakumono-hankaku` は和字間隔を和文の字（`j`）として扱うので、`」　` の終わり括弧類の後ろと、`　「` の始め括弧類の前に二分を置く。JLReq の付録 B の表 1（cl-02 の行と cl-14 の行）は、どちらもベタ組とする。和文組版は JLReq に従うという原則と食い違い、Chrome の既定とも違う。段落の字下げに和字間隔を使う原稿の見た目にも関わる（[golem-layout ADR 0039](golem-layout/adr/0039-set-consecutive-opening-brackets-and-brackets-beside-middle-dots-as-jlreq.md) の「表 1 とのほかの食い違い」）。[golem-layout ADR 0041](golem-layout/adr/0041-take-the-ideographic-space-out-of-japanese-characters-in-the-default-aki-set.md) で直す（未実装）。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合

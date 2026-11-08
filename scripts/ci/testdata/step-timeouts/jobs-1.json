@@ -1,0 +1,5 @@
+{"total_count":3,"jobs":[
+{"id":11,"run_id":1,"run_attempt":1,"name":"build (ubuntu-24.04, outputs)","status":"completed","conclusion":"failure","steps":[{"name":"qpdf is installed","status":"completed","conclusion":"skipped","number":20},{"name":"epubcheck is installed","status":"completed","conclusion":"failure","number":21}]},
+{"id":12,"run_id":1,"run_attempt":1,"name":"build (ubuntu-24.04, tests-rest)","status":"completed","conclusion":"cancelled","steps":[{"name":"qpdf is installed","status":"completed","conclusion":"cancelled","number":20},{"name":"epubcheck is installed","status":"completed","conclusion":"skipped","number":21}]},
+{"id":21,"run_id":1,"run_attempt":2,"name":"build (ubuntu-24.04, outputs)","status":"completed","conclusion":"success","steps":[{"name":"qpdf is installed","status":"completed","conclusion":"skipped","number":20},{"name":"epubcheck is installed","status":"completed","conclusion":"success","number":21}]}
+]}

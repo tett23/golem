@@ -25,13 +25,16 @@ env:
 
 jobs:
   # A called workflow gets at most the permissions of the job that calls
-  # it; the visual job of ci.yml asks for actions: read (docs/adr/0096),
-  # and without it here every run of this workflow fails at startup
+  # it; the visual job of ci.yml asks for actions: read (docs/adr/0096)
+  # and the caches job for actions: write (docs/adr/0228), and without
+  # them here every run of this workflow fails at startup, though caches
+  # runs on pushes to main only. The other jobs of ci.yml keep the
+  # permissions they ask for
   ci:
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
-      actions: read
+      actions: write
 
   version:
     runs-on: ubuntu-24.04
@@ -324,6 +327,11 @@ jobs:
           GHC_VERSION=$WASM_GHC_VERSION GHC_DOCDIR="$PWD/$GHC_DOCDIR" GMP_VERSION=$GMP_VERSION \
             GMP_SOURCE="$RUNNER_TEMP/gmp/gmp-$GMP_VERSION.tar.xz" CABAL_PACKAGES="$PWD/third_party/ghc-wasm/.cabal/packages/hackage.haskell.org" \
             sh scripts/release/package-wasm.sh "$TAG" golem.wasm dist-wasm/cache/plan.json dist
+      # golem.wasm, LICENSE, README and the documents of 8 of docs/adr/0199
+      # in THIRD_PARTY_LICENSES/, and the .sha256; workflow_dispatch runs it
+      # too, before a tag (docs/adr/0230)
+      - name: The archive of golem.wasm has its license documents (docs/adr/0230)
+        run: sh scripts/release/check-wasm-archive.sh "dist/golem-$TAG-wasm32-wasi.tar.gz"
       - uses: actions/upload-artifact@v7
         with:
           name: archive-wasm32-wasi
@@ -487,3 +495,16 @@ jobs:
           # dist/golem-*.tar.gz has the archive of golem.wasm, the HTML of the two
           # manuals and the license documents of the plugins too
           gh release create "$TAG" "$@" dist/golem-*.tar.gz dist/golem-manual-*.pdf dist/golem-dev-manual-*.pdf dist/*.wasm dist/SHA256SUMS dist/gmp-*.tar.xz
+      # the attestations of the step of attest-build-provenance, for the
+      # archives of dist/; the SHA256SUMS of the draft release shows that
+      # they are the files it has (docs/adr/0230)
+      - name: The archives of the release are attested (docs/adr/0230)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/released"
+          gh release download "$TAG" -p SHA256SUMS -D "$RUNNER_TEMP/released" -R "$GITHUB_REPOSITORY"
+          (cd dist && sha256sum -c "$RUNNER_TEMP/released/SHA256SUMS")
+          for f in dist/golem-*.tar.gz; do
+            gh attestation verify "$f" -R tett23/golem
+          done
