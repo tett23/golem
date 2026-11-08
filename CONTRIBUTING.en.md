@@ -356,6 +356,9 @@ Every change waits for CI, so slow CI slows down development itself.
 This project values the speed of development above all, so slow CI is never postponed.
 When CI on a pull request exceeds 5 minutes, stop other work and improve CI first (split jobs, cache, skip checks of unchanged modules, and so on).
 Record the times before and after the optimization in `docs/ci-timings/`.
+The exception is a pull request that changes the wasm toolchain (`scripts/fetch-ghc-wasm.sh`) or the wasm freeze (`cabal.project.wasm.freeze`): the first run of the `wasm` job has no cache, so it may exceed 5 minutes.
+Such a pull request records the times of the run without the cache and the run with it in `docs/ci-timings/`.
+A run that exceeds 5 minutes because the cache was evicted is not covered by this exception, so fix CI (reduce the size of the caches) first ([docs/adr/0219](./docs/adr/0219-frequency-of-the-wasm-job-and-its-uncached-runs.md)).
 
 ## License
 

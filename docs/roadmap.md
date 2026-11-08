@@ -240,6 +240,7 @@ v3 の GUI は、次の原則に従って作る。
 - **wasm の版のリリース**：`release.yml` のジョブ `wasm` を実際のタグで動かしていない。自動のテスト（`scripts/release/test.sh`）は、`licenses.sh --wasm` と `package-wasm.sh` を偽のコマンドと偽の入力で確かめただけである。`v` のタグの下書きのリリースに `golem-<タグ>-wasm32-wasi.tar.gz` があり、その `THIRD_PARTY_LICENSES/` が [ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md) の 8 の挙げるものを持ち、`SHA256SUMS` と `gh attestation verify` が通ることを確かめる（[docs/adr/0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
 - **wasm の版をブラウザで組むこと**：`browser_wasi_shim` を使い、Safari と Chrome で kanikosen を組み、PDF の SHA-256 がネイティブの `golem build --target pdf` と同じになることを確かめていない。CI は Node の `node:wasi` で確かめるだけであり、wasmtime と Deno で動くことも確かめていない（README と `scripts/wasm/README` は、どちらも見込みとして書く）。結果をこの項目に書き、項目を外す（[docs/adr/0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
 - **epubcheck と apt の時間切れ**：epubcheck を配布元の release から取るようにした後の 30 回の `ci.yml` の実行で、apt と epubcheck の時間切れが一度も起きないことを確かめていない。結果は `docs/ci-timings/` に記録する（[docs/adr 0062](adr/0062-epubcheck-from-release-with-cache.md)）。
+- **CI のキャッシュの量**：`caches` ジョブを入れた後、`main` の 24 時間後と 7 日後（2026-11-15 ごろ）にキャッシュの量が 10 GB を下回り、プルリクエストのキャッシュが消えていることを確かめていない（[docs/adr/0228](adr/0228-keep-the-ci-caches-under-the-10-gb-limit.md) の I5）。後の 5 回のプルリクエストの CI のうち 2 回が 5 分を超えたので、同じ確かめで所要時間も数え直す。結果は `docs/ci-timings/2026-11-08-ci-caches-under-the-limit.md` とは別の記録として `docs/ci-timings/` に書き、項目を外す。
 
 ## 未決事項
 
@@ -283,7 +284,7 @@ ADR と仕様が扱わないと決めたもので、課題として残さない�
 - **決定性に反する処理の静的な検出**：決定性の規則はレビューとテストで守ると決めたので作らない（[docs/adr/0002](adr/0002-determinism.md)）。
 - **リリースの運用の自動化**：リリースの自動公開、リリースで確かめる項目の自動化、監査の記録を仕組みで変更できなくすることは、公開を人が行い、確かめは繰り返しが重くなってから自動化を考え、記録は約束とレビューで守ると決めたので扱わない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)、[docs/adr/0008](adr/0008-first-release-verification.md)、[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)）。
 - **キャッシュの復元が egress の上限で失敗すること**：`actions/cache` の復元が「Failed to restore: Egress is over the account limit.」の警告で外れになり、依存をビルドし直してジョブが 15 分ほど遅くなることがある（2026-11-04 の実行 41915724203）。頻度が低く、再試行も時間切れの変更も役に立たないので、ワークフローは変えず、外れとして扱う。同じ警告が 7 日のうちに二つ以上の実行で出たら、egress を減らす方法を決める ADR を書く（[docs/adr/0167](adr/0167-leave-cache-restore-failures-as-misses.md)）。
-- **CI の高速化の候補**：大きいランナー、aarch64 の `build` の省略、HarfBuzz と FreeType の切り出しや翻訳単位の分割、GHC を含むコンテナ、古いキャッシュを消すジョブは、費用、決定性の検査、効果の見込みの理由で採らないと決めた（[docs/adr/0009](adr/0009-ci-speed.md)）。
+- **CI の高速化の候補**：大きいランナー、aarch64 の `build` の省略、HarfBuzz と FreeType の切り出しや翻訳単位の分割、GHC を含むコンテナは、費用、決定性の検査、効果の見込みの理由で採らないと決めた（[docs/adr/0009](adr/0009-ci-speed.md)）。古いキャッシュを消すジョブは、後に [docs/adr/0228](adr/0228-keep-the-ci-caches-under-the-10-gb-limit.md) が採った。
 - **スタイルの仕組みで作らないもの**：組み込みのスタイルを消すことと名前を変えること、`style.toml` の自動の書き換え、組み込みの文字スタイル `emphasis`、段落スタイルの `hang` のキー、原稿の先頭の全角の空白の除去と警告は、ADR が作らないと決め、`hang` は負の `first-line-indent` で表せるので扱わない（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。
 - **合成の太字と斜体の設定**：線の幅を変える設定、フォントや文字の大きさごとの値、太った分だけ送りを広げること、OS/2 テーブルから書体を選ぶことは、品質が要る本では太字や斜体の書体を役割で指定すればよいので作らない（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0012](golem-driver/adr/0012-synthetic-bold-weight.md)）。傾きを変える設定は、v2 の「文字の斜体の角度（skew）」に移した。
 - **lint の規則の設定と抑制、表記の規則**：規則は処理系が固定し、合意の取れない表記の規則は外部の校正ツールに任せると決めたので持たない（[golem-lint ADR 0001](golem-lint/adr/0001-lint-rules.md)、[「lint」の節](specifications.md#lint)）。
