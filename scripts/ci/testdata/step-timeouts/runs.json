@@ -1,0 +1,41 @@
+{
+  "total_count": 4,
+  "workflow_runs": [
+    {
+      "id": 42476933692,
+      "name": "CI",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "created_at": "2026-11-08T11:42:37Z"
+    },
+    {
+      "id": 42476899008,
+      "name": "CI",
+      "event": "push",
+      "status": "in_progress",
+      "conclusion": null,
+      "run_attempt": 1,
+      "created_at": "2026-11-08T11:42:09Z"
+    },
+    {
+      "id": 42476474803,
+      "name": "CI",
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "created_at": "2026-11-08T11:36:07Z"
+    },
+    {
+      "id": 42475288545,
+      "name": "CI",
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 2,
+      "created_at": "2026-11-08T11:20:12Z"
+    }
+  ]
+}

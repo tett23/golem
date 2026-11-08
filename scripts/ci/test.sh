@@ -1578,6 +1578,91 @@ fi
 if [ "$(job_of "$RELEASE_YML" notes | grep -cx '    runs-on: ubuntu-24.04')" -eq 1 ]; then ok; else ng "release.yml: the notes job runs on ubuntu-24.04"; fi
 if [ "$(job_of "$CI_YML" release-scripts | grep -cx '    runs-on: ubuntu-24.04')" -eq 1 ]; then ok; else ng "ci.yml: release-scripts runs on ubuntu-24.04"; fi
 
+# the checks of the release (docs/adr/0230): the wasm archive is checked
+# right after package-wasm.sh makes it, and the attestations after the draft
+# release is made, with the SHA256SUMS of the release against dist/
+wasm_pack=$(step_line "$RELEASE_YML" wasm 'sh scripts/release/package-wasm.sh')
+wasm_check=$(step_line "$RELEASE_YML" wasm 'sh scripts/release/check-wasm-archive.sh')
+if [ -n "$wasm_pack" ] && [ -n "$wasm_check" ] && [ "$wasm_check" -gt "$wasm_pack" ]; then ok; else ng "release.yml: the wasm job runs check-wasm-archive.sh after package-wasm.sh (docs/adr/0230)"; fi
+rel_create=$(step_line "$RELEASE_YML" release 'gh release create')
+rel_verify=$(step_line "$RELEASE_YML" release 'gh attestation verify')
+if [ -n "$rel_create" ] && [ -n "$rel_verify" ] && [ "$rel_verify" -gt "$rel_create" ]; then ok; else ng "release.yml: the release job runs gh attestation verify after gh release create (docs/adr/0230)"; fi
+if job_of "$RELEASE_YML" release | awk -v s="$rel_verify" 'NR >= s' | grep -q 'gh attestation verify "$f" -R tett23/golem' &&
+  job_of "$RELEASE_YML" release | awk -v s="$rel_verify" 'NR >= s' | grep -q 'gh release download "$TAG" -p SHA256SUMS' &&
+  job_of "$RELEASE_YML" release | awk -v s="$rel_verify" 'NR >= s' | grep -q 'sha256sum -c'; then ok; else
+  ng "release.yml: the step of gh attestation verify checks dist/ against the SHA256SUMS of the release (docs/adr/0230)"
+fi
+
+# ---------------------------------------------------------------- step-timeouts.sh
+# (docs/adr/0230)
+
+# The fake gh answers with the copies of the API in testdata/step-timeouts/:
+# runs.json and jobs-<id>.json are answers of GitHub of 2026-11-08, cut to
+# the fields read; runs-2.json and jobs-1.json, a second page with a run
+# whose steps failed and were cancelled, are made by hand. Every call is
+# written to $WORK/gh.args.
+ST=$WORK/step-timeouts
+STD=$HERE/testdata/step-timeouts
+mkdir -p "$ST"
+cat >"$ST/gh" <<GH
+#!/bin/sh
+printf '%s\n' "\$*" >>"$WORK/gh.args"
+[ -z "\${FAKE_GH_FAIL-}" ] || exit 1
+for a in "\$@"; do
+  case \$a in
+    page=1) cat "$STD/runs.json"; exit 0 ;;
+    page=2) cat "$STD/runs-2.json"; exit 0 ;;
+    page=*) echo '{"total_count":5,"workflow_runs":[]}'; exit 0 ;;
+    repos/tett23/golem/actions/runs/*/jobs)
+      id=\${a#repos/tett23/golem/actions/runs/}
+      cat "$STD/jobs-\${id%/jobs}.json"; exit ;;
+  esac
+done
+exit 1
+GH
+chmod +x "$ST/gh"
+step_timeouts() { rm -f "$WORK/gh.args"; GH=$ST/gh GITHUB_REPOSITORY=tett23/golem sh "$HERE/step-timeouts.sh" "$@"; }
+: >"$WORK/in"
+TAB=$(printf '\t')
+run step_timeouts 2026-10-23 10
+expect "step-timeouts: the runs with the steps, newest first" 0 "run${TAB}created${TAB}qpdf is installed${TAB}epubcheck is installed
+42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1
+42475288545${TAB}2026-11-08T11:20:12Z${TAB}success=8${TAB}success=2
+1${TAB}2026-11-08T11:00:00Z${TAB}cancelled=1${TAB}failure=1 success=1"
+if grep -qxF -- 'api -X GET repos/tett23/golem/actions/workflows/ci.yml/runs -f per_page=100 -f page=3' "$WORK/gh.args" 2>/dev/null; then ok; else ng "step-timeouts: the runs of ci.yml page by page until a page without a run"; fi
+if grep -qF -- 'repos/tett23/golem/actions/runs/42475288545/jobs -f filter=all -f per_page=100' "$WORK/gh.args" 2>/dev/null; then ok; else ng "step-timeouts: the jobs of every attempt of a run"; fi
+# the runs without the steps (build skipped for documents only) are not
+# counted: two runs are the two newest that have the steps
+run step_timeouts 2026-10-23 2
+expect "step-timeouts: two runs with the steps" 0 "run${TAB}created${TAB}qpdf is installed${TAB}epubcheck is installed
+42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1
+42475288545${TAB}2026-11-08T11:20:12Z${TAB}success=8${TAB}success=2"
+if ! grep -qF 'actions/runs/1/jobs' "$WORK/gh.args" 2>/dev/null; then ok; else ng "step-timeouts: no run is read after the count is reached"; fi
+run step_timeouts 2026-10-23T00:00:00Z 1
+expect "step-timeouts: a date and time" 0 "run${TAB}created${TAB}qpdf is installed${TAB}epubcheck is installed
+42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1"
+# the runs created after the time only, and no page after the one that
+# reaches it: the filter created of the API gives at most 1000 runs
+run step_timeouts 2026-11-08T11:30:00Z 10
+expect "step-timeouts: the runs after a time" 0 "run${TAB}created${TAB}qpdf is installed${TAB}epubcheck is installed
+42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1"
+if ! grep -q 'page=2' "$WORK/gh.args" 2>/dev/null && ! grep -q 'created' "$WORK/gh.args" 2>/dev/null; then ok; else ng "step-timeouts: no page after the one that reaches the time, and no filter created"; fi
+run step_timeouts 2026-11-08T11:00:00Z 10
+expect "step-timeouts: a run created at the time is not after it" 0 "run${TAB}created${TAB}qpdf is installed${TAB}epubcheck is installed
+42476899008${TAB}2026-11-08T11:42:09Z${TAB}success=3${TAB}success=1
+42475288545${TAB}2026-11-08T11:20:12Z${TAB}success=8${TAB}success=2"
+run step_timeouts 2026-10-23
+expect "step-timeouts: one argument" 2
+run step_timeouts 2026-10-23 x
+expect "step-timeouts: a count that is not a number" 2
+run step_timeouts 2026-10-23 0
+expect "step-timeouts: a count of zero" 2
+run step_timeouts yesterday 10
+expect "step-timeouts: a date that is not of the API" 2
+FAKE_GH_FAIL=1 run step_timeouts 2026-10-23 10
+expect "step-timeouts: gh fails" 1
+unset FAKE_GH_FAIL
+
 # ---------------------------------------------------------------- gate.sh
 
 gate() { sh "$HERE/gate.sh" "$@"; }
@@ -1704,10 +1789,26 @@ if [ "$(basename "$(pwd)")" = diagnostics ]; then
 fi
 GOLEM
 chmod +x "$DET/bin/golem"
+# determinism.sh builds in the fixtures of its repository and removes their
+# build/: here it runs in a copy of what it reads, so that it never writes
+# into the fixtures of this repository while scripts/release/test.sh copies
+# them at the same time (scripts-macos runs the two at once, run
+# 42492125517); the fonts are empty files, which the fake golem does not read
+DR=$DET/repo
+mkdir -p "$DR/scripts/env-determinism" "$DR/modules/golem-driver/test/fixtures/kanikosen/fonts" "$DR/modules/golem-font/test/fonts"
+cp "$HERE/../determinism.sh" "$DR/scripts/"
+cp -R "$HERE/../determinism" "$HERE/../manual" "$DR/scripts/"
+cp -R "$HERE/../env-determinism/diagnostics" "$DR/scripts/env-determinism/"
+for f in sample functions emet-samples complex-vertical complex-horizontal; do
+  cp -R "$HERE/../../modules/golem-driver/test/fixtures/$f" "$DR/modules/golem-driver/test/fixtures/"
+  rm -rf "${DR:?}/modules/golem-driver/test/fixtures/$f/build"
+done
+: >"$DR/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
+: >"$DR/modules/golem-font/test/fonts/SourceSansPro-Regular.otf"
 determinism() {
   GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root GOLEM_MANUAL_SKIP_FONTS=1 \
     GOLEM_MANUAL_COMMIT=0 GOLEM_MANUAL_TAG=v0 FAKE_STDERR=$1 \
-    sh "$HERE/../determinism.sh"
+    sh "$DR/scripts/determinism.sh"
 }
 : >"$WORK/in"
 run determinism '{"diagnostics":[{"code":"G00000"}]}'
@@ -1733,14 +1834,14 @@ if [ "$(grep -v '  diagnostics/stderr$' "$DET/first")" = "$(grep -v '  diagnosti
 determinism_no_manuals() {
   GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root GOLEM_MANUAL_SKIP_FONTS=1 \
     GOLEM_MANUAL_COMMIT=0 GOLEM_MANUAL_TAG=v0 FAKE_STDERR=$1 \
-    sh "$HERE/../determinism.sh" --no-manuals
+    sh "$DR/scripts/determinism.sh" --no-manuals
 }
 run determinism_no_manuals '{"diagnostics":[{"code":"G00000"}]}'
 expect "determinism: --no-manuals" 0
 if grep -qE '  manual(-dev)?/' "$WORK/out"; then ng "determinism: --no-manuals lists no file of the manuals"; else ok; fi
 if [ "$(grep -vE '  manual(-dev)?/' "$DET/first")" = "$(cat "$WORK/out")" ]; then ok; else ng "determinism: --no-manuals is the list without the manuals"; fi
 determinism_unknown() {
-  GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root sh "$HERE/../determinism.sh" --no-such-option
+  GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root sh "$DR/scripts/determinism.sh" --no-such-option
 }
 run determinism_unknown
 expect "determinism: an unknown option" 2
@@ -1831,6 +1932,25 @@ if grep -qx '| `build (ubuntu-24.04)` | `Run haskell-actions/setup@v2` | 143 | 1
 : >"$WORK/in"
 run timings --bogus
 expect "timings: an unknown option" 2
+
+# ---------------------------------------------------------------- release.yml calls ci.yml
+# A called workflow gets at most the permissions of the job that calls it,
+# and a job of ci.yml that asks for more makes every run of release.yml
+# end in startup_failure, whether the job would run or not: the ci job of
+# release.yml grants each permission that a job of ci.yml asks for, at the
+# same level or write (run 42480681991, the caches job of docs/adr/0228)
+CI_CALLER=$(perms_of "$RELEASE_YML" ci)
+CI_ASKED=$(ci_jobs "$CI_YML" | while IFS= read -r j; do perms_of "$CI_YML" "$j"; done | sort -u)
+missing=
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  scope=${p%%:*}
+  level=${p#*: }
+  if printf '%s\n' "$CI_CALLER" | grep -qx "$scope: $level" || printf '%s\n' "$CI_CALLER" | grep -qx "$scope: write"; then :; else missing="$missing $p"; fi
+done <<PERMS
+$CI_ASKED
+PERMS
+if [ -z "$missing" ]; then ok; else ng "release.yml: the ci job grants what the jobs of ci.yml ask for (missing:$missing)"; fi
 
 # ---------------------------------------------------------------- race-needed.sh
 # (docs/adr/0075-race-search-repetitions.md)
