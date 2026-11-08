@@ -11,9 +11,9 @@ CI では走らせない。
 一つの段と次の段の境目だけを扱う。
 
 - 入力は、格子の行の数 `cap`（3 から 6）の段と、その段で既に使った行の数 `used`（0 なら空の段）と、流れの順に並んだ要素である。
-- 要素は、段落の行（`Line`。同じ段落の行は続けて並ぶ）、一行の見出し（`Heading`）、高々一つの図版（`Figure`、1 行から `cap + 1` 行）である。
+- 要素は、段落の行（`Line`。同じ段落の行は続けて並ぶ）、一行の見出し（`Heading`）、高々二つの図版（`Figure`、1 行から `cap + 1` 行）、高々一つの一行の行アキ（`Blank`）である。図版を二つと行アキは、[golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) で足した。
 - 改丁の見出し（`Recto`）は、見出しの一種である。[docs/adr/0206](../../adr/0206-pagination-points-the-invariants-did-not-decide.md) の決めたことを調べる述語だけが、ほかの見出しと区別する。
-- 配置（`Placement`）は、本文の要素を `brk` の前までこの段に、残りを次の段に置き、図版をこの段に置く（`kept`）か次の段に送る。
+- 配置（`Placement`）は、本文の要素を `brk` の前までこの段に、残りを次の段に置き、それぞれの図版をこの段に置く（`kept`）か次の段に送り、行アキをこの段に置く（`placed`）か置かない。
 - 入力ごとに、すべての配置を原子として持つ（事実 `allPlacements`）。そのため「どの配置も規則を満たさない」を一階の論理で書ける。
 - 次の段があふれるかは調べない。
 
@@ -42,7 +42,22 @@ CI では走らせない。
 | `base` | `fits`、`order`、`figure`、`noSendFromEmpty` を合わせたもの |
 
 仕様書の「図版」の節は、図版を縮めて空の段に必ず収める。
-そのため、`tallFigure` のほかのコマンドは、図版が段の行の数を超えない入力（述語 `inDomain`）だけを調べる。
+そのため、`tallFigure` のほかのコマンドは、図版が段の行の数を超えない入力（述語 `figuresFit`）だけを調べる。
+[docs/adr/0204](../../adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) と [docs/adr/0206](../../adr/0206-pagination-points-the-invariants-did-not-decide.md) のコマンドは、図版が高々一つで行アキのない入力（述語 `inDomain`）だけを調べるので、要素を足しても結果は変わらない。
+
+[golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の規則を調べるために、次の述語を足した。
+
+| 述語 | 規則 |
+| --- | --- |
+| `figures` | 図版は、前の本文と図版と、段の先頭でない行アキの後に入り、前の図版を送っていなければ、そこに置き、そうでなければ次の段に送る（[golem-layout ADR 0015](../adr/0015-figure-order.md)、[docs/adr/0046](../../adr/0046-blank-line-command.md)） |
+| `figureOrder` | この段に置いた図版の前の図版は、すべてこの段にある（二つの図版の I3） |
+| `waitingIn` | 送った図版の後に書いた、送った図版（待つ図版） |
+| `blankWithNext` | 行アキは、次のブロック（待つ図版を飛ばした最初の要素）と同じ段に置く。段の先頭なら置かない。次のブロックがなければ置かない（P4′、P5） |
+| `blankWithNext25` | `blankWithNext` の次のブロックを、待つ図版も含めた最初の要素にしたもの（この ADR の前の読み方） |
+| `base26` | `fits`、`order`、`figures`、`figureOrder`、`noSendFromEmpty` を合わせたもの |
+
+`noSendFromEmpty` は、行アキを段の最初の要素に数えない。
+行アキはそれだけでは何も置かないからである。
 
 ## 走らせ方
 
@@ -55,6 +70,8 @@ JAVA_TOOL_OPTIONS="-Djava.io.tmpdir=$TMPDIR" alloy6 exec -q -n -t text -c noneMe
 ```
 
 `-n` は算術のあふれを含む解を除く。
+[golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) で足したコマンドは、図版と行アキの数の上限をコマンドに書く（`2 Figure, 1 Blank`）。
+書かなければ、事実で数を限っても、解く問題が大きくなるためである。
 `-c` を省くと最初のコマンドだけを、`-c '*'` ですべてを走らせる。
 解があれば `---Trace---` の後に入力と配置を書き、なければ何も書かない。
 
@@ -132,3 +149,37 @@ docs/roadmap.md の「未決事項」に足す組はない。
 - [golem-layout ADR 0021](../adr/0021-keep-with-next-counts-widow-and-orphan.md) の量の I6 でも、貪欲法のほかのすべての規則を満たす配置がある（`keep21`）。
 - 決めた規則のすべてを課しても、改丁の見出しのある入力に配置がある（`decidedSome`）。モデルは全否定ではない。
 - 送った図版と改丁の見出しの順（[docs/adr/0206](../../adr/0206-pagination-points-the-invariants-did-not-decide.md) の 3）は、ページの奇数と偶数に関わるので、このモデルでは書けない。改ページの不変条件のテストが確かめる。
+
+### [golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) のコマンド
+
+2026-11-08 に、スコープ 2 から 4 まで（要素は 4 個まで、整数は 5 ビット）で走らせた結果である。
+待つ図版の形は、送る図版、行アキ、待つ図版、後のブロックの 4 個で作れる。
+スコープ 4 で、解のないコマンドに SAT4J が 2 分から 20 分かかったので、スコープ 5 は走らせていない。
+`blankFigureOrder` のスコープ 4 は 1 時間を超えても終わらなかったので打ち切り、スコープ 3 までの結果を書いた。
+「なし」は、スコープ 4 までに解がなかったことを示す。
+
+| コマンド | 調べること | 最も小さい例のスコープ |
+| --- | --- | --- |
+| `waitingBlankSome` | 送った図版の後の行アキと待つ図版と後の本文があり、`base26` と `blankWithNext` を満たし、行アキと後の本文をこの段に置く配置がある入力があるか | 4 |
+| `waitingBlankNone` | `base26` と `blankWithNext` を満たす配置がない入力があるか | なし |
+| `waitingBlankAllButGreedy` | `waitingBlankNone` に `orphan`、`widow`、`keepHeading21` を足したもの | なし |
+| `blankFigureOrder` | `blankWithNext` と、`figures` と `figureOrder` の組 | なし（スコープ 3 まで） |
+| `blankBeforeWaiting25` | この ADR の前の読み方で、行アキが待つ図版とともに次の段に移り、後の本文だけがこの段に残る配置がある入力があるか | 4 |
+| `blankRules25` | この ADR の前の読み方で、`base26` と `blankWithNext25` を満たす配置がない入力があるか | なし |
+
+`waitingBlankSome` の最も小さい例は、段の行の数が 4 で 2 行を使った段に、4 行の図版、行アキ、4 行の図版、改丁の見出しが来るものである。
+一つめの図版は入らずに送られ、二つめの図版は待つ。
+行アキは見出しとともにこの段に置かれる。
+モデルは空ではなく、この ADR の直す形を入力に持つ。
+
+`blankBeforeWaiting25` の最も小さい例は、段の行の数が 5 で 4 行を使った段に、4 行の図版、行アキ、5 行の図版、見出しが来るものである。
+この ADR の前の読み方では、行アキは待つ図版とともに次の段に移り、見出しは行アキなしにこの段に置かれる。
+読み方を変えても、規則を満たす配置のない入力は出ない（`blankRules25`）。
+二つの読み方の違いは規則の矛盾ではなく、行アキをどちらのブロックに付けるかの選択である。
+
+行アキを次のブロックと同じ段に置く規則と、図版の順の規則は、スコープ 4 までのどの入力でも両立する（`waitingBlankNone`、`waitingBlankAllButGreedy`）。
+両立しない規則の組として出るものはなく、[docs/roadmap.md](../../roadmap.md) の「未決事項」に足す組はない。
+最初に走らせたとき、`waitingBlankNone` は、段の行の数が 3 で 1 行を使った段に、行アキと 2 行の図版が来る入力を返した。
+図版の規則が、置いた行アキだけを数え、置くかどうかを図版で決める行アキを数えていなかったためである。
+改ページの実装（`placeBlank`）は、行アキと次の最初の部分の和で量るので、モデルの誤りとして `figures` を直した。
+

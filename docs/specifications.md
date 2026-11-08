@@ -2492,6 +2492,9 @@ HTML と EPUB は、`width` を持つ図版の `<img>` に、`style` の属性�
 回り込ませない図版が段の残りに収まらない場合は、次の段の先頭に送り、その後の本文を図版の前に詰める。
 送った図版が待っているあいだは、後の図版も、収まるかどうかにかかわらず、待っている図版の後に送る。
 待っていた図版は、次の段の先頭に原稿の順に並べ、その後に本文が続く。
+送った図版が待っているあいだに書いた図版と、何もないページに置けずに待つ回した図版（待つ図版）は、直前の `@need-lines` と行アキを受け取らない。
+それらは、流れで次に来る、待つ図版でないブロックに当てる（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。
+待つ図版かどうかは、ためた改ページの印を適用した後で判定する。改ページで待っていた図版が置かれれば、その後の図版は待たない。
 待っている図版があるときの回り込ませる図版は、待っている図版をすべて置いた後の段に、脇の行とともに置き、今の段の残りは空白にする。
 待っている図版の数に上限はない。
 脇の行の長さが本文の文字の大きさの 8 字分に満たない場合はエラー（G07022）、除外領域が一ページの行数を超える場合はエラー（G07023）とする。
@@ -2751,12 +2754,14 @@ HTML、EPUB、プレーンテキストにも出力するので、PDF だけの�
 PDF では、行アキを、次に置くもの（行、見出し、図版、表など）の前の行の格子の空きの行とし、次に置くものの最初の部分と同じ段に置く。
 改ページ（golem-layout の `Golem.Layout.Paginate`）は、行アキ（`FBlank`）をためておき、改ページと改ページの手での制御以外のものを置く直前に、次の順で処理する。
 
-1. ためた改ページの印と `@need-lines` を適用する。`@need-lines` の判定に行アキの行数は数えない。
+1. ためた改ページの印と `@need-lines` を適用する。`@need-lines` の判定に行アキの行数は数えない。置くものが待つ図版（「図版」の節）なら、`@need-lines` と行アキを適用せずに図版を待たせ、行アキと `@need-lines` は流れで次に来る、待つ図版でないブロックに当てる（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。
 2. 置くものが `page-break = "recto"` の見出しなら、奇数ページから始める。
 3. 今の段が空でなく、行アキの行数の和と、置くものの最初の部分の和が今の段の残りに入らなければ、入るか、段の先頭に来るまで次の段へ進む。進んだ段の先頭には送った図版が、末尾には続きの脚注が先に置かれるので、段ごとに残りを数え直す。送った図版を置いた段は、空ではなく、段の先頭でもない。続きの脚注だけを持つ段は、段の先頭である（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)、[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。
 4. 今の段の先頭なら、行アキを捨て、捨てた `@blank-line` ごとに info（G07047、`--verbose` を付けたときだけ出す。[docs/adr/0104](adr/0104-info-severity.md)）を出す。そうでなければ、行アキの行数だけ行の格子の行を空ける。
 5. 置くものを置く。
 
+行アキの後に、本の終わりまで待つ図版しか続かなければ、行アキは待つ図版を置く段の先頭に来るものとして捨て、捨てた `@blank-line` ごとに G07047 を出す（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。
+待つ図版は次の段の先頭から置かれるので、ほかの G07047 と同じく段の先頭で捨てたものである。
 行アキが段に入りきらない場合も段の先頭で捨てるので、行アキを途中で切り詰めることはない。
 段の先頭の空きは前の段の終わりの余白と見分けられず、前後のブロックの区切りにならないためであり、段落スタイルの `space-between`、`space-before`、`space-after` の空きと同じ規則である。
 書き手の入力と違う出力になるので、黙って捨てずに notice で知らせる。
@@ -2824,7 +2829,16 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 続く見出しと行の量には、それらの注の本文の行と、その段で最初の注なら区切りの領域を数える（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
 段の先頭から見出しだけを置いた段では、空の段と同じく、孤立行と寡婦行の規則で一行も置けなくなる場合は、入るだけの行を置き、入らない注の本文を次の段に続ける（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md)）。
 
-これらの規則は、[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の I1 から I8 として、`@need-lines` と行アキの規則は [golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の「不変条件」の節の P1 から P4 として、golem-layout のテストで確かめる。
+これらの規則は、[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の I1 から I8 として、`@need-lines` と行アキの規則は [golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の「不変条件」の節の P1 から P4 と、[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の「不変条件」の節の P5 として、golem-layout のテストで確かめる。
+P1、P3、P4 の「次のブロック」は、[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) のとおり、待つ図版を飛ばした最初のブロックである。
+述語は、待つ図版を出力から判定する。
+前の図版がまだ置かれていない位置に書いた図版と、書いた位置のページに置けない回した図版を、待つ図版とする。
+図版は、待つか、自ら送られれば、置かれるまで残る。
+自ら送られる図版は、流れが来た段より後の段に、直前の行アキと、残りに足りない `@need-lines` に動かされずに置かれた図版か、後に書いた図版でないブロックの最初の部分より後に置かれた図版である。
+流れが来た段は、前に書いたブロックと書いた位置に置かれた図版の最後の部分の段か、その後に書いた改ページが進むページの最初の段である。
+空きの前で判定した `@need-lines` で次の段へ進めば、その段である。
+[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の「実装すること」の 3 は、後に書いたブロックの最初の部分より後の位置に置かれた図版を待つ図版とするが、それでは、後のブロックが次の段へ進んで先に置かれた待つ図版を見落とし、前の `@need-lines` を受け取る自ら送られる図版を待つ図版に数える。
+述語は、改ページが待たせる図版を読む。
 I2、I4、I5、I6、I8 は、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md) の「実装すること」の 6 の表のとおりに読む。
 述語は `modules/golem-layout/test/PaginateInvariants.hs` にあり、改ページの入力と出力だけを読む。
 `modules/golem-layout/test/PaginateInvariantsSpec.hs` は、段の行の数が 3 から 5、段の数が 1 と 2 の版面に、段落、注を持つ段落、見出し、注を持つ見出し、改丁の見出し、1 行と C − 1 行と C 行（C は段の行の数）の図版、一行の空き、改ページ、`@need-lines 2`、1 行と 2 行の行アキを並べた流れを、要素の少ない順にすべて組み、どの述語も違反を返さないことを確かめる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 3）。
@@ -2834,7 +2848,7 @@ I2、I4、I5、I6、I8 は、[docs/adr/0206](adr/0206-pagination-points-the-inva
 違反があれば、最も小さい入力を表示する。
 抜き取りで見つけた違反は、違反が残るかぎり要素を一つずつ取り除いた入力を表示する。
 「既知の不具合」に載せた違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
-今の一覧には、「送った図版の後で待つ図版の前の `@need-lines` と行アキが、その図版と別の段で扱われる」と「`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる」の二つがある。
+今の一覧には、「`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる」の一つがある。
 述語が判定しない場合はない。
 行アキは、出力では後のブロックの前の空いた格子の行としてしか見えないので、捨てていない行アキが後のブロックの前に見えなければ、P3 も違反とする。
 改ページに渡す図版は、段の行の数以下であることを前提とする（図版を縮める規則は「図版」の節）。
@@ -2880,7 +2894,7 @@ EPUB の読書環境は文書の境界で改ページし、見開きの左右も
 行数は版面の格子の行数という抽象的な数であり、ページの大きさや位置ではない。
 
 - `@no-page-break` の前が段落か定義リストの用語なら、改ページは、前の最後の 2 行（3 行以下の段落では全体。[docs/adr/0055](adr/0055-no-page-break-moves-short-paragraphs-whole.md)）を次の段に送り、後の最初の部分（`nextNeed` と同じ量。3 行の段落では全体とする。その部分の行の注の本文と、その段で最初の注なら区切りの領域を含む。[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）と同じ段に置く。`@no-page-break` の前と後にある空き（`space-between`、`space-before`、`space-after`）の行も、後の最初の部分の量に足す。足した量は段の行の格子の数を上限とする（[golem-layout ADR 0022](golem-layout/adr/0022-no-page-break-counts-spaces.md)）。空の段からは送らない。前が見出しなら今の規則のとおりで、そのほかのブロックなら置き方を変えない。
-- `@need-lines` は、改ページの印と同じくためておき、次のブロックを置く直前に、改ページの印の後で判定する。次の段へ進んだら、送った図版と続きの脚注をその段に置いた後の残りで数え直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。
+- `@need-lines` は、改ページの印と同じくためておき、次のブロックを置く直前に、改ページの印の後で判定する。次の段へ進んだら、送った図版と続きの脚注をその段に置いた後の残りで数え直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。待つ図版（「図版」の節）は次のブロックに数えず、その後の、待つ図版でないブロックの直前で判定する（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。
 - `@page-lines` は、ためた改ページの印を先に適用してから、今の段の行数に足す。段を進めると増減は 0 に戻る。増やした行は、版面の行の格子を行の進む方向に延ばした位置に置く。行数の上限は、行の字面が裁ち落としを除いたページの内側に収まる行の数である。増やした行と、ノンブル、柱、傍注の領域との重なりは検査しない。
 - 見出しを後のブロックと離さない規則の先読みは、三つの印を飛ばす。
 - 守れなかった指定は、改ページの繰り返し（S2）の最後の回の結果から、印の位置の警告（G07037）にする。
@@ -2971,6 +2985,11 @@ dev と prod の両方で警告で、PDF を書き、notice ではないので `
 行頭禁則と行末禁則は、語間の空白と、欧文の語の明示のハイフンの後の分割の候補にも当てる（[golem-layout ADR 0028](golem-layout/adr/0028-kinsoku-across-spaces-and-explicit-hyphens.md)）。
 分離禁止は、隣り合う字にだけ当てる。
 `あ「 い` の `「` の後の空白と、`あ 〜` の `〜` の前の空白では改行せず、`… …` は空白で改行してよい。
+欧文の語の箱の最初の字が U+2019 で、次の字が字か数字（一般カテゴリが L か Nd）なら、その字は語の頭のアポストロフィとし、行頭禁則を当てない（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)）。
+次の字は、結合文字を除いて数える。
+`aaa ’tis` と `aaa ’90` は空白で改行してよく、`aaa ’` と `aaa ’.` の `’` は今のとおり終わり括弧類として空白で改行しない。
+区間の外と欧文の区間で同じ規則を当て、本の言語は見ない。
+和文の区間の `’` は欧文の語の箱に入らないので、終わり括弧類のままである。
 空白を改行の位置から外しても、空白の幅と伸縮は変えず、和欧間の空きとアキ量のセットの空きを足さない。
 段落の終わりと強制改行の前の語間の空白は、行分割の前に捨てる（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md)）。
 空白と行の終わりのあいだに箱がなければ捨て、あいだに内容を描かないコマンド（索引の印など）があっても捨てる。
@@ -3120,7 +3139,7 @@ He said nothing, and the silence was the answer.
 
 PDF では、区間の言語で次のように組む（golem-layout の `charClassIn`）。
 
-- 欧文の区間：両用の文字は欧文（`western`）とし、隣の欧文の文字と一つの語の箱にする。役割の欧文のフォントで組む。両用の文字の隣には、和欧間の空きもアキ量のセットの空きも入れない。両用の文字の隣での改行は、その字の和文の文字クラス（始め括弧類なら後ろで改行しない、など）の禁則に従う（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。突き出しは欧文の約物の表に従い、表にない `«»‹›…` は突き出さない。
+- 欧文の区間：両用の文字は欧文（`western`）とし、隣の欧文の文字と一つの語の箱にする。役割の欧文のフォントで組む。両用の文字の隣には、和欧間の空きもアキ量のセットの空きも入れない。両用の文字の隣での改行は、その字の和文の文字クラス（始め括弧類なら後ろで改行しない、など）の禁則に従う（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。ただし、語の頭のアポストロフィ（欧文の語の箱の最初の U+2019 で、次の字が字か数字のもの）は、欧文の字として判定し、行頭禁則を当てない（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)）。突き出しは欧文の約物の表に従い、表にない `«»‹›…` は突き出さない。
 - 和文の区間：両用の文字は和文の文字クラスの一字とする。`“‘«‹` は始め括弧類、`”’»›` は終わり括弧類、`—…` は分離禁止文字、`–‐‑` はハイフン類である。隣が欧文の文字でも欧文の語に含めず、和文のフォントで組む。
 - 区間の外：今のとおり、最も近い文字で決める。本の言語は見ない。`‹›` は漢字等のまま組む。
 
@@ -4990,7 +5009,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
 - **`[ref-number]` の図番号とリスト番号が、`[figures]` と `[code]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックを `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
-- **送った図版の後で待つ図版の前の `@need-lines` と行アキが、その図版と別の段で扱われる**：段に入らずに送った図版が待っているあいだは、後の図版も、収まるかどうかにかかわらず、待っている図版の後に送る（「図版」の節）。その後の図版の直前に `@need-lines` か行アキがあると、`@need-lines` は今の段で判定し、行アキは今の段に置き、図版は次の段より後に置く。行アキを置くものの最初の部分と同じ段に置く（「行アキ」の節）という規則と、[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の P1、P3、P4 が守られない。仕様も ADR も、待つ図版の前の `@need-lines` と行アキをどの段で扱うかを定めていない。改ページの不変条件のテストで見つかった最も小さい例は、一段で段の行の数が 3 の版面に、1 行の段落、3 行の図版、1 行の行アキ、1 行の図版を順に置いたもので、行アキは 1 ページの段落の後に置かれ、二つめの図版は 3 ページに置かれる。`@need-lines` では、段の行の数が 4 の版面に、2 行の段落、3 行の図版、`@need-lines 2`、1 行の図版を置くと、二つめの図版は 2 ページの図版の後の、残りが 1 行の位置に置かれる。
 - **`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる**：`@need-lines` を今の段で判定した後に空き（改ページに渡す一行の空き。表とコードブロックの後などに入る）が続き、空きが今の段を埋めると、次のブロックは、送った図版を置いた次の段の、残りが `@need-lines` の行数より少ない位置に置かれる。[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の P1 が守られない。毎晩の `enum.yml` の抜き取り（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md)）が、段の行の数が 6 の版面で見つけた。最も小さい例は、一段で段の行の数が 4 の版面に、2 行の段落、3 行の図版、`@need-lines 2`、二つの一行の空き、1 行の段落を順に置いたもので、最後の段落は 2 ページの図版の後の、残りが 1 行の位置に置かれる。要素が 6 個なので、毎晩のすべての入力を調べる上限（5 個）の外にある。空きを `@need-lines` の「次のブロック」に数えるかを、仕様は定めていない。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。

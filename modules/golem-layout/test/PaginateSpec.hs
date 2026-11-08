@@ -23,7 +23,7 @@ import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import PaginateEnum (Element (..), Input (..), noteOf, paginateInput)
+import PaginateEnum (Element (..), Input (..), controlSpan, enumFlows, noteOf, paginateInput)
 import PaginateInvariants (Breach (..), Invariant (..), breaches)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -53,6 +53,7 @@ paginateTests =
       testGroup "keep goes on until the need fits (golem-layout ADR 0023)" keepTests,
       testGroup "a recto starts after the figures sent on and the continued notes (golem-layout ADR 0024)" rectoAfterFiguresTests,
       testGroup "need-lines, blank lines, tables and wrapped figures go on after what is sent on (golem-layout ADR 0025)" afterSentOnTests,
+      testGroup "the figures that wait take no need-lines and no blank lines before them (golem-layout ADR 0026)" waitingFigureTests,
       testGroup "invariants" propertyTests
     ]
 
@@ -1153,4 +1154,65 @@ afterSentOnTests =
           ps = paginate 1 4 flows
       [(poNumber p, map snd (poSlots p), poFootnotes p) | p <- ps]
         @?= [(1, [SLine 0], [(nid 900, 0, 2)]), (2, [], [(nid 900, 2, 2)]), (3, [], [(nid 900, 4, 1)]), (4, [SWrapped 2000], [])]
+  ]
+
+-- | The invariants of the list broken by an input of PaginateEnum, with a separator of one grid line.
+brokenIn :: [Invariant] -> Input -> [Invariant]
+brokenIn which input = brokenOf which (enumFlows (inElements input)) (paginateInput input)
+
+{- | golem-layout ADR 0026: the reproductions of its section 「確かめたこと」
+and the cases of its section 「テスト設計」. A figure that waits behind a
+figure sent on takes neither the need-lines nor the blank lines before
+it: they go to the next block of the flow that does not wait.
+-}
+waitingFigureTests :: [TestTree]
+waitingFigureTests =
+  [ testCase "P3', P4', P5: blank lines before a figure that waits, with nothing after it, are not placed and are recorded once" $ do
+      let input = Input 3 1 [EPara 1, EFigure 3, EBlank 1, EFigure 1]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SLine 0]), (2, 0, [SFigure 1000]), (3, 0, [SFigure 1001])]
+      gridLines ps @?= [[0], [0], [0]]
+      unmets ps @?= [DroppedBlank (controlSpan 0)]
+      brokenIn [P3, P4, P5] input @?= [],
+    testCase "P4': blank lines before a figure that waits go with the paragraph after it, in its column" $ do
+      let input = Input 4 1 [EPara 2, EFigure 3, EBlank 1, EFigure 2, EPara 1]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1, SLine 2]), (2, 0, [SFigure 1000]), (3, 0, [SFigure 1001])]
+      gridLines ps @?= [[0, 1, 3], [0], [0]]
+      unmets ps @?= []
+      brokenIn [P3, P4, P5] input @?= [],
+    testCase "P1': need-lines before a figure that waits is judged for the paragraph after it" $ do
+      let input = Input 4 1 [EPara 2, EFigure 3, ENeedLines, EFigure 1, EPara 1]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1, SLine 2]), (2, 0, [SFigure 1000, SFigure 1001])]
+      unmets ps @?= []
+      brokenIn [P1, P2] input @?= [],
+    testCase "P6: a break before the controls places the figures sent on first; the figure after them does not wait and has its blank line" $ do
+      let input = Input 5 1 [EPara 3, EFigure 3, EBreak, EBlank 1, EFigure 1, EPara 1]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1, SLine 2]), (2, 0, [SFigure 1000, SFigure 1001]), (3, 0, [SLine 3])]
+      gridLines ps @?= [[0, 1, 2], [0, 4], [0]]
+      unmets ps @?= []
+      brokenIn [P3, P4, P5] input @?= [],
+    testCase "P5: blank lines before a figure that waits, the figures placed by a break after it, are recorded once" $ do
+      -- the drawn input of the nightly job: the break places the figures waiting, and nothing follows to go with the blank line
+      let input = Input 5 2 [EFigure 5, EFigure 2, EBlank 1, EFigure 3, EBreak, ESpace]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SFigure 1000]), (2, 0, [SFigure 1001, SFigure 1002])]
+      unmets ps @?= [DroppedBlank (controlSpan 0)]
+      brokenIn [P3, P4, P5] input @?= [],
+    testCase "P1': need-lines before a figure that waits behind a figure sent on by itself after a break is not judged for it" $ do
+      -- the drawn input of the nightly job: the break places the first figure sent on, the third is sent on by itself, and the fourth waits
+      let input = Input 7 1 [EFigure 6, EFigure 6, EBreak, EFigure 6, ENeedLines, EFigure 1]
+      placedIn input @?= [(1, 0, [SFigure 1000]), (2, 0, [SFigure 1001]), (3, 0, [SFigure 1002, SFigure 1003])]
+      brokenIn [P1, P2] input @?= [],
+    testCase "P4': blank lines before a turned figure that waits go with the paragraph after it" $ do
+      -- page 1 has 2 grid lines left: the figure of 3 is sent on, and the turned figure waits;
+      -- the blank line and the paragraph of 2 lines go after the figure on page 2
+      let flows = [FParagraph (lines' 0 4), FFigure 1000 3 [] [], FBlank mk 1, FPageFigure 2000 [] [], FParagraph (lines' 4 2)]
+          ps = paginate 1 6 flows
+      placed ps @?= [(1, 0, map SLine [0 .. 3]), (2, 0, [SFigure 1000, SLine 4, SLine 5]), (3, 0, [SPageFigure 2000])]
+      gridLines ps @?= [[0 .. 3], [0, 4, 5], [0]]
+      unmets ps @?= []
+      brokenOf [P3, P4, P5] flows ps @?= []
   ]
