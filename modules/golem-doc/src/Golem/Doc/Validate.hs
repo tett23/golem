@@ -128,6 +128,7 @@ breakErrors top is =
       Sidenote _ _ xs -> deep xs
       Link _ _ xs -> deep xs
       Lang _ _ xs -> deep xs
+      Resolved _ _ _ xs -> deep xs
       _ -> False
     deep :: [InlineF r] -> Bool
     deep = any (\x -> isBreak x || nested x)
@@ -159,6 +160,8 @@ inlineErrors fileSize allowed i =
     Link _ u xs -> linkOwnErrors u xs <> sub xs
     -- a tag of the form of BCP 47 (docs/adr ADR 0187)
     Lang _ l xs -> langTagErrors (Just l) <> sub xs
+    -- only the assembly resolves a reference, after the plugins (docs/adr/0215, 0229)
+    Resolved {} -> ["解決した参照は文書の組み立てだけが作ります"]
     _ -> []
   where
     sub :: [InlineF q] -> [Text]
@@ -176,6 +179,7 @@ inlineErrors fileSize allowed i =
       CharStyle _ _ xs -> any sends xs
       Link _ _ xs -> any sends xs
       Lang _ _ xs -> any sends xs
+      Resolved _ _ _ xs -> any sends xs
       _ -> False
     negativeAki = \case
       AkiZw r -> r < 0
@@ -201,6 +205,7 @@ linkErrors = concatMap $ \case
   Sidenote _ _ xs -> linkErrors xs
   ChannelItem _ c -> linkErrors (ciBody c)
   Lang _ _ xs -> linkErrors xs
+  Resolved _ _ _ xs -> linkErrors xs
   _ -> []
 
 -- | The message of a language tag not of the form of BCP 47 (G02132, docs/adr ADR 0187).
@@ -227,6 +232,7 @@ langErrors = concatMap $ \case
   Note _ _ xs -> langErrors xs
   Sidenote _ _ xs -> langErrors xs
   ChannelItem _ c -> langErrors (ciBody c)
+  Resolved _ _ _ xs -> langErrors xs
   _ -> []
 
 inlineSpan :: InlineF r -> SrcSpan
@@ -250,3 +256,4 @@ inlineSpan = \case
   ChannelItem s _ -> s
   Link s _ _ -> s
   Lang s _ _ -> s
+  Resolved s _ _ _ -> s

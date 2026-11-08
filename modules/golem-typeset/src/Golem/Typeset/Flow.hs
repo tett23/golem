@@ -983,6 +983,7 @@ sidenoteDiagnostics geom book
       Kenten _ _ xs -> concatMap (inlineSites flow) xs
       Color _ _ xs -> concatMap (inlineSites flow) xs
       CharStyle _ _ xs -> concatMap (inlineSites flow) xs
+      Resolved _ _ _ xs -> concatMap (inlineSites flow) xs
       _ -> []
 
 -- | The block of each label, where G07021 points (golem-driver ADR 0016).

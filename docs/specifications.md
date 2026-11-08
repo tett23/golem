@@ -90,7 +90,7 @@ MCID は、ページごとに 0 から内容のストリームの順に振る。
 | プラグインのチャネルの一覧 | `Div`、項目は `P` |
 | ルビ（読みのある区切り一つ） | `Ruby`、親文字は `RB`、読みは `RT` |
 | 脚注、傍注、章末の注 | 本文の注の印は `Reference`、その直後に `Note`。`Note` は `ID`（`note-1` から文書の順）、注の側の印の `Lbl`、注の本文の `P` を持つ |
-| ページ番号の参照（`[ref-page]`）、引用の印（`[cite]`） | `Reference`。`[ref-number]` と `[ref-title]` は、PDF に届く前に番号と題の文字になるので、親の要素の中身になる |
+| 相互参照（`[ref-number]`、`[ref-title]`、`[ref-page]`）、引用の印（`[cite]`） | `Reference`（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)） |
 | 外部のリンク（`[link]`、[docs/adr/0182](adr/0182-external-links.md)） | `Link`。リンクの文字と、行ごとのリンクの注釈の `OBJR` を持つ |
 | 言語の区間（`[lang]`、[docs/adr/0187](adr/0187-inline-language-switch.md)） | `/Lang` を持つ `Span`。`@lang` を付けたブロックは、その要素が `/Lang` を持つ |
 | 文字スタイル `code`（と、それに行き着く文字スタイル） | `Code` |
@@ -3567,9 +3567,14 @@ body-mark-style = "strong"
 `mark-style` を書かない本では、組み込みの `note-mark` の `size` を `mark-size` の値に替えて組むので、今の本の印の大きさは変わらない。
 `mark-size` の `zw` は 0 より大きく 1 以下とし、絶対の寸法が印の位置の文字の大きさを超える場合はその大きさで組む。
 この検査と規則は `mark-size` に限る。
-`mark-size` と、`size` を持つ（`based-on` の先を含む）文字スタイルを指す `mark-style` を一緒に書くと G03006 とする。
-`mark-style` を書かずに、`[character-styles.note-mark]` に `size` を書いた場合も同じである。
+本文の印の文字スタイルは、`mark-style` を書けばその名前、書かなければ `note-mark` である。
+`mark-size` と、`size` を書いた定義に `based-on` で行き着く本文の印の文字スタイルを一緒に書くと G03006 とする（[ADR 0214](adr/0214-mark-size-conflict-names-the-style-that-writes-the-size.md)）。
+`mark-style` を書かずに、`[character-styles.note-mark]`（とその `based-on` の先）に `size` を書いた場合も、これに当たる。
+組み込みの `note-mark` の `size` は、`mark-size` がその代わりなので数えない。
 大きさを決める値が二つあると、どちらかを黙って捨てることになるためである。
+メッセージは、`based-on` の鎖を本文の印の文字スタイルからたどって最初に `size` を書いた定義の名前を示し、`mark-size` を消すよう求める。
+`mark-style` を書いたときは `[notes] の mark-size と、mark-style <名前> の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`、書かないときは `[notes] の mark-size と、注の印の文字スタイル note-mark の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します` である。
+位置は `mark-size` の値である。
 
 印の中の字は、ふつうの文字と同じく、文字スタイルのカーニング、トラッキング、プロポーショナルメトリクスで送る。
 印の最後の字の後のトラッキングは足さない。
@@ -4278,6 +4283,12 @@ NaN と、正と負の無限大は有理数を持たないので、G06100 のエ
 
 ブロックは `[span, label, lang, body]` であり、`lang` はブロックの言語（`@lang`）のタグか null である（[docs/adr/0187](adr/0187-inline-language-switch.md)）。
 言語の区間は `[21, span, lang, inlines]` である。
+文書の組み立てが番号と題に置き換えた `[ref-number]` と `[ref-title]` は、`[22, span, ref-kind, label, inlines]`（Haskell では `Resolved !SrcSpan !RefKind !Text [InlineF r]`）であり、中のインラインは置き換えた番号と題の文字である（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)）。
+これを作るのは組み立てだけで、評価（S0）の IR には現れないので、プラグインと `golem inspect` と Emet の関数に渡る IR は変わらない。
+プラグインの出力にあれば、不変条件の違反（`解決した参照は文書の組み立てだけが作ります`、G06009）とする。
+プラグインの SDK は、受け取ることも作ることもないので、この要素を持たない。
+PDF は中のインラインを今までと同じく組み、構造の木では `Reference` の子にする。
+HTML、EPUB、プレーンテキストは、中のインラインを今までと同じく書く。
 プラグインの SDK の `Block` の `lang` と `Inline::Lang { span, lang, body }` も、同じバイト列を読み書きする。
 
 コードの行は `[text, number, diff-mark, highlight, callouts, span]` であり、`span` は行の本文の原稿の範囲か null である（[docs/adr/0218](adr/0218-page-starts-inside-code-blocks.md)）。
@@ -4988,6 +4999,8 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 
 - **`[ref-number]` の図番号とリスト番号が、`[figures]` と `[code]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックを `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **段落の終わりの語間の空白の前の行末禁則**：段落の最後に書いた語間の空白は、後に箱がなくても分割の候補のままである。始め括弧類の後の空白で段落が終わると、そこで分けて空の最後の行を作り、前の行が始め括弧類で終わる（[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の L3）。[golem-layout ADR 0028](golem-layout/adr/0028-kinsoku-across-spaces-and-explicit-hyphens.md) は、空白の前と後の二つの箱の組で禁則を判定すると決め、後に箱がない空白を決めていない。最も小さい例は、2 字の行に `あ「「 ` を組むもので、1 行めが `あ「「` で終わり、2 行めは空になる。除いた入力は、部品 3 個までで 576 である。
+- **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
+- **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合

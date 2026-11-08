@@ -168,6 +168,7 @@ inlineT rt = \case
   Link s u xs -> tagged 20 [spanT s, text u, sub xs]
   -- a language span (docs/adr ADR 0187)
   Lang s l xs -> tagged 21 [spanT s, text l, sub xs]
+  Resolved s k l xs -> tagged 22 [spanT s, int (fromEnum k), text l, sub xs]
   where
     sub = list (inlineT rt)
 
@@ -471,6 +472,8 @@ termInline rd t =
         (20, [u, x]) -> Link s <$> asText u <*> sub x
         -- a language span (docs/adr ADR 0187)
         (21, [l, x]) -> Lang s <$> asText l <*> sub x
+        -- a reference that the assembly resolved (docs/adr/0215)
+        (22, [k, l, x]) -> Resolved s <$> asEnum k <*> asText l <*> sub x
         -- 1, 2 and 3 (strong, bold, italic) are retired: they are character styles (docs/adr ADR 0005)
         _ -> bad "インラインの種類"
     _ -> bad "インライン"

@@ -58,10 +58,31 @@ tests =
             (book, ds) = assemble cfg noEval docs
         ds @?= []
         case bookDocs book of
-          [_, Document _ [Block _ _ _ (Paragraph Nothing is)]] -> is @?= [Number (sp 2 0) 1 Nothing, Text (sp 2 1) "はじめに", Ref (sp 2 2) RefPage "intro"]
+          [_, Document _ [Block _ _ _ (Paragraph Nothing is)]] -> is @?= [Resolved (sp 2 0) RefNumber "intro" [Number (sp 2 0) 1 Nothing], Resolved (sp 2 1) RefTitle "intro" [Text (sp 2 1) "はじめに"], Ref (sp 2 2) RefPage "intro"]
           other -> assertFailure (show other)
         codes (snd (assemble cfg noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs (Just "a") "x", heading 1 5 1 noHeadingAttrs (Just "a") "y"]])) @?= ["G04001"]
         codes (snd (assemble cfg noEval [Document (FileId 1) [para 1 0 [Ref (sp 1 0) RefTitle "nope"]]])) @?= ["G04003"],
+      testCase "R1 R2: [ref-number] and [ref-title] become Resolved around the text they resolve to, in any place (docs/adr/0215)" $ do
+        let title = [Text (sp 1 1) "組版の", Ruby (sp 1 2) () [RubySegment [Text (sp 1 2) "設計"] (Just "せっけい")]]
+            h = Block (sp 1 1) (Just "h") Nothing (Heading 1 noHeadingAttrs title)
+            fig = Block (sp 1 3) (Just "f") Nothing (FigureBlock (Figure "a.png" Nothing "代替" Nothing Nothing [para 1 3 [Text (sp 1 3) "図の題"]] Nothing False False))
+            refs n = [Ref (sp 1 n) RefNumber "h", Ref (sp 1 (n + 1)) RefTitle "h", Ref (sp 1 (n + 2)) RefNumber "f"]
+            cell = Block (sp 1 10) Nothing Nothing (Table [AlignDefault] [[Text (sp 1 10) "見出し"]] [[refs 11]])
+            noted = para 1 20 [Note (sp 1 20) 1 (refs 21)]
+            docs = [Document (FileId 1) [h, fig, para 1 4 (refs 5), cell, noted]]
+            (book, ds) = assemble cfg noEval docs
+            resolved n =
+              [ Resolved (sp 1 n) RefNumber "h" [Number (sp 1 n) 1 Nothing],
+                Resolved (sp 1 (n + 1)) RefTitle "h" [Text (sp 1 (n + 1)) "組版の", Ruby (sp 1 2) () [RubySegment [Text (sp 1 2) "設計"] (Just "せっけい")]],
+                Resolved (sp 1 (n + 2)) RefNumber "f" [Text (sp 1 (n + 2)) "1-1"]
+              ]
+        ds @?= []
+        case bookDocs book of
+          [Document _ [_, _, Block _ _ _ (Paragraph _ a), Block _ _ _ (Table _ _ [[b]]), Block _ _ _ (Paragraph _ [Note _ _ c])]] -> do
+            a @?= resolved 5
+            b @?= resolved 11
+            c @?= resolved 21
+          other -> assertFailure (show other),
       testCase "deferred expressions see the chapter count" $ do
         let docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "a", heading 1 5 1 noHeadingAttrs Nothing "b", para 1 9 [Deferred (sp 1 9) (DeferredExpr undefined)]]]
         case bookDocs (fst (assemble cfg noEval docs)) of
@@ -150,14 +171,14 @@ titleCopyTests =
         case bookDocs book of
           [Document _ [_, Block _ _ _ (Heading _ _ is), Block _ _ _ (Paragraph _ copied)]] -> do
             is @?= title
-            copied @?= [CharStyle (sp 1 2) "strong" [Text (sp 1 2) "と"], Kenten (sp 1 5) Nothing [], Text (sp 1 8) "の章"]
+            copied @?= [Resolved (sp 1 8) RefTitle "h" [CharStyle (sp 1 2) "strong" [Text (sp 1 2) "と"], Kenten (sp 1 5) Nothing [], Text (sp 1 8) "の章"]]
           other -> assertFailure (show other),
       testCase "the label's title of a captioned code block has no marks" $ do
         let mark = IndexMark (sp 1 3) (IndexEntry ["組"] ["くみ"])
             code = Block (sp 1 1) (Just "c") Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 2) "例", mark]) False [] False))
             docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", code, para 1 7 [Ref (sp 1 8) RefTitle "c"]]]
         case bookDocs (fst (assemble cfg noEval docs)) of
-          [Document _ [_, _, Block _ _ _ (Paragraph _ copied)]] -> copied @?= [Text (sp 1 8) "例"]
+          [Document _ [_, _, Block _ _ _ (Paragraph _ copied)]] -> copied @?= [Resolved (sp 1 8) RefTitle "c" [Text (sp 1 8) "例"]]
           other -> assertFailure (show other),
       -- docs/adr ADR 0187
       testCase "a language span in a title stays in the toc entry and the copy of [ref-title]" $ do
@@ -167,7 +188,7 @@ titleCopyTests =
             book = fst (assemble cfg noEval docs)
         map teTitle (bookToc book) @?= [title]
         case bookDocs book of
-          [Document _ [_, _, Block _ _ _ (Paragraph _ copied)]] -> copied @?= [Lang (sp 1 2) "en" [Text (sp 1 2) "Tokyo"], Text (sp 1 8) "の話"]
+          [Document _ [_, _, Block _ _ _ (Paragraph _ copied)]] -> copied @?= [Resolved (sp 1 8) RefTitle "h" [Lang (sp 1 2) "en" [Text (sp 1 2) "Tokyo"], Text (sp 1 8) "の話"]]
           other -> assertFailure (show other),
       testCase "the language of a heading wraps the whole title of the toc entry and of the copy of [ref-title]" $ do
         let h = Block (sp 1 1) (Just "h") (Just "en") (Heading 1 noHeadingAttrs [Text (sp 1 2) "Tokyo"])
@@ -175,7 +196,7 @@ titleCopyTests =
             book = fst (assemble cfg noEval docs)
         map teTitle (bookToc book) @?= [[Lang (sp 1 1) "en" [Text (sp 1 2) "Tokyo"]]]
         case bookDocs book of
-          [Document _ [_, _, Block _ _ _ (Paragraph _ copied)]] -> copied @?= [Lang (sp 1 1) "en" [Text (sp 1 2) "Tokyo"]]
+          [Document _ [_, _, Block _ _ _ (Paragraph _ copied)]] -> copied @?= [Resolved (sp 1 8) RefTitle "h" [Lang (sp 1 1) "en" [Text (sp 1 2) "Tokyo"]]]
           other -> assertFailure (show other),
       testCase "the body of a note is in the language of the place of its mark" $ do
         let note n = Note (sp 1 n) n [Text (sp 1 n) "注"]
@@ -359,7 +380,7 @@ diagnosticCodes =
         let (book, ds) = assemble cfg noEval (docs [Ref (sp 1 4) RefTitle "f", Ref (sp 1 5) RefTitle "c"])
         ds @?= []
         case bookDocs book of
-          [Document _ [_, _, _, Block _ _ _ (Paragraph Nothing is)]] -> is @?= [Text (sp 1 4) "代替", Text (sp 1 5) "設定"]
+          [Document _ [_, _, _, Block _ _ _ (Paragraph Nothing is)]] -> is @?= [Resolved (sp 1 4) RefTitle "f" [Text (sp 1 4) "代替"], Resolved (sp 1 5) RefTitle "c" [Text (sp 1 5) "設定"]]
           other -> assertFailure (show other),
       testCase "listing numbers: per chapter, apart from figures, only with a caption (golem-driver ADR 0023)" $ do
         let fig s = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
@@ -395,7 +416,7 @@ diagnosticCodes =
             (book, ds) = assemble cfg noEval docs
         ds @?= []
         case bookDocs book of
-          [Document _ [_, _, _, Block _ _ _ (Paragraph Nothing is)]] -> is @?= [Text (sp 1 4) "1-1", Text (sp 1 5) "設定"]
+          [Document _ [_, _, _, Block _ _ _ (Paragraph Nothing is)]] -> is @?= [Resolved (sp 1 4) RefNumber "a" [Text (sp 1 4) "1-1"], Resolved (sp 1 5) RefTitle "a" [Text (sp 1 5) "設定"]]
           other -> assertFailure (show other)
         map summary (snd (assemble cfg noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", code 2 "b" Nothing, para 1 3 [Ref (sp 1 4) RefNumber "b"]]]))
           @?= [("G04005", Error, sp 1 4, "番号を持たない要素への参照です: b", [])],

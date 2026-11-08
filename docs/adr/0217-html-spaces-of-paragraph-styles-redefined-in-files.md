@@ -1,6 +1,6 @@
 # ADR 0217: ファイルの `@style-def` で改めた段落の前後のアキを、HTML と EPUB にも当てる
 
-ステータス: 採択
+ステータス: 採択→golem-driver のテストが golem-html のテストのソースを読むことは [ADR 0229](0229-record-the-procedures-adr-0215-and-0217-departed-from.md)
 
 ## 文脈
 

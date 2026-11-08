@@ -9,7 +9,9 @@
 # Every job must be in the JSON with the result success or skipped (a change
 # of documents only skips the build). A failure, a cancellation or a job
 # missing from the JSON is written to stderr, and the exit code is 1. Add a
-# new job of ci.yml both to the needs of the job ci and to NAMES.
+# new job of ci.yml both to the needs of the job ci and to NAMES; caches,
+# which deletes the stale dist- caches of main, is in neither
+# (docs/adr/0228).
 set -eu
 NAMES="changes scripts-linux build determinism visual release-scripts scripts-macos format plugins editors verapdf wasm"
 if [ "${1-}" = --names ]; then

@@ -58,6 +58,7 @@ data InlineKind
   | KChannelItem
   | KLink
   | KLang
+  | KResolved
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 blockKind :: BlockBody -> BlockKind
@@ -96,6 +97,7 @@ inlineKind = \case
   ChannelItem {} -> KChannelItem
   Link {} -> KLink
   Lang {} -> KLang
+  Resolved {} -> KResolved
 
 -- | The kinds of the blocks and the inlines in a document, at any depth.
 kinds :: Document -> (Set BlockKind, Set InlineKind)
@@ -131,6 +133,7 @@ kinds = foldMap block . docBlocks
       ChannelItem _ c -> inlines (ciBody c)
       Link _ _ is -> inlines is
       Lang _ _ is -> inlines is
+      Resolved _ _ _ is -> inlines is
       Text {} -> mempty
       Tcy {} -> mempty
       Number {} -> mempty
@@ -155,7 +158,8 @@ tests =
       testProperty "the generators make every constructor of the IR" $ withTests 1000 $ property $ do
         (bs, is) <- kinds <$> forAll genDocument
         for_ [minBound .. maxBound] $ \k -> cover 1 (fromString ("block " <> show k)) (k `Set.member` bs)
-        for_ [minBound .. maxBound] $ \k -> cover 1 (fromString ("inline " <> show k)) (k `Set.member` is),
+        -- the generators make the IR of the evaluation (S0), which has no resolved reference (docs/adr/0215)
+        for_ [k | k <- [minBound .. maxBound], k /= KResolved] $ \k -> cover 1 (fromString ("inline " <> show k)) (k `Set.member` is),
       -- the properties of golem-doc that use the generators (docs/adr/0197)
       CborSpec.tests,
       CborExprSpec.tests

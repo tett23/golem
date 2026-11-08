@@ -320,6 +320,7 @@ A release goes as follows ([docs/adr/0004](./docs/adr/0004-binary-distribution-a
 4. Tag the merge commit with `v` followed by the content of `VERSION` (for example `v0.1.0-rc1`) and push the tag. When the tag does not match `VERSION`, or its commit is not on `main`, the `version` job of the workflow fails and no release is made.
 5. `.github/workflows/release.yml` builds and checks the archives and makes a draft release. A pre-release tag makes a draft marked as a pre-release.
 6. Read the draft release notes. Fix by hand what the AI classified or summarized badly. When the AI or the check failed, the notes are the list of changes with a `## Unsorted` section; classify and rewrite them. The summary of the workflow says why it failed.
+   Before v1.0.0, the known issues of the notes say that link annotations in PDF/X-4 output have not been checked against ISO 15930-7 ([docs/adr/0226](./docs/adr/0226-move-the-iso-15930-7-check-to-before-v1.md)).
 7. Publish the draft on the GitHub Releases page. The workflow never publishes.
 
 To try the build and the checks without a release, run `gh workflow run release.yml --ref <branch>`, which starts the workflow through `workflow_dispatch`.

@@ -52,5 +52,21 @@ structureTests =
       testCase "the label inlines are a label element" $ do
         let (items, _, nodes) = composeInlinesTree env {ceLabelInlines = 1} [txt "*1", txt "注"]
         nodes @?= [NodeElem RoleLabel [NodeLeaf 0], NodeLeaf 1]
-        leaves items @?= [("*1", Leaf [7, 0] 0), ("注", Leaf [7, 0] 1)]
+        leaves items @?= [("*1", Leaf [7, 0] 0), ("注", Leaf [7, 0] 1)],
+      testCase "R3: [ref-number] and [ref-title] resolved are a Reference each, with what they hold inside (docs/adr/0215)" $ do
+        let number = IR.Resolved sp IR.RefNumber "design" [txt "2"]
+            title = IR.Resolved sp IR.RefTitle "design" [IR.Ruby sp () [IR.RubySegment [IR.Text sp "設計"] (Just "せっけい")]]
+            (items, _, nodes) = composeInlinesTree env [txt "第", number, txt "章「", title, txt "」"]
+        nodes
+          @?= [ NodeLeaf 0,
+                NodeElem RoleReference [NodeLeaf 1],
+                NodeLeaf 2,
+                NodeElem RoleReference [NodeLeaf 3, NodeElem RoleRuby [NodeElem RoleRubyBase [NodeLeaf 4], NodeElem RoleRubyText [NodeLeaf 5]], NodeLeaf 6],
+                NodeLeaf 7
+              ]
+        leaves items @?= [("第", Leaf [7, 0] 0), ("2", Leaf [7, 0] 1), ("章", Leaf [7, 0] 2), ("「", Leaf [7, 0] 2), ("設計|せっけい", Leaf [7, 0] 4), ("」", Leaf [7, 0] 7)],
+      testCase "R4: a resolved reference sets the same boxes as what it holds (docs/adr/0215)" $ do
+        let held = [txt "2", IR.CharStyle sp "code" [txt "x"]]
+            boxes is = [(bcText c, w) | Box w c <- let (items, _, _) = composeInlinesTree env is in items]
+        boxes [txt "第", IR.Resolved sp IR.RefNumber "a" held, txt "章"] @?= boxes ([txt "第"] <> held <> [txt "章"])
     ]
