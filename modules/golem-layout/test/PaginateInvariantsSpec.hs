@@ -75,15 +75,23 @@ wholeNumber name def =
 
 enumerationTests :: [TestTree]
 enumerationTests =
-  [ testCase "I2: in columns of 3 grid lines there are 19 elements, no figure taller than the column" $ do
+  [ testCase "I2: in columns of 3 grid lines there are 20 elements, no figure taller than the column" $ do
       -- paragraphs of 1 to 4 lines, with and without a note, a heading
       -- with and without a note, a heading at a recto, figures of 1 to 3
       -- lines, a space and a break (docs/adr/0206), need-lines of 2 and
-      -- blank lines of 1 and 2 lines (golem-layout ADR 0025)
-      length (elementsFor 3) @?= 4 + 4 + 3 + 3 + 2 + 3
+      -- blank lines of 1 and 2 lines (golem-layout ADR 0025), need-lines
+      -- of c − 1 lines (golem-layout ADR 0035)
+      length (elementsFor 3) @?= 4 + 4 + 3 + 3 + 2 + 4
       [n | EFigure n <- elementsFor 3] @?= [1 .. 3],
     testCase "P1, P3: the need-lines is of 2 lines, the blank lines of 1 and 2 (golem-layout ADR 0025)" $
       [e | e <- elementsFor 3, e `elem` [ENeedLines, EBlank 1, EBlank 2]] @?= [ENeedLines, EBlank 1, EBlank 2],
+    testCase "N1: the larger need-lines is of c − 1 lines, and none in columns of 2 grid lines or fewer (golem-layout ADR 0035)" $ do
+      [n | ENeedLinesMore n <- elementsFor 3] @?= [2]
+      [n | ENeedLinesMore n <- elementsFor 5] @?= [4]
+      [n | ENeedLinesMore n <- elementsFor 8] @?= [7]
+      [n | ENeedLinesMore n <- elementsFor 2] @?= []
+      [n | ENeedLinesMore n <- shortElementsFor 5] @?= [4]
+      enumFlows [ENeedLines, ENeedLinesMore 4] @?= [FNeedLines (controlSpan 0) 2, FNeedLines (controlSpan 1) 4],
     testCase "in columns of 3 grid lines, the flows of up to 2 elements are as many as the elements allow" $ do
       let m = length (elementsFor 3)
           made = [i | t <- upTo 2 fullInputs, i <- t, inLines i == 3]
@@ -110,7 +118,7 @@ enumerationTests =
       [n | EFigure n <- shortElementsFor 5] @?= [1, 4, 5]
       [e | e <- shortElementsFor 5, not (isFigure e)] @?= [e | e <- elementsFor 5, not (isFigure e)]
       nub [(inLines i, inColumns i) | i <- concat (upTo 1 inputs)] @?= [(c, k) | c <- [3 .. 5], k <- [1, 2]]
-      map length (upTo 3 inputs) @?= [6, 6 * 19, 6 * 19 ^ (2 :: Int), 6 * 19 ^ (3 :: Int)],
+      map length (upTo 3 inputs) @?= [6, 6 * 20, 6 * 20 ^ (2 :: Int), 6 * 20 ^ (3 :: Int)],
     testCase "E5: each input of the shortened enumeration up to 3 elements is in the same tier of the enumeration of docs/adr/0204" $ do
       -- tier n of the enumeration of docs/adr/0204 holds the flows of n of
       -- the elements of their column, in columns of 3 to 8 lines, of one or

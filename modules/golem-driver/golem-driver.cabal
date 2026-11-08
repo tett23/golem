@@ -114,6 +114,7 @@ test-suite golem-driver-test
     PlatesSpec
     ReferencesSpec
     SecuritySpec
+    SpecimenGeometrySpec
     StylesSpec
     TableFilesSpec
     TaggedPdfSpec

@@ -1,0 +1,17 @@
+# 圏点の十の形
+
+@style adr
+golem-driver ADR 0019
+
+- [kenten shape=sesame: 圏点の形]（sesame）
+- [kenten shape=open-sesame: 圏点の形]（open-sesame）
+- [kenten shape=dot: 圏点の形]（dot）
+- [kenten shape=open-dot: 圏点の形]（open-dot）
+- [kenten shape=circle: 圏点の形]（circle）
+- [kenten shape=open-circle: 圏点の形]（open-circle）
+- [kenten shape=double-circle: 圏点の形]（double-circle）
+- [kenten shape=open-double-circle: 圏点の形]（open-double-circle）
+- [kenten shape=triangle: 圏点の形]（triangle）
+- [kenten shape=open-triangle: 圏点の形]（open-triangle）
+
+形を省いた圏点は、style.toml の kenten に従う：[kenten: 既定の形]。

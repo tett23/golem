@@ -3,15 +3,15 @@
 `pagination.als` は、改ページの規則を Alloy の述語として書いたモデルである（[docs/adr/0204](../../adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の 5）。
 規則どうしが両立しない入力を探すための道具であり、Golem の実装を確かめるものではない。
 実装は golem-layout のテスト（`modules/golem-layout/test/PaginateInvariantsSpec.hs`）が確かめる。
-CI では走らせない。
-改ページの規則を変える ADR では、モデルを直して走らせ直し、この文書の結果を書き直す（[docs/roadmap.md](../../roadmap.md) の「手で確かめる項目」）。
+CI の `.github/workflows/models.yml` が、モデルを変えたプルリクエストと `main` への push と週に一度、`scripts/models/check.sh` で `expected.txt` に挙げたコマンドを走らせ、解の有無を `expected.txt` と比べる（[docs/adr/0235](../../adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)）。
+改ページの規則を変える ADR では、モデルを直して走らせ直し、この文書の結果と `expected.txt` を書き直す（[CONTRIBUTING.md](../../../CONTRIBUTING.md) の「規則の Alloy のモデル」）。
 
 ## モデル
 
 一つの段と次の段の境目だけを扱う。
 
 - 入力は、格子の行の数 `cap`（3 から 6）の段と、その段で既に使った行の数 `used`（0 なら空の段）と、流れの順に並んだ要素である。
-- 要素は、段落の行（`Line`。同じ段落の行は続けて並ぶ）、一行の見出し（`Heading`）、高々二つの図版（`Figure`、1 行から `cap + 1` 行）、高々一つの一行の行アキ（`Blank`）、高々一つの一行の空き（`Space`）、高々一つの `@need-lines 2`（`Need`）である。図版を二つと行アキは [golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) で、空きと `@need-lines` は [golem-layout ADR 0027](../adr/0027-need-lines-judged-again-after-spaces.md) で足した。
+- 要素は、段落の行（`Line`。同じ段落の行は続けて並ぶ）、一行の見出し（`Heading`）、高々二つの図版（`Figure`、1 行から `cap + 1` 行）、高々一つの一行の行アキ（`Blank`）、高々一つの一行の空き（`Space`）、高々二つの `@need-lines`（`Need`、1 行から `cap + 1` 行）である。図版を二つと行アキは [golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) で、空きと `@need-lines` は [golem-layout ADR 0027](../adr/0027-need-lines-judged-again-after-spaces.md) で、二つめの `@need-lines` と行の数は [golem-layout ADR 0035](../adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md) で足した。[golem-layout ADR 0027](../adr/0027-need-lines-judged-again-after-spaces.md) のコマンドは、`@need-lines` が高々一つで 2 行の入力（述語 `inDomain27`）だけを調べる。
 - 空きは本文の一種として置き、`brk` の前ならこの段の一行を取る。
 - 改丁の見出し（`Recto`）は、見出しの一種である。[docs/adr/0206](../../adr/0206-pagination-points-the-invariants-did-not-decide.md) の決めたことを調べる述語だけが、ほかの見出しと区別する。
 - 配置（`Placement`）は、本文の要素を `brk` の前までこの段に、残りを次の段に置き、それぞれの図版をこの段に置く（`kept`）か次の段に送り、行アキをこの段に置く（`placed`）か置かない。
@@ -71,6 +71,14 @@ CI では走らせない。
 | `figures27` | `figures` に、`@need-lines` の次のブロックである図版は、`@need-lines` が守られなければ次の段に送ることを足したもの |
 | `base27` | `fits`、`order`、`figures27`、`figureOrder`、`noSendFromEmpty`、`blankWithNext` を合わせたもの |
 
+[golem-layout ADR 0035](../adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md) の規則を調べるために、次の述語を足した。
+`needMet`、`spaceKeeps`、`figures27` の 2 行は、`@need-lines` の行の数（`lines`）にした。
+
+| 述語 | 規則 |
+| --- | --- |
+| `spaceKeepsFirst` | `spaceKeeps` を、ブロックの最初の `@need-lines` だけに当てたもの（この ADR の前の改ページ） |
+| `spaceKeeps35` | ブロックの最初の `@need-lines` は書いた位置で判定し、後の `@need-lines` のうち前のどれよりも大きいものは、書いた位置で、前に置いた空きを数えて判定し直す。判定したものがすべて守られ、次のブロックの最初の部分が空きと行アキの後に入れば、ブロックをこの段に置く（P7 を合わせた値で言い直したもの） |
+
 ## 走らせ方
 
 Alloy 6.2.0 の CLI（`alloy6`）と OpenJDK 27.0.1 で走らせた（2026-11-08）。
@@ -100,6 +108,23 @@ for c in $(grep -E '^run [A-Za-z0-9]+' pagination.als | awk '{print $2}'); do
   echo "$c $found"
 done
 ```
+
+## CI の検査と expected.txt
+
+`expected.txt` は、一行に一つのコマンドの名前と、解の有無（`found` か `none`）を書く。
+`#` で始まる行は注である。
+値は、下の「結果」の表の、スコープ 5（モデルに書いたスコープ）での解の有無から作る。
+表の最も小さい例のスコープが数のコマンドは `found`、「なし」のコマンドは `none` である。
+最も小さい例を探し直すこと（スコープを 2 から上げること）は、検査の範囲に入れない。
+
+`scripts/models/check.sh` は、コマンドごとに Alloy を一つのプロセスで走らせ、ランナーのコアの数まで並べる。
+Alloy は、GitHub の AlloyTools/org.alloytools.alloy の 6.2.0 のリリースの `org.alloytools.alloy.dist.jar` を、スクリプトに書いた SHA-256 で検査してから使う。
+`expected.txt` にないコマンドは走らせず、その名前を標準出力に書く。
+
+[golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) と [golem-layout ADR 0027](../adr/0027-need-lines-judged-again-after-spaces.md) で足した 11 のコマンドは、`expected.txt` に入れていない。
+結果はスコープ 4 か 3 までしかなく、スコープ 5 での解の有無がわからないからである。
+解のないコマンドはスコープ 4 で 2 分から 20 分、`needSpaceNone` はスコープ 3 で 33 分かかったので、スコープ 5 では検査の上限の 30 分に収まらない見込みが高い。
+2026-11-08 に、手元の macOS（Apple Silicon）で、`expected.txt` の 23 のコマンドを並べて走らせると、139 秒で終わり、すべて `expected.txt` のとおりだった。
 
 ## 結果
 
@@ -230,3 +255,31 @@ docs/roadmap.md の「未決事項」に足す組はない。
 もう一つは、段の行の数が 5 で 1 行を使った段に、`@need-lines 2`、行アキ、4 行の図版が来る入力で、`spaceKeeps` が、次のブロックとともに量る行アキを数えていなかったためである。
 どちらもモデルの誤りとして直した。
 
+
+### [golem-layout ADR 0035](../adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md) のコマンド
+
+2026-11-08 に、スコープ 2 から 4 まで（要素は 4 個まで、整数は 5 ビット）で走らせた結果である。
+この ADR の形は、`@need-lines`、空き、より大きい `@need-lines`、次のブロックの 4 個で作れるので、ADR のテスト設計のスコープ 3 には現れない。
+そのためスコープ 4 まで走らせた。
+`needMoreNone` のスコープ 3 は約 2 分、スコープ 4 は約 14 分かかった。
+「なし」は、スコープ 4 までに解がなかったことを示す。
+
+| コマンド | 調べること | 最も小さい例のスコープ |
+| --- | --- | --- |
+| `needMoreSome` | `@need-lines`、空き、段に収まるより大きい `@need-lines`、次のブロックがあり、`base27`、`needMet`、`spaceKeeps35` を満たし、空きと次のブロックを段の先頭でない位置に置く配置がある入力があるか | 4 |
+| `needMore27` | 二つの `@need-lines` のあいだに空きがあり、`base27`、`needMet`、`spaceKeepsFirst` を満たす配置がない入力があるか（この ADR の前の改ページ） | 4 |
+| `needMoreNone` | `@need-lines` が二つの入力で、`base27`、`needMet`、`spaceKeeps35` を満たす配置がない入力があるか | なし |
+
+`needMoreSome` の最も小さい例は、段の行の数が 6 で 2 行を使った段に、`@need-lines 2`、空き、`@need-lines 4`、1 行の段落が来るものである。
+モデルは空ではなく、この ADR の形を入力に持つ。
+
+`needMore27` の最も小さい例は、段の行の数が 4 で 2 行を使った段に、`@need-lines 1`、空き、`@need-lines 4`、改丁の見出しが来るものである。
+一つめの `@need-lines` は空きの前で守られ、見出しは空きの後に入るので、この ADR の前の P7 は見出しをこの段に置くことを求める。
+P1 は、合わせた 4 行が残りの 2 行にないので、見出しを次の段に送ることを求める。
+この ADR の直した不具合が、規則の組として現れたものである。
+`spaceKeeps35` に替えると、規則を満たす配置のない入力はない（`needMoreNone`）。
+[docs/roadmap.md](../../roadmap.md) の「未決事項」に足す組はない。
+
+最初に走らせたとき、`needMoreNone` は、段の行の数が 4 で 2 行を使った段に、`@need-lines 3`、`@need-lines 1`、1 行の図版が来る入力を返した。
+`spaceKeeps35` が、一つめの小さい `@need-lines` の判定だけを見て、後に続く大きい `@need-lines` を見ていなかったためである。
+ブロックの前のすべての `@need-lines` のうち、前のどれよりも大きいものを判定するように、モデルの誤りとして直した。

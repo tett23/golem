@@ -861,8 +861,11 @@ EPUB はパッケージである zip の中に時刻や並び順の揺れを含�
 一覧はハッシュなので、出力が変わったことは分かるが、どう変わったかは分からない。
 コミットをまたいで PDF の見た目が変わったことは、見た目の回帰テストが見つける（[ADR 0094](adr/0094-visual-regression-page-hashes-at-72-dpi.md)）。
 このテストは Golem 自身の開発のためのもので、利用者のためのページ画像の差分（「Golem が強いるワークフロー」の節）とは別である。
-入力は 20 の PDF である。
-`sample`（`scripts/determinism.sh` と同じ B6 の縦組み）、`figures`、機能を組み合わせた二冊の `complex-vertical` と `complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）、『蟹工船』、`[page]` に `bleed = "3mm"` を足して `--marks japanese` で組んだ『蟹工船』、『テンペスト』、和文と欧文の両方で使う引用符やダッシュを言語を切り替える範囲の内と外に置いた `languages`（[ADR 0187](adr/0187-inline-language-switch.md)）、パブリックドメインの十冊、二つのマニュアルからなる。
+入力は 23 の PDF である。
+`sample`（`scripts/determinism.sh` と同じ B6 の縦組み）、`figures`、機能を組み合わせた二冊の `complex-vertical` と `complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）、『蟹工船』、`[page]` に `bleed = "3mm"` を足して `--marks japanese` で組んだ『蟹工船』、『テンペスト』、和文と欧文の両方で使う引用符やダッシュを言語を切り替える範囲の内と外に置いた `languages`（[ADR 0187](adr/0187-inline-language-switch.md)）、目で見て確かめる見た目の見本の二冊 `specimens-horizontal` と `specimens-vertical`、`specimens-vertical` の `[page]` に `bleed = "3mm"` を足して `--marks japanese` で組み、すべてのページに隠しノンブルを入れたもの（[ADR 0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）、パブリックドメインの十冊、二つのマニュアルからなる。
+見本の二冊は、ADR ごとに見出しを立て、見出しの下にその ADR の番号を書く。
+見本の見た目のうち、人の判断を要るもの（二倍ダッシュが一本の線に見えるか、点の丸さ、波線のつながりなど）は、参照を受け入れるときに一度だけ人が見て、その後はこのテストが変わらないことを守る。
+罫が字面に接しないこと、表の前後の空き、段落の罫線の位置、段組みの脚注の位置、縮めた図版と回した図版、番号付きリストの本文の行頭のような幾何の性質は、golem-driver のテストが組んだ結果の矩形で確かめる。
 マニュアルは、奥付がコミットごとに変わらないように、`GOLEM_MANUAL_COMMIT` を 0 が 40 個の文字列に、`GOLEM_MANUAL_TAG` を `v0.0.0-visual` にして組む。
 `scripts/visual/build.sh` が、各プロジェクトを一時的なディレクトリに写して組み、リポジトリの `build/` には書かない。
 入力の一覧は `build.sh --list` が出す。
@@ -2853,7 +2856,7 @@ P1、P3、P4 の「次のブロック」は、[golem-layout ADR 0026](golem-layo
 述語は、改ページが待たせる図版を、入力の流れと出力だけから読む（[golem-layout ADR 0033](golem-layout/adr/0033-read-waiting-figures-from-the-placement.md)）。
 I2、I4、I5、I6、I8 は、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md) の「実装すること」の 6 の表のとおりに読む。
 述語は `modules/golem-layout/test/PaginateInvariants.hs` にあり、改ページの入力と出力だけを読む。
-`modules/golem-layout/test/PaginateInvariantsSpec.hs` は、段の行の数が 3 から 5、段の数が 1 と 2 の版面に、段落、注を持つ段落、見出し、注を持つ見出し、改丁の見出し、1 行と C − 1 行と C 行（C は段の行の数）の図版、一行の空き、改ページ、`@need-lines 2`、1 行と 2 行の行アキを並べた流れを、要素の少ない順にすべて組み、どの述語も違反を返さないことを確かめる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 3）。
+`modules/golem-layout/test/PaginateInvariantsSpec.hs` は、段の行の数が 3 から 5、段の数が 1 と 2 の版面に、段落、注を持つ段落、見出し、注を持つ見出し、改丁の見出し、1 行と C − 1 行と C 行（C は段の行の数）の図版、一行の空き、改ページ、`@need-lines 2` と `@need-lines C − 1`（[golem-layout ADR 0035](golem-layout/adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md)）、1 行と 2 行の行アキを並べた流れを、要素の少ない順にすべて組み、どの述語も違反を返さないことを確かめる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 3）。
 プルリクエストの CI は要素 3 個まで、毎晩の `enum.yml` は要素 5 個まで調べる。
 毎晩の `enum.yml` は、段の行の数が 3 から 8 で、段の行の数以下のすべての図版を含む流れから、要素 6 個の流れを 500 万、種を固定した擬似乱数で抜き取って調べる。
 すべての入力を調べるテストと抜き取りのテストは、入力をプロセッサの数に分けて調べる。
@@ -2906,7 +2909,7 @@ EPUB の読書環境は文書の境界で改ページし、見開きの左右も
 行数は版面の格子の行数という抽象的な数であり、ページの大きさや位置ではない。
 
 - `@no-page-break` の前が段落か定義リストの用語なら、改ページは、前の最後の 2 行（3 行以下の段落では全体。[docs/adr/0055](adr/0055-no-page-break-moves-short-paragraphs-whole.md)）を次の段に送り、後の最初の部分（`nextNeed` と同じ量。3 行の段落では全体とする。その部分の行の注の本文と、その段で最初の注なら区切りの領域を含む。[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）と同じ段に置く。`@no-page-break` の前と後にある空き（`space-between`、`space-before`、`space-after`）の行も、後の最初の部分の量に足す。足した量は段の行の格子の数を上限とする（[golem-layout ADR 0022](golem-layout/adr/0022-no-page-break-counts-spaces.md)）。空の段からは送らない。前が見出しなら今の規則のとおりで、そのほかのブロックなら置き方を変えない。
-- `@need-lines` は、改ページの印と同じくためておき、次のブロックを置く直前に、改ページの印の後で判定する。次の段へ進んだら、送った図版と続きの脚注をその段に置いた後の残りで数え直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。待つ図版（「図版」の節）は次のブロックに数えず、その後の、待つ図版でないブロックの直前で判定する（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。空き（改ページに渡す一行の空き。表とコードブロックの後や、`space-before` を持つ段落の前に入る）も、行アキと同じく次のブロックに数えず、判定の残りに数えない。`@need-lines` の後に空きがあれば、空きの前の位置で判定する。判定した段で、空きを置いた後の残りに次のブロックの最初の部分が入れば、ブロックはその段に置く。入らずにブロックが後の段に移れば、移った段で送った図版と続きの脚注を置いた後の残りで N 行を判定し直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0027](golem-layout/adr/0027-need-lines-judged-again-after-spaces.md)）。
+- `@need-lines` は、改ページの印と同じくためておき、次のブロックを置く直前に、改ページの印の後で判定する。次の段へ進んだら、送った図版と続きの脚注をその段に置いた後の残りで数え直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。待つ図版（「図版」の節）は次のブロックに数えず、その後の、待つ図版でないブロックの直前で判定する（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。空き（改ページに渡す一行の空き。表とコードブロックの後や、`space-before` を持つ段落の前に入る）も、行アキと同じく次のブロックに数えず、判定の残りに数えない。`@need-lines` の後に空きがあれば、空きの前の位置で判定する。判定した段で、空きを置いた後の残りに次のブロックの最初の部分が入れば、ブロックはその段に置く。入らずにブロックが後の段に移れば、移った段で送った図版と続きの脚注を置いた後の残りで N 行を判定し直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0027](golem-layout/adr/0027-need-lines-judged-again-after-spaces.md)）。ブロックを挟まずに続く `@need-lines` は、大きいほうの行の数を取る。空きの前で判定した後に、より大きい `@need-lines` が続けば、合わせて増えた値を、次の空きの前か、ブロックの前で判定し直す。同じか小さい値なら、判定し直さない（[golem-layout ADR 0035](golem-layout/adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md)）。
 - `@page-lines` は、ためた改ページの印を先に適用してから、今の段の行数に足す。段を進めると増減は 0 に戻る。増やした行は、版面の行の格子を行の進む方向に延ばした位置に置く。行数の上限は、行の字面が裁ち落としを除いたページの内側に収まる行の数である。増やした行と、ノンブル、柱、傍注の領域との重なりは検査しない。
 - 見出しを後のブロックと離さない規則の先読みは、三つの印を飛ばす。
 - 守れなかった指定は、改ページの繰り返し（S2）の最後の回の結果から、印の位置の警告（G07037）にする。
