@@ -940,11 +940,12 @@ codeItems env lk run padStart padEnd =
     tr = tracking lk
     sameSide a b = isExtending b || (lookClass lk a == Western) == (lookClass lk b == Western)
     slashParts = if lkUrl lk then urlParts else codeParts
-    -- code breaks after each slash (golem-driver ADR 0017)
-    codeParts t = case T.breakOn "/" t of
+    -- code breaks after each slash (golem-driver ADR 0017) and after the runs of low lines of the run but its first and its last (golem-layout ADR 0031)
+    codeParts t = concatMap slashes (splitAtCuts (lowLineCuts t) 0 t)
+    slashes t = case T.breakOn "/" t of
       (a, rest)
         | T.null rest -> [a | not (T.null a)]
-        | otherwise -> (a <> "/") : codeParts (T.drop 1 rest)
+        | otherwise -> (a <> "/") : slashes (T.drop 1 rest)
 
 {- | A URL cut after each character it may break after (golem-layout ADR
 0018): the characters of url.sty's breaks, but not a slash or a colon
@@ -1027,7 +1028,9 @@ its first letter (a character of the general category L) to the first
 character after it that is not a letter; what comes before and after
 them goes back on the first and the last piece. An element with a hyphen
 or dash left in it but its trailing ones, or a word kept whole by
-explicit-hyphen-penalty 10000, gets no pattern hyphens. A word of a link
+explicit-hyphen-penalty 10000, gets no pattern hyphens. A word with a low
+line is cut after its runs of low lines instead, with no hyphen, and gets
+no pattern hyphens (golem-layout ADR 0031). A word of a link
 is one box (docs/adr ADR 0182). A character at an end of a box protrudes
 by its advance in the font of the box (docs/adr/0222).
 -}
@@ -1058,8 +1061,14 @@ wordItems env lk word =
       onFirst f = \case
         x : rest -> f x : rest
         [] -> [f ""]
+      -- a break after a run of low lines: no hyphen (golem-layout ADR 0031)
+      lowLinePen = Penalty 0 100 NoHyphen
+      lowLined = T.any (== '_') word
+      -- the parts of a word with a low line at its written hyphens, each with the index of its first character in the word
+      hyphenParts = if explicitP >= infPenalty || not (T.any isHyphen word) then [word] else explicitParts word
       elements
         | isJust (lkLink lk) = [[word]]
+        | lowLined = [splitAtCuts (lowLineCuts word) o part | (o, part) <- zip (scanl (+) 0 (map T.length hyphenParts)) hyphenParts]
         | T.any isHyphen word = if explicitP >= infPenalty then [[word]] else map pieces (explicitParts word)
         | otherwise = [pieces word]
       rotated = ceVertical env
@@ -1078,7 +1087,28 @@ wordItems env lk word =
       withPens pen = concat . zipWith (\i x -> (if i > (0 :: Int) then pen else []) <> x) [0 ..]
       -- each box with the index of its first character in the word (docs/adr ADR 0195)
       indexed = snd (mapAccumL (mapAccumL (\k t -> (k + T.length t, (k, t)))) 0 elements)
-   in withPens [explicitPen] (map (withPens [patternPen] . map (pure . box)) indexed)
+   in withPens [explicitPen] (map (withPens [if lowLined then lowLinePen else patternPen] . map (pure . box)) indexed)
+
+{- | Where a word is cut after its runs of low lines (golem-layout ADR
+0031): after each run that has a character before it and one after it in
+the word (a_|b, a__|b; not _a, a_ or __init__), as 'explicitParts' cuts
+after hyphens; a combining character after a low line stays with it.
+-}
+lowLineCuts :: Text -> [Int]
+lowLineCuts word = [end | (i, g, end) <- zip3 [0 :: Int ..] groups ends, i > 0, i < lastIx, T.all (== '_') (T.filter (not . isExtending) g)]
+  where
+    groups = map T.concat (groupBy (\a b -> (T.head a == '_') == (T.head b == '_')) (clusters word))
+    ends = drop 1 (scanl (+) 0 (map T.length groups))
+    lastIx = length groups - 1
+
+-- | A part of a word that starts at an index of the word, cut at those of the indices given inside it.
+splitAtCuts :: [Int] -> Int -> Text -> [Text]
+splitAtCuts cuts o part = case [c - o | c <- cuts, c > o, c < o + T.length part] of
+  [] -> [part]
+  inside -> go 0 inside part
+  where
+    go at (c : cs) t = let (a, b) = T.splitAt (c - at) t in a : go c cs b
+    go _ [] t = [t]
 
 {- | A word cut after each run of hyphens and dashes that has a character
 before it and one after it (lime-|tree, a--|b; not -5 or pre-).
@@ -1124,7 +1154,8 @@ data Before
     AfterStartMark
   | -- | the box of an [aki] (docs/adr ADR 0019, golem-layout ADR 0012)
     AfterAki
-  | AfterBox !BoxContent
+  | -- | a box, and whether a box comes right before it
+    AfterBox !BoxContent !Bool
 
 {- | Inserts break opportunities and spacing between neighbouring boxes:
 no break where a prohibition applies (golem-layout ADR 0002), and the
@@ -1154,32 +1185,41 @@ normalize env = go AtStart True
         let spacing = case before of
               -- inside code: a break after a slash, no spacing (golem-driver ADR 0017)
               -- inside a URL: a break after the characters of url.sty's breaks (golem-layout ADR 0018)
-              AfterBox p | lkUrl (bcLook p) && lkUrl (bcLook c) -> [Penalty 0 n NoHyphen | Just n <- [urlBreakAfter (bcText p)]]
-              AfterBox p | breaksAsCode (bcLook p) && breaksAsCode (bcLook c) -> [Penalty 0 0 NoHyphen | "/" `T.isSuffixOf` bcText p]
-              AfterBox p -> between p c
+              AfterBox p _ | lkUrl (bcLook p) && lkUrl (bcLook c) -> [Penalty 0 n NoHyphen | Just n <- [urlBreakAfter (bcText p)]]
+              {- inside code: also a break of 100 after a run of low lines, but
+              the first of the run, a box of low lines alone with no box before
+              it (golem-layout ADR 0031) -}
+              AfterBox p afterBox
+                | breaksAsCode (bcLook p) && breaksAsCode (bcLook c) ->
+                    [Penalty 0 0 NoHyphen | "/" `T.isSuffixOf` bcText p]
+                      <> [Penalty 0 100 NoHyphen | "_" `T.isSuffixOf` baseOf p, afterBox || T.any (/= '_') (baseOf p)]
+              AfterBox p _ -> between p c
               AtStart -> leading c
               -- the space of the paragraph start, after the mark: no break there
               AfterStartMark -> case leading c of
                 [] -> []
                 l -> Penalty 0 infPenalty NoHyphen : l
               AfterAki -> []
-         in spacing <> [Box w (withEdges first c)] <> go (AfterBox c) False rest
+         in spacing <> [Box w (withEdges first c)] <> go (AfterBox c (isBoxBefore before)) False rest
       {- a space between words: no break at it where the character after it
       may not start a line or the one before it may not end one; its width
       and the spacing after it as before (golem-layout ADR 0028) -}
       Glue {}
         | wordSpace x,
-          AfterBox p <- before,
+          AfterBox p _ <- before,
           Just c <- nextBox rest,
           prohibitedAcross False p c ->
             Penalty 0 infPenalty NoHyphen : x : go AtStart first rest
       -- a break after a written hyphen or dash: none where a prohibition applies across it (golem-layout ADR 0028)
       Penalty _ _ ExplicitHyphen
-        | AfterBox p <- before,
+        | AfterBox p _ <- before,
           Box _ c : _ <- rest,
           prohibitedAcross True p c ->
             go AtStart first rest
       _ -> x : go AtStart first rest
+    isBoxBefore = \case
+      AfterBox {} -> True
+      _ -> False
     -- the glue of a space between words: it stretches, but not as the glue that fills the last line; a space of code does not
     wordSpace = \case
       Glue _ y _ -> y > 0 && y < filStretch
