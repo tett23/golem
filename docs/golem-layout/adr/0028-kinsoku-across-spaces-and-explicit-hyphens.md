@@ -1,6 +1,6 @@
 # ADR 0028: 禁則と分離禁止を、語間の空白と明示のハイフンの分割の候補をまたいで当てる
 
-ステータス: 採択
+ステータス: 採択→（語の頭のアポストロフィの行頭禁則）は [ADR 0030](0030-apostrophes-at-word-starts-are-not-closing-brackets.md)
 
 ## 文脈
 
