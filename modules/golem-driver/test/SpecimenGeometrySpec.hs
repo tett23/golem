@@ -443,4 +443,3 @@ assertNone what found = unless (null found) (assertFailure (what <> ": " <> unli
 
 assertSome :: String -> [String] -> Assertion
 assertSome what found = assertBool (what <> ": the property finds nothing") (not (null found))
-
