@@ -31,6 +31,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **可変フォント**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。今は可変フォントを既定のインスタンスとして組むが、サブセットで軸を固定しないので、使わない可変のデータ（fvar、gvar、HVAR、MVAR など）も PDF に埋め込んでいる。glyf の可変フォントで軸を既定の値に固定すると、描画を変えずに PDF が 35K から 8K に縮んだ。CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、それまでは PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、描画を比べる回帰テストで確かめてからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 - **番号と題のあいだの区切りの設定**：見出し、図版、コードブロックのキャプションの番号と題のあいだの区切りを、段落スタイルで決められるようにする。今は本の言語で一つに決まり、コードブロックのリスト番号も同じ規則に従う（草案の ADR で決める）。
 - **廃止予定の書き方をエラーにすること**：1.0.0 には廃止予定の書き方を残さない（[ADR 0174](adr/0174-compatibility-promises-for-1-0.md)）。`@listing` の `src=`（G02065）と、`-` で区切った範囲（G02108）を、それぞれ ADR を作ってエラーにする。[ADR 0184](adr/0184-table-positional-path.md) が廃止予定にした `@table` の `src=`（G02129）も同じである。[ADR 0177](adr/0177-note-mark-style-and-numerals.md) が廃止予定にした、`[lists]` の `numbers` の `{{` と `}}`（G03114）と一字の見本の差し込み（G03115）、柱の書式の `{{` と `}}`（G03116）、`[notes]` の `mark-size`（G03117）も同じである。G02065 は v0.1.0-rc2 と v0.1.0-rc3 で notice を出したので、v0.1.0-rc4 からエラーにしてよい。G02108 と G02129 は v0.1.0-rc4 で初めて notice を出すので、v0.1.0-rc4 の後にエラーにする（未決事項の「`-` で区切った範囲をエラーにするリリース」）。
+- **`@listing` の位置引数のパスと `src=` の両方**：`@listing` に位置引数のパスと `src=` を両方書くと、位置引数のファイルを取り込み、`src=` に G02065 の notice を出し、`src=` のパスは黙って捨てる。`@table` は同じ書き方を G02130 のエラーにする（[ADR 0184](adr/0184-table-positional-path.md)）。`@listing` の振る舞いを変えるので、誤りにするかを ADR で決める。G02065 をエラーにする ADR で一緒に扱ってもよい。
 - **組版の自由の原則に反する箇所**：仕様書の「設計原則」の「組版の自由」に反し、スタイルを当てる手段のない文字を直す（[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「原則に反する今の箇所」）。それぞれ、組むものの範囲と既定の見た目を決め直す必要があるので、別々の ADR で直す。網羅したとは言えず、読んだ範囲で見つけたものである。
   - **リストの印**：印を項目の段落の見た目で組み、`[lists]` に文字スタイルの欄がない。
   - **柱とノンブル**：本文の役割の書体と版面の文字の大きさで描く。
@@ -98,14 +99,17 @@ v1.0.0 の後、v2 より前の minor のバージョンで扱う事項である
 - **より複雑な組版の fixture**：v0.1.0-rc4 で作る二冊の fixture（縦組みの一段の本と、横組みの二段の本）より複雑な組版の例を作り、fixture に入れる。二冊が組み合わせていない機能、たとえば縦組みの本文の段組みや、章ごとの書字方向と段数の切り替えのように後から足す機能を組み合わせ、機能のあいだの相互作用を、出力のゴールデン、決定性の検査、見た目の回帰テストで固定する。どの組み合わせを足すかと、fixture の数と大きさは、着手するときに ADR で決める。
 - **評価と書き出しを分けること**：golem-lsp のライブラリは、golem-driver から評価とその結果の補助と lint だけを使い、PDF の組版を使わない。それでも、評価と書き出しが一つのモジュール `Golem.Driver` にあるので、golem-lsp は golem-driver を通して golem-typeset にも依存する。PDF の組版を golem-typeset に分けたときに、評価の部分が PDF のモジュールを使わないようにしたので、評価を別のパッケージに分けられる。`Evaluated` の型と、評価と書き出しの両方が使う補助（`docStyles`、`localStylesOf`、`runningVars` など）の境目を読み、ADR で決める（[ADR 0192](adr/0192-split-pdf-typesetting-from-golem-driver.md)）。
 
+- **送った図版の後で待つ図版の前の `@need-lines` と行アキ**：仕様書の「既知の不具合」の「送った図版の後で待つ図版の前の `@need-lines` と行アキが、その図版と別の段で扱われる」を直す。待つ図版の前の `@need-lines` と行アキをどの段で扱うかを ADR で決める。[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の P1、P3、P4 は、この形の入力を除いたまま採択した。
 - **不変条件のテストで見つかった改ページの不具合**：仕様書の「既知の不具合」の「`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる」を直す。空きを `@need-lines` の次のブロックに数えるかを ADR で決める（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の抜き取りで見つかった）。
 - **不変条件のテストで見つかった行分割の不具合**：仕様書の「既知の不具合」の「語間の空白の隣の禁則と分離禁止」、「字幅の伸縮の刻みで行長を超える行」、「明示のハイフンの後の分割と両用の字の禁則」を、それぞれ ADR を作って直す（[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の列挙で見つかった）。三つめは、明示のハイフンの後の分割の規則と両用の字の禁則のどちらを優先するかを先に決める。
+- **`manifest.toml` の `language` の形の検査**：`language` が BCP 47 の言語のタグの形であることは、`pdfa` か `pdfua` を書いた本でだけ調べる（G03119、[ADR 0183](adr/0183-tagged-pdf-and-pdf-a.md)）。`[lang]` と `@lang` の言語のタグは形を調べる（G02132）ので、ほかの本の `language` の形も調べるかを ADR で決める。今の本が組めなくなりうるので、[ADR 0187](adr/0187-inline-language-switch.md) は扱わなかった。
+- **`golem check` が G01012 を二度出す件**：[ADR 0188](adr/0188-headings-beyond-level-3.md) の調査で、`golem check` が同じ見出しの G01012 を二度ずつ出し、`golem build --target html` は一度ずつ出した。`golem new` で作ったプロジェクトと、golem-driver の `sample` の fixture の写しに `#######` の行を足しただけでは、どちらのコマンドも一度だけ出す。二度出る条件を調べて直す。
 - **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲の ADR はまだない。上から順に、前の範囲の結果を見て書く。
   - **表の列の幅**：`Golem.Layout.Table` の列の幅（列ごとの最小の幅と自然な幅、使える幅）を整数の小さな組で列挙し、列の幅の和と最小の幅の不変条件で確かめる（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。
   - **パーサーと `golem fmt` の往復**：文法から作る短い原稿を列挙し、`golem fmt` の往復と diagnostics の位置の不変条件で確かめる。peg-hs の文法を読んで原稿を作る部品が先に要る。
   - **位置の変換**：UTF-16 の列、`pages.json`、LSP の位置の変換を、サロゲートペアを含む短い文字列の列挙で確かめる。
   - **長さの換算と丸め**：golem-length と `headingBlock` の丸めを、整数の範囲の列挙で確かめる。SBV を golem-length のテストにだけ入れるかを、この範囲の ADR で決める。
-  - **ページ分割の残りの要素**：罫線、コード、段の切り替え、手での制御を、改ページの列挙の要素に足す。
+  - **ページ分割の残りの要素**：罫線、コード、段の切り替え、手での制御、表、回り込む図版を、改ページの列挙の要素に足す。表と回り込む図版を足すかは、[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) がこの範囲の ADR に委ねた。
 
 ## v2 以降に回した事項
 
@@ -233,7 +237,7 @@ v3 の GUI は、次の原則に従って作る。
 - **PDF のリンクの注釈**：リンクを含む横組みと縦組みの PDF を、Acrobat Reader、macOS のプレビュー、Chrome の PDF ビューアで開き、リンクの矩形をクリックして URL が開くことを確かめていない。ISO 15930-7:2010（PDF/X-4）の本文で、注釈と URI のアクションを禁じる規定がないことも確かめていない。禁じる規定があれば、`[color] intent` のある本にリンクを書く扱いを改める ADR を作る（[docs/adr/0182](adr/0182-external-links.md)）。
 - **規則の Alloy のモデル**：規則を足すか変える ADR のうち、その範囲に Alloy のモデル（`docs/<モジュール>/models/`）があるものは、モデルを直して走らせ直し、両立しない規則の組と最も小さい例をモデルの README と ADR の「テスト設計」に書く。今モデルがあるのは改ページ（`docs/golem-layout/models/pagination.als`、結果は `docs/golem-layout/models/README.md`）だけである。モデルのない範囲では、規則が三つ以上のほかの規則と端で重なる ADR だけが、新しくモデルを書く。モデルは CI で走らせないので、手で確かめる（[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)、[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 5）。
 - **wasm の版のリリース**：`release.yml` のジョブ `wasm` を実際のタグで動かしていない。自動のテスト（`scripts/release/test.sh`）は、`licenses.sh --wasm` と `package-wasm.sh` を偽のコマンドと偽の入力で確かめただけである。`v` のタグの下書きのリリースに `golem-<タグ>-wasm32-wasi.tar.gz` があり、その `THIRD_PARTY_LICENSES/` が [ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md) の 8 の挙げるものを持ち、`SHA256SUMS` と `gh attestation verify` が通ることを確かめる（[docs/adr/0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
-- **wasm の版をブラウザで組むこと**：`browser_wasi_shim` を使い、Safari と Chrome で kanikosen を組み、PDF の SHA-256 がネイティブの `golem build --target pdf` と同じになることを確かめていない。CI は Node の `node:wasi` で確かめるだけである。結果をこの項目に書き、項目を外す（[docs/adr/0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
+- **wasm の版をブラウザで組むこと**：`browser_wasi_shim` を使い、Safari と Chrome で kanikosen を組み、PDF の SHA-256 がネイティブの `golem build --target pdf` と同じになることを確かめていない。CI は Node の `node:wasi` で確かめるだけであり、wasmtime と Deno で動くことも確かめていない（README と `scripts/wasm/README` は、どちらも見込みとして書く）。結果をこの項目に書き、項目を外す（[docs/adr/0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
 - **epubcheck と apt の時間切れ**：epubcheck を配布元の release から取るようにした後の 30 回の `ci.yml` の実行で、apt と epubcheck の時間切れが一度も起きないことを確かめていない。結果は `docs/ci-timings/` に記録する（[docs/adr 0062](adr/0062-epubcheck-from-release-with-cache.md)）。
 
 ## 未決事項
