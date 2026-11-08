@@ -3,8 +3,9 @@ name: Browser
 # The HTML of golem and golem.wasm in browsers and other hosts of WASI
 # (docs/adr/0234): the checks of scripts/browser/ in chrome-headless-shell
 # pinned by version and SHA-256 and in the Safari of the macOS runner, and
-# golem.wasm under Deno and with browser_wasi_shim in both browsers, against
-# the native list of the same commit. Once a day on main, on the days main
+# golem.wasm under Deno, under the C API of wasmtime (docs/adr/0238) and
+# with browser_wasi_shim in both browsers, against the native list of the
+# same commit. Once a day on main, on the days main
 # has changed since the last successful run of this workflow, and whenever
 # it is started by hand; never on pull requests. It builds nothing: the
 # inputs are the artifacts of the last successful ci.yml of main.
@@ -24,7 +25,9 @@ concurrency:
   cancel-in-progress: false
 
 # The times of the jobs are twice those measured in the pull request of the
-# implementation (docs/ci-timings/2026-11-08-browser-workflow.md).
+# implementation (docs/ci-timings/2026-11-08-browser-workflow.md); that of
+# chromium, with wasmtime, in the pull request of docs/adr/0238
+# (docs/ci-timings/2026-11-08-wasmtime-in-browser-workflow.md).
 jobs:
   # the inputs of both browsers: golem.wasm, the native list, the HTML of
   # the manuals and of the fixtures of scripts/browser/fixtures, built with
@@ -96,12 +99,13 @@ jobs:
           path: browser-inputs
 
   # chrome-headless-shell of scripts/browser/fetch-chromium.sh, Deno of
-  # scripts/wasm/fetch-deno.sh; both cached by the hash of their script
+  # scripts/wasm/fetch-deno.sh; both cached by the hash of their script.
+  # The C API of wasmtime of scripts/fetch-wasmtime.sh (docs/adr/0238)
   chromium:
     needs: prepare
     if: needs.prepare.outputs.run == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 11
     steps:
       - uses: actions/checkout@v7
         with:
@@ -131,6 +135,8 @@ jobs:
         run: |
           timeout -k 10 300 sh scripts/browser/fetch-chromium.sh
           timeout -k 10 300 sh scripts/wasm/fetch-deno.sh
+      - name: The C API of wasmtime, pinned by version and SHA-256 (docs/adr/0238)
+        run: timeout -k 10 300 sh scripts/fetch-wasmtime.sh
       - name: Save chrome-headless-shell
         if: steps.chromium-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v6
@@ -157,6 +163,7 @@ jobs:
             echo "| Arguments of the check of the outlined figures (docs/adr/0239) | $(node --input-type=module -e "import { chromiumArgs } from './scripts/browser/browsers.mjs'; console.log(chromiumArgs('svg').join(' '))") |"
             echo "| Deno | $(third_party/deno/deno --version | head -n 1) |"
             echo "| Node | $(node --version) |"
+            echo "| wasmtime C API | $(cat third_party/wasmtime/VERSION) |"
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: The HTML of golem (docs/adr/0234 section 3)
         if: always() && steps.ready.outcome == 'success'
@@ -179,6 +186,30 @@ jobs:
         run: |
           sh scripts/wasm/compare.sh --browser chromium browser-inputs/golem.wasm > chromium-list.txt
           sh scripts/wasm/compare.sh --check browser-inputs/wasm-native-list.txt chromium-list.txt
+      - name: golem.wasm under the C API of wasmtime is the native golem (docs/adr/0238 section 5)
+        if: always() && steps.ready.outcome == 'success'
+        run: |
+          sh scripts/wasm/compare.sh --wasmtime browser-inputs/golem.wasm > wasmtime-list.txt
+          sh scripts/wasm/compare.sh --check browser-inputs/wasm-native-list.txt wasmtime-list.txt
+      # the same input frames give the same result frames under both hosts:
+      # a path that is not normalised (status 1), no file, and kanikosen (I5)
+      - name: The call of run-wasmtime.c is that of run.mjs (docs/adr/0238 I5)
+        if: always() && steps.ready.outcome == 'success'
+        run: |
+          H=$RUNNER_TEMP/wasmtime
+          F=$RUNNER_TEMP/frames
+          sh scripts/wasm/run-wasmtime.sh compile browser-inputs/golem.wasm "$H"
+          mkdir -p "$F"
+          printf '\017\000\000\000./manifest.toml\000\000\000\000' > "$F/not-normalised"
+          : > "$F/empty"
+          node --no-warnings scripts/wasm/run.mjs frame modules/golem-driver/test/fixtures/kanikosen > "$F/kanikosen"
+          for f in not-normalised empty kanikosen; do
+            "$H/run-wasmtime" call "$H/golem.cwasm" < "$F/$f" > "$F/$f.wasmtime"
+            node --no-warnings scripts/wasm/run.mjs call browser-inputs/golem.wasm < "$F/$f" > "$F/$f.node"
+            cmp "$F/$f.wasmtime" "$F/$f.node"
+            echo "$f: the same $(wc -c < "$F/$f.node") bytes"
+          done
+          test "$(od -An -tu1 -N1 "$F/not-normalised.node" | tr -d ' ')" = 1
 
   # the Safari of the image of the runner, not pinned: the versions are
   # written to the summary of the job, whether the checks pass or fail. A

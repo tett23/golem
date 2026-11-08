@@ -69,9 +69,13 @@ library
   -- wasm32-wasi (docs/adr/0199, docs/adr/0202): FreeType reads setjmp.h,
   -- which wasi-sdk takes only with the exception handling of wasm
   -- (-mllvm -wasm-enable-sjlj and the library setjmp); the C++ library of
-  -- wasi-sdk is libc++ with libc++abi. The native builds do not change
+  -- wasi-sdk is libc++ with libc++abi. -mllvm -wasm-use-legacy-eh=false:
+  -- the standard exception handling (try_table, throw_ref), which wasmtime
+  -- and the browsers of today read, not the legacy one (try, catch,
+  -- delegate), the default of LLVM 21 (docs/adr/0238). The native builds
+  -- do not change
   if os(wasi)
-    cc-options:      -mllvm -wasm-enable-sjlj
+    cc-options:      -mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false
   if os(darwin)
     extra-libraries: c++
   elif os(wasi)
@@ -84,7 +88,11 @@ test-suite golem-font-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    ConcurrencySpec
+  other-modules:    CmapSpec ConcurrencySpec
+  -- the number of the charmaps of FreeType, for CmapSpec only: not in the
+  -- library (docs/adr/0238)
+  include-dirs:     cbits/freetype/include
+  c-sources:        test/cbits/golem_test_cmap.c
   -- ConcurrencySpec shapes one font from several capabilities at once;
   -- -N: one capability per processor from the start, so that the count
   -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)
