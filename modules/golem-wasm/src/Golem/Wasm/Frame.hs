@@ -1,5 +1,3 @@
-{-# LANGUAGE MultiWayIf #-}
-
 {- | The frames of bytes of the wasm entry point (docs/adr/0199): the input,
 the files of a project, and the result, the PDF and the diagnostics. Pure;
 built and tested natively too.
@@ -32,7 +30,8 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Builder qualified as B
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (chr)
-import Data.List (intercalate, isInfixOf, isPrefixOf)
+import Data.Function (on)
+import Data.List (groupBy, intercalate, isInfixOf, isPrefixOf, sortOn)
 import Data.Maybe (fromMaybe)
 import Data.Word (Word32, Word8)
 
@@ -48,20 +47,29 @@ data FrameError
     Duplicate !FilePath
   deriving stock (Eq, Show)
 
--- | The files of an input frame, in their order.
+{- | The files of an input frame, in their order. The error is that of the
+first file that cannot be taken: cut short, not UTF-8, not normalised, or
+a path that an earlier file has. The paths are read first and compared
+sorted, so that the check of duplicates takes n log n comparisons, not
+n^2 (the security audit of 2026-11-08, W-01).
+-}
 readFiles :: ByteString -> Either FrameError [(FilePath, ByteString)]
-readFiles = go [] []
+readFiles input = case firstDuplicate (map fst files) of
+  Just path -> Left (Duplicate path)
+  Nothing -> maybe (Right files) Left stop
   where
-    go seen acc bs
-      | BS.null bs = Right (reverse acc)
-      | otherwise = do
-          (rawPath, rest) <- field bs
-          (content, rest') <- field rest
-          path <- maybe (Left (NotUtf8 rawPath)) Right (decodeUtf8 rawPath)
-          if
-            | not (isNormalized path) -> Left (NotNormalized path)
-            | path `elem` seen -> Left (Duplicate path)
-            | otherwise -> go (path : seen) ((path, content) : acc) rest'
+    (files, stop) = go [] input
+    -- the files before the first that cannot be read, and its error
+    go acc bs
+      | BS.null bs = (reverse acc, Nothing)
+      | otherwise = case one bs of
+          Left e -> (reverse acc, Just e)
+          Right (f, rest) -> go (f : acc) rest
+    one bs = do
+      (rawPath, rest) <- field bs
+      (content, rest') <- field rest
+      path <- maybe (Left (NotUtf8 rawPath)) Right (decodeUtf8 rawPath)
+      if isNormalized path then Right ((path, content), rest') else Left (NotNormalized path)
     field bs = do
       (n, rest) <- word32 bs
       if toInteger n > toInteger (BS.length rest)
@@ -73,6 +81,15 @@ readFiles = go [] []
       | otherwise =
           let (h, rest) = BS.splitAt 4 bs
            in Right (foldr (\b n -> n `shiftL` 8 .|. fromIntegral b) 0 (BS.unpack h), rest)
+
+{- | The path of the earliest file whose path an earlier file has. The sort
+is stable, so each group of a path has its places in order, and the
+second is where that path comes again.
+-}
+firstDuplicate :: [FilePath] -> Maybe FilePath
+firstDuplicate paths = case [(i, p) | _ : (p, i) : _ <- groupBy ((==) `on` fst) (sortOn fst (zip paths [0 :: Int ..]))] of
+  [] -> Nothing
+  again -> Just (snd (minimum again))
 
 -- | The input frame of files, for hosts and the tests.
 writeFiles :: [(FilePath, ByteString)] -> ByteString

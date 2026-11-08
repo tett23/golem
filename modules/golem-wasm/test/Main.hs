@@ -1,6 +1,7 @@
 -- | The frames of the wasm entry point (docs/adr/0199).
 module Main (main) where
 
+import Data.Bits (shiftL, (.|.))
 import Data.ByteString qualified as BS
 import Data.List (nub)
 import Data.Word (Word8)
@@ -28,6 +29,54 @@ files :: Gen [(FilePath, BS.ByteString)]
 files = do
   ps <- nub <$> Gen.list (Range.linear 0 10) path
   mapM (\p -> (p,) <$> Gen.bytes (Range.linear 0 200)) ps
+
+{- | The reading of the frames before the security audit of 2026-11-08
+(W-01), whose check of duplicates is quadratic: the reference for the
+errors of 'readFiles', in particular which one comes first.
+-}
+readFilesByList :: BS.ByteString -> Either FrameError [(FilePath, BS.ByteString)]
+readFilesByList = go [] []
+  where
+    go seen acc bs
+      | BS.null bs = Right (reverse acc)
+      | otherwise = do
+          (rawPath, rest) <- field bs
+          (content, rest') <- field rest
+          path <- either (const (Left (NotUtf8 rawPath))) Right (readPath rawPath)
+          if not (isNormalized path)
+            then Left (NotNormalized path)
+            else
+              if path `elem` seen
+                then Left (Duplicate path)
+                else go (path : seen) ((path, content) : acc) rest'
+    field bs
+      | BS.length bs < 4 = Left Truncated
+      | otherwise =
+          let (h, rest) = BS.splitAt 4 bs
+              n = foldr (\b m -> m `shiftL` 8 .|. toInteger b) 0 (BS.unpack h)
+           in if n > toInteger (BS.length rest) then Left Truncated else Right (BS.splitAt (fromInteger n) rest)
+    -- the path of one file alone, through readFiles itself
+    readPath raw = case readFiles (BS.pack (le32 (BS.length raw)) <> raw <> BS.pack (le32 0)) of
+      Right [(p, _)] -> Right p
+      Left (NotNormalized p) -> Right p
+      other -> Left other
+
+{- | A frame that may not be read: files whose paths come from a few, so
+that some come twice, and one of them, perhaps, not normalised, not
+UTF-8, or cut short.
+-}
+anyFrame :: Gen BS.ByteString
+anyFrame = do
+  pool <- Gen.list (Range.linear 1 6) path
+  ps <- Gen.list (Range.linear 0 30) (Gen.element pool)
+  fs <- mapM (\p -> (p,) <$> Gen.bytes (Range.linear 0 4)) ps
+  let whole = writeFiles fs
+  Gen.choice
+    [ pure whole,
+      (\n -> BS.take n whole) <$> Gen.int (Range.linear 0 (BS.length whole)),
+      (\bad -> whole <> writeFiles [(bad, "")]) <$> Gen.element ["./a.gm", "a//b.gm", "/a.gm"],
+      pure (whole <> BS.pack (le32 1 <> [0xFF] <> le32 0) <> writeFiles fs)
+    ]
 
 -- | The bytes of a little-endian uint32.
 le32 :: Int -> [Word8]
@@ -67,6 +116,20 @@ tests =
         mapM_ (\p -> assertBool p (isNormalized p)) ["manifest.toml", "fonts/NotoSerifJP-Regular.otf", "章/一.gm", "a..b/.c"],
       testCase "a path twice is refused" $
         readFiles (writeFiles [("a.gm", "1"), ("b.gm", "2"), ("a.gm", "3")]) @?= Left (Duplicate "a.gm"),
+      testCase "the first path that comes again is the duplicate, and an error before it comes first" $ do
+        readFiles (writeFiles [("b.gm", ""), ("a.gm", ""), ("a.gm", ""), ("b.gm", "")]) @?= Left (Duplicate "a.gm")
+        readFiles (writeFiles [("a.gm", ""), ("./b.gm", ""), ("a.gm", "")]) @?= Left (NotNormalized "./b.gm")
+        readFiles (writeFiles [("a.gm", ""), ("a.gm", ""), ("./b.gm", "")]) @?= Left (Duplicate "a.gm")
+        readFiles (writeFiles [("a.gm", ""), ("a.gm", "")] <> BS.pack [1]) @?= Left (Duplicate "a.gm"),
+      testProperty "every frame is read as the quadratic check of duplicates read it" $ withTests 1000 $ property $ do
+        frame <- forAll anyFrame
+        readFiles frame === readFilesByList frame,
+      -- 200,000 files take minutes with a check of every earlier path (the
+      -- security audit of 2026-11-08, W-01: 40,000 took 16 s natively)
+      localOption (mkTimeout 30000000) $ testCase "a frame of 200,000 files is read in less than half a minute" $ do
+        let many = [(show i <> ".gm", "") | i <- [1 :: Int .. 200000]]
+        fmap length (readFiles (writeFiles many)) @?= Right 200000
+        readFiles (writeFiles (many <> [("1.gm", "")])) @?= Left (Duplicate "1.gm"),
       testCase "every input that cannot be read is the result of status 1, without a build" $
         mapM_
           (\input -> respond noBuild input >>= (@?= unreadable))
