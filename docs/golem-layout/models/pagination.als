@@ -49,8 +49,10 @@ sig Blank extends Item {}
 -- a space of one grid line between blocks, placed as text is (golem-layout ADR 0027)
 sig Space extends Text {}
 
--- @need-lines 2 (docs/adr/0030)
-sig Need extends Item {}
+-- @need-lines of `lines` grid lines (docs/adr/0030); two of them for golem-layout ADR 0035
+sig Need extends Item {
+  lines: one Int
+}
 
 sig Placement {
   brk: one Int,
@@ -66,7 +68,8 @@ fact input {
   #Figure <= 2
   lone Blank
   lone Space
-  lone Need
+  #Need <= 2
+  all n: Need | n.lines >= 1 and n.lines <= plus[Col.cap, 1]
   all f: Figure | f.size >= 1 and f.size <= plus[Col.cap, 1]
   -- the items take the places 0 .. #Item - 1, one each
   all i: Item | i.pos >= 0 and i.pos < #Item
@@ -372,7 +375,7 @@ run blankRules25 { inDomain26 and (no p: Placement | base26[p] and blankWithNext
 -- golem-layout ADR 0027: need-lines and the spaces after it
 
 -- the inputs of the commands of golem-layout ADR 0027: a need-lines, a space, a blank line and two figures may be there
-pred inDomain27 { figuresFit }
+pred inDomain27 { figuresFit and lone Need and (all n: Need | n.lines = 2) }
 
 -- the next block of a need-lines: the first item after it that is not a space, a blank line or a figure that waits
 fun needNext[p: Placement, n: Need]: set Item {
@@ -404,16 +407,16 @@ pred firstInColumn[p: Placement, i: Item] {
   no g: p.kept | g.pos < i.pos
 }
 
--- P1: the next block of a need-lines, placed in this column but not first in it, has 2 grid lines or more before it, the spaces and the blank lines not counted
+-- P1: the next block of a need-lines, placed in this column but not first in it, has its lines or more before it, the spaces and the blank lines not counted
 pred needMet[p: Placement] {
   all n: Need | all b: needNext[p, n] |
-    (inColumn[p, b] and not firstInColumn[p, b]) implies minus[Col.cap, placedBefore[p, b]] >= 2
+    (inColumn[p, b] and not firstInColumn[p, b]) implies minus[Col.cap, placedBefore[p, b]] >= n.lines
 }
 
 -- P7: when need-lines is met where it is written and the first part of its next block fits after the spaces, the block is in this column
 pred spaceKeeps[p: Placement] {
   all n: Need | all b: needNext[p, n] |
-    (minus[Col.cap, placedBefore[p, n]] >= 2
+    (minus[Col.cap, placedBefore[p, n]] >= n.lines
       and (all t: Text | t.pos < n.pos implies here[p, t])
       and (all g: Figure - waitingIn[p] | g.pos < n.pos implies g in p.kept)
       and plus[loadBefore[p, b], firstPart[b]] <= Col.cap
@@ -429,7 +432,7 @@ pred figures27[p: Placement] {
       (all t: Text | t.pos < f.pos implies here[p, t])
       and (all g: Figure | g.pos < f.pos implies g in p.kept)
       and plus[plus[plus[plus[Col.used, #{t: Text | t.pos < f.pos}], (sum g: {g: Figure | g.pos < f.pos} | g.size)], #{b: Blank | b.pos < f.pos and not blankAtTop[p, b]}], f.size] <= Col.cap
-      and (all n: Need | f in needNext[p, n] implies (minus[Col.cap, placedBefore[p, f]] >= 2 or firstInColumn[p, f])))
+      and (all n: Need | f in needNext[p, n] implies (minus[Col.cap, placedBefore[p, f]] >= n.lines or firstInColumn[p, f])))
 }
 
 pred base27[p: Placement] { fits[p] and order[p] and figures27[p] and figureOrder[p] and noSendFromEmpty[p] and blankWithNext[p] }
@@ -465,3 +468,62 @@ run needGreedy {
   (some p: Placement | fits[p] and needMet[p])
   no p: Placement | fits[p] and greedy[p] and needMet[p]
 } for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
+-- golem-layout ADR 0035: a larger need-lines after one judged before a space
+
+-- the inputs of the commands of golem-layout ADR 0035: two need-lines of any lines, a space, a blank line and two figures may be there
+pred inDomain35 { figuresFit and #Need = 2 }
+
+-- the grid lines placed in the column before an item, the spaces counted and the blank lines not:
+-- a need-lines judged again after a space is judged with the space placed before it
+fun judgedBefore[p: Placement, i: Item]: Int {
+  plus[placedBefore[p, i], #{s: Space | s.pos < i.pos and here[p, s]}]
+}
+
+-- the need-lines before a need-lines with the same next block
+fun needsBefore[p: Placement, n: Need, b: Item]: set Need { {m: Need | m.pos < n.pos and b in needNext[p, m]} }
+
+-- P7 before golem-layout ADR 0035, for two need-lines: only the first of the need-lines of a block is judged where it is written
+pred spaceKeepsFirst[p: Placement] {
+  all n: Need | all b: needNext[p, n] |
+    (no needsBefore[p, n, b]
+      and minus[Col.cap, placedBefore[p, n]] >= n.lines
+      and (all t: Text | t.pos < n.pos implies here[p, t])
+      and (all g: Figure - waitingIn[p] | g.pos < n.pos implies g in p.kept)
+      and plus[loadBefore[p, b], firstPart[b]] <= Col.cap
+      and (b in Line implies b = first[b.para]))
+      implies inColumn[p, b]
+}
+
+-- P7 after golem-layout ADR 0035: the first need-lines of a block is judged where it is written; a need-lines after it,
+-- larger than the ones before it, is judged again where it is written, the spaces placed before it counted; one no larger
+-- is met already. The block stays in this column, when its first part fits, only when all those judged are met.
+pred spaceKeeps35[p: Placement] {
+  all n: Need | all b: needNext[p, n] |
+    ((all m: Need | (b in needNext[p, m] and (no k: needsBefore[p, m, b] | k.lines >= m.lines)) implies
+        minus[Col.cap, (some needsBefore[p, m, b] => judgedBefore[p, m] else placedBefore[p, m])] >= m.lines)
+      and (all t: Text | t.pos < n.pos implies here[p, t])
+      and (all g: Figure - waitingIn[p] | g.pos < n.pos implies g in p.kept)
+      and plus[loadBefore[p, b], firstPart[b]] <= Col.cap
+      and (b in Line implies b = first[b.para]))
+      implies inColumn[p, b]
+}
+
+-- the shape of golem-layout ADR 0035 is an input: need-lines, a space, a larger need-lines that fits a column, and their next block in this column, not first in it
+run needMoreSome {
+  inDomain35
+  some p: Placement, n, m: Need, sp: Space, b: Text - Space |
+    base27[p] and needMet[p] and spaceKeeps35[p] and n.pos < sp.pos and sp.pos < m.pos and m.lines > n.lines
+      and m.lines <= Col.cap and b in needNext[p, n] and b in needNext[p, m] and here[p, sp] and here[p, b]
+      and not firstInColumn[p, b]
+} for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
+-- before golem-layout ADR 0035: P7 keeps the block where the first need-lines is met, and P1 asks for the larger one after the space
+run needMore27 {
+  inDomain35
+  some n, m: Need, sp: Space | n.pos < sp.pos and sp.pos < m.pos
+  no p: Placement | base27[p] and needMet[p] and spaceKeepsFirst[p]
+} for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
+-- after golem-layout ADR 0035: no input has no placement
+run needMoreNone { inDomain35 and (no p: Placement | base27[p] and needMet[p] and spaceKeeps35[p]) } for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank

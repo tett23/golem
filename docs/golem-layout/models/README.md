@@ -11,7 +11,7 @@ CI では走らせない。
 一つの段と次の段の境目だけを扱う。
 
 - 入力は、格子の行の数 `cap`（3 から 6）の段と、その段で既に使った行の数 `used`（0 なら空の段）と、流れの順に並んだ要素である。
-- 要素は、段落の行（`Line`。同じ段落の行は続けて並ぶ）、一行の見出し（`Heading`）、高々二つの図版（`Figure`、1 行から `cap + 1` 行）、高々一つの一行の行アキ（`Blank`）、高々一つの一行の空き（`Space`）、高々一つの `@need-lines 2`（`Need`）である。図版を二つと行アキは [golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) で、空きと `@need-lines` は [golem-layout ADR 0027](../adr/0027-need-lines-judged-again-after-spaces.md) で足した。
+- 要素は、段落の行（`Line`。同じ段落の行は続けて並ぶ）、一行の見出し（`Heading`）、高々二つの図版（`Figure`、1 行から `cap + 1` 行）、高々一つの一行の行アキ（`Blank`）、高々一つの一行の空き（`Space`）、高々二つの `@need-lines`（`Need`、1 行から `cap + 1` 行）である。図版を二つと行アキは [golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) で、空きと `@need-lines` は [golem-layout ADR 0027](../adr/0027-need-lines-judged-again-after-spaces.md) で、二つめの `@need-lines` と行の数は [golem-layout ADR 0035](../adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md) で足した。[golem-layout ADR 0027](../adr/0027-need-lines-judged-again-after-spaces.md) のコマンドは、`@need-lines` が高々一つで 2 行の入力（述語 `inDomain27`）だけを調べる。
 - 空きは本文の一種として置き、`brk` の前ならこの段の一行を取る。
 - 改丁の見出し（`Recto`）は、見出しの一種である。[docs/adr/0206](../../adr/0206-pagination-points-the-invariants-did-not-decide.md) の決めたことを調べる述語だけが、ほかの見出しと区別する。
 - 配置（`Placement`）は、本文の要素を `brk` の前までこの段に、残りを次の段に置き、それぞれの図版をこの段に置く（`kept`）か次の段に送り、行アキをこの段に置く（`placed`）か置かない。
@@ -70,6 +70,14 @@ CI では走らせない。
 | `spaceKeeps` | `@need-lines` が書いた位置で守られ、次のブロックの最初の部分が空きと行アキの後に入れば、ブロックをこの段に置く（P7） |
 | `figures27` | `figures` に、`@need-lines` の次のブロックである図版は、`@need-lines` が守られなければ次の段に送ることを足したもの |
 | `base27` | `fits`、`order`、`figures27`、`figureOrder`、`noSendFromEmpty`、`blankWithNext` を合わせたもの |
+
+[golem-layout ADR 0035](../adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md) の規則を調べるために、次の述語を足した。
+`needMet`、`spaceKeeps`、`figures27` の 2 行は、`@need-lines` の行の数（`lines`）にした。
+
+| 述語 | 規則 |
+| --- | --- |
+| `spaceKeepsFirst` | `spaceKeeps` を、ブロックの最初の `@need-lines` だけに当てたもの（この ADR の前の改ページ） |
+| `spaceKeeps35` | ブロックの最初の `@need-lines` は書いた位置で判定し、後の `@need-lines` のうち前のどれよりも大きいものは、書いた位置で、前に置いた空きを数えて判定し直す。判定したものがすべて守られ、次のブロックの最初の部分が空きと行アキの後に入れば、ブロックをこの段に置く（P7 を合わせた値で言い直したもの） |
 
 ## 走らせ方
 
@@ -230,3 +238,31 @@ docs/roadmap.md の「未決事項」に足す組はない。
 もう一つは、段の行の数が 5 で 1 行を使った段に、`@need-lines 2`、行アキ、4 行の図版が来る入力で、`spaceKeeps` が、次のブロックとともに量る行アキを数えていなかったためである。
 どちらもモデルの誤りとして直した。
 
+
+### [golem-layout ADR 0035](../adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md) のコマンド
+
+2026-11-08 に、スコープ 2 から 4 まで（要素は 4 個まで、整数は 5 ビット）で走らせた結果である。
+この ADR の形は、`@need-lines`、空き、より大きい `@need-lines`、次のブロックの 4 個で作れるので、ADR のテスト設計のスコープ 3 には現れない。
+そのためスコープ 4 まで走らせた。
+`needMoreNone` のスコープ 3 は約 2 分、スコープ 4 は約 14 分かかった。
+「なし」は、スコープ 4 までに解がなかったことを示す。
+
+| コマンド | 調べること | 最も小さい例のスコープ |
+| --- | --- | --- |
+| `needMoreSome` | `@need-lines`、空き、段に収まるより大きい `@need-lines`、次のブロックがあり、`base27`、`needMet`、`spaceKeeps35` を満たし、空きと次のブロックを段の先頭でない位置に置く配置がある入力があるか | 4 |
+| `needMore27` | 二つの `@need-lines` のあいだに空きがあり、`base27`、`needMet`、`spaceKeepsFirst` を満たす配置がない入力があるか（この ADR の前の改ページ） | 4 |
+| `needMoreNone` | `@need-lines` が二つの入力で、`base27`、`needMet`、`spaceKeeps35` を満たす配置がない入力があるか | なし |
+
+`needMoreSome` の最も小さい例は、段の行の数が 6 で 2 行を使った段に、`@need-lines 2`、空き、`@need-lines 4`、1 行の段落が来るものである。
+モデルは空ではなく、この ADR の形を入力に持つ。
+
+`needMore27` の最も小さい例は、段の行の数が 4 で 2 行を使った段に、`@need-lines 1`、空き、`@need-lines 4`、改丁の見出しが来るものである。
+一つめの `@need-lines` は空きの前で守られ、見出しは空きの後に入るので、この ADR の前の P7 は見出しをこの段に置くことを求める。
+P1 は、合わせた 4 行が残りの 2 行にないので、見出しを次の段に送ることを求める。
+この ADR の直した不具合が、規則の組として現れたものである。
+`spaceKeeps35` に替えると、規則を満たす配置のない入力はない（`needMoreNone`）。
+[docs/roadmap.md](../../roadmap.md) の「未決事項」に足す組はない。
+
+最初に走らせたとき、`needMoreNone` は、段の行の数が 4 で 2 行を使った段に、`@need-lines 3`、`@need-lines 1`、1 行の図版が来る入力を返した。
+`spaceKeeps35` が、一つめの小さい `@need-lines` の判定だけを見て、後に続く大きい `@need-lines` を見ていなかったためである。
+ブロックの前のすべての `@need-lines` のうち、前のどれよりも大きいものを判定するように、モデルの誤りとして直した。
