@@ -85,4 +85,4 @@ make はこの方法を使っている。
 
 図[ref-number fig-pipeline]の「[ref-title fig-pipeline]」のとおり、判定、順の決定、実行の三つの段階を経て、ターゲットが作られる。
 
-Internationalization and characterization of buildsystem interoperability requirements are discussed in the literature under names like reproducibility and incrementality. Unquestionably, straightforward implementations outperform overcomplicated counterparts.
+Internationalization and characterization of buildsystem interoperability requirements are discussed in the literature under names like reproducibility and incrementality. Unquestionably, well-understood, straightforward implementations outperform overcomplicated counterparts.
