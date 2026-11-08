@@ -109,6 +109,7 @@ golem-pdf と golem-svg のテストでは、時間の上限に `modules/golem-t
 時間の上限を付けるテストの CPU 時間は、単独で走らせて 10 秒以内に収める（[docs/adr/0091](./docs/adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)）。
 
 外部ツール（`cddl`、`qpdf`、`openssl` など）を使うテストは、`modules/golem-test-support` の `Golem.TestSupport.ExternalTool` にある `needsTool` か `optionalTool` で書く（[docs/adr/0028](./docs/adr/0028-shared-test-support-package.md)）。
+golem-driver のテストは、qpdf のほかに Poppler の `pdftoppm` と `pdfinfo` を使うので、手元にも `poppler-utils` を入れる（[docs/adr/0232](./docs/adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
 ツールがなければ `SKIP` と表示され、`GOLEM_REQUIRE_EXTERNAL_TOOLS=1` のもとでは失敗になる。
 この変数の値は `1` だけが有効である。
 飛ばしたテストの数は、テストのスイートの最後に標準エラー出力へ一行で出る（[docs/adr/0074](./docs/adr/0074-test-switches-by-environment-variables.md)）。

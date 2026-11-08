@@ -890,6 +890,13 @@ CI の `build` の x86-64 の `outputs` のランナーは、二冊のマニュ�
 `pdf-fonts.sh` は、PDF のフォントの辞書の `BaseFont` を `qpdf --json` で読み、サブセットの印（六つの大文字と `+`）を除いた名前を、並べ替えて一度ずつ書く。
 書体の名前を引数に与えると、それ以外の書体があれば失敗する。
 CI は、そのマニュアルの `fonts/` の OpenType のファイルの名前（`.otf` を除いたもの）を与える。
+テストのランナーは、qpdf と同じ一回の apt-get で Ubuntu の `poppler-utils` を入れ、golem-driver のテストが Poppler で Golem の PDF を読む（[ADR 0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
+`pdftoppm` で figures の fixture を 72 dpi の画像にし、tRNS を持つ PNG の透明の画素が白になり、半透明の画素が色と白をアルファで混ぜた値から 2 以内になることを確かめる。
+`pdfinfo -url` で、横組みと縦組みの PDF のリンクの注釈の URL とページが原稿のとおりであることを確かめる。
+Poppler は CI で走らせるだけで、Golem にはリンクせず、`golem` から呼ばない。
+x86-64 の `outputs` のランナーは、`sample`、`bibliographies`、`languages` に加えて `epub-forms` の EPUB を epubcheck にかける。
+`epub-forms` は、引用と `@bibliography` を別のファイルに置き、`@toc depth=1` で階層 3 までの見出しを持ち、見本のプラグイン `glossary` のチャネルを使う。
+プラグインは `plugins/wasm/glossary.wasm` を `plugins.lock` の SHA-256 の名前でキャッシュに置いて読み、URL からは取得しない。
 
 ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
 対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。
