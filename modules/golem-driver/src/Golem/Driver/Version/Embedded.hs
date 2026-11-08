@@ -14,6 +14,6 @@ versionText :: Text
 versionText =
   T.intercalate
     "\n"
-    [ "0.1.0-rc3",
+    [ "0.1.0-rc4",
       ""
     ]
