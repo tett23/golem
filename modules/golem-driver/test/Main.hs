@@ -30,6 +30,7 @@ import PlatesSpec (platesTests)
 import ReferencesSpec
 import SecuritySpec
 import SpecimenGeometrySpec (specimenGeometryTests)
+import TateChuYokoSpec (tateChuYokoTests)
 import StylesSpec
 import TableFilesSpec
 import TaggedPdfSpec (taggedPdfTests)
@@ -78,7 +79,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests, tateChuYokoTests]
         <> [ newProjectTests,
              allTargetsTests,
              pdfPipelineTests,

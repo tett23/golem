@@ -46,6 +46,7 @@ import Golem.Typeset.GlyphRuns (glyphRuns)
 import Golem.Typeset.Overhang (kentenAcross, rubyAcross)
 import Golem.Typeset.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
 import Golem.Typeset.Structure (linksOfLeaves, structureTree)
+import Golem.Typeset.Tcy (TcyFit (..), squeezed, tcyFit)
 import Golem.Typeset.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 import Text.Printf (printf)
 
@@ -482,7 +483,11 @@ syntheticOf look latin = if latin then lkLatinSynthetic look else lkSynthetic lo
 
 -- glyph marks of a text in a look starting at a point, and the glyphs used
 runAt :: DrawEnv -> Look -> Bool -> Bool -> Int -> (Sp, Sp) -> Text -> ([P.Mark], [(P.FontRef, Int, Text, ClusterPart)])
-runAt env look v rotated scale (bx, by) txt =
+runAt env look v rotated scale = runAtSqueezed env look v rotated scale 1000
+
+-- 'runAt' with the glyphs placed along the line at a scale in permille of their advances (golem-driver ADR 0045)
+runAtSqueezed :: DrawEnv -> Look -> Bool -> Bool -> Int -> Int -> (Sp, Sp) -> Text -> ([P.Mark], [(P.FontRef, Int, Text, ClusterPart)])
+runAtSqueezed env look v rotated scale squeeze (bx, by) txt =
   let size = lkSize look
       -- the baseline shift: up in horizontal text, right in vertical text (docs/adr/0020)
       shift = lkBaselineShift look
@@ -509,7 +514,7 @@ runAt env look v rotated scale (bx, by) txt =
             let s = syntheticOf look latin
                 shaped = lfShape fonts (shapingFor role r) r
           ]
-      advs = scanl (+) 0 [toSp size a + extra | (_, _, a, _, _, _, extra, _, _) <- gs]
+      advs = map (Sp . squeezed squeeze . unSp) (scanl (+) 0 [toSp size a + extra | (_, _, a, _, _, _, extra, _, _) <- gs])
       -- a glyph turned in vertical text: drawn with the horizontal font (golem-driver ADR 0015)
       placed = [(ix, g, t, sb, tu && v && not rotated, off, o, part) | ((ix, g, _, t, sb, tu, _, o, part), off) <- zip gs advs]
       -- the glyphs of a font in a row are one run, in the order of the text (docs/adr ADR 0227)
@@ -556,6 +561,30 @@ runAt env look v rotated scale (bx, by) txt =
         | otherwise = P.GlyphRun (ref ix False) size [(code ix g, gx, gy) | (g, _, off, o) <- xs, let (gx, gy) = moved turned o (x0 + off, y0)]
       code = lfCode fonts
    in (segments (occurrences placed), [(refOf ix tu, g, t, part) | (ix, g, t, _, tu, _, _, part) <- placed])
+  where
+    fonts = deFonts env
+
+{- | A tate-chu-yoko in vertical text (golem-driver ADR 0045), its box of
+the size of its look from y0 down the line, centred on x_c across it:
+its text shaped horizontally and drawn upright in the horizontal fonts,
+side by side, without tracking, squeezed horizontally to the size when
+its advances are wider ('tcyFit'), and inside q and Q then, so that the
+scale does not stay on the text after it. The centre of the string is
+on x_c, moved right by the baseline shift, and the centre of the em box
+of the Japanese face at the centre of the box: the baseline
+y0 − s/2 − c × s.
+-}
+tcyAt :: DrawEnv -> Look -> (Sp, Sp) -> Text -> ([P.Mark], [(P.FontRef, Int, Text, ClusterPart)])
+tcyAt env look (xc, y0) txt =
+  let s = lkSize look
+      flat = look {lkTracking = 0, lkBaselineShift = 0}
+      shapingFor role r = (shapingOf False flat (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = False}
+      advances = [unSp (toSp s (shAdvance g)) | (role, r, _) <- runsOf flat txt, g <- lfShape fonts (shapingFor role r) r]
+      fit = tcyFit (unSp s) advances
+      left = xc + lkBaselineShift look - Sp (tfWidth fit `div` 2)
+      base = y0 - Sp (unSp s `div` 2) - toSp s (lfEmBoxCentral fonts (japaneseFace env look))
+      (marks, uses) = runAtSqueezed env flat False False (tfScale fit - 1000) (tfScale fit) (left, base) txt
+   in (if tfScale fit /= 1000 then [P.Saved marks] else marks, uses)
   where
     fonts = deFonts env
 
@@ -878,12 +907,16 @@ drawLineAt env (x0, y0) sl =
                       above = Sp (round (toRational (unSp s) * (emCentre place + 1 / 2) - toRational (unSp size) * (emCentre look + 1 / 2)))
                       column = ox + Sp (unSp (s - size) `div` 2)
                       part (tag, t, o)
+                        -- a tate-chu-yoko of the size of the mark, centred on its column (golem-driver ADR 0045)
+                        | toEnum tag == KindTcy = usesOf (whoOf V.PartBase c) look (tcyAt env look (column, oy - o) t)
                         | toEnum tag == KindRotated = runAtU env (whoOf V.PartBase c) look True True 0 (column - Sp (unSp (size * 3) `div` 10), oy - o) t
                         | otherwise = runAtU env (whoOf V.PartBase c) look True False 0 (column, oy - o) t
                    in whole $
                         if vertical
                           then mconcat (map part (maybe [(fromEnum KindText, bcText c, bcPadStart c)] mbParts (bcMark c)))
                           else runAtU env (whoOf V.PartBase c) look False False 0 (ox + bcPadStart c, oy + above) (bcText c)
+                -- a tate-chu-yoko in vertical text: horizontal in its box of one character (golem-driver ADR 0045)
+                KindTcy | vertical -> whole (usesOf (whoOf V.PartBase c) look (tcyAt env look (origin (off + bcPadStart c)) (bcText c)))
                 -- the empty box of an [aki] draws nothing (golem-layout ADR 0012)
                 KindAki -> ([], [])
                 -- a run of full-width dashes: one line from end to end of its box (docs/adr ADR 0172)

@@ -2326,6 +2326,10 @@ OpenType の機能（縦書き用の字形、プロポーショナルな字詰�
 役割の `features` は機能をそのままシェイピングに渡すが、`palt` と `vpal` だけは、JLReq の規則で前後の空きを決める約物に当てない（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
 縦書き用の字形がない文字のうち、UAX #50 の縦組みの向き（Vertical_Orientation）が R か Tr のもの（`U+2014` のダッシュなど）は、PDF では横組みの字形を時計回りに 90 度回転し、仮想ボディの中心を行の中心線にそろえて描く（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 フォントに縦書き用の字形があれば、R の文字でもその字形を正立で使う。
+PDF の縦中横は、箱の文字列を横組みでシェイピングし、横組みの字として回転せずに左から右へベタで並べる（[golem-driver ADR 0045](golem-driver/adr/0045-draw-tate-chu-yoko-horizontally-in-pdf.md)）。
+和文の書体の字面の枠の中心を箱の中心に置き、文字列の中心を行の中心線に置く。
+送りの和 `W` が箱の大きさ `s` を超える文字列は、水平の比率 `⌊1000 × s / W⌋`（千分率）で縮めて一字分に収める。
+一字の縦中横も同じ規則で描き、トラッキングは足さない。
 HTML と EPUB では、CSS の `text-orientation` の既定の `mixed` に任せる。
 役割より細かく書体を変えたい場合は、`style.toml` に文字スタイルを定義し、本文から適用する。
 
@@ -3655,6 +3659,7 @@ body-mark-style = "strong"
 既定の `*{n}` の印は、`*` が欧文として横に倒れ、番号が縦中横になる。
 字の列の右端は本文の字面の枠の右端（行の中心線から `s/2` 右）にそろえ、字の列の中心線は行の中心線から `(s − m)/2` 右にある（JLReq の 4.2.3 の行の右端にそろえる配置）。
 箱の行の方向の長さは、印の字を大きさ `m` で縦組みに並べた送りの和（縦中横は `m`）に、トラッキングを足した値である。
+縦中横の部品は、印の大きさ `m` の一字分の箱として、本文の縦中横と同じ規則で横に並べ、文字列の中心を字の列の中心線に置く（[golem-driver ADR 0045](golem-driver/adr/0045-draw-tate-chu-yoko-horizontally-in-pdf.md)）。
 文字スタイルの `baseline-shift` は、この位置からさらに右へずらす。
 平字（上下の外枠を 50% にした漢数字）は組まない（[docs/roadmap.md](roadmap.md)）。
 
