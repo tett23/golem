@@ -192,6 +192,9 @@ pub fn total :: List Nat -> Nat
 
 ADR は注と傍注の本文を `Blocks` と書くが、ABI と意味論 IR の注の本文はインラインの列なので、`Inlines` にした。
 
+コードの行の原稿の範囲（[docs/adr/0218](../adr/0218-page-starts-inside-code-blocks.md)）は、ブロックの範囲と同じく `CodeLine` の欄に出さない。
+受け取ったまま返したコードの行は範囲を保ち、関数が作ったコードの行は範囲を持たない（`Nothing`）。
+
 よく使うノードを作る関数は次のとおりである。
 
 | 関数 | 型 | 中身 |

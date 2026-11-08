@@ -362,7 +362,7 @@ diagnosticCodes =
           other -> assertFailure (show other),
       testCase "listing numbers: per chapter, apart from figures, only with a caption (golem-driver ADR 0023)" $ do
         let fig s = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
-            code s cap = Block (sp 1 s) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing cap False [CodeLine "x" (Just 1) Nothing False []] False))
+            code s cap = Block (sp 1 s) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing cap False [CodeLine "x" (Just 1) Nothing False [] Nothing] False))
             capt t = Just [Text (sp 1 0) t]
             docs =
               [ Document
