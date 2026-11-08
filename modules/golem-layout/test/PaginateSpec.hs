@@ -54,6 +54,7 @@ paginateTests =
       testGroup "a recto starts after the figures sent on and the continued notes (golem-layout ADR 0024)" rectoAfterFiguresTests,
       testGroup "need-lines, blank lines, tables and wrapped figures go on after what is sent on (golem-layout ADR 0025)" afterSentOnTests,
       testGroup "the figures that wait take no need-lines and no blank lines before them (golem-layout ADR 0026)" waitingFigureTests,
+      testGroup "need-lines is judged again in the column a block goes on to after spaces (golem-layout ADR 0027)" spaceAfterNeedTests,
       testGroup "invariants" propertyTests
     ]
 
@@ -1190,4 +1191,37 @@ waitingFigureTests =
       gridLines ps @?= [[0 .. 3], [0, 4, 5], [0]]
       unmets ps @?= []
       brokenOf [P3, P4, P5] flows ps @?= []
+  ]
+
+{- | golem-layout ADR 0027: the reproductions of its section 「確かめたこと」
+and the cases of its section 「テスト設計」. Need-lines is judged before
+the spaces after it, the spaces not counted, and judged again in the
+column the block goes on to when its first part does not fit after them.
+-}
+spaceAfterNeedTests :: [TestTree]
+spaceAfterNeedTests =
+  [ testCase "P1: the paragraph after need-lines and two spaces goes past the figure sent on, to page 3" $ do
+      let input = Input 4 1 [EPara 2, EFigure 3, ENeedLines, ESpace, ESpace, EPara 1]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SFigure 1000]), (3, 0, [SLine 2])]
+      unmets ps @?= []
+      brokenIn [P1, P2] input @?= [],
+    testCase "P1: in two columns, the paragraph after need-lines and two spaces goes past the column of the figure sent on" $ do
+      let input = Input 4 2 [EPara 2, EFigure 3, ENeedLines, ESpace, ESpace, EPara 1]
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1]), (1, 1, [SFigure 1000]), (2, 0, [SLine 2])]
+      brokenIn [P1, P2] input @?= [],
+    testCase "P7: a paragraph whose first part fits after the space stays in the column need-lines was judged in" $ do
+      let input = Input 4 1 [EPara 2, ENeedLines, ESpace, EPara 1]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1, SLine 2])]
+      gridLines ps @?= [[0, 1, 3]]
+      brokenIn [P1, P2] input @?= [],
+    testCase "P1: a paragraph whose first two lines do not fit after the spaces goes on until need-lines is met" $ do
+      -- one line is left after the spaces on page 1: the paragraph of four lines goes on, past the figure on page 2
+      let input = Input 5 1 [EPara 2, EFigure 4, ENeedLines, ESpace, ESpace, EPara 4]
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SFigure 1000]), (3, 0, map SLine [2 .. 5])]
+      brokenIn [P1, P2, I4, I5] input @?= [],
+    testCase "P8: in the column gone on to after the spaces, no space is placed at its top" $ do
+      let ps = paginateInput (Input 4 1 [EPara 2, EFigure 3, ENeedLines, ESpace, ESpace, EPara 1])
+      gridLines ps @?= [[0, 1], [0], [0]]
   ]

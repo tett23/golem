@@ -133,7 +133,7 @@ or of the column a break placed them in, and recorded (golem-layout ADR
 placeAll :: Env -> St -> [Flow] -> St
 placeAll env st [] =
   let st1 = maybe st (\(sp, _, _, _) -> addUnmet (UnmetNoBreak sp) st) (sNoBreak st)
-      st2 = st1 {sBreaks = [], sNeed = Nothing, sNoBreak = Nothing, sBlank = []}
+      st2 = st1 {sBreaks = [], sNeed = Nothing, sNeedAt = Nothing, sNoBreak = Nothing, sBlank = []}
       dropBlanks s = foldl' (\s' (sp, _) -> addUnmet (DroppedBlank sp) s') s (sBlank st1)
    in if null (sBlank st1)
         then flushDeferred env st2
@@ -153,15 +153,16 @@ placeAll env st (f : rest) = case f of
     | all waitsFor rest -> placeAll env st rest
     | otherwise -> placeAll env st {sBlank = sBlank st <> [(sp, n)]} rest
   FBreak _ -> placeAll env (place env st f rest) rest
-  -- the space between paragraphs is not the flow a no-break waits for
-  FSpace _ -> placeAll env (place env (ready env st) f rest) rest
+  -- the space between paragraphs is not the flow a no-break waits for;
+  -- need-lines is judged before it, the space not counted (golem-layout ADR 0027)
+  FSpace _ -> placeAll env (place env (needBeforeSpace env (applyBreaks env st)) f rest) rest
   _ ->
     let -- the breaks first: going on to the next page places the figures waiting, and this one may not wait
         stB = applyBreaks env st
         -- a figure that waits takes neither the need-lines nor the blank lines before it (golem-layout ADR 0026)
         st1
           | waitsBehind stB f = checkNoBreak (place env stB f rest)
-          | otherwise = checkNoBreak (placeFlow env (placeBlank env (applyNeed env stB) f rest) f rest)
+          | otherwise = checkNoBreak (placeFlow env (placeBlank env (needBefore env stB (f : rest)) f rest) f rest)
         deferred = case f of
           FFigure i _ _ _ -> any (\case FFigure j _ _ _ -> i == j; _ -> False) (sDeferred st1)
           -- the flow after a turned figure is never on its page
@@ -169,9 +170,34 @@ placeAll env st (f : rest) = case f of
           _ -> False
      in placeAll env st1 {sSeen = True, sLastDeferred = deferred} rest
 
--- | The breaks written so far, then the need-lines, apply before anything but another break.
-ready :: Env -> St -> St
-ready env = applyNeed env . applyBreaks env
+{- | Need-lines before a space is judged there, the space not counted,
+and kept with the column it was judged in: the block after the spaces is
+judged again (golem-layout ADR 0027). Judged once in a column; judged
+again if a break has gone on from it.
+-}
+needBeforeSpace :: Env -> St -> St
+needBeforeSpace env st = case sNeed st of
+  Nothing -> st
+  Just (sp, n)
+    | sNeedAt st == Just (sPage st, sColumn st) -> st
+    | n > cap env st -> applyNeed env st {sNeedAt = Nothing}
+    | otherwise ->
+        let st1 = applyNeed env st {sNeedAt = Nothing}
+         in st1 {sNeed = Just (sp, n), sNeedAt = Just (sPage st1, sColumn st1)}
+
+{- | The need-lines before a block, after the breaks. Judged before the
+spaces in the column the block is in, it holds when the first part of the
+block fits there after them; else the block goes on, and in the columns
+gone on to the need-lines is judged again, after the figures sent on and
+the continued notes (golem-layout ADR 0025, 0027). Otherwise it is
+judged here ('applyNeed').
+-}
+needBefore :: Env -> St -> [Flow] -> St
+needBefore env st flows = case (sNeed st, sNeedAt st) of
+  (Just (_, n), Just at)
+    | at == (sPage st, sColumn st) ->
+        keep env st {sNeed = Nothing, sNeedAt = Nothing} (\s -> if (sPage s, sColumn s) == at then needIn env s mempty (nextNeed env flows) else n)
+  _ -> applyNeed env st {sNeedAt = Nothing}
 
 {- | Whether a figure waits, placing nothing where it is in the flow: a
 figure after a figure sent on, or a turned figure that cannot take the
