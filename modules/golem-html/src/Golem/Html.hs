@@ -1166,7 +1166,9 @@ css cfg book =
     under a prefix and over styles: the space before on the style, the
     space after on the next element of another style that is not a blank
     line, the greater of the two for a pair, after both, and none after a
-    blank line -}
+    blank line. The rule of a pair, p.ps-A + p.ps-B:not(.ps-A), wins over
+    the rule of the space after by its specificity, not by its place
+    (docs/adr/0211) -}
     spaceRules preOf withBefore styles pairs =
       let em n = tshow n <> "em"
           at ns = prefixed (preOf ns)

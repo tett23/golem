@@ -1,6 +1,6 @@
 # ADR 0209: 和文と欧文の行分割の不変条件を、小さな入力のすべてで確かめる
 
-ステータス: 採択→（L4 の読み方）は [golem-layout ADR 0028](../golem-layout/adr/0028-kinsoku-across-spaces-and-explicit-hyphens.md)
+ステータス: 採択→（L4 の読み方）は [golem-layout ADR 0028](../golem-layout/adr/0028-kinsoku-across-spaces-and-explicit-hyphens.md)、正規形と縦組みのテストの段、上限の変数、正規形の比べ方、[golem-layout ADR 0016](../golem-layout/adr/0016-ellipsis-before-full-stop.md) の回帰の述語、L7 の 3 行の段落は [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
 
 ## 文脈
 

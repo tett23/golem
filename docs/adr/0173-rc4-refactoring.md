@@ -1,6 +1,6 @@
 # ADR 0173: rc4 の前に、出力を変えずにコードを整理する
 
-ステータス: 採択
+ステータス: 採択→整理のプルリクエストがマニュアルの原稿を直して見た目の回帰テストの参照を変えることは [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0185: プロジェクト全体の変数を `manifest.toml` の `[vars]` に書く
 
-ステータス: 採択
+ステータス: 採択→ホバーの環境の `vars` は [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
 
 ## 文脈
 
