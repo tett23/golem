@@ -1893,6 +1893,133 @@ if [ "$(cat "$WORK/gh.args" 2>/dev/null)" = "run list --workflow enum.yml --bran
 run race_needed_in "$A" "$A" enum
 expect "race-needed: a workflow that is not a file" 2
 
+# ---------------------------------------------------------------- github-anchors.sh
+# (docs/adr/0235)
+
+# A docs/diagnostics.md of three codes, and headings that are not of a code
+# (another level, more than the code); the fake gh prints $FAKE_HTML, a
+# small HTML of GitHub, and writes its arguments to $WORK/gh.args.
+GA=$WORK/github-anchors
+mkdir -p "$GA/root/docs"
+cat >"$GA/root/docs/diagnostics.md" <<'MD'
+# diagnostics
+
+## G01001
+
+a
+
+### G01004
+
+## G01002
+
+b
+
+## G01005（説明）
+
+## G01003
+MD
+cat >"$GA/gh" <<GH
+#!/bin/sh
+printf '%s\n' "\$*" >"$WORK/gh.args"
+[ -z "\${FAKE_GH_FAIL-}" ] || exit 1
+cat "\$FAKE_HTML"
+GH
+chmod +x "$GA/gh"
+ga_html() { # ga_html CODE...: the HTML with the ids of the codes
+  for c in "$@"; do
+    printf '<div class="markdown-heading"><h2 class="heading-element">%s</h2><a id="user-content-%s" class="anchor" href="#%s"></a></div>\n' "$c" "$(printf '%s' "$c" | tr G g)" "$(printf '%s' "$c" | tr G g)"
+  done >"$GA/html"
+}
+github_anchors() { GH=$GA/gh FAKE_HTML=$GA/html GOLEM_ROOT=$GA/root GITHUB_REPOSITORY=tett23/golem sh "$HERE/github-anchors.sh" "$@"; }
+SHA_GA=0123456789abcdef0123456789abcdef01234567
+: >"$WORK/in"
+ga_html G01001 G01002 G01003
+run github_anchors "$SHA_GA"
+expect "github-anchors: I2 every code has its id" 0
+if [ "$(cat "$WORK/gh.args" 2>/dev/null)" = "api repos/tett23/golem/contents/docs/diagnostics.md?ref=$SHA_GA -H Accept: application/vnd.github.html" ]; then ok; else ng "github-anchors: the HTML of docs/diagnostics.md of the commit, rendered by GitHub"; fi
+ga_html G01001 G01003
+run github_anchors "$SHA_GA"
+expect "github-anchors: I2 a code without its id" 1
+if grep -q 'G01002' "$WORK/err" && ! grep -q 'G01001\|G01003' "$WORK/err"; then ok; else ng "github-anchors: names the code without its id, and only it"; fi
+# ### G01004 and ## G01005（説明） are not headings of a code: their ids
+# are not asked for above
+if ! grep -q 'G01004\|G01005' "$WORK/err"; then ok; else ng "github-anchors: ### G01004 and ## G01005（説明） are not codes"; fi
+: >"$GA/html"
+run github_anchors "$SHA_GA"
+expect "github-anchors: an HTML without any id (a file over the size GitHub renders)" 1
+ga_html G01001 G01002 G01003
+FAKE_GH_FAIL=1 run github_anchors "$SHA_GA"
+expect "github-anchors: a commit the API does not give" 1
+FAKE_GH_FAIL=1 GITHUB_ANCHORS_SKIP_UNREACHABLE=1 run github_anchors "$SHA_GA"
+expect "github-anchors: a commit the API does not give, of a fork" 0
+if grep -q 'skipped' "$WORK/out"; then ok; else ng "github-anchors: says that it skipped"; fi
+unset FAKE_GH_FAIL GITHUB_ANCHORS_SKIP_UNREACHABLE
+run github_anchors
+expect "github-anchors: no commit" 2
+run github_anchors main
+expect "github-anchors: a commit that is not a SHA" 2
+
+# ---------------------------------------------------------------- scripts/models/check.sh
+# (docs/adr/0235)
+
+# The fake java writes ---Trace--- for the commands of $FAKE_FOUND and
+# nothing for the others, as Alloy does; FAKE_JAVA_FAIL makes it fail. A
+# model of three commands and its expected.txt.
+MC=$WORK/models
+mkdir -p "$MC/root/docs/m/models" "$MC/bin"
+: >"$MC/alloy.jar"
+cat >"$MC/root/docs/m/models/a.als" <<'ALS'
+sig A {}
+run one { some A } for 3
+run two { no A } for 3
+check three { some A } for 3
+ALS
+cat >"$MC/bin/java" <<'JAVA'
+#!/bin/sh
+[ -z "${FAKE_JAVA_FAIL-}" ] || { echo "java: failed" >&2; exit 1; }
+while [ $# -gt 0 ]; do
+  case $1 in -c) cmd=$2; shift 2 ;; *) shift ;; esac
+done
+case " $FAKE_FOUND " in *" $cmd "*) printf '%s\n' '---Trace---' 'univ={A$0}' ;; esac
+exit 0
+JAVA
+chmod +x "$MC/bin/java"
+models_check() { GOLEM_ROOT=$MC/root ALLOY_JAR=$MC/alloy.jar JAVA=$MC/bin/java JOBS=2 FAKE_FOUND="one three" sh "$HERE/../models/check.sh" "$@"; }
+printf 'one found\ntwo none\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: I3 every command as expected.txt says" 0 "docs/m/models/a.als one found
+docs/m/models/a.als two none
+docs/m/models/a.als three found"
+printf 'one none\ntwo none\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: I3 a command with a solution that expected.txt says none" 1
+if grep -q 'a.als one: found, but expected.txt says none' "$WORK/err"; then ok; else ng "models: names the command"; fi
+printf 'one found\ntwo found\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: I3 a command without a solution that expected.txt says found" 1
+if grep -q 'a.als two: none, but expected.txt says found' "$WORK/err"; then ok; else ng "models: names the command without a solution"; fi
+printf '# the results\none found\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: a command not in expected.txt is not run" 0 "check: not in expected.txt, not run: docs/m/models/a.als two
+docs/m/models/a.als one found
+docs/m/models/a.als three found"
+printf 'one found\nfour none\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: a command of expected.txt that the model does not have" 1
+if grep -q 'no command four' "$WORK/err"; then ok; else ng "models: names the command the model does not have"; fi
+printf 'one maybe\n' >"$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: a result that is not found nor none" 1
+printf 'one found\ntwo none\nthree found\n' >"$MC/root/docs/m/models/expected.txt"
+FAKE_JAVA_FAIL=1 run models_check
+expect "models: a run of Alloy that fails is not none" 1
+unset FAKE_JAVA_FAIL
+rm "$MC/root/docs/m/models/expected.txt"
+run models_check
+expect "models: a model without expected.txt" 1
+run models_check x
+expect "models: an argument" 2
+
 # ---------------------------------------------------------------- race.yml
 # (docs/adr/0075-race-search-repetitions.md)
 

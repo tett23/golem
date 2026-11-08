@@ -207,9 +207,13 @@ while IFS= read -r line; do
   printf "P6\n1 1\n255\n%s\n" "$line" >"$2/$(printf "page-%04d.ppm" "$n")"
 done <"$1"'
 INPUTS=$(sh "$HERE/build.sh" --list 2>/dev/null)
-if [ "$(printf '%s\n' "$INPUTS" | wc -l | tr -d ' ')" = 20 ]; then ok; else ng "build: --list has the 20 inputs"; fi
+if [ "$(printf '%s\n' "$INPUTS" | wc -l | tr -d ' ')" = 23 ]; then ok; else ng "build: --list has the 23 inputs"; fi
 for i in complex-vertical complex-horizontal; do
   if printf '%s\n' "$INPUTS" | grep -qx "$i"; then ok; else ng "build: --list has $i (docs/adr/0175)"; fi
+done
+# the specimens of the visual checks, and the vertical one with crop marks for the hidden folios (docs/adr/0233)
+for i in specimens-horizontal specimens-vertical specimens-vertical-marks-japanese; do
+  if printf '%s\n' "$INPUTS" | grep -qx "$i"; then ok; else ng "build: --list has $i (docs/adr/0233)"; fi
 done
 # pdfs DIR: a fake PDF of three pages for every input
 pdfs() {
@@ -228,13 +232,13 @@ pdfs "$CK/p"
 : >"$CK/shem.log"
 run check --accept "$CK/p"
 expect "check: --accept writes the references" 0
-if [ "$(find "$REFS" -type f -name '*.txt' | wc -l | tr -d ' ')" = 20 ]; then ok; else ng "check: --accept writes one reference per input"; fi
+if [ "$(find "$REFS" -type f -name '*.txt' | wc -l | tr -d ' ')" = 23 ]; then ok; else ng "check: --accept writes one reference per input"; fi
 if [ "$(wc -l <"$REFS/tempest.txt" | tr -d ' ')" = 3 ] && grep -Eqx '[0-9a-f]{64}  page-0001' "$REFS/tempest.txt"; then ok; else ng "check: a reference has a line <SHA-256>  page-<n> per page"; fi
 run check "$CK/p"
 expect "check: the pages are those of the references" 0
 if [ ! -s "$WORK/out" ]; then ok; else ng "check: nothing on stdout when the pages match"; fi
 if grep -q '^render ' "$CK/shem.log" && [ "$(grep -c '^render --dpi 72 --format ppm --jobs 1 ' "$CK/shem.log")" = "$(grep -c '^render ' "$CK/shem.log")" ]; then ok; else ng "check: shem renders with --jobs 1 (docs/adr/0168)"; fi
-if [ "$(grep -c '^render --dpi 72 --format ppm ' "$CK/shem.log")" = 40 ]; then ok; else ng "check: shem renders each PDF once at 72 dpi to PPM, one PDF a call"; fi
+if [ "$(grep -c '^render --dpi 72 --format ppm ' "$CK/shem.log")" = 46 ]; then ok; else ng "check: shem renders each PDF once at 72 dpi to PPM, one PDF a call"; fi
 if [ "$(grep '^render ' "$CK/shem.log" | awk '{ print NF }' | sort -u)" = 9 ]; then ok; else ng "check: one PDF to one directory a call"; fi
 missed=
 for i in $INPUTS; do
@@ -380,8 +384,8 @@ if [ "$(cat "$WORK/out")" = "$EXPECTED" ]; then ok; else ng "check: the same lin
 # with one processor, the shems run one at a time, the largest PDF first and
 # PDFs of the same size by name
 pdfs "$CK/p"
-# the PDFs of three lines are the largest by the length of the name of the
-# input; pd-elements-of-style and pd-taira-no-masakado have the same size
+# the PDFs of three lines are ordered by the length of the name of the
+# input: specimens-vertical-marks-japanese, then kanikosen-marks-japanese
 : >"$CK/p/pd-snark.pdf"
 : >"$CK/p/tempest.pdf"
 i=1
@@ -394,7 +398,7 @@ run slow_check 1 "$CK/p"
 MAX=$(sort -n "$CK/concurrent" | tail -1)
 if [ "$MAX" = 1 ]; then ok; else ng "check: one PDF at a time with one processor (at most ${MAX:-0})"; fi
 ORDER=$(sed -n 's#^render .*/\([^/]*\)\.pdf .*#\1#p' "$CK/shem.log" | head -n 4 | tr '\n' ' ')
-if [ "$ORDER" = "pd-snark tempest kanikosen-marks-japanese pd-elements-of-style " ]; then ok; else ng "check: the largest PDF first, then by name ($ORDER)"; fi
+if [ "$ORDER" = "pd-snark tempest specimens-vertical-marks-japanese kanikosen-marks-japanese " ]; then ok; else ng "check: the largest PDF first, then by name ($ORDER)"; fi
 pdfs "$CK/p"
 
 # ---------------------------------------------------------------- wait-pdfs.sh
@@ -692,7 +696,8 @@ for s in build.sh build-info.sh fetch-fonts.sh; do cp "$HERE/../manual/$s" "$BR/
 cp "$HERE/../fixtures/copy-fonts.sh" "$BR/scripts/fixtures/copy-fonts.sh"
 printf '[page]\nsize = "B6"\n' >"$BR/scripts/determinism/pdf-style.toml"
 : >"$BR/modules/golem-font/test/fonts/SourceSansPro-Regular.otf"
-for p in sample figures kanikosen tempest complex-vertical complex-horizontal languages; do mkdir -p "$FX/$p"; : >"$FX/$p/manifest.toml"; done
+for p in sample figures kanikosen tempest complex-vertical complex-horizontal languages specimens/horizontal specimens/vertical; do mkdir -p "$FX/$p"; : >"$FX/$p/manifest.toml"; done
+printf '[page]\nsize = "A5"\n\n[page.grid]\nlines = 22\n' >"$FX/specimens/vertical/style.toml"
 printf '[page]\nsize = "B6"\n\n[page.grid]\nlines = 16\n' >"$FX/kanikosen/style.toml"
 mkdir -p "$FX/kanikosen/fonts" "$FX/tempest/fonts" "$FX/sample/build"
 : >"$FX/kanikosen/fonts/NotoSerifJP-Regular.otf"
@@ -726,7 +731,7 @@ expect "build: every input builds" 0
 for i in $INPUTS; do
   [ -f "$BR/out/$i.pdf" ] || ng "build: $i.pdf is written"
 done
-if [ "$(find "$BR/out" -type f | wc -l | tr -d ' ')" = 20 ]; then ok; else ng "build: one PDF per input, and no other file"; fi
+if [ "$(find "$BR/out" -type f | wc -l | tr -d ' ')" = 23 ]; then ok; else ng "build: one PDF per input, and no other file"; fi
 if [ "$(cat "$BR/out/pd-frogs.pdf")" = pd-frogs ]; then ok; else ng "build: the PDF of an input is the one built from its project"; fi
 # the two books of docs/adr/0175 are built with the fonts copied in as
 # fonts/ja.otf and fonts/latin.otf, which the repository does not have
@@ -738,6 +743,19 @@ done
 if grep -qx 'kanikosen-marks-japanese build --target pdf --marks japanese' "$BR/golem.log" && grep -qx 'kanikosen-marks-japanese bleed' "$BR/golem.log"; then ok; else ng "build: the crop marks are built with --marks japanese and a bleed of 3mm"; fi
 if grep -qx 'kanikosen build --target pdf' "$BR/golem.log" && ! grep -qx 'kanikosen bleed' "$BR/golem.log"; then ok; else ng "build: kanikosen itself has no marks and no bleed"; fi
 if [ "$(grep -c '^kanikosen-marks-japanese build\|^kanikosen build' "$BR/golem.log")" = 2 ] && ! grep -q 'western' "$BR/golem.log"; then ok; else ng "build: no western crop marks"; fi
+# the specimens (docs/adr/0233): both built with the fonts copied in, which
+# the repository does not have; the vertical one also with Japanese crop
+# marks and a bleed of 3 mm, for its hidden folios
+for i in specimens-horizontal specimens-vertical specimens-vertical-marks-japanese; do
+  if grep -qx "$i build --target pdf.*" "$BR/golem.log" && grep -qx "$i fonts" "$BR/golem.log"; then ok; else ng "build: $i is built with fonts/ja.otf and fonts/latin.otf"; fi
+done
+if [ "$(cat "$BR/out/specimens-vertical-marks-japanese.pdf")" = specimens-vertical-marks-japanese ]; then ok; else ng "build: the specimens with crop marks are built from their own copy"; fi
+for d in horizontal vertical; do
+  if [ ! -e "$FX/specimens/$d/fonts" ]; then ok; else ng "build: the fonts of specimens/$d are not copied into the repository"; fi
+done
+if grep -qx 'specimens-vertical-marks-japanese build --target pdf --marks japanese' "$BR/golem.log" && grep -qx 'specimens-vertical-marks-japanese bleed' "$BR/golem.log"; then ok; else ng "build: the specimens with crop marks are built with --marks japanese and a bleed of 3mm"; fi
+if grep -qx 'specimens-vertical build --target pdf' "$BR/golem.log" && ! grep -qx 'specimens-vertical bleed' "$BR/golem.log" &&
+  grep -qx 'specimens-horizontal build --target pdf' "$BR/golem.log" && ! grep -qx 'specimens-horizontal bleed' "$BR/golem.log"; then ok; else ng "build: the specimens themselves have no marks and no bleed"; fi
 for m in manual manual-dev; do
   if grep -qx "$m info @set commit = \"0000000000000000000000000000000000000000\"" "$BR/golem.log" &&
     grep -qx "$m info @set edition = \"v0.0.0-visual\"" "$BR/golem.log"; then ok; else ng "build: $m is built with the fixed commit and tag"; fi
@@ -795,7 +813,7 @@ if [ -n "$MAX" ] && [ "$MAX" -le 3 ]; then ok; else ng "build: no more inputs at
 # a failed input: its output on stderr, exit 1, after every other golem ended
 FAKE_GOLEM_FAIL=sample run slow_build "$BR/out5"
 ENDED_AT_EXIT=$(wc -l <"$BR/ended" | tr -d ' ')
-if [ "$CODE" = 1 ] && grep -qx 'error in sample' "$WORK/err" && [ "$ENDED_AT_EXIT" = 19 ]; then ok; else
+if [ "$CODE" = 1 ] && grep -qx 'error in sample' "$WORK/err" && [ "$ENDED_AT_EXIT" = 22 ]; then ok; else
   ng "build: a failed input fails the run after the other inputs end (exit $CODE, $ENDED_AT_EXIT ended)"
 fi
 

@@ -99,6 +99,14 @@ ADR をやめる場合は、ステータスを破棄にして、理由を [docs/
 ADR はレビューを受けるまでコミットしない。
 提案の段階で内容を直せるのは、コミットするまでのあいだだけだからだ。
 
+### 規則の Alloy のモデル
+
+規則を足すか変える ADR のうち、その範囲に Alloy のモデル（`docs/<モジュール>/models/`）があるものは、モデルを直して走らせ直し、両立しない規則の組と最も小さい例をモデルの README と ADR の「テスト設計」に書く。
+モデルのコマンドの解の有無を変えたときは、同じディレクトリの `expected.txt` も直す。
+今モデルがあるのは改ページ（`docs/golem-layout/models/pagination.als`、結果は `docs/golem-layout/models/README.md`）だけである。
+モデルのない範囲では、規則が三つ以上のほかの規則と端で重なる ADR だけが、新しくモデルを書く（[docs/adr/0204](./docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)、[docs/adr/0208](./docs/adr/0208-widen-lightweight-formal-methods.md) の 5）。
+`.github/workflows/models.yml` が、`scripts/models/check.sh` でモデルのコマンドを走らせ、解の有無を `expected.txt` と比べる（[docs/adr/0235](./docs/adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)）。
+
 ## テストと実装
 
 ADR のテスト設計に書いたテストを先に書き、失敗することを確かめてから実装する。
@@ -386,6 +394,9 @@ CI を待つ時間は、変更を一つ入れるたびにかかるので、CI �
 例外は、wasm のツールチェーン（`scripts/fetch-ghc-wasm.sh`）か wasm の freeze（`cabal.project.wasm.freeze`）を替えるプルリクエストで、`wasm` ジョブの最初の実行はキャッシュがないので 5 分を超えてよい。
 そのプルリクエストは、キャッシュのない実行とキャッシュのある実行の時間を `docs/ci-timings/` に記録する。
 キャッシュが消されて 5 分を超えた実行は、この例外に当たらないので、CI を直す（キャッシュの量を減らす）作業を先にする（[docs/adr/0219](./docs/adr/0219-frequency-of-the-wasm-job-and-its-uncached-runs.md)）。
+`.github/workflows/models.yml` も、この方針の例外である。
+Alloy のモデルを走らせるには 5 分を大きく超える時間がかかるので、モデル（`docs/*/models/`）を変えたプルリクエストと `main` への push と週に一度だけ走り、上限を 30 分とする。
+モデルを変えるプルリクエストは、その時間を待つ（[docs/adr/0235](./docs/adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)）。
 
 CI の `build` ジョブは、EPUB を検査する epubcheck を apt から入れない。
 配布元（GitHub の w3c/epubcheck）の release の zip を取り、`ci.yml` に書いた SHA-256 で検査してから、ランナーにもとからある Java 17（`JAVA_HOME_17_X64`）で動かす。
