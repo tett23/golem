@@ -28,7 +28,7 @@ wrapMarkUnitPolygons :: [[(Rational, Rational)]]
 wrapMarkUnitPolygons =
   [ [(right - h, base - h), (right + h, base - h), (right + h, top), (right - h, top)],
     [(tip + t, base - h), (right + h, base - h), (right + h, base + h), (tip + t, base + h)],
-    stroke (tip, base) (tip + 24 / 100, base + 18 / 100) (-3 / 5, 4 / 5),
+    stroke (tip, base) (tip + 24 / 100, base + 18 / 100) (negate (3 / 5), 4 / 5),
     stroke (tip, base) (tip + 24 / 100, base - 18 / 100) (3 / 5, 4 / 5)
   ]
   where

@@ -98,7 +98,11 @@ wrapMarkTests =
             let w = toRational (unSp (side s))
                 hc = (w / 2, toRational (unSp s) * 19 / 50)
                 vc = (0, negate w / 2)
-                turn (x, y) = (toRational (unSp y) - snd hc + fst vc, negate (toRational (unSp x) - fst hc) + snd vc)
+                -- the offset from the centre of the horizontal square, turned, from the centre of the vertical one
+                turn (x, y) =
+                  let dx = toRational (unSp x) - fst hc
+                      dy = toRational (unSp y) - snd hc
+                   in (fst vc + dy, snd vc - dx)
                 close (x, y) (a, b) = abs (toRational (unSp x) - a) <= 2 && abs (toRational (unSp y) - b) <= 2
             and (zipWith close (pointsOf (wrapMarkPolygons True (0, 0) s)) (map turn (pointsOf (wrapMarkPolygons False (0, 0) s)))) @? show s
         )
