@@ -157,9 +157,9 @@ pred keepHeading[p: Placement] {
   }
 }
 
--- nothing is sent on from an empty column: the first item stays (a blank line places nothing of its own)
+-- nothing is sent on from an empty column: the first item stays (a blank line and a need-lines place nothing of their own)
 pred noSendFromEmpty[p: Placement] {
-  Col.used = 0 implies all i: Item - Blank | (no j: Item - Blank | j.pos < i.pos) implies (i in Text implies p.brk >= 1 else i in p.kept)
+  Col.used = 0 implies all i: Item - Blank - Need | (no j: Item - Blank - Need | j.pos < i.pos) implies (i in Text implies p.brk >= 1 else i in p.kept)
 }
 
 pred all7[p: Placement] {
@@ -420,7 +420,18 @@ pred spaceKeeps[p: Placement] {
       implies inColumn[p, b]
 }
 
-pred base27[p: Placement] { base26[p] and blankWithNext[p] }
+-- the figures as 'figures' places them, and a figure that is the next block of a need-lines not met goes to the next column:
+-- need-lines applies before the block is placed (docs/adr/0030)
+pred figures27[p: Placement] {
+  all f: Figure |
+    (f in p.kept) iff (
+      (all t: Text | t.pos < f.pos implies here[p, t])
+      and (all g: Figure | g.pos < f.pos implies g in p.kept)
+      and plus[plus[plus[plus[Col.used, #{t: Text | t.pos < f.pos}], (sum g: {g: Figure | g.pos < f.pos} | g.size)], #{b: Blank | b.pos < f.pos and not blankAtTop[p, b]}], f.size] <= Col.cap
+      and (all n: Need | f in needNext[p, n] implies (minus[Col.cap, placedBefore[p, f]] >= 2 or firstInColumn[p, f])))
+}
+
+pred base27[p: Placement] { fits[p] and order[p] and figures27[p] and figureOrder[p] and noSendFromEmpty[p] and blankWithNext[p] }
 
 -- the shape of golem-layout ADR 0027 is an input: need-lines, a space, and the block after them in this column
 run needSpaceSome {
@@ -438,7 +449,15 @@ run needSpaceAllButGreedy {
   no p: Placement | base27[p] and needMet[p] and spaceKeeps[p] and orphan[p] and widow[p] and keepHeading21[p]
 } for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
 
--- the pair: need-lines and the greedy fill, which need-lines gives way to by design
+-- the pair: need-lines and placing a figure where it fits, which gives way to need-lines
+run needFigure {
+  inDomain27
+  (some p: Placement | fits[p] and figures[p] and figureOrder[p])
+  (some p: Placement | fits[p] and needMet[p])
+  no p: Placement | fits[p] and figures[p] and figureOrder[p] and needMet[p]
+} for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
+-- the pair: need-lines and the greedy fill, which gives way to need-lines
 run needGreedy {
   inDomain27
   (some p: Placement | fits[p] and greedy[p])
