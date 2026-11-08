@@ -84,7 +84,11 @@ test-suite golem-font-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    ConcurrencySpec
+  other-modules:    CmapSpec ConcurrencySpec
+  -- the number of the charmaps of FreeType, for CmapSpec only: not in the
+  -- library (docs/adr/0238)
+  include-dirs:     cbits/freetype/include
+  c-sources:        test/cbits/golem_test_cmap.c
   -- ConcurrencySpec shapes one font from several capabilities at once;
   -- -N: one capability per processor from the start, so that the count
   -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)

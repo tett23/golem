@@ -2312,6 +2312,46 @@ expect "compare.sh --check: one list is a usage error" 2
 run sh "$HERE/../wasm/compare.sh"
 expect "compare.sh: no argument is a usage error" 2
 
+# ---------------------------------------------------------------- wasm/legacy-eh.sh
+# (docs/adr/0238 section 2, I1): small modules written as bytes. Each has
+# one function of type [] -> []; the module with throw has one tag of it.
+#   none     nop only
+#   try      try catch_all end (the legacy exception handling)
+#   exnref   block (result exnref) try_table (catch_all_ref 0) end
+#            unreachable end throw_ref (the standard exception handling)
+#   throw    throw 0 (in both forms)
+#   broken   a header and a byte that is no section
+
+if command -v node >/dev/null 2>&1 && node --v8-options 2>/dev/null | grep -q -- '--experimental-wasm-legacy-eh '; then
+  LE=$WORK/legacy-eh
+  mkdir -p "$LE"
+  le_head='\000asm\001\000\000\000\001\004\001\140\000\000\003\002\001\000'
+  printf "$le_head"'\012\004\001\002\000\013' >"$LE/none.wasm"
+  printf "$le_head"'\012\010\001\006\000\006\100\031\013\013' >"$LE/try.wasm"
+  printf "$le_head"'\012\017\001\015\000\002\151\037\100\001\003\000\013\000\013\012\013' >"$LE/exnref.wasm"
+  printf "$le_head"'\015\003\001\000\000\012\006\001\004\000\010\000\013' >"$LE/throw.wasm"
+  printf '\000asm\001\000\000\000\377' >"$LE/broken.wasm"
+  run sh "$HERE/../wasm/legacy-eh.sh" "$LE/none.wasm"
+  expect "legacy-eh: a module without exception handling passes (I1)" 0
+  run sh "$HERE/../wasm/legacy-eh.sh" "$LE/try.wasm"
+  expect "legacy-eh: a module with one try fails (I1)" 1
+  if grep -qF 'legacy exception handling' "$WORK/err"; then ok; else ng "legacy-eh: says that the module has the legacy exception handling (I1)"; fi
+  run sh "$HERE/../wasm/legacy-eh.sh" "$LE/exnref.wasm"
+  expect "legacy-eh: a module with try_table and throw_ref only passes (I1)" 0
+  run sh "$HERE/../wasm/legacy-eh.sh" "$LE/throw.wasm"
+  expect "legacy-eh: a module with throw only passes (I1)" 0
+  run sh "$HERE/../wasm/legacy-eh.sh" "$LE/broken.wasm"
+  expect "legacy-eh: bytes that the default Node does not validate are another error (I1)" 2
+  run sh "$HERE/../wasm/legacy-eh.sh" "$LE/nonexistent.wasm"
+  expect "legacy-eh: a file that cannot be read is another error (I1)" 2
+else
+  skip 7 "legacy-eh: no node with --experimental-wasm-legacy-eh"
+fi
+run sh "$HERE/../wasm/legacy-eh.sh"
+expect "legacy-eh: no argument is a usage error" 2
+run sh "$HERE/../wasm/legacy-eh.sh" a.wasm b.wasm
+expect "legacy-eh: two arguments are a usage error" 2
+
 # ---------------------------------------------------------------- fetch-wasm-packages.sh
 # (docs/adr/0202 section 2)
 
@@ -2517,12 +2557,12 @@ FAKE
 chmod +x "$CB/deno" "$CB/bin/node"
 cb_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi; }
 : >"$WORK/in"
-# the form of the lists: three lines for each of the seven inputs
+# the form of the lists: three lines for each of the eight inputs
 cb_form() {
-  for name in kanikosen determinism pdf complex-vertical complex-horizontal broken-style missing-font; do
+  for name in kanikosen determinism pdf complex-vertical complex-horizontal broken-style missing-font broken-cmap; do
     grep -Eq "^([0-9a-f]{64}|-)  $name/pdf\$" "$1" && grep -Eq "^[0-9a-f]{64}  $name/diagnostics\$" "$1" && grep -Eq "^exit [0-9]+  $name\$" "$1" || return 1
   done
-  [ "$(wc -l <"$1" | tr -d ' ')" = 21 ]
+  [ "$(wc -l <"$1" | tr -d ' ')" = 24 ]
 }
 run env DENO="$CB/deno" sh "$HERE/../wasm/compare.sh" --deno golem.wasm
 cp "$WORK/out" "$CB/deno.txt"
@@ -2542,6 +2582,60 @@ run sh "$HERE/../wasm/compare.sh" --browser chromium
 expect "compare.sh --browser: without WASM is a usage error" 2
 run sh "$HERE/../wasm/compare.sh" --deno
 expect "compare.sh --deno: without WASM is a usage error" 2
+
+# ---------------------------------------------------------------- wasm/compare.sh --wasmtime, broken-cmap
+# (docs/adr/0238 sections 3 and 4): a fake root with compare.sh, the
+# fixtures of the repository and a fake run-wasmtime.sh, whose PDF is the
+# two bytes of Noto Serif JP at 30205 in hex; and a fake root whose Noto
+# Serif JP is not the font that broken-cmap breaks
+
+CW=$WORK/compare-wasmtime
+mkdir -p "$CW/root/scripts/wasm"
+cp "$HERE/../wasm/compare.sh" "$CW/root/scripts/wasm/compare.sh"
+cp -R "$HERE/../determinism" "$CW/root/scripts/determinism"
+ln -s "$HERE/../../modules" "$CW/root/modules"
+cat >"$CW/root/scripts/wasm/run-wasmtime.sh" <<FAKE
+#!/bin/sh
+case "\$1" in
+  compile) echo "compile \$2" >>"$CW/calls"; mkdir -p "\$3" && : >"\$3/golem.cwasm" ;;
+  build)
+    [ -f "\$2/golem.cwasm" ] || exit 9
+    f=\$3/fonts/NotoSerifJP-Regular.otf
+    if [ -f "\$f" ]; then od -An -tx1 -j30205 -N2 "\$f" | tr -d ' \n' >"\$4"; else rm -f "\$4"; fi
+    printf '[]' >&2 ;;
+  *) exit 9 ;;
+esac
+FAKE
+run sh "$CW/root/scripts/wasm/compare.sh" --wasmtime golem.wasm
+cp "$WORK/out" "$CW/list.txt"
+expect "compare.sh --wasmtime: runs every input" 0
+if cb_form "$CW/list.txt"; then ok; else ng "compare.sh --wasmtime: the list has the form of that of node:wasi"; fi
+if [ "$(cat "$CW/calls")" = "compile golem.wasm" ]; then ok; else ng "compare.sh --wasmtime: golem.wasm is compiled once"; fi
+if grep -qxF "$(printf '0001' | cb_sha)  kanikosen/pdf" "$CW/list.txt" && grep -qxF "$(printf 'ffff' | cb_sha)  broken-cmap/pdf" "$CW/list.txt"; then ok; else ng "compare.sh: broken-cmap is kanikosen with FF FF at 30205 of Noto Serif JP (I3)"; fi
+if grep -qxF -- "-  missing-font/pdf" "$CW/list.txt"; then ok; else ng "compare.sh --wasmtime: no PDF"; fi
+run sh "$HERE/../wasm/compare.sh" --wasmtime
+expect "compare.sh --wasmtime: without WASM is a usage error" 2
+run sh "$HERE/../wasm/compare.sh" --wasmtime a.wasm b.wasm
+expect "compare.sh --wasmtime: two modules are a usage error" 2
+CS=$WORK/compare-sha
+mkdir -p "$CS/scripts/wasm" "$CS/modules/golem-driver/test/fixtures/kanikosen/fonts"
+cp "$HERE/../wasm/compare.sh" "$CS/scripts/wasm/compare.sh"
+printf 'not the font\n' >"$CS/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
+run sh "$CS/scripts/wasm/compare.sh" --native /nonexistent/golem
+expect "compare.sh: another Noto Serif JP than the one broken-cmap breaks fails" 1
+if grep -qF 'SHA-256' "$WORK/err"; then ok; else ng "compare.sh: says that the SHA-256 of the font differs"; fi
+
+# ---------------------------------------------------------------- wasm/run-wasmtime.sh
+# (docs/adr/0238 section 4): the arguments
+
+run sh "$HERE/../wasm/run-wasmtime.sh"
+expect "run-wasmtime: no argument is a usage error" 2
+run sh "$HERE/../wasm/run-wasmtime.sh" compile golem.wasm
+expect "run-wasmtime: compile without the folder is a usage error" 2
+run sh "$HERE/../wasm/run-wasmtime.sh" build host dir
+expect "run-wasmtime: build without the PDF is a usage error" 2
+run sh "$HERE/../wasm/run-wasmtime.sh" run a b c
+expect "run-wasmtime: an unknown command is a usage error" 2
 
 # ---------------------------------------------------------------- fetch-chromium.sh, fetch-deno.sh
 # (docs/adr/0234 sections 1 and 5): the arguments, and a zip of another

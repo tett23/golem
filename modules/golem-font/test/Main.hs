@@ -1,5 +1,6 @@
 module Main (main) where
 
+import CmapSpec (cmapTests)
 import ConcurrencySpec (concurrencyTests)
 import Control.Monad (void)
 import Data.Bits (shiftL, (.|.))
@@ -22,9 +23,13 @@ main = do
   sans <- load "SourceSansPro-Regular.otf"
   serif <- BS.readFile "test/fonts/SourceSerifVariable-Roman.ttf"
   -- the subset of Source Han Sans has no palt; Noto Serif JP of golem-driver's 蟹工船 fixture has
-  noto <- BS.readFile "../golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" >>= loadFont >>= either (fail . show) pure
+  noto <- BS.readFile notoPath >>= loadFont >>= either (fail . show) pure
   race <- raceFactor
   defaultMain (tests race han sans serif noto)
+
+-- | Noto Serif JP of golem-driver's 蟹工船 fixture, which broken-cmap of scripts/wasm/compare.sh breaks too.
+notoPath :: FilePath
+notoPath = "../golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
 
 load :: FilePath -> IO Font
 load name = do
@@ -168,7 +173,8 @@ tests race han sans serif noto =
           testCase "a font that is not CID-keyed gives the glyph id as the CID" $
             map (glyphCid sans) [0, 1, 2, fontNumGlyphs sans + 3] @?= [0, 1, 2, fontNumGlyphs sans + 3]
         ],
-      concurrencyTests race han noto
+      concurrencyTests race han noto,
+      cmapTests notoPath
     ]
   where
     head' (x : _) = x
