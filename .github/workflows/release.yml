@@ -25,13 +25,16 @@ env:
 
 jobs:
   # A called workflow gets at most the permissions of the job that calls
-  # it; the visual job of ci.yml asks for actions: read (docs/adr/0096),
-  # and without it here every run of this workflow fails at startup
+  # it; the visual job of ci.yml asks for actions: read (docs/adr/0096)
+  # and the caches job for actions: write (docs/adr/0228), and without
+  # them here every run of this workflow fails at startup, though caches
+  # runs on pushes to main only. The other jobs of ci.yml keep the
+  # permissions they ask for
   ci:
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
-      actions: read
+      actions: write
 
   version:
     runs-on: ubuntu-24.04

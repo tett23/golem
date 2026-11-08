@@ -1819,6 +1819,25 @@ if grep -qx '| `build (ubuntu-24.04)` | `Run haskell-actions/setup@v2` | 143 | 1
 run timings --bogus
 expect "timings: an unknown option" 2
 
+# ---------------------------------------------------------------- release.yml calls ci.yml
+# A called workflow gets at most the permissions of the job that calls it,
+# and a job of ci.yml that asks for more makes every run of release.yml
+# end in startup_failure, whether the job would run or not: the ci job of
+# release.yml grants each permission that a job of ci.yml asks for, at the
+# same level or write (run 42480681991, the caches job of docs/adr/0228)
+CI_CALLER=$(perms_of "$RELEASE_YML" ci)
+CI_ASKED=$(ci_jobs "$CI_YML" | while IFS= read -r j; do perms_of "$CI_YML" "$j"; done | sort -u)
+missing=
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  scope=${p%%:*}
+  level=${p#*: }
+  if printf '%s\n' "$CI_CALLER" | grep -qx "$scope: $level" || printf '%s\n' "$CI_CALLER" | grep -qx "$scope: write"; then :; else missing="$missing $p"; fi
+done <<PERMS
+$CI_ASKED
+PERMS
+if [ -z "$missing" ]; then ok; else ng "release.yml: the ci job grants what the jobs of ci.yml ask for (missing:$missing)"; fi
+
 # ---------------------------------------------------------------- race-needed.sh
 # (docs/adr/0075-race-search-repetitions.md)
 
