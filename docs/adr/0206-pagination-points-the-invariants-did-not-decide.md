@@ -1,6 +1,6 @@
 # ADR 0206: 改ページの不変条件の述語が判定しなかった仕様の点を決める
 
-ステータス: 採択
+ステータス: 採択→境界の表の段落の行の数 C、C + 1 は [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
 
 ## 文脈
 

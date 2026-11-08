@@ -814,7 +814,8 @@ gmHover ws src off = do
           chapterCount = maybe 0 (length . projectChapters . evProject) (wsEvaluated ws)
           docNs = Map.fromList [("chapters", VHash (Map.fromList [("count", VNat (fromIntegral chapterCount))]))]
           s1 = isJust (wsEvaluated ws >>= evBook)
-          -- the namespace vars of [vars] (docs/adr/0185)
+          -- the namespace vars of [vars] (docs/adr/0185), which the hover needs
+          -- for the new value (docs/adr/0211)
           env = plainEnv vars (Map.insert "vars" (projectVarsOf ws) (Map.insert "doc" docNs imports))
        in case evalExpr env e of
             Left d -> "評価できません: " <> diagMessage d

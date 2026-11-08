@@ -235,8 +235,9 @@ templateBuildTests =
 {- | The path of @table as the first argument builds the same outputs as
 src=, byte for byte, in the four targets; src= gives the notice G02129
 (docs/adr/0184). The instance ID of the PDF (the second of /ID) is the
-hash of the bytes of every input (docs/adr/0004), the source among them,
-and differs with the source; it alone is left out of the comparison.
+hash of the bytes of every input (docs/adr/0002), the source among them,
+and differs with the source; it alone is left out of the comparison
+(docs/adr/0211).
 -}
 tablePathTests :: TestTree
 tablePathTests =

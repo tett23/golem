@@ -1221,7 +1221,7 @@ normalize env = go AtStart True
     lastClass c = lookClass (bcLook c) <$> lastChar c
     {- a character of both scripts in a Latin span (docs/adr ADR 0187): no
     aki beside it, and the line breaks beside it as beside the Japanese
-    character -}
+    character, by the kinsoku of its Japanese class (docs/adr/0211) -}
     latinDual c = \case
       Just ch -> isDualCharacter ch && maybe False (not . spanIsJapanese) (lkLang (bcLook c))
       Nothing -> False

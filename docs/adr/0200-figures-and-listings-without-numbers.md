@@ -1,6 +1,6 @@
 # ADR 0200: 番号を振らない図版とコードブロックを `@nonumber` で書けるようにする
 
-ステータス: 採択
+ステータス: 採択→Emet と Rust の SDK の `nonumber` は [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
 
 ## 文脈
 

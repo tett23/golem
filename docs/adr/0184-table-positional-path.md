@@ -1,6 +1,6 @@
 # ADR 0184: `@table` のパスを最初の引数に書く
 
-ステータス: 採択
+ステータス: 採択→golem-cli のテストが PDF のインスタンス ID を比べないことは [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
 
 ## 文脈
 

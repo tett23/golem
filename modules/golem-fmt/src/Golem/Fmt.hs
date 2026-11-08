@@ -44,9 +44,11 @@ preprocess = T.intercalate "\n" . map untab . T.splitOn "\n" . formatTable
        in T.concatMap (\c -> if c == '\t' then "  " else T.singleton c) ind <> rest
 
 {- | The preprocessing of a table file of @table (docs/adr/0186): the BOM
-at the start is removed, CRLF becomes LF, then a lone CR becomes LF. Tabs,
-spaces, blank lines, quotes and separators are kept, so the reader makes
-the same table, and a lone CR in quotes becomes a line break in the cell.
+at the start is removed, one only, as the readers skip one only and read a
+second one as a character of the first cell (docs/adr/0211); CRLF
+becomes LF, then a lone CR becomes LF. Tabs, spaces, blank lines, quotes
+and separators are kept, so the reader makes the same table, and a lone
+CR in quotes becomes a line break in the cell.
 -}
 formatTable :: Text -> Text
 formatTable t0 =
