@@ -475,14 +475,29 @@ boot のパッケージの版は wasm の GHC のものになる（`time` は 1.
 cborg、`skylighting`、`skylighting-core` は、この比べから外す（[ADR 0202](adr/0202-packages-that-do-not-build-for-wasm.md)）。
 cborg は、32 ビットで組める上流のコミット `6ef2791c` を使う。
 `skylighting-core` 0.15 と `skylighting` 0.15 は、`scripts/fetch-wasm-packages.sh` が Hackage のアーカイブを SHA-256 で確かめて `third_party/wasm-packages/` に展開し、`Skylighting.Parser` と `Skylighting.Loader`、その再エクスポート、`xml-conduit` の依存を除く `scripts/wasm/patches/` の差分を当てる。
-golem-font は、wasm に向けて組むときだけ、FreeType を `-mllvm -wasm-enable-sjlj` でコンパイルし、wasi-sdk の `c++`、`c++abi`、`setjmp` をリンクする。
+golem-font は、wasm に向けて組むときだけ、FreeType を `-mllvm -wasm-enable-sjlj` と `-mllvm -wasm-use-legacy-eh=false` でコンパイルし、wasi-sdk の `c++`、`c++abi`、`setjmp` をリンクする。
+FreeType の `setjmp` と `longjmp` は、wasm の例外処理の標準化された形（exnref の形、`try_table` と `throw_ref`）で実装される（[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+古い形（`try`、`catch`、`catch_all`、`delegate`、`rethrow`）の命令は使わない。
+このため、`golem.wasm` を動かす実行環境は、標準化された例外処理に対応した版でなければならない。
+対応した最初の版は、Chrome 137、Firefox 131、Safari 18.4、Node 24.15、Deno 2.3.2、wasmtime 47 である。
 `toml-parser` が使う `alex` と `happy` は、ネイティブの GHC で組んだ `alex` 3.5.4.2 と `happy` 2.2（`cabal.project.freeze` の版）を `PATH` に置いて使う。
 cabal 3.14.2.0 は、`build-tool-depends` の `alex` と `happy` も wasm の GHC で組んで store に `alex.wasm` と `happy.wasm` を置くが、それは wasm のモジュールで、cabal は `alex` と `happy` として使わないので、ビルドの中で動くのは `PATH` のものだけである。
 `hsc2hs` は、`wasm32-wasi-cabal` が `--with-hsc2hs` で渡す wasm の GHC のものを使う。
 
-CI の `wasm` ジョブは、`golem.wasm` を Node の `node:wasi` で動かす。
-夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` を Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno` と `--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)）。
-wasmtime 49.0.5 の CLI は、`golem.wasm` の例外処理の古い形（legacy exceptions）を読まないので、wasmtime では動かさない。
+CI の `wasm` ジョブは、組んだ直後の `golem.wasm` に古い形の例外処理の命令がないことを `scripts/wasm/legacy-eh.sh` で確かめる（[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md) の I1）。
+このスクリプトは、モジュールを Node で二度検証し、既定の Node では正しく、`--no-experimental-wasm-legacy-eh` を付けた Node では正しくないとき 1 で終わる。
+既定の Node でも正しくないモジュールは、別の誤りとして 2 で終わる。
+その後、`golem.wasm` を Node の `node:wasi` で動かす。
+`scripts/wasm/compare.sh` の入力には、FreeType が cmap の部分表を `longjmp` で退ける `broken-cmap` がある。
+kanikosen を写し、NotoSerifJP-Regular.otf の SHA-256 を確かめてから、Macintosh の format 6 の部分表の `entryCount`（ファイルの先頭から 30205 バイトめからの 2 バイト）を `FF FF` にしたものである。
+SHA-256 が違えば、`compare.sh` は失敗する。
+golem-font のテストが、このフォントの `num_charmaps` が元のフォントより一つ少ないことを確かめる。
+夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` を Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、wasmtime 49.0.5 の C API と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno`、`--wasmtime`、`--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+wasmtime のホストは、`scripts/fetch-wasmtime.sh` が取る C API にリンクする C のプログラム `scripts/wasm/run-wasmtime.c` である。
+`golem.wasm` を一度だけコンパイルして直列化し、入力ごとに、`run.mjs frame` が書く入力の枠を `golem_build_pdf` に渡して結果の枠を書き、`run.mjs result` がそれを読む（`scripts/wasm/run-wasmtime.sh`）。
+WASI には引数 `golem.wasm` だけを渡し、ディレクトリを開かず、環境変数を渡さない。
+wasmtime の CLI は、メモリにバイト列を書いて渡す手段がないので使わない。
+同じ `chromium` のジョブで、正規化されていないパスの入力の枠、ファイルのない入力の枠、kanikosen の入力の枠に、`run-wasmtime.c` と `run.mjs` の `call` が同じバイト列の結果の枠を返すことを `cmp` で確かめる（I5）。
 
 処理は `parse → eval → 意味論 IR → 各バックエンド` の順に流れ、分岐点は意味論 IR である（「処理の流れ」の節を参照）。
 
