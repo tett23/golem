@@ -28,6 +28,7 @@ import ParagraphSpec
 import PdfSpec
 import ReferencesSpec
 import SecuritySpec
+import SpecimenGeometrySpec (specimenGeometryTests)
 import StylesSpec
 import TableFilesSpec
 import TaggedPdfSpec (taggedPdfTests)
@@ -76,7 +77,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests]
         <> [ newProjectTests,
              allTargetsTests,
              pdfPipelineTests,

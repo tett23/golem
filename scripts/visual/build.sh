@@ -28,6 +28,7 @@ FIX=$ROOT/modules/golem-driver/test/fixtures
 PD_BOOKS="elements-of-style frogs haru-to-shura ichiaku-no-suna koya-hijiri merry-wives nightmare-abbey snark taira-no-masakado ushiyama-hotel"
 list() {
   printf '%s\n' sample figures complex-vertical complex-horizontal kanikosen kanikosen-marks-japanese tempest languages
+  printf '%s\n' specimens-horizontal specimens-vertical specimens-vertical-marks-japanese
   for book in $PD_BOOKS; do printf 'pd-%s\n' "$book"; done
   printf '%s\n' manual manual-dev
 }
@@ -153,6 +154,20 @@ copy tempest "$FIX/tempest"
 copy languages "$FIX/languages"
 fonts "$WORK/languages"
 
+# the specimens of what is checked by eye (docs/adr/0233), and the vertical
+# one with Japanese crop marks and a bleed of 3 mm, for its hidden folios
+copy specimens-horizontal "$FIX/specimens/horizontal"
+fonts "$WORK/specimens-horizontal"
+copy specimens-vertical "$FIX/specimens/vertical"
+fonts "$WORK/specimens-vertical"
+copy specimens-vertical-marks-japanese "$FIX/specimens/vertical"
+fonts "$WORK/specimens-vertical-marks-japanese"
+awk '{ print } $0 == "[page]" { print "bleed = \"3mm\"" }' "$FIX/specimens/vertical/style.toml" >"$WORK/specimens-vertical-marks-japanese/style.toml"
+if ! grep -qx 'bleed = "3mm"' "$WORK/specimens-vertical-marks-japanese/style.toml"; then
+  echo "build: the style.toml of specimens/vertical has no [page] for the bleed" >&2
+  exit 1
+fi
+
 for book in $PD_BOOKS; do
   copy "pd-$book" "$FIX/pd/$book"
 done
@@ -188,6 +203,9 @@ job kanikosen pdf kanikosen "$WORK/kanikosen"
 job kanikosen-marks-japanese pdf kanikosen-marks-japanese "$WORK/kanikosen-marks-japanese" --marks japanese
 job tempest pdf tempest "$WORK/tempest"
 job languages pdf languages "$WORK/languages"
+job specimens-horizontal pdf specimens-horizontal "$WORK/specimens-horizontal"
+job specimens-vertical pdf specimens-vertical "$WORK/specimens-vertical"
+job specimens-vertical-marks-japanese pdf specimens-vertical-marks-japanese "$WORK/specimens-vertical-marks-japanese" --marks japanese
 for book in $PD_BOOKS; do
   job "pd-$book" pdf "pd-$book" "$WORK/pd-$book"
 done

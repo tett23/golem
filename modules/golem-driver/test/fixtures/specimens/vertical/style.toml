@@ -1,0 +1,64 @@
+# 目で見る項目の見本の縦組みの二段の本（docs/adr/0233）
+[page]
+size = "A5"
+binding = "right"
+writing-mode = "vertical"
+
+[page.grid]
+font-size = "13Q"
+characters = 20
+lines = 22
+line-pitch = "22H"
+columns = 2
+column-gap = "2zw"
+position = { top = "20mm", gutter = "18mm" }
+
+[fonts.body]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[headings.1]
+page-break = "any"
+size = "1.5zw"
+rule-after = { weight = "0.5pt", space-before = "0.5zw" }
+
+[headings.2]
+rule-after = { weight = "0.3pt", space-before = "0.25zw", length = "4zw" }
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[paragraph-styles.adr]
+first-line-indent = "0zw"
+
+[paragraph-styles.section]
+first-line-indent = "1zw"
+rule-before = { weight = "0.5pt", space-before = "0.5zw", space-after = "0.5zw" }
+
+[paragraph-styles.palt]
+first-line-indent = "0zw"
+proportional-metrics = true
+
+[paragraph-styles.full]
+first-line-indent = "0zw"
+
+[composition]
+hanging-punctuation = true
+
+[numbers]
+vertical = "kanji"
+
+[notes.rule]
+length = "8zw"
+space-before = "0.5zw"
+space-after = "0.5zw"
+
+[masters.body]
+running-head = { position = "top-outside", content = "heading.1.short" }
+folio = { position = "bottom-outside", format = "{n}" }
+
+# 隠しノンブル（golem-driver ADR 0021）。トンボを付けた版（見た目の回帰のテストの
+# specimens-vertical-marks-japanese）にだけ入る。どのページにもノンブルがあるので、
+# すべてのページに入れる
+[hidden-folio]
+pages = "all"

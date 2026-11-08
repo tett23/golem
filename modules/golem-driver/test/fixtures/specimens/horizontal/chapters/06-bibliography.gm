@@ -1,0 +1,10 @@
+# 参考文献の一件の中の空き
+
+@style adr
+golem-doc ADR 0004
+
+参考文献の一件の中の、著者、題、出版者、年のあいだの空きを見る。
+欧文の文献[cite knuth-plass]と、和文の文献[cite jlreq]を引く。
+版を重ねた本[cite bringhurst]も引く。
+
+@bibliography

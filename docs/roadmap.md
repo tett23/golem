@@ -21,6 +21,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 ### PDF
 
 - **本文の中のコードの和文の改行**：和文を含む長い本文の中のコードは、空白と `/` の後でしか改行しないので、版面の右にはみ出す。利用者のマニュアルの付録 E では、はみ出す六つの項目のメッセージの後ろを `…` で略して避けている（[docs/adr/0178](adr/0178-colophon-commit-line-overflow.md)、[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。はみ出す行は、`golem build` が G07105 の警告で報告する。
+- **縦組みの脚注の本文の前の二桁の番号**：縦組みの脚注の本文の前の印（既定の `*{n}`）で、番号が 10 以上になると、二つめの数字が本文の一字めに重なる。見た目の回帰テストの見本（`specimens-vertical` の「縦組みの注の印」の節）で見つけ、参照はこの重なりのまま受け入れた（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)、[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）。直し方は ADR で決める。
 
 ## v1.0.0
 
@@ -29,6 +30,11 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 仕様や機能を変える項目は、着手するときに ADR を作成する。
 
 - **リンクの注釈についての ISO 15930-7 の照合**：v1.0.0 のタグを打つ前に、メンテナーが ISO 15930-7:2010 の本文を入手し、リンクの注釈、URI のアクション、仕上がりの線の内側の印刷する注釈、外観のストリームのない注釈の四つの問いと、[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) の要件の一覧を照合する。結果は `docs/audits/<日付>-iso-15930-7-check.md` に記録する。今の出力が規格に反すると分かれば、[docs/adr/0182](adr/0182-external-links.md) の PDF/X-4 の節を改める ADR を作り、その実装がマージされるまで v1.0.0 のタグを打たない。タグを打つ前に、記録があり、この項目が消えていることを確かめる（[docs/adr/0221](adr/0221-check-iso-15930-7-for-link-annotations-before-rc4.md)、[docs/adr/0226](adr/0226-move-the-iso-15930-7-check-to-before-v1.md)）。v1.0.0 の前のリリースのリリースノートには、照合を済ませていないことを既知の問題として書く。
+- **Adobe の製品で確かめる見た目**：Adobe の製品を使う手の確かめは、費用がかかるので、v1.0.0 のリリースのときにメンテナーがまとめて行う（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md) の「決めたことの記録」）。見本は、見た目の回帰テストの入力の `specimens-horizontal` と `specimens-vertical` を使える。
+  - 縦組みのダッシュを、InDesign の縦組みと比べること（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
+  - 圏点の十の形を、InDesign の圏点と比べること（[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）。
+  - 技術書のコードブロックを Acrobat の出力プレビューで開くこと（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+  - 12 の線の種類と色を付けた脚注の区切り線を Acrobat の出力プレビューで開き、色が DeviceCMYK の版だけに出ることを見ること。同じ太さと長さの線を InDesign で引いて並べ、多重線の比、点の間隔、和文の点線の形を比べること（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
 - **ルビの親文字の中の参照**：ルビの親文字の中の `[ref-number]` と `[ref-title]` は、タグ付き PDF の構造の木で `Reference` にならない（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)、[docs/adr/0229](adr/0229-record-the-procedures-adr-0215-and-0217-departed-from.md)）。親文字の中の参照をどの構造の要素にするかを ADR で決める。
 - **可変フォント**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。今は可変フォントを既定のインスタンスとして組むが、サブセットで軸を固定しないので、使わない可変のデータ（fvar、gvar、HVAR、MVAR など）も PDF に埋め込んでいる。glyf の可変フォントで軸を既定の値に固定すると、描画を変えずに PDF が 35K から 8K に縮んだ。CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、それまでは PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、描画を比べる回帰テストで確かめてからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 - **番号と題のあいだの区切りの設定**：見出し、図版、コードブロックのキャプションの番号と題のあいだの区切りを、段落スタイルで決められるようにする。今は本の言語で一つに決まり、コードブロックのリスト番号も同じ規則に従う（草案の ADR で決める）。
@@ -198,36 +204,27 @@ v3 の GUI は、次の原則に従って作る。
 - **トンボのレジストレーションの色**：トンボを付けた PDF を Acrobat の出力プレビューとプリフライトで開き、トンボが全版に出ること、本文に特色が混ざらないこと、InDesign の書き出しと同じ形であることを確かめていない（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
 - **PDF の図版の見た目と商用のプリフライト**：Illustrator、Inkscape、LibreOffice Draw、Chrome の印刷、matplotlib、TeX（pdfTeX と LuaTeX）で書き出した図の PDF を置いて組み、画面と印刷で元の PDF と同じに見えることを確かめていない。拒まれた場合に、理由が [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md) の表のどれかであることも確かめていない。sRGB に置き換えた DeviceRGB と透明のグループを含む図版を Acrobat の PDF/X-4 の検査に通し、結果を `docs/audits/` に残す（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 - **SVG の図版の見た目**：開発者のマニュアルの輪郭の SVG と原稿の SVG を Chrome で並べ、文字の位置（中央揃え、`dominant-baseline: central`）、縦書きの字の向き、太字が一致することを目で確かめていない。Inkscape、Illustrator、draw.io で範囲の中だけを使って描いた図が PDF で崩れないこと、範囲の外の機能が G08011 になることも確かめていない。SVG の図版を含む PDF を Acrobat の PDF/X-4 の検査に通し、結果を `docs/audits/` に残す（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
-- **縦組みのダッシュ**：縦組みの PDF を目で見ること、InDesign の縦組みとの比較、縦組みの HTML を Safari と Chrome で開いて向きが PDF と同じことの確かめが残っている（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
-- **リストの字下げ**：入れ子のリストと 10 項目を超える番号付きリストを、横組みと縦組みで PDF と EPUB にして目で見ることと、決定性の検査の蟹工船とテンペストの出力が変わらないことの確かめが残っている（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
-- **段組みの脚注**：段組みの版面で、脚注がその段の下に組まれることを PDF で目で確かめていない。自動のテストでだけ確かめている（[docs/adr/0018](adr/0018-multi-column-layout.md)）。
+- **縦組みのダッシュ**：縦組みの HTML を Safari と Chrome で開き、向きが PDF と同じことを確かめていない。PDF の見た目は見た目の回帰テストの見本（`specimens-vertical`）で見て受け入れ、InDesign との比べ合わせは v1.0.0 の「Adobe の製品で確かめる見た目」に移した（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)、[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
+- **リストの字下げ**：入れ子のリストと 10 項目を超える番号付きリストを、横組みと縦組みの EPUB にして目で見ていない。PDF の見た目は見た目の回帰テストの見本（`specimens-horizontal` と `specimens-vertical`）で見て受け入れ、10 番目からの項目の本文の行頭は golem-driver のテストが確かめる。決定性の検査の蟹工船とテンペストの出力は、`scripts/determinism/hashes.txt` が守る（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)、[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
 - **コマンドの中の空白の semantic tokens の見え方**：Ghostty の Neovim の本人のテーマで、コマンドと式の中の空白（型は `operator`）に背景や下線が出ないことを、目で確かめていない。既定の色の組で、その位置の強調のグループが背景も下線も持たないことは、CI の `editors-lsp` ジョブが確かめる。本人のテーマの強調のグループは、手元で `NVIM_APPNAME=<設定の名前> GOLEM=<golem> NVIM=nvim sh tools/editors/nvim/test.sh --theme` を走らせて確かめられる。`--theme` は `--clean` を外し、その設定と色の組で空白のテストだけを走らせる。端末の上での色の見え方は、このテストでは確かめない（[golem-lsp ADR 0008](golem-lsp/adr/0008-semantic-tokens-for-whitespace-and-remaining-punctuation.md)、[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。
 - **コードブロックの見え方**：コードブロックの PDF を Acrobat の出力プレビューで開き、背景の色が DeviceCMYK の版だけに出ることと、コードの書体が埋め込まれていることを確かめていない。HTML と EPUB の `pre` と `code` の見え方も、Safari と Chrome で確かめていない（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 - **技術書のコードブロックの見え方**：行番号、キャプション、強調、注釈の印を付けたコードブロックを PDF と HTML で開き、技術書として読める見た目であることと、強調の網が墨の版だけに出ることを目で確かめていない。HTML で行番号と差分の印が選択とコピーに含まれないことも、Safari と Chrome で確かめていない（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 - **二冊のマニュアルの HTML と PDF**：利用者向けと開発者向けのマニュアルの HTML を、ブラウザで開いて確かめていない。PDF は、Acrobat でフォントの一覧と埋め込みを確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 - **マニュアルの中の InDesign の記述**：利用者向けのマニュアルの InDesign との対応と比較の記述（「はじめに」と付録 E）を、InDesign に詳しい人が確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
-- **組版の新しい機能の見え方**：次の機能の PDF を目で見て確かめていない。環境に PDF を画像にする道具がなく、実装のプルリクエストでは確かめられなかった。
-  - 圏点の十の形を、横組みと縦組みで見ること。HTML を Safari と Chrome で見ることと、InDesign の圏点との比較（[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）。
-  - 隠しノンブルを、トンボを付けた PDF で Acrobat で見ること（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。
-  - `palt` と `vpal` の約物の位置と、二倍ダッシュが一本の線に見えること（[golem-driver ADR 0020](golem-driver/adr/0020-glyph-positioning-and-dash-kerning.md)）。
-  - ルビの親文字の一部を太字にしたマニュアルの見本（[golem-layout ADR 0011](golem-layout/adr/0011-ruby-base-character-styles.md)）。
-  - 縦組みの注の印と、マニュアルの付録の注（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）。
-  - 参考文献の一件の中の空き（[golem-doc ADR 0004](golem-doc/adr/0004-bibliography-formatting.md)）。
-  - 技術書のコードブロックを Acrobat の出力プレビューで開くこと（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
-  - The Elements of Style の 39 ページ、縦組みの表を足した蟹工船、二冊のマニュアルの表のあるページで、罫が字面に接しないこと、空の見出しの行の罫が二重にならないこと、表の前後に一行の空きがあること（[golem-driver ADR 0031](golem-driver/adr/0031-table-spacing-and-rules.md)）。
-  - 節の区切りの罫線と見出しの下の罫線を付けた横組みと縦組みの試料で、罫線が格子の行を崩さずに入り、段の端で版面の外に出ないこと。HTML を Safari と Chrome で開き、罫線が段落の前後に出ること（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
-  - 12 の線の種類と色を付けた脚注の区切り線を Acrobat の出力プレビューで開き、破線と点線の両端、点の丸さ、波線のつながり、色が DeviceCMYK の版だけに出ることを見ること。同じ太さと長さの線を InDesign で引いて並べ、多重線の比、点の間隔、和文の点線の形を比べること（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
+- **組版の新しい機能の見え方**：次の機能の HTML を、Safari と Chrome で見て確かめていない。PDF の見た目は、見た目の回帰テストの見本（`specimens-horizontal`、`specimens-vertical`、`specimens-vertical-marks-japanese`）で見て受け入れ、幾何の性質（表の罫と空き、段落の罫線の位置、段組みの脚注、縮めた図版と回した図版）は golem-driver のテストが確かめる。InDesign との比べ合わせと Acrobat の出力プレビューは、v1.0.0 の「Adobe の製品で確かめる見た目」に移した（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
+  - 圏点の十の形の HTML（[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）。
+  - 節の区切りの罫線と見出しの下の罫線の HTML で、罫線が段落の前後に出ること（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 
 - **PNG の tRNS の見た目**：figures の fixture の PDF を CoreGraphics で画像にし、tRNS を持つ 4 枚の PNG の透明の画素で紙面の白が見え、半透明の緑が紙面と混ざることは確かめた。Poppler の `pdftoppm` で画像にすることと、同じ fixture の HTML を Safari と Chrome で開いて PDF と同じ画素が透明になることは、確かめていない（[golem-pdf ADR 0014](golem-pdf/adr/0014-png-trns-transparency.md)）。
 
-- **v0.1.0-rc3 のリリースの前のマニュアルの目視**：rc3 の作業でマニュアルを直した箇所を、組んだ PDF と HTML で目で確かめていない。メンテナーがリリースの前にまとめて確かめる。
-  - 開発者のマニュアルの「純粋な関数」の章で、コードの中に `\|` と書いた `|k|` が、`|` として表示されること（[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)）。
+- **v0.1.0-rc4 のリリースの前のマニュアルの目視**：rc3 の作業でマニュアルを直した箇所を、組んだ PDF と HTML で目で確かめていない。v0.1.0-rc3 のリリース（2026-10-24）までに見られなかったので、メンテナーが v0.1.0-rc4 のリリースの前にまとめて確かめる（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
+  - 開発者のマニュアルの「純粋な関数」の章で、コードの中に `\|` と書いた `|k|` が、`|` として表示されること（[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)）。この小項目は、[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md) の Poppler の `pdftotext` で開発者のマニュアルの PDF から文字列を取り出すテストにする（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
   - 行番号を付けたコードブロック。利用者のマニュアルの第 1 章の『高野聖』の原稿で、本文の「11 行目と 20 行目」が行番号と合っていること。第 4 章、第 5 章、第 8 章、開発者のマニュアルの `.wat`、チャネルの例、関数の型の一覧、ADR の雛形も見ること。
   - 利用者のマニュアルの第 3 章で、行アキの上限（G04011、[docs/adr 0047](adr/0047-blank-line-limit.md)）、回した図版を待つあいだの改段と白ページ、「数と式」に足した散文スロットの段落と、付録 E の G04011 の項。
   - 開発者のマニュアルのチャネルの図（`channels` と `channels-example`）のラベル（[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）。
   - G08014 の言い換え（「動的なコンテンツ」）が入った箇所。
   - 開発者のマニュアルの 22 ページのコードの空白と前後の空き、利用者のマニュアルの 285 ページの参照の 11、12、14。
-  - 図版を段に収めて回す試料（縦組みと横組み）で、縮めた図版が版面に収まり、回した図版がキャプションと一緒に回ること（[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）。
+  - マニュアルの付録の注（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）。
 - **EPUB の検査と読書環境での見え方**：別のファイルの参考文献への引用のリンク、ナビゲーション文書の深さ、プラグインの独自のチャネルを使った EPUB を epubcheck にかけて RSC-012 などが出ないことと、ブラウザと読書環境で見え方を確かめていない（[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）。
 - **タグ付き PDF の読み上げ**：タグ付き PDF を、macOS の VoiceOver と Acrobat Reader、Windows の NVDA と Acrobat Reader で読み、縦組みの本文、ルビ（親文字の後に読み）、注（印の直後に注の本文）の読む順と、図版の代替テキストが読まれることを確かめていない。veraPDF が調べるのは PDF/UA-1 のうち自動で調べられる要件だけである（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
 - **PDF のリンクの注釈**：リンクを含む横組みと縦組みの PDF を、Acrobat Reader、macOS のプレビュー、Chrome の PDF ビューアで開き、リンクの矩形をクリックして URL が開くことを確かめていない。ISO 15930-7:2010（PDF/X-4）の本文で、注釈と URI のアクションを禁じる規定がないことも確かめていない。この照合は、v1.0.0 のタグの前にメンテナーが行い、`docs/audits/` に記録する（[docs/adr/0221](adr/0221-check-iso-15930-7-for-link-annotations-before-rc4.md)、[docs/adr/0226](adr/0226-move-the-iso-15930-7-check-to-before-v1.md)）。禁じる規定があれば、`[color] intent` のある本にリンクを書く扱いを改める ADR を作る（[docs/adr/0182](adr/0182-external-links.md)）。
