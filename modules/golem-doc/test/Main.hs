@@ -74,7 +74,7 @@ int64Tests =
         let big = TInteger (2 ^ (63 :: Int))
             doc body = decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, TNull, body]]])))
         doc (TList [TInt 1, TInt 1, TList [TNull, big, TBool False, TBool False], TList []]) @?= Left outOfRange
-        doc (TList [TInt 6, TList [TNull, TNull, TNull, TNull, TBool False, TList [TList [TString "a", big, TNull, TBool False, TList []]], TBool False]]) @?= Left outOfRange
+        doc (TList [TInt 6, TList [TNull, TNull, TNull, TNull, TBool False, TList [TList [TString "a", big, TNull, TBool False, TList [], TNull]], TBool False]]) @?= Left outOfRange
         inl (TList [TInt 18, spT, TNull, big]) @?= Left outOfRange
         inl (TList [TInt 18, spT, TList [TInt 1, big], TNull]) @?= Left outOfRange
         inl (TList [TInt 11, spT, TList [TInt 0, spT, big]]) @?= Left outOfRange,
@@ -123,7 +123,7 @@ naturalFields =
     para i = TList [TInt 10, TNull, TList [i]]
     attrs n = TList [TNull, n, TBool False, TBool False]
     figure p = TList [TString "a.pdf", TString "a.png", TString "alt", TNull, TNull, TList [], p, TBool False, TBool False]
-    codeLine n = TList [TNull, TNull, TNull, TNull, TBool False, TList [TList [TString "x", n, TNull, TBool False, TList []]], TBool False]
+    codeLine n = TList [TNull, TNull, TNull, TNull, TBool False, TList [TList [TString "x", n, TNull, TBool False, TList [], TNull]], TBool False]
 
 -- | The CBOR of a document of one block with the body.
 naturalFieldDocument :: Term -> BS.ByteString
@@ -201,7 +201,7 @@ cbor =
         decodeDocument (encodeDocument doc) @?= Right doc,
       testCase "a figure and a code block with nonumber survive the CBOR round trip (docs/adr/0200)" $ do
         let fig = Figure "images/a.png" Nothing "alt" Nothing Nothing [] Nothing False True
-            code = Code Nothing Nothing Nothing (Just [Text sp "例"]) False [CodeLine "a" (Just 1) Nothing False []] True
+            code = Code Nothing Nothing Nothing (Just [Text sp "例"]) False [CodeLine "a" (Just 1) Nothing False [] Nothing] True
             doc = Document (FileId 0) [Block sp Nothing Nothing (FigureBlock fig), Block sp Nothing Nothing (CodeBlock code)]
         decodeDocument (encodeDocument doc) @?= Right doc,
       testCase "nonumber on a code block without a caption is invalid (docs/adr/0200)" $ do
@@ -220,14 +220,33 @@ cbor =
                   codeCaption = Just [Text sp "設定の", CharStyle sp "code" [Text sp "x"]],
                   codeDiff = True,
                   codeLines =
-                    [ CodeLine "a" (Just 10) (Just DiffAdded) True [1, 2],
-                      CodeLine "b" Nothing (Just DiffRemoved) False [],
-                      CodeLine "" (Just 11) (Just DiffContext) False [50]
+                    [ CodeLine "a" (Just 10) (Just DiffAdded) True [1, 2] Nothing,
+                      CodeLine "b" Nothing (Just DiffRemoved) False [] Nothing,
+                      CodeLine "" (Just 11) (Just DiffContext) False [50] Nothing
                     ],
                   codeNoNumber = False
                 }
             doc = Document (FileId 0) [Block sp (Just "l") Nothing (CodeBlock code)]
         decodeDocument (encodeDocument doc) @?= Right doc,
+      testCase "a code line with and without its span survives the CBOR round trip (docs/adr/0218)" $ do
+        let code = Code Nothing Nothing Nothing Nothing False [CodeLine "a" (Just 1) Nothing False [] (Just (mkSpan (FileId 0) 4 5)), CodeLine "b" (Just 2) Nothing False [] Nothing] False
+            doc = Document (FileId 0) [Block sp Nothing Nothing (CodeBlock code)]
+        decodeDocument (encodeDocument doc) @?= Right doc,
+      testCase "a code line of five elements is not of the schema (docs/adr/0218)" $ do
+        let spT = TList [TInt 0, TInt 0, TInt 1]
+            codeT ls = TList [TNull, TNull, TNull, TNull, TBool False, TList ls, TBool False]
+            docT ls = TList [TInt 8, TInt 0, TList [TList [spT, TNull, TNull, TList [TInt 6, codeT ls]]]]
+            five = TList [TString "a", TInt 1, TNull, TBool False, TList []]
+            six = TList [TString "a", TInt 1, TNull, TBool False, TList [], TNull]
+        decodeDocument (toStrictByteString (encodeTerm (docT [five]))) @?= Left "スキーマに合いません: コードの行"
+        decodeDocument (toStrictByteString (encodeTerm (docT [six]))) @?= Right (Document (FileId 0) [Block sp Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a" (Just 1) Nothing False [] Nothing] False))]),
+      testCase "the span of a code line from a plugin is checked as the other spans (docs/adr/0218)" $ do
+        let size (FileId 0) = Just 10
+            size _ = Nothing
+            doc l = Document (FileId 0) [Block sp Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [l] False))]
+        validateDocument size [] (doc (CodeLine "a" Nothing Nothing False [] (Just (mkSpan (FileId 0) 2 20)))) @?= ["ソース位置がファイルの範囲外です"]
+        validateDocument size [] (doc (CodeLine "a" Nothing Nothing False [] (Just (mkSpan (FileId 3) 0 1)))) @?= ["存在しないファイルの位置です"]
+        validateDocument size [] (doc (CodeLine "a" Nothing Nothing False [] (Just (mkSpan (FileId 0) 2 3)))) @?= [],
       testCase "aki survives the CBOR round trip as tag 18 (docs/adr ADR 0019)" $ do
         let is = [Aki sp (AkiZw (1 / 5)), Aki sp (AkiZw 0), Aki sp (AkiAbs 185795)]
         decodeInlines (encodeInlines is) @?= Right is
@@ -343,6 +362,21 @@ cbor =
                 assertBool name (code /= ExitSuccess)
             )
             naturalFields,
+      needsTool "cddl" cddlValidator $ \cddl ->
+        testCase "the cddl CLI takes a code line with its span or null, not one of five elements (docs/adr/0218)" $ do
+          exe <- cddl
+          let validate bs = withSystemTempDirectory "golem-doc" $ \dir -> do
+                let path = dir </> "doc.cbor"
+                BS.writeFile path bs
+                (code, _, _) <- readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
+                pure code
+              codeDoc l = encodeDocument (Document (FileId 0) [Block sp Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [l] False))])
+              spT = TList [TInt 0, TInt 0, TInt 1]
+              five = toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, TNull, TList [TInt 6, TList [TNull, TNull, TNull, TNull, TBool False, TList [TList [TString "a", TInt 1, TNull, TBool False, TList []]], TBool False]]]]]))
+          validate (codeDoc (CodeLine "a" (Just 1) Nothing False [] (Just sp))) >>= (@?= ExitSuccess)
+          validate (codeDoc (CodeLine "a" (Just 1) Nothing False [] Nothing)) >>= (@?= ExitSuccess)
+          code <- validate five
+          assertBool "five elements" (code /= ExitSuccess),
       testCase "a span that ends before it starts, or starts before 0, is rejected" $ do
         let inl t = decodeInlines (toStrictByteString (encodeTerm (TList [t])))
         inl (TList [TInt 0, TList [TInt 0, TInt 3, TInt 3], TString "a"]) @?= Right [Text (SrcSpan (FileId 0) 3 3) "a"]
