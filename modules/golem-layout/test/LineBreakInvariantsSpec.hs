@@ -519,7 +519,15 @@ regressionTests =
       sound p
       map lineText (brLines (pBreaks p)) @?= ["lime-", "tree"]
       map lineText (brLines (pBreaks before)) @?= ["lime-tree"]
-      broken (withLines (map (\l -> l {lineItems = restoreAfter "lime-" (lineItems l)})) before {pItems = pItems p}) @?= [L5]
+      broken (withLines (map (\l -> l {lineItems = restoreAfter "lime-" (lineItems l)})) before {pItems = pItems p}) @?= [L5],
+    testCase "golem-layout ADR 0036 N2: [code: 漢/…] in a span of en, in lines of 2, is the one line the naive search finds least" $ do
+      -- the wrap mark after "/" makes the line to it 2.5 em; a node that
+      -- dies there, as in TeX, misses the line "漢/…" of 2 em (demerits 200, not 100)
+      let i = Input (Setting True False False (Just "en")) False 2 0 ["漢", "/", "…"] 0
+          (its, ps, br) = breakCodeInput i
+      map lineText (brLines br) @?= ["漢/…"]
+      Just (brDemerits br) @?= bruteDemerits ps (lineWidth i) (brPass br) its
+      brDemerits br @?= 100
   ]
 
 -- * every input

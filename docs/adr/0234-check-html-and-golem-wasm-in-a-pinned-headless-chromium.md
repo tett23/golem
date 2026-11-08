@@ -1,6 +1,6 @@
 # ADR 0234: HTML と golem.wasm を、版を固定したヘッドレスの Chromium と、ランナーの Safari と、Deno と wasmtime で夜ごとに確かめる
 
-ステータス: 採択（未実装）
+ステータス: 採択→wasmtime の入口（`run-wasmtime.sh` と `compare.sh --wasmtime`）は [ADR 0238](0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)
 
 ## 文脈
 

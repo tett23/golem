@@ -6,15 +6,21 @@ with the same build as `golem build --target pdf` of the native golem of
 the same version, and reads no file. It is a WASI (preview 1) reactor
 module: it imports only wasi_snapshot_preview1, and needs no preopened
 directory. CI runs it under the node:wasi of Node, and every night under
-Deno 2.9.8 and, with browser_wasi_shim 0.4.2, in Chromium (Chrome for
-Testing 157.0.8103.38) and in the Safari of the macOS runner of GitHub
-Actions, and checks that each gives the PDFs and the diagnostics of the
-native golem (docs/adr/0234). Deno runs the host of Node,
-scripts/wasm/run.mjs, as it is (deno run --allow-read --allow-write): its
-node:wasi runs the module, so no host of its own is needed. The browsers
-run scripts/wasm/browser/run.html. It does not run under the CLI of
-wasmtime 49.0.5, which does not read the legacy exception handling (try)
-that the module uses. It has
+Deno 2.9.8, under the C API of wasmtime 49.0.5 and, with
+browser_wasi_shim 0.4.2, in Chromium (Chrome for Testing 157.0.8103.38) and
+in the Safari of the macOS runner of GitHub Actions, and checks that each
+gives the PDFs and the diagnostics of the native golem (docs/adr/0234,
+docs/adr/0238). Deno runs the host of Node, scripts/wasm/run.mjs, as it is
+(deno run --allow-read --allow-write): its node:wasi runs the module, so
+no host of its own is needed. wasmtime runs it from a small C host,
+scripts/wasm/run-wasmtime.c, as the CLI of wasmtime cannot write the input
+into the memory of the module. The browsers run
+scripts/wasm/browser/run.html.
+
+The module uses the standard exception handling of WebAssembly (the form
+with exnref: try_table, throw_ref), not the legacy one (try, catch,
+delegate), so it needs a host that reads it: Chrome 137, Firefox 131,
+Safari 18.4, Node 24.15, Deno 2.3.2, wasmtime 47 or later. It has
 no plugins (golem-plugin): a project with [plugins] or a plugin filter in
 [[filters]] gives the error G06106 and no PDF.
 
