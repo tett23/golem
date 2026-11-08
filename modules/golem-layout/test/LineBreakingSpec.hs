@@ -6,15 +6,17 @@ module LineBreakingSpec (lineBreakingTests) where
 
 import Data.Text (Text)
 import Data.Text qualified as T
-import Fixtures (fs)
+import Fixtures (fs, look0, sp)
+import Golem.Doc.IR qualified as IR
+import Golem.Layout.Japanese (ComposeEnv (..), composeInlines, defaultComposeEnv)
 import Golem.Layout.KnuthPlass
-import Golem.Layout.Look (noBoxSource)
+import Golem.Layout.Look (LinkTarget (..), Look (..), noBoxSource)
 import Golem.Length qualified as L
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import KnuthPlassReference (finish, referenceLook)
-import LineBreakEnum (Input (..), Setting (..), advance, breakInput, itemsOf, lineText)
+import LineBreakEnum (Input (..), Setting (..), advance, breakInput, composeEnv, inlinesOf, itemsOf, lineText)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -69,6 +71,7 @@ lineBreakingTests =
         let r = breakParagraph defaultParams (const target) (paragraph ws)
         [w | l <- brLines r, Box w _ <- lineItems l] === ws,
       kinsokuTests,
+      lowLineTests,
       apostropheTests
     ]
 
@@ -133,6 +136,87 @@ kinsokuTests =
       testCase "K7: where a space is no longer a break, it is the only glue between the two characters" $
         -- the space of the paragraph start before 「, as before
         take 4 (drop 1 (shapes plain ["「", " ", "a"])) @?= ["「", "|10000", space, "a"]
+    ]
+
+-- | The items of a run as 'shapes' gives them, with explicit-hyphen-penalty 10000.
+shapesUnbroken :: [Text] -> [String]
+shapesUnbroken run = map shapeOf (fst (composeInlines ((composeEnv False plain) {ceExplicitHyphenPenalty = 10000}) (inlinesOf plain 0 run 0)))
+
+-- | An item as 'shapes' writes it.
+shapeOf :: Item -> String
+shapeOf = \case
+  Box _ c -> T.unpack (bcText c)
+  Glue w y z -> "_" <> show (unSp w, unSp y, unSp z)
+  Penalty _ p h ->
+    "|" <> show p <> case h of
+      PatternHyphen _ -> "P"
+      ExplicitHyphen -> "E"
+      NoHyphen -> ""
+
+-- | The end of a paragraph, as 'shapes' writes it.
+paragraphEnd :: [String]
+paragraphEnd = ["|10000", fil, "|-10000"]
+
+-- | The text before each break inside a text in a look (the paragraph end left out), and its penalty.
+breaksIn :: Look -> Text -> [(Text, Int)]
+breaksIn lk t = go "" (take (length items - 3) items)
+  where
+    items = fst (composeInlines (defaultComposeEnv fs) {ceLook = lk} [IR.Text sp t])
+    go acc = \case
+      Box _ c : rest -> go (acc <> bcText c) rest
+      Penalty _ p _ : rest | p < infPenalty -> (acc, p) : go acc rest
+      _ : rest -> go acc rest
+      [] -> []
+
+{- | Line breaks after the low lines of identifiers (golem-layout ADR 0031):
+after each run of U+005F but the first and the last of a word, a break of
+100 with no hyphen, and no hyphens of the patterns in the word.
+-}
+lowLineTests :: TestTree
+lowLineTests =
+  testGroup
+    "line breaks after low lines in identifiers (golem-layout ADR 0031)"
+    [ testCase "U1, U2: THIRD_PARTY_LICENSES breaks after each low line with 100, and the patterns do not break it" $
+        shapes plain ["THIRD_PARTY_LICENSES"] @?= ["THIRD_", "|100", "PARTY_", "|100", "LICENSES"] <> paragraphEnd,
+      testCase "U1, U2: in a span of en and of fr alike" $
+        sequence_ [shapes plain {sLang = l} ["third_party_licenses"] @?= ["third_", "|100", "party_", "|100", "licenses"] <> paragraphEnd | l <- [Just "en", Just "fr"]],
+      testCase "U1, U2: not after the first run (_private, __init__) nor after the last (foo_): one box, no hyphens of the patterns" $ do
+        shapes plain ["_private"] @?= "_private" : paragraphEnd
+        shapes plain ["__init__"] @?= "__init__" : paragraphEnd
+        shapes plain ["foo_"] @?= "foo_" : paragraphEnd
+        shapes plain ["hyphenation_"] @?= "hyphenation_" : paragraphEnd,
+      testCase "U1: a word of a link is one box, a low line in it or not" $
+        breaksIn look0 {lkLink = Just (LinkUri "https://example.com/")} "THIRD_PARTY_LICENSES" @?= [],
+      testCase "U1: a run of low lines is one break after it: a__b" $
+        shapes plain ["a__b"] @?= ["a__", "|100", "b"] <> paragraphEnd,
+      testCase "U1: with an explicit hyphen, both breaks; explicit-hyphen-penalty 10000 keeps only the low lines" $ do
+        shapes plain ["foo_bar-baz"] @?= ["foo_", "|100", "bar-", "|50E", "baz"] <> paragraphEnd
+        shapesUnbroken ["foo_bar-baz"] @?= ["foo_", "|100", "bar-baz"] <> paragraphEnd,
+      testCase "U1: a full stop and quotation marks stay in the boxes" $ do
+        shapes plain ["foo_bar", "."] @?= ["foo_", "|100", "bar."] <> paragraphEnd
+        shapes plain ["“", "foo_bar", "”"] @?= ["“foo_", "|100", "bar”"] <> paragraphEnd,
+      testCase "U1: in code, after the low lines with 100 and after a slash with 0" $ do
+        breaksIn look0 {lkCode = True} "THIRD_PARTY_LICENSES/x" @?= [("THIRD_", 100), ("THIRD_PARTY_", 100), ("THIRD_PARTY_LICENSES/", 0)]
+        breaksIn look0 {lkCode = True} "__init__" @?= []
+        breaksIn look0 {lkCode = True} "_private" @?= []
+        breaksIn look0 {lkCode = True} "a__b" @?= [("a__", 100)],
+      testCase "U1: in code, a first run of low lines before Japanese text is no break; one between two characters is" $ do
+        breaksIn look0 {lkCode = True} "_あ" @?= []
+        breaksIn look0 {lkCode = True} "あ_b" @?= [("あ_", 100)],
+      testCase "U3: lines broken after the low lines end with no hyphen and join into the word" $ do
+        let (_, _, br) = breakInput (Input plain False 4 0 ["THIRD_PARTY_LICENSES"] 0)
+        map lineText (brLines br) @?= ["THIRD_", "PARTY_", "LICENSES"]
+        T.concat (map lineText (brLines br)) @?= "THIRD_PARTY_LICENSES"
+        [() | l <- brLines br, Penalty w _ _ <- lineItems l, w > 0] @?= [],
+      testCase "U4: words without a low line are as before" $ do
+        shapes plain ["table"] @?= ["ta", "|50P", "ble"] <> paragraphEnd
+        shapes plain ["lime-tree"] @?= ["lime-", "|50E", "tree"] <> paragraphEnd
+        shapes plain ["table", "."] @?= ["ta", "|50P", "ble."] <> paragraphEnd,
+      testCase "U5: a URL breaks as before" $ do
+        breaksIn look0 {lkUrl = True} "a_b" @?= [("a_", 100)]
+        breaksIn look0 {lkUrl = True} "THIRD_PARTY_LICENSES/x" @?= [("THIRD_", 100), ("THIRD_PARTY_", 100), ("THIRD_PARTY_LICENSES/", 0)],
+      testCase "U6: in code, a break after a slash is 0 as before" $
+        breaksIn look0 {lkCode = True} "a/b" @?= [("a/", 0)]
     ]
 
 -- | Whether the space after a box of the text given is no break: a penalty of 10000 right before its glue.

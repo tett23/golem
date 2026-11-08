@@ -1,6 +1,6 @@
 # ADR 0222: 行分割の不変条件の述語が判定しなかった仕様の点を決める
 
-ステータス: 採択
+ステータス: 採択→（`_` を含む語の分綴と改行）は [golem-layout ADR 0031](../golem-layout/adr/0031-line-breaks-after-low-lines-in-identifiers.md)
 
 ## 文脈
 
