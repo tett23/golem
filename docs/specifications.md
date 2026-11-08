@@ -3491,6 +3491,20 @@ Golem の構文解析が受け付ける原稿は受け付けるが、Golem が�
 
 `tools/editors/test.sh`（CI の `editors` ジョブ）が、生成した `src/` と `grammar.js` の一致、`tree-sitter test` の構文木と色付けのテスト、vscode-tmgrammar-test の形式で書いた見本 `tools/editors/test/sample.gm` と `sample.emet` のスコープ、同じ見本の同じ要素が二つの形式で同じ分類になること、`modules/golem-driver/test/fixtures/`、`manual/`、`manual-dev/` のすべての `.gm` と `.emet` を tree-sitter が誤りなく読めることを確かめる。
 テストの道具（tree-sitter-cli 0.27.1 と vscode-tmgrammar-test 0.1.3）は `tools/editors/package.json` と `package-lock.json` で固定し、tree-sitter-cli が取る実行ファイルの SHA-256 を `tools/editors/tree-sitter-cli.sha256` で照合する。
+`tools/editors/helix/test.sh`（CI の `editors` ジョブ）は、`tools/editors/README.md` の Helix の手順の `sh` と `toml` のコードブロックを切り出し、一時的な `HOME` で Helix 25.07.1 に二つの文法を作らせ、`hx --health` がパーサーと強調の問い合わせを見つけることを確かめる（[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。
+`toml` のブロックの前には `use-grammars = { only = ["golem", "emet"] }` を足し、ほかの言語の文法を作らせない。
+`tools/editors/nvim/test.sh`（CI の `editors-lsp` ジョブ）は、ヘッドレスの Neovim 0.12.6 を `--clean` で起動し、`golem lsp` を付けて、次を確かめる（[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。
+
+- クライアントの `offset_encoding` が `utf-8` になり、`utf-16` だけを申し出るクライアントでは `utf-16` になる。
+- Neovim が受け取った diagnostic の列が、その行のバイト数を超えない。
+- notice が `INFO` の diagnostic になって quickfix に載り、マニフェストの `silence-notices` にそのコードを書いて保存すると消える。
+- コマンドと式の中の空白の semantic tokens の型が `operator` で、その位置の強調のグループが、既定の色の組で背景と下線を持たない。
+- ルートの `style.toml` と `preflight.toml` で補完の一覧が出て、引用符の外と内で選んだ後の行が期待の文字列になる。`manifest.toml` とルートより下の TOML では一覧が出ない。
+- `tools/editors/README.md` の nvim-treesitter を使わない手順（`sh` のブロックと最後の `lua` のブロック）で、`.gm` と `.emet` のファイルタイプが決まり、tree-sitter の色付けが始まる。
+
+`--self-test` は、各テストの期待を一つ反転して走らせ、どれも失敗することを確かめる。
+Neovim と Helix は、GitHub のリリースのアーカイブを、版と Linux の x86-64 と macOS の arm64 の SHA-256 で固定して取る（`tools/editors/fetch-nvim.sh`、`tools/editors/helix/test.sh`）。
+Visual Studio Code、Sublime Text、TextMate、Zed は CI で起動しない。
 構文の定義は、リリースのアーカイブの `share/golem/editors/` にも入る（「配布物」の節）。
 
 LSP は、`@table` が参照する表のファイルの変更を受けて評価し直す（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。

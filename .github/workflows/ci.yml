@@ -335,6 +335,18 @@ jobs:
       # golem of a restored dist-newstyle may keep an old one (docs/adr/0156)
       - name: golem is linked with the wasmtime of fetch-wasmtime.sh (docs/adr/0156)
         run: sh scripts/check-wasmtime-linked.sh "$(cabal list-bin -v0 golem)"
+      # golem for the job editors-lsp, which waits for it as visual waits
+      # for visual-pdfs (docs/adr/0099, docs/adr/0231). It comes first of
+      # the outputs, so that editors-lsp starts while this runner goes on
+      - name: Copy golem for the job editors-lsp (docs/adr/0231)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        run: mkdir golem-linux-x86_64 && cp "$(cabal list-bin -v0 golem)" golem-linux-x86_64/golem
+      - name: Upload golem for the job editors-lsp (docs/adr/0231)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: golem-linux-x86_64
+          path: golem-linux-x86_64
       - name: qpdf is installed
         if: matrix.tests
         timeout-minutes: 5
@@ -934,6 +946,61 @@ jobs:
         run: npm ci --prefix tools/editors --no-fund --no-audit
       - name: Tests of the editor grammars (docs/adr/0170)
         run: sh tools/editors/test.sh
+      # the version and the SHA-256 of Helix are in its test.sh, so a new
+      # version is a new key (docs/adr/0231)
+      - name: Cache Helix (docs/adr/0231)
+        uses: actions/cache@v6
+        with:
+          path: third_party/helix
+          key: helix-${{ runner.os }}-${{ hashFiles('tools/editors/helix/test.sh') }}
+      # nothing is fetched when the cache has the pinned VERSION; a stalled
+      # download fails in 10 minutes
+      - name: The grammars in Helix, by the README (docs/adr/0231)
+        run: timeout -k 10 600 sh tools/editors/helix/test.sh
+
+  # golem lsp and the editor grammars in a headless Neovim (docs/adr/0231):
+  # the tests of tools/editors/nvim/test.sh and its self-test, with Neovim
+  # pinned by tools/editors/fetch-nvim.sh. It needs only changes, and waits
+  # for the artifact golem-linux-x86_64 of the outputs runner instead of
+  # the whole build matrix, as visual does (docs/adr/0099)
+  editors-lsp:
+    needs: [changes]
+    if: needs.changes.outputs.build == 'true'
+    timeout-minutes: 75
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # the version and the SHA-256 are in fetch-nvim.sh, so a new version
+      # is a new key
+      - name: Cache Neovim (docs/adr/0231)
+        uses: actions/cache@v6
+        with:
+          path: third_party/nvim
+          key: nvim-${{ runner.os }}-${{ hashFiles('tools/editors/fetch-nvim.sh') }}
+      # nothing is fetched when the cache has the pinned VERSION; a stalled
+      # download fails in 5 minutes
+      - name: Neovim (docs/adr/0231)
+        run: timeout -k 10 300 sh tools/editors/fetch-nvim.sh
+      - name: Wait for golem of the outputs runner (docs/adr/0231)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' golem-linux-x86_64
+      - uses: actions/download-artifact@v8
+        with:
+          name: golem-linux-x86_64
+          path: golem-linux-x86_64
+      # an artifact keeps no mode of its files
+      - run: chmod +x golem-linux-x86_64/golem
+      - name: golem lsp in a headless Neovim (docs/adr/0231)
+        timeout-minutes: 10
+        run: GOLEM="$PWD/golem-linux-x86_64/golem" NVIM="$PWD/third_party/nvim/bin/nvim" sh tools/editors/nvim/test.sh
+      # each test fails with its one marked expectation inverted
+      - name: The tests fail when inverted (docs/adr/0231)
+        timeout-minutes: 10
+        run: GOLEM="$PWD/golem-linux-x86_64/golem" NVIM="$PWD/third_party/nvim/bin/nvim" sh tools/editors/nvim/test.sh --self-test
 
   # veraPDF checks the PDFs of conformance-pdfs against PDF/A-2a and
   # PDF/UA-1 (docs/adr/0183). veraPDF comes from nixpkgs at a fixed commit,
@@ -1019,7 +1086,7 @@ jobs:
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
   ci:
-    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins, editors, verapdf, wasm]
+    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins, editors, editors-lsp, verapdf, wasm]
     if: always()
     runs-on: ubuntu-24.04
     steps:
