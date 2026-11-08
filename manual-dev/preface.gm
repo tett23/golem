@@ -105,7 +105,7 @@ TeX でも、設定を尽くせば同じ出力を得られることはある。
 Golem では、それが処理系の約束であり、CI で毎回確かめている。
 
 和文は、あとから足した拡張ではない。
-PDF の行分割は、欧文と和文の段落を TeX と同じ Knuth と Plass の方式（段落の全体で改行の位置を選ぶ方式）[cite knuth-plass] で行に分け、禁則、ルビ、圏点、縦中横、アキ量のセット、縦組みは W3C の「日本語組版処理の要件」（JLReq）[cite jlreq] に従って処理系の中で組む[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md]（仕様書の「行分割」と「仕様が不明瞭な場合」の節）]。
+PDF の行分割は、欧文と和文の段落を TeX と同じ Knuth-Plass の方式（段落の全体で改行の位置を選ぶ方式）[cite knuth-plass] で行に分け、禁則、ルビ、圏点、縦中横、アキ量のセット、縦組みは W3C の「日本語組版処理の要件」（JLReq）[cite jlreq] に従って処理系の中で組む[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md]（仕様書の「行分割」と「仕様が不明瞭な場合」の節）]。
 
 拡張の境界も、文書になっている。
 すべての出力の元になる意味論 IR（式とコマンドの評価が済み、位置と大きさを持たない文書の表現）は、CBOR のデータの形を記述するスキーマの言語 CDDL [cite rfc8610] で記述した仕様の一部である。

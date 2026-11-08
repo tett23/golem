@@ -720,7 +720,7 @@ JLReq は、日本語の組版の規格 JIS X 4051 [cite jisx4051] と、組版�
 
 段落は、一行ずつ先頭から分けるのではなく、段落の全体を見て、語間や字間の伸び縮みが全体として最も少なくなる位置で行に分けます。
 InDesign の段落コンポーザーに近い考え方です。
-この分け方は Knuth と Plass が論文で示した方式で [cite knuth-plass]、TeX も同じ方式で行を分けます。
+この分け方は Knuth-Plass の方式で [cite knuth-plass]、TeX も同じ方式で行を分けます。
 
 ルビの配置は [code: \[composition.ruby\]] で変えます（ルビの書き方は「[ref-title ruby]」、[ref-page ruby] ページ）。
 
