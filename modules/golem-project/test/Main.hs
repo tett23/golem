@@ -1208,9 +1208,11 @@ noteMarkTests =
         let both = "[character-styles.base]\nsize = \"0.6zw\"\n[character-styles.mark]\nbased-on = \"base\"\ncolor = \"red\"\n[color.swatches.red]\ncmyk = [0, 100, 100, 0]\n[notes]\nmark-size = \"0.5zw\"\nmark-style = \"mark\"\n"
         codes (parseStyle (FileId 0) both) @?= ["G03006"]
         let ms = either (map diagMessage) (const []) (parseStyle (FileId 0) both)
-        assertBool (show ms) (any ("[notes] の mark-size と、size を持つ mark-style mark は一緒に書けません" `T.isInfixOf`) ms)
+        assertBool (show ms) (any ("[notes] の mark-size と、mark-style mark の size（[character-styles.base] に書いたもの）は一緒に書けません。mark-size を消します" `T.isInfixOf`) ms)
         -- a mark-style without a size takes mark-size
         codes (parseStyle (FileId 0) "[character-styles.mark]\nsynthetic-bold = true\n[notes]\nmark-size = \"0.5zw\"\nmark-style = \"mark\"\n") @?= [],
+      -- docs/adr/0214
+      testGroup "mark-size and the size of the character style of the marks (docs/adr/0214)" markSizeConflictTests,
       testCase "the number formats read as the other formats" $ do
         codes (parseStyle (FileId 0) "[headings.1]\nnumber = \"第{n:kanji}章\"\n") @?= []
         codes (parseStyle (FileId 0) "[headings.1]\nnumber = \"{chapter:upper-roman}\"\n") @?= []
@@ -2070,3 +2072,56 @@ pageSizeTests =
         map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G03017"]
         assertBool (show (map diagMessage ds)) (any ((needle `T.isInfixOf`) . diagMessage) ds)
       Right _ -> assertFailure ("not an error: " <> T.unpack v)
+
+{- | The size of the character style of the marks besides [notes]
+mark-size (docs/adr/0214): m is the value of mark-style or else
+note-mark, d the first definition of the user on the based-on chain from m
+that writes a size (the built-in note-mark's does not count).
+-}
+markSizeConflictTests :: [TestTree]
+markSizeConflictTests =
+  [ testCase "M1, M2: mark-style not written, the user's note-mark writes the size" $
+      conflict "[character-styles.note-mark]\nsize = \"0.6zw\"\n" "" @?= [unwritten "note-mark"],
+    testCase "M1, M2: mark-style not written, note-mark is based on a style that writes the size" $
+      conflict "[character-styles.big]\nsize = \"0.6zw\"\n[character-styles.note-mark]\nbased-on = \"big\"\n" "" @?= [unwritten "big"],
+    testCase "M1, M2: mark-style = \"note-mark\" takes the wording of a written mark-style" $
+      conflict "[character-styles.note-mark]\nsize = \"0.6zw\"\n" "mark-style = \"note-mark\"\n" @?= [written "note-mark" "note-mark"],
+    testCase "M1, M2: mark-style itself writes the size" $
+      conflict "[character-styles.mine]\nsize = \"0.6zw\"\n" "mark-style = \"mine\"\n" @?= [written "mine" "mine"],
+    testCase "M1, M2: the size one based-on away names the style that writes it" $
+      conflict "[character-styles.big]\nsize = \"0.6zw\"\n[character-styles.mine]\nbased-on = \"big\"\n" "mark-style = \"mine\"\n" @?= [written "mine" "big"],
+    testCase "M1, M2: the size two based-on away names the style that writes it" $
+      conflict
+        "[character-styles.big]\nsize = \"0.6zw\"\n[character-styles.mid]\nbased-on = \"big\"\n[character-styles.mine]\nbased-on = \"mid\"\n"
+        "mark-style = \"mine\"\n"
+        @?= [written "mine" "big"],
+    testCase "M1, M2: the nearest definition that writes a size is named" $
+      conflict
+        "[character-styles.big]\nsize = \"0.6zw\"\n[character-styles.mid]\nbased-on = \"big\"\nsize = \"0.5zw\"\n[character-styles.mine]\nbased-on = \"mid\"\n"
+        "mark-style = \"mine\"\n"
+        @?= [written "mine" "mid"],
+    testCase "M1: the error is at the value of mark-size" $ do
+      let src = "[character-styles.note-mark]\nsize = \"0.6zw\"\n[notes]\nmark-size = \"0.65zw\"\n"
+      case parseStyle (FileId 0) src of
+        Left [d] -> do
+          diagCode d @?= DiagnosticCode "G03006"
+          spanStart (diagSpan d) @?= fromIntegral (T.length (fst (T.breakOn "\"0.65zw\"" src)))
+        other -> assertFailure (show other),
+    testCase "M3: only the built-in note-mark's size, with mark-style based on note-mark" $
+      conflict "[character-styles.mine]\nbased-on = \"note-mark\"\n" "mark-style = \"mine\"\n" @?= [],
+    testCase "M3: no definition writes a size" $ do
+      conflict "" "" @?= []
+      conflict "[character-styles.mine]\nsynthetic-bold = true\n" "mark-style = \"mine\"\n" @?= []
+      conflict "" "mark-style = \"note-mark\"\n" @?= [],
+    testCase "M3: mark-size not written" $ do
+      codes (parseStyle (FileId 0) "[character-styles.note-mark]\nsize = \"0.6zw\"\n") @?= []
+      codes (parseStyle (FileId 0) "[character-styles.big]\nsize = \"0.6zw\"\n[character-styles.mine]\nbased-on = \"big\"\n[notes]\nmark-style = \"mine\"\n") @?= []
+  ]
+  where
+    -- the messages of G03006 for character styles and the rest of [notes], with mark-size written
+    conflict styles notes =
+      case parseStyle (FileId 0) (styles <> "[notes]\nmark-size = \"0.65zw\"\n" <> notes) of
+        Left ds -> [(diagCode d, diagMessage d) | d <- ds]
+        Right _ -> []
+    written m d = (DiagnosticCode "G03006", "[notes] の mark-size と、mark-style " <> m <> " の size（[character-styles." <> d <> "] に書いたもの）は一緒に書けません。mark-size を消します (notes.mark-size)")
+    unwritten d = (DiagnosticCode "G03006", "[notes] の mark-size と、注の印の文字スタイル note-mark の size（[character-styles." <> d <> "] に書いたもの）は一緒に書けません。mark-size を消します (notes.mark-size)")
