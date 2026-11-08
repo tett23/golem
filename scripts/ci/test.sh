@@ -1020,6 +1020,43 @@ run env PATH="$EC/fakebin:$PATH" EPUBCHECK_HOME="$EC/h6" JAVA_HOME_17_X64="$EC/n
 if [ "$CODE" != 0 ] && [ ! -e "$EC/h6/bin/epubcheck" ]; then ok; else ng "epubcheck-install: no Java fails"; fi
 unset CURL_LOG CURL_ZIP
 
+# ---------------------------------------------------------------- pdf-fonts.sh
+# (docs/adr/0232): the typefaces of a PDF, and none but the fonts given
+# fonts_pdf FILE FACE...: a PDF of one page with a font dictionary of each FACE
+fonts_pdf() {
+  out=$1
+  shift
+  {
+    printf '%%PDF-1.6\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n'
+    printf '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] /Resources << /Font <<'
+    n=4
+    for face in "$@"; do printf ' /F%s %s 0 R' "$n" "$n"; n=$((n + 1)); done
+    printf ' >> >> >>\nendobj\n'
+    n=4
+    for face in "$@"; do printf '%s 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /%s >>\nendobj\n' "$n" "$face"; n=$((n + 1)); done
+    printf 'trailer\n<< /Root 1 0 R >>\n%%%%EOF\n'
+  } >"$out"
+}
+: >"$WORK/in"
+if command -v qpdf >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+  fonts_pdf "$WORK/listed.pdf" ABCDEF+NotoSerifJP-Regular GHIJKL+SourceCodePro-Regular ABCDEF+NotoSerifJP-Regular
+  run sh "$HERE/pdf-fonts.sh" "$WORK/listed.pdf"
+  expect "pdf-fonts.sh: the BaseFonts without the tags of the subsets, sorted, each once" 0 "NotoSerifJP-Regular
+SourceCodePro-Regular"
+  run sh "$HERE/pdf-fonts.sh" "$WORK/listed.pdf" NotoSerifJP-Regular SourceCodePro-Regular SourceSerif4-Regular
+  expect "pdf-fonts.sh: a PDF of the fonts listed alone passes" 0
+  fonts_pdf "$WORK/other.pdf" ABCDEF+NotoSerifJP-Regular Helvetica
+  run sh "$HERE/pdf-fonts.sh" "$WORK/other.pdf" NotoSerifJP-Regular SourceCodePro-Regular
+  expect "pdf-fonts.sh: a typeface not listed fails" 1
+  if grep -qF 'has Helvetica, which is not a font of the list' "$WORK/err"; then ok; else ng "pdf-fonts.sh: the typeface not listed is named"; fi
+else
+  skip 4 "pdf-fonts.sh: qpdf or jq is not installed"
+fi
+run sh "$HERE/pdf-fonts.sh"
+expect "pdf-fonts.sh: no PDF is a usage error" 2
+run sh "$HERE/pdf-fonts.sh" "$WORK/no-such.pdf"
+if command -v qpdf >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then expect "pdf-fonts.sh: a missing PDF exits with 2" 2; else expect "pdf-fonts.sh: without qpdf or jq it exits with 2" 2; fi
+
 # ---------------------------------------------------------------- ci.yml and cabal
 # (docs/adr/0037-ci-build-job-speedup.md)
 
@@ -1162,10 +1199,11 @@ if step_has "$TEST_STEP" 'GOLEM_PD_BOOKS: "1"'; then ok; else ng "ci.yml: cabal 
 # (tasty-golden's --no-create, given by the environment: a suite without
 # tasty-golden would reject the flag on its command line)
 if step_has "$TEST_STEP" 'TASTY_NO_CREATE: "true"'; then ok; else ng "ci.yml: cabal test all has TASTY_NO_CREATE"; fi
-# apt installs qpdf on the runners of the tests only; epubcheck comes from
-# its release, cached by its version and SHA-256, on the x86-64 runner of
-# the outputs (docs/adr/0062)
-if step_if "name: qpdf in the background" "if: matrix.tests" && step_has "name: qpdf in the background" "apt-install.sh qpdf"; then ok; else ng "ci.yml: apt installs qpdf on the runners of the tests"; fi
+# apt installs qpdf on the runners of the tests and the x86-64 runner of
+# the outputs (docs/adr/0232); epubcheck comes from its release, cached by
+# its version and SHA-256, on the x86-64 runner of the outputs (docs/adr/0062)
+QPDF_IF="if: matrix.tests || (matrix.runner == 'ubuntu-24.04' && matrix.outputs)"
+if step_if "name: qpdf in the background" "$QPDF_IF" && step_has "name: qpdf in the background" "apt-install.sh qpdf"; then ok; else ng "ci.yml: apt installs qpdf on the runners of the tests and the x86-64 runner of the outputs"; fi
 if grep -n 'apt-install\.sh' "$CI_YML" | grep -q epubcheck || grep -q "'epubcheck'" "$CI_YML"; then ng "ci.yml: apt does not install epubcheck"; else ok; fi
 if grep -Eq '^  EPUBCHECK_VERSION: "[0-9]+\.[0-9]+\.[0-9]+"$' "$CI_YML" && grep -Eq '^  EPUBCHECK_SHA256: "[0-9a-f]{64}"$' "$CI_YML"; then ok; else ng "ci.yml: the version and the SHA-256 of epubcheck are pinned"; fi
 EPUBCHECK_IF="if: matrix.runner == 'ubuntu-24.04' && matrix.outputs"
@@ -1179,7 +1217,12 @@ if step_if "name: epubcheck in the background" "$EPUBCHECK_IF" &&
   ng "ci.yml: epubcheck-install.sh runs in the background with the pinned version on the x86-64 runner of the outputs"
 fi
 if step_if "name: epubcheck is installed" "$EPUBCHECK_IF" && step_has "name: epubcheck is installed" "bg.sh wait epubcheck"; then ok; else ng "ci.yml: the x86-64 runner of the outputs waits for epubcheck"; fi
-if step_if "name: qpdf is installed" "if: matrix.tests" && step_has "name: qpdf is installed" "bg.sh wait apt"; then ok; else ng "ci.yml: the runners of the tests wait for qpdf"; fi
+if step_if "name: qpdf is installed" "$QPDF_IF" && step_has "name: qpdf is installed" "bg.sh wait apt"; then ok; else ng "ci.yml: the runners of the tests and the x86-64 runner of the outputs wait for qpdf"; fi
+# the manuals pass golem preflight with the rules of CI, and their PDFs
+# name no typeface but the fonts of their fonts/ (docs/adr/0232)
+MANUAL_IF="if: matrix.runner == 'ubuntu-24.04' && matrix.outputs"
+if step_if "name: The preflight of the manuals" "$MANUAL_IF" && step_has "name: The preflight of the manuals" 'preflight --rules ../scripts/ci/manual-preflight.toml'; then ok; else ng "ci.yml: the x86-64 runner of the outputs runs golem preflight on the manuals"; fi
+if step_if "name: The typefaces of the manuals are their fonts" "$MANUAL_IF" && step_has "name: The typefaces of the manuals are their fonts" 'sh scripts/ci/pdf-fonts.sh'; then ok; else ng "ci.yml: the x86-64 runner of the outputs checks the typefaces of the manuals"; fi
 # release-scripts installs the pinned Claude Code with mise before test.sh
 # and requires it (docs/adr/0058)
 RS=$WORK/release-scripts.yml

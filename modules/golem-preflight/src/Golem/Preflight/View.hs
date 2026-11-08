@@ -22,7 +22,7 @@ where
 import Data.ByteString (ByteString)
 import Data.Map.Strict (Map)
 import Data.Text (Text)
-import Golem.Pdf (FigureContent, X4Problem)
+import Golem.Pdf (FigureContent, Paint, X4Problem)
 import Golem.Pdf.Rect (Rect (..))
 import Golem.Project.Style (SizeSource (..), Sp)
 import Golem.Syntax (SrcSpan)
@@ -47,7 +47,15 @@ data View = View
     -- | where diagnostics about style.toml point: its top, or the manifest's
     vwStyleSpan :: !SrcSpan,
     -- | the top of manifest.toml
-    vwManifestSpan :: !SrcSpan
+    vwManifestSpan :: !SrcSpan,
+    {- | the fills and strokes of the pages (Golem.Pdf.paintsOf, docs/adr
+    ADR 0232); lazy, as are the two below, so that golem build, which reads
+    only the glyphs of a view, does not read the content streams -}
+    vwPaints :: [Paint],
+    -- | the FontName of the fonts not embedded (Golem.Pdf.unembeddedFonts)
+    vwUnembeddedFonts :: [Text],
+    -- | the spot colorants of the colour spaces (Golem.Pdf.spotColorants)
+    vwSpotColorants :: [Text]
   }
   deriving stock (Eq, Show)
 

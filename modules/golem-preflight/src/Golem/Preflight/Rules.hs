@@ -81,7 +81,11 @@ data Rules = Rules
     ruPageMultiple :: !Natural,
     ruBlankPages :: !Level,
     ruStrokeWeight :: !Level,
-    ruStrokeMin :: !Sp
+    ruStrokeMin :: !Sp,
+    -- | G09019 to G09021 (docs/adr ADR 0232)
+    ruFontEmbedding :: !Level,
+    ruSpotColors :: !Level,
+    ruCmyPlates :: !Level
   }
   deriving stock (Eq, Show)
 
@@ -129,7 +133,10 @@ printRules =
       ruPageMultiple = 1,
       ruBlankPages = LevelOff,
       ruStrokeWeight = LevelWarning,
-      ruStrokeMin = len "0.1mm"
+      ruStrokeMin = len "0.1mm",
+      ruFontEmbedding = LevelError,
+      ruSpotColors = LevelError,
+      ruCmyPlates = LevelOff
     }
 
 {- | basic: InDesign's [Basic], of the checks the build does not already
@@ -149,7 +156,8 @@ basicRules =
       ruBleedTrimHazard = LevelOff,
       ruLiveArea = LevelOff,
       ruInkCoverage = LevelOff,
-      ruStrokeWeight = LevelOff
+      ruStrokeWeight = LevelOff,
+      ruSpotColors = LevelOff
     }
 
 -- | none: every check off, to write rules from nothing.
@@ -159,7 +167,8 @@ noneRules =
     { ruBasedOn = "none",
       ruGlyphMissing = LevelOff,
       ruOverfullLines = LevelOff,
-      ruPdfX = LevelOff
+      ruPdfX = LevelOff,
+      ruFontEmbedding = LevelOff
     }
 
 builtinRules :: [(Text, Rules)]
@@ -226,7 +235,10 @@ instance FromValue RulesFile where
     r18 <- check "stroke-weight" r17 $ \r -> do
       a <- levelKey r ruStrokeWeight (\x -> r {ruStrokeWeight = x})
       lengthKey "min" a ruStrokeMin (\x -> a {ruStrokeMin = x})
-    pure (RulesFile r18)
+    r19 <- check "font-embedding" r18 $ \r -> levelKey r ruFontEmbedding (\x -> r {ruFontEmbedding = x})
+    r20 <- check "spot-colors" r19 $ \r -> levelKey r ruSpotColors (\x -> r {ruSpotColors = x})
+    r21 <- check "cmy-plates" r20 $ \r -> levelKey r ruCmyPlates (\x -> r {ruCmyPlates = x})
+    pure (RulesFile r21)
     where
       -- the table of one check, when written
       check name r p = fromMaybe r <$> optKeyOf name (parseTableFromValue (p r))
@@ -279,7 +291,10 @@ rulesSchema =
       ("ink-coverage", check [("max", count)]),
       ("page-count", check [("multiple-of", count)]),
       ("blank-pages", check []),
-      ("stroke-weight", check [("min", len')])
+      ("stroke-weight", check [("min", len')]),
+      ("font-embedding", check []),
+      ("spot-colors", check []),
+      ("cmy-plates", check [])
     ]
   where
     check kvs = NTable (("severity", NValue (LEnum (map fst levelValues))) : kvs)
