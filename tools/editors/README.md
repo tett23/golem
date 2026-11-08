@@ -77,8 +77,12 @@ Golem が受け付ける原稿は受け付けるように書き、テストの�
 
 `<editors>` は、このディレクトリかアーカイブの `share/golem/editors/` のパスとする。
 Neovim の手順は Neovim 0.12.6 で確かめた。
+nvim-treesitter を使わない手順は、CI が Neovim 0.12.6 で確かめる（「テスト」の節）。
 nvim-treesitter を使う手順は、nvim-treesitter の main ブランチの `e289100` で確かめた。
-ほかのエディタの手順は、まだ実際のエディタで確かめていない（[docs/roadmap.md](../../docs/roadmap.md) の「手で確かめる項目」）。
+Helix の手順は、CI が Helix 25.07.1 で確かめる。
+Visual Studio Code の手順は、まだ実際のエディタで確かめていない（[docs/roadmap.md](../../docs/roadmap.md) の「手で確かめる項目」）。
+Sublime Text、TextMate、Zed の手順は確かめておらず、確かめる予定もない。
+検証は、メンテナーが使うエディタに絞っている（[docs/adr/0231](../../docs/adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。
 
 ### Neovim
 
@@ -165,14 +169,27 @@ TextMate の文法を、手元の拡張機能として読み込ませる。
 
 ### Sublime Text と TextMate
 
+この手順は、実際のエディタで確かめていない。
 どちらも TextMate の文法を読むが、JSON の形式ではなく plist の形式（`.tmLanguage`）を読む。
 JSON から plist に変換して（Sublime Text なら PackageDev のパッケージで変換できる）、Sublime Text は `Packages/User/` に、TextMate はバンドルの `Syntaxes/` に置く。
 
 ### Helix
 
 tree-sitter の文法を使う。
-`~/.config/helix/languages.toml` に言語と文法を足し、`hx --grammar build` でパーサーを作る。
-問い合わせは `~/.config/helix/runtime/queries/golem/highlights.scm`（`.emet` は `emet`）に写す。
+この手順は Helix 25.07.1 で確かめた（`tools/editors/helix/test.sh`）。
+
+まず、問い合わせを `~/.config/helix/runtime/queries/` に写し、パーサーを置くディレクトリを作る。
+Helix 25.07.1 の `hx --grammar build` は、`~/.config/helix/runtime/grammars/` がないと、パーサーを書き出せずに失敗する。
+
+```sh
+mkdir -p ~/.config/helix/runtime/grammars
+for g in golem emet; do
+  mkdir -p ~/.config/helix/runtime/queries/$g
+  cp "<editors>/tree-sitter-$g/queries/highlights.scm" ~/.config/helix/runtime/queries/$g/
+done
+```
+
+次に、`~/.config/helix/languages.toml` に言語と文法を足し、`hx --grammar build` でパーサーを作る。
 
 ```toml
 [[language]]
@@ -184,13 +201,28 @@ roots = ["manifest.toml"]
 [[grammar]]
 name = "golem"
 source = { path = "<editors>/tree-sitter-golem" }
+
+[[language]]
+name = "emet"
+scope = "source.emet"
+file-types = ["emet"]
+roots = ["manifest.toml"]
+
+[[grammar]]
+name = "emet"
+source = { path = "<editors>/tree-sitter-emet" }
 ```
 
-`.emet` も同じく、`name = "emet"`、`file-types = ["emet"]`、`tree-sitter-emet` で足す。
+`hx --grammar build` は、Helix が持つほかの言語の文法も作ろうとする。
+`hx --grammar fetch` で取っていない文法は作れないので、golem と emet のパーサーを作ったうえで、終了コード 1 で終わる。
+golem と emet だけを作るときは、`languages.toml` の先頭に `use-grammars = { only = ["golem", "emet"] }` を書く。
+テストはこの行を足して `hx --grammar build` を走らせる。
+
 捕捉の名前は nvim-treesitter の名前なので、Helix のテーマが知らない名前（`@module`、`@number`、`@string.escape`、`@keyword.modifier`）には色が付かないことがある。
 
 ### Zed
 
+この手順は、実際のエディタで確かめていない。
 Zed は、tree-sitter の文法を拡張機能として読む。
 手元の拡張機能（dev extension）の `extension.toml` の `[grammars.golem]` に、このディレクトリを含む Git のリポジトリとコミットを書き、`languages/golem/` に `config.toml`（`name = "Golem"`、`grammar = "golem"`、`path_suffixes = ["gm"]`）と `highlights.scm` を置く。
 `.emet` も同じく足す。
@@ -219,3 +251,62 @@ C コンパイラー（`cc`）も要る。
 
 文法を変えたら、そのディレクトリで `../node_modules/.bin/tree-sitter generate` を実行し、生成した `src/` もコミットする。
 `.gm` か `.emet` の構文を変えるときは、Golem の文法、semantic tokens、ここの二つの形式を合わせて変える。
+
+### Helix のテスト
+
+```sh
+sh tools/editors/helix/test.sh
+```
+
+Helix 25.07.1 を GitHub の helix-editor/helix のリリースから `third_party/helix/` に取り、アーカイブの SHA-256 を照合してから展開する。
+SHA-256 を固定しているのは Linux の x86-64 と macOS の arm64 の二つである。
+CI では `editors` ジョブが走らせる。
+
+一時的な `HOME` で、上の「Helix」の節の `sh` と `toml` のコードブロックを、`<editors>` をこのディレクトリに置き換えて使う。
+`toml` のブロックの前には `use-grammars = { only = ["golem", "emet"] }` を足す。
+そのうえで、次を確かめる。
+
+1. `hx --grammar build` が成功し、`golem.so` と `emet.so` を作る。
+2. `hx --health golem` と `hx --health emet` が、パーサーと強調の問い合わせを見つける。
+
+README の例を変えると、テストも同じものを走らせる。
+
+### Neovim と golem lsp のテスト
+
+```sh
+sh tools/editors/fetch-nvim.sh
+GOLEM=<golem> NVIM=third_party/nvim/bin/nvim sh tools/editors/nvim/test.sh
+GOLEM=<golem> NVIM=third_party/nvim/bin/nvim sh tools/editors/nvim/test.sh --self-test
+```
+
+`fetch-nvim.sh` は、Neovim 0.12.6 を GitHub の neovim/neovim のリリースから `third_party/nvim/` に取り、アーカイブの SHA-256 を照合してから展開する。
+SHA-256 を固定しているのは Linux の x86-64 と macOS の arm64 の二つである。
+`GOLEM` は golem の実行ファイルである。
+CI では `editors-lsp` ジョブが、`build (ubuntu-24.04, outputs)` の golem を待って走らせる。
+
+`nvim/test.sh` は、`nvim/tests/` のテストを一つずつ、`nvim --headless --clean -u nvim/init.lua` で走らせる。
+`--clean` なので、走らせる人の設定は読まない。
+各テストは `modules/golem-lsp/test/fixtures/` の写しを一時ディレクトリに作り、`golem lsp` をそのルートで起動する。
+
+| テスト | 確かめること |
+| --- | --- |
+| `encoding` | クライアントの `offset_encoding` が `utf-8` になる。`general.positionEncodings` に `utf-16` だけを渡すと `utf-16` になる |
+| `columns` | 日本語と 4 バイトの文字を含む行の diagnostic の `col` と `end_col` が、その行のバイト数を超えない |
+| `notice` | notice の diagnostic が `INFO` で、`vim.diagnostic.setqflist()` の後の quickfix に載る。`manifest.toml` の `silence-notices` にそのコードを足して保存すると消える |
+| `whitespace` | コマンドと式の中の空白の semantic tokens の型が `operator` で、その位置の強調のグループが、既定の色の組で背景と下線を持たない |
+| `completion` | `style.toml` と `preflight.toml` で `vim.lsp.completion` の一覧に候補が出て、引用符の外と内で選んだ後の行が期待の文字列になる。`manifest.toml` とルートより下の `style.toml` では一覧が出ない |
+| `readme` | 上の「Neovim」の節の、nvim-treesitter を使わない手順（`sh` のブロックと最後の `lua` のブロック）で、`emet-samples` の `text.gm` と `fn/lib.emet` のファイルタイプが `golem` と `emet` になり、tree-sitter の色付けが始まる |
+
+補完の一覧は、`vim.ui_attach` で `ext_popupmenu` を受けて、端末なら描かれる項目を読む。
+`notice` のテストは、クライアントの能力で `workspace/didChangeWatchedFiles` の動的な登録を申し出る。
+Neovim 0.12.6 は、この登録を macOS と Windows でだけ申し出て、Linux では申し出ないからである（[docs/roadmap.md](../../docs/roadmap.md) の「未決事項」）。
+
+`--self-test` は、各テストの期待を一つずつ反転して走らせ、どのテストも終了コード 1 とそのテストの名前を書いて失敗することを確かめる。
+反転しても通るテストは、何も確かめていないので、`--self-test` が失敗にする。
+
+`--theme` は、空白のテストだけを `--clean` を外して走らせる。
+`NVIM_APPNAME`（なければ `nvim`）の設定と色の組で、空白の位置の強調のグループが背景と下線を持たないことを確かめる。
+
+```sh
+NVIM_APPNAME=<設定の名前> GOLEM=<golem> NVIM=nvim sh tools/editors/nvim/test.sh --theme
+```

@@ -1,6 +1,6 @@
 # ADR 0211: 2026-11-08 の ADR のレビューで見つかった、実装が決めた点を記録する
 
-ステータス: 採択
+ステータス: 採択→A2 の制御の後ろの空きと A3 の確かめ方は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
 
 ## 文脈
 
