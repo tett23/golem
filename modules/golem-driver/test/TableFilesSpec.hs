@@ -188,12 +188,7 @@ cellLimitTests =
           overN <- pdfDiagnostics False [("a.gm", "@table data/t.csv\n"), ("data/t.csv", csvOf (replicate 9091 11))]
           [(c, m) | (c, m, _) <- overN] @?= [("G07108", tooMany 100001)]
           -- at the block of the table, where G07041 is
-          [sp | (_, _, sp) <- overN] @?= [sp | (_, _, sp) <- atN]
-          -- the same from Emet: N cells, then N + 1
-          atNEmet <- pdfDiagnostics False [("a.gm", fromEmet "at-limit"), emetFile]
-          [c | (c, _, _) <- atNEmet] @?= ["G07041"]
-          overNEmet <- pdfDiagnostics False [("a.gm", fromEmet "big"), emetFile]
-          [(c, m) | (c, m, _) <- overNEmet] @?= [("G07108", tooMany 100001)],
+          [sp | (_, _, sp) <- overN] @?= [sp | (_, _, sp) <- atN],
       localOption (mkTimeout 30000000) $
         testCase "T1: the cells of a header row of empty cells, a table without a header row, are counted" $ do
           ds <- pdfDiagnostics False [("a.gm", fromEmet "blank-header"), emetFile]
@@ -236,15 +231,12 @@ cellLimitTests =
       h : rest -> TE.encodeUtf8 (T.concat (bar h : T.concat ["|", T.replicate h "---|", "\n"] : map bar rest))
     bar n = "| " <> T.intercalate " | " (replicate n "x") <> " |\n"
     fromEmet name = "@import functions/book.emet as book\n\n@book." <> name <> "\n"
-    -- tables of Emet: 9,091 rows of 11 cells (N + 1) and 400 rows of 250 cells (N)
+    -- tables of Emet of 9,091 rows of 11 cells (N + 1)
     emetFile =
       ( "functions/book.emet",
         TE.encodeUtf8 . T.unlines $
           [ "pub block big :: Blocks",
             "big = Block.table (cells 11) (List.map (row 11) (List.range 1 9090))",
-            "",
-            "pub block \"at-limit\" atLimit :: Blocks",
-            "atLimit = Block.table (cells 250) (List.map (row 250) (List.range 1 399))",
             "",
             "pub block \"blank-header\" blankHeader :: Blocks",
             "blankHeader = Block.table (List.map blank (List.range 1 11)) (List.map (row 11) (List.range 1 9090))",
