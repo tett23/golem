@@ -201,7 +201,7 @@ common =
     ),
     ("a filter of [[filters]] that changes headings", \s -> "[[filters]]" `T.isInfixOf` srcManifest s && "pub filter" `T.isInfixOf` srcEmet s && "Block.Heading" `T.isInfixOf` srcEmet s),
     ("[fonts.code] with the same two fonts as [fonts.body], and no G08008", \s -> tableBody "[fonts.code]" s /= [] && tableBody "[fonts.code]" s == tableBody "[fonts.body]" s),
-    ("no sidenotes: no [sidenotes] and no [sidenote ...] (G07001)", \s -> not (any (("[sidenotes" `T.isPrefixOf`) . fst) (srcStyle s)) && commands "sidenote" s == [])
+    ("no sidenotes: no [sidenotes] and no [sidenote ...] (G07001)", \s -> not (any (("[sidenotes" `T.isPrefixOf`) . fst) (srcStyle s)) && null (commands "sidenote" s))
   ]
 
 -- | The lines of the table of the header, without blank lines and comments.
