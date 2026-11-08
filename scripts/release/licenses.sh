@@ -17,7 +17,11 @@
 # a package patched by scripts/fetch-wasm-packages.sh (skylighting,
 # skylighting-core) gets its patch and a file SOURCE with the archive of
 # Hackage. No link map, no Alpine package, no wasmtime: LINK_MAP is not
-# read, and GHC_DOCDIR and GMP_VERSION are required.
+# read, and GHC_DOCDIR and GMP_VERSION are required. system-cxx-std-lib,
+# the virtual package of GHC without code, gets no haskell/ directory: its
+# license is that of libc++ and libc++abi in wasi-sdk/llvm/
+# (docs/adr/0240); without --wasm it is an error, as any other package
+# without a license file.
 #
 # What goes in follows the link map of golem (LINK_MAP), through
 # link-components.sh:
@@ -173,6 +177,18 @@ while IFS='	' read -r type src name version location commit subdir; do
       if [ "$name" = rts ]; then
         # the RTS is part of GHC and under its license
         [ -f "$GHC_DOCDIR/ghc-$GHC_VERSION/LICENSE" ] || MISSING="$MISSING $name-$version"
+        continue
+      fi
+      if [ "$WASM" = true ] && [ "$name" = system-cxx-std-lib ]; then
+        # the virtual package of GHC for linking the C++ standard library,
+        # without code: what golem.wasm links is libc++ and libc++abi of
+        # wasi-sdk, whose licenses go to wasi-sdk/llvm/ (docs/adr/0240)
+        for f in libcxx-LICENSE.TXT libcxxabi-LICENSE.TXT; do
+          [ -f "$ROOT/licenses/wasi-sdk/llvm/$f" ] || {
+            MISSING="$MISSING $name-$version"
+            break
+          }
+        done
         continue
       fi
       found=
