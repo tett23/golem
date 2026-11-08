@@ -1,6 +1,6 @@
 # ADR 0212: patch のリリースの検査を、前のリリースの入力を組み直して行う
 
-ステータス: 採択
+ステータス: 採択→基準がないときの失敗、`--no-manuals`、`SHEM` と標準出力の形は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
 
 ## 文脈
 

@@ -1171,7 +1171,9 @@ css cfg book =
     line, the greater of the two for a pair, after both, and none after a
     blank line. The rule of a pair, p.ps-A + p.ps-B:not(.ps-A), wins over
     the rule of the space after by its specificity, not by its place
-    (docs/adr/0211) -}
+    (docs/adr/0211). The rules p and div.blank-line + p of body, like p + p
+    of body above, take no prefix: with one, they would win over the
+    spaces before of other styles on other pages (docs/adr/0236) -}
     spaceRules preOf withBefore styles pairs =
       let em n = tshow n <> "em"
           at ns = prefixed (preOf ns)
