@@ -595,9 +595,9 @@ c1Japanese :: Check
 c1Japanese _ p =
   [ Breach C1 (-1) (show (bcText a <> bcText b) <> " has " <> show (length cs) <> " breaks between them" <> (if pro then ", where a prohibition applies" else ""))
   | (_, a, mid, b) <- codePairs (pItems p),
-    Just (_, _, True) <- [borderOf a b],
     let cs = candidates mid
         pro = prohibited p a b,
+    Just (_, _, True) <- [borderOf a b],
     if pro then not (null cs) else length cs /= 1
   ]
     <> [ Breach C1 (-1) ("the box of code " <> show (bcText c) <> " holds a Japanese character and another")
@@ -623,8 +623,8 @@ c3Latin :: Check
 c3Latin _ p =
   [ Breach C3 (-1) (show (bcText a <> bcText b) <> " breaks between them")
   | (_, a, mid, b) <- codePairs (pItems p),
-    Just (x, y, False) <- [borderOf a b],
     let cs = candidates mid,
+    Just (x, y, False) <- [borderOf a b],
     length cs > 1 || (not (null cs) && not (x == '/' || (x == '_' && y /= '_')))
   ]
 
