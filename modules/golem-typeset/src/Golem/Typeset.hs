@@ -57,6 +57,7 @@ module Golem.Typeset
     renderPdf,
     renderPdfView,
     renderPdfStructure,
+    renderPdfLeafTexts,
     renderPdfWithTree,
     orphanErrors,
     flowLines,

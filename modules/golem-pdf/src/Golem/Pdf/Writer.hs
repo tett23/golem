@@ -31,6 +31,7 @@ module Golem.Pdf.Writer
     contentStream,
     pageStream,
     structureText,
+    leafTexts,
     contentLeaves,
     orphanLeaves,
     rectObj,
@@ -758,25 +759,9 @@ ActualText) on all pages.
 structureText :: Document -> Text
 structureText doc =
   let pages = docPages doc
-      drawn = [(l, ms) | p <- pages, c <- pageContent p, (l, ms) <- tagged c]
-      (tree, _) = withOrphans (docStructure doc) (map fst drawn)
-      texts = Map.fromListWith (flip (<>)) [(l, marksText ms) | (l, ms) <- drawn]
-      entries = Map.map Map.fromList (Map.map fontToUnicode (docFonts doc))
-      glyphText f g = Map.findWithDefault "\xFFFD" g (Map.findWithDefault Map.empty f entries)
-      marksText = T.concat . map markText
-      markText = \case
-        GlyphRun f _ gs -> T.concat [glyphText f g | (g, _, _) <- gs]
-        ScaledGlyphRun f _ _ gs -> T.concat [glyphText f g | (g, _, _) <- gs]
-        RotatedGlyphRun f _ gs -> T.concat [glyphText f g | (g, _, _) <- gs]
-        StyledGlyphRun _ f _ gs -> T.concat [glyphText f g | (g, _, _) <- gs]
-        TransformedGlyphRun f _ _ gs -> T.concat [glyphText f g | (_, g, _, _) <- gs]
-        Saved ms -> marksText ms
-        Translated _ _ ms -> marksText ms
-        Turned _ _ ms -> marksText ms
-        ActualText t _ -> t
-        Image _ _ -> "[image]"
-        Form _ _ -> "[form]"
-        _ -> ""
+      drawn = [l | p <- pages, c <- pageContent p, (l, _) <- taggedContent c]
+      (tree, _) = withOrphans (docStructure doc) drawn
+      texts = leafTexts doc
       line depth e =
         T.replicate depth "  "
           <> structTypeName (seType e)
@@ -795,13 +780,41 @@ structureText doc =
             ]
    in T.unlines (render 0 tree)
   where
-    tagged = \case
-      Tagged l ms@(_ : _) -> [(l, ms)]
-      Tagged _ [] -> []
-      Artifact _ _ -> []
-      Moved _ cs -> concatMap tagged cs
     objText o = TE.decodeUtf8 (BL.toStrict (B.toLazyByteString (serialize o)))
     quoted t = "\"" <> t <> "\""
+
+-- | The tagged content of a content item, with its marks (docs/adr ADR 0183).
+taggedContent :: Content -> [(LeafId, [Mark])]
+taggedContent = \case
+  Tagged l ms@(_ : _) -> [(l, ms)]
+  Tagged _ [] -> []
+  Artifact _ _ -> []
+  Moved _ cs -> concatMap taggedContent cs
+
+{- | The text of the glyphs each leaf draws on all pages, in the order of
+the content streams (docs/adr ADR 0183, ADR 0227): by the ToUnicode
+entries of their fonts, or their ActualText.
+-}
+leafTexts :: Document -> Map LeafId Text
+leafTexts doc =
+  let drawn = [(l, ms) | p <- docPages doc, c <- pageContent p, (l, ms) <- taggedContent c]
+      entries = Map.map Map.fromList (Map.map fontToUnicode (docFonts doc))
+      glyphText f g = Map.findWithDefault "\xFFFD" g (Map.findWithDefault Map.empty f entries)
+      marksText = T.concat . map markText
+      markText = \case
+        GlyphRun f _ gs -> T.concat [glyphText f g | (g, _, _) <- gs]
+        ScaledGlyphRun f _ _ gs -> T.concat [glyphText f g | (g, _, _) <- gs]
+        RotatedGlyphRun f _ gs -> T.concat [glyphText f g | (g, _, _) <- gs]
+        StyledGlyphRun _ f _ gs -> T.concat [glyphText f g | (g, _, _) <- gs]
+        TransformedGlyphRun f _ _ gs -> T.concat [glyphText f g | (_, g, _, _) <- gs]
+        Saved ms -> marksText ms
+        Translated _ _ ms -> marksText ms
+        Turned _ _ ms -> marksText ms
+        ActualText t _ -> t
+        Image _ _ -> "[image]"
+        Form _ _ -> "[form]"
+        _ -> ""
+   in Map.fromListWith (flip (<>)) [(l, marksText ms) | (l, ms) <- drawn]
 
 {- | A link annotation (docs/adr ADR 0182): no border, no appearance, the
 print flag (PDF/A-2 asks for it; with no appearance nothing is printed),

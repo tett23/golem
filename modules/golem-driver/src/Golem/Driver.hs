@@ -22,6 +22,7 @@ module Golem.Driver
     functionPaths,
     loadBibliography,
     pdfStructure,
+    pdfLeafTexts,
     pdfWithTree,
     metadataValues,
     epubConfig,
@@ -1247,6 +1248,21 @@ pdfStructure opts = do
       Just book -> do
         (_, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
         renderPdfStructure golemVersion (optFonts opts) (pdfInputOf opts e (evStyleFile e) book bib)
+
+{- | Each leaf of the structure tree of the PDF of a project with the
+text it draws in the order of the content streams and the text of its
+glyphs in the order of the text, for the tests (docs/adr ADR 0227).
+-}
+pdfLeafTexts :: BuildOptions -> IO (Either [Diagnostic] [(P.LeafId, Text, Text)])
+pdfLeafTexts opts = do
+  ev <- evaluateProjectWith (optFiles opts) Map.empty (optProfile opts) (optRoot opts)
+  case ev of
+    Left f -> pure (Left (pfDiagnostics f))
+    Right e -> case evBook e of
+      Nothing -> pure (Left (evDiagnostics e))
+      Just book -> do
+        (_, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
+        renderPdfLeafTexts golemVersion (optFonts opts) (pdfInputOf opts e (evStyleFile e) book bib)
 
 {- | The PDF of a project with its structure tree changed by a function
 before it is checked and written, for the tests of G07107 only (docs/adr
