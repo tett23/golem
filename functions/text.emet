@@ -1,0 +1,56 @@
+-- 文字と段落の書き方：全角の英数字、「ママ」のルビ、題辞。
+-- 原稿では `@import functions/text.emet as text` で取り込む。
+
+-- 散文スロットの中の半角の英字と数字を全角にする。縦組みで英数字を
+-- 一字ずつ立てて組むときに使う。散文スロットの直下の文字だけを変え、
+-- 文字スタイル、ルビ、コードなどの中は変えない。
+-- >>> [text.zenkaku: A5判、全320ページ]
+-- Ａ５判、全３２０ページ
+pub inline zenkaku :: Inlines -> Inlines
+zenkaku xs = List.map toZenkaku xs
+
+toZenkaku :: Inline.Inline -> Inline.Inline
+toZenkaku (Inline.Text s) = Inline.Text (String.map (lookupChar widths) s)
+toZenkaku x = x
+
+-- 半角の英数字と、それに当たる全角の字の組。
+widths :: List (Char, Char)
+widths = List.zip (String.chars (upper ++ lower ++ "0123456789")) (String.chars (upperFull ++ lowerFull ++ "０１２３４５６７８９"))
+  where {
+    upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    lower = "abcdefghijklmnopqrstuvwxyz"
+    upperFull = "ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ"
+    lowerFull = "ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ"
+  }
+
+lookupChar :: List (Char, Char) -> Char -> Char
+lookupChar [] c = c
+lookupChar ((from, to) : rest) c = from == c ? to : lookupChar rest c
+
+-- 原文のままであることを示す「ママ」のルビ。引用の誤字や、今では使わない
+-- 表記を、直さずに載せるときに使う。
+-- >>> [text.mama: 云う]
+-- 云う（ママ）
+pub inline mama :: Inlines -> Inlines
+mama xs = [Inline.Ruby [Inline.RubySegment xs (Just "ママ")]]
+
+-- 題辞（エピグラフ）。本体の段落を段落スタイル `style`（既定は
+-- epigraph）で組み、`source` があれば、その後ろに出典を「――」に続けて
+-- 段落スタイル `style` に -source を付けたもので組む。二つの段落スタイルは
+-- style.toml に定義する。例は、functions/README.md の style.toml で
+-- 組んだもの（本体を 2 字下げる）。
+-- >>> @text.epigraph source=夏目漱石『草枕』
+-- ...   智に働けば角が立つ。
+-- 　　智に働けば角が立つ。
+--
+-- ――夏目漱石『草枕』
+pub block epigraph :: (source :: String = "") -> (style :: String = "epigraph") -> Blocks -> Blocks
+epigraph source style body = List.map (restyle style) body ++ sourceLine source style
+
+restyle :: String -> Block.Block -> Block.Block
+restyle style (Block.Paragraph _ xs) = Block.Paragraph (Just style) xs
+restyle _ b = b
+
+sourceLine :: String -> String -> Blocks
+sourceLine "" _ = []
+sourceLine s style = Block.styled (style ++ "-source") (Inline.text ("――" ++ s))

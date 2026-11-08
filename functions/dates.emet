@@ -1,0 +1,121 @@
+-- 日付の書き方：和暦、西暦と和暦の併記、ISO 8601 の日付。
+-- 原稿では `@import functions/dates.emet as dates` で取り込む。
+-- 漢数字のために functions/numbers.emet を使う。
+
+import "functions/numbers.emet"
+
+-- 元号：名前と、始まった年、月、日。新しいものから並べる。
+data Era = Era String Nat Nat Nat
+
+eras :: List Era
+eras = [Era "令和" 2019 5 1, Era "平成" 1989 1 8, Era "昭和" 1926 12 25, Era "大正" 1912 7 30, Era "明治" 1868 10 23]
+
+-- 西暦の年（と月日）の和暦。元号の最初の年は元年とする。月日を省くと
+-- 年の最後の日の元号にするので、改元の年は新しい元号になる。明治より
+-- 前の年は西暦のまま書く。明治5年までの月日は旧暦で、この関数は暦を
+-- 換算しないので、その年は年だけで使う。`kanji=true` なら漢数字で書く。
+-- >>> [dates.wareki 2026]
+-- 令和8年
+-- >>> [dates.wareki 2019 month=4 day=30]
+-- 平成31年4月30日
+-- >>> [dates.wareki 2019 month=5 day=1]
+-- 令和元年5月1日
+-- >>> [dates.wareki 2026 month=11 day=8 kanji=true]
+-- 令和八年十一月八日
+-- >>> [dates.wareki 1867]
+-- 1867年
+pub inline wareki :: Nat -> (month :: Nat = 0) -> (day :: Nat = 0) -> (kanji :: Bool = False) -> Inlines
+wareki year month day k = Inline.text (warekiString (k ? kanji : String.fromNat) year month day)
+
+-- 和暦の文字列。一つめの引数は数の書き方。
+pub warekiString :: (Nat -> String) -> Nat -> Nat -> Nat -> String
+warekiString num year month day = eraYear num eras year (dayKey year month day) ++ monthDay num month day
+
+-- 元号の始まりと比べるための数。月日を省いた日は年の最後の日とする。
+dayKey :: Nat -> Nat -> Nat -> Nat
+dayKey year 0 _ = year * 10000 + 1231
+dayKey year month 0 = year * 10000 + month * 100 + 31
+dayKey year month day = year * 10000 + month * 100 + day
+
+eraYear :: (Nat -> String) -> List Era -> Nat -> Nat -> String
+eraYear num [] year _ = num year ++ "年"
+eraYear num (Era name y m d : rest) year key
+  | key >= y * 10000 + m * 100 + d = name ++ nth num (year + 1 - y) ++ "年"
+  | otherwise = eraYear num rest year key
+
+-- 元号の何年目か。引き算の結果は Int なので、文字列を通して Nat に戻す。
+nth :: (Nat -> String) -> Int -> String
+nth _ 1 = "元"
+nth num n = case String.toNat (String.fromInt n) of {
+  Just m -> num m
+  Nothing -> String.fromInt n
+}
+
+monthDay :: (Nat -> String) -> Nat -> Nat -> String
+monthDay _ 0 _ = ""
+monthDay num month 0 = num month ++ "月"
+monthDay num month day = num month ++ "月" ++ num day ++ "日"
+
+-- 西暦の年に、その年の最後の日の元号の年を括弧で添える。明治より前の
+-- 年は西暦だけを書く。
+-- >>> [dates.year-both 2026]
+-- 2026（令和8）年
+-- >>> [dates.year-both 1989]
+-- 1989（平成元）年
+-- >>> [dates.year-both 1867]
+-- 1867年
+pub inline "year-both" yearBoth :: Nat -> Inlines
+yearBoth year = Inline.text (yearBothString year eras)
+
+yearBothString :: Nat -> List Era -> String
+yearBothString year [] = String.fromNat year ++ "年"
+yearBothString year (Era name y _ _ : rest)
+  | year >= y = String.fromNat year ++ "（" ++ name ++ nth String.fromNat (year + 1 - y) ++ "）年"
+  | otherwise = yearBothString year rest
+
+-- ISO 8601 の日付（YYYY-MM-DD）を「2026年11月8日」と書く。暦にない日付
+-- （2月30日など）と、日付でない文字列は、そのまま返す。
+-- >>> [= dates.isoDate("2026-11-08")]
+-- 2026年11月8日
+-- >>> [= dates.isoDate("2026-02-29")]
+-- 2026-02-29
+pub fn isoDate :: String -> String
+isoDate s = case isoParts s of {
+  Just (y, m, d) -> String.fromNat y ++ "年" ++ String.fromNat m ++ "月" ++ String.fromNat d ++ "日"
+  Nothing -> s
+}
+
+-- ISO 8601 の日付を和暦で書く。日付でない文字列は、そのまま返す。
+-- >>> [= dates.isoWareki("2019-04-30")]
+-- 平成31年4月30日
+-- >>> [= dates.isoWareki("近刊")]
+-- 近刊
+pub fn isoWareki :: String -> String
+isoWareki s = case isoParts s of {
+  Just (y, m, d) -> warekiString String.fromNat y m d
+  Nothing -> s
+}
+
+-- ISO 8601 の日付の年、月、日。グレゴリオ暦にない日付は Nothing。
+pub isoParts :: String -> Maybe (Nat, Nat, Nat)
+isoParts s = case String.split "-" s of {
+  [y, m, d] -> String.length y == 4 && String.length m == 2 && String.length d == 2 ? validDate (String.toNat y) (String.toNat m) (String.toNat d) : Nothing
+  _ -> Nothing
+}
+
+validDate :: Maybe Nat -> Maybe Nat -> Maybe Nat -> Maybe (Nat, Nat, Nat)
+validDate (Just y) (Just m) (Just d)
+  | m >= 1 && m <= 12 && d >= 1 && d <= daysIn y m = Just (y, m, d)
+  | otherwise = Nothing
+validDate _ _ _ = Nothing
+
+daysIn :: Nat -> Nat -> Nat
+daysIn y 2 = leap y ? 29 : 28
+daysIn _ 4 = 30
+daysIn _ 6 = 30
+daysIn _ 9 = 30
+daysIn _ 11 = 30
+daysIn _ _ = 31
+
+leap :: Nat -> Bool
+leap y = y % 4 == 0 && (y % 100 /= 0 || y % 400 == 0)

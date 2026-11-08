@@ -15,7 +15,7 @@
 #   docs         docs/**/*.md but the ADRs, docs/diagnostics.md and the
 #                records (docs/audit/, docs/audits/, docs/benchmark/,
 #                docs/benchmarks/, docs/ci-timings/); README.md;
-#                CONTRIBUTING.md
+#                CONTRIBUTING.md; functions/README.md
 #   diagnostics  docs/diagnostics.md
 #   adr          the ADRs added since BASE
 #   manual       manual/**/*.gm
@@ -57,7 +57,7 @@ RECORDS='^docs/(audit|audits|benchmark|benchmarks|ci-timings)/'
 ADR='(^|/)adr/'
 
 # shellcheck disable=SC2046
-run docs $(git ls-files -- 'docs/*.md' README.md CONTRIBUTING.md |
+run docs $(git ls-files -- 'docs/*.md' README.md CONTRIBUTING.md functions/README.md |
   grep -v -E "$RECORDS|$ADR|^docs/diagnostics\.md$")
 run diagnostics docs/diagnostics.md
 
