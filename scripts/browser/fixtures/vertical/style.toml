@@ -1,0 +1,16 @@
+[page]
+size = "B6"
+binding = "right"
+writing-mode = "vertical"
+
+[fonts.body]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[paragraph-styles.dash]
+first-line-indent = "0zw"
+
+[paragraph-styles.box]
+first-line-indent = "0zw"
+rule-before = { weight = "0.5pt", space-after = "0.5zw" }
+rule-after = { weight = "0.5pt", space-before = "0.5zw" }

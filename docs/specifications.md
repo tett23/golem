@@ -480,6 +480,10 @@ golem-font は、wasm に向けて組むときだけ、FreeType を `-mllvm -was
 cabal 3.14.2.0 は、`build-tool-depends` の `alex` と `happy` も wasm の GHC で組んで store に `alex.wasm` と `happy.wasm` を置くが、それは wasm のモジュールで、cabal は `alex` と `happy` として使わないので、ビルドの中で動くのは `PATH` のものだけである。
 `hsc2hs` は、`wasm32-wasi-cabal` が `--with-hsc2hs` で渡す wasm の GHC のものを使う。
 
+CI の `wasm` ジョブは、`golem.wasm` を Node の `node:wasi` で動かす。
+夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` を Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno` と `--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)）。
+wasmtime 49.0.5 の CLI は、`golem.wasm` の例外処理の古い形（legacy exceptions）を読まないので、wasmtime では動かさない。
+
 処理は `parse → eval → 意味論 IR → 各バックエンド` の順に流れ、分岐点は意味論 IR である（「処理の流れ」の節を参照）。
 
 PDF 経路と Web 経路は対称ではない。
@@ -893,6 +897,16 @@ CI の `build` の x86-64 の `outputs` のランナーは、二冊のマニュ�
 `pdf-fonts.sh` は、PDF のフォントの辞書の `BaseFont` を `qpdf --json` で読み、サブセットの印（六つの大文字と `+`）を除いた名前を、並べ替えて一度ずつ書く。
 書体の名前を引数に与えると、それ以外の書体があれば失敗する。
 CI は、そのマニュアルの `fonts/` の OpenType のファイルの名前（`.otf` を除いたもの）を与える。
+
+HTML は、夜ごとの `.github/workflows/browser.yml` が、版と SHA-256 で固定した Chrome for Testing の `chrome-headless-shell`（`scripts/browser/fetch-chromium.sh`）と、macOS のランナーの Safari で開いて確かめる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)）。
+Chromium は Chrome DevTools Protocol で、Safari は `safaridriver` の W3C WebDriver で操り、どちらのクライアントも Node の組み込みだけで書く（`scripts/browser/cdp.mjs`、`scripts/browser/webdriver.mjs`）。
+検査は二つのブラウザで同じ関数で走り、同じ基準を当てる。
+確かめるのは、技術書のコードブロックの選択とコピーに行番号と差分の印が入らないこと、`pre` の `white-space` とコードの書体、縦組みのダッシュの墨が縦に長いこと、圏点の十の形の `text-emphasis-style`、段落の罫線が段落の前後にあること、tRNS の透明の画素でページの背景が見えること、二冊のマニュアルのすべてのページで画像とスタイルシートと書体が読み込まれ、`#` のリンクの先があることである（`scripts/browser/html-checks.mjs`）。
+Chromium では、加えてコンソールの誤りと読み込みの失敗がないことを確かめる。
+WebDriver にはそれを受け取る命令がないので、Safari では確かめない。
+開発者のマニュアルの輪郭の SVG の文字は、原稿の SVG を同じブラウザで描いた文字と、位置と大きさが CSS の 1 画素以下の差であることを確かめる（`scripts/browser/svg-text.mjs`）。
+Safari の版は固定せず、ランナーの像に従う。
+`safari` のジョブは、macOS の版、像の版、Safari の版、WebDriver の `browserVersion` の表をジョブの要約に書き、検査が失敗しても表を残す（`scripts/browser/safari-versions.sh`）。
 
 ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
 対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。

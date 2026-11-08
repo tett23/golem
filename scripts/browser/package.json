@@ -1,0 +1,9 @@
+{
+  "name": "golem-browser-checks",
+  "private": true,
+  "description": "browser_wasi_shim, which runs golem.wasm in Chromium and Safari in .github/workflows/browser.yml (docs/adr/0234); the clients of the browsers use the built-ins of Node only",
+  "license": "MIT",
+  "devDependencies": {
+    "@bjorn3/browser_wasi_shim": "0.4.2"
+  }
+}

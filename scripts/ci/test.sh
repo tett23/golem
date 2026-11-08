@@ -2477,6 +2477,124 @@ printf '1\tyesterday\t%ssha1\n' "$X64" >"$WORK/in"
 run stale "$X64"
 expect "stale-dist-caches: a time that is not of the API" 1
 
+# ---------------------------------------------------------------- wasm/compare.sh --deno, --browser
+# (docs/adr/0234 section 5): the lists of Deno and of the browsers have the
+# form of that of node:wasi, from a fake deno and a fake node
+
+CB=$WORK/compare-hosts
+mkdir -p "$CB/bin"
+# deno run --allow-read --allow-write RUN.MJS build WASM DIR PDF: a PDF of
+# the name of DIR, the warning of Deno and an empty JSON on stderr
+cat >"$CB/deno" <<'FAKE'
+#!/bin/sh
+printf '%%PDF %s\n' "${7##*/}" >"$8"
+printf '(node:123) ExperimentalWarning: WASI is an experimental feature and might change at any time\n[]\n' >&2
+FAKE
+# node RUN-BROWSER.MJS build BROWSER WASM DIR: the SHA-256 of a PDF on
+# stdout, an empty JSON on stderr, for safari only; the input missing-font
+# fails
+cat >"$CB/bin/node" <<'FAKE'
+#!/bin/sh
+[ "$3" = safari ] || exit 9
+case "$5" in
+  */missing-font) printf -- '-\n'; printf '[{"severity":"error"}]' >&2; exit 1 ;;
+esac
+echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+printf '[]' >&2
+FAKE
+chmod +x "$CB/deno" "$CB/bin/node"
+cb_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi; }
+: >"$WORK/in"
+# the form of the lists: three lines for each of the seven inputs
+cb_form() {
+  for name in kanikosen determinism pdf complex-vertical complex-horizontal broken-style missing-font; do
+    grep -Eq "^([0-9a-f]{64}|-)  $name/pdf\$" "$1" && grep -Eq "^[0-9a-f]{64}  $name/diagnostics\$" "$1" && grep -Eq "^exit [0-9]+  $name\$" "$1" || return 1
+  done
+  [ "$(wc -l <"$1" | tr -d ' ')" = 21 ]
+}
+run env DENO="$CB/deno" sh "$HERE/../wasm/compare.sh" --deno golem.wasm
+cp "$WORK/out" "$CB/deno.txt"
+expect "compare.sh --deno: runs every input" 0
+if cb_form "$CB/deno.txt"; then ok; else ng "compare.sh --deno: the list has the form of that of node:wasi"; fi
+if grep -qxF "$(printf '%%PDF kanikosen\n' | cb_sha)  kanikosen/pdf" "$CB/deno.txt"; then ok; else ng "compare.sh --deno: the SHA-256 of the PDF that run.mjs wrote"; fi
+if grep -qxF "$(printf '[]\n' | cb_sha)  kanikosen/diagnostics" "$CB/deno.txt"; then ok; else ng "compare.sh --deno: the warning of Deno is not in the JSON"; fi
+run env PATH="$CB/bin:$PATH" sh "$HERE/../wasm/compare.sh" --browser safari golem.wasm
+cp "$WORK/out" "$CB/browser.txt"
+expect "compare.sh --browser: runs every input" 0
+if cb_form "$CB/browser.txt"; then ok; else ng "compare.sh --browser: the list has the form of that of node:wasi"; fi
+if grep -qxF "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  kanikosen/pdf" "$CB/browser.txt"; then ok; else ng "compare.sh --browser: the SHA-256 that the page gave, of the browser asked"; fi
+if grep -qxF -- "-  missing-font/pdf" "$CB/browser.txt" && grep -qxF "exit 1  missing-font" "$CB/browser.txt"; then ok; else ng "compare.sh --browser: no PDF and the exit code of a build with an error"; fi
+run sh "$HERE/../wasm/compare.sh" --browser firefox golem.wasm
+expect "compare.sh --browser: a browser that is not chromium nor safari is a usage error" 2
+run sh "$HERE/../wasm/compare.sh" --browser chromium
+expect "compare.sh --browser: without WASM is a usage error" 2
+run sh "$HERE/../wasm/compare.sh" --deno
+expect "compare.sh --deno: without WASM is a usage error" 2
+
+# ---------------------------------------------------------------- fetch-chromium.sh, fetch-deno.sh
+# (docs/adr/0234 sections 1 and 5): the arguments, and a zip of another
+# SHA-256, from a fake curl, is not unpacked
+
+FC=$WORK/fetch-pinned
+mkdir -p "$FC/bin"
+cat >"$FC/bin/curl" <<'FAKE'
+#!/bin/sh
+while [ $# -gt 0 ]; do
+  case "$1" in -o) printf 'not the pinned zip\n' >"$2"; shift ;; esac
+  shift
+done
+FAKE
+chmod +x "$FC/bin/curl"
+for f in browser/fetch-chromium.sh wasm/fetch-deno.sh; do
+  n=${f##*/}
+  run sh "$HERE/../$f" --bogus
+  expect "$n: an unknown argument is a usage error" 2
+  run sh "$HERE/../$f" --expected
+  if [ "$CODE" = 0 ] && grep -Eqx '[0-9.]+ [0-9a-f]{64}' "$WORK/out"; then ok; else ng "$n --expected: the version and the SHA-256"; fi
+  if [ "$(uname -s)-$(uname -m)" = Linux-x86_64 ]; then
+    rm -rf "$FC/root"
+    mkdir -p "$FC/root/scripts/browser" "$FC/root/scripts/wasm"
+    cp "$HERE/../$f" "$FC/root/scripts/$f"
+    run env PATH="$FC/bin:$PATH" sh "$FC/root/scripts/$f"
+    expect "$n: a zip of another SHA-256 fails" 1
+    if grep -qF 'SHA-256 mismatch' "$WORK/err" && [ ! -e "$FC/root/third_party" ]; then ok; else ng "$n: a zip of another SHA-256 is not unpacked"; fi
+  else
+    run sh "$HERE/../$f"
+    expect "$n: another platform than x86-64 Linux fails" 1
+    skip 2 "$n: the SHA-256 is checked on x86-64 Linux only"
+  fi
+done
+
+# ---------------------------------------------------------------- browser/safari-versions.sh
+# (docs/adr/0234 section 6, I7): the table of the versions of the safari
+# job, from an Info.plist of the fixture and the variables of the runner.
+# plutil is of macOS: scripts-macos runs these
+
+if [ "$(uname -s)" = Darwin ]; then
+  SV=$WORK/safari-versions
+  mkdir -p "$SV"
+  printf '#!/bin/sh\ncase "$1" in -productVersion) echo 15.8.2 ;; -buildVersion) echo 24H232 ;; esac\n' >"$SV/sw_vers"
+  chmod +x "$SV/sw_vers"
+  sv() { env SW_VERS="$SV/sw_vers" SAFARI_PLIST="$HERE/testdata/safari-versions/Info.plist" ImageOS=macos15 ImageVersion=20261104.0514.1 sh "$HERE/../browser/safari-versions.sh" "$@"; }
+  run sv 27.2
+  expect "safari-versions: the versions of macOS, the image, Safari and the session (I7)" 0 "| What | Version |
+| --- | --- |
+| macOS | 15.8.2 |
+| macOS build | 24H232 |
+| ImageOS | macos15 |
+| ImageVersion | 20261104.0514.1 |
+| Safari CFBundleShortVersionString | 27.2 |
+| Safari CFBundleVersion | 20625.2.8.18.4 |
+| WebDriver browserVersion | 27.2 |"
+  # the session was not made: the other rows are there (I7)
+  run sv ""
+  if [ "$CODE" = 0 ] && [ "$(wc -l <"$WORK/out" | tr -d ' ')" = 8 ] && ! grep -q browserVersion "$WORK/out"; then ok; else ng "safari-versions: without browserVersion, the other rows"; fi
+  run env SW_VERS=/nonexistent SAFARI_PLIST=/nonexistent ImageOS= ImageVersion= sh "$HERE/../browser/safari-versions.sh"
+  if [ "$CODE" = 0 ] && [ "$(grep -c ' - |$' "$WORK/out")" = 6 ]; then ok; else ng "safari-versions: what cannot be read is -, and the table is written"; fi
+else
+  skip 3 "safari-versions: plutil is of macOS"
+fi
+
 # ----------------------------------------------------------------
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]
