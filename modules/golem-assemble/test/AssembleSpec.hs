@@ -36,6 +36,7 @@ tests =
     "assembly, S1 (ADR 0002)"
     [ noticeTests,
       noteNumberTests,
+      unwritableTests,
       testCase "kanji numerals" $ do
         map kanji [1, 10, 12, 120, 1000, 10000, 20005] @?= ["一", "十", "十二", "百二十", "千", "一万", "二万五"]
         kanjiDigits 120 @?= "一二〇",
@@ -575,3 +576,40 @@ noteNumberTests =
       Sidenote {} -> [("s", i)]
       Kenten _ _ xs -> concatMap inl xs
       _ -> []
+
+-- | Numbers the formats of headings, figures and code blocks cannot write (docs/adr/0213).
+unwritableTests :: TestTree
+unwritableTests =
+  testGroup
+    "numbers the number formats cannot write (docs/adr/0213)"
+    [ testCase "N1, N3: the 51st heading of {n:circled} is G04012 at the heading and has no number text" $ do
+        let c = cfg {acHeadingFormats = Map.fromList [(1, "{n:circled}")]}
+            docs = [Document (FileId 1) [heading 1 i 1 noHeadingAttrs Nothing "章" | i <- [0 .. 50]]]
+            (book, ds) = assemble c noEval docs
+        map summary ds @?= [("G04012", Error, sp 1 50, "[headings.1] の number {n:circled} の {n:circled} では、51 を表せません", [])]
+        hiNumberText <$> Map.lookup (sp 1 50) (bookHeadings book) @?= Just Nothing
+        hiNumberText <$> Map.lookup (sp 1 49) (bookHeadings book) @?= Just (Just "㊿"),
+      testCase "N1: a heading of @number 0 in {n:circled} is G04012" $ do
+        let c = cfg {acHeadingFormats = Map.fromList [(1, "{n:circled}")]}
+        map summary (snd (assemble c noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs {haNumber = Just 0} Nothing "零"]]))
+          @?= [("G04012", Error, sp 1 0, "[headings.1] の number {n:circled} の {n:circled} では、0 を表せません", [])],
+      testCase "N1, N3: {1:upper-roman} of a level 2 heading with level 1 skipped is G04012 for the first slot" $ do
+        let c = cfg {acHeadingFormats = Map.fromList [(2, "{1:upper-roman}-{n:circled}")]}
+        map summary (snd (assemble c noEval [Document (FileId 1) [heading 1 0 2 noHeadingAttrs {haNumber = Just 51} Nothing "節"]]))
+          @?= [("G04012", Error, sp 1 0, "[headings.2] の number {1:upper-roman}-{n:circled} の {1:upper-roman} では、0 を表せません", [])],
+      testCase "N1: the 8th figure of {n:note-symbols} is G04013 at the figure" $ do
+        let fig s' = Block (sp 1 s') Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
+            (book, ds) = assemble cfg {acFigureFormat = "図{n:note-symbols}"} noEval [Document (FileId 1) (heading 1 0 1 noHeadingAttrs Nothing "一" : map fig [1 .. 8])]
+        map summary ds @?= [("G04013", Error, sp 1 8, "[figures] の number 図{n:note-symbols} の {n:note-symbols} では、8 を表せません", [])]
+        Map.lookup (sp 1 8) (bookFigures book) @?= Nothing
+        Map.lookup (sp 1 7) (bookFigures book) @?= Just "図#",
+      testCase "N1: a code block of {chapter:iroha} in the 48th chapter is G04014 at the code block" $ do
+        let code = Block (sp 1 1) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 1) "a"]) False [] False))
+            (book, ds) = assemble cfg {acListingFormat = "リスト{chapter:iroha}-{n}"} noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs {haNumber = Just 48} Nothing "章", code]]
+        map summary ds @?= [("G04014", Error, sp 1 1, "[code] の number リスト{chapter:iroha}-{n} の {chapter:iroha} では、48 を表せません", [])]
+        bookListings book @?= Map.empty,
+      testCase "N2: the 50th heading of {n:circled} and a @nonumber heading report nothing" $ do
+        let c = cfg {acHeadingFormats = Map.fromList [(1, "{n:circled}")]}
+            docs = [Document (FileId 1) ([heading 1 i 1 noHeadingAttrs Nothing "章" | i <- [0 .. 49]] <> [heading 1 50 1 noHeadingAttrs {haNoNumber = True} Nothing "付録"])]
+        snd (assemble c noEval docs) @?= []
+    ]

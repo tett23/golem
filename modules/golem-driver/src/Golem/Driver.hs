@@ -1231,7 +1231,7 @@ pdfInputOf opts e diagFid book bib =
   let project = evProject e
       -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
       inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
-   in PdfInput (optFiles opts) project (evStyle e) book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)) (projectVarTexts (manifestVars (projectManifest project)))
+   in PdfInput (optFiles opts) project (evStyle e) book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)) (projectVarTexts (manifestVars (projectManifest project))) (evStyleText e)
 
 {- | The structure tree of the PDF of a project as text (docs/adr ADR 0183),
 for the tests: what the PDF would be tagged with.

@@ -16,6 +16,7 @@ module Golem.Numerals.Format
     parseMarkFormat,
     renderMarkFormat,
     formatNumber,
+    Unwritable (..),
     NumberSlotName (..),
     numberFormatSlots,
     parseNumberFormatText,
@@ -202,29 +203,44 @@ formatUsesChapter t = either (const False) (any isChapter) (parseNumberFormatTex
       PNumber SlotChapter _ -> True
       _ -> False
 
+{- | A slot of a number format whose notation cannot write its number
+(docs/adr/0213): the slot as written, such as @n:circled@, and the number.
+-}
+data Unwritable = Unwritable
+  { -- | the slot as written, n:circled
+    uwSlot :: !Text,
+    uwNumber :: !Integer
+  }
+  deriving stock (Eq, Show)
+
 {- | Fills a number format: the own number (the last of the levels), the
 numbers of the levels and that of the chapter, each in its notation,
-Arabic without one. A slot without its number writes nothing; a number
-its notation cannot write is written in Arabic numerals. A format that
-does not read is its text. It reads the slots of headings, which hold
-those of the other number formats.
+Arabic without one. A slot without its number writes nothing. A number its
+notation cannot write is the 'Left' of the first such slot from the left
+(docs/adr/0213), never written in another notation. A format that does
+not read is its text. It reads the slots of headings, which hold those of
+the other number formats.
 -}
-formatNumber :: Text -> [Integer] -> Maybe Integer -> Text
+formatNumber :: Text -> [Integer] -> Maybe Integer -> Either Unwritable Text
 formatNumber fmt levels chapter = case parseHeadingNumberFormatText fmt of
-  Left _ -> fmt
-  Right ps -> T.concat (map fill ps)
+  Left _ -> Right fmt
+  Right ps -> T.concat <$> traverse fill ps
   where
     own = if null levels then 0 else last levels
     fill = \case
-      PLit t -> t
-      PText _ -> ""
-      PNumber s n -> maybe "" (written n) (value s)
+      PLit t -> Right t
+      PText _ -> Right ""
+      PNumber s n -> maybe (Right "") (written s n) (value s)
     value = \case
       SlotOwn -> Just own
       SlotLevel i -> case drop i levels of
         (x : _) -> Just x
         [] -> Nothing
       SlotChapter -> chapter
-    written n k = case n of
-      Nothing -> T.pack (show k)
-      Just x -> fromMaybe (T.pack (show k)) (writeNumber x k)
+    written s n k = case n of
+      Nothing -> Right (T.pack (show k))
+      Just x -> maybe (Left (Unwritable (slotText s <> ":" <> notationName x) k)) Right (writeNumber x k)
+    slotText = \case
+      SlotOwn -> "n"
+      SlotLevel i -> T.pack (show (i + 1))
+      SlotChapter -> "chapter"

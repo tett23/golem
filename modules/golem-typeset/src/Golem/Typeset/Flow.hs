@@ -21,6 +21,7 @@ module Golem.Typeset.Flow
     numberedTitle,
     pagesOf,
     pageMasters,
+    pageMasterNames,
     pageStarts,
     runningHeads,
     runningHeadNotices,
@@ -693,13 +694,18 @@ pageStarts layout = map start (pagesOf (plPages layout))
 manifest, otherwise @body@, otherwise the first by name.
 -}
 pageMasters :: PdfInput -> PageGeometry -> PdfLayout -> [Maybe MasterGeometry]
-pageMasters inp geom layout = map masterOf (pageFiles inp layout)
+pageMasters inp geom layout = map (fmap snd) (pageMasterNames inp geom layout)
+
+-- | 'pageMasters' with the name of each master page (docs/adr/0213).
+pageMasterNames :: PdfInput -> PageGeometry -> PdfLayout -> [Maybe (Text, MasterGeometry)]
+pageMasterNames inp geom layout = map masterOf (pageFiles inp layout)
   where
     ms = pgMasters geom
+    named n = (\g -> (n, g)) <$> Map.lookup n ms
     masterOf fid =
-      (Map.lookup fid (piMasters inp) >>= (`Map.lookup` ms))
-        <|> Map.lookup "body" ms
-        <|> fmap snd (Map.lookupMin ms)
+      (Map.lookup fid (piMasters inp) >>= named)
+        <|> named "body"
+        <|> Map.lookupMin ms
 
 {- | The lines of the running head drawn on each page, by page number
 (golem-driver ADR 0014, 0022). None on blank pages, on pages where a
