@@ -44,10 +44,10 @@ specimenGeometryTests =
       testCase "I3: no two rules of a table at the same place, empty header rows too (golem-driver ADR 0031)" $ do
         withInput elementsOfStyle $ \dir -> do
           v <- viewOf dir
-          assertBool "The Elements of Style has tables with an empty header row" (any (not . null . rulesOfKind "表の罫線") (vwPages v))
+          assertBool "The Elements of Style has tables with an empty header row" (not (all (null . rulesOfKind "表の罫線") (vwPages v)))
           assertNone "The Elements of Style" (doubleTableRules v)
         -- broken: the rules of each page drawn twice
-        v <- miniView horizontalStyle ("前。\n\n| | |\n|---|---|\n| 行 | 1 |\n\n後。\n")
+        v <- miniView horizontalStyle "前。\n\n| | |\n|---|---|\n| 行 | 1 |\n\n後。\n"
         assertNone "an empty header row" (doubleTableRules v)
         assertSome "the rules drawn twice" (doubleTableRules (mapPages (\p -> p {pvRules = pvRules p <> pvRules p}) v)),
       testCase "I3: a table is two pitches or more from the lines of text before and after it (golem-driver ADR 0031)" $ do
@@ -62,7 +62,7 @@ specimenGeometryTests =
       testCase "I3: a paragraph rule is between the grid lines and inside the type area (golem-driver ADR 0027)" $ do
         forM_ [specimensHorizontal, specimensVertical] $ \input -> withInput input $ \dir -> do
           (geom, v) <- (,) <$> geometryOf dir <*> viewOf dir
-          assertBool (inputName input <> " has paragraph rules") (any (not . null . rulesOfKind "段落の罫線") (vwPages v))
+          assertBool (inputName input <> " has paragraph rules") (not (all (null . rulesOfKind "段落の罫線") (vwPages v)))
           assertNone (inputName input) (paragraphRulesOffGrid geom v)
         -- broken: a rule that starts a character before the column, into the margin
         let ruled indent = horizontalStyle <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\", space-before = \"2pt\", space-after = \"2pt\"" <> indent <> " }\n"
