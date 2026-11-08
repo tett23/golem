@@ -17,10 +17,8 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ## v0.1.0-rc4
 
-
 ### PDF
 
-- **本文の中のコードの和文の改行**：和文を含む長い本文の中のコードは、空白と `/` の後でしか改行しないので、版面の右にはみ出す。利用者のマニュアルの付録 E では、はみ出す六つの項目のメッセージの後ろを `…` で略して避けている（[docs/adr/0178](adr/0178-colophon-commit-line-overflow.md)、[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。はみ出す行は、`golem build` が G07105 の警告で報告する。
 - **縦組みの脚注の本文の前の二桁の番号**：縦組みの脚注の本文の前の印（既定の `*{n}`）で、番号が 10 以上になると、二つめの数字が本文の一字めに重なる。見た目の回帰テストの見本（`specimens-vertical` の「縦組みの注の印」の節）で見つけ、参照はこの重なりのまま受け入れた（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)、[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）。直し方は ADR で決める。
 
 ## v1.0.0

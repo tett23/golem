@@ -450,6 +450,8 @@ restyle style lk = \case
               -- the background and the padding of inline code; zw is the size of the style (golem-driver ADR 0029)
               lkBackground = if code then charStyleBackground style name else lkBackground lk,
               lkPadding = if code then maybe 0 (max 0 . dimToSp size) (csPadding cs) else lkPadding lk,
+              -- the wrap mark of inline code (golem-layout ADR 0034)
+              lkWrapMark = if code then fromMaybe "" (csWrapMark cs) else lkWrapMark lk,
               -- a URL breaks as code, after the last slash of a run (golem-doc ADR 0005)
               lkUrl = lkUrl lk || isUrlCharStyle style name
             }

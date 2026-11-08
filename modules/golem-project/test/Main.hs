@@ -1637,6 +1637,18 @@ codeStyleTests =
       testCase "background and padding on a style that is not code are G03006" $ do
         codes (parseStyle (FileId 0) "[color.swatches]\nbg = { cmyk = [0, 0, 0, 8] }\n\n[character-styles.term]\nbackground = \"bg\"\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[character-styles.term]\npadding = \"1zw\"\n") @?= ["G03006"],
+      -- the wrap mark of inline code (golem-layout ADR 0034)
+      testCase "C8: [character-styles.code] wrap-mark defaults to U+23CE; a written one and the empty one are read, and inherited" $ do
+        s <- styleOf ""
+        (charStyle s "code" >>= csWrapMark) @?= Just "\x23CE"
+        e <- styleOf "[character-styles.code]\nwrap-mark = \"\"\n\n[character-styles.path]\nbased-on = \"code\"\n"
+        (charStyle e "code" >>= csWrapMark) @?= Just ""
+        (charStyle e "path" >>= csWrapMark) @?= Just ""
+        m <- styleOf "[character-styles.code]\nwrap-mark = \"→\"\n"
+        (charStyle m "code" >>= csWrapMark) @?= Just "→",
+      testCase "C8: wrap-mark on a style that is not code, or not a string, is G03006" $ do
+        codes (parseStyle (FileId 0) "[character-styles.term]\nwrap-mark = \"→\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[character-styles.code]\nwrap-mark = 1\n") @?= ["G03006"],
       testCase "a missing background swatch is G03013; a negative or unreadable padding G03006" $ do
         codes (parseStyle (FileId 0) "[character-styles.code]\nbackground = \"none-such\"\n") @?= ["G03013"]
         codes (parseStyle (FileId 0) "[character-styles.code]\npadding = \"-1pt\"\n") @?= ["G03006"]

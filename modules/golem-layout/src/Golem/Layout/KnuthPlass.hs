@@ -119,6 +119,10 @@ data Hyphen
     PatternHyphen !Sp
   | -- | the break after a hyphen or dash written in the word; nothing is added
     ExplicitHyphen
+  | {- | a break inside inline code other than at a space (golem-layout ADR
+    0034); the line ends with the mark given drawn, as wide as the penalty
+    -}
+    WrapMark !Text
   deriving stock (Eq, Show)
 
 -- | Whether a break is one found by the patterns.
@@ -133,10 +137,14 @@ data Item
   | Penalty {itemWidth :: !Sp, itemPenalty :: !Int, itemHyphen :: !Hyphen}
   deriving stock (Eq, Show)
 
--- | A hyphen break, of either kind: consecutive ones cost 'pDoubleHyphenDemerits'.
+{- | A hyphen break, of either kind: consecutive ones cost
+'pDoubleHyphenDemerits'. A break with the wrap mark of code is not one
+(golem-layout ADR 0034).
+-}
 itemFlagged :: Item -> Bool
 itemFlagged = \case
-  Penalty _ _ h -> h /= NoHyphen
+  Penalty _ _ (PatternHyphen _) -> True
+  Penalty _ _ ExplicitHyphen -> True
   _ -> False
 
 infPenalty :: Int
@@ -244,7 +252,7 @@ lineDemerits ps b p =
 
 data Totals = Totals {tW :: !Sp, tY :: !Sp, tZ :: !Sp, tE :: !Sp}
 
-data Eval = Eval !Int !Fitness !Integer !Bool !Bool -- badness, fitness, demerits, feasible, alive
+data Eval = Eval !Int !Fitness !Integer !Bool !Bool !Bool -- badness, fitness, demerits, feasible, fits (not overfull), alive
 
 -- | Demerits of a line forced through in the last pass.
 overfullDemerits :: Integer
@@ -319,12 +327,12 @@ breakParagraph ps lineWidth items =
           start = Node (-1) 0 2 False 0 Nothing
           step actives b =
             let evals = [(a, evaluate tol emergency a b) | a <- actives]
-                feasible = [(a, fit, d) | (a, Eval _ fit d True _) <- evals]
+                feasible = [(a, fit, d) | (a, Eval _ fit d True _ _) <- evals]
                 forced = case at b of
                   Penalty _ p _ -> p <= negate infPenalty
                   _ -> False
-                -- a node whose line is already overfull can never be used again
-                survivors = if forced then [] else [a | (a, Eval _ _ _ _ alive) <- evals, alive]
+                -- a node whose line is already overfull, but the width of the penalty at b, can never be used again
+                survivors = if forced then [] else [a | (a, Eval _ _ _ _ _ alive) <- evals, alive]
                 newNodes =
                   Map.elems $
                     foldl'
@@ -354,7 +362,7 @@ breakParagraph ps lineWidth items =
                   [ (Down p, nDem a + d, Down (nPos a), Node p (nLine a + 1) fit (flaggedAt p) (nDem a + d) (Just a))
                   | a <- actives,
                     -- the line holds a box at least, and does not overflow
-                    (p, Eval _ fit d _ _) <- take 1 [(p, ev) | p <- reverse (takeWhile (< b) candidates), p > after (nPos a), ev@(Eval _ _ _ _ True) <- [evaluate tol emergency a p]]
+                    (p, Eval _ fit d _ _ _) <- take 1 [(p, ev) | p <- reverse (takeWhile (< b) candidates), p > after (nPos a), ev@(Eval _ _ _ _ True _) <- [evaluate tol emergency a p]]
                   ]
              in case sortOn (\(k1, k2, k3, _) -> (k1, k2, k3)) options of
                   (_, _, _, node) : _ -> Just node
@@ -405,7 +413,12 @@ breakParagraph ps lineWidth items =
             lineDemerits ps bad pen
               + (if nFlagged a && flaggedAt b then toInteger (pDoubleHyphenDemerits ps) else 0)
               + (if abs (fit - nFit a) > 1 then toInteger (pAdjDemerits ps) else 0)
-       in Eval bad fit d (not overfull && bad <= tol) (not overfull)
+          {- the node lives on while the line to b, but the width of the
+          penalty at b, does not overflow: a line that ends at a later break
+          does not hold that width, the wrap mark of code (golem-layout ADR
+          0034) as wide as the text after it -}
+          alive = negate (shortfall + penW) <= shrink
+       in Eval bad fit d (not overfull && bad <= tol) (not overfull) alive
     flaggedAt i = itemFlagged (at i)
     patternAt i = case at i of
       Penalty _ _ (PatternHyphen _) -> True

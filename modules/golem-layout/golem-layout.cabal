@@ -61,6 +61,7 @@ test-suite golem-layout-test
   -- allocation area, without which the processors share less of the work
   ghc-options:      -threaded "-with-rtsopts=-N -qg -A64m"
   other-modules:    AlignSpec
+                    CodeJapaneseSpec
                     CodeSpaceSpec
                     CombiningSpec
                     DoubleDashSpec
