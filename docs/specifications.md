@@ -450,7 +450,8 @@ golem-wasm は、PDF の組版を、ファイルを読まない wasm の reactor
 `Golem.Wasm.Frame` は、golem-project に依存しないように、この規則を写して持つ。
 結果の枠は、状態の 1 バイト、PDF の長さと PDF、diagnostics の JSON の長さと JSON である（長さはどれも `uint32` のリトルエンディアン）。
 状態 0 は組んだことを表し、error の diagnostic があって PDF がなければ、PDF の長さは 0 である。
-状態 1 は、入力の枠を読めない（長さが足りない、パスが UTF-8 でない、パスが空である、パスが正規化されていない、同じパスが二度ある）ことを表し、PDF と JSON の長さは 0 である。
+状態 1 は入力の枠を読めないことを表し、PDF と JSON の長さは 0 である。
+読めない枠は、長さが足りない枠と、パスが UTF-8 でないか、空であるか、正規化されていないか、二度現れる枠である。
 これはホストの誤りなので、diagnostic にはしない。
 組むのは golem-driver の `buildPdfInMemory` で、JSON は `renderJson` が書くもの、つまり `golem build --target pdf --format json` が標準エラーに書くものと同じバイト列である。
 入口はプロファイル、トンボ、`--no-notices`、`--verbose` を受け取らず、`golem build --target pdf` の既定と同じに組む。
