@@ -1,6 +1,6 @@
 # ADR 0039: 既定のアキ量のセットで、続く始め括弧類の字間と、中点類と括弧類の字間を JLReq に合わせる
 
-ステータス: 採択→不変条件 B4 の例外の組に中点類の後ろの終わり括弧類と句読点を足したのは [golem-layout ADR 0040](0040-put-a-quarter-em-after-a-middle-dot-before-closing-brackets-and-full-stops.md)
+ステータス: 採択→不変条件 B4 の例外の組に中点類の後ろの終わり括弧類と句読点を足したのは [golem-layout ADR 0040](0040-put-a-quarter-em-after-a-middle-dot-before-closing-brackets-and-full-stops.md)、不変条件 B4 の例外の組に和字間隔の組を足したのは [golem-layout ADR 0041](0041-take-the-ideographic-space-out-of-japanese-characters-in-the-default-aki-set.md)
 
 ## 文脈
 

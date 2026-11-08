@@ -76,12 +76,15 @@ akiPositions = \case
     chars = map AkiChar
 
 {- | gyomatsu-yakumono-hankaku: the composition of golem-layout ADR 0002.
-P is closing, full stop and comma, O opening, M middle dot, J the other
-Japanese classes and W western. Two opening brackets have no aki, and a
+P is closing, full stop and comma, O opening, M middle dot, S the
+ideographic space, J the other Japanese classes and W western. Two
+opening brackets have no aki, and a
 closing bracket before a middle dot and a middle dot before an opening
 bracket a quarter em, as JLReq 3.1.4 (golem-layout ADR 0039). A middle
 dot before a closing bracket, a full stop or a comma has a quarter em, as
-the table 1 of JLReq (golem-layout ADR 0040).
+the table 1 of JLReq (golem-layout ADR 0040). The ideographic space has
+no aki and no stretch but after a full stop and a comma (a half em) and
+beside a middle dot (a quarter em), as the table 1 (golem-layout ADR 0041).
 -}
 defaultAkiSet :: AkiSet
 defaultAkiSet = foldl' (\s (b, a, x) -> withAkiRule b a x s) (AkiSet Map.empty) rules
@@ -91,9 +94,10 @@ defaultAkiSet = foldl' (\s (b, a, x) -> withAkiRule b a x s) (AkiSet Map.empty) 
     o = chars [Opening]
     m = chars [MiddleDot]
     w = chars [Western]
-    j = chars [Hyphen, Dividing, Inseparable, Iteration, ProlongedSound, SmallKana, IdeographicSpace, Kana, Ideograph]
+    j = chars [Hyphen, Dividing, Inseparable, Iteration, ProlongedSound, SmallKana, Kana, Ideograph]
+    ids = chars [IdeographicSpace]
     rules =
-      [ (j, chars [Kana, Ideograph, IdeographicSpace, Inseparable], Aki 0 0 (1 / 10)),
+      [ (j, chars [Kana, Ideograph, Inseparable], Aki 0 0 (1 / 10)),
         (chars [Inseparable], chars [Inseparable], noAki),
         (j <> w, o, Aki 0 (1 / 2) (1 / 2)),
         (j <> w <> o, m, Aki 0 (1 / 4) (1 / 4)),
@@ -105,6 +109,9 @@ defaultAkiSet = foldl' (\s (b, a, x) -> withAkiRule b a x s) (AkiSet Map.empty) 
         (m, j <> w, Aki 0 (1 / 4) (1 / 4)),
         (m, m, Aki 0 (1 / 2) (1 / 2)),
         (m, p, Aki 0 (1 / 4) (1 / 4)),
+        (chars [FullStop, Comma], ids, Aki 0 (1 / 2) (1 / 2)),
+        (m, ids, Aki 0 (1 / 4) (1 / 4)),
+        (ids, m, Aki 0 (1 / 4) (1 / 4)),
         (j, w, Aki (1 / 8) (1 / 4) (1 / 2)),
         (w, j, Aki (1 / 8) (1 / 4) (1 / 2)),
         ([AkiParagraphStart], o, Aki 0 (1 / 2) (1 / 2)),

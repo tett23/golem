@@ -1903,6 +1903,8 @@ PDF では、項目の印を行の始まりにぶら下げ、項目の二行目�
 既定で一字下げると、段落の先頭に全角の空白を書いた既存の原稿が二字下がるためである。
 `[paragraph-styles.body] first-line-indent = "1zw"` のように字下げを指定する場合は、原稿の先頭の全角の空白を消す。
 全角の空白と併用すると二重に下がり、処理系はそれを指摘しない。
+全角の空白で字下げした段落の先頭の始め括弧類は、全角の空白の直後に置かれる。
+`first-line-indent` で字下げした段落の先頭の始め括弧類は、`paragraph-start` の規則で二分下がる（[golem-layout ADR 0041](golem-layout/adr/0041-take-the-ideographic-space-out-of-japanese-characters-in-the-default-aki-set.md)）。
 プレーンテキストでは、`indent` と `first-line-indent` がどちらも `zw` で書かれている場合に限り、行の先頭に全角の空白を置く（[docs/adr/0049](adr/0049-plain-text-indent-after-hard-break.md)）。
 段落の最初の行には、二つの和の整数部の数を置く。
 `line-breaks = "keep"` の段落では、`LineBreak` の後の各行にも同じ数を置く。
@@ -2056,6 +2058,9 @@ aki-set = "wide-waou"
 和文の字と欧文の語のあいだに語間の空白を書いたときは、和欧間の空きを足さず、語間の空白だけを入れる（[docs/adr/0222](adr/0222-line-breaking-points-the-invariants-did-not-decide.md)）。
 隣り合う約物の空きは、終わり括弧類、句点類、読点類と始め括弧類の間が二分、始め括弧類どうしが 0（ベタ）、終わり括弧類と中点類の間と、中点類と始め括弧類の間が四分になる（[golem-layout ADR 0039](golem-layout/adr/0039-set-consecutive-opening-brackets-and-brackets-beside-middle-dots-as-jlreq.md)）。
 句点類と読点類の後ろの中点類の前は二分四分、始め括弧類の後ろの中点類の前は四分、中点類どうしは二分、中点類の後ろの終わり括弧類と句読点の前は四分である（[golem-layout ADR 0040](golem-layout/adr/0040-put-a-quarter-em-after-a-middle-dot-before-closing-brackets-and-full-stops.md)）。
+和文どうしの字間の (0, 0, 0.1zw) は、和字間隔（U+3000）の前後には当たらない。
+和字間隔の前後は、句点類と読点類の後ろの二分と、中点類の前後の四分のほかは空けず、伸ばさない。
+終わり括弧類の後ろと始め括弧類の前の二分と、和欧間の空きも置かない（[golem-layout ADR 0041](golem-layout/adr/0041-take-the-ideographic-space-out-of-japanese-characters-in-the-default-aki-set.md)）。
 行末の約物の後ろの空きは 0 なので、行末の終わり括弧類と句読点は半角になる。
 `gyomatsu-yakumono-zenkaku` は、これに行末の終わり括弧類と句読点の後ろの二分と、行末の中点類の後ろの四分を足したものである。
 組み込みのセットの値を変えたい場合は、`based-on` で引き継いだ別の名前のセットを作る。
@@ -5179,7 +5184,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **本文の中のコードの最初か最後に空白があると、その側の余白がなくなる**：文字スタイル `code` の `padding` は、コードの並びの最初と最後の部品に付ける（[`padCode`](https://github.com/tett23/golem/blob/c638870fb9f5fb8a66d13308fef727a7e202de19/modules/golem-layout/src/Golem/Layout/Japanese.hs#L1028-L1058)）。最後の部品が空白なら、余白を付ける先がない。`padding = 250` の `code` で、`[code: あ ]` の `あ` の後の余白と、前に空白を書いたコードの `あ` の前の余白が 0 になる。段落の終わりに限らず起きる（[golem-layout ADR 0037](golem-layout/adr/0037-drop-spaces-of-code-before-the-end-of-a-paragraph.md) の調べで見つかった）。
-- **既定のアキ量のセットで、和字間隔の前後の括弧類に二分を置く**：`gyomatsu-yakumono-hankaku` は和字間隔を和文の字（`j`）として扱うので、`」　` の終わり括弧類の後ろと、`　「` の始め括弧類の前に二分を置く。JLReq の付録 B の表 1（cl-02 の行と cl-14 の行）は、どちらもベタ組とする。和文組版は JLReq に従うという原則と食い違い、Chrome の既定とも違う。段落の字下げに和字間隔を使う原稿の見た目にも関わる（[golem-layout ADR 0039](golem-layout/adr/0039-set-consecutive-opening-brackets-and-brackets-beside-middle-dots-as-jlreq.md) の「表 1 とのほかの食い違い」）。[golem-layout ADR 0041](golem-layout/adr/0041-take-the-ideographic-space-out-of-japanese-characters-in-the-default-aki-set.md) で直す（未実装）。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合

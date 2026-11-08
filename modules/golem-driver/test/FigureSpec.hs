@@ -679,16 +679,17 @@ fitFigureTests =
           [(pfAlong pf, pfAcross pf) | (pf, _, _) <- figuresIn pl] @?= [(210 * pt, 210 * pt)]
           notices "G07039" pl @?= [],
         testCase "G07038 at the boundary: a caption one line short of the column is fitted; as deep as the column is G07038" $ do
-          -- 24 characters: 21 あ and the number of the figure take one line, 22 take two, the depth of the column
+          -- 24 characters: 22 あ and the number of the figure take one line, 23 take two, the depth of the column
+          -- (no aki between the number and the ideographic space after it, golem-layout ADR 0041)
           let column k = do
                 r <- layoutMini (pageStyle "horizontal" "left" 24 2 1 20 20) ("前の段落。\n\n" <> fig "wide" "" (T.replicate k "あ")) boxes
                 pure (either (map (\d -> (diagCode d, diagMessage d))) (map (\d -> (diagCode d, diagMessage d)) . notices "G07039" . snd) r)
-          column 21 >>= (@?= [(DiagnosticCode "G07039", "図版を段に収めるため 18% に縮めました")])
-          column 22 >>= (@?= [(DiagnosticCode "G07038", "図版のキャプションが段の行数に達します（2 行。段は 2 行）")]),
+          column 22 >>= (@?= [(DiagnosticCode "G07039", "図版を段に収めるため 18% に縮めました")])
+          column 23 >>= (@?= [(DiagnosticCode "G07038", "図版のキャプションが段の行数に達します（2 行。段は 2 行）")]),
         testCase "G07038: a caption as deep as the column, at the figure, in dev and prod" $ do
           let source = "前の段落。\n\n" <> fig "wide" "" (T.replicate 70 "あ")
           r <- layoutMini (pageStyle "horizontal" "left" 24 2 1 20 20) source boxes
-          layoutErrors r @?= [("G07038", "図版のキャプションが段の行数に達します（4 行。段は 2 行）", FileId 1, 17, 262)]
+          layoutErrors r @?= [("G07038", "図版のキャプションが段の行数に達します（3 行。段は 2 行）", FileId 1, 17, 262)]
           forM_ [Dev, Prod] $ \profile -> do
             n <- notifiedWith "" (pageStyle "horizontal" "left" 24 2 1 20 20) source (\o -> o {optTargets = Just [TargetPdf], optProfile = profile})
             [diagCode d | d <- nDiagnostics n, isError d] @?= [DiagnosticCode "G07038"]

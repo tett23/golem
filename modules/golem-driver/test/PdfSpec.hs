@@ -4,7 +4,7 @@ import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.IORef (newIORef, readIORef)
-import Data.List (isSuffixOf, nub, sort, sortOn)
+import Data.List (isSuffixOf, nub, sort, sortOn, zip4)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
@@ -313,6 +313,26 @@ characterFeatureTests =
         -- of ・ is drawn a quarter em before its box, that of 」 at its box
         -- (no aki: 7.5)
         ([a], [b]) -> b - a @?= 10
+        other -> assertFailure (show other),
+    testCase "PDF: no aki between 」 and an ideographic space, nor between it and 「 (golem-layout ADR 0041 S1)" $ do
+      content <- miniPdf fakeProvider True horizontalStyle "漢」　「漢\n" [] >>= fmap BS.concat . inflateAll
+      let pos c = [ptToRational (dX d) | d <- drawnGlyphs content, dGlyph d == fromEnum c]
+      case (pos '」', pos '\x3000', pos '「') of
+        -- 10pt: the box of 」 is 5pt, that of the ideographic space 10pt;
+        -- the glyph of 「 is drawn half an em before its box (with the aki: 10 and 10)
+        ([a], [b], [c]) -> (b - a, c - b) @?= (5, 5)
+        other -> assertFailure (show other),
+    testCase "PDF: the ideographic space after a heading number that ends in a digit starts where the digit ends (golem-layout ADR 0041 S1)" $ do
+      let style = horizontalStyle <> "\n[headings.2]\nnumber = \"{1}.{n}\"\n"
+      content <- miniPdf fakeProvider True style "# 章\n\n## 節\n\n本文。\n" [] >>= fmap BS.concat . inflateAll
+      let drawn = drawnGlyphs content
+          runs = zip4 drawn (drop 1 drawn) (drop 2 drawn) (drop 3 drawn)
+          isNumber (a, b, c, d) = map dGlyph [a, b, c, d] == map fromEnum ("1.1\x3000" :: String)
+          x = ptToRational . dX
+      case filter isNumber runs of
+        -- the number of the second heading is 1.1: the advance of 1 is the
+        -- distance from the first 1 to the full stop
+        [(one, dot, one', space)] -> x space - x one' @?= x dot - x one
         other -> assertFailure (show other),
     testCase "shaping without palt or vpal gives no offsets, horizontal or vertical (golem-driver ADR 0020)" $ do
       noto <- notoFonts
