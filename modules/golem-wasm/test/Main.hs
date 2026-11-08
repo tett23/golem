@@ -73,7 +73,7 @@ anyFrame = do
   let whole = writeFiles fs
   Gen.choice
     [ pure whole,
-      (\n -> BS.take n whole) <$> Gen.int (Range.linear 0 (BS.length whole)),
+      (`BS.take` whole) <$> Gen.int (Range.linear 0 (BS.length whole)),
       (\bad -> whole <> writeFiles [(bad, "")]) <$> Gen.element ["./a.gm", "a//b.gm", "/a.gm"],
       pure (whole <> BS.pack (le32 1 <> [0xFF] <> le32 0) <> writeFiles fs)
     ]
