@@ -519,6 +519,19 @@ jobs:
               sh scripts/ci/pdf-fonts.sh "$pdf" $fonts
             done
           done
+      # the code the developer manual writes \| in its source shows |, in
+      # the text pdftotext reads from its PDF (docs/adr/0233)
+      - name: The bars of the code of the developer manual (docs/adr/0233)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        run: |
+          for pdf in manual-dev/build/pdf/*.pdf; do
+            sh scripts/ci/pdf-text.sh "$pdf" \
+              --has '次の行の最初が | 、' \
+              --has 'と || の右辺' \
+              --has 'ガードの | の前' \
+              --has '] 、 | 、 [ は \ で' \
+              --lacks '\|'
+          done
       # the outputs do not change with the time zone, the locale,
       # SOURCE_DATE_EPOCH, HOME, XDG_*, PATH, the umask, the path of the
       # project, the times of its files and files nothing refers to; the
