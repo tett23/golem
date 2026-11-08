@@ -18,6 +18,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word64)
 import Fixtures (fs)
+import Golem.Layout.Japanese (ComposeEnv (..), composeInlines)
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..))
 import Golem.TestSupport.Enum
@@ -37,7 +38,8 @@ lineInvariantTests =
       testGroup "the predicates" predicateTests,
       testGroup "the naive search" bruteTests,
       testGroup "the regressions" regressionTests,
-      testGroup "every input" exhaustiveTests
+      testGroup "every input" exhaustiveTests,
+      testGroup "inline code (golem-layout ADR 0034)" codeTests
     ]
 
 {- | The parts of the runs of pull requests (docs/adr/0209, the decision 8
@@ -106,7 +108,7 @@ keyOf w ps its = (unSp w, map item its, pExpansion ps, pProtrusion ps)
     item = \case
       Box (Sp bw) c -> (0, bw, 0, 0, bcText c, bcExpandable c, unSp (bcProtrudeStart c), unSp (bcProtrudeEnd c), unSp (bcEdgeStart c), unSp (bcEdgeEnd c), 0)
       Glue (Sp gw) (Sp y) (Sp z) -> (1, gw, y, z, "", False, 0, 0, 0, 0, 0)
-      Penalty (Sp pw) p h -> (2, pw, case h of NoHyphen -> 0; ExplicitHyphen -> 1; PatternHyphen _ -> 2, 0, "", False, case h of PatternHyphen (Sp q) -> q; _ -> 0, 0, 0, 0, p)
+      Penalty (Sp pw) p h -> (2, pw, case h of NoHyphen -> 0; ExplicitHyphen -> 1; PatternHyphen _ -> 2; WrapMark _ -> 3, 0, "", False, case h of PatternHyphen (Sp q) -> q; _ -> 0, 0, 0, 0, p)
 
 -- | The values 'breakParagraph' is given for the inputs of a group, vertical or not.
 keysOf :: Bool -> Group -> [Key]
@@ -174,6 +176,7 @@ enumerationTests =
             Penalty _ p h -> case h of
               PatternHyphen _ -> "|P"
               ExplicitHyphen -> "|E"
+              WrapMark _ -> "|W"
               NoHyphen -> if p >= infPenalty then "|X" else "|" <> show p
           shapes run = map shape (itemsOf False s 0 run 0)
       -- each, then the paragraph end: no break, the fil glue, the forced break
@@ -516,7 +519,15 @@ regressionTests =
       sound p
       map lineText (brLines (pBreaks p)) @?= ["lime-", "tree"]
       map lineText (brLines (pBreaks before)) @?= ["lime-tree"]
-      broken (withLines (map (\l -> l {lineItems = restoreAfter "lime-" (lineItems l)})) before {pItems = pItems p}) @?= [L5]
+      broken (withLines (map (\l -> l {lineItems = restoreAfter "lime-" (lineItems l)})) before {pItems = pItems p}) @?= [L5],
+    testCase "golem-layout ADR 0036 N2: [code: 漢/…] in a span of en, in lines of 2, is the one line the naive search finds least" $ do
+      -- the wrap mark after "/" makes the line to it 2.5 em; a node that
+      -- dies there, as in TeX, misses the line "漢/…" of 2 em (demerits 200, not 100)
+      let i = Input (Setting True False False (Just "en")) False 2 0 ["漢", "/", "…"] 0
+          (its, ps, br) = breakCodeInput i
+      map lineText (brLines br) @?= ["漢/…"]
+      Just (brDemerits br) @?= bruteDemerits ps (lineWidth i) (brPass br) its
+      brDemerits br @?= 100
   ]
 
 -- * every input
@@ -668,4 +679,154 @@ exhaustiveTests =
         Failed _ input _ ->
           let small = shrinkInput limit input
            in assertFailure (report limit ("an input drawn with " <> show (depth + 1) <> " parts breaks an invariant; with parts taken out as long as it still does, it has " <> show (length (inRun small))) small)
+  ]
+
+-- * inline code (golem-layout ADR 0034, its section 5)
+
+-- | The paragraph of an input of code whose items are given.
+codeParagraphWith :: [Item] -> Input -> Paragraph
+codeParagraphWith its i = (paragraphWith its i) {pParams = ps, pBreaks = breakParagraph ps (const (lineWidth i)) its}
+  where
+    ps = paramsOf (inSetting i) False its
+
+-- | The paragraph of an input of code.
+codeParagraphOf :: Input -> Paragraph
+codeParagraphOf i = codeParagraphWith (codeItemsOf False (inSetting i) (inPre i) (inRun i) (inPost i)) i
+
+-- | The invariants a paragraph of code breaks, L7 not brute-forced.
+codeBroken :: Paragraph -> [LineInvariant]
+codeBroken = map breachOf . codeBreaches codeMark 0
+
+{- | C4: the items of a run of code without a Japanese character are
+those it has with an empty wrap mark, but the width and the mark of the
+breaks of the mark.
+-}
+c4Misses :: Group -> [Violation]
+c4Misses g
+  | any (T.any (\c -> c `notElem` (" ab/_\"" :: String))) (gRun g) = []
+  | otherwise =
+      [ Violation "C4" (show (gSetting g, gPre g, gRun g, gPost g))
+      | map unmarked (codeItemsOf False (gSetting g) (gPre g) (gRun g) (gPost g)) /= map unmarked (fst (composeInlines (emptyMark (codeEnv False (gSetting g))) (codeInlinesOf (gSetting g) (gPre g) (gRun g) (gPost g))))
+      ]
+  where
+    emptyMark e = e {ceRestyle = \lk inl -> (ceRestyle e lk inl) {lkWrapMark = ""}}
+    unmarked = \case
+      Penalty _ p (WrapMark _) -> Penalty 0 p NoHyphen
+      Box w c -> Box w c {bcLook = (bcLook c) {lkWrapMark = ""}}
+      it -> it
+
+{- | The known bugs the runs of code find, in the order of 「既知の不具合」:
+a line broken at a space of code, which no prohibition keeps (golem-layout
+ADR 0028 left the spaces of code to their own rule), and the space of code
+at the end of a paragraph, which makes a last line of no box.
+-}
+codeLineBugs :: [LineBug]
+codeLineBugs =
+  [ LineBug
+      { lbItem = "本文の中のコードの空白で、禁則に当たる位置でも改行する",
+        lbShape = elem " " . inRun,
+        lbExcuses = \i b -> breachOf b `elem` [L2, L3, L4] && atCodeSpace (codeParagraphOf i) (if breachOf b == L2 then breachLine b - 1 else breachLine b),
+        lbCounts = [(2, 39), (3, 2703)]
+      },
+    LineBug
+      { lbItem = "段落の終わりの本文の中のコードの空白で改行し、箱のない最後の行を作る",
+        lbShape = \i -> inPost i == 0 && take 1 (reverse (inRun i)) == [" "],
+        lbExcuses = \_ b -> breachOf b == T1,
+        lbCounts = [(2, 36), (3, 525)]
+      }
+  ]
+  where
+    -- the line breaks at a space of code: glue that neither stretches nor shrinks
+    atCodeSpace p k = case breakItem p k of
+      Just (Glue w 0 0) -> w > 0
+      _ -> False
+
+-- | The violations of the first input of a group of code that has some, C4 among them, and the known bugs that excuse its inputs.
+judgeCodeGroup :: Int -> Group -> ([Violation], Excused)
+judgeCodeGroup limit g =
+  let its = codeItemsOf False (gSetting g) (gPre g) (gRun g) (gPost g)
+      judge i =
+        let bs = codeBreaches codeMark limit (codeParagraphWith its i)
+            excuses b br = lbShape b i && lbExcuses b i br
+         in ([br | br <- bs, not (any (`excuses` br) codeLineBugs)], [lbShape b i && any (lbExcuses b i) bs | b <- codeLineBugs])
+      results = [(i, judge i) | i <- groupInputs g]
+      excused = Excused (foldr (zipWith (+) . map fromEnum . snd . snd) (map (const 0) codeLineBugs) results)
+   in case c4Misses g <> concat [[Violation (show (breachOf b)) (breachWhy b) | b <- bs] <> [Violation "input" (show i)] | (i, (bs, _)) <- take 1 [r | r@(_, (bs, _)) <- results, not (null bs)]] of
+        vs -> (vs, excused)
+
+-- | Every run of code up to a tier, each in its own value.
+codeRunsT :: Tiers [Text]
+codeRunsT = listsOf (Tiers [codeParts])
+
+codeTests :: [TestTree]
+codeTests =
+  [ testCase "there are 15 parts of code, and 240 runs of up to 2 parts" $ do
+      length (nub codeParts) @?= 15
+      length (concat (upTo 2 codeRunsT)) @?= 1 + 240,
+    testCase "C1, C2, C8: the runs of code are composed and broken as the ADR shows" $ do
+      let (_, _, br) = breakCodeInput (Input plain False 4 0 ["漢", "あ", "a", "あ", "漢", "あ"] 0)
+      map lineText (brLines br) @?= ["漢あa", "あ漢あ"]
+      [m | l <- take 1 (brLines br), Penalty _ _ (WrapMark m) <- take 1 (reverse (lineItems l))] @?= [codeMark],
+    testCase "C1: a break taken out between two Japanese characters of code" $ do
+      let p = codeParagraphOf (Input plain False 4 0 ["漢", "あ", "漢"] 0)
+          noBreak = map (\case Penalty w q h | q < infPenalty, q > negate infPenalty, h /= NoHyphen -> Penalty w infPenalty h; it -> it)
+      codeBroken p @?= []
+      nub (codeBroken p {pItems = noBreak (pItems p)}) @?= [C1],
+    testCase "C1: a break put before a full stop of code" $ do
+      let p = codeParagraphOf (Input plain False 4 0 ["漢", "。"] 0)
+      codeBroken p @?= []
+      codeBroken (rebroken (allowBefore "。") p) @?= [C1],
+    testCase "C2: a break of 100 between two Japanese characters of code" $ do
+      let p = codeParagraphOf (Input plain False 4 0 ["漢", "あ"] 0)
+          hundred = map (\case Penalty w 0 h@(WrapMark _) -> Penalty w 100 h; it -> it)
+      codeBroken p @?= []
+      codeBroken p {pItems = hundred (pItems p)} @?= [C2],
+    testCase "C3: a break between two Latin letters of code" $ do
+      let p = codeParagraphOf (Input plain False 4 0 ["ab"] 0)
+          split = concatMap (\case Box w c | bcText c == "ab" -> [Box (Sp (unSp w `div` 2)) c {bcText = "a"}, Penalty 0 0 NoHyphen, Box (Sp (unSp w `div` 2)) c {bcText = "b"}]; it -> [it])
+      codeBroken p @?= []
+      codeBroken p {pItems = split (pItems p)} @?= [C3],
+    testCase "C8: a line broken inside code without the mark" $ do
+      let p = codeParagraphOf (Input plain False 2 0 ["漢", "あ", "漢", "あ"] 0)
+          unmark = map (\case Penalty _ q (WrapMark _) -> Penalty 0 q NoHyphen; it -> it)
+      assertBool "more than one line" (length (brLines (pBreaks p)) > 1)
+      codeBroken p @?= []
+      nub (codeBroken (rebroken unmark p)) @?= [C8],
+    testCase "the normal form of code: up to 2 parts (1 on pull requests), the inputs it leaves out give 'breakParagraph' no value it is not given" $ do
+      depth <- linesDepth
+      let d = formDepth depth
+          w = maxWidthAt depth
+          misses run =
+            [ Violation "normal form" (show (s, pre, post))
+            | s <- codeSettings,
+              s `notElem` normalCodeSettings run,
+              let normal = s {sStrict = sStrict s || not (any (`elem` ["ー", "ぁ"]) run), sLang = if any (T.any (`elem` ("…" :: String))) run then sLang s else Nothing},
+              (pre, post, ws) <- placings w,
+              x <- ws,
+              let width = fromIntegral x * fs
+                  its = codeItemsOf False s pre run post
+                  nits = codeItemsOf False normal pre run post,
+              keyOf width (paramsOf s False its) its /= keyOf width (paramsOf normal False nits) nits
+            ]
+      checkAllPar d codeRunsT misses @?= Passed (length (concat (upTo d codeRunsT))),
+    testCase "vertical writing of code: up to 2 parts (1 on pull requests), it gives 'breakParagraph' the same values" $ do
+      depth <- linesDepth
+      let d = formDepth depth
+          keys v g = let its = codeItemsOf v (gSetting g) (gPre g) (gRun g) (gPost g) in [keyOf (fromIntegral w * fs) (paramsOf (gSetting g) e its) its | (w, e) <- gCases g]
+      checkAllPar d codeRunsT (\run -> [Violation "vertical" (show g) | g <- codeGroupsOf (maxWidthAt depth) run, keys True g /= keys False g])
+        @?= Passed (length (concat (upTo d codeRunsT))),
+    testCase "L1 to L13, T1 and C1 to C8 hold for every input of code up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
+      depth <- linesDepth
+      let limit = bruteLimitAt depth
+      case tallyAllPar depth (codeGroupT (maxWidthAt depth)) (judgeCodeGroup limit) of
+        (Failed k _ vs, _) -> assertFailure ("the smallest input of code that breaks an invariant has " <> show k <> " parts:\n" <> intercalate "\n" [show v | v <- vs])
+        (Passed _, Excused counted) -> do
+          let wrong =
+                [ (lbItem b, lookup depth (lbCounts b), n)
+                | (b, n) <- zip codeLineBugs (counted <> repeat 0),
+                  lookup depth (lbCounts b) /= Just n
+                ]
+          if null wrong
+            then pure ()
+            else assertFailure ("at depth " <> show depth <> ", the inputs of code a known bug excuses differ from the count pinned:\n" <> intercalate "\n" [item <> ": pinned " <> maybe "nothing" show pinned <> ", counted " <> show n | (item, pinned, n) <- wrong])
   ]

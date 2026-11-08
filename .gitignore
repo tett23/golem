@@ -19,3 +19,4 @@ cabal.project.local
 /tools/textlint/node_modules/
 /tools/editors/node_modules/
 /dist-wasm/
+/scripts/browser/node_modules/

@@ -112,11 +112,15 @@ ADR はレビューを受けるまでコミットしない。
 ADR のテスト設計に書いたテストを先に書き、失敗することを確かめてから実装する。
 設定の値のように自動テストを書けない変更は、テスト設計に確かめ方を書いておき、実装したあとに実際に動かして確かめる。
 採択済みの ADR のテスト設計が「10 秒以内」「5 秒以内」のように時間で書いた検査は、計算が止まらないことを検出する意図として読み、テストの時間切れを 30 秒にして、上限で拒んだことを断言する（[docs/adr/0073](./docs/adr/0073-time-bounds-in-tests.md)）。
-これは golem-pdf と golem-svg の外のテストの規則である。
+これは golem-pdf、golem-svg、golem-driver の外のテストの規則である。
 golem-pdf と golem-svg のテストでは、時間の上限に `modules/golem-test-support` の `Golem.TestSupport.TimeLimit` にある `withinTimeLimits hangLimits` を使い、プロセスの CPU 時間の 60 秒と実時間の 300 秒の二つで止める。
 時間の上限を付けるテストの CPU 時間は、単独で走らせて 10 秒以内に収める（[docs/adr/0091](./docs/adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)）。
+golem-driver-test のテストでは、時間の上限に `modules/golem-driver/test/Support.hs` の `hangTimeout`（実時間の 300 秒）を使い、値をテストに書かない。
+テストは threaded の RTS で同時に走るので、CPU 時間では測らない（[docs/adr/0237](./docs/adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)）。
+`Support.hs` の外に `mkTimeout` があると、`scripts/ci/test.sh` が失敗する。
 
 外部ツール（`cddl`、`qpdf`、`openssl` など）を使うテストは、`modules/golem-test-support` の `Golem.TestSupport.ExternalTool` にある `needsTool` か `optionalTool` で書く（[docs/adr/0028](./docs/adr/0028-shared-test-support-package.md)）。
+golem-driver のテストは、qpdf のほかに Poppler の `pdftoppm` と `pdfinfo` を使うので、手元にも `poppler-utils` を入れる（[docs/adr/0232](./docs/adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
 ツールがなければ `SKIP` と表示され、`GOLEM_REQUIRE_EXTERNAL_TOOLS=1` のもとでは失敗になる。
 この変数の値は `1` だけが有効である。
 飛ばしたテストの数は、テストのスイートの最後に標準エラー出力へ一行で出る（[docs/adr/0074](./docs/adr/0074-test-switches-by-environment-variables.md)）。
@@ -403,6 +407,15 @@ CI の `build` ジョブは、EPUB を検査する epubcheck を apt から入�
 zip は版と SHA-256 をキーにキャッシュするので、取りに行くのは版を上げたときとキャッシュが消えたときだけである。
 今の版は 5.4.0 である。
 版を上げるときは、`ci.yml` の `EPUBCHECK_VERSION` と `EPUBCHECK_SHA256` を変えるプルリクエストを出す（[docs/adr/0062](./docs/adr/0062-epubcheck-from-release-with-cache.md)）。
+
+夜ごとの `browser.yml` は、golem の HTML と `golem.wasm` を、Chromium、Safari、Deno で確かめる（[docs/adr/0234](./docs/adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)）。
+プルリクエストでは走らず、前の成功した実行から `main` が進んだ日と、`workflow_dispatch` で走る。
+Chromium は Chrome for Testing の `chrome-headless-shell` を、Deno は GitHub のリリースの zip を、版と SHA-256 で固定する（`scripts/browser/fetch-chromium.sh`、`scripts/wasm/fetch-deno.sh`）。
+版を上げるときは、版と SHA-256 を同じプルリクエストで変え、`workflow_dispatch` で `browser.yml` が通ることを確かめる。
+Safari の版は固定せず、macOS のランナーの像に従う。
+`safari` のジョブの要約には、macOS、像、Safari、WebDriver の `browserVersion` の版の表が残る。
+`safari` のジョブが失敗したら、まずこの表を前の成功した実行の表と比べ、Safari か像の版が変わっていれば Safari の更新を疑う。
+検査を緩めるか外すときは、その変更のプルリクエストに理由を書く。
 
 ## ライセンス
 

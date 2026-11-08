@@ -238,7 +238,11 @@ data CharStyleDef = CharStyleDef
     code), Just Nothing is false; for code styles only
     -} csBackground :: !(Maybe (Maybe Text)),
     -- | the padding before and after inline code along the line (golem-driver ADR 0029)
-    csPadding :: !(Maybe Dim)
+    csPadding :: !(Maybe Dim),
+    {- | the mark at the end of a line that breaks inside inline code other
+    than at a space (golem-layout ADR 0034); for code styles only, the
+    empty text draws none
+    -} csWrapMark :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
@@ -368,7 +372,7 @@ data RegexStyleDef = RegexStyleDef
 
 -- | A character style with no key written.
 noCharDef :: CharStyleDef
-noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
@@ -473,7 +477,8 @@ builtinCharStyles =
   Map.fromList
     [ ("bold", noCharDef {csSyntheticBold = Just True}),
       -- the padding of inline code (golem-driver ADR 0029)
-      ("code", noCharDef {csFont = Just "code", csPadding = Just (Zw (1 % 4))}),
+      -- the wrap mark of inline code (golem-layout ADR 0034): U+23CE, which the code fonts of the manuals have, not U+21A9
+      ("code", noCharDef {csFont = Just "code", csPadding = Just (Zw (1 % 4)), csWrapMark = Just "\x23CE"}),
       ("italic", noCharDef {csSyntheticItalic = Just True}),
       -- the marks of notes in the text (docs/adr/0177): the size of the retired [notes] mark-size
       ("note-mark", noCharDef {csSize = Just (Zw (1 % 2))}),
@@ -656,6 +661,7 @@ overChar u b =
     (csBaselineShift u <|> csBaselineShift b)
     (csBackground u <|> csBackground b)
     (csPadding u <|> csPadding b)
+    (csWrapMark u <|> csWrapMark b)
 
 overPara :: ParaStyleDef -> ParaStyleDef -> ParaStyleDef
 overPara u b =
@@ -1585,7 +1591,8 @@ instance FromValue CharStyleDef where
         _ -> Just <$> fromValue v
     -- a negative padding is read and reported by the checks (golem-driver ADR 0029)
     pad' <- signedDimKey "padding" "（0.25zw や 1mm のように書きます）"
-    pure (CharStyleDef b f s c sb si k t p bs bg pad')
+    wm <- optKey "wrap-mark"
+    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm)
 
 {- | kerning, tracking, proportional-metrics and baseline-shift
 (docs/adr/0020). Every error is under its key, which makes it G03021.
@@ -2253,6 +2260,11 @@ codeStyleChecks s =
              isJust (csBackground d) || isJust (csPadding d)
            ]
         <> [(n, charKey n "padding", "文字スタイル " <> n <> " の padding は 0 以上の寸法です") | (n, CharStyleDef {csPadding = Just p}) <- Map.toList (stCharStyles s), negativeDim p]
+        -- the wrap mark of inline code is for code styles only (golem-layout ADR 0034)
+        <> [ (n, charKey n "wrap-mark", "文字スタイルの wrap-mark は code と based-on で code に行き着く文字スタイルにだけ書けます: " <> n)
+           | (n, CharStyleDef {csWrapMark = Just _}) <- Map.toList (stCharStyles s),
+             not (isCodeCharStyle s n)
+           ]
         -- the border is for code only, its width an absolute dimension (golem-driver ADR 0023)
         <> [ (n, firstWritten (paraKey n) (isJust (psBorder d)) "border" "border-width", "border と border-width は段落スタイル code にだけ書けます: " <> n)
            | (n, d) <- Map.toList (stParaStyles s),
@@ -2796,7 +2808,8 @@ charStyleNode =
       ]
         <> featureNodes
         <> [ ("background", NEither [ref Swatches, NValue LFalse]),
-             ("padding", dim)
+             ("padding", dim),
+             ("wrap-mark", str)
            ]
     )
 

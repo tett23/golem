@@ -97,6 +97,7 @@ test-suite golem-driver-test
     DiagnosticsSpec
     DoubleDashSpec
     EmetSamplesSpec
+    FigureExternalSpec
     FigureSpec
     FileSpacesSpec
     FunctionLibrarySpec
@@ -111,9 +112,12 @@ test-suite golem-driver-test
     ParagraphRuleSpec
     ParagraphSpec
     PdfSpec
+    PlatesSpec
+    PopplerSpec
     ReferencesSpec
     SecuritySpec
     SpecimenGeometrySpec
+    TateChuYokoSpec
     StylesSpec
     TableFilesSpec
     TaggedPdfSpec

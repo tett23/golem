@@ -1,6 +1,6 @@
 # ADR 0210: 行長からはみ出す行を golem build の警告にする
 
-ステータス: 採択
+ステータス: 採択→付録 E の六つの項目のメッセージの略は [golem-layout ADR 0034](../golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) で全文に戻した
 
 ## 文脈
 

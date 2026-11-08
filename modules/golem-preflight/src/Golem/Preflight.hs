@@ -1,5 +1,5 @@
 {- | The checks of golem preflight (golem-cli ADR 0006): pure functions from
-the rules and a view of the PDF to diagnostics G09002 to G09018. A check
+the rules and a view of the PDF to diagnostics G09002 to G09021. A check
 reports a cause once, at its first place, with every page in the fact
 @pdf-pages@ and the first ten pages in the message.
 -}
@@ -22,7 +22,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Length qualified as L
-import Golem.Pdf (ColorSpace (..), ColorUse (..), FigureContent (..), ImageData (..), ImportedPage (..), X4Problem (..))
+import Golem.Pdf (ColorSpace (..), ColorUse (..), FigureContent (..), ImageData (..), ImportedPage (..), Paint (..), PaintSource (..), PaintSpace (..), X4Problem (..))
 import Golem.Pdf.Rect (Rect (..))
 import Golem.Preflight.Rules
 import Golem.Preflight.View
@@ -48,7 +48,10 @@ check r v =
       inkCoverage r v,
       pageCount r v,
       blankPages r v,
-      strokeWeight r v
+      strokeWeight r v,
+      fontEmbedding r v,
+      spotColors r v,
+      cmyPlates r v
     ]
 
 -- ------------------------------------------------------------------ helpers
@@ -391,9 +394,12 @@ overfullLines r v =
       let o = overfullLine (pvIndex p) amount sp
     ]
 
--- | G09014: the PDF/X-4 requirements; one diagnostic when the output intent is missing.
+{- | G09014: the PDF/X-4 requirements; one diagnostic when the output
+intent is missing. The embedding of the fonts is G09019's (docs/adr ADR
+0232), so that one cause has one code.
+-}
 pdfX :: Rules -> View -> [Diagnostic]
-pdfX r v
+pdfX r v0
   | null (vwX4 v) = []
   | otherwise = case vwIntentProfile v of
       Nothing -> at (ruPdfX r) "G09014" (vwStyleSpan v) "PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の [color] に intent を書きます）" [("requirement", FactText "出力インテント")]
@@ -402,6 +408,12 @@ pdfX r v
           [ at (ruPdfX r) "G09014" (vwStyleSpan v) ("PDF/X-4 の要件を満たしていません: " <> x4Requirement p <> "（" <> x4Detail p <> "）") [("requirement", FactText (x4Requirement p))]
           | p <- nub (vwX4 v)
           ]
+  where
+    v = v0 {vwX4 = [p | p <- vwX4 v0, x4Requirement p /= embeddingRequirement]}
+
+-- | The requirement of Golem.Pdf.X4.verify that G09019 reports instead of G09014.
+embeddingRequirement :: Text
+embeddingRequirement = "フォントの埋め込み"
 
 -- | G09015: the total ink of a swatch used.
 inkCoverage :: Rules -> View -> [Diagnostic]
@@ -438,3 +450,87 @@ strokeWeight r v =
     [ at (ruStrokeWeight r) "G09018" (vwStyleSpan v) ("線が細すぎます: " <> kind <> "（" <> mmText w <> "、" <> mmText (ruStrokeMin r) <> " 未満、" <> pagesPhrase ps <> "）") [pagesFact ps]
     | (kind, ps, w : _) <- groups [(rvKind ru, pvIndex p, rvWeight ru) | p <- vwPages v, ru <- pvRules p, rvWeight ru < ruStrokeMin r]
     ]
+
+-- | Each once, in the order of the first.
+nubOrdered :: (Eq a) => [a] -> [a]
+nubOrdered = reverse . foldl' (\acc x -> if x `elem` acc then acc else x : acc) []
+
+-- | G09019: a font descriptor with none of FontFile, FontFile2 and FontFile3, one per FontName (docs/adr ADR 0232).
+fontEmbedding :: Rules -> View -> [Diagnostic]
+fontEmbedding r v =
+  concat
+    [ at (ruFontEmbedding r) "G09019" (vwStyleSpan v) ("フォントを埋め込んでいません: " <> name) [("font", FactText name)]
+    | name <- nubOrdered (vwUnembeddedFonts v)
+    ]
+
+-- | G09020: a spot colour space, one per colorant (docs/adr ADR 0232).
+spotColors :: Rules -> View -> [Diagnostic]
+spotColors r v =
+  concat
+    [ at (ruSpotColors r) "G09020" (vwStyleSpan v) ("特色の色空間があります: " <> name) [("colorant", FactText name)]
+    | name <- nubOrdered (vwSpotColorants v)
+    ]
+
+{- | G09021: a colour of the content of a page on the C, M or Y plate, one
+per colour space and components in the order they first appear, with
+their pages (docs/adr ADR 0232). The colours inside Form XObjects (the PDF
+and SVG figures) and the images are G09008's.
+-}
+cmyPlates :: Rules -> View -> [Diagnostic]
+cmyPlates r v
+  -- off reads no content stream (the view is lazy)
+  | ruCmyPlates r == LevelOff = []
+  | otherwise =
+      concat
+        [ at (ruCmyPlates r) "G09021" (vwStyleSpan v) ("C、M、Y の版に出る色があります: " <> swatch sp cs <> color <> "（" <> pagesPhrase ps <> "）") [("color", FactText color), pagesFact ps]
+        | ((sp, cs), ps, _) <- groups [((paSpace p, paComponents p), paPage p, ()) | p <- vwPaints v, paSource p == PageContent, onCmy (paSpace p) (paComponents p)],
+          let color = T.unwords (spaceName sp : cs)
+        ]
+  where
+    swatch sp cs = case (sp, mapM decimal cs) of
+      (PsDeviceCmyk, Just [c, m, y, k]) ->
+        case [name | (name, (c', m', y', k')) <- Map.toList (vwSwatchesUsed v), map ((/ 100) . toRational) [c', m', y', k'] == [c, m, y, k]] of
+          name : _ -> name <> "、"
+          [] -> ""
+      _ -> ""
+
+-- | Whether a colour is on the C, M or Y plate (docs/adr ADR 0232).
+onCmy :: PaintSpace -> [Text] -> Bool
+onCmy sp cs = case sp of
+  PsDeviceGray -> False
+  PsIccBased 1 -> False
+  PsSeparation "All" -> False
+  PsDeviceCmyk -> not (all isZero (take 3 cs))
+  PsIccBased 4 -> not (all isZero (take 3 cs))
+  _ -> True
+  where
+    isZero t = decimal t == Just 0
+
+-- | A number as a content stream writes it: an integer or a decimal, with a sign.
+decimal :: Text -> Maybe Rational
+decimal t0 =
+  let (sign, t) = case T.uncons t0 of
+        Just ('-', rest) -> (-1, rest)
+        Just ('+', rest) -> (1, rest)
+        _ -> (1, t0)
+      (i, f) = T.breakOn "." t
+      f' = T.drop 1 f
+      digits = T.all (`elem` ['0' .. '9'])
+      value x = if T.null x then 0 else read (T.unpack x) :: Integer
+   in if digits i && digits f' && not (T.null i && T.null f') && T.length t <= 40
+        then Just (sign * (fromInteger (value i) + fromInteger (value f') / 10 ^ T.length f'))
+        else Nothing
+
+-- | The name of a colour space in the message of G09021.
+spaceName :: PaintSpace -> Text
+spaceName = \case
+  PsDeviceGray -> "DeviceGray"
+  PsDeviceRgb -> "DeviceRGB"
+  PsDeviceCmyk -> "DeviceCMYK"
+  PsIccBased _ -> "ICCBased"
+  PsLab -> "Lab"
+  PsSeparation c -> "Separation " <> c
+  PsDeviceN cs -> T.unwords ("DeviceN" : cs)
+  PsPattern -> "Pattern"
+  PsIndexed -> "Indexed"
+  PsUnknown n -> n

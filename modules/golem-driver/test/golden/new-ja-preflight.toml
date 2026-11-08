@@ -32,3 +32,10 @@ based-on = "print"
 # [page-count]
 # severity = "error"
 # multiple-of = 16
+
+# 墨一色で刷る本では、次の行の # を外します。C、M、Y の版に出る色と、グレースケールでない図版を見つけます。
+# [cmy-plates]
+# severity = "error"
+#
+# [image-color-space]
+# allowed = ["gray"]

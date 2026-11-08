@@ -41,6 +41,16 @@ module LineBreakEnum
     lineText,
     renderInput,
     renderCase,
+    codeParts,
+    codeMark,
+    codeSettings,
+    normalCodeSettings,
+    codeGroupsOf,
+    codeGroupT,
+    codeEnv,
+    codeInlinesOf,
+    codeItemsOf,
+    breakCodeInput,
   )
 where
 
@@ -55,7 +65,7 @@ import Golem.Layout.CharClass (isDualCharacter)
 import Golem.Layout.Hyphenation.Languages (patternsFor)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
-import Golem.Layout.Look (Look)
+import Golem.Layout.Look (Look (..))
 import Golem.TestSupport.Enum
 
 {- | One character of each JLReq class (docs/adr/0209): an ideograph,
@@ -293,3 +303,81 @@ renderCase name input =
           "  map lineText (brLines br)",
           "    @?= " <> show (map lineText (brLines br))
         ]
+
+-- * the runs of code (golem-layout ADR 0034, its section 5)
+
+{- | The 15 parts of the runs of code: Japanese characters of the classes
+the breaks of code tell apart, an ideograph, hiragana, an opening and a
+closing bracket, a full stop, a comma, a prolonged sound mark, a small
+kana and an ellipsis (a character of both scripts); Latin text of one
+and two letters, a slash, a low line, a quotation mark and a space.
+-}
+codeParts :: [Text]
+codeParts = map T.singleton "漢あ「」。、ーぁ…" <> ["a", "ab", "/", "_", "\"", " "]
+
+-- | The wrap mark of the code of the runs: the default of the character style code.
+codeMark :: Text
+codeMark = "⏎"
+
+{- | The settings of the runs of code: the strictness of the kinsoku and
+the language span around the run; no hanging, protrusion nor expansion,
+which the boxes of code do not take.
+-}
+codeSettings :: [Setting]
+codeSettings = [Setting s False False l | s <- [True, False], l <- [Nothing, Just "en", Just "ja"]]
+
+{- | The settings of a run of code in the normal form (docs/adr/0209):
+loose kinsoku only with a prolonged sound mark or a small kana, a
+language span only with a character of both scripts.
+-}
+normalCodeSettings :: [Text] -> [Setting]
+normalCodeSettings run = filter normal codeSettings
+  where
+    normal s =
+      (sStrict s || any (`elem` ["ー", "ぁ"]) run)
+        && (any (T.any isDualCharacter) run || isNothing (sLang s))
+
+-- | The groups of a run of code in the normal form, in lines up to the width given, without the expansion.
+codeGroupsOf :: Int -> [Text] -> [Group]
+codeGroupsOf maxWidth run =
+  [ Group s pre run post [(w, False) | w <- ws]
+  | s <- normalCodeSettings run,
+    (pre, post, ws) <- placings maxWidth
+  ]
+
+-- | Every group of the runs of code, tier n holding those of the runs of n parts.
+codeGroupT :: Int -> Tiers Group
+codeGroupT maxWidth = let Tiers xss = listsOf (Tiers [codeParts]) in Tiers (map (concatMap (codeGroupsOf maxWidth)) xss)
+
+{- | The composition environment of the runs of code: that of 'composeEnv',
+the character style code with the wrap mark 'codeMark', and the advance of
+a text of code each of its characters by its class, as 'advance' gives it.
+-}
+codeEnv :: Bool -> Setting -> ComposeEnv
+codeEnv vertical s =
+  (composeEnv vertical s)
+    { ceWordAdvance = \lk t -> sum [advance (lookClass lk c == Western) c | c <- T.unpack t],
+      ceRestyle = \lk -> \case
+        IR.CharStyle _ "code" _ -> lk {lkCode = True, lkWrapMark = codeMark}
+        _ -> lk
+    }
+
+-- | The inlines of a paragraph of code: 'あ' before the run, the run of code in its language span, 'い' after it.
+codeInlinesOf :: Setting -> Int -> [Text] -> Int -> [IR.Inline]
+codeInlinesOf s pre run post =
+  [IR.Text sp (T.replicate pre "あ") | pre > 0]
+    <> [maybe code (\l -> IR.Lang sp l [code]) (sLang s) | not (null run)]
+    <> [IR.Text sp (T.replicate post "い") | post > 0]
+  where
+    code = IR.CharStyle sp "code" [IR.Text sp (T.concat run)]
+
+-- | The items of a group of code, vertical or not.
+codeItemsOf :: Bool -> Setting -> Int -> [Text] -> Int -> [Item]
+codeItemsOf vertical s pre run post = fst (composeInlines (codeEnv vertical s) (codeInlinesOf s pre run post))
+
+-- | The items, the parameters and the breaks of an input of code.
+breakCodeInput :: Input -> ([Item], Params, Breaks)
+breakCodeInput i =
+  let its = codeItemsOf False (inSetting i) (inPre i) (inRun i) (inPost i)
+      ps = paramsOf (inSetting i) False its
+   in (its, ps, breakParagraph ps (const (lineWidth i)) its)

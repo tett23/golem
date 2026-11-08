@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<!--
+  The host of golem.wasm in a browser (docs/adr/0234 section 5), with
+  browser_wasi_shim: the same page in Chromium and Safari.
+  scripts/wasm/run-browser.mjs serves it at /__golem/run.html with
+  golem.wasm, the files of browser_wasi_shim under /__golem/shim/ and the
+  list of the files of the project (/__golem/files.json, paths from the
+  root of the project, without build/, in code point order), the files
+  themselves at their paths.
+
+  golemBuild() fetches the files, writes them as the input frame into the
+  memory of golem.wasm (no directory is preopened: the wasm reads no file),
+  calls golem_build_pdf and returns the status of the result frame, the
+  SHA-256 of its PDF (crypto.subtle; null when the PDF is empty), the
+  length of the PDF and the JSON of the diagnostics.
+-->
+<html><head><meta charset="utf-8"/><title>golem.wasm</title></head>
+<body><script>
+
+const u32 = (n) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n, true); return b; };
+
+function frame(files) {
+  const enc = new TextEncoder();
+  const parts = files.flatMap(([p, c]) => { const raw = enc.encode(p); return [u32(raw.length), raw, u32(c.length), c]; });
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) { out.set(p, at); at += p.length; }
+  return out;
+}
+
+const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+
+// The steps of a build, so that an error says in which it was thrown.
+let step = '';
+window.golemBuild = () => build().catch((e) => { throw new Error(`${step}: ${e}`); });
+
+// browser_wasi_shim is imported when a build starts, not by a module
+// script, so that golemBuild is there as soon as the page is, and a failed
+// import is an error of the build
+async function build() {
+  step = 'import browser_wasi_shim';
+  const { WASI, File, OpenFile, ConsoleStdout } = await import('./shim/index.js');
+  step = 'fetch the files';
+  const paths = await (await fetch('files.json')).json();
+  const files = await Promise.all(paths.map(async (p) => [p, new Uint8Array(await (await fetch('/' + p.split('/').map(encodeURIComponent).join('/'))).arrayBuffer())]));
+  const fds = [new OpenFile(new File([])), ConsoleStdout.lineBuffered(() => {}), ConsoleStdout.lineBuffered(() => {})];
+  const wasi = new WASI(['golem.wasm'], [], fds);
+  step = 'instantiate golem.wasm';
+  const { instance } = await WebAssembly.instantiateStreaming(fetch('golem.wasm'), { wasi_snapshot_preview1: wasi.wasiImport });
+  step = 'initialize';
+  wasi.initialize(instance);
+  const ex = instance.exports;
+  ex.hs_init(0, 0);
+  step = 'golem_build_pdf';
+  const input = frame(files);
+  const ptr = ex.golem_alloc(input.length);
+  new Uint8Array(ex.memory.buffer, ptr, input.length).set(input);
+  const out = ex.golem_build_pdf(ptr, input.length);
+  ex.golem_free(ptr);
+  const len = ex.golem_result_len(out);
+  const r = new Uint8Array(ex.memory.buffer, out, len).slice();
+  ex.golem_free(out);
+  const view = new DataView(r.buffer);
+  const status = r[0];
+  const pdfLen = view.getUint32(1, true);
+  const pdf = r.subarray(5, 5 + pdfLen);
+  const jsonLen = view.getUint32(5 + pdfLen, true);
+  const json = new TextDecoder().decode(r.subarray(9 + pdfLen, 9 + pdfLen + jsonLen));
+  step = 'the SHA-256 of the PDF';
+  const sha = pdfLen === 0 ? null : hex(await crypto.subtle.digest('SHA-256', pdf));
+  return { status, sha, pdfLen, json };
+}
+</script></body></html>

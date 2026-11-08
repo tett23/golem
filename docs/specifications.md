@@ -475,10 +475,29 @@ boot のパッケージの版は wasm の GHC のものになる（`time` は 1.
 cborg、`skylighting`、`skylighting-core` は、この比べから外す（[ADR 0202](adr/0202-packages-that-do-not-build-for-wasm.md)）。
 cborg は、32 ビットで組める上流のコミット `6ef2791c` を使う。
 `skylighting-core` 0.15 と `skylighting` 0.15 は、`scripts/fetch-wasm-packages.sh` が Hackage のアーカイブを SHA-256 で確かめて `third_party/wasm-packages/` に展開し、`Skylighting.Parser` と `Skylighting.Loader`、その再エクスポート、`xml-conduit` の依存を除く `scripts/wasm/patches/` の差分を当てる。
-golem-font は、wasm に向けて組むときだけ、FreeType を `-mllvm -wasm-enable-sjlj` でコンパイルし、wasi-sdk の `c++`、`c++abi`、`setjmp` をリンクする。
+golem-font は、wasm に向けて組むときだけ、FreeType を `-mllvm -wasm-enable-sjlj` と `-mllvm -wasm-use-legacy-eh=false` でコンパイルし、wasi-sdk の `c++`、`c++abi`、`setjmp` をリンクする。
+FreeType の `setjmp` と `longjmp` は、wasm の例外処理の標準化された形（exnref の形、`try_table` と `throw_ref`）で実装される（[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+古い形（`try`、`catch`、`catch_all`、`delegate`、`rethrow`）の命令は使わない。
+このため、`golem.wasm` を動かす実行環境は、標準化された例外処理に対応した版でなければならない。
+対応した最初の版は、Chrome 137、Firefox 131、Safari 18.4、Node 24.15、Deno 2.3.2、wasmtime 47 である。
 `toml-parser` が使う `alex` と `happy` は、ネイティブの GHC で組んだ `alex` 3.5.4.2 と `happy` 2.2（`cabal.project.freeze` の版）を `PATH` に置いて使う。
 cabal 3.14.2.0 は、`build-tool-depends` の `alex` と `happy` も wasm の GHC で組んで store に `alex.wasm` と `happy.wasm` を置くが、それは wasm のモジュールで、cabal は `alex` と `happy` として使わないので、ビルドの中で動くのは `PATH` のものだけである。
 `hsc2hs` は、`wasm32-wasi-cabal` が `--with-hsc2hs` で渡す wasm の GHC のものを使う。
+
+CI の `wasm` ジョブは、組んだ直後の `golem.wasm` に古い形の例外処理の命令がないことを `scripts/wasm/legacy-eh.sh` で確かめる（[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md) の I1）。
+このスクリプトは、モジュールを Node で二度検証し、既定の Node では正しく、`--no-experimental-wasm-legacy-eh` を付けた Node では正しくないとき 1 で終わる。
+既定の Node でも正しくないモジュールは、別の誤りとして 2 で終わる。
+その後、`golem.wasm` を Node の `node:wasi` で動かす。
+`scripts/wasm/compare.sh` の入力には、FreeType が cmap の部分表を `longjmp` で退ける `broken-cmap` がある。
+kanikosen を写し、NotoSerifJP-Regular.otf の SHA-256 を確かめてから、Macintosh の format 6 の部分表の `entryCount`（ファイルの先頭から 30205 バイトめからの 2 バイト）を `FF FF` にしたものである。
+SHA-256 が違えば、`compare.sh` は失敗する。
+golem-font のテストが、このフォントの `num_charmaps` が元のフォントより一つ少ないことを確かめる。
+夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` を Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、wasmtime 49.0.5 の C API と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno`、`--wasmtime`、`--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+wasmtime のホストは、`scripts/fetch-wasmtime.sh` が取る C API にリンクする C のプログラム `scripts/wasm/run-wasmtime.c` である。
+`golem.wasm` を一度だけコンパイルして直列化し、入力ごとに、`run.mjs frame` が書く入力の枠を `golem_build_pdf` に渡して結果の枠を書き、`run.mjs result` がそれを読む（`scripts/wasm/run-wasmtime.sh`）。
+WASI には引数 `golem.wasm` だけを渡し、ディレクトリを開かず、環境変数を渡さない。
+wasmtime の CLI は、メモリにバイト列を書いて渡す手段がないので使わない。
+同じ `chromium` のジョブで、正規化されていないパスの入力の枠、ファイルのない入力の枠、kanikosen の入力の枠に、`run-wasmtime.c` と `run.mjs` の `call` が同じバイト列の結果の枠を返すことを `cmp` で確かめる（I5）。
 
 処理は `parse → eval → 意味論 IR → 各バックエンド` の順に流れ、分岐点は意味論 IR である（「処理の流れ」の節を参照）。
 
@@ -886,6 +905,39 @@ CI では、`build` の x86-64 の `outputs` のランナーが、epubcheck と�
 比べる手順が失敗したときだけ、`scripts/visual/report.sh` が、変わったページの前と後の画像（150 dpi の PNG、最初の 100 ページ）と `shem diff` の差分の画像、`check.sh --accept` が書くはずの参照の一覧を成果物 `visual-diff` として上げ、変わったページの表（違う画素の数と矩形は 72 dpi で数える）をジョブの要約に書く（[ADR 0096](adr/0096-before-and-after-images-of-changed-pages.md)）。
 前の画像は、ベースのコミットから first-parent の祖先を 20 個までたどって最初に見つかった成果物 `visual-pdfs` から描き、ページの SHA-256 がベースのコミットの参照と一致するときだけ使う。
 違う画素の数は合否に使わない。
+
+CI の `build` の x86-64 の `outputs` のランナーは、二冊のマニュアルを組んだ後、それぞれのプロジェクトで `golem preflight --rules ../scripts/ci/manual-preflight.toml` を走らせ、終了コードが 0 であることを確かめる（[ADR 0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
+この設定は `based-on = "none"` で、フォントの埋め込み（`font-embedding`、G09019）と特色の色空間（`spot-colors`、G09020）だけをエラーにする。
+同じランナーは、`scripts/ci/pdf-fonts.sh` で二冊の PDF の書体を確かめる。
+`pdf-fonts.sh` は、PDF のフォントの辞書の `BaseFont` を `qpdf --json` で読み、サブセットの印（六つの大文字と `+`）を除いた名前を、並べ替えて一度ずつ書く。
+書体の名前を引数に与えると、それ以外の書体があれば失敗する。
+CI は、そのマニュアルの `fonts/` の OpenType のファイルの名前（`.otf` を除いたもの）を与える。
+同じランナーは、`scripts/ci/pdf-text.sh` で、開発者のマニュアルの PDF の文字列を Poppler の `pdftotext` で取り出し、原稿のコードに `\|` と書いた箇所が `|` と表示されることを確かめる（[ADR 0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
+`pdf-text.sh` は、`--has` に与えた文字列を含む行がないときと、`--lacks` に与えた文字列を含む行があるときに失敗する。
+CI は、`\|` と書いた四つの箇所の前後の文字列を `--has` に、`\|` を `--lacks` に与える。
+テストのランナーは、qpdf と同じ一回の apt-get で Ubuntu の `poppler-utils` を入れ、golem-driver のテストが Poppler で Golem の PDF を読む（[ADR 0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
+`pdftoppm` で figures の fixture を 72 dpi の画像にし、tRNS を持つ PNG の透明の画素が白になり、半透明の画素が色と白をアルファで混ぜた値から 2 以内になることを確かめる。
+`pdfinfo -url` で、横組みと縦組みの PDF のリンクの注釈の URL とページが原稿のとおりであることを確かめる。
+Poppler は CI で走らせるだけで、Golem にはリンクせず、`golem` から呼ばない。
+golem-driver のテストは、ほかのツールが書き出した図版の試料（`modules/golem-driver/test/fixtures/figures-external/`）も置いて組む（[ADR 0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
+試料は、六つのツール（Inkscape、LibreOffice Draw、Chromium の印刷、matplotlib、pdfTeX、LuaTeX）の PDF と、Inkscape と draw.io の SVG である。
+試料ごとに、置けるか、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md) の表のどの理由で拒むか、G08011 になるかを期待として持つ。
+置いた PDF は `qpdf --check` を通り、置ける PDF の試料は、元のページと、それを等倍で置いた図の範囲を同じ画素の数で `pdftoppm` にかけ、チャネルの差の平均が 5 以下であることを確かめる。
+閾値は、試料で測った最大の 2.56 の二倍ほどである。
+Illustrator の試料は v1.0.0 のリリースでメンテナーが書き出して加え、ファイルがなければテストはその行を飛ばす。
+x86-64 の `outputs` のランナーは、`sample`、`bibliographies`、`languages` に加えて `epub-forms` の EPUB を epubcheck にかける。
+`epub-forms` は、引用と `@bibliography` を別のファイルに置き、`@toc depth=1` で階層 3 までの見出しを持ち、見本のプラグイン `glossary` のチャネルを使う。
+プラグインは `plugins/wasm/glossary.wasm` を `plugins.lock` の SHA-256 の名前でキャッシュに置いて読み、URL からは取得しない。
+
+HTML は、夜ごとの `.github/workflows/browser.yml` が、版と SHA-256 で固定した Chrome for Testing の `chrome-headless-shell`（`scripts/browser/fetch-chromium.sh`）と、macOS のランナーの Safari で開いて確かめる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)）。
+Chromium は Chrome DevTools Protocol で、Safari は `safaridriver` の W3C WebDriver で操り、どちらのクライアントも Node の組み込みだけで書く（`scripts/browser/cdp.mjs`、`scripts/browser/webdriver.mjs`）。
+検査は二つのブラウザで同じ関数で走り、同じ基準を当てる。
+確かめるのは、技術書のコードブロックの選択とコピーに行番号と差分の印が入らないこと、`pre` の `white-space` とコードの書体、縦組みのダッシュの墨が縦に長いこと、圏点の十の形の `text-emphasis-style`、段落の罫線が段落の前後にあること、tRNS の透明の画素でページの背景が見えること、二冊のマニュアルのすべてのページで画像とスタイルシートと書体が読み込まれ、`#` のリンクの先があることである（`scripts/browser/html-checks.mjs`）。
+Chromium では、加えてコンソールの誤りと読み込みの失敗がないことを確かめる。
+WebDriver にはそれを受け取る命令がないので、Safari では確かめない。
+開発者のマニュアルの輪郭の SVG の文字は、原稿の SVG を同じブラウザで描いた文字と、位置と大きさが CSS の 1 画素以下の差であることを確かめる（`scripts/browser/svg-text.mjs`）。
+Safari の版は固定せず、ランナーの像に従う。
+`safari` のジョブは、macOS の版、像の版、Safari の版、WebDriver の `browserVersion` の表をジョブの要約に書き、検査が失敗しても表を残す（`scripts/browser/safari-versions.sh`）。
 
 ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
 対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。
@@ -1563,7 +1615,7 @@ LSP と `golem lint` はファイルを検査しないので、フォントを�
 スタイルの名前は、英小文字で始まり、英小文字、数字、`-` だけからなる。
 
 文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic` である。
-コードの文字スタイルは、本文の中のコードの背景と余白のキー `background` と `padding` も持つ（後述）。
+コードの文字スタイルは、本文の中のコードの背景と余白のキー `background` と `padding` と、改行の印のキー `wrap-mark` も持つ（後述）。
 `font` の役割は、役割が持つ側（和文か欧文）の文字だけをその役割で組み、持たない側の文字は外側の書体のまま組む。
 `synthetic-bold` が真なら、`font` の役割が持たない側の文字を合成の太字（輪郭を線で太らせる）にし、`font` がなければ両側を太らせる。
 PDF の合成の太字の線の幅は、和文で文字の大きさの 1/80、欧文で 1/60 とする（[golem-driver ADR 0012](golem-driver/adr/0012-synthetic-bold-weight.md)）。
@@ -1630,7 +1682,7 @@ CSS では、和文と欧文で別のカーニングを指定できない。
 `letter-spacing` は行の最後の文字の後ろにも空きを足すが、PDF との差として受け入れる。
 プレーンテキストは、どのキーも使わない。
 
-組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`）、`url`（キーなし）、`note-mark`（`size = "0.5zw"`）の六つである。
+組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`、`padding = "0.25zw"`、`wrap-mark = "⏎"`）、`url`（キーなし）、`note-mark`（`size = "0.5zw"`）の六つである。
 `note-mark` は、PDF の本文の注の印に当てる既定の文字スタイルである（「脚注」の節、[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 `url` は参考文献の URL を組む文字スタイルであり、書体、大きさ、色は周りの文字のまま組む（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
 PDF では、`url` と、`based-on` をたどって `url` に行き着く文字スタイルの文字に、ハイフネーションをかけず、中の文字のあいだにアキ量のセットの空きを入れない。
@@ -1757,9 +1809,26 @@ PDF では、コードブロックを次のように組む。
 - `wrap-mark` が空でなければ、次の行に続く各行の行末に、その文字列をコードの列の終わりにそろえて描き、その幅の分だけ折り返しの幅を狭める。
 - `continued` が空でなければ、改ページで分かれたコードブロックの最後の部分のほかの各部分の末尾に一行を足し、その文字列をコードの列の終わりにそろえて描く。この行もその部分が占める格子の行に数え、コードの一行、この行、上下の `padding` が一ページに収まらなければ G07043 とする。
 
-文字スタイル `code` と、`based-on` をたどって `code` に行き着く文字スタイルの文字は、PDF でハイフネーションとカーニングをかけず、改行してよい位置を空白、`/` の後、`_` の連なりの後に限る（どこで改行してもハイフンを描かない）。
+文字スタイル `code` と、`based-on` をたどって `code` に行き着く文字スタイルの文字は、PDF でハイフネーションとカーニングをかけない。
+欧文の字どうしのあいだで改行してよい位置は、空白、`/` の後、`_` の連なりの後に限る（どこで改行してもハイフンを描かない）。
 `_` の連なりの後の罰点は 100、`/` の後の罰点は 0 である。
 `_` の連なりのうち、空白で区切ったコードの最初と最後の連なりの後では改行しない（[golem-layout ADR 0031](golem-layout/adr/0031-line-breaks-after-low-lines-in-identifiers.md)）。
+隣り合う二つの字の少なくとも一方が和文の字であれば、和文の字どうしのあいだでも、和文と欧文の字の境でも、本文と同じ禁則（段落の禁則の強さによる行頭禁則、行末禁則、分離禁止文字の連続）に当たらない限り、罰点 0 で改行できる（[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)）。
+和文の字は、区間の言語で決めた字のクラスが欧文でない字である。
+ASCII の字は、記号（`"`、`(`、`:`、`=` など）も含めてすべて欧文の字（JLReq の cl-27）として扱う。
+欧文の区間の中の両用の字は欧文の字とし、禁則の判定だけは和文のクラスで行う。
+`/` の後と `_` の連なりの後で後の字が和文の字のところは、禁則に当たらなければ候補を一つだけ置き、罰点は `/` の後が 0、`_` の後が 100 である。
+`_` の後では、空白で区切ったコードの最初と最後の連なりの後という除外によらず候補を置く（`_あ`）。
+後の字が行頭禁則の字であれば、`/` と `_` の後でも改行しない（`a/。`）。
+コードの和文の字は、字（基底の字と後に続く結合文字）ごとの箱にし、箱の幅はその字の送りにトラッキングを足した値とする。
+コードの中の改行でも、行の端に余白（`padding`）を足さない。
+文字スタイル `url` には、この和文の改行を当てない。
+空白でない候補（和文の字の前後、`/` の後、`_` の連なりの後）で改行した行の行末には、コードの文字スタイルの `wrap-mark` の文字列を、その文字スタイルで描く。
+空白で改行した行には描かない。
+印の幅は、候補の罰点の幅として行分割に入れ、印を描いた行も行長に収める。
+印は PDF の構造木に入れない（アーティファクト）。
+縦組みでは、印は欧文の字だけからなるとき回転し、そのほかは正立で描く。
+HTML と EPUB には印を出さない。
 中の文字のあいだにはアキ量のセットの空きを入れず、前後の文字との空きは端の文字のクラスで決める。
 本文の中のコードの空白は、コードの書体の空白の送りにトラッキングを足した固定の幅で組み、両端揃えのために伸び縮みさせない（[golem-layout ADR 0017](golem-layout/adr/0017-spaces-inside-inline-code.md)）。
 空白の位置では今までどおり改行でき、行末に来た空白は捨てる。
@@ -1775,6 +1844,10 @@ PDF では、コードブロックを次のように組む。
 | `padding` | 寸法 | `"0.25zw"` | コードの前後に取る、行の方向の余白。`zw` はその文字スタイルの文字の大きさを一字とする |
 
 二つのキーは、文字スタイル `code` と、`based-on` をたどって `code` に行き着く文字スタイルにだけ書ける。
+コードの文字スタイルは、改行の印のキー `wrap-mark`（文字列）も持つ（[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)）。
+既定は `"⏎"`（U+23CE）であり、`""` を書けば印を描かない。
+ADR は既定を `"↩"`（U+21A9）としたが、二つのマニュアルのコードの書体（Noto Sans JP と Source Code Pro）がその字形を持たないので、ADR の定めに従い、Noto Sans JP が字形を持つ U+23CE を既定にした（[golem-layout ADR 0036](golem-layout/adr/0036-record-what-the-implementation-of-0034-decided.md)）。
+`wrap-mark` も `based-on` でキーごとに引き継ぎ、コードでない文字スタイルに書くとエラー（G03006）とする。
 ほかの文字スタイルに書くとエラー（G03006）とする。
 型は文字スタイルの全体に持たせ、実装をコードに絞る（「設計原則」の「広い型、狭い実装」）。
 二つのキーは、ほかのキーと同じく `based-on` でキーごとに引き継ぐ。
@@ -2305,6 +2378,10 @@ OpenType の機能（縦書き用の字形、プロポーショナルな字詰�
 役割の `features` は機能をそのままシェイピングに渡すが、`palt` と `vpal` だけは、JLReq の規則で前後の空きを決める約物に当てない（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
 縦書き用の字形がない文字のうち、UAX #50 の縦組みの向き（Vertical_Orientation）が R か Tr のもの（`U+2014` のダッシュなど）は、PDF では横組みの字形を時計回りに 90 度回転し、仮想ボディの中心を行の中心線にそろえて描く（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 フォントに縦書き用の字形があれば、R の文字でもその字形を正立で使う。
+PDF の縦中横は、箱の文字列を横組みでシェイピングし、横組みの字として回転せずに左から右へベタで並べる（[golem-driver ADR 0045](golem-driver/adr/0045-draw-tate-chu-yoko-horizontally-in-pdf.md)）。
+和文の書体の字面の枠の中心を箱の中心に置き、文字列の中心を行の中心線に置く。
+送りの和 `W` が箱の大きさ `s` を超える文字列は、水平の比率 `⌊1000 × s / W⌋`（千分率）で縮めて一字分に収める。
+一字の縦中横も同じ規則で描き、トラッキングは足さない。
 HTML と EPUB では、CSS の `text-orientation` の既定の `mixed` に任せる。
 役割より細かく書体を変えたい場合は、`style.toml` に文字スタイルを定義し、本文から適用する。
 
@@ -2970,6 +3047,9 @@ PDF 経路の段落は、Knuth と Plass の方式で行に分ける（[golem-la
 最後の段階（はみ出す行を許す段階）では、不良度が 10000 未満の行を許容度の範囲として、罰点が最小の分割を探す。
 不良度が上限の 10000 に達する行は、罰点が上限で頭打ちになり、数文字だけの行と行長に近い行を区別できない。
 そのため、この段階でも不良度が 10000 の行は罰点の比較では採らない。
+分割の候補が幅を持つ罰点（パターンの分綴のハイフン、本文の中のコードの改行の印）のとき、その幅を足すと行長からはみ出す行は、その候補では終えない。
+ただし、その幅を除けば行長に収まるなら、同じ行の始まりから後ろの候補で行を終える道は残す（[golem-layout ADR 0036](golem-layout/adr/0036-record-what-the-implementation-of-0034-decided.md)。[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の実装で、印の幅のために収まる一行の分割を見落とすことが列挙の L7 で見つかった）。
+TeX は、この場合にも行の始まりの候補を捨てる。
 行長に収まる分割がなくなった位置では、収まらない箱を次の行へ送り出し、その前のいちばん後ろの分割の候補で行を終える（JLReq の追い出し）。
 送り出した行は伸びの許すかぎり字間を空けて行長にそろえ、分割はその行の後ろからやり直す。
 伸びるグルーのない行（一字だけの行、一つの欧文の語だけの行）は、行長に足りないまま行頭にそろえる（[docs/adr/0222](adr/0222-line-breaking-points-the-invariants-did-not-decide.md)）。
@@ -3105,7 +3185,18 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 毎晩の `enum.yml` は部品 3 個までを 5 字までの行で調べ、分割の候補が 16 以下の入力で L7 を調べ、部品 4 個の入力を 500 万、種を固定した擬似乱数で抜き取って調べる。
 違反があれば、最も小さい入力を表示する。
 「既知の不具合」に載せた違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
-今の一覧は空である（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md) で、一覧にあった「段落の終わりの語間の空白の前の行末禁則」を直した）。
+23 の部品の並びの一覧は空である（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md) で、一覧にあった「段落の終わりの語間の空白の前の行末禁則」を直した）。
+
+本文の中のコードの並びも、同じ述語と、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の C1 から C8 で調べる。
+部品は、和文の `漢`、`あ`、`「`、`」`、`。`、`、`、`ー`、`ぁ`、`…` と、欧文の `a`、`ab`、`/`、`_`、`"` と、空白の 15 である。
+並びの全体を `[code: …]` に入れ、前の `あ` と後の `い` はコードの外に置く。
+組み方の環境は禁則の強さと区間の言語だけであり、正規形は 23 の部品と同じく、`ー` か `ぁ` がなければ強い禁則だけ、両用の字がなければ区間なしだけとする。
+コードの字の送りは、字のクラスごとに上の表の値とし、改行の印は `⏎` で 1 em とする。
+C4（和文を含まないコードの項目は、印の幅と種類を除けば印のないときと同じ）は、和文を含まない並びの組ごとに、印を空にして組んだ項目と比べる。
+C5（`url`）は例のテストで確かめる。
+プルリクエストの CI は部品 2 個まで（240 の並び）を 4 字までの行で、毎晩の `enum.yml` は部品 3 個までを 5 字までの行で調べる。
+正規形と縦組みは、23 の部品と同じ部品の数までで確かめる。
+「既知の不具合」の「本文の中のコードの空白で、禁則に当たる位置でも改行する」と「段落の終わりの本文の中のコードの空白で改行し、箱のない最後の行を作る」の違反は、一覧で除き、除いた入力の数（部品 2 個までで 39 と 36、3 個までで 2703 と 525）を固定する。
 
 述語が判定しない場合はない（[docs/adr/0222](adr/0222-line-breaking-points-the-invariants-did-not-decide.md)）。
 L6 は、伸びるグルーのない行を行長に足りなくてよいとし、字幅の伸縮が限度に達していなければ、足りない量が刻み一つ分の伸縮より小さいことを確かめる。
@@ -3634,6 +3725,7 @@ body-mark-style = "strong"
 既定の `*{n}` の印は、`*` が欧文として横に倒れ、番号が縦中横になる。
 字の列の右端は本文の字面の枠の右端（行の中心線から `s/2` 右）にそろえ、字の列の中心線は行の中心線から `(s − m)/2` 右にある（JLReq の 4.2.3 の行の右端にそろえる配置）。
 箱の行の方向の長さは、印の字を大きさ `m` で縦組みに並べた送りの和（縦中横は `m`）に、トラッキングを足した値である。
+縦中横の部品は、印の大きさ `m` の一字分の箱として、本文の縦中横と同じ規則で横に並べ、文字列の中心を字の列の中心線に置く（[golem-driver ADR 0045](golem-driver/adr/0045-draw-tate-chu-yoko-horizontally-in-pdf.md)）。
 文字スタイルの `baseline-shift` は、この位置からさらに右へずらす。
 平字（上下の外枠を 50% にした漢数字）は組まない（[docs/roadmap.md](roadmap.md)）。
 
@@ -4715,6 +4807,7 @@ G07002 は PDF をターゲットに含むときにだけ出し、位置は `sty
 `golem new` の雛形は、そのまま四つのターゲットをすべてビルドできる（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。
 雛形には、`manifest.toml`、`style.toml`、最初の章の原稿（`chapters/01.gm`）、出力のディレクトリを除く `.gitignore`（`build/` の一行）のほかに、プリフライトの設定 `preflight.toml` が入る（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 `preflight.toml` は `based-on = "print"` の一行と、`print` の主な値をコメントで書き写した例からなり、コメントの言語だけを雛形の言語に合わせる。
+例の後には、`page-count` の段落と、墨一色の本のための段落（`[cmy-plates]` の `severity = "error"` と `[image-color-space]` の `allowed = ["gray"]`）を、どちらもコメントで書く（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
 `--no-fonts` を付けても作り、フォントの取得に失敗したときはほかのファイルと同じく書かない。
 雛形のプロジェクトは、そのままでは `print` のプリフライトを通らない（出力インテントの欠けの G09014）。
 `--language` で日本語（既定）と英語を選び、言語に合わせて版面とフォントと塗り足しを決める。
@@ -4778,6 +4871,9 @@ notice は設定の値として選べない。
 | `page-count`（ページ数） | G09016 | off | off |
 | `blank-pages`（空白のページ） | G09017 | off | off |
 | `stroke-weight`（細すぎる線） | G09018 | off | warning（0.1mm 未満） |
+| `font-embedding`（埋め込んでいないフォント） | G09019 | error | error |
+| `spot-colors`（特色の色空間） | G09020 | off | error |
+| `cmy-plates`（C、M、Y の版に出る色） | G09021 | off | off |
 
 PDF に置けない図版は、プリフライトの検査ではなく G08010 のエラーで、PDF を作れないのでプリフライトは何も検査しない。
 `image-unplaceable` の検査（G09005）は廃止し、`preflight.toml` に書くと知らないキー（G09001）になる（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
@@ -4808,7 +4904,28 @@ G09014 の検査は、golem-pdf の `Golem.Pdf.X4.verify` が書く前の PDF �
 要件「JavaScript と外部への参照」の詳細は、禁止の名前（`JavaScript`、`JS`、`URI`、`Launch`、`GoToR`）を、トレーラー、オブジェクトの順に走査して見つけた順に一度ずつ「、」でつなぎ、`<名前>、<名前> があります` とする（[golem-pdf ADR 0012](golem-pdf/adr/0012-x4-forbidden-names-in-found-order.md)）。
 ただし、ページの `/Annots` が指すリンクの注釈（`/Subtype /Link`）の `/A` が `/S /URI` のアクションであれば、その `/S` と `/URI` は数えない（[docs/adr/0182](adr/0182-external-links.md)）。
 ほかの位置の `URI`（カタログの `/URI` など）と、注釈の中のほかの禁止の名前は、今のとおり数える。
+`Golem.Pdf.X4.verify` はフォントの埋め込みも要件として返すが、G09014 はそれを出さず、G09019 が受け持つ（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
+一つの原因に一つのコードを出すためで、`pdf-x` を `error`、`font-embedding` を `off` にした設定では、埋め込んでいないフォントは報告されない。
 入稿の前には、商用のプリフライトでも確かめる。
+
+G09019 から G09021 は、写しの三つの欄を読む（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
+三つとも、`vwX4` と同じく書く前の PDF のオブジェクト（`documentObjects`）から遅延して作るので、`golem build` は計算しない。
+`vwUnembeddedFonts` は golem-pdf の `unembeddedFonts` の結果で、`FontFile`、`FontFile2`、`FontFile3` のどれも持たないフォントの記述子の `FontName` を、オブジェクトの順に並べる。
+G09019 は、出力インテントの有無によらず、その名前ごとに一つ出す。
+`vwSpotColorants` は `spotColorants` の結果で、すべてのオブジェクトの `Separation` と `DeviceN` の色材の名前のうち、`All`、`None`、`Cyan`、`Magenta`、`Yellow`、`Black` でないものを、見つけた順に一度ずつ並べる。
+使われているかは問わない。
+G09020 は、その名前ごとに一つ出す。
+`vwPaints` は `paintsOf` の結果で、ページの内容のストリームの塗りと線（`f`、`f*`、`B`、`B*`、`b`、`b*`、`S`、`s`、`Tj`、`TJ`、`'`、`"`、`sh`）を、そのときの色空間と色の成分（ストリームに書かれた文字列のまま）とともに、描く順に並べる。
+ストリームは Flate で展開し、`Golem.Pdf.Import` の字句の読み方で演算子を読む。
+`q` と `Q` は色と描き方を保存して戻し、`cs` と `CS` の後の色はその色空間の初期の色とする。
+`Do` で呼んだ Form XObject の中は、呼んだ側の色を引き継いで読み、`Do` の後は呼んだ側の色に戻す。
+塗りと線の両方を描く演算子とテキストの描き方は二つの塗りとし、描かないテキストの描き方（`3`、`7`）と画像は塗りとしない。
+`sh` はシェーディングの辞書の色空間で塗る。
+G09021 は、ページの内容のストリームの塗りのうち、C、M、Y の版に出る色を、色空間と成分の組ごとに一つ、最初に現れた順に出す。
+C、M、Y の版に出る色は、初めの三つの成分のどれかが 0 でない `DeviceCMYK` と 4 成分の `ICCBased` と、成分によらず、`DeviceGray`、1 成分の `ICCBased`、`Separation All` を除くほかの色空間の色である。
+Form XObject の中の色（PDF と SVG の図版）と画像は G09008 が受け持つので、G09021 は数えない。
+今の Golem の出力では、G09019 と G09020 は出ない。
+Golem はプロセスカラーだけを書き、取り込む PDF の図版の特色と埋め込まないフォントを G08010 で拒むからである。
 
 終了コードはほかのコマンドと同じく、エラーの diagnostic がなければ 0、あれば 1、使い方の誤りは 2 である。
 警告だけなら 0 で、警告でも止めたいときは設定で重大度を `error` にする。
@@ -5042,6 +5159,8 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **`[ref-number]` の図番号とリスト番号が、`[figures]` と `[code]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックを `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
+- **本文の中のコードの空白で、禁則に当たる位置でも改行する**：本文の中のコードの空白（[golem-layout ADR 0017](golem-layout/adr/0017-spaces-inside-inline-code.md)）は伸び縮みしないグルーであり、語間の空白の前後の禁則（[golem-layout ADR 0028](golem-layout/adr/0028-kinsoku-across-spaces-and-explicit-hyphens.md)）が当たらない。`[code: 「 a]` は `「` の後の空白で、`[code: a 」]` は `」` の前の空白で、`[code: … …]` は二つの `…` のあいだの空白で改行できる。0028 はコードの空白を列挙の外として変えなかったが、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) がコードの並びを列挙に足し、L2、L3、L4 の違反として見つかった（実装で見つかった）。
+- **段落の終わりの本文の中のコードの空白で改行し、箱のない最後の行を作る**：段落の終わりの `[code: 漢 ]` のように、コードの最後に空白があると、その空白で改行し、箱のない最後の行ができることがある。段落の終わりの語間の空白は捨てる（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md)）が、コードの空白は捨てない。T1 の違反として見つかった（[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の実装で見つかった）。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合

@@ -195,7 +195,7 @@ but G09005, retired (golem-pdf ADR 0008)
 docs/diagnostics.md must agree with them (a golem-driver test).
 -}
 preflightCodes :: [DiagnosticCode]
-preflightCodes = [DiagnosticCode (T.pack ("G090" <> pad n)) | n <- [2 .. 18 :: Int], n /= 5]
+preflightCodes = [DiagnosticCode (T.pack ("G090" <> pad n)) | n <- [2 .. 21 :: Int], n /= 5]
   where
     pad n = (if n < 10 then "0" else "") <> show n
 

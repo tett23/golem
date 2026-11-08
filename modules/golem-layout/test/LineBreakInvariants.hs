@@ -31,6 +31,9 @@ module LineBreakInvariants
     t1LastLineBoxes,
     lineInvariants,
     breaches,
+    codeInvariants,
+    codeBreaches,
+    breakItem,
     lineEnd,
     latinSpace,
   )
@@ -49,8 +52,8 @@ import Golem.Layout.Look (Look (..))
 import Golem.Length qualified as L
 import KnuthPlassBrute (breakCandidates, bruteDemerits)
 
--- | The invariants of docs/adr/0209, by their numbers, and T1 of golem-layout ADR 0032.
-data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1
+-- | The invariants of docs/adr/0209, by their numbers, T1 of golem-layout ADR 0032, and C1 to C8 of golem-layout ADR 0034.
+data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1 | C1 | C2 | C3 | C6 | C7 | C8
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken, the line it is broken at (from 0; -1 for the whole paragraph), and how.
@@ -527,3 +530,170 @@ lineInvariants =
 -- | The breaches of a paragraph, L7 brute-forcing up to the number of breaks given.
 breaches :: Int -> Paragraph -> [Breach]
 breaches limit p = concat [check limit p | (_, check) <- lineInvariants]
+
+-- * the invariants of inline code (golem-layout ADR 0034)
+
+{- | Two boxes of code next to each other in the items, by the index of
+the first, with the items between them: no space of code between them
+(a glue), which the invariants of code do not judge.
+-}
+codePairs :: [Item] -> [(Int, BoxContent, [(Int, Item)], BoxContent)]
+codePairs its = go (zip [0 ..] its)
+  where
+    go = \case
+      (i, Box _ a) : rest
+        | isCode a ->
+            let (mid, after) = break (isBox . snd) rest
+             in case after of
+                  (_, Box _ b) : _ | isCode b, not (any (isGlue . snd) mid) -> (i, a, mid, b) : go after
+                  _ -> go after
+      _ : rest -> go rest
+      [] -> []
+    isBox = \case
+      Box {} -> True
+      _ -> False
+    isGlue = \case
+      Glue {} -> True
+      _ -> False
+
+isCode :: BoxContent -> Bool
+isCode c = lkCode (bcLook c) && not (lkUrl (bcLook c))
+
+-- | Whether a character of a box of code is Japanese: its class in the look of the box is not Latin.
+japaneseIn :: BoxContent -> Char -> Bool
+japaneseIn c ch = lookClass (bcLook c) ch /= Western
+
+-- | The base characters of a box: its characters without the combining ones.
+basesOf :: BoxContent -> String
+basesOf = T.unpack . baseOf
+
+-- | The breaks among the items between two boxes: the penalties less than infinite.
+candidates :: [(Int, Item)] -> [(Int, Item)]
+candidates mid = [(j, it) | (j, it@(Penalty _ p _)) <- mid, p < infPenalty]
+
+-- | Whether a prohibition applies between the last character of a box and the first of the next.
+prohibited :: Paragraph -> BoxContent -> BoxContent -> Bool
+prohibited p a b =
+  let pk = endClass a
+      ck = startClass b
+   in maybe False (lineStartProhibited (pStrict p)) ck
+        || maybe False lineEndProhibited pk
+        || (pk == Just Inseparable && ck == Just Inseparable)
+
+-- | The last and the first characters of two boxes, and whether either is Japanese.
+borderOf :: BoxContent -> BoxContent -> Maybe (Char, Char, Bool)
+borderOf a b = case (reverse (basesOf a), basesOf b) of
+  (x : _, y : _) -> Just (x, y, japaneseIn a x || japaneseIn b y)
+  _ -> Nothing
+
+{- | C1: between two characters of code next to each other, neither a
+space, one of them Japanese, there is exactly one break, but where a
+prohibition applies, where there is none; a box of code holds no two
+characters one of which is Japanese.
+-}
+c1Japanese :: Check
+c1Japanese _ p =
+  [ Breach C1 (-1) (show (bcText a <> bcText b) <> " has " <> show (length cs) <> " breaks between them" <> (if pro then ", where a prohibition applies" else ""))
+  | (_, a, mid, b) <- codePairs (pItems p),
+    let cs = candidates mid
+        pro = prohibited p a b,
+    if pro then not (null cs) else length cs /= 1,
+    Just (_, _, True) <- [borderOf a b]
+  ]
+    <> [ Breach C1 (-1) ("the box of code " <> show (bcText c) <> " holds a Japanese character and another")
+       | Box _ c <- pItems p,
+         isCode c,
+         let bs = basesOf c,
+         length bs > 1,
+         any (japaneseIn c) bs
+       ]
+
+-- | C2: the break of C1 is of 100 after a low line and of 0 otherwise.
+c2Penalty :: Check
+c2Penalty _ p =
+  [ Breach C2 (-1) ("the break between " <> show (bcText a) <> " and " <> show (bcText b) <> " is of " <> show n)
+  | (_, a, mid, b) <- codePairs (pItems p),
+    Just (x, _, True) <- [borderOf a b],
+    (_, Penalty _ n _) <- candidates mid,
+    n /= (if x == '_' then 100 else 0)
+  ]
+
+-- | C3: between two Latin characters of code next to each other, the only breaks are one after a slash and one after a run of low lines.
+c3Latin :: Check
+c3Latin _ p =
+  [ Breach C3 (-1) (show (bcText a <> bcText b) <> " breaks between them")
+  | (_, a, mid, b) <- codePairs (pItems p),
+    let cs = candidates mid,
+    Just (x, y, False) <- [borderOf a b],
+    length cs > 1 || (not (null cs) && not (x == '/' || (x == '_' && y /= '_')))
+  ]
+
+-- | C6: no break between two boxes of code draws a hyphen.
+c6NoHyphen :: Check
+c6NoHyphen _ p =
+  [ Breach C6 (-1) ("the break between " <> show (bcText a) <> " and " <> show (bcText b) <> " draws a hyphen")
+  | (_, a, mid, b) <- codePairs (pItems p),
+    (_, Penalty _ _ h) <- candidates mid,
+    case h of
+      PatternHyphen _ -> True
+      ExplicitHyphen -> True
+      _ -> False
+  ]
+
+{- | C7: the box of a Japanese character of code is as wide as its
+advance (no tracking and no padding in the runs); there is no glue
+between two boxes of code but a space of code, which neither stretches
+nor shrinks.
+-}
+c7Widths :: Check
+c7Widths _ p =
+  [ Breach C7 (-1) ("the box of code " <> show (bcText c) <> " is " <> show w <> " wide, not " <> show want)
+  | Box w c <- pItems p,
+    isCode c,
+    any (japaneseIn c) (basesOf c),
+    let want = L.zwToSp (pSize p) (sum [pAdvance p (not (japaneseIn c ch)) ch | ch <- T.unpack (bcText c)]),
+    w /= want
+  ]
+    <> [ Breach C7 (-1) ("glue that stretches or shrinks inside code, after " <> show (bcText a))
+       | (Box _ a, Glue _ y z, Box _ b) <- zip3 (pItems p) (drop 1 (pItems p)) (drop 2 (pItems p)),
+         isCode a && isCode b,
+         y /= 0 || z /= 0
+       ]
+
+{- | C8: a line broken at a break of code other than a space ends with the
+wrap mark, once: the penalty it breaks at, as wide as the mark in the look
+of the box before it. No other line ends with a mark.
+-}
+c8WrapMark :: Text -> Check
+c8WrapMark m _ p =
+  [ Breach C8 i ("line " <> show (i + 1) <> " " <> show (textOf l) <> (if atCode then " breaks inside code but does not end with the mark" else " ends with a mark but does not break inside code"))
+  | (i, l, _) <- pairs p,
+    let atCode = maybe False (`elem` codeBreaks) (breakIndex p i)
+        marked = case reverse (lineItems l) of
+          Penalty w _ (WrapMark m') : _ -> m' == m && Just w == markWidth l
+          _ -> False
+        anyMark = case reverse (lineItems l) of
+          Penalty _ _ (WrapMark _) : _ -> True
+          _ -> False,
+    if atCode then not marked else anyMark
+  ]
+  where
+    codeBreaks = [j | (_, _, mid, _) <- codePairs (pItems p), (j, _) <- candidates mid]
+    markWidth l = case lastBox l of
+      Just c -> Just (L.zwToSp (pSize p) (sum [pAdvance p (lookClass (bcLook c) ch == Western) ch | ch <- T.unpack m]))
+      Nothing -> Nothing
+
+-- | The invariants of code of golem-layout ADR 0034, the wrap mark given, with their checks.
+codeInvariants :: Text -> [(LineInvariant, Check)]
+codeInvariants m =
+  [ (C1, c1Japanese),
+    (C2, c2Penalty),
+    (C3, c3Latin),
+    (C6, c6NoHyphen),
+    (C7, c7Widths),
+    (C8, c8WrapMark m)
+  ]
+
+-- | The breaches of a paragraph of code: those of 'breaches' and of 'codeInvariants'.
+codeBreaches :: Text -> Int -> Paragraph -> [Breach]
+codeBreaches m limit p = breaches limit p <> concat [check limit p | (_, check) <- codeInvariants m]

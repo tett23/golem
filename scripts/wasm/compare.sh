@@ -8,6 +8,14 @@
 #                               JSON on stderr)
 #   compare.sh WASM             builds each input with golem.wasm under
 #                               node:wasi (scripts/wasm/run.mjs)
+#   compare.sh --deno WASM      the same with run.mjs under the node:wasi of
+#                               Deno (DENO chooses the deno to run)
+#   compare.sh --browser BROWSER WASM
+#                               the same in chromium or safari, with
+#                               browser_wasi_shim (scripts/wasm/run-browser.mjs)
+#   compare.sh --wasmtime WASM  the same under the C API of wasmtime
+#                               (scripts/wasm/run-wasmtime.sh), which
+#                               compiles WASM once (docs/adr/0238)
 #   compare.sh --check A B      the two lists are the same (diff); the CI
 #                               compares the native list with the wasm one
 #
@@ -15,11 +23,13 @@
 # style.toml; the PDF inputs of scripts/determinism.sh (pdf,
 # complex-vertical, complex-horizontal), with the fonts it gives them; and
 # kanikosen with a broken style.toml and without its font, whose builds end
-# in an error. The lines are `<SHA-256>  <input>/pdf` (- without a PDF),
+# in an error; and broken-cmap, kanikosen whose Noto Serif JP has a format 6
+# cmap subtable that FreeType refuses by longjmp, the exception handling of
+# wasm (docs/adr/0238; its build ends in an error too). The lines are `<SHA-256>  <input>/pdf` (- without a PDF),
 # `<SHA-256>  <input>/diagnostics` and `exit <code>  <input>`.
 set -eu
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-usage() { echo "usage: compare.sh --native GOLEM | compare.sh WASM | compare.sh --check A B" >&2; exit 2; }
+usage() { echo "usage: compare.sh --native GOLEM | compare.sh WASM | compare.sh --deno WASM | compare.sh --browser chromium|safari WASM | compare.sh --wasmtime WASM | compare.sh --check A B" >&2; exit 2; }
 case ${1:-} in
   --check)
     [ $# = 3 ] || usage
@@ -31,6 +41,19 @@ case ${1:-} in
     [ $# = 2 ] || usage
     MODE=native PROGRAM=$2
     ;;
+  --deno)
+    [ $# = 2 ] || usage
+    MODE=deno PROGRAM=$2
+    ;;
+  --browser)
+    [ $# = 3 ] || usage
+    case $2 in chromium | safari) ;; *) usage ;; esac
+    MODE=browser BROWSER=$2 PROGRAM=$3
+    ;;
+  --wasmtime)
+    [ $# = 2 ] || usage
+    MODE=wasmtime PROGRAM=$2
+    ;;
   "" | -*) usage ;;
   *)
     [ $# = 1 ] || usage
@@ -41,10 +64,17 @@ esac
 sha() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
+JA=$ROOT/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf
+# broken-cmap breaks the two bytes at 30205 of this font, the entryCount of
+# its format 6 cmap subtable; another font would be broken elsewhere
+JA_SHA=2c9a12dbd4f2408c4610c7ee84a108b62d7236c3775baed618c64d9cb44b2f04
+if [ "$(sha "$JA")" != "$JA_SHA" ]; then
+  echo "compare.sh: the SHA-256 of $JA is not $JA_SHA: broken-cmap would not break its format 6 cmap subtable" >&2
+  exit 1
+fi
 WORK=$(mktemp -d)
 trap 'rm -rf "${WORK:?}"' EXIT
 
-JA=$ROOT/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf
 LATIN=$ROOT/modules/golem-font/test/fonts/SourceSansPro-Regular.otf
 fonts() { mkdir -p "$1/fonts" && cp "$JA" "$1/fonts/ja.otf" && cp "$LATIN" "$1/fonts/latin.otf"; }
 copy() { # FIXTURE NAME: a copy of a folder, without build/
@@ -68,20 +98,47 @@ copy "$ROOT/modules/golem-driver/test/fixtures/kanikosen" broken-style
 printf '\n[page\nsize = \n' >>"$WORK/in/broken-style/style.toml"
 copy "$ROOT/modules/golem-driver/test/fixtures/kanikosen" missing-font
 rm "$WORK/in/missing-font/fonts/NotoSerifJP-Regular.otf"
+copy "$ROOT/modules/golem-driver/test/fixtures/kanikosen" broken-cmap
+printf '\377\377' | dd of="$WORK/in/broken-cmap/fonts/NotoSerifJP-Regular.otf" bs=1 seek=30205 conv=notrunc 2>/dev/null
 
-for name in kanikosen determinism pdf complex-vertical complex-horizontal broken-style missing-font; do
+if [ "$MODE" = wasmtime ]; then sh "$ROOT/scripts/wasm/run-wasmtime.sh" compile "$PROGRAM" "$WORK/wasmtime"; fi
+
+for name in kanikosen determinism pdf complex-vertical complex-horizontal broken-style missing-font broken-cmap; do
   dir=$WORK/in/$name
   code=0
   if [ "$MODE" = native ]; then
     (cd "$dir" && "$PROGRAM" build --target pdf --format json >/dev/null 2>"$WORK/json") || code=$?
     pdf=$(find "$dir/build/pdf" -name '*.pdf' 2>/dev/null | head -1)
+  elif [ "$MODE" = browser ]; then
+    # the page gives the SHA-256 of the PDF, not the PDF
+    node "$ROOT/scripts/wasm/run-browser.mjs" build "$BROWSER" "$PROGRAM" "$dir" >"$WORK/sha" 2>"$WORK/json" || code=$?
+    pdf=
+  elif [ "$MODE" = wasmtime ]; then
+    sh "$ROOT/scripts/wasm/run-wasmtime.sh" build "$WORK/wasmtime" "$dir" "$WORK/out.pdf" 2>"$WORK/json" || code=$?
+    pdf=$WORK/out.pdf
+    [ -f "$pdf" ] || pdf=
+  elif [ "$MODE" = deno ]; then
+    # Deno writes the warning that WASI is experimental to stderr, which
+    # NODE_NO_WARNINGS does not stop; that line alone is taken out of the JSON
+    "${DENO:-deno}" run --allow-read --allow-write "$ROOT/scripts/wasm/run.mjs" build "$PROGRAM" "$dir" "$WORK/out.pdf" 2>"$WORK/raw" || code=$?
+    grep -v '^(node:[0-9]*) ExperimentalWarning: WASI is an experimental feature and might change at any time$' "$WORK/raw" >"$WORK/json" || true
+    pdf=$WORK/out.pdf
+    [ -f "$pdf" ] || pdf=
   else
     # without the warning that WASI is experimental, which would go into the JSON
     node --no-warnings "$ROOT/scripts/wasm/run.mjs" build "$PROGRAM" "$dir" "$WORK/out.pdf" 2>"$WORK/json" || code=$?
     pdf=$WORK/out.pdf
     [ -f "$pdf" ] || pdf=
   fi
-  if [ -n "$pdf" ]; then printf '%s  %s\n' "$(sha "$pdf")" "$name/pdf"; else printf '%s  %s\n' - "$name/pdf"; fi
+  # a host that failed (not the exit code of golem build) says why
+  if [ "$MODE" != native ] && [ "$code" -gt 1 ]; then
+    echo "compare.sh: $name: the host exited $code:" >&2
+    cat "$WORK/json" >&2
+  fi
+  if [ "$MODE" = browser ]; then
+    sha_line=$(head -n 1 "$WORK/sha")
+    printf '%s  %s\n' "${sha_line:--}" "$name/pdf"
+  elif [ -n "$pdf" ]; then printf '%s  %s\n' "$(sha "$pdf")" "$name/pdf"; else printf '%s  %s\n' - "$name/pdf"; fi
   printf '%s  %s\n' "$(sha "$WORK/json")" "$name/diagnostics"
   printf 'exit %s  %s\n' "$code" "$name"
   rm -f "$WORK/out.pdf"

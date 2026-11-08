@@ -133,18 +133,23 @@ newPreflightTests =
     testCase "a failed download writes no preflight.toml" $ withSystemTempDirectory "golem-new" $ \tmp -> do
       _ <- createProject (tmp </> "book") (templateFiles Japanese uuid0) (Just (fakeFetch (Left "offline"), [fakeFont "FONT"]))
       doesFileExist (tmp </> "book/preflight.toml") >>= assertBool "no preflight.toml" . not,
-    testCase "the template reads as print, and its examples uncommented too" $
+    testCase "the template reads as print, and each paragraph of its examples uncommented too" $
       forM_ [Japanese, English] $ \lang -> do
         t <- templateText lang "preflight.toml"
-        let (examples, pageCount) = T.breakOn pageCountMarker t
+        let (examples, rest) = T.breakOn pageCountMarker t
+            (pageCount, mono) = T.breakOn monoMarker rest
         parseRules (FileId 0) t @?= Right printRules
-        parseRules (FileId 0) (uncomment examples <> pageCount) @?= Right printRules
-        parseRules (FileId 0) (uncomment t) @?= Right printRules {ruPageCount = LevelError, ruPageMultiple = 16}
+        parseRules (FileId 0) (uncomment examples <> pageCount <> mono) @?= Right printRules
+        parseRules (FileId 0) (uncomment (examples <> pageCount) <> mono) @?= Right printRules {ruPageCount = LevelError, ruPageMultiple = 16}
+        -- the book in black alone (docs/adr ADR 0232)
+        parseRules (FileId 0) (examples <> pageCount <> uncomment mono) @?= Right printRules {ruCmyPlates = LevelError, ruColorSpacesAllowed = ["gray"]}
   ]
   where
     uncommented = T.unlines . filter (not . ("#" `T.isPrefixOf`)) . T.lines
     -- the comment line just before the page-count example
     pageCountMarker = "\n# [page-count]"
+    -- the line just before the example for a book in black alone
+    monoMarker = "\n# [cmy-plates]"
     -- the example lines: "# " taken off the lines of keys and tables
     uncomment = T.unlines . map one . T.lines
     one l = case T.stripPrefix "# " l of

@@ -1,0 +1,16 @@
+# The HTML of the checks of scripts/browser/html-checks.mjs in Chromium and
+# Safari (docs/adr/0234): a paragraph of dashes only and a paragraph with
+# rules, in a vertical book. The fonts are not committed:
+# scripts/browser/build-fixtures.sh copies them.
+chapters = ["book.gm"]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000235"
+title = "縦組みのブラウザの検査"
+language = "ja"
+date = 2026-11-08
+
+[source]
+paragraph-separator = "blank-line"
+
+[targets.html]

@@ -90,8 +90,10 @@ feasiblePaths ps width pass items =
               _ -> skip (j + 1)
     firstBox s b = [c | j <- [s .. b - 1], Box _ c <- [at j]]
     lastBox s b = [c | j <- [b - 1, b - 2 .. s], Box _ c <- [at j]]
+    -- a break with the wrap mark of code is not a hyphen (golem-layout ADR 0034)
     flagged i = case at i of
-      Penalty _ _ h -> h /= NoHyphen
+      Penalty _ _ (PatternHyphen _) -> True
+      Penalty _ _ ExplicitHyphen -> True
       _ -> False
     -- the demerits of the lines from the start to the breaks, or Nothing if one is not feasible
     demeritsOf = go (-1) 2 False 0

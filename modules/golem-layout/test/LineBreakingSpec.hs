@@ -74,7 +74,8 @@ lineBreakingTests =
       kinsokuTests,
       trailingSpaceTests,
       lowLineTests,
-      apostropheTests
+      apostropheTests,
+      penaltyWidthTests
     ]
 
 -- | The setting of the defaults: strict kinsoku, no hanging, no protrusion, no span.
@@ -96,6 +97,7 @@ shapes s run = map shape (itemsOf False s 0 run 0)
         "|" <> show p <> case h of
           PatternHyphen _ -> "P"
           ExplicitHyphen -> "E"
+          WrapMark m -> "W" <> T.unpack m
           NoHyphen -> ""
 
 -- | The glue that fills the last line.
@@ -187,6 +189,7 @@ shapeOf = \case
     "|" <> show p <> case h of
       PatternHyphen _ -> "P"
       ExplicitHyphen -> "E"
+      WrapMark m -> "W" <> T.unpack m
       NoHyphen -> ""
 
 -- | The end of a paragraph, as 'shapes' writes it.
@@ -236,9 +239,10 @@ lowLineTests =
         breaksIn look0 {lkCode = True} "__init__" @?= []
         breaksIn look0 {lkCode = True} "_private" @?= []
         breaksIn look0 {lkCode = True} "a__b" @?= [("a__", 100)],
-      testCase "U1: in code, a first run of low lines before Japanese text is no break; one between two characters is" $ do
-        breaksIn look0 {lkCode = True} "_あ" @?= []
-        breaksIn look0 {lkCode = True} "あ_b" @?= [("あ_", 100)],
+      -- golem-layout ADR 0034 breaks before a Japanese character after a first run of low lines too, and after a Japanese character
+      testCase "U1: in code, a first run of low lines before Japanese text is a break of 100 (golem-layout ADR 0034); one between two characters is" $ do
+        breaksIn look0 {lkCode = True} "_あ" @?= [("_", 100)]
+        breaksIn look0 {lkCode = True} "あ_b" @?= [("あ", 0), ("あ_", 100)],
       testCase "U3: lines broken after the low lines end with no hyphen and join into the word" $ do
         let (_, _, br) = breakInput (Input plain False 4 0 ["THIRD_PARTY_LICENSES"] 0)
         map lineText (brLines br) @?= ["THIRD_", "PARTY_", "LICENSES"]
@@ -295,3 +299,34 @@ apostropheTests =
         shapes plain ["I’ll"] @?= ["I’ll", "|10000", fil, "|-10000"]
         linesIn plain 2 ["aaa", " ", "as’"] @?= ["aaa", "as’"]
     ]
+
+{- | The node a line overfull only by the width of the penalty at a break
+stays alive (golem-layout ADR 0036): the items of its N1 to N3 by hand, a
+box of 1 em, a penalty of 0 as wide as given, a box of 1/2 em, the same
+penalty, a box of the width given and the end, in lines of 2 em.
+-}
+penaltyWidthTests :: TestTree
+penaltyWidthTests =
+  testGroup
+    "the width of a penalty (golem-layout ADR 0036)"
+    [ testCase "N1, N2: a penalty of 1 em, wider than the box after it, leaves the line of the whole paragraph, which fits" $
+        linesOf half em @?= [[em, half, half]],
+      testCase "N1, N2: a penalty of 1/4 em gives the one line too" $
+        linesOf half quarter @?= [[em, half, half]],
+      testCase "N1: when the line overflows even without the penalty, the paragraph is broken at the first penalty, the line holding its width within the measure" $ do
+        let br = breakWidths em em
+        map boxesOf (brLines br) @?= [[em], [half, em]]
+        filter lineOverfull (brLines br) @?= []
+        [sum (map itemWidth (lineItems l)) | l <- take 1 (brLines br)] @?= [2 * em],
+      testCase "N3: with penalties of no width, the line of the whole paragraph, as when a node overfull at a break dies" $
+        linesOf half 0 @?= [[em, half, half]]
+    ]
+  where
+    em = fs
+    half = Sp (unSp fs `div` 2)
+    quarter = Sp (unSp fs `div` 4)
+    box w = Box w (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
+    itemsWith lastBox penW = [box em, Penalty penW 0 NoHyphen, box half, Penalty penW 0 NoHyphen, box lastBox] <> finish
+    breakWidths lastBox penW = breakParagraph defaultParams (const (2 * em)) (itemsWith lastBox penW)
+    boxesOf l = [w | Box w _ <- lineItems l]
+    linesOf lastBox penW = map boxesOf (brLines (breakWidths lastBox penW))

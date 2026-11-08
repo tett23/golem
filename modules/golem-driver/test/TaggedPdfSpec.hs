@@ -273,11 +273,15 @@ withoutNotes e = e {seKids = [k' | k <- seKids e, Just k' <- [keep k]]}
 orphanMessage :: Int -> T.Text
 orphanMessage n = "構造の木にない内容を描きました（" <> T.pack (show n) <> " か所）。Golem の誤りです。この入力を添えて報告してください"
 
--- | The fixtures of test/fixtures that are books, but the public-domain books (BuildSpec builds them).
+{- | The fixtures of test/fixtures that are books, but the public-domain
+books (BuildSpec builds them) and epub-forms, whose sample plugin is
+loaded from a cache that only golem-driver-global-test can point
+XDG_CACHE_HOME at (docs/adr ADR 0232); that suite builds it.
+-}
 fixtureBooks :: IO [FilePath]
 fixtureBooks = do
   names <- listDirectory "test/fixtures"
-  filterM (\n -> doesFileExist ("test/fixtures" </> n </> "manifest.toml")) (filter (/= "pd") names)
+  filterM (\n -> doesFileExist ("test/fixtures" </> n </> "manifest.toml")) (filter (`notElem` ["pd", "epub-forms"]) names)
 
 orphanTests :: [TestTree]
 orphanTests =

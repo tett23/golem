@@ -21,6 +21,7 @@ library
                     Golem.Pdf.Import
                     Golem.Pdf.Marks
                     Golem.Pdf.Number
+                    Golem.Pdf.Paint
                     Golem.Pdf.Object
                     Golem.Pdf.Rect
                     Golem.Pdf.Sha1
@@ -48,6 +49,7 @@ test-suite golem-pdf-test
   other-modules:    DrawingSpec
                     ImageSpec
                     ImportSpec
+                    PaintSpec
                     SecuritySpec
                     UuidSpec
   -- GHC.Stats measures what reading a hostile image allocates (docs/adr ADR 0035)

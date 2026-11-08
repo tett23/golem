@@ -80,7 +80,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 [G02005](#g02005) は、prod でだけ出る警告である。
 
 09 のコードは、`golem preflight` だけが出す（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
-[G09002](#g09002) から [G09018](#g09018) の重大度は、プリフライトの設定（`preflight.toml`）で決まり、`Golem.Syntax.Diagnostic.preflightCodes` にまとめてある。
+[G09002](#g09002) から [G09021](#g09021) の重大度は、プリフライトの設定（`preflight.toml`）で決まり、`Golem.Syntax.Diagnostic.preflightCodes` にまとめてある。
 設定で選べるのはエラー、警告、off で、お知らせと情報は選べない。
 [G09001](#g09001) は設定のファイルの誤りで、常にエラーである。
 09 のコードのメッセージと事実（JSON の `facts`）に書く長さは mm で、小数点以下 2 桁に、等距離なら偶数の側へ丸めて書く。
@@ -5599,7 +5599,7 @@ style.toml の誤りです
 `@style-def` の名前と欄の誤りにも出る。
 誤りのある定義は捨てる。
 
-- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1 から 6 のどれかです: <段>`、`見出しの番号の書式の {<k>} は上の階層の番号です。階層 <段> の見出しには書けません: <書式>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format が正しくありません（<理由>）: <書式>`、`[notes] の mark-size と、mark-style <名前> の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`、`[notes] の mark-size と、注の印の文字スタイル note-mark の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル <名前> には 0 でない indent と first-line-indent を書けません。キャプションと傍注は字下げをしません: <キー>`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
+- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1 から 6 のどれかです: <段>`、`見出しの番号の書式の {<k>} は上の階層の番号です。階層 <段> の見出しには書けません: <書式>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format が正しくありません（<理由>）: <書式>`、`[notes] の mark-size と、mark-style <名前> の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`、`[notes] の mark-size と、注の印の文字スタイル note-mark の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル <名前> には 0 でない indent と first-line-indent を書けません。キャプションと傍注は字下げをしません: <キー>`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください`、`文字スタイルの wrap-mark は code と based-on で code に行き着く文字スタイルにだけ書けます: <名前>` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りと Golem が値の読み込みで調べる誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置である。二つのキーの組み合わせの誤りは、文言が直すよう求めているキーの値の位置（`columns` と `column-gap` では `columns`）に出す。読み込んだ後の検査では、直すべき値の位置であり、その値が書かれていなければそのスタイルなどの表の見出しの位置、それもなければ `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
 - ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0118](adr/0118-ref-page-numerals-in-vertical-text.md)（`[numbers]` の `ref-page`）、[ADR 0188](adr/0188-headings-beyond-level-3.md)（`[headings.N]` の階層と見出しの番号の書式の `{k}`）である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
@@ -5615,6 +5615,7 @@ style.toml の誤りです
 - 段落スタイルの `align` に九つのほかの値を書いたか、`space-before` か `space-after` に負の数を、`end-indent` に負の長さを書いた（[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。段落スタイル `code` に `align`、`space-before`、`space-after`、`end-indent` を書いた場合も同じである。
 - `border` か `border-width` を、`code` のほかの段落スタイルに書いた。`border-width` を zw で書いた（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 - 文字スタイルの `background` か `padding` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。文字スタイルの `background` に `true` を書いた。文字スタイルの `padding` が負であるか、寸法として読めない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
+- 文字スタイルの `wrap-mark` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。`wrap-mark` を文字列で書いていない（[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)）。
 - `[code]` か `[code.colors]` に未知のキーを書いた。`[code]` の `line-numbers` が真偽値でない。`[code]` の `number` が `{n}` などの差し込みを含まない。
 - `[hidden-folio]` の `size` か `gutter` を `zw` で書いたか、0 以下にしたか、寸法として読めない値にした。`pages` に `unnumbered` と `all` のほかの値を書いた（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。`gutter` が `size` の半分より小さい誤りは [G03029](#g03029) である。
 - 罫線の指定（`[notes.rule]`）で、`length` が寸法として読めないか 0 以下、`weight` が寸法として読めないか 0 以下か `zw`、`space-before` か `space-after` が寸法として読めないか負である。未知のキーを書いた。`[notes.rule]` に `length` を書いていない（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
@@ -8852,13 +8853,12 @@ HTML、EPUB、プレーンテキストのターゲットと、`golem check`、LS
 ### 主な原因
 
 - 分割できない長い語や URL がある。
-- 空白のない和文を、本文の中のコード（`[code: …]`）に書いた。本文の中のコードは、空白と `/` の後でしか改行しない。
+- 長い識別子を本文の中のコード（`[code: …]`）に書いた。コードの欧文の並びは、空白、`/` の後、`_` の連なりの後でしか改行しない。
 - 行長が短い。
 
 ### 直し方
 
 語を分けられるようにするか、文を書き換える。
-本文の中のコードの和文は、空白を入れるか、コードの外に出す。
 URL の文字スタイルの `tracking` を負にして、字の送りを詰める方法もある。
 
 ## G07106
@@ -10044,7 +10044,10 @@ PDF/X-4 の要件を満たしていません
 
 組んだ PDF が、[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) の PDF/X-4 の要件のどれかを満たさない。
 `Golem.Pdf.X4.verify` が、書く前の PDF のオブジェクトを検査する。
-項目は、PDF のバージョン、出力インテントとその ICC プロファイル、XMP の `GTS_PDFXVersion` と `Trapped`、各ページのボックス、フォントの埋め込み、ICC プロファイルのない RGB、暗号化と JavaScript と外部への参照である。
+項目は、PDF のバージョン、出力インテントとその ICC プロファイル、XMP の `GTS_PDFXVersion` と `Trapped`、各ページのボックス、ICC プロファイルのない RGB、暗号化と JavaScript と外部への参照である。
+フォントの埋め込みは、この検査でなく [G09019](#g09019) が出す（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
+`Golem.Pdf.X4.verify` はフォントの埋め込みも要件として返すが、golem-preflight の `pdf-x` の検査がそれを除く。
+したがって、`pdf-x` を `error`、`font-embedding` を `off` にした設定では、埋め込んでいないフォントは報告されない。
 JavaScript と外部への参照の禁止の名前は、`JavaScript`、`JS`、`URI`、`Launch`、`GoToR` である。
 ただし、ページの `/Annots` にあるリンクの注釈の `/A` が `/S /URI` のアクションであれば、その中の `URI` は数えない（[docs/adr/0182](adr/0182-external-links.md)）。
 ほかの位置の `URI` と、注釈の中のほかの禁止の名前は数える。
@@ -10174,3 +10177,100 @@ v1 の表の罫線（0.6pt と 0.3pt）は、既定の 0.1mm より太い。
 ### 直し方
 
 印刷所の求める太さを確かめる。
+
+## G09019
+
+フォントを埋め込んでいません
+
+- 重大度: プリフライトの設定による（basic と print の既定はエラー）
+- 状態: 使用中
+
+### 意味
+
+組んだ PDF のフォントの記述子が、`FontFile`、`FontFile2`、`FontFile3` のどれも持たない。
+出力インテントの有無によらず出す。
+golem-pdf の `Golem.Pdf.unembeddedFonts` が、書く前の PDF のオブジェクトを検査する。
+記述子の `FontName` ごとに一つ、オブジェクトの順に出す。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
+事実は `font`（記述子の `FontName`）である。
+Golem はすべてのフォントを埋め込み、取り込む PDF の図版の埋め込まないフォントも [G08010](#g08010) で拒むので、今の Golem の出力ではこの diagnostic は出ない。
+Golem の誤りでこの性質が崩れたときに、入稿の前に気づくための検査である。
+
+- メッセージ: `フォントを埋め込んでいません: <FontName>`
+- 段階とモジュール: プリフライト（golem-pdf の `Golem.Pdf.Paint`、golem-preflight の `Golem.Preflight`）
+- ADR: [docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)
+
+### 主な原因
+
+- Golem の誤り。
+
+### 直し方
+
+再現する原稿とともに、Golem の誤りとして報告する。
+
+## G09020
+
+特色の色空間があります
+
+- 重大度: プリフライトの設定による（print の既定はエラー、basic の既定は off）
+- 状態: 使用中
+
+### 意味
+
+組んだ PDF のオブジェクトに、特色の色材を持つ `Separation` か `DeviceN` の色空間がある。
+色材の名前が `All`、`None`、`Cyan`、`Magenta`、`Yellow`、`Black` のものは数えない。
+ページで使われているかは問わない。
+golem-pdf の `Golem.Pdf.spotColorants` が、書く前の PDF のすべてのオブジェクトを検査する。
+色材の名前ごとに一つ、見つけた順に出す。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
+事実は `colorant`（色材の名前）である。
+Golem はプロセスカラーだけを書き、取り込む PDF の図版の特色も [G08010](#g08010) で拒むので、今の Golem の出力ではこの diagnostic は出ない。
+
+- メッセージ: `特色の色空間があります: <色材の名前>`
+- 段階とモジュール: プリフライト（golem-pdf の `Golem.Pdf.Paint`、golem-preflight の `Golem.Preflight`）
+- ADR: [docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)
+
+### 主な原因
+
+- Golem の誤り。
+
+### 直し方
+
+再現する原稿とともに、Golem の誤りとして報告する。
+
+## G09021
+
+C、M、Y の版に出る色があります
+
+- 重大度: プリフライトの設定による（basic と print の既定は off）
+- 状態: 使用中
+
+### 意味
+
+墨一色で刷る本のための検査である。
+ページの内容のストリームの塗りか線の色に、C、M、Y の版に出るものがある。
+golem-pdf の `Golem.Pdf.paintsOf` が、書く前の PDF のページの内容のストリームの色の演算子と色空間を読む。
+次の色を数える。
+
+- `DeviceCMYK` で、C、M、Y の成分のどれかが 0 でない色。
+- `ICCBased` の 4 成分で、初めの三つの成分のどれかが 0 でない色。
+- `DeviceRGB`、`ICCBased` の 3 成分、`Lab`、`Pattern`、`Indexed`、`DeviceN`、`All` でない `Separation` の色。成分の値によらない。
+
+`DeviceGray`、`ICCBased` の 1 成分、`Separation` の `All` は数えない。
+Form XObject の中の色（PDF と SVG の図版）と画像も数えない。
+図版の色空間は [G09008](#g09008) が受け持つので、墨一色の本では `[image-color-space]` の `allowed` を `["gray"]` にする。
+色空間と成分の組ごとに一つ、最初に現れた順に出す。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
+事実は `color`（メッセージの色の文字列）と `pdf-pages` である。
+
+- メッセージ: `C、M、Y の版に出る色があります: <色>（PDF の <ページ> ページ目）`。`<色>` は `DeviceCMYK 0.2 0 0 1` のように色空間と成分を空白でつなぐ。値の等しいスウォッチが紙面で使われていれば、`accent、DeviceCMYK 0.2 0 0 1` のようにスウォッチの名前を前に付ける
+- 段階とモジュール: プリフライト（golem-pdf の `Golem.Pdf.Paint`、golem-preflight の `Golem.Preflight`）
+- ADR: [docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)
+
+### 主な原因
+
+- 墨一色の本で、C、M、Y の成分を持つスウォッチを文字、罫線、地の色に使った。
+
+### 直し方
+
+スウォッチを墨だけの値（`cmyk = [0, 0, 0, 100]` など）に直す。

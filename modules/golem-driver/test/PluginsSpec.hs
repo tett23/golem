@@ -29,7 +29,7 @@ import Golem.TestSupport.Env (withEnv)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import Golem.Typeset (PdfInput (..), layoutPages)
 import Support
-import System.Directory (createFileLink, listDirectory)
+import System.Directory (createDirectoryIfMissing, createFileLink, listDirectory)
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -1063,6 +1063,44 @@ dataTests =
         map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101"]
   ]
 
+-- | The SHA-256 of a file in hexadecimal, as plugins.lock writes it.
+sha256Hex :: BS.ByteString -> T.Text
+sha256Hex = T.pack . concatMap (printf "%02x") . BS.unpack . sha256
+
+{- | The fixture epub-forms, whose EPUB CI runs epubcheck on (docs/adr ADR
+0232): its plugin glossary is plugins/wasm/glossary.wasm, put in a cache
+by the SHA-256 of its plugins.lock, so that the url is not fetched.
+-}
+epubFormsTests :: [TestTree]
+epubFormsTests =
+  [ testCase "I12: plugins.lock of epub-forms has the SHA-256 of plugins/wasm/glossary.wasm" $ do
+      wasm <- BS.readFile "../../plugins/wasm/glossary.wasm"
+      lock <- TIO.readFile "test/fixtures/epub-forms/plugins.lock"
+      assertBool (T.unpack lock) (("sha256 = \"" <> sha256Hex wasm <> "\"") `T.isInfixOf` lock),
+    testCase "I12: the EPUB of epub-forms has a citation linking into another file, a navigation of depth 1 and the list of a channel" $
+      withSystemTempDirectory "golem-epub-forms" $ \tmp -> do
+        copyTree "test/fixtures/epub-forms" tmp
+        wasm <- BS.readFile "../../plugins/wasm/glossary.wasm"
+        createDirectoryIfMissing True (tmp </> "cache/golem/plugins")
+        BS.writeFile (tmp </> "cache/golem/plugins" </> T.unpack (sha256Hex wasm) <> ".wasm") wasm
+        r <- withEnv "XDG_CACHE_HOME" (tmp </> "cache") $ build (defaultOptions tmp) {optTargets = Just [TargetEpub]}
+        map diagCode (brDiagnostics r) @?= []
+        archive <- toArchive . BL.fromStrict <$> BS.readFile (tmp </> "build/epub/book.epub")
+        let entry path = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath path archive)
+            chapter = entry "OEBPS/chapters/01.xhtml"
+            back = entry "OEBPS/chapters/99.xhtml"
+            nav = entry "OEBPS/nav.xhtml"
+        -- the citation of 01.gm links to the bibliography of 99.gm (golem-html ADR 0003)
+        assertBool (T.unpack chapter) ("href=\"../chapters/99.xhtml#cite-knuth1981\"" `T.isInfixOf` chapter)
+        assertBool (T.unpack back) ("id=\"cite-knuth1981\"" `T.isInfixOf` back)
+        -- @toc depth=1: the headings of levels 2 and 3 are not in the navigation (golem-epub ADR 0002)
+        assertBool (T.unpack nav) ("章一" `T.isInfixOf` nav)
+        assertBool (T.unpack nav) (not (any (`T.isInfixOf` nav) ["節一", "項一", "語の一覧"]))
+        -- the channel of the plugin, with its entries (golem-doc ADR 0007)
+        assertBool (T.unpack back) ("data-channel=\"glossary\"" `T.isInfixOf` back)
+        assertBool (T.unpack back) (all (`T.isInfixOf` back) ["組版", "行分割"])
+  ]
+
 pluginTests :: [TestTree]
 pluginTests =
   channelTests
@@ -1071,6 +1109,7 @@ pluginTests =
     <> anyDataTests
     <> checkDataTests
     <> [testGroup "the sample plugin glossary (docs/adr/0126)" glossaryTests]
+    <> [testGroup "the fixture epub-forms (docs/adr ADR 0232)" epubFormsTests]
     <> [testGroup "the sample plugin sou-ruby (docs/adr/0130)" souRubyTests]
     <> [testGroup "the sample plugin first-ruby (docs/adr/0131)" firstRubyTests]
     <> contextTests

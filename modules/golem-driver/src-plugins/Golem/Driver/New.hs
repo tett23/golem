@@ -130,10 +130,17 @@ preflightToml lang =
            pageCountIntro,
            "# [page-count]",
            "# severity = \"error\"",
-           "# multiple-of = 16"
+           "# multiple-of = 16",
+           "",
+           monoIntro,
+           "# [cmy-plates]",
+           "# severity = \"error\"",
+           "#",
+           "# [image-color-space]",
+           "# allowed = [\"gray\"]"
          ]
   where
-    (head', name, examplesIntro, pageCountIntro) = case lang of
+    (head', name, examplesIntro, pageCountIntro, monoIntro) = case lang of
       Japanese ->
         ( [ "# golem preflight の設定です（入稿の前の検査）。",
             "# 書かなかった値は based-on の設定から引き継ぎます。",
@@ -143,7 +150,8 @@ preflightToml lang =
           [ "# 次の行は print の主な値を書き写したものです。",
             "# 行頭の # を外して、印刷所の求める値に書き換えます。"
           ],
-          "# ページ数を折の単位にそろえる印刷所では、次の行の # を外します（print では off です）。"
+          "# ページ数を折の単位にそろえる印刷所では、次の行の # を外します（print では off です）。",
+          "# 墨一色で刷る本では、次の行の # を外します。C、M、Y の版に出る色と、グレースケールでない図版を見つけます。"
         )
       English ->
         ( [ "# The rules of golem preflight (the checks before handing off to the printer).",
@@ -154,7 +162,8 @@ preflightToml lang =
           [ "# The lines below copy the main values of print.",
             "# Take the # off the start of a line and write the value your printer asks for."
           ],
-          "# If your printer wants the pages in multiples of a signature, take the # off the lines below (off in print)."
+          "# If your printer wants the pages in multiples of a signature, take the # off the lines below (off in print).",
+          "# For a book printed in black alone, take the # off the lines below. They find colours on the C, M and Y plates, and figures that are not grayscale."
         )
 
 -- | A file to fetch into a new project.
