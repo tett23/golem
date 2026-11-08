@@ -12,9 +12,6 @@ on:
   schedule:
     - cron: "17 20 * * *"
   workflow_dispatch:
-  # TEMPORARY: the verification of the implementation pull request
-  push:
-    branches: [impl-0234]
 
 # It reads the repository and the runs and artifacts of ci.yml and of this
 # workflow; it writes nothing but its own artifact and its caches.
@@ -26,13 +23,15 @@ concurrency:
   group: browser
   cancel-in-progress: false
 
+# The times of the jobs are twice those measured in the pull request of the
+# implementation (docs/ci-timings/2026-11-08-browser-workflow.md).
 jobs:
   # the inputs of both browsers: golem.wasm, the native list, the HTML of
   # the manuals and of the fixtures of scripts/browser/fixtures, built with
   # the golem of ci.yml (golem-linux-x86_64, docs/adr/0231)
   prepare:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 2
     outputs:
       run: ${{ steps.needed.outputs.run }}
     steps:
@@ -48,7 +47,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           EVENT: ${{ github.event_name }}
         run: |
-          if [ "$EVENT" = workflow_dispatch ] || [ "$EVENT" = push ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA" browser.yml); fi
+          if [ "$EVENT" = workflow_dispatch ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA" browser.yml); fi
           echo "run=$RUN" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v7
         if: steps.needed.outputs.run == 'true'
@@ -67,8 +66,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          RUN=42478712741
-          [ -n "$RUN" ] || for id in $(gh run list --workflow ci.yml --branch main --event push --status success --limit 30 --json databaseId --jq '.[].databaseId'); do
+          RUN=
+          for id in $(gh run list --workflow ci.yml --branch main --event push --status success --limit 30 --json databaseId --jq '.[].databaseId'); do
             names=" $(gh api "repos/$GH_REPO/actions/runs/$id/artifacts?per_page=100" --jq '[.artifacts[] | select(.expired | not) | .name] | join(" ")') "
             all=true
             for a in golem-wasm wasm-native-list manual manual-dev golem-linux-x86_64; do
@@ -102,7 +101,7 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.run == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
@@ -187,7 +186,7 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.run == 'true'
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v7
         with:
