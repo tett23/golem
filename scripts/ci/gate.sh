@@ -13,7 +13,7 @@
 # which deletes the stale dist- caches of main, is in neither
 # (docs/adr/0228).
 set -eu
-NAMES="changes scripts-linux build determinism visual release-scripts scripts-macos format plugins editors verapdf wasm"
+NAMES="changes scripts-linux build determinism visual release-scripts scripts-macos format plugins editors editors-lsp verapdf wasm"
 if [ "${1-}" = --names ]; then
   printf '%s\n' $NAMES
   exit 0
