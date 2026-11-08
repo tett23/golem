@@ -17,6 +17,7 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Project.Style (dimToSp, parseDim)
 import Golem.Syntax
+import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import Golem.Typeset (PdfLayout (..), SetLine (..), Shaping (..))
 import Support hiding (codesOf)
 import System.FilePath ((</>))
@@ -499,7 +500,22 @@ blankLineTests =
 
 breakTests :: [TestTree]
 breakTests =
-  [ testCase "PDF: a page break puts the second paragraph on the first line of page 2" $ do
+  [ testCase "T5: a space before an index mark at the paragraph end stays in plain text and HTML; in the PDF the full line is the last and the index gives its page (golem-layout ADR 0032)" $ do
+      -- twelve characters fill the line of horizontalStyle: the space after them made an empty last line
+      let source = "ああああああああああああ [index reading=あ: あ]\n\n@page-break\n\n@index\n"
+      withSystemTempDirectory "golem-trailing" $ \tmp -> do
+        writeProject tmp (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["pdf", "html", "text"]})) horizontalStyle source []
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml, TargetText], optFonts = fakeProvider}
+        map diagCode (filter isError (brDiagnostics r)) @?= []
+        let readText p = TE.decodeUtf8 <$> BS.readFile p
+        txt <- mapM readText [p | p <- brWritten r, "a.txt" `isSuffixOf` p]
+        html <- mapM readText [p | p <- brWritten r, "a.xhtml" `isSuffixOf` p]
+        assertBool (show txt) (not (null txt) && all ("ああ " `T.isInfixOf`) txt)
+        assertBool (show html) (not (null html) && all ("ああ " `T.isInfixOf`) html)
+      pages <- pagesMini "" horizontalStyle source [] Map.empty >>= either (assertFailure . show) pure
+      take 1 pages @?= [["ああああああああああああ"]]
+      assertBool (show pages) (any (\l -> "あ" `T.isPrefixOf` l && "1" `T.isSuffixOf` l) (concat (drop 1 pages))),
+    testCase "PDF: a page break puts the second paragraph on the first line of page 2" $ do
       r <- pagesMini "" fiveLines "あ\n\n@page-break\n\nい\n" [] Map.empty
       pages <- either (assertFailure . show) pure r
       length pages @?= 2
