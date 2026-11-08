@@ -15,8 +15,11 @@ import { capture, inkBox } from './pixels.mjs';
 export const PAD = 2;
 export const SCALE = 2;
 // The largest difference of the numbers of ink pixels, as a fraction of the
-// larger, measured on the six figures in both browsers (docs/adr/0234).
-export const INK_LIMIT = 0.25;
+// larger. On 2026-11-08 the six figures of the developer manual differed by
+// at most 11.35% in Chromium 157.0.8103.38 and 18.96% in Safari 27.2
+// (docs/ci-timings/2026-11-08-browser-workflow.md); one limit for both
+// browsers, just above the larger (docs/adr/0234 section 4).
+export const INK_LIMIT = 0.2;
 
 export const HARNESS = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"/><style>

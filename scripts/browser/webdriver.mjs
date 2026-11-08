@@ -58,10 +58,14 @@ Promise.resolve().then(() => (${expression})).then(
   (e) => done({ ok: false, e: String(e && e.stack || e) }));`;
 }
 
+// The script timeout of WebDriver is 30 s by default; golem.wasm builds a
+// book in a page for longer (docs/adr/0234 section 5).
+export const TIMEOUTS = { script: 600000, pageLoad: 300000 };
+
 export async function connect(base, { quit = async () => {} } = {}) {
   let created;
   try {
-    created = await command(base, 'POST', '/session', { capabilities: { alwaysMatch: { browserName: 'safari' } } });
+    created = await command(base, 'POST', '/session', { capabilities: { alwaysMatch: { browserName: 'safari', timeouts: TIMEOUTS } } });
   } catch (e) {
     await quit();
     throw e;

@@ -106,6 +106,11 @@ for name in kanikosen determinism pdf complex-vertical complex-horizontal broken
     pdf=$WORK/out.pdf
     [ -f "$pdf" ] || pdf=
   fi
+  # a host that failed (not the exit code of golem build) says why
+  if [ "$MODE" != native ] && [ "$code" -gt 1 ]; then
+    echo "compare.sh: $name: the host exited $code:" >&2
+    cat "$WORK/json" >&2
+  fi
   if [ "$MODE" = browser ]; then
     sha_line=$(head -n 1 "$WORK/sha")
     printf '%s  %s\n' "${sha_line:--}" "$name/pdf"

@@ -42,10 +42,10 @@ describe('webdriver.mjs against a fake server', () => {
     ? { status: 200, value: { sessionId: 'S1', capabilities: { browserName: 'Safari', browserVersion: '27.2' } } }
     : undefined);
 
-  test('a new session asks for safari and gives browserVersion', async () => {
+  test('a new session asks for safari with the timeouts of the checks and gives browserVersion', async () => {
     log = []; answers = session;
     const page = await connect(base);
-    assert.deepEqual(log[0], { method: 'POST', url: '/session', body: { capabilities: { alwaysMatch: { browserName: 'safari' } } } });
+    assert.deepEqual(log[0], { method: 'POST', url: '/session', body: { capabilities: { alwaysMatch: { browserName: 'safari', timeouts: { script: 600000, pageLoad: 300000 } } } } });
     assert.equal(page.browserVersion, '27.2');
     assert.equal(page.failures(), null);
   });
