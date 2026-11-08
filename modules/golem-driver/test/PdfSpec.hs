@@ -305,6 +305,15 @@ characterFeatureTests =
         -- 10pt: the box of （ is 5pt
         ([a], [b]) -> b - a @?= 5
         other -> assertFailure (show other),
+    testCase "PDF: 」 follows ・ by the half-em box of ・ and a quarter em (golem-layout ADR 0040 A4)" $ do
+      content <- miniPdf fakeProvider True horizontalStyle "漢・」漢\n" [] >>= fmap BS.concat . inflateAll
+      let pos c = [ptToRational (dX d) | d <- drawnGlyphs content, dGlyph d == fromEnum c]
+      case (pos '・', pos '」') of
+        -- 10pt: the box of ・ is 5pt and the aki after it 2.5pt; the glyph
+        -- of ・ is drawn a quarter em before its box, that of 」 at its box
+        -- (no aki: 7.5)
+        ([a], [b]) -> b - a @?= 10
+        other -> assertFailure (show other),
     testCase "shaping without palt or vpal gives no offsets, horizontal or vertical (golem-driver ADR 0020)" $ do
       noto <- notoFonts
       han <- featureFonts

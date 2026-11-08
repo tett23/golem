@@ -79,7 +79,9 @@ akiPositions = \case
 P is closing, full stop and comma, O opening, M middle dot, J the other
 Japanese classes and W western. Two opening brackets have no aki, and a
 closing bracket before a middle dot and a middle dot before an opening
-bracket a quarter em, as JLReq 3.1.4 (golem-layout ADR 0039).
+bracket a quarter em, as JLReq 3.1.4 (golem-layout ADR 0039). A middle
+dot before a closing bracket, a full stop or a comma has a quarter em, as
+the table 1 of JLReq (golem-layout ADR 0040).
 -}
 defaultAkiSet :: AkiSet
 defaultAkiSet = foldl' (\s (b, a, x) -> withAkiRule b a x s) (AkiSet Map.empty) rules
@@ -102,6 +104,7 @@ defaultAkiSet = foldl' (\s (b, a, x) -> withAkiRule b a x s) (AkiSet Map.empty) 
         (chars [Closing], m, Aki 0 (1 / 4) (1 / 4)),
         (m, j <> w, Aki 0 (1 / 4) (1 / 4)),
         (m, m, Aki 0 (1 / 2) (1 / 2)),
+        (m, p, Aki 0 (1 / 4) (1 / 4)),
         (j, w, Aki (1 / 8) (1 / 4) (1 / 2)),
         (w, j, Aki (1 / 8) (1 / 4) (1 / 2)),
         ([AkiParagraphStart], o, Aki 0 (1 / 2) (1 / 2)),
