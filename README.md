@@ -419,6 +419,9 @@ Git のリポジトリの外で組むときは、環境変数 `GOLEM_MANUAL_COMM
 二つのマニュアルの SVG の図は、`manual/images/src/` と `manual-dev/images/src/` の SVG が原稿である。
 SVG を直したら、`sh scripts/manual/outline-figures.sh` で、文字を輪郭にした一つ上の `images/` の SVG を作り直し、両方をコミットする（`sh scripts/manual/outline-figures.sh manual workflow` のように、マニュアルと図を選べる）。
 このスクリプトは Inkscape 1.x を使うので、図を直すときだけ Inkscape を入れておく（`INKSCAPE` で実行ファイルを選べる）。
+Inkscape に渡す前に、`scripts/manual/outline-prepare.sh` が原稿の写しを直し、輪郭の文字を Chromium が原稿を描く位置に置く。
+このため、原稿の `text` の要素は一行に書いて中に要素を置かず、`dominant-baseline` と `writing-mode` を決める CSS の規則も一行に書く。
+縦書きの文字列に、隣り合う全角の約物を置かない（置くとスクリプトが止まる）。
 組むときには実行しないので、マニュアルを組むだけなら Inkscape は要らない。
 輪郭の SVG が原稿から作られたことは、`sh scripts/manual/check-figures.sh` で確かめられる（CI も確かめる）。
 

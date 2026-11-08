@@ -54,15 +54,17 @@ fi
 for name in "$@"; do
   SRC=$DIR/images/src/$name.svg
   SUM=$(sha256sum "$SRC" | cut -d ' ' -f 1)
-  # Inkscape does not read @font-face, and an outlined SVG must not keep it (G08011)
-  sed '/@font-face/d' "$SRC" > "$TMP/$name.svg"
+  # outline-prepare.sh makes Inkscape put the text where Chromium draws the
+  # source, and removes @font-face, which Inkscape does not read and an
+  # outlined SVG must not keep (G08011)
+  sh "$HERE/outline-prepare.sh" < "$SRC" > "$TMP/$name.svg"
   FONTCONFIG_FILE="$TMP/fonts.conf" HOME="$TMP" "$INKSCAPE" --export-text-to-path --export-plain-svg \
     --export-filename="$TMP/$name.out.svg" "$TMP/$name.svg" >/dev/null 2>&1
   {
     # the XML declaration, then the comment that check-figures.sh reads
     sed -n '1{/^<?xml/p}' "$TMP/$name.out.svg"
     printf '<!-- Made by scripts/manual/outline-figures.sh from images/src/%s.svg (sha256 %s) with %s. Do not edit by hand. -->\n' "$name" "$SUM" "$VERSION"
-    sed '1{/^<?xml/d}' "$TMP/$name.out.svg"
+    sed '1{/^<?xml/d}' "$TMP/$name.out.svg" | sh "$HERE/outline-prepare.sh" --strip
   } > "$DIR/images/$name.svg"
   echo "$PROJECT/images/$name.svg"
 done
