@@ -926,6 +926,9 @@ WebDriver にはそれを受け取る命令がないので、Safari では確か
 `chromium` のジョブは、この起動の引数を版の表に書く。
 Safari では、縦書きの文字列を測るが判定には含めず、その数と差の最大をジョブの要約に書く。
 Safari は、SVG の縦書きの正立の字を Chromium と Inkscape と違う量で送るためである。
+Safari の横書きの文字列は、中心と大きさの差の上限を CSS の 8 画素として判定する（`scripts/browser/svg-text.mjs` の `SAFARI`）。
+Safari は、Chromium に合わせた輪郭から、横書きの文字列を最大で 5.5 画素離して描く。
+8 画素の上限は、`halt` が当たらずに約物が全角のまま残る誤り（20px の字で 20 画素）や、別のフォントで描かれた図を見つけるためのものである。
 Safari の版は固定せず、ランナーの像に従う。
 `safari` のジョブは、macOS の版、像の版、Safari の版、WebDriver の `browserVersion` の表をジョブの要約に書き、検査が失敗しても表を残す（`scripts/browser/safari-versions.sh`）。
 
