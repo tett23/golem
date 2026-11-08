@@ -31,6 +31,8 @@ module Golem.Pdf.Writer
     contentStream,
     pageStream,
     structureText,
+    contentLeaves,
+    orphanLeaves,
     rectObj,
     pdfTextString,
     documentId,
@@ -648,20 +650,30 @@ contentLeaves = concatMap $ \case
   Artifact _ _ -> []
   Moved _ cs -> contentLeaves cs
 
+{- | The leaves drawn that the structure tree does not have (orphans), in
+the order first drawn, each once (docs/adr ADR 0216). golem reports any
+as G07107 and writes no PDF.
+-}
+orphanLeaves :: StructElem -> [LeafId] -> [LeafId]
+orphanLeaves root drawn =
+  let known = Map.fromList (leafParents root)
+   in nub [l | l <- drawn, Map.notMember l known]
+
 {- | The structure tree with the leaves the pages draw but the tree does
 not have, each a P at the end of the root in the order first drawn, and
 the type of the element of each leaf: the tag of its marked content
-(docs/adr ADR 0183).
+(docs/adr ADR 0183). The orphans are there only to keep the writer total:
+golem calls it only after G07107 found none (docs/adr ADR 0216).
 -}
 withOrphans :: StructElem -> [LeafId] -> (StructElem, LeafId -> Text)
 withOrphans root drawn =
-  let known = Map.fromList (parents root)
-      orphans = nub [l | l <- drawn, Map.notMember l known]
-      tree = root {seKids = seKids root <> [KidElem (structElem SP [KidLeaf l]) | l <- orphans]}
-      types = Map.fromList (parents tree)
+  let tree = root {seKids = seKids root <> [KidElem (structElem SP [KidLeaf l]) | l <- orphanLeaves root drawn]}
+      types = Map.fromList (leafParents tree)
    in (tree, \l -> structTypeName (Map.findWithDefault SP l types))
-  where
-    parents e = [(l, seType e) | KidLeaf l <- seKids e] <> concat [parents c | KidElem c <- seKids e]
+
+-- | Each leaf of a tree with the type of its element.
+leafParents :: StructElem -> [(LeafId, StructType)]
+leafParents e = [(l, seType e) | KidLeaf l <- seKids e] <> concat [leafParents c | KidElem c <- seKids e]
 
 {- | The objects of the structure tree from object @base@ (docs/adr ADR
 0183): the StructTreeRoot, then each element in preorder. The leaves of
