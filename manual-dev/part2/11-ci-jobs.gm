@@ -412,6 +412,9 @@ golem-layout のテストは、段の行の数が 3 から 5、段の数が 1 �
 L7 は、分割の候補の部分集合をすべて調べる素朴な探索と、罰点の和の最小を比べる。
 プルリクエストの CI では部品 2 個までを 4 字までの行で調べ、[code: enum.yml] は毎晩、環境変数 [code: GOLEM_ENUM_LINES_DEPTH=3] で部品 3 個までを 5 字までの行で調べ、[code: GOLEM_ENUM_LINES_SAMPLES] で部品 4 個の段落を 500 万抜き取る。
 違反があれば、テストは最も小さい入力を、[code: LineBreakingSpec] の例に貼れる形で表示する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md]（docs/adr の ADR 0209「和文と欧文の行分割の不変条件を、小さな入力のすべてで確かめる」）]
+本文の中のコードの和文の改行も、同じテストで確かめる。
+和文の約物と仮名、欧文の字、[code: /]、[code: _]、[code: "]、空白の 15 の部品の並びを [code: \[code: …\]] に入れ、禁則の強さと区間の言語のすべてで組み、L1 から L13 と、コードの改行の述語 C1 から C8 が成り立つことを確かめる。
+部品の数と行の幅は、23 の部品の並びと同じである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md]（golem-layout の ADR 0034「本文の中のコードの和文の字のあいだで改行できるようにする」）]
 
 ## 取り消しと時間
 

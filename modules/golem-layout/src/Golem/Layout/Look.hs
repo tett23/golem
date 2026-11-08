@@ -136,7 +136,10 @@ data Look = Look
     -} lkLink :: !(Maybe LinkTarget),
     {- | the language of the span or the block the text is in, as written
     (docs/adr ADR 0187); Nothing is outside a span
-    -} lkLang :: !(Maybe Text)
+    -} lkLang :: !(Maybe Text),
+    {- | the mark at the end of a line that breaks inside inline code at a
+    break other than a space (golem-layout ADR 0034); empty is none
+    -} lkWrapMark :: !Text
   }
   deriving stock (Eq, Ord, Show)
 
@@ -148,8 +151,8 @@ newtype LinkTarget = LinkUri Text
 
 {- | One role for both scripts at a size, upright, regular, default colour,
 metrics kerning, no tracking, no proportional metrics, no baseline shift,
-not code, not a URL, no kenten, no background, no padding, no link and
-outside a language span.
+not code, not a URL, no kenten, no background, no padding, no link,
+outside a language span and no wrap mark.
 -}
 plainLook :: Text -> Sp -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing ""

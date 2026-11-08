@@ -118,36 +118,54 @@ Golem は、最後の行だけの終わりの側の字下げを持たない。
 
 ## 本文の中のコードの和文の改行
 
-この節の TeX と InDesign の振る舞いは、2026-11-08 に文書とソースコードで調べたものであり、どれも実際には組んでいない。
-InDesign は調べた環境で動かせず、TeX の配布も入っていなかった。
-そのため、記述ごとに次のどれに当たるかを付ける。
+この節の TeX の振る舞いは、2026-11-08 に TeX Live 2026 で実際に組んで確かめたものである。
+InDesign の振る舞いは、調べた環境で動かせなかったので、文書から調べたものにとどまる。
+記述ごとに次のどれに当たるかを付ける。
 
+- **観察**：実際に組み、`\showbox` の出力で行の分かれ方とノードを見た。
 - **文書**：公式の文書やマニュアルに書いてある。
-- **ソース**：ソースコードを読んで確かめた。動かしてはいない。
-- **推測**：文書とソースから導いたが、どこにも直接は書いていない。
+- **推測**：観察と文書から導いたが、組んで確かめてはいない。
+
+### 確かめた環境
+
+- Docker のイメージ `texlive/texlive@sha256:07e8062637249c4f780ca59f42cc2ed592bc2dc1db4320769406aee3f98aa70e`（TeX Live 2026）。
+- pLaTeX：e-upTeX 3.141592653-p4.1.2-u2.02-251130-2.6（utf8.euc）、pLaTeX2e <2023-02-14>+1、LaTeX2e <2026-11-01>、pldefs.ltx 2021/01/10 v1.7k、jsarticle.cls 2025/04/27、jarticle.cls 2020/09/30 v1.8f。
+- upLaTeX：同じ e-upTeX（utf8.uptex）、pLaTeX2e <2023-02-14u04>+1、upldefs.ltx 2020/02/01 v1.6v-u02、ujarticle.cls 2020/09/30 v1.8f-u00、jsarticle.cls 2025/04/27（`uplatex` のオプション）。
+- LuaLaTeX：LuaHBTeX 1.24.0、LaTeX2e <2026-11-01>、luatexja.sty 2026-10-29、ltjsarticle.cls 2026-10-25、lltjcore.sty 2026-10-26、lltjp-listings.sty 2025-09-21、lltjp-fancyvrb.sty 2026-04-18。
+- 共通のパッケージ：listings 1.11b（2025/11/14）、fancyvrb 4.8（2026/10/20）、fvextra v1.14.0（2026/02/25）、url 3.4（2013/09/16）。
+- plistings と jlisting は、このイメージに入っていない。pLaTeX と upLaTeX の listings は、素の listings で組んだ。
+
+組み方は三通りである。
+8 字の幅の段落で組んだもの、`\hsize=0pt` にして改行できる位置のすべてで改行させたもの、`\hbox` に入れて字のあいだのペナルティとグルーを見たものである。
+クラスは、pLaTeX では jsarticle と jarticle、upLaTeX では ujarticle と jsarticle、LuaLaTeX では ltjsarticle の五つの組で組んだ。
 
 ### TeX の振る舞い
 
-pLaTeX と upLaTeX のエンジン（pTeX、upTeX）は、和文の行分割を TeX の罰点とグルーで行う。
+`\texttt` の中の和文は、本文の和文と同じ位置で改行する。
 
-- **文書**：pTeX では、禁則を除いて、和文のすべての文字間で改行できる。禁則は、禁則テーブルの `\prebreakpenalty` と `\postbreakpenalty` で表す（『pTeX 系列の解説』）。和文の字のあいだには `\kanjiskip` のグルーが入る。
-- **ソース**：pLaTeX の `\ttfamily` は、和文のファミリを変えない（`plfonts.dtx`）。jsclasses は、`\ttfamily` で和文のファミリをゴシックにする（`jsclasses.dtx`）。どちらでも、`\texttt` の中の和文は、和文の書体と JFM で組まれる。
-- **推測**：`\texttt` と `\verb` の中の和文の字のあいだも、本文と同じく、禁則に当たらなければ罰点 0 で改行できる。JFM のグルー（括弧の前後のアキなど）も、本文と同じく入る。
-- **ソース**：LaTeX の `\verb` の中の空白は改行しない空白（`\nobreakspace`）になる（`ltspace.dtx`）。`\verb` は ASCII の特殊な字のカテゴリーコードだけを変えるので、**推測**として、`\verb` では空白で改行せず、和文の字のあいだで改行する。
+- **観察**：五つの組のすべてで、`\texttt` の中の和文の行の分かれ方は、同じ文字列を本文で組んだものと同じだった。和文の字のあいだはどこでも改行でき、`。`、`、`、`」` の前と `「` の後では改行しなかった。小書きの仮名の前には罰点 150 が入った。
+- **観察**：`\ttfamily` は、jsarticle と ltjsarticle では和文をゴシックに変え、jarticle と ujarticle では変えなかった。どちらでも、改行できる位置は変わらなかった。
+- **観察**：`\texttt` の中でも、和文の字のあいだの `\kanjiskip` と、和文と英字のあいだの `\xkanjiskip` が入った。jsarticle の `\xkanjiskip` は 2.5pt（伸び 1.49994pt、縮み 0.59998pt）である。
+- **観察**：`\texttt` の中の空白では改行した。英字だけの並び（`foo`、`"config.toml"`）の中では改行しなかった。
 
-和文と欧文の字の境は、欧文の字の種類で決まる。
+和文と ASCII の記号の境は、記号の禁則の罰点で決まる。
 
-- **文書**：和文の字と欧文の字のあいだに `\xkanjiskip` を入れてよいかは、欧文の字の `\xspcode` で決まる。pTeX の既定では、英字と数字が両側で許可、ほかの字は両側で禁止である（『pTeX 系列の解説』）。
-- **ソース**：pLaTeX の `kinsoku.tex` は、`(` と `[` を前側だけ、`)`、`]`、`:`、`;`、`,`、`.` などを後側だけ許可にする。`"`、`=`、`/`、`_` などは禁止のままである。`"` には `\prebreakpenalty` 10000 も与える。`\xspcode` が許さないときは、`\xkanjiskip` のグルーを差し込まない（`ptex-base.ch`）。
-- **推測**：`\texttt` の中で、`日本a` と `a日本`、`日本1` の境では改行し、`日本"`、`"日本`、`日本=` の境では改行しない。`日本(` と `)日本` の境では改行する。境には `\xkanjiskip`（jsclasses では四分）のアキが付く。
-- **推測**：`\texttt` の欧文の並びの中は、空白とハイフネーションの位置でだけ分かれる。`cmtt` はハイフネーションしないと見込むが、フォントの定義は読んでいない。
+- **観察**：五つの組のすべてで、`"` の後の和文（`"日`）の前では改行し、和文の後の `"`（`ジ"`）の前では改行しなかった。`"` の前には `\penalty 10000` が入った。pLaTeX の `kinsoku.tex` は `"` に `\prebreakpenalty` 10000 を与えている。
+- **観察**：`(設定)` は `(` の後と `)` の前で改行しなかった。どちらにも `\penalty 10000` が入った。
+- **観察**：pTeX と upTeX は、`"` と和文のあいだに `\xkanjiskip` を入れないが、改行はできた。LuaTeX-ja は、そこに幅 0 のグルーを入れた。
+- **推測**：`=` は禁則の罰点を持たないので、和文と `=` の境でも改行すると見込む。`日本=` の並びは組んでいない。
 
-LuaTeX-ja は、pTeX と境の扱いが違う。
+`\verb` は、空白でだけ改行を止める。
 
-- **ソース**：LuaTeX-ja でも、`\texttt` の中の和文は和文の書体で組まれる（`lltjdefs.sty`、`ltjsclasses.dtx`）。
-- **文書**：`\xkanjiskip` の挿入を抑止する場合でも、行分割を許すために長さ 0 のグルーを入れる（LuaTeX-ja の文書）。**推測**として、欧文の字の種類によらず、禁則の罰点がない限り境で改行する。
-- **ソース**：`ltj-kinsoku.tex` は `"` に `prebreakpenalty` 10000 を与えるので、`日本"` の境では改行しない。
-- **文書**：listings を和文に対応させる `lltjp-listings` は、字を Letter、Other、Kanji、Open、Close に分け、和文の字の前後と和文と欧文の境で行分割を許す。pLaTeX の plistings パッケージは、`lltjp-listings` をもとにしている。
+- **観察**：五つの組のすべてで、`\verb` の中の空白の前には `\penalty 10000` が入り、空白では改行しなかった。和文の字のあいだは `\texttt` と同じく改行でき、禁則も同じく働いた。
+- **観察**：`\verb` の中の和文と英字の境は、pTeX と upTeX では `\xkanjiskip` で改行でき、LuaTeX-ja では幅 0 のグルーで改行できた。
+
+コードを組むパッケージは、エンジンによって振る舞いが分かれる。
+
+- **観察**：LuaLaTeX の listings（`breaklines=true`、lltjp-listings が自動で読まれる）は、和文の字ごとに改行の位置を作り、和文の中でも改行した。行頭の `。`、`、`、`」` と行末の `「` は、3 字から 9 字のどの幅でも起きなかった。`prebreak` と `postbreak` を書くと、和文の中で改行した行の行末と次の行頭にも、その印が付いた。既定では印は付かない。
+- **観察**：pLaTeX と upLaTeX の素の listings は、和文を含む行の字の順序を崩した（`"` が和文の後ろに回るなど）。`prebreak` と `postbreak` を書いても、印は出なかった。和文だけの行では、禁則に当たる改行は起きなかった。
+- **観察**：fancyvrb の `Verbatim` は、和文の中でも改行しなかった。fvextra の `breaklines` は、和文の字のあいだで改行し、続きの行の左に `↪`（`\hookrightarrow`）を付けた。`breakanywhere` を足すと、どのエンジンでも行頭に `。` や `」` が来て、禁則が破れた。
+- **観察**：url パッケージの `\url` は、pTeX と upTeX では和文の字のあいだで改行し、禁則が破れた（行頭の `。`、行末の `「`）。禁則のペナルティのノードが一つもなかった。LuaTeX-ja では、和文の中で改行しなかった。
 
 ### InDesign の振る舞い
 
@@ -161,52 +179,62 @@ InDesign の文書には、本文の中のコードや、等幅の書体を当�
 
 ### Golem の振る舞い
 
-Golem は、本文の中のコード（文字スタイル `code`）の文字列で、隣り合う二つの字の少なくとも一方が和文の字であれば、本文と同じ禁則に当たらない限り、罰点 0 で改行できるようにする。
+Golem は、本文の中のコード（文字スタイル `code`）の文字列で、隣り合う二つの字の少なくとも一方が和文の字であれば、本文と同じ禁則に当たらない限り、罰点 0 で改行できる。
 和文の字どうしのあいだも、和文と欧文の字の境も、同じ規則である。
 ASCII の字は、記号も含めてすべて JLReq の欧文用文字（cl-27）として扱う。
 JLReq の表 2 は、cl-27 と平仮名、片仮名、漢字等のあいだを、どちらの順でも分割可とする。
-欧文の字どうしのあいだは、今までどおり、空白、`/` の後、`_` の連なりの後だけで改行する。
+欧文の字どうしのあいだは、空白、`/` の後、`_` の連なりの後だけで改行する。
 コードの中には、和文の字のあいだにも境にも、アキ量のセットの空きを入れない。
+空白でない位置で改行した行の行末には、文字スタイル `code` の `wrap-mark`（既定は `⏎`）を描く。
+空白で改行した行には描かない。
 
-この振る舞いは [golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) で決めたものであり、まだ実装していない。
-実装するまでは、本文の中のコードは、空白、`/` の後、`_` の連なりの後でしか改行せず、和文の並びは一つの改行できない並びになる。
+この振る舞いは [golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) で決めた。
 
-三つと比べると、次のようになる。
+TeX と InDesign と比べると、次のようになる。
+TeX の列は `\texttt` の振る舞いであり、五つの組で同じだった。
 
 | 位置 | pLaTeX、upLaTeX | LuaTeX-ja | InDesign | Golem |
 | --- | --- | --- | --- | --- |
-| 和文の字のあいだ | 禁則に従って改行する（推測） | 禁則に従って改行する（推測） | 段落の禁則に従って改行する（推測） | 禁則に従って改行する |
-| 和文と英字、数字の境 | 改行する（推測） | 改行する（推測） | 改行する（推測） | 改行する |
-| 和文と `"` の境 | 改行しない（推測） | `"` の前では改行しない（ソース） | 確かめていない | 改行する |
-| 和文と `=` の境 | 改行しない（推測） | 改行する（推測） | 確かめていない | 改行する |
-| コードの中のアキ | JFM のグルーと `\xkanjiskip` が入る（推測） | 確かめていない | 段落の文字組みアキ量が付く（推測） | 入れない |
+| 和文の字のあいだ | 禁則に従って改行する（観察） | 禁則に従って改行する（観察） | 段落の禁則に従って改行する（推測） | 禁則に従って改行する |
+| 和文と英字、数字の境 | 改行する（観察） | 改行する（観察） | 改行する（推測） | 改行する |
+| 和文の後の `"` の前 | 改行しない（観察） | 改行しない（観察） | 確かめていない | 改行する |
+| `"` の後の和文の前 | 改行する（観察） | 改行する（観察） | 確かめていない | 改行する |
+| `(` の後と `)` の前 | 改行しない（観察） | 改行しない（観察） | 確かめていない | 改行する |
+| 和文と `=` の境 | 改行する（推測） | 改行する（推測） | 確かめていない | 改行する |
+| コードの中のアキ | `\kanjiskip` と `\xkanjiskip` が入る（観察） | `\texttt` では入り、`\verb` の和欧の境は幅 0（観察） | 段落の文字組みアキ量が付く（推測） | 入れない |
+| 改行した位置の印 | `\texttt` には付かない（観察） | `\texttt` には付かない。listings は `prebreak` を書けば付く（観察） | 確かめていない | 行末に `wrap-mark` を描く |
 
-Golem が `"` との境でも改行するのは、JLReq が ASCII の `"` を cl-27 にだけ挙げ、始め括弧類にも終わり括弧類にも入れていないためである。
+Golem が `"`、`(`、`)` との境でも改行するのは、JLReq が ASCII の `"` を cl-27 にだけ挙げ、始め括弧類にも終わり括弧類にも入れていないためである。
 同じ字が開きにも閉じにも使われるので、字だけでは括弧のどちらかを決められない。
+`(` と `)` も、JLReq の約物のクラスの表に挙がるのは全角の字形である。
 本文も ASCII の字をすべて cl-27 として扱っており、コードだけ分け方を変えることはしない。
+pTeX と LuaTeX-ja は、`kinsoku.tex` と `ltj-kinsoku.tex` で ASCII の記号に禁則の罰点を与えるので、この三つの位置で Golem と分かれる。
 
 ### 決めた ADR
 
-- [golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)（未実装）
+- [golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)
 - [golem-layout ADR 0031](golem-layout/adr/0031-line-breaks-after-low-lines-in-identifiers.md)（`_` の連なりの後の改行）
 
 ### 書き手が気をつけること
 
 pLaTeX から移るときは、`x = "日本語"` のようなコードで、`"` が行末に残ったり、閉じる側の `"` が次の行頭に来たりすることがある。
+`(` が行末に残ることも、`)` が次の行頭に来ることもある。
 引用符と中身を同じ行に保ちたいときは、行の前のほうで改行するよう文を組み直す。
-コードの中の和文と欧文のあいだにはアキが付かないので、TeX や InDesign で組んだときより詰まって見える。
-コードの中の改行の位置に、続きを示す印は描かない。
-本文の中のコードに印を描くかどうかは、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) で未決の事項である。
+コードの中の和文と欧文のあいだにはアキが付かないので、TeX で組んだときより詰まって見える。
+空白でない位置で改行したコードの行末には、`⏎` が付く。
+fvextra の `breaklines` は続きの行の行頭に印を付けるが、Golem は改行した行の行末に付ける。
+印を描きたくなければ、`[character-styles.code]` に `wrap-mark = ""` と書く。
+`\verb` と違い、Golem の本文の中のコードは空白でも改行する。
 
 ### 確かめていないこと
 
 - InDesign で、等幅の書体の文字スタイル（合成フォントを含む）を当てた和文の改行と、和欧文の境の改行を、実際に組んで確かめていない。
 - InDesign の字のクラスが、Unicode の値で決まるか、フォントの情報で決まるか。
 - InDesign の文字スタイルの設定項目に、禁則と文字組みアキ量がないこと。
-- pLaTeX、upLaTeX、LuaLaTeX のどれでも、`\texttt`、`\verb`、listings に和文を入れて組んでいない。確かめるには、TeX Live を入れ、狭い `\hsize` で `\texttt{あいうえおかきくけこ}`、`\texttt{あa}`、`\texttt{あ"か"}`、`\texttt{x = "日本語"}` を組み、`\showbox` で分割の位置とグルーを見る。
-- pTeX で、ASCII の字の禁則テーブルの罰点が、和文の字に続かない欧文の並びの中でも罰点のノードを作るか。
-- `cmtt` の `\hyphenchar`。
-- url パッケージと fancyvrb の、和文を含む文字列の扱い。
+- TeX で、和文と `=` が隣り合う並びを組んでいない。
+- plistings を使った pLaTeX と upLaTeX の listings。確かめたイメージに入っていなかった。
+- `\texttt` の英字の並びの中で改行しない理由。tt の書体の `\hyphenchar` は読んでいない。
+- LuaTeX-ja で、`\verb` の中の和欧の境に `\xkanjiskip` が入らない理由。
 - 日本語の技術書の出版社が、InDesign でインラインのコードをどう組んでいるか。
 
 ### 参考文献
@@ -236,3 +264,5 @@ pLaTeX から移るときは、`x = "日本語"` のようなコードで、`"` 
 - LuaTeX-ja `lltjdefs.sty`. https://github.com/luatexja/luatexja/blob/4f10414927f439cb1197593b0d310b2e90802ae9/src/patches/lltjdefs.sty#L88-L110
 - LuaTeX-ja `ltjsclasses.dtx`. https://github.com/luatexja/luatexja/blob/4f10414927f439cb1197593b0d310b2e90802ae9/src/ltjsclasses.dtx#L1009-L1057
 - plistings. https://github.com/h-kitagawa/plistings/blob/ca9bd3bf6a13bd501544c58e34c7c612b7dd567a/README.md
+- fvextra（`breaklines`、`breaksymbolleft`、`breakanywhere`）. https://github.com/gpoore/fvextra/blob/b22ac9e0806479bfe69bf6f2fd2c052b50a3b5cf/fvextra/fvextra.dtx#L1071-L1216
+- TeX Live の Docker のイメージ `texlive/texlive@sha256:07e8062637249c4f780ca59f42cc2ed592bc2dc1db4320769406aee3f98aa70e`. https://hub.docker.com/r/texlive/texlive

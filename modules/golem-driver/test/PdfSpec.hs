@@ -1188,6 +1188,21 @@ codeTests =
           text = T.replicate 20 "あ"
       ts <- listPages style (text <> " [code: \"severity\":\"notice123\"] と書く。\n")
       ts @?= [text, "\"severity\":\"notice123\"と書く。"],
+    testCase "C8 (golem-layout ADR 0034): [code: ...] of Japanese text longer than a line breaks between its characters, the lines ending with the wrap mark" $ do
+      let msg = T.replicate 4 "罫線を持つ段落が版面に入らないため、"
+      (_, pl) <- layoutOk (horizontal30 "") ("[code: " <> msg <> "]\n") []
+      let ls = [slLine sl | sl <- Map.elems (plLines pl)]
+          marks l = [m | Penalty _ _ (WrapMark m) <- take 1 (reverse (lineItems l))]
+      assertBool (show (lineTexts pl)) (length ls > 1)
+      T.concat (lineTexts pl) @?= msg
+      map marks ls @?= map (const ["\x23CE"]) (drop 1 ls) <> [[]]
+      r <- buildAll (horizontal30 "") ("[code: " <> msg <> "]\n") []
+      diagnosticsOf "G07105" (brDiagnostics r) @?= [],
+    testCase "C8 (golem-layout ADR 0034): wrap-mark = \"\" draws no mark" $ do
+      let msg = T.replicate 4 "罫線を持つ段落が版面に入らないため、"
+      (_, pl) <- layoutOk (horizontal30 "\n[character-styles.code]\nwrap-mark = \"\"\n") ("[code: " <> msg <> "]\n") []
+      assertBool (show (lineTexts pl)) (length (lineTexts pl) > 1)
+      [() | sl <- Map.elems (plLines pl), Penalty _ _ (WrapMark _) <- lineItems (slLine sl)] @?= [],
     testCase "a path in [code: ...] breaks after a slash, with no hyphen" $ do
       (_, pl) <- layoutOk horizontalStyle "あいうえお[code: modules/golem-driver/src/Golem/Driver/Pdf.hs]\n" []
       assertSlashBreaks pl,

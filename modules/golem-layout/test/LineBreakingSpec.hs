@@ -96,6 +96,7 @@ shapes s run = map shape (itemsOf False s 0 run 0)
         "|" <> show p <> case h of
           PatternHyphen _ -> "P"
           ExplicitHyphen -> "E"
+          WrapMark m -> "W" <> T.unpack m
           NoHyphen -> ""
 
 -- | The glue that fills the last line.
@@ -187,6 +188,7 @@ shapeOf = \case
     "|" <> show p <> case h of
       PatternHyphen _ -> "P"
       ExplicitHyphen -> "E"
+      WrapMark m -> "W" <> T.unpack m
       NoHyphen -> ""
 
 -- | The end of a paragraph, as 'shapes' writes it.
@@ -236,9 +238,10 @@ lowLineTests =
         breaksIn look0 {lkCode = True} "__init__" @?= []
         breaksIn look0 {lkCode = True} "_private" @?= []
         breaksIn look0 {lkCode = True} "a__b" @?= [("a__", 100)],
-      testCase "U1: in code, a first run of low lines before Japanese text is no break; one between two characters is" $ do
-        breaksIn look0 {lkCode = True} "_あ" @?= []
-        breaksIn look0 {lkCode = True} "あ_b" @?= [("あ_", 100)],
+      -- golem-layout ADR 0034 breaks before a Japanese character after a first run of low lines too, and after a Japanese character
+      testCase "U1: in code, a first run of low lines before Japanese text is a break of 100 (golem-layout ADR 0034); one between two characters is" $ do
+        breaksIn look0 {lkCode = True} "_あ" @?= [("_", 100)]
+        breaksIn look0 {lkCode = True} "あ_b" @?= [("あ", 0), ("あ_", 100)],
       testCase "U3: lines broken after the low lines end with no hyphen and join into the word" $ do
         let (_, _, br) = breakInput (Input plain False 4 0 ["THIRD_PARTY_LICENSES"] 0)
         map lineText (brLines br) @?= ["THIRD_", "PARTY_", "LICENSES"]
