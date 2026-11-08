@@ -1355,6 +1355,10 @@ if job_of "$RELEASE_YML" notes | grep -q 'jdx/mise-action@v'; then ok; else ng "
 if job_of "$RELEASE_YML" release | grep -Eiq 'npm|mise|claude'; then ng "release.yml: the release job has no npm, mise nor Claude Code"; else ok; fi
 if job_of "$RELEASE_YML" release | grep -q '^      - release$\|needs:.*notes'; then ok; else ng "release.yml: the release job needs the notes job"; fi
 if grep -q 'npm install' "$RELEASE_YML"; then ng "release.yml: no npm install"; else ok; fi
+# a patch is checked on the inputs of its base, and the release waits for it (docs/adr/0212)
+if job_of "$RELEASE_YML" release | grep -q 'needs:.*patch'; then ok; else ng "release.yml: the release job needs the patch job"; fi
+if job_of "$RELEASE_YML" patch | grep -q 'scripts/release/check-patch-output.sh'; then ok; else ng "release.yml: the patch job runs check-patch-output.sh"; fi
+if job_of "$RELEASE_YML" version | grep -q 'patch-base='; then ok; else ng "release.yml: the version job writes patch-base"; fi
 
 # every job that runs haskell-actions/setup gives cabal CABAL_DIR=$HOME/.cabal
 # before it and checks the directories cabal uses after it, before the cache

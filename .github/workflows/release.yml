@@ -39,6 +39,7 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       prerelease: ${{ steps.check.outputs.prerelease }}
       tag: ${{ steps.check.outputs.tag }}
+      patch-base: ${{ steps.patch.outputs.patch-base }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -60,10 +61,18 @@ jobs:
           fi
           cat "$GITHUB_OUTPUT"
       # a patch release from v1.0.0 on keeps the output but the version in
-      # the PDF (docs/adr/0174, docs/compatibility.md)
-      - name: A patch release keeps the output
+      # the PDF (docs/adr/0174, docs/compatibility.md): check-patch.sh
+      # decides whether the tag is a patch and writes its base, the patch
+      # job compares (docs/adr/0212)
+      - id: patch
+        name: A patch release and its base (docs/adr/0212)
         if: github.ref_type == 'tag'
-        run: sh scripts/release/check-patch.sh "$GITHUB_REF_NAME"
+        run: |
+          out=$(sh scripts/release/check-patch.sh "$GITHUB_REF_NAME")
+          printf '%s\n' "$out"
+          case $out in
+            v*) echo "patch-base=$out" >> "$GITHUB_OUTPUT" ;;
+          esac
 
   build:
     needs: version
@@ -323,6 +332,31 @@ jobs:
             dist/golem-*.tar.gz.sha256
             dist/gmp-version-*.txt
 
+  # the golem of a patch builds the inputs of its base release, with the
+  # scripts of the base, to the references of the base; a manual or a
+  # fixture fixed before the patch changes nothing (docs/adr/0212)
+  patch:
+    needs: [version, build]
+    if: needs.version.outputs.patch-base != ''
+    runs-on: ubuntu-24.04
+    env:
+      BASE: ${{ needs.version.outputs.patch-base }}
+      ARCHIVE: dist/golem-${{ needs.version.outputs.tag }}-x86_64-linux.tar.gz
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: archive-x86_64-linux
+          path: dist
+      - name: The golem of the tag builds the inputs of the base release as the base did (docs/adr/0212)
+        run: |
+          mkdir -p "$RUNNER_TEMP/golem"
+          tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP/golem"
+          sh scripts/release/check-patch-output.sh "$BASE" "$RUNNER_TEMP/golem/$(basename "$ARCHIVE" .tar.gz)/golem"
+
   determinism:
     needs: [ci, smoke]
     runs-on: ubuntu-24.04
@@ -370,9 +404,18 @@ jobs:
           name: notes
           path: notes.md
 
+  # patch is skipped when the tag is not a patch; the release waits for it
+  # and runs only when it passed or was not needed (docs/adr/0212)
   release:
-    if: github.event_name == 'push' && github.ref_type == 'tag'
-    needs: [version, ci, build, smoke, wasm, determinism, notes]
+    if: >-
+      !cancelled() && github.event_name == 'push' && github.ref_type == 'tag' &&
+      needs.version.result == 'success' && needs.ci.result == 'success' &&
+      needs.build.result == 'success' && needs.smoke.result == 'success' &&
+      needs.wasm.result == 'success' && needs.determinism.result == 'success' &&
+      needs.notes.result == 'success' &&
+      (needs.patch.result == 'success' ||
+      (needs.patch.result == 'skipped' && needs.version.outputs.patch-base == ''))
+    needs: [version, ci, build, smoke, wasm, determinism, notes, patch]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
