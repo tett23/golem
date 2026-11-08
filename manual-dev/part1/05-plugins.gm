@@ -324,8 +324,8 @@ golem-plugin のテストは、テスト用のプラグインを wat（wasm の�
   (func (export "golem_invoke") (param $ptr i32) (param $len i32)
     (result i64)
     (local $skip i32) (local $doc i32)
-    ;; 要求は [1, 名前, 文書, データ]
-    ;; 名前は 24 バイト未満、データは空（0x80）とする
+    ;; 要求は [1, 名前, 文書, 文脈, データ]
+    ;; 名前は 24 バイト未満、文脈とデータは空（0x80）とする
     (local.set $skip
       (i32.add (i32.const 3)
         (i32.and
@@ -333,7 +333,7 @@ golem-plugin のテストは、テスト用のプラグインを wat（wasm の�
           (i32.const 31))))
     (local.set $doc
       (i32.sub (i32.sub (local.get $len) (local.get $skip))
-        (i32.const 1)))
+        (i32.const 2)))
     ;; 応答の [文書, []] を 1024 番地に組み立てる
     (i32.store8 (i32.const 1024) (i32.const 0x82))
     (memory.copy (i32.const 1025)
@@ -345,7 +345,7 @@ golem-plugin のテストは、テスト用のプラグインを wat（wasm の�
       (i64.extend_i32_u (i32.add (local.get $doc) (i32.const 2))))))
 ```
 
-要求の文書を CBOR として解釈せず、名前の後ろから最後のデータの手前までのバイト列を、そのまま応答に写している。
+要求の文書を CBOR として解釈せず、名前の後ろから、最後の文脈とデータの手前までのバイト列を、そのまま応答に写している。
 CBOR の配列の頭のバイト（[code: 0x82] は要素が二つの配列、[code: 0x80] は空の配列）を手で書けば、この程度のプラグインは解析器なしで作れる。
 実際のプラグインは、使う言語の CBOR のライブラリで要求を読み、応答を組み立てることになる。
 受け取る IR の中身は [code: golem inspect FILE --as ir] で確かめられる。
