@@ -1083,6 +1083,27 @@ if job_lines determinism | grep -qF 'run: sh scripts/ci/determinism-hashes.sh de
   job_lines determinism | grep -qF 'uses: actions/checkout@'; then ok; else
   ng "ci.yml: the determinism job compares the outputs with scripts/determinism/hashes.txt (docs/adr/0173)"
 fi
+# every checkout of every workflow leaves no token in .git/config (the
+# security audit of 2026-11-08, CI-01): the lines of the step, those indented
+# more than its "- uses:", have persist-credentials: false
+checkouts_without() {
+  awk '
+    function flush() { if (on && !seen) print FILENAME ":" at; on = 0 }
+    FNR == 1 { flush() }
+    on && NF > 0 && match($0, /^ */) && RLENGTH <= indent { flush() }
+    on && /^ *persist-credentials: false *$/ { seen = 1 }
+    /^ *- uses: actions\/checkout@/ { flush(); on = 1; seen = 0; at = FNR; match($0, /^ */); indent = RLENGTH }
+    END { flush() }
+  ' "$@"
+}
+missing=$(checkouts_without "$HERE"/../../.github/workflows/*.yml)
+if [ -z "$missing" ]; then ok; else
+  ng "workflows: a checkout without persist-credentials: false: $(echo "$missing" | sed 's#.*/\.github/#.github/#' | tr '\n' ' ')"
+fi
+printf '      - uses: actions/checkout@v7\n        with:\n          fetch-depth: 0\n      - run: true\n      - uses: actions/checkout@v7\n        with:\n          persist-credentials: false\n' >"$WORK/checkouts.yml"
+if [ "$(checkouts_without "$WORK/checkouts.yml")" = "$WORK/checkouts.yml:1" ]; then ok; else
+  ng "test.sh: checkouts_without finds the checkout without persist-credentials: false, and only it"
+fi
 # the build job checks the direction of the packages split from golem-doc
 # in the plan it built (docs/adr/0173)
 if job_lines build | grep -qF 'run: sh scripts/ci/doc-deps.sh dist-newstyle/cache/plan.json'; then ok; else
