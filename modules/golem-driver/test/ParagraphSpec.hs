@@ -514,7 +514,7 @@ breakTests =
         assertBool (show html) (not (null html) && all ("ああ " `T.isInfixOf`) html)
       pages <- pagesMini "" horizontalStyle source [] Map.empty >>= either (assertFailure . show) pure
       take 1 pages @?= [["ああああああああああああ"]]
-      assertBool (show pages) (any (\l -> "あ" `T.isPrefixOf` l && "1" `T.isSuffixOf` l) (concat (drop 1 pages))),
+      assertBool (show pages) (any (any (\l -> "あ" `T.isPrefixOf` l && "1" `T.isSuffixOf` l)) (drop 1 pages)),
     testCase "A5: a paragraph with ’tis and ’90s breaks the same in a book of en and in one of ja (golem-layout ADR 0030)" $ do
       -- digits, which the patterns do not break: 20 of them are 10 em of the 12 of a line, and ’tis after a space does not fit
       let para = "12345678901234567890 ’tis 12345678901234567890 ’90s\n"
