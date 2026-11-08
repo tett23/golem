@@ -82,6 +82,7 @@ import Data.Containers.ListUtils (nubOrdOn)
 import Data.Either (fromRight)
 import Data.Foldable (toList)
 import Data.Int (Int64)
+import Data.ByteString qualified as BS
 import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, unsnoc, zip4)
 import Data.List.NonEmpty (nonEmpty)
 import Data.Map.Strict (Map)
@@ -672,18 +673,24 @@ in order, as 'pageFiles'), as a file and a byte offset. Characters the
 source does not have (the number of a heading, a list marker) are
 skipped; without a character of the source inside the block of the line
 (a table of contents entry, the cells of a table read from a file), the
-start of the block. A page without lines has none.
+start of the block. A page that starts with the first part of a code
+block starts at the block; one that starts with a later part, at the
+first character of its first row (docs/adr/0218). A page without lines
+has none.
 -}
 pageStarts :: PdfLayout -> [Maybe (FileId, Int)]
 pageStarts layout = map start (pagesOf (plPages layout))
   where
     start ps = listToMaybe [lid | p <- ps, (_, s) <- poSlots p, lid <- case s of { SLine l -> [l]; SHeading l _ -> [l]; SCode l _ _ -> [l]; _ -> [] }] >>= lineStart
+    -- the first part of a code block: the caption and the file name come before its lines (docs/adr/0218)
+    firstPart lid = maybe False ((== lid) . ciFirst) (Map.lookup lid (plCodes layout))
     lineStart lid =
       let block = snd <$> Map.lookupLE lid (plLineSpans layout)
           sets = fromMaybe (maybe [] pure (Map.lookup lid (plLines layout))) (Map.lookup lid (plTableLines layout))
           -- a block of no length (a heading) holds whatever of its file its line shows
           inside b c = spanFile (snd (bcSource c)) == spanFile b && bcAt c >= 0 && (spanLength b == 0 || (spanStart b <= bcAt c && bcAt c <= spanEnd b))
        in case block of
+            Just b | firstPart lid -> Just (spanFile b, spanStart b)
             Just b -> case [bcAt c | sl <- sets, Box _ c <- lineItems (slLine sl), inside b c] of
               off : _ -> Just (spanFile b, off)
               [] -> Just (spanFile b, spanStart b)
@@ -2041,7 +2048,7 @@ codeCaptionOf fe u lead code = case codeCaption code of
 -- | The code blocks of the units, set line by line, by the index of their units (golem-driver ADR 0017).
 codeBlocksOf :: FlowEnv -> [(Int, Unit)] -> Map Int SetCode
 codeBlocksOf fe units =
-  Map.fromList [(i, codeBlockOf (feGeom fe) (feFonts fe) (feMeasure fe) (length (pgLineGrid (feGeom fe))) u lead code (codeCaptionOf fe u lead code)) | (i, u@Unit {uKind = UCode lead code}) <- units]
+  Map.fromList [(i, codeBlockOf (feSourceAt fe) (feGeom fe) (feFonts fe) (feMeasure fe) (length (pgLineGrid (feGeom fe))) u lead code (codeCaptionOf fe u lead code)) | (i, u@Unit {uKind = UCode lead code}) <- units]
 
 -- | G07027: the text of a list item leaves 8 characters of the type area (golem-driver ADR 0013).
 listTooDeep :: SrcSpan -> Diagnostic
@@ -2477,8 +2484,8 @@ are lined up after the longest line that has one when they fit; the wrap
 mark ends the rows that continue; the tokens of [code.colors] are in
 their swatches (golem-driver ADR 0023).
 -}
-codeBlockOf :: PageGeometry -> LoadedFonts -> Sp -> Int -> Unit -> Sp -> Code -> CodeCaption -> SetCode
-codeBlockOf geom fonts measure capacity u lead code caption =
+codeBlockOf :: (SrcSpan -> Text -> Int -> Int) -> PageGeometry -> LoadedFonts -> Sp -> Int -> Unit -> Sp -> Code -> CodeCaption -> SetCode
+codeBlockOf atSource geom fonts measure capacity u lead code caption =
   let lk = uLook u
       size = lkSize lk
       vertical = pgVertical geom
@@ -2501,7 +2508,7 @@ codeBlockOf geom fonts measure capacity u lead code caption =
         [] -> 0
       widthOf = endOf . oneRow
       ls = case codeLines code of
-        [] -> [CodeLine "" (Just 1) Nothing False []]
+        [] -> [CodeLine "" (Just 1) Nothing False [] Nothing]
         xs -> xs
       numbered = fromMaybe (cdLineNumbers cs) (codeNumbers code)
       numberWidth = maximum (0 : [widthOf (T.pack (show n)) | numbered, Just n <- map clNumber ls])
@@ -2541,22 +2548,25 @@ codeBlockOf geom fonts measure capacity u lead code caption =
       lookOf col = lk {lkColor = col}
       -- the size of the paragraph style code, at the code block (golem-cli ADR 0008)
       source = (uSource u, uSpan u)
-      emptyBox w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [] 0 0 source Nothing noLeaf (spanStart (snd source)))
+      blockStart = spanStart (snd source)
+      emptyBox off w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [] 0 0 source Nothing noLeaf off)
       {- pieces at offsets from the padding: (offset, text, width, Latin,
       swatch, leaf); line numbers and wrap marks are of no leaf: artifacts
-      (docs/adr ADR 0183) -}
-      lineOf pieces =
+      (docs/adr ADR 0183); every box of a row is at the source of its row
+      (docs/adr/0218) -}
+      lineOf off pieces =
         let go _ [] = []
             go x ((o, t, w, latin, col, leaf) : rest) =
-              [emptyBox (o - x) | o > x]
-                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf (spanStart (snd source)))]
+              [emptyBox off (o - x) | o > x]
+                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf off)]
                 <> go (o + w) rest
          in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) 0 (0, 0)
       at leaf o col t = [(o + cpOffset p, cpText p, cpWidth p, cpLatin p, col, leaf) | p <- oneRow t]
       rowLeaf j = Leaf (codeRowSite (uIndex u) j) 0
       lineNumberColor = cdLineNumberColor cs
-      rowLine j l n (i, (row, markAt)) =
+      rowLine j l n off (i, (row, markAt)) =
         lineOf
+          off
           ( concat [at noLeaf (numberWidth - widthOf num) lineNumberColor num | i == 0, numbered, Just k <- [clNumber l], let num = T.pack (show k)]
               <> concat [at (rowLeaf j) numberColumn Nothing m | i == 0, Just m <- [diffMark (clDiff l)]]
               <> [(codeStart + cpOffset p, cpText p, cpWidth p, cpLatin p, cpColor p, rowLeaf j) | p <- crPieces row]
@@ -2567,8 +2577,22 @@ codeBlockOf geom fonts measure capacity u lead code caption =
         Just DiffAdded -> Just "+"
         Just DiffRemoved -> Just "-"
         _ -> Nothing
-      fileRows = [lineOf (at (Leaf (codeFileSite (uIndex u)) 0) codeStart Nothing f) | Just f <- [codeFile code]]
-      codeRows = concat [zipWith (curry (rowLine j l (length rs))) [0 :: Int ..] rs | (j, (l, rs)) <- zip [0 ..] (zip ls perLine)]
+      fileRows = [lineOf blockStart (at (Leaf (codeFileSite (uIndex u)) 0) codeStart Nothing f) | Just f <- [codeFile code]]
+      codeRows = concat [zipWith3 (\i a r -> rowLine j l (length rs) a (i, r)) [0 :: Int ..] (rowSources l atoms rs) rs | (j, (l, atoms, rs)) <- zip [0 ..] (zip3 ls atomsOf perLine)]
+      {- where each row of a line starts in the source (docs/adr/0218): the
+      first character of its text, the start of the line when it is empty,
+      the block when the line is not in the source (@listing, Emet) -}
+      rowSources l atoms rs = case clSpan l of
+        Nothing -> map (const blockStart) rs
+        Just lsp
+          | T.null (clText l) -> map (const (spanStart lsp)) rs
+          | otherwise ->
+              let t = clText l
+                  find = atSource lsp t
+                  lastAt = find (T.length t - 1) + BS.length (TE.encodeUtf8 (T.takeEnd 1 t))
+                  offAt i = if i < T.length t then find i else lastAt
+                  ok o = if o < 0 then blockStart else o
+               in map (ok . offAt) (codeRowStarts atoms [r | (r, _) <- rs])
       -- the bands of the highlight (K 15% by default) and of the diff
       bandOf l
         | clHighlight l = Just (fromMaybe (P.Swatch 0 0 0 15) (cdHighlight cs >>= swatchOf))
@@ -2578,7 +2602,7 @@ codeBlockOf geom fonts measure capacity u lead code caption =
       firsts = scanl (+) (length fileRows) (map length perLine)
       bands = [(r0, length rs, sw) | (l, rs, r0) <- zip3 ls perLine firsts, Just sw <- [bandOf l]]
       continued = cdContinued cs
-      continuedLine = if T.null continued then Nothing else Just (lineOf (at noLeaf (codeStart + full - widthOf continued) Nothing continued))
+      continuedLine = if T.null continued then Nothing else Just (lineOf blockStart (at noLeaf (codeStart + full - widthOf continued) Nothing continued))
       g = codeGeometry (pgFontSize geom) (pgLinePitch geom) size pad
       codeStyle = paraStyle st (Just "code")
       background = codeStyle >>= psBackground >>= swatchOf
@@ -2615,6 +2639,30 @@ codeBlockOf geom fonts measure capacity u lead code caption =
           cbErrors = take 1 errs,
           cbNotices = [notice "G07030" (uSpan u) ("コードの行を折り返しました（" <> T.pack (show wrapped) <> " 行）") | wrapped > 0]
         }
+
+{- | The index in the text of a line of code of the first character of
+each of its rows (docs/adr/0218): a row after the first starts at the
+glyph after those of the rows before it, since 'layoutCodeLine' starts a
+row at a glyph only; a row without glyphs after them (the callouts on a
+row of their own) at the end of the text.
+-}
+codeRowStarts :: [CodeAtom] -> [CodeRow] -> [Int]
+codeRowStarts atoms rows = zipWith startOf [0 :: Int ..] (scanl (+) 0 (map glyphs rows))
+  where
+    glyphs = sum . map (T.length . cpText) . crPieces
+    total = sum [atomLength a | a <- atoms]
+    atomLength = \case
+      AGlyph t _ _ _ -> T.length t
+      _ -> 1
+    -- the index of each glyph atom and the glyph characters before it
+    glyphAt = go 0 0 atoms
+      where
+        go _ _ [] = []
+        go i g (a : rest) = case a of
+          AGlyph t _ _ _ -> (g, i) : go (i + T.length t) (g + T.length t) rest
+          _ -> go (i + 1) g rest
+    startOf 0 _ = 0
+    startOf _ g = maybe total snd (listToMaybe [x | x@(g', _) <- glyphAt, g' == g])
 
 -- | Which line (0-based) contains the item at an index.
 lineIndexOfItems :: [Item] -> [Line] -> Int -> Int

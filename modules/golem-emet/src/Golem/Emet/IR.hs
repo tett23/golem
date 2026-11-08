@@ -179,7 +179,8 @@ encodeBlock (Block sp lbl blang body) = do
       pure ("Table", [RList (map alignment al), hs, rs])
     CodeBlock (Code lang nums file cap diff ls nonum) -> do
       c <- maybeE encodeInlines cap
-      pure ("CodeBlock", [con "Code" [maybeR str lang, maybeR bool nums, maybeR str file, c, bool diff, RList (map codeLine ls), bool nonum]])
+      cls <- mapM codeLine ls
+      pure ("CodeBlock", [con "Code" [maybeR str lang, maybeR bool nums, maybeR str file, c, bool diff, RList cls, bool nonum]])
     FigureBlock (Figure src web alt wrap width cap page rot nonum) -> do
       c <- encodeBlocks cap
       pure ("FigureBlock", [con "Figure" [str src, maybeR str web, str alt, maybeR wrapR wrap, maybeR str width, c, maybeR nat page, bool rot, bool nonum]])
@@ -195,7 +196,11 @@ encodeBlock (Block sp lbl blang body) = do
       AlignLeft -> con "AlignLeft" []
       AlignCenter -> con "AlignCenter" []
       AlignRight -> con "AlignRight" []
-    codeLine (CodeLine t n m hl cs) = con "CodeLine" [str t, maybeR nat n, maybeR diffMark m, bool hl, RList (map nat cs)]
+    {- the span of a line is not a field, as those of the blocks: a line
+    that came in carries it, one a function made has none (docs/adr/0218) -}
+    codeLine (CodeLine t n m hl cs lsp) =
+      let fs = [str t, maybeR nat n, maybeR diffMark m, bool hl, RList (map nat cs)]
+       in maybe (pure (con "CodeLine" fs)) (\s -> node "CodeLine" fs (Hidden s Nothing Nothing 0)) lsp
     diffMark = \case
       DiffAdded -> con "Added" []
       DiffRemoved -> con "Removed" []
@@ -421,8 +426,14 @@ blockD cx = \case
       RCon "Code" [lang, nums, file, cap, diff, ls, nonum] -> Code <$> maybeD strD lang <*> maybeD boolD nums <*> maybeD strD file <*> maybeD inls cap <*> boolD diff <*> listD codeLine ls <*> boolD nonum
       r -> bad ("コードではない値です: " <> shown r)
     codeLine = \case
-      RCon "CodeLine" [t, n, m, hl, cs] -> CodeLine <$> strD t <*> maybeD natD n <*> maybeD diffMark m <*> boolD hl <*> listD smallD cs
+      RCon "CodeLine" fs@(t : n : m : hl : cs : rest) | length rest <= 1 -> CodeLine <$> strD t <*> maybeD natD n <*> maybeD diffMark m <*> boolD hl <*> listD smallD cs <*> pure (carriedSpan fs)
       r -> bad ("コードの行ではない値です: " <> shown r)
+    -- the span a line carries when it came in (docs/adr/0218)
+    carriedSpan fs =
+      let Ctx carried _ = cx
+       in case drop 5 fs of
+            [RPrim (VNat i)] | Just (Hidden s _ _ _) <- Seq.lookup (fromIntegral i) (cHidden carried) -> Just s
+            _ -> Nothing
     diffMark = \case
       RCon "Added" [] -> pure DiffAdded
       RCon "Removed" [] -> pure DiffRemoved

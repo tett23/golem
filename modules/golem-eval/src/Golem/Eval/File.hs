@@ -485,7 +485,7 @@ evalBlock ctx (A.Located sp b) = case b of
       Nothing -> pure []
       Just args -> do
         ca <- codeArgs ctx sp [] args
-        c <- codeOf sp ca Nothing lang [(lsp, t) | A.Located lsp t <- ls]
+        c <- codeOf sp ca Nothing lang True [(lsp, t) | A.Located lsp t <- ls]
         pure [block sp (CodeBlock c)]
   A.SetVar (A.Located nsp n) e -> do
     defined <- gets (Map.member n . stVars)
@@ -1885,7 +1885,8 @@ listing ctx sp args = do
               codeArgsOf = [a | a@(A.Located _ (A.Keyword (A.Located _ k) _)) <- args, k `notElem` ["src", "lines"]]
               code start xs = do
                 ca <- codeArgs ctx sp ["lang"] codeArgsOf
-                c <- codeOf sp ca start (caLang ca) [(sp, x) | x <- xs]
+                -- the lines of a file are not in the source (docs/adr/0218)
+                c <- codeOf sp ca start (caLang ca) False [(sp, x) | x <- xs]
                 pure [block sp (CodeBlock c)]
           -- the diagnostics of lines= are at the argument (docs/adr ADR 0113)
           let lsp = fromMaybe sp (listToMaybe [asp | A.Located asp (A.Keyword (A.Located _ "lines") _) <- args])
@@ -1975,8 +1976,14 @@ number, a removed line not counted, and the lines of highlight marked.
 that takes a line out of int64 is G02091 at the block @bsp@, and the lines
 are numbered as without numbers= (golem-doc ADR 0006).
 -}
-codeOf :: SrcSpan -> CodeArgs -> Maybe Integer -> Maybe Text -> [(SrcSpan, Text)] -> M Code
-codeOf bsp ca0 start lang ls = do
+{- | The code of a block from its lines, each with the span diagnostics
+point at and its text. With @inSource@, the span of a line is the line in
+the source, and the text of each 'CodeLine' keeps where it is: from after
+the diff mark to the end of the line (docs/adr/0218); the text of a line
+is the end of its line in the source, after the indent of the block.
+-}
+codeOf :: SrcSpan -> CodeArgs -> Maybe Integer -> Maybe Text -> Bool -> [(SrcSpan, Text)] -> M Code
+codeOf bsp ca0 start lang inSource ls = do
   marked <- mapM diffOf ls
   withCallouts <- mapM calloutsOf marked
   let numberedFrom c = snd (mapAccumL number (firstOf c) withCallouts)
@@ -2006,24 +2013,29 @@ codeOf bsp ca0 start lang ls = do
     firstOf c = case caNumbers c of
       Just (Right n) -> n
       _ -> fromMaybe 1 start
-    number n (t, d, cs)
-      | d == Just DiffRemoved = (n, CodeLine t Nothing d False cs)
-      | otherwise = (n + 1, CodeLine t (Just (fromInteger n)) d False cs)
-    diffOf (lsp, t)
-      | not (caDiff ca0) = pure (lsp, t, Nothing)
-      | otherwise = case T.uncons t of
-          Nothing -> pure (lsp, t, Just DiffContext)
-          Just ('+', rest) -> pure (lsp, rest, Just DiffAdded)
-          Just ('-', rest) -> pure (lsp, rest, Just DiffRemoved)
-          Just (' ', rest) -> pure (lsp, rest, Just DiffContext)
-          Just _ -> err "G02069" lsp "diff=true のコードの行は +、-、空白のどれかで始めます" >> pure (lsp, t, Just DiffContext)
-    calloutsOf (lsp, t, d)
-      | not (caCallouts ca0) = pure (t, d, [])
+    number n (t, d, cs, tsp)
+      | d == Just DiffRemoved = (n, CodeLine t Nothing d False cs tsp)
+      | otherwise = (n + 1, CodeLine t (Just (fromInteger n)) d False cs tsp)
+    -- the text of a line in the source: the end of the line, the diff mark taken off
+    textSpan lsp t = mkSpan (spanFile lsp) (max (spanStart lsp) (spanEnd lsp - lengthWord8 t)) (spanEnd lsp)
+    afterMark tsp = tsp {spanStart = min (spanEnd tsp) (spanStart tsp + 1)}
+    diffOf (lsp, t) =
+      let tsp = if inSource then Just (textSpan lsp t) else Nothing
+       in if not (caDiff ca0)
+            then pure (lsp, t, Nothing, tsp)
+            else case T.uncons t of
+              Nothing -> pure (lsp, t, Just DiffContext, tsp)
+              Just ('+', rest) -> pure (lsp, rest, Just DiffAdded, afterMark <$> tsp)
+              Just ('-', rest) -> pure (lsp, rest, Just DiffRemoved, afterMark <$> tsp)
+              Just (' ', rest) -> pure (lsp, rest, Just DiffContext, afterMark <$> tsp)
+              Just _ -> err "G02069" lsp "diff=true のコードの行は +、-、空白のどれかで始めます" >> pure (lsp, t, Just DiffContext, tsp)
+    calloutsOf (lsp, t, d, tsp)
+      | not (caCallouts ca0) = pure (t, d, [], tsp)
       | otherwise = do
           let (t', ns) = lineCallouts t
               bad = [n | n <- ns, n < 1 || n > 50]
           mapM_ (\n -> err "G02069" lsp ("注釈の印の番号は 1 から 50 までです: " <> T.pack (show n))) bad
-          pure (t', d, [fromInteger n | n <- ns, n >= 1, n <= 50])
+          pure (t', d, [fromInteger n | n <- ns, n >= 1, n <= 50], tsp)
 
 {- | The callouts at the end of a line (golem-driver ADR 0023): each @<N>@
 after the text, with the spaces before them taken off; a line without

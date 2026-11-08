@@ -220,14 +220,20 @@ data DiffMark = DiffAdded | DiffRemoved | DiffContext
 
 {- | A line of code: its text without the diff mark and the callouts, its
 number (Nothing for a removed line), its diff mark (Nothing when the code
-is not a diff), whether it is highlighted, and its callouts.
+is not a diff), whether it is highlighted, its callouts, and where its
+text is in the source (docs/adr/0218).
 -}
 data CodeLine = CodeLine
   { clText :: !Text,
     clNumber :: !(Maybe Natural),
     clDiff :: !(Maybe DiffMark),
     clHighlight :: !Bool,
-    clCallouts :: ![Int]
+    clCallouts :: ![Int],
+    {- | the text in the source: from after the diff mark to the end of
+    the line before the callouts are taken off; Nothing for a line of
+    @listing or of an Emet function (docs/adr/0218)
+    -}
+    clSpan :: !(Maybe SrcSpan)
   }
   deriving stock (Eq, Show)
 
