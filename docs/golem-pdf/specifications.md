@@ -3,6 +3,17 @@
 golem-pdf は、Golem の PDF を書き、図版を PDF に置くモジュールである。
 この文書には、[仕様書](../specifications.md) より細かい、実装の値と数え方を書く。
 
+## ページの内容のストリーム
+
+グリフのマークは、テキストの状態を `q` と `Q` の外に残さない（[golem-pdf ADR 0015](adr/0015-scaled-glyph-run-restores-horizontal-scaling.md)）。
+各ページの内容のストリームは、水平の比率 100 から始まる。
+比率を書かないグリフのマーク（`GlyphRun`、`RotatedGlyphRun`、`TransformedGlyphRun`、`rsScale` が 1000 の `StyledGlyphRun`）は、比率 100 で描かれる。
+
+- `ScaledGlyphRun` は、`q BT /F<n> <大きさ> Tf <比率> Tz`、改行、各グリフの `Tm` と `Tj`、`ET Q`、改行の順に書く。比率は千分率を 10 で割った百分率である。比率が 1000 でも同じ形で書く。
+- `StyledGlyphRun` は、`q` と `Q` の中で `Tz`、`Tr`、`w` を書く。
+- `GlyphRun`、`RotatedGlyphRun`、`TransformedGlyphRun` は `Tz` を書かない。
+- そのため、マークの内容のストリームを解釈し終えた時点の比率と `q` の深さは、解釈を始める前と同じである。`Form` の `Do` は、比率 100 の状態で呼ばれる。
+
 ## PNG の画像
 
 `Golem.Pdf.Image.readPng` は、PNG の画素を取り出し、透過をアルファの面（`imgAlpha`）にする。

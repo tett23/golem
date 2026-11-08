@@ -313,7 +313,7 @@ scaledRunTests =
         pdf `contains` "/BaseFont /ABCDEF+Dummy",
       testCase "the page content of a scaled run sets Tz in percent" $ do
         let pdf = writePdf (document [ScaledGlyphRun (FontRef 7) (9 * 65536) 1015 [(1, 65536, 2 * 65536)]]) {docFonts = Map.fromList [(FontRef 7, font)]}
-        streamOf 4 pdf @?= "/Document << /MCID 0 >> BDC\nBT /F1 9 Tf 101.5 Tz\n1 0 0 1 1 2 Tm <0001> Tj\nET\nEMC\n"
+        streamOf 4 pdf @?= "/Document << /MCID 0 >> BDC\nq BT /F1 9 Tf 101.5 Tz\n1 0 0 1 1 2 Tm <0001> Tj\nET Q\nEMC\n"
     ]
 
 tests :: TestTree
