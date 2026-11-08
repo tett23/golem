@@ -498,7 +498,7 @@ markSizeConflict user markStyle =
 markSizeConflictMessage :: Maybe Text -> Text -> Text
 markSizeConflictMessage markStyle definer =
   "[notes] の mark-size と、"
-    <> maybe "注の印の文字スタイル note-mark" (\m -> "mark-style " <> m) markStyle
+    <> maybe "注の印の文字スタイル note-mark" ("mark-style " <>) markStyle
     <> " の size（[character-styles."
     <> definer
     <> "] に書いたもの）は一緒に書けません。mark-size を消します"
