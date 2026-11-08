@@ -5,6 +5,8 @@
     @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
     @font-face { font-family: "Fig Sans"; font-weight: bold; src: url("../../fonts/NotoSansJP-Bold.otf"); }
     text { font-family: "Fig Sans", sans-serif; font-size: 26px; fill: #222; }
+    text { text-spacing-trim: space-all; }
+    tspan.halt { font-feature-settings: "halt"; }
     .name { text-anchor: middle; dominant-baseline: central; }
     .note { font-size: 22px; }
     rect.box { stroke: #333; stroke-width: 2; rx: 6; }

@@ -5,6 +5,12 @@
 # It does not run Inkscape. After editing a source, run
 # scripts/manual/outline-figures.sh and commit both files.
 #
+# It also checks the punctuation of each source (docs/adr/0239 section 3,
+# outline-prepare.sh --check): the source has the rule
+# text { text-spacing-trim: space-all; }, and the fullwidth marks that are
+# set half-width next to another are in <tspan class="halt">, as the table
+# of docs/adr/0239 says.
+#
 #   check-figures.sh [DIR...]    DIR is manual and manual-dev by default
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -16,6 +22,7 @@ for DIR in "$@"; do
     [ -f "$src" ] || continue
     name=${src##*/}
     out=$DIR/images/$name
+    sh "$HERE/outline-prepare.sh" --check "${DIR##*/}/images/src/$name" < "$src" || status=1
     want=$($SHA "$src" | cut -d ' ' -f 1)
     if [ ! -f "$out" ]; then
       echo "check-figures: ${DIR##*/}/images/$name is missing; run scripts/manual/outline-figures.sh ${DIR##*/} ${name%.svg}" >&2

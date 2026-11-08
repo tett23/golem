@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Made by scripts/manual/outline-figures.sh from images/src/modules.svg (sha256 50002b88e3e449d1dad771e5c5d809380167d63c08e58e4f7cae924cbbbe77f0) with Inkscape 1.4.4 (dcaf3e7d9e, 2026-05-05). Do not edit by hand. -->
+<!-- Made by scripts/manual/outline-figures.sh from images/src/modules.svg (sha256 4b15585a87d6c822b0f6fef18f7a44f537b7be2fdc219869fcfd8a46153c4918) with Inkscape 1.4.4 (dcaf3e7d9e, 2026-05-05). Do not edit by hand. -->
 <svg
    width="1460"
    height="1090"
@@ -13,6 +13,7 @@
   <style
      id="style1">
     text { font-family: &quot;Fig Sans&quot;, sans-serif; font-size: 26px; fill: #222; }
+    tspan.halt { font-feature-settings: &quot;halt&quot;; }
     .name { text-anchor: middle; dominant-baseline: central; }
     .note { font-size: 22px; }
     rect.box { stroke: #333; stroke-width: 2; rx: 6; }

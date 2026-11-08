@@ -5,6 +5,8 @@
     @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
     @font-face { font-family: "Fig Sans"; font-weight: bold; src: url("../../fonts/NotoSansJP-Bold.otf"); }
     text { font-family: "Fig Sans", sans-serif; font-size: 20px; fill: #222; }
+    text { text-spacing-trim: space-all; }
+    tspan.halt { font-feature-settings: "halt"; }
     .c { text-anchor: middle; dominant-baseline: central; }
     .head { font-size: 23px; font-weight: bold; }
     .sub { font-size: 18px; fill: #555; }
@@ -35,18 +37,18 @@
   <!-- chapters/01.gm -->
   <rect class="box" x="20" y="60" width="410" height="372"/>
   <text class="file" x="40" y="95">chapters/01.gm（章 1）</text>
-  <rect class="chip toc" x="40" y="117" width="16" height="30"/><text x="68" y="140">見出し「行分割」（階層 1）</text>
+  <rect class="chip toc" x="40" y="117" width="16" height="30"/><text x="68" y="140">見出し「行分割」<tspan class="halt">（</tspan>階層 1）</text>
   <rect class="chip idx" x="40" y="161" width="16" height="30"/><text x="68" y="184">索引の印：行分割</text>
   <rect class="chip bib" x="40" y="205" width="16" height="30"/><text x="68" y="228">引用：knuth1981</text>
   <rect class="chip note" x="40" y="249" width="16" height="30"/><text x="68" y="272">脚注（仮の番号 1）</text>
-  <rect class="chip toc" x="40" y="293" width="16" height="30"/><text x="68" y="316">見出し「禁則」（階層 2）</text>
+  <rect class="chip toc" x="40" y="293" width="16" height="30"/><text x="68" y="316">見出し「禁則」<tspan class="halt">（</tspan>階層 2）</text>
   <rect class="chip idx" x="40" y="337" width="16" height="30"/><text x="68" y="360">索引の印：禁則</text>
   <rect class="chip bib" x="40" y="381" width="16" height="30"/><text x="68" y="404">引用：jlreq</text>
 
   <!-- chapters/02.gm -->
   <rect class="box" x="20" y="452" width="410" height="284"/>
   <text class="file" x="40" y="487">chapters/02.gm（章 2）</text>
-  <rect class="chip toc" x="40" y="509" width="16" height="30"/><text x="68" y="532">見出し「ルビ」（階層 1）</text>
+  <rect class="chip toc" x="40" y="509" width="16" height="30"/><text x="68" y="532">見出し「ルビ」<tspan class="halt">（</tspan>階層 1）</text>
   <rect class="chip idx" x="40" y="553" width="16" height="30"/><text x="68" y="576">索引の印：ルビ</text>
   <rect class="chip idx" x="40" y="597" width="16" height="30"/><text x="68" y="620">索引の印：行分割</text>
   <rect class="chip bib" x="40" y="641" width="16" height="30"/><text x="68" y="664">引用：jlreq</text>
@@ -56,7 +58,7 @@
   <rect class="box" x="20" y="756" width="410" height="120"/>
   <text class="file" x="40" y="791">front.gm と back.gm</text>
   <text class="sub" x="40" y="826">@toc depth=2、@bibliography、@index</text>
-  <text class="sub" x="40" y="856">見出し「参考文献」「索引」（@nonumber）</text>
+  <text class="sub" x="40" y="856">見出し「参考文献」<tspan class="halt">「</tspan>索引」<tspan class="halt">（</tspan>@nonumber）</text>
 
   <!-- S1 arrow -->
   <line x1="436" y1="470" x2="474" y2="470"/>
