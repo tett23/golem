@@ -157,7 +157,9 @@ at the top of a column they are dropped and recorded, never cut
 next columns are gone on to until the blank lines and the first part fit
 or the column is at its top: the figures sent on take the top of a
 column gone on to and the continued notes its foot, and a column with
-figures sent on is not at its top (golem-layout ADR 0025).
+figures sent on is not at its top (golem-layout ADR 0025). The going on
+stops at the top of a column, one with continued notes only too, where
+the blank lines would be dropped anyway (docs/adr/0211).
 -}
 placeBlank :: Env -> St -> Flow -> [Flow] -> St
 placeBlank env st0 f rest = case sBlank st0 of

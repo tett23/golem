@@ -1,6 +1,6 @@
 # ADR 0189: 段落スタイルに行揃え、段落の前後のアキ、行の終わりの側の字下げを加える
 
-ステータス: 採択→見出しの先読みが空きの行を後の量に数えることは [ADR 0205](0205-rules-added-by-the-implementation-of-adr-0180.md)
+ステータス: 採択→見出しの先読みが空きの行を後の量に数えることは [ADR 0205](0205-rules-added-by-the-implementation-of-adr-0180.md)、fully-justified の行分割、HTML の組の規則のセレクター、改ページの前とファイルの境の空きは [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
 
 ## 文脈
 

@@ -5,9 +5,11 @@ as before; the patterns are those of the language of the span.
 -}
 module LangSpec (langTests) where
 
+import Control.Monad (forM_)
 import Data.Functor (void)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Fixtures (fs, look0, sp)
 import Golem.Doc.IR qualified as IR
 import Golem.Layout.CharClass (charClassIn, dualCharacters)
@@ -67,6 +69,18 @@ between a b its = case break isA its of
       Box {} -> True
       _ -> False
 
+{- | Whether a line may break between two neighbouring boxes: at a penalty
+below 'infPenalty', or at a glue right after the first box.
+-}
+breakable :: Text -> Text -> [Item] -> Bool
+breakable a b its = case between a b its of
+  Glue {} : _ -> True
+  mid -> any isBreak mid
+  where
+    isBreak = \case
+      Penalty _ p _ -> p < infPenalty
+      _ -> False
+
 hyphens :: [Item] -> [Hyphen]
 hyphens its = [h | Penalty _ p h <- its, p < infPenalty, h /= NoHyphen]
 
@@ -97,6 +111,19 @@ langTests =
         let its = items env [lang "en" [t "“東京”"]]
         between "“" "東" its @?= []
         between "京" "”" its @?= [],
+      -- A3 of docs/adr/0211: beside a Japanese character, a character of
+      -- both scripts in a Latin span breaks only where the kinsoku and the
+      -- inseparables of its Japanese class let it, as in a Japanese span
+      testCase "A3: the line breaks beside “ « ” › … — of a Latin span as beside them in a Japanese span" $
+        forM_ ["“", "«", "”", "›", "…", "—"] $ \d -> do
+          let latinSpan = items env [t "あ", lang "en" [t d], t "い"]
+              japaneseSpan = items env [lang "ja" [t ("あ" <> d <> "い")]]
+              sides its = (breakable "あ" d its, breakable d "い" its)
+          assertEqual (T.unpack d) (sides japaneseSpan) (sides latinSpan),
+      testCase "A3: no break after an opening bracket nor before a closing one of a Latin span" $ do
+        let sides d = let its = items env [t "あ", lang "en" [t d], t "い"] in (breakable "あ" d its, breakable d "い" its)
+        map sides ["“", "«"] @?= [(True, False), (True, False)]
+        map sides ["”", "›"] @?= [(False, True), (False, True)],
       testCase "[lang ja: “Hello”]: Japanese brackets around a Latin word" $
         boxes (items env [lang "ja" [t "“Hello”"]]) @?= [punct "“", latin "Hello", punct "”"],
       testCase "[lang en: wait… what]: the ellipsis is in the word; outside a span it is a Japanese character with aki" $ do

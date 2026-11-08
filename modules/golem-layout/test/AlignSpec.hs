@@ -124,5 +124,23 @@ alignTests =
       testCase "a fully-justified paragraph of one short line is one line, stretched" $ do
         let ls = brLines (breakAligned (Justified Nothing) defaultParams (const 100) (paragraph [10, 10]))
         length ls @?= 1
-        map contentEnd ls @?= [100]
+        map contentEnd ls @?= [100],
+      -- A1 of docs/adr/0211: fully-justified breaks as left-justified does
+      testCase "A1: fully-justified breaks one short line, two lines, and a paragraph left-justified sends a word on, as left-justified" $
+        forM_ [([10, 10], 1), ([60, 60], 2), ([30, 40, 20, 50, 30, 10, 10, 10], 3)] $ \(ws, n) -> do
+          let words'' a = [[w | Box w _ <- lineItems l] | l <- brLines (breakAligned a defaultParams (const 100) (paragraph ws))]
+          words'' (Justified Nothing) @?= words'' (Justified (Just LineStart))
+          length (words'' (Justified Nothing)) @?= n,
+      testProperty "A1: fully-justified breaks every paragraph as left-justified" $ property $ do
+        (ws, target) <- forAll genParagraph
+        let words'' a = [[w | Box w _ <- lineItems l] | l <- brLines (breakAligned a defaultParams (const target) (paragraph ws))]
+        words'' (Justified Nothing) === words'' (Justified (Just LineStart)),
+      -- the last line 20 + 6 + 20 = 46 of 100 after a line of 90: the
+      -- glue between its words stretches 0, 1, the 54 left, or 27 (short)
+      testCase "A1: the last line of fully-justified by the stretch of its glue" $
+        forM_ [(0, 46), (1, 100), (54, 100), (27, 100)] $ \(y, end) -> do
+          let ls = brLines (breakAligned (Justified Nothing) defaultParams (const 100) (words' y 2 [90, 20, 20]))
+          length ls @?= 2
+          contentEnd (last ls) @?= end
+          lineShift (Justified Nothing) True (last ls) @?= 0
     ]

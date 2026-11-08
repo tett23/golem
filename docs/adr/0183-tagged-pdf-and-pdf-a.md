@@ -1,6 +1,6 @@
 # ADR 0183: タグ付き PDF と、PDF/A-2a と PDF/UA-1 への準拠
 
-ステータス: 採択
+ステータス: 採択→CI の ICC プロファイル、最初の見出しの G07103 のメッセージ、校正のコメントの行は [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
 
 ## 文脈
 

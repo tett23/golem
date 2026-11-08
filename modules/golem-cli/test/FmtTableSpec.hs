@@ -123,6 +123,24 @@ commandTests =
         ([(code, _, err)], _) <- withBytes [("manifest.toml", TE.encodeUtf8 (T.pack manifest)), ("a.gm", "@table data/a.csv\n"), ("data/a.csv", "a,b\r\n\xff,2\r\n")] [["fmt"]]
         assertEqual err (ExitFailure 1) code
         assertBool err ("data/a.csv: UTF-8 として読めないため整形しません" `isInfixOf` err),
+      -- A4 of docs/adr/0211: golem fmt removes the BOM of a table file that
+      -- @listing reads too, and @listing then takes its first line without it
+      testCase "A4: after golem fmt, @listing of a table file it shares with @table starts without the BOM" $
+        withSystemTempDirectory "golem-cli" $ \tmp -> do
+          let files = [("manifest.toml", manifestToml testManifest {tmChapters = ["a.gm"], tmTargets = ["html"]}), ("a.gm", "@table data/x.csv\n\n@listing data/x.csv\n"), ("data/x.csv", "\xFEFF\&a,b\n1,2\n")]
+          mapM_ (\(p, c) -> createDirectoryIfMissing True (takeDirectory (tmp </> p)) >> BS.writeFile (tmp </> p) (TE.encodeUtf8 c)) files
+          let golem args = readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
+          (code0, _, err0) <- golem ["build", "--target", "html"]
+          assertEqual err0 ExitSuccess code0
+          before <- TE.decodeUtf8 <$> BS.readFile (tmp </> "build" </> "html" </> "a.xhtml")
+          assertBool "the BOM is in @listing before golem fmt" ("\xFEFF" `T.isInfixOf` before)
+          (code1, _, err1) <- golem ["fmt"]
+          assertEqual err1 ExitSuccess code1
+          (code2, _, err2) <- golem ["build", "--target", "html"]
+          assertEqual err2 ExitSuccess code2
+          after <- TE.decodeUtf8 <$> BS.readFile (tmp </> "build" </> "html" </> "a.xhtml")
+          assertBool "no BOM in @listing after golem fmt" (not ("\xFEFF" `T.isInfixOf` after))
+          assertBool "the first line of @listing is there" ("a,b" `T.isInfixOf` after),
       testCase "without arguments, a missing table file and one outside the root are left to the build" $ do
         let files = [("manifest.toml", T.pack manifest), ("a.gm", "@table data/none.csv\n\n@table ../out.csv\n")]
         ([(code, out, err)], _) <- golemSteps files [["fmt"]]

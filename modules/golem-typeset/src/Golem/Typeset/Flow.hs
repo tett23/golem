@@ -1473,7 +1473,9 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
     breaks; between paragraphs of the same style its space-between (docs/adr
     ADR 0005); otherwise the greater of the space after of the block before
     and the space before of the block, which only paragraphs outside lists
-    and definition lists have -}
+    and definition lists have. Nothing before the breaks, and nothing
+    across the boundary of two files, whose blocks are not siblings
+    (docs/adr/0211) -}
     gapLines style ctx spaced a b = case (a, b) of
       (BlankLines _, _) -> 0
       (_, BlankLines _) -> 0
