@@ -597,8 +597,8 @@ c1Japanese _ p =
   | (_, a, mid, b) <- codePairs (pItems p),
     let cs = candidates mid
         pro = prohibited p a b,
-    Just (_, _, True) <- [borderOf a b],
-    if pro then not (null cs) else length cs /= 1
+    if pro then not (null cs) else length cs /= 1,
+    Just (_, _, True) <- [borderOf a b]
   ]
     <> [ Breach C1 (-1) ("the box of code " <> show (bcText c) <> " holds a Japanese character and another")
        | Box _ c <- pItems p,
