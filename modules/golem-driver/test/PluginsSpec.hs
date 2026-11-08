@@ -237,13 +237,13 @@ withDescribedDatum describe size decl source files k = withSystemTempDirectory "
   TIO.writeFile (tmp </> "a.gm") source
   src <- TIO.readFile "../golem-plugin/test/plugins/datum.wat"
   -- at 256, after the other data of datum.wat, however long it is
-  let described =
+  let withDescription =
         T.replace "(i64.const 29)" ("(i64.const " <> T.pack (show size) <> ")")
           . T.replace "(i64.shl (i64.const 16) (i64.const 32))" "(i64.shl (i64.const 256) (i64.const 32))"
           . T.replace "(data (i32.const 16) \"" "(data (i32.const 256) \""
           . T.replace "\"\\a2\\64data\\81\\65table\\68commands\\81\\65datum\"" ("\"" <> describe <> "\"")
-  assertBool "datum.wat declares table" (described src /= src)
-  wasm <- watToWasm (described src) >>= either (assertFailure . T.unpack) pure
+  assertBool "datum.wat declares table" (withDescription src /= src)
+  wasm <- watToWasm (withDescription src) >>= either (assertFailure . T.unpack) pure
   writeFiles tmp (("datum.wasm", wasm) : files)
   k tmp
 

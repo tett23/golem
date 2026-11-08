@@ -1111,15 +1111,15 @@ parseRunningFormatLegacy t0
     slot name0 =
       let (name, optional) = maybe (name0, False) (,True) (T.stripSuffix "?" name0)
           unknown = Left ("未知の差し込みです: {" <> name0 <> "}")
-          ref r = Right (PartRef r optional)
+          slotRef r = Right (PartRef r optional)
        in case T.splitOn "." name of
-            ["heading", l, f] -> maybe unknown ref (headingRef l f PickFirst)
-            ["heading", l, f, "last"] -> maybe unknown ref (headingRef l f PickLast)
+            ["heading", l, f] -> maybe unknown slotRef (headingRef l f PickFirst)
+            ["heading", l, f, "last"] -> maybe unknown slotRef (headingRef l f PickLast)
             ["meta", "creators"] -> Left "meta.creators は配列なので、柱に書けません。@set で文字列の変数を作ってください"
-            ["meta", k] | k `elem` runningMetaKeys -> ref (RefMeta k)
-            ("set" : ns@(_ : _)) | length ns <= 2 && all varName ns -> ref (RefVar ns)
+            ["meta", k] | k `elem` runningMetaKeys -> slotRef (RefMeta k)
+            ("set" : ns@(_ : _)) | length ns <= 2 && all varName ns -> slotRef (RefVar ns)
             -- a variable of [vars], in its tables too (docs/adr/0185)
-            ("vars" : ns@(_ : _)) | all varName ns -> ref (RefProjectVar ns)
+            ("vars" : ns@(_ : _)) | all varName ns -> slotRef (RefProjectVar ns)
             _ -> unknown
     varName n = case T.uncons n of
       Just (c, r) -> (isAsciiLetter c || c == '_') && T.all (\x -> isAsciiLetter x || isDigit x || x == '_') r

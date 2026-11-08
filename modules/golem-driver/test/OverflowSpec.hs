@@ -143,9 +143,9 @@ normalised pdf =
       b = before <> BS.drop 1 (BC.dropWhile (/= ']') rest)
       v = TE.encodeUtf8 golemVersion
       go s = case BS.breakSubstring v s of
-        (before, rest)
-          | BS.null rest -> before
-          | otherwise -> before <> "VERSION" <> go (BS.drop (BS.length v) rest)
+        (pre, post)
+          | BS.null post -> pre
+          | otherwise -> pre <> "VERSION" <> go (BS.drop (BS.length v) post)
    in go b
 
 hex :: BS.ByteString -> T.Text

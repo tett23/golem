@@ -49,10 +49,10 @@ import Data.ByteString.Builder qualified as B
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (isAscii)
-import Data.List (mapAccumL, nub, sortOn)
+import Data.List (nub, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes, isJust, mapMaybe)
+import Data.Maybe (catMaybes, isJust)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -749,7 +749,7 @@ structureObjects base pageObj root pageLeaves annots =
     -- each element with the path of kid indices from the root
     preorder = go []
       where
-        go path x = (x, path) : concat [go (path <> [i]) c | (i, KidElem c) <- zip [0 ..] (seKids x)]
+        go path x = (x, path) : concat [go (path <> [i]) c | (i, KidElem c) <- zip [0 :: Integer ..] (seKids x)]
 
 {- | The structure tree as text, for tests and goldens (docs/adr ADR
 0183): each element on a line, indented by its depth, with its type,

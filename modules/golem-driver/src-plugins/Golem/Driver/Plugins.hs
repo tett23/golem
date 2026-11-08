@@ -102,17 +102,17 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context f
       case parseLock lfid lockText of
         Left ds -> pure (LoadedPlugins (Left ds) [] Map.empty)
         Right lock -> do
-          loaded <- mapM (loadOne lock) (Map.toList (manifestPlugins manifest))
-          let pending = concat (lefts loaded) <> concatMap snd (rights loaded)
+          results <- mapM (loadOne lock) (Map.toList (manifestPlugins manifest))
+          let pending = concat (lefts results) <> concatMap snd (rights results)
               files = Map.fromList [(rel, bytes) | AtData _ rel bytes _ _ <- pending]
               fids = Map.fromList (zip (Map.keys files) (map FileId [dataBase ..]))
               sources = Map.fromList [(fids Map.! rel, SourceInfo rel (mkLineIndex (TE.decodeUtf8Lenient bytes))) | (rel, bytes) <- Map.toList files]
               ready = \case
                 Ready d -> d
                 AtData pname rel _ off dd -> ofPlugin pname (diagnostic (ddCode dd) (ddSeverity dd) (mkSpan (fids Map.! rel) off off) (ddMessage dd))
-              warnings = map ready (concatMap snd (rights loaded))
-          pure $ case map (map ready) (lefts loaded) of
-            [] -> LoadedPlugins (hook (map fst (rights loaded))) warnings sources
+              warnings = map ready (concatMap snd (rights results))
+          pure $ case map (map ready) (lefts results) of
+            [] -> LoadedPlugins (hook (map fst (rights results))) warnings sources
             dss -> LoadedPlugins (Left (concat dss)) warnings sources
   where
     err code = diagnostic code Error (mkSpan mfid 0 0)
