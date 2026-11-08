@@ -214,7 +214,7 @@ Golem はテストと CI から shem をコマンドとして呼び、golem の�
 Golem は三つめの、ページの画像の SHA-256 の一覧をコミットする方法を採った。
 一覧は 1,779 ページで約 135 KB で、shem の決定性により、どの環境で作っても同じになる。
 
-入力は次の 19 の PDF である。
+入力は次の 20 の PDF である。
 入力の一覧は [code: scripts/visual/build.sh --list] が出す。
 
 - [code: sample]：[code: scripts/determinism.sh] と同じ B6 の縦組み。
@@ -222,6 +222,7 @@ Golem は三つめの、ページの画像の SHA-256 の一覧をコミット�
 - [code: complex-vertical] と [code: complex-horizontal]：機能を組み合わせた二冊の fixture。縦組みの一段の本と、横組みの二段の本で、ルビ、圏点、注、図版、表、コードブロック、罫線を持つ段落と見出し、目次、索引、参考文献、Emet の関数とフィルタを一冊の中で組み合わせる。二冊の参照を書き直すプルリクエストは、説明に、変わったページと変わった理由を書く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0175-complex-typesetting-fixture.md]（docs/adr の ADR 0175「機能を組み合わせた二冊の fixture で、機能のあいだの相互作用を固定する」）]
 - 『蟹工船』と、その [code: \[page\]] に [code: bleed = "3mm"] を足して [code: --marks japanese] で組んだもの。トンボの Separation の色と、塗り足しの付いた [code: MediaBox] は、ほかの入力にない。
 - 『テンペスト』と、パブリックドメインの十冊。
+- [code: languages]：和文と欧文の両方で使う引用符、ダッシュ、三点リーダー、ギュメを、言語を切り替える範囲の内と外に置いた fixture。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0187-inline-language-switch.md]（docs/adr の ADR 0187「原稿の一部の言語を [code: \[lang\]] と [code: @lang] で指定する」）]
 - 二つのマニュアル。奥付がコミットごとに変わらないように、[code: GOLEM_MANUAL_COMMIT] を 0 が 40 個の文字列に、[code: GOLEM_MANUAL_TAG] を [code: v0.0.0-visual] にして組む。
 
 [code: scripts/visual/build.sh] は、各プロジェクトを一時的なディレクトリに写して組み、リポジトリの [code: build/] には書かない。
