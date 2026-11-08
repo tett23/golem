@@ -1731,11 +1731,11 @@ akiTests =
       Aki.akiBetween defaultAkiSet (Aki.AkiChar MiddleDot) (Aki.AkiChar Opening) @?= Aki.Aki 0 (1 / 4) (1 / 4),
     testCase "B4: every other pair of positions keeps the aki of the set before golem-layout ADR 0039" $
       [ (x, y)
-        | x <- allAkiPositions,
-          y <- allAkiPositions,
-          (x, y) `notElem` changedPairs,
-          Aki.akiBetween defaultAkiSet x y /= Aki.akiBetween oldDefaultAkiSet x y
-        ]
+      | x <- allAkiPositions,
+        y <- allAkiPositions,
+        (x, y) `notElem` changedPairs,
+        Aki.akiBetween defaultAkiSet x y /= Aki.akiBetween oldDefaultAkiSet x y
+      ]
         @?= [],
     testCase "B5: gyomatsu-yakumono-zenkaku is gyomatsu-yakumono-hankaku but at the line end (golem-layout ADR 0039)" $ do
       zenkaku <- maybe (assertFailure "no zenkaku" >> error "unreachable") pure (Map.lookup "gyomatsu-yakumono-zenkaku" builtinAkiSets)
