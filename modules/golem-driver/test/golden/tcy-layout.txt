@@ -1,0 +1,13 @@
+0 0 KindText:あ@0+603757 KindTcy:12@754696+603757 KindText:月@1509392+603757 KindPunctuation:。@2113149+301879
+1 0 KindText:い@0+603757 KindTcy:!?@754696+603757 KindText:と@1509392+603757 KindPunctuation:。@2113149+301879
+2 0 KindText:う@0+603757 KindTcy:12@754696+603757 KindText:日@1509392+603757 KindPunctuation:。@2113149+301879
+3 0 KindText:え@0+603757 KindTcy:7@754696+603757 KindText:日@1509392+603757 KindPunctuation:。@2113149+301879
+4 0 KindText:お@0+603757 KindTcy:123@754696+603757 KindText:年@1509392+603757 KindPunctuation:。@2113149+301879
+5 0 KindText:か@0+603757 KindTcy:1234@754696+603757 KindText:年@1509392+603757 KindPunctuation:。@2113149+301879
+1 本文の行 Rect {rectX = 19459548, rectY = 28051472, rectW = 603757, rectH = 2415028}
+1 本文の行 Rect {rectX = 18437806, rectY = 28051472, rectW = 603757, rectH = 2415028}
+1 本文の行 Rect {rectX = 17416064, rectY = 28051472, rectW = 603757, rectH = 2415028}
+1 本文の行 Rect {rectX = 16394322, rectY = 28051472, rectW = 603757, rectH = 2415028}
+1 本文の行 Rect {rectX = 15372580, rectY = 28051472, rectW = 603757, rectH = 2415028}
+1 本文の行 Rect {rectX = 14350838, rectY = 28051472, rectW = 603757, rectH = 2415028}
+1 ノンブル Rect {rectX = 4133417, rectY = 2481902, rectW = 300067, rectH = 603757}

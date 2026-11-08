@@ -35,6 +35,7 @@ import SpecimenGeometrySpec (specimenGeometryTests)
 import StylesSpec
 import TableFilesSpec
 import TaggedPdfSpec (taggedPdfTests)
+import TateChuYokoSpec (tateChuYokoTests)
 import Test.Tasty
 import UnwritableNumbersSpec (unwritableNumbersTests)
 import VarsSpec (varsTests)
@@ -80,7 +81,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests, tateChuYokoTests]
         <> [ newProjectTests,
              allTargetsTests,
              pdfPipelineTests,
