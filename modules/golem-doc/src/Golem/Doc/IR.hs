@@ -286,6 +286,8 @@ data InlineF r
     Link !SrcSpan !Text [InlineF r]
   | -- | a language span: the tag as written with [lang] (docs/adr ADR 0187)
     Lang !SrcSpan !Text [InlineF r]
+  | -- | [ref-number] and [ref-title] after S1: the kind, the label and the inlines they resolve to (docs/adr/0215)
+    Resolved !SrcSpan !RefKind !Text [InlineF r]
   deriving stock (Eq, Show)
 
 -- | The amount of an [aki]: in zw (the size of the type there), or absolute in sp.
@@ -378,6 +380,7 @@ noRuby = \case
   ChannelItem s c -> Just (ChannelItem s c)
   Link s u xs -> Link s u <$> traverse noRuby xs
   Lang s l xs -> Lang s l <$> traverse noRuby xs
+  Resolved s k l xs -> Resolved s k l <$> traverse noRuby xs
 
 {- | A title as it is copied elsewhere in the book (the table of contents,
 [ref-title]): without the inlines that tell a list where the text is,
@@ -397,6 +400,8 @@ withoutAnchors = concatMap $ \case
   CharStyle sp c xs -> [CharStyle sp c (withoutAnchors xs)]
   Link _ _ xs -> withoutAnchors xs
   Lang sp l xs -> [Lang sp l (withoutAnchors xs)]
+  -- a resolved reference stays a reference, as a language span (docs/adr/0215)
+  Resolved sp k l xs -> [Resolved sp k l (withoutAnchors xs)]
   x -> [x]
 
 -- | Whether an inline is a line break.

@@ -1,6 +1,6 @@
 # ADR 0215: `[ref-number]` と `[ref-title]` をタグ付き PDF の `Reference` にする
 
-ステータス: 採択（未実装）
+ステータス: 採択→手順から外れた点（テストの順と、G06009 の Resolved の規則）は [ADR 0229](0229-record-the-procedures-adr-0215-and-0217-departed-from.md)
 
 ## 文脈
 

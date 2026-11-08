@@ -32,7 +32,13 @@ Document /Layout /WritingMode /TbRl
         "この性質を決定性と呼ぶ。"
     "。本書は第1.0版、価格は2.68である。全2章。"
   P
-    "詳しくは第二章「設計」で説明する。重要、十。"
+    "詳しくは第"
+    Reference
+      "二"
+    "章「"
+    Reference
+      "設計"
+    "」で説明する。重要、十。"
   L /List /ListNumbering /None
     LI
       Lbl

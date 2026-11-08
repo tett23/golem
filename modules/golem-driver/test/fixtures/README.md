@@ -44,10 +44,11 @@ book (`writing-mode` of `[page]`) and because a wrapped figure cannot be
 set on a page of two columns or more (G07026): the vertical book has one
 column and a wrapped figure, the horizontal one two columns and none.
 Neither has sidenotes, which no vertical page and no page of columns can
-hold (G07001). Each book is to be 16 to 24 pages (docs/adr/0175). The
-vertical book has been 25 pages since the paragraph spacing of
-docs/adr/0189; whether to cut the book or to change the range is left to
-an ADR, and this range stays as it is until then.
+hold (G07001). Each book is to be 16 to 32 pages (docs/adr/0220, which
+changed the 16 to 24 of docs/adr/0175): OutputGoldenSpec counts the pages
+of both PDFs and fails on a count out of the range before it compares the
+goldens, so accepting new goldens does not let a book out of the range
+pass.
 
 Both use: three levels of numbered headings with `rule-before` and
 `rule-after`; a paragraph style with rules, with a paragraph split at the

@@ -93,7 +93,7 @@ MCID は、ページごとに 0 から内容のストリームの順に振る。
 | プラグインのチャネルの一覧 | `Div`、項目は `P` |
 | ルビ（読みのある区切り一つ） | `Ruby`、親文字は `RB`、読みは `RT` |
 | 脚注、傍注、章末の注 | 本文の注の印は `Reference`、その直後に `Note`。`Note` は `ID`（`note-1` から文書の順）、注の側の印の `Lbl`、注の本文の `P` を持つ |
-| ページ番号の参照（`[ref-page]`）、引用の印（`[cite]`） | `Reference`。`[ref-number]` と `[ref-title]` は、PDF に届く前に番号と題の文字になるので、親の要素の中身になる |
+| 相互参照（`[ref-number]`、`[ref-title]`、`[ref-page]`）、引用の印（`[cite]`） | `Reference`（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)） |
 | 外部のリンク（`[link]`、[docs/adr/0182](adr/0182-external-links.md)） | `Link`。リンクの文字と、行ごとのリンクの注釈の `OBJR` を持つ |
 | 言語の区間（`[lang]`、[docs/adr/0187](adr/0187-inline-language-switch.md)） | `/Lang` を持つ `Span`。`@lang` を付けたブロックは、その要素が `/Lang` を持つ |
 | 文字スタイル `code`（と、それに行き着く文字スタイル） | `Code` |
@@ -4272,6 +4272,12 @@ NaN と、正と負の無限大は有理数を持たないので、G06100 のエ
 
 ブロックは `[span, label, lang, body]` であり、`lang` はブロックの言語（`@lang`）のタグか null である（[docs/adr/0187](adr/0187-inline-language-switch.md)）。
 言語の区間は `[21, span, lang, inlines]` である。
+文書の組み立てが番号と題に置き換えた `[ref-number]` と `[ref-title]` は、`[22, span, ref-kind, label, inlines]`（Haskell では `Resolved !SrcSpan !RefKind !Text [InlineF r]`）であり、中のインラインは置き換えた番号と題の文字である（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)）。
+これを作るのは組み立てだけで、評価（S0）の IR には現れないので、プラグインと `golem inspect` と Emet の関数に渡る IR は変わらない。
+プラグインの出力にあれば、不変条件の違反（`解決した参照は文書の組み立てだけが作ります`、G06009）とする。
+プラグインの SDK は、受け取ることも作ることもないので、この要素を持たない。
+PDF は中のインラインを今までと同じく組み、構造の木では `Reference` の子にする。
+HTML、EPUB、プレーンテキストは、中のインラインを今までと同じく書く。
 プラグインの SDK の `Block` の `lang` と `Inline::Lang { span, lang, body }` も、同じバイト列を読み書きする。
 
 コードの行は `[text, number, diff-mark, highlight, callouts, span]` であり、`span` は行の本文の原稿の範囲か null である（[docs/adr/0218](adr/0218-page-starts-inside-code-blocks.md)）。
@@ -4984,6 +4990,8 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **送った図版の後で待つ図版の前の `@need-lines` と行アキが、その図版と別の段で扱われる**：段に入らずに送った図版が待っているあいだは、後の図版も、収まるかどうかにかかわらず、待っている図版の後に送る（「図版」の節）。その後の図版の直前に `@need-lines` か行アキがあると、`@need-lines` は今の段で判定し、行アキは今の段に置き、図版は次の段より後に置く。行アキを置くものの最初の部分と同じ段に置く（「行アキ」の節）という規則と、[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の P1、P3、P4 が守られない。仕様も ADR も、待つ図版の前の `@need-lines` と行アキをどの段で扱うかを定めていない。改ページの不変条件のテストで見つかった最も小さい例は、一段で段の行の数が 3 の版面に、1 行の段落、3 行の図版、1 行の行アキ、1 行の図版を順に置いたもので、行アキは 1 ページの段落の後に置かれ、二つめの図版は 3 ページに置かれる。`@need-lines` では、段の行の数が 4 の版面に、2 行の段落、3 行の図版、`@need-lines 2`、1 行の図版を置くと、二つめの図版は 2 ページの図版の後の、残りが 1 行の位置に置かれる。
 - **`@need-lines` の後の空きで、ブロックが送った図版の後の足りない残りに置かれる**：`@need-lines` を今の段で判定した後に空き（改ページに渡す一行の空き。表とコードブロックの後などに入る）が続き、空きが今の段を埋めると、次のブロックは、送った図版を置いた次の段の、残りが `@need-lines` の行数より少ない位置に置かれる。[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の P1 が守られない。毎晩の `enum.yml` の抜き取り（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md)）が、段の行の数が 6 の版面で見つけた。最も小さい例は、一段で段の行の数が 4 の版面に、2 行の段落、3 行の図版、`@need-lines 2`、二つの一行の空き、1 行の段落を順に置いたもので、最後の段落は 2 ページの図版の後の、残りが 1 行の位置に置かれる。要素が 6 個なので、毎晩のすべての入力を調べる上限（5 個）の外にある。空きを `@need-lines` の「次のブロック」に数えるかを、仕様は定めていない。
 - **段落の終わりの語間の空白の前の行末禁則**：段落の最後に書いた語間の空白は、後に箱がなくても分割の候補のままである。始め括弧類の後の空白で段落が終わると、そこで分けて空の最後の行を作り、前の行が始め括弧類で終わる（[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の L3）。[golem-layout ADR 0028](golem-layout/adr/0028-kinsoku-across-spaces-and-explicit-hyphens.md) は、空白の前と後の二つの箱の組で禁則を判定すると決め、後に箱がない空白を決めていない。最も小さい例は、2 字の行に `あ「「 ` を組むもので、1 行めが `あ「「` で終わり、2 行めは空になる。除いた入力は、部品 3 個までで 576 である。
+- **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
+- **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合

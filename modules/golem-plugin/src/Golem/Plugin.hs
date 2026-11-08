@@ -745,6 +745,7 @@ checkItems plugin given = mapM_ check
       CharStyle _ _ xs -> any sends xs
       Link _ _ xs -> any sends xs
       Lang _ _ xs -> any sends xs
+      Resolved _ _ _ xs -> any sends xs
       _ -> False
 
 -- | The items of channels among inlines, with their spans.
@@ -757,6 +758,7 @@ inlineItems = \case
   CharStyle _ _ xs -> concatMap inlineItems xs
   Link _ _ xs -> concatMap inlineItems xs
   Lang _ _ xs -> concatMap inlineItems xs
+  Resolved _ _ _ xs -> concatMap inlineItems xs
   Note _ _ xs -> concatMap inlineItems xs
   Sidenote _ _ xs -> concatMap inlineItems xs
   _ -> []
@@ -785,6 +787,7 @@ inlineSpans = \case
   ChannelItem s c -> s : concatMap inlineSpans (ciBody c)
   Link s _ xs -> s : concatMap inlineSpans xs
   Lang s _ xs -> s : concatMap inlineSpans xs
+  Resolved s _ _ xs -> s : concatMap inlineSpans xs
 
 inlineDeferred :: InlineF r -> [DeferredExpr]
 inlineDeferred = \case
@@ -798,6 +801,7 @@ inlineDeferred = \case
   ChannelItem _ c -> concatMap inlineDeferred (ciBody c)
   Link _ _ xs -> concatMap inlineDeferred xs
   Lang _ _ xs -> concatMap inlineDeferred xs
+  Resolved _ _ _ xs -> concatMap inlineDeferred xs
   _ -> []
 
 blocksOf :: Document -> [Block]

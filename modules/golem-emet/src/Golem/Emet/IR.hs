@@ -116,6 +116,7 @@ withRuby = \case
   ChannelItem s c -> ChannelItem s c
   Link s u xs -> Link s u (map withRuby xs)
   Lang s l xs -> Lang s l (map withRuby xs)
+  Resolved s k l xs -> Resolved s k l (map withRuby xs)
 
 encodeInline :: Inline -> Enc Result
 encodeInline = \case
@@ -145,6 +146,9 @@ encodeInline = \case
   Link sp u xs -> encodeInlines xs >>= \b -> at sp "Link" [str u, b]
   -- a language span (docs/adr ADR 0187)
   Lang sp l xs -> encodeInlines xs >>= \b -> at sp "Lang" [str l, b]
+  {- the functions run in S0, before the assembly resolves the references
+  (docs/adr/0215): a resolved one would be the reference as written -}
+  Resolved sp k l _ -> at sp "Ref" [con (refKind k) [], str l]
   where
     at sp c fs = node c fs (Hidden sp Nothing Nothing 0)
     numberStyle = \case

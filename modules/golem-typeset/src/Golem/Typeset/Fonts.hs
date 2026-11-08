@@ -286,6 +286,8 @@ bookHasCode styleOf book = or [any (blockHas (styleOf fid)) bs | Document fid bs
       Kenten _ _ xs -> any (inlineHas st) xs
       Note _ _ xs -> any (inlineHas st) xs
       Sidenote _ _ xs -> any (inlineHas st) xs
+      -- the title a [ref-title] copies may hold code (docs/adr/0215)
+      Resolved _ _ _ xs -> any (inlineHas st) xs
       Ruby _ _ segs -> or [any (inlineHas st) b | RubySegment b _ <- segs]
       _ -> False
 
@@ -377,6 +379,7 @@ kentenRubyNotices book =
       Color _ _ xs -> concatMap (sites inKenten) xs
       CharStyle _ _ xs -> concatMap (sites inKenten) xs
       Link _ _ xs -> concatMap (sites inKenten) xs
+      Resolved _ _ _ xs -> concatMap (sites inKenten) xs
       Note _ _ xs -> concatMap (sites False) xs
       Sidenote _ _ xs -> concatMap (sites False) xs
       _ -> []
@@ -387,6 +390,7 @@ kentenRubyNotices book =
       Color _ _ xs -> concatMap kentenIn xs
       CharStyle _ _ xs -> concatMap kentenIn xs
       Link _ _ xs -> concatMap kentenIn xs
+      Resolved _ _ _ xs -> concatMap kentenIn xs
       _ -> []
 
 -- | Every list of inlines of a block, captions and nested blocks included.
