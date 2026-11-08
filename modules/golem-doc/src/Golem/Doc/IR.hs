@@ -286,8 +286,7 @@ data InlineF r
     Link !SrcSpan !Text [InlineF r]
   | -- | a language span: the tag as written with [lang] (docs/adr ADR 0187)
     Lang !SrcSpan !Text [InlineF r]
-  | -- | [ref-number] and [ref-title] after S1: the kind, the label and the
-    -- inlines they resolve to (docs/adr/0215)
+  | -- | [ref-number] and [ref-title] after S1: the kind, the label and the inlines they resolve to (docs/adr/0215)
     Resolved !SrcSpan !RefKind !Text [InlineF r]
   deriving stock (Eq, Show)
 
