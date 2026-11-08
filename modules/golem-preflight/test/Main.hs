@@ -425,12 +425,23 @@ checkTests =
       assertBool (show ds) (all (\d -> "ノンブル" `T.isInfixOf` diagMessage d && "地" `T.isInfixOf` diagMessage d) ds),
     testCase "G09012: a line well inside is not reported" $
       only "G09012" (check printRules (withPages [(emptyPage 1) {pvLines = [LineView (Rect (mm 20) (mm 20) (mm 50) (mm 3)) "本文の行" srcSpan Nothing]}])) @?= [],
-    testCase "G09013: an overfull line, in mm to two decimals (docs/adr ADR 0103)" $ do
-      let ds = only "G09013" (check printRules (withPages [(emptyPage 1) {pvLines = [LineView (Rect (mm 20) (mm 20) (mm 50) (mm 3)) "本文の行" srcSpan (Just (mm 1.24))]}]))
+    testCase "G09013: an overfull line, in mm to two decimals rounded up, at the box that crosses the measure (docs/adr ADR 0103, ADR 0210)" $ do
+      let at = mkSpan (FileId 3) 40 40
+          ds = only "G09013" (check printRules (withPages [(emptyPage 1) {pvLines = [LineView (Rect (mm 20) (mm 20) (mm 50) (mm 3)) "本文の行" srcSpan (Just (230356, at))]}]))
       map diagMessage ds @?= ["行が行長から 1.24mm はみ出しています（PDF の 1 ページ目）"]
       map (lookup "overfull" . diagFacts) ds @?= [Just (FactText "1.24mm")]
       map diagSeverity ds @?= [Warning]
-      map diagSpan ds @?= [srcSpan],
+      map diagSpan ds @?= [at],
+    testCase "G09013: 1sp past the measure is 0.01mm, not 0.00mm (docs/adr ADR 0210)" $ do
+      let ds = only "G09013" (check printRules (withPages [(emptyPage 2) {pvLines = [LineView (Rect (mm 20) (mm 20) (mm 50) (mm 3)) "本文の行" srcSpan (Just (1, srcSpan))]}]))
+      map diagMessage ds @?= ["行が行長から 0.01mm はみ出しています（PDF の 2 ページ目）"]
+      map (lookup "overfull" . diagFacts) ds @?= [Just (FactText "0.01mm")],
+    testCase "G09013: the message, the place and the facts are those of overfullLine, which G07105 of golem build uses (docs/adr ADR 0210)" $ do
+      let at = mkSpan (FileId 3) 40 40
+          ds = only "G09013" (check printRules (withPages [(emptyPage 3) {pvLines = [LineView (Rect (mm 20) (mm 20) (mm 50) (mm 3)) "本文の行" srcSpan (Just (1000, at))]}]))
+          o = overfullLine 3 1000 at
+      [(diagSpan d, diagMessage d, diagFacts d) | d <- ds] @?= [(olSpan o, olMessage o, olFacts o)]
+      olFacts o @?= [("overfull", FactText "0.01mm"), ("pdf-pages", FactInts [3])],
     testCase "G09014: one problem, off, and the missing intent alone" $ do
       let v = emptyView {vwX4 = [X4Problem "TrimBox" "1 ページ目に TrimBox がありません"]}
       map diagMessage (only "G09014" (check printRules v)) @?= ["PDF/X-4 の要件を満たしていません: TrimBox（1 ページ目に TrimBox がありません）"]

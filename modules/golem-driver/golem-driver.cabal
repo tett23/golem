@@ -101,6 +101,7 @@ test-suite golem-driver-test
     InMemorySpec
     LinkSpec
     OutputGoldenSpec
+    OverflowSpec
     PageElementsSpec
     PageStartsSpec
     ParagraphRuleSpec
