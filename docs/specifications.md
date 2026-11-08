@@ -2028,7 +2028,8 @@ aki-set = "wide-waou"
 組み込みのセットは `gyomatsu-yakumono-hankaku`（行末約物半角）と `gyomatsu-yakumono-zenkaku`（行末約物全角）の二つで、名前と考え方を InDesign の同名のセットに合わせ、値は [golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md) の組み方から決めた。
 `gyomatsu-yakumono-hankaku` が既定で、和欧間は (八分, 四分, 二分)、終わり括弧類と句読点の後ろと始め括弧類の前は (0, 二分, 二分)、中点類の前後は (0, 四分, 四分)、和文どうしの字間は (0, 0, 0.1zw) である。
 和文の字と欧文の語のあいだに語間の空白を書いたときは、和欧間の空きを足さず、語間の空白だけを入れる（[docs/adr/0222](adr/0222-line-breaking-points-the-invariants-did-not-decide.md)）。
-隣り合う約物の空きは、終わり括弧類と始め括弧類の間が二分、中点類と括弧類や句読点の間が二分四分、中点類どうしが二分になる。
+隣り合う約物の空きは、終わり括弧類、句点類、読点類と始め括弧類の間が二分、始め括弧類どうしが 0（ベタ）、終わり括弧類と中点類の間と、中点類と始め括弧類の間が四分になる（[golem-layout ADR 0039](golem-layout/adr/0039-set-consecutive-opening-brackets-and-brackets-beside-middle-dots-as-jlreq.md)）。
+句点類と読点類の後ろの中点類の前は二分四分、始め括弧類の後ろの中点類の前は四分、中点類どうしは二分、中点類の後ろの終わり括弧類と句読点の前は 0 である。
 行末の約物の後ろの空きは 0 なので、行末の終わり括弧類と句読点は半角になる。
 `gyomatsu-yakumono-zenkaku` は、これに行末の終わり括弧類と句読点の後ろの二分と、行末の中点類の後ろの四分を足したものである。
 組み込みのセットの値を変えたい場合は、`based-on` で引き継いだ別の名前のセットを作る。
@@ -5142,6 +5143,8 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **本文の中のコードの空白で、禁則に当たる位置でも改行する**：本文の中のコードの空白（[golem-layout ADR 0017](golem-layout/adr/0017-spaces-inside-inline-code.md)）は伸び縮みしないグルーであり、語間の空白の前後の禁則（[golem-layout ADR 0028](golem-layout/adr/0028-kinsoku-across-spaces-and-explicit-hyphens.md)）が当たらない。`[code: 「 a]` は `「` の後の空白で、`[code: a 」]` は `」` の前の空白で、`[code: … …]` は二つの `…` のあいだの空白で改行できる。0028 はコードの空白を列挙の外として変えなかったが、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) がコードの並びを列挙に足し、L2、L3、L4 の違反として見つかった（実装で見つかった）。
 - **段落の終わりの本文の中のコードの空白で改行し、箱のない最後の行を作る**：段落の終わりの `[code: 漢 ]` のように、コードの最後に空白があると、その空白で改行し、箱のない最後の行ができることがある。段落の終わりの語間の空白は捨てる（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md)）が、コードの空白は捨てない。T1 の違反として見つかった（[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の実装で見つかった）。
+- **既定のアキ量のセットで、中点類の後ろの終わり括弧類と句読点の前に空きがない**：`gyomatsu-yakumono-hankaku` は、`・」` と `・。` のように中点類の後ろに終わり括弧類、句点類、読点類が続く組に規則を持たないので、その字間は 0 になる。JLReq の付録 B の表 1（cl-05 の行）は、この組に四分を置く。和文組版は JLReq に従うという原則（「仕様が不明瞭な場合」）と食い違う。Chrome の既定は表 1 と同じ四分で組むので、PDF と HTML でも組み方が違う（[golem-layout ADR 0039](golem-layout/adr/0039-set-consecutive-opening-brackets-and-brackets-beside-middle-dots-as-jlreq.md) の「表 1 とのほかの食い違い」）。
+- **既定のアキ量のセットで、和字間隔の前後の括弧類に二分を置く**：`gyomatsu-yakumono-hankaku` は和字間隔を和文の字（`j`）として扱うので、`」　` の終わり括弧類の後ろと、`　「` の始め括弧類の前に二分を置く。JLReq の付録 B の表 1（cl-02 の行と cl-14 の行）は、どちらもベタ組とする。和文組版は JLReq に従うという原則と食い違い、Chrome の既定とも違う。段落の字下げに和字間隔を使う原稿の見た目にも関わる（[golem-layout ADR 0039](golem-layout/adr/0039-set-consecutive-opening-brackets-and-brackets-beside-middle-dots-as-jlreq.md) の「表 1 とのほかの食い違い」）。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合

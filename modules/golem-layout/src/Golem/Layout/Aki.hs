@@ -77,7 +77,9 @@ akiPositions = \case
 
 {- | gyomatsu-yakumono-hankaku: the composition of golem-layout ADR 0002.
 P is closing, full stop and comma, O opening, M middle dot, J the other
-Japanese classes and W western.
+Japanese classes and W western. Two opening brackets have no aki, and a
+closing bracket before a middle dot and a middle dot before an opening
+bracket a quarter em, as JLReq 3.1.4 (golem-layout ADR 0039).
 -}
 defaultAkiSet :: AkiSet
 defaultAkiSet = foldl' (\s (b, a, x) -> withAkiRule b a x s) (AkiSet Map.empty) rules
@@ -91,12 +93,13 @@ defaultAkiSet = foldl' (\s (b, a, x) -> withAkiRule b a x s) (AkiSet Map.empty) 
     rules =
       [ (j, chars [Kana, Ideograph, IdeographicSpace, Inseparable], Aki 0 0 (1 / 10)),
         (chars [Inseparable], chars [Inseparable], noAki),
-        (j <> w <> o, o, Aki 0 (1 / 2) (1 / 2)),
+        (j <> w, o, Aki 0 (1 / 2) (1 / 2)),
         (j <> w <> o, m, Aki 0 (1 / 4) (1 / 4)),
         (p, o, Aki 0 (1 / 2) (1 / 2)),
-        (m, o, Aki 0 (3 / 4) (3 / 4)),
+        (m, o, Aki 0 (1 / 4) (1 / 4)),
         (p, j <> w, Aki 0 (1 / 2) (1 / 2)),
         (p, m, Aki 0 (3 / 4) (3 / 4)),
+        (chars [Closing], m, Aki 0 (1 / 4) (1 / 4)),
         (m, j <> w, Aki 0 (1 / 4) (1 / 4)),
         (m, m, Aki 0 (1 / 2) (1 / 2)),
         (j, w, Aki (1 / 8) (1 / 4) (1 / 2)),
