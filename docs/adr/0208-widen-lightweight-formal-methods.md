@@ -1,6 +1,6 @@
 # ADR 0208: 軽量な形式手法を、ページ分割のほかの範囲に広げる
 
-ステータス: 採択
+ステータス: 採択→図版の行の数、`checkAllPar` の分け方、毎晩のページ分割の上限、抜き取りの範囲は [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
 
 ## 文脈
 

@@ -26,6 +26,7 @@ module Golem.Layout.KnuthPlass
     fitnessOf,
     placeLine,
     glueRatio,
+    reachedLimit,
   )
 where
 
@@ -424,8 +425,9 @@ breakParagraph ps lineWidth items =
       let firstBox = listToMaybe [c | j <- [s .. b - 1], Box _ c <- [at j]]
           lastBox = listToMaybe [c | j <- [b - 1, b - 2 .. s], Box _ c <- [at j]]
        in (maybe 0 bcEdgeStart firstBox, maybe 0 bcEdgeEnd lastBox)
+    -- the limit the steps reach (golem-layout ADR 0029)
     expansionOf e = case pExpansion ps of
-      Just (limit, _) -> (Sp (unSp e * toInteger limit `div` 1000), Sp (unSp e * toInteger limit `div` 1000))
+      Just (limit, stp) -> let m = toInteger (reachedLimit limit stp) in (Sp (unSp e * m `div` 1000), Sp (unSp e * m `div` 1000))
       Nothing -> (0, 0)
     walk nd = case nPrev nd of
       Nothing -> []
@@ -462,17 +464,32 @@ breakParagraph ps lineWidth items =
             _ -> 0
        in Line its ratio target expansion (protS, protE) overflow edges
 
-{- | The expansion of a line in permille: the ratio times the limit,
-rounded towards zero to a multiple of the step, with integer arithmetic.
+{- | The expansion of a line in permille (golem-layout ADR 0029): the
+ratio times the limit the steps reach, rounded to a multiple of the
+step, towards zero for a line that stretches and away from it for one
+that shrinks, so that the glue of a line that shrinks shrinks by no more
+than the ratio; with integer arithmetic.
 -}
 expansionStep :: Int -> Int -> Rational -> Int
 expansionStep limit stp ratio
-  | stp <= 0 = 0
+  | m <= 0 = 0
   | otherwise =
-      let raw = ratio * toRational limit
-          clamped = max (negate (toRational limit)) (min (toRational limit) raw)
-          steps = truncate (clamped / toRational stp) :: Integer
+      let raw = ratio * toRational m
+          clamped = max (negate (toRational m)) (min (toRational m) raw)
+          q = clamped / toRational stp
+          steps = (if clamped < 0 then floor q else truncate q) :: Integer
        in fromInteger steps * stp
+  where
+    m = reachedLimit limit stp
+
+{- | The limit of the glyph expansion the steps reach (golem-layout ADR
+0029): the limit rounded down to a multiple of the step; 0 when the step
+is not positive, is larger than the limit, or the limit is negative.
+-}
+reachedLimit :: Int -> Int -> Int
+reachedLimit limit stp
+  | stp <= 0 || limit <= 0 = 0
+  | otherwise = limit `div` stp * stp
 
 {- | The start offsets of the items of a set line. Expansion (a multiple
 of the step) scales the expandable boxes; the glue takes up the rest.

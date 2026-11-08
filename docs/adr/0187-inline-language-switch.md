@@ -1,6 +1,6 @@
 # ADR 0187: 原稿の一部の言語を `[lang]` と `@lang` で指定する
 
-ステータス: 採択
+ステータス: 採択→欧文の区間の両用の文字の隣の改行は [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
 
 ## 文脈
 

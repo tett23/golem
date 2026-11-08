@@ -4,9 +4,9 @@ built and tested natively too.
 
 The input is a sequence of files. Each is the length of its path (a
 little-endian uint32), the path (UTF-8), the length of its content (the
-same) and the content. A path is relative to the root of the project and
-equal to what normalizeRelative (golem-project) makes of it; no path comes
-twice.
+same) and the content. A path is relative to the root of the project, not
+empty (docs/adr/0225), and equal to what normalizeRelative (golem-project)
+makes of it; no path comes twice.
 
 The result is one byte of status, the length of the PDF and the PDF, and
 the length of the JSON of the diagnostics and the JSON, the lengths
@@ -41,6 +41,8 @@ data FrameError
     Truncated
   | -- | a path that is not UTF-8
     NotUtf8 !ByteString
+  | -- | the empty path, which names no file (docs/adr/0225)
+    EmptyPath
   | -- | a path that normalizeRelative changes or rejects
     NotNormalized !FilePath
   | -- | a path that comes twice
@@ -48,10 +50,11 @@ data FrameError
   deriving stock (Eq, Show)
 
 {- | The files of an input frame, in their order. The error is that of the
-first file that cannot be taken: cut short, not UTF-8, not normalised, or
-a path that an earlier file has. The paths are read first and compared
-sorted, so that the check of duplicates takes n log n comparisons, not
-n^2 (the security audit of 2026-11-08, W-01).
+first file that cannot be taken: cut short, not UTF-8, empty
+(docs/adr/0225), not normalised, or a path that an earlier file has. The
+paths are read first and compared sorted, so that the check of duplicates
+takes n log n comparisons, not n^2 (the security audit of 2026-11-08,
+W-01).
 -}
 readFiles :: ByteString -> Either FrameError [(FilePath, ByteString)]
 readFiles input = case firstDuplicate (map fst files) of
@@ -69,7 +72,14 @@ readFiles input = case firstDuplicate (map fst files) of
       (rawPath, rest) <- field bs
       (content, rest') <- field rest
       path <- maybe (Left (NotUtf8 rawPath)) Right (decodeUtf8 rawPath)
-      if isNormalized path then Right ((path, content), rest') else Left (NotNormalized path)
+      checked path
+      pure ((path, content), rest')
+    -- in this order: the empty path is what normalizeRelative makes of it,
+    -- yet names no file (docs/adr/0225)
+    checked path
+      | null path = Left EmptyPath
+      | isNormalized path = Right ()
+      | otherwise = Left (NotNormalized path)
     field bs = do
       (n, rest) <- word32 bs
       if toInteger n > toInteger (BS.length rest)
