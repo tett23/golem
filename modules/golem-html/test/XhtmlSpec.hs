@@ -659,9 +659,9 @@ blockTests =
                 codeCaption = Nothing,
                 codeDiff = True,
                 codeLines =
-                  [ CodeLine "a" (Just 1) (Just DiffContext) False [],
-                    CodeLine "b" Nothing (Just DiffRemoved) False [],
-                    CodeLine "c<" (Just 2) (Just DiffAdded) True [1, 2]
+                  [ CodeLine "a" (Just 1) (Just DiffContext) False [] Nothing,
+                    CodeLine "b" Nothing (Just DiffRemoved) False [] Nothing,
+                    CodeLine "c<" (Just 2) (Just DiffAdded) True [1, 2] Nothing
                   ],
                 codeNoNumber = False
               }
@@ -674,7 +674,7 @@ blockTests =
                 "</code></pre>\n"
               ],
     testCase "code without numbers, a diff or marks is its escaped text" $
-      bodyA cfg0 (bookOf [Block (at 0) (Just "c") Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a & b" (Just 1) Nothing False [], CodeLine "c" (Just 2) Nothing False []] False))])
+      bodyA cfg0 (bookOf [Block (at 0) (Just "c") Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a & b" (Just 1) Nothing False [] Nothing, CodeLine "c" (Just 2) Nothing False [] Nothing] False))])
         @?= "<pre id=\"c\"><code>a &amp; b\nc</code></pre>\n"
   ]
 
@@ -730,7 +730,7 @@ langTests =
         bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (OrderedList [ListItem Nothing [para 1 [txt "a"]]]))]) @?= "<ol lang=\"en\" xml:lang=\"en\">\n<li>a</li>\n</ol>\n"
         bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (DefList [DefGroup [[txt "t"]] [[para 1 [txt "d"]]]]))]) @?= "<dl lang=\"en\" xml:lang=\"en\">\n<dt>t</dt>\n<dd>\n<p>d</p>\n</dd>\n</dl>\n"
         assertBool "table" ("<table lang=\"en\" xml:lang=\"en\">" `T.isPrefixOf` bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (Table [AlignDefault] [[txt "a"]] [[[txt "b"]]]))]))
-        bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a" (Just 1) Nothing False []] False)))]) @?= "<pre lang=\"en\" xml:lang=\"en\"><code>a</code></pre>\n",
+        bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a" (Just 1) Nothing False [] Nothing] False)))]) @?= "<pre lang=\"en\" xml:lang=\"en\"><code>a</code></pre>\n",
       testCase "the blocks of the body of @lang: each with its own attributes, nothing around them" $
         bodyA cfg0 (bookOf [(para 0 [txt "a"]) {blockLang = Just "en"}, (para 1 [txt "b"]) {blockLang = Just "en"}])
           @?= "<p lang=\"en\" xml:lang=\"en\">a</p>\n<p lang=\"en\" xml:lang=\"en\">b</p>\n",

@@ -166,7 +166,7 @@ genCode = do
     <*> Gen.maybe genText
     <*> pure cap
     <*> Gen.bool
-    <*> Gen.list (Range.linear 0 3) (CodeLine <$> genText <*> Gen.maybe genNat <*> Gen.maybe Gen.enumBounded <*> Gen.bool <*> Gen.list (Range.linear 0 2) (Gen.int (Range.linear 1 50)))
+    <*> Gen.list (Range.linear 0 3) (CodeLine <$> genText <*> Gen.maybe genNat <*> Gen.maybe Gen.enumBounded <*> Gen.bool <*> Gen.list (Range.linear 0 2) (Gen.int (Range.linear 1 50)) <*> Gen.maybe genSpan)
     <*> maybe (pure False) (const Gen.bool) cap
 
 genDocument :: Gen Document
