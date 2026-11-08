@@ -28,6 +28,7 @@ module Golem.Layout.Japanese
     parseMarkFormat,
     composeInlines,
     composeInlinesTree,
+    trailingSpaces,
     inlineStructure,
     InlineNode (..),
     InlineRole (..),
@@ -294,10 +295,16 @@ composeInlinesTree env inls =
       leaves = [l | (l, _, _) <- sourced0]
       -- padCode keeps one piece for each piece
       pieces = padCode (map snd sourced)
-      (items, anchors) = foldl' emit ([], []) (zip5 leaves (map fst sourced) prevs pieces nexts)
-      emit (acc, as) (_, _, _, PAnchor f, _) = (acc, (length acc, f) : as)
+      (items, anchors, codeSpaces) = foldl' emit ([], [], IntSet.empty) (zip5 leaves (map fst sourced) prevs pieces nexts)
+      emit (acc, as, cs) (_, _, _, PAnchor f, _) = (acc, (length acc, f) : as, cs)
       -- the boxes of a piece carry its source (golem-cli ADR 0008) and its leaf (docs/adr ADR 0183)
-      emit (acc, as) (l, (src, offs), pv, p, nx) = (acc <> itemsFor env {ceBoxSource = src, ceBoxAt = offs, ceLeaf = l} pv p nx, as)
+      emit (acc, as, cs) (l, (src, offs), pv, p, nx) =
+        let new = itemsFor env {ceBoxSource = src, ceBoxAt = offs, ceLeaf = l} pv p nx
+            -- the glue of a space of inline code, by its index (golem-layout ADR 0037)
+            cs' = case p of
+              PSpace lk | lkCode lk -> IntSet.union cs (IntSet.fromList [length acc + k | (k, Glue {}) <- zip [0 ..] new])
+              _ -> cs
+         in (acc <> new, as, cs')
       -- the neighbours of each piece, anchors and breaks between mono ruby bases skipped
       solid = \case
         PAnchor _ -> False
@@ -306,11 +313,13 @@ composeInlinesTree env inls =
       prevs = scanl (\acc p -> if solid p then Just p else acc) Nothing pieces
       nexts = drop 1 (scanr (\p acc -> if solid p then Just p else acc) Nothing pieces)
       spaced = normalize env (kernPairs env items)
-      -- the spaces between words before the end of the paragraph and before a forced break go (golem-layout ADR 0032)
-      dropped = trailingSpaces spaced
-      normalized = [x | (k, x) <- zip [0 ..] spaced, not (IntSet.member k dropped)]
       -- anchors index the normalized items: the spacing inserted before a box shifts it, a space taken out the items after it
       positions = alignPositions items spaced
+      {- the spaces between words (golem-layout ADR 0032) and the spaces of
+      inline code (golem-layout ADR 0037) before the end of the paragraph
+      and before a forced break go; kernPairs keeps the items one for one -}
+      dropped = trailingSpaces (IntSet.fromList [j | (i, j) <- positions, IntSet.member i codeSpaces]) spaced
+      normalized = [x | (k, x) <- zip [0 ..] spaced, not (IntSet.member k dropped)]
       at i = let j = fromMaybe (length spaced) (lookup i positions) in j - IntSet.size (fst (IntSet.split j dropped))
    in (finish normalized, [f (at i) | (i, f) <- reverse anchors], nodes)
   where
@@ -437,21 +446,27 @@ lineEnd :: [Item]
 lineEnd = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
 
 {- | The items of the spaces between words before the end of a paragraph
-and before each forced break (golem-layout ADR 0032), by their indices:
-where no box comes between a space and the end, the glue of each space
-between words there and the penalties of 10000 kinsoku put before them
-(golem-layout ADR 0028). A space of code, which does not stretch, stays;
-so does all else.
+and before each forced break (golem-layout ADR 0032), and of the spaces of
+inline code there (golem-layout ADR 0037), by their indices: where no box
+comes between a space and the end, the glue of each space between words
+there, the glue of each space of code, which the indices given are of, and
+the penalties of 10000 kinsoku put before them (golem-layout ADR 0028).
+Glue that is not of a space stays, even if it neither stretches nor
+shrinks; so does all else.
 -}
-trailingSpaces :: [Item] -> IntSet.IntSet
-trailingSpaces its = IntSet.fromList (concatMap before ends)
+trailingSpaces :: IntSet.IntSet -> [Item] -> IntSet.IntSet
+trailingSpaces codeSpaces its = IntSet.fromList (concatMap before ends)
   where
     indexed = zip [0 :: Int ..] its
     ends = [k | (k, _) <- indexed, isLineEnd (drop k its)] <> [length its]
     -- the items back from an end to the box or the line end before it
     before e =
       let run = takeWhile (not . stops . snd) (reverse (take e indexed))
-       in if any (isWordSpace . snd) run then [k | (k, x) <- run, isWordSpace x || isKept x] else []
+          isSpace' k x = isWordSpace x || (IntSet.member k codeSpaces && isGlue x)
+       in if any (uncurry isSpace') run then [k | (k, x) <- run, isSpace' k x || isKept x] else []
+    isGlue = \case
+      Glue {} -> True
+      _ -> False
     stops = \case
       Box {} -> True
       Penalty _ p _ -> p <= negate infPenalty

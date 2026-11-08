@@ -11,7 +11,7 @@ character next to it in its line (in the vertical font, its origin the
 top of its em box on the centre line) gives the line, and the offsets of
 the boxes along the line give the box.
 -}
-module TateChuYokoSpec (tateChuYokoTests) where
+module TateChuYokoSpec (tateChuYokoTests, Glyph (..), fontEncodings, glyphsOf, pdfOf) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS

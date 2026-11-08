@@ -4,12 +4,13 @@ no set line reaches past its target length.
 -}
 module LineBreakingSpec (lineBreakingTests) where
 
+import Data.IntSet qualified as IntSet
 import Data.Text (Text)
 import Data.Text qualified as T
 import Fixtures (fs, look0, sp)
 import Golem.Doc.IR qualified as IR
 import Golem.Layout.Align (LineAlign (..), ParaAlign (..), breakAligned, lineShift)
-import Golem.Layout.Japanese (ComposeEnv (..), composeInlines, defaultComposeEnv)
+import Golem.Layout.Japanese (ComposeEnv (..), composeInlines, defaultComposeEnv, trailingSpaces)
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (LinkTarget (..), Look (..), noBoxSource)
 import Golem.Length qualified as L
@@ -17,7 +18,7 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import KnuthPlassReference (finish, referenceLook)
-import LineBreakEnum (Input (..), Setting (..), advance, breakInput, composeEnv, inlinesOf, itemsOf, lineText, paramsOf)
+import LineBreakEnum (Input (..), Setting (..), advance, breakInput, codeEnv, composeEnv, inlinesOf, itemsOf, lineText, paramsOf)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -73,6 +74,7 @@ lineBreakingTests =
         [w | l <- brLines r, Box w _ <- lineItems l] === ws,
       kinsokuTests,
       trailingSpaceTests,
+      codeTrailingSpaceTests,
       lowLineTests,
       apostropheTests,
       penaltyWidthTests
@@ -164,9 +166,6 @@ trailingSpaceTests =
         shapes plain ["あ", "「", " "] @?= shapes plain ["あ", "「"],
       testCase "T2: a space before a forced break goes, the space after it stays a break" $
         shapesOf [IR.Text sp "ああ ", IR.LineBreak sp, IR.Text sp "いい"] @?= shapesOf [IR.Text sp "ああ", IR.LineBreak sp, IR.Text sp "いい"],
-      testCase "T3: a space of code at the end stays" $ do
-        let items = fst (composeInlines (defaultComposeEnv fs) {ceLook = look0 {lkCode = True}} [IR.Text sp "a "])
-        [() | Glue _ 0 0 <- items] @?= [()],
       testCase "T1: a centred last line of ああ and a space is where that of ああ is" $ do
         let centred = Ragged LineCenter
             lastLine run =
@@ -299,6 +298,56 @@ apostropheTests =
         shapes plain ["I’ll"] @?= ["I’ll", "|10000", fil, "|-10000"]
         linesIn plain 2 ["aaa", " ", "as’"] @?= ["aaa", "as’"]
     ]
+
+{- | Spaces of inline code before the end of a paragraph and before a
+forced break are dropped before the line breaking too (golem-layout ADR
+0037), in the advances of the enumeration: a space of code is 1/4 em.
+-}
+codeTrailingSpaceTests :: TestTree
+codeTrailingSpaceTests =
+  testGroup
+    "spaces of code before the end of a paragraph (golem-layout ADR 0037)"
+    [ testCase "B1, B2: あ[code: 漢 ] in lines of 2 is the one line あ漢, and its items are those of あ[code: 漢]" $ do
+        codeLines 2 [txt "あ", code "漢 "] @?= ["あ漢"]
+        codeShapes [txt "あ", code "漢 "] @?= codeShapes [txt "あ", code "漢"],
+      testCase "B1, B2: the other boxes before the space, two spaces, and a line one space too short" $ do
+        codeLines 3 [txt "ああ", code "漢 "] @?= ["ああ漢"]
+        codeLines 2 [txt "あ", code "。 "] @?= ["あ。"]
+        sequence_ [codeShapes [txt "あ", code (t <> " ")] @?= codeShapes [txt "あ", code t] | t <- ["漢", "。", "「", "a"]]
+        codeShapes [txt "あ", code "漢  "] @?= codeShapes [txt "あ", code "漢"]
+        codeLines 2 [txt "あ", code "漢  "] @?= ["あ漢"],
+      testCase "B1, B2: before a forced break, and with an index anchor after the space, as without the space" $ do
+        codeShapes [txt "あ", code "漢 ", IR.LineBreak sp, txt "いい"] @?= codeShapes [txt "あ", code "漢", IR.LineBreak sp, txt "いい"]
+        let anchored c = composeInlines (codeEnv False plain) [txt "あ", code c, IR.IndexMark sp (IR.IndexEntry ["あ"] ["あ"])]
+        map shapeOf (fst (anchored "漢 ")) @?= map shapeOf (fst (anchored "漢"))
+        snd (anchored "漢 ") @?= snd (anchored "漢"),
+      testCase "B1, B2: a space of code and a space between words after it both go" $
+        codeShapes [txt "あ", code "a ", txt " "] @?= codeShapes [txt "あ", code "a"],
+      testCase "B3: the space of [code: a b] stays, a break; so does that of [code: 漢 ]い" $ do
+        let quarter = "_" <> show (unSp fs `div` 4, 0 :: Integer, 0 :: Integer)
+        codeShapes [code "a b"] @?= ["a", quarter, "b"] <> paragraphEnd
+        codeShapes [code "漢 ", txt "い"] @?= ["漢", quarter, "い"] <> paragraphEnd,
+      testCase "B6: glue that neither stretches nor shrinks and is not a space of code stays before the end" $ do
+        let box = Box fs (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
+            fixed = Glue (Sp (unSp fs `div` 4)) 0 0
+        trailingSpaces IntSet.empty [box, fixed] @?= IntSet.empty
+        trailingSpaces IntSet.empty ([box, fixed] <> finish) @?= IntSet.empty
+        trailingSpaces (IntSet.singleton 1) ([box, fixed] <> finish) @?= IntSet.singleton 1,
+      testCase "B1: a centred last line of [code: 漢 ] is where that of [code: 漢] is" $ do
+        let centred = Ragged LineCenter
+            lastLine is =
+              let its = fst (composeInlines (codeEnv False plain) is)
+               in last (brLines (breakAligned centred (paramsOf plain False its) (const (4 * fs)) its))
+            at = lineShift centred True
+        at (lastLine [code "漢 "]) @?= at (lastLine [code "漢"])
+    ]
+  where
+    txt = IR.Text sp
+    code t = IR.CharStyle sp "code" [IR.Text sp t]
+    codeShapes is = map shapeOf (fst (composeInlines (codeEnv False plain) is))
+    codeLines w is =
+      let its = fst (composeInlines (codeEnv False plain) is)
+       in map lineText (brLines (breakParagraph (paramsOf plain False its) (const (fromIntegral (w :: Int) * fs)) its))
 
 {- | The node a line overfull only by the width of the penalty at a break
 stays alive (golem-layout ADR 0036): the items of its N1 to N3 by hand, a
