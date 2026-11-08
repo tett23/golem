@@ -242,7 +242,8 @@ fittingBreaks p l =
           natural = sum [w | Box w _ <- before] + sum [w | Glue w _ _ <- before] + penW - protS - protE + sum (map bcEdgeStart firstB) + sum (map bcEdgeEnd lastB)
           expandable = sum [w | Box w c <- before, bcExpandable c]
           shrinkE = case pExpansion ps of
-            Just (limit, _) -> Sp (unSp expandable * toInteger limit `div` 1000)
+            -- the limit the steps reach (golem-layout ADR 0029)
+            Just (limit, stp) -> Sp (unSp expandable * toInteger (reachedLimit limit stp) `div` 1000)
             Nothing -> 0
           shrink = sum [z | Glue _ _ z <- before] + shrinkE
        in natural - shrink <= pWidth p
