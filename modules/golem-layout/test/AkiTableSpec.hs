@@ -87,8 +87,8 @@ akiTable =
           charClass c `elem` punctuation,
           let (b, a) = punctSpace (charClass c)
         ]
-      <> [ T.intercalate "\t" ["aki", posName p, posName q, fraction (akiMinimum x), fraction (akiOptimum x), fraction (akiMaximum x)]
-         | p <- positions,
-           q <- positions,
-           let x = akiBetween defaultAkiSet p q
-         ]
+        <> [ T.intercalate "\t" ["aki", posName p, posName q, fraction (akiMinimum x), fraction (akiOptimum x), fraction (akiMaximum x)]
+           | p <- positions,
+             q <- positions,
+             let x = akiBetween defaultAkiSet p q
+           ]
