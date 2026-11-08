@@ -1432,14 +1432,106 @@ if [ ! -e "$BM/calls" ]; then ok; else ng "build-macos: nothing runs with one ar
 # build-linux.sh installs its toolchain with apk and ghcup in an Alpine
 # container and reads /etc/alpine-release, which no fake on PATH can stand
 # for; splitting it so that every step could be a fake would make it
-# harder to read than the order it runs in. Only its arguments and its
-# refusal outside Alpine are tested here (docs/adr/0078).
+# harder to read than the order it runs in. Its arguments and its refusal
+# outside Alpine are tested here (docs/adr/0078), and its check of the
+# bootstrap script of ghcup in an Alpine container below (docs/adr/0230).
 run sh "$HERE/build-linux.sh" v1.2.3
 expect "build-linux: one argument" 2
 if [ ! -f /etc/alpine-release ]; then
   run sh "$HERE/build-linux.sh" v1.2.3 linux-x86_64
   expect "build-linux: outside Alpine" 1
 fi
+
+# The check of the bootstrap script of ghcup (docs/adr/0230), in the
+# Alpine image of release.yml, where /etc/alpine-release is real: a copy of
+# build-linux.sh, changed by one substitution of GHCUP_BOOTSTRAP_SHA256,
+# with a fake apk that does nothing and a fake curl that writes a fixed
+# script to the file of -o; the repository is mounted read-only. Skipped
+# without Docker (scripts-macos, macOS by hand).
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  BL=$WORK/build-linux
+  mkdir -p "$BL/scripts/release" "$BL/bin"
+  ALPINE_IMAGE=$(sed -n 's/^  ALPINE_IMAGE: *//p' "$HERE/../../.github/workflows/release.yml")
+  fake "$BL/bin" apk 'exit 0'
+  # the fixed script: it says it ran, and has no ghver= line
+  printf '#!/bin/sh\necho "the bootstrap script ran"\n' >"$BL/bootstrap"
+  fake "$BL/bin" curl '
+while [ $# -gt 0 ]; do
+  case $1 in -o) cp /fake/bootstrap "$2"; shift 2 ;; *) shift ;; esac
+done'
+  BL_SHA=$(sha "$BL/bootstrap")
+  BL_ORIG=$(sed -n 's/^GHCUP_BOOTSTRAP_SHA256=//p' "$HERE/build-linux.sh")
+  # the hash with its first character changed
+  case $BL_ORIG in 0*) BL_ONE=1${BL_ORIG#?} ;; *) BL_ONE=0${BL_ORIG#?} ;; esac
+  build_linux_in_alpine() { # build_linux_in_alpine SHA256
+    sed "s/^GHCUP_BOOTSTRAP_SHA256=.*/GHCUP_BOOTSTRAP_SHA256=$1/" "$HERE/build-linux.sh" >"$BL/scripts/release/build-linux.sh"
+    docker run --rm -v "$HERE/../..:/src:ro" -v "$BL:/fake:ro" -w /src -e PATH=/fake/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+      "$ALPINE_IMAGE" sh /fake/scripts/release/build-linux.sh v1.2.3 x86_64-linux
+  }
+  if [ -n "$ALPINE_IMAGE" ] && [ ${#BL_ONE} -eq 64 ] && [ "$BL_ONE" != "$BL_ORIG" ]; then ok; else ng "build-linux: ALPINE_IMAGE of release.yml and GHCUP_BOOTSTRAP_SHA256 of build-linux.sh"; fi
+  run build_linux_in_alpine "$BL_ONE"
+  expect "build-linux: I1 a GHCUP_BOOTSTRAP_SHA256 changed by one character stops it" 1
+  if grep -qF 'SHA-256 mismatch for the bootstrap script of ghcup' "$WORK/err"; then ok; else ng "build-linux: I1 says SHA-256 mismatch"; fi
+  if ! grep -qF 'the bootstrap script ran' "$WORK/out"; then ok; else ng "build-linux: I1 the bootstrap script does not run on a mismatch"; fi
+  run build_linux_in_alpine "$BL_SHA"
+  expect "build-linux: a bootstrap script without ghver= stops it" 1
+  if grep -qF 'does not install ghcup' "$WORK/err"; then ok; else ng "build-linux: says the script does not install ghcup"; fi
+  if ! grep -qF 'the bootstrap script ran' "$WORK/out"; then ok; else ng "build-linux: the bootstrap script without ghver= does not run"; fi
+else
+  echo "SKIP build-linux: the check of the bootstrap script of ghcup in Alpine (no Docker)" >&2
+fi
+
+# ---- check-wasm-archive.sh (docs/adr/0230)
+
+# wasm_archive [MISSING]: an archive of golem.wasm with the documents that
+# licenses.sh --wasm writes, without MISSING, and its .sha256
+CW=$WORK/check-wasm
+CW_NAME=golem-v1.2.3-wasm32-wasi
+CW_DOCS="ghc/LICENSE haskell/base-4.20.2.0/LICENSE haskell/ghc-prim-0.12.0/LICENSE haskell/ghc-bignum-1.3/LICENSE
+haskell/ghc-internal-9.1003.0/LICENSE harfbuzz/COPYING freetype/LICENSE.TXT freetype/FTL.TXT
+hyph-en-us/LICENSE-hyph-en-us.txt haskell/zlib-clib-1.3.2/LICENSE wasi-sdk/wasi-libc/COPYRIGHT-musl
+wasi-sdk/wasi-libc/LICENSE-APACHE wasi-sdk/wasi-libc/LICENSE-APACHE-LLVM wasi-sdk/wasi-libc/LICENSE-MIT
+wasi-sdk/llvm/libcxx-LICENSE.TXT wasi-sdk/llvm/libcxxabi-LICENSE.TXT gmp/COPYINGv3 gmp/COPYING.LESSERv3"
+wasm_archive() {
+  rm -rf "$CW"
+  mkdir -p "$CW/$CW_NAME/THIRD_PARTY_LICENSES"
+  printf '\000asm\001\000\000\000' >"$CW/$CW_NAME/golem.wasm"
+  : >"$CW/$CW_NAME/LICENSE"
+  : >"$CW/$CW_NAME/README"
+  : >"$CW/$CW_NAME/THIRD_PARTY_LICENSES/README"
+  for d in $CW_DOCS; do
+    mkdir -p "$CW/$CW_NAME/THIRD_PARTY_LICENSES/$(dirname "$d")"
+    echo "$d" >"$CW/$CW_NAME/THIRD_PARTY_LICENSES/$d"
+  done
+  if [ $# -gt 0 ]; then rm -rf "${CW:?}/$CW_NAME/${1:?}"; fi
+  tar -C "$CW" -czf "$CW/$CW_NAME.tar.gz" "$CW_NAME"
+  printf '%s  %s\n' "$(sha "$CW/$CW_NAME.tar.gz")" "$CW_NAME.tar.gz" >"$CW/$CW_NAME.tar.gz.sha256"
+}
+check_wasm() { sh "$HERE/check-wasm-archive.sh" "$CW/$CW_NAME.tar.gz"; }
+wasm_archive
+run check_wasm
+expect "check-wasm-archive: I2 an archive with everything" 0
+for f in golem.wasm LICENSE README THIRD_PARTY_LICENSES $CW_DOCS; do
+  case $f in golem.wasm | LICENSE | README | THIRD_PARTY_LICENSES) p=$f ;; *) p=THIRD_PARTY_LICENSES/$f ;; esac
+  wasm_archive "$p"
+  run check_wasm
+  expect "check-wasm-archive: I2 an archive without $p" 1
+  # the name it says: the file, or the package without its version
+  case $f in haskell/*) want=$(printf '%s\n' "$f" | sed 's|^haskell/\(.*\)-[0-9][0-9.]*/.*|haskell/\1-|') ;; *) want=$f ;; esac
+  if grep -qF "$want" "$WORK/err"; then ok; else ng "check-wasm-archive: names $want when $p is missing"; fi
+done
+wasm_archive
+printf 'x' >>"$CW/$CW_NAME.tar.gz"
+run check_wasm
+expect "check-wasm-archive: an archive that is not that of the .sha256" 1
+wasm_archive
+rm -f "$CW/$CW_NAME.tar.gz.sha256"
+run check_wasm
+expect "check-wasm-archive: no .sha256" 1
+run sh "$HERE/check-wasm-archive.sh"
+expect "check-wasm-archive: no argument" 2
+run sh "$HERE/check-wasm-archive.sh" "$CW/none.tar.gz"
+expect "check-wasm-archive: no such file" 1
 
 # ---- smoke.sh
 

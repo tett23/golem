@@ -485,6 +485,7 @@ Golem のビルドとテストは Node を使わない。
 `main` の保護の規則が必須とする検査は、`ci`、`adr`、`manual`、`textlint` の四つである。
 同じプルリクエストに新しいコミットを push すると、走っている前の実行は取り消される。
 CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timings.sh` で作る。
+`ci.yml` のステップ「qpdf is installed」と「epubcheck is installed」の結果（`conclusion`）を、実行ごとに数えるには、`scripts/ci/step-timeouts.sh <日時> <回数>` を使う（[docs/adr/0230](./docs/adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)）。
 
 `GOLEM_RACE_TESTS` は、競合を探すテストの回数に掛ける数である（1 以上の整数。未設定なら 1）。
 プルリクエストの CI は設定せず、今の回数で走らせる。
@@ -498,15 +499,15 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 
 | ジョブ | 内容 |
 |---|---|
-| `ci` | `ci.yml` を再利用可能なワークフローとして呼ぶ |
+| `ci` | `ci.yml` を再利用可能なワークフローとして呼ぶ。呼び出したワークフローは呼ぶジョブの権限までしか持てないので、`ci.yml` のジョブが求める権限（`visual` の `actions: read` と、`main` への push でだけ走る `caches` の `actions: write`）を与える |
 | `version` | `scripts/release/check-version.sh` で `VERSION` とタグを検査し、タグのコミットが `main` に含まれることを確かめる。タグの push では、`scripts/release/check-patch.sh` で、タグが patch（`X` と `Z` が 1 以上）かを決め、patch なら基準のリリース（同じ `X.Y` のプレリリースでない最新のタグ）を `patch` ジョブに渡す。patch なのに基準のリリースがなければ失敗する（[docs/adr/0174](./docs/adr/0174-compatibility-promises-for-1-0.md)、[docs/adr/0212](./docs/adr/0212-patch-release-check-on-the-inputs-of-the-previous-release.md)） |
 | `build` | Linux の二つのアーキテクチャでは Alpine のコンテナの中で musl に静的にリンクして、macOS では `macos-15` でビルドし、アーカイブを作る。`THIRD_PARTY_LICENSES/` を決めたリンクマップも成果物として上げる |
 | `smoke` | アーカイブを別のランナーと、`alpine` と `debian:stable-slim` のコンテナの中で展開して動かす。`golem new` の雛形と sample のビルドが diagnostics を一つも出さない（notice も含む）こと、`golem new --no-fonts` が置くべきフォントの一覧のほかに何も書かないことを確かめる（[docs/adr/0080](./docs/adr/0080-release-smoke-checks-diagnostics.md)） |
-| `wasm` | `ci.yml` の `wasm` と同じ手順で `golem.wasm` を組み、`scripts/wasm/run.mjs` の検査を通し、x86-64 の Linux のアーカイブの `golem` と PDF と diagnostics が一致することを `scripts/wasm/compare.sh` で確かめてから、`scripts/release/package-wasm.sh` で `golem-<タグ>-wasm32-wasi.tar.gz`（`golem.wasm`、`LICENSE`、`THIRD_PARTY_LICENSES/`、`README`）を作る。`THIRD_PARTY_LICENSES/` は `scripts/release/licenses.sh --wasm` が作り、wasm の GHC の GMP の版は `scripts/release/gmp-version.sh` を `GMP_GHC=wasm32-wasi-ghc` で動かして調べる（[docs/adr/0199](./docs/adr/0199-pdf-typesetting-as-wasm-reactor.md)） |
+| `wasm` | `ci.yml` の `wasm` と同じ手順で `golem.wasm` を組み、`scripts/wasm/run.mjs` の検査を通し、x86-64 の Linux のアーカイブの `golem` と PDF と diagnostics が一致することを `scripts/wasm/compare.sh` で確かめてから、`scripts/release/package-wasm.sh` で `golem-<タグ>-wasm32-wasi.tar.gz`（`golem.wasm`、`LICENSE`、`THIRD_PARTY_LICENSES/`、`README`）を作る。`THIRD_PARTY_LICENSES/` は `scripts/release/licenses.sh --wasm` が作り、wasm の GHC の GMP の版は `scripts/release/gmp-version.sh` を `GMP_GHC=wasm32-wasi-ghc` で動かして調べる（[docs/adr/0199](./docs/adr/0199-pdf-typesetting-as-wasm-reactor.md)）。作ったアーカイブは、`scripts/release/check-wasm-archive.sh` で、`golem.wasm`、`LICENSE`、`README`、[ADR 0199](docs/adr/0199-pdf-typesetting-as-wasm-reactor.md) の 8 の挙げる文書と `.sha256` を持つことを確かめる（[docs/adr/0230](./docs/adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)） |
 | `patch` | タグが patch のときだけ、x86-64 の Linux のアーカイブの `golem` で、基準のリリースの木の見た目の回帰テストの入力を組み、その木の参照と比べ、基準のリリースに `scripts/determinism/hashes.txt` があれば PDF の行を除いて比べる（`scripts/release/check-patch-output.sh`）。入力は基準のリリースのものなので、patch の前にマニュアルや fixture の原稿を直しても結果は変わらない。`release` ジョブはこのジョブを待つ（[docs/adr/0212](./docs/adr/0212-patch-release-check-on-the-inputs-of-the-previous-release.md)） |
 | `determinism` | 三つの配布物と CI のビルドの、`scripts/determinism.sh` の出力を比べる |
 | `notes` | `mise.toml` で固定した Claude Code を、版と SHA-256 で固定した mise（[docs/adr/0085](./docs/adr/0085-pin-mise-version-in-workflows.md)）で `jdx/mise-action` を使って入れ、`scripts/release/write-notes.sh` でリリースノートを書き、`notes.md` を成果物として上げる。権限は `contents: read` だけである（[docs/adr/0044](./docs/adr/0044-release-workflow-hardening.md)） |
-| `release` | タグの push のときだけ、`SHA256SUMS`、来歴の証明、GMP のソース、x86-64 の Linux の配布物で組んだ二つのマニュアルの PDF と HTML（`golem-manual-<タグ>` と `golem-dev-manual-<タグ>`）、コミットした見本のプラグイン（`plugins/wasm/*.wasm`、[docs/adr/0106](./docs/adr/0106-sample-plugins-in-rust.md)）、そのライセンスの文書のアーカイブ（`golem-plugins-licenses-<タグ>.tar.gz`、[docs/adr/0133](./docs/adr/0133-third-party-licenses-of-sample-plugins.md)）、`notes` が書いたリリースノートと共に下書きのリリースを作る。Node と Claude Code は入れない |
+| `release` | タグの push のときだけ、`SHA256SUMS`、来歴の証明、GMP のソース、x86-64 の Linux の配布物で組んだ二つのマニュアルの PDF と HTML（`golem-manual-<タグ>` と `golem-dev-manual-<タグ>`）、コミットした見本のプラグイン（`plugins/wasm/*.wasm`、[docs/adr/0106](./docs/adr/0106-sample-plugins-in-rust.md)）、そのライセンスの文書のアーカイブ（`golem-plugins-licenses-<タグ>.tar.gz`、[docs/adr/0133](./docs/adr/0133-third-party-licenses-of-sample-plugins.md)）、`notes` が書いたリリースノートと共に下書きのリリースを作る。その後に、下書きの `SHA256SUMS` を下ろして `dist/` のファイルと照らし、上げたアーカイブのそれぞれに `gh attestation verify` を走らせる（[docs/adr/0230](./docs/adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)）。Node と Claude Code は入れない |
 
 リリースノートを書く AI の API キーは、リポジトリの秘密情報 `ANTHROPIC_API_KEY` に置く。
 
