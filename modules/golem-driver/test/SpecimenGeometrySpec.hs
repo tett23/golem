@@ -5,7 +5,7 @@ its violations; each test sees it hold on the inputs, and fail on an input
 that breaks it, so that a property that cannot fail checks nothing (the
 test design of docs/adr/0233).
 -}
-module SpecimenGeometrySpec (specimenGeometryTests) where
+module SpecimenGeometrySpec (specimenGeometryTests, Input (..), withInput, specimensVertical, jaLatin, layoutAndFontsOf) where
 
 import Control.Monad (forM_, unless)
 import Data.ByteString qualified as BS
@@ -148,7 +148,11 @@ geometryOf dir = fst <$> layoutOf dir
 
 -- | The layout of a project with the real fonts, as the PDF is set from it.
 layoutOf :: FilePath -> IO (PageGeometry, PdfLayout)
-layoutOf dir = do
+layoutOf dir = (\(geom, pl, _) -> (geom, pl)) <$> layoutAndFontsOf dir
+
+-- | 'layoutOf' with the fonts the layout was set with.
+layoutAndFontsOf :: FilePath -> IO (PageGeometry, PdfLayout, LoadedFonts)
+layoutAndFontsOf dir = do
   ev <- evaluateProject Prod dir
   case ev of
     Left f -> assertFailure (show (pfDiagnostics f))
@@ -161,7 +165,7 @@ layoutOf dir = do
             (_, _, bib) <- loadBibliography (diskFiles dir) (projectManifest (evProject e))
             let (vars, _) = runningVars e
                 inp = PdfInput (diskFiles dir) (evProject e) (evStyle e) book False [] bib Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) vars (projectVarTexts (manifestVars (projectManifest (evProject e)))) (evStyleText e)
-            layoutPdf inp geom fonts >>= either (assertFailure . show) (pure . (geom,))
+            layoutPdf inp geom fonts >>= either (assertFailure . show) (\pl -> pure (geom, pl, fonts))
       (_, Left ds) -> assertFailure (show ds)
       (Nothing, _) -> assertFailure "no book"
 

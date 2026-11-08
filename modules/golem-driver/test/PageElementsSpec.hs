@@ -59,7 +59,7 @@ footnoteTests =
           assertBool (show (ys - yk)) (abs (ys - yk - (38 / 100 + 1 / 2) * (s - m)) < 1 / 100)
           assertBool (show (x1, xj)) (xj >= x1 + m / 2)
         other -> assertFailure (show other),
-    testCase "PDF: vertical, the mark is along the line: * turned Latin, 1 tate-chu-yoko, its right end half the size right of the centre line (docs/adr/0177)" $ do
+    testCase "PDF: vertical, the mark is along the line: * turned Latin, 1 tate-chu-yoko centred on the column, whose right end is half the size right of the centre line (docs/adr/0177, golem-driver ADR 0045)" $ do
       content <- miniPdf fakeProvider True pdfStyle "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           s = toRational (unSp (maybe 0 (dimToSp 0) (parseDim "13Q"))) / 65536
@@ -70,7 +70,8 @@ footnoteTests =
         ([star], [one], [kan]) -> do
           assertBool "* is turned" (dMatrix star /= ["1", "0", "0", "1"])
           assertBool "1 after * along the line" (ptToRational (dY one) < ptToRational (dY star))
-          let right = ptToRational (dX one) + m / 2
+          -- the fake fonts: Latin half an em wide; the centre of 1 on the column, the column m wide
+          let right = ptToRational (dX one) + m / 4 + m / 2
           assertBool (show (right, ptToRational (dX kan) + s / 2)) (near right (ptToRational (dX kan) + s / 2))
         other -> assertFailure (show other),
     testCase "PDF: vertical, （{n:kanji}）: the mark in the vertical font, its column's right end at the right end of the em box (docs/adr/0177)" $ do
@@ -134,7 +135,7 @@ footnoteTests =
           assertBool (show (ys - yk)) (abs (ys - yk - (38 / 100 + 1 / 2) * (s - m)) < 1 / 100)
           assertBool (show (x1, xj)) (xj >= x1 + m / 2)
         other -> assertFailure (show other),
-    testCase "PDF: vertical, mark-size 0.65zw keeps the right end of the mark column half the size right of the centre line (golem-driver ADR 0025, docs/adr/0177)" $ do
+    testCase "PDF: vertical, mark-size 0.65zw keeps the right end of the mark column half the size right of the centre line (golem-driver ADR 0025, docs/adr/0177, golem-driver ADR 0045)" $ do
       content <- miniPdf fakeProvider True (pdfStyle <> "\n[notes]\nmark-size = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           sSp = maybe 0 (dimToSp 0) (parseDim "13Q")
@@ -144,7 +145,8 @@ footnoteTests =
           markOf c = [d | d <- ds, dGlyph d == fromEnum c, near (ptToRational (dSize d)) m]
       case (markOf '*', markOf '1', [d | d <- ds, dGlyph d == fromEnum '漢']) of
         ([_], [one], [kan]) -> do
-          let right = ptToRational (dX one) + m / 2
+          -- the fake fonts: Latin half an em wide; the centre of 1 on the column, the column m wide
+          let right = ptToRational (dX one) + m / 4 + m / 2
           assertBool (show (right, ptToRational (dX kan) + s / 2)) (near right (ptToRational (dX kan) + s / 2))
         other -> assertFailure (show other),
     testCase "PDF: mark-format {n}) gives the mark 1) in the text and at the start of the note (golem-driver ADR 0025)" $ do

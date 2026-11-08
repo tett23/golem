@@ -17,9 +17,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ## v0.1.0-rc4
 
-### PDF
-
-- **縦組みの脚注の本文の前の二桁の番号**：縦組みの脚注の本文の前の印（既定の `*{n}`）で、番号が 10 以上になると、二つめの数字が本文の一字めに重なる。見た目の回帰テストの見本（`specimens-vertical` の「縦組みの注の印」の節）で見つけ、参照はこの重なりのまま受け入れた（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)、[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）。直し方は ADR で決める。
+v0.1.0-rc4 で扱う項目は、すべて実装した。
 
 ## v1.0.0
 

@@ -23,6 +23,7 @@ library
                     Golem.Typeset.Overhang
                     Golem.Typeset.RuleShape
                     Golem.Typeset.Svg
+                    Golem.Typeset.Tcy
                     Golem.Typeset.TextLayer
   other-modules:    Golem.Typeset.Draw
                     Golem.Typeset.Structure
@@ -63,6 +64,7 @@ test-suite golem-typeset-test
     GlyphRunsSpec
     MemoSpec
     RuleShapeSpec
+    TcySpec
   build-depends:
     , base
     , golem-layout-spec
