@@ -4,8 +4,8 @@ import GlyphRunsSpec (glyphRunsTests)
 import MemoSpec (memoTests)
 import RuleShapeSpec (ruleShapeTests)
 import TcySpec (tcyTests)
-import WrapMarkSpec (wrapMarkTests)
 import Test.Tasty
+import WrapMarkSpec (wrapMarkTests)
 
 main :: IO ()
 main = defaultMain tests

@@ -972,9 +972,10 @@ drawLineAt env (x0, y0) sl =
                in (Nothing, ([(Nothing, [P.Saved (colour : fst r)])], snd r))
         _ -> (Nothing, ([], []))
       -- the default wrap mark at the end of the line, a shape of no glyph (golem-layout ADR 0042)
-      shapedMark j = j == lastIx && case drop j placed of
-        (Penalty hw _ (WrapMark m), _) : _ -> hw > 0 && m == shapedWrapMark
-        _ -> False
+      shapedMark j =
+        j == lastIx && case drop j placed of
+          (Penalty hw _ (WrapMark m), _) : _ -> hw > 0 && m == shapedWrapMark
+          _ -> False
       {- by the glyphs used, not the marks: the marks need the ToUnicode
       entries of every page (golem-driver ADR 0030); the shape of the
       default wrap mark uses none, and is drawn (golem-layout ADR 0042) -}
