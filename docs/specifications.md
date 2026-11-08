@@ -113,6 +113,12 @@ MCID は、ページごとに 0 から内容のストリームの順に振る。
 
 `Pagination` には `/Subtype` を書かない。
 
+描いた印付きの内容は、どれも構造の木の葉である（[docs/adr/0216](adr/0216-drawn-content-missing-from-the-structure-tree-is-an-error.md)）。
+すべてのページを描いた後、PDF を書く前に、描いた葉のうち構造の木にないもの（孤立した葉）を調べる。
+孤立した葉が一つでもあれば、PDF ごとに一つの G07107 のエラーを出し、PDF を書かない。
+孤立した葉は Golem の誤りでしかできず、dev と prod、`pdfa` と `pdfua` の宣言によらずエラーとする。
+位置は、最初に描いた孤立した葉の原稿の位置（本文の葉はそのブロック、脚注と傍注の葉はその注）で、引けないときは `manifest.toml` の先頭である。
+
 リンクの注釈は、`/StructParent` と、プレーンテキストのリンクの書き方の文字（散文スロットを書いたリンクは `表示の文字（URL）`、省いたリンクは URL）の `/Contents` を持つ。
 行をまたぐリンクも一つの `Link` になり、行ごとの注釈の `OBJR` を行の順に持つ。
 注釈のあるページの辞書は `/Tabs /S` を持つ。
@@ -2026,7 +2032,13 @@ HTML と EPUB では、組み込みの文字スタイルのうち `strong`、`bo
 前後のアキを持つスタイルでは、同じスタイルの段落のあいだの規則を `space-between` が 0 でも書き（`margin-block-start: 0`）、前のアキを持つスタイルごとに `div.blank-line + p.ps-<名前> { margin-block-start: 0; }` を書く。
 ファイルの段落スタイルの規則（`body.file-<n>` で始まる規則）は、行揃え、`padding-inline-end`、前のアキ、同じスタイルの段落のあいだ、後のアキ、組、行アキの後の規則をそのファイルの定義で書き直す。
 既定の値の行揃えは `text-align: start; text-align-last: auto` と書く。
-style.toml の後のアキを、ファイルの定義で 0 に戻しても、style.toml の後のアキの規則は残る。
+style.toml の前後のアキの規則のうち、段落スタイル S を含むもの（S の前のアキ、S の後のアキ、S を含む組、S の行アキの後の規則、S の同じスタイルの段落のあいだの規則）は、S を `@style-def` で改めたファイルのページに当てない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md)）。
+S を改めたファイルの番号が n₁、n₂、… なら、その規則のセレクターの前に `body:not(.file-n₁):not(.file-n₂)…` を付ける。
+そのページでは、ファイルの規則が、そのファイルの定義と style.toml の定義を合わせたスタイルで空きを書き直す。
+`body` の前のアキの規則 `p`、`body` の同じスタイルの段落のあいだの規則 `p + p`、`body` の行アキの後の規則 `div.blank-line + p` には付けない。
+付けると詳細度が `p.ps-<名前>` の規則より高くなり、ほかのページでほかのスタイルの前のアキに勝つからである。
+ファイルのページの `body` の段落には、ファイルの規則（`body.file-<n> p:not([class])`）がこの三つに勝つ。
+段落スタイルを改めたファイルのない本では、`style.css` はこの規則の前と同じである。
 段落スタイルと見出しの罫線は、前の罫線を `::before`、後の罫線を `::after` の擬似要素として書く（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 `content: ""`、`display: block`、`border-block-start`、`margin-block`（`space-before` と `space-after`、書かなければ 0）を書き、`width` は `length` があればその寸法、`start-indent` か `end-indent` を書けば書かず、どちらもなければ `100%` とする。
 `start-indent` と `end-indent` は `margin-inline-start` と `margin-inline-end` に書く。

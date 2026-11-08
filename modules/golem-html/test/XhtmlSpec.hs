@@ -4,6 +4,7 @@ the index and citations.
 -}
 module XhtmlSpec (xhtmlTests) where
 
+import CssCascade (Elem (..), Page (..), Winner (..), winningMarginStarts)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
@@ -309,6 +310,32 @@ alignSpaceTests =
         @?= ["body.file-1 p.ps-quote { font-family: inherit; margin-block: 1em; padding-inline-start: 0em; text-indent: 0em; padding-inline-end: 1em; text-align: start; text-align-last: auto; }"]
   ]
 
+-- | The winning margin-block-start of each element of a page of the site's CSS (docs/adr/0217).
+winners :: HtmlConfig -> Page -> [Maybe Text]
+winners cfg page = either error (map (fmap wValue)) (winningMarginStarts (siteCss (renderXhtml cfg ft (bookOf []))) page)
+
+fileSpaceTests :: [TestTree]
+fileSpaceTests =
+  [ testCase "H2: a space after put back to 0 in the file leaves no rule of style.toml on its pages" $ do
+      let cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("note", plainPara {hpsSpaceAfter = 2})], hcLocalStyles = Map.fromList [(fidA, local [("note", plainPara)])]}
+      winners cfg (Page ["file-1"] [Elem "p" ["ps-note"], Elem "p" []]) @?= [Just "1em", Nothing]
+      -- the pages of the other files keep the rule of style.toml
+      winners cfg (Page [] [Elem "p" ["ps-note"], Elem "p" []]) @?= [Nothing, Just "2em"],
+    testCase "H1: a pair whose space before is put back to 0 in the file is the space after" $ do
+      let cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("a", plainPara {hpsSpaceAfter = 1}), ("b", plainPara {hpsSpaceBefore = 3})], hcLocalStyles = Map.fromList [(fidA, local [("b", plainPara)])]}
+      winners cfg (Page ["file-1"] [Elem "p" ["ps-a"], Elem "p" ["ps-b"]]) @?= [Nothing, Just "1em"]
+      winners cfg (Page [] [Elem "p" ["ps-a"], Elem "p" ["ps-b"]]) @?= [Nothing, Just "3em"],
+    testCase "H1: body put back to 0 in the file, the space before of another style is kept on the other pages" $ do
+      let cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara {hpsSpaceBefore = 1}), ("b", plainPara {hpsSpaceBefore = 3})], hcLocalStyles = Map.fromList [(fidA, local [("body", plainPara)])]}
+      winners cfg (Page [] [Elem "h2" [], Elem "p" ["ps-b"]]) @?= [Nothing, Just "3em"]
+      winners cfg (Page ["file-1"] [Elem "h2" [], Elem "p" ["ps-b"]]) @?= [Nothing, Just "3em"],
+    testCase "H4: no file defines a paragraph style, no :not() of the files" $ do
+      let cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara {hpsSpaceAfter = 1}), ("b", plainPara {hpsSpaceBefore = 3})]}
+      filter (".file-" `T.isInfixOf`) (cssLines "" cfg) @?= []
+  ]
+  where
+    local ps = HtmlLocalStyles Map.empty (Map.fromList ps) Nothing Nothing
+
 -- | A solid rule of 0.5pt as wide as the line, 1em above and nothing below.
 solid :: HtmlRule
 solid = HtmlRule (Just "100%") Nothing Nothing "0.5pt solid" "1em" "0"
@@ -338,6 +365,7 @@ tests :: [TestTree]
 tests =
   [ testGroup "the rules of paragraph styles and headings (golem-driver ADR 0027)" ruleTests,
     testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
+    testGroup "the spaces of paragraph styles redefined in files (docs/adr/0217)" fileSpaceTests,
     testGroup "blocks" blockTests,
     testGroup
       "colours: R = 255 × (1 − C) × (1 − K), rounded"
