@@ -1,0 +1,12 @@
+% A figure of figures-external/ that Golem refuses (docs/adr/0232): a
+% rectangle in the spot colour PANTONE185C, a Separation colour space
+% written with the primitives of pdfTeX. Run: pdftex spot.tex
+\pdfoutput=1
+\pdfpagewidth=120bp \pdfpageheight=80bp
+\hoffset=-1in \voffset=-1in \hsize=120bp \vsize=80bp
+\parindent=0pt \topskip=0pt \nopagenumbers
+\immediate\pdfobj{<< /FunctionType 2 /Domain [0 1] /C0 [0 0 0 0] /C1 [0 0.91 0.76 0] /N 1 >>}
+\edef\res{/ColorSpace << /CS1 [/Separation /PANTONE185C /DeviceCMYK \the\pdflastobj\space 0 R] >>}
+\expandafter\pdfpageresources\expandafter{\res}
+\vbox to 80bp{\vfil\hbox to 120bp{\pdfliteral{q /CS1 cs 1 scn 8 44 36 28 re f 0 g 6 5 108 2 re f Q}\hfil}}
+\bye

@@ -901,6 +901,12 @@ CI は、そのマニュアルの `fonts/` の OpenType のファイルの名前
 `pdftoppm` で figures の fixture を 72 dpi の画像にし、tRNS を持つ PNG の透明の画素が白になり、半透明の画素が色と白をアルファで混ぜた値から 2 以内になることを確かめる。
 `pdfinfo -url` で、横組みと縦組みの PDF のリンクの注釈の URL とページが原稿のとおりであることを確かめる。
 Poppler は CI で走らせるだけで、Golem にはリンクせず、`golem` から呼ばない。
+golem-driver のテストは、ほかのツールが書き出した図版の試料（`modules/golem-driver/test/fixtures/figures-external/`）も置いて組む（[ADR 0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
+試料は、六つのツール（Inkscape、LibreOffice Draw、Chromium の印刷、matplotlib、pdfTeX、LuaTeX）の PDF と、Inkscape と draw.io の SVG である。
+試料ごとに、置けるか、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md) の表のどの理由で拒むか、G08011 になるかを期待として持つ。
+置いた PDF は `qpdf --check` を通り、置ける PDF の試料は、元のページと、それを等倍で置いた図の範囲を同じ画素の数で `pdftoppm` にかけ、チャネルの差の平均が 5 以下であることを確かめる。
+閾値は、試料で測った最大の 2.56 の二倍ほどである。
+Illustrator の試料は v1.0.0 のリリースでメンテナーが書き出して加え、ファイルがなければテストはその行を飛ばす。
 x86-64 の `outputs` のランナーは、`sample`、`bibliographies`、`languages` に加えて `epub-forms` の EPUB を epubcheck にかける。
 `epub-forms` は、引用と `@bibliography` を別のファイルに置き、`@toc depth=1` で階層 3 までの見出しを持ち、見本のプラグイン `glossary` のチャネルを使う。
 プラグインは `plugins/wasm/glossary.wasm` を `plugins.lock` の SHA-256 の名前でキャッシュに置いて読み、URL からは取得しない。
