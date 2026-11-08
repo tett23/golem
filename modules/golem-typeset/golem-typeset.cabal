@@ -18,6 +18,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Golem.Typeset
                     Golem.Typeset.FontProvider
+                    Golem.Typeset.GlyphRuns
                     Golem.Typeset.Memo
                     Golem.Typeset.Overhang
                     Golem.Typeset.RuleShape
@@ -59,6 +60,7 @@ test-suite golem-typeset-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:
+    GlyphRunsSpec
     MemoSpec
     RuleShapeSpec
   build-depends:
