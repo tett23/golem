@@ -523,12 +523,6 @@ lineBugs =
         lbShape = \i -> " " `elem` inRun i,
         lbExcuses = \i br -> breachOf br == L3 && breaksAtTrailingSpace i (breachLine br),
         lbCounts = [(0, 0), (1, 0), (2, 0), (3, 576)]
-      },
-    LineBug
-      { lbItem = "字幅の伸縮の刻みで行長を超える行",
-        lbShape = inExpansion,
-        lbExcuses = \i br -> breachOf br `elem` [L5, L6] && shrunkWithoutGlue i (breachLine br),
-        lbCounts = [(0, 0), (1, 0), (2, 32), (3, 2923)]
       }
   ]
 
@@ -544,18 +538,6 @@ breaksAtTrailingSpace i k =
    in case drop k (brPositions (pBreaks p)) of
         b : _ | b >= 0 && b < length (pItems p) -> pItems p !! b == latinSpace p && not (any isBox (drop (b + 1) (pItems p)))
         _ -> False
-
-{- | Whether line k of an input is shrunk by the glyph expansion, and its
-glue cannot shrink further: none of it shrinks, or all of it is shrunk
-as far as it can. The expansion, a multiple of its step rounded towards
-0, leaves the line wider than W.
--}
-shrunkWithoutGlue :: Input -> Int -> Bool
-shrunkWithoutGlue i k =
-  let (_, _, br) = breakInput i
-   in case drop k (brLines br) of
-        l : _ -> lineExpansion l < 0 && (all (<= 0) [z | Glue _ _ z <- lineItems l] || glueRatio l <= -1)
-        [] -> False
 
 -- | The breaches of an input no known bug excuses, and whether each known bug excuses one.
 judged :: Int -> Input -> ([Breach], [Bool])
