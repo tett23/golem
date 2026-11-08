@@ -69,7 +69,13 @@ outputGoldenTests =
       goldenDiff "pdf-complex-vertical.txt" (pdfDump <$> complexOutput "complex-vertical" TargetPdf),
       goldenDiff "epub-complex-vertical.txt" (epubDump <$> complexOutput "complex-vertical" TargetEpub),
       goldenDiff "pdf-complex-horizontal.txt" (pdfDump <$> complexOutput "complex-horizontal" TargetPdf),
-      goldenDiff "epub-complex-horizontal.txt" (epubDump <$> complexOutput "complex-horizontal" TargetEpub)
+      goldenDiff "epub-complex-horizontal.txt" (epubDump <$> complexOutput "complex-horizontal" TargetEpub),
+      testGroup
+        "N1: the page count range of the books that combine the features (docs/adr/0220)"
+        [ testCase ("N1: " <> show n <> " pages " <> (if ok then "is" else "is not") <> " in the range") $
+            assertEqual (show n) ok (either (const False) (const True) (complexPageRange n))
+          | (n, ok) <- [(15, False), (16, True), (32, True), (33, False)]
+        ]
     ]
 
 {- | One golden of test/golden/. A mismatch prints the unified diff of the
@@ -120,18 +126,44 @@ figuresOutput target = withSystemTempDirectory "golem-golden" $ \tmp -> do
   copyFonts tmp
   buildOne tmp target ["G07039" | target == TargetPdf]
 
+{- | The pages a book that combines the features may have: 16 to 32
+(docs/adr/0220, N1). Left holds the message of a count out of the range.
+-}
+complexPageRange :: Int -> Either String ()
+complexPageRange n
+  | n >= complexMinPages && n <= complexMaxPages = Right ()
+  | otherwise =
+      Left
+        ( show n
+            <> " pages, out of the range "
+            <> show complexMinPages
+            <> " to "
+            <> show complexMaxPages
+            <> " (docs/adr/0220)"
+        )
+
+complexMinPages, complexMaxPages :: Int
+complexMinPages = 16
+complexMaxPages = 32
+
 {- | One of the two books that combine the features (docs/adr/0175):
 complex-vertical (B6, vertical, one column) and complex-horizontal (A5,
 horizontal, two columns), with the fonts of 'copyFonts'. With the notices
 G07030 and G07046 silenced by their manifests (docs/adr/0198), neither
 gives a diagnostic on any target: a change that makes one give any other
-diagnostic fails here.
+diagnostic fails here. The PDF must have a count of pages in
+'complexPageRange' (N2): the check comes before the comparison with the
+golden, so accepting a new golden (--accept) does not let a book out of
+the range pass.
 -}
 complexOutput :: FilePath -> Target -> IO BS.ByteString
 complexOutput name target = withSystemTempDirectory "golem-golden" $ \tmp -> do
   copyTree ("test/fixtures" </> name) tmp
   copyFonts tmp
-  buildOne tmp target []
+  out <- buildOne tmp target []
+  when (target == TargetPdf) $
+    either (assertFailure . ((name <> ": ") <>)) pure (complexPageRange (length (occurrences "/Type /Page " out)))
+  pure out
 
 -- | Builds one target, with exactly the diagnostics given (by code).
 buildOne :: FilePath -> Target -> [T.Text] -> IO BS.ByteString
