@@ -1,0 +1,26 @@
+# Whether each command of pagination.als has a solution at the scope of
+# the model (5), from the table of the results of README.md
+# (scripts/models/check.sh, docs/adr/0235)
+someFits found
+noneMeetsAll found
+noneMeetsAllButGreedy none
+greedyOrphan found
+greedyWidow found
+greedyKeepHeading found
+greedyFigure none
+orphanEmpty none
+widowEmpty none
+keepHeadingEmpty none
+orphanWidow none
+keepHeadingOrphan none
+keepHeadingWidow none
+keepHeadingFigure none
+figureOrder none
+figureEmpty none
+tallFigure found
+strictAfterHeadings found
+relaxedAfterHeadings none
+rectoKept none
+rectoEnds none
+keep21 none
+decidedSome found

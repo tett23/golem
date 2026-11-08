@@ -3,8 +3,8 @@
 `pagination.als` は、改ページの規則を Alloy の述語として書いたモデルである（[docs/adr/0204](../../adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の 5）。
 規則どうしが両立しない入力を探すための道具であり、Golem の実装を確かめるものではない。
 実装は golem-layout のテスト（`modules/golem-layout/test/PaginateInvariantsSpec.hs`）が確かめる。
-CI では走らせない。
-改ページの規則を変える ADR では、モデルを直して走らせ直し、この文書の結果を書き直す（[docs/roadmap.md](../../roadmap.md) の「手で確かめる項目」）。
+CI の `.github/workflows/models.yml` が、モデルを変えたプルリクエストと `main` への push と週に一度、`scripts/models/check.sh` で `expected.txt` に挙げたコマンドを走らせ、解の有無を `expected.txt` と比べる（[docs/adr/0235](../../adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)）。
+改ページの規則を変える ADR では、モデルを直して走らせ直し、この文書の結果と `expected.txt` を書き直す（[CONTRIBUTING.md](../../../CONTRIBUTING.md) の「規則の Alloy のモデル」）。
 
 ## モデル
 
@@ -108,6 +108,23 @@ for c in $(grep -E '^run [A-Za-z0-9]+' pagination.als | awk '{print $2}'); do
   echo "$c $found"
 done
 ```
+
+## CI の検査と expected.txt
+
+`expected.txt` は、一行に一つのコマンドの名前と、解の有無（`found` か `none`）を書く。
+`#` で始まる行は注である。
+値は、下の「結果」の表の、スコープ 5（モデルに書いたスコープ）での解の有無から作る。
+表の最も小さい例のスコープが数のコマンドは `found`、「なし」のコマンドは `none` である。
+最も小さい例を探し直すこと（スコープを 2 から上げること）は、検査の範囲に入れない。
+
+`scripts/models/check.sh` は、コマンドごとに Alloy を一つのプロセスで走らせ、ランナーのコアの数まで並べる。
+Alloy は、GitHub の AlloyTools/org.alloytools.alloy の 6.2.0 のリリースの `org.alloytools.alloy.dist.jar` を、スクリプトに書いた SHA-256 で検査してから使う。
+`expected.txt` にないコマンドは走らせず、その名前を標準出力に書く。
+
+[golem-layout ADR 0026](../adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) と [golem-layout ADR 0027](../adr/0027-need-lines-judged-again-after-spaces.md) で足した 11 のコマンドは、`expected.txt` に入れていない。
+結果はスコープ 4 か 3 までしかなく、スコープ 5 での解の有無がわからないからである。
+解のないコマンドはスコープ 4 で 2 分から 20 分、`needSpaceNone` はスコープ 3 で 33 分かかったので、スコープ 5 では検査の上限の 30 分に収まらない見込みが高い。
+2026-11-08 に、手元の macOS（Apple Silicon）で、`expected.txt` の 23 のコマンドを並べて走らせると、139 秒で終わり、すべて `expected.txt` のとおりだった。
 
 ## 結果
 

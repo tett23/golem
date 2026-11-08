@@ -59,7 +59,7 @@ import Test.Tasty.HUnit
 import Text.Printf (printf)
 
 main :: IO ()
-main = defaultMainReportingSkips (const (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests, numberTests, dataTests, describeTests, checkDataTests, contextTests, blockTests, fuelTests]))
+main = defaultMainReportingSkips (const (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests, numberTests, dataTests, describeTests, checkDataTests, contextTests, blockTests, fuelTests, manualTests]))
 
 wat :: FilePath -> IO Text
 wat name = TIO.readFile ("test/plugins/" <> name)
@@ -101,6 +101,49 @@ brTableModule n =
     [ "(module\n  (func (export \"f\") (param i32) (result i32) (local $r i32)\n    (block $exit\n      (block $t\n        (br_table\n",
       T.replicate n "0 ",
       "\n          1 (local.get 0)))\n      (local.set $r (i32.const 5)))\n    (local.get $r)))\n"
+    ]
+
+{- | The wat example of the chapter on plugins of the developer manual
+(docs/adr ADR 0235), read from the file of the manual by its path from the
+directory of this package: the one code block of the language wat.
+-}
+manualPlugins :: FilePath
+manualPlugins = "../../manual-dev/part1/05-plugins.gm"
+
+-- | The code blocks of the language wat in the lines of a manual.
+watBlocks :: [Text] -> [Text]
+watBlocks ls = case break opens ls of
+  (_, []) -> []
+  (_, _ : rest) ->
+    let (body, after) = break (== "```") rest
+     in T.unlines body : watBlocks (drop 1 after)
+  where
+    opens l = l == "```wat" || "```wat " `T.isPrefixOf` l
+
+manualWat :: IO Text
+manualWat = do
+  src <- TIO.readFile manualPlugins
+  case watBlocks (T.lines src) of
+    [b] -> pure b
+    bs -> assertFailure (manualPlugins <> " has " <> show (length bs) <> " code blocks of wat, not one: fix the test of the manual (docs/adr ADR 0235)")
+
+-- | The tests of the wat example of the developer manual (docs/adr ADR 0235).
+manualTests :: TestTree
+manualTests =
+  testGroup
+    "the wat example of the developer manual (docs/adr ADR 0235)"
+    [ testCase "I1 the example loads and its filter same returns the document unchanged" $ do
+        p <- load =<< compile =<< manualWat
+        let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])]
+        fmap fst (applyFilter p "same" doc) @?= Right doc,
+      -- the length of the CBOR of golem_describe one byte short: the
+      -- test reads the example of the manual only if this copy fails
+      testCase "I1 the example with the length of the CBOR of golem_describe changed by one byte is rejected" $ do
+        src <- manualWat
+        T.count "(i64.const 15)" src @?= 1
+        w <- compile (T.replace "(i64.const 15)" "(i64.const 14)" src)
+        r <- loadPlugin w
+        assertBool "loadPlugin accepts a golem_describe one byte short" (isLeft r)
     ]
 
 load :: ByteString -> IO Plugin
