@@ -42,7 +42,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble.Collation
 import Golem.Doc.IR
-import Golem.Numerals.Format (formatNumber, formatUsesChapter)
+import Golem.Numerals.Format (Unwritable (..), formatNumber, formatUsesChapter)
 import Golem.Syntax
 
 data AssembleConfig = AssembleConfig
@@ -297,7 +297,10 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt (replicate headingLevels
                       upd = take (l - 1) cs <> [n] <> replicate (headingLevels - l) 0
                    in (upd, Just (take l upd))
             fmt = fromMaybe (defaultHeadingFormat l) (Map.lookup l (acHeadingFormats cfg))
-            numText = (\ns -> formatNumber fmt ns (Just (head' ns))) <$> nums
+            numWritten = (\ns -> formatNumber fmt ns (Just (head' ns))) <$> nums
+            -- G04012: a number the format cannot write leaves the heading without its number text (docs/adr/0213)
+            numText = numWritten >>= either (const Nothing) Just
+            unwritable = [unwritableNumber "G04012" ("[headings." <> T.pack (show l) <> "]") fmt sp u | Just (Left u) <- [numWritten]]
             chapter = if l == 1 then head' <$> nums else nsChapter st
             figureReset = if l == 1 then 0 else nsFigure st
             -- the title of the copies, without the anchors of lists (docs/adr/0145)
@@ -307,7 +310,7 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt (replicate headingLevels
             redundant = [redundantNumber cfg sp n | not (haNoNumber a), Just n <- [toInteger <$> haNumber a], n == cs !! (l - 1) + 1]
         put
           st
-            { nsDiags = nsDiags st <> redundant,
+            { nsDiags = nsDiags st <> redundant <> unwritable,
               nsCounters = cs',
               nsChapter = if l == 1 then chapter else nsChapter st,
               nsFigure = figureReset,
@@ -345,12 +348,12 @@ assemble ::
 assemble cfg evalDeferred docs0 =
   let (docs, blankDiags) = droppedBlankLines (acPageLines cfg) docs0
       ns = numberDocs cfg docs
-      figureText sp = case Map.lookup sp (nsFigures ns) of
-        Just (ch, n) -> Just (formatNumber (acFigureFormat cfg) [n] ch)
-        Nothing -> Nothing
-      listingText sp = case Map.lookup sp (nsListings ns) of
-        Just (ch, n) -> Just (formatNumber (acListingFormat cfg) [n] ch)
-        Nothing -> Nothing
+      figureWritten = Map.map (\(ch, n) -> formatNumber (acFigureFormat cfg) [n] ch) (nsFigures ns)
+      listingWritten = Map.map (\(ch, n) -> formatNumber (acListingFormat cfg) [n] ch) (nsListings ns)
+      -- G04013 and G04014: a number the format cannot write leaves the block without its number text (docs/adr/0213)
+      unwritableErrors =
+        [unwritableNumber "G04013" "[figures]" (acFigureFormat cfg) sp u | (sp, Left u) <- Map.toList figureWritten]
+          <> [unwritableNumber "G04014" "[code]" (acListingFormat cfg) sp u | (sp, Left u) <- Map.toList listingWritten]
       -- G04004 for figures and code blocks (golem-driver ADR 0023)
       outside fmt numbered =
         [ diagnostic "G04004" Error sp "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます"
@@ -380,8 +383,8 @@ assemble cfg evalDeferred docs0 =
    in ( Book
           { bookDocs = renumberNotes cfg docs',
             bookHeadings = nsHeadings ns,
-            bookFigures = Map.mapMaybeWithKey (\sp _ -> figureText sp) (nsFigures ns),
-            bookListings = Map.mapMaybeWithKey (\sp _ -> listingText sp) (nsListings ns),
+            bookFigures = Map.mapMaybe (either (const Nothing) Just) figureWritten,
+            bookListings = Map.mapMaybe (either (const Nothing) Just) listingWritten,
             bookToc = toc,
             bookTocDepth = case tocs of
               ((d, _) : _) -> Just d
@@ -396,8 +399,16 @@ assemble cfg evalDeferred docs0 =
             bookChannelDecls = acChannels cfg,
             bookImages = Map.empty
           },
-        sortDiagnostics (nsDiags ns <> figureErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs <> blankDiags)
+        sortDiagnostics (nsDiags ns <> figureErrors <> unwritableErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs <> blankDiags)
       )
+
+{- | G04012, G04013 and G04014 (docs/adr/0213): the first slot of the
+number format of a block, from the left, whose notation cannot write its
+number, at the block, whatever the target.
+-}
+unwritableNumber :: Text -> Text -> Text -> SrcSpan -> Unwritable -> Diagnostic
+unwritableNumber code key fmt sp u =
+  diagnostic code Error sp (key <> " の number " <> fmt <> " の {" <> uwSlot u <> "} では、" <> T.pack (show (uwNumber u)) <> " を表せません")
 
 -- | G04007 at the @number line of the block (golem-syntax ADR 0002).
 redundantNumber :: AssembleConfig -> SrcSpan -> Integer -> Diagnostic

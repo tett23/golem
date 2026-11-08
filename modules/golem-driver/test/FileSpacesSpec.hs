@@ -97,7 +97,7 @@ buildCase c = do
     writeFiles tmp img
     (e, book) <- evaluatedOk tmp
     geom <- either (assertFailure . show) pure (pageGeometry (FileId 0) False (evStyle e))
-    r <- layoutPdf (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e))))) geom fakeFonts
+    r <- layoutPdf (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))) (evStyleText e)) geom fakeFonts
     pl <- either (assertFailure . show) pure r
     let slots = map (map fst . poSlots) (plPages pl)
     unless (length slots == length (caseChapters c)) (assertFailure ("a page a chapter: " <> show slots))

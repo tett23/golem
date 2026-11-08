@@ -12,7 +12,7 @@ import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.Containers.ListUtils (nubOrdOn)
 import Data.Either (lefts)
-import Data.List (groupBy, nub)
+import Data.List (groupBy, nub, nubBy)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
@@ -31,7 +31,7 @@ import Golem.Layout.Ruby (RubyKind (..), RubyPlacement (..), placeRuby)
 import Golem.LayoutSpec (Anchor (..), HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, columnsFor, gutterSide, runningHeadBaselines, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Length (zwToSp)
-import Golem.Numerals.Format (formatNumber)
+import Golem.Numerals.Format (Unwritable (..), formatNumber)
 import Golem.Pdf qualified as P
 import Golem.Preflight (OverfullLine (..), overfullLine)
 import Golem.Preflight.View qualified as V
@@ -97,6 +97,8 @@ renderPdfAllWith tamper version provider inp0 = case (declarationErrors inp, che
             -- a kenten shape the font has no glyph for stops the PDF (G08009, golem-driver ADR 0019)
             case laid of
               Left ds -> pure (Left ds)
+              -- G07106: a folio its format cannot write stops the PDF before the folios are drawn (docs/adr/0213)
+              Right layout | ds@(_ : _) <- folioErrors inp geom layout -> pure (Left ds)
               Right layout -> case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
                 [] -> do
                   let (used, stops, overfull, finish) = writeDocumentView tamper version inp geom fonts layout intent
@@ -118,6 +120,25 @@ renderPdfAllWith tamper version provider inp0 = case (declarationErrors inp, che
                 ds -> pure (Left ds)
   where
     inp = codeInput inp0
+
+{- | G07106 (docs/adr/0213): for each master page, the first page that
+draws its folio and whose number the format of the folio cannot write, at
+the value of the format in style.toml, in the order of those pages.
+-}
+folioErrors :: PdfInput -> PageGeometry -> PdfLayout -> [Diagnostic]
+folioErrors inp geom layout =
+  [ diagnostic "G07106" Error (valueSpan name) ("[masters." <> name <> "] の folio の format " <> fmt <> " の {" <> uwSlot u <> "} では、ノンブル " <> T.pack (show (uwNumber u)) <> " を表せません")
+  | (name, fmt, u) <- nubBy (\(a, _, _) (b, _, _) -> a == b) failing
+  ]
+  where
+    failing =
+      [ (name, fmt, u)
+      | (p : _, Just (name, m)) <- zip (pagesOf (plPages layout)) (pageMasterNames inp geom layout),
+        drawsFolio (poBlank p) (Just m),
+        Just (fmt, _, _) <- [mgFolio m],
+        Left u <- [formatNumber fmt [toInteger (poNumber p)] Nothing]
+      ]
+    valueSpan name = fromMaybe (mkSpan (piStyleFile inp) 0 0) (manifestValueSpan (piStyleFile inp) (piStyleText inp) ["masters", name, "folio", "format"])
 
 {- | G07107 (docs/adr ADR 0216): one error for the leaves drawn that the
 structure tree has not, given in the order first drawn, at the place of
@@ -1289,7 +1310,7 @@ masterMarks env n blank master headLines = case master of
   Just m ->
     let pick a1 a2 = if odd n then a1 else a2
         size = pgFontSize geom
-        folio = [textAt env "ノンブル" (pick a1 a2) size (formatNumber fmt [toInteger n] Nothing) | drawsFolio blank master, Just (fmt, a1, a2) <- [mgFolio m]]
+        folio = [textAt env "ノンブル" (pick a1 a2) size t | drawsFolio blank master, Just (fmt, a1, a2) <- [mgFolio m], Right t <- [formatNumber fmt [toInteger n] Nothing]]
         -- the lines of the running head from the type area out (golem-driver ADR 0022)
         runningHead =
           [ textAt env "柱" a {anY = hy} size h

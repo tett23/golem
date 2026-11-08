@@ -115,6 +115,7 @@ test-suite golem-driver-test
     StylesSpec
     TableFilesSpec
     TaggedPdfSpec
+    UnwritableNumbersSpec
     VarsSpec
     Support
   -- -threaded: tasty runs the tests at the same time on every processor;

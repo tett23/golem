@@ -1927,8 +1927,8 @@ protrusionAmountTests =
       ends env "a;" @?= [163840],
     testCase "the box before an explicit hyphen protrudes by 70% of the hyphen" $
       take 1 (ends env "well-known") @?= [229376],
-    testCase "the advance of the character at the end, not of the box, is the base" $ do
-      let narrow = env {ceAdvance = \lk c -> if c == '.' then 1 / 4 else ceAdvance env lk c}
+    testCase "the advance of the character at the end, not of the box, is the base: in the font of the word (docs/adr/0222)" $ do
+      let narrow = env {ceWordCharAdvance = \lk t c -> if c == '.' then 1 / 4 else ceWordCharAdvance env lk t c}
       ends narrow "end." @?= [114688],
     testCase "a quote at the start of a word protrudes by its share of its advance" $
       -- U+201C is an opening bracket of Japanese text and never starts a Latin word box, so the straight quote stands in

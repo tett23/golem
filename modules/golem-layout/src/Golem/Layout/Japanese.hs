@@ -39,7 +39,7 @@ module Golem.Layout.Japanese
   )
 where
 
-import Data.Char (GeneralCategory (..), generalCategory, isSpace)
+import Data.Char (GeneralCategory (..), generalCategory, isLetter, isSpace)
 import Data.List (groupBy, mapAccumL, zip5)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
@@ -115,6 +115,10 @@ data ComposeEnv = ComposeEnv
     ceAdvance :: Look -> Char -> Rational,
     -- | advance of a Latin word in a look, in em, as shaped (kerning, ligatures)
     ceWordAdvance :: Look -> Text -> Rational,
+    {- | advance of one character of a Latin word in the font the word is
+    set in, alone (no tracking, no kerning), in em: the base of its
+    protrusion (docs/adr/0222)
+    -} ceWordCharAdvance :: Look -> Text -> Char -> Rational,
     -- | the pair kerning of two Japanese characters in a look, in em (docs/adr/0020)
     ceKern :: Look -> Char -> Char -> Rational,
     ceVertical :: !Bool,
@@ -185,6 +189,7 @@ defaultComposeEnv fs =
     { ceFontSize = fs,
       ceAdvance = const defaultAdvance,
       ceWordAdvance = const (sum . map defaultAdvance . T.unpack),
+      ceWordCharAdvance = \_ _ -> defaultAdvance,
       ceKern = \_ _ _ -> 0,
       ceVertical = False,
       ceKinsokuStrict = True,
@@ -1017,10 +1022,14 @@ padCode = \case
 
 {- | A Latin word: broken after its explicit hyphens and dashes (golem-layout
 ADR 0008), and inside each element where the patterns allow (docs/adr/0179).
-The patterns see each element without its trailing hyphens and dashes;
-an element with a hyphen or dash left in it, or a word kept whole by
+The patterns see the letters of each element only (docs/adr/0222): from
+its first letter (a character of the general category L) to the first
+character after it that is not a letter; what comes before and after
+them goes back on the first and the last piece. An element with a hyphen
+or dash left in it but its trailing ones, or a word kept whole by
 explicit-hyphen-penalty 10000, gets no pattern hyphens. A word of a link
-is one box (docs/adr ADR 0182).
+is one box (docs/adr ADR 0182). A character at an end of a box protrudes
+by its advance in the font of the box (docs/adr/0222).
 -}
 wordItems :: ComposeEnv -> Look -> Text -> [Item]
 wordItems env lk word =
@@ -1028,16 +1037,26 @@ wordItems env lk word =
       explicitPen = Penalty 0 explicitP ExplicitHyphen
       patternPen = Penalty (advance env lk '-') 50 (PatternHyphen (protAt snd '-'))
       isHyphen c = c `elem` ("-‐‑–—" :: String)
-      -- an element's pieces: the patterns' cuts, the trailing hyphens back on the last piece
+      {- an element's pieces: the patterns' cuts of its letters, what is
+      before them back on the first piece and what is after them (the
+      trailing hyphens among it) on the last (docs/adr/0222) -}
       pieces el =
-        let (stemUnits, runUnits) = spanEnd (\u -> let b = T.filter (not . isExtending) u in not (T.null b) && T.all isHyphen b) (clusters el)
-            (stem, run) = (T.concat stemUnits, T.concat runUnits)
+        let units = clusters el
+            (stemUnits, _) = spanEnd (\u -> let b = T.filter (not . isExtending) u in not (T.null b) && T.all isHyphen b) units
+            (preUnits, rest) = break isLetterUnit units
+            (letterUnits, postUnits) = span isLetterUnit rest
+            (pre, letters, post) = (T.concat preUnits, T.concat letterUnits, T.concat postUnits)
          in case cePatterns env (lkLang lk) of
-              Just p | not (T.null stem), not (T.any isHyphen stem) -> onLast (<> run) (hyphenateUnits p stem)
+              Just p | not (T.null letters), not (T.any isHyphen (T.concat stemUnits)) -> onFirst (pre <>) (onLast (<> post) (hyphenateUnits p letters))
               _ -> [el]
+      -- a letter with its combining characters
+      isLetterUnit u = maybe False (isLetter . fst) (T.uncons u)
       spanEnd f xs = let (b, a) = span f (reverse xs) in (reverse a, reverse b)
       onLast f xs = case reverse xs of
         x : rest -> reverse (f x : rest)
+        [] -> [f ""]
+      onFirst f = \case
+        x : rest -> f x : rest
         [] -> [f ""]
       elements
         | isJust (lkLink lk) = [[word]]
@@ -1049,11 +1068,13 @@ wordItems env lk word =
       -- the tracking after each character, given back at the line end (docs/adr/0020)
       box (k, t) =
         let w = L.zwToSp (lkSize lk) (ceWordAdvance env lk t)
-            ps = maybe 0 (min w . protAt fst . fst) (T.uncons t)
-            pe = maybe 0 (min w . protAt snd . snd) (T.unsnoc t)
+            ps = maybe 0 (min w . protIn t fst . fst) (T.uncons t)
+            pe = maybe 0 (min w . protIn t snd . snd) (T.unsnoc t)
          in Box (w + tr * fromIntegral (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env k))
       -- the advance of the character at the line end, without tracking, by its ratio (golem-layout ADR 0014)
       protAt pick c = if ceProtrusion env then Sp (unSp (advance env lk c) * pick (protrusionRatio c) `div` 1000) else 0
+      -- that of a character at an end of a box, in the font of the box (docs/adr/0222)
+      protIn t pick c = if ceProtrusion env then Sp (unSp (L.zwToSp (lkSize lk) (ceWordCharAdvance env lk t c)) * pick (protrusionRatio c) `div` 1000) else 0
       withPens pen = concat . zipWith (\i x -> (if i > (0 :: Int) then pen else []) <> x) [0 ..]
       -- each box with the index of its first character in the word (docs/adr ADR 0195)
       indexed = snd (mapAccumL (mapAccumL (\k t -> (k + T.length t, (k, t)))) 0 elements)
