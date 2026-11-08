@@ -1,6 +1,6 @@
 # ADR 0199: PDF の組版をファイルを読まない wasm の reactor モジュールにして配る
 
-ステータス: 採択→組めなかったパッケージの扱いは [ADR 0202](0202-packages-that-do-not-build-for-wasm.md)
+ステータス: 採択→組めなかったパッケージの扱いは [ADR 0202](0202-packages-that-do-not-build-for-wasm.md)、入力の枠の空のパスは [ADR 0225](0225-refuse-the-empty-path-in-the-input-frame-of-golem-wasm.md)
 
 ## 文脈
 

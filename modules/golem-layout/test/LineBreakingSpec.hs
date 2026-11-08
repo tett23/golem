@@ -9,12 +9,12 @@ import Data.Text qualified as T
 import Fixtures (fs)
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (noBoxSource)
+import Golem.Length qualified as L
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import KnuthPlassReference (finish, referenceLook)
 import LineBreakEnum (Input (..), Setting (..), advance, breakInput, itemsOf, lineText)
-import Golem.Length qualified as L
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -86,10 +86,11 @@ shapes s run = map shape (itemsOf False s 0 run 0)
     shape = \case
       Box _ c -> T.unpack (bcText c)
       Glue w y z -> "_" <> show (unSp w, unSp y, unSp z)
-      Penalty _ p h -> "|" <> show p <> case h of
-        PatternHyphen _ -> "P"
-        ExplicitHyphen -> "E"
-        NoHyphen -> ""
+      Penalty _ p h ->
+        "|" <> show p <> case h of
+          PatternHyphen _ -> "P"
+          ExplicitHyphen -> "E"
+          NoHyphen -> ""
 
 -- | The glue that fills the last line.
 fil :: String
