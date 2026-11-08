@@ -339,6 +339,33 @@ abi_git tag v1.0.0-rc1
 abi_version 1.0.0
 abi_new_abi
 abi_change "after v1.0.0-rc1: a new ABI, not announced" 0
+# the patch rule of docs/adr/0212: X.Y.Z is a patch when X and Z are 1 or
+# more, and its base is the latest release of X.Y that is not a prerelease
+abi_v1 '### ABI のバージョン 9'
+abi_git tag -d v1.0.0
+abi_git tag v1.1.0-rc1
+abi_version 1.1.0
+abi_new_abi
+abi_change "after v1.1.0-rc1: 1.1.0 with a new ABI that v1.1.0-rc1 announced" 0
+abi_v1
+abi_git tag -d v1.0.0
+abi_git tag v1.1.0-rc1
+abi_version 1.1.0
+abi_new_abi
+abi_change "after v1.1.0-rc1: 1.1.0 with a new ABI that v1.1.0-rc1 did not announce" 1 "docs/compatibility.md"
+abi_v1
+abi_git tag v1.0.1-rc1
+abi_version 1.0.1
+abi_change "after v1.0.0 and v1.0.1-rc1: 1.0.1 with the same ABI" 0
+abi_v1
+abi_git tag -d v1.0.0
+abi_git tag v1.0.1-rc1
+abi_version 1.0.1
+abi_change "after v1.0.1-rc1 only: the patch 1.0.1 has no base" 1 "1.0.1"
+abi_v1
+abi_version 1.0.1-rc1
+abi_new_abi
+abi_change "1.0.1-rc1: a prerelease of a patch keeps the ABI" 1 "patch"
 
 # ---------------------------------------------------------------- diagnostic-codes.sh
 # (docs/adr/0174-compatibility-promises-for-1-0.md)
