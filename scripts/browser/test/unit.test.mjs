@@ -12,11 +12,12 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import { chromiumArgs } from '../browsers.mjs';
 import { devtoolsUrl } from '../cdp.mjs';
 import { emphasis, KENTEN } from '../html-checks.mjs';
 import { decode } from '../png.mjs';
 import { fileOf, serve } from '../serve.mjs';
-import { compareInk } from '../svg-text.mjs';
+import { compareInk, judge } from '../svg-text.mjs';
 import { connect } from '../webdriver.mjs';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
@@ -158,23 +159,67 @@ describe('text-emphasis-style', () => {
   });
 });
 
-describe('the ink of svg-text.mjs (I4)', () => {
+describe('the ink of svg-text.mjs (docs/adr/0239 I1, I2)', () => {
   const box = (x, y, w, h, area = 100) => ({ x, y, width: w, height: h, area });
-  test('I4: centres that differ by exactly 1 CSS pixel pass', () => {
+  test('ADR0239-I1: centres that differ by exactly 1 and sizes by exactly 2 CSS pixels pass', () => {
+    assert.deepEqual(compareInk(box(10, 10, 20, 10), box(10, 10, 22, 10)).failures, []);
     assert.deepEqual(compareInk(box(10, 10, 20, 10), box(11, 10, 20, 10)).failures, []);
+    assert.deepEqual(compareInk(box(10, 10, 20, 10), box(9, 9, 22, 12)).failures, []);
   });
-  test('I4: centres that differ by more than 1 CSS pixel fail', () => {
-    assert.equal(compareInk(box(10, 10, 20, 10), box(11.5, 10, 20, 10)).failures.length, 1);
+  test('ADR0239-I1: sizes that differ by 3 CSS pixels fail', () => {
+    assert.match(compareInk(box(10, 10, 20, 10), box(10, 10, 20, 13)).failures.join(), /sizes differ by 3/);
+    assert.match(compareInk(box(10, 10, 20, 10), box(10, 10, 23, 10)).failures.join(), /sizes differ by 3/);
   });
-  test('I4: sizes that differ by more than 1 CSS pixel fail', () => {
-    assert.match(compareInk(box(10, 10, 20, 10), box(10, 10, 20, 12)).failures.join(), /sizes differ/);
+  test('ADR0239-I1: centres that differ by 1.5 CSS pixels fail, though the sizes are the same', () => {
+    const r = compareInk(box(10, 10, 20, 10), box(11.5, 10, 20, 10));
+    assert.equal(r.failures.length, 1);
+    assert.match(r.failures[0], /centres differ by 1.5/);
   });
-  test('I4: ink beyond the limit fails', () => {
+  test('ADR0239-I1: grey text whose ink is 1 CSS pixel wider on each side passes', () => {
+    assert.deepEqual(compareInk(box(10, 10, 200, 20), box(9, 10, 202, 20)).failures, []);
+  });
+  test('ADR0239-I1: ink beyond the limit fails', () => {
     assert.deepEqual(compareInk(box(10, 10, 20, 10, 100), box(10, 10, 20, 10, 90), 0.1).failures, []);
     assert.match(compareInk(box(10, 10, 20, 10, 100), box(10, 10, 20, 10, 89), 0.1).failures.join(), /ink differs/);
   });
-  test('I4: no ink in one image fails', () => {
+  test('ADR0239-I1: no ink in one image fails', () => {
     assert.equal(compareInk(null, box(0, 0, 1, 1)).failures.length, 1);
+  });
+
+  // the measures of three text elements of one figure: a horizontal one
+  // that passes and two vertical ones, one of which differs by 315 pixels
+  const rows = () => [
+    { name: 'stages', text: 'h', vertical: false, ...compareInk(box(0, 0, 100, 20), box(0, 0, 101, 20)) },
+    { name: 'stages', text: 'v1', vertical: true, ...compareInk(box(0, 0, 20, 100), box(0, 0, 20, 415)) },
+    { name: 'stages', text: 'v2', vertical: true, ...compareInk(box(0, 0, 20, 100), box(0, 0, 20, 103)) },
+  ];
+  test('ADR0239-I1: vertical text is judged as horizontal text is (Chromium)', () => {
+    const r = judge(rows());
+    assert.ok(r.failures.every((f) => /^stages: "v[12]"/.test(f)), r.failures.join('\n'));
+    assert.match(r.failures.join('\n'), /"v1": the sizes differ by 315/);
+    assert.match(r.failures.join('\n'), /"v2": the sizes differ by 3/);
+    assert.equal(r.measured.stages.size, 315);
+    assert.deepEqual(r.excluded, { count: 0, centre: 0, size: 0, ink: 0 });
+  });
+  test('ADR0239-I2: vertical text is measured but not judged (Safari), and the summary counts it', () => {
+    const r = judge(rows(), { vertical: false });
+    assert.deepEqual(r.failures, []);
+    assert.equal(r.measured.stages.size, 1);
+    assert.equal(r.excluded.count, 2);
+    assert.equal(r.excluded.size, 315);
+    assert.ok(r.excluded.centre >= 157);
+  });
+  test('ADR0239-I2: horizontal text is judged in Safari too', () => {
+    const r = judge([{ name: 'x', text: 'h', vertical: false, ...compareInk(box(0, 0, 100, 20), box(-1.5, 0, 103, 20)) }], { vertical: false });
+    assert.equal(r.failures.length, 1);
+    assert.match(r.failures[0], /sizes differ by 3/);
+  });
+});
+
+describe('the launch of Chromium (docs/adr/0239 I3)', () => {
+  test('ADR0239-I3: the check svg launches Chromium without hinting, the check html as it is', () => {
+    assert.deepEqual(chromiumArgs('svg'), ['--font-render-hinting=none']);
+    assert.deepEqual(chromiumArgs('html'), []);
   });
 });
 

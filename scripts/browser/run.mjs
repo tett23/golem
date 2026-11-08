@@ -6,17 +6,20 @@
 //       INPUTS/manual/html and INPUTS/manual-dev/html those of the manuals
 //   node run.mjs BROWSER svg IMAGES FONTS
 //       the check of svg-text.mjs: IMAGES is manual-dev/images (the
-//       outlined figures and src/), FONTS the fonts of the manual
+//       outlined figures and src/), FONTS the fonts of the manual. Chromium
+//       is launched with the arguments of chromiumArgs (docs/adr/0239 I3);
+//       Safari does not judge vertical text (docs/adr/0239 I2)
 //
 // BROWSER is chromium or safari (browsers.mjs). Each check prints ok or
 // FAIL with its failures; the exit code is 1 when one failed. With
 // BROWSER_VERSION_FILE, the browserVersion of the WebDriver session of
-// Safari is written there as soon as the session is made.
-import { cp, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+// Safari is written there as soon as the session is made. With
+// GITHUB_STEP_SUMMARY, the check svg writes its measures there too.
+import { appendFile, cp, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import process from 'node:process';
-import { openBrowser } from './browsers.mjs';
+import { chromiumArgs, openBrowser } from './browsers.mjs';
 import * as html from './html-checks.mjs';
 import { serve } from './serve.mjs';
 import { HARNESS, svgText } from './svg-text.mjs';
@@ -61,7 +64,7 @@ async function htmlChecks(page, inputs) {
   }
 }
 
-async function svgCheck(page, images, fonts) {
+async function svgCheck(page, images, fonts, { vertical }) {
   const root = await mkdtemp(join(tmpdir(), 'golem-svg-'));
   try {
     await cp(images, join(root, 'images'), { recursive: true });
@@ -69,8 +72,14 @@ async function svgCheck(page, images, fonts) {
     const names = (await readdir(join(root, 'images', 'src'))).filter((f) => f.endsWith('.svg')).map((f) => f.slice(0, -4)).sort();
     const server = await serve(root, { pages: { '/images/src/__svg-text.html': HARNESS } });
     try {
-      const { failures, measured } = await svgText(page, server.url, names);
-      for (const [n, m] of Object.entries(measured)) console.log(`  ${n}: centre ${m.centre.toFixed(2)} px, size ${m.size.toFixed(2)} px, ink ${(m.ink * 100).toFixed(2)}%`);
+      const { failures, measured, excluded } = await svgText(page, server.url, names, { vertical });
+      const fmt = (m) => `centre ${m.centre.toFixed(2)} px, size ${m.size.toFixed(2)} px, ink ${(m.ink * 100).toFixed(2)}%`;
+      const lines = Object.entries(measured).map(([n, m]) => `${n}: ${fmt(m)}`);
+      if (!vertical) lines.push(`vertical text not judged (docs/adr/0239 I2): ${excluded.count} text elements, ${fmt(excluded)}`);
+      for (const l of lines) console.log(`  ${l}`);
+      if (process.env.GITHUB_STEP_SUMMARY) {
+        await appendFile(process.env.GITHUB_STEP_SUMMARY, `\n**The text of the outlined figures (I4), the largest differences**\n\n${lines.map((l) => `- ${l}`).join('\n')}\n`);
+      }
       return report(`the text of the ${names.length} outlined figures (I4)`, names.length === 0 ? ['no figure'] : failures);
     } finally {
       await server.close();
@@ -87,13 +96,13 @@ const usage = () => {
 };
 if (!['chromium', 'safari'].includes(browser)) usage();
 if (!((check === 'html' && args.length === 1) || (check === 'svg' && args.length === 2))) usage();
-const page = await openBrowser(browser);
+const page = await openBrowser(browser, { args: browser === 'chromium' ? chromiumArgs(check) : [] });
 let passed = false;
 try {
   if (page.browserVersion && process.env.BROWSER_VERSION_FILE) await writeFile(process.env.BROWSER_VERSION_FILE, `${page.browserVersion}\n`);
-  console.log(`${browser}${page.browserVersion ? ` ${page.browserVersion}` : ''}`);
+  console.log(`${browser}${page.browserVersion ? ` ${page.browserVersion}` : ''}${browser === 'chromium' && chromiumArgs(check).length > 0 ? ` (${chromiumArgs(check).join(' ')})` : ''}`);
   await page.setWindowSize(1024, 768);
-  passed = check === 'html' ? await htmlChecks(page, ...args) : await svgCheck(page, ...args);
+  passed = check === 'html' ? await htmlChecks(page, ...args) : await svgCheck(page, ...args, { vertical: browser !== 'safari' });
 } finally {
   await page.close();
 }

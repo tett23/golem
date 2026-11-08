@@ -12,6 +12,9 @@ on:
   schedule:
     - cron: "17 20 * * *"
   workflow_dispatch:
+  # TEMPORARY (docs/adr/0239 テスト設計 2): remove before merging
+  push:
+    branches: [impl-0239]
 
 # It reads the repository and the runs and artifacts of ci.yml and of this
 # workflow; it writes nothing but its own artifact and its caches.
@@ -47,7 +50,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           EVENT: ${{ github.event_name }}
         run: |
-          if [ "$EVENT" = workflow_dispatch ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA" browser.yml); fi
+          if [ "$EVENT" = workflow_dispatch ] || [ "$EVENT" = push ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA" browser.yml); fi
           echo "run=$RUN" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v7
         if: steps.needed.outputs.run == 'true'
@@ -154,13 +157,14 @@ jobs:
             echo "| --- | --- |"
             echo "| chrome-headless-shell | $(third_party/chromium/chrome-headless-shell-linux64/chrome-headless-shell --version) |"
             echo "| chrome-headless-shell zip | $(sh scripts/browser/fetch-chromium.sh --expected) |"
+            echo "| Arguments of the check of the outlined figures (docs/adr/0239) | $(node --input-type=module -e "import { chromiumArgs } from './scripts/browser/browsers.mjs'; console.log(chromiumArgs('svg').join(' '))") |"
             echo "| Deno | $(third_party/deno/deno --version | head -n 1) |"
             echo "| Node | $(node --version) |"
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: The HTML of golem (docs/adr/0234 section 3)
         if: always() && steps.ready.outcome == 'success'
         run: node scripts/browser/run.mjs chromium html browser-inputs
-      - name: The text of the outlined figures (docs/adr/0234 section 4)
+      - name: The text of the outlined figures (docs/adr/0234 section 4, docs/adr/0239)
         if: always() && steps.ready.outcome == 'success'
         run: node scripts/browser/run.mjs chromium svg manual-dev/images browser-inputs/manual-dev/html/fonts
       - name: The checks on the pages of scripts/browser/test (docs/adr/0234)
@@ -211,7 +215,8 @@ jobs:
         env:
           BROWSER_VERSION_FILE: ${{ runner.temp }}/browser-version
         run: node scripts/browser/run.mjs safari html browser-inputs
-      - name: The text of the outlined figures (docs/adr/0234 section 4)
+      # vertical text is measured but not judged (docs/adr/0239 I2)
+      - name: The text of the outlined figures (docs/adr/0234 section 4, docs/adr/0239)
         if: always() && steps.ready.outcome == 'success'
         run: node scripts/browser/run.mjs safari svg manual-dev/images browser-inputs/manual-dev/html/fonts
       - name: The checks on the pages of scripts/browser/test (docs/adr/0234)
