@@ -1,0 +1,17 @@
+# frame-probe (Golem.Wasm.Frame.readFiles), ghc-9.10.3 -O1, +RTS -M256m, 60 s limit
+$ frame-probe empty
+Right [("","x")]
+exit=0 wall=1s
+$ frame-probe 10000
+10000 files, 138894 bytes: 10000 read in 0.653849s
+exit=0 wall=1s
+$ frame-probe 20000
+20000 files, 288894 bytes: 20000 read in 3.010552s
+exit=0 wall=4s
+$ frame-probe 40000
+40000 files, 588894 bytes: 40000 read in 15.983603s
+exit=0 wall=16s
+$ frame-probe 80000
+killed after 60s
+docs/audits/2026-11-08-evidence/run-limited.sh: line 16: 71542 Killed: 9               "$@"
+exit=137 wall=60s

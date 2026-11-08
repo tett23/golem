@@ -1,0 +1,5 @@
+script-control: Right [Active {acName = "script", acLine = 1, acColumn = 41}]
+href-control: Right [Active {acName = "href", acLine = 1, acColumn = 48}]
+presentation-url: Right [Active {acName = "url()", acLine = 1, acColumn = 47}]
+stylesheet-pi: Right [Active {acName = "xml-stylesheet", acLine = 1, acColumn = 1}]
+animated-style: Right [Active {acName = "url()", acLine = 1, acColumn = 74}]

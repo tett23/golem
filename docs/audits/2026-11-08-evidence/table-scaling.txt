@@ -1,0 +1,35 @@
+# table scaling: N rows of 256 cells of one character, golem build --target pdf, +RTS -M1g, 100 s
+## 2500 rows ( 1280000 bytes)
+kanikosen.gm:3:1: error[G07041]: 表の列の最小の幅の合計（469.25mm）が使える幅（-692.25mm）に収まりません
+  | @table data/t.csv
+コードの説明は golem explain <コード> で表示できます（例: golem explain G07041）
+exit=1 wall=15s
+## 5000 rows ( bytes)
+golem-rtsopts: Heap exhausted;
+golem-rtsopts: Current maximum heap size is 1073741824 bytes (1024 MB).
+golem-rtsopts: Use `+RTS -M<size>' to increase it.
+exit=251 wall=14s
+## 10000 rows, --target html, +RTS -M1g, 100 s
+exit=0 wall=5s
+fonts
+index.xhtml
+kanikosen.xhtml
+# 10000 rows x 256 cells, golem build --target pdf, +RTS -M4g -s, 300 s
+kanikosen.gm:3:1: error[G07041]: 表の列の最小の幅の合計（469.25mm）が使える幅（-692.25mm）に収まりません
+  96,374,708,328 bytes allocated in the heap
+   2,868,518,208 bytes maximum residency (12 sample(s))
+  Total   time   59.083s  ( 56.865s elapsed)
+exit=1 wall=57s
+# 10000 rows x C cells of one character, golem build --target pdf, +RTS -M1g -s, 100 s
+## 8 columns (160000 bytes)
+  18,954,034,912 bytes allocated in the heap
+     305,299,904 bytes maximum residency (12 sample(s))
+  Total   time   10.452s  (  7.357s elapsed)
+exit=0 wall=8s
+11797332 build/pdf/urn-uuid-2b9e4f10-6c3d-4a7e-8f21-9d5c0b7e3a02.pdf
+## 64 columns ( bytes)
+kanikosen.gm:3:1: error[G07041]: 表の列の最小の幅の合計（117.31mm）が使える幅（-68.25mm）に収まりません
+  23,943,220,624 bytes allocated in the heap
+     726,032,160 bytes maximum residency (10 sample(s))
+  Total   time   14.953s  ( 12.877s elapsed)
+exit=1 wall=13s

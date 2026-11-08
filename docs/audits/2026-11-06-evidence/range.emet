@@ -1,0 +1,2 @@
+pub fn f :: Nat
+f = List.length (List.take 3 (List.range 1 18446744073709551616))
