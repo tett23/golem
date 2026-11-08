@@ -1,0 +1,16 @@
+# a figure at an absolute path outside the root; golem build --target pdf, +RTS -M1g, 60 s
+$ cat kanikosen.gm
+# 図
+
+@figure DEST/outside/secret.pdf alt="外"
+
+本文。
+$ golem build --target pdf
+kanikosen.gm:3:1: error[G02029]: PDF の図版には web の代替画像が必要です
+  | @figure DEST/outside/secret.pdf alt="外"
+kanikosen.gm:3:1: error[G02060]: 絶対パスは使えません: DEST/outside/secret.pdf
+  | @figure DEST/outside/secret.pdf alt="外"
+コードの説明は golem explain <コード> で表示できます（例: golem explain G02029）
+exit=1 wall=1s
+$ ls build
+ls: build: No such file or directory

@@ -1,0 +1,22 @@
+# emet-probe (the probe of 2026-11-06, compiled against bcbe7140), +RTS -M256m, 30 s limit
+$ emet-probe cost
+10 elements; charged=10
+9223372036854775808 elements; charged=-9223372036854775808
+18446744073709551616 elements; charged=0
+exit=0 wall=1s
+$ emet-probe control
+(Left (Diagnostic {diagCode = DiagnosticCode "E04100", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 1, spanStart = 0, spanEnd = 1}, diagMessage = "\38306\25968\12398\35413\20385\12398\25163\25968\12364\19978\38480\65288\&100000000 \25163\65289\12434\36229\12360\12414\12375\12383: f\65288main.emet:1\65289", diagRelated = [], diagFixes = [], diagFacts = []}),100000004)
+exit=0 wall=1s
+$ emet-probe take
+(Right (RList [RPrim (VInt 1),RPrim (VInt 2),RPrim (VInt 3)]),7)
+exit=0 wall=1s
+$ emet-probe length
+emet-probe: Heap exhausted;
+emet-probe: Current maximum heap size is 268435456 bytes (256 MB).
+emet-probe: Use `+RTS -M<size>' to increase it.
+exit=251 wall=1s
+$ emet-probe replace
+emet-probe: Heap exhausted;
+emet-probe: Current maximum heap size is 268435456 bytes (256 MB).
+emet-probe: Use `+RTS -M<size>' to increase it.
+exit=251 wall=1s

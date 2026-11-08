@@ -1,0 +1,36 @@
+cost exit= 0 stdout= 10 elements; charged=10
+9223372036854775808 elements; charged=-9223372036854775808
+18446744073709551616 elements; charged=0 stderr= 
+control exit= 0 stdout= (Left (Diagnostic {diagCode = DiagnosticCode "E04100", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 1, spanStart = 0, spanEnd = 1}, diagMessage = "\38306\25968\12398\35413\20385\12398\25163\25968\12364\19978\38480\65288\&100000000 \25163\65289\12434\36229\12360\12414\12375\12383: f\65288main.emet:1\65289", diagRelated = [], diagFixes = [], diagFacts = []}),100000004) stderr= 
+take exit= 0 stdout= (Right (RList [RPrim (VInt 1),RPrim (VInt 2),RPrim (VInt 3)]),7) stderr= 
+length exit= 251 stdout=  stderr= emet-probe: Heap exhausted;
+emet-probe: Current maximum heap size is 134217728 bytes (128 MB).
+emet-probe: Use `+RTS -M<size>' to increase it.
+replace exit= 251 stdout=  stderr= emet-probe: Heap exhausted;
+emet-probe: Current maximum heap size is 134217728 bytes (128 MB).
+emet-probe: Use `+RTS -M<size>' to increase it.
+CSL exit= 1 stderr= chapters/01.gm:3:10: error[G02021]: 書誌データにないキーです: jlreq
+  | 日本語の組版の規則[cite jlreq]と行分割[cite knuth1981]。
+chapters/01.gm:3:26: error[G02021]: 書誌データにないキーです: knuth1981
+  | 日本語の組版の規則[cite jlreq]と行分割[cite knuth1981]。
+chapters/02.gm:5:6: error[G02021]: 書誌データにないキーです: jlreq
+  | 組版の規則[cite jlreq]と行分割[cite knuth1981]。
+chapters/02.gm:5:22: error[G02021]: 書誌データにないキーです: knuth1981
+  | 組版の規則[cite jlreq]と行分割[cite knuth1981]。
+chapters/02.gm:11:4: error[G02021]: 書誌データにないキーです: knuth1981
+  | 行分割[cite knuth1981]と照合[cite jisx4061]。
+chapters/02.gm:11:23: error[G02021]: 書誌データにないキーです: jisx4061
+  | 行分割[cite knuth1981]と照合[cite jisx4061]。
+manifest.toml:1:1: error[G03108]: 参考文献のファイルに出力に書けない文字（U+0001）があります: refs.json（/0/title）
+  | chapters = ["chapters/01.gm", "chapters/02.gm"]
+コードの説明は golem explain <コード> で表示できます（例: golem explain G02021）
+CSL output files= []
+Emet CLI exit= 1 stderr= chapters/01.gm:3:4: error[G02002]: audit.f は pub fn ではないので、式からは呼べません（種類の語のない pub の関数は .gm から見えません）
+  | [= audit.f()]
+コードの説明は golem explain <コード> で表示できます（例: golem explain G02002）
+artifacts: /var/folders/5t/47dyfgwj64v0jt16_pgwr8gw0000gn/T/golem-audit-20261106-aha5b458
+Corrected export to pub fn; CLI exit=0 stderr=
+build/text/horizontal/chapters/01.txt: '3\n'
+build/text/horizontal/chapters/02.txt: 'audit\n'
+build/text/vertical/chapters/01.txt: '3\n'
+build/text/vertical/chapters/02.txt: 'audit\n'
