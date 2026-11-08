@@ -645,7 +645,7 @@ sizeTests =
     -- the call succeeds with the limit of the steps it took, and is E04100 with one less
     limits src args = do
       (r, c) <- stepsOf src "f" args
-      fmap (const ()) r @?= Right ()
+      void r @?= Right ()
       atC <- limited c src args
       atC @?= r
       below <- limited (c - 1) src args
