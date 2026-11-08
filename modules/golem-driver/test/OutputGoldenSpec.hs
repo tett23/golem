@@ -43,6 +43,7 @@ import Data.ByteString.Builder qualified as B
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (isDigit)
+import Data.Either (isRight)
 import Data.List (isSuffixOf)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -73,8 +74,8 @@ outputGoldenTests =
       testGroup
         "N1: the page count range of the books that combine the features (docs/adr/0220)"
         [ testCase ("N1: " <> show n <> " pages " <> (if ok then "is" else "is not") <> " in the range") $
-            assertEqual (show n) ok (either (const False) (const True) (complexPageRange n))
-          | (n, ok) <- [(15, False), (16, True), (32, True), (33, False)]
+            assertEqual (show n) ok (isRight (complexPageRange n))
+        | (n, ok) <- [(15, False), (16, True), (32, True), (33, False)]
         ]
     ]
 
