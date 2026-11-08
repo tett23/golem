@@ -14,6 +14,7 @@ module Golem.Length
     zwToSp,
     fromSp,
     mmText,
+    mmCeilText,
     mmRationalText,
     ptText,
     emText,
@@ -58,6 +59,13 @@ fromSp u (Sp s) = fromInteger s / spPer u
 -- | A length in mm for a diagnostic: two decimals, half to even, @3.00mm@.
 mmText :: Sp -> Text
 mmText = mmRationalText . fromSp Mm
+
+{- | A length in mm for a diagnostic of how far something sticks out
+(docs/adr ADR 0210): two decimals, rounded up, so that 1sp is @0.01mm@
+and never @0.00mm@.
+-}
+mmCeilText :: Sp -> Text
+mmCeilText = mmRationalText . (% 100) . ceiling . (* 100) . fromSp Mm
 
 {- | An exact length in mm, written as 'mmText' writes it: two decimals,
 rounded half to even from the absolute value, the trailing zeros kept, a

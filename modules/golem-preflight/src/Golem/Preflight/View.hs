@@ -92,8 +92,10 @@ data LineView = LineView
     -- | what the line is, as messages name it: 本文の行, 柱, ノンブル…
     lvKind :: !Text,
     lvSpan :: !SrcSpan,
-    -- | how far an overfull line sticks out
-    lvOverfull :: !(Maybe Sp)
+    {- | how far an overfull line sticks out ('lineOverflow' of golem-layout)
+    and where: the first character of its first box that crosses the
+    measure, or the block of the line (docs/adr ADR 0210)
+    -} lvOverfull :: !(Maybe (Sp, SrcSpan))
   }
   deriving stock (Eq, Show)
 

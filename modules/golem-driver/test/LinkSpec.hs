@@ -147,6 +147,30 @@ linkTests =
     testCase "a link in a heading: the copies in the table of contents and [ref-title] hold no link" $ do
       pdf <- miniPdf fakeProvider True horizontalStyle "@toc\n\n@label c\n# 章[link \"https://example.com/\": 題]\n\n本文[ref-title c]。\n" []
       map fst (annotations pdf) @?= ["https://example.com/"],
+    testCase "a link in a heading: the running heads that show the heading hold no link" $ do
+      -- 30 lines a page: the chapter runs over three pages, each with the running head
+      let style = horizontalStyle <> "\n[masters.body]\nrunning-head = { position = \"top-outside\", content = \"heading.1.short\" }\n"
+          src = "# 章[link \"https://example.com/\": 題]\n\n" <> T.replicate 80 "本文。\n\n"
+      pdf <- miniPdf fakeProvider True style src []
+      ds <- glyphs pdf
+      assertBool "the running head shows the title" (length [() | d <- ds, dGlyph d == fromEnum '題'] > 2)
+      map fst (annotations pdf) @?= ["https://example.com/"]
+      annotsPerPage pdf @?= [1],
+    testCase "a link over two columns: an annotation on each line, in its column" $ do
+      -- 12 characters a line, 30 lines a column, two columns a page
+      let src = "[link \"https://example.com/\": " <> T.replicate 400 "い" <> "]\n"
+      (geom, pl) <- layoutOk horizontal2 src []
+      pdf <- miniPdf fakeProvider True horizontal2 src []
+      let as = annotations pdf
+      length (linkRuns pl) @?= 34
+      length as @?= 34
+      annotsPerPage pdf @?= [34]
+      case columnsFor geom 1 of
+        [c1, c2] -> do
+          let xs = [x0 | (_, x0 : _) <- as]
+          mapM_ (near (toPt (rectX c1))) (take 30 xs)
+          mapM_ (near (toPt (rectX c2))) (drop 30 xs)
+        other -> assertFailure (show other),
     testCase "[style url: ...] in the text is no link" $ do
       pdf <- miniPdf fakeProvider True horizontalStyle "[style url: https://example.com/]\n" []
       annotations pdf @?= []

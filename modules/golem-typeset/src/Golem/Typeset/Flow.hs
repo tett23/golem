@@ -823,7 +823,7 @@ tocPage tg e number =
       le = tgMeasure tg - max (tgReserve tg) w - g
       k0 = if tgLeaders tg && u > 0 then max 0 (unSp (le - (e + g)) `div` unSp u) else 0
       (ns, k) = if ns0 < e + g then (e + g, 0) else (ns0, k0)
-      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) False (0, 0)
+      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) 0 (0, 0)
    in TocPage (le - fromInteger k * u) leader ns number
 
 -- | The measure of a column of the page.
@@ -837,7 +837,7 @@ pageNumberLine :: ComposeEnv -> Integer -> Line
 pageNumberLine env n =
   let boxes = [b | b@Box {} <- fst (composeInlines env [Number (mkSpan (FileId 0) 0 0) n Nothing])]
       w = sum (map itemWidth boxes)
-   in Line boxes 0 w 0 (0, 0) False (0, 0)
+   in Line boxes 0 w 0 (0, 0) 0 (0, 0)
 
 -- | W and u, measured once in the body role at the type size.
 tocMetrics :: ComposeEnv -> (Sp, Sp)
@@ -2228,7 +2228,7 @@ numberTable fe u r nb = case r of
     nextId = nuNext nb
     fs = pgFontSize (feGeom fe)
     capacity = length (pgLineGrid (feGeom fe))
-    emptyLine = Line [] 0 0 0 (0, 0) False (0, 0)
+    emptyLine = Line [] 0 0 0 (0, 0) 0 (0, 0)
 
 -- | Headings and table of contents entries by their lines (golem-driver ADR 0009); @fs@ is the font size of the grid.
 headingAndTocLines :: Sp -> ComposedUnits -> Int -> Int -> Unit -> Numbered -> Numbered
@@ -2574,7 +2574,7 @@ codeBlockOf geom fonts measure capacity u lead code caption =
               [emptyBox (o - x) | o > x]
                 <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf (spanStart (snd source)))]
                 <> go (o + w) rest
-         in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) False (0, 0)
+         in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) 0 (0, 0)
       at leaf o col t = [(o + cpOffset p, cpText p, cpWidth p, cpLatin p, col, leaf) | p <- oneRow t]
       rowLeaf j = Leaf (codeRowSite (uIndex u) j) 0
       lineNumberColor = cdLineNumberColor cs
