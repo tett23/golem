@@ -140,6 +140,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 組み込みの文字スタイルは、[code: bold] が [code: synthetic-bold = true]、[code: italic] が [code: synthetic-italic = true]、[code: strong] が [code: based-on = "bold"]、[code: code] が [code: font = "code"]、[code: padding = "0.25zw"]、[code: wrap-mark = "⏎"] で、[code: url] はキーを持ちません。
 [code: code] と、[code: based-on] で [code: code] を引き継ぐ文字スタイルの文字は、PDF で欧文の語の途中で分けず、空白、[code: /] の後、[code: _] の連なりの後でだけ行を改めます。
 和文の字のあいだと、和文と欧文の字の境では、本文と同じ禁則に従って行を改めます。
+空白の位置でも、本文の語のあいだの空白と同じく、後の字が行頭に置けない字（[code: 」] や [code: 。] など）か、前の字が行末に置けない字（[code: 「] など）なら、行を改めません。
 [code: "]、[code: (]、[code: =] のような ASCII の記号は、欧文の字として扱います。
 空白でない位置で行を改めた行の行末には、[code: wrap-mark] の印を描きます。
 その中の空白は、コードの書体の空白一字分の幅のまま組み、行を両端にそろえるために広げたり詰めたりしません。

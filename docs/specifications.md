@@ -1841,6 +1841,7 @@ HTML と EPUB には印を出さない。
 中の文字のあいだにはアキ量のセットの空きを入れず、前後の文字との空きは端の文字のクラスで決める。
 本文の中のコードの空白は、コードの書体の空白の送りにトラッキングを足した固定の幅で組み、両端揃えのために伸び縮みさせない（[golem-layout ADR 0017](golem-layout/adr/0017-spaces-inside-inline-code.md)）。
 空白の位置では今までどおり改行でき、行末に来た空白は捨てる。
+ただし、空白の後の字が行頭禁則の字か、前の字が行末禁則の字なら、その空白では改行しない（[golem-layout ADR 0038](golem-layout/adr/0038-kinsoku-across-spaces-of-inline-code.md)）。
 段落の終わりと強制改行の前の空白も、語間の空白と同じく行分割の前に捨てる（[golem-layout ADR 0037](golem-layout/adr/0037-drop-spaces-of-code-before-the-end-of-a-paragraph.md)）。
 行の不足は、行の中のほかのグルー（和文の字のあいだ、和欧間の空き、コードの外の語間の空白）が受け持つ。
 コードだけでできた行のように伸びるグルーのない行は、両端揃えにせず、自然な幅のまま行頭に寄せる。
@@ -3084,6 +3085,10 @@ dev と prod の両方で警告で、PDF を書き、notice ではないので `
 行頭禁則と行末禁則は、語間の空白と、欧文の語の明示のハイフンの後の分割の候補にも当てる（[golem-layout ADR 0028](golem-layout/adr/0028-kinsoku-across-spaces-and-explicit-hyphens.md)）。
 分離禁止は、隣り合う字にだけ当てる。
 `あ「 い` の `「` の後の空白と、`あ 〜` の `〜` の前の空白では改行せず、`… …` は空白で改行してよい。
+行頭禁則と行末禁則は、本文の中のコードの空白にも同じく当て、分離禁止は当てない（[golem-layout ADR 0038](golem-layout/adr/0038-kinsoku-across-spaces-of-inline-code.md)）。
+コードの空白は、`lkCode` の空白から作ったグルーとして見分け、空白の前の箱か後の箱がコードの外の箱でも判定する。
+`[code: 「 a]`、`[code: a 」]`、`[code: 漢 。]` は空白で改行せず、`[code: … …]` は空白で改行してよい。
+消した候補の位置でも、コードの空白は伸び縮みしないままである。
 欧文の語の箱の最初の字が U+2019 で、次の字が字か数字（一般カテゴリが L か Nd）なら、その字は語の頭のアポストロフィとし、行頭禁則を当てない（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)）。
 次の字は、結合文字を除いて数える。
 `aaa ’tis` と `aaa ’90` は空白で改行してよく、`aaa ’` と `aaa ’.` の `’` は今のとおり終わり括弧類として空白で改行しない。
@@ -3210,7 +3215,7 @@ C4（和文を含まないコードの項目は、印の幅と種類を除けば
 C5（`url`）は例のテストで確かめる。
 プルリクエストの CI は部品 2 個まで（240 の並び）を 4 字までの行で、毎晩の `enum.yml` は部品 3 個までを 5 字までの行で調べる。
 正規形と縦組みは、23 の部品と同じ部品の数までで確かめる。
-「既知の不具合」の「本文の中のコードの空白で、禁則に当たる位置でも改行する」の違反は、一覧で除き、除いた入力の数（部品 2 個までで 36、3 個までで 2692）を固定する。
+コードの並びの既知の不具合の一覧は空であり、除く入力はない（[golem-layout ADR 0038](golem-layout/adr/0038-kinsoku-across-spaces-of-inline-code.md)）。
 
 述語が判定しない場合はない（[docs/adr/0222](adr/0222-line-breaking-points-the-invariants-did-not-decide.md)）。
 L6 は、伸びるグルーのない行を行長に足りなくてよいとし、字幅の伸縮が限度に達していなければ、足りない量が刻み一つ分の伸縮より小さいことを確かめる。
@@ -5173,7 +5178,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **`[ref-number]` の図番号とリスト番号が、`[figures]` と `[code]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックを `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
-- **本文の中のコードの空白で、禁則に当たる位置でも改行する**：本文の中のコードの空白（[golem-layout ADR 0017](golem-layout/adr/0017-spaces-inside-inline-code.md)）は伸び縮みしないグルーであり、語間の空白の前後の禁則（[golem-layout ADR 0028](golem-layout/adr/0028-kinsoku-across-spaces-and-explicit-hyphens.md)）が当たらない。`[code: 「 a]` は `「` の後の空白で、`[code: a 」]` は `」` の前の空白で、`[code: … …]` は二つの `…` のあいだの空白で改行できる。0028 はコードの空白を列挙の外として変えなかったが、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) がコードの並びを列挙に足し、L2、L3、L4 の違反として見つかった（実装で見つかった）。
 - **本文の中のコードの最初か最後に空白があると、その側の余白がなくなる**：文字スタイル `code` の `padding` は、コードの並びの最初と最後の部品に付ける（[`padCode`](https://github.com/tett23/golem/blob/c638870fb9f5fb8a66d13308fef727a7e202de19/modules/golem-layout/src/Golem/Layout/Japanese.hs#L1028-L1058)）。最後の部品が空白なら、余白を付ける先がない。`padding = 250` の `code` で、`[code: あ ]` の `あ` の後の余白と、前に空白を書いたコードの `あ` の前の余白が 0 になる。段落の終わりに限らず起きる（[golem-layout ADR 0037](golem-layout/adr/0037-drop-spaces-of-code-before-the-end-of-a-paragraph.md) の調べで見つかった）。
 - **既定のアキ量のセットで、和字間隔の前後の括弧類に二分を置く**：`gyomatsu-yakumono-hankaku` は和字間隔を和文の字（`j`）として扱うので、`」　` の終わり括弧類の後ろと、`　「` の始め括弧類の前に二分を置く。JLReq の付録 B の表 1（cl-02 の行と cl-14 の行）は、どちらもベタ組とする。和文組版は JLReq に従うという原則と食い違い、Chrome の既定とも違う。段落の字下げに和字間隔を使う原稿の見た目にも関わる（[golem-layout ADR 0039](golem-layout/adr/0039-set-consecutive-opening-brackets-and-brackets-beside-middle-dots-as-jlreq.md) の「表 1 とのほかの食い違い」）。[golem-layout ADR 0041](golem-layout/adr/0041-take-the-ideographic-space-out-of-japanese-characters-in-the-default-aki-set.md) で直す（未実装）。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。

@@ -716,24 +716,11 @@ c4Misses g
       it -> it
 
 {- | The known bugs the runs of code find, in the order of 「既知の不具合」:
-a line broken at a space of code, which no prohibition keeps (golem-layout
-ADR 0028 left the spaces of code to their own rule). The space of code at
-the end of a paragraph went with golem-layout ADR 0037.
+none since golem-layout ADR 0038, the space of code at the end of a
+paragraph having gone with golem-layout ADR 0037.
 -}
 codeLineBugs :: [LineBug]
-codeLineBugs =
-  [ LineBug
-      { lbItem = "本文の中のコードの空白で、禁則に当たる位置でも改行する",
-        lbShape = elem " " . inRun,
-        lbExcuses = \i b -> breachOf b `elem` [L2, L3, L4] && atCodeSpace (codeParagraphOf i) (if breachOf b == L2 then breachLine b - 1 else breachLine b),
-        lbCounts = [(2, 36), (3, 2692)]
-      }
-  ]
-  where
-    -- the line breaks at a space of code: glue that neither stretches nor shrinks
-    atCodeSpace p k = case breakItem p k of
-      Just (Glue w 0 0) -> w > 0
-      _ -> False
+codeLineBugs = []
 
 -- | The violations of the first input of a group of code that has some, C4 among them, and the known bugs that excuse its inputs.
 judgeCodeGroup :: Int -> Group -> ([Violation], Excused)
@@ -780,6 +767,10 @@ codeTests =
           split = concatMap (\case Box w c | bcText c == "ab" -> [Box (Sp (unSp w `div` 2)) c {bcText = "a"}, Penalty 0 0 NoHyphen, Box (Sp (unSp w `div` 2)) c {bcText = "b"}]; it -> [it])
       codeBroken p @?= []
       codeBroken p {pItems = split (pItems p)} @?= [C3],
+    testCase "golem-layout ADR 0038 S3: two ellipses of code broken at the space between them break no invariant" $ do
+      let p = codeParagraphOf (Input plain False 1 0 ["…", " ", "…"] 0)
+      map lineText (brLines (pBreaks p)) @?= ["…", "…"]
+      codeBroken p @?= [],
     testCase "C8: a line broken inside code without the mark" $ do
       let p = codeParagraphOf (Input plain False 2 0 ["漢", "あ", "漢", "あ"] 0)
           unmark = map (\case Penalty _ q (WrapMark _) -> Penalty 0 q NoHyphen; it -> it)
@@ -809,7 +800,7 @@ codeTests =
           keys v g = let its = codeItemsOf v (gSetting g) (gPre g) (gRun g) (gPost g) in [keyOf (fromIntegral w * fs) (paramsOf (gSetting g) e its) its | (w, e) <- gCases g]
       checkAllPar d codeRunsT (\run -> [Violation "vertical" (show g) | g <- codeGroupsOf (maxWidthAt depth) run, keys True g /= keys False g])
         @?= Passed (length (concat (upTo d codeRunsT))),
-    testCase "golem-layout ADR 0037 B1: L1 to L13, T1 and C1 to C8 hold for every input of code up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
+    testCase "golem-layout ADR 0037 B1, 0038: L1 to L13, T1 and C1 to C8 hold for every input of code up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- linesDepth
       let limit = bruteLimitAt depth
       case tallyAllPar depth (codeGroupT (maxWidthAt depth)) (judgeCodeGroup limit) of
