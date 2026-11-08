@@ -199,6 +199,11 @@ Golem は SVG の図版の文字を描かないので、原稿の文字を輪郭
 原稿の SVG を直したら [code: scripts/manual/outline-figures.sh] で輪郭の SVG を作り直し、両方をコミットする。
 このスクリプトは Inkscape 1.x で文字を輪郭にし、図の文字には組版と同じ Noto Sans JP だけを使う（マシンのフォントは使わない）。
 輪郭の文字がブラウザーで原稿を描いた位置に来るよう、Inkscape に渡す前に [code: scripts/manual/outline-prepare.sh] が原稿の写しを直す。
+図の隣り合う約物は、本文と同じ空きで組む。
+原稿は [code: text-spacing-trim: space-all] でブラウザーの自動の詰めを止め、半角に詰める約物を [code: <tspan class="halt">] で一字ずつ包む。
+どの字を包むかは [code: scripts/manual/check-figures.sh] が確かめる。
+原稿を開いて確かめるブラウザーは Chromium の系統のものにする。
+Safari では、縦書きの文字列が輪郭と違う形に描かれる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0239-decide-the-conditions-of-the-outlined-figure-check-and-the-punctuation-of-figure-sources.md]（ADR 0239「輪郭の SVG の文字の検査の条件と、図の原稿の約物の詰め」）]
 輪郭の SVG は手で直さない。
 その先頭のコメントには原稿の SHA-256 があり、[code: scripts/manual/check-figures.sh] が CI でそれを原稿と比べる。
 組むときには実行しないので、マニュアルを組むだけなら Inkscape は要らない。

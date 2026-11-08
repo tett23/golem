@@ -17,7 +17,7 @@ import { devtoolsUrl } from '../cdp.mjs';
 import { emphasis, KENTEN } from '../html-checks.mjs';
 import { decode } from '../png.mjs';
 import { fileOf, serve } from '../serve.mjs';
-import { compareInk, judge } from '../svg-text.mjs';
+import { compareInk, GENEROUS, judge, SAFARI } from '../svg-text.mjs';
 import { connect } from '../webdriver.mjs';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
@@ -209,10 +209,21 @@ describe('the ink of svg-text.mjs (docs/adr/0239 I1, I2)', () => {
     assert.equal(r.excluded.size, 315);
     assert.ok(r.excluded.centre >= 157);
   });
+  test('ADR0239-I2: Safari judges horizontal text with the generous tolerance', () => {
+    assert.equal(GENEROUS, 8);
+    const s = { centre: SAFARI.centre, size: SAFARI.size };
+    assert.deepEqual(compareInk(box(10, 10, 20, 10), box(18, 10, 20, 10), undefined, s).failures, []);
+    assert.deepEqual(compareInk(box(10, 10, 20, 10), box(6, 6, 28, 18), undefined, s).failures, []);
+    assert.match(compareInk(box(10, 10, 20, 10), box(18.5, 10, 20, 10), undefined, s).failures.join(), /centres differ by 8.5/);
+    assert.match(compareInk(box(10, 10, 20, 10), box(10, 10, 29, 10), undefined, s).failures.join(), /sizes differ by 9/);
+    // a mark of 20px text left at full width: 20 CSS pixels wider at SCALE 2
+    assert.match(compareInk(box(0, 0, 200, 40), box(0, 0, 220, 40), undefined, s).failures.join(), /sizes differ by 20/);
+    assert.equal(SAFARI.vertical, false);
+  });
   test('ADR0239-I2: horizontal text is judged in Safari too', () => {
-    const r = judge([{ name: 'x', text: 'h', vertical: false, ...compareInk(box(0, 0, 100, 20), box(-1.5, 0, 103, 20)) }], { vertical: false });
+    const r = judge([{ name: 'x', text: 'h', vertical: false, ...compareInk(box(0, 0, 100, 20), box(-4.5, 0, 109, 20), undefined, SAFARI) }], SAFARI);
     assert.equal(r.failures.length, 1);
-    assert.match(r.failures[0], /sizes differ by 3/);
+    assert.match(r.failures[0], /sizes differ by 9/);
   });
 });
 

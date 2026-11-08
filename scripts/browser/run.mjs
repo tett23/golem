@@ -8,7 +8,8 @@
 //       the check of svg-text.mjs: IMAGES is manual-dev/images (the
 //       outlined figures and src/), FONTS the fonts of the manual. Chromium
 //       is launched with the arguments of chromiumArgs (docs/adr/0239 I3);
-//       Safari does not judge vertical text (docs/adr/0239 I2)
+//       Safari does not judge vertical text (docs/adr/0239 I2) and judges
+//       horizontal text with the tolerance GENEROUS of svg-text.mjs
 //
 // BROWSER is chromium or safari (browsers.mjs). Each check prints ok or
 // FAIL with its failures; the exit code is 1 when one failed. With
@@ -22,7 +23,7 @@ import process from 'node:process';
 import { chromiumArgs, openBrowser } from './browsers.mjs';
 import * as html from './html-checks.mjs';
 import { serve } from './serve.mjs';
-import { HARNESS, svgText } from './svg-text.mjs';
+import { HARNESS, SAFARI, svgText } from './svg-text.mjs';
 
 // The family that golem gives to the latin font of [fonts.code] in the
 // @font-face of style.css (scripts/browser/fixtures/horizontal/style.toml).
@@ -64,7 +65,8 @@ async function htmlChecks(page, inputs) {
   }
 }
 
-async function svgCheck(page, images, fonts, { vertical }) {
+async function svgCheck(page, images, fonts, options) {
+  const vertical = options.vertical ?? true;
   const root = await mkdtemp(join(tmpdir(), 'golem-svg-'));
   try {
     await cp(images, join(root, 'images'), { recursive: true });
@@ -72,7 +74,7 @@ async function svgCheck(page, images, fonts, { vertical }) {
     const names = (await readdir(join(root, 'images', 'src'))).filter((f) => f.endsWith('.svg')).map((f) => f.slice(0, -4)).sort();
     const server = await serve(root, { pages: { '/images/src/__svg-text.html': HARNESS } });
     try {
-      const { failures, measured, excluded } = await svgText(page, server.url, names, { vertical });
+      const { failures, measured, excluded } = await svgText(page, server.url, names, options);
       const fmt = (m) => `centre ${m.centre.toFixed(2)} px, size ${m.size.toFixed(2)} px, ink ${(m.ink * 100).toFixed(2)}%`;
       const lines = Object.entries(measured).map(([n, m]) => `${n}: ${fmt(m)}`);
       if (!vertical) lines.push(`vertical text not judged (docs/adr/0239 I2): ${excluded.count} text elements, ${fmt(excluded)}`);
@@ -102,7 +104,7 @@ try {
   if (page.browserVersion && process.env.BROWSER_VERSION_FILE) await writeFile(process.env.BROWSER_VERSION_FILE, `${page.browserVersion}\n`);
   console.log(`${browser}${page.browserVersion ? ` ${page.browserVersion}` : ''}${browser === 'chromium' && chromiumArgs(check).length > 0 ? ` (${chromiumArgs(check).join(' ')})` : ''}`);
   await page.setWindowSize(1024, 768);
-  passed = check === 'html' ? await htmlChecks(page, ...args) : await svgCheck(page, ...args, { vertical: browser !== 'safari' });
+  passed = check === 'html' ? await htmlChecks(page, ...args) : await svgCheck(page, ...args, browser === 'safari' ? SAFARI : {});
 } finally {
   await page.close();
 }

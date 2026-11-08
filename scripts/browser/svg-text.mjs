@@ -22,6 +22,17 @@ export const PAD = 2;
 // by up to 2 (docs/adr/0239 section 2).
 export const CENTRE_LIMIT = 1;
 export const SIZE_LIMIT = 2;
+// The judgement of Safari: the vertical text is not judged
+// (docs/adr/0239 I2), and the horizontal text is judged with the
+// tolerance GENEROUS, for both the centres and the sizes. Safari places
+// the horizontal text of the sources up to 5.5 CSS pixels away from the
+// outline (browser.yml on 2026-11-08), which the outline, made to match
+// Chromium, cannot follow; the tolerance still catches what breaks a
+// figure, such as a halt that is not applied (a mark of 20px text, half of
+// it 20 CSS pixels at SCALE 2) or a figure drawn in another font (the
+// decision of docs/adr/0239 on the strictness of the browser checks).
+export const GENEROUS = 8;
+export const SAFARI = { vertical: false, centre: GENEROUS, size: GENEROUS };
 export const SCALE = 2;
 // The largest difference of the numbers of ink pixels, as a fraction of the
 // larger. On 2026-11-08 the six figures of the developer manual differed by
@@ -64,17 +75,20 @@ window.textBoxes = () => [...document.querySelectorAll('#fig text')].map((t) => 
 
 // The comparison of the ink of one text in the source A and the outline B
 // (CSS pixels): the failures of I4 and of the ink limit, and the measures.
-export function compareInk(a, b, limit = INK_LIMIT) {
+// CENTRE and SIZE are the limits of the centres and the sizes.
+export function compareInk(a, b, limit = INK_LIMIT, { centre: centreLimit = CENTRE_LIMIT, size: sizeLimit = SIZE_LIMIT } = {}) {
   if (!a || !b) return { failures: [`ink: ${a ? 'none in the outline' : 'none in the source'}`], measures: null };
-  const centre = Math.max(Math.abs((a.x + a.width / 2) - (b.x + b.width / 2)), Math.abs((a.y + a.height / 2) - (b.y + b.height / 2)));
+  const dx = Math.abs((a.x + a.width / 2) - (b.x + b.width / 2));
+  const dy = Math.abs((a.y + a.height / 2) - (b.y + b.height / 2));
+  const centre = Math.max(dx, dy);
   const measures = {
     centre,
     size: Math.max(Math.abs(a.width - b.width), Math.abs(a.height - b.height)),
     ink: Math.abs(a.area - b.area) / Math.max(a.area, b.area),
   };
   const failures = [];
-  if (measures.centre > CENTRE_LIMIT) failures.push(`the centres differ by ${measures.centre} CSS px`);
-  if (measures.size > SIZE_LIMIT) failures.push(`the sizes differ by ${measures.size} CSS px`);
+  if (measures.centre > centreLimit) failures.push(`the centres differ by ${measures.centre} CSS px (x ${dx}, y ${dy})`);
+  if (measures.size > sizeLimit) failures.push(`the sizes differ by ${measures.size} CSS px (width ${Math.abs(a.width - b.width)}, height ${Math.abs(a.height - b.height)})`);
   if (measures.ink > limit) failures.push(`the ink differs by ${(measures.ink * 100).toFixed(1)}% (limit ${(limit * 100).toFixed(1)}%)`);
   return { failures, measures };
 }
@@ -104,8 +118,8 @@ export function judge(rows, { vertical = true } = {}) {
 // The check of the figures NAMES under the URL BASE of a server of the
 // root, whose images/src/__svg-text.html is HARNESS. It returns the
 // failures, for each figure the largest of each measure, and the vertical
-// text left out of the judgement (judge).
-export async function svgText(page, base, names, { limit = INK_LIMIT, vertical = true } = {}) {
+// text left out of the judgement (judge). The options of Safari are SAFARI.
+export async function svgText(page, base, names, { limit = INK_LIMIT, vertical = true, centre = CENTRE_LIMIT, size = SIZE_LIMIT } = {}) {
   const failures = [];
   const rows = [];
   await page.open(`${base}/images/src/__svg-text.html`);
@@ -119,7 +133,7 @@ export async function svgText(page, base, names, { limit = INK_LIMIT, vertical =
     if (boxes.length === 0) failures.push(`${name}: no text in the source`);
     for (const box of boxes) {
       const r = { x: box.x - PAD, y: box.y - PAD, width: box.width + 2 * PAD, height: box.height + 2 * PAD };
-      rows.push({ name, text: box.text, vertical: box.vertical, ...compareInk(inkBox(src, r), inkBox(out, r), limit) });
+      rows.push({ name, text: box.text, vertical: box.vertical, ...compareInk(inkBox(src, r), inkBox(out, r), limit, { centre, size }) });
     }
   }
   const j = judge(rows, { vertical });
