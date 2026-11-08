@@ -215,7 +215,7 @@ app app.o util.o</code></pre>
 </section>
 </body>
 </html>
-== OEBPS/chapters/02.xhtml (deflate, time 315532800, 7919 bytes)
+== OEBPS/chapters/02.xhtml (deflate, time 315532800, 7936 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -301,7 +301,7 @@ done &lt;deps.txt</code></pre></figure>
 <figcaption><span class="number">図2.2</span>　判定から作り直しまでの流れ。</figcaption>
 </figure>
 <p>図2-2の「三つの箱を線でつないだ処理の流れ」のとおり、判定、順の決定、実行の三つの段階を経て、ターゲットが作られる。</p>
-<p>Internationalization and characterization of buildsystem interoperability requirements are discussed in the literature under names like reproducibility and incrementality. Unquestionably, straightforward implementations outperform overcomplicated counterparts.</p>
+<p>Internationalization and characterization of buildsystem interoperability requirements are discussed in the literature under names like reproducibility and incrementality. Unquestionably, well-understood, straightforward implementations outperform overcomplicated counterparts.</p>
 </body>
 </html>
 == OEBPS/chapters/03.xhtml (deflate, time 315532800, 9762 bytes)
