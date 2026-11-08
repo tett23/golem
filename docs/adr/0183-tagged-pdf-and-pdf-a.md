@@ -1,6 +1,6 @@
 # ADR 0183: タグ付き PDF と、PDF/A-2a と PDF/UA-1 への準拠
 
-ステータス: 採択
+ステータス: 採択→構造の木にない内容の扱いは [ADR 0216](0216-drawn-content-missing-from-the-structure-tree-is-an-error.md)
 
 ## 文脈
 
