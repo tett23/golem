@@ -1,6 +1,6 @@
 # ADR 0239: 輪郭の SVG の文字の検査の条件と、図の原稿の約物の詰めを決め、輪郭の手順の変更を記録する
 
-ステータス: 採択
+ステータス: 採択→図の原稿の約物の詰めの表（実装すること 3 の表と、不変条件 I4 と、I7 の中点類の部分）は [docs/adr/0241](0241-derive-the-punctuation-of-figure-sources-from-the-default-aki-set.md)
 
 ## 文脈
 

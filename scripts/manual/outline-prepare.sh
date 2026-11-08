@@ -20,25 +20,30 @@
 #   it by the difference, 0.056 em. Both weights of the fonts of
 #   scripts/manual/fetch-fonts.sh have these metrics. Vertical text is not
 #   lowered: there both put the glyphs on the centre line.
-# - Adjacent fullwidth punctuation (docs/adr/0239 section 3). The sources
-#   set it with the spaces with which Golem sets the body text: the rule
-#   text { text-spacing-trim: space-all; } stops the trimming of the
-#   browsers, and a mark to be set half-width is in
-#   <tspan class="halt">, which the rule
+# - Adjacent fullwidth punctuation (docs/adr/0239 section 3,
+#   docs/adr/0241). The sources set it with the spaces with which Golem
+#   sets the body text: the rule text { text-spacing-trim: space-all; }
+#   stops the trimming of the browsers, and a mark to be set half-width is
+#   in <tspan class="halt">, which the rule
 #   tspan.halt { font-feature-settings: "halt"; } of the source sets with
 #   the feature halt. Inkscape reads that rule as the browsers do. The rule
 #   of text-spacing-trim is removed from the input, since an outlined SVG
 #   must not keep it (G08011), and Inkscape adds the baseline-shift of a
 #   tspan to that of a tspan inside it, so the tspans of halt set it to 0.
-#   --check checks that the marks in tspans of halt are those of the table
-#   of docs/adr/0239: with O the opening brackets, P the closing brackets,
-#   the full stops and the commas and S the ideographic space,
-#     P P   the first          P O   the second
-#     P S, O O, O P, S O       none
-#   and that the source has the rule of text-spacing-trim, and the rule of
-#   halt when it has a tspan of halt. A middle dot next to another mark,
-#   any other pair of marks, and two marks next to each other in vertical
-#   text are errors: Inkscape places vhal differently from Chromium.
+#   The marks are the characters of the char rows of the copy of the
+#   default aki set that golem-layout-test writes,
+#   modules/golem-layout/test/golden/default-aki-set.tsv (GOLEM_AKI_TABLE
+#   names another), with their classes and the spaces outside their ink;
+#   any other character is not a mark. --check checks that the marks in
+#   tspans of halt are those that docs/adr/0241 section 2 chooses: of two
+#   adjacent marks, the space outside the ink after the first and before
+#   the second less the optimum aki of the aki row of their classes is to
+#   be trimmed; when it is not 0, the second is in halt if that is the
+#   space before it, else the first if that is the space after it, and a
+#   middle dot is never in halt. Any other pair is an error, as are two
+#   marks next to each other in vertical text: Inkscape places vhal
+#   differently from Chromium. It also checks that the source has the rule
+#   of text-spacing-trim, and the rule of halt when it has a tspan of halt.
 #
 # The rules that it adds are at the end of the style sheet between the
 # comments golem-outline: begin and golem-outline: end; --strip removes
@@ -64,12 +69,47 @@ elif [ $# -ne 0 ]; then
   echo "usage: outline-prepare.sh [--strip | --check NAME] < SVG" >&2
   exit 2
 fi
-exec awk -v check="$CHECK" '
+# the copy of the default aki set (docs/adr/0241)
+TABLE=${GOLEM_AKI_TABLE:-$(cd "$(dirname "$0")/../.." && pwd)/modules/golem-layout/test/golden/default-aki-set.tsv}
+if [ ! -f "$TABLE" ]; then
+  echo "outline-prepare: $TABLE: no such file; golem-layout-test writes it: cabal test golem-layout:golem-layout-test --test-options=--accept" >&2
+  exit 1
+fi
+exec env OUTLINE_AKI_TABLE="$TABLE" awk -v check="$CHECK" '
 function fail(m) { print "outline-prepare: line " NR ": " m > "/dev/stderr"; failed = 1; exit 1 }
 # an error of --check: all of them are written, and the exit code is 1
 function err(m) { print "check-figures: " check ": line " NR ": " m > "/dev/stderr"; errors++ }
 function errfile(m) { print "check-figures: " check ": " m > "/dev/stderr"; errors++ }
-function classes(list, t,   n, a, i) { n = split(list, a, " "); for (i = 1; i <= n; i++) type[a[i]] = t }
+function tablefail(k, m) { print "outline-prepare: " table ": line " k ": " m > "/dev/stderr"; failed = 1; exit 1 }
+# a number of the table, 0 or 1/2, into FN / FD; 0 when it is not one
+function fraction(s,   a) {
+  if (s ~ /^-?[0-9]+$/) { FN = s + 0; FD = 1; return 1 }
+  if (s ~ /^-?[0-9]+\/[1-9][0-9]*$/) { split(s, a, "/"); FN = a[1] + 0; FD = a[2] + 0; return 1 }
+  return 0
+}
+function gcd(a, b,   t) { if (a < 0) a = -a; while (b) { t = a % b; a = b; b = t }; return a }
+# the rows of the table: for each mark its class in type, and the space
+# outside its ink before it in bn / bd and after it in an / ad; the
+# optimum aki of each pair of classes in on / od
+function readtable(   r, l, k, f, n, name) {
+  k = 0
+  name = "^[a-z][-a-z]*$"
+  while ((r = (getline l < table)) > 0) {
+    k++
+    if (l ~ /^#/) continue
+    n = split(l, f, "\t")
+    if (f[1] == "char" && n == 5 && f[2] != "" && f[3] ~ name && fraction(f[4])) {
+      type[f[2]] = f[3]; bn[f[2]] = FN; bd[f[2]] = FD
+      if (!fraction(f[5])) tablefail(k, "a line that it does not read: " l)
+      an[f[2]] = FN; ad[f[2]] = FD
+    } else if (f[1] == "aki" && n == 6 && f[2] ~ name && f[3] ~ name && fraction(f[4]) && fraction(f[6]) && fraction(f[5])) {
+      # the last fraction read is the optimum
+      on[f[2], f[3]] = FN; od[f[2], f[3]] = FD
+    } else tablefail(k, "a line that it does not read: " l)
+  }
+  if (r < 0) tablefail(k + 1, "it cannot be read")
+  close(table)
+}
 function vertical(s) { return s ~ /writing-mode[=:]["[:space:]]*(tb|tb-rl|vertical-rl|vertical-lr)/ }
 function central(s) { return s ~ /dominant-baseline[=:]["[:space:]]*central/ }
 # the rules for the selectors of a rule of the style sheet, and the
@@ -97,8 +137,8 @@ function isvertical(tag,   n, a, i) {
   }
   return 0
 }
-# the characters of the content S of a text element in tok[1..n], their
-# classes in tt (o, p, s, m or x) and whether each is in a tspan of halt
+# the characters of the content S of a text element in tok[1..n], whether
+# each is a mark of the table in tt and whether each is in a tspan of halt
 # in th; n is returned. A mark is 1 character, or 1 to 3 bytes when awk
 # counts bytes; any other character is taken a byte at a time.
 function chars(s,   n, i, l, t, j, inner, open) {
@@ -112,30 +152,37 @@ function chars(s,   n, i, l, t, j, inner, open) {
       if (j == 0) fail("a text element has markup inside other than <tspan class=\"halt\">")
       inner = substr(s, i, j - 1)
       if (!(inner in type)) fail("a tspan of halt must hold one fullwidth punctuation mark: " inner)
-      n++; tok[n] = inner; tt[n] = type[inner]; th[n] = 1
+      n++; tok[n] = inner; tt[n] = 1; th[n] = 1
       i += j - 1 + 8
       continue
     }
     for (l = 3; l >= 1; l--) { t = substr(s, i, l); if (t in type) break }
     if (l == 0) { l = 1; t = substr(s, i, 1) }
-    n++; tok[n] = t; tt[n] = (t in type) ? type[t] : "x"; th[n] = 0
+    n++; tok[n] = t; tt[n] = (t in type); th[n] = 0
     i += l
   }
   return n
 }
 # --check: the marks of the text of N characters (V: vertical) against
-# the table
-function punct(n, v,   i, a, b, want) {
+# the table (docs/adr/0241 section 2). Of two adjacent marks, e is the
+# space outside the ink after the first and before the second less the
+# optimum aki of their classes, as integers en / ed.
+function punct(n, v,   i, a, b, en, ed, g) {
   for (i = 1; i <= n; i++) need[i] = 0
   for (i = 1; i < n; i++) {
-    a = tt[i]; b = tt[i + 1]
-    if (a == "x" || b == "x") continue
-    if (v) { err("vertical text with punctuation next to another (" tok[i] tok[i + 1] ")"); continue }
-    if (a == "m" || b == "m") { err("a middle dot next to punctuation (" tok[i] tok[i + 1] ")"); continue }
-    if (a == "p" && b == "p") need[i] = 1
-    else if (a == "p" && b == "o") need[i + 1] = 1
-    else if (!((a == "p" && b == "s") || (a == "o" && b == "o") || (a == "o" && b == "p") || (a == "s" && b == "o")))
-      err("a pair of punctuation that is not in the table of docs/adr/0239 (" tok[i] tok[i + 1] ")")
+    if (!tt[i] || !tt[i + 1]) continue
+    a = tok[i]; b = tok[i + 1]
+    if (v) { err("vertical text with punctuation next to another (" a b ")"); continue }
+    if (!((type[a], type[b]) in on)) { err("the table has no aki row of " type[a] " and " type[b] " (" a b ")"); continue }
+    ed = ad[a] * bd[b] * od[type[a], type[b]]
+    en = an[a] * bd[b] * od[type[a], type[b]] + bn[b] * ad[a] * od[type[a], type[b]] - on[type[a], type[b]] * ad[a] * bd[b]
+    if (en == 0) continue
+    if (en * bd[b] == bn[b] * ed && type[b] != "middle-dot") need[i + 1] = 1
+    else if (en * ad[a] == an[a] * ed && type[a] != "middle-dot") need[i] = 1
+    else {
+      g = gcd(en, ed)
+      err("a pair of punctuation that a tspan of halt does not set as the body text (" a b "): the space to trim is " (en / g) ((ed / g) == 1 ? "" : "/" (ed / g)) " em")
+    }
   }
   for (i = 1; i <= n; i++) {
     if (th[i] && v) err(tok[i] " has a tspan of halt in vertical text")
@@ -148,9 +195,8 @@ BEGIN {
   SHIFT = "-0.056em"
   SPACEALL = "text { text-spacing-trim: space-all; }"
   HALT = "tspan.halt { font-feature-settings: \"halt\"; }"
-  classes("「 『 （ ［ ｛ 〈 《 【 〔 〖 〘 〚 〝 ｟", "o")
-  classes("」 』 ） ］ ｝ 〉 》 】 〕 〗 〙 〛 〞 〟 ｠ 、 。 ， ．", "p")
-  classes("： ； ・", "m"); type["\343\200\200"] = "s"
+  table = ENVIRON["OUTLINE_AKI_TABLE"]
+  readtable()
 }
 /@font-face/ { if (check == "") next }
 instyle || /<style[[:space:]>]/ {

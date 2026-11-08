@@ -10,6 +10,7 @@ build-type:         Simple
 extra-source-files:
   data/hyphenation/*.txt
   test/data/knuth-plass/*
+  test/golden/*.tsv
 
 common warnings
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
@@ -60,7 +61,8 @@ test-suite golem-layout-test
   -- (docs/adr/0208): -threaded, and the parallel GC off with a larger
   -- allocation area, without which the processors share less of the work
   ghc-options:      -threaded "-with-rtsopts=-N -qg -A64m"
-  other-modules:    AlignSpec
+  other-modules:    AkiTableSpec
+                    AlignSpec
                     CodeJapaneseSpec
                     CodeSpaceSpec
                     CombiningSpec
@@ -87,6 +89,7 @@ test-suite golem-layout-test
                     UrlBreakSpec
   build-depends:
     , base
+    , bytestring
     , containers
     , golem-doc
     , golem-layout
@@ -96,6 +99,7 @@ test-suite golem-layout-test
     , golem-test-support
     , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6
+    , tasty-golden   >=2.3 && <2.4
     , tasty-hedgehog >=1.4 && <1.5
     , tasty-hunit    >=0.10 && <0.11
     , text

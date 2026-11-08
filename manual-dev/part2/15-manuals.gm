@@ -202,6 +202,8 @@ Golem は SVG の図版の文字を描かないので、原稿の文字を輪郭
 図の隣り合う約物は、本文と同じ空きで組む。
 原稿は [code: text-spacing-trim: space-all] でブラウザーの自動の詰めを止め、半角に詰める約物を [code: <tspan class="halt">] で一字ずつ包む。
 どの字を包むかは [code: scripts/manual/check-figures.sh] が確かめる。
+包む字は本文の既定のアキ量のセットから決まり、その値は golem-layout のテストが書く [code: modules/golem-layout/test/golden/default-aki-set.tsv] から読む。
+既定のアキ量のセットを変えたら、このファイルを書き直し、検査が失敗すれば図の原稿を直す。
 原稿を開いて確かめるブラウザーは Chromium の系統のものにする。
 Safari では、縦書きの文字列が輪郭と違う形に描かれる。
 輪郭の SVG は手で直さない。
