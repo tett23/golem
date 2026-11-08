@@ -60,7 +60,7 @@ jobs:
         run: sh scripts/manual/check-figures.sh
 
   # The Japanese writing rules of the documents: textlint with the pinned
-  # rules of tools/textlint/ over docs/, README.md, CONTRIBUTING.md, the ADRs
+  # rules of tools/textlint/ over docs/, README.md, CONTRIBUTING.md, functions/README.md, the ADRs
   # that the change adds, and the sources of the two manuals
   # (docs/adr/0036-textlint-for-documents.md). Developers run the same script.
   textlint:
