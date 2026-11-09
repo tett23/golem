@@ -658,7 +658,7 @@ textPiecesAt lk t
     -- outside a span, quotation marks, apostrophes, hyphens and dashes join a
     -- Latin word when the nearest letter on either side is Latin (I’ll,
     -- “Mercy”—“We”, lime‐tree, 1990–2000; golem-layout ADR 0008)
-    isJoiner c = isNothing (lkLang lk) && c `elem` ("‘’“”—‐‑–" :: String)
+    isJoiner c = isNothing (lkLang lk) && isJoinerCharacter c
     latinish =
       [ isLatinWordChar c || (isJoiner c && (side (reverse before) || side after))
       | (i, c) <- zip [0 :: Int ..] cs,
@@ -1094,7 +1094,7 @@ wordItems env lk word =
   let explicitP = ceExplicitHyphenPenalty env
       explicitPen = Penalty 0 explicitP ExplicitHyphen
       patternPen = Penalty (advance env lk '-') 50 (PatternHyphen (protAt snd '-'))
-      isHyphen c = c `elem` ("-‐‑–—" :: String)
+      isHyphen = isHyphenCharacter
       {- an element's pieces: the patterns' cuts of its letters, what is
       before them back on the first piece and what is after them (the
       trailing hyphens among it) on the last (docs/adr/0222) -}
