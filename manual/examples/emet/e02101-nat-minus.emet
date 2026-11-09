@@ -1,0 +1,2 @@
+remaining :: Nat -> Nat -> Nat
+remaining total used = total - used

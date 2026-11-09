@@ -1,0 +1,14 @@
+-- 残りのページ数
+pub fn remaining :: Nat -> Nat -> Int
+remaining total used = total - used
+
+-- 16 ページの台がいくつ分か
+pub fn sheets :: Nat -> Rat
+sheets pages = pages / 16
+
+-- 16 ページの台の数と、余るページの数
+pub fn fullSheets :: Nat -> Nat
+fullSheets pages = div pages 16
+
+pub fn leftover :: Nat -> Nat
+leftover pages = pages % 16

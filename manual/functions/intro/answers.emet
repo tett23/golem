@@ -1,0 +1,18 @@
+-- 練習問題 1
+pub fn signatures :: Nat -> Nat
+signatures pages = div (pages + 15) 16
+
+-- 練習問題 2
+pub fn year :: Nat -> String
+year 0 = "年不詳"
+year y = String.fromNat y ++ "年"
+
+-- 練習問題 3
+pub fn contents :: List String -> String
+contents xs = String.join "、" (List.map item (numbered xs))
+  where {
+    item (n, t) = String.fromInt n ++ " " ++ t
+  }
+
+numbered :: List String -> List (Int, String)
+numbered xs = List.zip (List.range 1 (List.length xs)) xs

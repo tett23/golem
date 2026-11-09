@@ -1,0 +1,2 @@
+pub fn hello :: String -> String
+hello name = name ++ "さん、こんにちは"

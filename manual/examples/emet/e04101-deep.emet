@@ -1,0 +1,2 @@
+pub fn count :: Int -> Int
+count n = n <= 0 ? 0 : 1 + count (n - 1)

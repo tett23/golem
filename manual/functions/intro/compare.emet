@@ -1,0 +1,6 @@
+-- lo 以上 hi 以下か
+between :: Nat -> Nat -> Nat -> Bool
+between lo hi x = lo <= x && x <= hi
+
+pub fn fits :: Nat -> String
+fits pages = between 100 300 pages ? "収まる" : "収まらない"

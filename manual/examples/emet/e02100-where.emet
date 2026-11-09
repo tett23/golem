@@ -1,0 +1,5 @@
+label :: Nat -> String
+label price = String.fromNat withTax ++ "円"
+  where {
+    withTax = div (price * 110) 100
+  }

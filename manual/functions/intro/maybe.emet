@@ -1,0 +1,5 @@
+pub fn pagesOf :: String -> String
+pagesOf s = case String.toNat s of {
+  Just n -> String.fromNat n ++ "ページ"
+  Nothing -> "ページ数は未定"
+}

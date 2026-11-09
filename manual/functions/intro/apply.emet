@@ -1,0 +1,15 @@
+-- 正の数に + を付ける
+signed :: Int -> String
+signed n = n < 0 ? String.fromInt n : "+" ++ String.fromInt n
+
+pub fn shifts :: Nat -> String
+shifts n = signed (-1) ++ " " ++ signed n
+
+times :: Nat -> Nat -> Nat
+times a b = a * b
+
+pub fn doubled :: List Nat -> String
+doubled xs = commas (List.map (times 2) xs)
+
+commas :: List Nat -> String
+commas xs = String.join "、" (List.map String.fromNat xs)

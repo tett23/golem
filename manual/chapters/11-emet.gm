@@ -1,0 +1,518 @@
+@label emet-intro
+# Emet 入門
+
+@import functions/intro/hello.emet as hello
+@import functions/intro/numbers.emet as numbers
+@import functions/intro/compare.emet as compare
+@import functions/intro/strings.emet as strings
+@import functions/intro/where.emet as bind
+@import functions/intro/apply.emet as apply
+@import functions/intro/cases.emet as cases
+@import functions/intro/lists.emet as lists
+@import functions/intro/maybe.emet as maybe
+@import functions/intro/records.emet as records
+@import functions/intro/authors.emet as authors
+@import functions/intro/answers.emet as answers
+
+税込みの価格を、原稿の式で [code: \[= div(1800 * 110, 100)\]] と書いたとします。
+一か所なら、これで足ります。
+同じ計算が本の中に何十か所も出てくると、話が変わります。
+税率が変わったとき、すべての箇所を探して直すことになるからです。
+
+計算に名前を付けて一か所に書いておき、原稿からはその名前で呼ぶ。
+これが関数[index reading=かんすう: 関数]です。
+Golem では、関数を Emet という言語で書きます。
+書き方の決まりは[ref-title app-emet]（[ref-page app-emet] ページ）に一覧で載せていますが、一覧を読んだだけで書けるようになる人は多くありません。
+この章では、プログラムを書いたことがない読み手を想定して、小さな関数を一つずつ書きながら、Emet の考え方を順に説明します。
+
+Emet は、Golem の 1.x のバージョンのあいだ、実験的な機能です。
+この章の書き方も、二つ目の数が上がったバージョンで使えなくなることがあります。
+
+@label emet-practice
+## 練習の場を作る
+
+関数を試すには、関数を書くファイルと、それを呼ぶ原稿が要ります。
+練習のために、新しいプロジェクトを一つ作ります（第[ref-number first-book]章の「[ref-title first-build]」）。
+
+```sh
+$ golem new emet-practice
+$ cd emet-practice
+```
+
+プロジェクトのフォルダの中に [code: functions] のフォルダを作り、その中に [code: practice.emet] というファイルを作ります。
+拡張子 [code: .emet] のファイルが、関数を書くファイルです。
+原稿と同じく、UTF-8 のテキストのファイルで保存します（第[ref-number basics]章の「[ref-title text-files]」）。
+最初の関数として、名前を受け取って挨拶の文を返す関数を書きます。
+
+@listing functions/intro/hello.emet lang=haskell
+
+次に、原稿の [code: chapters/01.gm] を次のように書き換えます。
+
+```
+@import functions/practice.emet as p
+
+# はじめに
+
+[= p.hello("山田")]
+```
+
+一行目の [code: @import] は、関数のファイルを取り込み、[code: p] という短い名前を付けます。
+取り込んだ関数は、[code: p.hello] のように、その名前と [code: .] を前に付けて呼びます。
+[code: \[= …\]] は、原稿の式（付録A の「式」）の値を本文に埋め込む書き方で、関数の呼び出しもその中に書けます。
+
+組んで確かめるときは、プレーンテキストだけを作ると速く済みます（第[ref-number output]章の「プレーンテキスト」）。
+
+```sh
+$ golem build --target text
+```
+
+[code: build/text/horizontal/chapters/01.txt] をテキストエディタで開くと、見出しの下に「[= hello.hello("山田")]」の一行があります。
+PDF で確かめたいときは、[code: --target text] を省いて組みます。
+
+このマニュアルでは、節ごとに関数のファイルを分けて [code: functions/intro/] に置き、この章の原稿から呼んでいます。
+この章に載せた結果は、どれも、その場で関数を呼んで組んだものです。
+練習では、[code: practice.emet] の一つのファイルに書き足していけば構いません。
+ファイルに誤りがあると、[code: golem build] は場所と内容を表示して止まります。
+誤りの読み方は、この章の「[ref-title emet-mistakes]」で説明します。
+
+## 関数の形
+
+さっきの関数は、二つの行からなっていました。
+
+```haskell
+pub fn hello :: String -> String
+hello name = name ++ "さん、こんにちは"
+```
+
+一行目は、関数の名前と、受け取る値と返す値の種類を宣言する行（シグネチャ）です。[index reading=しぐねちゃ: シグネチャ]
+[code: pub fn] は、原稿の [code: \[= …\]] から呼べる関数であることを表します。
+[code: ::] の左の [code: hello] が関数の名前で、右の [code: String -> String] は「文字列を一つ受け取り、文字列を返す」と読みます。
+[code: String] のように、値の種類を表す名前を型[index reading=かた: 型]と呼びます。
+
+二行目は、計算の中身を書く行（等式）です。
+[code: =] の左に関数の名前と、受け取った値に付ける名前（ここでは [code: name]）を書きます。
+受け取る値を引数[index reading=ひきすう: 引数]と呼びます。
+[code: =] の右が、返す値の計算です。
+[code: ++] は、二つの文字列をつなぎます。
+
+Golem は、組む前に、等式の計算がシグネチャの型に合っているかを確かめます。
+文字列を返すと宣言した関数が数を返すように書いてあれば、関数を呼ぶ前にエラーになります。
+検査は関数を呼ぶかどうかによらないので、原稿のどこからも呼んでいない関数の誤りも、ファイルを取り込んでいれば報告されます。
+
+## 値と型
+
+Emet で扱う値には、どれも型があります。
+よく使う型は次のとおりです。
+
+| 型 | 値 | 書き方の例 |
+|:---|:---|:---|
+| [code: Nat] | 0 以上の整数（自然数） | [code: 0]、[code: 1800] |
+| [code: Int] | 整数 | [code: -3] |
+| [code: Rat] | 分数で書ける数（有理数） | [code: 2.5]、[code: 1.1] |
+| [code: Bool] | 真偽値 | [code: True]、[code: False] |
+| [code: Char] | 一つの文字 | [code: 'あ'] |
+| [code: String] | 文字列 | [code: "高野聖"] |
+
+型の名前は、大文字で始まります。
+[code: Nat] の値は、[code: Int] や [code: Rat] を求める位置にそのまま渡せます。
+自然数は整数の一つであり、整数は有理数の一つだからです。
+逆向きには渡せません。
+
+数の型が三つに分かれているのは、計算の結果がどの型になるかを、組む前に決めておくためです。
+引き算の例で確かめます。
+
+@listing functions/intro/numbers.emet lines=1...3 lang=haskell
+
+[code: Nat] から [code: Nat] を引いても、結果は [code: Int] です。
+引く数のほうが大きければ、答えが負になるからです。
+[code: \[= numbers.remaining(100, 120)\]] は「[= numbers.remaining(100, 120)]」になります。
+このシグネチャの返す型を [code: Nat] にすると、型が合わないエラーになります（この章の「[ref-title emet-mistakes]」）。
+
+割り算にも同じ事情があります。
+
+@listing functions/intro/numbers.emet lines=5...14 lang=haskell
+
+[code: /] の結果は、割り切れなくても丸めない有理数（[code: Rat]）です。
+216 ページの本は、[code: \[= numbers.sheets(216)\]] で「[= numbers.sheets(216)]」台分です。
+整数の商がほしいときは [code: div] を、余りには [code: %] を使います。
+[code: div] は演算子ではなく関数なので、[code: div pages 16] のように、割られる数と割る数を後ろに並べます。
+216 ページなら、16 ページの台が [= numbers.fullSheets(216)] 台と、余りの [= numbers.leftover(216)] ページです。
+小数を丸めて扱う型（浮動小数点数）がないのは、どのコンピューターで組んでも結果を同じにするためです。
+
+## 演算子
+
+数の計算と比べる演算子は、原稿の式とほとんど同じです。
+違うところを先に挙げます。
+
+| 原稿の式 | Emet |
+|:---|:---|
+| [code: !=]（等しくない） | [code: /=] |
+| [code: true]、[code: false] | [code: True]、[code: False] |
+| [code: div(a, b)] | [code: div a b] |
+| [code: f(a, b)]（関数の呼び出し） | [code: f a b] |
+
+かつ（[code: &&]）と、または（[code: \|\|]）は、原稿の式にはない演算子です。
+真偽値を二つ受け取り、真偽値を返します。
+
+ページ数が 100 以上 300 以下かを確かめる式は、数学の書き方にならって [code: 100 <= x <= 300] と書きたくなります。
+Emet では、この書き方は構文の誤りになります。
+比べる演算子は、二つを続けて書けないからです。
+二つの比較に分け、[code: &&] でつなぎます。
+
+@listing functions/intro/compare.emet lang=haskell
+
+[code: between] は、[code: pub] のない関数です。
+[code: pub] のない関数は、原稿からは呼べず、同じファイルの中の関数からだけ使えます。
+真偽値は本文に埋め込めないので、原稿から呼ぶ [code: fits] は、真偽値から文字列を選んで返します。
+[code: 条件 ? 値1 : 値2] は、条件が成り立てば値1 を、成り立たなければ値2 を返す書き方（三項演算子）です。
+[code: \[= compare.fits(120)\]] は「[= compare.fits(120)]」、[code: \[= compare.fits(480)\]] は「[= compare.fits(480)]」になります。
+
+演算子には、結び付く強さの順があります。
+[code: *] が [code: +] より先に計算されるのは数学と同じです。
+文字列をつなぐ [code: ++] は [code: +] より後に、比べる演算子はさらに後に、[code: &&] と [code: \|\|] はいちばん最後に計算されます。
+[code: between 100 300 pages] のような関数の呼び出しは、どの演算子よりも先に計算されます。
+順を変えたいときは、原稿の式と同じく丸括弧で囲みます。
+
+## 文字列
+
+文字列は、[code: "] で囲んで書きます。
+二つの文字列をつなぐのは [code: ++] で、[code: +] ではありません。
+[code: +] は数だけに使う演算子なので、文字列に使うと型が合わないエラーになります。
+
+数を文字列の中に入れるときは、[code: String.fromNat] で数を文字列にしてからつなぎます。
+[code: String.fromNat] のように [code: String.] で始まる名前は、Emet に組み込みの、文字列を扱う関数です。
+
+@listing functions/intro/strings.emet lang=haskell
+
+[code: \[= strings.chapter(3)\]] は「[= strings.chapter(3)]」、[code: \[= strings.nextChapter(3)\]] は「[= strings.nextChapter(3)]」になります。
+[code: nextChapter] の丸括弧は省けません。
+[code: String.fromNat n + 1] と書くと、関数の呼び出しが先に計算されて「文字列に 1 を足す」式になり、型が合わないエラーになります。
+[code: Int] の値は [code: String.fromInt] で、[code: Rat] の値は [code: String.fromRat] で文字列にします。
+
+## 途中の値に名前を付ける
+
+計算が長くなると、途中の値に名前を付けたくなります。
+Emet では、関数の最後に [code: where { }] を書き、その中に名前と計算を並べます。[index reading=うぇあ: where]
+
+@listing functions/intro/where.emet lang=haskell
+
+[code: withTax] と [code: yen] は、[code: label] の中でだけ使える小さな関数です。
+[code: \[= bind.label(1800)\]] は「[= bind.label(1800)]」になります。
+
+[code: where] の中の等式からは、外の等式の引数（ここでは [code: price]）が見えません。
+[code: withTax = div (price * 110) 100] と書くと、[code: price] が未定義の名前だというエラーになります。
+引数を使う計算は、この例のように、[code: where] の中の関数に引数として渡します。
+ほかの言語にある [code: let] は、Emet にはありません。
+書くと、使えない予約語のエラーになります。
+
+## 関数を呼ぶ
+
+ここまでの例で、関数の呼び出しは [code: div pages 16] のように、関数の名前の後ろに引数を空白で区切って並べてきました。
+原稿の式の [code: div(pages, 16)] と違い、丸括弧もカンマも書きません。
+丸括弧が要るのは、引数そのものが計算の式のときです。
+
+@listing functions/intro/apply.emet lines=1...6 lang=haskell
+
+[code: signed (-1)] の丸括弧は省けません。
+[code: signed -1] と書くと、「[code: signed] から 1 を引く」式として読まれます。
+[code: -] には、引き算と、数の符号を変える働きの二つがあり、関数の名前の後ろでは引き算のほうになるからです。
+このときのエラーは「- は 数（Nat、Int、Rat） にだけ使えます（Int -> String があります）」で、丸括弧が足りないことは書いてありません。
+関数に負の数を渡すときは、丸括弧で囲むと覚えておきます。
+[code: \[= apply.shifts(3)\]] は「[= apply.shifts(3)]」になります。
+
+関数には、引数の一部だけを渡せます。
+二つの引数を取る [code: times] に一つだけ渡した [code: times 2] は、「受け取った数を 2 倍する関数」になります。
+
+@listing functions/intro/apply.emet lines=8...15 lang=haskell
+
+[code: List.map] は、関数とリストを受け取り、リストの要素の一つ一つに関数を当てたリストを返す、組み込みの関数です（リストは、この章の「リスト」の節で説明します）。
+[code: \[= apply.doubled(\[1, 2, 3\])\]] は「[= apply.doubled([1, 2, 3])]」になります。
+[code: commas] の中の [code: List.map String.fromNat] のように、関数の名前をそのまま引数に渡すこともできます。
+
+Emet には、名前のない関数をその場で書く書き方がありません。
+関数を渡すときは、[code: times] のように名前の付いた関数を書くか、[code: where] の中に書いてから渡します。
+
+## 場合分け
+
+Emet には、ほかの言語にある [code: if] がありません。
+値によって計算を分けるときは、三項演算子のほかに、引数の値の形（パターン）、条件の並び（ガード）、[code: case] の三つを使います。
+
+パターンでは、等式を何本も書き、引数の位置に値を書きます。[index reading=ぱたーん: パターン]
+
+@listing functions/intro/cases.emet lines=1...4 lang=haskell
+
+上の等式から順に、引数が書いた値に合うかを調べ、最初に合った等式を使います。
+[code: \[= cases.edition(1)\]] は「[= cases.edition(1)]」、[code: \[= cases.edition(2)\]] は「[= cases.edition(2)]」になります。
+二つ目の等式の [code: n] は、どの値にも合います。
+この等式がないと、1 でない値を渡されたときに返すものがないので、組む前にエラーになります。
+
+ガードは、等式の後ろに [code: \|] と条件を並べる書き方です。[index reading=がーど: ガード]
+
+@listing functions/intro/cases.emet lines=6...11 lang=haskell
+
+上から順に条件を調べ、最初に成り立った行の [code: =] の右を返します。
+ガードの並びは、必ず [code: otherwise]（どれにも当たらなかったとき）で終えます。
+[code: \[= cases.binding(48)\]] は「[= cases.binding(48)]」、[code: \[= cases.binding(50)\]] は「[= cases.binding(50)]」、[code: \[= cases.binding(128)\]] は「[= cases.binding(128)]」になります。
+
+[code: case] は、次の節で、ないかもしれない値を扱うときに使います。
+
+## リスト
+
+同じ型の値の並びを、リスト[index reading=りすと: リスト]と呼びます。
+[code: \[24, 40, 64\]] のように角括弧で囲み、カンマで区切って書きます。
+原稿の式の配列を関数に渡すと、リストとして受け取れます。
+型は [code: List Nat] のように、[code: List] の後ろに要素の型を書きます。
+
+リストを扱う関数の書き方は二通りあります。
+一つは、空のリストと、先頭の要素と残りに分けたリストの、二つのパターンで書く書き方です。
+
+@listing functions/intro/lists.emet lines=1...4 lang=haskell
+
+[code: \[\]] は空のリストに、[code: x : rest] は先頭の要素が [code: x]、残りのリストが [code: rest] のリストに合います。
+二つ目の等式は、残りのリストの合計を同じ [code: total] で求め、先頭の要素を足します。
+関数が計算の中で自分自身を呼ぶことを、再帰[index reading=さいき: 再帰]と呼びます。
+リストは呼ぶたびに一つずつ短くなり、空になったところで一つ目の等式が 0 を返して止まります。
+章ごとのページ数を渡した [code: \[= lists.total(\[24, 40, 64\])\]] は「[= lists.total([24, 40, 64])]」になります。
+
+もう一つは、組み込みの [code: List] の関数を使う書き方です。
+
+@listing functions/intro/lists.emet lines=6...25 lang=haskell
+
+[code: List.foldl] は、最初の値（ここでは 0）から始めて、要素を左から一つずつ [code: add] でまとめます。
+[code: List.select] は条件に合う要素だけのリストを、[code: List.length] は要素の数を返します。
+[code: String.join] は、文字列のリストを、区切りを挟んで一つの文字列にします。
+
+| 呼び出し | 結果 |
+|:---|:---|
+| [code: \[= lists.total2(\[24, 40, 64\])\]] | [= lists.total2([24, 40, 64])] |
+| [code: \[= lists.long(\[24, 80, 96\])\]] | [= lists.long([24, 80, 96])] |
+| [code: \[= lists.titles(\["序", "本論", "結び"\])\]] | [= lists.titles(["序", "本論", "結び"])] |
+
+二つの書き方は、同じ結果になります。
+ただし、再帰で書いた [code: total] には、リストの長さの上限があります。
+[code: x + total rest] は、[code: total rest] の答えが出るまで足し算を待たせておくので、要素が 1 万ほどを超えるリストでは待たせた計算が多すぎてエラー（E04101）になります。
+組み込みの [code: List] の関数は、長いリストでもこの上限に当たりません。
+迷ったら、組み込みの関数で書きます。
+
+## ないかもしれない値
+
+数字だけの文字列を数にする [code: String.toNat] は、[code: "128"] から 128 を作ります。
+では、[code: "未定"] を渡したら何を返すのでしょうか。
+
+返す数がないので、[code: String.toNat] は数そのものではなく、[code: Maybe Nat] という型の値を返します。
+数があれば [code: Just 128] のように [code: Just] を付けた値を、なければ [code: Nothing] を返します。
+受け取った側は、[code: case] で二つの場合に分けて、中の数を取り出します。
+
+@listing functions/intro/maybe.emet lang=haskell
+
+[code: case 式 of { }] の中に、パターンと [code: ->] と値を一行ずつ並べます。
+[code: Just n] のパターンは、[code: Just] の付いた値に合い、中の数に [code: n] という名前を付けます。
+[code: \[= maybe.pagesOf("128")\]] は「[= maybe.pagesOf("128")]」、[code: \[= maybe.pagesOf("未定")\]] は「[= maybe.pagesOf("未定")]」になります。
+
+[code: Nothing] の行を書き忘れると、場合分けの漏れとしてエラーになります。
+値がない場合の扱いを、書き手が忘れられないようにするためです。
+
+## 自分で型を作る
+
+判型のように、決まった選択肢から一つを選ぶ値は、[code: data] で型を作って表します。
+いくつかの値をまとめて一つの値にするときも、[code: data] を使います。
+
+@listing functions/intro/records.emet lang=haskell
+
+[code: data Size = A5 \| B6 \| Shiroku] は、[code: Size] という型を作り、その値が [code: A5]、[code: B6]、[code: Shiroku] の三つのどれかであることを宣言します。
+選択肢の名前は、型の名前と同じく大文字で始めます。
+[code: sizeName] は、三つの選択肢をパターンで分けています。
+どれか一つの等式を書き忘れると、場合分けの漏れのエラーになります。
+
+[code: Book] は、題、判型、ページ数の三つの値をまとめた型です。
+このように名前の付いた値（フィールド）の組をレコードと呼びます。[index reading=れこーど: レコード]
+レコードは、[code: sampleBook] の [code: Book { title = "見本", size = B6, pages = p }] のようにフィールドの名前を書いて作るほか、[code: Book "見本" B6 p] のように宣言の順に値を並べても作れます。
+中の値は、[code: describe] の [code: (Book t s p)] のように、パターンで取り出します。
+[code: book.title] のように、名前でフィールドを読む書き方はありません。
+[code: \[= records.sample(264)\]] は「[= records.sample(264)]」になります。
+
+[code: data] で作った型の値は、原稿から渡せず、原稿へ返すこともできません。
+原稿から関数に渡せるのは、数、文字列、真偽値と、それらのリストだけです。
+[code: data] の型は、関数のファイルの中で計算を整理するために使います。
+
+@label emet-mistakes
+## よく出会う誤り
+
+関数のファイルに誤りがあると、[code: golem build] は組む前に止まり、診断を表示します（第[ref-number check]章「[ref-title check]」）。
+次の診断は、比べる演算子を二つ続けたときのものです。
+
+```
+functions/practice.emet:2:19: error[E01100]: 構文の誤りです。
+'"'、'%'、'&&'、（略）、[a-z_] が要ります
+  | fits x = 100 <= x <= 300
+```
+
+実際には、一行目と二行目は一続きの長い行です（ここでは、紙面に収めるために折り返し、途中を略しました）。
+[code: functions/practice.emet:2:19] は、ファイルの 2 行目の 19 文字目、つまり二つ目の [code: <=] の位置です。
+[code: E01100] は、文法の誤りを表すコードです。
+その後ろに長く並ぶのは、その位置に来てよい字句の一覧で、誤りを直す手がかりにはあまりなりません。
+E01100 では、示された位置の字句を疑います。
+[code: golem explain E01100] で、コードの説明を表示できます。
+
+初めて関数を書く人が出会いやすい誤りを、コードごとに挙げます。
+例は、どれも練習のファイルに書けば、そのコードのエラーになります。
+
+@nonumber
+### E01100：構文の誤り
+
+比べる演算子を続けた書き方のほかに、ほかの言語の書き方を持ち込んだときに出ます。
+
+@listing examples/emet/e01100-not-equal.emet lang=haskell
+
+等しくないことは、[code: !=] ではなく [code: /=] と書きます。
+
+改行の位置でも、このエラーになります。
+Emet では、改行が等式の区切りになるからです。
+一つの式を次の行に続けるときは、行の最後に演算子を置くか、次の行を演算子で始めます。
+ただし、行頭の [code: -] は、引き算の続きとは読みません。
+
+@listing examples/emet/e01100-minus-line.emet lang=haskell
+
+この例は、3 行目の [code: -] を新しい行の始まりとして読み、そこで誤りになります。
+引き算を次の行に続けるときは、[code: total -] のように、前の行の最後に [code: -] を置きます。
+
+@nonumber
+### E01102：使えない予約語
+
+[code: if]、[code: let]、[code: for] のような、ほかの言語の語を書いたときに出ます。
+
+@listing examples/emet/e01102-if.emet lang=haskell
+
+メッセージは「if は .emet で使えない予約語です。分岐はガード、case、三項演算子で書きます」で、代わりの書き方を示します。
+この例は、三項演算子で [code: x <= 300 ? "収まる" : "収まらない"] と書き直します。
+
+@nonumber
+### E02100：未定義の名前
+
+綴りを誤った名前と、見えない位置の名前を使ったときに出ます。
+よくあるのは、[code: where] の中から外の引数を使ったときです。
+
+@listing examples/emet/e02100-where.emet lang=haskell
+
+メッセージは「未定義の名前 price です」です。
+この章の「途中の値に名前を付ける」の例のように、引数として渡します。
+
+@nonumber
+### E02101：型が合わない
+
+数と文字列の取り違えや、引き算の結果の型のような型の誤りの多くは、このコードです。
+メッセージは「型が合いません: 求める型 を求める位置に 実際の型 があります」の形です。
+
+@listing examples/emet/e02101-nat-minus.emet lang=haskell
+
+この例のメッセージは「型が合いません: Nat を求める位置に Int があります」です。
+引き算の結果は [code: Int] なので、返す型を [code: Int] にします。
+
+@listing examples/emet/e02101-number-string.emet lang=haskell
+
+この例は「String を求める位置に Nat があります」です。
+数を [code: String.fromNat n] で文字列にしてからつなぎます。
+
+負の数を丸括弧で囲まずに渡したときも、このコードです。
+この章の「関数を呼ぶ」の [code: signed -1] の例が、それに当たります。
+
+@nonumber
+### E03100：場合分けの漏れ
+
+パターンが、ありうる値のすべてを覆っていないときに出ます。
+
+@listing examples/emet/e03100-missing.emet lang=haskell
+
+メッセージは「網羅していないパターンマッチです。Shiroku に当たる等式がありません（関数 sizeName の等式）」で、漏れた値を示します。
+
+@nonumber
+### E03102：ガードが otherwise で終わらない
+
+@listing examples/emet/e03102-otherwise.emet lang=haskell
+
+二つの条件で、すべての数を覆っているように見えます。
+しかし Golem は、条件が値を覆うかどうかを、条件の中身を読んで判断しません。
+最後の条件を [code: otherwise] に書き換えます。
+
+@nonumber
+### G02008：真偽値を本文に埋め込んだ
+
+関数のファイルではなく、原稿の側で出るエラーです。
+
+@listing examples/emet/g02008-bool.emet lang=haskell
+
+この関数を原稿から [code: \[= p.fits(120)\]] と呼ぶと、「真偽値 は本文に埋め込めません」になります。
+真偽値は、この章の「演算子」の [code: fits] のように、三項演算子で文字列に替えて返します。
+
+@nonumber
+### E04101：呼び出しが深すぎる
+
+関数のファイルには誤りがなく、呼んだときに出るエラーです。
+
+@listing examples/emet/e04101-deep.emet lang=haskell
+
+[code: \[= p.count(20000)\]] と呼ぶと、「末尾でない呼び出しの深さが上限（10000）を超えました」になります。
+「リスト」の節の再帰の [code: total] と同じく、答えを待たせた呼び出しが 1 万を超えたからです。
+答えを待たせずに自分を呼ぶ再帰（[code: loop n = loop (n + 1)] のような書き方）が止まらないときは、深さではなく、計算の手数の上限のエラー（E04100）になります。
+
+ここに挙げなかったコードの意味と直し方は、[ref-title app-errors]（[ref-page app-errors] ページ）の「関数（[code: .emet]）」の節にあります。
+
+## 原稿のコマンドになる関数
+
+ここまでの関数は、どれも [code: pub fn] で宣言し、原稿の式 [code: \[= …\]] から呼んできました。
+式から呼んだ関数の値のうち、本文に埋め込めるのは数と文字列です。
+返した文字列は、ほかの本文の文字と同じように組まれます。
+
+ルビや文字スタイルを付けた本文を返したいときや、原稿に [code: \[ruby: …\]] と同じ形で書きたいときは、[code: pub inline] で宣言します。
+[code: pub inline] の関数は、原稿の段落の中のコマンドになります。
+著者の名前を並べるコマンドを作ってみます。
+
+@listing functions/intro/authors.emet lang=haskell
+
+[code: Varargs String] は、数の決まっていない文字列の引数（可変長引数）を、まとめてリストで受け取る型です。
+[code: Inlines] は、段落の中の文字やルビの並び（本文の要素）の型です。
+[code: Inline.text] は、文字列から本文の要素を作ります。
+
+原稿では、組み込みのコマンドと同じく角括弧で呼び、引数を空白で区切って並べます。
+
+```
+[authors.authors 泉鏡花]
+
+[authors.authors 山田 佐藤 鈴木 高橋]
+```
+
+一つ目は「[authors.authors 泉鏡花]」に、二つ目は「[authors.authors 山田 佐藤 鈴木 高橋]」になります。
+原稿の式と違い、コマンドの引数の語は [code: "] で囲まなくても文字列として渡ります。
+
+関数の種類には、ほかに、行頭の [code: @] で呼ぶブロックコマンドの [code: pub block] と、原稿のファイルの全体を書き換えるフィルタの [code: pub filter] があります。
+ルビや表を返す関数、キーワード引数、ファイルを読む関数の書き方は、[ref-title app-emet]（[ref-page app-emet] ページ）にあります。
+作った関数をほかの本でも使うときは、ファイルをそのプロジェクトにコピーします。
+関数には、プラグインのように配る仕組みがありません（第[ref-number plugins]章「[ref-title plugins]」）。
+
+## 練習問題
+
+ここまでの書き方で解ける問題を三つ挙げます。
+答えの一例は、この節の最後にあります。
+
++ ページ数を受け取り、16 ページの台がいくつ要るかを返す関数 [code: signatures] を書いてください。端数のページも一台に数えます。216 ページなら 14 台です。
++ 年を受け取り、「2026年」のような文字列を返す関数 [code: year] を書いてください。0 を受け取ったときは「年不詳」を返します。
++ 章の題のリストを受け取り、[code: \["序", "本論"\]] から「1 序、2 本論」のような文字列を作る関数 [code: contents] を書いてください。組み込みの [code: List.range a b]（[code: a] から [code: b] までの整数のリスト）と [code: List.zip xs ys]（二つのリストの要素の組のリスト）を使えます。二つの値の組 [code: (1, "序")] は、パターン [code: (n, t)] で取り出せます。
+
+@label emet-answers
+### 答えの一例
+
+@listing functions/intro/answers.emet lang=haskell
+
+1 は、15 を足してから 16 で割った商を求めると、端数を切り上げたことになります。
+[code: \[= answers.signatures(224)\]] は [= answers.signatures(224)]、[code: \[= answers.signatures(225)\]] は [= answers.signatures(225)] です。
+
+2 は、パターンで 0 を先に分けます。
+[code: \[= answers.year(2026)\]] は「[= answers.year(2026)]」、[code: \[= answers.year(0)\]] は「[= answers.year(0)]」です。
+
+3 は、[code: numbered] で、1 から題の数までの番号のリストと題のリストを [code: List.zip] で組にします。
+[code: contents] は、組ごとに [code: item] で文字列を作ってから、[code: String.join] でつなぎます。
+番号は [code: List.range] が作る [code: Int] なので、[code: String.fromInt] で文字列にします。
+[code: \[= answers.contents(\["序", "本論", "結び"\])\]] は「[= answers.contents(["序", "本論", "結び"])]」です。
+
+ほかの書き方でも、同じ結果になれば正解です。
+3 は、番号を引数で数えながら、再帰で書くこともできます。

@@ -1,0 +1,25 @@
+-- ページ数の合計（再帰で）
+pub fn total :: List Nat -> Nat
+total [] = 0
+total (x : rest) = x + total rest
+
+-- ページ数の合計（List.foldl で）
+pub fn total2 :: List Nat -> Nat
+total2 xs = List.foldl add 0 xs
+  where {
+    add sum x = sum + x
+  }
+
+-- 64 ページを超える章の数
+pub fn long :: List Nat -> Nat
+long xs = List.length (List.select isLong xs)
+  where {
+    isLong x = x > 64
+  }
+
+-- 章の題を読点でつなぐ
+pub fn titles :: List String -> String
+titles xs = String.join "、" (List.map quote xs)
+  where {
+    quote t = "「" ++ t ++ "」"
+  }
