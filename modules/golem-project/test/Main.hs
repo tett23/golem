@@ -29,6 +29,7 @@ import Golem.Project.Style
 import Golem.Syntax
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
+import PositionSpec qualified
 import SharedValuesSpec qualified
 import StylePositionSpec qualified
 import StyleSchemaSpec qualified
@@ -691,6 +692,7 @@ tests =
       TomlMessageSpec.tests,
       ColophonSpec.tests,
       FeaturesSpec.tests,
+      PositionSpec.tests,
       OutputCharsSpec.tests,
       SharedValuesSpec.tests,
       StylePositionSpec.tests,
@@ -1112,7 +1114,7 @@ styleTests =
         noBase (paraStyle s (Just "caption")) @?= noBase (paraStyle s Nothing)
         noBase (paraStyle s (Just "sidenote")) @?= noBase (paraStyle s Nothing)
         Map.keys (stParaStyles s) @?= ["body", "caption", "code", "sidenote", "verse"]
-        Map.keys (stCharStyles s) @?= ["bold", "code", "italic", "no-break", "note-mark", "strong", "url"],
+        Map.keys (stCharStyles s) @?= ["bold", "code", "italic", "no-break", "note-mark", "strong", "subscript", "superscript", "url"],
       testCase "a user definition overrides the keys it writes" $ do
         s <- parsed "[paragraph-styles.caption]\nsize = \"0.8zw\"\n"
         (paraStyle s (Just "caption") >>= psSize) @?= Just (Zw (4 / 5))
@@ -1983,6 +1985,7 @@ localStyleTests =
               "padding" -> "1zw"
               "border-width" -> "1pt"
               "features" -> "smcp,-liga"
+              "position" -> "superscript"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))
         assertBool "char" (all (known CharacterKind) charStyleKeys)

@@ -1657,7 +1657,7 @@ LSP と `golem lint` はファイルを検査しないので、フォントを�
 スタイルの定義は、`based-on` をたどった鎖の根から順に、子のキーが親のキーを上書きして決める。
 スタイルの名前は、英小文字で始まり、英小文字、数字、`-` だけからなる。
 
-文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic`、`features`（OpenType の機能、後述）、`no-break`（真偽値）である。
+文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic`、`features`（OpenType の機能、後述）、`position`（上付きと下付き、後述）、`no-break`（真偽値）である。
 `no-break` が真の文字は改行しない範囲になり、その中では行を分けない（「行分割」の節、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
 文字スタイルを入れ子にしたときは、どれか一つの `no-break` が真なら真である。
 コードの文字スタイルは、本文の中のコードの背景と余白のキー `background` と `padding` と、改行の印のキー `wrap-mark` も持つ（後述）。
@@ -1777,7 +1777,52 @@ CSS の `font-feature-settings` は外側の要素の値に足されず、内側
 そのため、入れ子にした文字スタイルと、段落スタイルの中の文字スタイルでは、HTML と EPUB では内側のスタイルの並びだけが当たり、PDF と違う。
 プレーンテキストは、`features` を使わない。
 
-組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`、`padding = "0.25zw"`、`wrap-mark = "⏎"`）、`url`（キーなし）、`note-mark`（`size = "0.5zw"`）、`no-break`（`no-break = true`）の七つである。
+文字スタイルは、上付きと下付きの欄 `position` も持つ（[ADR 0269](adr/0269-superscript-and-subscript.md)）。
+値は `"normal"`、`"superscript"`、`"subscript"` のどれかで、書かなければ外側の値を引き継ぐ。
+本文の根の値は `"normal"` であり、ほかの値は G03006 とする。
+名前と値は InDesign の文字パネルの「位置」にそろえる。
+段落スタイルには置かない。
+原稿では、組み込みの文字スタイルで `[style superscript: 2]` と書く。
+
+`position` が `"normal"` でない字の連なりを、添え字の範囲と呼ぶ。
+添え字の範囲は、同じ `position` の字が続く最大の連なりであり、文字スタイルの入れ子で途中の見た目が変わっても切れない。
+字の名目の大きさは、`position` を無視して `size` の規則（`zw` は外側の名目の大きさで数える）で決めた大きさである。
+PDF は、範囲ごとに次の二つの方法のどちらかで組む。
+
+- 書体の字形：範囲のすべての字が、その字を組む書体（和文の字は和文の書体、欧文の字は欧文の書体）の `sups`（下付きでは `subs`）で別の字形に置き換わるなら、範囲の字を名目の大きさで、機能の並びの最後に `sups` か `subs` を足してシェイピングし、ずらさない。置き換わるかは、字を一字ずつ、その機能のあるときとないときでシェイピングし、グリフ番号が違うかで決める。
+- 合成：そうでなければ、名目の大きさ `s` の `⌊7s/12⌋` の大きさで組み、横組みでは上付きを `⌊s/3⌋` 上へ、下付きを `⌊s/3⌋` 下へずらす。縦組みでは、上付きを右へ、下付きを左へずらす（`baseline-shift` と同じ向き）。文字スタイルの `baseline-shift` は、この位置からさらにずらす。
+
+比の 7/12 と 1/3 は、InDesign の既定として知られる値であり、JLReq の 3.7.1 の「60% くらい」にも合う。
+比は `style.toml` に書けない。
+`position` は属性であり、同じ値を重ねても効果は重ならない。
+`subscript` の中に `superscript` を入れると、内側は名目の大きさからの上付きになる。
+書体の字形の方法で足す `sups` と `subs` は、書き手の `features` の後ろに置くので、書き手の `-sups` に勝つ。
+`position` を書かずに `features = ["sups"]` だけを書けば、字形だけを選び、大きさと位置は変えない。
+Golem が足す `sups` と `subs` には、書体にない機能の報告（G08103）を出さない。
+
+行分割では、JLReq の 3.7.1 と 3.1.10 に従い、添え字の範囲の字を注の印と同じく扱う。
+範囲の前と中では行を分けず、アキ量のセットの空きを入れず、範囲の中の語間の空白は伸び縮みしない。
+範囲の前の空白でも行を分けない。
+範囲の後ろには、範囲がないときに前の字と次の字のあいだに入る空きが入り、改行の規則もそのときと同じとする。
+範囲の中の欧文の語は、ハイフネーションをかけない。
+ずらした字は、行送りを変えない（JLReq の 2.4.2 と 4.5.1）。
+
+縦組みでは、和文の字は縦組みの字形で立て、欧文の字は横に倒し、どちらも上の規則で縮めて右か左へずらす。
+JLReq の 3.7.1 の、添え字の付いた文字列を 90 度回転する組み方は作らない。
+短い添え字を縦中横にしたい書き手は、縦中横の記法で書く。
+ルビの読みは、外側の書体と色で組み、`position` を引き継がない。
+圏点は、添え字の範囲の字にも付け、字と同じ量だけずらす。
+
+HTML と EPUB では、`position` が `"superscript"` に解決する文字スタイルの範囲を `<sup>`、`"subscript"` に解決する範囲を `<sub>` で出す。
+組み込みの `superscript` と `subscript` は class を持たない `<sup>` と `<sub>` にし、ほかの名前の文字スタイルは `<sup class="cs-名前">` のように class を付ける。
+正規表現スタイルで当てた文字スタイルも同じ要素にする。
+大きさとずらしの CSS は書かず、ブラウザーと読書環境の既定に任せる。
+`<sup>` の既定の `vertical-align: super` は、そのスタイルの `baseline-shift` を写した `vertical-align` で置き換わるので、`position` と `baseline-shift` を一緒に書いたスタイルは、HTML と EPUB で PDF と違う位置になる。
+プレーンテキストは、添え字の範囲の字を原稿のまま出す。
+
+利用者が `[character-styles.superscript]` か `[character-styles.subscript]` をすでに書いている本では、書いたキーを組み込みの定義に重ねるので、`position` が加わる。
+
+組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`、`padding = "0.25zw"`、`wrap-mark = "⏎"`）、`url`（キーなし）、`note-mark`（`size = "0.5zw"`）、`superscript`（`position = "superscript"`）、`subscript`（`position = "subscript"`）、`no-break`（`no-break = true`）の九つである。
 `no-break` は改行しない範囲を指定する文字スタイルである（「行分割」の節、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
 `note-mark` は、PDF の本文の注の印に当てる既定の文字スタイルである（「脚注」の節、[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 `url` は参考文献の URL を組む文字スタイルであり、書体、大きさ、色は周りの文字のまま組む（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
@@ -3908,6 +3953,13 @@ PDF の本文の印（合印）は、`[notes]` の `mark-format` の書式で番
 | `mark-style` | 文字列 | PDF の本文の印に当てる文字スタイルの名前。既定は組み込みの `note-mark` |
 | `body-mark-style` | 文字列 | PDF の注の本文の先頭の印に当てる文字スタイルの名前。既定はなし（注の本文の文字のまま） |
 | `mark-size` | 寸法 | 廃止予定。本文の印の文字スタイルの `size` の省略形 |
+
+本文の印の文字スタイル（`mark-style`、書かなければ `note-mark`）の `based-on` の鎖で、`position` が `"normal"` でない値に解決するときは、エラー（G03125）とする（[ADR 0269](adr/0269-superscript-and-subscript.md)）。
+印の位置はこの節の規則で決まり、`position` の上げ下げを重ねると、どちらの位置で組むかが決まらないためである。
+位置は `position` を書いた定義の値である。
+印に書体の上付きの字形を使いたい本は、印の文字スタイルに `features = ["sups"]` を書く。
+注の本文の先頭の印（`body-mark-style`）は、注の本文の行の中で組むので、`position` を書ける。
+組み込みの `note-mark` は、`superscript` を `based-on` にしない。
 
 `mark-format` は「style.toml」の節の差し込みのある書式の読み方で読み、数の差し込みは `{n}` か `{n:<表記>}` である。
 `{n}` の表記は算用数字（`arabic`）であり、リストの `{n}`（本の数の表記）とは意味が違う。

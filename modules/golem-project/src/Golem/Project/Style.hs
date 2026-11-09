@@ -120,6 +120,7 @@ import Golem.Length (Sp (..))
 import Golem.Length qualified as L
 import Golem.Project.Feature
 import Golem.Project.Manifest (decodeStrictBy, decodeStrictWith, maxNaturalInt, naturalIntOf, naturalOf, positionSpan, readTomlTable)
+import Golem.Project.Position qualified as P
 import Golem.Project.TomlMessage (schemaMessage)
 import Golem.Project.TomlSchema
 import Golem.Regex (RegexError (..), compile)
@@ -252,6 +253,8 @@ data CharStyleDef = CharStyleDef
     {- | the OpenType features (docs/adr/0268): through based-on and over a
     definition of the same name they are added after the parent's
     -} csFeatures :: ![Feature],
+    -- | normal, superscript or subscript (docs/adr/0269); Nothing is the outer one
+    csPosition :: !(Maybe P.Position),
     {- | the characters do not break between them (docs/adr ADR 0272), as
     InDesign's No Break; true in one of the styles around a character is
     true for it
@@ -387,7 +390,7 @@ data RegexStyleDef = RegexStyleDef
 
 -- | A character style with no key written.
 noCharDef :: CharStyleDef
-noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing
+noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
@@ -486,7 +489,7 @@ decimalOf s = case T.splitOn "." s of
   [i, f] | not (T.null i), not (T.null f), T.all isDigit (i <> f) -> Just (read (T.unpack (i <> f)) % (10 ^ T.length f))
   _ -> Nothing
 
--- | The built-in character styles: bold, italic, strong, code (golem-driver ADR 0017), url (golem-doc ADR 0005), note-mark (docs/adr/0177) and no-break (docs/adr ADR 0272).
+-- | The built-in character styles: bold, italic, strong, code (golem-driver ADR 0017), url (golem-doc ADR 0005), note-mark (docs/adr/0177), superscript and subscript (docs/adr/0269) and no-break (docs/adr ADR 0272).
 builtinCharStyles :: Map Text CharStyleDef
 builtinCharStyles =
   Map.fromList
@@ -500,6 +503,9 @@ builtinCharStyles =
       -- the marks of notes in the text (docs/adr/0177): the size of the retired [notes] mark-size
       ("note-mark", noCharDef {csSize = Just (Zw (1 % 2))}),
       ("strong", noCharDef {csBasedOn = Just "bold"}),
+      -- superscript and subscript (docs/adr/0269)
+      ("subscript", noCharDef {csPosition = Just P.PositionSubscript}),
+      ("superscript", noCharDef {csPosition = Just P.PositionSuperscript}),
       ("url", noCharDef)
     ]
 
@@ -682,6 +688,7 @@ overChar u b =
     (csPadding u <|> csPadding b)
     (csWrapMark u <|> csWrapMark b)
     (csFeatures b <> csFeatures u)
+    (csPosition u <|> csPosition b)
     (csNoBreak u <|> csNoBreak b)
 
 overPara :: ParaStyleDef -> ParaStyleDef -> ParaStyleDef
@@ -1625,8 +1632,10 @@ instance FromValue CharStyleDef where
     pad' <- signedDimKey "padding" "（0.25zw や 1mm のように書きます）"
     wm <- optKey "wrap-mark"
     fs <- featuresKey
+    -- normal, superscript or subscript (docs/adr/0269)
+    pos <- enumKey "position" (map fst P.positionValues)
     nb <- optKey "no-break"
-    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm fs nb)
+    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm fs (pos >>= (`lookup` P.positionValues)) nb)
 
 {- | The key features (docs/adr/0268): an array of the four forms of
 'parseFeature'. Each element that is not one fails at itself, all of them
@@ -2243,6 +2252,20 @@ styleChecks owner s =
     <> firstLineIndentChecks s
     <> opticalKerningChecks s
     <> spineAlignChecks s
+    <> markPositionChecks s
+
+{- | G03125 (docs/adr/0269): the character style of the marks of notes in
+the text (mark-style, or else note-mark) whose based-on chain resolves
+position to other than normal, at the position of the definition that
+writes it. [notes] places the marks.
+-}
+markPositionChecks :: Style -> [(Text, Text, [Scope], Text)]
+markPositionChecks s =
+  [ ("G03125", name, charKey definer "position", "注の印の文字スタイル " <> name <> " の position は \"normal\" だけを書けます（印の位置は [notes] で決まります）")
+  | let name = stNotesMarkStyle s,
+    (definer, d) <- take 1 [nd | nd@(_, d') <- namedChainOf (const csBasedOn) (stCharStyles s) name, isJust (csPosition d')],
+    csPosition d /= Just P.PositionNormal
+  ]
 
 -- | The path of a key of style.toml.
 styleKeys :: [Text] -> [Scope]
@@ -2885,7 +2908,8 @@ charStyleNode =
              ("padding", dim),
              ("wrap-mark", str),
              ("no-break", bool),
-             ("features", features)
+             ("features", features),
+             ("position", enum (map fst P.positionValues))
            ]
     )
 

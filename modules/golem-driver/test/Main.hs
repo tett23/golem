@@ -35,6 +35,7 @@ import PlatesSpec (platesTests)
 import PopplerSpec (popplerTests)
 import ReferencesSpec
 import ReuseSpec
+import ScriptsSpec (scriptsTests)
 import SecuritySpec
 import ShapingMemoSpec (shapingMemoTests)
 import SoftHyphenSpec (softHyphenTests)
@@ -90,7 +91,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, softHyphenTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, softHyphenTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, scriptsTests]
         <> [ newProjectTests,
              allTargetsTests,
              pdfPipelineTests,

@@ -54,6 +54,7 @@ import PaginateInvariantsSpec (invariantTests)
 import PaginateSpec (paginateTests)
 import PunctuationSpec (punctuationTests)
 import RuleAreaSpec (ruleAreaTests)
+import ScriptSpec (scriptTests)
 import SoftHyphenSpec (softHyphenTests)
 import StructureSpec (structureTests)
 import Test.Tasty
@@ -387,6 +388,7 @@ tests =
       urlBreakTests,
       linkTests,
       featuresTests,
+      scriptTests,
       langTests,
       structureTests,
       combiningTests,
