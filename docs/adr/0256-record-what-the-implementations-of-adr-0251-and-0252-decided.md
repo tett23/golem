@@ -1,6 +1,6 @@
 # ADR 0256: [ADR 0251](0251-reuse-the-compositions-of-unchanged-units-between-fixpoint-rounds.md) と [ADR 0252](0252-draw-and-serialise-the-pages-of-the-pdf-in-parallel.md) の実装が ADR を越えて決めた点を記録する
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 

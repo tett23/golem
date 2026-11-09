@@ -1,6 +1,6 @@
 # ADR 0045: PDF の縦中横を横に並べて一字の箱に収めて描く
 
-ステータス: 採択
+ステータス: 採択→I8 の `pdf-sample.txt`、述語 8 のテストは [ADR 0257](../../adr/0257-record-what-the-audit-of-the-layout-adrs-of-2026-11-09-found.md)
 
 ## 文脈
 

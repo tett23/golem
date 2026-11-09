@@ -1,6 +1,6 @@
 # ADR 0252: PDF のページの描画と内容ストリームの直列化を、ページごとに並列にする
 
-ステータス: 採択
+ステータス: 採択→`Draw.hs` の spark は [ADR 0256](0256-record-what-the-implementations-of-adr-0251-and-0252-decided.md)
 
 ## 文脈
 

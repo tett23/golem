@@ -9,6 +9,7 @@
 # Run it in the repository.
 set -eu
 REPO_URL=https://github.com/tett23/golem
+HERE=$(cd "$(dirname "$0")" && pwd)
 
 case $# in
   1)
@@ -75,7 +76,8 @@ git diff --name-only --diff-filter=A "$BASE" "$TAG" |
 # The ADRs changed in the range whose status line (the first line that
 # starts with "ステータス:") differs between the two tags
 # (docs/adr/0246-bound-the-prompt-of-the-release-notes.md). The first
-# release has no changed ADR.
+# release has no changed ADR. The relative links of a status line become
+# absolute, at the tag of the line (docs/adr/0259).
 status_line() { # status_line REV PATH: the status line of PATH at REV
   git show "$1:$2" | LC_ALL=C awk '/^ステータス:/ { print; exit }'
 }
@@ -92,7 +94,8 @@ if [ -n "$PREVIOUS" ]; then
       after=$(status_line "$TAG" "$path")
       [ "$before" != "$after" ] || continue
       printf -- '- [%s](%s/blob/%s/%s): %s → %s\n' "$path" "$REPO_URL" "$TAG" "$path" \
-        "$(status_of "$before")" "$(status_of "$after")"
+        "$(status_of "$before" | sh "$HERE/absolute-links.sh" "$PREVIOUS" "$path")" \
+        "$(status_of "$after" | sh "$HERE/absolute-links.sh" "$TAG" "$path")"
     done)
 fi
 printf '\n## ADRs whose status changed\n'

@@ -202,7 +202,9 @@ jobs:
       # epubcheck checks the EPUB of x86-64. It comes from the release zip
       # of w3c/epubcheck, not from apt, and runs with the Java of the
       # runner image; the zip is cached by its version and SHA-256
-      # (golem-epub ADR 0001, docs/adr/0062)
+      # (golem-epub ADR 0001, docs/adr/0062). It runs in the background, so that
+      # 600 seconds, not a timeout-minutes, bound the retries of fetch-url.sh
+      # (docs/adr/0259)
       - name: Cache the release of epubcheck (docs/adr/0062)
         if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
         uses: actions/cache@v6
@@ -212,7 +214,7 @@ jobs:
       - name: epubcheck in the background (golem-epub ADR 0001, docs/adr/0062)
         if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
         run: |
-          sh scripts/ci/bg.sh start epubcheck timeout -k 10 300 sh scripts/ci/epubcheck-install.sh "$EPUBCHECK_VERSION" "$EPUBCHECK_SHA256"
+          sh scripts/ci/bg.sh start epubcheck timeout -k 10 600 sh scripts/ci/epubcheck-install.sh "$EPUBCHECK_VERSION" "$EPUBCHECK_SHA256"
       # Every cabal command below reads the test wrapper from
       # cabal.project.local. Given on the command line of cabal test
       # alone, it changed the configuration of the local packages between
