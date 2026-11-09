@@ -46,11 +46,15 @@ grep -q '^THIRD_PARTY_LICENSES/' "$TMP/files" || missing THIRD_PARTY_LICENSES/
 #   ghc/            the wasm GHC and its RTS
 #   harfbuzz/       HarfBuzz
 #   freetype/       FreeType, with the FreeType License
-#   hyph-en-us/     the hyph-utf8 patterns
+#   hyph-<tag>/     the hyph-utf8 patterns, one directory a language
+#                   (docs/adr/0276; the list of licenses.sh)
 #   wasi-sdk/       wasi-libc, and libc++ and libc++abi of LLVM
 #   gmp/            GMP
 for f in ghc/LICENSE harfbuzz/COPYING freetype/LICENSE.TXT freetype/FTL.TXT \
-  hyph-en-us/LICENSE-hyph-en-us.txt \
+  hyph-en-us/LICENSE-hyph-en-us.txt hyph-en-gb/LICENSE-hyph-en-gb.txt \
+  hyph-fr/LICENSE-hyph-fr.txt hyph-de-1996/LICENSE-hyph-de-1996.txt \
+  hyph-es/LICENSE-hyph-es.txt hyph-it/LICENSE-hyph-it.txt \
+  hyph-pt/LICENSE-hyph-pt.txt hyph-nl/LICENSE-hyph-nl.txt \
   wasi-sdk/wasi-libc/COPYRIGHT-musl wasi-sdk/wasi-libc/LICENSE-APACHE \
   wasi-sdk/wasi-libc/LICENSE-APACHE-LLVM wasi-sdk/wasi-libc/LICENSE-MIT \
   wasi-sdk/llvm/libcxx-LICENSE.TXT wasi-sdk/llvm/libcxxabi-LICENSE.TXT \

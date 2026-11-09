@@ -8,6 +8,7 @@ module Golem.Layout.Hyphenation
     overExceptions,
     exceptionsOnly,
     hyphenate,
+    hyphenMins,
   )
 where
 
@@ -85,3 +86,7 @@ hyphenate ps word = go 0 (hyphenPoints ps word)
   where
     go from [] = [T.drop from word]
     go from (p : rest) = T.take (p - from) (T.drop from word) : go p rest
+
+-- | The letters a break keeps before it and after it at least.
+hyphenMins :: Patterns -> (Int, Int)
+hyphenMins ps = (patLeftMin ps, patRightMin ps)

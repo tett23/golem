@@ -154,8 +154,8 @@ enumerationTests =
           -- ADR 0272); ー and ぁ, strict and loose; 。 and 、, with and
           -- without hanging; 10 parts of Latin text or of both scripts (… —
           -- and the 8 other Latin parts), with and without protrusion, in no
-          -- span, en and ja, with and without the expansion
-          runs = 1 + 9 + 1 + 2 * 2 + 2 * 2 + 10 * (2 * 3 * 2)
+          -- span, en, fr (docs/adr ADR 0276) and ja, with and without the expansion
+          runs = 1 + 9 + 1 + 2 * 2 + 2 * 2 + 10 * (2 * 4 * 2)
       length made @?= placed * runs,
     testCase "the normal form: up to 2 parts (1 on pull requests), the inputs it leaves out give 'breakParagraph' no value it is not given" $ do
       -- the values (items, width, expansion and protrusion) of every

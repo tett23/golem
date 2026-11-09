@@ -244,7 +244,7 @@ ADR はコミット後に変更しない規約であり、変更が必要な場�
 | FreeType | 2.14.3 |
 | wasmtime | 49.0.5 |
 | zlib | 1.3.2 |
-| hyph-utf8（英語（米国）のハイフネーションのパターン） | コミット 5684c0f |
+| hyph-utf8（欧文の八つの言語のハイフネーションのパターン） | コミット 5684c0f |
 | wasm のツールチェーン（ghc-wasm-meta の 9.10 の flavour） | ghc-wasm-meta のコミット 8079eb96、GHC 9.10.3.20260731、wasi-sdk（clang 21.1.8）、cabal 3.14.2.0 |
 | cborg（wasm の版だけ） | 上流のコミット 6ef2791c |
 | skylighting、skylighting-core（wasm の版だけ） | Hackage の 0.15 に `scripts/wasm/patches/` の差分を当てたもの |

@@ -17,7 +17,7 @@ import Test.Tasty.HUnit
 
 -- | The parts of a word with the exceptions of a file and of a book, in a language span (Nothing: outside one).
 parts :: Map Text [Text] -> Map Text [Text] -> Maybe Text -> Text -> [Text]
-parts file book lang w = maybe [w] (`hyphenate` w) (exceptionPatterns file book lang)
+parts file book lang w = maybe [w] (`hyphenate` w) (exceptionPatterns "ja" file book lang)
 
 none :: Map Text [Text]
 none = Map.empty
@@ -51,11 +51,11 @@ exceptionsTests =
         parts none enUS (Just "en-us") "algorithm" @?= ["algo", "rithm"],
       testCase "I6: the words outside a span are of en-US: they take the key en" $
         parts none (Map.fromList [("en", ["algo-rithm"])]) Nothing "algorithm" @?= ["algo", "rithm"],
-      testCase "I6: fr has no patterns: its list alone hyphenates, the other words stay whole" $ do
-        let book = Map.fromList [("fr", ["ma-nu-scrit"])]
-        parts none book (Just "fr") "manuscrit" @?= ["ma", "nu", "scrit"]
-        parts none book (Just "fr") "typographie" @?= ["typographie"]
-        isNothing (exceptionPatterns none none (Just "fr")) @?= True,
+      testCase "I6: sv has no patterns (docs/adr ADR 0276): its list alone hyphenates, the other words stay whole" $ do
+        let book = Map.fromList [("sv", ["ma-nu-skript"])]
+        parts none book (Just "sv") "manuskript" @?= ["ma", "nu", "skript"]
+        parts none book (Just "sv") "typografi" @?= ["typografi"]
+        isNothing (exceptionPatterns "ja" none none (Just "sv")) @?= True,
       testCase "I6: no key of the language: the patterns as without a list" $
         parts none (Map.fromList [("fr", ["algo-rithm"])]) Nothing "algorithm" @?= hyphenate englishUS "algorithm",
       testCase "RFC 4647 lookup: the tag, then its subtags taken off from the end, a single letter with the one before it" $ do

@@ -112,7 +112,7 @@ data Setting = Setting
 
 -- | Every setting, the default (strict, no hanging, no protrusion, no span) first.
 allSettings :: [Setting]
-allSettings = [Setting s h p l | s <- [True, False], h <- [False, True], p <- [False, True], l <- [Nothing, Just "en", Just "ja"]]
+allSettings = [Setting s h p l | s <- [True, False], h <- [False, True], p <- [False, True], l <- [Nothing, Just "en", Just "fr", Just "ja"]]
 
 {- | The settings of a run in the normal form (docs/adr/0209, its section
 1): loose kinsoku only with a prolonged sound mark or a small kana,
@@ -333,7 +333,7 @@ the language span around the run; no hanging, protrusion nor expansion,
 which the boxes of code do not take.
 -}
 codeSettings :: [Setting]
-codeSettings = [Setting s False False l | s <- [True, False], l <- [Nothing, Just "en", Just "ja"]]
+codeSettings = [Setting s False False l | s <- [True, False], l <- [Nothing, Just "en", Just "fr", Just "ja"]]
 
 {- | The settings of a run of code in the normal form (docs/adr/0209):
 loose kinsoku only with a prolonged sound mark or a small kana, a
