@@ -255,6 +255,7 @@ tasty もこのスイートのテストを同時に走らせるので、環境�
 並列に組む回数を増やして競合を探すのは、同じく [code: -threaded] でビルドするテストのスイート [code: golem-driver-parallel-test] である。
 生成した原稿と [code: tempest]、[code: kanikosen] の見本を並列と逐次で組み、バイト列と diagnostics が一致することを確かめる。
 [code: golem] の実行ファイルも [code: -with-rtsopts=-N] でリンクし、マシンのすべてのプロセッサを capability にする。
+同じ [code: -with-rtsopts] に [code: -A64m] を足して capability ごとの割り当て領域を 64 MB にし、GC の回数を減らしているが、[code: -rtsopts] は付けないので利用者は GC の設定を変えられない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0249-link-golem-with-a-64-mb-allocation-area.md]（docs/adr の ADR 0249「golem を -with-rtsopts=-N -A64m でリンクし、GC の回数を減らす」）]
 環境を変える検査（[code: scripts/env-determinism/check.sh]）は、[code: GHCRTS] で [code: golem] の capability の数を一つと二つに変えて、出力が変わらないことを確かめる（第[ref-number determinism]章）。
 
 S2 の繰り返しも同じ構造をしている。

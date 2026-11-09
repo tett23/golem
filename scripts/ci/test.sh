@@ -927,6 +927,17 @@ rts_case "-N in the first ghc-options, not in the last" 1 'executable b
   ghc-options: -threaded "-with-rtsopts=-N"
   ghc-options: "-with-rtsopts=-A64m"
 ' "executable b"
+# the value of the last -with-rtsopts starts with -N; other options of
+# the RTS may follow it (docs/adr/0249)
+rts_case "-with-rtsopts that starts with -N, followed by -A64m" 0 'executable b
+  ghc-options: -threaded "-with-rtsopts=-N -A64m"
+'
+rts_case "-with-rtsopts with -N after another option" 1 'executable b
+  ghc-options: -threaded "-with-rtsopts=-A64m -N"
+' "executable b"
+rts_case "-with-rtsopts without -N" 1 'executable b
+  ghc-options: -threaded -with-rtsopts="-A64m -qg"
+' "executable b"
 rts_case "-N in the common stanza, replaced by the component" 1 'common rts
   ghc-options: -threaded "-with-rtsopts=-N"
 
