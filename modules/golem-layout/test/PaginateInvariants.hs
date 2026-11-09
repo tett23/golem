@@ -794,8 +794,8 @@ spacesMoved waitingIds flows =
   [ (k, before <> between <> (n : s : after))
   | (k, (before, s@(FSpace _) : rest)) <- zip [0 ..] (map (`splitAt` flows) [0 .. length flows - 1]),
     let (between, more) = span (isWaiting waitingIds) rest,
-    n@(FNeedLines _ _) : after <- [more],
-    not (any manual (reverse (takeWhile (passedOver waitingIds) (reverse before)) <> takeWhile (passedOver waitingIds) (s : rest)))
+    not (any manual (reverse (takeWhile (passedOver waitingIds) (reverse before)) <> takeWhile (passedOver waitingIds) (s : rest))),
+    n@(FNeedLines _ _) : after <- [more]
   ]
 
 {- | P11 of golem-layout ADR 0047, its section 「不変条件」: a space with
@@ -827,8 +827,8 @@ waitingMovedBefore waitingIds flows =
   | (k, (before, s@(FSpace _) : rest)) <- zip [0 ..] (map (`splitAt` flows) [0 .. length flows - 1]),
     let (between, more) = span (isWaiting waitingIds) rest,
     not (null between),
-    FNeedLines _ _ : _ <- [more],
-    not (any manual (reverse (takeWhile (passedOver waitingIds) (reverse before)) <> takeWhile (passedOver waitingIds) (s : rest)))
+    not (any manual (reverse (takeWhile (passedOver waitingIds) (reverse before)) <> takeWhile (passedOver waitingIds) (s : rest))),
+    FNeedLines _ _ : _ <- [more]
   ]
 
 -- | Whether a flow is a figure that waits, of the ids given.
