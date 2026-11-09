@@ -3,6 +3,7 @@ module PdfSpec (qpdfInstalled, fontResources, pdfPipelineTests, marksTests, hidd
 import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
+import Data.Either (isRight)
 import Data.IORef (newIORef, readIORef)
 import Data.List (isSuffixOf, nub, sort, sortOn, zip4)
 import Data.Map.Strict qualified as Map
@@ -654,7 +655,7 @@ marksTests =
       boxOf "TrimBox" pdf @?= boxText (Rect 557314 557314 w h),
     testCase "the English template: 0.125in of bleed, and Japanese marks without G07002 (golem-pdf ADR 0010, golem-project ADR 0010)" $ withSystemTempDirectory "golem-new" $ \tmp -> do
       let dir = tmp </> "book"
-      createProject dir (templateFiles English uuid0) Nothing >>= (@?= Right ())
+      createProject dir (templateFiles English uuid0) Nothing >>= assertBool "written" . isRight
       createDirectoryIfMissing True (dir </> "fonts")
       copyFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" (dir </> "fonts/SourceSerif4-Regular.otf")
       r <- build (defaultOptions dir) {optTargets = Just [TargetPdf], optMarks = JapaneseMarks}

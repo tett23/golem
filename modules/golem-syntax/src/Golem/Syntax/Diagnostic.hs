@@ -126,6 +126,7 @@ noticeCodes =
       "G03116", -- {{ and }} in a running head format (to be retired; docs/adr/0177)
       "G03117", -- [notes] mark-size (to be retired; docs/adr/0177)
       "G03120", -- no paragraph-separator in [source] (docs/adr/0193)
+      "G03134", -- golem new kept an existing .gitignore (docs/adr/0273)
       "G04007", -- @number equal to the automatic number
       "G04008", -- page breaks at the very end of the book
       "G04009", -- @blank-line at the very end of the book (docs/adr ADR 0046)

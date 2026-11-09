@@ -23,6 +23,7 @@ import HeadingLevelsSpec (headingLevelsTests)
 import InMemorySpec (inMemoryTests)
 import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
+import NewPlanSpec (newPlanTests)
 import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
@@ -90,6 +91,7 @@ tests skips =
         <> buildTests
         <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests]
         <> [ newProjectTests,
+             newPlanTests,
              allTargetsTests,
              pdfPipelineTests,
              testGroup "files of style.toml per target (golem-project ADR 0004)" styleFileTests,

@@ -48,6 +48,10 @@ readUtf8 :: FilePath -> IO String
 readUtf8 p = T.unpack . TE.decodeUtf8 <$> BS.readFile p
 
 -- | Runs golem in a directory; exit code, stdout and stderr.
+-- | The line of putHuman that points to golem explain.
+explainLine :: String -> String
+explainLine code = "コードの説明は golem explain <コード> で表示できます（例: golem explain " <> code <> "）\n"
+
 golemAt :: FilePath -> [String] -> IO (ExitCode, String, String)
 golemAt dir args = readCreateProcessWithExitCode (proc "golem" args) {cwd = Just dir} ""
 
@@ -194,12 +198,53 @@ newTests =
         assertEqual err ExitSuccess code
         pdfs <- filter (".pdf" `isSuffixOf`) <$> listDirectory (tmp </> "book/build/pdf")
         length pdfs @?= 1,
-      testCase "a directory that is not empty: 1, and its files are left alone" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+      -- docs/adr/0273
+      testCase "I1, I7: a directory of other files gets the template: 0, and its files are left alone" $ withSystemTempDirectory "golem-new" $ \tmp -> do
         writeFiles tmp [("book/notes.txt", "mine")]
-        (code, _, err) <- golemAt tmp ["new", "book", "--no-fonts"]
-        (code, err) @?= (ExitFailure 1, "ディレクトリが空ではありません: book\n")
+        (code, _, _) <- golemAt tmp ["new", "book", "--no-fonts"]
+        code @?= ExitSuccess
         files <- filesUnder (tmp </> "book")
-        files @?= ["notes.txt"]
+        files @?= [".gitignore", "chapters/01.gm", "manifest.toml", "notes.txt", "preflight.toml", "style.toml"]
+        readUtf8 (tmp </> "book/notes.txt") >>= (@?= "mine"),
+      testCase "I5: G03131 for each project file, nothing else" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+        writeFiles tmp [("book/manifest.toml", "x"), ("book/style.toml", "x"), ("book/preflight.toml", "x")]
+        (code, _, err) <- golemAt tmp ["new", "book", "--no-fonts"]
+        (code, err)
+          @?= ( ExitFailure 1,
+                "book/manifest.toml:1:1: error[G03131]: プロジェクトのファイルがすでにあります: book/manifest.toml\n  | \n"
+                  <> "book/style.toml:1:1: error[G03131]: プロジェクトのファイルがすでにあります: book/style.toml\n  | \n"
+                  <> explainLine "G03131"
+              ),
+      testCase "I5: golem new . names the path without ./" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+        writeFiles tmp [("manifest.toml", "x")]
+        (code, _, err) <- golemAt tmp ["new", ".", "--no-fonts"]
+        (code, err) @?= (ExitFailure 1, "manifest.toml:1:1: error[G03131]: プロジェクトのファイルがすでにあります: manifest.toml\n  | \n" <> explainLine "G03131"),
+      testCase "I5: G03132 for each taken path, in order" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+        writeFiles tmp [("book/preflight.toml", "x"), ("book/chapters/01.gm", "x")]
+        (code, _, err) <- golemAt tmp ["new", "book", "--no-fonts"]
+        (code, err)
+          @?= ( ExitFailure 1,
+                "book/chapters/01.gm:1:1: error[G03132]: 雛形のファイルを書くパスに、すでにエントリがあります: book/chapters/01.gm\n  | \n"
+                  <> "book/preflight.toml:1:1: error[G03132]: 雛形のファイルを書くパスに、すでにエントリがあります: book/preflight.toml\n  | \n"
+                  <> explainLine "G03132"
+              )
+        filesUnder (tmp </> "book") >>= (@?= ["chapters/01.gm", "preflight.toml"]),
+      testCase "I5: G03133 for an argument that is a file, without an exception" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+        writeFiles tmp [("afile", "x")]
+        (code, _, err) <- golemAt tmp ["new", "afile", "--no-fonts"]
+        (code, err) @?= (ExitFailure 1, "afile:1:1: error[G03133]: ディレクトリではありません: afile\n  | \n" <> explainLine "G03133")
+        (code', _, err') <- golemAt tmp ["new", "afile/book", "--no-fonts"]
+        (code', err') @?= (ExitFailure 1, "afile/book:1:1: error[G03133]: ディレクトリではありません: afile/book\n  | \n" <> explainLine "G03133"),
+      testCase "I5: G03134 for an existing .gitignore, which is left alone: 0" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+        writeFiles tmp [("book/.gitignore", "node_modules/\n")]
+        (code, _, err) <- golemAt tmp ["new", "book", "--no-fonts"]
+        code @?= ExitSuccess
+        take 3 (lines err)
+          @?= [ "book/.gitignore:1:1: notice[G03134]: .gitignore がすでにあるので書きませんでした。build/ を除外してください: book/.gitignore",
+                "  | ",
+                init (explainLine "G03134")
+              ]
+        readUtf8 (tmp </> "book/.gitignore") >>= (@?= "node_modules/\n")
     ]
 
 {- | The template of golem new, with a font in place of the one it names,
