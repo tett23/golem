@@ -109,7 +109,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 
 文字スタイルです。
 名前は英小文字で始め、英小文字、数字、[code: -] だけで付けます。
-[code: bold]、[code: italic]、[code: strong]、[code: code]、[code: url]、[code: note-mark] ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
+[code: bold]、[code: italic]、[code: strong]、[code: code]、[code: url]、[code: note-mark]、[code: no-break] ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
@@ -123,6 +123,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: underline] | 外側の値 | 下線です。[code: true] で既定の線、表で [code: weight]、[code: offset]、[code: style]、[code: dash]、[code: gap]、[code: color] を書いた線、[code: false] で線なしにします。縦組みでは文字の右に引きます。 |
 | [code: strikethrough] | 外側の値 | 打ち消し線です。書き方は [code: underline] と同じです。 |
 | [code: features] | なし | OpenType の機能の配列です。[code: \["smcp", "-liga", "salt=2"\]] のように書きます。[code: based-on] で引き継いだ機能の後ろに足します。 |
+| [code: no-break] | [code: false] | [code: true] にすると、その文字の範囲の中では PDF で行を分けません（InDesign の分離禁止にあたります）。語のあいだの空白は、分けないまま伸び縮みします。行末の [code: \\] の改行は範囲の中でも行を改めます。範囲が行に収まらなければ、行がはみ出して警告（G07122）が出ます。文字スタイルを入れ子にしたときは、どれか一つが [code: true] なら分けません。HTML と EPUB では [code: white-space: nowrap] になります。 |
 
 文字の送りを決める次の四つのキーも書けます。
 文字スタイルで書かなかったキーは、外側の文字の値のままです。
@@ -142,6 +143,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 - [code: "none"]：調整しません。
 
 組み込みの文字スタイルは、[code: bold] が [code: synthetic-bold = true]、[code: italic] が [code: synthetic-italic = true]、[code: strong] が [code: based-on = "bold"]、[code: code] が [code: font = "code"]、[code: padding = "0.25zw"]、[code: wrap-mark = "⏎"]、[code: superscript] が [code: position = "superscript"]、[code: subscript] が [code: position = "subscript"] で、[code: url] はキーを持ちません。
+[code: no-break] は [code: no-break = true] だけを持ち、原稿では [code: \[style no-break: 100 円\]] のように書きます。
 [code: code] と、[code: based-on] で [code: code] を引き継ぐ文字スタイルの文字は、PDF で欧文の語の途中で分けず、空白、[code: /] の後、[code: _] の連なりの後、[code: -] と [code: .] の連なりの後（前と後がともに数字のところを除く）でだけ行を改めます。
 和文の字のあいだと、和文と欧文の字の境では、本文と同じ禁則に従って行を改めます。
 空白の位置でも、本文の語のあいだの空白と同じく、後の字が行頭に置けない字（[code: 」] や [code: 。] など）か、前の字が行末に置けない字（[code: 「] など）なら、行を改めません。
@@ -304,6 +306,7 @@ PDF では、表の行がセルの全体を収める最も少ない行を占め�
 | [code: protrusion] | [code: false] | [code: true] にすると、行末と行頭の欧文のハイフンや句読点を、版面の外にわずかに出して、行の端をそろえて見せます。 |
 | [code: expansion] | なし | 欧文の字の幅をわずかに伸び縮みさせて、語間のむらを減らします。[code: { limit = 20, step = 5 }] のように、限度と刻みを千分率で書きます（20 は 2%）。 |
 | [code: explicit-hyphen-penalty] | [code: 50] | 欧文の語に書かれたハイフンやダッシュの後ろで行を分けるときの、避けたさの度合いです。-9999 から 10000 までで、10000 にするとそこでは分けません。 |
+| [code: hyphenation-exceptions] | なし | 本の欧文の語の分け方（分綴の例外）です。[code: \[composition.hyphenation-exceptions\]] の表に、[code: en = \["ta-ble", "pro-ject"\]] のように言語のタグごとに語の配列を書きます。語の分けてよい位置に [code: -] を書き、[code: -] のない語は分けません。PDF でだけ有効です。語と言語のタグの誤りは、原稿の [code: @hyphenation-exceptions] と同じエラー（G03126 から G03130）になります。 |
 
 @nonumber
 ## [code: \[composition.ruby\]]

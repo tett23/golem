@@ -137,6 +137,8 @@ noticeCodes =
       "G07046", -- a block with rules broken or a heading rule left out (golem-driver ADR 0027)
       "G07100", -- a heading taller than the rest of its column (golem-layout ADR 0020)
       "G07101", -- a dash of a double dash without ink, its lines not joined (docs/adr ADR 0172)
+      "G07123", -- a soft hyphen without a letter on either side, not a break (docs/adr ADR 0272)
+      "G07124", -- a soft hyphen in text that does not break, not a break (docs/adr ADR 0272)
       "G08008", -- code in the body role without [fonts.code] (golem-driver ADR 0017)
       "E02109" -- a binding of where of .emet that nothing uses (docs/adr/0160)
     ]

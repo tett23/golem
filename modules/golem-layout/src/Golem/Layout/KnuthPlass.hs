@@ -8,6 +8,7 @@ module Golem.Layout.KnuthPlass
     Item (..),
     Hyphen (..),
     isPatternHyphen,
+    endsWithHyphen,
     BoxContent (..),
     Leaf (..),
     noLeaf,
@@ -123,6 +124,11 @@ data Hyphen
     0034); the line ends with the mark given drawn, as wide as the penalty
     -}
     WrapMark !Text
+  | {- | a break at a soft hyphen (U+00AD) written in the word (docs/adr
+    ADR 0272); the line ends with a hyphen drawn, which protrudes by the
+    amount given, as at a break of the patterns, but the first pass takes it
+    -}
+    SoftHyphen !Sp
   deriving stock (Eq, Show)
 
 -- | Whether a break is one found by the patterns.
@@ -131,20 +137,30 @@ isPatternHyphen = \case
   PatternHyphen _ -> True
   _ -> False
 
+{- | Whether a line broken there ends with a hyphen drawn: a break of the
+patterns or at a soft hyphen (docs/adr ADR 0272).
+-}
+endsWithHyphen :: Hyphen -> Bool
+endsWithHyphen = \case
+  PatternHyphen _ -> True
+  SoftHyphen _ -> True
+  _ -> False
+
 data Item
   = Box {itemWidth :: !Sp, itemContent :: !BoxContent}
   | Glue {itemWidth :: !Sp, itemStretch :: !Sp, itemShrink :: !Sp}
   | Penalty {itemWidth :: !Sp, itemPenalty :: !Int, itemHyphen :: !Hyphen}
   deriving stock (Eq, Show)
 
-{- | A hyphen break, of either kind: consecutive ones cost
-'pDoubleHyphenDemerits'. A break with the wrap mark of code is not one
-(golem-layout ADR 0034).
+{- | A hyphen break, of any kind (of the patterns, written, soft; docs/adr
+ADR 0272): consecutive ones cost 'pDoubleHyphenDemerits'. A break with the
+wrap mark of code is not one (golem-layout ADR 0034).
 -}
 itemFlagged :: Item -> Bool
 itemFlagged = \case
   Penalty _ _ (PatternHyphen _) -> True
   Penalty _ _ ExplicitHyphen -> True
+  Penalty _ _ (SoftHyphen _) -> True
   _ -> False
 
 infPenalty :: Int
@@ -428,9 +444,10 @@ breakParagraph ps lineWidth items =
       | otherwise =
           let firstBox = listToMaybe [c | j <- [s .. b - 1], Box _ c <- [at j]]
               lastBox = listToMaybe [c | j <- [b - 1, b - 2 .. s], Box _ c <- [at j]]
-              -- a line ending at a pattern hyphen protrudes by the hyphen (golem-layout ADR 0014)
+              -- a line ending at a pattern hyphen or a soft hyphen protrudes by the hyphen (golem-layout ADR 0014, docs/adr ADR 0272)
               end = case at b of
                 Penalty _ _ (PatternHyphen q) -> q
+                Penalty _ _ (SoftHyphen q) -> q
                 _ -> maybe 0 bcProtrudeEnd lastBox
            in (maybe 0 bcProtrudeStart firstBox, end)
     -- the edges of the first and last boxes count whether or not protrusion is on

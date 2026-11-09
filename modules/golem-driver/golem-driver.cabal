@@ -110,9 +110,11 @@ test-suite golem-driver-test
     LinkSpec
     OutputGoldenSpec
     DecorationsSpec
+    ExceptionsSpec
     OpenTypeFeaturesSpec
     ScriptsSpec
     OverflowSpec
+    SoftHyphenSpec
     PageElementsSpec
     PageStartsSpec
     ParagraphRuleSpec

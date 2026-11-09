@@ -233,11 +233,14 @@ evalFile ctx0 (A.File fid blocks0) =
   let -- the file settings (docs/adr ADR 0014): @manifest over the [source] of the context, and @style-def
       (header, rest) = fileHeader blocks0
       (source, settingDiags) = fileSettings sourceKeys (ctxSource ctx0) header
-      (local, styleDiags) = fileStyles (ctxStyle ctx0) header
+      (local0, styleDiags) = fileStyles (ctxStyle ctx0) header
+      -- @hyphenation-exceptions (docs/adr ADR 0272)
+      (exceptions, exceptionDiags) = fileHyphenationExceptions header
+      local = local0 {lsHyphenationExceptions = exceptions}
       ctx = (withFileStyles local ctx0) {ctxSource = source}
       blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
       -- meta and vars, which every file reads without @import (docs/adr/0185)
-      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty Map.empty
+      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty
       (bs0, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
       (bs, nestedDiags) = nestedBreaks bs0
       breakDiags = nestedDiags <> conflictingBreaks bs <> blankLinesInRow bs
@@ -874,7 +877,7 @@ channelBlock ctx sp args = do
 
 -- | G02049: @manifest or @style-def after the file settings (docs/adr ADR 0014).
 misplacedSetting :: SrcSpan -> M ()
-misplacedSetting sp = err "G02049" sp "@manifest と @style-def はファイルの最初に置きます"
+misplacedSetting sp = err "G02049" sp "@manifest、@style-def、@hyphenation-exceptions はファイルの最初に置きます"
 
 attributedWith :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
 attributedWith ctx sp cmds target
@@ -2347,6 +2350,10 @@ builtinWith ctx inHeading sp b args slots = do
     Fixed BAki -> aki sp args slots
     Fixed BLink -> link ctx inHeading sp args slots
     Fixed BLang -> langSpan ctx inHeading sp args slots
+    -- a soft hyphen, as U+00AD written in the source (docs/adr ADR 0272)
+    Fixed BShy -> case args of
+      [] -> pure [Text sp "\xAD"]
+      _ -> err "G02152" sp "shy は引数を取りません。[shy] とだけ書きます" >> pure []
   where
     refTo k = \case
       [v] | validLabel (argText v) -> pure [Ref sp k (argText v)]

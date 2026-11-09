@@ -10,6 +10,7 @@ module Golem.Layout.Look
     Kerning (..),
     Synthetic (..),
     plainLook,
+    readingLook,
     KentenShape (..),
     kentenChar,
     kentenShapeName,
@@ -21,7 +22,7 @@ module Golem.Layout.Look
 where
 
 import Data.Text (Text)
-import Golem.Length (Sp)
+import Golem.Length (Sp (..))
 import Golem.Project.Position (Position (..))
 import Golem.Project.Style (RuleStyle, SizeSource (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
@@ -36,6 +37,24 @@ type BoxSource = (SizeSource, SrcSpan)
 -- | The source of a box nothing names: the grid, at the start of file 0.
 noBoxSource :: BoxSource
 noBoxSource = (SourceGrid, mkSpan (FileId 0) 0 0)
+
+{- | The look of the reading of a ruby whose base is set in a look: the
+font and the colour of the base, half its size, its baseline shift. In a
+range of superscript or subscript it takes no position (docs/adr/0269):
+half the size outside the range, the nominal size, not of the shrunk
+base, and no glyphs of sups or subs. Outside a range it is half 'lkSize'.
+-}
+readingLook :: Look -> Look
+readingLook lk =
+  lk
+    { lkSize = half,
+      lkNominalSize = half,
+      lkPosition = PositionNormal,
+      lkScriptGlyphs = False
+    }
+  where
+    outer = if lkPosition lk == PositionNormal then lkSize lk else lkNominalSize lk
+    half = Sp (unSp outer `div` 2)
 
 -- | Synthetic bold and slant of one side, Japanese or Latin (docs/adr ADR 0005).
 data Synthetic = Synthetic {synBold :: !Bool, synSlant :: !Bool}
@@ -158,7 +177,10 @@ data Look = Look
     -- | the underline of the characters (docs/adr/0270); Nothing is none
     lkUnderline :: !(Maybe Decoration),
     -- | the strikethrough of the characters (docs/adr/0270); Nothing is none
-    lkStrikethrough :: !(Maybe Decoration)
+    lkStrikethrough :: !(Maybe Decoration),
+    {- | the text is in a range that does not break (docs/adr ADR 0272):
+    no break between two of its characters but a forced one
+    -} lkNoBreak :: !Bool
   }
   deriving stock (Eq, Ord, Show)
 
@@ -189,7 +211,8 @@ newtype LinkTarget = LinkUri Text
 {- | One role for both scripts at a size, upright, regular, default colour,
 metrics kerning, no tracking, no proportional metrics, no baseline shift,
 not code, not a URL, no kenten, no background, no padding, no link,
-outside a language span, no wrap mark, no features and the normal position.
+outside a language span, no wrap mark, no features, the normal position and
+breaking.
 -}
 plainLook :: Text -> Sp -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing False

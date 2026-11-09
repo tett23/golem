@@ -95,7 +95,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 人が読む形式と JSON の形式では、エラーと警告の後、情報の前に並ぶ。
 
 お知らせのコードは `Golem.Syntax.Diagnostic.noticeCodes` にまとめてある。
-今は次の二十八である。
+今は次の三十である。
 
 | コード | 種類 | 段階 |
 | --- | --- | --- |
@@ -125,6 +125,8 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | [G07046](#g07046) | 処理系による調整 | レイアウト |
 | [G07100](#g07100) | 一般的でない書き方 | レイアウト |
 | [G07101](#g07101) | 処理系による調整 | 出力 |
+| [G07123](#g07123) | 効果のない書き方 | レイアウト |
+| [G07124](#g07124) | 効果のない書き方 | レイアウト |
 | [G08008](#g08008) | 既定の使用 | 出力 |
 | [E02109](#e02109) | 効果のない書き方 | Emet の型の検査 |
 
@@ -2975,24 +2977,24 @@ lines の範囲がファイルの行を外れています
 
 ## G02049
 
-@manifest と @style-def はファイルの最初に置きます
+@manifest、@style-def、@hyphenation-exceptions はファイルの最初に置きます
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-ファイルの設定の並びの外に、`@manifest` か `@style-def` がある。
+ファイルの設定の並びの外に、`@manifest`、`@style-def`、`@hyphenation-exceptions`（[docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）のどれかがある。
 属性のまとまりの途中（`@label` の後など）に書いた場合も出る。
 その行は、上書きと定義としては扱わない。
 
-- メッセージ: `@manifest と @style-def はファイルの最初に置きます`
+- メッセージ: `@manifest、@style-def、@hyphenation-exceptions はファイルの最初に置きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0014](adr/0014-in-file-settings.md)
+- ADR: [docs/adr/0014](adr/0014-in-file-settings.md)、[docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
 
 ### 主な原因
 
-- 本文の途中や末尾に `@manifest` か `@style-def` を書いた。
+- 本文の途中や末尾に `@manifest`、`@style-def`、`@hyphenation-exceptions` を書いた。
 - `@label` などの属性の後に書いた。
 
 ### 直し方
@@ -3061,15 +3063,15 @@ lines の範囲がファイルの行を外れています
 ### 意味
 
 `@manifest` か `@style-def` に書いた位置引数の数が、コマンドの取る数と違う（[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)）。
-`@manifest` は位置引数を取らず、`@style-def` は二つ（種類と名前）を取る。
+`@manifest` は位置引数を取らず、`@style-def` は二つ（種類と名前）を取り、`@hyphenation-exceptions`（[docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）は二つ以上（言語のタグと一つ以上の語）を取る。
 位置は、余分な位置引数のそれぞれである。
 足りないときは、コマンドの行である。
-誤りのある `@manifest` の引数はその引数だけを無視し、誤りのある `@style-def` は定義の全体を捨てる。
+誤りのある `@manifest` の引数はその引数だけを無視し、誤りのある `@style-def` は定義の全体を、位置引数の足りない `@hyphenation-exceptions` は行の全体を捨てる。
 
 ほかの誤りは、原因ごとのコードになる。
 未知の種類は [G02117](#g02117)、展開する引数は [G02114](#g02114)、本体は [G02097](#g02097)、引数のない `@manifest` は [G02115](#g02115)、同じキーは [G02077](#g02077)、語と文字列のほかで書いた値か位置引数は [G02116](#g02116) である。
 
-- メッセージ: `@manifest には key=value だけを書きます`、`@style-def には種類（character、paragraph、regex）と名前を書きます`
+- メッセージ: `@manifest には key=value だけを書きます`、`@style-def には種類（character、paragraph、regex）と名前を書きます`、`@hyphenation-exceptions には言語のタグと一つ以上の語を書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`）
 - ADR: [docs/adr/0014](adr/0014-in-file-settings.md)、[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)
 
@@ -5498,6 +5500,58 @@ dev と prod の両方でエラーである。
 
 値を一つにするか、列の数と同じ数にする。
 幅を決めない列は `auto` と書く。
+## G02152
+
+[shy] は引数を取りません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+ソフトハイフンのコマンド `[shy]` に、位置引数かキーワード引数を書いた。
+`[shy]` は引数を取らず、U+00AD（ソフトハイフン）の一字になる。
+誤りのある `[shy]` は何も出力しない。
+散文スロットを書いたときは、このコードではなく [G02038](#g02038) になる。
+位置は `[shy]` のコマンドである。
+
+- メッセージ: `shy は引数を取りません。[shy] とだけ書きます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
+
+### 主な原因
+
+- 分ける位置を引数で指定できると考えて、`[shy 3]` のように書いた。
+
+### 直し方
+
+語を分けてよい位置に `[shy]` だけを書く（`in[shy]com[shy]pre`）。
+
+## G02153
+
+@hyphenation-exceptions にはキーワード引数を書けません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+ファイルの設定の `@hyphenation-exceptions` に、キーワード引数を書いた。
+`@hyphenation-exceptions` は、言語のタグと例外の語を位置引数だけで取る。
+キーワード引数は捨て、ほかの引数はそのまま読む。
+位置は、キーワード引数のそれぞれである。
+
+- メッセージ: `@hyphenation-exceptions にはキーワード引数を書けません。言語のタグと語だけを書きます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
+
+### 主な原因
+
+- `@hyphenation-exceptions lang=en ta-ble` のように、言語をキーワードで書いた。
+
+### 直し方
+
+`@hyphenation-exceptions en ta-ble` のように、言語のタグを最初の位置引数に書く。
 
 ## G03001
 
@@ -6967,6 +7021,147 @@ HarfBuzz が読めるほかの形（`kern[3:5]` のような範囲、`aalt=on` �
 印の文字スタイルから `position` を消すか、`based-on` を `superscript` でないスタイルにする。
 印に書体の上付きの字形を使いたいときは、印の文字スタイルに `features = ["sups"]` を書く。
 
+## G03126
+
+分綴の例外の一覧のキーが言語のタグの形ではありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+分綴の例外の一覧の言語のタグが、BCP 47 の言語のタグの形ではない。
+形だけを検査し、IANA の登録簿は見ない（`[lang]` の [G02132](#g02132) と同じ規則）。
+ファイルの設定では、その行の全体を捨てる。
+誤りは `style.toml` の `[composition.hyphenation-exceptions]` と、ファイルの設定の `@hyphenation-exceptions` の両方に出す。
+位置は、`style.toml` ではその値、ファイルの設定ではその引数である。
+エラーなので、ビルドは止まる。
+
+- メッセージ: `分綴の例外の一覧のキーが言語のタグの形ではありません: <タグ>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）、評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
+
+### 主な原因
+
+- 言語の名前（`english`）や、`en_US` のように `_` で区切ったタグを書いた。
+
+### 直し方
+
+`en`、`en-US`、`fr` のように BCP 47 の形で書く。
+
+## G03127
+
+分綴の例外の語には字と - だけを書きます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+分綴の例外の語に、字（一般カテゴリが L の字）と `-` のほかの文字がある。
+空の語と、結合文字を含む語もこれにあたる。
+一つの語に二つ以上の誤りがあれば、このコードを [G03128](#g03128) と [G03129](#g03129) より先に出し、ほかは出さない。
+その語だけを捨てる。
+誤りは `style.toml` の `[composition.hyphenation-exceptions]` と、ファイルの設定の `@hyphenation-exceptions` の両方に出す。
+位置は、`style.toml` ではその値、ファイルの設定ではその引数である。
+エラーなので、ビルドは止まる。
+
+- メッセージ: `分綴の例外の語には字と - だけを書きます: <語>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）、評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
+
+### 主な原因
+
+- 数字、空白、アポストロフィを含む語を書いた。
+- 分ける位置を `-` ではなく `·` などで書いた。
+
+### 直し方
+
+分けてよい位置に `-` を書いた、字だけの語にする。
+
+## G03128
+
+分綴の例外の語の - が端にあるか、二つ続いています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+分綴の例外の語の最初か最後に `-` があるか、`-` が二つ続いている。
+`-` だけの語もこれにあたる。
+その語だけを捨てる。
+誤りは `style.toml` の `[composition.hyphenation-exceptions]` と、ファイルの設定の `@hyphenation-exceptions` の両方に出す。
+位置は、`style.toml` ではその値、ファイルの設定ではその引数である。
+エラーなので、ビルドは止まる。
+
+- メッセージ: `分綴の例外の語の - が端にあるか、二つ続いています: <語>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）、評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
+
+### 主な原因
+
+- `-ble` や `ta--ble` のように書き誤った。
+
+### 直し方
+
+`-` は字と字のあいだに一つずつ書く。
+
+## G03129
+
+同じ語を二度書いています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+一つの言語の分綴の例外の一覧に、同じ語を二度書いた。
+小文字にして `-` を除いた語が同じなら、`-` の位置が同じでも違っても同じ語とする。
+二つ目からの語を捨てる。
+誤りは `style.toml` の `[composition.hyphenation-exceptions]` と、ファイルの設定の `@hyphenation-exceptions` の両方に出す。
+位置は、`style.toml` ではその値、ファイルの設定ではその引数である。
+エラーなので、ビルドは止まる。
+
+- メッセージ: `同じ語を二度書いています: <語>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）、評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
+
+### 主な原因
+
+- `ta-ble` と `tab-le` のように、同じ語の分け方を二つ書いた。
+- 大文字の語と小文字の語を両方書いた。
+
+### 直し方
+
+一つの語に一つの分け方だけを残す。
+
+## G03130
+
+大文字と小文字だけが違う言語のタグの一覧が二つあります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+分綴の例外の一覧に、大文字と小文字だけが違う言語のタグ（`en` と `EN` など）が二つある。
+`style.toml` では後のキーに、ファイルの設定では後の行に出し、ファイルの設定ではその行の全体を捨てる。
+誤りは `style.toml` の `[composition.hyphenation-exceptions]` と、ファイルの設定の `@hyphenation-exceptions` の両方に出す。
+位置は、`style.toml` ではその値、ファイルの設定ではその引数である。
+エラーなので、ビルドは止まる。
+
+- メッセージ: `大文字と小文字だけが違う言語のタグの一覧が二つあります: <タグ>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）、評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
+
+### 主な原因
+
+- 同じ言語の一覧を、二か所に分けて書いた。
+
+### 直し方
+
+一つの言語の語を一つの一覧（一つの行）にまとめる。
 ## G03131
 
 プロジェクトのファイルがすでにあります
@@ -9125,6 +9320,7 @@ dev と prod の両方で警告で、PDF を書き、終了コードを変えな
 お知らせではないので、`silence-notices` と `--no-notices` では抑制できない。
 HTML、EPUB、プレーンテキストのターゲットと、`golem check`、LSP では出さない。
 `golem preflight` は、同じ行を、同じ位置、同じメッセージ、同じ事実の [G09013](#g09013) とともに出す。
+はみ出しを測る位置の箱が改行しない範囲（文字スタイルの `no-break` が真の文字）の箱なら、このコードではなく [G07122](#g07122) を出す（[docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
 
 - メッセージ: `行が行長から <量> はみ出しています（PDF の <ページ> ページ目）`（例: `行が行長から 1.24mm はみ出しています（PDF の 1 ページ目）`）。`<量>` は mm で、小数点以下 2 桁に切り上げて書く（1sp のはみ出しは `0.01mm`）。事実の `overfull` は、メッセージと同じ表記の `<量>` で、`pdf-pages` はそのページである
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`、golem-preflight の `Golem.Preflight`）
@@ -9321,6 +9517,96 @@ PDF を組むときにだけ出す。
 ### 直し方
 
 キャプションを短くするか、表の行を分ける。
+## G07122
+
+改行しない範囲が行に収まりません
+
+- 重大度: 警告
+- 状態: 使用中
+
+### 意味
+
+PDF をターゲットに含む `golem build` で、改行しない範囲（文字スタイルの `no-break` が真の文字）が行に収まらず、行が行長からはみ出した。
+改行しない範囲の中では分割の候補を置かないので、範囲が行長より長ければ、範囲を分けずにはみ出す行を作る。
+はみ出しを測る位置（行の箱を行頭から見て、終わりが行長を超える最初の箱）が範囲の中の箱なら、[G07105](#g07105) の代わりにこのコードを出す。
+一つの行には、G07105 かこのコードのどちらか一つだけを出す。
+重大度、位置、量の書き方、事実、描いたページごとに出すこと、dev と prod の扱い、`golem check` と LSP で出さないことは G07105 と同じである。
+`golem preflight` は、同じ行を [G09013](#g09013) でも報告する。
+
+- メッセージ: `改行しない範囲が行に収まりません。行が行長から <量> はみ出しています（PDF の <ページ> ページ目）`。`<量>` と事実は G07105 と同じである
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
+- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
+
+### 主な原因
+
+- `[style no-break: …]` に、行に収まらない長さの文字列を入れた。
+- `no-break = true` の文字スタイルを、長い範囲に当てた。
+
+### 直し方
+
+改行しない範囲を短くするか、範囲を外す。
+範囲の中で改行してよい位置があれば、そこで範囲を二つに分ける。
+
+## G07123
+
+前後が語の字でないソフトハイフンを、分割の候補にしませんでした
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+PDF をターゲットに含む `golem build` で、ソフトハイフン（U+00AD か `[shy]`）の前か後ろが、同じ欧文の語の要素の字（一般カテゴリが L の字）でなかった。
+そのソフトハイフンは分割の候補にならず、何も描かない。
+句読点の前（`a[shy].`）、語の終わり、和文の字のあいだのソフトハイフンがこれにあたる。
+要素の最初の字より前のソフトハイフン（`[shy]table`）は、その要素を分けない指定なので、このコードを出さない。
+位置はソフトハイフンで、`[shy]` で書いたものは `[shy]` である。
+一つの文字列に複数あれば、それぞれに出す。
+HTML、EPUB、プレーンテキストだけのビルドと、`golem check`、LSP では出さない。
+
+- メッセージ: `ソフトハイフンの前か後ろが語の字でないので、分割の候補にしません`
+- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Japanese`、golem-typeset の `Golem.Typeset`）
+- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
+
+### 主な原因
+
+- `[shy]` を書く位置が一字ずれた。
+- 和文の文章に、U+00AD を含む文字列を貼り付けた。
+
+### 直し方
+
+語を分けたい位置（字と字のあいだ）に書き直すか、ソフトハイフンを消す。
+
+## G07124
+
+改行しない文字の中のソフトハイフンを、分割の候補にしませんでした
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+PDF をターゲットに含む `golem build` で、改行しない文字の中にソフトハイフン（U+00AD か `[shy]`）があった。
+改行しない文字は、本文の中のコード、文字スタイル `url` の文字、リンクの語、改行しない範囲（文字スタイルの `no-break` が真の文字）である。
+そのソフトハイフンは分割の候補にならず、何も描かない。
+前か後ろが語の字でないソフトハイフンでも、改行しない文字の中にあれば、[G07123](#g07123) ではなくこのコードを出す。
+要素の最初の字より前のソフトハイフンには出さない（コードと `url` の文字の中を除く）。
+位置はソフトハイフンで、`[shy]` で書いたものは `[shy]` である。
+HTML、EPUB、プレーンテキストだけのビルドと、`golem check`、LSP では出さない。
+
+- メッセージ: `改行しない文字（コード、URL、リンク、改行しない範囲）の中のソフトハイフンなので、分割の候補にしません`
+- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Japanese`、golem-typeset の `Golem.Typeset`）
+- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
+
+### 主な原因
+
+- コードやリンクの語に `[shy]` を書いた。
+- 改行しない範囲の中で、語を分けられると考えた。
+
+### 直し方
+
+ソフトハイフンを消す。
+分けたい位置があるなら、その位置が改行しない範囲の外になるように範囲を分ける。
 
 ## G08001
 

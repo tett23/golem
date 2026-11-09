@@ -221,8 +221,15 @@
   [code: paragraph] には [code: regex-styles] を書けません。
   [code: paragraph code] に書けるのは、[code: style.toml] と同じく [code: font]、[code: size]、[code: background]、[code: padding] だけです。
   アキ量のセットは [code: aki-set] で選べますが、セットそのものは [code: style.toml] にだけ定義できます。
+= [strong: [code: @hyphenation-exceptions 言語 語…]]
+  そのファイルの欧文の語の分け方（分綴の例外）を、言語ごとに書きます。
+  語は、分けてよい位置に [code: -] を書いたものです（[code: ta-ble]）。[code: -] のない語は分けません。
+  言語のタグは [code: en] や [code: en-GB] のように書き、一つの言語の語は一行に並べます。
+  [code: style.toml] の [code: \[composition.hyphenation-exceptions\]] の同じ語より先に当たります。
+  語に字と [code: -] のほかの文字があるとエラー（G03127）、[code: -] が端にあるか二つ続くとエラー（G03128）、同じ語を二度書くとエラー（G03129）、言語のタグの形が誤っているとエラー（G03126）、大文字と小文字だけが違う言語の行が二つあるとエラー（G03130）、キーワード引数を書くとエラー（G02153）になります。
+  目次、柱、索引のような Golem が作る行には当たりません。
 
-[code: @manifest] と [code: @style-def] は、ファイルの最初に置きます。
+[code: @manifest]、[code: @style-def]、[code: @hyphenation-exceptions] は、ファイルの最初に置きます。
 前に置けるのは、コメントと空行だけです。
 [code: @import] と [code: @set] は、その後に書きます。
 一つのスタイルは一行で定義します。
@@ -231,6 +238,7 @@
 @manifest paragraph-separator=line
 @style-def paragraph letter based-on=body indent=2zw
 @style-def regex body pattern="\\d+" style=bold
+@hyphenation-exceptions en ta-ble pro-ject
 ```
 
 [code: @figure]、[code: @table]、[code: @listing] が指すファイルも、プロジェクトのフォルダからの相対パスで書きます。
@@ -377,6 +385,16 @@
   量は [code: 全角]、[code: 二分]、[code: 三分]、[code: 四分]、[code: 五分]、[code: 六分]、[code: 八分]、[code: 二分四分]、[code: ベタ] のような名前か、[code: 0.2zw]、[code: 25%]、[code: 1mm] のように書きます。
   [code: \[aki\]] の前後では行を分けません。
   本文は取りません。
+= [strong: [code: \[shy\]]]
+  ソフトハイフンです。
+  欧文の語を、PDF で分けてよい位置に書きます（[code: in\[shy\]com\[shy\]pre]）。
+  その位置で行を分けると、行末にハイフンを描きます。
+  [code: \[shy\]] を書いた語の部分は、ほかの位置では分けません。
+  語の頭に書くと（[code: \[shy\]table]）、その語を分けません。
+  原稿に U+00AD をじかに書いても同じです。
+  引数を書くとエラー（G02152）、本文を書くとエラー（G02038）になります。
+  前か後ろが語の字でない位置のものはお知らせ（G07123）、コード、URL、リンク、改行しない範囲の中のものはお知らせ（G07124）が出て、分ける位置になりません。
+  HTML と EPUB とプレーンテキストには、U+00AD をそのまま書きます。
 = [strong: [code: \[lang タグ: 文\]]]
   文の言語を指定します。
   タグは [code: en]、[code: en-US] のような言語のタグで、一つだけ書きます。

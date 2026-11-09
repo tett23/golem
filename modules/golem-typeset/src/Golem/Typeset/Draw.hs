@@ -189,10 +189,17 @@ orphanErrors fallback units = \case
       _ -> Nothing
 
 {- | G07105 (docs/adr ADR 0210): a warning for each line drawn past its
-measure, with the message and the facts of G09013, on each page it is drawn.
+measure, with the message and the facts of G09013, on each page it is
+drawn; G07122 in its place for a line whose overflow is measured at a box
+of a range that does not break (docs/adr ADR 0272), its message naming
+the range.
 -}
-overfullWarnings :: [OverfullLine] -> [Diagnostic]
-overfullWarnings os = [(diagnostic "G07105" Warning (olSpan o) (olMessage o)) {diagFacts = olFacts o} | o <- os]
+overfullWarnings :: [(OverfullLine, Bool)] -> [Diagnostic]
+overfullWarnings os =
+  [ (diagnostic code Warning (olSpan o) msg) {diagFacts = olFacts o}
+  | (o, inRange) <- os,
+    let (code, msg) = if inRange then ("G07122", "改行しない範囲が行に収まりません。" <> olMessage o) else ("G07105", olMessage o)
+  ]
 
 {- | What a book that declares PDF/A or PDF/UA must meet before its PDF is
 set (docs/adr ADR 0183), in dev and prod alike: an output intent for PDF/A
@@ -287,7 +294,10 @@ data LineRec = LineRec
     {- | the underlines and strikethroughs of the line (docs/adr/0270): what
     golem preflight sees of them as rules, the kind, the band and the
     thinnest part, and the swatch of each
-    -} lrDecorations :: ![(Text, Rect, Sp, Maybe P.Swatch)]
+    -} lrDecorations :: ![(Text, Rect, Sp, Maybe P.Swatch)],
+    {- | the box the overflow of the line is measured at is of a range that
+    does not break (docs/adr ADR 0272): G07122, not G07105
+    -} lrOverfullNoBreak :: !Bool
   }
 
 -- | What one page draws.
@@ -339,7 +349,7 @@ embedded in IO between the two halves (docs/adr ADR 0034): the glyphs
 used in each font and their text, then the PDF and its view from the
 embedded fonts.
 -}
-writeDocumentView :: (P.StructElem -> P.StructElem) -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [OverfullLine], [Diagnostic], Map P.FontRef P.Font -> (ByteString, V.View, Structure))
+writeDocumentView :: (P.StructElem -> P.StructElem) -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [(OverfullLine, Bool)], [Diagnostic], Map P.FontRef P.Font -> (ByteString, V.View, Structure))
 writeDocumentView tamper version inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
@@ -471,7 +481,7 @@ writeDocumentView tamper version inp geom fonts layout intent =
         Just _ -> privateUseErrors [(guText u, guSpan u) | pd <- drawn, u <- pdUses pd]
         Nothing -> []
       -- the lines past their measure on each page they are drawn on (G07105 and G09013, docs/adr ADR 0210)
-      overfull = [overfullLine i amount sp | (i, pd) <- zip [1 ..] drawn, (rec, _) <- pdLines pd, Just (amount, sp) <- [lrOverfull rec]]
+      overfull = [(overfullLine i amount sp, lrOverfullNoBreak rec) | (i, pd) <- zip [1 ..] drawn, (rec, _) <- pdLines pd, Just (amount, sp) <- [lrOverfull rec]]
       -- the leaves drawn that the structure tree has not, after every page is drawn (G07107, docs/adr ADR 0216)
       orphans =
         orphanErrors
@@ -791,7 +801,7 @@ entry :: DrawEnv -> Text -> SrcSpan -> Rect -> Sp -> SetLine -> (LineRec, ([P.Co
 entry env kind sp ta cross = entryAt env kind sp (lineStart env ta cross)
 
 entryAt :: DrawEnv -> Text -> SrcSpan -> (Sp, Sp) -> SetLine -> (LineRec, ([P.Content], [GlyphUse]))
-entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sp sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl) decorated, drawLineAt env start sl)
+entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sp sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl) decorated (overfullInRange sl), drawLineAt env start sl)
   where
     decorated = [(k, band, ruleThinnest w st, decorationSwatch env (decColor d)) | (k, d, band, w, st) <- decorationBands env start sl]
 
@@ -845,7 +855,7 @@ decorationBands env (x0, y0) sl =
             let look = bcLook c
                 looks = zipWith const (bcBaseLooks c <> repeat look) (clusters base)
                 big = if null looks then lkSize look else maximum (map lkSize looks)
-             in [rubyOverhang True 0 big (half (lkSize look)) (lkBaselineShift look)]
+             in [rubyOverhang True 0 big (lkSize (readingLook look)) (lkBaselineShift look)]
       KindKenten | Just _ <- lkKenten (bcLook c) -> let look = bcLook c in [kentenOverhang True 0 (lkSize look) 0 (lkBaselineShift look)]
       _ -> []
 
@@ -932,6 +942,16 @@ overfullOf block sl =
         _ -> block
    in if lineOverflow l > 0 then Just (lineOverflow l, at) else Nothing
 
+{- whether the box an overflow of a line is measured at, the first whose
+end is past the measure, is of a range that does not break (docs/adr ADR
+0272) -}
+overfullInRange :: SetLine -> Bool
+overfullInRange sl =
+  let l = slLine sl
+   in lineOverflow l > 0 && case [c | (Box w c, o) <- placeLine l, o + w > lineTarget l] of
+        c : _ -> lkNoBreak (bcLook c)
+        [] -> False
+
 -- the block of a line: the unit whose first line is at or before it
 spanOfLine :: DrawEnv -> Int -> SrcSpan
 spanOfLine env lid = maybe styleSpan snd (Map.lookupLE lid (plLineSpans layout))
@@ -991,7 +1011,9 @@ drawLineAt env (x0, y0) sl =
                       -- each base character in its own look (golem-layout ADR 0011)
                       let (base, reading) = T.breakOn "|" (bcText c)
                           rt = T.drop 1 reading
-                          rsize = lkSize half
+                          -- the reading takes no position of a range of superscript or subscript (docs/adr/0269)
+                          rlook = readingLook look
+                          rsize = lkSize rlook
                           -- a base character with its combining characters is one base (golem-driver ADR 0036)
                           baseUnits = clusters base
                           baseLooks = zipWith const (bcBaseLooks c <> repeat look) baseUnits
@@ -1000,7 +1022,7 @@ drawLineAt env (x0, y0) sl =
                             Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) u)
                             Nothing -> 0
                           baseAdv = zipWith advOf baseLooks baseUnits
-                          readAdv = map (advOf half . T.singleton) (T.unpack rt)
+                          readAdv = map (advOf rlook . T.singleton) (T.unpack rt)
                           excess = max 0 (sum readAdv - w)
                           rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (Sp (unSp excess `div` 2), Sp (unSp excess `div` 2))
                           -- the reading sits beside the largest base character
@@ -1011,7 +1033,7 @@ drawLineAt env (x0, y0) sl =
                             | lkColor lk /= lkColor look, Just sw <- swatchOf env lk = ([P.Saved (P.SetColor sw : marks)], glyphs)
                             | otherwise = (marks, glyphs)
                           placed1 = [inColour lk (runAtU env (whoOf V.PartBase c) lk vertical False 0 (origin (off + pos)) u) | (u, lk, pos) <- zip3 baseUnits baseLooks (rpBase rp)]
-                          placed2 = [runAtU env (whoOf V.PartRuby c) half vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
+                          placed2 = [runAtU env (whoOf V.PartRuby c) rlook vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
                           readingLeaf = leafOf (rubyTextLeaf (bcLeaf c))
                        in ([(leaf, concatMap fst placed1), (readingLeaf, concatMap fst placed2)], inLeaf leaf (concatMap snd placed1) <> inLeaf readingLeaf (concatMap snd placed2))
                 KindKenten ->
@@ -1073,9 +1095,9 @@ drawLineAt env (x0, y0) sl =
                         | vertical && rotated = (ox - Sp (unSp (size * 3) `div` 10), oy)
                         | otherwise = (ox, oy) -- Identity-V: the origin is the top centre of the em box
                    in whole (runAtU env (whoOf V.PartBase c) look vertical rotated (if bcExpandable c then lineExpansion l else 0) pt (bcText c))
-        -- a word broken at the line end gets its hyphen
-        Penalty hw _ (PatternHyphen _)
-          | i == lastIx && hw > 0 ->
+        -- a word broken at the line end by the patterns or at a soft hyphen gets its hyphen (docs/adr ADR 0272)
+        Penalty hw _ h
+          | endsWithHyphen h && i == lastIx && hw > 0 ->
               let (ox, oy) = origin off
                   look = lookBefore i
                   size = lkSize look
@@ -1163,7 +1185,7 @@ textAt env kind anchor size txt =
         LS.AlignCenter -> anX anchor - Sp (unSp w `div` 2)
         LS.AlignEnd -> anX anchor - w
       face = Rect x0 (anY anchor - (size - zwToSp size baselineRatio)) w size
-   in (LineRec kind styleSpan (Just face) Nothing [] [] [], first (pure . P.Artifact P.Pagination) (runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt))
+   in (LineRec kind styleSpan (Just face) Nothing [] [] [] False, first (pure . P.Artifact P.Pagination) (runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt))
   where
     fonts = deFonts env
     body = bodyRole (piStyle (deInput env))

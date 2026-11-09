@@ -97,6 +97,24 @@ scriptsTests =
         b <- layoutOf False "漢字2と漢字2と漢字\n"
         map (\sl -> (lineTarget (slLine sl), slIndent sl)) (Map.elems (plLines a)) @?= map (\sl -> (lineTarget (slLine sl), slIndent sl)) (Map.elems (plLines b))
         Map.keys (plLines a) @?= Map.keys (plLines b),
+      {- the reading of a ruby in a range of synthesis is half the outer
+      size, not of the shrunk base, and takes no position (ADR 0269, ルビ、圏点、注の印との関係) -}
+      testCase "I3, I8: ruby in a range of synthesis: its reading measured and drawn at half the outer size" $ do
+        let ruby = "[ruby: 漢|かんじ]"
+            inRange = "漢[style superscript: " <> ruby <> "]\n"
+            outside = "漢" <> ruby <> "\n"
+            rubyWidths pl = [w | (w, c) <- boxesOf pl, "|" `T.isInfixOf` bcText c]
+            sizesOf source = do
+              files <- fontFiles
+              pdf <- miniPdf golemFontProvider True (styleOf False) source files
+              map dSize . drawnGlyphs . BS.concat <$> inflateAll pdf
+        a <- layoutOf False inRange
+        b <- layoutOf False outside
+        rubyWidths a @?= rubyWidths b
+        sa <- sizesOf inRange
+        sb <- sizesOf outside
+        -- the character before, the base, then the three characters of the reading
+        (length sa, drop 2 sa) @?= (5, drop 2 sb),
       testCase "G08103 is not reported for sups and subs Golem adds" $ withSystemTempDirectory "golem-scripts" $ \tmp -> do
         files <- fontFiles
         writeProject tmp miniManifest (styleOf False) "漢[style superscript: あ]m[style superscript: 2]\n" files

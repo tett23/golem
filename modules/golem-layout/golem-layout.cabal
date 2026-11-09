@@ -72,6 +72,7 @@ test-suite golem-layout-test
                     CodeStopSpec
                     CombiningSpec
                     DoubleDashSpec
+                    ExceptionsSpec
                     ExpansionStepSpec
                     FeaturesSpec
                     ScriptSpec
@@ -83,6 +84,8 @@ test-suite golem-layout-test
                     LineBreakInvariants
                     LineBreakInvariantsSpec
                     LineBreakingSpec
+                    NoBreakEnum
+                    SoftHyphenSpec
                     OverflowSpec
                     PaginateEnum
                     PaginateInvariants
