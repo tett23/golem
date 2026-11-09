@@ -21,6 +21,7 @@ import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
+import Data.Int (Int64)
 import Data.List (sortOn)
 import Data.Word (Word8)
 
@@ -64,8 +65,12 @@ readImage b
 be16 :: ByteString -> Int -> Int
 be16 b i = fromIntegral (BS.index b i) `shiftL` 8 .|. fromIntegral (BS.index b (i + 1))
 
-be32 :: ByteString -> Int -> Int
-be32 b i = be16 b i `shiftL` 16 .|. be16 b (i + 2)
+{- | An unsigned 32-bit integer, as an 'Int64' on every target: in wasm32,
+whose 'Int' is 32 bits, 2^31 and more would be negative (docs/adr ADR
+0247).
+-}
+be32 :: ByteString -> Int -> Int64
+be32 b i = fromIntegral (be16 b i) `shiftL` 16 .|. fromIntegral (be16 b (i + 2))
 
 -- ------------------------------------------------------------------ JPEG
 
@@ -116,11 +121,12 @@ readPng :: ByteString -> Either String ImageData
 readPng b = do
   chunks <- pngChunks (BS.drop 8 b)
   ihdr <- maybe (Left "PNG の IHDR がありません") Right (lookup "IHDR" chunks)
+  -- the width and the height from 1 to 2^31 - 1, checked as Int64 before they are Int (docs/adr ADR 0247)
   if BS.length ihdr < 13 || be32 ihdr 0 == 0 || be32 ihdr 4 == 0 || be32 ihdr 0 > 0x7FFFFFFF || be32 ihdr 4 > 0x7FFFFFFF
     then Left "PNG の IHDR が壊れています"
     else Right ()
-  let w = be32 ihdr 0
-      h = be32 ihdr 4
+  let w = fromIntegral (be32 ihdr 0) :: Int
+      h = fromIntegral (be32 ihdr 4) :: Int
       depth = fromIntegral (BS.index ihdr 8) :: Int
       ctype = BS.index ihdr 9
       interlace = BS.index ihdr 12
@@ -269,12 +275,15 @@ pngChunks :: ByteString -> Either String [(ByteString, ByteString)]
 pngChunks b
   | BS.length b < 12 = Right []
   | otherwise =
-      let len = be32 b 0
+      -- the length compared as Int64 with the bytes left, so that one of 2^31 or more is cut short in wasm32 too (docs/adr ADR 0247)
+      let len64 = be32 b 0
           name = BS.take 4 (BS.drop 4 b)
-          dat = BS.take len (BS.drop 8 b)
-       in if BS.length dat < len
+       in if len64 > fromIntegral (BS.length b - 8)
             then Left "PNG のチャンクが途中で切れています"
-            else if name == "IEND" then Right [] else ((name, dat) :) <$> pngChunks (BS.drop (12 + len) b)
+            else
+              let len = fromIntegral len64
+                  dat = BS.take len (BS.drop 8 b)
+               in if name == "IEND" then Right [] else ((name, dat) :) <$> pngChunks (BS.drop (12 + len) b)
 
 -- | Reverses the PNG scanline filters (None, Sub, Up, Average, Paeth).
 unfilterPng :: Int -> Int -> Int -> ByteString -> Either String ByteString

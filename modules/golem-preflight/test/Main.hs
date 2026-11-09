@@ -6,7 +6,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Length (Sp (..))
-import Golem.Pdf (ColorSpace (..), ColorUse (..), Drawing (..), FigureContent (..), ImageData (..), ImportedPage (..), Obj (..), X4Problem (..))
+import Golem.Pdf (ColorSpace (..), ColorUse (..), Drawing (..), FigureContent (..), ImageData (..), ImportedPage (..), ObjOf (..), X4Problem (..))
 import Golem.Pdf.Rect (Rect (..))
 import Golem.Preflight
 import Golem.Preflight.Rules

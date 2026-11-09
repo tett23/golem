@@ -29,6 +29,7 @@ module Golem.Project.Manifest
     decodeStrictWith,
     naturalOf,
     naturalIntOf,
+    maxNaturalInt,
     readTomlTable,
     positionSpan,
   )
@@ -36,6 +37,7 @@ where
 
 import Control.Monad (zipWithM_)
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
+import Data.Int (Int32)
 import Data.List (isPrefixOf, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -749,9 +751,15 @@ naturalOf = fromValue
 {- | A natural number that the layout uses as an 'Int' (docs/adr ADR
 0102): the field is a 'Natural', and the upper bound is checked here, where
 the value has its position; one past the range of 'Int' is the message of
-toml-parser for it.
+toml-parser for it. The bound is 2^31 - 1, the 'Int' of wasm32, on every
+target, so that the native builds and golem.wasm take the same values
+(docs/adr ADR 0247).
 -}
 naturalIntOf :: Value' l -> Matcher l Natural
 naturalIntOf v =
   naturalOf v >>= \n ->
-    if n > fromIntegral (maxBound :: Int) then failAt (valueAnn v) "integer out of range for Int" else pure n
+    if n > maxNaturalInt then failAt (valueAnn v) "integer out of range for Int" else pure n
+
+-- | The largest natural number used as an 'Int': 2^31 - 1 on every target (docs/adr ADR 0247).
+maxNaturalInt :: Natural
+maxNaturalInt = fromIntegral (maxBound :: Int32)

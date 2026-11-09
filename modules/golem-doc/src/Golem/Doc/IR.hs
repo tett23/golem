@@ -59,11 +59,11 @@ import Golem.Syntax.Span
 import Numeric.Natural (Natural)
 
 {- | Whether an integer is within the CDDL @int64@ (golem-doc ADR 0006):
-from -2^63 to 2^63 - 1, the range of the integers of the IR. It is the
-range of 'Int' too.
+from -2^63 to 2^63 - 1, the range of the integers of the IR, on every
+target (docs/adr ADR 0247).
 -}
 inInt64 :: Integer -> Bool
-inInt64 n = n >= toInteger (minBound :: Int) && n <= toInteger (maxBound :: Int)
+inInt64 n = n >= toInteger (minBound :: Int64) && n <= toInteger (maxBound :: Int64)
 
 {- | The ABI version shared with plugins. It goes up by one when the ABI
 changes after the release that has it, and at most once between two

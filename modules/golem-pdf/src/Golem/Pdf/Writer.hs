@@ -24,7 +24,8 @@ module Golem.Pdf.Writer
     FontProgram (..),
     Font (..),
     Document (..),
-    Obj (..),
+    Obj,
+    ObjOf (..),
     PdfObjects (..),
     documentObjects,
     writePdf,
@@ -840,8 +841,9 @@ annotationObject key (LinkAnnotation r (UriAction u) _ contents) =
 {- | The Form XObjects of PDF figures from object @base@ (ADR 0008): each
 form, then the objects of its page not yet written, in the order of the
 page. Pages of one file share their objects (by the key of each object in
-the file). Returns the number of each form, the objects and the next
-number.
+the file, an 'ObjNum', which is numbered again as an 'Int' of the PDF
+written; docs/adr ADR 0247). Returns the number of each form, the objects
+and the next number.
 -}
 formObjects :: Int -> Int -> [(FormRef, FormContent)] -> (Map FormRef Int, [Obj], Int)
 formObjects srgbRef base forms =
@@ -853,17 +855,23 @@ formObjects srgbRef base forms =
             remap = renumber (\k -> if k == 0 then Just srgbRef else Map.lookup (ipFile ip, k) nums')
             objs = formObject remap ip : [remap o | k <- new, Just o <- [lookup k (ipObjects ip)]]
          in (Map.insert f next fm, nums', acc <> [objs], next + 1 + length new)
-      (formNums, _, objss, after) = foldl step (Map.empty, Map.empty :: Map (ByteString, Int) Int, [], base) forms
+      (formNums, _, objss, after) = foldl step (Map.empty, Map.empty :: Map (ByteString, ObjNum) Int, [], base) forms
    in (formNums, concat objss, after)
 
 -- | The references of an object renumbered; one with no number becomes null.
-renumber :: (Int -> Maybe Int) -> Obj -> Obj
+renumber :: (a -> Maybe Int) -> ObjOf a -> Obj
 renumber f = \case
   ORef k -> maybe ONull ORef (f k)
   ODict kvs -> ODict [(k, renumber f v) | (k, v) <- kvs]
   OArr xs -> OArr (map (renumber f) xs)
   OStream kvs b -> OStream [(k, renumber f v) | (k, v) <- kvs] b
-  o -> o
+  OName n -> OName n
+  OInt i -> OInt i
+  OReal r -> OReal r
+  OStr b -> OStr b
+  OHex b -> OHex b
+  OBool b -> OBool b
+  ONull -> ONull
 
 {- | The Form XObject of a drawing (ADR 0009): its size as BBox, a Matrix
 that maps it to the unit square, and GolemSRGB as its only resource.
@@ -884,7 +892,7 @@ drawnObject srgbRef d =
 {- | The Form XObject of a page of a PDF figure (ADR 0008): its crop box as
 BBox, and a Matrix that turns it by Rotate and maps it to the unit square.
 -}
-formObject :: (Obj -> Obj) -> ImportedPage -> Obj
+formObject :: (ObjOf ObjNum -> Obj) -> ImportedPage -> Obj
 formObject remap ip =
   let (x0, y0, x1, y1) = ipBox ip
       w = x1 - x0

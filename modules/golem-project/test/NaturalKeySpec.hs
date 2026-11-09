@@ -68,5 +68,22 @@ tests =
         let src = manifestOf "[[metadata.printings]]\nedition = -1\nprinting = 1\ndate = 2026-10-11\n"
         manifestErrors src @?= [("G02103", "metadata.printings[0].edition には 0 以上の整数を書きます", offsetOf src "= -1" + 2)],
       testCase "printing = 0 keeps G03001" $
-        map (\(c, _, _) -> c) (manifestErrors (manifestOf "[[metadata.printings]]\nedition = 1\nprinting = 0\ndate = 2026-10-11\n")) @?= ["G03001"]
+        map (\(c, _, _) -> c) (manifestErrors (manifestOf "[[metadata.printings]]\nedition = 1\nprinting = 0\ndate = 2026-10-11\n")) @?= ["G03001"],
+      testGroup "I9: the upper bound is 2^31 - 1 on every target (docs/adr ADR 0247)" $
+        [ testCase ("I9: " <> name <> " = " <> T.unpack v <> " is " <> if ok then "taken" else "refused at its value") $
+            let (errs, src) = check v
+             in if ok then errs @?= [] else errs @?= [(code, msg, offsetOf src v)]
+        | (name, check, code, msg) <- keys,
+          (v, ok) <- [("2147483647", True), ("2147483648", False), ("9223372036854775807", False)]
+        ]
     ]
+  where
+    outOfInt path = path <> " の整数が大きすぎるか小さすぎます"
+    keys =
+      [ ("edition of a printing", \v -> let src = manifestOf ("[[metadata.printings]]\nedition = " <> v <> "\nprinting = 1\ndate = 2026-10-11\n") in (manifestErrors src, src), "G03001", outOfInt "metadata.printings[0].edition"),
+        ("characters of [page.grid]", \v -> let src = gridWith "characters" v in (styleErrors src, src), "G03006", outOfInt "page.grid.characters"),
+        ("lines of [page.grid]", \v -> let src = gridWith "lines" v in (styleErrors src, src), "G03006", outOfInt "page.grid.lines"),
+        ("columns of [page.grid]", \v -> let src = grid <> "columns = " <> v <> "\ncolumn-gap = \"1zw\"\n" in (styleErrors src, src), "G03006", outOfInt "page.grid.columns"),
+        ("lines of a heading", \v -> let src = "[headings.1]\nlines = " <> v <> "\n" in (styleErrors src, src), "G03006", outOfInt "headings.1.lines"),
+        ("columns of [index]", \v -> let src = "[index]\ncolumns = " <> v <> "\n" in (styleErrors src, src), "G03025", "[index] の columns は 1 以上の整数です (index.columns)")
+      ]

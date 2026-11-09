@@ -59,7 +59,19 @@ int64Tests :: TestTree
 int64Tests =
   testGroup
     "the integers of the IR are int64 (golem-doc ADR 0006)"
-    [ testCase "the ends of int64 survive the CBOR round trip" $ do
+    [ testGroup
+        "I8: inInt64 n holds when, and only when, -2^63 <= n <= 2^63 - 1, on every target (docs/adr ADR 0247)"
+        [ testCase ("I8: inInt64 " <> show n <> " is " <> show ok) (inInt64 n @?= ok)
+        | (n, ok) <-
+            [ (2 ^ (31 :: Int) - 1, True),
+              (2 ^ (31 :: Int), True),
+              (2 ^ (63 :: Int) - 1, True),
+              (2 ^ (63 :: Int), False),
+              (negate (2 ^ (63 :: Int)), True),
+              (negate (2 ^ (63 :: Int)) - 1, False)
+            ]
+        ],
+      testCase "the ends of int64 survive the CBOR round trip" $ do
         let is = [Number sp n Nothing | n <- [2 ^ (63 :: Int) - 1, negate (2 ^ (63 :: Int))]]
         decodeInlines (encodeInlines is) @?= Right is,
       testCase "a Number of 2^63 is out of range" $

@@ -317,7 +317,7 @@ scaledRunTests =
     ]
 
 tests :: TestTree
-tests = testGroup "images and scaled runs (golem-pdf ADR 0001)" [filterTests, pngTests, trnsTests, jpegTests, rejectionTests, hostileTests, scaledRunTests]
+tests = testGroup "images and scaled runs (golem-pdf ADR 0001)" [filterTests, pngTests, trnsTests, jpegTests, rejectionTests, hostileTests, intWidthTests, scaledRunTests]
 
 -- ------------------------------------------------------------------ hostile images
 
@@ -399,3 +399,38 @@ hostileTests =
           Left (e :: SomeException) -> assertFailure ("readImage threw: " <> show e)
           Right x -> x @?= Right Nothing
     ]
+
+-- ------------------------------------------------------------------ the width of Int
+
+{- | I7 (docs/adr ADR 0247): the IHDR is taken when, and only when, its
+width and height are from 1 to 2^31 - 1; a chunk longer than the bytes
+left is cut short, whatever its length, and reading it ends.
+-}
+intWidthTests :: TestTree
+intWidthTests =
+  testGroup
+    "I7: the IHDR and the length of a chunk, independent of the width of Int (docs/adr ADR 0247)"
+    ( [ testCase ("I7: an IHDR of width " <> show w <> " is " <> if ok then "taken" else "refused") $ do
+          r <- total (png [ihdr w 1 8 0 0, idat [0, 0]])
+          if ok then assertBool (show r) (r /= Left ihdrBroken) else r @?= Left ihdrBroken
+      | (w, ok) <- [(0, False), (1, True), (2 ^ (31 :: Int) - 1, True), (2 ^ (31 :: Int), False), (2 ^ (32 :: Int) - 1, False)]
+      ]
+        <> [ testCase ("I7: an IHDR of height " <> show h <> " is " <> if ok then "taken" else "refused") $ do
+               r <- total (png [ihdr 1 h 8 0 0, idat [0, 0]])
+               if ok then assertBool (show r) (r /= Left ihdrBroken) else r @?= Left ihdrBroken
+           | (h, ok) <- [(0, False), (1, True), (2 ^ (31 :: Int) - 1, True), (2 ^ (31 :: Int), False), (2 ^ (32 :: Int) - 1, False)]
+           ]
+        <> [ testCase "I7: a chunk as long as the bytes left is read" $ do
+               r <- total (lastChunk 5 5)
+               r @?= Right (BS.pack [0])
+           ]
+        <> [ testCase ("I7: a chunk of length " <> show n <> ", longer than the bytes left, is cut short, within the time limits") $ do
+               r <- withinTimeLimits hangLimits (total (lastChunk n 5))
+               r @?= Left "PNG のチャンクが途中で切れています"
+           | n <- [6, 2 ^ (31 :: Int), 2 ^ (32 :: Int) - 13, 2 ^ (32 :: Int) - 1]
+           ]
+    )
+  where
+    ihdrBroken = "PNG の IHDR が壊れています"
+    -- a 1×1 grey PNG and, last, a chunk whose length says n and that has k bytes after its name, without a CRC
+    lastChunk n k = pngSignature <> ihdr 1 1 8 0 0 <> idat [0, 0] <> be32 n <> "tEXt" <> BS.replicate k 0x41
