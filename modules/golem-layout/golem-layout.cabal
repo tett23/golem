@@ -66,6 +66,7 @@ test-suite golem-layout-test
   ghc-options:      -threaded "-with-rtsopts=-N -qg -A64m"
   other-modules:    AkiTableSpec
                     AlignSpec
+                    CharClassSpec
                     CodeJapaneseSpec
                     CodeSpaceSpec
                     CodeStopSpec
