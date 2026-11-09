@@ -230,7 +230,7 @@ channelTests =
         p' <- answering (itemsResponse [item "glossary" (Just "") [Text callSpan "語"]])
         shout p' @?= Left (BadOutput "読みの順のチャネルの項目には読みが要ります: glossary"),
       testCase "an item whose body holds a note is bad output" $ do
-        p <- answering (itemsResponse [item "people" Nothing [Note callSpan 1 [Text callSpan "注"]]])
+        p <- answering (itemsResponse [item "people" Nothing [Note callSpan 1 (noteBody callSpan [Text callSpan "注"])]])
         shout p @?= Left (BadOutput "チャネルの項目の本文に置けない要素があります")
     ]
   where

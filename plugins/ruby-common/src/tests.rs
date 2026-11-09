@@ -145,7 +145,7 @@ fn doc() -> Document {
                 [
                     vec![
                         t("a"),
-                        Inline::Note { span: SP, number: 1, body: vec![t("note")] },
+                        Inline::Note { span: SP, number: 1, body: note_body(SP, vec![t("note")]) },
                         Inline::Color { span: SP, swatch: "red".into(), body: vec![t("red")] },
                         Inline::Ruby { span: SP, segments: vec![RubySegment { base: vec![t("参謀")], reading: Some("さんぼう".into()) }] },
                     ],

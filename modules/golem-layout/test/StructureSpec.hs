@@ -42,9 +42,9 @@ structureTests =
         nodes @?= [NodeLeaf 0, NodeElem RoleRuby [NodeElem RoleRubyBase [NodeLeaf 1], NodeElem RoleRubyText [NodeLeaf 2]], NodeLeaf 3],
       testCase "a note mark is a Reference, then the note; two notes of one span count apart" $ do
         let nsp = mkSpan (FileId 1) 3 9
-            note = IR.Note nsp 1 [txt "注"]
+            note = IR.Note nsp 1 (IR.noteBody nsp [txt "注"])
             (items, _, nodes) = composeInlinesTree env [txt "あ", note, note]
-        nodes @?= [NodeLeaf 0, NodeElem RoleReference [NodeLeaf 1], NodeNote nsp 0 1 [txt "注"], NodeLeaf 2, NodeElem RoleReference [NodeLeaf 3], NodeNote nsp 1 1 [txt "注"], NodeLeaf 4]
+        nodes @?= [NodeLeaf 0, NodeElem RoleReference [NodeLeaf 1], NodeNote nsp 0 1 [[txt "注"]], NodeLeaf 2, NodeElem RoleReference [NodeLeaf 3], NodeNote nsp 1 1 [[txt "注"]], NodeLeaf 4]
         [l | (t, l) <- leaves items, t /= "あ"] @?= [Leaf [7, 0] 1, Leaf [7, 0] 3],
       testCase "code inside text is a Code; colour is not an element" $ do
         let (_, _, nodes) = composeInlinesTree env [IR.Color sp "red" [txt "a", IR.CharStyle sp "code" [txt "x"]], txt "b"]

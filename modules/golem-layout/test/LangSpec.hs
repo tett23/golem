@@ -161,13 +161,13 @@ langTests =
         texts its @?= ["porte-", "monnaie"]
         hyphens its @?= [ExplicitHyphen],
       testCase "the body of a note or a sidenote is in the language of the place of its mark" $ do
-        let note = IR.Note sp 1 [t "n"]
-            side = IR.Sidenote sp 1 [t "s"]
+        let note = IR.Note sp 1 (IR.noteBody sp [t "n"])
+            side = IR.Sidenote sp 1 (IR.noteBody sp [t "s"])
             bodies is = [b | AnchorNote _ _ _ b <- snd (composeInlines env is)] <> [b | AnchorSidenote _ _ _ b <- snd (composeInlines env is)]
-        bodies [t "a", note, side] @?= [[t "n"], [t "s"]]
-        bodies [lang "fr" [t "a", note, side]] @?= [[lang "fr" [t "n"]], [lang "fr" [t "s"]]]
-        [b | AnchorNote _ _ _ b <- snd (composeInlines (inBlock "en") [note])] @?= [[lang "en" [t "n"]]]
-        [b | NodeNote _ _ _ b <- inlineStructure env [lang "fr" [note]] >>= nodes] @?= [[lang "fr" [t "n"]]],
+        bodies [t "a", note, side] @?= [[[t "n"]], [[t "s"]]]
+        bodies [lang "fr" [t "a", note, side]] @?= [[[lang "fr" [t "n"]]], [[lang "fr" [t "s"]]]]
+        [b | AnchorNote _ _ _ b <- snd (composeInlines (inBlock "en") [note])] @?= [[[lang "en" [t "n"]]]]
+        [b | NodeNote _ _ _ b <- inlineStructure env [lang "fr" [note]] >>= nodes] @?= [[[lang "fr" [t "n"]]]],
       testCase "the patterns of a language: English for en, en-GB and outside a span, none for fr and ja" $ do
         map (isJust . patternsFor) [Just "en", Just "en-GB", Just "EN-us", Nothing] @?= [True, True, True, True]
         map (isNothing . patternsFor) [Just "fr", Just "ja", Just "de-CH-1996"] @?= [True, True, True]

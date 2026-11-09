@@ -106,8 +106,8 @@ withRuby = \case
   Number s n st -> Number s n st
   Ref s k l -> Ref s k l
   Deferred s e -> Deferred s e
-  Note s n xs -> Note s n (map withRuby xs)
-  Sidenote s n xs -> Sidenote s n (map withRuby xs)
+  Note s n bs -> Note s n bs
+  Sidenote s n bs -> Sidenote s n bs
   IndexMark s e -> IndexMark s e
   Cite s k -> Cite s k
   ProofComment s t -> ProofComment s t
@@ -134,8 +134,8 @@ encodeInline = \case
     j <- gets (Seq.length . cDeferred)
     modify' (\s -> s {cDeferred = cDeferred s Seq.|> e})
     at sp "Deferred" [con "Opaque" [nat j]]
-  Note sp n xs -> encodeInlines xs >>= \b -> node "Note" [b] (Hidden sp Nothing Nothing n)
-  Sidenote sp n xs -> encodeInlines xs >>= \b -> node "Sidenote" [b] (Hidden sp Nothing Nothing n)
+  Note sp n bs -> encodeBlocks bs >>= \b -> node "Note" [b] (Hidden sp Nothing Nothing n)
+  Sidenote sp n bs -> encodeBlocks bs >>= \b -> node "Sidenote" [b] (Hidden sp Nothing Nothing n)
   IndexMark sp (IndexEntry ts rs) -> at sp "IndexMark" [RList (map str ts), RList (map str rs)]
   Cite sp k -> at sp "Cite" [str k]
   ProofComment sp t -> at sp "ProofComment" [str t]
@@ -350,7 +350,7 @@ inlineD cx = \case
       withNumber mk =
         let (xs, Hidden s _ _ num) = fieldsOf cx 1 fs
          in case xs of
-              [body] -> mk s num <$> inlinesD cx body
+              [body] -> mk s num <$> listD (blockD cx) body
               _ -> bad ("欄の数が合いません: " <> c)
   r -> bad ("インラインではない値です: " <> shown r)
   where

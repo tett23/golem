@@ -188,8 +188,8 @@ inlinesOf = concatMap (\(Block _ _ _ b) -> inBody b)
       Kenten _ _ xs -> deep xs
       Color _ _ xs -> deep xs
       CharStyle _ _ xs -> deep xs
-      Note _ _ xs -> deep xs
-      Sidenote _ _ xs -> deep xs
+      Note _ _ bs -> concatMap deep (noteParagraphs bs)
+      Sidenote _ _ bs -> concatMap deep (noteParagraphs bs)
       _ -> []
 
 -- | The base and the reading of a segment of ruby.

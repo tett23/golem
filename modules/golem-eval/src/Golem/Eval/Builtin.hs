@@ -169,5 +169,7 @@ builtinBlockCommands =
     -- docs/adr ADR 0187
     "lang",
     -- docs/adr/0262
-    "column-widths"
+    "column-widths",
+    -- docs/adr/0263
+    "note"
   ]

@@ -330,8 +330,18 @@ pub fn run(cfg: &Config, xs: Vec<Inline>, diags: &mut Vec<Diagnostic>) -> Vec<In
     let xs: Vec<Inline> = xs
         .into_iter()
         .map(|x| match x {
-            Inline::Note { span, number, body } => Inline::Note { span, number, body: run(cfg, body, diags) },
-            Inline::Sidenote { span, number, body } => Inline::Sidenote { span, number, body: run(cfg, body, diags) },
+            Inline::Note { span, number, mut body } => {
+                for p in note_paragraphs_mut(&mut body) {
+                    *p = run(cfg, std::mem::take(p), diags);
+                }
+                Inline::Note { span, number, body }
+            }
+            Inline::Sidenote { span, number, mut body } => {
+                for p in note_paragraphs_mut(&mut body) {
+                    *p = run(cfg, std::mem::take(p), diags);
+                }
+                Inline::Sidenote { span, number, body }
+            }
             Inline::ChannelItem { span, channel, key, reading, body } => Inline::ChannelItem { span, channel, key, reading, body: run(cfg, body, diags) },
             other => other,
         })
@@ -518,7 +528,7 @@ mod tests {
 
     #[test]
     fn the_body_of_a_note_is_a_run_of_its_own() {
-        let note = |b| Inline::Note { span: S, number: 1, body: b };
+        let note = |b| Inline::Note { span: S, number: 1, body: note_body(S, b) };
         assert_eq!(go(vec![t("1"), note(vec![t("12")]), t("2")]), (vec![t("1"), note(vec![num(12)]), t("2")], none()));
     }
 

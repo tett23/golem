@@ -759,8 +759,8 @@ inlineItems = \case
   Link _ _ xs -> concatMap inlineItems xs
   Lang _ _ xs -> concatMap inlineItems xs
   Resolved _ _ _ xs -> concatMap inlineItems xs
-  Note _ _ xs -> concatMap inlineItems xs
-  Sidenote _ _ xs -> concatMap inlineItems xs
+  Note _ _ nb -> concatMap inlineItems (concat (noteParagraphs nb))
+  Sidenote _ _ nb -> concatMap inlineItems (concat (noteParagraphs nb))
   _ -> []
 
 documentItems :: Document -> [(SrcSpan, ChannelItem)]
@@ -777,8 +777,8 @@ inlineSpans = \case
   Number s _ _ -> [s]
   Ref s _ _ -> [s]
   Deferred s _ -> [s]
-  Note s _ xs -> s : concatMap inlineSpans xs
-  Sidenote s _ xs -> s : concatMap inlineSpans xs
+  Note s _ nb -> s : map blockSpan nb <> concatMap inlineSpans (concat (noteParagraphs nb))
+  Sidenote s _ nb -> s : map blockSpan nb <> concatMap inlineSpans (concat (noteParagraphs nb))
   IndexMark s _ -> [s]
   Cite s _ -> [s]
   ProofComment s _ -> [s]
@@ -796,8 +796,8 @@ inlineDeferred = \case
   Kenten _ _ xs -> concatMap inlineDeferred xs
   Color _ _ xs -> concatMap inlineDeferred xs
   CharStyle _ _ xs -> concatMap inlineDeferred xs
-  Note _ _ xs -> concatMap inlineDeferred xs
-  Sidenote _ _ xs -> concatMap inlineDeferred xs
+  Note _ _ nb -> concatMap inlineDeferred (concat (noteParagraphs nb))
+  Sidenote _ _ nb -> concatMap inlineDeferred (concat (noteParagraphs nb))
   ChannelItem _ c -> concatMap inlineDeferred (ciBody c)
   Link _ _ xs -> concatMap inlineDeferred xs
   Lang _ _ xs -> concatMap inlineDeferred xs

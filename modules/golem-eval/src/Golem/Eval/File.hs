@@ -31,7 +31,7 @@ module Golem.Eval.File
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (forM, unless)
+import Control.Monad (forM, unless, when)
 import Control.Monad.State.Strict
 import Data.Bifunctor qualified as Bi
 import Data.ByteString (ByteString)
@@ -189,7 +189,11 @@ data St = St
     -- | the line of each @number by the span of its block (G04007)
     stNumberSites :: !(Map SrcSpan SrcSpan),
     -- | the images of the figures of plugins that passed the checks (docs/adr/0123)
-    stImages :: !(Map Text ByteString)
+    stImages :: !(Map Text ByteString),
+    -- | each [note name] in order: its span and its name (docs/adr/0263)
+    stNoteRefs :: ![(SrcSpan, Text)],
+    -- | each @note in order: its name, its span and its body, Nothing for one of a name already defined (docs/adr/0263)
+    stNoteDefs :: ![(Text, SrcSpan, [Block])]
   }
 
 type M = State St
@@ -237,8 +241,10 @@ evalFile ctx0 (A.File fid blocks0) =
       ctx = (withFileStyles local ctx0) {ctxSource = source}
       blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
       -- meta and vars, which every file reads without @import (docs/adr/0185)
-      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty Map.empty
-      (bs0, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
+      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty Map.empty [] []
+      (bsEval, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
+      -- the notes written by name take their bodies (docs/adr/0263)
+      (bs0, noteDiags) = namedNotes (stNoteRefs st) (stNoteDefs st) bsEval
       (bs, nestedDiags) = nestedBreaks bs0
       breakDiags = nestedDiags <> conflictingBreaks bs <> blankLinesInRow bs
       doc0 = Document fid bs
@@ -251,7 +257,7 @@ evalFile ctx0 (A.File fid blocks0) =
         { erDocument = applyRegexStyles rules doc,
           erExports = stVars st,
           erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st),
-          erDiagnostics = stDiags st <> breakDiags <> filterDiags <> unwritableText (applyRegexStyles rules doc),
+          erDiagnostics = stDiags st <> noteDiags <> breakDiags <> filterDiags <> unwritableText (applyRegexStyles rules doc),
           erSource = ctxSource ctx,
           erStyles = local,
           erNumberSites = stNumberSites st,
@@ -309,8 +315,8 @@ unwritableText = concatMap blockDiags . docBlocks
       Color _ _ xs -> inlines xs
       CharStyle _ _ xs -> inlines xs
       Tcy sp t -> at sp t
-      Note _ _ xs -> inlines xs
-      Sidenote _ _ xs -> inlines xs
+      Note _ _ bs -> concatMap inlines (noteParagraphs bs)
+      Sidenote _ _ bs -> concatMap inlines (noteParagraphs bs)
       IndexMark sp e -> concatMap (at sp) (ieTerms e <> ieReadings e)
       ProofComment sp t -> at sp t
       Number {} -> []
@@ -555,6 +561,8 @@ standalone ctx sp (A.Located nsp name) args body = case name of
       Right d | d >= 1 && d <= 6 -> pure [block sp (ChannelOutput (TocOutput (fromIntegral d)))]
       Left NaturalReported -> pure []
       _ -> err "G02025" sp "@toc の depth は 1 から 6 の整数です" >> pure []
+  -- the body of a note of more than one paragraph (docs/adr/0263)
+  "note" -> noteDefinition ctx sp args body
   "index" -> pure [block sp (ChannelOutput IndexOutput)]
   "bibliography" -> pure [block sp (ChannelOutput BibliographyOutput)]
   "channel" -> channelBlock ctx sp args
@@ -782,8 +790,8 @@ nameErrors ctx is bs =
       Kenten _ _ xs -> xs
       Color _ _ xs -> xs
       CharStyle _ _ xs -> xs
-      Note _ _ xs -> xs
-      Sidenote _ _ xs -> xs
+      Note _ _ nb -> concat (noteParagraphs nb)
+      Sidenote _ _ nb -> concat (noteParagraphs nb)
       ChannelItem _ c -> ciBody c
       Link _ _ xs -> xs
       Lang _ _ xs -> xs
@@ -818,8 +826,8 @@ fillKenten ctx = \case
   Kenten s sh xs -> Kenten s sh (map (fillKenten ctx) xs)
   Color s c xs -> Color s c (map (fillKenten ctx) xs)
   CharStyle s c xs -> CharStyle s c (map (fillKenten ctx) xs)
-  Note s n xs -> Note s n (map (fillKenten ctx) xs)
-  Sidenote s n xs -> Sidenote s n (map (fillKenten ctx) xs)
+  Note s n bs -> Note s n (mapNoteBody (map (fillKenten ctx)) bs)
+  Sidenote s n bs -> Sidenote s n (mapNoteBody (map (fillKenten ctx)) bs)
   Link s u xs -> Link s u (map (fillKenten ctx) xs)
   Lang s l xs -> Lang s l (map (fillKenten ctx) xs)
   Resolved s k l xs -> Resolved s k l (map (fillKenten ctx) xs)
@@ -918,6 +926,10 @@ attributedGroup ctx sp cmds target = case target of
       A.Located _ (A.BlockCommand {}) -> True
       _ -> False
     foldM' f z = foldl (\acc x -> acc >>= \a -> f a x) (pure z)
+    -- @note takes no attribute (docs/adr/0263)
+    withAttrs attrs0 t@(A.Located _ (A.BlockCommand (A.Located _ "note") _ _)) = do
+      mapM_ (\(A.Located asp c) -> case c of A.BlockCommand (A.Located _ n) _ _ -> err "G02013" asp ("@" <> n <> " は @note には付けられません"); _ -> pure ()) attrs0
+      evalBlock ctx t
     withAttrs attrs0 t = do
       attrs <- catMaybes <$> mapM uniqueAttrKeys attrs0
       -- every line of an attribute already given (golem-eval ADR 0003)
@@ -1300,6 +1312,106 @@ columnWidthOf t
         WidthZw q -> ColumnZw q
         WidthPercent q -> ColumnPercent q
 
+-- | The message of G02142 (docs/adr/0263).
+noteNameMessage :: Text
+noteNameMessage = "注の名前を一つの語で書きます。名前は英小文字、数字、-、_ で書きます"
+
+{- | @note name with its body (docs/adr/0263): the body evaluated here,
+its paragraphs the body of the note; G02142 for a name not of one word,
+G02140 for a name already defined (the first wins), G02141 at each block
+of the body that is not a paragraph, which is dropped, G02143 for no body,
+G02013 for @style on a paragraph of the body, whose style is dropped.
+It puts out nothing where it is.
+-}
+noteDefinition :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+noteDefinition ctx sp args body = case args of
+  [A.Located _ (A.Positional v)] | Just name <- nameArg v, validLabel name -> do
+    defined <- gets (any (\(n, _, _) -> n == name) . stNoteDefs)
+    when defined $ err "G02140" sp ("同じ名前の注の本文を二度書いています: " <> name)
+    when (null body) $ err "G02143" sp ("@note に本文がありません: " <> name)
+    bs <- concat <$> mapM inBody body
+    unless defined $ modify' (\s -> s {stNoteDefs = stNoteDefs s <> [(name, sp, bs)]})
+    pure []
+  _ -> err "G02142" sp noteNameMessage >> pure []
+  where
+    inBody lb@(A.Located bsp b) = case b of
+      A.Paragraph _ -> concatMap paragraphOf <$> evalBlock ctx lb
+      A.Attributed cmds t@(Just (A.Located _ (A.Paragraph _))) | any isStyleCommand cmds -> do
+        mapM_ (\(A.Located csp _) -> err "G02013" csp "@style は注の本文には付けられません") (filter isStyleCommand cmds)
+        concatMap paragraphOf <$> evalBlock ctx (A.Located bsp (A.Attributed (filter (not . isStyleCommand) cmds) t))
+      A.Attributed _ (Just (A.Located _ (A.Paragraph _))) -> concatMap paragraphOf <$> evalBlock ctx lb
+      -- the body form of @style: G02013, its paragraphs without the style
+      A.BlockCommand (A.Located _ "style") _ inner -> do
+        err "G02013" bsp "@style は注の本文には付けられません"
+        concat <$> mapM inBody [A.Located psp (A.Paragraph (joinSoftBreaks is)) | A.Located psp (A.Paragraph is) <- inner]
+      A.ErrorBlock -> pure []
+      _ -> err "G02141" bsp "注の本文には段落だけを書けます" >> pure []
+    -- a paragraph with a style (a body form of @style) loses it with G02013
+    paragraphOf = \case
+      Block bsp l lang (Paragraph Nothing is) -> [Block bsp l lang (Paragraph Nothing is)]
+      Block bsp l lang (Paragraph (Just _) is) -> [Block bsp l lang (Paragraph Nothing is)]
+      _ -> []
+
+{- | The notes written by name take the bodies of their @note
+(docs/adr/0263): G02137 for a name no @note of the file defines, G02139
+for a second [note] of the same name, which puts out nothing, as one of
+a body left without a paragraph does; G02138 for a @note no [note]
+names.
+-}
+namedNotes :: [(SrcSpan, Text)] -> [(Text, SrcSpan, [Block])] -> [Block] -> ([Block], [Diagnostic])
+namedNotes refs defs bs
+  | null refs && null defs = (bs, [])
+  | otherwise = (mapBlockInlines fill bs, refDiags <> unused)
+  where
+    bodies = Map.fromList [(n, body) | (n, _, body) <- defs]
+    firsts = Map.fromListWith (\_ a -> a) [(n, sp) | (sp, n) <- refs]
+    refDiags =
+      concat
+        [ case Map.lookup n bodies of
+            Nothing -> [diagnostic "G02137" Error sp ("定義されていない注の名前です: " <> n)]
+            Just _
+              | Map.lookup n firsts /= Just sp -> [diagnostic "G02139" Error sp ("一つの注の本文を二つ以上の [note] が指しています: " <> n)]
+              | otherwise -> []
+        | (sp, n) <- refs
+        ]
+    unused = [diagnostic "G02138" Error sp ("使われない注の本文です: " <> n) | (n, sp, _) <- defs, Map.notMember n firsts]
+    names = Map.fromList refs
+    fill = \case
+      Note sp k []
+        | Just n <- Map.lookup sp names ->
+            case Map.lookup n bodies of
+              Just body@(_ : _) | Map.lookup n firsts == Just sp -> [Note sp k body]
+              _ -> []
+      other -> [other]
+
+{- | Blocks with each inline at any depth replaced by what a function
+gives for it, inside lists, definition lists, tables, captions and the
+containers of inlines (docs/adr/0263).
+-}
+mapBlockInlines :: (Inline -> [Inline]) -> [Block] -> [Block]
+mapBlockInlines f = map blk
+  where
+    blk b = b {blockBody = body (blockBody b)}
+    body = \case
+      Paragraph st is -> Paragraph st (inls is)
+      Heading l a is -> Heading l a {haTocTitle = inls <$> haTocTitle a} (inls is)
+      BulletList items -> BulletList [i {itemBlocks = map blk (itemBlocks i)} | i <- items]
+      OrderedList items -> OrderedList [i {itemBlocks = map blk (itemBlocks i)} | i <- items]
+      DefList gs -> DefList [DefGroup (map inls ts) (map (map blk) ds) | DefGroup ts ds <- gs]
+      TableBlock t -> TableBlock t {tableCaption = inls <$> tableCaption t, tableHeader = map inls (tableHeader t), tableRows = map (map inls) (tableRows t)}
+      CodeBlock c -> CodeBlock c {codeCaption = inls <$> codeCaption c}
+      FigureBlock fig -> FigureBlock fig {figCaption = map blk (figCaption fig)}
+      other -> other
+    inls = concatMap (f . inner)
+    inner = \case
+      Kenten sp sh xs -> Kenten sp sh (inls xs)
+      Color sp c xs -> Color sp c (inls xs)
+      CharStyle sp c xs -> CharStyle sp c (inls xs)
+      Link sp u xs -> Link sp u (inls xs)
+      Lang sp l xs -> Lang sp l (inls xs)
+      Resolved sp k l xs -> Resolved sp k l (inls xs)
+      other -> other
+
 {- | The arguments of @caption as inlines (golem-driver ADR 0023): words
 and strings are text, commands and expressions are themselves, a space
 between two arguments.
@@ -1504,7 +1616,7 @@ them: the diagnostics, and whether the figure passes.
 -}
 figureChecks :: EvalContext -> SrcSpan -> Figure -> ([Diagnostic], Bool)
 figureChecks ctx sp f =
-  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 [] Map.empty Map.empty
+  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 [] Map.empty Map.empty [] []
       (ok, st) = runState (checkFigure sp (fmap isJust . asset ctx sp) f) st0
    in (stDiags st, ok)
 
@@ -2318,14 +2430,23 @@ builtinWith ctx inHeading sp b args slots = do
     Fixed BRefNumber -> refTo RefNumber pos
     Fixed BRefTitle -> refTo RefTitle pos
     Fixed BRefPage -> refTo RefPage pos
-    Fixed BNote -> oneSlot $ \body -> do
-      n <- gets ((+ 1) . stNote)
-      modify' (\s -> s {stNote = n})
-      pure [Note sp n body]
+    -- [note: body], or [note name] of the body of @note name (docs/adr/0263)
+    Fixed BNote -> case (args, slots) of
+      ([], [_]) -> oneSlot $ \body -> do
+        n <- gets ((+ 1) . stNote)
+        modify' (\s -> s {stNote = n})
+        pure [Note sp n (noteBody sp body)]
+      (_ : _, _ : _) -> err "G02038" sp "note は名前を書くと散文スロットを取りません" >> pure []
+      ([A.Located _ (A.Positional v)], []) | Just name <- nameArg v, validLabel name -> do
+        n <- gets ((+ 1) . stNote)
+        modify' (\s -> s {stNote = n, stNoteRefs = stNoteRefs s <> [(sp, name)]})
+        pure [Note sp n []]
+      (_, []) -> err "G02142" sp noteNameMessage >> pure []
+      _ -> err "G02038" sp (builtinName b <> " には散文スロットが一つ必要です") >> pure []
     Fixed BSidenote -> oneSlot $ \body -> do
       n <- gets ((+ 1) . stSidenote)
       modify' (\s -> s {stSidenote = n})
-      pure [Sidenote sp n body]
+      pure [Sidenote sp n (noteBody sp body)]
     Fixed BIndex -> case slots of
       [s] -> do
         -- the levels are split at the / written in the slot (golem-parser ADR 0010)

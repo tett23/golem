@@ -284,8 +284,8 @@ bookHasCode styleOf book = or [any (blockHas (styleOf fid)) bs | Document fid bs
       CharStyle _ n xs -> isCodeCharStyle st n || any (inlineHas st) xs
       Color _ _ xs -> any (inlineHas st) xs
       Kenten _ _ xs -> any (inlineHas st) xs
-      Note _ _ xs -> any (inlineHas st) xs
-      Sidenote _ _ xs -> any (inlineHas st) xs
+      Note _ _ nb -> any (inlineHas st) (concat (noteParagraphs nb))
+      Sidenote _ _ nb -> any (inlineHas st) (concat (noteParagraphs nb))
       -- the title a [ref-title] copies may hold code (docs/adr/0215)
       Resolved _ _ _ xs -> any (inlineHas st) xs
       Ruby _ _ segs -> or [any (inlineHas st) b | RubySegment b _ <- segs]
@@ -380,8 +380,8 @@ kentenRubyNotices book =
       CharStyle _ _ xs -> concatMap (sites inKenten) xs
       Link _ _ xs -> concatMap (sites inKenten) xs
       Resolved _ _ _ xs -> concatMap (sites inKenten) xs
-      Note _ _ xs -> concatMap (sites False) xs
-      Sidenote _ _ xs -> concatMap (sites False) xs
+      Note _ _ nb -> concatMap (sites False) (concat (noteParagraphs nb))
+      Sidenote _ _ nb -> concatMap (sites False) (concat (noteParagraphs nb))
       _ -> []
     -- the outermost kenten in a base
     kentenIn :: InlineF r -> [SrcSpan]

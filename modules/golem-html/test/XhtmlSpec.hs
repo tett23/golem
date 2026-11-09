@@ -210,8 +210,8 @@ twoFileBook :: Int -> Int -> [Int] -> Book
 twoFileBook na nb chapters =
   (bookOf [])
     { bookDocs =
-        [ Document fidA [para 0 [txt "甲", Note (at 1) na [txt "注甲。"]]],
-          Document fidB [Block (atB 0) Nothing Nothing (Paragraph Nothing [txt "乙", Note (atB 1) nb [txt "注乙。"]])]
+        [ Document fidA [para 0 [txt "甲", Note (at 1) na (noteBody (at 1) [txt "注甲。"])]],
+          Document fidB [Block (atB 0) Nothing Nothing (Paragraph Nothing [txt "乙", Note (atB 1) nb (noteBody (atB 1) [txt "注乙。"])])]
         ],
       bookChapterOf = chapters
     }
@@ -237,21 +237,21 @@ chapterNoteTests =
         @?= T.concat
           [ "<p>乙<a epub:type=\"noteref\" class=\"noteref\" href=\"#note-2\" id=\"noteref-2\">2</a></p>\n",
             "<section class=\"notes\">\n<h2>注</h2>\n",
-            "<aside epub:type=\"footnote\" id=\"note-1\"><a href=\"a.xhtml#noteref-1\">1</a> 注甲。</aside>\n",
-            "<aside epub:type=\"footnote\" id=\"note-2\"><a href=\"#noteref-2\">2</a> 注乙。</aside>\n",
+            "<aside epub:type=\"footnote\" id=\"note-1\"><p><a href=\"a.xhtml#noteref-1\">1</a> 注甲。</p></aside>\n",
+            "<aside epub:type=\"footnote\" id=\"note-2\"><p><a href=\"#noteref-2\">2</a> 注乙。</p></aside>\n",
             "</section>\n"
           ],
     testCase "two chapters of a file each keep their notes" $ do
       let book = twoFileBook 1 1 [0, 1]
-      assertBool "a has its notes" ("id=\"note-1\"><a href=\"#noteref-1\">" `T.isInfixOf` pageOf "a.xhtml" cfg0 book)
-      assertBool "b has its notes" ("id=\"note-1\"><a href=\"#noteref-1\">" `T.isInfixOf` pageOf "b.xhtml" cfg0 book),
+      assertBool "a has its notes" ("id=\"note-1\"><p><a href=\"#noteref-1\">" `T.isInfixOf` pageOf "a.xhtml" cfg0 book)
+      assertBool "b has its notes" ("id=\"note-1\"><p><a href=\"#noteref-1\">" `T.isInfixOf` pageOf "b.xhtml" cfg0 book),
     testCase "numbers that meet in a chapter take the place of the file in their ids" $ do
       let book = twoFileBook 1 1 [0, 0]
       assertBool "a" ("href=\"b.xhtml#note-1-1\" id=\"noteref-1-1\"" `T.isInfixOf` pageOf "a.xhtml" cfg0 book)
       let b = pageOf "b.xhtml" cfg0 book
       assertBool "b ref" ("href=\"#note-2-1\" id=\"noteref-2-1\"" `T.isInfixOf` b)
-      assertBool "b note 1" ("id=\"note-1-1\"><a href=\"a.xhtml#noteref-1-1\">1</a>" `T.isInfixOf` b)
-      assertBool "b note 2" ("id=\"note-2-1\"><a href=\"#noteref-2-1\">1</a>" `T.isInfixOf` b),
+      assertBool "b note 1" ("id=\"note-1-1\"><p><a href=\"a.xhtml#noteref-1-1\">1</a>" `T.isInfixOf` b)
+      assertBool "b note 2" ("id=\"note-2-1\"><p><a href=\"#noteref-2-1\">1</a>" `T.isInfixOf` b),
     testCase "the title of the notes is Notes in an English book" $
       assertBool "Notes" ("<h2>Notes</h2>" `T.isInfixOf` pageOf "b.xhtml" cfg0 {hcLanguage = "en"} (twoFileBook 1 2 [0, 0])),
     testCase "the title is not in the navigation of the page" $
@@ -424,17 +424,27 @@ tests =
     testCase "text is escaped for XML" $
       bodyA cfg0 (bookOf [para 0 [txt "a < b & \"c\" > d"]]) @?= "<p>a &lt; b &amp; &quot;c&quot; &gt; d</p>\n",
     testCase "a sidenote is a numbered mark and an aside after the paragraph" $
-      bodyA cfg0 (bookOf [para 0 [txt "本文", Sidenote (at 1) 1 [txt "補足。"], txt "。"]])
+      bodyA cfg0 (bookOf [para 0 [txt "本文", Sidenote (at 1) 1 (noteBody (at 1) [txt "補足。"]), txt "。"]])
         @?= "<p>本文<sup class=\"sidenote-ref\">1</sup>。</p>\n<aside class=\"sidenote\"><span class=\"number\">1</span>補足。</aside>\n",
     testCase "sidenotes are smaller than the text when no size is given (golem-driver ADR 0011)" $
       cssLines ".sidenote" cfg0 @?= [".sidenote { font-size: 0.85em; }"],
+    testCase "I5: a note of two paragraphs is a p for each, the link back at the start of the first (docs/adr/0263)" $
+      bodyA cfg0 (bookOf [para 0 [txt "本文", Note (at 1) 1 [Block (at 1) Nothing Nothing (Paragraph Nothing [txt p]) | p <- ["一。", "二。"]]]])
+        @?= T.concat
+          [ "<p>本文<a epub:type=\"noteref\" class=\"noteref\" href=\"#note-1\" id=\"noteref-1\">1</a></p>\n",
+            "<section class=\"notes\">\n<h2>注</h2>\n",
+            "<aside epub:type=\"footnote\" id=\"note-1\"><p><a href=\"#noteref-1\">1</a> 一。</p><p>二。</p></aside>\n",
+            "</section>\n"
+          ],
+    testCase "style.css takes the margins and the indents off the paragraphs of notes (docs/adr/0263)" $
+      cssLines "section.notes" cfg0 @?= ["section.notes aside p { margin-block: 0; padding-inline-start: 0; text-indent: 0; }"],
     testCase "a footnote links to its note at the end of the file, which links back" $
-      bodyA cfg0 (bookOf [para 0 [txt "本文", Note (at 1) 1 [txt "注の本文。"]], para 5 [txt "次。"]])
+      bodyA cfg0 (bookOf [para 0 [txt "本文", Note (at 1) 1 (noteBody (at 1) [txt "注の本文。"])], para 5 [txt "次。"]])
         @?= T.concat
           [ "<p>本文<a epub:type=\"noteref\" class=\"noteref\" href=\"#note-1\" id=\"noteref-1\">1</a></p>\n",
             "<p>次。</p>\n",
             "<section class=\"notes\">\n<h2>注</h2>\n",
-            "<aside epub:type=\"footnote\" id=\"note-1\"><a href=\"#noteref-1\">1</a> 注の本文。</aside>\n",
+            "<aside epub:type=\"footnote\" id=\"note-1\"><p><a href=\"#noteref-1\">1</a> 注の本文。</p></aside>\n",
             "</section>\n"
           ],
     testGroup "notes at the end of the chapter (golem-driver ADR 0026)" chapterNoteTests,
@@ -765,7 +775,7 @@ langTests =
         bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (BulletList [ListItem Nothing [(para 1 [txt "a"]) {blockLang = Just "de"}]])])
           @?= "<ul>\n<li>\n<p lang=\"de\" xml:lang=\"de\">a</p>\n</li>\n</ul>\n",
       testCase "the sidenotes of a paragraph with a language have it too" $
-        bodyA cfg0 (bookOf [(para 0 [txt "a", Sidenote (at 1) 1 [txt "s"]]) {blockLang = Just "en"}])
+        bodyA cfg0 (bookOf [(para 0 [txt "a", Sidenote (at 1) 1 (noteBody (at 1) [txt "s"])]) {blockLang = Just "en"}])
           @?= "<p lang=\"en\" xml:lang=\"en\">a<sup class=\"sidenote-ref\">1</sup></p>\n<aside class=\"sidenote\" lang=\"en\" xml:lang=\"en\"><span class=\"number\">1</span>s</aside>\n",
       testCase "the spans stay in the items of @toc, the toc page and the copies; character styles drop out of the toc page" $ do
         let title = [txt "見出し", Lang (at 1) "en" [CharStyle (at 1) "strong" [txt "Tokyo"]]]
@@ -780,9 +790,9 @@ langTests =
             page = indexPage cfg0 ft (assembled [[h]])
         assertBool (T.unpack page) ("<a href=\"a.xhtml#intro\">1\x3000<span lang=\"en\" xml:lang=\"en\">Tokyo</span></a>" `T.isInfixOf` page),
       testCase "the body of a note is in the language of its mark" $ do
-        let book = assembled [[para 0 [txt "本文", Lang (at 1) "en" [txt "text", Note (at 2) 1 [txt "a note"]]]]]
+        let book = assembled [[para 0 [txt "本文", Lang (at 1) "en" [txt "text", Note (at 2) 1 (noteBody (at 2) [txt "a note"])]]]]
             body = bodyA cfg0 book
-        assertBool (T.unpack body) ("</a> <span lang=\"en\" xml:lang=\"en\">a note</span></aside>" `T.isInfixOf` body)
+        assertBool (T.unpack body) ("</a> <span lang=\"en\" xml:lang=\"en\">a note</span></p></aside>" `T.isInfixOf` body)
     ]
 
 xhtmlTests :: TestTree
