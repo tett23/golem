@@ -15,7 +15,6 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
-import Data.List (groupBy)
 import Golem.Layout.CharClass (CharClass (..))
 import Golem.Layout.Japanese (BoxKind (..), boxKind, lookClass)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
