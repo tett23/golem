@@ -133,12 +133,18 @@ jobs:
         with:
           path: third_party/downloads
           key: downloads-chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/browser/fetch-chromium.sh', 'scripts/wasm/fetch-deno.sh', 'scripts/fetch-wasmtime.sh') }}
-      - name: chrome-headless-shell and deno, pinned by version and SHA-256
-        run: |
-          timeout -k 10 300 sh scripts/browser/fetch-chromium.sh
-          timeout -k 10 300 sh scripts/wasm/fetch-deno.sh
+      # each fetch has a step of its own and its timeout-minutes, which holds
+      # the worst time of the retries of fetch-url.sh, about 7 minutes
+      # (docs/adr/0243, docs/adr/0259)
+      - name: chrome-headless-shell, pinned by version and SHA-256
+        timeout-minutes: 10
+        run: sh scripts/browser/fetch-chromium.sh
+      - name: deno, pinned by version and SHA-256
+        timeout-minutes: 10
+        run: sh scripts/wasm/fetch-deno.sh
       - name: The C API of wasmtime, pinned by version and SHA-256 (docs/adr/0238)
-        run: timeout -k 10 300 sh scripts/fetch-wasmtime.sh
+        timeout-minutes: 10
+        run: sh scripts/fetch-wasmtime.sh
       - name: Save the archives of the downloads (docs/adr/0243)
         if: github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6

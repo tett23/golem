@@ -291,7 +291,8 @@ jobs:
       - name: The wasm toolchain (docs/adr/0199)
         run: timeout -k 10 900 sh scripts/fetch-ghc-wasm.sh
       - name: skylighting 0.15 patched (docs/adr/0202)
-        run: timeout -k 10 300 sh scripts/fetch-wasm-packages.sh
+        timeout-minutes: 10
+        run: sh scripts/fetch-wasm-packages.sh
       - name: The versions of Hackage are those of cabal.project.freeze (docs/adr/0199)
         run: sh scripts/ci/wasm-freeze.sh
       - if: steps.ghcwasm.outputs.cache-hit != 'true'
@@ -498,10 +499,11 @@ jobs:
             "golem-dev-manual-$TAG.pdf" "golem-dev-manual-$TAG-html.tar.gz" >> SHA256SUMS
           sha256sum *.wasm >> SHA256SUMS
           sha256sum "golem-plugins-licenses-$TAG.tar.gz" >> SHA256SUMS
-          sha256sum -c SHA256SUMS
           for v in $(cat gmp-version-*.txt | sort -u); do
             sh ../scripts/release/fetch-gmp.sh "$v" .
           done
+          sha256sum gmp-*.tar.xz >> SHA256SUMS
+          sha256sum -c SHA256SUMS
       - uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/golem-*.tar.gz
