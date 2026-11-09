@@ -110,6 +110,15 @@ keyOf w ps its = (unSp w, map item its, pExpansion ps, pProtrusion ps)
       Glue (Sp gw) (Sp y) (Sp z) -> (1, gw, y, z, "", False, 0, 0, 0, 0, 0)
       Penalty (Sp pw) p h -> (2, pw, case h of NoHyphen -> 0; ExplicitHyphen -> 1; PatternHyphen _ -> 2; WrapMark _ -> 3; SoftHyphen _ -> 4, 0, "", False, case h of PatternHyphen (Sp q) -> q; SoftHyphen (Sp q) -> q; _ -> 0, 0, 0, 0, p)
 
+{- | The values 'breakParagraph' is given for the inputs of a group in
+vertical writing, with no break between two digits, as in horizontal
+writing (golem-layout ADR 0049, B2).
+-}
+keysOfDigitsKept :: Group -> [Key]
+keysOfDigitsKept g =
+  let its = forbidPairs False (T.replicate (gPre g) "あ" <> T.concat (gRun g) <> T.replicate (gPost g) "い") (itemsOf True (gSetting g) (gPre g) (gRun g) (gPost g))
+   in [keyOf (fromIntegral w * fs) (paramsOf (gSetting g) e its) its | (w, e) <- gCases g]
+
 -- | The values 'breakParagraph' is given for the inputs of a group, vertical or not.
 keysOf :: Bool -> Group -> [Key]
 keysOf vertical g =
@@ -141,21 +150,23 @@ runsT = listsOf (Tiers [parts])
 
 enumerationTests :: [TestTree]
 enumerationTests =
-  [ testCase "there are 24 parts: 15 Japanese characters, 4 Latin words, 4 Latin signs and the soft hyphen (docs/adr ADR 0272)" $ do
+  [ testCase "there are 27 parts: 15 Japanese characters, 4 Latin words, 4 Latin signs, the soft hyphen (docs/adr ADR 0272), and a digit and two abbreviations (golem-layout ADR 0049)" $ do
       length jaParts @?= 15
       length latinParts @?= 9
-      length (nub parts) @?= 24,
+      length pairParts @?= 3
+      length (nub parts) @?= 27,
     testCase "in lines of 2 em, the inputs of up to 1 part are as many as the parts and the settings allow" $ do
       let made = [i | t <- upTo 1 (groupT (normalGroups 5)), g <- t, i <- groupInputs g, inWidth i == 2]
           -- before the run 0 or 1 'あ', after it none or 2 'い'
           placed = 2 * 2
           -- the empty run; 9 Japanese parts of one setting (漢あ「」〜！・ゝ and the
           -- ideographic space); the soft hyphen, of one setting too (docs/adr
-          -- ADR 0272); ー and ぁ, strict and loose; 。 and 、, with and
-          -- without hanging; 10 parts of Latin text or of both scripts (… —
-          -- and the 8 other Latin parts), with and without protrusion, in no
-          -- span, en and ja, with and without the expansion
-          runs = 1 + 9 + 1 + 2 * 2 + 2 * 2 + 10 * (2 * 3 * 2)
+          -- ADR 0272); the 3 parts of the pairs, of one setting too
+          -- (golem-layout ADR 0049); ー and ぁ, strict and loose; 。 and 、,
+          -- with and without hanging; 10 parts of Latin text or of both
+          -- scripts (… — and the 8 other Latin parts), with and without
+          -- protrusion, in no span, en and ja, with and without the expansion
+          runs = 1 + 9 + 1 + 3 + 2 * 2 + 2 * 2 + 10 * (2 * 3 * 2)
       length made @?= placed * runs,
     testCase "the normal form: up to 2 parts (1 on pull requests), the inputs it leaves out give 'breakParagraph' no value it is not given" $ do
       -- the values (items, width, expansion and protrusion) of every
@@ -164,10 +175,10 @@ enumerationTests =
       let d = formDepth depth
       checkAllPar d runsT (normalFormMisses (maxWidthAt depth))
         @?= Passed (length (concat (upTo d runsT))),
-    testCase "vertical writing: up to 2 parts (1 on pull requests), it gives 'breakParagraph' the same values" $ do
+    testCase "vertical writing: up to 2 parts (1 on pull requests), it gives 'breakParagraph' the same values, but between two digits (golem-layout ADR 0049, B2)" $ do
       depth <- linesDepth
       let d = formDepth depth
-      checkAllPar d runsT (\run -> [Violation "vertical" (show g) | g <- normalGroups (maxWidthAt depth) run, keysOf True g /= keysOf False g])
+      checkAllPar d runsT (\run -> [Violation "vertical" (show g) | g <- normalGroups (maxWidthAt depth) run, keysOfDigitsKept g /= keysOf False g])
         @?= Passed (length (concat (upTo d runsT))),
     testCase "the advances: table, hyphenation and lime-tree are broken where the patterns and the hyphen allow" $ do
       let s = Setting True False False Nothing
@@ -306,6 +317,19 @@ predicateTests =
       let p = paragraphIn plain False 2 ["あ", "…", "…"]
       sound p
       broken (rebroken (allowBefore "…") p) @?= [L4],
+    testCase "L4, B2, B3, B4 (golem-layout ADR 0049): a line that breaks between two digits, after a yen sign before a digit, or between a digit and a percent sign" $ do
+      let digits = paragraphIn plain False 2 ["あ", "１", "１"]
+          yen = paragraphIn plain False 2 ["あ", "￥", "１"]
+          percent = paragraphIn plain False 2 ["あ", "１", "％"]
+      mapM_ sound [digits, yen, percent]
+      map lineText (brLines (pBreaks digits)) @?= ["あ", "１１"]
+      broken (rebroken (allowAfter "１") digits) @?= [L4, B2]
+      broken (rebroken (allowAfter "￥") yen) @?= [L4, B3]
+      broken (rebroken (allowAfter "１") percent) @?= [L4, B4],
+    testCase "L4, B2 (golem-layout ADR 0049): a line of two digits wider than W, with no break where it fits, is not broken" $ do
+      let p = paragraphIn plain False 2 ["１", "１", "１"]
+      map lineText (brLines (pBreaks p)) @?= ["１１１"]
+      brokenAll p @?= [],
     testCase "L4: a line that breaks at a space between two ellipses is not broken (golem-layout ADR 0028, K4)" $ do
       let p = paragraphIn plain False 2 ["…", " ", "…"]
       map lineText (brLines (pBreaks p)) @?= ["…", "…"]

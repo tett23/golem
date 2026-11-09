@@ -99,6 +99,7 @@ test-suite golem-layout-test
                     NoteSplitSpec
                     StructureSpec
                     TableCaptionSpec
+                    UnbreakablePairsSpec
                     UrlBreakSpec
   build-depends:
     , base

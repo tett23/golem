@@ -6,6 +6,10 @@ module Golem.Layout.CharClass
     isDualCharacter,
     isJoinerCharacter,
     isHyphenCharacter,
+    isArabicDigit,
+    isNumeral,
+    isPrefixedAbbreviation,
+    isPostfixedAbbreviation,
     charClassIn,
     dualJapaneseClass,
     spanIsJapanese,
@@ -49,14 +53,15 @@ inSet :: IntSet.IntSet -> Char -> Bool
 inSet s c = IntSet.member (ord c) s
 
 openings, closings, hyphens, dividings, middleDots, fullStops, commas, inseparables, iterations, smallKana :: IntSet.IntSet
-openings = charSet "「『（［｛〈《【〔〘〖〝‘“｟«"
-closings = charSet "」』）］｝〉》】〕〙〗〟’”｠»"
-hyphens = charSet "‐‑〜゠–"
+-- ⦅ and ⦆ of JLReq, 〞 the closing of 〝, ～ for 〜, and ⸺ and ⸻ as ― (golem-layout ADR 0049)
+openings = charSet "「『（［｛〈《【〔〘〖〝‘“｟«⦅"
+closings = charSet "」』）］｝〉》】〕〙〗〟’”｠»⦆〞"
+hyphens = charSet "‐‑〜゠–～"
 dividings = charSet "？！‼⁇⁈⁉"
 middleDots = charSet "・：；"
 fullStops = charSet "。．"
 commas = charSet "、，"
-inseparables = charSet "—―…‥〳〴〵"
+inseparables = charSet "—―…‥〳〴〵⸺⸻"
 iterations = charSet "ヽヾゝゞ々〻"
 smallKana = charSet "ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ"
 
@@ -109,6 +114,76 @@ isHyphenCharacter = inSet wordHyphens
 
 wordHyphens :: IntSet.IntSet
 wordHyphens = charSet "-‐‑–—"
+
+{- | The Arabic digits, of ASCII and full-width (golem-layout ADR 0049):
+two of them next to each other are not broken in horizontal writing
+(JLReq 3.1.10).
+-}
+isArabicDigit :: Char -> Bool
+isArabicDigit c = (c >= '0' && c <= '9') || (c >= '\xFF10' && c <= '\xFF19')
+
+-- | The numerals (golem-layout ADR 0049): the Arabic digits and the kanji numerals.
+isNumeral :: Char -> Bool
+isNumeral c = isArabicDigit c || inSet kanjiNumerals c
+
+kanjiNumerals :: IntSet.IntSet
+kanjiNumerals = charSet "〇一二三四五六七八九十百千万億兆"
+
+{- | The prefixed abbreviations of JLReq (cl-12) and their full-width
+forms (golem-layout ADR 0049): no break between one and a numeral after
+it. They are no class of 'CharClass'.
+-}
+isPrefixedAbbreviation :: Char -> Bool
+isPrefixedAbbreviation = inSet prefixedAbbreviations
+
+prefixedAbbreviations :: IntSet.IntSet
+prefixedAbbreviations = IntSet.fromList [0x00A5, 0x0024, 0x00A3, 0x0023, 0x20AC, 0x2116, 0xFFE5, 0xFF04, 0xFFE1, 0xFF03]
+
+{- | The postfixed abbreviations of JLReq (cl-13) and their full-width
+forms (golem-layout ADR 0049): no break between a numeral and one after
+it. They are no class of 'CharClass'.
+-}
+isPostfixedAbbreviation :: Char -> Bool
+isPostfixedAbbreviation = inSet postfixedAbbreviations
+
+postfixedAbbreviations :: IntSet.IntSet
+postfixedAbbreviations =
+  IntSet.fromList
+    [ 0x00B0,
+      0x2032,
+      0x2033,
+      0x2103,
+      0x00A2,
+      0x0025,
+      0x2030,
+      0x33CB,
+      0x2113,
+      0x3303,
+      0x330D,
+      0x3314,
+      0x3318,
+      0x3322,
+      0x3323,
+      0x3326,
+      0x3327,
+      0x332B,
+      0x3336,
+      0x333B,
+      0x3349,
+      0x334A,
+      0x334D,
+      0x3351,
+      0x3357,
+      0x338E,
+      0x338F,
+      0x339C,
+      0x339D,
+      0x339E,
+      0x33A1,
+      0x33C4,
+      0xFF05,
+      0xFFE0
+    ]
 
 {- | Whether a language span is Japanese (docs/adr ADR 0187): its primary
 subtag, in lower case, is ja, as the separator after a number decides
