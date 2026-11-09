@@ -1,6 +1,6 @@
 # ADR 0043: `@need-lines` の前に置いた空きも、判定の残りに数えない
 
-ステータス: 採択
+ステータス: 採択→Alloy のモデルの更新は [golem-layout ADR 0046](0046-the-alloy-model-judges-a-larger-need-lines-without-the-spaces-before-it.md)
 
 ## 文脈
 
