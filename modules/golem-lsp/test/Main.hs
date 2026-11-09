@@ -152,8 +152,8 @@ tests =
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@style \n本文。\n\n[style \n"
         let src = textOf ws "b.gm"
             found = completions ws "b.gm"
-        map cmpLabel (found (offsetIn src "@style " 7)) @?= ["body", "caption", "quote", "sidenote", "verse"]
-        map cmpKind (found (offsetIn src "@style " 7)) @?= replicate 5 CkParaStyle
+        map cmpLabel (found (offsetIn src "@style " 7)) @?= ["body", "caption", "quote", "sidenote", "table", "verse"]
+        map cmpKind (found (offsetIn src "@style " 7)) @?= replicate 6 CkParaStyle
         map cmpLabel (found (offsetIn src "[style " 7)) @?= ["bold", "code", "italic", "note-mark", "strong", "url"],
       testCase "completion: the kinds of a page break (docs/adr ADR 0017)" $ do
         ws0 <- openWorkspace root
