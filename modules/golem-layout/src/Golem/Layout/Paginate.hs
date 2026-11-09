@@ -49,6 +49,7 @@ module Golem.Layout.Paginate
   )
 where
 
+import Data.Bifunctor (bimap)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
@@ -391,7 +392,7 @@ waitFor :: Unmet -> (Int, Bool) -> St -> St
 waitFor u k st = case sNoBreak st of
   [] -> st {sNoBreak = [(u, sPage st, sColumn st, length (sSlots st), k)]}
   ws@((_, p, c, n, (k0, l0)) : _) ->
-    let both = (max k0 (fst k), l0 || snd k)
+    let both = bimap (max k0) (l0 ||) k
      in st {sNoBreak = [(u', p, c, n, both) | (u', _, _, _, _) <- ws <> [(u, p, c, n, k)]]}
 
 {- | The flow after a no-break must start in the column where the flow

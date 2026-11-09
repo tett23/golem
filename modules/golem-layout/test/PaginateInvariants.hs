@@ -520,7 +520,7 @@ k2LastPart flows ps =
     length parts >= 2,
     let (_, n, _, _) = last parts
         (_, _, fromEmpty, pb) = last (init parts)
-        own = all (\sl -> isHeadingSlot sl || (all (`elem` concat vs) (slotLines sl) && not (null (slotLines sl)))) (map snd (poSlots pb)),
+        own = all ((\sl -> isHeadingSlot sl || (all (`elem` concat vs) (slotLines sl) && not (null (slotLines sl)))) . snd) (poSlots pb),
     n < kLast kp,
     not (fromEmpty && own && recordsUnmet ps (ShortPart LastPart pid (kLast kp) n))
   ]
