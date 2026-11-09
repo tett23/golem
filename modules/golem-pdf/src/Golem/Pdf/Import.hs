@@ -16,6 +16,7 @@ most once, and all that one import decodes is counted against
 -}
 module Golem.Pdf.Import
   ( ImportedPage (..),
+    ObjNum,
     ImportError (..),
     ColorUse (..),
     FigureContent (..),
@@ -39,6 +40,7 @@ import Data.ByteString.Lazy qualified as BL
 import Data.ByteString.Unsafe qualified as BU
 import Data.Either (fromRight)
 import Data.Foldable (asum)
+import Data.Int (Int64)
 import Data.List (find, nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -68,14 +70,22 @@ data ColorUse
     UseRgb
   | UseCmyk
   | -- | ICCBased: the number of components and the profile
-    UseIcc !Int !ByteString
+    UseIcc !Integer !ByteString
   | UseLab
   deriving stock (Eq, Ord, Show)
 
+{- | The number of an object of a PDF read, and the key of an object of
+an 'ImportedPage': an 'Int64' on every target, so that the numbers of up
+to 18 digits are the same in wasm32, whose 'Int' is 32 bits (docs/adr ADR
+0247).
+-}
+type ObjNum = Int64
+
 {- | A page of a PDF, read so that it can be written as a Form XObject.
 The objects are keyed by their numbers in the file (0 is the sRGB
-profile); the references in them, in the resources and in the group use
-those keys, and 'Golem.Pdf.Writer' numbers them again.
+profile, the negative keys the inner Forms); the references in them, in
+the resources and in the group use those keys, and 'Golem.Pdf.Writer'
+numbers them again.
 -}
 data ImportedPage = ImportedPage
   { -- | the SHA-256 of the file, so that pages of one file share their objects
@@ -88,13 +98,13 @@ data ImportedPage = ImportedPage
     ipRotate :: !Int,
     -- | the width and the height in pt after the rotation
     ipSize :: !(Rational, Rational),
-    ipResources :: !Obj,
+    ipResources :: !(ObjOf ObjNum),
     -- | the transparency group of the page
-    ipGroup :: !(Maybe Obj),
+    ipGroup :: !(Maybe (ObjOf ObjNum)),
     -- | the content, decoded and with DeviceRGB replaced
     ipContent :: !ByteString,
     -- | the objects reached from the resources, in the order they are reached
-    ipObjects :: ![(Int, Obj)],
+    ipObjects :: ![(ObjNum, ObjOf ObjNum)],
     ipColors :: ![ColorUse]
   }
   deriving stock (Eq, Show)
@@ -183,12 +193,12 @@ streams read, by object number, so that each is decoded once.
 -}
 data St = St
   { stLeft :: !Int,
-    stDecoded :: !(Map Int ByteString),
-    stObjStreams :: !(Map Int (Map Int V)),
+    stDecoded :: !(Map ObjNum ByteString),
+    stObjStreams :: !(Map ObjNum (Map ObjNum V)),
     -- | the objects in the file already parsed, by number
-    stObjects :: !(Map Int V),
+    stObjects :: !(Map ObjNum V),
     -- | the object streams being read: one named again while it is read is refused
-    stReading :: !(Set Int)
+    stReading :: !(Set ObjNum)
   }
 
 -- | Reading that may fail, with 'St'.
@@ -247,7 +257,7 @@ data V
   | VName !ByteString
   | VArr ![V]
   | VDict !Dict
-  | VRef !Int
+  | VRef !ObjNum
   | VStream !Dict !ByteString
   deriving stock (Eq, Show)
 
@@ -293,8 +303,8 @@ skipWs s = case BS.uncons s of
     | w == 37 -> skipWs (BS.dropWhile (\x -> x /= 10 && x /= 13) r)
   _ -> s
 
--- | An unsigned integer of at most 18 digits.
-uint :: ByteString -> R (Int, ByteString)
+-- | An unsigned integer of at most 18 digits: an 'ObjNum' for the number of an object, an 'Int' for an offset.
+uint :: (Num a) => ByteString -> R (a, ByteString)
 uint s0 =
   let s = skipWs s0
       (ds, rest) = BS.span isDigitW s
@@ -481,41 +491,46 @@ hexString t =
 
 -- ------------------------------------------------------------------ the file
 
-data Entry = InFile !Int | InStream !Int | FreeEntry
+-- | Where an object is: at an offset in the file, or in the object stream of a number.
+data Entry = InFile !Int | InStream !ObjNum | FreeEntry
 
 {- | One section of the cross-reference: a table, or a stream whose rows
 are looked up where they are, so that a stream of many rows costs no more
 than its bytes (docs/adr ADR 0040).
 -}
 data Section
-  = TableSection !(Map Int Entry)
+  = TableSection !(Map ObjNum Entry)
   | -- | the widths of the fields, the subsections by their first number (the number of entries and the row of the first), the rows
-    StreamSection ![Int] !(Map Int (Int, Int)) !ByteString
+    StreamSection ![Int] !(Map ObjNum (Int, Int)) !ByteString
 
 -- | The entry of an object in one section.
-sectionEntry :: Int -> Section -> Maybe Entry
+sectionEntry :: ObjNum -> Section -> Maybe Entry
 sectionEntry n = \case
   TableSection m -> Map.lookup n m
   StreamSection ws subs rows -> do
     (start, (count, firstRow)) <- Map.lookupLE n subs
+    -- n - start is below count, an Int, before it is made one
+    guard (n < start + fromIntegral count)
     let width = sum ws
-        row = firstRow + n - start
-    guard (n < start + count && width > 0 && (row + 1) * width <= BS.length rows)
+        row = firstRow + fromIntegral (n - start)
+    guard (width > 0 && (row + 1) * width <= BS.length rows)
     rowEntry ws (BS.take width (BS.drop (row * width) rows))
 
--- | The entry of a row of a cross-reference stream.
+{- | The entry of a row of a cross-reference stream; a field of up to 8
+bytes is an 'Int64' on every target (docs/adr ADR 0247).
+-}
 rowEntry :: [Int] -> ByteString -> Maybe Entry
 rowEntry ws b =
   let field i =
         let w = ws !! i
             off = sum (take i ws)
-         in BS.foldl' (\acc x -> acc `shiftL` 8 .|. fromIntegral x) (0 :: Int) (BS.take w (BS.drop off b))
+         in BS.foldl' (\acc x -> acc `shiftL` 8 .|. fromIntegral x) (0 :: Int64) (BS.take w (BS.drop off b))
       t = case ws of
         0 : _ -> 1
         _ -> field 0
    in case t of
         0 -> Just FreeEntry
-        1 -> Just (InFile (field 1))
+        1 -> Just (InFile (fromIntegral (field 1)))
         2 -> Just (InStream (field 1))
         _ -> Nothing
 
@@ -526,10 +541,10 @@ data Doc = Doc
   }
 
 -- | The object @n@, or null when the cross-reference does not have it.
-fetch :: Doc -> Int -> M V
+fetch :: Doc -> ObjNum -> M V
 fetch d = fetchAt d 0
 
-fetchAt :: Doc -> Int -> Int -> M V
+fetchAt :: Doc -> Int -> ObjNum -> M V
 fetchAt d depth n = case asum (map (sectionEntry n) (docXref d)) of
   Just (InFile off) ->
     getsM (Map.lookup n . stObjects) >>= \case
@@ -550,7 +565,7 @@ resolve d = \case
 {- | The indirect object at an offset: @n g obj@, its value and, for a
 stream, its data. With @Just n@ the number must be @n@.
 -}
-objectAt :: Doc -> Int -> Maybe Int -> Int -> M V
+objectAt :: Doc -> Int -> Maybe ObjNum -> Int -> M V
 objectAt d depth want off = do
   let bytes = docBytes d
       where' = "オブジェクト " <> maybe (tshow off) tshow want
@@ -558,7 +573,7 @@ objectAt d depth want off = do
   r <- attempt $ do
     (num, v, s5) <- liftR $ do
       (num, s1) <- uint (BS.drop off bytes)
-      (_, s2) <- uint s1
+      (_, s2) <- uint s1 :: R (ObjNum, ByteString)
       s3 <- keyword "obj" s2
       when (maybe False (/= num) want) (bad where')
       (v, s4) <- parseObj 0 s3
@@ -583,7 +598,7 @@ objectAt d depth want off = do
       | otherwise = t
 
 -- | The Length of a stream, which may be an indirect object.
-streamLength :: Doc -> Int -> Int -> Dict -> M Int
+streamLength :: Doc -> Int -> ObjNum -> Dict -> M Int
 streamLength d depth self dict = case lookup "Length" dict of
   Just (VInt l) | l >= 0 && l <= fromIntegral maxStreamBytes * 4 -> pure (fromInteger l)
   Just (VRef m)
@@ -598,7 +613,7 @@ streamLength d depth self dict = case lookup "Length" dict of
 another object stream that needs it, cannot be decoded and is refused. An
 object at an offset that several pairs name is parsed once.
 -}
-objectStream :: Doc -> Int -> Int -> M (Map Int V)
+objectStream :: Doc -> Int -> ObjNum -> M (Map ObjNum V)
 objectStream d depth s =
   getsM (Map.lookup s . stObjStreams) >>= \case
     Just objs -> pure objs
@@ -627,7 +642,7 @@ objectStream d depth s =
               pure (Map.fromList [(num, v) | (num, o) <- pairs, Just v <- [Map.lookup o byOffset]])
           _ -> badM "オブジェクトのストリーム"
       _ -> badM "オブジェクトのストリーム"
-    readPairs :: Int -> ByteString -> R [(Int, Int)]
+    readPairs :: Int -> ByteString -> R [(ObjNum, Int)]
     readPairs 0 _ = Right []
     readPairs k t = do
       (a, t1) <- uint t
@@ -687,16 +702,18 @@ readXref bytes = do
                     _ -> bad "トレーラー"
                 else do
                   (start, t1) <- uint t
-                  (count, t2) <- uint t1
-                  when (count > BS.length t2 `div` 18 + 1 || total + count > maxXrefEntries) (bad "相互参照")
+                  (count64, t2) <- uint t1 :: R (ObjNum, ByteString)
+                  when (count64 > fromIntegral (BS.length t2 `div` 18 + 1) || fromIntegral total + count64 > fromIntegral maxXrefEntries) (bad "相互参照")
+                  -- at most maxXrefEntries, an Int on every target
+                  let count = fromIntegral count64
                   (acc', t3) <- entries start count acc t2
                   go (total + count) (n + count) acc' t3
         entries _ 0 acc t = Right (acc, t)
         entries n k acc t = do
           (o, t1) <- uint t
-          (_, t2) <- uint t1
+          (_, t2) <- uint t1 :: R (Int, ByteString)
           case BS.uncons (skipWs t2) of
-            Just (110, r) -> entries (n + 1) (k - 1 :: Int) (Map.insertWith (\_ old -> old) n (InFile o) acc) r
+            Just (110, r) -> entries (n + 1 :: ObjNum) (k - 1 :: Int) (Map.insertWith (\_ old -> old) n (InFile o) acc) r
             Just (102, r) -> entries (n + 1) (k - 1) (Map.insertWith (\_ old -> old) n FreeEntry acc) r
             _ -> bad "相互参照"
     streamSection off = do
@@ -714,7 +731,7 @@ readXref bytes = do
               _ -> bad "相互参照"
             index <- case lookup "Index" dict of
               Nothing -> Right [(0, size)]
-              Just (VArr xs) | all isInt xs, even (length xs) -> Right (pairsOf [fromInteger i | VInt i <- xs])
+              Just (VArr xs) | all isInt xs, even (length xs) -> Right [(fromInteger a, fromInteger b) | (a, b) <- pairsOf [i | VInt i <- xs]]
               _ -> bad "相互参照"
             subs <- subsections index
             let width = sum ws
@@ -735,14 +752,14 @@ readXref bytes = do
 each with the number of its entries and the row of its first. ISO
 32000-1 7.5.8.2 has them sorted and not overlapping; others are refused.
 -}
-subsections :: [(Int, Int)] -> R (Map Int (Int, Int))
+subsections :: [(ObjNum, Int)] -> R (Map ObjNum (Int, Int))
 subsections = go 0 0 Map.empty
   where
     go _ _ acc [] = Right acc
     go row end acc ((start, count) : rest)
       | start < end = bad "相互参照"
       | count == 0 = go row end acc rest
-      | otherwise = go (row + count) (start + count) (Map.insert start (count, row) acc) rest
+      | otherwise = go (row + count) (start + fromIntegral count) (Map.insert start (count, row) acc) rest
 
 -- | The last occurrence of a needle: what is before it, and it with what follows.
 lastOccurrence :: ByteString -> ByteString -> (ByteString, ByteString)
@@ -793,7 +810,7 @@ decodeStream :: Doc -> Dict -> ByteString -> M ByteString
 decodeStream d dict body = filtersOf d dict >>= \fs -> decodeWith fs body
 
 -- | The data of the stream that is the object @k@, decoded once (docs/adr ADR 0040).
-decodedObject :: Doc -> Int -> Dict -> ByteString -> M ByteString
+decodedObject :: Doc -> ObjNum -> Dict -> ByteString -> M ByteString
 decodedObject d k dict body =
   getsM (Map.lookup k . stDecoded) >>= \case
     Just out -> pure out
@@ -902,7 +919,8 @@ asciiHex b limit = do
 
 {- | ASCII85, giving at most @limit@ bytes: the stream is checked and its
 size counted first, up to where it passes the limit, and only then
-decoded.
+decoded. The value of a group is an 'Int64' on every target, so that a
+group of up to 2^32 - 1 is taken in wasm32 too (docs/adr ADR 0247).
 -}
 ascii85 :: ByteString -> Int -> R ByteString
 ascii85 b limit = do
@@ -921,6 +939,7 @@ ascii85 b limit = do
     atEnd i = i >= len || at i == 126
     endOk i = i >= len || (let j = skip (i + 1) in j < len && at j == 62)
     -- i: where reading is (white space skipped), k: the characters of the group so far, v: its value, n: the bytes so far
+    check :: Int -> Int -> Int64 -> Int -> R Int
     check !i0 !k !v !n
       | n > limit = Right n
       | atEnd i =
@@ -942,8 +961,9 @@ ascii85 b limit = do
       where
         i = skip i0
         w = at i
-    padded :: Int -> Int -> Int
+    padded :: Int -> Int64 -> Int64
     padded k v = iterate (\x -> x * 85 + 84) v !! (5 - k)
+    decode :: Int -> Int -> Int64 -> B.Builder
     decode !i0 !k !v
       | atEnd i = if k == 0 then mempty else bytes (k - 1) (padded k v)
       | w == 122 = B.word32BE 0 <> decode (i + 1) 0 0
@@ -952,6 +972,7 @@ ascii85 b limit = do
       where
         i = skip i0
         w = at i
+    bytes :: Int -> Int64 -> B.Builder
     bytes m x = mconcat [B.word8 (fromIntegral ((x `shiftR` (8 * (3 - j))) .&. 0xFF)) | j <- [0 .. m - 1]]
 
 -- | The bytes of a builder known to give @n@ bytes, written into one buffer of that size.
@@ -976,7 +997,7 @@ named twice is refused, since a node has one Parent (ISO 32000-1 7.7.3).
 The walk ends at the page (docs/adr ADR 0040).
 -}
 pageAt :: Doc -> Int -> V -> M (Either Int (Dict, Inherited))
-pageAt d n root = either (Left . snd) Right <$> walk (Set.empty, 0) (0 :: Int) (Inherited Nothing Nothing Nothing Nothing) root
+pageAt d n root = either (Left . snd) Right <$> walk (Set.empty :: Set ObjNum, 0) (0 :: Int) (Inherited Nothing Nothing Nothing Nothing) root
   where
     walk (seen, count) depth inh v
       | depth > 64 = badM "ページの木"
@@ -1118,7 +1139,8 @@ importM n bytes = do
             ("Filter", OName "FlateDecode")
           ]
           (flate body)
-      innerKey k = negate (k * 4294967296 + n)
+      -- in ObjNum, so that the keys of two inner Forms differ in wasm32 too (docs/adr ADR 0247)
+      innerKey k = negate (k * 4294967296 + fromIntegral n)
       calledForms = [(innerName k, ORef (innerKey k)) | (k, _) <- inner]
       withForms = \case
         ODict kv
@@ -1156,7 +1178,7 @@ checkHeader b =
 numbers of those that are objects. A stream named more than once is
 decoded once (docs/adr ADR 0040).
 -}
-contentParts :: Doc -> Dict -> M [(Maybe Int, ByteString)]
+contentParts :: Doc -> Dict -> M [(Maybe ObjNum, ByteString)]
 contentParts d page = case lookup "Contents" page of
   Nothing -> pure []
   Just v ->
@@ -1175,7 +1197,7 @@ contentParts d page = case lookup "Contents" page of
       _ -> badM "内容のストリーム"
 
 -- | The name of the inner Form of the stream that is the object @k@ (docs/adr ADR 0051).
-innerName :: Int -> Text
+innerName :: ObjNum -> Text
 innerName k = "GolemC" <> T.pack (show k)
 
 {- | The content of a page whose Contents names a stream more than once,
@@ -1186,7 +1208,7 @@ none of the names given to the inner Forms. Each stream is rewritten once.
 The content, whether it changed, the colour spaces, and the rewritten
 streams called as inner Forms; Nothing when the page is to be joined.
 -}
-reusedContent :: Doc -> V -> [(Maybe Int, ByteString)] -> M (Maybe (ByteString, Bool, [ColorUse], [(Int, ByteString)]))
+reusedContent :: Doc -> V -> [(Maybe ObjNum, ByteString)] -> M (Maybe (ByteString, Bool, [ColorUse], [(ObjNum, ByteString)]))
 reusedContent d resources parts
   | Map.null repeated = pure Nothing
   | otherwise = do
@@ -1234,7 +1256,7 @@ skipKeys = ["Parent", "Metadata", "PieceInfo", "StructParent", "StructParents"]
 elements as they are in the file, each once. Pages, page trees and the
 catalog are not reached: references to them become null.
 -}
-collect :: Doc -> [V] -> M [(Int, V, Role)]
+collect :: Doc -> [V] -> M [(ObjNum, V, Role)]
 collect d roots = (\(_, acc) -> reverse acc) <$> foldM (go NoHint) (Set.empty, []) roots
   where
     go hint st@(seen, acc) = \case
@@ -1298,7 +1320,7 @@ valuesIn v =
 {- | The refusals of ADR 0008 on the objects copied: filters, fonts not
 embedded, spot colours and layers, in that order.
 -}
-checkObjects :: Doc -> [(Int, V, Role)] -> [V] -> M ()
+checkObjects :: Doc -> [(ObjNum, V, Role)] -> [V] -> M ()
 checkObjects d objs values = do
   mapM_ filterOk objs
   mapM_ fontOk (concatMap dictsIn values)
@@ -1348,8 +1370,9 @@ objectUses d values = concat <$> traverse use (concatMap valuesIn values)
       VArr [VName "ICCBased", ref] ->
         resolve d ref >>= \case
           VStream dict body -> do
+            -- as it is, whatever its size (docs/adr ADR 0247)
             let n = case lookup "N" dict of
-                  Just (VInt i) -> fromInteger i
+                  Just (VInt i) -> i
                   _ -> 0
             decoded <- attempt (case ref of VRef k -> decodedObject d k dict body; _ -> decodeStream d dict body)
             pure [UseIcc n (fromRight body decoded)]
@@ -1359,7 +1382,7 @@ objectUses d values = concat <$> traverse use (concatMap valuesIn values)
 -- ------------------------------------------------------------------ writing the copy
 
 -- | The sRGB ICCBased colour space; key 0 is its profile.
-srgbSpace :: Obj
+srgbSpace :: ObjOf ObjNum
 srgbSpace = OArr [OName "ICCBased", ORef 0]
 
 -- | A name in PDF syntax, with #xx for what a name cannot hold as it is.
@@ -1374,7 +1397,7 @@ nameText = T.pack . concatMap one . BS.unpack
 space, references to objects not copied as null, and, when the content
 was rewritten, GolemSRGB in every direct Resources.
 -}
-convert :: Set Int -> Bool -> V -> Obj
+convert :: Set ObjNum -> Bool -> V -> ObjOf ObjNum
 convert keys needs = \case
   VNull -> ONull
   VBool b -> OBool b
@@ -1388,7 +1411,7 @@ convert keys needs = \case
   VRef k -> if Set.member k keys then ORef k else ONull
   VStream kv body -> OStream (convDict keys needs kv) body
 
-convDict :: Set Int -> Bool -> Dict -> [(Text, Obj)]
+convDict :: Set ObjNum -> Bool -> Dict -> [(Text, ObjOf ObjNum)]
 convDict keys needs kv =
   [ (nameText k, v')
   | (k, v) <- kv,
@@ -1401,7 +1424,7 @@ convDict keys needs kv =
 {- | GolemSRGB in the ColorSpace of resources; a ColorSpace that is a
 reference is written there with the entries of the object it refers to.
 -}
-addSrgb :: (Int -> Obj) -> Obj -> Obj
+addSrgb :: (ObjNum -> ObjOf ObjNum) -> ObjOf ObjNum -> ObjOf ObjNum
 addSrgb deref = \case
   ODict kv ->
     let spaces = case lookup "ColorSpace" kv of
@@ -1442,8 +1465,11 @@ data Shape = Shape
   }
   deriving stock (Eq, Show)
 
--- the state of 'Shape' while reading, packed in one Int: flags, the depth of q, the depth of marked content
-inTextBit, inPathBit, leakBit, badEtBit, badNestBit, qUnit, mkUnit :: Int
+{- the state of 'Shape' while reading, packed in one Int64: flags, the
+depth of q, the depth of marked content from the bit 34; an Int64 on every
+target, since the bit 34 is past the 32 bits of the Int of wasm32 (docs/adr
+ADR 0247) -}
+inTextBit, inPathBit, leakBit, badEtBit, badNestBit, qUnit, mkUnit :: Int64
 inTextBit = 1
 inPathBit = 2
 leakBit = 4
@@ -1452,7 +1478,7 @@ badNestBit = 16
 qUnit = 32
 mkUnit = 1 `shiftL` 34
 
-qDepth, mkDepth :: Int -> Int
+qDepth, mkDepth :: Int64 -> Int64
 qDepth st = (st `shiftR` 5) .&. ((1 `shiftL` 29) - 1)
 mkDepth st = st `shiftR` 34
 
@@ -1522,7 +1548,7 @@ rewriteContentShaped c = go [] 0 0 0 0 0 0 0 0 0 0 0 0 0 [] []
     are first used. Every step is a call with these as arguments, so that
     a step allocates nothing.
     -}
-    go :: [Bool] -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> [ByteString] -> [ColorUse] -> R (ByteString, Bool, [ColorUse], Shape)
+    go :: [Bool] -> Int -> Int -> Int64 -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> [ByteString] -> [ColorUse] -> R (ByteString, Bool, [ColorUse], Shape)
     go !mk !i !n !st !k1 !s1 !e1 !k2 !s2 !e2 !k3 !s3 !e3 !copied !out !uses
       | i >= len =
           if null out

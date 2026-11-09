@@ -114,7 +114,7 @@ import Golem.Assemble.Formats (Braces (..), Legacy (..), MarkFormat, NumberSlotN
 import Golem.Assemble.ListMarkers (NumberFormat, parseNumberFormat, parseNumberFormatLegacy)
 import Golem.Length (Sp (..))
 import Golem.Length qualified as L
-import Golem.Project.Manifest (decodeStrictBy, decodeStrictWith, naturalIntOf, naturalOf, positionSpan, readTomlTable)
+import Golem.Project.Manifest (decodeStrictBy, decodeStrictWith, maxNaturalInt, naturalIntOf, naturalOf, positionSpan, readTomlTable)
 import Golem.Project.TomlMessage (schemaMessage)
 import Golem.Project.TomlSchema
 import Golem.Regex (RegexError (..), compile)
@@ -1973,7 +1973,8 @@ instance FromValue IndexSec where
       -- a natural number: a negative one is G02103 (docs/adr ADR 0102)
       Integer' {} ->
         naturalOf v >>= \n ->
-          if n >= 1 && n <= fromIntegral (maxBound :: Int) then pure n else failAt (valueAnn v) "[index] の columns は 1 以上の整数です"
+          -- up to 2^31 - 1 on every target (docs/adr ADR 0247)
+          if n >= 1 && n <= maxNaturalInt then pure n else failAt (valueAnn v) "[index] の columns は 1 以上の整数です"
       _ -> failAt (valueAnn v) "[index] の columns は 1 以上の整数です"
     gap <- optKeyOf "column-gap" $ \v -> case v of
       Text' _ t | Just d <- parseSignedDim t, not (negativeDim d) -> pure d

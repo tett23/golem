@@ -492,6 +492,17 @@ CI の `wasm` ジョブは、組んだ直後の `golem.wasm` に古い形の例�
 kanikosen を写し、NotoSerifJP-Regular.otf の SHA-256 を確かめてから、Macintosh の format 6 の部分表の `entryCount`（ファイルの先頭から 30205 バイトめからの 2 バイト）を `FF FF` にしたものである。
 SHA-256 が違えば、`compare.sh` は失敗する。
 golem-font のテストが、このフォントの `num_charmaps` が元のフォントより一つ少ないことを確かめる。
+
+wasm32 の GHC の `Int` は 32 ビットであり、ネイティブのビルド（x86-64、aarch64）の `Int` は 64 ビットである。
+`golem.wasm` の PDF と diagnostics は、`Int` の幅に依らない（[ADR 0247](adr/0247-keep-the-values-of-golem-wasm-independent-of-the-width-of-int.md)）。
+取りこむ PDF の object の番号、ASCII85 の組の値、内容のストリームの形を数える状態、PNG の IHDR の幅と高さ、PNG のチャンクの長さは、どのターゲットでも 64 ビットの整数で求める。
+`ICCBased` の `/N` は、大きさを限らない整数のまま持つ。
+`printings` の版と刷と、`[page.grid]` などの整数の上限は、どのターゲットでも 2147483647 である（「関係者と刷」と「style.toml」の節）。
+`scripts/wasm/compare.sh` の入力には、golem-driver の fixture `int-width` から作る六つの入力がある。
+`Int` の幅で値が変わる箇所を通る入力で、ASCII85 の内容のストリームを二つずつ二度指す PDF の図版と `@number 2147483648`、`4294967297 0 R` を持つ PDF の図版、`/N 4294967299` の `ICCBased` を持つ PDF の図版、IHDR の幅が 2 の 31 乗の PNG、チャンクの長さが 2 の 31 乗の PNG、`edition` が 2147483648 の `printings` である。
+`compare.sh` は、入力ごとの組版を `COMPARE_TIMEOUT` 秒（既定は 600 秒）で止め、止めた入力の終了の状態を `exit timeout` と書く。
+止まらない入力で、CI のジョブが時間切れまで待たないためである。
+`golem.wasm` は `golem preflight` を持たないので、`ICCBased` の入力は、`/N` の値がプリフライトの診断を変えることを確かめない。
 夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` を Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、wasmtime 49.0.5 の C API と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno`、`--wasmtime`、`--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
 wasmtime のホストは、`scripts/fetch-wasmtime.sh` が取る C API にリンクする C のプログラム `scripts/wasm/run-wasmtime.c` である。
 `golem.wasm` を一度だけコンパイルして直列化し、入力ごとに、`run.mjs frame` が書く入力の枠を `golem_build_pdf` に渡して結果の枠を書き、`run.mjs result` がそれを読む（`scripts/wasm/run-wasmtime.sh`）。
@@ -780,6 +791,7 @@ isbn = "978-..."
 - `publisher-person` が空の文字列か、改行を含む。
 - `name` が空の文字列である。
 - `printings` の `edition` か `printing` が 1 より小さい。
+- `printings` の `edition` か `printing` が 2147483647（2 の 31 乗から 1 を引いた数）より大きい。どのターゲットでも同じ上限であり、wasm32 の `Int` に収まる範囲である（[ADR 0247](adr/0247-keep-the-values-of-golem-wasm-independent-of-the-width-of-int.md)）。
 - `printings` の項目が、（`edition`、`printing`）の辞書式の順で狭義に増えていない。
 - `printings` の `date` が、前の項目の `date` より前である。
 
@@ -1258,6 +1270,10 @@ folio = { position = "bottom-outside", format = "{n}" }
 ほかの値は G03006 とする。
 形の一覧と字は [docs/markup.md](markup.md) の「圏点」にある。
 
+`[page.grid]` の `characters`、`lines`、`columns` と、見出しのスタイルの `lines` は、2147483647（2 の 31 乗から 1 を引いた数）以下の整数とする。
+それより大きい値は、その値の位置で G03006 とする。
+上限はどのターゲットでも同じであり、wasm32 の `Int` に収まる範囲である（[ADR 0247](adr/0247-keep-the-values-of-golem-wasm-independent-of-the-width-of-int.md)）。
+
 `[composition]` の `pretolerance`、`tolerance`、`emergency-stretch` は、PDF の行分割の段階の値である（「行分割」の節、[golem-layout ADR 0001](golem-layout/adr/0001-knuth-plass-line-breaking.md)）。
 `pretolerance`（既定は 100）は、パターンの分綴を使わない最初の段階の許容度で、負の値ならこの段階を飛ばす。
 `tolerance`（既定は 200）は、パターンの分綴を加えた二つ目の段階と、緊急の伸びを加えた三つ目の段階の許容度である。
@@ -1482,7 +1498,7 @@ golem preflight は、罫線の太さとして線の種類の最も細い部分�
 | `columns` | 1 以上の整数 | 版面の段数（`[page.grid]` の `columns`） | 索引を組む段数 |
 | `column-gap` | 寸法 | `[page.grid]` の `column-gap` | 索引の段間。`zw` は版面の文字の大きさを一字とする |
 
-`columns` が 1 以上の整数でない場合と、`column-gap` が寸法として読めないか負の場合は、その値の位置で G03025 とする。
+`columns` が 1 以上、2147483647（2 の 31 乗から 1 を引いた数）以下の整数でない場合と、`column-gap` が寸法として読めないか負の場合は、その値の位置で G03025 とする（上限は [ADR 0247](adr/0247-keep-the-values-of-golem-wasm-independent-of-the-width-of-int.md)）。
 `[index]` の未知のキーは G03006 とする。
 `[index]` がない本と、`columns` が版面の段数と等しい本は、版面の段組みのまま索引を組む。
 
