@@ -724,6 +724,12 @@ if ! grep -q 'library' "$WORK/err"; then ok; else ng "werror: only the component
 we_case "-Werror, then -Wwarn" 1 wwarn.cabal "modules/a/a.cabal: library"
 we_case "-Werror in the common stanza, then -Wno-error=name-shadowing" 1 no-error.cabal "modules/a/a.cabal: library"
 we_case "-Wno-error, then -Werror" 0 after-negation.cabal
+# -w turns every warning off, so -Werror has nothing to fail on, before or
+# after it, in the component or in a common stanza (docs/adr/0259, decision 7)
+we_case "-Werror, then -w" 1 w-after.cabal "modules/a/a.cabal: library"
+we_case "-w, then -Werror" 1 w-before.cabal "modules/a/a.cabal: library"
+we_case "-w in the common stanza, -Werror in the component" 1 w-common.cabal "modules/a/a.cabal: library"
+we_case "an option that only starts with -w" 0 w-like.cabal
 # OPTIONS_GHC -Wno-name-shadowing in a Haskell file
 we_case "the tree with a pragma" 0 ok.cabal
 mkdir -p "$WE/modules/a/src"
@@ -731,6 +737,10 @@ cp "$WD/Pragma.hs" "$WE/modules/a/src/A.hs"
 run werror "$WE"
 expect "werror: OPTIONS_GHC -Wno-name-shadowing (W3)" 1
 if grep -qxF "modules/a/src/A.hs:1" "$WORK/err"; then ok; else ng "werror: the file and the line of the pragma (W3)"; fi
+cp "$WD/PragmaW.hs" "$WE/modules/a/src/A.hs"
+run werror "$WE"
+expect "werror: OPTIONS_GHC -w (docs/adr/0259, decision 7)" 1
+if grep -qxF "modules/a/src/A.hs:1" "$WORK/err"; then ok; else ng "werror: the file and the line of the pragma -w (docs/adr/0259, decision 7)"; fi
 # the files that peg-hs writes keep its pragmas
 mkdir -p "$WE/modules/golem-parser/src/Golem/Parser"
 cp "$WD/ok.cabal" "$WE/modules/golem-parser/golem-parser.cabal"
@@ -748,6 +758,10 @@ cp "$WD/cabal.project.wasm" "$WE/cabal.project.local"
 rm "$WE/cabal.project.wasm"
 run werror "$WE"
 expect "werror: -Wwarn in cabal.project.local (W3)" 1
+cp "$WD/cabal.project.w" "$WE/cabal.project.local"
+run werror "$WE"
+expect "werror: -w in cabal.project.local (docs/adr/0259, decision 7)" 1
+if grep -qxF "cabal.project.local: package a" "$WORK/err"; then ok; else ng "werror: the section of cabal.project.local with -w (docs/adr/0259, decision 7)"; fi
 
 # ---------------------------------------------------------------- log-warnings.sh
 # (docs/adr/0245 section 5, W4, W5, W6): lines of the logs of 40eb98ce with

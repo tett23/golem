@@ -426,6 +426,7 @@ golem のパッケージに依存しないことの検査は golem-test-support 
 `common warnings` を持つパッケージはそこに、持たない golem-cli は各コンポーネントに書く。
 依存するパッケージ（Hackage のものと、`source-repository-package` の peg-hs）には付けず、`cabal.project` と `cabal.project.wasm` の `ghc-options` にも書かない。
 CI の `changes` ジョブの `scripts/ci/werror.sh` が、`-Werror` を持たないコンポーネント、`-Werror` の後の `-Wwarn` と `-Wno-error`（`=` の付いたものも含む）、`modules/` の Haskell のファイルの `OPTIONS_GHC` の `-Wwarn`、`-Wno-error`、`-Wno-` で始まる警告の無効化、`cabal.project`、`cabal.project.wasm`、`cabal.project.local` の `ghc-options` の `-Wwarn` と `-Wno-error` を見つけて失敗する。
+すべての warning を消す `-w` も、コンポーネントの `ghc-options`（取りこむ `common` の節を含む）、`OPTIONS_GHC`、三つの `cabal.project` のどこにあっても、`-Werror` との前後によらず失敗にする（[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 peg-hs の生成器が書くモジュール（`Golem.Parser.Generated`、golem-parser のテストの `StrippedGrammar`、`Golem.Emet.Generated`）は、生成器が書く `-Wno-unused-imports` と `-Wno-unused-top-binds` を持つので、`OPTIONS_GHC` の検査から外す。
 CI の `build` ジョブが、これらが `scripts/gen-parser.sh` の出力と一致することを確かめる。
 
