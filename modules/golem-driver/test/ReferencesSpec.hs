@@ -34,7 +34,6 @@ import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
 
--- | The page numbers among inlines.
 -- | The numbers of inlines, those of the page numbers of the index inside their links (docs/adr/0267) too.
 numbersIn :: [Inline] -> [Integer]
 numbersIn = concatMap $ \case

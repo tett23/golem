@@ -570,12 +570,12 @@ layoutFigures reuse inp geom fonts figures = do
           atHeading hs tp = tp {tpLeader = withBoxSource (SourceGrid, hs) (tpLeader tp), tpNumber = withBoxSource (SourceGrid, hs) (tpNumber tp)}
           -- each entry in the look of its paragraph style, its page number in toc-page-number (docs/adr/0264)
           tocEntries =
-              [ (lid, ui, atHeading hs (tocPage (entryGeometry (pgFontSize geom) (bFlowEnv built) (piStyle inp) u) e (pageNumberLine (unitEnv (bFlowEnv built) u) l)))
-              | (lid, (hs, e, ui)) <- Map.toList (bTocLines built),
-                Just u <- [Map.lookup ui unitsAt],
-                Just n <- [Map.lookup hs hPages],
-                let l = Map.findWithDefault (plainLabel (fromInteger n)) (fromInteger n) pageLbls
-              ]
+            [ (lid, ui, atHeading hs (tocPage (entryGeometry (pgFontSize geom) (bFlowEnv built) (piStyle inp) u) e (pageNumberLine (unitEnv (bFlowEnv built) u) l)))
+            | (lid, (hs, e, ui)) <- Map.toList (bTocLines built),
+              Just u <- [Map.lookup ui unitsAt],
+              Just n <- [Map.lookup hs hPages],
+              let l = Map.findWithDefault (plainLabel (fromInteger n)) (fromInteger n) pageLbls
+            ]
           tocPages = Map.fromList [(lid, tp) | (lid, _, tp) <- tocEntries]
           -- the page number of each entry as set, for the text of its link (docs/adr/0267)
           tocNumbers = Map.fromList [(ui, T.concat [bcText c | Box _ c <- lineItems (tpNumber tp)]) | (_, ui, tp) <- tocEntries]
