@@ -94,6 +94,19 @@ softHyphenTests =
                 ("G07124", "a.gm", byteLength "a\xAD.と[shy]い[code: x", 5)
               ]
         [diagSeverity d | d <- brDiagnostics r, diagCode d `elem` map DiagnosticCode ["G07123", "G07124"]] @?= [Notice, Notice, Notice],
+      testCase "C6 (docs/adr/0277): the label of a page and its value past the measure are G07105 alone; in a range, G07122 alone" $ do
+        let mark = "[cite a page=xii]"
+            narrow = replaceIn "characters = 12" "characters = 2" horizontalStyle
+            builtCiting source = withSystemTempDirectory "golem-cite-over" $ \tmp -> do
+              writeProject tmp ("bibliography = [\"refs.json\"]\n" <> miniManifest) narrow source (("refs.json", "[{\"id\": \"a\", \"title\": \"A\"}]") : fakeFontFiles)
+              build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
+            -- the diagnostics of the codes in the mark, which starts at the byte given
+            inMark start r = [c | (c, _, s, _) <- sitesOf ["G07105", "G07122"] r, s >= start, s < start + byteLength mark]
+        plain' <- builtCiting ("あ" <> mark <> "\n\n@bibliography\n")
+        inMark (byteLength "あ") plain' @?= ["G07105"]
+        let rangeStart = byteLength "あ[style no-break: "
+        kept <- builtCiting ("あ[style no-break: " <> mark <> "]\n\n@bibliography\n")
+        inMark rangeStart kept @?= ["G07122"],
       testCase "no G07123 nor G07124 in an HTML build" $
         withSystemTempDirectory "golem-shy-html" $ \tmp -> do
           writeProject tmp (miniManifest <> "\n[targets.html]\n") horizontalStyle "a\xAD.\n" fakeFontFiles

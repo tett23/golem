@@ -1,6 +1,7 @@
 {- | The values of a citation and the mark of the default style
 (docs/adr/0266): I1 to I4 and I8 by every set of numbers from 1 to 6 in
-every order, I7 by the CBOR round trip and the checks.
+every order, I7 by the CBOR round trip and the checks; C4 of docs/adr/0277
+by the same sets with and without the locators.
 -}
 module CiteSpec (tests) where
 
@@ -8,7 +9,8 @@ import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
-import Data.List (permutations, sort, subsequences)
+import Data.List (intercalate, permutations, sort, subsequences)
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Cbor
@@ -71,11 +73,54 @@ parts = go
       _ : rest -> go rest
       [] -> []
 
+{- | The text of a mark as the default style wrote it before docs/adr/0277,
+from the items alone: the oracle of C4.
+-}
+textBefore :: [(CiteItem r, Maybe Int)] -> Text
+textBefore items
+  | any (isJust . citLocator . fst) items = "[" <> T.intercalate "; " [label i n <> maybe "" ((", " <>) . locator) (citLocator i) | (i, n) <- items] <> "]"
+  | otherwise = "[" <> T.pack (intercalate ", " (map run (runsOf (sort [n | (_, Just n) <- items])) <> [T.unpack (citKey i) | (i, Nothing) <- items])) <> "]"
+  where
+    label i = maybe (citKey i) (T.pack . show)
+    locator (Locator l v) = case (l, v) of
+      (LocatorPage, LocRange a b) | a /= b -> "pp. " <> T.pack (show a) <> "\x2013" <> T.pack (show b)
+      (LocatorPage, LocRange a _) -> "p. " <> T.pack (show a)
+      (LocatorPage, LocNumber a) -> "p. " <> T.pack (show a)
+      (LocatorPage, LocText t) -> "p. " <> t
+      _ -> error "a locator not of a page"
+    runsOf = foldr step []
+    step n = \case
+      (r@(m : _) : rest) | m == n + 1 -> (n : r) : rest
+      rs -> [n] : rs
+    run = \case
+      r@(a : _ : _ : _) -> show a <> "\x2013" <> show (last r)
+      r -> intercalate ", " (map show r)
+
+-- | The locators of C4: a page, a page of 0, a range, a range of equal ends, a page of text and one with a space.
+locators :: [LocatorValue]
+locators = [LocNumber 5, LocNumber 0, LocRange 5 7, LocRange 5 5, LocText "xii", LocText "5 f."]
+
 tests :: TestTree
 tests =
   testGroup
     "citations (docs/adr/0266)"
-    [ testCase "I1: the numbers of a mark without a locator, the ranges by what they cover, are the numbers cited, each once" $
+    [ testCase "C4 (docs/adr/0277): the text of every mark is the one before the ADR, without a locator and with one on any item" $
+        forM_ orders $ \ns -> do
+          citationText (citationPieces (itemsOf ns)) @?= textBefore (itemsOf ns)
+          forM_ locators $ \v ->
+            forM_ [0 .. length ns - 1] $ \k -> do
+              let items = [(if j == k then i {citLocator = page v} else i, n) | (j, (i, n)) <- zip [0 ..] (itemsOf ns)]
+              citationText (citationPieces items) @?= textBefore items,
+      testCase "C4 (docs/adr/0277): an item with a locator has one CiteLocator, its label p. or pp. and its value the rest" $
+        forM_ locators $ \v -> do
+          let ps = citationPieces [(citeItem "b", Just 2), (CiteItem "a" (page v) [] [], Just 1)]
+          case [(l, x) | CiteLocator l x <- ps] of
+            [(l, x)] -> do
+              assertBool (show l) (l `elem` ["p.", "pp."])
+              (l == "pp.") @?= (case v of LocRange a b -> a /= b; _ -> False)
+              ps @?= [CiteText "[", CiteNumber "b" 2, CiteText "; ", CiteNumber "a" 1, CiteText ", ", CiteLocator l x, CiteText "]"]
+            other -> assertFailure (show other),
+       testCase "I1: the numbers of a mark without a locator, the ranges by what they cover, are the numbers cited, each once" $
         forM_ orders $
           \ns -> covered (citationPieces (itemsOf ns)) @?= sort ns,
       testCase "I2: the mark without a locator does not change with the order of the keys" $

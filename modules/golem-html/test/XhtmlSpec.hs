@@ -207,7 +207,25 @@ citeLinkTests =
       testCase "a mark with a page: the page after the link (docs/adr/0266)" $ do
         let mark = Block (mkSpan fidA 0 1) Nothing Nothing (Paragraph Nothing [Cite (mkSpan fidA 0 1) [CiteItem "k" (Just (Locator LocatorPage (LocRange 5 7))) [] []]])
         bodyA cfg0 (assembled [[mark], [bib fidB 0]])
-          @?= "<p><span class=\"cite\">[<a href=\"b.xhtml#cite-k\">1</a>, pp. 5\x2013\&7]</span></p>\n",
+          @?= "<p><span class=\"cite\">[<a href=\"b.xhtml#cite-k\">1</a>, pp.\xA0\&5\x2013\&7]</span></p>\n",
+      testCase "C5 (docs/adr/0277): the label of a page and its value are apart by U+00A0, the rest as before" $ do
+        let mark v = Block (mkSpan fidA 0 1) Nothing Nothing (Paragraph Nothing [Cite (mkSpan fidA 0 1) [CiteItem "k" (Just (Locator LocatorPage v)) [] []]])
+            html v = bodyA cfg0 (assembled [[mark v], [bib fidB 0]])
+            before v = "<p><span class=\"cite\">[<a href=\"b.xhtml#cite-k\">1</a>, " <> v <> "]</span></p>\n"
+        html (LocNumber 5) @?= before "p.\xA0\&5"
+        html (LocRange 5 7) @?= before "pp.\xA0\&5\x2013\&7"
+        html (LocText "xii") @?= before "p.\xA0xii"
+        -- a space in the value stays
+        html (LocText "5 f.") @?= before "p.\xA0\&5 f."
+        -- the U+00A0 is the only change: with U+0020 in its place, the HTML before the ADR
+        T.replace "\xA0" " " (html (LocRange 5 7)) @?= "<p><span class=\"cite\">[<a href=\"b.xhtml#cite-k\">1</a>, pp. 5\x2013\&7]</span></p>\n",
+      testCase "C5 (docs/adr/0277): a mark without a locator is the HTML before the ADR, byte for byte" $ do
+        let mark ks = Block (mkSpan fidA 0 1) Nothing Nothing (Paragraph Nothing [Cite (mkSpan fidA 0 1) (map citeItem ks)])
+        bodyA cfg0 (assembled [[mark ["c", "a", "b"]], [bib fidB 0]])
+          @?= "<p><span class=\"cite\">[<a href=\"b.xhtml#cite-c\">1</a>\x2013<a href=\"b.xhtml#cite-b\">3</a>]</span></p>\n"
+        bodyA cfg0 (assembled [[mark ["b", "a"]], [bib fidB 0]])
+          @?= "<p><span class=\"cite\">[<a href=\"b.xhtml#cite-b\">1</a>, <a href=\"b.xhtml#cite-a\">2</a>]</span></p>\n"
+        assertBool "no U+00A0" (not (T.any (== '\xA0') (bodyA cfg0 (assembled [[mark ["b", "a"]], [bib fidB 0]])))),
       testCase "a bibliography inside a list item of another file" $ do
         let inList = Block (mkSpan fidB 0 1) Nothing Nothing (BulletList [ListItem Nothing [bib fidB 2]])
         bodyA cfg0 (assembled [[citing fidA 0 ["k"]], [inList]])
