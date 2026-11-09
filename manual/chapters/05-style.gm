@@ -221,6 +221,7 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 - [code: color]：色の名前（スウォッチ）です。
 - [code: synthetic-bold]、[code: synthetic-italic]：字形の輪郭を太らせた太字と、傾けた斜体です。
 - [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]：文字の送りです（「[ref-title kerning]」、[ref-page kerning] ページ）。
+- [code: features]：スモールキャップや数字の形式などの OpenType の機能です（「[ref-title opentype-features]」、[ref-page opentype-features] ページ）。
 - [code: based-on]：引き継ぐ文字スタイルです。
 - [code: background]、[code: padding]：本文の中のコードの背景の色と、前後の余白です。[code: code] と、それを引き継ぐ文字スタイルにだけ書けます。[code: background] を書かなければ、段落スタイル [code: code] の背景を使います。
 
@@ -242,7 +243,7 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 - [code: regex-styles]：正規表現スタイルです（「[ref-title regex-styles]」、[ref-page regex-styles] ページ）。
 - [code: aki-set]：アキ量のセットです（「[ref-title aki-sets]」、[ref-page aki-sets] ページ）。
 - [code: rule-before]、[code: rule-after]：段落の前と後に引く罫線です。次の段落で説明します。
-- 文字の送りの四つのキーも書けます。
+- 文字の送りの四つのキーと、OpenType の機能の [code: features] も書けます。
 - [code: based-on]：引き継ぐ段落スタイルです。省くと [code: body] を引き継ぎます。
 
 はじめから定義されている段落スタイルは、[code: body]（本文）、[code: verse]（韻文）、[code: caption]（図のキャプション）、[code: sidenote]（傍注の本文）、[code: code]（コードブロック）の五つです。
@@ -379,6 +380,53 @@ InDesign の「オプティカル」に当たるカーニング（[code: kerning
 
 HTML と EPUB では、CSS の [code: font-kerning]、[code: letter-spacing]、[code: font-feature-settings]、[code: vertical-align] で表します。
 CSS では和文と欧文で別のカーニングを指定できないので、[code: japanese-equal-width] は欧文のカーニングを保ちます。
+
+@label opentype-features
+## OpenType の機能
+
+スモールキャップ、分数、数字の形式、スタイルセットなどの OpenType の機能[index reading=おーぷんたいぷ/きのう: OpenType/機能]は、文字スタイルと段落スタイルの [code: features] に書きます。
+InDesign の文字パネルのメニューの「OpenType 機能」に当たります。
+値は、機能のタグの文字列の配列です。
+
+```toml
+[character-styles.small-caps]
+features = ["smcp"]
+
+[character-styles.abbr]
+based-on = "small-caps"
+features = ["c2sc"]
+
+[paragraph-styles.table-cell]
+features = ["tnum", "lnum"]
+
+[character-styles.alt]
+features = ["salt=2", "-liga"]
+```
+
+[code: smcp] のように書けば機能を使い、[code: -liga] のように [code: -] を付ければ機能を止めます。
+[code: salt=2] のように [code: =] の後に数を書けば、その番号の代替の字形を選びます。
+タグは英字と数字の 4 字です。
+この形で読めない文字列は G03124 のエラーになります。
+フォントの役割の [code: features] にも、同じ形だけを書けます。
+
+[code: features] は、ほかのキーと違い、[code: based-on] で引き継いだ機能を置き換えず、その後ろに足します。
+上の [code: abbr] は、[code: smcp] と [code: c2sc] の両方を使います。
+引き継いだ機能を止めたいときは、[code: -smcp] のように書きます。
+同じ機能を二度書いたときは、後ろの値が勝ちます。
+
+PDF では、フォントの役割の機能、段落スタイルの機能、文字スタイルの機能の順に並べ、その後ろに Golem が文字の送りのキーの機能を足します。
+そのため、[code: kerning = "japanese-equal-width"] の和文には、[code: features] に [code: palt] を書いても字面に合わせた送りが当たりません。
+括弧類、句読点、中点類には、[code: palt] と [code: vpal] と同じく、[code: halt]、[code: vhal]、[code: chws]、[code: vchw] も当てません。
+Golem が約物の前後の空きを決めるので、重ねると空きが二重に詰まるからです。
+
+フォントがその機能を持たないと、PDF の字形は変わりません。
+[code: golem build] は、PDF を組むときにこれを G08103 で知らせます。
+[code: --profile dev] では警告で、[code: --profile prod] ではエラーになり、PDF を書きません。
+和文と欧文が混じった範囲では、どちらかのフォントが機能を持っていれば知らせません。
+InDesign と違い、フォントにスモールキャップがなくても、大文字を縮めて作ることはしません。
+
+HTML と EPUB では、CSS の [code: font-feature-settings] で表します。
+CSS では内側の要素の値が外側の値を置き換えるので、文字スタイルを入れ子にすると、内側のスタイルの機能だけが当たります。
 
 ## ファイルの中のスタイル
 

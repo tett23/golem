@@ -136,21 +136,19 @@ void golem_font_v_origin(golem_font *f, uint32_t gid, int32_t *x, int32_t *y) {
   *y = (int32_t)oy;
 }
 
+/* Every feature given goes to HarfBuzz, however many (docs/adr/0268):
+   room for nfeatures of them is taken. */
 int golem_font_shape(golem_font *f, const char *utf8, int len, const char *script,
-                     const char *lang, int vertical, const char *features,
+                     const char *lang, int vertical, const char *features, int nfeatures,
                      uint32_t *out_gids, uint32_t *out_clusters, int32_t *out_pos,
                      int max_glyphs) {
-  hb_buffer_t *buf = hb_buffer_create();
-  hb_buffer_add_utf8(buf, utf8, len, 0, len);
-  hb_buffer_set_direction(buf, vertical ? HB_DIRECTION_TTB : HB_DIRECTION_LTR);
-  if (script && *script) hb_buffer_set_script(buf, hb_script_from_string(script, -1));
-  if (lang && *lang) hb_buffer_set_language(buf, hb_language_from_string(lang, -1));
-  hb_buffer_guess_segment_properties(buf);
-  hb_feature_t feats[32];
+  hb_feature_t *feats = NULL;
   unsigned nfeat = 0;
-  if (features && *features) {
+  if (features && *features && nfeatures > 0) {
+    feats = malloc(sizeof(hb_feature_t) * (size_t)nfeatures);
+    if (!feats) return -1;
     const char *p = features;
-    while (*p && nfeat < 32) {
+    while (*p && nfeat < (unsigned)nfeatures) {
       const char *e = strchr(p, ',');
       int n = e ? (int)(e - p) : (int)strlen(p);
       if (hb_feature_from_string(p, n, &feats[nfeat])) nfeat++;
@@ -158,7 +156,14 @@ int golem_font_shape(golem_font *f, const char *utf8, int len, const char *scrip
       p = e + 1;
     }
   }
+  hb_buffer_t *buf = hb_buffer_create();
+  hb_buffer_add_utf8(buf, utf8, len, 0, len);
+  hb_buffer_set_direction(buf, vertical ? HB_DIRECTION_TTB : HB_DIRECTION_LTR);
+  if (script && *script) hb_buffer_set_script(buf, hb_script_from_string(script, -1));
+  if (lang && *lang) hb_buffer_set_language(buf, hb_language_from_string(lang, -1));
+  hb_buffer_guess_segment_properties(buf);
   hb_shape(f->hbfont, buf, feats, nfeat);
+  free(feats);
   unsigned count = 0;
   hb_glyph_info_t *info = hb_buffer_get_glyph_infos(buf, &count);
   hb_glyph_position_t *pos = hb_buffer_get_glyph_positions(buf, &count);
@@ -173,6 +178,27 @@ int golem_font_shape(golem_font *f, const char *utf8, int len, const char *scrip
   }
   hb_buffer_destroy(buf);
   return (int)count;
+}
+
+/* Whether the GSUB or the GPOS table lists the feature, of any script and
+   language system (docs/adr/0268). */
+int golem_font_has_feature(golem_font *f, const char *tag) {
+  hb_tag_t t = hb_tag_from_string(tag, -1);
+  hb_tag_t tables[2] = {HB_OT_TAG_GSUB, HB_OT_TAG_GPOS};
+  int found = 0;
+  for (int i = 0; i < 2 && !found; i++) {
+    hb_set_t *indexes = hb_set_create();
+    hb_ot_layout_collect_features(f->hbface, tables[i], NULL, NULL, NULL, indexes);
+    hb_codepoint_t ix = HB_SET_VALUE_INVALID;
+    while (!found && hb_set_next(indexes, &ix)) {
+      hb_tag_t got = HB_TAG_NONE;
+      unsigned one = 1;
+      hb_ot_layout_table_get_feature_tags(f->hbface, tables[i], ix, &one, &got);
+      if (one == 1 && got == t) found = 1;
+    }
+    hb_set_destroy(indexes);
+  }
+  return found;
 }
 
 uint8_t *golem_font_subset(golem_font *f, const uint32_t *gids, int n, size_t *out_len) {

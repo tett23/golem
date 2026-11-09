@@ -100,7 +100,8 @@ shapingTextKey roles = \(Shaping role vertical extra dual, t) ->
 {- | A feature as digits: an OpenType tag of four ASCII characters, alone
 or after + or -, is two digits of fourteen bits, seven a character, with
 the sign (1 for +, 2 for -) above the fourteen bits of the first
-(docs/adr ADR 0255); any
+(docs/adr ADR 0255); a tag with a value, @tag=N@ with N from 0 to 65535,
+has the sign 3 and N as a third digit (docs/adr/0268); any
 other text is @-(1 + its length)@ and its code points, a key that is
 decoded but not remembered.
 -}
@@ -109,6 +110,15 @@ featureDigits f = case T.unpack f of
   ['+', a, b, c, d] | ascii [a, b, c, d] -> tag 1 a b c d
   ['-', a, b, c, d] | ascii [a, b, c, d] -> tag 2 a b c d
   [a, b, c, d] | ascii [a, b, c, d] -> tag 0 a b c d
+  a : b : c : d : '=' : n
+    | ascii [a, b, c, d],
+      not (null n),
+      length n <= 5,
+      all (\x -> x >= '0' && x <= '9') n,
+      -- the text of the value as it reads back: no leading zero
+      show (read n :: Int) == n,
+      read n <= (65535 :: Int) ->
+        tag 3 a b c d <> [read n]
   cs -> negate (1 + length cs) : map ord cs
   where
     ascii = all (\x -> ord x < 128)
@@ -146,6 +156,8 @@ fromShapingTextKey roles = \ds0 ->
     takeFeature = \case
       (a : rest)
         | a < 0 -> let (cs, rest') = splitAt (negate a - 1) rest in (T.pack (map chr cs), rest')
+      (a : b : n : rest)
+        | a `shiftR` 14 == 3 -> (T.pack (unpair (a .&. 0x3FFF) <> unpair b <> "=" <> show n), rest)
       (a : b : rest) ->
         let sign = case a `shiftR` 14 of
               1 -> "+"

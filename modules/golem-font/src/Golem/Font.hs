@@ -34,6 +34,7 @@ module Golem.Font
     ShapeRequest (..),
     shapeRequest,
     shapeUnits,
+    fontHasFeature,
     glyphVerticalOrigin,
     GlyphMetrics (..),
     glyphMetrics,
@@ -84,7 +85,9 @@ foreign import capi unsafe "golem_font.h golem_font_glyph_metrics" c_metrics :: 
 foreign import capi unsafe "golem_font.h golem_font_v_origin" c_vOrigin :: Ptr CFont -> Word32 -> Ptr Int32 -> Ptr Int32 -> IO ()
 
 foreign import capi unsafe "golem_font.h golem_font_shape"
-  c_shape :: Ptr CFont -> CString -> CInt -> CString -> CString -> CInt -> CString -> Ptr Word32 -> Ptr Word32 -> Ptr Int32 -> CInt -> IO CInt
+  c_shape :: Ptr CFont -> CString -> CInt -> CString -> CString -> CInt -> CString -> CInt -> Ptr Word32 -> Ptr Word32 -> Ptr Int32 -> CInt -> IO CInt
+
+foreign import capi unsafe "golem_font.h golem_font_has_feature" c_hasFeature :: Ptr CFont -> CString -> IO CInt
 
 foreign import capi unsafe "golem_font.h golem_font_subset" c_subset :: Ptr CFont -> Ptr Word32 -> CInt -> Ptr CSize -> IO (Ptr Word8)
 
@@ -228,7 +231,7 @@ shapeUnits f req = unsafePerformIO $ withForeignPtr (fontPtr f) $ \p ->
         withCString (T.unpack (T.intercalate "," (srFeatures req))) $ \feats -> do
           let attempt cap =
                 allocaArray cap $ \gids -> allocaArray cap $ \clusters -> allocaArray (4 * cap) $ \pos -> do
-                  n <- c_shape p txt (fromIntegral len) script lang (if srDirection req == Vertical then 1 else 0) feats gids clusters pos (fromIntegral cap)
+                  n <- c_shape p txt (fromIntegral len) script lang (if srDirection req == Vertical then 1 else 0) feats (fromIntegral (length (srFeatures req))) gids clusters pos (fromIntegral cap)
                   if n < 0
                     then pure (Left (fromIntegral (negate n - 1) :: Int))
                     else do
@@ -242,6 +245,13 @@ shapeUnits f req = unsafePerformIO $ withForeignPtr (fontPtr f) $ \p ->
           case r of
             Right xs -> pure xs
             Left needed -> fromRight [] <$> attempt needed
+
+{- | Whether the FeatureList of the GSUB or the GPOS table of the font has
+an OpenType feature tag, of any script and language system (docs/adr/0268).
+-}
+fontHasFeature :: Font -> Text -> Bool
+fontHasFeature f tag = unsafePerformIO $ withForeignPtr (fontPtr f) $ \p ->
+  withCString (T.unpack tag) $ \t -> (/= 0) <$> c_hasFeature p t
 
 {- | The vertical origin (x, y) of a glyph in font units, as
 @hb_font_get_glyph_v_origin@ gives it (golem-driver ADR 0020): vertical

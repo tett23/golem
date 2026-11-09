@@ -18,7 +18,7 @@ import Data.ByteString qualified as BS
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Functor ((<&>))
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes, fromMaybe, isJust)
+import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe)
 import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -29,12 +29,13 @@ import Golem.Layout.CharClass (isDualCharacter)
 import Golem.Layout.Japanese (CharClass (..), charClass, isExtending, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
 import Golem.Pdf qualified as P
+import Golem.Project.Feature (normalFeatureTexts)
 import Golem.Project.Files (Files (..))
 import Golem.Project.Paths (PathError (..), pathErrorMessage)
 import Golem.Project.Style
 import Golem.Syntax
-import Golem.Typeset (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyFontDiagnostics, bodyRole, usedRoles)
-import Golem.Typeset.Memo (fromShapingTextKey, memoWith, shapingTextKey)
+import Golem.Typeset (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyFontDiagnostics, bodyRole, normalTexts, usedRoles)
+import Golem.Typeset.Memo (fromShapingTextKey, memoWith, shapingTextKey, textDigits)
 import Golem.Typeset.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 import Text.Printf (printf)
 
@@ -86,7 +87,7 @@ fontProvider memoise = FontProvider $ \files fid style locals ->
                   ordered = concat [catMaybes [ja, la] | (_, _, ja, la) <- roleFiles]
                   faces = nubOrdOn (\(b, _, _) -> b) ordered
                   faceOf (b, _, _) = length (takeWhile (\(b', _, _) -> b' /= b) faces)
-                  roleFaces = Map.fromList [(r, (faceOf <$> ja, faceOf <$> la, frFeatures fr)) | (r, fr, ja, la) <- roleFiles]
+                  roleFaces = Map.fromList [(r, (faceOf <$> ja, faceOf <$> la, normalFeatureTexts (frFeatures fr))) | (r, fr, ja, la) <- roleFiles]
                   clashes =
                     [ (n, p1, p2)
                     | ((_, f1, p1), i) <- zip faces [0 :: Int ..],
@@ -152,7 +153,10 @@ provide memoise fid faces body roles =
       lfInkBox = \ix g ->
         let f = fontAt ix
             em v = toInteger v % toInteger (fontUnitsPerEm f)
-         in (\m -> let (x0, y0, x1, y1) = gmBBox m in (em x0, em y0, em x1, em y1)) <$> glyphMetrics f g
+         in (\m -> let (x0, y0, x1, y1) = gmBBox m in (em x0, em y0, em x1, em y1)) <$> glyphMetrics f g,
+      lfRoleFeatures = \role -> let (_, _, fs) = roleOf role in fs,
+      -- the feature list of GSUB and GPOS, of any script and language (docs/adr/0268)
+      lfHasFeature = curry hasFeature
     }
   where
     {- advances are asked for again and again while composing; they are
@@ -165,6 +169,8 @@ provide memoise fid faces body roles =
     the second round of the page references (docs/adr/0253) -}
     shapedOf = memoWith key unkey (uncurry shapeText)
     shaped s t = if memoise then shapedOf (s, t) else shapeText s t
+    -- the feature list of each face and tag read once (docs/adr/0268)
+    hasFeature = memoWith (\(ix, tag) -> ix : textDigits tag) (\ds -> (fromMaybe 0 (listToMaybe ds), T.pack (map toEnum (drop 2 ds)))) (\(ix, tag) -> fontHasFeature (fontAt ix) tag)
     -- the roles by their order in the table, a short key (docs/adr/0253)
     key = shapingTextKey (Map.keys roles)
     unkey = fromShapingTextKey (Map.keys roles)
@@ -188,7 +194,8 @@ provide memoise fid faces body roles =
     0015). The clusters are numbered by character in the whole text. -}
     shapeText (Shaping role vertical extra dual) t =
       let (_, la, roleFeatures) = roleOf role
-          features = roleFeatures <> extra
+          -- the last value of each tag, in the normal form (docs/adr/0268)
+          features = normalTexts (roleFeatures <> extra)
           shapeIn f r dir = shapeUnits f ((shapeRequest r) {srDirection = dir, srFeatures = features})
           em f u = toInteger u % toInteger (fontUnitsPerEm f)
           {- the offsets as HarfBuzz gives them in horizontal shaping; vertical

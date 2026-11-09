@@ -29,13 +29,18 @@ int golem_font_glyph_metrics(golem_font *f, uint32_t gid, int32_t *out6);
 void golem_font_v_origin(golem_font *f, uint32_t gid, int32_t *x, int32_t *y);
 
 /* Shapes UTF-8 text. vertical: 0 or 1. features: comma-separated
-   HarfBuzz feature strings or NULL. Returns the glyph count, or -1.
+   HarfBuzz feature strings or NULL, nfeatures of them, with no limit
+   (docs/adr/0268). Returns the glyph count, or -1.
    The arrays must hold max_glyphs entries; out_pos holds 4 per glyph
    (x_advance, y_advance, x_offset, y_offset) in font units. */
 int golem_font_shape(golem_font *f, const char *utf8, int len, const char *script,
-                     const char *lang, int vertical, const char *features,
+                     const char *lang, int vertical, const char *features, int nfeatures,
                      uint32_t *out_gids, uint32_t *out_clusters, int32_t *out_pos,
                      int max_glyphs);
+
+/* 1 when the FeatureList of GSUB or GPOS has the tag (four characters),
+   whatever the script and the language system; 0 otherwise. */
+int golem_font_has_feature(golem_font *f, const char *tag);
 
 /* Subsets to the glyphs, keeping glyph ids. Returns a malloc'd buffer
    (free with golem_font_free) and its length, or NULL. */

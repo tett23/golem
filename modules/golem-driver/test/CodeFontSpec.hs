@@ -55,7 +55,7 @@ codeFontTests =
                 (_, c) : _ ->
                   let look = bcLook c
                       txt = T.concat [bcText d | (_, d) <- run]
-                   in floor (toRational (unSp (lkSize look)) * sum [shAdvance g | g <- lfShape fonts (shapingOf False look (T.head txt)) txt]) :: Integer
+                   in floor (toRational (unSp (lkSize look)) * sum [shAdvance g | g <- lfShape fonts (shapingOf (lfRoleFeatures fonts) False look (T.head txt)) txt]) :: Integer
                 [] -> 0
           assertBool "runs of Japanese code" (any ((> 1) . length) runs)
           forM_ runs $ \run ->

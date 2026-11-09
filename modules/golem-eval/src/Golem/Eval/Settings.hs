@@ -241,6 +241,10 @@ fileStyles style header =
    in (final, ds1 <> ds2 <> ds3 <> overrides <> zeroIndents)
   where
     shape = "@style-def には種類（character、paragraph、regex）と名前を書きます"
+    -- the features of a definition are at its line, for G08103 (docs/adr/0268)
+    sited sp = \case
+      Left c -> Left c {csFeatures = [f {ftSite = SiteSource sp} | f <- csFeatures c]}
+      Right p -> Right p {psFeatures = [f {ftSite = SiteSource sp} | f <- psFeatures p]}
     readDef (defs, ds) (sp, args, body) =
       let positionals = [(asp, v) | A.Located asp (A.Positional v) <- args]
           spreads = [spreadBeforeEvaluation "@style-def" asp | A.Located asp a <- args, isSplat a]
@@ -275,7 +279,7 @@ fileStyles style header =
                       | otherwise -> case localStyleDef k [(key, v) | (key, _, v) <- kvs] of
                           -- an aki amount in a dimension is G03020 (docs/adr ADR 0019); kerning, tracking and baseline shift G03021 (docs/adr/0020)
                           Left ms -> (defs, ds <> [err (if "アキの量の指定が正しくありません" `T.isPrefixOf` m then "G03020" else code) sp ("@style-def の値が不正です: " <> m) | (code, m) <- ms])
-                          Right d -> (defs <> [Def sp k name d], ds)
+                          Right d -> (defs <> [Def sp k name (sited sp d)], ds)
             _ -> (defs, ds <> errs)
     -- the kind and the name, as a word or a string literal (docs/adr ADR 0132)
     textOf v = case localValue v of

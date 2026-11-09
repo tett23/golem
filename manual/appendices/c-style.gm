@@ -119,6 +119,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: color] | なし | [code: \[color.swatches\]] で付けた色の名前です。 |
 | [code: synthetic-bold] | [code: false] | [code: true] にすると、字形の輪郭を太らせて太字にします。 |
 | [code: synthetic-italic] | [code: false] | [code: true] にすると、字形を傾けて斜体にします。 |
+| [code: features] | なし | OpenType の機能の配列です。[code: \["smcp", "-liga", "salt=2"\]] のように書きます。[code: based-on] で引き継いだ機能の後ろに足します。 |
 
 文字の送りを決める次の四つのキーも書けます。
 文字スタイルで書かなかったキーは、外側の文字の値のままです。
@@ -203,7 +204,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: rule-before] | 段落の前に引く罫線です。罫線の表（次の表）か [code: false] を書きます。[code: false] は引き継いだ罫線を引きません。 |
 | [code: rule-after] | 段落の後に引く罫線です。書き方は [code: rule-before] と同じです。 |
 
-段落スタイルには、文字スタイルと同じ [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift] も書けます。
+段落スタイルには、文字スタイルと同じ [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]、[code: features] も書けます。
 [code: \[paragraph-styles.body\]] に書くと、本の全体の既定になります。
 [code: aki-set] は [code: body] から引き継ぐので、[code: body] に書けば本の全体が変わります。
 [code: body] で書かなければ、組み込みのセット [code: gyomatsu-yakumono-hankaku] になります。
