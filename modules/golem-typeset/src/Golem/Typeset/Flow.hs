@@ -2246,16 +2246,24 @@ markerItems env inner u = case uMarker u of
         w = sum (map itemWidth boxes)
      in boxes <> [Box (inner - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0 [] 0 0 (uSource u, uSpan u) Nothing noLeaf (spanStart (uSpan u)))]
 
--- | Composes a unit and breaks it into lines of the widths, with its notes, sidenotes and index marks.
+{- | Composes a unit and breaks it into lines of the widths, with its notes,
+sidenotes and index marks. A unit in a box is composed and broken as with
+hanging-punctuation = false: its edge is the inner edge of the box, not the
+type area (docs/adr/0279).
+-}
 composeUnit :: FlowEnv -> Map Int Sp -> (Int -> Sp) -> Unit -> Composed
 composeUnit fe widths lineWidth u =
-  let env = (unitEnv fe u) {ceSizeSource = uSource u, ceSite = unitSiteOf u}
+  let boxed = isJust (uBox u)
+      env = (unitEnv fe u) {ceSizeSource = uSource u, ceSite = unitSiteOf u, ceHanging = ceHanging (unitEnv fe u) && not boxed}
+      params
+        | boxed = (feParams fe) {pProtrusion = compProtrusion (stComposition (piStyle (feInput fe)))}
+        | otherwise = feParams fe
       marker = markerItems env (listInner widths u) u
       -- the anchors count the items of the text; the marker comes first
       shift = length marker
       (textItems, anchors) = composeInlines env (uInlines u)
       items = marker <> textItems
-      lines' = brLines (A.breakAligned (layoutAlign (uKind u)) (feParams fe) lineWidth items)
+      lines' = brLines (A.breakAligned (layoutAlign (uKind u)) params lineWidth items)
    in Composed lines' (unitNotes fe u anchors) (unitSidenotes fe u shift anchors) (unitMarks fe u shift anchors) anchors items shift
 
 {- | The place of the text of a unit in the structure tree (docs/adr ADR
