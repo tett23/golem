@@ -17,7 +17,9 @@
 #    tree-sitter grammar give each element the same class.
 # 6. Every .gm and .emet of modules/golem-driver/test/fixtures/, manual/
 #    and manual-dev/ parses with tree-sitter without an ERROR or a MISSING
-#    node.
+#    node. The .emet of manual/examples/emet/ are left out: they are the
+#    mistakes the user manual shows, and golem-driver tests that each gives
+#    its diagnostic (ManualEmetSpec).
 #
 # The first run installs the pinned packages (npm ci in tools/editors).
 # tree-sitter needs a C compiler (cc) for the tests and the parses.
@@ -96,7 +98,8 @@ node --test test/ || fail "the classes of the two grammars differ"
 # ---- 6. the sources that Golem parses parse with tree-sitter
 cd "$ROOT"
 git ls-files -- 'modules/golem-driver/test/fixtures/*.gm' 'manual/*.gm' 'manual-dev/*.gm' >"$WORK/gm"
-git ls-files -- 'modules/golem-driver/test/fixtures/*.emet' 'manual/*.emet' 'manual-dev/*.emet' >"$WORK/emet"
+git ls-files -- 'modules/golem-driver/test/fixtures/*.emet' 'manual/*.emet' 'manual-dev/*.emet' |
+  grep -v '^manual/examples/emet/' >"$WORK/emet"
 for lang in gm emet; do
   case $lang in
     gm) g=tree-sitter-golem ;;

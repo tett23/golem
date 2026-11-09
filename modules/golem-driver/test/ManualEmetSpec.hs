@@ -89,7 +89,7 @@ projectManifest =
 emetUnder :: FilePath -> IO [FilePath]
 emetUnder dir = do
   entries <- sort <$> listDirectory dir
-  fmap concat . mapM pick $ map (dir </>) entries
+  concat <$> mapM (pick . (dir </>)) entries
   where
     pick p = do
       isDir <- doesDirectoryExist p
