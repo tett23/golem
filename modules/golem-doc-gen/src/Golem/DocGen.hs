@@ -7,6 +7,7 @@ test suite of this package (docs/adr/0197).
 -}
 module Golem.DocGen (genDocument, genInline, genExpr, genInt64) where
 
+import Data.List (nub)
 import Data.Text (Text)
 import Data.Void (Void)
 import Golem.Doc.IR
@@ -43,7 +44,6 @@ genInlineWith mr =
         Ref <$> genSpan <*> Gen.enumBounded <*> genText,
         Deferred <$> genSpan <*> (DeferredExpr <$> genExpr),
         IndexMark <$> genSpan <*> (IndexEntry <$> Gen.list (Range.singleton 1) genText <*> Gen.list (Range.singleton 1) genText),
-        Cite <$> genSpan <*> genText,
         ProofComment <$> genSpan <*> genText,
         LineBreak <$> genSpan,
         Aki <$> genSpan <*> Gen.choice [AkiZw <$> genRatio, AkiAbs . Sp <$> genNonNegative64],
@@ -58,6 +58,8 @@ genInlineWith mr =
       -- the body of a note: paragraphs without a style, one for a sidenote (docs/adr/0263)
       Note <$> genSpan <*> Gen.int (Range.linear 1 99) <*> Gen.list (Range.linear 1 3) para,
       Sidenote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> fmap pure para,
+      -- a citation of distinct keys, with any locator, prefix and suffix (docs/adr/0266)
+      Cite <$> genSpan <*> citeItems,
       -- a link to an external URL (docs/adr ADR 0182)
       Link <$> genSpan <*> genText <*> sub,
       -- a language span (docs/adr ADR 0187)
@@ -66,6 +68,11 @@ genInlineWith mr =
   where
     sub = Gen.list (Range.linear 0 3) (genInlineWith mr)
     para = (\sp is -> Block sp Nothing Nothing (Paragraph Nothing is)) <$> genSpan <*> Gen.list (Range.linear 0 3) genInline
+    citeItems = do
+      keys <- nub <$> Gen.list (Range.linear 1 3) genText
+      traverse (\k -> CiteItem k <$> Gen.maybe genLocator <*> sub <*> sub) keys
+    genLocator = Locator <$> Gen.enumBounded <*> Gen.choice [LocNumber <$> genNonNegative64, range, LocText <$> Gen.text (Range.linear 1 8) (Gen.element ("ixv5f." :: String))]
+    range = (\a b -> LocRange (min a b) (max a b)) <$> genNonNegative64 <*> genNonNegative64
 
 {- | A non-negative amount in zw, in lowest terms as 'Rational' keeps it;
 the numerator and the denominator reach the end of int64 (golem-doc ADR

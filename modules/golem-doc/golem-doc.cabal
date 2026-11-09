@@ -18,6 +18,7 @@ library
   hs-source-dirs:   src
   exposed-modules:
     Golem.Doc.Cbor
+    Golem.Doc.Citation
     Golem.Doc.FigureWidth
     Golem.Doc.IR
     Golem.Doc.Url
@@ -37,7 +38,7 @@ test-suite golem-doc-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    CborExprSpec LangSpec LinkSpec NoteSpec ResolvedSpec TableSpec
+  other-modules:    CborExprSpec CiteSpec LangSpec LinkSpec NoteSpec ResolvedSpec TableSpec
   build-depends:
     , base
     , bytestring

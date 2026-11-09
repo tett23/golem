@@ -71,8 +71,8 @@ pub enum Inline {
     Sidenote { span: Span, number: u64, body: Vec<Block> },
     /// 14
     IndexMark { span: Span, terms: Vec<String>, readings: Vec<String> },
-    /// 15
-    Cite { span: Span, key: String },
+    /// 25 (docs/adr/0266): one item or more, their keys distinct; 15 is retired
+    Cite { span: Span, items: Vec<CiteItem> },
     /// 16
     ProofComment { span: Span, text: String },
     /// 17
@@ -111,6 +111,37 @@ impl Inline {
             | Inline::Lang { span, .. } => *span,
         }
     }
+}
+
+/// An item of a citation (docs/adr/0266): the key, where in the work, the
+/// text before and after. The host sets only a page and no prefix nor suffix yet.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CiteItem {
+    pub key: String,
+    pub locator: Option<Locator>,
+    pub prefix: Vec<Inline>,
+    pub suffix: Vec<Inline>,
+}
+
+impl CiteItem {
+    /// An item of a key alone.
+    pub fn key(key: impl Into<String>) -> CiteItem {
+        CiteItem { key: key.into(), locator: None, prefix: vec![], suffix: vec![] }
+    }
+}
+
+/// Where in the cited work: a CSL locator term ("page", "chapter", ...) and its value.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Locator {
+    pub label: String,
+    pub value: LocatorValue,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum LocatorValue {
+    Number(u64),
+    Range(u64, u64),
+    Text(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -300,7 +331,7 @@ pub fn inline_value(x: &Inline) -> Value {
                 Value::Array(readings.iter().map(|s| text(s)).collect()),
             ],
         ),
-        Inline::Cite { span, key } => t(15, span, vec![text(key)]),
+        Inline::Cite { span, items } => t(25, span, vec![Value::Array(items.iter().map(cite_item_value).collect())]),
         Inline::ProofComment { span, text: s } => t(16, span, vec![text(s)]),
         Inline::LineBreak { span } => t(17, span, vec![]),
         Inline::Aki { span, zw, sp } => t(
@@ -400,6 +431,18 @@ pub fn note_paragraphs_mut(body: &mut [Block]) -> impl Iterator<Item = &mut Vec<
     })
 }
 
+fn cite_item_value(i: &CiteItem) -> Value {
+    let locator = i.locator.as_ref().map_or(Value::Null, |l| {
+        let value = match &l.value {
+            LocatorValue::Number(n) => Value::Array(vec![int(0u8), int(*n)]),
+            LocatorValue::Range(a, b) => Value::Array(vec![int(1u8), int(*a), int(*b)]),
+            LocatorValue::Text(t) => Value::Array(vec![int(2u8), text(t)]),
+        };
+        Value::Array(vec![text(&l.label), value])
+    });
+    Value::Array(vec![text(&i.key), locator, inlines_value(&i.prefix), inlines_value(&i.suffix)])
+}
+
 pub fn blocks_value(bs: &[Block]) -> Value {
     Value::Array(bs.iter().map(block_value).collect())
 }
@@ -437,6 +480,29 @@ pub(crate) fn text_of(v: &Value) -> R<String> {
     match v {
         Value::Text(s) => Ok(s.clone()),
         _ => Err(DecodeError::Shape("text")),
+    }
+}
+
+fn cite_item_of(v: &Value) -> R<CiteItem> {
+    match arr(v)? {
+        [k, l, p, q] => Ok(CiteItem {
+            key: text_of(k)?,
+            locator: opt(l, |l| match arr(l)? {
+                [label, value] => Ok(Locator {
+                    label: text_of(label)?,
+                    value: match arr(value)? {
+                        [i, n] if u64_of(i)? == 0 => LocatorValue::Number(u64_of(n)?),
+                        [i, a, b] if u64_of(i)? == 1 => LocatorValue::Range(u64_of(a)?, u64_of(b)?),
+                        [i, t] if u64_of(i)? == 2 => LocatorValue::Text(text_of(t)?),
+                        _ => return Err(DecodeError::Shape("locator value")),
+                    },
+                }),
+                _ => Err(DecodeError::Shape("locator")),
+            })?,
+            prefix: inlines_of(p)?,
+            suffix: inlines_of(q)?,
+        }),
+        _ => Err(DecodeError::Shape("cite item")),
     }
 }
 
@@ -510,7 +576,7 @@ pub fn inline_of(v: &Value) -> R<Inline> {
             terms: arr(ts)?.iter().map(text_of).collect::<R<_>>()?,
             readings: arr(rs)?.iter().map(text_of).collect::<R<_>>()?,
         },
-        (15, [k]) => Inline::Cite { span, key: text_of(k)? },
+        (25, [items]) => Inline::Cite { span, items: arr(items)?.iter().map(cite_item_of).collect::<R<_>>()? },
         (16, [s]) => Inline::ProofComment { span, text: text_of(s)? },
         (17, []) => Inline::LineBreak { span },
         (18, [zw, sp]) => Inline::Aki {
@@ -692,6 +758,25 @@ mod tests {
         let s = Inline::Sidenote { span: sp(0, 1), number: 1, body: note_body(sp(0, 1), vec![]) };
         assert_eq!(encode(&inline_value(&s))[1], 0x18);
         assert_eq!(inline_of(&decode(&encode(&inline_value(&s))).unwrap()).unwrap(), s);
+    }
+
+    /// the bytes of a citation are those of the host: [25, span, [+ item]] (docs/adr/0266)
+    #[test]
+    fn cite_bytes() {
+        let x = Inline::Cite { span: sp(0, 1), items: vec![CiteItem::key("a")] };
+        let bytes = encode(&inline_value(&x));
+        let expected: Vec<u8> = vec![0x83, 0x18, 0x19, 0x83, 0x01, 0x00, 0x01, 0x81, 0x84, 0x61, b'a', 0xf6, 0x80, 0x80];
+        assert_eq!(bytes, expected);
+        assert_eq!(inline_of(&decode(&bytes).unwrap()).unwrap(), x);
+        let p = Inline::Cite {
+            span: sp(0, 1),
+            items: vec![
+                CiteItem { key: "a".into(), locator: Some(Locator { label: "page".into(), value: LocatorValue::Range(5, 7) }), prefix: vec![], suffix: vec![] },
+                CiteItem { key: "b".into(), locator: Some(Locator { label: "page".into(), value: LocatorValue::Text("xii".into()) }), prefix: vec![], suffix: vec![] },
+                CiteItem { key: "c".into(), locator: Some(Locator { label: "chapter".into(), value: LocatorValue::Number(2) }), prefix: vec![], suffix: vec![] },
+            ],
+        };
+        assert_eq!(inline_of(&decode(&encode(&inline_value(&p))).unwrap()).unwrap(), p);
     }
 
     /// the bytes of a link are those of the host: [20, span, uri, inlines] (docs/adr ADR 0182)

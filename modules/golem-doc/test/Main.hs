@@ -1,6 +1,7 @@
 module Main (main) where
 
 import CborExprSpec qualified
+import CiteSpec qualified
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Control.Exception (ErrorCall, evaluate, try)
@@ -42,7 +43,7 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, TableSpec.tests, NoteSpec.tests, headingLevelTests]
+  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, TableSpec.tests, NoteSpec.tests, CiteSpec.tests, headingLevelTests]
 
 -- | The levels of a heading are 1 to 6 (docs/adr/0188).
 headingLevelTests :: TestTree

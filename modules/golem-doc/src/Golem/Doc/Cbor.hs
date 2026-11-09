@@ -173,7 +173,8 @@ inlineT rt = \case
   Note s n bs -> tagged 23 [spanT s, int n, list blockT bs]
   Sidenote s n bs -> tagged 24 [spanT s, int n, list blockT bs]
   IndexMark s (IndexEntry ts rs) -> tagged 14 [spanT s, list text ts, list text rs]
-  Cite s k -> tagged 15 [spanT s, text k]
+  -- 15 is retired: a citation is its items (docs/adr/0266)
+  Cite s is -> tagged 25 [spanT s, list citeItemT is]
   ProofComment s t -> tagged 16 [spanT s, text t]
   LineBreak s -> tagged 17 [spanT s]
   Aki s (AkiZw r) -> tagged 18 [spanT s, TList [int (numerator r), int (denominator r)], TNull]
@@ -186,6 +187,12 @@ inlineT rt = \case
   Resolved s k l xs -> tagged 22 [spanT s, int (fromEnum k), text l, sub xs]
   where
     sub = list (inlineT rt)
+    citeItemT (CiteItem k l p q) = TList [text k, opt locatorT l, sub p, sub q]
+    locatorT (Locator l v) = TList [text (locatorLabelName l), locatorValueT v]
+    locatorValueT = \case
+      LocNumber n -> TList [int (0 :: Int), int n]
+      LocRange a b -> TList [int (1 :: Int), int a, int b]
+      LocText t -> TList [int (2 :: Int), text t]
 
 segT :: RubySegment -> Term
 segT (RubySegment base reading) = TList [list (inlineT absurd) base, opt text reading]
@@ -323,6 +330,24 @@ asRational = \case
       then bad "有理数"
       else if gcd n' d' /= 1 then bad "有理数が既約ではありません" else Right (n' % d')
   _ -> bad "有理数"
+
+-- | An item of a citation (docs/adr/0266), its prefix and suffix read by @sub@.
+termCiteItem :: (Term -> D [InlineF r]) -> Term -> D (CiteItem r)
+termCiteItem sub t =
+  asList t >>= \case
+    [k, l, p, q] -> CiteItem <$> asText k <*> asOpt termLocator l <*> sub p <*> sub q
+    _ -> bad "引用の項目"
+  where
+    termLocator x =
+      asList x >>= \case
+        [l, v] -> Locator <$> (asText l >>= maybe (bad "位置の種類") Right . locatorLabelNamed) <*> termLocatorValue v
+        _ -> bad "引用の位置"
+    termLocatorValue x =
+      asList x >>= \case
+        [i, n] | Right 0 <- asIntI i -> LocNumber . toInteger <$> asNatural n
+        [i, a, b] | Right 1 <- asIntI i -> LocRange . toInteger <$> asNatural a <*> (toInteger <$> asNatural b)
+        [i, v] | Right 2 <- asIntI i -> LocText <$> asText v
+        _ -> bad "引用の位置の値"
 
 -- | The CDDL @uint64@ as a natural number.
 asNatural :: Term -> D Natural
@@ -492,7 +517,8 @@ termInline rd t =
         (23, [n, x]) -> Note s <$> asIntI n <*> (asList x >>= traverse termBlock)
         (24, [n, x]) -> Sidenote s <$> asIntI n <*> (asList x >>= traverse termBlock)
         (14, [ts, rs]) -> (\a b -> IndexMark s (IndexEntry a b)) <$> (asList ts >>= traverse asText) <*> (asList rs >>= traverse asText)
-        (15, [k]) -> Cite s <$> asText k
+        -- 15 is retired (docs/adr/0266)
+        (25, [x]) -> Cite s <$> (asList x >>= traverse (termCiteItem sub))
         (16, [x]) -> ProofComment s <$> asText x
         (17, []) -> Right (LineBreak s)
         -- aki (docs/adr ADR 0019): zw as numerator and denominator, or sp; exactly one of them

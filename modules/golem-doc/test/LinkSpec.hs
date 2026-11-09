@@ -80,7 +80,7 @@ tests =
         validateInlines size [] [link [CharStyle sp "strong" [Ref sp RefNumber "a"]]] @?= [msg "ref-number"]
         validateInlines size [] [link [Note sp 1 (noteBody sp [])]] @?= [msg "note"]
         validateInlines size [] [link [Sidenote sp 1 (noteBody sp [])]] @?= [msg "sidenote"]
-        validateInlines size [] [link [Cite sp "k"]] @?= [msg "cite"]
+        validateInlines size [] [link [Cite sp [citeItem "k"]]] @?= [msg "cite"]
         validateInlines size [] [link [Ruby sp () [RubySegment [Text sp "a"] (Just "b")], IndexMark sp (IndexEntry ["a"] ["a"]), CharStyle sp "url" [Text sp "a"]]] @?= [],
       testCase "a link in a note, and a line break inside a link" $ do
         let link = Link sp "https://example.com/"
