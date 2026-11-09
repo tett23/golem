@@ -172,7 +172,7 @@ inlineT rt = \case
   -- 12 and 13 are retired: the body is blocks (docs/adr/0263)
   Note s n bs -> tagged 23 [spanT s, int n, list blockT bs]
   Sidenote s n bs -> tagged 24 [spanT s, int n, list blockT bs]
-  IndexMark s (IndexEntry ts rs) -> tagged 14 [spanT s, list text ts, list text rs]
+  IndexMark s (IndexEntry ts rs k) -> tagged 14 [spanT s, list text ts, list text rs, indexKindT k]
   -- 15 is retired: a citation is its items (docs/adr/0266)
   Cite s is -> tagged 25 [spanT s, list citeItemT is]
   ProofComment s t -> tagged 16 [spanT s, text t]
@@ -193,6 +193,14 @@ inlineT rt = \case
       LocNumber n -> TList [int (0 :: Int), int n]
       LocRange a b -> TList [int (1 :: Int), int a, int b]
       LocText t -> TList [int (2 :: Int), text t]
+
+-- | The kind of an index mark (docs/adr/0265): [0], [1], [2], or [3, see, target].
+indexKindT :: IndexKind -> Term
+indexKindT = \case
+  IndexPoint -> TList [int (0 :: Int)]
+  IndexRangeBegin -> TList [int (1 :: Int)]
+  IndexRangeEnd -> TList [int (2 :: Int)]
+  IndexSee k ts -> TList [int (3 :: Int), int (fromEnum k), list text ts]
 
 segT :: RubySegment -> Term
 segT (RubySegment base reading) = TList [list (inlineT absurd) base, opt text reading]
@@ -348,6 +356,16 @@ termCiteItem sub t =
         [i, a, b] | Right 1 <- asIntI i -> LocRange . toInteger <$> asNatural a <*> (toInteger <$> asNatural b)
         [i, v] | Right 2 <- asIntI i -> LocText <$> asText v
         _ -> bad "引用の位置の値"
+
+-- | The kind of an index mark (docs/adr/0265).
+termIndexKind :: Term -> D IndexKind
+termIndexKind t =
+  asList t >>= \case
+    [i] | Right 0 <- asIntI i -> Right IndexPoint
+    [i] | Right 1 <- asIntI i -> Right IndexRangeBegin
+    [i] | Right 2 <- asIntI i -> Right IndexRangeEnd
+    [i, k, ts] | Right 3 <- asIntI i -> IndexSee <$> asEnum k <*> (asList ts >>= traverse asText)
+    _ -> bad "索引の印の種類"
 
 -- | The CDDL @uint64@ as a natural number.
 asNatural :: Term -> D Natural
@@ -516,7 +534,7 @@ termInline rd t =
         -- 12 and 13 are retired (docs/adr/0263)
         (23, [n, x]) -> Note s <$> asIntI n <*> (asList x >>= traverse termBlock)
         (24, [n, x]) -> Sidenote s <$> asIntI n <*> (asList x >>= traverse termBlock)
-        (14, [ts, rs]) -> (\a b -> IndexMark s (IndexEntry a b)) <$> (asList ts >>= traverse asText) <*> (asList rs >>= traverse asText)
+        (14, [ts, rs, k]) -> (\a b c -> IndexMark s (IndexEntry a b c)) <$> (asList ts >>= traverse asText) <*> (asList rs >>= traverse asText) <*> termIndexKind k
         -- 15 is retired (docs/adr/0266)
         (25, [x]) -> Cite s <$> (asList x >>= traverse (termCiteItem sub))
         (16, [x]) -> ProofComment s <$> asText x

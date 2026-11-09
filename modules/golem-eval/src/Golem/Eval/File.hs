@@ -320,7 +320,7 @@ unwritableText = concatMap blockDiags . docBlocks
       Tcy sp t -> at sp t
       Note _ _ bs -> concatMap inlines (noteParagraphs bs)
       Sidenote _ _ bs -> concatMap inlines (noteParagraphs bs)
-      IndexMark sp e -> concatMap (at sp) (ieTerms e <> ieReadings e)
+      IndexMark sp e -> concatMap (at sp) (ieTerms e <> ieReadings e <> case ieKind e of IndexSee _ ts -> ts; _ -> [])
       ProofComment sp t -> at sp t
       Number {} -> []
       Ref {} -> []
@@ -2467,7 +2467,9 @@ builtinWith ctx inHeading sp b args slots = do
             let rs = T.splitOn "/" reading
              in if length ts > 2 || length ts /= length rs || any T.null (ts <> rs)
                   then err "G02042" sp "索引の語と読みの段の数が不正です" >> pure []
-                  else pure [IndexMark sp (IndexEntry ts rs)]
+                  else case indexKindOf (argText <$> lookup "range" kw) (argText <$> lookup "see" kw) of
+                    Right k -> pure [IndexMark sp (IndexEntry ts rs k)]
+                    Left (code, m) -> err code sp m >> pure []
       _ -> err "G02038" sp "index には散文スロットが一つ必要です" >> pure []
     Fixed BCite -> cite ctx sp args
     Overridable BRuby -> ruby ctx sp slots
@@ -2724,6 +2726,25 @@ nameArg = \case
   A.Word t -> Just t
   A.StringLit t -> Just t
   _ -> Nothing
+
+{- | The kind of an index mark by its range and see (docs/adr/0265): a
+point without either, an end of a range by range, a reference of one or
+two levels by see; both, another range, or a target of another number of
+levels or of an empty level are the codes of their causes.
+-}
+indexKindOf :: Maybe Text -> Maybe Text -> Either (Text, Text) IndexKind
+indexKindOf range see = case (range, see) of
+  (Just _, Just _) -> Left ("G02145", "一つの索引の印に see と range は書けません")
+  (Just "begin", Nothing) -> Right IndexRangeBegin
+  (Just "end", Nothing) -> Right IndexRangeEnd
+  (Just r, Nothing) -> Left ("G02144", "range は begin か end です: " <> r)
+  (Nothing, Just t)
+    | let target = T.splitOn "/" t,
+      length target <= 2,
+      not (any T.null target) ->
+        Right (IndexSee SeeAuto target)
+    | otherwise -> Left ("G02146", "see の参照先の語は一段か二段で、空の段を持てません: " <> t)
+  (Nothing, Nothing) -> Right IndexPoint
 
 argText :: A.ArgValue -> Text
 argText = \case

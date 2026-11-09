@@ -61,7 +61,7 @@ inline-no-ruby =
   / [9, span, int64, number-style / null]          ; number
   / [10, span, ref-kind, label: tstr]              ; reference
   / [11, span, expr]                               ; deferred expression (S1)
-  / [14, span, terms: [1*2 tstr], readings: [1*2 tstr]] ; index mark
+  / [14, span, terms: [1*2 tstr], readings: [1*2 tstr], kind: index-kind] ; index mark (docs/adr/0265)
   / [16, span, tstr]                               ; proofreading comment
   / [17, span]                                     ; line break
   / [18, span, zw: [uint64, 1..9223372036854775807] / null, sp: uint64 / null] ; aki: zw or sp, exactly one (docs/adr ADR 0019)
@@ -82,6 +82,10 @@ cite-item = [key: tstr, locator: locator / null, prefix: inlines, suffix: inline
 locator = [label: locator-label, value: locator-value]
 locator-label = "appendix" / "article-locator" / "book" / "canon" / "chapter" / "column" / "elocation" / "equation" / "figure" / "folio" / "issue" / "line" / "note" / "opus" / "page" / "paragraph" / "part" / "rule" / "section" / "sub-verbo" / "supplement" / "table" / "timestamp" / "title" / "verse" / "volume"
 locator-value = [0, uint64] / [1, from: uint64, to: uint64] / [2, tstr .size (1..9223372036854775807)]   ; RFC 8610 writes both ends of a range
+
+; a page, the begin of a range, its end, or a reference to the terms of
+; another entry: automatic, see or see also (docs/adr/0265)
+index-kind = [0] / [1] / [2] / [3, see: 0..2, target: [1*2 tstr]]
 
 number-style = 0..2                                ; kanji, kanji-digits, tcy
 ref-kind = 0..2                                    ; number, title, page

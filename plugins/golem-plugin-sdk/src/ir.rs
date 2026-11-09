@@ -69,8 +69,8 @@ pub enum Inline {
     Note { span: Span, number: u64, body: Vec<Block> },
     /// 24 (docs/adr/0263): the body is one paragraph without a paragraph style
     Sidenote { span: Span, number: u64, body: Vec<Block> },
-    /// 14
-    IndexMark { span: Span, terms: Vec<String>, readings: Vec<String> },
+    /// 14: the kind is a point, an end of a range or a reference (docs/adr/0265)
+    IndexMark { span: Span, terms: Vec<String>, readings: Vec<String>, kind: IndexKind },
     /// 25 (docs/adr/0266): one item or more, their keys distinct; 15 is retired
     Cite { span: Span, items: Vec<CiteItem> },
     /// 16
@@ -142,6 +142,25 @@ pub enum LocatorValue {
     Number(u64),
     Range(u64, u64),
     Text(String),
+}
+
+/// The kind of an index mark (docs/adr/0265): a page, the begin or the end
+/// of a range, or a reference to the terms (one level or two) of another entry.
+#[derive(Clone, Debug, PartialEq)]
+pub enum IndexKind {
+    Point,
+    RangeBegin,
+    RangeEnd,
+    See(SeeKind, Vec<String>),
+}
+
+/// The kind of a reference (docs/adr/0265): by the pages of the entry,
+/// see alone, or see also.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SeeKind {
+    Auto,
+    Only,
+    Also,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -323,12 +342,13 @@ pub fn inline_value(x: &Inline) -> Value {
         Inline::Deferred { span, expr } => t(11, span, vec![expr.clone()]),
         Inline::Note { span, number, body } => t(23, span, vec![int(*number), blocks_value(body)]),
         Inline::Sidenote { span, number, body } => t(24, span, vec![int(*number), blocks_value(body)]),
-        Inline::IndexMark { span, terms, readings } => t(
+        Inline::IndexMark { span, terms, readings, kind } => t(
             14,
             span,
             vec![
                 Value::Array(terms.iter().map(|s| text(s)).collect()),
                 Value::Array(readings.iter().map(|s| text(s)).collect()),
+                index_kind_value(kind),
             ],
         ),
         Inline::Cite { span, items } => t(25, span, vec![Value::Array(items.iter().map(cite_item_value).collect())]),
@@ -431,6 +451,23 @@ pub fn note_paragraphs_mut(body: &mut [Block]) -> impl Iterator<Item = &mut Vec<
     })
 }
 
+fn index_kind_value(k: &IndexKind) -> Value {
+    match k {
+        IndexKind::Point => Value::Array(vec![int(0u8)]),
+        IndexKind::RangeBegin => Value::Array(vec![int(1u8)]),
+        IndexKind::RangeEnd => Value::Array(vec![int(2u8)]),
+        IndexKind::See(see, target) => Value::Array(vec![
+            int(3u8),
+            int(match see {
+                SeeKind::Auto => 0u8,
+                SeeKind::Only => 1,
+                SeeKind::Also => 2,
+            }),
+            Value::Array(target.iter().map(|s| text(s)).collect()),
+        ]),
+    }
+}
+
 fn cite_item_value(i: &CiteItem) -> Value {
     let locator = i.locator.as_ref().map_or(Value::Null, |l| {
         let value = match &l.value {
@@ -480,6 +517,24 @@ pub(crate) fn text_of(v: &Value) -> R<String> {
     match v {
         Value::Text(s) => Ok(s.clone()),
         _ => Err(DecodeError::Shape("text")),
+    }
+}
+
+fn index_kind_of(v: &Value) -> R<IndexKind> {
+    match arr(v)? {
+        [i] if u64_of(i)? == 0 => Ok(IndexKind::Point),
+        [i] if u64_of(i)? == 1 => Ok(IndexKind::RangeBegin),
+        [i] if u64_of(i)? == 2 => Ok(IndexKind::RangeEnd),
+        [i, see, target] if u64_of(i)? == 3 => Ok(IndexKind::See(
+            match u64_of(see)? {
+                0 => SeeKind::Auto,
+                1 => SeeKind::Only,
+                2 => SeeKind::Also,
+                _ => return Err(DecodeError::Shape("see kind")),
+            },
+            arr(target)?.iter().map(text_of).collect::<R<_>>()?,
+        )),
+        _ => Err(DecodeError::Shape("index kind")),
     }
 }
 
@@ -571,10 +626,11 @@ pub fn inline_of(v: &Value) -> R<Inline> {
         (11, [e]) => Inline::Deferred { span, expr: e.clone() },
         (23, [n, body]) => Inline::Note { span, number: u64_of(n)?, body: blocks_of(body)? },
         (24, [n, body]) => Inline::Sidenote { span, number: u64_of(n)?, body: blocks_of(body)? },
-        (14, [ts, rs]) => Inline::IndexMark {
+        (14, [ts, rs, k]) => Inline::IndexMark {
             span,
             terms: arr(ts)?.iter().map(text_of).collect::<R<_>>()?,
             readings: arr(rs)?.iter().map(text_of).collect::<R<_>>()?,
+            kind: index_kind_of(k)?,
         },
         (25, [items]) => Inline::Cite { span, items: arr(items)?.iter().map(cite_item_of).collect::<R<_>>()? },
         (16, [s]) => Inline::ProofComment { span, text: text_of(s)? },
@@ -777,6 +833,26 @@ mod tests {
             ],
         };
         assert_eq!(inline_of(&decode(&encode(&inline_value(&p))).unwrap()).unwrap(), p);
+    }
+
+    /// the bytes of an index mark are those of the host: [14, span, terms, readings, kind] (docs/adr/0265)
+    #[test]
+    fn index_mark_bytes() {
+        let x = Inline::IndexMark { span: sp(0, 1), terms: vec!["a".into()], readings: vec!["b".into()], kind: IndexKind::Point };
+        let bytes = encode(&inline_value(&x));
+        let expected: Vec<u8> = vec![0x85, 0x0e, 0x83, 0x01, 0x00, 0x01, 0x81, 0x61, b'a', 0x81, 0x61, b'b', 0x81, 0x00];
+        assert_eq!(bytes, expected);
+        assert_eq!(inline_of(&decode(&bytes).unwrap()).unwrap(), x);
+        for kind in [
+            IndexKind::RangeBegin,
+            IndexKind::RangeEnd,
+            IndexKind::See(SeeKind::Auto, vec!["c".into()]),
+            IndexKind::See(SeeKind::Only, vec!["c".into(), "d".into()]),
+            IndexKind::See(SeeKind::Also, vec!["c".into()]),
+        ] {
+            let y = Inline::IndexMark { span: sp(0, 1), terms: vec!["a".into()], readings: vec!["b".into()], kind };
+            assert_eq!(inline_of(&decode(&encode(&inline_value(&y))).unwrap()).unwrap(), y);
+        }
     }
 
     /// the bytes of a link are those of the host: [20, span, uri, inlines] (docs/adr ADR 0182)

@@ -81,11 +81,11 @@ tests =
         validateInlines size [] [link [Note sp 1 (noteBody sp [])]] @?= [msg "note"]
         validateInlines size [] [link [Sidenote sp 1 (noteBody sp [])]] @?= [msg "sidenote"]
         validateInlines size [] [link [Cite sp [citeItem "k"]]] @?= [msg "cite"]
-        validateInlines size [] [link [Ruby sp () [RubySegment [Text sp "a"] (Just "b")], IndexMark sp (IndexEntry ["a"] ["a"]), CharStyle sp "url" [Text sp "a"]]] @?= [],
+        validateInlines size [] [link [Ruby sp () [RubySegment [Text sp "a"] (Just "b")], IndexMark sp (IndexEntry ["a"] ["a"] IndexPoint), CharStyle sp "url" [Text sp "a"]]] @?= [],
       testCase "a link in a note, and a line break inside a link" $ do
         let link = Link sp "https://example.com/"
         validateInlines size [] [Note sp 1 (noteBody sp [link [Text sp "a"]])] @?= []
         validateInlines size [] [link [Text sp "a", LineBreak sp, Text sp "b"]] @?= ["改行は段落の最上位のインラインの間にだけ置けます"],
       testCase "a copy of a title keeps the text of a link without the link" $
-        withoutAnchors [Text sp "a", Link sp "https://example.com/" [Text sp "b", IndexMark sp (IndexEntry ["b"] ["b"])]] @?= ([Text sp "a", Text sp "b"] :: [Inline])
+        withoutAnchors [Text sp "a", Link sp "https://example.com/" [Text sp "b", IndexMark sp (IndexEntry ["b"] ["b"] IndexPoint)]] @?= ([Text sp "a", Text sp "b"] :: [Inline])
     ]

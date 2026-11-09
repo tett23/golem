@@ -11,7 +11,7 @@ import Data.Maybe (mapMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Assemble (IndexGroup (..))
+import Golem.Assemble (IndexGroup (..), IndexLocator (..), IndexSection (..))
 import Golem.Bibliography (EntryPart (..), entryText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
@@ -26,7 +26,7 @@ import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Files (diskFiles)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
-import Golem.Typeset (PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLines, tocPage)
+import Golem.Typeset (IndexLine (..), PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLineInlines, indexLines, tocPage)
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.FilePath ((</>))
@@ -54,26 +54,26 @@ indexTests =
       let sp i = mkSpan (FileId 0) i (i + 1)
           pages = Map.map plainLabel (Map.fromList [(sp 1, 3), (sp 2, 3), (sp 3, 10), (sp 4, 12)])
           groups =
-            [ IndexGroup ["組版"] ["くみはん"] [(FileId 0, sp 1), (FileId 0, sp 2)],
-              IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(FileId 0, sp 3)],
-              IndexGroup ["和文"] ["わぶん"] [(FileId 0, sp 4)]
+            [ IndexGroup ["組版"] ["くみはん"] [AtMark (FileId 0, sp 1), AtMark (FileId 0, sp 2)] [],
+              IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [AtMark (FileId 0, sp 3)] [],
+              IndexGroup ["和文"] ["わぶん"] [AtMark (FileId 0, sp 4)] []
             ]
-      map rendered (indexLines False (`Map.lookup` pages) groups) @?= ["組版　3", "　和文組版　10", "和文　12"],
+      map (rendered . indexLineInlines) (indexLines False False (`Map.lookup` pages) [IndexSection "" groups]) @?= ["組版　3", "　和文組版　10", "和文　12"],
     testCase "a sub-entry without its main entry gets a main line without pages" $ do
       let sp i = mkSpan (FileId 0) i (i + 1)
-      map rendered (indexLines False (const (Just (plainLabel 5))) [IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(FileId 0, sp 1)]]) @?= ["組版", "　和文組版　5"],
+      map (rendered . indexLineInlines) (indexLines False False (const (Just (plainLabel 5))) [IndexSection "" [IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [AtMark (FileId 0, sp 1)] []]]) @?= ["組版", "　和文組版　5"],
     testCase "two sub-entries share one main line" $ do
       let sp i = mkSpan (FileId 0) i (i + 1)
           groups =
-            [ IndexGroup ["組版", "欧文組版"] ["くみはん", "おうぶんくみはん"] [(FileId 0, sp 1)],
-              IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(FileId 0, sp 2)]
+            [ IndexGroup ["組版", "欧文組版"] ["くみはん", "おうぶんくみはん"] [AtMark (FileId 0, sp 1)] [],
+              IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [AtMark (FileId 0, sp 2)] []
             ]
-      map rendered (indexLines False (const (Just (plainLabel 5))) groups) @?= ["組版", "　欧文組版　5", "　和文組版　5"],
+      map (rendered . indexLineInlines) (indexLines False False (const (Just (plainLabel 5))) [IndexSection "" groups]) @?= ["組版", "　欧文組版　5", "　和文組版　5"],
     testCase "vertical index pages are numbers separated by 、" $ do
       let sp i = mkSpan (FileId 0) i (i + 1)
           pages = Map.map plainLabel (Map.fromList [(sp 1, 3), (sp 2, 12)])
-      case indexLines True (`Map.lookup` pages) [IndexGroup ["組版"] ["くみはん"] [(FileId 0, sp 2), (FileId 0, sp 1)]] of
-        [l] -> do
+      case indexLines True False (`Map.lookup` pages) [IndexSection "" [IndexGroup ["組版"] ["くみはん"] [AtMark (FileId 0, sp 2), AtMark (FileId 0, sp 1)] []]] of
+        [IndexEntryLine l] -> do
           numbersIn l @?= [3, 12]
           rendered l @?= "組版　3、12"
         other -> assertFailure (show other),
@@ -665,7 +665,8 @@ indexColumnTests =
           x1 = TE.encodeUtf8 (spToPt (rectX ta + 17 * 10 * pt))
       assertBool "the second column starts 17 characters on" (any (any ((== x1) . dX) . drawnGlyphs) (take 1 content)),
     testCase "PDF: the lines of the index columns are on the grid of the type area" $ do
-      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32)
+      -- the entries alone, without the headings of docs/adr/0265
+      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32) <> "section-headings = false\n"
       (geom, _) <- layoutOk style indexSource []
       content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
       let ta = typeAreaFor geom 1

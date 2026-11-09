@@ -521,7 +521,7 @@ mod tests {
         let br = Inline::LineBreak { span: S };
         assert_eq!(go(vec![t("1"), br.clone(), t("12")]), (vec![t("1"), br, num(12)], none()));
         // an index mark sets nothing, so the chunk goes on across it
-        let ix = Inline::IndexMark { span: S, terms: vec!["a".into()], readings: vec!["a".into()] };
+        let ix = Inline::IndexMark { span: S, terms: vec!["a".into()], readings: vec!["a".into()], kind: IndexKind::Point };
         let xs = vec![t("1"), ix, t("2")];
         assert_eq!(go(xs.clone()), (xs, vec!["split".to_string()]));
     }

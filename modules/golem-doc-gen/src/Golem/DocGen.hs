@@ -43,7 +43,8 @@ genInlineWith mr =
         Number <$> genSpan <*> genInt64 <*> Gen.maybe Gen.enumBounded,
         Ref <$> genSpan <*> Gen.enumBounded <*> genText,
         Deferred <$> genSpan <*> (DeferredExpr <$> genExpr),
-        IndexMark <$> genSpan <*> (IndexEntry <$> Gen.list (Range.singleton 1) genText <*> Gen.list (Range.singleton 1) genText),
+        -- every kind of a mark, a target of one level or two (docs/adr/0265)
+        IndexMark <$> genSpan <*> (IndexEntry <$> Gen.list (Range.singleton 1) genText <*> Gen.list (Range.singleton 1) genText <*> genIndexKind),
         ProofComment <$> genSpan <*> genText,
         LineBreak <$> genSpan,
         Aki <$> genSpan <*> Gen.choice [AkiZw <$> genRatio, AkiAbs . Sp <$> genNonNegative64],
@@ -229,3 +230,7 @@ genTopBlock =
       -- blank lines (docs/adr ADR 0046)
       (1, Block <$> genSpan <*> pure Nothing <*> pure Nothing <*> (BlankLines <$> Gen.int64 (Range.exponential 1 maxBound)))
     ]
+
+-- | Every kind of an index mark, a target of one level or two (docs/adr/0265).
+genIndexKind :: Gen IndexKind
+genIndexKind = Gen.choice [pure IndexPoint, pure IndexRangeBegin, pure IndexRangeEnd, IndexSee <$> Gen.enumBounded <*> Gen.list (Range.linear 1 2) (Gen.text (Range.linear 1 8) (Gen.element ("aあ漢😀 [" :: String)))]

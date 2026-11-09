@@ -169,7 +169,12 @@ inlineErrors fileSize allowed i =
     Note _ _ bs -> noteErrors True bs
     Sidenote _ _ bs -> noteErrors False bs
     Cite _ is -> citeErrors is <> sub (citeInlines is)
-    IndexMark _ (IndexEntry ts rs) -> ["索引の項目の段の数が不正です" | null ts || length ts > 2 || length ts /= length rs]
+    IndexMark _ (IndexEntry ts rs k) ->
+      ["索引の項目の段の数が不正です" | null ts || length ts > 2 || length ts /= length rs]
+        -- a target of one level or two, none empty (docs/adr/0265)
+        <> case k of
+          IndexSee _ target -> ["索引の参照先の段の数が不正です" | null target || length target > 2 || any T.null target]
+          _ -> []
     -- negative amounts are not written (docs/adr ADR 0019)
     Aki _ a -> ["アキの量が負です" | negativeAki a]
     -- the body sends nothing to another channel (golem-doc ADR 0007)

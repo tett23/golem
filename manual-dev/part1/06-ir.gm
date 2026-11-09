@@ -110,7 +110,7 @@ Haskell の型（golem-doc の [code: Golem.Doc.IR]）は手で書き、CDDL と
 - マップを使わず、フィールドの順序で区別する。マップのキーの順序に依存しないためである。
 - CBOR は RFC 8949 [cite rfc8949] の決定的な符号化で書く。
 - 整数のフィールドは 64 ビットの符号付き整数（-2 の 63 乗以上、2 の 63 乗未満）に限り、CDDL では [code: int64] と書く。評価が 0 以上の値しか入れない欄（番号、図版のページ、行番号、アキの量）は [code: uint64] と書き、Haskell の型は [code: Natural] である。bignum（CBOR の tag 2 と 3）は書かない。評価器は範囲の外の整数を IR に入れずに G02091 のエラーにし、復号は範囲の外の整数をスキーマの誤りにする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0006-integer-range-in-ir.md]（golem-doc ADR 0006「意味論 IR の大きな整数」）]
-- スキーマの先頭にバージョンを置き、ABI のバージョンと一致させる。ノードやフィールドを足したらバージョンを上げる。今のバージョンは 9 である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0101-rational-numbers-in-expressions.md]（ADR 0101「式の言語の数を自然数、整数、有理数の三つの型にし、浮動小数点数をなくす」）が式の数のリテラルと有理数を足して 8 にし、v0.1.0-rc4 の後に [style url: https://github.com/tett23/golem/blob/main/docs/adr/0262-table-numbers-captions-column-widths-and-cell-styles.md]（ADR 0262「表の番号とキャプション、列の幅、文字の大きさ」）が表の欄を足して 9 にした。[style url: https://github.com/tett23/golem/blob/main/docs/adr/0263-notes-with-more-than-one-paragraph.md]（ADR 0263「複数段落の注」）の注の本文の変更と、[style url: https://github.com/tett23/golem/blob/main/docs/adr/0266-citation-locators-and-multiple-keys.md]（ADR 0266「引用の頁の指定と複数の文献」）の引用の変更も、同じ 9 に含む。]
+- スキーマの先頭にバージョンを置き、ABI のバージョンと一致させる。ノードやフィールドを足したらバージョンを上げる。今のバージョンは 9 である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0101-rational-numbers-in-expressions.md]（ADR 0101「式の言語の数を自然数、整数、有理数の三つの型にし、浮動小数点数をなくす」）が式の数のリテラルと有理数を足して 8 にし、v0.1.0-rc4 の後に [style url: https://github.com/tett23/golem/blob/main/docs/adr/0262-table-numbers-captions-column-widths-and-cell-styles.md]（ADR 0262「表の番号とキャプション、列の幅、文字の大きさ」）が表の欄を足して 9 にした。[style url: https://github.com/tett23/golem/blob/main/docs/adr/0263-notes-with-more-than-one-paragraph.md]（ADR 0263「複数段落の注」）の注の本文の変更と、[style url: https://github.com/tett23/golem/blob/main/docs/adr/0266-citation-locators-and-multiple-keys.md]（ADR 0266「引用の頁の指定と複数の文献」）の引用の変更と、[style url: https://github.com/tett23/golem/blob/main/docs/adr/0265-index-cross-references-page-ranges-and-section-headings.md]（ADR 0265「索引の参照、ページの範囲、見出し」）の索引の印の種類も、同じ 9 に含む。]
 
 ## 文書とブロック
 
@@ -184,7 +184,7 @@ code-line = [text: tstr, number: uint64 / null, diff-mark: (0..2) / null,
 | 9 | 数 | 整数、縦組みでの表記 |
 | 10 | 参照 | 種類（番号、題、ページ）、ラベル |
 | 11 | 遅延した式 | S1 で評価する式 |
-| 14 | 索引の印 | 語（一つか二つ）、読み |
+| 14 | 索引の印 | 語（一つか二つ）、読み、種類（一つのページ、範囲の始め、範囲の終わり、参照） |
 | 16 | 校正用のコメント | 文字列 |
 | 17 | 強制改行 | なし |
 | 18 | アキ | 字か寸法の一方 |
@@ -211,6 +211,12 @@ CDDL の型はブロックの列のままで、この制約は不変条件の側
 引用の一件は、位置として CSL の 26 の種類のどれかと値を、ほかに前置きと後置きのインラインを持てる。
 記法が作るのは種類が [code: page] の位置だけで、ほかの種類と前置きと後置きは不変条件の側が止める。
 参考文献のスタイルを入れるときに、ABI を変えずに済む。
+
+索引の印のタグ 14 は、番号を変えずに欄を一つ足した。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0265-index-cross-references-page-ranges-and-section-headings.md]（ADR 0265「索引の参照、ページの範囲、見出し」）]
+足した欄は印の種類で、一つのページ、範囲の始め、範囲の終わり、ほかの項目の語（一つか二つ）への参照のどれかである。
+参照の種類は、ページの有無で決まる自動、を見よ、をも見よの三つを持つ。
+記法が作るのは自動だけで、ほかの二つはプラグインと Emet の関数が作れる。
+種類を選ぶ記法を後で足すときに、ABI を変えずに済む。
 
 ルビの入れ子は、型で禁じてある。
 CDDL では、ルビの親文字を、ルビを含まないインラインの規則（[code: inline-no-ruby]）で定義する。

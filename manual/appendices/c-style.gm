@@ -462,13 +462,14 @@ string = "code-st"
 @nonumber
 ## [code: \[index\]]
 
-PDF の索引の段組みです。
-HTML と EPUB には適用されません。
+索引の段組みと見出しです。
+段組みは PDF だけに適用され、HTML と EPUB には適用されません。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
 | [code: columns] | 版面の段数 | 索引を組む段数です。1 以上の整数で書きます。 |
 | [code: column-gap] | [code: \[page.grid\]] の [code: column-gap] | 索引の段と段のあいだの空きです。[code: zw] は版面の文字の大きさを一字とします。 |
+| [code: section-headings] | [code: true] | 索引に「あ」「か」のような行の見出しを入れます。[code: true] か [code: false] で書きます。PDF、HTML、EPUB に適用されます。 |
 
 索引の一段の行長が、版面の文字の大きさで 8 字分に満たないと、エラー（G07044）になります。
 

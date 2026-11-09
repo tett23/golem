@@ -29,7 +29,7 @@ module Golem.Html
 where
 
 import Data.Char (isAsciiUpper)
-import Data.List (find, sortOn)
+import Data.List (find, mapAccumL, sortOn)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
@@ -78,6 +78,8 @@ data HtmlConfig = HtmlConfig
     hcTableFaces :: !(Map Text Face),
     -- | whether the captions of tables are below them, [tables] caption-position (docs/adr/0262)
     hcTableCaptionBelow :: !Bool,
+    -- | whether the index has its section headings, [index] section-headings (docs/adr/0265)
+    hcIndexSectionHeadings :: !Bool,
     hcBibliography :: !(Map Text [EntryPart]), -- key -> formatted entry (golem-doc ADR 0005)
     hcDev :: !Bool,
     -- | [composition.ruby] as CSS ruby-align values (golem-layout ADR 0009)
@@ -618,18 +620,32 @@ linkTo c fid anchor =
       file = if target == cHere c then "" else escapeXml (relLink (cHere c) target)
    in file <> "#" <> escapeXml anchor
 
+{- | The index (docs/adr/0265): a heading and a list for each section, or
+one list in a book without headings. Each entry links its marks numbered
+from 1, a range by the links of its two ends; its references follow, as
+in the PDF, not linked.
+-}
 index :: Ctx -> SrcSpan -> Text
 index c sp =
-  "<section class=\"index\">\n<ul>\n"
-    <> T.concat
-      [ "<li>"
-          <> escapeXml (T.intercalate " / " (igTerms g))
-          <> " "
-          <> T.intercalate ", " ["<a href=\"" <> linkTo c fid (spanAnchor loc) <> "\">" <> T.pack (show i) <> "</a>" | (i, (fid, loc)) <- zip [1 :: Int ..] (igLocations g)]
-          <> "</li>\n"
-      | g <- indexAt (cBook c) sp
-      ]
-    <> "</ul>\n</section>\n"
+  "<section class=\"index\">\n"
+    <> ( if hcIndexSectionHeadings (cCfg c)
+           then T.concat ["<p class=\"index-heading\">" <> escapeXml (isHeading s) <> "</p>\n" <> list (isGroups s) | s <- sections]
+           else list (concatMap isGroups sections)
+       )
+    <> "</section>\n"
+  where
+    sections = indexAt (cBook c) sp
+    list gs = "<ul>\n" <> T.concat (map entry gs) <> "</ul>\n"
+    entry g =
+      "<li>"
+        <> escapeXml (T.intercalate " / " (igTerms g))
+        <> (if null (igLocators g) then "" else " " <> T.intercalate ", " (snd (mapAccumL link 1 (igLocators g))))
+        <> escapeXml (indexReferences (not (null (igLocators g))) (igSee g))
+        <> "</li>\n"
+    anchor i (fid, loc) = "<a href=\"" <> linkTo c fid (spanAnchor loc) <> "\">" <> T.pack (show (i :: Int)) <> "</a>"
+    link i = \case
+      AtMark m -> (i + 1, anchor i m)
+      Between a b -> (i + 2, anchor i a <> "\x2013" <> anchor (i + 1) b)
 
 {- | The ids of the entries of the bibliographies, unique in the book
 (golem-doc ADR 0008): the lists in document order and their entries in

@@ -76,7 +76,7 @@ tests =
           )
           (sequencesUpTo 5),
       testCase "I3: [ref-number] of a numbered table is chapter-table, [ref-title] its caption without index marks" $ do
-        let caption = [Text (sp 3) "出力の", IndexMark (sp 3) (IndexEntry ["形式"] ["けいしき"]), Text (sp 3) "形式"]
+        let caption = [Text (sp 3) "出力の", IndexMark (sp 3) (IndexEntry ["形式"] ["けいしき"] IndexPoint), Text (sp 3) "形式"]
             tbl = (block 3 Captioned) {blockLabel = Just "t"}
             withCaption = tbl {blockBody = case blockBody tbl of TableBlock t -> TableBlock t {tableCaption = Just caption}; b -> b}
             refs = Block (sp 5) Nothing Nothing (Paragraph Nothing [Ref (sp 6) RefNumber "t", Ref (sp 7) RefTitle "t"])
