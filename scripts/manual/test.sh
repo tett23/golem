@@ -372,7 +372,7 @@ expect "build: an unknown project" 2
 # the files of the chapters of manual/, in order
 chapters() {
   awk '/^chapters *= *\[/ { on = 1; next } on && /^\]/ { exit } on' "$ROOT/manual/manifest.toml" |
-    sed -n 's/^ *"\([^"]*\)".*/\1/p'
+    sed -n -e 's/^ *"\([^"]*\)".*/\1/p' -e 's/^ *{ *file *= *"\([^"]*\)".*/\1/p'
 }
 FIRST=$(chapters | sed -n 1p)
 SECOND=$(chapters | sed -n 2p)

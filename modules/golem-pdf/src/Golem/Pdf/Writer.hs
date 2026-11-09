@@ -314,7 +314,7 @@ pageLabelsTree rs = ODict [("Nums", OArr (concat [[OInt (fromIntegral (plrFirstP
     labelDict r =
       [("S", OName (styleName st)) | Just st <- [plrStyle r]]
         <> [("P", pdfTextString (plrPrefix r)) | not (T.null (plrPrefix r))]
-        <> [("St", OInt (plrStart r)) | Just _ <- [plrStyle r], plrStart r /= 1]
+        <> [("St", OInt (plrStart r)) | plrStart r /= 1, Just _ <- [plrStyle r]]
     styleName = \case
       LabelDecimal -> "D"
       LabelUpperRoman -> "R"

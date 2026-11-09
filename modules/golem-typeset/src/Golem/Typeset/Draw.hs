@@ -12,6 +12,7 @@ module Golem.Typeset.Draw
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.Containers.ListUtils (nubOrdOn)
@@ -162,7 +163,7 @@ pageOwners layout = Map.fromList (go Nothing (pagesOf (plPages layout)))
   where
     go _ [] = []
     go owner ((p : _) : rest) =
-      let owner' = maybe owner Just (listToMaybe (reverse (poSections p)))
+      let owner' = listToMaybe (reverse (poSections p)) <|> owner
        in [(poNumber p, o) | Just o <- [owner']] <> go owner' rest
     go owner ([] : rest) = go owner rest
 

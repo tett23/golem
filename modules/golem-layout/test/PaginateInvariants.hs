@@ -409,13 +409,14 @@ pl3SectionStart flows ps =
       starts = Map.fromList [(i, start) | FSection i start <- flows]
    in [ Breach PL3 [] ("page " <> show p <> " of section " <> show s <> " is numbered " <> show (plNumber l))
       | (p, ss@(_ : _)) <- Map.toList (firstsOf ps),
-        let s = last ss,
         Just l <- [Map.lookup p ls],
-        let expected = case Map.findWithDefault Nothing s starts of
-              Just n -> n
-              Nothing -> maybe 1 ((+ 1) . plNumber) (Map.lookup (p - 1) ls),
-        plNumber l /= expected
+        let s = last ss,
+        plNumber l /= expectedOf ls starts p s
       ]
+  where
+    expectedOf ls starts p s = case Map.findWithDefault Nothing s starts of
+      Just n -> n
+      Nothing -> maybe 1 ((+ 1) . plNumber) (Map.lookup (p - 1) ls)
 
 {- | PL7 (I7 of docs/adr/0260): the lines and figures after a section are
 on its first page or later; those before it, on pages before its first

@@ -9,10 +9,11 @@ module PageLabelsSpec (pageLabelsTests) where
 import Data.ByteString qualified as BS
 import Data.List (isSuffixOf, sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.PageLabel (PageLabel (..), pageLabelText)
@@ -140,7 +141,7 @@ pageLabelsTests =
       testCase "I6: the PDF of the front matter has the ranges /r from i and /D from 1" $ do
         (inp, _, pl) <- layoutBook Nothing (manifestOf frontEntries ["pdf"]) folioStyle frontSources
         let labels = layoutLabels inp pl
-            bodyFirst = minimum [p | (p, l) <- Map.toList labels, plNotation l == Nothing]
+            bodyFirst = minimum [p | (p, l) <- Map.toList labels, isNothing (plNotation l)]
         pdfPageLabels inp pl @?= [P.PageLabelRange 0 (Just P.LabelLowerRoman) "" 1, P.PageLabelRange (bodyFirst - 1) (Just P.LabelDecimal) "" 1]
         (ds, _, pdf) <- buildLabelled (manifestOf frontEntries ["pdf"]) folioStyle frontSources
         filter isError ds @?= []
@@ -184,6 +185,8 @@ pageLabelsTests =
       testCase "the user manual of 「マニュアルで試すこと」 builds with no error, its /PageLabels /r for the front matter and /D from chapter 1" $
         withSystemTempDirectory "golem-manual" $ \tmp -> do
           copyTree "../../manual" tmp
+          -- the colophon reads build-info.gm, which scripts/manual/build-info.sh writes and git does not track
+          TIO.writeFile (tmp </> "common" </> "build-info.gm") "@set edition = \"0.0.0\"\n@set commit = \"0000000\"\n@set uncommitted = \"\"\n"
           manifest <- TE.decodeUtf8 <$> BS.readFile (tmp </> "manifest.toml")
           assertBool "the preface in lower-roman" ("{ file = \"preface.gm\", page-numbering = { style = \"lower-roman\" } }" `T.isInfixOf` manifest)
           assertBool "chapter 1 from 1" ("{ file = \"chapters/01-first-book.gm\", page-numbering = { style = \"arabic\", start = 1 } }" `T.isInfixOf` manifest)
