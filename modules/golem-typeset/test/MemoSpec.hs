@@ -32,7 +32,7 @@ shapings =
   [ Shaping role vertical extra dual
   | role <- ["body", "見出し", "", "none", T.replicate 40 "x"],
     vertical <- [False, True],
-    extra <- [[], ["palt"], ["-liga", "+kern", "vpal"], ["", ""], ["kern=0"], ["パルト"]],
+    extra <- [[], ["palt"], ["-liga", "+kern", "vpal"], ["", ""], ["kern=0"], ["パルト"], ["salt=2", "salt=65535"], ["salt=65536", "salt=02", "salt="]],
     dual <- [False, True]
   ]
 
@@ -48,12 +48,14 @@ one = \case
 inRange :: [Int] -> Bool
 inRange = all (\d -> d >= 0 && d < digitLimit)
 
--- | An OpenType tag of four ASCII characters, alone or after + or -.
+-- | An OpenType tag of four ASCII characters, alone, after + or -, or with a value (docs/adr/0268).
 genTag :: Gen Text
 genTag = do
   tag <- Gen.text (Range.singleton 4) Gen.ascii
-  sign <- Gen.element ["", "+", "-"]
-  pure (sign <> tag)
+  Gen.choice
+    [ (<> tag) <$> Gen.element ["", "+", "-"],
+      (\n -> tag <> "=" <> T.pack (show n)) <$> Gen.int (Range.linear 0 65535)
+    ]
 
 genShaping :: Gen Shaping -> Gen (Shaping, Text)
 genShaping g = (,) <$> g <*> Gen.text (Range.linear 0 30) Gen.unicode
@@ -112,6 +114,11 @@ memoTests =
           testCase "a tag is two digits, the sign above the first fourteen bits" $
             map (\f -> drop 2 (shapingTextKey roles (Shaping "body" False [f] False, ""))) ["palt", "+kern", "-vpal"]
               @?= [[112 * 128 + 97, 108 * 128 + 116, 0], [1 * 16384 + 107 * 128 + 101, 114 * 128 + 110, 0], [2 * 16384 + 118 * 128 + 112, 97 * 128 + 108, 0]],
+          testCase "a tag with a value has the sign 3 and the value as a third digit (docs/adr/0268)" $ do
+            drop 2 (shapingTextKey roles (Shaping "body" False ["salt=2"] False, "")) @?= [3 * 16384 + 115 * 128 + 97, 108 * 128 + 116, 2, 0]
+            let k = (Shaping "body" False ["onum", "salt=2", "-liga"] False, "ab")
+            assertBool "in the digits" (inRange (shapingTextKey roles k))
+            fromShapingTextKey roles (shapingTextKey roles k) @?= k,
           testCase "the boundaries: every key is decoded to itself" $
             forM_ shapings $ \s -> forM_ texts $ \t ->
               fromShapingTextKey roles (shapingTextKey roles (s, t)) @?= (s, t),
@@ -137,6 +144,7 @@ memoTests =
     isTag f = case T.unpack f of
       [_, _, _, _] -> T.all (< '\x80') f
       [s, _, _, _, _] -> s `elem` ("+-" :: String) && T.all (< '\x80') f
+      a : b : c : d : '=' : n -> T.all (< '\x80') (T.pack [a, b, c, d]) && not (null n) && all (`elem` ("0123456789" :: String)) n && length n <= 5 && show (read n :: Int) == n && read n <= (65535 :: Int)
       _ -> False
 
 infixr 0 ==>

@@ -21,19 +21,26 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Html
 import Golem.Length qualified as L
+import Golem.Project.Feature (normalFeatures)
+import Golem.Project.Position (Position (..))
 import Golem.Project.Style
 
 -- | The character styles of a style, resolved for CSS (docs/adr ADR 0005).
 htmlCharStyles :: Style -> Map Text HtmlCharStyle
 htmlCharStyles style =
   Map.fromList
-    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d)) code background padding)
+    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d) (csFeatures d)) code background padding (elementOf (csPosition d)) (textDecoration style d))
     | n <- Map.keys (stCharStyles style),
       Just d <- [charStyle style n],
       let code = isCodeCharStyle style n
           -- the background and the padding of inline code (golem-driver ADR 0029)
           background = if code then charStyleBackground style n else Nothing
           padding = if code then cssLength <$> csPadding d else Nothing
+          -- sup and sub (docs/adr/0269)
+          elementOf = \case
+            Just PositionSuperscript -> Just "sup"
+            Just PositionSubscript -> Just "sub"
+            _ -> Nothing
     ]
 
 -- | The paragraph styles of a style, resolved for CSS (docs/adr ADR 0005, 0006).
@@ -47,7 +54,7 @@ htmlParaStyles style =
           (fromMaybe 0 (psSpaceBetween d))
           (cssLength (fromMaybe (Zw 0) (psIndent d)))
           (cssLength (fromMaybe (Zw 0) (psFirstLineIndent d)))
-          (htmlFeatures (psKerning d) (psTracking d) (psProportional d) (psBaselineShift d))
+          (htmlFeatures (psKerning d) (psTracking d) (psProportional d) (psBaselineShift d) (psFeatures d))
           (htmlRule style <$> join (psRuleBefore d))
           (htmlRule style <$> join (psRuleAfter d))
           (alignDecls bindingRight (fromMaybe ParaLeftJustified (psAlign d)))
@@ -122,9 +129,46 @@ htmlRule style r =
           hrInner = space (rsSpaceAfter r)
         }
 
--- | The keys of the spacing of characters for CSS (docs/adr/0020).
-htmlFeatures :: Maybe Kerning -> Maybe Int -> Maybe Bool -> Maybe Dim -> HtmlFeatures
-htmlFeatures k t p b =
+{- | The underline and the strikethrough of a character style in CSS
+(docs/adr/0270): the lines, then the style, the thickness and the colour
+of the underline when there is one, else of the strikethrough; the offset
+of the underline when it is not 0, and the right side for the underline of
+a vertical book. false writes nothing: CSS cannot take a line of an outer
+element off.
+-}
+textDecoration :: Style -> CharStyleDef -> [Text]
+textDecoration style d =
+  case [(n, x) | (n, Just (Just x)) <- [("underline", csUnderline d), ("line-through", csStrikethrough d)]] of
+    [] -> []
+    lines'@((_, first') : _) ->
+      ["text-decoration-line: " <> T.unwords (map fst lines')]
+        <> ["text-decoration-style: " <> s | let s = cssStyle (dsStyle first'), s /= "solid"]
+        <> ["text-decoration-thickness: " <> cssLength (dsWeight first')]
+        <> [ "text-decoration-color: rgb(" <> T.pack (show r) <> ", " <> T.pack (show g) <> ", " <> T.pack (show b) <> ")"
+           | Just sw <- [dsColor first'],
+             Just (Swatch cmyk) <- [Map.lookup sw (stSwatches style)],
+             let (r, g, b) = cmykToRgb cmyk
+           ]
+        <> [ "text-underline-offset: " <> cssLength (dsOffset u)
+           | Just (Just u) <- [csUnderline d],
+             not (zeroDim (dsOffset u))
+           ]
+        <> ["text-underline-position: right" | maybe False pageVertical (stPage style), Just (Just _) <- [csUnderline d]]
+  where
+    zeroDim = \case
+      Abs x -> x == 0
+      Zw r -> r == 0
+    cssStyle (name, multi) = case (name, multi) of
+      (_, Just _) -> "double"
+      ("dashed", _) -> "dashed"
+      ("dotted", _) -> "dotted"
+      ("japanese-dots", _) -> "dotted"
+      ("wavy", _) -> "wavy"
+      _ -> "solid"
+
+-- | The keys of the spacing of characters (docs/adr/0020) and the OpenType features (docs/adr/0268) for CSS.
+htmlFeatures :: Maybe Kerning -> Maybe Int -> Maybe Bool -> Maybe Dim -> [Feature] -> HtmlFeatures
+htmlFeatures k t p b fs =
   HtmlFeatures
     { hfKerning =
         k >>= \case
@@ -134,7 +178,8 @@ htmlFeatures k t p b =
           KernOptical -> Nothing,
       hfTracking = t,
       hfProportional = p,
-      hfBaselineShift = cssLength <$> b
+      hfBaselineShift = cssLength <$> b,
+      hfOpenType = normalFeatures [(ftTag f, ftValue f) | f <- fs]
     }
 
 -- | A ruby alignment of style.toml as a CSS ruby-align value (golem-layout ADR 0009).

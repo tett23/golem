@@ -171,7 +171,11 @@ data HtmlCharStyle = HtmlCharStyle
     {- | the swatch of the background and the padding along the line as a
     CSS length, of code only (golem-driver ADR 0029)
     -} hcsBackground :: !(Maybe Text),
-    hcsPadding :: !(Maybe Text)
+    hcsPadding :: !(Maybe Text),
+    -- | the element of the position (docs/adr/0269): sup, sub, or Nothing for span
+    hcsElement :: !(Maybe Text),
+    -- | the declarations of the underline and the strikethrough (docs/adr/0270)
+    hcsTextDecoration :: ![Text]
   }
   deriving stock (Eq)
 
@@ -185,12 +189,14 @@ data HtmlFeatures = HtmlFeatures
     hfTracking :: !(Maybe Int),
     hfProportional :: !(Maybe Bool),
     -- | a CSS length
-    hfBaselineShift :: !(Maybe Text)
+    hfBaselineShift :: !(Maybe Text),
+    -- | the OpenType features through based-on, the last value of each tag (docs/adr/0268)
+    hfOpenType :: ![(Text, Int)]
   }
   deriving stock (Eq)
 
 noFeatures :: HtmlFeatures
-noFeatures = HtmlFeatures Nothing Nothing Nothing Nothing
+noFeatures = HtmlFeatures Nothing Nothing Nothing Nothing []
 
 -- | A resolved paragraph style for CSS (docs/adr ADR 0005, 0006).
 data HtmlParaStyle = HtmlParaStyle
@@ -271,7 +277,9 @@ data Ctx = Ctx
     -- | the notes of the chapter of the page (golem-driver ADR 0026)
     cNotes :: ChapterNotes,
     -- | the id of each entry of each @bibliography (golem-doc ADR 0008)
-    cCiteIds :: Map (ListAt, Text) Text
+    cCiteIds :: Map (ListAt, Text) Text,
+    -- | the character styles of the page: those of its file over those of style.toml (docs/adr/0269)
+    cCharStyles :: Map Text HtmlCharStyle
   }
 
 {- | Where the notes of a page go (golem-driver ADR 0026): the file whose
@@ -347,7 +355,7 @@ page :: HtmlConfig -> FileTable -> Book -> ChapterNotes -> Document -> Text
 page cfg ft book notes (Document fid bs) =
   let here = pagePath ft fid
       local = Map.lookup fid (hcLocalStyles cfg)
-      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes (citeIds book)
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg))
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
       body = topBlocks c bs <> notesSection c
@@ -691,6 +699,10 @@ inline c = \case
   CharStyle _ "bold" xs -> "<b>" <> inlines c xs <> "</b>"
   CharStyle _ "italic" xs -> "<i>" <> inlines c xs <> "</i>"
   CharStyle _ "code" xs -> "<code>" <> inlines c xs <> "</code>"
+  -- superscript and subscript are sup and sub; the built-in ones without a class (docs/adr/0269)
+  CharStyle _ s xs
+    | Just e <- Map.lookup s (cCharStyles c) >>= hcsElement ->
+        "<" <> e <> (if s `elem` ["superscript", "subscript"] then "" else " class=\"cs-" <> escapeXml s <> "\"") <> ">" <> inlines c xs <> "</" <> e <> ">"
   CharStyle _ s xs -> "<span class=\"cs-" <> escapeXml s <> "\">" <> inlines c xs <> "</span>"
   Tcy _ t -> "<span class=\"tcy\">" <> escapeXml t <> "</span>"
   Number _ n st
@@ -1111,6 +1123,7 @@ css cfg book =
              let (r, g, b) = cmykToRgb cmyk
            ]
         <> featureDecls (hcsFeatures cs)
+        <> hcsTextDecoration cs
         -- the background and the padding of inline code, along the line only (golem-driver ADR 0029)
         <> ["background-color: " <> rgbOf cmyk | Just sw <- [hcsBackground cs], Just cmyk <- [Map.lookup sw (hcSwatches cfg)]]
         <> ["padding-inline: " <> p | Just p <- [hcsPadding cs]]
@@ -1125,7 +1138,13 @@ css cfg book =
         k /= "metrics"
       ]
         <> ["letter-spacing: " <> thousandths t <> "em" | Just t <- [hfTracking f], t /= 0]
-        <> ["font-feature-settings: \"" <> (if hcVertical cfg then "vpal" else "palt") <> "\" 1" | hfProportional f == Just True]
+        -- one declaration: the features of the style, then palt (vpal) of proportional-metrics (docs/adr/0268)
+        <> [ "font-feature-settings: " <> T.intercalate ", " settings
+           | let settings =
+                   ["\"" <> t <> "\" " <> tshow v | (t, v) <- hfOpenType f]
+                     <> ["\"" <> (if hcVertical cfg then "vpal" else "palt") <> "\" 1" | hfProportional f == Just True],
+             not (null settings)
+           ]
         <> ["vertical-align: " <> l | Just l <- [hfBaselineShift f], not (isZero l)]
     thousandths n =
       let (q, r) = abs n `divMod` 1000

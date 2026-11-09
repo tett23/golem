@@ -12,13 +12,14 @@ where
 
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
-import Data.Containers.ListUtils (nubOrdOn)
+import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Either (lefts)
 import Data.List (groupBy, nub, nubBy)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ratio ((%))
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (toGregorian)
@@ -39,13 +40,14 @@ import Golem.Pdf qualified as P
 import Golem.Preflight (OverfullLine (..), overfullLine)
 import Golem.Preflight.View qualified as V
 import Golem.Project
+import Golem.Project.Feature (normalFeatures, parseFeature)
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
 import Golem.Typeset.GlyphRuns (glyphRuns)
-import Golem.Typeset.Overhang (kentenAcross, rubyAcross)
+import Golem.Typeset.Overhang (kentenAcross, kentenOverhang, rubyAcross, rubyOverhang)
 import Golem.Typeset.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
 import Golem.Typeset.Structure (linksOfLeaves, structureTree)
 import Golem.Typeset.Tcy (TcyFit (..), squeezed, tcyFit)
@@ -127,7 +129,7 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
               Right layout | ds@(_ : _) <- folioErrors inp geom layout -> pure (Left ds)
               Right layout -> case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
                 [] -> do
-                  let (used, stops, overfull, finish) = writeDocumentView tamper version inp geom fonts layout intent
+                  let (used, stops, overfull, missingFeatures, finish) = writeDocumentView tamper version inp geom fonts layout intent
                   {- G07104 stops the PDF/A-2a before its fonts are embedded (docs/adr ADR 0183);
                   G07107, content drawn but not in the structure tree, stops every PDF (docs/adr ADR 0216) -}
                   if not (null stops)
@@ -141,7 +143,8 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
                           let (bytes, view, structure) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
                           -- G07101: dashes without ink (docs/adr ADR 0172)
                           -- G07105: the lines past their measure, from the lines drawn, not from the view (docs/adr ADR 0210)
-                          pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout <> overfullWarnings overfull, view, structure, pageStarts layout))
+                          -- G08103: the features the fonts do not have (docs/adr/0268)
+                          pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout <> overfullWarnings overfull <> missingFeatures, view, structure, pageStarts layout))
                         ds -> pure (Left ds)
                 ds -> pure (Left ds)
   where
@@ -262,7 +265,9 @@ data GlyphUse = GlyphUse
     guGlyphPart :: !V.GlyphPart,
     guSpan :: !SrcSpan,
     -- | the leaf of the structure tree the glyph is drawn in, if any (docs/adr ADR 0183, ADR 0227)
-    guLeaf :: !(Maybe P.LeafId)
+    guLeaf :: !(Maybe P.LeafId),
+    -- | the look the glyph is drawn in, for G08103 (docs/adr/0268)
+    guLook :: Look
   }
 
 {- | A line drawn, for the view of golem preflight (golem-cli ADR 0006): what
@@ -278,7 +283,11 @@ data LineRec = LineRec
     lrBackgrounds :: ![P.Swatch],
     {- | the rectangles of the links on the line, on the page, in the order of
     the line (docs/adr ADR 0182), each with the leaf of its first box (docs/adr ADR 0183)
-    -} lrLinks :: ![(LinkTarget, Maybe Leaf, Rect)]
+    -} lrLinks :: ![(LinkTarget, Maybe Leaf, Rect)],
+    {- | the underlines and strikethroughs of the line (docs/adr/0270): what
+    golem preflight sees of them as rules, the kind, the band and the
+    thinnest part, and the swatch of each
+    -} lrDecorations :: ![(Text, Rect, Sp, Maybe P.Swatch)]
   }
 
 -- | What one page draws.
@@ -330,7 +339,7 @@ embedded in IO between the two halves (docs/adr ADR 0034): the glyphs
 used in each font and their text, then the PDF and its view from the
 embedded fonts.
 -}
-writeDocumentView :: (P.StructElem -> P.StructElem) -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [OverfullLine], Map P.FontRef P.Font -> (ByteString, V.View, Structure))
+writeDocumentView :: (P.StructElem -> P.StructElem) -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [OverfullLine], [Diagnostic], Map P.FontRef P.Font -> (ByteString, V.View, Structure))
 writeDocumentView tamper version inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
@@ -469,7 +478,60 @@ writeDocumentView tamper version inp geom fonts layout intent =
           (mkSpan (projectManifestFile (piProject inp)) 0 0)
           (Map.fromList [(i, uSpan u) | (i, u) <- plUnits layout])
           (P.orphanLeaves structure [l | p <- pdfPages, l <- P.contentLeaves (P.pageContent p)])
-   in (used, privateUse <> orphans, overfull, finish)
+   in (used, privateUse <> orphans, overfull, featureWarnings inp fonts (zip [1 ..] (map pdUses drawn)), finish)
+
+{- | G08103 (docs/adr/0268): an OpenType feature that a run turns on and
+that none of the faces of its characters has, once for each font file and
+tag, with the pages of such runs. A run is the glyphs of one look in a row
+on a page, kenten left out (they take the role's features only). A
+character turns on the features of its role (its side's) and of the look
+whose last value is not 0; the features Golem adds are not among them. At
+the first value of style.toml that turns the tag on, else at the first
+@style-def that does, else at the top of style.toml. Warnings; the profile
+makes them errors in prod.
+-}
+featureWarnings :: PdfInput -> LoadedFonts -> [(Int, [GlyphUse])] -> [Diagnostic]
+featureWarnings inp fonts pages =
+  [ (diagnostic "G08103" Warning (siteOf tag) ("フォント " <> T.pack path <> " に OpenType の機能 " <> tag <> " がありません"))
+      { diagFacts = [("font", FactText (T.pack path)), ("feature", FactText tag), ("pdf-pages", FactInts (map toInteger (Set.toAscList ps)))]
+      }
+  | ((path, tag), ps) <- Map.toAscList missing
+  ]
+  where
+    missing =
+      Map.fromListWith
+        Set.union
+        [ ((fst (lfFaceFile fonts face), tag), Set.singleton i)
+        | (i, us) <- pages,
+          run@(u0 : _) <- groupBy (\a b -> guLook a == guLook b) [u | u <- us, guGlyphPart u /= V.PartKenten],
+          let look = guLook u0
+              ja = enabled look False
+              la = enabled look True,
+          not (null ja && null la),
+          let sides = [(guFace u, tags) | u <- run, Just (c, _) <- [T.uncons (guText u)], let tags = if lookClass look c == Western then la else ja, not (null tags)],
+          tag <- nubOrd (concatMap snd sides),
+          let faces = nubOrd [face | (face, tags) <- sides, tag `elem` tags],
+          not (any (\face -> lfHasFeature fonts face tag) faces),
+          face <- faces
+        ]
+    -- the tags turned on in the role of a side and the look
+    enabled look latin =
+      let role = if latin then lkLatinFace look else lkFace look
+       in [t | (t, v) <- normalFeatures (mapMaybe parseFeature (lfRoleFeatures fonts role <> lkFeatures look)), v /= 0]
+    style = piStyle inp
+    written = concat (Map.elems (Map.map frFeatures (stFonts style))) <> concatMap csFeatures (Map.elems (stCharStyles style)) <> concatMap psFeatures (Map.elems (stParaStyles style))
+    locals = concat [concatMap csFeatures (Map.elems (lsCharStyles ls)) <> concatMap psFeatures (Map.elems (lsParaStyles ls)) | ls <- Map.elems (piLocalStyles inp)]
+    siteOf tag =
+      let on = [f | f <- written <> locals, ftTag f == tag, ftValue f /= 0]
+          tomls = [(l, c) | Feature {ftSite = SiteToml l c} <- on]
+          sources = [sp | Feature {ftSite = SiteSource sp} <- on]
+          top = mkSpan (piStyleFile inp) 0 0
+       in case (tomls, sources) of
+            (_ : _, _) ->
+              let (l, c) = minimum tomls
+               in maybe top (\off -> mkSpan (piStyleFile inp) off off) (lineColToOffset (mkLineIndex (piStyleText inp)) (LineCol (l - 1) (c - 1)))
+            ([], _ : _) -> minimum sources
+            ([], []) -> top
 
 -- font index × direction: even refs horizontal, odd refs vertical
 ref :: Int -> Bool -> P.FontRef
@@ -509,7 +571,7 @@ runAtSqueezed env look v rotated scale squeeze (bx, by) txt =
       (x0, y0) = if v then (bx + shift, by) else (bx, by + shift)
       -- shaped with the features of the look; rotated Latin is shaped horizontally
       vv = v && not rotated
-      shapingFor role r = (shapingOf vv look (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = vv}
+      shapingFor role r = (shapingOf (lfRoleFeatures fonts) vv look (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = vv}
       {- the tracking after the last glyph of each cluster, for each of its
       characters, as the boxes count it (docs/adr/0020) -}
       tr = fromIntegral (lkTracking look) * size
@@ -593,7 +655,7 @@ tcyAt :: DrawEnv -> Look -> (Sp, Sp) -> Text -> ([P.Mark], [(P.FontRef, Int, Tex
 tcyAt env look (xc, y0) txt =
   let s = lkSize look
       flat = look {lkTracking = 0, lkBaselineShift = 0}
-      shapingFor role r = (shapingOf False flat (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = False}
+      shapingFor role r = (shapingOf (lfRoleFeatures fonts) False flat (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = False}
       advances = [unSp (toSp s (shAdvance g)) | (role, r, _) <- runsOf flat txt, g <- lfShape fonts (shapingFor role r) r]
       fit = tcyFit (unSp s) advances
       left = xc + lkBaselineShift look - Sp (tfWidth fit `div` 2)
@@ -705,7 +767,7 @@ runAtU :: DrawEnv -> (SizeSource, V.GlyphPart, SrcSpan) -> Look -> Bool -> Bool 
 runAtU env who look v rotated scale pt txt = usesOf who look (runAt env look v rotated scale pt txt)
 
 usesOf :: (SizeSource, V.GlyphPart, SrcSpan) -> Look -> ([P.Mark], [(P.FontRef, Int, Text, ClusterPart)]) -> ([P.Mark], [GlyphUse])
-usesOf (src, gp, sp) look (ms, us) = (ms, [GlyphUse r g t (k `div` 2) (lkSize look) (lkColor look) part src gp sp Nothing | (r@(P.FontRef k), g, t, part) <- us])
+usesOf (src, gp, sp) look (ms, us) = (ms, [GlyphUse r g t (k `div` 2) (lkSize look) (lkColor look) part src gp sp Nothing look | (r@(P.FontRef k), g, t, part) <- us])
 
 -- | The uses of glyphs drawn in a leaf (docs/adr ADR 0227).
 inLeaf :: Maybe P.LeafId -> [GlyphUse] -> [GlyphUse]
@@ -729,7 +791,70 @@ entry :: DrawEnv -> Text -> SrcSpan -> Rect -> Sp -> SetLine -> (LineRec, ([P.Co
 entry env kind sp ta cross = entryAt env kind sp (lineStart env ta cross)
 
 entryAt :: DrawEnv -> Text -> SrcSpan -> (Sp, Sp) -> SetLine -> (LineRec, ([P.Content], [GlyphUse]))
-entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sp sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl), drawLineAt env start sl)
+entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sp sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl) decorated, drawLineAt env start sl)
+  where
+    decorated = [(k, band, ruleThinnest w st, decorationSwatch env (decColor d)) | (k, d, band, w, st) <- decorationBands env start sl]
+
+{- | The underlines and strikethroughs of a line (docs/adr/0270): each run
+of boxes of one value, with the glue between them, from the start of its
+first box to the end of its last; a run does not cross the line. The band
+of the line across it from its basis: in horizontal text an underline has
+its top edge the offset below the bottom of the face of the basis (its
+height the size, the baseline at 0.88 of it), a strikethrough its centre
+the offset above the centre of the face; in vertical text an underline has
+its left edge the offset right of the right edge of the face (the width
+the size, centred on the line), or of the readings and the kenten of the
+run when it has some, a strikethrough its centre the offset right of the
+centre line. The face of the basis moves with its baseline shift.
+-}
+decorationBands :: DrawEnv -> (Sp, Sp) -> SetLine -> [(Text, Decoration, Rect, Sp, RuleStyle)]
+decorationBands env (x0, y0) sl =
+  [ (kind, d, band, decWeight d, decStyle d)
+  | (kind, under, sel) <- [("下線", True, lkUnderline), ("打ち消し線", False, lkStrikethrough)],
+    run@((s0, _, c) : _) <- groupWhen (\(_, _, p) (_, _, q) -> sel (bcLook p) == sel (bcLook q)) boxes,
+    Just d <- [sel (bcLook c)],
+    let e0 = maximum [o + w | (o, w, _) <- run]
+        band = bandOf under d run (slIndent sl + s0) (slIndent sl + e0)
+  ]
+  where
+    boxes = [(off, w, c) | (Box w c, off) <- placeLine (slLine sl)]
+    vertical = pgVertical (deGeom env)
+    half x = Sp (unSp x `div` 2)
+    bandOf under d run s0 e0 =
+      let w = decWeight d
+          s = decSize d
+          off = decOffset d
+       in if vertical
+            then
+              let centre = x0 + decShift d
+                  -- the right edge of the readings and the kenten of the run, if any
+                  readings = concat [overRight c | (_, _, c) <- run]
+                  left = (if null readings then centre + half s else x0 + maximum readings) + off
+                  x = if under then left else centre + off - half w
+               in Rect x (y0 - e0) w (e0 - s0)
+            else
+              let bottom = y0 + decShift d - (s - zwToSp s baselineRatio)
+                  y = if under then bottom - off - w else bottom + half s + off - half w
+               in Rect (x0 + s0) y (e0 - s0) w
+    -- how far right of the centre line the reading or the kenten of a box reaches in vertical text
+    overRight c = case boxKind c of
+      kind
+        | kind `elem` [KindRuby, KindGroupRuby],
+          (base, reading) <- T.breakOn "|" (bcText c),
+          T.length reading > 1 ->
+            let look = bcLook c
+                looks = zipWith const (bcBaseLooks c <> repeat look) (clusters base)
+                big = if null looks then lkSize look else maximum (map lkSize looks)
+             in [rubyOverhang True 0 big (half (lkSize look)) (lkBaselineShift look)]
+      KindKenten | Just _ <- lkKenten (bcLook c) -> let look = bcLook c in [kentenOverhang True 0 (lkSize look) 0 (lkBaselineShift look)]
+      _ -> []
+
+-- | The swatch of a name of [color.swatches].
+decorationSwatch :: DrawEnv -> Maybe Text -> Maybe P.Swatch
+decorationSwatch env name = do
+  n <- name
+  Swatch (cc, cm, cy, ck) <- Map.lookup n (stSwatches (piStyle (deInput env)))
+  pure (P.Swatch cc cm cy ck)
 
 {- the backgrounds of inline code on a line (golem-driver ADR 0029): each
 run of boxes of one swatch, with the spaces between them, from the
@@ -871,8 +996,8 @@ drawLineAt env (x0, y0) sl =
                           baseUnits = clusters base
                           baseLooks = zipWith const (bcBaseLooks c <> repeat look) baseUnits
                           advOf lk u = case T.uncons u of
-                            Just (ch, rest) | T.null rest -> toSp (lkSize lk) (lfAdvance fonts (shapingOf vertical lk ch) ch)
-                            Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingOf vertical lk ch) u)
+                            Just (ch, rest) | T.null rest -> toSp (lkSize lk) (lfAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) ch)
+                            Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) u)
                             Nothing -> 0
                           baseAdv = zipWith advOf baseLooks baseUnits
                           readAdv = map (advOf half . T.singleton) (T.unpack rt)
@@ -897,7 +1022,7 @@ drawLineAt env (x0, y0) sl =
                   let (b1, u1) = runAtU env (whoOf V.PartBase c) look vertical False 0 (origin off) (bcText c)
                       d = lkSize half
                       shift = lkBaselineShift look
-                      parent = lfShape fonts (shapingOf vertical look (T.head (bcText c))) (bcText c)
+                      parent = lfShape fonts (shapingOf (lfRoleFeatures fonts) vertical look (T.head (bcText c))) (bcText c)
                       centre
                         | vertical = beside (origin (off + Sp (unSp size `div` 2))) (shift + kentenAcross True size 0 d)
                         | otherwise =
@@ -1007,7 +1132,11 @@ drawLineAt env (x0, y0) sl =
       contentOf [] = P.Artifact P.Layout []
       -- the backgrounds of inline code before the text of the line (golem-driver ADR 0029)
       backs = [P.Artifact P.Layout [P.Saved [P.SetColor sw, P.Rule rr] | (sw, rr) <- codeBackgrounds env (x0, y0) sl] | not (null (codeBackgrounds env (x0, y0) sl))]
-   in (backs <> map contentOf (groupBy (\(a, _, _) (b, _, _) -> a == b) pieces), concatMap (snd . snd) parts)
+      {- the underlines before the text, the strikethroughs after it, as
+      artifacts: filled shapes of the line styles (docs/adr/0270) -}
+      bands = decorationBands env (x0, y0) sl
+      linesOf under = [P.Artifact P.Layout ms | let ms = concat [ruleMarks (decorationSwatch env (decColor d)) (ruleShapes vertical band st) | (k, d, band, _, st) <- bands, (k == "下線") == under], not (null ms)]
+   in (backs <> linesOf True <> map contentOf (groupBy (\(a, _, _) (b, _, _) -> a == b) pieces) <> linesOf False, concatMap (snd . snd) parts)
   where
     fonts = deFonts env
     style = piStyle (deInput env)
@@ -1034,7 +1163,7 @@ textAt env kind anchor size txt =
         LS.AlignCenter -> anX anchor - Sp (unSp w `div` 2)
         LS.AlignEnd -> anX anchor - w
       face = Rect x0 (anY anchor - (size - zwToSp size baselineRatio)) w size
-   in (LineRec kind styleSpan (Just face) Nothing [] [], first (pure . P.Artifact P.Pagination) (runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt))
+   in (LineRec kind styleSpan (Just face) Nothing [] [] [], first (pure . P.Artifact P.Pagination) (runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt))
   where
     fonts = deFonts env
     body = bodyRole (piStyle (deInput env))
@@ -1200,11 +1329,12 @@ drawPage env ps master = case ps of
             pdUses = concatMap (snd . snd) allParts <> concatMap snd hiddenParts,
             pdLines = [(rec, snd part) | (rec, part) <- allParts],
             pdImages = images,
-            pdRules = rules,
+            -- the underlines and strikethroughs as rules for golem preflight (docs/adr/0270)
+            pdRules = rules <> [(k, r, t) | (rec, _) <- allParts, (k, r, t, _) <- lrDecorations rec],
             -- nothing but the master page (golem-cli ADR 0006)
             pdBlank = null columnParts && null sidenoteParts && null images && null rules && null backs,
             pdNumber = n,
-            pdBackgrounds = concat [snd b | (_, _, _, b) <- columns] <> concat [lrBackgrounds rec | (rec, _) <- allParts],
+            pdBackgrounds = concat [snd b | (_, _, _, b) <- columns] <> concat [lrBackgrounds rec | (rec, _) <- allParts] <> [sw | (rec, _) <- allParts, (_, _, _, Just sw) <- lrDecorations rec],
             pdLinks = concat [lrLinks rec | (rec, _) <- allParts]
           }
   where

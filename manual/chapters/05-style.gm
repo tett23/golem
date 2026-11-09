@@ -221,10 +221,13 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 - [code: color]：色の名前（スウォッチ）です。
 - [code: synthetic-bold]、[code: synthetic-italic]：字形の輪郭を太らせた太字と、傾けた斜体です。
 - [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]：文字の送りです（「[ref-title kerning]」、[ref-page kerning] ページ）。
+- [code: features]：スモールキャップや数字の形式などの OpenType の機能です（「[ref-title opentype-features]」、[ref-page opentype-features] ページ）。
+- [code: position]：上付きと下付きです（「[ref-title scripts]」、[ref-page scripts] ページ）。
+- [code: underline]、[code: strikethrough]：下線と打ち消し線です（「[ref-title decorations]」、[ref-page decorations] ページ）。
 - [code: based-on]：引き継ぐ文字スタイルです。
 - [code: background]、[code: padding]：本文の中のコードの背景の色と、前後の余白です。[code: code] と、それを引き継ぐ文字スタイルにだけ書けます。[code: background] を書かなければ、段落スタイル [code: code] の背景を使います。
 
-[code: bold]、[code: italic]、[code: strong]、[code: code] の四つは、はじめから定義されています。
+[code: bold]、[code: italic]、[code: strong]、[code: code]、[code: superscript]、[code: subscript] は、はじめから定義されています。
 同じ名前で書くと、書いたキーだけが置き換わります。
 このマニュアルは、[code: bold] の書体を見出しの太いゴシック体にし、[code: code] に色を付けています。
 本文の中のコードには、コードブロックと同じ網がかかります。
@@ -242,7 +245,7 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 - [code: regex-styles]：正規表現スタイルです（「[ref-title regex-styles]」、[ref-page regex-styles] ページ）。
 - [code: aki-set]：アキ量のセットです（「[ref-title aki-sets]」、[ref-page aki-sets] ページ）。
 - [code: rule-before]、[code: rule-after]：段落の前と後に引く罫線です。次の段落で説明します。
-- 文字の送りの四つのキーも書けます。
+- 文字の送りの四つのキーと、OpenType の機能の [code: features] も書けます。
 - [code: based-on]：引き継ぐ段落スタイルです。省くと [code: body] を引き継ぎます。
 
 はじめから定義されている段落スタイルは、[code: body]（本文）、[code: verse]（韻文）、[code: caption]（図のキャプション）、[code: sidenote]（傍注の本文）、[code: table]（表のセル）、[code: code]（コードブロック）の六つです。
@@ -385,6 +388,128 @@ InDesign の「オプティカル」に当たるカーニング（[code: kerning
 
 HTML と EPUB では、CSS の [code: font-kerning]、[code: letter-spacing]、[code: font-feature-settings]、[code: vertical-align] で表します。
 CSS では和文と欧文で別のカーニングを指定できないので、[code: japanese-equal-width] は欧文のカーニングを保ちます。
+
+@label opentype-features
+## OpenType の機能
+
+スモールキャップ、分数、数字の形式、スタイルセットなどの OpenType の機能[index reading=おーぷんたいぷ/きのう: OpenType/機能]は、文字スタイルと段落スタイルの [code: features] に書きます。
+InDesign の文字パネルのメニューの「OpenType 機能」に当たります。
+値は、機能のタグの文字列の配列です。
+
+```toml
+[character-styles.small-caps]
+features = ["smcp"]
+
+[character-styles.abbr]
+based-on = "small-caps"
+features = ["c2sc"]
+
+[paragraph-styles.table-cell]
+features = ["tnum", "lnum"]
+
+[character-styles.alt]
+features = ["salt=2", "-liga"]
+```
+
+[code: smcp] のように書けば機能を使い、[code: -liga] のように [code: -] を付ければ機能を止めます。
+[code: salt=2] のように [code: =] の後に数を書けば、その番号の代替の字形を選びます。
+タグは英字と数字の 4 字です。
+この形で読めない文字列は G03124 のエラーになります。
+フォントの役割の [code: features] にも、同じ形だけを書けます。
+
+[code: features] は、ほかのキーと違い、[code: based-on] で引き継いだ機能を置き換えず、その後ろに足します。
+上の [code: abbr] は、[code: smcp] と [code: c2sc] の両方を使います。
+引き継いだ機能を止めたいときは、[code: -smcp] のように書きます。
+同じ機能を二度書いたときは、後ろの値が勝ちます。
+
+PDF では、フォントの役割の機能、段落スタイルの機能、文字スタイルの機能の順に並べ、その後ろに Golem が文字の送りのキーの機能を足します。
+そのため、[code: kerning = "japanese-equal-width"] の和文には、[code: features] に [code: palt] を書いても字面に合わせた送りが当たりません。
+括弧類、句読点、中点類には、[code: palt] と [code: vpal] と同じく、[code: halt]、[code: vhal]、[code: chws]、[code: vchw] も当てません。
+Golem が約物の前後の空きを決めるので、重ねると空きが二重に詰まるからです。
+
+フォントがその機能を持たないと、PDF の字形は変わりません。
+[code: golem build] は、PDF を組むときにこれを G08103 で知らせます。
+[code: --profile dev] では警告で、[code: --profile prod] ではエラーになり、PDF を書きません。
+和文と欧文が混じった範囲では、どちらかのフォントが機能を持っていれば知らせません。
+InDesign と違い、フォントにスモールキャップがなくても、大文字を縮めて作ることはしません。
+
+HTML と EPUB では、CSS の [code: font-feature-settings] で表します。
+CSS では内側の要素の値が外側の値を置き換えるので、文字スタイルを入れ子にすると、内側のスタイルの機能だけが当たります。
+
+@label scripts
+## 上付きと下付き
+
+上付きと下付きの文字[index reading=うわつき: 上付き][index reading=したつき: 下付き]は、はじめから定義されている文字スタイル [code: superscript] と [code: subscript] で組みます。
+
+```
+1m[style superscript: 2]、H[style subscript: 2]O
+```
+
+これは「1m[style superscript: 2]、H[style subscript: 2]O」のように組まれます。
+
+文字スタイルの [code: position] に [code: "superscript"] か [code: "subscript"] を書けば、ほかの名前の文字スタイルでも同じになります。
+InDesign の文字パネルの「位置」の上付き文字と下付き文字に当たります。
+[code: "normal"] を書くと、外側の上付きや下付きを止めます。
+
+フォントが上付きと下付きの字形（OpenType の [code: sups] と [code: subs]）を持っていて、範囲のすべての字がその字形に置き換わるときは、その字形を使い、文字の大きさと位置は変えません。
+そうでなければ、文字を本来の大きさの 7/12 に縮め、大きさの 1/3 だけ上（下付きでは下）へずらして組みます。
+縦組みでは、上付きを右へ、下付きを左へずらします。
+比は InDesign の既定として知られる値で、[code: style.toml] では変えられません。
+大きさとずらす量を変えたいときは、[code: position] を書かずに [code: size] と [code: baseline-shift] を書いた文字スタイルを使ってください。
+
+上付きと下付きの文字の前と中では行を改めず、前の字とのあいだも空けません。
+後ろの字とのあいだは、上付きや下付きがないときと同じに組みます。
+行送りは変わりません。
+
+注の印の文字スタイル（[code: \[notes\]] の [code: mark-style]）には [code: position] を書けず、書くと G03125 のエラーになります。
+注の印の位置は、[code: \[notes\]] の決まりで決まるからです。
+注の印に上付きの字形を使いたいときは、印の文字スタイルに [code: features = \["sups"\]] と書きます。
+
+HTML と EPUB では [code: <sup>] と [code: <sub>] の要素になり、大きさと位置は閲覧に使うソフトウェアに任せます。
+プレーンテキストでは、文字をそのまま出します。
+
+@label decorations
+## 下線と打ち消し線
+
+下線[index reading=かせん: 下線]と打ち消し線[index reading=うちけしせん: 打ち消し線]は、文字スタイルの [code: underline] と [code: strikethrough] で引きます。
+InDesign の文字パネルの下線と打ち消し線に当たります。
+[code: true] と書けば既定の線を引き、表を書けば線の太さ、種類、位置、色を決められます。
+
+```toml
+[character-styles.emphasis-line]
+underline = true
+
+[character-styles.deleted]
+strikethrough = { weight = "0.5pt", color = "accent" }
+
+[character-styles.wavy.underline]
+style = "wavy"
+weight = "0.08zw"
+offset = "0.05zw"
+```
+
+この設定で、[style emphasis-line: 下線を引いた字]、[style deleted: 打ち消した字]、[style wavy: 波線の下線] のように組まれます。
+
+表のキーは、罫線の表と同じ [code: weight]、[code: style]、[code: dash]、[code: gap]、[code: color] と、線の位置をずらす [code: offset] です。
+[code: weight] の既定は [code: "0.05zw"] で、[code: zw] は線を引く文字の大きさを一字とします。
+[code: style] には、罫線と同じ 12 種の線の種類を書けます。
+[code: color] を書かなければ、文字と同じ色で引きます。
+[code: false] を書くと、外側の線をその範囲で止めます。
+[code: @style-def] では、[code: underline=true] と [code: underline=false] だけを書けます。
+
+線の位置と太さは、線を書いた文字スタイルの文字で決まり、その内側で文字の大きさや位置を変えても動きません。
+上付きの文字を含む範囲でも、下線はまっすぐに続きます。
+隣り合う範囲に同じ線を書けば、線は切れずにつながります。
+線は行送りを変えず、行の改め方にも影響しません。
+
+縦組みの下線は、文字の右に引く傍線[index reading=ぼうせん: 傍線]になります。
+ルビや圏点がある範囲では、傍線をルビと圏点の外に引きます。
+左の傍線は、まだ引けません。
+
+PDF では、下線を文字の前に、打ち消し線を文字の後に描くので、下線は文字を隠さず、打ち消し線は文字に隠れません。
+HTML と EPUB では、CSS の [code: text-decoration] で表します。
+CSS では内側の要素で外側の線を消せないので、HTML と EPUB では [code: false] を書いても外側の線が残ります。
+プレーンテキストでは、線を出さず、文字をそのまま出します。
 
 ## ファイルの中のスタイル
 

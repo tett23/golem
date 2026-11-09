@@ -64,6 +64,7 @@ import Golem.Length qualified as L
 import Golem.Numerals (kanji, kanjiDigits)
 import Golem.Numerals.Format (MarkFormat (..), defaultMarkFormat, parseMarkFormat)
 import Golem.Numerals.Notation (Notation, arabic, writeNumber)
+import Golem.Project.Position (Position (..))
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan (..), diagnostic, mkSpan, spanLength)
 
@@ -181,7 +182,11 @@ data ComposeEnv = ComposeEnv
     -- | the leaf of the boxes of the piece 'itemsFor' makes; set by 'composeInlines'
     ceLeaf :: !Int,
     -- | how many inlines at the start are a label, such as the mark of a note (docs/adr ADR 0183)
-    ceLabelInlines :: !Int
+    ceLabelInlines :: !Int,
+    {- | whether a range of superscript or subscript is set in the glyphs of
+    the font (docs/adr/0269): its characters, each in its look; otherwise
+    it is set by synthesis
+    -} ceScriptGlyphs :: Position -> [(Look, Char)] -> Bool
   }
 
 -- | The mark of a sidenote in the text: its number, ※ or nothing.
@@ -212,6 +217,7 @@ defaultComposeEnv fs =
       ceExplicitHyphenPenalty = 50,
       ceAkiSet = defaultAkiSet,
       ceNoteMarkFormat = defaultMarkFormat,
+      ceScriptGlyphs = \_ _ -> False,
       ceNoteMarkLook = \lk -> lk {lkSize = noteMarkSize (Zw (1 % 2)) (lkSize lk)},
       ceNoteMarkSource = const SourceNoteMark,
       ceSizeSource = SourceGrid,
@@ -296,8 +302,8 @@ composeInlinesTree env inls =
   let (nodes, sourced0) = structured env inls
       sourced = [(src, p) | (_, src, p) <- sourced0]
       leaves = [l | (l, _, _) <- sourced0]
-      -- padCode keeps one piece for each piece
-      pieces = padCode (map snd sourced)
+      -- padCode and scriptRanges keep one piece for each piece
+      pieces = scriptRanges env (padCode (map snd sourced))
       (items, anchors, codeSpaces) = foldl' emit ([], [], IntSet.empty) (zip5 leaves (map fst sourced) prevs pieces nexts)
       emit (acc, as, cs) (_, _, _, PAnchor f, _) = (acc, (length acc, f) : as, cs)
       -- the boxes of a piece carry its source (golem-cli ADR 0008) and its leaf (docs/adr ADR 0183)
@@ -349,7 +355,7 @@ data InlineNode
   deriving stock (Eq, Show)
 
 -- | The elements of inlines: the label of 'ceLabelInlines', ruby, its base and reading, a reference, code and a language span (docs/adr ADR 0187).
-data InlineRole = RoleLabel | RoleRuby | RoleRubyBase | RoleRubyText | RoleReference | RoleCode | RoleLang !Text
+data InlineRole = RoleLabel | RoleRuby | RoleRubyBase | RoleRubyText | RoleReference | RoleCode | RoleLang !Text | RoleUnderline | RoleStrikethrough
   deriving stock (Eq, Show)
 
 -- the state of 'structured': the next leaf, the leaf of the content, the notes seen by their span
@@ -387,7 +393,14 @@ walk env st@(LeafState next cur seen) inl = case inl of
   CharStyle _ _ xs
     -- code inside text that is not code is an element (docs/adr ADR 0183)
     | lkCode (ceLook restyledEnv) && not (lkCode lk) -> element RoleCode (\st' -> walkAll restyledEnv st' xs)
-    | otherwise -> walkAll restyledEnv st xs
+    {- a style that draws a line of its own is a Span of the line, the
+    strikethrough inside the underline (docs/adr/0270) -}
+    | otherwise ->
+        let inner = ceLook restyledEnv
+            starts f = isJust (f inner) && f inner /= f lk
+            body s = walkAll restyledEnv s xs
+            struck s = if starts lkStrikethrough then elementAt RoleStrikethrough s body else body s
+         in if starts lkUnderline then elementAt RoleUnderline st struck else struck st
   Kenten _ sh xs -> walkAll env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}} st xs
   -- a language span is an element of its language (docs/adr ADR 0187)
   Lang _ l xs -> element (RoleLang l) (\st' -> walkAll env {ceLook = lk {lkLang = Just l}} st' xs)
@@ -420,11 +433,13 @@ walk env st@(LeafState next cur seen) inl = case inl of
     restyledEnv = env {ceLook = ceRestyle env lk inl, ceSizeSource = ceSizeSourceOf env (ceSizeSource env) inl}
     leafOf (LeafState _ c _) = c
     -- an element: its first leaf for what it holds, then a new leaf for what follows
-    element role inner =
-      let (st1, ns, ps) = inner (LeafState (next + 1) next seen)
-          LeafState next1 _ seen1 = st1
-          (st2, after) = freshLeaf (LeafState next1 cur seen1)
-       in (st2, [NodeElem role (NodeLeaf next : ns), after], ps)
+    element role = elementAt role st
+    -- an element of the content of a function at a state, and the leaf after it
+    elementAt role (LeafState n c sn) inner =
+      let (st1, ns, ps) = inner (LeafState (n + 1) n sn)
+          LeafState n1 _ sn1 = st1
+          (st2, after) = freshLeaf (LeafState n1 c sn1)
+       in (st2, [NodeElem role (NodeLeaf n : ns), after], ps)
     {- each segment with a reading is a Ruby of its base and reading, the
     reading the leaf after the base; a segment without one is content -}
     rubySegments segs =
@@ -860,6 +875,81 @@ baseAdvances env lk looks = zipWith unit (looks <> repeat lk) . clusters
       [c] -> advance env l c
       _ -> L.zwToSp (lkSize l) (ceWordAdvance env l u)
 
+-- | Whether a look is of superscript or subscript (docs/adr/0269).
+isScript :: Look -> Bool
+isScript = (/= PositionNormal) . lkPosition
+
+-- | The look of a piece; Nothing for the pieces without one.
+pieceLook :: Piece -> Maybe Look
+pieceLook = \case
+  PChar lk _ _ -> Just lk
+  PWord lk _ -> Just lk
+  PSpace lk -> Just lk
+  PBox lk _ _ _ -> Just lk
+  PRuby lk _ _ _ _ -> Just lk
+  PAki lk _ -> Just lk
+  PCode lk _ _ _ -> Just lk
+  PDashes lk _ -> Just lk
+  PMark _ lk _ _ _ -> Just lk
+  _ -> Nothing
+
+{- | The ranges of superscript and subscript (docs/adr/0269): the longest
+runs of pieces of one position other than normal, anchors and the breaks
+between mono ruby bases inside them. Each range is set in the glyphs of
+the font when 'ceScriptGlyphs' says so for all its characters, its looks
+then shaped with sups (subs) after every feature at their size; otherwise
+by synthesis, its looks at 7/12 of their nominal size s, moved by s/3 up
+(right in vertical text) for superscript and down (left) for subscript,
+after their baseline shift. One piece for each piece.
+-}
+scriptRanges :: ComposeEnv -> [Piece] -> [Piece]
+scriptRanges env = go
+  where
+    go ps = case break (isJust . positionOf) ps of
+      (normal, []) -> normal
+      (normal, rest@(p : _)) ->
+        let pos = fromMaybe PositionNormal (positionOf p)
+            (range, after) = span (\q -> positionOf q == Just pos || transparent q) rest
+            -- the pieces that carry no look at the end belong after the range
+            (tailing, range') = span transparent (reverse range)
+            inRange = reverse range'
+            glyphs = ceScriptGlyphs env pos (concatMap charsOf inRange)
+         in normal <> map (settle pos glyphs) inRange <> reverse tailing <> go after
+    positionOf q = pieceLook q >>= \lk -> if isScript lk then Just (lkPosition lk) else Nothing
+    transparent = \case
+      PAnchor _ -> True
+      PRubyBreak -> True
+      _ -> False
+    charsOf = \case
+      PChar lk c _ -> [(lk, c)]
+      PWord lk t -> [(lk, c) | c <- T.unpack t]
+      PSpace lk -> [(lk, ' ')]
+      PBox lk t _ _ -> [(lk, c) | c <- T.unpack t]
+      PRuby lk _ base looks _ -> zip (looks <> repeat lk) (T.unpack base)
+      PCode lk t _ _ -> [(lk, c) | c <- T.unpack t]
+      PDashes lk t -> [(lk, c) | c <- T.unpack t]
+      _ -> []
+    settle pos glyphs = \case
+      PChar lk c vs -> PChar (set lk) c vs
+      PWord lk t -> PWord (set lk) t
+      PSpace lk -> PSpace (set lk)
+      PBox lk t kind w -> PBox (set lk) t kind (if w == lkSize lk then lkSize (set lk) else w)
+      PRuby lk kind base looks reading -> PRuby (set lk) kind base (map set looks) reading
+      PAki lk a -> PAki (set lk) a
+      PCode lk t ps pe -> PCode (set lk) t ps pe
+      PDashes lk t -> PDashes (set lk) t
+      other -> other
+      where
+        set lk
+          | glyphs = lk {lkScriptGlyphs = True}
+          | otherwise =
+              let n = unSp (lkNominalSize lk)
+                  shift = Sp (n `div` 3)
+               in lk
+                    { lkSize = Sp ((7 * n) `div` 12),
+                      lkBaselineShift = lkBaselineShift lk + (if pos == PositionSuperscript then shift else negate shift)
+                    }
+
 -- | The advances of the reading characters: half the size of the base, as drawn.
 readingAdvances :: ComposeEnv -> Look -> Maybe Text -> [Sp]
 readingAdvances env lk = maybe [] (map (advance env lk {lkSize = Sp (unSp (lkSize lk) `div` 2)}) . T.unpack)
@@ -885,12 +975,18 @@ itemsFor env prev p next = case p of
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
      in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
-  PWord lk word -> wordItems env lk word
+  -- a word of superscript or subscript is not broken (docs/adr/0269)
+  PWord lk word
+    | isScript lk -> [x | x@Box {} <- wordItems env lk word]
+    | otherwise -> wordItems env lk word
   PSpace lk ->
     let sw = advance env lk ' '
-     in if lkCode lk
-          then [Glue (sw + tracking lk) 0 0] -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
-          else [Glue (sw + tracking lk) (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))]
+        glue
+          | lkCode lk || isScript lk = Glue (sw + tracking lk) 0 0 -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
+          | otherwise = Glue (sw + tracking lk) (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))
+     in {- a space inside a range of superscript or subscript neither breaks nor
+        stretches, and no line breaks before a range (docs/adr/0269) -}
+        [Penalty 0 infPenalty NoHyphen | not (lkCode lk), isScript lk || maybe False (maybe False isScript . pieceLook) next] <> [glue]
   PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
@@ -1282,9 +1378,11 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
       Box _ c | boxKind c == KindAki -> x : go (k + 1) AfterAki first rest
       {- a note mark joins the box before it (golem-driver ADR 0018): no
       break and no spacing before it, and the spacing of the pair around
-      it after it; it has no edges -}
+      it after it; it has no edges. So does each box of a range of
+      superscript or subscript (docs/adr/0269): no break and no spacing
+      before it and inside it, and after it those of the pair around it -}
       Box w c
-        | boxKind c == KindNoteMark ->
+        | boxKind c == KindNoteMark || isScript (bcLook c) ->
             let before' = case before of
                   AtStart -> AfterStartMark
                   other -> other

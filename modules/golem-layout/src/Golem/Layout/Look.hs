@@ -5,6 +5,7 @@ measuring functions and keeps them on the boxes for later stages.
 -}
 module Golem.Layout.Look
   ( Look (..),
+    Decoration (..),
     LinkTarget (..),
     Kerning (..),
     Synthetic (..),
@@ -21,7 +22,8 @@ where
 
 import Data.Text (Text)
 import Golem.Length (Sp)
-import Golem.Project.Style (SizeSource (..))
+import Golem.Project.Position (Position (..))
+import Golem.Project.Style (RuleStyle, SizeSource (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 
 {- | Where the size of a box comes from and where its characters are in the
@@ -139,7 +141,42 @@ data Look = Look
     -} lkLang :: !(Maybe Text),
     {- | the mark at the end of a line that breaks inside inline code at a
     break other than a space (golem-layout ADR 0034); empty is none
-    -} lkWrapMark :: !Text
+    -} lkWrapMark :: !Text,
+    {- | the OpenType features of the paragraph style and the character
+    styles, in the normal form, the last value of each tag (docs/adr/0268);
+    the role's are not here
+    -} lkFeatures :: ![Text],
+    -- | normal, superscript or subscript (docs/adr/0269)
+    lkPosition :: !Position,
+    {- | the size the character styles give, position aside (docs/adr/0269):
+    'lkSize' is 7/12 of it in a range of superscript or subscript set by
+    synthesis
+    -} lkNominalSize :: !Sp,
+    {- | a range of superscript or subscript set in the glyphs of the font:
+    sups or subs after every feature (docs/adr/0269)
+    -} lkScriptGlyphs :: !Bool,
+    -- | the underline of the characters (docs/adr/0270); Nothing is none
+    lkUnderline :: !(Maybe Decoration),
+    -- | the strikethrough of the characters (docs/adr/0270); Nothing is none
+    lkStrikethrough :: !(Maybe Decoration)
+  }
+  deriving stock (Eq, Ord, Show)
+
+{- | An underline or a strikethrough resolved at the character style that
+writes it, the basis of the line (docs/adr/0270): what the styles inside
+it change does not move it. Two boxes of equal decorations are one run.
+-}
+data Decoration = Decoration
+  { decWeight :: !Sp,
+    -- | from the face of the basis: away from the characters for an underline, up (right) for a strikethrough
+    decOffset :: !Sp,
+    decStyle :: !RuleStyle,
+    -- | the swatch: of the line, or else of the characters of the basis; Nothing sets no colour
+    decColor :: !(Maybe Text),
+    -- | the size of the basis
+    decSize :: !Sp,
+    -- | the baseline shift of the basis
+    decShift :: !Sp
   }
   deriving stock (Eq, Ord, Show)
 
@@ -152,7 +189,7 @@ newtype LinkTarget = LinkUri Text
 {- | One role for both scripts at a size, upright, regular, default colour,
 metrics kerning, no tracking, no proportional metrics, no baseline shift,
 not code, not a URL, no kenten, no background, no padding, no link,
-outside a language span and no wrap mark.
+outside a language span, no wrap mark, no features and the normal position.
 -}
 plainLook :: Text -> Sp -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing ""
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing

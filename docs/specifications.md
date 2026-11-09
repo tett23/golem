@@ -96,6 +96,7 @@ MCID は、ページごとに 0 から内容のストリームの順に振る。
 | 相互参照（`[ref-number]`、`[ref-title]`、`[ref-page]`）、引用の印（`[cite]`） | `Reference`（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)） |
 | 外部のリンク（`[link]`、[docs/adr/0182](adr/0182-external-links.md)） | `Link`。リンクの文字と、行ごとのリンクの注釈の `OBJR` を持つ |
 | 言語の区間（`[lang]`、[docs/adr/0187](adr/0187-inline-language-switch.md)） | `/Lang` を持つ `Span`。`@lang` を付けたブロックは、その要素が `/Lang` を持つ |
+| 下線と打ち消し線を引いた範囲（線の基準の文字スタイルの適用、[ADR 0270](adr/0270-underline-and-strikethrough.md)） | 属性 `/A << /O /Layout /TextDecorationType /Underline >>`（打ち消し線では `/LineThrough`）を持つ `Span`。両方を引いた範囲は、下線の `Span` の中に打ち消し線の `Span` を置く。縦組みの傍線も `/Underline` とする |
 | 文字スタイル `code`（と、それに行き着く文字スタイル） | `Code` |
 | ほかの文字スタイル、色、圏点の親文字、縦中横、数 | 親の構造の要素の中身のまま |
 
@@ -1674,7 +1675,7 @@ LSP と `golem lint` はファイルを検査しないので、フォントを�
 スタイルの定義は、`based-on` をたどった鎖の根から順に、子のキーが親のキーを上書きして決める。
 スタイルの名前は、英小文字で始まり、英小文字、数字、`-` だけからなる。
 
-文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic` である。
+文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic`、`features`（OpenType の機能、後述）、`position`（上付きと下付き、後述）、`underline` と `strikethrough`（下線と打ち消し線、後述）である。
 コードの文字スタイルは、本文の中のコードの背景と余白のキー `background` と `padding` と、改行の印のキー `wrap-mark` も持つ（後述）。
 `font` の役割は、役割が持つ側（和文か欧文）の文字だけをその役割で組み、持たない側の文字は外側の書体のまま組む。
 `synthetic-bold` が真なら、`font` の役割が持たない側の文字を合成の太字（輪郭を線で太らせる）にし、`font` がなければ両側を太らせる。
@@ -1742,7 +1743,179 @@ CSS では、和文と欧文で別のカーニングを指定できない。
 `letter-spacing` は行の最後の文字の後ろにも空きを足すが、PDF との差として受け入れる。
 プレーンテキストは、どのキーも使わない。
 
-組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`、`padding = "0.25zw"`、`wrap-mark = "⏎"`）、`url`（キーなし）、`note-mark`（`size = "0.5zw"`）の六つである。
+文字スタイルと段落スタイルは、OpenType の機能の欄 `features` も持つ（[ADR 0268](adr/0268-opentype-features-on-character-styles.md)）。
+値は機能の文字列の配列であり、スモールキャップ、分数、数字の形式、スタイルセットなどを、文字の範囲と段落に当てる。
+
+```toml
+[character-styles.small-caps]
+features = ["smcp"]
+
+[character-styles.abbr]
+based-on = "small-caps"
+features = ["c2sc"]
+
+[paragraph-styles.table-cell]
+features = ["tnum", "lnum"]
+
+[character-styles.alt]
+features = ["salt=2", "-liga"]
+```
+
+機能の文字列は、次の四つの形だけを受け付ける。
+`tag` は英字と数字の 4 字である。
+
+| 形 | 意味 | 正規の形 |
+| --- | --- | --- |
+| `tag` | 機能を有効にする（値 1） | `tag` |
+| `+tag` | 機能を有効にする（値 1） | `tag` |
+| `-tag` | 機能を止める（値 0） | `-tag` |
+| `tag=N` | 機能を値 N で有効にする。`N` は 0 から 65535 までの十進の整数 | `N` が 0 なら `-tag`、1 なら `tag`、ほかは `tag=N` |
+
+HarfBuzz が読めるほかの形（`kern[3:5]` のような範囲、`aalt=on` のような語の値）は受け付けない。
+読めない要素はエラー（G03124）とし、その要素の位置に、誤りのある要素ごとに一つ、要素の順に出す。
+誤りのある定義は、ほかの `style.toml` の誤りと同じく捨てる。
+`@style-def` では配列を書けないので、`features="smcp,-liga"` のように `,` で区切った一つの文字列で書く。
+空の要素（`features="smcp,"`）も G03124 とする。
+
+`features` は、ほかのキーと違い、`based-on` の子が親の値を置き換えず、親の並びの後ろにつなぐ。
+組み込みのスタイルと同じ名前の表と、`@style-def` で同じ名前の定義を重ねた場合も、元の定義の並びの後ろにつなぐ。
+InDesign では機能の一つずつが文字の属性なので、子のスタイルでスモールキャップを有効にしても、親のオールドスタイル数字は残る。
+親の機能を止めたい子は `-tag` を書く。
+つないだ並びは、タグごとに最後の値だけを、その最後の位置に正規の形で残す。
+`["onum", "smcp"]` の親と `["-smcp", "salt=2"]` の子の並びは、`["onum", "-smcp", "salt=2"]` になる。
+PDF での並べ方と、書体にない機能の扱いは「フォント」の節に書く。
+
+HTML と EPUB では、`cs-名前` と `ps-名前` の CSS に `font-feature-settings` を一つだけ書く。
+値は、そのスタイルの `based-on` の鎖の並びをつないでタグごとに最後の値を残した並びを、`"smcp" 1, "liga" 0, "salt" 2` の形にしたものである。
+`proportional-metrics` が真なら、同じ宣言の最後に `"palt" 1`（縦組みの本では `"vpal" 1`）を加える。
+`features` を書かないスタイルの CSS は、前の節の表のとおりである。
+CSS の `font-feature-settings` は外側の要素の値に足されず、内側の要素の値で置き換わる。
+そのため、入れ子にした文字スタイルと、段落スタイルの中の文字スタイルでは、HTML と EPUB では内側のスタイルの並びだけが当たり、PDF と違う。
+プレーンテキストは、`features` を使わない。
+
+文字スタイルは、上付きと下付きの欄 `position` も持つ（[ADR 0269](adr/0269-superscript-and-subscript.md)）。
+値は `"normal"`、`"superscript"`、`"subscript"` のどれかで、書かなければ外側の値を引き継ぐ。
+本文の根の値は `"normal"` であり、ほかの値は G03006 とする。
+名前と値は InDesign の文字パネルの「位置」にそろえる。
+段落スタイルには置かない。
+原稿では、組み込みの文字スタイルで `[style superscript: 2]` と書く。
+
+`position` が `"normal"` でない字の連なりを、添え字の範囲と呼ぶ。
+添え字の範囲は、同じ `position` の字が続く最大の連なりであり、文字スタイルの入れ子で途中の見た目が変わっても切れない。
+字の名目の大きさは、`position` を無視して `size` の規則（`zw` は外側の名目の大きさで数える）で決めた大きさである。
+PDF は、範囲ごとに次の二つの方法のどちらかで組む。
+
+- 書体の字形：範囲のすべての字が、その字を組む書体（和文の字は和文の書体、欧文の字は欧文の書体）の `sups`（下付きでは `subs`）で別の字形に置き換わるなら、範囲の字を名目の大きさで、機能の並びの最後に `sups` か `subs` を足してシェイピングし、ずらさない。置き換わるかは、字を一字ずつ、その機能のあるときとないときでシェイピングし、グリフ番号が違うかで決める。
+- 合成：そうでなければ、名目の大きさ `s` の `⌊7s/12⌋` の大きさで組み、横組みでは上付きを `⌊s/3⌋` 上へ、下付きを `⌊s/3⌋` 下へずらす。縦組みでは、上付きを右へ、下付きを左へずらす（`baseline-shift` と同じ向き）。文字スタイルの `baseline-shift` は、この位置からさらにずらす。
+
+比の 7/12 と 1/3 は、InDesign の既定として知られる値であり、JLReq の 3.7.1 の「60% くらい」にも合う。
+比は `style.toml` に書けない。
+`position` は属性であり、同じ値を重ねても効果は重ならない。
+`subscript` の中に `superscript` を入れると、内側は名目の大きさからの上付きになる。
+書体の字形の方法で足す `sups` と `subs` は、書き手の `features` の後ろに置くので、書き手の `-sups` に勝つ。
+`position` を書かずに `features = ["sups"]` だけを書けば、字形だけを選び、大きさと位置は変えない。
+Golem が足す `sups` と `subs` には、書体にない機能の報告（G08103）を出さない。
+
+行分割では、JLReq の 3.7.1 と 3.1.10 に従い、添え字の範囲の字を注の印と同じく扱う。
+範囲の前と中では行を分けず、アキ量のセットの空きを入れず、範囲の中の語間の空白は伸び縮みしない。
+範囲の前の空白でも行を分けない。
+範囲の後ろには、範囲がないときに前の字と次の字のあいだに入る空きが入り、改行の規則もそのときと同じとする。
+範囲の中の欧文の語は、ハイフネーションをかけない。
+ずらした字は、行送りを変えない（JLReq の 2.4.2 と 4.5.1）。
+
+縦組みでは、和文の字は縦組みの字形で立て、欧文の字は横に倒し、どちらも上の規則で縮めて右か左へずらす。
+JLReq の 3.7.1 の、添え字の付いた文字列を 90 度回転する組み方は作らない。
+短い添え字を縦中横にしたい書き手は、縦中横の記法で書く。
+ルビの読みは、外側の書体と色で組み、`position` を引き継がない。
+圏点は、添え字の範囲の字にも付け、字と同じ量だけずらす。
+
+HTML と EPUB では、`position` が `"superscript"` に解決する文字スタイルの範囲を `<sup>`、`"subscript"` に解決する範囲を `<sub>` で出す。
+組み込みの `superscript` と `subscript` は class を持たない `<sup>` と `<sub>` にし、ほかの名前の文字スタイルは `<sup class="cs-名前">` のように class を付ける。
+正規表現スタイルで当てた文字スタイルも同じ要素にする。
+大きさとずらしの CSS は書かず、ブラウザーと読書環境の既定に任せる。
+`<sup>` の既定の `vertical-align: super` は、そのスタイルの `baseline-shift` を写した `vertical-align` で置き換わるので、`position` と `baseline-shift` を一緒に書いたスタイルは、HTML と EPUB で PDF と違う位置になる。
+プレーンテキストは、添え字の範囲の字を原稿のまま出す。
+
+利用者が `[character-styles.superscript]` か `[character-styles.subscript]` をすでに書いている本では、書いたキーを組み込みの定義に重ねるので、`position` が加わる。
+
+文字スタイルは、下線と打ち消し線の欄 `underline` と `strikethrough` も持つ（[ADR 0270](adr/0270-underline-and-strikethrough.md)）。
+値は `true`（既定の線を引く。`{}` と同じ）、表（書いたキーの線を引く）、`false`（外側の線を引かない）のどれかであり、書かなければ外側の値を引き継ぐ。
+`based-on` の鎖では、子が書いた値が親の値を置き換え、表のキーを親とつなぎ合わせない。
+段落スタイルには置かない。
+組み込みの文字スタイルは加えない。
+
+| キー | 型 | 既定 | 意味 |
+| --- | --- | --- | --- |
+| `weight` | 寸法 | `"0.05zw"` | 線の太さ。0 より大きい |
+| `offset` | 符号付きの寸法 | `"0pt"` | 線の位置（後述） |
+| `style` | 文字列 | `"solid"` | 線の種類。罫線の指定の 12 種 |
+| `dash` | 寸法 | `weight` の 3 倍 | 破線の線分の長さ |
+| `gap` | 寸法 | 線の種類による | 破線と点線の間隔 |
+| `color` | スウォッチの名前 | 線を引く字の色 | 線の色 |
+
+キーは罫線の指定と同じ関数で読み、同じ文言とコードを使う。
+罫線の指定と違い、`weight`、`dash`、`gap` に `zw` を書け、`zw` は線の基準（次の段落）の大きさで数える。
+`length`、`space-before`、`space-after`、`start-indent`、`end-indent`、`keep-in-column` は書けず、未知のキーと同じく G03006 とする。
+寸法として読めない `offset`、`true` と表のほかの値も G03006 とし、`color` が `[color.swatches]` にない場合は G03013 とする。
+`@style-def` では表を書けないので、`underline=true` と `underline=false` だけを書ける。
+
+入れ子の文字スタイルでは、`underline`（`strikethrough`）の値を書いた定義に `based-on` で行き着くスタイルの適用のうち、ある字を含む最も内側のものを、その字の線の基準と呼ぶ。
+線の基準の大きさ `s`、色、`baseline-shift` が、線の太さと位置と既定の色を決める。
+線の基準より内側の文字スタイルの `size`、`baseline-shift`、`position` は、線を動かさない。
+内側で `false` を書けばその範囲で線が切れ、別の表を書けばその範囲は内側の線の基準で引く。
+
+線の位置は、線の基準の字面の枠から決める。
+字面の枠は、横組みでは高さ `s` で基準線を上から 0.88 の位置に置いた枠、縦組みでは幅 `s` で行の中心線に中心を置いた枠であり、線の基準の `baseline-shift` だけずらす。
+横組みの下線は字面の枠の下端から `offset` だけ下に線の上の縁を置き、打ち消し線は字面の枠の中心から `offset` だけ上に線の中心を置く。
+縦組みの下線（傍線）は、JLReq の 4.5.1 に従って字の右に引き、字面の枠の右端から `offset` だけ右に線の左の縁を置く。
+縦組みの打ち消し線は、字面の枠の中心から `offset` だけ右に線の中心を置く。
+縦組みで、区画（次の段落）の中に右に読みか圏点を持つ箱があるときは、区画の全体の傍線を、その区画の読みと圏点の右端のうち最も右のものから `offset` だけ右に置く。
+横組みの下線と打ち消し線は、ルビと圏点で動かさない。
+縦組みの左の傍線は引かない。
+線は行送りを変えず、行分割と改ページにも影響しない（JLReq の 2.4.2）。
+版面の先頭と末尾の行の線が版面の外にはみ出しても、行の位置は変えない（JLReq の 4.5.1）。
+
+行ごとに、行に置いた箱のうち、下線（打ち消し線）の値が等しい箱の連なりを一つの区画とする。
+値が等しいとは、解決した線の太さ、位置、種類、破線の長さ、色、線の基準の大きさと基準線のずらしがすべて等しいことである。
+区画は、最初の箱の始まりから最後の箱の終わりまでとし、あいだのグルーを含む。
+別々に当てた同じ文字スタイルが隣り合えば一つの区画になり、値の違う線が隣り合えば別の区画になる。
+区画は行をまたがない。
+行末で捨てる空白と、線のある箱と線のない箱のあいだの空白には線を引かない。
+行末のハイフンとぶら下げた約物は箱に含まれるので線を引く。
+ルビの親文字と縦中横の箱には線を引き、ルビの読みと圏点の字には引かない。
+中身のない範囲は箱を作らないので、線を引かない。
+
+区画の長さの帯に、罫線の線の種類の形を描き、破線と点線の割り付けは区画ごとに行う。
+帯の「前」の縁は、横組みでは上、縦組みでは右である。
+PDF では、行の内容を、本文の中のコードの背景、下線、行の字、打ち消し線の順に描く。
+欧文の字のディセンダーを線で隠さず、色の付いた打ち消し線を字で隠さないためである。
+線の色は、`color` があればそのスウォッチの CMYK を DeviceCMYK で塗り、なければ線の基準の字の色（文字スタイルの `color`）で塗り、字に色がなければ色を設定せずに塗る。
+線の図形はアーティファクト（`/Artifact << /Type /Layout >>`）として描き、線を引いた範囲はタグ付き PDF の `Span` にする（「タグ付き PDF」の節）。
+golem preflight は、線の最も細い部分の太さを罫線の太さに加えて細すぎる線（G09018）を調べ、線の色のスウォッチを総インキ量の検査（G09015）の対象にする。
+
+HTML と EPUB では、`cs-名前` の CSS に次のように書く。
+
+| Golem | CSS |
+| --- | --- |
+| `underline` | `text-decoration-line: underline` |
+| `strikethrough` | `text-decoration-line: line-through` |
+| 両方 | `text-decoration-line: underline line-through` |
+| `style` | `text-decoration-style`。`"solid"` は書かず、`"dashed"` は `dashed`、`"dotted"` と `"japanese-dots"` は `dotted`、多重線の 7 種は `double`、`"wavy"` は `wavy` |
+| `weight` | `text-decoration-thickness`（`zw` は `em`、絶対の寸法は `pt`） |
+| `color` | `text-decoration-color`（スウォッチの RGB の近似）。書かなければ書かない |
+| `offset`（下線） | `text-underline-offset`。0 なら書かない |
+| 縦組みの本の下線 | `text-underline-position: right` |
+
+両方を書いたスタイルの線の種類、太さ、色は、下線の値を書く。
+`dash` と `gap`、打ち消し線の `offset` は書かない。
+CSS と PDF は、次の点で違う。
+`text-underline-offset` は書体が決める位置からの距離であり、Golem の字面の枠からの距離と一致しない。
+CSS の文字の飾りは子孫の要素で消せないので、`false` を写した CSS は書かず、HTML と EPUB では外側の線が消えない。
+範囲の最後の空白にも、CSS は線を引く。
+読書環境が `text-underline-position: right` を読むかは確かめていない。
+プレーンテキストは、線を出さず、字を原稿のまま出す。
+
+組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`、`padding = "0.25zw"`、`wrap-mark = "⏎"`）、`url`（キーなし）、`note-mark`（`size = "0.5zw"`）、`superscript`（`position = "superscript"`）、`subscript`（`position = "subscript"`）の八つである。
 `note-mark` は、PDF の本文の注の印に当てる既定の文字スタイルである（「脚注」の節、[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 `url` は参考文献の URL を組む文字スタイルであり、書体、大きさ、色は周りの文字のまま組む（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
 PDF では、`url` と、`based-on` をたどって `url` に行き着く文字スタイルの文字に、ハイフネーションをかけず、中の文字のあいだにアキ量のセットの空きを入れない。
@@ -1759,7 +1932,7 @@ PDF では、`url` と、`based-on` をたどって `url` に行き着く文字�
 `[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
 `[character-styles.strong] based-on = "italic"` は、`[strong: ...]` を斜体で表す。
 
-段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、段落の前と後に引く罫線の `rule-before` と `rule-after` である。
+段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`features`、段落の前と後に引く罫線の `rule-before` と `rule-after` である。
 
 `rule-before` と `rule-after` は、「罫線の指定」の表か `false` をとる（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 InDesign の段落境界線にあたる。
@@ -2490,6 +2663,7 @@ SVG の図版の色も sRGB のまま、sRGB のプロファイルの ICCBased �
 和文と欧文で別のフォントを組み合わせるのは日本語組版の標準的なやり方である。
 OpenType の機能（縦書き用の字形、プロポーショナルな字詰めなど）も役割ごとに指定し、縦書きの役割では縦書き用の字形を既定で有効にする。
 役割の `features` は機能をそのままシェイピングに渡すが、`palt` と `vpal` だけは、JLReq の規則で前後の空きを決める約物に当てない（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
+役割の `features` にも、文字スタイルの `features` と同じ四つの形だけを書け、読めない要素は G03124 とする（[ADR 0268](adr/0268-opentype-features-on-character-styles.md)）。
 縦書き用の字形がない文字のうち、UAX #50 の縦組みの向き（Vertical_Orientation）が R か Tr のもの（`U+2014` のダッシュなど）は、PDF では横組みの字形を時計回りに 90 度回転し、仮想ボディの中心を行の中心線にそろえて描く（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 フォントに縦書き用の字形があれば、R の文字でもその字形を正立で使う。
 PDF の縦中横は、箱の文字列を横組みでシェイピングし、横組みの字として回転せずに左から右へベタで並べる（[golem-driver ADR 0045](golem-driver/adr/0045-draw-tate-chu-yoko-horizontally-in-pdf.md)）。
@@ -2506,6 +2680,41 @@ HTML と EPUB では、CSS の `text-orientation` の既定の `mixed` に任せ
 ただし、JLReq の規則で前後の空きを決める約物（始め括弧類、終わり括弧類、句点類、読点類、中点類）には、カーニングの方式と `proportional-metrics` によらず `palt` と `vpal` を足さず、`-palt` と `-vpal` を足す（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
 役割の `features` の `palt` と `vpal` も、この `-palt` と `-vpal` が上書きする。
 これらの約物に足す機能は、`metrics` で `-palt` と `-vpal`、`none` と `japanese-equal-width` で `-kern`、`-vkrn`、`-palt`、`-vpal` である。
+
+PDF で字をシェイピングする機能の並びは、次の順につないだものである（[ADR 0268](adr/0268-opentype-features-on-character-styles.md)）。
+後ろの機能が、前の同じタグの機能に勝つ。
+
+1. 役割の `features`。
+2. 段落スタイルの `features`。`based-on` の鎖の根から順に置く。
+3. 文字スタイルの `features`。入れ子の外側から順に、各スタイルの中では `based-on` の鎖の根から順に置く。
+4. Golem が足す機能。カーニングの方式、`proportional-metrics`、JLReq の約物の打ち消しである。
+
+つないだ並びは、タグごとに最後の値だけを、その最後の位置に正規の形で残してから HarfBuzz に渡す。
+渡す機能の数に上限はない。
+Golem が足す機能を最後に置くので、`features = ["palt"]` の文字スタイルでも、`kerning = "japanese-equal-width"` の和文は全角で組み、JLReq の約物には `palt` が当たらない。
+約物の字形を半角の幅にする機能 `halt`、`vhal`、`chws`、`vchw` も、JLReq の規則で前後の空きを決める約物には当てない。
+並び（役割、段落スタイル、文字スタイル）がこれらを有効にしている字が約物のときだけ、4 の段で `-halt`、`-vhal`、`-chws`、`-vchw` のうち有効なものを足す。
+これらは Golem の約物の空きと同じことを書体の側で行う機能であり、重ねると空きが二重に詰まるためである。
+
+機能の並びは見た目の一部であり、並びの違う字は別の箱になって別々にシェイピングされる。
+機能の境をまたいで合字とカーニングはかからない。
+行分割の送りの計測と描画は、同じ並びでシェイピングするので、行分割の幅と描いた幅は一致する。
+縦組みでも、`features` は書いたとおりに渡し、`palt` を `vpal` に読み替えない。
+縦組みの中で回転して組む欧文と縦中横は、横書きの方向で同じ並びでシェイピングする。
+ルビの読みは外側の見た目の機能で組み、圏点の字は役割の機能だけで組み、注の印は印の文字スタイルの機能で組む。
+
+PDF をターゲットに含む `golem build` は、有効にした機能を書体が持たないとき、G08103 で報告する。
+書体が機能を持つとは、その書体の GSUB か GPOS の機能の一覧にそのタグがあることであり、用字系と言語系を問わない。
+報告の単位は同じ見た目の字の連なり（ラン）であり、ランの字が使う書体（和文の字は和文の書体、欧文の字は欧文の書体）のどれもがその機能を持たないときに報告する。
+和文と欧文が混じったランで欧文の書体だけがスモールキャップを持つ場合は、報告しない。
+止める機能（値 0）と、Golem が足す機能は報告しない。
+G08103 は、フォントのファイルと機能のタグの組ごとに一つにまとめる。
+位置は、その機能を有効にした `style.toml` の値のうちファイルの中で最初のものであり、`@style-def` だけが書いた場合はその行である。
+事実は `font`、`feature`、`pdf-pages`（その機能のランが現れたページ）である。
+重大度はプロファイルで変わり、dev では警告、prod ではエラーとする（G08100 と同じ）。
+dev では PDF を書き、prod では PDF を書かず（前のビルドの PDF も消す）、ほかのターゲットは書く。
+書体が機能を持たなければ字形は変わらないので、合成のスモールキャップは作らず、元の字形で組む。
+HTML、EPUB、プレーンテキストのターゲットと、`golem check`、LSP は報告しない。
 
 ライセンスで埋め込みが禁止されているフォントを使った場合は、エラー（G08004）とする。
 OS/2 の `fsType` は OpenType の仕様のとおりに読み、ビット 1（制限付きのライセンス）がビット 2 とビット 3 なしに立っている場合、ビット 8（サブセット化の禁止）が立っている場合、ビット 9（ビットマップの埋め込みだけを許す）が立っている場合に埋め込みを禁じているとみなす（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
@@ -3813,6 +4022,13 @@ PDF の本文の印（合印）は、`[notes]` の `mark-format` の書式で番
 | `mark-style` | 文字列 | PDF の本文の印に当てる文字スタイルの名前。既定は組み込みの `note-mark` |
 | `body-mark-style` | 文字列 | PDF の注の本文の先頭の印に当てる文字スタイルの名前。既定はなし（注の本文の文字のまま） |
 | `mark-size` | 寸法 | 廃止予定。本文の印の文字スタイルの `size` の省略形 |
+
+本文の印の文字スタイル（`mark-style`、書かなければ `note-mark`）の `based-on` の鎖で、`position` が `"normal"` でない値に解決するときは、エラー（G03125）とする（[ADR 0269](adr/0269-superscript-and-subscript.md)）。
+印の位置はこの節の規則で決まり、`position` の上げ下げを重ねると、どちらの位置で組むかが決まらないためである。
+位置は `position` を書いた定義の値である。
+印に書体の上付きの字形を使いたい本は、印の文字スタイルに `features = ["sups"]` を書く。
+注の本文の先頭の印（`body-mark-style`）は、注の本文の行の中で組むので、`position` を書ける。
+組み込みの `note-mark` は、`superscript` を `based-on` にしない。
 
 `mark-format` は「style.toml」の節の差し込みのある書式の読み方で読み、数の差し込みは `{n}` か `{n:<表記>}` である。
 `{n}` の表記は算用数字（`arabic`）であり、リストの `{n}`（本の数の表記）とは意味が違う。

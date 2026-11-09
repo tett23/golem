@@ -18,6 +18,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import DoubleDashSpec (doubleDashTests)
 import ExpansionStepSpec (expansionStepTests)
+import FeaturesSpec (featuresTests)
 import Fixtures (compose, fs, look0, sp, sp0)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiSet, akiPositions, builtinAkiSets, defaultAkiSet, withAkiRule)
@@ -52,6 +53,7 @@ import PaginateInvariantsSpec (invariantTests)
 import PaginateSpec (paginateTests)
 import PunctuationSpec (punctuationTests)
 import RuleAreaSpec (ruleAreaTests)
+import ScriptSpec (scriptTests)
 import StructureSpec (structureTests)
 import TableCaptionSpec (tableCaptionTests)
 import Test.Tasty
@@ -384,6 +386,8 @@ tests =
       codeStopTests,
       urlBreakTests,
       linkTests,
+      featuresTests,
+      scriptTests,
       langTests,
       structureTests,
       tableCaptionTests,

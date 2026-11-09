@@ -8,6 +8,7 @@ import CliSpec
 import CodeFontSpec (codeFontTests)
 import ColophonSpec
 import ComplexFixtureSpec (complexFixtureTests)
+import DecorationsSpec (decorationsTests)
 import DiagnosticSitesSpec
 import DiagnosticsSpec
 import DoubleDashSpec (doubleDashTests)
@@ -23,6 +24,7 @@ import HeadingLevelsSpec (headingLevelsTests)
 import InMemorySpec (inMemoryTests)
 import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
+import OpenTypeFeaturesSpec (openTypeFeaturesTests)
 import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
@@ -34,6 +36,7 @@ import PlatesSpec (platesTests)
 import PopplerSpec (popplerTests)
 import ReferencesSpec
 import ReuseSpec
+import ScriptsSpec (scriptsTests)
 import SecuritySpec
 import ShapingMemoSpec (shapingMemoTests)
 import SpecimenGeometrySpec (specimenGeometryTests)
@@ -89,7 +92,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, scriptsTests, decorationsTests]
         <> [ newProjectTests,
              allTargetsTests,
              pdfPipelineTests,
