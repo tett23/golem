@@ -1,6 +1,7 @@
 module Main (main) where
 
 import AlignSpaceSpec (alignSpaceTests)
+import BookLanguageSpec (bookLanguageTests)
 import BoxesSpec (boxesTests)
 import BuildSpec
 import CallsSpec (callsTests)
@@ -14,7 +15,6 @@ import DiagnosticSitesSpec
 import DiagnosticsSpec
 import DoubleDashSpec (doubleDashTests)
 import EmetSamplesSpec (emetSamplesTests)
-import BookLanguageSpec (bookLanguageTests)
 import ExceptionsSpec (exceptionsTests)
 import ExpansionSpec (expansionTests)
 import FigureExternalSpec (figureExternalTests)

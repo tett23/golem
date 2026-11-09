@@ -18,6 +18,7 @@ for each 'Group' and broken for every width and expansion of it.
 module LineBreakEnum
   ( jaParts,
     latinParts,
+    pairParts,
     parts,
     hasLatin,
     Setting (..),
@@ -90,9 +91,17 @@ of a word, and between Japanese characters.
 latinParts :: [Text]
 latinParts = ["a", "table", "hyphenation", "lime-tree", " ", ".", "“", "”", "\xAD"]
 
--- | The 24 parts of the runs.
+{- | The parts of the unbreakable pairs of JLReq (golem-layout ADR 0049,
+its test design): a full-width digit, a full-width percent sign (a
+postfixed abbreviation) and a full-width yen sign (a prefixed one), each
+of them an ideograph.
+-}
+pairParts :: [Text]
+pairParts = map T.singleton "１％￥"
+
+-- | The 27 parts of the runs: the 24 of docs/adr/0209 and the 3 of golem-layout ADR 0049.
 parts :: [Text]
-parts = jaParts <> latinParts
+parts = jaParts <> latinParts <> pairParts
 
 {- | Whether a run has a Latin part or a character of both scripts: the
 protrusion, the expansion and the language can only matter then. The soft
@@ -336,7 +345,7 @@ the language span around the run; no hanging, protrusion nor expansion,
 which the boxes of code do not take.
 -}
 codeSettings :: [Setting]
-codeSettings = [Setting s False False l | s <- [True, False], l <- [Nothing, Just "en", Just "fr", Just "ja"]]
+codeSettings = [Setting s False False l | s <- [True, False], l <- [Nothing, Just "en", Just "ja"]]
 
 {- | The settings of a run of code in the normal form (docs/adr/0209):
 loose kinsoku only with a prolonged sound mark or a small kana, a
