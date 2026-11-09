@@ -1402,6 +1402,8 @@ folio = { position = "bottom-outside", format = "{n}" }
 `kinsoku` は `strict`（既定）か `loose` で、行頭禁則の文字の範囲を決める（「行分割」の節）。
 `hanging-punctuation` を `true` にすると、行末の句点と読点を版面の外にぶら下げる（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）。
 既定は `false` である。
+囲みを持つ段落（「段落スタイルの囲み」の説明）では、`hanging-punctuation` の値によらず、句読点をぶら下げない（[ADR 0279](adr/0279-no-hanging-punctuation-inside-paragraph-boxes.md)）。
+囲みの中で行が届いてよい端は、版面の端ではなく囲みの内側の端だからである。
 `expansion` は、欧文のグリフの幅を行ごとに伸び縮みさせる。
 `limit` は伸縮の限度、`step` は刻みで、どちらも千分率の整数である（[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md)）。
 省けば伸縮しない。
@@ -2138,6 +2140,8 @@ InDesign の段落の囲み罫と段落の背景色にあたり、コラムや�
 
 囲みの行の方向の範囲は、段の行の始まりから段落スタイルの `indent` だけ進んだ位置から、行長の終わりから `end-indent` だけ戻った位置までである。
 段落の行は、囲みの範囲の両端から `padding` だけ内側を行の領域として組み、`first-line-indent` はその領域の始まりに加える。
+囲みを持つ段落と囲みの中の連は、`hanging-punctuation` の値によらず、`hanging-punctuation = false` のときと同じに組み、句読点を行の領域の外にぶら下げない（[ADR 0279](adr/0279-no-hanging-punctuation-inside-paragraph-boxes.md)）。
+`protrusion` の突き出しは、囲みの中でも囲みの外と同じに行う。
 段落の行は、囲みの外と同じく行の格子に載せる。
 行送りを p、格子の字面の高さを h（`[page.grid]` の `font-size`）、`padding` を d とすると、囲みは最初の行の前と最後の行の後に k 行ずつ格子の行を足して占める。
 k は、`(p − h)/2 + k × p ≥ d` を満たす最も小さい 0 以上の整数であり、一度の割り算で求める。
@@ -3875,6 +3879,8 @@ C5（`url`）は例のテストで確かめる。
 部品は、和文の `漢`、`あ`、`。`、`「` と、欧文の `a`、`table`、`hyphenation`、`lime-tree` と、語間の空白、ソフトハイフン、親文字が二字のモノルビ、`/` を含むコード、強制改行の 13 であり、それぞれを範囲の中か外に置く。
 行の幅は 2 字から 5 字である。
 プルリクエストの CI は部品 2 個まで、毎晩の `enum.yml` は部品 3 個までを調べる。
+
+囲みの中のぶら下げは、[ADR 0279](adr/0279-no-hanging-punctuation-inside-paragraph-boxes.md) の H1（囲みの段落の句点と読点の箱は行末で突き出さない）、H2（`hanging-punctuation` だけが違う二つの本で、囲みの段落の行は等しい）、H3（囲みを持たない段落は今のとおりぶら下がる）として、golem-driver のテスト（`modules/golem-driver/test/BoxesSpec.hs`）が横組みと縦組みの本で確かめる。
 
 述語が判定しない場合はない（[docs/adr/0222](adr/0222-line-breaking-points-the-invariants-did-not-decide.md)）。
 L6 は、伸びるグルーのない行を行長に足りなくてよいとし、字幅の伸縮が限度に達していなければ、足りない量が刻み一つ分の伸縮より小さいことを確かめる。
