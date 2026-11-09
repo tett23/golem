@@ -670,6 +670,9 @@ rm "$P/modules/b/b.cabal"
 run incomplete_patterns "$P"
 expect "incomplete-patterns: a package without a .cabal file" 1
 
+# TEMPORARY (docs/adr/0245 test design 6): a warning of awk, which the ci job is to report
+awk -v x='\|' 'BEGIN{}'
+
 # ---------------------------------------------------------------- werror.sh
 # (docs/adr/0245 section 2, W3): the .cabal files of testdata/werror, one
 # at a time, as modules/a/a.cabal of a small tree
