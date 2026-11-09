@@ -22,7 +22,8 @@
 #   - every component (executable, test-suite, benchmark) built with
 #     -threaded starts on every processor: the last -with-rtsopts of its
 #     ghc-options (those of the common stanzas it imports, then its own)
-#     has -N. GHC keeps the last -with-rtsopts only (9.10.3).
+#     starts with -N; other options, such as -A64m, may follow it
+#     (docs/adr/0249). GHC keeps the last -with-rtsopts only (9.10.3).
 #     tasty (1.5) calls setNumCapabilities at start when the program has
 #     fewer capabilities than processors; with -N it never does.
 # The .cabal files are read as cabal reads them: the names of sections and
@@ -44,8 +45,8 @@ fi
 for cabal in "$ROOT"/modules/*/*.cabal; do
   [ -f "$cabal" ] || continue
   missing=$(awk '
-    # "1" if the last -with-rtsopts of the options has -N, "0" if it has
-    # not, "" if there is none
+    # "1" if the last -with-rtsopts of the options starts with -N, "0" if
+    # it does not, "" if there is none
     function last_rts(line,   k, quoted, rest, q, val, words, n, i, res) {
       res = ""
       while ((k = index(line, "-with-rtsopts=")) > 0) {
@@ -60,8 +61,8 @@ for cabal in "$ROOT"/modules/*/*.cabal; do
         } else {
           match(rest, /^[^ \t]*/); val = substr(rest, 1, RLENGTH); line = substr(rest, RLENGTH + 1)
         }
-        n = split(val, words, " "); res = "0"
-        for (i = 1; i <= n; i++) if (words[i] == "-N") res = "1"
+        n = split(val, words, " ")
+        res = (n > 0 && words[1] == "-N") ? "1" : "0"
       }
       return res
     }

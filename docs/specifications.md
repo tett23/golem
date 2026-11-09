@@ -4855,7 +4855,9 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 `golem` は計算機のすべてのプロセッサの上で動く（GHC のランタイムの `-N`）。
 PDF の段落の組版は複数の OS のスレッドで同時に進む（[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)）。
 出力のバイト列はプロセッサの数によらない（[docs/adr/0002](adr/0002-determinism.md)）。
-実行ファイルは `-threaded` と `-with-rtsopts=-N` でリンクし、`-rtsopts` は付けない。
+実行ファイルは `-threaded` と `-with-rtsopts=-N -A64m` でリンクし、`-rtsopts` は付けない。
+`-A64m` は capability ごとの割り当て領域（nursery）を 64 MB にして、世代 0 の GC の回数を減らす（[docs/adr/0249](adr/0249-link-golem-with-a-64-mb-allocation-area.md)）。
+`-rtsopts` がないので、利用者は GC の設定を変えられず、`+RTS -A4m -RTS` のような指定は「Most RTS options are disabled」で終了コード 1 になる。
 それでも、環境変数 `GHCRTS=-N<n>` かコマンド行の `+RTS -N<n> -RTS` で capability の数を変えられ、変えても出力のバイト列と diagnostics は変わらない（[docs/adr/0050](adr/0050-run-golem-on-every-processor.md)）。
 
 `--no-notices` は、そのコマンドの実行に限り、すべての notice を出さない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
