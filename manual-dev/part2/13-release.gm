@@ -109,7 +109,7 @@ GHC と cabal は、ghcup が自分のメタデータの SHA-256 で確かめる
 HTML の圧縮ファイルは、[code: tar] に名前の順、時刻 0、所有者 0 を指定し、[code: gzip -n] で作る。
 同じ HTML から同じバイト列の圧縮ファイルができるようにするためである。
 
-実行ファイルのアーカイブ（[code: golem-*.tar.gz]）には、[code: actions/attest-build-provenance] で来歴の証明を付ける。
+[code: actions/attest-build-provenance] で、実行ファイルのアーカイブ（[code: golem-*.tar.gz]）に来歴の証明を付ける。
 どのワークフローがどのコミットから作ったかを、利用者が [code: gh attestation verify] で検証できる。
 マニュアルの PDF と HTML、見本のプラグインの [code: .wasm]、GMP のソースには来歴の証明がなく、[code: SHA256SUMS] でだけ確かめられる。
 
