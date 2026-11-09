@@ -270,7 +270,6 @@ innerFormNested pdf = do
         other -> assertFailure ("GolemC4 is not a reference: " <> show other)
     holders -> assertFailure ("the objects that name GolemC4 in their Resources: " <> show (map fst holders))
 
--- | The PDF of a one-chapter project with files, or the error codes.
 {- | A PDF of the objects given with their numbers, any numbers: a
 cross-reference subsection of one entry for each object.
 -}
@@ -293,6 +292,7 @@ numberedPdf objs =
     showB :: (Show a) => a -> BS.ByteString
     showB = TE.encodeUtf8 . T.pack . show
 
+-- | The PDF of a one-chapter project with files, or the error codes.
 pdfWith :: Profile -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([DiagnosticCode], Maybe BS.ByteString, [T.Text])
 pdfWith profile source files = withSystemTempDirectory "golem-svg" $ \tmp -> do
   writeProject tmp (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n") (figStyle horizontalStyle) source files
