@@ -70,7 +70,7 @@ required here k = case here of
   ["masters", _, "folio"] -> [("position", Text "bottom-center")]
   ["color", "swatches", _] -> [("cmyk", cmyk)]
   ["notes", "rule"] -> ("length", Text "10mm") : dashed
-  _ | take 1 (reverse here) `elem` [["rule-before"], ["rule-after"]] -> dashed
+  _ | take 1 (reverse here) `elem` [["rule-before"], ["rule-after"], ["underline"], ["strikethrough"]] -> dashed
   _ -> []
   where
     -- a dash or a gap is for the styles of dashes and dots (golem-driver ADR 0028)
@@ -200,7 +200,7 @@ tests =
         errorsOf "[character-styles.em]\nkerning = \"x\"\n"
           @?= [("G03021", "kerning の値が正しくありません: x (character-styles.em.kerning)", 2, 11)],
       testCase "the keys of @style-def are those of the schema, in its order" $ do
-        charStyleKeys @?= ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic", "kerning", "tracking", "proportional-metrics", "baseline-shift", "background", "padding", "wrap-mark", "position", "features"]
+        charStyleKeys @?= ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic", "kerning", "tracking", "proportional-metrics", "baseline-shift", "background", "padding", "wrap-mark", "position", "features", "underline", "strikethrough"]
         paraStyleKeys @?= ["based-on", "font", "size", "line-breaks", "space-between", "space-before", "space-after", "align", "indent", "first-line-indent", "end-indent", "aki-set", "kerning", "tracking", "proportional-metrics", "baseline-shift", "background", "padding", "border", "border-width", "features"]
         regexStyleKeys @?= ["pattern", "style"],
       testCase "the values of line-breaks are those the decoder reads" $

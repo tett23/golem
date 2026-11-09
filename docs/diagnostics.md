@@ -5610,6 +5610,7 @@ style.toml の誤りです
 - キーの綴り、値の型、単位、列挙の値を誤った。
 - 値が範囲の外にある。
 - 文字スタイルの `position` に `"normal"`、`"superscript"`、`"subscript"` のほかの値を書いた（[ADR 0269](adr/0269-superscript-and-subscript.md)）。
+- 文字スタイルの `underline` か `strikethrough` に、`true`、`false`、表のほかの値を書いた。表に、罫線の長さと位置のキー（`length`、`space-before`、`space-after`、`start-indent`、`end-indent`、`keep-in-column`）か未知のキーを書いた。`weight`、`dash`、`gap` が寸法として読めないか 0 以下であるか、`offset` が寸法として読めない。`dash` と `gap` を、それを使わない線の種類に書いた（[ADR 0270](adr/0270-underline-and-strikethrough.md)）。
 - 廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）を書いた。
 - 段落スタイル `code` に、`font`、`size`、`background`、`padding` のほかのキー（`based-on` を含む）を書いた（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 - `background` か `padding` を、`code` のほかの段落スタイルに書いた。`padding` が負であるか、寸法として読めない。
@@ -5813,6 +5814,7 @@ style.toml のスタイルの参照が不正です
 - `body` に `based-on` を書いた。
 - 文字スタイルの `color` が `[color.swatches]` にない。
 - 文字スタイルの `background` が `[color.swatches]` にない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
+- 文字スタイルの `underline` か `strikethrough` の `color` が `[color.swatches]` にない（[ADR 0270](adr/0270-underline-and-strikethrough.md)）。
 - 正規表現スタイルの `style` に、組み込みにも `style.toml` にも同じファイルの `@style-def character` にもない文字スタイルを書いた。
 - `@style-def regex` の二つ目の引数に、ない段落スタイルを書いた。
 - `[notes]` の `mark-style` か `body-mark-style` に、組み込みにも `style.toml` にもない文字スタイルを書いた。理由は `[notes] の mark-style の文字スタイルがありません: <名前>` か `[notes] の body-mark-style の文字スタイルがありません: <名前>` である。`[notes]` は本に一つなので、`@style-def` の文字スタイルは指せない。

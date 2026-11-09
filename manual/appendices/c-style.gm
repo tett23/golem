@@ -120,6 +120,8 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: synthetic-bold] | [code: false] | [code: true] にすると、字形の輪郭を太らせて太字にします。 |
 | [code: synthetic-italic] | [code: false] | [code: true] にすると、字形を傾けて斜体にします。 |
 | [code: position] | 外側の値 | [code: "superscript"] で上付き、[code: "subscript"] で下付き、[code: "normal"] で通常の位置にします。 |
+| [code: underline] | 外側の値 | 下線です。[code: true] で既定の線、表で [code: weight]、[code: offset]、[code: style]、[code: dash]、[code: gap]、[code: color] を書いた線、[code: false] で線なしにします。縦組みでは文字の右に引きます。 |
+| [code: strikethrough] | 外側の値 | 打ち消し線です。書き方は [code: underline] と同じです。 |
 | [code: features] | なし | OpenType の機能の配列です。[code: \["smcp", "-liga", "salt=2"\]] のように書きます。[code: based-on] で引き継いだ機能の後ろに足します。 |
 
 文字の送りを決める次の四つのキーも書けます。

@@ -47,7 +47,7 @@ import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
 import Golem.Typeset.GlyphRuns (glyphRuns)
-import Golem.Typeset.Overhang (kentenAcross, rubyAcross)
+import Golem.Typeset.Overhang (kentenAcross, kentenOverhang, rubyAcross, rubyOverhang)
 import Golem.Typeset.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
 import Golem.Typeset.Structure (linksOfLeaves, structureTree)
 import Golem.Typeset.Tcy (TcyFit (..), squeezed, tcyFit)
@@ -283,7 +283,11 @@ data LineRec = LineRec
     lrBackgrounds :: ![P.Swatch],
     {- | the rectangles of the links on the line, on the page, in the order of
     the line (docs/adr ADR 0182), each with the leaf of its first box (docs/adr ADR 0183)
-    -} lrLinks :: ![(LinkTarget, Maybe Leaf, Rect)]
+    -} lrLinks :: ![(LinkTarget, Maybe Leaf, Rect)],
+    {- | the underlines and strikethroughs of the line (docs/adr/0270): what
+    golem preflight sees of them as rules, the kind, the band and the
+    thinnest part, and the swatch of each
+    -} lrDecorations :: ![(Text, Rect, Sp, Maybe P.Swatch)]
   }
 
 -- | What one page draws.
@@ -787,7 +791,70 @@ entry :: DrawEnv -> Text -> SrcSpan -> Rect -> Sp -> SetLine -> (LineRec, ([P.Co
 entry env kind sp ta cross = entryAt env kind sp (lineStart env ta cross)
 
 entryAt :: DrawEnv -> Text -> SrcSpan -> (Sp, Sp) -> SetLine -> (LineRec, ([P.Content], [GlyphUse]))
-entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sp sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl), drawLineAt env start sl)
+entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sp sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl) decorated, drawLineAt env start sl)
+  where
+    decorated = [(k, band, ruleThinnest w st, decorationSwatch env (decColor d)) | (k, d, band, w, st) <- decorationBands env start sl]
+
+{- | The underlines and strikethroughs of a line (docs/adr/0270): each run
+of boxes of one value, with the glue between them, from the start of its
+first box to the end of its last; a run does not cross the line. The band
+of the line across it from its basis: in horizontal text an underline has
+its top edge the offset below the bottom of the face of the basis (its
+height the size, the baseline at 0.88 of it), a strikethrough its centre
+the offset above the centre of the face; in vertical text an underline has
+its left edge the offset right of the right edge of the face (the width
+the size, centred on the line), or of the readings and the kenten of the
+run when it has some, a strikethrough its centre the offset right of the
+centre line. The face of the basis moves with its baseline shift.
+-}
+decorationBands :: DrawEnv -> (Sp, Sp) -> SetLine -> [(Text, Decoration, Rect, Sp, RuleStyle)]
+decorationBands env (x0, y0) sl =
+  [ (kind, d, band, decWeight d, decStyle d)
+  | (kind, under, sel) <- [("下線", True, lkUnderline), ("打ち消し線", False, lkStrikethrough)],
+    run@((s0, _, c) : _) <- groupWhen (\(_, _, p) (_, _, q) -> sel (bcLook p) == sel (bcLook q)) boxes,
+    Just d <- [sel (bcLook c)],
+    let e0 = maximum [o + w | (o, w, _) <- run]
+        band = bandOf under d run (slIndent sl + s0) (slIndent sl + e0)
+  ]
+  where
+    boxes = [(off, w, c) | (Box w c, off) <- placeLine (slLine sl)]
+    vertical = pgVertical (deGeom env)
+    half x = Sp (unSp x `div` 2)
+    bandOf under d run s0 e0 =
+      let w = decWeight d
+          s = decSize d
+          off = decOffset d
+       in if vertical
+            then
+              let centre = x0 + decShift d
+                  -- the right edge of the readings and the kenten of the run, if any
+                  readings = concat [overRight c | (_, _, c) <- run]
+                  left = (if null readings then centre + half s else x0 + maximum readings) + off
+                  x = if under then left else centre + off - half w
+               in Rect x (y0 - e0) w (e0 - s0)
+            else
+              let bottom = y0 + decShift d - (s - zwToSp s baselineRatio)
+                  y = if under then bottom - off - w else bottom + half s + off - half w
+               in Rect (x0 + s0) y (e0 - s0) w
+    -- how far right of the centre line the reading or the kenten of a box reaches in vertical text
+    overRight c = case boxKind c of
+      kind
+        | kind `elem` [KindRuby, KindGroupRuby],
+          (base, reading) <- T.breakOn "|" (bcText c),
+          T.length reading > 1 ->
+            let look = bcLook c
+                looks = zipWith const (bcBaseLooks c <> repeat look) (clusters base)
+                big = if null looks then lkSize look else maximum (map lkSize looks)
+             in [rubyOverhang True 0 big (half (lkSize look)) (lkBaselineShift look)]
+      KindKenten | Just _ <- lkKenten (bcLook c) -> let look = bcLook c in [kentenOverhang True 0 (lkSize look) 0 (lkBaselineShift look)]
+      _ -> []
+
+-- | The swatch of a name of [color.swatches].
+decorationSwatch :: DrawEnv -> Maybe Text -> Maybe P.Swatch
+decorationSwatch env name = do
+  n <- name
+  Swatch (cc, cm, cy, ck) <- Map.lookup n (stSwatches (piStyle (deInput env)))
+  pure (P.Swatch cc cm cy ck)
 
 {- the backgrounds of inline code on a line (golem-driver ADR 0029): each
 run of boxes of one swatch, with the spaces between them, from the
@@ -1065,7 +1132,11 @@ drawLineAt env (x0, y0) sl =
       contentOf [] = P.Artifact P.Layout []
       -- the backgrounds of inline code before the text of the line (golem-driver ADR 0029)
       backs = [P.Artifact P.Layout [P.Saved [P.SetColor sw, P.Rule rr] | (sw, rr) <- codeBackgrounds env (x0, y0) sl] | not (null (codeBackgrounds env (x0, y0) sl))]
-   in (backs <> map contentOf (groupBy (\(a, _, _) (b, _, _) -> a == b) pieces), concatMap (snd . snd) parts)
+      {- the underlines before the text, the strikethroughs after it, as
+      artifacts: filled shapes of the line styles (docs/adr/0270) -}
+      bands = decorationBands env (x0, y0) sl
+      linesOf under = [P.Artifact P.Layout ms | let ms = concat [ruleMarks (decorationSwatch env (decColor d)) (ruleShapes vertical band st) | (k, d, band, _, st) <- bands, (k == "下線") == under], not (null ms)]
+   in (backs <> linesOf True <> map contentOf (groupBy (\(a, _, _) (b, _, _) -> a == b) pieces) <> linesOf False, concatMap (snd . snd) parts)
   where
     fonts = deFonts env
     style = piStyle (deInput env)
@@ -1092,7 +1163,7 @@ textAt env kind anchor size txt =
         LS.AlignCenter -> anX anchor - Sp (unSp w `div` 2)
         LS.AlignEnd -> anX anchor - w
       face = Rect x0 (anY anchor - (size - zwToSp size baselineRatio)) w size
-   in (LineRec kind styleSpan (Just face) Nothing [] [], first (pure . P.Artifact P.Pagination) (runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt))
+   in (LineRec kind styleSpan (Just face) Nothing [] [] [], first (pure . P.Artifact P.Pagination) (runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt))
   where
     fonts = deFonts env
     body = bodyRole (piStyle (deInput env))
@@ -1252,11 +1323,12 @@ drawPage env ps master = case ps of
             pdUses = concatMap (snd . snd) allParts <> concatMap snd hiddenParts,
             pdLines = [(rec, snd part) | (rec, part) <- allParts],
             pdImages = images,
-            pdRules = rules,
+            -- the underlines and strikethroughs as rules for golem preflight (docs/adr/0270)
+            pdRules = rules <> [(k, r, t) | (rec, _) <- allParts, (k, r, t, _) <- lrDecorations rec],
             -- nothing but the master page (golem-cli ADR 0006)
             pdBlank = null columnParts && null sidenoteParts && null images && null rules && null backs,
             pdNumber = n,
-            pdBackgrounds = concat [snd b | (_, _, _, b) <- columns] <> concat [lrBackgrounds rec | (rec, _) <- allParts],
+            pdBackgrounds = concat [snd b | (_, _, _, b) <- columns] <> concat [lrBackgrounds rec | (rec, _) <- allParts] <> [sw | (rec, _) <- allParts, (_, _, _, Just sw) <- lrDecorations rec],
             pdLinks = concat [lrLinks rec | (rec, _) <- allParts]
           }
   where

@@ -169,7 +169,9 @@ data HtmlCharStyle = HtmlCharStyle
     -} hcsBackground :: !(Maybe Text),
     hcsPadding :: !(Maybe Text),
     -- | the element of the position (docs/adr/0269): sup, sub, or Nothing for span
-    hcsElement :: !(Maybe Text)
+    hcsElement :: !(Maybe Text),
+    -- | the declarations of the underline and the strikethrough (docs/adr/0270)
+    hcsTextDecoration :: ![Text]
   }
   deriving stock (Eq)
 
@@ -1101,6 +1103,7 @@ css cfg book =
              let (r, g, b) = cmykToRgb cmyk
            ]
         <> featureDecls (hcsFeatures cs)
+        <> hcsTextDecoration cs
         -- the background and the padding of inline code, along the line only (golem-driver ADR 0029)
         <> ["background-color: " <> rgbOf cmyk | Just sw <- [hcsBackground cs], Just cmyk <- [Map.lookup sw (hcSwatches cfg)]]
         <> ["padding-inline: " <> p | Just p <- [hcsPadding cs]]

@@ -86,6 +86,9 @@ module Golem.Project.Style
     textBullets,
     RuleSpec (..),
     RuleStyle (..),
+    DecorationSpec (..),
+    defaultDecoration,
+    decorationStyle,
     paraRules,
     parseRuleSpec,
     defaultStyle,
@@ -254,7 +257,11 @@ data CharStyleDef = CharStyleDef
     definition of the same name they are added after the parent's
     -} csFeatures :: ![Feature],
     -- | normal, superscript or subscript (docs/adr/0269); Nothing is the outer one
-    csPosition :: !(Maybe P.Position)
+    csPosition :: !(Maybe P.Position),
+    {- | the underline and the strikethrough (docs/adr/0270): Nothing is not
+    written, Just Nothing is false
+    -} csUnderline :: !(Maybe (Maybe DecorationSpec)),
+    csStrikethrough :: !(Maybe (Maybe DecorationSpec))
   }
   deriving stock (Eq, Show)
 
@@ -386,7 +393,7 @@ data RegexStyleDef = RegexStyleDef
 
 -- | A character style with no key written.
 noCharDef :: CharStyleDef
-noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing
+noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
@@ -683,6 +690,8 @@ overChar u b =
     (csWrapMark u <|> csWrapMark b)
     (csFeatures b <> csFeatures u)
     (csPosition u <|> csPosition b)
+    (csUnderline u <|> csUnderline b)
+    (csStrikethrough u <|> csStrikethrough b)
 
 overPara :: ParaStyleDef -> ParaStyleDef -> ParaStyleDef
 overPara u b =
@@ -1211,6 +1220,50 @@ data RuleSpec = RuleSpec
   }
   deriving stock (Eq, Show)
 
+{- | An underline or a strikethrough of a character style (docs/adr/0270):
+the keys of a rule spec that draw the line, with zw (the size of the
+character the line belongs to) in the weight, the dash and the gap, and
+the offset from the face of the characters.
+-}
+data DecorationSpec = DecorationSpec
+  { -- | greater than 0; 0.05zw by default
+    dsWeight :: !Dim,
+    -- | from the face; 0 by default
+    dsOffset :: !Dim,
+    -- | the name of the line style and the proportions of the styles of several lines
+    dsStyle :: !(Text, Maybe [Int]),
+    dsDash :: !(Maybe Dim),
+    dsGap :: !(Maybe Dim),
+    -- | the swatch; none is the colour of the characters
+    dsColor :: !(Maybe Text)
+  }
+  deriving stock (Eq, Show)
+
+-- | The line of true and of an empty table: 0.05zw, at the face, solid, the colour of the characters.
+defaultDecoration :: DecorationSpec
+defaultDecoration = DecorationSpec (Zw (1 % 20)) (Abs 0) ("solid", Nothing) Nothing Nothing Nothing
+
+{- | The weight and the line style of a decoration at a size, its lengths
+in sp: the defaults of the dash and the gap are those of a rule of the
+weight (golem-driver ADR 0028).
+-}
+decorationStyle :: Sp -> DecorationSpec -> (Sp, RuleStyle)
+decorationStyle size d =
+  let w = dimToSp size (dsWeight d)
+      len = fmap (dimToSp size)
+   in (w, lineStyle w (dsStyle d) (len (dsDash d)) (len (dsGap d)))
+
+-- | The line style of a name with its dash and gap, the defaults from the weight (golem-driver ADR 0028).
+lineStyle :: Sp -> (Text, Maybe [Int]) -> Maybe Sp -> Maybe Sp -> RuleStyle
+lineStyle w (name, multi) dash gap = case multi of
+  Just ratios -> RuleMulti ratios
+  Nothing -> case name of
+    "dashed" -> RuleDashed (fromMaybe (3 * w) dash) (fromMaybe (2 * w) gap)
+    "dotted" -> RuleDotted (fromMaybe (2 * w) gap)
+    "japanese-dots" -> RuleJapaneseDots (fromMaybe w gap)
+    "wavy" -> RuleWavy
+    _ -> RuleSolid
+
 -- | The line style of a rule (golem-driver ADR 0028); lengths in sp.
 data RuleStyle
   = RuleSolid
@@ -1223,7 +1276,7 @@ data RuleStyle
   | -- | gap
     RuleJapaneseDots !Sp
   | RuleWavy
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 {- | The values of the key style and the proportions of the styles of
 several lines (golem-driver ADR 0028), in the order of the table of the ADR.
@@ -1252,32 +1305,12 @@ instance FromValue RuleSpec where
   fromValue = parseTableFromValue $ do
     len <- optKeyOf "length" $ ruleDim "length" $ \l d ->
       if positiveDim d then pure d else failAt l "罫線の length は 0 より大きい寸法です"
-    weight <- optKeyOf "weight" $ ruleDim "weight" $ \l -> \case
-      -- the weight does not follow the size of the type
-      Zw _ -> failAt l "罫線の weight には zw を使えません"
-      Abs x
-        | x > 0 -> pure x
-        | otherwise -> failAt l "罫線の weight は 0 より大きい寸法です"
-    let space key = optKeyOf key $ ruleDim key $ \l d ->
+    LineKeys weight' color styleOf dashOf gapOf <- lineKeys False
+    let weight = (\case Abs x -> x; Zw _ -> 0) <$> weight'
+        space key = optKeyOf key $ ruleDim key $ \l d ->
           if negativeDim d then failAt l (T.unpack ("罫線の " <> key <> " は 0 以上の寸法です")) else pure d
-        -- a length of a dash or a gap: absolute, greater than 0 (golem-driver ADR 0028)
-        dashLength key = optKeyOf key $ ruleDim key $ \l -> \case
-          Zw _ -> failAt l (T.unpack ("罫線の " <> key <> " には zw を使えません"))
-          Abs x
-            | x > 0 -> pure (l, x)
-            | otherwise -> failAt l (T.unpack ("罫線の " <> key <> " は 0 より大きい寸法です"))
     before <- space "space-before"
     after <- space "space-after"
-    color <- optKeyOf "color" $ \case
-      Text' _ t -> pure t
-      v -> failAt (valueAnn v) "罫線の color はスウォッチの名前を文字列で書きます"
-    styleName <- optKeyOf "style" $ \case
-      Text' l t
-        | Just multi <- lookup t ruleStyleNames -> pure (l, t, multi)
-        | otherwise -> failAt l (T.unpack ("罫線の style に使えない値です: " <> t <> "（" <> T.intercalate ", " (map fst ruleStyleNames) <> " のどれか）"))
-      v -> failAt (valueAnn v) "罫線の style は \"solid\" のように文字列で書きます"
-    dash <- dashLength "dash"
-    gap <- dashLength "gap"
     -- the place of a paragraph or heading rule (golem-driver ADR 0027); negative is out of the column
     let indent key = optKeyOf key $ ruleDim key (curry pure)
     startIndent <- fmap snd <$> indent "start-indent"
@@ -1288,20 +1321,8 @@ instance FromValue RuleSpec where
       (Just _, Just (l, _)) -> failTableAt l "罫線の length と end-indent は一緒に書けません"
       _ -> pure ()
     let w = fromMaybe defaultRuleWeight weight
-        name = maybe "solid" (\(_, t, _) -> t) styleName
-        -- a key without effect on the style is an error (golem-driver ADR 0028)
-        refuse key = \case
-          Just (l, _) -> liftMatcher (failAt l (T.unpack ("罫線の " <> key <> " は style が " <> name <> " のときには書けません")))
-          Nothing -> pure ()
-        orDefault x = maybe x snd
-    style <- case styleName of
-      Just (_, _, Just multi) -> refuse "dash" dash >> refuse "gap" gap >> pure (RuleMulti multi)
-      _ -> case name of
-        "dashed" -> pure (RuleDashed (orDefault (3 * w) dash) (orDefault (2 * w) gap))
-        "dotted" -> refuse "dash" dash >> pure (RuleDotted (orDefault (2 * w) gap))
-        "japanese-dots" -> refuse "dash" dash >> pure (RuleJapaneseDots (orDefault w gap))
-        "wavy" -> refuse "dash" dash >> refuse "gap" gap >> pure RuleWavy
-        _ -> refuse "dash" dash >> refuse "gap" gap >> pure RuleSolid
+        abs' = fmap (\case Abs x -> x; Zw _ -> 0)
+        style = lineStyle w styleOf (abs' dashOf) (abs' gapOf)
     pure (RuleSpec len w before after color style (fromMaybe (Zw 0) startIndent) endIndent (fromMaybe True keepIn))
     where
       ruleDim key check v = case v of
@@ -1310,6 +1331,65 @@ instance FromValue RuleSpec where
       positiveDim = \case
         Abs x -> x > 0
         Zw r -> r > 0
+
+-- | The keys of a rule spec and of a decoration that draw the line (golem-driver ADR 0028, docs/adr/0270).
+data LineKeys = LineKeys !(Maybe Dim) !(Maybe Text) !(Text, Maybe [Int]) !(Maybe Dim) !(Maybe Dim)
+
+{- | Reads weight, color, style, dash and gap of a rule spec, or of a
+decoration when zw is allowed (docs/adr/0270): the weight, the dash and
+the gap greater than 0, a dash or a gap only for the styles that use it
+(golem-driver ADR 0028). One reading for both, with the same messages.
+-}
+lineKeys :: Bool -> ParseTable l LineKeys
+lineKeys zwAllowed = do
+  let positive key = optKeyOf key $ ruleDim key $ \l -> \case
+        Zw r
+          | not zwAllowed -> failAt l (T.unpack ("罫線の " <> key <> " には zw を使えません"))
+          | r > 0 -> pure (l, Zw r)
+          | otherwise -> failAt l (T.unpack ("罫線の " <> key <> " は 0 より大きい寸法です"))
+        Abs x
+          | x > 0 -> pure (l, Abs x)
+          | otherwise -> failAt l (T.unpack ("罫線の " <> key <> " は 0 より大きい寸法です"))
+  weight <- positive "weight"
+  color <- optKeyOf "color" $ \case
+    Text' _ t -> pure t
+    v -> failAt (valueAnn v) "罫線の color はスウォッチの名前を文字列で書きます"
+  styleName <- optKeyOf "style" $ \case
+    Text' l t
+      | Just multi <- lookup t ruleStyleNames -> pure (l, t, multi)
+      | otherwise -> failAt l (T.unpack ("罫線の style に使えない値です: " <> t <> "（" <> T.intercalate ", " (map fst ruleStyleNames) <> " のどれか）"))
+    v -> failAt (valueAnn v) "罫線の style は \"solid\" のように文字列で書きます"
+  dash <- positive "dash"
+  gap <- positive "gap"
+  let name = maybe "solid" (\(_, t, _) -> t) styleName
+      multi = styleName >>= \(_, _, m) -> m
+      -- a key without effect on the style is an error (golem-driver ADR 0028)
+      refuse key = \case
+        Just (l, _) -> liftMatcher (failAt l (T.unpack ("罫線の " <> key <> " は style が " <> name <> " のときには書けません")))
+        Nothing -> pure ()
+  case (multi, name) of
+    (Just _, _) -> refuse "dash" dash >> refuse "gap" gap
+    (_, "dashed") -> pure ()
+    (_, n) | n `elem` ["dotted", "japanese-dots"] -> refuse "dash" dash
+    _ -> refuse "dash" dash >> refuse "gap" gap
+  pure (LineKeys (snd <$> weight) color (name, multi) (snd <$> dash) (snd <$> gap))
+  where
+    ruleDim key check v = case v of
+      Text' l t -> maybe (failAt l (T.unpack ("罫線の " <> key <> " を寸法として読めません: " <> t))) (check l) (parseSignedDim t)
+      _ -> failAt (valueAnn v) (T.unpack ("罫線の " <> key <> " は \"0.3pt\" のように文字列で書きます"))
+
+{- | The table of an underline or a strikethrough (docs/adr/0270): the keys
+of a rule spec that draw the line, zw allowed, and offset; the keys of
+the length and the place of a rule are unknown keys (G03006).
+-}
+instance FromValue DecorationSpec where
+  fromValue = parseTableFromValue $ do
+    LineKeys weight color style dash gap <- lineKeys True
+    offset <- optKeyOf "offset" $ \case
+      Text' l t -> maybe (failAt l (T.unpack ("offset の長さの書き方が不正です: " <> t <> "（0.05zw や -1pt のように書きます）"))) pure (parseSignedDim t)
+      v -> failAt (valueAnn v) "offset は \"0.05zw\" のように文字列で書きます"
+    let d = defaultDecoration
+    pure (DecorationSpec (fromMaybe (dsWeight d) weight) (fromMaybe (dsOffset d) offset) style dash gap color)
 
 -- | 0.3pt.
 defaultRuleWeight :: Sp
@@ -1627,7 +1707,20 @@ instance FromValue CharStyleDef where
     fs <- featuresKey
     -- normal, superscript or subscript (docs/adr/0269)
     pos <- enumKey "position" (map fst P.positionValues)
-    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm fs (pos >>= (`lookup` P.positionValues)))
+    -- the underline and the strikethrough: true, a table or false (docs/adr/0270)
+    ul <- optKeyOf "underline" decorationOrFalse
+    st <- optKeyOf "strikethrough" decorationOrFalse
+    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm fs (pos >>= (`lookup` P.positionValues)) ul st)
+
+{- | An underline or a strikethrough (docs/adr/0270): true is the default
+line, a table the keys written, false none.
+-}
+decorationOrFalse :: Value' l -> Matcher l (Maybe DecorationSpec)
+decorationOrFalse = \case
+  Bool' _ False -> pure Nothing
+  Bool' _ True -> pure (Just defaultDecoration)
+  v@Table' {} -> Just <$> fromValue v
+  v -> failAt (valueAnn v) "下線と打ち消し線には true、false か表を書きます"
 
 {- | The key features (docs/adr/0268): an array of the four forms of
 'parseFeature'. Each element that is not one fails at itself, all of them
@@ -2456,6 +2549,12 @@ styleReferenceChecks owner s =
             <> [(n, charKey n "based-on", "文字スタイルの based-on が循環しています: " <> T.intercalate ", " charCycle) | n <- charCycle]
             <> [(n, charKey n "color", "文字スタイル " <> n <> " の color のスウォッチがありません: " <> c) | (n, CharStyleDef {csColor = Just c}) <- Map.toList cs, Map.notMember c (stSwatches s)]
             <> [(n, charKey n "background", "文字スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, CharStyleDef {csBackground = Just (Just c)}) <- Map.toList cs, Map.notMember c (stSwatches s)]
+            -- the swatches of the underline and the strikethrough (docs/adr/0270)
+            <> [ (n, styleKeys ["character-styles", n, k, "color"], "文字スタイル " <> n <> " の " <> k <> " の color のスウォッチがありません: " <> c)
+               | (n, d) <- Map.toList cs,
+                 (k, Just (Just DecorationSpec {dsColor = Just c})) <- [("underline", csUnderline d), ("strikethrough", csStrikethrough d)],
+                 Map.notMember c (stSwatches s)
+               ]
             <> [("body", paraKey "body" "based-on", "段落スタイル body には based-on を書けません") | Just ParaStyleDef {psBasedOn = Just _} <- [Map.lookup "body" ps]]
             <> [ (n, paraKey n "based-on", "段落スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, ParaStyleDef {psBasedOn = Just b}) <- Map.toList ps,
@@ -2586,7 +2685,7 @@ data LocalValue = LocalWord Text | LocalString Text
 -- | The keys @style-def takes, as style.toml's (for completion).
 charStyleKeys, paraStyleKeys, regexStyleKeys :: [Text]
 -- features, an array in style.toml, is one string of elements separated by commas in @style-def (docs/adr/0268)
-charStyleKeys = scalarKeys charStyleNode <> ["features"]
+charStyleKeys = scalarKeys charStyleNode <> ["features", "underline", "strikethrough"]
 paraStyleKeys = scalarKeys paraStyleNode <> ["features"]
 regexStyleKeys = scalarKeys regexStyleNode
 
@@ -2900,9 +2999,26 @@ charStyleNode =
              ("padding", dim),
              ("wrap-mark", str),
              ("features", features),
-             ("position", enum (map fst P.positionValues))
+             ("position", enum (map fst P.positionValues)),
+             ("underline", decorationNode),
+             ("strikethrough", decorationNode)
            ]
     )
+
+-- | An underline or a strikethrough: true, false or a table (docs/adr/0270).
+decorationNode :: Node
+decorationNode =
+  NEither
+    [ bool,
+      NTable
+        [ ("weight", dim),
+          ("offset", dim),
+          ("style", enum (map fst ruleStyleNames)),
+          ("dash", dim),
+          ("gap", dim),
+          ("color", ref Swatches)
+        ]
+    ]
 
 -- | [paragraph-styles.<name>].
 paraStyleNode :: Node
