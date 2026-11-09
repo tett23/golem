@@ -706,15 +706,23 @@ content = ["{meta.title}", "{heading.1.short}"]
 ### 前付けのノンブル
 
 前付け（「はじめに」や目次）のノンブルをローマ数字の小文字（i、ii、iii）で組み、本文の最初のページから 1 で数え直すには、[code: manifest.toml] の章の項目に [code: page-numbering] を書きます。
+次の例は、章の項目を表の配列（[code: \[\[chapters\]\]]）で書いています（「[ref-title manifest]」、[ref-page manifest] ページ）。
 InDesign のセクションの開始に当たります。
 
 ```toml
-chapters = [
-  { file = "preface.gm", page-numbering = { style = "lower-roman" } },
-  "toc.gm",
-  { file = "chapters/01.gm", page-numbering = { style = "arabic", start = 1 } },
-  "chapters/02.gm",
-]
+[[chapters]]
+file = "preface.gm"
+page-numbering = { style = "lower-roman" }
+
+[[chapters]]
+file = "toc.gm"
+
+[[chapters]]
+file = "chapters/01.gm"
+page-numbering = { style = "arabic", start = 1 }
+
+[[chapters]]
+file = "chapters/02.gm"
 ```
 
 [code: page-numbering] を書いたファイルから、ノンブルの数え方を共有するページの並びが始まります。

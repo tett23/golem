@@ -369,10 +369,11 @@ expect "build: an unknown project" 2
 
 # ---------------------------------------------------------------- manual/manifest.toml
 
-# the files of the chapters of manual/, in order
+# the files of the chapters of manual/, in order: written in an array
+# (chapters = [...], of paths and of tables) or as tables ([[chapters]])
 chapters() {
-  awk '/^chapters *= *\[/ { on = 1; next } on && /^\]/ { exit } on' "$ROOT/manual/manifest.toml" |
-    sed -n -e 's/^ *"\([^"]*\)".*/\1/p' -e 's/^ *{ *file *= *"\([^"]*\)".*/\1/p'
+  awk '/^chapters *= *\[/ { on = 1; next } on && /^\]/ { on = 0; next } on { print; next } /^\[\[chapters\]\]/ { t = 1; next } /^\[/ { t = 0 } t && /^file *=/ { print }' "$ROOT/manual/manifest.toml" |
+    sed -n -e 's/^ *"\([^"]*\)".*/\1/p' -e 's/^ *{ *file *= *"\([^"]*\)".*/\1/p' -e 's/^file *= *"\([^"]*\)".*/\1/p'
 }
 FIRST=$(chapters | sed -n 1p)
 SECOND=$(chapters | sed -n 2p)

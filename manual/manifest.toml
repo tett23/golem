@@ -1,30 +1,78 @@
-chapters = [
-  { file = "preface.gm", page-numbering = { style = "lower-roman" } },
-  "toc.gm",
-  { file = "chapters/01-first-book.gm", page-numbering = { style = "arabic", start = 1 } },
-  "chapters/02-basics.gm",
-  "chapters/03-markup.gm",
-  "chapters/04-manifest.gm",
-  "chapters/05-style.gm",
-  "chapters/06-output.gm",
-  "chapters/07-check.gm",
-  "chapters/08-git-ci.gm",
-  "chapters/09-editor.gm",
-  "chapters/10-plugins.gm",
-  "chapters/11-emet.gm",
-  "appendices/a-markup.gm",
-  "appendices/b-manifest.gm",
-  "appendices/c-style.gm",
-  "appendices/d-preflight.gm",
-  "appendices/e-errors.gm",
-  "appendices/f-indesign.gm",
-  "appendices/g-glossary.gm",
-  "appendices/h-roadmap.gm",
-  "appendices/i-known-issues.gm",
-  "appendices/j-emet.gm",
-  "back.gm",
-]
 bibliography = ["references.json"]
+
+[[chapters]]
+file = "preface.gm"
+page-numbering = { style = "lower-roman" }
+
+[[chapters]]
+file = "toc.gm"
+
+[[chapters]]
+file = "chapters/01-first-book.gm"
+page-numbering = { style = "arabic", start = 1 }
+
+[[chapters]]
+file = "chapters/02-basics.gm"
+
+[[chapters]]
+file = "chapters/03-markup.gm"
+
+[[chapters]]
+file = "chapters/04-manifest.gm"
+
+[[chapters]]
+file = "chapters/05-style.gm"
+
+[[chapters]]
+file = "chapters/06-output.gm"
+
+[[chapters]]
+file = "chapters/07-check.gm"
+
+[[chapters]]
+file = "chapters/08-git-ci.gm"
+
+[[chapters]]
+file = "chapters/09-editor.gm"
+
+[[chapters]]
+file = "chapters/10-plugins.gm"
+
+[[chapters]]
+file = "chapters/11-emet.gm"
+
+[[chapters]]
+file = "appendices/a-markup.gm"
+
+[[chapters]]
+file = "appendices/b-manifest.gm"
+
+[[chapters]]
+file = "appendices/c-style.gm"
+
+[[chapters]]
+file = "appendices/d-preflight.gm"
+
+[[chapters]]
+file = "appendices/e-errors.gm"
+
+[[chapters]]
+file = "appendices/f-indesign.gm"
+
+[[chapters]]
+file = "appendices/g-glossary.gm"
+
+[[chapters]]
+file = "appendices/h-roadmap.gm"
+
+[[chapters]]
+file = "appendices/i-known-issues.gm"
+
+[[chapters]]
+file = "appendices/j-emet.gm"
+
+[[chapters]]
+file = "back.gm"
 
 [metadata]
 id = "urn:uuid:6f1d2c4e-8a3b-4f5e-9c7d-2b1a0e9f8d63"

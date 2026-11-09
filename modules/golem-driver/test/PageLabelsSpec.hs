@@ -197,8 +197,8 @@ pageLabelsTests =
           mapM_ (\f -> doesFileExist (tmp </> f) >>= \there -> if there then pure () else BS.writeFile (tmp </> f) "") (fontPaths style)
           TIO.writeFile (tmp </> "common" </> "build-info.gm") "@set edition = \"0.0.0\"\n@set commit = \"0000000\"\n@set uncommitted = \"\"\n"
           manifest <- TE.decodeUtf8 <$> BS.readFile (tmp </> "manifest.toml")
-          assertBool "the preface in lower-roman" ("{ file = \"preface.gm\", page-numbering = { style = \"lower-roman\" } }" `T.isInfixOf` manifest)
-          assertBool "chapter 1 from 1" ("{ file = \"chapters/01-first-book.gm\", page-numbering = { style = \"arabic\", start = 1 } }" `T.isInfixOf` manifest)
+          assertBool "the preface in lower-roman" ("file = \"preface.gm\"\npage-numbering = { style = \"lower-roman\" }" `T.isInfixOf` manifest)
+          assertBool "chapter 1 from 1" ("file = \"chapters/01-first-book.gm\"\npage-numbering = { style = \"arabic\", start = 1 }" `T.isInfixOf` manifest)
           r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFiles = diskFiles tmp, optFonts = fakeProvider}
           [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d] @?= []
           pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
