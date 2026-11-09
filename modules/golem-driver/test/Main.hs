@@ -31,6 +31,7 @@ import PdfSpec
 import PlatesSpec (platesTests)
 import PopplerSpec (popplerTests)
 import ReferencesSpec
+import ReuseSpec
 import SecuritySpec
 import ShapingMemoSpec (shapingMemoTests)
 import SpecimenGeometrySpec (specimenGeometryTests)
@@ -145,6 +146,7 @@ tests skips =
              testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
              testGroup "the spaces of paragraph styles redefined in files (docs/adr/0217)" fileSpacesTests,
              publicDomainTests skips,
-             diagnosticSiteTests
+             diagnosticSiteTests,
+             testGroup "the compositions reused between the rounds of page references (docs/adr ADR 0251)" reuseTests
            ]
     )
