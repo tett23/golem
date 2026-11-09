@@ -1297,10 +1297,21 @@ tests =
                 [bcText c | Box _ c <- take 1 (drop i items)] @?= ["後"]
               other -> assertFailure (show other),
           testCase "a citation shows its number when there is one" $ do
-            let cite = [Cite (mkSpan (FileId 0) 0 1) "knuth1981"]
+            let cite = [Cite (mkSpan (FileId 0) 0 1) [citeItem "knuth1981"]]
                 texts env = [bcText c | Box _ c <- fst (composeInlines env cite)]
             T.concat (texts (defaultComposeEnv fs) {ceCiteNumber = \_ k -> if k == "knuth1981" then Just 1 else Nothing}) @?= "[1]"
             T.concat (texts (defaultComposeEnv fs)) @?= "[knuth1981]",
+          testCase "I8 and the marks of several keys and of a page in the PDF (docs/adr/0266)" $ do
+            let numbers = [("a", 1), ("b", 2), ("c", 3), ("d", 5)]
+                env = (defaultComposeEnv fs) {ceCiteNumber = \_ k -> lookup k numbers}
+                text is = T.concat [bcText c | Box _ c <- fst (composeInlines env [Cite (mkSpan (FileId 0) 0 1) is])]
+            -- the boxes: a space is glue between them
+            text [citeItem "a"] @?= "[1]"
+            text (map citeItem ["c", "a", "b"]) @?= "[1\x2013\&3]"
+            text (map citeItem ["d", "a"]) @?= "[1,5]"
+            text [CiteItem "a" (Just (Locator LocatorPage (LocNumber 5))) [] []] @?= "[1,p.5]"
+            -- a key without a number stands as itself
+            text (map citeItem ["x", "a"]) @?= "[1,x]",
           testCase "the sidenote marker in the text follows the style (golem-driver ADR 0006)" $ do
             let snSpan = mkSpan (FileId 0) 3 9
                 sn = Sidenote snSpan 1 (noteBody snSpan [sp0 "注"])

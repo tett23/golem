@@ -109,7 +109,7 @@ withRuby = \case
   Note s n bs -> Note s n bs
   Sidenote s n bs -> Sidenote s n bs
   IndexMark s e -> IndexMark s e
-  Cite s k -> Cite s k
+  Cite s is -> Cite s [CiteItem k l (map withRuby p) (map withRuby q) | CiteItem k l p q <- is]
   ProofComment s t -> ProofComment s t
   LineBreak s -> LineBreak s
   Aki s a -> Aki s a
@@ -137,7 +137,8 @@ encodeInline = \case
   Note sp n bs -> encodeBlocks bs >>= \b -> node "Note" [b] (Hidden sp Nothing Nothing n)
   Sidenote sp n bs -> encodeBlocks bs >>= \b -> node "Sidenote" [b] (Hidden sp Nothing Nothing n)
   IndexMark sp (IndexEntry ts rs) -> at sp "IndexMark" [RList (map str ts), RList (map str rs)]
-  Cite sp k -> at sp "Cite" [str k]
+  -- the items of a citation (docs/adr/0266)
+  Cite sp is -> listE citeItemE is >>= \items -> at sp "Cite" [items]
   ProofComment sp t -> at sp "ProofComment" [str t]
   LineBreak sp -> at sp "LineBreak" []
   Aki sp a -> at sp "Aki" [aki a]
@@ -162,6 +163,12 @@ encodeInline = \case
     aki = \case
       AkiZw q -> con "Zw" [RPrim (VRat q)]
       a@(AkiAbs _) -> con "Sp" [nat (fromMaybe 0 (akiAbsoluteSp a))]
+    citeItemE (CiteItem k l p q) = (\a b -> con "CiteItem" [str k, maybeR locator l, a, b]) <$> encodeInlines p <*> encodeInlines q
+    locator (Locator l v) = con "Locator" [str (locatorLabelName l), locatorValue v]
+    locatorValue = \case
+      LocNumber n -> con "LocNumber" [nat (max 0 n)]
+      LocRange a b -> con "LocRange" [nat (max 0 a), nat (max 0 b)]
+      LocText t -> con "LocText" [str t]
 
 encodeBlocks :: [Block] -> Enc Result
 encodeBlocks = listE encodeBlock
@@ -326,7 +333,7 @@ inlineD cx = \case
     "Note" -> withNumber Note
     "Sidenote" -> withNumber Sidenote
     "IndexMark" -> one2 $ \s ts rs -> (\a b -> IndexMark s (IndexEntry a b)) <$> listD strD ts <*> listD strD rs
-    "Cite" -> one1 $ \s k -> Cite s <$> strD k
+    "Cite" -> one1 $ \s items -> Cite s <$> listD citeItemD items
     "ProofComment" -> one1 $ \s t -> ProofComment s <$> strD t
     "LineBreak" -> one 0 $ \s _ -> pure (LineBreak s)
     "Aki" -> one1 $ \s a -> Aki s <$> akiD a
@@ -374,6 +381,17 @@ inlineD cx = \case
     deferred = \case
       RCon "Opaque" [RPrim (VNat j)] | Just e <- Seq.lookup (fromIntegral j) (cDeferred carried) -> pure e
       r -> bad ("遅延した値ではない値です: " <> shown r)
+    citeItemD = \case
+      RCon "CiteItem" [k, l, p, q] -> CiteItem <$> strD k <*> maybeD locatorD l <*> inlinesD cx p <*> inlinesD cx q
+      r -> bad ("引用の項目ではない値です: " <> shown r)
+    locatorD = \case
+      RCon "Locator" [l, v] -> Locator <$> (strD l >>= \t -> maybe (bad ("位置の種類ではない値です: " <> t)) pure (locatorLabelNamed t)) <*> locatorValueD v
+      r -> bad ("引用の位置ではない値です: " <> shown r)
+    locatorValueD = \case
+      RCon "LocNumber" [n] -> LocNumber . toInteger <$> natD n
+      RCon "LocRange" [a, b] -> (\x y -> LocRange (toInteger x) (toInteger y)) <$> natD a <*> natD b
+      RCon "LocText" [t] -> LocText <$> strD t
+      r -> bad ("引用の位置の値ではない値です: " <> shown r)
     akiD = \case
       RCon "Zw" [q] -> AkiZw <$> ratD q
       RCon "Sp" [n] -> akiAbsolute . toInteger <$> natD n

@@ -12,6 +12,7 @@ module Golem.Doc.Validate
   )
 where
 
+import Data.List (nub)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -144,6 +145,7 @@ breakErrors top is =
       CharStyle _ _ xs -> deep xs
       Note _ _ bs -> deep (concat (noteParagraphs bs))
       Sidenote _ _ bs -> deep (concat (noteParagraphs bs))
+      Cite _ items -> deep (citeInlines items)
       Link _ _ xs -> deep xs
       Lang _ _ xs -> deep xs
       Resolved _ _ _ xs -> deep xs
@@ -166,6 +168,7 @@ inlineErrors fileSize allowed i =
     Deferred _ e -> ["プラグインが新しい遅延式を作っています" | e `notElem` allowed]
     Note _ _ bs -> noteErrors True bs
     Sidenote _ _ bs -> noteErrors False bs
+    Cite _ is -> citeErrors is <> sub (citeInlines is)
     IndexMark _ (IndexEntry ts rs) -> ["索引の項目の段の数が不正です" | null ts || length ts > 2 || length ts /= length rs]
     -- negative amounts are not written (docs/adr ADR 0019)
     Aki _ a -> ["アキの量が負です" | negativeAki a]
@@ -195,6 +198,20 @@ inlineErrors fileSize allowed i =
     plain = \case
       Block _ _ _ (Paragraph Nothing _) -> True
       _ -> False
+    {- a citation of one item or more, their keys distinct; the values the
+    outputs cannot set yet stop it (docs/adr/0266) -}
+    citeErrors is =
+      ["引用は一つ以上の文献を持ちます" | null is]
+        <> ["引用に同じキーが二度あります: " <> k | k <- twice (map citKey is)]
+        <> concat [locatorErrors l | Just l <- map citLocator is]
+        <> ["まだ組めない引用の値です: 前置きと後置き" | any (\it -> not (null (citPrefix it) && null (citSuffix it))) is]
+    locatorErrors (Locator label v) =
+      ["まだ組めない引用の値です: 位置の種類 " <> locatorLabelName label | label /= LocatorPage]
+        <> case v of
+          LocNumber n -> ["引用の位置の数が負です" | n < 0]
+          LocRange a b -> ["引用の位置の範囲が負か逆向きです" | a < 0 || b < a]
+          LocText t -> ["引用の位置の文字列が空です" | T.null t]
+    twice ks = nub [k | (n, k) <- zip [0 :: Int ..] ks, k `elem` take n ks]
     sends :: InlineF q -> Bool
     sends = \case
       Note {} -> True
@@ -232,6 +249,7 @@ linkErrors = concatMap $ \case
   CharStyle _ _ xs -> linkErrors xs
   Note _ _ bs -> concatMap linkErrors (noteParagraphs bs)
   Sidenote _ _ bs -> concatMap linkErrors (noteParagraphs bs)
+  Cite _ is -> linkErrors (citeInlines is)
   ChannelItem _ c -> linkErrors (ciBody c)
   Lang _ _ xs -> linkErrors xs
   Resolved _ _ _ xs -> linkErrors xs
@@ -260,6 +278,7 @@ langErrors = concatMap $ \case
   CharStyle _ _ xs -> langErrors xs
   Note _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
   Sidenote _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
+  Cite _ is -> langErrors (citeInlines is)
   ChannelItem _ c -> langErrors (ciBody c)
   Resolved _ _ _ xs -> langErrors xs
   _ -> []

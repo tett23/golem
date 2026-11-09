@@ -105,12 +105,11 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 数式を除いて LaTeX との差を埋めるための項目である（[2026-10-17 の調査](audits/2026-10-17-latex-gap-for-v1.md)）。
 どれも着手するときに ADR を作成する。
-記法、意味論の IR、プラグインの ABI を変える項目（表の番号、複数段落の注、索引の参照、引用の頁）は、互換を壊す変更になるので 1.0.0 の前に扱う。
+記法、意味論の IR、プラグインの ABI を変える項目（表の番号、複数段落の注、索引の参照）は、互換を壊す変更になるので 1.0.0 の前に扱う。
 ほかの項目から一部を取り出した項目は、実装を終えたときに、この項目とともに元の項目の記述から取り出した部分を消す。
 
 - **PDF のしおりとリンク**：見出しから PDF のしおり（アウトライン）を作り、相互参照、目次、索引、脚注の印を PDF のリンクにする。リンクのほかの注釈も扱う（[golem-pdf ADR 0001](golem-pdf/adr/0001-deterministic-pdf-writer.md)）。外部の URL へのリンク（[docs/adr/0182](adr/0182-external-links.md)）で作ったリンクの注釈の仕組み（`LinkTarget` と `Annotation`）を使う。
 - **索引の参照、ページの範囲、見出し**：索引の項目に「を見よ」「をも見よ」の参照とページの範囲を書けるようにし、索引に行の見出し（「あ」「か」など）を入れられるようにする。`[index]` の記法と IR が変わる。v2 の「索引と参考文献の拡張」のこれらの部分を先に取り出す。
-- **引用の頁の指定と複数の文献**：`[cite]` に頁（引用の位置）を書けるようにし、複数の文献を一度に引けるようにする。InDesign に組み込みの引用の機能がないので、LaTeX の `\cite[p.~5]{a,b}` と biblatex を参考にする。「参考文献のスタイル」より先に、引用が持つ値を決める。
 - **段落の背景と囲み罫**：今は段落スタイル `code` にだけ書ける背景と枠を、ほかの段落スタイルにも書けるようにする。コラムや注意書きの囲みに使う。v0.1.0-rc3 の段落スタイルの罫線と罫線の色と種類を枠に使う。続く段落を一つの囲みにまとめることと、ページをまたぐ分割は ADR で決める。
 
 ### ページ分割
@@ -129,7 +128,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **平字の注の印**：縦組みで注の番号に漢数字を使うとき、上下の外枠を 50% にした漢数字（平字）で組めるようにする（JLReq の 4.2.2、[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「実装しないこと」）。字形を行の方向にだけ縮める描き方は二倍ダッシュ（[ADR 0172](adr/0172-continuous-double-dashes.md)）にあるが、印の箱の長さと字の位置の決め方が変わるので、要るときに ADR で決める。
 - **図版とキャプションの拡張**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。
 - **韻文の拡張**：行番号（5 行ごとの番号など）（[docs/adr/0003](adr/0003-verse-line-breaks.md)）。
-- **参考文献のスタイル**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、参考文献のスタイルを選び、定められるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。
+- **参考文献のスタイル**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、参考文献のスタイルを選び、定められるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）もこの項目で決める。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。
 - **ページ番号と柱の拡張**：EPUB の `page-list`、柱とノンブルを見出しの書体で組むこと、柱、ノンブル、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。
 
 ### 機能をそろえた後の確かめ

@@ -1,6 +1,7 @@
 module AssembleSpec (tests) where
 
-import Data.List (sortOn)
+import Control.Monad (forM_, replicateM)
+import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -113,7 +114,7 @@ tests =
         map (length . igLocations) (concatMap snd (bookIndexes book)) @?= [1, 2, 1, 1, 1, 1, 1, 1]
         compare (collationKey "かー") (collationKey "かあ") @?= EQ,
       testCase "citations are numbered in order of first citation" $ do
-        let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) "b", Cite (sp 1 1) "a", Cite (sp 1 2) "b"]]]
+        let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) [citeItem "b"], Cite (sp 1 1) [citeItem "a"], Cite (sp 1 2) [citeItem "b"]]]]
         bookBibliographies (fst (assemble cfg noEval docs)) @?= [(Nothing, [("b", 1), ("a", 2)])],
       multipleListTests,
       channelTests,
@@ -260,8 +261,8 @@ multipleListTests =
   testGroup
     "several @index and @bibliography (golem-doc ADR 0008)"
     [ testCase "one @bibliography lists every citation wherever it is" $ do
-        let cites = para 1 10 [Cite (sp 1 10) "b", Cite (sp 1 11) "a", Cite (sp 1 12) "b"]
-            more = para 1 20 [Cite (sp 1 20) "c"]
+        let cites = para 1 10 [Cite (sp 1 10) [citeItem "b"], Cite (sp 1 11) [citeItem "a"], Cite (sp 1 12) [citeItem "b"]]
+            more = para 1 20 [Cite (sp 1 20) [citeItem "c"]]
         mapM_
           ( \bs -> do
               let book = fst (assemble cfg noEval [Document (FileId 1) bs])
@@ -273,8 +274,8 @@ multipleListTests =
           ],
       testCase "a @bibliography at the end of each chapter numbers its own citations" $ do
         let docs =
-              [ Document (FileId 1) [para 1 0 [Cite (sp 1 0) "A", Cite (sp 1 1) "B"], bib 1 5],
-                Document (FileId 2) [para 2 0 [Cite (sp 2 0) "B", Cite (sp 2 1) "C"], bib 2 5]
+              [ Document (FileId 1) [para 1 0 [Cite (sp 1 0) [citeItem "A"], Cite (sp 1 1) [citeItem "B"]], bib 1 5],
+                Document (FileId 2) [para 2 0 [Cite (sp 2 0) [citeItem "B"], Cite (sp 2 1) [citeItem "C"]], bib 2 5]
               ]
             book = fst (assemble cfg noEval docs)
         bookBibliographies book
@@ -284,12 +285,29 @@ multipleListTests =
         Map.lookup (FileId 2, sp 2 0) (bookCiteMarks book) @?= Just (Just (FileId 2, sp 2 5), 1)
         Map.lookup (FileId 1, sp 1 1) (bookCiteMarks book) @?= Just (Just (FileId 1, sp 1 5), 2),
       testCase "citations after the last @bibliography go to the last one" $ do
-        let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) "A"], bib 1 5, para 1 6 [Cite (sp 1 6) "B"], bib 1 10, para 1 12 [Cite (sp 1 12) "C", Cite (sp 1 13) "B"]]]
+        let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) [citeItem "A"]], bib 1 5, para 1 6 [Cite (sp 1 6) [citeItem "B"]], bib 1 10, para 1 12 [Cite (sp 1 12) [citeItem "C"], Cite (sp 1 13) [citeItem "B"]]]]
             book = fst (assemble cfg noEval docs)
         map snd (bookBibliographies book) @?= [[("A", 1)], [("B", 1), ("C", 2)]]
         Map.lookup (FileId 1, sp 1 12) (bookCiteMarks book) @?= Just (Just (FileId 1, sp 1 10), 2),
+      testCase "I5: the numbers of a list follow the keys of its marks in document order, each mark in the order written (docs/adr/0266)" $ do
+        let keys = ["a", "b", "c", "d"]
+            marks = [ks | n <- [1 .. 3], ks <- replicateM n keys, length (nub ks) == length ks]
+            pairs = [(m1, m2) | m1 <- marks, m2 <- take 40 marks]
+        forM_ pairs $ \(m1, m2) -> do
+          let cite f s ks = Cite (sp f s) (map citeItem ks)
+              docs = [Document (FileId 1) [para 1 0 [cite 1 0 m1, cite 1 1 m2], bib 1 5]]
+              book = fst (assemble cfg noEval docs)
+          map snd (bookBibliographies book) @?= [zip (nub (m1 <> m2)) [1 ..]]
+        -- two lists: a mark of several keys belongs whole to the list of its place
+        let docs =
+              [ Document (FileId 1) [para 1 0 [Cite (sp 1 0) (map citeItem ["c", "a"])], bib 1 5, para 1 6 [Cite (sp 1 6) (map citeItem ["b", "c"])], bib 1 10]
+              ]
+            book = fst (assemble cfg noEval docs)
+        map snd (bookBibliographies book) @?= [[("c", 1), ("a", 2)], [("b", 1), ("c", 2)]]
+        citeNumber book (sp 1 6) "c" @?= Just 2
+        citeNumber book (sp 1 0) "a" @?= Just 2,
       testCase "a citation in a footnote is at the paragraph of the note" $ do
-        let docs = [Document (FileId 1) [para 1 0 [Text (sp 1 0) "a", Note (sp 1 1) 1 (noteBody (sp 1 1) [Cite (sp 1 2) "N"])], bib 1 5, para 1 6 [Cite (sp 1 6) "M"], bib 1 10]]
+        let docs = [Document (FileId 1) [para 1 0 [Text (sp 1 0) "a", Note (sp 1 1) 1 (noteBody (sp 1 1) [Cite (sp 1 2) [citeItem "N"]])], bib 1 5, para 1 6 [Cite (sp 1 6) [citeItem "M"]], bib 1 10]]
             book = fst (assemble cfg noEval docs)
         map snd (bookBibliographies book) @?= [[("N", 1)], [("M", 1)]],
       testCase "each @index has the marks of its own range" $ do
@@ -305,7 +323,7 @@ multipleListTests =
                 ((FileId 2, sp 2 5), [(["か"], [(FileId 2, sp 2 0)]), (["さ"], [(FileId 2, sp 2 6)])])
               ],
       testCase "without @bibliography, one list without a place numbers the whole book" $ do
-        let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) "b"]], Document (FileId 2) [para 2 0 [Cite (sp 2 0) "a", Cite (sp 2 1) "b"]]]
+        let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) [citeItem "b"]]], Document (FileId 2) [para 2 0 [Cite (sp 2 0) [citeItem "a"], Cite (sp 2 1) [citeItem "b"]]]]
             book = fst (assemble cfg noEval docs)
         bookBibliographies book @?= [(Nothing, [("b", 1), ("a", 2)])]
         Map.lookup (FileId 2, sp 2 1) (bookCiteMarks book) @?= Just (Nothing, 1),

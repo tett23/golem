@@ -18,6 +18,7 @@ import Golem.Assemble
 import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (numberSeparator)
 import Golem.Bibliography (EntryPart, entryText)
+import Golem.Doc.Citation (citationPieces, citationText)
 import Golem.Doc.IR
 import Golem.Numerals
 import Golem.Syntax.Span
@@ -236,8 +237,9 @@ inline c = \case
   Sidenote _ n _ -> "※" <> T.pack (show n)
   IndexMark {} -> ""
   ChannelItem {} -> ""
-  Cite sp k -> case citeNumber (cBook c) sp k of
-    Just n -> "[" <> T.pack (show n) <> "]"
+  -- the mark of the default style; nothing when a number is not known (docs/adr/0266)
+  Cite sp is -> case traverse (\i -> (,) i . Just <$> citeNumber (cBook c) sp (citKey i)) is of
+    Just ns -> citationText (citationPieces ns)
     Nothing -> ""
   ProofComment _ t -> if cProfileDev c then "【校正：" <> t <> "】" else ""
   LineBreak _ -> "\n"

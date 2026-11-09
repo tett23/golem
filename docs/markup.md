@@ -1582,9 +1582,20 @@ PDF では、`style.toml` に `[sidenotes]` がない場合と、脚注の本文
 
 ```
 [cite knuth1981]
+[cite knuth1981 lamport1994]
+[cite knuth1981 page=5]
+[cite knuth1981 page=5...7]
+[cite knuth1981 page=xii]
 ```
 
 マニフェストで宣言した書誌データ（CSL-JSON）のキーで文献を引用する。
+キーを二つ以上書くと、一つの印で複数の文献を引く（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。
+印は番号を昇順に並べ、三つ以上連続する番号を `[1–3]` のようにまとめる。
+`page` には、引用した文献の頁を 0 以上の整数、範囲、文字列で書く。
+`[1, p. 5]`、`[1, pp. 5–7]`、`[1, p. xii]` のように組まれる。
+`page` はキーが一つの引用にだけ書け、キーが二つ以上の引用に書くとコンパイルエラー（G02149）となる。
+文献ごとに頁が要るときは、`[cite a page=5][cite b page=7]` と書く。
+書誌データにないキー（G02021）、一つの引用に二度書いたキー（G02147）、頁として読めない `page`（G02148）、キーとして読めない引数（G02150）、キーのない `[cite]`（G02151）もコンパイルエラーとなる。
 引用した文献は `@bibliography` の一覧に載る。
 `@bibliography` が二つ以上あれば、引用の印の後にある最初の一覧に載り、最後の一覧より後の印は最後の一覧に載る（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
 `[cite ...]` は散文スロットを取らず、`: ` の後に本文を書くとコンパイルエラーとなる（[golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)）。
