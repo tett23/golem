@@ -390,6 +390,9 @@ CI fetches the files of their upstreams (the C API of wasmtime, hlint, shem, Neo
 `fetch-url.sh` retries every error of `curl`.
 It makes 3 attempts, waits 10 and then 30 seconds between them, and gives one `curl` 120 seconds; `FETCH_ATTEMPTS`, `FETCH_WAITS` and `FETCH_MAX_TIME` change them.
 A file whose SHA-256 is not the one written in the fetching script fails at once, without a retry.
+One archive takes at most about 7 minutes with the retries.
+Each step of a workflow that fetches runs one fetching script alone and is stopped by `timeout-minutes: 10`.
+The fetch of epubcheck, which runs in the background, is wrapped in `timeout -k 10 600` ([docs/adr/0259](./docs/adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)).
 The archives are kept in `third_party/downloads` (`GOLEM_DOWNLOADS` changes it), which the workflows cache.
 The unpacked trees are not cached.
 An archive restored from the cache is always checked by its SHA-256 before it is used, and fetched again when it does not match.

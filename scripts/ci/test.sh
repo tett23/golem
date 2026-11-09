@@ -1610,7 +1610,7 @@ if step_if "name: Cache the release of epubcheck" "$EPUBCHECK_IF" &&
   ng "ci.yml: the release of epubcheck is cached by its version and SHA-256 on the x86-64 runner of the outputs"
 fi
 if step_if "name: epubcheck in the background" "$EPUBCHECK_IF" &&
-  step_has "name: epubcheck in the background" 'sh scripts/ci/bg.sh start epubcheck timeout -k 10 300 sh scripts/ci/epubcheck-install.sh "$EPUBCHECK_VERSION" "$EPUBCHECK_SHA256"'; then ok; else
+  step_has "name: epubcheck in the background" 'sh scripts/ci/bg.sh start epubcheck timeout -k 10 600 sh scripts/ci/epubcheck-install.sh "$EPUBCHECK_VERSION" "$EPUBCHECK_SHA256"'; then ok; else
   ng "ci.yml: epubcheck-install.sh runs in the background with the pinned version on the x86-64 runner of the outputs"
 fi
 if step_if "name: epubcheck is installed" "$EPUBCHECK_IF" && step_has "name: epubcheck is installed" "bg.sh wait epubcheck"; then ok; else ng "ci.yml: the x86-64 runner of the outputs waits for epubcheck"; fi
@@ -1856,6 +1856,20 @@ for f in scripts/fetch-wasmtime.sh scripts/ci/fetch-hlint.sh scripts/visual/fetc
     ng "ci.yml: the step that runs $f has a timeout-minutes, and no timeout -k 10 300 (docs/adr/0243)"
   fi
 done
+# so do the steps of browser.yml and release.yml; the fetch that runs in
+# the background, epubcheck, is wrapped in 600 seconds, more than the worst
+# time of the retries of fetch-url.sh (docs/adr/0259, decision 4)
+for wf_f in "browser.yml scripts/browser/fetch-chromium.sh" "browser.yml scripts/wasm/fetch-deno.sh" "browser.yml scripts/fetch-wasmtime.sh" "release.yml scripts/fetch-wasm-packages.sh"; do
+  set -- $wf_f
+  STEP=$(awk -v s="$2" '/^      - /{ if (found) exit; s0 = "" } { s0 = s0 $0 "\n" } index($0, s) && /(run: |^ +timeout |^ +sh )/ { found = 1 } END { if (found) printf "%s", s0 }' "$WORKFLOWS/$1")
+  if printf '%s\n' "$STEP" | grep -Eq '^        timeout-minutes: [0-9]+$' && ! printf '%s\n' "$STEP" | grep -q 'timeout -k 10 300' &&
+    [ "$(printf '%s\n' "$STEP" | grep -c 'scripts/')" -eq 1 ]; then ok; else
+    ng "$1: the step that runs $2 runs it alone, has a timeout-minutes, and no timeout -k 10 300 (docs/adr/0259, decision 4)"
+  fi
+done
+if grep -n 'timeout -k 10 300' "$WORKFLOWS"/*.yml | grep -Eq 'fetch-|epubcheck-install'; then
+  ng "workflows: no fetch is wrapped in timeout -k 10 300 (docs/adr/0259, decision 4)"
+else ok; fi
 # the nix of verapdf fetches nixpkgs with the token of the job
 VB=$(job_lines verapdf | awk '/^      - /{ if (found) exit; s = "" } { s = s $0 "\n" } /nix build / { found = 1 } END { if (found) printf "%s", s }')
 if printf '%s\n' "$VB" | grep -qxF '          NIX_CONFIG: access-tokens = github.com=${{ github.token }}'; then ok; else ng "ci.yml: the nix build of verapdf has NIX_CONFIG with access-tokens = github.com= (docs/adr/0243)"; fi
@@ -2086,6 +2100,15 @@ if job_of "$RELEASE_YML" release | awk -v s="$rel_verify" 'NR >= s' | grep -q 'g
   job_of "$RELEASE_YML" release | awk -v s="$rel_verify" 'NR >= s' | grep -q 'gh release download "$TAG" -p SHA256SUMS' &&
   job_of "$RELEASE_YML" release | awk -v s="$rel_verify" 'NR >= s' | grep -q 'sha256sum -c'; then ok; else
   ng "release.yml: the step of gh attestation verify checks dist/ against the SHA256SUMS of the release (docs/adr/0230, I3)"
+fi
+# the source of GMP is in SHA256SUMS: it is fetched before the sums are
+# written and checked (docs/adr/0259, decision 1)
+SUMS=$(job_of "$RELEASE_YML" release | awk '/^      - /{ if (found) exit; s = "" } { s = s $0 "\n" } /cat golem-\*\.tar\.gz\.sha256 > SHA256SUMS/ { found = 1 } END { if (found) printf "%s", s }')
+gmp_fetch=$(printf '%s\n' "$SUMS" | grep -n 'scripts/release/fetch-gmp.sh' | head -1 | cut -d: -f1)
+gmp_sum=$(printf '%s\n' "$SUMS" | grep -nxF '          sha256sum gmp-*.tar.xz >> SHA256SUMS' | head -1 | cut -d: -f1)
+sums_check=$(printf '%s\n' "$SUMS" | grep -nxF '          sha256sum -c SHA256SUMS' | head -1 | cut -d: -f1)
+if [ -n "$gmp_fetch" ] && [ -n "$gmp_sum" ] && [ -n "$sums_check" ] && [ "$gmp_fetch" -lt "$gmp_sum" ] && [ "$gmp_sum" -lt "$sums_check" ]; then ok; else
+  ng "release.yml: the release job fetches the source of GMP, adds it to SHA256SUMS and then checks SHA256SUMS (docs/adr/0259, decision 1)"
 fi
 
 # ---------------------------------------------------------------- step-timeouts.sh
