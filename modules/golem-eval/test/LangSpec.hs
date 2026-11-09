@@ -54,7 +54,7 @@ kind = \case
   BulletList {} -> "ul"
   OrderedList {} -> "ol"
   DefList {} -> "dl"
-  Table {} -> "table"
+  TableBlock _ -> "table"
   CodeBlock {} -> "code"
   FigureBlock {} -> "figure"
   ChannelOutput {} -> "channel"
@@ -101,7 +101,7 @@ tests =
       testCase "a span in a heading stays in its title" $
         [map unspan is | Heading _ _ is <- resultBodies (evalResult ctx "# [lang en: Tokyo] の話\n")] @?= [[Lang z "en" [Text z "Tokyo"], Text z " の話"]],
       testCase "a span in a cell of a table" $
-        [map (map unspan) h | Table _ h _ <- resultBodies (evalResult ctx "| [lang en: a] | b |\n|---|---|\n| c | d |\n")] @?= [[[Lang z "en" [Text z "a"]], [Text z "b"]]],
+        [map (map unspan) h | TableBlock Table {tableHeader = h} <- resultBodies (evalResult ctx "| [lang en: a] | b |\n|---|---|\n| c | d |\n")] @?= [[[Lang z "en" [Text z "a"]], [Text z "b"]]],
       testCase "@lang en on the next paragraph, heading, list, table, code block and figure" $ do
         langs "@lang en\nHe said nothing.\n" @?= [("p", Just "en")]
         langs "@lang en\n# Title\n" @?= [("h", Just "en")]

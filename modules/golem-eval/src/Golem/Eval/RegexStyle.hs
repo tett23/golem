@@ -49,9 +49,11 @@ regexRules style =
 
 {- | The regex styles laid on every paragraph of a document: a paragraph
 gets those of its paragraph style (body when it has none), a paragraph of
-a caption those of caption, the body of a sidenote those of sidenote.
-Headings, the terms of definition lists, table cells and the bodies of
-notes are left as they are.
+a caption those of caption, the body of a sidenote those of sidenote,
+each cell of a table those of the paragraph style of its cells, table
+when it has none (docs/adr/0262). Headings, the terms of definition
+lists, the captions of tables and code blocks and the bodies of notes are
+left as they are.
 -}
 applyRegexStyles :: RegexRules -> Document -> Document
 applyRegexStyles rules d
@@ -67,6 +69,9 @@ applyRegexStyles rules d
       OrderedList items -> OrderedList (map item items)
       DefList groups -> DefList [g {dgDefs = map (map (block Nothing)) (dgDefs g)} | g <- groups]
       FigureBlock fig -> FigureBlock fig {figCaption = map (block (Just "caption")) (figCaption fig)}
+      TableBlock t ->
+        let cell = paragraph (rulesOf (fromMaybe "table" (tableStyle t)))
+         in TableBlock t {tableHeader = map cell (tableHeader t), tableRows = map (map cell) (tableRows t)}
       other -> other
     item i = i {itemBlocks = map (block Nothing) (itemBlocks i)}
     paragraph :: [(Regex, Text)] -> [InlineF r] -> [InlineF r]

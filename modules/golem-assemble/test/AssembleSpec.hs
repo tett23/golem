@@ -13,7 +13,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 cfg :: AssembleConfig
-cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" Map.empty 16
+cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" "表{chapter}-{n}" Map.empty 16
 
 sp :: Int -> Int -> SrcSpan
 sp f s = mkSpan (FileId f) s (s + 1)
@@ -67,7 +67,7 @@ tests =
             h = Block (sp 1 1) (Just "h") Nothing (Heading 1 noHeadingAttrs title)
             fig = Block (sp 1 3) (Just "f") Nothing (FigureBlock (Figure "a.png" Nothing "代替" Nothing Nothing [para 1 3 [Text (sp 1 3) "図の題"]] Nothing False False))
             refs n = [Ref (sp 1 n) RefNumber "h", Ref (sp 1 (n + 1)) RefTitle "h", Ref (sp 1 (n + 2)) RefNumber "f"]
-            cell = Block (sp 1 10) Nothing Nothing (Table [AlignDefault] [[Text (sp 1 10) "見出し"]] [[refs 11]])
+            cell = Block (sp 1 10) Nothing Nothing (TableBlock (plainTable [AlignDefault] [[Text (sp 1 10) "見出し"]] [[refs 11]]))
             noted = para 1 20 [Note (sp 1 20) 1 (refs 21)]
             docs = [Document (FileId 1) [h, fig, para 1 4 (refs 5), cell, noted]]
             (book, ds) = assemble cfg noEval docs
@@ -78,7 +78,7 @@ tests =
               ]
         ds @?= []
         case bookDocs book of
-          [Document _ [_, _, Block _ _ _ (Paragraph _ a), Block _ _ _ (Table _ _ [[b]]), Block _ _ _ (Paragraph _ [Note _ _ c])]] -> do
+          [Document _ [_, _, Block _ _ _ (Paragraph _ a), Block _ _ _ (TableBlock Table {tableRows = [[b]]}), Block _ _ _ (Paragraph _ [Note _ _ c])]] -> do
             a @?= resolved 5
             b @?= resolved 11
             c @?= resolved 21
@@ -146,7 +146,7 @@ sixLevelTests =
     ]
   where
     numbersOf fmts ls =
-      let c = AssembleConfig fmts "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" Map.empty 16
+      let c = AssembleConfig fmts "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" "表{chapter}-{n}" Map.empty 16
           docs = [Document (FileId 1) [heading 1 (i * 10) l noHeadingAttrs Nothing "見出し" | (i, l) <- zip [0 ..] ls]]
           (book, ds) = assemble c noEval docs
        in if null ds then map (hiNumberText . snd) (Map.toAscList (bookHeadings book)) else error (show ds)
@@ -352,7 +352,7 @@ diagnosticCodes =
       testCase "G04004: figures outside a chapter, before the first and after a @nonumber chapter" $ do
         let fig s = Block (sp 1 s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
             docs = [Document (FileId 1) [fig 0, heading 1 2 1 noHeadingAttrs Nothing "一", fig 4, heading 1 6 1 noHeadingAttrs {haNoNumber = True} Nothing "あとがき", fig 8]]
-            msg = "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます"
+            msg = "章の外にある図版、表、コードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます"
         map summary (snd (assemble cfg noEval docs))
           @?= [("G04004", Error, sp 1 0, msg, []), ("G04004", Error, sp 1 8, msg, [])]
         snd (assemble cfg {acFigureFormat = "{n}"} noEval docs) @?= [],
@@ -399,7 +399,7 @@ diagnosticCodes =
         let code = Block (sp 1 0) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 0) "a"]) False [] False))
             plain = Block (sp 1 1) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [] False))
         map summary (snd (assemble cfg noEval [Document (FileId 1) [code, plain]]))
-          @?= [("G04004", Error, sp 1 0, "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます", [])]
+          @?= [("G04004", Error, sp 1 0, "章の外にある図版、表、コードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます", [])]
         snd (assemble cfg {acListingFormat = "リスト{n}"} noEval [Document (FileId 1) [code]]) @?= []
         Map.elems (bookListings (fst (assemble cfg {acListingFormat = "リスト{n}"} noEval [Document (FileId 1) [code]]))) @?= ["リスト1"],
       testCase "references to a captioned code block; ref-number to one without a caption is G04005 (golem-driver ADR 0023)" $ do

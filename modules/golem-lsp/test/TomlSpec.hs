@@ -71,12 +71,12 @@ tomlTests =
       testGroup
         "style.toml"
         [ including "style.toml" "[▮" ["page", "fonts", "character-styles", "paragraph-styles", "color"] ["emphasis", "verse"],
-          exactly "style.toml" "[paragraph-styles.quote]\n[paragraph-styles.▮" ["body", "caption", "code", "sidenote", "verse", "quote"],
+          exactly "style.toml" "[paragraph-styles.quote]\n[paragraph-styles.▮" ["body", "caption", "code", "sidenote", "table", "verse", "quote"],
           including "style.toml" "[page]\nbinding = \"right\"\n▮" ["size", "writing-mode", "grid", "bleed"] ["binding"],
           exactly "style.toml" "[page]\nbinding = ▮" ["\"right\"", "\"left\""],
           exactly "style.toml" "[page]\nbinding = \"▮" ["right", "left"],
           exactly "style.toml" "[character-styles.em]\nsynthetic-bold = ▮" ["true", "false"],
-          exactly "style.toml" "[paragraph-styles.quote]\nbased-on = ▮" ["\"body\"", "\"caption\"", "\"sidenote\"", "\"verse\""],
+          exactly "style.toml" "[paragraph-styles.quote]\nbased-on = ▮" ["\"body\"", "\"caption\"", "\"sidenote\"", "\"table\"", "\"verse\""],
           exactly "style.toml" "[fonts.heading]\nja = \"a.otf\"\n[character-styles.em]\nfont = ▮" ["\"heading\""],
           exactly "style.toml" "[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n[character-styles.em]\ncolor = ▮" ["\"accent\""],
           exactly "style.toml" "[character-styles.em]\n[paragraph-styles.body]\nregex-styles = [\n  { pattern = 'x', style = ▮" ["\"bold\"", "\"code\"", "\"italic\"", "\"no-break\"", "\"note-mark\"", "\"strong\"", "\"subscript\"", "\"superscript\"", "\"url\"", "\"em\""],

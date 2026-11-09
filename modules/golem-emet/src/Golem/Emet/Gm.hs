@@ -139,7 +139,7 @@ no blank lines; and no figure, whose image the evaluation has not read.
 blockKind :: Block -> [Text]
 blockKind (Block _ _ _ body) = case body of
   Paragraph _ _ -> []
-  Table {} -> []
+  TableBlock _ -> []
   CodeBlock _ -> []
   BulletList items -> concatMap (concatMap blockKind . itemBlocks) items
   OrderedList items -> concatMap (concatMap blockKind . itemBlocks) items

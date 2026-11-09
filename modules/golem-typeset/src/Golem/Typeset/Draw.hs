@@ -1215,7 +1215,13 @@ drawColumn env p =
                Just tp <- [Map.lookup lid (plTocPages layout)],
                (l, start) <- [(tpLeader tp, tpLeaderStart tp), (maybe id withLeaf lastLeaf (tpNumber tp), tpNumberStart tp)]
              ]
-          <> [orAgain lid (entry env "表の行" (spanOfLine env lid) ta (gridAt slot) cell) | (slot, SLine lid) <- poSlots p, cell <- Map.findWithDefault [] lid (plTableLines layout)]
+          <> [orAgain lid (entry env "表の行" (spanOfLine env lid) ta (tableLineAt env slot j cell) cell) | (slot, SLine lid) <- poSlots p, (j, cell) <- Map.findWithDefault [] lid (plTableLines layout)]
+          -- the caption of a table, from its first grid line (docs/adr/0262)
+          <> [ entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionTop env slot (ccPitch cc) (ccSize cc) j) (SetLine l (ccSize cc) 0 [] [] Nothing)
+             | (slot, SLine lid) <- poSlots p,
+               Just cc <- [Map.lookup lid (plTableCaptions layout)],
+               (j, l) <- zip [0 ..] (ccLines cc)
+             ]
           <> [ entry env "見出しの行" (spanOfLine env lid) ta (headingLineAt env slot hb j sl) sl
              | (slot, SHeading lid m) <- poSlots p,
                Just hb <- [Map.lookup lid (plHeadings layout)],
@@ -1434,7 +1440,8 @@ tableInk env tid tg =
         [ (toRational (unSp (guSize u)) * y1, toRational (unSp (guSize u)) * negate y0)
         | lid <- [tid .. tid + tgLines tg - 1],
           sl <- Map.findWithDefault [] lid (plTableLines layout),
-          u <- snd (drawLineAt env (0, 0) sl),
+          (_, cell) <- [sl],
+          u <- snd (drawLineAt env (0, 0) cell),
           Just (_, y0, _, y1) <- [lfInkBox fonts (guFace u) (guGlyph u)]
         ]
       emA = zwToSp fs baselineRatio
@@ -1471,13 +1478,28 @@ codePartOf slot lid k ci =
 
 -- line j of the caption of a code block: from the top of its grid line, j caption pitches on
 codeCaptionLineAt :: DrawEnv -> Int -> CodeInfo -> Int -> Sp
-codeCaptionLineAt env slot ci j =
-  let cs = ciCaptionSize ci
-      top = fromIntegral slot * pgLinePitch geom + fromIntegral (j :: Int) * ciCaptionPitch ci
+codeCaptionLineAt env slot ci = codeCaptionTop env slot (ciCaptionPitch ci) (ciCaptionSize ci)
+
+-- line j of lines of a size and a pitch from the top of grid line slot (golem-driver ADR 0023, docs/adr/0262)
+codeCaptionTop :: DrawEnv -> Int -> Sp -> Sp -> Int -> Sp
+codeCaptionTop env slot pitch cs j =
+  let top = fromIntegral slot * pgLinePitch geom + fromIntegral j * pitch
    in top + (if vertical then Sp (unSp cs `div` 2) else zwToSp cs baselineRatio)
   where
     geom = deGeom env
     vertical = pgVertical (deGeom env)
+
+{- the j-th line of a row of a table from grid line slot (docs/adr/0262):
+a line at the size of the grid on its grid line, a line of another size
+from the top of the first grid line of its row, a pitch of its size on
+for each line before it, as the lines of a caption -}
+tableLineAt :: DrawEnv -> Int -> Int -> SetLine -> Sp
+tableLineAt env slot j sl
+  | slSize sl == fs = gridLine geom slot
+  | otherwise = codeCaptionTop env slot (Sp (round (toRational (unSp (pgLinePitch geom)) * toRational (unSp (slSize sl)) / toRational (unSp fs)))) (slSize sl) j
+  where
+    geom = deGeom env
+    fs = pgFontSize geom
 
 -- the band of m rows from row j of the k rows of a part, a code pitch each, from start to the end of the line
 codeBand :: DrawEnv -> Rect -> Int -> CodeGeometry -> Int -> Int -> Int -> Sp -> Rect

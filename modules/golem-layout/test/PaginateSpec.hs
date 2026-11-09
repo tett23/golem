@@ -92,7 +92,7 @@ keepWithNextTests =
       contents ps @?= [[SLine 0, SLine 1, SLine 2, SHeading 20 1, SFigure 99]],
     testCase "a heading before a table keeps the header and the first row, not only the header" $ do
       -- 3 free: heading 1 + header 1 + first row 2 = 4 > 3
-      let ps = paginate 1 6 [FParagraph (lines' 0 3), heading 20, FTable 100 0 (lines' 30 1) [lines' 40 2]]
+      let ps = paginate 1 6 [FParagraph (lines' 0 3), heading 20, FTable 100 0 (lines' 30 1) [lines' 40 2] [] False]
       contents ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 40, SLine 41]],
     testCase "a heading before a code block keeps the grid lines of its first row with padding" $ do
       -- 2 free: heading 1 + one row with padding 2 = 3 > 2; three rows take 4 lines
@@ -559,7 +559,7 @@ blankLineTests =
       gridLines ps @?= [[0 .. 6], [0, 1, 3, 4, 5, 6, 7]]
       unmets ps @?= [],
     testCase "a table after blank lines keeps its space before" $ do
-      let ps = paginate 1 10 [FParagraph (lines' 0 2), FBlank mk 1, FTable 50 1 [] [lines' 30 1]]
+      let ps = paginate 1 10 [FParagraph (lines' 0 2), FBlank mk 1, FTable 50 1 [] [lines' 30 1] [] False]
       map (map tsFirst . poTables) ps @?= [[4]]
   ]
 
@@ -1144,12 +1144,12 @@ afterSentOnTests =
       unmets ps @?= [DroppedBlank mk]
       brokenOf [P3, P4] flows ps @?= [],
     testCase "I2: a table after a figure sent on goes on past the column the figure takes" $ do
-      let flows = [FParagraph (lines' 0 3), FFigure 1000 3 [] [], FTable 50 0 (lines' 10 1) [lines' 20 1, lines' 21 1]]
+      let flows = [FParagraph (lines' 0 3), FFigure 1000 3 [] [], FTable 50 0 (lines' 10 1) [lines' 20 1, lines' 21 1] [] False]
           ps = paginate 1 4 flows
       placed ps @?= [(1, 0, map SLine [0 .. 2]), (2, 0, [SFigure 1000]), (3, 0, [SLine 10, SLine 20, SLine 21])]
       brokenOf [I2] flows ps @?= [],
     testCase "I2: the part of a table after a figure sent on goes on past the column the figure takes, its header repeated" $ do
-      let flows = [FParagraph (lines' 0 2), FFigure 1000 3 [] [], FTable 50 0 (lines' 10 1) [lines' 20 1, lines' 21 1]]
+      let flows = [FParagraph (lines' 0 2), FFigure 1000 3 [] [], FTable 50 0 (lines' 10 1) [lines' 20 1, lines' 21 1] [] False]
           ps = paginate 1 4 flows
       placed ps @?= [(1, 0, [SLine 0, SLine 1, SLine 10, SLine 20]), (2, 0, [SFigure 1000]), (3, 0, [SLine 10, SLine 21])]
       map (map tsFirst . poTables) ps @?= [[2], [], [0]]
@@ -1284,7 +1284,7 @@ largerNeedTests =
   ]
   where
     c = 6
-    blocks = [("a paragraph", FParagraph (lines' 100 1)), ("a figure", FFigure 1000 1 [] []), ("a table", FTable 50 0 [] [lines' 200 1])]
+    blocks = [("a paragraph", FParagraph (lines' 100 1)), ("a figure", FFigure 1000 1 [] []), ("a table", FTable 50 0 [] [lines' 200 1] [] False)]
     cases =
       [ (m, k, r, name, block)
       | m <- [1, 2, 3, c, c + 1],

@@ -177,11 +177,13 @@ pub fn total :: List Nat -> Nat
 | `Inline.RefKind` | `RefNumber`、`RefTitle`、`RefPage` |
 | `Inline.AkiAmount` | `Zw Rat`、`Sp Nat` |
 | `Inline.Deferred` | なし（中身の読めない値） |
-| `Block.Block` | `Paragraph (Maybe String) Inlines`、`Heading Nat HeadingAttrs Inlines`、`BulletList (List ListItem)`、`OrderedList (List ListItem)`、`DefList (List DefGroup)`、`Table (List Alignment) (List Inlines) (List (List Inlines))`、`CodeBlock Code`、`FigureBlock Figure`、`ChannelOutput Channel`、`ForcedBreak BreakKind`、`PageControl PageControl`、`BlankLines Nat` |
+| `Block.Block` | `Paragraph (Maybe String) Inlines`、`Heading Nat HeadingAttrs Inlines`、`BulletList (List ListItem)`、`OrderedList (List ListItem)`、`DefList (List DefGroup)`、`TableBlock Table`、`CodeBlock Code`、`FigureBlock Figure`、`ChannelOutput Channel`、`ForcedBreak BreakKind`、`PageControl PageControl`、`BlankLines Nat` |
 | `Block.HeadingAttrs` | `HeadingAttrs { tocTitle :: Maybe Inlines, number :: Maybe Nat, nonumber :: Bool, notoc :: Bool }` |
 | `Block.ListItem` | `ListItem (Maybe Nat) (List Block)`（番号と中身） |
 | `Block.DefGroup` | `DefGroup (List Inlines) (List Blocks)`（語と定義） |
 | `Block.Alignment` | `AlignDefault`、`AlignLeft`、`AlignCenter`、`AlignRight` |
+| `Block.Table` | `Table { aligns :: List Alignment, widths :: List ColumnWidth, caption :: Maybe Inlines, nonumber :: Bool, style :: Maybe String, header :: List Inlines, rows :: List (List Inlines) }`（[docs/adr/0262](../adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)） |
+| `Block.ColumnWidth` | `ColumnAuto`、`ColumnZw Rat`、`ColumnAbs Nat`（sp）、`ColumnPercent Rat` |
 | `Block.Code` | `Code { lang :: Maybe String, numbers :: Maybe Bool, file :: Maybe String, caption :: Maybe Inlines, diff :: Bool, lines :: List CodeLine, nonumber :: Bool }` |
 | `Block.CodeLine` | `CodeLine { text :: String, number :: Maybe Nat, mark :: Maybe DiffMark, highlight :: Bool, callouts :: List Nat }` |
 | `Block.DiffMark` | `Added`、`Removed`、`Unchanged` |

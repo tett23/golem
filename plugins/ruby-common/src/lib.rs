@@ -294,8 +294,8 @@ fn walk_block(b: &mut Block, headings: bool, v: &mut impl Visitor) {
                 }
             }
         }
-        BlockBody::Table { header, rows, .. } => {
-            for c in header.iter_mut().chain(rows.iter_mut().flatten()) {
+        BlockBody::Table { caption, header, rows, .. } => {
+            for c in caption.iter_mut().chain(header.iter_mut()).chain(rows.iter_mut().flatten()) {
                 walk_run(c, v);
             }
         }

@@ -7,7 +7,7 @@
 use crate::cbor::{DecodeError, Value};
 
 /// The ABI version this crate speaks (golem-plugin ADR 0001, docs/adr/0052).
-pub const ABI_VERSION: u32 = 8;
+pub const ABI_VERSION: u32 = 9;
 
 /// A length in sp, the unit of lengths of Golem (golem-syntax's `Sp`):
 /// the `sp` of an aki.
@@ -135,8 +135,19 @@ pub enum BlockBody {
     OrderedList(Vec<ListItem>),
     /// 4
     DefList(Vec<DefGroup>),
-    /// 5: alignments 0..3, the header row and the rows of cells
-    Table { alignments: Vec<u8>, header: Vec<Vec<Inline>>, rows: Vec<Vec<Vec<Inline>>> },
+    /// 14 (docs/adr/0262): alignments 0..3, the widths of the columns as
+    /// they came in (`[]` is every column auto), the caption, whether a
+    /// table with a caption goes without a number, the paragraph style of
+    /// the cells (none for table), the header row and the rows of cells
+    Table {
+        alignments: Vec<u8>,
+        widths: Vec<Value>,
+        caption: Option<Vec<Inline>>,
+        nonumber: bool,
+        style: Option<String>,
+        header: Vec<Vec<Inline>>,
+        rows: Vec<Vec<Vec<Inline>>>,
+    },
     /// 10: the paragraph style, none for body
     Paragraph { style: Option<String>, inlines: Vec<Inline> },
     /// any other body (code, figure, channel output, break, page control,
@@ -198,7 +209,10 @@ fn map_block(b: &mut Block, f: &mut impl FnMut(Vec<Inline>) -> Vec<Inline>) {
                 }
             }
         }
-        BlockBody::Table { header, rows, .. } => {
+        BlockBody::Table { caption, header, rows, .. } => {
+            if let Some(c) = caption {
+                run(f, c);
+            }
             for c in header {
                 run(f, c);
             }
@@ -324,11 +338,17 @@ pub fn block_value(b: &Block) -> Value {
                     .collect(),
             ),
         ]),
-        BlockBody::Table { alignments, header, rows } => Value::Array(vec![
-            int(5u8),
-            Value::Array(alignments.iter().map(|a| int(*a)).collect()),
-            Value::Array(header.iter().map(|c| inlines_value(c)).collect()),
-            Value::Array(rows.iter().map(|r| Value::Array(r.iter().map(|c| inlines_value(c)).collect())).collect()),
+        BlockBody::Table { alignments, widths, caption, nonumber, style, header, rows } => Value::Array(vec![
+            int(14u8),
+            Value::Array(vec![
+                Value::Array(alignments.iter().map(|a| int(*a)).collect()),
+                Value::Array(widths.clone()),
+                caption.as_ref().map_or(Value::Null, |c| inlines_value(c)),
+                Value::Bool(*nonumber),
+                opt_text(style),
+                Value::Array(header.iter().map(|c| inlines_value(c)).collect()),
+                Value::Array(rows.iter().map(|r| Value::Array(r.iter().map(|c| inlines_value(c)).collect())).collect()),
+            ]),
         ]),
         BlockBody::Paragraph { style, inlines } => Value::Array(vec![int(10u8), opt_text(style), inlines_value(inlines)]),
         BlockBody::Other(v) => v.clone(),
@@ -538,16 +558,26 @@ pub fn block_of(v: &Value) -> R<Block> {
                 })
                 .collect::<R<_>>()?,
         ),
-        (5, [al, h, rows]) => BlockBody::Table {
-            alignments: arr(al)?.iter().map(|a| u64_of(a).map(|a| a as u8)).collect::<R<_>>()?,
-            header: arr(h)?.iter().map(inlines_of).collect::<R<_>>()?,
-            rows: arr(rows)?
-                .iter()
-                .map(|r| arr(r)?.iter().map(inlines_of).collect::<R<Vec<_>>>())
-                .collect::<R<_>>()?,
+        (14, [t]) => match arr(t)? {
+            [al, ws, cap, nn, st, h, rows] => BlockBody::Table {
+                alignments: arr(al)?.iter().map(|a| u64_of(a).map(|a| a as u8)).collect::<R<_>>()?,
+                widths: arr(ws)?.to_vec(),
+                caption: opt(cap, inlines_of)?,
+                nonumber: match nn {
+                    Value::Bool(b) => *b,
+                    _ => return Err(DecodeError::Shape("table")),
+                },
+                style: opt(st, text_of)?,
+                header: arr(h)?.iter().map(inlines_of).collect::<R<_>>()?,
+                rows: arr(rows)?
+                    .iter()
+                    .map(|r| arr(r)?.iter().map(inlines_of).collect::<R<Vec<_>>>())
+                    .collect::<R<_>>()?,
+            },
+            _ => return Err(DecodeError::Shape("table")),
         },
         (10, [st, inl]) => BlockBody::Paragraph { style: opt(st, text_of)?, inlines: inlines_of(inl)? },
-        (1..=5 | 10, _) => return Err(DecodeError::Shape("block body")),
+        (1..=4 | 10 | 14, _) => return Err(DecodeError::Shape("block body")),
         _ => BlockBody::Other(body.clone()),
     };
     Ok(Block { span, label, lang, body })
@@ -613,6 +643,29 @@ mod tests {
         assert_eq!(block_of(&decode(&bytes).unwrap()).unwrap(), b);
         let none = Block { lang: None, ..b };
         assert_eq!(block_of(&decode(&encode(&block_value(&none))).unwrap()).unwrap(), none);
+    }
+
+    /// the bytes of a table are those of the host: [14, [aligns, widths, caption, nonumber, style, header, rows]] (docs/adr/0262)
+    #[test]
+    fn table_bytes() {
+        let b = Block {
+            span: sp(0, 1),
+            label: None,
+            lang: None,
+            body: BlockBody::Table {
+                alignments: vec![1],
+                widths: vec![Value::Array(vec![Value::Int(0)])],
+                caption: Some(vec![]),
+                nonumber: true,
+                style: None,
+                header: vec![vec![]],
+                rows: vec![],
+            },
+        };
+        let bytes = encode(&block_value(&b));
+        let expected: Vec<u8> = vec![0x84, 0x83, 0x01, 0x00, 0x01, 0xf6, 0xf6, 0x82, 0x0e, 0x87, 0x81, 0x01, 0x81, 0x81, 0x00, 0x80, 0xf5, 0xf6, 0x81, 0x80, 0x80];
+        assert_eq!(bytes, expected);
+        assert_eq!(block_of(&decode(&bytes).unwrap()).unwrap(), b);
     }
 
     /// the bytes of a link are those of the host: [20, span, uri, inlines] (docs/adr ADR 0182)

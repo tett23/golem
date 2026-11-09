@@ -16,6 +16,11 @@ module Golem.Doc.IR
     itemNumbers,
     DefGroup (..),
     Alignment (..),
+    Table (..),
+    plainTable,
+    ColumnWidth (..),
+    columnAbsolute,
+    columnAbsoluteSp,
     HeadingAttrs (..),
     noHeadingAttrs,
     ChannelBlock (..),
@@ -70,7 +75,7 @@ changes after the release that has it, and at most once between two
 releases (docs/adr ADR 0052); scripts/ci/abi-version.sh checks it.
 -}
 abiVersion :: Int
-abiVersion = 8
+abiVersion = 9
 
 {- | The source of a figure whose image a plugin made (docs/adr/0123):
 this prefix, the SHA-256 of the bytes in hexadecimal and the extension.
@@ -106,7 +111,8 @@ data BlockBody
   | BulletList [ListItem]
   | OrderedList [ListItem]
   | DefList [DefGroup]
-  | Table [Alignment] [[Inline]] [[[Inline]]]
+  | -- | a table (docs/adr/0262)
+    TableBlock !Table
   | -- | a code block (golem-driver ADR 0023)
     CodeBlock !Code
   | FigureBlock Figure
@@ -153,6 +159,38 @@ data DefGroup = DefGroup
 
 data Alignment = AlignDefault | AlignLeft | AlignCenter | AlignRight
   deriving stock (Eq, Show, Enum, Bounded)
+
+{- | A table (docs/adr/0262): the alignments of its columns, their widths,
+its caption and whether it goes without a table number, the paragraph
+style of its cells, its header row and its body rows.
+-}
+data Table = Table
+  { tableAligns :: ![Alignment],
+    -- | the width of each column; [] when no column has a width (all are auto)
+    tableWidths :: ![ColumnWidth],
+    -- | the caption; a table with a caption has a table number unless tableNoNumber
+    tableCaption :: !(Maybe [Inline]),
+    tableNoNumber :: !Bool,
+    -- | the paragraph style of the cells; Nothing is the built-in table
+    tableStyle :: !(Maybe Text),
+    tableHeader :: ![[Inline]],
+    tableRows :: ![[[Inline]]]
+  }
+  deriving stock (Eq, Show)
+
+-- | A table without widths, caption or paragraph style: what a table was before docs/adr/0262.
+plainTable :: [Alignment] -> [[Inline]] -> [[[Inline]]] -> Table
+plainTable al = Table al [] Nothing False Nothing
+
+-- | The width of a column of a table (docs/adr/0262).
+data ColumnWidth
+  = ColumnAuto
+  | -- | in zw of the cells' paragraph style
+    ColumnZw !Rational
+  | ColumnAbs !Sp
+  | -- | in percent of the width the columns share
+    ColumnPercent !Rational
+  deriving stock (Eq, Show)
 
 data HeadingAttrs = HeadingAttrs
   { haTocTitle :: !(Maybe [Inline]),
@@ -293,6 +331,16 @@ data InlineF r
 -- | The amount of an [aki]: in zw (the size of the type there), or absolute in sp.
 data AkiAmount = AkiZw !Rational | AkiAbs !Sp
   deriving stock (Eq, Show)
+
+-- | A width of a column in sp, for a module without golem-length (docs/adr/0262).
+columnAbsolute :: Integer -> ColumnWidth
+columnAbsolute = ColumnAbs . Sp
+
+-- | The sp of a width of a column in sp.
+columnAbsoluteSp :: ColumnWidth -> Maybe Integer
+columnAbsoluteSp = \case
+  ColumnAbs (Sp x) -> Just x
+  _ -> Nothing
 
 -- | An absolute amount of an [aki] in sp, for a module without golem-length (docs/adr/0162).
 akiAbsolute :: Integer -> AkiAmount

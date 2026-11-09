@@ -73,10 +73,7 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
       BulletList items -> concatMap (concatMap blockErrors . itemBlocks) items
       OrderedList items -> concatMap (concatMap blockErrors . itemBlocks) items
       DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap inl ts <> concatMap (concatMap blockErrors) ds) gs
-      Table _ h rows ->
-        concatMap inl h
-          <> concatMap (concatMap inl) rows
-          <> ["表のセルの数が一致しません" | any ((/= length h) . length) rows]
+      TableBlock t -> tableErrors t <> maybe [] inl (tableCaption t) <> concatMap inl (tableHeader t) <> concatMap (concatMap inl) (tableRows t)
       -- the caption, the callouts and the diff marks (golem-driver ADR 0023)
       CodeBlock c ->
         maybe [] inl (codeCaption c)
@@ -92,6 +89,27 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
       ForcedBreak _ -> []
       PageControl _ -> []
       BlankLines _ -> []
+
+{- | The invariants of a table (docs/adr/0262): as many cells in each row
+as in the header row, no widths or one for each column, every width but
+auto above 0, @nonumber only with a caption, and the built-in table
+written as null, as body is for a paragraph.
+-}
+tableErrors :: Table -> [Text]
+tableErrors t =
+  ["表のセルの数が一致しません" | any ((/= length h) . length) (tableRows t)]
+    <> ["表の列の幅の数が列の数と違います" | not (null ws), length ws /= length h]
+    <> ["表の列の幅は 0 より大きい値です" | any nonPositive ws]
+    <> ["キャプションのない表は番号を持たないので、@nonumber は要りません" | tableNoNumber t, isNothing (tableCaption t)]
+    <> ["表の段落スタイル table は null で表します" | tableStyle t == Just "table"]
+  where
+    h = tableHeader t
+    ws = tableWidths t
+    nonPositive = \case
+      ColumnAuto -> False
+      ColumnZw q -> q <= 0
+      ColumnAbs x -> x <= 0
+      ColumnPercent q -> q <= 0
 
 {- | A caption of a figure holds paragraphs only (docs/adr/0144): the
 outputs set nothing else of it, so anything else would vanish.

@@ -51,7 +51,9 @@ data Ctx = Ctx
     -- | the formatted entries of the bibliography by key (golem-doc ADR 0004, 0005)
     cBibliography :: Map Text [EntryPart],
     -- | the depth of the list around (0 outside lists)
-    cDepth :: Int
+    cDepth :: Int,
+    -- | whether the captions of tables are after them, [tables] caption-position (docs/adr/0262)
+    cTableCaptionBelow :: Bool
   }
 
 {- | The markers of [lists] (golem-driver ADR 0013): the bullets and the
@@ -68,16 +70,17 @@ data TextLists = TextLists
 extension. @firstLine@ gives, for a file, the ideographic spaces that
 start the first line of a paragraph of a style and the lines after a
 line break (Nothing is body; docs/adr ADR 0006, 0014, 0049). The notes of a chapter of the manifest follow its last file,
-after a title (golem-driver ADR 0026).
+after a title (golem-driver ADR 0026). @captionBelow@ puts the captions of
+tables after them (docs/adr/0262).
 -}
-renderText :: Text -> Text -> Bool -> (FileId -> Maybe Text -> (Int, Int)) -> TextLists -> Map Text [EntryPart] -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
-renderText lang numberDefault dev firstLine lists bib variant ft book =
+renderText :: Text -> Text -> Bool -> (FileId -> Maybe Text -> (Int, Int)) -> TextLists -> Bool -> Map Text [EntryPart] -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
+renderText lang numberDefault dev firstLine lists captionBelow bib variant ft book =
   [ (replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "txt", file (ctxOf fid) d (if isLast then chapter else []))
   | chapter <- bookChapters book,
     (isLast, d@(Document fid _)) <- zip (map (== length chapter) [1 ..]) chapter
   ]
   where
-    ctxOf fid = Ctx variant lang numberDefault book dev (firstLine fid) False lists bib 0
+    ctxOf fid = Ctx variant lang numberDefault book dev (firstLine fid) False lists bib 0 captionBelow
 
 {- | The blocks of a file, an empty line between two; blank lines add
 their empty lines between two blocks, and nothing before the first
@@ -131,7 +134,11 @@ block c ind (Block sp _ _ body) = case body of
       [ T.intercalate "\n" (map ((indentBy ind <>) . inlines c) ts <> [T.intercalate "\n" (map (block c (ind + 1)) d) | d <- ds])
       | DefGroup ts ds <- gs
       ]
-  Table _ h rows -> T.intercalate "\n" (map (T.intercalate "\t" . map (inlines c)) (h : rows))
+  -- the caption a line before or after the rows, as that of a code block (docs/adr/0262)
+  TableBlock t ->
+    let caption = [numbered (Map.lookup sp (bookTables (cBook c))) <> inlines c is | Just is <- [tableCaption t]]
+        rows = map (T.intercalate "\t" . map (inlines c)) (tableHeader t : tableRows t)
+     in T.intercalate "\n" (if cTableCaptionBelow c then rows <> caption else caption <> rows)
   -- the caption, the file name, the diff marks and the callouts (golem-driver ADR 0023)
   CodeBlock code ->
     let num = Map.lookup sp (bookListings (cBook c))
@@ -193,7 +200,7 @@ blockInlines (Block _ _ _ body) = case body of
   BulletList items -> concatMap (concatMap blockInlines . itemBlocks) items
   OrderedList items -> concatMap (concatMap blockInlines . itemBlocks) items
   DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap deep ts <> concatMap (concatMap blockInlines) ds) gs
-  Table _ h rows -> concatMap deep h <> concatMap (concatMap deep) rows
+  TableBlock t -> concatMap deep (tableHeader t) <> concatMap (concatMap deep) (tableRows t)
   FigureBlock f -> concatMap blockInlines (figCaption f)
   _ -> []
   where

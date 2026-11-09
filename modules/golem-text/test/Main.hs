@@ -35,6 +35,7 @@ renderBlocks bib cites listings bodies =
             bookHeadings = Map.empty,
             bookFigures = Map.empty,
             bookListings = Map.fromList [(mkSpan fid i (i + 1), t) | (i, t) <- Map.toList listings],
+            bookTables = Map.empty,
             bookToc = [],
             bookTocDepth = Nothing,
             bookIndexes = [],
@@ -48,7 +49,7 @@ renderBlocks bib cites listings bodies =
             bookChannelDecls = Map.empty,
             bookImages = Map.empty
           }
-   in renderText "ja" "kanji" False (const (const (0, 0))) lists bib Horizontal ft book
+   in renderText "ja" "kanji" False (const (const (0, 0))) lists False bib Horizontal ft book
 
 sp :: Int -> SrcSpan
 sp s = mkSpan (FileId 0) s (s + 1)
@@ -68,10 +69,10 @@ noEval _ _ _ = Right ""
 -- | The plain text of one file in a book of the language, with the number format of headings.
 render :: Text -> Text -> [Block] -> [Text]
 render lang format bs =
-  let cfg = AssembleConfig (Map.fromList [(1, format)]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" Map.empty 16
+  let cfg = AssembleConfig (Map.fromList [(1, format)]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" "表{chapter}-{n}" Map.empty 16
       (book, _) = assemble cfg noEval [Document (FileId 0) bs]
       (_, ft) = registerFile "a.gm" emptyFileTable
-   in concatMap (T.lines . snd) (renderText lang "kanji" False (const (const (0, 0))) lists Map.empty Horizontal ft book)
+   in concatMap (T.lines . snd) (renderText lang "kanji" False (const (const (0, 0))) lists False Map.empty Horizontal ft book)
 
 tests :: TestTree
 tests =

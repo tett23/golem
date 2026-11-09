@@ -44,6 +44,7 @@ import ShapingMemoSpec (shapingMemoTests)
 import SoftHyphenSpec (softHyphenTests)
 import SpecimenGeometrySpec (specimenGeometryTests)
 import StylesSpec
+import TableCaptionsSpec (tableCaptionsTests)
 import TableFilesSpec
 import TaggedPdfSpec (taggedPdfTests)
 import TateChuYokoSpec (tateChuYokoTests)
@@ -120,6 +121,7 @@ tests skips =
              testGroup "PDF index and bibliography (ADR 0007)" indexTests,
              testGroup "bibliography entries and G03026 (golem-doc ADR 0004)" bibliographyFormatTests,
              testGroup "PDF tables (ADR 0008)" tableTests,
+             testGroup "table numbers, captions, column widths and cell styles (docs/adr/0262)" tableCaptionsTests,
              testGroup "table column widths (golem-driver ADR 0037)" columnWidthTests,
              testGroup "PDF table of contents (ADR 0009)" tocTests,
              testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,

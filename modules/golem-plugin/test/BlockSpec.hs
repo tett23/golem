@@ -81,7 +81,7 @@ text :: Text -> Inline
 text = Text callSpan
 
 table :: Block
-table = Block callSpan Nothing Nothing (Table [AlignDefault, AlignRight] [[text "a"], [text "b"]] [[[text "1"], [text "2"]]])
+table = Block callSpan Nothing Nothing (TableBlock (plainTable [AlignDefault, AlignRight] [[text "a"], [text "b"]] [[[text "1"], [text "2"]]]))
 
 bodySpan :: SrcSpan
 bodySpan = mkSpan (FileId 1) 21 30
@@ -190,7 +190,7 @@ blockTests =
         p <- answering [table {blockSpan = mkSpan (FileId 2) 0 1}]
         badOutput "要求にないソース位置を含んでいます" (callBlockCommand p "grid" [] [] callSpan),
       testCase "a table whose rows do not match the header is bad output" $ do
-        p <- answering [Block callSpan Nothing Nothing (Table [AlignDefault] [[text "a"]] [[[text "1"], [text "2"]]])]
+        p <- answering [Block callSpan Nothing Nothing (TableBlock (plainTable [AlignDefault] [[text "a"]] [[[text "1"], [text "2"]]]))]
         badOutput "表のセルの数が一致しません" (callBlockCommand p "grid" [] [] callSpan),
       testCase "the data reach the plugin at the end of the request" $ do
         p <- withPluginData (Map.fromList [("sales", "a\tb\n")]) <$> echo

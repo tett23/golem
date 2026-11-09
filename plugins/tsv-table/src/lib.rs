@@ -201,6 +201,10 @@ pub fn table(req: &BlockCommandRequest) -> Result<Block, Diagnostic> {
         lang: None,
         body: BlockBody::Table {
             alignments,
+            widths: vec![],
+            caption: None,
+            nonumber: false,
+            style: None,
             header: header.iter().map(|t| cell(span, t)).collect(),
             rows: body.iter().map(|r| r.iter().map(|t| cell(span, t)).collect()).collect(),
         },
@@ -301,7 +305,7 @@ mod tests {
         assert_eq!(b.span, SPAN);
         assert_eq!(b.label, None);
         let t = |s: &str| vec![Inline::Text { span: SPAN, text: s.into() }];
-        assert_eq!(b.body, BlockBody::Table { alignments: vec![1, 3], header: vec![t("a"), t("b")], rows: vec![vec![t("1"), vec![]]] });
+        assert_eq!(b.body, BlockBody::Table { alignments: vec![1, 3], widths: vec![], caption: None, nonumber: false, style: None, header: vec![t("a"), t("b")], rows: vec![vec![t("1"), vec![]]] });
     }
 
     #[test]

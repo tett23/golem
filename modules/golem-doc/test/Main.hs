@@ -21,6 +21,7 @@ import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
+import TableSpec qualified
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -40,7 +41,7 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, headingLevelTests]
+  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, TableSpec.tests, headingLevelTests]
 
 -- | The levels of a heading are 1 to 6 (docs/adr/0188).
 headingLevelTests :: TestTree
@@ -202,12 +203,12 @@ cbor =
         validateDocument size [] (para Nothing [a, br, br, a]) @?= ["改行は段落の最上位のインラインの間にだけ置けます"]
         validateDocument size [] (para (Just "body") [a]) @?= ["段落スタイル body は null で表します"]
         validateInlines size [] [a, br, a] @?= ["改行は段落の最上位のインラインの間にだけ置けます"],
-      testCase "the ABI version is 8 and version 7 is rejected (docs/adr ADR 0101)" $ do
-        abiVersion @?= 8
-        let bytes = toStrictByteString (encodeTerm (TList [TInt 7, TInt 0, TList []]))
-        decodeDocument bytes @?= Left "ABI のバージョンが異なります: 7"
+      testCase "the ABI version is 9 and version 8 is rejected (docs/adr/0262)" $ do
+        abiVersion @?= 9
+        let bytes = toStrictByteString (encodeTerm (TList [TInt 8, TInt 0, TList []]))
+        decodeDocument bytes @?= Left "ABI のバージョンが異なります: 8"
         -- the next version is not accepted either
-        decodeDocument (toStrictByteString (encodeTerm (TList [TInt 9, TInt 0, TList []]))) @?= Left "ABI のバージョンが異なります: 9",
+        decodeDocument (toStrictByteString (encodeTerm (TList [TInt 10, TInt 0, TList []]))) @?= Left "ABI のバージョンが異なります: 10",
       testCase "a figure with its page and rotate survives the CBOR round trip (golem-pdf ADR 0008, golem-driver ADR 0034)" $ do
         let fig = Figure "images/a.pdf" (Just "images/a.png") "alt" Nothing Nothing [] (Just 3) True False
             doc = Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing Nothing (FigureBlock fig)]
@@ -248,7 +249,7 @@ cbor =
       testCase "a code line of five elements is not of the schema (docs/adr/0218)" $ do
         let spT = TList [TInt 0, TInt 0, TInt 1]
             codeT ls = TList [TNull, TNull, TNull, TNull, TBool False, TList ls, TBool False]
-            docT ls = TList [TInt 8, TInt 0, TList [TList [spT, TNull, TNull, TList [TInt 6, codeT ls]]]]
+            docT ls = TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, TNull, TList [TInt 6, codeT ls]]]]
             five = TList [TString "a", TInt 1, TNull, TBool False, TList []]
             six = TList [TString "a", TInt 1, TNull, TBool False, TList [], TNull]
         decodeDocument (toStrictByteString (encodeTerm (docT [five]))) @?= Left "スキーマに合いません: コードの行"

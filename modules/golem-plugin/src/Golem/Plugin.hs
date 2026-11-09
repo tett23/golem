@@ -106,7 +106,7 @@ one more than the last release only when the ABI changed since
 (docs/adr ADR 0052).
 -}
 abiVersion :: Word32
-abiVersion = 8
+abiVersion = 9
 
 -- | The fuel of one call: about this many wasm instructions.
 defaultFuel :: Word64
@@ -638,7 +638,7 @@ blockKind (Block _ lbl _ body)
   | Just _ <- lbl = Left (BadOutput "ブロックコマンドの出力はラベルを持てません")
   | otherwise = case body of
       Paragraph _ _ -> Right ()
-      Table {} -> Right ()
+      TableBlock _ -> Right ()
       CodeBlock _ -> Right ()
       BulletList items -> mapM_ (mapM_ blockKind . itemBlocks) items
       OrderedList items -> mapM_ (mapM_ blockKind . itemBlocks) items
@@ -820,7 +820,7 @@ blockInlines b = case blockBody b of
   Paragraph _ is -> is
   Heading _ _ is -> is
   DefList gs -> concat (concatMap dgTerms gs)
-  Table _ h rows -> concat h <> concat (concat rows)
+  TableBlock t -> concat (tableCaption t) <> concat (tableHeader t) <> concat (concat (tableRows t))
   _ -> []
 
 documentSpans :: Document -> [SrcSpan]

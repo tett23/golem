@@ -145,7 +145,7 @@ WASI がないので、標準入出力やファイルを使うライブラリは
 + インスタンスを捨てる。
 
 読み込みの時点で、ホストは [code: golem_abi_version] を呼び、ホストの ABI のバージョンと比べる。
-今の ABI のバージョンは 8 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
+今の ABI のバージョンは 9 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
 一致しなければ、読み込みの時点でエラー（G06005）になる。
 ABI のバージョンをいつ上げるかは、「[ref-title plugin-abi-notice]」の節で説明する。
 続けて [code: golem_describe] を呼び、プラグインが提供するコマンドとフィルタの名前と、宣言するチャネルを得る。
@@ -313,7 +313,7 @@ golem-plugin のテストは、テスト用のプラグインを wat（wasm の�
   (global $heap (mut i32) (i32.const 65536))
   ;; golem_describe の CBOR: {"filters": ["same"]}
   (data (i32.const 16) "\a1\67filters\81\64same")
-  (func (export "golem_abi_version") (result i32) (i32.const 8))
+  (func (export "golem_abi_version") (result i32) (i32.const 9))
   (func (export "golem_alloc") (param $n i32) (result i32)
     (local $p i32)
     (local.set $p (global.get $heap))

@@ -145,7 +145,7 @@ genBlock =
         Heading <$> Gen.int (Range.linear 1 3) <*> attrs <*> inl,
         CodeBlock <$> genCode,
         ChannelOutput <$> Gen.choice [Gen.element [TocOutput 2, IndexOutput, BibliographyOutput], CustomOutput <$> genText <*> Gen.maybe genText],
-        Table <$> Gen.list (Range.singleton 2) Gen.enumBounded <*> Gen.list (Range.singleton 2) inl <*> Gen.list (Range.linear 0 2) (Gen.list (Range.singleton 2) inl)
+        TableBlock <$> genTable
       ]
       [ BulletList <$> Gen.list (Range.linear 1 3) (ListItem <$> Gen.maybe genNat <*> Gen.list (Range.linear 0 2) genBlock),
         OrderedList <$> Gen.list (Range.linear 1 3) (ListItem Nothing <$> Gen.list (Range.linear 0 2) genBlock),
@@ -155,6 +155,31 @@ genBlock =
   where
     inl = Gen.list (Range.linear 0 3) genInline
     attrs = HeadingAttrs <$> Gen.maybe inl <*> Gen.maybe genNat <*> Gen.bool <*> Gen.bool
+
+{- | A table of two columns (docs/adr/0262): no widths or one for each,
+every width above 0, nonumber only with a caption, the built-in table as
+Nothing, as Golem.Doc.Validate wants.
+-}
+genTable :: Gen Table
+genTable = do
+  cap <- Gen.maybe inl
+  Table
+    <$> Gen.list (Range.singleton 2) Gen.enumBounded
+    <*> Gen.choice [pure [], Gen.list (Range.singleton 2) width]
+    <*> pure cap
+    <*> maybe (pure False) (const Gen.bool) cap
+    <*> Gen.maybe (Gen.filter (/= "table") genText)
+    <*> Gen.list (Range.singleton 2) inl
+    <*> Gen.list (Range.linear 0 2) (Gen.list (Range.singleton 2) inl)
+  where
+    inl = Gen.list (Range.linear 0 3) genInline
+    width =
+      Gen.choice
+        [ pure ColumnAuto,
+          ColumnZw . abs <$> Gen.filter (/= 0) genRatio,
+          ColumnAbs . Sp <$> Gen.filter (> 0) genNonNegative64,
+          ColumnPercent . abs <$> Gen.filter (/= 0) genRatio
+        ]
 
 -- | A code block; nonumber only with a caption, as Golem.Doc.Validate wants (docs/adr/0200).
 genCode :: Gen Code

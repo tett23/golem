@@ -177,10 +177,11 @@ encodeBlock (Block sp lbl blang body) = do
     BulletList items -> (\is -> ("BulletList", [is])) <$> listE item items
     OrderedList items -> (\is -> ("OrderedList", [is])) <$> listE item items
     DefList gs -> (\g -> ("DefList", [g])) <$> listE (\(DefGroup ts ds) -> (\a b -> con "DefGroup" [a, b]) <$> listE encodeInlines ts <*> listE encodeBlocks ds) gs
-    Table al h rows -> do
+    TableBlock (Table al ws cap nonum st h rows) -> do
+      c <- maybeE encodeInlines cap
       hs <- listE encodeInlines h
       rs <- listE (listE encodeInlines) rows
-      pure ("Table", [RList (map alignment al), hs, rs])
+      pure ("TableBlock", [con "Table" [RList (map alignment al), RList (map columnWidth ws), c, bool nonum, maybeR str st, hs, rs]])
     CodeBlock (Code lang nums file cap diff ls nonum) -> do
       c <- maybeE encodeInlines cap
       cls <- mapM codeLine ls
@@ -195,6 +196,11 @@ encodeBlock (Block sp lbl blang body) = do
   node c fs (Hidden sp lbl blang 0)
   where
     item (ListItem n bs) = (\b -> con "ListItem" [maybeR nat n, b]) <$> encodeBlocks bs
+    columnWidth = \case
+      ColumnAuto -> con "ColumnAuto" []
+      ColumnZw q -> con "ColumnZw" [RPrim (VRat q)]
+      w@(ColumnAbs _) -> con "ColumnAbs" [nat (fromMaybe 0 (columnAbsoluteSp w))]
+      ColumnPercent q -> con "ColumnPercent" [RPrim (VRat q)]
     alignment = \case
       AlignDefault -> con "AlignDefault" []
       AlignLeft -> con "AlignLeft" []
@@ -389,9 +395,7 @@ blockD cx = \case
     "BulletList" -> one1 (fmap BulletList . listD item)
     "OrderedList" -> one1 (fmap OrderedList . listD item)
     "DefList" -> one1 (fmap DefList . listD group)
-    "Table" -> one 3 $ \case
-      [al, h, rows] -> Table <$> listD alignment al <*> listD inls h <*> listD (listD inls) rows
-      _ -> arity
+    "TableBlock" -> one1 (fmap TableBlock . tableD)
     "CodeBlock" -> one1 (fmap CodeBlock . codeD)
     "FigureBlock" -> one1 (fmap FigureBlock . figure)
     "ChannelOutput" -> one1 (fmap ChannelOutput . channel)
@@ -426,6 +430,15 @@ blockD cx = \case
       RCon "AlignCenter" [] -> pure AlignCenter
       RCon "AlignRight" [] -> pure AlignRight
       r -> bad ("揃えではない値です: " <> shown r)
+    tableD = \case
+      RCon "Table" [al, ws, cap, nonum, st, h, rows] -> Table <$> listD alignment al <*> listD columnWidthD ws <*> maybeD inls cap <*> boolD nonum <*> maybeD strD st <*> listD inls h <*> listD (listD inls) rows
+      r -> bad ("表ではない値です: " <> shown r)
+    columnWidthD = \case
+      RCon "ColumnAuto" [] -> pure ColumnAuto
+      RCon "ColumnZw" [q] -> ColumnZw <$> ratD q
+      RCon "ColumnAbs" [n] -> columnAbsolute . toInteger <$> natD n
+      RCon "ColumnPercent" [q] -> ColumnPercent <$> ratD q
+      r -> bad ("列の幅ではない値です: " <> shown r)
     codeD = \case
       RCon "Code" [lang, nums, file, cap, diff, ls, nonum] -> Code <$> maybeD strD lang <*> maybeD boolD nums <*> maybeD strD file <*> maybeD inls cap <*> boolD diff <*> listD codeLine ls <*> boolD nonum
       r -> bad ("コードではない値です: " <> shown r)
