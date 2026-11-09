@@ -21,7 +21,8 @@ import Golem.Layout.KnuthPlass
 opportunities: glue after a box, or a penalty below infinity that is not
 a pattern hyphen; an explicit hyphen is one, golem-layout ADR 0008; a
 piece that ends at a penalty holds its width, the wrap mark of a break of
-code that a line broken there ends with, golem-layout ADR 0034 and 0045)
+code that a line broken there ends with, golem-layout ADR 0034 and 0045,
+docs/adr ADR 0255)
 and its natural width (boxes and glue on one line).
 -}
 cellExtent :: [Item] -> (Sp, Sp)
