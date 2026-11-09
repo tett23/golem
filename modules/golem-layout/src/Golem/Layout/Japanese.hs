@@ -1443,7 +1443,7 @@ padCode = \case
       _ -> False
     -- the padding goes on the first and the last piece that is not a space when they are code (golem-layout ADR 0048)
     isSpace' = \case
-      PSpace _ -> True
+      PSpace _ _ -> True
       _ -> False
     padded run = case [i | (i, q) <- zip [0 :: Int ..] run, not (transparent q), not (isSpace' q)] of
       [] -> run
