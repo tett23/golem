@@ -124,3 +124,5 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **開発者のマニュアル**：Golem を使って仕組みを作る人（第一部）と、Golem そのものを開発する人（第二部）に向けたマニュアル。常体で書き、仕様書と ADR をまとめてリンクする。原稿は `manual-dev/` で、B5 判の PDF と HTML に組む（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 - **マニュアルの方針**：二つのマニュアルの読み手、文体、説明の厚さ、根拠と脚注、規格の一覧、章立て、コードの表示、更新の決まりを書いた文書 [docs/manual-policy.md](manual-policy.md)。マニュアルを書く人とレビューする人の基準である（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 - **奥付の版**：マニュアルの奥付に載せる版（タグか、`VERSION` に「の開発版」を続けたもの）と、組んだコミットの 40 桁のハッシュ。`scripts/manual/build-info.sh` が組む前に `common/build-info.gm` に書き、奥付が `@import` で読む（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
+
+一文目である。二文目である。
