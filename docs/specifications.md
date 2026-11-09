@@ -5068,7 +5068,23 @@ wasm にリンクした GMP の版は、wasm の GHC の `ghc-gmp.h` から読�
 変更の一覧（`scripts/release/notes.sh`）は、`main` の first-parent のマージのコミットからプルリクエストを拾う（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 GitHub がマージした `Merge pull request #N from <所有者>/<ブランチ>` の形では、本文の 1 行目をプルリクエストの題名とする。
 手でマージした `Merge pull request #N: <題名>` の形も拾う。
-AI の実行か検査に失敗したときは、その理由をジョブの要約とジョブのログの両方に書く。
+変更の一覧の `## ADRs` には、範囲で追加された ADR を並べる。
+その後の `## ADRs whose status changed` には、範囲で変更された ADR のうち、ステータスの行（行頭が `ステータス:` の最初の行）が前のタグとタグで違うものを、`LC_ALL=C sort` のパスの順に並べる（[docs/adr/0246](adr/0246-bound-the-prompt-of-the-release-notes.md)）。
+各行は `- [<パス>](https://github.com/tett23/golem/blob/<タグ>/<パス>): <前のステータス> → <タグのステータス>` の形で、ステータスは `ステータス:` の後の文字列から前後の空白を除いたものである。
+範囲で追加された ADR は、同じ範囲でステータスが変わっても `## ADRs` にだけ並ぶ。
+ステータス以外の行だけが変わった ADR と、改名された ADR は、どちらにも並ばない。
+前のタグがない最初のリリースでは、`## ADRs whose status changed` は見出しだけになる。
+
+AI に渡すプロンプトは、変更の一覧、プルリクエストの題名と本文、ADR の題名とステータスの行からなる（[docs/adr/0246](adr/0246-bound-the-prompt-of-the-release-notes.md)）。
+ADR は、追加されたもの（`# The ADRs added in this release`）と、ステータスの変わったもの（`# The ADRs whose status changed in this release`）のそれぞれについて、パス、タグの版への絶対 URL、題名（最初の `# ` の行）、ステータスの行だけを入れ、本文は入れない。
+プルリクエストの本文は、先頭の 4000 バイトまでを入れる。
+切ったときは、UTF-8 の文字の途中で切れた末尾のバイト列を `iconv -c` で落とし、その後に `(cut at 4000 bytes)` の行を足す。
+本文が空のプルリクエストは、題名だけを入れる。
+プロンプトが 1000000 バイトを超えたときは、`claude -p` を動かさず、変更の一覧をそのままノートにする。
+理由は `the prompt is N bytes, over 1000000` である。
+二つの上限は `write-notes.sh` の先頭の変数（`BODY_LIMIT` と `PROMPT_LIMIT`）で決め、環境変数では変えられない。
+
+AI の実行か検査に失敗したとき、プロンプトが上限を超えたときは、その理由をジョブの要約とジョブのログの両方に書く。
 理由には、`claude -p` が標準出力と標準エラーに書いたものの先頭と、プロンプトのバイト数を含める。
 `claude -p` は API のエラーを標準出力に書くためである。
 

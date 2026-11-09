@@ -72,6 +72,32 @@ git diff --name-only --diff-filter=A "$BASE" "$TAG" |
   LC_ALL=C sort |
   sed "s|.*|- [&]($REPO_URL/blob/$TAG/&)|" || true
 
+# The ADRs changed in the range whose status line (the first line that
+# starts with "ステータス:") differs between the two tags
+# (docs/adr/0246-bound-the-prompt-of-the-release-notes.md). The first
+# release has no changed ADR.
+status_line() { # status_line REV PATH: the status line of PATH at REV
+  git show "$1:$2" | LC_ALL=C awk '/^ステータス:/ { print; exit }'
+}
+status_of() { # status_of LINE: the status, without the spaces around it
+  printf '%s\n' "$1" | LC_ALL=C sed 's/^ステータス://; s/^[[:space:]]*//; s/[[:space:]]*$//'
+}
+CHANGED=
+if [ -n "$PREVIOUS" ]; then
+  CHANGED=$(git diff --name-only --diff-filter=M "$PREVIOUS" "$TAG" |
+    grep -E '^docs/([^/]+/)?adr/[^/]+\.md$' |
+    LC_ALL=C sort |
+    while read -r path; do
+      before=$(status_line "$PREVIOUS" "$path")
+      after=$(status_line "$TAG" "$path")
+      [ "$before" != "$after" ] || continue
+      printf -- '- [%s](%s/blob/%s/%s): %s → %s\n' "$path" "$REPO_URL" "$TAG" "$path" \
+        "$(status_of "$before")" "$(status_of "$after")"
+    done)
+fi
+printf '\n## ADRs whose status changed\n'
+[ -z "$CHANGED" ] || printf '\n%s\n' "$CHANGED"
+
 cat <<EOF
 
 ## Verifying the downloads
@@ -85,8 +111,9 @@ sha256sum --ignore-missing -c SHA256SUMS
 
 On macOS, use \`shasum -a 256 --ignore-missing -c SHA256SUMS\`.
 
-Each archive has a build provenance attestation.
-Check it with the GitHub CLI:
+Each \`golem-*.tar.gz\` archive has a build provenance attestation.
+The manuals, the sample plugins (\`.wasm\`) and the GMP source have none; check them with \`SHA256SUMS\` only.
+Check an archive with the GitHub CLI:
 
 \`\`\`sh
 gh attestation verify golem-$TAG-x86_64-linux.tar.gz --repo tett23/golem
