@@ -1,6 +1,6 @@
 # ADR 0033: 不変条件の「待つ図版」を、置き方から読む形で記録する
 
-ステータス: 採択
+ステータス: 採択→空きの前で判定した `@need-lines` が動かした図版の読み方は [golem-layout ADR 0044](0044-read-the-figures-moved-by-need-lines-judged-before-spaces.md)
 
 ## 文脈
 
