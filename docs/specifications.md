@@ -84,7 +84,7 @@ MCID は、ページごとに 0 から内容のストリームの順に振る。
 | 見出し（段 n） | `Hn`。見出しの番号と題を含む |
 | 箇条書き、番号付きの箇条書き | `L`（`/A << /O /List /ListNumbering /Disc >>`、番号付きは `/Decimal`）、項目は `LI`、行頭の記号と番号は `Lbl`、項目のブロックは `LBody` |
 | 定義リスト | `L`（`/ListNumbering /None`）、組は `LI`、用語は `Lbl`、説明のブロックは `LBody` |
-| 表 | `Table`、行は `TR`、見出しの行のセルは `TH`（`/A << /O /Table /Scope /Column >>`）、ほかのセルは `TD` |
+| 表 | `Table`、行は `TR`、見出しの行のセルは `TH`（`/A << /O /Table /Scope /Column >>`）、ほかのセルは `TD`。キャプション（表番号を含む）は `Caption` で、`[tables]` の `caption-position` が `"above"` なら最初の子、`"below"` なら最後の子とし、読む順を組んだ順に合わせる（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)） |
 | コードブロック | `Div`。キャプション（リスト番号を含む）は `Caption`、ファイル名と、コードの一行ずつ（折り返した行を含む）は `P` の中の `Code` |
 | 図版 | `Div` の中に、`Figure` とキャプションの `Caption`。`Figure` は `/Alt` に `alt` を、`/A << /O /Layout /BBox [...] /Placement /Block >>` に最初に描いたページの矩形を持つ |
 | 目次（`@toc`） | `TOC`、項目は `TOCI`。項目の題と番号とページ番号を含む |
@@ -1160,7 +1160,7 @@ HTML と EPUB の本文は、階層 l の見出しを `<h{l}>` で書く。
 番号の文字列が空白（U+0020、U+3000、タブ）で終わるときは、区切りを足さない。
 `number = "Chapter {n}: "` のように書式の末尾に区切りを書けば、その区切りがそのまま使われる。
 番号の書式は区切りを変えないので、同じ本の中では章も節も同じ区切りになる。
-この規則は、見出し、図版のキャプション、コードブロックのキャプション（[golem-driver ADR 0042](golem-driver/adr/0042-listing-caption-number-separator.md)）、目次の項目（PDF の目次、本文の `@toc`、HTML の目次のページ、EPUB のナビゲーション文書）、柱の `heading.<l>.numbered` の、すべての出力に適用される。
+この規則は、見出し、図版のキャプション、コードブロックのキャプション（[golem-driver ADR 0042](golem-driver/adr/0042-listing-caption-number-separator.md)）、表のキャプション（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）、目次の項目（PDF の目次、本文の `@toc`、HTML の目次のページ、EPUB のナビゲーション文書）、柱の `heading.<l>.numbered` の、すべての出力に適用される。
 HTML の見出しとキャプションでは、区切りを `<span class="number">` の外に、題の前のテキストとして書く。
 番号を持たない見出しと、番号のないキャプションには区切りを置かない。
 傍注の番号とリストの印の後の空きは、この規則によらない。
@@ -1190,8 +1190,8 @@ R は、ページ番号 999 を項目と同じ環境で組んだ幅 W に、二�
 そのため、目次のページ番号が目次の行数とページ数を変えることはなく、後ろのページの番号も動かさない。
 見出しのページは、S2 の繰り返しが収束した後に、最終回のページから一度だけ求める。
 HTML、EPUB、プレーンテキストの目次は、ページを持たないので、リンクの一覧と題の一覧のままである。
-本文のほかの場所に写す題（PDF と HTML と EPUB の目次の項目、見出しとキャプションのあるコードブロックを `[ref-title]` で参照した写し）からは、索引の印とチャネルの項目を、文字スタイル、色、圏点、ルビの親文字の入れ子の中も含めて除く（[docs/adr/0126](adr/0126-glossary-plugin.md)、[docs/adr/0145](adr/0145-title-copies-drop-anchor-inlines.md)）。
-除くのは文書構造（S1）の一か所で、見出しの情報の題と、見出しとコードブロックのラベルの題を作るときである。
+本文のほかの場所に写す題（PDF と HTML と EPUB の目次の項目、見出しとキャプションのあるコードブロックと表を `[ref-title]` で参照した写し）からは、索引の印とチャネルの項目を、文字スタイル、色、圏点、ルビの親文字の入れ子の中も含めて除く（[docs/adr/0126](adr/0126-glossary-plugin.md)、[docs/adr/0145](adr/0145-title-copies-drop-anchor-inlines.md)）。
+除くのは文書構造（S1）の一か所で、見出しの情報の題と、見出しとコードブロックと表のラベルの題を作るときである。
 印は書いた場所の一か所にだけ残るので、PDF の索引と一覧のページは見出しのページになり、HTML と EPUB の印の `id` と一覧のリンクも見出しの一か所だけになる。
 脚注と傍注は除かない。
 
@@ -1204,6 +1204,19 @@ HTML、EPUB、プレーンテキストの目次は、ページを持たないの
 章の外のコードブロックに `{chapter}` を使う書式を当てると、図版と同じくエラー（G04004）とする。
 `@nonumber` のコードブロックは番号を持たないので、章の外でも G04004 にならない。
 `@label` を付けたキャプションのあるコードブロックは、`[ref-number ...]` で章の番号とリストの番号（`3-2` の形）を、`[ref-title ...]` でキャプションを参照できる。
+
+キャプション（`@caption`）を付けた表には、表番号を振る（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+数え方はリスト番号と同じく、階層 1 の見出しで数え直し、文書構造（S1）で決める。
+図番号ともリスト番号とも別に数え、キャプションのない表と `@nonumber` を付けた表は数えず、番号を消費しない。
+リストの項目と定義リストの説明の中の表も数える。
+キャプションのない表への `@nonumber` は、コードブロックと同じく属性をすべて当てた後で判定してエラー（G02134）とする。
+表記は `style.toml` の `[tables]` の `number`（既定 `表{chapter}-{n}`）で決める。
+差し込みを含まない書式と、`[tables]` の未知のキーは G03006 とする。
+書式の表記で表せない番号は G04100 とし、その表は番号の文字列なしで組む（[ADR 0213](adr/0213-numbers-the-number-formats-cannot-write.md)）。
+章の外の表に `{chapter}` を使う書式を当てると、図版とコードブロックと同じくエラー（G04004）とする。
+`@label` を付けた番号のある表は、`[ref-number ...]` で章の番号と表の番号（`3-2` の形）を、`[ref-title ...]` でキャプション（索引の印とチャネルの項目を除いたもの）を参照できる。
+番号のない表への `[ref-number]` は G04005、キャプションのない表への `[ref-title]` は G04006 である。
+表のキャプションを置く側（`[tables]` の `caption-position`）は、表番号と `[ref-number]` と `[ref-title]` を変えない。
 
 ## style.toml
 
@@ -1324,6 +1337,10 @@ marker = "number"
 [figures]
 number = "図{chapter}-{n}"
 
+[tables]
+number = "表{chapter}-{n}"
+caption-position = "above"
+
 [toc]
 leader = "dots"
 
@@ -1420,7 +1437,7 @@ HTML と EPUB は版面を無視するので、段組みを出力せず、CSS �
 HTML と EPUB のリストの番号は CSS のカウンターで書くので、`auto` は位取りをする漢数字、`auto-digits` は一字ずつの漢数字になる。
 
 `style.toml` には、差し込みを `{` と `}` で囲む書式が四つある（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
-`[notes]` の `mark-format`、`[lists]` の `numbers`、柱の書式、見出しと図版とコードブロックとノンブルの番号の書式（`[headings.<階層>]`、`[figures]`、`[code]` の `number` と、マスターページの `folio` の `format`）である。
+`[notes]` の `mark-format`、`[lists]` の `numbers`、柱の書式、見出しと図版とコードブロックと表とノンブルの番号の書式（`[headings.<階層>]`、`[figures]`、`[code]`、`[tables]` の `number` と、マスターページの `folio` の `format`）である。
 四つの書式は golem-numerals の一つの関数で読み、差し込みの名前の表だけを書式ごとに渡す。
 書式は、文字、エスケープ、差し込みからなる。
 
@@ -2003,7 +2020,7 @@ InDesign の段落境界線にあたる。
 前の罫線は段落の一行目の前に、後の罫線は最後の行の後に引く。
 `based-on` では表ごとに引き継ぎ、書けば親の表を置き換える。
 `false` は親の罫線を引き継がないことを表し、`true` は G03006 とする。
-組み込みの `caption`、`sidenote`、`code` と、`@style-def` には書けない（G03006）。
+組み込みの `caption`、`sidenote`、`table`、`code` と、`@style-def` には書けない（G03006）。
 リストの項目、表のセル、注の本文、定義リストの中の段落には罫線を引かない。
 段落の罫線では、`length` は書かなくてよく、書かなければ段の行長から `start-indent` と `end-indent` を引いた長さになる。
 `length` の `zw` は段落スタイルの文字の大きさで解決する。
@@ -2017,20 +2034,26 @@ InDesign の段落境界線にあたる。
 段落スタイルの `size` の `zw` は版面の文字の大きさを一字とし、版面の文字の大きさを超える値はエラー（G03011）とする。
 行送りの欄は設けない。
 PDF の本文を行の格子に載せるので、段落ごとに行送りを変えると見開きの行の位置がそろわなくなるためである。
-組み込みの段落スタイルは `body`、`verse`（`line-breaks = "keep"`、`space-between = 1`、`space-before = 1`、`space-after = 1`）、`caption`、`sidenote`、`code` の五つであり、段落スタイルを付けない段落は `body` で組む。
+組み込みの段落スタイルは `body`、`verse`（`line-breaks = "keep"`、`space-between = 1`、`space-before = 1`、`space-after = 1`）、`caption`、`sidenote`、`table`、`code` の六つであり、段落スタイルを付けない段落は `body` で組む。
+`table` は表のセルの段落スタイルの既定である（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+定義は `caption` と同じく `based-on = "body"` と 0 の字下げを持つので、既定では本文と同じ書体と大きさで組む。
+`style.toml` にすでに `[paragraph-styles.table]` を書いた本では、その定義がすべての表のセルに当たる。
 図版のキャプションは段落スタイル `caption` の `font` と `size` で組み、ほかの欄（`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ）はキャプションには適用されない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 傍注の本文も同じく、段落スタイル `sidenote` の `font` と `size` で組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 PDF のキャプションと傍注の本文には、ほかに `aki-set`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` を、どの出力でも `regex-styles` を適用する。
+表のセルには、セルの段落スタイル（`@style` を付けた表はその段落スタイル、ほかは `table`）の同じ欄を適用し、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ、罫線、背景は適用しない（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+セルの揃えは列の揃えで決め、`@style` で字下げを持つ段落スタイルを当てても字下げは適用しない。
 `line-breaks`、`space-between`、`space-before`、`space-after`、`align` は、`@style caption` や `@style sidenote` を付けた原稿の段落には適用される。
-`caption` と `sidenote` は、`body` の字下げを引き継がない（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
+`caption`、`sidenote`、`table` は、`body` の字下げを引き継がない（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 組み込みの定義が `indent = "0zw"`、`first-line-indent = "0zw"`、`end-indent = "0zw"` を持ち、書いた値が引き継いだ値に勝つ `based-on` の規則により、`body` の字下げは及ばない。
 `@style caption` や `@style sidenote` を付けた原稿の段落も、字下げなしで組む。
-`caption` と `sidenote` に 0 でない `indent`、`first-line-indent`、`end-indent` を書くと G03006 とする（`style.toml` でも `@style-def` でも）。
+`caption`、`sidenote`、`table` に 0 でない `indent`、`first-line-indent`、`end-indent` を書くと G03006 とする（`style.toml` でも `@style-def` でも）。
 値が 0（`"0zw"`、`"0mm"` など）なら組版は変わらないので、誤りとせず、効果がないことを notice（G03100）で知らせる。
 G03100 の位置は、`style.toml` では値、`@style-def` ではそのキーの引数である。
-二つに書けないキーは、0 でない `indent`、`first-line-indent`、`end-indent`、`rule-before`、`rule-after`、`background`、`padding`、`border`、`border-width` である。
+三つに書けないキーは、0 でない `indent`、`first-line-indent`、`end-indent`、`rule-before`、`rule-after`、`background`、`padding`、`border`、`border-width` である。
 `based-on`、`font`、`size`、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` は書ける。
 HTML と EPUB でも、`caption` の `font` と `size` を `figcaption` の CSS に、`sidenote` の `font` と `size` を `.sidenote` の CSS に書く。
+表のセルの段落スタイルの `font` と `size` は、`table` を `table:not([class]) th, table:not([class]) td` の、表に当てたほかの段落スタイルを `table.ps-名前 th, table.ps-名前 td` の CSS に書く（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 `sidenote` の `size` がなければ、HTML の傍注は本文の 0.85 倍の大きさにする。
 `size` が絶対の大きさで `[page.grid]` の `font-size` も絶対の大きさなら、その比を `em` で書き、`[page.grid]` がなければ `pt` で書く。
 
@@ -2077,6 +2100,16 @@ HTML と EPUB では `pre` に `border` を書く。
 強調の網の既定だけは、名前を持たないプロセスカラーの墨 15% とする。
 強調には行番号や印のような別の手がかりがなく、色を設定しない本で強調が見えなくなるのを避けるためである。
 `[code]` と `[code.colors]` の未知のキー、真偽値でない `line-numbers`、差し込みを含まない `number` は G03006、`[color.swatches]` にないスウォッチは G03013 とする。
+
+`[tables]` の表は、表番号の表記とキャプションの位置を決める（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+
+| キー | 型 | 既定 | 意味 |
+| --- | --- | --- | --- |
+| `number` | 書式 | `"表{chapter}-{n}"` | 表番号の表記 |
+| `caption-position` | `"above"`、`"below"` | `"above"` | 表のキャプションを置く側。`"above"` は表の前（横組みの上、縦組みの右）、`"below"` は表の後（横組みの下、縦組みの左） |
+
+`caption-position` のほかの値と、文字列でない値は G03006 とする。
+位置は本ごとに一つであり、表ごとには変えられない。
 
 PDF では、コードブロックを次のように組む。
 
@@ -2205,7 +2238,7 @@ PDF の行長は、最初の行が「段の行長 − `indent` − `first-line-i
 `indent` と `first-line-indent` の和が負になる段落スタイルはエラー（G03012）、「段の行長 − `indent` − max(0, `first-line-indent`) − `end-indent`」が段落の文字の大きさの 8 字分に満たない段落スタイルは PDF でエラー（G07025）とする。
 回り込ませる図版の脇で、字下げを引くと行が残らない段落も、`end-indent` を引いた長さで判定する（G07028）。
 G07025 は `style.toml` だけで決まるので、PDF をターゲットに含むビルドと `golem check`（四つのターゲットを検査するので、つねに PDF を含む）が報告し、位置は `style.toml` の先頭とする（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
-G07025 は、段落に字下げを掛ける段落スタイルだけを検査し、字下げをしない `caption` と `sidenote`、G07043 が検査する `code` を除く（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
+G07025 は、段落に字下げを掛ける段落スタイルだけを検査し、字下げをしない `caption`、`sidenote`、`table`、G07043 が検査する `code` を除く（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
 一つの段落スタイルの字下げが大きすぎるとき、それを `based-on` で引き継ぐほかの段落スタイルにも G07025 を出す。
 `line-breaks = "keep"` の段落では、改行で区切った各行が段落の始まりと同じく最初の行の字下げを受け、折り返した部分は `indent` の位置から始まる。
 組み込みの `verse` は `indent = "2zw"`、`first-line-indent = "-2zw"` で、各行の折り返した部分をぶら下げる。
@@ -2286,8 +2319,9 @@ PDF では、項目の印を行の始まりにぶら下げ、項目の二行目�
 フィルタのプラグインの後に当てるので、フィルタの返した文字も対象になり、フィルタからは正規表現スタイルの結果は見えない。
 一致は段落ごとに求め、段落をまたがない。
 ルビは親文字だけを、縦中横、数の表記、相互参照、`doc` を参照する式、文献の引用、注、傍注は一字の置き換え文字として照合し、索引の項目と校正のコメントは照合の対象に入れない。
-脚注の本文、見出し、定義リストの用語、表のセル、目次、索引、参考文献には当てない。
+脚注の本文、見出し、定義リストの用語、表とコードブロックのキャプション、目次、索引、参考文献には当てない。
 傍注の本文には `sidenote` の、図版のキャプションには `caption` の並びを当てる。
+表のセルには、セルの段落スタイル（`@style` を付けた表はその段落スタイル、ほかは `table`）の並びを、セルごとに一つの段落として当てる（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 各組は最左優先で重ならない一致を求め、空の一致は当てない。
 同じ文字に複数の組が一致した場合は、並びの最初の組の文字スタイルを最も外側に、後の組を内側に置くので、後の組が勝つ。
 原稿で手で当てた文字スタイル、色、圏点は正規表現スタイルの内側に置き直すので、手で当てた文字スタイルが勝つ。
@@ -2392,7 +2426,8 @@ aki-set = "wide-waou"
 
 段落スタイルの `aki-set` は、その段落を組むセットの名前である。
 `body` の既定は `gyomatsu-yakumono-hankaku` で、ほかの段落スタイルは `based-on` から引き継ぐ。
-見出し、表、目次、索引、脚注の本文は `body` のセットで、図版のキャプションは `caption` の、傍注の本文は `sidenote` の段落スタイルのセットで組む。
+見出し、目次、索引、脚注の本文は `body` のセットで、図版のキャプションは `caption` の、傍注の本文は `sidenote` の段落スタイルのセットで組む。
+表のセルは、セルの段落スタイルのセットで組む。
 `@style-def` でも `aki-set` を書けるが、セットそのものは `style.toml` にだけ定義できる。
 アキ量のセットは PDF でだけ有効で、HTML と EPUB はブラウザーの既定で組む。
 
@@ -2436,7 +2471,7 @@ HTML と EPUB では、組み込みの文字スタイルのうち `strong`、`bo
 `[code.colors]` があれば `code span.<短い class>` の `color` を書き、なければ字句の色を書かない。
 `wrap-mark` と `continued` は HTML と EPUB には出さない。
 プレーンテキストには、キャプションの行、ファイル名の行、差分の印のついた行、行末に空白一つを空けた丸数字の注釈の印を出し、行番号、強調、色は出さない。
-文字スタイルの `font`、合成の太字と斜体、`color`、段落スタイルの `font`、行の字下げ、`space-between`、`space-before`、`space-after`、`align`、`end-indent` を CSS に書き、`size` はキャプションと傍注のほかは CSS に書かない。
+文字スタイルの `font`、合成の太字と斜体、`color`、段落スタイルの `font`、行の字下げ、`space-between`、`space-before`、`space-after`、`align`、`end-indent` を CSS に書き、`size` はキャプションと傍注と表のセルのほかは CSS に書かない。
 段落スタイルの `align` と `end-indent` は、字下げと同じく、`body` では既定の値でないとき、ほかのスタイルでは `body` と値が違うときに書く（[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。
 `left` は `text-align: start`、`center` は `text-align: center`、`right` は `text-align: end`、均等配置の三つは `text-align: justify` と `text-align-last`（`start`、`center`、`end`）、`fully-justified` は `text-align: justify; text-align-last: justify` とする。
 `towards-spine` と `away-from-spine` は、本の最初のページ（1 ページ）のノドの側で読み替え、左綴じの本では `towards-spine` を `text-align: left`、`away-from-spine` を `text-align: right`、右綴じの本では逆にする。
@@ -2968,7 +3003,18 @@ HTML と EPUB は、`width` を持つ図版の `<img>` に、`style` の属性�
 ## 表
 
 表の記法は言語仕様に定める。
-HTML と EPUB は表を `<table>` として出力し、列の幅と罫線は読者側のエンジンに任せる。
+HTML と EPUB は表を `<table>` として出力し、列の幅の指定のない表の列の幅と、罫線は読者側のエンジンに任せる。
+
+表には、キャプション（`@caption`）、表番号を外す `@nonumber`、セルの段落スタイル（`@style`）、列の幅（`@column-widths`）を付けられる（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+`|` の表と `@table` のどちらにも同じく付き、改行の様式でも属性は直後の表の全体に付く。
+意味論 IR の表は、列の揃え、列の幅、キャプション、`nonumber`、セルの段落スタイル（null は組み込みの `table`）、見出しの行、本体の行を持つ。
+表番号の数え方と参照は「目次と文書構造の参照」の節に、`[tables]` の設定は「style.toml」の節に書く。
+
+- `@column-widths` は列の幅を左の列から順に並べる。値は `auto`、寸法（`mm`、`pt`、`Q`、`H`、`in`、`zw`）、割合（`%`）であり、数の書き方は図版の `width` と同じである（[ADR 0190](adr/0190-non-wrapping-figure-width.md)）。値を一つだけ書けば、すべての列に当てる。`auto`、寸法、割合のどれとしても読めない値、0、式は値ごとに G02135 とし、その `@column-widths` を捨てる。値の数が一つでも列の数でもなければ、`@column-widths` の行に G02136 を出して捨てる。表でないブロックへの `@column-widths` は G02013 である。
+- `zw` はセルの段落スタイルの文字の大きさを一字とし、`%` は行長から列の間隔の和を引いた幅（列が分け合う幅）に対する割合とする。
+- `@style` に定義されていない段落スタイルを書くと G02047 とし、表は `table` で組む。`@style table` は書かないのと同じである。
+- HTML と EPUB では、キャプションのある表は `<table>` の最初の子に `<caption>` を置き、表番号を `<span class="number">` に入れ、区切りとキャプションを続ける。`caption-position = "below"` では、`style.css` に `table > caption { caption-side: bottom; }` を書く。列の幅の指定のある表は `<colgroup>` に列ごとの `<col>` を置き、`auto` でない列に `style="width: ..."` を書く。`zw` は `em` に、寸法は図版の `width` と同じく `pt` に、`%` は `%` にする。HTML の `%` は表の幅に対する割合なので、PDF の列が分け合う幅とは基準が違う。`table` でない段落スタイルを当てた表は、`<table>` に `ps-名前` の class を付ける。
+- プレーンテキストでは、キャプションのある表に、表番号と区切りとキャプションの一行を書く。`caption-position` が `"above"` なら行の前に、`"below"` なら行の後に書く。
 
 `@table` は、CSV（RFC 4180）か TSV（IANA の `text/tab-separated-values`）のファイルから表を作る（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
 表のファイルのパスは、`@figure` と `@listing` と同じく、最初の位置引数に語か文字列で書く（[ADR 0184](adr/0184-table-positional-path.md)）。
@@ -3004,12 +3050,15 @@ CSV と TSV の読み手は、ファイルを `Text` のまま読み、`String` 
 
 PDF では、表を行の格子の上に組む（[golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)）。
 
-- セルの中身は本文と同じ書体と大きさで組み、セルの一行を格子の一行とする。表の行の高さは、その行で最も行数の多いセルの行数とする。
-- 列の幅は、セルの最小の幅（改行できる位置のあいだの最も広い部分。本文の中のコードの改行の印を描く位置で終わる部分は、印の幅を含む。[ADR 0255](adr/0255-record-what-implementations-decided-on-2026-11-09.md)）と自然な幅（一行に組んだ幅）から決める。列の間隔は一字分とし、自然な幅の合計が収まればその幅で組む。収まらなければ、短い列から自然な幅を満たして配る（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。各列の幅を、上限 C を最小の幅以上、自然な幅以下に収めた値とし、合計が使える幅に収まる最大の整数の C（sp）を二分探索で求める。残りは、自然な幅に届いていない列に、行の始まりの側の列から 1sp ずつ配る。自然な幅が C 以下の短い列は折り返さず、折り返しは長い列に集まる。最小の幅の合計が収まらない場合はエラー（G07041）とする。表の幅が行長より短い場合は、行の始まりの側に寄せる。
+- セルの中身は、セルの段落スタイルの役割と大きさ（ts）で組む（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。版面の文字の大きさを fs、行送りを p とすると、セルの行の送りは round(p × ts ÷ fs) であり、表の行は、その行で最も行数の多いセルの行の全体を収める最も少ない数の格子の行を占める（キャプションと同じ求め方）。セルの行は表の行の最初の格子の行の先頭にそろえて置く。ts = fs なら、セルの一行が格子の一行になり、表の行の高さはその行で最も行数の多いセルの行数になる。
+- 列の幅は、セルの最小の幅（改行できる位置のあいだの最も広い部分。本文の中のコードの改行の印を描く位置で終わる部分は、印の幅を含む。[ADR 0255](adr/0255-record-what-implementations-decided-on-2026-11-09.md)）と自然な幅（一行に組んだ幅）から決める。列の間隔は一字分とし、自然な幅の合計が収まればその幅で組む。収まらなければ、短い列から自然な幅を満たして配る（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。各列の幅を、上限 C を最小の幅以上、自然な幅以下に収めた値とし、合計が使える幅に収まる最大の整数の C（sp）を二分探索で求める。残りは、自然な幅に届いていない列に、行の始まりの側の列から 1sp ずつ配る。自然な幅が C 以下の短い列は折り返さず、折り返しは長い列に集まる。最小の幅の合計が収まらない場合はエラー（G07041）とする。表の幅が行長より短い場合は、行の始まりの側に寄せる。列の間隔は ts の一字分である。
+- `@column-widths` を書いた表では、列が分け合う幅を W（行長 − 列の間隔の和）として、`auto` でない列の幅を sp で求める。`zw` は ts に、`%` は W に掛け、どちらも sp の未満を切り捨てる。指定した幅の和が W を超えれば G07114、指定した幅がその列のセルの最小の幅より狭い列があれば列ごとに G07115 とし、どちらも表を組まない。`auto` の列は、W から指定した幅の和を引いた残りを使える幅として上の求め方で決め、最小の幅の和が残りに収まらなければ G07041 とする（G07114 か G07115 の出た表には出さない）。指定した幅は、自然な幅より広くても狭くてもそのまま使い、指定した列に残りを配らない。
 - セルの段落では、最後の二つの和文の字（欧文の語、ルビ、縦中横、注の印でない一字の箱）のあいだで改行しない（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。あいだの罰点を無限の罰点に替え、アキのグルーの前に無限の罰点を置く。列の最小の幅は、最後の二字を一つの区間として数える。本文の段落には当てない。
 - セルではぶら下げ組と突き出しを使わない。揃えはセルの各行の内容の幅と列の幅の差で決め、両端揃えの行には適用しない。
-- 罫線は横の罫だけを引く。表の始まりと終わりに 0.6pt、見出しの行の下に 0.3pt の罫を引く（[golem-driver ADR 0031](golem-driver/adr/0031-table-spacing-and-rules.md)）。罫は表の字面の外に、すき間 `c` を空けて引く。横組みでは、表のセルに描くグリフの字面の範囲から、基準線の上の高さ `a` と下の深さ `d` を求める（字面を持つグリフがなければ、`a` は文字の大きさの 0.88 倍、`d` はその残り）。縦組みでは、`a` と `d` を文字の大きさの半分ずつとする。`c` は `max 0 ((p − a − d) div 2)`（`p` は行送り）であり、表の始まりの罫の中心は表の最初の行の基準線（縦組みでは行の中心線）から `a + c` 前、見出しの行の下の罫と表の終わりの罫の中心は、それぞれの行の基準線から `d + c` 後にある。縦組みでは、隣り合う格子の行の字面の枠のあいだの空きの中央になる。
+- 罫線は横の罫だけを引く。表の始まりと終わりに 0.6pt、見出しの行の下に 0.3pt の罫を引く（[golem-driver ADR 0031](golem-driver/adr/0031-table-spacing-and-rules.md)）。`a` と `d` は ts のグリフから求める。罫は表の字面の外に、すき間 `c` を空けて引く。横組みでは、表のセルに描くグリフの字面の範囲から、基準線の上の高さ `a` と下の深さ `d` を求める（字面を持つグリフがなければ、`a` は文字の大きさの 0.88 倍、`d` はその残り）。縦組みでは、`a` と `d` を文字の大きさの半分ずつとする。`c` は `max 0 ((p − a − d) div 2)`（`p` は行送り）であり、表の始まりの罫の中心は表の最初の行の基準線（縦組みでは行の中心線）から `a + c` 前、見出しの行の下の罫と表の終わりの罫の中心は、それぞれの行の基準線から `d + c` 後にある。縦組みでは、隣り合う格子の行の字面の枠のあいだの空きの中央になる。
 - 表の前と後に、格子の一行の空きを置く（[golem-driver ADR 0031](golem-driver/adr/0031-table-spacing-and-rules.md)）。段の最初の行から始まる表と、見出しの直後の表には前の空きを置かない。段の最後の行で終わる表には後の空きを置かず、次の段の先頭にも持ち越さない。表が二つ続く場合、あいだの空きは一行である。
+- キャプションは、`[tables]` の `caption-position` の側（`"above"` は表の上、縦組みでは右。`"below"` は表の下、縦組みでは左）に置き、表番号、区切り、キャプションを、段落スタイル `caption` の見た目と段の行長で、段の行の始まりからそろえて組む（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。行の送りと格子の行の占め方は、コードブロックのキャプションと同じである。`"above"` では、表の前の空きをキャプションの前に置き、表の始まりの罫をキャプションと見出しの行のあいだに引く。`"below"` では、表の終わりの罫を本体の最後の行とキャプションのあいだに引き、表の後の空きをキャプションの後に置く。
+- キャプションは、それに接する行と同じ段に置く。`"above"` では、キャプション、見出しの行、本体の最初の行を同じ段に置き、収まらない位置からは表をキャプションごと次の段に送る。`"below"` では、本体の最後の行とキャプションを同じ段に置き、収まらなければ本体の最後の行の前で段を改め、次の段に、繰り返す見出しの行、本体の最後の行、キャプションを置く。ページをまたいだ先では見出しの行を繰り返し、キャプションは繰り返さない。キャプションとそれに接する行（`"above"` ではキャプション、見出しの行、本体の最初の行、`"below"` では見出しの行、本体の最後の行、キャプション）が空の段に収まらない場合は、エラー（G07116）とし、表を組まない。キャプションの行を加えなくても収まらない行は、今のとおり G07042 とする。
 - 見出しの行のすべてのセルが空白のほかに中身を持たない場合、PDF ではその表を見出しの行のない表として組む。見出しの行の格子の行を取らず、見出しの行の下の罫を引かず、ページをまたいでも見出しの行を繰り返さない。表のラベルは本体の最初の格子の行に付く。HTML と EPUB は空の見出しの行を、今のとおり空のセルの `<thead>` の行として出力する。
 - 改ページは表の行のあいだでだけ行い、次のページの先頭に見出しの行を繰り返す。各ページの表の部分に三本の罫（見出しの行のない表では二本）を引く。前の空きと見出しの行と本体の最初の行が収まらない位置からは表を始めず、空きを置かずに次のページに送る。送った先の段で、送った図版と続きの脚注が段の先頭と末尾を取って見出しの行と本体の最初の行が収まらなければ、さらに次の段に送る。ページをまたいで見出しの行を繰り返すときも同じである（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。見出しの行と本体の一行がページに収まらない場合はエラー（G07042）とする。
 - 一つの表のセルの数（見出しの行と本体の行のセルの数の合計。すべて空のセルの見出しの行も数える）は 100,000 以下とする（[ADR 0224](adr/0224-limit-the-cells-of-a-table-set-in-pdf.md)）。超えればエラー（G07108）とし、セルを一つも組まず、その表には G07041 と G07042 を出さない。数えるのは golem-typeset が表の単位を組む前であり、上限は表の出所（`@table` の CSV と TSV、`.gm` の `|` の表、Emet の `Block.table`、プラグインのブロック）によらない。HTML、EPUB、テキストのターゲットにはこの上限がなく、PDF を組まない `golem check` と LSP は G07108 を出さない。
@@ -3098,7 +3147,7 @@ notice と info は、出力のバイト列を変えない。
 PDF、HTML、EPUB、プレーンテキストのバイト列は、notice と info を出すかどうかによらず、`silence-notices`、`silence-info`、`--no-notices`、`--verbose` の有無でも変わらない。
 `--verbose` は、出力を変えず、diagnostics の一覧だけを変えるオプションであり、同じ入力と同じオプションからは同じ info を同じ順で出す。
 これは golem-driver のテストが、すべての notice と info を出すプロジェクトで確かめる。
-今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、`@table` の `src=`（G02129、廃止予定）、`-` で区切った範囲（G02108、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、`caption` と `sidenote` の 0 の字下げ（G03100）、`[lists]` の `numbers` の `{{` と `}}`（G03114、廃止予定）、`[lists]` の `numbers` の一字の見本の差し込み（G03115、廃止予定）、柱の書式の `{{` と `}}`（G03116、廃止予定）、`[notes]` の `mark-size`（G03117、廃止予定）、`[source]` に `paragraph-separator` を書いていないプロジェクト（G03120）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、`@page-lines` で減らした段の残りより高い見出し（G07100）、線のない字形のダッシュの二倍ダッシュ（G07101）、`[fonts.code]` のない本のコード（G08008）、`.emet` の使われていない `where` の束縛（E02109）である。
+今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、`@table` の `src=`（G02129、廃止予定）、`-` で区切った範囲（G02108、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、`caption`、`sidenote`、`table` の 0 の字下げ（G03100）、`[lists]` の `numbers` の `{{` と `}}`（G03114、廃止予定）、`[lists]` の `numbers` の一字の見本の差し込み（G03115、廃止予定）、柱の書式の `{{` と `}}`（G03116、廃止予定）、`[notes]` の `mark-size`（G03117、廃止予定）、`[source]` に `paragraph-separator` を書いていないプロジェクト（G03120）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、`@page-lines` で減らした段の残りより高い見出し（G07100）、線のない字形のダッシュの二倍ダッシュ（G07101）、`[fonts.code]` のない本のコード（G08008）、`.emet` の使われていない `where` の束縛（E02109）である。
 
 diagnostics は、エラーと警告を先に、notice をその後に、info を最後に並べる（[docs/adr/0104](adr/0104-info-severity.md)）。
 エラーと警告のあいだは、コードの順、ファイルの順、開始位置の順、終了位置の順、メッセージの順で並べ、notice どうしと info どうしも同じ規則で並べる（[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
@@ -3733,7 +3782,7 @@ HTML、EPUB、プレーンテキストは自動の分綴をしないので、一
 本体の形の `@lang` は、評価器が本体の最上位のブロックのそれぞれに `blockLang` を書く。
 `Golem.Doc.Validate` は、言語の区間と `blockLang` のタグが BCP 47 の形であることを検査する（プラグインの出力なら G06009、関数の出力なら E06104）。
 プラグインのインラインのコマンドの出力は、言語の区間のタグを `Validate.langErrors` で検査する。
-ABI のバージョンは 8 のままである。
+この変更で ABI のバージョンは上げていない（[docs/adr/0052](adr/0052-plugin-abi-version-bump-rule.md)）。
 見出しの題を写す箇所（目次の項目、`[ref-title]` の写し）は、言語の区間を残し、見出しのブロックの言語を写した題の全体を包む言語の区間にする。
 正規表現スタイルは言語の区間を分けず、一部だけが一致すれば区間の中で包む。
 
@@ -3797,7 +3846,7 @@ URL は、評価のときに次の順に検査し、最初に当たったもの�
 意味論 IR のインラインに `Link !SrcSpan !Text [InlineF r]` を加え、CDDL では `[20, span, uri: tstr, inlines]` と書く。
 IR は、原稿に書いた URL をそのまま持ち、ASCII への符号化は出力ごとに行う。
 リンクはルビの親文字の中にも置ける。
-プラグインとの ABI のバージョンは 8 のままである（[docs/adr/0052](adr/0052-plugin-abi-version-bump-rule.md)。8 はまだどのリリースにも含まれていない）。
+この変更でプラグインとの ABI のバージョンは上げていない（[docs/adr/0052](adr/0052-plugin-abi-version-bump-rule.md)。当時の 8 はまだどのリリースにも含まれていなかった）。
 プラグインの SDK の `Inline::Link { span, uri, body }` も、同じバイト列を読み書きする。
 Emet の `Inline.Inline` には `Link String Inlines` がある。
 正規表現スタイルは、リンクの中の文字にも当てる。
@@ -4918,11 +4967,19 @@ HTML、EPUB、プレーンテキストは、中のインラインを今までと
 コードの行の範囲も、ほかの範囲と同じく `Golem.Doc.Validate` で検査する。
 プラグインの SDK は、コードブロックを `BlockBody::Other` として CBOR のまま通すので、型は変わらない。
 
+表は `[14, table]` であり、`table` は `[aligns, widths, caption, nonumber, style, header, rows]` である（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+`widths` は列ごとの幅の並びか空の並びで、幅は `[0]`（`auto`）、`[1, rational]`（セルの段落スタイルの `zw`）、`[2, uint64]`（sp）、`[3, rational]`（列が分け合う幅に対する割合）である。
+`caption` は inlines か null、`style` はセルの段落スタイルの名前か null（組み込みの `table`）である。
+以前の表のタグ 5 は廃止し、使い回さない。
+プラグインと `.emet` の関数が返す表の段落スタイルは、段落と同じく G02047 で検査する。
+プラグインの SDK の `BlockBody::Table` は、同じ七つの欄を持ち、幅を CBOR の値のまま通す。
+
 ホストは、プラグインの出力を受け取るたびに、スキーマと意味論上の不変条件を検査し、違反はコンパイルエラーとする。
 不変条件には、図版のキャプションのブロックが段落だけであること（`図版のキャプションには段落だけを置けます`、[docs/adr/0144](adr/0144-figure-captions-hold-paragraphs-only.md)）と、`nonumber` が真のコードブロックがキャプションを持つこと（`キャプションのないコードブロックは番号を持たないので、@nonumber は要りません`、[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)）を含む。
+表の不変条件は、`widths` が空か列の数と同じ長さであること、`auto` のほかの幅が 0 より大きいこと、`nonumber` が真の表がキャプションを持つこと、`style` が組み込みの `table` を名前で書かないこと（`table` は null で書く。`body` は名前で書く）である（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 処理系の内部では型で保証している不変条件も、wasm の境界を越えると保証されなくなるためである。
 
-プラグインとの ABI のバージョンは 8 であり、プラグインの `golem_abi_version` が返す値と違えば読み込みを止める（[golem-plugin ADR 0001](golem-plugin/adr/0001-wasm-host-and-abi.md)）。
+プラグインとの ABI のバージョンは 9 であり、プラグインの `golem_abi_version` が返す値と違えば読み込みを止める（[golem-plugin ADR 0001](golem-plugin/adr/0001-wasm-host-and-abi.md)）。
 バージョンは、リリース（`v` で始まるタグ。プレリリースを含む）を単位に上げる（[docs/adr/0052](adr/0052-plugin-abi-version-bump-rule.md)）。
 ABI を変えるとき、今のバージョンがすでにリリースに含まれていれば一つ上げ、まだどのリリースにも含まれていなければ変えない。
 二つのリリースのあいだで、バージョンは高々一つしか上がらず、リリースに含まれたバージョンの ABI は後から変えない。
@@ -5698,7 +5755,7 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 テストを足すときに見つかったものは、該当する場合をテストに入れずに残している。
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
-- **`[ref-number]` の図番号とリスト番号が、`[figures]` と `[code]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックを `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
+- **`[ref-number]` の図番号とリスト番号と表番号が、`[figures]` と `[code]` と `[tables]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックと番号のある表を `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号、`[tables]` の `number` と表番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **本文の中のコードの最初か最後に空白があると、その側の余白がなくなる**：文字スタイル `code` の `padding` は、コードの並びの最初と最後の部品に付ける（[`padCode`](https://github.com/tett23/golem/blob/c638870fb9f5fb8a66d13308fef727a7e202de19/modules/golem-layout/src/Golem/Layout/Japanese.hs#L1028-L1058)）。最後の部品が空白なら、余白を付ける先がない。`padding = 250` の `code` で、`[code: あ ]` の `あ` の後の余白と、前に空白を書いたコードの `あ` の前の余白が 0 になる。段落の終わりに限らず起きる（[golem-layout ADR 0037](golem-layout/adr/0037-drop-spaces-of-code-before-the-end-of-a-paragraph.md) の調べで見つかった）。

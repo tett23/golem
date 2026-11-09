@@ -155,7 +155,7 @@ fn doc() -> Document {
                 .concat(),
             ),
             block(BlockBody::BulletList(vec![ListItem { number: None, blocks: vec![para(vec![t("item")])] }])),
-            block(BlockBody::Table { alignments: vec![0], header: vec![vec![t("h")]], rows: vec![vec![vec![t("c")]]] }),
+            block(BlockBody::Table { alignments: vec![0], widths: vec![], caption: None, nonumber: false, style: None, header: vec![vec![t("h")]], rows: vec![vec![vec![t("c")]]] }),
             block(BlockBody::DefList(vec![DefGroup { terms: vec![vec![t("term")]], defs: vec![vec![para(vec![t("def")])]] }])),
             block(BlockBody::Other(Value::Array(vec![Value::Int(7)]))),
         ],

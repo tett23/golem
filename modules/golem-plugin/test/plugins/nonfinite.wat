@@ -10,15 +10,15 @@
   (data (i32.const 16) "\a2\67filters\83\63nan\63inf\64ninf\68commands\83\63nan\63inf\64ninf")
   ;; [[[11, [0, 0, 0], [1, [0, 0, 0], NaN]]], []]
   (data (i32.const 1024) "\82\81\83\0b\83\00\00\00\83\01\83\00\00\00\f9\7e\00\80")
-  ;; [[8, 0, [[[0, 0, 0], null, null, [10, null, [the inline above]]]]], []]
-  (data (i32.const 2048) "\82\83\08\00\81\84\83\00\00\00\f6\f6\83\0a\f6\81\83\0b\83\00\00\00\83\01\83\00\00\00\f9\7e\00\80")
+  ;; [[9, 0, [[[0, 0, 0], null, null, [10, null, [the inline above]]]]], []]
+  (data (i32.const 2048) "\82\83\09\00\81\84\83\00\00\00\f6\f6\83\0a\f6\81\83\0b\83\00\00\00\83\01\83\00\00\00\f9\7e\00\80")
   ;; the two answers again with Infinity
   (data (i32.const 3072) "\82\81\83\0b\83\00\00\00\83\01\83\00\00\00\f9\7c\00\80")
-  (data (i32.const 4096) "\82\83\08\00\81\84\83\00\00\00\f6\f6\83\0a\f6\81\83\0b\83\00\00\00\83\01\83\00\00\00\f9\7c\00\80")
+  (data (i32.const 4096) "\82\83\09\00\81\84\83\00\00\00\f6\f6\83\0a\f6\81\83\0b\83\00\00\00\83\01\83\00\00\00\f9\7c\00\80")
   ;; and with -Infinity
   (data (i32.const 5120) "\82\81\83\0b\83\00\00\00\83\01\83\00\00\00\f9\fc\00\80")
-  (data (i32.const 6144) "\82\83\08\00\81\84\83\00\00\00\f6\f6\83\0a\f6\81\83\0b\83\00\00\00\83\01\83\00\00\00\f9\fc\00\80")
-  (func (export "golem_abi_version") (result i32) (i32.const 8))
+  (data (i32.const 6144) "\82\83\09\00\81\84\83\00\00\00\f6\f6\83\0a\f6\81\83\0b\83\00\00\00\83\01\83\00\00\00\f9\fc\00\80")
+  (func (export "golem_abi_version") (result i32) (i32.const 9))
   (func (export "golem_alloc") (param $n i32) (result i32) (local $p i32)
     (local.set $p (global.get $heap))
     (global.set $heap (i32.add (global.get $heap) (local.get $n)))

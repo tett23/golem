@@ -14,6 +14,7 @@ module Golem.Layout.Paginate.Decide
     needIn,
     headingNeed,
     fitting,
+    tableHead,
     roomForLine,
     afterPageFigure,
     startsRecto,
@@ -65,7 +66,7 @@ nextNeed env = \case
   (FContinued ls : _) -> linesNeed (take (firstPart False (length ls)) ls)
   -- of a stanza, its verse lines (docs/adr/0180, golem-layout ADR 0021)
   (FStanza vs : _) -> linesNeed (concat (take (firstPart True (length vs)) vs))
-  (FTable _ sp h rows : _) -> grid (sp + length h + maybe 0 length (listToMaybe rows))
+  (FTable _ sp h rows capt below : _) -> grid (sp + tableHead h rows capt below)
   (FDefTerm ls : _) -> termNeed ls
   -- a heading keeps what follows it, a heading after it too (golem-driver ADR 0032)
   (FHeading _ _ n ls : rest) -> Need n (noteLinesOf ls) <> nextNeed env rest
@@ -166,6 +167,14 @@ needIn env st a b =
 -- | The grid lines of a heading, the lines of its notes and the separator if they are the first notes.
 headingNeed :: Env -> St -> Int -> [LineBox] -> Int
 headingNeed env st n ls = needIn env st (Need n (noteLinesOf ls)) mempty
+
+{- | The grid lines a table keeps together at its start (golem-layout ADR
+0025, docs/adr/0262): its header row and first row, and its caption above
+them, or below them when the first row is the last.
+-}
+tableHead :: [LineBox] -> [[LineBox]] -> [LineBox] -> Bool -> Int
+tableHead h rows capt below =
+  length h + maybe 0 length (listToMaybe rows) + (if not below || length rows <= 1 then length capt else 0)
 
 -- | How many lines fit, with their notes.
 fitting :: Env -> St -> [LineBox] -> Int

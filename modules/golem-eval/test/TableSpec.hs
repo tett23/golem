@@ -76,7 +76,7 @@ run src = let (ds, r) = evalSource ctx src in (resultBodies r, map diagSite ds)
 -- | The cells of the table of a source, without spans, and its alignments.
 table :: Text -> Maybe ([Alignment], [[Text]], [[[Text]]])
 table src = case run src of
-  ([Table al h rs], []) -> Just (al, map texts h, map (map texts) rs)
+  ([TableBlock Table {tableAligns = al, tableHeader = h, tableRows = rs}], []) -> Just (al, map texts h, map (map texts) rs)
   _ -> Nothing
   where
     texts = map (\case Text _ t -> t; _ -> "?")
@@ -206,7 +206,7 @@ csvTests =
 -- | The table of a source without spans, whatever the diagnostics.
 tableOf :: Text -> Maybe ([Alignment], [[Text]], [[[Text]]])
 tableOf src = case fst (run src) of
-  [Table al h rs] -> Just (al, map texts h, map (map texts) rs)
+  [TableBlock Table {tableAligns = al, tableHeader = h, tableRows = rs}] -> Just (al, map texts h, map (map texts) rs)
   _ -> Nothing
   where
     texts = map (\case Text _ t -> t; _ -> "?")
@@ -262,10 +262,10 @@ argTests =
         fst (run "@table x.tsv\n") @?= fst (run "@table x.csv\n"),
       testCase "empty cells differ, on purpose" $ do
         case run "@table empty-cell.tsv\n" of
-          ([Table _ _ [[c, _]]], []) -> c @?= []
+          ([TableBlock Table {tableRows = [[c, _]]}], []) -> c @?= []
           other -> assertFailure (show other)
         case run "@table empty-cell.csv\n" of
-          ([Table _ _ [[[Text _ ""], _]]], []) -> pure ()
+          ([TableBlock Table {tableRows = [[[Text _ ""], _]]}], []) -> pure ()
           other -> assertFailure (show other),
       testCase "the default alignment" $
         fmap alignOf (table "@table x.tsv\n") @?= Just [AlignDefault, AlignDefault, AlignDefault],

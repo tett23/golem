@@ -52,6 +52,8 @@ cfg0 =
       hcLocalStyles = Map.empty,
       hcCaptionFace = noFace,
       hcSidenoteFace = noFace,
+      hcTableFaces = Map.empty,
+      hcTableCaptionBelow = False,
       hcBibliography = Map.empty,
       hcDev = False,
       hcRubyMonoAlign = "center",
@@ -73,6 +75,7 @@ bookOf bs =
       bookHeadings = Map.empty,
       bookFigures = Map.empty,
       bookListings = Map.empty,
+      bookTables = Map.empty,
       bookToc = [],
       bookTocDepth = Nothing,
       bookIndexes = [],
@@ -138,7 +141,7 @@ multipleBibliographyTests =
 assembled :: [[Block]] -> Book
 assembled bss = fst (assemble acfg (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
   where
-    acfg = AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" Map.empty 40
+    acfg = AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" "" Map.empty 40
 
 -- | A paragraph at offset s that cites the keys, one byte apart.
 citing :: FileId -> Int -> [Text] -> Block
@@ -171,7 +174,7 @@ channelTests =
     ]
   where
     decls = [ChannelDecl "people" OrderDocument True, ChannelDecl "glossary" OrderReading False, ChannelDecl "a-1" OrderDocument True, ChannelDecl "a" OrderDocument True]
-    withChannels bss = fst (assemble (AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" (Map.fromList [(channelName d, d) | d <- decls]) 40) (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
+    withChannels bss = fst (assemble (AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" "" (Map.fromList [(channelName d, d) | d <- decls]) 40) (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
     item f s c t = ChannelItem (mkSpan f s (s + 1)) (ChannelItemData c (Just t) (Just t) [Text (mkSpan f s (s + 1)) t])
     list f s c = Block (mkSpan f s (s + 1)) Nothing Nothing (ChannelOutput (CustomOutput c Nothing))
 
@@ -299,13 +302,13 @@ alignSpaceTests =
               "div.blank-line + p.ps-quote { margin-block-start: 0; }"
             ],
     testCase "a file's styles write the alignment, the end indent and the spaces again" $ do
-      let local = HtmlLocalStyles Map.empty (Map.fromList [("quote", plainPara {hpsAlign = ["text-align: end"], hpsEndIndent = "1em", hpsSpaceBefore = 1})]) Nothing Nothing
+      let local = HtmlLocalStyles Map.empty (Map.fromList [("quote", plainPara {hpsAlign = ["text-align: end"], hpsEndIndent = "1em", hpsSpaceBefore = 1})]) Nothing Nothing Map.empty
           cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("quote", plainPara)], hcLocalStyles = Map.fromList [(fidA, local)]}
       cssLines "body.file-1 p.ps-quote {" cfg
         @?= ["body.file-1 p.ps-quote { font-family: inherit; margin-block: 1em; margin-block-start: 1em; padding-inline-start: 0em; text-indent: 0em; padding-inline-end: 1em; text-align: end; }"]
       cssLines "body.file-1 p.ps-quote + p.ps-quote" cfg @?= ["body.file-1 p.ps-quote + p.ps-quote { margin-block-start: 0; }"]
       cssLines "body.file-1 div.blank-line" cfg @?= ["body.file-1 div.blank-line + p.ps-quote { margin-block-start: 0; }"]
-      let reset = HtmlLocalStyles Map.empty (Map.fromList [("quote", plainPara {hpsEndIndent = "1em"})]) Nothing Nothing
+      let reset = HtmlLocalStyles Map.empty (Map.fromList [("quote", plainPara {hpsEndIndent = "1em"})]) Nothing Nothing Map.empty
       cssLines "body.file-1 p.ps-quote {" cfg {hcLocalStyles = Map.fromList [(fidA, reset)]}
         @?= ["body.file-1 p.ps-quote { font-family: inherit; margin-block: 1em; padding-inline-start: 0em; text-indent: 0em; padding-inline-end: 1em; text-align: start; text-align-last: auto; }"]
   ]
@@ -334,7 +337,7 @@ fileSpaceTests =
       filter (".file-" `T.isInfixOf`) (cssLines "" cfg) @?= []
   ]
   where
-    local ps = HtmlLocalStyles Map.empty (Map.fromList ps) Nothing Nothing
+    local ps = HtmlLocalStyles Map.empty (Map.fromList ps) Nothing Nothing Map.empty
 
 -- | A solid rule of 0.5pt as wide as the line, 1em above and nothing below.
 solid :: HtmlRule
@@ -391,17 +394,17 @@ tests =
            in cssLines ".cs-path" cfg @?= [".cs-path { hyphens: none; background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
         testCase "a file's code style without a background resets them: transparent and 0" $
           let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing Nothing Nothing [] False
-              cfg = cfg0 {hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("code", code)]) Map.empty Nothing Nothing)]}
+              cfg = cfg0 {hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("code", code)]) Map.empty Nothing Nothing Map.empty)]}
            in cssLines "body.file-1 code" cfg
                 @?= ["body.file-1 code { font-family: inherit; font-weight: normal; font-style: normal; color: inherit; background-color: transparent; padding-inline: 0; }"],
         testCase "a file's code style with a background has its rgb() and padding" $
           let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em") Nothing [] False
-              cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("code", code)]) Map.empty Nothing Nothing)]}
+              cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("code", code)]) Map.empty Nothing Nothing Map.empty)]}
            in cssLines "body.file-1 code" cfg
                 @?= ["body.file-1 code { font-family: inherit; font-weight: normal; font-style: normal; color: inherit; background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
         testCase "a file's character style that is not code has no background" $
           let term = HtmlCharStyle Nothing False False Nothing noFeatures False (Just "code-bg") (Just "0.25em") Nothing [] False
-              cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("term", term)]) Map.empty Nothing Nothing)]}
+              cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("term", term)]) Map.empty Nothing Nothing Map.empty)]}
            in cssLines "body.file-1 .cs-term" cfg
                 @?= ["body.file-1 .cs-term { font-family: inherit; font-weight: normal; font-style: normal; color: inherit; }"],
         testCase "a background swatch that is not defined writes no background-color" $
@@ -647,7 +650,7 @@ unescapeXml t = case T.uncons t of
 blockTests :: [TestTree]
 blockTests =
   [ testCase "a table: th in the head, td in the body, the class of each column's alignment" $
-      bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (Table [AlignRight, AlignCenter, AlignLeft, AlignDefault] [[txt "a"], [txt "b"], [txt "c"], [txt "d"]] [[[txt "1"], [txt "2"], [txt "3"], [txt "4"]]])])
+      bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (TableBlock (plainTable [AlignRight, AlignCenter, AlignLeft, AlignDefault] [[txt "a"], [txt "b"], [txt "c"], [txt "d"]] [[[txt "1"], [txt "2"], [txt "3"], [txt "4"]]]))])
         @?= T.concat
           [ "<table>\n<thead>\n",
             "<tr><th class=\"align-right\">a</th><th class=\"align-center\">b</th><th class=\"align-left\">c</th><th>d</th></tr>\n",
@@ -656,8 +659,32 @@ blockTests =
             "</tbody>\n</table>\n"
           ],
     testCase "the cells after the last alignment are not dropped" $
-      bodyA cfg0 (bookOf [Block (at 0) (Just "t") Nothing (Table [AlignLeft] [[txt "a"], [txt "b"]] [[[txt "1"], [txt "2"]], [[txt "3"], [txt "4"]]])])
+      bodyA cfg0 (bookOf [Block (at 0) (Just "t") Nothing (TableBlock (plainTable [AlignLeft] [[txt "a"], [txt "b"]] [[[txt "1"], [txt "2"]], [[txt "3"], [txt "4"]]]))])
         @?= "<table id=\"t\">\n<thead>\n<tr><th class=\"align-left\">a</th><th>b</th></tr>\n</thead>\n<tbody>\n<tr><td class=\"align-left\">1</td><td>2</td></tr>\n<tr><td class=\"align-left\">3</td><td>4</td></tr>\n</tbody>\n</table>\n",
+    testCase "I4: a table without a caption, widths or style is written as before docs/adr/0262" $
+      bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (TableBlock (plainTable [AlignDefault] [[txt "a"]] [[[txt "1"]]]))])
+        @?= "<table>\n<thead>\n<tr><th>a</th></tr>\n</thead>\n<tbody>\n<tr><td>1</td></tr>\n</tbody>\n</table>\n",
+    testCase "a table with a caption: the caption first, the table number in its span and the separator (docs/adr/0262)" $ do
+      let t = (plainTable [AlignDefault] [[txt "a"]] [[[txt "1"]]]) {tableCaption = Just [txt "題目"]}
+          book = (bookOf [Block (at 0) Nothing Nothing (TableBlock t)]) {bookTables = Map.fromList [(at 0, "表1-1")]}
+      bodyA cfg0 book @?= "<table>\n<caption><span class=\"number\">表1-1</span>\x3000題目</caption>\n<thead>\n<tr><th>a</th></tr>\n</thead>\n<tbody>\n<tr><td>1</td></tr>\n</tbody>\n</table>\n"
+      -- the caption is the first child below too; style.css puts it at the bottom
+      bodyA cfg0 {hcTableCaptionBelow = True} book @?= bodyA cfg0 book
+      -- without a number, the caption alone
+      bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (TableBlock t {tableNoNumber = True})]) @?= "<table>\n<caption>題目</caption>\n<thead>\n<tr><th>a</th></tr>\n</thead>\n<tbody>\n<tr><td>1</td></tr>\n</tbody>\n</table>\n",
+    testCase "caption-position below writes caption-side: bottom in style.css, above writes nothing (docs/adr/0262)" $ do
+      cssLines "table > caption" cfg0 {hcTableCaptionBelow = True} @?= ["table > caption { caption-side: bottom; }"]
+      cssLines "table > caption" cfg0 @?= [],
+    testCase "a table with widths has a colgroup: zw in em, a length in pt, % as %, auto without a width (docs/adr/0262)" $ do
+      let t = (plainTable [AlignDefault, AlignDefault, AlignDefault, AlignDefault] [[txt "a"], [txt "b"], [txt "c"], [txt "d"]] []) {tableWidths = [ColumnZw 8, columnAbsolute 655360, ColumnPercent 25, ColumnAuto]}
+      bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (TableBlock t)])
+        @?= "<table>\n<colgroup><col style=\"width: 8em\"/><col style=\"width: 10pt\"/><col style=\"width: 25%\"/><col/></colgroup>\n<thead>\n<tr><th>a</th><th>b</th><th>c</th><th>d</th></tr>\n</thead>\n<tbody>\n</tbody>\n</table>\n",
+    testCase "a table of a paragraph style has its ps- class; style.css writes the font and size of table and of it (docs/adr/0262)" $ do
+      let t = (plainTable [AlignDefault] [[txt "a"]] []) {tableStyle = Just "small"}
+      take 1 (T.lines (bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (TableBlock t)]))) @?= ["<table class=\"ps-small\">"]
+      let cfg = cfg0 {hcTableFaces = Map.fromList [("table", Face Nothing (Just "0.8em")), ("small", Face Nothing (Just "0.7em"))]}
+      cssLines "table" cfg @?= ["table.ps-small th, table.ps-small td { font-size: 0.7em; }", "table:not([class]) th, table:not([class]) td { font-size: 0.8em; }"]
+      cssLines "table" cfg0 {hcTableFaces = Map.fromList [("table", noFace)]} @?= [],
     testCase "a numbered list starts at the number of its first item; a later number is the value of its item" $
       bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (OrderedList [ListItem (Just 3) [para 1 [txt "三"]], ListItem Nothing [para 2 [txt "四"]], ListItem (Just 7) [para 3 [txt "七"]]])])
         @?= "<ol start=\"3\">\n<li>三</li>\n<li>四</li>\n<li value=\"7\">七</li>\n</ol>\n",
@@ -763,7 +790,7 @@ langTests =
         bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (BulletList [ListItem Nothing [para 1 [txt "a"]]]))]) @?= "<ul lang=\"en\" xml:lang=\"en\">\n<li>a</li>\n</ul>\n"
         bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (OrderedList [ListItem Nothing [para 1 [txt "a"]]]))]) @?= "<ol lang=\"en\" xml:lang=\"en\">\n<li>a</li>\n</ol>\n"
         bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (DefList [DefGroup [[txt "t"]] [[para 1 [txt "d"]]]]))]) @?= "<dl lang=\"en\" xml:lang=\"en\">\n<dt>t</dt>\n<dd>\n<p>d</p>\n</dd>\n</dl>\n"
-        assertBool "table" ("<table lang=\"en\" xml:lang=\"en\">" `T.isPrefixOf` bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (Table [AlignDefault] [[txt "a"]] [[[txt "b"]]]))]))
+        assertBool "table" ("<table lang=\"en\" xml:lang=\"en\">" `T.isPrefixOf` bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (TableBlock (plainTable [AlignDefault] [[txt "a"]] [[[txt "b"]]])))]))
         bodyA cfg0 (bookOf [withLang "en" (Block (at 0) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a" (Just 1) Nothing False [] Nothing] False)))]) @?= "<pre lang=\"en\" xml:lang=\"en\"><code>a</code></pre>\n",
       testCase "the blocks of the body of @lang: each with its own attributes, nothing around them" $
         bodyA cfg0 (bookOf [(para 0 [txt "a"]) {blockLang = Just "en"}, (para 1 [txt "b"]) {blockLang = Just "en"}])

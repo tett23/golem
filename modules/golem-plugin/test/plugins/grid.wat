@@ -18,7 +18,7 @@
     (local.set $p (global.get $heap))
     (global.set $heap (i32.add (global.get $heap) (local.get $n)))
     (local.get $p))
-  (func (export "golem_abi_version") (result i32) (i32.const 8))
+  (func (export "golem_abi_version") (result i32) (i32.const 9))
   (func (export "golem_dealloc") (param i32 i32))
   (func (export "golem_describe") (result i64)
     (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 14)))

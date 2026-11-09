@@ -986,6 +986,26 @@ tests =
         fmap stTocLeader (parseStyle (FileId 0) "") @?= Right "dots"
         codes (parseStyle (FileId 0) "[toc]\nleader = \"dash\"\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[toc]\nfont = \"body\"\n") @?= ["G03006"],
+      testCase "[tables] number and caption-position (docs/adr/0262)" $ do
+        fmap stTableNumber (parseStyle (FileId 0) "") @?= Right "表{chapter}-{n}"
+        fmap stTableCaption (parseStyle (FileId 0) "") @?= Right CaptionAbove
+        fmap stTableNumber (parseStyle (FileId 0) "[tables]\nnumber = \"Table {n}\"\n") @?= Right "Table {n}"
+        fmap stTableCaption (parseStyle (FileId 0) "[tables]\ncaption-position = \"above\"\n") @?= Right CaptionAbove
+        fmap stTableCaption (parseStyle (FileId 0) "[tables]\ncaption-position = \"below\"\n") @?= Right CaptionBelow
+        codes (parseStyle (FileId 0) "[tables]\ncaption-position = \"left\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[tables]\ncaption-position = 1\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[tables]\nnumber = \"表\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[tables]\nnumber = \"表{x}\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[tables]\nsize = \"8pt\"\n") @?= ["G03006"],
+      testCase "the built-in table is based on body without indents, and takes no indent, rule or background (docs/adr/0262)" $ do
+        let s = defaultStyle
+            noBase = fmap (\d -> d {psBasedOn = Nothing})
+        noBase (paraStyle s (Just "table")) @?= noBase (paraStyle s Nothing)
+        forM_ ["indent = \"1zw\"", "first-line-indent = \"-1zw\"", "end-indent = \"1mm\"", "rule-before = {}", "background = \"x\"", "padding = \"1mm\""] $ \kv ->
+          codes (parseStyle (FileId 0) ("[color.swatches.x]\ncmyk = [0, 0, 0, 10]\n\n[paragraph-styles.table]\n" <> kv <> "\n")) @?= ["G03006"]
+        let src = "[paragraph-styles.table]\nindent = \"0zw\"\n"
+        codes (parseStyle (FileId 0) src) @?= []
+        [(diagCode d, diagMessage d) | d <- styleNotices (FileId 0) src] @?= [(DiagnosticCode "G03100", "表のセルは字下げを掛けないので、table.indent = \"0zw\" は効果がありません")],
       testCase "a heading font must name a font role (golem-driver ADR 0003)" $ do
         codes (parseStyle (FileId 0) "[headings.1]\nfont = \"nope\"\n") @?= ["G03008"]
         codes (parseStyle (FileId 0) "[fonts.heading]\nlatin = \"h.otf\"\n\n[headings.1]\nfont = \"heading\"\n") @?= [],
@@ -1164,7 +1184,7 @@ styleTests =
         paraStyle s (Just "nope") @?= Nothing
         noBase (paraStyle s (Just "caption")) @?= noBase (paraStyle s Nothing)
         noBase (paraStyle s (Just "sidenote")) @?= noBase (paraStyle s Nothing)
-        Map.keys (stParaStyles s) @?= ["body", "caption", "code", "sidenote", "verse"]
+        Map.keys (stParaStyles s) @?= ["body", "caption", "code", "sidenote", "table", "verse"]
         Map.keys (stCharStyles s) @?= ["bold", "code", "italic", "no-break", "note-mark", "strong", "subscript", "superscript", "url"],
       testCase "a user definition overrides the keys it writes" $ do
         s <- parsed "[paragraph-styles.caption]\nsize = \"0.8zw\"\n"

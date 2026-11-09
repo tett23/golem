@@ -73,6 +73,10 @@ data HtmlConfig = HtmlConfig
     hcCaptionFace :: !Face,
     -- | the font and size of sidenotes (golem-driver ADR 0011)
     hcSidenoteFace :: !Face,
+    -- | the font and size of the cells of tables by the paragraph style of the cells, table and those the book gives to tables (docs/adr/0262)
+    hcTableFaces :: !(Map Text Face),
+    -- | whether the captions of tables are below them, [tables] caption-position (docs/adr/0262)
+    hcTableCaptionBelow :: !Bool,
     hcBibliography :: !(Map Text [EntryPart]), -- key -> formatted entry (golem-doc ADR 0005)
     hcDev :: !Bool,
     -- | [composition.ruby] as CSS ruby-align values (golem-layout ADR 0009)
@@ -232,7 +236,9 @@ data HtmlLocalStyles = HtmlLocalStyles
   { hlCharStyles :: !(Map Text HtmlCharStyle),
     hlParaStyles :: !(Map Text HtmlParaStyle),
     hlCaptionFace :: !(Maybe Face),
-    hlSidenoteFace :: !(Maybe Face)
+    hlSidenoteFace :: !(Maybe Face),
+    -- | the faces of the cells of tables that differ from hcTableFaces (docs/adr/0262)
+    hlTableFaces :: !(Map Text Face)
   }
 
 data XhtmlSite = XhtmlSite
@@ -486,14 +492,24 @@ blockHtml c (Block sp lbl blang body) = case body of
         | DefGroup ts ds <- gs
         ]
       <> "</dl>\n"
-  Table al h rows ->
-    let cls a = case a of
+  TableBlock t ->
+    let al = tableAligns t
+        cls a = case a of
           AlignLeft -> " class=\"align-left\""
           AlignCenter -> " class=\"align-center\""
           AlignRight -> " class=\"align-right\""
           AlignDefault -> ""
         row tag cells = "<tr>" <> T.concat (zipWith (\a x -> "<" <> tag <> cls a <> ">" <> inlines c x <> "</" <> tag <> ">") (al <> repeat AlignDefault) cells) <> "</tr>\n"
-     in "<table" <> idAttr lbl <> ">\n<thead>\n" <> row "th" h <> "</thead>\n<tbody>\n" <> T.concat (map (row "td") rows) <> "</tbody>\n</table>\n"
+        -- the paragraph style of the cells, the built-in table without a class (docs/adr/0262)
+        styleClass = maybe "" (\n -> " class=\"ps-" <> escapeXml n <> "\"") (tableStyle t)
+        -- the caption, the first child whichever side it is on (docs/adr/0262)
+        caption = case tableCaption t of
+          Just is -> "<caption>" <> numberSpan c (Map.lookup sp (bookTables (cBook c))) <> inlines c is <> "</caption>\n"
+          Nothing -> ""
+        colgroup
+          | null (tableWidths t) = ""
+          | otherwise = "<colgroup>" <> T.concat [maybe "<col/>" (\w' -> "<col style=\"width: " <> w' <> "\"/>") (columnWidthCss w) | w <- tableWidths t] <> "</colgroup>\n"
+     in "<table" <> idAttr lbl <> styleClass <> ">\n" <> caption <> colgroup <> "<thead>\n" <> row "th" (tableHeader t) <> "</thead>\n<tbody>\n" <> T.concat (map (row "td") (tableRows t)) <> "</tbody>\n</table>\n"
   CodeBlock code ->
     let co = hcCode (cCfg c)
         lang = codeLang code
@@ -1019,6 +1035,10 @@ css cfg book =
       <> [ faceRule ".sidenote" (hcSidenoteFace cfg) {faSize = Just (fromMaybe "0.85em" (faSize (hcSidenoteFace cfg)))},
            "@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }"
          ]
+      -- the captions of tables below them (docs/adr/0262)
+      <> ["table > caption { caption-side: bottom; }" | hcTableCaptionBelow cfg]
+      -- the font and size of the cells of tables (docs/adr/0262)
+      <> [faceRule (tableCellSelector name) f | (name, f) <- Map.toAscList (hcTableFaces cfg), isJust (faFont f) || isJust (faSize f)]
       -- paragraph styles (docs/adr ADR 0005); body is the plain p
       <> concat [paraRules name ps | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
       -- the spaces before and after (docs/adr/0189)
@@ -1307,6 +1327,8 @@ css cfg book =
           faceDecls f = ["font-family: " <> stackOr (faFont f), "font-size: " <> fromMaybe "inherit" (faSize f)]
           faceRules =
             [rule (pre <> " figcaption") (faceDecls f) | Just f <- [hlCaptionFace l]]
+              -- the cells of tables (docs/adr/0262)
+              <> [rule (T.intercalate ", " [pre <> " " <> sel | sel <- T.splitOn ", " (tableCellSelector name)]) (faceDecls f) | (name, f) <- Map.toAscList (hlTableFaces l)]
               <> [rule (pre <> " .sidenote") (faceDecls f {faSize = Just (fromMaybe "0.85em" (faSize f))}) | Just f <- [hlSidenoteFace l]]
           -- no indent in list items, after the rules of the paragraph styles of the page
           listRule = [pre <> " li p:not([class]), " <> pre <> " li p[class] { padding-inline-start: 0; text-indent: 0; }" | not (Map.null (hlParaStyles l))]
@@ -1343,6 +1365,25 @@ indexPage cfg ft book =
           items,
           "</ol>\n</nav>\n</body>\n</html>\n"
         ]
+
+{- | The cells of the tables of a paragraph style (docs/adr/0262): of a
+table without a class for the built-in table, of table.ps-NAME otherwise.
+-}
+tableCellSelector :: Text -> Text
+tableCellSelector = \case
+  "table" -> "table:not([class]) th, table:not([class]) td"
+  name -> "table.ps-" <> name <> " th, table.ps-" <> name <> " td"
+
+{- | The width of a column as CSS (docs/adr/0262): zw in em, a length as
+the width of a figure, a percentage in % (of the width of the table, not
+of the width the columns share as in the PDF); none for auto.
+-}
+columnWidthCss :: ColumnWidth -> Maybe Text
+columnWidthCss = \case
+  ColumnAuto -> Nothing
+  ColumnZw r -> Just (L.emText r <> "em")
+  ColumnAbs x -> Just (L.ptText x <> "pt")
+  ColumnPercent r -> Just (showRationalDigits 4 r <> "%")
 
 {- | The size of the image of a figure with a width (docs/adr/0190): in a
 horizontal book its width, in a vertical one its height, each with the

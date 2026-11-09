@@ -129,6 +129,7 @@ test-suite golem-driver-test
     SpecimenGeometrySpec
     TateChuYokoSpec
     StylesSpec
+    TableCaptionsSpec
     TableFilesSpec
     TaggedPdfSpec
     UnwritableNumbersSpec

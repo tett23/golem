@@ -110,7 +110,7 @@ Haskell の型（golem-doc の [code: Golem.Doc.IR]）は手で書き、CDDL と
 - マップを使わず、フィールドの順序で区別する。マップのキーの順序に依存しないためである。
 - CBOR は RFC 8949 [cite rfc8949] の決定的な符号化で書く。
 - 整数のフィールドは 64 ビットの符号付き整数（-2 の 63 乗以上、2 の 63 乗未満）に限り、CDDL では [code: int64] と書く。評価が 0 以上の値しか入れない欄（番号、図版のページ、行番号、アキの量）は [code: uint64] と書き、Haskell の型は [code: Natural] である。bignum（CBOR の tag 2 と 3）は書かない。評価器は範囲の外の整数を IR に入れずに G02091 のエラーにし、復号は範囲の外の整数をスキーマの誤りにする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0006-integer-range-in-ir.md]（golem-doc ADR 0006「意味論 IR の大きな整数」）]
-- スキーマの先頭にバージョンを置き、ABI のバージョンと一致させる。ノードやフィールドを足したらバージョンを上げる。今のバージョンは 8 である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0101-rational-numbers-in-expressions.md]（ADR 0101「式の言語の数を自然数、整数、有理数の三つの型にし、浮動小数点数をなくす」）が式の数のリテラルと有理数を足して 8 にした。]
+- スキーマの先頭にバージョンを置き、ABI のバージョンと一致させる。ノードやフィールドを足したらバージョンを上げる。今のバージョンは 9 である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0101-rational-numbers-in-expressions.md]（ADR 0101「式の言語の数を自然数、整数、有理数の三つの型にし、浮動小数点数をなくす」）が式の数のリテラルと有理数を足して 8 にし、v0.1.0-rc4 の後に [style url: https://github.com/tett23/golem/blob/main/docs/adr/0262-table-numbers-captions-column-widths-and-cell-styles.md]（ADR 0262「表の番号とキャプション、列の幅、文字の大きさ」）が表の欄を足して 9 にした。]
 
 ## 文書とブロック
 
@@ -118,7 +118,7 @@ Haskell の型（golem-doc の [code: Golem.Doc.IR]）は手で書き、CDDL と
 ブロックは、ソースの位置、ラベル、本体の三つを持つ。
 
 ```cddl
-document = [abi-version: 8, file: uint64, blocks: [* block]]
+document = [abi-version: 9, file: uint64, blocks: [* block]]
 span = [file: uint64, start: uint64, end: uint64]
 block = [span, label: tstr / null, body: block-body]
 ```
@@ -134,17 +134,19 @@ diagnostic の位置と同じ単位で、プラグインの出力の位置の検
 | 2 | 箇条書き | 項目の列 |
 | 3 | 番号付きリスト | 項目の列 |
 | 4 | 定義リスト | 用語と説明の組の列 |
-| 5 | 表 | 列の揃え、見出しの行、本体の行 |
 | 6 | コードブロック | コード（言語の名前、行番号の有無、ファイル名、キャプション、差分か、行の列） |
 | 7 | 図版 | パス、代替テキスト、キャプションなど |
 | 8 | チャネルの出力 | 目次、索引、参考文献のどれか |
 | 10 | 段落 | 段落スタイルの名前、インラインの列 |
 | 11 | 強制の改ページ | ページ、奇数、偶数、段のどれか |
 | 12 | 改ページの手での制御 | 改ページの禁止、要る行数、段の行数の増減のどれか |
+| 14 | 表 | 列の揃え、列の幅、キャプション、表番号を外すか、セルの段落スタイル、見出しの行、本体の行 |
 
 段落の段落スタイルの名前が [code: null] なら、[code: body] で組む段落である。
 タグの 0（段落スタイルのない段落）と 9（韻文）は廃止した番号である。
 段落が段落スタイルの名前を持つようになり、韻文も段落スタイル [code: verse] の段落になったので、使わなくなった。
+タグの 5（列の揃えと行だけの表）も廃止した番号である。
+表がキャプションと列の幅とセルの段落スタイルを持つようになり、欄の形が変わったので、新しいタグの 14 にした。
 
 図版のキャプションはブロックの列だが、置けるのは段落だけである。
 どの出力もキャプションの段落だけを組むので、評価は原稿のほかのブロックを G02118 で除き、プラグインの出力のほかのブロックは不変条件の違反（G06009）にする。
@@ -457,7 +459,7 @@ S1 は、[code: @index] と同じ規則で項目を一覧ごとの範囲に分�
 結果は [code: Doc.Book] の [code: bookChannels]（一覧ごとの位置、チャネルの名前、エントリの列）に入る。
 宣言は [code: bookChannelDecls] に入り、出力の経路は [code: locators] を見てページ番号かリンクを付ける。
 PDF の出現の位置のページは、索引の印と同じアンカー（[code: AnchorIndex]）で追う。
-ABI のバージョンは 8 である（第[ref-number plugins]章の「呼び出し規約」の節）。
+ABI のバージョンは 9 である（第[ref-number plugins]章の「呼び出し規約」の節）。
 
 ## レイアウト IR
 

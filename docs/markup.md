@@ -408,6 +408,35 @@ v1 で定めるブロックコマンドは次のとおりである。
 セルの中身はインラインの要素に限る。
 セルの結合と、セルの中のブロックは扱わない。
 
+表には、直前の行に四つの属性を付けられる（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+`|` の表にも `@table` にも同じく付く。
+改行の様式でも、属性は直後の表の全体に付く。
+
+```
+@label tbl-formats
+@caption 出力の形式
+@column-widths 8zw auto
+@style small-table
+| 形式 | 用途 |
+|---|---|
+| PDF | 印刷 |
+| EPUB | 電子書籍 |
+```
+
+- `@caption 本文`：表のキャプションである。書き方はコードブロックの `@caption` と同じで、本文は行の残りであり、インラインの要素を書ける。本文のない `@caption` はエラー（G02069）になる。キャプションのある表は表番号（既定 `表{chapter}-{n}`）を持つ。
+- `@nonumber`：キャプションのある表に、表番号を振らない。番号を消費しない。キャプションのない表への `@nonumber` はエラー（G02134）になる。
+- `@style 段落スタイル`：表のセルに当てる段落スタイルである。書かなければ組み込みの `table` を当てる。定義されていない名前はエラー（G02047）になる。
+- `@column-widths 幅...`：列の幅を左の列から順に並べる。値は `auto`、寸法（`mm`、`pt`、`Q`、`H`、`in`、`zw`）、割合（`%`）で、数の書き方は図版の `width` と同じである。値を一つだけ書けば、すべての列に当てる。二つ以上書くときは、列の数と同じ数を書く。
+
+`@column-widths` の `zw` は、セルに当てる段落スタイルの文字の大きさを一字とする。
+`%` は、行長から列の間隔の和を引いた幅（列が分け合う幅）に対する割合であり、`50% 50%` の二列の表は列の間隔を除いた行長をちょうど分ける。
+値が読めないとき（`auto`、寸法、割合のどれでもない、0、式）は値ごとにエラー（G02135）、値の数が一つでも列の数でもないときはエラー（G02136）とし、どちらも `@column-widths` を捨てて、すべての列を `auto` として組む。
+表でないブロックへの `@column-widths` はエラー（G02013）になる。
+PDF では、指定した幅の和が列の分け合う幅を超えるとエラー（G07114）、指定した幅がその列のセルの最小の幅より狭いとエラー（G07115）になり、表を組まない。
+
+キャプションを置く側は、`style.toml` の `[tables]` の `caption-position`（`"above"` か `"below"`、既定 `"above"`）で本ごとに決める。
+表ごとには変えられない。
+
 データの表は、`@table` で CSV か TSV のファイルから作れる（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
 
 ```
@@ -586,12 +615,15 @@ main = do
 段落の字下げは段落スタイルの `indent`（すべての行）と `first-line-indent`（最初の行に加える量。負ならぶら下げ）で指定する（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
 既定は 0 なので、段落スタイルで字下げを指定する場合は、段落の先頭の全角の空白を書かない。
 
-組み込みの段落スタイルは `body`、`verse`、`caption`、`sidenote`、`code` の五つである。
+組み込みの段落スタイルは `body`、`verse`、`caption`、`sidenote`、`table`、`code` の六つである。
 `code` はコードブロックを組む段落スタイルで、原稿の `@style` には書けない（「コードブロック」の節を参照）。
 段落スタイルを付けない段落は `body` で組む。
 `caption` と `sidenote` は、図版のキャプションと傍注の本文の書体と大きさを決める段落スタイルでもある。
-`caption` と `sidenote` は `body` の字下げを引き継がず、`@style caption` や `@style sidenote` を付けた段落も字下げなしで組む（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
-`@style-def paragraph caption` と `@style-def paragraph sidenote` に 0 でない `indent` か `first-line-indent` を書くとエラー（G03006）、0 を書くと効果がないことを知らせる notice（G03100）になる。
+`table` は表のセルの段落スタイルの既定であり、`@style` で表ごとに替えられる（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+既定では本文と同じ書体と大きさで組む。
+表のセルには、段落スタイルの `font`、`size`、`aki-set`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`regex-styles` を当て、ほかの欄（`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ、罫線、背景）は当てない。
+`caption`、`sidenote`、`table` は `body` の字下げを引き継がず、`@style caption` や `@style sidenote` を付けた段落も字下げなしで組む（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
+`@style-def paragraph caption`、`@style-def paragraph sidenote`、`@style-def paragraph table` に 0 でない `indent` か `first-line-indent` を書くとエラー（G03006）、0 を書くと効果がないことを知らせる notice（G03100）になる。
 
 スタイルの名前は、英小文字で始まり、英小文字、数字、`-` だけからなる。
 そのファイルでだけ使う段落スタイルは、ファイルの先頭の `@style-def paragraph` でも定義できる（「ファイルの設定」の節を参照）。
@@ -655,7 +687,8 @@ InDesign の `~` で始まるメタ文字（`~m` など）も使えない。
 
 - 一致は段落ごとに求め、段落をまたがない。
 - 段落にはその段落スタイル（付けなければ `body`）の並びを、図版のキャプションには `caption` の並びを、傍注の本文には `sidenote` の並びを当てる。リストの項目と定義リストの説明の段落にも当てる。
-- 脚注の本文、見出し、定義リストの用語、表のセル、目次、索引、参考文献には当てない。
+- 表のセルには、セルの段落スタイル（`@style` を付けた表はその段落スタイル、ほかは `table`）の並びを、セルを一つの段落として当てる（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+- 脚注の本文、見出し、定義リストの用語、表とコードブロックのキャプション、目次、索引、参考文献には当てない。
 - ルビは親文字だけに一致し、読みには一致しない。
 - 縦中横、数の表記（`[number-text ...]`）、相互参照、`[= ...]` で `doc` を参照した値、文献の引用、脚注と傍注の位置は、それぞれ一字として扱い、中の文字には一致しない。たとえば `[0-9]+` は縦中横の数字に一致しない。
 - 強制改行は `\n` として一致の対象になるが、文字スタイルは強制改行をまたがない。
@@ -711,7 +744,7 @@ PDF では、版面の行長を超えた行を折り返し、折り返した部�
   Full fathom five thy father lies;
 ```
 
-`@style` を属性として付けられるのは段落だけである。
+`@style` を属性として付けられるのは段落と表だけである（表は「表」の節を参照）。
 `@lang` は、どの種類のブロックにも付けられる（「言語」の節を参照）。
 `@lang` を二つ付ければ、`@label` を二つ書いたときと同じくエラー（G02012）になり、後に書いたものが勝つ。
 
@@ -722,9 +755,9 @@ PDF では、版面の行長を超えた行を折り返し、折り返した部�
 - `@nonumber`：番号を振らない。この見出しは番号を消費しない。
 - `@notoc`：目次に載せない。
 
-`@nonumber` は、図版（`@figure`）とコードブロック（```` ``` ```` と `@listing`）にも付けられる（[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)）。
-その図版とコードブロックは図番号とリスト番号を持たず、番号を消費しない。
-キャプションのないコードブロックへの `@nonumber` はエラー（G02134）とし、ほかのブロック（段落、リスト、表など）への `@nonumber` はエラー（G02013）とする。
+`@nonumber` は、図版（`@figure`）とコードブロック（```` ``` ```` と `@listing`）と表にも付けられる（[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)、[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+その図版とコードブロックと表は図番号とリスト番号と表番号を持たず、番号を消費しない。
+キャプションのないコードブロックと表への `@nonumber` はエラー（G02134）とし、ほかのブロック（段落、リストなど）への `@nonumber` はエラー（G02013）とする。
 
 `@number` は番号付きリストの項目にも付けられ、リストを途中の番号から始めるのに使う。
 `@number` の `N` は 0 以上、2 の 63 乗未満の整数に限る。
@@ -736,7 +769,8 @@ PDF では、版面の行長を超えた行を折り返し、折り返した部�
 コードブロックと `@listing` には、`@caption 本文` でキャプションを付けられる（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 本文は `@toc-title` と同じく行の残りであり、`[code: ...]` のようなインラインの要素を書ける。
 キャプションを付けたコードブロックはリスト番号を持ち、`@label` を付ければ `[ref-number ...]` と `[ref-title ...]` で参照できる。
-コードブロックのほかのブロックに `@caption` を付けるとエラー（G02013）、本文のない `@caption` はエラー（G02069）とする。
+表にも同じ形で `@caption` を付けられ、表番号を持つ（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+コードブロックと表のほかのブロックに `@caption` を付けるとエラー（G02013）、本文のない `@caption` はエラー（G02069）とする。
 図版のキャプションは、今のとおり `@figure` の字下げした行で書く。
 
 ### 行アキ

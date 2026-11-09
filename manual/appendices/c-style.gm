@@ -189,7 +189,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 
 段落スタイルです。
 名前の付け方は文字スタイルと同じです。
-[code: body]、[code: verse]、[code: caption]、[code: sidenote]、[code: code] ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
+[code: body]、[code: verse]、[code: caption]、[code: sidenote]、[code: table]、[code: code] ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
 
 | キー | 意味 |
 |:---|:---|
@@ -228,7 +228,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 間隔は [code: mm]、[code: pt]、[code: Q]、[code: H]、[code: in]、[code: zw] のどれでも書けます。
 間隔の [code: zw] は、PDF でも HTML と EPUB でも、版面の文字の大きさ（[code: \[page.grid\]] の [code: font-size]）を一字とします。
 罫線が仕上がりの線か段間の半分を超えると、版面を計算できないエラー（G07001）です。
-[code: true] を書いたとき、[code: caption]、[code: sidenote]、[code: code] に書いたとき、[code: @style-def] に書いたときはエラー（G03006）です。
+[code: true] を書いたとき、[code: caption]、[code: sidenote]、[code: table]、[code: code] に書いたとき、[code: @style-def] に書いたときはエラー（G03006）です。
 罫線を持つ段落が一ページ（一段）に入らないときは、お知らせ（G07046）を出し、前と後の罫線を省いて分けて組みます。
 
 [code: regex-styles] の組は、[code: pattern]（正規表現）と [code: style]（文字スタイルの名前）を持ちます。
@@ -243,11 +243,14 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 - [code: verse]：韻文です。[code: line-breaks = "keep"]、[code: space-between = 1]、[code: space-before = 1]、[code: space-after = 1]、[code: indent = "2zw"]、[code: first-line-indent = "-2zw"] です。
 - [code: caption]：図版のキャプションです。[code: indent = "0zw"]、[code: first-line-indent = "0zw"]、[code: end-indent = "0zw"] で、[code: body] の字下げを引き継ぎません。
 - [code: sidenote]：傍注の本文です。[code: caption] と同じく、字下げは 0 です。
+- [code: table]：表のセルです。[code: caption] と同じく、字下げは 0 です。既定では本文と同じ書体と大きさで組みます。表に [code: @style] を付けなかったときに当てます。本文より小さい文字の表にするなら、ここに [code: size] を書きます。
 
-[code: caption] と [code: sidenote] には、0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書けません。
+[code: caption]、[code: sidenote]、[code: table] には、0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書けません。
 書くとエラー（G03006）です。
 0 を書いたときは、組んだ結果が変わらないことを知らせるお知らせ（G03100）を出します。
-キャプションと傍注の本文に適用されるのは、[code: font]、[code: size]、[code: regex-styles] と、PDF では [code: aki-set] と文字の送りの四つのキーです。
+キャプションと傍注の本文と表のセルに適用されるのは、[code: font]、[code: size]、[code: regex-styles] と、PDF では [code: aki-set] と文字の送りの四つのキーです。
+表のセルには、[code: @style] で付けた段落スタイルのこれらのキーを当て、字下げなどのほかのキーは当てません。
+PDF では、表の行がセルの全体を収める最も少ない行を占めるので、小さい文字の表も行の格子を崩しません。
 [code: line-breaks]、[code: space-between]、[code: space-before]、[code: space-after]、[code: align] は、原稿で [code: @style caption] のように付けた段落にだけ適用されます。
 - [code: code]：コードブロックです。[code: font = "code"]、[code: padding = "0.5zw"] です。
 
@@ -402,6 +405,19 @@ HTML、EPUB、プレーンテキストには線を出しません。
 |:---|:---|
 | [code: number] | 図番号の書式です。既定は [code: "図{chapter}-{n}"] で、「図2-1」のように組みます。 |
 | [code: wrap-gap] | 回り込ませた図版と本文のあいだの空きです。既定は [code: "1zw"] です。 |
+
+@nonumber
+## [code: \[tables\]]
+
+キャプションを付けた表の番号と、キャプションの位置を決めます。
+
+| キー | 意味 |
+|:---|:---|
+| [code: number] | 表番号の書式です。[code: {n}] などの差し込みを必ず含めます。既定は [code: "表{chapter}-{n}"] で、「表2-1」のように組みます。 |
+| [code: caption-position] | 表のキャプションを置く側です。[code: "above"]（横組みでは上、縦組みでは右）か [code: "below"]（横組みでは下、縦組みでは左）を書きます。既定は [code: "above"] です。 |
+
+キャプションの位置は本ごとに一つで、表ごとには変えられません。
+PDF では、上のキャプションは見出しの行と本体の最初の行と、下のキャプションは本体の最後の行と、同じページに置きます。
 
 @nonumber
 ## [code: \[code\]] と [code: \[code.colors\]]

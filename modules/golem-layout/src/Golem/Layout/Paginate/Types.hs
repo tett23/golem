@@ -75,9 +75,11 @@ data Flow
     FContinued [LineBox]
   | {- | a table: the grid lines of space before it (not at the first line
     of a column), its header row (none when empty) and body rows, in grid
-    lines (golem-driver ADR 0008, 0031)
+    lines (golem-driver ADR 0008, 0031), and the grid lines of its caption
+    (none without one), before the header row or, with 'ftCaptionBelow',
+    after the last row (docs/adr/0262)
     -}
-    FTable {ftId :: !Int, ftSpaceBefore :: !Int, ftHeader :: ![LineBox], ftRows :: ![[LineBox]]}
+    FTable {ftId :: !Int, ftSpaceBefore :: !Int, ftHeader :: ![LineBox], ftRows :: ![[LineBox]], ftCaption :: ![LineBox], ftCaptionBelow :: !Bool}
   | {- | empty grid lines, as between stanzas of verse (docs/adr ADR 0003);
     nothing at the top of a page
     -}

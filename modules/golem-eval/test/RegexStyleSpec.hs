@@ -90,7 +90,7 @@ tests =
         validateDocument (const (Just 100)) [] (doc [Paragraph Nothing out]) @?= [],
       testCase "headings, table cells and terms are not matched; list items are" $ do
         let h = Heading 1 noHeadingAttrs [t "1"]
-            tbl = Table [AlignDefault] [[t "1"]] [[[t "2"]]]
+            tbl = TableBlock (plainTable [AlignDefault] [[t "1"]] [[[t "2"]]])
             dl = DefList [DefGroup [[t "1"]] [[Block sp Nothing Nothing (Paragraph Nothing [t "2"])]]]
             ul = BulletList [ListItem Nothing [Block sp Nothing Nothing (Paragraph Nothing [t "3"])]]
         bodies digits [h, tbl, dl, ul]
@@ -116,7 +116,7 @@ tests =
                       $ Map.insert "plain" noParaDef {psRegexStyles = Just []} (stParaStyles defaultStyle)
                 }
             r = regexRules st
-        Map.keys r @?= ["body", "caption", "quote", "sidenote", "verse"]
+        Map.keys r @?= ["body", "caption", "quote", "sidenote", "table", "verse"]
         map snd (Map.findWithDefault [] "quote" r) @?= ["bold"]
     ]
   where

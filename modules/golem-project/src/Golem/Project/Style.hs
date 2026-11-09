@@ -27,6 +27,7 @@ module Golem.Project.Style
     alignValues,
     ParaStyleDef (..),
     CodeStyle (..),
+    CaptionPosition (..),
     defaultCodeStyle,
     RegexStyleDef (..),
     regexStyleKeys,
@@ -549,7 +550,7 @@ markSizeOver :: Maybe Dim -> Maybe Text -> Map Text CharStyleDef -> Map Text Cha
 markSizeOver (Just d) Nothing = Map.adjust (\c -> c {csSize = Just d}) "note-mark"
 markSizeOver _ _ = id
 
--- | The built-in paragraph styles: body, verse (a line before and after it, docs/adr/0180), caption, sidenote and code (golem-driver ADR 0017).
+-- | The built-in paragraph styles: body, verse (a line before and after it, docs/adr/0180), caption, sidenote, table (docs/adr/0262) and code (golem-driver ADR 0017).
 builtinParaStyles :: Map Text ParaStyleDef
 builtinParaStyles =
   Map.fromList
@@ -558,19 +559,27 @@ builtinParaStyles =
       -- caption and sidenote do not take the indents of body (golem-driver ADR 0043)
       ("caption", noIndents {psBasedOn = Just "body"}),
       ("sidenote", noIndents {psBasedOn = Just "body"}),
+      -- the cells of tables, as caption (docs/adr/0262)
+      ("table", noIndents {psBasedOn = Just "body"}),
       ("code", noParaDef {psFont = Just "code", psPadding = Just (Zw (1 % 2))})
     ]
   where
     noIndents = noParaDef {psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0), psEndIndent = Just (Zw 0)}
 
-{- | The non-zero indent keys written for caption or sidenote, which do not
-indent (golem-driver ADR 0043): (the name of the style, the key). A zero
-one is the notice G03100.
+{- | The paragraph styles that never indent: caption, sidenote
+(golem-driver ADR 0043) and table (docs/adr/0262).
+-}
+unindentedStyles :: [Text]
+unindentedStyles = ["caption", "sidenote", "table"]
+
+{- | The non-zero indent keys written for caption, sidenote or table, which
+do not indent (golem-driver ADR 0043, docs/adr/0262): (the name of the
+style, the key). A zero one is the notice G03100.
 -}
 captionIndentKeys :: Map Text ParaStyleDef -> [(Text, Text)]
 captionIndentKeys styles =
   [ (n, k)
-  | n <- ["caption", "sidenote"],
+  | n <- unindentedStyles,
     Just d <- [Map.lookup n styles],
     (k, Just v) <- indentKeysOf d,
     not (zeroDim v)
@@ -578,7 +587,7 @@ captionIndentKeys styles =
 
 -- | The indent keys of a definition of caption or sidenote whose value is zero (G03100, golem-driver ADR 0043).
 captionZeroIndentKeys :: Text -> ParaStyleDef -> [Text]
-captionZeroIndentKeys n d = [k | n `elem` ["caption", "sidenote"], (k, Just v) <- indentKeysOf d, zeroDim v]
+captionZeroIndentKeys n d = [k | n `elem` unindentedStyles, (k, Just v) <- indentKeysOf d, zeroDim v]
 
 indentKeysOf :: ParaStyleDef -> [(Text, Maybe Dim)]
 indentKeysOf d = [("indent", psIndent d), ("first-line-indent", psFirstLineIndent d), ("end-indent", psEndIndent d)]
@@ -601,7 +610,7 @@ styleNotices fid src = case Toml.parse src of
   Right top ->
     let root = Table' (Position 0 1 1) top
      in [ notice "G03100" (spanAt pos) (captionZeroIndentMessage n k ("\"" <> t <> "\""))
-        | n <- ["caption", "sidenote"],
+        | n <- unindentedStyles,
           k <- ["indent", "first-line-indent", "end-indent"],
           Just (Text' pos t) <- [lookupValue root ["paragraph-styles", n, k]],
           Just v <- [parseSignedDim t],
@@ -638,11 +647,17 @@ styleNotices fid src = case Toml.parse src of
 
 -- | The message of G03100: a zero indent of caption or sidenote, with the value as written (golem-driver ADR 0043).
 captionZeroIndentMessage :: Text -> Text -> Text -> Text
-captionZeroIndentMessage n k v = "キャプションと傍注は字下げを掛けないので、" <> n <> "." <> k <> " = " <> v <> " は効果がありません"
+captionZeroIndentMessage n k v = unindented n <> "は字下げを掛けないので、" <> n <> "." <> k <> " = " <> v <> " は効果がありません"
+
+-- | What a paragraph style that never indents sets, in a message (golem-driver ADR 0043, docs/adr/0262).
+unindented :: Text -> Text
+unindented = \case
+  "table" -> "表のセル"
+  _ -> "キャプションと傍注"
 
 -- | The message of an indent key of caption or sidenote (golem-driver ADR 0043).
 captionIndentMessage :: Text -> Text -> Text
-captionIndentMessage n k = "段落スタイル " <> n <> " には 0 でない indent、first-line-indent、end-indent を書けません。キャプションと傍注は字下げをしません: " <> k
+captionIndentMessage n k = "段落スタイル " <> n <> " には 0 でない indent、first-line-indent、end-indent を書けません。" <> unindented n <> "は字下げをしません: " <> k
 
 -- | The keys the paragraph style code takes (golem-driver ADR 0017).
 codeParaKeys :: [Text]
@@ -1445,6 +1460,10 @@ data Style = Style
     stNotesBodyMarkStyle :: !(Maybe Text),
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
+    -- | [tables] number: the format of table numbers (docs/adr/0262)
+    stTableNumber :: !Text,
+    -- | [tables] caption-position: the side of the captions of tables (docs/adr/0262)
+    stTableCaption :: !CaptionPosition,
     stWrapGap :: !Dim,
     stIntent :: !(Maybe FilePath),
     stSwatches :: !(Map Text Swatch),
@@ -1487,6 +1506,8 @@ defaultStyle =
       stNotesBodyMarkStyle = Nothing,
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
+      stTableNumber = "表{chapter}-{n}",
+      stTableCaption = CaptionAbove,
       stWrapGap = Zw 1,
       stIntent = Nothing,
       stSwatches = Map.empty,
@@ -2079,6 +2100,18 @@ instance FromValue CodeSec where
 
 data Figures = Figures (Maybe Text) (Maybe Dim)
 
+{- | The side of the captions of tables (docs/adr/0262): above is before
+the table (on its right in vertical text), below after it (on its left).
+-}
+data CaptionPosition = CaptionAbove | CaptionBelow
+  deriving stock (Eq, Show)
+
+-- | [tables] (docs/adr/0262): the number format and the side of the captions.
+data TablesSec = TablesSec (Maybe Text) (Maybe Text)
+
+instance FromValue TablesSec where
+  fromValue = parseTableFromValue (TablesSec <$> optKey "number" <*> enumKey "caption-position" captionPositionValues)
+
 instance FromValue Figures where
   fromValue = parseTableFromValue (Figures <$> optKey "number" <*> dimKey "wrap-gap")
 
@@ -2183,6 +2216,7 @@ instance FromValue Style where
           _ -> pure notes
     side <- optKey "sidenotes"
     Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
+    TablesSec tnum tcap <- fromMaybe (TablesSec Nothing Nothing) <$> optKey "tables"
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
     masters <- fromMaybe Map.empty <$> optKey "masters"
     (_ :: Maybe VerseV) <- optKey "verse"
@@ -2218,6 +2252,8 @@ instance FromValue Style where
           stNotesBodyMarkStyle = nbst,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
+          stTableNumber = fromMaybe (stTableNumber d) tnum,
+          stTableCaption = if tcap == Just "below" then CaptionBelow else CaptionAbove,
           stWrapGap = fromMaybe (stWrapGap d) fgap,
           stIntent = T.unpack <$> intent,
           stSwatches = swatches,
@@ -2394,6 +2430,7 @@ numberFormatChecks s =
       | (path, f) <-
           (styleKeys ["figures", "number"], stFigureNumber s)
             : (styleKeys ["code", "number"], cdNumber (stCode s))
+            : (styleKeys ["tables", "number"], stTableNumber s)
             -- the format of a folio reads as the other number formats (docs/adr/0177)
             : [(styleKeys ["masters", m, "folio", "format"], f) | (m, MasterDef {mdFolio = Just (_, f)}) <- Map.toList (stMasters s)],
         not (validNumberFormat f)
@@ -2404,6 +2441,8 @@ numberFormatChecks s =
            ]
         -- a listing number has a placeholder (golem-driver ADR 0023)
         <> [(styleKeys ["code", "number"], "[code] の number には {n} などの差し込みを書きます: " <> cdNumber (stCode s)) | not ("{" `T.isInfixOf` cdNumber (stCode s))]
+        -- likewise a table number (docs/adr/0262)
+        <> [(styleKeys ["tables", "number"], "[tables] の number には {n} などの差し込みを書きます: " <> stTableNumber s) | not ("{" `T.isInfixOf` stTableNumber s)]
   ]
 
 -- | G03006: the names of the character and paragraph styles.
@@ -2550,7 +2589,7 @@ ruleStyleChecks s =
   | (n, path, m) <-
       [ (n, rulePath n d, "段落スタイル " <> n <> " には rule-before と rule-after を書けません")
       | (n, d) <- Map.toList (stParaStyles s),
-        n `elem` ["caption", "sidenote", "code"],
+        n `elem` ["caption", "sidenote", "table", "code"],
         isJust (psRuleBefore d) || isJust (psRuleAfter d)
       ]
         <> case stPage s >>= pageGrid of
@@ -2908,6 +2947,10 @@ placementValues = ["page-foot", "chapter-end"]
 numberingValues = ["chapter", "file", "book"]
 leaderValues = ["dots", "none"]
 
+-- | [tables] caption-position (docs/adr/0262).
+captionPositionValues :: [Text]
+captionPositionValues = ["above", "below"]
+
 -- | The values of align, in the order of 'ParaAlign' (docs/adr/0189).
 alignValues :: [Text]
 alignValues = ["left", "center", "right", "left-justified", "center-justified", "right-justified", "fully-justified", "towards-spine", "away-from-spine"]
@@ -2939,6 +2982,7 @@ styleSchema =
       ("notes", notesNode),
       ("sidenotes", NTable [("side", enum sideValues), ("width", dim), ("gap", dim), ("font", NRejected), ("size", NRejected), ("marker", enum markerValues)]),
       ("figures", NTable [("number", str), ("wrap-gap", dim)]),
+      ("tables", NTable [("number", str), ("caption-position", enum captionPositionValues)]),
       ("color", NTable [("intent", str), ("swatches", NNamed (Just Swatches) (NTable [("cmyk", NArray int)]))]),
       ("masters", NNamed (Just Masters) masterNode),
       ("verse", NRejected),

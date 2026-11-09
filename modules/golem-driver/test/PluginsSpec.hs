@@ -12,7 +12,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Assemble (Book (..), inlineText)
-import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), NumberStyle (..), RubySegment (..))
+import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), NumberStyle (..), RubySegment (..), Table (..))
 import Golem.Driver
 import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
 import Golem.Eval.Builtin (BuiltinInline (..), builtinName, unPluginCommandName)
@@ -533,7 +533,7 @@ withTsvTable decl source files k = withSystemTempDirectory "golem-tsv" $ \tmp ->
 -- | A table without its spans: the alignments and the texts of the cells.
 tableShape :: BlockBody -> Maybe (String, [[T.Text]], [[[T.Text]]])
 tableShape = \case
-  Table al h rows -> Just (show al, map texts h, map (map texts) rows)
+  TableBlock Table {tableAligns = al, tableHeader = h, tableRows = rows} -> Just (show al, map texts h, map (map texts) rows)
   _ -> Nothing
 
 salesTsv :: BS.ByteString
@@ -557,7 +557,7 @@ tsvTableTests =
       withTsvTable "data = { sales = \"s.tsv\" }\n" "@tsv-table sales\n" [("s.tsv", "a\nb\n")] $ \tmp -> do
         (bs, _) <- blocksOf tmp
         case bs of
-          [Block sp _ _ (Table _ [[Text csp "a"]] [[[Text rsp "b"]]])] -> do
+          [Block sp _ _ (TableBlock Table {tableHeader = [[Text csp "a"]], tableRows = [[[Text rsp "b"]]]})] -> do
             (spanStart sp, spanEnd sp) @?= (0, 17)
             csp @?= sp
             rsp @?= sp
@@ -581,7 +581,7 @@ tsvTableTests =
         (bs, ds) <- blocksOf tmp
         ds @?= []
         case map blockBody bs of
-          [BulletList [ListItem _ [_, Block _ _ _ (Table {})]]] -> pure ()
+          [BulletList [ListItem _ [_, Block _ _ _ (TableBlock _)]]] -> pure ()
           other -> assertFailure (show other),
     testCase "the errors of the TSV are the plugin's, at the call, and give no table" $
       withTsvTable "data = { sales = \"s.tsv\" }\n" "@tsv-table sales\n\n@tsv-table costs\n" [("s.tsv", "a\tb\n1\n")] $ \tmp -> do

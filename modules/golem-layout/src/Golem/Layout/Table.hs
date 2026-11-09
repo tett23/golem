@@ -8,13 +8,16 @@ module Golem.Layout.Table
   ( cellExtent,
     TableError (..),
     columnWidths,
+    specifiedWidth,
+    tableColumnWidths,
     SetCell (..),
     SetTable (..),
     layoutTable,
   )
 where
 
-import Golem.Doc.IR (Alignment (..))
+import Data.Maybe (catMaybes, isJust)
+import Golem.Doc.IR (Alignment (..), ColumnWidth (..))
 import Golem.Layout.KnuthPlass
 
 {- | The minimum width of a cell (its widest piece between break
@@ -43,8 +46,17 @@ cellExtent items = (maximum (0 : segments), natural)
       Just Box {} -> True
       _ -> False
 
--- | The minimum widths do not fit: their sum and the width available.
-data TableError = ColumnsTooWide !Sp !Sp
+{- | Why the columns of a table cannot be set: the minimum widths of the
+auto columns do not fit, their sum and the width available (G07041); the
+specified widths exceed the width the columns share, their sum and that
+width (G07114, docs/adr/0262); a column specified narrower than its
+minimum width, its index from 0, its width and its minimum width
+(G07115).
+-}
+data TableError
+  = ColumnsTooWide !Sp !Sp
+  | WidthsTooWide !Sp !Sp
+  | ColumnTooNarrow !Int !Sp !Sp
   deriving stock (Eq, Show)
 
 {- | Column widths from the width available and each column's (minimum,
@@ -73,6 +85,44 @@ columnWidths available cols
       | lo >= hi = lo
       | otherwise = let mid = Sp (unSp (lo + hi + 1) `div` 2) in if fits mid then search mid hi else search lo (mid - 1)
 
+{- | A specified width in sp (docs/adr/0262): zw of the size of the cells,
+a percentage of the width the columns share, each truncated to sp;
+Nothing for auto.
+-}
+specifiedWidth :: Sp -> Sp -> ColumnWidth -> Maybe Sp
+specifiedWidth size shared = \case
+  ColumnAuto -> Nothing
+  ColumnZw q -> Just (Sp (floor (fromInteger (unSp size) * q)))
+  ColumnAbs x -> Just x
+  ColumnPercent q -> Just (Sp (floor (fromInteger (unSp shared) * q / 100)))
+
+{- | The widths of the columns (docs/adr/0262): from the width the columns
+share, the size of the cells, the specified widths ([] is every column
+auto) and each column's (minimum, natural) width. A specified width is
+used as it is; the auto columns share what the specified ones leave, as
+'columnWidths'. Every error found is returned: G07114 when the specified
+widths exceed the width, G07115 for each column specified narrower than
+its minimum, and G07041 for the auto columns only when neither of the
+others is.
+-}
+tableColumnWidths :: Sp -> Sp -> [ColumnWidth] -> [(Sp, Sp)] -> Either [TableError] [Sp]
+tableColumnWidths shared size specs cols =
+  let specified = zipWith (\w _ -> specifiedWidth size shared w) (specs <> repeat ColumnAuto) cols
+      fixedSum = sum (catMaybes specified)
+      -- only widths written exceed: without them, the auto columns are G07041
+      over = [WidthsTooWide fixedSum shared | any isJust specified, fixedSum > shared]
+      narrow = [ColumnTooNarrow i w mn | (i, Just w, (mn, _)) <- zip3 [0 ..] specified cols, w < mn]
+      autos = [c | (Nothing, c) <- zip specified cols]
+   in case over <> narrow of
+        [] -> case columnWidths (shared - fixedSum) autos of
+          Left e -> Left [e]
+          Right ws -> Right (fill specified ws)
+        errs -> Left errs
+  where
+    fill (Just w : rest) ws = w : fill rest ws
+    fill (Nothing : rest) (w : ws) = w : fill rest ws
+    fill _ _ = []
+
 data SetCell = SetCell
   { -- | from the start of the table: the column's position and the alignment of the first line
     scOffset :: !Sp,
@@ -95,11 +145,12 @@ data SetTable = SetTable
   deriving stock (Eq, Show)
 
 {- | Lays out a table: the line breaking parameters, the measure, the gap
-between columns, the alignments, the items of the header cells and of
-each row's cells. Cells never protrude or hang into the gaps.
+between columns (one character of the cells), the specified widths of
+the columns (docs/adr/0262), the alignments, the items of the header
+cells and of each row's cells. Cells never protrude or hang into the gaps.
 -}
-layoutTable :: Params -> Sp -> Sp -> [Alignment] -> [[Item]] -> [[[Item]]] -> Either TableError SetTable
-layoutTable params measure gap aligns header rows = do
+layoutTable :: Params -> Sp -> Sp -> [ColumnWidth] -> [Alignment] -> [[Item]] -> [[[Item]]] -> Either [TableError] SetTable
+layoutTable params measure gap specs aligns header rows = do
   let ncols = maximum (0 : map length (header : rows))
       cell r c = case drop c r of
         (x : _) -> x
@@ -107,7 +158,7 @@ layoutTable params measure gap aligns header rows = do
       columns = [[cellExtent (cell r c) | r <- header : rows] | c <- [0 .. ncols - 1]]
       extents = [(maximum (0 : map fst col), maximum (0 : map snd col)) | col <- columns]
       available = measure - gap * fromIntegral (max 0 (ncols - 1))
-  widths <- columnWidths available extents
+  widths <- tableColumnWidths available gap specs extents
   let positions = scanl (\p w -> p + w + gap) 0 widths
       ps = params {pProtrusion = False}
       alignOf c = case drop c aligns of

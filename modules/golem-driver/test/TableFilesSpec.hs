@@ -49,7 +49,7 @@ oneTable path bytes = withTables [("a.gm", TE.encodeUtf8 ("@table " <> T.pack pa
   Map.findWithDefault [] "a.gm" <$> blocksOf tmp
 
 headerTexts :: [BlockBody] -> [[Text]]
-headerTexts bs = [[t | Text _ t <- c] | Table _ h _ <- bs, c <- h]
+headerTexts bs = [[t | Text _ t <- c] | TableBlock Table {tableHeader = h} <- bs, c <- h]
 
 tableFileTests :: TestTree
 tableFileTests =

@@ -207,10 +207,10 @@ tests =
       testCase "a plugin of ABI version 2 is rejected (docs/adr ADR 0005)" $ do
         w <- fixed 2 (responseWith (TList []))
         loadPlugin w >>= (@?= Left (AbiMismatch 2)) . void,
-      testCase "the ABI version is 8 and a plugin of version 7 is rejected (docs/adr ADR 0101)" $ do
-        (Golem.Plugin.abiVersion, Golem.Doc.IR.abiVersion) @?= (8, 8)
-        w <- fixed 7 (responseWith (TList []))
-        loadPlugin w >>= (@?= Left (AbiMismatch 7)) . void,
+      testCase "the ABI version is 9 and a plugin of version 8 is rejected (docs/adr/0262)" $ do
+        (Golem.Plugin.abiVersion, Golem.Doc.IR.abiVersion) @?= (9, 9)
+        w <- fixed 8 (responseWith (TList []))
+        loadPlugin w >>= (@?= Left (AbiMismatch 8)) . void,
       testCase "a code block survives a filter unchanged (golem-driver ADR 0023)" $ do
         p <- load =<< compile =<< wat "identity.wat"
         fmap fst (applyFilter p "same" codeBlockDoc) @?= Right codeBlockDoc,

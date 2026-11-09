@@ -173,6 +173,8 @@ builtinBlockCommands =
     "caption",
     -- docs/adr ADR 0187
     "lang",
+    -- docs/adr/0262
+    "column-widths",
     -- docs/adr ADR 0272
     "hyphenation-exceptions"
   ]

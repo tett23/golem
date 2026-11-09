@@ -504,6 +504,38 @@ PDF では、表は本文の行に合わせて組み、ページをまたぐ表�
 見出しの行のセルをすべて空にすると（[code: \| \| \|] のように書くと）、PDF では見出しの行のない表になります。
 HTML と EPUB では、空の見出しの行がそのまま残ります。
 
+### 表のキャプションと列の幅
+
+表の直前の行に [code: @caption] を書くと、表にキャプションと表番号が付きます。
+[code: @label] を一緒に書けば、[code: \[ref-number ...\]] で番号を、[code: \[ref-title ...\]] でキャプションを参照できます。
+[code: @column-widths] には、列の幅を左の列から順に書きます。
+幅は [code: auto]（自動）、[code: 8zw] のような寸法、[code: 30%] のような割合です。
+
+```
+@label tbl-outputs
+@caption 出力の形式と用途
+@column-widths 8zw auto
+| 形式 | 用途 |
+|:---|:---|
+| PDF | 印刷 |
+| EPUB | 電子書籍 |
+```
+
+組むと、次のようになります。
+
+@label tbl-outputs
+@caption 出力の形式と用途
+@column-widths 8zw auto
+| 形式 | 用途 |
+|:---|:---|
+| PDF | 印刷 |
+| EPUB | 電子書籍 |
+
+この表の番号は「表[ref-number tbl-outputs]」です。
+表番号の書式とキャプションを置く側（上か下）は、[code: style.toml] の [code: \[tables\]] で決めます（付録C）。
+キャプションのない表は番号を持たず、番号を数えません。
+セルの文字の大きさは、段落スタイルで決めます（第[ref-number style]章）。
+
 @label code-blocks
 ## コードと外部のファイル
 
