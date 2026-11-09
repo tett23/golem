@@ -27,6 +27,7 @@ import Golem.Project qualified as P
 import Golem.Project.Paths
 import Golem.Project.Style
 import Golem.Syntax
+import HyphenationExceptionsSpec qualified
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
 import PositionSpec qualified
@@ -699,6 +700,7 @@ tests =
       SharedValuesSpec.tests,
       StylePositionSpec.tests,
       StyleSchemaSpec.tests,
+      HyphenationExceptionsSpec.tests,
       NaturalKeySpec.tests,
       FunctionsSpec.tests,
       FilesSpec.tests,
@@ -1860,8 +1862,8 @@ akiTests =
       testCase "a paragraph style of a file may name an aki set" $ do
         base <- either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) wideWaou)
         localStyleDef ParagraphKind [("aki-set", LocalWord "wide-waou")] @?= Right (Right noParaDef {psAkiSet = Just "wide-waou"})
-        [(c, n) | (c, n, _) <- checkLocalStyles base (LocalStyles Map.empty (Map.fromList [("q", noParaDef {psAkiSet = Just "nope"})]) Map.empty)] @?= [("G03013", "q")]
-        [(c, n) | (c, n, _) <- checkLocalStyles base (LocalStyles Map.empty (Map.fromList [("q", noParaDef {psAkiSet = Just "wide-waou"})]) Map.empty)] @?= []
+        [(c, n) | (c, n, _) <- checkLocalStyles base (LocalStyles Map.empty (Map.fromList [("q", noParaDef {psAkiSet = Just "nope"})]) Map.empty Map.empty)] @?= [("G03013", "q")]
+        [(c, n) | (c, n, _) <- checkLocalStyles base (LocalStyles Map.empty (Map.fromList [("q", noParaDef {psAkiSet = Just "wide-waou"})]) Map.empty Map.empty)] @?= []
     ]
   where
     wideWaou =

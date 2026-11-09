@@ -1230,6 +1230,9 @@ protrusion = true
 expansion = { limit = 20, step = 5 }
 explicit-hyphen-penalty = 50
 
+[composition.hyphenation-exceptions]
+en = ["ta-ble", "pro-ject", "Golem"]
+
 [composition.ruby]
 mono-align = "center"
 group-align = "1:2:1"
@@ -1292,6 +1295,17 @@ folio = { position = "bottom-outside", format = "{n}" }
 `[page.grid]` の `characters`、`lines`、`columns` と、見出しのスタイルの `lines` は、2147483647（2 の 31 乗から 1 を引いた数）以下の整数とする。
 それより大きい値は、その値の位置で G03006 とする。
 上限はどのターゲットでも同じであり、wasm32 の `Int` に収まる範囲である（[ADR 0247](adr/0247-keep-the-values-of-golem-wasm-independent-of-the-width-of-int.md)）。
+
+`[composition.hyphenation-exceptions]` は、本の分綴の例外の一覧である（[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)、InDesign の文書の中の辞書にあたる）。
+キーは BCP 47 の言語のタグ、値は分けてよい位置に `-`（U+002D）を書いた語の配列である。
+`-` のない語は分綴しない。
+語に書ける字は、字（一般カテゴリが L）と `-` だけであり、ほかの字（空の語を含む）は G03127、`-` が語の端にあるか二つ続けば G03128、同じキーの中で小文字にして `-` を除いた語が同じものの二つ目からは G03129 とする。
+一つの語に二つの誤りがあれば、G03127、G03128、G03129 の順で最初のものだけを出す。
+キーが言語のタグの形でなければ G03126（IANA の登録簿は見ない）、大文字と小文字だけが違うキーが二つあれば後のキーを G03130 とする。
+位置はその値であり、どれもエラーとしてビルドを止める。
+値が配列でないか文字列でない要素があれば、ほかの値の誤りと同じく G03006 とする。
+`@style-def` では書けず、原稿のファイルごとの一覧はファイルの設定の `@hyphenation-exceptions` で書く。
+例外を引く規則は「原稿の中の言語」の「分綴」の節に書く。
 
 `[composition]` の `pretolerance`、`tolerance`、`emergency-stretch` は、PDF の行分割の段階の値である（「行分割」の節、[golem-layout ADR 0001](golem-layout/adr/0001-knuth-plass-line-breaking.md)）。
 `pretolerance`（既定は 100）は、パターンの分綴を使わない最初の段階の許容度で、負の値ならこの段階を飛ばす。
@@ -3626,6 +3640,24 @@ PDF では、区間の言語で次のように組む（golem-layout の `charCla
 主の副タグが `en` の区間と区間の外は英語（en-US）のパターンで分綴し、ほかの言語の区間ではパターンで分綴しない。
 語に書いたハイフンとダッシュの後では、どの言語でも今のとおり改行できる。
 語の言語は、行分割の箱の見た目（`Look` の `lkLang`）が持つ。
+
+分綴の例外の一覧は、本の一覧（`style.toml` の `[composition.hyphenation-exceptions]`）と、原稿のファイルの一覧（ファイルの設定の `@hyphenation-exceptions`）に、言語のタグごとに書く（[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
+例外は、パターンを引く言語と同じ言語で引く。
+区間の中の語は区間のタグ、区間の外の語は `en-US` で引く。
+タグは RFC 4647 の lookup で引く（`Golem.Layout.Hyphenation.Languages.lookupTag`）。
+小文字にした語の言語のタグで一覧のキーを探し、なければ最後の副タグを一つずつ外して探す（外した後に一字の副タグが残れば、それも外す）。
+`en-GB` の区間の語は `en-gb`、`en` の順に探し、`en-US` だけを書いた本では、`en` の区間の語に例外は当たらない。
+語は、語の言語のタグでファイルの一覧を lookup し、なければ本の一覧を lookup し、なければ同梱の例外、なければパターンで分ける。
+二つの一覧は、それぞれのキーで別々に lookup する。
+ファイルの一覧の語は本の一覧の同じ語（小文字にして `-` を除いて等しい語）を、本の一覧の語は同梱の同じ語を置き換え、ほかの語は残す。
+語は、パターンに渡すのと同じ字の並び（要素の最初の字から次の字でない文字の前まで、結合文字を除く）を小文字にして引く。
+例外の位置には、前に 2 字、後に 3 字を残す規則を当てない。
+パターンを持たない言語（今は英語のほかのすべて）でも、一覧の語だけを例外の位置で分け、ほかの語は分綴しない。
+例外による候補はパターンの分綴の候補と同じ罰点であり、二回目の段階から使う。
+ソフトハイフンを含む要素には、例外を当てない。
+ファイルの一覧は、語を出したブロックのファイル、注の本文とキャプションではそれを書いたファイルの一覧である。
+目次、索引、参考文献の一覧、チャンネルの一覧、章末の注の見出し、柱のような Golem が作る行には、本の一覧だけを当てる。
+HTML、EPUB、プレーンテキストは自動の分綴をしないので、一覧を読まない。
 
 ### 意味論 IR
 
