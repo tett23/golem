@@ -4,7 +4,8 @@ of a run as wide together as the run shaped whole (C7), so that the long
 Japanese message of G03029 of the user manual's appendix E fits its lines
 without G07105. The fonts are those of the specimens (Noto Serif JP and
 Source Sans Pro), not those of the manuals, which the repository does not
-hold.
+hold; this module stands in for the golem-typeset test that golem-layout
+ADR 0034 asked for (docs/adr ADR 0257).
 -}
 module CodeFontSpec (codeFontTests) where
 
