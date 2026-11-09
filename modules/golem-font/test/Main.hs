@@ -84,6 +84,17 @@ tests race han sans serif noto =
             case vertical ["vpal"] "「" of
               [(_, yo)] -> assertBool "y offset with vpal" (yo /= 0)
               other -> assertFailure (show other),
+          testCase "the feature list of a font: Source Sans Pro has smcp and sups, the subset of Source Han Sans no smcp (docs/adr/0268)" $ do
+            fontHasFeature sans "smcp" @?= True
+            fontHasFeature sans "sups" @?= True
+            fontHasFeature han "smcp" @?= False
+            fontHasFeature han "vert" @?= True,
+          testCase "every feature given is applied, the 33rd too (docs/adr/0268)" $ do
+            let glyphs feats = [g | (g, _, _) <- shapeUnits sans ((shapeRequest "abc") {srFeatures = feats})]
+                padding = ["-ss" <> T.justifyRight 2 '0' (T.pack (show n)) | n <- [1 .. 20 :: Int]] <> ["-cv" <> T.justifyRight 2 '0' (T.pack (show n)) | n <- [1 .. 12 :: Int]]
+            length padding @?= 32
+            assertBool "smcp changes the glyphs" (glyphs ["smcp"] /= glyphs [])
+            glyphs (padding <> ["smcp"]) @?= glyphs ["smcp"],
           testCase "the ff ligature is one glyph whose cluster covers two letters" $ do
             let gs = shapeUnits sans (shapeRequest "office")
             length gs @?= 5

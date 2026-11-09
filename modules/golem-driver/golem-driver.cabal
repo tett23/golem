@@ -90,6 +90,7 @@ test-suite golem-driver-test
     ChapterNotesSpec
     ColophonSpec
     CliSpec
+    NewPlanSpec
     ComplexFixtureSpec
     DiagnosticSitesSpec
     ReuseSpec
@@ -109,7 +110,12 @@ test-suite golem-driver-test
     LinkSpec
     NotesSpec
     OutputGoldenSpec
+    DecorationsSpec
+    ExceptionsSpec
+    OpenTypeFeaturesSpec
+    ScriptsSpec
     OverflowSpec
+    SoftHyphenSpec
     PageElementsSpec
     PageStartsSpec
     ParagraphRuleSpec

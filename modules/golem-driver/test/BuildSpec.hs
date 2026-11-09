@@ -3,6 +3,7 @@ module BuildSpec (buildTests, allTargetsTests, versionTests, producerTests, publ
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
+import Data.Either (isRight)
 import Data.IORef (newIORef, readIORef)
 import Data.List (isSuffixOf, sort)
 import Data.List.NonEmpty (NonEmpty (..))
@@ -304,7 +305,7 @@ styleFileTests =
   ]
     <> [ testCase ("a project made without fonts builds every target but the PDF (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
            let dir = tmp </> "book"
-           createProject dir (templateFiles lang uuid0) Nothing >>= (@?= Right ())
+           createProject dir (templateFiles lang uuid0) Nothing >>= assertBool "written" . isRight
            r <- build (defaultOptions dir) {optTargets = Just allTargets}
            codeSeverities r @?= [(DiagnosticCode "G03010", Warning), (DiagnosticCode "G08002", Error)]
            mapM_ (\d -> doesDirectoryExist (dir </> d) >>= assertBool d) ["build/html", "build/epub", "build/text"]

@@ -78,7 +78,7 @@ tateChuYokoTests =
           look <- case [bcLook c | l <- linesOf pl, (Box _ c, _) <- placeLine l, boxKind c == KindTcy] of
             l : _ -> pure l
             [] -> assertFailure "no tate-chu-yoko box"
-          let codes = [lfCode fonts (shFace g) (shGlyph g) | g <- lfShape fonts (shapingOf False look '1') "12"]
+          let codes = [lfCode fonts (shFace g) (shGlyph g) | g <- lfShape fonts (shapingOf (lfRoleFeatures fonts) False look '1') "12"]
               drawn = concatMap (glyphsOf encodings) contents
               gs = [g | g <- drawn, gCode g `elem` codes]
           length codes @?= 2
@@ -207,7 +207,7 @@ occurrencesOf dir = do
   let drawn = concatMap (glyphsOf encodings) contents
       sp x = toRational (unSp x) / 65536
       shaped vertical u = case T.uncons (uText u) of
-        Just (ch, _) -> lfShape fonts (shapingOf vertical (uLook u) ch) (uText u)
+        Just (ch, _) -> lfShape fonts (shapingOf (lfRoleFeatures fonts) vertical (uLook u) ch) (uText u)
         Nothing -> []
       -- upright text is shaped vertically; turned Latin and tate-chu-yoko horizontally
       codes u = [lfCode fonts (shFace g) (shGlyph g) | g <- shaped (uKind u `notElem` [KindRotated, KindTcy]) u]

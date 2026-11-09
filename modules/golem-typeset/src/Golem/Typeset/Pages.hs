@@ -37,6 +37,11 @@ sourceAt sources sp t = case Map.lookup (spanFile sp) sources >>= align . slice 
     slice src = BS.take (spanEnd sp - spanStart sp) (BS.drop (spanStart sp) src)
     align bs = U.fromList <$> go bs 0 (T.unpack t)
     go _ _ [] = Just []
+    -- a soft hyphen is U+00AD in the source, or [shy] (docs/adr ADR 0272): the nearer of the two
+    go bs cur ('\xAD' : cs) =
+      case [(p, BS.length enc) | enc <- [TE.encodeUtf8 (T.singleton '\xAD'), "[shy]"], Just p <- [find bs enc cur]] of
+        [] -> Nothing
+        found -> let (p, n) = minimum found in (p :) <$> go bs (p + n) cs
     go bs cur (c : cs) =
       let enc = TE.encodeUtf8 (T.singleton c)
        in find bs enc cur >>= \p -> (p :) <$> go bs (p + BS.length enc) cs

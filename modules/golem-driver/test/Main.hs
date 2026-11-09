@@ -8,10 +8,12 @@ import CliSpec
 import CodeFontSpec (codeFontTests)
 import ColophonSpec
 import ComplexFixtureSpec (complexFixtureTests)
+import DecorationsSpec (decorationsTests)
 import DiagnosticSitesSpec
 import DiagnosticsSpec
 import DoubleDashSpec (doubleDashTests)
 import EmetSamplesSpec (emetSamplesTests)
+import ExceptionsSpec (exceptionsTests)
 import ExpansionSpec (expansionTests)
 import FigureExternalSpec (figureExternalTests)
 import FigureSpec
@@ -23,7 +25,9 @@ import HeadingLevelsSpec (headingLevelsTests)
 import InMemorySpec (inMemoryTests)
 import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
+import NewPlanSpec (newPlanTests)
 import NotesSpec (notesTests)
+import OpenTypeFeaturesSpec (openTypeFeaturesTests)
 import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
@@ -35,8 +39,10 @@ import PlatesSpec (platesTests)
 import PopplerSpec (popplerTests)
 import ReferencesSpec
 import ReuseSpec
+import ScriptsSpec (scriptsTests)
 import SecuritySpec
 import ShapingMemoSpec (shapingMemoTests)
+import SoftHyphenSpec (softHyphenTests)
 import SpecimenGeometrySpec (specimenGeometryTests)
 import StylesSpec
 import TableCaptionsSpec (tableCaptionsTests)
@@ -90,8 +96,9 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, softHyphenTests, exceptionsTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, scriptsTests, decorationsTests]
         <> [ newProjectTests,
+             newPlanTests,
              allTargetsTests,
              pdfPipelineTests,
              testGroup "files of style.toml per target (golem-project ADR 0004)" styleFileTests,

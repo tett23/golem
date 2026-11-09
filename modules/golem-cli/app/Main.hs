@@ -40,7 +40,7 @@ import Options.Applicative.Extra (helperWith)
 import System.Directory (doesFileExist, getCurrentDirectory)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
-import System.FilePath (joinPath, makeRelative, splitDirectories, takeExtension, (</>))
+import System.FilePath (joinPath, makeRelative, normalise, splitDirectories, takeExtension, (</>))
 import System.IO (hFlush, hPutStrLn, hSetEncoding, stderr, stdout, utf8)
 import Text.Printf (printf)
 
@@ -427,12 +427,34 @@ newProject dir lang noFonts = do
   let fonts = templateFonts lang
   r <- createProject dir (templateFiles lang (UUID.toText uuid)) (if noFonts then Nothing else Just (fetch, fonts))
   case r of
-    Left es -> mapM_ (TIO.hPutStrLn stderr) es >> pure (ExitFailure 1)
-    Right () -> do
+    Left (FetchFailed es) -> mapM_ (TIO.hPutStrLn stderr) es >> pure (ExitFailure 1)
+    Left (Conflicts cs) -> putNewDiagnostics (map conflictDiagnostic cs) >> pure (ExitFailure 1)
+    Right plan -> do
+      -- after the project is written (docs/adr/0273)
+      when (planKeepsGitignore plan) $
+        putNewDiagnostics [(shown ".gitignore", "G03134", Notice, ".gitignore がすでにあるので書きませんでした。build/ を除外してください: ")]
       when noFonts $ do
         TIO.hPutStrLn stderr "フォントを取得しませんでした。次のファイルを置いてください。"
         forM_ fonts $ \f -> TIO.hPutStrLn stderr ("  " <> T.pack (dir </> fsPath f) <> " (" <> fsUrl f <> ")")
       pure ExitSuccess
+  where
+    -- the argument and the path of the template, as written on the command line
+    shown p = normalise (dir </> p)
+    conflictDiagnostic = \case
+      NotADirectory -> (normalise dir, "G03133", Error, "ディレクトリではありません: ")
+      ProjectExists p -> (shown p, "G03131", Error, "プロジェクトのファイルがすでにあります: ")
+      PathTaken p -> (shown p, "G03132", Error, "雛形のファイルを書くパスに、すでにエントリがあります: ")
+
+{- | The diagnostics of golem new (docs/adr/0273), each at the start of its
+path, followed by the path in the message.
+-}
+putNewDiagnostics :: [(FilePath, T.Text, Severity, T.Text)] -> IO ()
+putNewDiagnostics ds =
+  putHuman
+    (Map.fromList [(FileId i, SourceInfo p (mkLineIndex "")) | (i, (p, _, _, _)) <- numbered])
+    [diagnostic code sev (mkSpan (FileId i) 0 0) (msg <> T.pack p) | (i, (p, code, sev, msg)) <- numbered]
+  where
+    numbered = zip [0 ..] ds
 
 -- | How golem fmt formats a file: as a source, or as a table file (docs/adr/0186).
 data FmtKind = FmtSource | FmtTable

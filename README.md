@@ -117,7 +117,7 @@ golem new mybook
 
 | コマンド | 内容 |
 |---|---|
-| `golem new DIR [--language ja\|en] [--no-fonts]` | プロジェクトを作る。版面の設定と、配布元から取得したフォントと、プリフライトの設定 `preflight.toml` を含む。`--no-fonts` で作ったプロジェクトも、フォントを置く前から HTML、EPUB、プレーンテキストを作れる（PDF はフォントを置くまで作れない） |
+| `golem new DIR [--language ja\|en] [--no-fonts]` | プロジェクトを作る。版面の設定と、配布元から取得したフォントと、プリフライトの設定 `preflight.toml` を含む。`--no-fonts` で作ったプロジェクトも、フォントを置く前から HTML、EPUB、プレーンテキストを作れる（PDF はフォントを置くまで作れない）。`DIR` は空でなくてよく、`manifest.toml` と `style.toml` のないディレクトリ（Markdown の原稿のリポジトリなど）なら、ほかのファイルを残したまま作る。雛形のファイルと同じパスに何かあれば何も書かず、既存の `.gitignore` は書き換えない（[docs/adr/0273](./docs/adr/0273-golem-new-in-a-directory-without-a-project.md)） |
 | `golem plugin lock` | マニフェストのプラグインを取得し、ハッシュを `plugins.lock` に書く |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得してキャッシュに置く |
 | `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none）。`--no-notices` はその実行に限り notice を出さない。`--verbose`（`-v`）は info も出す |
@@ -158,6 +158,7 @@ PDF のリストは項目の印をぶら下げ、入れ子のリストを外の�
 原稿の一部の言語は `[lang en: “Tokyo”]` と、ブロックの言語は `@lang en` と書く。
 PDF では引用符、ダッシュ、三点リーダーをその言語で欧文か和文として組み、英語のほかの言語では分綴しない。
 HTML と EPUB には `lang` と `xml:lang` を、PDF には `/Lang` を書く（[docs/adr/0187](./docs/adr/0187-inline-language-switch.md)）。
+PDF で欧文の語を分けてよい位置は `in[shy]com[shy]pre` のようにソフトハイフン（`[shy]` か U+00AD）で指定でき、行を分けない範囲は組み込みの文字スタイル `no-break` で `[style no-break: 100 円]` と書き、語の分け方の例外は `style.toml` の `[composition.hyphenation-exceptions]` と原稿のファイルの `@hyphenation-exceptions` に言語ごとに書く（[ADR 0272](./docs/adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
 一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ適用される（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
 段落スタイルの `regex-styles = [{ pattern = '[0-9]+', style = "bold" }]` のような正規表現スタイルは、段落の中で正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル、[docs/adr/0015](./docs/adr/0015-regex-styles.md)）。
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。

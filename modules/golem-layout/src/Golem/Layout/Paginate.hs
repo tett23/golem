@@ -609,7 +609,6 @@ placeTable env st i h rows capt below =
       placed = rowsFrom st1 start rows
    in if below then foldl' (putLine env) placed capt else placed
 
-
 -- | The page of each label.
 labelPages :: [PageOut] -> Map Text Integer
 labelPages ps = Map.fromList [(l, toInteger (poNumber p)) | p <- ps, l <- poLabels p]

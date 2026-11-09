@@ -142,7 +142,9 @@ tests =
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "本文。\n\n["
         map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n["))) @?= builtinInlineCommands
-        length builtinInlineCommands @?= 20
+        length builtinInlineCommands @?= 21
+        -- [shy] is built in (docs/adr ADR 0272)
+        assertBool "shy" ("shy" `elem` builtinInlineCommands)
         -- [link] is built in (docs/adr ADR 0182)
         assertBool "link" ("link" `elem` builtinInlineCommands)
         -- [lang] is built in (docs/adr ADR 0187)
@@ -154,7 +156,7 @@ tests =
             found = completions ws "b.gm"
         map cmpLabel (found (offsetIn src "@style " 7)) @?= ["body", "caption", "quote", "sidenote", "table", "verse"]
         map cmpKind (found (offsetIn src "@style " 7)) @?= replicate 6 CkParaStyle
-        map cmpLabel (found (offsetIn src "[style " 7)) @?= ["bold", "code", "italic", "note-mark", "strong", "url"],
+        map cmpLabel (found (offsetIn src "[style " 7)) @?= ["bold", "code", "italic", "no-break", "note-mark", "strong", "subscript", "superscript", "url"],
       testCase "completion: the kinds of a page break (docs/adr ADR 0017)" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@page-break \n"
@@ -203,7 +205,7 @@ tests =
         assertBool "paragraph kinds" (all ((== CkParaStyle) . cmpKind) paras)
         found (offsetIn src "@style-def regex body \n" 22) @?= [Completion "pattern=" CkSettingKey, Completion "style=" CkSettingKey]
         let chars = found (offsetIn src "style=\n" 6)
-        map cmpLabel chars @?= ["bold", "code", "italic", "note-mark", "strong", "url"]
+        map cmpLabel chars @?= ["bold", "code", "italic", "no-break", "note-mark", "strong", "subscript", "superscript", "url"]
         assertBool "character kinds" (all ((== CkCharStyle) . cmpKind) chars),
       testCase "definition: the styles @style-def regex names (docs/adr ADR 0015)" $ do
         ws0 <- openWorkspace root

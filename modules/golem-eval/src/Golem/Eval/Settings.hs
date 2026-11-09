@@ -1,6 +1,7 @@
-{- | The file settings (docs/adr ADR 0014): the @manifest and @style-def
-lines at the top of a file, which override keys of [source] and define
-styles for that file alone.
+{- | The file settings (docs/adr ADR 0014): the @manifest, @style-def and
+@hyphenation-exceptions lines at the top of a file, which override keys
+of [source], define styles and list hyphenation exceptions (docs/adr ADR
+0272) for that file alone.
 -}
 module Golem.Eval.Settings
   ( settingCommands,
@@ -8,6 +9,7 @@ module Golem.Eval.Settings
     fileHeader,
     fileSettings,
     fileStyles,
+    fileHyphenationExceptions,
   )
 where
 
@@ -19,10 +21,11 @@ import Data.Text qualified as T
 import Golem.Parser.AST qualified as A
 import Golem.Project.Style
 import Golem.Syntax
+import Golem.Syntax.LanguageTag (isLanguageTag)
 
 -- | The commands of the file settings.
 settingCommands :: [Text]
-settingCommands = ["manifest", "style-def"]
+settingCommands = ["manifest", "style-def", "hyphenation-exceptions"]
 
 isSettingCommand :: A.Located A.Block -> Bool
 isSettingCommand = \case
@@ -157,7 +160,7 @@ line; a wrong one is dropped and the others take effect (docs/adr ADR
 fileStyles :: Style -> [A.Located A.Block] -> (LocalStyles, [Diagnostic])
 fileStyles style header =
   let (defs, ds1) = foldl readDef ([], []) [(sp, args, body) | A.Located sp (A.BlockCommand (A.Located _ "style-def") args body) <- header]
-      local0 = LocalStyles (Map.fromList [(n, d) | Def _ _ n (Left d) <- defs]) (Map.fromList [(n, d) | Def _ _ n (Right d) <- defs]) Map.empty
+      local0 = LocalStyles (Map.fromList [(n, d) | Def _ _ n (Left d) <- defs]) (Map.fromList [(n, d) | Def _ _ n (Right d) <- defs]) Map.empty Map.empty
       spanOf kind n = listToMaybe [sp | Def sp k n' _ <- defs, k == kind, n' == n]
       (local, ds2) = checked local0 []
       -- the checks again until no definition is dropped
@@ -241,6 +244,10 @@ fileStyles style header =
    in (final, ds1 <> ds2 <> ds3 <> overrides <> zeroIndents)
   where
     shape = "@style-def には種類（character、paragraph、regex）と名前を書きます"
+    -- the features of a definition are at its line, for G08103 (docs/adr/0268)
+    sited sp = \case
+      Left c -> Left c {csFeatures = [f {ftSite = SiteSource sp} | f <- csFeatures c]}
+      Right p -> Right p {psFeatures = [f {ftSite = SiteSource sp} | f <- psFeatures p]}
     readDef (defs, ds) (sp, args, body) =
       let positionals = [(asp, v) | A.Located asp (A.Positional v) <- args]
           spreads = [spreadBeforeEvaluation "@style-def" asp | A.Located asp a <- args, isSplat a]
@@ -275,7 +282,7 @@ fileStyles style header =
                       | otherwise -> case localStyleDef k [(key, v) | (key, _, v) <- kvs] of
                           -- an aki amount in a dimension is G03020 (docs/adr ADR 0019); kerning, tracking and baseline shift G03021 (docs/adr/0020)
                           Left ms -> (defs, ds <> [err (if "アキの量の指定が正しくありません" `T.isPrefixOf` m then "G03020" else code) sp ("@style-def の値が不正です: " <> m) | (code, m) <- ms])
-                          Right d -> (defs <> [Def sp k name d], ds)
+                          Right d -> (defs <> [Def sp k name (sited sp d)], ds)
             _ -> (defs, ds <> errs)
     -- the kind and the name, as a word or a string literal (docs/adr ADR 0132)
     textOf v = case localValue v of
@@ -295,3 +302,50 @@ fileStyles style header =
       "paragraph" -> Just (Just ParagraphKind)
       "regex" -> Just Nothing
       _ -> Nothing
+
+{- | The hyphenation exceptions of the @hyphenation-exceptions lines (docs/adr
+ADR 0272), by language tag, and the diagnostics in the order of the
+lines, those of a line in the order written. A line is a language tag and
+one or more words, each a word or a string literal. A line with a body
+(G02097), with fewer than two positional arguments (G02052), with a tag
+that is not one (G02116, G03126) or of the tag of a line before it but
+for case (G03130) is left out; a keyword argument (G02153), a spread
+(G02114) and a wrong word (G02116, G03127, G03128, G03129) are left out
+alone.
+-}
+fileHyphenationExceptions :: [A.Located A.Block] -> (Map.Map Text [Text], [Diagnostic])
+fileHyphenationExceptions header = foldl step (Map.empty, []) [(sp, args, body) | A.Located sp (A.BlockCommand (A.Located _ "hyphenation-exceptions") args body) <- header]
+  where
+    name = "@hyphenation-exceptions"
+    step (m, ds) (sp, args, body) =
+      let positionals = [(asp, v) | A.Located asp (A.Positional v) <- args]
+          spreads = [spreadBeforeEvaluation name asp | A.Located asp a <- args, isSplat a]
+          keywords = [err "G02153" asp "@hyphenation-exceptions にはキーワード引数を書けません。言語のタグと語だけを書きます" | A.Located asp (A.Keyword {}) <- args]
+          notWords = [notWordDiagnostic asp | (asp, v) <- positionals, isNothing (textOf v)]
+          countDiags = [err "G02052" sp "@hyphenation-exceptions には言語のタグと一つ以上の語を書きます" | length positionals < 2]
+          argDiags = inOrder (spreads <> keywords <> notWords <> countDiags)
+          bodyDiags = bodyDiagnostics name body
+       in case positionals of
+            (tsp, tv) : wordArgs@(_ : _)
+              | null body,
+                Just tag <- textOf tv ->
+                  if not (isLanguageTag tag)
+                    then (m, ds <> argDiags <> [err "G03126" tsp ("分綴の例外の一覧のキーが言語のタグの形ではありません: " <> tag)])
+                    else
+                      if T.toLower tag `elem` map T.toLower (Map.keys m)
+                        then (m, ds <> argDiags <> [err "G03130" tsp ("大文字と小文字だけが違う言語のタグの一覧が二つあります: " <> tag)])
+                        else
+                          let ws = [(asp, w) | (asp, v) <- wordArgs, Just w <- [textOf v]]
+                              wrong = exceptionWordErrors (map snd ws)
+                              wordDiags = [err code (fst (ws !! i)) msg | (i, code, msg) <- wrong]
+                              kept = [w | (i, (_, w)) <- zip [0 ..] ws, i `notElem` [j | (j, _, _) <- wrong]]
+                           in (Map.insert tag kept m, ds <> inOrder (argDiags <> wordDiags))
+            _ -> (m, ds <> argDiags <> bodyDiags)
+    textOf v = case localValue v of
+      Just (LocalWord w) -> Just w
+      Just (LocalString t) -> Just t
+      Nothing -> Nothing
+    isSplat = \case
+      A.SplatPositional _ -> True
+      A.SplatKeyword _ -> True
+      _ -> False
