@@ -33,6 +33,7 @@ library
                     Golem.Layout.Japanese
                     Golem.Layout.Look
                     Golem.Layout.Orientation
+                    Golem.Layout.PageLabel
                     Golem.Layout.Paginate
                     Golem.Layout.Paginate.State
                     Golem.Layout.Ruby

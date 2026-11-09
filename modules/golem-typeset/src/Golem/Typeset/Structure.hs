@@ -60,7 +60,7 @@ structureTree fe units figureAttrs =
     endNoteOf u = [(sp, True) | Frame _ (FEndNote sp _) _ <- uFrames u] <> [(sp, False) | Frame _ (FEndNoteMore sp) _ <- uFrames u]
     groupNotes = \case
       [] -> []
-      (_, x) : rest -> let (more, others) = span (not . fst) rest in (x : map snd more) : groupNotes others
+      (_, x) : rest -> let (more, others) = break fst rest in (x : map snd more) : groupNotes others
     content env site inls = [toKid (site, n) | n <- inlineStructure env inls]
     toKid (site, n) = case n of
       NodeLeaf k -> P.KidLeaf (P.LeafId (site <> [k]))

@@ -103,6 +103,15 @@ tests =
             formatNumber "{chapter:upper-roman}" [] (Just 4) @?= Right "IV"
             formatNumber "\\{{n}\\}" [7] Nothing @?= Right "{7}"
             renderMarkFormat (MarkFormat "{" kanjiNotation "）") @?= "\\{{n:kanji}）",
+          -- docs/adr/0260
+          testCase "I5: formatNumberIn writes {n} in the notation of the section, a slot with a notation in its own" $ do
+            formatNumberIn (Just lowerRomanNotation) "{n}" [4] Nothing @?= Right "iv"
+            formatNumberIn (Just lowerRomanNotation) "- {n} -" [4] Nothing @?= Right "- iv -"
+            formatNumberIn (Just lowerRomanNotation) "{n:upper-roman}" [4] Nothing @?= Right "IV"
+            formatNumberIn Nothing "{n}" [4] Nothing @?= formatNumber "{n}" [4] Nothing
+            -- a number the notation of the section cannot write is its slot without a notation
+            formatNumberIn (Just circledNotation) "{n}" [51] Nothing @?= Left (Unwritable "n" 51)
+            formatNumberIn (Just circledNotation) "{n:upper-roman}" [51] Nothing @?= Right "LI",
           -- docs/adr/0213
           testCase "N6: formatNumber writes the ends of each notation and returns Left past them" $ do
             let ends =

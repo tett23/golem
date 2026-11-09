@@ -31,6 +31,10 @@ module PaginateInvariants
     p3BlankNoOverflow,
     p4BlankWithNext,
     p5BlankBeforeWaiting,
+    pl1Parity,
+    pl2Continues,
+    pl3SectionStart,
+    pl7SectionBreak,
     p9SpaceMoved,
     p11WaitingBeforeSpace,
     w3WaitingAlike,
@@ -44,14 +48,17 @@ import Data.List (sortOn, tails)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
+import Golem.Layout.PageLabel (PageLabel (..), Section (..))
 import Golem.Layout.Paginate
 import Golem.Syntax (SrcSpan)
 
 {- | The invariants of docs/adr/0204 and of golem-layout ADR 0025, 0026,
 0043, 0044 and 0047, by their numbers: P9 is P9′ of golem-layout ADR
 0047, which has P9 of ADR 0043 as its case with no figure that waits.
+PL1, PL2, PL3 and PL7 are I1, I2, I3 and I7 of docs/adr/0260, of the
+page labels and the breaks before sections.
 -}
-data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5 | P9 | P11 | W3
+data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5 | P9 | P11 | W3 | PL1 | PL2 | PL3 | PL7
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken: the lines or figures concerned, and how.
@@ -76,7 +83,11 @@ invariants separator =
     (P2, p2NeedLinesRecorded),
     (P3, p3BlankNoOverflow separator),
     (P4, p4BlankWithNext),
-    (P5, p5BlankBeforeWaiting)
+    (P5, p5BlankBeforeWaiting),
+    (PL1, pl1Parity),
+    (PL2, pl2Continues),
+    (PL3, pl3SectionStart),
+    (PL7, pl7SectionBreak)
   ]
 
 -- | The breaches of every invariant, I1 first.
@@ -353,6 +364,81 @@ i8Recto flows ps =
         even (poNumber p) || poColumn p /= 0 || k /= 0
       ]
 
+-- page labels and sections (docs/adr/0260)
+
+-- | The sections of a flow, of no notation: the page labels need only their starts.
+flowSections :: [Flow] -> Map Int Section
+flowSections flows = Map.fromList [(i, Section start Nothing) | FSection i start <- flows]
+
+-- | The label of each page, by its number.
+labelsOf :: [Flow] -> [PageOut] -> [(Int, PageLabel)]
+labelsOf flows ps = Map.toList (pageLabels (flowSections flows) ps)
+
+-- | The sections whose first page each page is, in the order of the flow.
+firstsOf :: [PageOut] -> Map Int [Int]
+firstsOf ps = Map.fromListWith (flip (<>)) [(poNumber p, poSections p) | p <- ps, not (null (poSections p))]
+
+-- | PL1 (I1 of docs/adr/0260): the number of the label of every page has the parity of the page.
+pl1Parity :: Check
+pl1Parity flows ps =
+  [ Breach PL1 [] ("page " <> show p <> " is numbered " <> show (plNumber l))
+  | (p, l) <- labelsOf flows ps,
+    odd (plNumber l) /= odd p
+  ]
+
+{- | PL2 (I2 of docs/adr/0260): a page that is no first page of a section
+is numbered one more than the page before, in its notation.
+-}
+pl2Continues :: Check
+pl2Continues flows ps =
+  let ls = labelsOf flows ps
+      firsts = firstsOf ps
+   in [ Breach PL2 [] ("page " <> show p <> " is numbered " <> show (plNumber l) <> " after " <> show (plNumber l0))
+      | ((_, l0), (p, l)) <- zip ls (drop 1 ls),
+        Map.notMember p firsts,
+        plNumber l /= plNumber l0 + 1 || plNotation l /= plNotation l0
+      ]
+
+{- | PL3 (I3 of docs/adr/0260): the first page of a section with a start
+is numbered its start; of one without, one more than the page before, or
+1 on the first page. Of the sections that start on one page, the last.
+-}
+pl3SectionStart :: Check
+pl3SectionStart flows ps =
+  let ls = Map.fromList (labelsOf flows ps)
+      starts = Map.fromList [(i, start) | FSection i start <- flows]
+   in [ Breach PL3 [] ("page " <> show p <> " of section " <> show s <> " is numbered " <> show (plNumber l))
+      | (p, ss@(_ : _)) <- Map.toList (firstsOf ps),
+        let s = last ss,
+        Just l <- [Map.lookup p ls],
+        plNumber l /= expectedOf ls starts p s
+      ]
+  where
+    expectedOf ls starts p s = case Map.findWithDefault Nothing s starts of
+      Just n -> n
+      Nothing -> maybe 1 ((+ 1) . plNumber) (Map.lookup (p - 1) ls)
+
+{- | PL7 (I7 of docs/adr/0260): the lines and figures after a section are
+on its first page or later; those before it, on pages before its first
+page. A section with no first page has nothing placed after it.
+-}
+pl7SectionBreak :: Check
+pl7SectionBreak flows ps =
+  let lines' = Map.map (poNumber . snd) (linePlaces ps)
+      figures = Map.fromListWith (\_ old -> old) [(i, poNumber p) | (_, p, s) <- slots ps, Just i <- [slotFigure s]]
+      pagesOfFlow f = [n | l <- flowLines f, Just n <- [Map.lookup (lbId l) lines']] <> [n | FFigure i _ _ _ <- [f], Just n <- [Map.lookup i figures]]
+      firstPage = Map.fromList [(s, poNumber p) | p <- ps, s <- poSections p]
+   in concat
+        [ case Map.lookup i firstPage of
+            Just f ->
+              [Breach PL7 [] ("a block before section " <> show i <> " is on page " <> show n <> ", not before " <> show f) | n <- before, n >= f]
+                <> [Breach PL7 [] ("a block after section " <> show i <> " is on page " <> show n <> ", before " <> show f) | n <- after, n < f]
+            Nothing -> [Breach PL7 [] ("section " <> show i <> " has no page, a block after it is on page " <> show n) | n <- take 1 after]
+        | (k, FSection i _) <- zip [0 :: Int ..] flows,
+          let before = concatMap pagesOfFlow (take k flows)
+              after = concatMap pagesOfFlow (drop (k + 1) flows)
+        ]
+
 -- need-lines and blank lines (golem-layout ADR 0025)
 
 {- | Whether a flow waits for the next one: the breaks, the controls of
@@ -362,6 +448,7 @@ before it (docs/adr ADR 0017, 0030, 0046).
 waits :: Flow -> Bool
 waits = \case
   FBreak _ -> True
+  FSection {} -> True
   FNoBreak _ -> True
   FNeedLines _ _ -> True
   FAdjustLines _ _ -> True
@@ -481,6 +568,7 @@ waitingFigures flows ps = go Nothing 0 Nothing [] flows
     go _ _ _ _ [] = []
     go lastText breaks held before (f : rest) = case f of
       FBreak _ -> go lastText (breaks + 1) held (before <> [f]) rest
+      FSection {} -> go lastText (breaks + 1) held (before <> [f]) rest
       -- a need-lines after a space or before one is judged before it (golem-layout ADR 0043, 0044)
       FSpace _
         | Just (lastText', held') <- judgedBeforeSpace lastText breaks held [n | FNeedLines _ n <- before] ->
@@ -845,6 +933,7 @@ passedOver waitingIds f = waits f || isWaiting waitingIds f
 manual :: Flow -> Bool
 manual = \case
   FBreak _ -> True
+  FSection {} -> True
   FNoBreak _ -> True
   FAdjustLines _ _ -> True
   _ -> False

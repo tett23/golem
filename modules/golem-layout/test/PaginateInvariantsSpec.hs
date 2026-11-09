@@ -5,6 +5,7 @@
 
 {- | The invariants of pagination checked on every small input
 (docs/adr/0204): the enumeration of the inputs, the predicates I1 to I8,
+PL1, PL2, PL3 and PL7 (I1, I2, I3 and I7 of docs/adr/0260),
 P1 to P4 (golem-layout ADR 0025), P5 (golem-layout ADR 0026), P9
 (golem-layout ADR 0043, P9′ of golem-layout ADR 0047), W3 (golem-layout
 ADR 0044) and P11 (golem-layout ADR 0047) on outputs made by hand, and every
@@ -76,13 +77,14 @@ wholeNumber name def =
 
 enumerationTests :: [TestTree]
 enumerationTests =
-  [ testCase "I2: in columns of 3 grid lines there are 20 elements, no figure taller than the column" $ do
+  [ testCase "I2: in columns of 3 grid lines there are 23 elements, no figure taller than the column" $ do
       -- paragraphs of 1 to 4 lines, with and without a note, a heading
       -- with and without a note, a heading at a recto, figures of 1 to 3
       -- lines, a space and a break (docs/adr/0206), need-lines of 2 and
       -- blank lines of 1 and 2 lines (golem-layout ADR 0025), need-lines
-      -- of c − 1 lines (golem-layout ADR 0035)
-      length (elementsFor 3) @?= 4 + 4 + 3 + 3 + 2 + 4
+      -- of c − 1 lines (golem-layout ADR 0035), and the starts of sections
+      -- without a start and with 1 and 2 (docs/adr/0260)
+      length (elementsFor 3) @?= 4 + 4 + 3 + 3 + 2 + 4 + 3
       [n | EFigure n <- elementsFor 3] @?= [1 .. 3],
     testCase "P1, P3: the need-lines is of 2 lines, the blank lines of 1 and 2 (golem-layout ADR 0025)" $
       [e | e <- elementsFor 3, e `elem` [ENeedLines, EBlank 1, EBlank 2]] @?= [ENeedLines, EBlank 1, EBlank 2],
@@ -113,13 +115,17 @@ enumerationTests =
               FBlank (controlSpan 2) 1,
               FHeading 1 True 1 [LineBox 3 [] [] [] 0]
             ],
+    testCase "PL1, PL2, PL3, PL7: the sections start without a start and at 1 and 2, numbered among the controls (docs/adr/0260)" $ do
+      [e | e@(ESection _) <- elementsFor 3] @?= [ESection Nothing, ESection (Just 1), ESection (Just 2)]
+      enumFlows [ENeedLines, ESection (Just 2), EBlank 1, ESection Nothing] @?= [FNeedLines (controlSpan 0) 2, FSection 1 (Just 2), FBlank (controlSpan 2) 1, FSection 3 Nothing],
     testCase "the shortened enumeration has columns of 3 to 5 grid lines, and figures of 1, C - 1 and C lines (docs/adr/0208)" $ do
       [n | EFigure n <- shortElementsFor 3] @?= [1, 2, 3]
       [n | EFigure n <- shortElementsFor 4] @?= [1, 3, 4]
       [n | EFigure n <- shortElementsFor 5] @?= [1, 4, 5]
       [e | e <- shortElementsFor 5, not (isFigure e)] @?= [e | e <- elementsFor 5, not (isFigure e)]
       nub [(inLines i, inColumns i) | i <- concat (upTo 1 inputs)] @?= [(c, k) | c <- [3 .. 5], k <- [1, 2]]
-      map length (upTo 3 inputs) @?= [6, 6 * 20, 6 * 20 ^ (2 :: Int), 6 * 20 ^ (3 :: Int)],
+      -- 23 elements of each column: 20 and the three starts of sections (docs/adr/0260)
+      map length (upTo 3 inputs) @?= [6, 6 * 23, 6 * 23 ^ (2 :: Int), 6 * 23 ^ (3 :: Int)],
     testCase "E5: each input of the shortened enumeration up to 3 elements is in the same tier of the enumeration of docs/adr/0204" $ do
       -- tier n of the enumeration of docs/adr/0204 holds the flows of n of
       -- the elements of their column, in columns of 3 to 8 lines, of one or
@@ -169,7 +175,7 @@ enumerationTests =
 
 -- | A column of a page: its page, its column, its grid lines and its slots.
 column :: Int -> Int -> Int -> [Slotted] -> PageOut
-column page c n ss = PageOut page c False (zip [0 ..] ss) [] [] [] [] (ColumnSet 1 0 0 0) [] n []
+column page c n ss = PageOut page c False (zip [0 ..] ss) [] [] [] [] (ColumnSet 1 0 0 0) [] n [] []
 
 -- | A column whose slots start at the grid lines given.
 columnAt :: Int -> Int -> Int -> [(Int, Slotted)] -> PageOut
@@ -311,6 +317,23 @@ predicateTests =
           broken [para 0 1, recto 1] [column 1 0 3 [SLine 0], blank 2, column 3 0 3 [SHeading 1 1]] @?= [],
         testCase "I8: after the figures sent on is broken" $
           broken [para 0 1, FFigure 1000 1 [] [], recto 1] [column 1 0 3 [SLine 0], blank 2, column 3 0 3 [SFigure 1000, SHeading 1 1]] @?= [I8]
+      ],
+    testGroup
+      "PL1, PL2, PL3, PL7 the page labels and the breaks before sections (I1, I2, I3, I7 of docs/adr/0260)"
+      [ testCase "PL1: a section at 2 that starts on an odd page" $
+          broken [para 0 1, FSection 0 (Just 2), para 1 1] [column 1 0 3 [SLine 0], blank 2, (column 3 0 3 [SLine 1]) {poSections = [0]}] @?= [PL1],
+        testCase "PL1, PL2, PL3, PL7: a section at 1 on page 3 after a blank page breaks nothing" $
+          broken [para 0 1, FSection 0 (Just 1), para 1 1] [column 1 0 3 [SLine 0], blank 2, (column 3 0 3 [SLine 1]) {poSections = [0]}] @?= [],
+        testCase "PL2: the pages after the first page of a section are numbered on from it" $
+          broken [FSection 0 (Just 3), para 0 4] [(column 1 0 3 (map SLine [0 .. 2])) {poSections = [0]}, column 2 0 3 [SLine 3]] @?= [],
+        testCase "PL3: of two sections on one page, the last numbers it" $
+          broken [para 0 1, FSection 0 (Just 1), FSection 1 Nothing, para 1 1] [column 1 0 3 [SLine 0], blank 2, (column 3 0 3 [SLine 1]) {poSections = [0, 1]}] @?= [],
+        testCase "PL7: a line after a section on a page before its first page" $
+          broken [para 0 1, FSection 0 Nothing, para 1 1] [column 1 0 3 [SLine 0, SLine 1], (column 2 0 3 []) {poSections = [0]}] @?= [PL7],
+        testCase "PL7: a line before a section on its first page" $
+          broken [para 0 1, FSection 0 Nothing, para 1 1] [(column 1 0 3 [SLine 0, SLine 1]) {poSections = [0]}] @?= [PL7],
+        testCase "PL7: a section with no page and a line placed after it" $
+          broken [para 0 1, FSection 0 Nothing, para 1 1] [column 1 0 3 [SLine 0], column 2 0 3 [SLine 1]] @?= [PL7]
       ],
     testGroup
       "P1 need-lines met"
@@ -592,7 +615,7 @@ report what input vs =
 
 exhaustiveTests :: [TestTree]
 exhaustiveTests =
-  [ testCase "I1 to I8, P1 to P5, P9 (P9′), P11 and W3 hold for every input up to GOLEM_ENUM_DEPTH elements, but the known bugs, which excuse as many inputs as pinned" $ do
+  [ testCase "I1 to I8, P1 to P5, P9 (P9′), P11, W3, and PL1, PL2, PL3, PL7 (I1, I2, I3, I7 of docs/adr/0260) hold for every input up to GOLEM_ENUM_DEPTH elements, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- enumDepth
       -- built here, not in a value of its own, so that it is not held
       case tallyAllPar depth (inputsOver [3 .. 5] shortElementsFor) (judge knownBugs) of
@@ -612,7 +635,7 @@ exhaustiveTests =
                     <> ", the inputs a known bug excuses differ from the count pinned:\n"
                     <> intercalate "\n" [item <> ": pinned " <> maybe "nothing" show pinned <> ", counted " <> show n | (item, pinned, n) <- wrong]
                 ),
-    testCase "I1 to I8, P1 to P5, P9 (P9′), P11 and W3 hold for every input drawn from the enumeration of docs/adr/0204 one element past GOLEM_ENUM_DEPTH, GOLEM_ENUM_PAGINATION_SAMPLES of them, but the known bugs" $ do
+    testCase "I1 to I8, P1 to P5, P9 (P9′), P11, W3, and PL1, PL2, PL3, PL7 (docs/adr/0260) hold for every input drawn from the enumeration of docs/adr/0204 one element past GOLEM_ENUM_DEPTH, GOLEM_ENUM_PAGINATION_SAMPLES of them, but the known bugs" $ do
       depth <- enumDepth
       count <- enumSamples
       let drawn = Tiers [sampleT sampleSeed count (drawInput (depth + 1))]

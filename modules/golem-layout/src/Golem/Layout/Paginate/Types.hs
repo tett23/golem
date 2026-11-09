@@ -86,6 +86,13 @@ data Flow
     FSpace !Int
   | -- | a forced break before what follows (docs/adr ADR 0017)
     FBreak !BreakKind
+  | {- | the start of a section (docs/adr/0260): its number in the order
+    of the manifest and the number of its first page. A break before what
+    follows: to an odd page for an odd start, to an even page for an even
+    one, and without a start to the next page unless the page is empty.
+    The page it opens is the first page of the section.
+    -}
+    FSection !Int !(Maybe Integer)
   | {- | a code block: its rows, broken between any two of them; each part
     takes the grid lines of 'codeSpan' (golem-driver ADR 0017). The first
     part has the grid lines of the caption above it and at least
@@ -207,7 +214,10 @@ data PageOut = PageOut
     -- | the grid lines of the column, changed by 'FAdjustLines' (docs/adr ADR 0030)
     poLines :: !Int,
     -- | the manual controls of page breaks not met in the column
-    poUnmet :: ![Unmet]
+    poUnmet :: ![Unmet],
+    {- | the sections whose first page this is, in the order of the
+    manifest, on the first column of the page (docs/adr/0260)
+    -} poSections :: ![Int]
   }
   deriving stock (Eq, Show)
 

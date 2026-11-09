@@ -8,7 +8,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (toUpper)
-import Data.List (sort)
+import Data.List (find, sort)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -96,7 +96,8 @@ documentWith tinyJpeg ps =
       docPdfX = Nothing,
       docLang = "ja",
       docPdfUa = Nothing,
-      docStructure = structElem SDocument [KidLeaf (LeafId [0])]
+      docStructure = structElem SDocument [KidLeaf (LeafId [0])],
+      docPageLabels = []
     }
 
 -- | A fixed Producer, so that the goldens do not change with the version (ADR 0005).
@@ -534,6 +535,69 @@ producerTests tinyJpeg =
   ]
 
 -- | The catalog, the output intents and XMP of every PDF, of PDF/A-2a and of PDF/UA-1 (docs/adr ADR 0183).
+
+{- | The labels of the pages as ISO 32000-1, 12.4.2 reads /PageLabels
+(docs/adr/0260): for the page at each place from 0, the range whose first
+page is the last at or before it, its prefix and its number from /St (1
+without) in its style; Nothing without /PageLabels.
+-}
+readPageLabels :: PdfObjects -> Int -> Maybe [Text]
+readPageLabels objs n = do
+  ODict kvs <- find isCatalog (pdfObjects objs)
+  ODict tree <- lookup "PageLabels" kvs
+  OArr nums <- lookup "Nums" tree
+  let ranges = pairs nums
+  pure [labelAt (last [r | r@(first, _) <- ranges, first <= i]) i | i <- [0 .. n - 1]]
+  where
+    isCatalog = \case
+      ODict kvs -> lookup "Type" kvs == Just (OName "Catalog")
+      _ -> False
+    pairs = \case
+      OInt i : ODict d : rest -> (fromInteger i, d) : pairs rest
+      _ -> []
+    labelAt (first, d) i =
+      let st = case lookup "St" d of
+            Just (OInt s0) -> s0
+            _ -> 1
+          k = st + toInteger (i - first)
+          prefix = case lookup "P" d of
+            Just (OStr b) -> TE.decodeUtf8 b
+            Just (OHex b) -> TE.decodeUtf16BE (BS.drop 2 b)
+            _ -> ""
+       in prefix <> case lookup "S" d of
+            Just (OName "D") -> T.pack (show k)
+            Just (OName "R") -> roman k
+            Just (OName "r") -> T.toLower (roman k)
+            _ -> ""
+    roman k = T.concat (go k [(1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"), (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")])
+      where
+        go 0 _ = []
+        go m ws@((w, t) : rest) = if m >= w then t : go (m - w) ws else go m rest
+        go _ [] = []
+
+-- | The page labels of the PDF (docs/adr/0260).
+pageLabelTests :: ByteString -> [TestTree]
+pageLabelTests tinyJpeg =
+  [ testCase "I6: no ranges, no /PageLabels" $
+      readPageLabels (documentObjects (docOf [])) 5 @?= Nothing,
+    testCase "I6: of no notation, upper and lower Roman, and the prefix alone, mixed" $
+      mapM_
+        (\(rs, expected) -> (rs, readPageLabels (documentObjects (docOf rs)) 5) @?= (rs, Just expected))
+        [ ([PageLabelRange 0 (Just LabelDecimal) "" 3], ["3", "4", "5", "6", "7"]),
+          ([PageLabelRange 0 (Just LabelLowerRoman) "" 1, PageLabelRange 2 (Just LabelDecimal) "" 1], ["i", "ii", "1", "2", "3"]),
+          ([PageLabelRange 0 (Just LabelUpperRoman) "" 4, PageLabelRange 3 (Just LabelDecimal) "" 4], ["IV", "V", "VI", "4", "5"]),
+          ([PageLabelRange 0 Nothing "一" 1, PageLabelRange 1 Nothing "二" 1, PageLabelRange 2 (Just LabelDecimal) "" 1, PageLabelRange 4 Nothing "c" 1], ["一", "二", "1", "2", "c"])
+        ],
+    testCase "I6: /St is left out at 1, /S for the prefix alone, /P for an empty prefix" $ do
+      let pdf = writePdf (docOf [PageLabelRange 0 (Just LabelLowerRoman) "" 1, PageLabelRange 2 (Just LabelDecimal) "" 1, PageLabelRange 4 Nothing "a" 1])
+      assertBool "the tree" ("/PageLabels << /Nums [0 << /S /r >> 2 << /S /D >> 4 << /P (a) >>] >>" `BS.isInfixOf` pdf)
+      assertBool "xref" (xrefConsistent pdf),
+    testCase "I4: no ranges write the PDF as before" $
+      writePdf (docOf []) @?= writePdf (documentWith tinyJpeg (replicate 5 (page [])))
+  ]
+  where
+    docOf rs = (documentWith tinyJpeg (replicate 5 (page []))) {docPageLabels = rs}
+
 conformanceTests :: ByteString -> [TestTree]
 conformanceTests tinyJpeg =
   [ testCase "every PDF has the language of the book and shows its title" $ do
@@ -859,6 +923,7 @@ tests tinyJpeg =
             assertBool "Identity" ("/CIDSystemInfo << /Ordering (Identity) /Registry (Adobe) /Supplement 0 >>" `BS.isInfixOf` writePdf (sample tinyJpeg))
         ],
       testGroup "PDF/A-2a and PDF/UA-1 (docs/adr ADR 0183)" (conformanceTests tinyJpeg),
+      testGroup "page labels (docs/adr/0260)" (pageLabelTests tinyJpeg),
       goldenVsString "XMP packet of PDF/A-2a and PDF/UA-1 (docs/adr ADR 0183)" "test/golden/xmp-pdfa-pdfua.xml" $
         pure (BL.fromStrict (xmpPacket (Just (PdfX "" "JC200103" ["山田 太郎"] [] (Just PdfA2a))) (Just PdfUa1) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
       goldenVsString "XMP packet of PDF/A-2a (docs/adr ADR 0183)" "test/golden/xmp-pdfa.xml" $

@@ -31,6 +31,7 @@ import OpenTypeFeaturesSpec (openTypeFeaturesTests)
 import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
+import PageLabelsSpec (pageLabelsTests)
 import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
 import ParagraphSpec
@@ -75,6 +76,7 @@ tests skips =
         callsTests,
         varsTests,
         unwritableNumbersTests,
+        pageLabelsTests,
         emetSamplesTests,
         functionLibraryTests,
         manualEmetTests,
