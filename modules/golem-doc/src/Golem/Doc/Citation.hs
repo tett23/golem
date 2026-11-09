@@ -15,8 +15,14 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
 
--- | A number and the key it stands for, or text.
-data CitePiece = CiteNumber !Text !Int | CiteText !Text
+{- | A piece of a mark: a number and the key it stands for, text, or the
+label of a locator and its value (docs/adr/0277), which the PDF does not
+break between and the HTML joins with U+00A0.
+-}
+data CitePiece
+  = CiteNumber !Text !Int -- a number and the key it stands for
+  | CiteText !Text -- text: brackets, separators, an unnumbered key
+  | CiteLocator !Text !Text -- the label of a locator and its value: "pp." "5–7"
   deriving stock (Eq, Show)
 
 {- | The pieces of the mark of a citation, from its items with their
@@ -45,7 +51,7 @@ citationPieces items =
            in joinWith ", " (map runPieces (runs numbered) <> unnumbered)
     located (i, n) =
       maybe (CiteText (citKey i)) (CiteNumber (citKey i)) n
-        : maybe [] (\l -> [CiteText (", " <> locatorText l)]) (citLocator i)
+        : maybe [] (\l -> [CiteText ", ", locatorPiece l]) (citLocator i)
     runPieces = \case
       [(k, n)] -> [CiteNumber k n]
       run@((k, n) : _ : _ : _) | (k', n') <- last run -> [CiteNumber k n, CiteText "\x2013", CiteNumber k' n']
@@ -63,13 +69,13 @@ runs = foldr step []
       (r@((_, m) : _) : rest) | m == n + 1 -> (x : r) : rest
       rs -> [x] : rs
 
--- | The text of a locator: the page in the default style.
-locatorText :: Locator -> Text
-locatorText (Locator label v) = case (label, v) of
-  (LocatorPage, LocRange a b) | a /= b -> "pp. " <> tshow a <> "\x2013" <> tshow b
-  (LocatorPage, _) -> "p. " <> valueText v
-  -- the other kinds are not set yet: Validate stops them before an output
-  (_, _) -> valueText v
+-- | The piece of a locator: the page in the default style, its label and its value (docs/adr/0277).
+locatorPiece :: Locator -> CitePiece
+locatorPiece (Locator label v) = case (label, v) of
+  (LocatorPage, LocRange a b) | a /= b -> CiteLocator "pp." (tshow a <> "\x2013" <> tshow b)
+  (LocatorPage, _) -> CiteLocator "p." (valueText v)
+  -- the other kinds are not set yet and have no label: Validate stops them before an output
+  (_, _) -> CiteText (valueText v)
   where
     valueText = \case
       LocNumber n -> tshow n
@@ -85,3 +91,4 @@ citationText = T.concat . map piece
     piece = \case
       CiteNumber _ n -> T.pack (show n)
       CiteText t -> t
+      CiteLocator l v -> l <> " " <> v

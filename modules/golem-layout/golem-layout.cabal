@@ -68,6 +68,7 @@ test-suite golem-layout-test
   other-modules:    AkiTableSpec
                     AlignSpec
                     CharClassSpec
+                    CiteBreakEnum
                     CodeJapaneseSpec
                     CodePaddingSpec
                     CodeSpaceSpec

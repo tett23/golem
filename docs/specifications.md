@@ -1402,6 +1402,8 @@ folio = { position = "bottom-outside", format = "{n}" }
 `kinsoku` は `strict`（既定）か `loose` で、行頭禁則の文字の範囲を決める（「行分割」の節）。
 `hanging-punctuation` を `true` にすると、行末の句点と読点を版面の外にぶら下げる（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）。
 既定は `false` である。
+囲みを持つ段落（「段落スタイルの囲み」の説明）では、`hanging-punctuation` の値によらず、句読点をぶら下げない（[ADR 0279](adr/0279-no-hanging-punctuation-inside-paragraph-boxes.md)）。
+囲みの中で行が届いてよい端は、版面の端ではなく囲みの内側の端だからである。
 `expansion` は、欧文のグリフの幅を行ごとに伸び縮みさせる。
 `limit` は伸縮の限度、`step` は刻みで、どちらも千分率の整数である（[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md)）。
 省けば伸縮しない。
@@ -2150,6 +2152,8 @@ InDesign の段落の囲み罫と段落の背景色にあたり、コラムや�
 
 囲みの行の方向の範囲は、段の行の始まりから段落スタイルの `indent` だけ進んだ位置から、行長の終わりから `end-indent` だけ戻った位置までである。
 段落の行は、囲みの範囲の両端から `padding` だけ内側を行の領域として組み、`first-line-indent` はその領域の始まりに加える。
+囲みを持つ段落と囲みの中の連は、`hanging-punctuation` の値によらず、`hanging-punctuation = false` のときと同じに組み、句読点を行の領域の外にぶら下げない（[ADR 0279](adr/0279-no-hanging-punctuation-inside-paragraph-boxes.md)）。
+`protrusion` の突き出しは、囲みの中でも囲みの外と同じに行う。
 段落の行は、囲みの外と同じく行の格子に載せる。
 行送りを p、格子の字面の高さを h（`[page.grid]` の `font-size`）、`padding` を d とすると、囲みは最初の行の前と最後の行の後に k 行ずつ格子の行を足して占める。
 k は、`(p − h)/2 + k × p ≥ d` を満たす最も小さい 0 以上の整数であり、一度の割り算で求める。
@@ -3851,6 +3855,13 @@ U+2011（分割禁止ハイフン）の扱いは変えない。
 入れ子にした文字スタイルの `no-break` は、どれか一つが真なら真であり、内側に `no-break = false` を書いても外側の範囲は解けない。
 範囲が行に収まらないときは範囲を分けず、はみ出す行を作って G07122 で報告する（上の G07105 の段落）。
 `golem preflight` の `overfull-lines`（G09013）は、今のとおり、はみ出したすべての行を報告する。
+
+引用の印の頁の文言（`p.`、`pp.`）と、その後の値（`5`、`5–7`、`xii`）のあいだでは改行しない（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）。
+文言と値のあいだの語間のグルーの前に罰則 10000 の罰点を置き、グルーの幅と伸び縮みは変えない。
+横組みと縦組みで同じである。
+印のほかの位置（番号の区切りの `, ` と `; ` の後、範囲の `–` の後、位置の前の `, ` の後、値の中の空白）は、地の文と同じ規則で分けうる。
+文言と値を合わせた幅が行長より長ければ、はみ出す行を作る。
+その行は、改行しない範囲の中の印でなければ、G07122 ではなく G07105 で報告する。
 HTML と EPUB では、文字スタイルの CSS の規則に `white-space: nowrap` を書く。
 プレーンテキストは行を折り返さないので、この欄を読まない。
 
@@ -3902,6 +3913,8 @@ C5（`url`）は例のテストで確かめる。
 部品は、和文の `漢`、`あ`、`。`、`「` と、欧文の `a`、`table`、`hyphenation`、`lime-tree` と、語間の空白、ソフトハイフン、親文字が二字のモノルビ、`/` を含むコード、強制改行の 13 であり、それぞれを範囲の中か外に置く。
 行の幅は 2 字から 5 字である。
 プルリクエストの CI は部品 2 個まで、毎晩の `enum.yml` は部品 3 個までを調べる。
+
+囲みの中のぶら下げは、[ADR 0279](adr/0279-no-hanging-punctuation-inside-paragraph-boxes.md) の H1（囲みの段落の句点と読点の箱は行末で突き出さない）、H2（`hanging-punctuation` だけが違う二つの本で、囲みの段落の行は等しい）、H3（囲みを持たない段落は今のとおりぶら下がる）として、golem-driver のテスト（`modules/golem-driver/test/BoxesSpec.hs`）が横組みと縦組みの本で確かめる。
 
 述語が判定しない場合はない（[docs/adr/0222](adr/0222-line-breaking-points-the-invariants-did-not-decide.md)）。
 L6 は、伸びるグルーのない行を行長に足りなくてよいとし、字幅の伸縮が限度に達していなければ、足りない量が刻み一つ分の伸縮より小さいことを確かめる。
@@ -4814,6 +4827,8 @@ CSL-JSON は文献管理ソフトが書き出せる標準の形式である。
 
 本文の引用の印は、次の書式（番号の書式）で組む。
 書式の規則は golem-doc の `Golem.Doc.Citation.citationPieces` に一つだけ置き、PDF、HTML、EPUB、プレーンテキストが同じ片を使う。
+片は、番号（`CiteNumber`）、文字列（`CiteText`）、頁の文言と値の組（`CiteLocator`、`"pp."` と `"5–7"`）の三つである（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）。
+PDF とプレーンテキストの文字列は、組の文言と値を U+0020 でつなぐ。
 
 1. 位置を持つ件が一つもなければ、番号を昇順に並べ、三つ以上連続する番号を `a–b`（U+2013 EN DASH）にまとめ、残りを `, ` で区切る。`[1, 2]`、`[1–3]`、`[1, 3–5, 7]` になる。
 2. 位置を持つ件があれば、件を書いた順に並べ、`; ` で区切る。位置は番号の後に `, ` をはさんで置く。記法から作れるのは `[1, p. 5]` のような一件の引用だけである。
@@ -4821,6 +4836,11 @@ CSL-JSON は文献管理ソフトが書き出せる標準の形式である。
 4. 番号を引けない件は、PDF ではキーを組み（1 では番号の後に書いた順で並べる）、HTML とプレーンテキストでは印の全体を出さない。
 
 縦組みでも同じ文字列を組み、番号と `p.` は算用数字とラテン文字のまま組む。
+PDF では、頁の文言と値のあいだで行を分けない（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)、「行分割」の節）。
+印のほかの位置は、地の文の規則で分けうるので、`[1,` と `4]` や、`[1–` と `3]` のように印が二行に分かれることはある。
+印の全体を一行に置きたいときは、`[style no-break: [cite …]]` と書く。
+HTML と EPUB では、頁の文言と値のあいだを U+0020 の代わりに U+00A0 NO-BREAK SPACE で書き、閲覧環境でも行を分けない（下の HTML と EPUB の段落）。
+プレーンテキストは行を折り返さないので、U+0020 のまま書く。
 連続する引用の印（`[cite a][cite b]`）は一つにまとめず、`[1][2]` と組む。
 
 参考文献の番号は、一覧ごとに 1 から振る（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
@@ -4833,7 +4853,9 @@ HTML と EPUB の参考文献の項目の `id` は、本の全体で一意にす
 一覧を文書の順に、一覧の中の項目を番号の順にたどり、`cite-<キー>`、`cite-<キー>-2`、`cite-<キー>-3` の順の候補のうち、本の中でまだ使っていない最初のものを使う。
 一覧が一つの本では、どの項目も `cite-<キー>` になる。
 HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、区切り、位置の文字列と、番号ごとのリンクを置く（[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)、[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。
-リンクの行き先は、その印が載る一覧の、その文献の項目の `id` である（`<span class="cite">[<a href="#cite-knuth1981">1</a>, p. 5]</span>`）。
+リンクの行き先は、その印が載る一覧の、その文献の項目の `id` である（`<span class="cite">[<a href="#cite-knuth1981">1</a>, p.&#xA0;5]</span>`）。
+頁の文言と値のあいだは U+00A0 である（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）。
+例の `&#xA0;` は説明のための書き方で、出力には実体参照ではなく U+00A0 の文字を書く。
 まとめた範囲の途中の番号（`[1–3]` の 2）は、文字に出ないのでリンクを持たない。
 一覧が別のファイルにあれば、そのファイルへの相対リンク（`../chapters/99.xhtml#cite-knuth1981` など）にする。
 本に `@bibliography` がなければ、印をリンクにせず、`<span class="cite">[1]</span>` と書く。

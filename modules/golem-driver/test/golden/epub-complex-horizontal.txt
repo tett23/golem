@@ -306,7 +306,7 @@ done &lt;deps.txt</code></pre></figure>
 <p>Internationalization and characterization of buildsystem interoperability requirements are discussed in the literature under names like reproducibility and incrementality. Unquestionably, well-understood, straightforward implementations outperform overcomplicated counterparts.</p>
 </body>
 </html>
-== OEBPS/chapters/03.xhtml (deflate, time 315532800, 10010 bytes)
+== OEBPS/chapters/03.xhtml (deflate, time 315532800, 10011 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -377,7 +377,7 @@ done app.o</code></pre>
 </ol>
 <section class="notes">
 <h2>注</h2>
-<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> 長くかかるターゲットを先に動かすと、全体の時間が短くなりやすい。最適な順を求める問題は難しいことが知られている（<span class="cite">[<a href="#cite-build-systems">1</a>, pp. 12–14]</span> の議論を参照）。</p></aside>
+<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> 長くかかるターゲットを先に動かすと、全体の時間が短くなりやすい。最適な順を求める問題は難しいことが知られている（<span class="cite">[<a href="#cite-build-systems">1</a>, pp. 12–14]</span> の議論を参照）。</p></aside>
 <aside epub:type="footnote" id="note-2"><p><a href="#noteref-2">2</a> 段落の行分割にも、似た選択がある。<span class="cite">[<a href="#cite-knuth-plass">3</a>]</span> は、行ごとに決めるのではなく、段落の全体で最もよい分け方を探す方法を示した。ビルドツールの側の選択は <span class="cite">[<a href="#cite-build-systems">1</a>, <a href="#cite-make">2</a>]</span> が扱う。</p></aside>
 </section>
 </body>
