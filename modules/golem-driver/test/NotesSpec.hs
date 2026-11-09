@@ -32,7 +32,7 @@ footnotes :: PdfLayout -> [[T.Text]]
 footnotes pl = [map lineText ls | sl <- Map.elems (plLines pl), (_, ls) <- slNotes sl]
 
 layout :: BS.ByteString -> T.Text -> IO PdfLayout
-layout style src = layoutMini style src [] >>= either (\ds -> assertFailure (show (map diagCode ds))) (pure . snd)
+layout style src = layoutMini style src [] >>= either (assertFailure . show . map diagCode) (pure . snd)
 
 -- | Every file a build writes for the targets, by its path under build/, and the errors.
 buildAll :: BS.ByteString -> T.Text -> IO [(FilePath, BS.ByteString)]
@@ -95,7 +95,7 @@ notesTests =
       t <- withSystemTempDirectory "golem-structure" $ \tmp -> do
         writeProject tmp miniManifest horizontalStyle three []
         r <- pdfStructure (defaultOptions tmp) {optFonts = fakeProvider}
-        either (\ds -> assertFailure (show (map diagCode ds))) (pure . map T.strip . T.lines) r
+        either (assertFailure . show . map diagCode) (pure . map T.strip . T.lines) r
       let note = takeWhile (\l -> not ("H" `T.isPrefixOf` l)) (drop 1 (dropWhile (not . ("Note" `T.isPrefixOf`)) t))
       length (filter (== "P") note) @?= 3
       take 1 note @?= ["Lbl"],

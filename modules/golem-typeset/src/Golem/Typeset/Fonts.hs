@@ -292,8 +292,8 @@ bookHasCode styleOf book = or [any (blockHas (styleOf fid)) bs | Document fid bs
       CharStyle _ n xs -> isCodeCharStyle st n || any (inlineHas st) xs
       Color _ _ xs -> any (inlineHas st) xs
       Kenten _ _ xs -> any (inlineHas st) xs
-      Note _ _ nb -> any (inlineHas st) (concat (noteParagraphs nb))
-      Sidenote _ _ nb -> any (inlineHas st) (concat (noteParagraphs nb))
+      Note _ _ nb -> any (any (inlineHas st)) (noteParagraphs nb)
+      Sidenote _ _ nb -> any (any (inlineHas st)) (noteParagraphs nb)
       -- the title a [ref-title] copies may hold code (docs/adr/0215)
       Resolved _ _ _ xs -> any (inlineHas st) xs
       Ruby _ _ segs -> or [any (inlineHas st) b | RubySegment b _ <- segs]

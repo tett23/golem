@@ -2038,7 +2038,7 @@ anchoredByLine :: FlowEnv -> Style -> [Item] -> [Golem.Layout.Japanese.Anchor] -
 anchoredByLine fe st items anchors ls =
   let lineOf = lineIndexOfItems items ls
       env = withDocStyle st (feBodyEnv fe)
-      footnote k n b = footnoteLines fe (withFileExceptions fe (spanFile (noteIdSpan k)) env) (piStyle (feInput fe)) k n b
+      footnote k = footnoteLines fe (withFileExceptions fe (spanFile (noteIdSpan k)) env) (piStyle (feInput fe)) k
       marksIn b = [sp | AnchorIndex _ sp _ <- snd (composeInlines env (concat b))]
       atEnd = feNotesAtEnd fe
    in ( Map.fromListWith (flip (<>)) [(lineOf i, [(k, footnote k n b)]) | not atEnd, (i, k, n, b) <- noteAnchors anchors],
