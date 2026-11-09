@@ -25,7 +25,7 @@ extra-doc-files:
   test/fonts/SourceSerif4-OFL.txt
 
 common warnings
-  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns -Werror
   default-extensions: DerivingStrategies LambdaCase OverloadedStrings
 
 library

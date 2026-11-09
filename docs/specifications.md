@@ -422,6 +422,21 @@ IR に構成子を足すと、このテストがコンパイルできなくな�
 リポジトリのライブラリと実行ファイル（golem-test-support と golem-doc-gen のものを除く）がこのパッケージに届かないことも、`scripts/ci/test-only-deps.sh` が確かめる。
 golem のパッケージに依存しないことの検査は golem-test-support だけに当て、golem-doc に依存する golem-doc-gen には当てない。
 
+`modules/` のすべてのパッケージのすべてのコンポーネント（library、executable、test-suite、benchmark）は、`ghc-options` に `-Werror` を持ち、GHC の warning を一つでも出せばビルドに失敗する（[ADR 0245](adr/0245-keep-the-warnings-of-ci-at-zero.md)）。
+`common warnings` を持つパッケージはそこに、持たない golem-cli は各コンポーネントに書く。
+依存するパッケージ（Hackage のものと、`source-repository-package` の peg-hs）には付けず、`cabal.project` と `cabal.project.wasm` の `ghc-options` にも書かない。
+CI の `changes` ジョブの `scripts/ci/werror.sh` が、`-Werror` を持たないコンポーネント、`-Werror` の後の `-Wwarn` と `-Wno-error`（`=` の付いたものも含む）、`modules/` の Haskell のファイルの `OPTIONS_GHC` の `-Wwarn`、`-Wno-error`、`-Wno-` で始まる警告の無効化、`cabal.project`、`cabal.project.wasm`、`cabal.project.local` の `ghc-options` の `-Wwarn` と `-Wno-error` を見つけて失敗する。
+peg-hs の生成器が書くモジュール（`Golem.Parser.Generated`、golem-parser のテストの `StrippedGrammar`、`Golem.Emet.Generated`）は、生成器が書く `-Wno-unused-imports` と `-Wno-unused-top-binds` を持つので、`OPTIONS_GHC` の検査から外す。
+CI の `build` ジョブが、これらが `scripts/gen-parser.sh` の出力と一致することを確かめる。
+
+CI の `ci` ジョブは、`gate.sh` の step の後に、同じ実行の終わったジョブ（省かれたものと `ci` 自身を除く）のログを読み、許可の一覧にない warning があれば失敗する（[ADR 0245](adr/0245-keep-the-warnings-of-ci-at-zero.md)）。
+ジョブの一覧は `gh api` で、各ログは同じ API から `curl` で取る（`gh api` は端末のエスケープシーケンスを含む出力を書かない）。
+`scripts/ci/log-warnings.sh` は、時刻の前置きを除いた行のうち、`##[warning]` で始まる行、GHC と C のコンパイラーの `FILE:LINE:COLUMN: warning:` の行、`awk`、`gawk`、`sed`、`grep`、`find`、`ld` の `warning` の行、cabal の `Warning: [` の行、`DeprecationWarning` か `ExperimentalWarning` を含む行、`npm warn` で始まる行を warning とする。
+行の頭の形だけを当てるので、golem の diagnostic（`warning[G03010]`）とテストの名前は warning にならない。
+許可の一覧 `scripts/ci/warnings-allowed.tsv` は、一行に、`grep -E` の正規表現、直せない理由、上流の URL をタブで区切って書き、golem の外から来る warning だけを載せる。
+`release.yml` は `ci.yml` を呼ぶので、同じ検査が走る。
+ほかのワークフローのログは検査しない。
+
 golem-project は、プロジェクトのファイルの読み方を表す値 `Files` を持つ（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
 `Files` は、パスの解決、バイト列の読み込み、バイト数の三つの関数を持つレコードである。
 ディスクのルートの下から読む `diskFiles` と、パスとバイト列の表から読む `memoryFiles` がある。

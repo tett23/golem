@@ -56,6 +56,8 @@ jobs:
         run: sh scripts/ci/docs-refs.sh
       - name: Every package errors on incomplete patterns (docs/adr/0027)
         run: sh scripts/ci/incomplete-patterns.sh
+      - name: Every package errors on warnings (docs/adr/0245)
+        run: sh scripts/ci/werror.sh
       - name: The uses of unsafePerformIO are the listed ones (docs/adr/0034)
         run: sh scripts/ci/unsafe-io.sh
       - name: No program changes its number of capabilities while it runs
@@ -1234,10 +1236,15 @@ jobs:
 
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
+  # the logs of the other jobs of the run are read for warnings, which
+  # needs actions: read (docs/adr/0245)
   ci:
     needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins, editors, editors-lsp, verapdf, wasm]
     if: always()
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -1246,3 +1253,24 @@ jobs:
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: printf '%s\n' "$NEEDS" | sh scripts/ci/gate.sh
+      # every job of the run that has ended, but those skipped; ci itself
+      # is still running. The list of jobs comes from gh api, and each log,
+      # which may hold terminal escape sequences that gh api refuses to
+      # write, from the same API with curl (docs/adr/0245 section 6)
+      - name: No warning in the logs of the jobs but the allowed ones (docs/adr/0245)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/logs"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
+            --jq '.jobs[] | select(.status == "completed" and .conclusion != "skipped") | [.id, .name] | @tsv' >"$RUNNER_TEMP/jobs.tsv"
+          cat "$RUNNER_TEMP/jobs.tsv"
+          while IFS="$(printf '\t')" read -r id name; do
+            curl -fsSL --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/jobs/$id/logs" -o "$RUNNER_TEMP/logs/$id.log"
+          done <"$RUNNER_TEMP/jobs.tsv"
+          test -s "$RUNNER_TEMP/jobs.tsv"
+          sh scripts/ci/log-warnings.sh scripts/ci/warnings-allowed.tsv "$RUNNER_TEMP"/logs/*.log

@@ -9,7 +9,7 @@ category:           Text
 build-type:         Simple
 
 common warnings
-  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns -Werror
   default-extensions: DerivingStrategies LambdaCase OverloadedStrings
 
 -- the frames of the input and the result (docs/adr/0199): pure, built and

@@ -2155,6 +2155,12 @@ fi
 # runs: visual alone has it, and the workflow keeps contents: read
 # (docs/adr/0096)
 if [ "$(awk '/^permissions:/ { on = 1; next } on && /^[^ ]/ { on = 0 } on && /^  [a-z]/' "$CI_YML")" = "  contents: read" ]; then ok; else ng "ci.yml: the permissions of the workflow are contents: read only"; fi
+# the warnings of CI (docs/adr/0245 sections 2 and 6): werror.sh in the
+# changes job, and the logs read in the ci job, apart from gate.sh
+if job_of "$CI_YML" changes | grep -qxF '        run: sh scripts/ci/werror.sh'; then ok; else ng "ci.yml: the changes job runs werror.sh"; fi
+if [ "$(perms_of "$CI_YML" ci | sort | tr '\n' ' ')" = "actions: read contents: read " ]; then ok; else ng "ci.yml: the ci job has contents: read and actions: read"; fi
+if job_of "$CI_YML" ci | grep -qF 'sh scripts/ci/log-warnings.sh scripts/ci/warnings-allowed.tsv' &&
+  job_of "$CI_YML" ci | awk '/log-warnings/ { exit } /^      - name: No warning in the logs/ { s = 1 } s && /^        if: always\(\)$/ { f = 1 } END { exit !f }'; then ok; else ng "ci.yml: the ci job checks the logs in a step of its own, also when gate.sh failed"; fi
 if [ "$(perms_of "$CI_YML" visual)" = "contents: read
 actions: read" ]; then ok; else ng "ci.yml: visual has contents: read and actions: read"; fi
 ACTIONS_READ_JOBS=$(ci_jobs "$CI_YML" | while IFS= read -r j; do if perms_of "$CI_YML" "$j" | grep -qx 'actions: read'; then printf '%s\n' "$j"; fi; done)
