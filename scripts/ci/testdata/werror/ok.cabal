@@ -1,0 +1,12 @@
+cabal-version: 3.0
+name: a
+
+common warnings
+  ghc-options: -Wall -Werror=incomplete-patterns -Werror
+
+library
+  import:           warnings
+
+test-suite a-test
+  import:           warnings
+  ghc-options: -threaded

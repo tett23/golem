@@ -670,6 +670,106 @@ rm "$P/modules/b/b.cabal"
 run incomplete_patterns "$P"
 expect "incomplete-patterns: a package without a .cabal file" 1
 
+# ---------------------------------------------------------------- werror.sh
+# (docs/adr/0245 section 2, W3): the .cabal files of testdata/werror, one
+# at a time, as modules/a/a.cabal of a small tree
+
+werror() { sh "$HERE/werror.sh" "$@"; }
+: >"$WORK/in"
+run werror "$HERE/../.."
+expect "werror: the repository (W3)" 0
+WE=$WORK/werror
+WD=$HERE/testdata/werror
+# we_case NAME CODE CABAL [LINE]: modules/a/a.cabal is testdata/werror/CABAL;
+# with LINE, stderr has it
+we_case() {
+  rm -rf "$WE" && mkdir -p "$WE/modules/a"
+  cp "$WD/$3" "$WE/modules/a/a.cabal"
+  run werror "$WE"
+  expect "werror: $1 (W3)" "$2"
+  if [ $# -ge 4 ]; then
+    if grep -qxF "$4" "$WORK/err"; then ok; else ng "werror: $1: \"$4\" on stderr (W3)"; fi
+  fi
+}
+we_case "a package with -Werror in its common stanza" 0 ok.cabal
+we_case "a component without -Werror" 1 missing.cabal "modules/a/a.cabal: executable a"
+if ! grep -q 'library' "$WORK/err"; then ok; else ng "werror: only the component without -Werror is named (W3)"; fi
+we_case "-Werror, then -Wwarn" 1 wwarn.cabal "modules/a/a.cabal: library"
+we_case "-Werror in the common stanza, then -Wno-error=name-shadowing" 1 no-error.cabal "modules/a/a.cabal: library"
+we_case "-Wno-error, then -Werror" 0 after-negation.cabal
+# OPTIONS_GHC -Wno-name-shadowing in a Haskell file
+we_case "the tree with a pragma" 0 ok.cabal
+mkdir -p "$WE/modules/a/src"
+cp "$WD/Pragma.hs" "$WE/modules/a/src/A.hs"
+run werror "$WE"
+expect "werror: OPTIONS_GHC -Wno-name-shadowing (W3)" 1
+if grep -qxF "modules/a/src/A.hs:1" "$WORK/err"; then ok; else ng "werror: the file and the line of the pragma (W3)"; fi
+# the files that peg-hs writes keep its pragmas
+mkdir -p "$WE/modules/golem-parser/src/Golem/Parser"
+cp "$WD/ok.cabal" "$WE/modules/golem-parser/golem-parser.cabal"
+rm "$WE/modules/a/src/A.hs"
+cp "$WD/Pragma.hs" "$WE/modules/golem-parser/src/Golem/Parser/Generated.hs"
+run werror "$WE"
+expect "werror: the pragma of a file peg-hs writes" 0
+# -Wwarn in the ghc-options of cabal.project.wasm
+rm -rf "$WE/modules/golem-parser"
+cp "$WD/cabal.project.wasm" "$WE/cabal.project.wasm"
+run werror "$WE"
+expect "werror: -Wwarn in cabal.project.wasm (W3)" 1
+if grep -qxF "cabal.project.wasm: package a" "$WORK/err"; then ok; else ng "werror: the section of cabal.project.wasm (W3)"; fi
+cp "$WD/cabal.project.wasm" "$WE/cabal.project.local"
+rm "$WE/cabal.project.wasm"
+run werror "$WE"
+expect "werror: -Wwarn in cabal.project.local (W3)" 1
+
+# ---------------------------------------------------------------- log-warnings.sh
+# (docs/adr/0245 section 5, W4, W5, W6): lines of the logs of 40eb98ce with
+# their times, in testdata/log-warnings: one.txt the warning of
+# download-artifact; two.txt it, a G03010 of golem, the name of a test with
+# "warnings", the warning of the ld of macOS, the hint of git and a warning
+# of GHC
+
+lw() { sh "$HERE/log-warnings.sh" "$@"; }
+LW=$HERE/testdata/log-warnings
+LT=$WORK/log-warnings
+mkdir -p "$LT"
+: >"$LT/empty.log"
+: >"$LT/empty.tsv"
+run lw "$LW/allow-dep.tsv" "$LT/empty.log"
+expect "log-warnings: an empty log (W4)" 0 ""
+run lw "$LT/empty.tsv" "$LW/one.txt"
+expect "log-warnings: one warning, nothing allowed (W4)" 1
+if [ "$(cat "$WORK/out")" = "$LW/one.txt:1: $(cut -d' ' -f2- "$LW/one.txt")" ]; then ok; else ng "log-warnings: the warning as LOG:LINE: TEXT, without the time (W4)"; fi
+run lw "$LW/allow-dep.tsv" "$LW/one.txt"
+expect "log-warnings: one warning that the list allows (W4)" 0 ""
+run lw "$LW/allow-dep.tsv" "$LW/two.txt"
+expect "log-warnings: warnings, the list allowing one (W4)" 1
+cp "$WORK/out" "$LT/two.out"
+if [ "$(cut -d: -f2 "$LT/two.out" | tr '\n' ' ')" = "4 6 " ]; then ok; else ng "log-warnings: the ld and the GHC warnings, not the one allowed, nor the hint (W4)"; fi
+if ! grep -qF 'G03010' "$LT/two.out" && ! grep -qF 'G05004' "$LT/two.out"; then ok; else ng "log-warnings: a diagnostic of golem and the name of a test are not warnings (W6)"; fi
+run lw "$LT/empty.tsv" "$LW/two.txt"
+expect "log-warnings: an empty list allows nothing (W4)" 1
+if [ "$(wc -l <"$WORK/out" | tr -d ' ')" = 3 ]; then ok; else ng "log-warnings: every warning of an empty list (W4)"; fi
+# W5: the lines of the log and of the list in the other order
+awk '{ a[NR] = $0 } END { for (i = NR; i >= 1; i--) print a[i] }' "$LW/two.txt" >"$LT/reversed.log"
+{ cat "$LW/allow-dep.tsv"; printf '^hint: \tthe hint\thttps://github.com/actions/checkout/issues/427\n'; } >"$LT/allow.tsv"
+awk '{ a[NR] = $0 } END { for (i = NR; i >= 1; i--) print a[i] }' "$LT/allow.tsv" >"$LT/allow-reversed.tsv"
+run lw "$LT/allow.tsv" "$LW/two.txt"
+c1=$CODE
+sed 's/^[^:]*:[0-9]*: //' "$WORK/out" | LC_ALL=C sort >"$LT/a.txt"
+run lw "$LT/allow-reversed.tsv" "$LT/reversed.log"
+sed 's/^[^:]*:[0-9]*: //' "$WORK/out" | LC_ALL=C sort >"$LT/b.txt"
+if [ "$c1" = 1 ] && [ "$CODE" = 1 ] && cmp -s "$LT/a.txt" "$LT/b.txt"; then ok; else ng "log-warnings: the same warnings and code in any order of the lines (W5)"; fi
+run lw "$LW/two-fields.tsv" "$LW/one.txt"
+expect "log-warnings: a line of the list of two fields" 2
+run lw "$LW/bad-regex.tsv" "$LW/one.txt"
+expect "log-warnings: a regular expression grep -E does not take" 2
+run lw "$LW/allow-dep.tsv"
+expect "log-warnings: no log is a usage error" 2
+run lw "$HERE/warnings-allowed.tsv" "$LW/two.txt"
+expect "log-warnings: the list of the repository allows the ld of macOS but not GHC (W4)" 1
+if [ "$(cut -d: -f2 "$WORK/out")" = 6 ]; then ok; else ng "log-warnings: the list of the repository leaves the warning of GHC alone (W4)"; fi
+
 # ---------------------------------------------------------------- unsafe-io.sh
 
 unsafe_io() { sh "$HERE/unsafe-io.sh" "$@"; }
@@ -2055,10 +2155,16 @@ fi
 # runs: visual alone has it, and the workflow keeps contents: read
 # (docs/adr/0096)
 if [ "$(awk '/^permissions:/ { on = 1; next } on && /^[^ ]/ { on = 0 } on && /^  [a-z]/' "$CI_YML")" = "  contents: read" ]; then ok; else ng "ci.yml: the permissions of the workflow are contents: read only"; fi
+# the warnings of CI (docs/adr/0245 sections 2 and 6): werror.sh in the
+# changes job, and the logs read in the ci job, apart from gate.sh
+if job_of "$CI_YML" changes | grep -qxF '        run: sh scripts/ci/werror.sh'; then ok; else ng "ci.yml: the changes job runs werror.sh"; fi
+if [ "$(perms_of "$CI_YML" ci | sort | tr '\n' ' ')" = "actions: read contents: read " ]; then ok; else ng "ci.yml: the ci job has contents: read and actions: read"; fi
+if job_of "$CI_YML" ci | grep -qF 'sh scripts/ci/log-warnings.sh scripts/ci/warnings-allowed.tsv' &&
+  job_of "$CI_YML" ci | awk '/log-warnings/ { exit } /^      - name: No warning in the logs/ { s = 1 } s && /^        if: always\(\)$/ { f = 1 } END { exit !f }'; then ok; else ng "ci.yml: the ci job checks the logs in a step of its own, also when gate.sh failed"; fi
 if [ "$(perms_of "$CI_YML" visual)" = "contents: read
 actions: read" ]; then ok; else ng "ci.yml: visual has contents: read and actions: read"; fi
 ACTIONS_READ_JOBS=$(ci_jobs "$CI_YML" | while IFS= read -r j; do if perms_of "$CI_YML" "$j" | grep -qx 'actions: read'; then printf '%s\n' "$j"; fi; done)
-if [ "$ACTIONS_READ_JOBS" = visual ]; then ok; else ng "ci.yml: no job but visual has actions: read"; fi
+if [ "$(printf '%s\n' "$ACTIONS_READ_JOBS" | LC_ALL=C sort | tr '\n' ' ')" = "ci visual " ]; then ok; else ng "ci.yml: no job but visual and ci (docs/adr/0245) has actions: read"; fi
 # caches alone has a write permission, actions: write, to delete the stale
 # dist- caches of main; it runs on pushes to main only, after the saves of
 # build and wasm, and uses no action but checkout (docs/adr/0228)

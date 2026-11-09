@@ -1,0 +1,15 @@
+# The warnings of the logs of CI that come from outside golem and that golem
+# cannot fix (docs/adr/0245): an extended regular expression, matched with
+# grep -E against a line without its time; why it cannot be fixed; the URL
+# of the upstream. The fields are separated by a tab. scripts/ci/log-warnings.sh
+# reads it.
+^\(node:[0-9]+\) \[DEP0005\] DeprecationWarning: Buffer\(\) is deprecated	actions/download-artifact@v8（最新のメジャー版）が、ダウンロードのたびに Node の非推奨の Buffer() を呼ぶ。golem は action を変えられない	https://github.com/actions/download-artifact/issues/484
+^hint: 	actions/checkout@v7 が中で走らせる git init が、init.defaultBranch の設定のない環境で初めの枝の名前の hint を出す。action が git の設定を渡さない	https://github.com/actions/checkout/issues/427
+\[ Warn +\].* has shadowed binaries	haskell-actions/setup@v2 が入れる cabal の版の実行ファイルを、ランナーのイメージの別の cabal が隠すと、ghcup が知らせる	https://errors.haskell.org/messages/GHCup-00330
+\[ Warn +\].* set(Modification|Access)Time failed with: 	ランナーのイメージの ghcup のキャッシュのファイルが root のもので、ghcup が時刻を書けない	https://github.com/haskell/ghcup-hs/blob/e24077bc3640f55171735b11dffc0223dacfc7fe/lib/GHCup/Download.hs#L348-L349
+\[ Warn +\].* New [a-zA-Z]+ version available	golem が GHC と cabal の版を固定しているので、ghcup が新しい版を知らせる	https://github.com/haskell/ghcup-hs/blob/e24077bc3640f55171735b11dffc0223dacfc7fe/app/ghcup/Main.hs#L270-L275
+^<no location info>: warning: \[GHC-[0-9]+\] \[-Wunused-packages\]	wasm のビルドで、skylighting のパッケージの .cabal が -Wunused-packages を付けており、使わない依存を GHC が知らせる。依存するパッケージの warning は直さない（ADR 0245）	https://hackage.haskell.org/package/skylighting-format-ansi-0.1/skylighting-format-ansi.cabal
+warning: .*\[-Wstringop-overflow=\]	Alpine の GCC 15 が、同梱の HarfBuzz 14.6.0 の hb_stable_sort のインライン展開に -Wstringop-overflow を出す。同梱の C のソースは上流のまま変えない	https://github.com/harfbuzz/harfbuzz/blob/14.6.0/src/hb-ot-shaper-arabic-fallback.hh#L86-L88
+^ld: warning: -U option is redundant when using -undefined dynamic_lookup$	macOS の GHC が、rts の ld-options の -Wl,-U と -undefined dynamic_lookup を一緒にリンカーに渡し、macOS の ld が知らせる	https://github.com/ghc/ghc/blob/317b03bf98208d8b284842b5f00ead200695639c/rts/rts.cabal#L331
+^\(node:[0-9]+\) ExperimentalWarning: WASI is an experimental feature and might change at any time$	Node の node:wasi は、読み込むたびに実験的な機能であることを知らせる。golem.wasm を Node で動かす検査がこれを使う	https://github.com/nodejs/node/blob/768315cf7165e9ff9b636844b776488e9d1703fc/lib/wasi.js#L35
+^useradd warning: nixbld[0-9]+'s uid [0-9]+ is greater than SYS_UID_MAX [0-9]+$	cachix/install-nix-action@v31 が走らせる Nix のインストーラーが、ビルド用の利用者を SYS_UID_MAX より大きい uid で作る	https://github.com/NixOS/nix/blob/43bcda119d88768a71da6a3cb4f266a9d42bf70a/packaging/scripted-installer/install-systemd-multi-user.sh#L212
