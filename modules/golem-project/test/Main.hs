@@ -1110,7 +1110,7 @@ styleTests =
         noBase (paraStyle s (Just "caption")) @?= noBase (paraStyle s Nothing)
         noBase (paraStyle s (Just "sidenote")) @?= noBase (paraStyle s Nothing)
         Map.keys (stParaStyles s) @?= ["body", "caption", "code", "sidenote", "verse"]
-        Map.keys (stCharStyles s) @?= ["bold", "code", "italic", "note-mark", "strong", "url"],
+        Map.keys (stCharStyles s) @?= ["bold", "code", "italic", "no-break", "note-mark", "strong", "url"],
       testCase "a user definition overrides the keys it writes" $ do
         s <- parsed "[paragraph-styles.caption]\nsize = \"0.8zw\"\n"
         (paraStyle s (Just "caption") >>= psSize) @?= Just (Zw (4 / 5))
@@ -1646,6 +1646,21 @@ codeStyleTests =
         (charStyle e "path" >>= csWrapMark) @?= Just ""
         m <- styleOf "[character-styles.code]\nwrap-mark = \"→\"\n"
         (charStyle m "code" >>= csWrapMark) @?= Just "→",
+      -- the ranges that do not break (docs/adr ADR 0272)
+      testCase "the built-in no-break is there without style.toml, no-break = true only" $ do
+        s <- styleOf ""
+        charStyle s "no-break" @?= Just noCharDef {csNoBreak = Just True},
+      testCase "a user's [character-styles.no-break] overrides the keys it writes only" $ do
+        s <- styleOf "[color.swatches]\nred = { cmyk = [0, 100, 100, 0] }\n\n[character-styles.no-break]\ncolor = \"red\"\n"
+        (charStyle s "no-break" >>= csNoBreak) @?= Just True
+        (charStyle s "no-break" >>= csColor) @?= Just "red"
+        f <- styleOf "[character-styles.no-break]\nno-break = false\n"
+        (charStyle f "no-break" >>= csNoBreak) @?= Just False,
+      testCase "no-break of a character style is read and inherited; not a boolean is G03006" $ do
+        s <- styleOf "[character-styles.name]\nno-break = true\n\n[character-styles.full-name]\nbased-on = \"name\"\n"
+        (charStyle s "name" >>= csNoBreak) @?= Just True
+        (charStyle s "full-name" >>= csNoBreak) @?= Just True
+        codes (parseStyle (FileId 0) "[character-styles.name]\nno-break = 1\n") @?= ["G03006"],
       testCase "C8: wrap-mark on a style that is not code, or not a string, is G03006" $ do
         codes (parseStyle (FileId 0) "[character-styles.term]\nwrap-mark = \"→\"\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[character-styles.code]\nwrap-mark = 1\n") @?= ["G03006"],
@@ -1948,6 +1963,7 @@ localStyleTests =
         let valueOf = \case
               "synthetic-bold" -> "true"
               "synthetic-italic" -> "true"
+              "no-break" -> "true"
               "line-breaks" -> "keep"
               "space-between" -> "1"
               "space-before" -> "1"

@@ -25,6 +25,7 @@ import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
 import OutputGoldenSpec
 import OverflowSpec (overflowTests)
+import SoftHyphenSpec (softHyphenTests)
 import PageElementsSpec
 import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
@@ -88,7 +89,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, softHyphenTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests]
         <> [ newProjectTests,
              allTargetsTests,
              pdfPipelineTests,

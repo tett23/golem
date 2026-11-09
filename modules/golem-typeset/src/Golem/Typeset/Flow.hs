@@ -518,7 +518,7 @@ layoutFigures reuse inp geom fonts figures = do
           atHeading hs tp = tp {tpLeader = withBoxSource (SourceGrid, hs) (tpLeader tp), tpNumber = withBoxSource (SourceGrid, hs) (tpNumber tp)}
           tocPages = Map.fromList [(lid, atHeading hs (tocPage tg e (pageNumberLine env n))) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
        in case concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) pages) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built))
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built))
             ds -> Left ds
 
 {- | The most grid lines a column may have with @page-lines (docs/adr ADR
@@ -960,6 +960,37 @@ bibliographyLines bib cites =
         | Nothing <- checkUrl u -> Link sp0 u [CharStyle sp0 "url" [Text sp0 u]] : merged rest
         | otherwise -> CharStyle sp0 "url" [Text sp0 u] : merged rest
       [] -> []
+
+{- | G07123 and G07124 (docs/adr ADR 0272): a notice for each soft hyphen
+of the book that is not a break, at the soft hyphen ([shy] where it is
+written so), in the order of the documents and their blocks. A soft
+hyphen without a letter of its element on either side is G07123, one in
+text that does not break G07124; one before the first letter of its
+element is neither. The lines Golem makes are not read: what they show is
+written in the source, and reported there.
+-}
+softHyphenNotices :: PdfInput -> [Diagnostic]
+softHyphenNotices inp =
+  [ notice code (siteSpan sp off) msg
+  | Document fid bs <- bookDocs (piBook inp),
+    let env = (defaultComposeEnv 0) {ceRestyle = restyle (docStyle inp fid), ceSourceAt = sourceAt sources},
+    b <- bs,
+    is <- blockInlineLists b,
+    (sp, off, note) <- softHyphenSites env is,
+    let (code, msg) = case note of
+          ShyNotBetweenLetters -> ("G07123", "ソフトハイフンの前か後ろが語の字でないので、分割の候補にしません")
+          ShyInUnbreakable -> ("G07124", "改行しない文字（コード、URL、リンク、改行しない範囲）の中のソフトハイフンなので、分割の候補にしません")
+  ]
+  where
+    sources = Map.map (TE.encodeUtf8 . sfText) (projectSources (piProject inp))
+    -- the soft hyphen in the source: U+00AD, or [shy]
+    siteSpan sp off
+      | off < 0 = sp
+      | otherwise =
+          let len = case Map.lookup (spanFile sp) sources of
+                Just src | "[shy]" `BS.isPrefixOf` BS.drop off src -> 5
+                _ -> 2
+           in mkSpan (spanFile sp) off (off + len)
 
 {- | The role, size and line pitch of sidenotes: the role and size of the
 paragraph style sidenote (golem-driver ADR 0011), the body pitch scaled

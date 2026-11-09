@@ -242,7 +242,11 @@ data CharStyleDef = CharStyleDef
     {- | the mark at the end of a line that breaks inside inline code other
     than at a space (golem-layout ADR 0034); for code styles only, the
     empty text draws none
-    -} csWrapMark :: !(Maybe Text)
+    -} csWrapMark :: !(Maybe Text),
+    {- | the characters do not break between them (docs/adr ADR 0272), as
+    InDesign's No Break; true in one of the styles around a character is
+    true for it
+    -} csNoBreak :: !(Maybe Bool)
   }
   deriving stock (Eq, Show)
 
@@ -372,7 +376,7 @@ data RegexStyleDef = RegexStyleDef
 
 -- | A character style with no key written.
 noCharDef :: CharStyleDef
-noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
@@ -471,7 +475,7 @@ decimalOf s = case T.splitOn "." s of
   [i, f] | not (T.null i), not (T.null f), T.all isDigit (i <> f) -> Just (read (T.unpack (i <> f)) % (10 ^ T.length f))
   _ -> Nothing
 
--- | The built-in character styles: bold, italic, strong, code (golem-driver ADR 0017), url (golem-doc ADR 0005) and note-mark (docs/adr/0177).
+-- | The built-in character styles: bold, italic, strong, code (golem-driver ADR 0017), url (golem-doc ADR 0005), note-mark (docs/adr/0177) and no-break (docs/adr ADR 0272).
 builtinCharStyles :: Map Text CharStyleDef
 builtinCharStyles =
   Map.fromList
@@ -480,6 +484,8 @@ builtinCharStyles =
       -- the wrap mark of inline code (golem-layout ADR 0034): U+23CE, which the code fonts of the manuals have, not U+21A9
       ("code", noCharDef {csFont = Just "code", csPadding = Just (Zw (1 % 4)), csWrapMark = Just "\x23CE"}),
       ("italic", noCharDef {csSyntheticItalic = Just True}),
+      -- a range that does not break (docs/adr ADR 0272)
+      ("no-break", noCharDef {csNoBreak = Just True}),
       -- the marks of notes in the text (docs/adr/0177): the size of the retired [notes] mark-size
       ("note-mark", noCharDef {csSize = Just (Zw (1 % 2))}),
       ("strong", noCharDef {csBasedOn = Just "bold"}),
@@ -662,6 +668,7 @@ overChar u b =
     (csBackground u <|> csBackground b)
     (csPadding u <|> csPadding b)
     (csWrapMark u <|> csWrapMark b)
+    (csNoBreak u <|> csNoBreak b)
 
 overPara :: ParaStyleDef -> ParaStyleDef -> ParaStyleDef
 overPara u b =
@@ -1592,7 +1599,8 @@ instance FromValue CharStyleDef where
     -- a negative padding is read and reported by the checks (golem-driver ADR 0029)
     pad' <- signedDimKey "padding" "（0.25zw や 1mm のように書きます）"
     wm <- optKey "wrap-mark"
-    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm)
+    nb <- optKey "no-break"
+    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm nb)
 
 {- | kerning, tracking, proportional-metrics and baseline-shift
 (docs/adr/0020). Every error is under its key, which makes it G03021.
@@ -2810,7 +2818,8 @@ charStyleNode =
         <> featureNodes
         <> [ ("background", NEither [ref Swatches, NValue LFalse]),
              ("padding", dim),
-             ("wrap-mark", str)
+             ("wrap-mark", str),
+             ("no-break", bool)
            ]
     )
 

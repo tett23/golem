@@ -167,7 +167,9 @@ data HtmlCharStyle = HtmlCharStyle
     {- | the swatch of the background and the padding along the line as a
     CSS length, of code only (golem-driver ADR 0029)
     -} hcsBackground :: !(Maybe Text),
-    hcsPadding :: !(Maybe Text)
+    hcsPadding :: !(Maybe Text),
+    -- | the characters do not break between them (docs/adr ADR 0272)
+    hcsNoBreak :: !Bool
   }
   deriving stock (Eq)
 
@@ -1094,6 +1096,8 @@ css cfg book =
         -- the background and the padding of inline code, along the line only (golem-driver ADR 0029)
         <> ["background-color: " <> rgbOf cmyk | Just sw <- [hcsBackground cs], Just cmyk <- [Map.lookup sw (hcSwatches cfg)]]
         <> ["padding-inline: " <> p | Just p <- [hcsPadding cs]]
+        -- a range that does not break; a br breaks inside it, as a forced break does in the PDF (docs/adr ADR 0272)
+        <> ["white-space: nowrap" | hcsNoBreak cs]
       where
         fallback = if hcsCode cs then ["monospace"] else families "body" <> ["serif"]
     {- the keys of the spacing of characters whose values differ from the
@@ -1242,6 +1246,8 @@ css cfg book =
                              ]
                            else []
                        )
+                    -- a range that does not break (docs/adr ADR 0272)
+                    <> ["white-space: nowrap" | hcsNoBreak cs]
                 )
             | (name, cs) <- Map.toAscList (hlCharStyles l)
             ]

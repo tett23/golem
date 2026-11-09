@@ -377,39 +377,46 @@ tests =
           -- 255 × 0.2 = 51
           cssLines ".swatch-" cfg0 {hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))]} @?= [".swatch-accent { color: rgb(255, 51, 0); }"],
         testCase "a character style with a swatch has its rgb() colour" $
-          let term = HtmlCharStyle Nothing False False (Just "accent") noFeatures False Nothing Nothing
+          let term = HtmlCharStyle Nothing False False (Just "accent") noFeatures False Nothing Nothing False
               cfg = cfg0 {hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))], hcCharStyles = Map.fromList [("term", term)]}
            in cssLines ".cs-term" cfg @?= [".cs-term { color: rgb(255, 51, 0); }"],
         -- the background and the padding of inline code (golem-driver ADR 0029)
         testCase "code with a background: background-color and padding-inline" $
-          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em")
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em") False
               cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcCharStyles = Map.fromList [("code", code)]}
            in cssLines "code {" cfg @?= ["code { background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
         testCase "a style based on code with a background: the same two in its cs- rule" $
-          let path = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em")
+          let path = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em") False
               cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcCharStyles = Map.fromList [("path", path)]}
            in cssLines ".cs-path" cfg @?= [".cs-path { hyphens: none; background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
         testCase "a file's code style without a background resets them: transparent and 0" $
-          let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing Nothing
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing Nothing False
               cfg = cfg0 {hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("code", code)]) Map.empty Nothing Nothing)]}
            in cssLines "body.file-1 code" cfg
                 @?= ["body.file-1 code { font-family: inherit; font-weight: normal; font-style: normal; color: inherit; background-color: transparent; padding-inline: 0; }"],
         testCase "a file's code style with a background has its rgb() and padding" $
-          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em")
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em") False
               cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("code", code)]) Map.empty Nothing Nothing)]}
            in cssLines "body.file-1 code" cfg
                 @?= ["body.file-1 code { font-family: inherit; font-weight: normal; font-style: normal; color: inherit; background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
         testCase "a file's character style that is not code has no background" $
-          let term = HtmlCharStyle Nothing False False Nothing noFeatures False (Just "code-bg") (Just "0.25em")
+          let term = HtmlCharStyle Nothing False False Nothing noFeatures False (Just "code-bg") (Just "0.25em") False
               cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("term", term)]) Map.empty Nothing Nothing)]}
            in cssLines "body.file-1 .cs-term" cfg
                 @?= ["body.file-1 .cs-term { font-family: inherit; font-weight: normal; font-style: normal; color: inherit; }"],
         testCase "a background swatch that is not defined writes no background-color" $
-          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "nowhere") (Just "0.25em")
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "nowhere") (Just "0.25em") False
               cfg = cfg0 {hcCharStyles = Map.fromList [("code", code)]}
            in cssLines "code {" cfg @?= ["code { padding-inline: 0.25em; }"],
+        -- a range that does not break (docs/adr ADR 0272)
+        testCase "a character style that does not break: white-space: nowrap in its cs- rule" $
+          let nb = HtmlCharStyle Nothing False False Nothing noFeatures False Nothing Nothing True
+              cfg = cfg0 {hcCharStyles = Map.fromList [("no-break", nb)]}
+           in cssLines ".cs-no-break" cfg @?= [".cs-no-break { white-space: nowrap; }"],
+        testCase "a soft hyphen stays as it is in the HTML (docs/adr ADR 0272)" $
+          bodyA cfg0 (bookOf [para 0 [txt "in\xAD\&com"]]) @?= "<p>in\xAD\&com</p>\n",
         testCase "code without a background: padding-inline only" $
-          let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing (Just "0.25em")
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing (Just "0.25em") False
               cfg = cfg0 {hcCharStyles = Map.fromList [("code", code)]}
            in cssLines "code {" cfg @?= ["code { padding-inline: 0.25em; }"],
         testCase "coloured text is a span with the class of its swatch" $

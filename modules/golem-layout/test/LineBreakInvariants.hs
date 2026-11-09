@@ -29,6 +29,7 @@ module LineBreakInvariants
     l12Expansion,
     l13Protrusion,
     t1LastLineBoxes,
+    i4NoHyphensWithShy,
     lineInvariants,
     breaches,
     codeInvariants,
@@ -40,6 +41,7 @@ module LineBreakInvariants
 where
 
 import Data.Char (isDigit, isLetter)
+import Data.List (mapAccumL)
 import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -48,17 +50,18 @@ import Golem.Layout.Aki qualified as A
 import Golem.Layout.CharClass (dualJapaneseClass, isDualCharacter, isExtending, spanIsJapanese)
 import Golem.Layout.Japanese (CharClass (..), lineEndProhibited, lineStartProhibited, lookClass)
 import Golem.Layout.KnuthPlass
-import Golem.Layout.Look (Look (..))
+import Golem.Layout.Look (Look (..), plainLook)
 import Golem.Length qualified as L
 import KnuthPlassBrute (breakCandidates, bruteDemerits)
 
-{- | The invariants of docs/adr/0209, by their numbers, T1 of golem-layout
-ADR 0032, C1 to C8 of golem-layout ADR 0034, and J1 to J7 of golem-layout
+{- | The invariants of docs/adr/0209, by their numbers, L1, L8 and L9 as
+I1, I2 and I3 of docs/adr ADR 0272 widen them, I4 of that ADR, T1 of
+golem-layout ADR 0032, C1 to C8 of golem-layout ADR 0034, and J1 to J7 of golem-layout
 ADR 0045, whose J3 takes the place of C3. J5 compares the items with those
 before golem-layout ADR 0045, which no output tells: the tests of the
 items check it.
 -}
-data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1 | C1 | C2 | C6 | C7 | C8 | J1 | J2 | J3 | J4 | J6 | J7
+data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1 | I4 | C1 | C2 | C6 | C7 | C8 | J1 | J2 | J3 | J4 | J6 | J7
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken, the line it is broken at (from 0; -1 for the whole paragraph), and how.
@@ -167,12 +170,21 @@ wide p l = lineEnd l > pWidth p + endProtrusion l + 1
 
 -- * the invariants
 
--- | L1: the characters of the lines, joined, are those of the paragraph, the spaces between Latin words left out.
+{- | L1, as I1 of docs/adr ADR 0272 widens it: no box of a line holds a
+soft hyphen (U+00AD), and the characters of the lines, joined, are those
+of the paragraph, the soft hyphens and the spaces between Latin words
+left out.
+-}
 l1AllOnce :: Check
 l1AllOnce _ p =
   let got = T.concat (map textOf (linesOf p))
-      want = T.filter (/= ' ') (pText p)
-   in [Breach L1 (-1) ("the lines hold " <> show got <> ", not " <> show want) | got /= want]
+      want = T.filter (\c -> c /= ' ' && c /= shy) (pText p)
+   in [Breach L1 i ("line " <> show (i + 1) <> " has a box of a soft hyphen: " <> show (bcText c)) | (i, l) <- zip [0 ..] (linesOf p), c <- boxes l, T.any (== shy) (bcText c)]
+        <> [Breach L1 (-1) ("the lines hold " <> show got <> ", not " <> show want) | got /= want]
+
+-- | The soft hyphen (docs/adr ADR 0272).
+shy :: Char
+shy = '\xAD'
 
 -- | L2: no line after the first starts with a character of line-start prohibition, but a line wider than W.
 l2LineStart :: Check
@@ -258,6 +270,7 @@ fittingBreaks p l =
             | not (pProtrusion ps) = 0
             | otherwise = case its !! j of
                 Penalty _ _ (PatternHyphen q) -> q
+                Penalty _ _ (SoftHyphen q) -> q
                 _ -> sum (map bcProtrudeEnd lastB)
           natural = sum [w | Box w _ <- before] + sum [w | Glue w _ _ <- before] + penW - protS - protE + sum (map bcEdgeStart firstB) + sum (map bcEdgeEnd lastB)
           expandable = sum [w | Box w c <- before, bcExpandable c]
@@ -312,9 +325,10 @@ l7Optimal limit p
     br = pBreaks p
     ps = pParams p
 
-{- | L8: a line breaks between two boxes of Latin text (two that take the
-glyph expansion) only at a hyphen of the patterns, after a hyphen or a
-dash written in the word, or at a space.
+{- | L8, as I2 of docs/adr ADR 0272 widens it: a line breaks between two
+boxes of Latin text (two that take the glyph expansion) only at a hyphen
+of the patterns, after a hyphen or a dash written in the word, at a soft
+hyphen, or at a space.
 -}
 l8InsideWords :: Check
 l8InsideWords _ p =
@@ -347,11 +361,30 @@ a hyphen, at least two characters of its element before the break and at
 least three after it; a line broken after a hyphen or dash written in
 the word ends with it and adds no hyphen; the first pass breaks at no
 hyphen of the patterns, nor does a word of a language span without
-patterns.
+patterns. As I3 of docs/adr ADR 0272 widens it: there is a penalty of a
+soft hyphen at each run of soft hyphens of the paragraph between two Latin
+letters, and at nothing else, of the width of a hyphen and a penalty of
+50; a line broken at one ends with that width, a letter of its element on
+either side, and may be of the first pass.
 -}
 l9Hyphens :: Check
 l9Hyphens _ p =
-  concat
+  [ Breach L9 (-1) ("the items have " <> show (length softs) <> " breaks at soft hyphens, the paragraph " <> show wanted)
+  | length softs /= wanted
+  ]
+    <> [Breach L9 (-1) ("a break at a soft hyphen is of width " <> show w <> " and penalty " <> show pen) | (w, pen) <- softs, w /= hyphen || pen /= 50]
+    <> concat
+      [ case breakItem p i of
+          Just (Penalty _ _ (SoftHyphen _)) ->
+            [Breach L9 i ("line " <> show (i + 1) <> " breaks at a soft hyphen but does not end with the width of a hyphen") | lastItemWidth line /= Just hyphen]
+              <> [Breach L9 i ("line " <> show (i + 1) <> " breaks at a soft hyphen after " <> show before0 <> ", not a letter") | not (endsWithLetter before0)]
+              <> [Breach L9 (i + 1) ("line " <> show (i + 2) <> " starts at a soft hyphen with " <> show after0 <> ", not a letter") | not (maybe False (isLetter . fst) (T.uncons after0))]
+            where
+              (before0, after0) = maybe ("", "") (elementAround (pItems p)) (breakIndex p i)
+          _ -> []
+      | (i, line, _) <- pairs p
+      ]
+    <> concat
     [ case breakItem p i of
         Just (Penalty w _ (PatternHyphen _)) ->
           [Breach L9 i ("line " <> show (i + 1) <> " breaks at a hyphen of the patterns in the first pass") | brPass (pBreaks p) == 1]
@@ -380,6 +413,25 @@ l9Hyphens _ p =
     isPenalty = \case
       Penalty {} -> True
       _ -> False
+    softs = [(w, pen) | Penalty w pen (SoftHyphen _) <- pItems p]
+    wanted = softHyphenBreaks (pText p)
+    endsWithLetter t = maybe False isLetter (T.find (not . isExtending) (T.reverse t))
+
+{- | The runs of soft hyphens of a text between two Latin letters (docs/adr
+ADR 0272): where the paragraphs of the enumeration break at one.
+-}
+softHyphenBreaks :: Text -> Int
+softHyphenBreaks t = length [() | (a, run, b) <- runs (T.unpack t), not (null run), latinLetter a, latinLetter b]
+  where
+    runs = \case
+      a : rest | a /= shy -> let (r, rest') = span (== shy) rest in case rest' of
+        b : _ -> (a, r, b) : runs rest'
+        [] -> []
+      _ : rest -> runs rest
+      [] -> []
+    latinLetter c = isLetter c && charClassOf c == Western
+    charClassOf = lookClass (bcLookPlain)
+    bcLookPlain = plainLook "body" 0
 
 {- | The characters of the element of a word on either side of a break,
 by the index of the break in the items: the boxes of Latin text before
@@ -391,6 +443,7 @@ elementAround its b = (T.concat (reverse (go (reverse (take b its)))), T.concat 
   where
     go = \case
       Penalty _ _ (PatternHyphen _) : rest -> go rest
+      Penalty _ _ (SoftHyphen _) : rest -> go rest
       Box _ c : rest | bcExpandable c -> bcText c : go rest
       _ -> []
 
@@ -486,6 +539,8 @@ l13Protrusion _ p =
       let (s, e) = lineProtrusion l
           hyphenEnd = case breakItem p i of
             Just (Penalty _ _ (PatternHyphen q)) | i < length (linesOf p) - 1 -> Just q
+            -- a soft hyphen protrudes as one of the patterns (docs/adr ADR 0272)
+            Just (Penalty _ _ (SoftHyphen q)) | i < length (linesOf p) - 1 -> Just q
             _ -> Nothing
           wantS = maybe 0 bcProtrudeStart (firstBox l)
           wantE = fromMaybe (maybe 0 bcProtrudeEnd (lastBox l)) hyphenEnd
@@ -523,6 +578,52 @@ t1LastLineBoxes _ p =
       Box {} -> True
       _ -> False
 
+{- | I4 of docs/adr ADR 0272: an element of a word with a soft hyphen has
+no hyphen of the patterns. The elements are read from the items: the
+boxes of Latin text joined by the hyphens of the patterns and the soft
+hyphens; a soft hyphen of the paragraph is in one where it is before one
+of its characters, or right after its last when nothing written follows
+(a soft hyphen right after a written hyphen is in the element after it).
+-}
+i4NoHyphensWithShy :: Check
+i4NoHyphensWithShy _ p =
+  [ Breach I4 (-1) ("the element " <> show (T.concat [t | (_, _, t) <- el]) <> " has a soft hyphen and a hyphen of the patterns")
+  | (el, hyphenated, explicitAfter) <- elements,
+    hyphenated,
+    (s0, _, _) : _ <- [el],
+    let (_, e0, _) = last el,
+    any (\q -> (q >= s0 && q < e0) || (q == e0 && not explicitAfter)) shyAt
+  ]
+  where
+    stripped = T.filter (/= shy) (pText p)
+    shyAt = [n | (n, c) <- snd (mapAccumL (\n c -> if c == shy then (n, (n, c)) else (n + 1, (n, c))) 0 (T.unpack (pText p))), c == shy]
+    -- each box with where its characters are in the text without soft hyphens; spaces are in no box
+    placed = snd (mapAccumL place 0 (pItems p))
+    place pos = \case
+      Box _ c | not (T.null (bcText c)) ->
+        let start = pos + T.length (T.takeWhile (== ' ') (T.drop pos stripped))
+         in (start + T.length (bcText c), Just (start, start + T.length (bcText c), c))
+      _ -> (pos, Nothing)
+    -- the elements: their boxes, whether a hyphen of the patterns is between two of them, whether a written hyphen's break follows
+    elements = go [] False (zip (pItems p) placed)
+    go cur hy = \case
+      (Box _ c, Just (a, b, _)) : rest
+        | bcExpandable c -> case cur of
+            [] -> go [(a, b, bcText c)] False rest
+            _ | joined cur -> go (cur <> [(a, b, bcText c)]) hy rest
+            _ -> close cur hy False <> go [(a, b, bcText c)] False rest
+      (Penalty _ _ (PatternHyphen _), _) : rest | not (null cur) -> go (cur <> [joint]) True rest
+      (Penalty _ _ (SoftHyphen _), _) : rest | not (null cur) -> go (cur <> [joint]) hy rest
+      (Penalty _ _ ExplicitHyphen, _) : rest -> close cur hy True <> go [] False rest
+      _ : rest -> close cur hy False <> go [] False rest
+      [] -> close cur hy False
+    -- a marker that the next box is of the same element
+    joint = (-1, -1, "")
+    joined cur = case reverse cur of
+      (-1, -1, _) : _ -> True
+      _ -> False
+    close cur hy ex = [([x | x@(a, _, _) <- cur, a >= 0], hy, ex) | any (\(a, _, _) -> a >= 0) cur]
+
 -- | Every invariant, with its check.
 lineInvariants :: [(LineInvariant, Check)]
 lineInvariants =
@@ -539,7 +640,8 @@ lineInvariants =
     (L11, l11Aki),
     (L12, l12Expansion),
     (L13, l13Protrusion),
-    (T1, t1LastLineBoxes)
+    (T1, t1LastLineBoxes),
+    (I4, i4NoHyphensWithShy)
   ]
 
 -- | The breaches of a paragraph, L7 brute-forcing up to the number of breaks given.
@@ -642,6 +744,7 @@ c6NoHyphen _ p =
     case h of
       PatternHyphen _ -> True
       ExplicitHyphen -> True
+      SoftHyphen _ -> True
       _ -> False
   ]
 

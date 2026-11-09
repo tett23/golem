@@ -156,6 +156,7 @@ everyNoticeProjects =
           "\n本文。\n\n@style verse\n  ab\\ \n  cd\n\n", -- G02079
           "[ruby: [kenten: 漢]|かん]\n\n", -- G07045
           "あ[style inkless: ——]い\n\n", -- G07101
+          "a\xAD. [code: x[shy]y]\n\n", -- G07123 and G07124 (docs/adr ADR 0272)
           "```\nabcdefghijklmnopqrstuvwxyzabcd\n```\n\n", -- G07030
           "@figure images/tall.svg alt=\"t\"\n  キャプション。\n\n", -- G07039, with a caption for G03100
           "@style sec\n  " <> T.replicate 96 "あ" <> "\n\n", -- G07046

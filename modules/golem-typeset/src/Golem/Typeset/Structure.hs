@@ -70,7 +70,8 @@ structureTree fe units figureAttrs =
       let first = case ns of
             NodeLeaf k : _ -> k
             _ -> 0
-          shown = T.concat (map inlineText xs)
+          -- without its soft hyphens, which the PDF does not write (docs/adr ADR 0272)
+          shown = T.filter (/= '\xAD') (T.concat (map inlineText xs))
           contents = if shown == u then u else shown <> "（" <> u <> "）"
        in -- the text rides in an attribute of no owner of the PDF until 'withoutTexts' takes it out
           (P.structElem P.SLink (kids <> [P.KidAnnot (P.AnnotId (site <> [first]))])) {P.seAttrs = [P.Attribute "Golem" [("Contents", P.OStr (TE.encodeUtf8 contents))]]}

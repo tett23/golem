@@ -100,6 +100,7 @@ shapes s run = map shape (itemsOf False s 0 run 0)
           PatternHyphen _ -> "P"
           ExplicitHyphen -> "E"
           WrapMark m -> "W" <> T.unpack m
+          SoftHyphen _ -> "S"
           NoHyphen -> ""
 
 -- | The glue that fills the last line.
@@ -189,6 +190,7 @@ shapeOf = \case
       PatternHyphen _ -> "P"
       ExplicitHyphen -> "E"
       WrapMark m -> "W" <> T.unpack m
+      SoftHyphen _ -> "S"
       NoHyphen -> ""
 
 -- | The end of a paragraph, as 'shapes' writes it.

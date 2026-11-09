@@ -453,7 +453,9 @@ restyle style lk = \case
               -- the wrap mark of inline code (golem-layout ADR 0034)
               lkWrapMark = if code then fromMaybe "" (csWrapMark cs) else lkWrapMark lk,
               -- a URL breaks as code, after the last slash of a run (golem-doc ADR 0005)
-              lkUrl = lkUrl lk || isUrlCharStyle style name
+              lkUrl = lkUrl lk || isUrlCharStyle style name,
+              -- a range that does not break: true in one of the styles around is true (docs/adr ADR 0272)
+              lkNoBreak = lkNoBreak lk || csNoBreak cs == Just True
             }
       where
         code = isCodeCharStyle style name

@@ -1247,8 +1247,12 @@ HTML と EPUB では、ファイルの中のスタイルを持つ章の `<body>`
 そのファイルでだけ使う文字スタイルは、ファイルの先頭の `@style-def character` でも定義できる（「ファイルの設定」の節を参照）。
 `style.toml` にもそのファイルの `@style-def` にもない名前はエラーになる。
 
-組み込みの文字スタイルは `strong`、`bold`、`italic`、`code`、`url` の五つである。
+組み込みの文字スタイルは `strong`、`bold`、`italic`、`code`、`url`、`no-break` の六つである。
 `bold` は合成の太字、`italic` は合成の斜体、`strong` は `bold` を基準にした文字スタイル、`code` は書体の役割 `code` で組む文字スタイル、`url` は参考文献の URL を組む文字スタイルである（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
+`no-break` は、中で行を分けない範囲（InDesign の分離禁止にあたる）を作る文字スタイルである（[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
+`[style no-break: 100 円]` は、PDF で `100` と `円` のあいだで改行しない。
+範囲が行に収まらなければ、範囲を分けずに行をはみ出させ、`golem build` が警告（G07122）で知らせる。
+行末の `\` の強制改行は、範囲の中でも改行する。
 `url` には別名がなく、原稿では `[style url: ...]` と書く。
 `[style url: ...]` は見た目の指定であり、リンクにはならない。
 リンクにしたい URL は `[link]` で書く（「リンク」の節）。
@@ -1425,6 +1429,26 @@ HTML と EPUB では `<code>` の要素になる。
 HTML と EPUB では、論理方向の余白を持つ空の `span`（`class="aki"`）で表し、前後に改行を避ける U+2060（WORD JOINER）を置く。
 `zw` は `em`、絶対の寸法は `pt` で書く。
 プレーンテキストでは、`zw` で書いた量の整数部の数だけ全角の空白を出し、1 に満たない量と絶対の寸法は何も出さない。
+
+### ソフトハイフン
+
+```
+in[shy]com[shy]pre[shy]hen[shy]si[shy]bil[shy]ity
+```
+
+`[shy]` は、欧文の語を分けてよい位置を指定する（[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
+InDesign の任意ハイフン、LaTeX の `\-` にあたる。
+`[shy]` は U+00AD（ソフトハイフン）の一字になり、原稿に U+00AD をじかに書いても同じに扱う。
+U+00AD はエディタで見えないので、`[shy]` で書くほうが原稿で見える。
+`[shy]` は引数も散文スロットも取らない。
+引数を書けばコンパイルエラー（G02152）、散文スロットを書けば G02038 とする。
+
+PDF では、前と後が語の字であるソフトハイフンの位置で行を分けてよく、分けた行の行末にはハイフンを描く。
+ソフトハイフンを含む要素（明示のハイフンで分けた語の部分）は、パターンで分綴しない。
+語の頭に `[shy]` を書くと（`[shy]table`）、その語を分けない指定になる。
+前か後ろが語の字でないソフトハイフンと、コード、URL、リンク、改行しない範囲の中のソフトハイフンは分割の位置にならず、`golem build` が notice（G07123、G07124）で知らせる。
+分けなかった語には、ハイフンを描かない。
+HTML と EPUB とプレーンテキストには、U+00AD をそのまま書く。
 
 ### 相互参照
 
