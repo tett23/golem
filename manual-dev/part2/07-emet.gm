@@ -83,6 +83,8 @@ golem-emet はファイルシステムに触れない。
 ## 文法と構文解析
 
 文法は [code: modules/golem-emet/grammar/Emet.hpeg] に peg-hs の記法で書き、[code: scripts/gen-parser.sh] が [code: Golem.Emet.Generated] を生成する。[index reading="Emet.hpeg": Emet.hpeg]
+文法の規則の全体と読み方は、golem-emet の文法の参照にある。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-emet/grammar.md]（golem-emet の文法の参照）]
+CI の [code: changes] ジョブが、参照の定義する規則が [code: Emet.hpeg] の規則と同じであることを確かめる。
 Golem の [code: .gm] の文法と同じく生成物をコミットし、CI が生成し直して差分がないことを確かめる（第[ref-number build-test]章「[ref-title build-test]」）。
 生成したパーサーは、AST を返す入口と、[code: golem fmt] のためのロスレスな構文木を返す入口を持つ。
 
