@@ -73,6 +73,7 @@ import Golem.Pdf qualified as P
 import Golem.Project
 import Golem.Project.Feature (featureText, normalFeatureTexts, normalFeatures, parseFeature)
 import Golem.Project.Files (Files)
+import Golem.Project.Position (Position (..))
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Typeset.TextLayer (ClusterPart (..))
@@ -462,7 +463,11 @@ restyle style lk = \case
               -- a URL breaks as code, after the last slash of a run (golem-doc ADR 0005)
               lkUrl = lkUrl lk || isUrlCharStyle style name,
               -- the features of the style after those of the look around it (docs/adr/0268)
-              lkFeatures = normalTexts (lkFeatures lk <> normalFeatureTexts (csFeatures cs))
+              lkFeatures = normalTexts (lkFeatures lk <> normalFeatureTexts (csFeatures cs)),
+              {- the position, an attribute; the size of the style is the nominal
+              one, position aside (docs/adr/0269) -}
+              lkPosition = fromMaybe (lkPosition lk) (csPosition cs),
+              lkNominalSize = size
             }
       where
         code = isCodeCharStyle style name
@@ -533,9 +538,16 @@ The first argument gives the features of a role.
 -}
 shapingOf :: (Text -> [Text]) -> Bool -> Look -> Char -> Shaping
 shapingOf roleFeatures vertical lk c
-  | lookClass lk c == Western = Shaping (lkLatinFace lk) False (normalTexts (lkFeatures lk <> ["-kern" | lkKerning lk == L.KernNone])) latinSpan
-  | otherwise = Shaping (lkFace lk) vertical (normalTexts (lkFeatures lk <> extra <> narrowed)) latinSpan
+  | lookClass lk c == Western = Shaping (lkLatinFace lk) False (normalTexts (lkFeatures lk <> script <> ["-kern" | lkKerning lk == L.KernNone])) latinSpan
+  | otherwise = Shaping (lkFace lk) vertical (normalTexts (lkFeatures lk <> script <> extra <> narrowed)) latinSpan
   where
+    -- a range of superscript or subscript in the glyphs of the font (docs/adr/0269)
+    script
+      | lkScriptGlyphs lk = case lkPosition lk of
+          PositionSuperscript -> ["sups"]
+          PositionSubscript -> ["subs"]
+          PositionNormal -> []
+      | otherwise = []
     -- the features that narrow punctuation, turned off where they are on (docs/adr/0268)
     narrowed
       | spaced = ["-" <> t | t <- ["halt", "vhal", "chws", "vchw"], on t]

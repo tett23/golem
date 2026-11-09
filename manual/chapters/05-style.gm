@@ -222,10 +222,11 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 - [code: synthetic-bold]、[code: synthetic-italic]：字形の輪郭を太らせた太字と、傾けた斜体です。
 - [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]：文字の送りです（「[ref-title kerning]」、[ref-page kerning] ページ）。
 - [code: features]：スモールキャップや数字の形式などの OpenType の機能です（「[ref-title opentype-features]」、[ref-page opentype-features] ページ）。
+- [code: position]：上付きと下付きです（「[ref-title scripts]」、[ref-page scripts] ページ）。
 - [code: based-on]：引き継ぐ文字スタイルです。
 - [code: background]、[code: padding]：本文の中のコードの背景の色と、前後の余白です。[code: code] と、それを引き継ぐ文字スタイルにだけ書けます。[code: background] を書かなければ、段落スタイル [code: code] の背景を使います。
 
-[code: bold]、[code: italic]、[code: strong]、[code: code] の四つは、はじめから定義されています。
+[code: bold]、[code: italic]、[code: strong]、[code: code]、[code: superscript]、[code: subscript] は、はじめから定義されています。
 同じ名前で書くと、書いたキーだけが置き換わります。
 このマニュアルは、[code: bold] の書体を見出しの太いゴシック体にし、[code: code] に色を付けています。
 本文の中のコードには、コードブロックと同じ網がかかります。
@@ -427,6 +428,38 @@ InDesign と違い、フォントにスモールキャップがなくても、�
 
 HTML と EPUB では、CSS の [code: font-feature-settings] で表します。
 CSS では内側の要素の値が外側の値を置き換えるので、文字スタイルを入れ子にすると、内側のスタイルの機能だけが当たります。
+
+@label scripts
+## 上付きと下付き
+
+上付きと下付きの文字[index reading=うわつき: 上付き][index reading=したつき: 下付き]は、はじめから定義されている文字スタイル [code: superscript] と [code: subscript] で組みます。
+
+```
+1m[style superscript: 2]、H[style subscript: 2]O
+```
+
+これは「1m[style superscript: 2]、H[style subscript: 2]O」のように組まれます。
+
+文字スタイルの [code: position] に [code: "superscript"] か [code: "subscript"] を書けば、ほかの名前の文字スタイルでも同じになります。
+InDesign の文字パネルの「位置」の上付き文字と下付き文字に当たります。
+[code: "normal"] を書くと、外側の上付きや下付きを止めます。
+
+フォントが上付きと下付きの字形（OpenType の [code: sups] と [code: subs]）を持っていて、範囲のすべての字がその字形に置き換わるときは、その字形を使い、文字の大きさと位置は変えません。
+そうでなければ、文字を本来の大きさの 7/12 に縮め、大きさの 1/3 だけ上（下付きでは下）へずらして組みます。
+縦組みでは、上付きを右へ、下付きを左へずらします。
+比は InDesign の既定として知られる値で、[code: style.toml] では変えられません。
+大きさとずらす量を変えたいときは、[code: position] を書かずに [code: size] と [code: baseline-shift] を書いた文字スタイルを使ってください。
+
+上付きと下付きの文字の前と中では行を改めず、前の字とのあいだも空けません。
+後ろの字とのあいだは、上付きや下付きがないときと同じに組みます。
+行送りは変わりません。
+
+注の印の文字スタイル（[code: \[notes\]] の [code: mark-style]）には [code: position] を書けず、書くと G03125 のエラーになります。
+注の印の位置は、[code: \[notes\]] の決まりで決まるからです。
+注の印に上付きの字形を使いたいときは、印の文字スタイルに [code: features = \["sups"\]] と書きます。
+
+HTML と EPUB では [code: <sup>] と [code: <sub>] の要素になり、大きさと位置は閲覧に使うソフトウェアに任せます。
+プレーンテキストでは、文字をそのまま出します。
 
 ## ファイルの中のスタイル
 

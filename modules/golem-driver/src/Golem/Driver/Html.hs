@@ -22,19 +22,25 @@ import Data.Text qualified as T
 import Golem.Html
 import Golem.Length qualified as L
 import Golem.Project.Feature (normalFeatures)
+import Golem.Project.Position (Position (..))
 import Golem.Project.Style
 
 -- | The character styles of a style, resolved for CSS (docs/adr ADR 0005).
 htmlCharStyles :: Style -> Map Text HtmlCharStyle
 htmlCharStyles style =
   Map.fromList
-    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d) (csFeatures d)) code background padding)
+    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d) (csFeatures d)) code background padding (elementOf (csPosition d)))
     | n <- Map.keys (stCharStyles style),
       Just d <- [charStyle style n],
       let code = isCodeCharStyle style n
           -- the background and the padding of inline code (golem-driver ADR 0029)
           background = if code then charStyleBackground style n else Nothing
           padding = if code then cssLength <$> csPadding d else Nothing
+          -- sup and sub (docs/adr/0269)
+          elementOf = \case
+            Just PositionSuperscript -> Just "sup"
+            Just PositionSubscript -> Just "sub"
+            _ -> Nothing
     ]
 
 -- | The paragraph styles of a style, resolved for CSS (docs/adr ADR 0005, 0006).

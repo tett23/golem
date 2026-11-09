@@ -53,6 +53,7 @@ import PaginateInvariantsSpec (invariantTests)
 import PaginateSpec (paginateTests)
 import PunctuationSpec (punctuationTests)
 import RuleAreaSpec (ruleAreaTests)
+import ScriptSpec (scriptTests)
 import StructureSpec (structureTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
@@ -385,6 +386,7 @@ tests =
       urlBreakTests,
       linkTests,
       featuresTests,
+      scriptTests,
       langTests,
       structureTests,
       combiningTests,

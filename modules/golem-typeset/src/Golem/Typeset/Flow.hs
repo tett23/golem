@@ -127,6 +127,7 @@ import Golem.Pdf qualified as P
 import Golem.Project
 import Golem.Project.Files (Files (..))
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
+import Golem.Project.Position (Position (..))
 import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax
@@ -1130,6 +1131,15 @@ composeEnv style geom fonts assumed look =
           ceAkiSet = akiSetOf style Nothing,
           -- the text of note marks (golem-driver ADR 0025) and their character style (docs/adr/0177)
           ceNoteMarkFormat = stNotesMarkFormat style,
+          {- a range of superscript or subscript is in the glyphs of the font when
+          sups (subs) changes the glyph of every character of it (docs/adr/0269) -}
+          ceScriptGlyphs = \pos cs ->
+            let feature = if pos == PositionSubscript then "subs" else "sups"
+                glyphs s c = map shGlyph (lfShape fonts s (T.singleton c))
+                replaced (lk, c) =
+                  let s = shaping lk c
+                   in glyphs s c /= glyphs s {shExtra = normalTexts (shExtra s <> [feature])} c
+             in all replaced cs,
           ceNoteMarkLook = noteMarkLook style,
           ceNoteMarkSource = noteMarkSource style
         }

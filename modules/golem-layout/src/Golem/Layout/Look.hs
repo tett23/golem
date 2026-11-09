@@ -21,6 +21,7 @@ where
 
 import Data.Text (Text)
 import Golem.Length (Sp)
+import Golem.Project.Position (Position (..))
 import Golem.Project.Style (SizeSource (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 
@@ -143,7 +144,16 @@ data Look = Look
     {- | the OpenType features of the paragraph style and the character
     styles, in the normal form, the last value of each tag (docs/adr/0268);
     the role's are not here
-    -} lkFeatures :: ![Text]
+    -} lkFeatures :: ![Text],
+    -- | normal, superscript or subscript (docs/adr/0269)
+    lkPosition :: !Position,
+    {- | the size the character styles give, position aside (docs/adr/0269):
+    'lkSize' is 7/12 of it in a range of superscript or subscript set by
+    synthesis
+    -} lkNominalSize :: !Sp,
+    {- | a range of superscript or subscript set in the glyphs of the font:
+    sups or subs after every feature (docs/adr/0269)
+    -} lkScriptGlyphs :: !Bool
   }
   deriving stock (Eq, Ord, Show)
 
@@ -156,7 +166,7 @@ newtype LinkTarget = LinkUri Text
 {- | One role for both scripts at a size, upright, regular, default colour,
 metrics kerning, no tracking, no proportional metrics, no baseline shift,
 not code, not a URL, no kenten, no background, no padding, no link,
-outside a language span, no wrap mark and no features.
+outside a language span, no wrap mark, no features and the normal position.
 -}
 plainLook :: Text -> Sp -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" []
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False

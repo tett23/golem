@@ -5610,6 +5610,7 @@ style.toml の誤りです
 - TOML の文法を誤った。
 - キーの綴り、値の型、単位、列挙の値を誤った。
 - 値が範囲の外にある。
+- 文字スタイルの `position` に `"normal"`、`"superscript"`、`"subscript"` のほかの値を書いた（[ADR 0269](adr/0269-superscript-and-subscript.md)）。
 - 廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）を書いた。
 - 段落スタイル `code` に、`font`、`size`、`background`、`padding` のほかのキー（`based-on` を含む）を書いた（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 - `background` か `padding` を、`code` のほかの段落スタイルに書いた。`padding` が負であるか、寸法として読めない。
@@ -7003,6 +7004,34 @@ HarfBuzz が読めるほかの形（`kern[3:5]` のような範囲、`aalt=on` �
 出力のディレクトリ `build/` を git で管理しないなら、すでにある `.gitignore` に `build/` の行を足す。
 すでに書いてあれば、直す必要はない。
 `golem new` は `--no-notices` を受け付けないので、このお知らせは消せない。
+
+## G03125
+
+注の印の文字スタイルの position は "normal" だけを書けます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+本文の注の印の文字スタイル（`[notes]` の `mark-style`、書かなければ `note-mark`）の `based-on` の鎖で、`position` が `"normal"` でない値（`"superscript"` か `"subscript"`）に解決する。
+本文の印の位置は `[notes]` と印の配置の規則で決まり、`position` の上げ下げを重ねると、どちらの位置で組むかが決まらない。
+注の本文の先頭の印（`body-mark-style`）には出さない。
+誤りのある定義は捨てる。
+
+- メッセージ: `注の印の文字スタイル <名前> の position は "normal" だけを書けます（印の位置は [notes] で決まります）`。`<名前>` は印の文字スタイルの名前である
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、`position` を書いた定義の値である。組み込みの `superscript` か `subscript` に行き着き、`style.toml` に値がなければ `style.toml` の先頭である。ファイルの中の定義（`@style-def`）では、その行である
+- ADR: [ADR 0269](adr/0269-superscript-and-subscript.md)
+
+### 主な原因
+
+- `[notes]` の `mark-style` に、組み込みの `superscript` か、それを `based-on` にした文字スタイルを書いた。
+- `[character-styles.note-mark]` に `position` を書いた。
+
+### 直し方
+
+印の文字スタイルから `position` を消すか、`based-on` を `superscript` でないスタイルにする。
+印に書体の上付きの字形を使いたいときは、印の文字スタイルに `features = ["sups"]` を書く。
 
 ## G04001
 
