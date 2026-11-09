@@ -24,7 +24,7 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import PaginateEnum (Element (..), Input (..), controlSpan, enumFlows, noteOf, paginateInput)
-import PaginateInvariants (Breach (..), Invariant (..), breaches, p9SpaceMoved, waitingFigures)
+import PaginateInvariants (Breach (..), Invariant (..), breaches, p9SpaceMoved, w3WaitingAlike, waitingFigures)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -1258,6 +1258,27 @@ largerNeedTests =
       placed ps @?= [(1, 0, map SLine [0 .. 2]), (2, 0, [SLine 3])]
       unmets ps @?= []
       brokenOf [P1, P2] flows ps @?= [],
+    testCase "W4, P1: the counterexample of golem-layout ADR 0044: need-lines 5 after a space, judged before it, goes on to the column of the figure sent on, and the figure after is not read as waiting" $ do
+      let input = Input 6 1 [EPara 2, EFigure 6, ESpace, ENeedLinesMore 5, EFigure 4, EHeading]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SFigure 1000]), (3, 0, [SFigure 1001, SHeading 2 1])]
+      unmets ps @?= []
+      waitingFigures (enumFlows (inElements input)) ps @?= []
+      brokenIn [minBound .. maxBound] input @?= [],
+    testCase "W4, P5: the counterexample of golem-layout ADR 0044 in two columns: need-lines 7 after a space and blank lines goes on to column 2, and the figure after the figure sent on there is not read as waiting" $ do
+      let input = Input 8 2 [EFigure 8, EFigure 1, ESpace, EBlank 2, ENeedLinesMore 7, EFigure 3]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SFigure 1000]), (1, 1, [SFigure 1001, SFigure 1002])]
+      unmets ps @?= []
+      waitingFigures (enumFlows (inElements input)) ps @?= []
+      brokenIn [minBound .. maxBound] input @?= [],
+    testCase "W5, P5: the counterexample of golem-layout ADR 0044: need-lines met before the space, the figure that does not fit after it moved to page 2, and the figure after is not read as waiting" $ do
+      let input = Input 6 1 [EPara 4, ENeedLines, ESpace, EFigure 2, EBlank 1, EFigure 1]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1, SLine 2, SLine 3]), (2, 0, [SFigure 1000, SFigure 1001])]
+      unmets ps @?= []
+      waitingFigures (enumFlows (inElements input)) ps @?= []
+      brokenIn [minBound .. maxBound] input @?= [],
     testGroup "the boundary inputs" (map boundary cases)
   ]
   where
@@ -1332,7 +1353,11 @@ before the spaces after it (golem-layout ADR 0027), and the block after
 is placed in the column judged in when its first part fits after the
 spaces (P10). Moving the spaces after the need-lines lays out the same
 (P9). The cases of its section 「テスト設計」 and of its table of the
-boundary inputs, in columns of 6 grid lines for the table.
+boundary inputs, in columns of 6 grid lines for the table, and the
+counterexamples of golem-layout ADR 0044, which reads the figures moved
+by need-lines judged before spaces (W4, W5): every invariant is checked
+on the boundary inputs, with the figures that wait read alike wherever
+the space is (W3).
 -}
 spaceBeforeNeedTests :: [TestTree]
 spaceBeforeNeedTests =
@@ -1362,6 +1387,27 @@ spaceBeforeNeedTests =
         waitingFigures (enumFlows (inElements input)) ps @?= []
         brokenIn [minBound .. maxBound] input @?= []
         p9SpaceMoved (paginateIn 1 (ColumnSet 2 0 0 0) 3) (enumFlows (inElements input)) ps @?= [],
+    testCase "W4, P1: the counterexample of golem-layout ADR 0044: need-lines 5 after a space, judged before it, goes on to the column of the figure sent on, and the figure after is not read as waiting" $ do
+      let input = Input 6 1 [EPara 2, EFigure 6, ESpace, ENeedLinesMore 5, EFigure 4, EHeading]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SFigure 1000]), (3, 0, [SFigure 1001, SHeading 2 1])]
+      unmets ps @?= []
+      waitingFigures (enumFlows (inElements input)) ps @?= []
+      brokenIn [minBound .. maxBound] input @?= [],
+    testCase "W4, P5: the counterexample of golem-layout ADR 0044 in two columns: need-lines 7 after a space and blank lines goes on to column 2, and the figure after the figure sent on there is not read as waiting" $ do
+      let input = Input 8 2 [EFigure 8, EFigure 1, ESpace, EBlank 2, ENeedLinesMore 7, EFigure 3]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SFigure 1000]), (1, 1, [SFigure 1001, SFigure 1002])]
+      unmets ps @?= []
+      waitingFigures (enumFlows (inElements input)) ps @?= []
+      brokenIn [minBound .. maxBound] input @?= [],
+    testCase "W5, P5: the counterexample of golem-layout ADR 0044: need-lines met before the space, the figure that does not fit after it moved to page 2, and the figure after is not read as waiting" $ do
+      let input = Input 6 1 [EPara 4, ENeedLines, ESpace, EFigure 2, EBlank 1, EFigure 1]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1, SLine 2, SLine 3]), (2, 0, [SFigure 1000, SFigure 1001])]
+      unmets ps @?= []
+      waitingFigures (enumFlows (inElements input)) ps @?= []
+      brokenIn [minBound .. maxBound] input @?= [],
     testGroup "the boundary inputs" (map boundary cases)
   ]
   where
@@ -1380,14 +1426,6 @@ spaceBeforeNeedTests =
         r >= s,
         a <- [0, 1]
       ]
-    {- the need-lines met before the spaces, a block whose first part does
-    not fit after them, and a figure after it: the block goes on as
-    golem-layout ADR 0027 decides, and the reading of the figures that
-    wait (golem-layout ADR 0033) reads it as sent on by itself. P5 breaks
-    here with the spaces after the need-lines too, before golem-layout
-    ADR 0043 as after it, which does not change that reading; P9 checks
-    that the two forms lay out the same. -}
-    goesOnAfterSpaces s r a first rest = r >= need && first > r - s - a && not (null rest)
     nubInts = foldr (\x xs -> x : filter (/= x) xs) []
     boundary (k, s, r, a) =
       testCase (boundaryName k s r a) $
@@ -1396,11 +1434,12 @@ spaceBeforeNeedTests =
               lay = paginateIn 1 (ColumnSet k 0 0 0) c
               ps = lay flows
               firstAt = take 1 [(poNumber p, poColumn p) | p <- ps, (_, sl) <- poSlots p, sl `elem` [SLine 100, SFigure 1000]]
-          assertEqual ("the invariants, before " <> name) [] (brokenOf [i | i <- [minBound .. maxBound], i /= P5 || not (goesOnAfterSpaces s r a first rest)] flows ps)
+          assertEqual ("the invariants, before " <> name) [] (brokenOf [minBound .. maxBound] flows ps)
           assertEqual ("P9, before " <> name) [] (map breachWhy (p9SpaceMoved lay flows ps))
+          assertEqual ("W3, before " <> name) [] (map breachWhy (w3WaitingAlike lay flows ps))
           when (s > 0 && r >= need && first <= r - s - a) $
             assertEqual ("P10, the column of " <> name) [(1, 0)] firstAt
     boundaryName k s r a =
-      (if s > 0 then "P9, P10: " else "P9: ")
+      (if s > 0 then "P9, P10, W3: " else "P9, W3: ")
         <> (show k <> " column" <> (if k > 1 then "s, " else ", "))
         <> (show s <> " spaces before need-lines 2, " <> show r <> " grid lines left before them, " <> show a <> " after")

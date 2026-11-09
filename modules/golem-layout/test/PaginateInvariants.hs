@@ -6,7 +6,8 @@ P4 of need-lines and blank lines (golem-layout ADR 0025, its section
 (P1′, P3′ and P4′ of its section 「不変条件」), with its P5. They read nothing of the paginator but its input and
 output, and every case is judged. P9 of golem-layout ADR 0043 alone
 compares the output with that of another input, laid out by the
-paginator it is given.
+paginator it is given; W3 of golem-layout ADR 0044 compares the figures
+that wait read from the two inputs when the outputs are the same.
 
 The columns are taken in the order of their page and their column. A
 grid line, a heading or a figure is at a place: its column in that
@@ -30,6 +31,7 @@ module PaginateInvariants
     p4BlankWithNext,
     p5BlankBeforeWaiting,
     p9SpaceMoved,
+    w3WaitingAlike,
     waitingFigures,
     invariants,
     breaches,
@@ -43,8 +45,8 @@ import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Golem.Layout.Paginate
 import Golem.Syntax (SrcSpan)
 
--- | The invariants of docs/adr/0204 and of golem-layout ADR 0025, 0026 and 0043, by their numbers.
-data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5 | P9
+-- | The invariants of docs/adr/0204 and of golem-layout ADR 0025, 0026, 0043 and 0044, by their numbers.
+data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5 | P9 | W3
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken: the lines or figures concerned, and how.
@@ -409,8 +411,14 @@ first column of the page each break written after them goes on to.
 Blank lines right before a figure that does not wait move it; a
 need-lines does when the grid lines left after the last slot, its notes
 and their separator counted, are fewer than it asks for. A need-lines
-before a space is judged there (docs/adr ADR 0030): with fewer lines
-left, the flow comes to the next column.
+is judged before the spaces after the block before, whether they are
+before it or after it (docs/adr ADR 0030, golem-layout ADR 0043 and
+ADR 0044): with fewer lines left, the flow comes to the next column,
+and a figure held is placed when it is in that column or before. A
+need-lines met there also moves a figure written after it and spaces
+when the lines left, less those of the spaces, are fewer than the
+figure's (golem-layout ADR 0027 and ADR 0044, W5): the figure does not
+fit after the spaces, so the flow goes on to the next column for it.
 
 The ADR reads a figure as waiting when it is placed after the first part
 of the block written after it. That misses a figure that waits and is
@@ -419,6 +427,10 @@ places the figures waiting first, and it counts a figure sent on by
 itself, to which the need-lines before it applies; the figures read here
 are those 'place' makes wait. golem-layout ADR 0033 records this
 reading: the figures are read from the flow and the output only (W1, W2).
+golem-layout ADR 0044 adds the need-lines judged before a space written
+after it (W4) and the figures that do not fit after the spaces (W5); the
+lines of the spaces are those written in the input, not read from the
+output, which counts also the spaces dropped at the top of a column.
 -}
 waitingFigures :: [Flow] -> [PageOut] -> [Int]
 waitingFigures flows ps = go Nothing 0 Nothing [] flows
@@ -443,20 +455,33 @@ waitingFigures flows ps = go Nothing 0 Nothing [] flows
       Just (c, _)
         | breaks == 0 -> Just c
         | otherwise -> listToMaybe [c' | (c', p) <- zip [0 ..] cols, poNumber p >= pageOf c + breaks]
-    -- the last line placed, the breaks after it, the figure held, the controls right before, the flows left
-    go _ _ _ _ [] = []
-    go lastText breaks held before (f : rest) = case f of
-      FBreak _ -> go lastText (breaks + 1) held (before <> [f]) rest
-      -- a need-lines is judged before a space: with fewer lines left, the flow goes on to the next column, and the figures held are placed there
-      FSpace _
+    {- need-lines judged before a space: with fewer lines left after the
+    last slot than the largest asked for, the flow comes to the next
+    column, and the figure held there or before is placed. The same
+    judgement whether the space is before the need-lines or after it. -}
+    judgedBeforeSpace lastText breaks held ns = case lastText of
+      Just (c, _)
         | breaks == 0,
-          Just (c, _) <- lastText,
-          ns@(_ : _) <- [n | FNeedLines _ n <- before],
+          not (null ns),
           maybe False (< maximum ns) (leftAt lastText) ->
             let held' = case held of
                   Just (hc, _) | hc > c + 1 -> held
                   _ -> Nothing
-             in go (Just (c + 1, -1)) 0 held' (filter (\case FNeedLines _ _ -> False; _ -> True) before <> [f]) rest
+             in Just (Just (c + 1, -1), held')
+      _ -> Nothing
+    withoutNeeds = filter (\case FNeedLines _ _ -> False; _ -> True)
+    -- the last line placed, the breaks after it, the figure held, the controls right before, the flows left
+    go _ _ _ _ [] = []
+    go lastText breaks held before (f : rest) = case f of
+      FBreak _ -> go lastText (breaks + 1) held (before <> [f]) rest
+      -- a need-lines after a space or before one is judged before it (golem-layout ADR 0043, 0044)
+      FSpace _
+        | Just (lastText', held') <- judgedBeforeSpace lastText breaks held [n | FNeedLines _ n <- before] ->
+            go lastText' 0 held' (withoutNeeds before <> [f]) rest
+      FNeedLines _ n
+        | not (null [() | FSpace _ <- before]),
+          Just (lastText', held') <- judgedBeforeSpace lastText breaks held (n : [m | FNeedLines _ m <- before]) ->
+            go lastText' 0 held' (withoutNeeds before) rest
       _
         | waits f -> go lastText breaks held (before <> [f]) rest
         | [i] <- figureIds f,
@@ -468,11 +493,15 @@ waitingFigures flows ps = go Nothing 0 Nothing [] flows
                   Nothing -> False
                 next = listToMaybe [pl | b <- rest, not (waits b), null (figureIds b), Just pl <- [placeOf b]]
                 afterNext = maybe False (at >) next
-                -- blank lines move a figure that does not wait; need-lines only when the lines left are fewer
+                -- blank lines move a figure that does not wait; need-lines only when the lines left are fewer, or the figure does not fit after the spaces (golem-layout ADR 0044)
                 needs = [n | FNeedLines _ n <- before]
+                spaces = sum [k | FSpace k <- before]
+                pastSpaces = case f of
+                  FFigure {ffLines = h} -> breaks == 0 && spaces > 0 && maybe False (\l -> l - spaces < h) (leftAt lastText)
+                  _ -> False
                 moved =
                   not (null [() | FBlank _ _ <- before])
-                    || (not (null needs) && maybe True (< maximum needs) (leftAt lastText))
+                    || (not (null needs) && (pastSpaces || maybe True (< maximum needs) (leftAt lastText)))
                 turned = case f of
                   FPageFigure {} -> True
                   _ -> False
@@ -713,18 +742,45 @@ and the block after are judged.
 p9SpaceMoved :: ([Flow] -> [PageOut]) -> Check
 p9SpaceMoved lay flows ps =
   [ Breach P9 [] ("the space at flow " <> show k <> " moved after the need-lines after it lays out " <> show moved <> ", not " <> show here)
-  | k <- movable,
-    let moved = shape (lay (swapAt k)),
+  | (k, swapped) <- spacesMoved flows,
+    let moved = outShape (lay swapped),
     moved /= here
   ]
   where
-    shape = map (\p -> (poNumber p, poColumn p, poSlots p, poUnmet p))
-    here = shape ps
-    movable =
-      [ k
-      | (k, (FSpace _, FNeedLines _ _)) <- zip [0 ..] (zip flows (drop 1 flows)),
-        not (any manual (reverse (takeWhile control (reverse (take k flows))) <> takeWhile control (drop k flows)))
-      ]
+    here = outShape ps
+
+{- | W3 of golem-layout ADR 0044, its section 「不変条件」: for each input
+P9 lays out again, with the space moved after the need-lines, that lays
+out the same, 'waitingFigures' reads the same figures from the two
+inputs and the one output.
+-}
+w3WaitingAlike :: ([Flow] -> [PageOut]) -> Check
+w3WaitingAlike lay flows ps =
+  [ Breach W3 (here <> there) ("the space at flow " <> show k <> " moved after the need-lines after it lays out the same, and the figures that wait are read as " <> show there <> ", not " <> show here)
+  | (k, swapped) <- spacesMoved flows,
+    outShape (lay swapped) == outShape ps,
+    let there = waitingFigures swapped ps,
+    there /= here
+  ]
+  where
+    here = waitingFigures flows ps
+
+-- | The slots and records of every column, P9 compares.
+outShape :: [PageOut] -> [(Int, Int, [(Int, Slotted)], [Unmet])]
+outShape = map (\p -> (poNumber p, poColumn p, poSlots p, poUnmet p))
+
+{- | The flows with each space right before a need-lines moved after it,
+by itself, with where the space is: those of the inputs with no break,
+no no-break and no page-lines among the controls between the block
+before and the block after (P9 of golem-layout ADR 0043).
+-}
+spacesMoved :: [Flow] -> [(Int, [Flow])]
+spacesMoved flows =
+  [ (k, swapAt k)
+  | (k, (FSpace _, FNeedLines _ _)) <- zip [0 ..] (zip flows (drop 1 flows)),
+    not (any manual (reverse (takeWhile control (reverse (take k flows))) <> takeWhile control (drop k flows)))
+  ]
+  where
     swapAt k = case splitAt k flows of
       (before, s : n : after) -> before <> (n : s : after)
       _ -> flows
