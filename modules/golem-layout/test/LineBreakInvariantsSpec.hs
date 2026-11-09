@@ -108,7 +108,7 @@ keyOf w ps its = (unSp w, map item its, pExpansion ps, pProtrusion ps)
     item = \case
       Box (Sp bw) c -> (0, bw, 0, 0, bcText c, bcExpandable c, unSp (bcProtrudeStart c), unSp (bcProtrudeEnd c), unSp (bcEdgeStart c), unSp (bcEdgeEnd c), 0)
       Glue (Sp gw) (Sp y) (Sp z) -> (1, gw, y, z, "", False, 0, 0, 0, 0, 0)
-      Penalty (Sp pw) p h -> (2, pw, case h of NoHyphen -> 0; ExplicitHyphen -> 1; PatternHyphen _ -> 2; WrapMark _ -> 3, 0, "", False, case h of PatternHyphen (Sp q) -> q; _ -> 0, 0, 0, 0, p)
+      Penalty (Sp pw) p h -> (2, pw, case h of NoHyphen -> 0; ExplicitHyphen -> 1; PatternHyphen _ -> 2; WrapMark _ -> 3; SoftHyphen _ -> 4, 0, "", False, case h of PatternHyphen (Sp q) -> q; SoftHyphen (Sp q) -> q; _ -> 0, 0, 0, 0, p)
 
 -- | The values 'breakParagraph' is given for the inputs of a group, vertical or not.
 keysOf :: Bool -> Group -> [Key]
@@ -141,20 +141,21 @@ runsT = listsOf (Tiers [parts])
 
 enumerationTests :: [TestTree]
 enumerationTests =
-  [ testCase "there are 23 parts: 15 Japanese characters, 4 Latin words and 4 Latin signs" $ do
+  [ testCase "there are 24 parts: 15 Japanese characters, 4 Latin words, 4 Latin signs and the soft hyphen (docs/adr ADR 0272)" $ do
       length jaParts @?= 15
-      length latinParts @?= 8
-      length (nub parts) @?= 23,
+      length latinParts @?= 9
+      length (nub parts) @?= 24,
     testCase "in lines of 2 em, the inputs of up to 1 part are as many as the parts and the settings allow" $ do
       let made = [i | t <- upTo 1 (groupT (normalGroups 5)), g <- t, i <- groupInputs g, inWidth i == 2]
           -- before the run 0 or 1 'あ', after it none or 2 'い'
           placed = 2 * 2
           -- the empty run; 9 Japanese parts of one setting (漢あ「」〜！・ゝ and the
-          -- ideographic space); ー and ぁ, strict and loose; 。 and 、, with
-          -- and without hanging; 10 parts of Latin text or of both scripts
-          -- (… — and the 8 Latin parts), with and without protrusion, in no
+          -- ideographic space); the soft hyphen, of one setting too (docs/adr
+          -- ADR 0272); ー and ぁ, strict and loose; 。 and 、, with and
+          -- without hanging; 10 parts of Latin text or of both scripts (… —
+          -- and the 8 other Latin parts), with and without protrusion, in no
           -- span, en and ja, with and without the expansion
-          runs = 1 + 9 + 2 * 2 + 2 * 2 + 10 * (2 * 3 * 2)
+          runs = 1 + 9 + 1 + 2 * 2 + 2 * 2 + 10 * (2 * 3 * 2)
       length made @?= placed * runs,
     testCase "the normal form: up to 2 parts (1 on pull requests), the inputs it leaves out give 'breakParagraph' no value it is not given" $ do
       -- the values (items, width, expansion and protrusion) of every
@@ -177,12 +178,16 @@ enumerationTests =
               PatternHyphen _ -> "|P"
               ExplicitHyphen -> "|E"
               WrapMark _ -> "|W"
+              SoftHyphen _ -> "|S"
               NoHyphen -> if p >= infPenalty then "|X" else "|" <> show p
           shapes run = map shape (itemsOf False s 0 run 0)
       -- each, then the paragraph end: no break, the fil glue, the forced break
       shapes ["table"] @?= ["ta", "|P", "ble", "|X", "_", "|-10000"]
       shapes ["hyphenation"] @?= ["hy", "|P", "phen", "|P", "ation", "|X", "_", "|-10000"]
       shapes ["lime-tree"] @?= ["lime-", "|E", "tree", "|X", "_", "|-10000"]
+      -- a soft hyphen between two letters, and one before the first (docs/adr ADR 0272)
+      shapes ["table", "\xAD", "a"] @?= ["table", "|S", "a", "|X", "_", "|-10000"]
+      shapes ["\xAD", "hyphenation"] @?= ["hyphenation", "|X", "_", "|-10000"]
       -- 漢 and a, with the space between Japanese and Latin text
       shapes ["漢", "a"] @?= ["漢", "_", "a", "|X", "_", "|-10000"],
     testCase "D4, D5 (docs/adr/0222): the patterns see the letters of a word only, without the characters before and after them" $ do
@@ -498,7 +503,27 @@ restoreAfter t = \case
 
 regressionTests :: [TestTree]
 regressionTests =
-  [ testCase "golem-layout ADR 0016: the output before it, a full stop apart from the ellipsis before it, is broken by L2" $ do
+  [ testCase "docs/adr ADR 0272: the output before it, a box of the soft hyphen of と\xADいう, is broken by L1 (I1)" $ do
+      let p = paragraphIn plain False 5 ["と", "\xAD", "い", "う"]
+          withShyBox = \case
+            b@(Box _ c) : rest | bcText c == "と" -> b : Box 0 c {bcText = "\xAD"} : rest
+            x : rest -> x : withShyBox rest
+            [] -> []
+      sound p
+      assertBool "L1" (L1 `elem` broken (rebroken withShyBox p)),
+    testCase "docs/adr ADR 0272: the output before it, in\xAD\&com\xADpre\xADhen\xADsi\xAD\&bil\xADity one box, is broken by L1 (I1) and L9 (I3)" $ do
+      let word = "in\xAD\&com\xADpre\xADhen\xADsi\xAD\&bil\xADity"
+          p = paragraphIn plain False 20 [word]
+          oneBox its = case [c | Box _ c <- its] of
+            c : _ -> Box (sum [w | Box w _ <- its]) c {bcText = word} : drop (length (takeWhile notEnd its)) its
+            [] -> its
+          notEnd = \case
+            Penalty _ p' NoHyphen -> p' < infPenalty
+            _ -> True
+      sound p
+      let bs = broken (rebroken oneBox p)
+      assertBool ("L1 and L9 in " <> show bs) (L1 `elem` bs && L9 `elem` bs),
+    testCase "golem-layout ADR 0016: the output before it, a full stop apart from the ellipsis before it, is broken by L2" $ do
       -- the test design of docs/adr/0209 names L4 for it, but a full stop
       -- is not inseparable: it is the line-start prohibition that it breaks
       let p = paragraphIn plain False 2 ["あ", "…", "。"]
@@ -648,7 +673,7 @@ report limit what input =
 
 exhaustiveTests :: [TestTree]
 exhaustiveTests =
-  [ testCase "L1 to L13 and T1 hold for every input up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
+  [ testCase "L1 to L13, T1 and I4 (docs/adr ADR 0272) hold for every input up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- linesDepth
       let limit = bruteLimitAt depth
       -- built here, not in a value of its own, so that it is not held
@@ -671,7 +696,7 @@ exhaustiveTests =
                     <> ", the inputs a known bug excuses differ from the count pinned:\n"
                     <> intercalate "\n" [item <> ": pinned " <> maybe "nothing" show pinned <> ", counted " <> show n | (item, pinned, n) <- wrong]
                 ),
-    testCase "L1 to L13 and T1 hold for every input drawn one part past GOLEM_ENUM_LINES_DEPTH, GOLEM_ENUM_LINES_SAMPLES of them, but the known bugs" $ do
+    testCase "L1 to L13, T1 and I4 (docs/adr ADR 0272) hold for every input drawn one part past GOLEM_ENUM_LINES_DEPTH, GOLEM_ENUM_LINES_SAMPLES of them, but the known bugs" $ do
       depth <- linesDepth
       count <- linesSamples
       let limit = bruteLimitAt depth

@@ -30,6 +30,7 @@ module Golem.Typeset.Fonts
     noteIdSpan,
     withFeatures,
     shapingOf,
+    normalTexts,
     thickRule,
     thinRule,
     syntheticSlant,
@@ -51,7 +52,7 @@ import Data.ByteString (ByteString)
 import Data.Char (isAlphaNum, isAscii)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, listToMaybe)
+import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
 import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -70,7 +71,9 @@ import Golem.LayoutSpec (PageGeometry (..))
 import Golem.Length (zwToSp)
 import Golem.Pdf qualified as P
 import Golem.Project
+import Golem.Project.Feature (featureText, normalFeatureTexts, normalFeatures, parseFeature)
 import Golem.Project.Files (Files)
+import Golem.Project.Position (Position (..))
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Typeset.TextLayer (ClusterPart (..))
@@ -118,7 +121,12 @@ data LoadedFonts = LoadedFonts
     -} lfFaceFile :: Int -> (FilePath, Text),
     {- | the ink box of a glyph of a face number: xMin, yMin, xMax, yMax in
     em (golem-driver ADR 0019)
-    -} lfInkBox :: Int -> Int -> Maybe (Rational, Rational, Rational, Rational)
+    -} lfInkBox :: Int -> Int -> Maybe (Rational, Rational, Rational, Rational),
+    {- | the features of a role in the normal form (docs/adr/0268); a role that
+    is not loaded is the body role
+    -} lfRoleFeatures :: Text -> [Text],
+    -- | whether the GSUB or GPOS table of a face number lists a feature tag (docs/adr/0268)
+    lfHasFeature :: Int -> Text -> Bool
   }
 
 -- | A glyph from shaping.
@@ -346,7 +354,7 @@ alone in the look of the run: a ligature of the font for two dashes is
 never used.
 -}
 dashShaped :: LoadedFonts -> Bool -> Look -> Char -> [Shaped]
-dashShaped fonts vertical look c = lfShape fonts (shapingOf vertical look c) (T.singleton c)
+dashShaped fonts vertical look c = lfShape fonts (shapingOf (lfRoleFeatures fonts) vertical look c) (T.singleton c)
 
 {- | The ink of a glyph of a dash along the line, in em of the glyph
 (docs/adr ADR 0172): x of a horizontal glyph, and of a glyph turned in
@@ -453,10 +461,40 @@ restyle style lk = \case
               -- the wrap mark of inline code (golem-layout ADR 0034)
               lkWrapMark = if code then fromMaybe "" (csWrapMark cs) else lkWrapMark lk,
               -- a URL breaks as code, after the last slash of a run (golem-doc ADR 0005)
-              lkUrl = lkUrl lk || isUrlCharStyle style name
+              lkUrl = lkUrl lk || isUrlCharStyle style name,
+              -- the features of the style after those of the look around it (docs/adr/0268)
+              lkFeatures = normalTexts (lkFeatures lk <> normalFeatureTexts (csFeatures cs)),
+              {- the position, an attribute; the size of the style is the nominal
+              one, position aside (docs/adr/0269) -}
+              lkPosition = fromMaybe (lkPosition lk) (csPosition cs),
+              lkNominalSize = size,
+              -- the lines the style writes have it as their basis (docs/adr/0270)
+              lkUnderline = decoration (csUnderline cs) (lkUnderline lk),
+              lkStrikethrough = decoration (csStrikethrough cs) (lkStrikethrough lk),
+              -- a range that does not break: true in one of the styles around is true (docs/adr ADR 0272)
+              lkNoBreak = lkNoBreak lk || csNoBreak cs == Just True
             }
       where
         code = isCodeCharStyle style name
+        {- an underline or a strikethrough written: its weight, offset and
+        lengths at the size of the style, its colour or that of the
+        characters, and the baseline shift of the style; false is none;
+        not written, that of the look around -}
+        decoration written outer = case written of
+          Nothing -> outer
+          Just Nothing -> Nothing
+          Just (Just d) ->
+            let size = maybe (lkSize lk) (dimToSp (lkSize lk)) (csSize cs)
+                (w, st) = decorationStyle size d
+             in Just
+                  L.Decoration
+                    { L.decWeight = w,
+                      L.decOffset = dimToSp size (dsOffset d),
+                      L.decStyle = st,
+                      L.decColor = dsColor d <|> csColor cs <|> lkColor lk,
+                      L.decSize = size,
+                      L.decShift = maybe (lkBaselineShift lk) (dimToSp size) (csBaselineShift cs)
+                    }
     Nothing -> lk
   Color _ sw _ -> lk {lkColor = Just sw}
   -- the boxes of a link know its target, which the line breaking does not read (docs/adr ADR 0182)
@@ -500,22 +538,45 @@ withFeatures d lk =
     { lkKerning = maybe (lkKerning lk) lookKerning (d >>= psKerning),
       lkTracking = fromMaybe (lkTracking lk) (d >>= psTracking),
       lkProportional = fromMaybe (lkProportional lk) (d >>= psProportional),
-      lkBaselineShift = maybe (lkBaselineShift lk) (dimToSp (lkSize lk)) (d >>= psBaselineShift)
+      lkBaselineShift = maybe (lkBaselineShift lk) (dimToSp (lkSize lk)) (d >>= psBaselineShift),
+      -- the features of the paragraph style through based-on (docs/adr/0268)
+      lkFeatures = normalTexts (lkFeatures lk <> maybe [] (normalFeatureTexts . psFeatures) d)
     }
+
+{- | A list of features in the normal form with the last value of each tag
+kept (docs/adr/0268); a text not of the four forms is left out.
+-}
+normalTexts :: [Text] -> [Text]
+normalTexts = map featureText . normalFeatures . mapMaybe parseFeature
 
 {- | How a character of a look is shaped (docs/adr/0020): in its role, in
 vertical text when it is Japanese in a vertical paragraph (Latin is turned
-and shaped horizontally), with the features of the kerning method and the
-proportional metrics after the role's. Japanese punctuation that JLReq
-spaces keeps its full width (docs/adr ADR 0053): palt and vpal are not
-added to it, and -palt and -vpal after the role's features turn off a
-palt or vpal of the role.
+and shaped horizontally), with the features of the look (the paragraph
+style's and the character styles', docs/adr/0268) and then those of the
+kerning method and the proportional metrics after the role's. Japanese
+punctuation that JLReq spaces keeps its full width (docs/adr ADR 0053):
+palt and vpal are not added to it, and -palt and -vpal after the role's
+features turn off a palt or vpal of the role; halt, vhal, chws and vchw
+that the role or the look turns on are turned off for it (docs/adr/0268).
+The first argument gives the features of a role.
 -}
-shapingOf :: Bool -> Look -> Char -> Shaping
-shapingOf vertical lk c
-  | lookClass lk c == Western = Shaping (lkLatinFace lk) False ["-kern" | lkKerning lk == L.KernNone] latinSpan
-  | otherwise = Shaping (lkFace lk) vertical extra latinSpan
+shapingOf :: (Text -> [Text]) -> Bool -> Look -> Char -> Shaping
+shapingOf roleFeatures vertical lk c
+  | lookClass lk c == Western = Shaping (lkLatinFace lk) False (normalTexts (lkFeatures lk <> script <> ["-kern" | lkKerning lk == L.KernNone])) latinSpan
+  | otherwise = Shaping (lkFace lk) vertical (normalTexts (lkFeatures lk <> script <> extra <> narrowed)) latinSpan
   where
+    -- a range of superscript or subscript in the glyphs of the font (docs/adr/0269)
+    script
+      | lkScriptGlyphs lk = case lkPosition lk of
+          PositionSuperscript -> ["sups"]
+          PositionSubscript -> ["subs"]
+          PositionNormal -> []
+      | otherwise = []
+    -- the features that narrow punctuation, turned off where they are on (docs/adr/0268)
+    narrowed
+      | spaced = ["-" <> t | t <- ["halt", "vhal", "chws", "vchw"], on t]
+      | otherwise = []
+    on t = maybe False (/= 0) (lookup t (reverse (mapMaybe parseFeature (roleFeatures (lkFace lk) <> lkFeatures lk))))
     -- the characters of both scripts in a Latin span are Latin (docs/adr ADR 0187)
     latinSpan = maybe False (not . spanIsJapanese) (lkLang lk)
     spaced = punctSpace (lookClass lk c) /= (0, 0)

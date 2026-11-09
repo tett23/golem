@@ -130,3 +130,11 @@ jobs:
           GOLEM_ENUM_LINES_DEPTH: "3"
           GOLEM_ENUM_LINES_SAMPLES: "5000000"
         run: cabal test golem-layout-test --test-option=-p --test-option='/line breaking invariants on/'
+      # the ranges that do not break: every input of up to
+      # GOLEM_ENUM_NOBREAK_DEPTH parts; the pull requests check up to 2
+      # (docs/adr ADR 0272)
+      - name: The ranges that do not break on every small input (docs/adr ADR 0272)
+        if: steps.needed.outputs.run == 'true'
+        env:
+          GOLEM_ENUM_NOBREAK_DEPTH: "3"
+        run: cabal test golem-layout-test --test-option=-p --test-option='/ranges that do not break on every small input/'

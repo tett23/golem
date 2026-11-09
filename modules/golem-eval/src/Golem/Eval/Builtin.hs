@@ -55,6 +55,8 @@ data FixedBuiltin
     BLink
   | -- | a language span (docs/adr ADR 0187)
     BLang
+  | -- | a soft hyphen, U+00AD (docs/adr ADR 0272)
+    BShy
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | The overridable commands, then the others.
@@ -85,6 +87,7 @@ builtinName = \case
     BAki -> "aki"
     BLink -> "link"
     BLang -> "lang"
+    BShy -> "shy"
 
 -- | The command of a name, the inverse of 'builtinName'.
 parseBuiltin :: Text -> Maybe BuiltinInline
@@ -121,6 +124,8 @@ takesNoSlot = \case
     BLink -> False
     -- [lang] reports a slot that is not one as G02038 itself (docs/adr ADR 0187)
     BLang -> False
+    -- docs/adr ADR 0272
+    BShy -> True
 
 -- | The name of a plugin command that is not a built-in one.
 newtype PluginCommandName = PluginCommandName Text
@@ -167,5 +172,7 @@ builtinBlockCommands =
     "notoc",
     "caption",
     -- docs/adr ADR 0187
-    "lang"
+    "lang",
+    -- docs/adr ADR 0272
+    "hyphenation-exceptions"
   ]

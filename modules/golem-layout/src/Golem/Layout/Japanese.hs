@@ -31,6 +31,8 @@ module Golem.Layout.Japanese
     parseMarkFormat,
     composeInlines,
     composeInlinesTree,
+    softHyphenSites,
+    SoftHyphenNote (..),
     trailingSpaces,
     inlineStructure,
     InlineNode (..),
@@ -43,9 +45,11 @@ module Golem.Layout.Japanese
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.Char (GeneralCategory (..), generalCategory, isDigit, isLetter, isSpace)
+import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet qualified as IntSet
-import Data.List (groupBy, mapAccumL, sort, zip5)
+import Data.List (groupBy, mapAccumL, sort, zip4, zip5)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe)
 import Data.Ratio ((%))
@@ -65,6 +69,7 @@ import Golem.Length qualified as L
 import Golem.Numerals (kanji, kanjiDigits)
 import Golem.Numerals.Format (MarkFormat (..), defaultMarkFormat, parseMarkFormat)
 import Golem.Numerals.Notation (Notation, arabic, writeNumber)
+import Golem.Project.Position (Position (..))
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan (..), diagnostic, mkSpan, spanLength)
 
@@ -182,7 +187,11 @@ data ComposeEnv = ComposeEnv
     -- | the leaf of the boxes of the piece 'itemsFor' makes; set by 'composeInlines'
     ceLeaf :: !Int,
     -- | how many inlines at the start are a label, such as the mark of a note (docs/adr ADR 0183)
-    ceLabelInlines :: !Int
+    ceLabelInlines :: !Int,
+    {- | whether a range of superscript or subscript is set in the glyphs of
+    the font (docs/adr/0269): its characters, each in its look; otherwise
+    it is set by synthesis
+    -} ceScriptGlyphs :: Position -> [(Look, Char)] -> Bool
   }
 
 -- | The mark of a sidenote in the text: its number, ※ or nothing.
@@ -213,6 +222,7 @@ defaultComposeEnv fs =
       ceExplicitHyphenPenalty = 50,
       ceAkiSet = defaultAkiSet,
       ceNoteMarkFormat = defaultMarkFormat,
+      ceScriptGlyphs = \_ _ -> False,
       ceNoteMarkLook = \lk -> lk {lkSize = noteMarkSize (Zw (1 % 2)) (lkSize lk)},
       ceNoteMarkSource = const SourceNoteMark,
       ceSizeSource = SourceGrid,
@@ -273,7 +283,7 @@ boxKind = toEnum . bcTag
 -- One unit of composition before items are generated, with its look.
 data Piece
   = PChar !Look !Char !Text -- the character and its variation selectors; kenten is in the look
-  | PWord !Look !Text -- a Latin word (no spaces)
+  | PWord !Look !Text ![Int] -- a Latin word (no spaces), and where the soft hyphens taken out of it were (docs/adr ADR 0272)
   | PSpace !Look -- an inter-word space
   | PBox !Look !Text !BoxKind !Sp -- ruby, tcy, …: an unbreakable box of a given width
   | PRuby !Look !RubyKind !Text ![Look] !(Maybe Text) -- ruby: the base, the look of each base character (golem-layout ADR 0011) and the reading (none for a segment without one)
@@ -284,6 +294,7 @@ data Piece
   | PDashes !Look !Text -- a run of two or more full-width dashes: one box, an em for each (docs/adr ADR 0172)
   | PMark !Look !Look ![MarkPart] !Sp !Sp -- the mark of a note in the text: the look of its place, its own, its parts and the padding of code before and after it (docs/adr/0177)
   | PAnchor (Int -> Anchor)
+  | PShy !SoftHyphenNote -- a soft hyphen that is not a break, and why (docs/adr ADR 0272): no items
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
 composeInlines env inls = let (items, anchors, _) = composeInlinesTree env inls in (items, anchors)
@@ -297,8 +308,8 @@ composeInlinesTree env inls =
   let (nodes, sourced0) = structured env inls
       sourced = [(src, p) | (_, src, p) <- sourced0]
       leaves = [l | (l, _, _) <- sourced0]
-      -- padCode keeps one piece for each piece
-      pieces = padCode (map snd sourced)
+      -- padCode and scriptRanges keep one piece for each piece
+      pieces = scriptRanges env (padCode (map snd sourced))
       (items, anchors, codeSpaces) = foldl' emit ([], [], IntSet.empty) (zip5 leaves (map fst sourced) prevs pieces nexts)
       emit (acc, as, cs) (_, _, _, PAnchor f, _) = (acc, (length acc, f) : as, cs)
       -- the boxes of a piece carry its source (golem-cli ADR 0008) and its leaf (docs/adr ADR 0183)
@@ -312,6 +323,7 @@ composeInlinesTree env inls =
       -- the neighbours of each piece, anchors and breaks between mono ruby bases skipped
       solid = \case
         PAnchor _ -> False
+        PShy _ -> False
         PRubyBreak -> False
         _ -> True
       prevs = scanl (\acc p -> if solid p then Just p else acc) Nothing pieces
@@ -324,14 +336,35 @@ composeInlinesTree env inls =
       and before a forced break go; kernPairs keeps the items one for one -}
       dropped = trailingSpaces (IntSet.fromList [j | (i, j) <- positions, IntSet.member i codeSpaces]) spaced
       normalized = [x | (k, x) <- zip [0 ..] spaced, not (IntSet.member k dropped)]
-      at i = let j = fromMaybe (length spaced) (lookup i positions) in j - IntSet.size (fst (IntSet.split j dropped))
-   in (finish normalized, [f (at i) | (i, f) <- reverse anchors], nodes)
+      at0 i = let j = fromMaybe (length spaced) (lookup i positions) in j - IntSet.size (fst (IntSet.split j dropped))
+      -- the ranges that do not break (docs/adr ADR 0272): a penalty goes before each space they hold
+      (kept, held) = keepRanges normalized
+      at i = let j = at0 i in j + IntSet.size (fst (IntSet.split j held))
+   in (finish kept, [f (at i) | (i, f) <- reverse anchors], nodes)
   where
     finish its = its <> lineEnd
 
 -- | The structure of the inlines of 'composeInlinesTree', without composing them.
 inlineStructure :: ComposeEnv -> [Inline] -> [InlineNode]
 inlineStructure env = fst . structured env
+
+{- | The soft hyphens of inlines that are not breaks (docs/adr ADR 0272),
+those in the bodies of their notes and sidenotes among them, in the order
+of the inlines: the span of the text each is in, where it is in the
+source ('ceSourceAt'; -1 where the source does not have it), and why.
+-}
+softHyphenSites :: ComposeEnv -> [Inline] -> [(SrcSpan, Int, SoftHyphenNote)]
+softHyphenSites env inls =
+  let (nodes, sourced) = structured env inls
+      here = [(snd src, offs 0, note) | (_, (src, offs), PShy note) <- sourced]
+   in here <> concatMap (softHyphenSites env) (concatMap bodies nodes)
+  where
+    bodies = \case
+      NodeNote _ _ _ b -> [b]
+      NodeSidenote _ _ b -> [b]
+      NodeElem _ ns -> concatMap bodies ns
+      NodeLink _ _ ns -> concatMap bodies ns
+      NodeLeaf _ -> []
 
 {- | The structure of composed inlines (docs/adr ADR 0183): leaves of
 content, and the elements Golem makes from the inlines.
@@ -350,7 +383,7 @@ data InlineNode
   deriving stock (Eq, Show)
 
 -- | The elements of inlines: the label of 'ceLabelInlines', ruby, its base and reading, a reference, code and a language span (docs/adr ADR 0187).
-data InlineRole = RoleLabel | RoleRuby | RoleRubyBase | RoleRubyText | RoleReference | RoleCode | RoleLang !Text
+data InlineRole = RoleLabel | RoleRuby | RoleRubyBase | RoleRubyText | RoleReference | RoleCode | RoleLang !Text | RoleUnderline | RoleStrikethrough
   deriving stock (Eq, Show)
 
 -- the state of 'structured': the next leaf, the leaf of the content, the notes seen by their span
@@ -388,7 +421,14 @@ walk env st@(LeafState next cur seen) inl = case inl of
   CharStyle _ _ xs
     -- code inside text that is not code is an element (docs/adr ADR 0183)
     | lkCode (ceLook restyledEnv) && not (lkCode lk) -> element RoleCode (\st' -> walkAll restyledEnv st' xs)
-    | otherwise -> walkAll restyledEnv st xs
+    {- a style that draws a line of its own is a Span of the line, the
+    strikethrough inside the underline (docs/adr/0270) -}
+    | otherwise ->
+        let inner = ceLook restyledEnv
+            starts f = isJust (f inner) && f inner /= f lk
+            body s = walkAll restyledEnv s xs
+            struck s = if starts lkStrikethrough then elementAt RoleStrikethrough s body else body s
+         in if starts lkUnderline then elementAt RoleUnderline st struck else struck st
   Kenten _ sh xs -> walkAll env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}} st xs
   -- a language span is an element of its language (docs/adr ADR 0187)
   Lang _ l xs -> element (RoleLang l) (\st' -> walkAll env {ceLook = lk {lkLang = Just l}} st' xs)
@@ -421,11 +461,13 @@ walk env st@(LeafState next cur seen) inl = case inl of
     restyledEnv = env {ceLook = ceRestyle env lk inl, ceSizeSource = ceSizeSourceOf env (ceSizeSource env) inl}
     leafOf (LeafState _ c _) = c
     -- an element: its first leaf for what it holds, then a new leaf for what follows
-    element role inner =
-      let (st1, ns, ps) = inner (LeafState (next + 1) next seen)
-          LeafState next1 _ seen1 = st1
-          (st2, after) = freshLeaf (LeafState next1 cur seen1)
-       in (st2, [NodeElem role (NodeLeaf next : ns), after], ps)
+    element role = elementAt role st
+    -- an element of the content of a function at a state, and the leaf after it
+    elementAt role (LeafState n c sn) inner =
+      let (st1, ns, ps) = inner (LeafState (n + 1) n sn)
+          LeafState n1 _ sn1 = st1
+          (st2, after) = freshLeaf (LeafState n1 c sn1)
+       in (st2, [NodeElem role (NodeLeaf n : ns), after], ps)
     {- each segment with a reading is a Ruby of its base and reading, the
     reading the leaf after the base; a segment without one is content -}
     rubySegments segs =
@@ -448,6 +490,40 @@ walk env st@(LeafState next cur seen) inl = case inl of
 -- | The end of a paragraph, and of a line broken by a hard break: the rest of the line is fill.
 lineEnd :: [Item]
 lineEnd = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+
+{- | The ranges of text that do not break (docs/adr ADR 0272): a break
+whose nearest character before it and nearest character after it are
+both of such a range is not taken. A penalty of it becomes one of 10000,
+as wide as it was; a penalty of 10000 goes before a glue of it. Forced
+breaks stay, and nothing else changes: the boxes, the glue, the widths,
+the spacing, the prohibitions. The items, and the indices of the glue a
+penalty went before.
+-}
+keepRanges :: [Item] -> ([Item], IntSet.IntSet)
+keepRanges its
+  | not (or [lkNoBreak (bcLook c) | Box _ c <- its]) = (its, IntSet.empty)
+  | otherwise = (concat (zipWith3 keep afterBox its around), IntSet.fromList [k | (k, b, x, ar) <- zip4 [0 ..] afterBox its around, heldGlue b x ar])
+  where
+    -- whether the nearest character before (after) an item is of a range; Nothing for no character
+    nearest = \case
+      Box _ c | not (T.null (bcText c)) -> Just (lkNoBreak (bcLook c))
+      _ -> Nothing
+    befores = scanl (\acc x -> nearest x <|> acc) Nothing its
+    afters = drop 1 (scanr (\x acc -> nearest x <|> acc) Nothing its)
+    around = zip befores afters
+    -- whether the item before is a box: a glue there is a break
+    afterBox = False : map isBox its
+    isBox = \case
+      Box {} -> True
+      _ -> False
+    inside (b, a) = b == Just True && a == Just True
+    heldGlue b x ar = case x of
+      Glue {} -> b && inside ar
+      _ -> False
+    keep b x ar = case x of
+      Penalty w p h | p < infPenalty && p > negate infPenalty && inside ar -> [Penalty w infPenalty h]
+      Glue {} | heldGlue b x ar -> [Penalty 0 infPenalty NoHyphen, x]
+      _ -> [x]
 
 {- | The items of the spaces between words before the end of a paragraph
 and before each forced break (golem-layout ADR 0032), and of the spaces of
@@ -525,7 +601,7 @@ piecesOf :: ComposeEnv -> Inline -> [(Sourced, Piece)]
 piecesOf env inl = case inl of
   Text sp t ->
     let offs = ceSourceAt env sp t
-     in [(((ceSizeSource env, pieceSpan sp t i p), offs . (i +)), p) | (i, p) <- textPiecesAt lk t]
+     in [(((ceSizeSource env, pieceSpan sp t (at' 0) p), offs . at'), p) | (at', p) <- textPiecesAt lk t]
   Color _ _ xs -> restyled xs
   CharStyle _ _ xs -> restyled xs
   -- the target of a link is a look of the characters inside (docs/adr ADR 0182)
@@ -645,9 +721,118 @@ joinedDashes = "\x2014\x2015"
 textPieces :: Look -> Text -> [Piece]
 textPieces lk = map snd . textPiecesAt lk
 
--- | The pieces of a text, each with the index of its first character in the text.
-textPiecesAt :: Look -> Text -> [(Int, Piece)]
+-- | The soft hyphen, U+00AD (docs/adr ADR 0272).
+softHyphen :: Char
+softHyphen = '\xAD'
+
+{- | What a soft hyphen that is not a break is reported as (docs/adr ADR
+0272): one without a letter of its element on either side (G07123), or
+one in text that does not break, code, a URL, a link or a range that
+does not break (G07124).
+-}
+data SoftHyphenNote = ShyNotBetweenLetters | ShyInUnbreakable
+  deriving stock (Eq, Ord, Show)
+
+{- | The pieces of a text, each with where its characters are in the
+text: the index in the text of the character at an index of the piece.
+The soft hyphens (U+00AD) are taken out of the text before its pieces
+are made (docs/adr ADR 0272), so that the classes, the spacing and the
+words are those of the text without them; a word keeps where they were,
+and each soft hyphen that will not be a break leaves a piece of no items
+that says why ('PShy'), at the end.
+-}
+textPiecesAt :: Look -> Text -> [(Int -> Int, Piece)]
 textPiecesAt lk t
+  | not (T.any (== softHyphen) t) = [((i +), p) | (i, p) <- strippedPieces lk [] t]
+  | otherwise =
+      [(\k -> orig (i + k), p) | (i, p) <- strippedPieces lk shys stripped]
+        <> [(const j, PShy note) | (j, note) <- notes]
+  where
+    stripped = T.filter (/= softHyphen) t
+    indexed = zip [0 :: Int ..] (T.unpack t)
+    -- the index in the text of each character left, and of the end
+    origs = IntMap.fromList (zip [0 ..] [j | (j, c) <- indexed, c /= softHyphen])
+    orig k = IntMap.findWithDefault (T.length t) k origs
+    -- each soft hyphen: how many characters are left before it, and its index in the text
+    shys = concat (snd (mapAccumL (\n (j, c) -> if c == softHyphen then (n, [(n, j)]) else (n + 1, [])) 0 indexed))
+    notes = softHyphenNotes lk shys stripped
+
+{- | Why each soft hyphen given (how many characters of the text without
+them are before it, and its index in the text) is not a break, by its
+index in the text (docs/adr ADR 0272): none for a break and for one before
+the first letter of its element.
+-}
+softHyphenNotes :: Look -> [(Int, Int)] -> Text -> [(Int, SoftHyphenNote)]
+softHyphenNotes lk shys stripped
+  | breaksAsCode lk = [(j, ShyInUnbreakable) | (_, j) <- shys]
+  | otherwise =
+      [ (j, note)
+      | (pos, j) <- shys,
+        Just note <- [maybe (Just orphan) (\(start, w) -> roleNote (shyRole lk w (pos - start))) (wordAt pos)]
+      ]
+  where
+    words' = [(i, w) | (i, PWord _ w _) <- strippedPieces lk [] stripped]
+    -- the word a soft hyphen is in, before its first character or after its last
+    wordAt pos = listToMaybe [(i, w) | (i, w) <- words', pos >= i, pos <= i + T.length w]
+    orphan = if unbreakable lk then ShyInUnbreakable else ShyNotBetweenLetters
+    roleNote = \case
+      ShyCut | unbreakable lk -> Just ShyInUnbreakable
+      ShyCut -> Nothing
+      ShyHead -> Nothing
+      ShyStray -> Just orphan
+
+-- | Whether a break between two characters of a look is never taken, but a forced one.
+unbreakable :: Look -> Bool
+unbreakable lk = breaksAsCode lk || isJust (lkLink lk) || lkNoBreak lk
+
+{- | What a soft hyphen in a Latin word is (docs/adr ADR 0272): a break,
+where a letter (general category L, its combining characters with it) of
+its element is on either side of it; nothing, before the first letter of
+its element; a soft hyphen that is not a break, anywhere else. A soft
+hyphen right after a hyphen or dash written in the word is in the element
+after it, one after the word in its last element.
+-}
+data ShyRole = ShyCut | ShyHead | ShyStray
+  deriving stock (Eq, Show)
+
+-- | The role of a soft hyphen in a word, by the characters of the word before it.
+shyRole :: Look -> Text -> Int -> ShyRole
+shyRole lk word pos
+  | isJust (lkLink lk) = if head' then ShyHead else ShyStray
+  | head' = ShyHead
+  | letterBefore && letterAfter = ShyCut
+  | otherwise = ShyStray
+  where
+    (start, _) = elementSpan word pos
+    inElement = T.drop start (T.take pos word)
+    head' = not (T.any isLetter inElement)
+    -- the base of the character before it, past its combining characters
+    letterBefore = maybe False isLetter (T.find (not . isExtending) (T.reverse (T.take pos word)))
+    letterAfter = case T.uncons (T.drop pos word) of
+      Just (c, _) -> isLetter c && not (isExtending c)
+      Nothing -> False
+
+{- | The element of a word a position is in (the start and the end of it in
+the word): the elements of 'explicitParts', a position at the start of an
+element in that element, the end of the word in the last.
+-}
+elementSpan :: Text -> Int -> (Int, Int)
+elementSpan word pos =
+  let ls = map T.length (if T.null word then [word] else explicitParts word)
+      spans = zip (scanl (+) 0 ls) (drop 1 (scanl (+) 0 ls))
+   in case [sp | sp@(a, b) <- spans, pos >= a, pos < b] of
+        sp : _ -> sp
+        [] -> fromMaybe (0, T.length word) (listToMaybe (reverse spans))
+
+{- | The breaks of soft hyphens in a word (docs/adr ADR 0272): the positions
+given that are breaks, each once, in order.
+-}
+softHyphenCuts :: Look -> Text -> [Int] -> [Int]
+softHyphenCuts lk word shys = IntSet.toAscList (IntSet.fromList [p | p <- shys, shyRole lk word p == ShyCut])
+
+-- | The pieces of a text without soft hyphens, each with the index of its first character in it, the soft hyphens given in the words they are in.
+strippedPieces :: Look -> [(Int, Int)] -> Text -> [(Int, Piece)]
+strippedPieces lk shys t
   | breaksAsCode lk = codePieces lk t
   | otherwise = joinDashes (go (zip3 offsets units latinish))
   where
@@ -677,7 +862,10 @@ textPiecesAt lk t
       | c == ' ' = (i, PSpace lk) : go (dropWhile (\(_, (b, _), _) -> b == ' ') rest)
       | l =
           let (w, rest') = span (\(_, _, latin) -> latin) ((i, (c, marks), l) : rest)
-           in (i, PWord lk (T.concat [T.cons b m | (_, (b, m), _) <- w])) : go rest'
+              word = T.concat [T.cons b m | (_, (b, m), _) <- w]
+              -- the soft hyphens before its first character to after its last (docs/adr ADR 0272)
+              inWord = [p - i | (p, _) <- shys, p >= i, p <= i + T.length word]
+           in (i, PWord lk word inWord) : go rest'
       | otherwise = (i, PChar lk c marks) : go rest
     -- two or more dashes in a row, without combining characters, are one piece (docs/adr ADR 0172)
     joinDashes = \case
@@ -864,9 +1052,85 @@ baseAdvances env lk looks = zipWith unit (looks <> repeat lk) . clusters
       [c] -> advance env l c
       _ -> L.zwToSp (lkSize l) (ceWordAdvance env l u)
 
--- | The advances of the reading characters: half the size of the base, as drawn.
+-- | Whether a look is of superscript or subscript (docs/adr/0269).
+isScript :: Look -> Bool
+isScript = (/= PositionNormal) . lkPosition
+
+-- | The look of a piece; Nothing for the pieces without one.
+pieceLook :: Piece -> Maybe Look
+pieceLook = \case
+  PChar lk _ _ -> Just lk
+  PWord lk _ _ -> Just lk
+  PSpace lk -> Just lk
+  PBox lk _ _ _ -> Just lk
+  PRuby lk _ _ _ _ -> Just lk
+  PAki lk _ -> Just lk
+  PCode lk _ _ _ -> Just lk
+  PDashes lk _ -> Just lk
+  PMark _ lk _ _ _ -> Just lk
+  _ -> Nothing
+
+{- | The ranges of superscript and subscript (docs/adr/0269): the longest
+runs of pieces of one position other than normal, anchors and the breaks
+between mono ruby bases inside them. Each range is set in the glyphs of
+the font when 'ceScriptGlyphs' says so for all its characters, its looks
+then shaped with sups (subs) after every feature at their size; otherwise
+by synthesis, its looks at 7/12 of their nominal size s, moved by s/3 up
+(right in vertical text) for superscript and down (left) for subscript,
+after their baseline shift. One piece for each piece.
+-}
+scriptRanges :: ComposeEnv -> [Piece] -> [Piece]
+scriptRanges env = go
+  where
+    go ps = case break (isJust . positionOf) ps of
+      (normal, []) -> normal
+      (normal, rest@(p : _)) ->
+        let pos = fromMaybe PositionNormal (positionOf p)
+            (range, after) = span (\q -> positionOf q == Just pos || transparent q) rest
+            -- the pieces that carry no look at the end belong after the range
+            (tailing, range') = span transparent (reverse range)
+            inRange = reverse range'
+            glyphs = ceScriptGlyphs env pos (concatMap charsOf inRange)
+         in normal <> map (settle pos glyphs) inRange <> reverse tailing <> go after
+    positionOf q = pieceLook q >>= \lk -> if isScript lk then Just (lkPosition lk) else Nothing
+    transparent = \case
+      PAnchor _ -> True
+      PShy _ -> True
+      PRubyBreak -> True
+      _ -> False
+    charsOf = \case
+      PChar lk c _ -> [(lk, c)]
+      PWord lk t _ -> [(lk, c) | c <- T.unpack t]
+      PSpace lk -> [(lk, ' ')]
+      PBox lk t _ _ -> [(lk, c) | c <- T.unpack t]
+      PRuby lk _ base looks _ -> zip (looks <> repeat lk) (T.unpack base)
+      PCode lk t _ _ -> [(lk, c) | c <- T.unpack t]
+      PDashes lk t -> [(lk, c) | c <- T.unpack t]
+      _ -> []
+    settle pos glyphs = \case
+      PChar lk c vs -> PChar (set lk) c vs
+      PWord lk t shys -> PWord (set lk) t shys
+      PSpace lk -> PSpace (set lk)
+      PBox lk t kind w -> PBox (set lk) t kind (if w == lkSize lk then lkSize (set lk) else w)
+      PRuby lk kind base looks reading -> PRuby (set lk) kind base (map set looks) reading
+      PAki lk a -> PAki (set lk) a
+      PCode lk t ps pe -> PCode (set lk) t ps pe
+      PDashes lk t -> PDashes (set lk) t
+      other -> other
+      where
+        set lk
+          | glyphs = lk {lkScriptGlyphs = True}
+          | otherwise =
+              let n = unSp (lkNominalSize lk)
+                  shift = Sp (n `div` 3)
+               in lk
+                    { lkSize = Sp ((7 * n) `div` 12),
+                      lkBaselineShift = lkBaselineShift lk + (if pos == PositionSuperscript then shift else negate shift)
+                    }
+
+-- | The advances of the reading characters in the 'readingLook' of the base, as drawn.
 readingAdvances :: ComposeEnv -> Look -> Maybe Text -> [Sp]
-readingAdvances env lk = maybe [] (map (advance env lk {lkSize = Sp (unSp (lkSize lk) `div` 2)}) . T.unpack)
+readingAdvances env lk = maybe [] (map (advance env (readingLook lk)) . T.unpack)
 
 itemsFor :: ComposeEnv -> Maybe Piece -> Piece -> Maybe Piece -> [Item]
 itemsFor env prev p next = case p of
@@ -889,12 +1153,18 @@ itemsFor env prev p next = case p of
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
      in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
-  PWord lk word -> wordItems env lk word
+  -- a word of superscript or subscript is not broken (docs/adr/0269)
+  PWord lk word shys
+    | isScript lk -> [x | x@Box {} <- wordItems env lk word shys]
+    | otherwise -> wordItems env lk word shys
   PSpace lk ->
     let sw = advance env lk ' '
-     in if lkCode lk
-          then [Glue (sw + tracking lk) 0 0] -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
-          else [Glue (sw + tracking lk) (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))]
+        glue
+          | lkCode lk || isScript lk = Glue (sw + tracking lk) 0 0 -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
+          | otherwise = Glue (sw + tracking lk) (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))
+     in {- a space inside a range of superscript or subscript neither breaks nor
+        stretches, and no line breaks before a range (docs/adr/0269) -}
+        [Penalty 0 infPenalty NoHyphen | not (lkCode lk), isScript lk || maybe False (maybe False isScript . pieceLook) next] <> [glue]
   PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
@@ -939,6 +1209,7 @@ itemsFor env prev p next = case p of
      in [Box (w + t) (BoxContent d False 0 0 (fromEnum KindDashes) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PMark place lk parts ps pe -> [markItem env place lk parts ps pe]
   PAnchor _ -> []
+  PShy _ -> []
 
 {- | The box of the mark of a note in the text (golem-driver ADR 0018,
 docs/adr/0177): one box, nothing breaks it and no aki set spaces it. Its
@@ -1077,6 +1348,7 @@ padCode = \case
     key l = if lkCode l then Just (lkBackground l, lkPadding l) else Nothing
     transparent = \case
       PAnchor _ -> True
+      PShy _ -> True
       PRubyBreak -> True
       _ -> False
     -- the padding goes on the first and the last piece when they are code
@@ -1103,11 +1375,13 @@ no pattern hyphens (golem-layout ADR 0031). A word of a link
 is one box (docs/adr ADR 0182). A character at an end of a box protrudes
 by its advance in the font of the box (docs/adr/0222).
 -}
-wordItems :: ComposeEnv -> Look -> Text -> [Item]
-wordItems env lk word =
+wordItems :: ComposeEnv -> Look -> Text -> [Int] -> [Item]
+wordItems env lk word shys =
   let explicitP = ceExplicitHyphenPenalty env
       explicitPen = Penalty 0 explicitP ExplicitHyphen
       patternPen = Penalty (advance env lk '-') 50 (PatternHyphen (protAt snd '-'))
+      -- a break at a soft hyphen: as one of the patterns, but the first pass takes it (docs/adr ADR 0272)
+      softPen = Penalty (advance env lk '-') 50 (SoftHyphen (protAt snd '-'))
       isHyphen = isHyphenCharacter
       {- an element's pieces: the patterns' cuts of its letters, what is
       before them back on the first piece and what is after them (the
@@ -1133,13 +1407,25 @@ wordItems env lk word =
       -- a break after a run of low lines: no hyphen (golem-layout ADR 0031)
       lowLinePen = Penalty 0 100 NoHyphen
       lowLined = T.any (== '_') word
+      -- the pen inside an element without soft hyphens
+      innerPen = if lowLined then lowLinePen else patternPen
       -- the parts of a word with a low line at its written hyphens, each with the index of its first character in the word
       hyphenParts = if explicitP >= infPenalty || not (T.any isHyphen word) then [word] else explicitParts word
+      {- the soft hyphens (docs/adr ADR 0272): an element with one is cut at
+      those that are breaks, and at nothing else; the elements are those of
+      the written hyphens, which a word kept whole by explicit-hyphen-penalty
+      10000 is not broken at -}
+      cuts = softHyphenCuts lk word shys
+      shyElements = IntSet.fromList [fst (elementSpan word p) | p <- shys]
+      withShys o part = if IntSet.member o shyElements then (softPen, splitAtCuts cuts o part) else (innerPen, if lowLined then splitAtCuts (lowLineCuts word) o part else pieces part)
       elements
-        | isJust (lkLink lk) = [[word]]
-        | lowLined = [splitAtCuts (lowLineCuts word) o part | (o, part) <- zip (scanl (+) 0 (map T.length hyphenParts)) hyphenParts]
-        | T.any isHyphen word = if explicitP >= infPenalty then [[word]] else map pieces (explicitParts word)
-        | otherwise = [pieces word]
+        | isJust (lkLink lk) = [(innerPen, [word])]
+        | not (null shys) && explicitP >= infPenalty = [(softPen, splitAtCuts cuts 0 word)]
+        | not (null shys) = [withShys o part | (o, part) <- offsetsOf (if T.any isHyphen word then explicitParts word else [word])]
+        | lowLined = [(lowLinePen, splitAtCuts (lowLineCuts word) o part) | (o, part) <- offsetsOf hyphenParts]
+        | T.any isHyphen word = if explicitP >= infPenalty then [(innerPen, [word])] else map ((innerPen,) . pieces) (explicitParts word)
+        | otherwise = [(innerPen, pieces word)]
+      offsetsOf ps = zip (scanl (+) 0 (map T.length ps)) ps
       rotated = ceVertical env
       tag = fromEnum (if rotated then KindRotated else KindText)
       tr = tracking lk
@@ -1155,8 +1441,8 @@ wordItems env lk word =
       protIn t pick c = if ceProtrusion env then Sp (unSp (L.zwToSp (lkSize lk) (ceWordCharAdvance env lk t c)) * pick (protrusionRatio c) `div` 1000) else 0
       withPens pen = concat . zipWith (\i x -> (if i > (0 :: Int) then pen else []) <> x) [0 ..]
       -- each box with the index of its first character in the word (docs/adr ADR 0195)
-      indexed = snd (mapAccumL (mapAccumL (\k t -> (k + T.length t, (k, t)))) 0 elements)
-   in withPens [explicitPen] (map (withPens [if lowLined then lowLinePen else patternPen] . map (pure . box)) indexed)
+      indexed = snd (mapAccumL (\k (pen, ts) -> let (k', ixs) = mapAccumL (\k0 t -> (k0 + T.length t, (k0, t))) k ts in (k', (pen, ixs))) 0 elements)
+   in withPens [explicitPen] [withPens [pen] (map (pure . box) ixs) | (pen, ixs) <- indexed]
 
 {- | Where a word is cut after its runs of low lines (golem-layout ADR
 0031): after each run that has a character before it and one after it in
@@ -1286,9 +1572,11 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
       Box _ c | boxKind c == KindAki -> x : go (k + 1) AfterAki first rest
       {- a note mark joins the box before it (golem-driver ADR 0018): no
       break and no spacing before it, and the spacing of the pair around
-      it after it; it has no edges -}
+      it after it; it has no edges. So does each box of a range of
+      superscript or subscript (docs/adr/0269): no break and no spacing
+      before it and inside it, and after it those of the pair around it -}
       Box w c
-        | boxKind c == KindNoteMark ->
+        | boxKind c == KindNoteMark || isScript (bcLook c) ->
             let before' = case before of
                   AtStart -> AfterStartMark
                   other -> other

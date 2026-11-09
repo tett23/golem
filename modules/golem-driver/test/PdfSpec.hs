@@ -3,6 +3,7 @@ module PdfSpec (qpdfInstalled, fontResources, pdfPipelineTests, marksTests, hidd
 import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
+import Data.Either (isRight)
 import Data.IORef (newIORef, readIORef)
 import Data.List (isSuffixOf, nub, sort, sortOn, zip4)
 import Data.Map.Strict qualified as Map
@@ -250,32 +251,32 @@ characterFeatureTests =
       lfPairKern fonts (Shaping "body" False ["-kern"] False) 'A' 'V' @?= 0,
     testCase "each kerning method and proportional metrics turn on their OpenType features" $ do
       let lk k p = (plainLook "body" 655360) {lkKerning = k, lkProportional = p}
-      shapingOf False (lk KernMetrics False) 'あ' @?= Shaping "body" False [] False
-      shapingOf False (lk KernMetrics True) 'あ' @?= Shaping "body" False ["palt"] False
-      shapingOf True (lk KernMetrics True) 'あ' @?= Shaping "body" True ["vpal"] False
-      shapingOf False (lk KernNone False) 'あ' @?= Shaping "body" False ["-kern", "-vkrn"] False
-      shapingOf True (lk KernNone True) 'あ' @?= Shaping "body" True ["-kern", "-vkrn", "vpal"] False
-      shapingOf False (lk KernJapaneseEqualWidth True) 'あ' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"] False
-      shapingOf False (lk KernNone True) 'a' @?= Shaping "body" False ["-kern"] False
-      shapingOf False (lk KernJapaneseEqualWidth True) 'a' @?= Shaping "body" False [] False
+      shapingOf (const []) False (lk KernMetrics False) 'あ' @?= Shaping "body" False [] False
+      shapingOf (const []) False (lk KernMetrics True) 'あ' @?= Shaping "body" False ["palt"] False
+      shapingOf (const []) True (lk KernMetrics True) 'あ' @?= Shaping "body" True ["vpal"] False
+      shapingOf (const []) False (lk KernNone False) 'あ' @?= Shaping "body" False ["-kern", "-vkrn"] False
+      shapingOf (const []) True (lk KernNone True) 'あ' @?= Shaping "body" True ["-kern", "-vkrn", "vpal"] False
+      shapingOf (const []) False (lk KernJapaneseEqualWidth True) 'あ' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"] False
+      shapingOf (const []) False (lk KernNone True) 'a' @?= Shaping "body" False ["-kern"] False
+      shapingOf (const []) False (lk KernJapaneseEqualWidth True) 'a' @?= Shaping "body" False [] False
       -- Latin in vertical text is turned and measured horizontally
-      shapingOf True (lk KernMetrics False) 'a' @?= Shaping "body" False [] False,
+      shapingOf (const []) True (lk KernMetrics False) 'a' @?= Shaping "body" False [] False,
     testCase "punctuation JLReq spaces gets -palt and -vpal by every kerning method (docs/adr ADR 0053)" $ do
       let lk k p = (plainLook "body" 655360) {lkKerning = k, lkProportional = p}
-      shapingOf False (lk KernMetrics True) '「' @?= Shaping "body" False ["-palt", "-vpal"] False
-      shapingOf True (lk KernMetrics True) '「' @?= Shaping "body" True ["-palt", "-vpal"] False
+      shapingOf (const []) False (lk KernMetrics True) '「' @?= Shaping "body" False ["-palt", "-vpal"] False
+      shapingOf (const []) True (lk KernMetrics True) '「' @?= Shaping "body" True ["-palt", "-vpal"] False
       -- the role's palt is undone even without proportional-metrics
-      shapingOf False (lk KernMetrics False) '「' @?= Shaping "body" False ["-palt", "-vpal"] False
-      mapM_ (\c -> shapingOf False (lk KernMetrics True) c @?= Shaping "body" False ["-palt", "-vpal"] False) ['」', '。', '、', '・', '：', '；']
-      shapingOf False (lk KernNone True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"] False
-      shapingOf False (lk KernJapaneseEqualWidth True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"] False
+      shapingOf (const []) False (lk KernMetrics False) '「' @?= Shaping "body" False ["-palt", "-vpal"] False
+      mapM_ (\c -> shapingOf (const []) False (lk KernMetrics True) c @?= Shaping "body" False ["-palt", "-vpal"] False) ['」', '。', '、', '・', '：', '；']
+      shapingOf (const []) False (lk KernNone True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"] False
+      shapingOf (const []) False (lk KernJapaneseEqualWidth True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"] False
       -- what JLReq does not space keeps palt
-      shapingOf False (lk KernMetrics True) '？' @?= Shaping "body" False ["palt"] False
-      shapingOf False (lk KernMetrics True) '…' @?= Shaping "body" False ["palt"] False,
+      shapingOf (const []) False (lk KernMetrics True) '？' @?= Shaping "body" False ["palt"] False
+      shapingOf (const []) False (lk KernMetrics True) '…' @?= Shaping "body" False ["palt"] False,
     testCase "the role's palt leaves a bracket its full width, a kana its palt width (docs/adr ADR 0053)" $ do
       fonts <- notoPaltFonts
       let lk = plainLook "palt" 655360
-          advance c = lfAdvance fonts (shapingOf False lk c) c
+          advance c = lfAdvance fonts (shapingOf (lfRoleFeatures fonts) False lk c) c
       advance '「' @?= 1
       advance 'あ' @?= lfAdvance fonts (Shaping "palt" False [] False) 'あ',
     testCase "brackets are as wide with the role's palt or proportional-metrics as without (docs/adr ADR 0053)" $ do
@@ -654,7 +655,7 @@ marksTests =
       boxOf "TrimBox" pdf @?= boxText (Rect 557314 557314 w h),
     testCase "the English template: 0.125in of bleed, and Japanese marks without G07002 (golem-pdf ADR 0010, golem-project ADR 0010)" $ withSystemTempDirectory "golem-new" $ \tmp -> do
       let dir = tmp </> "book"
-      createProject dir (templateFiles English uuid0) Nothing >>= (@?= Right ())
+      createProject dir (templateFiles English uuid0) Nothing >>= assertBool "written" . isRight
       createDirectoryIfMissing True (dir </> "fonts")
       copyFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" (dir </> "fonts/SourceSerif4-Regular.otf")
       r <- build (defaultOptions dir) {optTargets = Just [TargetPdf], optMarks = JapaneseMarks}

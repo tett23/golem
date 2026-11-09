@@ -61,6 +61,9 @@ structureTree fe units figureAttrs =
       NodeLeaf k -> P.KidLeaf (P.LeafId (site <> [k]))
       -- a language span: a Span of its language (docs/adr ADR 0187)
       NodeElem (RoleLang l) ns -> P.KidElem ((P.structElem P.SSpan [toKid (site, m) | m <- ns]) {P.seLang = Just l})
+      -- a range with a line of its own: a Span with its TextDecorationType (docs/adr/0270)
+      NodeElem RoleUnderline ns -> P.KidElem (decorated "Underline" [toKid (site, m) | m <- ns])
+      NodeElem RoleStrikethrough ns -> P.KidElem (decorated "LineThrough" [toKid (site, m) | m <- ns])
       NodeElem role ns -> P.KidElem (P.structElem (roleType role) [toKid (site, m) | m <- ns])
       NodeNote sp k num nbody -> P.KidElem (noteElem sp k num nbody)
       NodeSidenote sp num snBody -> P.KidElem (sidenoteElem sp num snBody)
@@ -70,7 +73,8 @@ structureTree fe units figureAttrs =
       let first = case ns of
             NodeLeaf k : _ -> k
             _ -> 0
-          shown = T.concat (map inlineText xs)
+          -- without its soft hyphens, which the PDF does not write (docs/adr ADR 0272)
+          shown = T.filter (/= '\xAD') (T.concat (map inlineText xs))
           contents = if shown == u then u else shown <> "（" <> u <> "）"
        in -- the text rides in an attribute of no owner of the PDF until 'withoutTexts' takes it out
           (P.structElem P.SLink (kids <> [P.KidAnnot (P.AnnotId (site <> [first]))])) {P.seAttrs = [P.Attribute "Golem" [("Contents", P.OStr (TE.encodeUtf8 contents))]]}
@@ -82,6 +86,9 @@ structureTree fe units figureAttrs =
       RoleReference -> P.SReference
       RoleCode -> P.SCode
       RoleLang _ -> P.SSpan
+      RoleUnderline -> P.SSpan
+      RoleStrikethrough -> P.SSpan
+    decorated kind kids = (P.structElem P.SSpan kids) {P.seAttrs = [P.Attribute "Layout" [("TextDecorationType", P.OName kind)]]}
     -- a Note: the mark (Lbl), then the body (P)
     noteFrom kids = case kids of
       P.KidElem lbl@P.StructElem {P.seType = P.SLbl} : rest -> P.structElem P.SNote (P.KidElem lbl : [P.KidElem (P.structElem P.SP rest) | not (null rest)])

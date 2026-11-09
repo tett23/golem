@@ -94,6 +94,7 @@ feasiblePaths ps width pass items =
     flagged i = case at i of
       Penalty _ _ (PatternHyphen _) -> True
       Penalty _ _ ExplicitHyphen -> True
+      Penalty _ _ (SoftHyphen _) -> True
       _ -> False
     -- the demerits of the lines from the start to the breaks, or Nothing if one is not feasible
     demeritsOf = go (-1) 2 False 0

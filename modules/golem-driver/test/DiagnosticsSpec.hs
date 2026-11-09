@@ -156,6 +156,7 @@ everyNoticeProjects =
           "\n本文。\n\n@style verse\n  ab\\ \n  cd\n\n", -- G02079
           "[ruby: [kenten: 漢]|かん]\n\n", -- G07045
           "あ[style inkless: ——]い\n\n", -- G07101
+          "a\xAD. [code: x[shy]y]\n\n", -- G07123 and G07124 (docs/adr ADR 0272)
           "```\nabcdefghijklmnopqrstuvwxyzabcd\n```\n\n", -- G07030
           "@figure images/tall.svg alt=\"t\"\n  キャプション。\n\n", -- G07039, with a caption for G03100
           "@style sec\n  " <> T.replicate 96 "あ" <> "\n\n", -- G07046
@@ -258,8 +259,9 @@ noticeTests =
           nDiagnostics silencedInfo @?= nDiagnostics loud
           map withoutInstanceId (nOutputs silencedInfo) @?= map withoutInstanceId (nOutputs loud)
           pure (map diagCode (nDiagnostics loud), [diagCode d | d <- nDiagnostics verbose, diagSeverity d == Info], map fst (nOutputs loud))
-        -- a new notice or info must be added to the projects
-        sort (nub (concatMap (\(n, _, _) -> n) raised)) @?= sort noticeCodes
+        -- a new notice or info must be added to the projects; G03134 is a
+        -- notice of golem new, which builds nothing (docs/adr/0273)
+        sort (nub (concatMap (\(n, _, _) -> n) raised)) @?= sort (filter (/= DiagnosticCode "G03134") noticeCodes)
         sort (nub (concatMap (\(_, i, _) -> i) raised)) @?= sort infoCodes
         let written = concatMap (\(_, _, w) -> w) raised
         assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"]),

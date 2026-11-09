@@ -108,7 +108,7 @@ import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
 import Golem.Layout.Align qualified as A
 import Golem.Layout.Code
-import Golem.Layout.Hyphenation.Languages (patternsFor)
+import Golem.Layout.Hyphenation.Languages (exceptionPatterns)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look hiding (Kerning (..))
@@ -130,6 +130,7 @@ import Golem.Pdf qualified as P
 import Golem.Project
 import Golem.Project.Files (Files (..))
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
+import Golem.Project.Position (Position (..))
 import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax
@@ -522,7 +523,7 @@ layoutFigures reuse inp geom fonts figures = do
           atHeading hs tp = tp {tpLeader = withBoxSource (SourceGrid, hs) (tpLeader tp), tpNumber = withBoxSource (SourceGrid, hs) (tpNumber tp)}
           tocPages = Map.fromList [(lid, atHeading hs (tocPage tg e (pageNumberLine env l))) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages], let l = Map.findWithDefault (plainLabel (fromInteger n)) (fromInteger n) pageLbls]
        in case concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) pages) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built))
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built))
             ds -> Left ds
 
 {- | The most grid lines a column may have with @page-lines (docs/adr ADR
@@ -988,6 +989,37 @@ bibliographyLines bib cites =
         | otherwise -> CharStyle sp0 "url" [Text sp0 u] : merged rest
       [] -> []
 
+{- | G07123 and G07124 (docs/adr ADR 0272): a notice for each soft hyphen
+of the book that is not a break, at the soft hyphen ([shy] where it is
+written so), in the order of the documents and their blocks. A soft
+hyphen without a letter of its element on either side is G07123, one in
+text that does not break G07124; one before the first letter of its
+element is neither. The lines Golem makes are not read: what they show is
+written in the source, and reported there.
+-}
+softHyphenNotices :: PdfInput -> [Diagnostic]
+softHyphenNotices inp =
+  [ notice code (siteSpan sp off) msg
+  | Document fid bs <- bookDocs (piBook inp),
+    let env = (defaultComposeEnv 0) {ceRestyle = restyle (docStyle inp fid), ceSourceAt = sourceAt sources},
+    b <- bs,
+    is <- blockInlineLists b,
+    (sp, off, note) <- softHyphenSites env is,
+    let (code, msg) = case note of
+          ShyNotBetweenLetters -> ("G07123", "ソフトハイフンの前か後ろが語の字でないので、分割の候補にしません")
+          ShyInUnbreakable -> ("G07124", "改行しない文字（コード、URL、リンク、改行しない範囲）の中のソフトハイフンなので、分割の候補にしません")
+  ]
+  where
+    sources = Map.map (TE.encodeUtf8 . sfText) (projectSources (piProject inp))
+    -- the soft hyphen in the source: U+00AD, or [shy]
+    siteSpan sp off
+      | off < 0 = sp
+      | otherwise =
+          let len = case Map.lookup (spanFile sp) sources of
+                Just src | "[shy]" `BS.isPrefixOf` BS.drop off src -> 5
+                _ -> 2
+           in mkSpan (spanFile sp) off (off + len)
+
 {- | The role, size and line pitch of sidenotes: the role and size of the
 paragraph style sidenote (golem-driver ADR 0011), the body pitch scaled
 to the size.
@@ -1127,7 +1159,7 @@ fixpoint sections labelSpan termOf layoutWith = go (1 :: Int) Nothing (Assumed M
 composeEnv :: Style -> PageGeometry -> LoadedFonts -> Assumed -> Look -> ComposeEnv
 composeEnv style geom fonts assumed look =
   let comp = stComposition style
-      shaping = shapingOf (pgVertical geom)
+      shaping = shapingOf (lfRoleFeatures fonts) (pgVertical geom)
    in (defaultComposeEnv (lkSize look))
         { ceAdvance = \lk c -> lfAdvance fonts (shaping lk c) c,
           ceWordAdvance = \lk t -> lfWordAdvance fonts (maybe (Shaping (lkLatinFace lk) False [] False) (shaping lk . fst) (T.uncons t)) t,
@@ -1152,12 +1184,24 @@ composeEnv style geom fonts assumed look =
             Just "symbol" -> MarkerSymbol
             Just "none" -> MarkerNone
             _ -> MarkerNumber,
-          -- Latin words: the patterns of the language of their span, US English outside one (golem-layout ADR 0001, docs/adr ADR 0187)
-          cePatterns = patternsFor,
+          {- Latin words: the patterns of the language of their span, US English
+          outside one (golem-layout ADR 0001, docs/adr ADR 0187), with the
+          exceptions of the book over the bundled ones (docs/adr ADR 0272);
+          the text of a file takes those of the file too ('withFileExceptions') -}
+          cePatterns = exceptionPatterns Map.empty (compHyphenationExceptions comp),
           -- the set of body; a paragraph, a caption and a sidenote take their style's (docs/adr ADR 0019)
           ceAkiSet = akiSetOf style Nothing,
           -- the text of note marks (golem-driver ADR 0025) and their character style (docs/adr/0177)
           ceNoteMarkFormat = stNotesMarkFormat style,
+          {- a range of superscript or subscript is in the glyphs of the font when
+          sups (subs) changes the glyph of every character of it (docs/adr/0269) -}
+          ceScriptGlyphs = \pos cs ->
+            let feature = if pos == PositionSubscript then "subs" else "sups"
+                glyphs s c = map shGlyph (lfShape fonts s (T.singleton c))
+                replaced (lk, c) =
+                  let s = shaping lk c
+                   in glyphs s c /= glyphs s {shExtra = normalTexts (shExtra s <> [feature])} c
+             in all replaced cs,
           ceNoteMarkLook = noteMarkLook style,
           ceNoteMarkSource = noteMarkSource style
         }
@@ -1770,7 +1814,40 @@ withDocStyle st e = e {ceRestyle = restyle st, ceSizeSourceOf = restyleSource st
 
 -- | The composition of the text of a unit: its look, its document's style and the aki set of its paragraph style.
 unitEnv :: FlowEnv -> Unit -> ComposeEnv
-unitEnv fe u = (withDocStyle (uStyle u) (lookEnv fe (uLook u))) {ceAkiSet = akiSetOf (uStyle u) (uParaStyle u), ceLabelInlines = unitLabelInlines u}
+unitEnv fe u = (exceptionsOf (withDocStyle (uStyle u) (lookEnv fe (uLook u)))) {ceAkiSet = akiSetOf (uStyle u) (uParaStyle u), ceLabelInlines = unitLabelInlines u}
+  where
+    exceptionsOf = if madeByGolem u then id else withFileExceptions fe (spanFile (uSpan u))
+
+{- | The hyphenation exceptions of a file, of its @hyphenation-exceptions
+lines, over those of the book (docs/adr ADR 0272): the text of a block
+takes those of the file it is written in, an imported block those of the
+imported file, the body of a note and a caption those of the file of the
+note and the figure.
+-}
+withFileExceptions :: FlowEnv -> FileId -> ComposeEnv -> ComposeEnv
+withFileExceptions fe fid e =
+  let inp = feInput fe
+      file = maybe Map.empty lsHyphenationExceptions (Map.lookup fid (piLocalStyles inp))
+   in e {cePatterns = exceptionPatterns file (compHyphenationExceptions (stComposition (piStyle inp)))}
+
+{- | Whether Golem makes the lines of a unit (docs/adr ADR 0272): the table
+of contents, the index, the bibliography, the list of a channel and the
+title of the notes at the end of a chapter, which take the exceptions of
+the book alone.
+-}
+madeByGolem :: Unit -> Bool
+madeByGolem u = case uKind u of
+  UNotesTitle {} -> True
+  UTocEntry {} -> True
+  UIndexEntry {} -> True
+  _ -> any made (uFrames u)
+  where
+    made (Frame _ k _) = case k of
+      FToc -> True
+      FIndex -> True
+      FBibliography -> True
+      FChannel -> True
+      _ -> False
 
 {- | How many inlines at the start of a unit are its label (docs/adr ADR
 0183): the mark and its space of a note at the end of a chapter, the
@@ -1882,7 +1959,7 @@ place of the caption (docs/adr ADR 0183).
 captionEnv :: FlowEnv -> Unit -> ComposeEnv
 captionEnv fe u =
   let (captionRole, cs) = paraFace (uStyle u) (feGeom fe) "caption"
-   in (withDocStyle (uStyle u) (lookEnv fe ((styleLook (uStyle u) (Just "caption") captionRole cs) {lkLang = lkLang (uLook u)}))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption"), ceSizeSource = paraSizeSource (uStyle u) (Just "caption"), ceSite = captionSite (uIndex u)}
+   in (withFileExceptions fe (spanFile (uSpan u)) (withDocStyle (uStyle u) (lookEnv fe ((styleLook (uStyle u) (Just "caption") captionRole cs) {lkLang = lkLang (uLook u)})))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption"), ceSizeSource = paraSizeSource (uStyle u) (Just "caption"), ceSite = captionSite (uIndex u)}
 
 -- | The composition of the cells of a table: the body size, no hanging punctuation (golem-driver ADR 0008), in the language of the table (docs/adr ADR 0187).
 tableEnv :: FlowEnv -> Style -> Maybe Text -> ComposeEnv
@@ -1895,7 +1972,7 @@ noteEnv fe st = (withDocStyle st (lookEnv fe (bodyLook st (pgFontSize (feGeom fe
 -- | The footnotes of a unit, each a paragraph of its own; none when the notes are at the end of the chapter (golem-driver ADR 0026).
 unitNotes :: FlowEnv -> Unit -> [Golem.Layout.Japanese.Anchor] -> [(NoteId, [Line])]
 unitNotes fe u anchors =
-  [ (k, brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines (noteEnv fe (uStyle u)) {ceSite = noteSite k, ceLabelInlines = noteMarkCount (uStyle u) (pgVertical (feGeom fe)) (noteIdSpan k) n} (withNoteMark (uStyle u) (pgVertical (feGeom fe)) (noteIdSpan k) n nbody)))))
+  [ (k, brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines (withFileExceptions fe (spanFile (noteIdSpan k)) (noteEnv fe (uStyle u))) {ceSite = noteSite k, ceLabelInlines = noteMarkCount (uStyle u) (pgVertical (feGeom fe)) (noteIdSpan k) n} (withNoteMark (uStyle u) (pgVertical (feGeom fe)) (noteIdSpan k) n nbody)))))
   | not (feNotesAtEnd fe),
     (_, k, n, nbody) <- noteAnchors anchors
   ]
@@ -1922,7 +1999,7 @@ sidenoteLines fe st sp n snBody =
   let geom = feGeom fe
       (_, snSize', _) = sidenoteMetrics st geom
       prefix = sidenotePrefix fe sp n
-      snEnv = (sidenoteEnv fe st) {ceSite = sidenoteSite sp n, ceLabelInlines = length prefix}
+      snEnv = (withFileExceptions fe (spanFile sp) (sidenoteEnv fe st)) {ceSite = sidenoteSite sp n, ceLabelInlines = length prefix}
       snParams = (feParams fe) {pEmergencyStretch = dimToSp snSize' (compEmergencyStretch (stComposition (piStyle (feInput fe))))}
       snMeasure = maybe 0 (rectW . fst) (pgSidenotes geom)
    in brLines (breakParagraph snParams (const snMeasure) (fst (composeInlines snEnv (prefix <> snBody))))
@@ -1947,7 +2024,7 @@ anchoredByLine :: FlowEnv -> Style -> [Item] -> [Golem.Layout.Japanese.Anchor] -
 anchoredByLine fe st items anchors ls =
   let lineOf = lineIndexOfItems items ls
       env = withDocStyle st (feBodyEnv fe)
-      noteBody k n b = brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines env {ceSite = noteSite k, ceLabelInlines = noteMarkCount (piStyle (feInput fe)) (ceVertical env) (noteIdSpan k) n} (withNoteMark (piStyle (feInput fe)) (ceVertical env) (noteIdSpan k) n b))))
+      noteBody k n b = brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines (withFileExceptions fe (spanFile (noteIdSpan k)) env) {ceSite = noteSite k, ceLabelInlines = noteMarkCount (piStyle (feInput fe)) (ceVertical env) (noteIdSpan k) n} (withNoteMark (piStyle (feInput fe)) (ceVertical env) (noteIdSpan k) n b))))
       marksIn b = [sp | AnchorIndex _ sp _ <- snd (composeInlines env b)]
       atEnd = feNotesAtEnd fe
    in ( Map.fromListWith (flip (<>)) [(lineOf i, [(k, noteBody k n b)]) | not atEnd, (i, k, n, b) <- noteAnchors anchors],
@@ -2070,11 +2147,11 @@ forceComposed c = evaluate (length (show (map lineRatio (cLines c))) + length (c
 (golem-driver ADR 0008), with the notes, sidenotes and index marks of each
 line of each row, the header row first.
 -}
-composeTable :: FlowEnv -> Int -> Style -> Maybe Text -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
-composeTable fe i st lang aligns h rows
+composeTable :: FlowEnv -> Int -> FileId -> Style -> Maybe Text -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
+composeTable fe i fid st lang aligns h rows
   -- counted before any cell is composed (docs/adr/0224)
   | cells > maxTableCells = Left (TooManyCells cells)
-  | otherwise = first LayoutRefused (composeTableCells fe i st lang aligns h rows)
+  | otherwise = first LayoutRefused (composeTableCells fe i fid st lang aligns h rows)
   where
     -- a header row of empty cells too, which is composed
     cells = length h + sum (map length rows)
@@ -2091,9 +2168,9 @@ data TableRefusal
   | LayoutRefused !TableError
   deriving stock (Show)
 
-composeTableCells :: FlowEnv -> Int -> Style -> Maybe Text -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
-composeTableCells fe i st lang aligns h rows =
-  let env = tableEnv fe st lang
+composeTableCells :: FlowEnv -> Int -> FileId -> Style -> Maybe Text -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
+composeTableCells fe i fid st lang aligns h rows =
+  let env = withFileExceptions fe fid (tableEnv fe st lang)
       -- no break between the last two Japanese characters of a cell (golem-driver ADR 0037); each cell its place (docs/adr ADR 0183)
       cellOf r c is = first keepLastTwo (composeInlines env {ceSite = cellSite i r c} is)
       hCells = zipWith (cellOf 0) [0 ..] h
@@ -2489,10 +2566,10 @@ buildFlow inp geom fonts images prev assumed = do
       isTable u = case uKind u of
         UTable {} -> True
         _ -> False
-      tableUnits = [(i, uStyle u, lkLang (uLook u), aligns, h, rows) | (i, u@Unit {uKind = UTable aligns h rows}) <- units]
+      tableUnits = [(i, spanFile (uSpan u), uStyle u, lkLang (uLook u), aligns, h, rows) | (i, u@Unit {uKind = UTable aligns h rows}) <- units]
   _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (\(i, u) -> maybe (forceComposed (composeUnit fe widths (unitLineWidth fe (uKind u)) u)) pure (reused cuSingles i)) rest
-  tables <- Map.fromList <$> mapper (\(i, st, l, aligns, h, rows) -> maybe (let r = composeTable fe i st l aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
+  tables <- Map.fromList <$> mapper (\(i, fid, st, l, aligns, h, rows) -> maybe (let r = composeTable fe i fid st l aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
   -- 3. number the lines in document order
   let codeBlocks = codeBlocksOf fe units
       composed = ComposedUnits unitAt besides figures singles tables codeBlocks
@@ -2636,7 +2713,7 @@ codeBlockOf atSource geom fonts measure capacity u lead code caption =
       cs = stCode st
       toSp = L.zwToSp size
       -- the shaping of each side: Latin, or Japanese ('漢')
-      side latin = shapingOf vertical lk (if latin then 'a' else '\x6F22')
+      side latin = shapingOf (lfRoleFeatures fonts) vertical lk (if latin then 'a' else '\x6F22')
       shape latin r =
         let gs = lfShape fonts (side latin) r
             starts = Set.toAscList (Set.fromList (map shCluster gs))
