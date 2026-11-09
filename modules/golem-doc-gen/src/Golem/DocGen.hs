@@ -55,8 +55,9 @@ genInlineWith mr =
     [ Kenten <$> genSpan <*> Gen.maybe genText <*> sub,
       Color <$> genSpan <*> genText <*> sub,
       CharStyle <$> genSpan <*> genText <*> sub,
-      Note <$> genSpan <*> Gen.int (Range.linear 1 99) <*> sub,
-      Sidenote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> sub,
+      -- the body of a note: paragraphs without a style, one for a sidenote (docs/adr/0263)
+      Note <$> genSpan <*> Gen.int (Range.linear 1 99) <*> Gen.list (Range.linear 1 3) para,
+      Sidenote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> fmap pure para,
       -- a link to an external URL (docs/adr ADR 0182)
       Link <$> genSpan <*> genText <*> sub,
       -- a language span (docs/adr ADR 0187)
@@ -64,6 +65,7 @@ genInlineWith mr =
     ]
   where
     sub = Gen.list (Range.linear 0 3) (genInlineWith mr)
+    para = (\sp is -> Block sp Nothing Nothing (Paragraph Nothing is)) <$> genSpan <*> Gen.list (Range.linear 0 3) genInline
 
 {- | A non-negative amount in zw, in lowest terms as 'Rational' keeps it;
 the numerator and the denominator reach the end of int64 (golem-doc ADR

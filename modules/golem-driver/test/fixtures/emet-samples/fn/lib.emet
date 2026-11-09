@@ -145,10 +145,14 @@ walkInline f st (Inline.Text s) = f st s
 walkInline f st (Inline.CharStyle name xs) = rewrap (one (Inline.CharStyle name)) (walkInlines f st xs)
 walkInline f st (Inline.Color name xs) = rewrap (one (Inline.Color name)) (walkInlines f st xs)
 walkInline f st (Inline.Kenten shape xs) = rewrap (one (Inline.Kenten shape)) (walkInlines f st xs)
-walkInline f st (Inline.Note xs) = rewrap (one Inline.Note) (walkInlines f st xs)
-walkInline f st (Inline.Sidenote xs) = rewrap (one Inline.Sidenote) (walkInlines f st xs)
+walkInline f st (Inline.Note bs) = rewrap (oneNote Inline.Note) (listGo (walkBlock f False) st bs [] False)
+walkInline f st (Inline.Sidenote bs) = rewrap (oneNote Inline.Sidenote) (listGo (walkBlock f False) st bs [] False)
 walkInline f st (Inline.Link url xs) = rewrap (one (Inline.Link url)) (walkInlines f st xs)
 walkInline _ st _ = (Nothing, st)
 
 one :: (Inlines -> Inline.Inline) -> Inlines -> Inlines
 one k xs = [k xs]
+
+-- A note as a list of inlines: its body is the paragraphs (docs/adr/0263).
+oneNote :: (Blocks -> Inline.Inline) -> Blocks -> Inlines
+oneNote k bs = [k bs]

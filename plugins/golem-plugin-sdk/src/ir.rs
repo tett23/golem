@@ -65,10 +65,10 @@ pub enum Inline {
     Ref { span: Span, kind: RefKind, label: String },
     /// 11: the expression as it came in; a plugin may only pass it on
     Deferred { span: Span, expr: Value },
-    /// 12
-    Note { span: Span, number: u64, body: Vec<Inline> },
-    /// 13
-    Sidenote { span: Span, number: u64, body: Vec<Inline> },
+    /// 23 (docs/adr/0263): the body is paragraphs without a paragraph style
+    Note { span: Span, number: u64, body: Vec<Block> },
+    /// 24 (docs/adr/0263): the body is one paragraph without a paragraph style
+    Sidenote { span: Span, number: u64, body: Vec<Block> },
     /// 14
     IndexMark { span: Span, terms: Vec<String>, readings: Vec<String> },
     /// 15
@@ -290,8 +290,8 @@ pub fn inline_value(x: &Inline) -> Value {
             ],
         ),
         Inline::Deferred { span, expr } => t(11, span, vec![expr.clone()]),
-        Inline::Note { span, number, body } => t(12, span, vec![int(*number), inlines_value(body)]),
-        Inline::Sidenote { span, number, body } => t(13, span, vec![int(*number), inlines_value(body)]),
+        Inline::Note { span, number, body } => t(23, span, vec![int(*number), blocks_value(body)]),
+        Inline::Sidenote { span, number, body } => t(24, span, vec![int(*number), blocks_value(body)]),
         Inline::IndexMark { span, terms, readings } => t(
             14,
             span,
@@ -385,6 +385,19 @@ pub fn figure(span: Span, image: &str, alt: &str, caption: Vec<Block>) -> Block 
         ]),
     ]);
     Block { span, label: None, lang: None, body: BlockBody::Other(body) }
+}
+
+/// The body of a note of one paragraph without a paragraph style (docs/adr/0263).
+pub fn note_body(span: Span, inlines: Vec<Inline>) -> Vec<Block> {
+    vec![Block { span, label: None, lang: None, body: BlockBody::Paragraph { style: None, inlines } }]
+}
+
+/// The runs of inlines of the paragraphs of the body of a note (docs/adr/0263).
+pub fn note_paragraphs_mut(body: &mut [Block]) -> impl Iterator<Item = &mut Vec<Inline>> {
+    body.iter_mut().filter_map(|b| match &mut b.body {
+        BlockBody::Paragraph { inlines, .. } => Some(inlines),
+        _ => None,
+    })
 }
 
 pub fn blocks_value(bs: &[Block]) -> Value {
@@ -490,8 +503,8 @@ pub fn inline_of(v: &Value) -> R<Inline> {
             label: text_of(l)?,
         },
         (11, [e]) => Inline::Deferred { span, expr: e.clone() },
-        (12, [n, body]) => Inline::Note { span, number: u64_of(n)?, body: inlines_of(body)? },
-        (13, [n, body]) => Inline::Sidenote { span, number: u64_of(n)?, body: inlines_of(body)? },
+        (23, [n, body]) => Inline::Note { span, number: u64_of(n)?, body: blocks_of(body)? },
+        (24, [n, body]) => Inline::Sidenote { span, number: u64_of(n)?, body: blocks_of(body)? },
         (14, [ts, rs]) => Inline::IndexMark {
             span,
             terms: arr(ts)?.iter().map(text_of).collect::<R<_>>()?,
@@ -666,6 +679,19 @@ mod tests {
         let expected: Vec<u8> = vec![0x84, 0x83, 0x01, 0x00, 0x01, 0xf6, 0xf6, 0x82, 0x0e, 0x87, 0x81, 0x01, 0x81, 0x81, 0x00, 0x80, 0xf5, 0xf6, 0x81, 0x80, 0x80];
         assert_eq!(bytes, expected);
         assert_eq!(block_of(&decode(&bytes).unwrap()).unwrap(), b);
+    }
+
+    /// the bytes of a note are those of the host: [23, span, number, [+ block]] (docs/adr/0263)
+    #[test]
+    fn note_bytes() {
+        let x = Inline::Note { span: sp(0, 1), number: 2, body: note_body(sp(0, 1), vec![]) };
+        let bytes = encode(&inline_value(&x));
+        let expected: Vec<u8> = vec![0x84, 0x17, 0x83, 0x01, 0x00, 0x01, 0x02, 0x81, 0x84, 0x83, 0x01, 0x00, 0x01, 0xf6, 0xf6, 0x83, 0x0a, 0xf6, 0x80];
+        assert_eq!(bytes, expected);
+        assert_eq!(inline_of(&decode(&bytes).unwrap()).unwrap(), x);
+        let s = Inline::Sidenote { span: sp(0, 1), number: 1, body: note_body(sp(0, 1), vec![]) };
+        assert_eq!(encode(&inline_value(&s))[1], 0x18);
+        assert_eq!(inline_of(&decode(&encode(&inline_value(&s))).unwrap()).unwrap(), s);
     }
 
     /// the bytes of a link are those of the host: [20, span, uri, inlines] (docs/adr ADR 0182)

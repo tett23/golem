@@ -19,6 +19,7 @@ strong { font-weight: bold; }
 .align-center { text-align: center; }
 .align-right { text-align: right; }
 .proof { background: #ffeb99; }
+section.notes aside p { margin-block: 0; padding-inline-start: 0; text-indent: 0; }
 ruby { ruby-align: space-around; }
 rt { ruby-align: space-around; }
 ruby.mono rt { ruby-align: center; }

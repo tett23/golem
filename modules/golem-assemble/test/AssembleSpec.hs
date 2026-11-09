@@ -68,7 +68,7 @@ tests =
             fig = Block (sp 1 3) (Just "f") Nothing (FigureBlock (Figure "a.png" Nothing "代替" Nothing Nothing [para 1 3 [Text (sp 1 3) "図の題"]] Nothing False False))
             refs n = [Ref (sp 1 n) RefNumber "h", Ref (sp 1 (n + 1)) RefTitle "h", Ref (sp 1 (n + 2)) RefNumber "f"]
             cell = Block (sp 1 10) Nothing Nothing (TableBlock (plainTable [AlignDefault] [[Text (sp 1 10) "見出し"]] [[refs 11]]))
-            noted = para 1 20 [Note (sp 1 20) 1 (refs 21)]
+            noted = para 1 20 [Note (sp 1 20) 1 (noteBody (sp 1 20) (refs 21))]
             docs = [Document (FileId 1) [h, fig, para 1 4 (refs 5), cell, noted]]
             (book, ds) = assemble cfg noEval docs
             resolved n =
@@ -78,7 +78,7 @@ tests =
               ]
         ds @?= []
         case bookDocs book of
-          [Document _ [_, _, Block _ _ _ (Paragraph _ a), Block _ _ _ (TableBlock Table {tableRows = [[b]]}), Block _ _ _ (Paragraph _ [Note _ _ c])]] -> do
+          [Document _ [_, _, Block _ _ _ (Paragraph _ a), Block _ _ _ (TableBlock Table {tableRows = [[b]]}), Block _ _ _ (Paragraph _ [Note _ _ [Block _ _ _ (Paragraph _ c)]])]] -> do
             a @?= resolved 5
             b @?= resolved 11
             c @?= resolved 21
@@ -199,7 +199,7 @@ titleCopyTests =
           [Document _ [_, _, Block _ _ _ (Paragraph _ copied)]] -> copied @?= [Resolved (sp 1 8) RefTitle "h" [Lang (sp 1 1) "en" [Text (sp 1 2) "Tokyo"]]]
           other -> assertFailure (show other),
       testCase "the body of a note is in the language of the place of its mark" $ do
-        let note n = Note (sp 1 n) n [Text (sp 1 n) "注"]
+        let note n = Note (sp 1 n) n (noteBody (sp 1 n) [Text (sp 1 n) "注"])
             docs =
               Document
                 (FileId 1)
@@ -207,10 +207,10 @@ titleCopyTests =
                   Block (sp 1 3) Nothing (Just "en") (BulletList [ListItem Nothing [para 1 4 [note 3, Lang (sp 1 5) "de" [note 4]]]])
                 ]
         [body | (_, _, body) <- documentNotes docs]
-          @?= [ [Text (sp 1 1) "注"],
-                [Lang (sp 1 2) "fr" [Text (sp 1 2) "注"]],
-                [Lang (sp 1 3) "en" [Text (sp 1 3) "注"]],
-                [Lang (sp 1 4) "de" [Text (sp 1 4) "注"]]
+          @?= [ [[Text (sp 1 1) "注"]],
+                [[Lang (sp 1 2) "fr" [Text (sp 1 2) "注"]]],
+                [[Lang (sp 1 3) "en" [Text (sp 1 3) "注"]]],
+                [[Lang (sp 1 4) "de" [Text (sp 1 4) "注"]]]
               ]
     ]
 
@@ -289,7 +289,7 @@ multipleListTests =
         map snd (bookBibliographies book) @?= [[("A", 1)], [("B", 1), ("C", 2)]]
         Map.lookup (FileId 1, sp 1 12) (bookCiteMarks book) @?= Just (Just (FileId 1, sp 1 10), 2),
       testCase "a citation in a footnote is at the paragraph of the note" $ do
-        let docs = [Document (FileId 1) [para 1 0 [Text (sp 1 0) "a", Note (sp 1 1) 1 [Cite (sp 1 2) "N"]], bib 1 5, para 1 6 [Cite (sp 1 6) "M"], bib 1 10]]
+        let docs = [Document (FileId 1) [para 1 0 [Text (sp 1 0) "a", Note (sp 1 1) 1 (noteBody (sp 1 1) [Cite (sp 1 2) "N"])], bib 1 5, para 1 6 [Cite (sp 1 6) "M"], bib 1 10]]
             book = fst (assemble cfg noEval docs)
         map snd (bookBibliographies book) @?= [[("N", 1)], [("M", 1)]],
       testCase "each @index has the marks of its own range" $ do
@@ -565,7 +565,7 @@ noteNumberTests =
         let out = allNotes NumberPerBook [0, 0, 1] three
         [(s', b) | Note s' _ b <- out] @?= [(s', b) | Note s' _ b <- allNotes NumberPerFile [0, 0, 1] three]
         [s' | Note s' _ _ <- out] @?= [sp f s | f <- [1, 2, 3], s <- [1, 2]]
-        [b | Note _ _ b <- out] @?= [[Text (sp f s) "注"] | f <- [1, 2, 3], s <- [1, 2]],
+        [b | Note _ _ b <- out] @?= [noteBody (sp f s) [Text (sp f s) "注"] | f <- [1, 2, 3], s <- [1, 2]],
       testCase "notes inside containers and list items are renumbered" $ do
         let docs =
               [ Document (FileId 1) [para 1 0 [note 1 1 1]],
@@ -574,8 +574,8 @@ noteNumberTests =
         numbersOf NumberPerBook [0, 0] docs @?= [1, 2]
     ]
   where
-    note f s n = Note (sp f s) n [Text (sp f s) "注"]
-    side f s n = Sidenote (sp f s) n [Text (sp f s) "傍"]
+    note f s n = Note (sp f s) n (noteBody (sp f s) [Text (sp f s) "注"])
+    side f s n = Sidenote (sp f s) n (noteBody (sp f s) [Text (sp f s) "傍"])
     three = [Document (FileId f) [para f 0 [note f 1 1, note f 2 2]] | f <- [1, 2, 3]]
     numbers m = numbersOf m [0, 0, 1]
     numbersOf m ch docs = [n | Note _ n _ <- allNotes m ch docs]

@@ -216,7 +216,7 @@ stripSpans = concatMap go
       Text _ t -> [t]
       CharStyle _ n xs -> ("<" <> n <> ">") : stripSpans xs
       LineBreak _ -> ["<br>"]
-      Note _ n xs -> ("<note " <> tshow n <> ">") : stripSpans xs
+      Note _ n bs -> ("<note " <> tshow n <> ">") : stripSpans (concat (noteParagraphs bs))
       Ruby _ _ segs -> ["<ruby " <> tshow (length segs) <> ">"]
       Number _ n st -> ["<number " <> tshow n <> " " <> tshow st <> ">"]
       Ref _ k l -> ["<ref " <> tshow k <> " " <> l <> ">"]

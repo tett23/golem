@@ -73,6 +73,7 @@ module Golem.Typeset.Flow
     codeFileSite,
     figureSite,
     noteSite,
+    noteParagraphSite,
     sidenoteSite,
   )
 where
@@ -1073,8 +1074,8 @@ sidenoteDiagnostics geom book
       FigureBlock fig -> [(sp, False) | is <- concatMap blockInlineLists (figCaption fig), (sp, _) <- concatMap (inlineSites True) is]
       _ -> [x | is <- blockInlineLists b, x <- concatMap (inlineSites True) is]
     inlineSites flow = \case
-      Sidenote sp _ xs -> (sp, flow) : concatMap (inlineSites flow) xs
-      Note _ _ xs -> concatMap (inlineSites False) xs
+      Sidenote sp _ nb -> (sp, flow) : concatMap (inlineSites flow) (concat (noteParagraphs nb))
+      Note _ _ nb -> concatMap (inlineSites False) (concat (noteParagraphs nb))
       Kenten _ _ xs -> concatMap (inlineSites flow) xs
       Color _ _ xs -> concatMap (inlineSites flow) xs
       CharStyle _ _ xs -> concatMap (inlineSites flow) xs
@@ -1258,7 +1259,7 @@ akiSetOf style st = resolveAkiSet (stAkiSets style) (fromMaybe defaultAkiSetName
 0018): the item index of the mark, the key, the number and the body. The
 key is the span of the note and its place among the notes of that span.
 -}
-noteAnchors :: [Golem.Layout.Japanese.Anchor] -> [(Int, NoteId, Int, [Inline])]
+noteAnchors :: [Golem.Layout.Japanese.Anchor] -> [(Int, NoteId, Int, [[Inline]])]
 noteAnchors anchors = snd (mapAccumL key Map.empty [(i, n, sp, b) | AnchorNote i n sp b <- anchors])
   where
     key seen (i, n, sp, b) =
@@ -1369,6 +1370,10 @@ data FrameKind
     its mark is: in the tree after its mark
     -}
     FEndNote !SrcSpan !Int
+  | {- | a paragraph after the first of a note at the end of a chapter, by
+    the span of the note (docs/adr/0263): in the tree after the first
+    -}
+    FEndNoteMore !SrcSpan
   deriving stock (Eq, Show)
 
 -- | The place of the text of a unit (docs/adr ADR 0183).
@@ -1402,6 +1407,10 @@ figureSite i = [i, 7]
 -- | The place of the body of a footnote, by its key: the same wherever its mark is.
 noteSite :: NoteId -> [Int]
 noteSite (NoteId sp k) = [-8, fileNumber (spanFile sp), spanStart sp, spanEnd sp, k]
+
+-- | The place of a paragraph after the first of the body of a footnote (docs/adr/0263).
+noteParagraphSite :: NoteId -> Int -> [Int]
+noteParagraphSite k j = noteSite k <> [-1, j]
 
 -- | The place of the body of a sidenote, by its span and its number.
 sidenoteSite :: SrcSpan -> Int -> [Int]
@@ -1593,7 +1602,12 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       ns@((sp, _, _) : _) ->
         let title = notesTitle lang
          in Unit (UNotesTitle title) Nothing [Text sp title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing) Nothing (SourceHeading 2) [] 0 Nothing
-              : [Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n xs) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n))] 0 Nothing | (nsp, n, xs) <- ns]
+              -- the first paragraph after the mark, the others without one and without space between (docs/adr/0263)
+              : concat
+                [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n))] 0 Nothing
+                    : [Unit (UPara noIndent) Nothing more nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [frame 0 (FEndNoteMore nsp)] 0 Nothing | more <- rest]
+                | (nsp, n, para0 : rest) <- ns
+                ]
     {- a list of blocks inside the lists @ctx@, from the list number @n@,
     with the spaces before and after of paragraphs when @spaced@ (not in a
     definition list): in a list item, paragraphs are not indented by their
@@ -2011,21 +2025,37 @@ noteEnv fe st = (withDocStyle st (lookEnv fe (bodyLook st (pgFontSize (feGeom fe
 -- | The footnotes of a unit, each a paragraph of its own; none when the notes are at the end of the chapter (golem-driver ADR 0026).
 unitNotes :: FlowEnv -> Unit -> [Golem.Layout.Japanese.Anchor] -> [(NoteId, [Line])]
 unitNotes fe u anchors =
-  [ (k, brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines (withFileExceptions fe (spanFile (noteIdSpan k)) (noteEnv fe (uStyle u))) {ceSite = noteSite k, ceLabelInlines = noteMarkCount (uStyle u) (pgVertical (feGeom fe)) (noteIdSpan k) n} (withNoteMark (uStyle u) (pgVertical (feGeom fe)) (noteIdSpan k) n nbody)))))
+  [ (k, footnoteLines fe (withFileExceptions fe (spanFile (noteIdSpan k)) (noteEnv fe (uStyle u))) (uStyle u) k n nbody)
   | not (feNotesAtEnd fe),
     (_, k, n, nbody) <- noteAnchors anchors
   ]
 
+{- | The lines of the body of a footnote (docs/adr/0263): its paragraphs
+broken one after another at the measure, the mark of its number at the
+start of the first (golem-driver ADR 0018), the others from the start of
+the line without a mark, no indent and no space between them.
+-}
+footnoteLines :: FlowEnv -> ComposeEnv -> Style -> NoteId -> Int -> [[Inline]] -> [Line]
+footnoteLines fe env st k n ps =
+  concat
+    [ brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines env' is)))
+    | (j, para) <- zip [0 :: Int ..] ps,
+      let (env', is) =
+            if j == 0
+              then (env {ceSite = noteSite k, ceLabelInlines = noteMarkCount st (ceVertical env) (noteIdSpan k) n}, withNoteMark st (ceVertical env) (noteIdSpan k) n para)
+              else (env {ceSite = noteParagraphSite k j, ceLabelInlines = 0}, para)
+    ]
+
 -- | The sidenotes of a unit: the item index of the marker after the list marker, the span and the lines.
 unitSidenotes :: FlowEnv -> Unit -> Int -> [Golem.Layout.Japanese.Anchor] -> [(Int, SrcSpan, [Line])]
-unitSidenotes fe u shift anchors = [(i + shift, sp, sidenoteLines fe (uStyle u) sp n snBody) | AnchorSidenote i n sp snBody <- anchors]
+unitSidenotes fe u shift anchors = [(i + shift, sp, sidenoteLines fe (uStyle u) sp n (concat snBody)) | AnchorSidenote i n sp snBody <- anchors]
 
 -- | The index marks of a unit, those of its notes and sidenotes with the item of their marker.
 unitMarks :: FlowEnv -> Unit -> Int -> [Golem.Layout.Japanese.Anchor] -> [(Int, SrcSpan)]
 unitMarks fe u shift anchors =
   [(i + shift, sp) | AnchorIndex i sp _ <- anchors]
-    <> [(i + shift, sp) | not (feNotesAtEnd fe), AnchorNote i _ _ nbody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines env nbody)]
-    <> [(i + shift, sp) | AnchorSidenote i _ _ snBody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines env snBody)]
+    <> [(i + shift, sp) | not (feNotesAtEnd fe), AnchorNote i _ _ nbody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines env (concat nbody))]
+    <> [(i + shift, sp) | AnchorSidenote i _ _ snBody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines env (concat snBody))]
   where
     env = noteEnv fe (uStyle u)
 
@@ -2063,11 +2093,11 @@ anchoredByLine :: FlowEnv -> Style -> [Item] -> [Golem.Layout.Japanese.Anchor] -
 anchoredByLine fe st items anchors ls =
   let lineOf = lineIndexOfItems items ls
       env = withDocStyle st (feBodyEnv fe)
-      noteBody k n b = brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines (withFileExceptions fe (spanFile (noteIdSpan k)) env) {ceSite = noteSite k, ceLabelInlines = noteMarkCount (piStyle (feInput fe)) (ceVertical env) (noteIdSpan k) n} (withNoteMark (piStyle (feInput fe)) (ceVertical env) (noteIdSpan k) n b))))
-      marksIn b = [sp | AnchorIndex _ sp _ <- snd (composeInlines env b)]
+      footnote k = footnoteLines fe (withFileExceptions fe (spanFile (noteIdSpan k)) env) (piStyle (feInput fe)) k
+      marksIn b = [sp | AnchorIndex _ sp _ <- snd (composeInlines env (concat b))]
       atEnd = feNotesAtEnd fe
-   in ( Map.fromListWith (flip (<>)) [(lineOf i, [(k, noteBody k n b)]) | not atEnd, (i, k, n, b) <- noteAnchors anchors],
-        Map.fromListWith (flip (<>)) [(lineOf i, [(sp, sidenoteLines fe st sp n b)]) | AnchorSidenote i n sp b <- anchors],
+   in ( Map.fromListWith (flip (<>)) [(lineOf i, [(k, footnote k n b)]) | not atEnd, (i, k, n, b) <- noteAnchors anchors],
+        Map.fromListWith (flip (<>)) [(lineOf i, [(sp, sidenoteLines fe st sp n (concat b))]) | AnchorSidenote i n sp b <- anchors],
         Map.fromListWith (flip (<>)) ([(lineOf i, [sp]) | AnchorIndex i sp _ <- anchors] <> [(lineOf i, sps) | not atEnd, AnchorNote i _ _ b <- anchors, let { sps = marksIn b }, not (null sps)] <> [(lineOf i, sps) | AnchorSidenote i _ _ b <- anchors, let sps = marksIn b, not (null sps)])
       )
 
@@ -2768,8 +2798,8 @@ inlinesReferToPage = any $ \case
   Kenten _ _ is -> inlinesReferToPage is
   Color _ _ is -> inlinesReferToPage is
   CharStyle _ _ is -> inlinesReferToPage is
-  Note _ _ is -> inlinesReferToPage is
-  Sidenote _ _ is -> inlinesReferToPage is
+  Note _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
+  Sidenote _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
   Link _ _ is -> inlinesReferToPage is
   Lang _ _ is -> inlinesReferToPage is
   ChannelItem _ ci -> inlinesReferToPage (ciBody ci)

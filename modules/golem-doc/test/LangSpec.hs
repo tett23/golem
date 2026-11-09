@@ -50,7 +50,7 @@ tests =
         validateInlines size [] [Lang sp "zh-Hant-TW" [Text sp "a"]] @?= []
         validateInlines size [] [Lang sp "e_n" [Text sp "a"]] @?= ["言語のタグの形が誤っています: e_n"]
         validateInlines size [] [CharStyle sp "s" [Lang sp "en-" []]] @?= ["言語のタグの形が誤っています: en-"]
-        langErrors [Note sp 1 [Lang sp "123" []]] @?= ["言語のタグの形が誤っています: 123"],
+        langErrors [Note sp 1 (noteBody sp [Lang sp "123" []])] @?= ["言語のタグの形が誤っています: 123"],
       testCase "the validation rejects the language of a block that is not of the form of BCP 47" $ do
         let doc = Document (FileId 0)
             b l = Block sp Nothing l (Paragraph Nothing [Text sp "a"])
