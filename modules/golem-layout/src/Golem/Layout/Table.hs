@@ -19,8 +19,10 @@ import Golem.Layout.KnuthPlass
 
 {- | The minimum width of a cell (its widest piece between break
 opportunities: glue after a box, or a penalty below infinity that is not
-a pattern hyphen; an explicit hyphen is one, golem-layout ADR 0008) and
-its natural width (boxes and glue on one line).
+a pattern hyphen; an explicit hyphen is one, golem-layout ADR 0008; a
+piece that ends at a penalty holds its width, the wrap mark of a break of
+code that a line broken there ends with, golem-layout ADR 0034 and 0045)
+and its natural width (boxes and glue on one line).
 -}
 cellExtent :: [Item] -> (Sp, Sp)
 cellExtent items = (maximum (0 : segments), natural)
@@ -33,8 +35,8 @@ cellExtent items = (maximum (0 : segments), natural)
       Glue w _ _
         | isBox prev -> acc : go 0 (Just x) xs
         | otherwise -> go (acc + w) (Just x) xs
-      Penalty _ p h
-        | p < infPenalty && not (isPatternHyphen h) -> acc : go 0 (Just x) xs
+      Penalty w p h
+        | p < infPenalty && not (isPatternHyphen h) -> acc + w : go 0 (Just x) xs
         | otherwise -> go acc (Just x) xs
     isBox = \case
       Just Box {} -> True

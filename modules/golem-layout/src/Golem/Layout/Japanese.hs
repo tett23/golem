@@ -45,9 +45,9 @@ where
 
 import Data.Char (GeneralCategory (..), generalCategory, isLetter, isSpace)
 import Data.IntSet qualified as IntSet
-import Data.List (groupBy, mapAccumL, zip5)
+import Data.List (groupBy, mapAccumL, sort, zip5)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -971,10 +971,12 @@ markItem env place lk parts ps pe =
    in Box w (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts')) (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))
 
 {- | A run of code (golem-driver ADR 0017): a box for each part of Latin
-text, cut after each slash and run of low lines, and in code a box for
-each character of other text, a base character with its combining
-characters (golem-layout ADR 0034); 'normalize' decides the breaks
-between the boxes. No hyphenation, protrusion or expansion.
+text, cut after each slash and run of low lines, and in code after each
+run of hyphen-minus signs and full stops where it may break (golem-layout
+ADR 0045), and in code a box for each character of other text, a base
+character with its combining characters (golem-layout ADR 0034);
+'normalize' decides the breaks between the boxes. No hyphenation,
+protrusion or expansion.
 -}
 codeItems :: ComposeEnv -> Look -> Text -> Sp -> Sp -> [Item]
 codeItems env lk run padStart padEnd =
@@ -995,8 +997,11 @@ codeItems env lk run padStart padEnd =
     -- a run of Japanese characters of code, not of a URL (golem-layout ADR 0034)
     isCodeJapanese seg = lkCode lk && not (lkUrl lk) && maybe False ((/= Western) . lookClass lk . fst) (T.uncons seg)
     slashParts = if lkUrl lk then urlParts else codeParts
-    -- code breaks after each slash (golem-driver ADR 0017) and after the runs of low lines of the run but its first and its last (golem-layout ADR 0031)
-    codeParts t = concatMap slashes (splitAtCuts (lowLineCuts t) 0 t)
+    {- code breaks after each slash (golem-driver ADR 0017), after the runs
+    of low lines of the run but its first and its last (golem-layout ADR
+    0031), and after its runs of hyphen-minus signs and full stops between
+    two Latin characters (golem-layout ADR 0045) -}
+    codeParts t = concatMap slashes (splitAtCuts (sort (lowLineCuts t <> stopCuts lk t)) 0 t)
     slashes t = case T.breakOn "/" t of
       (a, rest)
         | T.null rest -> [a | not (T.null a)]
@@ -1156,6 +1161,49 @@ lowLineCuts word = [end | (i, g, end) <- zip3 [0 :: Int ..] groups ends, i > 0, 
     ends = drop 1 (scanl (+) 0 (map T.length groups))
     lastIx = length groups - 1
 
+{- | Where a run of code between spaces is cut after its runs of
+hyphen-minus signs and full stops (golem-layout ADR 0045): after each run
+with a character before it and one after it in the run, both Latin, neither
+a slash nor a low line, and not both digits (attest-|build-|provenance,
+a--|b; not -n, foo., a/-b, a-_b nor 1.0). A combining character after a
+sign stays with it.
+-}
+stopCuts :: Look -> Text -> [Int]
+stopCuts lk word =
+  [ end
+  | (i, g, end) <- zip3 [0 :: Int ..] groups ends,
+    i > 0,
+    i < lastIx,
+    all (isCodeStop . T.head) g,
+    Just x <- [lastBase (groups !! (i - 1))],
+    Just y <- [T.head <$> listToMaybe (groups !! (i + 1))],
+    stopBreaksBetween lk x y
+  ]
+  where
+    groups = groupBy (\a b -> isCodeStop (T.head a) == isCodeStop (T.head b)) (clusters word)
+    ends = drop 1 (scanl (+) 0 (map (sum . map T.length) groups))
+    lastIx = length groups - 1
+    lastBase g = T.head <$> listToMaybe (reverse g)
+
+-- | The characters of the runs code breaks after (golem-layout ADR 0045): the hyphen-minus sign and the full stop.
+isCodeStop :: Char -> Bool
+isCodeStop c = c == '-' || c == '.'
+
+{- | Whether code breaks after a run of hyphen-minus signs and full stops
+between the characters given, the one before the run and the one after it
+(golem-layout ADR 0045): both Latin, neither a slash nor a low line, and
+not both digits.
+-}
+stopBreaksBetween :: Look -> Char -> Char -> Bool
+stopBreaksBetween lk x y =
+  lookClass lk x == Western
+    && lookClass lk y == Western
+    && all (`notElem` ("/_" :: String)) [x, y]
+    && not (isAsciiDigit x && isAsciiDigit y)
+    && not (isCodeStop y)
+  where
+    isAsciiDigit c = c >= '0' && c <= '9'
+
 -- | A part of a word that starts at an index of the word, cut at those of the indices given inside it.
 splitAtCuts :: [Int] -> Int -> Text -> [Text]
 splitAtCuts cuts o part = case [c - o | c <- cuts, c > o, c < o + T.length part] of
@@ -1252,10 +1300,15 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
               AfterBox p _
                 | codeOnly p && codeOnly c && japaneseAt (lastClass p) (firstClass c) ->
                     [codeBreak p (if "_" `T.isSuffixOf` baseOf p then 100 else 0) | not (prohibitedAcross True p c)]
+              {- inside code: also a break of 100 after a run of hyphen-minus
+              signs and full stops between two Latin characters, but where a
+              slash, a low line or two digits are beside it (golem-layout ADR
+              0045); 'codeItems' cuts the boxes there -}
               AfterBox p afterBox
                 | breaksAsCode (bcLook p) && breaksAsCode (bcLook c) ->
                     [codeBreak p 0 | "/" `T.isSuffixOf` bcText p]
                       <> [codeBreak p 100 | "_" `T.isSuffixOf` baseOf p, afterBox || T.any (/= '_') (baseOf p)]
+                      <> [codeBreak p 100 | codeOnly p && codeOnly c, afterStops p c]
               AfterBox p _ -> between p c
               AtStart -> leading c
               -- the space of the paragraph start, after the mark: no break there
@@ -1287,6 +1340,13 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
       _ -> False
     -- a box of code, not of a URL (golem-layout ADR 0034)
     codeOnly b = lkCode (bcLook b) && not (lkUrl (bcLook b))
+    -- a box of code that ends with a run of hyphen-minus signs and full stops after a character, before one code breaks after the run at (golem-layout ADR 0045)
+    afterStops p c =
+      let stops = T.takeWhileEnd isCodeStop (baseOf p)
+          body = T.dropWhileEnd isCodeStop (baseOf p)
+       in not (T.null stops) && case (T.unsnoc body, T.uncons (baseOf c)) of
+            (Just (_, x), Just (y, _)) -> stopBreaksBetween (bcLook p) x y
+            _ -> False
     japaneseAt a b = maybe False (/= Western) a || maybe False (/= Western) b
     {- a break inside code other than at a space: in code, as wide as the
     wrap mark of the box before it, which the line ends with when it

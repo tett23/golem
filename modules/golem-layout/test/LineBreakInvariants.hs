@@ -52,21 +52,27 @@ import Golem.Layout.Look (Look (..))
 import Golem.Length qualified as L
 import KnuthPlassBrute (breakCandidates, bruteDemerits)
 
--- | The invariants of docs/adr/0209, by their numbers, T1 of golem-layout ADR 0032, and C1 to C8 of golem-layout ADR 0034.
-data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1 | C1 | C2 | C3 | C6 | C7 | C8
+{- | The invariants of docs/adr/0209, by their numbers, T1 of golem-layout
+ADR 0032, C1 to C8 of golem-layout ADR 0034, and J1 to J7 of golem-layout
+ADR 0045, whose J3 takes the place of C3. J5 compares the items with those
+before golem-layout ADR 0045, which no output tells: the tests of the
+items check it.
+-}
+data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1 | C1 | C2 | C6 | C7 | C8 | J1 | J2 | J3 | J4 | J6 | J7
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken, the line it is broken at (from 0; -1 for the whole paragraph), and how.
 data Breach = Breach {breachOf :: !LineInvariant, breachLine :: !Int, breachWhy :: !String}
   deriving stock (Eq, Show)
 
-{- | What a predicate reads: the characters of the paragraph, the font
-size, the width of its lines, the strictness of its kinsoku, its items,
-the parameters of its breaking and the breaks that came out, and the
-advance of a character in em (Latin text or not).
+{- | What a predicate reads: the characters of the paragraph, those of its
+inline code, the font size, the width of its lines, the strictness of its
+kinsoku, its items, the parameters of its breaking and the breaks that
+came out, and the advance of a character in em (Latin text or not).
 -}
 data Paragraph = Paragraph
   { pText :: !Text,
+    pCode :: !Text,
     pSize :: !Sp,
     pWidth :: !Sp,
     pStrict :: !Bool,
@@ -627,16 +633,6 @@ c2Penalty _ p =
     n /= (if x == '_' then 100 else 0)
   ]
 
--- | C3: between two Latin characters of code next to each other, the only breaks are one after a slash and one after a run of low lines.
-c3Latin :: Check
-c3Latin _ p =
-  [ Breach C3 (-1) (show (bcText a <> bcText b) <> " breaks between them")
-  | (_, a, mid, b) <- codePairs (pItems p),
-    let cs = candidates mid,
-    Just (x, y, False) <- [borderOf a b],
-    length cs > 1 || (not (null cs) && not (x == '/' || (x == '_' && y /= '_')))
-  ]
-
 -- | C6: no break between two boxes of code draws a hyphen.
 c6NoHyphen :: Check
 c6NoHyphen _ p =
@@ -679,7 +675,7 @@ c8WrapMark m _ p =
   | (i, l, _) <- pairs p,
     let atCode = maybe False (`elem` codeBreaks) (breakIndex p i)
         marked = case reverse (lineItems l) of
-          Penalty w _ (WrapMark m') : _ -> m' == m && Just w == markWidth l
+          Penalty w _ (WrapMark m') : _ -> m' == m && Just w == (markWidthAfter p m <$> lastBox l)
           _ -> False
         anyMark = case reverse (lineItems l) of
           Penalty _ _ (WrapMark _) : _ -> True
@@ -688,23 +684,201 @@ c8WrapMark m _ p =
   ]
   where
     codeBreaks = [j | (_, _, mid, _) <- codePairs (pItems p), (j, _) <- candidates mid]
-    -- the default mark is a shape 3/5 of the size wide; another is its text at 3/5 of the size (golem-layout ADR 0042, W3)
-    markSize = Sp ((unSp (pSize p) * 3) `div` 5)
-    markWidth l = case lastBox l of
-      Just c
-        | m == "\x23CE" -> Just markSize
-        | otherwise -> Just (L.zwToSp markSize (sum [pAdvance p (lookClass (bcLook c) ch == Western) ch | ch <- T.unpack m]))
-      Nothing -> Nothing
 
--- | The invariants of code of golem-layout ADR 0034, the wrap mark given, with their checks.
+{- | The width of the wrap mark given after a box of code: the default mark
+is a shape 3/5 of the size wide; another is its text at 3/5 of the size
+(golem-layout ADR 0042, W3).
+-}
+markWidthAfter :: Paragraph -> Text -> BoxContent -> Sp
+markWidthAfter p m c
+  | m == "\x23CE" = markSize
+  | otherwise = L.zwToSp markSize (sum [pAdvance p (lookClass (bcLook c) ch == Western) ch | ch <- T.unpack m])
+  where
+    markSize = Sp ((unSp (pSize p) * 3) `div` 5)
+
+-- * the invariants of the breaks of code after hyphen-minus signs and full stops (golem-layout ADR 0045)
+
+-- | The characters of the runs of golem-layout ADR 0045: the hyphen-minus sign and the full stop.
+isStop :: Char -> Bool
+isStop ch = ch == '-' || ch == '.'
+
+{- | The runs of code of the items: the boxes of code next to one another
+with no space of code between them, each with the items between it and
+the next box of the run (none after the last).
+-}
+codeRuns :: [Item] -> [[(BoxContent, Maybe [(Int, Item)])]]
+codeRuns its = go (zip [0 ..] its)
+  where
+    go xs = case dropWhile (not . codeBox . snd) xs of
+      (_, Box _ a) : rest -> let (run, rest') = follow a rest in run : go rest'
+      _ -> []
+    follow a rest =
+      let (mid, after) = break (isBox . snd) rest
+       in case after of
+            (_, Box _ b) : more
+              | isCode b,
+                not (any (isGlue . snd) mid) ->
+                  let (run, rest') = follow b more in ((a, Just mid) : run, rest')
+            _ -> ([(a, Nothing)], after)
+    codeBox = \case
+      Box _ c -> isCode c
+      _ -> False
+    isBox = \case
+      Box {} -> True
+      _ -> False
+    isGlue = \case
+      Glue {} -> True
+      _ -> False
+
+{- | The places of J1 in the base characters of a run of code, each a
+character and whether it is Latin: the indices right after a run of
+hyphen-minus signs and full stops with a character p before it and one y
+after it, both Latin, neither a slash nor a low line, not both digits.
+-}
+j1Places :: [(Char, Bool)] -> [Int]
+j1Places cs =
+  [ k
+  | k <- [1 .. length cs - 1],
+    let (y, yLatin) = cs !! k
+        stops = takeWhile (isStop . fst) (reverse (take k cs))
+        s = k - length stops,
+    not (null stops),
+    not (isStop y),
+    s > 0,
+    let (x, xLatin) = cs !! (s - 1),
+    xLatin && yLatin,
+    x `notElem` ("/_" :: String) && y `notElem` ("/_" :: String),
+    not (isAsciiDigit x && isAsciiDigit y)
+  ]
+  where
+    isAsciiDigit ch = ch >= '0' && ch <= '9'
+
+{- | Each border between two boxes of a run of code: the box before it,
+the items between them, the box after it, the index of the border in the
+base characters of the run, and whether it is a place of J1; and the
+places of J1 inside a box.
+-}
+codeBorders :: [(BoxContent, Maybe [(Int, Item)])] -> ([(BoxContent, [(Int, Item)], BoxContent, Int, Bool)], [Int])
+codeBorders run =
+  let chars = concat [[(ch, not (japaneseIn c ch)) | ch <- basesOf c] | (c, _) <- run]
+      ends = drop 1 (scanl (+) 0 [length (basesOf c) | (c, _) <- run])
+      places = j1Places chars
+      borders = [(a, mid, b, e, e `elem` places) | ((a, Just mid), (b, _), e) <- zip3 run (drop 1 run) ends]
+   in (borders, [k | k <- places, k `notElem` [e | (_, _, _, e, _) <- borders]])
+
+-- | The borders of the runs of code of a paragraph, and the places of J1 inside a box.
+codeBordersOf :: Paragraph -> ([(BoxContent, [(Int, Item)], BoxContent, Int, Bool)], [Int])
+codeBordersOf p = let bs = map codeBorders (codeRuns (pItems p)) in (concatMap fst bs, concatMap snd bs)
+
+-- | The indices of the items of the breaks at the places of J1.
+j1Breaks :: Paragraph -> [Int]
+j1Breaks p = [j | (_, mid, _, _, True) <- fst (codeBordersOf p), (j, _) <- candidates mid]
+
+-- | J1: at each place of J1 there is exactly one break.
+j1Stops :: Check
+j1Stops _ p =
+  [ Breach J1 (-1) (show (bcText a <> bcText b) <> " has " <> show (length (candidates mid)) <> " breaks between them")
+  | (a, mid, b, _, True) <- borders,
+    length (candidates mid) /= 1
+  ]
+    <> [Breach J1 (-1) ("no break at the place " <> show k <> " of J1, inside a box of code") | k <- inside]
+  where
+    (borders, inside) = codeBordersOf p
+
+{- | J2: the break at a place of J1 is of 100, of the wrap mark given as
+wide as the mark after the box before it, or of no width and no hyphen
+where the mark is empty.
+-}
+j2Penalty :: Text -> Check
+j2Penalty m _ p =
+  [ Breach J2 (-1) ("the break between " <> show (bcText a) <> " and " <> show (bcText b) <> " is " <> show it)
+  | (a, mid, b, _, True) <- fst (codeBordersOf p),
+    (_, it@(Penalty w n h)) <- candidates mid,
+    n /= 100 || (if T.null m then h /= NoHyphen || w /= 0 else h /= WrapMark m || w /= markWidthAfter p m a)
+  ]
+
+{- | J3: between two Latin characters of code next to each other, the only
+breaks are one after a slash, one after a run of low lines, and one at a
+place of J1. It takes the place of C3 of golem-layout ADR 0034.
+-}
+j3Latin :: Check
+j3Latin _ p =
+  [ Breach J3 (-1) (show (bcText a <> bcText b) <> " breaks between them")
+  | (a, mid, b, _, j1) <- fst (codeBordersOf p),
+    let cs = candidates mid,
+    Just (x, y, False) <- [borderOf a b],
+    length cs > 1 || (not (null cs) && not (x == '/' || (x == '_' && y /= '_') || j1))
+  ]
+
+{- | J4: after a run of hyphen-minus signs and full stops, before a
+Japanese character, there is at most one break, of 0: that of C1 and C2
+of golem-layout ADR 0034.
+-}
+j4Japanese :: Check
+j4Japanese _ p =
+  [ Breach J4 (-1) ("the breaks between " <> show (bcText a) <> " and " <> show (bcText b) <> " are " <> show (map snd cs))
+  | (a, mid, b, _, _) <- fst (codeBordersOf p),
+    Just (x, y, _) <- [borderOf a b],
+    isStop x && japaneseIn b y,
+    let cs = candidates mid,
+    length cs > 1 || any (\case (_, Penalty _ n _) -> n /= 0; _ -> False) cs
+  ]
+
+{- | J6: the boxes of code, their characters joined, are the characters of
+the code without its spaces; a line broken at a place of J1 ends with the
+wrap mark given, once, draws no hyphen, and fits.
+-}
+j6Characters :: Text -> Check
+j6Characters m _ p =
+  [ Breach J6 (-1) ("the boxes of code hold " <> show got <> ", not " <> show want)
+  | let got = T.concat [bcText c | Box _ c <- pItems p, isCode c]
+        want = T.filter (/= ' ') (pCode p),
+    got /= want
+  ]
+    <> [ Breach J6 i ("line " <> show (i + 1) <> " " <> show (textOf l) <> " breaks at a place of J1 but ends with " <> show (take 1 (reverse (lineItems l))) <> ", " <> show (lineOverflow l) <> " too wide")
+       | (i, l, _) <- pairs p,
+         maybe False (`elem` atJ1) (breakIndex p i),
+         let marks = [() | Penalty _ _ (WrapMark _) <- lineItems l]
+             ends = case reverse (lineItems l) of
+               Penalty _ _ (WrapMark m') : _ -> T.null m || m' == m
+               Penalty 0 _ NoHyphen : _ -> T.null m
+               _ -> False,
+         not ends || length marks > 1 || lineOverflow l /= 0
+       ]
+  where
+    atJ1 = j1Breaks p
+
+{- | J7: with the breaks at the places of J1 made infinite (the breaks
+before golem-layout ADR 0045), the pass is no earlier; where both passes
+are among the first two, the demerits are no fewer.
+-}
+j7NoWorse :: Check
+j7NoWorse _ p
+  | null atJ1 = []
+  | otherwise =
+      [ Breach J7 (-1) ("pass " <> show (brPass br) <> " and demerits " <> show (brDemerits br) <> ", without the breaks of J1 pass " <> show (brPass before) <> " and demerits " <> show (brDemerits before))
+      | brPass br > brPass before || (brPass br <= 2 && brPass before <= 2 && brDemerits br > brDemerits before)
+      ]
+  where
+    atJ1 = j1Breaks p
+    br = pBreaks p
+    its = [if j `elem` atJ1 then Penalty w infPenalty h else it | (j, it) <- zip [0 ..] (pItems p), let (w, h) = case it of Penalty w' _ h' -> (w', h'); _ -> (0, NoHyphen)]
+    before = breakParagraph (pParams p) (const (pWidth p)) its
+
+-- | The invariants of code of golem-layout ADR 0034 and 0045, the wrap mark given, with their checks.
 codeInvariants :: Text -> [(LineInvariant, Check)]
 codeInvariants m =
   [ (C1, c1Japanese),
     (C2, c2Penalty),
-    (C3, c3Latin),
     (C6, c6NoHyphen),
     (C7, c7Widths),
-    (C8, c8WrapMark m)
+    (C8, c8WrapMark m),
+    (J1, j1Stops),
+    (J2, j2Penalty m),
+    (J3, j3Latin),
+    (J4, j4Japanese),
+    (J6, j6Characters m),
+    (J7, j7NoWorse)
   ]
 
 -- | The breaches of a paragraph of code: those of 'breaches' and of 'codeInvariants'.

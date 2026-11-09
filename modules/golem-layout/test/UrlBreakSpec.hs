@@ -57,8 +57,8 @@ urlBreakTests =
       testCase "the other characters of url.sty's breaks" $
         map fst (breaksOf (compose url "a.b@c!d_e|f;g>h]i)j,k'l+m:n"))
           @?= map T.pack ["a.", "a.b@", "a.b@c!", "a.b@c!d_", "a.b@c!d_e|", "a.b@c!d_e|f;", "a.b@c!d_e|f;g>", "a.b@c!d_e|f;g>h]", "a.b@c!d_e|f;g>h]i)", "a.b@c!d_e|f;g>h]i)j,", "a.b@c!d_e|f;g>h]i)j,k'", "a.b@c!d_e|f;g>h]i)j,k'l+", "a.b@c!d_e|f;g>h]i)j,k'l+m:"],
-      testCase "code keeps its breaks: after a slash only" $
-        breaksOf (compose code "a.b/c") @?= [("a.b/", 0)],
+      testCase "code keeps its breaks: after a slash, and after a full stop between letters (golem-layout ADR 0045), not as a URL" $
+        breaksOf (compose code "a.b/c") @?= [("a.", 100), ("a.b/", 0)],
       testCase "a line broken inside a URL ends with no hyphen" $ do
         let its = compose url "https://learn.microsoft.com/ja-jp/windows/wsl/filesystems"
             ls = brLines (breakParagraph defaultParams (const (10 * fs)) its)

@@ -306,14 +306,17 @@ renderCase name input =
 
 -- * the runs of code (golem-layout ADR 0034, its section 5)
 
-{- | The 15 parts of the runs of code: Japanese characters of the classes
+{- | The 18 parts of the runs of code: Japanese characters of the classes
 the breaks of code tell apart, an ideograph, hiragana, an opening and a
 closing bracket, a full stop, a comma, a prolonged sound mark, a small
 kana and an ellipsis (a character of both scripts); Latin text of one
-and two letters, a slash, a low line, a quotation mark and a space.
+and two letters, a slash, a low line, a quotation mark and a space
+(golem-layout ADR 0034, its section 5); a hyphen-minus sign, a full stop
+and a digit, the last for the places between two digits (golem-layout
+ADR 0045, its section 3).
 -}
 codeParts :: [Text]
-codeParts = map T.singleton "漢あ「」。、ーぁ…" <> ["a", "ab", "/", "_", "\"", " "]
+codeParts = map T.singleton "漢あ「」。、ーぁ…" <> ["a", "ab", "/", "_", "\"", " ", "-", ".", "1"]
 
 -- | The wrap mark of the code of the runs: the default of the character style code.
 codeMark :: Text

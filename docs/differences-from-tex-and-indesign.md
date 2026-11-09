@@ -183,7 +183,8 @@ Golem は、本文の中のコード（文字スタイル `code`）の文字列�
 和文の字どうしのあいだも、和文と欧文の字の境も、同じ規則である。
 ASCII の字は、記号も含めてすべて JLReq の欧文用文字（cl-27）として扱う。
 JLReq の表 2 は、cl-27 と平仮名、片仮名、漢字等のあいだを、どちらの順でも分割可とする。
-欧文の字どうしのあいだは、空白、`/` の後、`_` の連なりの後だけで改行する。
+欧文の字どうしのあいだは、空白、`/` の後、`_` の連なりの後、`-` と `.` の連なりの後だけで改行する。
+`-` と `.` の連なりの後は、前と後の字がどちらも欧文の字で、`/` でも `_` でもなく、ともに数字ではないときだけ、罰点 100 で改行する（[golem-layout ADR 0045](golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md)）。
 コードの中には、和文の字のあいだにも境にも、アキ量のセットの空きを入れない。
 空白でない位置で改行した行の行末には、文字スタイル `code` の `wrap-mark`（既定は `⏎`）を描く。
 空白で改行した行には描かない。
@@ -212,11 +213,21 @@ Golem が `"`、`(`、`)` との境でも改行するのは、JLReq が ASCII �
 本文も ASCII の字をすべて cl-27 として扱っており、コードだけ分け方を変えることはしない。
 pTeX と LuaTeX-ja は、`kinsoku.tex` と `ltj-kinsoku.tex` で ASCII の記号に禁則の罰点を与えるので、この三つの位置で Golem と分かれる。
 
+長いコードの前後では、TeX と Golem の出力が分かれる。
+許容度の範囲に分割がないとき、TeX は最後の段階で行長からはみ出す行を作り、Overfull \hbox を報告する。
+Golem は、行長に収まる分割の候補がある限りはみ出す行を作らず、収まらない箱を次の行へ送り出すので、同じ入力で字間の空いた行を作る（[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。
+TeX Live 2026 の pLaTeX と jsarticle で、`actions/attest-build-provenance` を含む文を 40 字の行に組むと、`\texttt` と url パッケージの `\url` は一行めをはみ出させた（観察）。
+url パッケージは、`hyphens` のオプションを付けたときだけ `-` の後で改行し、そのときは一行めを `actions/attest-build-` で終えた（観察）。
+Golem は、`hyphens` のオプションに当たる改行を文字スタイル `code` に既定で当て、`-` に加えて `.` の後でも改行する。
+`-` は字のまま行末に残るので、書いたハイフンと改行のためのハイフンの区別は、行末の `wrap-mark` が受け持つ。
+文字スタイル `url` は、url パッケージの既定と同じく `-` の後で改行しない。
+
 ### 決めた ADR
 
 - [golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)
 - [golem-layout ADR 0031](golem-layout/adr/0031-line-breaks-after-low-lines-in-identifiers.md)（`_` の連なりの後の改行）
 - [golem-layout ADR 0042](golem-layout/adr/0042-draw-the-wrap-mark-of-inline-code-small-and-light.md)（改行の印の描き方）
+- [golem-layout ADR 0045](golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md)（`-` と `.` の連なりの後の改行）
 
 ### 書き手が気をつけること
 
