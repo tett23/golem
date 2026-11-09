@@ -3850,7 +3850,8 @@ L9 の「前に 2 字、後に 3 字」は、語の言語の前と後に残す�
 段落は、24 の部品の並びの前に `あ` を、後に `い` を置いたものである。
 部品は、和文の文字クラスごとの一字と `—` と、欧文の語の `a` と `table` と `hyphenation` と `lime-tree` と、語間の空白と `.` と `“` と `”` と、ソフトハイフン（U+00AD）である。
 `modules/golem-layout/test/LineBreakInvariantsSpec.hs` は、この段落を組み方の環境と 2 字から 5 字の行の幅のすべてで組み、部品の少ない順に、どの述語も違反を返さないことを確かめる。
-組み方の環境は、禁則（strict か loose）とぶら下げと突き出しと字幅の伸縮の有無と、区間の言語（なし、`en`、`fr`、`ja`）の組み合わせである（`fr` は [ADR 0276](adr/0276-hyphenate-words-by-the-patterns-of-their-language.md) で足した）。
+組み方の環境は、禁則（strict か loose）とぶら下げと突き出しと字幅の伸縮の有無と、区間の言語（なし、`en`、`fr`、`ja`）の組み合わせである。
+`fr` は [ADR 0276](adr/0276-hyphenate-words-by-the-patterns-of-their-language.md) で足し、プルリクエストの CI の段が x86-64 の実行環境で 10 秒の予算を超えたので、すべての入力を調べるテストでは毎晩の `enum.yml` だけが調べる。
 字の送りはフォントによらず、欧文の字を 1/4 em、1/2 em、3/4 em の三通りに、語間の空白を 1/4 em に、和文の字を 1 em にした表を `ceAdvance` と `ceWordAdvance` に渡す。
 並びの字が関わらない組み方の環境は組む前に一つにまとめ（正規形）、まとめた入力が `breakParagraph` に渡す値を変えないことを、毎晩の `enum.yml` で部品 2 個まで、プルリクエストの CI で部品 1 個までテストする。
 縦組みも、同じ部品の数までで `breakParagraph` に渡す値を変えないことだけを確かめる。
