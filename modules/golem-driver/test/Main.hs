@@ -25,7 +25,6 @@ import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
 import OutputGoldenSpec
 import OverflowSpec (overflowTests)
-import SoftHyphenSpec (softHyphenTests)
 import PageElementsSpec
 import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
@@ -37,6 +36,7 @@ import ReferencesSpec
 import ReuseSpec
 import SecuritySpec
 import ShapingMemoSpec (shapingMemoTests)
+import SoftHyphenSpec (softHyphenTests)
 import SpecimenGeometrySpec (specimenGeometryTests)
 import StylesSpec
 import TableFilesSpec

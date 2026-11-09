@@ -7,13 +7,13 @@ import ExprSpec qualified
 import FileSpec qualified
 import FunctionSpec qualified
 import LangSpec qualified
-import ShySpec qualified
 import LinkSpec qualified
 import NaturalSpec qualified
 import OperatorSpec qualified
 import RangeSpec qualified
 import RationalSpec qualified
 import RegexStyleSpec qualified
+import ShySpec qualified
 import TableSpec qualified
 import Test.Tasty
 import VarsSpec qualified

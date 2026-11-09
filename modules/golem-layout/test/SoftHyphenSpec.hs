@@ -75,7 +75,7 @@ softHyphenTests =
       testCase "explicit-hyphen-penalty 10000: the word is kept whole at its hyphens, but breaks at its soft hyphens" $
         shape (compose enUS {ceExplicitHyphenPenalty = 10000} "co-op\xAD\&er\xAD\&ate") @?= ["co-op", softPen, "er", softPen, "ate"],
       testCase "a word of a link breaks at none of its soft hyphens" $
-        shape (fst (composeInlines enUS {ceRestyle = \lk -> \case IR.Link _ u _ -> lk {lkLink = Just (LinkUri u)}; _ -> lk} [IR.Link sp "https://example.com" [text "ta\xAD\&ble"]])) @?= ["table"],
+        shape (fst (composeInlines enUS {ceRestyle = \lk -> \case { IR.Link _ u _ -> lk {lkLink = Just (LinkUri u)}; _ -> lk }} [IR.Link sp "https://example.com" [text "ta\xAD\&ble"]])) @?= ["table"],
       testCase "the boxes are where their characters are in the text with its soft hyphens (docs/adr ADR 0195)" $ do
         let its = fst (composeInlines enUS {ceSourceAt = \_ _ i -> i} [text "in\xAD\&com\xADpre"])
         [(bcText c, bcAt c) | Box _ c <- its] @?= [("in", 0), ("com", 3), ("pre", 7)],

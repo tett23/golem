@@ -4,7 +4,7 @@ module ShySpec (tests) where
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Golem.Doc.IR
-import Golem.Eval.Builtin (FixedBuiltin (..), BuiltinInline (..), parseBuiltin, pluginCommandName)
+import Golem.Eval.Builtin (BuiltinInline (..), FixedBuiltin (..), parseBuiltin, pluginCommandName)
 import Support
 import Test.Tasty
 import Test.Tasty.HUnit

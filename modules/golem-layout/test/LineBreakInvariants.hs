@@ -385,26 +385,26 @@ l9Hyphens _ p =
       | (i, line, _) <- pairs p
       ]
     <> concat
-    [ case breakItem p i of
-        Just (Penalty w _ (PatternHyphen _)) ->
-          [Breach L9 i ("line " <> show (i + 1) <> " breaks at a hyphen of the patterns in the first pass") | brPass (pBreaks p) == 1]
-            <> [Breach L9 i ("line " <> show (i + 1) <> " breaks at a hyphen of the patterns in a span of " <> show l) | Just c <- [lastBox line], Just l <- [lkLang (bcLook c)], spanIsJapanese l]
-            <> [Breach L9 i ("line " <> show (i + 1) <> " does not end with the width of a hyphen") | lastItemWidth line /= Just hyphen || w /= hyphen]
-            <> [Breach L9 i ("line " <> show (i + 1) <> " breaks after " <> show before <> ", fewer than two letters of its element") | T.length before < 2]
-            <> [Breach L9 (i + 1) ("line " <> show (i + 2) <> " starts with " <> show after <> ", fewer than three letters of its element") | T.length after < 3]
-          where
-            (before0, after0) = maybe ("", "") (elementAround (pItems p)) (breakIndex p i)
-            -- the letters the patterns see (docs/adr/0222, D4)
-            before = T.filter isLetter before0
-            after = T.filter isLetter after0
-        Just (Penalty _ _ ExplicitHyphen) ->
-          [ Breach L9 i ("line " <> show (i + 1) <> " breaks after a written hyphen but ends with " <> show (textOf line))
-          | not (maybe False (maybe False ((`elem` ("-‐–—" :: String)) . snd) . T.unsnoc . bcText) (lastBox line))
-          ]
-            <> [Breach L9 i ("line " <> show (i + 1) <> " adds a hyphen after a written one") | any isPenalty (take 1 (reverse (lineItems line)))]
-        _ -> []
-    | (i, line, _) <- pairs p
-    ]
+      [ case breakItem p i of
+          Just (Penalty w _ (PatternHyphen _)) ->
+            [Breach L9 i ("line " <> show (i + 1) <> " breaks at a hyphen of the patterns in the first pass") | brPass (pBreaks p) == 1]
+              <> [Breach L9 i ("line " <> show (i + 1) <> " breaks at a hyphen of the patterns in a span of " <> show l) | Just c <- [lastBox line], Just l <- [lkLang (bcLook c)], spanIsJapanese l]
+              <> [Breach L9 i ("line " <> show (i + 1) <> " does not end with the width of a hyphen") | lastItemWidth line /= Just hyphen || w /= hyphen]
+              <> [Breach L9 i ("line " <> show (i + 1) <> " breaks after " <> show before <> ", fewer than two letters of its element") | T.length before < 2]
+              <> [Breach L9 (i + 1) ("line " <> show (i + 2) <> " starts with " <> show after <> ", fewer than three letters of its element") | T.length after < 3]
+            where
+              (before0, after0) = maybe ("", "") (elementAround (pItems p)) (breakIndex p i)
+              -- the letters the patterns see (docs/adr/0222, D4)
+              before = T.filter isLetter before0
+              after = T.filter isLetter after0
+          Just (Penalty _ _ ExplicitHyphen) ->
+            [ Breach L9 i ("line " <> show (i + 1) <> " breaks after a written hyphen but ends with " <> show (textOf line))
+            | not (maybe False (maybe False ((`elem` ("-‐–—" :: String)) . snd) . T.unsnoc . bcText) (lastBox line))
+            ]
+              <> [Breach L9 i ("line " <> show (i + 1) <> " adds a hyphen after a written one") | any isPenalty (take 1 (reverse (lineItems line)))]
+          _ -> []
+      | (i, line, _) <- pairs p
+      ]
   where
     hyphen = L.zwToSp (pSize p) (pAdvance p True '-')
     lastItemWidth l = case reverse (lineItems l) of
@@ -424,9 +424,12 @@ softHyphenBreaks :: Text -> Int
 softHyphenBreaks t = length [() | (a, run, b) <- runs (T.unpack t), not (null run), latinLetter a, latinLetter b]
   where
     runs = \case
-      a : rest | a /= shy -> let (r, rest') = span (== shy) rest in case rest' of
-        b : _ -> (a, r, b) : runs rest'
-        [] -> []
+      a : rest
+        | a /= shy ->
+            let (r, rest') = span (== shy) rest
+             in case rest' of
+                  b : _ -> (a, r, b) : runs rest'
+                  [] -> []
       _ : rest -> runs rest
       [] -> []
     latinLetter c = isLetter c && charClassOf c == Western
@@ -600,9 +603,10 @@ i4NoHyphensWithShy _ p =
     -- each box with where its characters are in the text without soft hyphens; spaces are in no box
     placed = snd (mapAccumL place 0 (pItems p))
     place pos = \case
-      Box _ c | not (T.null (bcText c)) ->
-        let start = pos + T.length (T.takeWhile (== ' ') (T.drop pos stripped))
-         in (start + T.length (bcText c), Just (start, start + T.length (bcText c), c))
+      Box _ c
+        | not (T.null (bcText c)) ->
+            let start = pos + T.length (T.takeWhile (== ' ') (T.drop pos stripped))
+             in (start + T.length (bcText c), Just (start, start + T.length (bcText c), c))
       _ -> (pos, Nothing)
     -- the elements: their boxes, whether a hyphen of the patterns is between two of them, whether a written hyphen's break follows
     elements = go [] False (zip (pItems p) placed)
