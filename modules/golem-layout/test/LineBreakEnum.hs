@@ -47,9 +47,12 @@ module LineBreakEnum
     normalCodeSettings,
     codeGroupsOf,
     codeGroupT,
+    codePadding,
     codeEnv,
+    codeEnvWith,
     codeInlinesOf,
     codeItemsOf,
+    codeItemsWith,
     breakCodeInput,
   )
 where
@@ -358,16 +361,28 @@ codeGroupsOf maxWidth run =
 codeGroupT :: Int -> Tiers Group
 codeGroupT maxWidth = let Tiers xss = listsOf (Tiers [codeParts]) in Tiers (map (concatMap (codeGroupsOf maxWidth)) xss)
 
+{- | The padding of the runs of code that have it: the default of the
+character style code, 0.25zw (golem-layout ADR 0048, its section
+「テスト設計」).
+-}
+codePadding :: Sp
+codePadding = Sp (unSp fs `div` 4)
+
 {- | The composition environment of the runs of code: that of 'composeEnv',
-the character style code with the wrap mark 'codeMark', and the advance of
-a text of code each of its characters by its class, as 'advance' gives it.
+the character style code with the wrap mark 'codeMark' and no padding,
+and the advance of a text of code each of its characters by its class, as
+'advance' gives it.
 -}
 codeEnv :: Bool -> Setting -> ComposeEnv
-codeEnv vertical s =
+codeEnv = codeEnvWith 0
+
+-- | 'codeEnv' with the padding of the character style code given (golem-layout ADR 0048).
+codeEnvWith :: Sp -> Bool -> Setting -> ComposeEnv
+codeEnvWith pad vertical s =
   (composeEnv vertical s)
     { ceWordAdvance = \lk t -> sum [advance (lookClass lk c == Western) c | c <- T.unpack t],
       ceRestyle = \lk -> \case
-        IR.CharStyle _ "code" _ -> lk {lkCode = True, lkWrapMark = codeMark}
+        IR.CharStyle _ "code" _ -> lk {lkCode = True, lkWrapMark = codeMark, lkPadding = pad}
         _ -> lk
     }
 
@@ -380,9 +395,13 @@ codeInlinesOf s pre run post =
   where
     code = IR.CharStyle sp "code" [IR.Text sp (T.concat run)]
 
--- | The items of a group of code, vertical or not.
+-- | The items of a group of code, vertical or not, without padding.
 codeItemsOf :: Bool -> Setting -> Int -> [Text] -> Int -> [Item]
-codeItemsOf vertical s pre run post = fst (composeInlines (codeEnv vertical s) (codeInlinesOf s pre run post))
+codeItemsOf = codeItemsWith 0
+
+-- | 'codeItemsOf' with the padding of the character style code given (golem-layout ADR 0048).
+codeItemsWith :: Sp -> Bool -> Setting -> Int -> [Text] -> Int -> [Item]
+codeItemsWith pad vertical s pre run post = fst (composeInlines (codeEnvWith pad vertical s) (codeInlinesOf s pre run post))
 
 -- | The items, the parameters and the breaks of an input of code.
 breakCodeInput :: Input -> ([Item], Params, Breaks)

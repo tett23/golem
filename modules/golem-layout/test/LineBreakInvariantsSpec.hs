@@ -726,14 +726,14 @@ codeBroken = map breachOf . codeBreaches codeMark 0
 
 {- | C4: the items of a run of code without a Japanese character are
 those it has with an empty wrap mark, but the width and the mark of the
-breaks of the mark.
+breaks of the mark; with the padding given (golem-layout ADR 0048).
 -}
-c4Misses :: Group -> [Violation]
-c4Misses g
+c4Misses :: Sp -> Group -> [Violation]
+c4Misses pad g
   | any (T.any (\c -> c `notElem` (" ab/_\"-.1" :: String))) (gRun g) = []
   | otherwise =
-      [ Violation "C4" (show (gSetting g, gPre g, gRun g, gPost g))
-      | map unmarked (codeItemsOf False (gSetting g) (gPre g) (gRun g) (gPost g)) /= map unmarked (fst (composeInlines (emptyMark (codeEnv False (gSetting g))) (codeInlinesOf (gSetting g) (gPre g) (gRun g) (gPost g))))
+      [ Violation "C4" (show (pad, gSetting g, gPre g, gRun g, gPost g))
+      | map unmarked (codeItemsWith pad False (gSetting g) (gPre g) (gRun g) (gPost g)) /= map unmarked (fst (composeInlines (emptyMark (codeEnvWith pad False (gSetting g))) (codeInlinesOf (gSetting g) (gPre g) (gRun g) (gPost g))))
       ]
   where
     emptyMark e = e {ceRestyle = \lk inl -> (ceRestyle e lk inl) {lkWrapMark = ""}}
@@ -749,17 +749,24 @@ paragraph having gone with golem-layout ADR 0037.
 codeLineBugs :: [LineBug]
 codeLineBugs = []
 
--- | The violations of the first input of a group of code that has some, C4 among them, and the known bugs that excuse its inputs.
+{- | The violations of the first input of a group of code that has some, C4
+and D1 to D5 among them, and the known bugs that excuse its inputs: each
+input without padding and with 'codePadding' (golem-layout ADR 0048).
+-}
 judgeCodeGroup :: Int -> Group -> ([Violation], Excused)
 judgeCodeGroup limit g =
-  let its = codeItemsOf False (gSetting g) (gPre g) (gRun g) (gPost g)
-      judge i =
+  let itemsWith pad = codeItemsWith pad False (gSetting g) (gPre g) (gRun g) (gPost g)
+      bare = itemsWith 0
+      padded = itemsWith codePadding
+      judge its i =
         let bs = codeBreaches codeMark limit (codeParagraphWith its i)
             excuses b br = lbShape b i && lbExcuses b i br
          in ([br | br <- bs, not (any (`excuses` br) codeLineBugs)], [lbShape b i && any (lbExcuses b i) bs | b <- codeLineBugs])
-      results = [(i, judge i) | i <- groupInputs g]
+      results = [((pad, i), judge its i) | (pad, its) <- [(0, bare), (codePadding, padded)], i <- groupInputs g]
       excused = Excused (foldr (zipWith (+) . map fromEnum . snd . snd) (map (const 0) codeLineBugs) results)
-   in case c4Misses g <> concat [[Violation (show (breachOf b)) (breachWhy b) | b <- bs] <> [Violation "input" (show i)] | (i, (bs, _)) <- take 1 [r | r@(_, (bs, _)) <- results, not (null bs)]] of
+      edgeSpace = take 1 (gRun g) == [" "] || take 1 (reverse (gRun g)) == [" "]
+      padding = [Violation (show (breachOf b)) (breachWhy b) | b <- paddingBreaches codePadding edgeSpace bare padded] <> [Violation "input" (show (gSetting g, gPre g, gRun g, gPost g)) | not (null (paddingBreaches codePadding edgeSpace bare padded))]
+   in case c4Misses 0 g <> c4Misses codePadding g <> padding <> concat [[Violation (show (breachOf b)) (breachWhy b) | b <- bs] <> [Violation "input" (show i <> ", padding " <> show pad)] | ((pad, i), (bs, _)) <- take 1 [r | r@(_, (bs, _)) <- results, not (null bs)]] of
         vs -> (vs, excused)
 
 -- | Every run of code up to a tier, each in its own value.
@@ -819,6 +826,18 @@ codeTests =
       let p = codeParagraphOf (Input plain False 2 0 ["a", "-", "ab"] 0)
       brPass (pBreaks p) @?= 1
       codeBroken p {pBreaks = (pBreaks p) {brPass = 4}} @?= [J7],
+    testCase "golem-layout ADR 0048 D1 to D5: a run with spaces at its ends breaks none; the padding moved or taken off, or the glue changed, breaks them" $ do
+      let itemsWith pad run = codeItemsWith pad False plain 1 run 1
+          judge run f = nub (map breachOf (paddingBreaches codePadding (take 1 run == [" "] || take 1 (reverse run) == [" "]) (itemsWith 0 run) (f (itemsWith codePadding run))))
+          -- the boxes whose text is given, their padding set
+          padIn t (s0, e0) = map (\case Box w c | bcText c == t -> Box (w - bcPadStart c - bcPadEnd c + s0 + e0) c {bcPadStart = s0, bcPadEnd = e0}; it -> it)
+          edged = [" ", "漢", "a", " "]
+      judge edged id @?= []
+      judge edged (padIn "漢" (0, 0)) @?= [D1]
+      judge edged (padIn "a" (0, 0)) @?= [D2]
+      judge [" "] (padIn "あ" (codePadding, 0)) @?= [D3]
+      judge ["漢", "a"] (padIn "漢" (0, 0)) @?= [D1, D4]
+      judge edged (map (\case Glue w y z -> Glue (w + 1) y z; it -> it)) @?= [D5],
     testCase "golem-layout ADR 0038 S3: two ellipses of code broken at the space between them break no invariant" $ do
       let p = codeParagraphOf (Input plain False 1 0 ["…", " ", "…"] 0)
       map lineText (brLines (pBreaks p)) @?= ["…", "…"]
@@ -852,7 +871,7 @@ codeTests =
           keys v g = let its = codeItemsOf v (gSetting g) (gPre g) (gRun g) (gPost g) in [keyOf (fromIntegral w * fs) (paramsOf (gSetting g) e its) its | (w, e) <- gCases g]
       checkAllPar d codeRunsT (\run -> [Violation "vertical" (show g) | g <- codeGroupsOf (maxWidthAt depth) run, keys True g /= keys False g])
         @?= Passed (length (concat (upTo d codeRunsT))),
-    testCase "golem-layout ADR 0037 B1, 0038, 0045: L1 to L13, T1, C1, C2, C6 to C8 and J1 to J7 hold for every input of code up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
+    testCase "golem-layout ADR 0037 B1, 0038, 0045, 0048: L1 to L13, T1, C1, C2, C4, C6 to C8, J1 to J7 and D1 to D5 hold for every input of code up to GOLEM_ENUM_LINES_DEPTH parts, without padding and with it, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- linesDepth
       let limit = bruteLimitAt depth
       case tallyAllPar depth (codeGroupT (maxWidthAt depth)) (judgeCodeGroup limit) of
