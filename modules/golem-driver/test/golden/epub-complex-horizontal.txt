@@ -163,7 +163,7 @@ code { padding-inline: 0.25em; }
 </nav>
 </body>
 </html>
-== OEBPS/chapters/01.xhtml (deflate, time 315532800, 8594 bytes)
+== OEBPS/chapters/01.xhtml (deflate, time 315532800, 8619 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -175,7 +175,7 @@ code { padding-inline: 0.25em; }
 <body>
 <h1 id="h-2-0"><span class="number">第1章</span>　<span class="kenten kenten-dot">依存関係を読む</span></h1>
 <h2 id="h-2-67"><span class="number">1.1</span>　<ruby>依存<rp>（</rp><rt>いぞん</rt><rp>）</rp></ruby>のグラフ</h2>
-<p>ビルドツール<span id="i-2-128"></span>の仕事は、<span class="kenten kenten-dot">変わったものだけを作り直す</span>ことである。そのためには、どのファイルがどのファイルから作られるかを知っていなければならない。この関係を<ruby class="mono">依<rp>（</rp><rt>い</rt><rp>）</rp>存<rp>（</rp><rt>ぞん</rt><rp>）</rp>関<rp>（</rp><rt>かん</rt><rp>）</rp>係<rp>（</rp><rt>けい</rt><rp>）</rp></ruby><span id="i-2-454"></span>と呼び、矢印でつないだ図にしたものをグラフと呼ぶ。図1-1は、四つのファイルの依存関係を表している。</p>
+<p>ビルドツール<span id="i-2-128"></span>の仕事は、<span class="kenten kenten-dot">変わったものだけを作り直す</span>ことである。そのためには、どのファイルがどのファイルから作られるかを知っていなければならない。この関係を<ruby class="mono">依<rp>（</rp><rt>い</rt><rp>）</rp>存<rp>（</rp><rt>ぞん</rt><rp>）</rp>関<rp>（</rp><rt>かん</rt><rp>）</rp>係<rp>（</rp><rt>けい</rt><rp>）</rp></ruby><span id="i-2-454"></span>と呼び、矢印でつないだ図にしたものをグラフと呼ぶ。図<a href="#fig-graph">1-1</a>は、四つのファイルの依存関係を表している。</p>
 <figure id="fig-graph">
 <img src="../images/graph.svg" alt="四つの箱を矢印でつないだ依存関係のグラフ"/>
 <figcaption><span class="number">図1.1</span>　四つのファイルの依存関係。矢印は「作るのに使う」を表す。</figcaption>
@@ -217,7 +217,7 @@ app app.o util.o</code></pre>
 </section>
 </body>
 </html>
-== OEBPS/chapters/02.xhtml (deflate, time 315532800, 7936 bytes)
+== OEBPS/chapters/02.xhtml (deflate, time 315532800, 8046 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -229,7 +229,7 @@ app app.o util.o</code></pre>
 <body>
 <h1 id="h-3-0"><span class="number">第2章</span>　<span class="kenten kenten-dot">再ビルドを判定する</span></h1>
 <h2 id="h-3-46"><span class="number">2.1</span>　時刻で比べる</h2>
-<p>一番簡単な判定は、ファイルの更新の時刻を比べることである<span id="i-3-153"></span>。ターゲットより新しいファイルが一つでもあれば、ターゲットを作り直す。make はこの方法を使っている。リスト2-1は、この判定をシェルスクリプトで書いたものである。</p>
+<p>一番簡単な判定は、ファイルの更新の時刻を比べることである<span id="i-3-153"></span>。ターゲットより新しいファイルが一つでもあれば、ターゲットを作り直す。make はこの方法を使っている。リスト<a href="#listing-build">2-1</a>は、この判定をシェルスクリプトで書いたものである。</p>
 <figure class="listing" id="listing-build"><figcaption>リスト2.1　時刻で判定するビルドスクリプト</figcaption><pre><code>set -eu
 while read -r target deps; do
   for dep in $deps; do
@@ -281,7 +281,7 @@ done &lt;deps.txt</code></pre></figure>
 <img src="../images/photo.jpg" alt="小さな写真" style="width: 60%; max-width: 100%"/>
 <figcaption><span class="number">図2.1</span>　記録のファイルを置いたディレクトリの写真（見本）。</figcaption>
 </figure>
-<p>図2-1のように、記録のファイルはビルドの出力と同じ場所に置く。出力を消せば記録も消えるので、二つが食い違うことがない。</p>
+<p>図<a href="#fig-photo">2-1</a>のように、記録のファイルはビルドの出力と同じ場所に置く。出力を消せば記録も消えるので、二つが食い違うことがない。</p>
 <h3 id="h-3-4096"><span class="number">2.2.3</span>　用語</h3>
 <p>この章で使った用語を、定義リストにまとめる。</p>
 <dl>
@@ -302,7 +302,7 @@ done &lt;deps.txt</code></pre></figure>
 <img src="../images/pipeline.svg" alt="三つの箱を線でつないだ処理の流れ"/>
 <figcaption><span class="number">図2.2</span>　判定から作り直しまでの流れ。</figcaption>
 </figure>
-<p>図2-2の「三つの箱を線でつないだ処理の流れ」のとおり、判定、順の決定、実行の三つの段階を経て、ターゲットが作られる。</p>
+<p>図<a href="#fig-pipeline">2-2</a>の「<a href="#fig-pipeline">三つの箱を線でつないだ処理の流れ</a>」のとおり、判定、順の決定、実行の三つの段階を経て、ターゲットが作られる。</p>
 <p>Internationalization and characterization of buildsystem interoperability requirements are discussed in the literature under names like reproducibility and incrementality. Unquestionably, well-understood, straightforward implementations outperform overcomplicated counterparts.</p>
 </body>
 </html>

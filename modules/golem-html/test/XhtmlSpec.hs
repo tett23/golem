@@ -640,7 +640,28 @@ tests =
                   { bookDocs = [Document fidA [para 0 [Ref (at 1) RefPage "second"]], Document fidB []],
                     bookLabels = Map.fromList [("second", LabelTarget (mkSpan fidB 0 1) Nothing [txt "次の章"] "second" fidB)]
                   }
-           in bodyA cfg0 book @?= "<p><a href=\"b.xhtml#second\">次の章</a></p>\n"
+           in bodyA cfg0 book @?= "<p><a href=\"b.xhtml#second\">次の章</a></p>\n",
+        -- docs/adr/0267
+        testCase "I11 a resolved [ref-number] and [ref-title] link to the place of their label" $
+          let book =
+                (bookOf [para 0 [Resolved (at 1) RefNumber "intro" [txt "1"], txt "と", Resolved (at 2) RefTitle "second" [txt "次の章"]]])
+                  { bookDocs = [Document fidA [para 0 [Resolved (at 1) RefNumber "intro" [txt "1"], txt "と", Resolved (at 2) RefTitle "second" [txt "次の章"]]], Document fidB []],
+                    bookLabels =
+                      Map.fromList
+                        [ ("intro", LabelTarget (at 9) Nothing [txt "はじめに"] "intro" fidA),
+                          ("second", LabelTarget (mkSpan fidB 0 1) Nothing [txt "次の章"] "second" fidB)
+                        ]
+                  }
+           in bodyA cfg0 book @?= "<p><a href=\"#intro\">1</a>と<a href=\"b.xhtml#second\">次の章</a></p>\n",
+        testCase "I11 a resolved reference copied into the table of contents is its text alone" $
+          let entry = TocEntry 1 (Just "第一章") [txt "見出し", Resolved (at 3) RefNumber "intro" [txt "2"]] "intro" fidA (at 9)
+              book = (bookOf [Block (at 0) Nothing Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry], bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "見出し"] "intro" fidA)]}
+           in bodyA cfg0 book @?= "<nav epub:type=\"toc\" class=\"toc\">\n<ol>\n<li class=\"toc-1\"><a href=\"#intro\">第一章\x3000見出し2</a></li>\n</ol>\n</nav>\n",
+        testCase "I11 a resolved reference inside another is the text of the outer link" $
+          let book = (bookOf [para 0 [Resolved (at 1) RefTitle "intro" [txt "題", Resolved (at 2) RefNumber "other" [txt "3"]]]]) {bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "題"] "intro" fidA), ("other", LabelTarget (at 8) Nothing [txt "他"] "other" fidA)]}
+           in bodyA cfg0 book @?= "<p><a href=\"#intro\">題3</a></p>\n",
+        testCase "I11 a resolved reference whose label the book does not have is its text" $
+          bodyA cfg0 (bookOf [para 0 [Resolved (at 1) RefNumber "missing" [txt "1"]]]) @?= "<p>1</p>\n"
       ],
     testCase "an index mark is an empty span with an id from its position" $
       bodyA cfg0 (bookOf [para 0 [txt "組版", IndexMark (at 7) (IndexEntry ["組版"] ["くみはん"] IndexPoint)]]) @?= "<p>組版<span id=\"i-0-7\"></span></p>\n",

@@ -49,7 +49,8 @@ doc marks forms images =
       docLang = "ja",
       docPdfUa = Nothing,
       docStructure = structElem SDocument [KidLeaf (LeafId [0])],
-      docPageLabels = []
+      docPageLabels = [],
+      docOutline = []
     }
   where
     box = Rect 0 0 (100 * 65536) (100 * 65536)

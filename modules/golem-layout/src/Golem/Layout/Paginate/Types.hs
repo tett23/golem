@@ -27,16 +27,10 @@ where
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry)
+import Golem.Layout.Look (NoteId (..))
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Length (Sp)
 import Golem.Syntax (SrcSpan)
-
-{- | A footnote in the book (golem-driver ADR 0018): the span of the note,
-and its place among the notes of the same span in one paragraph (from
-0). Notes numbered in different files never share a key.
--}
-data NoteId = NoteId !SrcSpan !Int
-  deriving stock (Eq, Ord, Show)
 
 data NoteBody = NoteBody {nbId :: !NoteId, nbLines :: !Int}
   deriving stock (Eq, Show)
