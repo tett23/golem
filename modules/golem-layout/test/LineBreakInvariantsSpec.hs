@@ -477,6 +477,7 @@ handParagraph :: Sp -> [Item] -> Paragraph
 handParagraph w its =
   Paragraph
     { pText = T.concat [bcText c | Box _ c <- its],
+      pCode = "",
       pSize = fs,
       pWidth = w,
       pStrict = True,
@@ -545,6 +546,7 @@ paragraphWith its i =
       br = breakParagraph ps (const (lineWidth i)) its
    in Paragraph
         { pText = T.replicate (inPre i) "あ" <> T.concat (inRun i) <> T.replicate (inPost i) "い",
+          pCode = "",
           pSize = fs,
           pWidth = lineWidth i,
           pStrict = sStrict (inSetting i),
@@ -685,7 +687,7 @@ exhaustiveTests =
 
 -- | The paragraph of an input of code whose items are given.
 codeParagraphWith :: [Item] -> Input -> Paragraph
-codeParagraphWith its i = (paragraphWith its i) {pParams = ps, pBreaks = breakParagraph ps (const (lineWidth i)) its}
+codeParagraphWith its i = (paragraphWith its i) {pCode = T.concat (inRun i), pParams = ps, pBreaks = breakParagraph ps (const (lineWidth i)) its}
   where
     ps = paramsOf (inSetting i) False its
 
@@ -703,7 +705,7 @@ breaks of the mark.
 -}
 c4Misses :: Group -> [Violation]
 c4Misses g
-  | any (T.any (\c -> c `notElem` (" ab/_\"" :: String))) (gRun g) = []
+  | any (T.any (\c -> c `notElem` (" ab/_\"-.1" :: String))) (gRun g) = []
   | otherwise =
       [ Violation "C4" (show (gSetting g, gPre g, gRun g, gPost g))
       | map unmarked (codeItemsOf False (gSetting g) (gPre g) (gRun g) (gPost g)) /= map unmarked (fst (composeInlines (emptyMark (codeEnv False (gSetting g))) (codeInlinesOf (gSetting g) (gPre g) (gRun g) (gPost g))))
@@ -741,9 +743,9 @@ codeRunsT = listsOf (Tiers [codeParts])
 
 codeTests :: [TestTree]
 codeTests =
-  [ testCase "there are 15 parts of code, and 240 runs of up to 2 parts" $ do
-      length (nub codeParts) @?= 15
-      length (concat (upTo 2 codeRunsT)) @?= 1 + 240,
+  [ testCase "there are 18 parts of code, and 342 runs of up to 2 parts" $ do
+      length (nub codeParts) @?= 18
+      length (concat (upTo 2 codeRunsT)) @?= 1 + 342,
     testCase "C1, C2, C8: the runs of code are composed and broken as the ADR shows" $ do
       let (_, _, br) = breakCodeInput (Input plain False 4 0 ["漢", "あ", "a", "あ", "漢", "あ"] 0)
       map lineText (brLines br) @?= ["漢あa", "あ漢あ"]
@@ -762,11 +764,36 @@ codeTests =
           hundred = map (\case Penalty w 0 h@(WrapMark _) -> Penalty w 100 h; it -> it)
       codeBroken p @?= []
       codeBroken p {pItems = hundred (pItems p)} @?= [C2],
-    testCase "C3: a break between two Latin letters of code" $ do
+    testCase "J3: a break between two Latin letters of code" $ do
       let p = codeParagraphOf (Input plain False 4 0 ["ab"] 0)
           split = concatMap (\case Box w c | bcText c == "ab" -> [Box (Sp (unSp w `div` 2)) c {bcText = "a"}, Penalty 0 0 NoHyphen, Box (Sp (unSp w `div` 2)) c {bcText = "b"}]; it -> [it])
       codeBroken p @?= []
-      codeBroken p {pItems = split (pItems p)} @?= [C3],
+      codeBroken p {pItems = split (pItems p)} @?= [J3],
+    testCase "J1: the break after a hyphen-minus sign of code taken out" $ do
+      let p = codeParagraphOf (Input plain False 2 0 ["ab", "-", "ab"] 0)
+          noBreak = map (\case Penalty w 100 h@(WrapMark _) -> Penalty w infPenalty h; it -> it)
+      map lineText (brLines (pBreaks p)) @?= ["ab-", "ab"]
+      codeBroken p @?= []
+      nub (codeBroken (rebroken noBreak p)) @?= [J1],
+    testCase "J2: the break after a hyphen-minus sign of code of 0, or without the mark" $ do
+      let p = codeParagraphOf (Input plain False 2 0 ["ab", "-", "ab"] 0)
+          zero = map (\case Penalty w 100 h@(WrapMark _) -> Penalty w 0 h; it -> it)
+          unmark = map (\case Penalty _ 100 (WrapMark _) -> Penalty 0 100 NoHyphen; it -> it)
+      nub (codeBroken p {pItems = zero (pItems p)}) @?= [J2]
+      nub (codeBroken (rebroken unmark p)) @?= [C8, J2, J6],
+    testCase "J4: a break of 100 after a hyphen-minus sign of code before a Japanese character" $ do
+      let p = codeParagraphOf (Input plain False 4 0 ["a", "-", "あ"] 0)
+          hundred = map (\case Penalty w 0 h@(WrapMark _) -> Penalty w 100 h; it -> it)
+      codeBroken p @?= []
+      nub (codeBroken p {pItems = hundred (pItems p)}) @?= [C2, J4],
+    testCase "J6: a box of code that lost a character" $ do
+      let p = codeParagraphOf (Input plain False 4 0 ["a", "-", "ab"] 0)
+          lose = map (\case Box w c | bcText c == "ab" -> Box w c {bcText = "a"}; it -> it)
+      elem J6 (codeBroken p {pItems = lose (pItems p)}) @? "J6",
+    testCase "J7: an output of a pass later than the items without the breaks of J1 give" $ do
+      let p = codeParagraphOf (Input plain False 2 0 ["a", "-", "ab"] 0)
+      brPass (pBreaks p) @?= 1
+      codeBroken p {pBreaks = (pBreaks p) {brPass = 4}} @?= [J7],
     testCase "golem-layout ADR 0038 S3: two ellipses of code broken at the space between them break no invariant" $ do
       let p = codeParagraphOf (Input plain False 1 0 ["…", " ", "…"] 0)
       map lineText (brLines (pBreaks p)) @?= ["…", "…"]
@@ -800,7 +827,7 @@ codeTests =
           keys v g = let its = codeItemsOf v (gSetting g) (gPre g) (gRun g) (gPost g) in [keyOf (fromIntegral w * fs) (paramsOf (gSetting g) e its) its | (w, e) <- gCases g]
       checkAllPar d codeRunsT (\run -> [Violation "vertical" (show g) | g <- codeGroupsOf (maxWidthAt depth) run, keys True g /= keys False g])
         @?= Passed (length (concat (upTo d codeRunsT))),
-    testCase "golem-layout ADR 0037 B1, 0038: L1 to L13, T1 and C1 to C8 hold for every input of code up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
+    testCase "golem-layout ADR 0037 B1, 0038, 0045: L1 to L13, T1, C1, C2, C6 to C8 and J1 to J7 hold for every input of code up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- linesDepth
       let limit = bruteLimitAt depth
       case tallyAllPar depth (codeGroupT (maxWidthAt depth)) (judgeCodeGroup limit) of

@@ -1,6 +1,6 @@
 # ADR 0017: コードの書体とコードブロックの組み方
 
-ステータス: 採択→本文の中のコードの背景は [ADR 0029](0029-inline-code-background.md)、コードの改行の規則を文字スタイル `url` にも当てることは [golem-doc ADR 0005](../../golem-doc/adr/0005-bibliography-fields.md)、キャプションと傍注が引き継ぐキーは [ADR 0043](0043-caption-sidenote-do-not-inherit-indent.md)、本文の中のコードの `_` の連なりの後の改行は [golem-layout ADR 0031](../../golem-layout/adr/0031-line-breaks-after-low-lines-in-identifiers.md)、本文の中のコードの和文の字の前後の改行と改行の印は [golem-layout ADR 0034](../../golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)
+ステータス: 採択→本文の中のコードの背景は [ADR 0029](0029-inline-code-background.md)、コードの改行の規則を文字スタイル `url` にも当てることは [golem-doc ADR 0005](../../golem-doc/adr/0005-bibliography-fields.md)、キャプションと傍注が引き継ぐキーは [ADR 0043](0043-caption-sidenote-do-not-inherit-indent.md)、本文の中のコードの `_` の連なりの後の改行は [golem-layout ADR 0031](../../golem-layout/adr/0031-line-breaks-after-low-lines-in-identifiers.md)、本文の中のコードの和文の字の前後の改行と改行の印は [golem-layout ADR 0034](../../golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)、本文の中のコードの `-` と `.` の連なりの後の改行は [golem-layout ADR 0045](../../golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md)
 
 ## 文脈
 

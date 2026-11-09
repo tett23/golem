@@ -1,6 +1,6 @@
 # ADR 0034: 本文の中のコードの和文の字のあいだで改行できるようにする
 
-ステータス: 採択（`wrap-mark` の既定は `"⏎"`（U+23CE）とした。二つのマニュアルのコードの書体の Noto Sans JP と Source Code Pro が U+21A9 の字形を持たず、Noto Sans JP が U+23CE を持つため。`↩` は和文の字のクラスに入り、Noto Sans JP で描くので、その書体が字形を持ち、同じく改行を表す記号の U+23CE を選んだ）→改行の印の幅で行があふれる候補の活きている節点、トレードオフの節の印の文、C2 の a_あ の文は [golem-layout ADR 0036](0036-record-what-the-implementation-of-0034-decided.md)、印の描き方、大きさ、位置、色は [golem-layout ADR 0042](0042-draw-the-wrap-mark-of-inline-code-small-and-light.md)
+ステータス: 採択（`wrap-mark` の既定は `"⏎"`（U+23CE）とした。二つのマニュアルのコードの書体の Noto Sans JP と Source Code Pro が U+21A9 の字形を持たず、Noto Sans JP が U+23CE を持つため。`↩` は和文の字のクラスに入り、Noto Sans JP で描くので、その書体が字形を持ち、同じく改行を表す記号の U+23CE を選んだ）→改行の印の幅で行があふれる候補の活きている節点、トレードオフの節の印の文、C2 の a_あ の文は [golem-layout ADR 0036](0036-record-what-the-implementation-of-0034-decided.md)、印の描き方、大きさ、位置、色は [golem-layout ADR 0042](0042-draw-the-wrap-mark-of-inline-code-small-and-light.md)、不変条件の C3 と C4 は [golem-layout ADR 0045](0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md) の J3 と J5
 
 ## 文脈
 

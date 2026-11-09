@@ -5,6 +5,7 @@ import AlignSpec (alignTests)
 import CharClassSpec (charClassTests)
 import CodeJapaneseSpec (codeJapaneseTests)
 import CodeSpaceSpec (codeSpaceTests)
+import CodeStopSpec (codeStopTests)
 import CombiningSpec (combiningTests)
 import Control.Monad (forM_)
 import Data.List (isPrefixOf, maximumBy, subsequences)
@@ -379,6 +380,7 @@ tests =
       doubleDashTests,
       codeSpaceTests,
       codeJapaneseTests,
+      codeStopTests,
       urlBreakTests,
       linkTests,
       langTests,
@@ -1001,6 +1003,13 @@ tests =
             -- eleven and ten Latin characters of 0.5em
             cellExtent (compose enUS "hyphenation") @?= (11 * Sp (unSp fs `div` 2), 11 * Sp (unSp fs `div` 2))
             cellExtent (compose (defaultComposeEnv fs) "well-known") @?= (5 * Sp (unSp fs `div` 2), 5 * fs),
+          testCase "cell extents: a piece that ends at a break of code holds the wrap mark drawn there (golem-layout ADR 0034, 0045)" $ do
+            -- a line of the piece "a-" broken after it ends with the mark of 3/5 em
+            let env = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True, lkWrapMark = "⏎"}}
+                half = Sp (unSp fs `div` 2)
+                mark = Sp ((unSp fs * 3) `div` 5)
+            cellExtent (compose env "ab-c") @?= (3 * half + mark, 4 * half)
+            cellExtent (compose env "ab/c") @?= (3 * half + mark, 4 * half),
           testCase "column widths: natural when they fit" $
             columnWidths 100 [(10, 30), (20, 40)] @?= Right [30, 40],
           testCase "column widths: short columns filled first, the long ones level (golem-driver ADR 0037)" $ do
@@ -1972,11 +1981,11 @@ codeTests =
       let g = CodeGeometry 10 10 10 10 0
       map poSlots (paginate 1 5 [FParagraph (ids 0 2), FCode g 0 1 True (ids 10 5)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SCode 10 2 3)], [(0, SCode 12 3 3)]]
       map poSlots (paginate 1 5 [FParagraph (ids 0 2), FCode g 0 1 False (ids 10 5)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SCode 10 3 3)], [(0, SCode 13 2 2)]],
-    testCase "code: breaks only at spaces and after a slash, with no hyphen" $ do
+    testCase "code: breaks only at spaces, after a slash, and after a hyphen-minus sign and a full stop between letters (golem-layout ADR 0045), with no hyphen" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True}, cePatterns = const (Just englishUS)}
           its = compose env "modules/golem-driver/Pdf.hs"
-      [h | Penalty _ p h <- its, abs p < infPenalty] @?= [NoHyphen, NoHyphen]
-      [t | Box _ c <- its, let { t = bcText c }] @?= ["modules/", "golem-driver/", "Pdf.hs"]
+      [(p, h) | Penalty _ p h <- its, abs p < infPenalty] @?= [(0, NoHyphen), (100, NoHyphen), (0, NoHyphen), (100, NoHyphen)]
+      [t | Box _ c <- its, let { t = bcText c }] @?= ["modules/", "golem-", "driver/", "Pdf.", "hs"]
       [h | Penalty _ p h <- compose env "manifest.toml", abs p < infPenalty, h /= NoHyphen] @?= [],
     testCase "code: no aki inside, the advances as they are" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True}}
