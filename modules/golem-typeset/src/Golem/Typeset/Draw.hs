@@ -855,7 +855,7 @@ decorationBands env (x0, y0) sl =
             let look = bcLook c
                 looks = zipWith const (bcBaseLooks c <> repeat look) (clusters base)
                 big = if null looks then lkSize look else maximum (map lkSize looks)
-             in [rubyOverhang True 0 big (half (lkSize look)) (lkBaselineShift look)]
+             in [rubyOverhang True 0 big (lkSize (readingLook look)) (lkBaselineShift look)]
       KindKenten | Just _ <- lkKenten (bcLook c) -> let look = bcLook c in [kentenOverhang True 0 (lkSize look) 0 (lkBaselineShift look)]
       _ -> []
 
@@ -1011,7 +1011,9 @@ drawLineAt env (x0, y0) sl =
                       -- each base character in its own look (golem-layout ADR 0011)
                       let (base, reading) = T.breakOn "|" (bcText c)
                           rt = T.drop 1 reading
-                          rsize = lkSize half
+                          -- the reading takes no position of a range of superscript or subscript (docs/adr/0269)
+                          rlook = readingLook look
+                          rsize = lkSize rlook
                           -- a base character with its combining characters is one base (golem-driver ADR 0036)
                           baseUnits = clusters base
                           baseLooks = zipWith const (bcBaseLooks c <> repeat look) baseUnits
@@ -1020,7 +1022,7 @@ drawLineAt env (x0, y0) sl =
                             Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) u)
                             Nothing -> 0
                           baseAdv = zipWith advOf baseLooks baseUnits
-                          readAdv = map (advOf half . T.singleton) (T.unpack rt)
+                          readAdv = map (advOf rlook . T.singleton) (T.unpack rt)
                           excess = max 0 (sum readAdv - w)
                           rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (Sp (unSp excess `div` 2), Sp (unSp excess `div` 2))
                           -- the reading sits beside the largest base character
@@ -1031,7 +1033,7 @@ drawLineAt env (x0, y0) sl =
                             | lkColor lk /= lkColor look, Just sw <- swatchOf env lk = ([P.Saved (P.SetColor sw : marks)], glyphs)
                             | otherwise = (marks, glyphs)
                           placed1 = [inColour lk (runAtU env (whoOf V.PartBase c) lk vertical False 0 (origin (off + pos)) u) | (u, lk, pos) <- zip3 baseUnits baseLooks (rpBase rp)]
-                          placed2 = [runAtU env (whoOf V.PartRuby c) half vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
+                          placed2 = [runAtU env (whoOf V.PartRuby c) rlook vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
                           readingLeaf = leafOf (rubyTextLeaf (bcLeaf c))
                        in ([(leaf, concatMap fst placed1), (readingLeaf, concatMap fst placed2)], inLeaf leaf (concatMap snd placed1) <> inLeaf readingLeaf (concatMap snd placed2))
                 KindKenten ->

@@ -259,8 +259,9 @@ noticeTests =
           nDiagnostics silencedInfo @?= nDiagnostics loud
           map withoutInstanceId (nOutputs silencedInfo) @?= map withoutInstanceId (nOutputs loud)
           pure (map diagCode (nDiagnostics loud), [diagCode d | d <- nDiagnostics verbose, diagSeverity d == Info], map fst (nOutputs loud))
-        -- a new notice or info must be added to the projects
-        sort (nub (concatMap (\(n, _, _) -> n) raised)) @?= sort noticeCodes
+        -- a new notice or info must be added to the projects; G03134 is a
+        -- notice of golem new, which builds nothing (docs/adr/0273)
+        sort (nub (concatMap (\(n, _, _) -> n) raised)) @?= sort (filter (/= DiagnosticCode "G03134") noticeCodes)
         sort (nub (concatMap (\(_, i, _) -> i) raised)) @?= sort infoCodes
         let written = concatMap (\(_, _, w) -> w) raised
         assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"]),

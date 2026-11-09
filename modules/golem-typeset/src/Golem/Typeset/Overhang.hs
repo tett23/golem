@@ -17,7 +17,7 @@ where
 import Data.Text qualified as T
 import Golem.Layout.Japanese (BoxKind (..), boxKind, clusters)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Look (Look (..))
+import Golem.Layout.Look (Look (..), readingLook)
 import Golem.LayoutSpec (baselineRatio)
 import Golem.Length (Sp (..), zwToSp)
 
@@ -72,7 +72,7 @@ lineOverhang vertical h central l = maximum (0 : concatMap boxOverhang (lineItem
               let look = bcLook c
                   looks = zipWith const (bcBaseLooks c <> repeat look) (clusters base)
                   big = if null looks then lkSize look else maximum (map lkSize looks)
-               in [rubyOverhang vertical h big (Sp (unSp (lkSize look) `div` 2)) (lkBaselineShift look)]
+               in [rubyOverhang vertical h big (lkSize (readingLook look)) (lkBaselineShift look)]
         KindKenten
           | Just _ <- lkKenten (bcLook c) ->
               let look = bcLook c

@@ -1124,9 +1124,9 @@ scriptRanges env = go
                       lkBaselineShift = lkBaselineShift lk + (if pos == PositionSuperscript then shift else negate shift)
                     }
 
--- | The advances of the reading characters: half the size of the base, as drawn.
+-- | The advances of the reading characters in the 'readingLook' of the base, as drawn.
 readingAdvances :: ComposeEnv -> Look -> Maybe Text -> [Sp]
-readingAdvances env lk = maybe [] (map (advance env lk {lkSize = Sp (unSp (lkSize lk) `div` 2)}) . T.unpack)
+readingAdvances env lk = maybe [] (map (advance env (readingLook lk)) . T.unpack)
 
 itemsFor :: ComposeEnv -> Maybe Piece -> Piece -> Maybe Piece -> [Item]
 itemsFor env prev p next = case p of
