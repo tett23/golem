@@ -44,7 +44,7 @@ application/epub+zip
 </nav>
 </body>
 </html>
-== OEBPS/style.css (deflate, time 315532800, 1863 bytes)
+== OEBPS/style.css (deflate, time 315532800, 1947 bytes)
 body { font-family: serif; }
 body.vertical { writing-mode: vertical-rl; -epub-writing-mode: vertical-rl; }
 pre, code { font-family: monospace; }
@@ -66,6 +66,7 @@ strong { font-weight: bold; }
 .align-center { text-align: center; }
 .align-right { text-align: right; }
 .proof { background: #ffeb99; }
+section.notes aside p { margin-block: 0; padding-inline-start: 0; text-indent: 0; }
 ruby { ruby-align: space-around; }
 rt { ruby-align: space-around; }
 ruby.mono rt { ruby-align: center; }
@@ -101,7 +102,7 @@ code { padding-inline: 0.25em; }
 </nav>
 </body>
 </html>
-== OEBPS/chapters/01.xhtml (deflate, time 315532800, 1196 bytes)
+== OEBPS/chapters/01.xhtml (deflate, time 315532800, 1203 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -131,7 +132,7 @@ code { padding-inline: 0.25em; }
 </ul>
 <section class="notes">
 <h2>注</h2>
-<aside epub:type="footnote" id="note-1"><a href="#noteref-1">1</a> この性質を決定性と呼ぶ。</aside>
+<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> この性質を決定性と呼ぶ。</p></aside>
 </section>
 </body>
 </html>
