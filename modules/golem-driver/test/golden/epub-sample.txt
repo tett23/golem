@@ -44,7 +44,7 @@ application/epub+zip
 </nav>
 </body>
 </html>
-== OEBPS/style.css (deflate, time 315532800, 1863 bytes)
+== OEBPS/style.css (deflate, time 315532800, 1901 bytes)
 body { font-family: serif; }
 body.vertical { writing-mode: vertical-rl; -epub-writing-mode: vertical-rl; }
 pre, code { font-family: monospace; }
@@ -81,6 +81,7 @@ li p, li p[class] { padding-inline-start: 0; text-indent: 0; }
 .line { display: block; }
 .line + br { display: none; }
 code { padding-inline: 0.25em; }
+.cs-no-break { white-space: nowrap; }
 == OEBPS/front.xhtml (deflate, time 315532800, 626 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>

@@ -177,7 +177,10 @@ data Look = Look
     -- | the underline of the characters (docs/adr/0270); Nothing is none
     lkUnderline :: !(Maybe Decoration),
     -- | the strikethrough of the characters (docs/adr/0270); Nothing is none
-    lkStrikethrough :: !(Maybe Decoration)
+    lkStrikethrough :: !(Maybe Decoration),
+    {- | the text is in a range that does not break (docs/adr ADR 0272):
+    no break between two of its characters but a forced one
+    -} lkNoBreak :: !Bool
   }
   deriving stock (Eq, Ord, Show)
 
@@ -208,7 +211,8 @@ newtype LinkTarget = LinkUri Text
 {- | One role for both scripts at a size, upright, regular, default colour,
 metrics kerning, no tracking, no proportional metrics, no baseline shift,
 not code, not a URL, no kenten, no background, no padding, no link,
-outside a language span, no wrap mark, no features and the normal position.
+outside a language span, no wrap mark, no features, the normal position and
+breaking.
 -}
 plainLook :: Text -> Sp -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing False

@@ -200,7 +200,7 @@ tests =
         errorsOf "[character-styles.em]\nkerning = \"x\"\n"
           @?= [("G03021", "kerning の値が正しくありません: x (character-styles.em.kerning)", 2, 11)],
       testCase "the keys of @style-def are those of the schema, in its order" $ do
-        charStyleKeys @?= ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic", "kerning", "tracking", "proportional-metrics", "baseline-shift", "background", "padding", "wrap-mark", "position", "features", "underline", "strikethrough"]
+        charStyleKeys @?= ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic", "kerning", "tracking", "proportional-metrics", "baseline-shift", "background", "padding", "wrap-mark", "no-break", "position", "features", "underline", "strikethrough"]
         paraStyleKeys @?= ["based-on", "font", "size", "line-breaks", "space-between", "space-before", "space-after", "align", "indent", "first-line-indent", "end-indent", "aki-set", "kerning", "tracking", "proportional-metrics", "baseline-shift", "background", "padding", "border", "border-width", "features"]
         regexStyleKeys @?= ["pattern", "style"],
       testCase "the values of line-breaks are those the decoder reads" $

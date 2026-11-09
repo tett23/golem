@@ -79,19 +79,25 @@ jaParts :: [Text]
 jaParts = map T.singleton "漢あ「」〜！・。、…ゝーぁ　—"
 
 {- | The Latin parts: words of no, one and two places where the patterns
-break them and a word with an explicit hyphen, then a space, a full stop
-and the quotation marks of both scripts.
+break them and a word with an explicit hyphen, then a space, a full stop,
+the quotation marks of both scripts and a soft hyphen (U+00AD, docs/adr
+ADR 0272), which next to the others is at the head, inside and at the end
+of a word, and between Japanese characters.
 -}
 latinParts :: [Text]
-latinParts = ["a", "table", "hyphenation", "lime-tree", " ", ".", "“", "”"]
+latinParts = ["a", "table", "hyphenation", "lime-tree", " ", ".", "“", "”", "\xAD"]
 
--- | The 23 parts of the runs.
+-- | The 24 parts of the runs.
 parts :: [Text]
 parts = jaParts <> latinParts
 
--- | Whether a run has a Latin part or a character of both scripts: the protrusion, the expansion and the language can only matter then.
+{- | Whether a run has a Latin part or a character of both scripts: the
+protrusion, the expansion and the language can only matter then. The soft
+hyphen is not one: it makes no box (docs/adr ADR 0272), and the normal
+form checks that it changes nothing they could.
+-}
 hasLatin :: [Text] -> Bool
-hasLatin = any (\p -> p `elem` latinParts || T.any isDualCharacter p)
+hasLatin = any (\p -> (p `elem` latinParts && p /= "\xAD") || T.any isDualCharacter p)
 
 {- | The composition environment but the glyph expansion: strict kinsoku,
 hanging punctuation, protrusion, and the language span around the run.
@@ -269,7 +275,7 @@ paramsOf s e its =
       pProtrusion = (sProtrusion s || sHanging s) && protrudes
     }
   where
-    protrudes = or [bcProtrudeStart c /= 0 || bcProtrudeEnd c /= 0 | Box _ c <- its] || or [q /= 0 | Penalty _ _ (PatternHyphen q) <- its]
+    protrudes = or [bcProtrudeStart c /= 0 || bcProtrudeEnd c /= 0 | Box _ c <- its] || or [q /= 0 | Penalty _ _ h <- its, q <- case h of PatternHyphen x -> [x]; SoftHyphen x -> [x]; _ -> []]
 
 -- | The width of the lines of an input.
 lineWidth :: Input -> Sp

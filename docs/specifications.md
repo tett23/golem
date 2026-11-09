@@ -1658,7 +1658,9 @@ LSP と `golem lint` はファイルを検査しないので、フォントを�
 スタイルの定義は、`based-on` をたどった鎖の根から順に、子のキーが親のキーを上書きして決める。
 スタイルの名前は、英小文字で始まり、英小文字、数字、`-` だけからなる。
 
-文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic`、`features`（OpenType の機能、後述）、`position`（上付きと下付き、後述）、`underline` と `strikethrough`（下線と打ち消し線、後述）である。
+文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic`、`features`（OpenType の機能、後述）、`position`（上付きと下付き、後述）、`underline` と `strikethrough`（下線と打ち消し線、後述）、`no-break`（真偽値）である。
+`no-break` が真の文字は改行しない範囲になり、その中では行を分けない（「行分割」の節、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
+文字スタイルを入れ子にしたときは、どれか一つの `no-break` が真なら真である。
 コードの文字スタイルは、本文の中のコードの背景と余白のキー `background` と `padding` と、改行の印のキー `wrap-mark` も持つ（後述）。
 `font` の役割は、役割が持つ側（和文か欧文）の文字だけをその役割で組み、持たない側の文字は外側の書体のまま組む。
 `synthetic-bold` が真なら、`font` の役割が持たない側の文字を合成の太字（輪郭を線で太らせる）にし、`font` がなければ両側を太らせる。
@@ -1900,7 +1902,8 @@ CSS の文字の飾りは子孫の要素で消せないので、`false` を写�
 読書環境が `text-underline-position: right` を読むかは確かめていない。
 プレーンテキストは、線を出さず、字を原稿のまま出す。
 
-組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`、`padding = "0.25zw"`、`wrap-mark = "⏎"`）、`url`（キーなし）、`note-mark`（`size = "0.5zw"`）、`superscript`（`position = "superscript"`）、`subscript`（`position = "subscript"`）の八つである。
+組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`、`padding = "0.25zw"`、`wrap-mark = "⏎"`）、`url`（キーなし）、`note-mark`（`size = "0.5zw"`）、`superscript`（`position = "superscript"`）、`subscript`（`position = "subscript"`）、`no-break`（`no-break = true`）の九つである。
+`no-break` は改行しない範囲を指定する文字スタイルである（「行分割」の節、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
 `note-mark` は、PDF の本文の注の印に当てる既定の文字スタイルである（「脚注」の節、[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 `url` は参考文献の URL を組む文字スタイルであり、書体、大きさ、色は周りの文字のまま組む（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
 PDF では、`url` と、`based-on` をたどって `url` に行き着く文字スタイルの文字に、ハイフネーションをかけず、中の文字のあいだにアキ量のセットの空きを入れない。
@@ -2345,6 +2348,8 @@ HTML と EPUB では、組み込みの文字スタイルのうち `strong`、`bo
 `pre` には `white-space: pre-wrap`、`overflow-wrap: anywhere`、`tab-size: 2`、`hyphens: none`、`font-kerning: none` を書き、`[paragraph-styles.code]` に `background` があれば、その RGB の近似の `background-color` と、`padding` を `em` にした `padding` を書く。
 `code` の `size` があれば、キャプションと同じく `pre` の `font-size` を書く。
 `code` を `based-on` で引き継ぐ文字スタイルの CSS には、`font-family`（最後に `monospace`）と `hyphens: none` を書く（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
+`no-break` が真の文字スタイルの CSS には、`white-space: nowrap` を書く（[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
+強制改行の `br` は `nowrap` の中でも改行するので、PDF と同じになる。
 文字スタイル `code` の `code` の規則と、`code` を引き継ぐ文字スタイルの `cs-名前` の規則には、解決した背景のスウォッチの RGB の近似の `background-color`（背景がなければ書かない）と、`padding` を `em` にした `padding-inline`（背景の有無によらず書く）を書く（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
 縦組みの本でも行の方向になるよう、余白は `padding-inline` で書き、行と直交する方向の余白と `box-decoration-break` は書かない。
 行をまたぐ `<code>` の分かれた側には、CSS の既定のとおり余白が付かず、PDF と同じ形になる。
@@ -3360,6 +3365,8 @@ TeX は、この場合にも行の始まりの候補を捨てる。
 候補がないのは、一つの箱が行長より長い場合と、行頭禁則、行末禁則、分離禁止で分けられない箱の並びが行長より長い場合である。
 はみ出した行は、禁則を破って分けない（[docs/adr/0222](adr/0222-line-breaking-points-the-invariants-did-not-decide.md)）。
 はみ出す行は、PDF をターゲットに含む `golem build` が、描いた行ごとに G07105 の警告で報告する（[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。
+はみ出しを測る位置の箱が改行しない範囲（後述）の箱なら、G07105 の代わりに G07122 の警告で報告する（[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
+G07122 の重大度、位置、量の書き方は G07105 と同じである。
 はみ出しの量は、行の自然な幅から縮みの合計（字形の圧縮を含む）と行長を引いた量で、行分割がはみ出す行とみなす条件と同じ式で求める（`lineOverflow`）。
 1sp でもはみ出せば報告し、量は mm で小数点以下 2 桁に切り上げて書く。
 位置は、行の箱を行頭から順に見て、終わりが行長を超える最初の箱の最初の字（長さ 0）で、その箱が原稿にない字（見出しの番号、目次の題など）か、終わりが行長を超える箱がない行なら、その行を含む原稿のブロックの位置とする。
@@ -3469,6 +3476,51 @@ URL の文字（文字スタイル `url` の文字）は、どこで行を分け
 リンクの中かどうかは、行分割の箱の見た目（`Look` の `lkLink`）が持つ。
 Knuth と Plass の行分割は、この欄を読まない。
 
+原稿の U+00AD（記法では `[shy]`）を、ソフトハイフンと呼ぶ（[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
+PDF の行分割では、ソフトハイフンは字の箱を作らない。
+行分割の項目を作る前に本文の文字列から取り除き、位置を覚えておく。
+文字の分類、和欧間の空き、アキ量のセットの空き、語の区切りは、ソフトハイフンがないものとして決める。
+`と­いう` は `という` と同じに組む。
+取り除いた位置の前の字と後の字が、同じ欧文の語の要素の中で、どちらも字（一般カテゴリが L。結合文字は前の字に含めて数える）なら、そこをソフトハイフンの候補とする。
+要素は、明示のハイフンで分けたものであり、明示のハイフンの直後のソフトハイフンは後の要素に入る。
+続けて書いたソフトハイフンは一つの候補とする。
+候補は行末にハイフンを描く罰点で、幅は `-` の送り、罰則はパターンの分綴と同じ 50 であり、一回目の段階から使う（TeX の `\-` と同じ）。
+連続するハイフンの罰点と突き出しはパターンの分綴と同じに当て、前に 2 字、後に 3 字を残す規則は当てない。
+`explicit-hyphen-penalty` が 10000 でも、候補は置く。
+このとき語は明示のハイフンでは分けず、ソフトハイフンの候補でだけ分ける。
+ソフトハイフンを一つでも含む要素は、パターンでも分綴しない。
+要素の最初の字より前のソフトハイフン（`­table`、`“­table”`）は候補にならないので、その要素を分けないという指定になる。
+`co-op­er­ate` は、`co-` の後と、`op­er­ate` のソフトハイフンの位置で分けられる。
+候補にならないソフトハイフンは、要素の最初の字より前のものを除き、PDF をターゲットに含む `golem build` が notice で報告する。
+改行しない文字（コード、`url` の文字、リンクの語、改行しない範囲）の中のものは G07124、ほかのもの（前か後ろが字でないもの、語の終わりのもの、和文の字のあいだのもの）は G07123 とする。
+位置はソフトハイフンで、`[shy]` で書いたものは `[shy]` である。
+どちらも出力は同じで、ソフトハイフンを描かない。
+`golem check`、LSP、HTML、EPUB、プレーンテキストだけのビルドでは報告しない。
+
+PDF では、ソフトハイフンの字形を描かず、ToUnicode にも ActualText にも U+00AD を書かない。
+分けなかった語の抜き出した文字列は、ソフトハイフンのない語になる。
+ソフトハイフンで分けた行の行末には、パターンの分綴と同じく `-` の字形を描き、抜き出した文字列もパターンの分綴と同じになる。
+`pages.json` の位置は、取り除く前の原稿の文字の位置で数える。
+表のセルの最小の幅は、ソフトハイフンの候補を分けてよい位置として数え、その前の部分にハイフンの幅を足す。
+HTML と EPUB は U+00AD をそのまま書き、閲覧環境はその位置でだけ分綴する。
+リンクの中のソフトハイフンでは閲覧環境が分けうるので、PDF と違う。
+プレーンテキストも U+00AD をそのまま書く。
+U+2011（分割禁止ハイフン）の扱いは変えない。
+
+文字スタイルの欄 `no-break` が真の文字の範囲を、改行しない範囲と呼ぶ（InDesign の文字パネルの分離禁止にあたる。JLReq の分離禁止文字とは別のものである）。
+組み込みの文字スタイル `no-break` があり、原稿では `[style no-break: 100 円]` と書く。
+分割の候補の前の最も近い字と後の最も近い字が、どちらも改行しない範囲の字なら、その候補を置かない。
+和文の字のあいだ、語間の空白、明示のハイフンの後、パターンの分綴、ソフトハイフン、ルビの親文字のあいだ、コードの改行の位置のすべてに当てる。
+罰点の候補は罰則 10000 の罰点に、グルーの候補は前に罰則 10000 の罰点を置いたものにし、箱の幅、グルーの伸び縮み、和欧間の空き、アキ量のセットの空き、禁則、突き出し、字幅の伸縮は変えない。
+範囲の中の語間の空白は、改行しないまま伸び縮みする。
+範囲の端の候補は、今のとおりの規則で決める。
+強制改行（行末の `\`）は、範囲の中でも改行する。
+入れ子にした文字スタイルの `no-break` は、どれか一つが真なら真であり、内側に `no-break = false` を書いても外側の範囲は解けない。
+範囲が行に収まらないときは範囲を分けず、はみ出す行を作って G07122 で報告する（上の G07105 の段落）。
+`golem preflight` の `overfull-lines`（G09013）は、今のとおり、はみ出したすべての行を報告する。
+HTML と EPUB では、文字スタイルの CSS の規則に `white-space: nowrap` を書く。
+プレーンテキストは行を折り返さないので、この欄を読まない。
+
 罰点の合計が最小の経路が複数あるときは、まず段落の最後の行の適合度の分類の番号が小さいもの（very loose の側）を選ぶ（[golem-layout ADR 0010](golem-layout/adr/0010-tie-breaking-tex.md)）。
 それでも複数あれば、各経路の分割の位置と適合度の分類の組を最後から二つ目の分割から段落の始まりへ並べた列を辞書式に比べ、大きいほうを選ぶ（[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。
 これは、行長が一定の段落で TeX の選ぶ経路と一致する。
@@ -3482,10 +3534,11 @@ TeX と Golem でハイフネーションのパターンが異なり、Golem は
 明示のハイフンでの分割は止めず、`lime-tree` の `lime-` の後ろで分ける行長も比べる（[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。
 期待値の生成の手順と出所は、テストのデータのディレクトリ（`modules/golem-layout/test/data/knuth-plass/`）の README に書いている。
 
-これらの規則は、[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の L1 から L13 と、[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md) の T1（最後の行と強制改行で終わる行は箱を一つ以上持つ）として、golem-layout のテストで確かめる。
+これらの規則は、[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の L1 から L13 と、[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md) の T1（最後の行と強制改行で終わる行は箱を一つ以上持つ）と、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md) の I4（ソフトハイフンを含む要素は分綴しない）として、golem-layout のテストで確かめる。
+L1、L8、L9 は、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md) の I1、I2、I3 のとおりにソフトハイフンまで広げている。
 述語は `modules/golem-layout/test/LineBreakInvariants.hs` にあり、行分割の入力（項目と段落の設定）と出力（`Breaks`）だけを読み、行の置き方は `placeLine` と `glueRatio` で読む。
-段落は、23 の部品の並びの前に `あ` を、後に `い` を置いたものである。
-部品は、和文の文字クラスごとの一字と `—` と、欧文の語の `a` と `table` と `hyphenation` と `lime-tree` と、語間の空白と `.` と `“` と `”` である。
+段落は、24 の部品の並びの前に `あ` を、後に `い` を置いたものである。
+部品は、和文の文字クラスごとの一字と `—` と、欧文の語の `a` と `table` と `hyphenation` と `lime-tree` と、語間の空白と `.` と `“` と `”` と、ソフトハイフン（U+00AD）である。
 `modules/golem-layout/test/LineBreakInvariantsSpec.hs` は、この段落を組み方の環境と 2 字から 5 字の行の幅のすべてで組み、部品の少ない順に、どの述語も違反を返さないことを確かめる。
 組み方の環境は、禁則（strict か loose）とぶら下げと突き出しと字幅の伸縮の有無と、区間の言語（なし、`en`、`ja`）の組み合わせである。
 字の送りはフォントによらず、欧文の字を 1/4 em、1/2 em、3/4 em の三通りに、語間の空白を 1/4 em に、和文の字を 1 em にした表を `ceAdvance` と `ceWordAdvance` に渡す。
@@ -3496,18 +3549,23 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 毎晩の `enum.yml` は部品 3 個までを 5 字までの行で調べ、分割の候補が 16 以下の入力で L7 を調べ、部品 4 個の入力を 500 万、種を固定した擬似乱数で抜き取って調べる。
 違反があれば、最も小さい入力を表示する。
 「既知の不具合」に載せた違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
-23 の部品の並びの一覧は空である（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md) で、一覧にあった「段落の終わりの語間の空白の前の行末禁則」を直した）。
+24 の部品の並びの一覧は空である（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md) で、一覧にあった「段落の終わりの語間の空白の前の行末禁則」を直した）。
 
 本文の中のコードの並びも、同じ述語と、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の C1 から C8 と、[golem-layout ADR 0045](golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md) の J1 から J7 で調べる（C3 と C4 は J3 と J5 に置き換えた）。
 部品は、和文の `漢`、`あ`、`「`、`」`、`。`、`、`、`ー`、`ぁ`、`…` と、欧文の `a`、`ab`、`1`、`/`、`_`、`-`、`.`、`"` と、空白の 18 である（`-`、`.`、`1` は 0045 で足した）。
 並びの全体を `[code: …]` に入れ、前の `あ` と後の `い` はコードの外に置く。
-組み方の環境は禁則の強さと区間の言語だけであり、正規形は 23 の部品と同じく、`ー` か `ぁ` がなければ強い禁則だけ、両用の字がなければ区間なしだけとする。
+組み方の環境は禁則の強さと区間の言語だけであり、正規形は 24 の部品と同じく、`ー` か `ぁ` がなければ強い禁則だけ、両用の字がなければ区間なしだけとする。
 コードの字の送りは、字のクラスごとに上の表の値とし、改行の印は `⏎` で、その幅をコードの字の大きさの 3/5 とする（[golem-layout ADR 0042](golem-layout/adr/0042-draw-the-wrap-mark-of-inline-code-small-and-light.md)）。
 C4（和文を含まないコードの項目は、印の幅と種類を除けば印のないときと同じ）は、和文を含まない並びの組ごとに、印を空にして組んだ項目と比べる。
 C5（`url`）は例のテストで確かめる。
 プルリクエストの CI は部品 2 個まで（342 の並び）を 4 字までの行で、毎晩の `enum.yml` は部品 3 個までを 5 字までの行で調べる。
-正規形と縦組みは、23 の部品と同じ部品の数までで確かめる。
+正規形と縦組みは、24 の部品と同じ部品の数までで確かめる。
 コードの並びの既知の不具合の一覧は空であり、除く入力はない（[golem-layout ADR 0038](golem-layout/adr/0038-kinsoku-across-spaces-of-inline-code.md)）。
+
+改行しない範囲は、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md) の I7（行の境の前と後の最も近い字がどちらも範囲の字なら、その境は強制改行である）と I8（範囲は分割の候補を消すだけである）として、`modules/golem-layout/test/NoBreakEnum.hs` で確かめる。
+部品は、和文の `漢`、`あ`、`。`、`「` と、欧文の `a`、`table`、`hyphenation`、`lime-tree` と、語間の空白、ソフトハイフン、親文字が二字のモノルビ、`/` を含むコード、強制改行の 13 であり、それぞれを範囲の中か外に置く。
+行の幅は 2 字から 5 字である。
+プルリクエストの CI は部品 2 個まで、毎晩の `enum.yml` は部品 3 個までを調べる。
 
 述語が判定しない場合はない（[docs/adr/0222](adr/0222-line-breaking-points-the-invariants-did-not-decide.md)）。
 L6 は、伸びるグルーのない行を行長に足りなくてよいとし、字幅の伸縮が限度に達していなければ、足りない量が刻み一つ分の伸縮より小さいことを確かめる。

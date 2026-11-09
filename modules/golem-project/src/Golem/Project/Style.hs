@@ -261,7 +261,11 @@ data CharStyleDef = CharStyleDef
     {- | the underline and the strikethrough (docs/adr/0270): Nothing is not
     written, Just Nothing is false
     -} csUnderline :: !(Maybe (Maybe DecorationSpec)),
-    csStrikethrough :: !(Maybe (Maybe DecorationSpec))
+    csStrikethrough :: !(Maybe (Maybe DecorationSpec)),
+    {- | the characters do not break between them (docs/adr ADR 0272), as
+    InDesign's No Break; true in one of the styles around a character is
+    true for it
+    -} csNoBreak :: !(Maybe Bool)
   }
   deriving stock (Eq, Show)
 
@@ -393,7 +397,7 @@ data RegexStyleDef = RegexStyleDef
 
 -- | A character style with no key written.
 noCharDef :: CharStyleDef
-noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing
+noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
@@ -492,7 +496,7 @@ decimalOf s = case T.splitOn "." s of
   [i, f] | not (T.null i), not (T.null f), T.all isDigit (i <> f) -> Just (read (T.unpack (i <> f)) % (10 ^ T.length f))
   _ -> Nothing
 
--- | The built-in character styles: bold, italic, strong, code (golem-driver ADR 0017), url (golem-doc ADR 0005), note-mark (docs/adr/0177), superscript and subscript (docs/adr/0269).
+-- | The built-in character styles: bold, italic, strong, code (golem-driver ADR 0017), url (golem-doc ADR 0005), note-mark (docs/adr/0177), superscript and subscript (docs/adr/0269) and no-break (docs/adr ADR 0272).
 builtinCharStyles :: Map Text CharStyleDef
 builtinCharStyles =
   Map.fromList
@@ -501,6 +505,8 @@ builtinCharStyles =
       -- the wrap mark of inline code (golem-layout ADR 0034): U+23CE, which the code fonts of the manuals have, not U+21A9
       ("code", noCharDef {csFont = Just "code", csPadding = Just (Zw (1 % 4)), csWrapMark = Just "\x23CE"}),
       ("italic", noCharDef {csSyntheticItalic = Just True}),
+      -- a range that does not break (docs/adr ADR 0272)
+      ("no-break", noCharDef {csNoBreak = Just True}),
       -- the marks of notes in the text (docs/adr/0177): the size of the retired [notes] mark-size
       ("note-mark", noCharDef {csSize = Just (Zw (1 % 2))}),
       ("strong", noCharDef {csBasedOn = Just "bold"}),
@@ -692,6 +698,7 @@ overChar u b =
     (csPosition u <|> csPosition b)
     (csUnderline u <|> csUnderline b)
     (csStrikethrough u <|> csStrikethrough b)
+    (csNoBreak u <|> csNoBreak b)
 
 overPara :: ParaStyleDef -> ParaStyleDef -> ParaStyleDef
 overPara u b =
@@ -1710,7 +1717,8 @@ instance FromValue CharStyleDef where
     -- the underline and the strikethrough: true, a table or false (docs/adr/0270)
     ul <- optKeyOf "underline" decorationOrFalse
     st <- optKeyOf "strikethrough" decorationOrFalse
-    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm fs (pos >>= (`lookup` P.positionValues)) ul st)
+    nb <- optKey "no-break"
+    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm fs (pos >>= (`lookup` P.positionValues)) ul st nb)
 
 {- | An underline or a strikethrough (docs/adr/0270): true is the default
 line, a table the keys written, false none.
@@ -2998,6 +3006,7 @@ charStyleNode =
         <> [ ("background", NEither [ref Swatches, NValue LFalse]),
              ("padding", dim),
              ("wrap-mark", str),
+             ("no-break", bool),
              ("features", features),
              ("position", enum (map fst P.positionValues)),
              ("underline", decorationNode),

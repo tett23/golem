@@ -48,7 +48,7 @@ application/epub+zip
 </nav>
 </body>
 </html>
-== OEBPS/style.css (deflate, time 315532800, 2048 bytes)
+== OEBPS/style.css (deflate, time 315532800, 2086 bytes)
 @font-face { font-family: "golem-body-latin"; src: url("fonts/latin.otf"); }
 @font-face { font-family: "golem-body-ja"; src: url("fonts/ja.otf"); }
 body { font-family: "golem-body-latin", "golem-body-ja", serif; }
@@ -87,6 +87,7 @@ li p, li p[class] { padding-inline-start: 0; text-indent: 0; }
 .line { display: block; }
 .line + br { display: none; }
 code { padding-inline: 0.25em; }
+.cs-no-break { white-space: nowrap; }
 == OEBPS/figures.xhtml (deflate, time 315532800, 3043 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>

@@ -2285,6 +2285,10 @@ builtinWith ctx inHeading sp b args slots = do
     Fixed BAki -> aki sp args slots
     Fixed BLink -> link ctx inHeading sp args slots
     Fixed BLang -> langSpan ctx inHeading sp args slots
+    -- a soft hyphen, as U+00AD written in the source (docs/adr ADR 0272)
+    Fixed BShy -> case args of
+      [] -> pure [Text sp "\xAD"]
+      _ -> err "G02152" sp "shy は引数を取りません。[shy] とだけ書きます" >> pure []
   where
     refTo k = \case
       [v] | validLabel (argText v) -> pure [Ref sp k (argText v)]

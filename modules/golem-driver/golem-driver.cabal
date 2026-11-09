@@ -113,6 +113,7 @@ test-suite golem-driver-test
     OpenTypeFeaturesSpec
     ScriptsSpec
     OverflowSpec
+    SoftHyphenSpec
     PageElementsSpec
     PageStartsSpec
     ParagraphRuleSpec

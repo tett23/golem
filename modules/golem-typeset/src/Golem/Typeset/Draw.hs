@@ -189,10 +189,17 @@ orphanErrors fallback units = \case
       _ -> Nothing
 
 {- | G07105 (docs/adr ADR 0210): a warning for each line drawn past its
-measure, with the message and the facts of G09013, on each page it is drawn.
+measure, with the message and the facts of G09013, on each page it is
+drawn; G07122 in its place for a line whose overflow is measured at a box
+of a range that does not break (docs/adr ADR 0272), its message naming
+the range.
 -}
-overfullWarnings :: [OverfullLine] -> [Diagnostic]
-overfullWarnings os = [(diagnostic "G07105" Warning (olSpan o) (olMessage o)) {diagFacts = olFacts o} | o <- os]
+overfullWarnings :: [(OverfullLine, Bool)] -> [Diagnostic]
+overfullWarnings os =
+  [ (diagnostic code Warning (olSpan o) msg) {diagFacts = olFacts o}
+  | (o, inRange) <- os,
+    let (code, msg) = if inRange then ("G07122", "改行しない範囲が行に収まりません。" <> olMessage o) else ("G07105", olMessage o)
+  ]
 
 {- | What a book that declares PDF/A or PDF/UA must meet before its PDF is
 set (docs/adr ADR 0183), in dev and prod alike: an output intent for PDF/A
@@ -287,7 +294,10 @@ data LineRec = LineRec
     {- | the underlines and strikethroughs of the line (docs/adr/0270): what
     golem preflight sees of them as rules, the kind, the band and the
     thinnest part, and the swatch of each
-    -} lrDecorations :: ![(Text, Rect, Sp, Maybe P.Swatch)]
+    -} lrDecorations :: ![(Text, Rect, Sp, Maybe P.Swatch)],
+    {- | the box the overflow of the line is measured at is of a range that
+    does not break (docs/adr ADR 0272): G07122, not G07105
+    -} lrOverfullNoBreak :: !Bool
   }
 
 -- | What one page draws.
@@ -339,7 +349,7 @@ embedded in IO between the two halves (docs/adr ADR 0034): the glyphs
 used in each font and their text, then the PDF and its view from the
 embedded fonts.
 -}
-writeDocumentView :: (P.StructElem -> P.StructElem) -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [OverfullLine], [Diagnostic], Map P.FontRef P.Font -> (ByteString, V.View, Structure))
+writeDocumentView :: (P.StructElem -> P.StructElem) -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [(OverfullLine, Bool)], [Diagnostic], Map P.FontRef P.Font -> (ByteString, V.View, Structure))
 writeDocumentView tamper version inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
@@ -471,7 +481,7 @@ writeDocumentView tamper version inp geom fonts layout intent =
         Just _ -> privateUseErrors [(guText u, guSpan u) | pd <- drawn, u <- pdUses pd]
         Nothing -> []
       -- the lines past their measure on each page they are drawn on (G07105 and G09013, docs/adr ADR 0210)
-      overfull = [overfullLine i amount sp | (i, pd) <- zip [1 ..] drawn, (rec, _) <- pdLines pd, Just (amount, sp) <- [lrOverfull rec]]
+      overfull = [(overfullLine i amount sp, lrOverfullNoBreak rec) | (i, pd) <- zip [1 ..] drawn, (rec, _) <- pdLines pd, Just (amount, sp) <- [lrOverfull rec]]
       -- the leaves drawn that the structure tree has not, after every page is drawn (G07107, docs/adr ADR 0216)
       orphans =
         orphanErrors
@@ -791,7 +801,7 @@ entry :: DrawEnv -> Text -> SrcSpan -> Rect -> Sp -> SetLine -> (LineRec, ([P.Co
 entry env kind sp ta cross = entryAt env kind sp (lineStart env ta cross)
 
 entryAt :: DrawEnv -> Text -> SrcSpan -> (Sp, Sp) -> SetLine -> (LineRec, ([P.Content], [GlyphUse]))
-entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sp sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl) decorated, drawLineAt env start sl)
+entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sp sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl) decorated (overfullInRange sl), drawLineAt env start sl)
   where
     decorated = [(k, band, ruleThinnest w st, decorationSwatch env (decColor d)) | (k, d, band, w, st) <- decorationBands env start sl]
 
@@ -931,6 +941,16 @@ overfullOf block sl =
         c : _ | bcAt c >= 0 -> mkSpan (spanFile (snd (bcSource c))) (bcAt c) (bcAt c)
         _ -> block
    in if lineOverflow l > 0 then Just (lineOverflow l, at) else Nothing
+
+{- whether the box an overflow of a line is measured at, the first whose
+end is past the measure, is of a range that does not break (docs/adr ADR
+0272) -}
+overfullInRange :: SetLine -> Bool
+overfullInRange sl =
+  let l = slLine sl
+   in lineOverflow l > 0 && case [c | (Box w c, o) <- placeLine l, o + w > lineTarget l] of
+        c : _ -> lkNoBreak (bcLook c)
+        [] -> False
 
 -- the block of a line: the unit whose first line is at or before it
 spanOfLine :: DrawEnv -> Int -> SrcSpan
@@ -1075,9 +1095,9 @@ drawLineAt env (x0, y0) sl =
                         | vertical && rotated = (ox - Sp (unSp (size * 3) `div` 10), oy)
                         | otherwise = (ox, oy) -- Identity-V: the origin is the top centre of the em box
                    in whole (runAtU env (whoOf V.PartBase c) look vertical rotated (if bcExpandable c then lineExpansion l else 0) pt (bcText c))
-        -- a word broken at the line end gets its hyphen
-        Penalty hw _ (PatternHyphen _)
-          | i == lastIx && hw > 0 ->
+        -- a word broken at the line end by the patterns or at a soft hyphen gets its hyphen (docs/adr ADR 0272)
+        Penalty hw _ h
+          | endsWithHyphen h && i == lastIx && hw > 0 ->
               let (ox, oy) = origin off
                   look = lookBefore i
                   size = lkSize look
@@ -1165,7 +1185,7 @@ textAt env kind anchor size txt =
         LS.AlignCenter -> anX anchor - Sp (unSp w `div` 2)
         LS.AlignEnd -> anX anchor - w
       face = Rect x0 (anY anchor - (size - zwToSp size baselineRatio)) w size
-   in (LineRec kind styleSpan (Just face) Nothing [] [] [], first (pure . P.Artifact P.Pagination) (runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt))
+   in (LineRec kind styleSpan (Just face) Nothing [] [] [] False, first (pure . P.Artifact P.Pagination) (runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt))
   where
     fonts = deFonts env
     body = bodyRole (piStyle (deInput env))

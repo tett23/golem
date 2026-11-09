@@ -470,7 +470,9 @@ restyle style lk = \case
               lkNominalSize = size,
               -- the lines the style writes have it as their basis (docs/adr/0270)
               lkUnderline = decoration (csUnderline cs) (lkUnderline lk),
-              lkStrikethrough = decoration (csStrikethrough cs) (lkStrikethrough lk)
+              lkStrikethrough = decoration (csStrikethrough cs) (lkStrikethrough lk),
+              -- a range that does not break: true in one of the styles around is true (docs/adr ADR 0272)
+              lkNoBreak = lkNoBreak lk || csNoBreak cs == Just True
             }
       where
         code = isCodeCharStyle style name
