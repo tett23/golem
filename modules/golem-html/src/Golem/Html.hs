@@ -781,7 +781,9 @@ notesSection c =
         <> "</h2>\n"
         <> T.concat
           -- a p for each paragraph, the link back at the start of the first (docs/adr/0263)
-          [ "<aside epub:type=\"footnote\" id=\"note-" <> key n <> "\">"
+          [ "<aside epub:type=\"footnote\" id=\"note-"
+              <> key n
+              <> "\">"
               <> T.concat ["<p>" <> (if i == (0 :: Int) then "<a href=\"" <> linkTo c f ("noteref-" <> key n) <> "\">" <> noteText c n <> "</a> " else "") <> inlines c is <> "</p>" | (i, is) <- zip [0 ..] ps]
               <> "</aside>\n"
           | (f, key, n, ps) <- ns
