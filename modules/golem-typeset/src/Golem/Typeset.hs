@@ -68,6 +68,8 @@ module Golem.Typeset
     renderPdfStructure,
     renderPdfLeafTexts,
     renderPdfWithTree,
+    renderPdfWithDests,
+    LinkDest (..),
     orphanErrors,
     flowLines,
     pdfFileName,
@@ -77,6 +79,7 @@ module Golem.Typeset
   )
 where
 
+import Golem.Layout.Look (LinkDest (..))
 import Golem.Typeset.Draw
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts

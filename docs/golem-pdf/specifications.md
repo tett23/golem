@@ -162,11 +162,14 @@ wasm32 の GHC の `Int` は 32 ビットであり、ネイティブのビルド
 ## リンクの注釈
 
 リンクの注釈（[docs/adr/0182](../adr/0182-external-links.md)）は、`Page` の `pageAnnots :: [Annotation]` が持つ。
-`data Annotation = LinkAnnotation { annotRect, annotAction, annotLink, annotContents }`、`data LinkAction = UriAction Text` である。
+`data Annotation = LinkAnnotation { annotRect, annotAction, annotLink, annotContents }`、`data LinkAction = UriAction Text | GoTo Dest`、`data Dest = DestXyz Int Sp` である。
+`UriAction` は外部の URL を開き、`GoTo` は文書の中の行先へ行く（[docs/adr/0267](../adr/0267-pdf-bookmarks-and-links-inside-the-document.md)）。
+`DestXyz` はページの位置（0 から）とウィンドウの上端の y 座標を持ち、`/XYZ` の明示した行先の一つの形だけを表す。
 `annotLink` は注釈の属する構造の木の `Link`（`KidAnnot` の `AnnotId`）を、`annotContents` は `/Contents` に書くリンクの文字を持つ（[docs/adr/0183](../adr/0183-tagged-pdf-and-pdf-a.md)）。
-v1.0.0 の文書の中のリンクは、`LinkAction` に行先へのアクションを足す。
 
-- `framePageWith` は、内容と同じだけ注釈の矩形を動かす（塗り足しとトンボの分）。
+- `GoTo` の注釈は、`/A` の代わりに `/Dest [p 0 R /XYZ null t null]` を持つ。`p` は行先のページのオブジェクト、`t` は `/Rect` と同じ書き方の数である。名前の付いた行先と `/GoTo` のアクションは書かない。ほかのキーは `UriAction` の注釈と同じである。
+- 一つのページの注釈は、`UriAction` と `GoTo` を分けずに与えられた順に書く。
+- `framePageWith` は、内容と同じだけ注釈の矩形を動かす（塗り足しとトンボの分）。行先の `t` は動かさないので、呼ぶ側が同じ分を足して渡す。
 - `framePage` は、注釈のないページを作る。
 - `documentObjects` は、注釈を PDF/X-4 の出力インテントと XMP の後、構造の木と文書情報の前に、ページの順、ページの中の順で書く。
 - 注釈のあるページの辞書は、`/Annots` と `/Tabs /S` を持つ。
@@ -175,6 +178,21 @@ v1.0.0 の文書の中のリンクは、`LinkAction` に行先へのアクショ
 - `asciiUri` は、URL の ASCII でない文字を UTF-8 のバイトごとに `%XX`（大文字）にし、ASCII の文字は `%XX` を含めてそのまま残す。
 - `X4.verify` は、ページの `/Annots` が指すオブジェクトのうち `/Subtype /Link` のものについて、`/A` の辞書が `/S /URI` なら、その `/S` と `/URI` を禁止の名前として数えない。
 - `/A` が間接参照のときは、除かない。
+
+## しおり
+
+しおり（文書のアウトライン、[docs/adr/0267](../adr/0267-pdf-bookmarks-and-links-inside-the-document.md)）は、`Document` の `docOutline :: [OutlineItem]` が持つ。
+`data OutlineItem = OutlineItem { oiTitle :: Text, oiDest :: Dest, oiKids :: [OutlineItem] }` である。
+`outlineFromLevels` は、文書の順の項目と階層の並びから木を作る。
+ある項目の親は、それより前で階層が小さい最も近い項目であり、なければルートである。
+階層 1 の次に階層 3 が来れば、階層 3 の項目は階層 1 の項目の子になる。
+
+- 項目がなければ、文書カタログに `/Outlines` も `/PageMode` も書かず、PDF のバイト列は変わらない。
+- 項目があれば、文書カタログに `/Outlines` と `/PageMode /UseOutlines` を書く。
+- しおりのオブジェクトは、注釈のオブジェクトの後、構造の木の前に置く。`/Outlines` の辞書（`/Type /Outlines`、`/First`、`/Last`、`/Count`）、その後に項目を先行順に並べる。
+- 項目は `/Title`（`pdfTextString`）、`/Parent`、`/Prev`、`/Next`、`/First`、`/Last`、`/Count`、`/Dest` のうち要るものを持つ。辞書のキーは、ほかの辞書と同じく名前の順に書く。
+- 子を持つ項目はすべて閉じて書く。`/Count` は、ルートでは最上位の項目の数、子を持つ項目では子の数を負にした値で、子を持たない項目には書かない（ISO 32000-1 の 12.3.3）。
+- `/Dest` は注釈の `GoTo` と同じ形の明示した行先である。
 
 ## ページラベル
 

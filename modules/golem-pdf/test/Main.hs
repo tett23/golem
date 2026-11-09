@@ -97,7 +97,8 @@ documentWith tinyJpeg ps =
       docLang = "ja",
       docPdfUa = Nothing,
       docStructure = structElem SDocument [KidLeaf (LeafId [0])],
-      docPageLabels = []
+      docPageLabels = [],
+      docOutline = []
     }
 
 -- | A fixed Producer, so that the goldens do not change with the version (ADR 0005).
@@ -494,6 +495,91 @@ linkTests tinyJpeg =
   where
     r = Rect (72 * 65536) (700 * 65536) (100 * 65536) (10 * 65536)
     annotated u = (page [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]) {pageAnnots = [LinkAnnotation r (UriAction u) Nothing Nothing]}
+
+-- | The links inside the document and the outline (docs/adr/0267).
+insideTests :: ByteString -> [TestTree]
+insideTests tinyJpeg =
+  [ testCase "I1 a link to a place of the document has /Dest [p 0 R /XYZ null t null] and no /A; a link to a URL is as before" $ do
+      let pdf = writePdf (documentWith tinyJpeg [gone (DestXyz 1 (Sp 45907968)), annotatedUri])
+      -- page 1 (from 0) is object 3 + 2
+      assertBool (show pdf) ("<< /Border [0 0 0] /Dest [5 0 R /XYZ null 700.5 null] /F 4 /Rect [72 700 172 710] /Subtype /Link /Type /Annot >>" `BS.isInfixOf` pdf)
+      assertBool (show pdf) ("<< /A << /S /URI /URI (https://example.com/) >> /Border [0 0 0] /F 4 /Rect [72 700 172 710] /Subtype /Link /Type /Annot >>" `BS.isInfixOf` pdf)
+      countOf "/Dest " pdf @?= 1
+      countOf "/A <<" pdf @?= 1
+      assertBool "xref" (xrefConsistent pdf),
+    testCase "I1 the /Contents and the /StructParent of a link inside the document are written as those of a link to a URL" $ do
+      let aid = AnnotId [0, 1]
+          link = LinkAnnotation r (GoTo (DestXyz 0 (Sp 0))) (Just aid) (Just "第2章")
+          doc = (documentWith tinyJpeg [(page []) {pageAnnots = [link]}]) {docStructure = structElem SDocument [KidElem (structElem SReference [KidElem (structElem SLink [KidAnnot aid])])]}
+          pdf = writePdf doc
+      assertBool (show pdf) ("<< /Border [0 0 0] /Contents <feff" `BS.isInfixOf` pdf)
+      assertBool (show pdf) ("/Dest [3 0 R /XYZ null 0 null] /F 4 /Rect [72 700 172 710] /StructParent 1 /Subtype /Link /Type /Annot >>" `BS.isInfixOf` pdf),
+    testCase "I6 the parent of an item is the nearest item before it of a smaller level" $ do
+      let titles ls = [(l, T.pack (show k), DestXyz 0 0) | (k, l) <- zip [0 :: Int ..] ls]
+          shape = map (\(OutlineItem t _ ks) -> (t, shape' ks))
+          shape' = map (\(OutlineItem t _ ks) -> (t, length ks))
+      -- 1 then 2, 1 then 3 (skipped), 3 then 1 (back), the same level
+      shape (outlineFromLevels (titles [1, 2])) @?= [("0", [("1", 0)])]
+      shape (outlineFromLevels (titles [1, 3])) @?= [("0", [("1", 0)])]
+      shape (outlineFromLevels (titles [3, 1])) @?= [("0", []), ("1", [])]
+      shape (outlineFromLevels (titles [1, 1])) @?= [("0", []), ("1", [])]
+      shape (outlineFromLevels (titles [1, 2, 3, 2, 1])) @?= [("0", [("1", 1), ("3", 0)]), ("4", [])]
+      outlineFromLevels [] @?= [],
+    testCase "I6 I7 the outline: /Parent, /First, /Last, /Prev, /Next, and /Count closed" $ do
+      -- 1, 2, 2, 1: objects 7 (/Outlines), 8 (1), 9 (2), 10 (2), 11 (1)
+      let items = outlineFromLevels [(1, "一", DestXyz 0 0), (2, "二", DestXyz 0 0), (2, "三", DestXyz 1 0), (1, "四", DestXyz 1 0)]
+          objs = pdfObjects (documentObjects (documentWith tinyJpeg [page [], page []]) {docOutline = items})
+          obj n = case drop (n - 1) objs of
+            o : _ -> o
+            [] -> ONull
+          keys n = case obj n of
+            ODict kvs -> [(k, v) | (k, v) <- kvs, k /= "Title"]
+            _ -> []
+      keys 7 @?= [("Type", OName "Outlines"), ("First", ORef 8), ("Last", ORef 11), ("Count", OInt 2)]
+      keys 8 @?= [("Parent", ORef 7), ("Next", ORef 11), ("First", ORef 9), ("Last", ORef 10), ("Count", OInt (-2)), ("Dest", OArr [ORef 3, OName "XYZ", ONull, OReal "0", ONull])]
+      keys 9 @?= [("Parent", ORef 8), ("Next", ORef 10), ("Dest", OArr [ORef 3, OName "XYZ", ONull, OReal "0", ONull])]
+      keys 10 @?= [("Parent", ORef 8), ("Prev", ORef 9), ("Dest", OArr [ORef 5, OName "XYZ", ONull, OReal "0", ONull])]
+      keys 11 @?= [("Parent", ORef 7), ("Prev", ORef 8), ("Dest", OArr [ORef 5, OName "XYZ", ONull, OReal "0", ONull])]
+      [t | ODict kvs <- [obj 9], ("Title", t) <- kvs] @?= [pdfTextString "二"]
+      let pdf = writePdf (documentWith tinyJpeg [page [], page []]) {docOutline = items}
+      assertBool (show pdf) ("/Outlines 7 0 R /PageMode /UseOutlines" `BS.isInfixOf` pdf)
+      assertBool "xref" (xrefConsistent pdf),
+    testCase "I7 the root counts the top items; an item without children has no /Count" $ do
+      let items = outlineFromLevels [(1, "a", DestXyz 0 0), (1, "b", DestXyz 0 0), (1, "c", DestXyz 0 0)]
+          pdf = writePdf (documentWith tinyJpeg [page []]) {docOutline = items}
+      assertBool (show pdf) ("<< /Count 3 /First 6 0 R /Last 8 0 R /Type /Outlines >>" `BS.isInfixOf` pdf)
+      countOf "/Count" pdf @?= 2,
+    -- the bytes of a PDF of this writer before docs/adr/0267, of every kind of page and a link to a URL
+    goldenVsString "I8 a PDF without an outline and links inside the document is the same as before" "test/golden/without-outline.pdf" $
+      pure (BL.fromStrict (writePdf (documentWith tinyJpeg [page [], annotatedUri, page [Image (ImageRef 1) (Rect 0 0 (100 * 65536) (50 * 65536))]]))),
+    testCase "I8 without an outline the catalog has no /Outlines and no /PageMode" $ do
+      let pdf = writePdf (documentWith tinyJpeg [gone (DestXyz 0 0)])
+      assertBool "no Outlines" (not ("/Outlines" `BS.isInfixOf` pdf))
+      assertBool "no PageMode" (not ("/PageMode" `BS.isInfixOf` pdf)),
+    testCase "I10 the same document twice is the same bytes; the objects are the annotations, /Outlines, its items, the structure tree" $ do
+      let doc = (documentWith tinyJpeg [gone (DestXyz 1 (Sp 65536)), annotatedUri]) {docOutline = outlineFromLevels [(1, "一", DestXyz 0 0), (2, "二", DestXyz 1 0)]}
+          pdf = writePdf doc
+      writePdf doc @?= pdf
+      let at needle = BS.length (fst (BS.breakSubstring needle pdf))
+      -- the two annotations, the outline and its two items, the structure tree root
+      [at ("\n" <> BC.pack (show n) <> " 0 obj\n" <> what) | (n, what) <- [(12 :: Int, "<< /Border"), (13, "<< /A <<"), (14, "<< /Count 1"), (15, "<< /Count -1"), (16, "<< /Dest"), (17, "<< /K [")]]
+        @?= sort [at ("\n" <> BC.pack (show n) <> " 0 obj\n" <> what) | (n, what) <- [(12 :: Int, "<< /Border"), (13, "<< /A <<"), (14, "<< /Count 1"), (15, "<< /Count -1"), (16, "<< /Dest"), (17, "<< /K [")]]
+      assertBool (show pdf) (all (\(n, what) -> at ("\n" <> BC.pack (show n) <> " 0 obj\n" <> what) < BS.length pdf) [(12 :: Int, "<< /Border"), (13, "<< /A <<"), (14, "<< /Count 1"), (15, "<< /Count -1"), (16, "<< /Dest"), (17, "<< /K [")])
+      assertBool "xref" (xrefConsistent pdf),
+    needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
+      testCase "qpdf --check accepts a PDF with an outline and links inside the document" $ do
+        exe <- qpdf
+        withSystemTempDirectory "golem-pdf" $ \dir -> do
+          let path = dir </> "outline.pdf"
+          BS.writeFile path (writePdf (documentWith tinyJpeg [gone (DestXyz 1 (Sp 65536)), annotatedUri]) {docOutline = outlineFromLevels [(1, "一", DestXyz 0 0), (2, "二", DestXyz 1 0), (1, "three", DestXyz 1 0)]})
+          (code, out, err) <- readProcessWithExitCode exe ["--check", path] ""
+          assertEqual (out <> err) ExitSuccess code
+  ]
+  where
+    r = Rect (72 * 65536) (700 * 65536) (100 * 65536) (10 * 65536)
+    glyphs = page [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]
+    gone d = glyphs {pageAnnots = [LinkAnnotation r (GoTo d) Nothing Nothing]}
+    annotatedUri = glyphs {pageAnnots = [LinkAnnotation r (UriAction "https://example.com/") Nothing Nothing]}
 
 producerTests :: ByteString -> [TestTree]
 producerTests tinyJpeg =
@@ -909,6 +995,7 @@ tests tinyJpeg =
       testGroup "crop marks and bleed (ADR 0004)" (marksTests tinyJpeg),
       testGroup "Producer (ADR 0005)" (producerTests tinyJpeg),
       testGroup "link annotations (docs/adr ADR 0182)" (linkTests tinyJpeg),
+      testGroup "links inside the document and the outline (docs/adr/0267)" (insideTests tinyJpeg),
       testGroup "pages in parallel (docs/adr ADR 0252)" (parallelTests tinyJpeg),
       ImageSpec.tests,
       ImportSpec.tests,

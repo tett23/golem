@@ -103,7 +103,7 @@ code { padding-inline: 0.25em; }
 </nav>
 </body>
 </html>
-== OEBPS/chapters/01.xhtml (deflate, time 315532800, 1203 bytes)
+== OEBPS/chapters/01.xhtml (deflate, time 315532800, 1287 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -115,7 +115,7 @@ code { padding-inline: 0.25em; }
 <body>
 <h1 id="intro"><span class="number">第一章</span>　はじめに</h1>
 <p>Golem は<ruby class="mono">組<rp>（</rp><rt>くみ</rt><rp>）</rp>版<rp>（</rp><rt>はん</rt><rp>）</rp></ruby>の結果を、同じ入力から常に同じバイト列として出力する<a epub:type="noteref" class="noteref" href="#note-1" id="noteref-1">1</a>。本書は第1.0版、価格は2.68である。全2章。<span class="proof">図を一枚入れる</span></p>
-<p>詳しくは第2章「設計」で説明する。<strong>重要</strong>、10。</p>
+<p>詳しくは第<a href="../chapters/02.xhtml#design">2</a>章「<a href="../chapters/02.xhtml#design">設計</a>」で説明する。<strong>重要</strong>、10。</p>
 <dl>
 <dt>決定性</dt>
 <dd>
