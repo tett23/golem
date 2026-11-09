@@ -7,7 +7,7 @@
     "@textlint-ja/textlint-rule-preset-ai-writing": "1.7.0",
     "textlint": "15.8.0",
     "textlint-rule-preset-golem": "file:rules",
-    "textlint-rule-preset-ja-spacing": "3.0.3",
+    "textlint-rule-preset-ja-spacing": "3.0.4",
     "textlint-rule-preset-ja-technical-writing": "12.0.2",
     "textlint-rule-prh": "6.1.1"
   }
