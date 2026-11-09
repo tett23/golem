@@ -114,7 +114,7 @@ aarch64 では三つのランナーでビルドし、x86-64 と同じく [code: 
 + テストを受け持つランナーでは qpdf を、x86-64 の [code: outputs] では epubcheck を、裏で入れ始める。入れ終わるのを待つのは、ビルドの直後である。
 + テストのラッパー [code: scripts/ci/suite-timeout.sh] を [code: cabal.project.local] に書く。
 + GHC 9.10.3 と cabal-install 3.16.1.0 を用意する。その前に [code: CABAL_DIR] を [code: $HOME/.cabal] にして、cabal が設定ファイル、Hackage の索引、store をすべて [code: ~/.cabal] の下に置くようにする。用意した後で、[code: cabal path] が答えるディレクトリが [code: ~/.cabal] の下にあることを確かめる。[code: ~/.cabal] と [code: ~/.config/cabal/config] の両方があると、cabal は [code: ~/.cabal] を読まず、キャッシュから戻した索引を見つけられないからである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0201-pin-cabal-dir-in-ci.md]（docs/adr の ADR 0201「CI の cabal に CABAL_DIR を与え、~/.cabal の配置に固定する」）]GHC のディレクトリ、Hackage の索引、cabal の store、[code: dist-newstyle] をキャッシュから戻す。GHC のキャッシュには、CI が読まない文書とプロファイリング用のライブラリを入れない。キャッシュが外れたときは、GHC を入れた後にそれらを消してから保存する。Hackage の索引のキャッシュには、cabal がビルドの計画に使わない圧縮した索引（[code: 01-index.tar.gz]）を入れない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0141-smaller-ghc-and-hackage-index-caches.md]（docs/adr の ADR 0141「GHC と Hackage の索引のキャッシュから、CI が読まないファイルを除く」）]キャッシュが外れたときは、[code: cabal update] の後に [code: 01-index.tar.gz] を消してから保存する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0152-remove-hackage-index-tar-gz-before-cache.md]（docs/adr の ADR 0152「Hackage の索引のキャッシュから 01-index.tar.gz を rm で除く」）]
-+ wasmtime のアーカイブを [code: third_party/downloads] にキャッシュから戻し、[code: scripts/fetch-wasmtime.sh] で照合して展開する。キャッシュになければ取得し、[code: main] への push では [code: tests-driver] のランナーが保存する。
++ [code: scripts/fetch-wasmtime.sh] で wasmtime を用意する。そのアーカイブは、キャッシュから [code: third_party/downloads] に戻し、SHA-256 を照合してから展開する。キャッシュになければ取得し、[code: main] への push では [code: tests-driver] のランナーが保存する。
 + テストを受け持つランナーでは、[code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
 + [code: cabal build all] を実行し、テストを受け持つランナーでは続けて [code: cabal test] を実行する。どちらのアーキテクチャでも、[code: tests-driver] は golem-driver のスイートを、[code: tests-rest] はそのほかのすべてのスイートを実行する。二つへの振り分けは [code: scripts/ci/test-suites.sh] が [code: modules/] の [code: .cabal] のファイルから決めるので、新しいスイートはどこにも書かなくても [code: tests-rest] で走る。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。テストには [code: GOLEM_PD_BOOKS] を付け、フィクスチャの十冊をすべてのターゲットに組む（第[ref-number fixtures]章）。[code: TASTY_NO_CREATE=true] も付け、ゴールデンのファイルが欠けていれば失敗にする（第[ref-number build-test]章）。ビルドとテストのあいだで、[code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることと、golem-test-support が golem のパッケージに依存しないことを確かめる。
 + テストを受け持つランナー（[code: tests-driver] を除く）では、[code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。続けて [code: scripts/gen-embedded.sh] で golem-driver の二つのモジュールを生成し直し、同じく差分がないことを確かめる。
@@ -227,8 +227,8 @@ x86-64 の [code: outputs] のランナーが、ビルドの直後、epubcheck �
 [code: visual] は [code: changes] だけを待ち、[code: build] と同時に [code: ubuntu-24.04] で走り始め、次の順に進む。
 
 + チェックアウトする。
-+ shem のアーカイブを [code: third_party/downloads] に、[code: scripts/visual/fetch-shem.sh] のハッシュをキーにした [code: main] のキャッシュから戻す。版と SHA-256 はこのスクリプトにあるので、版を上げればキーも変わる。
-+ [code: sh scripts/visual/fetch-shem.sh] を、10 分を上限に実行する。戻したアーカイブの SHA-256 が合えば何も取らずに展開し、なければ [code: scripts/ci/fetch-url.sh] が shem の release から取る。取得は 3 回まで試し、試行のあいだに 10 秒と 30 秒を待つ。
++ [code: scripts/visual/fetch-shem.sh] のハッシュをキーにした [code: main] のキャッシュから、shem のアーカイブを [code: third_party/downloads] に戻す。版と SHA-256 はこのスクリプトにあるので、版を上げればキーも変わる。
++ 10 分を上限に [code: sh scripts/visual/fetch-shem.sh] を実行する。戻したアーカイブは SHA-256 を照合してから展開する。アーカイブがないか SHA-256 が合わなければ、[code: scripts/ci/fetch-url.sh] が shem の release から取り直す。取得は 3 回まで試し、試行のあいだに 10 秒と 30 秒を待つ。
 + [code: main] への push では、キャッシュになかったアーカイブを保存する。
 + [code: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh] で、この実行に [code: visual-pdfs] が上がるのを待つ。
 + [code: visual-pdfs] を取り寄せる。
