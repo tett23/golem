@@ -1852,9 +1852,14 @@ PDF では、コードブロックを次のように組む。
 - `continued` が空でなければ、改ページで分かれたコードブロックの最後の部分のほかの各部分の末尾に一行を足し、その文字列をコードの列の終わりにそろえて描く。この行もその部分が占める格子の行に数え、コードの一行、この行、上下の `padding` が一ページに収まらなければ G07043 とする。
 
 文字スタイル `code` と、`based-on` をたどって `code` に行き着く文字スタイルの文字は、PDF でハイフネーションとカーニングをかけない。
-欧文の字どうしのあいだで改行してよい位置は、空白、`/` の後、`_` の連なりの後に限る（どこで改行してもハイフンを描かない）。
+欧文の字どうしのあいだで改行してよい位置は、空白、`/` の後、`_` の連なりの後、`-` と `.` の連なりの後に限る（どこで改行してもハイフンを描かない）。
 `_` の連なりの後の罰点は 100、`/` の後の罰点は 0 である。
 `_` の連なりのうち、空白で区切ったコードの最初と最後の連なりの後では改行しない（[golem-layout ADR 0031](golem-layout/adr/0031-line-breaks-after-low-lines-in-identifiers.md)）。
+文字スタイル `code`（`url` でない）では、`-` か `.` が一字以上続いた連なり（`--`、`...`、`-.` も一つの連なり）の後でも、罰点 100 で改行できる（[golem-layout ADR 0045](golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md)）。
+連なりの前と後に空白で区切った同じ並びの字があり、その二つの字がどちらも欧文の字で、`/` でも `_` でもなく、ともに数字（`0` から `9`）ではないときに限る。
+`attest-build-provenance` は `attest-` と `build-` の後で改行できる。
+`-n`、`.wasm`、`foo.`、`a/-b` の `-` の後、`1.0.0`、`0.5zw`、`2026-11-09` では改行しない。
+連なりの後の字が和文の字のところは、次の段落の和文の改行の規則による。
 隣り合う二つの字の少なくとも一方が和文の字であれば、和文の字どうしのあいだでも、和文と欧文の字の境でも、本文と同じ禁則（段落の禁則の強さによる行頭禁則、行末禁則、分離禁止文字の連続）に当たらない限り、罰点 0 で改行できる（[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)）。
 和文の字は、区間の言語で決めた字のクラスが欧文でない字である。
 ASCII の字は、記号（`"`、`(`、`:`、`=` など）も含めてすべて欧文の字（JLReq の cl-27）として扱う。
@@ -1865,7 +1870,7 @@ ASCII の字は、記号（`"`、`(`、`:`、`=` など）も含めてすべて�
 コードの和文の字は、字（基底の字と後に続く結合文字）ごとの箱にし、箱の幅はその字の送りにトラッキングを足した値とする。
 コードの中の改行でも、行の端に余白（`padding`）を足さない。
 文字スタイル `url` には、この和文の改行を当てない。
-空白でない候補（和文の字の前後、`/` の後、`_` の連なりの後）で改行した行の行末には、コードの文字スタイルの `wrap-mark` の印を描く。
+空白でない候補（和文の字の前後、`/` の後、`_` の連なりの後、`-` と `.` の連なりの後）で改行した行の行末には、コードの文字スタイルの `wrap-mark` の印を描く。
 空白で改行した行には描かない。
 印は、コードの字の大きさの 3/5 の大きさで、コードの色の半分の色で描く（描き方は後述、[golem-layout ADR 0042](golem-layout/adr/0042-draw-the-wrap-mark-of-inline-code-small-and-light.md)）。
 印の幅は、候補の罰点の幅として行分割に入れ、印を描いた行も行長に収める。
@@ -2700,7 +2705,7 @@ CSV と TSV の読み手は、ファイルを `Text` のまま読み、`String` 
 PDF では、表を行の格子の上に組む（[golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)）。
 
 - セルの中身は本文と同じ書体と大きさで組み、セルの一行を格子の一行とする。表の行の高さは、その行で最も行数の多いセルの行数とする。
-- 列の幅は、セルの最小の幅（改行できる位置のあいだの最も広い部分）と自然な幅（一行に組んだ幅）から決める。列の間隔は一字分とし、自然な幅の合計が収まればその幅で組む。収まらなければ、短い列から自然な幅を満たして配る（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。各列の幅を、上限 C を最小の幅以上、自然な幅以下に収めた値とし、合計が使える幅に収まる最大の整数の C（sp）を二分探索で求める。残りは、自然な幅に届いていない列に、行の始まりの側の列から 1sp ずつ配る。自然な幅が C 以下の短い列は折り返さず、折り返しは長い列に集まる。最小の幅の合計が収まらない場合はエラー（G07041）とする。表の幅が行長より短い場合は、行の始まりの側に寄せる。
+- 列の幅は、セルの最小の幅（改行できる位置のあいだの最も広い部分。本文の中のコードの改行の印を描く位置で終わる部分は、印の幅を含む。[ADR 0255](adr/0255-record-what-implementations-decided-on-2026-11-09.md)）と自然な幅（一行に組んだ幅）から決める。列の間隔は一字分とし、自然な幅の合計が収まればその幅で組む。収まらなければ、短い列から自然な幅を満たして配る（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。各列の幅を、上限 C を最小の幅以上、自然な幅以下に収めた値とし、合計が使える幅に収まる最大の整数の C（sp）を二分探索で求める。残りは、自然な幅に届いていない列に、行の始まりの側の列から 1sp ずつ配る。自然な幅が C 以下の短い列は折り返さず、折り返しは長い列に集まる。最小の幅の合計が収まらない場合はエラー（G07041）とする。表の幅が行長より短い場合は、行の始まりの側に寄せる。
 - セルの段落では、最後の二つの和文の字（欧文の語、ルビ、縦中横、注の印でない一字の箱）のあいだで改行しない（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。あいだの罰点を無限の罰点に替え、アキのグルーの前に無限の罰点を置く。列の最小の幅は、最後の二字を一つの区間として数える。本文の段落には当てない。
 - セルではぶら下げ組と突き出しを使わない。揃えはセルの各行の内容の幅と列の幅の差で決め、両端揃えの行には適用しない。
 - 罫線は横の罫だけを引く。表の始まりと終わりに 0.6pt、見出しの行の下に 0.3pt の罫を引く（[golem-driver ADR 0031](golem-driver/adr/0031-table-spacing-and-rules.md)）。罫は表の字面の外に、すき間 `c` を空けて引く。横組みでは、表のセルに描くグリフの字面の範囲から、基準線の上の高さ `a` と下の深さ `d` を求める（字面を持つグリフがなければ、`a` は文字の大きさの 0.88 倍、`d` はその残り）。縦組みでは、`a` と `d` を文字の大きさの半分ずつとする。`c` は `max 0 ((p − a − d) div 2)`（`p` は行送り）であり、表の始まりの罫の中心は表の最初の行の基準線（縦組みでは行の中心線）から `a + c` 前、見出しの行の下の罫と表の終わりの罫の中心は、それぞれの行の基準線から `d + c` 後にある。縦組みでは、隣り合う格子の行の字面の枠のあいだの空きの中央になる。
@@ -2998,15 +3003,18 @@ P1、P3、P4 の「次のブロック」は、[golem-layout ADR 0026](golem-layo
 流れが来た段は、前に書いたブロックと書いた位置に置かれた図版の最後の部分の段か、その後に書いた改ページが進むページの最初の段である。
 空きの前で判定した `@need-lines` で次の段へ進めば、その段である。
 空きが `@need-lines` の前にあっても後にあっても、同じである（[golem-layout ADR 0044](golem-layout/adr/0044-read-the-figures-moved-by-need-lines-judged-before-spaces.md)）。
+空きと `@need-lines` のあいだに待つ図版があっても、同じである（[golem-layout ADR 0047](golem-layout/adr/0047-spaces-before-a-waiting-figure-and-need-lines.md)）。
 [golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の「実装すること」の 3 は、後に書いたブロックの最初の部分より後の位置に置かれた図版を待つ図版とするが、それでは、後のブロックが次の段へ進んで先に置かれた待つ図版を見落とし、前の `@need-lines` を受け取る自ら送られる図版を待つ図版に数える。
 述語は、改ページが待たせる図版を、入力の流れと出力だけから読む（[golem-layout ADR 0033](golem-layout/adr/0033-read-waiting-figures-from-the-placement.md)）。
 I2、I4、I5、I6、I8 は、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md) の「実装すること」の 6 の表のとおりに読む。
 空きの位置によらないことは、[golem-layout ADR 0043](golem-layout/adr/0043-spaces-before-need-lines-are-not-counted-either.md) の「不変条件」の節の P9 として確かめる。
 P9 は、空きの直後に `@need-lines` がある入力で、二つを入れ替えた入力を組み直し、すべての段の枠と記録が元の入力と同じことを求める。
-前のブロックと次のブロックのあいだに、改ページの印、`@no-page-break`、`@page-lines` がある入力は判定しない。
+[golem-layout ADR 0047](golem-layout/adr/0047-spaces-before-a-waiting-figure-and-need-lines.md) の「不変条件」の節の P9′ は、P9 を広げ、空きと `@need-lines` のあいだに待つ図版だけがある入力でも、空きを `@need-lines` の直後へ移した入力を組み直す。
+同じ ADR の P11 は、そのあいだの待つ図版を空きの前に書いた入力を組み直し、待つ図版の枠を除いて、すべての段の枠と記録が元の入力と同じことを求める。
+前のブロックと次のブロックのあいだに、待つ図版を飛ばして、改ページの印、`@no-page-break`、`@page-lines` がある入力は判定しない。
 述語は `modules/golem-layout/test/PaginateInvariants.hs` にあり、改ページの入力と出力だけを読む。
-P9 だけは、入れ替えた入力をテストが渡す改ページで組み直す。
-[golem-layout ADR 0044](golem-layout/adr/0044-read-the-figures-moved-by-need-lines-judged-before-spaces.md) の「不変条件」の節の W3 は、P9 が入れ替えた入力の出力が元の出力と同じとき、述語が二つの入力から同じ待つ図版を読むことを求める。
+P9 と P11 だけは、入れ替えた入力をテストが渡す改ページで組み直す。
+[golem-layout ADR 0044](golem-layout/adr/0044-read-the-figures-moved-by-need-lines-judged-before-spaces.md) の「不変条件」の節の W3 は、P9（P9′ を含む）が入れ替えた入力の出力が元の出力と同じとき、述語が二つの入力から同じ待つ図版を読むことを求める。
 W3 も、すべての入力のテストと抜き取りのテストで確かめる。
 `modules/golem-layout/test/PaginateInvariantsSpec.hs` は、段の行の数が 3 から 5、段の数が 1 と 2 の版面に、段落、注を持つ段落、見出し、注を持つ見出し、改丁の見出し、1 行と C − 1 行と C 行（C は段の行の数）の図版、一行の空き、改ページ、`@need-lines 2` と `@need-lines C − 1`（[golem-layout ADR 0035](golem-layout/adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md)）、1 行と 2 行の行アキを並べた流れを、要素の少ない順にすべて組み、どの述語も違反を返さないことを確かめる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 3）。
 プルリクエストの CI は要素 3 個まで、毎晩の `enum.yml` は要素 5 個まで調べる。
@@ -3061,7 +3069,7 @@ EPUB の読書環境は文書の境界で改ページし、見開きの左右も
 行数は版面の格子の行数という抽象的な数であり、ページの大きさや位置ではない。
 
 - `@no-page-break` の前が段落か定義リストの用語なら、改ページは、前の最後の 2 行（3 行以下の段落では全体。[docs/adr/0055](adr/0055-no-page-break-moves-short-paragraphs-whole.md)）を次の段に送り、後の最初の部分（`nextNeed` と同じ量。3 行の段落では全体とする。その部分の行の注の本文と、その段で最初の注なら区切りの領域を含む。[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）と同じ段に置く。`@no-page-break` の前と後にある空き（`space-between`、`space-before`、`space-after`）の行も、後の最初の部分の量に足す。足した量は段の行の格子の数を上限とする（[golem-layout ADR 0022](golem-layout/adr/0022-no-page-break-counts-spaces.md)）。空の段からは送らない。前が見出しなら今の規則のとおりで、そのほかのブロックなら置き方を変えない。
-- `@need-lines` は、改ページの印と同じくためておき、次のブロックを置く直前に、改ページの印の後で判定する。次の段へ進んだら、送った図版と続きの脚注をその段に置いた後の残りで数え直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。待つ図版（「図版」の節）は次のブロックに数えず、その後の、待つ図版でないブロックの直前で判定する（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。空き（改ページに渡す一行の空き。表とコードブロックの後や、`space-before` を持つ段落の前に入る）も、行アキと同じく次のブロックに数えず、判定の残りに数えない。`@need-lines` の後に空きがあれば、空きの前の位置で判定する。判定した段で、空きを置いた後の残りに次のブロックの最初の部分が入れば、ブロックはその段に置く。入らずにブロックが後の段に移れば、移った段で送った図版と続きの脚注を置いた後の残りで N 行を判定し直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0027](golem-layout/adr/0027-need-lines-judged-again-after-spaces.md)）。`@need-lines` の前に置いた空きも数えない。前のブロックの後に空きを置いてから `@need-lines` が来れば、空きを置く前の位置で、後の空きと同じく判定し、判定した段を覚える。空きが `@need-lines` の前にあっても後にあっても、結果は同じである（[golem-layout ADR 0043](golem-layout/adr/0043-spaces-before-need-lines-are-not-counted-either.md)）。ブロックを挟まずに続く `@need-lines` は、大きいほうの行の数を取る。空きの前で判定した後に、より大きい `@need-lines` が続けば、合わせて増えた値を、次の空きの前か、ブロックの前で判定し直す。同じか小さい値なら、判定し直さない（[golem-layout ADR 0035](golem-layout/adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md)）。増えた値の前に空きを置いていれば、増えた値も空きを置く前の位置で判定する（[golem-layout ADR 0043](golem-layout/adr/0043-spaces-before-need-lines-are-not-counted-either.md)）。
+- `@need-lines` は、改ページの印と同じくためておき、次のブロックを置く直前に、改ページの印の後で判定する。次の段へ進んだら、送った図版と続きの脚注をその段に置いた後の残りで数え直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。待つ図版（「図版」の節）は次のブロックに数えず、その後の、待つ図版でないブロックの直前で判定する（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。空き（改ページに渡す一行の空き。表とコードブロックの後や、`space-before` を持つ段落の前に入る）も、行アキと同じく次のブロックに数えず、判定の残りに数えない。`@need-lines` の後に空きがあれば、空きの前の位置で判定する。判定した段で、空きを置いた後の残りに次のブロックの最初の部分が入れば、ブロックはその段に置く。入らずにブロックが後の段に移れば、移った段で送った図版と続きの脚注を置いた後の残りで N 行を判定し直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0027](golem-layout/adr/0027-need-lines-judged-again-after-spaces.md)）。`@need-lines` の前に置いた空きも数えない。前のブロックの後に空きを置いてから `@need-lines` が来れば、空きを置く前の位置で、後の空きと同じく判定し、判定した段を覚える。空きが `@need-lines` の前にあっても後にあっても、結果は同じである（[golem-layout ADR 0043](golem-layout/adr/0043-spaces-before-need-lines-are-not-counted-either.md)）。空きと `@need-lines` のあいだに待つ図版があっても、空きを数えない。何も置かない待つ図版は、前の空きを `@need-lines` から隔てない。段に入らずに次の段へ送られる図版（自ら送られる図版）は、前のブロックとして空きを隔てる。待つ図版の前に改ページの印がたまっていれば、待つ図版が印を適用し、流れは空きのある段を離れるので、`@need-lines` は進んだ先の段の残りで判定する（[golem-layout ADR 0047](golem-layout/adr/0047-spaces-before-a-waiting-figure-and-need-lines.md)）。ブロックを挟まずに続く `@need-lines` は、大きいほうの行の数を取る。空きの前で判定した後に、より大きい `@need-lines` が続けば、合わせて増えた値を、次の空きの前か、ブロックの前で判定し直す。同じか小さい値なら、判定し直さない（[golem-layout ADR 0035](golem-layout/adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md)）。増えた値の前に空きを置いていれば、増えた値も空きを置く前の位置で判定する（[golem-layout ADR 0043](golem-layout/adr/0043-spaces-before-need-lines-are-not-counted-either.md)）。
 - `@page-lines` は、ためた改ページの印を先に適用してから、今の段の行数に足す。段を進めると増減は 0 に戻る。増やした行は、版面の行の格子を行の進む方向に延ばした位置に置く。行数の上限は、行の字面が裁ち落としを除いたページの内側に収まる行の数である。増やした行と、ノンブル、柱、傍注の領域との重なりは検査しない。
 - 見出しを後のブロックと離さない規則の先読みは、三つの印を飛ばす。
 - 守れなかった指定は、改ページの繰り返し（S2）の最後の回の結果から、印の位置の警告（G07037）にする。
@@ -3146,6 +3154,7 @@ dev と prod の両方で警告で、PDF を書き、notice ではないので `
 `golem check`、LSP、HTML、EPUB、プレーンテキストでは報告しない。
 `golem preflight` は、同じ行をプリフライトの検査 `overfull-lines`（G09013）でも報告する（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 たとえば、段落の途中に分割できない長いインラインのコードがあり、その前の文字列とともに一行に収まらない場合、コードの前までで行を終え、コードを次の行の先頭に置く。
+本文の中のコードは `-` と `.` の連なりの後でも改行できるので（[golem-layout ADR 0045](golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md)）、`attest-build-provenance` のような長いコードでも途中で分けられ、その前の行の字間が空きにくい。
 
 和文の字のあいだの改行は、JLReq の禁則に従う。
 行頭禁則の文字の前と、始め括弧類の後ろでは改行しない（JLReq の 3.1.7、3.1.8）。
@@ -3276,14 +3285,14 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 「既知の不具合」に載せた違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
 23 の部品の並びの一覧は空である（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md) で、一覧にあった「段落の終わりの語間の空白の前の行末禁則」を直した）。
 
-本文の中のコードの並びも、同じ述語と、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の C1 から C8 で調べる。
-部品は、和文の `漢`、`あ`、`「`、`」`、`。`、`、`、`ー`、`ぁ`、`…` と、欧文の `a`、`ab`、`/`、`_`、`"` と、空白の 15 である。
+本文の中のコードの並びも、同じ述語と、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の C1 から C8 と、[golem-layout ADR 0045](golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md) の J1 から J7 で調べる（C3 と C4 は J3 と J5 に置き換えた）。
+部品は、和文の `漢`、`あ`、`「`、`」`、`。`、`、`、`ー`、`ぁ`、`…` と、欧文の `a`、`ab`、`1`、`/`、`_`、`-`、`.`、`"` と、空白の 18 である（`-`、`.`、`1` は 0045 で足した）。
 並びの全体を `[code: …]` に入れ、前の `あ` と後の `い` はコードの外に置く。
 組み方の環境は禁則の強さと区間の言語だけであり、正規形は 23 の部品と同じく、`ー` か `ぁ` がなければ強い禁則だけ、両用の字がなければ区間なしだけとする。
 コードの字の送りは、字のクラスごとに上の表の値とし、改行の印は `⏎` で、その幅をコードの字の大きさの 3/5 とする（[golem-layout ADR 0042](golem-layout/adr/0042-draw-the-wrap-mark-of-inline-code-small-and-light.md)）。
 C4（和文を含まないコードの項目は、印の幅と種類を除けば印のないときと同じ）は、和文を含まない並びの組ごとに、印を空にして組んだ項目と比べる。
 C5（`url`）は例のテストで確かめる。
-プルリクエストの CI は部品 2 個まで（240 の並び）を 4 字までの行で、毎晩の `enum.yml` は部品 3 個までを 5 字までの行で調べる。
+プルリクエストの CI は部品 2 個まで（342 の並び）を 4 字までの行で、毎晩の `enum.yml` は部品 3 個までを 5 字までの行で調べる。
 正規形と縦組みは、23 の部品と同じ部品の数までで確かめる。
 コードの並びの既知の不具合の一覧は空であり、除く入力はない（[golem-layout ADR 0038](golem-layout/adr/0038-kinsoku-across-spaces-of-inline-code.md)）。
 
@@ -3682,7 +3691,7 @@ Golem の構文解析が受け付ける原稿は受け付けるが、Golem が�
 - Neovim が受け取った diagnostic の列が、その行のバイト数を超えない。
 - notice が `INFO` の diagnostic になって quickfix に載り、マニフェストの `silence-notices` にそのコードを書いて保存すると消える。
 - コマンドと式の中の空白の semantic tokens の型が `operator` で、その位置の強調のグループが、既定の色の組で背景と下線を持たない。
-- ルートの `style.toml` と `preflight.toml` で補完の一覧が出て、引用符の外と内で選んだ後の行が期待の文字列になる。`manifest.toml` とルートより下の TOML では一覧が出ない。
+- ルートの `style.toml` と `preflight.toml` で補完の一覧が出て、引用符の外と内で選んだ後の行が期待の文字列になる。`manifest.toml` と、ルートより下の TOML と、ルートの外の TOML では一覧が出ない。
 - `tools/editors/README.md` の nvim-treesitter を使わない手順（`sh` のブロックと最後の `lua` のブロック）で、`.gm` と `.emet` のファイルタイプが決まり、tree-sitter の色付けが始まる。
 
 `--self-test` は、各テストの期待を一つ反転して走らせ、どれも失敗することを確かめる。
@@ -3969,6 +3978,7 @@ PDF の索引は、一つの項目を一つの段落として本文と同じ書�
 - ページ番号は数として扱うので、縦組みでは `[numbers]` の `vertical` の表記（既定では漢数字）になる。
 - 印のページは、印を含む行が置かれたページとする。ページの下の脚注と傍注の本文の中の印は、その注の印を含む本文の行のページ、章末の注（`placement = "chapter-end"`）の本文の中の印は、注の一覧のその注の行のページ、図版のキャプションの中の印は図版を置いたページとする。
 - 印のページは、ページ番号への参照と同じくレイアウトを繰り返して収束させ、上限の回数までに収束しなければ G07021 とする。G07021 は、ページの変わり続けたラベルと索引の語を並べ、最初のものの位置（ラベルを付けたブロックか索引の印）を指す（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
+- 繰り返しの二周め以降は、前の周と同じ位置にあって値の等しい単位のうち、`[ref-page]` を含まないものを組み直さず、前の周の組版を使う（[ADR 0251](adr/0251-reuse-the-compositions-of-unchanged-units-between-fixpoint-rounds.md)）。`[ref-page]` を含む単位と、索引の行のように前の周と値の異なる単位は毎周組み直す。単位の数か、リストの印の幅が前の周と異なる周は、すべての単位を組み直す。保持するのは直前の一周の組版だけである。使い回した組版は組み直した組版と同じなので、PDF のバイト列と diagnostics は変わらない。
 
 `style.toml` の `[index]` の `columns` が版面の段数と異なる場合、PDF は `@index` の位置で段数を切り替える（[docs/adr/0025](adr/0025-index-columns.md)）。
 段の行長の決め方は「style.toml」の節に書く。
@@ -4858,6 +4868,8 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 
 `golem` は計算機のすべてのプロセッサの上で動く（GHC のランタイムの `-N`）。
 PDF の段落の組版は複数の OS のスレッドで同時に進む（[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)）。
+PDF のページの描画と、内容のストリームの直列化と圧縮は、ページごとに GHC の spark で並列に進む（[ADR 0252](adr/0252-draw-and-serialise-the-pages-of-the-pdf-in-parallel.md)）。
+spark は純粋な値の計算を別の capability に委ねるだけなので、結果は逐次に計算したものと同じである。
 出力のバイト列はプロセッサの数によらない（[docs/adr/0002](adr/0002-determinism.md)）。
 実行ファイルは `-threaded` と `-with-rtsopts=-N -A64m` でリンクし、`-rtsopts` は付けない。
 `-A64m` は capability ごとの割り当て領域（nursery）を 64 MB にして、世代 0 の GC の回数を減らす（[docs/adr/0249](adr/0249-link-golem-with-a-64-mb-allocation-area.md)）。

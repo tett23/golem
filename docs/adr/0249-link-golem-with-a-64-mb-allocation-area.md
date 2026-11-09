@@ -1,6 +1,6 @@
 # ADR 0249: `golem` を `-with-rtsopts=-N -A64m` でリンクし、GC の回数を減らす
 
-ステータス: 採択
+ステータス: 採択→速さの比べ方と CI の時間は [ADR 0255](0255-record-what-implementations-decided-on-2026-11-09.md)
 
 ## 文脈
 

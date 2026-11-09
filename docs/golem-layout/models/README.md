@@ -78,7 +78,7 @@ CI の `.github/workflows/models.yml` が、モデルを変えたプルリクエ
 | 述語 | 規則 |
 | --- | --- |
 | `spaceKeepsFirst` | `spaceKeeps` を、ブロックの最初の `@need-lines` だけに当てたもの（この ADR の前の改ページ） |
-| `spaceKeeps35` | ブロックの最初の `@need-lines` は書いた位置で判定し、後の `@need-lines` のうち前のどれよりも大きいものは、書いた位置で、前に置いた空きを数えて判定し直す。判定したものがすべて守られ、次のブロックの最初の部分が空きと行アキの後に入れば、ブロックをこの段に置く（P7 を合わせた値で言い直したもの） |
+| `spaceKeeps35` | ブロックの最初の `@need-lines` は書いた位置で判定し、後の `@need-lines` のうち前のどれよりも大きいものは、書いた位置で、前に置いた空きを数えずに判定し直す（[golem-layout ADR 0043](../adr/0043-spaces-before-need-lines-are-not-counted-either.md)、[golem-layout ADR 0046](../adr/0046-the-alloy-model-judges-a-larger-need-lines-without-the-spaces-before-it.md)）。判定したものがすべて守られ、次のブロックの最初の部分が空きと行アキの後に入れば、ブロックをこの段に置く（P7 を合わせた値で言い直したもの） |
 
 ## 走らせ方
 
@@ -122,6 +122,7 @@ done
 値は、下の「結果」の表の、スコープ 5（モデルに書いたスコープ）での解の有無から作る。
 表の最も小さい例のスコープが数のコマンドは `found`、「なし」のコマンドは `none` である。
 最も小さい例を探し直すこと（スコープを 2 から上げること）は、検査の範囲に入れない。
+[golem-layout ADR 0046](../adr/0046-the-alloy-model-judges-a-larger-need-lines-without-the-spaces-before-it.md) の二つのコマンドは、スコープ 4 をモデルに書き、その表の改めたモデルの値から作る。
 
 `scripts/models/check.sh` は、コマンドごとに Alloy を一つのプロセスで走らせ、ランナーのコアの数まで並べる。
 Alloy は、GitHub の AlloyTools/org.alloytools.alloy の 6.2.0 のリリースの `org.alloytools.alloy.dist.jar` を、スクリプトに書いた SHA-256 で検査してから使う。
@@ -207,7 +208,7 @@ docs/roadmap.md の「未決事項」に足す組はない。
 待つ図版の形は、送る図版、行アキ、待つ図版、後のブロックの 4 個で作れる。
 スコープ 4 で、解のないコマンドに SAT4J が 2 分から 20 分かかったので、スコープ 5 は走らせていない。
 `blankFigureOrder` のスコープ 4 は 1 時間を超えても終わらなかったので打ち切り、スコープ 3 までの結果を書いた。
-「なし」は、スコープ 4 までに解がなかったことを示す。
+「なし」は、スコープ 5 までに解がなかったことを示す（下の 2026-11-09 の結果を含む）。
 2026-11-09 に、6 のコマンドをスコープ 5 でも走らせた（[docs/adr/0242](../../adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
 解の有無は表と同じで、「なし」のコマンドはスコープ 5 までに解がない。
 `blankFigureOrder` も、スコープ 5 はランナーで 648 秒で終わり、解はない。
@@ -217,7 +218,7 @@ docs/roadmap.md の「未決事項」に足す組はない。
 | `waitingBlankSome` | 送った図版の後の行アキと待つ図版と後の本文があり、`base26` と `blankWithNext` を満たし、行アキと後の本文をこの段に置く配置がある入力があるか | 4 |
 | `waitingBlankNone` | `base26` と `blankWithNext` を満たす配置がない入力があるか | なし |
 | `waitingBlankAllButGreedy` | `waitingBlankNone` に `orphan`、`widow`、`keepHeading21` を足したもの | なし |
-| `blankFigureOrder` | `blankWithNext` と、`figures` と `figureOrder` の組 | なし（スコープ 3 まで） |
+| `blankFigureOrder` | `blankWithNext` と、`figures` と `figureOrder` の組 | なし |
 | `blankBeforeWaiting25` | この ADR の前の読み方で、行アキが待つ図版とともに次の段に移り、後の本文だけがこの段に残る配置がある入力があるか | 4 |
 | `blankRules25` | この ADR の前の読み方で、`base26` と `blankWithNext25` を満たす配置がない入力があるか | なし |
 
@@ -242,7 +243,7 @@ docs/roadmap.md の「未決事項」に足す組はない。
 2026-11-08 に、スコープ 2 から 3 まで（要素は 3 個まで、整数は 5 ビット）で走らせた結果である。
 `@need-lines`、空き、次のブロックの 3 個で、この ADR の形を作れる。
 `needSpaceNone` のスコープ 3 に SAT4J が 33 分かかったので、スコープ 4 は走らせていない。
-「なし」は、スコープ 3 までに解がなかったことを示す。
+「なし」は、スコープ 5 までに解がなかったことを示す（下の 2026-11-09 の結果を含む）。
 2026-11-09 に、5 のコマンドをスコープ 5 でも走らせ、`needSpaceAllButGreedy` をスコープ 4 でも走らせた（[docs/adr/0242](../../adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
 `needSpaceAllButGreedy` には、スコープ 4 で解があった（下）。
 ほかの 4 のコマンドの解の有無は、スコープ 5 でも表と同じである。
@@ -292,7 +293,7 @@ docs/roadmap.md の「未決事項」に足す組はない。
 この ADR の形は、`@need-lines`、空き、より大きい `@need-lines`、次のブロックの 4 個で作れるので、ADR のテスト設計のスコープ 3 には現れない。
 そのためスコープ 4 まで走らせた。
 `needMoreNone` のスコープ 3 は約 2 分、スコープ 4 は約 14 分かかった。
-「なし」は、スコープ 4 までに解がなかったことを示す。
+「なし」は、`needMoreNone` ではスコープ 4 までに解がなかったことを示す（スコープ 5 は下のとおり終わらなかった）。
 2026-11-09 に、`needMoreSome` と `needMore27` をスコープ 5 でも走らせ、解があった（[docs/adr/0242](../../adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
 `needMoreNone` のスコープ 5 は、ランナーで 5 時間 55 分（ジョブの上限）を過ぎても終わらなかった。
 毎晩の検査は、`needMoreNone` をスコープ 4 で走らせる。
@@ -316,3 +317,29 @@ P1 は、合わせた 4 行が残りの 2 行にないので、見出しを次�
 最初に走らせたとき、`needMoreNone` は、段の行の数が 4 で 2 行を使った段に、`@need-lines 3`、`@need-lines 1`、1 行の図版が来る入力を返した。
 `spaceKeeps35` が、一つめの小さい `@need-lines` の判定だけを見て、後に続く大きい `@need-lines` を見ていなかったためである。
 ブロックの前のすべての `@need-lines` のうち、前のどれよりも大きいものを判定するように、モデルの誤りとして直した。
+
+### [golem-layout ADR 0046](../adr/0046-the-alloy-model-judges-a-larger-need-lines-without-the-spaces-before-it.md) のコマンド
+
+この ADR で、`spaceKeeps35` のより大きい `@need-lines` の判定を、前に置いた空きを数える `judgedBefore` から、数えない `placedBefore` に改め、`judgedBefore` を消した。
+[golem-layout ADR 0043](../adr/0043-spaces-before-need-lines-are-not-counted-either.md) の後の改ページは、合わせて増えた `@need-lines` も空きを置く前の位置で判定するが、モデルはそれを追っていなかった。
+モデルの `@need-lines` の判定は、どれも `placedBefore` で行う。
+空きを数えるのは、段に入るかを見る `load`、`loadBefore`、`figure`、`figures`、`figures27` だけである。
+
+2026-11-09 に、改めたモデルで、[golem-layout ADR 0035](../adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md) の三つのコマンドを、「走らせ方」のとおりスコープ 2 から 4 まで走らせた。
+最も小さい例のスコープは、`needMoreSome` が 4、`needMore27` が 4、`needMoreNone` がなしで、上の表と同じだった。
+手元の macOS（Apple Silicon）で、`needMoreNone` のスコープ 4 は約 4 分かかった。
+`nightly.txt` の値は変えない。
+
+改めた判定は、`@need-lines` を二つ持つ次の入力で確かめる。
+段の行の数は 4 で、1 行を使っている。
+そこへ `@need-lines 1`、空き、`@need-lines 3`、1 行の段落が来る。
+二つめの `@need-lines 3` は、空きを数えなければ残り 3 行で満たされるので、段落はこの段に置かれる。
+この入力は要素が 4 個で段の行の数が 4 なので、二つのコマンドはスコープを 4 と書く。
+
+| コマンド | 調べること | 改めたモデル | `judgedBefore` を使っていた前のモデル |
+| --- | --- | --- | --- |
+| `needMoreSpace46` | この入力で、`base27`、`needMet`、`spaceKeeps35` を満たし、段落を次の段へ送る配置があるか | なし | あり |
+| `needMoreSpace46Here` | この入力で、同じ規則を満たし、段落をこの段に置く配置があるか | あり | あり |
+
+2026-11-09 に、alloy6 6.2.0 で走らせた。
+どちらも手元で 3 秒ほどで終わるので、`expected.txt` に挙げた。

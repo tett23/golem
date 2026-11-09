@@ -5,6 +5,7 @@ module Golem.Typeset.Draw
     renderPdfStructure,
     renderPdfLeafTexts,
     renderPdfWithTree,
+    renderPdfAllReusing,
     orphanErrors,
   )
 where
@@ -21,6 +22,7 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (toGregorian)
+import GHC.Conc (pseq)
 import Golem.Assemble (Book (..))
 import Golem.Doc.IR
 import Golem.Layout.Code
@@ -94,7 +96,17 @@ renderPdfAll = renderPdfAllWith id
 
 -- | 'renderPdfAll' with the structure tree changed by a function (the tests of G07107 only).
 renderPdfAllWith :: (P.StructElem -> P.StructElem) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
-renderPdfAllWith tamper version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
+renderPdfAllWith = renderPdfAllUsing True
+
+{- | 'renderPdfAll' with the compositions of the units that did not change
+reused between the rounds of S2 or not, for the tests that compare the two
+(docs/adr ADR 0251).
+-}
+renderPdfAllReusing :: Bool -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
+renderPdfAllReusing reuse = renderPdfAllUsing reuse id
+
+renderPdfAllUsing :: Bool -> (P.StructElem -> P.StructElem) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
+renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
   (ds, Left gs) -> pure (Left (ds <> gs))
   (ds@(_ : _), Right _) -> pure (Left ds)
   ([], Right geom) -> do
@@ -107,7 +119,7 @@ renderPdfAllWith tamper version provider inp0 = case (declarationErrors inp, che
         case li of
           Left ds -> pure (Left ds)
           Right intent -> do
-            laid <- layoutPdf inp geom fonts
+            laid <- layoutPdfWith reuse inp geom fonts
             -- a kenten shape the font has no glyph for stops the PDF (G08009, golem-driver ADR 0019)
             case laid of
               Left ds -> pure (Left ds)
@@ -366,7 +378,9 @@ writeDocumentView tamper version inp geom fonts layout intent =
       figureAttrs i = [P.Attribute "Layout" [("BBox", P.rectObj (r {rectX = rectX r + origin, rectY = rectY r + origin})), ("Placement", P.OName "Block")] | Just r <- [Map.lookup i figureBoxes]]
       {- each glyph once per font, with the text of its cluster; a whole
       cluster wins, then the first drawn (golem-driver ADR 0030) -}
-      used = Map.map toUnicodeOf (Map.fromListWith (<>) [(guRef u, [(guGlyph u, guText u, guPart u)]) | pd <- reverse drawn, u <- reverse (pdUses pd)])
+      used = Map.map toUnicodeOf (Map.fromListWith (<>) [(guRef u, [(guGlyph u, guText u, guPart u)]) | pd <- reverse (P.parPages [glyphsOf pd `pseq` pd | pd <- drawn]), u <- reverse (pdUses pd)])
+      -- the glyphs of each page decided on its own capability before they are gathered (docs/adr ADR 0252)
+      glyphsOf pd = foldl' (\n u -> n + guGlyph u + T.length (guText u)) 0 (pdUses pd)
       -- the ToUnicode entries the marks are checked against for ActualText (golem-driver ADR 0030)
       textEntries = Map.map Map.fromList used
       -- the PDF and its view from the fonts embedded (docs/adr ADR 0034)

@@ -69,6 +69,7 @@ test-suite golem-layout-test
                     CharClassSpec
                     CodeJapaneseSpec
                     CodeSpaceSpec
+                    CodeStopSpec
                     CombiningSpec
                     DoubleDashSpec
                     ExpansionStepSpec

@@ -8,8 +8,9 @@
 # It also checks the punctuation of each source (docs/adr/0239 section 3,
 # outline-prepare.sh --check): the source has the rule
 # text { text-spacing-trim: space-all; }, and the fullwidth marks that are
-# set half-width next to another are in <tspan class="halt">, as the table
-# of docs/adr/0239 says.
+# set half-width next to another are in <tspan class="halt">, as the copy
+# of the default aki set (modules/golem-layout/test/golden/default-aki-set.tsv,
+# docs/adr/0241) says.
 #
 #   check-figures.sh [DIR...]    DIR is manual and manual-dev by default
 set -eu

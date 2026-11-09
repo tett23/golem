@@ -16,6 +16,7 @@ module Golem.Typeset.Flow
     dashInkNotices,
     flowLines,
     layoutPdf,
+    layoutPdfWith,
     gridLine,
     runningHeadLines,
     numberedTitle,
@@ -305,7 +306,10 @@ data Built = Built
     bHeadingNames :: Map Int (SrcSpan, Text),
     -- | the units by their indices, and the composition (docs/adr ADR 0183)
     bUnits :: [(Int, Unit)],
-    bFlowEnv :: FlowEnv
+    bFlowEnv :: FlowEnv,
+    -- | the units composed and the marker widths of the lists, for the next round of S2 to reuse (docs/adr ADR 0251)
+    bComposed :: ComposedUnits,
+    bWidths :: Map Int Sp
   }
 
 {- | What style.toml alone decides before the layout (golem-driver ADR
@@ -454,14 +458,21 @@ flowLines provider inp0 = case checkedGeometry inp of
       Left ds -> pure (Left ds)
       Right fonts -> do
         figures <- Map.mapMaybe (either (const Nothing) Just) <$> loadFigures inp
-        built <- buildFlow inp geom fonts figures (Assumed Map.empty Map.empty)
+        built <- buildFlow inp geom fonts figures Nothing (Assumed Map.empty Map.empty)
         pure (Right (bFlow built, [(lineTarget (slLine sl), slIndent sl) | sl <- Map.elems (bLines built)]))
   where
     inp = codeInput inp0
 
 -- | Composition, line breaking and pagination, with page references resolved (S2).
 layoutPdf :: PdfInput -> PageGeometry -> LoadedFonts -> IO (Either [Diagnostic] PdfLayout)
-layoutPdf inp0 geom fonts =
+layoutPdf = layoutPdfWith True
+
+{- | 'layoutPdf' with the compositions of the units that did not change
+reused between the rounds of S2 or not (docs/adr ADR 0251): the result is
+the same, and the tests compare the two.
+-}
+layoutPdfWith :: Bool -> PdfInput -> PageGeometry -> LoadedFonts -> IO (Either [Diagnostic] PdfLayout)
+layoutPdfWith reuse inp0 geom fonts =
   let inp = codeInput inp0
    in case sidenoteDiagnostics geom (piBook inp) <> listNumberDiagnostics (lsNumbers (stLists (piStyle inp))) (pgVertical geom) (piBook inp) <> noteNumberDiagnostics (piStyle inp) (piBook inp) of
         ds@(_ : _) -> pure (Left ds)
@@ -470,11 +481,11 @@ layoutPdf inp0 geom fonts =
           -- a figure that cannot be placed stops the PDF (G08010, golem-pdf ADR 0008)
           case figureDiagnostics inp loaded of
             ds@(_ : _) -> pure (Left ds)
-            [] -> layoutFigures inp geom fonts (Map.mapMaybe (either (const Nothing) Just) loaded)
+            [] -> layoutFigures reuse inp geom fonts (Map.mapMaybe (either (const Nothing) Just) loaded)
 
 -- | 'layoutPdf' with the figures read.
-layoutFigures :: PdfInput -> PageGeometry -> LoadedFonts -> Map (Text, Int) P.FigureContent -> IO (Either [Diagnostic] PdfLayout)
-layoutFigures inp geom fonts figures = do
+layoutFigures :: Bool -> PdfInput -> PageGeometry -> LoadedFonts -> Map (Text, Int) P.FigureContent -> IO (Either [Diagnostic] PdfLayout)
+layoutFigures reuse inp geom fonts figures = do
   -- S2: compose with assumed page numbers until they settle
   -- the names of the marks for G07021: the terms of the index, the bodies of the entries of channels (golem-doc ADR 0007)
   let terms =
@@ -483,8 +494,9 @@ layoutFigures inp geom fonts figures = do
               <> [(sp, T.concat (map inlineText (ceBody e))) | (_, _, es) <- bookChannels (piBook inp), e <- es, (_, sp) <- ceLocations e]
           )
   let capacity = length (pgLineGrid geom)
-      round' assumed = do
-        built <- buildFlow inp geom fonts figures assumed
+      -- the round before, whose compositions of the units that did not change are reused (docs/adr ADR 0251)
+      round' prev assumed = do
+        built <- buildFlow inp geom fonts figures (if reuse then prev else Nothing) assumed
         pure (if null (bErrors built) then Right (built, paginateWithin (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
       labels = labelSpans (piBook inp)
       labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
@@ -1055,11 +1067,12 @@ after 'maxIterations' rounds, G07021 names what still moves and is at the
 first of them (golem-driver ADR 0016): the block of a label (@labelSpan@)
 or an index mark.
 -}
-fixpoint :: (Text -> SrcSpan) -> (SrcSpan -> Text) -> (Assumed -> IO (Either [Diagnostic] (b, [PageOut]))) -> IO (Either [Diagnostic] (b, [PageOut]))
-fixpoint labelSpan termOf layoutWith = go (1 :: Int) (Assumed Map.empty Map.empty)
+fixpoint :: (Text -> SrcSpan) -> (SrcSpan -> Text) -> (Maybe b -> Assumed -> IO (Either [Diagnostic] (b, [PageOut]))) -> IO (Either [Diagnostic] (b, [PageOut]))
+fixpoint labelSpan termOf layoutWith = go (1 :: Int) Nothing (Assumed Map.empty Map.empty)
   where
-    go i assumed = do
-      r <- layoutWith assumed
+    -- each round is given the value of the round just before it, and of no other (docs/adr ADR 0251)
+    go i prev assumed = do
+      r <- layoutWith prev assumed
       case r of
         Left ds -> pure (Left ds)
         Right (built, pages) ->
@@ -1069,7 +1082,7 @@ fixpoint labelSpan termOf layoutWith = go (1 :: Int) (Assumed Map.empty Map.empt
                 else
                   if i >= maxIterations
                     then pure (Left [notSettled (moved actual asLabels) (moved actual asMarks)])
-                    else go (i + 1) actual
+                    else go (i + 1) (Just built) actual
       where
         moved :: (Ord k) => Assumed -> (Assumed -> Map k Integer) -> [k]
         moved now field = [k | k <- Map.keys (Map.union (field now) (field assumed)), Map.lookup k (field now) /= Map.lookup k (field assumed)]
@@ -1227,6 +1240,8 @@ data Unit = Unit
     -- | the /Lang of the element of the unit, of a block with a language (docs/adr ADR 0187)
     uLang :: Maybe Text
   }
+  -- the units of two rounds of S2 are compared (docs/adr ADR 0251)
+  deriving stock (Eq)
 
 {- | A frame of the structure tree of the PDF around units (docs/adr ADR
 0183): a list, an item, the table of contents and so on. Its number tells
@@ -1387,6 +1402,7 @@ data UnitKind
     UPageControl !PageControl
   | -- | blank lines before what follows (docs/adr ADR 0046)
     UBlank !Int64
+  deriving stock (Eq)
 
 {- | The look and the indent of a paragraph style (docs/adr ADR 0005, 0006):
 its role, its size, and its kerning, tracking, proportional metrics and
@@ -2378,11 +2394,34 @@ ruledInfoOf u = case uKind u of
   UHeading l _ _ -> uncurry (RuledInfo "見出しの罫線" ("見出し " <> T.pack (show l)) True (lkSize (uLook u))) (uRules u) (uSpan u)
   _ -> uncurry (RuledInfo "段落の罫線" ("段落スタイル " <> fromMaybe "body" (uParaStyle u)) False (lkSize (uLook u))) (uRules u) (uSpan u)
 
-buildFlow :: PdfInput -> PageGeometry -> LoadedFonts -> Map (Text, Int) P.FigureContent -> Assumed -> IO Built
-buildFlow inp geom fonts images assumed = do
+{- | Composes the units of the body with the pages assumed, and numbers
+their lines. With the round before (docs/adr ADR 0251), a unit equal to the
+unit at its place in that round and with no reference to a page is not
+composed again: its composition is that of the round before, which the
+same unit gives again, since only the references to pages and the units
+made from the pages of the index read the pages assumed.
+-}
+buildFlow :: PdfInput -> PageGeometry -> LoadedFonts -> Map (Text, Int) P.FigureContent -> Maybe Built -> Assumed -> IO Built
+buildFlow inp geom fonts images prev assumed = do
   let fe = flowEnv inp geom fonts assumed
       (units, widths) = flowUnits fe
       unitAt = Map.fromList units
+      -- the units the round before composed the same way: none if the number of the units or the widths of the list markers differ
+      unchanged = case prev of
+        Just p
+          | length (bUnits p) == length units && bWidths p == widths ->
+              Set.fromList [i | ((i, u), (_, u')) <- zip units (bUnits p), u == u', not (refersToPage u)]
+        _ -> Set.empty
+      reused :: (ComposedUnits -> Map Int a) -> Int -> Maybe a
+      reused field i = if Set.member i unchanged then Map.lookup i . field . bComposed =<< prev else Nothing
+      -- the paragraphs beside a wrapped figure, when the figure, they and the unit after them are unchanged
+      reusedBeside i = do
+        p <- prev
+        let before = cuBesides (bComposed p)
+            js = takeWhile (`Map.member` before) [i + 1 ..]
+            -- the figure, the paragraphs beside it, and the unit after them, if there is one
+            around = [k | k <- [i .. i + length js + 1], k < length units]
+        if all (`Set.member` unchanged) around then Just [(j, before Map.! j) | j <- js] else Nothing
       mapper :: (a -> IO b) -> [a] -> IO [b]
       mapper = if piParallel inp then mapConcurrently else mapM
       -- figures: the image, its size, its caption and its exclusion (golem-driver ADR 0005)
@@ -2390,7 +2429,7 @@ buildFlow inp geom fonts images assumed = do
       figureNotices = concat [ns | (_, _, ns, _) <- Map.elems figures]
       -- 1. a job per wrapped figure: the paragraphs right after it, in order, beside the exclusion
       jobs = [(i, ex) | (i, (pf, [], _, _)) <- Map.toList figures, Just ex <- [pfExclusion pf]]
-  besides <- Map.fromList . concat <$> mapper (uncurry (composeBeside fe widths unitAt)) jobs
+  besides <- Map.fromList . concat <$> mapper (\(i, ex) -> maybe (composeBeside fe widths unitAt i ex) pure (reusedBeside i)) jobs
   -- 2. every other unit on its own
   let rest = [(i, u) | (i, u) <- units, Map.notMember i besides, not (isFigure u), not (isTable u), not (isGap u)]
       -- gaps and breaks are not composed
@@ -2411,8 +2450,8 @@ buildFlow inp geom fonts images assumed = do
         _ -> False
       tableUnits = [(i, uStyle u, lkLang (uLook u), aligns, h, rows) | (i, u@Unit {uKind = UTable aligns h rows}) <- units]
   _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
-  singles <- Map.fromList . zip (map fst rest) <$> mapper (\(_, u) -> forceComposed (composeUnit fe widths (unitLineWidth fe (uKind u)) u)) rest
-  tables <- Map.fromList <$> mapper (\(i, st, l, aligns, h, rows) -> let r = composeTable fe i st l aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) tableUnits
+  singles <- Map.fromList . zip (map fst rest) <$> mapper (\(i, u) -> maybe (forceComposed (composeUnit fe widths (unitLineWidth fe (uKind u)) u)) pure (reused cuSingles i)) rest
+  tables <- Map.fromList <$> mapper (\(i, st, l, aligns, h, rows) -> maybe (let r = composeTable fe i st l aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
   -- 3. number the lines in document order
   let codeBlocks = codeBlocksOf fe units
       composed = ComposedUnits unitAt besides figures singles tables codeBlocks
@@ -2435,7 +2474,36 @@ buildFlow inp geom fonts images assumed = do
       -- the span and the name of each heading by its first line, for G07100 (golem-layout ADR 0020)
       namesBySpan = Map.fromList [(uSpan u, (uSpan u, name)) | (_, u) <- units, Just name <- [headingName (uKind u)]]
       headingNames = Map.mapMaybe (`Map.lookup` namesBySpan) lineSpans
-  pure (Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe)
+  pure (Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe composed widths)
+
+{- | Whether a unit refers to a page (docs/adr ADR 0251): a [ref-page]
+anywhere in its inlines, its list marker, the cells of its table or the
+caption of its figure, in notes, sidenotes, ruby and spans too. Its
+composition reads the pages assumed, so it is composed in every round.
+-}
+refersToPage :: Unit -> Bool
+refersToPage u =
+  inlinesReferToPage (uInlines u) || maybe False inlinesReferToPage (uMarker u) || case uKind u of
+    UTable _ h rows -> any inlinesReferToPage (h <> concat rows)
+    UFigure fig -> any (any inlinesReferToPage . blockInlineLists) (figCaption fig)
+    _ -> False
+
+-- | Whether inlines hold a [ref-page], at any depth.
+inlinesReferToPage :: [InlineF r] -> Bool
+inlinesReferToPage = any $ \case
+  Ref _ RefPage _ -> True
+  Resolved _ RefPage _ _ -> True
+  Resolved _ _ _ is -> inlinesReferToPage is
+  Ruby _ _ segs -> any (inlinesReferToPage . rsBase) segs
+  Kenten _ _ is -> inlinesReferToPage is
+  Color _ _ is -> inlinesReferToPage is
+  CharStyle _ _ is -> inlinesReferToPage is
+  Note _ _ is -> inlinesReferToPage is
+  Sidenote _ _ is -> inlinesReferToPage is
+  Link _ _ is -> inlinesReferToPage is
+  Lang _ _ is -> inlinesReferToPage is
+  ChannelItem _ ci -> inlinesReferToPage (ciBody ci)
+  _ -> False
 
 {- | The links between ruled blocks (golem-driver ADR 0027): a block whose
 rule before follows right after a block with a rule after shares its

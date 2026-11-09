@@ -398,6 +398,38 @@ marksTests tinyJpeg =
               assertEqual (out <> err) ExitSuccess code
       ]
 
+{- | The content streams of the pages computed by sparks (docs/adr ADR
+0252): the bytes are those of the streams computed in order, for any
+number of pages, and the pages keep their order.
+-}
+parallelTests :: ByteString -> [TestTree]
+parallelTests tinyJpeg =
+  [ testCase ("I1 I2 " <> show n <> " pages: writePdf gives the bytes of writePdfWith id") $
+      let doc = documentWith tinyJpeg (take n (cycle kinds))
+       in writePdf doc == writePdfWith id doc @? "the PDF of the sparks differs from the sequential one"
+  | n <- [1, 2, 8, 64]
+  ]
+    <> [ testCase "I2 the content stream of page k is the k-th page of docPages" $
+           let numbered = [page [GlyphRun (FontRef 7) (10 * 65536) [(1, fromIntegral k * 65536, 700 * 65536)]] | k <- [1 .. 64 :: Int]]
+               PdfObjects _ objs _ = documentObjects (documentWith tinyJpeg numbered)
+               -- the object of page i (from 0) is 3 + 2i, numbered from 1, and its content stream the next
+               contentOf i = case drop (3 + 2 * i) objs of
+                 OStream _ body : _ -> BL.toStrict (Z.decompress (BL.fromStrict body))
+                 _ -> ""
+            in [k | k <- [1 .. 64 :: Int], not (("1 0 0 1 " <> BC.pack (show k) <> " 700 Tm") `BS.isInfixOf` contentOf (k - 1))] @?= [],
+         testProperty "parPages is the identity on lists" . property $ do
+           xs <- forAll (Gen.list (Range.linear 0 100) (Gen.int (Range.linear 0 1000)))
+           parPages xs === xs
+       ]
+  where
+    -- a blank page, glyphs, an image and a link
+    kinds =
+      [ page [],
+        page [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536), (2, 77 * 65536, 700 * 65536)]],
+        page [Image (ImageRef 1) (Rect 0 0 (100 * 65536) (50 * 65536))],
+        (page [GlyphRun (FontRef 7) (9 * 65536) [(2, 0, 0)]]) {pageAnnots = [LinkAnnotation (Rect 0 0 65536 65536) (UriAction "https://example.com/") Nothing Nothing]}
+      ]
+
 -- | The link annotations of pages (docs/adr ADR 0182).
 linkTests :: ByteString -> [TestTree]
 linkTests tinyJpeg =
@@ -806,6 +838,7 @@ tests tinyJpeg =
       testGroup "crop marks and bleed (ADR 0004)" (marksTests tinyJpeg),
       testGroup "Producer (ADR 0005)" (producerTests tinyJpeg),
       testGroup "link annotations (docs/adr ADR 0182)" (linkTests tinyJpeg),
+      testGroup "pages in parallel (docs/adr ADR 0252)" (parallelTests tinyJpeg),
       ImageSpec.tests,
       ImportSpec.tests,
       SecuritySpec.tests,

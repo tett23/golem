@@ -11,6 +11,7 @@ chapters = [
   "chapters/08-git-ci.gm",
   "chapters/09-editor.gm",
   "chapters/10-plugins.gm",
+  "chapters/11-emet.gm",
   "appendices/a-markup.gm",
   "appendices/b-manifest.gm",
   "appendices/c-style.gm",

@@ -15,7 +15,9 @@
 #
 # on a copy of modules/golem-lsp/test/fixtures/ in a temporary directory.
 # --clean reads no configuration of whoever runs it. A failed test writes
-# "nvim: <name>: FAILED: ..." and exits 1 (:cquit 1).
+# "nvim: <name> (<invariant>): FAILED: ..." and exits 1 (:cquit 1); the
+# invariant is the number of the one of docs/adr/0231 the test checks
+# (I1 to I5; readme has none).
 #
 # The test readme runs the procedure of tools/editors/README.md for Neovim
 # without nvim-treesitter: the sh block of the section "### Neovim" compiles
@@ -128,7 +130,7 @@ case $MODE in
         STATUS=1
       else
         code=$?
-        if [ "$code" -eq 1 ] && grep -q "^nvim: $name: FAILED" "$WORK/$name/out"; then
+        if [ "$code" -eq 1 ] && grep -Eq "^nvim: $name( \(I[0-9]+\))?: FAILED" "$WORK/$name/out"; then
           echo "nvim: self-test: $name fails with its expectation inverted"
         else
           cat "$WORK/$name/out" >&2

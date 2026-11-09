@@ -68,7 +68,25 @@ tateChuYokoTests =
           breakSome "the list, drawn as before" [1, 2, 3, 5, 6] (map stacked (filter ((> 1) . T.length . oText) occs)),
       -- I7: the boxes of the lines and the faces of the lines, as before the ADR
       goldenVsString "I7: the layout of the paragraphs is that of before the ADR" "test/golden/tcy-layout.txt" $
-        withProject "" paragraphs layoutText
+        withProject "" paragraphs layoutText,
+      testCase "I8: in horizontal text a tate-chu-yoko is drawn as the text around it: upright glyphs of the horizontal font, unscaled, no Tz" $
+        withHorizontalProject "あ[tcy: 12]月。\n" $ \dir -> do
+          (_, pl, fonts) <- layoutAndFontsOf dir
+          pdf <- pdfOf dir
+          encodings <- fontEncodings pdf
+          contents <- pageContents pdf
+          look <- case [bcLook c | l <- linesOf pl, (Box _ c, _) <- placeLine l, boxKind c == KindTcy] of
+            l : _ -> pure l
+            [] -> assertFailure "no tate-chu-yoko box"
+          let codes = [lfCode fonts (shFace g) (shGlyph g) | g <- lfShape fonts (shapingOf False look '1') "12"]
+              drawn = concatMap (glyphsOf encodings) contents
+              gs = [g | g <- drawn, gCode g `elem` codes]
+          length codes @?= 2
+          map gCode gs @?= codes
+          assertBool ("the horizontal font, upright: " <> show gs) (all (\g -> gEncoding g == "Identity-H" && gMatrix g == [1, 0, 0, 1]) gs)
+          map gScale gs @?= [1000, 1000]
+          assertBool ("one baseline, in order: " <> show gs) (and (zipWith (\a b -> gY a == gY b && gX a < gX b) gs (drop 1 gs)))
+          assertBool "no horizontal scaling on the pages" (not (any (" Tz" `BS.isInfixOf`) contents))
     ]
   where
     paragraphs =
@@ -94,6 +112,16 @@ withProject :: BS.ByteString -> T.Text -> (FilePath -> IO a) -> IO a
 withProject more source act = withSystemTempDirectory "golem-tcy" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") miniManifest
   BS.writeFile (tmp </> "style.toml") (pdfStyle <> "\n[fonts.body]\nja = \"fonts/ja.otf\"\nlatin = \"fonts/latin.otf\"\n" <> more)
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  createDirectoryIfMissing True (tmp </> "fonts")
+  forM_ jaLatin $ \(to, from) -> copyFile from (tmp </> "fonts" </> to)
+  act tmp
+
+-- | A one-chapter horizontal project (30 characters a line) with the fonts of the specimens.
+withHorizontalProject :: T.Text -> (FilePath -> IO a) -> IO a
+withHorizontalProject source act = withSystemTempDirectory "golem-tcy-h" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") miniManifest
+  BS.writeFile (tmp </> "style.toml") (horizontal30 "\n[fonts.body]\nja = \"fonts/ja.otf\"\nlatin = \"fonts/latin.otf\"\n")
   BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
   createDirectoryIfMissing True (tmp </> "fonts")
   forM_ jaLatin $ \(to, from) -> copyFile from (tmp </> "fonts" </> to)

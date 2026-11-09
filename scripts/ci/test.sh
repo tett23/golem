@@ -1171,6 +1171,11 @@ fu_reset
 run fetch_url FETCH_ATTEMPTS=3 FETCH_WAITS="1 2" FAKE_FAILS=3 sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
 if [ "$CODE" = 1 ] && [ "$(fu_calls)" = 3 ] && [ "$(fu_sleeps)" = "1 2" ] && fu_none; then ok; else ng "fetch-url: three failures in three attempts fail, and leave no FILE nor FILE.part (I3)"; fi
 fu_reset
+mkdir -p "$FU/d"
+printf 'old\n' >"$FU/d/a.tar.gz"
+run fetch_url FETCH_WAITS=0 FAKE_FAILS=3 sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 1 ] && [ "$(fu_calls)" = 3 ] && fu_none; then ok; else ng "fetch-url: a FILE of another SHA-256 is gone when every attempt fails (I3)"; fi
+fu_reset
 run fetch_url FETCH_WAITS=5 FAKE_FAILS=2 sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
 if [ "$CODE" = 0 ] && [ "$(fu_calls)" = 3 ] && [ "$(fu_sleeps)" = "5 5" ]; then ok; else ng "fetch-url: three attempts by default, and the last wait is used again (I3)"; fi
 fu_reset
@@ -1209,6 +1214,11 @@ printf 'replaced\n' >"$FU/replaced"
 fu_reset
 run fetch_url FAKE_FILE="$FU/replaced" sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
 if [ "$CODE" = 1 ] && [ "$(fu_calls)" = 1 ] && fu_none && grep -qF "$(fu_sha "$FU/replaced")" "$WORK/err"; then ok; else ng "fetch-url: a replaced file fails at once (I4)"; fi
+fu_reset
+mkdir -p "$FU/d"
+printf 'old\n' >"$FU/d/a.tar.gz"
+run fetch_url FAKE_FILE="$FU/replaced" sh "$HERE/fetch-url.sh" "$FU/d/a.tar.gz" "$FU_SHA" "$URL1"
+if [ "$CODE" = 1 ] && [ "$(fu_calls)" = 1 ] && fu_none; then ok; else ng "fetch-url: a FILE of another SHA-256 is gone when the fetched file does not match (I4)"; fi
 
 # I5: the URLs in their order, until one answers
 fu_reset
@@ -1222,19 +1232,32 @@ run fetch_url FETCH_ATTEMPTS=3 FETCH_WAITS=0 FAKE_FAILS=6 sh "$HERE/fetch-url.sh
 if [ "$CODE" = 1 ] && [ "$(fu_calls)" = 6 ] && [ "$(fu_sleeps)" = "0 0" ] && fu_none; then ok; else ng "fetch-url: both URLs fail in each of the attempts (I3, I5)"; fi
 unset FU_LOG FU_COUNT FU_SLEEPS
 
-# ---------------------------------------------------------------- fetch-hlint.sh, fetch-nvim.sh
+# ---------------------------------------------------------------- fetch-hlint.sh, fetch-nvim.sh, helix/test.sh
 # (docs/adr/0009, docs/adr/0231, docs/adr/0243): the archive is fetched by
 # scripts/ci/fetch-url.sh into third_party/downloads, and one there of the
 # SHA-256 is unpacked without curl. A copy of each script in a fake root
 # pins the SHA-256 of a small archive of the layout of the release; a fake
-# uname answers x86-64 Linux, and a fake curl writes the archive
+# uname answers x86-64 Linux, and a fake curl writes the archive. The fake
+# hx of the archive of Helix answers --version, --grammar build (it writes
+# the two .so) and --health, so that helix/test.sh runs to its end
 FN=$WORK/fetch-nh
-mkdir -p "$FN/bin" "$FN/src/hlint-3.10/data" "$FN/src/nvim-linux-x86_64/bin"
+HV=$(sed -n 's/^VERSION=//p' "$HERE/../../tools/editors/helix/test.sh")
+HX=helix-$HV-x86_64-linux
+mkdir -p "$FN/bin" "$FN/src/hlint-3.10/data" "$FN/src/nvim-linux-x86_64/bin" "$FN/src/$HX/runtime"
 printf '#!/bin/sh\necho "HLint v3.10"\n' >"$FN/src/hlint-3.10/hlint"
 : >"$FN/src/hlint-3.10/data/hlint.yaml"
 printf '#!/bin/sh\necho "NVIM v%s"\n' "$(sed -n 's/^VERSION=//p' "$HERE/../../tools/editors/fetch-nvim.sh")" >"$FN/src/nvim-linux-x86_64/bin/nvim"
-chmod +x "$FN/src/hlint-3.10/hlint" "$FN/src/nvim-linux-x86_64/bin/nvim"
-(cd "$FN/src" && tar -czf "$FN/hlint-3.10-x86_64-linux.tar.gz" hlint-3.10 && tar -czf "$FN/nvim-linux-x86_64.tar.gz" nvim-linux-x86_64)
+cat >"$FN/src/$HX/hx" <<FAKE
+#!/bin/sh
+case "\$1" in
+  --version) echo "helix $HV (fake)" ;;
+  --grammar) mkdir -p "\$HOME/.config/helix/runtime/grammars" && : >"\$HOME/.config/helix/runtime/grammars/golem.so" && : >"\$HOME/.config/helix/runtime/grammars/emet.so" ;;
+  --health) printf 'Tree-sitter parser: \342\234\223\nHighlight queries: \342\234\223\n' ;;
+  *) exit 1 ;;
+esac
+FAKE
+chmod +x "$FN/src/hlint-3.10/hlint" "$FN/src/nvim-linux-x86_64/bin/nvim" "$FN/src/$HX/hx"
+(cd "$FN/src" && tar -czf "$FN/hlint-3.10-x86_64-linux.tar.gz" hlint-3.10 && tar -czf "$FN/nvim-linux-x86_64.tar.gz" nvim-linux-x86_64 && tar -cJf "$FN/$HX.tar.xz" "$HX")
 printf '#!/bin/sh\ncase "$1" in -s) echo Linux ;; -m) echo x86_64 ;; *) exit 1 ;; esac\n' >"$FN/bin/uname"
 cat >"$FN/bin/curl" <<'FAKE'
 #!/bin/sh
@@ -1247,14 +1270,20 @@ while [ $# -gt 0 ]; do
 done
 FAKE
 chmod +x "$FN/bin/uname" "$FN/bin/curl"
-mkdir -p "$FN/root/scripts/ci" "$FN/root/tools/editors"
+mkdir -p "$FN/root/scripts/ci" "$FN/root/tools/editors/helix" "$FN/root/tools/editors/tree-sitter-golem/queries" "$FN/root/tools/editors/tree-sitter-emet/queries"
 cp "$HERE/fetch-url.sh" "$FN/root/scripts/ci/"
+# the README and the queries its sh block of Helix copies
+cp "$HERE/../../tools/editors/README.md" "$FN/root/tools/editors/"
+: >"$FN/root/tools/editors/tree-sitter-golem/queries/highlights.scm"
+: >"$FN/root/tools/editors/tree-sitter-emet/queries/highlights.scm"
 sed "s/^SHA=.*/SHA=$(fu_sha "$FN/hlint-3.10-x86_64-linux.tar.gz")/" "$HERE/fetch-hlint.sh" >"$FN/root/scripts/ci/fetch-hlint.sh"
 sed "s/\(Linux-x86_64) NAME=nvim-linux-x86_64; SHA=\)[0-9a-f]*/\1$(fu_sha "$FN/nvim-linux-x86_64.tar.gz")/" "$HERE/../../tools/editors/fetch-nvim.sh" >"$FN/root/tools/editors/fetch-nvim.sh"
-if ! cmp -s "$HERE/fetch-hlint.sh" "$FN/root/scripts/ci/fetch-hlint.sh" && ! cmp -s "$HERE/../../tools/editors/fetch-nvim.sh" "$FN/root/tools/editors/fetch-nvim.sh"; then ok; else ng "fetch-hlint, fetch-nvim: the copies pin the fixtures"; fi
+sed "s/\(Linux-x86_64) NAME=helix-\$VERSION-x86_64-linux; SHA=\)[0-9a-f]*/\1$(fu_sha "$FN/$HX.tar.xz")/" "$HERE/../../tools/editors/helix/test.sh" >"$FN/root/tools/editors/helix/test.sh"
+if ! cmp -s "$HERE/fetch-hlint.sh" "$FN/root/scripts/ci/fetch-hlint.sh" && ! cmp -s "$HERE/../../tools/editors/fetch-nvim.sh" "$FN/root/tools/editors/fetch-nvim.sh" && ! cmp -s "$HERE/../../tools/editors/helix/test.sh" "$FN/root/tools/editors/helix/test.sh"; then ok; else ng "fetch-hlint, fetch-nvim, helix/test.sh: the copies pin the fixtures"; fi
 fn_run() { env PATH="$FN/bin:$PATH" HOME="$FN/home" FN_LOG="$FN/curl.log" FN_ARCHIVES="$FN" sh "$FN/root/$1"; }
 for sa in "scripts/ci/fetch-hlint.sh hlint-3.10-x86_64-linux.tar.gz home/.local/lib/hlint-3.10" \
-  "tools/editors/fetch-nvim.sh nvim-linux-x86_64.tar.gz root/third_party/nvim"; do
+  "tools/editors/fetch-nvim.sh nvim-linux-x86_64.tar.gz root/third_party/nvim" \
+  "tools/editors/helix/test.sh $HX.tar.xz root/third_party/helix"; do
   set -- $sa
   f=$1 a=$2 tree=$FN/$3 n=${1##*/}
   : >"$FN/curl.log"
@@ -2052,11 +2081,11 @@ wasm_check=$(step_line "$RELEASE_YML" wasm 'sh scripts/release/check-wasm-archiv
 if [ -n "$wasm_pack" ] && [ -n "$wasm_check" ] && [ "$wasm_check" -gt "$wasm_pack" ]; then ok; else ng "release.yml: the wasm job runs check-wasm-archive.sh after package-wasm.sh (docs/adr/0230)"; fi
 rel_create=$(step_line "$RELEASE_YML" release 'gh release create')
 rel_verify=$(step_line "$RELEASE_YML" release 'gh attestation verify')
-if [ -n "$rel_create" ] && [ -n "$rel_verify" ] && [ "$rel_verify" -gt "$rel_create" ]; then ok; else ng "release.yml: the release job runs gh attestation verify after gh release create (docs/adr/0230)"; fi
+if [ -n "$rel_create" ] && [ -n "$rel_verify" ] && [ "$rel_verify" -gt "$rel_create" ]; then ok; else ng "release.yml: the release job runs gh attestation verify after gh release create (docs/adr/0230, I3)"; fi
 if job_of "$RELEASE_YML" release | awk -v s="$rel_verify" 'NR >= s' | grep -q 'gh attestation verify "$f" -R tett23/golem' &&
   job_of "$RELEASE_YML" release | awk -v s="$rel_verify" 'NR >= s' | grep -q 'gh release download "$TAG" -p SHA256SUMS' &&
   job_of "$RELEASE_YML" release | awk -v s="$rel_verify" 'NR >= s' | grep -q 'sha256sum -c'; then ok; else
-  ng "release.yml: the step of gh attestation verify checks dist/ against the SHA256SUMS of the release (docs/adr/0230)"
+  ng "release.yml: the step of gh attestation verify checks dist/ against the SHA256SUMS of the release (docs/adr/0230, I3)"
 fi
 
 # ---------------------------------------------------------------- step-timeouts.sh
@@ -2658,6 +2687,19 @@ expect "models: a command with a scope in the list" 0 "docs/m/models/a.als one f
 docs/m/models/a.als two none
 docs/m/models/a.als three found"
 if grep -qx 'one  for 2 but ' "$MC/models" && grep -qx 'two  for 3 but ' "$MC/models"; then ok; else ng "models: the scope of the list replaces that of the model for its command only"; fi
+# every "for <n> but" of a line is replaced, not the first alone (docs/adr/0242)
+mkdir -p "$MC/root/docs/m2/models"
+printf 'sig B {}\nrun four { some B } for 3 but 2 Int -- was for 2 but 2 Int\n' >"$MC/root/docs/m2/models/b.als"
+printf 'four none 4\n' >"$MC/root/docs/m2/models/expected.txt"
+: >"$MC/models"
+FAKE_MODELS=$MC/models run models_check
+unset FAKE_MODELS
+expect "models: a model of two \"for <n> but\" on a line" 0 "docs/m/models/a.als one found
+docs/m/models/a.als two none
+docs/m/models/a.als three found
+docs/m2/models/b.als four none"
+if grep -qx 'four  for 4 but ' "$MC/models"; then ok; else ng "models: every \"for <n> but\" of a line gets the scope of the list (docs/adr/0242)"; fi
+rm -r "$MC/root/docs/m2"
 printf 'one found x\n' >"$MC/root/docs/m/models/expected.txt"
 run models_check
 expect "models: a scope that is not a number" 1
@@ -3342,13 +3384,13 @@ cb_form() {
 run env DENO="$CB/deno" sh "$HERE/../wasm/compare.sh" --deno golem.wasm
 cp "$WORK/out" "$CB/deno.txt"
 expect "compare.sh --deno: runs every input" 0
-if cb_form "$CB/deno.txt"; then ok; else ng "compare.sh --deno: the list has the form of that of node:wasi"; fi
+if cb_form "$CB/deno.txt"; then ok; else ng "compare.sh --deno: the list has the form of that of node:wasi (docs/adr/0234 I5)"; fi
 if grep -qxF "$(printf '%%PDF kanikosen\n' | cb_sha)  kanikosen/pdf" "$CB/deno.txt"; then ok; else ng "compare.sh --deno: the SHA-256 of the PDF that run.mjs wrote"; fi
 if grep -qxF "$(printf '[]\n' | cb_sha)  kanikosen/diagnostics" "$CB/deno.txt"; then ok; else ng "compare.sh --deno: the warning of Deno is not in the JSON"; fi
 run env PATH="$CB/bin:$PATH" sh "$HERE/../wasm/compare.sh" --browser safari golem.wasm
 cp "$WORK/out" "$CB/browser.txt"
 expect "compare.sh --browser: runs every input" 0
-if cb_form "$CB/browser.txt"; then ok; else ng "compare.sh --browser: the list has the form of that of node:wasi"; fi
+if cb_form "$CB/browser.txt"; then ok; else ng "compare.sh --browser: the list has the form of that of node:wasi (docs/adr/0234 I5)"; fi
 if grep -qxF "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  kanikosen/pdf" "$CB/browser.txt"; then ok; else ng "compare.sh --browser: the SHA-256 that the page gave, of the browser asked"; fi
 if grep -qxF -- "-  missing-font/pdf" "$CB/browser.txt" && grep -qxF "exit 1  missing-font" "$CB/browser.txt"; then ok; else ng "compare.sh --browser: no PDF and the exit code of a build with an error"; fi
 # an input that does not end is stopped past COMPARE_TIMEOUT, its exit
@@ -3372,6 +3414,15 @@ if grep -qxF "exit timeout  int-width-png-chunk" "$CB/hangs.txt" && grep -qxF "e
 if grep -qF "int-width-png-chunk: stopped after 2 s" "$WORK/err"; then ok; else ng "compare.sh: says which input it stopped (I1)"; fi
 if [ $((s1 - s0)) -lt 60 ]; then ok; else ng "compare.sh: the input is stopped near COMPARE_TIMEOUT, not after the sleep of the host (I1)"; fi
 if pgrep -f "sleep 300" >/dev/null 2>&1; then ng "compare.sh: the children of the host stopped are stopped too (I1)"; else ok; fi
+# browser.yml gives its jobs that compare a COMPARE_TIMEOUT of fewer seconds
+# than their timeout-minutes, so that an input that does not end is in the
+# list as `exit timeout` before the job is cancelled (docs/adr/0247 section 7)
+BROWSER_YML=$HERE/../../.github/workflows/browser.yml
+for j in chromium safari; do
+  ct=$(job_of "$BROWSER_YML" "$j" | sed -n 's/^      COMPARE_TIMEOUT: *//p')
+  tm=$(job_of "$BROWSER_YML" "$j" | sed -n 's/^    timeout-minutes: *//p')
+  if [ -n "$ct" ] && [ -n "$tm" ] && [ "$ct" -lt $((tm * 60)) ]; then ok; else ng "browser.yml: the $j job sets COMPARE_TIMEOUT below its timeout-minutes (docs/adr/0247 I1)"; fi
+done
 run sh "$HERE/../wasm/compare.sh" --browser firefox golem.wasm
 expect "compare.sh --browser: a browser that is not chromium nor safari is a usage error" 2
 run sh "$HERE/../wasm/compare.sh" --browser chromium
@@ -3405,9 +3456,9 @@ FAKE
 run sh "$CW/root/scripts/wasm/compare.sh" --wasmtime golem.wasm
 cp "$WORK/out" "$CW/list.txt"
 expect "compare.sh --wasmtime: runs every input" 0
-if cb_form "$CW/list.txt"; then ok; else ng "compare.sh --wasmtime: the list has the form of that of node:wasi"; fi
+if cb_form "$CW/list.txt"; then ok; else ng "compare.sh --wasmtime: the list has the form of that of node:wasi (docs/adr/0234 I5, docs/adr/0238 I2)"; fi
 if [ "$(cat "$CW/calls")" = "compile golem.wasm" ]; then ok; else ng "compare.sh --wasmtime: golem.wasm is compiled once"; fi
-if grep -qxF "$(printf '0001' | cb_sha)  kanikosen/pdf" "$CW/list.txt" && grep -qxF "$(printf 'ffff' | cb_sha)  broken-cmap/pdf" "$CW/list.txt"; then ok; else ng "compare.sh: broken-cmap is kanikosen with FF FF at 30205 of Noto Serif JP (I3)"; fi
+if grep -qxF "$(printf '0001' | cb_sha)  kanikosen/pdf" "$CW/list.txt" && grep -qxF "$(printf 'ffff' | cb_sha)  broken-cmap/pdf" "$CW/list.txt"; then ok; else ng "compare.sh: broken-cmap is kanikosen with FF FF at 30205 of Noto Serif JP (docs/adr/0238 I2, I3)"; fi
 if grep -qxF -- "-  missing-font/pdf" "$CW/list.txt"; then ok; else ng "compare.sh --wasmtime: no PDF"; fi
 run sh "$HERE/../wasm/compare.sh" --wasmtime
 expect "compare.sh --wasmtime: without WASM is a usage error" 2

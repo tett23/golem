@@ -99,7 +99,8 @@ shapingTextKey roles = \(Shaping role vertical extra dual, t) ->
 
 {- | A feature as digits: an OpenType tag of four ASCII characters, alone
 or after + or -, is two digits of fourteen bits, seven a character, with
-the sign (1 for +, 2 for -) above the fourteen bits of the first; any
+the sign (1 for +, 2 for -) above the fourteen bits of the first
+(docs/adr ADR 0255); any
 other text is @-(1 + its length)@ and its code points, a key that is
 decoded but not remembered.
 -}

@@ -1,0 +1,2 @@
+fits :: Nat -> String
+fits x = if x <= 300 then "収まる" else "収まらない"

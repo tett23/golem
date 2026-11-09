@@ -132,10 +132,9 @@ manualTests :: TestTree
 manualTests =
   testGroup
     "the wat example of the developer manual (docs/adr ADR 0235)"
-    [ testCase "I1 the example loads and its filter same returns the document unchanged" $ do
+    [ testCase "I1 the example loads and its filter same returns the document of the identity.wat test unchanged" $ do
         p <- load =<< compile =<< manualWat
-        let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a"])]
-        fmap fst (applyFilter p "same" doc) @?= Right doc,
+        fmap fst (applyFilter p "same" codeBlockDoc) @?= Right codeBlockDoc,
       -- the length of the CBOR of golem_describe one byte short: the
       -- test reads the example of the manual only if this copy fails
       testCase "I1 the example with the length of the CBOR of golem_describe changed by one byte is rejected" $ do
@@ -148,6 +147,15 @@ manualTests =
 
 load :: ByteString -> IO Plugin
 load wasm = loadPlugin wasm >>= either (assertFailure . show) pure
+
+{- | The document of one code block that the filter same of identity.wat
+returns unchanged (golem-driver ADR 0023); the wat example of the manual
+is tested with the same one (docs/adr ADR 0235).
+-}
+codeBlockDoc :: Document
+codeBlockDoc = Document (FileId 1) [Block callSpan (Just "l") Nothing (CodeBlock code)]
+  where
+    code = Code (Just "haskell") (Just True) (Just "a.hs") (Just [Text callSpan "c"]) True [CodeLine "a" (Just 1) (Just DiffAdded) True [1] Nothing, CodeLine "b" Nothing (Just DiffRemoved) False [] Nothing] False
 
 -- | A response whose output is the given inlines.
 responseWith :: Term -> ByteString
@@ -205,9 +213,7 @@ tests =
         loadPlugin w >>= (@?= Left (AbiMismatch 7)) . void,
       testCase "a code block survives a filter unchanged (golem-driver ADR 0023)" $ do
         p <- load =<< compile =<< wat "identity.wat"
-        let code = Code (Just "haskell") (Just True) (Just "a.hs") (Just [Text callSpan "c"]) True [CodeLine "a" (Just 1) (Just DiffAdded) True [1] Nothing, CodeLine "b" Nothing (Just DiffRemoved) False [] Nothing] False
-            doc = Document (FileId 1) [Block callSpan (Just "l") Nothing (CodeBlock code)]
-        fmap fst (applyFilter p "same" doc) @?= Right doc,
+        fmap fst (applyFilter p "same" codeBlockDoc) @?= Right codeBlockDoc,
       testCase "a paragraph with aki survives a filter unchanged (docs/adr ADR 0019)" $ do
         p <- load =<< compile =<< wat "identity.wat"
         let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a", Aki callSpan (AkiZw (1 / 5)), Aki callSpan (AkiAbs 65536)])]

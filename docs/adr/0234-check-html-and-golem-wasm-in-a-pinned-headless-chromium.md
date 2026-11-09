@@ -1,6 +1,6 @@
 # ADR 0234: HTML と golem.wasm を、版を固定したヘッドレスの Chromium と、ランナーの Safari と、Deno と wasmtime で夜ごとに確かめる
 
-ステータス: 採択→wasmtime の入口（`run-wasmtime.sh` と `compare.sh --wasmtime`）は [ADR 0238](0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)
+ステータス: 採択→wasmtime の入口（`run-wasmtime.sh` と `compare.sh --wasmtime`）は [ADR 0238](0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)、輪郭の SVG の文字の検査の条件（4、I4 と、I6 の例外）は [ADR 0239](0239-decide-the-conditions-of-the-outlined-figure-check-and-the-punctuation-of-figure-sources.md)
 
 ## 文脈
 

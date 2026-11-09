@@ -1,6 +1,6 @@
 # ADR 0250: 文字の種類の判定を `String` への `elem` から表の参照に変える
 
-ステータス: 採択
+ステータス: 採択→判定の関数の公開と割り当ての見積もりは [ADR 0255](0255-record-what-implementations-decided-on-2026-11-09.md)
 
 ## 文脈
 

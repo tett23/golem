@@ -92,6 +92,8 @@ test-suite golem-driver-test
     CliSpec
     ComplexFixtureSpec
     DiagnosticSitesSpec
+    ReuseSpec
+    CodeFontSpec
     DiagnosticsSpec
     DoubleDashSpec
     EmetSamplesSpec
@@ -103,6 +105,7 @@ test-suite golem-driver-test
     FunctionsSpec
     HeadingLevelsSpec
     InMemorySpec
+    ManualEmetSpec
     LinkSpec
     OutputGoldenSpec
     OverflowSpec

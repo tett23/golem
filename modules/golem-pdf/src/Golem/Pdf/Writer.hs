@@ -28,7 +28,10 @@ module Golem.Pdf.Writer
     ObjOf (..),
     PdfObjects (..),
     documentObjects,
+    documentObjectsWith,
     writePdf,
+    writePdfWith,
+    parPages,
     contentStream,
     pageStream,
     structureText,
@@ -58,6 +61,7 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import GHC.Conc (par, pseq)
 import Golem.Length (Sp (..))
 import Golem.Pdf.Drawing
 import Golem.Pdf.Image
@@ -464,7 +468,23 @@ pdfTextString t
 
 -- | Writes the document: 'documentObjects', serialized.
 writePdf :: Document -> ByteString
-writePdf = serializePdf . documentObjects
+writePdf = writePdfWith parPages
+
+{- | 'writePdf' with the compressed content streams of the pages, in their
+order, passed through a function: 'parPages' computes them in parallel,
+'id' in order (the tests of docs/adr ADR 0252).
+-}
+writePdfWith :: ([ByteString] -> [ByteString]) -> Document -> ByteString
+writePdfWith strategy = serializePdf . documentObjectsWith strategy
+
+{- | Every element of a list sparked to weak head normal form, then each
+waited for in order, and the list itself (parList rseq of the parallel
+package, docs/adr ADR 0252). The value is the list: a spark only computes
+it on another capability, and on a runtime without threads (golem.wasm)
+'par' does nothing.
+-}
+parPages :: [a] -> [a]
+parPages xs = foldr par () xs `pseq` foldr pseq () xs `pseq` xs
 
 -- | The header, the objects, a classic xref table and the trailer.
 serializePdf :: PdfObjects -> ByteString
@@ -494,7 +514,11 @@ reference, the annotations of the pages in order (docs/adr ADR 0182),
 then the document information.
 -}
 documentObjects :: Document -> PdfObjects
-documentObjects doc =
+documentObjects = documentObjectsWith parPages
+
+-- | 'documentObjects' with the compressed content streams of the pages passed through a function (see 'writePdfWith').
+documentObjectsWith :: ([ByteString] -> [ByteString]) -> Document -> PdfObjects
+documentObjectsWith strategy doc =
   let pages = docPages doc
       fontOrder = nub [f | p <- pages, m <- pageMarks p, f <- fontsOf m]
       imageOrder = nub [i | p <- pages, m <- pageMarks p, i <- imagesOf m]
@@ -551,6 +575,8 @@ documentObjects doc =
       structBase = annotBase + length annotObjs
       (tree, tagOf) = withOrphans (docStructure doc) [l | p <- pages, l <- contentLeaves (pageContent p)]
       streams = [pageStream fontNames imageNames formNames tagOf (pageContent p) | p <- pages]
+      -- each page drawn, written and compressed on its own, in parallel by 'parPages' (docs/adr ADR 0252)
+      compressed = strategy [flate stream | (stream, _) <- streams]
       structObjs = structureObjects structBase pageObj tree (map snd streams) [(n, pg, key, aid) | (n, pg, key, a) <- annotPlaces, Just aid <- [annotLink a]]
       infoObj = structBase + length structObjs
       imageObjCount i = case Map.lookup i (docImages doc) of
@@ -595,9 +621,9 @@ documentObjects doc =
                   ("StructParents", OInt (fromIntegral i))
                 ]
                 `withAnnots` refs,
-              OStream [("Filter", OName "FlateDecode")] (flate stream)
+              OStream [("Filter", OName "FlateDecode")] stream
             ]
-          | (i, p, (refs, (stream, _))) <- zip3 [0 ..] pages (zip annotRefs streams)
+          | (i, p, (refs, stream)) <- zip3 [0 ..] pages (zip annotRefs compressed)
           ]
       -- the annotations of a page, in the order of the structure tree (/Tabs /S, docs/adr ADR 0183)
       withAnnots (ODict kvs) refs = ODict (kvs <> [("Annots", OArr refs) | not (null refs)] <> [("Tabs", OName "S") | not (null refs)])

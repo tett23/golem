@@ -1,0 +1,5 @@
+data Size = A5 | B6 | Shiroku
+
+sizeName :: Size -> String
+sizeName A5 = "A5判"
+sizeName B6 = "B6判"

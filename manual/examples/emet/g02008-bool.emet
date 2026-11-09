@@ -1,0 +1,2 @@
+pub fn fits :: Nat -> Bool
+fits x = 100 <= x && x <= 300

@@ -1,0 +1,5 @@
+signed :: Int -> String
+signed n = n < 0 ? String.fromInt n : "+" ++ String.fromInt n
+
+minusOne :: String
+minusOne = signed -1

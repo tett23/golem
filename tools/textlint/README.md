@@ -11,10 +11,19 @@ Golem の開発の道具であり、Golem の配布物には入らない。
 ```sh
 sh scripts/ci/textlint.sh                    # 検査する
 TEXTLINT_ARGS=--fix sh scripts/ci/textlint.sh  # prh と空白の規則の直しを当てる
-node --test tools/textlint/test/*.test.js     # Golem の規則と辞書のテスト
+node --test tools/textlint/test/*.test.js     # Golem の規則、辞書、スクリプトのテスト
 ```
 
 初めての実行で `npm ci` がパッケージを `node_modules/` に入れる。
+Markdown の文書は一つずつ、マニュアルはプロファイルごとに一つのジョブにして、大きいものから並べて走らせる（[docs/adr/0258](../../docs/adr/0258-textlint-per-file-jobs-and-a-cache-of-clean-results.md)）。
+並べる数は `TEXTLINT_JOBS` で変えられ、省くとプロセッサの数になる。
+報告は、走った順ではなく、プロファイルとファイルの決まった順に出る。
+
+何も報告しなかったジョブは、キーを `.cache/clean` に覚え、次の実行で検査を省く。
+キーは、プロファイル、文書のパスと中身、`tools/textlint/` の下のすべてのファイル（`node_modules` を含む）、`scripts/ci/textlint.sh`、Node の版から作るので、どれかが変われば検査し直す。
+報告を出したジョブは覚えないので、キャッシュがあってもなくても報告は同じである。
+`TEXTLINT_CACHE=` でキャッシュを止め、`TEXTLINT_CACHE=<パス>` で置き場所を変える。
+`TEXTLINT_ARGS` を渡した実行は、キャッシュを使わない。
 引数に BASE のコミットを渡すと、BASE との分岐点から加えた ADR を検査する。
 省くと `origin/main` との分岐点を使う。
 
@@ -22,11 +31,11 @@ node --test tools/textlint/test/*.test.js     # Golem の規則と辞書のテ�
 
 | パス | 中身 |
 | --- | --- |
-| `package.json`、`package-lock.json` | textlint 15.8.0、textlint-rule-preset-ja-technical-writing 12.0.2、textlint-rule-preset-ja-spacing 3.0.3、@textlint-ja/textlint-rule-preset-ai-writing 1.7.0、textlint-rule-prh 6.1.1（どれも MIT）を正確なバージョンで固定する |
+| `package.json`、`package-lock.json` | textlint 15.8.0、textlint-rule-preset-ja-technical-writing 12.0.2、textlint-rule-preset-ja-spacing 3.0.4、@textlint-ja/textlint-rule-preset-ai-writing 1.7.0、textlint-rule-prh 6.1.1（どれも MIT）を正確なバージョンで固定する |
 | `rules/` | Golem の規則のプリセット `textlint-rule-preset-golem`（`file:rules` で参照する） |
 | `prh/` | 用語の辞書。`common.yml` は全文書、`dev.yml` は開発者が読む文書、`user.yml` は使い手のマニュアル |
 | `config/` | プロファイルごとの設定。`common.js` が共通の部分で、止めた規則の理由もここに書く |
-| `test/` | Golem の規則と辞書のテスト |
+| `test/` | Golem の規則と辞書のテスト（`rules.test.js`）と、`scripts/ci/textlint.sh` のテスト（`script.test.js`） |
 
 ## プロファイル
 

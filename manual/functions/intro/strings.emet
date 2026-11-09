@@ -1,0 +1,5 @@
+pub fn chapter :: Nat -> String
+chapter n = "第" ++ String.fromNat n ++ "章"
+
+pub fn nextChapter :: Nat -> String
+nextChapter n = "第" ++ String.fromNat (n + 1) ++ "章"

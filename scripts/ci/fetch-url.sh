@@ -44,6 +44,9 @@ sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1
 }
 if [ -f "$FILE" ] && [ "$(sha256 "$FILE")" = "$SHA256" ]; then exit 0; fi
+# a FILE of another SHA-256 is fetched again; it goes now, so that a failure
+# leaves no FILE (I3, I4)
+rm -f "$FILE"
 mkdir -p "$(dirname "$FILE")"
 PART=$FILE.part
 # wait N: the seconds of the wait after the attempt N

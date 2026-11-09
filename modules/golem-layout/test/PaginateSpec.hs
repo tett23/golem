@@ -24,7 +24,7 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import PaginateEnum (Element (..), Input (..), controlSpan, enumFlows, noteOf, paginateInput)
-import PaginateInvariants (Breach (..), Invariant (..), breaches, p9SpaceMoved, w3WaitingAlike, waitingFigures)
+import PaginateInvariants (Breach (..), Invariant (..), breaches, p11WaitingBeforeSpace, p9SpaceMoved, w3WaitingAlike, waitingFigures)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -58,6 +58,7 @@ paginateTests =
       testGroup "the figures that wait are read from the placement (golem-layout ADR 0033)" waitingReadTests,
       testGroup "a larger need-lines after one judged is judged again (golem-layout ADR 0035)" largerNeedTests,
       testGroup "the spaces before need-lines are not counted either (golem-layout ADR 0043)" spaceBeforeNeedTests,
+      testGroup "the spaces before need-lines are not counted with figures that wait between (golem-layout ADR 0047)" spaceBeforeWaitingTests,
       testGroup "invariants" propertyTests
     ]
 
@@ -1443,3 +1444,97 @@ spaceBeforeNeedTests =
       (if s > 0 then "P9, P10, W3: " else "P9, W3: ")
         <> (show k <> " column" <> (if k > 1 then "s, " else ", "))
         <> (show s <> " spaces before need-lines 2, " <> show r <> " grid lines left before them, " <> show a <> " after")
+
+{- | golem-layout ADR 0047: a figure that waits between the spaces and a
+need-lines does not clear the record of the spaces, and the need-lines
+is judged before them as with no figure between. The rows of 「確かめた出力」
+of its section 「文脈」 (P11, P9′), and its table of the boundary inputs in
+columns of 6 grid lines: every invariant is checked, with P9′ and P11,
+and the paragraph after is placed in the column judged in when its first
+line fits after the spaces.
+-}
+spaceBeforeWaitingTests :: [TestTree]
+spaceBeforeWaitingTests =
+  [ testCase "P11: a space, a figure that waits and need-lines 2: the paragraph after is on line 2 of page 1, as with the figure before the space" $ do
+      let input = Input 3 1 [EPara 1, EFigure 3, ESpace, EFigure 1, ENeedLines, EPara 1]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SFigure 1000]), (3, 0, [SFigure 1001])]
+      gridLines ps @?= [[0, 2], [0], [0]]
+      unmets ps @?= []
+      brokenIn [minBound .. maxBound] input @?= []
+      p11WaitingBeforeSpace (paginate 1 3) (enumFlows (inElements input)) ps @?= [],
+    testCase "P11, P9′: the rows of 「確かめた出力」 of golem-layout ADR 0047 all lay out alike" $ do
+      let rows =
+            [ [EPara 1, EFigure 3, ESpace, EFigure 1, ENeedLines, EPara 1],
+              [EPara 1, EFigure 3, EFigure 1, ESpace, ENeedLines, EPara 1],
+              [EPara 1, EFigure 3, ESpace, ENeedLines, EFigure 1, EPara 1],
+              [EPara 1, EFigure 3, ENeedLines, ESpace, EFigure 1, EPara 1]
+            ]
+      forM_ rows $ \es -> placedIn (Input 3 1 es) @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SFigure 1000]), (3, 0, [SFigure 1001])]
+      placedIn (Input 3 1 [EPara 1, EFigure 3, ESpace, ENeedLines, EPara 1]) @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SFigure 1000])],
+    testCase "P9′: the space moved after the need-lines past the figure that waits lays out the same, the input of six elements" $ do
+      let flows = enumFlows [EPara 1, EFigure 3, ESpace, EFigure 1, ENeedLines, EPara 1]
+          lay = paginate 1 3
+          ps = lay flows
+      waitingFigures flows ps @?= [1001]
+      map breachWhy (p9SpaceMoved lay flows ps) @?= []
+      map breachWhy (w3WaitingAlike lay flows ps) @?= [],
+    testCase "a break between the space and the figure that waits clears the record: need-lines 2 is judged in the column gone on to, after the figure sent on, the space of the column left not taken off" $ do
+      -- 1 line is left on page 2 after the figure sent on: with the space of page 1 taken off, 2 would be
+      let flows = [FParagraph (lines' 0 2), FFigure 1000 5 [] [], FFigure 1001 5 [] [], FSpace 1, FBreak BreakPage, FFigure 1002 1 [] [], FNeedLines mk 2, FParagraph (lines' 100 1)]
+          ps = paginateIn 1 (ColumnSet 1 0 0 0) 6 flows
+      [(poNumber p, map snd (poSlots p)) | p <- ps] @?= [(1, [SLine 0, SLine 1]), (2, [SFigure 1000]), (3, [SFigure 1001, SFigure 1002]), (4, [SLine 100])]
+      unmets ps @?= []
+      waitingFigures flows ps @?= [1001, 1002]
+      brokenOf [minBound .. maxBound] flows ps @?= [],
+    testCase "a figure sent on by itself between the space and need-lines clears the record: need-lines 2 is judged after the space, as before golem-layout ADR 0047" $ do
+      -- 1 line is left after the space on page 1: the paragraph goes on to page 2, after the figure
+      let flows = [FParagraph (lines' 0 4), FSpace 1, FFigure 1000 3 [] [], FNeedLines mk 2, FParagraph (lines' 100 1)]
+          ps = paginateIn 1 (ColumnSet 1 0 0 0) 6 flows
+      [(poNumber p, map snd (poSlots p)) | p <- ps] @?= [(1, [SLine 0, SLine 1, SLine 2, SLine 3]), (2, [SFigure 1000, SLine 100])]
+      gridLines ps @?= [[0, 1, 2, 3], [0, 3]]
+      unmets ps @?= []
+      waitingFigures flows ps @?= []
+      brokenOf [minBound .. maxBound] flows ps @?= [],
+    testGroup "the boundary inputs" (map boundary cases)
+  ]
+  where
+    c = 6
+    need = 2
+    blocks = [("a paragraph of 1 line", FParagraph (lines' 100 1)), ("a figure", FFigure 1100 1 [] [])]
+    -- columns, figures that wait between, their grid lines, spaces, the lines left before the spaces
+    cases =
+      [ (k, w, h, s, r)
+      | k <- [1, 2],
+        w <- [0, 1, 2],
+        h <- if w == 0 then [1] else [1, c],
+        s <- [1, 2],
+        r <- nubInts [need - 1, need, need + s - 1, need + s],
+        r >= 1,
+        r <= c - 1
+      ]
+    nubInts = foldr (\x xs -> x : filter (/= x) xs) []
+    boundary (k, w, h, s, r) =
+      testCase (boundaryName k w h s r) $
+        forM_ blocks $ \(name, block) -> do
+          -- the figure of C lines does not fit in the r lines left: it is sent on, and the figures after it wait
+          let flows =
+                [FParagraph (lines' 0 (c - r)), FFigure 1000 c [] []]
+                  <> replicate s (FSpace 1)
+                  <> [FFigure (1001 + i) h [] [] | i <- [0 .. w - 1]]
+                  <> [FNeedLines mk need, block]
+              lay = paginateIn 1 (ColumnSet k 0 0 0) c
+              ps = lay flows
+              firstAt = take 1 [(poNumber p, poColumn p) | p <- ps, (_, sl) <- poSlots p, sl == SLine 100]
+          assertEqual ("the figures that wait, before " <> name) [1001 .. 1000 + w] (take w (waitingFigures flows ps))
+          assertEqual ("the invariants, before " <> name) [] (brokenOf [minBound .. maxBound] flows ps)
+          assertEqual ("P9′, before " <> name) [] (map breachWhy (p9SpaceMoved lay flows ps))
+          assertEqual ("P11, before " <> name) [] (map breachWhy (p11WaitingBeforeSpace lay flows ps))
+          assertEqual ("W3, before " <> name) [] (map breachWhy (w3WaitingAlike lay flows ps))
+          when (name == "a paragraph of 1 line" && r >= need && 1 <= r - s) $
+            assertEqual ("P11, the column of " <> name) [(1, 0)] firstAt
+    boundaryName k w h s r =
+      "P9′, P11: "
+        <> (show k <> " column" <> (if k > 1 then "s, " else ", "))
+        <> (show w <> " figures of " <> show h <> " lines waiting between " <> show s <> " spaces and need-lines 2, ")
+        <> (show r <> " grid lines left before the spaces")

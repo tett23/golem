@@ -5,6 +5,7 @@ import BuildSpec
 import CallsSpec (callsTests)
 import ChapterNotesSpec
 import CliSpec
+import CodeFontSpec (codeFontTests)
 import ColophonSpec
 import ComplexFixtureSpec (complexFixtureTests)
 import DiagnosticSitesSpec
@@ -21,6 +22,7 @@ import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
 import HeadingLevelsSpec (headingLevelsTests)
 import InMemorySpec (inMemoryTests)
 import LinkSpec (linkTests)
+import ManualEmetSpec (manualEmetTests)
 import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
@@ -31,6 +33,7 @@ import PdfSpec
 import PlatesSpec (platesTests)
 import PopplerSpec (popplerTests)
 import ReferencesSpec
+import ReuseSpec
 import SecuritySpec
 import ShapingMemoSpec (shapingMemoTests)
 import SpecimenGeometrySpec (specimenGeometryTests)
@@ -66,6 +69,7 @@ tests skips =
         unwritableNumbersTests,
         emetSamplesTests,
         functionLibraryTests,
+        manualEmetTests,
         testGroup "output and layout diagnostic codes (golem-driver ADR 0016)" outputDiagnosticTests,
         testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
         testGroup "the background of inline code (golem-driver ADR 0029)" inlineCodeBackgroundTests,
@@ -84,7 +88,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests, tateChuYokoTests, expansionTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests]
         <> [ newProjectTests,
              allTargetsTests,
              pdfPipelineTests,
@@ -145,6 +149,7 @@ tests skips =
              testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
              testGroup "the spaces of paragraph styles redefined in files (docs/adr/0217)" fileSpacesTests,
              publicDomainTests skips,
-             diagnosticSiteTests
+             diagnosticSiteTests,
+             testGroup "the compositions reused between the rounds of page references (docs/adr ADR 0251)" reuseTests
            ]
     )
