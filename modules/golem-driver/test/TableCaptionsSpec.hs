@@ -63,7 +63,7 @@ structureOf :: BS.ByteString -> T.Text -> IO [T.Text]
 structureOf style source = withSystemTempDirectory "golem-structure" $ \tmp -> do
   writeProject tmp miniManifest style source []
   r <- pdfStructure (defaultOptions tmp) {optFonts = fakeProvider}
-  either (\ds -> assertFailure (show (map diagCode ds))) (pure . map T.strip . T.lines) r
+  either (assertFailure . show . map diagCode) (pure . map T.strip . T.lines) r
 
 -- | The codes of the layout errors of a source.
 layoutCodes :: BS.ByteString -> T.Text -> IO [T.Text]
@@ -100,7 +100,7 @@ tableCaptionsTests =
       assertBool (show (daiB, takaB)) (daiB < takaB),
     testCase "I8: above, a table that cannot start with its caption, header and first row on the page goes on whole" $ do
       -- five lines: three paragraphs, then the caption, the header and the first row do not fit
-      pdf <- miniPdf fakeProvider True (above fiveLines) ("一。\n\n二。\n\n三。\n\n@caption 題目\n| 項目 | 値 |\n|---|---|\n| 幅 | 10 |\n") []
+      pdf <- miniPdf fakeProvider True (above fiveLines) "一。\n\n二。\n\n三。\n\n@caption 題目\n| 項目 | 値 |\n|---|---|\n| 幅 | 10 |\n" []
       pages <- pageContents pdf
       [p | (p, c) <- zip [1 :: Int ..] pages, fromEnum '題' `elem` map dGlyph (drawnGlyphs c)] @?= [2]
       [p | (p, c) <- zip [1 :: Int ..] pages, fromEnum '幅' `elem` map dGlyph (drawnGlyphs c)] @?= [2],

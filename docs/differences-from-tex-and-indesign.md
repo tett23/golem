@@ -34,6 +34,64 @@ TeX で組んだときと、ハイフンで終わる行の位置が変わるこ�
 ほとんどの語にハイフンを書いた段落の行は、要素の中で分けても詰まらないことがある。
 そのような行は、`[composition]` の `expansion`（グリフの幅の伸縮）を書けば詰められる。
 
+## 分綴の例外の語の前後に残す字の数
+
+この節の TeX の振る舞いは、2026-11-10 に TeX Live 2026 で実際に組んで確かめたものである。
+確かめた環境は、Docker のイメージ `texlive/texlive@sha256:07e8062637249c4f780ca59f42cc2ed592bc2dc1db4320769406aee3f98aa70e`（TeX Live 2026）の TeX 3.141592653（plain TeX）、pdfTeX 3.141592653-2.6-1.40.29、LuaHBTeX 1.24.0 である。
+LaTeX は LaTeX2e <2026-11-01> の article クラスで、言語は既定の英語である。
+パターンが分けない作り語（`abcdef`、`bcdfgh` など）に `\hyphenation` で例外を書き、`\showhyphens` が示す分割の位置を見た。
+plain TeX では、`\hsize` を 1pt にして改行できる位置のすべてで改行させ、`\showbox` でも同じ位置を確かめた。
+
+### TeX の振る舞い
+
+plain TeX と LaTeX の既定は、`\lefthyphenmin` が 2、`\righthyphenmin` が 3 である。
+TeX と pdfTeX は、`\hyphenation` に書いた語にもこの規則を当てる。
+`a-bcdef` と書いても `abcdef` は分けず、`b-c-d-f-g-h` と書いた `bcdfgh` は `bc-d-fgh` の二か所でだけ分けた。
+5 字に満たない語（`k-l-m`、`a-ble`）は、例外に書いても分けなかった。
+`\lefthyphenmin` と `\righthyphenmin` を 1 にすると、同じ例外のすべての位置で分けたので、例外の一覧そのものは読まれている。
+
+LuaTeX は TeX と異なる。
+LuaLaTeX は、例外の語の前に 1 字、後に 1 字を残す位置でも分けた（`a-bcdef`、`stuvw-x`、`b-c-d-f-g-h`）。
+一方で、`a-ble`（4 字）と `xy-z`（3 字）は分けなかった。
+前後の字の数の規則は例外の位置に当てないが、短い語は例外に書いても分けない、という振る舞いである。
+短い語を分けない境が 5 字（2 と 3 の和）かは、4 字以下と 5 字以上の語で確かめただけであり、境の値を変えては確かめていない。
+
+原稿に書く任意の分割（`\-`）には、どのエンジンでも前後の字の数の規則を当てない。
+plain TeX で `a\-bcdef` と `stuvw\-x` は、書いた位置で分けた。
+
+### Golem の振る舞い
+
+Golem は、分綴の例外の一覧（`[composition.hyphenation-exceptions]` と `@hyphenation-exceptions`）に書いた位置に、前に 2 字、後に 3 字を残す規則を当てない。
+語の長さの下限もない。
+`a-ble` と書けば、`a` の後で分ける。
+当てると、書き手が `-` を書いた位置で分けられない理由が、一覧からは見えないからである。
+ソフトハイフン（`[shy]`）にも、この規則を当てない。
+
+TeX と比べると、次のようになる。
+
+| 例外の書き方 | TeX、pdfTeX | LuaTeX | Golem |
+| --- | --- | --- | --- |
+| `a-bcdef`（前に 1 字） | 分けない | 分ける | 分ける |
+| `gh-ijkl`（前に 2 字、後に 4 字） | 分ける | 分ける | 分ける |
+| `stuvw-x`（後に 1 字） | 分けない | 分ける | 分ける |
+| `a-ble`（4 字の語） | 分けない | 分けない | 分ける |
+| `xy-z`（3 字の語） | 分けない | 分けない | 分ける |
+
+### 決めた ADR
+
+- [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
+
+### 書き手が気をつけること
+
+TeX の `\hyphenation` の一覧を移すと、TeX では使われなかった位置で語が分かれることがある。
+行頭や行末に 1 字だけを残したくない位置は、一覧から `-` を消す。
+
+### 確かめていないこと
+
+- TeX と LuaTeX のソースで、例外の位置に前後の字の数の規則を当てる処理を読んでいない。表は組んだ結果だけによる。
+- LuaTeX が短い語を分けない境の値。
+- `\lefthyphenmin` と `\righthyphenmin` を言語ごとに変える babel の設定での振る舞い。
+
 ## 段落の前後のアキの合わせ方
 
 ### InDesign の振る舞い

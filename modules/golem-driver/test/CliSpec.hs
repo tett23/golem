@@ -4,6 +4,7 @@ import Control.Exception (try)
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
+import Data.Either (isRight)
 import Data.List (isSuffixOf, sort)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
@@ -20,7 +21,7 @@ import Golem.Preflight.View (GlyphView (..), ImageView (..), LineView (..), Page
 import Golem.Project.Style (Page (..), Style (..), parseDim, parseStyle)
 import Golem.Syntax
 import Support
-import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
+import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -81,7 +82,7 @@ newProjectTests =
              testCase "fetched fonts are written next to the template" $ withSystemTempDirectory "golem-new" $ \tmp -> do
                let dir = tmp </> "book"
                r <- createProject dir (templateFiles Japanese uuid0) (Just (fakeFetch (Right "FONT"), [fakeFont "FONT"]))
-               r @?= Right ()
+               assertBool (show r) (isRight r)
                BS.readFile (dir </> "fonts/a.otf") >>= (@?= "FONT")
                expected <- templateText Japanese "style.toml"
                TIO.readFile (dir </> "style.toml") >>= (@?= expected)
@@ -99,14 +100,9 @@ newProjectTests =
              testCase "without fonts nothing is fetched and the style still names them" $ withSystemTempDirectory "golem-new" $ \tmp -> do
                let dir = tmp </> "book"
                r <- createProject dir (templateFiles English uuid0) Nothing
-               r @?= Right ()
+               assertBool (show r) (isRight r)
                doesDirectoryExist (dir </> "fonts") >>= assertBool "no fonts" . not
                TIO.readFile (dir </> "style.toml") >>= assertBool "font path" . T.isInfixOf "fonts/SourceSerif4-Regular.otf",
-             testCase "a directory that is not empty is left alone" $ withSystemTempDirectory "golem-new" $ \tmp -> do
-               BS.writeFile (tmp </> "keep") "x"
-               r <- createProject tmp (templateFiles Japanese uuid0) Nothing
-               assertBool "error" (either (const True) (const False) r)
-               listDirectory tmp >>= (@?= ["keep"]),
              testCase "a file the template does not have fails the test, not an empty golden (docs/adr/0064)" $ do
                r <- try (templateText Japanese "no-such-file")
                case r of
@@ -127,7 +123,7 @@ newPreflightTests =
         en <- templateText English "preflight.toml"
         uncommented ja @?= uncommented en,
     testCase "preflight.toml is written without fonts" $ withSystemTempDirectory "golem-new" $ \tmp -> do
-      createProject (tmp </> "book") (templateFiles English uuid0) Nothing >>= (@?= Right ())
+      createProject (tmp </> "book") (templateFiles English uuid0) Nothing >>= assertBool "written" . isRight
       expected <- templateText English "preflight.toml"
       TIO.readFile (tmp </> "book/preflight.toml") >>= (@?= expected),
     testCase "a failed download writes no preflight.toml" $ withSystemTempDirectory "golem-new" $ \tmp -> do
@@ -376,7 +372,7 @@ preflightTests =
   ]
     <> [ testCase ("the template fails print with G09014 only, and passes with intent; it has a bleed (golem-pdf ADR 0010) (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
            let dir = tmp </> "book"
-           createProject dir (templateFiles lang uuid0) Nothing >>= (@?= Right ())
+           createProject dir (templateFiles lang uuid0) Nothing >>= assertBool "written" . isRight
            writeFiles dir [(fsPath f, "fake") | f <- templateFonts lang]
            p <- preflightIn dir
            sort (errorCodes (prDiagnostics p)) @?= [DiagnosticCode "G09014"]

@@ -126,6 +126,7 @@ noticeCodes =
       "G03116", -- {{ and }} in a running head format (to be retired; docs/adr/0177)
       "G03117", -- [notes] mark-size (to be retired; docs/adr/0177)
       "G03120", -- no paragraph-separator in [source] (docs/adr/0193)
+      "G03134", -- golem new kept an existing .gitignore (docs/adr/0273)
       "G04007", -- @number equal to the automatic number
       "G04008", -- page breaks at the very end of the book
       "G04009", -- @blank-line at the very end of the book (docs/adr ADR 0046)
@@ -136,6 +137,8 @@ noticeCodes =
       "G07046", -- a block with rules broken or a heading rule left out (golem-driver ADR 0027)
       "G07100", -- a heading taller than the rest of its column (golem-layout ADR 0020)
       "G07101", -- a dash of a double dash without ink, its lines not joined (docs/adr ADR 0172)
+      "G07123", -- a soft hyphen without a letter on either side, not a break (docs/adr ADR 0272)
+      "G07124", -- a soft hyphen in text that does not break, not a break (docs/adr ADR 0272)
       "G08008", -- code in the body role without [fonts.code] (golem-driver ADR 0017)
       "E02109" -- a binding of where of .emet that nothing uses (docs/adr/0160)
     ]
@@ -186,7 +189,8 @@ profileDependentCodes :: [DiagnosticCode]
 profileDependentCodes =
   [ DiagnosticCode "G05004", -- unreferenced label
     DiagnosticCode "G03010", -- a font missing from HTML and EPUB (golem-project ADR 0004)
-    DiagnosticCode "G08100" -- a character the font of the PDF has not (docs/adr 0081)
+    DiagnosticCode "G08100", -- a character the font of the PDF has not (docs/adr 0081)
+    DiagnosticCode "G08103" -- an OpenType feature the font of the PDF has not (docs/adr/0268)
   ]
 
 {- | The codes of golem preflight whose severity the preflight rules decide,

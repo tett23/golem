@@ -558,6 +558,9 @@ fakeFonts =
       lfEmBoxCentral = const (38 / 100),
       lfFaceFile = const ("fonts/b.otf", "truetype"),
       lfInkBox = \ix _ -> if ix == 8 then Nothing else Just (1 / 10, -(1 / 10), 9 / 10, 8 / 10),
+      -- no role has features, and every face has every feature (docs/adr/0268)
+      lfRoleFeatures = const [],
+      lfHasFeature = \_ _ -> True,
       lfEmbed = \_ vertical used ->
         pure . Right $
           Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used ("Adobe", "Identity", 0)

@@ -17,7 +17,9 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import DoubleDashSpec (doubleDashTests)
+import ExceptionsSpec (exceptionsTests)
 import ExpansionStepSpec (expansionStepTests)
+import FeaturesSpec (featuresTests)
 import Fixtures (compose, fs, look0, sp, sp0)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiSet, akiPositions, builtinAkiSets, defaultAkiSet, withAkiRule)
@@ -47,12 +49,15 @@ import LangSpec (langTests)
 import LineBreakInvariantsSpec (lineInvariantTests)
 import LineBreakingSpec (lineBreakingTests)
 import LinkSpec (linkTests)
+import NoBreakEnum (noBreakTests)
 import NoteSplitSpec (noteSplitTests)
 import OverflowSpec (overflowTests)
 import PaginateInvariantsSpec (invariantTests)
 import PaginateSpec (paginateTests)
 import PunctuationSpec (punctuationTests)
 import RuleAreaSpec (ruleAreaTests)
+import ScriptSpec (scriptTests)
+import SoftHyphenSpec (softHyphenTests)
 import StructureSpec (structureTests)
 import TableCaptionSpec (tableCaptionTests)
 import Test.Tasty
@@ -376,7 +381,7 @@ tests =
     [ testGroup "kenten shapes (golem-driver ADR 0019)" kentenTests,
       testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
       testGroup "note marks and note keys (golem-driver ADR 0018)" noteMarkTests,
-      testGroup "boundaries and invariants" [paginateTests, invariantTests, punctuationTests, lineBreakingTests, lineInvariantTests, overflowTests, alignTests, expansionStepTests, charClassTests],
+      testGroup "boundaries and invariants" [paginateTests, invariantTests, punctuationTests, lineBreakingTests, lineInvariantTests, noBreakTests, softHyphenTests, exceptionsTests, overflowTests, alignTests, expansionStepTests, charClassTests],
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       inseparableTests,
       doubleDashTests,
@@ -385,6 +390,8 @@ tests =
       codeStopTests,
       urlBreakTests,
       linkTests,
+      featuresTests,
+      scriptTests,
       langTests,
       structureTests,
       tableCaptionTests,

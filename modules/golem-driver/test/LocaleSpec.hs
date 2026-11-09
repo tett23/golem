@@ -49,7 +49,7 @@ localeTests =
       testCase "golem new writes the template in UTF-8 under EUC-JP" $ withSystemTempDirectory "golem-new" $ \tmp -> do
         let files = templateFiles Japanese uuid0
         r <- withEncoding "EUC-JP" (createProject (tmp </> "book") files Nothing)
-        r @?= Right ()
+        r @?= Right (Plan (map fst files) False)
         forM_ files $ \(p, t) -> BS.readFile (tmp </> "book" </> p) >>= assertEqual p (TE.encodeUtf8 t)
     ]
 

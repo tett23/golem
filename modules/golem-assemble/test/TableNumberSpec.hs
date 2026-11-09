@@ -1,6 +1,7 @@
 -- | Table numbers, [ref-number] and [ref-title] of tables (docs/adr/0262).
 module TableNumberSpec (tests) where
 
+import Control.Monad (replicateM)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -39,7 +40,7 @@ block s = \case
 
 -- | Every sequence of the kinds of up to n blocks.
 sequencesUpTo :: Int -> [[Kind]]
-sequencesUpTo n = concatMap (\k -> sequenceA (replicate k [minBound .. maxBound])) [0 .. n]
+sequencesUpTo n = concatMap (\k -> replicateM k [minBound .. maxBound]) [0 .. n]
 
 -- | The table numbers of a document of the kinds, by the place of each block.
 numbersOf :: [(Int, Kind)] -> Map.Map SrcSpan Text
