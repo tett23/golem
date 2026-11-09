@@ -1,6 +1,7 @@
 module Main (main) where
 
 import BuiltinSpec qualified
+import CiteSpec qualified
 import DeferredSpec qualified
 import DiagnosticSitesSpec qualified
 import ExceptionsSpec qualified
@@ -10,7 +11,6 @@ import FunctionSpec qualified
 import LangSpec qualified
 import LinkSpec qualified
 import NaturalSpec qualified
-import CiteSpec qualified
 import NoteSpec qualified
 import OperatorSpec qualified
 import RangeSpec qualified

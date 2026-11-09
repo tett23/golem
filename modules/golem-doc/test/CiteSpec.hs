@@ -76,7 +76,8 @@ tests =
   testGroup
     "citations (docs/adr/0266)"
     [ testCase "I1: the numbers of a mark without a locator, the ranges by what they cover, are the numbers cited, each once" $
-        forM_ orders $ \ns -> covered (citationPieces (itemsOf ns)) @?= sort ns,
+        forM_ orders $
+          \ns -> covered (citationPieces (itemsOf ns)) @?= sort ns,
       testCase "I2: the mark without a locator does not change with the order of the keys" $
         forM_ (filter (not . null) (subsequences [1 .. 6])) $ \ns ->
           forM_ (permutations ns) $ \o -> citationPieces (itemsOf o) @?= citationPieces (itemsOf ns),
@@ -106,7 +107,8 @@ tests =
         citationText (citationPieces items) @?= "[3, p. 9; 1; 2]"
         [n | CiteNumber _ n <- citationPieces items] @?= [3, 1, 2],
       testCase "I8: the mark of one key without a locator is [n]" $
-        forM_ [1 .. 12] $ \n -> citationText (citationPieces (itemsOf [n])) @?= "[" <> T.pack (show n) <> "]",
+        forM_ [1 .. 12] $
+          \n -> citationText (citationPieces (itemsOf [n])) @?= "[" <> T.pack (show n) <> "]",
       testCase "each number stands with the key it stands for; a range its two ends" $ do
         citationPieces (itemsOf [2, 1, 3]) @?= [CiteText "[", CiteNumber "k1" 1, CiteText "\x2013", CiteNumber "k3" 3, CiteText "]"]
         citationPieces (itemsOf [2, 1]) @?= [CiteText "[", CiteNumber "k1" 1, CiteText ", ", CiteNumber "k2" 2, CiteText "]"],

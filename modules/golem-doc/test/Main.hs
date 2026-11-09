@@ -1,6 +1,7 @@
 module Main (main) where
 
 import CborExprSpec qualified
+import CiteSpec qualified
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Control.Exception (ErrorCall, evaluate, try)
@@ -14,7 +15,6 @@ import Golem.TestSupport.ExternalTool (needsTool)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import LangSpec qualified
 import LinkSpec qualified
-import CiteSpec qualified
 import NoteSpec qualified
 import ResolvedSpec qualified
 import System.Directory (findExecutable)
