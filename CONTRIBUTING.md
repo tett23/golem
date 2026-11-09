@@ -412,6 +412,9 @@ CI が配布元から取るファイル（wasmtime の C API、hlint、shem、Ne
 `fetch-url.sh` は、`curl` のどの誤りも再試行する。
 試行は 3 回、試行のあいだの待ちは 10 秒と 30 秒、一回の `curl` の上限は 120 秒で、それぞれ `FETCH_ATTEMPTS`、`FETCH_WAITS`、`FETCH_MAX_TIME` で変えられる。
 取ったファイルの SHA-256 が取得のスクリプトに書いた値と違えば、再試行せずに失敗する。
+一つのアーカイブの取得は、再試行を含めて最長で約 7 分かかる。
+ワークフローの取得の手順は、一つの手順で一つのスクリプトだけを走らせ、`timeout-minutes: 10` で止める。
+バックグラウンドで走る epubcheck の取得は `timeout -k 10 600` で包む（[docs/adr/0259](./docs/adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 アーカイブは `third_party/downloads`（`GOLEM_DOWNLOADS` で変えられる）に置き、ワークフローはこのディレクトリをキャッシュする。
 展開した木はキャッシュしない。
 キャッシュから戻したアーカイブは、使う前に必ず SHA-256 を照合し、合わなければ取り直す。

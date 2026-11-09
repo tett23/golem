@@ -1,6 +1,6 @@
 # ADR 0035: 判定済みの `@need-lines` の後のより大きい `@need-lines` を判定し直す
 
-ステータス: 採択
+ステータス: 採択→テスト設計のプルリクエストの段の文は [ADR 0257](../../adr/0257-record-what-the-audit-of-the-layout-adrs-of-2026-11-09-found.md)
 
 ## 文脈
 
