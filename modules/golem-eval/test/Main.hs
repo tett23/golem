@@ -2,13 +2,13 @@ module Main (main) where
 
 import BuiltinSpec qualified
 import CiteSpec qualified
-import IndexKindSpec qualified
 import DeferredSpec qualified
 import DiagnosticSitesSpec qualified
 import ExceptionsSpec qualified
 import ExprSpec qualified
 import FileSpec qualified
 import FunctionSpec qualified
+import IndexKindSpec qualified
 import LangSpec qualified
 import LinkSpec qualified
 import NaturalSpec qualified

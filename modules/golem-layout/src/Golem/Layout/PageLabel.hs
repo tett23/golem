@@ -35,8 +35,7 @@ data PageLabel = PageLabel
     {- | the place of the first page of its section, 1 for the pages before
     every section (docs/adr/0265): two pages are of one section when they
     have the same
-    -}
-    plSectionFirst :: !Int
+    -} plSectionFirst :: !Int
   }
   deriving stock (Eq, Show)
 

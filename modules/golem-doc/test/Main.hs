@@ -2,7 +2,6 @@ module Main (main) where
 
 import CborExprSpec qualified
 import CiteSpec qualified
-import IndexSpec qualified
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Control.Exception (ErrorCall, evaluate, try)
@@ -14,6 +13,7 @@ import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
 import Golem.TestSupport.ExternalTool (needsTool)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
+import IndexSpec qualified
 import LangSpec qualified
 import LinkSpec qualified
 import NoteSpec qualified

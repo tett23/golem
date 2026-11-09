@@ -35,11 +35,11 @@ import Control.Monad (unless, when, zipWithM)
 import Control.Monad.State.Strict
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
+import Data.Function (on)
 import Data.Graph (SCC (..), stronglyConnComp)
 import Data.List (groupBy, nub, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Function (on)
 import Data.Maybe (fromMaybe, isNothing, listToMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set

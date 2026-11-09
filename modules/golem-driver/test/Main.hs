@@ -23,6 +23,7 @@ import FunctionsSpec (functionsTests)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
 import HeadingLevelsSpec (headingLevelsTests)
 import InMemorySpec (inMemoryTests)
+import IndexRangeSpec (indexRangeTests)
 import KeepOptionsSpec (keepOptionsTests)
 import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
@@ -33,7 +34,6 @@ import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
 import PageLabelsSpec (pageLabelsTests)
-import IndexRangeSpec (indexRangeTests)
 import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
 import ParagraphSpec
