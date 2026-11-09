@@ -652,9 +652,6 @@ piecesOf env inl = case inl of
     markPiece parts = PMark lk (ceNoteMarkLook env lk) parts 0 0
     markSource = ceNoteMarkSource env (ceSizeSource env)
 
-{- | The body of a note or a sidenote in the language of the place of its
-mark, if that has one (docs/adr ADR 0187).
--}
 {- | The paragraphs of the body of a note, each in the language of its
 block, or else of the place of the mark (docs/adr/0263, docs/adr ADR 0187).
 -}

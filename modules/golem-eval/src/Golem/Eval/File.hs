@@ -1328,13 +1328,15 @@ It puts out nothing where it is.
 -}
 noteDefinition :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 noteDefinition ctx sp args body = case args of
-  [A.Located _ (A.Positional v)] | Just name <- nameArg v, validLabel name -> do
-    defined <- gets (any (\(n, _, _) -> n == name) . stNoteDefs)
-    when defined $ err "G02140" sp ("同じ名前の注の本文を二度書いています: " <> name)
-    when (null body) $ err "G02143" sp ("@note に本文がありません: " <> name)
-    bs <- concat <$> mapM inBody body
-    unless defined $ modify' (\s -> s {stNoteDefs = stNoteDefs s <> [(name, sp, bs)]})
-    pure []
+  [A.Located _ (A.Positional v)]
+    | Just name <- nameArg v,
+      validLabel name -> do
+        defined <- gets (any (\(n, _, _) -> n == name) . stNoteDefs)
+        when defined $ err "G02140" sp ("同じ名前の注の本文を二度書いています: " <> name)
+        when (null body) $ err "G02143" sp ("@note に本文がありません: " <> name)
+        bs <- concat <$> mapM inBody body
+        unless defined $ modify' (\s -> s {stNoteDefs = stNoteDefs s <> [(name, sp, bs)]})
+        pure []
   _ -> err "G02142" sp noteNameMessage >> pure []
   where
     inBody lb@(A.Located bsp b) = case b of
@@ -2440,10 +2442,12 @@ builtinWith ctx inHeading sp b args slots = do
         modify' (\s -> s {stNote = n})
         pure [Note sp n (noteBody sp body)]
       (_ : _, _ : _) -> err "G02038" sp "note は名前を書くと散文スロットを取りません" >> pure []
-      ([A.Located _ (A.Positional v)], []) | Just name <- nameArg v, validLabel name -> do
-        n <- gets ((+ 1) . stNote)
-        modify' (\s -> s {stNote = n, stNoteRefs = stNoteRefs s <> [(sp, name)]})
-        pure [Note sp n []]
+      ([A.Located _ (A.Positional v)], [])
+        | Just name <- nameArg v,
+          validLabel name -> do
+            n <- gets ((+ 1) . stNote)
+            modify' (\s -> s {stNote = n, stNoteRefs = stNoteRefs s <> [(sp, name)]})
+            pure [Note sp n []]
       (_, []) -> err "G02142" sp noteNameMessage >> pure []
       _ -> err "G02038" sp (builtinName b <> " には散文スロットが一つ必要です") >> pure []
     Fixed BSidenote -> oneSlot $ \body -> do
