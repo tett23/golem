@@ -10,6 +10,7 @@ module CodeFontSpec (codeFontTests) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
+import Data.List (groupBy)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
