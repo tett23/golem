@@ -231,9 +231,11 @@ HarfBuzz のオブジェクト（blob、face、font）は開いた後は読む�
 
 ### メモ化
 
-golem-typeset の [code: Golem.Typeset.FontProvider] は、字の送りと二字のカーニングの計算を、[code: Golem.Typeset.Memo] の [code: memoWith] でメモ化している。
+golem-typeset の [code: Golem.Typeset.FontProvider] は、字の送りと二字のカーニングの計算、単語とランのシェイピングを、[code: Golem.Typeset.Memo] の [code: memoWith] でメモ化している。
+組版で単語の幅を測るためにシェイピングしたテキストは、描画で同じテキストのグリフを求めるときにメモに当たる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0253-memoise-run-shaping-and-shorten-the-memo-key.md]（docs/adr の ADR 0253「ランのシェイピングもメモ化し、メモのキーを短くする」）]
 [code: memoWith] は状態を持たない。
 キー（シェイピングの設定と文字列）を小さな整数の列に符号化し、ありうるすべての列の結果を、遅延評価の木の葉に評価していない式として置く。
+キーの最初の整数は、フォントの役割の番号と、縦書きかどうかと、両用の文字を欧文として組むかどうかをまとめたもので、特徴はタグ一つを二つの整数にする。
 木は引いた経路の節点だけが作られ、葉は初めて引いたときに評価される。
 二度目に同じキーを引くと、評価済みの葉が返る。
 表を書き換える処理がないので、[code: IORef] も [code: unsafePerformIO] も要らない。

@@ -17,7 +17,8 @@ module Golem.Typeset.Memo
 where
 
 import Data.Bits (shiftL, shiftR, (.&.))
-import Data.Char (ord)
+import Data.Char (chr, ord)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
@@ -77,34 +78,78 @@ memoWith encode decode f = \k ->
 textDigits :: Text -> [Int]
 textDigits t = T.length t : map ord (T.unpack t)
 
-{- | A shaping and a text as digits: whether vertical, whether the
-characters of both scripts are Latin, the role, the number
-of extra features, each feature, then the text.
+{- | A shaping and a text as digits (docs/adr/0253), given the roles of
+the fonts in order. The first digit is four times the number of the role
+among them, plus two if vertical, plus one if the characters of both
+scripts are Latin. A role that is not among them has the number after
+the last one and its name follows as a text. Then come the number of
+extra features, each feature ('featureDigits'), and the text. In the
+role body without features, the key of one character is four digits.
 -}
-shapingTextKey :: (Shaping, Text) -> [Int]
-shapingTextKey (Shaping role vertical extra dual, t) =
-  fromEnum vertical : fromEnum dual : textDigits role <> (length extra : concatMap textDigits extra) <> textDigits t
+shapingTextKey :: [Text] -> (Shaping, Text) -> [Int]
+shapingTextKey roles = \(Shaping role vertical extra dual, t) ->
+  let bits = 2 * fromEnum vertical + fromEnum dual
+      named = case Map.lookup role numbers of
+        Just n -> [4 * n + bits]
+        Nothing -> 4 * other + bits : textDigits role
+   in named <> (length extra : concatMap featureDigits extra) <> textDigits t
+  where
+    numbers = Map.fromList (zip roles [0 ..])
+    other = length roles
 
--- | The inverse of 'shapingTextKey' on the keys it gives.
-fromShapingTextKey :: [Int] -> (Shaping, Text)
-fromShapingTextKey ds0 =
-  let (vertical, dual, ds1) = case ds0 of
-        (v : d : rest) -> (v /= 0, d /= 0, rest)
-        _ -> (False, False, [])
-      (role, ds2) = takeText ds1
+{- | A feature as digits: an OpenType tag of four ASCII characters, alone
+or after + or -, is two digits of fourteen bits, seven a character, with
+the sign (1 for +, 2 for -) above the fourteen bits of the first; any
+other text is @-(1 + its length)@ and its code points, a key that is
+decoded but not remembered.
+-}
+featureDigits :: Text -> [Int]
+featureDigits f = case T.unpack f of
+  ['+', a, b, c, d] | ascii [a, b, c, d] -> tag 1 a b c d
+  ['-', a, b, c, d] | ascii [a, b, c, d] -> tag 2 a b c d
+  [a, b, c, d] | ascii [a, b, c, d] -> tag 0 a b c d
+  cs -> negate (1 + length cs) : map ord cs
+  where
+    ascii = all (\x -> ord x < 128)
+    tag s a b c d = [s `shiftL` 14 + pair a b, pair c d]
+    pair a b = ord a `shiftL` 7 + ord b
+
+-- | The inverse of 'shapingTextKey' on the keys it gives, with the same roles.
+fromShapingTextKey :: [Text] -> [Int] -> (Shaping, Text)
+fromShapingTextKey roles = \ds0 ->
+  let (h, ds1) = case ds0 of
+        (x : rest) -> (x, rest)
+        [] -> (0, [])
+      vertical = h .&. 2 /= 0
+      dual = h .&. 1 /= 0
+      (role, ds2) = case names V.!? (h `shiftR` 2) of
+        Just r -> (r, ds1)
+        Nothing -> takeText ds1
       (n, ds3) = case ds2 of
         (k : rest) -> (k, rest)
         [] -> (0, [])
-      (extra, ds4) = takeTexts n ds3
+      (extra, ds4) = takeFeatures n ds3
       (t, _) = takeText ds4
    in (Shaping role vertical extra dual, t)
   where
+    names = V.fromList roles
     takeText = \case
-      (k : rest) -> let (cs, rest') = splitAt k rest in (T.pack (map toEnum cs), rest')
+      (k : rest) -> let (cs, rest') = splitAt k rest in (T.pack (map chr cs), rest')
       [] -> (T.empty, [])
-    takeTexts k ds
+    takeFeatures k ds
       | k <= 0 = ([], ds)
       | otherwise =
-          let (x, ds') = takeText ds
-              (xs, ds'') = takeTexts (k - 1) ds'
+          let (x, ds') = takeFeature ds
+              (xs, ds'') = takeFeatures (k - 1) ds'
            in (x : xs, ds'')
+    takeFeature = \case
+      (a : rest)
+        | a < 0 -> let (cs, rest') = splitAt (negate a - 1) rest in (T.pack (map chr cs), rest')
+      (a : b : rest) ->
+        let sign = case a `shiftR` 14 of
+              1 -> "+"
+              2 -> "-"
+              _ -> ""
+         in (T.pack (sign <> unpair (a .&. 0x3FFF) <> unpair b), rest)
+      _ -> (T.empty, [])
+    unpair x = [chr (x `shiftR` 7), chr (x .&. 0x7F)]

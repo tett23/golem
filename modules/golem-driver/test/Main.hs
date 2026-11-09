@@ -32,6 +32,7 @@ import PlatesSpec (platesTests)
 import PopplerSpec (popplerTests)
 import ReferencesSpec
 import SecuritySpec
+import ShapingMemoSpec (shapingMemoTests)
 import SpecimenGeometrySpec (specimenGeometryTests)
 import StylesSpec
 import TableFilesSpec
@@ -77,6 +78,7 @@ tests skips =
         versionTests,
         producerTests,
         securityTests,
+        shapingMemoTests,
         tableFileTests,
         inMemoryTests,
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
