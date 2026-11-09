@@ -18,7 +18,7 @@ module Golem.Layout.CharClass
   )
 where
 
-import Data.Char (GeneralCategory (..), generalCategory, isAscii, isSpace, ord)
+import Data.Char (GeneralCategory (..), generalCategory, isAscii, isDigit, isSpace, ord)
 import Data.IntSet qualified as IntSet
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -120,7 +120,7 @@ two of them next to each other are not broken in horizontal writing
 (JLReq 3.1.10).
 -}
 isArabicDigit :: Char -> Bool
-isArabicDigit c = (c >= '0' && c <= '9') || (c >= '\xFF10' && c <= '\xFF19')
+isArabicDigit c = isDigit c || (c >= '\xFF10' && c <= '\xFF19')
 
 -- | The numerals (golem-layout ADR 0049): the Arabic digits and the kanji numerals.
 isNumeral :: Char -> Bool

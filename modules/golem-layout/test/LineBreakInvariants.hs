@@ -732,8 +732,8 @@ b2to4Pairs :: Check
 b2to4Pairs _ p =
   [ Breach k (-1) ("a break between " <> show a <> " and " <> show b)
   | (i1, i2, a, b) <- adjacentPairs (pText p) (pItems p),
-    Just k <- [pairKind False a b],
-    any (candidateAt i1) [i1 + 1 .. i2 - 1]
+    any (candidateAt i1) [i1 + 1 .. i2 - 1],
+    Just k <- [pairKind False a b]
   ]
   where
     its = pItems p
@@ -746,7 +746,7 @@ b2to4Pairs _ p =
 
 -- | The Arabic digits: U+0030 to U+0039 and U+FF10 to U+FF19.
 refArabicDigit :: Char -> Bool
-refArabicDigit c = (c >= '0' && c <= '9') || (c >= '\xFF10' && c <= '\xFF19')
+refArabicDigit c = isDigit c || (c >= '\xFF10' && c <= '\xFF19')
 
 -- | The numerals: the Arabic digits and the kanji numerals.
 refNumeral :: Char -> Bool
