@@ -1,6 +1,6 @@
 # ADR 0037: 段落の終わりと強制改行の前の本文の中のコードの空白も、行分割の前に捨てる
 
-ステータス: 採択
+ステータス: 採択→「メンテナーが決めること」の 3 の、端に空白のあるコードの余白の不具合は [golem-layout ADR 0048](0048-put-the-padding-of-inline-code-on-its-first-and-last-pieces-that-are-not-spaces.md) で直した
 
 ## 文脈
 

@@ -41,6 +41,7 @@ module LineBreakInvariants
     breaches,
     codeInvariants,
     codeBreaches,
+    paddingBreaches,
     breakItem,
     lineEnd,
     latinSpace,
@@ -67,9 +68,10 @@ of golem-layout ADR 0049 (L4 widened by them too), T1 of
 golem-layout ADR 0032, C1 to C8 of golem-layout ADR 0034, and J1 to J7 of golem-layout
 ADR 0045, whose J3 takes the place of C3. J5 compares the items with those
 before golem-layout ADR 0045, which no output tells: the tests of the
-items check it.
+items check it. D1 to D5 of golem-layout ADR 0048 compare the items of
+code with padding with those without it ('paddingBreaches').
 -}
-data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1 | I4 | B2 | B3 | B4 | C1 | C2 | C6 | C7 | C8 | J1 | J2 | J3 | J4 | J6 | J7
+data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1 | I4 | B2 | B3 | B4 | C1 | C2 | C6 | C7 | C8 | J1 | J2 | J3 | J4 | J6 | J7 | D1 | D2 | D3 | D4 | D5
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken, the line it is broken at (from 0; -1 for the whole paragraph), and how.
@@ -925,7 +927,8 @@ c6NoHyphen _ p =
   ]
 
 {- | C7: the box of a Japanese character of code is as wide as its
-advance (no tracking and no padding in the runs); there is no glue
+advance and its padding (no tracking in the runs; the padding of
+golem-layout ADR 0048 in those that have it); there is no glue
 between two boxes of code but a space of code, which neither stretches
 nor shrinks.
 -}
@@ -935,7 +938,7 @@ c7Widths _ p =
   | Box w c <- pItems p,
     isCode c,
     any (japaneseIn c) (basesOf c),
-    let want = L.zwToSp (pSize p) (sum [pAdvance p (not (japaneseIn c ch)) ch | ch <- T.unpack (bcText c)]),
+    let want = L.zwToSp (pSize p) (sum [pAdvance p (not (japaneseIn c ch)) ch | ch <- T.unpack (bcText c)]) + bcPadStart c + bcPadEnd c,
     w /= want
   ]
     <> [ Breach C7 (-1) ("glue that stretches or shrinks inside code, after " <> show (bcText a))
@@ -1161,3 +1164,37 @@ codeInvariants m =
 -- | The breaches of a paragraph of code: those of 'breaches' and of 'codeInvariants'.
 codeBreaches :: Text -> Int -> Paragraph -> [Breach]
 codeBreaches m limit p = breaches limit p <> concat [check limit p | (_, check) <- codeInvariants m]
+
+{- | D1 to D5 of golem-layout ADR 0048 on the items of a paragraph of one
+run of code with the padding given, against the items of the same
+paragraph without padding, and whether the run has a space at an end:
+the items but the boxes are the same (D5); the first box of code has the
+padding before it and the last the padding after it, no other box has any
+(D1, D2), and a box is wider by its padding only; without a box of code no
+box has padding (D3); a run without a space at its ends breaks D4 with
+any of D1 and D2, the padding of such a run being on its first and last
+box before golem-layout ADR 0048 too.
+-}
+paddingBreaches :: Sp -> Bool -> [Item] -> [Item] -> [Breach]
+paddingBreaches pad edgeSpace bare padded
+  | others bare /= others padded = [Breach D5 (-1) ("the items but the boxes differ: " <> show (others bare) <> " and " <> show (others padded))]
+  | length bareBoxes /= length paddedBoxes = [Breach D5 (-1) "the number of boxes differs"]
+  | null codeIx = [Breach D3 (-1) ("box " <> show (bcText c) <> " has padding in a run without a box of code") | (_, c) <- paddedBoxes, bcPadStart c /= 0 || bcPadEnd c /= 0]
+  | otherwise = ds <> [Breach D4 (-1) "a run of code without a space at its ends is not padded as before" | not edgeSpace, not (null ds)]
+  where
+    others = filter (\case Box {} -> False; _ -> True)
+    bareBoxes = [(w, c) | Box w c <- bare]
+    paddedBoxes = [(w, c) | Box w c <- padded]
+    codeIx = [i | (i, (_, c)) <- zip [0 :: Int ..] paddedBoxes, isCode c]
+    (firstIx, lastIx) = case codeIx of
+      i : is -> (i, last (i : is))
+      [] -> (-1, -1)
+    ds =
+      concat
+        [ [Breach D1 (-1) ("box " <> show (bcText c) <> " has " <> show (bcPadStart c) <> " before it, not " <> show wantS) | bcPadStart c /= wantS]
+            <> [Breach D2 (-1) ("box " <> show (bcText c) <> " has " <> show (bcPadEnd c) <> " after it, not " <> show wantE) | bcPadEnd c /= wantE]
+            <> [Breach (if i == firstIx then D1 else D2) (-1) ("box " <> show (bcText c) <> " is " <> show w <> " wide, not " <> show (w0 + wantS + wantE)) | w /= w0 + wantS + wantE]
+        | (i, ((w0, _), (w, c))) <- zip [0 ..] (zip bareBoxes paddedBoxes),
+          let wantS = if i == firstIx then pad else 0
+              wantE = if i == lastIx then pad else 0
+        ]
