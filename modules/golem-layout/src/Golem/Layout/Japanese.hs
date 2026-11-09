@@ -1814,7 +1814,20 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
               || (pk == Just Inseparable && ck == Just Inseparable)
               || (pc == Just Western && cc == Just Western && bcExpandable p && bcExpandable c)
           noAkiHere = latinDual p (lastChar p) || latinDual c (firstChar c)
-          pen = [Penalty 0 infPenalty NoHyphen | noBreak]
+          {- the pairs of JLReq 3.1.10 (golem-layout ADR 0049): two Arabic
+          digits in horizontal writing, a prefixed abbreviation and a
+          numeral, a numeral and a postfixed abbreviation; not between two
+          boxes of code or of a URL, nor at the edge of a ruby. The break
+          is taken out as an infinite penalty, the glue left as it is -}
+          pairKept =
+            not (breaksAsCode (bcLook p) && breaksAsCode (bcLook c)) && case (lastChar p, firstChar c) of
+              (Just a, Just b) ->
+                (not (ceVertical env) && isArabicDigit a && isArabicDigit b)
+                  || (isPrefixedAbbreviation a && isNumeral b)
+                  || (isNumeral a && isPostfixedAbbreviation b)
+              _ -> False
+          candidate = if pairKept then infPenalty else 0
+          pen = [Penalty 0 infPenalty NoHyphen | noBreak || pairKept]
           -- a ruby is an ideograph next to punctuation, so that the punctuation keeps its space
           classes = case (akiLast p, akiFirst c) of
             (Nothing, Just b) | isPunct b -> Just (Ideograph, b)
@@ -1833,8 +1846,8 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
                 aki <- akiBetween set (AkiChar a) (AkiChar b),
                 aki /= noAki ->
                   pen <> glueOf (base a b) aki
-            Just _ -> [Penalty 0 0 NoHyphen | not noBreak]
-            Nothing -> if noBreak then [] else [Penalty 0 0 NoHyphen | not (bcExpandable p && bcExpandable c)]
+            Just _ -> [Penalty 0 candidate NoHyphen | not noBreak]
+            Nothing -> if noBreak then [] else [Penalty 0 candidate NoHyphen | not (bcExpandable p && bcExpandable c)]
 
 -- | Sidenotes in vertical text are compile errors (ADR 0006; the message is golem-driver ADR 0016).
 verticalSidenotes :: ComposeEnv -> [Inline] -> [Diagnostic]

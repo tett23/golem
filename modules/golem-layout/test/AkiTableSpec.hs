@@ -29,7 +29,9 @@ akiTableTests =
             written = [c | (_ : t : _) <- rows, [c] <- [T.unpack t]]
         length written @?= length rows
         written @?= [c | c <- ranges, charClass c `elem` punctuation]
-        mapM_ (\c -> assertBool (c : " is not a char row") (c `notElem` written)) ("〚〛〞“" :: String)
+        -- 〞 is a closing bracket since golem-layout ADR 0049, and a char row
+        mapM_ (\c -> assertBool (c : " is not a char row") (c `notElem` written)) ("〚〛“" :: String)
+        assertBool "〞 is a char row" ('〞' `elem` written)
         mapM_ (\c -> assertBool (c : " is not in the ranges") (c `elem` ranges)) written,
       testCase "ADR0241-F5: each char row has the class of charClass and the space of punctSpace" $
         sequence_

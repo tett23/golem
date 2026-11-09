@@ -65,6 +65,7 @@ import TableCaptionSpec (tableCaptionTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
+import UnbreakablePairsSpec (unbreakablePairsTests)
 import UrlBreakSpec (urlBreakTests)
 
 main :: IO ()
@@ -392,6 +393,7 @@ tests =
       codePaddingTests,
       codeStopTests,
       urlBreakTests,
+      unbreakablePairsTests,
       linkTests,
       featuresTests,
       scriptTests,
