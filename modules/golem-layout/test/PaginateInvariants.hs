@@ -4,10 +4,11 @@ read as docs/adr/0206 (its section 6) decides, and the invariants P1 to
 P4 of need-lines and blank lines (golem-layout ADR 0025, its section
 「不変条件」), their next block read as golem-layout ADR 0026 decides
 (P1′, P3′ and P4′ of its section 「不変条件」), with its P5. They read nothing of the paginator but its input and
-output, and every case is judged. P9 of golem-layout ADR 0043 alone
-compares the output with that of another input, laid out by the
-paginator it is given; W3 of golem-layout ADR 0044 compares the figures
-that wait read from the two inputs when the outputs are the same.
+output, and every case is judged. P9 of golem-layout ADR 0043, widened
+to P9′ by golem-layout ADR 0047, and its P11 alone compare the output
+with that of another input, laid out by the paginator they are given;
+W3 of golem-layout ADR 0044 compares the figures that wait read from the
+two inputs when the outputs are the same.
 
 The columns are taken in the order of their page and their column. A
 grid line, a heading or a figure is at a place: its column in that
@@ -31,6 +32,7 @@ module PaginateInvariants
     p4BlankWithNext,
     p5BlankBeforeWaiting,
     p9SpaceMoved,
+    p11WaitingBeforeSpace,
     w3WaitingAlike,
     waitingFigures,
     invariants,
@@ -45,8 +47,11 @@ import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Golem.Layout.Paginate
 import Golem.Syntax (SrcSpan)
 
--- | The invariants of docs/adr/0204 and of golem-layout ADR 0025, 0026, 0043 and 0044, by their numbers.
-data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5 | P9 | W3
+{- | The invariants of docs/adr/0204 and of golem-layout ADR 0025, 0026,
+0043, 0044 and 0047, by their numbers: P9 is P9′ of golem-layout ADR
+0047, which has P9 of ADR 0043 as its case with no figure that waits.
+-}
+data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5 | P9 | P11 | W3
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken: the lines or figures concerned, and how.
@@ -431,6 +436,8 @@ golem-layout ADR 0044 adds the need-lines judged before a space written
 after it (W4) and the figures that do not fit after the spaces (W5); the
 lines of the spaces are those written in the input, not read from the
 output, which counts also the spaces dropped at the top of a column.
+A figure that waits does not clear the spaces before it: the need-lines
+after it is judged before them (golem-layout ADR 0047).
 -}
 waitingFigures :: [Flow] -> [PageOut] -> [Int]
 waitingFigures flows ps = go Nothing 0 Nothing [] flows
@@ -512,7 +519,9 @@ waitingFigures flows ps = go Nothing 0 Nothing [] flows
                 held' = if waitsHere || bySelf then Just at else Nothing
                 -- a figure placed where it is written is where the flow has come to
                 (lastText', breaks') = if waitsHere || isJust held' then (lastText, breaks) else (Just at, 0)
-             in [i | waitsHere] <> go lastText' breaks' held' [] rest
+                -- a figure that waits keeps the spaces before it (golem-layout ADR 0047)
+                before' = if waitsHere then [s | s@(FSpace _) <- before] else []
+             in [i | waitsHere] <> go lastText' breaks' held' before' rest
         | null (figureIds f),
           Just end <- lastOf f ->
             let held' = case held of
@@ -731,18 +740,21 @@ p5BlankBeforeWaiting flows ps =
         c /= 1
       ]
 
-{- | P9 of golem-layout ADR 0043, its section 「不変条件」: a space between
-the block before and a need-lines, moved after the need-lines, lays out
-the same slots ('poSlots') and records ('poUnmet') in every column. Each
-space right before a need-lines is moved by itself, the input laid out
-again by the paginator given. Only the inputs with no break, no
-no-break and no page-lines among the controls between the block before
-and the block after are judged.
+{- | P9 of golem-layout ADR 0043, its section 「不変条件」, widened to P9′
+by golem-layout ADR 0047: a space between the block before and a
+need-lines, moved after the need-lines past the figures that wait
+between them ('waitingFigures'), lays out the same slots ('poSlots') and
+records ('poUnmet') in every column. Each space before a need-lines with
+nothing but figures that wait between them is moved by itself, the
+input laid out again by the paginator given. Only the inputs with no
+break, no no-break and no page-lines among the controls between the
+block before and the block after, the figures that wait passed over,
+are judged. With no figure that waits between, this is P9 of ADR 0043.
 -}
 p9SpaceMoved :: ([Flow] -> [PageOut]) -> Check
 p9SpaceMoved lay flows ps =
   [ Breach P9 [] ("the space at flow " <> show k <> " moved after the need-lines after it lays out " <> show moved <> ", not " <> show here)
-  | (k, swapped) <- spacesMoved flows,
+  | (k, swapped) <- spacesMoved (waitingFigures flows ps) flows,
     let moved = outShape (lay swapped),
     moved /= here
   ]
@@ -750,14 +762,14 @@ p9SpaceMoved lay flows ps =
     here = outShape ps
 
 {- | W3 of golem-layout ADR 0044, its section 「不変条件」: for each input
-P9 lays out again, with the space moved after the need-lines, that lays
+P9 (P9′ of golem-layout ADR 0047) lays out again, with the space moved after the need-lines, that lays
 out the same, 'waitingFigures' reads the same figures from the two
 inputs and the one output.
 -}
 w3WaitingAlike :: ([Flow] -> [PageOut]) -> Check
 w3WaitingAlike lay flows ps =
   [ Breach W3 (here <> there) ("the space at flow " <> show k <> " moved after the need-lines after it lays out the same, and the figures that wait are read as " <> show there <> ", not " <> show here)
-  | (k, swapped) <- spacesMoved flows,
+  | (k, swapped) <- spacesMoved (waitingFigures flows ps) flows,
     outShape (lay swapped) == outShape ps,
     let there = waitingFigures swapped ps,
     there /= here
@@ -769,32 +781,70 @@ w3WaitingAlike lay flows ps =
 outShape :: [PageOut] -> [(Int, Int, [(Int, Slotted)], [Unmet])]
 outShape = map (\p -> (poNumber p, poColumn p, poSlots p, poUnmet p))
 
-{- | The flows with each space right before a need-lines moved after it,
-by itself, with where the space is: those of the inputs with no break,
-no no-break and no page-lines among the controls between the block
-before and the block after (P9 of golem-layout ADR 0043).
+{- | The flows with each space before a need-lines moved right after it,
+by itself, with where the space is: the space is followed by nothing but
+the figures that wait of the ids given and then the need-lines. Only
+those of the inputs with no break, no no-break and no page-lines among
+the controls between the block before and the block after, the figures
+that wait passed over, are moved (P9 of golem-layout ADR 0043, P9′ of
+golem-layout ADR 0047).
 -}
-spacesMoved :: [Flow] -> [(Int, [Flow])]
-spacesMoved flows =
-  [ (k, swapAt k)
-  | (k, (FSpace _, FNeedLines _ _)) <- zip [0 ..] (zip flows (drop 1 flows)),
-    not (any manual (reverse (takeWhile control (reverse (take k flows))) <> takeWhile control (drop k flows)))
+spacesMoved :: [Int] -> [Flow] -> [(Int, [Flow])]
+spacesMoved waitingIds flows =
+  [ (k, before <> between <> (n : s : after))
+  | (k, (before, s@(FSpace _) : rest)) <- zip [0 ..] (map (`splitAt` flows) [0 .. length flows - 1]),
+    let (between, more) = span (isWaiting waitingIds) rest,
+    n@(FNeedLines _ _) : after <- [more],
+    not (any manual (reverse (takeWhile (passedOver waitingIds) (reverse before)) <> takeWhile (passedOver waitingIds) (s : rest)))
+  ]
+
+{- | P11 of golem-layout ADR 0047, its section 「不変条件」: a space with
+nothing but figures that wait between it and a need-lines lays out as
+the input with those figures written before the space, but where the
+figures are: the slots of the figures moved taken out, the slots
+('poSlots') and records ('poUnmet') of every column are the same. Only
+the inputs P9′ judges are judged.
+-}
+p11WaitingBeforeSpace :: ([Flow] -> [PageOut]) -> Check
+p11WaitingBeforeSpace lay flows ps =
+  [ Breach P11 ids ("the figures that wait " <> show ids <> " written before the space at flow " <> show k <> " lay out " <> show moved <> ", not " <> show here)
+  | (k, ids, swapped) <- waitingMovedBefore waitingIds flows,
+    let here = withoutFigures ids (outShape ps)
+        moved = withoutFigures ids (outShape (lay swapped)),
+    moved /= here
   ]
   where
-    swapAt k = case splitAt k flows of
-      (before, s : n : after) -> before <> (n : s : after)
-      _ -> flows
-    -- the flows that place nothing of their own, between two blocks
-    control = \case
-      FBreak _ -> True
-      FNoBreak _ -> True
-      FNeedLines _ _ -> True
-      FAdjustLines _ _ -> True
-      FBlank _ _ -> True
-      FSpace _ -> True
-      _ -> False
-    manual = \case
-      FBreak _ -> True
-      FNoBreak _ -> True
-      FAdjustLines _ _ -> True
-      _ -> False
+    waitingIds = waitingFigures flows ps
+    withoutFigures ids = map (\(n, c, sl, u) -> (n, c, [x | x@(_, sl') <- sl, not (any (\i -> sl' == SFigure i || sl' == SPageFigure i) ids)], u))
+
+{- | The flows with the figures that wait between a space and a need-lines
+written before the space, with where the space is and the figures: the
+inputs 'spacesMoved' moves, with at least one figure between.
+-}
+waitingMovedBefore :: [Int] -> [Flow] -> [(Int, [Int], [Flow])]
+waitingMovedBefore waitingIds flows =
+  [ (k, concatMap figureIds between, before <> between <> (s : more))
+  | (k, (before, s@(FSpace _) : rest)) <- zip [0 ..] (map (`splitAt` flows) [0 .. length flows - 1]),
+    let (between, more) = span (isWaiting waitingIds) rest,
+    not (null between),
+    FNeedLines _ _ : _ <- [more],
+    not (any manual (reverse (takeWhile (passedOver waitingIds) (reverse before)) <> takeWhile (passedOver waitingIds) (s : rest)))
+  ]
+
+-- | Whether a flow is a figure that waits, of the ids given.
+isWaiting :: [Int] -> Flow -> Bool
+isWaiting waitingIds f = case figureIds f of
+  [i] -> i `elem` waitingIds
+  _ -> False
+
+-- | The flows that place nothing of their own between two blocks, and the figures that wait among them.
+passedOver :: [Int] -> Flow -> Bool
+passedOver waitingIds f = waits f || isWaiting waitingIds f
+
+-- | The controls P9 does not judge across: a break, a no-break, a page-lines.
+manual :: Flow -> Bool
+manual = \case
+  FBreak _ -> True
+  FNoBreak _ -> True
+  FAdjustLines _ _ -> True
+  _ -> False

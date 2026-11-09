@@ -6,8 +6,8 @@
 {- | The invariants of pagination checked on every small input
 (docs/adr/0204): the enumeration of the inputs, the predicates I1 to I8,
 P1 to P4 (golem-layout ADR 0025), P5 (golem-layout ADR 0026), P9
-(golem-layout ADR 0043) and W3 (golem-layout ADR 0044) on outputs made
-by hand, and every
+(golem-layout ADR 0043, P9′ of golem-layout ADR 0047), W3 (golem-layout
+ADR 0044) and P11 (golem-layout ADR 0047) on outputs made by hand, and every
 input up to the depth of
 @GOLEM_ENUM_DEPTH@ elements, with the known bugs excluded by an explicit
 list whose counterexamples are counted.
@@ -424,6 +424,35 @@ predicateTests =
           map breachOf (p9SpaceMoved (const []) [para 0 1, FSpace 1, need 0, para 1 1, FBreak BreakPage] out) @?= [P9]
       ],
     testGroup
+      "P9′ a space moved after the need-lines past the figures that wait lays out the same (golem-layout ADR 0047)"
+      [ testCase "P9′: the figure between the space and the need-lines is read as waiting" $
+          waitingFigures passing passingOut @?= [1001],
+        testCase "P9′: the same output for the input with the space moved past the figure that waits breaks nothing" $
+          p9SpaceMoved (const passingOut) passing passingOut @?= [],
+        testCase "P9′: another output for the input with the space moved past the figure that waits is a breach" $
+          map breachOf (p9SpaceMoved (const []) passing passingOut) @?= [P9],
+        testCase "P9′: the input laid out again has the space right after the need-lines, the figure that waits before them" $
+          p9SpaceMoved (\fs -> if fs == [para 0 1, FFigure 1000 3 [] [], FFigure 1001 1 [] [], need 0, FSpace 1, para 1 1] then passingOut else []) passing passingOut @?= [],
+        testCase "P9′: a space with a figure that does not wait, or a break, between it and the need-lines is not moved" $ do
+          p9SpaceMoved (const []) [para 0 1, FFigure 1000 1 [] [], FSpace 1, FFigure 1001 1 [] [], need 0, para 1 1] [columnAt 1 0 5 [(0, SLine 0), (1, SFigure 1000), (3, SFigure 1001), (4, SLine 1)]] @?= []
+          p9SpaceMoved (const []) [para 0 1, FFigure 1000 3 [] [], FSpace 1, FFigure 1001 1 [] [], FBreak BreakPage, need 0, para 1 1] passingOut @?= []
+      ],
+    testGroup
+      "P11 the figures that wait do not part the space from the need-lines (golem-layout ADR 0047)"
+      [ testCase "P11: the same output for the input with the figure before the space breaks nothing" $
+          p11WaitingBeforeSpace (const passingOut) passing passingOut @?= [],
+        testCase "P11: another output for the input with the figure before the space is a breach" $
+          map breachOf (p11WaitingBeforeSpace (const []) passing passingOut) @?= [P11],
+        testCase "P11: the input laid out again has the figure that waits before the space, and where the figure is is not compared" $
+          p11WaitingBeforeSpace
+            (\fs -> if fs == [para 0 1, FFigure 1000 3 [] [], FFigure 1001 1 [] [], FSpace 1, need 0, para 1 1] then take 2 passingOut <> [column 3 0 3 []] else [])
+            passing
+            passingOut
+            @?= [],
+        testCase "P11: a space with no figure that waits before the need-lines is not judged" $
+          p11WaitingBeforeSpace (const []) moving out @?= []
+      ],
+    testGroup
       "W3 the figures that wait are read alike wherever the space is (golem-layout ADR 0044)"
       [ testCase "W3: an input moved that lays out otherwise is not judged" $
           w3WaitingAlike (const []) waitingMoved waitingOut @?= [],
@@ -444,6 +473,9 @@ predicateTests =
     -- a figure sent on behind a figure placed, with the space and the need-lines on either side
     waitingMoved = [para 0 1, FFigure 1000 1 [] [], FSpace 1, need 0, FFigure 1001 1 [] []]
     waitingOut = [columnAt 1 0 3 [(0, SLine 0), (1, SFigure 1000), (2, SFigure 1001)]]
+    -- a figure sent on, a space, a figure that waits, need-lines 2 and the paragraph on line 2 of page 1 (golem-layout ADR 0047)
+    passing = [para 0 1, FFigure 1000 3 [] [], FSpace 1, FFigure 1001 1 [] [], need 0, para 1 1]
+    passingOut = [columnAt 1 0 3 [(0, SLine 0), (2, SLine 1)], column 2 0 3 [SFigure 1000], column 3 0 3 [SFigure 1001]]
 
 -- every input
 
@@ -464,17 +496,19 @@ knownBugs :: [KnownBug]
 knownBugs = []
 
 {- | The breaches of an input: of the predicates over its output, of P9
-(golem-layout ADR 0043), which lays out again the input with a space
-moved after the need-lines after it, and of W3 (golem-layout ADR 0044),
-which reads the figures that wait from that input when it lays out the
-same.
+(golem-layout ADR 0043, P9′ of golem-layout ADR 0047), which lays out
+again the input with a space moved after the need-lines after it, of W3
+(golem-layout ADR 0044), which reads the figures that wait from that
+input when it lays out the same, and of P11 (golem-layout ADR 0047),
+which lays out again the input with the figures that wait between a
+space and a need-lines written before the space.
 -}
 breachesOf :: Input -> [Breach]
 breachesOf input =
   let flows = enumFlows (inElements input)
       ps = paginateInput input
       lay = paginateFlowsOf input
-   in breaches 1 flows ps <> p9SpaceMoved lay flows ps <> w3WaitingAlike lay flows ps
+   in breaches 1 flows ps <> p9SpaceMoved lay flows ps <> w3WaitingAlike lay flows ps <> p11WaitingBeforeSpace lay flows ps
 
 -- | The flows given laid out on the page of the input.
 paginateFlowsOf :: Input -> [Flow] -> [PageOut]
@@ -558,7 +592,7 @@ report what input vs =
 
 exhaustiveTests :: [TestTree]
 exhaustiveTests =
-  [ testCase "I1 to I8, P1 to P5, P9 and W3 hold for every input up to GOLEM_ENUM_DEPTH elements, but the known bugs, which excuse as many inputs as pinned" $ do
+  [ testCase "I1 to I8, P1 to P5, P9 (P9′), P11 and W3 hold for every input up to GOLEM_ENUM_DEPTH elements, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- enumDepth
       -- built here, not in a value of its own, so that it is not held
       case tallyAllPar depth (inputsOver [3 .. 5] shortElementsFor) (judge knownBugs) of
@@ -578,7 +612,7 @@ exhaustiveTests =
                     <> ", the inputs a known bug excuses differ from the count pinned:\n"
                     <> intercalate "\n" [item <> ": pinned " <> maybe "nothing" show pinned <> ", counted " <> show n | (item, pinned, n) <- wrong]
                 ),
-    testCase "I1 to I8, P1 to P5, P9 and W3 hold for every input drawn from the enumeration of docs/adr/0204 one element past GOLEM_ENUM_DEPTH, GOLEM_ENUM_PAGINATION_SAMPLES of them, but the known bugs" $ do
+    testCase "I1 to I8, P1 to P5, P9 (P9′), P11 and W3 hold for every input drawn from the enumeration of docs/adr/0204 one element past GOLEM_ENUM_DEPTH, GOLEM_ENUM_PAGINATION_SAMPLES of them, but the known bugs" $ do
       depth <- enumDepth
       count <- enumSamples
       let drawn = Tiers [sampleT sampleSeed count (drawInput (depth + 1))]
