@@ -474,12 +474,6 @@ run needGreedy {
 -- the inputs of the commands of golem-layout ADR 0035: two need-lines of any lines, a space, a blank line and two figures may be there
 pred inDomain35 { figuresFit and #Need = 2 }
 
--- the grid lines placed in the column before an item, the spaces counted and the blank lines not:
--- a need-lines judged again after a space is judged with the space placed before it
-fun judgedBefore[p: Placement, i: Item]: Int {
-  plus[placedBefore[p, i], #{s: Space | s.pos < i.pos and here[p, s]}]
-}
-
 -- the need-lines before a need-lines with the same next block
 fun needsBefore[p: Placement, n: Need, b: Item]: set Need { {m: Need | m.pos < n.pos and b in needNext[p, m]} }
 
@@ -496,12 +490,13 @@ pred spaceKeepsFirst[p: Placement] {
 }
 
 -- P7 after golem-layout ADR 0035: the first need-lines of a block is judged where it is written; a need-lines after it,
--- larger than the ones before it, is judged again where it is written, the spaces placed before it counted; one no larger
--- is met already. The block stays in this column, when its first part fits, only when all those judged are met.
+-- larger than the ones before it, is judged again where it is written, the spaces placed before it not counted
+-- (golem-layout ADR 0043, ADR 0046); one no larger is met already. The block stays in this column, when its first part
+-- fits, only when all those judged are met.
 pred spaceKeeps35[p: Placement] {
   all n: Need | all b: needNext[p, n] |
     ((all m: Need | (b in needNext[p, m] and (no k: needsBefore[p, m, b] | k.lines >= m.lines)) implies
-        minus[Col.cap, (some needsBefore[p, m, b] => judgedBefore[p, m] else placedBefore[p, m])] >= m.lines)
+        minus[Col.cap, placedBefore[p, m]] >= m.lines)
       and (all t: Text | t.pos < n.pos implies here[p, t])
       and (all g: Figure - waitingIn[p] | g.pos < n.pos implies g in p.kept)
       and plus[loadBefore[p, b], firstPart[b]] <= Col.cap
@@ -527,3 +522,20 @@ run needMore27 {
 
 -- after golem-layout ADR 0035: no input has no placement
 run needMoreNone { inDomain35 and (no p: Placement | base27[p] and needMet[p] and spaceKeeps35[p]) } for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
+-- golem-layout ADR 0046: a larger need-lines after a space is judged without the space; in a column of 4 with 1 used,
+-- need-lines 1, a space, need-lines 3 and a paragraph of 1 line: 3 lines are left, and the paragraph stays in the column
+run needMoreSpace46 {
+  Col.cap = 4 and Col.used = 1 and no Figure and no Blank and no Heading and #Line = 1 and #Need = 2 and #Space = 1
+  some p: Placement, sp: Space, n, m: Need, b: Line |
+    n.pos = 0 and sp.pos = 1 and m.pos = 2 and b.pos = 3 and n.lines = 1 and m.lines = 3
+      and base27[p] and needMet[p] and spaceKeeps35[p] and here[p, sp] and not here[p, b]
+} for 4 but 5 Int, 8 Placement
+
+-- the same input with the paragraph in the column: the model is not empty
+run needMoreSpace46Here {
+  Col.cap = 4 and Col.used = 1 and no Figure and no Blank and no Heading and #Line = 1 and #Need = 2 and #Space = 1
+  some p: Placement, sp: Space, n, m: Need, b: Line |
+    n.pos = 0 and sp.pos = 1 and m.pos = 2 and b.pos = 3 and n.lines = 1 and m.lines = 3
+      and base27[p] and needMet[p] and spaceKeeps35[p] and here[p, sp] and here[p, b]
+} for 4 but 5 Int, 8 Placement
