@@ -146,8 +146,9 @@ placeAll env st (f : rest) = case f of
   FNoBreak sp
     | not (sSeen st) || sLastDeferred st -> placeAll env (addUnmet (UnmetNoBreak sp) st) rest
     | otherwise -> placeAll env st {sNoBreak = Just (sp, sPage st, sColumn st, length (sSlots st))} rest
-  -- the larger need-lines is kept; one larger than the need-lines judged is judged again (golem-layout ADR 0035)
-  FNeedLines sp n -> placeAll env (needMore sp n st) rest
+  -- the larger need-lines is kept; one larger than the need-lines judged is judged again (golem-layout ADR 0035),
+  -- before the spaces placed after the block before it (golem-layout ADR 0043)
+  FNeedLines sp n -> placeAll env (needMore env sp n st) rest
   FAdjustLines sp k -> placeAll env (adjustLines env (applyBreaks env st) sp k) rest
   -- blank lines with nothing after them that places anything are the end of the book's (docs/adr ADR 0046)
   FBlank sp n
@@ -156,7 +157,8 @@ placeAll env st (f : rest) = case f of
   FBreak _ -> placeAll env (place env st f rest) rest
   -- the space between paragraphs is not the flow a no-break waits for;
   -- need-lines is judged before it, the space not counted (golem-layout ADR 0027)
-  FSpace _ -> placeAll env (place env (needBeforeSpace env (applyBreaks env st)) f rest) rest
+  -- nor the spaces before it, written after the block before (golem-layout ADR 0043)
+  FSpace n -> placeAll env (placeSpace env (needBeforeSpaces env (applyBreaks env st)) n) rest
   _ ->
     let -- the breaks first: going on to the next page places the figures waiting, and this one may not wait
         stB = applyBreaks env st
@@ -169,19 +171,54 @@ placeAll env st (f : rest) = case f of
           -- the flow after a turned figure is never on its page
           FPageFigure {} -> True
           _ -> False
-     in placeAll env st1 {sSeen = True, sLastDeferred = deferred} rest
+     in -- the spaces before a need-lines are those after the last block, placed or not (golem-layout ADR 0043)
+        placeAll env st1 {sSeen = True, sLastDeferred = deferred, sSpaces = []} rest
 
 {- | Need-lines after need-lines, with no block between: the larger is
 kept. When it is larger than the one judged before a space, the column
 it was judged in is forgotten, so that the larger is judged before the
 next space or before the block (golem-layout ADR 0035); one no larger is
-met already.
+met already. A need-lines kept after spaces placed after the block
+before it is judged before them, as before a space after it, the spaces
+not counted (golem-layout ADR 0043).
 -}
-needMore :: SrcSpan -> Int -> St -> St
-needMore sp n st = case sNeed st of
+needMore :: Env -> SrcSpan -> Int -> St -> St
+needMore env sp n st = case sNeed st of
   Just (_, n0)
     | n <= n0 -> st
-  _ -> st {sNeed = Just (sp, n), sNeedAt = Nothing}
+  _ -> needAfterSpaces env st {sNeed = Just (sp, n), sNeedAt = Nothing}
+
+{- | A need-lines after the spaces written after the block before it,
+with no break between, is judged before them ('needBeforeSpaces'), as
+before a space after it (golem-layout ADR 0043). After a break, the
+spaces are in a column the flow leaves, and the need-lines waits for the
+next space or block.
+-}
+needAfterSpaces :: Env -> St -> St
+needAfterSpaces env st
+  | null (sSpaces st) || not (null (sBreaks st)) = st
+  | otherwise = needBeforeSpaces env st
+
+{- | The need-lines judged before the spaces written after the block
+before ('needBeforeSpace'), their grid lines not counted
+(golem-layout ADR 0043). In the column judged in, the spaces stay where
+they are; when the flow goes on to a later column, they are placed again
+there, as the spaces after a need-lines are: dropped at the top of the
+column, and after the figures sent on placed there.
+-}
+needBeforeSpaces :: Env -> St -> St
+needBeforeSpaces env st =
+  let k = sum (map snd (sSpaces st))
+      st1 = needBeforeSpace env st {sUsed = sUsed st - k}
+   in if (sPage st1, sColumn st1) == (sPage st, sColumn st)
+        then st1 {sUsed = sUsed st1 + k}
+        else foldl' (placeSpace env) st1 (map fst (sSpaces st))
+
+-- | A space of n grid lines, kept with the grid lines it took (golem-layout ADR 0043).
+placeSpace :: Env -> St -> Int -> St
+placeSpace env st n =
+  let st1 = place env st (FSpace n) []
+   in st1 {sSpaces = sSpaces st <> [(n, sUsed st1 - sUsed st)]}
 
 {- | Need-lines before a space is judged there, the space not counted,
 and kept with the column it was judged in: the block after the spaces is

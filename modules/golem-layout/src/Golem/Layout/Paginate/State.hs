@@ -79,6 +79,10 @@ data St = St
     {- | the page and column the need-lines was judged in before the spaces
     after it, judged again for the block after them (golem-layout ADR 0027)
     -} sNeedAt :: !(Maybe (Int, Int)),
+    {- | the spaces written in the column after the last block, each with
+    the grid lines it asks for and those it took: not counted when a
+    need-lines after them is judged (golem-layout ADR 0043)
+    -} sSpaces :: ![(Int, Int)],
     -- | the grid lines the current column is changed by
     sAdjust :: !Int,
     -- | the controls not met, for the next column closed
@@ -97,7 +101,7 @@ data St = St
 
 -- | Page 1, column 0, nothing placed, in the columns of the page.
 initialState :: Env -> St
-initialState env = St 1 0 0 0 [] [] [] [] [] [] [] [] [] (envBase env) {csFirstLine = 0} 0 [] Nothing Nothing Nothing 0 [] Nothing [] False False False
+initialState env = St 1 0 0 0 [] [] [] [] [] [] [] [] [] (envBase env) {csFirstLine = 0} 0 [] Nothing Nothing Nothing [] 0 [] Nothing [] False False False
 
 -- | The first grid line of the set of columns on this page.
 top :: St -> Int
@@ -234,6 +238,7 @@ advance env toPage st =
             sRules = [],
             sJoin = Nothing,
             sPendingNotes = [],
+            sSpaces = [],
             sHeadingOnly = False
           }
       -- the turned figures waiting first take pages of their own before the notes go on (golem-driver ADR 0034)
@@ -257,6 +262,7 @@ startSet env st set first =
       sTables = [],
       sRules = [],
       sJoin = Nothing,
+      sSpaces = [],
       sHeadingOnly = False
     }
 
