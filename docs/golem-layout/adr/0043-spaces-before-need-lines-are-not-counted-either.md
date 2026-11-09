@@ -1,6 +1,6 @@
 # ADR 0043: `@need-lines` の前に置いた空きも、判定の残りに数えない
 
-ステータス: 採択→Alloy のモデルの更新は [golem-layout ADR 0046](0046-the-alloy-model-judges-a-larger-need-lines-without-the-spaces-before-it.md)
+ステータス: 採択→Alloy のモデルの更新は [golem-layout ADR 0046](0046-the-alloy-model-judges-a-larger-need-lines-without-the-spaces-before-it.md)、空きと `@need-lines` のあいだに待つ図版があるときの扱いは [golem-layout ADR 0047](0047-spaces-before-a-waiting-figure-and-need-lines.md)
 
 ## 文脈
 
