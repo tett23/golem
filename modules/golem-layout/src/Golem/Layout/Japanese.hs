@@ -1413,9 +1413,10 @@ breaksAsCode lk = lkCode lk || lkUrl lk
 
 {- | The padding of inline code (golem-driver ADR 0029): in each run of
 pieces of code with the same background and padding (spaces, tabs, note
-marks and ruby included, anchors skipped), the first piece takes the
-padding before it and the last the padding after it when they are runs
-of code.
+marks and ruby included, anchors skipped), the first piece that is not a
+space takes the padding before it and the last such piece the padding
+after it when they are runs of code or note marks (golem-layout ADR 0048).
+The spaces at the ends stay glue outside the padding.
 -}
 padCode :: [Piece] -> [Piece]
 padCode = \case
@@ -1440,8 +1441,11 @@ padCode = \case
       PShy _ -> True
       PRubyBreak -> True
       _ -> False
-    -- the padding goes on the first and the last piece when they are code
-    padded run = case [i | (i, q) <- zip [0 :: Int ..] run, not (transparent q)] of
+    -- the padding goes on the first and the last piece that is not a space when they are code (golem-layout ADR 0048)
+    isSpace' = \case
+      PSpace _ -> True
+      _ -> False
+    padded run = case [i | (i, q) <- zip [0 :: Int ..] run, not (transparent q), not (isSpace' q)] of
       [] -> run
       ixs@(firstIx : _) ->
         let lastIx = last ixs
