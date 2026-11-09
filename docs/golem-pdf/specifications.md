@@ -14,6 +14,12 @@ golem-pdf は、Golem の PDF を書き、図版を PDF に置くモジュール
 - `GlyphRun`、`RotatedGlyphRun`、`TransformedGlyphRun` は `Tz` を書かない。
 - そのため、マークの内容のストリームを解釈し終えた時点の比率と `q` の深さは、解釈を始める前と同じである。`Form` の `Do` は、比率 100 の状態で呼ばれる。
 
+グリフの符号（`Tj` の `<...>` と `ToUnicode` の CMap の `beginbfchar` の左の値）は、大文字の 16 進 4 桁で書く。
+xref の表の各行のオフセットは、0 で左から埋めた 10 桁の 10 進で書く。
+どちらも `Text.Printf` を使わず、`Golem.Pdf.Number` の `hex4` と `decimal10` が `Builder` で直接に書く。
+バイト列は `printf "%04X"` と `printf "%010d"` の出力と同じである（[ADR 0254](../adr/0254-write-glyph-codes-without-printf.md)）。
+グリフの番号は CID で 0xFFFF 以下なので、`hex4` は `Word16` を受け取る。
+
 ## PNG の画像
 
 `Golem.Pdf.Image.readPng` は、PNG の画素を取り出し、透過をアルファの面（`imgAlpha`）にする。
