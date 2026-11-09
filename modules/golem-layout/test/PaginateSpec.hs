@@ -9,7 +9,7 @@ separator takes.
 -}
 module PaginateSpec (paginateTests) where
 
-import Control.Monad (forM_, replicateM)
+import Control.Monad (forM_, replicateM, when)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -1398,9 +1398,8 @@ spaceBeforeNeedTests =
               firstAt = take 1 [(poNumber p, poColumn p) | p <- ps, (_, sl) <- poSlots p, sl `elem` [SLine 100, SFigure 1000]]
           assertEqual ("the invariants, before " <> name) [] (brokenOf [i | i <- [minBound .. maxBound], i /= P5 || not (goesOnAfterSpaces s r a first rest)] flows ps)
           assertEqual ("P9, before " <> name) [] (map breachWhy (p9SpaceMoved lay flows ps))
-          if s > 0 && r >= need && first <= r - s - a
-            then assertEqual ("P10, the column of " <> name) [(1, 0)] firstAt
-            else pure ()
+          when (s > 0 && r >= need && first <= r - s - a) $
+            assertEqual ("P10, the column of " <> name) [(1, 0)] firstAt
     boundaryName k s r a =
       (if s > 0 then "P9, P10: " else "P9: ")
         <> (show k <> " column" <> (if k > 1 then "s, " else ", "))
