@@ -25,8 +25,19 @@
 # kanikosen with a broken style.toml and without its font, whose builds end
 # in an error; and broken-cmap, kanikosen whose Noto Serif JP has a format 6
 # cmap subtable that FreeType refuses by longjmp, the exception handling of
-# wasm (docs/adr/0238; its build ends in an error too). The lines are `<SHA-256>  <input>/pdf` (- without a PDF),
-# `<SHA-256>  <input>/diagnostics` and `exit <code>  <input>`.
+# wasm (docs/adr/0238; its build ends in an error too); and the six inputs
+# of the int-width fixture, whose values the width of Int would change
+# (docs/adr/0247): int-width (an ASCII85 figure whose two content streams
+# are named twice each, and @number 2147483648), int-width-reference (a
+# figure with 4294967297 0 R), int-width-icc (a figure with an ICCBased of
+# /N 4294967299, with a preflight.toml that checks the colour spaces),
+# int-width-png (a PNG of IHDR width 2^31), int-width-png-chunk (a PNG
+# with a chunk of length 2^31) and int-width-printing (an edition
+# 2147483648 in printings). The lines are `<SHA-256>  <input>/pdf` (- without a PDF),
+# `<SHA-256>  <input>/diagnostics` and `exit <code>  <input>`; `exit timeout
+# <input>` when the build of an input ran past COMPARE_TIMEOUT seconds (600
+# by default) and was stopped, so that an input that never ends does not
+# keep the job to its own time-out (docs/adr/0247 section 7).
 set -eu
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 usage() { echo "usage: compare.sh --native GOLEM | compare.sh WASM | compare.sh --deno WASM | compare.sh --browser chromium|safari WASM | compare.sh --wasmtime WASM | compare.sh --check A B" >&2; exit 2; }
@@ -100,38 +111,95 @@ copy "$ROOT/modules/golem-driver/test/fixtures/kanikosen" missing-font
 rm "$WORK/in/missing-font/fonts/NotoSerifJP-Regular.otf"
 copy "$ROOT/modules/golem-driver/test/fixtures/kanikosen" broken-cmap
 printf '\377\377' | dd of="$WORK/in/broken-cmap/fonts/NotoSerifJP-Regular.otf" bs=1 seek=30205 conv=notrunc 2>/dev/null
+# the inputs of the int-width fixture (docs/adr/0247 section 7): the book
+# as it is, and five with one figure or one printing in its place
+IW=$ROOT/modules/golem-driver/test/fixtures/int-width
+copy "$IW" int-width
+fonts "$WORK/in/int-width"
+figure_book() { # NAME IMAGE: the fixture with only one figure, IMAGE (with the SVG for the web)
+  copy "$IW" "$1"
+  fonts "$WORK/in/$1"
+  printf '# 図\n\n@figure images/%s web=images/figure.svg alt="図"\n  図。\n' "$2" >"$WORK/in/$1/int-width.gm"
+}
+figure_book int-width-reference reference.pdf
+figure_book int-width-icc icc.pdf
+printf '[image-color-space]\nseverity = "error"\nallowed = ["gray"]\n' >"$WORK/in/int-width-icc/preflight.toml"
+figure_book int-width-png ihdr-width.png
+figure_book int-width-png-chunk chunk-length.png
+copy "$IW" int-width-printing
+fonts "$WORK/in/int-width-printing"
+printf '# 版\n\n本文。\n' >"$WORK/in/int-width-printing/int-width.gm"
+printf '\n[[metadata.printings]]\nedition = 2147483648\nprinting = 1\ndate = 2026-11-09\n' >>"$WORK/in/int-width-printing/manifest.toml"
+
+# limited COMMAND...: COMMAND in the background, stopped with TERM (and its
+# children with it, the host of run-wasmtime.sh) past LIMIT seconds and
+# with KILL ten seconds later; its exit code, and $WORK/timeout when it was
+# stopped. The watcher looks once a second, as scripts/models/check.sh does
+LIMIT=${COMPARE_TIMEOUT:-600}
+stop() { # SIGNAL PID: the process and its children
+  for child in $(pgrep -P "$2" 2>/dev/null); do kill "-$1" "$child" 2>/dev/null || :; done
+  kill "-$1" "$2" 2>/dev/null || :
+}
+limited() {
+  rm -f "$WORK/timeout"
+  "$@" &
+  pid=$!
+  (
+    s=0
+    while [ "$s" -lt "$LIMIT" ] && kill -0 "$pid" 2>/dev/null; do sleep 1; s=$((s + 1)); done
+    if kill -0 "$pid" 2>/dev/null; then
+      : >"$WORK/timeout"
+      stop TERM "$pid"
+      s=0
+      while [ "$s" -lt 10 ] && kill -0 "$pid" 2>/dev/null; do sleep 1; s=$((s + 1)); done
+      stop KILL "$pid"
+    fi
+  ) </dev/null >/dev/null 2>&1 &
+  watcher=$!
+  status=0
+  wait "$pid" || status=$?
+  wait "$watcher" || :
+  return "$status"
+}
+native_build() { # DIR
+  cd "$1" && exec "$PROGRAM" build --target pdf --format json
+}
 
 if [ "$MODE" = wasmtime ]; then sh "$ROOT/scripts/wasm/run-wasmtime.sh" compile "$PROGRAM" "$WORK/wasmtime"; fi
 
-for name in kanikosen determinism pdf complex-vertical complex-horizontal broken-style missing-font broken-cmap; do
+for name in kanikosen determinism pdf complex-vertical complex-horizontal broken-style missing-font broken-cmap \
+  int-width int-width-reference int-width-icc int-width-png int-width-png-chunk int-width-printing; do
   dir=$WORK/in/$name
   code=0
   if [ "$MODE" = native ]; then
-    (cd "$dir" && "$PROGRAM" build --target pdf --format json >/dev/null 2>"$WORK/json") || code=$?
+    limited native_build "$dir" >/dev/null 2>"$WORK/json" || code=$?
     pdf=$(find "$dir/build/pdf" -name '*.pdf' 2>/dev/null | head -1)
   elif [ "$MODE" = browser ]; then
     # the page gives the SHA-256 of the PDF, not the PDF
-    node "$ROOT/scripts/wasm/run-browser.mjs" build "$BROWSER" "$PROGRAM" "$dir" >"$WORK/sha" 2>"$WORK/json" || code=$?
+    limited node "$ROOT/scripts/wasm/run-browser.mjs" build "$BROWSER" "$PROGRAM" "$dir" >"$WORK/sha" 2>"$WORK/json" || code=$?
     pdf=
   elif [ "$MODE" = wasmtime ]; then
-    sh "$ROOT/scripts/wasm/run-wasmtime.sh" build "$WORK/wasmtime" "$dir" "$WORK/out.pdf" 2>"$WORK/json" || code=$?
+    limited sh "$ROOT/scripts/wasm/run-wasmtime.sh" build "$WORK/wasmtime" "$dir" "$WORK/out.pdf" 2>"$WORK/json" || code=$?
     pdf=$WORK/out.pdf
     [ -f "$pdf" ] || pdf=
   elif [ "$MODE" = deno ]; then
     # Deno writes the warning that WASI is experimental to stderr, which
     # NODE_NO_WARNINGS does not stop; that line alone is taken out of the JSON
-    "${DENO:-deno}" run --allow-read --allow-write "$ROOT/scripts/wasm/run.mjs" build "$PROGRAM" "$dir" "$WORK/out.pdf" 2>"$WORK/raw" || code=$?
+    limited "${DENO:-deno}" run --allow-read --allow-write "$ROOT/scripts/wasm/run.mjs" build "$PROGRAM" "$dir" "$WORK/out.pdf" 2>"$WORK/raw" || code=$?
     grep -v '^(node:[0-9]*) ExperimentalWarning: WASI is an experimental feature and might change at any time$' "$WORK/raw" >"$WORK/json" || true
     pdf=$WORK/out.pdf
     [ -f "$pdf" ] || pdf=
   else
     # without the warning that WASI is experimental, which would go into the JSON
-    node --no-warnings "$ROOT/scripts/wasm/run.mjs" build "$PROGRAM" "$dir" "$WORK/out.pdf" 2>"$WORK/json" || code=$?
+    limited node --no-warnings "$ROOT/scripts/wasm/run.mjs" build "$PROGRAM" "$dir" "$WORK/out.pdf" 2>"$WORK/json" || code=$?
     pdf=$WORK/out.pdf
     [ -f "$pdf" ] || pdf=
   fi
+  if [ -f "$WORK/timeout" ]; then
+    code=timeout
+    echo "compare.sh: $name: stopped after $LIMIT s" >&2
   # a host that failed (not the exit code of golem build) says why
-  if [ "$MODE" != native ] && [ "$code" -gt 1 ]; then
+  elif [ "$MODE" != native ] && [ "$code" -gt 1 ]; then
     echo "compare.sh: $name: the host exited $code:" >&2
     cat "$WORK/json" >&2
   fi

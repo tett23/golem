@@ -15,6 +15,9 @@ import Data.Word (Word8)
 import Golem.Pdf
 import Golem.Pdf.Rect (Rect (..))
 import Golem.TestSupport.ExternalTool (needsTool)
+import Hedgehog (forAll, property, (===))
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -22,6 +25,7 @@ import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Hedgehog (testProperty)
 import Text.Printf (printf)
 
 -- ------------------------------------------------------------------ building PDFs
@@ -151,7 +155,8 @@ tests =
       testGroup "colours" colourTests,
       testGroup "content streams named more than once (docs/adr ADR 0051)" reuseTests,
       testGroup "writing" writingTests,
-      testGroup "marked content (docs/adr ADR 0183)" markedTests
+      testGroup "marked content (docs/adr ADR 0183)" markedTests,
+      testGroup "values independent of the width of Int (docs/adr ADR 0247)" intWidthTests
     ]
 
 xrefTests :: [TestTree]
@@ -564,3 +569,114 @@ writingTests =
               let (_, s') = BS.breakSubstring ">>\nstream\n" rest
                in BL.toStrict (Z.decompress (BL.fromStrict (BS.take n (BS.drop 10 s'))))
             Nothing -> ""
+
+-- ------------------------------------------------------------------ the width of Int
+
+-- | ASCII85 as ISO 32000-1 7.4.3 writes it: z for four zero bytes, the last group of n bytes in n + 1 characters.
+ascii85Encode :: ByteString -> ByteString
+ascii85Encode b = "<~" <> BS.concat (map group (chunksOf4 b)) <> "~>"
+  where
+    chunksOf4 x = if BS.null x then [] else BS.take 4 x : chunksOf4 (BS.drop 4 x)
+    group g
+      | g == BS.replicate 4 0 = "z"
+      | otherwise =
+          let n = BS.length g
+              v = BS.foldl' (\acc w -> acc * 256 + toInteger w) 0 (g <> BS.replicate (4 - n) 0)
+              digits = [fromInteger ((v `div` (85 ^ k)) `mod` 85) + 33 | k <- [4, 3, 2, 1, 0 :: Int]]
+           in BS.take (n + 1) (BS.pack digits)
+
+{- | The page whose colour space is an ICCBased stream with the given
+dictionary and data: the colours of the import give the profile as it was
+decoded, or as it is when it cannot be decoded.
+-}
+iccPage :: ByteString -> ByteString -> ByteString
+iccPage dict body =
+  classicPdf
+    ""
+    [ catalog,
+      (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+      (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /ColorSpace << /CS0 [/ICCBased 5 0 R] >> >> /Contents 4 0 R >>"),
+      (4, stream "" "/CS0 cs 0.5 sc 0 0 1 1 re f"),
+      (5, stream dict body)
+    ]
+
+-- | The profile decoded from ASCII85, when the import decodes it.
+ascii85Profile :: ByteString -> Maybe ByteString
+ascii85Profile encoded = case importPage 1 (iccPage "/N 1 /Filter /ASCII85Decode" encoded) of
+  Right p | [UseIcc 1 b] <- ipColors p, b /= encoded -> Just b
+  _ -> Nothing
+
+intWidthTests :: [TestTree]
+intWidthTests =
+  [ testGroup
+      "I2: ASCII85 takes a stream when, and only when, every group is at most 2^32 - 1 and the last is not one character"
+      ( [ testCase ("I2: " <> name) (ascii85Profile ("<~" <> enc <> "~>") @?= Just bytes)
+        | (name, enc, bytes) <-
+            [ ("the empty stream is 0 bytes", "", ""),
+              ("a group of the value 0 is 4 bytes", "!!!!!", BS.replicate 4 0),
+              ("z is 4 bytes", "z", BS.replicate 4 0),
+              ("a group of the value 2^31 - 1 is 4 bytes", "J,fQK", BS.pack [0x7F, 0xFF, 0xFF, 0xFF]),
+              ("a group of the value 2^31 is 4 bytes", "J,fQL", BS.pack [0x80, 0, 0, 0]),
+              ("a group of the value 2^32 - 1 is 4 bytes", "s8W-!", BS.pack [0xFF, 0xFF, 0xFF, 0xFF]),
+              ("a last group of 4 characters is 3 bytes", "@:E^", "abc")
+            ]
+        ]
+          <> [ testCase ("I2: " <> name) (importPage 1 (classicPdf "" (take 3 (onePage "<< >>" "") <> [(4, stream "/Filter /ASCII85Decode" enc)])) @?= Left (Malformed "ASCII85 のストリーム"))
+             | (name, enc) <-
+                 [ ("a group of the value 2^32 is refused", "<~s8W-\"~>"),
+                   ("a last group of one character is refused", "<~J,fQKJ~>")
+                 ]
+             ]
+          <> [ testProperty "I2: any bytes written in ASCII85 are read back" $ property $ do
+                 b <- forAll (Gen.bytes (Range.linear 0 64))
+                 ascii85Profile (ascii85Encode b) === Just b
+             ]
+      ),
+    testCase "I3: two streams named twice are two inner Forms of keys that differ from each other and from the objects, and the written names call two objects" $ do
+      p <- importOk 1 (contentsPage "<< >>" "4 0 R 5 0 R 4 0 R 5 0 R" [(4, stream "" "q 0 g 0 0 1 1 re f Q"), (5, stream "" "q 1 g 0 0 1 1 re f Q")])
+      ipContent p @?= "/GolemC4 Do\n/GolemC5 Do\n/GolemC4 Do\n/GolemC5 Do"
+      let keys = map fst (ipObjects p)
+          inner = [k | (k, OStream d _) <- ipObjects p, lookup "Subtype" d == Just (OName "Form")]
+      length inner @?= 2
+      assertBool (show keys) (length (Map.fromList [(k, ()) | k <- keys]) == length keys)
+      let objs = pdfObjects (documentObjects (formDoc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, p)]))
+          called = [(n, r) | kv <- [d | OStream d _ <- objs], Just (ODict res) <- [lookup "Resources" kv], Just (ODict xs) <- [lookup "XObject" res], (n, ORef r) <- xs, n `elem` ["GolemC4", "GolemC5"]]
+      map fst called @?= ["GolemC4", "GolemC5"]
+      case map snd called of
+        [a, b] -> assertBool (show (a, b)) (a /= b)
+        other -> assertFailure (show other),
+    testGroup
+      "I4: a stream is closed when, and only when, q and Q, BMC or BDC and EMC are each balanced"
+      [ testCase "I4: one BDC and one EMC is closed: the stream named twice is one inner Form" $ do
+          p <- importOk 1 (contentsPage "<< >>" "4 0 R 4 0 R" [(4, stream "" "/Span << >> BDC 0 0 1 1 re f EMC")])
+          ipContent p @?= "/GolemC4 Do\n/GolemC4 Do",
+        testCase "I4: an EMC without its BDC is not closed: the page is joined" $ do
+          p <- importOk 1 (contentsPage "<< >>" "4 0 R 4 0 R" [(4, stream "" "0 0 1 1 re f EMC")])
+          ipContent p @?= "0 0 1 1 re f EMC\n0 0 1 1 re f EMC",
+        testCase "I4: one BDC without its EMC is not closed: the page is joined" $ do
+          p <- importOk 1 (contentsPage "<< >>" "4 0 R 4 0 R 5 0 R 5 0 R" [(4, stream "" "/Span << >> BDC 0 0 1 1 re f"), (5, stream "" "EMC")])
+          ipContent p @?= "/Span << >> BDC 0 0 1 1 re f\n/Span << >> BDC 0 0 1 1 re f\nEMC\nEMC"
+      ],
+    testCase "I5: n 0 R of up to 18 digits is the object n, not n modulo 2^32" $ do
+      let pdf =
+            classicPdf
+              ""
+              [ catalog,
+                (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+                (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /ExtGState << /GS1 4294967297 0 R /GS2 123456789012345678 0 R /GS3 5 0 R /GS4 4294967301 0 R >> >> /Contents 4 0 R >>"),
+                (4, stream "" "0 0 1 1 re f"),
+                (5, "<< /Type /ExtGState /LW 1 >>"),
+                (4294967297, "<< /Type /ExtGState /LW 2 >>"),
+                (123456789012345678, "<< /Type /ExtGState /LW 3 >>")
+              ]
+      p <- importOk 1 pdf
+      ipObjects p @?= [(4294967297, ODict [("Type", OName "ExtGState"), ("LW", OInt 2)]), (123456789012345678, ODict [("Type", OName "ExtGState"), ("LW", OInt 3)]), (5, ODict [("Type", OName "ExtGState"), ("LW", OInt 1)])]
+      case ipResources p of
+        ODict kv -> lookup "ExtGState" kv @?= Just (ODict [("GS1", ORef 4294967297), ("GS2", ORef 123456789012345678), ("GS3", ORef 5)])
+        other -> assertFailure (show other),
+    testCase "I6: the number of components of UseIcc is the /N of the ICCBased, 3 and 4294967299 alike" $ do
+      three <- importOk 1 (iccPage "/N 3" "profile")
+      ipColors three @?= [UseIcc 3 "profile"]
+      big <- importOk 1 (iccPage "/N 4294967299" "profile")
+      ipColors big @?= [UseIcc 4294967299 "profile"]
+  ]

@@ -1,0 +1,11 @@
+# 整数の幅
+
+内容のストリームを ASCII85 で書き、二つのストリームを二度ずつ指す PDF の図版。
+
+@figure images/ascii85.pdf web=images/figure.svg alt="灰色の二つの四角"
+  ASCII85 の図版。
+
+番号の大きい項目。
+
+@number 2147483648
++ 二の三十一乗の項目

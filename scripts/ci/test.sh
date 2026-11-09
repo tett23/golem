@@ -2845,12 +2845,14 @@ FAKE
 chmod +x "$CB/deno" "$CB/bin/node"
 cb_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi; }
 : >"$WORK/in"
-# the form of the lists: three lines for each of the eight inputs
+# the form of the lists: three lines for each of the fourteen inputs
+# (the six of int-width, docs/adr/0247 section 7)
 cb_form() {
-  for name in kanikosen determinism pdf complex-vertical complex-horizontal broken-style missing-font broken-cmap; do
+  for name in kanikosen determinism pdf complex-vertical complex-horizontal broken-style missing-font broken-cmap \
+    int-width int-width-reference int-width-icc int-width-png int-width-png-chunk int-width-printing; do
     grep -Eq "^([0-9a-f]{64}|-)  $name/pdf\$" "$1" && grep -Eq "^[0-9a-f]{64}  $name/diagnostics\$" "$1" && grep -Eq "^exit [0-9]+  $name\$" "$1" || return 1
   done
-  [ "$(wc -l <"$1" | tr -d ' ')" = 24 ]
+  [ "$(wc -l <"$1" | tr -d ' ')" = 42 ]
 }
 run env DENO="$CB/deno" sh "$HERE/../wasm/compare.sh" --deno golem.wasm
 cp "$WORK/out" "$CB/deno.txt"
@@ -2864,6 +2866,27 @@ expect "compare.sh --browser: runs every input" 0
 if cb_form "$CB/browser.txt"; then ok; else ng "compare.sh --browser: the list has the form of that of node:wasi"; fi
 if grep -qxF "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  kanikosen/pdf" "$CB/browser.txt"; then ok; else ng "compare.sh --browser: the SHA-256 that the page gave, of the browser asked"; fi
 if grep -qxF -- "-  missing-font/pdf" "$CB/browser.txt" && grep -qxF "exit 1  missing-font" "$CB/browser.txt"; then ok; else ng "compare.sh --browser: no PDF and the exit code of a build with an error"; fi
+# an input that does not end is stopped past COMPARE_TIMEOUT, its exit
+# `exit timeout`, the host and its children with it, and the inputs after
+# it still run (docs/adr/0247 section 7)
+cat >"$CB/deno-hangs" <<'FAKE'
+#!/bin/sh
+case "$7" in
+  */int-width-png-chunk) sleep 300 ;;
+esac
+printf '%%PDF %s\n' "${7##*/}" >"$8"
+printf '[]\n' >&2
+FAKE
+chmod +x "$CB/deno-hangs"
+s0=$(date +%s)
+run env DENO="$CB/deno-hangs" COMPARE_TIMEOUT=2 sh "$HERE/../wasm/compare.sh" --deno golem.wasm
+s1=$(date +%s)
+cp "$WORK/out" "$CB/hangs.txt"
+expect "compare.sh: an input past COMPARE_TIMEOUT does not fail the list (I1)" 0
+if grep -qxF "exit timeout  int-width-png-chunk" "$CB/hangs.txt" && grep -qxF "exit 0  int-width-printing" "$CB/hangs.txt"; then ok; else ng "compare.sh: exit timeout for the input stopped, and the next input runs (I1)"; fi
+if grep -qF "int-width-png-chunk: stopped after 2 s" "$WORK/err"; then ok; else ng "compare.sh: says which input it stopped (I1)"; fi
+if [ $((s1 - s0)) -lt 60 ]; then ok; else ng "compare.sh: the input is stopped near COMPARE_TIMEOUT, not after the sleep of the host (I1)"; fi
+if pgrep -f "sleep 300" >/dev/null 2>&1; then ng "compare.sh: the children of the host stopped are stopped too (I1)"; else ok; fi
 run sh "$HERE/../wasm/compare.sh" --browser firefox golem.wasm
 expect "compare.sh --browser: a browser that is not chromium nor safari is a usage error" 2
 run sh "$HERE/../wasm/compare.sh" --browser chromium
