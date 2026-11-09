@@ -321,7 +321,7 @@ predicateTests =
       broken (withLines (atLine 1 (\l -> l {lineTarget = lineTarget l + fs})) p) @?= [L5],
     testCase "L5: a line made overfull, with a break where it fits" $ do
       let p = paragraphIn plain False 2 ["あ", "い", "う", "え"]
-          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0)]
+          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0) Nothing]
       broken (withLines joined p) @?= [L5],
     testCase "L5, D6 (docs/adr/0222): an overfull line with no break where it fits is not broken, and is not broken inside the run of line-start prohibitions" $ do
       let p = paragraphIn plain False 2 ["」", "」", "」", "」", "」"]
@@ -535,7 +535,7 @@ regressionTests =
       broken (rebroken (allowBefore "…") p) @?= [L4],
     testCase "the output before what does not fit was pushed out in the last pass, a line past W where a break fits, is broken by L5" $ do
       let p = paragraphIn plain False 2 ["あ", "い", "う", "え", "お"]
-          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0)]
+          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0) Nothing]
       sound p
       broken (withLines joined p) @?= [L5],
     testCase "golem-layout ADR 0008: the output before it, a word with a hyphen sent whole to the next line past W, is broken by L5" $ do

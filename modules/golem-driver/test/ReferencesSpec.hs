@@ -329,7 +329,7 @@ urlRefsJson = TE.encodeUtf8 "[{\"id\": \"jlreq\", \"type\": \"webpage\", \"title
 
 -- | A line of one box of a width (a page number in the tests of tocPage).
 oneBoxLine :: Sp -> Line
-oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)] 0 w 0 (0, 0) 0 (0, 0)
+oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)] 0 w 0 (0, 0) 0 (0, 0) Nothing
 
 -- | fs = 10pt, measure = 120pt, W = 15pt, g = 5pt, u = 10pt.
 tocGeom :: Bool -> TocGeometry

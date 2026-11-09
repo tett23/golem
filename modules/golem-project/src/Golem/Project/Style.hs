@@ -34,6 +34,8 @@ module Golem.Project.Style
     borderStyleAt,
     ParaStart (..),
     paraStartValues,
+    LineAdjustment (..),
+    lineAdjustmentValues,
     CodeStyle (..),
     CaptionPosition (..),
     defaultCodeStyle,
@@ -357,7 +359,11 @@ data ParaStyleDef = ParaStyleDef
     psKeepFirstLines :: !(Maybe Int),
     psKeepLastLines :: !(Maybe Int),
     -- | where the paragraph starts (docs/adr/0261)
-    psPageBreak :: !(Maybe ParaStart)
+    psPageBreak :: !(Maybe ParaStart),
+    -- | how its lines are adjusted (docs/adr/0274)
+    psLineAdjustment :: !(Maybe LineAdjustment),
+    -- | the most the glue of a line stretches, as a ratio in permille; no limit when not written (docs/adr/0274)
+    psStretchLimit :: !(Maybe Int)
   }
   deriving stock (Eq, Show)
 
@@ -409,6 +415,17 @@ data ParaStart = StartAnywhere | StartColumn | StartPage | StartRecto | StartVer
 -- | The values of page-break of a paragraph style, in the order of 'ParaStart' (docs/adr/0261).
 paraStartValues :: [Text]
 paraStartValues = ["any", "column", "page", "recto", "verso"]
+
+{- | How the lines of a paragraph are adjusted (docs/adr/0274): pulling in
+first, as JLReq 3.8.2 does, or a line that shrinks measured as one that
+stretches.
+-}
+data LineAdjustment = PullInFirst | Balanced
+  deriving stock (Eq, Show, Enum, Bounded)
+
+-- | The values of line-adjustment of a paragraph style, in the order of 'LineAdjustment' (docs/adr/0274).
+lineAdjustmentValues :: [Text]
+lineAdjustmentValues = ["pull-in-first", "balanced"]
 
 {- | [code] and [code.colors] (golem-driver ADR 0023): the format of the
 listing numbers, whether code blocks have line numbers, the swatches of
@@ -479,7 +496,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
@@ -503,7 +520,9 @@ bodyDefaults =
       psKeepAllLines = Just False,
       psKeepFirstLines = Just 2,
       psKeepLastLines = Just 2,
-      psPageBreak = Just StartAnywhere
+      psPageBreak = Just StartAnywhere,
+      -- pulling in first, and no limit of the stretch (docs/adr/0274)
+      psLineAdjustment = Just PullInFirst
     }
 
 {- | An aki amount (docs/adr ADR 0019): a name (ベタ, 全角, 二分, 三分, 四分,
@@ -848,6 +867,8 @@ overPara u b =
     (psKeepFirstLines u <|> psKeepFirstLines b)
     (psKeepLastLines u <|> psKeepLastLines b)
     (psPageBreak u <|> psPageBreak b)
+    (psLineAdjustment u <|> psLineAdjustment b)
+    (psStretchLimit u <|> psStretchLimit b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -1943,9 +1964,13 @@ instance FromValue ParaStyleDef where
     kfl <- optKeyOf "keep-first-lines" (keepCount 1 Nothing)
     kll <- optKeyOf "keep-last-lines" (keepCount 1 Nothing)
     pbk <- enumKey "page-break" paraStartValues
+    -- the line adjustment and the limit of the stretch (docs/adr/0274): a negative limit is G03006, not G02103
+    ladj <- enumKey "line-adjustment" lineAdjustmentValues
+    slim <- optKeyOf "stretch-limit" (withValue (\l x -> if x < 0 then failAt l ("stretch-limit は 0 以上の整数です（千分率）: " <> show x) else pure x))
     let align = al >>= \v -> lookup v (zip alignValues [minBound .. maxBound])
         start = pbk >>= \v -> lookup v (zip paraStartValues [minBound .. maxBound])
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start)
+        adjustment = ladj >>= \v -> lookup v (zip lineAdjustmentValues [minBound .. maxBound])
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim)
     where
       keepCount :: Natural -> Maybe Natural -> Value' l -> Matcher l Int
       keepCount lo hi v =
@@ -2760,7 +2785,9 @@ codeStyleChecks s =
             ("keep-all-lines", isJust (psKeepAllLines d)),
             ("keep-first-lines", isJust (psKeepFirstLines d)),
             ("keep-last-lines", isJust (psKeepLastLines d)),
-            ("page-break", isJust (psPageBreak d))
+            ("page-break", isJust (psPageBreak d)),
+            ("line-adjustment", isJust (psLineAdjustment d)),
+            ("stretch-limit", isJust (psStretchLimit d))
           ],
         written
       ]
@@ -3344,7 +3371,9 @@ paraStyleNode =
         ("keep-all-lines", bool),
         ("keep-first-lines", int),
         ("keep-last-lines", int),
-        ("page-break", enum paraStartValues)
+        ("page-break", enum paraStartValues),
+        ("line-adjustment", enum lineAdjustmentValues),
+        ("stretch-limit", int)
       ]
         <> featureNodes
         <> [ ("background", NEither [ref Swatches, NValue LFalse]),
