@@ -4,6 +4,8 @@ module Golem.Layout.CharClass
     charClass,
     dualCharacters,
     isDualCharacter,
+    isJoinerCharacter,
+    isHyphenCharacter,
     charClassIn,
     dualJapaneseClass,
     spanIsJapanese,
@@ -12,7 +14,8 @@ module Golem.Layout.CharClass
   )
 where
 
-import Data.Char (GeneralCategory (..), generalCategory, isAscii, isSpace)
+import Data.Char (GeneralCategory (..), generalCategory, isAscii, isSpace, ord)
+import Data.IntSet qualified as IntSet
 import Data.Text (Text)
 import Data.Text qualified as T
 
@@ -35,19 +38,41 @@ data CharClass
   | Western -- cl-27
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
+{- | The classes as tables (docs/adr/0250): each list is made a set once,
+when it is first used, so that a character is looked up, not compared
+with every character of a list decoded again from its literal.
+-}
+charSet :: String -> IntSet.IntSet
+charSet = IntSet.fromList . map ord
+
+inSet :: IntSet.IntSet -> Char -> Bool
+inSet s c = IntSet.member (ord c) s
+
+openings, closings, hyphens, dividings, middleDots, fullStops, commas, inseparables, iterations, smallKana :: IntSet.IntSet
+openings = charSet "「『（［｛〈《【〔〘〖〝‘“｟«"
+closings = charSet "」』）］｝〉》】〕〙〗〟’”｠»"
+hyphens = charSet "‐‑〜゠–"
+dividings = charSet "？！‼⁇⁈⁉"
+middleDots = charSet "・：；"
+fullStops = charSet "。．"
+commas = charSet "、，"
+inseparables = charSet "—―…‥〳〴〵"
+iterations = charSet "ヽヾゝゞ々〻"
+smallKana = charSet "ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ"
+
 charClass :: Char -> CharClass
 charClass c
-  | c `elem` ("「『（［｛〈《【〔〘〖〝‘“｟«" :: String) = Opening
-  | c `elem` ("」』）］｝〉》】〕〙〗〟’”｠»" :: String) = Closing
-  | c `elem` ("‐‑〜゠–" :: String) = Hyphen
-  | c `elem` ("？！‼⁇⁈⁉" :: String) = Dividing
-  | c `elem` ("・：；" :: String) = MiddleDot
-  | c `elem` ("。．" :: String) = FullStop
-  | c `elem` ("、，" :: String) = Comma
-  | c `elem` ("—―…‥〳〴〵" :: String) = Inseparable
-  | c `elem` ("ヽヾゝゞ々〻" :: String) = Iteration
+  | inSet openings c = Opening
+  | inSet closings c = Closing
+  | inSet hyphens c = Hyphen
+  | inSet dividings c = Dividing
+  | inSet middleDots c = MiddleDot
+  | inSet fullStops c = FullStop
+  | inSet commas c = Comma
+  | inSet inseparables c = Inseparable
+  | inSet iterations c = Iteration
   | c == 'ー' = ProlongedSound
-  | c `elem` ("ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ" :: String) = SmallKana
+  | inSet smallKana c = SmallKana
   | c == '\x3000' = IdeographicSpace
   | (c >= '\x3041' && c <= '\x309F') || (c >= '\x30A0' && c <= '\x30FF') = Kana
   | isAscii c || (c >= '\x00A0' && c <= '\x024F') || (c >= '\x0370' && c <= '\x04FF') = Western
@@ -61,7 +86,29 @@ dualCharacters :: [Char]
 dualCharacters = "‘’“”«»‹›—–‐‑…"
 
 isDualCharacter :: Char -> Bool
-isDualCharacter c = c `elem` dualCharacters
+isDualCharacter = inSet dualSet
+
+dualSet :: IntSet.IntSet
+dualSet = charSet dualCharacters
+
+{- | The quotation marks, apostrophes, hyphens and dashes that join a Latin
+word outside a language span when the nearest letter on either side is
+Latin (golem-layout ADR 0008; the span is checked by the composition).
+-}
+isJoinerCharacter :: Char -> Bool
+isJoinerCharacter = inSet joiners
+
+joiners :: IntSet.IntSet
+joiners = charSet "‘’“”—‐‑–"
+
+{- | The hyphens and dashes of a Latin word, where it may break with the
+explicit hyphen penalty (docs/adr/0222).
+-}
+isHyphenCharacter :: Char -> Bool
+isHyphenCharacter = inSet wordHyphens
+
+wordHyphens :: IntSet.IntSet
+wordHyphens = charSet "-‐‑–—"
 
 {- | Whether a language span is Japanese (docs/adr ADR 0187): its primary
 subtag, in lower case, is ja, as the separator after a number decides
@@ -87,10 +134,15 @@ charClassIn lang c = case lang of
 -- | The Japanese class of a character of both scripts (docs/adr ADR 0187).
 dualJapaneseClass :: Char -> CharClass
 dualJapaneseClass c
-  | c `elem` ("“‘«‹" :: String) = Opening
-  | c `elem` ("”’»›" :: String) = Closing
-  | c `elem` ("—…" :: String) = Inseparable
+  | inSet dualOpenings c = Opening
+  | inSet dualClosings c = Closing
+  | inSet dualInseparables c = Inseparable
   | otherwise = Hyphen
+
+dualOpenings, dualClosings, dualInseparables :: IntSet.IntSet
+dualOpenings = charSet "“‘«‹"
+dualClosings = charSet "”’»›"
+dualInseparables = charSet "—…"
 
 {- | A character that joins the character before it in one box: general
 category Mn, Mc or Me (combining characters, variation selectors among
