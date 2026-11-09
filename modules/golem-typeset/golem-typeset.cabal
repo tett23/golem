@@ -73,7 +73,9 @@ test-suite golem-typeset-test
     , golem-pdf
     , golem-project
     , golem-typeset
+    , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6
+    , tasty-hedgehog >=1.4 && <1.5
     , tasty-hunit    >=0.10 && <0.11
     , text
   default-language: GHC2021

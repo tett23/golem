@@ -5,6 +5,7 @@ ADR 0002 and 0003, golem-font ADR 0001 and 0002).
 -}
 module Golem.Typeset.FontProvider
   ( golemFontProvider,
+    unmemoisedFontProvider,
     cffFontProgram,
     cff2FontDiagnostics,
     toUnicodeOf,
@@ -42,7 +43,17 @@ G08003, G08004); G08005 is checked only when all are loaded. The
 diagnostics are at the top of @fid@ (golem-driver ADR 0016).
 -}
 golemFontProvider :: FontProvider
-golemFontProvider = FontProvider $ \files fid style locals ->
+golemFontProvider = fontProvider True
+
+{- | The provider without the memo of the shaping of texts (docs/adr/0253),
+for the tests that compare the two: the measures and the shaping are the
+same, computed at every call.
+-}
+unmemoisedFontProvider :: FontProvider
+unmemoisedFontProvider = fontProvider False
+
+fontProvider :: Bool -> FontProvider
+fontProvider memoise = FontProvider $ \files fid style locals ->
   let body = bodyRole style
       err code = diagnostic code Error (mkSpan fid 0 0)
       load path = do
@@ -87,7 +98,7 @@ golemFontProvider = FontProvider $ \files fid style locals ->
                     ]
                in case clashes of
                     ((n, p1, p2) : _) -> Left [err "G08005" ("PostScript 名が同じ異なるフォントがあります: " <> n <> "（" <> T.pack p1 <> "、" <> T.pack p2 <> "）")]
-                    [] -> Right (provide fid [(f, p) | (_, f, p) <- faces] body roleFaces)
+                    [] -> Right (provide memoise fid [(f, p) | (_, f, p) <- faces] body roleFaces)
 
 {- | G08019 (golem-font ADR 0003): a font with CFF2 outlines cannot be
 embedded in the PDF. At the top of @fid@, as the other font diagnostics.
@@ -123,14 +134,15 @@ and its OpenType features. A role that is not loaded is the body role.
 The measures are kept by the shaping too: its features change them
 (docs/adr/0020).
 -}
-provide :: FileId -> [(Font, FilePath)] -> Text -> Map.Map Text (Maybe Int, Maybe Int, [Text]) -> LoadedFonts
-provide fid faces body roles =
+provide :: Bool -> FileId -> [(Font, FilePath)] -> Text -> Map.Map Text (Maybe Int, Maybe Int, [Text]) -> LoadedFonts
+provide memoise fid faces body roles =
   LoadedFonts
     { lfAdvance = advance,
-      lfWordAdvance = \s t -> sum (map shAdvance (shapeText s t)),
+      -- the advances of the shaping of the word, from the same memo (docs/adr/0253)
+      lfWordAdvance = \s t -> sum (map shAdvance (shaped s t)),
       -- the pair shaped together less the two shaped apart (docs/adr/0020)
       lfPairKern = \s a b -> pairKern (s, T.pack [a, b]),
-      lfShape = shapeText,
+      lfShape = shaped,
       lfCode = glyphCid . fontAt,
       lfEmbed = embed,
       lfEmBoxCentral = \ix -> let f = fontAt ix in toInteger (fontEmBoxCentral f) % toInteger (fontUnitsPerEm f),
@@ -145,9 +157,17 @@ provide fid faces body roles =
   where
     {- advances are asked for again and again while composing; they are
     remembered in a lazy trie, without state (docs/adr ADR 0034) -}
-    advanceOf = memoWith shapingTextKey fromShapingTextKey (\(s, t) -> sum (map shAdvance (shapeText s t)))
+    advanceOf = memoWith key unkey (\(s, t) -> sum (map shAdvance (shapeText s t)))
     advance s c = advanceOf (s, T.singleton c)
-    pairKern = memoWith shapingTextKey fromShapingTextKey (\(s, t) -> sum (map shAdvance (shapeText s t)) - sum [advance s c | c <- T.unpack t])
+    pairKern = memoWith key unkey (\(s, t) -> sum (map shAdvance (shapeText s t)) - sum [advance s c | c <- T.unpack t])
+    {- the shaping of words and runs is remembered too, so that a text
+    shaped in the composition is not shaped again when it is drawn, nor in
+    the second round of the page references (docs/adr/0253) -}
+    shapedOf = memoWith key unkey (uncurry shapeText)
+    shaped s t = if memoise then shapedOf (s, t) else shapeText s t
+    -- the roles by their order in the table, a short key (docs/adr/0253)
+    key = shapingTextKey (Map.keys roles)
+    unkey = fromShapingTextKey (Map.keys roles)
     faceAt i = faces !! max 0 (min (length faces - 1) i)
     fontAt = fst . faceAt
     roleOf role = case Map.lookup role roles of
