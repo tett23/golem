@@ -7,6 +7,8 @@ module Golem.Layout.Look
   ( Look (..),
     Decoration (..),
     LinkTarget (..),
+    LinkDest (..),
+    NoteId (..),
     Kerning (..),
     Synthetic (..),
     plainLook,
@@ -202,10 +204,33 @@ data Decoration = Decoration
   }
   deriving stock (Eq, Ord, Show)
 
-{- | Where a link goes (docs/adr ADR 0182): an external URL as written. A
-target inside the document is a constructor to come.
+{- | Where a link goes: an external URL as written (docs/adr ADR 0182), or
+a place inside the document (docs/adr/0267).
 -}
-newtype LinkTarget = LinkUri Text
+data LinkTarget = LinkUri Text | LinkTo LinkDest
+  deriving stock (Eq, Ord, Show)
+
+-- | Where a link inside the document goes (docs/adr/0267).
+data LinkDest
+  = -- | the block of a label
+    DestLabel Text
+  | -- | a heading, by the span of its block
+    DestHeading SrcSpan
+  | -- | the first line of the body of a note
+    DestNote NoteId
+  | -- | the line of the mark of a note in the text
+    DestNoteMark NoteId
+  | -- | the line of an index mark
+    DestIndexMark SrcSpan
+  | -- | an entry of the @bibliography at a span, by its key
+    DestBibEntry SrcSpan Text
+  deriving stock (Eq, Ord, Show)
+
+{- | A footnote in the book (golem-driver ADR 0018): the span of the note,
+and its place among the notes of the same span in one paragraph (from
+0). Notes numbered in different files never share a key.
+-}
+data NoteId = NoteId !SrcSpan !Int
   deriving stock (Eq, Ord, Show)
 
 {- | One role for both scripts at a size, upright, regular, default colour,

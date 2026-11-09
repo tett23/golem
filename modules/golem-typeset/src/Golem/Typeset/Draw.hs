@@ -5,6 +5,7 @@ module Golem.Typeset.Draw
     renderPdfStructure,
     renderPdfLeafTexts,
     renderPdfWithTree,
+    renderPdfWithDests,
     renderPdfAllReusing,
     orphanErrors,
     folioTexts,
@@ -27,7 +28,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (toGregorian)
 import GHC.Conc (pseq)
-import Golem.Assemble (Book (..))
+import Golem.Assemble (Book (..), TocEntry (..), inlineText, tocWithinDepth)
 import Golem.Doc.IR
 import Golem.Layout.Code
 import Golem.Layout.Japanese
@@ -96,14 +97,35 @@ mistake of Golem that leaves drawn content out of the tree (G07107,
 docs/adr ADR 0216).
 -}
 renderPdfWithTree :: (P.StructElem -> P.StructElem) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] ByteString)
-renderPdfWithTree tamper version provider inp = fmap (\(bytes, _, _, _, _) -> bytes) <$> renderPdfAllWith tamper version provider inp
+renderPdfWithTree tamper version provider inp = fmap (\(bytes, _, _, _, _) -> bytes) <$> renderPdfAllWith untouched {tmTree = tamper} version provider inp
+
+{- | 'renderPdf' with the destinations of the links inside the document
+changed by a function before they are used: for the tests only, as a
+stand-in for a mistake of Golem that leaves a destination out of the table
+(G07120, docs/adr/0267).
+-}
+renderPdfWithDests :: (Map LinkDest P.Dest -> Map LinkDest P.Dest) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] ByteString)
+renderPdfWithDests tamper version provider inp = fmap (\(bytes, _, _, _, _) -> bytes) <$> renderPdfAllWith untouched {tmDests = tamper} version provider inp
+
+{- | What the tests change before the PDF is checked and written: the
+structure tree (G07107, docs/adr ADR 0216) and the destinations of the
+links inside the document (G07120, docs/adr/0267).
+-}
+data Tamper = Tamper
+  { tmTree :: P.StructElem -> P.StructElem,
+    tmDests :: Map LinkDest P.Dest -> Map LinkDest P.Dest
+  }
+
+-- | Nothing changed.
+untouched :: Tamper
+untouched = Tamper id id
 
 -- | The PDF, its notices, its view, its structure tree as text with the texts of its leaves, and where its pages start.
 renderPdfAll :: Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
-renderPdfAll = renderPdfAllWith id
+renderPdfAll = renderPdfAllWith untouched
 
--- | 'renderPdfAll' with the structure tree changed by a function (the tests of G07107 only).
-renderPdfAllWith :: (P.StructElem -> P.StructElem) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
+-- | 'renderPdfAll' with the structure tree or the destinations changed by functions (the tests of G07107 and G07120 only).
+renderPdfAllWith :: Tamper -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
 renderPdfAllWith = renderPdfAllUsing True
 
 {- | 'renderPdfAll' with the compositions of the units that did not change
@@ -111,9 +133,9 @@ reused between the rounds of S2 or not, for the tests that compare the two
 (docs/adr ADR 0251).
 -}
 renderPdfAllReusing :: Bool -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
-renderPdfAllReusing reuse = renderPdfAllUsing reuse id
+renderPdfAllReusing reuse = renderPdfAllUsing reuse untouched
 
-renderPdfAllUsing :: Bool -> (P.StructElem -> P.StructElem) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
+renderPdfAllUsing :: Bool -> Tamper -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
 renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
   (ds, Left gs) -> pure (Left (ds <> gs))
   (ds@(_ : _), Right _) -> pure (Left ds)
@@ -138,7 +160,8 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
                 [] -> do
                   let (used, stops, overfull, missingFeatures, finish) = writeDocumentView tamper version inp geom fonts layout intent
                   {- G07104 stops the PDF/A-2a before its fonts are embedded (docs/adr ADR 0183);
-                  G07107, content drawn but not in the structure tree, stops every PDF (docs/adr ADR 0216) -}
+                  G07107, content drawn but not in the structure tree, stops every PDF (docs/adr ADR 0216),
+                  and so does G07120, a link or a bookmark whose destination is not drawn (docs/adr/0267) -}
                   if not (null stops)
                     then pure (Left stops)
                     else do
@@ -394,15 +417,19 @@ data LineRec = LineRec
     -- | the swatches of the backgrounds of inline code on the line (golem-driver ADR 0029)
     lrBackgrounds :: ![P.Swatch],
     {- | the rectangles of the links on the line, on the page, in the order of
-    the line (docs/adr ADR 0182), each with the leaf of its first box (docs/adr ADR 0183)
-    -} lrLinks :: ![(LinkTarget, Maybe Leaf, Rect)],
+    the line (docs/adr ADR 0182), each with the leaf of its first box (docs/adr
+    ADR 0183) and the place of its first box in the source (docs/adr/0267)
+    -} lrLinks :: ![(LinkTarget, Maybe Leaf, SrcSpan, Rect)],
     {- | the underlines and strikethroughs of the line (docs/adr/0270): what
     golem preflight sees of them as rules, the kind, the band and the
     thinnest part, and the swatch of each
     -} lrDecorations :: ![(Text, Rect, Sp, Maybe P.Swatch)],
     {- | the box the overflow of the line is measured at is of a range that
     does not break (docs/adr ADR 0272): G07122, not G07105
-    -} lrOverfullNoBreak :: !Bool
+    -} lrOverfullNoBreak :: !Bool,
+    {- | the id of the line of the flow it is drawn for, where it can be the
+    destination of a link (docs/adr/0267): not a line drawn again
+    -} lrAnchor :: !(Maybe Int)
   }
 
 -- | What one page draws.
@@ -416,7 +443,7 @@ data PageDrawn = PageDrawn
     pdNumber :: Int,
     pdBackgrounds :: [P.Swatch],
     -- | the links of the page, in the order drawn (docs/adr ADR 0182)
-    pdLinks :: [(LinkTarget, Maybe Leaf, Rect)]
+    pdLinks :: [(LinkTarget, Maybe Leaf, SrcSpan, Rect)]
   }
 
 {- | What the drawing of a document shares: the input, the page geometry,
@@ -456,7 +483,7 @@ embedded in IO between the two halves (docs/adr ADR 0034): the glyphs
 used in each font and their text, then the PDF and its view from the
 embedded fonts.
 -}
-writeDocumentView :: (P.StructElem -> P.StructElem) -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [(OverfullLine, Bool)], [Diagnostic], Map P.FontRef P.Font -> (ByteString, V.View, Structure))
+writeDocumentView :: Tamper -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [(OverfullLine, Bool)], [Diagnostic], Map P.FontRef P.Font -> (ByteString, V.View, Structure))
 writeDocumentView tamper version inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
@@ -491,12 +518,27 @@ writeDocumentView tamper version inp geom fonts layout intent =
       formRefs = Map.fromList [(k, P.FormRef n) | ((k, _), n) <- zip formKeys [1 ..]]
       -- the bleed and the crop marks around each page (golem-pdf ADR 0004)
       bleed = maybe 0 pageBleed (stPage style)
-      -- the link annotations, each of the Link of the structure tree that holds the first box of its line (docs/adr ADR 0183)
+      {- the link annotations, each of the Link of the structure tree that holds
+      the first box of its line (docs/adr ADR 0183): to a URL, or to the
+      destination of its target (docs/adr/0267) -}
       pdfPages =
-        [ P.framePageWith (piMarks inp) bleed (pw, ph) (pdContent pd) [P.LinkAnnotation r (P.UriAction u) aid (aid >>= (`Map.lookup` linkContents)) | (LinkUri u, lf, r) <- pdLinks pd, let aid = lf >>= leafOf >>= (`Map.lookup` linkOfLeaf)]
+        [ P.framePageWith (piMarks inp) bleed (pw, ph) (pdContent pd) [P.LinkAnnotation r action aid (aid >>= (`Map.lookup` linkContents)) | (t, lf, _, r) <- pdLinks pd, let aid = lf >>= leafOf >>= (`Map.lookup` linkOfLeaf), Just action <- [actionOf t]]
         | pd <- drawn
         ]
-      (structure, linkContents) = first tamper (structureTree (plFlowEnv layout) (plUnits layout) figureAttrs)
+      actionOf = \case
+        LinkUri u -> Just (P.UriAction u)
+        LinkTo d -> P.GoTo <$> Map.lookup d dests
+      (structure, linkContents) = first (tmTree tamper) (structureTree (plFlowEnv layout) (plUnits layout) figureAttrs (\i -> Map.findWithDefault "" i (plTocNumbers layout)))
+      dests = tmDests tamper (destinations origin vertical' drawn layout)
+      vertical' = pgVertical geom
+      -- the outline: the entries of the table of contents, nested by their levels (docs/adr/0267)
+      tocEntries = tocWithinDepth (piBook inp)
+      outline = P.outlineFromLevels [(teLevel e, outlineTitle inp e, d) | e <- tocEntries, Just d <- [Map.lookup (DestHeading (teSpan e)) dests]]
+      -- G07120: the sources of links and the entries whose destinations are not drawn (docs/adr/0267)
+      unreached = nub ([sp | pd <- drawn, (LinkTo d, _, sp, _) <- pdLinks pd, Map.notMember d dests] <> [teSpan e | e <- tocEntries, Map.notMember (DestHeading (teSpan e)) dests])
+      destErrors = case unreached of
+        [] -> []
+        sp : _ -> [diagnostic "G07120" Error sp ("リンクの元かしおりの項目の行先が、描いたページにありません（" <> T.pack (show (length unreached)) <> " か所）。Golem の誤りです。この入力を添えて報告してください")]
       linkOfLeaf = linksOfLeaves structure
       {- the BBox of the Figure of each figure where it is first drawn, in the
       space of its page, and its placement (docs/adr ADR 0183) -}
@@ -531,7 +573,8 @@ writeDocumentView tamper version inp geom fonts layout intent =
                     Just PdfUa1 -> Just P.PdfUa1
                     Nothing -> Nothing,
                   P.docStructure = structure,
-                  P.docPageLabels = pdfPageLabels inp layout
+                  P.docPageLabels = pdfPageLabels inp layout,
+                  P.docOutline = outline
                 }
             bytes = P.writePdf doc
             -- the view of golem preflight (golem-cli ADR 0006)
@@ -597,7 +640,56 @@ writeDocumentView tamper version inp geom fonts layout intent =
           (mkSpan (projectManifestFile (piProject inp)) 0 0)
           (Map.fromList [(i, uSpan u) | (i, u) <- plUnits layout])
           (P.orphanLeaves structure [l | p <- pdfPages, l <- P.contentLeaves (P.pageContent p)])
-   in (used, privateUse <> orphans, overfull, featureWarnings inp fonts (zip [1 ..] (map pdUses drawn)), finish)
+   in (used, privateUse <> orphans <> destErrors, overfull, featureWarnings inp fonts (zip [1 ..] (map pdUses drawn)), finish)
+
+{- | The destination of each target of a link inside the document drawn
+(docs/adr/0267): the page of the first drawing of what it is, from 0, and
+the top of its first line or image there, on the page with the crop marks
+and the bleed (@origin@). A label, a heading, an index mark and an entry
+of a bibliography are at the line or the figure of the layout; the body
+of a note at the line of its mark back, its mark in the text at the line
+of its link to the body. Of the lines of one page, the first: the top
+one, the rightmost in vertical text.
+-}
+destinations :: Sp -> Bool -> [PageDrawn] -> PdfLayout -> Map LinkDest P.Dest
+destinations origin vertical drawn layout =
+  Map.map (\(i, r) -> P.DestXyz i (rectY r + rectH r + origin)) (Map.union fromLayout fromNotes)
+  where
+    placed = zip [0 :: Int ..] drawn
+    firstOf new@(i, r) old@(j, q)
+      | i /= j = if i < j then new else old
+      | vertical = if rectX r + rectW r > rectX q + rectW q then new else old
+      | otherwise = if rectY r + rectH r > rectY q + rectH q then new else old
+    lineAt = Map.fromListWith firstOf [(lid, (i, r)) | (i, pd) <- placed, (rec, _) <- pdLines pd, Just lid <- [lrAnchor rec], Just r <- [lrRect rec]]
+    figureAt = Map.fromListWith firstOf [(pfUnit pf, (i, r)) | (i, pd) <- placed, (r, pf) <- pdImages pd]
+    fromLayout =
+      Map.mapMaybe
+        ( \case
+            AnchorLine lid -> Map.lookup lid lineAt
+            AnchorFigure u -> Map.lookup u figureAt
+        )
+        (plDestAnchors layout)
+    -- the lines of the links between a note and its mark, each the destination of the link back
+    fromNotes =
+      Map.fromListWith
+        firstOf
+        [ (back, (i, r))
+        | (i, pd) <- placed,
+          (rec, _) <- pdLines pd,
+          Just r <- [lrRect rec],
+          (LinkTo d, _, _, _) <- lrLinks rec,
+          back <- case d of
+            DestNote nid -> [DestNoteMark nid]
+            DestNoteMark nid -> [DestNote nid]
+            _ -> []
+        ]
+
+{- | The title of an item of the outline (docs/adr/0267): as the entry of
+the table of contents, its number, the separator and its short title, as
+plain text, ruby its base alone.
+-}
+outlineTitle :: PdfInput -> TocEntry -> Text
+outlineTitle inp e = T.filter (/= '\xAD') (T.concat (map inlineText (numberedTitle (bookLanguage inp) (teSpan e) (teNumber e) (teTitle e))))
 
 {- | G08103 (docs/adr/0268): an OpenType feature that a run turns on and
 that none of the faces of its characters has, once for each font file and
@@ -910,7 +1002,7 @@ entry :: DrawEnv -> Text -> SrcSpan -> Rect -> Sp -> SetLine -> (LineRec, ([P.Co
 entry env kind sp ta cross = entryAt env kind sp (lineStart env ta cross)
 
 entryAt :: DrawEnv -> Text -> SrcSpan -> (Sp, Sp) -> SetLine -> (LineRec, ([P.Content], [GlyphUse]))
-entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sp sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl) decorated (overfullInRange sl), drawLineAt env start sl)
+entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sp sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl) decorated (overfullInRange sl) Nothing, drawLineAt env start sl)
   where
     decorated = [(k, band, ruleThinnest w st, decorationSwatch env (decColor d)) | (k, d, band, w, st) <- decorationBands env start sl]
 
@@ -1010,9 +1102,9 @@ faceRect vertical size (x0, y0) s0 e0
 target, with the glue between them, from the start of its first box to
 the end of its last, across the face of the line, as 'codeBackgrounds';
 the reading of a ruby is not in it -}
-linkRects :: DrawEnv -> (Sp, Sp) -> SetLine -> [(LinkTarget, Maybe Leaf, Rect)]
+linkRects :: DrawEnv -> (Sp, Sp) -> SetLine -> [(LinkTarget, Maybe Leaf, SrcSpan, Rect)]
 linkRects env start sl =
-  [ (t, Just (bcLeaf c), faceRect vertical (slSize sl) start (slIndent sl + s0) (slIndent sl + e0))
+  [ (t, Just (bcLeaf c), snd (bcSource c), faceRect vertical (slSize sl) start (slIndent sl + s0) (slIndent sl + e0))
   | run@((s0, _, c) : _) <- groupWhen (\(_, _, p) (_, _, c) -> lkLink (bcLook p) == lkLink (bcLook c)) boxes,
     let e0 = maximum [o + w | (o, w, _) <- run],
     Just t <- [lkLink (bcLook c)]
@@ -1294,7 +1386,7 @@ textAt env kind anchor size txt =
         LS.AlignCenter -> anX anchor - Sp (unSp w `div` 2)
         LS.AlignEnd -> anX anchor - w
       face = Rect x0 (anY anchor - (size - zwToSp size baselineRatio)) w size
-   in (LineRec kind styleSpan (Just face) Nothing [] [] [] False, first (pure . P.Artifact P.Pagination) (runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt))
+   in (LineRec kind styleSpan (Just face) Nothing [] [] [] False Nothing, first (pure . P.Artifact P.Pagination) (runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt))
   where
     fonts = deFonts env
     body = bodyRole (piStyle (deInput env))
@@ -1312,26 +1404,42 @@ drawColumn env p =
         [] -> typeAreaFor geom n
       -- a line drawn again on a later page, the header row of a table, is an artifact (docs/adr ADR 0183)
       again lid = maybe False (/= (n, poColumn p)) (Map.lookup lid (deFirstPlace env))
-      orAgain lid e = if again lid then asArtifact P.Pagination e else e
+      orAgain lid e = if again lid then asArtifact P.Pagination e else anchoredAt lid e
+      -- the leader and the page number of an entry of the table of contents (golem-driver ADR 0009)
+      tocTail lid tp =
+        let lastLeaf = listToMaybe (reverse [bcLeaf c | Just sl <- [Map.lookup lid (plLines layout)], Box _ c <- lineItems (slLine sl), bcLeaf c /= noLeaf])
+         in [(tpLeader tp, tpLeaderStart tp), (maybe id withLeaf lastLeaf (tpNumber tp), tpNumberStart tp)]
+      {- the link of an entry of the table of contents on its last line, from
+      its first box to the end of its page number, the leader inside it (docs/adr/0267) -}
+      withTocLink slot lid e@(rec, x) = case Map.lookup lid (plTocPages layout) of
+        Nothing -> e
+        Just tp ->
+          let tails = concat [linkRects env (lineStart env ta (gridAt slot)) (SetLine l (pgFontSize geom) start [] [] Nothing) | (l, start) <- tocTail lid tp]
+              tailRects = [r | (_, _, _, r) <- tails]
+              links = case (reverse (lrLinks rec), reverse tails) of
+                ((t, lf, sp, r) : before, _) -> reverse before <> [(t, lf, sp, foldl' unionRect r tailRects)]
+                -- a title without boxes: the link of the page number, in the leaf of the entry
+                ([], (t, lf, sp, r) : _) -> [(t, lf, sp, foldl' unionRect r tailRects)]
+                ([], []) -> []
+           in (rec {lrLinks = links}, x)
       lineParts =
-        [orAgain lid (entry env (if Map.member lid (plTocPages layout) then "目次の行" else "本文の行") (spanOfLine env lid) ta (gridAt slot) sl) | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines layout)]]
+        [withTocLink slot lid (orAgain lid (entry env (if Map.member lid (plTocPages layout) then "目次の行" else "本文の行") (spanOfLine env lid) ta (gridAt slot) sl)) | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines layout)]]
           {- the leader and page number of a table of contents entry (golem-driver
           ADR 0009): the page number in the leaf of the end of the entry, the
-          leader an artifact (docs/adr ADR 0183) -}
-          <> [ entry env "目次の行" (spanOfLine env lid) ta (gridAt slot) (SetLine l (pgFontSize geom) start [] [] Nothing)
+          leader an artifact (docs/adr ADR 0183); their link is that of the line (docs/adr/0267) -}
+          <> [ withoutLinks (entry env "目次の行" (spanOfLine env lid) ta (gridAt slot) (SetLine l (pgFontSize geom) start [] [] Nothing))
              | (slot, SLine lid) <- poSlots p,
-               let lastLeaf = listToMaybe (reverse [bcLeaf c | Just sl <- [Map.lookup lid (plLines layout)], Box _ c <- lineItems (slLine sl), bcLeaf c /= noLeaf]),
                Just tp <- [Map.lookup lid (plTocPages layout)],
-               (l, start) <- [(tpLeader tp, tpLeaderStart tp), (maybe id withLeaf lastLeaf (tpNumber tp), tpNumberStart tp)]
+               (l, start) <- tocTail lid tp
              ]
           <> [orAgain lid (entry env "表の行" (spanOfLine env lid) ta (tableLineAt env slot j cell) cell) | (slot, SLine lid) <- poSlots p, (j, cell) <- Map.findWithDefault [] lid (plTableLines layout)]
           -- the caption of a table, from its first grid line (docs/adr/0262)
-          <> [ entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionTop env slot (ccPitch cc) (ccSize cc) j) (SetLine l (ccSize cc) 0 [] [] Nothing)
+          <> [ anchoredAt lid (entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionTop env slot (ccPitch cc) (ccSize cc) j) (SetLine l (ccSize cc) 0 [] [] Nothing))
              | (slot, SLine lid) <- poSlots p,
                Just cc <- [Map.lookup lid (plTableCaptions layout)],
                (j, l) <- zip [0 ..] (ccLines cc)
              ]
-          <> [ entry env "見出しの行" (spanOfLine env lid) ta (headingLineAt env slot hb j sl) sl
+          <> [ anchoredAt (lid + j) (entry env "見出しの行" (spanOfLine env lid) ta (headingLineAt env slot hb j sl) sl)
              | (slot, SHeading lid m) <- poSlots p,
                Just hb <- [Map.lookup lid (plHeadings layout)],
                (j, Just sl) <- [(j, Map.lookup (lid + j) (plLines layout)) | j <- [0 .. m - 1]]
@@ -1342,7 +1450,7 @@ drawColumn env p =
                (j, l) <- zip [0 ..] (pfCaption pf)
              ]
           -- the rows of code blocks (golem-driver ADR 0017)
-          <> [ entry env "コードの行" (spanOfLine env lid) ta (codeRowAt env codeSlot (ciGeometry ci) k' j sl) sl
+          <> [ anchoredAt (lid + j) (entry env "コードの行" (spanOfLine env lid) ta (codeRowAt env codeSlot (ciGeometry ci) k' j sl) sl)
              | (slot, SCode lid k _) <- poSlots p,
                Just ci <- [Map.lookup lid (plCodes layout)],
                let (_, codeSlot, k', _) = codePartOf slot lid k ci,
@@ -1357,7 +1465,7 @@ drawColumn env p =
                Just l <- [ciContinued ci],
                let sl = SetLine l (ciSize ci) (ciIndent ci) [] [] Nothing
              ]
-          <> [ entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionLineAt env slot ci j) (SetLine l (ciCaptionSize ci) (ciStart ci) [] [] Nothing)
+          <> [ anchoredAt lid (entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionLineAt env slot ci j) (SetLine l (ciCaptionSize ci) (ciStart ci) [] [] Nothing))
              | (slot, SCode lid _ _) <- poSlots p,
                Just ci <- [Map.lookup lid (plCodes layout)],
                lid == ciFirst ci,
@@ -1401,7 +1509,7 @@ drawColumn env p =
               (paper, area) = turnedFrame geom t pageTa pf
               imageR = imageRect geom paper area 0 pf
               captions = [entry env "キャプションの行" (pfSpan pf) area (captionLineAt env 0 pf j) (SetLine l (pfCaptionSize pf) 0 [] [] Nothing) | (j, l) <- zip [0 ..] (pfCaption pf)]
-              onPage (rec, (_, uses)) = (rec {lrRect = P.turnRect t pageTa <$> lrRect rec, lrLinks = [(lt, lf, P.turnRect t pageTa r) | (lt, lf, r) <- lrLinks rec]}, ([], uses))
+              onPage (rec, (_, uses)) = (rec {lrRect = P.turnRect t pageTa <$> lrRect rec, lrLinks = [(lt, lf, sp, P.turnRect t pageTa r) | (lt, lf, sp, r) <- lrLinks rec]}, ([], uses))
            in (P.Moved (P.MoveTurn t pageTa) (figureMark env fid imageR pf : concatMap (fst . snd) captions), (P.turnRect t pageTa imageR, pf), map onPage captions)
         | (_, SPageFigure fid) <- poSlots p,
           Just pf <- [Map.lookup fid (plFigures layout)],
@@ -1725,6 +1833,21 @@ figureMark :: DrawEnv -> Int -> Rect -> PlacedFigure -> P.Content
 figureMark env fid r pf = P.Tagged (P.LeafId (figureSite (pfUnit pf) <> [0])) $ pure $ case pfContent pf of
   P.RasterFigure _ -> P.Image (P.ImageRef fid) r
   _ -> P.Form (Map.findWithDefault (P.FormRef 0) (pfSource pf, pfPage pf) (deFormRefs env)) r
+
+-- | A line drawn for a line of the flow, where it can be the destination of a link (docs/adr/0267).
+anchoredAt :: Int -> (LineRec, a) -> (LineRec, a)
+anchoredAt lid (rec, x) = (rec {lrAnchor = Just lid}, x)
+
+-- | A line whose links are drawn by another line (docs/adr/0267).
+withoutLinks :: (LineRec, a) -> (LineRec, a)
+withoutLinks (rec, x) = (rec {lrLinks = []}, x)
+
+-- | The smallest rectangle that holds two.
+unionRect :: Rect -> Rect -> Rect
+unionRect (Rect x y w h) (Rect x' y' w' h') =
+  let x0 = min x x'
+      y0 = min y y'
+   in Rect x0 y0 (max (x + w) (x' + w') - x0) (max (y + h) (y' + h') - y0)
 
 -- | A line drawn as an artifact of a kind (docs/adr ADR 0183).
 asArtifact :: P.ArtifactKind -> (LineRec, ([P.Content], [GlyphUse])) -> (LineRec, ([P.Content], [GlyphUse]))
