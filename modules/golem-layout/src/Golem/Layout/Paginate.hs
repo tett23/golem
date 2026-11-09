@@ -35,6 +35,7 @@ module Golem.Layout.Paginate
     paginate,
     paginateIn,
     paginateWithin,
+    pageLabels,
     labelPages,
     markPages,
     resolvePageRefs,
@@ -49,6 +50,7 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry, codeSpan)
+import Golem.Layout.PageLabel
 import Golem.Layout.Paginate.Decide
 import Golem.Layout.Paginate.State
 import Golem.Layout.Paginate.Types
@@ -119,8 +121,21 @@ paginateWithin maxLines separatorLines base capacity flows =
       -- controls not met in a column that made no output go with the last column
       leftover = sUnmet final
    in case reverse done of
-        [] -> [PageOut 1 0 False [] [] [] [] [] base [] capacity leftover]
-        lastPage : earlier -> reverse (lastPage {poUnmet = poUnmet lastPage <> leftover} : earlier)
+        [] -> [PageOut 1 0 False [] [] [] [] [] base [] capacity leftover []]
+        lastPage : earlier -> withSections (sSections final) (reverse (lastPage {poUnmet = poUnmet lastPage <> leftover} : earlier))
+
+{- | The sections on the first column of the page each opened
+(docs/adr/0260). A section whose page has no column, the book ending
+there, has no page.
+-}
+withSections :: [(Int, Int)] -> [PageOut] -> [PageOut]
+withSections starts = go Nothing
+  where
+    firsts = sectionFirstPages starts
+    go _ [] = []
+    go prev (p : rest)
+      | prev == Just (poNumber p) = p : go prev rest
+      | otherwise = p {poSections = Map.findWithDefault [] (poNumber p) firsts} : go (Just (poNumber p)) rest
 
 {- | Each flow in turn. Breaks, need-lines and blank lines left at the end
 of the book are dropped (docs/adr ADR 0017, 0030, 0046). The blank lines
@@ -155,6 +170,7 @@ placeAll env st (f : rest) = case f of
     | all waitsFor rest -> placeAll env st rest
     | otherwise -> placeAll env st {sBlank = sBlank st <> [(sp, n)]} rest
   FBreak _ -> placeAll env (place env st f rest) rest
+  FSection {} -> placeAll env (place env st f rest) rest
   -- the space between paragraphs is not the flow a no-break waits for;
   -- need-lines is judged before it, the space not counted (golem-layout ADR 0027)
   -- nor the spaces before it, written after the block before (golem-layout ADR 0043)
@@ -266,6 +282,7 @@ waitsBehind st = \case
 waitsFor :: Flow -> Bool
 waitsFor = \case
   FBreak _ -> True
+  FSection {} -> True
   FNoBreak _ -> True
   FNeedLines _ _ -> True
   FAdjustLines _ _ -> True
@@ -368,8 +385,29 @@ checkNoBreak st = case sNoBreak st of
 applyBreaks :: Env -> St -> St
 applyBreaks env st = foldl' (applyBreak env) st {sBreaks = []} (sBreaks st)
 
-applyBreak :: Env -> St -> BreakKind -> St
+applyBreak :: Env -> St -> Pending -> St
 applyBreak env st = \case
+  PendingBreak k -> applyBreakKind env st k
+  PendingSection i start -> sectionStart env st i start
+
+{- | The break before a section (docs/adr/0260), and the page it opens
+recorded as the first page of the section: to an odd page for an odd
+start and to an even page for an even one, as @page-break recto and
+verso; without a start, to the next page unless the page is empty. The
+figures sent on and the continued notes are placed first, before the
+first page of the section.
+-}
+sectionStart :: Env -> St -> Int -> Maybe Integer -> St
+sectionStart env st i start =
+  let st1 = case start of
+        Just s -> parityStart env (if odd s then odd else even) st
+        Nothing ->
+          let st0 = flushDeferred env st
+           in if isEmpty st0 && sColumn st0 == 0 then st0 else nextPage env st0
+   in st1 {sSections = sSections st1 <> [(i, sPage st1)]}
+
+applyBreakKind :: Env -> St -> BreakKind -> St
+applyBreakKind env st = \case
   BreakPage -> breakPage env st
   BreakRecto -> parityStart env odd st
   BreakVerso -> parityStart env even st
@@ -423,7 +461,8 @@ place env st f rest = case f of
         st1 = keep env st0 (const size)
         st2 = putSlot st1 0 (SWrapped i) labels marks
      in (placeLines env st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines env st2 False beside))}
-  FBreak k -> st {sBreaks = sBreaks st <> [k]}
+  FBreak k -> st {sBreaks = sBreaks st <> [PendingBreak k]}
+  FSection i start -> st {sBreaks = sBreaks st <> [PendingSection i start]}
   FCode g caption first cont ls -> placeCode env st (g, caption, first, cont) True ls
   FSwitchColumns set ->
     let st1 = flushDeferred env st
@@ -603,13 +642,24 @@ placeTable env st i h rows =
       segment stc first = stc {sTables = sTables stc <> [TableSegment i first (headerEnd first) (sUsed stc - 1)]}
    in rowsFrom st1 start rows
 
--- | The page of each label.
-labelPages :: [PageOut] -> Map Text Integer
-labelPages ps = Map.fromList [(l, toInteger (poNumber p)) | p <- ps, l <- poLabels p]
+{- | The label of each page by its number (docs/adr/0260), from the
+sections given and the first pages the pagination recorded.
+-}
+pageLabels :: Map Int Section -> [PageOut] -> Map Int PageLabel
+pageLabels sections ps =
+  pageLabelsOf sections (Map.fromListWith (flip (<>)) [(poNumber p, poSections p) | p <- ps]) (maximum (0 : map poNumber ps))
 
--- | The page of each index mark (golem-driver ADR 0007).
-markPages :: [PageOut] -> Map SrcSpan Integer
-markPages ps = Map.fromList [(m, toInteger (poNumber p)) | p <- ps, m <- poMarks p]
+-- | The page label of each label (docs/adr/0260).
+labelPages :: Map Int Section -> [PageOut] -> Map Text PageLabel
+labelPages sections ps =
+  let labels = pageLabels sections ps
+   in Map.fromList [(l, Map.findWithDefault (plainLabel (poNumber p)) (poNumber p) labels) | p <- ps, l <- poLabels p]
+
+-- | The page label of each index mark (golem-driver ADR 0007, docs/adr/0260).
+markPages :: Map Int Section -> [PageOut] -> Map SrcSpan PageLabel
+markPages sections ps =
+  let labels = pageLabels sections ps
+   in Map.fromList [(m, Map.findWithDefault (plainLabel (poNumber p)) (poNumber p) labels) | p <- ps, m <- poMarks p]
 
 maxIterations :: Int
 maxIterations = 5
@@ -623,7 +673,7 @@ resolvePageRefs layout = go 1 Map.empty
   where
     go i assumed =
       let pages = layout assumed
-          actual = labelPages pages
+          actual = Map.map (toInteger . plIndex) (labelPages Map.empty pages)
        in if actual == assumed || (i > 1 && actual `Map.isSubmapOf` assumed && assumed `Map.isSubmapOf` actual)
             then Right pages
             else

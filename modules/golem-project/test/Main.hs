@@ -17,7 +17,7 @@ import Data.Text.IO qualified as TIO
 import FilesSpec qualified
 import FunctionsSpec qualified
 import Golem.Assemble (NoteNumbering (..))
-import Golem.Assemble.Formats (MarkFormat (..), arabic, asterisksNotation, circledNotation, kanjiNotation, lowerAlphaNotation, noteSymbolsNotation)
+import Golem.Assemble.Formats (MarkFormat (..), arabic, asterisksNotation, circledNotation, kanjiNotation, lowerAlphaNotation, notationName, noteSymbolsNotation)
 import Golem.Assemble.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Length qualified as L
 import Golem.Parser.SourceSettings
@@ -218,6 +218,52 @@ pluginDataTests =
     ]
   where
     parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] extra)
+
+-- | page-numbering of the chapter entries (docs/adr/0260).
+pageNumberingTests :: TestTree
+pageNumberingTests =
+  testGroup
+    "page-numbering of the chapter entries (docs/adr/0260)"
+    [ testCase "style and start are read, arabic as no notation, the spans at the values" $ do
+        let src = manifest ["{ file = \"a.gm\", page-numbering = { style = \"lower-roman\" } }", "{ file = \"b.gm\", page-numbering = { style = \"arabic\", start = 1 } }", "\"c.gm\"", "[{ file = \"d.gm\", page-numbering = {} }]"]
+            at t = BS.length (TE.encodeUtf8 (fst (T.breakOn t src)))
+        case parseManifest (FileId 0) src of
+          Left ds -> assertFailure (show ds)
+          Right m -> do
+            let ns = chapterNumberings (manifestChapters m)
+            [(fmap notationName (pnNotation n), pnStart n) | Just n <- ns] @?= [(Just "lower-roman", Nothing), (Nothing, Just 1), (Nothing, Nothing)]
+            map (fmap (spanStart . pnSpan)) ns @?= [Just (at "{ style = \"lower"), Just (at "{ style = \"arabic"), Nothing, Just (at "{} }")]
+            map (fmap (spanStart . pnStyleSpan)) ns @?= [Just (at "\"lower-roman"), Just (at "\"arabic"), Nothing, Just (at "{} }")],
+      testCase "a style that is no notation is G03121 at the style, naming the notations" $ do
+        let src = manifest ["{ file = \"a.gm\", page-numbering = { style = \"roman\" } }"]
+        case parseManifest (FileId 0) src of
+          Left [d] -> do
+            (diagCode d, spanStart (diagSpan d)) @?= (DiagnosticCode "G03121", BS.length (TE.encodeUtf8 (fst (T.breakOn "\"roman\"" src))))
+            assertBool (T.unpack (diagMessage d)) ("page-numbering の style roman は数の表記の名前ではありません" `T.isPrefixOf` diagMessage d && "lower-roman" `T.isInfixOf` diagMessage d)
+          other -> assertFailure (show (codes other)),
+      testCase "a start of 0 is G03122 at the start, a negative start G02103" $ do
+        let src = manifest ["{ file = \"a.gm\", page-numbering = { start = 0 } }"]
+        case parseManifest (FileId 0) src of
+          Left [d] -> (diagCode d, spanStart (diagSpan d)) @?= (DiagnosticCode "G03122", BS.length (TE.encodeUtf8 (fst (T.breakOn "0 }" src))))
+          other -> assertFailure (show (codes other))
+        codes (parseManifest (FileId 0) (manifest ["{ file = \"a.gm\", page-numbering = { start = -1 } }"])) @?= ["G02103"],
+      testCase "a start that is no integer, an unknown key, a style that is no string and a value that is no table are G03001" $
+        mapM_
+          (\v -> (v, codes (parseManifest (FileId 0) (manifest ["{ file = \"a.gm\", page-numbering = " <> v <> " }"]))) @?= (v, ["G03001"]))
+          ["{ start = \"1\" }", "{ start = 1.5 }", "{ prefix = \"A-\" }", "{ style = 1 }", "\"lower-roman\""],
+      testCase "the same file twice with different page-numbering is G03123 at the second, the first related" $ do
+        let src = manifest ["{ file = \"a.gm\", page-numbering = { style = \"lower-roman\" } }", "{ file = \"a.gm\", page-numbering = { start = 1 } }"]
+            at t = BS.length (TE.encodeUtf8 (fst (T.breakOn t src)))
+        withProject [("manifest.toml", src), ("a.gm", "")] $ \root ->
+          loadProject root >>= \case
+            Left ds -> [(diagCode d, spanStart (diagSpan d), map (spanStart . fst) (diagRelated d)) | d <- ds] @?= [(DiagnosticCode "G03123", at "{ start = 1", [at "{ style"])]
+            Right _ -> assertFailure "loaded"
+        withProject [("manifest.toml", manifest ["\"a.gm\"", "{ file = \"a.gm\", page-numbering = {} }"]), ("a.gm", "")] $ \root ->
+          loadProject root >>= (@?= ["G03123"]) . codes
+        -- the same page-numbering, and arabic as none, are one
+        withProject [("manifest.toml", manifest ["{ file = \"a.gm\", page-numbering = { style = \"arabic\" } }", "{ file = \"a.gm\", page-numbering = {} }"]), ("a.gm", "")] $ \root ->
+          loadProject root >>= (@?= []) . codes
+    ]
 
 -- | [targets.pdf] pdfa and pdfua (docs/adr ADR 0183).
 pdfConformanceTests :: TestTree
@@ -957,6 +1003,7 @@ tests =
       pluginDataTests,
       pluginPathTests,
       pdfConformanceTests,
+      pageNumberingTests,
       indexStyleTests,
       hiddenFolioTests,
       findCycleTests,

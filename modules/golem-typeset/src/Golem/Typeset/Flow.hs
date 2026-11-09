@@ -21,6 +21,8 @@ module Golem.Typeset.Flow
     runningHeadLines,
     numberedTitle,
     pagesOf,
+    bookSections,
+    layoutLabels,
     pageMasters,
     pageMasterNames,
     pageStarts,
@@ -111,6 +113,7 @@ import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look hiding (Kerning (..))
 import Golem.Layout.Look qualified as L
+import Golem.Layout.PageLabel
 import Golem.Layout.Paginate
 import Golem.Layout.Ruby (RubyStyle (..))
 import Golem.Layout.Ruby qualified as R
@@ -500,7 +503,7 @@ layoutFigures reuse inp geom fonts figures = do
         pure (if null (bErrors built) then Right (built, paginateWithin (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
       labels = labelSpans (piBook inp)
       labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
-  result <- fixpoint labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
+  result <- fixpoint (bookSections inp) labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
   pure $ case result of
     Left ds -> Left ds
     Right (built0, pages) ->
@@ -512,11 +515,12 @@ layoutFigures reuse inp geom fonts figures = do
           placed = [(poNumber p, placePageSidenotes geom metricsOf (bLines built) p) | p <- pages]
           -- the pages of the table of contents, once, on the settled pages (golem-driver ADR 0009)
           hPages = headingPages (bHeadingSpans built) pages
+          pageLbls = pageLabels (bookSections inp) pages
           tg = tocGeometry (piStyle inp) geom fonts
           env = composeEnv (piStyle inp) geom fonts (Assumed Map.empty Map.empty) (bodyLook (piStyle inp) (pgFontSize geom))
           -- the leader and the page number are at the heading of the entry (golem-cli ADR 0008)
           atHeading hs tp = tp {tpLeader = withBoxSource (SourceGrid, hs) (tpLeader tp), tpNumber = withBoxSource (SourceGrid, hs) (tpNumber tp)}
-          tocPages = Map.fromList [(lid, atHeading hs (tocPage tg e (pageNumberLine env n))) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
+          tocPages = Map.fromList [(lid, atHeading hs (tocPage tg e (pageNumberLine env l))) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages], let l = Map.findWithDefault (plainLabel (fromInteger n)) (fromInteger n) pageLbls]
        in case concat [ds | (_, Left ds) <- placed] of
             [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) pages) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built))
             ds -> Left ds
@@ -663,6 +667,20 @@ without a number.
 -}
 numberedTitle :: Text -> SrcSpan -> Maybe Text -> [Inline] -> [Inline]
 numberedTitle lang sp num is = maybe [] (\n -> [Text sp (n <> numberSeparator lang n)]) num <> is
+
+{- | The sections of the book (docs/adr/0260): the page-numbering of each
+chapter file, by its place among the chapter files.
+-}
+bookSections :: PdfInput -> Map Int Section
+bookSections inp =
+  Map.fromList
+    [ (i, Section (pnStart n) (pnNotation n))
+    | (i, Just n) <- zip [0 ..] (chapterNumberings (manifestChapters (projectManifest (piProject inp))))
+    ]
+
+-- | The label of each page of a layout, by its number (docs/adr/0260).
+layoutLabels :: PdfInput -> PdfLayout -> Map Int PageLabel
+layoutLabels inp layout = pageLabels (bookSections inp) (plPages layout)
 
 -- | The columns of each page, in order (docs/adr ADR 0018).
 pagesOf :: [PageOut] -> [[PageOut]]
@@ -857,10 +875,12 @@ columnMeasure geom = case pgColumns geom of
   (c : _) -> if pgVertical geom then rectH c else rectW c
   [] -> 0
 
--- | A page number set as a number in the body (golem-driver ADR 0009): its boxes as a line.
-pageNumberLine :: ComposeEnv -> Integer -> Line
-pageNumberLine env n =
-  let boxes = [b | b@Box {} <- fst (composeInlines env [Number (mkSpan (FileId 0) 0 0) n Nothing])]
+{- | A page number set in the body (golem-driver ADR 0009): the page label
+as 'pageLabelInlines' writes it (docs/adr/0260), its boxes as a line.
+-}
+pageNumberLine :: ComposeEnv -> PageLabel -> Line
+pageNumberLine env l =
+  let boxes = [b | b@Box {} <- fst (composeInlines env (pageLabelInlines (mkSpan (FileId 0) 0 0) l))]
       w = sum (map itemWidth boxes)
    in Line boxes 0 w 0 (0, 0) 0 (0, 0)
 
@@ -912,10 +932,11 @@ layoutPages provider inp0 = case checkedGeometry inp of
 {- | The lines of the index (golem-driver ADR 0007): a main entry and its
 pages, sub-entries indented by a full-width space below their main entry
 (which is shown once, without pages when it has no mark of its own).
-Pages are numbers, in order, each once; a mark without a page is left
-out. The groups come sorted from S1.
+Pages are page labels written by 'pageLabelInlines' (docs/adr/0260), in
+the order of the book, each once; a mark without a page is left out. The
+groups come sorted from S1.
 -}
-indexLines :: Bool -> (SrcSpan -> Maybe Integer) -> [IndexGroup] -> [[Inline]]
+indexLines :: Bool -> (SrcSpan -> Maybe PageLabel) -> [IndexGroup] -> [[Inline]]
 indexLines vertical pageOf = go Nothing
   where
     sp0 = mkSpan (FileId 0) 0 0
@@ -925,21 +946,27 @@ indexLines vertical pageOf = go Nothing
       ([t], [r]) -> entry [] t (pageNumbersOf g) : go (Just (t, r)) gs
       ([t, sub], [r, _]) -> [[txt t] | prevMain /= Just (t, r)] <> [entry [txt "　"] sub (pageNumbersOf g)] <> go (Just (t, r)) gs
       _ -> go prevMain gs
-    pageNumbersOf g = Set.toAscList (Set.fromList [n | (_, sp) <- igLocations g, Just n <- [pageOf sp]])
+    pageNumbersOf g = labelsInOrder [l | (_, sp) <- igLocations g, Just l <- [pageOf sp]]
     entry prefix term ps =
-      prefix <> [txt term] <> (if null ps then [] else txt "　" : intercalate [txt (if vertical then "、" else ", ")] [[Number sp0 n Nothing] | n <- ps])
+      prefix <> [txt term] <> (if null ps then [] else txt "　" : intercalate [txt (if vertical then "、" else ", ")] (map (pageLabelInlines sp0) ps))
+
+{- | Page labels in the order of the pages, each page once (docs/adr/0260):
+by their places, not their numbers, for iii and 3 have one number.
+-}
+labelsInOrder :: [PageLabel] -> [PageLabel]
+labelsInOrder ls = Map.elems (Map.fromList [(plIndex l, l) | l <- ls])
 
 {- | The lines of the list of a channel of a plugin (golem-doc ADR 0007):
 the body of each entry, and with locators an ideographic space and its
 pages as in the index.
 -}
-channelLines :: Bool -> (SrcSpan -> Maybe Integer) -> Bool -> [ChannelEntry] -> [[Inline]]
+channelLines :: Bool -> (SrcSpan -> Maybe PageLabel) -> Bool -> [ChannelEntry] -> [[Inline]]
 channelLines vertical pageOf locators = map line
   where
     sp0 = mkSpan (FileId 0) 0 0
     line e =
-      let ps = Set.toAscList (Set.fromList [n | (_, sp) <- ceLocations e, Just n <- [pageOf sp]])
-       in ceBody e <> (if not locators || null ps then [] else Text sp0 "　" : intercalate [Text sp0 (if vertical then "、" else ", ")] [[Number sp0 n Nothing] | n <- ps])
+      let ps = labelsInOrder [l | (_, sp) <- ceLocations e, Just l <- [pageOf sp]]
+       in ceBody e <> (if not locators || null ps then [] else Text sp0 "　" : intercalate [Text sp0 (if vertical then "、" else ", ")] (map (pageLabelInlines sp0) ps))
 
 {- | The lines of the bibliography: @[n] @ and the entry, or the key when
 it has none; a URL is in the character style url (golem-doc ADR 0005),
@@ -1054,10 +1081,10 @@ placePageSidenotes geom metricsOf lineMap p =
           Left (TooTall i) -> Left [diagnostic "G07033" Error (at i) "傍注が傍注の領域より高く、収まりません"]
           Left (DoesNotFit i) -> Left [diagnostic "G07033" Error (at i) "このページの傍注が傍注の領域に収まりません"]
 
--- | The page numbers assumed in a round of S2: of labels and of index marks (golem-driver ADR 0007).
+-- | The page labels assumed in a round of S2: of labels and of index marks (golem-driver ADR 0007, docs/adr/0260).
 data Assumed = Assumed
-  { asLabels :: !(Map Text Integer),
-    asMarks :: !(Map SrcSpan Integer)
+  { asLabels :: !(Map Text PageLabel),
+    asMarks :: !(Map SrcSpan PageLabel)
   }
   deriving stock (Eq, Show)
 
@@ -1067,8 +1094,8 @@ after 'maxIterations' rounds, G07021 names what still moves and is at the
 first of them (golem-driver ADR 0016): the block of a label (@labelSpan@)
 or an index mark.
 -}
-fixpoint :: (Text -> SrcSpan) -> (SrcSpan -> Text) -> (Maybe b -> Assumed -> IO (Either [Diagnostic] (b, [PageOut]))) -> IO (Either [Diagnostic] (b, [PageOut]))
-fixpoint labelSpan termOf layoutWith = go (1 :: Int) Nothing (Assumed Map.empty Map.empty)
+fixpoint :: Map Int Section -> (Text -> SrcSpan) -> (SrcSpan -> Text) -> (Maybe b -> Assumed -> IO (Either [Diagnostic] (b, [PageOut]))) -> IO (Either [Diagnostic] (b, [PageOut]))
+fixpoint sections labelSpan termOf layoutWith = go (1 :: Int) Nothing (Assumed Map.empty Map.empty)
   where
     -- each round is given the value of the round just before it, and of no other (docs/adr ADR 0251)
     go i prev assumed = do
@@ -1076,7 +1103,8 @@ fixpoint labelSpan termOf layoutWith = go (1 :: Int) Nothing (Assumed Map.empty 
       case r of
         Left ds -> pure (Left ds)
         Right (built, pages) ->
-          let actual = Assumed (labelPages pages) (markPages pages)
+          -- the labels of the pages: a first page of a section that moves moves them too (docs/adr/0260)
+          let actual = Assumed (labelPages sections pages) (markPages sections pages)
            in if actual == assumed
                 then pure (Right (built, pages))
                 else
@@ -1084,7 +1112,7 @@ fixpoint labelSpan termOf layoutWith = go (1 :: Int) Nothing (Assumed Map.empty 
                     then pure (Left [notSettled (moved actual asLabels) (moved actual asMarks)])
                     else go (i + 1) (Just built) actual
       where
-        moved :: (Ord k) => Assumed -> (Assumed -> Map k Integer) -> [k]
+        moved :: (Ord k) => Assumed -> (Assumed -> Map k PageLabel) -> [k]
         moved now field = [k | k <- Map.keys (Map.union (field now) (field assumed)), Map.lookup k (field now) /= Map.lookup k (field assumed)]
     notSettled labels marks =
       let named = [(labelSpan l, l) | l <- labels] <> nubOrdOn snd [(m, termOf m) | m <- marks]
@@ -1392,6 +1420,8 @@ data UnitKind
     UTocEntry Int SrcSpan
   | -- | a forced break (docs/adr ADR 0017)
     UBreak !BreakKind
+  | -- | the start of a section: the place of its file among the chapter files, and its start (docs/adr/0260)
+    USection !Int !(Maybe Integer)
   | -- | a code block: how far it starts from the line start (in a list) and its code (golem-driver ADR 0017, 0023)
     UCode !Sp Code
   | -- | an entry of the index in its own columns, of their measure (docs/adr ADR 0025)
@@ -1458,16 +1488,23 @@ with the styles its file defines (docs/adr ADR 0014). Lists are numbered
 in document order; the units inside a list know the lists around them
 (golem-driver ADR 0013).
 -}
-unitsOf :: Text -> Book -> PageGeometry -> Maybe ColumnSet -> (FileId -> Style) -> (SrcSpan -> Maybe Integer) -> Map Text [EntryPart] -> [Unit]
-unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chapter 0 (bookChapters book)))
+unitsOf :: Text -> Book -> PageGeometry -> Maybe ColumnSet -> (FileId -> Style) -> (SrcSpan -> Maybe PageLabel) -> Map Text [EntryPart] -> Map Int (Maybe Integer) -> [Unit]
+unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAccumL chapter 0 indexedChapters))
   where
     fs = pgFontSize geom
-    doc n (Document fid bs) = blocks (styleOf fid) [] True n bs
+    -- the documents with their places in the book, the places of the chapter files (docs/adr/0260)
+    indexedChapters = snd (mapAccumL (\k ds -> (k + length ds, zip [k ..] ds)) 0 (bookChapters book))
+    -- a file that starts a section starts with its break (docs/adr/0260)
+    doc n (k, Document fid bs) =
+      let style = styleOf fid
+          start = [Unit (USection k st) Nothing [] (mkSpan fid 0 0) (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing | Just st <- [Map.lookup k sections]]
+       in (start <>) <$> blocks style [] True n bs
     {- the documents of a chapter of the manifest; at the end of the chapter,
     before the breaks that end its last file, its notes when they are set
     there (golem-driver ADR 0026) -}
-    chapter n docs =
-      let (n', uss) = mapAccumL doc n docs
+    chapter n idocs =
+      let docs = map snd idocs
+          (n', uss) = mapAccumL doc n idocs
           us = concat uss
        in (n',) $ case reverse docs of
             (Document fid _ : _)
@@ -1479,6 +1516,8 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
     isBreakUnit u = case uKind u of
       UBreak _ -> True
       UBlank _ -> True
+      -- an empty file that starts a section: its break comes after the notes (docs/adr/0260)
+      USection {} -> True
       _ -> False
     -- the title and a paragraph for each note, its mark first, as at the foot of a page
     notesList style docs = case concatMap documentNotes docs of
@@ -1754,8 +1793,8 @@ flowUnits fe = ([(i, (withListIndent u) {uIndex = i}) | (i, u) <- zip [0 :: Int 
     geom = feGeom fe
     style = piStyle inp
     -- a mark without an assumed page yet stands at page 1 in the first round
-    markPage sp = Map.lookup sp (asMarks (feAssumed fe)) <|> (if Map.null (asMarks (feAssumed fe)) then Just 1 else Nothing)
-    rawUnits = unitsOf (bookLanguage inp) (piBook inp) geom (indexColumnSet style geom) (docStyle inp) markPage (piBibliography inp)
+    markPage sp = Map.lookup sp (asMarks (feAssumed fe)) <|> (if Map.null (asMarks (feAssumed fe)) then Just (plainLabel 1) else Nothing)
+    rawUnits = unitsOf (bookLanguage inp) (piBook inp) geom (indexColumnSet style geom) (docStyle inp) markPage (piBibliography inp) (Map.map secStart (bookSections inp))
     widths = listWidths (unitEnv fe) (pgFontSize geom) (lsGap (stLists style)) rawUnits
     withListIndent u
       | null (uLists u) = u
@@ -2286,6 +2325,7 @@ numberOther fe cu nb (i, u)
       UGap n -> nb {nuFlow = nuFlow nb <> [FSpace n]}
       UCode {} -> maybe nb (\cb -> numberCode u cb nb) (Map.lookup i (cuCodeBlocks cu))
       UBreak k -> nb {nuFlow = nuFlow nb <> [FBreak k]}
+      USection k start -> nb {nuFlow = nuFlow nb <> [FSection k start]}
       UPageControl c ->
         let control = case c of
               NoBreak -> FNoBreak (uSpan u)
@@ -2436,6 +2476,7 @@ buildFlow inp geom fonts images prev assumed = do
       isGap u = case uKind u of
         UGap _ -> True
         UBreak _ -> True
+        USection {} -> True
         UPageControl _ -> True
         UBlank _ -> True
         -- code blocks are set by codeBlocks (golem-driver ADR 0017)

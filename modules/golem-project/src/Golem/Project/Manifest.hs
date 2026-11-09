@@ -10,6 +10,9 @@ module Golem.Project.Manifest
     runningMetadata,
     Printing (..),
     ChapterEntry (..),
+    PageNumbering (..),
+    sameNumbering,
+    chapterNumberings,
     SourceEdit (..),
     Targets (..),
     PdfAPart (..),
@@ -47,6 +50,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (Day)
+import Golem.Assemble.Formats (Notation, notationName, notationNamed, notations)
 import Golem.Parser.SourceSettings
 import Golem.Project.TomlMessage (pathText, schemaMessage, semanticMessage, syntaxMessage)
 import Golem.Project.TomlSchema (Node, unknownKeys)
@@ -182,11 +186,38 @@ data Printing = Printing
   }
   deriving stock (Eq, Show)
 
--- | path, master page, and the [source] keys of the entry in order
+-- | path, master page, the [source] keys of the entry in order, and the section it starts (docs/adr/0260)
 data ChapterEntry
-  = ChapterFile !FilePath !(Maybe Text) ![SourceEdit]
+  = ChapterFile !FilePath !(Maybe Text) ![SourceEdit] !(Maybe PageNumbering)
   | ChapterGroup ![ChapterEntry]
   deriving stock (Eq, Show)
+
+{- | The page-numbering of a chapter entry (docs/adr/0260): the section
+the file starts. Its notation is Nothing without a style and for arabic,
+a number of no notation; its start is Nothing to count on from the page
+before. The spans are of the value of page-numbering and of its style
+(that of page-numbering without one), where G07109 and G07110 point.
+-}
+data PageNumbering = PageNumbering
+  { pnNotation :: !(Maybe Notation),
+    pnStart :: !(Maybe Integer),
+    pnSpan :: !SrcSpan,
+    pnStyleSpan :: !SrcSpan
+  }
+  deriving stock (Eq, Show)
+
+-- | Whether two page-numbering are the same, wherever they are written (G03123).
+sameNumbering :: Maybe PageNumbering -> Maybe PageNumbering -> Bool
+sameNumbering a b = fmap key a == fmap key b
+  where
+    key n = (fmap notationName (pnNotation n), pnStart n)
+
+-- | The page-numbering of the chapter files, in the order of 'chapterFiles' (docs/adr/0260).
+chapterNumberings :: [ChapterEntry] -> [Maybe PageNumbering]
+chapterNumberings = concatMap go
+  where
+    go (ChapterFile _ _ _ n) = [n]
+    go (ChapterGroup es) = concatMap go es
 
 {- | A [source] key written in a chapter entry (docs/adr ADR 0013): the
 key and the value as written, and how it changes the settings.
@@ -279,7 +310,7 @@ and the [source] keys of their entries.
 chapterFiles :: [ChapterEntry] -> [(FilePath, Maybe Text, [SourceEdit])]
 chapterFiles = concatMap go
   where
-    go (ChapterFile p m es) = [(p, m, es)]
+    go (ChapterFile p m es _) = [(p, m, es)]
     go (ChapterGroup es) = concatMap go es
 
 instance FromValue Manifest where
@@ -364,6 +395,67 @@ varsDiagnostics fid src (MkTable top) = case Map.lookup "vars" top of
       Just (c, r) -> (isAsciiAlpha c || c == '_') && T.all (\x -> isAsciiAlpha x || isDigit x || x == '_') r
       Nothing -> False
     isAsciiAlpha c = isAsciiLower c || isAsciiUpper c
+
+{- | Where the page-numbering of each chapter file is written
+(docs/adr/0260), in the order of 'chapterFiles': for an entry with one,
+the span of its value, and its style and its start as written with their
+spans.
+-}
+data NumberingSite = NumberingSite
+  { nsSpan :: !SrcSpan,
+    nsStyle :: !(Maybe (SrcSpan, Value' Position)),
+    nsStart :: !(Maybe (SrcSpan, Value' Position))
+  }
+
+numberingSites :: FileId -> Text -> Table' Position -> [Maybe NumberingSite]
+numberingSites fid src (MkTable top) = case Map.lookup "chapters" top of
+  Just (_, List' _ xs) -> concatMap entry xs
+  _ -> []
+  where
+    at = positionSpan fid src . Just
+    entry = \case
+      Text' {} -> [Nothing]
+      List' _ xs -> concatMap entry xs
+      Table' _ (MkTable kvs) -> [site <$> lookupValue "page-numbering" kvs]
+      _ -> []
+    lookupValue k kvs = snd <$> Map.lookup k kvs
+    site v = case v of
+      Table' _ (MkTable kvs) -> NumberingSite (at (valueAnn v)) (valued <$> lookupValue "style" kvs) (valued <$> lookupValue "start" kvs)
+      _ -> NumberingSite (at (valueAnn v)) Nothing Nothing
+    valued x = (at (valueAnn x), x)
+
+{- | G03121 at a style of page-numbering that is no name of a notation, and
+G03122 at a start of 0 (docs/adr/0260), in the order of the chapters.
+-}
+numberingDiagnostics :: [Maybe NumberingSite] -> [Diagnostic]
+numberingDiagnostics sites =
+  concat
+    [ [ diagnostic "G03121" Error sp ("page-numbering の style " <> name <> " は数の表記の名前ではありません（書ける名前: " <> T.intercalate "、" (map notationName notations) <> "）")
+      | Just (sp, Text' _ name) <- [nsStyle s],
+        Nothing <- [notationNamed name]
+      ]
+        <> [diagnostic "G03122" Error sp "page-numbering の start には 1 以上の整数を書きます" | Just (sp, Integer' _ 0) <- [nsStart s]]
+    | Just s <- sites
+    ]
+
+-- | The chapters with the spans of their page-numbering and its style (docs/adr/0260).
+withNumberingSpans :: [Maybe NumberingSite] -> [ChapterEntry] -> [ChapterEntry]
+withNumberingSpans sites0 = snd . go sites0
+  where
+    go sites = \case
+      [] -> (sites, [])
+      e : es ->
+        let (sites', e') = one sites e
+            (sites'', es') = go sites' es
+         in (sites'', e' : es')
+    one sites = \case
+      ChapterFile p m ed n -> case sites of
+        s : rest -> (rest, ChapterFile p m ed (fill s <$> n))
+        [] -> ([], ChapterFile p m ed n)
+      ChapterGroup es -> ChapterGroup <$> go sites es
+    fill s n = case s of
+      Just site -> n {pnSpan = nsSpan site, pnStyleSpan = maybe (nsSpan site) fst (nsStyle site)}
+      Nothing -> n
 
 {- | The table [functions] (docs/adr/0161): [functions.requires], whose keys
 are the kinds of requirements and whose values are the requirements of
@@ -502,10 +594,25 @@ instance FromValue Printing where
 
 instance FromValue ChapterEntry where
   fromValue = \case
-    Text' _ t -> pure (ChapterFile (T.unpack t) Nothing [])
+    Text' _ t -> pure (ChapterFile (T.unpack t) Nothing [] Nothing)
     List' _ xs -> ChapterGroup <$> traverse fromValue xs
-    v@Table' {} -> parseTableFromValue (ChapterFile . T.unpack <$> reqKey "file" <*> optKey "master" <*> sourceEdits) v
+    v@Table' {} -> parseTableFromValue (ChapterFile . T.unpack <$> reqKey "file" <*> optKey "master" <*> sourceEdits <*> optKeyOf "page-numbering" pageNumbering) v
     v -> failAt (valueAnn v) "章は、ファイルのパス、表、配列のどれかで書きます"
+
+{- | The value of page-numbering (docs/adr/0260): a table of style and
+start. A style that is no notation and a start of 0 are reported before
+the schema (G03121, G03122, 'numberingDiagnostics'); here they are taken
+as no notation and as written. A negative start is G02103, a start that is
+no integer and an unknown key G03001. The spans are filled in by
+'parseManifest'.
+-}
+pageNumbering :: Value' l -> Matcher l PageNumbering
+pageNumbering = parseTableFromValue $ do
+  st <- optKey "style"
+  start <- optKeyOf "start" naturalOf
+  pure (PageNumbering (st >>= notationNamed >>= \n -> if notationName n == "arabic" then Nothing else Just n) (toInteger <$> start) noSpan noSpan)
+  where
+    noSpan = mkSpan (FileId 0) 0 0
 
 -- | The [source] table: its keys as edits of the settings (docs/adr ADR 0013).
 newtype SourceTable = SourceTable {sourceTableEdits :: [SourceEdit]}
@@ -683,13 +790,16 @@ parseManifest fid src = do
   case either (const []) (unwritableStrings fid src) (parseToml src) of
     [] -> Right ()
     ds -> Left ds
-  -- G03109 and G03110 of [vars], with the errors of the schema (docs/adr/0185)
-  let varsDiags = either (const []) (varsDiagnostics fid src) (parseToml src)
-  m <- case decodeStrictBy "G03001" manifestCode fid src of
+  -- G03109 and G03110 of [vars], G03121 and G03122 of page-numbering, with the errors of the schema (docs/adr/0185, docs/adr/0260)
+  let raw = either (const Nothing) Just (parseToml src)
+      sites = maybe [] (numberingSites fid src) raw
+      varsDiags = maybe [] (varsDiagnostics fid src) raw <> numberingDiagnostics sites
+  m0 <- case decodeStrictBy "G03001" manifestCode fid src of
     Left ds -> Left (varsDiags <> ds)
     Right _ | not (null varsDiags) -> Left varsDiags
     Right m -> Right m
-  let t = manifestTargets m
+  let m = m0 {manifestChapters = withNumberingSpans sites (manifestChapters m0)}
+      t = manifestTargets m
   if tgHtml t || not (null (tgText t)) || isJust (tgPdf t) || isJust (tgEpub t)
     then Right m
     else Left [diagnostic "G03001" Error (mkSpan fid 0 0) "出力ターゲットが一つもありません"]

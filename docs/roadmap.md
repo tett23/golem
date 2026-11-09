@@ -104,11 +104,10 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 数式を除いて LaTeX との差を埋めるための項目である（[2026-10-17 の調査](audits/2026-10-17-latex-gap-for-v1.md)）。
 どれも着手するときに ADR を作成する。
-記法、意味論の IR、プラグインの ABI を変える項目（前付けのノンブル、表の番号、複数段落の注、索引の参照、引用の頁）は、互換を壊す変更になるので 1.0.0 の前に扱う。
+記法、意味論の IR、プラグインの ABI を変える項目（表の番号、複数段落の注、索引の参照、引用の頁）は、互換を壊す変更になるので 1.0.0 の前に扱う。
 ほかの項目から一部を取り出した項目は、実装を終えたときに、この項目とともに元の項目の記述から取り出した部分を消す。
 
 - **PDF のしおりとリンク**：見出しから PDF のしおり（アウトライン）を作り、相互参照、目次、索引、脚注の印を PDF のリンクにする。リンクのほかの注釈も扱う（[golem-pdf ADR 0001](golem-pdf/adr/0001-deterministic-pdf-writer.md)）。外部の URL へのリンク（[docs/adr/0182](adr/0182-external-links.md)）で作ったリンクの注釈の仕組み（`LinkTarget` と `Annotation`）を使う。
-- **前付けのノンブルとページラベル**：本の部分ごとにノンブルの様式（ローマ数字など）と開始の番号を変え、PDF にページラベルを書く。InDesign のセクションの開始にあたる。目次、索引、相互参照のページ番号にも同じ書式を使う。v1.0.0 の「ページ番号と柱の拡張」の前付けのノンブルと振り直しを先に取り出す。
 - **段落スタイルの分割禁止と連動**：段落スタイルに、次の段落と連動、段落を分割しない、段落の始めと終わりに残す行の数（孤立行の行数）、段落の開始位置（次の段、次のページなど）の欄を加える。InDesign の段落の分割禁止オプションにあたる。改ページの手での制御（[docs/adr 0030](adr/0030-manual-page-break-control.md)）と同じ仕組みで組む。行の数の欄は、InDesign の「段落の始めと終わりの行数」にあたり、書かなければ今の規則（最初と最後の行を一つだけ残さない）のままとする。段落を分割しない欄は、韻文の連をページで分けない指定にも使う（[docs/adr/0180](adr/0180-verse-spacing-and-stanza-breaks.md)）。
 - **表の番号とキャプション、列の幅、文字の大きさ**：表に番号とキャプションを付けて相互参照できるようにし、列の幅の指定と、表のセルへの段落スタイルの適用（本文より小さい文字の表）を加える。v1.x の「表の拡張」のこれらの部分を先に取り出す。セルの結合は v1.x に残す。
 - **複数段落の注**：注の本文を複数の段落にできるようにする。注の本文の型をインラインからブロックに変えるので、意味論の IR とプラグインの ABI が変わる。今の注は一つの段落に限る。
@@ -138,7 +137,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **図版とキャプションの拡張**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。
 - **韻文の拡張**：行番号（5 行ごとの番号など）（[docs/adr/0003](adr/0003-verse-line-breaks.md)）。連をページで分けない指定は、v1.0.0 の「段落スタイルの分割禁止と連動」の段落を分割しない欄で扱う。
 - **参考文献のスタイル**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、参考文献のスタイルを選び、定められるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。
-- **ページ番号と柱の拡張**：ノンブルの書式を目次と索引のページ番号に使うこと、前付けのローマ数字のノンブルと、前付けと本文でのページ番号の振り直し、EPUB の `page-list`、柱とノンブルと目次の項目を見出しの書体で組むこと、柱、ノンブル、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。
+- **ページ番号と柱の拡張**：EPUB の `page-list`、柱とノンブルと目次の項目を見出しの書体で組むこと、柱、ノンブル、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。
 
 ### 機能をそろえた後の確かめ
 

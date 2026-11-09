@@ -85,7 +85,7 @@ countsWith reuse inp = do
 
 -- | Pages with the labels given, page n holding the nth list.
 pagesWith :: [[Text]] -> [PageOut]
-pagesWith ls = [PageOut n 0 False [] [] l [] [] (ColumnSet 1 0 0 0) [] 10 [] | (n, l) <- zip [1 ..] ls]
+pagesWith ls = [PageOut n 0 False [] [] l [] [] (ColumnSet 1 0 0 0) [] 10 [] [] | (n, l) <- zip [1 ..] ls]
 
 -- | A figure wrapped at the end of the lines, 4zw wide, with the caption given.
 wrappedCaption :: Text -> Text
@@ -145,7 +145,7 @@ reuseTests =
             modifyIORef' calls (+ 1)
             n <- readIORef calls
             pure (Right (n, pagesWith (if odd n then [["a"], []] else [[], ["a"]])))
-      _ <- fixpoint (const (mkSpan (FileId 0) 0 0)) (const "") flipping
+      _ <- fixpoint Map.empty (const (mkSpan (FileId 0) 0 0)) (const "") flipping
       readIORef seen >>= (@?= [Nothing, Just 1, Just 2, Just 3, Just 4]) . reverse,
     testGroup
       "I1: the PDF and the diagnostics are those of composing every unit again"

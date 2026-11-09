@@ -24,6 +24,8 @@ module Golem.Pdf.Writer
     FontProgram (..),
     Font (..),
     Document (..),
+    PageLabelRange (..),
+    PageLabelStyle (..),
     Obj,
     ObjOf (..),
     PdfObjects (..),
@@ -280,8 +282,43 @@ data Document = Document
     -- | PDF/UA (docs/adr ADR 0183)
     docPdfUa :: !(Maybe PdfUaPart),
     -- | the structure tree: its root, a Document element (docs/adr ADR 0183)
-    docStructure :: !StructElem
+    docStructure :: !StructElem,
+    {- | the ranges of the page labels (docs/adr/0260), in the order of
+    their first pages; none writes no /PageLabels
+    -} docPageLabels :: ![PageLabelRange]
   }
+
+{- | A range of page labels (ISO 32000-1, 12.4.2; docs/adr/0260): the
+place of its first page from 0, its style (none for the prefix alone),
+its prefix, and the number of its first page.
+-}
+data PageLabelRange = PageLabelRange
+  { plrFirstPage :: !Int,
+    plrStyle :: !(Maybe PageLabelStyle),
+    plrPrefix :: !Text,
+    plrStart :: !Integer
+  }
+  deriving stock (Eq, Show)
+
+-- | The styles of page labels Golem writes: /D, /R and /r (docs/adr/0260).
+data PageLabelStyle = LabelDecimal | LabelUpperRoman | LabelLowerRoman
+  deriving stock (Eq, Show)
+
+{- | The /PageLabels number tree of the ranges (docs/adr/0260): one /Nums
+of the first page of each range and its label dictionary; the /St of a
+style that starts at 1 and the /P of an empty prefix are left out.
+-}
+pageLabelsTree :: [PageLabelRange] -> Obj
+pageLabelsTree rs = ODict [("Nums", OArr (concat [[OInt (fromIntegral (plrFirstPage r)), ODict (labelDict r)] | r <- rs]))]
+  where
+    labelDict r =
+      [("S", OName (styleName st)) | Just st <- [plrStyle r]]
+        <> [("P", pdfTextString (plrPrefix r)) | not (T.null (plrPrefix r))]
+        <> [("St", OInt (plrStart r)) | Just _ <- [plrStyle r], plrStart r /= 1]
+    styleName = \case
+      LabelDecimal -> "D"
+      LabelUpperRoman -> "R"
+      LabelLowerRoman -> "r"
 
 -- ------------------------------------------------------------------ identifiers
 
@@ -605,6 +642,8 @@ documentObjectsWith strategy doc =
               ("MarkInfo", ODict [("Marked", OBool True)]),
               ("StructTreeRoot", ORef structBase)
             ]
+              -- the page labels of a book whose labels are not its places (docs/adr/0260)
+              <> [("PageLabels", pageLabelsTree (docPageLabels doc)) | not (null (docPageLabels doc))]
               <> xCatalog
           )
       pageTree = ODict [("Type", OName "Pages"), ("Kids", OArr [ORef (pageObj i) | i <- [0 .. nPages - 1]]), ("Count", OInt (fromIntegral nPages))]

@@ -7,6 +7,8 @@ module Golem.Typeset.Draw
     renderPdfWithTree,
     renderPdfAllReusing,
     orphanErrors,
+    folioTexts,
+    pdfPageLabels,
   )
 where
 
@@ -29,12 +31,14 @@ import Golem.Layout.Code
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look hiding (Kerning (..))
+import Golem.Layout.PageLabel
 import Golem.Layout.Paginate
 import Golem.Layout.Ruby (RubyKind (..), RubyPlacement (..), placeRuby)
 import Golem.LayoutSpec (Anchor (..), HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, columnsFor, gutterSide, runningHeadBaselines, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Length (zwToSp)
-import Golem.Numerals.Format (Unwritable (..), formatNumber)
+import Golem.Numerals.Format (Unwritable (..), formatNumberIn)
+import Golem.Numerals.Notation (notationName, writeNumber)
 import Golem.Pdf qualified as P
 import Golem.Preflight (OverfullLine (..), overfullLine)
 import Golem.Preflight.View qualified as V
@@ -123,8 +127,9 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
             -- a kenten shape the font has no glyph for stops the PDF (G08009, golem-driver ADR 0019)
             case laid of
               Left ds -> pure (Left ds)
-              -- G07106: a folio its format cannot write stops the PDF before the folios are drawn (docs/adr/0213)
-              Right layout | ds@(_ : _) <- folioErrors inp geom layout -> pure (Left ds)
+              -- G07110: a page its section cannot number, and G07106: a folio its format cannot write,
+              -- stop the PDF before the folios are drawn (docs/adr/0213, docs/adr/0260)
+              Right layout | ds@(_ : _) <- sectionErrors inp layout <> folioErrors inp geom layout -> pure (Left ds)
               Right layout -> case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
                 [] -> do
                   let (used, stops, overfull, finish) = writeDocumentView tamper version inp geom fonts layout intent
@@ -141,15 +146,112 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
                           let (bytes, view, structure) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
                           -- G07101: dashes without ink (docs/adr ADR 0172)
                           -- G07105: the lines past their measure, from the lines drawn, not from the view (docs/adr ADR 0210)
-                          pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout <> overfullWarnings overfull, view, structure, pageStarts layout))
+                          -- G07109: the sections with no page (docs/adr/0260)
+                          pure (Right (bytes, plNotices layout <> sectionNotices inp layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout <> overfullWarnings overfull, view, structure, pageStarts layout))
                         ds -> pure (Left ds)
                 ds -> pure (Left ds)
   where
     inp = codeInput inp0
 
+{- | The section of each page (docs/adr/0260), by its number: the last
+section whose first page is the page or one before it. The pages before
+every section belong to none.
+-}
+pageOwners :: PdfLayout -> Map Int Int
+pageOwners layout = Map.fromList (go Nothing (pagesOf (plPages layout)))
+  where
+    go _ [] = []
+    go owner ((p : _) : rest) =
+      let owner' = maybe owner Just (listToMaybe (reverse (poSections p)))
+       in [(poNumber p, o) | Just o <- [owner']] <> go owner' rest
+    go owner ([] : rest) = go owner rest
+
+-- | The page-numbering of each chapter file that has one, by its place (docs/adr/0260).
+sectionNumberings :: PdfInput -> [(Int, PageNumbering)]
+sectionNumberings inp = [(i, n) | (i, Just n) <- zip [0 ..] (chapterNumberings (manifestChapters (projectManifest (piProject inp))))]
+
+{- | G07110 (docs/adr/0260): for each section of a notation, the first of
+its pages whose number the notation cannot write, at the value of its
+style, in the order of the manifest. Pages without a folio are checked
+too: their labels are written in the PDF.
+-}
+sectionErrors :: PdfInput -> PdfLayout -> [Diagnostic]
+sectionErrors inp layout =
+  [ diagnostic "G07110" Error (pnStyleSpan n) ("page-numbering の style " <> notationName nt <> " では、ノンブル " <> T.pack (show (plNumber l)) <> " を表せません（" <> T.pack (show p) <> " ページ）")
+  | (i, n) <- sectionNumberings inp,
+    Just nt <- [pnNotation n],
+    (p, l) : _ <- [[(p, l) | (p, o) <- Map.toList owners, o == i, Just l <- [Map.lookup p labels], isNothing (writeNumber nt (plNumber l))]]
+  ]
+  where
+    owners = pageOwners layout
+    labels = layoutLabels inp layout
+
+{- | G07109 (docs/adr/0260): a warning for each section that has no page,
+because a later section starts on the same page or the book ends after
+its break, at the value of its page-numbering, in the order of the manifest.
+-}
+sectionNotices :: PdfInput -> PdfLayout -> [Diagnostic]
+sectionNotices inp layout =
+  [ diagnostic "G07109" Warning (pnSpan n) "page-numbering のセクションにページがありません。後の項目のセクションが同じページから始まるか、本がこのセクションの改ページの後に終わっています"
+  | (i, n) <- sectionNumberings inp,
+    i `notElem` owned
+  ]
+  where
+    owned = Map.elems (pageOwners layout)
+
+{- | The ranges of the page labels of the PDF (docs/adr/0260): none when
+every page is labelled its place in no notation; otherwise a range from
+the first page and from each first page of a section, /D, /R or /r of the
+notation, and a range of the prefix alone for each page of another notation.
+-}
+pdfPageLabels :: PdfInput -> PdfLayout -> [P.PageLabelRange]
+pdfPageLabels inp layout
+  | and [isNothing (plNotation l) && plNumber l == toInteger p | (p, l) <- Map.toList labels] = []
+  | otherwise = go Nothing (Map.elems labels)
+  where
+    labels = layoutLabels inp layout
+    firsts = [poNumber p | p <- plPages layout, not (null (poSections p))]
+    styleOf l = case fmap notationName (plNotation l) of
+      Nothing -> Just (Just P.LabelDecimal)
+      Just "upper-roman" -> Just (Just P.LabelUpperRoman)
+      Just "lower-roman" -> Just (Just P.LabelLowerRoman)
+      Just _ -> Nothing
+    go _ [] = []
+    go prev (l : ls) = case styleOf l of
+      Just st
+        | prev == Just st && plIndex l `notElem` firsts -> go prev ls
+        | otherwise -> P.PageLabelRange (plIndex l - 1) st "" (plNumber l) : go (Just st) ls
+      Nothing -> P.PageLabelRange (plIndex l - 1) Nothing (pageLabelText l) 1 : go Nothing ls
+
+{- | The folio of a page of a master page with a folio (docs/adr/0213,
+docs/adr/0260): its format filled with the number of the page label,
+{n} without a notation in the notation of the section of the page.
+-}
+folioText :: Map Int PageLabel -> MasterGeometry -> Int -> Either Unwritable Text
+folioText labels m n = case mgFolio m of
+  Nothing -> Right ""
+  Just (fmt, _, _) ->
+    let l = Map.findWithDefault (plainLabel n) n labels
+     in formatNumberIn (plNotation l) fmt [plNumber l] Nothing
+
+-- | The folio drawn on each page that draws one, by page (docs/adr/0260).
+folioTexts :: PdfInput -> PageGeometry -> PdfLayout -> Map Int Text
+folioTexts inp geom layout =
+  Map.fromList
+    [ (poNumber p, t)
+    | (p : _, Just m) <- zip (pagesOf (plPages layout)) (pageMasters inp geom layout),
+      drawsFolio (poBlank p) (Just m),
+      Right t <- [folioText labels m (poNumber p)]
+    ]
+  where
+    labels = layoutLabels inp layout
+
 {- | G07106 (docs/adr/0213): for each master page, the first page that
 draws its folio and whose number the format of the folio cannot write, at
-the value of the format in style.toml, in the order of those pages.
+the value of the format in style.toml, in the order of those pages. The
+number is the number of the page label, {n} in the notation of its
+section; a number the notation of the section cannot write in {n} is
+G07110 alone (docs/adr/0260).
 -}
 folioErrors :: PdfInput -> PageGeometry -> PdfLayout -> [Diagnostic]
 folioErrors inp geom layout =
@@ -162,8 +264,10 @@ folioErrors inp geom layout =
       | (p : _, Just (name, m)) <- zip (pagesOf (plPages layout)) (pageMasterNames inp geom layout),
         drawsFolio (poBlank p) (Just m),
         Just (fmt, _, _) <- [mgFolio m],
-        Left u <- [formatNumber fmt [toInteger (poNumber p)] Nothing]
+        Left u <- [folioText labels m (poNumber p)],
+        ":" `T.isInfixOf` uwSlot u
       ]
+    labels = layoutLabels inp layout
     valueSpan name = fromMaybe (mkSpan (piStyleFile inp) 0 0) (manifestValueSpan (piStyleFile inp) (piStyleText inp) ["masters", name, "folio", "format"])
 
 {- | G07107 (docs/adr ADR 0216): one error for the leaves drawn that the
@@ -321,7 +425,9 @@ data DrawEnv = DrawEnv
     -- | the Form XObject of each file and page of the PDF figures (golem-pdf ADR 0008)
     deFormRefs :: Map (Text, Int) P.FormRef,
     -- | the page and column where each line of the flow is first drawn (docs/adr ADR 0183)
-    deFirstPlace :: Map Int (Int, Int)
+    deFirstPlace :: Map Int (Int, Int),
+    -- | the label of each page (docs/adr/0260)
+    deLabels :: Map Int PageLabel
   }
 
 {- | The PDF and its view for golem preflight (golem-cli ADR 0006), from the
@@ -351,7 +457,8 @@ writeDocumentView tamper version inp geom fonts layout intent =
             deTableInks = Map.mapWithKey (tableInk env) (plTables layout),
             deHidden = hiddenFolios inp geom layout,
             deFormRefs = formRefs,
-            deFirstPlace = Map.fromListWith (\_ old -> old) [(lid, (poNumber p, poColumn p)) | p <- plPages layout, (_, SLine lid) <- poSlots p]
+            deFirstPlace = Map.fromListWith (\_ old -> old) [(lid, (poNumber p, poColumn p)) | p <- plPages layout, (_, SLine lid) <- poSlots p],
+            deLabels = layoutLabels inp layout
           }
       -- the columns of a page come together from 'paginate' (docs/adr ADR 0018)
       drawn = zipWith (drawPage env) (pagesOf (plPages layout)) masters
@@ -403,7 +510,8 @@ writeDocumentView tamper version inp geom fonts layout intent =
                   P.docPdfUa = case tgPdfUa (manifestTargets (projectManifest (piProject inp))) of
                     Just PdfUa1 -> Just P.PdfUa1
                     Nothing -> Nothing,
-                  P.docStructure = structure
+                  P.docStructure = structure,
+                  P.docPageLabels = pdfPageLabels inp layout
                 }
             bytes = P.writePdf doc
             -- the view of golem preflight (golem-cli ADR 0006)
@@ -1417,7 +1525,7 @@ masterMarks env n blank master headLines = case master of
   Just m ->
     let pick a1 a2 = if odd n then a1 else a2
         size = pgFontSize geom
-        folio = [textAt env "ノンブル" (pick a1 a2) size t | drawsFolio blank master, Just (fmt, a1, a2) <- [mgFolio m], Right t <- [formatNumber fmt [toInteger n] Nothing]]
+        folio = [textAt env "ノンブル" (pick a1 a2) size t | drawsFolio blank master, Just (_, a1, a2) <- [mgFolio m], Right t <- [folioText (deLabels env) m n]]
         -- the lines of the running head from the type area out (golem-driver ADR 0022)
         runningHead =
           [ textAt env "柱" a {anY = hy} size h

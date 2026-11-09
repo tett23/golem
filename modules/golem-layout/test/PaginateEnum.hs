@@ -6,7 +6,8 @@ enumeration shortened by docs/adr/0208 ('inputs'), and draw inputs from
 the whole one.
 
 The lines are numbered from 0 in the order of the flow, the figures
-from 1000. A paragraph with a note has it on its first line; a note
+from 1000, the sections of docs/adr/0260 by their place among the
+controls. A paragraph with a note has it on its first line; a note
 takes one line, and its marker is named after the line. A need-lines and
 blank lines have the span of their place among the controls of the flow
 (golem-layout ADR 0025).
@@ -60,6 +61,8 @@ data Element
     ENeedLinesMore !Int
   | -- | blank lines of n lines (golem-layout ADR 0025)
     EBlank !Int
+  | -- | the start of a section, with the number of its first page or without (docs/adr/0260)
+    ESection !(Maybe Integer)
   deriving stock (Eq, Show)
 
 -- | The grid lines of a column, the columns of a page and the elements of the flow.
@@ -82,6 +85,7 @@ elementsFor c =
     <> [ENeedLines]
     <> [ENeedLinesMore (c - 1) | c > 2]
     <> [EBlank 1, EBlank 2]
+    <> [ESection Nothing, ESection (Just 1), ESection (Just 2)]
 
 {- | The elements of the flows of the shortened enumeration (docs/adr/0208,
 its section 3): those of 'elementsFor', with the figures of 1, c − 1 and
@@ -143,6 +147,7 @@ enumFlows = go 0 1000 0
       ENeedLines -> FNeedLines (controlSpan m) 2 : go i j (m + 1) rest
       ENeedLinesMore n -> FNeedLines (controlSpan m) n : go i j (m + 1) rest
       EBlank n -> FBlank (controlSpan m) n : go i j (m + 1) rest
+      ESection start -> FSection m start : go i j (m + 1) rest
     plain base n = [LineBox (base + k) [] [] [] 0 | k <- [0 .. n - 1]]
     noted i = LineBox i [NoteBody (noteOf i) 1] [] [] 0
 

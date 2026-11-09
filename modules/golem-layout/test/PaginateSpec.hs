@@ -12,9 +12,11 @@ module PaginateSpec (paginateTests) where
 import Control.Monad (forM_, replicateM, when)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry (..))
+import Golem.Layout.PageLabel (PageLabel (..), Section (..), pageLabelText)
 import Golem.Layout.Paginate
 import Golem.Layout.Paginate.State qualified as S
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
@@ -59,8 +61,67 @@ paginateTests =
       testGroup "a larger need-lines after one judged is judged again (golem-layout ADR 0035)" largerNeedTests,
       testGroup "the spaces before need-lines are not counted either (golem-layout ADR 0043)" spaceBeforeNeedTests,
       testGroup "the spaces before need-lines are not counted with figures that wait between (golem-layout ADR 0047)" spaceBeforeWaitingTests,
+      testGroup "the breaks before sections and the page labels (docs/adr/0260)" sectionTests,
       testGroup "invariants" propertyTests
     ]
+
+{- | The break before a section (docs/adr/0260) after each of the four
+pages before it (empty or not, odd or even), with each start, and each
+first block of its file: a paragraph, a heading at a recto, and nothing
+(the next file's paragraph follows). The first page of the section, the
+blank pages and the page of the first line after it (I1, I3, I7 of the
+ADR) in columns of three grid lines.
+-}
+sectionTests :: [TestTree]
+sectionTests =
+  [ testCase ("I1, I3, I7: after " <> prevName <> ", start " <> maybe "omitted" show start <> ", " <> blockName) $ do
+      let ps = paginate 1 3 (before <> [FSection 0 start] <> block)
+          firstPage = [poNumber p | p <- ps, 0 `elem` poSections p]
+          blanks = [poNumber p | p <- ps, poBlank p]
+          lineAt = [poNumber p | p <- ps, (_, s) <- poSlots p, s `elem` [SLine 100, SHeading 100 1]]
+          labels = Map.elems (pageLabels (Map.fromList [(0, Section start Nothing)]) ps)
+          recto = blockName == "a heading at a recto"
+          blockPage = if recto && even f then f + 1 else f
+      firstPage @?= [f]
+      blanks @?= bs <> [f | recto, even f]
+      lineAt @?= [blockPage]
+      -- I1: every number has the parity of its page; I3: the first page is the start, or counts on
+      [plIndex l | l <- labels, odd (plNumber l) /= odd (plIndex l)] @?= []
+      map plNumber (filter ((== f) . plIndex) labels) @?= [fromMaybe (toInteger f) start]
+  | (prevName, before, table) <- prevs,
+    (start, (f, bs)) <- table,
+    (blockName, block) <- blocks
+  ]
+    <> [ testCase "two sections after an empty file: the later starts on a page of its own when its parity asks" $ do
+           let ps = paginate 1 3 [FParagraph (lines' 0 1), FSection 0 Nothing, FSection 1 (Just 1), FParagraph (lines' 100 1)]
+           [(poNumber p, poSections p, poBlank p) | p <- ps] @?= [(1, [], False), (2, [0], True), (3, [1], False)],
+         testCase "two sections on one page: both are recorded on it, and the later numbers it" $ do
+           let ps = paginate 1 3 [FParagraph (lines' 0 1), FSection 0 (Just 1), FSection 1 Nothing, FParagraph (lines' 100 1)]
+               sections = Map.fromList [(0, Section (Just 1) Nothing), (1, Section Nothing Nothing)]
+           [(poNumber p, poSections p) | p <- ps] @?= [(1, []), (2, []), (3, [0, 1])]
+           -- the later, without a start, counts on: the start of the earlier is not used
+           map plNumber (Map.elems (pageLabels sections ps)) @?= [1, 2, 3],
+         testCase "a section at the end of the book has no page" $ do
+           let ps = paginate 1 3 [FParagraph (lines' 0 1), FSection 0 (Just 1)]
+           [(poNumber p, poSections p) | p <- ps] @?= [(1, [])],
+         testCase "a section at 1 after two pages numbers its pages from 1 again" $ do
+           let ps = paginate 1 3 [FSection 0 Nothing, FParagraph (lines' 0 4), FSection 1 (Just 1), FParagraph (lines' 100 4)]
+               sections = Map.fromList [(0, Section Nothing Nothing), (1, Section (Just 1) Nothing)]
+           [(plIndex l, plNumber l, pageLabelText l) | l <- Map.elems (pageLabels sections ps)] @?= [(1, 1, "1"), (2, 2, "2"), (3, 1, "1"), (4, 2, "2")]
+       ]
+  where
+    -- the page before: its flows, and by start the first page and the blank pages before it
+    prevs =
+      [ ("an empty odd page", [], [(Nothing, (1, [])), (Just 1, (1, [])), (Just 2, (2, [1]))]),
+        ("an empty even page", [FParagraph (lines' 0 1), FBreak BreakPage], [(Nothing, (2, [])), (Just 1, (3, [2])), (Just 2, (2, []))]),
+        ("an odd page with a line", [FParagraph (lines' 0 1)], [(Nothing, (2, [])), (Just 1, (3, [2])), (Just 2, (2, []))]),
+        ("an even page with a line", [FParagraph (lines' 0 3), FParagraph (lines' 3 1)], [(Nothing, (3, [])), (Just 1, (3, [])), (Just 2, (4, [3]))])
+      ]
+    blocks =
+      [ ("a paragraph", [FParagraph (lines' 100 1)]),
+        ("a heading at a recto", [FHeading 1 True 1 (lines' 100 1)]),
+        ("nothing, the next file after it", [FParagraph (lines' 100 1)])
+      ]
 
 -- | n plain lines numbered from base.
 lines' :: Int -> Int -> [LineBox]
@@ -160,7 +221,7 @@ headingNoteTests =
       notesByPage ps @?= [(1, [nid 800, nid 900])],
     testCase "the label of a heading sent to the next page is on that page" $ do
       let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 2 False 1 [LineBox 20 [] ["sec"] [] 0], FParagraph (lines' 30 2)]
-      labelPages ps @?= Map.fromList [("sec", 2)]
+      Map.map plIndex (labelPages Map.empty ps) @?= Map.fromList [("sec", 2)]
   ]
 
 -- | A line whose footnote has k lines.
@@ -296,7 +357,7 @@ pageFigureTests =
   [ testCase "a turned figure in the middle of the text: the text fills the page, the figure takes the next one" $ do
       let ps = paginate 1 5 [FParagraph (lines' 0 3), FPageFigure 50 ["f"] [], FParagraph (lines' 10 4)]
       contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 10, SLine 11], [SPageFigure 50], [SLine 12, SLine 13]]
-      labelPages ps @?= Map.fromList [("f", 2)],
+      Map.map plIndex (labelPages Map.empty ps) @?= Map.fromList [("f", 2)],
     testCase "a turned figure met on an empty page takes that page" $
       contents (paginate 1 5 [FPageFigure 50 [] [], FParagraph (lines' 0 2)]) @?= [[SPageFigure 50], [SLine 0, SLine 1]],
     testCase "a figure after a turned figure waits even when it fits, and goes to the page after it" $
@@ -356,7 +417,7 @@ pageRefTests :: [TestTree]
 pageRefTests =
   [ testCase "a label that settles in the fifth round is resolved" $
       -- x moves 1, 2, 3, 4 and stays at 4 in round 5
-      fmap labelPages (resolvePageRefs (creeping 3)) @?= Right (Map.fromList [("x", 4)]),
+      fmap (Map.map plIndex . labelPages Map.empty) (resolvePageRefs (creeping 3)) @?= Right (Map.fromList [("x", 4)]),
     testCase "a label still moving after the fifth round is named" $
       -- x moves 1, 2, 3, 4, 5
       resolvePageRefs (creeping 4) @?= Left ["x"],

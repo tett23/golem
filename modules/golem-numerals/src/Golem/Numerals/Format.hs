@@ -16,6 +16,7 @@ module Golem.Numerals.Format
     parseMarkFormat,
     renderMarkFormat,
     formatNumber,
+    formatNumberIn,
     Unwritable (..),
     NumberSlotName (..),
     numberFormatSlots,
@@ -222,7 +223,15 @@ not read is its text. It reads the slots of headings, which hold those of
 the other number formats.
 -}
 formatNumber :: Text -> [Integer] -> Maybe Integer -> Either Unwritable Text
-formatNumber fmt levels chapter = case parseHeadingNumberFormatText fmt of
+formatNumber = formatNumberIn Nothing
+
+{- | 'formatNumber' whose slots without a notation write their numbers in
+the notation given, Arabic without one: the folio @{n}@ in the notation of
+its section (docs/adr/0260). A number that notation cannot write is the
+'Left' of its slot as written, without a notation, such as @n@.
+-}
+formatNumberIn :: Maybe Notation -> Text -> [Integer] -> Maybe Integer -> Either Unwritable Text
+formatNumberIn implicit fmt levels chapter = case parseHeadingNumberFormatText fmt of
   Left _ -> Right fmt
   Right ps -> T.concat <$> traverse fill ps
   where
@@ -237,9 +246,10 @@ formatNumber fmt levels chapter = case parseHeadingNumberFormatText fmt of
         (x : _) -> Just x
         [] -> Nothing
       SlotChapter -> chapter
-    written s n k = case n of
-      Nothing -> Right (T.pack (show k))
-      Just x -> maybe (Left (Unwritable (slotText s <> ":" <> notationName x) k)) Right (writeNumber x k)
+    written s n k = case (n, implicit) of
+      (Nothing, Nothing) -> Right (T.pack (show k))
+      (Nothing, Just x) -> maybe (Left (Unwritable (slotText s) k)) Right (writeNumber x k)
+      (Just x, _) -> maybe (Left (Unwritable (slotText s <> ":" <> notationName x) k)) Right (writeNumber x k)
     slotText = \case
       SlotOwn -> "n"
       SlotLevel i -> T.pack (show (i + 1))

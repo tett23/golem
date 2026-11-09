@@ -75,6 +75,7 @@ nextNeed env = \case
   -- the space before a paragraph goes with what follows it (docs/adr/0205)
   (FSpace n : rest) -> spaced env n (nextNeed env rest)
   (FBreak _ : _) -> mempty
+  (FSection {} : _) -> mempty
   -- the controls of page breaks are skipped (docs/adr ADR 0030)
   (FNoBreak _ : rest) -> nextNeed env rest
   (FNeedLines _ _ : rest) -> nextNeed env rest
