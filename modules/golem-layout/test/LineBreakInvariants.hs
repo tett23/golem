@@ -592,8 +592,8 @@ i4NoHyphensWithShy :: Check
 i4NoHyphensWithShy _ p =
   [ Breach I4 (-1) ("the element " <> show (T.concat [t | (_, _, t) <- el]) <> " has a soft hyphen and a hyphen of the patterns")
   | (el, True, explicitAfter) <- elements,
-    (s0, _, _) : _ <- [el],
     let (_, e0, _) = last el,
+    (s0, _, _) : _ <- [el],
     any (\q -> (q >= s0 && q < e0) || (q == e0 && not explicitAfter)) shyAt
   ]
   where
