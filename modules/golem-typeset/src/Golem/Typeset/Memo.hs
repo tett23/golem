@@ -17,7 +17,7 @@ module Golem.Typeset.Memo
 where
 
 import Data.Bits (shiftL, shiftR, (.&.))
-import Data.Char (chr, ord)
+import Data.Char (chr, isDigit, ord)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -114,7 +114,7 @@ featureDigits f = case T.unpack f of
     | ascii [a, b, c, d],
       not (null n),
       length n <= 5,
-      all (\x -> x >= '0' && x <= '9') n,
+      all isDigit n,
       -- the text of the value as it reads back: no leading zero
       show (read n :: Int) == n,
       read n <= (65535 :: Int) ->

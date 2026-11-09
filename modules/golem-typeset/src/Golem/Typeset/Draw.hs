@@ -507,10 +507,9 @@ featureWarnings inp fonts pages =
           let sides = [(guFace u, tags) | u <- run, Just (c, _) <- [T.uncons (guText u)], let tags = if lookClass look c == Western then la else ja, not (null tags)],
           tag <- nubOrd (concatMap snd sides),
           let faces = nubOrd [face | (face, tags) <- sides, tag `elem` tags],
-          not (any (`lfHasFeature'` tag) faces),
+          not (any (\face -> lfHasFeature fonts face tag) faces),
           face <- faces
         ]
-    lfHasFeature' face tag = lfHasFeature fonts face tag
     -- the tags turned on in the role of a side and the look
     enabled look latin =
       let role = if latin then lkLatinFace look else lkFace look

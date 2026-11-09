@@ -1617,8 +1617,7 @@ instance FromValue CharStyleDef where
     -- a negative padding is read and reported by the checks (golem-driver ADR 0029)
     pad' <- signedDimKey "padding" "（0.25zw や 1mm のように書きます）"
     wm <- optKey "wrap-mark"
-    fs <- featuresKey
-    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm fs)
+    CharStyleDef b f s c sb si k t p bs bg pad' wm <$> featuresKey
 
 {- | The key features (docs/adr/0268): an array of the four forms of
 'parseFeature'. Each element that is not one fails at itself, all of them
@@ -1628,7 +1627,7 @@ featuresKey :: ParseTable l [Feature]
 featuresKey =
   fmap (fromMaybe []) . optKeyOf "features" $ \case
     List' _ xs -> do
-      read' <- sequence [inIndex i ((\t -> (valueAnn x, t)) <$> fromValue x) | (i, x) <- zip [0 ..] xs]
+      read' <- sequence [inIndex i ((valueAnn x,) <$> fromValue x) | (i, x) <- zip [0 ..] xs]
       case [inIndex i (failAt l (T.unpack (featureMessage t))) | (i, (l, t)) <- zip [0 ..] read', Nothing <- [parseFeature t]] of
         [] -> pure [Feature tag v SiteNone | (_, t) <- read', Just (tag, v) <- [parseFeature t]]
         bad -> asum bad
