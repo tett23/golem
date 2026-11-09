@@ -137,6 +137,44 @@ babel の主の言語に当たるものが本の言語であり、`[lang]` と `
 英語の本の中のフランス語の語は、今までどおり `[lang fr: …]` で包まなければ英語のパターンで分けられる。
 `de-1901` と `de-CH` の区間も、新正書法のパターン（`hyph-de-1996`）で分ける。
 
+## 引用の印の中の改行
+
+この節の LaTeX と biblatex の振る舞いは、2026-11-10 にそれぞれのソースを読んで確かめたものである（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md) の参考文献）。
+組んで確かめてはいない。
+
+### TeX の振る舞い
+
+LaTeX の標準の `\cite` は、番号を一つずつ `\hbox` に入れ、番号のあいだの区切りを `,\penalty\@m\ ` とする（`ltbibl.dtx`）。
+番号の区切りの後では、罰点 1000 で分けうる。
+後置きの文言の前の `, ` は、普通の空白である。
+
+biblatex の `numeric-comp` は、番号の区切り（`\multicitedelim`）を `\addcomma\space` とし、範囲のダッシュ（`\bibrangedash`）を分けうるダッシュとする。
+頁の文言と値のあいだは `\ppspace` であり、その既定は改行しない空白（`\addnbspace`）である。
+後置きの前の区切り（`postnotedelim`）は `\addcomma\space` で、分けうる。
+
+### InDesign の振る舞い
+
+InDesign は、引用と参考文献を組む組み込みの機能を持たない。
+印は書き手が地の文として打つ文字列なので、印に固有の規則はない。
+
+### Golem の振る舞い
+
+Golem は、biblatex の `numeric-comp` に合わせる。
+頁の文言（`p.`、`pp.`）と値のあいだでは改行しない。
+番号の区切りの `, ` と `; ` の後、範囲の `–` の後、位置の前の `, ` の後は、地の文と同じ規則で分けうる。
+LaTeX の標準の `\cite` の、番号の区切りの後の罰点 1000 は採らず、地の文の語間と同じにする。
+範囲の `–` の後の罰点は、`explicit-hyphen-penalty` の既定の 50 であり、TeX の `\hyphenpenalty` の既定と同じである。
+HTML と EPUB では、頁の文言と値のあいだを U+00A0 で書く。
+
+### 決めた ADR
+
+- [docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)
+
+### 書き手が気をつけること
+
+LaTeX の標準の `\cite` で組んだときより、番号の区切りの後で行が分かれやすい。
+印の全体を一行に置きたいときは、`[style no-break: [cite …]]` と書く。
+
 ## 段落の前後のアキの合わせ方
 
 ### InDesign の振る舞い
