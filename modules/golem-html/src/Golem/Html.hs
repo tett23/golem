@@ -220,7 +220,10 @@ data HtmlParaStyle = HtmlParaStyle
     hpsSpaceBefore :: !Int,
     hpsSpaceAfter :: !Int,
     -- | a CSS length (docs/adr/0189)
-    hpsEndIndent :: !Text
+    hpsEndIndent :: !Text,
+    {- | the declarations of the keep options not of their defaults:
+    break-after, break-inside, orphans, widows, break-before (docs/adr/0261)
+    -} hpsBreaks :: ![Text]
   }
   deriving stock (Eq)
 
@@ -761,7 +764,7 @@ noteText c n = fromMaybe (tshow n) (writeNumber (hcNoteNotation (cCfg c)) (toInt
 
 -- | The sidenotes of a paragraph after it, in the language of the paragraph (docs/adr ADR 0187).
 sidenotes :: Ctx -> Maybe Text -> [Inline] -> Text
-sidenotes c lang is = T.concat ["<aside class=\"sidenote\"" <> maybe "" langAttrs lang <> "><span class=\"number\">" <> tshow n <> "</span>" <> inlines c xs <> "</aside>\n" | Sidenote _ n xs <- is]
+sidenotes c lang is = T.concat ["<aside class=\"sidenote\"" <> maybe "" langAttrs lang <> "><span class=\"number\">" <> tshow n <> "</span>" <> T.concat (map (inlines c) (noteParagraphs body)) <> "</aside>\n" | Sidenote _ n body <- is]
 
 {- | The notes of the chapter at the end of its last page, after a title
 (golem-driver ADR 0026); each links back to its mark, on whichever page.
@@ -775,8 +778,13 @@ notesSection c =
         <> escapeXml (notesTitle (hcLanguage (cCfg c)))
         <> "</h2>\n"
         <> T.concat
-          [ "<aside epub:type=\"footnote\" id=\"note-" <> key n <> "\"><a href=\"" <> linkTo c f ("noteref-" <> key n) <> "\">" <> noteText c n <> "</a> " <> inlines c xs <> "</aside>\n"
-          | (f, key, n, xs) <- ns
+          -- a p for each paragraph, the link back at the start of the first (docs/adr/0263)
+          [ "<aside epub:type=\"footnote\" id=\"note-"
+              <> key n
+              <> "\">"
+              <> T.concat ["<p>" <> (if i == (0 :: Int) then "<a href=\"" <> linkTo c f ("noteref-" <> key n) <> "\">" <> noteText c n <> "</a> " else "") <> inlines c is <> "</p>" | (i, is) <- zip [0 ..] ps]
+              <> "</aside>\n"
+          | (f, key, n, ps) <- ns
           ]
         <> "</section>\n"
 
@@ -1024,6 +1032,8 @@ css cfg book =
            ".align-center { text-align: center; }",
            ".align-right { text-align: right; }",
            ".proof { background: #ffeb99; }",
+           -- the paragraphs of a note, as the note was before it had them (docs/adr/0263)
+           "section.notes aside p { margin-block: 0; padding-inline-start: 0; text-indent: 0; }",
            -- ruby: the base, a group reading and a mono reading (golem-layout ADR 0009)
            "ruby { ruby-align: " <> hcRubyBaseSpacing cfg <> "; }",
            "rt { ruby-align: " <> hcRubyGroupAlign cfg <> "; }",
@@ -1210,6 +1220,7 @@ css cfg book =
                | hpsSpaceBetween ps > 0 || spaced
                ]
             <> [rule sel ds | let ds = featureDecls (hpsFeatures ps), not (null ds)]
+            <> [rule sel (hpsBreaks ps) | not (null (hpsBreaks ps))]
     {- the spaces before and after of the paragraph styles (docs/adr/0189),
     under a prefix and over styles: the space before on the style, the
     space after on the next element of another style that is not a blank

@@ -269,6 +269,38 @@ pageNumberingTests =
           loadProject root >>= (@?= []) . codes
     ]
 
+-- | The keep options of paragraph styles (docs/adr/0261).
+keepOptionTests :: [TestTree]
+keepOptionTests =
+  [ testCase "the five keys are read, inherited through based-on, and body has the rule before" $ do
+      let src = "[paragraph-styles.a]\nkeep-with-next = 3\nkeep-all-lines = true\nkeep-first-lines = 3\nkeep-last-lines = 1\npage-break = \"recto\"\n\n[paragraph-styles.b]\nbased-on = \"a\"\nkeep-first-lines = 1\n"
+      s <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
+      let keys st = (psKeepWithNext st, psKeepAllLines st, psKeepFirstLines st, psKeepLastLines st, psPageBreak st)
+      fmap keys (paraStyle s (Just "a")) @?= Just (Just 3, Just True, Just 3, Just 1, Just StartRecto)
+      fmap keys (paraStyle s (Just "b")) @?= Just (Just 3, Just True, Just 1, Just 1, Just StartRecto)
+      fmap keys (paraStyle s Nothing) @?= Just (Just 0, Just False, Just 2, Just 2, Just StartAnywhere)
+      [fmap psPageBreak (paraStyle s' (Just "c")) | v <- paraStartValues, Right s' <- [parseStyle (FileId 0) ("[paragraph-styles.c]\npage-break = \"" <> v <> "\"\n")]] @?= map (Just . Just) [minBound .. maxBound],
+    testCase "values out of their ranges are G03006, a negative number G02103" $ do
+      mapM_
+        (\(kv, c) -> (kv, codes (parseStyle (FileId 0) ("[paragraph-styles.a]\n" <> kv <> "\n"))) @?= (kv, [c]))
+        [ ("keep-with-next = 6", "G03006"),
+          ("keep-with-next = -1", "G02103"),
+          ("keep-all-lines = \"yes\"", "G03006"),
+          ("keep-first-lines = 0", "G03006"),
+          ("keep-last-lines = -2", "G02103"),
+          ("page-break = \"frame\"", "G03006")
+        ],
+    testCase "the keys cannot be written in the paragraph style code (G03006)" $
+      mapM_
+        (\kv -> (kv, codes (parseStyle (FileId 0) ("[paragraph-styles.code]\n" <> kv <> "\n"))) @?= (kv, ["G03006"]))
+        ["keep-with-next = 1", "keep-all-lines = true", "keep-first-lines = 3", "keep-last-lines = 3", "page-break = \"page\""],
+    testCase "@style-def reads the keys with the same checks" $ do
+      fmap (either (const Nothing) (\d -> Just (psKeepWithNext d, psKeepAllLines d, psPageBreak d))) (localStyleDef ParagraphKind [("keep-with-next", LocalWord "2"), ("keep-all-lines", LocalWord "true"), ("page-break", LocalWord "column")])
+        @?= Right (Just (Just 2, Just True, Just StartColumn))
+      either (map fst) (const []) (localStyleDef ParagraphKind [("keep-first-lines", LocalWord "0")]) @?= ["G03006"]
+      either (map fst) (const []) (localStyleDef ParagraphKind [("keep-last-lines", LocalWord "-1")]) @?= ["G02103"]
+  ]
+
 -- | [targets.pdf] pdfa and pdfua (docs/adr ADR 0183).
 pdfConformanceTests :: TestTree
 pdfConformanceTests =
@@ -1178,6 +1210,7 @@ styleTests =
         Map.member "toc-page-number" (stCharStyles s) @?= True
         s' <- parsed "[fonts.gothic]\nja = \"g.otf\"\n\n[paragraph-styles.toc-2]\nfont = \"gothic\"\nspace-before = 1\n"
         fmap (\d -> (psFont d, psSpaceBefore d, psIndent d, psSize d)) (Map.lookup "toc-2" (stParaStyles s')) @?= Just (Just "gothic", Just 1, Just (Zw 1), Just (Zw 1)),
+      testGroup "the keep options of paragraph styles (docs/adr/0261)" keepOptionTests,
       testCase "the built-in styles" $ do
         s <- parsed ""
         (charStyle s "strong" >>= csSyntheticBold) @?= Just True
@@ -2066,6 +2099,11 @@ localStyleTests =
               "position" -> "superscript"
               "underline" -> "true"
               "strikethrough" -> "false"
+              "keep-with-next" -> "1"
+              "keep-all-lines" -> "true"
+              "keep-first-lines" -> "2"
+              "keep-last-lines" -> "2"
+              "page-break" -> "page"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))
         assertBool "char" (all (known CharacterKind) charStyleKeys)

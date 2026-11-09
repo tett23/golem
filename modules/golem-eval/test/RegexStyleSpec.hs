@@ -70,15 +70,15 @@ tests =
         para (rules [("body", [(".", "n")])]) [Tcy sp "12"] @?= [cs "n" [Tcy sp "12"]]
         para (rules [("body", [("a.b", "n")])]) [t "a", Number sp 3 Nothing, t "b"] @?= [cs "n" [t "a", Number sp 3 Nothing, t "b"]],
       testCase "the body of a note is not matched" $
-        para digits [t "a", Note sp 1 [t "12"]] @?= [t "a", Note sp 1 [t "12"]],
+        para digits [t "a", Note sp 1 (noteBody sp [t "12"])] @?= [t "a", Note sp 1 (noteBody sp [t "12"])],
       testCase "a note is not wrapped and cuts a run" $
-        para (rules [("body", [(".+", "n")])]) [t "a", Note sp 1 [t "x"], t "b"] @?= [cs "n" [t "a"], Note sp 1 [t "x"], cs "n" [t "b"]],
+        para (rules [("body", [(".+", "n")])]) [t "a", Note sp 1 (noteBody sp [t "x"]), t "b"] @?= [cs "n" [t "a"], Note sp 1 (noteBody sp [t "x"]), cs "n" [t "b"]],
       testCase "an index mark and a proof comment cut a run" $
         para (rules [("body", [(".+", "n")])]) [t "a", IndexMark sp (IndexEntry ["k"] []), t "b"]
           @?= [cs "n" [t "a"], IndexMark sp (IndexEntry ["k"] []), cs "n" [t "b"]],
       testCase "the body of a sidenote has the rules of sidenote" $ do
         let r = rules [("body", [("[0-9]+", "n")]), ("sidenote", [("[a-z]+", "m")])]
-        para r [t "1", Sidenote sp 1 [t "2b"]] @?= [cs "n" [t "1"], Sidenote sp 1 [t "2", cs "m" [t "b"]]],
+        para r [t "1", Sidenote sp 1 (noteBody sp [t "2b"])] @?= [cs "n" [t "1"], Sidenote sp 1 (noteBody sp [t "2", cs "m" [t "b"]])],
       testCase "a caption has the rules of caption, not of body" $ do
         let r = rules [("body", [("[0-9]+", "n")]), ("caption", [("[a-z]+", "m")])]
             fig = FigureBlock (Figure "a.png" Nothing "" Nothing Nothing [Block sp Nothing Nothing (Paragraph Nothing [t "1a"])] Nothing False False)

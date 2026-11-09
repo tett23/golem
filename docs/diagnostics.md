@@ -125,6 +125,8 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | [G07046](#g07046) | 処理系による調整 | レイアウト |
 | [G07100](#g07100) | 一般的でない書き方 | レイアウト |
 | [G07101](#g07101) | 処理系による調整 | 出力 |
+| [G07112](#g07112) | 処理系による調整 | レイアウト |
+| [G07113](#g07113) | 処理系による調整 | レイアウト |
 | [G07123](#g07123) | 効果のない書き方 | レイアウト |
 | [G07124](#g07124) | 効果のない書き方 | レイアウト |
 | [G08008](#g08008) | 既定の使用 | 出力 |
@@ -2095,16 +2097,17 @@ dev では出力に残し、診断は出さない。
 ### 意味
 
 その種類のブロックに付けられない属性を付けた。
-たとえば、見出しでないブロックへの `@notoc`、段落と表のほかのブロックへの `@style`、図版のキャプションの中の `@style`、コードブロックと表のほかのブロックへの `@caption`、見出しと図版とコードブロックと表のほかのブロック（段落、リストなど）への `@nonumber`、表でないブロックへの `@column-widths` である（表は [docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+たとえば、見出しでないブロックへの `@notoc`、段落と表のほかのブロックへの `@style`、図版のキャプションの中の `@style`、`@note` への属性（`@label`、`@lang`、`@style` など）、`@note` の本体の段落への `@style`（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）、コードブロックと表のほかのブロックへの `@caption`、見出しと図版とコードブロックと表のほかのブロック（段落、リストなど）への `@nonumber`、表でないブロックへの `@column-widths` である（表は [docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 キャプションのないコードブロックと表への `@nonumber` は、付けられる種類のブロックに付けたが意味がないので、このコードではなく [G02134](#g02134) である。
 
-- メッセージ: `@<名前> はこのブロックには付けられません`、`@style は図版のキャプションには付けられません`
+- メッセージ: `@<名前> はこのブロックには付けられません`、`@style は図版のキャプションには付けられません`、`@<名前> は @note には付けられません`、`@style は注の本文には付けられません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が `@style` の条件を加えた。[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md) も触れる。[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md) が `@nonumber` を図版とコードブロックに広げた。[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md) が `@caption`、`@nonumber`、`@style` を表に広げ、`@column-widths` を加えた）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が `@style` の条件を加えた。[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md) も触れる。[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md) が `@nonumber` を図版とコードブロックに広げた。[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md) が `@caption`、`@nonumber`、`@style` を表に広げ、`@column-widths` を加えた。[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md) が `@note` への属性と本体の段落への `@style` を加えた）
 
 ### 主な原因
 
 - 見出しでないブロックに `@notoc` を付けた。
+- `@note` に属性を付けたか、`@note` の本体の段落に `@style` を付けた。
 - 段落と表のほかのブロックか、図版のキャプションに `@style` を付けた。
 - 段落やリストに `@nonumber` を付けた。
 - 表でないブロックに `@column-widths` を付けた。
@@ -2721,8 +2724,9 @@ lines の範囲がファイルの行を外れています
 インラインのコマンドの散文スロット（`: ` の後の本文）の数が違う。
 `number-text`、`ref-number`、`ref-title`、`ref-page`、`cite` は散文スロットを取らないので、書くとこのコードになり、コマンドは出力しない。
 `link` の散文スロットは一つまでで、二つ以上書くとこのコードになる（[docs/adr/0182](adr/0182-external-links.md)）。
+`[note 名前: 本文]` のように、名前と散文スロットを両方書いた `note` もこのコードになり、何も出力しない（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
 
-- メッセージ: `<名前> には散文スロットが一つ必要です`、`index には散文スロットが一つ必要です`、`ruby には散文スロットが二つ必要です`、`<名前> は散文スロットを取りません`、`link の散文スロットは一つまでです`
+- メッセージ: `<名前> には散文スロットが一つ必要です`、`index には散文スロットが一つ必要です`、`ruby には散文スロットが二つ必要です`、`<名前> は散文スロットを取りません`、`link の散文スロットは一つまでです`、`note は名前を書くと散文スロットを取りません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
 - ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
@@ -2735,6 +2739,7 @@ lines の範囲がファイルの行を外れています
 コマンドの書き方を確かめ、スロットの数をそろえる。
 ルビは対象と読みの二つを書く。
 散文スロットを取らないコマンドからは、`: ` の後の本文を消す。
+名前を書いた `note` の本文は、`@note 名前` の本体に書く。
 
 ## G02039
 
@@ -5500,6 +5505,194 @@ dev と prod の両方でエラーである。
 
 値を一つにするか、列の数と同じ数にする。
 幅を決めない列は `auto` と書く。
+## G02137
+
+定義されていない注の名前です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[note 名前]` の名前の `@note` が、同じファイルにない（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
+注の名前はファイルごとに閉じている。
+`[note 名前]` は何も出力しない。
+位置は `[note 名前]` である。
+
+- メッセージ: `定義されていない注の名前です: <名前>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)
+
+### 主な原因
+
+- `@note` の名前と `[note]` の名前の綴りが違う。
+- `@note` を別のファイルに書いた。
+- `@note` を書き忘れた。
+
+### 直し方
+
+同じファイルに `@note 名前` を書くか、`[note]` の名前を `@note` の名前に合わせる。
+
+## G02138
+
+使われない注の本文です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@note 名前` を指す `[note 名前]` が、同じファイルにない（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
+原稿に書いた本文がどの出力にも出ないことを黙って許さないため、エラーとする。
+位置は `@note` の行である。
+
+- メッセージ: `使われない注の本文です: <名前>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)
+
+### 主な原因
+
+- 本文の `[note 名前]` を消したが、`@note` を残した。
+- `[note]` の名前の綴りが違う。
+
+### 直し方
+
+本文に `[note 名前]` を書くか、`@note` を消す。
+書きかけの本文を残すときは、コメント（`%`）にする。
+
+## G02139
+
+一つの注の本文を二つ以上の [note] が指しています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+一つの `@note` を、二つ以上の `[note 名前]` が指している（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
+一つの本文には一つの印だけを付けられる。
+二つめ以降の `[note]` ごとに報告し、二つめ以降は何も出力しない。
+
+- メッセージ: `一つの注の本文を二つ以上の [note] が指しています: <名前>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)
+
+### 主な原因
+
+- 同じ注を二か所から参照しようとした。
+- 別の注に付けるつもりの名前を写し間違えた。
+
+### 直し方
+
+二つめ以降の `[note]` に別の名前を付けて `@note` を書くか、`[note]` を消す。
+
+## G02140
+
+同じ名前の注の本文を二度書いています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+同じファイルに、同じ名前の `@note` が二つ以上ある（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
+二つめ以降の `@note` ごとに報告し、最初の `@note` を使う。
+
+- メッセージ: `同じ名前の注の本文を二度書いています: <名前>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)
+
+### 主な原因
+
+- `@note` を写して名前を変え忘れた。
+
+### 直し方
+
+二つめ以降の `@note` に別の名前を付けるか、消す。
+
+## G02141
+
+注の本文には段落だけを書けます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@note` の本体に、段落でないブロック（リスト、表、コード、図版、`@note` など）がある（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
+そのブロックごとに報告し、そのブロックを除く。
+除いた結果として段落が一つも残らなければ、その名前を指す `[note]` は何も出力しない。
+このとき、本体がないこと（[G02143](#g02143)）は報告しない。
+
+- メッセージ: `注の本文には段落だけを書けます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)
+
+### 主な原因
+
+- `@note` の本体に箇条書きやコードブロックを書いた。
+- `@note` の本体の中に別の `@note` を書いた。
+
+### 直し方
+
+注の本文を段落だけで書く。
+リストやコードは本文に置き、注から参照する。
+
+## G02142
+
+注の名前を一つの語で書きます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[note]` か `@note` に、名前を一つの語で書かなかった（名前がない、二つある、式で書いた）（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
+名前は英小文字、数字、`-`、`_` で書く。
+`[note]` は何も出力せず、`@note` は使われない。
+名前の欠けと未定義（[G02137](#g02137)）は直し方が違うので、コードを分ける。
+
+- メッセージ: `注の名前を一つの語で書きます。名前は英小文字、数字、-、_ で書きます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)
+
+### 主な原因
+
+- `[note]` や `@note` に名前を書き忘れた。
+- 名前に大文字や空白を使った。
+- 名前を `[= ...]` の式で書いた。
+
+### 直し方
+
+名前を英小文字、数字、`-`、`_` の一つの語で書く。
+一つの段落の注は、`[note: 本文]` と書く。
+
+## G02143
+
+@note に本文がありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@note 名前` に、字下げした本体がない（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
+本体の段落でないブロックを除いた結果として段落が残らないときは、このコードを出さない（原因は [G02141](#g02141) だけである）。
+その名前を指す `[note]` は何も出力しない。
+
+- メッセージ: `@note に本文がありません: <名前>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)
+
+### 主な原因
+
+- `@note` の次の行を字下げしなかった。
+- 本文を書き忘れた。
+
+### 直し方
+
+`@note` の次の行から、本文を字下げして書く。
+
 ## G02152
 
 [shy] は引数を取りません
@@ -5729,6 +5922,7 @@ style.toml の誤りです
 - 組み込みの段落スタイル `caption`、`sidenote`、`table` に、0 でない `indent`、`first-line-indent`、`end-indent` を書いた。キャプションと傍注と表のセルは字下げをしないためである。値が 0 なら誤りとせず、お知らせ [G03100](#g03100) を出す（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)、[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。三つに書けないキーは、0 でない `indent`、`first-line-indent`、`end-indent`、`rule-before`、`rule-after`、`background`、`padding`、`border`、`border-width` である。
 - 段落スタイルの `align` に九つのほかの値を書いたか、`space-before` か `space-after` に負の数を、`end-indent` に負の長さを書いた（[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。段落スタイル `code` に `align`、`space-before`、`space-after`、`end-indent` を書いた場合も同じである。
 - `border` か `border-width` を、`code` のほかの段落スタイルに書いた。`border-width` を zw で書いた（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+- 段落スタイルの `keep-with-next` に 0 から 5 のほかの整数を、`keep-first-lines` か `keep-last-lines` に 0 を、`keep-all-lines` に真偽値でない値を、`page-break` に `"any"`、`"column"`、`"page"`、`"recto"`、`"verso"` のほかの値を書いた。段落スタイル `code` にこれらのキーを書いた場合も同じである。負の整数は [G02103](#g02103) とする（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。
 - 文字スタイルの `background` か `padding` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。文字スタイルの `background` に `true` を書いた。文字スタイルの `padding` が負であるか、寸法として読めない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
 - 文字スタイルの `wrap-mark` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。`wrap-mark` を文字列で書いていない（[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)）。
 - `[code]` か `[code.colors]` に未知のキーを書いた。`[code]` の `line-numbers` が真偽値でない。`[code]` の `number` が `{n}` などの差し込みを含まない。
@@ -9581,6 +9775,92 @@ HTML、EPUB、プレーンテキストは書く。
 ### 直し方
 
 `style` を、そのセクションのページの数を表せる表記（`lower-roman`、`arabic` など）に替える。
+
+## G07111
+
+段落スタイルの keep-with-next を守れませんでした
+
+- 重大度: 警告
+- 状態: 使用中
+
+### 意味
+
+`keep-with-next` を書いた段落スタイルの段落の最後の行と、後に続くものの最初の部分を、同じ段に置けなかった（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。
+後が送った図版の場合、後が `page-break` の段落か改丁の見出しで段を改めた場合、本の末尾の場合、合わせて段に入らない場合である。
+`@no-page-break` の [G07037](#g07037) と同じく、指定を守らずに組んだ結果なので警告とする。
+同じ位置に `@no-page-break` があれば、両方を報告する。
+PDF をターゲットに含むときだけ、改ページの繰り返しの最後の回の結果から求める。
+位置は段落の範囲である。
+
+- メッセージ: `段落スタイル <名前> の keep-with-next を守れませんでした`
+- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Paginate`、golem-typeset の `Golem.Typeset`）
+- ADR: [docs/adr/0261](adr/0261-keep-options-of-paragraph-styles.md)
+
+### 主な原因
+
+- 連動の連なりが長く、段に入らない。
+- 連動する段落の後に、図版や `page-break` の段落を置いた。
+
+### 直し方
+
+`keep-with-next` の行の数を減らすか、段落を短くする。
+連動させない段落には `keep-with-next = 0` を書く。
+
+## G07112
+
+段落スタイルの段落が段に入らないので、keep-all-lines を外して分けました
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+`keep-all-lines = true` の段落スタイルの段落が、空の段（見出しだけの段を含む）にも入らないので、`keep-first-lines` と `keep-last-lines` で分けて組んだ（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。
+段落は次の段から置いてから分けるので、前の段の残りが空く。
+罫線を持つ段落の [G07046](#g07046) と同じく、版面に入らないものを組むための唯一の置き方なので、お知らせとする。
+位置は、段落の最初の行の段落の範囲である。
+
+- メッセージ: `段落スタイル <名前> の段落が段に入らないので、keep-all-lines を外して分けました`
+- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Paginate`、golem-typeset の `Golem.Typeset`）
+- ADR: [docs/adr/0261](adr/0261-keep-options-of-paragraph-styles.md)
+
+### 主な原因
+
+- 段の行の数より長い段落に `keep-all-lines` を当てた。
+
+### 直し方
+
+段落を分けるか、その段落には `keep-all-lines` を当てない。
+`manifest.toml` の `[diagnostics]` の `silence-notices` に `"G07112"` を加えると、このお知らせを出さなくなる。
+
+## G07113
+
+段の行が足りないので、段落の部分を短くしました
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+空の段か見出しだけの段で、段落の行を一行も置けなくなるので入るだけの行を置いた結果、段落の最初の部分か最後の部分の行の数が、`keep-first-lines` か `keep-last-lines` より少なくなった（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。
+連では、行の数は韻文の行の数である。
+書いた値でも、既定の値（2）でも出す。
+置き方は変わらず、規則を守れなかった置き方を知らせる。
+位置は、段落の最初の行の段落の範囲である。
+
+- メッセージ: `段の行が足りないので、段落の <最初か最後> の部分を <置いた数> 行にしました（keep-<first か last>-lines = <求めた数>）`
+- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Paginate`、golem-typeset の `Golem.Typeset`）
+- ADR: [docs/adr/0261](adr/0261-keep-options-of-paragraph-styles.md)
+
+### 主な原因
+
+- 段の行の数が少ない。`@page-lines` で段を短くした。
+- 見出しが段の大半を取り、続く段落の行を一行しか置けない。
+
+### 直し方
+
+段の行の数を増やすか、段落の前で改ページする。
+`manifest.toml` の `[diagnostics]` の `silence-notices` に `"G07113"` を加えると、このお知らせを出さなくなる。
 
 ## G07114
 

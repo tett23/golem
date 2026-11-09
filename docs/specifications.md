@@ -92,7 +92,7 @@ MCID は、ページごとに 0 から内容のストリームの順に振る。
 | 参考文献（`@bibliography`） | `L`（`/ListNumbering /None`）、項目は `LI`、番号は `Lbl`、項目の文は `LBody` の中の `BibEntry` |
 | プラグインのチャネルの一覧 | `Div`、項目は `P` |
 | ルビ（読みのある区切り一つ） | `Ruby`、親文字は `RB`、読みは `RT` |
-| 脚注、傍注、章末の注 | 本文の注の印は `Reference`、その直後に `Note`。`Note` は `ID`（`note-1` から文書の順）、注の側の印の `Lbl`、注の本文の `P` を持つ |
+| 脚注、傍注、章末の注 | 本文の注の印は `Reference`、その直後に `Note`。`Note` は `ID`（`note-1` から文書の順）、注の側の印の `Lbl`、注の本文の段落ごとの `P` を持つ |
 | 相互参照（`[ref-number]`、`[ref-title]`、`[ref-page]`）、引用の印（`[cite]`） | `Reference`（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)） |
 | 外部のリンク（`[link]`、[docs/adr/0182](adr/0182-external-links.md)） | `Link`。リンクの文字と、行ごとのリンクの注釈の `OBJR` を持つ |
 | 言語の区間（`[lang]`、[docs/adr/0187](adr/0187-inline-language-switch.md)） | `/Lang` を持つ `Span`。`@lang` を付けたブロックは、その要素が `/Lang` を持つ |
@@ -2024,7 +2024,26 @@ PDF では、`url` と、`based-on` をたどって `url` に行き着く文字�
 `[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
 `[character-styles.strong] based-on = "italic"` は、`[strong: ...]` を斜体で表す。
 
-段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`features`、段落の前と後に引く罫線の `rule-before` と `rule-after` である。
+段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`features`、段落の前と後に引く罫線の `rule-before` と `rule-after`、段落の分け方の `keep-with-next`、`keep-all-lines`、`keep-first-lines`、`keep-last-lines`、`page-break` である（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。
+
+段落の分け方の五つのキーは、ほかのキーと同じく `based-on` で引き継ぎ、書いた値が勝つ。
+
+| キー | 型 | 既定 | 意味 | InDesign |
+| --- | --- | --- | --- | --- |
+| `keep-with-next` | 0 から 5 の整数 | 0 | 段落の最後の行を、後に続くものの最初の部分と同じ段に置く。後が段落なら、その最初の少なくとも N 行を最初の部分とする。0 は連動しない | 次の段落と連動 |
+| `keep-all-lines` | 真偽値 | `false` | 段落を段で分けない | 段落を分割しない |
+| `keep-first-lines` | 1 以上の整数 | 2 | 段で分けるとき、前の段に残す最初の部分の最小の行数 | 段落の始めの行数 |
+| `keep-last-lines` | 1 以上の整数 | 2 | 段で分けるとき、次の段に送る最後の部分の最小の行数 | 段落の終わりの行数 |
+| `page-break` | `"any"`、`"column"`、`"page"`、`"recto"`、`"verso"` | `"any"` | 段落を、次の段、次のページ、次の奇数ページ、次の偶数ページから始める | 段落の開始位置 |
+
+`line-breaks = "keep"` の段落（連）では、行の数を韻文の行の数とする。
+範囲の外の整数、真偽値でない値、表にない文字列は G03006、負の整数は G02103 とする。
+組み込みの段落スタイル `code` には書けない（G03006）。
+`@style-def` にも同じキーを同じ検査で書ける。
+`keep-first-lines`、`keep-last-lines`、`keep-all-lines` は、改ページが段落として置くすべての段落（文書の最上位、リストの項目、定義リストの説明の段落）に当てる。
+`keep-with-next` と `page-break` は、文書の最上位の段落にだけ当て、リストの項目、表のセル、注の本文、定義リストの中の段落には当てない。
+HTML と EPUB の `style.css` には、既定でない値を `break-after: avoid`、`break-inside: avoid`、`orphans`、`widows`、`break-before` として書く。
+プレーンテキストは何も出力しない。
 
 `rule-before` と `rule-after` は、「罫線の指定」の表か `false` をとる（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 InDesign の段落境界線にあたる。
@@ -3332,10 +3351,30 @@ HTML と同じ三つの位置の行アキは、何も出力しない。
 
 PDF の改ページは、行を版面の格子に先頭から順に詰めて決める（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 見出しの `page-break = "recto"` は、その階層の見出しを奇数ページから始める。
-段落は行の単位で段に分ける。
-段落の最初の 1 行だけが段の末尾に残る場合（孤立行）は、その行も次の段に送る。
-段落の最後の 1 行だけが次の段の先頭に送られる場合は、前の段の最後の行も次の段に送る。
-空の段では、この二つの規則で一行も置けなくなる場合は、入るだけの行を置く。
+段落は行の単位で段に分ける（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。
+段落の n 行のうち段に k 行が入るとき、段の前に置く行の数を次の順で決める。
+段落スタイルの `keep-all-lines` が真で k < n なら 0 とする。
+0 < n − k < `keep-last-lines` なら、k を max 0 (n − `keep-last-lines`) にする（寡婦行）。
+段落がこの段から始まり、0 < k < `keep-first-lines` なら 0 にする（孤立行）。
+既定の値（2 と 2）では、段落の最初の 1 行だけを段の末尾に残さず、最後の 1 行だけを次の段の先頭に送らない。
+空の段では、この規則で一行も置けなくなる場合は、入るだけの行を置く。
+そのとき、置いた最初の部分か次の段に送った最後の部分が `keep-first-lines`、`keep-last-lines` より少なければ、その段落の範囲に notice G07113 を出す。
+`keep-all-lines` の段落は、今の段に全体が入らなければ次の段から置き、空の段（見出しだけの段を含む）にも入らなければ `keep-first-lines` と `keep-last-lines` で分け、notice G07112 を出す。
+`keep-with-next` の段落は、`@no-page-break` と同じ仕組みで、最後の `keep-last-lines` 行（`keep-last-lines` 以下の段落と、`keep-first-lines` と `keep-last-lines` の和より短い段落は全体）を、後に続くものの最初の部分と同じ段に置く。
+後が段落か連なら、その最初の部分を N 行以上に広げる。
+後の段落も `keep-with-next` を持ち、その全体が最初の部分に入るときは、その後の最初の部分も足す。
+足した量は段の行の格子の数を上限とする。
+罫線を持つ段落なら、まとまりの全体を、後の最初の部分と合わせて段に入る位置に送る。
+空の段からは送らない。
+後の最初の部分が前の最後の行と同じ段に置かれなければ、段落の範囲に警告 G07111 を出す。
+`@no-page-break` と `keep-with-next` が同じ位置にあれば、一つの連動として扱い、大きいほうの量を取り、守れなければ両方を報告する。
+`page-break` の段落は、ためた改ページを適用した後に置く。
+`"column"` なら、今の段が空でなければ次の段へ進む。
+`"page"`、`"recto"`、`"verso"` なら、送った図版と続きの脚注を置いてから、今のページが空で段 0 にいれば留まり、そうでなければ次のページへ進む。
+`"recto"` と `"verso"` では、偶奇が合わなければ白ページを入れる。
+`@page-break` と違い、空の段や空のページでは何もしない。
+セクションの前の改ページ（「プロジェクトの構成と import」の節）と同じ規則である。
+`page-break` の段落の前の見出しは、改丁の見出しの前の見出しと同じく、後に続くものを数えずに置く。
 `line-breaks = "keep"` の段落は、一つの連として扱い、韻文の行を単位にして同じ二つの規則を当てる（[docs/adr/0180](adr/0180-verse-spacing-and-stanza-breaks.md)）。
 連の最初の韻文の行だけを段の末尾に残さず、最後の韻文の行だけを次の段の先頭に送らない。
 送るほうが一つの韻文の行だけになる場合は、前の段の最後の韻文の行も次の段に送る。
@@ -3353,6 +3392,7 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 続く見出しと行の量には、それらの注の本文の行と、その段で最初の注なら区切りの領域を数える（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
 段の先頭から見出しだけを置いた段では、空の段と同じく、孤立行と寡婦行の規則で一行も置けなくなる場合は、入るだけの行を置き、入らない注の本文を次の段に続ける（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md)）。
 
+段落の分け方の規則は、[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md) の「不変条件」の節の K1 から K7 として、段落の分け方の要素を足した列挙の入力で golem-layout のテストが確かめる。
 これらの規則は、[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の I1 から I8 として、`@need-lines` と行アキの規則は [golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の「不変条件」の節の P1 から P4 と、[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の「不変条件」の節の P5 として、golem-layout のテストで確かめる。
 P1、P3、P4 の「次のブロック」は、[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) のとおり、待つ図版を飛ばした最初のブロックである。
 述語は、待つ図版を出力から判定する。
@@ -4186,8 +4226,29 @@ Golem はこの形をチャネルとして一般化する。
 Golem は決定性を重視する[note: 同じ入力からバイト単位で同じ出力を得る性質。]。
 ```
 
-注の本文はインラインの要素に限る。
-複数段落の注は v1 では扱わない。
+`[note: 本文]` の本文は、段落スタイルのない段落一つになる。
+二つ以上の段落の注は、本文に名前を付けてブロックコマンド `@note` で書き、本文の位置に `[note 名前]` を書く（[ADR 0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
+
+```
+外国の本を訳すときの判断[note kakucho]は、訳者の数だけある。
+
+@note kakucho
+  原書の初版の表記に従った。
+  第二版では、この語は別の綴りに改められている。
+```
+
+- `@note 名前` の本体が注の本文である。本体の段落の区切りは、ほかのブロックコマンドの本体と同じく、そのファイルの段落の様式に従う。
+- 名前は `@label` と同じ字（英小文字、数字、`-`、`_`）の語で書く。名前はファイルごとに閉じ、ラベルとは別の名前の集まりである。
+- `[note 名前]` は、同じファイルの `@note 名前` を、`@note` の前でも後でも引ける。一つの `@note` を指せる `[note 名前]` は一つだけである。
+- `@note` はブロックを置ける場所ならどこにでも書け、出力に何も置かない。
+- 注の番号は `[note 名前]` の位置で振り、本体は `@note` の位置で評価する（その位置までの `@set` の値を読む）。
+- `@note` には属性を付けられず、本体の段落にも `@style` を付けられない（[G02013](diagnostics.md#g02013)）。本体の段落の `@lang` は書ける。
+- 本体に置けるのは段落だけである。段落でないブロックは報告して除く（[G02141](diagnostics.md#g02141)）。
+- 名前の未定義（[G02137](diagnostics.md#g02137)）、使われない本文（[G02138](diagnostics.md#g02138)）、一つの本文を二つの印から指すこと（[G02139](diagnostics.md#g02139)）、名前の重複（[G02140](diagnostics.md#g02140)）、名前の書き方の誤り（[G02142](diagnostics.md#g02142)）、本体のない `@note`（[G02143](diagnostics.md#g02143)）はエラーとする。
+- `[note 名前: 本文]` のように名前と散文スロットを両方書くと、散文スロットの数の誤り（[G02038](diagnostics.md#g02038)）とする。
+
+注の本文は段落の並びであり、段落の中はインラインの要素に限る。
+リストやコードなどの段落でないブロックを注の本文に置くことは扱わない（[docs/roadmap.md](roadmap.md)）。
 
 注の番号は、`style.toml` の `[notes]` の `numbering` の範囲ごとに 1 から振る（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）。
 既定はマニフェストの章ごとであり、章を複数のファイルに分けても、章の途中で番号は 1 に戻らない。
@@ -4279,6 +4340,11 @@ body-mark-style = "strong"
 平字（上下の外枠を 50% にした漢数字）は組まない（[docs/roadmap.md](roadmap.md)）。
 
 ページの下の注の本文の先頭には、本文の印と同じ書式の印と四分アキの `[aki]` を付ける（`*1 注の本文`）。
+二つ以上の段落の注は、段落を順に行に分けて続けて置き、印と四分アキは最初の段落の先頭にだけ付ける。
+二つめ以降の段落は新しい行から印なしで始め、一つめの段落の二行目以降と同じく行の始まりからそろえる。
+段落の書体、大きさ、行長、行分割の設定は一つめの段落と同じであり、字下げと段落のあいだの空きは置かない。
+原稿で段落の先頭に全角の空白を書けば、それが字下げになる。
+注の格子の行の数は、すべての段落の行の数の和である。
 この印は、印の文字列を `body-mark-style` の文字スタイルの中に置いたものとして、注の本文の行の中で組み、上げない。
 `body-mark-style` を書かなければ、注の本文の書体と大きさで組む。
 縦組みでは、本文の印と同じく、和文の字を縦組みの字形で立て、2 字までの算用数字の番号を縦中横にする。
@@ -4318,6 +4384,7 @@ PDF の章末の注は次のように組む。
 - 一覧は本文の終わりから続けて組み、前で改ページしない。
 - 一覧の見出しは、2 の階層の見出しの役割、大きさ、行取りで組む。番号を付けず、目次、柱の値、見出しの番号の数えには入れない。見出しの直後で改ページしない規則は、ほかの見出しと同じである。
 - 注は一つずつ段落として組み、先頭に脚注と同じ印と、ページの下の注と同じ伸び縮みしない四分アキを付ける。書体と大きさは本文の役割と版面の文字の大きさ、行長は段の行長とし、二行目以降を字下げせず、注のあいだに空きを入れない。段落は本文の段落と同じ規則でページをまたぐ。
+- 二つ以上の段落の注は、一つめの段落を上のとおり組み、二つめ以降の段落を、印を付けずに、同じ書体、大きさ、行長で続けて組む。段落のあいだに空きを入れない。
 - 注の本文の中の索引の印は、一覧の行に置かれるので、索引のページ番号は一覧のページになる。
 
 HTML、EPUB、プレーンテキストは、章の最後のファイルの出力の末尾に、章のすべての注をまとめる。
@@ -4325,7 +4392,11 @@ HTML、EPUB、プレーンテキストは、章の最後のファイルの出力
 HTML と EPUB では、`<section class="notes">` の最初に `<h2>` で見出しを置き、目次とナビゲーション文書には入れない。
 本文の参照の `href` と、一覧の注から本文の参照へ戻るリンクは、文書をまたぐときは相手の文書への相対のリンクになる。
 id は `note-N` と `noteref-N` とし、`numbering = "file"` で番号が章の中で重なる場合は、章の中のファイルの順番 k（1 から）を入れて `note-k-N` と `noteref-k-N` とする（[G03027](diagnostics.md#g03027)）。
+一覧の注は `<aside epub:type="footnote">` で書き、本文の段落ごとに `<p>` を置き、本文の参照へ戻るリンクを最初の `<p>` の先頭に置く。
+一つの段落の注も `<p>` で包む。
+`style.css` は `section.notes aside p` の上下の余白、字下げ、行頭の余白を 0 にし、一つの段落の注の見た目を `<p>` で包む前と同じにする。
 プレーンテキストでは、注の並びの前に見出しを一行で置き、空の行で本文と隔てる。
+二つ以上の段落の注は、一つめの段落を印の後に書き、二つめ以降の段落をそれぞれ次の行に、印も字下げも付けずに書く。
 
 PDF のページ下の脚注は、本文とのあいだに区切りの領域を置く。
 区切りの領域は格子の行の整数倍であり、`style.toml` に `[notes.rule]` があれば、その領域に区切り線を引く（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
@@ -4352,7 +4423,9 @@ Golem は決定性を重視する[sidenote: 同じ入力から同じ出力を得
 
 傍注は、本文の脇に置く短い注である。
 出典は脚注に、用語の補足は傍注に、と一冊の中で使い分けられるよう、脚注とは別のコマンドとする。
-注の本文はインラインの要素に限り、番号は脚注と別に、脚注と同じ範囲（「脚注」の節）で振る。
+傍注の本文は一つの段落であり、段落の中はインラインの要素に限る。
+番号は脚注と別に、脚注と同じ範囲（「脚注」の節）で振る。
+複数の段落の傍注は扱わない（[docs/roadmap.md](roadmap.md)）。
 
 PDF では、傍注を版面の外の傍注の領域に置く。
 傍注の領域は、`style.toml` の `[sidenotes]` で、小口[^fore-edge]側の余白に幅（`width`）と版面との間隔（`gap`）を指定して設ける。
@@ -4984,6 +5057,12 @@ HTML、EPUB、プレーンテキストは、中のインラインを今までと
 以前の表のタグ 5 は廃止し、使い回さない。
 プラグインと `.emet` の関数が返す表の段落スタイルは、段落と同じく G02047 で検査する。
 プラグインの SDK の `BlockBody::Table` は、同じ七つの欄を持ち、幅を CBOR の値のまま通す。
+
+脚注は `[23, span, uint64, [+ block]]`、傍注は `[24, span, uint64, [+ block]]` であり、本文はブロックの並びである（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
+以前の脚注と傍注のタグ 12 と 13 は廃止し、使い回さない。
+`Golem.Doc.Validate` は、脚注の本文が段落スタイルのない段落の一つ以上の並びであること、傍注の本文が段落スタイルのない段落をちょうど一つ持つことを検査する。
+本文の段落のインラインには、ほかのインラインと同じ検査（改行の位置、リンク、言語のタグなど）を当てる。
+プラグインの SDK の `Inline::Note` と `Inline::Sidenote` は、本文を `Vec<Block>` で持ち、`note_body` で一つの段落の本文を作り、`note_paragraphs_mut` で本文の段落のインラインを辿る。
 
 ホストは、プラグインの出力を受け取るたびに、スキーマと意味論上の不変条件を検査し、違反はコンパイルエラーとする。
 不変条件には、図版のキャプションのブロックが段落だけであること（`図版のキャプションには段落だけを置けます`、[docs/adr/0144](adr/0144-figure-captions-hold-paragraphs-only.md)）と、`nonumber` が真のコードブロックがキャプションを持つこと（`キャプションのないコードブロックは番号を持たないので、@nonumber は要りません`、[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)）を含む。

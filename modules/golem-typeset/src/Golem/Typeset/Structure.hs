@@ -54,9 +54,13 @@ structureTree fe units figureAttrs =
     book = piBook inp
     lang = bookLanguage inp
     atEnd = feNotesAtEnd fe
-    isEndNote u = any (\case Frame _ (FEndNote _ _) _ -> True; _ -> False) (uFrames u)
-    -- the units of the notes at the end of chapters by their spans, in order
-    endNotes = Map.fromListWith (flip (<>)) [(sp, [(i, u)]) | (i, u) <- units, Frame _ (FEndNote sp _) _ <- uFrames u]
+    isEndNote u = any (\case Frame _ (FEndNote _ _) _ -> True; Frame _ (FEndNoteMore _) _ -> True; _ -> False) (uFrames u)
+    -- the units of the notes at the end of chapters by their spans, in order: each note its first paragraph and the others (docs/adr/0263)
+    endNotes = Map.map groupNotes (Map.fromListWith (flip (<>)) [(sp, [(isFirst, (i, u))]) | (i, u) <- units, (sp, isFirst) <- endNoteOf u])
+    endNoteOf u = [(sp, True) | Frame _ (FEndNote sp _) _ <- uFrames u] <> [(sp, False) | Frame _ (FEndNoteMore sp) _ <- uFrames u]
+    groupNotes = \case
+      [] -> []
+      (_, x) : rest -> let (more, others) = break fst rest in (x : map snd more) : groupNotes others
     content env site inls = [toKid (site, n) | n <- inlineStructure env inls]
     toKid (site, n) = case n of
       NodeLeaf k -> P.KidLeaf (P.LeafId (site <> [k]))
@@ -67,7 +71,7 @@ structureTree fe units figureAttrs =
       NodeElem RoleStrikethrough ns -> P.KidElem (decorated "LineThrough" [toKid (site, m) | m <- ns])
       NodeElem role ns -> P.KidElem (P.structElem (roleType role) [toKid (site, m) | m <- ns])
       NodeNote sp k num nbody -> P.KidElem (noteElem sp k num nbody)
-      NodeSidenote sp num snBody -> P.KidElem (sidenoteElem sp num snBody)
+      NodeSidenote sp num snBody -> P.KidElem (sidenoteElem sp num (concat snBody))
       -- a link: its text, then the annotations of its lines (docs/adr ADR 0183)
       NodeLink u xs ns -> P.KidElem (linkElem site u xs [toKid (site, m) | m <- ns] ns)
     linkElem site u xs kids ns =
@@ -94,15 +98,20 @@ structureTree fe units figureAttrs =
     noteFrom kids = case kids of
       P.KidElem lbl@P.StructElem {P.seType = P.SLbl} : rest -> P.structElem P.SNote (P.KidElem lbl : [P.KidElem (P.structElem P.SP rest) | not (null rest)])
       _ -> P.structElem P.SNote [P.KidElem (P.structElem P.SP kids)]
+    -- the mark (Lbl), the first paragraph (P) and a P for each other paragraph (docs/adr/0263)
+    withMore el more = el {P.seKids = P.seKids el <> [P.KidElem (P.structElem P.SP kids) | kids <- more]}
     noteElem sp k num nbody
       | atEnd = case drop k (Map.findWithDefault [] sp endNotes) of
-          (j, u) : _ -> noteFrom (content (unitEnv fe u) (unitSite j) (uInlines u))
-          [] -> P.structElem P.SNote []
+          ((j, u) : more) : _ -> withMore (noteFrom (content (unitEnv fe u) (unitSite j) (uInlines u))) [content (unitEnv fe mu) (unitSite mj) (uInlines mu) | (mj, mu) <- more]
+          _ -> P.structElem P.SNote []
       | otherwise =
           let key = NoteId sp k
               st = piStyle inp
               vertical = pgVertical geom
-           in noteFrom (content ((noteEnv fe (styleOfSpan sp)) {ceLabelInlines = noteMarkCount st vertical (noteIdSpan key) num}) (noteSite key) (withNoteMark st vertical (noteIdSpan key) num nbody))
+              env = noteEnv fe (styleOfSpan sp)
+           in case nbody of
+                first : more -> withMore (noteFrom (content env {ceLabelInlines = noteMarkCount st vertical (noteIdSpan key) num} (noteSite key) (withNoteMark st vertical (noteIdSpan key) num first))) [content env {ceLabelInlines = 0} (noteParagraphSite key j) para | (j, para) <- zip [1 ..] more]
+                [] -> P.structElem P.SNote []
     sidenoteElem sp num snBody =
       let st = styleOfSpan sp
           prefix = sidenotePrefix fe sp num
@@ -203,6 +212,7 @@ structureTree fe units figureAttrs =
       -- the lines of a paragraph of a style that keeps its lines: one P
       FPara -> [elemNode (P.structElem P.SP (concat [if P.seType e == P.SP then P.seKids e else [P.KidElem e] | P.KidElem e <- concatMap nodeKids inner]))]
       FEndNote _ _ -> []
+      FEndNoteMore _ -> []
     elemNode = NKid . P.KidElem
     withLang = \case
       Nothing -> id

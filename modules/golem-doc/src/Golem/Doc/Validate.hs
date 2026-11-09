@@ -142,8 +142,8 @@ breakErrors top is =
       Kenten _ _ xs -> deep xs
       Color _ _ xs -> deep xs
       CharStyle _ _ xs -> deep xs
-      Note _ _ xs -> deep xs
-      Sidenote _ _ xs -> deep xs
+      Note _ _ bs -> deep (concat (noteParagraphs bs))
+      Sidenote _ _ bs -> deep (concat (noteParagraphs bs))
       Link _ _ xs -> deep xs
       Lang _ _ xs -> deep xs
       Resolved _ _ _ xs -> deep xs
@@ -164,8 +164,8 @@ inlineErrors fileSize allowed i =
     Color _ _ xs -> sub xs
     CharStyle _ _ xs -> sub xs
     Deferred _ e -> ["プラグインが新しい遅延式を作っています" | e `notElem` allowed]
-    Note _ _ xs -> sub xs
-    Sidenote _ _ xs -> sub xs
+    Note _ _ bs -> noteErrors True bs
+    Sidenote _ _ bs -> noteErrors False bs
     IndexMark _ (IndexEntry ts rs) -> ["索引の項目の段の数が不正です" | null ts || length ts > 2 || length ts /= length rs]
     -- negative amounts are not written (docs/adr ADR 0019)
     Aki _ a -> ["アキの量が負です" | negativeAki a]
@@ -184,6 +184,17 @@ inlineErrors fileSize allowed i =
   where
     sub :: [InlineF q] -> [Text]
     sub = concatMap (inlineErrors fileSize allowed)
+    {- the body of a footnote: one paragraph or more, of a sidenote: one
+    paragraph; paragraphs without a paragraph style, their inlines checked
+    as those of a note were (docs/adr/0263) -}
+    noteErrors footnote bs =
+      (if footnote then ["脚注の本文は一つ以上の段落です" | null bs] else ["傍注の本文は段落をちょうど一つ持ちます" | length bs /= 1])
+        <> ["注の本文には段落スタイルのない段落だけを置けます" | not (all plain bs)]
+        <> concat [spanErrors fileSize bsp <> langTagErrors blang | Block bsp _ blang _ <- bs]
+        <> concatMap sub (noteParagraphs bs)
+    plain = \case
+      Block _ _ _ (Paragraph Nothing _) -> True
+      _ -> False
     sends :: InlineF q -> Bool
     sends = \case
       Note {} -> True
@@ -219,8 +230,8 @@ linkErrors = concatMap $ \case
   Kenten _ _ xs -> linkErrors xs
   Color _ _ xs -> linkErrors xs
   CharStyle _ _ xs -> linkErrors xs
-  Note _ _ xs -> linkErrors xs
-  Sidenote _ _ xs -> linkErrors xs
+  Note _ _ bs -> concatMap linkErrors (noteParagraphs bs)
+  Sidenote _ _ bs -> concatMap linkErrors (noteParagraphs bs)
   ChannelItem _ c -> linkErrors (ciBody c)
   Lang _ _ xs -> linkErrors xs
   Resolved _ _ _ xs -> linkErrors xs
@@ -247,8 +258,8 @@ langErrors = concatMap $ \case
   Kenten _ _ xs -> langErrors xs
   Color _ _ xs -> langErrors xs
   CharStyle _ _ xs -> langErrors xs
-  Note _ _ xs -> langErrors xs
-  Sidenote _ _ xs -> langErrors xs
+  Note _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
+  Sidenote _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
   ChannelItem _ c -> langErrors (ciBody c)
   Resolved _ _ _ xs -> langErrors xs
   _ -> []

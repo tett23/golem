@@ -52,7 +52,7 @@ application/epub+zip
 </nav>
 </body>
 </html>
-== OEBPS/style.css (deflate, time 315532800, 3883 bytes)
+== OEBPS/style.css (deflate, time 315532800, 3967 bytes)
 @font-face { font-family: "golem-body-latin"; src: url("fonts/latin.otf"); }
 @font-face { font-family: "golem-body-ja"; src: url("fonts/ja.otf"); }
 @font-face { font-family: "golem-code-latin"; src: url("fonts/latin.otf"); }
@@ -78,6 +78,7 @@ strong { font-weight: bold; }
 .align-center { text-align: center; }
 .align-right { text-align: right; }
 .proof { background: #ffeb99; }
+section.notes aside p { margin-block: 0; padding-inline-start: 0; text-indent: 0; }
 ruby { ruby-align: space-around; }
 rt { ruby-align: space-around; }
 ruby.mono rt { ruby-align: center; }
@@ -162,7 +163,7 @@ code { padding-inline: 0.25em; }
 </nav>
 </body>
 </html>
-== OEBPS/chapters/01.xhtml (deflate, time 315532800, 8554 bytes)
+== OEBPS/chapters/01.xhtml (deflate, time 315532800, 8568 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -211,8 +212,8 @@ app app.o util.o</code></pre>
 <p class="ps-box">ビルドツールを自分で作るのは、車輪の再発明に見えるかもしれない。しかし、小さなツールを一つ作ってみると、既存のツールが何を判断しているのかがよく分かる。どのファイルを作り直すかの判定、作る順の決め方、同時に動かす数の制御は、どのビルドツールにも共通する三つの柱である。この本では、その三つを順に作りながら、それぞれの判断の中身を確かめていく。作るのは、シェルスクリプトで百行に満たない小さなツールである。それでも、三つの柱の考え方は、大きなビルドツールと変わらない。大きなツールが持つ機能の多くは、この三つの柱の上に、速さや使いやすさのための工夫を積み重ねたものにすぎない。たとえば、リモートのキャッシュは再ビルドの判定を、分散ビルドは同時に動かす数の制御を、それぞれ広げたものと見ることができる。三つの柱が分かっていれば、新しいツールに出会っても、それがどの柱をどう広げたものかを考えれば、使い方の見当がつく。この見当のつけ方こそ、小さなツールを作る一番の収穫である。もちろん、作ったツールをそのまま仕事に使う必要はない。仕事では、多くの人が使い、多くの不具合が直されてきたツールを使うほうが安全である。小さなツールは、読んで理解するためのものであり、大きなツールの設定を読むときの手がかりになる。手元で動く小さな見本があれば、大きなツールの説明書の一文一文が、どの判断の話をしているのかを確かめながら読める。</p>
 <section class="notes">
 <h2>注</h2>
-<aside epub:type="footnote" id="note-1"><a href="#noteref-1">1</a> グラフの頂点を、辺の向きに矛盾しない順に並べる手順。<a class="cite" href="../chapters/03.xhtml#cite-build-systems">[1]</a> は、ビルドツールをこの順の決め方と再ビルドの判定の組み合わせとして整理している。<span id="i-2-1437"></span></aside>
-<aside epub:type="footnote" id="note-2"><a href="#noteref-2">2</a> GNU make の同じ名前のオプション（<a class="cite" href="../chapters/03.xhtml#cite-make">[2]</a>）と同じ意味にしている。<span id="i-2-4914"></span></aside>
+<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> グラフの頂点を、辺の向きに矛盾しない順に並べる手順。<a class="cite" href="../chapters/03.xhtml#cite-build-systems">[1]</a> は、ビルドツールをこの順の決め方と再ビルドの判定の組み合わせとして整理している。<span id="i-2-1437"></span></p></aside>
+<aside epub:type="footnote" id="note-2"><p><a href="#noteref-2">2</a> GNU make の同じ名前のオプション（<a class="cite" href="../chapters/03.xhtml#cite-make">[2]</a>）と同じ意味にしている。<span id="i-2-4914"></span></p></aside>
 </section>
 </body>
 </html>
@@ -305,7 +306,7 @@ done &lt;deps.txt</code></pre></figure>
 <p>Internationalization and characterization of buildsystem interoperability requirements are discussed in the literature under names like reproducibility and incrementality. Unquestionably, well-understood, straightforward implementations outperform overcomplicated counterparts.</p>
 </body>
 </html>
-== OEBPS/chapters/03.xhtml (deflate, time 315532800, 9762 bytes)
+== OEBPS/chapters/03.xhtml (deflate, time 315532800, 9776 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -376,8 +377,8 @@ done app.o</code></pre>
 </ol>
 <section class="notes">
 <h2>注</h2>
-<aside epub:type="footnote" id="note-1"><a href="#noteref-1">1</a> 長くかかるターゲットを先に動かすと、全体の時間が短くなりやすい。最適な順を求める問題は難しいことが知られている（<a class="cite" href="#cite-build-systems">[1]</a> の議論を参照）。</aside>
-<aside epub:type="footnote" id="note-2"><a href="#noteref-2">2</a> 段落の行分割にも、似た選択がある。<a class="cite" href="#cite-knuth-plass">[3]</a> は、行ごとに決めるのではなく、段落の全体で最もよい分け方を探す方法を示した。</aside>
+<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> 長くかかるターゲットを先に動かすと、全体の時間が短くなりやすい。最適な順を求める問題は難しいことが知られている（<a class="cite" href="#cite-build-systems">[1]</a> の議論を参照）。</p></aside>
+<aside epub:type="footnote" id="note-2"><p><a href="#noteref-2">2</a> 段落の行分割にも、似た選択がある。<a class="cite" href="#cite-knuth-plass">[3]</a> は、行ごとに決めるのではなく、段落の全体で最もよい分け方を探す方法を示した。</p></aside>
 </section>
 </body>
 </html>

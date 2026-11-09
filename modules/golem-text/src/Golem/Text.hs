@@ -102,9 +102,10 @@ topText c = T.concat . go False Nothing
 file :: Ctx -> Document -> [Document] -> Text
 file c (Document _ bs) chapter =
   let body = topText c bs
-      notes = [(n, xs) | Document _ cbs <- chapter, Note _ n xs <- concatMap blockInlines cbs]
+      notes = [(n, noteParagraphs nb) | Document _ cbs <- chapter, Note _ n nb <- concatMap blockInlines cbs]
       noteMark n = (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
-      noteText = T.intercalate "\n" (notesTitle (cLanguage c) : [noteMark n <> " " <> inlines c xs | (n, xs) <- notes])
+      -- the first paragraph after the mark, each other on a line of its own (docs/adr/0263)
+      noteText = T.intercalate "\n" (notesTitle (cLanguage c) : [noteMark n <> " " <> T.intercalate "\n" (map (inlines c) ps) | (n, ps) <- notes])
       full
         | null notes = body
         | T.null body = noteText
@@ -191,7 +192,7 @@ block c ind (Block sp _ _ body) = case body of
       (Block _ _ _ (Paragraph Nothing is) : rest) | not (any isLineBreak is) -> T.intercalate "\n" (inlines c is : map (block inItem i) rest)
       _ -> T.intercalate "\n" (map (block inItem i) bs)
     sidenotes is =
-      T.concat ["\n※" <> T.pack (show n) <> " " <> inlines c xs | Sidenote _ n xs <- is]
+      T.concat ["\n※" <> T.pack (show n) <> " " <> T.intercalate "\n" (map (inlines c) (noteParagraphs nb)) | Sidenote _ n nb <- is]
 
 blockInlines :: Block -> [Inline]
 blockInlines (Block _ _ _ body) = case body of

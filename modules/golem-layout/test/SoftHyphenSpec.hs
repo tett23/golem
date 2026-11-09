@@ -101,5 +101,5 @@ softHyphenTests =
       testCase "a soft hyphen that is a break is not reported" $
         sites enUS [text "ta\xAD\&ble"] @?= [],
       testCase "the soft hyphens of the body of a note are reported" $
-        sites enUS [text "a", IR.Note sp 1 [text "b\xAD."]] @?= [(1, ShyNotBetweenLetters)]
+        sites enUS [text "a", IR.Note sp 1 (IR.noteBody sp [text "b\xAD."])] @?= [(1, ShyNotBetweenLetters)]
     ]

@@ -73,6 +73,7 @@ module Golem.Typeset.Flow
     codeFileSite,
     figureSite,
     noteSite,
+    noteParagraphSite,
     sidenoteSite,
   )
 where
@@ -540,7 +541,7 @@ layoutFigures reuse inp geom fonts figures = do
                 let l = Map.findWithDefault (plainLabel (fromInteger n)) (fromInteger n) pageLbls
               ]
        in case concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built))
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built))
             ds -> Left ds
 
 {- | The most grid lines a column may have with @page-lines (docs/adr ADR
@@ -581,8 +582,17 @@ adjustReason = \case
 headings taller than the rest of their columns, named by @names@
 (golem-layout ADR 0020).
 -}
-unmetWarnings :: Map Int (SrcSpan, Text) -> [PageOut] -> [Diagnostic]
-unmetWarnings names pages =
+
+-- | The block and the paragraph style of the unit of a line (docs/adr/0261).
+paraOfLine :: Built -> Int -> Maybe (SrcSpan, Text)
+paraOfLine built lid = (\(_, sp) -> (sp, styleAtSpan built sp)) <$> Map.lookupLE lid (bLineSpans built)
+
+-- | The paragraph style of the paragraph of a block, body without one (docs/adr/0261).
+styleAtSpan :: Built -> SrcSpan -> Text
+styleAtSpan built sp = fromMaybe "body" (listToMaybe [n | (_, u) <- bUnits built, uSpan u == sp, Just n <- [uParaStyle u]])
+
+unmetWarnings :: Map Int (SrcSpan, Text) -> (Int -> Maybe (SrcSpan, Text)) -> (SrcSpan -> Text) -> [PageOut] -> [Diagnostic]
+unmetWarnings names paraOf styleAt pages =
   [ d
   | p <- pages,
     u <- poUnmet p,
@@ -595,6 +605,13 @@ unmetWarnings names pages =
       TallHeading i n room ->
         [ notice "G07100" sp ("見出しが段に入りません（" <> name <> "。見出しは " <> T.pack (show n) <> " 行、段の残りは " <> T.pack (show room) <> " 行）")
         | Just (sp, name) <- [Map.lookup i names]
+        ]
+      -- G07111, G07112, G07113: the keep options not met (docs/adr/0261)
+      UnmetKeepNext sp -> [diagnostic "G07111" Warning sp ("段落スタイル " <> styleAt sp <> " の keep-with-next を守れませんでした")]
+      SplitKept i -> [notice "G07112" sp ("段落スタイル " <> name <> " の段落が段に入らないので、keep-all-lines を外して分けました") | Just (sp, name) <- [paraOf i]]
+      ShortPart part i asked placed ->
+        [ notice "G07113" sp ("段の行が足りないので、段落の" <> (if part == FirstPart then "最初" else "最後") <> "の部分を " <> T.pack (show placed) <> " 行にしました（keep-" <> (if part == FirstPart then "first" else "last") <> "-lines = " <> T.pack (show asked) <> "）")
+        | Just (sp, _) <- [paraOf i]
         ]
   ]
 
@@ -609,7 +626,7 @@ ruledNotices flow infos pages =
       else notice "G07046" (riSpan info) ("罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（" <> riOwner info <> "）")
   | f@FRuled {} <- flow,
     let ids = case frBody f of
-          RuledLines ls -> map lbId ls
+          RuledLines _ ls -> map lbId ls
           RuledHeading {} -> []
         columns = length [() | p <- pages, any (\case (_, SLine l) -> l `elem` ids; _ -> False) (poSlots p)]
         placed b = any (any (\r -> prId r == frId f && prBefore r == b) . poRules) pages
@@ -732,14 +749,14 @@ pageStarts layout = map start (pagesOf (plPages layout))
   where
     start ps = listToMaybe [lid | p <- ps, (_, s) <- poSlots p, lid <- case s of { SLine l -> [l]; SHeading l _ -> [l]; SCode l _ _ -> [l]; _ -> [] }] >>= lineStart
     -- the first part of a code block: the caption and the file name come before its lines (docs/adr/0218)
-    firstPart lid = maybe False ((== lid) . ciFirst) (Map.lookup lid (plCodes layout))
+    firstCodePart lid = maybe False ((== lid) . ciFirst) (Map.lookup lid (plCodes layout))
     lineStart lid =
       let block = snd <$> Map.lookupLE lid (plLineSpans layout)
           sets = maybe (maybe [] pure (Map.lookup lid (plLines layout))) (map snd) (Map.lookup lid (plTableLines layout))
           -- a block of no length (a heading) holds whatever of its file its line shows
           inside b c = spanFile (snd (bcSource c)) == spanFile b && bcAt c >= 0 && (spanLength b == 0 || (spanStart b <= bcAt c && bcAt c <= spanEnd b))
        in case block of
-            Just b | firstPart lid -> Just (spanFile b, spanStart b)
+            Just b | firstCodePart lid -> Just (spanFile b, spanStart b)
             Just b -> case [bcAt c | sl <- sets, Box _ c <- lineItems (slLine sl), inside b c] of
               off : _ -> Just (spanFile b, off)
               [] -> Just (spanFile b, spanStart b)
@@ -1105,8 +1122,8 @@ sidenoteDiagnostics geom book
       FigureBlock fig -> [(sp, False) | is <- concatMap blockInlineLists (figCaption fig), (sp, _) <- concatMap (inlineSites True) is]
       _ -> [x | is <- blockInlineLists b, x <- concatMap (inlineSites True) is]
     inlineSites flow = \case
-      Sidenote sp _ xs -> (sp, flow) : concatMap (inlineSites flow) xs
-      Note _ _ xs -> concatMap (inlineSites False) xs
+      Sidenote sp _ nb -> (sp, flow) : concatMap (inlineSites flow) (concat (noteParagraphs nb))
+      Note _ _ nb -> concatMap (inlineSites False) (concat (noteParagraphs nb))
       Kenten _ _ xs -> concatMap (inlineSites flow) xs
       Color _ _ xs -> concatMap (inlineSites flow) xs
       CharStyle _ _ xs -> concatMap (inlineSites flow) xs
@@ -1290,7 +1307,7 @@ akiSetOf style st = resolveAkiSet (stAkiSets style) (fromMaybe defaultAkiSetName
 0018): the item index of the mark, the key, the number and the body. The
 key is the span of the note and its place among the notes of that span.
 -}
-noteAnchors :: [Golem.Layout.Japanese.Anchor] -> [(Int, NoteId, Int, [Inline])]
+noteAnchors :: [Golem.Layout.Japanese.Anchor] -> [(Int, NoteId, Int, [[Inline]])]
 noteAnchors anchors = snd (mapAccumL key Map.empty [(i, n, sp, b) | AnchorNote i n sp b <- anchors])
   where
     key seen (i, n, sp, b) =
@@ -1401,6 +1418,10 @@ data FrameKind
     its mark is: in the tree after its mark
     -}
     FEndNote !SrcSpan !Int
+  | {- | a paragraph after the first of a note at the end of a chapter, by
+    the span of the note (docs/adr/0263): in the tree after the first
+    -}
+    FEndNoteMore !SrcSpan
   deriving stock (Eq, Show)
 
 -- | The place of the text of a unit (docs/adr ADR 0183).
@@ -1434,6 +1455,10 @@ figureSite i = [i, 7]
 -- | The place of the body of a footnote, by its key: the same wherever its mark is.
 noteSite :: NoteId -> [Int]
 noteSite (NoteId sp k) = [-8, fileNumber (spanFile sp), spanStart sp, spanEnd sp, k]
+
+-- | The place of a paragraph after the first of the body of a footnote (docs/adr/0263).
+noteParagraphSite :: NoteId -> Int -> [Int]
+noteParagraphSite k j = noteSite k <> [-1, j]
 
 -- | The place of the body of a sidenote, by its span and its number.
 sidenoteSite :: SrcSpan -> Int -> [Int]
@@ -1629,7 +1654,12 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       ns@((sp, _, _) : _) ->
         let title = notesTitle lang
          in Unit (UNotesTitle title) Nothing [Text sp title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing) Nothing (SourceHeading 2) [] 0 Nothing
-              : [Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n xs) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n))] 0 Nothing | (nsp, n, xs) <- ns]
+              -- the first paragraph after the mark, the others without one and without space between (docs/adr/0263)
+              : concat
+                [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n))] 0 Nothing
+                    : [Unit (UPara noIndent) Nothing more nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [frame 0 (FEndNoteMore nsp)] 0 Nothing | more <- rest]
+                | (nsp, n, para0 : rest) <- ns
+                ]
     {- a list of blocks inside the lists @ctx@, from the list number @n@,
     with the spaces before and after of paragraphs when @spaced@ (not in a
     definition list): in a list item, paragraphs are not indented by their
@@ -2073,21 +2103,37 @@ noteEnv fe st = (withDocStyle st (lookEnv fe (bodyLook st (pgFontSize (feGeom fe
 -- | The footnotes of a unit, each a paragraph of its own; none when the notes are at the end of the chapter (golem-driver ADR 0026).
 unitNotes :: FlowEnv -> Unit -> [Golem.Layout.Japanese.Anchor] -> [(NoteId, [Line])]
 unitNotes fe u anchors =
-  [ (k, brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines (withFileExceptions fe (spanFile (noteIdSpan k)) (noteEnv fe (uStyle u))) {ceSite = noteSite k, ceLabelInlines = noteMarkCount (uStyle u) (pgVertical (feGeom fe)) (noteIdSpan k) n} (withNoteMark (uStyle u) (pgVertical (feGeom fe)) (noteIdSpan k) n nbody)))))
+  [ (k, footnoteLines fe (withFileExceptions fe (spanFile (noteIdSpan k)) (noteEnv fe (uStyle u))) (uStyle u) k n nbody)
   | not (feNotesAtEnd fe),
     (_, k, n, nbody) <- noteAnchors anchors
   ]
 
+{- | The lines of the body of a footnote (docs/adr/0263): its paragraphs
+broken one after another at the measure, the mark of its number at the
+start of the first (golem-driver ADR 0018), the others from the start of
+the line without a mark, no indent and no space between them.
+-}
+footnoteLines :: FlowEnv -> ComposeEnv -> Style -> NoteId -> Int -> [[Inline]] -> [Line]
+footnoteLines fe env st k n ps =
+  concat
+    [ brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines env' is)))
+    | (j, para) <- zip [0 :: Int ..] ps,
+      let (env', is) =
+            if j == 0
+              then (env {ceSite = noteSite k, ceLabelInlines = noteMarkCount st (ceVertical env) (noteIdSpan k) n}, withNoteMark st (ceVertical env) (noteIdSpan k) n para)
+              else (env {ceSite = noteParagraphSite k j, ceLabelInlines = 0}, para)
+    ]
+
 -- | The sidenotes of a unit: the item index of the marker after the list marker, the span and the lines.
 unitSidenotes :: FlowEnv -> Unit -> Int -> [Golem.Layout.Japanese.Anchor] -> [(Int, SrcSpan, [Line])]
-unitSidenotes fe u shift anchors = [(i + shift, sp, sidenoteLines fe (uStyle u) sp n snBody) | AnchorSidenote i n sp snBody <- anchors]
+unitSidenotes fe u shift anchors = [(i + shift, sp, sidenoteLines fe (uStyle u) sp n (concat snBody)) | AnchorSidenote i n sp snBody <- anchors]
 
 -- | The index marks of a unit, those of its notes and sidenotes with the item of their marker.
 unitMarks :: FlowEnv -> Unit -> Int -> [Golem.Layout.Japanese.Anchor] -> [(Int, SrcSpan)]
 unitMarks fe u shift anchors =
   [(i + shift, sp) | AnchorIndex i sp _ <- anchors]
-    <> [(i + shift, sp) | not (feNotesAtEnd fe), AnchorNote i _ _ nbody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines env nbody)]
-    <> [(i + shift, sp) | AnchorSidenote i _ _ snBody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines env snBody)]
+    <> [(i + shift, sp) | not (feNotesAtEnd fe), AnchorNote i _ _ nbody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines env (concat nbody))]
+    <> [(i + shift, sp) | AnchorSidenote i _ _ snBody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines env (concat snBody))]
   where
     env = noteEnv fe (uStyle u)
 
@@ -2125,11 +2171,11 @@ anchoredByLine :: FlowEnv -> Style -> [Item] -> [Golem.Layout.Japanese.Anchor] -
 anchoredByLine fe st items anchors ls =
   let lineOf = lineIndexOfItems items ls
       env = withDocStyle st (feBodyEnv fe)
-      noteBody k n b = brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines (withFileExceptions fe (spanFile (noteIdSpan k)) env) {ceSite = noteSite k, ceLabelInlines = noteMarkCount (piStyle (feInput fe)) (ceVertical env) (noteIdSpan k) n} (withNoteMark (piStyle (feInput fe)) (ceVertical env) (noteIdSpan k) n b))))
-      marksIn b = [sp | AnchorIndex _ sp _ <- snd (composeInlines env b)]
+      footnote k = footnoteLines fe (withFileExceptions fe (spanFile (noteIdSpan k)) env) (piStyle (feInput fe)) k
+      marksIn b = [sp | AnchorIndex _ sp _ <- snd (composeInlines env (concat b))]
       atEnd = feNotesAtEnd fe
-   in ( Map.fromListWith (flip (<>)) [(lineOf i, [(k, noteBody k n b)]) | not atEnd, (i, k, n, b) <- noteAnchors anchors],
-        Map.fromListWith (flip (<>)) [(lineOf i, [(sp, sidenoteLines fe st sp n b)]) | AnchorSidenote i n sp b <- anchors],
+   in ( Map.fromListWith (flip (<>)) [(lineOf i, [(k, footnote k n b)]) | not atEnd, (i, k, n, b) <- noteAnchors anchors],
+        Map.fromListWith (flip (<>)) [(lineOf i, [(sp, sidenoteLines fe st sp n (concat b))]) | AnchorSidenote i n sp b <- anchors],
         Map.fromListWith (flip (<>)) ([(lineOf i, [sp]) | AnchorIndex i sp _ <- anchors] <> [(lineOf i, sps) | not atEnd, AnchorNote i _ _ b <- anchors, let { sps = marksIn b }, not (null sps)] <> [(lineOf i, sps) | AnchorSidenote i _ _ b <- anchors, let sps = marksIn b, not (null sps)])
       )
 
@@ -2436,10 +2482,10 @@ spaceAfterCode pitch fs infos = \case
       next : _ | Just l <- firstLineOf next -> reachesBackground pitch fs (maybe 0 snd (ciBorder ci)) (lbOverhang l)
       _ -> False
     firstLineOf = \case
-      FRuled {frBody = RuledLines (l : _)} -> Just l
+      FRuled {frBody = RuledLines _ (l : _)} -> Just l
       FRuled {frBody = RuledHeading _ _ (l : _)} -> Just l
-      FParagraph (l : _) -> Just l
-      FStanza vs | l : _ <- concat vs -> Just l
+      FParagraph _ (l : _) -> Just l
+      FStanza _ vs | l : _ <- concat vs -> Just l
       FHeading {fhLines = l : _} -> Just l
       FDefTerm (l : _) -> Just l
       FTable {ftSpaceBefore = 0, ftHeader = l : _} -> Just l
@@ -2562,7 +2608,8 @@ numberOther fe cu nb (i, u)
       UGap n -> nb {nuFlow = nuFlow nb <> [FSpace n]}
       UCode {} -> maybe nb (\cb -> numberCode u cb nb) (Map.lookup i (cuCodeBlocks cu))
       UBreak k -> nb {nuFlow = nuFlow nb <> [FBreak k]}
-      USection k start -> nb {nuFlow = nuFlow nb <> [FSection k start]}
+      -- the break before a section by the parity of its start (docs/adr/0260)
+      USection k start -> nb {nuFlow = nuFlow nb <> [FSection (OfSection k) (maybe BreakPage (\s -> if odd s then BreakRecto else BreakVerso) start)]}
       UPageControl c ->
         let control = case c of
               NoBreak -> FNoBreak (uSpan u)
@@ -2571,7 +2618,7 @@ numberOther fe cu nb (i, u)
          in nb {nuFlow = nuFlow nb <> [control]}
       UColumns set -> nb {nuFlow = nuFlow nb <> [maybe FRestoreColumns FSwitchColumns set]}
       UBlank k -> nb {nuFlow = nuFlow nb <> [FBlank (uSpan u) (fromIntegral k)]}
-      _ -> numberText fe u (cuSingles cu Map.! i) nb
+      _ -> numberText fe (partsAround cu i u) u (cuSingles cu Map.! i) nb
 
 {- | Numbers a figure; a wrapped figure with the lines beside it, and the
 rest of a paragraph cut short continues after it.
@@ -2600,7 +2647,7 @@ numberFigure fe cu i u (pf, ferrs, _, fmarks) nb = case pfExclusion pf of
             (beside, continued) = splitAt (exLines ex) allBoxes
          in nb
               { nuNext = nextId',
-                nuFlow = nuFlow nb <> [FWrapped nextId (exLines ex) (unitLabel u) fmarks beside] <> [FContinued continued | not (null continued)],
+                nuFlow = nuFlow nb <> [FWrapped nextId (exLines ex) (unitLabel u) fmarks beside] <> [FContinued (maybe defaultKeep (\(j, _, _) -> keepOf (unitAt Map.! j)) (listToMaybe (reverse paras))) continued | not (null continued)],
                 nuLines = Map.union (nuLines nb) sets,
                 nuFigures = Map.insert nextId pf (nuFigures nb),
                 nuErrors = nuErrors nb <> tooNarrow
@@ -2626,8 +2673,55 @@ numberCode u cb nb =
 of the notes, a term, an entry; a heading too large for the type area is
 G07024.
 -}
-numberText :: FlowEnv -> Unit -> Composed -> Numbered -> Numbered
-numberText fe u c nb =
+
+{- | Whether a unit is the first and the last unit of its block: the units
+of a paragraph of a style that keeps its lines share the span of the
+paragraph (docs/adr/0261).
+-}
+partsAround :: ComposedUnits -> Int -> Unit -> (Bool, Bool)
+partsAround cu i u =
+  let same j = maybe False (\v -> uSpan v == uSpan u && isParaKind (uKind v)) (Map.lookup j (cuUnits cu))
+   in (not (same (i - 1)), not (same (i + 1)))
+  where
+    isParaKind = \case
+      UPara _ -> True
+      _ -> False
+
+{- | The keep of a paragraph of a style (docs/adr/0261): keep-first-lines,
+keep-last-lines and keep-all-lines, those of body when not written.
+-}
+keepOf :: Unit -> Keep
+keepOf u = case paraStyle (uStyle u) (uParaStyle u) of
+  Just d -> Keep (fromMaybe 2 (psKeepFirstLines d)) (fromMaybe 2 (psKeepLastLines d)) (fromMaybe False (psKeepAllLines d))
+  Nothing -> defaultKeep
+
+{- | Whether a paragraph takes keep-with-next and page-break
+(docs/adr/0261): one at the top of the document, not in a list, a
+definition list, a note at the end of a chapter or a list of a channel.
+-}
+topParagraph :: Unit -> Bool
+topParagraph u = null (uLists u) && all (\(Frame _ k _) -> k == FPara) (uFrames u)
+
+{- | The start of a paragraph of a style with page-break, and its
+keep-with-next (docs/adr/0261), for a paragraph at the top of the document.
+-}
+paraStartAndKeep :: Unit -> (Maybe BreakKind, Int)
+paraStartAndKeep u
+  | not (topParagraph u) = (Nothing, 0)
+  | otherwise = case paraStyle (uStyle u) (uParaStyle u) of
+      Just d ->
+        ( case psPageBreak d of
+            Just StartColumn -> Just BreakColumn
+            Just StartPage -> Just BreakPage
+            Just StartRecto -> Just BreakRecto
+            Just StartVerso -> Just BreakVerso
+            _ -> Nothing,
+          fromMaybe 0 (psKeepWithNext d)
+        )
+      Nothing -> (Nothing, 0)
+
+numberText :: FlowEnv -> (Bool, Bool) -> Unit -> Composed -> Numbered -> Numbered
+numberText fe (firstOfBlock, lastOfBlock) u c nb =
   let inp = feInput fe
       geom = feGeom fe
       fs = pgFontSize geom
@@ -2643,20 +2737,27 @@ numberText fe u c nb =
         _ -> 1
       hb = headingBlock fs pitch size (length ls) least
       ruledOf = FRuled nextId (ruleSide geom True <$> fst (uRules u)) (ruleSide geom False <$> snd (uRules u)) False (RuleGrid pitch fs) 0
+      kp = keepOf u
       flowOf = case uKind u of
         UHeading _ _ recto | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledHeading recto (hbSpan hb) boxes)]
-        UPara _ | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledLines boxes)]
+        UPara _ | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledLines kp boxes)]
         -- an entry of the table of contents with the rules of its style (docs/adr/0264)
-        UTocEntry {} | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledLines boxes)]
+        UTocEntry {} | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledLines kp boxes)]
         UHeading l _ recto -> [FHeading l recto (hbSpan hb) boxes]
         UNotesTitle _ -> [FHeading 2 False (hbSpan hb) boxes]
         UTerm _ -> [FDefTerm boxes]
-        _ -> [FParagraph boxes]
+        _ -> [FParagraph kp boxes]
+      -- the start before the first part of a paragraph and the keep-with-next after its last (docs/adr/0261)
+      (start, keepNext) = case uKind u of
+        UPara _ -> paraStartAndKeep u
+        _ -> (Nothing, 0)
+      before = [FSection (OfParagraph (uSpan u)) k | firstOfBlock, Just k <- [start]]
+      after = [FKeepNext (uSpan u) keepNext | lastOfBlock, keepNext > 0]
       -- a verse line after the first joins the stanza of the lines before it (docs/adr/0180)
       flow' = case (uStanza u, unsnoc (nuFlow nb)) of
-        (Just i, Just (earlier, FStanza vs)) | i > 0 -> earlier <> [FStanza (vs <> [boxes])]
-        (Just _, _) -> nuFlow nb <> [FStanza [boxes]]
-        _ -> nuFlow nb <> flowOf
+        (Just i, Just (earlier, FStanza k vs)) | i > 0 -> earlier <> [FStanza k (vs <> [boxes])] <> after
+        (Just _, _) -> nuFlow nb <> before <> [FStanza kp [boxes]] <> after
+        _ -> nuFlow nb <> before <> flowOf <> after
       (headAcc', errs') = case uKind u of
         -- the title of the notes is in neither the headings nor the running heads (golem-driver ADR 0026)
         k
@@ -2778,8 +2879,8 @@ inlinesReferToPage = any $ \case
   Kenten _ _ is -> inlinesReferToPage is
   Color _ _ is -> inlinesReferToPage is
   CharStyle _ _ is -> inlinesReferToPage is
-  Note _ _ is -> inlinesReferToPage is
-  Sidenote _ _ is -> inlinesReferToPage is
+  Note _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
+  Sidenote _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
   Link _ _ is -> inlinesReferToPage is
   Lang _ _ is -> inlinesReferToPage is
   ChannelItem _ ci -> inlinesReferToPage (ciBody ci)
@@ -2802,11 +2903,11 @@ ruledLinks = go Nothing
       f : rest -> f : go (Just f) rest
       [] -> []
     firstLine = \case
-      FRuled {frBody = RuledLines (l : _)} -> Just l
+      FRuled {frBody = RuledLines _ (l : _)} -> Just l
       FRuled {frBody = RuledHeading _ _ (l : _)} -> Just l
-      FParagraph (l : _) -> Just l
-      FStanza vs | l : _ <- concat vs -> Just l
-      FContinued (l : _) -> Just l
+      FParagraph _ (l : _) -> Just l
+      FStanza _ vs | l : _ <- concat vs -> Just l
+      FContinued _ (l : _) -> Just l
       FHeading {fhLines = l : _} -> Just l
       FDefTerm (l : _) -> Just l
       _ -> Nothing

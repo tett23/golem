@@ -354,6 +354,38 @@ space-after = 1
 段の先頭に来た空きは、捨てます。
 前後のアキは、リストの項目と定義リストの中の段落には適用されません。
 
+@label keep-options
+### 段落を段で分ける位置
+
+段落スタイルの五つのキーで、段落を段やページでどう分けるかを決めます。
+InDesign の段落分離禁止オプションに当たります。
+
+- [code: keep-first-lines]：段で分けるとき、前の段に残す行の数の最小です。既定は 2 です。
+- [code: keep-last-lines]：段で分けるとき、次の段に送る行の数の最小です。既定は 2 です。
+- [code: keep-all-lines]：[code: true] にすると、段落を段で分けません。
+- [code: keep-with-next]：段落の最後の行を、次に続くものの最初の部分と同じ段に置きます。値は 0 から 5 で、次が段落なら、その最初の少なくともその行数を同じ段に置きます。
+- [code: page-break]：段落を始める位置です。[code: "column"] は次の段、[code: "page"] は次のページ、[code: "recto"] は次の奇数ページ、[code: "verso"] は次の偶数ページです。既定の [code: "any"] は、どこからでも始めます。
+
+既定の値では、段落の最初の一行だけを段の末尾に残さず、最後の一行だけを次の段の先頭に送りません。
+[code: line-breaks = "keep"] の段落（連）では、行の数を詩の行の数で数えます。
+
+詩の連を段で分けないで組むには、次のように書きます。
+
+```toml
+[paragraph-styles.stanza]
+based-on = "verse"
+keep-all-lines = true
+```
+
+段に入らない長さの段落には、[code: keep-all-lines] を当てても分けて組み、お知らせ（G07112）が出ます。
+空の段で行が足りず、決めた行の数より短い部分を置いたときも、お知らせ（G07113）が出ます。
+[code: keep-with-next] を守れなかったときは、警告（G07111）が出ます。
+
+[code: page-break] は、空の段や空のページでは何もしません。
+[code: @page-break] の直後に [code: page-break = "page"] の段落を書いても、白ページはできません。
+[code: keep-with-next] と [code: page-break] は、文書の最上位の段落にだけ当てます。
+リストの項目、定義リストの中の段落、注の本文には当てません。
+
 @label kerning
 ## 文字の送り
 

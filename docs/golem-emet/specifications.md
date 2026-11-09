@@ -171,7 +171,7 @@ pub fn total :: List Nat -> Nat
 
 | データ型 | コンストラクタ |
 | --- | --- |
-| `Inline.Inline` | `Text String`、`Ruby (List RubySegment)`、`Kenten (Maybe String) Inlines`、`Color String Inlines`、`CharStyle String Inlines`、`Tcy String`、`Number Int (Maybe NumberStyle)`、`Ref RefKind String`、`Deferred Deferred`、`Note Inlines`、`Sidenote Inlines`、`IndexMark (List String) (List String)`、`Cite String`、`ProofComment String`、`LineBreak`、`Aki AkiAmount`、`ChannelItem String (Maybe String) (Maybe String) Inlines`、`Link String Inlines`（[docs/adr/0182](../adr/0182-external-links.md)）、`Lang String Inlines`（[docs/adr/0187](../adr/0187-inline-language-switch.md)。組み込みの `plain` は中の文字を返す） |
+| `Inline.Inline` | `Text String`、`Ruby (List RubySegment)`、`Kenten (Maybe String) Inlines`、`Color String Inlines`、`CharStyle String Inlines`、`Tcy String`、`Number Int (Maybe NumberStyle)`、`Ref RefKind String`、`Deferred Deferred`、`Note Blocks`、`Sidenote Blocks`（本文は段落の並び。[docs/adr/0263](../adr/0263-notes-with-more-than-one-paragraph.md)）、`IndexMark (List String) (List String)`、`Cite String`、`ProofComment String`、`LineBreak`、`Aki AkiAmount`、`ChannelItem String (Maybe String) (Maybe String) Inlines`、`Link String Inlines`（[docs/adr/0182](../adr/0182-external-links.md)）、`Lang String Inlines`（[docs/adr/0187](../adr/0187-inline-language-switch.md)。組み込みの `plain` は中の文字を返す） |
 | `Inline.RubySegment` | `RubySegment Inlines (Maybe String)`（親文字と読み） |
 | `Inline.NumberStyle` | `Kanji`、`KanjiDigits`、`TateChuYoko` |
 | `Inline.RefKind` | `RefNumber`、`RefTitle`、`RefPage` |
@@ -208,7 +208,7 @@ ADR は注と傍注の本文を `Blocks` と書くが、ABI と意味論 IR の�
 | `Inline.color` | `String -> Inlines -> Inlines` | 色 |
 | `Inline.kenten` | `Inlines -> Inlines` | 既定の形の圏点 |
 | `Inline.tcy` | `String -> Inlines` | 縦中横 |
-| `Inline.note` | `Inlines -> Inlines` | 脚注 |
+| `Inline.note` | `Inlines -> Inlines` | 本文を段落スタイルのない段落一つとする脚注 |
 | `Inline.plain` | `Inlines -> String` | テキスト、ルビの親文字、圏点と色と文字スタイルの中身、縦中横、数をつないだ文字列 |
 | `Block.paragraph` | `Inlines -> Blocks` | 段落 |
 | `Block.styled` | `String -> Inlines -> Blocks` | 段落スタイルを付けた段落 |

@@ -26,6 +26,8 @@ module Golem.Project.Style
     ParaAlign (..),
     alignValues,
     ParaStyleDef (..),
+    ParaStart (..),
+    paraStartValues,
     CodeStyle (..),
     CaptionPosition (..),
     defaultCodeStyle,
@@ -333,9 +335,29 @@ data ParaStyleDef = ParaStyleDef
     -- | the end of every line (docs/adr/0189)
     psEndIndent :: !(Maybe Dim),
     -- | the OpenType features, added after the parent's (docs/adr/0268)
-    psFeatures :: ![Feature]
+    psFeatures :: ![Feature],
+    -- | keep with the first part of what follows, of so many lines; 0 not (docs/adr/0261)
+    psKeepWithNext :: !(Maybe Int),
+    -- | not broken between columns (docs/adr/0261)
+    psKeepAllLines :: !(Maybe Bool),
+    -- | the fewest lines of the first and the last part when broken (docs/adr/0261)
+    psKeepFirstLines :: !(Maybe Int),
+    psKeepLastLines :: !(Maybe Int),
+    -- | where the paragraph starts (docs/adr/0261)
+    psPageBreak :: !(Maybe ParaStart)
   }
   deriving stock (Eq, Show)
+
+{- | Where a paragraph of a style starts (docs/adr/0261): anywhere, the
+next column, the next page, the next odd page, the next even page.
+golem-typeset maps it to the starts of the layout.
+-}
+data ParaStart = StartAnywhere | StartColumn | StartPage | StartRecto | StartVerso
+  deriving stock (Eq, Show, Enum, Bounded)
+
+-- | The values of page-break of a paragraph style, in the order of 'ParaStart' (docs/adr/0261).
+paraStartValues :: [Text]
+paraStartValues = ["any", "column", "page", "recto", "verso"]
 
 {- | [code] and [code.colors] (golem-driver ADR 0023): the format of the
 listing numbers, whether code blocks have line numbers, the swatches of
@@ -406,7 +428,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
@@ -424,7 +446,13 @@ bodyDefaults =
       psAlign = Just ParaLeftJustified,
       psSpaceBefore = Just 0,
       psSpaceAfter = Just 0,
-      psEndIndent = Just (Zw 0)
+      psEndIndent = Just (Zw 0),
+      -- the rule before docs/adr/0261: no first or last line alone, anywhere
+      psKeepWithNext = Just 0,
+      psKeepAllLines = Just False,
+      psKeepFirstLines = Just 2,
+      psKeepLastLines = Just 2,
+      psPageBreak = Just StartAnywhere
     }
 
 {- | An aki amount (docs/adr ADR 0019): a name (ベタ, 全角, 二分, 三分, 四分,
@@ -761,6 +789,11 @@ overPara u b =
     (psSpaceAfter u <|> psSpaceAfter b)
     (psEndIndent u <|> psEndIndent b)
     (psFeatures b <> psFeatures u)
+    (psKeepWithNext u <|> psKeepWithNext b)
+    (psKeepAllLines u <|> psKeepAllLines b)
+    (psKeepFirstLines u <|> psKeepFirstLines b)
+    (psKeepLastLines u <|> psKeepLastLines b)
+    (psPageBreak u <|> psPageBreak b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -1835,8 +1868,22 @@ instance FromValue ParaStyleDef where
     safter <- optKeyOf "space-after" (withValue (\l x -> if x < 0 then failAt l "space-after は 0 以上です" else pure x))
     endInd <- dimKey "end-indent"
     fs <- featuresKey
+    -- the keep options (docs/adr/0261): a negative number is G02103, as of any natural number
+    kwn <- optKeyOf "keep-with-next" (keepCount 0 (Just 5))
+    kal <- optKey "keep-all-lines"
+    kfl <- optKeyOf "keep-first-lines" (keepCount 1 Nothing)
+    kll <- optKeyOf "keep-last-lines" (keepCount 1 Nothing)
+    pbk <- enumKey "page-break" paraStartValues
     let align = al >>= \v -> lookup v (zip alignValues [minBound .. maxBound])
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw rb ra align sbefore safter endInd fs)
+        start = pbk >>= \v -> lookup v (zip paraStartValues [minBound .. maxBound])
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw rb ra align sbefore safter endInd fs kwn kal kfl kll start)
+    where
+      keepCount :: Natural -> Maybe Natural -> Value' l -> Matcher l Int
+      keepCount lo hi v =
+        naturalIntOf v >>= \n ->
+          if n < lo || maybe False (n >) hi
+            then failAt (valueAnn v) (maybe (show lo <> " 以上の整数を書きます: " <> show n) (\h -> show lo <> " から " <> show h <> " までの整数を書きます: " <> show n) hi)
+            else pure (fromIntegral n)
 
 {- | A dimension that may be negative, read in its key so that an error is
 at the value and names the key (golem-project ADR 0008).
@@ -2590,7 +2637,12 @@ codeStyleChecks s =
             ("align", isJust (psAlign d)),
             ("space-before", isJust (psSpaceBefore d)),
             ("space-after", isJust (psSpaceAfter d)),
-            ("end-indent", isJust (psEndIndent d))
+            ("end-indent", isJust (psEndIndent d)),
+            ("keep-with-next", isJust (psKeepWithNext d)),
+            ("keep-all-lines", isJust (psKeepAllLines d)),
+            ("keep-first-lines", isJust (psKeepFirstLines d)),
+            ("keep-last-lines", isJust (psKeepLastLines d)),
+            ("page-break", isJust (psPageBreak d))
           ],
         written
       ]
@@ -2835,7 +2887,8 @@ readLocal kvs = run (Table (table [(k, value k v) | (k, v) <- kvs]))
       Failure es -> Left (map message es)
       Success [] a -> Right a
       Success ws _ -> Left (map message ws)
-    message (MatchMessage _ path msg) = (codeOf path, schemaMessage path msg)
+    -- a negative number at a natural key is G02103 (docs/adr ADR 0102, docs/adr/0261)
+    message (MatchMessage _ path msg) = (if msg == "integer out of range for Natural" then "G02103" else codeOf path, schemaMessage path msg)
     codeOf = \case
       ScopeKey k : _ | k `elem` featureKeys -> "G03021"
       -- an element of features that does not read (docs/adr/0268)
@@ -3167,7 +3220,12 @@ paraStyleNode =
         ("first-line-indent", dim),
         ("end-indent", dim),
         ("regex-styles", NArray regexStyleNode),
-        ("aki-set", ref AkiSets)
+        ("aki-set", ref AkiSets),
+        ("keep-with-next", int),
+        ("keep-all-lines", bool),
+        ("keep-first-lines", int),
+        ("keep-last-lines", int),
+        ("page-break", enum paraStartValues)
       ]
         <> featureNodes
         <> [ ("background", ref Swatches),

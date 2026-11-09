@@ -343,3 +343,25 @@ P1 は、合わせた 4 行が残りの 2 行にないので、見出しを次�
 
 2026-11-09 に、alloy6 6.2.0 で走らせた。
 どちらも手元で 3 秒ほどで終わるので、`expected.txt` に挙げた。
+
+### [docs/adr/0261](../../adr/0261-keep-options-of-paragraph-styles.md) のコマンド
+
+段落スタイルの分け方の欄を調べるために、段落の部分集合 `Kept`（`keep-first-lines` の `kf` と `keep-last-lines` の `kl` を 1 から 3 で持つ）と `AllLines`（`keep-all-lines`）を足した。
+どちらにも入らない段落は、既定の 2 と 2 を持つ。
+既定の段落だけの入力では、今までのコマンドの結果は変わらない。
+
+| 述語 | 規則 |
+| --- | --- |
+| `keepFirst` | 分けた段落の最初の部分は `keep-first-lines` 行以上である。空の段から置いた段落では除く（K1） |
+| `keepLast` | 分けた段落の最後の部分は `keep-last-lines` 行以上である。空の段から置いた段落では除く（K2） |
+| `keepAll` | `keep-all-lines` の段落は分けない。空の段から置いた段落では除く（K3） |
+
+| コマンド | 調べること | 結果 |
+| --- | --- | --- |
+| `keepNone` | `base`、`keepFirst`、`keepLast`、`keepAll` を満たす配置のない入力があるか | なし |
+| `keepDefaultDiffers` | 既定の段落だけの入力で、`orphan` と `widow` の組と、`keepFirst` と `keepLast` の組の一方だけを満たす配置があるか | なし |
+| `keepAllSome` | 空でない段に `keep-all-lines` の段落が来る入力で、四つを満たす配置があるか（モデルが空でないこと） | あり |
+
+`keepDefaultDiffers` がないので、既定の値の二つの述語は孤立行と寡婦行の規則と同じである。
+2026-11-10 に、alloy6 6.2.0 で走らせた。
+三つとも手元で数十秒で終わるので、`expected.txt` に挙げた。

@@ -31,6 +31,14 @@ module PaginateInvariants
     p3BlankNoOverflow,
     p4BlankWithNext,
     p5BlankBeforeWaiting,
+    k1FirstPart,
+    k2LastPart,
+    k3KeepAll,
+    k4KeepNext,
+    k5Start,
+    k6NoExtraStart,
+    keepInvariants,
+    keepBreaches,
     pl1Parity,
     pl2Continues,
     pl3SectionStart,
@@ -48,9 +56,11 @@ import Data.List (sortOn, tails)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, listToMaybe, mapMaybe)
+import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.PageLabel (PageLabel (..), Section (..))
 import Golem.Layout.Paginate
 import Golem.Syntax (SrcSpan)
+import PaginateEnum (startOfKind)
 
 {- | The invariants of docs/adr/0204 and of golem-layout ADR 0025, 0026,
 0043, 0044 and 0047, by their numbers: P9 is P9′ of golem-layout ADR
@@ -58,7 +68,7 @@ import Golem.Syntax (SrcSpan)
 PL1, PL2, PL3 and PL7 are I1, I2, I3 and I7 of docs/adr/0260, of the
 page labels and the breaks before sections.
 -}
-data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5 | P9 | P11 | W3 | PL1 | PL2 | PL3 | PL7
+data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5 | P9 | P11 | W3 | PL1 | PL2 | PL3 | PL7 | K1 | K2 | K3 | K4 | K5 | K6
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken: the lines or figures concerned, and how.
@@ -94,13 +104,27 @@ invariants separator =
 breaches :: Int -> Check
 breaches separator flows ps = concatMap (\(_, c) -> c flows ps) (invariants separator)
 
+{- | The invariants of the inputs of the keep options (docs/adr/0261): those
+of 'invariants' with I4 and I5 replaced by K1 and K2, which read the keep
+of each paragraph, and K3 to K6.
+-}
+keepInvariants :: Int -> [(Invariant, Check)]
+keepInvariants separator =
+  [(i, c) | (i, c) <- invariants separator, i `notElem` [I4, I5]]
+    <> [(K1, k1FirstPart), (K2, k2LastPart), (K3, k3KeepAll), (K4, k4KeepNext), (K5, k5Start), (K6, k6NoExtraStart)]
+
+-- | The breaches of 'keepInvariants'.
+keepBreaches :: Int -> Check
+keepBreaches separator flows ps = concatMap (\(_, c) -> c flows ps) (keepInvariants separator)
+
 -- the input
 
 -- | The lines of a flow.
 flowLines :: Flow -> [LineBox]
 flowLines = \case
-  FParagraph ls -> ls
-  FContinued ls -> ls
+  FParagraph _ ls -> ls
+  FContinued _ ls -> ls
+  FStanza _ vs -> concat vs
   FDefTerm ls -> ls
   FHeading {fhLines = ls} -> ls
   _ -> []
@@ -195,7 +219,7 @@ i2NoOverflow :: Int -> Check
 i2NoOverflow separator flows ps =
   let spans = headingSpans flows
       figures = Map.fromList (inputFigures flows)
-      firstLines = [l | FParagraph (l : _) <- flows]
+      firstLines = [l | FParagraph _ (l : _) <- flows]
       extent = \case
         SHeading l _ -> Map.findWithDefault 1 l spans
         SFigure i -> Map.findWithDefault 1 i figures
@@ -257,7 +281,7 @@ i3Order flows ps =
 
 -- | The paragraphs of two lines or more.
 paragraphs :: [Flow] -> [[Int]]
-paragraphs flows = [map lbId ls | FParagraph ls <- flows, length ls >= 2]
+paragraphs flows = [map lbId ls | FParagraph _ ls <- flows, length ls >= 2]
 
 {- | I4: the first line of a paragraph of two lines or more is not left
 alone at the end of a column with the rest in a later column, unless
@@ -311,12 +335,12 @@ i6HeadingKept flows ps =
       isHeading = \case
         FHeading {fhRecto = False} -> True
         _ -> False
-      firstPart ls = if length ls <= 3 then ls else take 2 ls
+      firstOf kp ls = take (firstPart kp True (length ls)) ls
       kept rest =
         let run = takeWhile isHeading rest
             after = drop (length run) rest
             para = case after of
-              FParagraph ls : _ -> map lbId (firstPart ls)
+              FParagraph kp ls : _ -> map lbId (firstOf kp ls)
               _ -> []
          in mapMaybe (fmap lbId . firstLine) run <> para
       firstLine f = case flowLines f of
@@ -368,7 +392,7 @@ i8Recto flows ps =
 
 -- | The sections of a flow, of no notation: the page labels need only their starts.
 flowSections :: [Flow] -> Map Int Section
-flowSections flows = Map.fromList [(i, Section start Nothing) | FSection i start <- flows]
+flowSections flows = Map.fromList [(i, Section (startOfKind k) Nothing) | FSection (OfSection i) k <- flows]
 
 -- | The label of each page, by its number.
 labelsOf :: [Flow] -> [PageOut] -> [(Int, PageLabel)]
@@ -406,7 +430,7 @@ is numbered its start; of one without, one more than the page before, or
 pl3SectionStart :: Check
 pl3SectionStart flows ps =
   let ls = Map.fromList (labelsOf flows ps)
-      starts = Map.fromList [(i, start) | FSection i start <- flows]
+      starts = Map.fromList [(i, startOfKind k) | FSection (OfSection i) k <- flows]
    in [ Breach PL3 [] ("page " <> show p <> " of section " <> show s <> " is numbered " <> show (plNumber l))
       | (p, ss@(_ : _)) <- Map.toList (firstsOf ps),
         let s = last ss,
@@ -434,10 +458,193 @@ pl7SectionBreak flows ps =
               [Breach PL7 [] ("a block before section " <> show i <> " is on page " <> show n <> ", not before " <> show f) | n <- before, n >= f]
                 <> [Breach PL7 [] ("a block after section " <> show i <> " is on page " <> show n <> ", before " <> show f) | n <- after, n < f]
             Nothing -> [Breach PL7 [] ("section " <> show i <> " has no page, a block after it is on page " <> show n) | n <- take 1 after]
-        | (k, FSection i _) <- zip [0 :: Int ..] flows,
+        | (k, FSection (OfSection i) _) <- zip [0 :: Int ..] flows,
           let before = concatMap pagesOfFlow (take k flows)
               after = concatMap pagesOfFlow (drop (k + 1) flows)
         ]
+
+-- the keep options of paragraph styles (docs/adr/0261)
+
+-- | The paragraphs and stanzas of a flow: their keep, and their verse lines (a line each for a paragraph).
+keptBlocks :: [Flow] -> [(Keep, [[Int]])]
+keptBlocks flows =
+  [(kp, [[lbId l] | l <- ls]) | FParagraph kp ls <- flows, not (null ls)]
+    <> [(kp, map (map lbId) vs) | FStanza kp vs <- flows, not (null vs)]
+
+{- | The parts of a block: for each column it is placed in, in order, the
+column, the verse lines whose first line is there, whether the column
+held nothing but headings and figures before the first of them ("from an
+empty column"), and the column.
+-}
+partsOf :: [PageOut] -> [[Int]] -> [(Int, Int, Bool, PageOut)]
+partsOf ps verses =
+  let places = linePlaces ps
+      firsts = [(c, k, p) | (v : _) <- verses, Just ((c, k), p) <- [Map.lookup v places]]
+      grouped = foldr (\(c, k, p) acc -> case acc of ((c', n, _, _) : more) | c' == c -> (c, n + 1, k, p) : more; _ -> (c, 1 :: Int, k, p) : acc) [] firsts
+   in [(c, n, all (\sl -> isHeadingSlot sl || isFigureSlot sl) (slotsBefore p k), p) | (c, n, k, p) <- grouped]
+
+-- | Whether a slot holds a figure.
+isFigureSlot :: Slotted -> Bool
+isFigureSlot = \case
+  SFigure _ -> True
+  SPageFigure _ -> True
+  _ -> False
+
+-- | Whether the output records an unmet control.
+recordsUnmet :: [PageOut] -> Unmet -> Bool
+recordsUnmet ps u = any (elem u . poUnmet) ps
+
+{- | K1: the first part of a block broken into two parts or more has
+kFirst verse lines or more, unless it is placed from an empty column and
+the output records its 'ShortPart'.
+-}
+k1FirstPart :: Check
+k1FirstPart flows ps =
+  [ Breach K1 (concat (take n vs)) ("the first part of the block of line " <> show pid <> " has " <> show n <> " verse lines, fewer than " <> show (kFirst kp))
+  | (kp, vs@((pid : _) : _)) <- keptBlocks flows,
+    (_, n, fromEmpty, _) : _ : _ <- [partsOf ps vs],
+    n < kFirst kp,
+    not (fromEmpty && recordsUnmet ps (ShortPart FirstPart pid (kFirst kp) n))
+  ]
+
+{- | K2: the last part of a block broken into two parts or more has kLast
+verse lines or more, unless the part before it is placed from an empty
+column, its column holds nothing of the flow after its headings but lines
+of the block, and the output records its 'ShortPart'.
+-}
+k2LastPart :: Check
+k2LastPart flows ps =
+  [ Breach K2 (concat (drop (length vs - n) vs)) ("the last part of the block of line " <> show pid <> " has " <> show n <> " verse lines, fewer than " <> show (kLast kp))
+  | (kp, vs@((pid : _) : _)) <- keptBlocks flows,
+    let parts = partsOf ps vs,
+    length parts >= 2,
+    let (_, n, _, _) = last parts
+        (_, _, fromEmpty, pb) = last (init parts)
+        own = all ((\sl -> isHeadingSlot sl || (all (`elem` concat vs) (slotLines sl) && not (null (slotLines sl)))) . snd) (poSlots pb),
+    n < kLast kp,
+    not (fromEmpty && own && recordsUnmet ps (ShortPart LastPart pid (kLast kp) n))
+  ]
+
+{- | K3: a block of keep-all-lines is in one column, unless its first part
+is placed from an empty column and the output records its 'SplitKept'.
+-}
+k3KeepAll :: Check
+k3KeepAll flows ps =
+  [ Breach K3 [pid] ("the block of line " <> show pid <> " of keep-all-lines is in " <> show (length parts) <> " columns")
+  | (kp, vs@((pid : _) : _)) <- keptBlocks flows,
+    kAll kp,
+    let parts = partsOf ps vs,
+    (_, _, fromEmpty, _) : _ : _ <- [parts],
+    not (fromEmpty && recordsUnmet ps (SplitKept pid))
+  ]
+
+{- | The flows after a keep-with-next past which the next block is found:
+the controls of page breaks, the spaces, the blank lines, the breaks and
+the starts.
+-}
+passedByKeep :: Flow -> Bool
+passedByKeep = \case
+  FSpace _ -> True
+  FNeedLines {} -> True
+  FAdjustLines {} -> True
+  FNoBreak _ -> True
+  FKeepNext {} -> True
+  FBlank {} -> True
+  FBreak _ -> True
+  FSection {} -> True
+  _ -> False
+
+{- | K4: for a keep-with-next of n lines after a paragraph or a stanza P,
+exactly one of: the last line of P and the first part of the block after
+it (of a paragraph or a stanza, its first part made at least n lines; the
+first line or figure of anything else) are in one column, and the output
+records 'UnmetKeepNext'.
+-}
+k4KeepNext :: Check
+k4KeepNext flows ps =
+  [ Breach K4 [] ("the keep-with-next " <> show sp <> (if held then " is held and recorded" else " is not held and not recorded"))
+  | (k, FKeepNext sp n) <- zip [0 :: Int ..] flows,
+    Just prev <- [lastText (take k flows)],
+    l <- take 1 (reverse (flowLines prev)),
+    let after = drop (k + 1) flows
+        target = colOfLine (lbId l)
+        firstOf kp len = max (firstPart kp True len) (min n len)
+        nextCols = case dropWhile passedByKeep after of
+          FParagraph kp ls : _ -> map (colOfLine . lbId) (take (firstOf kp (length ls)) ls)
+          FContinued kp ls : _ -> map (colOfLine . lbId) (take (max (firstPart kp False (length ls)) (min n (length ls))) ls)
+          FStanza kp vs : _ -> map (colOfLine . lbId) (concat (take (firstOf kp (length vs)) vs))
+          FFigure i _ _ _ : _ -> [fst <$> Map.lookup i (figurePlaces ps)]
+          b : _ -> [colOfLine (lbId x) | x <- take 1 (flowLines b)]
+          [] -> [Nothing]
+        held = isJust target && not (null nextCols) && all (== target) nextCols,
+    held == recordsUnmet ps (UnmetKeepNext sp)
+  ]
+  where
+    colOfLine i = fst . fst <$> Map.lookup i (linePlaces ps)
+    lastText before = case reverse (filter (not . passedByKeep) before) of
+      f@FParagraph {} : _ -> Just f
+      f@FStanza {} : _ -> Just f
+      _ -> Nothing
+
+-- | Each start of a paragraph and the first line of the paragraph after it, with the flows before it.
+startsOf :: [Flow] -> [([Flow], BreakKind, Int)]
+startsOf flows =
+  [ (take k flows, kind, lbId l)
+  | (k, FSection (OfParagraph _) kind) <- zip [0 ..] flows,
+    l : _ <- [concatMap flowLines (take 1 (dropWhile passedByKeep (drop (k + 1) flows)))]
+  ]
+
+{- | K5: the first line of a paragraph after a start of a column has before
+it in its column nothing but figures; of a page, nothing but figures in
+any column of its page before it; of a recto or a verso, on an odd or an
+even page too.
+-}
+k5Start :: Check
+k5Start flows ps =
+  [ Breach K5 [l] ("line " <> show l <> " after a start of " <> show kind <> " is on page " <> show (poNumber p) <> " column " <> show (poColumn p) <> " after " <> show k <> " slots")
+  | (_, kind, l) <- startsOf flows,
+    Just ((_, k), p) <- [Map.lookup l (linePlaces ps)],
+    let columnClear = all isFigureSlot (slotsBefore p k)
+        pageClear = columnClear && and [all (isFigureSlot . snd) (poSlots q) | q <- ps, poNumber q == poNumber p, poColumn q < poColumn p]
+        ok = case kind of
+          BreakColumn -> columnClear
+          BreakPage -> pageClear
+          BreakRecto -> pageClear && odd (poNumber p)
+          BreakVerso -> pageClear && even (poNumber p),
+    not ok
+  ]
+
+{- | K6: a start goes no further than it must: a column to the column the
+flow came to (that of the last line or figure placed before it, or the
+first column), when that holds nothing else but figures, or to the next
+column; a page to the page the flow came to, when it holds nothing else
+but figures, or to the next page; a recto or a verso to the first page of
+its parity from there. Starts after a break or another start are not
+judged.
+-}
+k6NoExtraStart :: Check
+k6NoExtraStart flows ps =
+  [ Breach K6 [l] ("line " <> show l <> " after a start of " <> show kind <> " went past the column the flow came to")
+  | (before, kind, l) <- startsOf flows,
+    not (any (\case FBreak _ -> True; FSection {} -> True; _ -> False) (takeWhile passedByKeep (reverse before))),
+    Just ((c, _), p) <- [Map.lookup l (linePlaces ps)],
+    let placedBefore = [pl | f <- before, pl <- placesOf f]
+        cols = ordered ps
+        (came, cameP) = case placedBefore of
+          [] -> (0, 1)
+          _ -> let (c0, _) = maximum placedBefore in (c0, poNumber (cols !! c0))
+        firstPageFrom q par = if par q then q else q + 1
+        -- the page the flow came to, or the next when that one holds something
+        froms = [cameP, cameP + 1]
+        ok = case kind of
+          BreakColumn -> c == came || c == came + 1
+          BreakPage -> poNumber p `elem` froms
+          BreakRecto -> poNumber p `elem` map (`firstPageFrom` odd) froms
+          BreakVerso -> poNumber p `elem` map (`firstPageFrom` even) froms,
+    not ok
+  ]
+  where
+    placesOf f = [pl | i <- map lbId (flowLines f), Just (pl, _) <- [Map.lookup i (linePlaces ps)]] <> [pl | FFigure i _ _ _ <- [f], Just pl <- [Map.lookup i (figurePlaces ps)]]
 
 -- need-lines and blank lines (golem-layout ADR 0025)
 
@@ -631,10 +838,10 @@ ownedBy f s = case s of
 -- | The lines of a block, in their order.
 blockLines :: Flow -> [LineBox]
 blockLines = \case
-  FStanza vs -> concat vs
+  FStanza _ vs -> concat vs
   FTable {ftHeader = h, ftRows = rows, ftCaption = c} -> c <> h <> concat rows
   FCode {fcRows = ls} -> ls
-  FRuled {frBody = RuledLines ls} -> ls
+  FRuled {frBody = RuledLines _ ls} -> ls
   FRuled {frBody = RuledHeading {rhLines = ls}} -> ls
   f -> flowLines f
 

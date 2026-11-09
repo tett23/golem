@@ -20,7 +20,9 @@ InDesign の操作の手順は説明しません。
 | 文字スタイルの [code: position] | 文字パネルの「位置」（上付き文字、下付き文字） |
 | 文字スタイルの [code: underline]、[code: strikethrough] | 下線、打ち消し線とそのオプション |
 | [code: @no-page-break] | 段落分離禁止オプションの「次の段落と連動」 |
+| 段落スタイルの [code: keep-with-next]、[code: keep-all-lines]、[code: keep-first-lines]、[code: keep-last-lines]、[code: page-break] | 段落分離禁止オプションの「次の段落と連動」「段落を分割しない」「段落の始めと終わりの行数」「段落の開始位置」 |
 | 表の [code: @caption]、[code: @column-widths]、[code: @style] | 表のキャプション、列の幅、表スタイルとセルスタイル |
+| [code: \[note: …\]]、[code: \[note 名前\]] と [code: @note 名前] | 脚注（[code: @note] は複数の段落の脚注） |
 | マスターページ（[code: \[masters\]]） | 親ページ（InDesign 2022 より前はマスターページ） |
 | プロジェクトの [code: fonts/] | Document Fonts フォルダー |
 | スウォッチ（[code: \[color.swatches\]]） | スウォッチ |
@@ -104,6 +106,19 @@ InDesign では表スタイルとセルスタイルがセルの中の段落ス�
 見出しの行に本体と別の段落スタイルを当てることと、セルに字下げや揃えを当てることは、まだできません。
 列の幅は、[code: @column-widths] に [code: 8zw] や [code: 30%] のように列ごとに書けます。
 InDesign と違い、セルの語が指定した幅に収まらないときは、はみ出させずにエラーにします。
+
+@nonumber
+## 脚注
+
+[code: \[note: …\]] の脚注は、InDesign の脚注に当たります。
+InDesign と同じく、一つの脚注に二つ以上の段落を書けます。
+Golem では、本文を [code: @note 名前] の本体に書き、注の位置に [code: \[note 名前\]] を書きます。
+
+違いは次のとおりです。
+
+- 注の本文には段落だけを書けます。表や箇条書きは置けません。
+- 注の本文に段落スタイルは当てられません。二つめ以降の段落にも、字下げと段落のあいだの空きは入りません。
+- ページに収まらない注は、段落の内でも段落の境でも次のページに分けます。
 
 @nonumber
 ## アキ量のセットと文字組みアキ量設定

@@ -333,11 +333,15 @@ fn walk_run(xs: &mut Vec<Inline>, v: &mut impl Visitor) {
                 xs.push(Inline::Lang { span, lang, body });
             }
             Inline::Note { span, number, mut body } => {
-                walk_run(&mut body, v);
+                for p in note_paragraphs_mut(&mut body) {
+                    walk_run(p, v);
+                }
                 xs.push(Inline::Note { span, number, body });
             }
             Inline::Sidenote { span, number, mut body } => {
-                walk_run(&mut body, v);
+                for p in note_paragraphs_mut(&mut body) {
+                    walk_run(p, v);
+                }
                 xs.push(Inline::Sidenote { span, number, body });
             }
             other => xs.push(other),

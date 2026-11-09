@@ -258,8 +258,8 @@ baseText t = case T.dropWhileEnd isExtending t of
 
 -- | Things the pagination must know about, at an item index.
 data Anchor
-  = AnchorNote !Int !Int !SrcSpan [Inline] -- item index, note number, span, body
-  | AnchorSidenote !Int !Int !SrcSpan [Inline] -- item index, sidenote number, span, body
+  = AnchorNote !Int !Int !SrcSpan [[Inline]] -- item index, note number, span, the paragraphs of the body (docs/adr/0263)
+  | AnchorSidenote !Int !Int !SrcSpan [[Inline]] -- item index, sidenote number, span, the paragraphs of the body
   | AnchorPageRef !Int !Text
   | -- | item index, the mark, the entry; an item of a channel has an empty entry (golem-doc ADR 0007)
     AnchorIndex !Int !SrcSpan IndexEntry
@@ -360,8 +360,9 @@ softHyphenSites env inls =
    in here <> concatMap (softHyphenSites env) (concatMap bodies nodes)
   where
     bodies = \case
-      NodeNote _ _ _ b -> [b]
-      NodeSidenote _ _ b -> [b]
+      -- each paragraph of the body of a note (docs/adr/0263)
+      NodeNote _ _ _ b -> b
+      NodeSidenote _ _ b -> b
       NodeElem _ ns -> concatMap bodies ns
       NodeLink _ _ ns -> concatMap bodies ns
       NodeLeaf _ -> []
@@ -375,9 +376,9 @@ data InlineNode
   | {- | the body of a note marked here: its span, its place among the notes
     of that span ('noteAnchors' of golem-driver), its number and its body
     -}
-    NodeNote !SrcSpan !Int !Int [Inline]
-  | -- | the body of a sidenote marked here: its span, its number and its body
-    NodeSidenote !SrcSpan !Int [Inline]
+    NodeNote !SrcSpan !Int !Int [[Inline]]
+  | -- | the body of a sidenote marked here: its span, its number and the paragraphs of its body
+    NodeSidenote !SrcSpan !Int [[Inline]]
   | -- | a link (docs/adr ADR 0182): its URL, its inlines and what it holds
     NodeLink !Text [Inline] [InlineNode]
   deriving stock (Eq, Show)
@@ -438,13 +439,13 @@ walk env st@(LeafState next cur seen) inl = case inl of
         (anchor, mark) = splitAt 1 (piecesOf env inl)
         st1 = LeafState (next + 1) cur (Map.insert sp (k + 1) seen)
         (st2, after) = freshLeaf st1
-     in (st2, [NodeElem RoleReference [NodeLeaf next], NodeNote sp k num (inLangOf lk sp body), after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
+     in (st2, [NodeElem RoleReference [NodeLeaf next], NodeNote sp k num (noteParagraphsIn lk sp body), after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
   Sidenote sp n body ->
     let (anchor, mark) = splitAt 1 (piecesOf env inl)
         st1 = LeafState (next + 1) cur seen
         (st2, after) = freshLeaf st1
         ref = [NodeElem RoleReference [NodeLeaf next] | not (null mark)]
-     in (st2, ref <> [NodeSidenote sp n (inLangOf lk sp body), after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
+     in (st2, ref <> [NodeSidenote sp n (noteParagraphsIn lk sp body), after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
   -- a link is an element; its look is that of the link (docs/adr ADR 0182)
   Link _ u xs ->
     let (st1, ns, ps) = walkAll restyledEnv (LeafState (next + 1) next seen) xs
@@ -630,9 +631,9 @@ piecesOf env inl = case inl of
   -- a mark is set in the character style of [notes] mark-style (docs/adr/0177)
   Note sp n body ->
     let MarkFormat pre notation suf = ceNoteMarkFormat env
-     in [(((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorNote i n sp (inLangOf lk sp body))), (((markSource, sp), const (spanStart sp)), markPiece (markParts (ceVertical env) pre notation (toInteger n) suf))]
+     in [(((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorNote i n sp (noteParagraphsIn lk sp body))), (((markSource, sp), const (spanStart sp)), markPiece (markParts (ceVertical env) pre notation (toInteger n) suf))]
   Sidenote sp n body ->
-    (((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorSidenote i n sp (inLangOf lk sp body))) : case ceSidenoteMarker env of
+    (((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorSidenote i n sp (noteParagraphsIn lk sp body))) : case ceSidenoteMarker env of
       -- the number alone, neither the format nor the notation of [notes] (docs/adr/0177)
       MarkerNumber -> [(((markSource, sp), const (spanStart sp)), markPiece (markParts (ceVertical env) "" arabic (toInteger n) ""))]
       MarkerSymbol -> at sp [PBox lk "※" KindText (lkSize lk)]
@@ -655,9 +656,12 @@ piecesOf env inl = case inl of
     markPiece parts = PMark lk (ceNoteMarkLook env lk) parts 0 0
     markSource = ceNoteMarkSource env (ceSizeSource env)
 
-{- | The body of a note or a sidenote in the language of the place of its
-mark, if that has one (docs/adr ADR 0187).
+{- | The paragraphs of the body of a note, each in the language of its
+block, or else of the place of the mark (docs/adr/0263, docs/adr ADR 0187).
 -}
+noteParagraphsIn :: Look -> SrcSpan -> [Block] -> [[Inline]]
+noteParagraphsIn lk sp bs = [maybe (inLangOf lk sp is) (\l -> [Lang sp l is]) pl | Block _ _ pl (Paragraph _ is) <- bs]
+
 inLangOf :: Look -> SrcSpan -> [Inline] -> [Inline]
 inLangOf lk sp body = maybe body (\l -> [Lang sp l body]) (lkLang lk)
 
@@ -955,8 +959,8 @@ withRuby = \case
   Number s n st -> Number s n st
   Ref s k l -> Ref s k l
   Deferred s e -> Deferred s e
-  Note s n xs -> Note s n (map withRuby xs)
-  Sidenote s n xs -> Sidenote s n (map withRuby xs)
+  Note s n bs -> Note s n bs
+  Sidenote s n bs -> Sidenote s n bs
   IndexMark s e -> IndexMark s e
   Cite s k -> Cite s k
   ProofComment s t -> ProofComment s t
@@ -1771,8 +1775,10 @@ verticalSidenotes env inls
       CharStyle _ _ xs -> concatMap go xs
       Lang _ _ xs -> concatMap go xs
       Resolved _ _ _ xs -> concatMap go xs
-      Note _ _ xs -> concatMap go xs
+      Note _ _ bs -> concatMap go' (concat (noteParagraphs bs))
       _ -> []
+    go' :: Inline -> [Diagnostic]
+    go' = go
 
 {- | The size of the wrap mark of inline code against the size of the code
 (golem-layout ADR 0042): the breaking of lines and the drawing both use it.

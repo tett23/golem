@@ -96,6 +96,7 @@ test-suite golem-layout-test
                     RuleAreaSpec
                     LangSpec
                     LinkSpec
+                    NoteSplitSpec
                     StructureSpec
                     TableCaptionSpec
                     UrlBreakSpec
