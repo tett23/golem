@@ -124,7 +124,7 @@ data Setting = Setting
 
 -- | Every setting, the default (strict, no hanging, no protrusion, no span) first.
 allSettings :: [Setting]
-allSettings = [Setting s h p l | s <- [True, False], h <- [False, True], p <- [False, True], l <- [Nothing, Just "en", Just "ja"]]
+allSettings = [Setting s h p l | s <- [True, False], h <- [False, True], p <- [False, True], l <- [Nothing, Just "en", Just "fr", Just "ja"]]
 
 {- | The settings of a run in the normal form (docs/adr/0209, its section
 1): loose kinsoku only with a prolonged sound mark or a small kana,

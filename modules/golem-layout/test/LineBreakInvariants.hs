@@ -56,6 +56,8 @@ import Data.Text qualified as T
 import Golem.Layout.Aki (AkiPos (..), akiBetween, defaultAkiSet, noAki)
 import Golem.Layout.Aki qualified as A
 import Golem.Layout.CharClass (dualJapaneseClass, isDualCharacter, isExtending, spanIsJapanese)
+import Golem.Layout.Hyphenation (hyphenMins)
+import Golem.Layout.Hyphenation.Languages (patternsFor)
 import Golem.Layout.Japanese (BoxKind (..), CharClass (..), boxKind, lineEndProhibited, lineStartProhibited, lookClass)
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..), plainLook)
@@ -379,7 +381,8 @@ breakItem p i = (pItems p !!) <$> breakIndex p i
 
 {- | L9: a line broken at a hyphen of the patterns ends with the width of
 a hyphen, at least two characters of its element before the break and at
-least three after it; a line broken after a hyphen or dash written in
+least three after it (read as the letters kept before and after a break
+of the language of the word, docs/adr ADR 0276); a line broken after a hyphen or dash written in
 the word ends with it and adds no hyphen; the first pass breaks at no
 hyphen of the patterns, nor does a word of a language span without
 patterns. As I3 of docs/adr ADR 0272 widens it: there is a penalty of a
@@ -411,10 +414,12 @@ l9Hyphens _ p =
             [Breach L9 i ("line " <> show (i + 1) <> " breaks at a hyphen of the patterns in the first pass") | brPass (pBreaks p) == 1]
               <> [Breach L9 i ("line " <> show (i + 1) <> " breaks at a hyphen of the patterns in a span of " <> show l) | Just c <- [lastBox line], Just l <- [lkLang (bcLook c)], spanIsJapanese l]
               <> [Breach L9 i ("line " <> show (i + 1) <> " does not end with the width of a hyphen") | lastItemWidth line /= Just hyphen || w /= hyphen]
-              <> [Breach L9 i ("line " <> show (i + 1) <> " breaks after " <> show before <> ", fewer than two letters of its element") | T.length before < 2]
-              <> [Breach L9 (i + 1) ("line " <> show (i + 2) <> " starts with " <> show after <> ", fewer than three letters of its element") | T.length after < 3]
+              <> [Breach L9 i ("line " <> show (i + 1) <> " breaks after " <> show before <> ", fewer than " <> show leftMin <> " letters of its element") | T.length before < leftMin]
+              <> [Breach L9 (i + 1) ("line " <> show (i + 2) <> " starts with " <> show after <> ", fewer than " <> show rightMin <> " letters of its element") | T.length after < rightMin]
             where
               (before0, after0) = maybe ("", "") (elementAround (pItems p)) (breakIndex p i)
+              -- the letters kept before and after a break are those of the language of the word (docs/adr ADR 0276)
+              (leftMin, rightMin) = maybe (2, 3) hyphenMins (patternsFor (lastBox line >>= lkLang . bcLook))
               -- the letters the patterns see (docs/adr/0222, D4)
               before = T.filter isLetter before0
               after = T.filter isLetter after0

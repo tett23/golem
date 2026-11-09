@@ -92,6 +92,51 @@ TeX の `\hyphenation` の一覧を移すと、TeX では使われなかった�
 - LuaTeX が短い語を分けない境の値。
 - `\lefthyphenmin` と `\righthyphenmin` を言語ごとに変える babel の設定での振る舞い。
 
+## 言語の区間の外の語の分綴
+
+この節の TeX の振る舞いは、2026-11-10 に Docker のイメージ `texlive/texlive@sha256:07e8062637249c4f780ca59f42cc2ed592bc2dc1db4320769406aee3f98aa70e`（TeX Live 2026）の LuaHBTeX 1.24.0 で実際に組んで確かめたものである。
+LaTeX の article クラスで、babel に `english`、`british`、`spanish`、`italian`、`portuguese`、`dutch`、`ngerman`、`french` を読み込み、最後の `french` を主の言語にした。
+
+### TeX の振る舞い
+
+babel は、主の言語（オプションの最後の言語）のパターンで、言語を切り替えていない文章を分綴する。
+主の言語が `french` の文書で、言語を切り替えずに書いた `proverbe` は、`\showhyphens` で `pro-verbe` に分かれた。
+`\selectlanguage` と `\foreignlanguage` で言語を切り替えると、その言語のパターンと、前と後に残す字の数（`\lefthyphenmin` と `\righthyphenmin`）を使う。
+
+babel が言語ごとに決める前と後に残す字の数は、hyph-utf8 の注記の値と、一部の言語で違った。
+
+| 言語 | babel | hyph-utf8 |
+| --- | --- | --- |
+| `english`、`british` | 2、3 | 2、3 |
+| `french` | 2、3 | 2、2 |
+| `ngerman` | 2、2 | 2、2 |
+| `spanish` | 2、2 | 2、2 |
+| `italian` | 2、2 | 2、2 |
+| `portuguese` | 2、3 | 2、3 |
+| `dutch` | 2、3 | 2、2 |
+
+### Golem の振る舞い
+
+Golem も、本の言語（`manifest.toml` の `[metadata] language`）のパターンで、言語の区間の外の語を分綴する。
+本の言語に同梱のパターンがなければ（`ja` など）、英語（米国）のパターンを使う。
+babel の主の言語に当たるものが本の言語であり、`[lang]` と `@lang` が babel の言語の切り替えに当たる。
+前と後に残す字の数は hyph-utf8 の注記の値であり、フランス語とオランダ語では babel より後に残す字が 1 字少ない。
+同梱のパターンは英語（米国と英国）、フランス語、ドイツ語、スペイン語、イタリア語、ポルトガル語、オランダ語であり、ほかの言語の区間の語はパターンで分綴しない。
+
+両用の文字（引用符やダッシュ）を和文と欧文のどちらで組むかは、区間の外では本の言語を見ず、最も近い文字で決める。
+区間の外の規則のうち、本の言語を見るのは分綴だけである。
+
+### 決めた ADR
+
+- [ADR 0276](adr/0276-hyphenate-words-by-the-patterns-of-their-language.md)
+- [ADR 0187](adr/0187-inline-language-switch.md)（言語の区間と両用の文字）
+
+### 書き手が気をつけること
+
+フランス語とオランダ語の本では、TeX と babel で組んだときより、語の最後の 2 字を次の行に送る分け方が増える。
+英語の本の中のフランス語の語は、今までどおり `[lang fr: …]` で包まなければ英語のパターンで分けられる。
+`de-1901` と `de-CH` の区間も、新正書法のパターン（`hyph-de-1996`）で分ける。
+
 ## 引用の印の中の改行
 
 この節の LaTeX と biblatex の振る舞いは、2026-11-10 にそれぞれのソースを読んで確かめたものである（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md) の参考文献）。

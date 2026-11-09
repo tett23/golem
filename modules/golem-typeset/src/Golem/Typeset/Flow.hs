@@ -1353,10 +1353,11 @@ fixpoint sections labelSpan termOf layoutWith = go (1 :: Int) Nothing (Assumed M
             }
 
 {- | The composition environment of a unit set in a font role at a size
-(golem-driver ADR 0003).
+(golem-driver ADR 0003), in a book of a language (the language of its
+manifest, docs/adr ADR 0276).
 -}
-composeEnv :: Style -> PageGeometry -> LoadedFonts -> Assumed -> Look -> ComposeEnv
-composeEnv style geom fonts assumed look =
+composeEnv :: Text -> Style -> PageGeometry -> LoadedFonts -> Assumed -> Look -> ComposeEnv
+composeEnv bookLang style geom fonts assumed look =
   let comp = stComposition style
       shaping = shapingOf (lfRoleFeatures fonts) (pgVertical geom)
    in (defaultComposeEnv (lkSize look))
@@ -1383,11 +1384,13 @@ composeEnv style geom fonts assumed look =
             Just "symbol" -> MarkerSymbol
             Just "none" -> MarkerNone
             _ -> MarkerNumber,
-          {- Latin words: the patterns of the language of their span, US English
-          outside one (golem-layout ADR 0001, docs/adr ADR 0187), with the
-          exceptions of the book over the bundled ones (docs/adr ADR 0272);
-          the text of a file takes those of the file too ('withFileExceptions') -}
-          cePatterns = exceptionPatterns Map.empty (compHyphenationExceptions comp),
+          {- Latin words: the patterns of the language of their span, and
+          outside one those of the language of the book, or US English when
+          none is bundled for it (golem-layout ADR 0001, docs/adr ADR 0187,
+          docs/adr ADR 0276), with the exceptions of the book over the
+          bundled ones (docs/adr ADR 0272); the text of a file takes those
+          of the file too ('withFileExceptions') -}
+          cePatterns = exceptionPatterns bookLang Map.empty (compHyphenationExceptions comp),
           -- the set of body; a paragraph, a caption and a sidenote take their style's (docs/adr ADR 0019)
           ceAkiSet = akiSetOf style Nothing,
           -- the text of note marks (golem-driver ADR 0025) and their character style (docs/adr/0177)
@@ -2087,7 +2090,7 @@ flowEnv inp geom fonts assumed = fe
 
 -- | The composition of a look; citations show their numbers (golem-driver ADR 0007).
 lookEnv :: FlowEnv -> Look -> ComposeEnv
-lookEnv fe lk = (composeEnv (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe)), ceCiteLink = citeLink (piBook (feInput fe)), ceSourceAt = feSourceAt fe}
+lookEnv fe lk = (composeEnv (bookLanguage (feInput fe)) (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe)), ceCiteLink = citeLink (piBook (feInput fe)), ceSourceAt = feSourceAt fe}
 
 {- | The link of the number of a cited work (docs/adr/0267): to its entry
 in the @bibliography its mark belongs to; none without @bibliography.
@@ -2117,7 +2120,7 @@ withFileExceptions :: FlowEnv -> FileId -> ComposeEnv -> ComposeEnv
 withFileExceptions fe fid e =
   let inp = feInput fe
       file = maybe Map.empty lsHyphenationExceptions (Map.lookup fid (piLocalStyles inp))
-   in e {cePatterns = exceptionPatterns file (compHyphenationExceptions (stComposition (piStyle inp)))}
+   in e {cePatterns = exceptionPatterns (bookLanguage inp) file (compHyphenationExceptions (stComposition (piStyle inp)))}
 
 {- | Whether Golem makes the lines of a unit (docs/adr ADR 0272): the table
 of contents, the index, the bibliography, the list of a channel and the

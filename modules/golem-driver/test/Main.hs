@@ -1,6 +1,7 @@
 module Main (main) where
 
 import AlignSpaceSpec (alignSpaceTests)
+import BookLanguageSpec (bookLanguageTests)
 import BoxesSpec (boxesTests)
 import BuildSpec
 import CallsSpec (callsTests)
@@ -107,7 +108,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, insideLinksTests, overflowTests, softHyphenTests, exceptionsTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, scriptsTests, decorationsTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, insideLinksTests, overflowTests, softHyphenTests, exceptionsTests, bookLanguageTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, scriptsTests, decorationsTests]
         <> [ newProjectTests,
              newPlanTests,
              allTargetsTests,

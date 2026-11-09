@@ -8,11 +8,17 @@ maintainer:         tett23@gmail.com
 category:           Text
 build-type:         Simple
 extra-source-files:
+  data/hyphenation/*.md
   data/hyphenation/*.txt
   test/data/knuth-plass/*.log
   test/data/knuth-plass/*.md
   test/data/knuth-plass/*.tex
   test/data/knuth-plass/*.words
+  test/data/hyphenation/*.log
+  test/data/hyphenation/*.lua
+  test/data/hyphenation/*.md
+  test/data/hyphenation/*.tex
+  test/data/hyphenation/*.txt
   test/golden/*.tsv
 
 common warnings
@@ -28,7 +34,14 @@ library
                     Golem.Layout.CharClass
                     Golem.Layout.Code
                     Golem.Layout.Hyphenation
+                    Golem.Layout.Hyphenation.De1996
+                    Golem.Layout.Hyphenation.EnGb
                     Golem.Layout.Hyphenation.EnUs
+                    Golem.Layout.Hyphenation.Es
+                    Golem.Layout.Hyphenation.Fr
+                    Golem.Layout.Hyphenation.It
+                    Golem.Layout.Hyphenation.Nl
+                    Golem.Layout.Hyphenation.Pt
                     Golem.Layout.Hyphenation.Languages
                     Golem.Layout.Japanese
                     Golem.Layout.Look
@@ -41,7 +54,8 @@ library
                     Golem.Layout.Sidenotes
                     Golem.Layout.Table
                     Golem.Layout.Wrap
-  other-modules:    Golem.Layout.Orientation.Table
+  other-modules:    Golem.Layout.Hyphenation.Embed
+                    Golem.Layout.Orientation.Table
                     Golem.Layout.Paginate.Decide
                     Golem.Layout.Paginate.Types
   build-depends:
@@ -97,6 +111,7 @@ test-suite golem-layout-test
                     PunctuationSpec
                     RuleAreaSpec
                     LangSpec
+                    LanguagesSpec
                     LinkSpec
                     NoteSplitSpec
                     StructureSpec

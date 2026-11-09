@@ -79,6 +79,6 @@ Document
   P Lang=en
     "HyphenationfollowstheEnglishpatternsinanEnglishparagraph:hy-phenation,typesetting,extraordinary."
   P Lang=fr
-    "Lesmotslongsnesontpascoupésenfrançais:anticonstitutionnellement,extraordinairement,porte-monnaie."
+    "Lesmotslongssontcoupésselonlesmotifsdufrançais:anticonstitu-tionnellement,extraordinairement,porte-monnaie."
   P
     "Horsdubloc:hyphenation,typesetting,extraordinary."
