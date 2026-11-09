@@ -386,6 +386,15 @@ Running the Alloy models takes far longer than 5 minutes, so the workflow runs o
 A pull request that changes a model waits for it ([docs/adr/0235](./docs/adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)).
 `.github/workflows/models-nightly.yml` runs at night on `main` only and keeps no pull request waiting, so the policy does not concern it; the limit of one command is five and a half hours ([docs/adr/0242](./docs/adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)).
 
+CI fetches the files of their upstreams (the C API of wasmtime, hlint, shem, Neovim, Helix, Chromium, Deno, the jar of Alloy, the source of GMP, and so on) with `scripts/ci/fetch-url.sh`.
+`fetch-url.sh` retries every error of `curl`.
+It makes 3 attempts, waits 10 and then 30 seconds between them, and gives one `curl` 120 seconds; `FETCH_ATTEMPTS`, `FETCH_WAITS` and `FETCH_MAX_TIME` change them.
+A file whose SHA-256 is not the one written in the fetching script fails at once, without a retry.
+The archives are kept in `third_party/downloads` (`GOLEM_DOWNLOADS` changes it), which the workflows cache.
+The unpacked trees are not cached.
+An archive restored from the cache is always checked by its SHA-256 before it is used, and fetched again when it does not match.
+Only the runs of `main` save the caches; pull requests restore those of `main` ([docs/adr/0243](./docs/adr/0243-retry-every-download-and-cache-the-archives-checked-by-sha-256.md)).
+
 ## License
 
 Contributions to the two manuals (`manual/` and `manual-dev/`, except `fonts/`) are distributed under [CC0 1.0](./manual/LICENSE) ([docs/adr/0082](./docs/adr/0082-manuals-under-cc0.md)).

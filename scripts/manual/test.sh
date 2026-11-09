@@ -416,6 +416,26 @@ for font in NotoSerifJP-Regular.otf SourceCodePro-Regular.otf NotoSansJP-Regular
   if [ ! -e "$F/$font" ]; then ok; else ng "fetch-fonts: $font is removed"; fi
   err_has "fetch-fonts: $font is named" "$font"
 done
+# a missing file is fetched by scripts/ci/fetch-url.sh (docs/adr/0243): a
+# fake curl that answers another file fails at its SHA-256, and leaves
+# nothing
+mkdir -p "$WORK/fonts-bin"
+cat >"$WORK/fonts-bin/curl" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "$*" >>"$FONTS_CURL_LOG"
+while [ $# -gt 0 ]; do
+  case "$1" in -o) echo other >"$2"; shift ;; esac
+  shift
+done
+FAKE
+chmod +x "$WORK/fonts-bin/curl"
+rm -rf "$F"
+: >"$WORK/fonts-curl.log"
+run env PATH="$WORK/fonts-bin:$PATH" FONTS_CURL_LOG="$WORK/fonts-curl.log" sh "$HERE/fetch-fonts.sh" "$F"
+expect "fetch-fonts: a fetched file of another SHA-256 fails" 1
+if [ "$(grep -c . "$WORK/fonts-curl.log")" = 1 ] && grep -qF -- "--proto =https --tlsv1.2 -fsSL --connect-timeout 30 --max-time 120 -o $F/NotoSerifJP-Regular.otf.part https://raw.githubusercontent.com/notofonts/noto-cjk/" "$WORK/fonts-curl.log"; then ok; else ng "fetch-fonts: the file is fetched once by fetch-url.sh (docs/adr/0243)"; fi
+if [ -z "$(find "$F" -type f)" ]; then ok; else ng "fetch-fonts: nothing is left of a file of another SHA-256"; fi
+err_has "fetch-fonts: the mismatch is named" "SHA-256 mismatch"
 
 # ---------------------------------------------------------------- outline-prepare.sh
 

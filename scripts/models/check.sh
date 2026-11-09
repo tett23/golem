@@ -30,10 +30,13 @@
 # else is wrong, the exit code is 3.
 #
 # The Alloy jar is the org.alloytools.alloy.dist.jar of the release 6.2.0 of
-# AlloyTools/org.alloytools.alloy on GitHub, checked by its SHA-256 and kept
-# in third_party/alloy/ (ALLOY_DIR to change it). ALLOY_JAR uses another
-# jar as it is, unchecked; JAVA chooses the java (default java); GOLEM_ROOT
-# the root with docs/ (this repository unless set).
+# AlloyTools/org.alloytools.alloy on GitHub, fetched with retries by
+# scripts/ci/fetch-url.sh, checked by its SHA-256 and kept under its name
+# in GOLEM_DOWNLOADS (third_party/downloads of this repository by default),
+# which CI caches; a jar there of the SHA-256 is not fetched again
+# (docs/adr/0243). ALLOY_JAR uses another jar as it is, unchecked; JAVA
+# chooses the java (default java); GOLEM_ROOT the root with docs/ (this
+# repository unless set).
 set -eu
 usage() {
   echo "usage: check.sh [-f LIST] [COMMAND ...]" >&2
@@ -134,23 +137,9 @@ for c in "$@"; do
 done
 cat "$TMP/notrun"
 
-sha256() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
-}
 if [ -z "${ALLOY_JAR-}" ]; then
-  ALLOY_DIR=${ALLOY_DIR:-$ROOT/third_party/alloy}
-  ALLOY_JAR=$ALLOY_DIR/alloy-$ALLOY_VERSION.jar
-  if [ ! -f "$ALLOY_JAR" ] || [ "$(sha256 "$ALLOY_JAR")" != "$ALLOY_SHA256" ]; then
-    mkdir -p "$ALLOY_DIR"
-    curl --proto '=https' --tlsv1.2 -sSfL --retry 3 -o "$ALLOY_JAR.part" "$ALLOY_URL"
-    ACTUAL=$(sha256 "$ALLOY_JAR.part")
-    [ "$ACTUAL" = "$ALLOY_SHA256" ] || {
-      rm -f "$ALLOY_JAR.part"
-      echo "check: SHA-256 mismatch for $ALLOY_URL: $ACTUAL" >&2
-      exit 1
-    }
-    mv "$ALLOY_JAR.part" "$ALLOY_JAR"
-  fi
+  ALLOY_JAR=${GOLEM_DOWNLOADS:-$(cd "$HERE/../.." && pwd)/third_party/downloads}/org.alloytools.alloy.dist.jar
+  sh "$HERE/../ci/fetch-url.sh" "$ALLOY_JAR" "$ALLOY_SHA256" "$ALLOY_URL"
 fi
 [ -f "$ALLOY_JAR" ] || { echo "check: no such file: $ALLOY_JAR" >&2; exit 1; }
 JOBS=${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)}

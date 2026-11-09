@@ -306,8 +306,25 @@ jobs:
       - name: The setup-config of dist-newstyle newer than the .cabal files (docs/adr/0147)
         run: |
           if [ -d dist-newstyle ]; then find dist-newstyle -name setup-config -exec touch {} +; fi
+      # the archives of the downloads, from the cache of main; each is checked
+      # by its SHA-256 before it is used (docs/adr/0243)
+      - id: downloads
+        name: Restore the archives of the downloads (docs/adr/0243)
+        uses: actions/cache/restore@v6
+        with:
+          path: third_party/downloads
+          key: downloads-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}
+      # the retries of scripts/ci/fetch-url.sh take 7 minutes at the most
       - name: wasmtime C API (golem-plugin ADR 0001)
+        timeout-minutes: 10
         run: scripts/fetch-wasmtime.sh
+      # a push to main saves the archives it fetched (docs/adr/0228, docs/adr/0243)
+      - name: Save the archives of the downloads (docs/adr/0243)
+        if: matrix.save && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/downloads
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
       - id: cddl
         name: Cache the cddl CLI (docs/adr/0009)
         if: matrix.tests
@@ -608,6 +625,11 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       HOSTTOOLS: ${{ github.workspace }}/third_party/hosttools
+      # the templates of the native alex and happy, which they read from
+      # their data directories, kept in the cache of the host tools: a hit
+      # has no cabal store of the native GHC (docs/adr/0243)
+      alex_datadir: ${{ github.workspace }}/third_party/hosttools/alex-data
+      happy_lib_datadir: ${{ github.workspace }}/third_party/hosttools/happy-lib-data
     steps:
       - uses: actions/checkout@v7
         with:
@@ -629,7 +651,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: third_party/hosttools
-          key: hosttools-alex-3.5.4.2-happy-2.2-ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
+          key: hosttools-alex-3.5.4.2-happy-2.2-data-ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
       - if: steps.hosttools.outputs.cache-hit != 'true'
         name: cabal's directory (docs/adr/0201)
         run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
@@ -645,10 +667,18 @@ jobs:
           mkdir -p "$HOSTTOOLS" "$RUNNER_TEMP/hosttools-src"
           cd "$RUNNER_TEMP/hosttools-src"
           cabal install alex-3.5.4.2 happy-2.2 --installdir="$HOSTTOOLS" --install-method=copy --overwrite-policy=always
+          t=$(find "$HOME/.cabal/store" -path '*/alex-3.5.4.2-*/AlexTemplate.hs' | head -n 1)
+          test -n "$t"
+          cp -R "$(dirname "$t")" "$alex_datadir"
+          t=$(find "$HOME/.cabal/store" -path '*/happy-lib-2.2-*/HappyTemplate.hs' | head -n 1)
+          test -n "$t"
+          cp -R "$(dirname "$t")" "$happy_lib_datadir"
       - name: The native alex and happy are those versions
         run: |
           "$HOSTTOOLS/alex" --version | grep -F 'Alex version 3.5.4.2'
           "$HOSTTOOLS/happy" --version | grep -F 'Happy Version 2.2'
+          test -f "$alex_datadir/AlexTemplate.hs"
+          test -f "$happy_lib_datadir/HappyTemplate.hs"
       - if: steps.hosttools.outputs.cache-hit != 'true'
         name: Save the native alex and happy
         uses: actions/cache/save@v6
@@ -672,7 +702,8 @@ jobs:
       - name: The wasm toolchain (docs/adr/0199)
         run: timeout -k 10 900 sh scripts/fetch-ghc-wasm.sh
       - name: skylighting 0.15 patched (docs/adr/0202)
-        run: timeout -k 10 300 sh scripts/fetch-wasm-packages.sh
+        timeout-minutes: 10
+        run: sh scripts/fetch-wasm-packages.sh
       - name: The versions of Hackage are those of cabal.project.freeze (docs/adr/0199)
         run: sh scripts/ci/wasm-freeze.sh
       - name: The versions of the toolchain and of the boot packages
@@ -833,15 +864,25 @@ jobs:
           persist-credentials: false
       # the version and the SHA-256 are in fetch-shem.sh, so a new version
       # is a new key (docs/adr/0093)
-      - name: Cache shem (docs/adr/0093)
-        uses: actions/cache@v6
+      # the archive of shem, from the cache of main, is checked by its SHA-256
+      # before it is unpacked (docs/adr/0243)
+      - id: downloads
+        name: Restore the archives of the downloads (docs/adr/0243)
+        uses: actions/cache/restore@v6
         with:
-          path: third_party/shem
-          key: shem-${{ hashFiles('scripts/visual/fetch-shem.sh') }}
-      # nothing is fetched when the cache has the pinned VERSION; a stalled
-      # download fails in 5 minutes (docs/adr/0062)
+          path: third_party/downloads
+          key: downloads-visual-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/visual/fetch-shem.sh') }}
+      # the retries of scripts/ci/fetch-url.sh take 7 minutes at the most
       - name: shem (docs/adr/0093)
-        run: timeout -k 10 300 sh scripts/visual/fetch-shem.sh
+        timeout-minutes: 10
+        run: sh scripts/visual/fetch-shem.sh
+      # a push to main saves the archives it fetched (docs/adr/0228, docs/adr/0243)
+      - name: Save the archives of the downloads (docs/adr/0243)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/downloads
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
       # visual-pdfs of this run, once the outputs runner has uploaded it; a
       # failed outputs runner fails this step (docs/adr/0099)
       - name: Wait for the PDFs of the visual regression test (docs/adr/0099)
@@ -944,9 +985,26 @@ jobs:
             !modules/golem-emet/src/Golem/Emet/Generated.hs
             !modules/golem-driver/src/Golem/Driver/Version/Embedded.hs
             !modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs
-      # the release of hlint, not a build of it with GHC (docs/adr/0009)
+      # the archives of the downloads, from the cache of main; each is checked
+      # by its SHA-256 before it is used (docs/adr/0243)
+      - id: downloads
+        name: Restore the archives of the downloads (docs/adr/0243)
+        uses: actions/cache/restore@v6
+        with:
+          path: third_party/downloads
+          key: downloads-format-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/ci/fetch-hlint.sh') }}
+      # the release of hlint, not a build of it with GHC (docs/adr/0009); the
+      # retries of scripts/ci/fetch-url.sh take 7 minutes at the most
       - name: hlint 3.10
+        timeout-minutes: 10
         run: sh scripts/ci/fetch-hlint.sh
+      # a push to main saves the archives it fetched (docs/adr/0228, docs/adr/0243)
+      - name: Save the archives of the downloads (docs/adr/0243)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/downloads
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
       # -j checks the files on every core of the runner (docs/adr/0037)
       - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs" --ignore-glob="modules/golem-emet/src/Golem/Emet/Generated.hs" --ignore-glob="modules/golem-driver/src/Golem/Driver/Version/Embedded.hs" --ignore-glob="modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs"'
 
@@ -1008,15 +1066,24 @@ jobs:
         run: sh tools/editors/test.sh
       # the version and the SHA-256 of Helix are in its test.sh, so a new
       # version is a new key (docs/adr/0231)
-      - name: Cache Helix (docs/adr/0231)
-        uses: actions/cache@v6
+      - id: downloads
+        name: Restore the archives of the downloads (docs/adr/0243)
+        uses: actions/cache/restore@v6
         with:
-          path: third_party/helix
-          key: helix-${{ runner.os }}-${{ hashFiles('tools/editors/helix/test.sh') }}
-      # nothing is fetched when the cache has the pinned VERSION; a stalled
-      # download fails in 10 minutes
+          path: third_party/downloads
+          key: downloads-editors-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/editors/helix/test.sh') }}
+      # the retries of scripts/ci/fetch-url.sh take 7 minutes at the most, and
+      # the tests a minute
       - name: The grammars in Helix, by the README (docs/adr/0231)
-        run: timeout -k 10 600 sh tools/editors/helix/test.sh
+        timeout-minutes: 15
+        run: sh tools/editors/helix/test.sh
+      # a push to main saves the archives it fetched (docs/adr/0228, docs/adr/0243)
+      - name: Save the archives of the downloads (docs/adr/0243)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/downloads
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
 
   # golem lsp and the editor grammars in a headless Neovim (docs/adr/0231):
   # the tests of tools/editors/nvim/test.sh and its self-test, with Neovim
@@ -1034,15 +1101,23 @@ jobs:
           persist-credentials: false
       # the version and the SHA-256 are in fetch-nvim.sh, so a new version
       # is a new key
-      - name: Cache Neovim (docs/adr/0231)
-        uses: actions/cache@v6
+      - id: downloads
+        name: Restore the archives of the downloads (docs/adr/0243)
+        uses: actions/cache/restore@v6
         with:
-          path: third_party/nvim
-          key: nvim-${{ runner.os }}-${{ hashFiles('tools/editors/fetch-nvim.sh') }}
-      # nothing is fetched when the cache has the pinned VERSION; a stalled
-      # download fails in 5 minutes
+          path: third_party/downloads
+          key: downloads-editors-lsp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/editors/fetch-nvim.sh') }}
+      # the retries of scripts/ci/fetch-url.sh take 7 minutes at the most
       - name: Neovim (docs/adr/0231)
-        run: timeout -k 10 300 sh tools/editors/fetch-nvim.sh
+        timeout-minutes: 10
+        run: sh tools/editors/fetch-nvim.sh
+      # a push to main saves the archives it fetched (docs/adr/0228, docs/adr/0243)
+      - name: Save the archives of the downloads (docs/adr/0243)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/downloads
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
       - name: Wait for golem of the outputs runner (docs/adr/0231)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1079,7 +1154,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: cachix/install-nix-action@v31
+      # nixpkgs comes from api.github.com with the token of the job, under
+      # the rate limit of an authenticated request (docs/adr/0243)
       - name: veraPDF from nixpkgs, at the store path of VERAPDF_STORE_PATH
+        env:
+          NIX_CONFIG: access-tokens = github.com=${{ github.token }}
         run: |
           out=$(nix build --no-link --print-out-paths "github:NixOS/nixpkgs/$VERAPDF_NIXPKGS_REV#verapdf")
           if [ "$out" != "$VERAPDF_STORE_PATH" ]; then

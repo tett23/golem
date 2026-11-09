@@ -102,12 +102,14 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: wasmtime C API built for musl (scripts/fetch-wasmtime.sh)
-        if: runner.os == 'Linux'
-        uses: actions/cache@v6
+      # the archives of the downloads, from the cache of main; each is checked
+      # by its SHA-256 before it is used (docs/adr/0243)
+      - id: downloads
+        name: Restore the archives of the downloads (docs/adr/0243)
+        uses: actions/cache/restore@v6
         with:
-          path: third_party/wasmtime
-          key: wasmtime-${{ matrix.platform }}-musl-${{ hashFiles('scripts/fetch-wasmtime.sh') }}
+          path: third_party/downloads
+          key: downloads-release-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-wasmtime.sh', 'scripts/release/fetch-gmp.sh') }}
       - name: Build in Alpine (musl, static)
         if: runner.os == 'Linux'
         run: |
@@ -138,6 +140,14 @@ jobs:
         env:
           COMMIT: ${{ github.sha }}
         run: sh scripts/release/build-macos.sh "$TAG" "$PLATFORM"
+      # a run on main (workflow_dispatch) saves the archives it fetched
+      # (docs/adr/0228, docs/adr/0243)
+      - name: Save the archives of the downloads (docs/adr/0243)
+        if: github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: third_party/downloads
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
       - uses: actions/upload-artifact@v7
         with:
           name: archive-${{ matrix.platform }}
@@ -222,6 +232,11 @@ jobs:
       TAG: ${{ needs.version.outputs.tag }}
       GHC_VERSION: "9.10.3"
       HOSTTOOLS: ${{ github.workspace }}/third_party/hosttools
+      # the templates of the native alex and happy, which they read from
+      # their data directories, kept in the cache of the host tools: a hit
+      # has no cabal store of the native GHC (docs/adr/0243)
+      alex_datadir: ${{ github.workspace }}/third_party/hosttools/alex-data
+      happy_lib_datadir: ${{ github.workspace }}/third_party/hosttools/happy-lib-data
     steps:
       - uses: actions/checkout@v7
         with:
@@ -238,7 +253,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: third_party/hosttools
-          key: hosttools-alex-3.5.4.2-happy-2.2-ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
+          key: hosttools-alex-3.5.4.2-happy-2.2-data-ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
       - if: steps.hosttools.outputs.cache-hit != 'true'
         name: cabal's directory (docs/adr/0201)
         run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
@@ -254,10 +269,18 @@ jobs:
           mkdir -p "$HOSTTOOLS" "$RUNNER_TEMP/hosttools-src"
           cd "$RUNNER_TEMP/hosttools-src"
           cabal install alex-3.5.4.2 happy-2.2 --installdir="$HOSTTOOLS" --install-method=copy --overwrite-policy=always
+          t=$(find "$HOME/.cabal/store" -path '*/alex-3.5.4.2-*/AlexTemplate.hs' | head -n 1)
+          test -n "$t"
+          cp -R "$(dirname "$t")" "$alex_datadir"
+          t=$(find "$HOME/.cabal/store" -path '*/happy-lib-2.2-*/HappyTemplate.hs' | head -n 1)
+          test -n "$t"
+          cp -R "$(dirname "$t")" "$happy_lib_datadir"
       - name: The native alex and happy are those versions
         run: |
           "$HOSTTOOLS/alex" --version | grep -F 'Alex version 3.5.4.2'
           "$HOSTTOOLS/happy" --version | grep -F 'Happy Version 2.2'
+          test -f "$alex_datadir/AlexTemplate.hs"
+          test -f "$happy_lib_datadir/HappyTemplate.hs"
       - id: ghcwasm
         name: Cache the wasm toolchain and its cabal store (docs/adr/0199)
         uses: actions/cache@v6

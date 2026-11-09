@@ -7,9 +7,12 @@
 #   fetch-nvim.sh    fetch, or use third_party/nvim; prints the path of nvim
 #
 # third_party/nvim/VERSION holds the name of the archive and its SHA-256.
-# When they are those of this script, nothing is fetched. The checksums of
-# the release are not read: a list from the same release says nothing about
-# an archive replaced there (as in scripts/visual/fetch-shem.sh).
+# When they are those of this script, nothing is fetched. The archive is
+# kept in GOLEM_DOWNLOADS (third_party/downloads by default), which CI
+# caches; scripts/ci/fetch-url.sh fetches it, with retries, only when the
+# archive there is not of the SHA-256 below (docs/adr/0243). The checksums
+# of the release are not read: a list from the same release says nothing
+# about an archive replaced there (as in scripts/visual/fetch-shem.sh).
 #
 # The archives are pinned for x86-64 Linux and arm64 macOS; another platform
 # fails: give the path of a Neovim of your own in NVIM to the tests.
@@ -44,11 +47,10 @@ remove() {
 }
 trap 'remove "$TMP"' EXIT
 
-curl -fsSL --connect-timeout 30 --retry 3 -o "$TMP/archive" "https://github.com/neovim/neovim/releases/download/v$VERSION/$NAME.tar.gz"
-if command -v sha256sum >/dev/null 2>&1; then ACTUAL=$(sha256sum "$TMP/archive" | cut -d' ' -f1); else ACTUAL=$(shasum -a 256 "$TMP/archive" | cut -d' ' -f1); fi
-if [ "$ACTUAL" != "$SHA" ]; then echo "fetch-nvim: SHA-256 mismatch for $NAME.tar.gz: $ACTUAL, expected $SHA" >&2; exit 1; fi
+ARCHIVE=${GOLEM_DOWNLOADS:-$ROOT/third_party/downloads}/$NAME.tar.gz
+sh "$ROOT/scripts/ci/fetch-url.sh" "$ARCHIVE" "$SHA" "https://github.com/neovim/neovim/releases/download/v$VERSION/$NAME.tar.gz"
 mkdir -p "$TMP/x"
-tar -xzf "$TMP/archive" -C "$TMP/x"
+tar -xzf "$ARCHIVE" -C "$TMP/x"
 if [ ! -x "$TMP/x/$NAME/bin/nvim" ]; then echo "fetch-nvim: $NAME.tar.gz has no $NAME/bin/nvim" >&2; exit 1; fi
 # the version is checked before anything is installed
 GOT=$("$TMP/x/$NAME/bin/nvim" --version 2>/dev/null | head -n 1 || true)

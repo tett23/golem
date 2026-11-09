@@ -815,15 +815,27 @@ REPO=$REPO_MAIN
 # when VERSION has the name and the SHA-256 of the script
 
 FW=$WORK/fw
-mkdir -p "$FW/root/scripts" "$FW/root/third_party/wasmtime" "$FW/bin"
+mkdir -p "$FW/root/scripts/ci" "$FW/root/third_party/wasmtime" "$FW/bin"
 cp "$HERE/../fetch-wasmtime.sh" "$FW/root/scripts/"
+cp "$HERE/../ci/fetch-url.sh" "$FW/root/scripts/ci/"
+# a fake curl records its arguments and writes FW_ARCHIVE to the file of
+# -o, or fails as on an HTTP error without it
 cat >"$FW/bin/curl" <<'EOF'
 #!/bin/sh
-echo curl >>"$FW_LOG"
-exit 22
+echo "curl $*" >>"$FW_LOG"
+[ -n "${FW_ARCHIVE:-}" ] || exit 22
+while [ $# -gt 0 ]; do
+  case "$1" in -o) cp "$FW_ARCHIVE" "$2" || exit 23; shift ;; esac
+  shift
+done
 EOF
 chmod +x "$FW/bin/curl"
-fetch_wasmtime() { FW_LOG="$FW/curl.log" PATH="$FW/bin:$PATH" sh "$FW/root/scripts/fetch-wasmtime.sh" "$@"; }
+fw_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+# one attempt: a failure is not retried after a wait
+fetch_wasmtime() { FW_LOG="$FW/curl.log" FETCH_ATTEMPTS=1 PATH="$FW/bin:$PATH" sh "$FW/root/scripts/fetch-wasmtime.sh" "$@"; }
+# fw_env ASSIGNMENT...: the script with the fakes, and the assignments in
+# its environment
+fw_env() { env FW_LOG="$FW/curl.log" FETCH_ATTEMPTS=1 PATH="$FW/bin:$PATH" "$@" sh "$FW/root/scripts/fetch-wasmtime.sh"; }
 run fetch_wasmtime --expected
 expect "fetch-wasmtime: --expected" 0
 EXPECTED=$(cat "$WORK/out")
@@ -840,6 +852,42 @@ rm -f "$FW/curl.log"
 printf '%s\n' "${EXPECTED%% *}" >"$FW/root/third_party/wasmtime/VERSION"
 run fetch_wasmtime
 if [ "$CODE" != 0 ] && [ -e "$FW/curl.log" ]; then ok; else ng "fetch-wasmtime: a cache with the name only is fetched again"; fi
+
+# the archive is fetched with scripts/ci/fetch-url.sh into
+# third_party/downloads, and an archive there of the SHA-256 is unpacked
+# without curl (docs/adr/0243): a copy of the script pins the SHA-256 of
+# a small archive of the layout of the release for this platform
+FW_NAME=${EXPECTED%% *}
+FW_SHA=${EXPECTED#* }
+mkdir -p "$FW/src/$FW_NAME/include" "$FW/src/$FW_NAME/lib"
+printf 'header\n' >"$FW/src/$FW_NAME/include/wasmtime.h"
+printf 'archive\n' >"$FW/src/$FW_NAME/lib/libwasmtime.a"
+printf 'license\n' >"$FW/src/$FW_NAME/LICENSE"
+(cd "$FW/src" && tar -cJf "$FW/archive.tar.xz" "$FW_NAME")
+FW_FAKE_SHA=$(fw_sha "$FW/archive.tar.xz")
+sed "s/$FW_SHA/$FW_FAKE_SHA/" "$HERE/../fetch-wasmtime.sh" >"$FW/root/scripts/fetch-wasmtime.sh"
+rm -rf "$FW/root/third_party/wasmtime" "$FW/root/third_party/downloads"
+: >"$FW/curl.log"
+run fw_env FW_ARCHIVE="$FW/archive.tar.xz"
+expect "fetch-wasmtime: an archive of the pinned SHA-256 is unpacked" 0
+if [ "$(cat "$FW/root/third_party/wasmtime/VERSION" 2>/dev/null)" = "$FW_NAME $FW_FAKE_SHA" ] && [ -f "$FW/root/third_party/wasmtime/lib/libwasmtime.a" ]; then ok; else ng "fetch-wasmtime: the archive is unpacked into third_party/wasmtime"; fi
+if grep -qF -- "--max-time 120 -o $FW/root/third_party/downloads/$FW_NAME.tar.xz.part https://github.com/bytecodealliance/wasmtime/releases/download/" "$FW/curl.log"; then ok; else ng "fetch-wasmtime: the archive is fetched with fetch-url.sh into third_party/downloads (docs/adr/0243)"; fi
+if [ "$(fw_sha "$FW/root/third_party/downloads/$FW_NAME.tar.xz")" = "$FW_FAKE_SHA" ]; then ok; else ng "fetch-wasmtime: the archive is kept in third_party/downloads (docs/adr/0243)"; fi
+# a restored archive and no tree: unpacked, and curl is not called
+rm -rf "$FW/root/third_party/wasmtime"
+: >"$FW/curl.log"
+run fetch_wasmtime
+if [ "$CODE" = 0 ] && [ ! -s "$FW/curl.log" ] && [ "$(cat "$FW/root/third_party/wasmtime/VERSION" 2>/dev/null)" = "$FW_NAME $FW_FAKE_SHA" ]; then ok; else ng "fetch-wasmtime: an archive of the SHA-256 in third_party/downloads is unpacked without curl (docs/adr/0243)"; fi
+# an archive of another SHA-256 there: fetched again
+rm -rf "$FW/root/third_party/wasmtime"
+printf 'other\n' >"$FW/root/third_party/downloads/$FW_NAME.tar.xz"
+: >"$FW/curl.log"
+run fw_env FW_ARCHIVE="$FW/archive.tar.xz"
+if [ "$CODE" = 0 ] && [ -s "$FW/curl.log" ] && [ "$(fw_sha "$FW/root/third_party/downloads/$FW_NAME.tar.xz")" = "$FW_FAKE_SHA" ]; then ok; else ng "fetch-wasmtime: an archive of another SHA-256 in third_party/downloads is fetched again (docs/adr/0243)"; fi
+# GOLEM_DOWNLOADS: the archives elsewhere
+rm -rf "$FW/root/third_party/wasmtime"
+run fw_env FW_ARCHIVE="$FW/archive.tar.xz" GOLEM_DOWNLOADS="$FW/elsewhere"
+if [ "$CODE" = 0 ] && [ "$(fw_sha "$FW/elsewhere/$FW_NAME.tar.xz")" = "$FW_FAKE_SHA" ]; then ok; else ng "fetch-wasmtime: GOLEM_DOWNLOADS is where the archive is kept (docs/adr/0243)"; fi
 
 # ---------------------------------------------------------------- check-wasmtime-linked.sh
 # (docs/adr/0156-wasmtime-49-0-5.md): the binary has exactly one line
@@ -1573,10 +1621,11 @@ expect "gmp-version: GMP_GHC reads the libdir of that GHC" 0 "6.3.0"
 # fake curl fails for the URLs of $CURL_FAIL and writes the fixture for
 # the others; each URL goes to $FG/curl.log.
 FG=$WORK/fetch-gmp
-mkdir -p "$FG/root"
+mkdir -p "$FG/root/scripts/release" "$FG/root/scripts/ci"
+cp "$HERE/../ci/fetch-url.sh" "$FG/root/scripts/ci/"
 printf 'the source of gmp\n' >"$FG/gmp.tar.xz"
-sed "s/a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898/$(sha "$FG/gmp.tar.xz")/" "$HERE/fetch-gmp.sh" >"$FG/root/fetch-gmp.sh"
-if ! cmp -s "$HERE/fetch-gmp.sh" "$FG/root/fetch-gmp.sh"; then ok; else ng "fetch-gmp: the copy pins the fixture"; fi
+sed "s/a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898/$(sha "$FG/gmp.tar.xz")/" "$HERE/fetch-gmp.sh" >"$FG/root/scripts/release/fetch-gmp.sh"
+if ! cmp -s "$HERE/fetch-gmp.sh" "$FG/root/scripts/release/fetch-gmp.sh"; then ok; else ng "fetch-gmp: the copy pins the fixture"; fi
 fake "$FG/bin" curl "
 out= url=
 while [ \$# -gt 0 ]; do
@@ -1585,7 +1634,8 @@ done
 echo \"\$url\" >>\"$FG/curl.log\"
 case \" \${CURL_FAIL-} \" in *\" \$url \"*) exit 22 ;; esac
 cp \"\${CURL_FILE:-$FG/gmp.tar.xz}\" \"\$out\""
-fetch_gmp() { rm -f "$FG/curl.log"; PATH=$FG/bin:$PATH sh "$FG/root/fetch-gmp.sh" "$@"; }
+# no wait between the attempts of scripts/ci/fetch-url.sh
+fetch_gmp() { rm -f "$FG/curl.log"; PATH=$FG/bin:$PATH FETCH_WAITS=0 sh "$FG/root/scripts/release/fetch-gmp.sh" "$@"; }
 CURL_FAIL=https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz
 export CURL_FAIL
 run fetch_gmp 6.3.0 "$FG/dist"
@@ -1593,16 +1643,29 @@ expect "fetch-gmp: the second source answers" 0
 if cmp -s "$FG/gmp.tar.xz" "$FG/dist/gmp-6.3.0.tar.xz"; then ok; else ng "fetch-gmp: the source is put in DIR"; fi
 if [ "$(cat "$FG/curl.log" 2>/dev/null)" = "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz
 https://ftpmirror.gnu.org/gmp/gmp-6.3.0.tar.xz" ]; then ok; else ng "fetch-gmp: gmplib.org, then the GNU mirror"; fi
-if [ -z "$(find "$FG/dist" -name '*.part')" ]; then ok; else ng "fetch-gmp: no .part is left"; fi
+if [ -z "$(find "$FG/dist" "$FG/root/third_party/downloads" -name '*.part')" ]; then ok; else ng "fetch-gmp: no .part is left"; fi
+# the archive is kept in third_party/downloads, and one there of the
+# SHA-256 is not fetched again (docs/adr/0243)
+if cmp -s "$FG/gmp.tar.xz" "$FG/root/third_party/downloads/gmp-6.3.0.tar.xz"; then ok; else ng "fetch-gmp: the source is kept in third_party/downloads (docs/adr/0243)"; fi
 rm -rf "$FG/dist"
+run fetch_gmp 6.3.0 "$FG/dist"
+if [ "$CODE" = 0 ] && [ ! -e "$FG/curl.log" ] && cmp -s "$FG/gmp.tar.xz" "$FG/dist/gmp-6.3.0.tar.xz"; then ok; else ng "fetch-gmp: the source in third_party/downloads is put in DIR without curl (docs/adr/0243)"; fi
+printf 'other\n' >"$FG/root/third_party/downloads/gmp-6.3.0.tar.xz"
+rm -rf "$FG/dist"
+run fetch_gmp 6.3.0 "$FG/dist"
+if [ "$CODE" = 0 ] && [ -s "$FG/curl.log" ] && cmp -s "$FG/gmp.tar.xz" "$FG/dist/gmp-6.3.0.tar.xz" && cmp -s "$FG/gmp.tar.xz" "$FG/root/third_party/downloads/gmp-6.3.0.tar.xz"; then ok; else ng "fetch-gmp: a source of another SHA-256 in third_party/downloads is fetched again (docs/adr/0243)"; fi
+rm -rf "$FG/dist" "$FG/root/third_party/downloads"
 printf 'not the source of gmp\n' >"$FG/other.tar.xz"
 CURL_FILE=$FG/other.tar.xz run fetch_gmp 6.3.0 "$FG/dist"
 expect "fetch-gmp: a SHA-256 that does not match" 1
-if [ -z "$(find "$FG/dist" -type f)" ]; then ok; else ng "fetch-gmp: no file is left when the SHA-256 does not match"; fi
+if [ -z "$(find "$FG/dist" "$FG/root/third_party" -type f 2>/dev/null)" ]; then ok; else ng "fetch-gmp: no file is left when the SHA-256 does not match"; fi
+# gmplib.org fails, and the GNU mirror answers another file: no more tries
+if [ "$(grep -c . "$FG/curl.log")" = 2 ]; then ok; else ng "fetch-gmp: a SHA-256 that does not match is not fetched again (docs/adr/0243)"; fi
 rm -rf "$FG/dist"
 CURL_FAIL="https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz https://ftpmirror.gnu.org/gmp/gmp-6.3.0.tar.xz https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz" run fetch_gmp 6.3.0 "$FG/dist"
 expect "fetch-gmp: no source answers" 1
-if [ -z "$(find "$FG/dist" -type f)" ]; then ok; else ng "fetch-gmp: no file is left when no source answers"; fi
+if [ -z "$(find "$FG/dist" "$FG/root/third_party" -type f 2>/dev/null)" ]; then ok; else ng "fetch-gmp: no file is left when no source answers"; fi
+if [ "$(grep -c . "$FG/curl.log")" = 9 ]; then ok; else ng "fetch-gmp: the three sources in each of the three attempts (docs/adr/0243)"; fi
 run fetch_gmp 6.2.1 "$FG/dist"
 expect "fetch-gmp: a version that is not pinned" 1
 if [ ! -e "$FG/curl.log" ]; then ok; else ng "fetch-gmp: a version that is not pinned is not downloaded"; fi
