@@ -39,7 +39,7 @@ module LineBreakInvariants
   )
 where
 
-import Data.Char (isLetter)
+import Data.Char (isDigit, isLetter)
 import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -748,10 +748,8 @@ j1Places cs =
     let (x, xLatin) = cs !! (s - 1),
     xLatin && yLatin,
     x `notElem` ("/_" :: String) && y `notElem` ("/_" :: String),
-    not (isAsciiDigit x && isAsciiDigit y)
+    not (isDigit x && isDigit y)
   ]
-  where
-    isAsciiDigit ch = ch >= '0' && ch <= '9'
 
 {- | Each border between two boxes of a run of code: the box before it,
 the items between them, the box after it, the index of the border in the

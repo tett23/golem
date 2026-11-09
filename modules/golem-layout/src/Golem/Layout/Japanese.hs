@@ -43,7 +43,7 @@ module Golem.Layout.Japanese
   )
 where
 
-import Data.Char (GeneralCategory (..), generalCategory, isLetter, isSpace)
+import Data.Char (GeneralCategory (..), generalCategory, isDigit, isLetter, isSpace)
 import Data.IntSet qualified as IntSet
 import Data.List (groupBy, mapAccumL, sort, zip5)
 import Data.Map.Strict qualified as Map
@@ -1199,10 +1199,8 @@ stopBreaksBetween lk x y =
   lookClass lk x == Western
     && lookClass lk y == Western
     && all (`notElem` ("/_" :: String)) [x, y]
-    && not (isAsciiDigit x && isAsciiDigit y)
+    && not (isDigit x && isDigit y)
     && not (isCodeStop y)
-  where
-    isAsciiDigit c = c >= '0' && c <= '9'
 
 -- | A part of a word that starts at an index of the word, cut at those of the indices given inside it.
 splitAtCuts :: [Int] -> Int -> Text -> [Text]
