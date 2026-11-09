@@ -1,6 +1,6 @@
 # ADR 0045: 本文の中のコードの `-` と `.` の後でも改行し、字間の空いた行を減らす
 
-ステータス: 採択→表のセルの最小の幅、G09013 の文、J5 の確かめ方は [ADR 0255](../../adr/0255-record-what-implementations-decided-on-2026-11-09.md)
+ステータス: 採択→表のセルの最小の幅、G09013 の文、J5 の確かめ方は [ADR 0255](../../adr/0255-record-what-implementations-decided-on-2026-11-09.md)、列挙の C5 は [ADR 0257](../../adr/0257-record-what-the-audit-of-the-layout-adrs-of-2026-11-09-found.md)
 
 ## 文脈
 
