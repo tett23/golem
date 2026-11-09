@@ -18,6 +18,7 @@ library
   exposed-modules:
     Golem.Project
     Golem.Project.Feature
+    Golem.Project.Position
     Golem.Project.Files
     Golem.Project.Imports
     Golem.Project.Manifest
@@ -48,6 +49,7 @@ test-suite golem-project-test
   main-is:          Main.hs
   other-modules:    ColophonSpec
                     FeaturesSpec
+                    PositionSpec
                     FilesSpec
                     FunctionsSpec
                     OutputCharsSpec

@@ -643,6 +643,10 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   フォントの役割、文字スタイル、段落スタイルの [code: features] に、読めない機能の文字列があります。
   [code: smcp]、[code: -liga]、[code: salt=2] のように、英字と数字の 4 字のタグで書いてください。
   [code: kern\[3:5\]] のような範囲の指定と、[code: aalt=on] のような語の値は書けません。
+= [strong: G03125 [code: 注の印の文字スタイル … の position は "normal" だけを書けます（印の位置は \[notes\] で決まります）]]
+  [code: \[notes\]] の [code: mark-style] の文字スタイルが、上付きか下付きになっています。
+  印の文字スタイルから [code: position] を消すか、[code: superscript] を引き継がないスタイルにしてください。
+  印に上付きの字形を使いたいときは、[code: features = \["sups"\]] と書きます。
 = [strong: G03022 [code: \[lists\] の … が正しくありません: …]]
   [code: \[lists\]] の [code: bullets]、[code: numbers]、[code: gap] の値が違います。
   [code: numbers] の書式には、番号の差し込みをちょうど一つ書いてください。
