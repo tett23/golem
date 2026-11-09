@@ -64,6 +64,9 @@ done <"$WORK/files" | sort -u | while IFS= read -r ref; do
     # abi-version.sh reads the copy of the last release (git show), and the
     # build does not read it (docs/adr/0174)
     docs/compatibility.md) continue ;;
+    # emet-grammar-doc.sh compares the rules of the grammar reference with
+    # Emet.hpeg, and the build does not read it
+    docs/golem-emet/grammar.md) continue ;;
   esac
   printf '%s\n' "$LIST" | grep -qxF "$ref" || printf '%s\n' "$ref"
 done >"$WORK/missing"

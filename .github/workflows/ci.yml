@@ -66,6 +66,8 @@ jobs:
         run: sh scripts/ci/abi-version.sh
       - name: The diagnostic codes keep the promise of 1.x (docs/adr/0174)
         run: sh scripts/ci/diagnostic-codes.sh
+      - name: The grammar reference of Emet defines the rules of Emet.hpeg
+        run: sh scripts/ci/emet-grammar-doc.sh
       - id: decide
         name: Paths of the change
         env:

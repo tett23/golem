@@ -550,6 +550,33 @@ run docs_refs "$R"
 expect "docs-refs: \"docs\" in a script without the annotation" 1
 rm "$R/scripts/a.sh"
 
+# ---------------------------------------------------------------- emet-grammar-doc.sh
+
+emet_grammar_doc() { env GOLEM_ROOT="$1" sh "$HERE/emet-grammar-doc.sh"; }
+run emet_grammar_doc "$HERE/../.."
+expect "emet-grammar-doc: the repository" 0
+EG=$WORK/emet-grammar
+mkdir -p "$EG/modules/golem-emet/grammar" "$EG/docs/golem-emet"
+printf 'Expr(nl :: Bool) :: Expr\nExpr <- Atom(nl)\nItems<p :: a> :: [a]\nItems<p> <- p*\nAtom <- [0-9]\n' >"$EG/modules/golem-emet/grammar/Emet.hpeg"
+printf '```text\nExpr(nl) ::= Atom(nl)\nItems<p> ::= p*\nAtom ::= [0-9]\n```\n' >"$EG/docs/golem-emet/grammar.md"
+run emet_grammar_doc "$EG"
+expect "emet-grammar-doc: the same rules" 0
+printf '```text\nExpr(nl) ::= Atom(nl)\nAtom ::= [0-9]\n```\n' >"$EG/docs/golem-emet/grammar.md"
+run emet_grammar_doc "$EG"
+expect "emet-grammar-doc: a rule that the document does not define" 1
+if grep -qx '  Items' "$WORK/err"; then ok; else ng "emet-grammar-doc: the undefined rule is named"; fi
+printf '```text\nExpr(nl) ::= Atom(nl)\nItems<p> ::= p*\nAtom ::= [0-9]\nOld ::= Atom\n```\n' >"$EG/docs/golem-emet/grammar.md"
+run emet_grammar_doc "$EG"
+expect "emet-grammar-doc: a rule that the grammar does not have" 1
+if grep -qx '  Old' "$WORK/err"; then ok; else ng "emet-grammar-doc: the unknown rule is named"; fi
+printf '```text\nExpr(nl) ::= Atom(nl)\nItems<p> ::= p*\nAtom ::= [0-9]\nAtom ::= [a-z]\n```\n' >"$EG/docs/golem-emet/grammar.md"
+run emet_grammar_doc "$EG"
+expect "emet-grammar-doc: a rule defined twice" 1
+if grep -qx '  Atom' "$WORK/err"; then ok; else ng "emet-grammar-doc: the rule defined twice is named"; fi
+rm "$EG/docs/golem-emet/grammar.md"
+run emet_grammar_doc "$EG"
+expect "emet-grammar-doc: no document" 1
+
 # ---------------------------------------------------------------- incomplete-patterns.sh
 
 incomplete_patterns() { sh "$HERE/incomplete-patterns.sh" "$@"; }
