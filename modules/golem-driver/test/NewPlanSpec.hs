@@ -10,7 +10,7 @@ import Data.ByteString qualified as BS
 import Data.Containers.ListUtils (nubOrd)
 import Data.Either (isLeft)
 import Data.IORef (atomicModifyIORef', newIORef, readIORef)
-import Data.List (sort, (\\))
+import Data.List (isPrefixOf, sort, (\\))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
@@ -28,7 +28,6 @@ import System.Directory
     listDirectory,
     pathIsSymbolicLink,
   )
-import Data.List (isPrefixOf)
 import System.FilePath (splitDirectories, takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty

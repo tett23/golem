@@ -47,11 +47,11 @@ writeFiles dir = mapM_ $ \(p, c) -> do
 readUtf8 :: FilePath -> IO String
 readUtf8 p = T.unpack . TE.decodeUtf8 <$> BS.readFile p
 
--- | Runs golem in a directory; exit code, stdout and stderr.
 -- | The line of putHuman that points to golem explain.
 explainLine :: String -> String
 explainLine code = "コードの説明は golem explain <コード> で表示できます（例: golem explain " <> code <> "）\n"
 
+-- | Runs golem in a directory; exit code, stdout and stderr.
 golemAt :: FilePath -> [String] -> IO (ExitCode, String, String)
 golemAt dir args = readCreateProcessWithExitCode (proc "golem" args) {cwd = Just dir} ""
 
