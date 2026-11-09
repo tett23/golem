@@ -2406,7 +2406,7 @@ buildFlow inp geom fonts images prev assumed = do
   let fe = flowEnv inp geom fonts assumed
       (units, widths) = flowUnits fe
       unitAt = Map.fromList units
-      -- the units the round before composed the same way: none if the number of the units or the widths of the list markers differ
+      -- the units the round before composed the same way: none if the number of the units or the widths of the list markers differ (docs/adr ADR 0256)
       unchanged = case prev of
         Just p
           | length (bUnits p) == length units && bWidths p == widths ->
