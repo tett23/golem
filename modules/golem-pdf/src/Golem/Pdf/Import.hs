@@ -124,6 +124,8 @@ data ImportError
   | UnsupportedUserUnit
   | -- | the length of the content of a page whose Contents are joined, over 256 MiB (G08015, docs/adr ADR 0051)
     ContentTooLarge !Int
+  | -- | the number of a stream that the page names more than once, 2^31 or more, which the key of its inner Form cannot hold (G08020, docs/adr ADR 0259)
+    StreamNumberTooLarge !ObjNum
   deriving stock (Eq, Show)
 
 -- | What a figure placed in a PDF is (golem-pdf ADR 0008, 0009).
@@ -152,6 +154,7 @@ importErrorText = \case
   OptionalContent -> "レイヤー（オプショナルコンテンツ）があります"
   UnsupportedUserUnit -> "UserUnit が 1 でないページは使えません"
   ContentTooLarge _ -> "ページの内容をつなぐと 256 MiB を超えます"
+  StreamNumberTooLarge k -> "ページが二度以上名指すストリームのオブジェクトの番号が 2147483647 を超えます（" <> tshow k <> "）"
 
 -- ------------------------------------------------------------------ limits
 
@@ -180,6 +183,14 @@ together: the largest object number of ISO 32000-1 Annex C (docs/adr ADR
 -}
 maxXrefEntries :: Int
 maxXrefEntries = 8388607
+
+{- | The largest number of a stream that may become an inner Form: 2^31 - 1,
+so that the key of the Form, -(k * 2^32 + n), stays negative in an Int64
+(docs/adr ADR 0247, ADR 0259). ISO 32000-1 Annex C gives 8,388,607 as the
+largest object number.
+-}
+maxInnerFormStream :: ObjNum
+maxInnerFormStream = 2147483647
 
 -- | The reason when decoding passes 'maxStreamBytes' or 'maxDecodedBytes' (docs/adr ADR 0040).
 tooLarge :: Text
@@ -1103,6 +1114,8 @@ importM n bytes = do
       when (total > maxStreamBytes) (liftR (Left (ContentTooLarge total)))
       (b, ch, us) <- liftR (rewriteContent (BS.intercalate "\n" (map snd parts)))
       pure (b, ch, us, [])
+  -- the key of an inner Form, -(k * 2^32 + n), holds a stream number k below 2^31 only (docs/adr ADR 0259)
+  mapM_ (\(k, _) -> when (k > maxInnerFormStream) (liftR (Left (StreamNumberTooLarge k)))) inner
   rewritten <-
     Map.fromList
       <$> traverse
