@@ -87,6 +87,10 @@ countsWith reuse inp = do
 pagesWith :: [[Text]] -> [PageOut]
 pagesWith ls = [PageOut n 0 False [] [] l [] [] (ColumnSet 1 0 0 0) [] 10 [] | (n, l) <- zip [1 ..] ls]
 
+-- | A figure wrapped at the end of the lines, 4zw wide, with the caption given.
+wrappedCaption :: Text -> Text
+wrappedCaption caption = "@figure images/tiny.jpg alt=\"t\" wrap=end width=4zw\n  " <> caption <> "\n\n"
+
 -- | 100 paragraphs of the word zq, enough for several pages of horizontalStyle; the words of two letters are not hyphenated.
 bodyParagraphs :: Text
 bodyParagraphs = T.concat ["zq " <> T.pack (show n) <> "\n\n" | n <- [1 .. 100 :: Int]]
@@ -120,6 +124,14 @@ reuseTests =
         off <- countsWith False inp
         assertBool "bw is measured" (timesOf on "bw" > 0)
         timesOf on "bw" @?= timesOf off "bw",
+    testCase "I3: the paragraphs beside a wrapped figure whose caption refers to a page are composed again, though they did not change" $ do
+      img <- tinyImage
+      withInput horizontal24 (wrappedCaption "see [ref-page last]" <> T.replicate 20 "bw " <> "\n\n" <> bodyParagraphs <> "@label last\nlast\n") img $ \inp -> do
+        on <- countsWith True inp
+        off <- countsWith False inp
+        assertBool "bw is measured" (timesOf on "bw" > 0)
+        -- the figure is the unit that changes between the rounds; the paragraphs beside it depend on it
+        timesOf on "bw" @?= timesOf off "bw",
     testCase "I4: a book without references is laid out in one round, the same with and without the reuse" $
       withInput horizontalStyle bodyParagraphs [] $ \inp -> do
         on <- countsWith True inp
@@ -148,7 +160,8 @@ reuseTests =
             ("ref-page in a table cell", horizontalStyle, "| a | b |\n| --- | --- |\n| [ref-page last] | x |\n\n" <> bodyParagraphs <> "@label last\nlast\n", pure []),
             ("ref-page in the caption of a figure", horizontal24, "@figure images/tiny.jpg alt=\"t\"\n  see [ref-page last]\n\n" <> bodyParagraphs <> "@label last\nlast\n", tinyImage),
             ("a wrapped figure, the paragraphs beside it unchanged", horizontal24, wrapped "end" "4zw" <> longPara 10 <> longPara 60 <> bodyParagraphs <> "@label last\nlast[index reading=a: aterm]\n\n@index\n", tinyImage),
-            ("a wrapped figure, a paragraph beside it refers to a page", horizontal24, wrapped "end" "4zw" <> "see [ref-page last]" <> longPara 10 <> longPara 60 <> "@label last\nlast\n", tinyImage)
+            ("a wrapped figure, a paragraph beside it refers to a page", horizontal24, wrapped "end" "4zw" <> "see [ref-page last]" <> longPara 10 <> longPara 60 <> "@label last\nlast\n", tinyImage),
+            ("a wrapped figure whose caption refers to a page, the paragraphs beside it unchanged", horizontal24, wrappedCaption "see [ref-page last]" <> longPara 10 <> longPara 60 <> bodyParagraphs <> "@label last\nlast\n", tinyImage)
           ]
       ]
   ]
