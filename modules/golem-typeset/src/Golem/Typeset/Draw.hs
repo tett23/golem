@@ -5,6 +5,7 @@ module Golem.Typeset.Draw
     renderPdfStructure,
     renderPdfLeafTexts,
     renderPdfWithTree,
+    renderPdfAllReusing,
     orphanErrors,
   )
 where
@@ -95,7 +96,17 @@ renderPdfAll = renderPdfAllWith id
 
 -- | 'renderPdfAll' with the structure tree changed by a function (the tests of G07107 only).
 renderPdfAllWith :: (P.StructElem -> P.StructElem) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
-renderPdfAllWith tamper version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
+renderPdfAllWith = renderPdfAllUsing True
+
+{- | 'renderPdfAll' with the compositions of the units that did not change
+reused between the rounds of S2 or not, for the tests that compare the two
+(docs/adr ADR 0251).
+-}
+renderPdfAllReusing :: Bool -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
+renderPdfAllReusing reuse = renderPdfAllUsing reuse id
+
+renderPdfAllUsing :: Bool -> (P.StructElem -> P.StructElem) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
+renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
   (ds, Left gs) -> pure (Left (ds <> gs))
   (ds@(_ : _), Right _) -> pure (Left ds)
   ([], Right geom) -> do
@@ -108,7 +119,7 @@ renderPdfAllWith tamper version provider inp0 = case (declarationErrors inp, che
         case li of
           Left ds -> pure (Left ds)
           Right intent -> do
-            laid <- layoutPdf inp geom fonts
+            laid <- layoutPdfWith reuse inp geom fonts
             -- a kenten shape the font has no glyph for stops the PDF (G08009, golem-driver ADR 0019)
             case laid of
               Left ds -> pure (Left ds)
