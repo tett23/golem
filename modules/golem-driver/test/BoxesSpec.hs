@@ -51,35 +51,35 @@ boxesTests =
   testGroup
     "the boxes of paragraph styles through the driver (docs/adr/0271)"
     $ [ testCase "HTML: the declarations of the box; a style without one has none" $ do
-        d <- declsOf "column" (swatches <> "[paragraph-styles.column]\nbackground = \"pale\"\npadding = \"1zw\"\nborder = \"blue\"\nborder-width = \"0.5pt\"\nborder-style = \"dashed\"\nborder-sides = [\"before\", \"start\"]\nindent = \"2zw\"\n")
-        d
-          @?= Just
-            [ "background-color: rgb(235, 255, 255)",
-              "padding: 1em",
-              "border-block-start: 0.5pt dashed rgb(0, 102, 255)",
-              "border-inline-start: 0.5pt dashed rgb(0, 102, 255)",
-              "margin-inline-start: 2em"
-            ]
-        none <- declsOf "plain" (swatches <> "[paragraph-styles.plain]\nindent = \"1zw\"\n")
-        none @?= Nothing,
-      testCase "HTML: the radius of the corners rounded only: every corner of a box without a border, those of two sides drawn, none of a radius of 0" $ do
-        bg <- declsOf "a" (swatches <> "[paragraph-styles.a]\nbackground = \"pale\"\nborder-radius = \"2mm\"\nborder-sides = [\"start\"]\n")
-        radii bg @?= ["border-start-start-radius: 5.6693pt", "border-start-end-radius: 5.6693pt", "border-end-start-radius: 5.6693pt", "border-end-end-radius: 5.6693pt"]
-        one <- declsOf "a" (swatches <> "[paragraph-styles.a]\nborder = \"blue\"\nborder-radius = \"2mm\"\nborder-sides = [\"start\"]\n")
-        radii one @?= []
-        two <- declsOf "a" (swatches <> "[paragraph-styles.a]\nborder = \"blue\"\nborder-radius = \"1zw\"\nborder-sides = [\"before\", \"start\", \"end\"]\n")
-        radii two @?= ["border-start-start-radius: 1em", "border-start-end-radius: 1em"]
-        zero <- declsOf "a" (swatches <> "[paragraph-styles.a]\nbackground = \"pale\"\nborder-radius = \"0pt\"\n")
-        radii zero @?= [],
-      testCase "PDF and HTML: a book of two boxed paragraphs and a box of one side builds, the paragraphs of one box in one div" $
-        withSystemTempDirectory "golem-boxes" $ \tmp -> do
-          let style = horizontalStyle <> fakeBody <> "\n" <> encode swatches <> "[paragraph-styles.column]\nbackground = \"pale\"\nborder-radius = \"1zw\"\n\n[paragraph-styles.title]\nbackground = \"pale\"\nborder-radius = \"1zw\"\n\n[paragraph-styles.caution]\nborder = \"blue\"\nborder-width = \"2pt\"\nborder-sides = [\"start\"]\nindent = \"1zw\"\n"
-              source = "前。\n\n@style title\n題。\n\n@style column\n本文。\n\n@style caution\n注意。\n\n後。\n"
-          writeProject tmp (miniManifest <> "\n[targets.html]\n") style source fakeFontFiles
-          r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml], optFonts = fakeProvider}
-          filter isError (brDiagnostics r) @?= []
-          page <- TIO.readFile (tmp </> "build/html/a.xhtml")
-          assertBool (T.unpack page) ("<div class=\"box box-title\">\n<p class=\"ps-title\">題。</p>\n<p class=\"ps-column\">本文。</p>\n</div>\n<div class=\"box box-caution\">\n<p class=\"ps-caution\">注意。</p>\n</div>" `T.isInfixOf` page)
+          d <- declsOf "column" (swatches <> "[paragraph-styles.column]\nbackground = \"pale\"\npadding = \"1zw\"\nborder = \"blue\"\nborder-width = \"0.5pt\"\nborder-style = \"dashed\"\nborder-sides = [\"before\", \"start\"]\nindent = \"2zw\"\n")
+          d
+            @?= Just
+              [ "background-color: rgb(235, 255, 255)",
+                "padding: 1em",
+                "border-block-start: 0.5pt dashed rgb(0, 102, 255)",
+                "border-inline-start: 0.5pt dashed rgb(0, 102, 255)",
+                "margin-inline-start: 2em"
+              ]
+          none <- declsOf "plain" (swatches <> "[paragraph-styles.plain]\nindent = \"1zw\"\n")
+          none @?= Nothing,
+        testCase "HTML: the radius of the corners rounded only: every corner of a box without a border, those of two sides drawn, none of a radius of 0" $ do
+          bg <- declsOf "a" (swatches <> "[paragraph-styles.a]\nbackground = \"pale\"\nborder-radius = \"2mm\"\nborder-sides = [\"start\"]\n")
+          radii bg @?= ["border-start-start-radius: 5.6693pt", "border-start-end-radius: 5.6693pt", "border-end-start-radius: 5.6693pt", "border-end-end-radius: 5.6693pt"]
+          one <- declsOf "a" (swatches <> "[paragraph-styles.a]\nborder = \"blue\"\nborder-radius = \"2mm\"\nborder-sides = [\"start\"]\n")
+          radii one @?= []
+          two <- declsOf "a" (swatches <> "[paragraph-styles.a]\nborder = \"blue\"\nborder-radius = \"1zw\"\nborder-sides = [\"before\", \"start\", \"end\"]\n")
+          radii two @?= ["border-start-start-radius: 1em", "border-start-end-radius: 1em"]
+          zero <- declsOf "a" (swatches <> "[paragraph-styles.a]\nbackground = \"pale\"\nborder-radius = \"0pt\"\n")
+          radii zero @?= [],
+        testCase "PDF and HTML: a book of two boxed paragraphs and a box of one side builds, the paragraphs of one box in one div" $
+          withSystemTempDirectory "golem-boxes" $ \tmp -> do
+            let style = horizontalStyle <> fakeBody <> "\n" <> encode swatches <> "[paragraph-styles.column]\nbackground = \"pale\"\nborder-radius = \"1zw\"\n\n[paragraph-styles.title]\nbackground = \"pale\"\nborder-radius = \"1zw\"\n\n[paragraph-styles.caution]\nborder = \"blue\"\nborder-width = \"2pt\"\nborder-sides = [\"start\"]\nindent = \"1zw\"\n"
+                source = "前。\n\n@style title\n題。\n\n@style column\n本文。\n\n@style caution\n注意。\n\n後。\n"
+            writeProject tmp (miniManifest <> "\n[targets.html]\n") style source fakeFontFiles
+            r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml], optFonts = fakeProvider}
+            filter isError (brDiagnostics r) @?= []
+            page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+            assertBool (T.unpack page) ("<div class=\"box box-title\">\n<p class=\"ps-title\">題。</p>\n<p class=\"ps-column\">本文。</p>\n</div>\n<div class=\"box box-caution\">\n<p class=\"ps-caution\">注意。</p>\n</div>" `T.isInfixOf` page)
       ]
       <> hangingTests
   where
