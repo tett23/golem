@@ -320,7 +320,7 @@ codeTrailingSpaceTests =
         codeLines 2 [txt "あ", code "漢  "] @?= ["あ漢"],
       testCase "B1, B2: before a forced break, and with an index anchor after the space, as without the space" $ do
         codeShapes [txt "あ", code "漢 ", IR.LineBreak sp, txt "いい"] @?= codeShapes [txt "あ", code "漢", IR.LineBreak sp, txt "いい"]
-        let anchored c = composeInlines (codeEnv False plain) [txt "あ", code c, IR.IndexMark sp (IR.IndexEntry ["あ"] ["あ"])]
+        let anchored c = composeInlines (codeEnv False plain) [txt "あ", code c, IR.IndexMark sp (IR.IndexEntry ["あ"] ["あ"] IR.IndexPoint)]
         map shapeOf (fst (anchored "漢 ")) @?= map shapeOf (fst (anchored "漢"))
         snd (anchored "漢 ") @?= snd (anchored "漢"),
       testCase "B1, B2: a space of code and a space between words after it both go" $

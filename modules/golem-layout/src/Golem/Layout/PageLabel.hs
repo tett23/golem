@@ -31,7 +31,12 @@ data PageLabel = PageLabel
     -- | the number in its section
     plNumber :: !Integer,
     -- | the notation of its section; Nothing for a number of no notation, arabic included
-    plNotation :: !(Maybe Notation)
+    plNotation :: !(Maybe Notation),
+    {- | the place of the first page of its section, 1 for the pages before
+    every section (docs/adr/0265): two pages are of one section when they
+    have the same
+    -}
+    plSectionFirst :: !Int
   }
   deriving stock (Eq, Show)
 
@@ -47,7 +52,7 @@ data Section = Section
 
 -- | The label of a page of a book without sections: its place, of no notation.
 plainLabel :: Int -> PageLabel
-plainLabel p = PageLabel p (toInteger p) Nothing
+plainLabel p = PageLabel p (toInteger p) Nothing 1
 
 {- | The sections that start on each page, by page: the page the break
 before each section opened, the sections in the order of the manifest.
@@ -62,16 +67,16 @@ page one more than the page before. A page before every section counts
 from 1 in no notation. Sections not in @sections@ are left out.
 -}
 pageLabelsOf :: Map Int Section -> Map Int [Int] -> Int -> Map Int PageLabel
-pageLabelsOf sections firsts n = Map.fromList (zip [1 .. n] (go 1 0 Nothing))
+pageLabelsOf sections firsts n = Map.fromList (zip [1 .. n] (go 1 0 Nothing 1))
   where
-    go p prev notation
+    go p prev notation first
       | p > n = []
       | otherwise =
           let starting = [sec | s <- Map.findWithDefault [] p firsts, Just sec <- [Map.lookup s sections]]
-              (number, notation') = case reverse starting of
-                sec : _ -> (fromMaybe (prev + 1) (secStart sec), secNotation sec)
-                [] -> (prev + 1, notation)
-           in PageLabel p number notation' : go (p + 1) number notation'
+              (number, notation', first') = case reverse starting of
+                sec : _ -> (fromMaybe (prev + 1) (secStart sec), secNotation sec, p)
+                [] -> (prev + 1, notation, first)
+           in PageLabel p number notation' first' : go (p + 1) number notation' first'
 
 {- | A label written as inlines at a span (docs/adr/0260): a label of no
 notation is the 'Number' of its number, set in the notation of [numbers]

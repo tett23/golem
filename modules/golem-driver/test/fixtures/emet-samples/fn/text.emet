@@ -34,4 +34,4 @@ see label = [Inline.Text "→ p.", Inline.Ref Inline.RefPage label]
 -- 11. A term that also goes into the index, with its reading.
 -- `[t.term 組版 くみはん]` → 組版, and an entry 組版 (くみはん) in `@index`
 pub inline term :: String -> String -> Inlines
-term word reading = [Inline.Text word, Inline.IndexMark [word] [reading]]
+term word reading = [Inline.Text word, Inline.IndexMark [word] [reading] Inline.IndexPoint]

@@ -33,6 +33,7 @@ import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
 import PageLabelsSpec (pageLabelsTests)
+import IndexRangeSpec (indexRangeTests)
 import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
 import ParagraphSpec
@@ -79,6 +80,7 @@ tests skips =
         varsTests,
         unwritableNumbersTests,
         pageLabelsTests,
+        indexRangeTests,
         tocStylesTests,
         keepOptionsTests,
         emetSamplesTests,

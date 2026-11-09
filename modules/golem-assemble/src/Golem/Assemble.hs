@@ -10,6 +10,8 @@ module Golem.Assemble
     LabelTarget (..),
     TocEntry (..),
     IndexGroup (..),
+    IndexLocator (..),
+    IndexSection (..),
     ChannelEntry (..),
     ListAt,
     assemble,
@@ -19,6 +21,7 @@ module Golem.Assemble
     indexAt,
     channelAt,
     indexGroups,
+    indexReferences,
     bookChapters,
     notesTitle,
     documentNotes,
@@ -32,10 +35,12 @@ import Control.Monad (unless, when, zipWithM)
 import Control.Monad.State.Strict
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
-import Data.List (sortOn)
+import Data.Graph (SCC (..), stronglyConnComp)
+import Data.List (groupBy, nub, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Function (on)
+import Data.Maybe (fromMaybe, isNothing, listToMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -117,10 +122,33 @@ data TocEntry = TocEntry
   }
   deriving stock (Eq, Show)
 
+{- | Where an entry of the index points (docs/adr/0265): the page of a
+mark, or the pages from the begin mark of a range to its end mark.
+-}
+data IndexLocator
+  = AtMark !(FileId, SrcSpan)
+  | Between !(FileId, SrcSpan) !(FileId, SrcSpan)
+  deriving stock (Eq, Show)
+
+{- | An entry of the index (docs/adr/0265): its terms and readings, where
+it points in document order of the first mark of each, and its cross
+references, each once, in the collation order of their targets.
+-}
 data IndexGroup = IndexGroup
   { igTerms :: ![Text],
     igReadings :: ![Text],
-    igLocations :: ![(FileId, SrcSpan)]
+    igLocators :: ![IndexLocator],
+    igSee :: ![(SeeKind, [Text])]
+  }
+  deriving stock (Eq, Show)
+
+{- | The entries of the index under one heading, in collation order
+(docs/adr/0265). The assembly makes the headings for every book; a book
+without them leaves them out of its outputs.
+-}
+data IndexSection = IndexSection
+  { isHeading :: !Text,
+    isGroups :: ![IndexGroup]
   }
   deriving stock (Eq, Show)
 
@@ -134,9 +162,9 @@ data Book = Book
     bookTables :: !(Map SrcSpan Text),
     bookToc :: ![TocEntry],
     bookTocDepth :: !(Maybe Int),
-    {- | each @index with the groups of its range, in document order
-    (golem-doc ADR 0008)
-    -} bookIndexes :: ![(ListAt, [IndexGroup])],
+    {- | each @index with the entries of its range under their headings, in
+    document order (golem-doc ADR 0008, docs/adr/0265)
+    -} bookIndexes :: ![(ListAt, [IndexSection])],
     {- | each @bibliography with the numbers of the citations of its range,
     in document order; without @bibliography, one list without a place over
     the whole book (golem-doc ADR 0008)
@@ -188,8 +216,8 @@ bibliographyAt book sp = fromMaybe [] (lookup (Just (spanFile sp, sp)) (bookBibl
 channelAt :: Book -> SrcSpan -> [ChannelEntry]
 channelAt book sp = concat [es | (at, _, es) <- bookChannels book, at == (spanFile sp, sp)]
 
--- | The groups of the @index at a block span.
-indexAt :: Book -> SrcSpan -> [IndexGroup]
+-- | The entries of the @index at a block span under their headings.
+indexAt :: Book -> SrcSpan -> [IndexSection]
 indexAt book sp = fromMaybe [] (lookup (spanFile sp, sp) (bookIndexes book))
 
 {- | The documents of the book by chapter of the manifest, in order
@@ -403,6 +431,7 @@ assemble cfg evalDeferred docs0 =
           Just h <- [Map.lookup sp (nsHeadings ns)]
         ]
       (bibliographies, citeMarks) = numberCitations docs
+      (indexes, indexDiags) = indexLists docs
    in ( Book
           { bookDocs = renumberNotes cfg docs',
             bookHeadings = nsHeadings ns,
@@ -413,7 +442,7 @@ assemble cfg evalDeferred docs0 =
             bookTocDepth = case tocs of
               ((d, _) : _) -> Just d
               [] -> Nothing,
-            bookIndexes = indexLists docs,
+            bookIndexes = indexes,
             bookBibliographies = bibliographies,
             bookCiteMarks = citeMarks,
             bookLabels = labels,
@@ -423,7 +452,7 @@ assemble cfg evalDeferred docs0 =
             bookChannelDecls = acChannels cfg,
             bookImages = Map.empty
           },
-        sortDiagnostics (nsDiags ns <> figureErrors <> unwritableErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs <> blankDiags)
+        sortDiagnostics (nsDiags ns <> figureErrors <> unwritableErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs <> blankDiags <> indexDiags)
       )
 
 {- | G04012, G04013 and G04014 (docs/adr/0213): the first slot of the
@@ -803,27 +832,122 @@ channelLists decls docs =
       Just k | any (\((_, c0), _) -> ciKey c0 == Just k) acc -> [if ciKey c0 == Just k then (f, e {ceLocations = ceLocations e <> [loc]}) else (f, e) | (f@(_, c0), e) <- acc]
       _ -> acc <> [((i, c), ChannelEntry (ciKey c) (ciBody c) [loc])]
 
--- | Each @index with the groups of the marks of its range (golem-doc ADR 0008).
-indexLists :: [Document] -> [(ListAt, [IndexGroup])]
+{- | Each @index with the entries of the marks of its range under their
+headings (golem-doc ADR 0008, docs/adr/0265), and G04101 to G04104 of the
+marks of every range, those of a book without @index included.
+-}
+indexLists :: [Document] -> ([(ListAt, [IndexSection])], [Diagnostic])
 indexLists docs =
-  [ (at, groupMarks marks)
-  | (Just at, marks) <- scopes isIndex (\fid -> \case IndexMark sp e -> [((ieTerms e, ieReadings e), (fid, sp))]; _ -> []) docs
-  ]
+  let built = [(at, groupMarks marks) | (at, marks) <- scopes isIndex (\fid -> \case IndexMark sp e -> [((fid, sp), e)]; _ -> []) docs]
+   in ([(at, indexSections gs) | (Just at, (gs, _)) <- built], concat [ds | (_, (_, ds)) <- built])
   where
     isIndex = \case
       ChannelOutput IndexOutput -> True
       _ -> False
 
--- | The groups of every index mark of the documents, whatever list they belong to.
+{- | The entries of every index mark of the documents, whatever list they
+belong to: the marks of the pages of G07021 (docs/adr/0265).
+-}
 indexGroups :: [Document] -> [IndexGroup]
-indexGroups docs = groupMarks [((ieTerms e, ieReadings e), (fid, sp)) | Document fid bs <- docs, Block _ _ _ body <- allBlocks bs, IndexMark sp e <- bodyInlines body]
+indexGroups docs = fst (groupMarks [((fid, sp), e) | Document fid bs <- docs, Block _ _ _ body <- allBlocks bs, IndexMark sp e <- bodyInlines body])
 
--- | Index marks grouped by their terms and readings, in collation order.
-groupMarks :: [(([Text], [Text]), (FileId, SrcSpan))] -> [IndexGroup]
+-- | The entries in order under their headings, a heading for each run of entries of one (docs/adr/0265).
+indexSections :: [IndexGroup] -> [IndexSection]
+indexSections gs =
+  [ IndexSection h (map snd run)
+  | run@((h, _) : _) <- groupBy ((==) `on` fst) [(indexHeading (fromMaybe "" (listToMaybe (igReadings g))), g) | g <- gs]
+  ]
+
+-- | What the marks of one entry make (docs/adr/0265), before they are put in order.
+data Collected = Collected
+  { -- | the locators by the place of their first mark
+    coLocators :: ![(Int, IndexLocator)],
+    -- | the begins not closed yet, the last first
+    coOpen :: ![(Int, (FileId, SrcSpan))],
+    coUnpairedEnds :: ![(FileId, SrcSpan)],
+    -- | each reference with the place of its mark
+    coSee :: ![(Int, (FileId, SrcSpan), (SeeKind, [Text]))]
+  }
+
+{- | Index marks grouped by their terms and readings, in collation order
+(docs/adr/0265): the ends of ranges paired as brackets in document order;
+an entry of no locator and no reference (of unpaired ends alone) is left
+out. G04101 to G04104 of the marks.
+-}
+groupMarks :: [((FileId, SrcSpan), IndexEntry)] -> ([IndexGroup], [Diagnostic])
 groupMarks marks =
-  let grouped = Map.toList (Map.fromListWith (flip (<>)) [(k, [loc]) | (k, loc) <- marks])
-      sorted = sortOn (\((ts, rs), _) -> (map collationKey rs, map T.unpack ts)) grouped
-   in [IndexGroup ts rs locs | ((ts, rs), locs) <- sorted]
+  let collected = Map.toList (foldl collect Map.empty (zip [0 :: Int ..] marks))
+      sorted = sortOn (\((ts, rs), _) -> (map collationKey rs, map T.unpack ts)) collected
+      kept = [(k, c) | (k, c) <- sorted, not (null (coLocators c)) || not (null (coSee c))]
+      terms = [ts | ((ts, _), _) <- kept]
+      -- an entry, or a main entry its sub-entries show
+      items = Set.fromList (terms <> [[t] | t : _ : _ <- terms])
+      rank target = fromMaybe maxBound (listToMaybe [i | (i, ts) <- zip [0 :: Int ..] terms, ts == target || [take 1 ts] == [target] && length target == 1])
+      groups =
+        [ IndexGroup ts rs (map snd (sortOn fst (coLocators c))) (sortOn (\(k, t) -> (rank t, map T.unpack t, k)) (nub [r | (_, _, r) <- coSee c]))
+        | ((ts, rs), c) <- kept
+        ]
+      unpaired =
+        [diagnostic "G04103" Error sp ("索引の範囲の始めに、対になる終わりがありません: " <> T.intercalate "/" ts) | ((ts, _), c) <- sorted, (_, (_, sp)) <- coOpen c]
+          <> [diagnostic "G04104" Error sp ("索引の範囲の終わりに、対になる始めがありません: " <> T.intercalate "/" ts) | ((ts, _), c) <- sorted, (_, sp) <- coUnpairedEnds c]
+      missing =
+        [ diagnostic "G04101" Error sp ("索引の参照先の項目がありません: " <> T.intercalate "/" t)
+        | (_, c) <- kept,
+          (_, (_, sp), (_, t)) <- coSee c,
+          not (Set.member t items)
+        ]
+   in (groups, unpaired <> missing <> seeCycles kept)
+  where
+    collect acc (i, (loc, IndexEntry ts rs k)) =
+      let c0 = Map.findWithDefault (Collected [] [] [] []) (ts, rs) acc
+          c = case k of
+            IndexPoint -> c0 {coLocators = coLocators c0 <> [(i, AtMark loc)]}
+            IndexRangeBegin -> c0 {coOpen = (i, loc) : coOpen c0}
+            IndexRangeEnd -> case coOpen c0 of
+              (b, bl) : open -> c0 {coLocators = coLocators c0 <> [(b, Between bl loc)], coOpen = open}
+              [] -> c0 {coUnpairedEnds = coUnpairedEnds c0 <> [loc]}
+            IndexSee sk target -> c0 {coSee = coSee c0 <> [(i, loc, (sk, target))]}
+       in Map.insert (ts, rs) c acc
+
+{- | G04102 (docs/adr/0265): the cycles of the references that read
+を見よ between entries without pages, a main entry of sub-entries not
+counted; one for each cycle, at the first of its marks in document order.
+-}
+seeCycles :: [(([Text], [Text]), Collected)] -> [Diagnostic]
+seeCycles kept =
+  [ diagnostic "G04102" Error sp ("索引の「を見よ」の参照が輪になります: " <> T.intercalate ", " [T.intercalate "/" ts | ((ts, _), _) <- members])
+  | CyclicSCC vs <- stronglyConnComp [(v, fst v, [fst w | (_, _, w) <- edgesOf v]) | v <- vertices],
+    let members = sortOn (\(k, _) -> position k) vs
+        inside = Set.fromList (map fst vs),
+    (_, sp) : _ <- [map snd (sortOn fst [(i, loc) | v <- vs, (i, loc, w) <- edgesOf v, Set.member (fst w) inside])]
+  ]
+  where
+    indexed = zip [0 :: Int ..] kept
+    position k = fromMaybe maxBound (lookup k [(k', i) | (i, (k', _)) <- indexed])
+    mains = Set.fromList [t | ((t : _ : _, _), _) <- kept]
+    vertices = [(k, c) | (k@(ts, _), c) <- kept, null (coLocators c), not (isMain ts)]
+    isMain = \case
+      [t] -> Set.member t mains
+      _ -> False
+    edgesOf (_, c) =
+      [ (i, loc, w)
+      | (i, loc, (sk, target)) <- coSee c,
+        sk == SeeOnly || sk == SeeAuto,
+        w@((ts, _), _) <- vertices,
+        ts == target
+      ]
+
+{- | The cross references of an entry as written after its pages
+(docs/adr/0265): the targets of see in one pair of brackets before those of
+see also in another, each once, the levels joined by ：. An automatic
+reference is see when the entry has no pages and see also when it has.
+-}
+indexReferences :: Bool -> [(SeeKind, [Text])] -> Text
+indexReferences hasPages sees =
+  let only = nub [t | (k, t) <- sees, k == SeeOnly || (k == SeeAuto && not hasPages)]
+      also = nub [t | (k, t) <- sees, k == SeeAlso || (k == SeeAuto && hasPages)]
+      paren word ts = if null ts then "" else "（" <> T.intercalate "、" (map (T.intercalate "：") ts) <> word <> "）"
+   in paren "を見よ" only <> paren "をも見よ" also
 
 -- | Inlines of a block body, descending into inline containers.
 bodyInlines :: BlockBody -> [Inline]

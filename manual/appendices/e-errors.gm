@@ -162,6 +162,15 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   [code: /] で区切った索引の段が三つ以上あるか、語と読みで [code: /] の数が違うか、空の段があります。
   段は二つまでにし、語と読みの [code: /] の数をそろえてください。
   語の中の [code: \\/] は段の区切りになりません。
+= [strong: G02144 [code: range は begin か end です: …]]
+  [code: \[index\]] の [code: range] に、[code: begin] と [code: end] のほかの値を書いています。
+  範囲の始めには [code: range=begin]、終わりには [code: range=end] を書いてください。
+= [strong: G02145 [code: 一つの索引の印に see と range は書けません]]
+  一つの [code: \[index\]] に、[code: see] と [code: range] の両方を書いています。
+  参照と範囲を、別の [code: \[index\]] に分けてください。
+= [strong: G02146 [code: see の参照先の語は一段か二段で、空の段を持てません: …]]
+  [code: see] の送り先の語を [code: /] で三段以上に区切っているか、空の段があります。
+  [code: see=組版] か [code: see=組版/和文組版] の形で書いてください。
 = [strong: G02021 [code: 書誌データにないキーです: …]]
   [code: \[cite ...\]] のキーが、文献のデータにありません。
   データの [code: id] と綴りを見比べてください。
@@ -528,6 +537,25 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
 = [strong: G07021 [code: ページ番号の参照が収束しません: …]]
   ページ番号を入れると組み方が変わり、それでまたページ番号が変わる、という繰り返しが止まりません。
   示された参照の近くの文言を少し変えてください。
+= [strong: G04101 [code: 索引の参照先の項目がありません: …]]
+  [code: see] の送り先の語が、同じ索引のどの項目の語とも一致しません。
+  送り先の語を項目の語と同じに書くか、送り先の項目の印を置いてください。
+= [strong: G04102 [code: 索引の「を見よ」の参照が輪になります: …]]
+  ページのない項目どうしが、互いに「を見よ」で送り合っています。
+  読者がどの項目でもページにたどり着けないので、輪の中の一つの項目にページの印を置いてください。
+= [strong: G04103 [code: 索引の範囲の始めに、対になる終わりがありません: …]]
+  [code: range=begin] の印に、同じ語と読みの [code: range=end] の印がありません。
+  範囲の終わりに印を置いてください。
+  範囲の途中に [code: @index] を置いたときにも起きます。
+= [strong: G04104 [code: 索引の範囲の終わりに、対になる始めがありません: …]]
+  [code: range=end] の印の前に、同じ語と読みの [code: range=begin] の印がありません。
+  範囲の始めに印を置いてください。
+= [strong: G07118 [code: 索引の範囲の終わりのページが、始めのページより前にあります: …]]
+  範囲の始めの印を図版のキャプションに置き、図版が次のページに送られると起きます。
+  始めの印を、図版の前の本文に移してください。
+= [strong: G07119 [code: 索引の範囲の始めと終わりが、ノンブルの別のセクションにあります: …]]
+  前付けと本文のように、ノンブルの数え方の違う部分をまたいで範囲を書いています。
+  範囲を部分ごとに分けてください。
 
 @nonumber
 ## 誤りやすい書き方（lint）
@@ -705,8 +733,8 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
 = [strong: G03022 [code: \[lists\] の … が正しくありません: …]]
   [code: \[lists\]] の [code: bullets]、[code: numbers]、[code: gap] の値が違います。
   [code: numbers] の書式には、番号の差し込みをちょうど一つ書いてください。
-= [strong: G03025 [code: \[index\] の columns は 1 以上の整数です]]、[strong: [code: \[index\] の column-gap が正しくありません]]
-  [code: \[index\]] の [code: columns] は [code: 2] のように 1 以上の整数で、[code: column-gap] は [code: "2zw"] のように 0 以上の寸法で書いてください。
+= [strong: G03025 [code: \[index\] の columns は 1 以上の整数です]]、[strong: [code: \[index\] の column-gap が正しくありません]]、[strong: [code: \[index\] の section-headings は真偽値です]]
+  [code: \[index\]] の [code: columns] は [code: 2] のように 1 以上の整数で、[code: column-gap] は [code: "2zw"] のように 0 以上の寸法で、[code: section-headings] は [code: true] か [code: false] で書いてください。
   [code: "2"] のように引用符で囲むと、文字列になって誤りになります。
 = [strong: G03029 [code: \[hidden-folio\] の gutter（…）が size（…）の半分（…）より小さいため、隠しノンブルの数字が仕上がりの線を越えます（gutter を … 以上にするか、size を … 以下にします）]]
   隠しノンブルの数字の列が、ノドの仕上がりの線を越えます。

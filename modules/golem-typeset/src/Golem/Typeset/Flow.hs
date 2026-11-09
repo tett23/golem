@@ -36,7 +36,10 @@ module Golem.Typeset.Flow
     TocPage (..),
     tocPage,
     layoutPages,
+    IndexLine (..),
     indexLines,
+    indexLineInlines,
+    indexRangeDiagnostics,
     bibliographyLines,
     sidenoteMetrics,
     labelSpans,
@@ -505,7 +508,7 @@ layoutFigures reuse inp geom fonts figures = do
   -- the names of the marks for G07021: the terms of the index, the bodies of the entries of channels (golem-doc ADR 0007)
   let terms =
         Map.fromList
-          ( [(sp, T.intercalate " / " (igTerms g)) | g <- indexGroups (bookDocs (piBook inp)), (_, sp) <- igLocations g]
+          ( [(sp, T.intercalate " / " (igTerms g)) | g <- indexGroups (bookDocs (piBook inp)), l <- igLocators g, (_, sp) <- locatorMarks l]
               <> [(sp, T.concat (map inlineText (ceBody e))) | (_, _, es) <- bookChannels (piBook inp), e <- es, (_, sp) <- ceLocations e]
           )
   let capacity = length (pgLineGrid geom)
@@ -518,6 +521,9 @@ layoutFigures reuse inp geom fonts figures = do
   result <- fixpoint (bookSections inp) labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
   pure $ case result of
     Left ds -> Left ds
+    -- the ranges of the index on the settled pages stop the PDF (docs/adr/0265)
+    Right (_, pages)
+      | ds@(_ : _) <- indexRangeDiagnostics (piBook inp) (`Map.lookup` markPages (bookSections inp) pages) -> Left (sortDiagnostics ds)
     Right (built0, pages) ->
       -- sidenotes are placed once, on the settled pages (golem-driver ADR 0006)
       -- in the size of the document of each sidenote (docs/adr ADR 0014)
@@ -1003,26 +1009,96 @@ layoutPages provider inp0 = case checkedGeometry inp of
     setLineText = boxesText . slLine
     boxesText l = T.concat [bcText c | Box _ c <- lineItems l]
 
-{- | The lines of the index (golem-driver ADR 0007): a main entry and its
-pages, sub-entries indented by a full-width space below their main entry
-(which is shown once, without pages when it has no mark of its own).
-Pages are page labels written by 'pageLabelInlines' (docs/adr/0260), in
-the order of the book, each once; a mark without a page is left out. The
-groups come sorted from S1.
+{- | A line of the index (docs/adr/0265): the heading of a section, or an
+entry.
 -}
-indexLines :: Bool -> (SrcSpan -> Maybe PageLabel) -> [IndexGroup] -> [[Inline]]
-indexLines vertical pageOf = go Nothing
+data IndexLine = IndexHeadingLine ![Inline] | IndexEntryLine ![Inline]
+  deriving stock (Eq, Show)
+
+-- | The inlines of a line of the index.
+indexLineInlines :: IndexLine -> [Inline]
+indexLineInlines = \case
+  IndexHeadingLine is -> is
+  IndexEntryLine is -> is
+
+{- | The lines of the index (golem-driver ADR 0007, docs/adr/0265): with
+headings, the heading of each section in the built-in character style
+strong before its entries; a main entry and its pages, sub-entries
+indented by a full-width space below their main entry (which is shown
+once, without pages when it has no mark of its own); the references of an
+entry after its pages. Pages are page labels written by 'pageLabelInlines'
+(docs/adr/0260), as 'indexPageRuns' puts them; a mark without a page is
+left out. The sections come sorted from S1.
+-}
+indexLines :: Bool -> Bool -> (SrcSpan -> Maybe PageLabel) -> [IndexSection] -> [IndexLine]
+indexLines vertical headings pageOf = go Nothing
   where
     sp0 = mkSpan (FileId 0) 0 0
     txt = Text sp0
     go _ [] = []
-    go prevMain (g : gs) = case (igTerms g, igReadings g) of
-      ([t], [r]) -> entry [] t (pageNumbersOf g) : go (Just (t, r)) gs
-      ([t, sub], [r, _]) -> [[txt t] | prevMain /= Just (t, r)] <> [entry [txt "　"] sub (pageNumbersOf g)] <> go (Just (t, r)) gs
-      _ -> go prevMain gs
-    pageNumbersOf g = labelsInOrder [l | (_, sp) <- igLocations g, Just l <- [pageOf sp]]
-    entry prefix term ps =
-      prefix <> [txt term] <> (if null ps then [] else txt "　" : intercalate [txt (if vertical then "、" else ", ")] (map (pageLabelInlines sp0) ps))
+    go prevMain (s : ss) =
+      let (prevMain', entries) = mapAccumL entryLines prevMain (isGroups s)
+       in [IndexHeadingLine [CharStyle sp0 "strong" [txt (isHeading s)]] | headings] <> concat entries <> go prevMain' ss
+    entryLines prevMain g = case (igTerms g, igReadings g) of
+      ([t], [r]) -> (Just (t, r), [IndexEntryLine (entry [] t g)])
+      ([t, sub], [r, _]) -> (Just (t, r), [IndexEntryLine [txt t] | prevMain /= Just (t, r)] <> [IndexEntryLine (entry [txt "　"] sub g)])
+      _ -> (prevMain, [])
+    entry prefix term g =
+      let runs = indexPageRuns (mapMaybe ends (igLocators g))
+          refs = indexReferences (not (null (igLocators g))) (igSee g)
+       in prefix
+            <> [txt term]
+            <> (if null runs then [] else txt "　" : intercalate [txt (if vertical then "、" else ", ")] (map run runs))
+            <> [txt refs | not (T.null refs)]
+    ends = \case
+      AtMark (_, m) -> (\l -> (l, l)) <$> pageOf m
+      Between (_, a) (_, b) -> case (pageOf a, pageOf b) of
+        (Just la, Just lb) -> Just (la, lb)
+        (Just la, Nothing) -> Just (la, la)
+        (Nothing, Just lb) -> Just (lb, lb)
+        (Nothing, Nothing) -> Nothing
+    run (a, b)
+      | plIndex a == plIndex b = pageLabelInlines sp0 a
+      | otherwise = pageLabelInlines sp0 a <> [txt (if vertical then "〜" else "\x2013")] <> pageLabelInlines sp0 b
+
+{- | The pages of the locators of an entry (docs/adr/0265), each a page or
+the pages from its first to its last: the pages they cover cut into the
+longest runs of pages next to each other, a page after the first page of a
+section in a run of its own, by their places in the book. A run of two
+pages or more is a range; one of one page is that page. A range whose end
+is before its begin, or in another section (G07118, G07119), is its two
+pages.
+-}
+indexPageRuns :: [(PageLabel, PageLabel)] -> [(PageLabel, PageLabel)]
+indexPageRuns locs = merge (sortOn (\(a, b) -> (plIndex a, plIndex b)) (concatMap split locs))
+  where
+    split (a, b)
+      | plIndex b < plIndex a || plSectionFirst a /= plSectionFirst b = [(a, a), (b, b)]
+      | otherwise = [(a, b)]
+    merge = \case
+      (a, b) : (c, d) : rest
+        | plIndex c <= plIndex b || (plIndex c == plIndex b + 1 && plSectionFirst c == plSectionFirst b) ->
+            merge ((a, if plIndex d > plIndex b then d else b) : rest)
+      x : rest -> x : merge rest
+      [] -> []
+
+{- | G07118 and G07119 of the ranges of the index on the settled pages
+(docs/adr/0265), at their begin marks: the end on a page before the
+begin, and the two ends in two sections.
+-}
+indexRangeDiagnostics :: Book -> (SrcSpan -> Maybe PageLabel) -> [Diagnostic]
+indexRangeDiagnostics book pageOf =
+  [ d
+  | (_, sections) <- bookIndexes book,
+    g <- concatMap isGroups sections,
+    Between (_, a) (_, b) <- igLocators g,
+    Just la <- [pageOf a],
+    Just lb <- [pageOf b],
+    let name = T.intercalate "/" (igTerms g),
+    d <-
+      [diagnostic "G07118" Error a ("索引の範囲の終わりのページが、始めのページより前にあります: " <> name) | plIndex lb < plIndex la]
+        <> [diagnostic "G07119" Error a ("索引の範囲の始めと終わりが、ノンブルの別のセクションにあります: " <> name) | plIndex lb >= plIndex la, plSectionFirst la /= plSectionFirst lb]
+  ]
 
 {- | Page labels in the order of the pages, each page once (docs/adr/0260):
 by their places, not their numbers, for iii and 3 have one number.
@@ -1185,6 +1261,12 @@ placePageSidenotes geom metricsOf lineMap p =
           Right tops -> Right [PlacedSidenote sp t ls | ((sp, _, ls), t) <- zip notes tops]
           Left (TooTall i) -> Left [diagnostic "G07033" Error (at i) "傍注が傍注の領域より高く、収まりません"]
           Left (DoesNotFit i) -> Left [diagnostic "G07033" Error (at i) "このページの傍注が傍注の領域に収まりません"]
+
+-- | The marks of a locator of the index: a mark, or the two ends of a range (docs/adr/0265).
+locatorMarks :: IndexLocator -> [(FileId, SrcSpan)]
+locatorMarks = \case
+  AtMark m -> [m]
+  Between a b -> [a, b]
 
 -- | The page labels assumed in a round of S2: of labels and of index marks (golem-driver ADR 0007, docs/adr/0260).
 data Assumed = Assumed
@@ -1561,6 +1643,8 @@ data UnitKind
     UPageControl !PageControl
   | -- | blank lines before what follows (docs/adr ADR 0046)
     UBlank !Int64
+  | -- | the paragraph before kept with so many lines of what follows: a heading of the index (docs/adr/0265)
+    UKeepNext !Int
   deriving stock (Eq)
 
 {- | The look and the indent of a paragraph style (docs/adr ADR 0005, 0006):
@@ -1760,8 +1844,14 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                         <> concat [gapUnit (between a b) <> [entryUnit b] | (a, b) <- zip es (drop 1 es)]
                         <> concat [gapUnit (spaceOf psSpaceAfter (styleOf' l)) | l : _ <- [reverse es]]
                in (n + 1, inFrame (frame n FToc) (tocUnits entries))
+            {- a heading a paragraph of the kind of the entries kept with the first of them,
+            a grid line before every heading but the first (docs/adr/0265) -}
             ChannelOutput IndexOutput ->
-              let entries kind = inFrame (frame n FIndex) [plainUnit kind Nothing is | is <- indexLines (pgVertical geom) pageOf (indexAt book sp)]
+              let lineUnits kind seen = \case
+                    IndexHeadingLine is -> (seen + 1, [plainUnit (UGap 1) Nothing [] | seen > (0 :: Int)] <> [plainUnit kind Nothing is, plainUnit (UKeepNext 1) Nothing []])
+                    IndexEntryLine is -> (seen, [plainUnit kind Nothing is])
+                  ls = indexLines (pgVertical geom) (indexSectionHeadings style) pageOf (indexAt book sp)
+                  entries kind = inFrame (frame n FIndex) (concat (snd (mapAccumL (lineUnits kind) 0 ls)))
                in case indexSet of
                     Nothing -> (n + 1, entries (UPara noIndent))
                     -- the index in its own columns (docs/adr ADR 0025)
@@ -2618,6 +2708,7 @@ numberOther fe cu nb (i, u)
          in nb {nuFlow = nuFlow nb <> [control]}
       UColumns set -> nb {nuFlow = nuFlow nb <> [maybe FRestoreColumns FSwitchColumns set]}
       UBlank k -> nb {nuFlow = nuFlow nb <> [FBlank (uSpan u) (fromIntegral k)]}
+      UKeepNext k -> nb {nuFlow = nuFlow nb <> [FKeepNext (uSpan u) k]}
       _ -> numberText fe (partsAround cu i u) u (cuSingles cu Map.! i) nb
 
 {- | Numbers a figure; a wrapped figure with the lines beside it, and the
@@ -2819,6 +2910,7 @@ buildFlow inp geom fonts images prev assumed = do
         USection {} -> True
         UPageControl _ -> True
         UBlank _ -> True
+        UKeepNext _ -> True
         -- code blocks are set by codeBlocks (golem-driver ADR 0017)
         UCode {} -> True
         UColumns _ -> True

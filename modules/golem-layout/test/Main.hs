@@ -1289,7 +1289,7 @@ tests =
               other -> assertFailure (show other),
           testCase "an index mark keeps its span and indexes the next item (golem-driver ADR 0007)" $ do
             let m = mkSpan (FileId 0) 3 9
-                e = IndexEntry ["組版"] ["くみはん"]
+                e = IndexEntry ["組版"] ["くみはん"] IndexPoint
                 (items, anchors) = composeInlines (defaultComposeEnv fs) [sp0 "前", IndexMark m e, sp0 "後"]
             case anchors of
               [AnchorIndex i m' e'] -> do

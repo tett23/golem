@@ -17,7 +17,7 @@ Document /Layout /WritingMode /TbRl
     TOCI
       "索引八"
     TOCI
-      "参考文献八"
+      "参考文献九"
   H1
     "第一章　見出しと段落"
   P
@@ -314,6 +314,8 @@ Document /Layout /WritingMode /TbRl
   H1
     "索引"
   Index
+    P
+      "さ"
     P
       "索引　二"
   H1

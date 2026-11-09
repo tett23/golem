@@ -37,7 +37,7 @@ tests =
         validateInlines size [] [Resolved sp RefNumber "h" [Text sp "1"]] @?= ["解決した参照は文書の組み立てだけが作ります"]
         validateInlines size [] [CharStyle sp "strong" [Resolved sp RefTitle "h" [Text sp "題"]]] @?= ["解決した参照は文書の組み立てだけが作ります"],
       testCase "the IR functions go inside a resolved reference as inside a link" $ do
-        let mark = IndexMark sp (IndexEntry ["組"] ["くみ"])
+        let mark = IndexMark sp (IndexEntry ["組"] ["くみ"] IndexPoint)
         withoutAnchors [Resolved sp RefTitle "h" [Text sp "題", mark] :: Inline] @?= [Resolved sp RefTitle "h" [Text sp "題"]]
         noRuby (Resolved sp RefTitle "h" [Text sp "題"]) @?= Just (Resolved sp RefTitle "h" [Text sp "題"])
         noRuby (Resolved sp RefTitle "h" [Ruby sp () [RubySegment [Text sp "組"] (Just "く")]]) @?= Nothing
