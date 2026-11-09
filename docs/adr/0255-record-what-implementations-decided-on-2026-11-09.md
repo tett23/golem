@@ -85,17 +85,17 @@ golem-typeset-test は hedgehog に依存していなかったので、実装は
 ### [golem-layout ADR 0045](../golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md)：表のセルの最小の幅、G09013 の文、J5 の確かめ方
 
 ADR は、表の列の幅の規則に触れていない。
-プルリクエストの説明によれば、ADR の候補だけを足すと、開発者のマニュアルの表のセル `[code: \[index reading=...: ...\]]`（[`06-ir.gm` の 272 行](https://github.com/tett23/golem/blob/06b6a02b85f3b450638ca92ae56f436bd7d79e63/manual-dev/part1/06-ir.gm#L272)）に、G07105 のはみ出した行が出た。
+プルリクエストの説明によれば、ADR の候補だけを足すと、開発者のマニュアルの表のセル `[code: \[index reading=...: ...\]]`（[`06-ir.gm` の 272 行](https://github.com/tett23/golem/blob/81e1d1870965141ed297c408790270dd3e006897/manual-dev/part1/06-ir.gm#L272)）に、G07105 のはみ出した行が出た。
 `...` の後に新しい候補ができ、列の幅が最も広い部分 `reading=...` の幅まで縮んだ。
 その候補で改行した行は改行の印も持つので、どちらの候補でも行に収まらなかった。
 
 原因は `Golem.Layout.Table.cellExtent` にある。
 `cellExtent` は、改行の候補のあいだの最も広い部分の幅をセルの最小の幅とする。
 候補の罰点で終わる部分の幅に、罰点の幅（その候補で改行した行が行末に持つ改行の印の幅）を足していなかった。
-コードの改行の候補は、印の幅を罰点の幅として持つ（[`Japanese.hs` の `codeBreak`](https://github.com/tett23/golem/blob/06b6a02b85f3b450638ca92ae56f436bd7d79e63/modules/golem-layout/src/Golem/Layout/Japanese.hs#L1349-L1354)）。
+コードの改行の候補は、印の幅を罰点の幅として持つ（[`Japanese.hs` の `codeBreak`](https://github.com/tett23/golem/blob/81e1d1870965141ed297c408790270dd3e006897/modules/golem-layout/src/Golem/Layout/Japanese.hs#L1349-L1354)）。
 同じ欠けは、`/` の後の候補と [golem-layout ADR 0034](../golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の和文の字との境の候補にも、前からあった。
-実装は、罰点で終わる部分の幅に、その罰点の幅を足した（[`Table.hs`](https://github.com/tett23/golem/blob/06b6a02b85f3b450638ca92ae56f436bd7d79e63/modules/golem-layout/src/Golem/Layout/Table.hs#L20-L41)）。
-テストは `ab-c` と `ab/c` のセルで、最小の幅が 3 字と印の幅の和になることを確かめる（[`Main.hs`](https://github.com/tett23/golem/blob/06b6a02b85f3b450638ca92ae56f436bd7d79e63/modules/golem-layout/test/Main.hs#L1005-L1011)）。
+実装は、罰点で終わる部分の幅に、その罰点の幅を足した（[`Table.hs`](https://github.com/tett23/golem/blob/81e1d1870965141ed297c408790270dd3e006897/modules/golem-layout/src/Golem/Layout/Table.hs#L20-L41)）。
+テストは `ab-c` と `ab/c` のセルで、最小の幅が 3 字と印の幅の和になることを確かめる（[`Main.hs`](https://github.com/tett23/golem/blob/81e1d1870965141ed297c408790270dd3e006897/modules/golem-layout/test/Main.hs#L1006-L1012)）。
 仕様書の表の節の列の幅の文に、印の幅を含むことを書いた。
 golem-layout の段落の項目で、幅を持つ有限の罰点は、パターンの分綴とこの印の二つだけである。
 パターンの分綴は前から候補に数えないので、変わるのはコードの改行の印を描く候補で終わる部分だけである。
@@ -106,7 +106,7 @@ ADR の「実装すること」の 4 は、G07105 と G09013 の主な原因の�
 
 ADR の「実装すること」の 3 は、J1 から J7 を列挙の述語として足すとした。
 J5 は、項目をこの ADR の前の実装の項目と比べる性質で、一つの出力からは判定できない。
-実装は J5 を述語にせず（[`LineBreakInvariants.hs`](https://github.com/tett23/golem/blob/06b6a02b85f3b450638ca92ae56f436bd7d79e63/modules/golem-layout/test/LineBreakInvariants.hs#L55-L62)）、ADR のテスト設計の J5 のとおり、[golem-layout ADR 0018](../golem-layout/adr/0018-url-line-breaks.md)、[0031](../golem-layout/adr/0031-line-breaks-after-low-lines-in-identifiers.md)、[0034](../golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の今のテストを変えずに通すことと、新しい J5 のテスト（`url` と地の文の `lime-tree`）で確かめた。
+実装は J5 を述語にせず（[`LineBreakInvariants.hs`](https://github.com/tett23/golem/blob/81e1d1870965141ed297c408790270dd3e006897/modules/golem-layout/test/LineBreakInvariants.hs#L55-L62)）、ADR のテスト設計の J5 のとおり、[golem-layout ADR 0018](../golem-layout/adr/0018-url-line-breaks.md)、[0031](../golem-layout/adr/0031-line-breaks-after-low-lines-in-identifiers.md)、[0034](../golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の今のテストを変えずに通すことと、新しい J5 のテスト（`url` と地の文の `lime-tree`）で確かめた。
 
 ## 実装すること
 
