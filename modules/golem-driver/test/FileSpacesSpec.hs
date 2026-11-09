@@ -8,13 +8,12 @@ spaces put between the first block A and the next block B of a chapter
 (g) are the distance of their first lines less that of the same book
 without the keys of the spaces. In HTML and EPUB, the declaration of
 margin-block-start that wins on B is that of the evaluator of the
-cascade (CssCascade, in the tests of golem-html).
+cascade (Golem.TestSupport.CssCascade, docs/adr/0248).
 -}
 module FileSpacesSpec (fileSpacesTests) where
 
 import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
 import Control.Monad (forM, forM_, unless)
-import CssCascade (Elem (..), Page (..), Winner (..), pageOf, winningMarginStarts)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Map.Strict qualified as Map
@@ -29,6 +28,7 @@ import Golem.LayoutSpec (pageGeometry)
 import Golem.Project (Manifest (..), Project (..), ProjectFailure (..))
 import Golem.Project.Files (diskFiles)
 import Golem.Syntax
+import Golem.TestSupport.CssCascade (Elem (..), Page (..), Winner (..), pageOf, winningMarginStarts)
 import Golem.Typeset (PdfInput (..), PdfLayout (..), layoutPdf)
 import Support
 import System.FilePath ((</>))

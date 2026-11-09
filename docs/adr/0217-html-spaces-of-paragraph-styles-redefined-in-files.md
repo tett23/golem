@@ -1,6 +1,6 @@
 # ADR 0217: ファイルの `@style-def` で改めた段落の前後のアキを、HTML と EPUB にも当てる
 
-ステータス: 採択→golem-driver のテストが golem-html のテストのソースを読むことは [ADR 0229](0229-record-the-procedures-adr-0215-and-0217-departed-from.md)、接頭辞を付けない `body` の規則、同じスタイルの段落のあいだの規則、H2 の基準は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
+ステータス: 採択→カスケードの評価器の置き場所は [ADR 0248](0248-move-the-css-cascade-of-the-tests-into-golem-test-support.md)、接頭辞を付けない `body` の規則、同じスタイルの段落のあいだの規則、H2 の基準は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
 
 ## 文脈
 

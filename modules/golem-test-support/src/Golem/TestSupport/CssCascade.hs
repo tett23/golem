@@ -9,7 +9,7 @@ outside that range is an error, not a rule that is skipped.
 For each element it picks the margin-block-start that wins: the greatest
 specificity, then the last in the order of the style sheet.
 -}
-module CssCascade
+module Golem.TestSupport.CssCascade
   ( Elem (..),
     Page (..),
     Winner (..),
