@@ -18,6 +18,7 @@ out of one is one inline, so that a word in a range is one piece.
 -}
 module NoBreakEnum (noBreakTests) where
 
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Fixtures (fs, sp)
@@ -120,10 +121,10 @@ i7Breaks _ its br =
     not (forced at)
   ]
   where
-    lastChar l = case reverse [c | Just c <- map charBox (lineItems l)] of
+    lastChar l = case reverse (mapMaybe charBox (lineItems l)) of
       c : _ -> Just c
       [] -> Nothing
-    firstChar l = case [c | Just c <- map charBox (lineItems l)] of
+    firstChar l = case mapMaybe charBox (lineItems l) of
       c : _ -> Just c
       [] -> Nothing
     forced = \case

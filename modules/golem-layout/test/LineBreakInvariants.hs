@@ -433,7 +433,7 @@ softHyphenBreaks t = length [() | (a, run, b) <- runs (T.unpack t), not (null ru
       _ : rest -> runs rest
       [] -> []
     latinLetter c = isLetter c && charClassOf c == Western
-    charClassOf = lookClass (bcLookPlain)
+    charClassOf = lookClass bcLookPlain
     bcLookPlain = plainLook "body" 0
 
 {- | The characters of the element of a word on either side of a break,
@@ -591,8 +591,7 @@ of its characters, or right after its last when nothing written follows
 i4NoHyphensWithShy :: Check
 i4NoHyphensWithShy _ p =
   [ Breach I4 (-1) ("the element " <> show (T.concat [t | (_, _, t) <- el]) <> " has a soft hyphen and a hyphen of the patterns")
-  | (el, hyphenated, explicitAfter) <- elements,
-    hyphenated,
+  | (el, True, explicitAfter) <- elements,
     (s0, _, _) : _ <- [el],
     let (_, e0, _) = last el,
     any (\q -> (q >= s0 && q < e0) || (q == e0 && not explicitAfter)) shyAt

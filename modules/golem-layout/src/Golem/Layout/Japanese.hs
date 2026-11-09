@@ -45,6 +45,7 @@ module Golem.Layout.Japanese
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.Char (GeneralCategory (..), generalCategory, isDigit, isLetter, isSpace)
 import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet qualified as IntSet
@@ -491,8 +492,8 @@ keepRanges its
     nearest = \case
       Box _ c | not (T.null (bcText c)) -> Just (lkNoBreak (bcLook c))
       _ -> Nothing
-    befores = scanl (\acc x -> maybe acc Just (nearest x)) Nothing its
-    afters = drop 1 (scanr (\x acc -> maybe acc Just (nearest x)) Nothing its)
+    befores = scanl (\acc x -> nearest x <|> acc) Nothing its
+    afters = drop 1 (scanr (\x acc -> nearest x <|> acc) Nothing its)
     around = zip befores afters
     -- whether the item before is a box: a glue there is a break
     afterBox = False : map isBox its
@@ -725,7 +726,7 @@ textPiecesAt :: Look -> Text -> [(Int -> Int, Piece)]
 textPiecesAt lk t
   | not (T.any (== softHyphen) t) = [((i +), p) | (i, p) <- strippedPieces lk [] t]
   | otherwise =
-      [((\k -> orig (i + k)), p) | (i, p) <- strippedPieces lk shys stripped]
+      [(\k -> orig (i + k), p) | (i, p) <- strippedPieces lk shys stripped]
         <> [(const j, PShy note) | (j, note) <- notes]
   where
     stripped = T.filter (/= softHyphen) t
