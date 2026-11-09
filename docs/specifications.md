@@ -1172,13 +1172,24 @@ HTML の本文の `@toc` とナビゲーション文書は項目を階層で入�
 v1 では `@toc` は文書に一つだけとし、章ごとの小目次は扱わない。
 
 PDF の目次は、章題とページ番号の一覧である（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
-項目は、番号、区切り（上に述べた番号と題のあいだの区切り）、短い題を本文の役割と版面の文字の大きさ fs で組み、階層 l の項目はすべての行を (l − 1) 字下げする。
-6 階層めの項目は 5 字下げる。
-行の終わりの側には、ページ番号のための幅 R を予約し、項目のすべての行を行長から字下げと R を引いた長さで組む。
-R は、ページ番号 999 を項目と同じ環境で組んだ幅 W に、二字分を足した幅である。
-ページ番号は、項目の最後の行に、行の終わり（横組みでは版面の右端、縦組みでは版面の下端）にそろえて置く。
-題の終わりとページ番号のあいだは、二分の空きを両側に取り、三点リーダー（…）を並べたリーダーで埋める。
-リーダーの終わりは、ページ番号が W に収まる限り、どの項目でも同じ位置になるので、上下（縦組みでは左右）の項目の点がそろう。
+項目は、番号、区切り（上に述べた番号と題のあいだの区切り）、短い題であり、階層 l の項目を段落スタイル `toc-<l>` の段落として組む（[ADR 0264](adr/0264-paragraph-styles-for-toc-entries.md)）。
+`toc-<l>` は組み込みの段落スタイルで、`body` を親にし、`size = "1zw"`、`indent = "<l − 1>zw"`、`first-line-indent = "0zw"`、`end-indent = "0zw"` を持つ。
+組み込みの定義のままでは、項目を本文の役割と版面の文字の大きさ fs で組み、階層 l の項目のすべての行を (l − 1) 字下げする。
+利用者は、ほかの組み込みのスタイルと同じく、同じ名前の表か、`@toc` を書いたファイルの `@style-def` で上書きする。
+書体と大きさは `font` と `size`、字下げは `indent`、`first-line-indent`、`end-indent`、項目の前後とあいだの空きは `space-before`、`space-after`、`space-between`、罫線は `rule-before` と `rule-after` で決め、本文の段落と同じ意味を持つ。
+リーダーの字は、項目の段落スタイルの見た目で組む。
+ページ番号は、ページラベルを書いた inline を組み込みの文字スタイル `toc-page-number`（キーなし）で包み、項目の段落スタイルの見た目の上に組む。
+行の終わりの側には、ページ番号のための幅 R を予約し、項目の行 k を、段の行長から、行 k の字下げ（`indent`、一行めは `first-line-indent` を足す）、`end-indent`、R を引いた長さで組む。
+W は、ページ番号 999 を、階層 l の項目の見た目に `toc-page-number` を重ねて組んだ幅の、`@toc` の `depth` 以下の階層 l の最大である。
+R は W に二字分（2 × fs）を足した幅である。
+ページ番号は、項目の最後の行に、`end-indent` によらず行の終わり（横組みでは版面の右端、縦組みでは版面の下端）にそろえて置く。
+題の終わりとページ番号のあいだは、二分（fs ÷ 2）の空きを両側に取り、三点リーダー（…）を並べたリーダーで埋める。
+リーダーの終わりは、ページ番号が W に収まる限り、階層によらずどの項目でも同じ位置になるので、上下（縦組みでは左右）の項目の点がそろう。
+目次の階層 l の項目の行の長さ（段の行長から、最も大きい行の字下げ、`end-indent`、R を引いた長さ）が `toc-<l>` の一字に満たなければ、PDF をターゲットに含むときに、その階層の項目があれば階層ごとに一つ、エラー（G07117）とし、PDF を書かない。
+位置は、`style.toml` に `toc-<l>` の表を書いていればその表、書いていなければ `@toc` の位置である。
+`toc-<l>` の段落スタイルの字下げの検査（G07025）は、G07117 が代わりに検査するので行わない。
+HTML の本文の `@toc` と目次のページの項目には、`toc-<l>` を書いた本で、`toc-<l>` の `font` を `nav.toc li.toc-<l> { font-family: ...; }` として書き、大きさ、字下げ、空き、罫線は書かない。
+EPUB のナビゲーション文書とプレーンテキストには何も書かない。
 `style.toml` の `[toc]` の `leader` を `"none"` にすると、リーダーを描かず、ページ番号の位置はそのままにする。
 ページ番号は見出しのページのページラベルであり、相互参照、索引と同じ規則で書く（[ADR 0260](adr/0260-front-matter-folios-and-page-labels.md)、「プロジェクトの構成と import」の節）。
 表記を決めていないラベルはほかの数と同じく `Number` として組み、横組みでは算用数字、縦組みでは `[numbers]` の `vertical` の表記になる。
@@ -1995,7 +2006,7 @@ CSS の文字の飾りは子孫の要素で消せないので、`false` を写�
 読書環境が `text-underline-position: right` を読むかは確かめていない。
 プレーンテキストは、線を出さず、字を原稿のまま出す。
 
-組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`、`padding = "0.25zw"`、`wrap-mark = "⏎"`）、`url`（キーなし）、`note-mark`（`size = "0.5zw"`）、`superscript`（`position = "superscript"`）、`subscript`（`position = "subscript"`）、`no-break`（`no-break = true`）の九つである。
+組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`、`padding = "0.25zw"`、`wrap-mark = "⏎"`）、`url`（キーなし）、`note-mark`（`size = "0.5zw"`）、`superscript`（`position = "superscript"`）、`subscript`（`position = "subscript"`）、`no-break`（`no-break = true`）、目次のページ番号の `toc-page-number`（キーなし、[ADR 0264](adr/0264-paragraph-styles-for-toc-entries.md)）の十である。
 `no-break` は改行しない範囲を指定する文字スタイルである（「行分割」の節、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
 `note-mark` は、PDF の本文の注の印に当てる既定の文字スタイルである（「脚注」の節、[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 `url` は参考文献の URL を組む文字スタイルであり、書体、大きさ、色は周りの文字のまま組む（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
@@ -2053,7 +2064,7 @@ InDesign の段落境界線にあたる。
 段落スタイルの `size` の `zw` は版面の文字の大きさを一字とし、版面の文字の大きさを超える値はエラー（G03011）とする。
 行送りの欄は設けない。
 PDF の本文を行の格子に載せるので、段落ごとに行送りを変えると見開きの行の位置がそろわなくなるためである。
-組み込みの段落スタイルは `body`、`verse`（`line-breaks = "keep"`、`space-between = 1`、`space-before = 1`、`space-after = 1`）、`caption`、`sidenote`、`table`、`code` の六つであり、段落スタイルを付けない段落は `body` で組む。
+組み込みの段落スタイルは `body`、`verse`（`line-breaks = "keep"`、`space-between = 1`、`space-before = 1`、`space-after = 1`）、`caption`、`sidenote`、`table`、`code` と、目次の項目の `toc-1` から `toc-6`（[ADR 0264](adr/0264-paragraph-styles-for-toc-entries.md)、「目次と文書構造の参照」の節）であり、段落スタイルを付けない段落は `body` で組む。
 `table` は表のセルの段落スタイルの既定である（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 定義は `caption` と同じく `based-on = "body"` と 0 の字下げを持つので、既定では本文と同じ書体と大きさで組む。
 `style.toml` にすでに `[paragraph-styles.table]` を書いた本では、その定義がすべての表のセルに当たる。
@@ -2257,7 +2268,7 @@ PDF の行長は、最初の行が「段の行長 − `indent` − `first-line-i
 `indent` と `first-line-indent` の和が負になる段落スタイルはエラー（G03012）、「段の行長 − `indent` − max(0, `first-line-indent`) − `end-indent`」が段落の文字の大きさの 8 字分に満たない段落スタイルは PDF でエラー（G07025）とする。
 回り込ませる図版の脇で、字下げを引くと行が残らない段落も、`end-indent` を引いた長さで判定する（G07028）。
 G07025 は `style.toml` だけで決まるので、PDF をターゲットに含むビルドと `golem check`（四つのターゲットを検査するので、つねに PDF を含む）が報告し、位置は `style.toml` の先頭とする（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
-G07025 は、段落に字下げを掛ける段落スタイルだけを検査し、字下げをしない `caption`、`sidenote`、`table`、G07043 が検査する `code` を除く（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
+G07025 は、段落に字下げを掛ける段落スタイルだけを検査し、字下げをしない `caption`、`sidenote`、`table`、G07043 が検査する `code`、G07117 が検査する `toc-1` から `toc-6` を除く（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
 一つの段落スタイルの字下げが大きすぎるとき、それを `based-on` で引き継ぐほかの段落スタイルにも G07025 を出す。
 `line-breaks = "keep"` の段落では、改行で区切った各行が段落の始まりと同じく最初の行の字下げを受け、折り返した部分は `indent` の位置から始まる。
 組み込みの `verse` は `indent = "2zw"`、`first-line-indent = "-2zw"` で、各行の折り返した部分をぶら下げる。

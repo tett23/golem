@@ -303,7 +303,7 @@ data Built = Built
     -- | the span of each heading block by its first line (golem-driver ADR 0009)
     bHeadingSpans :: Map Int SrcSpan,
     -- | the heading and the end of the title of each table of contents entry, by its last line
-    bTocLines :: Map Int (SrcSpan, Sp),
+    bTocLines :: Map Int (SrcSpan, Sp, Int),
     -- | the file of each unit by the id of its first line (golem-driver ADR 0014)
     bLineFiles :: Map Int FileId,
     -- | the code block of each row of code (golem-driver ADR 0017)
@@ -409,6 +409,8 @@ indentDiagnostics fid style locals geom =
     | st <- style : map (withLocalStyles style) locals,
       name <- Map.keys (stParaStyles st),
       name `notElem` ["caption", "sidenote", "code"],
+      -- the entries of the table of contents are checked by G07117, with the reserve of the page number (docs/adr/0264)
+      not ("toc-" `T.isPrefixOf` name),
       let (lk, Indent s f e _) = paraLook st geom (Just name),
       let size = lkSize lk,
       -- the end indent counts (docs/adr/0189)
@@ -526,11 +528,18 @@ layoutFigures reuse inp geom fonts figures = do
           -- the pages of the table of contents, once, on the settled pages (golem-driver ADR 0009)
           hPages = headingPages (bHeadingSpans built) pages
           pageLbls = pageLabels (bookSections inp) pages
-          tg = tocGeometry (piStyle inp) geom fonts
-          env = composeEnv (piStyle inp) geom fonts (Assumed Map.empty Map.empty) (bodyLook (piStyle inp) (pgFontSize geom))
+          unitsAt = Map.fromList (bUnits built)
           -- the leader and the page number are at the heading of the entry (golem-cli ADR 0008)
           atHeading hs tp = tp {tpLeader = withBoxSource (SourceGrid, hs) (tpLeader tp), tpNumber = withBoxSource (SourceGrid, hs) (tpNumber tp)}
-          tocPages = Map.fromList [(lid, atHeading hs (tocPage tg e (pageNumberLine env l))) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages], let l = Map.findWithDefault (plainLabel (fromInteger n)) (fromInteger n) pageLbls]
+          -- each entry in the look of its paragraph style, its page number in toc-page-number (docs/adr/0264)
+          tocPages =
+            Map.fromList
+              [ (lid, atHeading hs (tocPage (entryGeometry (pgFontSize geom) (bFlowEnv built) (piStyle inp) u) e (pageNumberLine (unitEnv (bFlowEnv built) u) l)))
+              | (lid, (hs, e, ui)) <- Map.toList (bTocLines built),
+                Just u <- [Map.lookup ui unitsAt],
+                Just n <- [Map.lookup hs hPages],
+                let l = Map.findWithDefault (plainLabel (fromInteger n)) (fromInteger n) pageLbls
+              ]
        in case concat [ds | (_, Left ds) <- placed] of
             [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built))
             ds -> Left ds
@@ -901,14 +910,60 @@ columnMeasure geom = case pgColumns geom of
   (c : _) -> if pgVertical geom then rectH c else rectW c
   [] -> 0
 
-{- | A page number set in the body (golem-driver ADR 0009): the page label
-as 'pageLabelInlines' writes it (docs/adr/0260), its boxes as a line.
+{- | A page number of the table of contents (golem-driver ADR 0009): the
+page label as 'pageLabelInlines' writes it (docs/adr/0260) in the
+character style toc-page-number (docs/adr/0264), its boxes as a line.
 -}
 pageNumberLine :: ComposeEnv -> PageLabel -> Line
 pageNumberLine env l =
-  let boxes = [b | b@Box {} <- fst (composeInlines env (pageLabelInlines (mkSpan (FileId 0) 0 0) l))]
+  let sp0 = mkSpan (FileId 0) 0 0
+      boxes = [b | b@Box {} <- fst (composeInlines env [CharStyle sp0 "toc-page-number" (pageLabelInlines sp0 l)])]
       w = sum (map itemWidth boxes)
    in Line boxes 0 w 0 (0, 0) 0 (0, 0)
+
+{- | How the last line of an entry of the table of contents ends
+(docs/adr/0264): the reserve W of every level, the gap, and the leader in
+the look of the paragraph style of the entry.
+-}
+entryGeometry :: Sp -> FlowEnv -> Style -> Unit -> TocGeometry
+entryGeometry fs fe style u =
+  let env = unitEnv fe u
+      reserve = case uKind u of
+        UTocEntry _ _ _ r -> r - 2 * fs
+        _ -> 0
+      sp0 = mkSpan (FileId 0) 0 0
+      leaderUnit = sum [w | Box w _ <- fst (composeInlines env [Text sp0 "…"])]
+   in TocGeometry (feMeasure fe) reserve (Sp (unSp fs `div` 2)) leaderUnit (stTocLeader style == "dots") (ceLook env)
+
+{- | G07117 (docs/adr/0264): for each level of the entries of the table of
+contents, once, when the length of a line of its entries (the measure
+less the larger indent of a line, the end indent and R) is less than a
+character of its style; at the table of toc-<l> in style.toml when it is
+written there, at the @toc otherwise.
+-}
+tocLineErrors :: FlowEnv -> [(Int, Unit)] -> [Diagnostic]
+tocLineErrors fe units =
+  [ diagnostic "G07117" Error (fromMaybe (uSpan u) (written l)) ("目次の階層 " <> T.pack (show l) <> " の項目の行の長さが、段落スタイル " <> tocStyleName l <> " の一字に足りません。indent、first-line-indent、end-indent を狭めてください")
+  | (l, u) <- Map.toList (Map.fromListWith (\_ first' -> first') [(l, u) | (_, u) <- units, UTocEntry l _ _ _ <- [uKind u]]),
+    UTocEntry _ _ (Indent st f e _) r <- [uKind u],
+    feMeasure fe - max (st + f) st - e - r < lkSize (uLook u)
+  ]
+  where
+    inp = feInput fe
+    written l = manifestValueSpan (piStyleFile inp) (piStyleText inp) ["paragraph-styles", tocStyleName l]
+
+{- | W (docs/adr/0264): the width of the page number 999 in the look of the
+entries of each level from 1 to the depth, with toc-page-number on it, the
+widest; in the style of the document of the table of contents.
+-}
+tocReserveWidth :: FlowEnv -> Style -> Int -> Sp
+tocReserveWidth fe style depth =
+  let sp0 = mkSpan (FileId 0) 0 0
+      widthAt l =
+        let (lk, _) = paraLook style (feGeom fe) (Just (tocStyleName l))
+            env = (withDocStyle style (lookEnv fe lk)) {ceAkiSet = akiSetOf style (Just (tocStyleName l))}
+         in sum [w | Box w _ <- fst (composeInlines env [CharStyle sp0 "toc-page-number" [Number sp0 999 Nothing]])]
+   in maximum (0 : map widthAt [1 .. max 1 (min 6 depth)])
 
 -- | W and u, measured once in the body role at the type size.
 tocMetrics :: ComposeEnv -> (Sp, Sp)
@@ -916,13 +971,6 @@ tocMetrics env =
   let width is = sum [w | Box w _ <- fst (composeInlines env is)]
       sp0 = mkSpan (FileId 0) 0 0
    in (width [Number sp0 999 Nothing], width [Text sp0 "…"])
-
-tocGeometry :: Style -> PageGeometry -> LoadedFonts -> TocGeometry
-tocGeometry style geom fonts =
-  let fs = pgFontSize geom
-      env = composeEnv style geom fonts (Assumed Map.empty Map.empty) (bodyLook style fs)
-      (w, u) = tocMetrics env
-   in TocGeometry (columnMeasure geom) w (Sp (unSp fs `div` 2)) u (stTocLeader style == "dots") (ceLook env)
 
 {- | The text of the lines of each page, as far as the layout goes
 (golem-driver ADR 0007): the boxes of a line joined.
@@ -1447,17 +1495,21 @@ spine as left until their page is known; any other unit left-justified.
 -}
 layoutAlign :: UnitKind -> A.ParaAlign
 layoutAlign = \case
-  UPara i -> case inAlign i of
-    ParaLeft -> A.Ragged A.LineStart
-    ParaCenter -> A.Ragged A.LineCenter
-    ParaRight -> A.Ragged A.LineEnd
-    ParaLeftJustified -> A.Justified (Just A.LineStart)
-    ParaCenterJustified -> A.Justified (Just A.LineCenter)
-    ParaRightJustified -> A.Justified (Just A.LineEnd)
-    ParaFullyJustified -> A.Justified Nothing
-    ParaTowardsSpine -> A.Ragged A.LineStart
-    ParaAwayFromSpine -> A.Ragged A.LineStart
+  UPara i -> alignOf i
+  -- an entry of the table of contents by the align of its style (docs/adr/0264)
+  UTocEntry _ _ i _ -> alignOf i
   _ -> A.Justified (Just A.LineStart)
+  where
+    alignOf i = case inAlign i of
+      ParaLeft -> A.Ragged A.LineStart
+      ParaCenter -> A.Ragged A.LineCenter
+      ParaRight -> A.Ragged A.LineEnd
+      ParaLeftJustified -> A.Justified (Just A.LineStart)
+      ParaCenterJustified -> A.Justified (Just A.LineCenter)
+      ParaRightJustified -> A.Justified (Just A.LineEnd)
+      ParaFullyJustified -> A.Justified Nothing
+      ParaTowardsSpine -> A.Ragged A.LineStart
+      ParaAwayFromSpine -> A.Ragged A.LineStart
 
 -- | Whether the lines of a unit go towards the spine (True) or away from it (False) (docs/adr/0189).
 spineOf :: UnitKind -> Maybe Bool
@@ -1494,7 +1546,7 @@ data UnitKind
   | -- | grid lines between paragraphs of a style (docs/adr ADR 0005)
     UGap Int
   | -- | an entry of the table of contents: its level and its heading (golem-driver ADR 0009)
-    UTocEntry Int SrcSpan
+    UTocEntry Int SrcSpan Indent Sp
   | -- | a forced break (docs/adr ADR 0017)
     UBreak !BreakKind
   | -- | the start of a section: the place of its file among the chapter files, and its start (docs/adr/0260)
@@ -1686,7 +1738,28 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
             CodeBlock code -> (n, [unit (UCode 0 code) lbl [] (codeLook style geom) (paraSizeSource style (Just "code"))])
             FigureBlock fig -> (n, [plainUnit (UFigure fig) lbl []])
             -- S1 has dropped the index marks and channel items of the title (docs/adr/0145)
-            ChannelOutput (TocOutput depth) -> (n + 1, inFrame (frame n FToc) [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (numberedTitle lang (teSpan e) (teNumber e) (teTitle e)) | e <- bookToc book, teLevel e <= depth])
+            -- each entry a paragraph of the style toc-<l> of its level (docs/adr/0264); its reserve is filled by flowUnits
+            ChannelOutput (TocOutput depth) ->
+              let entries = [e | e <- bookToc book, teLevel e <= depth]
+                  styleOf' e = Just (tocStyleName (teLevel e))
+                  entryUnit e =
+                    let st = styleOf' e
+                        (face, ind) = paraLook style geom st
+                     in (unit (UTocEntry (teLevel e) (teSpan e) ind 0) Nothing (numberedTitle lang (teSpan e) (teNumber e) (teTitle e)) face SourceGrid) {uParaStyle = st, uRules = paraRules style st}
+                  spaceOf key st = fromMaybe 0 (paraStyle style st >>= key)
+                  gapUnit g = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing | g > 0]
+                  -- the spaces before the first entry, between the entries and after the last (docs/adr/0264)
+                  between a b
+                    | styleOf' a == styleOf' b = spaceOf psSpaceBetween (styleOf' b)
+                    | otherwise = max (spaceOf psSpaceAfter (styleOf' a)) (spaceOf psSpaceBefore (styleOf' b))
+                  tocUnits = \case
+                    [] -> []
+                    es@(e0 : _) ->
+                      gapUnit (spaceOf psSpaceBefore (styleOf' e0))
+                        <> [entryUnit e0]
+                        <> concat [gapUnit (between a b) <> [entryUnit b] | (a, b) <- zip es (drop 1 es)]
+                        <> concat [gapUnit (spaceOf psSpaceAfter (styleOf' l)) | l : _ <- [reverse es]]
+               in (n + 1, inFrame (frame n FToc) (tocUnits entries))
             ChannelOutput IndexOutput ->
               let entries kind = inFrame (frame n FIndex) [plainUnit kind Nothing is | is <- indexLines (pgVertical geom) pageOf (indexAt book sp)]
                in case indexSet of
@@ -1902,8 +1975,14 @@ unitLabelInlines u = case [k | Frame _ k _ <- uFrames u] of
 M of each list; a unit in lists is indented by them (golem-driver ADR 0013).
 -}
 flowUnits :: FlowEnv -> ([(Int, Unit)], Map Int Sp)
-flowUnits fe = ([(i, (withListIndent u) {uIndex = i}) | (i, u) <- zip [0 :: Int ..] rawUnits], widths)
+flowUnits fe = ([(i, (withReserve (withListIndent u)) {uIndex = i}) | (i, u) <- zip [0 :: Int ..] rawUnits], widths)
   where
+    -- R = W + 2fs of the entries of the table of contents, of the depth of @toc, in the style of its document (docs/adr/0264)
+    tocDepth = fromMaybe 6 (bookTocDepth (piBook inp))
+    reserves = Map.fromList [(spanFile (uSpan u), tocReserveWidth fe (uStyle u) tocDepth + 2 * pgFontSize geom) | u <- rawUnits, UTocEntry {} <- [uKind u]]
+    withReserve u = case uKind u of
+      UTocEntry l hs ind _ -> u {uKind = UTocEntry l hs ind (Map.findWithDefault 0 (spanFile (uSpan u)) reserves)}
+      _ -> u
     inp = feInput fe
     geom = feGeom fe
     style = piStyle inp
@@ -1938,25 +2017,24 @@ a table of contents entry also by the reserve for its page number
 unitLineWidth :: FlowEnv -> UnitKind -> Int -> Sp
 unitLineWidth fe kind k = case kind of
   UIndexEntry m -> m
-  _ -> feMeasure fe - unitLineIndent (pgFontSize (feGeom fe)) kind k - unitEndIndent kind - (case kind of UTocEntry {} -> feTocReserve fe; _ -> 0)
+  -- the reserve of the page number of an entry of the table of contents (docs/adr/0264)
+  _ -> feMeasure fe - unitLineIndent (pgFontSize (feGeom fe)) kind k - unitEndIndent kind - (case kind of UTocEntry _ _ _ r -> r; _ -> 0)
 
 -- | The end indent of the lines of a unit of the kind (docs/adr/0189).
 unitEndIndent :: UnitKind -> Sp
 unitEndIndent = \case
   UPara i -> inEnd i
+  UTocEntry _ _ i _ -> inEnd i
   _ -> 0
 
 -- | How far line k of a unit of the kind starts from the line start, at the font size of the grid.
 unitLineIndent :: Sp -> UnitKind -> Int -> Sp
-unitLineIndent fs = \case
+unitLineIndent _ = \case
   UPara (Indent s f _ _) -> \k -> if k == (0 :: Int) then s + f else s
   UTerm (Indent s _ _ _) -> const s
-  UTocEntry l _ -> const (tocIndent fs l)
+  -- an entry of the table of contents by its style (docs/adr/0264)
+  UTocEntry _ _ (Indent s f _ _) _ -> \k -> if k == (0 :: Int) then s + f else s
   _ -> const 0
-
--- | The indent of a table of contents entry of a level (golem-driver ADR 0009).
-tocIndent :: Sp -> Int -> Sp
-tocIndent fs l = fromIntegral (l - 1) * fs
 
 {- | The marker of a list item: its boxes and an empty box up to Mi, before
 the text with no glue or penalty between them (golem-driver ADR 0013).
@@ -2342,7 +2420,8 @@ data Numbered = Numbered
     nuTableLines :: Map Int [(Int, SetLine)],
     nuTables :: Map Int TableGeometry,
     nuHeadingSpans :: Map Int SrcSpan,
-    nuTocLines :: Map Int (SrcSpan, Sp),
+    -- | the heading, the end of the title and the unit of each table of contents entry, by its last line
+    nuTocLines :: Map Int (SrcSpan, Sp, Int),
     -- | the caption of each table by its first grid line (docs/adr/0262)
     nuTableCaptions :: Map Int CodeCaption
   }
@@ -2511,13 +2590,13 @@ numberTable fe u tbl r nb = case r of
 headingAndTocLines :: Sp -> ComposedUnits -> Int -> Int -> Unit -> Numbered -> Numbered
 headingAndTocLines fs cu nextId i u nb = case uKind u of
   UHeading {} -> nb {nuHeadingSpans = Map.insert nextId (uSpan u) (nuHeadingSpans nb)}
-  UTocEntry l hs
+  UTocEntry _ hs _ _
     | Just c <- Map.lookup i (cuSingles cu),
       ls@(_ : _) <- cLines c ->
         let end = case [off + w | (Box w _, off) <- placeLine (last ls)] of
               [] -> 0
               ends -> last ends
-         in nb {nuTocLines = Map.insert (nextId + length ls - 1) (hs, tocIndent fs l + end) (nuTocLines nb)}
+         in nb {nuTocLines = Map.insert (nextId + length ls - 1) (hs, unitLineIndent fs (uKind u) (length ls - 1) + end, i) (nuTocLines nb)}
   _ -> nb
 
 -- | Numbers the lines of a unit that is not a table: figures, code blocks, the controls of the flow and the units of text.
@@ -2662,6 +2741,8 @@ numberText fe (firstOfBlock, lastOfBlock) u c nb =
       flowOf = case uKind u of
         UHeading _ _ recto | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledHeading recto (hbSpan hb) boxes)]
         UPara _ | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledLines kp boxes)]
+        -- an entry of the table of contents with the rules of its style (docs/adr/0264)
+        UTocEntry {} | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledLines kp boxes)]
         UHeading l _ recto -> [FHeading l recto (hbSpan hb) boxes]
         UNotesTitle _ -> [FHeading 2 False (hbSpan hb) boxes]
         UTerm _ -> [FDefTerm boxes]
@@ -2761,7 +2842,7 @@ buildFlow inp geom fonts images prev assumed = do
         let nb' = numberUnit fe composed nb iu
          in (nb', if nuNext nb' > nuNext nb then Map.insert (nuNext nb) (uSpan u) spans else spans)
       lineFiles = Map.map spanFile lineSpans
-      start = Numbered 0 [] Map.empty Map.empty Map.empty (deepListErrors fe widths units <> codeErrors) Map.empty Map.empty Map.empty Map.empty Map.empty
+      start = Numbered 0 [] Map.empty Map.empty Map.empty (deepListErrors fe widths units <> codeErrors <> tocLineErrors fe units) Map.empty Map.empty Map.empty Map.empty Map.empty
       (numbered, lineSpans) = foldl stepFiles (start, Map.empty) units
       flow = nuFlow numbered
       -- the code blocks of the flow are those of the units, in order

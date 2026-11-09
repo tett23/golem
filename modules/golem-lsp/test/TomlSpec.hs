@@ -71,15 +71,15 @@ tomlTests =
       testGroup
         "style.toml"
         [ including "style.toml" "[▮" ["page", "fonts", "character-styles", "paragraph-styles", "color"] ["emphasis", "verse"],
-          exactly "style.toml" "[paragraph-styles.quote]\n[paragraph-styles.▮" ["body", "caption", "code", "sidenote", "table", "verse", "quote"],
+          exactly "style.toml" "[paragraph-styles.quote]\n[paragraph-styles.▮" ["body", "caption", "code", "sidenote", "table", "toc-1", "toc-2", "toc-3", "toc-4", "toc-5", "toc-6", "verse", "quote"],
           including "style.toml" "[page]\nbinding = \"right\"\n▮" ["size", "writing-mode", "grid", "bleed"] ["binding"],
           exactly "style.toml" "[page]\nbinding = ▮" ["\"right\"", "\"left\""],
           exactly "style.toml" "[page]\nbinding = \"▮" ["right", "left"],
           exactly "style.toml" "[character-styles.em]\nsynthetic-bold = ▮" ["true", "false"],
-          exactly "style.toml" "[paragraph-styles.quote]\nbased-on = ▮" ["\"body\"", "\"caption\"", "\"sidenote\"", "\"table\"", "\"verse\""],
+          exactly "style.toml" "[paragraph-styles.quote]\nbased-on = ▮" ["\"body\"", "\"caption\"", "\"sidenote\"", "\"table\"", "\"toc-1\"", "\"toc-2\"", "\"toc-3\"", "\"toc-4\"", "\"toc-5\"", "\"toc-6\"", "\"verse\""],
           exactly "style.toml" "[fonts.heading]\nja = \"a.otf\"\n[character-styles.em]\nfont = ▮" ["\"heading\""],
           exactly "style.toml" "[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n[character-styles.em]\ncolor = ▮" ["\"accent\""],
-          exactly "style.toml" "[character-styles.em]\n[paragraph-styles.body]\nregex-styles = [\n  { pattern = 'x', style = ▮" ["\"bold\"", "\"code\"", "\"italic\"", "\"no-break\"", "\"note-mark\"", "\"strong\"", "\"subscript\"", "\"superscript\"", "\"url\"", "\"em\""],
+          exactly "style.toml" "[character-styles.em]\n[paragraph-styles.body]\nregex-styles = [\n  { pattern = 'x', style = ▮" ["\"bold\"", "\"code\"", "\"italic\"", "\"no-break\"", "\"note-mark\"", "\"strong\"", "\"subscript\"", "\"superscript\"", "\"toc-page-number\"", "\"url\"", "\"em\""],
           exactly "style.toml" "[page]\n# binding = ▮" [],
           exactly "style.toml" "[page]\nbinding = \"\"\"\n▮" [],
           exactly "style.toml" "[page]\nsize = \n[page.grid]\n▮" ["font-size", "characters", "lines", "line-pitch", "columns", "column-gap", "position"],

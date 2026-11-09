@@ -52,6 +52,7 @@ import TableFilesSpec
 import TaggedPdfSpec (taggedPdfTests)
 import TateChuYokoSpec (tateChuYokoTests)
 import Test.Tasty
+import TocStylesSpec (tocStylesTests)
 import UnwritableNumbersSpec (unwritableNumbersTests)
 import VarsSpec (varsTests)
 
@@ -78,6 +79,7 @@ tests skips =
         varsTests,
         unwritableNumbersTests,
         pageLabelsTests,
+        tocStylesTests,
         keepOptionsTests,
         emetSamplesTests,
         functionLibraryTests,
