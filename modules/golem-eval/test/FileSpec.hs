@@ -376,7 +376,7 @@ tests =
         errs "[number-text 1.5]\n" @?= ["G02019"]
         errs "[number-text 1 style=roman]\n" @?= ["G02019"],
       testCase "references and citations" $ do
-        paraOf "[ref-number intro][cite knuth1981]\n" @?= ["<ref RefNumber intro>", "Cite (SrcSpan {spanFile = FileId 1, spanStart = 18, spanEnd = 34}) \"knuth1981\""]
+        paraOf "[ref-number intro][cite knuth1981]\n" @?= ["<ref RefNumber intro>", "Cite (SrcSpan {spanFile = FileId 1, spanStart = 18, spanEnd = 34}) [CiteItem {citKey = \"knuth1981\", citLocator = Nothing, citPrefix = [], citSuffix = []}]"]
         errs "[cite nope]\n" @?= ["G02021"],
       testCase "styles and swatches must exist" $ do
         errs "[color accent: x][style term: y]\n" @?= []
@@ -1902,10 +1902,10 @@ diagnosticTests =
         msgs "[ruby: 東京|とう/きょう]\n" @?= [("G02015", "モノルビの対象と読みのセグメントの数が一致しません")]
         errs "[ruby: 五月雨|さみだれ]\n" @?= []
         errs "[ruby: お/父/さん|/とう/]\n" @?= [],
-      testCase "G02017, G02018, G02021: an argument that is not a name" $ do
+      testCase "G02017, G02018, G02150: an argument that is not a name" $ do
         msgs "[color [= \"x\"]: a]\n" @?= [("G02017", "color にはスウォッチの名前を一つ書きます")]
         msgs "[style [= \"x\"]: a]\n" @?= [("G02018", "style には文字スタイルの名前を一つ書きます")]
-        msgs "[cite [= \"x\"]]\n" @?= [("G02021", "cite には書誌データのキーを一つ書きます")]
+        msgs "[cite [= 1]]\n" @?= [("G02150", "cite のキーは名前か文字列で書きます")]
         msgs "[color red: x]\n" @?= [("G02017", "style.toml にないスウォッチです: red")]
         msgs "[cite nope]\n" @?= [("G02021", "書誌データにないキーです: nope")],
       testCase "G02019: number-text" $ do

@@ -35,7 +35,7 @@ pub mod ir;
 pub mod protocol;
 
 pub use cbor::Value;
-pub use ir::{note_body, note_paragraphs_mut, Block, BlockBody, DefGroup, Document, Inline, ListItem, NumberStyle, RefKind, RubySegment, Sp, Span, ABI_VERSION};
+pub use ir::{note_body, note_paragraphs_mut, Block, BlockBody, CiteItem, DefGroup, Document, Inline, ListItem, Locator, LocatorValue, NumberStyle, RefKind, RubySegment, Sp, Span, ABI_VERSION};
 pub use protocol::{
     Arg, ArgValue, BlockCommandRequest, ChannelDecl, Image, ImageFormat, ChannelOrder, CommandRequest, Context, Data, DataDiagnostic, Description, Diagnostic, FilterRequest, Output, Request, Response,
     Severity,

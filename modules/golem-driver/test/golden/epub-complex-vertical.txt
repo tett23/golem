@@ -152,7 +152,7 @@ code { padding-inline: 0.25em; }
 </nav>
 </body>
 </html>
-== OEBPS/chapters/01.xhtml (deflate, time 315532800, 6802 bytes)
+== OEBPS/chapters/01.xhtml (deflate, time 315532800, 6828 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -206,12 +206,12 @@ code { padding-inline: 0.25em; }
 <p class="ps-box">大きな仕事が入ると、活版所は急に騒がしくなる。――棚の前に人が並び、ステッキの鳴る音が途切れなくなる。版を組む台の上には、組み終えたページが何枚も重ねられ、校正の刷りを待つ。その間も端物の注文は来るので、主人は夜遅くまで一人で刷り機を動かした<span id="i-2-4178"></span>。</p>
 <section class="notes">
 <h2>注</h2>
-<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> 文選と植字を一人で兼ねる小さな活版所も多かった。仕事の分け方は、<a class="cite" href="../chapters/03.xhtml#cite-jlreq">[1]</a> の扱う範囲の外である。<span id="i-2-898"></span></p></aside>
-<aside epub:type="footnote" id="note-2"><p><a href="#noteref-2">2</a> 欧文の字の幅については <a class="cite" href="../chapters/03.xhtml#cite-bringhurst">[2]</a> の第二章が詳しい。</p></aside>
+<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> 文選と植字を一人で兼ねる小さな活版所も多かった。仕事の分け方は、<span class="cite">[<a href="../chapters/03.xhtml#cite-jlreq">1</a>]</span> の扱う範囲の外である。<span id="i-2-898"></span></p></aside>
+<aside epub:type="footnote" id="note-2"><p><a href="#noteref-2">2</a> 欧文の字の幅については <span class="cite">[<a href="../chapters/03.xhtml#cite-bringhurst">2</a>]</span> の第二章が詳しい。</p></aside>
 </section>
 </body>
 </html>
-== OEBPS/chapters/02.xhtml (deflate, time 315532800, 8232 bytes)
+== OEBPS/chapters/02.xhtml (deflate, time 315532800, 8245 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -293,11 +293,11 @@ code { padding-inline: 0.25em; }
 <p class="ps-box">組版の台の上では、版はいつも裏返しに組まれる。刷ったときに正しい向きになるよう、字は左右が逆に彫られているからである。植字工は、逆さの字を逆さのまま読み、行の間違いを見つけなければならない。慣れた人は、鏡に映した新聞を読むように、版の上の字をすらすらと読んだという。それでも、似た形の字の取り違えはなくならない。「ぱ」と「ば」、「シ」と「ツ」、「未」と「末」は、校正の刷りで最もよく赤字の入る組み合わせだった。こうした間違いを減らすために、ある活版所では、似た字の棚を離して置き、拾うときに手が迷わないようにしていた。棚の配置そのものが、間違いを防ぐ仕組みになっていたのである。棚を並べ替えるのは大仕事で、何日も店を閉めなければならなかった。それでも、取り違えの数が目に見えて減ったので、主人は並べ替えてよかったと語っていた。同じ工夫は、ほかの町の活版所にも広まり、やがて棚の標準の配置として本にまとめられた。もっとも、標準の配置がそのまま使われた活版所は多くない。字の使われ方は、刷る物によって違うからである。名刺を多く刷る店では人名の漢字を、役所の書類を多く刷る店では「申」「請」「届」のような字を、手前の棚に置いた。標準の配置は出発点にすぎず、それぞれの店が自分の仕事に合わせて少しずつ崩していった。崩した配置は、その店の職人にしか分からない。よその店から来た職人は、腕がよくても、はじめの一月ほどは字を探して棚の前を行き来することになった。</p>
 <section class="notes">
 <h2>注</h2>
-<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> この調整の規則は、のちに <a class="cite" href="../chapters/03.xhtml#cite-jisx4051">[3]</a> にまとめられた。<span id="i-3-1160"></span></p></aside>
+<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> この調整の規則は、のちに <span class="cite">[<a href="../chapters/03.xhtml#cite-jisx4051">3</a>]</span> にまとめられた。<span id="i-3-1160"></span></p></aside>
 </section>
 </body>
 </html>
-== OEBPS/chapters/03.xhtml (deflate, time 315532800, 6030 bytes)
+== OEBPS/chapters/03.xhtml (deflate, time 315532800, 6043 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -355,7 +355,7 @@ code { padding-inline: 0.25em; }
 </ol>
 <section class="notes">
 <h2>注</h2>
-<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> 校正の回数と手順は活版所ごとに違った。<a class="cite" href="#cite-jlreq">[1]</a> は組版の結果を扱い、校正の手順は扱わない。</p></aside>
+<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> 校正の回数と手順は活版所ごとに違った。<span class="cite">[<a href="#cite-jlreq">1</a>]</span> は組版の結果を扱い、校正の手順は扱わない。</p></aside>
 </section>
 </body>
 </html>

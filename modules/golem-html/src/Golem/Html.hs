@@ -43,6 +43,7 @@ import Golem.Assemble
 import Golem.Assemble.ListMarkers
 import Golem.Assemble.Numbering (numberSeparator)
 import Golem.Bibliography (EntryPart (..))
+import Golem.Doc.Citation (CitePiece (..), citationPieces)
 import Golem.Doc.FigureWidth (FigureWidth (..), parseFigureWidth)
 import Golem.Doc.IR
 import Golem.Length qualified as L
@@ -726,13 +727,17 @@ inline c = \case
   ChannelItem sp ci
     | maybe False channelLocators (Map.lookup (ciChannel ci) (bookChannelDecls (cBook c))) -> "<span id=\"" <> escapeXml (channelAnchor (ciChannel ci) sp) <> "\"></span>"
     | otherwise -> ""
-  -- a link to the entry in the file of its bibliography; a span without one (golem-html ADR 0003)
-  Cite sp k -> case citeNumber (cBook c) sp k of
-    Just n ->
+  -- the mark in a span, each number a link to its entry in the file of its bibliography;
+  -- no link without one (golem-html ADR 0003, docs/adr/0266)
+  Cite sp is -> case traverse (\i -> (,) i . Just <$> citeNumber (cBook c) sp (citKey i)) is of
+    Just ns ->
       let at = fst =<< Map.lookup (spanFile sp, sp) (bookCiteMarks (cBook c))
-       in case bibliographyHome (cBook c) sp of
-            Just home -> "<a class=\"cite\" href=\"" <> linkTo c home (citeId c at k) <> "\">[" <> tshow n <> "]</a>"
-            Nothing -> "<span class=\"cite\">[" <> tshow n <> "]</span>"
+          piece = \case
+            CiteText t -> escapeXml t
+            CiteNumber k n -> case bibliographyHome (cBook c) sp of
+              Just home -> "<a href=\"" <> linkTo c home (citeId c at k) <> "\">" <> tshow n <> "</a>"
+              Nothing -> tshow n
+       in "<span class=\"cite\">" <> T.concat (map piece (citationPieces ns)) <> "</span>"
     Nothing -> ""
   ProofComment _ t -> if hcDev (cCfg c) then "<span class=\"proof\">" <> escapeXml t <> "</span>" else ""
   LineBreak _ -> "<br/>"
