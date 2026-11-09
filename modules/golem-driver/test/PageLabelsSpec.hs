@@ -26,6 +26,7 @@ import Golem.Syntax
 import Golem.TestSupport.Manifest
 import Golem.Typeset (PdfInput (..), PdfLayout (..), SetLine (..), TocPage (..), bookSections, folioTexts, hiddenFolios, layoutLabels, layoutPdf, pdfPageLabels)
 import Support
+import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -78,6 +79,10 @@ buildLabelled manifest style sources = withSystemTempDirectory "golem-labels" $ 
     [p] -> Just <$> BS.readFile p
     _ -> pure Nothing
   pure (brDiagnostics r, brSources r, pdf)
+
+-- | The paths of the fonts that a style.toml names: the strings that start with fonts/.
+fontPaths :: Text -> [FilePath]
+fontPaths t = [T.unpack (T.takeWhile (/= '"') rest) | (_, rest) <- T.breakOnAll "\"fonts/" t >>= \(a, b) -> [(a, T.drop 1 b)]]
 
 -- | The text of the boxes of a line.
 boxText :: Line -> Text
@@ -186,6 +191,10 @@ pageLabelsTests =
         withSystemTempDirectory "golem-manual" $ \tmp -> do
           copyTree "../../manual" tmp
           -- the colophon reads build-info.gm, which scripts/manual/build-info.sh writes and git does not track
+          -- the fonts are not in the repository: the fake fonts are used, and the files only have to be there
+          style <- TIO.readFile (tmp </> "style.toml")
+          createDirectoryIfMissing True (tmp </> "fonts")
+          mapM_ (\f -> doesFileExist (tmp </> f) >>= \there -> if there then pure () else BS.writeFile (tmp </> f) "") (fontPaths style)
           TIO.writeFile (tmp </> "common" </> "build-info.gm") "@set edition = \"0.0.0\"\n@set commit = \"0000000\"\n@set uncommitted = \"\"\n"
           manifest <- TE.decodeUtf8 <$> BS.readFile (tmp </> "manifest.toml")
           assertBool "the preface in lower-roman" ("{ file = \"preface.gm\", page-numbering = { style = \"lower-roman\" } }" `T.isInfixOf` manifest)

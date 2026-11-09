@@ -409,8 +409,8 @@ pl3SectionStart flows ps =
       starts = Map.fromList [(i, start) | FSection i start <- flows]
    in [ Breach PL3 [] ("page " <> show p <> " of section " <> show s <> " is numbered " <> show (plNumber l))
       | (p, ss@(_ : _)) <- Map.toList (firstsOf ps),
-        Just l <- [Map.lookup p ls],
         let s = last ss,
+        Just l <- [Map.lookup p ls],
         plNumber l /= expectedOf ls starts p s
       ]
   where
