@@ -668,8 +668,10 @@ indexColumnTests =
           x1 = TE.encodeUtf8 (spToPt (rectX ta + 17 * 10 * pt))
       assertBool "the second column starts 17 characters on" (any (any ((== x1) . dX) . drawnGlyphs) (take 1 content)),
     testCase "PDF: the lines of the index columns are on the grid of the type area" $ do
-      -- the entries alone, without the headings of docs/adr/0265
-      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32) <> "section-headings = false\n"
+      -- the entries alone, without the headings of docs/adr/0265; the text
+      -- before the index balanced (docs/adr/0274), so that it takes the lines
+      -- that leave ten for the second column of the index
+      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32 <> "\n[paragraph-styles.body]\nline-adjustment = \"balanced\"\n") <> "section-headings = false\n"
       (geom, _) <- layoutOk style indexSource []
       content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
       let ta = typeAreaFor geom 1

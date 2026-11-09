@@ -386,6 +386,26 @@ keep-all-lines = true
 [code: keep-with-next] と [code: page-break] は、文書の最上位の段落にだけ当てます。
 リストの項目、定義リストの中の段落、注の本文には当てません。
 
+@label line-adjustment
+### 行の調整
+
+段落スタイルの二つのキーで、行に字が収まらないときの組み方を決めます。
+
+- [code: line-adjustment]：[code: "pull-in-first"] は、約物の空きや語間を詰めて字を前の行に入れること（追い込み）を優先します。既定です。[code: "balanced"] は、詰める行と字間を空ける行を同じ基準で比べます。
+- [code: stretch-limit]：行の字間を空ける量の上限を、伸びの最大に対する千分率で書きます。書かなければ上限はありません。
+
+改行できない長いコードの前の行のように、字間が大きく空く行を避けたい段落に [code: stretch-limit] を書きます。
+上限を超える分は行末に残すので、その行は行末がそろいません。
+1000 なら、仮名と漢字のあいだは 1/10 字まで空きます。
+2500 なら、四分まで空きます。
+
+```toml
+[paragraph-styles.table]
+stretch-limit = 2500
+```
+
+英語の本で語間が詰まりすぎると感じたら、[code: line-adjustment = "balanced"] を書きます。
+
 @label paragraph-boxes
 ### 段落の背景と囲み罫
 

@@ -6147,6 +6147,7 @@ documentText =
       "- 段落スタイルの `border-style` に `solid`、`dashed`、`dotted` のほかの値を書いた。`border-sides` が空の配列か、同じ辺を二度含むか、`before`、`after`、`start`、`end` のほかの値を含む（[docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)）。",
       "- 囲み（`background` か `border`）を持つ段落スタイルに、`rule-before` か `rule-after` を書いた。`based-on` で引き継いだ場合を含む。メッセージは `段落スタイル <名前> には囲みと罫線を一緒に書けません` である（[docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)）。",
       "- 段落スタイルの `keep-with-next` に 0 から 5 のほかの整数を、`keep-first-lines` か `keep-last-lines` に 0 を、`keep-all-lines` に真偽値でない値を、`page-break` に `\"any\"`、`\"column\"`、`\"page\"`、`\"recto\"`、`\"verso\"` のほかの値を書いた。段落スタイル `code` にこれらのキーを書いた場合も同じである。負の整数は [G02103](#g02103) とする（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。",
+      "- 段落スタイルの `line-adjustment` に `\"pull-in-first\"` と `\"balanced\"` のほかの値を書いたか、`stretch-limit` に負の数か整数でない値を書いた。段落スタイル `code` にこれらのキーを書いた場合も同じである（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)）。",
       "- 文字スタイルの `background` か `padding` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。文字スタイルの `background` に `true` を書いた。文字スタイルの `padding` が負であるか、寸法として読めない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。",
       "- 文字スタイルの `wrap-mark` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。`wrap-mark` を文字列で書いていない（[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)）。",
       "- `[code]` か `[code.colors]` に未知のキーを書いた。`[code]` の `line-numbers` が真偽値でない。`[code]` の `number` が `{n}` などの差し込みを含まない。",

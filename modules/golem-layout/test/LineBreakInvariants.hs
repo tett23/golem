@@ -71,7 +71,7 @@ before golem-layout ADR 0045, which no output tells: the tests of the
 items check it. D1 to D5 of golem-layout ADR 0048 compare the items of
 code with padding with those without it ('paddingBreaches').
 -}
-data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1 | I4 | B2 | B3 | B4 | C1 | C2 | C6 | C7 | C8 | J1 | J2 | J3 | J4 | J6 | J7 | D1 | D2 | D3 | D4 | D5
+data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1 | I4 | B2 | B3 | B4 | C1 | C2 | C6 | C7 | C8 | J1 | J2 | J3 | J4 | J6 | J7 | D1 | D2 | D3 | D4 | D5 | R5 | R6
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken, the line it is broken at (from 0; -1 for the whole paragraph), and how.
@@ -317,7 +317,9 @@ l6Justified _ p =
     not (lineOverfull l),
     let target = pWidth p + endProtrusion l,
     abs (lineEnd l - target) > 1,
-    not (lineEnd l < target && noStretch l && shortByLessThanAStep l (target - lineEnd l))
+    not (lineEnd l < target && noStretch l && shortByLessThanAStep l (target - lineEnd l)),
+    -- a line whose stretch the limit caps ends before W (docs/adr/0274, R6)
+    not (capped l)
   ]
   where
     noStretch l = all (<= 0) [y | Glue _ y _ <- lineItems l]
@@ -330,6 +332,46 @@ l6Justified _ p =
       _ -> True
       where
         x = sum [w | Box w c <- lineItems l, bcExpandable c]
+
+{- | Whether the stretch limit of a line (docs/adr/0274) caps its glue:
+the ratio without the limit is more than it.
+-}
+capped :: Line -> Bool
+capped l = case lineStretchLimit l of
+  Just m -> glueRatio l {lineStretchLimit = Nothing} > m
+  Nothing -> False
+
+{- | R5 of docs/adr/0274: no line that is not overfull stretches its glue
+by a ratio more than the stretch limit of the paragraph.
+-}
+r5Limit :: Check
+r5Limit _ p = case pStretchLimit (pParams p) of
+  Nothing -> []
+  Just m ->
+    [ Breach R5 i ("line " <> show (i + 1) <> " " <> show (textOf l) <> " stretches by " <> show (glueRatio l) <> ", past " <> show m)
+    | (i, l) <- zip [0 ..] (linesOf p),
+      not (lineOverfull l),
+      glueRatio l > m || lineStretchLimit l /= Just m
+    ]
+
+{- | R6 of docs/adr/0274: a line that the limit caps stretches its glue by
+the limit and ends where its natural width and its stretch times the
+limit end from the line start (with 1 sp of rounding), before W; its first
+item is where it was without the limit.
+-}
+r6Capped :: Check
+r6Capped _ p =
+  [ Breach R6 i ("line " <> show (i + 1) <> " " <> show (textOf l) <> " capped ends at " <> show (lineEnd l) <> ", not at " <> show want <> ", or past W")
+  | (i, l) <- zip [0 ..] (linesOf p),
+    not (lineOverfull l),
+    capped l,
+    Just m <- [lineStretchLimit l],
+    let unlimited = l {lineStretchLimit = Nothing}
+        want = Sp (round (toRational (unSp (lineEnd unlimited)) - (glueRatio unlimited - m) * toRational (unSp (sum [y | Glue _ y _ <- lineItems l])))),
+    abs (lineEnd l - want) > 1
+      || lineEnd l >= pWidth p + endProtrusion l
+      || map snd (take 1 (placeLine l)) /= map snd (take 1 (placeLine unlimited))
+  ]
 
 {- | L7: in the first two passes, without glyph expansion and protrusion,
 and with no more breaks than the limit given, the demerits are the least
@@ -819,7 +861,9 @@ lineInvariants =
     (T1, t1LastLineBoxes),
     (I4, i4NoHyphensWithShy),
     -- B3 and B4 of golem-layout ADR 0049 too
-    (B2, b2to4Pairs)
+    (B2, b2to4Pairs),
+    (R5, r5Limit),
+    (R6, r6Capped)
   ]
 
 -- | The breaches of a paragraph, L7 brute-forcing up to the number of breaks given.

@@ -27,6 +27,7 @@ import InMemorySpec (inMemoryTests)
 import IndexRangeSpec (indexRangeTests)
 import InsideLinksSpec (insideLinksTests)
 import KeepOptionsSpec (keepOptionsTests)
+import LineAdjustmentSpec (lineAdjustmentTests)
 import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
 import NewPlanSpec (newPlanTests)
@@ -85,6 +86,7 @@ tests skips =
         indexRangeTests,
         tocStylesTests,
         keepOptionsTests,
+        lineAdjustmentTests,
         boxesTests,
         emetSamplesTests,
         functionLibraryTests,

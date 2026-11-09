@@ -958,7 +958,7 @@ pageNumberLine env l =
   let sp0 = mkSpan (FileId 0) 0 0
       boxes = [b | b@Box {} <- fst (composeInlines env [CharStyle sp0 "toc-page-number" (pageLabelInlines sp0 l)])]
       w = sum (map itemWidth boxes)
-   in Line boxes 0 w 0 (0, 0) 0 (0, 0)
+   in Line boxes 0 w 0 (0, 0) 0 (0, 0) Nothing
 
 {- | How the last line of an entry of the table of contents ends
 (docs/adr/0264): the reserve W of every level, the gap, and the leader in
@@ -3372,7 +3372,7 @@ codeBlockOf atSource geom fonts measure capacity u lead code caption =
               [emptyBox off (o - x) | o > x]
                 <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf off)]
                 <> go (o + w) rest
-         in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) 0 (0, 0)
+         in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) 0 (0, 0) Nothing
       at leaf o col t = [(o + cpOffset p, cpText p, cpWidth p, cpLatin p, col, leaf) | p <- oneRow t]
       rowLeaf j = Leaf (codeRowSite (uIndex u) j) 0
       lineNumberColor = cdLineNumberColor cs
