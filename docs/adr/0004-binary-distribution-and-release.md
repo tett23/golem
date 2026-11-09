@@ -1,6 +1,6 @@
 # ADR 0004: 実行ファイルの配布とリリースの自動化
 
-ステータス: 採択→リリースノートを書くジョブ、Claude Code の入れ方、ノートのリンクの検査は [ADR 0044](0044-release-workflow-hardening.md)
+ステータス: 採択→リリースノートを書くジョブ、Claude Code の入れ方、ノートのリンクの検査は [ADR 0044](0044-release-workflow-hardening.md)、プロンプトに入れる ADR の中身（題名とステータスの行）と変更の一覧の `## ADRs whose status changed` は [ADR 0246](0246-bound-the-prompt-of-the-release-notes.md)
 
 ## 文脈
 
