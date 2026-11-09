@@ -3229,10 +3229,10 @@ codeBlockOf atSource geom fonts measure capacity u lead code caption =
       continuedLine = if T.null continued then Nothing else Just (lineOf blockStart (at noLeaf (codeStart + full - widthOf continued) Nothing continued))
       g = codeGeometry (pgFontSize geom) (pgLinePitch geom) size pad
       codeStyle = paraStyle st (Just "code")
-      background = codeStyle >>= psBackground >>= id >>= swatchOf
+      background = join (codeStyle >>= psBackground) >>= swatchOf
       borderWidth = dimToSp size (fromMaybe (Abs 16384) (codeStyle >>= psBorderWidth))
       border = do
-        sw <- codeStyle >>= psBorder >>= id >>= swatchOf
+        sw <- join (codeStyle >>= psBorder) >>= swatchOf
         pure (sw, borderWidth)
       errs =
         [diagnostic "G07043" Error (uSpan u) "コードブロックの行長が足りません" | avail < 8 * size]

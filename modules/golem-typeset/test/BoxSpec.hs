@@ -1,7 +1,7 @@
 -- | The boxes of paragraph styles (docs/adr/0271): B4 to B6, B8 and B9, and the bands of the border.
 module BoxSpec (boxTests) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, when)
 import Golem.LayoutSpec (Rect (..))
 import Golem.Project.Style (BoxSide (..), RuleStyle (..), Sp (..))
 import Golem.Typeset.Box
@@ -135,7 +135,7 @@ cornerTests =
             physical = physicalCorners vertical rect cs
         assertBool (show (vertical, r, first, lastPart, sides, border)) (all inside (points outline))
         assertBool (show (vertical, r, first, lastPart, sides, border)) (all (all inside . points . (\(s, g, _) -> (s, g))) runs)
-        forM_ physical $ \(pt, radius) -> if radius == 0 then assertBool (show (pt, outline)) (corner pt `elem` ends outline) else pure (),
+        forM_ physical $ \(pt, radius) -> when (radius == 0) (assertBool (show (pt, outline)) (corner pt `elem` ends outline)),
     testCase "B9: with r = 0 the outline is the rectangle" $ do
       let rect = Rect 100 200 3000 4000
           cs = boxCorners True allSides True True (cornerRadius 0 rect)

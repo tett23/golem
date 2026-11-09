@@ -25,6 +25,7 @@ module Golem.Typeset.Box
   )
 where
 
+import Data.Maybe (isJust)
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf qualified as P
 import Golem.Project.Style (BoxSide (..), RuleStyle (..), Sp (..))
@@ -252,7 +253,7 @@ boxMarks vertical rect bp isFirst isLast =
         Nothing -> []
    in (background, border)
   where
-    isJustBorder = maybe False (const True) . bpBorder
+    isJustBorder = isJust . bpBorder
     -- the last line back to the start of a closed path is the h that closes it
     dropClosing start segs = case reverse segs of
       SegLine end : rest | end == start -> reverse rest
@@ -264,7 +265,7 @@ golem-layout ADR 0042): the operators the rasterizer of the visual
 regression test reads (docs/adr/0093).
 -}
 asCurves :: Point -> [Segment] -> [((Sp, Sp), (Sp, Sp), (Sp, Sp))]
-asCurves start = go start
+asCurves = go
   where
     go _ [] = []
     go q (seg : rest) = case seg of

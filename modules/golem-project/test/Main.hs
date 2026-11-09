@@ -1901,7 +1901,7 @@ boxStyleTests =
         codes (parseStyle (FileId 0) "[paragraph-styles.a]\nbackground = \"nope\"\n") @?= ["G03013"]
         codes (parseStyle (FileId 0) "[paragraph-styles.a]\nborder = \"nope\"\n") @?= ["G03013"],
       testCase "caption, sidenote, table and toc-1 to toc-6 take none of the keys of the box (G03006)" $
-        forM_ [n | n <- ["caption", "sidenote", "table", "toc-1", "toc-6"]] $ \n ->
+        forM_ ["caption", "sidenote", "table", "toc-1", "toc-6"] $ \n ->
           forM_ ["background = \"gray\"", "padding = \"1zw\"", "border = \"black\"", "border-width = \"1pt\"", "border-style = \"dotted\"", "border-sides = [\"start\"]", "border-radius = \"1pt\""] $ \kv ->
             (n, kv, codes (parseStyle (FileId 0) (swatches <> "\n[paragraph-styles." <> n <> "]\n" <> kv <> "\n"))) @?= (n, kv, ["G03006"]),
       testCase "code takes border-style, border-sides and border-radius" $
