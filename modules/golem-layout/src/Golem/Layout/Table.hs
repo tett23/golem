@@ -16,8 +16,8 @@ module Golem.Layout.Table
   )
 where
 
-import Golem.Doc.IR (Alignment (..), ColumnWidth (..))
 import Data.Maybe (isJust)
+import Golem.Doc.IR (Alignment (..), ColumnWidth (..))
 import Golem.Layout.KnuthPlass
 
 {- | The minimum width of a cell (its widest piece between break

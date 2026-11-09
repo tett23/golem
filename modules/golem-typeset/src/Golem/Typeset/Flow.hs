@@ -261,8 +261,7 @@ data PdfLayout = PdfLayout
     its row: 0 for a cell at the size of the grid, whose lines are on grid
     lines of their own; the lines of cells of another size are on the first
     grid line of their row, a pitch of their size apart (docs/adr/0262)
-    -}
-    plTableLines :: !(Map Int [(Int, SetLine)]),
+    -} plTableLines :: !(Map Int [(Int, SetLine)]),
     -- | the width of each table and its grid lines (golem-driver ADR 0031)
     plTables :: !(Map Int TableGeometry),
     -- | the leader and page number of each table of contents entry, by its last line (golem-driver ADR 0009)

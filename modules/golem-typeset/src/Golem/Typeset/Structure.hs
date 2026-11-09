@@ -23,8 +23,8 @@ import Golem.Layout.Look (Look (..))
 import Golem.Layout.Paginate (NoteId (..))
 import Golem.LayoutSpec (PageGeometry (..))
 import Golem.Pdf qualified as P
-import Golem.Syntax
 import Golem.Project.Style (CaptionPosition (..), Style (..))
+import Golem.Syntax
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
 

@@ -1341,11 +1341,6 @@ indexPage cfg ft book =
           "</ol>\n</nav>\n</body>\n</html>\n"
         ]
 
-{- | The size of the image of a figure with a width (docs/adr/0190): in a
-horizontal book its width, in a vertical one its height, each with the
-maximum of 100% of the same direction, so that a width beyond the measure
-fits it as in the PDF. A length in pt, zw in em, a percentage in %.
--}
 {- | The cells of the tables of a paragraph style (docs/adr/0262): of a
 table without a class for the built-in table, of table.ps-NAME otherwise.
 -}
@@ -1365,6 +1360,11 @@ columnWidthCss = \case
   ColumnAbs x -> Just (L.ptText x <> "pt")
   ColumnPercent r -> Just (showRationalDigits 4 r <> "%")
 
+{- | The size of the image of a figure with a width (docs/adr/0190): in a
+horizontal book its width, in a vertical one its height, each with the
+maximum of 100% of the same direction, so that a width beyond the measure
+fits it as in the PDF. A length in pt, zw in em, a percentage in %.
+-}
 figureWidthStyle :: Bool -> Maybe Text -> Text
 figureWidthStyle vertical width = case width >>= parseFigureWidth of
   Nothing -> ""

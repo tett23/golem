@@ -15,13 +15,13 @@ import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import LangSpec qualified
 import LinkSpec qualified
 import ResolvedSpec qualified
-import TableSpec qualified
 import System.Directory (findExecutable)
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
+import TableSpec qualified
 import Test.Tasty
 import Test.Tasty.HUnit
 

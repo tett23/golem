@@ -167,7 +167,6 @@ needIn env st a b =
 headingNeed :: Env -> St -> Int -> [LineBox] -> Int
 headingNeed env st n ls = needIn env st (Need n (noteLinesOf ls)) mempty
 
--- | How many lines fit, with their notes.
 {- | The grid lines a table keeps together at its start (golem-layout ADR
 0025, docs/adr/0262): its header row and first row, and its caption above
 them, or below them when the first row is the last.
@@ -176,6 +175,7 @@ tableHead :: [LineBox] -> [[LineBox]] -> [LineBox] -> Bool -> Int
 tableHead h rows capt below =
   length h + maybe 0 length (listToMaybe rows) + (if not below || length rows <= 1 then length capt else 0)
 
+-- | How many lines fit, with their notes.
 fitting :: Env -> St -> [LineBox] -> Int
 fitting env st ls = length (takeWhile id (snd (foldl' step ((sUsed st, sNoteLines st), []) ls)))
   where
