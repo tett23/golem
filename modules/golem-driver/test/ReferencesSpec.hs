@@ -234,7 +234,7 @@ bibliographyFormatTests =
         TIO.writeFile (tmp </> "chapters/99.gm") "@bibliography\n"
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        let link = "<a class=\"cite\" href=\"../chapters/99.xhtml#cite-knuth1981\">[1]</a>"
+        let link = "<span class=\"cite\">[<a href=\"../chapters/99.xhtml#cite-knuth1981\">1</a>]</span>"
             entry = "<li id=\"cite-knuth1981\">"
         html01 <- TIO.readFile (tmp </> "build/html/chapters/01.xhtml")
         html99 <- TIO.readFile (tmp </> "build/html/chapters/99.xhtml")

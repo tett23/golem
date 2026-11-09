@@ -129,8 +129,14 @@ tests =
               }
        in only (horizontal book) @?= "本文\n\n甲\n乙\n",
     testCase "a citation is its number in square brackets" $
-      let book = (bookOf [para 0 [txt "文献", Cite (at 1) "knuth1981", txt "による。"]]) {bookBibliographies = [(Nothing, [("tex", 1), ("knuth1981", 2)])], bookCiteMarks = Map.fromList [((fid, at 1), (Nothing, 2))]}
+      let book = (bookOf [para 0 [txt "文献", Cite (at 1) [citeItem "knuth1981"], txt "による。"]]) {bookBibliographies = [(Nothing, [("tex", 1), ("knuth1981", 2)])], bookCiteMarks = Map.fromList [((fid, at 1), (Nothing, 2))]}
        in only (horizontal book) @?= "文献[2]による。\n",
+    testCase "the marks of several keys and of a page (docs/adr/0266)" $ do
+      let marks = [Cite (at 1) (map citeItem ["c", "a", "b"]), Cite (at 2) (map citeItem ["d", "a"]), Cite (at 3) [CiteItem "a" (Just (Locator LocatorPage (LocRange 5 7))) [] []]]
+          book = (bookOf [para 0 marks]) {bookBibliographies = [(Nothing, [("a", 1), ("b", 2), ("c", 3), ("d", 5)])], bookCiteMarks = Map.fromList [((fid, at i), (Nothing, 1)) | i <- [1, 2, 3]]}
+      only (horizontal book) @?= "[1\x2013\&3][1, 5][1, pp. 5\x2013\&7]\n"
+      -- a key without a number: nothing, as a mark of one key
+      only (horizontal ((bookOf [para 0 [Cite (at 1) (map citeItem ["a", "x"])]]) {bookBibliographies = [(Nothing, [("a", 1)])], bookCiteMarks = Map.fromList [((fid, at 1), (Nothing, 1))]})) @?= "",
     testCase "a footnote is *n in horizontal text, its body at the end of the file" $
       let book = bookOf [para 0 [txt "本文", Note (at 1) 1 (noteBody (at 1) [txt "注の本文。"]), txt "。"], para 5 [txt "次の段落。"]]
        in only (horizontal book) @?= "本文*1。\n\n次の段落。\n\n注\n*1 注の本文。\n",

@@ -48,7 +48,7 @@ application/epub+zip
 <body>
 <nav epub:type="toc" id="toc">
 <h1>小さなビルドツール</h1>
-<ol><li><a href="chapters/01.xhtml#h-2-0">第1章　依存関係を読む</a><ol><li><a href="chapters/01.xhtml#h-2-67">1.1　依存のグラフ</a><ol><li><a href="chapters/01.xhtml#h-2-1515">1.1.1　循環する依存</a></li></ol></li><li><a href="chapters/01.xhtml#h-2-2563">1.2　依存を書くファイル</a><ol><li><a href="chapters/01.xhtml#h-2-3335">1.2.1　依存を自動で見つける</a></li><li><a href="chapters/01.xhtml#h-2-4501">1.2.2　読み込みのオプション</a></li></ol></li></ol></li><li><a href="chapters/02.xhtml#h-3-0">第2章　再ビルドを判定する</a><ol><li><a href="chapters/02.xhtml#h-3-46">2.1　時刻で比べる</a></li><li><a href="chapters/02.xhtml#h-3-1309">2.2　指紋で比べる</a><ol><li><a href="chapters/02.xhtml#h-3-1850">2.2.1　二つの方法の比べ方</a></li><li><a href="chapters/02.xhtml#h-3-3006">2.2.2　ハッシュの記録</a></li><li><a href="chapters/02.xhtml#h-3-4096">2.2.3　用語</a></li></ol></li></ol></li><li><a href="chapters/03.xhtml#h-4-0">第3章　同時に動かす</a><ol><li><a href="chapters/03.xhtml#h-4-38">3.1　動かす順</a></li><li><a href="chapters/03.xhtml#h-4-1075">3.2　出力を揃える</a><ol><li><a href="chapters/03.xhtml#h-4-1115">3.2.1　混ざる出力</a></li><li><a href="chapters/03.xhtml#h-4-1812">3.2.2　出力をためる</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-2416">3.3　失敗を扱う</a><ol><li><a href="chapters/03.xhtml#h-4-2436">3.3.1　止めるか続けるか</a></li><li><a href="chapters/03.xhtml#h-4-3134">3.3.2　書きかけのファイル</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-3873">3.4　作ったものを使い回す</a><ol><li><a href="chapters/03.xhtml#h-4-3908">3.4.1　キャッシュ</a></li><li><a href="chapters/03.xhtml#h-4-4530">3.4.2　使い回せる条件</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-5181">3.5　まとめ</a></li><li><a href="chapters/03.xhtml#h-4-5691">参考文献</a></li></ol></li><li><a href="back.xhtml#h-5-10">索引</a></li></ol>
+<ol><li><a href="chapters/01.xhtml#h-2-0">第1章　依存関係を読む</a><ol><li><a href="chapters/01.xhtml#h-2-67">1.1　依存のグラフ</a><ol><li><a href="chapters/01.xhtml#h-2-1515">1.1.1　循環する依存</a></li></ol></li><li><a href="chapters/01.xhtml#h-2-2563">1.2　依存を書くファイル</a><ol><li><a href="chapters/01.xhtml#h-2-3335">1.2.1　依存を自動で見つける</a></li><li><a href="chapters/01.xhtml#h-2-4501">1.2.2　読み込みのオプション</a></li></ol></li></ol></li><li><a href="chapters/02.xhtml#h-3-0">第2章　再ビルドを判定する</a><ol><li><a href="chapters/02.xhtml#h-3-46">2.1　時刻で比べる</a></li><li><a href="chapters/02.xhtml#h-3-1309">2.2　指紋で比べる</a><ol><li><a href="chapters/02.xhtml#h-3-1850">2.2.1　二つの方法の比べ方</a></li><li><a href="chapters/02.xhtml#h-3-3006">2.2.2　ハッシュの記録</a></li><li><a href="chapters/02.xhtml#h-3-4096">2.2.3　用語</a></li></ol></li></ol></li><li><a href="chapters/03.xhtml#h-4-0">第3章　同時に動かす</a><ol><li><a href="chapters/03.xhtml#h-4-38">3.1　動かす順</a></li><li><a href="chapters/03.xhtml#h-4-1088">3.2　出力を揃える</a><ol><li><a href="chapters/03.xhtml#h-4-1128">3.2.1　混ざる出力</a></li><li><a href="chapters/03.xhtml#h-4-1825">3.2.2　出力をためる</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-2429">3.3　失敗を扱う</a><ol><li><a href="chapters/03.xhtml#h-4-2449">3.3.1　止めるか続けるか</a></li><li><a href="chapters/03.xhtml#h-4-3147">3.3.2　書きかけのファイル</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-3886">3.4　作ったものを使い回す</a><ol><li><a href="chapters/03.xhtml#h-4-3921">3.4.1　キャッシュ</a></li><li><a href="chapters/03.xhtml#h-4-4543">3.4.2　使い回せる条件</a></li></ol></li><li><a href="chapters/03.xhtml#h-4-5194">3.5　まとめ</a></li><li><a href="chapters/03.xhtml#h-4-5779">参考文献</a></li></ol></li><li><a href="back.xhtml#h-5-10">索引</a></li></ol>
 </nav>
 </body>
 </html>
@@ -146,23 +146,23 @@ code { padding-inline: 0.25em; }
 <li class="toc-3"><a href="chapters/02.xhtml#h-3-4096">2.2.3　用語</a></li>
 <li class="toc-1"><a href="chapters/03.xhtml#h-4-0">第3章　<span class="kenten kenten-dot">同時に動かす</span></a></li>
 <li class="toc-2"><a href="chapters/03.xhtml#h-4-38">3.1　動かす順</a></li>
-<li class="toc-2"><a href="chapters/03.xhtml#h-4-1075">3.2　出力を<ruby class="mono">揃<rp>（</rp><rt>そろ</rt><rp>）</rp></ruby>える</a></li>
-<li class="toc-3"><a href="chapters/03.xhtml#h-4-1115">3.2.1　<span class="kenten kenten-dot">混ざる</span>出力</a></li>
-<li class="toc-3"><a href="chapters/03.xhtml#h-4-1812">3.2.2　出力をためる</a></li>
-<li class="toc-2"><a href="chapters/03.xhtml#h-4-2416">3.3　失敗を扱う</a></li>
-<li class="toc-3"><a href="chapters/03.xhtml#h-4-2436">3.3.1　止めるか続けるか</a></li>
-<li class="toc-3"><a href="chapters/03.xhtml#h-4-3134">3.3.2　書きかけのファイル</a></li>
-<li class="toc-2"><a href="chapters/03.xhtml#h-4-3873">3.4　作ったものを使い回す</a></li>
-<li class="toc-3"><a href="chapters/03.xhtml#h-4-3908">3.4.1　キャッシュ</a></li>
-<li class="toc-3"><a href="chapters/03.xhtml#h-4-4530">3.4.2　使い回せる条件</a></li>
-<li class="toc-2"><a href="chapters/03.xhtml#h-4-5181">3.5　まとめ</a></li>
-<li class="toc-2"><a href="chapters/03.xhtml#h-4-5691">参考文献</a></li>
+<li class="toc-2"><a href="chapters/03.xhtml#h-4-1088">3.2　出力を<ruby class="mono">揃<rp>（</rp><rt>そろ</rt><rp>）</rp></ruby>える</a></li>
+<li class="toc-3"><a href="chapters/03.xhtml#h-4-1128">3.2.1　<span class="kenten kenten-dot">混ざる</span>出力</a></li>
+<li class="toc-3"><a href="chapters/03.xhtml#h-4-1825">3.2.2　出力をためる</a></li>
+<li class="toc-2"><a href="chapters/03.xhtml#h-4-2429">3.3　失敗を扱う</a></li>
+<li class="toc-3"><a href="chapters/03.xhtml#h-4-2449">3.3.1　止めるか続けるか</a></li>
+<li class="toc-3"><a href="chapters/03.xhtml#h-4-3147">3.3.2　書きかけのファイル</a></li>
+<li class="toc-2"><a href="chapters/03.xhtml#h-4-3886">3.4　作ったものを使い回す</a></li>
+<li class="toc-3"><a href="chapters/03.xhtml#h-4-3921">3.4.1　キャッシュ</a></li>
+<li class="toc-3"><a href="chapters/03.xhtml#h-4-4543">3.4.2　使い回せる条件</a></li>
+<li class="toc-2"><a href="chapters/03.xhtml#h-4-5194">3.5　まとめ</a></li>
+<li class="toc-2"><a href="chapters/03.xhtml#h-4-5779">参考文献</a></li>
 <li class="toc-1"><a href="back.xhtml#h-5-10">索引</a></li>
 </ol>
 </nav>
 </body>
 </html>
-== OEBPS/chapters/01.xhtml (deflate, time 315532800, 8568 bytes)
+== OEBPS/chapters/01.xhtml (deflate, time 315532800, 8594 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -211,8 +211,8 @@ app app.o util.o</code></pre>
 <p class="ps-box">ビルドツールを自分で作るのは、車輪の再発明に見えるかもしれない。しかし、小さなツールを一つ作ってみると、既存のツールが何を判断しているのかがよく分かる。どのファイルを作り直すかの判定、作る順の決め方、同時に動かす数の制御は、どのビルドツールにも共通する三つの柱である。この本では、その三つを順に作りながら、それぞれの判断の中身を確かめていく。作るのは、シェルスクリプトで百行に満たない小さなツールである。それでも、三つの柱の考え方は、大きなビルドツールと変わらない。大きなツールが持つ機能の多くは、この三つの柱の上に、速さや使いやすさのための工夫を積み重ねたものにすぎない。たとえば、リモートのキャッシュは再ビルドの判定を、分散ビルドは同時に動かす数の制御を、それぞれ広げたものと見ることができる。三つの柱が分かっていれば、新しいツールに出会っても、それがどの柱をどう広げたものかを考えれば、使い方の見当がつく。この見当のつけ方こそ、小さなツールを作る一番の収穫である。もちろん、作ったツールをそのまま仕事に使う必要はない。仕事では、多くの人が使い、多くの不具合が直されてきたツールを使うほうが安全である。小さなツールは、読んで理解するためのものであり、大きなツールの設定を読むときの手がかりになる。手元で動く小さな見本があれば、大きなツールの説明書の一文一文が、どの判断の話をしているのかを確かめながら読める。</p>
 <section class="notes">
 <h2>注</h2>
-<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> グラフの頂点を、辺の向きに矛盾しない順に並べる手順。<a class="cite" href="../chapters/03.xhtml#cite-build-systems">[1]</a> は、ビルドツールをこの順の決め方と再ビルドの判定の組み合わせとして整理している。<span id="i-2-1437"></span></p></aside>
-<aside epub:type="footnote" id="note-2"><p><a href="#noteref-2">2</a> GNU make の同じ名前のオプション（<a class="cite" href="../chapters/03.xhtml#cite-make">[2]</a>）と同じ意味にしている。<span id="i-2-4914"></span></p></aside>
+<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> グラフの頂点を、辺の向きに矛盾しない順に並べる手順。<span class="cite">[<a href="../chapters/03.xhtml#cite-build-systems">1</a>]</span> は、ビルドツールをこの順の決め方と再ビルドの判定の組み合わせとして整理している。<span id="i-2-1437"></span></p></aside>
+<aside epub:type="footnote" id="note-2"><p><a href="#noteref-2">2</a> GNU make の同じ名前のオプション（<span class="cite">[<a href="../chapters/03.xhtml#cite-make">2</a>]</span>）と同じ意味にしている。<span id="i-2-4914"></span></p></aside>
 </section>
 </body>
 </html>
@@ -305,7 +305,7 @@ done &lt;deps.txt</code></pre></figure>
 <p>Internationalization and characterization of buildsystem interoperability requirements are discussed in the literature under names like reproducibility and incrementality. Unquestionably, well-understood, straightforward implementations outperform overcomplicated counterparts.</p>
 </body>
 </html>
-== OEBPS/chapters/03.xhtml (deflate, time 315532800, 9776 bytes)
+== OEBPS/chapters/03.xhtml (deflate, time 315532800, 9956 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -325,8 +325,8 @@ done &lt;deps.txt</code></pre></figure>
 <li>待ちの列が空になり、動いているものもなくなれば終わる。</li>
 </ol>
 <p>この手順では、待ちの列から取り出す順が、ビルドの時間を左右する<a epub:type="noteref" class="noteref" href="#note-1" id="noteref-1">1</a>。</p>
-<h2 id="h-4-1075"><span class="number">3.2</span>　出力を<ruby class="mono">揃<rp>（</rp><rt>そろ</rt><rp>）</rp></ruby>える</h2>
-<h3 id="h-4-1115"><span class="number">3.2.1</span>　<span class="kenten kenten-dot">混ざる</span>出力</h3>
+<h2 id="h-4-1088"><span class="number">3.2</span>　出力を<ruby class="mono">揃<rp>（</rp><rt>そろ</rt><rp>）</rp></ruby>える</h2>
+<h3 id="h-4-1128"><span class="number">3.2.1</span>　<span class="kenten kenten-dot">混ざる</span>出力</h3>
 <p>同時に動かすと、それぞれのコマンドの出力が混ざる。次の例は、二つのコンパイルを同時に動かしたときの出力である。</p>
 <pre><code>compiling app.c
 compiling util.c
@@ -335,8 +335,8 @@ app.c:40: warning: implicit conversion loses integer precision: 'long' to 'int' 
 done util.o
 done app.o</code></pre>
 <p>警告の行が、どちらのコマンドのものかは、行の先頭のファイル名を見なければ分からない。出力が多いと、ファイル名のない行がどちらのものか分からなくなる。</p>
-<h3 id="h-4-1812"><span class="number">3.2.2</span>　出力をためる</h3>
-<p>混ざらないようにするには、コマンドごとに出力をためておき、終わったときにまとめて書き出せばよい<span id="i-4-1977"></span>。ただし、長くかかるコマンドの出力は、終わるまで見えなくなる。進み具合を知りたい利用者のために、一行だけの進み具合の表示を別に出すのがよい。</p>
+<h3 id="h-4-1825"><span class="number">3.2.2</span>　出力をためる</h3>
+<p>混ざらないようにするには、コマンドごとに出力をためておき、終わったときにまとめて書き出せばよい<span id="i-4-1990"></span>。ただし、長くかかるコマンドの出力は、終わるまで見えなくなる。進み具合を知りたい利用者のために、一行だけの進み具合の表示を別に出すのがよい。</p>
 <pre><code class="sourceCode language-sh"><span class="fu">run()</span> <span class="kw">{</span>
   <span class="va">name</span><span class="op">=</span><span class="va">$1</span>
   <span class="bu">shift</span>
@@ -349,10 +349,10 @@ done app.o</code></pre>
   <span class="ex">run</span> <span class="st">&quot;</span><span class="va">$t</span><span class="st">&quot;</span> sh <span class="st">&quot;rules/</span><span class="va">$t</span><span class="st">.sh&quot;</span> <span class="kw">&amp;</span>
 <span class="cf">done</span>
 <span class="bu">wait</span></code></pre>
-<h2 id="h-4-2416"><span class="number">3.3</span>　失敗を扱う</h2>
-<h3 id="h-4-2436"><span class="number">3.3.1</span>　止めるか続けるか</h3>
-<p>同時に動かしているコマンドの一つが失敗したとき、ほかのコマンドをどうするかを決めなければならない<span id="i-4-2610"></span>。既定では、新しいコマンドを動かさず、動いているものが終わるのを待ってから止まる。動いているものを途中で止めないのは、書きかけのファイルを残さないためである。<code>-k</code> のオプションを付けると、失敗したターゲットに依存しないものは作り続ける。大きなプロジェクトで、一度のビルドでなるべく多くの失敗を見つけたいときに便利である。</p>
-<h3 id="h-4-3134"><span class="number">3.3.2</span>　書きかけのファイル</h3>
+<h2 id="h-4-2429"><span class="number">3.3</span>　失敗を扱う</h2>
+<h3 id="h-4-2449"><span class="number">3.3.1</span>　止めるか続けるか</h3>
+<p>同時に動かしているコマンドの一つが失敗したとき、ほかのコマンドをどうするかを決めなければならない<span id="i-4-2623"></span>。既定では、新しいコマンドを動かさず、動いているものが終わるのを待ってから止まる。動いているものを途中で止めないのは、書きかけのファイルを残さないためである。<code>-k</code> のオプションを付けると、失敗したターゲットに依存しないものは作り続ける。大きなプロジェクトで、一度のビルドでなるべく多くの失敗を見つけたいときに便利である。</p>
+<h3 id="h-4-3147"><span class="number">3.3.2</span>　書きかけのファイル</h3>
 <p>コマンドが途中で失敗すると、ターゲットのファイルが書きかけのまま残ることがある。書きかけのファイルの時刻は前提より新しいので、時刻で判定するツールは、次のビルドでそれを作り直さない。これを避けるには、コマンドに一時的なファイルへ書かせ、成功したときにだけターゲットの名前に移せばよい。移す操作は、同じファイルシステムの中なら一度に行われるので、書きかけのターゲットが見えることはない。</p>
 <pre><code class="sourceCode language-sh"><span class="va">tmp</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$target</span><span class="st">.tmp.</span><span class="va">$$</span><span class="st">&quot;</span>
 <span class="cf">if</span> <span class="fu">sh</span> <span class="st">&quot;rules/</span><span class="va">$target</span><span class="st">.sh&quot;</span> <span class="op">&gt;</span><span class="st">&quot;</span><span class="va">$tmp</span><span class="st">&quot;</span><span class="kw">;</span> <span class="cf">then</span>
@@ -361,14 +361,14 @@ done app.o</code></pre>
   <span class="fu">rm</span> <span class="at">-f</span> <span class="st">&quot;</span><span class="va">$tmp</span><span class="st">&quot;</span>
   <span class="bu">exit</span> 1
 <span class="cf">fi</span></code></pre>
-<h2 id="h-4-3873"><span class="number">3.4</span>　作ったものを使い回す</h2>
-<h3 id="h-4-3908"><span class="number">3.4.1</span>　キャッシュ<span id="i-4-3927"></span></h3>
-<p>同じ前提から作ったターゲットは、何度作っても同じ中身になるはずである。それなら、一度作ったものを取っておき、同じ前提のときはそれを使い回せばよい<span id="i-4-4214"></span>。前提のハッシュ値を並べたものから、さらにハッシュ値を計算し、それを名前にしてターゲットを保存しておく。次のビルドで同じ名前のものがあれば、コマンドを動かさずに写すだけで済む。</p>
-<h3 id="h-4-4530"><span class="number">3.4.2</span>　使い回せる条件</h3>
+<h2 id="h-4-3886"><span class="number">3.4</span>　作ったものを使い回す</h2>
+<h3 id="h-4-3921"><span class="number">3.4.1</span>　キャッシュ<span id="i-4-3940"></span></h3>
+<p>同じ前提から作ったターゲットは、何度作っても同じ中身になるはずである。それなら、一度作ったものを取っておき、同じ前提のときはそれを使い回せばよい<span id="i-4-4227"></span>。前提のハッシュ値を並べたものから、さらにハッシュ値を計算し、それを名前にしてターゲットを保存しておく。次のビルドで同じ名前のものがあれば、コマンドを動かさずに写すだけで済む。</p>
+<h3 id="h-4-4543"><span class="number">3.4.2</span>　使い回せる条件</h3>
 <p>使い回しが正しいのは、コマンドが前提だけから結果を決める場合に限られる。コマンドが時刻や環境変数や乱数を読むと、同じ前提からでも違う結果になる。そうしたコマンドの結果を使い回すと、作り直したときと違うものが手元に残る。使い回しを安全にするには、コマンドが読むものをすべて前提に含めるか、読むものを固定するしかない。どちらも手間がかかるので、小さなツールでは、使い回しを明示的に選んだターゲットだけに限るのがよい。</p>
-<h2 id="h-4-5181"><span class="number">3.5</span>　まとめ</h2>
+<h2 id="h-4-5194"><span class="number">3.5</span>　まとめ</h2>
 <p>この本では、依存関係の読み込み、再ビルドの判定、同時に動かす制御の三つを作った。どれも短いスクリプトで書けるが、それぞれの判断には、時刻とハッシュ、順と同時実行のような、はっきりした選択がある<a epub:type="noteref" class="noteref" href="#note-2" id="noteref-2">2</a>。</p>
-<h2 id="h-4-5691">参考文献</h2>
+<h2 id="h-4-5779">参考文献</h2>
 <ol class="bibliography">
 <li id="cite-build-systems">Mokhov Andrey, Mitchell Neil, Peyton Jones Simon. Build Systems à la Carte. Proceedings of the ACM on Programming Languages, vol. 2. 2018.</li>
 <li id="cite-make">Stallman Richard M., McGrath Roland, Smith Paul D. GNU Make: A Program for Directing Recompilation. Free Software Foundation. 2023. <a class="cs-url" href="https://www.gnu.org/software/make/manual/">https://www.gnu.org/software/make/manual/</a></li>
@@ -376,8 +376,8 @@ done app.o</code></pre>
 </ol>
 <section class="notes">
 <h2>注</h2>
-<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> 長くかかるターゲットを先に動かすと、全体の時間が短くなりやすい。最適な順を求める問題は難しいことが知られている（<a class="cite" href="#cite-build-systems">[1]</a> の議論を参照）。</p></aside>
-<aside epub:type="footnote" id="note-2"><p><a href="#noteref-2">2</a> 段落の行分割にも、似た選択がある。<a class="cite" href="#cite-knuth-plass">[3]</a> は、行ごとに決めるのではなく、段落の全体で最もよい分け方を探す方法を示した。</p></aside>
+<aside epub:type="footnote" id="note-1"><p><a href="#noteref-1">1</a> 長くかかるターゲットを先に動かすと、全体の時間が短くなりやすい。最適な順を求める問題は難しいことが知られている（<span class="cite">[<a href="#cite-build-systems">1</a>, pp. 12–14]</span> の議論を参照）。</p></aside>
+<aside epub:type="footnote" id="note-2"><p><a href="#noteref-2">2</a> 段落の行分割にも、似た選択がある。<span class="cite">[<a href="#cite-knuth-plass">3</a>]</span> は、行ごとに決めるのではなく、段落の全体で最もよい分け方を探す方法を示した。ビルドツールの側の選択は <span class="cite">[<a href="#cite-build-systems">1</a>, <a href="#cite-make">2</a>]</span> が扱う。</p></aside>
 </section>
 </body>
 </html>
@@ -395,13 +395,13 @@ done app.o</code></pre>
 <section class="index">
 <ul>
 <li>依存関係 / グラフ <a href="chapters/01.xhtml#i-2-454">1</a></li>
-<li>キャッシュ <a href="chapters/03.xhtml#i-4-4214">1</a></li>
-<li>キャッシュ / 仕組み <a href="chapters/03.xhtml#i-4-3927">1</a></li>
+<li>キャッシュ <a href="chapters/03.xhtml#i-4-4227">1</a></li>
+<li>キャッシュ / 仕組み <a href="chapters/03.xhtml#i-4-3940">1</a></li>
 <li>再ビルド / 時刻 <a href="chapters/02.xhtml#i-3-153">1</a></li>
 <li>再ビルド / ハッシュ <a href="chapters/02.xhtml#i-3-1462">1</a></li>
 <li>時刻 / 変化 <a href="chapters/02.xhtml#i-3-2539">1</a></li>
-<li>失敗 <a href="chapters/03.xhtml#i-4-2610">1</a></li>
-<li>出力 <a href="chapters/03.xhtml#i-4-1977">1</a></li>
+<li>失敗 <a href="chapters/03.xhtml#i-4-2623">1</a></li>
+<li>出力 <a href="chapters/03.xhtml#i-4-1990">1</a></li>
 <li>トポロジカルソート <a href="chapters/01.xhtml#i-2-1437">1</a></li>
 <li>ハッシュ / 記録 <a href="chapters/02.xhtml#i-3-3147">1</a></li>
 <li>ビルドツール <a href="chapters/01.xhtml#i-2-128">1</a></li>

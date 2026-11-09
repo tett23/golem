@@ -43,7 +43,7 @@ test-suite golem-eval-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    BuiltinSpec DeferredSpec DiagnosticSitesSpec ExprSpec FileSpec FunctionSpec LangSpec LinkSpec NaturalSpec OperatorSpec RangeSpec RationalSpec NoteSpec RegexStyleSpec Support TableAttributesSpec TableSpec VarsSpec
+  other-modules:    BuiltinSpec CiteSpec DeferredSpec DiagnosticSitesSpec ExprSpec FileSpec FunctionSpec LangSpec LinkSpec NaturalSpec OperatorSpec RangeSpec RationalSpec NoteSpec RegexStyleSpec Support TableAttributesSpec TableSpec VarsSpec
   -- GHC.Stats measures the memory of reading a table (docs/adr ADR 0043)
   ghc-options:      -rtsopts "-with-rtsopts=-T"
   build-depends:

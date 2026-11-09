@@ -46,6 +46,14 @@ module Golem.Doc.IR
     verticalNumbersNamed,
     RefKind (..),
     IndexEntry (..),
+    CiteItem (..),
+    citeItem,
+    citeInlines,
+    Locator (..),
+    LocatorLabel (..),
+    locatorLabelName,
+    locatorLabelNamed,
+    LocatorValue (..),
     DeferredExpr (..),
     noRuby,
     isLineBreak,
@@ -317,7 +325,8 @@ data InlineF r
   | -- | a sidenote, its number and its body: one paragraph without a paragraph style (docs/adr/0263)
     Sidenote !SrcSpan !Int [Block]
   | IndexMark !SrcSpan IndexEntry
-  | Cite !SrcSpan !Text
+  | -- | a citation: one or more items, their keys distinct (docs/adr/0266)
+    Cite !SrcSpan ![CiteItem r]
   | ProofComment !SrcSpan Text
   | -- | a forced line break, only between the inlines at the top of a paragraph (docs/adr ADR 0005)
     LineBreak !SrcSpan
@@ -405,6 +414,107 @@ data IndexEntry = IndexEntry
   }
   deriving stock (Eq, Show)
 
+{- | An item of a citation (docs/adr/0266): the key of the bibliography,
+where in the work it cites, and the text before and after it. The fields
+start with @cit@ not to meet 'ciKey' of a channel item.
+-}
+data CiteItem r = CiteItem
+  { citKey :: !Text,
+    citLocator :: !(Maybe Locator),
+    citPrefix :: ![InlineF r],
+    citSuffix :: ![InlineF r]
+  }
+  deriving stock (Eq, Show)
+
+-- | An item of a key alone: no locator, no prefix, no suffix.
+citeItem :: Text -> CiteItem r
+citeItem k = CiteItem k Nothing [] []
+
+-- | The prefix and the suffix of the items of a citation, in order: the inlines it holds.
+citeInlines :: [CiteItem r] -> [InlineF r]
+citeInlines = concatMap (\i -> citPrefix i <> citSuffix i)
+
+-- | Where in the cited work (docs/adr/0266): the kind of the place and its value.
+data Locator = Locator
+  { locLabel :: !LocatorLabel,
+    locValue :: !LocatorValue
+  }
+  deriving stock (Eq, Show)
+
+-- | The 26 locator terms of CSL 1.0.2, one constructor each (docs/adr/0266).
+data LocatorLabel
+  = LocatorAppendix
+  | LocatorArticleLocator
+  | LocatorBook
+  | LocatorCanon
+  | LocatorChapter
+  | LocatorColumn
+  | LocatorElocation
+  | LocatorEquation
+  | LocatorFigure
+  | LocatorFolio
+  | LocatorIssue
+  | LocatorLine
+  | LocatorNote
+  | LocatorOpus
+  | LocatorPage
+  | LocatorParagraph
+  | LocatorPart
+  | LocatorRule
+  | LocatorSection
+  | LocatorSubVerbo
+  | LocatorSupplement
+  | LocatorTable
+  | LocatorTimestamp
+  | LocatorTitle
+  | LocatorVerse
+  | LocatorVolume
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+-- | The CSL term of a kind of locator, as the CDDL writes it.
+locatorLabelName :: LocatorLabel -> Text
+locatorLabelName = \case
+  LocatorAppendix -> "appendix"
+  LocatorArticleLocator -> "article-locator"
+  LocatorBook -> "book"
+  LocatorCanon -> "canon"
+  LocatorChapter -> "chapter"
+  LocatorColumn -> "column"
+  LocatorElocation -> "elocation"
+  LocatorEquation -> "equation"
+  LocatorFigure -> "figure"
+  LocatorFolio -> "folio"
+  LocatorIssue -> "issue"
+  LocatorLine -> "line"
+  LocatorNote -> "note"
+  LocatorOpus -> "opus"
+  LocatorPage -> "page"
+  LocatorParagraph -> "paragraph"
+  LocatorPart -> "part"
+  LocatorRule -> "rule"
+  LocatorSection -> "section"
+  LocatorSubVerbo -> "sub-verbo"
+  LocatorSupplement -> "supplement"
+  LocatorTable -> "table"
+  LocatorTimestamp -> "timestamp"
+  LocatorTitle -> "title"
+  LocatorVerse -> "verse"
+  LocatorVolume -> "volume"
+
+-- | The kind of locator of a CSL term.
+locatorLabelNamed :: Text -> Maybe LocatorLabel
+locatorLabelNamed t = lookup t [(locatorLabelName l, l) | l <- [minBound .. maxBound]]
+
+{- | The value of a locator: a number, a range of numbers, or text
+(docs/adr/0266). The IR checks a number is 0 or more, a range is not
+reversed and text is not empty.
+-}
+data LocatorValue
+  = LocNumber !Integer
+  | LocRange !Integer !Integer
+  | LocText !Text
+  deriving stock (Eq, Show)
+
 {- | An expression whose only free name is @doc@, evaluated at S1. S0
 values have already been substituted.
 -}
@@ -427,7 +537,7 @@ noRuby = \case
   Note s n bs -> Just (Note s n bs)
   Sidenote s n bs -> Just (Sidenote s n bs)
   IndexMark s e -> Just (IndexMark s e)
-  Cite s k -> Just (Cite s k)
+  Cite s is -> Cite s <$> traverse itemNoRuby is
   ProofComment s t -> Just (ProofComment s t)
   LineBreak s -> Just (LineBreak s)
   Aki s a -> Just (Aki s a)
@@ -435,6 +545,10 @@ noRuby = \case
   Link s u xs -> Link s u <$> traverse noRuby xs
   Lang s l xs -> Lang s l <$> traverse noRuby xs
   Resolved s k l xs -> Resolved s k l <$> traverse noRuby xs
+
+-- | An item of a citation whose prefix and suffix have no ruby (docs/adr/0266).
+itemNoRuby :: CiteItem () -> Maybe (CiteItem Void)
+itemNoRuby (CiteItem k l p q) = CiteItem k l <$> traverse noRuby p <*> traverse noRuby q
 
 {- | The inlines of the paragraphs of the body of a note, in order
 (docs/adr/0263); the other blocks, which the evaluation and Validate do

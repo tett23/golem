@@ -758,9 +758,11 @@ first citation in its range, and the list and number of each mark
 -}
 numberCitations :: [Document] -> ([(Maybe ListAt, [(Text, Int)])], Map (FileId, SrcSpan) (Maybe ListAt, Int))
 numberCitations docs =
-  let lists = scopes isBibliography (\fid -> \case Cite sp k -> [((fid, sp), k)]; _ -> []) docs
+  -- the keys of a mark in the order written (docs/adr/0266)
+  let lists = scopes isBibliography (\fid -> \case Cite sp is -> [((fid, sp), citKey i) | i <- is]; _ -> []) docs
       numbered = [(at, zip (dedupe (map snd marks)) [1 ..]) | (at, marks) <- lists]
-      marksOf = Map.fromList [(m, (at, n)) | ((at, marks), (_, nums)) <- zip lists numbered, (m, k) <- marks, Just n <- [lookup k nums]]
+      -- a mark of several keys: the number of its first key
+      marksOf = Map.fromListWith (\_ earlier -> earlier) [(m, (at, n)) | ((at, marks), (_, nums)) <- zip lists numbered, (m, k) <- marks, Just n <- [lookup k nums]]
    in (numbered, marksOf)
   where
     isBibliography = \case

@@ -52,6 +52,7 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Unsafe (lengthWord8)
+import Golem.Doc.Citation (citationPieces, citationText)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiPos (..), AkiSet, akiBetween, defaultAkiSet, noAki)
 import Golem.Layout.Aki qualified as A
@@ -560,7 +561,8 @@ piecesOf env inl = case inl of
   IndexMark sp e -> at sp [PAnchor (\i -> AnchorIndex i sp e)]
   -- nothing shows; its page is followed like that of an index mark (golem-doc ADR 0007)
   ChannelItem sp _ -> at sp [PAnchor (\i -> AnchorIndex i sp (IndexEntry [] []))]
-  Cite sp k -> at sp (textPieces lk ("[" <> maybe k (T.pack . show) (ceCiteNumber env sp k) <> "]"))
+  -- the mark of the default style; a key whose number is not known as itself (docs/adr/0266)
+  Cite sp is -> at sp (textPieces lk (citationText (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is])))
   ProofComment {} -> []
   -- the lines of a keep style are split before they are composed (docs/adr
   -- ADR 0005); what reaches here is a hard break (docs/adr ADR 0016)
@@ -772,7 +774,7 @@ withRuby = \case
   Note s n bs -> Note s n bs
   Sidenote s n bs -> Sidenote s n bs
   IndexMark s e -> IndexMark s e
-  Cite s k -> Cite s k
+  Cite s is -> Cite s [CiteItem k l (map withRuby p) (map withRuby q) | CiteItem k l p q <- is]
   ProofComment s t -> ProofComment s t
   LineBreak s -> LineBreak s
   Aki s a -> Aki s a

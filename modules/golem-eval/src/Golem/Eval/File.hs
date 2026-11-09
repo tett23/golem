@@ -322,7 +322,8 @@ unwritableText = concatMap blockDiags . docBlocks
       Number {} -> []
       Ref {} -> []
       Deferred {} -> []
-      Cite {} -> []
+      -- the text of a page is written (docs/adr/0266)
+      Cite sp items -> concat [at sp t | Just (Locator _ (LocText t)) <- map citLocator items] <> inlines (citeInlines items)
       LineBreak {} -> []
       Aki {} -> []
       ChannelItem sp c -> concatMap (at sp) (ciChannel c : maybe [] pure (ciKey c) <> maybe [] pure (ciReading c)) <> inlines (ciBody c)
@@ -764,7 +765,7 @@ nameErrors ctx is bs =
         <> [("G02017", "style.toml にないスウォッチです: " <> x) | x <- once [x | Color _ x _ <- inl], not (Set.member x (ctxSwatches ctx))]
         <> [("G02047", "定義されていない段落スタイルです: " <> x) | x <- once (concatMap paraStyleOf (universeBlocks bs)), not (Map.member x (ctxParaStyles ctx))]
         <> [("G02039", "未知の圏点の形です: " <> x) | x <- once [x | Kenten _ (Just x) _ <- inl], x `notElem` kentenShapes]
-        <> [("G02021", "書誌データにないキーです: " <> x) | x <- once [x | Cite _ x <- inl], not (Set.member x (ctxCiteKeys ctx))]
+        <> [("G02021", "書誌データにないキーです: " <> x) | x <- once [citKey i | Cite _ items <- inl, i <- items], not (Set.member x (ctxCiteKeys ctx))]
   where
     -- the paragraph style of a paragraph and of the cells of a table (docs/adr/0262)
     paraStyleOf (Block _ _ _ body) = case body of
@@ -792,6 +793,7 @@ nameErrors ctx is bs =
       CharStyle _ _ xs -> xs
       Note _ _ nb -> concat (noteParagraphs nb)
       Sidenote _ _ nb -> concat (noteParagraphs nb)
+      Cite _ items -> citeInlines items
       ChannelItem _ c -> ciBody c
       Link _ _ xs -> xs
       Lang _ _ xs -> xs
@@ -2460,10 +2462,7 @@ builtinWith ctx inHeading sp b args slots = do
                   then err "G02042" sp "索引の語と読みの段の数が不正です" >> pure []
                   else pure [IndexMark sp (IndexEntry ts rs)]
       _ -> err "G02038" sp "index には散文スロットが一つ必要です" >> pure []
-    Fixed BCite -> case pos of
-      [v] | Just n <- nameArg v, n `Set.member` ctxCiteKeys ctx -> pure [Cite sp n]
-      [v] | Just n <- nameArg v -> err "G02021" sp ("書誌データにないキーです: " <> n) >> pure []
-      _ -> err "G02021" sp "cite には書誌データのキーを一つ書きます" >> pure []
+    Fixed BCite -> cite ctx sp args
     Overridable BRuby -> ruby ctx sp slots
     Fixed BAki -> aki sp args slots
     Fixed BLink -> link ctx inHeading sp args slots
@@ -2656,6 +2655,50 @@ uniqueAttrKeys = \case
   A.Located _ (A.BlockCommand (A.Located _ "style") args _) | ssps@(_ : _) <- spreadsOf args -> mapM_ (report . styleSpread) ssps >> pure Nothing
   A.Located sp (A.BlockCommand n args body) -> fmap (\args' -> A.Located sp (A.BlockCommand n args' body)) <$> prepareArgs args
   other -> pure (Just other)
+
+{- | A citation (docs/adr/0266): every positional argument a key of the
+bibliography in the order written, and @page@ the page of the one key.
+Each cause in the order written, and no citation when there is one:
+G02150 for an argument that is no key, G02147 for a key written twice,
+G02021 for a key the bibliography does not have, G02148 for a page that
+is no page, G02149 for a page of two keys or more, G02151 for no key.
+-}
+cite :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Inline]
+cite ctx sp args = do
+  -- a key is a name, or a string as written or as the value of [= ...]
+  positional <- mapM (\(A.Located asp v) -> maybe (keyValue asp v) (pure . Right . Just) (nameArg v)) [A.Located asp v | A.Located asp (A.Positional v) <- args]
+  let (keys, keyErrors) = foldl' key ([], []) positional
+      key (ks, es) = \case
+        Left d -> (ks, es <> [Left d])
+        Right Nothing -> (ks, es <> [Right ("G02150", "cite のキーは名前か文字列で書きます")])
+        Right (Just k)
+          | k `elem` ks -> (ks, es <> [Right ("G02147", "一つの引用に同じキーを二度書いています: " <> k)])
+          | not (Set.member k (ctxCiteKeys ctx)) -> (ks <> [k], es <> [Right ("G02021", "書誌データにないキーです: " <> k)])
+          | otherwise -> (ks <> [k], es)
+  pageValue <- traverse (\(A.Located asp v) -> argValue ctx asp v) (keywordAt "page" args)
+  let (locator, pageErrors) = case pageValue of
+        Nothing -> (Nothing, [])
+        Just (Left d) -> (Nothing, [Left d])
+        Just (Right v) -> case pageOf v of
+          Just l -> (Just (Locator LocatorPage l), [])
+          Nothing -> (Nothing, [Right ("G02148", "page には頁の数、範囲、文字列を書きます: " <> valueText v)])
+      manyKeys = [Right ("G02149", "page は文献を一つだけ引く cite に書きます") | isJust pageValue, length keys >= 2]
+      noKey = [Right ("G02151", "cite には書誌データのキーを書きます") | null positional]
+      problems = keyErrors <> pageErrors <> manyKeys <> noKey
+  mapM_ (either report (\(code, msg) -> err code sp msg)) problems
+  pure [Cite sp [CiteItem k locator [] [] | k <- keys] | null problems]
+  where
+    keyValue asp v = fmap keyOf <$> argValue ctx asp v
+    keyOf = \case
+      VString k -> Just k
+      _ -> Nothing
+    pageOf = \case
+      VNat n -> Just (LocNumber (toInteger n))
+      VInt n | n >= 0 -> Just (LocNumber n)
+      VRat q | denominator q == 1, q >= 0 -> Just (LocNumber (numerator q))
+      VRange a b | a >= 0 -> Just (LocRange a b)
+      VString t | not (T.null t) -> Just (LocText t)
+      _ -> Nothing
 
 -- | The first keyword argument @k@, at the position of the argument.
 keywordAt :: Text -> [A.Located A.Argument] -> Maybe (A.Located A.ArgValue)
