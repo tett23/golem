@@ -9,6 +9,7 @@ module Golem.Typeset.Flow
     PlacedFigure (..),
     TableGeometry (..),
     PdfLayout (..),
+    DestAnchor (..),
     styleLayoutDiagnostics,
     pageColumnSet,
     columnSetRects,
@@ -298,8 +299,22 @@ data PdfLayout = PdfLayout
     -- | the caption of each table by its first grid line (docs/adr/0262)
     plTableCaptions :: !(Map Int CodeCaption),
     -- | the boxes of paragraphs by their ids (docs/adr/0271)
-    plBoxes :: !(Map Int BoxInfo)
+    plBoxes :: !(Map Int BoxInfo),
+    {- | where each destination of a link inside the document is drawn
+    (docs/adr/0267): the destinations of labels, headings, index marks and
+    entries of the bibliography; those of notes are found from their marks
+    -} plDestAnchors :: !(Map LinkDest DestAnchor),
+    -- | the page number of each entry of the table of contents as set, by its unit (docs/adr/0267)
+    plTocNumbers :: !(Map Int Text)
   }
+
+{- | What a destination of a link inside the document is drawn as first
+(docs/adr/0267): a line by its id (with what is drawn for it: the cells
+of a row, the caption of a table or a code block above it), or the image
+of a figure by its unit.
+-}
+data DestAnchor = AnchorLine !Int | AnchorFigure !Int
+  deriving stock (Eq, Show)
 
 data Built = Built
   { bFlow :: [Flow],
@@ -335,7 +350,9 @@ data Built = Built
     bWidths :: Map Int Sp,
     bTableCaptions :: Map Int CodeCaption,
     -- | the boxes by their ids (docs/adr/0271)
-    bBoxes :: Map Int BoxInfo
+    bBoxes :: Map Int BoxInfo,
+    -- | where the destinations of links are drawn (docs/adr/0267)
+    bDestAnchors :: Map LinkDest DestAnchor
   }
 
 {- | What style.toml alone decides before the layout (golem-driver ADR
@@ -552,16 +569,18 @@ layoutFigures reuse inp geom fonts figures = do
           -- the leader and the page number are at the heading of the entry (golem-cli ADR 0008)
           atHeading hs tp = tp {tpLeader = withBoxSource (SourceGrid, hs) (tpLeader tp), tpNumber = withBoxSource (SourceGrid, hs) (tpNumber tp)}
           -- each entry in the look of its paragraph style, its page number in toc-page-number (docs/adr/0264)
-          tocPages =
-            Map.fromList
-              [ (lid, atHeading hs (tocPage (entryGeometry (pgFontSize geom) (bFlowEnv built) (piStyle inp) u) e (pageNumberLine (unitEnv (bFlowEnv built) u) l)))
-              | (lid, (hs, e, ui)) <- Map.toList (bTocLines built),
-                Just u <- [Map.lookup ui unitsAt],
-                Just n <- [Map.lookup hs hPages],
-                let l = Map.findWithDefault (plainLabel (fromInteger n)) (fromInteger n) pageLbls
-              ]
+          tocEntries =
+            [ (lid, ui, atHeading hs (tocPage (entryGeometry (pgFontSize geom) (bFlowEnv built) (piStyle inp) u) e (pageNumberLine (unitEnv (bFlowEnv built) u) l)))
+            | (lid, (hs, e, ui)) <- Map.toList (bTocLines built),
+              Just u <- [Map.lookup ui unitsAt],
+              Just n <- [Map.lookup hs hPages],
+              let l = Map.findWithDefault (plainLabel (fromInteger n)) (fromInteger n) pageLbls
+            ]
+          tocPages = Map.fromList [(lid, tp) | (lid, _, tp) <- tocEntries]
+          -- the page number of each entry as set, for the text of its link (docs/adr/0267)
+          tocNumbers = Map.fromList [(ui, T.concat [bcText c | Box _ c <- lineItems (tpNumber tp)]) | (_, ui, tp) <- tocEntries]
        in case concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built))
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
             ds -> Left ds
 
 {- | The most grid lines a column may have with @page-lines (docs/adr ADR
@@ -1060,10 +1079,23 @@ indexLines vertical headings pageOf = go Nothing
     entry prefix term g =
       let runs = indexPageRuns (mapMaybe ends (igLocators g))
           refs = indexReferences (not (null (igLocators g))) (igSee g)
+          -- the marks of the entry with their pages, in the order of its locators; the ends of ranges marked
+          marks = concat [[(l, m, isEnd) | Just l <- [pageOf m]] | (m, isEnd) <- concatMap markEnds (igLocators g)]
+          firstOn p onlyEnds = listToMaybe [m | (l, m, isEnd) <- marks, plIndex l == plIndex p, isEnd || not onlyEnds]
+          -- a page number a link to the first mark of the entry on its page; the end of a range to an end mark there (docs/adr/0267)
+          linked target l = case target of
+            Just m -> [Resolved m RefPage "" (pageLabelInlines sp0 l)]
+            Nothing -> pageLabelInlines sp0 l
+          run (a, b)
+            | plIndex a == plIndex b = linked (firstOn a False) a
+            | otherwise = linked (firstOn a False) a <> [txt (if vertical then "〜" else "\x2013")] <> linked (firstOn b True <|> firstOn b False) b
        in prefix
             <> [txt term]
             <> (if null runs then [] else txt "　" : intercalate [txt (if vertical then "、" else ", ")] (map run runs))
             <> [txt refs | not (T.null refs)]
+    markEnds = \case
+      AtMark (_, m) -> [(m, False)]
+      Between (_, a) (_, b) -> [(a, False), (b, True)]
     ends = \case
       AtMark (_, m) -> (\l -> (l, l)) <$> pageOf m
       Between (_, a) (_, b) -> case (pageOf a, pageOf b) of
@@ -1071,9 +1103,6 @@ indexLines vertical headings pageOf = go Nothing
         (Just la, Nothing) -> Just (la, la)
         (Nothing, Just lb) -> Just (lb, lb)
         (Nothing, Nothing) -> Nothing
-    run (a, b)
-      | plIndex a == plIndex b = pageLabelInlines sp0 a
-      | otherwise = pageLabelInlines sp0 a <> [txt (if vertical then "〜" else "\x2013")] <> pageLabelInlines sp0 b
 
 {- | The pages of the locators of an entry (docs/adr/0265), each a page or
 the pages from its first to its last: the pages they cover cut into the
@@ -1876,10 +1905,11 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
             ChannelOutput (TocOutput depth) ->
               let entries = [e | e <- bookToc book, teLevel e <= depth]
                   styleOf' e = Just (tocStyleName (teLevel e))
+                  -- an entry a link to its heading, its lines from the first box to the page number (docs/adr/0267)
                   entryUnit e =
                     let st = styleOf' e
                         (face, ind) = paraLook style geom st
-                     in (unit (UTocEntry (teLevel e) (teSpan e) ind 0) Nothing (numberedTitle lang (teSpan e) (teNumber e) (teTitle e)) face SourceGrid) {uParaStyle = st, uRules = paraRules style st}
+                     in (unit (UTocEntry (teLevel e) (teSpan e) ind 0) Nothing (numberedTitle lang (teSpan e) (teNumber e) (teTitle e)) face {lkLink = Just (LinkTo (DestHeading (teSpan e)))} SourceGrid) {uParaStyle = st, uRules = paraRules style st}
                   spaceOf key st = fromMaybe 0 (paraStyle style st >>= key)
                   gapUnit g = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing | g > 0]
                   -- the spaces before the first entry, between the entries and after the last (docs/adr/0264)
@@ -2057,7 +2087,15 @@ flowEnv inp geom fonts assumed = fe
 
 -- | The composition of a look; citations show their numbers (golem-driver ADR 0007).
 lookEnv :: FlowEnv -> Look -> ComposeEnv
-lookEnv fe lk = (composeEnv (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe)), ceSourceAt = feSourceAt fe}
+lookEnv fe lk = (composeEnv (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe)), ceCiteLink = citeLink (piBook (feInput fe)), ceSourceAt = feSourceAt fe}
+
+{- | The link of the number of a cited work (docs/adr/0267): to its entry
+in the @bibliography its mark belongs to; none without @bibliography.
+-}
+citeLink :: Book -> SrcSpan -> Text -> Maybe LinkTarget
+citeLink book sp k = case Map.lookup (spanFile sp, sp) (bookCiteMarks book) of
+  Just (Just (_, at), _) | isJust (citeNumber book sp k) -> Just (LinkTo (DestBibEntry at k))
+  _ -> Nothing
 
 -- | A composition with the character styles of the style of a document (docs/adr ADR 0014).
 withDocStyle :: Style -> ComposeEnv -> ComposeEnv
@@ -2065,7 +2103,7 @@ withDocStyle st e = e {ceRestyle = restyle st, ceSizeSourceOf = restyleSource st
 
 -- | The composition of the text of a unit: its look, its document's style and the aki set of its paragraph style.
 unitEnv :: FlowEnv -> Unit -> ComposeEnv
-unitEnv fe u = (exceptionsOf (withDocStyle (uStyle u) (lookEnv fe (uLook u)))) {ceAkiSet = akiSetOf (uStyle u) (uParaStyle u), ceLabelInlines = unitLabelInlines u}
+unitEnv fe u = (exceptionsOf (withDocStyle (uStyle u) (lookEnv fe (uLook u)))) {ceAkiSet = akiSetOf (uStyle u) (uParaStyle u), ceLabelInlines = unitLabelInlines u, ceLabelLink = unitLabelLink u}
   where
     exceptionsOf = if madeByGolem u then id else withFileExceptions fe (spanFile (uSpan u))
 
@@ -2110,6 +2148,12 @@ unitLabelInlines u = case [k | Frame _ k _ <- uFrames u] of
     | (k : _) <- [k | FEndNote _ k <- ks] -> k
     | FBibliography `elem` ks -> 1
     | otherwise -> 0
+
+{- | The link of the label of a unit (docs/adr/0267): the mark of a note at
+the end of a chapter goes back to its mark in the text.
+-}
+unitLabelLink :: Unit -> Maybe LinkTarget
+unitLabelLink u = listToMaybe [LinkTo (DestNoteMark (NoteId sp 0)) | Frame _ (FEndNote sp _) _ <- uFrames u]
 
 {- | The units of the body in order, numbered from 0, and the marker width
 M of each list; a unit in lists is indented by them (golem-driver ADR 0013).
@@ -2275,7 +2319,7 @@ footnoteLines fe env st k n ps =
     | (j, para) <- zip [0 :: Int ..] ps,
       let (env', is) =
             if j == 0
-              then (env {ceSite = noteSite k, ceLabelInlines = noteMarkCount st (ceVertical env) (noteIdSpan k) n}, withNoteMark st (ceVertical env) (noteIdSpan k) n para)
+              then (env {ceSite = noteSite k, ceLabelInlines = noteMarkCount st (ceVertical env) (noteIdSpan k) n, ceLabelLink = Just (LinkTo (DestNoteMark k))}, withNoteMark st (ceVertical env) (noteIdSpan k) n para)
               else (env {ceSite = noteParagraphSite k j, ceLabelInlines = 0}, para)
     ]
 
@@ -3068,13 +3112,14 @@ buildFlow inp geom fonts images prev assumed = do
   let codeBlocks = codeBlocksOf fe units
       composed = ComposedUnits unitAt besides figures singles tables codeBlocks
       codeErrors = concatMap cbErrors (Map.elems codeBlocks)
-      -- the block (and so the file) of each unit that has an id, by its first id (golem-driver ADR 0014)
-      stepFiles (nb, spans) iu@(_, u) =
+      {- the block (and so the file) of each unit that has an id, by its first
+      id (golem-driver ADR 0014), and the first id of each such unit (docs/adr/0267) -}
+      stepFiles (nb, spans, firsts) iu@(i, u) =
         let nb' = numberUnit fe composed nb iu
-         in (nb', if nuNext nb' > nuNext nb then Map.insert (nuNext nb) (uSpan u) spans else spans)
+         in if nuNext nb' > nuNext nb then (nb', Map.insert (nuNext nb) (uSpan u) spans, Map.insert i (nuNext nb) firsts) else (nb', spans, firsts)
       lineFiles = Map.map spanFile lineSpans
       start = Numbered 0 [] Map.empty Map.empty Map.empty (deepListErrors fe widths units <> codeErrors <> tocLineErrors fe units <> boxErrors fe units) Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty
-      (numbered, lineSpans) = foldl stepFiles (start, Map.empty) units
+      (numbered, lineSpans, unitFirsts) = foldl stepFiles (start, Map.empty, Map.empty) units
       flow = nuFlow numbered
       -- the code blocks of the flow are those of the units, in order
       codeInfos = Map.fromList [(lbId b, (cbInfo cb) {ciFirst = lbId b0}) | (bs@(b0 : _), cb) <- zip [fcRows f | f@FCode {} <- flow] (Map.elems codeBlocks), b <- bs]
@@ -3088,7 +3133,44 @@ buildFlow inp geom fonts images prev assumed = do
       -- the span and the name of each heading by its first line, for G07100 (golem-layout ADR 0020)
       namesBySpan = Map.fromList [(uSpan u, (uSpan u, name)) | (_, u) <- units, Just name <- [headingName (uKind u)]]
       headingNames = Map.mapMaybe (`Map.lookup` namesBySpan) lineSpans
-  pure (Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe composed widths (nuTableCaptions numbered) boxes)
+  pure (Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe composed widths (nuTableCaptions numbered) boxes (destAnchors (piBook inp) units unitFirsts (nuFigures numbered) (nuHeadingSpans numbered) flow'))
+
+{- | Where the destinations of links inside the document are drawn first
+(docs/adr/0267): a label at the line or the figure that carries it, an
+index mark at the line or the figure it is placed with, a heading at its
+first line, an entry of a @bibliography at the first line of its unit,
+each the first in the order of the flow.
+-}
+destAnchors :: Book -> [(Int, Unit)] -> Map Int Int -> Map Int PlacedFigure -> Map Int SrcSpan -> [Flow] -> Map LinkDest DestAnchor
+destAnchors book units firsts figs headingSpans flow =
+  Map.fromListWith (\_ old -> old) (concatMap ofFlow flow <> headings <> entries)
+  where
+    headings = [(DestHeading sp, AnchorLine lid) | (lid, sp) <- Map.toAscList headingSpans]
+    -- the units of each @bibliography in order, one for each of its entries
+    entries =
+      concat
+        [ [(DestBibEntry sp k, AnchorLine lid) | ((k, _), Just lid) <- zip (bibliographyAt book sp) (map (`Map.lookup` firsts) is)]
+        | (sp, is) <- Map.toList (Map.fromListWith (flip (<>)) [(uSpan u, [i]) | (i, u) <- units, any (\(Frame _ k _) -> k == FBibliography) (uFrames u)])
+        ]
+    ofBox lb = [(DestLabel l, AnchorLine (lbId lb)) | l <- lbLabels lb] <> [(DestIndexMark m, AnchorLine (lbId lb)) | m <- lbMarks lb]
+    ofFigure fid labels marks = case Map.lookup fid figs of
+      Just pf -> [(DestLabel l, AnchorFigure (pfUnit pf)) | l <- labels] <> [(DestIndexMark m, AnchorFigure (pfUnit pf)) | m <- marks]
+      Nothing -> []
+    ofFlow = \case
+      FParagraph _ lbs -> concatMap ofBox lbs
+      FStanza _ lbss -> concatMap ofBox (concat lbss)
+      FHeading {fhLines = lbs} -> concatMap ofBox lbs
+      FDefTerm lbs -> concatMap ofBox lbs
+      FFigure {ffId = fid, ffLabels = ls, ffMarks = ms} -> ofFigure fid ls ms
+      FWrapped {fwId = fid, fwLabels = ls, fwMarks = ms, fwBeside = lbs} -> ofFigure fid ls ms <> concatMap ofBox lbs
+      FPageFigure {fpId = fid, fpLabels = ls, fpMarks = ms} -> ofFigure fid ls ms
+      FContinued _ lbs -> concatMap ofBox lbs
+      FTable {ftHeader = h, ftRows = rs, ftCaption = c, ftCaptionBelow = below} -> concatMap ofBox (if below then h <> concat rs <> c else c <> h <> concat rs)
+      FCode {fcRows = lbs} -> concatMap ofBox lbs
+      FRuled {frBody = RuledLines _ lbs} -> concatMap ofBox lbs
+      FRuled {frBody = RuledHeading {rhLines = lbs}} -> concatMap ofBox lbs
+      FBoxed {fbBody = fs} -> concatMap ofFlow fs
+      _ -> []
 
 {- | Whether a unit refers to a page (docs/adr ADR 0251): a [ref-page]
 anywhere in its inlines, its list marker, the cells of its table or the

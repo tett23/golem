@@ -3,23 +3,50 @@ Document
     "目次"
   TOC
     TOCI
-      "第1章　見出しと段落2"
+      Reference
+        Link
+          "第1章　見出しと段落2"
+          OBJR 1
     TOCI
-      "1.1　箇条書き2"
+      Reference
+        Link
+          "1.1　箇条書き2"
+          OBJR 1
     TOCI
-      "1.1.1　定義リスト3"
+      Reference
+        Link
+          "1.1.1　定義リスト3"
+          OBJR 1
     TOCI
-      "第2章　表とコード4"
+      Reference
+        Link
+          "第2章　表とコード4"
+          OBJR 1
     TOCI
-      "2.1　表4"
+      Reference
+        Link
+          "2.1　表4"
+          OBJR 1
     TOCI
-      "2.2　コード6"
+      Reference
+        Link
+          "2.2　コード6"
+          OBJR 1
     TOCI
-      "索引7"
+      Reference
+        Link
+          "索引7"
+          OBJR 1
     TOCI
-      "参考文献7"
+      Reference
+        Link
+          "参考文献7"
+          OBJR 1
     TOCI
-      "第3章　傍注8"
+      Reference
+        Link
+          "第3章　傍注8"
+          OBJR 1
   H1
     "第1章　見出しと段落"
   P
@@ -42,10 +69,14 @@ Document
         "ぱん"
     "を組む"
     Reference
-      "*1"
+      Link
+        "*1"
+        OBJR 1
     Note ID=note-1
       Lbl
-        "*1"
+        Link
+          "*1"
+          OBJR 1
       P
         "脚注の本文。"
         Ruby
@@ -59,7 +90,11 @@ Document
       "code"
     "がある。文献を引く"
     Reference
-      "[1]"
+      "["
+      Link
+        "1"
+        OBJR 1
+      "]"
     "。索引の語を置く。"
   H2
     "1.1　箇条書き"
@@ -128,7 +163,22 @@ Document
   H2
     "2.1　表"
   P
-    "ページをまたぐ表である。"
+    "ページをまたぐ表である。相互参照で"
+    Reference
+      Link
+        "2-1"
+        OBJR 1
+    "の"
+    Reference
+      Link
+        "4"
+        OBJR 1
+    "ページと、"
+    Reference
+      Link
+        "コード"
+        OBJR 1
+    "の節を指す。"
   Table
     Caption
       "表2-1　番号と名前"
@@ -296,10 +346,14 @@ Document
   P
     "二つめの段落である"
     Reference
-      "*2"
+      Link
+        "*2"
+        OBJR 1
     Note ID=note-2
       Lbl
-        "*2"
+        Link
+          "*2"
+          OBJR 1
       P
         "二つめの注。"
     "。"
@@ -319,7 +373,11 @@ Document
     P
       "さ"
     P
-      "索引　2"
+      "索引　"
+      Reference
+        Link
+          "2"
+          OBJR 1
   H1
     "参考文献"
   L /List /ListNumbering /None

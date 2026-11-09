@@ -19,7 +19,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Doc.IR
 import Golem.Layout.Japanese (ComposeEnv (..), InlineNode (..), InlineRole (..), inlineStructure)
-import Golem.Layout.Look (Look (..))
+import Golem.Layout.Look (LinkDest (..), LinkTarget (..), Look (..))
 import Golem.Layout.Paginate (NoteId (..))
 import Golem.LayoutSpec (PageGeometry (..))
 import Golem.Pdf qualified as P
@@ -39,10 +39,12 @@ data Node
 {- | The structure tree: the units in their frames (lists, items, the
 table of contents, the index and so on), each unit an element of its
 kind, the Notes after their marks. @figureAttrs@ gives the attributes of
-the Figure of each figure by its unit (its BBox, from the drawing).
+the Figure of each figure by its unit (its BBox, from the drawing),
+@tocNumber the page number of each entry of the table of contents by its
+unit, as set (docs/adr/0267).
 -}
-structureTree :: FlowEnv -> [(Int, Unit)] -> (Int -> [P.Attribute]) -> (P.StructElem, Map P.AnnotId T.Text)
-structureTree fe units figureAttrs =
+structureTree :: FlowEnv -> [(Int, Unit)] -> (Int -> [P.Attribute]) -> (Int -> T.Text) -> (P.StructElem, Map P.AnnotId T.Text)
+structureTree fe units figureAttrs tocNumber =
   let body = [(uFrames u, n) | (i, u) <- units, not (isEndNote u), n <- unitNodes i u]
       kids = concatMap nodeKids (build body)
       root = (P.structElem P.SDocument kids) {P.seAttrs = [P.Attribute "Layout" [("WritingMode", P.OName "TbRl")] | pgVertical geom]}
@@ -73,16 +75,20 @@ structureTree fe units figureAttrs =
       NodeNote sp k num nbody -> P.KidElem (noteElem sp k num nbody)
       NodeSidenote sp num snBody -> P.KidElem (sidenoteElem sp num (concat snBody))
       -- a link: its text, then the annotations of its lines (docs/adr ADR 0183)
-      NodeLink u xs ns -> P.KidElem (linkElem site u xs [toKid (site, m) | m <- ns] ns)
-    linkElem site u xs kids ns =
+      NodeLink t xs ns -> P.KidElem (linkElem site t xs [toKid (site, m) | m <- ns] ns)
+    linkElem site t xs kids ns =
       let first = case ns of
             NodeLeaf k : _ -> k
             _ -> 0
           -- without its soft hyphens, which the PDF does not write (docs/adr ADR 0272)
           shown = T.filter (/= '\xAD') (T.concat (map inlineText xs))
-          contents = if shown == u then u else shown <> "（" <> u <> "）"
-       in -- the text rides in an attribute of no owner of the PDF until 'withoutTexts' takes it out
-          (P.structElem P.SLink (kids <> [P.KidAnnot (P.AnnotId (site <> [first]))])) {P.seAttrs = [P.Attribute "Golem" [("Contents", P.OStr (TE.encodeUtf8 contents))]]}
+          -- a URL after a text that is not it; a link inside the document its text alone (docs/adr/0267)
+          contents = case t of
+            LinkUri u -> if shown == u then u else shown <> "（" <> u <> "）"
+            LinkTo _ -> shown
+       in withContents contents (P.structElem P.SLink (kids <> [P.KidAnnot (P.AnnotId (site <> [first]))]))
+    -- the text rides in an attribute of no owner of the PDF until 'withoutTexts' takes it out
+    withContents contents e = e {P.seAttrs = [P.Attribute "Golem" [("Contents", P.OStr (TE.encodeUtf8 contents))]]}
     roleType = \case
       RoleLabel -> P.SLbl
       RoleRuby -> P.SRuby
@@ -110,7 +116,7 @@ structureTree fe units figureAttrs =
               vertical = pgVertical geom
               env = noteEnv fe (styleOfSpan sp)
            in case nbody of
-                first : more -> withMore (noteFrom (content env {ceLabelInlines = noteMarkCount st vertical (noteIdSpan key) num} (noteSite key) (withNoteMark st vertical (noteIdSpan key) num first))) [content env {ceLabelInlines = 0} (noteParagraphSite key j) para | (j, para) <- zip [1 ..] more]
+                first : more -> withMore (noteFrom (content env {ceLabelInlines = noteMarkCount st vertical (noteIdSpan key) num, ceLabelLink = Just (LinkTo (DestNoteMark key))} (noteSite key) (withNoteMark st vertical (noteIdSpan key) num first))) [content env {ceLabelInlines = 0} (noteParagraphSite key j) para | (j, para) <- zip [1 ..] more]
                 [] -> P.structElem P.SNote []
     sidenoteElem sp num snBody =
       let st = styleOfSpan sp
@@ -132,7 +138,12 @@ structureTree fe units figureAttrs =
       UIndexEntry _ -> [NKid (P.KidElem (P.structElem P.SP text))]
       UHeading l _ _ -> [NKid (P.KidElem (P.structElem (headingType l) text))]
       UTerm _ -> [NTerm text]
-      UTocEntry {} -> [NKid (P.KidElem (P.structElem P.STOCI text))]
+      {- an entry: its text in a Reference, a Link to its heading, its annotations
+      over its lines and its page number (docs/adr/0267) -}
+      UTocEntry {} ->
+        let contents = T.filter (/= '\xAD') (T.concat (map inlineText (uInlines u))) <> tocNumber i
+            link = withContents contents (P.structElem P.SLink (text <> [P.KidAnnot (P.AnnotId (unitSite i <> [0]))]))
+         in [NKid (P.KidElem (P.structElem P.STOCI [P.KidElem (P.structElem P.SReference [P.KidElem link])]))]
       UTable tbl -> [NKid (P.KidElem (tableElem i u tbl))]
       UCode _ code -> [NKid (P.KidElem (codeElem i u code))]
       UFigure fig -> [NKid (P.KidElem (figureElem i u fig))]
