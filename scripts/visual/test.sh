@@ -230,7 +230,10 @@ for i in complex-vertical complex-horizontal; do
 done
 # the specimens of the visual checks, and the vertical one with crop marks for the hidden folios (docs/adr/0233)
 for i in specimens-horizontal specimens-vertical specimens-vertical-marks-japanese; do
-  if printf '%s\n' "$INPUTS" | grep -qx "$i"; then ok; else ng "build: --list has $i (docs/adr/0233)"; fi
+  if printf '%s\n' "$INPUTS" | grep -qx "$i"; then ok; else ng "build: --list has $i (docs/adr/0233, I1)"; fi
+  # a change of a page of the specimens fails the visual job because their
+  # references are committed with the other inputs' (docs/adr/0233, I2)
+  if [ -s "$HERE/pages/$i.txt" ]; then ok; else ng "pages/$i.txt: the reference of the specimens is committed (docs/adr/0233, I2)"; fi
 done
 # pdfs DIR: a fake PDF of three pages for every input
 pdfs() {

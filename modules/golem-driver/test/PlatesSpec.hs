@@ -9,6 +9,7 @@ module PlatesSpec (platesTests) where
 import Control.Monad (forM, forM_)
 import Data.ByteString qualified as BS
 import Data.List ((\\))
+import Data.Maybe (isNothing)
 import Data.Text qualified as T
 import Golem.Driver
 import Golem.Pdf (Paint (..), PaintSource (..), PaintSpace (..))
@@ -18,6 +19,7 @@ import Support
 import System.Directory (copyFile, createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
+import TaggedPdfSpec (fixtureBooks, prepareFixtureBook)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -102,6 +104,19 @@ platesTests =
       assertBool "paints" (not (null (vwPaints v)))
       assertBool (show (pagePaints v)) (all processOnly (pagePaints v))
       noFontsNorSpots (prDiagnostics p),
+    -- the books of test/fixtures (TaggedPdfSpec builds the same), with the
+    -- two checks as the manuals have them in CI (scripts/ci/manual-preflight.toml)
+    testCase "I9: no fixture book gives G09019 nor G09020" $ do
+      books <- fixtureBooks
+      assertBool (show books) (length books >= 10)
+      failures <- forM books $ \name -> withSystemTempDirectory "golem-plates" $ \tmp -> do
+        prepareFixtureBook name tmp
+        BS.writeFile (tmp </> "plates-rules.toml") "based-on = \"none\"\n\n[font-embedding]\nseverity = \"error\"\n\n[spot-colors]\nseverity = \"error\"\n"
+        p <- preflight (defaultPreflightOptions tmp) {poRules = Just (tmp </> "plates-rules.toml")}
+        pure $
+          [name <> ": no PDF: " <> show (prDiagnostics p) | isNothing (prView p)]
+            <> [name <> ": " <> T.unpack c | c <- codesIn ["G09019", "G09020"] (prDiagnostics p)]
+      concat failures @?= [],
     testCase "G09021: none with swatches of black only, one with a character of a swatch with C" $ do
       let rules = Just "based-on = \"none\"\n[cmy-plates]\nseverity = \"error\"\n"
           style = horizontalStyle <> "\n[color.swatches]\nink = { cmyk = [0, 0, 0, 80] }\ncyan = { cmyk = [30, 0, 0, 100] }\n\n[paragraph-styles.code]\nbackground = \"ink\"\n"

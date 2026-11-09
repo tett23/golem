@@ -1,9 +1,9 @@
 -- I5: the completion of style.toml and preflight.toml of the root, in
 -- Neovim with vim.lsp.completion: the list shows the candidates, and the
 -- line after the choice is the expected one, outside and inside quotes;
--- manifest.toml and a TOML file not at the root get no list (docs/adr ADR
--- 0169, docs/adr/0231). The list is read through ext_popupmenu, which a
--- terminal would draw
+-- manifest.toml, a TOML file below the root and one outside the root get
+-- no list (docs/adr ADR 0169, docs/adr/0231). The list is read through
+-- ext_popupmenu, which a terminal would draw
 return function(t)
   local ns = vim.api.nvim_create_namespace('golem-nvim-test')
   local shown = {}
@@ -26,13 +26,19 @@ return function(t)
   })
 
   local client
-  -- puts lines in rel, types A at its last line and asks for completion;
-  -- the candidates of the list, or nil when the server answered and no
-  -- list was shown
+  -- puts lines in rel (of the project, or an absolute path outside it),
+  -- types A at its last line and asks for completion; the candidates of
+  -- the list, or nil when the server answered and no list was shown
   local function complete(rel, text)
-    local path = t.proj .. '/' .. rel
+    local path = rel:sub(1, 1) == '/' and rel or t.proj .. '/' .. rel
     vim.fn.mkdir(vim.fs.dirname(path), 'p')
-    local buf = t.edit(rel)
+    local buf
+    if path == rel then
+      vim.cmd.edit(vim.fn.fnameescape(path))
+      buf = vim.api.nvim_get_current_buf()
+    else
+      buf = t.edit(rel)
+    end
     if not client then
       client = t.start_lsp(nil)
     else
@@ -88,7 +94,8 @@ return function(t)
     end
   end
 
-  for _, rel in ipairs({ 'manifest.toml', 'sub/style.toml' }) do
+  -- no list in manifest.toml, below the root, nor outside it (I5)
+  for _, rel in ipairs({ 'manifest.toml', 'sub/style.toml', t.work .. '/outside/style.toml' }) do
     local _, items = complete(rel, '[')
     t.check(items == nil, ('a list in %s: %s'):format(rel, vim.inspect(items)))
     t.feed('<Esc>')

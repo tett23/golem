@@ -3688,7 +3688,7 @@ Golem の構文解析が受け付ける原稿は受け付けるが、Golem が�
 - Neovim が受け取った diagnostic の列が、その行のバイト数を超えない。
 - notice が `INFO` の diagnostic になって quickfix に載り、マニフェストの `silence-notices` にそのコードを書いて保存すると消える。
 - コマンドと式の中の空白の semantic tokens の型が `operator` で、その位置の強調のグループが、既定の色の組で背景と下線を持たない。
-- ルートの `style.toml` と `preflight.toml` で補完の一覧が出て、引用符の外と内で選んだ後の行が期待の文字列になる。`manifest.toml` とルートより下の TOML では一覧が出ない。
+- ルートの `style.toml` と `preflight.toml` で補完の一覧が出て、引用符の外と内で選んだ後の行が期待の文字列になる。`manifest.toml` と、ルートより下の TOML と、ルートの外の TOML では一覧が出ない。
 - `tools/editors/README.md` の nvim-treesitter を使わない手順（`sh` のブロックと最後の `lua` のブロック）で、`.gm` と `.emet` のファイルタイプが決まり、tree-sitter の色付けが始まる。
 
 `--self-test` は、各テストの期待を一つ反転して走らせ、どれも失敗することを確かめる。

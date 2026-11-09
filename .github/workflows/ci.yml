@@ -797,7 +797,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: wasm-native-list
-      - name: The PDFs and the diagnostics of golem.wasm are those of golem (docs/adr/0199)
+      - name: The PDFs and the diagnostics of golem.wasm are those of golem (docs/adr/0199, docs/adr/0238 I2)
         run: sh scripts/wasm/compare.sh --check wasm-native-list.txt wasm-list.txt
       # why the toolchain cache missed: the toolchain or the project
       # differs from main (the base of a pull request, the commit before a

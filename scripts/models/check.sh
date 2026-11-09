@@ -117,7 +117,7 @@ for model in "$ROOT"/docs/*/models/*.als; do
         fail "$rel has no \"for <n> but\" for the scope $scope of $cmd"
         continue
       fi
-      sed "s/ for [0-9][0-9]* but / for $scope but /" "$model" >"$run"
+      sed "s/ for [0-9][0-9]* but / for $scope but /g" "$model" >"$run"
     fi
     printf '%s %s %s\n' "$n" "$run" "$cmd" >>"$TMP/jobs"
     printf '%s %s %s %s\n' "$n" "$rel" "$cmd" "$want" >>"$TMP/expected"

@@ -14,10 +14,21 @@
 -- A test is a function of the harness t; it runs in a coroutine, so that
 -- it can wait for the server and for the keys it types. It passes when it
 -- returns, and fails at the first failed check: the harness writes
--- "nvim: <name>: FAILED: ..." to the standard error and exits with
--- :cquit 1. A test that takes more than 60 seconds fails too.
+-- "nvim: <name> (<invariant>): FAILED: ..." to the standard error and
+-- exits with :cquit 1. A test that takes more than 60 seconds fails too.
 local name = os.getenv('GOLEM_NVIM_TEST') or ''
 local here = vim.fs.dirname(debug.getinfo(1, 'S').source:sub(2))
+
+-- the invariant of docs/adr/0231 that each test checks; the lines the
+-- harness writes carry its number ("nvim: encoding (I1): ok")
+local invariants = {
+  encoding = 'I1',
+  columns = 'I2',
+  notice = 'I3',
+  whitespace = 'I4',
+  completion = 'I5',
+}
+local label = invariants[name] and (name .. ' (' .. invariants[name] .. ')') or name
 
 local t = {
   name = name,
@@ -37,10 +48,10 @@ local function finish(err)
   end
   finished = true
   if err then
-    io.stderr:write(('nvim: %s: FAILED: %s\n'):format(name, err))
+    io.stderr:write(('nvim: %s: FAILED: %s\n'):format(label, err))
     vim.cmd.cquit(1)
   else
-    io.stdout:write(('nvim: %s: ok\n'):format(name))
+    io.stdout:write(('nvim: %s: ok\n'):format(label))
     vim.cmd('qall!')
   end
 end

@@ -88,7 +88,7 @@ readme_block() {
 
 STATUS=0
 fail() {
-  echo "helix: $*" >&2
+  echo "helix: I6: $*" >&2
   STATUS=1
 }
 
@@ -130,5 +130,5 @@ for lang in golem emet; do
     grep -q "^$item: ✓" "$WORK/health-$lang" || fail "hx --health $lang: no ✓ for $item"
   done
 done
-[ "$STATUS" -ne 0 ] || echo "helix: the grammars of golem and emet build and are found"
+[ "$STATUS" -ne 0 ] || echo "helix: I6: the grammars of golem and emet build and are found"
 exit "$STATUS"
