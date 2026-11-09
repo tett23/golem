@@ -4858,6 +4858,8 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 
 `golem` は計算機のすべてのプロセッサの上で動く（GHC のランタイムの `-N`）。
 PDF の段落の組版は複数の OS のスレッドで同時に進む（[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)）。
+PDF のページの描画と、内容のストリームの直列化と圧縮は、ページごとに GHC の spark で並列に進む（[ADR 0252](adr/0252-draw-and-serialise-the-pages-of-the-pdf-in-parallel.md)）。
+spark は純粋な値の計算を別の capability に委ねるだけなので、結果は逐次に計算したものと同じである。
 出力のバイト列はプロセッサの数によらない（[docs/adr/0002](adr/0002-determinism.md)）。
 実行ファイルは `-threaded` と `-with-rtsopts=-N -A64m` でリンクし、`-rtsopts` は付けない。
 `-A64m` は capability ごとの割り当て領域（nursery）を 64 MB にして、世代 0 の GC の回数を減らす（[docs/adr/0249](adr/0249-link-golem-with-a-64-mb-allocation-area.md)）。

@@ -21,6 +21,7 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (toGregorian)
+import GHC.Conc (pseq)
 import Golem.Assemble (Book (..))
 import Golem.Doc.IR
 import Golem.Layout.Code
@@ -366,7 +367,9 @@ writeDocumentView tamper version inp geom fonts layout intent =
       figureAttrs i = [P.Attribute "Layout" [("BBox", P.rectObj (r {rectX = rectX r + origin, rectY = rectY r + origin})), ("Placement", P.OName "Block")] | Just r <- [Map.lookup i figureBoxes]]
       {- each glyph once per font, with the text of its cluster; a whole
       cluster wins, then the first drawn (golem-driver ADR 0030) -}
-      used = Map.map toUnicodeOf (Map.fromListWith (<>) [(guRef u, [(guGlyph u, guText u, guPart u)]) | pd <- reverse drawn, u <- reverse (pdUses pd)])
+      used = Map.map toUnicodeOf (Map.fromListWith (<>) [(guRef u, [(guGlyph u, guText u, guPart u)]) | pd <- reverse (P.parPages [glyphsOf pd `pseq` pd | pd <- drawn]), u <- reverse (pdUses pd)])
+      -- the glyphs of each page decided on its own capability before they are gathered (docs/adr ADR 0252)
+      glyphsOf pd = foldl' (\n u -> n + guGlyph u + T.length (guText u)) 0 (pdUses pd)
       -- the ToUnicode entries the marks are checked against for ActualText (golem-driver ADR 0030)
       textEntries = Map.map Map.fromList used
       -- the PDF and its view from the fonts embedded (docs/adr ADR 0034)

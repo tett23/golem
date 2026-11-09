@@ -20,6 +20,19 @@ xref の表の各行のオフセットは、0 で左から埋めた 10 桁の 10
 バイト列は `printf "%04X"` と `printf "%010d"` の出力と同じである（[ADR 0254](../adr/0254-write-glyph-codes-without-printf.md)）。
 グリフの番号は CID で 0xFFFF 以下なので、`hex4` は `Word16` を受け取る。
 
+### ページごとの並列
+
+`writePdf` は、各ページの内容のストリームを作って Flate で圧縮する仕事を、ページごとに spark で並列に計算する（[ADR 0252](../adr/0252-draw-and-serialise-the-pages-of-the-pdf-in-parallel.md)）。
+`parPages` は、列のすべての要素を `GHC.Conc.par` で先に投げ、`pseq` で列の順に弱頭部正規形まで待ってから列を返す（`parallel` パッケージの `parList rseq` と同じ）。
+`ByteString` は正格なので、弱頭部正規形でストリームの全体が決まる。
+ページの描画は内容のストリームの評価で進むので、描画も並列になる。
+フォントと画像とフォームの番号付け、xref と trailer の直列化、`instanceId` の SHA-256 は逐次である。
+テストは、`writePdfWith id`（逐次）と `writePdf` のバイト列が一致することを確かめる。
+スレッドのないランタイム（golem.wasm）では `par` は何もせず、同じバイト列を逐次に作る。
+
+golem-typeset の `writeDocumentView` は、各ページで使うグリフ（`pdUses`）を集める前に、ページごとのグリフの決定を `parPages` で並列に評価する。
+グリフの決定は描画のシェイピングを含み、集めた結果はフォントのサブセット化に渡る。
+
 ## PNG の画像
 
 `Golem.Pdf.Image.readPng` は、PNG の画素を取り出し、透過をアルファの面（`imgAlpha`）にする。
