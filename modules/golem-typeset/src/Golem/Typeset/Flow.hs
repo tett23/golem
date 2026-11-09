@@ -85,7 +85,7 @@ import Control.Applicative ((<|>))
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Exception (evaluate)
 import Control.Monad (join, mfilter)
-import Data.Bifunctor (first)
+import Data.Bifunctor (bimap, first)
 import Data.ByteString qualified as BS
 import Data.Char (isSpace)
 import Data.Containers.ListUtils (nubOrdOn)
@@ -1070,7 +1070,7 @@ is before its begin, or in another section (G07118, G07119), is its two
 pages.
 -}
 indexPageRuns :: [(PageLabel, PageLabel)] -> [(PageLabel, PageLabel)]
-indexPageRuns locs = merge (sortOn (\(a, b) -> (plIndex a, plIndex b)) (concatMap split locs))
+indexPageRuns locs = merge (sortOn (bimap plIndex plIndex) (concatMap split locs))
   where
     split (a, b)
       | plIndex b < plIndex a || plSectionFirst a /= plSectionFirst b = [(a, a), (b, b)]
@@ -1088,17 +1088,18 @@ begin, and the two ends in two sections.
 -}
 indexRangeDiagnostics :: Book -> (SrcSpan -> Maybe PageLabel) -> [Diagnostic]
 indexRangeDiagnostics book pageOf =
-  [ d
-  | (_, sections) <- bookIndexes book,
-    g <- concatMap isGroups sections,
-    Between (_, a) (_, b) <- igLocators g,
-    Just la <- [pageOf a],
-    Just lb <- [pageOf b],
-    let name = T.intercalate "/" (igTerms g),
-    d <-
-      [diagnostic "G07118" Error a ("索引の範囲の終わりのページが、始めのページより前にあります: " <> name) | plIndex lb < plIndex la]
-        <> [diagnostic "G07119" Error a ("索引の範囲の始めと終わりが、ノンブルの別のセクションにあります: " <> name) | plIndex lb >= plIndex la, plSectionFirst la /= plSectionFirst lb]
-  ]
+  concat
+    [ range (T.intercalate "/" (igTerms g)) a b
+    | (_, sections) <- bookIndexes book,
+      g <- concatMap isGroups sections,
+      Between (_, a) (_, b) <- igLocators g
+    ]
+  where
+    range name a b = case (pageOf a, pageOf b) of
+      (Just la, Just lb)
+        | plIndex lb < plIndex la -> [diagnostic "G07118" Error a ("索引の範囲の終わりのページが、始めのページより前にあります: " <> name)]
+        | plSectionFirst la /= plSectionFirst lb -> [diagnostic "G07119" Error a ("索引の範囲の始めと終わりが、ノンブルの別のセクションにあります: " <> name)]
+      _ -> []
 
 {- | Page labels in the order of the pages, each page once (docs/adr/0260):
 by their places, not their numbers, for iii and 3 have one number.

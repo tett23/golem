@@ -4,8 +4,9 @@ G07118 and G07119 through the layout.
 -}
 module IndexRangeSpec (indexRangeTests) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
+import Data.Either (fromLeft)
 import Data.List (nub, sort)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -107,7 +108,7 @@ indexRangeTests =
               sectionOf p = maximum [f | f <- firsts, f <= p]
               -- a range across sections is G07119
               allowed = [e | e <- elements, case e of Range a b -> sectionOf a == sectionOf b; _ -> True]
-          forM_ (concat [sequence (replicate n allowed) | n <- [1 .. 3]]) $ \es -> do
+          forM_ (concat [replicateM n allowed | n <- [1 .. 3]]) $ \es -> do
             let out = case entryLines labels es of
                   [l] -> pagesOfLine l
                   other -> error (show other)
@@ -237,6 +238,6 @@ bookLayoutErrors manifest style sources = withSystemTempDirectory "golem-index" 
       (Just book, Right geom) -> do
         let inp = PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))) (evStyleText e)
         r <- layoutPdf inp geom fakeFonts
-        pure (either id (const []) r)
+        pure (fromLeft [] r)
       (_, Left ds) -> assertFailure (show ds)
       (Nothing, _) -> assertFailure "no book"

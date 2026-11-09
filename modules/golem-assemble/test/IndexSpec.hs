@@ -3,7 +3,7 @@
 -}
 module IndexSpec (tests) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, replicateM)
 import Data.Char (chr, ord)
 import Data.List (sort, sortOn)
 import Data.Map.Strict qualified as Map
@@ -65,7 +65,7 @@ data Sym = P | B | E
 
 -- | Every sequence of the three marks up to five long.
 sequences :: [[Sym]]
-sequences = concat [sequence (replicate n [P, B, E]) | n <- [0 .. 5]]
+sequences = concat [replicateM n [P, B, E] | n <- [0 .. 5]]
 
 {- | The pairs of a sequence read as brackets, B as ( and E as ): the
 places of the points, of the pairs, and the unpaired begins and ends.
@@ -143,7 +143,7 @@ tests =
         map igReadings (concatMap isGroups secs) @?= map pure (sortOn collationKey readings)
         map isHeading secs @?= ["記号と数字", "A", "B", "あ", "か", "や", "わ", "その他"]
         and (zipWith (/=) (map isHeading secs) (drop 1 (map isHeading secs))) @?= True
-        all (not . null . isGroups) secs @?= True,
+        any (null . isGroups) secs @?= False,
       testCase "I1: no entry, no heading; one heading" $ do
         sectionsOf (fst (bookOf [])) @?= []
         map isHeading (sectionsOf (fst (bookOf [mark 0 "語" "ご" IndexPoint, mark 1 "碁" "ご" IndexPoint]))) @?= ["か"],
