@@ -137,6 +137,12 @@ tests =
       only (horizontal book) @?= "[1\x2013\&3][1, 5][1, pp. 5\x2013\&7]\n"
       -- a key without a number: nothing, as a mark of one key
       only (horizontal ((bookOf [para 0 [Cite (at 1) (map citeItem ["a", "x"])]]) {bookBibliographies = [(Nothing, [("a", 1)])], bookCiteMarks = Map.fromList [((fid, at 1), (Nothing, 1))]})) @?= "",
+    testCase "C4 (docs/adr/0277): the label of a page and its value stay apart by U+0020, not U+00A0" $ do
+      let mark i v = Cite (at i) [CiteItem "a" (Just (Locator LocatorPage v)) [] []]
+          book = (bookOf [para 0 [mark 1 (LocNumber 5), mark 2 (LocRange 5 7), mark 3 (LocText "xii")]]) {bookBibliographies = [(Nothing, [("a", 1)])], bookCiteMarks = Map.fromList [((fid, at i), (Nothing, 1)) | i <- [1, 2, 3]]}
+          out = only (horizontal book)
+      out @?= "[1, p. 5][1, pp. 5\x2013\&7][1, p. xii]\n"
+      assertBool "no U+00A0" (not (T.any (== '\xA0') out)),
     testCase "a footnote is *n in horizontal text, its body at the end of the file" $
       let book = bookOf [para 0 [txt "本文", Note (at 1) 1 (noteBody (at 1) [txt "注の本文。"]), txt "。"], para 5 [txt "次の段落。"]]
        in only (horizontal book) @?= "本文*1。\n\n次の段落。\n\n注\n*1 注の本文。\n",
