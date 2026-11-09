@@ -724,8 +724,8 @@ expect "werror: -Wwarn in cabal.project.local (W3)" 1
 
 # ---------------------------------------------------------------- log-warnings.sh
 # (docs/adr/0245 section 5, W4, W5, W6): lines of the logs of 40eb98ce with
-# their times, in testdata/log-warnings: one.log the warning of
-# download-artifact; two.log it, a G03010 of golem, the name of a test with
+# their times, in testdata/log-warnings: one.txt the warning of
+# download-artifact; two.txt it, a G03010 of golem, the name of a test with
 # "warnings", the warning of the ld of macOS, the hint of git and a warning
 # of GHC
 
@@ -737,36 +737,36 @@ mkdir -p "$LT"
 : >"$LT/empty.tsv"
 run lw "$LW/allow-dep.tsv" "$LT/empty.log"
 expect "log-warnings: an empty log (W4)" 0 ""
-run lw "$LT/empty.tsv" "$LW/one.log"
+run lw "$LT/empty.tsv" "$LW/one.txt"
 expect "log-warnings: one warning, nothing allowed (W4)" 1
-if [ "$(cat "$WORK/out")" = "$LW/one.log:1: $(cut -d' ' -f2- "$LW/one.log")" ]; then ok; else ng "log-warnings: the warning as LOG:LINE: TEXT, without the time (W4)"; fi
-run lw "$LW/allow-dep.tsv" "$LW/one.log"
+if [ "$(cat "$WORK/out")" = "$LW/one.txt:1: $(cut -d' ' -f2- "$LW/one.txt")" ]; then ok; else ng "log-warnings: the warning as LOG:LINE: TEXT, without the time (W4)"; fi
+run lw "$LW/allow-dep.tsv" "$LW/one.txt"
 expect "log-warnings: one warning that the list allows (W4)" 0 ""
-run lw "$LW/allow-dep.tsv" "$LW/two.log"
+run lw "$LW/allow-dep.tsv" "$LW/two.txt"
 expect "log-warnings: warnings, the list allowing one (W4)" 1
 cp "$WORK/out" "$LT/two.out"
 if [ "$(cut -d: -f2 "$LT/two.out" | tr '\n' ' ')" = "4 6 " ]; then ok; else ng "log-warnings: the ld and the GHC warnings, not the one allowed, nor the hint (W4)"; fi
 if ! grep -qF 'G03010' "$LT/two.out" && ! grep -qF 'G05004' "$LT/two.out"; then ok; else ng "log-warnings: a diagnostic of golem and the name of a test are not warnings (W6)"; fi
-run lw "$LT/empty.tsv" "$LW/two.log"
+run lw "$LT/empty.tsv" "$LW/two.txt"
 expect "log-warnings: an empty list allows nothing (W4)" 1
 if [ "$(wc -l <"$WORK/out" | tr -d ' ')" = 3 ]; then ok; else ng "log-warnings: every warning of an empty list (W4)"; fi
 # W5: the lines of the log and of the list in the other order
-awk '{ a[NR] = $0 } END { for (i = NR; i >= 1; i--) print a[i] }' "$LW/two.log" >"$LT/reversed.log"
+awk '{ a[NR] = $0 } END { for (i = NR; i >= 1; i--) print a[i] }' "$LW/two.txt" >"$LT/reversed.log"
 { cat "$LW/allow-dep.tsv"; printf '^hint: \tthe hint\thttps://github.com/actions/checkout/issues/427\n'; } >"$LT/allow.tsv"
 awk '{ a[NR] = $0 } END { for (i = NR; i >= 1; i--) print a[i] }' "$LT/allow.tsv" >"$LT/allow-reversed.tsv"
-run lw "$LT/allow.tsv" "$LW/two.log"
+run lw "$LT/allow.tsv" "$LW/two.txt"
 c1=$CODE
 sed 's/^[^:]*:[0-9]*: //' "$WORK/out" | LC_ALL=C sort >"$LT/a.txt"
 run lw "$LT/allow-reversed.tsv" "$LT/reversed.log"
 sed 's/^[^:]*:[0-9]*: //' "$WORK/out" | LC_ALL=C sort >"$LT/b.txt"
 if [ "$c1" = 1 ] && [ "$CODE" = 1 ] && cmp -s "$LT/a.txt" "$LT/b.txt"; then ok; else ng "log-warnings: the same warnings and code in any order of the lines (W5)"; fi
-run lw "$LW/two-fields.tsv" "$LW/one.log"
+run lw "$LW/two-fields.tsv" "$LW/one.txt"
 expect "log-warnings: a line of the list of two fields" 2
-run lw "$LW/bad-regex.tsv" "$LW/one.log"
+run lw "$LW/bad-regex.tsv" "$LW/one.txt"
 expect "log-warnings: a regular expression grep -E does not take" 2
 run lw "$LW/allow-dep.tsv"
 expect "log-warnings: no log is a usage error" 2
-run lw "$HERE/warnings-allowed.tsv" "$LW/two.log"
+run lw "$HERE/warnings-allowed.tsv" "$LW/two.txt"
 expect "log-warnings: the list of the repository allows the ld of macOS but not GHC (W4)" 1
 if [ "$(cut -d: -f2 "$WORK/out")" = 6 ]; then ok; else ng "log-warnings: the list of the repository leaves the warning of GHC alone (W4)"; fi
 
@@ -2164,7 +2164,7 @@ if job_of "$CI_YML" ci | grep -qF 'sh scripts/ci/log-warnings.sh scripts/ci/warn
 if [ "$(perms_of "$CI_YML" visual)" = "contents: read
 actions: read" ]; then ok; else ng "ci.yml: visual has contents: read and actions: read"; fi
 ACTIONS_READ_JOBS=$(ci_jobs "$CI_YML" | while IFS= read -r j; do if perms_of "$CI_YML" "$j" | grep -qx 'actions: read'; then printf '%s\n' "$j"; fi; done)
-if [ "$ACTIONS_READ_JOBS" = visual ]; then ok; else ng "ci.yml: no job but visual has actions: read"; fi
+if [ "$(printf '%s\n' "$ACTIONS_READ_JOBS" | LC_ALL=C sort | tr '\n' ' ')" = "ci visual " ]; then ok; else ng "ci.yml: no job but visual and ci (docs/adr/0245) has actions: read"; fi
 # caches alone has a write permission, actions: write, to delete the stale
 # dist- caches of main; it runs on pushes to main only, after the saves of
 # build and wasm, and uses no action but checkout (docs/adr/0228)

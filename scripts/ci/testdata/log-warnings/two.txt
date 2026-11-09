@@ -1,0 +1,6 @@
+2026-11-08T22:24:09.1956103Z (node:2997) [DEP0005] DeprecationWarning: Buffer() is deprecated due to security and usability issues. Please use the Buffer.alloc(), Buffer.allocUnsafe(), or Buffer.from() methods instead.
+2026-11-08T22:24:30.7716023Z style.toml:1:1: warning[G03010]: フォントのファイルがないので、HTML と EPUB に同梱しません: fonts/ja.otf
+2026-11-08T22:23:08.4221142Z   G05004 unreferenced labels are warnings, errors in prod:                                        OK
+2026-11-08T22:46:08.9019330Z ld: warning: -U option is redundant when using -undefined dynamic_lookup
+2026-11-08T22:20:26.6913235Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-08T22:33:51.2854280Z src/Golem/Pdf/Writer.hs:55:39: warning: [GHC-38856] [-Wunused-imports]

@@ -1,0 +1,1 @@
+2026-11-08T22:24:09.1956103Z (node:2997) [DEP0005] DeprecationWarning: Buffer() is deprecated due to security and usability issues. Please use the Buffer.alloc(), Buffer.allocUnsafe(), or Buffer.from() methods instead.
