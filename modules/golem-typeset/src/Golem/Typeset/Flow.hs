@@ -48,6 +48,7 @@ module Golem.Typeset.Flow
     fixpoint,
     rubyStyleOf,
     RuledInfo (..),
+    BoxInfo (..),
     fitFigure,
     figureRect,
     imageRect,
@@ -139,6 +140,7 @@ import Golem.Project.Position (Position (..))
 import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax
+import Golem.Typeset.Box (BoxPaint (..), boxLineRange, boxLinesAround, groupBoxes)
 import Golem.Typeset.Fonts
 import Golem.Typeset.Overhang (lineOverhang, reachesBackground)
 import Golem.Typeset.Pages (sourceAt)
@@ -185,6 +187,10 @@ data CodeInfo = CodeInfo
     ciBands :: ![(Int, Int, P.Swatch)],
     -- | the colour and the width of the border
     ciBorder :: !(Maybe (P.Swatch, Sp)),
+    -- | the line style, the sides and the radius of the corners of the border (docs/adr/0271)
+    ciBorderStyle :: !RuleStyle,
+    ciBorderSides :: ![BoxSide],
+    ciRadius :: !Sp,
     -- | where the rows start from the line start of the column, and the size of the code
     ciIndent :: !Sp,
     ciSize :: !Sp
@@ -290,7 +296,9 @@ data PdfLayout = PdfLayout
     plUnits :: ![(Int, Unit)],
     plFlowEnv :: FlowEnv,
     -- | the caption of each table by its first grid line (docs/adr/0262)
-    plTableCaptions :: !(Map Int CodeCaption)
+    plTableCaptions :: !(Map Int CodeCaption),
+    -- | the boxes of paragraphs by their ids (docs/adr/0271)
+    plBoxes :: !(Map Int BoxInfo)
   }
 
 data Built = Built
@@ -325,7 +333,9 @@ data Built = Built
     -- | the units composed and the marker widths of the lists, for the next round of S2 to reuse (docs/adr ADR 0251)
     bComposed :: ComposedUnits,
     bWidths :: Map Int Sp,
-    bTableCaptions :: Map Int CodeCaption
+    bTableCaptions :: Map Int CodeCaption,
+    -- | the boxes by their ids (docs/adr/0271)
+    bBoxes :: Map Int BoxInfo
   }
 
 {- | What style.toml alone decides before the layout (golem-driver ADR
@@ -416,8 +426,12 @@ indentDiagnostics fid style locals geom =
       not ("toc-" `T.isPrefixOf` name),
       let (lk, Indent s f e _) = paraLook st geom (Just name),
       let size = lkSize lk,
+      -- the padding on both sides of a box counts (docs/adr/0271)
+      let pad = case paraStyle st (Just name) of
+            Just d | hasBox d -> 2 * dimToSp size (fromMaybe (Zw (1 % 2)) (psPadding d))
+            _ -> 0,
       -- the end indent counts (docs/adr/0189)
-      columnMeasure geom - s - max 0 f - e < 8 * size
+      columnMeasure geom - s - max 0 f - e - pad < 8 * size
     ]
 
 -- | The page geometry, when style.toml passes 'styleLayoutDiagnostics'.
@@ -547,7 +561,7 @@ layoutFigures reuse inp geom fonts figures = do
                 let l = Map.findWithDefault (plainLabel (fromInteger n)) (fromInteger n) pageLbls
               ]
        in case concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built))
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built))
             ds -> Left ds
 
 {- | The most grid lines a column may have with @page-lines (docs/adr ADR
@@ -1466,10 +1480,45 @@ data Unit = Unit
     -- | the place of the unit among the units of the book, from 0 (docs/adr ADR 0183)
     uIndex :: Int,
     -- | the /Lang of the element of the unit, of a block with a language (docs/adr ADR 0187)
-    uLang :: Maybe Text
+    uLang :: Maybe Text,
+    -- | the box of a paragraph at the top of the document of a style with one (docs/adr/0271)
+    uBox :: Maybe UnitBox
   }
   -- the units of two rounds of S2 are compared (docs/adr ADR 0251)
   deriving stock (Eq)
+
+{- | The box of a paragraph (docs/adr/0271), resolved in sp: two
+paragraphs one after the other go into one box when theirs are equal.
+-}
+data UnitBox = UnitBox
+  { ubBackground :: !(Maybe Text),
+    ubPadding :: !Sp,
+    ubBorder :: !(Maybe Text),
+    ubBorderWidth :: !Sp,
+    -- | its lengths found from the width
+    ubBorderStyle :: !RuleStyle,
+    -- | in the order of 'BoxSide'
+    ubSides :: ![BoxSide],
+    ubRadius :: !Sp,
+    -- | the indent and the end indent of the paragraph: from where to where along the line the box is
+    ubStart :: !Sp,
+    ubEnd :: !Sp
+  }
+  deriving stock (Eq, Show)
+
+{- | A box of the flow by its id (docs/adr/0271): what it paints, from
+where to where along the line of the column it is, the ids of its first
+and its last line, and the paragraph style of its first paragraph.
+-}
+data BoxInfo = BoxInfo
+  { bxPaint :: !BoxPaint,
+    bxStart :: !Sp,
+    bxEnd :: !Sp,
+    bxFirst :: !Int,
+    bxLast :: !Int,
+    bxStyle :: !Text
+  }
+  deriving stock (Eq, Show)
 
 {- | A frame of the structure tree of the PDF around units (docs/adr ADR
 0183): a list, an item, the table of contents and so on. Its number tells
@@ -1711,7 +1760,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
     -- a file that starts a section starts with its break (docs/adr/0260)
     doc n (k, Document fid bs) =
       let style = styleOf fid
-          start = [Unit (USection k st) Nothing [] (mkSpan fid 0 0) (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing | Just st <- [Map.lookup k sections]]
+          start = [Unit (USection k st) Nothing [] (mkSpan fid 0 0) (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing | Just st <- [Map.lookup k sections]]
        in (start <>) <$> blocks style [] True n bs
     {- the documents of a chapter of the manifest; at the end of the chapter,
     before the breaks that end its last file, its notes when they are set
@@ -1738,11 +1787,11 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       [] -> []
       ns@((sp, _, _) : _) ->
         let title = notesTitle lang
-         in Unit (UNotesTitle title) Nothing [Text sp title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing) Nothing (SourceHeading 2) [] 0 Nothing
+         in Unit (UNotesTitle title) Nothing [Text sp title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing) Nothing (SourceHeading 2) [] 0 Nothing Nothing
               -- the first paragraph after the mark, the others without one and without space between (docs/adr/0263)
               : concat
-                [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n))] 0 Nothing
-                    : [Unit (UPara noIndent) Nothing more nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [frame 0 (FEndNoteMore nsp)] 0 Nothing | more <- rest]
+                [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n))] 0 Nothing Nothing
+                    : [Unit (UPara noIndent) Nothing more nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [frame 0 (FEndNoteMore nsp)] 0 Nothing Nothing | more <- rest]
                 | (nsp, n, para0 : rest) <- ns
                 ]
     {- a list of blocks inside the lists @ctx@, from the list number @n@,
@@ -1756,7 +1805,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       Just (Block _ _ _ a)
         | g <- gapLines style ctx spaced a b,
           g > 0 ->
-            [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing]
+            [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing]
       _ -> []
     {- the grid lines between two blocks (docs/adr/0189): only the blank
     lines across them; none before a forced break or a control of page
@@ -1784,7 +1833,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
     -- a block with a language: the language of its characters and the /Lang of its element (docs/adr ADR 0187)
     block style ctx n b = withBlockLang (blockLang b) <$> blockUnits style ctx n b
     blockUnits style ctx n (Block sp lbl _ body) =
-      let unit kind l is face src = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing) Nothing src [] 0 Nothing
+      let unit kind l is face src = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing) Nothing src [] 0 Nothing Nothing
           -- the body role at the size of the grid (golem-cli ADR 0008)
           plainUnit kind l is = unit kind l is (bodyLook style fs) SourceGrid
        in case body of
@@ -1832,7 +1881,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                         (face, ind) = paraLook style geom st
                      in (unit (UTocEntry (teLevel e) (teSpan e) ind 0) Nothing (numberedTitle lang (teSpan e) (teNumber e) (teTitle e)) face SourceGrid) {uParaStyle = st, uRules = paraRules style st}
                   spaceOf key st = fromMaybe 0 (paraStyle style st >>= key)
-                  gapUnit g = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing | g > 0]
+                  gapUnit g = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing | g > 0]
                   -- the spaces before the first entry, between the entries and after the last (docs/adr/0264)
                   between a b
                     | styleOf' a == styleOf' b = spaceOf psSpaceBetween (styleOf' b)
@@ -2066,8 +2115,23 @@ unitLabelInlines u = case [k | Frame _ k _ <- uFrames u] of
 M of each list; a unit in lists is indented by them (golem-driver ADR 0013).
 -}
 flowUnits :: FlowEnv -> ([(Int, Unit)], Map Int Sp)
-flowUnits fe = ([(i, (withReserve (withListIndent u)) {uIndex = i}) | (i, u) <- zip [0 :: Int ..] rawUnits], widths)
+flowUnits fe = ([(i, (withBox (withReserve (withListIndent u))) {uIndex = i}) | (i, u) <- zip [0 :: Int ..] rawUnits], widths)
   where
+    {- the box of a paragraph at the top of the document (docs/adr/0271): its
+    lines the padding inside the box, which is from the indent to the end indent -}
+    withBox u = case (uKind u, paraStyle (uStyle u) (uParaStyle u)) of
+      (UPara (Indent s f e a), Just d)
+        | topParagraph u,
+          uParaStyle u /= Just "code",
+          hasBox d ->
+            let size = lkSize (uLook u)
+                pad = dimToSp size (fromMaybe (Zw (1 % 2)) (psPadding d))
+                w = dimToSp size (fromMaybe (Abs 16384) (psBorderWidth d))
+                sides = [x | x <- [minBound .. maxBound], x `elem` fromMaybe [minBound .. maxBound] (psBorderSides d)]
+                ub = UnitBox (join (psBackground d)) pad (join (psBorder d)) w (borderStyleAt w (fromMaybe RuleSolid (psBorderStyle d))) sides (maybe 0 (dimToSp size) (psBorderRadius d)) s e
+                (s', e') = boxLineRange s e pad
+             in u {uKind = UPara (Indent s' f e' a), uBox = Just ub}
+      _ -> u
     -- R = W + 2fs of the entries of the table of contents, of the depth of @toc, in the style of its document (docs/adr/0264)
     tocDepth = fromMaybe 6 (bookTocDepth (piBook inp))
     reserves = Map.fromList [(spanFile (uSpan u), tocReserveWidth fe (uStyle u) tocDepth + 2 * pgFontSize geom) | u <- rawUnits, UTocEntry {} <- [uKind u]]
@@ -2372,7 +2436,7 @@ composeBeside fe widths unitAt i ex = go (i + 1) 0
   where
     go j offset
       | offset >= exLines ex = pure []
-      | Just u@Unit {uKind = UPara _, uRules = (Nothing, Nothing)} <- Map.lookup j unitAt = do
+      | Just u@Unit {uKind = UPara _, uRules = (Nothing, Nothing), uBox = Nothing} <- Map.lookup j unitAt = do
           c <- forceComposed (composeUnit fe widths (\k -> wrappedLineWidth (feMeasure fe) ex offset k - unitLineIndent (pgFontSize (feGeom fe)) (uKind u) k - unitEndIndent (uKind u)) u)
           ((j, (c, offset)) :) <$> go (j + 1) (offset + length (cLines c))
       | otherwise = pure []
@@ -2514,7 +2578,9 @@ data Numbered = Numbered
     -- | the heading, the end of the title and the unit of each table of contents entry, by its last line
     nuTocLines :: Map Int (SrcSpan, Sp, Int),
     -- | the caption of each table by its first grid line (docs/adr/0262)
-    nuTableCaptions :: Map Int CodeCaption
+    nuTableCaptions :: Map Int CodeCaption,
+    -- | each box by its id, and its settings (docs/adr/0271)
+    nuBoxes :: Map Int (BoxInfo, UnitBox)
   }
 
 -- | The label of a unit, on its first line.
@@ -2573,6 +2639,7 @@ spaceAfterCode pitch fs infos = \case
       next : _ | Just l <- firstLineOf next -> reachesBackground pitch fs (maybe 0 snd (ciBorder ci)) (lbOverhang l)
       _ -> False
     firstLineOf = \case
+      FBoxed {fbBody = f : _} -> firstLineOf f
       FRuled {frBody = RuledLines _ (l : _)} -> Just l
       FRuled {frBody = RuledHeading _ _ (l : _)} -> Just l
       FParagraph _ (l : _) -> Just l
@@ -2845,11 +2912,23 @@ numberText fe (firstOfBlock, lastOfBlock) u c nb =
         _ -> (Nothing, 0)
       before = [FSection (OfParagraph (uSpan u)) k | firstOfBlock, Just k <- [start]]
       after = [FKeepNext (uSpan u) keepNext | lastOfBlock, keepNext > 0]
+      -- a paragraph with a box is a box of its own; joinBoxes joins those one after the other (docs/adr/0271)
+      around = maybe 0 (boxLinesAround pitch fs . ubPadding) (uBox u)
+      boxed fs' = case uBox u of
+        Just _ -> [FBoxed nextId around around fs']
+        Nothing -> fs'
+      lastLine = nextId + length ls - 1
       -- a verse line after the first joins the stanza of the lines before it (docs/adr/0180)
       flow' = case (uStanza u, unsnoc (nuFlow nb)) of
-        (Just i, Just (earlier, FStanza k vs)) | i > 0 -> earlier <> [FStanza k (vs <> [boxes])] <> after
-        (Just _, _) -> nuFlow nb <> before <> [FStanza kp [boxes]] <> after
-        _ -> nuFlow nb <> before <> flowOf <> after
+        (Just i, Just (earlier, FStanza k' vs)) | i > 0 -> earlier <> [FStanza k' (vs <> [boxes])] <> after
+        -- in a box (docs/adr/0271)
+        (Just i, Just (earlier, FBoxed bid kb ka [FStanza k' vs])) | i > 0 -> earlier <> [FBoxed bid kb ka [FStanza k' (vs <> [boxes])]] <> after
+        (Just _, _) -> nuFlow nb <> before <> boxed [FStanza kp [boxes]] <> after
+        _ -> nuFlow nb <> before <> boxed flowOf <> after
+      boxes' = case (uBox u, uStanza u, unsnoc (nuFlow nb)) of
+        (Just _, Just i, Just (_, FBoxed {fbId = bid})) | i > 0 -> Map.adjust (\(bi, ub) -> (bi {bxLast = lastLine}, ub)) bid (nuBoxes nb)
+        (Just ub, _, _) -> Map.insert nextId (boxInfoOf (uStyle u) (fromMaybe "body" (uParaStyle u)) ub nextId lastLine, ub) (nuBoxes nb)
+        _ -> nuBoxes nb
       (headAcc', errs') = case uKind u of
         -- the title of the notes is in neither the headings nor the running heads (golem-driver ADR 0026)
         k
@@ -2858,7 +2937,66 @@ numberText fe (firstOfBlock, lastOfBlock) u c nb =
                 nuErrors nb <> [diagnostic "G07024" Error (uSpan u) ("見出しが版面に入りません（" <> name <> "）") | hbSpan hb > capacity]
               )
         _ -> (nuHeadings nb, nuErrors nb)
-   in nb {nuNext = nextId + length ls, nuFlow = flow', nuLines = Map.union (nuLines nb) set, nuHeadings = headAcc', nuErrors = errs'}
+   in nb {nuNext = nextId + length ls, nuFlow = flow', nuLines = Map.union (nuLines nb) set, nuHeadings = headAcc', nuErrors = errs', nuBoxes = boxes'}
+
+{- | What a box paints and where it is (docs/adr/0271), of a paragraph
+style of a style, from its first line to its last.
+-}
+boxInfoOf :: Style -> Text -> UnitBox -> Int -> Int -> BoxInfo
+boxInfoOf st name ub firstLine lastLine =
+  let swatchOf n = do
+        Swatch (c, m, y, k) <- Map.lookup n (stSwatches st)
+        pure (P.Swatch c m y k)
+      border = do
+        sw <- ubBorder ub >>= swatchOf
+        pure (sw, ubBorderWidth ub, ubBorderStyle ub)
+   in BoxInfo (BoxPaint (ubBackground ub >>= swatchOf) border (ubSides ub) (ubRadius ub)) (ubStart ub) (ubEnd ub) firstLine lastLine name
+
+{- | The boxes of the paragraphs one after the other joined (docs/adr/0271,
+B4): a box and the next of equal settings, with nothing but the spaces
+around paragraphs and keep-with-next between them, are one box, those
+between them in it. The box joined keeps the id of the first and the
+last line of the last.
+-}
+joinBoxes :: Map Int (BoxInfo, UnitBox) -> [Flow] -> ([Flow], Map Int BoxInfo)
+joinBoxes boxes flow =
+  let keyOf = \case
+        FBoxed {fbId = i} -> snd <$> Map.lookup i boxes
+        _ -> Nothing
+      passable = \case
+        FSpace _ -> True
+        FKeepNext {} -> True
+        _ -> False
+      bodyOf = \case
+        FBoxed {fbBody = b} -> b
+        f -> [f]
+      groups = groupBoxes keyOf passable flow
+      joined = \case
+        Left f -> ([f], [])
+        Right (_, fs@(FBoxed i kb ka _ : _)) ->
+          let ids = [j | FBoxed {fbId = j} <- fs]
+           in ([FBoxed i kb ka (concatMap bodyOf fs)], [(i, last ids)])
+        Right (_, fs) -> (fs, [])
+      (flows, spans) = unzip (map joined groups)
+      infos = Map.map fst boxes
+      lastOf j = maybe 0 bxLast (Map.lookup j infos)
+   in (concat flows, foldl' (\m (i, j) -> Map.adjust (\bi -> bi {bxLast = lastOf j}) i m) infos (concat spans))
+
+{- | G07121 (docs/adr/0271): a box whose grid lines before and after and
+one line do not fit an empty column, at the first paragraph of its
+paragraph style, once for each paragraph style.
+-}
+boxErrors :: FlowEnv -> [(Int, Unit)] -> [Diagnostic]
+boxErrors fe units =
+  let geom = feGeom fe
+      capacity = length (pgLineGrid geom)
+      tooTall =
+        [ (fromMaybe "body" (uParaStyle u), uSpan u)
+        | (_, u) <- units,
+          Just ub <- [uBox u],
+          2 * boxLinesAround (pgLinePitch geom) (pgFontSize geom) (ubPadding ub) + 1 > capacity
+        ]
+   in [diagnostic "G07121" Error sp ("段落スタイル " <> name <> " の囲みの一行と上下の padding が段に収まりません") | (name, sp) <- nubOrdOn fst tooTall]
 
 -- | The rules of a ruled unit, for the diagnostics of the layout (golem-driver ADR 0027).
 ruledInfoOf :: Unit -> RuledInfo
@@ -2935,20 +3073,22 @@ buildFlow inp geom fonts images prev assumed = do
         let nb' = numberUnit fe composed nb iu
          in (nb', if nuNext nb' > nuNext nb then Map.insert (nuNext nb) (uSpan u) spans else spans)
       lineFiles = Map.map spanFile lineSpans
-      start = Numbered 0 [] Map.empty Map.empty Map.empty (deepListErrors fe widths units <> codeErrors <> tocLineErrors fe units) Map.empty Map.empty Map.empty Map.empty Map.empty
+      start = Numbered 0 [] Map.empty Map.empty Map.empty (deepListErrors fe widths units <> codeErrors <> tocLineErrors fe units <> boxErrors fe units) Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty
       (numbered, lineSpans) = foldl stepFiles (start, Map.empty) units
       flow = nuFlow numbered
       -- the code blocks of the flow are those of the units, in order
       codeInfos = Map.fromList [(lbId b, (cbInfo cb) {ciFirst = lbId b0}) | (bs@(b0 : _), cb) <- zip [fcRows f | f@FCode {} <- flow] (Map.elems codeBlocks), b <- bs]
       codeNotices = concatMap cbNotices (Map.elems codeBlocks)
-      flow' = ruledLinks (spaceAfterCode (pgLinePitch geom) (pgFontSize geom) (map cbInfo (Map.elems codeBlocks)) flow)
+      -- the paragraphs one after the other in one box (docs/adr/0271)
+      (boxedFlow, boxes) = joinBoxes (nuBoxes numbered) flow
+      flow' = ruledLinks (spaceAfterCode (pgLinePitch geom) (pgFontSize geom) (map cbInfo (Map.elems codeBlocks)) boxedFlow)
       -- the rules of each ruled block by its first line, from the unit of its block (golem-driver ADR 0027)
       rulesBySpan = Map.fromList [(uSpan u, ruledInfoOf u) | (_, u) <- units, uRules u /= (Nothing, Nothing)]
       ruledInfos = Map.fromList [(frId f, info) | f@FRuled {} <- flow', Just sp <- [Map.lookup (frId f) lineSpans], Just info <- [Map.lookup sp rulesBySpan]]
       -- the span and the name of each heading by its first line, for G07100 (golem-layout ADR 0020)
       namesBySpan = Map.fromList [(uSpan u, (uSpan u, name)) | (_, u) <- units, Just name <- [headingName (uKind u)]]
       headingNames = Map.mapMaybe (`Map.lookup` namesBySpan) lineSpans
-  pure (Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe composed widths (nuTableCaptions numbered))
+  pure (Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe composed widths (nuTableCaptions numbered) boxes)
 
 {- | Whether a unit refers to a page (docs/adr ADR 0251): a [ref-page]
 anywhere in its inlines, its list marker, the cells of its table or the
@@ -2996,6 +3136,7 @@ ruledLinks = go Nothing
       f : rest -> f : go (Just f) rest
       [] -> []
     firstLine = \case
+      FBoxed {fbBody = f : _} -> firstLine f
       FRuled {frBody = RuledLines _ (l : _)} -> Just l
       FRuled {frBody = RuledHeading _ _ (l : _)} -> Just l
       FParagraph _ (l : _) -> Just l
@@ -3181,10 +3322,11 @@ codeBlockOf atSource geom fonts measure capacity u lead code caption =
       continuedLine = if T.null continued then Nothing else Just (lineOf blockStart (at noLeaf (codeStart + full - widthOf continued) Nothing continued))
       g = codeGeometry (pgFontSize geom) (pgLinePitch geom) size pad
       codeStyle = paraStyle st (Just "code")
-      background = codeStyle >>= psBackground >>= swatchOf
+      background = join (codeStyle >>= psBackground) >>= swatchOf
+      borderWidth = dimToSp size (fromMaybe (Abs 16384) (codeStyle >>= psBorderWidth))
       border = do
-        sw <- codeStyle >>= psBorder >>= swatchOf
-        pure (sw, dimToSp size (fromMaybe (Abs 16384) (codeStyle >>= psBorderWidth)))
+        sw <- join (codeStyle >>= psBorder) >>= swatchOf
+        pure (sw, borderWidth)
       errs =
         [diagnostic "G07043" Error (uSpan u) "コードブロックの行長が足りません" | avail < 8 * size]
           <> [diagnostic "G07043" Error (uSpan u) "コードブロックの一行が一ページに収まりません" | codeSpan g (if isJust continuedLine then 2 else 1) > capacity]
@@ -3207,6 +3349,9 @@ codeBlockOf atSource geom fonts measure capacity u lead code caption =
                 ciContinued = continuedLine,
                 ciBands = bands,
                 ciBorder = border,
+                ciBorderStyle = borderStyleAt borderWidth (fromMaybe RuleSolid (codeStyle >>= psBorderStyle)),
+                ciBorderSides = fromMaybe [minBound .. maxBound] (codeStyle >>= psBorderSides),
+                ciRadius = maybe 0 (dimToSp size) (codeStyle >>= psBorderRadius),
                 ciIndent = lead + pad,
                 ciSize = size
               },

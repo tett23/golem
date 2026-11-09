@@ -273,11 +273,11 @@ chapterNoteTests =
 
 -- | A paragraph style that sets nothing but its rules.
 ruled :: Maybe HtmlRule -> Maybe HtmlRule -> HtmlParaStyle
-ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" []
+ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" [] Nothing
 
 -- | A paragraph style of the defaults of body (docs/adr/0189).
 plainPara :: HtmlParaStyle
-plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" []
+plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" [] Nothing
 
 -- | The rules of the CSS that have a declaration of the keys of docs/adr/0189, but those of the cells of tables.
 alignSpaceLines :: HtmlConfig -> [Text]
@@ -352,6 +352,53 @@ fileSpaceTests =
   where
     local ps = HtmlLocalStyles Map.empty (Map.fromList ps) Nothing Nothing Map.empty
 
+-- | A paragraph style of a box of a key with its declarations (docs/adr/0271).
+boxed :: Text -> HtmlParaStyle
+boxed key = plainPara {hpsBox = Just (HtmlBox key ["background-color: rgb(230, 230, 230)", "padding: 0.5em"])}
+
+-- | A paragraph of a style.
+styled :: Int -> Text -> Block
+styled n st = Block (at n) Nothing Nothing (Paragraph (Just st) [txt "x"])
+
+boxTests :: [TestTree]
+boxTests =
+  [ testCase "paragraphs of equal boxes in a row are one div of the class of the first; another box or none is not in it" $ do
+      let cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("col", boxed "a"), ("title", boxed "a"), ("note", boxed "b")]}
+          body = bodyA cfg (bookOf [styled 0 "title", styled 1 "col", para 2 [txt "y"], styled 3 "col", styled 4 "note"])
+      body
+        @?= T.concat
+          [ "<div class=\"box box-title\">\n<p class=\"ps-title\">x</p>\n<p class=\"ps-col\">x</p>\n</div>\n",
+            "<p>y</p>\n",
+            "<div class=\"box box-col\">\n<p class=\"ps-col\">x</p>\n</div>\n",
+            "<div class=\"box box-note\">\n<p class=\"ps-note\">x</p>\n</div>\n"
+          ],
+    testCase "a break before goes on the div; a paragraph that starts a page starts another box; a blank line ends one" $ do
+      let cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("col", boxed "a"), ("top", (boxed "a") {hpsBreaks = ["break-before: page"]})]}
+          body = bodyA cfg (bookOf [Block (at 0) Nothing Nothing (ForcedBreak BreakPage), styled 1 "col", styled 2 "top", Block (at 3) Nothing Nothing (BlankLines 1), styled 4 "col"])
+      body
+        @?= T.concat
+          [ "<div class=\"box box-col\" data-break-before=\"page\">\n<p class=\"ps-col\">x</p>\n</div>\n",
+            "<div class=\"box box-top\">\n<p class=\"ps-top\">x</p>\n</div>\n",
+            "<div class=\"blank-line\"><br/></div>\n",
+            "<div class=\"box box-col\">\n<p class=\"ps-col\">x</p>\n</div>\n"
+          ],
+    testCase "the rule of the box; no indent and no outer margin of the paragraphs in a box; the spaces before and after on the box" $ do
+      let cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara {hpsSpaceAfter = 2}), ("col", (boxed "a") {hpsSpaceBefore = 1, hpsSpaceAfter = 3})]}
+      cssLines "div.box" cfg
+        @?= [ "div.box-col { background-color: rgb(230, 230, 230); padding: 0.5em; }",
+              "div.box > p { padding-inline-start: 0; padding-inline-end: 0; }",
+              "div.box > p:first-child { margin-block-start: 0; }",
+              "div.box > p:last-child { margin-block-end: 0; }",
+              "div.box:has(> p.ps-col:first-child) { margin-block-start: 1em; }",
+              "div.box:has(> p.ps-col:last-child) { margin-block-end: 3em; }"
+            ]
+      cssLines "p:not([class]) + div.box" cfg @?= ["p:not([class]) + div.box:has(> p.ps-col:first-child) { margin-block-start: 2em; }"],
+    testCase "a book without boxes writes no rule of a box, and the rule of pre is as it was" $ do
+      let cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("col", boxed "a")]}
+      cssLines "div.box" cfg0 {hcParaStyles = Map.fromList [("body", plainPara)]} @?= []
+      cssLines "pre" cfg @?= cssLines "pre" cfg0
+  ]
+
 -- | A solid rule of 0.5pt as wide as the line, 1em above and nothing below.
 solid :: HtmlRule
 solid = HtmlRule (Just "100%") Nothing Nothing "0.5pt solid" "1em" "0"
@@ -380,6 +427,7 @@ ruleTests =
 tests :: [TestTree]
 tests =
   [ testGroup "the rules of paragraph styles and headings (golem-driver ADR 0027)" ruleTests,
+    testGroup "the boxes of paragraph styles (docs/adr/0271)" boxTests,
     testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
     testGroup "the spaces of paragraph styles redefined in files (docs/adr/0217)" fileSpaceTests,
     testGroup "blocks" blockTests,

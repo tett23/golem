@@ -85,7 +85,7 @@ countsWith reuse inp = do
 
 -- | Pages with the labels given, page n holding the nth list.
 pagesWith :: [[Text]] -> [PageOut]
-pagesWith ls = [PageOut n 0 False [] [] l [] [] (ColumnSet 1 0 0 0) [] 10 [] [] | (n, l) <- zip [1 ..] ls]
+pagesWith ls = [PageOut n 0 False [] [] l [] [] (ColumnSet 1 0 0 0) [] 10 [] [] [] | (n, l) <- zip [1 ..] ls]
 
 -- | A figure wrapped at the end of the lines, 4zw wide, with the caption given.
 wrappedCaption :: Text -> Text

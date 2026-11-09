@@ -42,6 +42,34 @@ proportional-metrics = true
 [paragraph-styles.full]
 first-line-indent = "0zw"
 
+[color.swatches]
+red = { cmyk = [0, 100, 100, 0] }
+blue = { cmyk = [100, 60, 0, 0] }
+pale = { cmyk = [8, 0, 0, 0] }
+
+# 段落の背景と囲み罫（docs/adr/0271）。題と本文の段落スタイルは違うが、囲みの設定が等しいので一つの囲みになる。
+# 角丸の枠は線（S）で描き、見た目の回帰のテストの shem は線を読まないので、この見本のコラムは背景だけにする
+[paragraph-styles.column-title]
+first-line-indent = "0zw"
+background = "pale"
+padding = "0.5zw"
+border-radius = "1zw"
+
+[paragraph-styles.column]
+first-line-indent = "1zw"
+background = "pale"
+padding = "0.5zw"
+border-radius = "1zw"
+
+# 行の始まりの辺だけの注意書き
+[paragraph-styles.caution]
+first-line-indent = "0zw"
+indent = "1zw"
+padding = "0.5zw"
+border = "red"
+border-width = "2pt"
+border-sides = ["start"]
+
 [composition]
 hanging-punctuation = true
 

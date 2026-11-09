@@ -16,7 +16,7 @@ where
 import Control.Monad (join)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Html
@@ -62,6 +62,7 @@ htmlParaStyles style =
           (fromMaybe 0 (psSpaceAfter d))
           (cssLength (fromMaybe (Zw 0) (psEndIndent d)))
           (keepDecls d)
+          (htmlBox style n d)
       )
     | n <- Map.keys (stParaStyles style),
       -- toc-<l> as built in writes nothing: the table of contents of HTML is as before (docs/adr/0264)
@@ -70,6 +71,56 @@ htmlParaStyles style =
     ]
   where
     bindingRight = maybe False pageBindingRight (stPage style)
+
+{- | The box of a paragraph style that has one (docs/adr/0271): the key of
+its settings resolved, in sp where the size of the grid is known, and the
+declarations of div.box-<name>: the background, the padding, the border
+of each side drawn, the indents as the margins along the line, and the
+radius of each corner that is rounded, none for a radius of 0.
+-}
+htmlBox :: Style -> Text -> ParaStyleDef -> Maybe HtmlBox
+htmlBox style n d
+  | n == "code" || not (hasBox d) = Nothing
+  | otherwise =
+      let rgb sw = case Map.lookup sw (stSwatches style) of
+            Just (Swatch cmyk) -> let (cr, cg, cb) = cmykToRgb cmyk in Just ("rgb(" <> T.pack (show cr) <> ", " <> T.pack (show cg) <> ", " <> T.pack (show cb) <> ")")
+            Nothing -> Nothing
+          padding = fromMaybe (Zw (1 / 2)) (psPadding d)
+          width = fromMaybe (Abs 16384) (psBorderWidth d)
+          lineStyle = borderStyleName (fromMaybe RuleSolid (psBorderStyle d))
+          sides = [x | x <- [minBound .. maxBound], x `elem` fromMaybe [minBound .. maxBound] (psBorderSides d)]
+          border = join (psBorder d)
+          radius = fromMaybe (Abs 0) (psBorderRadius d)
+          indent = fromMaybe (Zw 0) (psIndent d)
+          endIndent = fromMaybe (Zw 0) (psEndIndent d)
+          sideProperty = \case
+            SideBefore -> "border-block-start"
+            SideAfter -> "border-block-end"
+            SideStart -> "border-inline-start"
+            SideEnd -> "border-inline-end"
+          -- a corner of two sides is rounded when both are drawn, every corner without a border
+          corners =
+            [ prop
+            | (prop, a, b) <- [("border-start-start-radius", SideBefore, SideStart), ("border-start-end-radius", SideBefore, SideEnd), ("border-end-start-radius", SideAfter, SideStart), ("border-end-end-radius", SideAfter, SideEnd)],
+              isNothing border || (a `elem` sides && b `elem` sides)
+            ]
+          zero = \case
+            Zw 0 -> True
+            Abs 0 -> True
+            _ -> False
+          -- the lengths in sp at the size of the style, where the grid gives it
+          inSp = case stPage style >>= pageGrid of
+            Just Grid {gridFontSize = Abs fs} | fs > 0 -> let size = maybe fs (dimToSp fs) (psSize d) in Left . dimToSp size
+            _ -> Right
+          key = T.pack (show (join (psBackground d), inSp padding, border, inSp width, lineStyle, sides, inSp radius, inSp indent, inSp endIndent))
+          decls =
+            ["background-color: " <> c | Just c <- [join (psBackground d) >>= rgb]]
+              <> ["padding: " <> cssLength padding]
+              <> [sideProperty x <> ": " <> cssLength width <> " " <> lineStyle <> maybe "" (" " <>) (rgb sw) | Just sw <- [border], x <- sides]
+              <> ["margin-inline-start: " <> cssLength indent | not (zero indent)]
+              <> ["margin-inline-end: " <> cssLength endIndent | not (zero endIndent)]
+              <> [prop <> ": " <> cssLength radius | not (zero radius), prop <- corners]
+       in Just (HtmlBox key decls)
 
 {- | The CSS of the keep options of a paragraph style that are not their
 defaults (docs/adr/0261): orphans and widows default to 2 in CSS too.

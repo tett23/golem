@@ -7,9 +7,13 @@ module Golem.Layout.Paginate.State
   ( Env (..),
     St (..),
     Pending (..),
+    BoxAt (..),
     initialState,
     top,
     cap,
+    atBoxStart,
+    openBox,
+    closeBox,
     free,
     isEmpty,
     addUnmet,
@@ -54,6 +58,12 @@ data Env = Env
 start of a section or a paragraph (docs/adr/0260, docs/adr/0261).
 -}
 data Pending = PendingBreak !BreakKind | PendingStart !StartOf !BreakKind
+
+{- | The box being placed (docs/adr/0271): its id, its grid lines before
+and after each part, the first grid line of its part in the column, and
+whether that part started at the top of an empty column.
+-}
+data BoxAt = BoxAt {baId :: !Int, baBefore :: !Int, baAfter :: !Int, baStart :: !Int, baTop :: !Bool}
 
 data St = St
   { sPage :: !Int,
@@ -107,28 +117,64 @@ data St = St
     -- | whether the last flow was a figure sent on
     sLastDeferred :: !Bool,
     -- | whether the column has nothing but headings placed from its top (golem-layout ADR 0019)
-    sHeadingOnly :: !Bool
+    sHeadingOnly :: !Bool,
+    -- | the box being placed (docs/adr/0271)
+    sBox :: !(Maybe BoxAt),
+    -- | the parts of boxes in the column (docs/adr/0271)
+    sBoxes :: ![BoxSegment]
   }
 
 -- | Page 1, column 0, nothing placed, in the columns of the page.
 initialState :: Env -> St
-initialState env = St 1 0 0 0 [] [] [] [] [] [] [] [] [] [] (envBase env) {csFirstLine = 0} 0 [] Nothing Nothing Nothing [] 0 [] [] [] False False False
+initialState env = St 1 0 0 0 [] [] [] [] [] [] [] [] [] [] (envBase env) {csFirstLine = 0} 0 [] Nothing Nothing Nothing [] 0 [] [] [] False False False Nothing []
 
 -- | The first grid line of the set of columns on this page.
 top :: St -> Int
 top st = csFirstLine (sSet st)
 
--- | The grid lines of the current column (docs/adr ADR 0030).
+{- | The grid lines of the current column (docs/adr ADR 0030), less the
+grid lines after the part of the box being placed (docs/adr/0271).
+-}
 cap :: Env -> St -> Int
-cap env st = envCapacity env + sAdjust st
+cap env st = columnLines env st - maybe 0 baAfter (sBox st)
+
+-- | The grid lines of the current column (docs/adr ADR 0030).
+columnLines :: Env -> St -> Int
+columnLines env st = envCapacity env + sAdjust st
 
 -- | The grid lines left in the current column.
 free :: Env -> St -> Int
 free env st = cap env st - sUsed st - sNoteLines st
 
--- | Whether nothing is placed in the current column.
+{- | Whether nothing is placed in the current column; in a part of a box
+that starts at the top of an empty column, nothing but the grid lines
+before the part (docs/adr/0271).
+-}
 isEmpty :: St -> Bool
-isEmpty st = sUsed st == top st && null (sNotes st)
+isEmpty st = null (sNotes st) && (sUsed st == top st || (maybe False baTop (sBox st) && atBoxStart st))
+
+-- | Whether nothing but the grid lines before the part of the box being placed is placed in it (docs/adr/0271).
+atBoxStart :: St -> Bool
+atBoxStart st = maybe False (\b -> sUsed st == baStart b + baBefore b) (sBox st)
+
+{- | A part of the box from here (docs/adr/0271): its grid lines before,
+taken at the top of a column too.
+-}
+openBox :: St -> St
+openBox st = case sBox st of
+  Nothing -> st
+  Just b -> st {sBox = Just b {baStart = sUsed st, baTop = sUsed st == top st && null (sNotes st)}, sUsed = sUsed st + baBefore b}
+
+{- | The part of the box in the column closed (docs/adr/0271): from its
+first grid line to the grid lines after its last line; a part with no
+line is none.
+-}
+closeBox :: St -> St
+closeBox st = case sBox st of
+  Nothing -> st
+  Just b -> case [g | (g, SLine _) <- sSlots st, g >= baStart b] of
+    [] -> st
+    gs -> st {sBoxes = sBoxes st <> [BoxSegment (baId b) (baStart b) (maximum gs + baAfter b)]}
 
 addUnmet :: Unmet -> St -> St
 addUnmet u st = st {sUnmet = sUnmet st <> [u]}
@@ -154,7 +200,7 @@ parityStart env p st =
    in if p (sPage st1) then st1 else blankPage env st1
 
 blankPage :: Env -> St -> St
-blankPage env st = st {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] (envCapacity env) [] [] : sDone st, sPage = sPage st + 1}
+blankPage env st = st {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] (envCapacity env) [] [] [] : sDone st, sPage = sPage st + 1}
 
 putSlot :: St -> Int -> Slotted -> [Text] -> [SrcSpan] -> St
 putSlot st n s labels marks = st {sSlots = sSlots st <> [(sUsed st, s)], sUsed = sUsed st + n, sLabels = sLabels st <> labels, sMarks = sMarks st <> marks, sHeadingOnly = False}
@@ -217,7 +263,7 @@ closePage :: Env -> St -> St
 closePage env st =
   if null (sSlots st) && null (sNotes st)
     then st
-    else st {sDone = PageOut (sPage st) (sColumn st) False (sSlots st) (sNotes st) (sLabels st) (sMarks st) (sTables st) (sSet st) (sRules st) (cap env st) (sUnmet st) [] : sDone st, sUnmet = []}
+    else st {sDone = PageOut (sPage st) (sColumn st) False (sSlots st) (sNotes st) (sLabels st) (sMarks st) (sTables st) (sSet st) (sRules st) (columnLines env st) (sUnmet st) [] (sBoxes st) : sDone st, sUnmet = []}
 
 -- | The next column of the page, or column 0 of the next page.
 nextColumn :: Env -> St -> St
@@ -228,10 +274,11 @@ nextPage env = advance env True
 
 advance :: Env -> Bool -> St -> St
 advance env toPage st =
-  let closed = closePage env st
+  let -- the part of the box in the column ends here; the next part starts in the next column (docs/adr/0271)
+      closed = closePage env (closeBox st)
       -- a page left with nothing in any column is blank
       written = any ((== sPage st) . poNumber) (sDone closed)
-      closed' = if toPage && not written then closed {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] (envCapacity env) [] [] : sDone closed} else closed
+      closed' = if toPage && not written then closed {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] (envCapacity env) [] [] [] : sDone closed} else closed
       fresh =
         closed'
           { sPage = if toPage then sPage st + 1 else sPage st,
@@ -250,13 +297,14 @@ advance env toPage st =
             sJoin = Nothing,
             sPendingNotes = [],
             sSpaces = [],
-            sHeadingOnly = False
+            sHeadingOnly = False,
+            sBoxes = []
           }
       -- the turned figures waiting first take pages of their own before the notes go on (golem-driver ADR 0034)
       (turned, waiting) = if toPage then span isPageFigure (sDeferred st) else ([], sDeferred st)
       fresh' = foldl' (\s' (i, labels, marks) -> pageFigure env s' i labels marks) fresh [(i, labels, marks) | FPageFigure i labels marks <- turned]
       withNotes = foldl' (carryNote env) fresh' (sPendingNotes st)
-   in placeDeferred env withNotes {sDeferred = []} waiting
+   in openBox (placeDeferred env withNotes {sDeferred = []} waiting)
 
 -- | The set starts at line @first@ of the page, above the footnotes already there.
 startSet :: Env -> St -> ColumnSet -> Int -> St
@@ -274,7 +322,8 @@ startSet env st set first =
       sRules = [],
       sJoin = Nothing,
       sSpaces = [],
-      sHeadingOnly = False
+      sHeadingOnly = False,
+      sBoxes = []
     }
 
 isPageFigure :: Flow -> Bool
@@ -286,7 +335,7 @@ isPageFigure = \case
 pageFigure :: Env -> St -> Int -> [Text] -> [SrcSpan] -> St
 pageFigure env st i labels marks =
   st
-    { sDone = PageOut (sPage st) 0 False [(0, SPageFigure i)] [] labels marks [] (sSet st) {csFirstLine = 0} [] (envCapacity env) [] [] : sDone st,
+    { sDone = PageOut (sPage st) 0 False [(0, SPageFigure i)] [] labels marks [] (sSet st) {csFirstLine = 0} [] (envCapacity env) [] [] [] : sDone st,
       sPage = sPage st + 1
     }
 

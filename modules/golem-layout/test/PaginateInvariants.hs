@@ -39,6 +39,11 @@ module PaginateInvariants
     k6NoExtraStart,
     keepInvariants,
     keepBreaches,
+    b1BoxShape,
+    b2BoxNoOverflow,
+    b3BoxParts,
+    boxInvariants,
+    boxBreaches,
     pl1Parity,
     pl2Continues,
     pl3SectionStart,
@@ -68,7 +73,7 @@ import PaginateEnum (startOfKind)
 PL1, PL2, PL3 and PL7 are I1, I2, I3 and I7 of docs/adr/0260, of the
 page labels and the breaks before sections.
 -}
-data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5 | P9 | P11 | W3 | PL1 | PL2 | PL3 | PL7 | K1 | K2 | K3 | K4 | K5 | K6
+data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5 | P9 | P11 | W3 | PL1 | PL2 | PL3 | PL7 | K1 | K2 | K3 | K4 | K5 | K6 | B1 | B2 | B3
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken: the lines or figures concerned, and how.
@@ -117,11 +122,28 @@ keepInvariants separator =
 keepBreaches :: Int -> Check
 keepBreaches separator flows ps = concatMap (\(_, c) -> c flows ps) (keepInvariants separator)
 
+{- | The invariants of the inputs of boxes (docs/adr/0271): those of
+'invariants' and B1 to B3.
+-}
+boxInvariants :: Int -> [(Invariant, Check)]
+boxInvariants separator = invariants separator <> [(B1, b1BoxShape), (B2, b2BoxNoOverflow separator), (B3, b3BoxParts)]
+
+-- | The breaches of 'boxInvariants'.
+boxBreaches :: Int -> Check
+boxBreaches separator flows ps = concatMap (\(_, c) -> c flows ps) (boxInvariants separator)
+
 -- the input
 
--- | The lines of a flow.
+-- | The flows with the body of each box in its place (docs/adr/0271).
+unboxed :: [Flow] -> [Flow]
+unboxed = concatMap $ \case
+  FBoxed {fbBody = body} -> unboxed body
+  f -> [f]
+
+-- | The lines of a flow; of a box, those of its body.
 flowLines :: Flow -> [LineBox]
 flowLines = \case
+  FBoxed {fbBody = body} -> concatMap flowLines body
   FParagraph _ ls -> ls
   FContinued _ ls -> ls
   FStanza _ vs -> concat vs
@@ -281,7 +303,7 @@ i3Order flows ps =
 
 -- | The paragraphs of two lines or more.
 paragraphs :: [Flow] -> [[Int]]
-paragraphs flows = [map lbId ls | FParagraph _ ls <- flows, length ls >= 2]
+paragraphs flows = [map lbId ls | FParagraph _ ls <- unboxed flows, length ls >= 2]
 
 {- | I4: the first line of a paragraph of two lines or more is not left
 alone at the end of a column with the rest in a later column, unless
@@ -1144,3 +1166,74 @@ manual = \case
   FNoBreak _ -> True
   FAdjustLines _ _ -> True
   _ -> False
+
+-- boxes (docs/adr/0271)
+
+-- | The boxes of a flow: id, grid lines before and after, and the ids of their lines.
+inputBoxes :: [Flow] -> [(Int, Int, Int, [Int])]
+inputBoxes flows = [(i, kb, ka, map lbId (concatMap flowLines body)) | FBoxed i kb ka body <- flows]
+
+-- | The grid lines of the lines of a box in a column.
+boxLinesIn :: [Int] -> PageOut -> [Int]
+boxLinesIn ids p = [g | (g, SLine i) <- poSlots p, i `elem` ids]
+
+{- | B1: the first grid line of a part of a box is k before the grid line
+of the first line of the box in its column, and the last k after that of
+the last.
+-}
+b1BoxShape :: Check
+b1BoxShape flows ps =
+  [ Breach B1 [i] ("part " <> show (bsFirst seg, bsLast seg) <> " of box " <> show i <> " on page " <> show (poNumber p) <> " column " <> show (poColumn p) <> " has its lines on " <> show gs)
+  | (i, kb, ka, ids) <- inputBoxes flows,
+    p <- ordered ps,
+    seg <- poBoxes p,
+    bsBox seg == i,
+    let gs = boxLinesIn ids p,
+    not (null gs),
+    bsFirst seg /= minimum gs - kb || bsLast seg /= maximum gs + ka
+  ]
+
+{- | B2: the grid lines placed in a column, the grid lines of the parts of
+boxes included, the lines of its notes and the separator, if it has
+notes, do not exceed its grid lines: I2 with the grid lines of boxes.
+-}
+b2BoxNoOverflow :: Int -> Check
+b2BoxNoOverflow separator flows ps =
+  let figures = Map.fromList (inputFigures flows)
+      spans = headingSpans flows
+      extent = \case
+        SHeading l _ -> Map.findWithDefault 1 l spans
+        SFigure i -> Map.findWithDefault 1 i figures
+        _ -> 1
+      tall p = or [True | TallHeading {} <- poUnmet p]
+   in [ Breach B2 (concatMap (slotLines . snd) (poSlots p)) ("page " <> show (poNumber p) <> " column " <> show (poColumn p) <> " uses " <> show total <> " of " <> show (poLines p) <> " grid lines with its boxes")
+      | p <- ordered ps,
+        not (poBlank p),
+        not (null (poBoxes p)),
+        let used = maximum (0 : [k + extent s | (k, s) <- poSlots p] <> [bsLast b + 1 | b <- poBoxes p])
+            notes = sum [n | (_, _, n) <- poFootnotes p]
+            total = used + notes + (if null (poFootnotes p) then 0 else separator),
+        total > poLines p,
+        not (tall p)
+      ]
+
+{- | B3: every part of a box holds a line of the box, and every line of a
+box is in exactly one part of it.
+-}
+b3BoxParts :: Check
+b3BoxParts flows ps =
+  [ Breach B3 [i] ("part " <> show (bsFirst seg, bsLast seg) <> " of box " <> show i <> " on page " <> show (poNumber p) <> " column " <> show (poColumn p) <> " holds no line of it")
+  | (i, _, _, ids) <- inputBoxes flows,
+    p <- ordered ps,
+    seg <- poBoxes p,
+    bsBox seg == i,
+    null [g | g <- boxLinesIn ids p, g >= bsFirst seg, g <= bsLast seg]
+  ]
+    <> [ Breach B3 [i, l] ("line " <> show l <> " of box " <> show i <> " is in " <> show n <> " parts of it")
+       | (i, _, _, ids) <- inputBoxes flows,
+         p <- ordered ps,
+         (g, SLine l) <- poSlots p,
+         l `elem` ids,
+         let n = length [() | seg <- poBoxes p, bsBox seg == i, g >= bsFirst seg, g <= bsLast seg],
+         n /= 1
+       ]

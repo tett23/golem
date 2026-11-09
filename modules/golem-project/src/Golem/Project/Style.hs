@@ -26,6 +26,12 @@ module Golem.Project.Style
     ParaAlign (..),
     alignValues,
     ParaStyleDef (..),
+    BoxSide (..),
+    boxSideValues,
+    hasBox,
+    boxStyles,
+    borderStyleName,
+    borderStyleAt,
     ParaStart (..),
     paraStartValues,
     CodeStyle (..),
@@ -318,12 +324,18 @@ data ParaStyleDef = ParaStyleDef
     psProportional :: !(Maybe Bool),
     psBaselineShift :: !(Maybe Dim),
     {- | the swatch of the background and the padding inside it (golem-driver
-    ADR 0017); v1 sets them only for the paragraph style code
-    -} psBackground :: !(Maybe Text),
+    ADR 0017, docs/adr/0271): Nothing is not written, Just Nothing is false
+    -} psBackground :: !(Maybe (Maybe Text)),
     psPadding :: !(Maybe Dim),
-    -- | the swatch and the width of the border, for code only (golem-driver ADR 0023)
-    psBorder :: !(Maybe Text),
+    -- | the swatch and the width of the border (golem-driver ADR 0023, docs/adr/0271); Just Nothing is false
+    psBorder :: !(Maybe (Maybe Text)),
     psBorderWidth :: !(Maybe Dim),
+    -- | the line style of the border: solid, dashed or dotted, its lengths found from the width when drawn (docs/adr/0271)
+    psBorderStyle :: !(Maybe RuleStyle),
+    -- | the sides of the border drawn (docs/adr/0271)
+    psBorderSides :: !(Maybe [BoxSide]),
+    -- | the radius of the corners of the box (docs/adr/0271)
+    psBorderRadius :: !(Maybe Dim),
     {- | the rules before and after the paragraph (golem-driver ADR 0027):
     Nothing inherits, Just Nothing is false
     -} psRuleBefore :: !(Maybe (Maybe RuleSpec)),
@@ -348,6 +360,44 @@ data ParaStyleDef = ParaStyleDef
     psPageBreak :: !(Maybe ParaStart)
   }
   deriving stock (Eq, Show)
+
+{- | A side of a box (docs/adr/0271): before (the top, the right in
+vertical text), after, the start of the lines and their end.
+-}
+data BoxSide = SideBefore | SideAfter | SideStart | SideEnd
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+-- | The values of border-sides, in the order of 'BoxSide' (docs/adr/0271).
+boxSideValues :: [Text]
+boxSideValues = ["before", "after", "start", "end"]
+
+{- | Whether a paragraph style, resolved, has a box (docs/adr/0271): a
+background or a border.
+-}
+hasBox :: ParaStyleDef -> Bool
+hasBox d = isJust (join (psBackground d)) || isJust (join (psBorder d))
+
+-- | The paragraph styles that take none of the keys of a box (docs/adr/0271).
+noBoxStyles :: [Text]
+noBoxStyles = ["caption", "sidenote", "table"] <> map tocStyleName [1 .. 6]
+
+-- | The paragraph styles of a style that have a box, resolved; code is not one (docs/adr/0271).
+boxStyles :: Style -> [Text]
+boxStyles s = [n | n <- Map.keys (stParaStyles s), n /= "code", n `notElem` noBoxStyles, Just d <- [paraStyle s (Just n)], hasBox d]
+
+-- | The name of a line style of a border (docs/adr/0271).
+borderStyleName :: RuleStyle -> Text
+borderStyleName = \case
+  RuleDashed {} -> "dashed"
+  RuleDotted {} -> "dotted"
+  _ -> "solid"
+
+{- | The line style of a border of a width: the lengths of the dash, the
+gap and the dots found from the width, as a rule's are without dash and
+gap (docs/adr/0271, golem-driver ADR 0028).
+-}
+borderStyleAt :: Sp -> RuleStyle -> RuleStyle
+borderStyleAt w st = lineStyle w (borderStyleName st, Nothing) Nothing Nothing
 
 {- | Where a paragraph of a style starts (docs/adr/0261): anywhere, the
 next column, the next page, the next odd page, the next even page.
@@ -429,7 +479,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
@@ -706,7 +756,7 @@ captionIndentMessage n k = "段落スタイル " <> n <> " には 0 でない in
 
 -- | The keys the paragraph style code takes (golem-driver ADR 0017).
 codeParaKeys :: [Text]
-codeParaKeys = ["font", "size", "background", "padding", "border", "border-width"]
+codeParaKeys = ["font", "size", "background", "padding", "border", "border-width", "border-style", "border-sides", "border-radius"]
 
 {- | Whether a character style is code or reaches code through based-on
 (golem-driver ADR 0017).
@@ -736,7 +786,7 @@ paragraph style code; false is none.
 charStyleBackground :: Style -> Text -> Maybe Text
 charStyleBackground style name = case charStyle style name >>= csBackground of
   Just b -> b
-  Nothing -> paraStyle style (Just "code") >>= psBackground
+  Nothing -> join (paraStyle style (Just "code") >>= psBackground)
 
 {- | A user definition over a built-in one: the keys written win, but the
 features are added after those of the definition below (docs/adr/0268).
@@ -783,6 +833,9 @@ overPara u b =
     (psPadding u <|> psPadding b)
     (psBorder u <|> psBorder b)
     (psBorderWidth u <|> psBorderWidth b)
+    (psBorderStyle u <|> psBorderStyle b)
+    (psBorderSides u <|> psBorderSides b)
+    (psBorderRadius u <|> psBorderRadius b)
     (psRuleBefore u <|> psRuleBefore b)
     (psRuleAfter u <|> psRuleAfter b)
     (psAlign u <|> psAlign b)
@@ -1861,12 +1914,21 @@ instance FromValue ParaStyleDef where
     rs <- optKey "regex-styles"
     aki <- optKey "aki-set"
     (k, t, p, bs) <- featureKeysOf
-    bg <- optKey "background"
+    -- a swatch or false (docs/adr/0271)
+    bg <- optKeyOf "background" (swatchOrFalse "background")
     -- a negative padding is read and reported by the checks (golem-driver ADR 0017)
     pad' <- signedDimKey "padding" "（0.5zw や 1mm のように書きます）"
-    -- the border of code; zw is reported by the checks (golem-driver ADR 0023)
-    border <- optKey "border"
+    -- the border; zw is reported by the checks (golem-driver ADR 0023)
+    border <- optKeyOf "border" (swatchOrFalse "border")
     bw <- dimKey "border-width"
+    -- the line style, the sides and the radius of the corners of the border (docs/adr/0271)
+    bst <-
+      optKeyOf "border-style" $
+        withValue $ \l v ->
+          maybe (failAt l (T.unpack ("border-style には solid、dashed、dotted のどれかを書きます: " <> v))) pure (lookup v [("solid", RuleSolid), ("dashed", RuleDashed 0 0), ("dotted", RuleDotted 0)])
+    bsides <- optKeyOf "border-sides" boxSidesOf
+    -- a negative radius is read and reported by the checks
+    brad <- signedDimKey "border-radius" "（2mm や 0.5zw のように書きます）"
     rb <- optKeyOf "rule-before" ruleOrFalse
     ra <- optKeyOf "rule-after" ruleOrFalse
     -- the alignment, the spaces before and after and the end indent (docs/adr/0189)
@@ -1883,7 +1945,7 @@ instance FromValue ParaStyleDef where
     pbk <- enumKey "page-break" paraStartValues
     let align = al >>= \v -> lookup v (zip alignValues [minBound .. maxBound])
         start = pbk >>= \v -> lookup v (zip paraStartValues [minBound .. maxBound])
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw rb ra align sbefore safter endInd fs kwn kal kfl kll start)
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start)
     where
       keepCount :: Natural -> Maybe Natural -> Value' l -> Matcher l Int
       keepCount lo hi v =
@@ -1891,6 +1953,33 @@ instance FromValue ParaStyleDef where
           if n < lo || maybe False (n >) hi
             then failAt (valueAnn v) (maybe (show lo <> " 以上の整数を書きます: " <> show n) (\h -> show lo <> " から " <> show h <> " までの整数を書きます: " <> show n) hi)
             else pure (fromIntegral n)
+
+-- | A swatch or false (golem-driver ADR 0029, docs/adr/0271); true is an error.
+swatchOrFalse :: Text -> Value' l -> Matcher l (Maybe Text)
+swatchOrFalse key = \case
+  Bool' _ False -> pure Nothing
+  v@(Bool' _ True) -> failAt (valueAnn v) (T.unpack (key <> " にはスウォッチの名前か false を書きます"))
+  v -> Just <$> fromValue v
+
+{- | The sides of border-sides (docs/adr/0271): an array of one to four
+of before, after, start and end, each once. An element that is not one,
+or one written before, fails at itself.
+-}
+boxSidesOf :: Value' l -> Matcher l [BoxSide]
+boxSidesOf = \case
+  List' l [] -> failAt l "border-sides には before、after、start、end から一つ以上を書きます"
+  List' _ xs -> do
+    read' <- sequence [inIndex i ((valueAnn x,) <$> fromValue x) | (i, x) <- zip [0 ..] xs]
+    let sideOf t = lookup t (zip boxSideValues [minBound .. maxBound :: BoxSide])
+        bad =
+          [ inIndex i (failAt l (T.unpack msg))
+          | (i, (l, t)) <- zip [0 :: Int ..] read',
+            Just msg <- [if isNothing (sideOf t) then Just ("border-sides に使えない値です: " <> t <> "（before、after、start、end のどれか）") else if t `elem` map snd (take i read') then Just ("border-sides に同じ辺を二度書いています: " <> t) else Nothing]
+          ]
+    case bad of
+      [] -> pure [side | (_, t) <- read', Just side <- [sideOf t]]
+      _ -> asum bad
+  v -> failAt (valueAnn v) "border-sides には配列を書きます（[\"start\"] のように書きます）"
 
 {- | A dimension that may be negative, read in its key so that an error is
 at the value and names the key (golem-project ADR 0008).
@@ -2598,12 +2687,22 @@ codeStyleChecks s =
       | Just d <- [Map.lookup "code" (stParaStyles s)],
         ks@(k : _) <- [writtenOtherKeys d]
       ]
-        <> [ (n, firstWritten (paraKey n) (isJust (psBackground d)) "background" "padding", "background と padding は段落スタイル code にだけ書けます: " <> n)
+        -- the keys of a box are not for caption, sidenote, table and the entries of the table of contents (docs/adr/0271)
+        <> [ (n, paraKey n k, "段落スタイル " <> n <> " には " <> T.intercalate "、" (map fst (boxKeysOf noParaDef)) <> " を書けません: " <> k)
            | (n, d) <- Map.toList (stParaStyles s),
-             n /= "code",
-             isJust (psBackground d) || isJust (psPadding d)
+             n `elem` noBoxStyles,
+             k : _ <- [[k | (k, True) <- boxKeysOf d]]
            ]
-        <> [("code", paraKey "code" "padding", "padding は 0 以上の寸法です") | Just ParaStyleDef {psPadding = Just p} <- [Map.lookup "code" (stParaStyles s)], negativeDim p]
+        <> [(n, paraKey n "padding", "padding は 0 以上の寸法です") | (n, ParaStyleDef {psPadding = Just p}) <- Map.toList (stParaStyles s), negativeDim p]
+        <> [(n, paraKey n "border-radius", "border-radius は 0 以上の寸法です") | (n, ParaStyleDef {psBorderRadius = Just r}) <- Map.toList (stParaStyles s), negativeDim r]
+        -- a box and a rule are not written together, through based-on too (docs/adr/0271)
+        <> [ (n, maybe (paraKey n "background") (boxRulePath n) (Map.lookup n (stParaStyles s)), "段落スタイル " <> n <> " には囲みと罫線を一緒に書けません")
+           | n <- Map.keys (stParaStyles s),
+             n `notElem` ("code" : noBoxStyles),
+             Just d <- [paraStyle s (Just n)],
+             hasBox d,
+             isJust (join (psRuleBefore d)) || isJust (join (psRuleAfter d))
+           ]
         -- the background and the padding of inline code are for code styles only (golem-driver ADR 0029)
         <> [ (n, firstWritten (charKey n) (isJust (csBackground d)) "background" "padding", "文字スタイルの background と padding は code と based-on で code に行き着く文字スタイルにだけ書けます: " <> n)
            | (n, d) <- Map.toList (stCharStyles s),
@@ -2616,20 +2715,29 @@ codeStyleChecks s =
            | (n, CharStyleDef {csWrapMark = Just _}) <- Map.toList (stCharStyles s),
              not (isCodeCharStyle s n)
            ]
-        -- the border is for code only, its width an absolute dimension (golem-driver ADR 0023)
-        <> [ (n, firstWritten (paraKey n) (isJust (psBorder d)) "border" "border-width", "border と border-width は段落スタイル code にだけ書けます: " <> n)
-           | (n, d) <- Map.toList (stParaStyles s),
-             n /= "code",
-             isJust (psBorder d) || isJust (psBorderWidth d)
-           ]
-        <> [ ("code", paraKey "code" "border-width", "border-width は mm、pt、Q、H、in の寸法で書きます")
-           | Just ParaStyleDef {psBorderWidth = Just w} <- [Map.lookup "code" (stParaStyles s)],
+        -- the width of a border is an absolute dimension (golem-driver ADR 0023, docs/adr/0271)
+        <> [ (n, paraKey n "border-width", "border-width は mm、pt、Q、H、in の寸法で書きます")
+           | (n, ParaStyleDef {psBorderWidth = Just w}) <- Map.toList (stParaStyles s),
+             n `notElem` noBoxStyles,
              case w of
                Zw _ -> True
                Abs x -> x < 0
            ]
   ]
   where
+    -- the rule the style writes, or else the key of the box it writes
+    boxRulePath n d
+      | isJust (psRuleBefore d) || isJust (psRuleAfter d) = firstWritten (paraKey n) (isJust (psRuleBefore d)) "rule-before" "rule-after"
+      | otherwise = firstWritten (paraKey n) (isJust (psBackground d)) "background" "border"
+    boxKeysOf d =
+      [ ("background", isJust (psBackground d)),
+        ("padding", isJust (psPadding d)),
+        ("border", isJust (psBorder d)),
+        ("border-width", isJust (psBorderWidth d)),
+        ("border-style", isJust (psBorderStyle d)),
+        ("border-sides", isJust (psBorderSides d)),
+        ("border-radius", isJust (psBorderRadius d))
+      ]
     writtenOtherKeys d =
       [ k
       | (k, written) <-
@@ -2750,8 +2858,8 @@ styleReferenceChecks owner s =
                  n /= "code"
                ]
             -- the swatch of a background (golem-driver ADR 0017)
-            <> [(n, paraKey n "background", "段落スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBackground = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
-            <> [(n, paraKey n "border", "段落スタイル " <> n <> " の border のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBorder = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
+            <> [(n, paraKey n "background", "段落スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBackground = Just (Just c)}) <- Map.toList ps, Map.notMember c (stSwatches s)]
+            <> [(n, paraKey n "border", "段落スタイル " <> n <> " の border のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBorder = Just (Just c)}) <- Map.toList ps, Map.notMember c (stSwatches s)]
             -- the swatch of a rule (golem-driver ADR 0028)
             <> [("", styleKeys ["notes", "rule", "color"], "[notes.rule] の color のスウォッチがありません: " <> c) | Just RuleSpec {rsColor = Just c} <- [stNotesRule s], Map.notMember c (stSwatches s)]
             <> [ (n, styleKeys ["paragraph-styles", n, k, "color"], "段落スタイル " <> n <> " の罫線の color のスウォッチがありません: " <> c)
@@ -2871,7 +2979,8 @@ data LocalValue = LocalWord Text | LocalString Text
 charStyleKeys, paraStyleKeys, regexStyleKeys :: [Text]
 -- features, an array in style.toml, is one string of elements separated by commas in @style-def (docs/adr/0268)
 charStyleKeys = scalarKeys charStyleNode <> ["features", "underline", "strikethrough"]
-paraStyleKeys = scalarKeys paraStyleNode <> ["features"]
+-- border-sides, an array too, is one string of sides separated by commas (docs/adr/0271)
+paraStyleKeys = scalarKeys paraStyleNode <> ["features", "border-sides"]
 regexStyleKeys = scalarKeys regexStyleNode
 
 {- | The keys of one @style-def as a TOML table, read with the 'FromValue'
@@ -2906,7 +3015,7 @@ readLocal kvs = run (Table (table [(k, value k v) | (k, v) <- kvs]))
       _ -> "G03006"
     -- features is one string of elements separated by commas (docs/adr/0268)
     value k v
-      | k == "features" = case v of
+      | k `elem` ["features", "border-sides"] = case v of
           LocalString t -> List (map Text (T.splitOn "," t))
           LocalWord t -> List (map Text (T.splitOn "," t))
       | otherwise = tomlValue v
@@ -3238,10 +3347,14 @@ paraStyleNode =
         ("page-break", enum paraStartValues)
       ]
         <> featureNodes
-        <> [ ("background", ref Swatches),
+        <> [ ("background", NEither [ref Swatches, NValue LFalse]),
              ("padding", dim),
-             ("border", ref Swatches),
+             ("border", NEither [ref Swatches, NValue LFalse]),
              ("border-width", dim),
+             -- the box (docs/adr/0271)
+             ("border-style", enum ["solid", "dashed", "dotted"]),
+             ("border-radius", dim),
+             ("border-sides", NArray (enum boxSideValues)),
              ("rule-before", ruleOrFalseNode),
              ("rule-after", ruleOrFalseNode),
              ("features", features)

@@ -14,3 +14,15 @@ first-line-indent = "0zw"
 first-line-indent = "0zw"
 rule-before = { weight = "0.5pt", space-after = "0.5zw" }
 rule-after = { weight = "0.5pt", space-before = "0.5zw" }
+
+# 段落の背景と囲み罫（docs/adr/0271）
+[color.swatches]
+pale = { cmyk = [8, 0, 0, 0] }
+blue = { cmyk = [100, 60, 0, 0] }
+
+[paragraph-styles.column]
+first-line-indent = "0zw"
+background = "pale"
+border = "blue"
+border-width = "0.5pt"
+border-radius = "0.5zw"

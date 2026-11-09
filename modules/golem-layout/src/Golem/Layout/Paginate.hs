@@ -25,6 +25,7 @@ module Golem.Layout.Paginate
     Unmet (..),
     AdjustLimit (..),
     TableSegment (..),
+    BoxSegment (..),
     RuledBody (..),
     PlacedRule (..),
     HeadingBlock (..),
@@ -128,7 +129,7 @@ paginateWithin maxLines separatorLines base capacity flows =
       -- controls not met in a column that made no output go with the last column
       leftover = sUnmet final
    in case reverse done of
-        [] -> [PageOut 1 0 False [] [] [] [] [] base [] capacity leftover []]
+        [] -> [PageOut 1 0 False [] [] [] [] [] base [] capacity leftover [] []]
         lastPage : earlier -> withSections (sSections final) (reverse (lastPage {poUnmet = poUnmet lastPage <> leftover} : earlier))
 
 {- | The sections on the first column of the page each opened
@@ -163,29 +164,35 @@ placeAll env st [] =
           if null (sDeferred st2)
             then flushDeferred env (dropBlanks st2)
             else flushDeferred env (dropBlanks (nextColumn env st2))
-placeAll env st (f : rest) = case f of
+placeAll env st (f : rest) = placeAll env (step env st f rest) rest
+
+{- | One flow placed, with the flows after it to look ahead to; inside a
+box, those of its body and those after the box (docs/adr/0271).
+-}
+step :: Env -> St -> Flow -> [Flow] -> St
+step env st f rest = case f of
   -- a no-break with nothing before it, or after a figure sent on, cannot be met
   FNoBreak sp
-    | not (sSeen st) || sLastDeferred st -> placeAll env (addUnmet (UnmetNoBreak sp) st) rest
-    | otherwise -> placeAll env (waitFor (UnmetNoBreak sp) (1, False) st) rest
+    | not (sSeen st) || sLastDeferred st -> addUnmet (UnmetNoBreak sp) st
+    | otherwise -> waitFor (UnmetNoBreak sp) (1, False) st
   -- a keep-with-next as a no-break, the first part of what follows in the column (docs/adr/0261)
   FKeepNext sp n
-    | not (sSeen st) || sLastDeferred st -> placeAll env (addUnmet (UnmetKeepNext sp) st) rest
-    | otherwise -> placeAll env (waitFor (UnmetKeepNext sp) (nextFirstLines n rest) st) rest
+    | not (sSeen st) || sLastDeferred st -> addUnmet (UnmetKeepNext sp) st
+    | otherwise -> waitFor (UnmetKeepNext sp) (nextFirstLines n rest) st
   -- the larger need-lines is kept; one larger than the need-lines judged is judged again (golem-layout ADR 0035),
   -- before the spaces placed after the block before it (golem-layout ADR 0043)
-  FNeedLines sp n -> placeAll env (needMore env sp n st) rest
-  FAdjustLines sp k -> placeAll env (adjustLines env (applyBreaks env st) sp k) rest
+  FNeedLines sp n -> needMore env sp n st
+  FAdjustLines sp k -> adjustLines env (applyBreaks env st) sp k
   -- blank lines with nothing after them that places anything are the end of the book's (docs/adr ADR 0046)
   FBlank sp n
-    | all waitsFor rest -> placeAll env st rest
-    | otherwise -> placeAll env st {sBlank = sBlank st <> [(sp, n)]} rest
-  FBreak _ -> placeAll env (place env st f rest) rest
-  FSection {} -> placeAll env (place env st f rest) rest
+    | all waitsFor rest -> st
+    | otherwise -> st {sBlank = sBlank st <> [(sp, n)]}
+  FBreak _ -> place env st f rest
+  FSection {} -> place env st f rest
   -- the space between paragraphs is not the flow a no-break waits for;
   -- need-lines is judged before it, the space not counted (golem-layout ADR 0027)
   -- nor the spaces before it, written after the block before (golem-layout ADR 0043)
-  FSpace n -> placeAll env (placeSpace env (needBeforeSpaces env (applyBreaks env st)) n) rest
+  FSpace n -> placeSpace env (needBeforeSpaces env (applyBreaks env st)) n
   _ ->
     let -- the breaks first: going on to the next page places the figures waiting, and this one may not wait
         stB = applyBreaks env st
@@ -202,7 +209,7 @@ placeAll env st (f : rest) = case f of
         -- the spaces before a need-lines are those after the last block (golem-layout ADR 0043), a figure sent on by
         -- itself one too: a figure that waits keeps them, unless the breaks before it go on from their column (golem-layout ADR 0047)
         spaces = if waiting && null (sBreaks st) then sSpaces st1 else []
-     in placeAll env st1 {sSeen = True, sLastDeferred = deferred, sSpaces = spaces} rest
+     in st1 {sSeen = True, sLastDeferred = deferred, sSpaces = spaces}
 
 {- | Need-lines after need-lines, with no block between: the larger is
 kept. When it is larger than the one judged before a space, the column
@@ -512,8 +519,9 @@ place env st f rest = case f of
   FRestoreColumns
     | isEmpty st && sColumn st == 0 && top st == 0 -> st {sSet = (envBase env) {csFirstLine = 0}}
     | otherwise -> (nextPage env st) {sSet = (envBase env) {csFirstLine = 0}}
+  -- nothing at the top of a column, nor of a part of a box (docs/adr/0271)
   FSpace n
-    | sUsed st == top st -> st
+    | sUsed st == top st || atBoxStart st -> st
     | otherwise -> st {sUsed = sUsed st + max 0 (min n (free env st))}
   -- the controls of page breaks are handled in placeAll (docs/adr ADR 0030)
   FNoBreak _ -> st
@@ -521,8 +529,18 @@ place env st f rest = case f of
   FNeedLines _ _ -> st
   FAdjustLines _ _ -> st
   FBlank _ _ -> st
+  {- a box (docs/adr/0271): where its grid lines before, the first part
+  of its body and its grid lines after fit; its body placed as outside a
+  box, each part of it in a column closed by its grid lines after -}
+  FBoxed i kb ka body ->
+    let st1 = keep env st (\s -> kb + ka + needIn env s mempty (nextNeed env body))
+        inBox = foldBody (openBox st1 {sBox = Just (BoxAt i kb ka 0 False)}) body
+        closed = closeBox inBox
+        ends = [bsLast b + 1 | b <- drop (length (sBoxes inBox)) (sBoxes closed)]
+     in closed {sBox = Nothing, sUsed = maximum (sUsed closed : ends)}
   where
     need = nextNeed env rest
+    foldBody s0 body = foldl' (\s (g, more) -> step env s g (more <> rest)) s0 [(g, drop k body) | (k, g) <- zip [1 ..] body]
 
 {- | A code block: as many rows as their grid lines fit in the column, the
 rest in the next column; at least one row in an empty column (golem-driver ADR 0017).

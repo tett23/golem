@@ -42,7 +42,8 @@ invariantTests =
     [ testGroup "the enumeration of the inputs" enumerationTests,
       testGroup "the predicates" predicateTests,
       testGroup "every input" exhaustiveTests,
-      testGroup "the keep options of paragraph styles (docs/adr/0261)" keepTests
+      testGroup "the keep options of paragraph styles (docs/adr/0261)" keepTests,
+      testGroup "the boxes of paragraph styles (docs/adr/0271)" boxTests
     ]
 
 {- | The elements of the flows of pull requests (docs/adr/0204, the
@@ -177,7 +178,7 @@ enumerationTests =
 
 -- | A column of a page: its page, its column, its grid lines and its slots.
 column :: Int -> Int -> Int -> [Slotted] -> PageOut
-column page c n ss = PageOut page c False (zip [0 ..] ss) [] [] [] [] (ColumnSet 1 0 0 0) [] n [] []
+column page c n ss = PageOut page c False (zip [0 ..] ss) [] [] [] [] (ColumnSet 1 0 0 0) [] n [] [] []
 
 -- | A column whose slots start at the grid lines given.
 columnAt :: Int -> Int -> Int -> [(Int, Slotted)] -> PageOut
@@ -565,6 +566,55 @@ keepTests =
   ]
   where
     keepBroken flows ps = map breachOf (keepBreaches 1 flows ps)
+
+-- | The boxes: the elements, B1 to B3 by hand, examples, and every input of 'boxInputs'.
+boxTests :: [TestTree]
+boxTests =
+  [ testCase "the elements of boxes: 19 in columns of 3 grid lines" $ do
+      length (boxElementsFor 3) @?= 8 + 2 + 4 + 5
+      enumFlows [EPara 1, EBoxed 1 2, EBoxedPair 0]
+        @?= [ para 0 1,
+              FBoxed 1 1 1 [FParagraph defaultKeep (plainLines 1 2)],
+              FBoxed 3 0 0 [FParagraph defaultKeep (plainLines 3 2), FSpace 1, FParagraph defaultKeep (plainLines 5 2)]
+            ],
+    testGroup
+      "B1 to B3 by hand"
+      [ testCase "B1 shape: a part one grid line short before its first line breaks B1 only" $
+          boxBroken [boxed 0 1 2] [inBoxes [BoxSegment 0 1 3] (columnAt 1 0 5 [(1, SLine 0), (2, SLine 1)])] @?= [B1],
+        testCase "B1: a part k grid lines before and after its lines breaks nothing" $
+          boxBroken [boxed 0 1 2] [inBoxes [BoxSegment 0 0 3] (columnAt 1 0 5 [(1, SLine 0), (2, SLine 1)])] @?= [],
+        testCase "B2 no overflow: a part whose grid lines after go past the column breaks B2 only" $
+          boxBroken [boxed 0 1 2] [inBoxes [BoxSegment 0 1 4] (columnAt 1 0 4 [(2, SLine 0), (3, SLine 1)])] @?= [B2],
+        testCase "B3 no empty part: a part with no line of its box breaks B3 only" $
+          boxBroken [para 9 1, boxed 0 0 1] [inBoxes [BoxSegment 0 1 1] (columnAt 1 0 3 [(0, SLine 9)]), inBoxes [BoxSegment 0 0 0] (columnAt 2 0 3 [(0, SLine 0)])] @?= [B3],
+        testCase "B3: a line of a box in no part of it breaks B3 only" $
+          boxBroken [boxed 0 0 1] [columnAt 1 0 3 [(0, SLine 0)]] @?= [B3]
+      ],
+    testGroup
+      "examples"
+      [ testCase "a box at the top of a column takes its k grid lines before, the space before it dropped" $ do
+          let ps = paginate 1 5 [FSpace 1, boxed 0 1 2]
+          [(poSlots p, poBoxes p) | p <- ps] @?= [([(1, SLine 0), (2, SLine 1)], [BoxSegment 0 0 3])],
+        testCase "a box that the last grid lines of a column do not hold starts the next column" $ do
+          let ps = paginate 1 5 [para 10 3, boxed 0 1 1]
+          [(poNumber p, poSlots p, poBoxes p) | p <- ps] @?= [(1, [(0, SLine 10), (1, SLine 11), (2, SLine 12)], []), (2, [(1, SLine 0)], [BoxSegment 0 0 2])],
+        testCase "each part of a box broken between columns takes k grid lines before and after" $ do
+          let ps = paginate 1 5 [boxed 0 1 6]
+          [(poNumber p, map fst (poSlots p), poBoxes p) | p <- ps] @?= [(1, [1, 2, 3], [BoxSegment 0 0 4]), (2, [1, 2, 3], [BoxSegment 0 0 4])],
+        testCase "a box in the middle of a column broken between its two paragraphs: each part takes k grid lines before and after" $ do
+          let ps = paginate 1 5 [para 10 1, FBoxed 0 1 1 [FParagraph defaultKeep (plainLines 0 2), FSpace 1, FParagraph defaultKeep (plainLines 2 2)]]
+          [(poNumber p, poSlots p, poBoxes p) | p <- ps] @?= [(1, [(0, SLine 10), (2, SLine 0), (3, SLine 1)], [BoxSegment 0 1 4]), (2, [(1, SLine 2), (2, SLine 3)], [BoxSegment 0 0 3])]
+      ],
+    testCase "B1 to B3 and I1 to I8, P1 to P5, PL1, PL2, PL3, PL7 hold for every input of boxes up to GOLEM_ENUM_DEPTH elements" $ do
+      depth <- enumDepth
+      case checkAllPar depth boxInputs (\input -> [Violation (show (breachOf b)) (breachWhy b) | b <- boxBreaches 1 (enumFlows (inElements input)) (paginateInput input)]) of
+        Passed _ -> pure ()
+        Failed k input vs -> assertFailure (report ("the smallest input of boxes that breaks an invariant has " <> show k <> " elements") input vs)
+  ]
+  where
+    boxBroken flows ps = map breachOf (boxBreaches 1 flows ps)
+    boxed i k n = FBoxed i k k [FParagraph defaultKeep (plainLines i n)]
+    inBoxes bs p = p {poBoxes = bs}
 
 -- every input
 

@@ -581,7 +581,7 @@ withFsType v font =
 
 -- | Pages with the labels and marks given, page n holding the nth list.
 pagesWith :: [[T.Text]] -> [PageOut]
-pagesWith ls = [PageOut n 0 False [] [] l [] [] (ColumnSet 1 0 0 0) [] 10 [] [] | (n, l) <- zip [1 ..] ls]
+pagesWith ls = [PageOut n 0 False [] [] l [] [] (ColumnSet 1 0 0 0) [] 10 [] [] [] | (n, l) <- zip [1 ..] ls]
 
 outputDiagnosticTests :: [TestTree]
 outputDiagnosticTests =
@@ -633,6 +633,25 @@ outputDiagnosticTests =
       over <- buildMarksFiles (\o -> o {optCheckOnly = True}) (Just (style "5zw")) fakeFontFiles
       -- caption and sidenote do not take the indent of body (golem-driver ADR 0043)
       map diagMessage (bErrors over) @?= ["段落スタイルの字下げが大きすぎます。行長を段落の文字の大きさの 8 字分以上残してください: body"],
+    testCase "G07025 counts the padding on both sides of a box (docs/adr/0271)" $ do
+      -- 12 characters of 10pt: a padding of 2zw leaves 8, of 2.5zw 7
+      let style pad = horizontalStyle <> fakeBody <> "\n[color.swatches]\npale = { cmyk = [8, 0, 0, 0] }\n\n[paragraph-styles.column]\nbackground = \"pale\"\npadding = \"" <> pad <> "\"\n"
+      ok <- buildMarksFiles (\o -> o {optCheckOnly = True}) (Just (style "2zw")) fakeFontFiles
+      map diagCode (bErrors ok) @?= []
+      over <- buildMarksFiles (\o -> o {optCheckOnly = True}) (Just (style "2.5zw")) fakeFontFiles
+      map diagMessage (bErrors over) @?= ["段落スタイルの字下げが大きすぎます。行長を段落の文字の大きさの 8 字分以上残してください: column"],
+    testCase "G07121: not when 2k + 1 is the grid lines of a column; when it is one more, once at the first paragraph of the style (docs/adr/0271)" $ do
+      -- a pitch of 15pt and a face of 10pt: half the leading is 2.5pt; a padding of 30pt is k = 2, of 33pt k = 3; 30 characters leave G07025 out
+      let style ls pad = replaceIn "lines = 30" ("lines = " <> ls) (replaceIn "characters = 12" "characters = 30" horizontalStyle) <> fakeBody <> "\n[color.swatches]\npale = { cmyk = [8, 0, 0, 0] }\n\n[paragraph-styles.column]\nbackground = \"pale\"\npadding = \"" <> pad <> "\"\n"
+          source = "前。\n\n@style column\n囲み。\n\n@style column\n二つめ。\n\n間。\n\n@style column\n三つめ。\n"
+          g07121 b = [(diagMessage d, spanStart (diagSpan d)) | d <- ofCode "G07121" b]
+      fits <- buildMarksFilesWith source id (Just (style "5" "30pt")) fakeFontFiles
+      g07121 fits @?= []
+      fits7 <- buildMarksFilesWith source id (Just (style "7" "33pt")) fakeFontFiles
+      g07121 fits7 @?= []
+      over <- buildMarksFilesWith source id (Just (style "6" "33pt")) fakeFontFiles
+      (map diagCode (bErrors over), g07121 over) @?= ([DiagnosticCode "G07121"], [("段落スタイル column の囲みの一行と上下の padding が段に収まりません", 22)])
+      bPdf over @?= Nothing,
     testCase "G07025 is about a paragraph style, at the top of style.toml, also in golem check" $ do
       let style = replaceIn "characters = 12" "characters = 10" horizontalStyle <> fakeBody <> "\n[paragraph-styles.body]\nindent = \"3zw\"\n"
       b <- buildMarksFiles id (Just style) fakeFontFiles

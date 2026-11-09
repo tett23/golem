@@ -262,7 +262,7 @@ PDF では、表の行がセルの全体を収める最も少ない行を占め�
 0 を書いたときは、効果がないことを知らせるお知らせ（G03100）が出ます。
 
 [code: code] だけは、ほかの段落スタイルと扱いが違います。
-[code: body] を引き継がず、書けるキーは [code: font]、[code: size]、[code: background]（背景の色のスウォッチ）、[code: padding]（背景の内側の余白）の四つだけです。
+[code: body] を引き継がず、書けるキーは [code: font]、[code: size]、[code: background]（背景の色のスウォッチ）、[code: padding]（背景の内側の余白）と、枠のキーだけです。
 本文の字下げやアキ量のセットがコードに及ばないようにするためです。
 背景か枠のあるコードブロックの直後の行に、背景に届くルビか圏点があれば、そのあいだに空きの行を一行入れて、読みと圏点が網に重ならないようにします。
 原稿で [code: @style code] とは書けず、コードは [code: ```] か [code: @listing] で書きます（「[ref-title code-blocks]」、[ref-page code-blocks] ページ）。
@@ -385,6 +385,53 @@ keep-all-lines = true
 [code: @page-break] の直後に [code: page-break = "page"] の段落を書いても、白ページはできません。
 [code: keep-with-next] と [code: page-break] は、文書の最上位の段落にだけ当てます。
 リストの項目、定義リストの中の段落、注の本文には当てません。
+
+@label paragraph-boxes
+### 段落の背景と囲み罫
+
+段落スタイルに背景の色か枠を書くと、段落を囲みます。
+コラムや注意書きに使います。
+InDesign の段落の囲み罫と段落の背景色に当たります。
+
+- [code: background]：背景の色の名前です。[code: false] は引き継いだ背景を塗りません。
+- [code: border]：枠の色の名前です。[code: false] は引き継いだ枠を描きません。
+- [code: border-width]：枠の線の太さです。既定は [code: "0.25pt"] です。
+- [code: border-style]：枠の線の種類です。[code: "solid"]、[code: "dashed"]、[code: "dotted"] のどれかを書きます。
+- [code: border-sides]：枠を描く辺の配列です。[code: "before"] は前（横組みの上、縦組みの右）、[code: "after"] は後、[code: "start"] は行の始まりの側、[code: "end"] は行の終わりの側です。既定は四つすべてです。
+- [code: padding]：囲みの内側の余白です。既定は [code: "0.5zw"] です。
+- [code: border-radius]：角の丸みの半径です。既定の 0 は直角です。
+
+角の丸いコラムと、行の始まりの側に太い線を引く注意書きは、次のように書きます。
+
+```toml
+[paragraph-styles.column]
+background = "pale"
+border = "blue"
+border-radius = "1zw"
+
+[paragraph-styles.caution]
+border = "red"
+border-width = "2pt"
+border-sides = ["start"]
+indent = "1zw"
+```
+
+囲みは、段落の [code: indent] の位置から、[code: end-indent] だけ手前までです。
+行は、囲みの端から [code: padding] だけ内側に組みます。
+上下の余白は行の格子の行の単位に切り上げるので、本文の行は格子からずれません。
+そのため、上下の余白は書いた値より少し大きくなることがあります。
+
+続く段落の囲みの設定が等しければ、段落スタイルの名前が違っても一つの囲みにまとめます。
+コラムの題と本文を別の段落スタイルにしても、一つに囲めます。
+まとめたくなければ、[code: padding] などを少し変えます。
+囲みが段やページをまたぐときは、行のあいだで分け、分けた部分のそれぞれを閉じた囲みにします。
+分かれ目の辺の両端の角は直角で、囲みの本当の始まりと終わりの角だけを丸めます。
+枠のある囲みでは、二つの辺がどちらも描かれる角だけを丸めます。
+
+囲みは文書の最上位の段落にだけ付け、リストの項目、表のセル、注の本文、定義リストの中の段落には付けません。
+囲みと罫線（[code: rule-before]、[code: rule-after]）は一緒に書けません（G03006）。
+空の段に囲みの一行と上下の余白が入らなければ、エラー（G07121）です。
+HTML と EPUB では、一つの囲みの段落を [code: div] で包み、背景と枠と角の丸みを CSS に書きます。
 
 @label kerning
 ## 文字の送り

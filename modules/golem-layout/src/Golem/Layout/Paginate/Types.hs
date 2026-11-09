@@ -13,6 +13,7 @@ module Golem.Layout.Paginate.Types
     Unmet (..),
     AdjustLimit (..),
     TableSegment (..),
+    BoxSegment (..),
     RuledBody (..),
     PlacedRule (..),
     HeadingBlock (..),
@@ -158,6 +159,12 @@ data Flow
         frNextOverhang :: !Sp,
         frBody :: !RuledBody
       }
+  | {- | paragraphs in one box (docs/adr/0271): each part of the box in a
+    column takes 'fbBefore' grid lines before its first line and
+    'fbAfter' after its last; the body holds paragraphs, stanzas and the
+    spaces between them, broken as they are outside a box
+    -}
+    FBoxed {fbId :: !Int, fbBefore :: !Int, fbAfter :: !Int, fbBody :: ![Flow]}
   | -- | the start of the index in its own columns (docs/adr ADR 0025)
     FSwitchColumns !ColumnSet
   | -- | the end of the index: the next page, in the columns of the page
@@ -253,7 +260,9 @@ data PageOut = PageOut
     poUnmet :: ![Unmet],
     {- | the sections whose first page this is, in the order of the
     manifest, on the first column of the page (docs/adr/0260)
-    -} poSections :: ![Int]
+    -} poSections :: ![Int],
+    -- | the parts of boxes in the column (docs/adr/0271)
+    poBoxes :: ![BoxSegment]
   }
   deriving stock (Eq, Show)
 
@@ -299,5 +308,16 @@ data TableSegment = TableSegment
     -- | the last grid line of the header row; none for a table without one (golem-driver ADR 0031)
     tsHeaderEnd :: !(Maybe Int),
     tsLast :: !Int
+  }
+  deriving stock (Eq, Show)
+
+{- | The part of a box in a column (docs/adr/0271): the box, and the first
+and the last grid line it takes, the grid lines before its first line
+and after its last included.
+-}
+data BoxSegment = BoxSegment
+  { bsBox :: !Int,
+    bsFirst :: !Int,
+    bsLast :: !Int
   }
   deriving stock (Eq, Show)
