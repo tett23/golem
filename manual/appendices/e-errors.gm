@@ -565,6 +565,15 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
 = [strong: G03110 [code: … のキー … は式の名前の形（英字か _ で始まり、英数字と _ が続く）で書きます]]
   [code: \[vars\]] のキーに、[code: -] を含む名前や、数字で始まる名前を書いています。
   [code: edition_count] のように、[code: -] を [code: _] に替えるか、英字で始まる名前にしてください。
+= [strong: G03121 [code: page-numbering の style … は数の表記の名前ではありません（書ける名前: …）]]
+  章の項目の [code: page-numbering] の [code: style] に、表記の名前でないものを書いています。
+  [code: lower-roman] のように、メッセージに並べた名前のどれかを書いてください。
+= [strong: G03122 [code: page-numbering の start には 1 以上の整数を書きます]]
+  [code: page-numbering] の [code: start] に 0 を書いています。
+  前のページの番号を続けるなら、[code: start] を書かないでください。
+= [strong: G03123 [code: 同じファイルを page-numbering の設定を変えて章に二度並べています: …]]
+  同じファイルを [code: chapters] に二度並べ、二つの項目の [code: page-numbering] が違います。
+  二つをそろえるか、どちらかを別のファイルにしてください。
 = [strong: G03113 [code: PDF/A には \[color\] の intent が要ります]]
   [code: \[targets.pdf\]] に [code: pdfa] を書いたのに、[code: style.toml] の [code: \[color\]] に [code: intent] がありません。
   [code: intent] に CMYK の ICC プロファイルを書くか、PDF/A が要らなければ [code: pdfa] を消してください。
@@ -707,6 +716,16 @@ PDF を組むときに出るエラーです。
   マスターページごとに、表せない最初のページを一度だけ知らせます。
   [code: \[masters\]] の [code: folio] の [code: format] を、算用数字などの表せる表記に替えてください。
   PDF を書きません。
+= [strong: G07110 [code: page-numbering の style … では、ノンブル … を表せません（… ページ）]]
+  章の項目の [code: page-numbering] の [code: style] の表記で表せないページがあります。
+  セクションごとに、表せない最初のページを一度だけ知らせます。
+  ノンブルを描かないページも数えます。
+  [code: style] を、[code: lower-roman] などの表せる表記に替えてください。
+  PDF を書きません。
+= [strong: G07109 [code: page-numbering のセクションにページがありません。…]]
+  警告です。
+  [code: page-numbering] を書いたファイルが空で、次の項目も [code: page-numbering] を書いているか、本がそのファイルで終わっています。
+  その [code: page-numbering] は働いていないので、消すか、ファイルに内容を書いてください。
 = [strong: G07022 [code: 回り込む図版の幅が不正です。行の残りを本文の 8 字分以上にしてください: …]]
   回り込ませる図版の脇に、本文の文字が八つ以上入りません。
   図版の [code: width] を小さくしてください。

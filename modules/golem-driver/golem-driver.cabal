@@ -124,6 +124,7 @@ test-suite golem-driver-test
     PopplerSpec
     ReferencesSpec
     SecuritySpec
+    PageLabelsSpec
     ShapingMemoSpec
     SpecimenGeometrySpec
     TateChuYokoSpec

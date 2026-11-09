@@ -17,6 +17,7 @@ import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..), glueRatio, noLeaf, placeLine)
 import Golem.Layout.Look (Look (..), noBoxSource, plainLook)
+import Golem.Layout.PageLabel (PageLabel (..), plainLabel)
 import Golem.Layout.Paginate (ColumnSet (..), PageOut (..), Slotted (..), labelPages, markPages)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, typeAreaFor)
 import Golem.Length (Sp (..))
@@ -51,7 +52,7 @@ indexTests :: [TestTree]
 indexTests =
   [ testCase "index lines: entries, sub-entries indented, pages once and in order" $ do
       let sp i = mkSpan (FileId 0) i (i + 1)
-          pages = Map.fromList [(sp 1, 3), (sp 2, 3), (sp 3, 10), (sp 4, 12)]
+          pages = Map.map plainLabel (Map.fromList [(sp 1, 3), (sp 2, 3), (sp 3, 10), (sp 4, 12)])
           groups =
             [ IndexGroup ["組版"] ["くみはん"] [(FileId 0, sp 1), (FileId 0, sp 2)],
               IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(FileId 0, sp 3)],
@@ -60,17 +61,17 @@ indexTests =
       map rendered (indexLines False (`Map.lookup` pages) groups) @?= ["組版　3", "　和文組版　10", "和文　12"],
     testCase "a sub-entry without its main entry gets a main line without pages" $ do
       let sp i = mkSpan (FileId 0) i (i + 1)
-      map rendered (indexLines False (const (Just 5)) [IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(FileId 0, sp 1)]]) @?= ["組版", "　和文組版　5"],
+      map rendered (indexLines False (const (Just (plainLabel 5))) [IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(FileId 0, sp 1)]]) @?= ["組版", "　和文組版　5"],
     testCase "two sub-entries share one main line" $ do
       let sp i = mkSpan (FileId 0) i (i + 1)
           groups =
             [ IndexGroup ["組版", "欧文組版"] ["くみはん", "おうぶんくみはん"] [(FileId 0, sp 1)],
               IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(FileId 0, sp 2)]
             ]
-      map rendered (indexLines False (const (Just 5)) groups) @?= ["組版", "　欧文組版　5", "　和文組版　5"],
+      map rendered (indexLines False (const (Just (plainLabel 5))) groups) @?= ["組版", "　欧文組版　5", "　和文組版　5"],
     testCase "vertical index pages are numbers separated by 、" $ do
       let sp i = mkSpan (FileId 0) i (i + 1)
-          pages = Map.fromList [(sp 1, 3), (sp 2, 12)]
+          pages = Map.map plainLabel (Map.fromList [(sp 1, 3), (sp 2, 12)])
       case indexLines True (`Map.lookup` pages) [IndexGroup ["組版"] ["くみはん"] [(FileId 0, sp 2), (FileId 0, sp 1)]] of
         [l] -> do
           numbersIn l @?= [3, 12]
@@ -142,7 +143,7 @@ indexTests =
       let source =
             "# 見出し[index reading=み: 見]\n\n本文[index reading=ほ: 本]。[note: 注[index reading=ちゅう: 注]]\n\n= 用語[index reading=よう: 用]\n  定義。\n\n@figure images/tiny.jpg alt=\"t\"\n  キャプション[index reading=きゃ: 図]。\n\n@index\n"
       (_, pl) <- layoutOk horizontal24 source img
-      sort (map spanStart (Map.keys (markPages (plPages pl)))) @?= offsetsIn "[index" source,
+      sort (map spanStart (Map.keys (markPages Map.empty (plPages pl)))) @?= offsetsIn "[index" source,
     testCase "index and bibliography: parallel and sequential, and two builds, give the same bytes" $ do
       let source = "# 一\n\n本文[index reading=くみはん: 組版][cite knuth1981]。\n\n" <> fillers 8 <> "@index\n\n@bibliography\n"
           build' parallel = withSystemTempDirectory "golem-mini" $ \tmp -> do
@@ -713,12 +714,12 @@ indexColumnTests =
       let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32)
           source = "参照は[ref-page later]ページ。\n\n" <> indexSource <> "\n@label later\n後。\n"
       (_, pl) <- layoutOk style source []
-      later <- maybe (assertFailure "later") pure (Map.lookup "later" (labelPages (plPages pl)))
+      later <- maybe (assertFailure "later") (pure . plIndex) (Map.lookup "later" (labelPages Map.empty (plPages pl)))
       let refLine = [setLineText sl | sl <- Map.elems (plLines pl), "参照は" `T.isPrefixOf` setLineText sl]
       refLine @?= ["参照は" <> T.pack (show later) <> "ページ。"]
       let one = withIndexColumns "1" (replaceIn "lines = 30" "lines = 10" horizontal32)
       (_, pl1) <- layoutOk one source []
-      assertBool "fewer pages" (Map.lookup "later" (labelPages (plPages pl1)) > Just later),
+      assertBool "fewer pages" (fmap plIndex (Map.lookup "later" (labelPages Map.empty (plPages pl1))) > Just later),
     testCase "PDF: vertical, the index columns run from top to bottom" $ do
       let style = withIndexColumns "2" pdfStyle <> "column-gap = \"2zw\"\n"
       (geom, pl) <- layoutOk style indexSource []

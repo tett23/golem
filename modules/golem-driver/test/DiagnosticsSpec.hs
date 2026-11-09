@@ -577,7 +577,7 @@ withFsType v font =
 
 -- | Pages with the labels and marks given, page n holding the nth list.
 pagesWith :: [[T.Text]] -> [PageOut]
-pagesWith ls = [PageOut n 0 False [] [] l [] [] (ColumnSet 1 0 0 0) [] 10 [] | (n, l) <- zip [1 ..] ls]
+pagesWith ls = [PageOut n 0 False [] [] l [] [] (ColumnSet 1 0 0 0) [] 10 [] [] | (n, l) <- zip [1 ..] ls]
 
 outputDiagnosticTests :: [TestTree]
 outputDiagnosticTests =
@@ -601,7 +601,7 @@ outputDiagnosticTests =
             modifyIORef' calls (+ 1)
             n <- readIORef calls
             pure (Right ((), pagesWith (if odd n then [["a", "b"], []] else [[], ["a", "b"]])))
-      r <- fixpoint labelSpan (const "") (const flipping)
+      r <- fixpoint Map.empty labelSpan (const "") (const flipping)
       case r of
         Left [d] -> do
           diagCode d @?= DiagnosticCode "G07021"
@@ -619,7 +619,7 @@ outputDiagnosticTests =
               if n == 2
                 then Left [diagnostic "G07022" Error (mkSpan (FileId 1) 0 0) "x"]
                 else Right ((), pagesWith [["a"]])
-      r <- fixpoint (const (mkSpan (FileId 0) 0 0)) (const "") (\_ a -> failing (a :: Assumed))
+      r <- fixpoint Map.empty (const (mkSpan (FileId 0) 0 0)) (const "") (\_ a -> failing (a :: Assumed))
       either (map diagCode) (const []) r @?= [DiagnosticCode "G07022"],
     testCase "G07025: an indent that leaves exactly 8 characters is not G07025; one character more is" $ do
       -- 12 characters of 10pt
