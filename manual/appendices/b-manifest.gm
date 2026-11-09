@@ -44,7 +44,10 @@ TOML の書き方は、第[ref-number basics]章「[ref-title toml]」で説明�
 テーブルに書けるのは、[code: file]（必須）と、[code: \[source\]] と同じキーと、[code: master] です。
 [code: master] には、その章で使う [code: style.toml] のマスターページの名前を書きます（付録C の [code: \[masters.名前\]]）。
 書かなければ [code: body] のマスターページを使います。
-同じファイルを、読み方を変えて二度並べることはできません。
+テーブルには [code: page-numbering] も書けます。
+[code: page-numbering] は、そのファイルからノンブルの数え方を変えるテーブルで、[code: style]（ノンブルの表記）と [code: start]（最初のページの番号、1 以上の整数）を書きます（「[ref-title front-matter-folios]」、[ref-page front-matter-folios] ページ）。
+[code: style] が表記の名前でなければ G03121、[code: start] が 0 なら G03122 になります。
+同じファイルを、読み方や [code: page-numbering] を変えて二度並べることはできません（G03123）。
 
 ```toml
 chapters = [

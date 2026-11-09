@@ -31,6 +31,7 @@ import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
 import Golem.Layout.Orientation
+import Golem.Layout.PageLabel (PageLabel (..))
 import Golem.Layout.Paginate
 import Golem.Layout.Ruby hiding (RubyAlign (..))
 import Golem.Layout.Ruby qualified as R (RubyAlign (..))
@@ -811,18 +812,18 @@ tests =
             let m = mkSpan (FileId 0) 10 20
                 ps = paginate 1 1 [FParagraph [LineBox 0 [] [] [] 0, LineBox 1 [] [] [m] 0, LineBox 2 [] [] [] 0]]
             map poNumber ps @?= [1, 2, 3]
-            markPages ps @?= Map.fromList [(m, 2)],
+            Map.map plIndex (markPages Map.empty ps) @?= Map.fromList [(m, 2)],
           testCase "the marks of a figure go with it to the next page" $ do
             let m = mkSpan (FileId 0) 10 20
                 ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [m], FParagraph (lines' 10 2)]
-            markPages ps @?= Map.fromList [(m, 2)],
+            Map.map plIndex (markPages Map.empty ps) @?= Map.fromList [(m, 2)],
           testCase "page references converge when the page count gains a digit" $ do
             -- the reference sits before the label; at three digits the reference line wraps
             let layout assumed =
                   let refWidthLines = if Map.findWithDefault 1 "end" assumed >= 100 then 2 else 1
                    in paginate 1 5 (FParagraph (lines' 0 refWidthLines) : [FParagraph (lines' (1000 + i * 10) 2) | i <- [0 .. 196]] <> [FParagraph [LineBox 9999 [] ["end"] [] 0]])
             case resolvePageRefs layout of
-              Right ps -> Map.lookup "end" (labelPages ps) @?= Just (toInteger (poNumber (last ps)))
+              Right ps -> fmap plIndex (Map.lookup "end" (labelPages Map.empty ps)) @?= Just (poNumber (last ps))
               Left ls -> assertFailure (show ls),
           testCase "references that never settle are an error" $ do
             let layout assumed = paginate 1 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"] [] 0]])
@@ -1142,7 +1143,7 @@ tests =
           testCase "a label in the second column is on the page of that column" $ do
             let ps = paginate 2 3 [FParagraph (lines' 0 3), FParagraph [LineBox 50 [] ["x"] [] 0]]
             cols ps @?= [(1, 0), (1, 1)]
-            labelPages ps @?= Map.fromList [("x", 1)],
+            Map.map plIndex (labelPages Map.empty ps) @?= Map.fromList [("x", 1)],
           testCase "a column break goes to the next column, then to the next page" $ do
             let ps = paginate 2 3 [FParagraph (lines' 0 1), FBreak BreakColumn, FParagraph (lines' 10 1), FBreak BreakColumn, FParagraph (lines' 20 1)]
             cols ps @?= [(1, 0), (1, 1), (2, 0)]

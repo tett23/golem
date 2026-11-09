@@ -1,7 +1,7 @@
 chapters = [
-  "preface.gm",
+  { file = "preface.gm", page-numbering = { style = "lower-roman" } },
   "toc.gm",
-  "part1/00-part.gm",
+  { file = "part1/00-part.gm", page-numbering = { style = "arabic", start = 1 } },
   "part1/01-cli.gm",
   "part1/02-diagnostics.gm",
   "part1/03-ci.gm",

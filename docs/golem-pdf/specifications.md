@@ -170,6 +170,18 @@ v1.0.0 の文書の中のリンクは、`LinkAction` に行先へのアクショ
 - `X4.verify` は、ページの `/Annots` が指すオブジェクトのうち `/Subtype /Link` のものについて、`/A` の辞書が `/S /URI` なら、その `/S` と `/URI` を禁止の名前として数えない。
 - `/A` が間接参照のときは、除かない。
 
+## ページラベル
+
+ページラベル（[docs/adr/0260](../adr/0260-front-matter-folios-and-page-labels.md)）は、`Document` の `docPageLabels :: [PageLabelRange]` が持つ。
+`data PageLabelRange = PageLabelRange { plrFirstPage :: Int, plrStyle :: Maybe PageLabelStyle, plrPrefix :: Text, plrStart :: Integer }`、`data PageLabelStyle = LabelDecimal | LabelUpperRoman | LabelLowerRoman` である。
+golem-pdf の型は golem-numerals に依らず、様式（`D`、`R`、`r`、なし）と接頭辞と開始の番号だけを持つ。
+範囲をどう作るかは golem-typeset が決める。
+
+- 範囲が空なら、文書カタログに `/PageLabels` を書かず、PDF のバイト列は変わらない。
+- 範囲があれば、文書カタログの `/StructTreeRoot` の後に `/PageLabels << /Nums [...] >>` を書く。`/Nums` には、範囲の最初のページの位置（0 から）とラベルの辞書を、与えられた順に並べる。
+- ラベルの辞書は、様式があれば `/S`、接頭辞が空でなければ `/P`（`pdfTextString`）、様式があって開始の番号が 1 でなければ `/St` を持つ。
+- テストは、数の木を ISO 32000-1 の 12.4.2 の規則で読む小さな読み手を持ち、ページ位置ごとのラベルを確かめる。
+
 ## 構造の木と描いた葉
 
 `contentLeaves` は、ページの内容から、中身のある印付きの内容（`Tagged`）の葉を、描いた順に返す。

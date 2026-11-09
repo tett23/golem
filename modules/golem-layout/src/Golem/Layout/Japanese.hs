@@ -63,6 +63,7 @@ import Golem.Layout.CharClass
 import Golem.Layout.Hyphenation
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
+import Golem.Layout.PageLabel (PageLabel, pageLabelInlines, plainLabel)
 import Golem.Layout.Ruby
 import Golem.Length qualified as L
 import Golem.Numerals (kanji, kanjiDigits)
@@ -144,8 +145,8 @@ data ComposeEnv = ComposeEnv
     {- | the patterns of the Latin words of a language span, from its
     language; Nothing is outside a span (docs/adr ADR 0187)
     -} cePatterns :: Maybe Text -> Maybe Patterns,
-    -- | page numbers of labels decided so far (S2); unknown labels take a one-digit stand-in
-    cePageOf :: Text -> Maybe Integer,
+    -- | page labels of labels decided so far (S2, docs/adr/0260); unknown labels take a one-digit stand-in
+    cePageOf :: Text -> Maybe PageLabel,
     -- | the look of the paragraph (golem-driver ADR 0004)
     ceLook :: !Look,
     -- | the look inside an inline element (strong, bold, italic, style, colour)
@@ -616,11 +617,14 @@ piecesOf env inl = case inl of
   Tcy sp t -> at sp [PBox lk t KindTcy (lkSize lk)]
   Number sp n style -> at sp (numberPieces env n style)
   Ref sp RefPage l ->
-    let n = fromMaybe 1 (cePageOf env l)
-        -- a number as any other, in the notation of [numbers] ref-page (docs/adr/0118)
-        digits = case ceRefPageNumbers env of
-          Just v | ceVertical env -> numberPieces env {ceVerticalNumbers = v} n Nothing
-          _ -> textPieces lk (T.pack (show n))
+    let label = fromMaybe (plainLabel 1) (cePageOf env l)
+        -- the label as written by pageLabelInlines (docs/adr/0260): a number of no notation as any
+        -- other, in the notation of [numbers] ref-page (docs/adr/0118); a label of a notation, its text
+        digits = case pageLabelInlines sp label of
+          [Number _ n _] -> case ceRefPageNumbers env of
+            Just v | ceVertical env -> numberPieces env {ceVerticalNumbers = v} n Nothing
+            _ -> textPieces lk (T.pack (show n))
+          is -> textPieces lk (T.concat [t | Text _ t <- is])
      in at sp (PAnchor (`AnchorPageRef` l) : digits)
   Ref sp _ l -> at sp (textPieces lk l)
   Deferred {} -> []

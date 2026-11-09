@@ -29,6 +29,22 @@ BOM や CR があると、原稿と同じエラー（G01002、G01003）が出ま
 [code: chapters] に、原稿のファイルを本の順に並べます。
 パスは、プロジェクトのフォルダからのパスで書きます（「[ref-title folders]」、[ref-page folders] ページ）。
 
+章の項目は、表の配列（[code: \[\[chapters\]\]]）の形でも書けます。
+一つの項目が一つの表になり、表の順が章の順になります。
+項目に [code: page-numbering] のような長い値を書くときは、この形のほうが一行が短くなります。
+このマニュアル自身の [code: manifest.toml] も、この形で書いています。
+表の配列は、ファイルの先頭のキー（[code: bibliography] など）の後に置きます。
+
+```toml
+bibliography = ["references.json"]
+
+[[chapters]]
+file = "preface.gm"
+
+[[chapters]]
+file = "chapters/01.gm"
+```
+
 一つの章をいくつかのファイルに分けて書くときは、配列を入れ子にします。
 
 ```toml

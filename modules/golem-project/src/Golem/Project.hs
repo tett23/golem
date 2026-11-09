@@ -21,7 +21,7 @@ import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -174,10 +174,10 @@ writtenPath p = fromRight p (normalizeRelative p)
 loadSources :: Files -> Map FilePath Text -> FileId -> FileTable -> Manifest -> IO (Either LoadFailure Loaded)
 loadSources files overlay mfid ft0 manifest = do
   -- chapters first, in manifest order
-  r <- foldM addChapter (Right (ft0, [], Seen Map.empty Map.empty, Map.empty)) (chapterFiles (manifestChapters manifest))
+  r <- foldM addChapter (Right (ft0, [], Seen Map.empty Map.empty, Map.empty, Map.empty)) (zip (chapterFiles (manifestChapters manifest)) (chapterNumberings (manifestChapters manifest)))
   case r of
     Left ds -> pure (Left (ds, Map.empty))
-    Right (ft1, chapters, seen, chapterSettings) -> do
+    Right (ft1, chapters, seen, chapterSettings, _) -> do
       let queue = map fst chapters
       r2 <- crawl ft1 seen Map.empty Map.empty queue
       pure $ case r2 of
@@ -189,9 +189,9 @@ loadSources files overlay mfid ft0 manifest = do
   where
     manifestSpan = mkSpan mfid 0 0
     baseSettings = manifestSource manifest
-    addChapter acc (p, master, edits) = case acc of
+    addChapter acc ((p, master, edits), numbering) = case acc of
       Left ds -> pure (Left ds)
-      Right (ft, chs, seen, settings) -> do
+      Right (ft, chs, seen, settings, numberings) -> do
         res <- filesResolve files p
         pure $ case res of
           Left e -> Left [pathDiagnostic manifestSpan p e]
@@ -200,11 +200,20 @@ loadSources files overlay mfid ft0 manifest = do
             Nothing ->
               let (fid, ft') = registerFile rel ft
                   own = applyEdits edits baseSettings
-               in case Map.lookup fid settings of
-                    Just earlier
+               in case (Map.lookup fid settings, Map.lookup fid numberings) of
+                    (Just earlier, _)
                       | earlier /= own ->
                           Left [diagnostic "G03001" Error manifestSpan (T.pack ("同じファイルを [source] の設定を変えて章に二度並べています: " <> rel))]
-                    _ -> Right (ft', chs <> [(fid, master)], see (writtenPath p) rel seen, Map.insert fid own settings)
+                    -- the pages of a file are of one section: the two entries must agree (G03123, docs/adr/0260)
+                    (_, Just earlier)
+                      | not (sameNumbering earlier numbering) ->
+                          let sites = map pnSpan (catMaybes [numbering, earlier])
+                           in Left
+                                [ (diagnostic "G03123" Error (fromMaybe manifestSpan (listToMaybe sites)) (T.pack ("同じファイルを page-numbering の設定を変えて章に二度並べています: " <> rel)))
+                                    { diagRelated = [(sp, "もう一つの項目の page-numbering") | sp <- drop 1 sites]
+                                    }
+                                ]
+                    _ -> Right (ft', chs <> [(fid, master)], see (writtenPath p) rel seen, Map.insert fid own settings, Map.insert fid numbering numberings)
     crawl ft _ sources edges [] = pure (Right (ft, sources, edges))
     crawl ft seen sources edges (fid : rest)
       | Map.member fid sources = crawl ft seen sources edges rest

@@ -6,6 +6,7 @@ The queries 'free' and 'isEmpty' read the current column.
 module Golem.Layout.Paginate.State
   ( Env (..),
     St (..),
+    Pending (..),
     initialState,
     top,
     cap,
@@ -49,6 +50,11 @@ data Env = Env
     envCapacity :: !Int
   }
 
+{- | A break not applied yet: a forced break (docs/adr ADR 0017), or the
+start of a section with its first page (docs/adr/0260).
+-}
+data Pending = PendingBreak !BreakKind | PendingSection !Int !(Maybe Integer)
+
 data St = St
   { sPage :: !Int,
     sColumn :: !Int,
@@ -64,7 +70,9 @@ data St = St
     sPendingNotes :: ![(NoteId, Int, Int)], -- note id, next line, remaining
 
     -- | forced breaks not applied yet, in the order written (docs/adr ADR 0017)
-    sBreaks :: ![BreakKind],
+    sBreaks :: ![Pending],
+    -- | the sections started and the page each opened, in order (docs/adr/0260)
+    sSections :: ![(Int, Int)],
     -- | the set of columns in effect, its first line on this page (docs/adr ADR 0025)
     sSet :: !ColumnSet,
     -- | footnote lines that every column of the set leaves at the foot of this page
@@ -101,7 +109,7 @@ data St = St
 
 -- | Page 1, column 0, nothing placed, in the columns of the page.
 initialState :: Env -> St
-initialState env = St 1 0 0 0 [] [] [] [] [] [] [] [] [] (envBase env) {csFirstLine = 0} 0 [] Nothing Nothing Nothing [] 0 [] Nothing [] False False False
+initialState env = St 1 0 0 0 [] [] [] [] [] [] [] [] [] [] (envBase env) {csFirstLine = 0} 0 [] Nothing Nothing Nothing [] 0 [] Nothing [] False False False
 
 -- | The first grid line of the set of columns on this page.
 top :: St -> Int
@@ -143,7 +151,7 @@ parityStart env p st =
    in if p (sPage st1) then st1 else blankPage env st1
 
 blankPage :: Env -> St -> St
-blankPage env st = st {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] (envCapacity env) [] : sDone st, sPage = sPage st + 1}
+blankPage env st = st {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] (envCapacity env) [] [] : sDone st, sPage = sPage st + 1}
 
 putSlot :: St -> Int -> Slotted -> [Text] -> [SrcSpan] -> St
 putSlot st n s labels marks = st {sSlots = sSlots st <> [(sUsed st, s)], sUsed = sUsed st + n, sLabels = sLabels st <> labels, sMarks = sMarks st <> marks, sHeadingOnly = False}
@@ -206,7 +214,7 @@ closePage :: Env -> St -> St
 closePage env st =
   if null (sSlots st) && null (sNotes st)
     then st
-    else st {sDone = PageOut (sPage st) (sColumn st) False (sSlots st) (sNotes st) (sLabels st) (sMarks st) (sTables st) (sSet st) (sRules st) (cap env st) (sUnmet st) : sDone st, sUnmet = []}
+    else st {sDone = PageOut (sPage st) (sColumn st) False (sSlots st) (sNotes st) (sLabels st) (sMarks st) (sTables st) (sSet st) (sRules st) (cap env st) (sUnmet st) [] : sDone st, sUnmet = []}
 
 -- | The next column of the page, or column 0 of the next page.
 nextColumn :: Env -> St -> St
@@ -220,7 +228,7 @@ advance env toPage st =
   let closed = closePage env st
       -- a page left with nothing in any column is blank
       written = any ((== sPage st) . poNumber) (sDone closed)
-      closed' = if toPage && not written then closed {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] (envCapacity env) [] : sDone closed} else closed
+      closed' = if toPage && not written then closed {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] (envCapacity env) [] [] : sDone closed} else closed
       fresh =
         closed'
           { sPage = if toPage then sPage st + 1 else sPage st,
@@ -275,7 +283,7 @@ isPageFigure = \case
 pageFigure :: Env -> St -> Int -> [Text] -> [SrcSpan] -> St
 pageFigure env st i labels marks =
   st
-    { sDone = PageOut (sPage st) 0 False [(0, SPageFigure i)] [] labels marks [] (sSet st) {csFirstLine = 0} [] (envCapacity env) [] : sDone st,
+    { sDone = PageOut (sPage st) 0 False [(0, SPageFigure i)] [] labels marks [] (sSet st) {csFirstLine = 0} [] (envCapacity env) [] [] : sDone st,
       sPage = sPage st + 1
     }
 
