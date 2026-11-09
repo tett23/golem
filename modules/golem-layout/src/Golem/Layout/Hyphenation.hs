@@ -5,6 +5,8 @@ module Golem.Layout.Hyphenation
   ( Patterns,
     parsePatterns,
     withExceptions,
+    overExceptions,
+    exceptionsOnly,
     hyphenate,
   )
 where
@@ -40,11 +42,26 @@ parsePatterns leftMin rightMin src = Patterns (Map.fromList (map one (T.words sr
 hyphens is never hyphenated.
 -}
 withExceptions :: Text -> Patterns -> Patterns
-withExceptions src ps = ps {patExceptions = Map.fromList (map one (T.words src))}
-  where
-    one w =
-      let parts = T.splitOn "-" w
-       in (T.toLower (T.concat parts), init (scanl1 (+) (map T.length parts)))
+withExceptions src ps = ps {patExceptions = Map.fromList (map exceptionEntry (T.words src))}
+
+{- | Exceptions written as hyphenated words over those of the patterns
+(docs/adr ADR 0272): a word given replaces the exception of the same word
+(in lower case, without its hyphens), and the others stay.
+-}
+overExceptions :: [Text] -> Patterns -> Patterns
+overExceptions ws ps = ps {patExceptions = Map.union (Map.fromList (map exceptionEntry ws)) (patExceptions ps)}
+
+{- | The exceptions of a language without patterns (docs/adr ADR 0272): the
+words given break at their hyphens, and no other word breaks.
+-}
+exceptionsOnly :: [Text] -> Patterns
+exceptionsOnly ws = Patterns Map.empty (Map.fromList (map exceptionEntry ws)) 0 0
+
+-- | A word written with hyphens: its letters in lower case, and where it breaks.
+exceptionEntry :: Text -> (Text, [Int])
+exceptionEntry w =
+  let parts = T.splitOn "-" w
+   in (T.toLower (T.concat parts), init (scanl1 (+) (map T.length parts)))
 
 -- | Positions (number of letters before the break) where the word may be hyphenated.
 hyphenPoints :: Patterns -> Text -> [Int]

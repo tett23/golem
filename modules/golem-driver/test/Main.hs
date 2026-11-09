@@ -13,6 +13,7 @@ import DiagnosticSitesSpec
 import DiagnosticsSpec
 import DoubleDashSpec (doubleDashTests)
 import EmetSamplesSpec (emetSamplesTests)
+import ExceptionsSpec (exceptionsTests)
 import ExpansionSpec (expansionTests)
 import FigureExternalSpec (figureExternalTests)
 import FigureSpec
@@ -93,7 +94,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, softHyphenTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, scriptsTests, decorationsTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, overflowTests, softHyphenTests, exceptionsTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, scriptsTests, decorationsTests]
         <> [ newProjectTests,
              newPlanTests,
              allTargetsTests,

@@ -46,6 +46,8 @@ module Golem.Project.Style
     isUrlCharStyle,
     paraLineBreaks,
     LocalStyles (..),
+    exceptionTagErrors,
+    exceptionWordErrors,
     noLocalStyles,
     StyleKind (..),
     LocalValue (..),
@@ -106,7 +108,7 @@ where
 import Control.Applicative ((<|>))
 import Control.Monad (join, unless, when)
 import Data.Bifunctor (bimap)
-import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
+import Data.Char (isAsciiLower, isAsciiUpper, isDigit, isLetter)
 import Data.Foldable (asum, toList)
 import Data.List (find, nub, nubBy)
 import Data.List.NonEmpty (NonEmpty (..))
@@ -128,6 +130,7 @@ import Golem.Project.TomlMessage (schemaMessage)
 import Golem.Project.TomlSchema
 import Golem.Regex (RegexError (..), compile)
 import Golem.Syntax
+import Golem.Syntax.LanguageTag (isLanguageTag)
 import Numeric.Natural (Natural)
 import Toml qualified
 import Toml.Schema
@@ -884,7 +887,10 @@ data Composition = Composition
     compProtrusion :: !Bool,
     compExpansion :: !(Maybe (Int, Int)),
     -- | the penalty of a break after an explicit hyphen (golem-layout ADR 0008)
-    compExplicitHyphenPenalty :: !Int
+    compExplicitHyphenPenalty :: !Int,
+    {- | [composition.hyphenation-exceptions] (docs/adr ADR 0272): the words
+    of each language tag as written, hyphens where they may break
+    -} compHyphenationExceptions :: !(Map Text [Text])
   }
   deriving stock (Eq, Show)
 
@@ -1459,7 +1465,7 @@ data Style = Style
   deriving stock (Eq, Show)
 
 defaultComposition :: Composition
-defaultComposition = Composition True False defaultRubyStyleDef "sesame" 100 200 (Abs 0) False Nothing 50
+defaultComposition = Composition True False defaultRubyStyleDef "sesame" 100 200 (Abs 0) False Nothing 50 Map.empty
 
 defaultStyle :: Style
 defaultStyle =
@@ -1864,6 +1870,7 @@ instance FromValue Composition where
     pr <- optKey "protrusion"
     ex <- optKey "expansion"
     eh <- optKey "explicit-hyphen-penalty"
+    hx <- optKey "hyphenation-exceptions"
     let d = defaultComposition
     pure
       Composition
@@ -1876,7 +1883,8 @@ instance FromValue Composition where
           compEmergencyStretch = fromMaybe (compEmergencyStretch d) es,
           compProtrusion = fromMaybe False pr,
           compExpansion = (\(Expansion l s) -> (l, s)) <$> ex,
-          compExplicitHyphenPenalty = fromMaybe (compExplicitHyphenPenalty d) eh
+          compExplicitHyphenPenalty = fromMaybe (compExplicitHyphenPenalty d) eh,
+          compHyphenationExceptions = fromMaybe Map.empty hx
         }
 
 instance FromValue SidenoteStyle where
@@ -2335,6 +2343,7 @@ styleChecks owner s =
   numberFormatChecks s
     <> styleNameChecks s
     <> compositionChecks s
+    <> hyphenationExceptionChecks s
     <> codeStyleChecks s
     <> ruleStyleChecks s
     <> [("G03029", "", path, m) | (path, m, _) <- hiddenFolioChecks (stHiddenFolio s)]
@@ -2401,6 +2410,55 @@ numberFormatChecks s =
 styleNameChecks :: Style -> [(Text, Text, [Scope], Text)]
 styleNameChecks s =
   [("G03006", n, styleKeys [kind, n], "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | (kind, n) <- map ("character-styles",) (Map.keys (stCharStyles s)) <> map ("paragraph-styles",) (Map.keys (stParaStyles s)), not (validStyleName n)]
+
+{- | G03126 to G03130 (docs/adr ADR 0272): the tags and the words of
+[composition.hyphenation-exceptions], each at its value.
+-}
+hyphenationExceptionChecks :: Style -> [(Text, Text, [Scope], Text)]
+hyphenationExceptionChecks s =
+  let lists = compHyphenationExceptions (stComposition s)
+      keys = Map.keys lists
+      at k = styleKeys ["composition", "hyphenation-exceptions", k]
+      wrongKeys = exceptionTagErrors keys
+   in [(code, "", at (keys !! i), m) | (i, code, m) <- wrongKeys]
+        <> [ (code, "", at k <> [ScopeIndex i], m)
+           | (j, (k, ws)) <- zip [0 ..] (Map.toList lists),
+             j `notElem` [i | (i, _, _) <- wrongKeys],
+             (i, code, m) <- exceptionWordErrors ws
+           ]
+
+{- | The tags of lists of hyphenation exceptions that are wrong (docs/adr
+ADR 0272), by their index: G03126 for a tag not of the form of a language
+tag, G03130 for a tag that differs from one before it only in case.
+-}
+exceptionTagErrors :: [Text] -> [(Int, Text, Text)]
+exceptionTagErrors tags =
+  [ e
+  | (i, t) <- zip [0 ..] tags,
+    e <-
+      take 1 $
+        [(i, "G03126", "分綴の例外の一覧のキーが言語のタグの形ではありません: " <> t) | not (isLanguageTag t)]
+          <> [(i, "G03130", "大文字と小文字だけが違う言語のタグの一覧が二つあります: " <> t) | T.toLower t `elem` map T.toLower (take i tags)]
+  ]
+
+{- | The words of a list of hyphenation exceptions that are wrong (docs/adr
+ADR 0272), by their index, the first error of each only: G03127 for a
+character that is neither a letter nor a hyphen (an empty word among
+them), G03128 for a hyphen at an end or two in a row, G03129 for a word
+the list has before it (in lower case, without its hyphens).
+-}
+exceptionWordErrors :: [Text] -> [(Int, Text, Text)]
+exceptionWordErrors ws =
+  [ e
+  | (i, w) <- zip [0 ..] ws,
+    e <-
+      take 1 $
+        [(i, "G03127", "分綴の例外の語には字と - だけを書きます: " <> w) | T.null w || T.any (\c -> c /= '-' && not (isLetter c)) w]
+          <> [(i, "G03128", "分綴の例外の語の - が端にあるか、二つ続いています: " <> w) | "-" `T.isPrefixOf` w || "-" `T.isSuffixOf` w || "--" `T.isInfixOf` w]
+          <> [(i, "G03129", "同じ語を二度書いています: " <> w) | key w `elem` map key (take i ws)]
+  ]
+  where
+    key = T.toLower . T.filter (/= '-')
 
 -- | G03006: the ranges of the values of [composition].
 compositionChecks :: Style -> [(Text, Text, [Scope], Text)]
@@ -2675,12 +2733,14 @@ data LocalStyles = LocalStyles
   { lsCharStyles :: !(Map Text CharStyleDef),
     lsParaStyles :: !(Map Text ParaStyleDef),
     -- | the regex styles of @style-def regex by paragraph style, in the order written (docs/adr ADR 0015)
-    lsRegexStyles :: !(Map Text [RegexStyleDef])
+    lsRegexStyles :: !(Map Text [RegexStyleDef]),
+    -- | the hyphenation exceptions of @hyphenation-exceptions by language tag (docs/adr ADR 0272)
+    lsHyphenationExceptions :: !(Map Text [Text])
   }
   deriving stock (Eq, Show)
 
 noLocalStyles :: LocalStyles
-noLocalStyles = LocalStyles Map.empty Map.empty Map.empty
+noLocalStyles = LocalStyles Map.empty Map.empty Map.empty Map.empty
 
 -- | The kind of a style @style-def defines.
 data StyleKind = CharacterKind | ParagraphKind
@@ -2939,7 +2999,9 @@ styleSchema =
           ("emergency-stretch", dim),
           ("protrusion", bool),
           ("expansion", NTable [("limit", int), ("step", int)]),
-          ("explicit-hyphen-penalty", int)
+          ("explicit-hyphen-penalty", int),
+          -- the tags and the words are checked by hyphenationExceptionChecks (docs/adr ADR 0272)
+          ("hyphenation-exceptions", NNamed Nothing (NArray str))
         ]
     notesNode =
       NTable
