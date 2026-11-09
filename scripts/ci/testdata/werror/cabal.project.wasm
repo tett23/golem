@@ -1,0 +1,4 @@
+packages: modules/*/*.cabal
+
+package a
+  ghc-options: -Wwarn

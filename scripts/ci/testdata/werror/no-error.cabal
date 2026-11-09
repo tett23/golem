@@ -1,0 +1,11 @@
+cabal-version: 3.0
+name: a
+
+common warnings
+  ghc-options:
+    -Wall
+    -Werror
+
+library
+  import: warnings
+  ghc-options: -Wno-error=name-shadowing
