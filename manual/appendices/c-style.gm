@@ -308,7 +308,7 @@ PDF では、表の行がセルの全体を収める最も少ない行を占め�
 | キー | 既定 | 意味 |
 |:---|:---|:---|
 | [code: kinsoku] | [code: "strict"] | 禁則の強さです。[code: "loose"] にすると、小書きの仮名と長音記号の行頭を許します。 |
-| [code: hanging-punctuation] | [code: false] | [code: true] にすると、行末の句読点のぶら下げを許します。 |
+| [code: hanging-punctuation] | [code: false] | [code: true] にすると、行末の句読点のぶら下げを許します。囲みを持つ段落ではぶら下げません。 |
 | [code: kenten] | [code: "sesame"] | 圏点の形の既定です。値は [code: \[kenten: ...\]] の [code: shape] と同じです（付録A）。 |
 | [code: pretolerance] | [code: 100] | 欧文の段落を、ハイフンを入れずに行に分けるときの、語間の伸び縮みの許容度です。 |
 | [code: tolerance] | [code: 200] | ハイフンを入れて行に分けるときの許容度です。 |
