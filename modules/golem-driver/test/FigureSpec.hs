@@ -169,6 +169,20 @@ pdfFigureTests =
       b <- buildMarksFilesWith src id (Just (withBodyFont (figStyle horizontalStyle))) (bodyFontFiles horizontalStyle <> [("images/f.pdf", figPdf), ("images/f.png", png False)])
       map (whereIs b) (bErrors b) @?= [(Just "a.gm", BS.length (TE.encodeUtf8 "本文。\n\n"))],
     testGroup
+      "G08020: a stream numbered 2^31 or more that the page names twice, at the @figure, not G08010 (docs/adr ADR 0259)"
+      [ testCase ("G08020: the stream " <> show k <> " named twice") $ do
+          let figPdf = numberedPdf [(1, "<< /Type /Catalog /Pages 2 0 R >>"), (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << >> /Contents [" <> ref <> " " <> ref <> "] >>"), (k, "<< /Length 20 >>\nstream\nq 0 g 0 0 1 1 re f Q\nendstream")]
+              ref = TE.encodeUtf8 (T.pack (show k)) <> " 0 R"
+          (codes, pdf, messages) <- pdfWith Dev "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", figPdf), ("images/f.png", png False)]
+          if k > 2147483647
+            then do
+              codes @?= [DiagnosticCode "G08020"]
+              messages @?= ["図版の PDF のページが二度以上名指すストリームのオブジェクトの番号が 2147483647 を超えます: images/f.pdf（" <> T.pack (show k) <> "）"]
+              pdf @?= Nothing
+            else codes @?= []
+      | k <- [2147483647, 2147483648 :: Integer]
+      ],
+    testGroup
       "a PDF figure of 200 by 100 pt fills the measure of 240 pt, its height by its turned size; a tall one is fitted to the 29 lines its number leaves (golem-driver ADR 0034)"
       [ testCase ("Rotate " <> show r) $ do
           (_, pl) <- layoutOk horizontal24 "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", rotatedPdf r), ("images/f.png", png False)]
@@ -256,6 +270,28 @@ innerFormNested pdf = do
           inner form @?= Nothing
         other -> assertFailure ("GolemC4 is not a reference: " <> show other)
     holders -> assertFailure ("the objects that name GolemC4 in their Resources: " <> show (map fst holders))
+
+{- | A PDF of the objects given with their numbers, any numbers: a
+cross-reference subsection of one entry for each object.
+-}
+numberedPdf :: [(Integer, BS.ByteString)] -> BS.ByteString
+numberedPdf objs =
+  let header = "%PDF-1.4\n"
+      bodies = [showB n <> " 0 obj\n" <> o <> "\nendobj\n" | (n, o) <- objs]
+      offsets = scanl (+) (BS.length header) (map BS.length bodies)
+      entry n o = showB n <> " 1\n" <> TE.encodeUtf8 (T.justifyRight 10 '0' (T.pack (show o))) <> " 00000 n \n"
+   in header
+        <> BS.concat bodies
+        <> "xref\n0 1\n0000000000 65535 f \n"
+        <> BS.concat (zipWith entry (map fst objs) offsets)
+        <> "trailer\n<< /Size "
+        <> showB (maximum (map fst objs) + 1)
+        <> " /Root 1 0 R >>\nstartxref\n"
+        <> showB (toInteger (last offsets))
+        <> "\n%%EOF\n"
+  where
+    showB :: (Show a) => a -> BS.ByteString
+    showB = TE.encodeUtf8 . T.pack . show
 
 -- | The PDF of a one-chapter project with files, or the error codes.
 pdfWith :: Profile -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([DiagnosticCode], Maybe BS.ByteString, [T.Text])
