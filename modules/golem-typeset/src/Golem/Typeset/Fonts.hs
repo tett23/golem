@@ -276,7 +276,7 @@ bookHasCode styleOf book = or [any (blockHas (styleOf fid)) bs | Document fid bs
       BulletList items -> any (any (blockHas st) . itemBlocks) items
       OrderedList items -> any (any (blockHas st) . itemBlocks) items
       DefList gs -> or [any (any (inlineHas st)) (dgTerms g) || any (any (blockHas st)) (dgDefs g) | g <- gs]
-      Table _ h rows -> any (any (inlineHas st)) (h <> concat rows)
+      TableBlock t -> any (any (inlineHas st)) (fromMaybe [] (tableCaption t) : tableHeader t <> concat (tableRows t))
       FigureBlock fig -> any (blockHas st) (figCaption fig)
       _ -> False
     inlineHas :: Style -> InlineF r -> Bool
@@ -401,7 +401,7 @@ blockInlineLists (Block _ _ _ body) = case body of
   BulletList items -> concatMap (concatMap blockInlineLists . itemBlocks) items
   OrderedList items -> concatMap (concatMap blockInlineLists . itemBlocks) items
   DefList gs -> concat [dgTerms g <> concatMap (concatMap blockInlineLists) (dgDefs g) | g <- gs]
-  Table _ h rows -> h <> concat rows
+  TableBlock t -> maybe [] pure (tableCaption t) <> tableHeader t <> concat (tableRows t)
   FigureBlock fig -> concatMap blockInlineLists (figCaption fig)
   _ -> []
 

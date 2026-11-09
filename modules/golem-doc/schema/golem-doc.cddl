@@ -2,7 +2,7 @@
 ; the Haskell types in Golem.Doc.IR mirror it. Sum types are arrays whose
 ; first element is a fixed tag; tags are never reused.
 
-document = [abi-version: 8, file: uint64, blocks: [* block]]
+document = [abi-version: 9, file: uint64, blocks: [* block]]
 
 span = [file: uint64, start: uint64, end: uint64]
 
@@ -18,7 +18,6 @@ block-body =
   / [2, [* list-item]]                             ; bullet list
   / [3, [* list-item]]                             ; ordered list
   / [4, [* def-group]]                             ; definition list
-  / [5, [* alignment], [* inlines], [* [* inlines]]] ; table
   / [6, code]                                      ; code block (golem-driver ADR 0023)
   / [7, figure]                                    ; figure
   / [8, channel]                                   ; channel output
@@ -26,7 +25,9 @@ block-body =
   / [11, break-kind]                               ; forced break (docs/adr ADR 0017)
   / [12, page-control]                             ; manual page break control (docs/adr ADR 0030)
   / [13, lines: 1..9223372036854775807]            ; blank lines before what follows (docs/adr ADR 0046)
-; 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
+  / [14, table]                                    ; table (docs/adr/0262)
+; 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005);
+; 5 (table without caption and widths) is retired (docs/adr/0262)
 
 heading-attrs = [toc-title: inlines / null, number: uint64 / null, nonumber: bool, notoc: bool]
 list-item = [number: uint64 / null, [* block]]
@@ -36,6 +37,8 @@ page-control = [0]                                 ; no page break
              / [1, 1..9223372036854775807]         ; need lines
              / [2, -9223372036854775808..-1 / 1..9223372036854775807] ; adjust the lines of the column
 alignment = 0..3                                   ; default, left, center, right
+table = [aligns: [* alignment], widths: [* column-width], caption: inlines / null, nonumber: bool, style: tstr / null, header: [* inlines], rows: [* [* inlines]]] ; style: null is table (docs/adr/0262)
+column-width = [0] / [1, rational] / [2, uint64] / [3, rational]  ; auto, zw, sp, percent
 figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: tstr / null, caption: [* block], page: uint64 / null, rotate: bool, nonumber: bool] ; page: golem-pdf ADR 0008; rotate: golem-driver ADR 0034; nonumber: docs/adr/0200
 code = [lang: tstr / null, numbers: bool / null, file: tstr / null, caption: inlines / null, diff: bool, lines: [* code-line], nonumber: bool] ; nonumber: docs/adr/0200
 code-line = [text: tstr, number: uint64 / null, diff-mark: (0..2) / null, highlight: bool, callouts: [* 1..50], span: span / null] ; added, removed, context; span: docs/adr/0218

@@ -24,6 +24,7 @@ import Golem.Layout.Paginate (NoteId (..))
 import Golem.LayoutSpec (PageGeometry (..))
 import Golem.Pdf qualified as P
 import Golem.Syntax
+import Golem.Project.Style (CaptionPosition (..), Style (..))
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
 
@@ -116,7 +117,7 @@ structureTree fe units figureAttrs =
       UHeading l _ _ -> [NKid (P.KidElem (P.structElem (headingType l) text))]
       UTerm _ -> [NTerm text]
       UTocEntry _ _ -> [NKid (P.KidElem (P.structElem P.STOCI text))]
-      UTable _ h rows -> [NKid (P.KidElem (tableElem i u h rows))]
+      UTable tbl -> [NKid (P.KidElem (tableElem i u tbl))]
       UCode _ code -> [NKid (P.KidElem (codeElem i u code))]
       UFigure fig -> [NKid (P.KidElem (figureElem i u fig))]
       _ -> []
@@ -127,15 +128,23 @@ structureTree fe units figureAttrs =
       4 -> P.SH4
       5 -> P.SH5
       _ -> P.SH6
-    -- a table: the header row of TH, the other rows of TD (golem-driver ADR 0008, 0031)
-    tableElem i u h rows =
-      let env = tableEnv fe (uStyle u) (lkLang (uLook u))
+    {- a table: the header row of TH, the other rows of TD (golem-driver ADR
+    0008, 0031), and its caption the first child, or the last below the
+    table, in the order it is set (docs/adr/0262) -}
+    tableElem i u tbl =
+      let env = tableEnv fe (uStyle u) (lkLang (uLook u)) tbl
+          h = tableHeader tbl
+          rows = tableRows tbl
+          caption = case tableCaption tbl of
+            Just is -> [P.KidElem (P.structElem P.SCaption (content (captionEnv fe u) (captionSite i) (numberedTitle lang (uSpan u) (Map.lookup (uSpan u) (bookTables book)) is)))]
+            Nothing -> []
+          below = stTableCaption (piStyle inp) == CaptionBelow
           blankRow = all (T.all isSpace . T.concat . map inlineText) h
           cellElem r c t is = P.structElem t (content env (cellSite i r c) is)
           cell r c t is = P.KidElem (cellElem r c t is)
           header = [P.KidElem (P.structElem P.STR [P.KidElem (cellElem 0 c P.STH is) {P.seAttrs = [P.Attribute "Table" [("Scope", P.OName "Column")]]} | (c, is) <- zip [0 ..] h]) | not blankRow]
           body = [P.KidElem (P.structElem P.STR [cell r c P.STD is | (c, is) <- zip [0 ..] row]) | (r, row) <- zip [1 ..] rows]
-       in P.structElem P.STable (header <> body)
+       in P.structElem P.STable (if below then header <> body <> caption else caption <> header <> body)
     -- a code block: its caption, its file name and each line a P of Code (golem-driver ADR 0017, 0023)
     codeElem i u code =
       let caption = case codeCaption code of

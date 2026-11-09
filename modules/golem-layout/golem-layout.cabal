@@ -91,6 +91,7 @@ test-suite golem-layout-test
                     LangSpec
                     LinkSpec
                     StructureSpec
+                    TableCaptionSpec
                     UrlBreakSpec
   build-depends:
     , base

@@ -166,6 +166,8 @@ HTML と EPUB には `lang` と `xml:lang` を、PDF には `/Lang` を書く（
 PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折り返す。
 技術書のためには、```` ```haskell numbers=10 file="src/Main.hs" highlight=12 diff=true callouts=true ```` のように開始の行（と `@listing`）に書くキーワード引数で、行番号、ファイル名、強調、差分、注釈の印（①）を付けられ、`@caption` で付けたキャプションにはリスト番号が振られる。
 色分け、強調と差分の背景、折り返した印、改ページの続きの表示は `style.toml` の `[code]` と `[code.colors]` で、枠は `[paragraph-styles.code]` の `border` で指定する（[golem-driver ADR 0023](./docs/golem-driver/adr/0023-code-block-book-features.md)）。
+表には `@caption` でキャプションを付けて表番号（既定 `表{chapter}-{n}`）を振り、`@column-widths 8zw auto` で列の幅を、`@style` でセルの段落スタイル（既定は組み込みの `table`）を指定できる。
+キャプションを表の上と下のどちらに置くかは `[tables]` の `caption-position` で決める（[docs/adr/0262](./docs/adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 PDF の索引は、`[index]` の `columns` と `column-gap` で、一段組みの本でも二段のように版面と異なる段数で組める（[docs/adr/0025](docs/adr/0025-index-columns.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 文字の色はスウォッチの CMYK のプロセスカラーで書く。

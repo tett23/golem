@@ -327,7 +327,7 @@ assembleResults channels style manifest project projectDiags results
           chapterRuns = [(erDocument r, ch) | ((fid, _), ch) <- zip (projectChapters project) chapterOfFile, Just r <- [Map.lookup fid results]]
           -- where G04007 points (golem-syntax ADR 0002)
           numberSites = Map.unions (map erNumberSites (Map.elems results))
-          cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style)) channels pageLines
+          cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style)) (stTableNumber style) channels pageLines
           -- the lines of a page; without [page.grid], no limit (docs/adr ADR 0047)
           pageLines = maybe maxBound (fromIntegral . gridLines) (stPage style >>= pageGrid)
           (book, s1Diags) = assemble cfg evalDeferred (map fst chapterRuns)
@@ -1071,16 +1071,18 @@ htmlConfig dev e book missing bib =
       hcFonts = Map.map (\fr -> (present (frJa fr), present (frLatin fr))) (stFonts style),
       -- the resolved styles (docs/adr ADR 0005)
       hcCharStyles = htmlCharStyles style,
-      hcParaStyles = htmlParaStyles style,
+      -- table is the style of the cells of tables: its rules for paragraphs only when a paragraph has it (docs/adr/0262)
+      hcParaStyles = forParagraphs (htmlParaStyles style),
       -- the styles of each file that differ from those of style.toml (docs/adr ADR 0014)
       hcLocalStyles =
         Map.fromList
           [ ( fid,
               HtmlLocalStyles
                 { hlCharStyles = Map.differenceWith changed (htmlCharStyles st) (htmlCharStyles style),
-                  hlParaStyles = Map.differenceWith changed (htmlParaStyles st) (htmlParaStyles style),
+                  hlParaStyles = forParagraphs (Map.differenceWith changed (htmlParaStyles st) (htmlParaStyles style)),
                   hlCaptionFace = mfilter (/= captionFace style) (Just (captionFace st)),
-                  hlSidenoteFace = mfilter (/= sidenoteFace style) (Just (sidenoteFace st))
+                  hlSidenoteFace = mfilter (/= sidenoteFace style) (Just (sidenoteFace st)),
+                  hlTableFaces = Map.differenceWith changed (tableFaces st) (tableFaces style)
                 }
             )
           | fid <- Map.keys (localStylesOf e),
@@ -1090,6 +1092,9 @@ htmlConfig dev e book missing bib =
       hcDev = dev,
       hcCaptionFace = captionFace style,
       hcSidenoteFace = sidenoteFace style,
+      -- the faces of the cells of tables: table, and the styles given to tables (docs/adr/0262)
+      hcTableFaces = tableFaces style,
+      hcTableCaptionBelow = stTableCaption style == CaptionBelow,
       hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
       hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
       hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
@@ -1136,6 +1141,18 @@ htmlConfig dev e book missing bib =
     changed a b = if a == b then Nothing else Just a
     captionFace st = let c = paraStyle st (Just "caption") in Face (c >>= psFont) (cssFontSize st <$> (c >>= psSize))
     sidenoteFace st = let d = paraStyle st (Just "sidenote") in Face (d >>= psFont) (cssFontSize st <$> (d >>= psSize))
+    tableFace st n = let d = paraStyle st (Just n) in Face (d >>= psFont) (cssFontSize st <$> (d >>= psSize))
+    forParagraphs = if "table" `elem` paragraphStyles then id else Map.delete "table"
+    paragraphStyles = [n | Document _ bs <- bookDocs book, Block _ _ _ (Paragraph (Just n) _) <- universeOf bs]
+    tableFaces st = Map.fromList [(n, tableFace st n) | n <- "table" : tableStyles]
+    tableStyles = Set.toList (Set.fromList [n | Document _ bs <- bookDocs book, Block _ _ _ (TableBlock Table {tableStyle = Just n}) <- universeOf bs])
+    universeOf = concatMap (\b -> b : universeOf (innerOf (blockBody b)))
+    innerOf = \case
+      BulletList items -> concatMap itemBlocks items
+      OrderedList items -> concatMap itemBlocks items
+      DefList gs -> concat (concatMap dgDefs gs)
+      FigureBlock f -> figCaption f
+      _ -> []
     ruby = compRuby (stComposition style)
 
 -- | Writes the HTML site to build/html: its pages, its CSS, its index and its images.
@@ -1185,7 +1202,7 @@ writeTextTarget root dev e bib ft book = do
           TextVertical -> ("vertical", GT.Vertical)
           TextHorizontal -> ("horizontal", GT.Horizontal)
     -- each document with the indents of its style (docs/adr ADR 0014)
-    let pages = GT.renderText (mdLanguage md) (stNumbersVertical style) dev (textIndents . docStyles e) (textLists style) bib gv ft book
+    let pages = GT.renderText (mdLanguage md) (stNumbersVertical style) dev (textIndents . docStyles e) (textLists style) (stTableCaption style == CaptionBelow) bib gv ft book
     forM pages $ \(p, t) -> do
       writeUtf8File (dir </> sub </> p) t
       pure (dir </> sub </> p)

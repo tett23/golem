@@ -27,7 +27,7 @@ checking file response check = do
   let d = cbor (TMap [(TString "commands", TList [TString "shout"]), (TString "data", TList [TString "table"])])
       escape = T.pack . concatMap (printf "\\%02x") . BS.unpack
       filled =
-        T.replace "{{ABI}}" "8"
+        T.replace "{{ABI}}" (T.pack (show abiVersion))
           . T.replace "{{DESCRIBE}}" (escape d)
           . T.replace "{{DESCRIBE_LEN}}" (T.pack (show (BS.length d)))
           . T.replace "{{RESPONSE}}" (escape response)

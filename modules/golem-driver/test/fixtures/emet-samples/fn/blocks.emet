@@ -37,7 +37,7 @@ tsvTable text = case tsv text of {
 }
 
 tableOf :: List String -> List (List String) -> List Bool -> Blocks
-tableOf header rows flags = [Block.Table (aligns header flags) (List.map Inline.text header) (List.map (row flags) rows)]
+tableOf header rows flags = [Block.TableBlock (Block.Table (aligns header flags) [] Nothing False Nothing (List.map Inline.text header) (List.map (row flags) rows))]
 
 always :: String -> Bool
 always _ = True

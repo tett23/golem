@@ -88,25 +88,29 @@ walkBlock f True st (Block.Heading level attrs xs) = rewrap (Block.Heading level
 walkBlock f headings st (Block.BulletList items) = rewrap Block.BulletList (listGo (walkItem f headings) st items [] False)
 walkBlock f headings st (Block.OrderedList items) = rewrap Block.OrderedList (listGo (walkItem f headings) st items [] False)
 walkBlock f headings st (Block.DefList groups) = rewrap Block.DefList (listGo (walkGroup f headings) st groups [] False)
-walkBlock f _ st (Block.Table aligns header rows) = walkTable f st aligns header rows
+walkBlock f _ st (Block.TableBlock (Block.Table aligns widths caption nonumber style header rows)) = walkTable f st (retable aligns widths caption nonumber style) header rows
 walkBlock _ _ st _ = (Nothing, st)
 
-walkTable :: (s -> String -> (Maybe Inlines, s)) -> s -> List Block.Alignment -> List Inlines -> List (List Inlines) -> (Maybe Block.Block, s)
-walkTable f st aligns header rows = case listGo (walkInlines f) st header [] False of {
+-- A table of the same fields but the header row and the body rows.
+retable :: List Block.Alignment -> List Block.ColumnWidth -> Maybe Inlines -> Bool -> Maybe String -> List Inlines -> List (List Inlines) -> Block.Block
+retable aligns widths caption nonumber style header rows = Block.TableBlock (Block.Table aligns widths caption nonumber style header rows)
+
+walkTable :: (s -> String -> (Maybe Inlines, s)) -> s -> (List Inlines -> List (List Inlines) -> Block.Block) -> List Inlines -> List (List Inlines) -> (Maybe Block.Block, s)
+walkTable f st mk header rows = case listGo (walkInlines f) st header [] False of {
   (h, st2) -> case listGo (listGo1 (walkInlines f)) st2 rows [] False of {
-    (Nothing, st3) -> (table aligns h header Nothing rows, st3)
-    (Just rs, st3) -> (table aligns h header (Just rs) rows, st3)
+    (Nothing, st3) -> (table mk h header Nothing rows, st3)
+    (Just rs, st3) -> (table mk h header (Just rs) rows, st3)
   }
 }
 
 listGo1 :: (s -> a -> (Maybe a, s)) -> s -> List a -> (Maybe (List a), s)
 listGo1 g st xs = listGo g st xs [] False
 
-table :: List Block.Alignment -> Maybe (List Inlines) -> List Inlines -> Maybe (List (List Inlines)) -> List (List Inlines) -> Maybe Block.Block
+table :: (List Inlines -> List (List Inlines) -> Block.Block) -> Maybe (List Inlines) -> List Inlines -> Maybe (List (List Inlines)) -> List (List Inlines) -> Maybe Block.Block
 table _ Nothing _ Nothing _ = Nothing
-table aligns (Just h) _ (Just rs) _ = Just (Block.Table aligns h rs)
-table aligns (Just h) _ Nothing rows = Just (Block.Table aligns h rows)
-table aligns Nothing header (Just rs) _ = Just (Block.Table aligns header rs)
+table mk (Just h) _ (Just rs) _ = Just (mk h rs)
+table mk (Just h) _ Nothing rows = Just (mk h rows)
+table mk Nothing header (Just rs) _ = Just (mk header rs)
 
 walkItem :: (s -> String -> (Maybe Inlines, s)) -> Bool -> s -> Block.ListItem -> (Maybe Block.ListItem, s)
 walkItem f headings st (Block.ListItem n bs) = rewrap (Block.ListItem n) (listGo (walkBlock f headings) st bs [] False)

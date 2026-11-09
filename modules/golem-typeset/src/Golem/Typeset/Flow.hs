@@ -4,6 +4,7 @@
 module Golem.Typeset.Flow
   ( SetLine (..),
     CodeInfo (..),
+    CodeCaption (..),
     PlacedSidenote (..),
     PlacedFigure (..),
     TableGeometry (..),
@@ -255,8 +256,13 @@ data PdfLayout = PdfLayout
     plHeadings :: !(Map Int HeadingBlock),
     -- | sidenotes by page number (golem-driver ADR 0006)
     plSidenotes :: !(Map Int [PlacedSidenote]),
-    -- | the cell lines on each grid line of a table, shifted to their columns (golem-driver ADR 0008)
-    plTableLines :: !(Map Int [SetLine]),
+    {- | the cell lines on each grid line of a table, shifted to their
+    columns (golem-driver ADR 0008), each with its place among the lines of
+    its row: 0 for a cell at the size of the grid, whose lines are on grid
+    lines of their own; the lines of cells of another size are on the first
+    grid line of their row, a pitch of their size apart (docs/adr/0262)
+    -}
+    plTableLines :: !(Map Int [(Int, SetLine)]),
     -- | the width of each table and its grid lines (golem-driver ADR 0031)
     plTables :: !(Map Int TableGeometry),
     -- | the leader and page number of each table of contents entry, by its last line (golem-driver ADR 0009)
@@ -275,7 +281,9 @@ data PdfLayout = PdfLayout
     plRules :: !(Map Int RuledInfo),
     -- | the units of the book by their indices, and the composition: what the structure tree is made of (docs/adr ADR 0183)
     plUnits :: ![(Int, Unit)],
-    plFlowEnv :: FlowEnv
+    plFlowEnv :: FlowEnv,
+    -- | the caption of each table by its first grid line (docs/adr/0262)
+    plTableCaptions :: !(Map Int CodeCaption)
   }
 
 data Built = Built
@@ -286,7 +294,7 @@ data Built = Built
     bHeadings :: Map Int HeadingBlock,
     -- | errors found while building (G07022, G07023, G07024, G07041, G07042)
     bErrors :: [Diagnostic],
-    bTableLines :: Map Int [SetLine],
+    bTableLines :: Map Int [(Int, SetLine)],
     bTables :: Map Int TableGeometry,
     -- | the span of each heading block by its first line (golem-driver ADR 0009)
     bHeadingSpans :: Map Int SrcSpan,
@@ -309,7 +317,8 @@ data Built = Built
     bFlowEnv :: FlowEnv,
     -- | the units composed and the marker widths of the lists, for the next round of S2 to reuse (docs/adr ADR 0251)
     bComposed :: ComposedUnits,
-    bWidths :: Map Int Sp
+    bWidths :: Map Int Sp,
+    bTableCaptions :: Map Int CodeCaption
   }
 
 {- | What style.toml alone decides before the layout (golem-driver ADR
@@ -440,7 +449,7 @@ layoutLines :: PdfLayout -> [Line]
 layoutLines layout =
   concat
     [ concat [slLine sl : concatMap snd (slNotes sl) <> concatMap snd (slSidenotes sl) | sl <- Map.elems (plLines layout)],
-      [slLine sl | sls <- Map.elems (plTableLines layout), sl <- sls],
+      [slLine sl | sls <- Map.elems (plTableLines layout), (_, sl) <- sls],
       concatMap pfCaption (Map.elems (plFigures layout)),
       concatMap psLines (concat (Map.elems (plSidenotes layout))),
       concat [[tpLeader tp, tpNumber tp] | tp <- Map.elems (plTocPages layout)]
@@ -518,7 +527,7 @@ layoutFigures reuse inp geom fonts figures = do
           atHeading hs tp = tp {tpLeader = withBoxSource (SourceGrid, hs) (tpLeader tp), tpNumber = withBoxSource (SourceGrid, hs) (tpNumber tp)}
           tocPages = Map.fromList [(lid, atHeading hs (tocPage tg e (pageNumberLine env n))) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
        in case concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) pages) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built))
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) pages) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built))
             ds -> Left ds
 
 {- | The most grid lines a column may have with @page-lines (docs/adr ADR
@@ -699,7 +708,7 @@ pageStarts layout = map start (pagesOf (plPages layout))
     firstPart lid = maybe False ((== lid) . ciFirst) (Map.lookup lid (plCodes layout))
     lineStart lid =
       let block = snd <$> Map.lookupLE lid (plLineSpans layout)
-          sets = fromMaybe (maybe [] pure (Map.lookup lid (plLines layout))) (Map.lookup lid (plTableLines layout))
+          sets = fromMaybe (maybe [] pure (Map.lookup lid (plLines layout))) (map snd <$> Map.lookup lid (plTableLines layout))
           -- a block of no length (a heading) holds whatever of its file its line shows
           inside b c = spanFile (snd (bcSource c)) == spanFile b && bcAt c >= 0 && (spanLength b == 0 || (spanStart b <= bcAt c && bcAt c <= spanEnd b))
        in case block of
@@ -893,7 +902,7 @@ layoutPages provider inp0 = case checkedGeometry inp of
     inp = codeInput inp0
     texts layout =
       [ [ case Map.lookup lid (plTableLines layout) of
-            Just cells -> T.intercalate " " (map setLineText cells)
+            Just cells -> T.intercalate " " (map (setLineText . snd) cells)
             Nothing -> setLineText sl
             <> maybe "" (\tp -> boxesText (tpLeader tp) <> boxesText (tpNumber tp)) (Map.lookup lid (plTocPages layout))
         | (_, s) <- poSlots p,
@@ -1385,7 +1394,7 @@ data UnitKind
   | -- | a term of a definition list; indented in a list item (golem-driver ADR 0013)
     UTerm !Indent
   | UFigure Figure
-  | UTable [Alignment] [[Inline]] [[[Inline]]]
+  | UTable Table
   | -- | grid lines between paragraphs of a style (docs/adr ADR 0005)
     UGap Int
   | -- | an entry of the table of contents: its level and its heading (golem-driver ADR 0009)
@@ -1560,7 +1569,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
                   blocksOf k ds = let (k', dss) = mapAccumL (blocks style ctx False) k ds in (k', concat dss)
                   (n', uss) = mapAccumL group (n + 1) (zip [0 ..] gs)
                in (n', inFrame (frame n FDefList) (concat uss))
-            Table aligns h rows -> (n, [plainUnit (UTable aligns h rows) lbl []])
+            TableBlock t -> (n, [plainUnit (UTable t) lbl []])
             -- always in the paragraph style code (golem-driver ADR 0017)
             CodeBlock code -> (n, [unit (UCode 0 code) lbl [] (codeLook style geom) (paraSizeSource style (Just "code"))])
             FigureBlock fig -> (n, [plainUnit (UFigure fig) lbl []])
@@ -1845,9 +1854,24 @@ captionEnv fe u =
   let (captionRole, cs) = paraFace (uStyle u) (feGeom fe) "caption"
    in (withDocStyle (uStyle u) (lookEnv fe ((styleLook (uStyle u) (Just "caption") captionRole cs) {lkLang = lkLang (uLook u)}))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption"), ceSizeSource = paraSizeSource (uStyle u) (Just "caption"), ceSite = captionSite (uIndex u)}
 
--- | The composition of the cells of a table: the body size, no hanging punctuation (golem-driver ADR 0008), in the language of the table (docs/adr ADR 0187).
-tableEnv :: FlowEnv -> Style -> Maybe Text -> ComposeEnv
-tableEnv fe st lang = let env = withDocStyle st (feBodyEnv fe) in env {ceHanging = False, ceLook = (ceLook env) {lkLang = lang}}
+{- | The composition of the cells of a table: the role, the size, the aki
+set and the keys of the paragraph style of its cells, table when it has
+none (docs/adr/0262), no hanging punctuation (golem-driver ADR 0008), in
+the language of the table (docs/adr ADR 0187).
+-}
+tableEnv :: FlowEnv -> Style -> Maybe Text -> Table -> ComposeEnv
+tableEnv fe st lang t =
+  let name = tableStyleName t
+      (role, ts) = paraFace st (feGeom fe) name
+   in (withDocStyle st (lookEnv fe ((styleLook st (Just name) role ts) {lkLang = lang}))) {ceHanging = False, ceAkiSet = akiSetOf st (Just name), ceSizeSource = paraSizeSource st (Just name)}
+
+-- | The paragraph style of the cells of a table (docs/adr/0262).
+tableStyleName :: Table -> Text
+tableStyleName = fromMaybe "table" . tableStyle
+
+-- | The size of the cells of a table (docs/adr/0262).
+tableCellSize :: FlowEnv -> Style -> Table -> Sp
+tableCellSize fe st t = snd (paraFace st (feGeom fe) (tableStyleName t))
 
 -- | The composition of the notes and sidenotes of a unit: the body size of its document's style.
 noteEnv :: FlowEnv -> Style -> ComposeEnv
@@ -2031,14 +2055,14 @@ forceComposed c = evaluate (length (show (map lineRatio (cLines c))) + length (c
 (golem-driver ADR 0008), with the notes, sidenotes and index marks of each
 line of each row, the header row first.
 -}
-composeTable :: FlowEnv -> Int -> Style -> Maybe Text -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
-composeTable fe i st lang aligns h rows
+composeTable :: FlowEnv -> Int -> Style -> Maybe Text -> Table -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
+composeTable fe i st lang t
   -- counted before any cell is composed (docs/adr/0224)
   | cells > maxTableCells = Left (TooManyCells cells)
-  | otherwise = first LayoutRefused (composeTableCells fe i st lang aligns h rows)
+  | otherwise = first LayoutRefused (composeTableCells fe i st lang t)
   where
     -- a header row of empty cells too, which is composed
-    cells = length h + sum (map length rows)
+    cells = length (tableHeader t) + sum (map length (tableRows t))
 
 {- | The most cells of a table set in PDF, the header row's included
 (docs/adr/0224, G07108).
@@ -2046,15 +2070,17 @@ composeTable fe i st lang aligns h rows
 maxTableCells :: Int
 maxTableCells = 100000
 
--- | Why a table is not set: too many cells (G07108), or its layout (G07041).
+-- | Why a table is not set: too many cells (G07108), or its layout (G07041, G07114, G07115).
 data TableRefusal
   = TooManyCells !Int
-  | LayoutRefused !TableError
+  | LayoutRefused ![TableError]
   deriving stock (Show)
 
-composeTableCells :: FlowEnv -> Int -> Style -> Maybe Text -> [Alignment] -> [[Inline]] -> [[[Inline]]] -> Either TableError (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
-composeTableCells fe i st lang aligns h rows =
-  let env = tableEnv fe st lang
+composeTableCells :: FlowEnv -> Int -> Style -> Maybe Text -> Table -> Either [TableError] (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
+composeTableCells fe i st lang t =
+  let env = tableEnv fe st lang t
+      h = tableHeader t
+      rows = tableRows t
       -- no break between the last two Japanese characters of a cell (golem-driver ADR 0037); each cell its place (docs/adr ADR 0183)
       cellOf r c is = first keepLastTwo (composeInlines env {ceSite = cellSite i r c} is)
       hCells = zipWith (cellOf 0) [0 ..] h
@@ -2068,20 +2094,31 @@ composeTableCells fe i st lang aligns h rows =
         Box _ c -> T.all isSpace (bcText c)
         _ -> True
       header = if all (all blank . fst) hCells then [] else hCells
-   in case layoutTable (feParams fe) (feMeasure fe) (pgFontSize (feGeom fe)) aligns (map fst header) (map (map fst) rCells) of
+   in -- the gap between columns: one character of the cells (docs/adr/0262)
+      case layoutTable (feParams fe) (feMeasure fe) (tableCellSize fe st t) (tableWidths t) (tableAligns t) (map fst header) (map (map fst) rCells) of
         Left e -> Left e
-        Right t -> Right (t, rowAttached header (stHeader t) (stHeaderLines t) : zipWith3 rowAttached rCells (stRows t) (stRowLines t))
+        Right set -> Right (set, rowAttached header (stHeader set) (stHeaderLines set) : zipWith3 rowAttached rCells (stRows set) (stRowLines set))
+
+{- | The caption of a table (docs/adr/0262): the table number, the
+separator of the language of the book (golem-driver ADR 0042) and the
+caption, set as the caption of a code block over the measure.
+-}
+tableCaptionOf :: FlowEnv -> Unit -> Table -> CodeCaption
+tableCaptionOf fe u t = captionLinesOf fe u 0 (Map.lookup (uSpan u) (bookTables (piBook (feInput fe)))) (tableCaption t)
 
 {- | The caption of a code block: the listing number, the separator of the
 language of the book (golem-driver ADR 0042) and the caption, set as the
 caption of a figure over the width of the block (golem-driver ADR 0023).
 -}
 codeCaptionOf :: FlowEnv -> Unit -> Sp -> Code -> CodeCaption
-codeCaptionOf fe u lead code = case codeCaption code of
+codeCaptionOf fe u lead code = captionLinesOf fe u lead (Map.lookup (uSpan u) (bookListings (piBook (feInput fe)))) (codeCaption code)
+
+-- | A caption of a code block or a table: its number, if any, and its inlines, over the measure less the lead.
+captionLinesOf :: FlowEnv -> Unit -> Sp -> Maybe Text -> Maybe [Inline] -> CodeCaption
+captionLinesOf fe u lead number = \case
   Nothing -> CodeCaption [] fs pitch 0 []
   Just is ->
     let inp = feInput fe
-        number = Map.lookup (uSpan u) (bookListings (piBook inp))
         captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number is
         (_, cs) = paraFace (uStyle u) (feGeom fe) "caption"
         captionParams = (feParams fe) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition (piStyle inp)))}
@@ -2141,10 +2178,12 @@ data Numbered = Numbered
     nuFigures :: Map Int PlacedFigure,
     nuHeadings :: Map Int HeadingBlock,
     nuErrors :: [Diagnostic],
-    nuTableLines :: Map Int [SetLine],
+    nuTableLines :: Map Int [(Int, SetLine)],
     nuTables :: Map Int TableGeometry,
     nuHeadingSpans :: Map Int SrcSpan,
-    nuTocLines :: Map Int (SrcSpan, Sp)
+    nuTocLines :: Map Int (SrcSpan, Sp),
+    -- | the caption of each table by its first grid line (docs/adr/0262)
+    nuTableCaptions :: Map Int CodeCaption
   }
 
 -- | The label of a unit, on its first line.
@@ -2215,28 +2254,40 @@ spaceAfterCode pitch fs infos = \case
 -- | Numbers the lines of the next unit in document order.
 numberUnit :: FlowEnv -> ComposedUnits -> Numbered -> (Int, Unit) -> Numbered
 numberUnit fe cu nb (i, u) = case uKind u of
-  UTable {} -> maybe nb (\r -> numberTable fe u r nb) (Map.lookup i (cuTables cu))
+  UTable t -> maybe nb (\r -> numberTable fe u t r nb) (Map.lookup i (cuTables cu))
   _ -> headingAndTocLines (pgFontSize (feGeom fe)) cu (nuNext nb) i u (numberOther fe cu nb (i, u))
 
--- | Numbers the lines of a table, or adds its error (G07108, G07041, G07042).
-numberTable :: FlowEnv -> Unit -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]]) -> Numbered -> Numbered
-numberTable fe u r nb = case r of
+-- | Numbers the lines of a table, or adds its errors (G07108, G07041, G07042, G07114, G07115, G07116).
+numberTable :: FlowEnv -> Unit -> Table -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]]) -> Numbered -> Numbered
+numberTable fe u tbl r nb = case r of
   Left (TooManyCells n) ->
     nb {nuErrors = nuErrors nb <> [diagnostic "G07108" Error (uSpan u) ("表のセルが多すぎて PDF に組めません（" <> T.pack (show n) <> " 個、上限は " <> T.pack (show maxTableCells) <> " 個）")]}
-  Left (LayoutRefused (ColumnsTooWide mn avail)) ->
-    nb {nuErrors = nuErrors nb <> [diagnostic "G07041" Error (uSpan u) ("表の列の最小の幅の合計（" <> L.mmText mn <> "）が使える幅（" <> L.mmText avail <> "）に収まりません")]}
+  Left (LayoutRefused errs) -> nb {nuErrors = nuErrors nb <> map layoutError errs}
   Right (t, atts)
-    | tall@(_ : _) <- [row | (row, h) <- zip [1 :: Int ..] (stRowLines t), stHeaderLines t + h > capacity] ->
-        nb {nuErrors = nuErrors nb <> [diagnostic "G07042" Error (uSpan u) ("表の " <> T.pack (show row) <> " 行目が見出しの行とともに一ページに収まりません") | row <- tall]}
+    | not (null tall && null captionTall) ->
+        nb
+          { nuErrors =
+              nuErrors nb
+                <> [diagnostic "G07042" Error (uSpan u) ("表の " <> T.pack (show row) <> " 行目が見出しの行とともに一ページに収まりません") | row <- tall]
+                <> captionTall
+          }
     | otherwise ->
-        let heights = stHeaderLines t : stRowLines t
-            starts = scanl (+) nextId heights
+        let cap = tableCaptionOf fe u tbl
+            capIds = if below then [rowsEnd .. rowsEnd + capN - 1] else [nextId .. nextId + capN - 1]
+            rowsStart = if below then nextId else nextId + capN
+            rowsEnd = rowsStart + sum heights
+            starts = scanl (+) rowsStart heights
+            -- the grid line of the j-th line of a row: its own at the size of the grid, else where it starts
+            gridOf j = if sized then j else min (gridLines j - 1) (unSp (fromIntegral j * cellPitch) `div'` unSp pitch)
             rowsOut =
-              [ ( [ LineBox lid [NoteBody key (length nls) | (key, nls) <- ns] (if lid == nextId then unitLabel u else []) ms (maximum (0 : [lineReach fe l | c <- cells, (j, l) <- zip [0 :: Int ..] (scLines c), j == k]))
-                  | (k, (lid, (ns, _, ms))) <- zip [0 ..] (zip ids att)
+              [ ( [ LineBox lid [NoteBody key (length nls) | (key, nls) <- ns] (if lid == nextId then unitLabel u else []) ms (maximum (0 : [lineReach fe l | c <- cells, (j, l) <- zip [0 :: Int ..] (scLines c), gridOf j == k]))
+                  | (k, lid) <- zip [0 ..] ids,
+                    let here = [a | (j, a) <- zip [0 :: Int ..] att, gridOf j == k]
+                        ns = concat [x | (x, _, _) <- here]
+                        ms = concat [x | (_, _, x) <- here]
                   ],
-                  Map.fromList [(lid, SetLine emptyLine fs 0 ns sn Nothing) | (lid, (ns, sn, _)) <- zip ids att],
-                  Map.fromList [(lid, [SetLine l fs (scOffset c + sh) [] [] Nothing | c <- cells, (j, (l, sh)) <- zip [0 :: Int ..] (zip (scLines c) (scShifts c)), j == k]) | (k, lid) <- zip [0 ..] ids]
+                  Map.fromList [(lid, SetLine emptyLine fs 0 (concat [x | (j, (x, _, _)) <- zip [0 :: Int ..] att, gridOf j == k]) (concat [x | (j, (_, x, _)) <- zip [0 :: Int ..] att, gridOf j == k]) Nothing) | (k, lid) <- zip [0 ..] ids],
+                  Map.fromList [(lid, [(if sized then 0 else j, SetLine l ts (scOffset c + sh) [] [] Nothing) | c <- cells, (j, (l, sh)) <- zip [0 :: Int ..] (zip (scLines c) (scShifts c)), gridOf j == k]) | (k, lid) <- zip [0 ..] ids]
                 )
               | (start, h, cells, att) <- zip4 starts heights (stHeader t : stRows t) atts,
                 let ids = [start .. start + h - 1]
@@ -2244,6 +2295,8 @@ numberTable fe u r nb = case r of
             (headerBoxes, rowBoxes) = case [bs | (bs, _, _) <- rowsOut] of
               (hb : rbs) -> (hb, rbs)
               [] -> ([], [])
+            -- the grid lines of the caption, with its index marks on the first; the label on the first line of the table
+            captionBoxes = [LineBox lid [] (if lid == nextId then unitLabel u else []) (if k == (0 :: Int) then ccMarks cap else []) 0 | (k, lid) <- zip [0 ..] capIds]
             {- a grid line of space before and after a table; none
             after a heading, one between two tables (golem-driver ADR 0031) -}
             spaceBefore = case reverse (nuFlow nb) of
@@ -2252,17 +2305,46 @@ numberTable fe u r nb = case r of
               (FSpace _ : FTable {} : _) -> 0
               _ -> 1
          in nb
-              { nuNext = nextId + sum heights,
-                nuFlow = nuFlow nb <> [FTable nextId spaceBefore headerBoxes rowBoxes, FSpace 1],
-                nuLines = Map.unions (nuLines nb : [m | (_, m, _) <- rowsOut]),
+              { nuNext = nextId + capN + sum heights,
+                nuFlow = nuFlow nb <> [FTable rowsStart spaceBefore headerBoxes rowBoxes captionBoxes below, FSpace 1],
+                nuLines = Map.unions (nuLines nb : Map.fromList [(lid, SetLine emptyLine fs 0 [] [] Nothing) | lid <- capIds] : [m | (_, m, _) <- rowsOut]),
                 nuTableLines = Map.unions (nuTableLines nb : [m | (_, _, m) <- rowsOut]),
-                nuTables = Map.insert nextId (TableGeometry (stWidth t) 0 0 (sum heights)) (nuTables nb)
+                nuTables = Map.insert rowsStart (TableGeometry (stWidth t) 0 0 (sum heights)) (nuTables nb),
+                nuTableCaptions = Map.union (Map.fromList [(c0, cap) | c0 <- take 1 capIds]) (nuTableCaptions nb)
               }
+    where
+      -- the grid lines of a row of m lines: the least that hold them, as a caption (docs/adr/0262)
+      gridLines m = if sized then max 1 m else hbSpan (headingBlock fs pitch ts m 1)
+      -- a table without a header row takes no grid line for it (golem-driver ADR 0031)
+      headerLines = if null (stHeader t) then 0 else gridLines (stHeaderLines t)
+      heights = headerLines : map gridLines (stRowLines t)
+      rowLines = map gridLines (stRowLines t)
+      tall = [row | (row, h) <- zip [1 :: Int ..] rowLines, headerLines + h > capacity]
+      capN = ccSpan (tableCaptionOf fe u tbl)
+      -- the row the caption is kept with: the first above, the last below; none when it is too tall itself
+      touching = if below then lastOf rowLines else take 1 rowLines
+      lastOf xs = [last xs | not (null xs)]
+      captionTall =
+        [ diagnostic "G07116" Error (uSpan u) ("表のキャプションが、" <> (if below then "見出しの行と本体の最後の行" else "見出しの行と本体の最初の行") <> "とともに一つの段に収まりません")
+        | capN > 0,
+          all (\h -> headerLines + h <= capacity) touching,
+          headerLines + sum touching + capN > capacity
+        ]
   where
     nextId = nuNext nb
     fs = pgFontSize (feGeom fe)
+    pitch = pgLinePitch (feGeom fe)
+    ts = tableCellSize fe (uStyle u) tbl
+    sized = ts == fs
+    cellPitch = Sp (round (toRational (unSp pitch) * toRational (unSp ts) / toRational (unSp fs)))
+    div' a b = fromInteger (a `div` b)
+    below = stTableCaption (piStyle (feInput fe)) == CaptionBelow
     capacity = length (pgLineGrid (feGeom fe))
     emptyLine = Line [] 0 0 0 (0, 0) 0 (0, 0)
+    layoutError = \case
+      ColumnsTooWide mn avail -> diagnostic "G07041" Error (uSpan u) ("表の列の最小の幅の合計（" <> L.mmText mn <> "）が使える幅（" <> L.mmText avail <> "）に収まりません")
+      WidthsTooWide total avail -> diagnostic "G07114" Error (uSpan u) ("表の列に指定した幅の合計（" <> L.mmText total <> "）が、列の間隔を除いた行長（" <> L.mmText avail <> "）を超えます")
+      ColumnTooNarrow c w mn -> diagnostic "G07115" Error (uSpan u) ("表の " <> T.pack (show (c + 1)) <> " 列目に指定した幅（" <> L.mmText w <> "）が、列のセルの最小の幅（" <> L.mmText mn <> "）より狭くなっています")
 
 -- | Headings and table of contents entries by their lines (golem-driver ADR 0009); @fs@ is the font size of the grid.
 headingAndTocLines :: Sp -> ComposedUnits -> Int -> Int -> Unit -> Numbered -> Numbered
@@ -2448,10 +2530,10 @@ buildFlow inp geom fonts images prev assumed = do
       isTable u = case uKind u of
         UTable {} -> True
         _ -> False
-      tableUnits = [(i, uStyle u, lkLang (uLook u), aligns, h, rows) | (i, u@Unit {uKind = UTable aligns h rows}) <- units]
+      tableUnits = [(i, uStyle u, lkLang (uLook u), t) | (i, u@Unit {uKind = UTable t}) <- units]
   _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (\(i, u) -> maybe (forceComposed (composeUnit fe widths (unitLineWidth fe (uKind u)) u)) pure (reused cuSingles i)) rest
-  tables <- Map.fromList <$> mapper (\(i, st, l, aligns, h, rows) -> maybe (let r = composeTable fe i st l aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
+  tables <- Map.fromList <$> mapper (\(i, st, l, t) -> maybe (let r = composeTable fe i st l t in evaluate (length (show (fmap fst r))) >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
   -- 3. number the lines in document order
   let codeBlocks = codeBlocksOf fe units
       composed = ComposedUnits unitAt besides figures singles tables codeBlocks
@@ -2461,7 +2543,7 @@ buildFlow inp geom fonts images prev assumed = do
         let nb' = numberUnit fe composed nb iu
          in (nb', if nuNext nb' > nuNext nb then Map.insert (nuNext nb) (uSpan u) spans else spans)
       lineFiles = Map.map spanFile lineSpans
-      start = Numbered 0 [] Map.empty Map.empty Map.empty (deepListErrors fe widths units <> codeErrors) Map.empty Map.empty Map.empty Map.empty
+      start = Numbered 0 [] Map.empty Map.empty Map.empty (deepListErrors fe widths units <> codeErrors) Map.empty Map.empty Map.empty Map.empty Map.empty
       (numbered, lineSpans) = foldl stepFiles (start, Map.empty) units
       flow = nuFlow numbered
       -- the code blocks of the flow are those of the units, in order
@@ -2474,7 +2556,7 @@ buildFlow inp geom fonts images prev assumed = do
       -- the span and the name of each heading by its first line, for G07100 (golem-layout ADR 0020)
       namesBySpan = Map.fromList [(uSpan u, (uSpan u, name)) | (_, u) <- units, Just name <- [headingName (uKind u)]]
       headingNames = Map.mapMaybe (`Map.lookup` namesBySpan) lineSpans
-  pure (Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe composed widths)
+  pure (Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe composed widths (nuTableCaptions numbered))
 
 {- | Whether a unit refers to a page (docs/adr ADR 0251): a [ref-page]
 anywhere in its inlines, its list marker, the cells of its table or the
@@ -2484,7 +2566,7 @@ composition reads the pages assumed, so it is composed in every round.
 refersToPage :: Unit -> Bool
 refersToPage u =
   inlinesReferToPage (uInlines u) || maybe False inlinesReferToPage (uMarker u) || case uKind u of
-    UTable _ h rows -> any inlinesReferToPage (h <> concat rows)
+    UTable t -> any inlinesReferToPage (fromMaybe [] (tableCaption t) : tableHeader t <> concat (tableRows t))
     UFigure fig -> any (any inlinesReferToPage . blockInlineLists) (figCaption fig)
     _ -> False
 

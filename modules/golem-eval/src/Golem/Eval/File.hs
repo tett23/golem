@@ -49,7 +49,7 @@ import Data.Text qualified as T
 import Data.Text.Array qualified as TA
 import Data.Text.Internal qualified as TI
 import Data.Text.Unsafe (lengthWord8)
-import Golem.Doc.FigureWidth (parseFigureWidth)
+import Golem.Doc.FigureWidth (FigureWidth (..), parseFigureWidth)
 import Golem.Doc.IR
 import Golem.Doc.Url (UrlProblem (..), checkUrl, linkElements, urlProblemMessage)
 import Golem.Doc.Validate (langTagMessage)
@@ -213,7 +213,7 @@ overridableCommands :: [Text]
 overridableCommands = [builtinName b | b@(Overridable _) <- allBuiltins]
 
 attributeCommands :: [Text]
-attributeCommands = ["label", "toc-title", "number", "nonumber", "notoc", "style", "caption", "lang"]
+attributeCommands = ["label", "toc-title", "number", "nonumber", "notoc", "style", "caption", "lang", "column-widths"]
 
 {- | The attributes that have a body form too: with a body, the command is
 a block of its own (docs/adr ADR 0005, ADR 0187).
@@ -292,7 +292,7 @@ unwritableText = concatMap blockDiags . docBlocks
       BulletList items -> concatMap (concatMap blockDiags . itemBlocks) items
       OrderedList items -> concatMap (concatMap blockDiags . itemBlocks) items
       DefList groups -> concat [concatMap inlines (dgTerms g) <> concatMap (concatMap blockDiags) (dgDefs g) | g <- groups]
-      Table _ h body -> concatMap inlines h <> concatMap (concatMap inlines) body
+      TableBlock t -> maybe [] inlines (tableCaption t) <> concatMap inlines (tableHeader t) <> concatMap (concatMap inlines) (tableRows t)
       CodeBlock c -> maybe [] (at sp) (codeFile c) <> maybe [] inlines (codeCaption c) <> at sp (codeText c)
       FigureBlock f -> at sp (figAlt f) <> concatMap blockDiags (figCaption f)
       ChannelOutput _ -> []
@@ -480,7 +480,7 @@ evalBlock ctx (A.Located sp b) = case b of
   A.Table al h rows -> do
     h' <- mapM (evalInlines ctx False) h
     rows' <- mapM (mapM (evalInlines ctx False)) rows
-    pure [block sp (Table (map alignment al) h' rows')]
+    pure [block sp (TableBlock (plainTable (map alignment al) h' rows'))]
   A.CodeBlock lang args0 ls ->
     prepareArgs args0 >>= \case
       Nothing -> pure []
@@ -754,10 +754,15 @@ nameErrors ctx is bs =
       once xs = Set.toList (Set.fromList xs)
    in [("G02018", "定義されていない文字スタイルです: " <> x) | x <- once [x | CharStyle _ x _ <- inl], not (Set.member x (ctxCharStyles ctx))]
         <> [("G02017", "style.toml にないスウォッチです: " <> x) | x <- once [x | Color _ x _ <- inl], not (Set.member x (ctxSwatches ctx))]
-        <> [("G02047", "定義されていない段落スタイルです: " <> x) | x <- once [x | Block _ _ _ (Paragraph (Just x) _) <- universeBlocks bs], not (Map.member x (ctxParaStyles ctx))]
+        <> [("G02047", "定義されていない段落スタイルです: " <> x) | x <- once (concatMap paraStyleOf (universeBlocks bs)), not (Map.member x (ctxParaStyles ctx))]
         <> [("G02039", "未知の圏点の形です: " <> x) | x <- once [x | Kenten _ (Just x) _ <- inl], x `notElem` kentenShapes]
         <> [("G02021", "書誌データにないキーです: " <> x) | x <- once [x | Cite _ x <- inl], not (Set.member x (ctxCiteKeys ctx))]
   where
+    -- the paragraph style of a paragraph and of the cells of a table (docs/adr/0262)
+    paraStyleOf (Block _ _ _ body) = case body of
+      Paragraph (Just x) _ -> [x]
+      TableBlock Table {tableStyle = Just x} -> [x]
+      _ -> []
     universeBlocks = concatMap (\b -> b : universeBlocks (innerBlocks b))
     innerBlocks (Block _ _ _ body) = case body of
       BulletList items -> concatMap itemBlocks items
@@ -768,7 +773,7 @@ nameErrors ctx is bs =
     blockInlines (Block _ _ _ body) = case body of
       Paragraph _ xs -> xs
       Heading _ a xs -> fromMaybe [] (haTocTitle a) <> xs
-      Table _ h rows -> concat h <> concat (concat rows)
+      TableBlock t -> fromMaybe [] (tableCaption t) <> concat (tableHeader t) <> concat (concat (tableRows t))
       DefList gs -> concat (concatMap dgTerms gs)
       CodeBlock c -> fromMaybe [] (codeCaption c)
       _ -> []
@@ -828,7 +833,7 @@ fillKentenBlock ctx (Block sp l lang body) = Block sp l lang $ case body of
   BulletList items -> BulletList [ListItem n (map (fillKentenBlock ctx) bs) | ListItem n bs <- items]
   OrderedList items -> OrderedList [ListItem n (map (fillKentenBlock ctx) bs) | ListItem n bs <- items]
   DefList gs -> DefList [DefGroup (map (map f) ts) (map (map (fillKentenBlock ctx)) ds) | DefGroup ts ds <- gs]
-  Table al h rows -> Table al (map (map f) h) (map (map (map f)) rows)
+  TableBlock t -> TableBlock t {tableCaption = map f <$> tableCaption t, tableHeader = map (map f) (tableHeader t), tableRows = map (map (map f)) (tableRows t)}
   other -> other
   where
     f = fillKenten ctx
@@ -946,6 +951,12 @@ attributedGroup ctx sp cmds target = case target of
                 Nothing <- codeCaption c -> do
                   mapM_ (\asp -> err "G02134" asp "キャプションのないコードブロックは番号を持たないので、@nonumber は要りません") (take 1 [asp | ("nonumber", asp) <- named])
                   pure (CodeBlock c {codeNoNumber = False})
+            -- likewise a table (docs/adr/0262)
+            TableBlock tb
+              | tableNoNumber tb,
+                Nothing <- tableCaption tb -> do
+                  mapM_ (\asp -> err "G02134" asp "キャプションのない表は番号を持たないので、@nonumber は要りません") (take 1 [asp | ("nonumber", asp) <- named])
+                  pure (TableBlock tb {tableNoNumber = False})
             _ -> pure body'
           {- the blocks of a block command without a language of their own
           take it; otherwise the block after the attributes (docs/adr ADR 0187) -}
@@ -1208,9 +1219,19 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
     -- a figure and a code block without a number (docs/adr/0200); G02134 is decided after every attribute
     ("nonumber", FigureBlock f) -> pure (label, FigureBlock f {figNoNumber = True})
     ("nonumber", CodeBlock c) -> pure (label, CodeBlock c {codeNoNumber = True})
+    ("nonumber", TableBlock t) -> pure (label, TableBlock t {tableNoNumber = True})
     ("notoc", Heading l a is) -> pure (label, Heading l a {haNoToc = True} is)
     -- the style of a paragraph is applied when the paragraph is evaluated
     ("style", Paragraph {}) -> pure (label, body)
+    -- the paragraph style of the cells of a table (docs/adr/0262)
+    ("style", TableBlock t) ->
+      styleName ctx sp args >>= \case
+        Just n
+          | Map.notMember n (ctxParaStyles ctx) -> err "G02047" sp ("定義されていない段落スタイルです: " <> n) >> pure (label, body)
+          | n == "table" -> pure (label, body)
+          | otherwise -> pure (label, TableBlock t {tableStyle = Just n})
+        Nothing -> pure (label, body)
+    ("column-widths", TableBlock t) -> (\ws -> (label, TableBlock t {tableWidths = ws})) <$> columnWidths sp (length (tableHeader t)) args
     -- the language goes to any block, after the other attributes (docs/adr ADR 0187)
     ("lang", _) -> pure (label, body)
     -- the caption of a code block: the rest of the line, inlines included (golem-driver ADR 0023)
@@ -1219,6 +1240,12 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
       | otherwise -> do
           is <- evalInlines ctx False (captionInlines args)
           pure (label, CodeBlock c {codeCaption = Just is})
+    -- the caption of a table, as that of a code block (docs/adr/0262)
+    ("caption", TableBlock t)
+      | null args -> err "G02069" sp "@caption には本文を書きます" >> pure (label, body)
+      | otherwise -> do
+          is <- evalInlines ctx False (captionInlines args)
+          pure (label, TableBlock t {tableCaption = Just is})
     _ -> err "G02013" sp ("@" <> name <> " はこのブロックには付けられません") >> pure (label, body)
     where
       withNumber f = case args of
@@ -1238,6 +1265,40 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
       A.Located _ (A.Positional v) -> v
       A.Located _ (A.Keyword _ v) -> v
       A.Located _ _ -> A.Word ""
+
+{- | The widths of @column-widths for a table of @n@ columns (docs/adr/0262):
+auto, a length or a percentage each; G02135 at each value that is none of
+them, G02136 when there are neither one nor @n@ values, and no widths
+(every column auto) after either.
+-}
+columnWidths :: SrcSpan -> Int -> [A.Located A.Argument] -> M [ColumnWidth]
+columnWidths sp n args = do
+  read' <- mapM one args
+  case sequence read' of
+    Nothing -> pure []
+    Just ws
+      | [w] <- ws -> pure (replicate n w)
+      | length ws == n, n > 0 -> pure ws
+      | otherwise -> err "G02136" sp ("@column-widths の値の数が表の列の数と違います。値を一つか列の数（" <> tshow n <> "）だけ書きます") >> pure []
+  where
+    one (A.Located asp a) = case a of
+      A.Positional (A.Word t) | Just w <- columnWidthOf t -> pure (Just w)
+      A.Positional (A.StringLit t) | Just w <- columnWidthOf t -> pure (Just w)
+      _ -> err "G02135" asp ("@column-widths の値が読めません。auto、寸法（10zw、30mm など）、割合（50% など）で書きます: " <> argSource a) >> pure Nothing
+    argSource = \case
+      A.Positional (A.Word t) -> t
+      A.Positional (A.StringLit t) -> t
+      _ -> "[= ...]"
+
+-- | A width of a column as written: auto, or a width as that of a figure (docs/adr/0190, docs/adr/0262).
+columnWidthOf :: Text -> Maybe ColumnWidth
+columnWidthOf t
+  | T.strip t == "auto" = Just ColumnAuto
+  | otherwise =
+      flip fmap (parseFigureWidth t) $ \case
+        WidthLength x -> ColumnAbs x
+        WidthZw q -> ColumnZw q
+        WidthPercent q -> ColumnPercent q
 
 {- | The arguments of @caption as inlines (golem-driver ADR 0023): words
 and strings are text, commands and expressions are themselves, a space
@@ -1374,6 +1435,7 @@ unknownParaStyles ctx (Document _ bs) = concatMap go bs
   where
     go (Block sp _ _ body) = case body of
       Paragraph (Just n) _ | Map.notMember n (ctxParaStyles ctx) -> [diagnostic "G02047" Error sp ("定義されていない段落スタイルです: " <> n)]
+      TableBlock Table {tableStyle = Just n} | Map.notMember n (ctxParaStyles ctx) -> [diagnostic "G02047" Error sp ("定義されていない段落スタイルです: " <> n)]
       BulletList items -> concatMap (concatMap go . itemBlocks) items
       OrderedList items -> concatMap (concatMap go . itemBlocks) items
       DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs
@@ -1553,7 +1615,7 @@ figure ctx sp args body = do
       BulletList _ -> Just "箇条書き"
       OrderedList _ -> Just "番号付きリスト"
       DefList _ -> Just "定義リスト"
-      Table {} -> Just "表"
+      TableBlock _ -> Just "表"
       CodeBlock _ -> Just "コードブロック"
       Heading {} -> Just "見出し"
       ChannelOutput _ -> Just "一覧の出力"
@@ -1634,7 +1696,7 @@ csvTable ctx sp args = do
               Nothing -> pure []
       _ -> pure []
   where
-    table as cell h body = block sp (Table as (map cell h) (map (map cell) body))
+    table as cell h body = block sp (TableBlock (plainTable as (map cell h) (map (map cell) body)))
 
 -- | Why a table file gives no table.
 data TableError
@@ -1740,7 +1802,7 @@ parseTsv fid t0 = do
   Bi.first TableInvalid (noLoneCr fid t0)
   let (base, t) = skipBom t0
       body = fromMaybe t (T.stripSuffix "\r\n" t <|> T.stripSuffix "\n" t)
-  tableRows fid "TSV" (if T.null body then [] else tsvLines base (T.split (== '\n') body))
+  tableFileRows fid "TSV" (if T.null body then [] else tsvLines base (T.split (== '\n') body))
   where
     tsvLines _ [] = []
     tsvLines !off (l : ls) =
@@ -1758,7 +1820,7 @@ parseCsv :: FileId -> Text -> Either TableError [[Text]]
 parseCsv fid t0@(TI.Text arr off0 len) = do
   withinBytes t0
   Bi.first TableInvalid (noLoneCr fid t0)
-  tableRows fid "CSV" (filter (either (const True) (\(_, _, cs) -> cs /= [""])) (records (off0 + fst (skipBom t0))))
+  tableFileRows fid "CSV" (filter (either (const True) (\(_, _, cs) -> cs /= [""])) (records (off0 + fst (skipBom t0))))
   where
     -- the bytes of the file are indexed in the array of the text; the special
     -- characters are ASCII, which no other character's UTF-8 bytes contain
@@ -1771,7 +1833,7 @@ parseCsv fid t0@(TI.Text arr off0 len) = do
       | i >= end = []
       | otherwise = record i i (0 :: Int) []
     -- the cells of the record that starts at @start@; the record stops at the
-    -- cell over the limit, which 'tableRows' reports, and nothing after it is read
+    -- cell over the limit, which 'tableFileRows' reports, and nothing after it is read
     record !start !i !n acc = case field i of
       Left d -> [Left d]
       Right (cell, e)
@@ -1808,8 +1870,8 @@ cells over 'tableMaxCells' (G02088, docs/adr ADR 0043), a reading error
 (G02083), or a row whose cells differ in number from the header's (G02085);
 G02085 also for no rows.
 -}
-tableRows :: FileId -> Text -> [Either Diagnostic (Int, Int, [Text])] -> Either TableError [[Text]]
-tableRows fid name = \case
+tableFileRows :: FileId -> Text -> [Either Diagnostic (Int, Int, [Text])] -> Either TableError [[Text]]
+tableFileRows fid name = \case
   [] -> Left (TableInvalid (diagnostic "G02085" Error (mkSpan fid 0 0) (name <> " が空です")))
   r0 : rest -> do
     (_, _, h) <- Bi.first TableInvalid r0

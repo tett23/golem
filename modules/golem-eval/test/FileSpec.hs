@@ -114,7 +114,7 @@ key (or -) and value, and a paragraph of each block of its body.
 gridCommand :: PluginBlockCommand
 gridCommand = PluginBlockCommand $ \args bodyBlocks sp ->
   Right
-    ( Block sp Nothing Nothing (Table [AlignDefault, AlignDefault] [[Text sp "k"], [Text sp "v"]] [[[Text sp (argKey a)], [Text sp (T.pack (show (pluginArgValue a)))]] | a <- args]) : bodyBlocks,
+    ( Block sp Nothing Nothing (TableBlock (plainTable [AlignDefault, AlignDefault] [[Text sp "k"], [Text sp "v"]] [[[Text sp (argKey a)], [Text sp (T.pack (show (pluginArgValue a)))]] | a <- args])) : bodyBlocks,
       Map.empty,
       [diagnostic "grid-called" Warning sp "grid"]
     )
@@ -135,13 +135,13 @@ pluginBlockTests =
         let (bs, ds) = run ctx {ctxPlugins = gridHook} "@grid sales align=left\n"
         ds @?= ["grid-called"]
         case bs of
-          [Table _ _ rows] -> map (map stripSpans) rows @?= [[["-"], ["VString \"sales\""]], [["align"], ["VString \"left\""]]]
+          [TableBlock Table {tableRows = rows}] -> map (map stripSpans) rows @?= [[["-"], ["VString \"sales\""]], [["align"], ["VString \"left\""]]]
           other -> assertFailure (show other),
       testCase "spread arguments reach a block command expanded (docs/adr/0112)" $ do
         let (bs, ds) = run ctx {ctxPlugins = gridHook} "@grid *[[\"sales\"]] **[{align: \"left\"}]\n"
         ds @?= ["grid-called"]
         case bs of
-          [Table _ _ rows] -> map (map stripSpans) rows @?= [[["-"], ["VString \"sales\""]], [["align"], ["VString \"left\""]]]
+          [TableBlock Table {tableRows = rows}] -> map (map stripSpans) rows @?= [[["-"], ["VString \"sales\""]], [["align"], ["VString \"left\""]]]
           other -> assertFailure (show other),
       testCase "the blocks are at the call" $
         map blockSpan (resultBlocks (evalResult ctx {ctxPlugins = gridHook} "a\n\n@grid\n"))
@@ -149,13 +149,13 @@ pluginBlockTests =
       testCase "the body is evaluated and passed" $ do
         let (bs, _) = run ctx {ctxPlugins = gridHook} "@grid\n  本文\n"
         case bs of
-          [Table {}, Paragraph Nothing is] -> stripSpans is @?= ["本文"]
+          [TableBlock _, Paragraph Nothing is] -> stripSpans is @?= ["本文"]
           other -> assertFailure (show other),
       testCase "a block command in a list item" $ do
         let (bs, ds) = run ctx {ctxPlugins = gridHook} "- 項目\n\n  @grid\n"
         ds @?= ["grid-called"]
         case bs of
-          [BulletList [ListItem _ [_, Block _ _ _ (Table {})]]] -> pure ()
+          [BulletList [ListItem _ [_, Block _ _ _ (TableBlock _)]]] -> pure ()
           other -> assertFailure (show other),
       testCase "@label gives the label to the first block" $
         map blockLabel (resultBlocks (evalResult ctx {ctxPlugins = gridHook} "@label t\n@grid\n")) @?= [Just "t"],
@@ -416,9 +416,9 @@ tests =
         let src = "@label c\n@nonumber\n```\nx\n```\n"
         diags src @?= [("G02134", "キャプションのないコードブロックは番号を持たないので、@nonumber は要りません", fst (spanOf src "@nonumber"), fst (spanOf src "@nonumber\n") + 10)]
         errs "@nonumber\n@listing src/Main.hs\n" @?= ["G02134"],
-      testCase "@nonumber on a paragraph or a table is G02013 still" $ do
+      testCase "@nonumber on a paragraph is G02013 still, on a table without a caption G02134 (docs/adr/0262)" $ do
         errs "@nonumber\n本文。\n" @?= ["G02013"]
-        errs "@nonumber\n| a |\n|---|\n| b |\n" @?= ["G02013"],
+        errs "@nonumber\n| a |\n|---|\n| b |\n" @?= ["G02134"],
       testCase "figures" $ do
         errs "@figure images/a.png alt=\"x\"\n  キャプション。\n" @?= []
         errs "@figure images/a.png\n" @?= ["G02028"]
@@ -522,7 +522,7 @@ tests =
         diagsWith ctx {ctxPlugins = drawn "50%"} "@chart\n" @?= [],
       testCase "csv tables and listings" $ do
         case body "@table data.csv\n" of
-          [Table _ h [r]] -> (map stripSpans h, map stripSpans r) @?= ([["a"], ["b"]], [["1"], ["x,y"]])
+          [TableBlock Table {tableHeader = h, tableRows = [r]}] -> (map stripSpans h, map stripSpans r) @?= ([["a"], ["b"]], [["1"], ["x,y"]])
           other -> assertFailure (show other)
         map (fmap codeText . codeOf) (body "@listing src/Main.hs lines=2...3\n") @?= [Just "l2\nl3"]
         errs "@listing src/Main.hs lines=3...9\n" @?= ["G02037"],

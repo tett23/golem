@@ -104,7 +104,8 @@ bodyT = \case
   BulletList items -> tagged 2 [list itemT items]
   OrderedList items -> tagged 3 [list itemT items]
   DefList gs -> tagged 4 [list (\(DefGroup ts ds) -> TList [list inlinesTerm ts, list (list blockT) ds]) gs]
-  Table al h rows -> tagged 5 [list (int . fromEnum) al, list inlinesTerm h, list (list inlinesTerm) rows]
+  -- tag 5 is retired (docs/adr/0262)
+  TableBlock t -> tagged 14 [tableT t]
   CodeBlock c -> tagged 6 [codeT c]
   FigureBlock fig -> tagged 7 [figureT fig]
   ChannelOutput c -> tagged 8 [channelT c]
@@ -117,6 +118,19 @@ pageControlT = \case
   NoBreak -> TList [int (0 :: Int)]
   NeedLines n -> TList [int (1 :: Int), int n]
   AdjustLines n -> TList [int (2 :: Int), int n]
+
+-- | A table (docs/adr/0262).
+tableT :: Table -> Term
+tableT (Table al ws cap nn st h rows) =
+  TList [list (int . fromEnum) al, list columnWidthT ws, opt inlinesTerm cap, TBool nn, opt text st, list inlinesTerm h, list (list inlinesTerm) rows]
+
+-- | The width of a column: auto, zw, sp or percent (docs/adr/0262).
+columnWidthT :: ColumnWidth -> Term
+columnWidthT = \case
+  ColumnAuto -> TList [int (0 :: Int)]
+  ColumnZw q -> TList [int (1 :: Int), rationalTerm q]
+  ColumnAbs x -> TList [int (2 :: Int), int (unSp x)]
+  ColumnPercent q -> TList [int (3 :: Int), rationalTerm q]
 
 codeT :: Code -> Term
 codeT (Code lang nums file cap diff ls nn) =
@@ -353,12 +367,8 @@ termBody t =
         2 | [xs] <- fs -> BulletList <$> (asList xs >>= traverse termItem)
         3 | [xs] <- fs -> OrderedList <$> (asList xs >>= traverse termItem)
         4 | [gs] <- fs -> DefList <$> (asList gs >>= traverse termGroup)
-        5
-          | [al, h, rows] <- fs ->
-              Table
-                <$> (asList al >>= traverse asEnum)
-                <*> (asList h >>= traverse termInlinesE)
-                <*> (asList rows >>= traverse (asList >=> traverse termInlinesE))
+        -- 5 is retired (docs/adr/0262)
+        14 | [t'] <- fs -> TableBlock <$> termTable t'
         6 | [c] <- fs -> CodeBlock <$> termCode c
         7 | [fig] <- fs -> FigureBlock <$> termFigure fig
         8 | [c] <- fs -> ChannelOutput <$> termChannel c
@@ -376,6 +386,29 @@ termPageControl t =
     [k, n] | Right 1 <- asIntI k -> NeedLines <$> asIntI n
     [k, n] | Right 2 <- asIntI k -> AdjustLines <$> asIntI n
     _ -> bad "改ページの制御"
+
+termTable :: Term -> D Table
+termTable t =
+  asList t >>= \case
+    [al, ws, cap, nn, st, h, rows] ->
+      Table
+        <$> (asList al >>= traverse asEnum)
+        <*> (asList ws >>= traverse termColumnWidth)
+        <*> asOpt termInlinesE cap
+        <*> asBool nn
+        <*> asOpt asText st
+        <*> (asList h >>= traverse termInlinesE)
+        <*> (asList rows >>= traverse (asList >=> traverse termInlinesE))
+    _ -> bad "表"
+
+termColumnWidth :: Term -> D ColumnWidth
+termColumnWidth t =
+  asList t >>= \case
+    [k] | Right 0 <- asIntI k -> Right ColumnAuto
+    [k, q] | Right 1 <- asIntI k -> ColumnZw <$> asRational q
+    [k, x] | Right 2 <- asIntI k -> ColumnAbs . Sp . toInteger <$> asNatural x
+    [k, q] | Right 3 <- asIntI k -> ColumnPercent <$> asRational q
+    _ -> bad "列の幅"
 
 termCode :: Term -> D Code
 termCode t =

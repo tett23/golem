@@ -172,7 +172,7 @@ HTML、EPUB、プレーンテキストには異体字セレクタをそのまま
 
 [code: indent] を書くと、段落のすべての行を字下げします。
 [code: first-line-indent] に負の値を書くと、最初の行だけが前に出るぶら下げになります。
-箇条書きの項目、表、見出し、注の本文には、字下げは適用されません。
+箇条書きの項目、表のセル、見出し、注の本文には、字下げは適用されません。
 
 @label lists-style
 ## リストの印と番号
@@ -245,11 +245,17 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 - 文字の送りの四つのキーも書けます。
 - [code: based-on]：引き継ぐ段落スタイルです。省くと [code: body] を引き継ぎます。
 
-はじめから定義されている段落スタイルは、[code: body]（本文）、[code: verse]（韻文）、[code: caption]（図のキャプション）、[code: sidenote]（傍注の本文）、[code: code]（コードブロック）の五つです。
+はじめから定義されている段落スタイルは、[code: body]（本文）、[code: verse]（韻文）、[code: caption]（図のキャプション）、[code: sidenote]（傍注の本文）、[code: table]（表のセル）、[code: code]（コードブロック）の六つです。
 段落スタイルを付けない段落は [code: body] で組みます。
 
-[code: caption] と [code: sidenote] は、[code: body] の字下げを引き継ぎません。
-図のキャプションと傍注の本文には字下げをしないので、この二つに 0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書くとエラー（G03006）になります。
+[code: caption]、[code: sidenote]、[code: table] は、[code: body] の字下げを引き継ぎません。
+図のキャプションと傍注の本文と表のセルには字下げをしないので、この三つに 0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書くとエラー（G03006）になります。
+
+表のセルは、表に [code: @style] を付けなければ [code: table] で組みます。
+[code: table] ははじめ本文と同じ書体と大きさなので、本文より小さい文字の表にするなら、[code: \[paragraph-styles.table\]] に [code: size] を書きます。
+一部の表だけを変えるなら、その表に [code: @style 名前] を付けます。
+セルには、段落スタイルの [code: font]、[code: size]、[code: regex-styles]、アキ量のセット、文字の送りのキーが当たり、字下げや揃えは当たりません。
+PDF では、表の行がセルの全体を収める最も少ない行を占めるので、小さい文字の表の後でも本文の行は格子からずれません。
 0 を書いたときは、効果がないことを知らせるお知らせ（G03100）が出ます。
 
 [code: code] だけは、ほかの段落スタイルと扱いが違います。
@@ -436,8 +442,8 @@ regex-styles = [
 
 [code: regex-styles] は [code: based-on] で引き継がれます。
 引き継いだ段落スタイルで [code: regex-styles = \[\]] と書くと、引き継がなくなります。
-見出し、表、脚注の本文には当たりません。
-図のキャプションには [code: caption] の、傍注の本文には [code: sidenote] の [code: regex-styles] が当たります。
+見出し、脚注の本文には当たりません。
+図のキャプションには [code: caption] の、傍注の本文には [code: sidenote] の、表のセルにはセルの段落スタイルの [code: regex-styles] が当たります。
 
 使える正規表現は、InDesign の正規表現の主なものです。
 [code: \\d] は全角の数字にも、[code: \\w] は漢字と仮名にも、[code: \\s] は全角の空白にも一致します。

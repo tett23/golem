@@ -544,7 +544,7 @@ ownedBy f s = case s of
 blockLines :: Flow -> [LineBox]
 blockLines = \case
   FStanza vs -> concat vs
-  FTable {ftHeader = h, ftRows = rows} -> h <> concat rows
+  FTable {ftHeader = h, ftRows = rows, ftCaption = c} -> c <> h <> concat rows
   FCode {fcRows = ls} -> ls
   FRuled {frBody = RuledLines ls} -> ls
   FRuled {frBody = RuledHeading {rhLines = ls}} -> ls

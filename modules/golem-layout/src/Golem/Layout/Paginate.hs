@@ -44,7 +44,6 @@ where
 
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (listToMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
@@ -394,13 +393,14 @@ place env st f rest = case f of
   FContinued ls -> placeLines env st False ls
   -- the space before a table only below the first line of a column (golem-driver ADR 0031);
   -- in the columns gone on to, the header and the first row are kept together (golem-layout ADR 0025)
-  FTable i sp0 h rows ->
+  -- the caption with the lines it touches (docs/adr/0262)
+  FTable i sp0 h rows capt below ->
     let sp = if sUsed st == top st then 0 else sp0
-        headed = length h + maybe 0 length (listToMaybe rows)
+        headed = tableHead h rows capt below
         st1
           | sp + headed <= free env st || isEmpty st = st {sUsed = sUsed st + min sp (free env st)}
           | otherwise = keep env (nextColumn env st) (const headed)
-     in placeTable env st1 i h rows
+     in placeTable env st1 i h rows capt below
   FDefTerm ls -> placeLines env (keep env st (\s -> needIn env s (termNeed ls) need)) True ls
   -- the notes of a heading count as the notes of a line do (golem-layout ADR 0013)
   FHeading _ recto n ls ->
@@ -587,21 +587,28 @@ without its labels, notes and marks (golem-driver ADR 0008). The
 repeated header and the next row go on past the columns that the figures
 sent on and the continued notes leave too little of (golem-layout ADR 0025).
 -}
-placeTable :: Env -> St -> Int -> [LineBox] -> [[LineBox]] -> St
-placeTable env st i h rows =
-  let start = sUsed st
-      st1 = foldl' (putLine env) st h
+placeTable :: Env -> St -> Int -> [LineBox] -> [[LineBox]] -> [LineBox] -> Bool -> St
+placeTable env st i h rows capt below =
+  let st0 = if below then st else foldl' (putLine env) st capt
+      start = sUsed st0
+      st1 = foldl' (putLine env) st0 h
+      -- the last row takes the caption below with it (docs/adr/0262)
+      withCaption rest r = if below && null rest then r <> capt else r
       rowsFrom stc first [] = segment stc first
       rowsFrom stc first (r : rest)
-        | fitting env stc r >= length r || sUsed stc == first + length h = rowsFrom (foldl' (putLine env) stc r) first rest
+        | fitting env stc r' >= length r' || sUsed stc == first + length h = rowsFrom (foldl' (putLine env) stc r) first rest
         | otherwise =
             let closed = segment stc first
-                fresh = keep env (nextColumn env closed) (const (length h + length r))
+                fresh = keep env (nextColumn env closed) (const (length h + length r'))
                 repeated = foldl' (putLine env) fresh [l {lbNotes = [], lbLabels = [], lbMarks = []} | l <- h]
              in rowsFrom repeated (sUsed fresh) (r : rest)
+        where
+          r' = withCaption rest r
       headerEnd first = if null h then Nothing else Just (first + length h - 1)
       segment stc first = stc {sTables = sTables stc <> [TableSegment i first (headerEnd first) (sUsed stc - 1)]}
-   in rowsFrom st1 start rows
+      placed = rowsFrom st1 start rows
+   in if below then foldl' (putLine env) placed capt else placed
+
 
 -- | The page of each label.
 labelPages :: [PageOut] -> Map Text Integer

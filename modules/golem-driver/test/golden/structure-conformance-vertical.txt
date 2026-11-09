@@ -275,6 +275,8 @@ Document /Layout /WritingMode /TbRl
         "二十"
       TD
         "二十番めの行"
+    Caption
+      "表2-1　番号と名前"
   H2
     "二　コード"
   Div

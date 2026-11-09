@@ -40,3 +40,7 @@ folio = { position = "bottom-outside", format = "{n}" }
 
 [notes]
 placement = "chapter-end"
+
+# 表のキャプションを表の後に置き、タグ付き PDF の Caption を Table の最後の子にする（docs/adr/0262）
+[tables]
+caption-position = "below"

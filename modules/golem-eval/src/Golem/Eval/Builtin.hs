@@ -167,5 +167,7 @@ builtinBlockCommands =
     "notoc",
     "caption",
     -- docs/adr ADR 0187
-    "lang"
+    "lang",
+    -- docs/adr/0262
+    "column-widths"
   ]

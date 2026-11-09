@@ -58,6 +58,8 @@ data AssembleConfig = AssembleConfig
     -} acChapterOf :: ![Int],
     -- | [code] number: the format of listing numbers (golem-driver ADR 0023)
     acListingFormat :: !Text,
+    -- | [tables] number: the format of table numbers (docs/adr/0262)
+    acTableFormat :: !Text,
     -- | the channels the plugins declare, by name (golem-doc ADR 0007)
     acChannels :: !(Map Text ChannelDecl),
     {- | the lines of a page, @[page.grid].lines@: a run of blank lines of
@@ -128,6 +130,8 @@ data Book = Book
     bookFigures :: !(Map SrcSpan Text),
     -- | the listing number of each code block with a caption (golem-driver ADR 0023)
     bookListings :: !(Map SrcSpan Text),
+    -- | the table number of each table with a caption (docs/adr/0262)
+    bookTables :: !(Map SrcSpan Text),
     bookToc :: ![TocEntry],
     bookTocDepth :: !(Maybe Int),
     {- | each @index with the groups of its range, in document order
@@ -218,7 +222,7 @@ blockNotes outer (Block _ _ blang body) = case body of
   BulletList items -> concatMap (concatMap (blockNotes l) . itemBlocks) items
   OrderedList items -> concatMap (concatMap (blockNotes l) . itemBlocks) items
   DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap (deep l) ts <> concatMap (concatMap (blockNotes l)) ds) gs
-  Table _ h rows -> concatMap (deep l) h <> concatMap (concatMap (deep l)) rows
+  TableBlock t -> concatMap (deep l) (tableHeader t) <> concatMap (concatMap (deep l)) (tableRows t)
   FigureBlock f -> concatMap (blockNotes l) (figCaption f)
   _ -> []
   where
@@ -278,11 +282,14 @@ data NumSt = NumSt
     -- | the counter of code blocks with a caption, apart from figures (golem-driver ADR 0023)
     nsListing :: !Integer,
     nsListings :: !(Map SrcSpan (Maybe Integer, Integer)),
+    -- | the counter of tables with a caption, apart from figures and code blocks (docs/adr/0262)
+    nsTable :: !Integer,
+    nsTables :: !(Map SrcSpan (Maybe Integer, Integer)),
     nsDiags :: ![Diagnostic]
   }
 
 numberDocs :: AssembleConfig -> [Document] -> NumSt
-numberDocs cfg docs = execState (mapM_ doc docs) (NumSt (replicate headingLevels 0) Nothing 0 Map.empty Map.empty 0 Map.empty [])
+numberDocs cfg docs = execState (mapM_ doc docs) (NumSt (replicate headingLevels 0) Nothing 0 Map.empty Map.empty 0 Map.empty 0 Map.empty [])
   where
     doc (Document fid bs) = mapM_ (blk fid) bs
     blk fid (Block sp lbl lang b) = case b of
@@ -315,6 +322,7 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt (replicate headingLevels
               nsChapter = if l == 1 then chapter else nsChapter st,
               nsFigure = figureReset,
               nsListing = if l == 1 then 0 else nsListing st,
+              nsTable = if l == 1 then 0 else nsTable st,
               nsHeadings = Map.insert sp info (nsHeadings st)
             }
       -- a figure with @nonumber takes no number and uses none up (docs/adr/0200)
@@ -329,6 +337,11 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt (replicate headingLevels
         st <- get
         let n = nsListing st + 1
         put st {nsListing = n, nsListings = Map.insert sp (nsChapter st, n) (nsListings st)}
+      -- a table with a caption has a table number, unless it has @nonumber (docs/adr/0262)
+      TableBlock Table {tableCaption = Just _, tableNoNumber = False} -> do
+        st <- get
+        let n = nsTable st + 1
+        put st {nsTable = n, nsTables = Map.insert sp (nsChapter st, n) (nsTables st)}
       BulletList items -> mapM_ (mapM_ (blk fid) . itemBlocks) items
       OrderedList items -> mapM_ (mapM_ (blk fid) . itemBlocks) items
       DefList gs -> mapM_ (mapM_ (mapM_ (blk fid)) . dgDefs) gs
@@ -350,17 +363,19 @@ assemble cfg evalDeferred docs0 =
       ns = numberDocs cfg docs
       figureWritten = Map.map (\(ch, n) -> formatNumber (acFigureFormat cfg) [n] ch) (nsFigures ns)
       listingWritten = Map.map (\(ch, n) -> formatNumber (acListingFormat cfg) [n] ch) (nsListings ns)
-      -- G04013 and G04014: a number the format cannot write leaves the block without its number text (docs/adr/0213)
+      tableWritten = Map.map (\(ch, n) -> formatNumber (acTableFormat cfg) [n] ch) (nsTables ns)
+      -- G04013, G04014 and G04100: a number the format cannot write leaves the block without its number text (docs/adr/0213, docs/adr/0262)
       unwritableErrors =
         [unwritableNumber "G04013" "[figures]" (acFigureFormat cfg) sp u | (sp, Left u) <- Map.toList figureWritten]
           <> [unwritableNumber "G04014" "[code]" (acListingFormat cfg) sp u | (sp, Left u) <- Map.toList listingWritten]
-      -- G04004 for figures and code blocks (golem-driver ADR 0023)
+          <> [unwritableNumber "G04100" "[tables]" (acTableFormat cfg) sp u | (sp, Left u) <- Map.toList tableWritten]
+      -- G04004 for figures, tables and code blocks (golem-driver ADR 0023, docs/adr/0262)
       outside fmt numbered =
-        [ diagnostic "G04004" Error sp "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます"
+        [ diagnostic "G04004" Error sp "章の外にある図版、表、コードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります。番号を振らないなら @nonumber を付けます"
         | formatUsesChapter fmt,
           (sp, (Nothing, _)) <- Map.toList numbered
         ]
-      figureErrors = outside (acFigureFormat cfg) (nsFigures ns) <> outside (acListingFormat cfg) (nsListings ns)
+      figureErrors = outside (acFigureFormat cfg) (nsFigures ns) <> outside (acListingFormat cfg) (nsListings ns) <> outside (acTableFormat cfg) (nsTables ns)
       (labels, labelDiags) = collectLabels ns docs
       chapterCount = toInteger (length [() | HeadingInfo {hiLevel = 1, hiNumbers = Just _} <- Map.elems (nsHeadings ns)])
       dv = DocValues chapterCount
@@ -385,6 +400,7 @@ assemble cfg evalDeferred docs0 =
             bookHeadings = nsHeadings ns,
             bookFigures = Map.mapMaybe (either (const Nothing) Just) figureWritten,
             bookListings = Map.mapMaybe (either (const Nothing) Just) listingWritten,
+            bookTables = Map.mapMaybe (either (const Nothing) Just) tableWritten,
             bookToc = toc,
             bookTocDepth = case tocs of
               ((d, _) : _) -> Just d
@@ -585,6 +601,10 @@ collectLabels ns docs = foldl add (Map.empty, []) targets
       CodeBlock c -> case Map.lookup sp (nsListings ns) of
         Just (ch, n) -> (Just (Text sp (maybe "" (\x -> T.pack (show x) <> "-") ch <> T.pack (show n))), withoutAnchors (fromMaybe [] (codeCaption c)))
         Nothing -> (Nothing, withoutAnchors (fromMaybe [] (codeCaption c)))
+      -- the number and the caption of a table (docs/adr/0262)
+      TableBlock t -> case Map.lookup sp (nsTables ns) of
+        Just (ch, n) -> (Just (Text sp (maybe "" (\x -> T.pack (show x) <> "-") ch <> T.pack (show n))), withoutAnchors (fromMaybe [] (tableCaption t)))
+        Nothing -> (Nothing, withoutAnchors (fromMaybe [] (tableCaption t)))
       _ -> (Nothing, [])
     add (m, ds) (l, t) = case Map.lookup l m of
       Just prev ->
@@ -609,7 +629,7 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
         BulletList items -> BulletList <$> mapM item items
         OrderedList items -> OrderedList <$> mapM item items
         DefList gs -> DefList <$> mapM (\(DefGroup ts ds) -> DefGroup <$> mapM inls ts <*> mapM (mapM blk) ds) gs
-        Table al h rows -> Table al <$> mapM inls h <*> mapM (mapM inls) rows
+        TableBlock t -> (\cap h rows -> TableBlock t {tableCaption = cap, tableHeader = h, tableRows = rows}) <$> traverse inls (tableCaption t) <*> mapM inls (tableHeader t) <*> mapM (mapM inls) (tableRows t)
         FigureBlock f -> (\c -> FigureBlock f {figCaption = c}) <$> mapM blk (figCaption f)
         CodeBlock c -> (\cap -> CodeBlock c {codeCaption = cap}) <$> traverse inls (codeCaption c)
         other -> pure other
@@ -673,7 +693,7 @@ renumberNotes cfg docs = evalState (zipWithM doc restarts docs) (0, 0)
         BulletList items -> BulletList <$> mapM item items
         OrderedList items -> OrderedList <$> mapM item items
         DefList gs -> DefList <$> mapM (\(DefGroup ts ds) -> DefGroup <$> mapM inls ts <*> mapM (mapM blk) ds) gs
-        Table al h rows -> Table al <$> mapM inls h <*> mapM (mapM inls) rows
+        TableBlock t -> (\h rows -> TableBlock t {tableHeader = h, tableRows = rows}) <$> mapM inls (tableHeader t) <*> mapM (mapM inls) (tableRows t)
         FigureBlock f -> (\c -> FigureBlock f {figCaption = c}) <$> mapM blk (figCaption f)
         other -> pure other
     item (ListItem n bs) = ListItem n <$> mapM blk bs
@@ -801,7 +821,7 @@ bodyInlines body = concatMap flatten $ case body of
   Paragraph _ is -> is
   Heading _ _ is -> is
   DefList gs -> concat (concatMap dgTerms gs)
-  Table _ h rows -> concat h <> concat (concat rows)
+  TableBlock t -> fromMaybe [] (tableCaption t) <> concat (tableHeader t) <> concat (concat (tableRows t))
   CodeBlock c -> fromMaybe [] (codeCaption c)
   _ -> []
   where

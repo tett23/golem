@@ -66,7 +66,7 @@ emetSamplesTests =
           [[map segment segs | [Ruby _ _ segs] <- ts] | Block _ _ _ (DefList gs) <- blocks, DefGroup ts _ <- gs]
             @?= [[[("組版", Just "くみはん")]], [[("禁則", Just "きんそく")]], [[("校正", Just "こうせい")]]]
           -- 14. price-table: the numeric columns aligned right
-          [as | Block _ _ _ (Table as _ _) <- blocks] @?= [[AlignDefault, AlignRight, AlignRight]]
+          [as | Block _ _ _ (TableBlock Table {tableAligns = as}) <- blocks] @?= [[AlignDefault, AlignRight, AlignRight]]
           -- 15. checklist: a bullet list of four items
           [length items | Block _ _ _ (BulletList items) <- blocks] @?= [4]
           -- 18. first-ruby: the first occurrence of each word, the longest word first
@@ -181,7 +181,7 @@ inlinesOf = concatMap (\(Block _ _ _ b) -> inBody b)
       BulletList items -> concatMap (inlinesOf . itemBlocks) items
       OrderedList items -> concatMap (inlinesOf . itemBlocks) items
       DefList gs -> concat [concatMap deep ts <> concatMap inlinesOf ds | DefGroup ts ds <- gs]
-      Table _ h rows -> concatMap deep h <> concatMap (concatMap deep) rows
+      TableBlock Table {tableHeader = h, tableRows = rows} -> concatMap deep h <> concatMap (concatMap deep) rows
       _ -> []
     deep = concatMap (\i -> i : children i)
     children = \case

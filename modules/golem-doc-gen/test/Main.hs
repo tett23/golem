@@ -68,7 +68,7 @@ blockKind = \case
   BulletList {} -> KBulletList
   OrderedList {} -> KOrderedList
   DefList {} -> KDefList
-  Table {} -> KTable
+  TableBlock _ -> KTable
   CodeBlock {} -> KCodeBlock
   FigureBlock {} -> KFigureBlock
   ChannelOutput {} -> KChannelOutput
@@ -111,7 +111,7 @@ kinds = foldMap block . docBlocks
       BulletList items -> foldMap (blocks . itemBlocks) items
       OrderedList items -> foldMap (blocks . itemBlocks) items
       DefList gs -> foldMap (\g -> foldMap inlines (dgTerms g) <> foldMap blocks (dgDefs g)) gs
-      Table _ hs rows -> foldMap inlines hs <> foldMap (foldMap inlines) rows
+      TableBlock Table {tableHeader = hs, tableRows = rows} -> foldMap inlines hs <> foldMap (foldMap inlines) rows
       CodeBlock c -> foldMap inlines (codeCaption c)
       FigureBlock f -> blocks (figCaption f)
       ChannelOutput _ -> mempty

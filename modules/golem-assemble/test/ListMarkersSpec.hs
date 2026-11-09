@@ -69,7 +69,7 @@ tests =
 bookOf :: [Block] -> Book
 bookOf bs = fst (assemble cfg (\_ _ _ -> Right "") [Document (FileId 0) bs])
   where
-    cfg = AssembleConfig Map.empty "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" Map.empty 16
+    cfg = AssembleConfig Map.empty "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" "表{chapter}-{n}" Map.empty 16
 
 -- | The code, the span and the message of each diagnostic.
 sites :: [Diagnostic] -> [(Text, SrcSpan, Text)]

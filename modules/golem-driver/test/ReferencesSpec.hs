@@ -464,7 +464,7 @@ purityTable =
 
 -- | The cell lines of the tables of a layout: their start in the table and their text.
 tableCellLines :: PdfLayout -> [(Sp, T.Text)]
-tableCellLines pl = [(slIndent sl, T.concat [bcText c | Box _ c <- lineItems (slLine sl)]) | sls <- Map.elems (plTableLines pl), sl <- sls]
+tableCellLines pl = [(slIndent sl, T.concat [bcText c | Box _ c <- lineItems (slLine sl)]) | sls <- Map.elems (plTableLines pl), (_, sl) <- sls]
 
 -- | The grid of the developer manual (B5, 13Q, 40 characters a line) with Noto Serif JP.
 notoTableLayout :: T.Text -> IO PdfLayout
