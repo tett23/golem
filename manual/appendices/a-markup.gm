@@ -419,6 +419,9 @@
 = [strong: [code: \[cite キー\]]]
   文献を引用します。
   キーは、[code: manifest.toml] の [code: bibliography] に並べたファイルの [code: id] です。
+  キーを二つ以上書くと、一つの印で複数の文献を引きます。
+  [code: page=5]、[code: page=5...7]、[code: page=xii] のように書くと、引用した文献の頁が番号の後に組まれます。
+  [code: page] は、キーが一つのときだけ書けます。
 
 プラグインのコマンドも、同じ形で呼び出します（第[ref-number plugins]章「[ref-title plugins]」）。
 
