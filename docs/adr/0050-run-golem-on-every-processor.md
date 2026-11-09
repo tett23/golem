@@ -1,6 +1,6 @@
 # ADR 0050: `golem` をすべてのプロセッサの上で動かし、環境を変える検査で capability の数を変える
 
-ステータス: 採択
+ステータス: 採択→`-with-rtsopts` の GC の設定は [ADR 0249](0249-link-golem-with-a-64-mb-allocation-area.md)
 
 ## 文脈
 

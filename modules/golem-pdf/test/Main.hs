@@ -24,6 +24,7 @@ import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import HexSpec qualified
 import HorizontalScalingSpec qualified
 import ImageSpec qualified
 import ImportSpec qualified
@@ -809,6 +810,7 @@ tests tinyJpeg =
       ImportSpec.tests,
       SecuritySpec.tests,
       UuidSpec.tests,
+      HexSpec.tests,
       DrawingSpec.tests,
       HorizontalScalingSpec.tests,
       PaintSpec.tests,

@@ -12,8 +12,10 @@ executable golem
   hs-source-dirs:   app
   main-is:          Main.hs
   -- -N: every processor, so that paragraphs are composed on several OS
-  -- threads at once (golem-driver ADR 0002)
-  ghc-options: -threaded "-with-rtsopts=-N" -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns -Werror
+  -- threads at once (golem-driver ADR 0002); -A64m: an allocation area of
+  -- 64 MB for each capability, so that the collections of the youngest
+  -- generation are few (docs/adr/0249). No -rtsopts (docs/adr/0050).
+  ghc-options: -threaded "-with-rtsopts=-N -A64m" -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns -Werror
   default-extensions: DerivingStrategies LambdaCase OverloadedStrings
   build-depends:
     , base                  >=4.20 && <4.21
