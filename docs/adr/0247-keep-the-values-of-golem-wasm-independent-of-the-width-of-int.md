@@ -1,6 +1,6 @@
 # ADR 0247: golem.wasm の値を `Int` の幅に依らせない
 
-ステータス: 採択
+ステータス: 採択→7 の `int-width-icc` で見るもの、I3 のストリームの番号の上限（2^31 以上を G08020 で拒む）は [ADR 0259](0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)
 
 ## 文脈
 
