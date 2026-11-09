@@ -1,6 +1,7 @@
 module Main (main) where
 
 import AlignSpaceSpec (alignSpaceTests)
+import BoxesSpec (boxesTests)
 import BuildSpec
 import CallsSpec (callsTests)
 import ChapterNotesSpec
@@ -81,6 +82,7 @@ tests skips =
         pageLabelsTests,
         tocStylesTests,
         keepOptionsTests,
+        boxesTests,
         emetSamplesTests,
         functionLibraryTests,
         manualEmetTests,

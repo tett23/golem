@@ -54,6 +54,8 @@ async function htmlChecks(page, inputs) {
     results.push(await report('kenten', await html.kenten(page, u('horizontal/book.xhtml'))));
     results.push(await report('paragraph rules, horizontal', await html.paragraphRules(page, u('horizontal/book.xhtml'))));
     results.push(await report('paragraph rules, vertical', await html.paragraphRules(page, u('vertical/book.xhtml'))));
+    results.push(await report('boxes of paragraphs, horizontal', await html.boxes(page, u('horizontal/book.xhtml'))));
+    results.push(await report('boxes of paragraphs, vertical', await html.boxes(page, u('vertical/book.xhtml'))));
     results.push(await report('tRNS (I3)', await html.trns(page, u('figures/figures.xhtml'))));
     const manuals = [];
     for (const m of ['manual/html', 'manual-dev/html']) for (const f of await xhtmlUnder(join(inputs, m))) manuals.push(u(relative(inputs, f).split('\\').join('/')));

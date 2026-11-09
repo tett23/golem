@@ -325,6 +325,13 @@ marksTests tinyJpeg =
         testCase "a filled closed curve is m, the curves, h and f (golem-driver ADR 0028)" $
           contentStream Map.empty Map.empty [CurveFill (0, 0) [((65536, 65536), (131072, 65536), (196608, 0)), ((131072, -65536), (65536, -65536), (0, 0))]]
             @?= "0 0 m\n1 1 2 1 3 0 c\n2 -1 1 -1 0 0 c\nh f\n",
+        testCase "a stroked path sets its width, its dash and round caps; closed, it ends with h S (docs/adr/0271)" $ do
+          contentStream Map.empty Map.empty [StrokedPath (LineStroke 32768 [] False) (0, 0) [LineTo (65536, 0)] False]
+            @?= "0.5 w\n0 0 m\n1 0 l\nS\n"
+          contentStream Map.empty Map.empty [StrokedPath (LineStroke 65536 [196608, 131072] False) (0, 0) [LineTo (65536, 0), LineTo (65536, 65536)] True]
+            @?= "1 w [3 2] 0 d\n0 0 m\n1 0 l\n1 1 l\nh S\n"
+          contentStream Map.empty Map.empty [StrokedPath (LineStroke 65536 [0, 196608] True) (0, 0) [LineTo (65536, 0)] False]
+            @?= "1 w 1 J [0 3] 0 d\n0 0 m\n1 0 l\nS\n",
         -- golem-driver ADR 0030
         testCase "ActualText wraps its marks in /Span with the replacement text, BDC to EMC" $ do
           let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [ActualText "ffi" [GlyphRun (FontRef 7) (10 * 65536) [(3, 0, 0)]]]

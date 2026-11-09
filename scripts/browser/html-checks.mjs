@@ -167,6 +167,33 @@ export async function paragraphRules(page, url) {
   return out;
 }
 
+// Boxes of paragraphs (docs/adr/0271): each div.box has a background or a
+// border, holds its paragraphs, and is apart from the paragraphs outside it
+// (their rectangles do not overlap). A loose check: it reads the computed
+// style and the rectangles, not the pixels.
+export async function boxes(page, url) {
+  await load(page, url);
+  const bs = await page.evaluate(`[...document.querySelectorAll('div.box')].map((d) => {
+    const cs = getComputedStyle(d);
+    const painted = cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && cs.backgroundColor !== 'transparent';
+    const border = ['block-start', 'block-end', 'inline-start', 'inline-end'].some((s) => (parseFloat(cs.getPropertyValue('border-' + s + '-width')) || 0) > 0);
+    const r = (${docRect})(d.getBoundingClientRect());
+    const inner = d.querySelectorAll('p').length;
+    const outside = [...document.querySelectorAll('p')].filter((p) => !d.contains(p)).map((p) => (${docRect})(p.getBoundingClientRect()));
+    return { painted, border, r, inner, outside };
+  })`);
+  if (bs.length === 0) return [`${url}: no div.box`];
+  const out = [];
+  const overlaps = (a, b) => a.x < b.x + b.width - 0.5 && b.x < a.x + a.width - 0.5 && a.y < b.y + b.height - 0.5 && b.y < a.y + a.height - 0.5;
+  for (const [i, b] of bs.entries()) {
+    const name = `${url}: div.box ${i + 1}`;
+    if (!b.painted && !b.border) out.push(`${name}: neither a background nor a border`);
+    if (b.inner === 0) out.push(`${name}: no paragraph`);
+    if (b.outside.some((o) => overlaps(b.r, o))) out.push(`${name}: overlaps a paragraph outside it`);
+  }
+  return out;
+}
+
 // The colour of the ground behind an element: the first background that is
 // not transparent, from its parent up, or white.
 const ground = `(e) => {

@@ -17,6 +17,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Golem.Typeset
+                    Golem.Typeset.Box
                     Golem.Typeset.FontProvider
                     Golem.Typeset.GlyphRuns
                     Golem.Typeset.Memo
@@ -62,6 +63,7 @@ test-suite golem-typeset-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:
+    BoxSpec
     GlyphRunsSpec
     MemoSpec
     RuleShapeSpec

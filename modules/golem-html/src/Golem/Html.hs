@@ -6,6 +6,7 @@ module Golem.Html
     HtmlLists (..),
     HtmlCharStyle (..),
     HtmlParaStyle (..),
+    HtmlBox (..),
     defaultAlignDecls,
     HtmlRule (..),
     HtmlFeatures (..),
@@ -224,7 +225,19 @@ data HtmlParaStyle = HtmlParaStyle
     hpsEndIndent :: !Text,
     {- | the declarations of the keep options not of their defaults:
     break-after, break-inside, orphans, widows, break-before (docs/adr/0261)
-    -} hpsBreaks :: ![Text]
+    -} hpsBreaks :: ![Text],
+    -- | the box of the style (docs/adr/0271)
+    hpsBox :: !(Maybe HtmlBox)
+  }
+  deriving stock (Eq)
+
+{- | The box of a paragraph style (docs/adr/0271): paragraphs of equal keys
+one after the other are in one div.box, of the class of the first; the
+declarations of div.box-<name>.
+-}
+data HtmlBox = HtmlBox
+  { hbKey :: !Text,
+    hbDecls :: ![Text]
   }
   deriving stock (Eq)
 
@@ -440,7 +453,18 @@ topBlocks c = go Nothing Nothing
     go _ blanks (Block _ _ _ (PageControl NoBreak) : rest) = go (Just "avoid") blanks rest
     go pending blanks (Block _ _ _ (PageControl _) : rest) = go pending blanks rest
     go pending blanks (Block _ _ _ (BlankLines n) : rest) = go pending ((+ toInteger n) <$> blanks) rest
-    go pending blanks (b : rest) = blankLines (fromMaybe 0 blanks) <> withBreak pending (block c b) <> go Nothing (Just 0) rest
+    -- the paragraphs of one box in its div (docs/adr/0271)
+    go pending blanks (b : rest)
+      | Just (name, key) <- boxOf b =
+          let (more, rest') = span (\x -> fmap snd (boxOf x) == Just key && not (startsPage x)) rest
+           in blankLines (fromMaybe 0 blanks) <> withBreak pending ("<div class=\"box box-" <> escapeXml name <> "\">\n" <> T.concat (map (block c) (b : more)) <> "</div>\n") <> go Nothing (Just 0) rest'
+      | otherwise = blankLines (fromMaybe 0 blanks) <> withBreak pending (block c b) <> go Nothing (Just 0) rest
+    styleOf = \case
+      Block _ _ _ (Paragraph st _) -> Map.lookup (fromMaybe "body" st) (cParaStyles c) >>= \ps -> Just (fromMaybe "body" st, ps)
+      _ -> Nothing
+    boxOf x = styleOf x >>= \(name, ps) -> (\hb -> (name, hbKey hb)) <$> hpsBox ps
+    -- a paragraph of a style with page-break other than any starts a box of its own
+    startsPage x = maybe False (any ("break-before:" `T.isPrefixOf`) . hpsBreaks . snd) (styleOf x)
     blankLines n
       | n > 0 = "<div class=\"blank-line\">" <> T.replicate (fromInteger n) "<br/>" <> "</div>\n"
       | otherwise = ""
@@ -1058,6 +1082,8 @@ css cfg book =
       <> concat [paraRules name ps | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
       -- the spaces before and after (docs/adr/0189)
       <> spaceRules outside True allStyles [(a, b) | a <- allStyles, b <- allStyles]
+      -- the boxes of paragraph styles (docs/adr/0271)
+      <> boxRules
       -- the rules of paragraph styles and headings as pseudo-elements (golem-driver ADR 0027)
       <> concat [ruleRules (if name == "body" then "p:not([class])" else "p.ps-" <> name) (hpsRuleBefore ps) (hpsRuleAfter ps) | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
       <> concat [ruleRules ("h" <> tshow l) b a | (l, (b, a)) <- Map.toAscList (hcHeadingRules cfg)]
@@ -1187,6 +1213,31 @@ css cfg book =
     faceRule sel f = rule sel (["font-family: " <> fontStack role | Just role <- [faFont f]] <> ["font-size: " <> s | Just s <- [faSize f]])
     charRule name cs = rule (selectorOf name) (declsOf name cs)
     -- a rule that says only what the element shows anyway is not written
+    {- the box of each style that has one, its paragraphs without their
+    indents, which the box takes, and without their outer margins, the
+    spaces before the first and after the last on the box; a pair of a
+    paragraph and a box after it as a pair of paragraphs (docs/adr/0271) -}
+    boxed = [(n, ps, hb) | (n, ps) <- allStyles, Just hb <- [hpsBox ps]]
+    paraSelOf n = if n == "body" then "p:not([class])" else "p.ps-" <> n
+    boxRules =
+      [rule ("div.box-" <> n) (hbDecls hb) | (n, _, hb) <- boxed]
+        <> concat
+          [ [ "div.box > p { padding-inline-start: 0; padding-inline-end: 0; }",
+              "div.box > p:first-child { margin-block-start: 0; }",
+              "div.box > p:last-child { margin-block-end: 0; }"
+            ]
+          | not (null boxed)
+          ]
+        <> ["div.box:has(> " <> paraSelOf n <> ":first-child) { margin-block-start: " <> tshow (hpsSpaceBefore ps) <> "em; }" | (n, ps, _) <- boxed, hpsSpaceBefore ps > 0]
+        <> ["div.box:has(> " <> paraSelOf n <> ":last-child) { margin-block-end: " <> tshow (hpsSpaceAfter ps) <> "em; }" | (n, ps, _) <- boxed, hpsSpaceAfter ps > 0]
+        <> [ paraSelOf a <> " + div.box:has(> " <> paraSelOf b <> ":first-child) { margin-block-start: " <> tshow (max x y) <> "em; }"
+           | (a, pa) <- allStyles,
+             (b, pb, _) <- boxed,
+             let x = hpsSpaceAfter pa
+                 y = hpsSpaceBefore pb,
+             x > 0,
+             y > 0
+           ]
     charRuleMaybe name cs =
       let ds = declsOf name cs
        in if null ds || ds == defaults name then Nothing else Just (rule (selectorOf name) ds)
@@ -1350,7 +1401,11 @@ css cfg book =
               <> [rule (pre <> " .sidenote") (faceDecls f {faSize = Just (fromMaybe "0.85em" (faSize f))}) | Just f <- [hlSidenoteFace l]]
           -- no indent in list items, after the rules of the paragraph styles of the page
           listRule = [pre <> " li p:not([class]), " <> pre <> " li p[class] { padding-inline-start: 0; text-indent: 0; }" | not (Map.null (hlParaStyles l))]
-       in charRules <> paraStyleRules <> faceRules <> listRule
+          -- the boxes of the styles of the file, and no indent in a box (docs/adr/0271)
+          boxLocal =
+            [rule (pre <> " div.box-" <> name) (hbDecls hb) | (name, ps) <- locals, Just hb <- [hpsBox ps]]
+              <> [pre <> " div.box > p { padding-inline-start: 0; padding-inline-end: 0; }" | not (Map.null (hlParaStyles l)), any (isJust . hpsBox . snd) mergedList]
+       in charRules <> paraStyleRules <> faceRules <> boxLocal <> listRule
 
 -- | The table of contents page of the HTML target.
 indexPage :: HtmlConfig -> FileTable -> Book -> Text

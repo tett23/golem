@@ -47,7 +47,7 @@ where
 
 import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
-import Control.Monad (filterM, forM, forM_, mfilter, when)
+import Control.Monad (filterM, forM, forM_, join, mfilter, when)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
@@ -1107,10 +1107,10 @@ htmlConfig dev e book missing bib =
          in HtmlCode
               { hcoFont = d >>= psFont,
                 hcoSize = cssFontSize style <$> (d >>= psSize),
-                hcoBackground = d >>= psBackground,
+                hcoBackground = join (d >>= psBackground),
                 hcoPadding = cssLength (fromMaybe (Zw 0.5) (d >>= psPadding)),
                 -- the border and [code] (golem-driver ADR 0023)
-                hcoBorder = d >>= psBorder,
+                hcoBorder = join (d >>= psBorder),
                 hcoBorderWidth = cssLength (fromMaybe (Abs 16384) (d >>= psBorderWidth)),
                 hcoLineNumbers = cdLineNumbers (stCode style),
                 hcoLineNumberColor = cdLineNumberColor (stCode style),

@@ -26,3 +26,11 @@ only one line
 
 @style box
 罫線のある段落。
+
+@style column
+囲みの一つめの段落。
+
+@style column
+囲みの二つめの段落。
+
+囲みの後の段落。

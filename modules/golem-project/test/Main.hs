@@ -841,6 +841,7 @@ tests =
       listTests,
       characterFeatureTests,
       codeStyleTests,
+      boxStyleTests,
       captionSidenoteTests,
       alignSpaceTests,
       testCase "side of [sidenotes] takes only outside, the default (golem-project ADR 0009)" $ do
@@ -1676,7 +1677,7 @@ codeStyleTests =
         let d = paraStyle s (Just "code")
         (d >>= psFont) @?= Just "mono"
         (d >>= psSize) @?= parseDim "11Q"
-        (d >>= psBackground) @?= Just "code-bg"
+        (d >>= psBackground) @?= Just (Just "code-bg")
         (d >>= psPadding) @?= Just (Zw 1),
       testCase "the defaults of code: font code, padding 0.5zw, no background" $ do
         s <- styleOf ""
@@ -1694,11 +1695,9 @@ codeStyleTests =
           let r = parseStyle (FileId 0) ("[paragraph-styles.code]\n" <> kv <> "\n")
           codes r @?= ["G03006"]
           assertBool (show (messages r)) (any ("font、size、background、padding" `T.isInfixOf`) (messages r)),
-      testCase "background and padding only in code (G03006)" $ do
-        let r1 = parseStyle (FileId 0) "[color.swatches]\nbg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.quote]\nbackground = \"bg\"\n"
-        codes r1 @?= ["G03006"]
-        assertBool (show (messages r1)) (any ("code" `T.isInfixOf`) (messages r1))
-        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\npadding = \"1zw\"\n") @?= ["G03006"],
+      testCase "background and padding in other styles too (docs/adr/0271)" $ do
+        codes (parseStyle (FileId 0) "[color.swatches]\nbg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.quote]\nbackground = \"bg\"\n") @?= []
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\npadding = \"1zw\"\n") @?= [],
       testCase "based-on = \"code\" is G03013" $
         codes (parseStyle (FileId 0) "[paragraph-styles.x]\nbased-on = \"code\"\n") @?= ["G03013"],
       testCase "a missing swatch is G03013; a padding that is negative or not a dimension G03006" $ do
@@ -1834,12 +1833,12 @@ codeStyleTests =
       testCase "[code]: a swatch that is not there is G03013" $ do
         codes (parseStyle (FileId 0) "[code]\nhighlight = \"nope\"\n") @?= ["G03013"]
         codes (parseStyle (FileId 0) "[code.colors]\nkeyword = \"nope\"\n") @?= ["G03013"],
-      testCase "border and border-width of code; not in another style, not in zw" $ do
+      testCase "border and border-width of code, of another style too (docs/adr/0271); not in zw" $ do
         s <- styleOf (swatches <> "\n[paragraph-styles.code]\nborder = \"black\"\nborder-width = \"0.5pt\"\n")
         let d = paraStyle s (Just "code")
-        (d >>= psBorder) @?= Just "black"
+        (d >>= psBorder) @?= Just (Just "black")
         (d >>= psBorderWidth) @?= parseDim "0.5pt"
-        codes (parseStyle (FileId 0) (swatches <> "\n[paragraph-styles.quote]\nborder = \"black\"\n")) @?= ["G03006"]
+        codes (parseStyle (FileId 0) (swatches <> "\n[paragraph-styles.quote]\nborder = \"black\"\n")) @?= []
         codes (parseStyle (FileId 0) (swatches <> "\n[paragraph-styles.code]\nborder-width = \"1zw\"\n")) @?= ["G03006"]
         codes (parseStyle (FileId 0) "[paragraph-styles.code]\nborder = \"nope\"\n") @?= ["G03013"],
       testCase "@style-def paragraph code takes border and border-width" $ do
@@ -1847,13 +1846,82 @@ codeStyleTests =
         case localStyleDef ParagraphKind [("border", LocalWord "black"), ("border-width", LocalWord "1pt")] of
           Right (Right d) -> do
             [c | (c, _, _) <- checkLocalStyles base noLocalStyles {lsParaStyles = Map.fromList [("code", d)]}] @?= []
-            (paraStyle (withLocalStyles base noLocalStyles {lsParaStyles = Map.fromList [("code", d)]}) (Just "code") >>= psBorder) @?= Just "black"
+            (paraStyle (withLocalStyles base noLocalStyles {lsParaStyles = Map.fromList [("code", d)]}) (Just "code") >>= psBorder) @?= Just (Just "black")
           other -> assertFailure (show other)
     ]
   where
     styleOf t = either (\ds -> assertFailure (show ds) >> pure defaultStyle) pure (parseStyle (FileId 0) t)
     messages = either (map diagMessage) (const [])
     swatches = "[color.swatches]\ngray = { cmyk = [0, 0, 0, 60] }\nhl = { cmyk = [0, 0, 20, 0] }\nadd = { cmyk = [20, 0, 20, 0] }\ndel = { cmyk = [0, 20, 20, 0] }\nkw = { cmyk = [100, 50, 0, 0] }\nblack = { cmyk = [0, 0, 0, 100] }\n"
+
+-- | The boxes of paragraph styles (docs/adr/0271).
+boxStyleTests :: TestTree
+boxStyleTests =
+  testGroup
+    "boxes of paragraph styles (docs/adr/0271)"
+    [ testCase "a paragraph style reads background, padding, border, border-width, border-style, border-sides and border-radius" $ do
+        s <- styleOf (swatches <> "\n[paragraph-styles.column]\nbackground = \"gray\"\npadding = \"1zw\"\nborder = \"black\"\nborder-width = \"0.5pt\"\nborder-style = \"dashed\"\nborder-sides = [\"start\", \"before\"]\nborder-radius = \"2mm\"\n")
+        let d = paraStyle s (Just "column")
+        (d >>= psBackground) @?= Just (Just "gray")
+        (d >>= psPadding) @?= Just (Zw 1)
+        (d >>= psBorder) @?= Just (Just "black")
+        (d >>= psBorderWidth) @?= parseDim "0.5pt"
+        fmap borderStyleName (d >>= psBorderStyle) @?= Just "dashed"
+        (d >>= psBorderSides) @?= Just [SideStart, SideBefore]
+        (d >>= psBorderRadius) @?= parseDim "2mm"
+        hasBox <$> d @?= Just True,
+      testCase "the keys go down through based-on; false takes away the background and the border written above" $ do
+        s <- styleOf (swatches <> "\n[paragraph-styles.column]\nbackground = \"gray\"\nborder = \"black\"\nborder-radius = \"1zw\"\n\n[paragraph-styles.note]\nbased-on = \"column\"\nbackground = false\n\n[paragraph-styles.plain]\nbased-on = \"note\"\nborder = false\n")
+        (paraStyle s (Just "note") >>= psBackground) @?= Just Nothing
+        (paraStyle s (Just "note") >>= psBorder) @?= Just (Just "black")
+        (paraStyle s (Just "note") >>= psBorderRadius) @?= Just (Zw 1)
+        hasBox <$> paraStyle s (Just "note") @?= Just True
+        hasBox <$> paraStyle s (Just "plain") @?= Just False
+        hasBox <$> paraStyle s (Just "body") @?= Just False,
+      testCase "a border-style other than solid, dashed and dotted is G03006" $ do
+        forM_ ["solid", "dashed", "dotted"] $ \v -> codes (parseStyle (FileId 0) ("[paragraph-styles.a]\nborder-style = \"" <> v <> "\"\n")) @?= []
+        forM_ ["thin-thin", "triple", "japanese-dots", "wavy", "double"] $ \v -> codes (parseStyle (FileId 0) ("[paragraph-styles.a]\nborder-style = \"" <> v <> "\"\n")) @?= ["G03006"],
+      testCase "an empty border-sides, a side twice and a side not of the four are G03006" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.a]\nborder-sides = [\"before\", \"after\", \"start\", \"end\"]\n") @?= []
+        forM_ ["[]", "[\"start\", \"start\"]", "[\"top\"]", "\"start\""] $ \v -> codes (parseStyle (FileId 0) ("[paragraph-styles.a]\nborder-sides = " <> v <> "\n")) @?= ["G03006"],
+      testCase "a negative border-radius and one that is not a dimension are G03006; zw is the size of the style" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.a]\nborder-radius = \"1zw\"\n") @?= []
+        codes (parseStyle (FileId 0) "[paragraph-styles.a]\nborder-radius = \"-1pt\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.a]\nborder-radius = \"abc\"\n") @?= ["G03006"],
+      testCase "a negative padding and a border-width in zw or negative are G03006 in any style" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.a]\npadding = \"-1zw\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.a]\nborder-width = \"1zw\"\n") @?= ["G03006"],
+      testCase "a box with a rule, its own or through based-on, is G03006" $ do
+        let r = parseStyle (FileId 0) (swatches <> "\n[paragraph-styles.a]\nbackground = \"gray\"\nrule-before = { weight = \"1pt\" }\n")
+        codes r @?= ["G03006"]
+        messages r @?= ["段落スタイル a には囲みと罫線を一緒に書けません"]
+        codes (parseStyle (FileId 0) (swatches <> "\n[paragraph-styles.a]\nrule-after = { weight = \"1pt\" }\n\n[paragraph-styles.b]\nbased-on = \"a\"\nborder = \"black\"\n")) @?= ["G03006"]
+        codes (parseStyle (FileId 0) (swatches <> "\n[paragraph-styles.a]\nbackground = \"gray\"\nrule-after = false\n")) @?= [],
+      testCase "a missing swatch of the background or the border is G03013" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.a]\nbackground = \"nope\"\n") @?= ["G03013"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.a]\nborder = \"nope\"\n") @?= ["G03013"],
+      testCase "caption, sidenote, table and toc-1 to toc-6 take none of the keys of the box (G03006)" $
+        forM_ [n | n <- ["caption", "sidenote", "table", "toc-1", "toc-6"]] $ \n ->
+          forM_ ["background = \"gray\"", "padding = \"1zw\"", "border = \"black\"", "border-width = \"1pt\"", "border-style = \"dotted\"", "border-sides = [\"start\"]", "border-radius = \"1pt\""] $ \kv ->
+            (n, kv, codes (parseStyle (FileId 0) (swatches <> "\n[paragraph-styles." <> n <> "]\n" <> kv <> "\n"))) @?= (n, kv, ["G03006"]),
+      testCase "code takes border-style, border-sides and border-radius" $
+        codes (parseStyle (FileId 0) "[paragraph-styles.code]\nborder-style = \"dotted\"\nborder-sides = [\"start\"]\nborder-radius = \"1mm\"\n") @?= [],
+      testCase "@style-def takes the keys, border-sides as words separated by commas" $ do
+        base <- styleOf swatches
+        case localStyleDef ParagraphKind [("background", LocalWord "gray"), ("border-sides", LocalWord "start,end"), ("border-style", LocalWord "dotted"), ("border-radius", LocalWord "1zw")] of
+          Right (Right d) -> do
+            let ls = noLocalStyles {lsParaStyles = Map.fromList [("column", d)]}
+            [c | (c, _, _) <- checkLocalStyles base ls] @?= []
+            (paraStyle (withLocalStyles base ls) (Just "column") >>= psBorderSides) @?= Just [SideStart, SideEnd]
+          other -> assertFailure (show other)
+        case localStyleDef ParagraphKind [("border-sides", LocalWord "start,start")] of
+          Left es -> map fst es @?= ["G03006"]
+          other -> assertFailure (show other)
+    ]
+  where
+    styleOf t = either (\ds -> assertFailure (show ds) >> pure defaultStyle) pure (parseStyle (FileId 0) t)
+    messages = either (map diagMessage) (const [])
+    swatches = "[color.swatches]\ngray = { cmyk = [0, 0, 0, 10] }\nblack = { cmyk = [0, 0, 0, 100] }\n"
 
 characterFeatureTests :: TestTree
 characterFeatureTests =
@@ -2095,6 +2163,9 @@ localStyleTests =
               "aki-set" -> "gyomatsu-yakumono-hankaku"
               "padding" -> "1zw"
               "border-width" -> "1pt"
+              "border-style" -> "dashed"
+              "border-sides" -> "start,end"
+              "border-radius" -> "1zw"
               "features" -> "smcp,-liga"
               "position" -> "superscript"
               "underline" -> "true"

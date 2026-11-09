@@ -14,6 +14,12 @@ golem-pdf は、Golem の PDF を書き、図版を PDF に置くモジュール
 - `GlyphRun`、`RotatedGlyphRun`、`TransformedGlyphRun` は `Tz` を書かない。
 - そのため、マークの内容のストリームを解釈し終えた時点の比率と `q` の深さは、解釈を始める前と同じである。`Form` の `Do` は、比率 100 の状態で呼ばれる。
 
+線で描くパスのマーク `StrokedPath` は、段落の囲みの角丸の枠に使う（[docs/adr/0271](../adr/0271-paragraph-backgrounds-and-borders.md)）。
+線の太さの `w`、丸い線端の `1 J`、ダッシュの配列の `d` を書いてから、`m`、`l`、`c` のパスと、閉じたパスでは `h S`、開いたパスでは `S` を書く。
+グラフィックスの状態を変えるので、呼ぶ側が `Saved`（`q` と `Q`）の中に置く。
+見た目の回帰のテストのラスタライザ shem は `l`、`S`、`J`、`d` を読まないので、`StrokedPath` を含むページは shem で描けない。
+囲みの背景の角丸のパスは、直線を両端に制御点を置いた曲線として `CurveFill` で書くので、shem で描ける。
+
 グリフの符号（`Tj` の `<...>` と `ToUnicode` の CMap の `beginbfchar` の左の値）は、大文字の 16 進 4 桁で書く。
 xref の表の各行のオフセットは、0 で左から埋めた 10 桁の 10 進で書く。
 どちらも `Text.Printf` を使わず、`Golem.Pdf.Number` の `hex4` と `decimal10` が `Builder` で直接に書く。

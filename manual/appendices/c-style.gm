@@ -208,6 +208,13 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: regex-styles] | 正規表現に一致した文字に文字スタイルを当てる組の配列です。[code: { pattern = '\[0-9\]+', style = "bold" }] のように書きます。既定は [code: \[\]] です。 |
 | [code: rule-before] | 段落の前に引く罫線です。罫線の表（次の表）か [code: false] を書きます。[code: false] は引き継いだ罫線を引きません。 |
 | [code: rule-after] | 段落の後に引く罫線です。書き方は [code: rule-before] と同じです。 |
+| [code: background] | 囲みの背景の色の名前です。[code: false] は引き継いだ背景を塗りません。既定はなしです。 |
+| [code: border] | 囲みの枠の色の名前です。[code: false] は引き継いだ枠を描きません。既定はなしです。 |
+| [code: border-width] | 枠の線の太さです。[code: zw] は使えません。既定は [code: "0.25pt"] です。 |
+| [code: border-style] | 枠の線の種類です。[code: "solid"]、[code: "dashed"]、[code: "dotted"] のどれかを書きます。既定は [code: "solid"] です。 |
+| [code: border-sides] | 枠を描く辺の配列です。[code: "before"]、[code: "after"]、[code: "start"]、[code: "end"] から書きます。既定は四つすべてです。 |
+| [code: padding] | 囲みの内側の余白です。[code: zw] は段落スタイルの文字の大きさを一字とします。既定は [code: "0.5zw"] です。 |
+| [code: border-radius] | 囲みの角の丸みの半径です。[code: zw] は段落スタイルの文字の大きさを一字とします。既定は [code: "0pt"] です。 |
 
 段落スタイルには、文字スタイルと同じ [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]、[code: features] も書けます。
 [code: \[paragraph-styles.body\]] に書くと、本の全体の既定になります。
@@ -230,6 +237,10 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 罫線が仕上がりの線か段間の半分を超えると、版面を計算できないエラー（G07001）です。
 [code: true] を書いたとき、[code: caption]、[code: sidenote]、[code: table]、[code: code] に書いたとき、[code: @style-def] に書いたときはエラー（G03006）です。
 罫線を持つ段落が一ページ（一段）に入らないときは、お知らせ（G07046）を出し、前と後の罫線を省いて分けて組みます。
+
+[code: background] か [code: border] を持つ段落スタイルの段落を囲みます（「[ref-title paragraph-boxes]」、[ref-page paragraph-boxes] ページ）。
+囲みの七つのキーは、[code: caption]、[code: sidenote]、[code: table]、[code: toc-1] から [code: toc-6] には書けません。
+囲みのある段落スタイルに罫線を書いたときと、表にない値を書いたときはエラー（G03006）です。
 
 [code: regex-styles] の組は、[code: pattern]（正規表現）と [code: style]（文字スタイルの名前）を持ちます。
 同じ文字に二つの組が一致したときは、後の組が勝ちます。
@@ -254,7 +265,7 @@ PDF では、表の行がセルの全体を収める最も少ない行を占め�
 [code: line-breaks]、[code: space-between]、[code: space-before]、[code: space-after]、[code: align] は、原稿で [code: @style caption] のように付けた段落にだけ適用されます。
 - [code: code]：コードブロックです。[code: font = "code"]、[code: padding = "0.5zw"] です。
 
-段落スタイル [code: code] に書けるキーは、次の六つだけです。
+段落スタイル [code: code] に書けるキーは、次の六つと、[code: border-style]、[code: border-sides]、[code: border-radius] だけです。
 [code: based-on] は書けず、ほかの段落スタイルの [code: based-on] にも書けません。
 原稿の [code: @style code] もエラーです。
 
@@ -269,8 +280,7 @@ PDF では、表の行がセルの全体を収める最も少ない行を占め�
 
 コードブロックは、行と上下の余白を収める行数を占め、その中の中央に組みます。
 後の本文は、行の格子からずれません。
-[code: background]、[code: padding]、[code: border]、[code: border-width] は、[code: code] のほかの段落スタイルには書けません。
-ファイルの先頭の [code: @style-def paragraph code] にも、同じ六つのキーだけを書けます。
+ファイルの先頭の [code: @style-def paragraph code] にも、同じキーだけを書けます。
 
 @nonumber
 ## [code: \[headings.階層\]]

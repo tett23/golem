@@ -13,6 +13,8 @@ module Golem.Pdf.Writer
     Turn (..),
     turnRect,
     Mark (..),
+    PathSegment (..),
+    LineStroke (..),
     Content (..),
     ArtifactKind (..),
     Move (..),
@@ -107,6 +109,16 @@ data RunStyle = RunStyle
   }
   deriving stock (Eq, Show)
 
+-- | A part of a path: a line or a cubic curve (its two control points and its end) to a point (docs/adr/0271).
+data PathSegment = LineTo !(Sp, Sp) | CurveTo !(Sp, Sp) !(Sp, Sp) !(Sp, Sp)
+  deriving stock (Eq, Show)
+
+{- | The line a path is stroked with (docs/adr/0271): its width, its dash
+array (empty for a solid line) and whether its ends are round.
+-}
+data LineStroke = LineStroke {lsWidth :: !Sp, lsDash :: ![Sp], lsRoundCap :: !Bool}
+  deriving stock (Eq, Show)
+
 data Mark
   = -- | font, size, glyphs with their origins
     GlyphRun !FontRef !Sp ![(GlyphId, Sp, Sp)]
@@ -123,6 +135,10 @@ data Mark
     curve, its two control points and its end (golem-driver ADR 0028)
     -}
     CurveFill !(Sp, Sp) ![((Sp, Sp), (Sp, Sp), (Sp, Sp))]
+  | {- | a path of lines and cubic curves from its start, stroked with a
+    line; closed when the last argument is true (docs/adr/0271)
+    -}
+    StrokedPath !LineStroke !(Sp, Sp) ![PathSegment] !Bool
   | Image !ImageRef !Rect
   | SetColor !Swatch
   | -- | a glyph run slanted or emboldened (golem-driver ADR 0004)
@@ -425,6 +441,18 @@ markBuilder fontNames imageNames formNames = mark
               <> "f"
               <> nl
       CurveFill start cs -> point start <> " m" <> nl <> mconcat (map curve cs) <> "h f" <> nl
+      StrokedPath (LineStroke w dash roundCap) start segs closed ->
+        num w
+          <> " w"
+          <> (if roundCap then " 1 J" else "")
+          <> (if null dash then "" else " [" <> mconcat (zipWith (\i d -> (if i == (0 :: Int) then "" else sp) <> num d) [0 ..] dash) <> "] 0 d")
+          <> nl
+          <> point start
+          <> " m"
+          <> nl
+          <> mconcat (map segment segs)
+          <> (if closed then "h S" else "S")
+          <> nl
       Image i (Rect x y w h) ->
         "q " <> num w <> " 0 0 " <> num h <> sp <> num x <> sp <> num y <> " cm /Im" <> B.intDec (Map.findWithDefault 0 i imageNames) <> " Do Q" <> nl
       SetColor (Swatch c m y k) ->
@@ -470,6 +498,9 @@ markBuilder fontNames imageNames formNames = mark
         "q " <> num w <> " 0 0 " <> num h <> sp <> num x <> sp <> num y <> " cm /Fm" <> B.intDec (Map.findWithDefault 0 f formNames) <> " Do Q" <> nl
     point (x, y) = num x <> sp <> num y
     curve (a, b, c) = point a <> sp <> point b <> sp <> point c <> " c" <> nl
+    segment = \case
+      LineTo p -> point p <> " l" <> nl
+      CurveTo a b c -> curve (a, b, c)
 
 -- ------------------------------------------------------------------ serialization
 

@@ -49,6 +49,7 @@ import Golem.Project.Feature (normalFeatures, parseFeature)
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
+import Golem.Typeset.Box (BoxPaint (..), boxArea, boxMarks)
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
 import Golem.Typeset.GlyphRuns (glyphRuns)
@@ -1365,20 +1366,32 @@ drawColumn env p =
       -- the backgrounds, the bands and the borders of code blocks, drawn before everything (golem-driver ADR 0017, 0023)
       backgrounds =
         concat
-          [ [(sw, P.Saved [P.SetColor sw, P.Rule rect]) | Just sw <- [ciBackground ci]]
+          [ painted
               <> [ (sw, P.Saved [P.SetColor sw, P.Rule (codeBand env ta codeSlot (ciGeometry ci) k' (from - here) (to - from) (ciStart ci))])
                  | (r0, m, sw) <- ciBands ci,
                    let from = max r0 here
                        to = min (r0 + m) (here + k),
                    to > from
                  ]
-              <> [(sw, P.Saved (P.SetColor sw : map P.Rule (borderRects rect w))) | Just (sw, w) <- [ciBorder ci]]
+              <> border
           | (slot, SCode lid k spanLines) <- poSlots p,
             Just ci <- [Map.lookup lid (plCodes layout)],
             let (isFirst, codeSlot, k', _) = codePartOf slot lid k ci
                 here = lid - ciFirst ci
                 rect = codeRect env ta codeSlot (spanLines - (if isFirst then ciCaptionSpan ci else 0)) (ciStart ci)
+                -- the background and the border as those of a box (docs/adr/0271)
+                paint = BoxPaint (ciBackground ci) ((\(sw, w) -> (sw, w, ciBorderStyle ci)) <$> ciBorder ci) (ciBorderSides ci) (ciRadius ci)
+                (painted, border) = boxMarks vertical rect paint isFirst (here + k >= ciRows ci)
           ]
+          -- the backgrounds and the borders of the parts of boxes (docs/adr/0271)
+          <> concat
+            [ painted <> border
+            | seg <- poBoxes p,
+              Just bi <- [Map.lookup (bsBox seg) (plBoxes layout)],
+              let ids = [lid | (g, SLine lid) <- poSlots p, g >= bsFirst seg, g <= bsLast seg]
+                  rect = boxArea vertical ta (pgLinePitch geom) (pgFontSize geom) (bsFirst seg) (bsLast seg - bsFirst seg + 1) (bxStart bi) (bxEnd bi)
+                  (painted, border) = boxMarks vertical rect (bxPaint bi) (bxFirst bi `elem` ids) (bxLast bi `elem` ids)
+            ]
       figures = [(fid, figureRect geom n ta slot pf, pf) | (slot, fid) <- placedFigures p, Just pf <- [Map.lookup fid (plFigures layout)]]
       {- a figure turned onto the page (golem-driver ADR 0034): its image
       and caption in its frame, turned into the type area; the view
@@ -1623,12 +1636,6 @@ codeBand env ta slot g k j m start =
   where
     geom = deGeom env
     vertical = pgVertical (deGeom env)
-
--- the lines of a border of width t, centred on the sides of a rectangle
-borderRects :: Rect -> Sp -> [Rect]
-borderRects (Rect x y w h) t =
-  let half = Sp (unSp t `div` 2)
-   in [Rect (x - half) (y + h - half) (w + t) t, Rect (x - half) (y - half) (w + t) t, Rect (x - half) (y - half) t (h + t), Rect (x + w - half) (y - half) t (h + t)]
 
 -- the area of a code block of n grid lines from grid line slot, from start to the end of the line
 codeRect :: DrawEnv -> Rect -> Int -> Int -> Sp -> Rect

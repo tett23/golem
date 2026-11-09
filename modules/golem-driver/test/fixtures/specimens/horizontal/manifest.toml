@@ -10,6 +10,7 @@ chapters = [
   "chapters/07-rules.gm",
   "chapters/08-rule-styles.gm",
   "chapters/09-figures.gm",
+  "chapters/10-boxes.gm",
 ]
 bibliography = ["references.json"]
 
