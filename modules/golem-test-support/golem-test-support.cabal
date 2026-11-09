@@ -25,6 +25,7 @@ library
   exposed-modules:
     Golem.TestSupport.Bytes
     Golem.TestSupport.CffRos
+    Golem.TestSupport.CssCascade
     Golem.TestSupport.Enum
     Golem.TestSupport.Env
     Golem.TestSupport.ExternalTool
@@ -52,6 +53,7 @@ test-suite golem-test-support-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:
+    CssCascadeSpec
     EnumParCases
     EnumSpec
   build-depends:

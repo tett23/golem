@@ -12,6 +12,7 @@ module Main (main) where
 import Control.Concurrent (threadDelay)
 import Control.Exception (Exception, SomeException, evaluate, throwIO, try)
 import Control.Monad (replicateM, void)
+import CssCascadeSpec (cssCascadeTests)
 import Data.ByteString qualified as BS
 import Data.IORef (modifyIORef, newIORef, readIORef)
 import Data.List (isPrefixOf)
@@ -61,7 +62,8 @@ allTests =
         skippedTests,
         timeLimitTests,
         watchdogTests,
-        enumTests
+        enumTests,
+        cssCascadeTests
       ]
 
 found, missing :: IO (Maybe FilePath)

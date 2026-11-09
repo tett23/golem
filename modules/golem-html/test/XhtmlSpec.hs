@@ -4,7 +4,6 @@ the index and citations.
 -}
 module XhtmlSpec (xhtmlTests) where
 
-import CssCascade (Elem (..), Page (..), Winner (..), winningMarginStarts)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
@@ -18,6 +17,7 @@ import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
 import Golem.Html
 import Golem.Syntax.Span
+import Golem.TestSupport.CssCascade (Elem (..), Page (..), Winner (..), winningMarginStarts)
 import Hedgehog (forAll, property, (===))
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range

@@ -1,6 +1,6 @@
 # ADR 0229: [ADR 0215](0215-ref-number-and-ref-title-as-reference.md) と 0217 の実装が手順から外れた点を記録する
 
-ステータス: 採択
+ステータス: 採択→パッケージをまたぐソースのディレクトリは [ADR 0248](0248-move-the-css-cascade-of-the-tests-into-golem-test-support.md)
 
 ## 文脈
 

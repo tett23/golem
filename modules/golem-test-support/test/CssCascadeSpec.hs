@@ -4,10 +4,10 @@ reads and those it refuses.
 -}
 module CssCascadeSpec (cssCascadeTests) where
 
-import CssCascade
 import Data.Either (isLeft)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.TestSupport.CssCascade
 import Test.Tasty
 import Test.Tasty.HUnit
 
