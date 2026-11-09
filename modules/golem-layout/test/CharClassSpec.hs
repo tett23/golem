@@ -1,7 +1,8 @@
 {- | The character classes as tables (docs/adr/0250): every code point
 gives what the lists of characters gave. The reference below is the
 definition of golem-layout before ADR 0250, membership in String
-literals, copied as it was; a change of a class changes both.
+literals, copied as it was; a change of a class changes both (the
+characters golem-layout ADR 0049 added are in it).
 -}
 module CharClassSpec (charClassTests) where
 
@@ -55,14 +56,14 @@ boundaries =
 
 refLists :: [String]
 refLists =
-  [ "「『（［｛〈《【〔〘〖〝‘“｟«",
-    "」』）］｝〉》】〕〙〗〟’”｠»",
-    "‐‑〜゠–",
+  [ "「『（［｛〈《【〔〘〖〝‘“｟«⦅",
+    "」』）］｝〉》】〕〙〗〟’”｠»⦆〞",
+    "‐‑〜゠–～",
     "？！‼⁇⁈⁉",
     "・：；",
     "。．",
     "、，",
-    "—―…‥〳〴〵",
+    "—―…‥〳〴〵⸺⸻",
     "ヽヾゝゞ々〻",
     "ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ",
     "‘’“”«»‹›—–‐‑…",
@@ -78,14 +79,14 @@ refLists =
 
 refCharClass :: Char -> CharClass
 refCharClass c
-  | c `elem` ("「『（［｛〈《【〔〘〖〝‘“｟«" :: String) = Opening
-  | c `elem` ("」』）］｝〉》】〕〙〗〟’”｠»" :: String) = Closing
-  | c `elem` ("‐‑〜゠–" :: String) = Hyphen
+  | c `elem` ("「『（［｛〈《【〔〘〖〝‘“｟«⦅" :: String) = Opening
+  | c `elem` ("」』）］｝〉》】〕〙〗〟’”｠»⦆〞" :: String) = Closing
+  | c `elem` ("‐‑〜゠–～" :: String) = Hyphen
   | c `elem` ("？！‼⁇⁈⁉" :: String) = Dividing
   | c `elem` ("・：；" :: String) = MiddleDot
   | c `elem` ("。．" :: String) = FullStop
   | c `elem` ("、，" :: String) = Comma
-  | c `elem` ("—―…‥〳〴〵" :: String) = Inseparable
+  | c `elem` ("—―…‥〳〴〵⸺⸻" :: String) = Inseparable
   | c `elem` ("ヽヾゝゞ々〻" :: String) = Iteration
   | c == 'ー' = ProlongedSound
   | c `elem` ("ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ" :: String) = SmallKana
