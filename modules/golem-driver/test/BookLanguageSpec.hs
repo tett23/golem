@@ -124,14 +124,14 @@ bookLanguageTests =
         epub <- webDigests "fr" TargetEpub
         txt <- webDigests "fr" TargetText
         html
-          @?= [ ("/build/html/chapters/01.xhtml", "fae711aa882d844c642cdfa3cfd2f2792e6659134a200634b1007490df691de7"),
+          @?= [ ("/build/html/chapters/01.xhtml", "3d23f790f9eaafb98b8c4d08cef9b8a0d4bf7e19bf7dce02dbcdc88057f20981"),
                 ("/build/html/chapters/02.xhtml", "fd2f8c139b35404f882ba78a6c6b7fec3b0ab25a775854094c74ed8a97d0be43"),
                 ("/build/html/front.xhtml", "2ef2a685a52ce79fda2f11c003970101dbbadc156a825d81c9aaae98025f1959"),
                 ("/build/html/index.xhtml", "e47c4d4a58811c0318da4a766c453badccd836ad606c0b518807c1ab107566a6"),
                 ("/build/html/style.css", "3360b21aaa4acb000f05be9fb92cac49ef48b6277ee0eeb9e7a81115a173bb00")
               ]
         epub
-          @?= [ ("/build/epub/book.epub", "88f8e8e8a0709a526115f62352ffacdd33e8ea1b7e27b775935bdf026bc91241")
+          @?= [ ("/build/epub/book.epub", "8b2a8b7ee5285d03af65ad558a6b8b1af563b63bbb88974e4b6b0e92af8f478e")
               ]
         txt
           @?= [ ("/build/text/horizontal/chapters/01.txt", "969d7ea922c84ec6b81c466962dd39d47d395be6d1f8c45de196c50ad588d56c"),
