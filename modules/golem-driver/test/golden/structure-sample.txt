@@ -3,11 +3,20 @@ Document /Layout /WritingMode /TbRl
     "目次"
   TOC
     TOCI
-      "第一章　はじめに二"
+      Reference
+        Link
+          "第一章　はじめに二"
+          OBJR 1
     TOCI
-      "第二章　設計三"
+      Reference
+        Link
+          "第二章　設計三"
+          OBJR 1
     TOCI
-      "2.1　節三"
+      Reference
+        Link
+          "2.1　節三"
+          OBJR 1
   H1
     "第一章　はじめに"
   P
@@ -24,20 +33,28 @@ Document /Layout /WritingMode /TbRl
         "はん"
     "の結果を、同じ入力から常に同じバイト列として出力する"
     Reference
-      "*1"
+      Link
+        "*1"
+        OBJR 1
     Note ID=note-1
       Lbl
-        "*1"
+        Link
+          "*1"
+          OBJR 1
       P
         "この性質を決定性と呼ぶ。"
     "。本書は第1.0版、価格は2.68である。全2章。"
   P
     "詳しくは第"
     Reference
-      "二"
+      Link
+        "二"
+        OBJR 1
     "章「"
     Reference
-      "設計"
+      Link
+        "設計"
+        OBJR 1
     "」で説明する。重要、十。"
   L /List /ListNumbering /None
     LI

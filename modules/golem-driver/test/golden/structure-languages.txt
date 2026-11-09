@@ -27,10 +27,14 @@ Document
     Span Lang=en
       "AnoteinEnglish"
       Reference
-        "*1"
+        Link
+          "*1"
+          OBJR 1
       Note ID=note-1
         Lbl
-          "*1"
+          Link
+            "*1"
+            OBJR 1
         P
           Span Lang=en
             "Thebodyofthenoteisinthelanguageofitsmark,“theplace”."

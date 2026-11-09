@@ -300,7 +300,10 @@ data Ctx = Ctx
     -- | the id of each entry of each @bibliography (golem-doc ADR 0008)
     cCiteIds :: Map (ListAt, Text) Text,
     -- | the character styles of the page: those of its file over those of style.toml (docs/adr/0269)
-    cCharStyles :: Map Text HtmlCharStyle
+    cCharStyles :: Map Text HtmlCharStyle,
+    {- | the text is inside a link: a resolved reference in it is its text
+    alone (docs/adr/0267)
+    -} cInLink :: Bool
   }
 
 {- | Where the notes of a page go (golem-driver ADR 0026): the file whose
@@ -376,7 +379,7 @@ page :: HtmlConfig -> FileTable -> Book -> ChapterNotes -> Document -> Text
 page cfg ft book notes (Document fid bs) =
   let here = pagePath ft fid
       local = Map.lookup fid (hcLocalStyles cfg)
-      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg))
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
       body = topBlocks c bs <> notesSection c
@@ -630,7 +633,7 @@ toc c depth =
           <> linkTo c (teFile e) (teAnchor e)
           <> "\">"
           <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage (cCfg c)) n)) (teNumber e)
-          <> inlines c (teTitle e)
+          <> inlines c {cInLink = True} (teTitle e)
           <> "</a></li>\n"
       | e <- bookToc (cBook c),
         maybe True (teLevel e <=) depth
@@ -787,10 +790,15 @@ inline c = \case
   -- an empty span with a margin; word joiners keep the line from breaking around it (docs/adr ADR 0019)
   Aki _ a -> "&#x2060;<span class=\"aki\" style=\"margin-inline-start: " <> akiLength a <> "\"></span>&#x2060;"
   -- the URL as written: an IRI is a valid href (docs/adr ADR 0182)
-  Link _ u xs -> "<a href=\"" <> escapeXml u <> "\">" <> inlines c xs <> "</a>"
+  Link _ u xs -> "<a href=\"" <> escapeXml u <> "\">" <> inlines c {cInLink = True} xs <> "</a>"
   -- the tag as written, even the language of the book (docs/adr ADR 0187)
   Lang _ l xs -> "<span" <> langAttrs l <> ">" <> inlines c xs <> "</span>"
-  -- the text the reference resolved to, as before; no link yet (docs/adr/0215)
+  {- the text the reference resolved to (docs/adr/0215), a link to the place
+  of its label as [ref-page] has; inside a link its text alone (docs/adr/0267) -}
+  Resolved _ _ l xs
+    | not (cInLink c),
+      Just t <- Map.lookup l (bookLabels (cBook c)) ->
+        "<a href=\"" <> linkTo c (ltFile t) (ltAnchor t) <> "\">" <> inlines c {cInLink = True} xs <> "</a>"
   Resolved _ _ _ xs -> inlines c xs
 
 {- | The CSS length of an aki: zw in em, an absolute amount in pt, at most

@@ -12,6 +12,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Driver
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
+import Golem.Layout.Look (LinkDest (..), LinkTarget (..), Look (..))
 import Golem.LayoutSpec (pageGeometry)
 import Golem.Project (Manifest (..), Project (..), ProjectFailure (..))
 import Golem.Project.Files (diskFiles)
@@ -64,8 +65,13 @@ fileOf k ls = case drop k (nub (map fst ls)) of
 -- | An item without where its characters are in the source.
 placeless :: Item -> Item
 placeless = \case
-  Box w c -> Box w c {bcSource = (fst (bcSource c), mkSpan (FileId 0) 0 0), bcAt = 0}
+  Box w c -> Box w c {bcSource = (fst (bcSource c), mkSpan (FileId 0) 0 0), bcAt = 0, bcLook = (bcLook c) {lkLink = placelessLink <$> lkLink (bcLook c)}}
   x -> x
+  where
+    -- the heading an entry of the table of contents goes to is a place in the source too (docs/adr/0267)
+    placelessLink = \case
+      LinkTo (DestHeading _) -> LinkTo (DestHeading (mkSpan (FileId 0) 0 0))
+      t -> t
 
 -- | A list in style.toml.
 bookList :: Text -> BS.ByteString

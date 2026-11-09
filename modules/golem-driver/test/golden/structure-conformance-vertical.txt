@@ -3,21 +3,45 @@ Document /Layout /WritingMode /TbRl
     "目次"
   TOC
     TOCI
-      "第一章　見出しと段落二"
+      Reference
+        Link
+          "第一章　見出しと段落二"
+          OBJR 1
     TOCI
-      "一　箇条書き二"
+      Reference
+        Link
+          "一　箇条書き二"
+          OBJR 1
     TOCI
-      "1.1.1　定義リスト三"
+      Reference
+        Link
+          "1.1.1　定義リスト三"
+          OBJR 1
     TOCI
-      "第二章　表とコード四"
+      Reference
+        Link
+          "第二章　表とコード四"
+          OBJR 1
     TOCI
-      "一　表四"
+      Reference
+        Link
+          "一　表四"
+          OBJR 1
     TOCI
-      "二　コード七"
+      Reference
+        Link
+          "二　コード七"
+          OBJR 1
     TOCI
-      "索引八"
+      Reference
+        Link
+          "索引八"
+          OBJR 1
     TOCI
-      "参考文献九"
+      Reference
+        Link
+          "参考文献九"
+          OBJR 1
   H1
     "第一章　見出しと段落"
   P
@@ -40,10 +64,14 @@ Document /Layout /WritingMode /TbRl
         "ぱん"
     "を組む"
     Reference
-      "*1"
+      Link
+        "*1"
+        OBJR 1
     Note ID=note-1
       Lbl
-        "*1"
+        Link
+          "*1"
+          OBJR 1
       P
         "脚注の本文。"
         Ruby
@@ -57,7 +85,11 @@ Document /Layout /WritingMode /TbRl
       "code"
     "がある。文献を引く"
     Reference
-      "[1]"
+      "["
+      Link
+        "1"
+        OBJR 1
+      "]"
     "。索引の語を置く。"
   H2
     "一　箇条書き"
@@ -126,7 +158,22 @@ Document /Layout /WritingMode /TbRl
   H2
     "一　表"
   P
-    "ページをまたぐ表である。"
+    "ページをまたぐ表である。相互参照で"
+    Reference
+      Link
+        "2-1"
+        OBJR 1
+    "の"
+    Reference
+      Link
+        "五"
+        OBJR 1
+    "ページと、"
+    Reference
+      Link
+        "コード"
+        OBJR 1
+    "の節を指す。"
   Table
     TR
       TH /Table /Scope /Column
@@ -294,10 +341,14 @@ Document /Layout /WritingMode /TbRl
   P
     "二つめの段落である"
     Reference
-      "*2"
+      Link
+        "*2"
+        OBJR 1
     Note ID=note-2
       Lbl
-        "*2"
+        Link
+          "*2"
+          OBJR 1
       P
         "二つめの注。"
     "。"
@@ -317,7 +368,11 @@ Document /Layout /WritingMode /TbRl
     P
       "さ"
     P
-      "索引　二"
+      "索引　"
+      Reference
+        Link
+          "二"
+          OBJR 1
   H1
     "参考文献"
   L /List /ListNumbering /None

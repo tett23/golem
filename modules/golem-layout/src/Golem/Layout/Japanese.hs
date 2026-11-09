@@ -56,7 +56,7 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Unsafe (lengthWord8)
-import Golem.Doc.Citation (citationPieces, citationText)
+import Golem.Doc.Citation (CitePiece (..), citationPieces, citationText)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiPos (..), AkiSet, akiBetween, defaultAkiSet, noAki)
 import Golem.Layout.Aki qualified as A
@@ -189,6 +189,12 @@ data ComposeEnv = ComposeEnv
     ceLeaf :: !Int,
     -- | how many inlines at the start are a label, such as the mark of a note (docs/adr ADR 0183)
     ceLabelInlines :: !Int,
+    {- | the link of the label: the mark of a note to its mark in the text
+    (docs/adr/0267); Nothing is none
+    -} ceLabelLink :: !(Maybe LinkTarget),
+    {- | the link of the number of a cited work, by the span of the citation
+    and the key (docs/adr/0267); Nothing is none
+    -} ceCiteLink :: SrcSpan -> Text -> Maybe LinkTarget,
     {- | whether a range of superscript or subscript is set in the glyphs of
     the font (docs/adr/0269): its characters, each in its look; otherwise
     it is set by synthesis
@@ -233,7 +239,9 @@ defaultComposeEnv fs =
       ceBoxAt = const 0,
       ceSite = [],
       ceLeaf = 0,
-      ceLabelInlines = 0
+      ceLabelInlines = 0,
+      ceLabelLink = Nothing,
+      ceCiteLink = \_ _ -> Nothing
     }
   where
     defaultAdvance c
@@ -380,8 +388,10 @@ data InlineNode
     NodeNote !SrcSpan !Int !Int [[Inline]]
   | -- | the body of a sidenote marked here: its span, its number and the paragraphs of its body
     NodeSidenote !SrcSpan !Int [[Inline]]
-  | -- | a link (docs/adr ADR 0182): its URL, its inlines and what it holds
-    NodeLink !Text [Inline] [InlineNode]
+  | {- | a link (docs/adr ADR 0182, docs/adr/0267): its target, the inlines
+    of the text it draws and what it holds
+    -}
+    NodeLink !LinkTarget [Inline] [InlineNode]
   deriving stock (Eq, Show)
 
 -- | The elements of inlines: the label of 'ceLabelInlines', ruby, its base and reading, a reference, code and a language span (docs/adr ADR 0187).
@@ -402,10 +412,14 @@ structured env inls =
    in if null labelled
         then let (_, ns, ps) = walkAll env st0 rest in (NodeLeaf 0 : ns, ps)
         else
-          let (st1, ns1, ps1) = walkAll env st0 labelled
+          let -- the label a link of its own, unless the text is in one (docs/adr/0267)
+              link = if isJust (lkLink (ceLook env)) then Nothing else ceLabelLink env
+              labelEnv = maybe env (\t -> env {ceLook = (ceLook env) {lkLink = Just t}}) link
+              (st1, ns1, ps1) = walkAll labelEnv st0 labelled
               (st2, after) = freshLeaf st1
               (_, ns2, ps2) = walkAll env st2 rest
-           in (NodeElem RoleLabel (NodeLeaf 0 : ns1) : after : ns2, ps1 <> ps2)
+              inner = NodeLeaf 0 : ns1
+           in (NodeElem RoleLabel (maybe inner (\t -> [NodeLink t labelled inner]) link) : after : ns2, ps1 <> ps2)
 
 walkAll :: ComposeEnv -> LeafState -> [Inline] -> (LeafState, [InlineNode], [(Int, Sourced, Piece)])
 walkAll env st0 = foldl' step (st0, [], [])
@@ -437,31 +451,86 @@ walk env st@(LeafState next cur seen) inl = case inl of
   Ruby _ _ segs -> rubySegments segs
   Note sp num body ->
     let k = Map.findWithDefault 0 sp seen
-        (anchor, mark) = splitAt 1 (piecesOf env inl)
+        -- the mark a link to the body of its note, keyed by its place among the notes of its span (docs/adr/0267)
+        link = started (keyed k (lkLink (ceLook restyledEnv)))
+        (anchor, _) = splitAt 1 (piecesOf env inl)
+        (_, mark) = splitAt 1 (piecesOf (withLink link env) inl)
         st1 = LeafState (next + 1) cur (Map.insert sp (k + 1) seen)
         (st2, after) = freshLeaf st1
-     in (st2, [NodeElem RoleReference [NodeLeaf next], NodeNote sp k num (noteParagraphsIn lk sp body), after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
+        MarkFormat pre notation suf = ceNoteMarkFormat env
+        markText = [Text sp (markPartsText (markParts (ceVertical env) pre notation (toInteger num) suf))]
+     in (st2, [NodeElem RoleReference (linkedNodes link markText [NodeLeaf next]), NodeNote sp k num (noteParagraphsIn lk sp body), after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
   Sidenote sp n body ->
     let (anchor, mark) = splitAt 1 (piecesOf env inl)
         st1 = LeafState (next + 1) cur seen
         (st2, after) = freshLeaf st1
         ref = [NodeElem RoleReference [NodeLeaf next] | not (null mark)]
      in (st2, ref <> [NodeSidenote sp n (noteParagraphsIn lk sp body), after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
+  -- a link inside a link is its text: the outer link alone is made (docs/adr/0267)
+  Link _ _ xs | isJust (lkLink lk) -> walkAll restyledEnv st xs
   -- a link is an element; its look is that of the link (docs/adr ADR 0182)
   Link _ u xs ->
     let (st1, ns, ps) = walkAll restyledEnv (LeafState (next + 1) next seen) xs
         LeafState next1 _ seen1 = st1
         (st2, after) = freshLeaf (LeafState next1 cur seen1)
-     in (st2, [NodeLink u xs (NodeLeaf next : ns), after], ps)
-  Ref {} -> element RoleReference (\st' -> (st', [], [(leafOf st', src, p) | (src, p) <- piecesOf env inl]))
+     in (st2, [NodeLink (LinkUri u) xs (NodeLeaf next : ns), after], ps)
+  -- a reference, a link to its target when it is not in a link (docs/adr/0267)
+  Ref sp kind l ->
+    let link = started (lkLink (ceLook restyledEnv))
+        -- the text it draws: a page as pageLabelInlines writes it
+        drawn = case kind of
+          RefPage -> pageLabelInlines sp (fromMaybe (plainLabel 1) (cePageOf env l))
+          _ -> [Text sp l]
+     in linkedElement link drawn (\st' -> (st', [], [(leafOf st', src, p) | (src, p) <- piecesOf (withLink link env) inl]))
   -- [ref-number] and [ref-title] resolved: a reference, with what it holds inside (docs/adr/0215)
-  Resolved _ _ _ xs -> element RoleReference (\st' -> walkAll env st' xs)
+  Resolved _ _ _ xs ->
+    let link = started (lkLink (ceLook restyledEnv))
+     in linkedElement link xs (\st' -> walkAll (withLink link env) st' xs)
+  -- a citation: the number of each work a link to its entry, when it has one (docs/adr/0267)
+  Cite sp is
+    | isNothing (lkLink lk),
+      any isJust [ceCiteLink env sp (citKey i) | i <- is] ->
+        let pieces = citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]
+            go s = \case
+              [] -> (s, [], [])
+              CiteNumber key n : rest
+                | Just t <- ceCiteLink env sp key ->
+                    let LeafState m c sn = s
+                        (s', after) = freshLeaf (LeafState (m + 1) c sn)
+                        here = [(m, src, p) | (src, p) <- at sp (textPieces lk {lkLink = Just t} (T.pack (show n)))]
+                        (s'', ns, ps) = go s' rest
+                     in (s'', NodeLink t [Text sp (T.pack (show n))] [NodeLeaf m] : after : ns, here <> ps)
+              piece : rest ->
+                let text = case piece of
+                      CiteNumber _ n -> T.pack (show n)
+                      CiteText t -> t
+                    (s', ns, ps) = go s rest
+                 in (s', ns, [(leafOf s, src, p) | (src, p) <- at sp (textPieces lk text)] <> ps)
+         in element RoleReference (`go` pieces)
   Cite {} -> element RoleReference (\st' -> (st', [], [(leafOf st', src, p) | (src, p) <- piecesOf env inl]))
   _ -> (st, [], [(cur, src, p) | (src, p) <- piecesOf env inl])
   where
     lk = ceLook env
     restyledEnv = env {ceLook = ceRestyle env lk inl, ceSizeSource = ceSizeSourceOf env (ceSizeSource env) inl}
     leafOf (LeafState _ c _) = c
+    at sp = map (((ceSizeSource env, sp), const (spanStart sp)),)
+    -- the link an inline starts: one the look around it does not have (docs/adr/0267)
+    started t = if isJust (lkLink lk) then Nothing else t
+    -- a link to the body of a note, at its place among the notes of its span
+    keyed k = fmap $ \case
+      LinkTo (DestNote (NoteId s _)) -> LinkTo (DestNote (NoteId s k))
+      t -> t
+    withLink link e = maybe e (\t -> e {ceLook = (ceLook e) {lkLink = Just t}}) link
+    linkedNodes link drawn ns = maybe ns (\t -> [NodeLink t drawn ns]) link
+    -- a reference whose content is a link of its own (docs/adr/0267)
+    linkedElement link drawn inner = case link of
+      Nothing -> element RoleReference inner
+      Just _ ->
+        let LeafState n c sn = st
+            (st1, ns, ps) = inner (LeafState (n + 1) n sn)
+            LeafState n1 _ sn1 = st1
+            (st2, after) = freshLeaf (LeafState n1 c sn1)
+         in (st2, [NodeElem RoleReference (linkedNodes link drawn (NodeLeaf n : ns)), after], ps)
     -- an element: its first leaf for what it holds, then a new leaf for what follows
     element role = elementAt role st
     -- an element of the content of a function at a state, and the leaf after it

@@ -33,7 +33,9 @@
 ## 表
 
 ページをまたぐ表である。
+相互参照で[ref-number numbers]の[ref-page numbers]ページと、[ref-title code]の節を指す。
 
+@label numbers
 @caption 番号と名前
 | 番号 | 名前 | 説明 |
 |---|---|---|
@@ -58,6 +60,7 @@
 | 19 | 十九 | 十九番めの行 |
 | 20 | 二十 | 二十番めの行 |
 
+@label code
 ## コード
 
 @caption 行番号のあるコード
