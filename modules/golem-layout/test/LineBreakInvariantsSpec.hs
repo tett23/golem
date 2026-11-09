@@ -110,6 +110,15 @@ keyOf w ps its = (unSp w, map item its, pExpansion ps, pProtrusion ps)
       Glue (Sp gw) (Sp y) (Sp z) -> (1, gw, y, z, "", False, 0, 0, 0, 0, 0)
       Penalty (Sp pw) p h -> (2, pw, case h of NoHyphen -> 0; ExplicitHyphen -> 1; PatternHyphen _ -> 2; WrapMark _ -> 3; SoftHyphen _ -> 4, 0, "", False, case h of PatternHyphen (Sp q) -> q; SoftHyphen (Sp q) -> q; _ -> 0, 0, 0, 0, p)
 
+{- | The values 'breakParagraph' is given for the inputs of a group in
+vertical writing, with no break between two digits, as in horizontal
+writing (golem-layout ADR 0049, B2).
+-}
+keysOfDigitsKept :: Group -> [Key]
+keysOfDigitsKept g =
+  let its = forbidPairs False (T.replicate (gPre g) "あ" <> T.concat (gRun g) <> T.replicate (gPost g) "い") (itemsOf True (gSetting g) (gPre g) (gRun g) (gPost g))
+   in [keyOf (fromIntegral w * fs) (paramsOf (gSetting g) e its) its | (w, e) <- gCases g]
+
 -- | The values 'breakParagraph' is given for the inputs of a group, vertical or not.
 keysOf :: Bool -> Group -> [Key]
 keysOf vertical g =
@@ -141,21 +150,23 @@ runsT = listsOf (Tiers [parts])
 
 enumerationTests :: [TestTree]
 enumerationTests =
-  [ testCase "there are 24 parts: 15 Japanese characters, 4 Latin words, 4 Latin signs and the soft hyphen (docs/adr ADR 0272)" $ do
+  [ testCase "there are 27 parts: 15 Japanese characters, 4 Latin words, 4 Latin signs, the soft hyphen (docs/adr ADR 0272), and a digit and two abbreviations (golem-layout ADR 0049)" $ do
       length jaParts @?= 15
       length latinParts @?= 9
-      length (nub parts) @?= 24,
+      length pairParts @?= 3
+      length (nub parts) @?= 27,
     testCase "in lines of 2 em, the inputs of up to 1 part are as many as the parts and the settings allow" $ do
       let made = [i | t <- upTo 1 (groupT (normalGroups 5)), g <- t, i <- groupInputs g, inWidth i == 2]
           -- before the run 0 or 1 'あ', after it none or 2 'い'
           placed = 2 * 2
           -- the empty run; 9 Japanese parts of one setting (漢あ「」〜！・ゝ and the
           -- ideographic space); the soft hyphen, of one setting too (docs/adr
-          -- ADR 0272); ー and ぁ, strict and loose; 。 and 、, with and
-          -- without hanging; 10 parts of Latin text or of both scripts (… —
-          -- and the 8 other Latin parts), with and without protrusion, in no
-          -- span, en and ja, with and without the expansion
-          runs = 1 + 9 + 1 + 2 * 2 + 2 * 2 + 10 * (2 * 3 * 2)
+          -- ADR 0272); the 3 parts of the pairs, of one setting too
+          -- (golem-layout ADR 0049); ー and ぁ, strict and loose; 。 and 、,
+          -- with and without hanging; 10 parts of Latin text or of both
+          -- scripts (… — and the 8 other Latin parts), with and without
+          -- protrusion, in no span, en and ja, with and without the expansion
+          runs = 1 + 9 + 1 + 3 + 2 * 2 + 2 * 2 + 10 * (2 * 3 * 2)
       length made @?= placed * runs,
     testCase "the normal form: up to 2 parts (1 on pull requests), the inputs it leaves out give 'breakParagraph' no value it is not given" $ do
       -- the values (items, width, expansion and protrusion) of every
@@ -164,10 +175,10 @@ enumerationTests =
       let d = formDepth depth
       checkAllPar d runsT (normalFormMisses (maxWidthAt depth))
         @?= Passed (length (concat (upTo d runsT))),
-    testCase "vertical writing: up to 2 parts (1 on pull requests), it gives 'breakParagraph' the same values" $ do
+    testCase "vertical writing: up to 2 parts (1 on pull requests), it gives 'breakParagraph' the same values, but between two digits (golem-layout ADR 0049, B2)" $ do
       depth <- linesDepth
       let d = formDepth depth
-      checkAllPar d runsT (\run -> [Violation "vertical" (show g) | g <- normalGroups (maxWidthAt depth) run, keysOf True g /= keysOf False g])
+      checkAllPar d runsT (\run -> [Violation "vertical" (show g) | g <- normalGroups (maxWidthAt depth) run, keysOfDigitsKept g /= keysOf False g])
         @?= Passed (length (concat (upTo d runsT))),
     testCase "the advances: table, hyphenation and lime-tree are broken where the patterns and the hyphen allow" $ do
       let s = Setting True False False Nothing
@@ -306,6 +317,19 @@ predicateTests =
       let p = paragraphIn plain False 2 ["あ", "…", "…"]
       sound p
       broken (rebroken (allowBefore "…") p) @?= [L4],
+    testCase "L4, B2, B3, B4 (golem-layout ADR 0049): a line that breaks between two digits, after a yen sign before a digit, or between a digit and a percent sign" $ do
+      let digits = paragraphIn plain False 2 ["あ", "１", "１"]
+          yen = paragraphIn plain False 2 ["あ", "￥", "１"]
+          percent = paragraphIn plain False 2 ["あ", "１", "％"]
+      mapM_ sound [digits, yen, percent]
+      map lineText (brLines (pBreaks digits)) @?= ["あ", "１１"]
+      broken (rebroken (allowAfter "１") digits) @?= [L4, B2]
+      broken (rebroken (allowAfter "￥") yen) @?= [L4, B3]
+      broken (rebroken (allowAfter "１") percent) @?= [L4, B4],
+    testCase "L4, B2 (golem-layout ADR 0049): a line of two digits wider than W, with no break where it fits, is not broken" $ do
+      let p = paragraphIn plain False 2 ["１", "１", "１"]
+      map lineText (brLines (pBreaks p)) @?= ["１１１"]
+      brokenAll p @?= [],
     testCase "L4: a line that breaks at a space between two ellipses is not broken (golem-layout ADR 0028, K4)" $ do
       let p = paragraphIn plain False 2 ["…", " ", "…"]
       map lineText (brLines (pBreaks p)) @?= ["…", "…"]
@@ -726,14 +750,14 @@ codeBroken = map breachOf . codeBreaches codeMark 0
 
 {- | C4: the items of a run of code without a Japanese character are
 those it has with an empty wrap mark, but the width and the mark of the
-breaks of the mark.
+breaks of the mark; with the padding given (golem-layout ADR 0048).
 -}
-c4Misses :: Group -> [Violation]
-c4Misses g
+c4Misses :: Sp -> Group -> [Violation]
+c4Misses pad g
   | any (T.any (\c -> c `notElem` (" ab/_\"-.1" :: String))) (gRun g) = []
   | otherwise =
-      [ Violation "C4" (show (gSetting g, gPre g, gRun g, gPost g))
-      | map unmarked (codeItemsOf False (gSetting g) (gPre g) (gRun g) (gPost g)) /= map unmarked (fst (composeInlines (emptyMark (codeEnv False (gSetting g))) (codeInlinesOf (gSetting g) (gPre g) (gRun g) (gPost g))))
+      [ Violation "C4" (show (pad, gSetting g, gPre g, gRun g, gPost g))
+      | map unmarked (codeItemsWith pad False (gSetting g) (gPre g) (gRun g) (gPost g)) /= map unmarked (fst (composeInlines (emptyMark (codeEnvWith pad False (gSetting g))) (codeInlinesOf (gSetting g) (gPre g) (gRun g) (gPost g))))
       ]
   where
     emptyMark e = e {ceRestyle = \lk inl -> (ceRestyle e lk inl) {lkWrapMark = ""}}
@@ -749,17 +773,24 @@ paragraph having gone with golem-layout ADR 0037.
 codeLineBugs :: [LineBug]
 codeLineBugs = []
 
--- | The violations of the first input of a group of code that has some, C4 among them, and the known bugs that excuse its inputs.
+{- | The violations of the first input of a group of code that has some, C4
+and D1 to D5 among them, and the known bugs that excuse its inputs: each
+input without padding and with 'codePadding' (golem-layout ADR 0048).
+-}
 judgeCodeGroup :: Int -> Group -> ([Violation], Excused)
 judgeCodeGroup limit g =
-  let its = codeItemsOf False (gSetting g) (gPre g) (gRun g) (gPost g)
-      judge i =
+  let itemsWith pad = codeItemsWith pad False (gSetting g) (gPre g) (gRun g) (gPost g)
+      bare = itemsWith 0
+      padded = itemsWith codePadding
+      judge its i =
         let bs = codeBreaches codeMark limit (codeParagraphWith its i)
             excuses b br = lbShape b i && lbExcuses b i br
          in ([br | br <- bs, not (any (`excuses` br) codeLineBugs)], [lbShape b i && any (lbExcuses b i) bs | b <- codeLineBugs])
-      results = [(i, judge i) | i <- groupInputs g]
+      results = [((pad, i), judge its i) | (pad, its) <- [(0, bare), (codePadding, padded)], i <- groupInputs g]
       excused = Excused (foldr (zipWith (+) . map fromEnum . snd . snd) (map (const 0) codeLineBugs) results)
-   in case c4Misses g <> concat [[Violation (show (breachOf b)) (breachWhy b) | b <- bs] <> [Violation "input" (show i)] | (i, (bs, _)) <- take 1 [r | r@(_, (bs, _)) <- results, not (null bs)]] of
+      edgeSpace = take 1 (gRun g) == [" "] || take 1 (reverse (gRun g)) == [" "]
+      padding = [Violation (show (breachOf b)) (breachWhy b) | b <- paddingBreaches codePadding edgeSpace bare padded] <> [Violation "input" (show (gSetting g, gPre g, gRun g, gPost g)) | not (null (paddingBreaches codePadding edgeSpace bare padded))]
+   in case c4Misses 0 g <> c4Misses codePadding g <> padding <> concat [[Violation (show (breachOf b)) (breachWhy b) | b <- bs] <> [Violation "input" (show i <> ", padding " <> show pad)] | ((pad, i), (bs, _)) <- take 1 [r | r@(_, (bs, _)) <- results, not (null bs)]] of
         vs -> (vs, excused)
 
 -- | Every run of code up to a tier, each in its own value.
@@ -819,6 +850,18 @@ codeTests =
       let p = codeParagraphOf (Input plain False 2 0 ["a", "-", "ab"] 0)
       brPass (pBreaks p) @?= 1
       codeBroken p {pBreaks = (pBreaks p) {brPass = 4}} @?= [J7],
+    testCase "golem-layout ADR 0048 D1 to D5: a run with spaces at its ends breaks none; the padding moved or taken off, or the glue changed, breaks them" $ do
+      let itemsWith pad run = codeItemsWith pad False plain 1 run 1
+          judge run f = nub (map breachOf (paddingBreaches codePadding (take 1 run == [" "] || take 1 (reverse run) == [" "]) (itemsWith 0 run) (f (itemsWith codePadding run))))
+          -- the boxes whose text is given, their padding set
+          padIn t (s0, e0) = map (\case Box w c | bcText c == t -> Box (w - bcPadStart c - bcPadEnd c + s0 + e0) c {bcPadStart = s0, bcPadEnd = e0}; it -> it)
+          edged = [" ", "漢", "a", " "]
+      judge edged id @?= []
+      judge edged (padIn "漢" (0, 0)) @?= [D1]
+      judge edged (padIn "a" (0, 0)) @?= [D2]
+      judge [" "] (padIn "あ" (codePadding, 0)) @?= [D3]
+      judge ["漢", "a"] (padIn "漢" (0, 0)) @?= [D1, D4]
+      judge edged (map (\case Glue w y z -> Glue (w + 1) y z; it -> it)) @?= [D5],
     testCase "golem-layout ADR 0038 S3: two ellipses of code broken at the space between them break no invariant" $ do
       let p = codeParagraphOf (Input plain False 1 0 ["…", " ", "…"] 0)
       map lineText (brLines (pBreaks p)) @?= ["…", "…"]
@@ -852,7 +895,7 @@ codeTests =
           keys v g = let its = codeItemsOf v (gSetting g) (gPre g) (gRun g) (gPost g) in [keyOf (fromIntegral w * fs) (paramsOf (gSetting g) e its) its | (w, e) <- gCases g]
       checkAllPar d codeRunsT (\run -> [Violation "vertical" (show g) | g <- codeGroupsOf (maxWidthAt depth) run, keys True g /= keys False g])
         @?= Passed (length (concat (upTo d codeRunsT))),
-    testCase "golem-layout ADR 0037 B1, 0038, 0045: L1 to L13, T1, C1, C2, C6 to C8 and J1 to J7 hold for every input of code up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
+    testCase "golem-layout ADR 0037 B1, 0038, 0045, 0048: L1 to L13, T1, C1, C2, C4, C6 to C8, J1 to J7 and D1 to D5 hold for every input of code up to GOLEM_ENUM_LINES_DEPTH parts, without padding and with it, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- linesDepth
       let limit = bruteLimitAt depth
       case tallyAllPar depth (codeGroupT (maxWidthAt depth)) (judgeCodeGroup limit) of

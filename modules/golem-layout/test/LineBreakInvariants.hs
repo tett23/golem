@@ -31,16 +31,24 @@ module LineBreakInvariants
     t1LastLineBoxes,
     i4NoHyphensWithShy,
     lineInvariants,
+    refArabicDigit,
+    refNumeral,
+    refPrefixed,
+    refPostfixed,
+    pairForbidden,
+    adjacentPairs,
+    forbidPairs,
     breaches,
     codeInvariants,
     codeBreaches,
+    paddingBreaches,
     breakItem,
     lineEnd,
     latinSpace,
   )
 where
 
-import Data.Char (isDigit, isLetter)
+import Data.Char (chr, isDigit, isLetter)
 import Data.List (mapAccumL)
 import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import Data.Text (Text)
@@ -48,20 +56,22 @@ import Data.Text qualified as T
 import Golem.Layout.Aki (AkiPos (..), akiBetween, defaultAkiSet, noAki)
 import Golem.Layout.Aki qualified as A
 import Golem.Layout.CharClass (dualJapaneseClass, isDualCharacter, isExtending, spanIsJapanese)
-import Golem.Layout.Japanese (CharClass (..), lineEndProhibited, lineStartProhibited, lookClass)
+import Golem.Layout.Japanese (BoxKind (..), CharClass (..), boxKind, lineEndProhibited, lineStartProhibited, lookClass)
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..), plainLook)
 import Golem.Length qualified as L
 import KnuthPlassBrute (breakCandidates, bruteDemerits)
 
 {- | The invariants of docs/adr/0209, by their numbers, L1, L8 and L9 as
-I1, I2 and I3 of docs/adr ADR 0272 widen them, I4 of that ADR, T1 of
+I1, I2 and I3 of docs/adr ADR 0272 widen them, I4 of that ADR, B2 to B4
+of golem-layout ADR 0049 (L4 widened by them too), T1 of
 golem-layout ADR 0032, C1 to C8 of golem-layout ADR 0034, and J1 to J7 of golem-layout
 ADR 0045, whose J3 takes the place of C3. J5 compares the items with those
 before golem-layout ADR 0045, which no output tells: the tests of the
-items check it.
+items check it. D1 to D5 of golem-layout ADR 0048 compare the items of
+code with padding with those without it ('paddingBreaches').
 -}
-data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1 | I4 | C1 | C2 | C6 | C7 | C8 | J1 | J2 | J3 | J4 | J6 | J7
+data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1 | I4 | B2 | B3 | B4 | C1 | C2 | C6 | C7 | C8 | J1 | J2 | J3 | J4 | J6 | J7 | D1 | D2 | D3 | D4 | D5
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken, the line it is broken at (from 0; -1 for the whole paragraph), and how.
@@ -212,7 +222,9 @@ l3LineEnd _ p =
 other, a break after a hyphen or a dash written in a word among them; a
 line may break at a space between two (golem-layout ADR 0028, its
 section 4), a space of inline code too (golem-layout ADR 0038, its
-section 2).
+section 2). Nor between the boxes of a pair of golem-layout ADR 0049
+that may not be broken (in horizontal writing), but a line wider than W
+(the exception of L5).
 -}
 l4Inseparable :: Check
 l4Inseparable _ p =
@@ -224,6 +236,15 @@ l4Inseparable _ p =
     startClass b == Just Inseparable,
     breakItem p i `notElem` map Just [latinSpace p, codeSpace p]
   ]
+    <> [ Breach L4 i ("lines " <> show (i + 1) <> " and " <> show (i + 2) <> " break between " <> show x <> " and " <> show y <> ", a pair that may not be broken")
+       | (i, l, _) <- pairs p,
+         Just at <- [breakIndex p i],
+         (i1, i2, x, y) <- adjacentPairs (pText p) (pItems p),
+         i1 < at,
+         at < i2,
+         pairForbidden False x y,
+         not (wide p l)
+       ]
 
 {- | L5: no line ends past W and its protrusion at the end, with 1 sp of
 rounding, but a line that is overfull and has no break where it would
@@ -627,6 +648,158 @@ i4NoHyphensWithShy _ p =
       _ -> False
     close cur hy ex = [([x | x@(a, _, _) <- cur, a >= 0], hy, ex) | any (\(a, _, _) -> a >= 0) cur]
 
+-- * the unbreakable pairs of JLReq (golem-layout ADR 0049)
+
+{- | The invariant of the pair of a last and a first character that may
+not be broken, vertical or not: B2 two Arabic digits (horizontal only),
+B3 a prefixed abbreviation and a numeral, B4 a numeral and a postfixed
+abbreviation.
+-}
+pairKind :: Bool -> Char -> Char -> Maybe LineInvariant
+pairKind vertical a b
+  | not vertical && refArabicDigit a && refArabicDigit b = Just B2
+  | refPrefixed a && refNumeral b = Just B3
+  | refNumeral a && refPostfixed b = Just B4
+  | otherwise = Nothing
+
+-- | Whether the pair of a last and a first character may not be broken (B2 to B4), vertical or not.
+pairForbidden :: Bool -> Char -> Char -> Bool
+pairForbidden vertical a b = isJust (pairKind vertical a b)
+
+{- | The pairs of boxes next to each other (golem-layout ADR 0049, its
+「不変条件」), by the indices of the two boxes among the items, with the
+last character of the first and the first of the second: boxes of text
+whose characters follow one another in the text of the paragraph, no
+space between them, and no box between them among the items; not two
+boxes of code or of a URL, nor a box of ruby.
+-}
+adjacentPairs :: Text -> [Item] -> [(Int, Int, Char, Char)]
+adjacentPairs text its =
+  [ (i1, i2, a, b)
+  | ((i1, _, e1, c1), (i2, s2, _, c2)) <- zip placed (drop 1 placed),
+    e1 == s2,
+    not (any isBox (take (i2 - i1 - 1) (drop (i1 + 1) its))),
+    not (codeOrUrl c1 && codeOrUrl c2),
+    Just a <- [lastOf c1],
+    Just b <- [firstOf c2]
+  ]
+  where
+    stripped = T.filter (/= '\xAD') text
+    -- the boxes of text, by the index of the item, with where their characters start and end in the text
+    placed = go 0 (zip [0 :: Int ..] its)
+      where
+        go pos = \case
+          (i, Box _ c) : rest
+            | not (T.null (bcText c)) ->
+                let start = pos + T.length (T.takeWhile (== ' ') (T.drop pos stripped))
+                    end = start + T.length (bcText c)
+                 in (i, start, end, c) : go end rest
+          _ : rest -> go pos rest
+          [] -> []
+    isBox = \case
+      Box {} -> True
+      _ -> False
+    codeOrUrl c = lkCode (bcLook c) || lkUrl (bcLook c)
+    isRuby c = boxKind c `elem` [KindRuby, KindGroupRuby]
+    lastOf c = if isRuby c then Nothing else snd <$> T.unsnoc (baseText (bcText c))
+    firstOf c = if isRuby c then Nothing else fst <$> T.uncons (baseText (bcText c))
+    -- the text without the combining characters at its end, unless nothing else is left (baseText of Golem.Layout.Japanese)
+    baseText t = case T.dropWhileEnd isExtending t of
+      x | T.null x -> t
+      x -> x
+
+{- | The items as golem-layout ADR 0049 allows them to differ from those
+before it (B6): between the boxes of each pair of 'adjacentPairs' that
+may not be broken, every penalty under the infinite one made infinite,
+and an infinite penalty put before a glue that the first box comes right
+before.
+-}
+forbidPairs :: Bool -> Text -> [Item] -> [Item]
+forbidPairs vertical text its = concat (zipWith change [0 ..] its)
+  where
+    kept = [(i1, i2) | (i1, i2, a, b) <- adjacentPairs text its, pairForbidden vertical a b]
+    change k it = case [i1 | (i1, i2) <- kept, k > i1, k < i2] of
+      i1 : _ -> case it of
+        Penalty w p h | p < infPenalty -> [Penalty w infPenalty h]
+        Glue {} | k == i1 + 1 -> [Penalty 0 infPenalty NoHyphen, it]
+        _ -> [it]
+      [] -> [it]
+
+{- | B2 to B4 (golem-layout ADR 0049), in horizontal writing: no break
+between the boxes of a pair of 'adjacentPairs' that may not be broken,
+neither a penalty under the infinite one nor a glue the first box comes
+right before.
+-}
+b2to4Pairs :: Check
+b2to4Pairs _ p =
+  [ Breach k (-1) ("a break between " <> show a <> " and " <> show b)
+  | (i1, i2, a, b) <- adjacentPairs (pText p) (pItems p),
+    any (candidateAt i1) [i1 + 1 .. i2 - 1],
+    Just k <- [pairKind False a b]
+  ]
+  where
+    its = pItems p
+    candidateAt i1 k = case its !! k of
+      Penalty _ n _ -> n < infPenalty
+      Glue {} -> k == i1 + 1
+      Box {} -> False
+
+-- ** the characters of the pairs (golem-layout ADR 0049, its section 2), as the ADR lists them
+
+-- | The Arabic digits: U+0030 to U+0039 and U+FF10 to U+FF19.
+refArabicDigit :: Char -> Bool
+refArabicDigit c = isDigit c || (c >= '\xFF10' && c <= '\xFF19')
+
+-- | The numerals: the Arabic digits and the kanji numerals.
+refNumeral :: Char -> Bool
+refNumeral c = refArabicDigit c || c `elem` ("〇一二三四五六七八九十百千万億兆" :: String)
+
+-- | The prefixed abbreviations of JLReq (cl-12) and their full-width forms.
+refPrefixed :: Char -> Bool
+refPrefixed c = c `elem` map chr [0x00A5, 0x0024, 0x00A3, 0x0023, 0x20AC, 0x2116, 0xFFE5, 0xFF04, 0xFFE1, 0xFF03]
+
+-- | The postfixed abbreviations of JLReq (cl-13) and their full-width forms.
+refPostfixed :: Char -> Bool
+refPostfixed c =
+  c
+    `elem` map
+      chr
+      [ 0x00B0,
+        0x2032,
+        0x2033,
+        0x2103,
+        0x00A2,
+        0x0025,
+        0x2030,
+        0x33CB,
+        0x2113,
+        0x3303,
+        0x330D,
+        0x3314,
+        0x3318,
+        0x3322,
+        0x3323,
+        0x3326,
+        0x3327,
+        0x332B,
+        0x3336,
+        0x333B,
+        0x3349,
+        0x334A,
+        0x334D,
+        0x3351,
+        0x3357,
+        0x338E,
+        0x338F,
+        0x339C,
+        0x339D,
+        0x339E,
+        0x33A1,
+        0x33C4,
+        0xFF05,
+        0xFFE0
+      ]
+
 -- | Every invariant, with its check.
 lineInvariants :: [(LineInvariant, Check)]
 lineInvariants =
@@ -644,7 +817,9 @@ lineInvariants =
     (L12, l12Expansion),
     (L13, l13Protrusion),
     (T1, t1LastLineBoxes),
-    (I4, i4NoHyphensWithShy)
+    (I4, i4NoHyphensWithShy),
+    -- B3 and B4 of golem-layout ADR 0049 too
+    (B2, b2to4Pairs)
   ]
 
 -- | The breaches of a paragraph, L7 brute-forcing up to the number of breaks given.
@@ -752,7 +927,8 @@ c6NoHyphen _ p =
   ]
 
 {- | C7: the box of a Japanese character of code is as wide as its
-advance (no tracking and no padding in the runs); there is no glue
+advance and its padding (no tracking in the runs; the padding of
+golem-layout ADR 0048 in those that have it); there is no glue
 between two boxes of code but a space of code, which neither stretches
 nor shrinks.
 -}
@@ -762,7 +938,7 @@ c7Widths _ p =
   | Box w c <- pItems p,
     isCode c,
     any (japaneseIn c) (basesOf c),
-    let want = L.zwToSp (pSize p) (sum [pAdvance p (not (japaneseIn c ch)) ch | ch <- T.unpack (bcText c)]),
+    let want = L.zwToSp (pSize p) (sum [pAdvance p (not (japaneseIn c ch)) ch | ch <- T.unpack (bcText c)]) + bcPadStart c + bcPadEnd c,
     w /= want
   ]
     <> [ Breach C7 (-1) ("glue that stretches or shrinks inside code, after " <> show (bcText a))
@@ -988,3 +1164,37 @@ codeInvariants m =
 -- | The breaches of a paragraph of code: those of 'breaches' and of 'codeInvariants'.
 codeBreaches :: Text -> Int -> Paragraph -> [Breach]
 codeBreaches m limit p = breaches limit p <> concat [check limit p | (_, check) <- codeInvariants m]
+
+{- | D1 to D5 of golem-layout ADR 0048 on the items of a paragraph of one
+run of code with the padding given, against the items of the same
+paragraph without padding, and whether the run has a space at an end:
+the items but the boxes are the same (D5); the first box of code has the
+padding before it and the last the padding after it, no other box has any
+(D1, D2), and a box is wider by its padding only; without a box of code no
+box has padding (D3); a run without a space at its ends breaks D4 with
+any of D1 and D2, the padding of such a run being on its first and last
+box before golem-layout ADR 0048 too.
+-}
+paddingBreaches :: Sp -> Bool -> [Item] -> [Item] -> [Breach]
+paddingBreaches pad edgeSpace bare padded
+  | others bare /= others padded = [Breach D5 (-1) ("the items but the boxes differ: " <> show (others bare) <> " and " <> show (others padded))]
+  | length bareBoxes /= length paddedBoxes = [Breach D5 (-1) "the number of boxes differs"]
+  | null codeIx = [Breach D3 (-1) ("box " <> show (bcText c) <> " has padding in a run without a box of code") | (_, c) <- paddedBoxes, bcPadStart c /= 0 || bcPadEnd c /= 0]
+  | otherwise = ds <> [Breach D4 (-1) "a run of code without a space at its ends is not padded as before" | not edgeSpace, not (null ds)]
+  where
+    others = filter (\case Box {} -> False; _ -> True)
+    bareBoxes = [(w, c) | Box w c <- bare]
+    paddedBoxes = [(w, c) | Box w c <- padded]
+    codeIx = [i | (i, (_, c)) <- zip [0 :: Int ..] paddedBoxes, isCode c]
+    (firstIx, lastIx) = case codeIx of
+      i : is -> (i, last (i : is))
+      [] -> (-1, -1)
+    ds =
+      concat
+        [ [Breach D1 (-1) ("box " <> show (bcText c) <> " has " <> show (bcPadStart c) <> " before it, not " <> show wantS) | bcPadStart c /= wantS]
+            <> [Breach D2 (-1) ("box " <> show (bcText c) <> " has " <> show (bcPadEnd c) <> " after it, not " <> show wantE) | bcPadEnd c /= wantE]
+            <> [Breach (if i == firstIx then D1 else D2) (-1) ("box " <> show (bcText c) <> " is " <> show w <> " wide, not " <> show (w0 + wantS + wantE)) | w /= w0 + wantS + wantE]
+        | (i, ((w0, _), (w, c))) <- zip [0 ..] (zip bareBoxes paddedBoxes),
+          let wantS = if i == firstIx then pad else 0
+              wantE = if i == lastIx then pad else 0
+        ]

@@ -22,6 +22,7 @@ import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor
 import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Pdf qualified as P
+import Golem.Pdf.Sha256 (sha256)
 import Golem.Project (Manifest (..), Project (..), ProjectFailure (..))
 import Golem.Project.Files (diskFiles)
 import Golem.Project.Style (dimToSp, parseDim, parseStyle)
@@ -33,7 +34,7 @@ import Golem.Typeset.FontProvider (actualTextOf, cffFontProgram, golemFontProvid
 import Golem.Typeset.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
 import Numeric (readHex)
 import Support
-import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, findExecutable)
+import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, findExecutable, listDirectory)
 import System.FilePath (takeFileName, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -1708,6 +1709,38 @@ inlineCodeBackgroundTests =
     testCase "a book without inline code draws no rectangle" $ do
       contents <- miniPdf fakeProvider True (horizontalStyle <> cbg) "本文。\n" [] >>= pageContents
       concatMap filledRects contents @?= [],
+    -- the parser takes the spaces at the ends of an argument away; an escaped space stays
+    testCase "golem-layout ADR 0048 D6: the rectangle ends with the padding after the character before a space of code; the space is after it" $
+      forM_ [("horizontal", horizontalStyle), ("vertical", pdfStyle)] $ \(name, style) -> do
+        (_, pl) <- layoutOk (style <> cbg) "あ[code: 漢\\ ]い\n" []
+        let placed = [(it, slIndent sl + off) | sl <- Map.elems (plLines pl), (it, off) <- placeLine (slLine sl)]
+            kan = [(off, w, c) | (Box w c, off) <- placed, bcText c == "漢"]
+            glueAfter = [(off, w) | ((Box _ c, _), (Glue w _ _, off)) <- zip placed (drop 1 placed), bcText c == "漢"]
+        case (kan, glueAfter, backgroundRuns pl) of
+          ([(off, w, c)], [(g, gw)], [(s0, e0)]) -> do
+            let pad = lkPadding (bcLook c)
+            assertBool name (pad > 0 && gw > 0)
+            assertEqual name (pad, pad) (bcPadStart c, bcPadEnd c)
+            assertEqual name (off, off + w) (s0, e0)
+            assertBool name (g >= e0)
+          other -> assertFailure (name <> ": " <> show other),
+    testCase "golem-layout ADR 0048 D6: in the PDF, the rectangle of 漢 with a space after it is 10pt and the padding on both sides wide" $ do
+      contents <- miniPdf fakeProvider True (horizontalStyle <> cbg) "あ[code: 漢\\ ]い\n" [] >>= pageContents
+      case concatMap filledRects contents of
+        [[_, _, w, _]] -> approx w 15
+        other -> assertFailure (show other),
+    testCase "golem-layout ADR 0048 D7: the HTML and the EPUB of code with spaces at its ends are as before" $
+      withSystemTempDirectory "golem-code-padding" $ \tmp -> do
+        BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
+        BS.writeFile (tmp </> "style.toml") (withBodyFont (horizontalStyle <> cbg))
+        BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 "あ[code: \\ 漢]い\n\nあ[code: 漢\\ ]い\n\nあ[code: 漢\\ ]\n\nあ[code: \\ ]い\n")
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        files <- (<>) <$> filesUnder (tmp </> "build/html") <*> filesUnder (tmp </> "build/epub")
+        bytes <- mapM BS.readFile files
+        let digest = hex (sha256 (BS.concat [BC.pack (drop (length tmp) f) <> "\0" <> b <> "\0" | (f, b) <- zip files bytes]))
+        -- the digest from the build before golem-layout ADR 0048
+        digest @?= "4d6d61f539c0f7c524bc676b377f0147b3fd8dfec3d7ad3053b8c13faec36788",
     testCase "HTML: the background and the padding of code" $
       withCodeHtml (horizontalStyle <> cbg) "[code: y]\n" $ \css ->
         rulesOf "code" css @?= ["code { background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"]
@@ -1719,6 +1752,19 @@ inlineCodeBackgroundTests =
     firstColumn geom = case columnsFor geom 1 of
       (r : _) -> r
       [] -> typeAreaFor geom 1
+    -- the files under a directory, in order
+    filesUnder dir = do
+      names <- sort <$> listDirectory dir
+      concat
+        <$> mapM
+          ( \n -> do
+              let f = dir </> n
+              isDir <- doesDirectoryExist f
+              if isDir then filesUnder f else pure [f]
+          )
+          names
+    hex = concatMap (\w -> [digits !! fromIntegral (w `div` 16), digits !! fromIntegral (w `mod` 16)]) . BS.unpack
+    digits = "0123456789abcdef" :: String
     withCodeHtml style src k = withSystemTempDirectory "golem-code-html" $ \tmp -> do
       BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
       BS.writeFile (tmp </> "style.toml") (withBodyFont style)

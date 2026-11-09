@@ -19,6 +19,7 @@ char	〗	closing	0	1/2
 char	〘	opening	1/2	0
 char	〙	closing	0	1/2
 char	〝	opening	1/2	0
+char	〞	closing	0	1/2
 char	〟	closing	0	1/2
 char	・	middle-dot	1/4	1/4
 char	（	opening	1/2	0

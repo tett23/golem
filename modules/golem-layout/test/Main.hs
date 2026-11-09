@@ -4,6 +4,7 @@ import AkiTableSpec (akiTableTests)
 import AlignSpec (alignTests)
 import CharClassSpec (charClassTests)
 import CodeJapaneseSpec (codeJapaneseTests)
+import CodePaddingSpec (codePaddingTests)
 import CodeSpaceSpec (codeSpaceTests)
 import CodeStopSpec (codeStopTests)
 import CombiningSpec (combiningTests)
@@ -65,6 +66,7 @@ import TableCaptionSpec (tableCaptionTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
+import UnbreakablePairsSpec (unbreakablePairsTests)
 import UrlBreakSpec (urlBreakTests)
 
 main :: IO ()
@@ -389,9 +391,11 @@ tests =
       doubleDashTests,
       codeSpaceTests,
       codeJapaneseTests,
+      codePaddingTests,
       codeStopTests,
       urlBreakTests,
       pullInTests,
+      unbreakablePairsTests,
       linkTests,
       featuresTests,
       scriptTests,
