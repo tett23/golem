@@ -4,6 +4,7 @@ import AkiTableSpec (akiTableTests)
 import AlignSpec (alignTests)
 import CharClassSpec (charClassTests)
 import CodeJapaneseSpec (codeJapaneseTests)
+import CodePaddingSpec (codePaddingTests)
 import CodeSpaceSpec (codeSpaceTests)
 import CodeStopSpec (codeStopTests)
 import CombiningSpec (combiningTests)
@@ -388,6 +389,7 @@ tests =
       doubleDashTests,
       codeSpaceTests,
       codeJapaneseTests,
+      codePaddingTests,
       codeStopTests,
       urlBreakTests,
       linkTests,
