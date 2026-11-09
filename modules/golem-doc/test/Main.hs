@@ -13,6 +13,7 @@ import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
 import Golem.TestSupport.ExternalTool (needsTool)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
+import IndexSpec qualified
 import LangSpec qualified
 import LinkSpec qualified
 import NoteSpec qualified
@@ -43,7 +44,7 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, TableSpec.tests, NoteSpec.tests, CiteSpec.tests, headingLevelTests]
+  testGroup "golem-doc" [cbor, CborExprSpec.tests, verticalNumbers, int64Tests, LinkSpec.tests, LangSpec.tests, ResolvedSpec.tests, TableSpec.tests, NoteSpec.tests, CiteSpec.tests, IndexSpec.tests, headingLevelTests]
 
 -- | The levels of a heading are 1 to 6 (docs/adr/0188).
 headingLevelTests :: TestTree
@@ -405,5 +406,5 @@ cbor =
         validateInlines size [] [Text (SrcSpan (FileId 0) 5 20) "x"] @?= ["ソース位置がファイルの範囲外です"]
         validateInlines size [] [Deferred sp e] @?= ["プラグインが新しい遅延式を作っています"]
         validateInlines size [e] [Deferred sp e] @?= []
-        validateInlines size [] [IndexMark sp (IndexEntry ["a", "b", "c"] ["a", "b", "c"])] @?= ["索引の項目の段の数が不正です"]
+        validateInlines size [] [IndexMark sp (IndexEntry ["a", "b", "c"] ["a", "b", "c"] IndexPoint)] @?= ["索引の項目の段の数が不正です"]
     ]

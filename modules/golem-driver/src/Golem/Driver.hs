@@ -1095,6 +1095,7 @@ htmlConfig dev e book missing bib =
       -- the faces of the cells of tables: table, and the styles given to tables (docs/adr/0262)
       hcTableFaces = tableFaces style,
       hcTableCaptionBelow = stTableCaption style == CaptionBelow,
+      hcIndexSectionHeadings = indexSectionHeadings style,
       hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
       hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
       hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),

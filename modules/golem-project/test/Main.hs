@@ -1180,7 +1180,7 @@ indexStyleTests =
     "[index] (docs/adr ADR 0025)"
     [ testCase "columns and column-gap are read" $ do
         let src = "[index]\ncolumns = 2\ncolumn-gap = \"2zw\"\n"
-        fmap stIndex (parseStyle (FileId 0) src) @?= Right (Just (IndexStyle (Just 2) (Just (Zw 2)) (T.length "[index]\ncolumns = ")))
+        fmap stIndex (parseStyle (FileId 0) src) @?= Right (Just (IndexStyle (Just 2) (Just (Zw 2)) (T.length "[index]\ncolumns = ") True))
         fmap (fmap ixColumnGap . stIndex) (parseStyle (FileId 0) "[index]\ncolumns = 2\n") @?= Right (Just Nothing)
         fmap stIndex (parseStyle (FileId 0) "") @?= Right Nothing,
       testCase "a columns that is not an integer of 1 or more is G03025 at the value" $
@@ -1195,6 +1195,15 @@ indexStyleTests =
       testCase "a column-gap that is negative or not a dimension is G03025" $ do
         codes (parseStyle (FileId 0) "[index]\ncolumns = 2\ncolumn-gap = \"-1zw\"\n") @?= ["G03025"]
         codes (parseStyle (FileId 0) "[index]\ncolumns = 2\ncolumn-gap = \"abc\"\n") @?= ["G03025"],
+      testCase "section-headings is read, true without it (docs/adr/0265)" $ do
+        fmap (fmap ixSectionHeadings . stIndex) (parseStyle (FileId 0) "[index]\nsection-headings = false\n") @?= Right (Just False)
+        fmap (fmap ixSectionHeadings . stIndex) (parseStyle (FileId 0) "[index]\ncolumns = 2\n") @?= Right (Just True)
+        fmap indexSectionHeadings (parseStyle (FileId 0) "") @?= Right True
+        fmap indexSectionHeadings (parseStyle (FileId 0) "[index]\nsection-headings = false\n") @?= Right False,
+      testCase "a section-headings that is not a boolean is G03025 at the value (docs/adr/0265)" $ do
+        let r = parseStyle (FileId 0) "[index]\nsection-headings = \"yes\"\n"
+        codes r @?= ["G03025"]
+        either (map (spanStart . diagSpan)) (const []) r @?= [T.length "[index]\nsection-headings = "],
       testCase "an unknown key of [index] is G03006" $
         codes (parseStyle (FileId 0) "[index]\ncolums = 2\n") @?= ["G03006"]
     ]

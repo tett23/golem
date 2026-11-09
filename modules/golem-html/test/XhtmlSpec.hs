@@ -10,7 +10,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), LabelTarget (..), NoteNumbering (..), TocEntry (..), assemble)
+import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), IndexLocator (..), IndexSection (..), LabelTarget (..), NoteNumbering (..), TocEntry (..), assemble)
 import Golem.Assemble.Formats (arabic, kanjiNotation)
 import Golem.Assemble.ListMarkers (defaultNumberFormat)
 import Golem.Bibliography (EntryPart (..))
@@ -54,6 +54,7 @@ cfg0 =
       hcSidenoteFace = noFace,
       hcTableFaces = Map.empty,
       hcTableCaptionBelow = False,
+      hcIndexSectionHeadings = True,
       hcBibliography = Map.empty,
       hcDev = False,
       hcRubyMonoAlign = "center",
@@ -642,10 +643,18 @@ tests =
            in bodyA cfg0 book @?= "<p><a href=\"b.xhtml#second\">次の章</a></p>\n"
       ],
     testCase "an index mark is an empty span with an id from its position" $
-      bodyA cfg0 (bookOf [para 0 [txt "組版", IndexMark (at 7) (IndexEntry ["組版"] ["くみはん"])]]) @?= "<p>組版<span id=\"i-0-7\"></span></p>\n",
-    testCase "the index links each location by its order" $
-      let book = (bookOf [Block (at 0) Nothing Nothing (ChannelOutput IndexOutput)]) {bookIndexes = [((fidA, at 0), [IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(fidA, at 7), (fidA, at 20)]])]}
-       in bodyA cfg0 book @?= "<section class=\"index\">\n<ul>\n<li>組版 / 和文組版 <a href=\"#i-0-7\">1</a>, <a href=\"#i-0-20\">2</a></li>\n</ul>\n</section>\n",
+      bodyA cfg0 (bookOf [para 0 [txt "組版", IndexMark (at 7) (IndexEntry ["組版"] ["くみはん"] IndexPoint)]]) @?= "<p>組版<span id=\"i-0-7\"></span></p>\n",
+    testCase "I7: the index links each location by its order; without headings as before" $
+      let book = (bookOf [Block (at 0) Nothing Nothing (ChannelOutput IndexOutput)]) {bookIndexes = [((fidA, at 0), [IndexSection "か" [IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [AtMark (fidA, at 7), AtMark (fidA, at 20)] []]])]}
+       in bodyA cfg0 {hcIndexSectionHeadings = False} book @?= "<section class=\"index\">\n<ul>\n<li>組版 / 和文組版 <a href=\"#i-0-7\">1</a>, <a href=\"#i-0-20\">2</a></li>\n</ul>\n</section>\n",
+    testCase "the index: a heading and a list for each section, a range of two links, a reference not linked (docs/adr/0265)" $ do
+      let g1 = IndexGroup ["組版"] ["くみはん"] [Between (fidA, at 7) (fidA, at 20), AtMark (fidA, at 30)] [(SeeAuto, ["印刷"])]
+          g2 = IndexGroup ["タイプセッティング"] ["たいぷせってぃんぐ"] [] [(SeeAuto, ["組版"])]
+          book = (bookOf [Block (at 0) Nothing Nothing (ChannelOutput IndexOutput)]) {bookIndexes = [((fidA, at 0), [IndexSection "か" [g1], IndexSection "た" [g2]])]}
+          e1 = "<li>組版 <a href=\"#i-0-7\">1</a>–<a href=\"#i-0-20\">2</a>, <a href=\"#i-0-30\">3</a>（印刷をも見よ）</li>\n"
+          e2 = "<li>タイプセッティング（組版を見よ）</li>\n"
+      bodyA cfg0 book @?= "<section class=\"index\">\n<p class=\"index-heading\">か</p>\n<ul>\n" <> e1 <> "</ul>\n<p class=\"index-heading\">た</p>\n<ul>\n" <> e2 <> "</ul>\n</section>\n"
+      bodyA cfg0 {hcIndexSectionHeadings = False} book @?= "<section class=\"index\">\n<ul>\n" <> e1 <> e2 <> "</ul>\n</section>\n",
     testCase "a citation links to its numbered entry in the bibliography" $
       let book =
             (bookOf [para 0 [txt "文献", Cite (at 1) [citeItem "knuth1981"]], Block (at 5) Nothing Nothing (ChannelOutput BibliographyOutput)])

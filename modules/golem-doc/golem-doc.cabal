@@ -38,7 +38,7 @@ test-suite golem-doc-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    CborExprSpec CiteSpec LangSpec LinkSpec NoteSpec ResolvedSpec TableSpec
+  other-modules:    CborExprSpec CiteSpec IndexSpec LangSpec LinkSpec NoteSpec ResolvedSpec TableSpec
   build-depends:
     , base
     , bytestring

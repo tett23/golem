@@ -60,6 +60,6 @@ tests =
       testCase "a line break inside a language span is not at the top of a paragraph" $
         validateInlines size [] [Lang sp "en" [Text sp "a", LineBreak sp, Text sp "b"]] @?= ["改行は段落の最上位のインラインの間にだけ置けます"],
       testCase "a copy of a title keeps the language span, without the anchors inside it" $
-        withoutAnchors [Lang sp "en" [Text sp "a", IndexMark sp (IndexEntry ["a"] ["a"]), Link sp "https://example.com/" [Text sp "b"]]]
+        withoutAnchors [Lang sp "en" [Text sp "a", IndexMark sp (IndexEntry ["a"] ["a"] IndexPoint), Link sp "https://example.com/" [Text sp "b"]]]
           @?= ([Lang sp "en" [Text sp "a", Text sp "b"]] :: [Inline])
     ]

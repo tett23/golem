@@ -107,11 +107,11 @@ tests =
         all ((`Map.member` bookHeadings book) . teSpan) (bookToc book) @?= True
         assertBool "notoc" (sp 1 30 `notElem` map teSpan (bookToc book)),
       testCase "index order: kana, voicing, small kana, long vowel, latin before kana" $ do
-        let mark s t r = IndexMark (sp 1 s) (IndexEntry [t] [r])
+        let mark s t r = IndexMark (sp 1 s) (IndexEntry [t] [r] IndexPoint)
             docs = [Document (FileId 1) [para 1 0 [mark 0 "ガ" "が", mark 1 "カ" "か", mark 2 "パ" "ぱ", mark 3 "ハ" "は", mark 4 "バ" "ば", mark 5 "API" "API", mark 6 "ツ" "つ", mark 7 "ッ" "っ", mark 8 "カ" "か"], Block (sp 1 50) Nothing Nothing (ChannelOutput IndexOutput)]]
             book = fst (assemble cfg noEval docs)
-        map igTerms (concatMap snd (bookIndexes book)) @?= [["API"], ["カ"], ["ガ"], ["ツ"], ["ッ"], ["ハ"], ["バ"], ["パ"]]
-        map (length . igLocations) (concatMap snd (bookIndexes book)) @?= [1, 2, 1, 1, 1, 1, 1, 1]
+        map igTerms (concatMap (concatMap isGroups . snd) (bookIndexes book)) @?= [["API"], ["カ"], ["ガ"], ["ツ"], ["ッ"], ["ハ"], ["バ"], ["パ"]]
+        map (length . igLocators) (concatMap (concatMap isGroups . snd) (bookIndexes book)) @?= [1, 2, 1, 1, 1, 1, 1, 1]
         compare (collationKey "かー") (collationKey "かあ") @?= EQ,
       testCase "citations are numbered in order of first citation" $ do
         let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) [citeItem "b"], Cite (sp 1 1) [citeItem "a"], Cite (sp 1 2) [citeItem "b"]]]]
@@ -161,7 +161,7 @@ titleCopyTests =
   testGroup
     "the copies of a title drop the anchor inlines (docs/adr/0145)"
     [ testCase "the toc entry and the label's title of a heading: no marks at any depth; the heading keeps them" $ do
-        let mark = IndexMark (sp 1 3) (IndexEntry ["組"] ["くみ"])
+        let mark = IndexMark (sp 1 3) (IndexEntry ["組"] ["くみ"] IndexPoint)
             itm = ChannelItem (sp 1 4) (ChannelItemData "glossary" (Just "k") (Just "か") [Text (sp 1 4) "組版"])
             title = [CharStyle (sp 1 2) "strong" [mark, Text (sp 1 2) "と"], itm, Kenten (sp 1 5) Nothing [itm], Text (sp 1 6) "の章"]
             h = Block (sp 1 1) (Just "h") Nothing (Heading 1 noHeadingAttrs title)
@@ -175,7 +175,7 @@ titleCopyTests =
             copied @?= [Resolved (sp 1 8) RefTitle "h" [CharStyle (sp 1 2) "strong" [Text (sp 1 2) "と"], Kenten (sp 1 5) Nothing [], Text (sp 1 8) "の章"]]
           other -> assertFailure (show other),
       testCase "the label's title of a captioned code block has no marks" $ do
-        let mark = IndexMark (sp 1 3) (IndexEntry ["組"] ["くみ"])
+        let mark = IndexMark (sp 1 3) (IndexEntry ["組"] ["くみ"] IndexPoint)
             code = Block (sp 1 1) (Just "c") Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 2) "例", mark]) False [] False))
             docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", code, para 1 7 [Ref (sp 1 8) RefTitle "c"]]]
         case bookDocs (fst (assemble cfg noEval docs)) of
@@ -311,16 +311,16 @@ multipleListTests =
             book = fst (assemble cfg noEval docs)
         map snd (bookBibliographies book) @?= [[("N", 1)], [("M", 1)]],
       testCase "each @index has the marks of its own range" $ do
-        let mark f s t = IndexMark (sp f s) (IndexEntry [t] [t])
+        let mark f s t = IndexMark (sp f s) (IndexEntry [t] [t] IndexPoint)
             idx f s = Block (sp f s) Nothing Nothing (ChannelOutput IndexOutput)
             docs =
               [ Document (FileId 1) [para 1 0 [mark 1 0 "か", mark 1 1 "あ"], idx 1 5],
                 Document (FileId 2) [para 2 0 [mark 2 0 "か"], idx 2 5, para 2 6 [mark 2 6 "さ"]]
               ]
             book = fst (assemble cfg noEval docs)
-        [(at, [(igTerms g, igLocations g) | g <- gs]) | (at, gs) <- bookIndexes book]
-          @?= [ ((FileId 1, sp 1 5), [(["あ"], [(FileId 1, sp 1 1)]), (["か"], [(FileId 1, sp 1 0)])]),
-                ((FileId 2, sp 2 5), [(["か"], [(FileId 2, sp 2 0)]), (["さ"], [(FileId 2, sp 2 6)])])
+        [(at, [(igTerms g, igLocators g) | g <- concatMap isGroups ss]) | (at, ss) <- bookIndexes book]
+          @?= [ ((FileId 1, sp 1 5), [(["あ"], [AtMark (FileId 1, sp 1 1)]), (["か"], [AtMark (FileId 1, sp 1 0)])]),
+                ((FileId 2, sp 2 5), [(["か"], [AtMark (FileId 2, sp 2 0)]), (["さ"], [AtMark (FileId 2, sp 2 6)])])
               ],
       testCase "without @bibliography, one list without a place numbers the whole book" $ do
         let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) [citeItem "b"]]], Document (FileId 2) [para 2 0 [Cite (sp 2 0) [citeItem "a"], Cite (sp 2 1) [citeItem "b"]]]]

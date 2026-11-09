@@ -296,9 +296,9 @@ escapeTests =
         rubiesOf "[ruby: [= \"a/b\"]|えー]\n" @?= [[(["a/b"], Just "えー")]]
         errs "[ruby: [= \"a/b\"]|えー]\n" @?= [],
       testCase "\\/ in the term of an index is no separator" $ do
-        indexOf "[index reading=えー: a\\/b]\n" @?= [IndexEntry ["a/b"] ["えー"]]
+        indexOf "[index reading=えー: a\\/b]\n" @?= [IndexEntry ["a/b"] ["えー"] IndexPoint]
         errs "[index reading=えー: a\\/b]\n" @?= []
-        indexOf "[index reading=くみはん/わぶん: 組版/和文]\n" @?= [IndexEntry ["組版", "和文"] ["くみはん", "わぶん"]],
+        indexOf "[index reading=くみはん/わぶん: 組版/和文]\n" @?= [IndexEntry ["組版", "和文"] ["くみはん", "わぶん"] IndexPoint],
       testCase "the IR of escaped text is as before: one text, one span" $
         case body "a\\[b\\\\c\n" of
           [Paragraph Nothing [Text sp t]] -> (t, spanStart sp, spanEnd sp) @?= ("a[b\\c", 0, 7)

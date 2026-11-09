@@ -78,6 +78,7 @@ module Golem.Project.Style
     kentenShapeNames,
     SidenoteStyle (..),
     IndexStyle (..),
+    indexSectionHeadings,
     HiddenFolio (..),
     HiddenFolioPages (..),
     MasterDef (..),
@@ -1047,9 +1048,15 @@ data IndexStyle = IndexStyle
   { ixColumns :: !(Maybe Natural),
     ixColumnGap :: !(Maybe Dim),
     -- | where the value of columns starts in style.toml, for G07044
-    ixColumnsAt :: !Int
+    ixColumnsAt :: !Int,
+    -- | section-headings: whether the index has its headings (docs/adr/0265)
+    ixSectionHeadings :: !Bool
   }
   deriving stock (Eq, Show)
+
+-- | Whether the index of a style has its section headings, true without [index] (docs/adr/0265).
+indexSectionHeadings :: Style -> Bool
+indexSectionHeadings = maybe True ixSectionHeadings . stIndex
 
 -- | The pages that get a hidden folio (golem-driver ADR 0021).
 data HiddenFolioPages = HiddenUnnumbered | HiddenAll
@@ -2323,7 +2330,10 @@ instance FromValue IndexSec where
     gap <- optKeyOf "column-gap" $ \v -> case v of
       Text' _ t | Just d <- parseSignedDim t, not (negativeDim d) -> pure d
       _ -> failAt (valueAnn v) "[index] の column-gap が正しくありません"
-    pure (IndexSec (IndexStyle cs gap 0))
+    headings <- optKeyOf "section-headings" $ \case
+      Bool' _ b -> pure b
+      v -> failAt (valueAnn v) "[index] の section-headings は真偽値です"
+    pure (IndexSec (IndexStyle cs gap 0 (fromMaybe True headings)))
 
 newtype TocSec = TocSec (Maybe Text)
 
@@ -2507,7 +2517,7 @@ parseStyle fid src = do
       -- errors of [aki-sets] are G03020 (docs/adr ADR 0019)
       ScopeKey "aki-sets" : _ -> "G03020"
       -- the values of [index] are G03025, an unknown key G03006 (docs/adr ADR 0025)
-      ScopeKey "index" : ScopeKey k : _ | k `elem` ["columns", "column-gap"] -> "G03025"
+      ScopeKey "index" : ScopeKey k : _ | k `elem` ["columns", "column-gap", "section-headings"] -> "G03025"
       -- the contents of a running head are G03014, the retired running-head of a heading G03019 (golem-driver ADR 0014)
       ScopeKey "masters" : _ : ScopeKey "running-head" : ScopeKey k : _ | k `elem` ["content", "even", "odd"] -> "G03014"
       -- an unknown position of a running head or a folio is G03018 (golem-driver ADR 0016)
@@ -3167,7 +3177,7 @@ styleSchema =
       ("toc", NTable [("leader", enum leaderValues)]),
       ("lists", NTable [("bullets", NArray str), ("numbers", NArray str), ("gap", dim)]),
       ("aki-sets", NNamed (Just AkiSets) akiSetNode),
-      ("index", NTable [("columns", int), ("column-gap", dim)]),
+      ("index", NTable [("columns", int), ("column-gap", dim), ("section-headings", bool)]),
       ("code", codeNode),
       ("hidden-folio", NTable [("enabled", bool), ("pages", enum (map fst hiddenFolioPagesValues)), ("size", dim), ("gutter", dim)])
     ]

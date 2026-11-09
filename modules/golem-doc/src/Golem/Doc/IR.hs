@@ -46,6 +46,8 @@ module Golem.Doc.IR
     verticalNumbersNamed,
     RefKind (..),
     IndexEntry (..),
+    IndexKind (..),
+    SeeKind (..),
     CiteItem (..),
     citeItem,
     citeInlines,
@@ -410,9 +412,29 @@ data RefKind = RefNumber | RefTitle | RefPage
 
 data IndexEntry = IndexEntry
   { ieTerms :: ![Text], -- one or two levels
-    ieReadings :: ![Text]
+    ieReadings :: ![Text],
+    -- | a page, an end of a range, or a reference (docs/adr/0265)
+    ieKind :: !IndexKind
   }
   deriving stock (Eq, Show)
+
+{- | The kind of an index mark (docs/adr/0265): the page of the mark, the
+begin or the end of a range, or a cross reference to the terms of another
+entry, one level or two.
+-}
+data IndexKind
+  = IndexPoint
+  | IndexRangeBegin
+  | IndexRangeEnd
+  | IndexSee !SeeKind ![Text]
+  deriving stock (Eq, Show)
+
+{- | The kind of a cross reference (docs/adr/0265): by whether the entry
+has pages (see without pages, see also with them), see, or see also. The
+notation makes 'SeeAuto' alone; plugins and Emet functions make the others.
+-}
+data SeeKind = SeeAuto | SeeOnly | SeeAlso
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 {- | An item of a citation (docs/adr/0266): the key of the bibliography,
 where in the work it cites, and the text before and after it. The fields

@@ -105,11 +105,10 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 数式を除いて LaTeX との差を埋めるための項目である（[2026-10-17 の調査](audits/2026-10-17-latex-gap-for-v1.md)）。
 どれも着手するときに ADR を作成する。
-記法、意味論の IR、プラグインの ABI を変える項目（表の番号、複数段落の注、索引の参照）は、互換を壊す変更になるので 1.0.0 の前に扱う。
+記法、意味論の IR、プラグインの ABI を変える項目（表の番号、複数段落の注）は、互換を壊す変更になるので 1.0.0 の前に扱う。
 ほかの項目から一部を取り出した項目は、実装を終えたときに、この項目とともに元の項目の記述から取り出した部分を消す。
 
 - **PDF のしおりとリンク**：見出しから PDF のしおり（アウトライン）を作り、相互参照、目次、索引、脚注の印を PDF のリンクにする。リンクのほかの注釈も扱う（[golem-pdf ADR 0001](golem-pdf/adr/0001-deterministic-pdf-writer.md)）。外部の URL へのリンク（[docs/adr/0182](adr/0182-external-links.md)）で作ったリンクの注釈の仕組み（`LinkTarget` と `Annotation`）を使う。
-- **索引の参照、ページの範囲、見出し**：索引の項目に「を見よ」「をも見よ」の参照とページの範囲を書けるようにし、索引に行の見出し（「あ」「か」など）を入れられるようにする。`[index]` の記法と IR が変わる。v2 の「索引と参考文献の拡張」のこれらの部分を先に取り出す。
 
 ### ページ分割
 
@@ -178,7 +177,7 @@ v2.0.0-rc1 は、数式の組版かその下準備、あるいはその両方を
 - **notice の局所的な抑制**：textlint の無効にするコメントのように、`.gm` の中で notice を局所的に抑制するブロックコマンド。今の抑制は `manifest.toml` の `silence-notices` と `--no-notices` による本の全体の単位であり、縮めた図版の notice の G07039 も図版ごとには抑制できない。本の全体での抑制で困る例が出たら、別の ADR で加える（[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）。
 - **目次の拡張**：章ごとの小目次（v1 の `@toc` は文書に一つだけ）、リーダーの字の設定、折り返した題のぶら下げ、図目次と表目次（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
 - **縦組みの傍注**：v1 の傍注は横組みに限る（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。
-- **索引と参考文献の拡張**：索引の三段以上の階層と「〜を見よ」のような項目間の参照（v1 は二段まで）、索引の見出し（「あ」「か」のような行の区切り）、ページ番号の範囲の圧縮、副項目の折り返した行の字下げ、縦組みの本の索引を横組みにして巻末から始めること、参考文献の書式の選択（著者名の順の一覧を含む）と書誌のぶら下げ字下げ（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。
+- **索引と参考文献の拡張**：索引の三段以上の階層（v1 は二段まで）、副項目の折り返した行の字下げ、縦組みの本の索引を横組みにして巻末から始めること、参考文献の書式の選択（著者名の順の一覧を含む）と書誌のぶら下げ字下げ（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。
 - **Web 経路のスタイル**：HTML と EPUB で、見出しの `font` と `size`、文字スタイルの `size`、`caption` と `sidenote` 以外の段落スタイルの `size` を使うこと、Web 経路のフォントのサブセット化（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。
 - **特色（スポットカラー）**：Separation と DeviceN の色空間。今の Golem はプロセスカラーだけを扱う（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)）。
 - **プラグインの配布機構**：レジストリとバージョンの解決、配布されたバイナリがどのソースから作られたかの検証、キャッシュの削除と整理のコマンド（[golem-plugin ADR 0002](golem-plugin/adr/0002-distribution-and-lock.md)）。

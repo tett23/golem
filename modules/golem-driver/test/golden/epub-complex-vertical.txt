@@ -359,7 +359,7 @@ code { padding-inline: 0.25em; }
 </section>
 </body>
 </html>
-== OEBPS/back.xhtml (deflate, time 315532800, 1228 bytes)
+== OEBPS/back.xhtml (deflate, time 315532800, 1393 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -371,6 +371,7 @@ code { padding-inline: 0.25em; }
 <body class="vertical">
 <h1 id="h-5-10">索引</h1>
 <section class="index">
+<p class="index-heading">か</p>
 <ul>
 <li>解版 <a href="chapters/03.xhtml#i-4-2009">1</a></li>
 <li>活版所 <a href="chapters/01.xhtml#i-2-143">1</a></li>
@@ -378,11 +379,20 @@ code { padding-inline: 0.25em; }
 <li>号数 <a href="chapters/01.xhtml#i-2-2192">1</a></li>
 <li>校正 / 記号 <a href="chapters/03.xhtml#i-4-50">1</a></li>
 <li>込め物 <a href="chapters/02.xhtml#i-3-1787">1</a></li>
+</ul>
+<p class="index-heading">さ</p>
+<ul>
 <li>四分 <a href="chapters/02.xhtml#i-3-2531">1</a></li>
 <li>植字 / 手順 <a href="chapters/02.xhtml#i-3-133">1</a></li>
 <li>植字 / 文選との違い <a href="chapters/01.xhtml#i-2-898">1</a></li>
 <li>全角 <a href="chapters/02.xhtml#i-3-2360">1</a></li>
+</ul>
+<p class="index-heading">た</p>
+<ul>
 <li>帳簿 <a href="chapters/01.xhtml#i-2-4178">1</a></li>
+</ul>
+<p class="index-heading">は</p>
+<ul>
 <li>端物 <a href="chapters/01.xhtml#i-2-3766">1</a></li>
 <li>文選 / 文選工 <a href="chapters/01.xhtml#i-2-557">1</a></li>
 </ul>

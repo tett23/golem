@@ -74,8 +74,8 @@ tests =
       testCase "a note is not wrapped and cuts a run" $
         para (rules [("body", [(".+", "n")])]) [t "a", Note sp 1 (noteBody sp [t "x"]), t "b"] @?= [cs "n" [t "a"], Note sp 1 (noteBody sp [t "x"]), cs "n" [t "b"]],
       testCase "an index mark and a proof comment cut a run" $
-        para (rules [("body", [(".+", "n")])]) [t "a", IndexMark sp (IndexEntry ["k"] []), t "b"]
-          @?= [cs "n" [t "a"], IndexMark sp (IndexEntry ["k"] []), cs "n" [t "b"]],
+        para (rules [("body", [(".+", "n")])]) [t "a", IndexMark sp (IndexEntry ["k"] [] IndexPoint), t "b"]
+          @?= [cs "n" [t "a"], IndexMark sp (IndexEntry ["k"] [] IndexPoint), cs "n" [t "b"]],
       testCase "the body of a sidenote has the rules of sidenote" $ do
         let r = rules [("body", [("[0-9]+", "n")]), ("sidenote", [("[a-z]+", "m")])]
         para r [t "1", Sidenote sp 1 (noteBody sp [t "2b"])] @?= [cs "n" [t "1"], Sidenote sp 1 (noteBody sp [t "2", cs "m" [t "b"]])],

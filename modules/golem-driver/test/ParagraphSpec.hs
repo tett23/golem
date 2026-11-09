@@ -644,7 +644,8 @@ columnTests =
     testCase "PDF: the index is set in the measure of a column and goes on in the second column" $ do
       let readings = ["あ", "い", "う", "え", "お", "か", "き", "く", "け", "こ"]
           source = T.concat ["本文[index reading=" <> r <> ": 語" <> r <> "]。" | r <- readings] <> "\n\n@index\n"
-      (_, pl) <- layoutOk (replaceIn "lines = 30" "lines = 5" horizontal2) source []
+      -- the entries alone, without the headings of docs/adr/0265
+      (_, pl) <- layoutOk (replaceIn "lines = 30" "lines = 5" horizontal2 <> "\n[index]\nsection-headings = false\n") source []
       let indexIn p = [sl | (_, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)], "語" `T.isPrefixOf` setLineText sl]
       -- (page, column, index lines): two lines after the text, five in column 1, the rest on page 2
       [(poNumber p, poColumn p, length (indexIn p)) | p <- plPages pl, not (null (indexIn p))] @?= [(1, 0, 2), (1, 1, 5), (2, 0, 3)]

@@ -641,7 +641,7 @@ piecesOf env inl = case inl of
       MarkerNone -> []
   IndexMark sp e -> at sp [PAnchor (\i -> AnchorIndex i sp e)]
   -- nothing shows; its page is followed like that of an index mark (golem-doc ADR 0007)
-  ChannelItem sp _ -> at sp [PAnchor (\i -> AnchorIndex i sp (IndexEntry [] []))]
+  ChannelItem sp _ -> at sp [PAnchor (\i -> AnchorIndex i sp (IndexEntry [] [] IndexPoint))]
   -- the mark of the default style; a key whose number is not known as itself (docs/adr/0266)
   Cite sp is -> at sp (textPieces lk (citationText (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is])))
   ProofComment {} -> []

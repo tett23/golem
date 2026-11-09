@@ -136,7 +136,8 @@ encodeInline = \case
     at sp "Deferred" [con "Opaque" [nat j]]
   Note sp n bs -> encodeBlocks bs >>= \b -> node "Note" [b] (Hidden sp Nothing Nothing n)
   Sidenote sp n bs -> encodeBlocks bs >>= \b -> node "Sidenote" [b] (Hidden sp Nothing Nothing n)
-  IndexMark sp (IndexEntry ts rs) -> at sp "IndexMark" [RList (map str ts), RList (map str rs)]
+  -- the kind of a mark (docs/adr/0265)
+  IndexMark sp (IndexEntry ts rs k) -> at sp "IndexMark" [RList (map str ts), RList (map str rs), indexKind k]
   -- the items of a citation (docs/adr/0266)
   Cite sp is -> listE citeItemE is >>= \items -> at sp "Cite" [items]
   ProofComment sp t -> at sp "ProofComment" [str t]
@@ -163,6 +164,15 @@ encodeInline = \case
     aki = \case
       AkiZw q -> con "Zw" [RPrim (VRat q)]
       a@(AkiAbs _) -> con "Sp" [nat (fromMaybe 0 (akiAbsoluteSp a))]
+    indexKind = \case
+      IndexPoint -> con "IndexPoint" []
+      IndexRangeBegin -> con "IndexRangeBegin" []
+      IndexRangeEnd -> con "IndexRangeEnd" []
+      IndexSee k ts -> con "IndexSee" [con (seeKindName k) [], RList (map str ts)]
+    seeKindName = \case
+      SeeAuto -> "SeeAuto"
+      SeeOnly -> "SeeOnly"
+      SeeAlso -> "SeeAlso"
     citeItemE (CiteItem k l p q) = (\a b -> con "CiteItem" [str k, maybeR locator l, a, b]) <$> encodeInlines p <*> encodeInlines q
     locator (Locator l v) = con "Locator" [str (locatorLabelName l), locatorValue v]
     locatorValue = \case
@@ -332,7 +342,9 @@ inlineD cx = \case
     "Deferred" -> one1 $ \s d -> Deferred s <$> deferred d
     "Note" -> withNumber Note
     "Sidenote" -> withNumber Sidenote
-    "IndexMark" -> one2 $ \s ts rs -> (\a b -> IndexMark s (IndexEntry a b)) <$> listD strD ts <*> listD strD rs
+    "IndexMark" -> one 3 $ \s -> \case
+      [ts, rs, k] -> (\a b k' -> IndexMark s (IndexEntry a b k')) <$> listD strD ts <*> listD strD rs <*> indexKindD k
+      _ -> arity
     "Cite" -> one1 $ \s items -> Cite s <$> listD citeItemD items
     "ProofComment" -> one1 $ \s t -> ProofComment s <$> strD t
     "LineBreak" -> one 0 $ \s _ -> pure (LineBreak s)
@@ -381,6 +393,17 @@ inlineD cx = \case
     deferred = \case
       RCon "Opaque" [RPrim (VNat j)] | Just e <- Seq.lookup (fromIntegral j) (cDeferred carried) -> pure e
       r -> bad ("遅延した値ではない値です: " <> shown r)
+    indexKindD = \case
+      RCon "IndexPoint" [] -> pure IndexPoint
+      RCon "IndexRangeBegin" [] -> pure IndexRangeBegin
+      RCon "IndexRangeEnd" [] -> pure IndexRangeEnd
+      RCon "IndexSee" [k, ts] -> IndexSee <$> seeKindD k <*> listD strD ts
+      r -> bad ("索引の印の種類ではない値です: " <> shown r)
+    seeKindD = \case
+      RCon "SeeAuto" [] -> pure SeeAuto
+      RCon "SeeOnly" [] -> pure SeeOnly
+      RCon "SeeAlso" [] -> pure SeeAlso
+      r -> bad ("参照の種類ではない値です: " <> shown r)
     citeItemD = \case
       RCon "CiteItem" [k, l, p, q] -> CiteItem <$> strD k <*> maybeD locatorD l <*> inlinesD cx p <*> inlinesD cx q
       r -> bad ("引用の項目ではない値です: " <> shown r)

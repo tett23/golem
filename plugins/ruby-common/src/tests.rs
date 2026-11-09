@@ -133,7 +133,7 @@ fn doc() -> Document {
         Inline::CharStyle { span: SP, style: "code".into(), body: vec![t("code")] },
         Inline::Kenten { span: SP, shape: None, body: vec![t("kenten")] },
         Inline::Tcy { span: SP, text: "12".into() },
-        Inline::IndexMark { span: SP, terms: vec!["語".into()], readings: vec!["ご".into()] },
+        Inline::IndexMark { span: SP, terms: vec!["語".into()], readings: vec!["ご".into()], kind: IndexKind::Point },
         Inline::ChannelItem { span: SP, channel: "c".into(), key: None, reading: None, body: vec![t("item")] },
         Inline::ProofComment { span: SP, text: "comment".into() },
     ];
