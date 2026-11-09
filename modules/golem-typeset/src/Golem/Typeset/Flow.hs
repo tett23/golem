@@ -708,7 +708,7 @@ pageStarts layout = map start (pagesOf (plPages layout))
     firstPart lid = maybe False ((== lid) . ciFirst) (Map.lookup lid (plCodes layout))
     lineStart lid =
       let block = snd <$> Map.lookupLE lid (plLineSpans layout)
-          sets = fromMaybe (maybe [] pure (Map.lookup lid (plLines layout))) (map snd <$> Map.lookup lid (plTableLines layout))
+          sets = maybe (maybe [] pure (Map.lookup lid (plLines layout))) (map snd) (Map.lookup lid (plTableLines layout))
           -- a block of no length (a heading) holds whatever of its file its line shows
           inside b c = spanFile (snd (bcSource c)) == spanFile b && bcAt c >= 0 && (spanLength b == 0 || (spanStart b <= bcAt c && bcAt c <= spanEnd b))
        in case block of

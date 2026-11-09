@@ -16,7 +16,7 @@ module Golem.Layout.Table
   )
 where
 
-import Data.Maybe (isJust)
+import Data.Maybe (catMaybes, isJust)
 import Golem.Doc.IR (Alignment (..), ColumnWidth (..))
 import Golem.Layout.KnuthPlass
 
@@ -108,7 +108,7 @@ others is.
 tableColumnWidths :: Sp -> Sp -> [ColumnWidth] -> [(Sp, Sp)] -> Either [TableError] [Sp]
 tableColumnWidths shared size specs cols =
   let specified = zipWith (\w _ -> specifiedWidth size shared w) (specs <> repeat ColumnAuto) cols
-      fixedSum = sum [w | Just w <- specified]
+      fixedSum = sum (catMaybes specified)
       -- only widths written exceed: without them, the auto columns are G07041
       over = [WidthsTooWide fixedSum shared | any isJust specified, fixedSum > shared]
       narrow = [ColumnTooNarrow i w mn | (i, Just w, (mn, _)) <- zip3 [0 ..] specified cols, w < mn]
