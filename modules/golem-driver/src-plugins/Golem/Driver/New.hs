@@ -7,19 +7,30 @@ module Golem.Driver.New
     templateFiles,
     FontSource (..),
     templateFonts,
+    Entry (..),
+    Argument (..),
+    Conflict (..),
+    Plan (..),
+    NewError (..),
+    planProject,
+    targetEntries,
     createProject,
   )
 where
 
+import Control.Exception (IOException, try)
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
+import Data.Containers.ListUtils (nubOrd)
 import Data.Either (lefts, rights)
+import Data.List (sort)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Plugin.Lock (Fetcher, hashHex)
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
-import System.FilePath (takeDirectory, (</>))
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, pathIsSymbolicLink)
+import System.FilePath (splitDirectories, takeDirectory, (</>))
 
 data Language = Japanese | English
   deriving stock (Eq, Show)
@@ -194,24 +205,126 @@ templateFonts = \case
         "75784a295293a8992f5a8d99210566e0064a012e6dab6731305e3787f15896c7"
     ]
 
-{- | Writes a project into an empty or missing directory. The fonts, if
-given, are fetched and checked first; if any fails, nothing is written.
+-- | The kind of an entry, as lstat sees it (docs/adr/0273).
+data Entry
+  = NoEntry
+  | RegularFile
+  | Directory
+  | -- | whether it leads to a directory
+    SymbolicLink !Bool
+  deriving stock (Eq, Ord, Show)
+
+-- | The argument of golem new: its entry, or a path below an entry that is not a directory.
+data Argument = Argument !Entry | BelowNonDirectory
+  deriving stock (Eq, Ord, Show)
+
+-- | Why golem new writes nothing (docs/adr/0273); the paths are relative to the argument.
+data Conflict
+  = -- | G03133: the argument is not a directory and cannot be made one
+    NotADirectory
+  | -- | G03131: manifest.toml or style.toml is there
+    ProjectExists !FilePath
+  | -- | G03132: a path of the template, or a directory on the way to one, is taken
+    PathTaken !FilePath
+  deriving stock (Eq, Ord, Show)
+
+-- | What golem new writes: the paths, and whether an existing .gitignore was kept (G03134).
+data Plan = Plan {planWrites :: [FilePath], planKeepsGitignore :: !Bool}
+  deriving stock (Eq, Show)
+
+-- | Why golem new failed: the checks of docs/adr/0273, or the fonts.
+data NewError = Conflicts [Conflict] | FetchFailed [Text]
+  deriving stock (Eq, Show)
+
+{- | Whether golem new may write the project (docs/adr/0273): from the paths
+it writes (W), the entry of the argument, and the entries of the paths of
+the template and of the directories on the way to them, relative to the
+argument (a path missing from the table has no entry). The checks run in
+order, and an error skips the later ones: the argument (G03133), a project
+(G03131), and the paths of the template (G03132, all of them at once, in
+the order of their bytes). An existing .gitignore is kept and not written.
 -}
-createProject :: FilePath -> [(FilePath, Text)] -> Maybe (Fetcher, [FontSource]) -> IO (Either [Text] ())
+planProject :: [FilePath] -> Argument -> [(FilePath, Entry)] -> Either [Conflict] Plan
+planProject writes argument table
+  | not (argumentHolds argument) = Left [NotADirectory]
+  | not (null projects) = Left (map ProjectExists projects)
+  | not (null taken) = Left (map PathTaken taken)
+  | otherwise = Right (Plan [p | p <- writes, not (kept && p == gitignore)] kept)
+  where
+    entries = Map.fromList table
+    entry p = Map.findWithDefault NoEntry p entries
+    projects = [p | p <- projectFiles, p `elem` writes, entry p /= NoEntry]
+    checked = [p | p <- writes, p `notElem` gitignore : projectFiles]
+    -- a directory on the way that is not a directory, outermost only
+    blocked = [a | a <- nubOrd (concatMap ancestors checked), entry a `notElem` [NoEntry, Directory]]
+    outermost = [a | a <- blocked, not (any (`elem` blocked) (ancestors a))]
+    taken = sort (outermost <> [p | p <- checked, not (any (`elem` blocked) (ancestors p)), entry p /= NoEntry])
+    kept = gitignore `elem` writes && entry gitignore /= NoEntry
+
+-- | The files that make a directory a project (G03131).
+projectFiles :: [FilePath]
+projectFiles = ["manifest.toml", "style.toml"]
+
+gitignore :: FilePath
+gitignore = ".gitignore"
+
+-- | An argument golem new can write into: none yet, a directory, or a link to one.
+argumentHolds :: Argument -> Bool
+argumentHolds = \case
+  Argument e -> e `elem` [NoEntry, Directory, SymbolicLink True]
+  BelowNonDirectory -> False
+
+-- | The proper ancestors of a path, outermost first.
+ancestors :: FilePath -> [FilePath]
+ancestors p = init (scanl1 (</>) (splitDirectories p))
+
+{- | The entries that 'planProject' reads (docs/adr/0273): the argument, and,
+when it is a directory, the paths it writes and the directories on the way,
+each by lstat. Nothing lists a directory, so the other entries of the
+argument are never read.
+-}
+targetEntries :: FilePath -> [FilePath] -> IO (Argument, [(FilePath, Entry)])
+targetEntries dir writes = do
+  e <- entryAt dir
+  argument <- case e of
+    NoEntry -> do
+      above <- mapM entryAt (ancestors dir)
+      pure (if all (`elem` [NoEntry, Directory, SymbolicLink True]) above then Argument NoEntry else BelowNonDirectory)
+    _ -> pure (Argument e)
+  table <-
+    if argumentHolds argument && e /= NoEntry
+      then mapM (\p -> (p,) <$> entryAt (dir </> p)) (nubOrd (concatMap (\p -> ancestors p <> [p]) writes))
+      else pure []
+  pure (argument, table)
+
+-- | The entry at a path, without following a link at its end; a path that cannot be read has none.
+entryAt :: FilePath -> IO Entry
+entryAt p =
+  try (pathIsSymbolicLink p) >>= \case
+    Left (_ :: IOException) -> pure NoEntry
+    Right True -> SymbolicLink <$> doesDirectoryExist p
+    Right False -> (\d -> if d then Directory else RegularFile) <$> doesDirectoryExist p
+
+{- | Writes a project into a directory without one (docs/adr/0273). The
+fonts, if given, are fetched and checked first; if any check or fetch
+fails, nothing is written.
+-}
+createProject :: FilePath -> [(FilePath, Text)] -> Maybe (Fetcher, [FontSource]) -> IO (Either NewError Plan)
 createProject dir files fonts = do
-  exists <- doesDirectoryExist dir
-  nonEmpty <- if exists then not . null <$> listDirectory dir else pure False
-  if nonEmpty
-    then pure (Left ["ディレクトリが空ではありません: " <> T.pack dir])
-    else do
+  let writes = map fst files <> maybe [] (map fsPath . snd) fonts
+  (target, entries) <- targetEntries dir writes
+  case planProject writes target entries of
+    Left cs -> pure (Left (Conflicts cs))
+    Right plan -> do
       fetched <- maybe (pure []) (\(fetch, srcs) -> mapM (fetchOne fetch) srcs) fonts
       case lefts fetched of
-        es@(_ : _) -> pure (Left es)
+        es@(_ : _) -> pure (Left (FetchFailed es))
         [] -> do
+          let wanted p = p `elem` planWrites plan
           -- UTF-8 whatever the locale (docs/adr/0002-determinism.md)
-          forM_ files $ \(p, t) -> write (dir </> p) >> BS.writeFile (dir </> p) (TE.encodeUtf8 t)
-          forM_ (rights fetched) $ \(p, b) -> write (dir </> p) >> BS.writeFile (dir </> p) b
-          pure (Right ())
+          forM_ [(p, TE.encodeUtf8 t) | (p, t) <- files, wanted p] $ \(p, b) -> write (dir </> p) >> BS.writeFile (dir </> p) b
+          forM_ [(p, b) | (p, b) <- rights fetched, wanted p] $ \(p, b) -> write (dir </> p) >> BS.writeFile (dir </> p) b
+          pure (Right plan)
   where
     write = createDirectoryIfMissing True . takeDirectory
     fetchOne fetch src = do
