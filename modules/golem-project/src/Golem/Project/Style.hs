@@ -2435,9 +2435,10 @@ exceptionTagErrors :: [Text] -> [(Int, Text, Text)]
 exceptionTagErrors tags =
   [ e
   | (i, t) <- zip [0 ..] tags,
-    e <- take 1 $
-      [(i, "G03126", "分綴の例外の一覧のキーが言語のタグの形ではありません: " <> t) | not (isLanguageTag t)]
-        <> [(i, "G03130", "大文字と小文字だけが違う言語のタグの一覧が二つあります: " <> t) | T.toLower t `elem` map T.toLower (take i tags)]
+    e <-
+      take 1 $
+        [(i, "G03126", "分綴の例外の一覧のキーが言語のタグの形ではありません: " <> t) | not (isLanguageTag t)]
+          <> [(i, "G03130", "大文字と小文字だけが違う言語のタグの一覧が二つあります: " <> t) | T.toLower t `elem` map T.toLower (take i tags)]
   ]
 
 {- | The words of a list of hyphenation exceptions that are wrong (docs/adr
@@ -2450,10 +2451,11 @@ exceptionWordErrors :: [Text] -> [(Int, Text, Text)]
 exceptionWordErrors ws =
   [ e
   | (i, w) <- zip [0 ..] ws,
-    e <- take 1 $
-      [(i, "G03127", "分綴の例外の語には字と - だけを書きます: " <> w) | T.null w || T.any (\c -> c /= '-' && not (isLetter c)) w]
-        <> [(i, "G03128", "分綴の例外の語の - が端にあるか、二つ続いています: " <> w) | "-" `T.isPrefixOf` w || "-" `T.isSuffixOf` w || "--" `T.isInfixOf` w]
-        <> [(i, "G03129", "同じ語を二度書いています: " <> w) | key w `elem` map key (take i ws)]
+    e <-
+      take 1 $
+        [(i, "G03127", "分綴の例外の語には字と - だけを書きます: " <> w) | T.null w || T.any (\c -> c /= '-' && not (isLetter c)) w]
+          <> [(i, "G03128", "分綴の例外の語の - が端にあるか、二つ続いています: " <> w) | "-" `T.isPrefixOf` w || "-" `T.isSuffixOf` w || "--" `T.isInfixOf` w]
+          <> [(i, "G03129", "同じ語を二度書いています: " <> w) | key w `elem` map key (take i ws)]
   ]
   where
     key = T.toLower . T.filter (/= '-')

@@ -11,6 +11,7 @@ module Golem.Layout.Hyphenation.Languages
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
@@ -64,9 +65,7 @@ lookupTag m tag = go (T.splitOn "-" (T.toLower tag))
     keys = Map.fromList [(T.toLower k, v) | (k, v) <- Map.toAscList m]
     go = \case
       [] -> Nothing
-      subtags -> case Map.lookup (T.intercalate "-" subtags) keys of
-        Just v -> Just v
-        Nothing -> go (dropSingletons (init subtags))
+      subtags -> Map.lookup (T.intercalate "-" subtags) keys <|> go (dropSingletons (init subtags))
     dropSingletons subtags = case reverse subtags of
       s : rest | T.length s == 1 -> reverse rest
       _ -> subtags

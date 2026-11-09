@@ -6,6 +6,7 @@ of contents.
 module ExceptionsSpec (exceptionsTests) where
 
 import Data.ByteString qualified as BS
+import Data.List (nub)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -56,11 +57,9 @@ itemsIn k ls = [its | (fid, its) <- ls, fid == fileOf k ls]
 
 -- | The file of the k-th chapter: the k-th file of the lines, in order.
 fileOf :: Int -> [(FileId, [Item])] -> FileId
-fileOf k ls = case drop k (dedupe (map fst ls)) of
+fileOf k ls = case drop k (nub (map fst ls)) of
   f : _ -> f
   [] -> FileId (-1)
-  where
-    dedupe = foldr (\x acc -> x : filter (/= x) acc) []
 
 -- | An item without where its characters are in the source.
 placeless :: Item -> Item
