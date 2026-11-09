@@ -162,17 +162,20 @@ placeAll env st (f : rest) = case f of
   _ ->
     let -- the breaks first: going on to the next page places the figures waiting, and this one may not wait
         stB = applyBreaks env st
+        waiting = waitsBehind stB f
         -- a figure that waits takes neither the need-lines nor the blank lines before it (golem-layout ADR 0026)
         st1
-          | waitsBehind stB f = checkNoBreak (place env stB f rest)
+          | waiting = checkNoBreak (place env stB f rest)
           | otherwise = checkNoBreak (placeFlow env (placeBlank env (needBefore env stB (f : rest)) f rest) f rest)
         deferred = case f of
           FFigure i _ _ _ -> any (\case FFigure j _ _ _ -> i == j; _ -> False) (sDeferred st1)
           -- the flow after a turned figure is never on its page
           FPageFigure {} -> True
           _ -> False
-     in -- the spaces before a need-lines are those after the last block, placed or not (golem-layout ADR 0043)
-        placeAll env st1 {sSeen = True, sLastDeferred = deferred, sSpaces = []} rest
+        -- the spaces before a need-lines are those after the last block (golem-layout ADR 0043), a figure sent on by
+        -- itself one too: a figure that waits keeps them, unless the breaks before it go on from their column (golem-layout ADR 0047)
+        spaces = if waiting && null (sBreaks st) then sSpaces st1 else []
+     in placeAll env st1 {sSeen = True, sLastDeferred = deferred, sSpaces = spaces} rest
 
 {- | Need-lines after need-lines, with no block between: the larger is
 kept. When it is larger than the one judged before a space, the column
