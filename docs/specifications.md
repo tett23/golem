@@ -2013,7 +2013,26 @@ PDF では、`url` と、`based-on` をたどって `url` に行き着く文字�
 `[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
 `[character-styles.strong] based-on = "italic"` は、`[strong: ...]` を斜体で表す。
 
-段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`features`、段落の前と後に引く罫線の `rule-before` と `rule-after` である。
+段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`features`、段落の前と後に引く罫線の `rule-before` と `rule-after`、段落の分け方の `keep-with-next`、`keep-all-lines`、`keep-first-lines`、`keep-last-lines`、`page-break` である（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。
+
+段落の分け方の五つのキーは、ほかのキーと同じく `based-on` で引き継ぎ、書いた値が勝つ。
+
+| キー | 型 | 既定 | 意味 | InDesign |
+| --- | --- | --- | --- | --- |
+| `keep-with-next` | 0 から 5 の整数 | 0 | 段落の最後の行を、後に続くものの最初の部分と同じ段に置く。後が段落なら、その最初の少なくとも N 行を最初の部分とする。0 は連動しない | 次の段落と連動 |
+| `keep-all-lines` | 真偽値 | `false` | 段落を段で分けない | 段落を分割しない |
+| `keep-first-lines` | 1 以上の整数 | 2 | 段で分けるとき、前の段に残す最初の部分の最小の行数 | 段落の始めの行数 |
+| `keep-last-lines` | 1 以上の整数 | 2 | 段で分けるとき、次の段に送る最後の部分の最小の行数 | 段落の終わりの行数 |
+| `page-break` | `"any"`、`"column"`、`"page"`、`"recto"`、`"verso"` | `"any"` | 段落を、次の段、次のページ、次の奇数ページ、次の偶数ページから始める | 段落の開始位置 |
+
+`line-breaks = "keep"` の段落（連）では、行の数を韻文の行の数とする。
+範囲の外の整数、真偽値でない値、表にない文字列は G03006、負の整数は G02103 とする。
+組み込みの段落スタイル `code` には書けない（G03006）。
+`@style-def` にも同じキーを同じ検査で書ける。
+`keep-first-lines`、`keep-last-lines`、`keep-all-lines` は、改ページが段落として置くすべての段落（文書の最上位、リストの項目、定義リストの説明の段落）に当てる。
+`keep-with-next` と `page-break` は、文書の最上位の段落にだけ当て、リストの項目、表のセル、注の本文、定義リストの中の段落には当てない。
+HTML と EPUB の `style.css` には、既定でない値を `break-after: avoid`、`break-inside: avoid`、`orphans`、`widows`、`break-before` として書く。
+プレーンテキストは何も出力しない。
 
 `rule-before` と `rule-after` は、「罫線の指定」の表か `false` をとる（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 InDesign の段落境界線にあたる。
@@ -3321,10 +3340,30 @@ HTML と同じ三つの位置の行アキは、何も出力しない。
 
 PDF の改ページは、行を版面の格子に先頭から順に詰めて決める（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 見出しの `page-break = "recto"` は、その階層の見出しを奇数ページから始める。
-段落は行の単位で段に分ける。
-段落の最初の 1 行だけが段の末尾に残る場合（孤立行）は、その行も次の段に送る。
-段落の最後の 1 行だけが次の段の先頭に送られる場合は、前の段の最後の行も次の段に送る。
-空の段では、この二つの規則で一行も置けなくなる場合は、入るだけの行を置く。
+段落は行の単位で段に分ける（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。
+段落の n 行のうち段に k 行が入るとき、段の前に置く行の数を次の順で決める。
+段落スタイルの `keep-all-lines` が真で k < n なら 0 とする。
+0 < n − k < `keep-last-lines` なら、k を max 0 (n − `keep-last-lines`) にする（寡婦行）。
+段落がこの段から始まり、0 < k < `keep-first-lines` なら 0 にする（孤立行）。
+既定の値（2 と 2）では、段落の最初の 1 行だけを段の末尾に残さず、最後の 1 行だけを次の段の先頭に送らない。
+空の段では、この規則で一行も置けなくなる場合は、入るだけの行を置く。
+そのとき、置いた最初の部分か次の段に送った最後の部分が `keep-first-lines`、`keep-last-lines` より少なければ、その段落の範囲に notice G07113 を出す。
+`keep-all-lines` の段落は、今の段に全体が入らなければ次の段から置き、空の段（見出しだけの段を含む）にも入らなければ `keep-first-lines` と `keep-last-lines` で分け、notice G07112 を出す。
+`keep-with-next` の段落は、`@no-page-break` と同じ仕組みで、最後の `keep-last-lines` 行（`keep-last-lines` 以下の段落と、`keep-first-lines` と `keep-last-lines` の和より短い段落は全体）を、後に続くものの最初の部分と同じ段に置く。
+後が段落か連なら、その最初の部分を N 行以上に広げる。
+後の段落も `keep-with-next` を持ち、その全体が最初の部分に入るときは、その後の最初の部分も足す。
+足した量は段の行の格子の数を上限とする。
+罫線を持つ段落なら、まとまりの全体を、後の最初の部分と合わせて段に入る位置に送る。
+空の段からは送らない。
+後の最初の部分が前の最後の行と同じ段に置かれなければ、段落の範囲に警告 G07111 を出す。
+`@no-page-break` と `keep-with-next` が同じ位置にあれば、一つの連動として扱い、大きいほうの量を取り、守れなければ両方を報告する。
+`page-break` の段落は、ためた改ページを適用した後に置く。
+`"column"` なら、今の段が空でなければ次の段へ進む。
+`"page"`、`"recto"`、`"verso"` なら、送った図版と続きの脚注を置いてから、今のページが空で段 0 にいれば留まり、そうでなければ次のページへ進む。
+`"recto"` と `"verso"` では、偶奇が合わなければ白ページを入れる。
+`@page-break` と違い、空の段や空のページでは何もしない。
+セクションの前の改ページ（「プロジェクトの構成と import」の節）と同じ規則である。
+`page-break` の段落の前の見出しは、改丁の見出しの前の見出しと同じく、後に続くものを数えずに置く。
 `line-breaks = "keep"` の段落は、一つの連として扱い、韻文の行を単位にして同じ二つの規則を当てる（[docs/adr/0180](adr/0180-verse-spacing-and-stanza-breaks.md)）。
 連の最初の韻文の行だけを段の末尾に残さず、最後の韻文の行だけを次の段の先頭に送らない。
 送るほうが一つの韻文の行だけになる場合は、前の段の最後の韻文の行も次の段に送る。
@@ -3342,6 +3381,7 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 続く見出しと行の量には、それらの注の本文の行と、その段で最初の注なら区切りの領域を数える（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
 段の先頭から見出しだけを置いた段では、空の段と同じく、孤立行と寡婦行の規則で一行も置けなくなる場合は、入るだけの行を置き、入らない注の本文を次の段に続ける（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md)）。
 
+段落の分け方の規則は、[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md) の「不変条件」の節の K1 から K7 として、段落の分け方の要素を足した列挙の入力で golem-layout のテストが確かめる。
 これらの規則は、[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の I1 から I8 として、`@need-lines` と行アキの規則は [golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の「不変条件」の節の P1 から P4 と、[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の「不変条件」の節の P5 として、golem-layout のテストで確かめる。
 P1、P3、P4 の「次のブロック」は、[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) のとおり、待つ図版を飛ばした最初のブロックである。
 述語は、待つ図版を出力から判定する。

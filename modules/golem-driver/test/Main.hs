@@ -23,6 +23,7 @@ import FunctionsSpec (functionsTests)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
 import HeadingLevelsSpec (headingLevelsTests)
 import InMemorySpec (inMemoryTests)
+import KeepOptionsSpec (keepOptionsTests)
 import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
 import NewPlanSpec (newPlanTests)
@@ -77,6 +78,7 @@ tests skips =
         varsTests,
         unwritableNumbersTests,
         pageLabelsTests,
+        keepOptionsTests,
         emetSamplesTests,
         functionLibraryTests,
         manualEmetTests,

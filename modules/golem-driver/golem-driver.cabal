@@ -125,6 +125,7 @@ test-suite golem-driver-test
     PopplerSpec
     ReferencesSpec
     SecuritySpec
+    KeepOptionsSpec
     PageLabelsSpec
     ShapingMemoSpec
     SpecimenGeometrySpec

@@ -532,7 +532,7 @@ layoutFigures reuse inp geom fonts figures = do
           atHeading hs tp = tp {tpLeader = withBoxSource (SourceGrid, hs) (tpLeader tp), tpNumber = withBoxSource (SourceGrid, hs) (tpNumber tp)}
           tocPages = Map.fromList [(lid, atHeading hs (tocPage tg e (pageNumberLine env l))) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages], let l = Map.findWithDefault (plainLabel (fromInteger n)) (fromInteger n) pageLbls]
        in case concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built))
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built))
             ds -> Left ds
 
 {- | The most grid lines a column may have with @page-lines (docs/adr ADR
@@ -573,8 +573,17 @@ adjustReason = \case
 headings taller than the rest of their columns, named by @names@
 (golem-layout ADR 0020).
 -}
-unmetWarnings :: Map Int (SrcSpan, Text) -> [PageOut] -> [Diagnostic]
-unmetWarnings names pages =
+
+-- | The block and the paragraph style of the unit of a line (docs/adr/0261).
+paraOfLine :: Built -> Int -> Maybe (SrcSpan, Text)
+paraOfLine built lid = (\(_, sp) -> (sp, styleAtSpan built sp)) <$> Map.lookupLE lid (bLineSpans built)
+
+-- | The paragraph style of the paragraph of a block, body without one (docs/adr/0261).
+styleAtSpan :: Built -> SrcSpan -> Text
+styleAtSpan built sp = fromMaybe "body" (listToMaybe [n | (_, u) <- bUnits built, uSpan u == sp, Just n <- [uParaStyle u]])
+
+unmetWarnings :: Map Int (SrcSpan, Text) -> (Int -> Maybe (SrcSpan, Text)) -> (SrcSpan -> Text) -> [PageOut] -> [Diagnostic]
+unmetWarnings names paraOf styleAt pages =
   [ d
   | p <- pages,
     u <- poUnmet p,
@@ -587,6 +596,13 @@ unmetWarnings names pages =
       TallHeading i n room ->
         [ notice "G07100" sp ("見出しが段に入りません（" <> name <> "。見出しは " <> T.pack (show n) <> " 行、段の残りは " <> T.pack (show room) <> " 行）")
         | Just (sp, name) <- [Map.lookup i names]
+        ]
+      -- G07111, G07112, G07113: the keep options not met (docs/adr/0261)
+      UnmetKeepNext sp -> [diagnostic "G07111" Warning sp ("段落スタイル " <> styleAt sp <> " の keep-with-next を守れませんでした")]
+      SplitKept i -> [notice "G07112" sp ("段落スタイル " <> name <> " の段落が段に入らないので、keep-all-lines を外して分けました") | Just (sp, name) <- [paraOf i]]
+      ShortPart part i asked placed ->
+        [ notice "G07113" sp ("段の行が足りないので、段落の" <> (if part == FirstPart then "最初" else "最後") <> "の部分を " <> T.pack (show placed) <> " 行にしました（keep-" <> (if part == FirstPart then "first" else "last") <> "-lines = " <> T.pack (show asked) <> "）")
+        | Just (sp, _) <- [paraOf i]
         ]
   ]
 
@@ -601,7 +617,7 @@ ruledNotices flow infos pages =
       else notice "G07046" (riSpan info) ("罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（" <> riOwner info <> "）")
   | f@FRuled {} <- flow,
     let ids = case frBody f of
-          RuledLines ls -> map lbId ls
+          RuledLines _ ls -> map lbId ls
           RuledHeading {} -> []
         columns = length [() | p <- pages, any (\case (_, SLine l) -> l `elem` ids; _ -> False) (poSlots p)]
         placed b = any (any (\r -> prId r == frId f && prBefore r == b) . poRules) pages
@@ -724,14 +740,14 @@ pageStarts layout = map start (pagesOf (plPages layout))
   where
     start ps = listToMaybe [lid | p <- ps, (_, s) <- poSlots p, lid <- case s of { SLine l -> [l]; SHeading l _ -> [l]; SCode l _ _ -> [l]; _ -> [] }] >>= lineStart
     -- the first part of a code block: the caption and the file name come before its lines (docs/adr/0218)
-    firstPart lid = maybe False ((== lid) . ciFirst) (Map.lookup lid (plCodes layout))
+    firstCodePart lid = maybe False ((== lid) . ciFirst) (Map.lookup lid (plCodes layout))
     lineStart lid =
       let block = snd <$> Map.lookupLE lid (plLineSpans layout)
           sets = maybe (maybe [] pure (Map.lookup lid (plLines layout))) (map snd) (Map.lookup lid (plTableLines layout))
           -- a block of no length (a heading) holds whatever of its file its line shows
           inside b c = spanFile (snd (bcSource c)) == spanFile b && bcAt c >= 0 && (spanLength b == 0 || (spanStart b <= bcAt c && bcAt c <= spanEnd b))
        in case block of
-            Just b | firstPart lid -> Just (spanFile b, spanStart b)
+            Just b | firstCodePart lid -> Just (spanFile b, spanStart b)
             Just b -> case [bcAt c | sl <- sets, Box _ c <- lineItems (slLine sl), inside b c] of
               off : _ -> Just (spanFile b, off)
               [] -> Just (spanFile b, spanStart b)
@@ -2387,10 +2403,10 @@ spaceAfterCode pitch fs infos = \case
       next : _ | Just l <- firstLineOf next -> reachesBackground pitch fs (maybe 0 snd (ciBorder ci)) (lbOverhang l)
       _ -> False
     firstLineOf = \case
-      FRuled {frBody = RuledLines (l : _)} -> Just l
+      FRuled {frBody = RuledLines _ (l : _)} -> Just l
       FRuled {frBody = RuledHeading _ _ (l : _)} -> Just l
-      FParagraph (l : _) -> Just l
-      FStanza vs | l : _ <- concat vs -> Just l
+      FParagraph _ (l : _) -> Just l
+      FStanza _ vs | l : _ <- concat vs -> Just l
       FHeading {fhLines = l : _} -> Just l
       FDefTerm (l : _) -> Just l
       FTable {ftSpaceBefore = 0, ftHeader = l : _} -> Just l
@@ -2513,7 +2529,8 @@ numberOther fe cu nb (i, u)
       UGap n -> nb {nuFlow = nuFlow nb <> [FSpace n]}
       UCode {} -> maybe nb (\cb -> numberCode u cb nb) (Map.lookup i (cuCodeBlocks cu))
       UBreak k -> nb {nuFlow = nuFlow nb <> [FBreak k]}
-      USection k start -> nb {nuFlow = nuFlow nb <> [FSection k start]}
+      -- the break before a section by the parity of its start (docs/adr/0260)
+      USection k start -> nb {nuFlow = nuFlow nb <> [FSection (OfSection k) (maybe BreakPage (\s -> if odd s then BreakRecto else BreakVerso) start)]}
       UPageControl c ->
         let control = case c of
               NoBreak -> FNoBreak (uSpan u)
@@ -2522,7 +2539,7 @@ numberOther fe cu nb (i, u)
          in nb {nuFlow = nuFlow nb <> [control]}
       UColumns set -> nb {nuFlow = nuFlow nb <> [maybe FRestoreColumns FSwitchColumns set]}
       UBlank k -> nb {nuFlow = nuFlow nb <> [FBlank (uSpan u) (fromIntegral k)]}
-      _ -> numberText fe u (cuSingles cu Map.! i) nb
+      _ -> numberText fe (partsAround cu i u) u (cuSingles cu Map.! i) nb
 
 {- | Numbers a figure; a wrapped figure with the lines beside it, and the
 rest of a paragraph cut short continues after it.
@@ -2551,7 +2568,7 @@ numberFigure fe cu i u (pf, ferrs, _, fmarks) nb = case pfExclusion pf of
             (beside, continued) = splitAt (exLines ex) allBoxes
          in nb
               { nuNext = nextId',
-                nuFlow = nuFlow nb <> [FWrapped nextId (exLines ex) (unitLabel u) fmarks beside] <> [FContinued continued | not (null continued)],
+                nuFlow = nuFlow nb <> [FWrapped nextId (exLines ex) (unitLabel u) fmarks beside] <> [FContinued (maybe defaultKeep (\(j, _, _) -> keepOf (unitAt Map.! j)) (listToMaybe (reverse paras))) continued | not (null continued)],
                 nuLines = Map.union (nuLines nb) sets,
                 nuFigures = Map.insert nextId pf (nuFigures nb),
                 nuErrors = nuErrors nb <> tooNarrow
@@ -2577,8 +2594,55 @@ numberCode u cb nb =
 of the notes, a term, an entry; a heading too large for the type area is
 G07024.
 -}
-numberText :: FlowEnv -> Unit -> Composed -> Numbered -> Numbered
-numberText fe u c nb =
+
+{- | Whether a unit is the first and the last unit of its block: the units
+of a paragraph of a style that keeps its lines share the span of the
+paragraph (docs/adr/0261).
+-}
+partsAround :: ComposedUnits -> Int -> Unit -> (Bool, Bool)
+partsAround cu i u =
+  let same j = maybe False (\v -> uSpan v == uSpan u && isParaKind (uKind v)) (Map.lookup j (cuUnits cu))
+   in (not (same (i - 1)), not (same (i + 1)))
+  where
+    isParaKind = \case
+      UPara _ -> True
+      _ -> False
+
+{- | The keep of a paragraph of a style (docs/adr/0261): keep-first-lines,
+keep-last-lines and keep-all-lines, those of body when not written.
+-}
+keepOf :: Unit -> Keep
+keepOf u = case paraStyle (uStyle u) (uParaStyle u) of
+  Just d -> Keep (fromMaybe 2 (psKeepFirstLines d)) (fromMaybe 2 (psKeepLastLines d)) (fromMaybe False (psKeepAllLines d))
+  Nothing -> defaultKeep
+
+{- | Whether a paragraph takes keep-with-next and page-break
+(docs/adr/0261): one at the top of the document, not in a list, a
+definition list, a note at the end of a chapter or a list of a channel.
+-}
+topParagraph :: Unit -> Bool
+topParagraph u = null (uLists u) && all (\(Frame _ k _) -> k == FPara) (uFrames u)
+
+{- | The start of a paragraph of a style with page-break, and its
+keep-with-next (docs/adr/0261), for a paragraph at the top of the document.
+-}
+paraStartAndKeep :: Unit -> (Maybe BreakKind, Int)
+paraStartAndKeep u
+  | not (topParagraph u) = (Nothing, 0)
+  | otherwise = case paraStyle (uStyle u) (uParaStyle u) of
+      Just d ->
+        ( case psPageBreak d of
+            Just StartColumn -> Just BreakColumn
+            Just StartPage -> Just BreakPage
+            Just StartRecto -> Just BreakRecto
+            Just StartVerso -> Just BreakVerso
+            _ -> Nothing,
+          fromMaybe 0 (psKeepWithNext d)
+        )
+      Nothing -> (Nothing, 0)
+
+numberText :: FlowEnv -> (Bool, Bool) -> Unit -> Composed -> Numbered -> Numbered
+numberText fe (firstOfBlock, lastOfBlock) u c nb =
   let inp = feInput fe
       geom = feGeom fe
       fs = pgFontSize geom
@@ -2594,18 +2658,25 @@ numberText fe u c nb =
         _ -> 1
       hb = headingBlock fs pitch size (length ls) least
       ruledOf = FRuled nextId (ruleSide geom True <$> fst (uRules u)) (ruleSide geom False <$> snd (uRules u)) False (RuleGrid pitch fs) 0
+      kp = keepOf u
       flowOf = case uKind u of
         UHeading _ _ recto | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledHeading recto (hbSpan hb) boxes)]
-        UPara _ | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledLines boxes)]
+        UPara _ | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledLines kp boxes)]
         UHeading l _ recto -> [FHeading l recto (hbSpan hb) boxes]
         UNotesTitle _ -> [FHeading 2 False (hbSpan hb) boxes]
         UTerm _ -> [FDefTerm boxes]
-        _ -> [FParagraph boxes]
+        _ -> [FParagraph kp boxes]
+      -- the start before the first part of a paragraph and the keep-with-next after its last (docs/adr/0261)
+      (start, keepNext) = case uKind u of
+        UPara _ -> paraStartAndKeep u
+        _ -> (Nothing, 0)
+      before = [FSection (OfParagraph (uSpan u)) k | firstOfBlock, Just k <- [start]]
+      after = [FKeepNext (uSpan u) keepNext | lastOfBlock, keepNext > 0]
       -- a verse line after the first joins the stanza of the lines before it (docs/adr/0180)
       flow' = case (uStanza u, unsnoc (nuFlow nb)) of
-        (Just i, Just (earlier, FStanza vs)) | i > 0 -> earlier <> [FStanza (vs <> [boxes])]
-        (Just _, _) -> nuFlow nb <> [FStanza [boxes]]
-        _ -> nuFlow nb <> flowOf
+        (Just i, Just (earlier, FStanza k vs)) | i > 0 -> earlier <> [FStanza k (vs <> [boxes])] <> after
+        (Just _, _) -> nuFlow nb <> before <> [FStanza kp [boxes]] <> after
+        _ -> nuFlow nb <> before <> flowOf <> after
       (headAcc', errs') = case uKind u of
         -- the title of the notes is in neither the headings nor the running heads (golem-driver ADR 0026)
         k
@@ -2751,11 +2822,11 @@ ruledLinks = go Nothing
       f : rest -> f : go (Just f) rest
       [] -> []
     firstLine = \case
-      FRuled {frBody = RuledLines (l : _)} -> Just l
+      FRuled {frBody = RuledLines _ (l : _)} -> Just l
       FRuled {frBody = RuledHeading _ _ (l : _)} -> Just l
-      FParagraph (l : _) -> Just l
-      FStanza vs | l : _ <- concat vs -> Just l
-      FContinued (l : _) -> Just l
+      FParagraph _ (l : _) -> Just l
+      FStanza _ vs | l : _ <- concat vs -> Just l
+      FContinued _ (l : _) -> Just l
       FHeading {fhLines = l : _} -> Just l
       FDefTerm (l : _) -> Just l
       _ -> Nothing

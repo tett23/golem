@@ -221,7 +221,10 @@ data HtmlParaStyle = HtmlParaStyle
     hpsSpaceBefore :: !Int,
     hpsSpaceAfter :: !Int,
     -- | a CSS length (docs/adr/0189)
-    hpsEndIndent :: !Text
+    hpsEndIndent :: !Text,
+    {- | the declarations of the keep options not of their defaults:
+    break-after, break-inside, orphans, widows, break-before (docs/adr/0261)
+    -} hpsBreaks :: ![Text]
   }
   deriving stock (Eq)
 
@@ -1220,6 +1223,7 @@ css cfg book =
                | hpsSpaceBetween ps > 0 || spaced
                ]
             <> [rule sel ds | let ds = featureDecls (hpsFeatures ps), not (null ds)]
+            <> [rule sel (hpsBreaks ps) | not (null (hpsBreaks ps))]
     {- the spaces before and after of the paragraph styles (docs/adr/0189),
     under a prefix and over styles: the space before on the style, the
     space after on the next element of another style that is not a blank

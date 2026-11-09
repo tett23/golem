@@ -26,3 +26,6 @@ keep21 none
 decidedSome found
 needMoreSpace46 none
 needMoreSpace46Here found
+keepNone none
+keepDefaultDiffers none
+keepAllSome found

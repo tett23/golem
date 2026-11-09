@@ -61,12 +61,29 @@ htmlParaStyles style =
           (fromMaybe 0 (psSpaceBefore d))
           (fromMaybe 0 (psSpaceAfter d))
           (cssLength (fromMaybe (Zw 0) (psEndIndent d)))
+          (keepDecls d)
       )
     | n <- Map.keys (stParaStyles style),
       Just d <- [paraStyle style (Just n)]
     ]
   where
     bindingRight = maybe False pageBindingRight (stPage style)
+
+{- | The CSS of the keep options of a paragraph style that are not their
+defaults (docs/adr/0261): orphans and widows default to 2 in CSS too.
+-}
+keepDecls :: ParaStyleDef -> [Text]
+keepDecls d =
+  ["break-after: avoid" | maybe False (> 0) (psKeepWithNext d)]
+    <> ["break-inside: avoid" | psKeepAllLines d == Just True]
+    <> ["orphans: " <> T.pack (show n) | Just n <- [psKeepFirstLines d], n /= 2]
+    <> ["widows: " <> T.pack (show n) | Just n <- [psKeepLastLines d], n /= 2]
+    <> case psPageBreak d of
+      Just StartColumn -> ["break-before: column"]
+      Just StartPage -> ["break-before: page"]
+      Just StartRecto -> ["break-before: recto"]
+      Just StartVerso -> ["break-before: verso"]
+      _ -> []
 
 {- | The declarations of an alignment (docs/adr/0189): start and end follow
 the writing; the spine is that of the first page, the left of a book

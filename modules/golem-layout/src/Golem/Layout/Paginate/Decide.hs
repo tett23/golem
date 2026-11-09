@@ -8,7 +8,10 @@ module Golem.Layout.Paginate.Decide
     noteLinesOf,
     nextNeed,
     keptNeed,
+    keepAhead,
+    nextFirstLines,
     splitAtBreak,
+    firstPart,
     grid,
     termNeed,
     needIn,
@@ -62,10 +65,11 @@ nextNeed env = \case
   -- a heading at a recto starts a page of its own: nothing before it keeps it (docs/adr/0206)
   (f : _) | startsRecto f -> mempty
   -- the first part that can be split from the rest (golem-layout ADR 0021)
-  (FParagraph ls : _) -> linesNeed (take (firstPart True (length ls)) ls)
-  (FContinued ls : _) -> linesNeed (take (firstPart False (length ls)) ls)
+  -- with the keep of the paragraph (docs/adr/0261)
+  (FParagraph kp ls : _) -> linesNeed (take (firstPart kp True (length ls)) ls)
+  (FContinued kp ls : _) -> linesNeed (take (firstPart kp False (length ls)) ls)
   -- of a stanza, its verse lines (docs/adr/0180, golem-layout ADR 0021)
-  (FStanza vs : _) -> linesNeed (concat (take (firstPart True (length vs)) vs))
+  (FStanza kp vs : _) -> linesNeed (concat (take (firstPart kp True (length vs)) vs))
   (FTable _ sp h rows capt below : _) -> grid (sp + tableHead h rows capt below)
   (FDefTerm ls : _) -> termNeed ls
   -- a heading keeps what follows it, a heading after it too (golem-driver ADR 0032)
@@ -79,6 +83,7 @@ nextNeed env = \case
   (FSection {} : _) -> mempty
   -- the controls of page breaks are skipped (docs/adr ADR 0030)
   (FNoBreak _ : rest) -> nextNeed env rest
+  (FKeepNext _ _ : rest) -> nextNeed env rest
   (FNeedLines _ _ : rest) -> nextNeed env rest
   (FAdjustLines _ _ : rest) -> nextNeed env rest
   -- blank lines go with what follows, at most a column (docs/adr ADR 0046)
@@ -96,7 +101,7 @@ nextNeed env = \case
     let size = fst (insideBefore fr) + bodySize (frBody fr) + fst (insideAfter fr)
      in case frBody fr of
           RuledHeading _ _ ls -> Need size (noteLinesOf ls)
-          RuledLines _ -> grid size
+          RuledLines _ _ -> grid size
   [] -> mempty
   where
     capacity = envCapacity env
@@ -106,15 +111,73 @@ the no-break and the first part of what follows it, its spaces too, at
 most a column (golem-layout ADR 0022).
 -}
 keptNeed :: Env -> [Flow] -> Maybe Need
-keptNeed env rest = (\(before, after) -> spaced env (sum [max 0 n | FSpace n <- before]) (nextNeed env after)) <$> noBreakAhead rest
+keptNeed env rest = (\(before, n, after) -> spaced env (sum [max 0 k | FSpace k <- before]) (followNeed env n after)) <$> keepAhead rest
 
-{- | The flows before a no-break that the paragraph before waits past, and
-the flows after the no-break; nothing when the paragraph does not wait.
+{- | The flows before a no-break or a keep-with-next (docs/adr/0261) that
+the paragraph before waits past, the lines of the keep-with-next (0 for a
+no-break alone; the larger of two at one place), and the flows after
+them; nothing when the paragraph does not wait.
 -}
-noBreakAhead :: [Flow] -> Maybe ([Flow], [Flow])
-noBreakAhead rest = case span soft rest of
-  (before, FNoBreak _ : after) -> Just (before, after)
+keepAhead :: [Flow] -> Maybe ([Flow], Int, [Flow])
+keepAhead rest = case span soft rest of
+  (before, c : after) | Just n <- control c -> Just (go before n after)
   _ -> Nothing
+  where
+    control = \case
+      FNoBreak _ -> Just 0
+      FKeepNext _ n -> Just n
+      _ -> Nothing
+    go before n after = case span soft after of
+      (more, c : after') | Just m <- control c -> go (before <> more) (max n m) after'
+      _ -> (before, n, after)
+
+{- | The first part of what follows a keep-with-next of @n@ lines
+(docs/adr/0261): of a paragraph or a stanza, its first part made at
+least @n@ lines (verse lines), at most the whole; when that is the whole
+and it keeps with what follows it too, that too, at most a column. With
+@n@ = 0, the first part of 'nextNeed'.
+-}
+followNeed :: Env -> Int -> [Flow] -> Need
+followNeed env n after
+  | n <= 0 = nextNeed env after
+  | otherwise = case after of
+      FParagraph kp ls : more -> chain (length ls) (max (firstPart kp True (length ls)) (min n (length ls))) (\k -> linesNeed (take k ls)) more
+      FContinued kp ls : more -> chain (length ls) (max (firstPart kp False (length ls)) (min n (length ls))) (\k -> linesNeed (take k ls)) more
+      FStanza kp vs : more -> chain (length vs) (max (firstPart kp True (length vs)) (min n (length vs))) (\k -> linesNeed (concat (take k vs))) more
+      _ -> nextNeed env after
+  where
+    chain total k needOf more =
+      let base = needOf k
+       in case keepAhead more of
+            Just (before, m, after')
+              | k >= total,
+                m > 0 ->
+                  let r = spaced env (sum [max 0 x | FSpace x <- before]) (followNeed env m after')
+                   in Need (min (envCapacity env) (needGrid base + needGrid r)) (needNotes base + needNotes r)
+            _ -> base
+
+{- | The lines of the first part of what follows a keep-with-next of @n@
+lines that must be in the column of the paragraph before
+(docs/adr/0261): of a paragraph, its first part made at least @n@ lines;
+of a stanza, the lines of its first verse lines so made; one slot of
+anything else. With whether only the lines count, not the figures placed
+in the column.
+-}
+nextFirstLines :: Int -> [Flow] -> (Int, Bool)
+nextFirstLines n after = case dropWhile skipped after of
+  FParagraph kp ls : _ -> (max (firstPart kp True (length ls)) (min n (length ls)), True)
+  FContinued kp ls : _ -> (max (firstPart kp False (length ls)) (min n (length ls)), True)
+  FStanza kp vs : _ -> (length (concat (take (max (firstPart kp True (length vs)) (min n (length vs))) vs)), True)
+  _ -> (1, False)
+  where
+    skipped = \case
+      FSpace _ -> True
+      FNeedLines {} -> True
+      FAdjustLines {} -> True
+      FNoBreak _ -> True
+      FKeepNext {} -> True
+      FBlank {} -> True
+      _ -> False
 
 -- | @n@ lines of space before what follows, at most a column.
 spaced :: Env -> Int -> Need -> Need
@@ -125,17 +188,24 @@ many go before it (golem-layout ADR 0003): the last line does not go
 alone after the break (a widow), and the first line of a paragraph that
 starts here does not stay alone before it (an orphan).
 -}
-splitAtBreak :: Bool -> Int -> Int -> Int
-splitAtBreak isStart n k =
-  let k1 = if n - k == 1 && k > 0 then k - 1 else k -- widow
-   in if isStart && k1 == 1 && n >= 2 then 0 else k1 -- orphan
+splitAtBreak :: Keep -> Bool -> Int -> Int -> Int
+splitAtBreak kp isStart n k
+  | k >= n = k
+  -- keep-all-lines (docs/adr/0261)
+  | kAll kp = 0
+  | otherwise =
+      let k1 = if n - k < kLast kp then max 0 (n - kLast kp) else k -- widow: the last part at least kLast
+       in if isStart && k1 > 0 && k1 < kFirst kp then 0 else k1 -- orphan: the first part at least kFirst
 
 {- | The first part of @n@ lines that what comes before keeps with it: the
-fewest lines, at least two, that 'splitAtBreak' places before a break
-(golem-layout ADR 0021). All of three lines or fewer, two of more.
+fewest lines, at least kFirst, that 'splitAtBreak' places before a break
+(golem-layout ADR 0021, docs/adr/0261); all of a paragraph of
+keep-all-lines. With 'defaultKeep', all of three lines or fewer, two of more.
 -}
-firstPart :: Bool -> Int -> Int
-firstPart isStart n = fromMaybe n (find (\k -> splitAtBreak isStart n k == k) [min 2 n .. n])
+firstPart :: Keep -> Bool -> Int -> Int
+firstPart kp isStart n
+  | kAll kp = n
+  | otherwise = fromMaybe n (find (\k -> splitAtBreak kp isStart n k == k) [min (kFirst kp) n .. n])
 
 -- | The flows a no-break looks past.
 soft :: Flow -> Bool
@@ -220,12 +290,12 @@ isHeadingBody = \case
 
 bodyLines :: RuledBody -> [LineBox]
 bodyLines = \case
-  RuledLines ls -> ls
+  RuledLines _ ls -> ls
   RuledHeading _ _ ls -> ls
 
 bodySize :: RuledBody -> Int
 bodySize = \case
-  RuledLines ls -> length ls
+  RuledLines _ ls -> length ls
   RuledHeading _ n _ -> n
 
 firstOverhang :: Flow -> Sp
@@ -288,5 +358,5 @@ planNeed env st fr plan = needIn env st (planParts fr plan) mempty
 -- | A paragraph's block fits by its grid lines alone, a heading's counts its notes.
 planParts :: Flow -> Plan -> Need
 planParts fr (k1, _, k2, _, _) = case frBody fr of
-  RuledLines ls -> grid (k1 + length ls + k2)
+  RuledLines _ ls -> grid (k1 + length ls + k2)
   RuledHeading _ n ls -> Need (k1 + n + k2) (noteLinesOf ls)

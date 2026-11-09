@@ -18,8 +18,8 @@ noteSplitTests =
     [ testCase "I6: a note goes over two columns only when its lines, its marked line and the separator do not fit a column" $
         forM_ [(c, lead, k) | c <- [3 .. 8], lead <- [0 .. c], k <- [1 .. c + 1]] $ \(c, lead, k) -> do
           let nid = NoteId (mkSpan (FileId 0) 900 901) 0
-              before = [FParagraph [LineBox i [] [] [] 0 | i <- [0 .. lead - 1]] | lead > 0]
-              noted = FParagraph [LineBox 100 [NoteBody nid k] [] [] 0, LineBox 101 [] [] [] 0]
+              before = [FParagraph defaultKeep [LineBox i [] [] [] 0 | i <- [0 .. lead - 1]] | lead > 0]
+              noted = FParagraph defaultKeep [LineBox 100 [NoteBody nid k] [] [] 0, LineBox 101 [] [] [] 0]
               ps = paginate 1 c (before <> [noted])
               columns = nub [(poNumber p, poColumn p) | p <- ps, (n, _, _) <- poFootnotes p, n == nid]
               shown = sum [m | p <- ps, (n, _, m) <- poFootnotes p, n == nid]
