@@ -10,7 +10,7 @@ import Data.Char (intToDigit)
 import Data.List (nub, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -67,7 +67,7 @@ texTags = [("enus", "en-US"), ("engb", "en-GB"), ("fr", "fr"), ("de1996", "de"),
 texWords :: IO [(Text, [Text])]
 texWords = do
   src <- TE.decodeUtf8 <$> BS.readFile "test/data/hyphenation/showhyphens.txt"
-  pure [(maybe tag id (lookup tag texTags), T.splitOn "-" w) | l <- T.lines src, [tag, w] <- [T.splitOn "\t" l]]
+  pure [(fromMaybe tag (lookup tag texTags), T.splitOn "-" w) | l <- T.lines src, [tag, w] <- [T.splitOn "\t" l]]
 
 -- | The SHA-256 of the files, from the table of data/hyphenation/README.md.
 readmeDigests :: IO [(FilePath, Text)]
