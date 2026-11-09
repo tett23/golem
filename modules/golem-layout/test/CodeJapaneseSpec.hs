@@ -135,7 +135,7 @@ codeJapaneseTests =
         shapes "a b/c_d" @?= ["a", "_", "b/", "|0", "c_", "|100", "d"]
         shapes "THIRD_PARTY_LICENSES/" @?= ["THIRD_", "|100", "PARTY_", "|100", "LICENSES/"]
         shapes "abc\"def" @?= ["abc\"def"],
-      testCase "C4: code without Japanese characters: the items of before, but the width and the mark of its breaks" $ do
+      testCase "C4, W10: code without Japanese characters: the items of before, but the width and the mark of its breaks" $ do
         let plain t = itemsIn (envWith "") [code t]
             -- the items with the looks of their boxes without the mark, and the breaks of the mark as before
             unmarked = map (\case Penalty _ p (WrapMark _) -> Penalty 0 p NoHyphen; Box w c -> Box w c {bcLook = (bcLook c) {lkWrapMark = ""}}; it -> it)
@@ -164,6 +164,12 @@ codeJapaneseTests =
             t = Sp (unSp fs * 50 `div` 1000)
         [w | Box w _ <- its] @?= [fs + t, fs + t, fs + t]
         [() | Glue {} <- its] @?= [],
+      testCase "C7: a base character with its combining character is one box of its advance and one tracking" $ do
+        let restyle tr lk = \case IR.CharStyle _ "code" _ -> lk {lkCode = True, lkTracking = tr}; _ -> lk
+            widths tr = [(bcText c, w) | Box w c <- itemsIn (defaultComposeEnv fs) {ceRestyle = restyle tr} [code "か\x3099い"]]
+            t = Sp (unSp fs * 50 `div` 1000)
+        map fst (widths 50) @?= ["か\x3099", "い"]
+        zipWith (-) (map snd (widths 50)) (map snd (widths 0)) @?= [t, t],
       testCase "C7: the padding is before the first box and after the last of the code only" $ do
         let padded = (defaultComposeEnv fs) {ceRestyle = \lk -> \case IR.CharStyle _ "code" _ -> lk {lkCode = True, lkPadding = 250}; _ -> lk}
             its = itemsIn padded [IR.Text sp "漢", code "あいa", IR.Text sp "漢"]
@@ -181,7 +187,7 @@ codeJapaneseTests =
         let ls = linesIn env 2 [code "a b c d e"]
         assertBool (show (map lineText ls)) (length ls > 1)
         map endsWithMark ls @?= map (const False) ls,
-      testCase "C8: an empty wrap mark draws no mark" $ do
+      testCase "C8, W9: an empty wrap mark draws no mark" $ do
         let its = fst (composeInlines (envWith "") [code "あいうえおかきくけこ"])
         [() | Penalty _ _ (WrapMark _) <- its] @?= [],
       wrapMarkWidthTests,
