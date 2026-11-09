@@ -3282,14 +3282,14 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 「既知の不具合」に載せた違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
 23 の部品の並びの一覧は空である（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md) で、一覧にあった「段落の終わりの語間の空白の前の行末禁則」を直した）。
 
-本文の中のコードの並びも、同じ述語と、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の C1 から C8 で調べる。
-部品は、和文の `漢`、`あ`、`「`、`」`、`。`、`、`、`ー`、`ぁ`、`…` と、欧文の `a`、`ab`、`/`、`_`、`"` と、空白の 15 である。
+本文の中のコードの並びも、同じ述語と、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の C1 から C8 と、[golem-layout ADR 0045](golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md) の J1 から J7 で調べる（C3 と C4 は J3 と J5 に置き換えた）。
+部品は、和文の `漢`、`あ`、`「`、`」`、`。`、`、`、`ー`、`ぁ`、`…` と、欧文の `a`、`ab`、`1`、`/`、`_`、`-`、`.`、`"` と、空白の 18 である（`-`、`.`、`1` は 0045 で足した）。
 並びの全体を `[code: …]` に入れ、前の `あ` と後の `い` はコードの外に置く。
 組み方の環境は禁則の強さと区間の言語だけであり、正規形は 23 の部品と同じく、`ー` か `ぁ` がなければ強い禁則だけ、両用の字がなければ区間なしだけとする。
 コードの字の送りは、字のクラスごとに上の表の値とし、改行の印は `⏎` で、その幅をコードの字の大きさの 3/5 とする（[golem-layout ADR 0042](golem-layout/adr/0042-draw-the-wrap-mark-of-inline-code-small-and-light.md)）。
 C4（和文を含まないコードの項目は、印の幅と種類を除けば印のないときと同じ）は、和文を含まない並びの組ごとに、印を空にして組んだ項目と比べる。
 C5（`url`）は例のテストで確かめる。
-プルリクエストの CI は部品 2 個まで（240 の並び）を 4 字までの行で、毎晩の `enum.yml` は部品 3 個までを 5 字までの行で調べる。
+プルリクエストの CI は部品 2 個まで（342 の並び）を 4 字までの行で、毎晩の `enum.yml` は部品 3 個までを 5 字までの行で調べる。
 正規形と縦組みは、23 の部品と同じ部品の数までで確かめる。
 コードの並びの既知の不具合の一覧は空であり、除く入力はない（[golem-layout ADR 0038](golem-layout/adr/0038-kinsoku-across-spaces-of-inline-code.md)）。
 
