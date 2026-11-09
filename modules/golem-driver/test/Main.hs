@@ -23,6 +23,7 @@ import HeadingLevelsSpec (headingLevelsTests)
 import InMemorySpec (inMemoryTests)
 import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
+import NotesSpec (notesTests)
 import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
@@ -38,7 +39,6 @@ import SecuritySpec
 import ShapingMemoSpec (shapingMemoTests)
 import SpecimenGeometrySpec (specimenGeometryTests)
 import StylesSpec
-import NotesSpec (notesTests)
 import TableCaptionsSpec (tableCaptionsTests)
 import TableFilesSpec
 import TaggedPdfSpec (taggedPdfTests)
