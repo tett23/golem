@@ -382,7 +382,7 @@ data InlineNode
   deriving stock (Eq, Show)
 
 -- | The elements of inlines: the label of 'ceLabelInlines', ruby, its base and reading, a reference, code and a language span (docs/adr ADR 0187).
-data InlineRole = RoleLabel | RoleRuby | RoleRubyBase | RoleRubyText | RoleReference | RoleCode | RoleLang !Text
+data InlineRole = RoleLabel | RoleRuby | RoleRubyBase | RoleRubyText | RoleReference | RoleCode | RoleLang !Text | RoleUnderline | RoleStrikethrough
   deriving stock (Eq, Show)
 
 -- the state of 'structured': the next leaf, the leaf of the content, the notes seen by their span
@@ -420,7 +420,14 @@ walk env st@(LeafState next cur seen) inl = case inl of
   CharStyle _ _ xs
     -- code inside text that is not code is an element (docs/adr ADR 0183)
     | lkCode (ceLook restyledEnv) && not (lkCode lk) -> element RoleCode (\st' -> walkAll restyledEnv st' xs)
-    | otherwise -> walkAll restyledEnv st xs
+    {- a style that draws a line of its own is a Span of the line, the
+    strikethrough inside the underline (docs/adr/0270) -}
+    | otherwise ->
+        let inner = ceLook restyledEnv
+            starts f = isJust (f inner) && f inner /= f lk
+            body s = walkAll restyledEnv s xs
+            struck s = if starts lkStrikethrough then elementAt RoleStrikethrough s body else body s
+         in if starts lkUnderline then elementAt RoleUnderline st struck else struck st
   Kenten _ sh xs -> walkAll env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}} st xs
   -- a language span is an element of its language (docs/adr ADR 0187)
   Lang _ l xs -> element (RoleLang l) (\st' -> walkAll env {ceLook = lk {lkLang = Just l}} st' xs)
@@ -453,11 +460,13 @@ walk env st@(LeafState next cur seen) inl = case inl of
     restyledEnv = env {ceLook = ceRestyle env lk inl, ceSizeSource = ceSizeSourceOf env (ceSizeSource env) inl}
     leafOf (LeafState _ c _) = c
     -- an element: its first leaf for what it holds, then a new leaf for what follows
-    element role inner =
-      let (st1, ns, ps) = inner (LeafState (next + 1) next seen)
-          LeafState next1 _ seen1 = st1
-          (st2, after) = freshLeaf (LeafState next1 cur seen1)
-       in (st2, [NodeElem role (NodeLeaf next : ns), after], ps)
+    element role = elementAt role st
+    -- an element of the content of a function at a state, and the leaf after it
+    elementAt role (LeafState n c sn) inner =
+      let (st1, ns, ps) = inner (LeafState (n + 1) n sn)
+          LeafState n1 _ sn1 = st1
+          (st2, after) = freshLeaf (LeafState n1 c sn1)
+       in (st2, [NodeElem role (NodeLeaf n : ns), after], ps)
     {- each segment with a reading is a Ruby of its base and reading, the
     reading the leaf after the base; a segment without one is content -}
     rubySegments segs =

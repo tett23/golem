@@ -18,6 +18,7 @@ InDesign の操作の手順は説明しません。
 | [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift] | カーニング、トラッキング、プロポーショナルメトリクス、ベースラインシフト |
 | 文字スタイルと段落スタイルの [code: features] | OpenType 機能 |
 | 文字スタイルの [code: position] | 文字パネルの「位置」（上付き文字、下付き文字） |
+| 文字スタイルの [code: underline]、[code: strikethrough] | 下線、打ち消し線とそのオプション |
 | [code: @no-page-break] | 段落分離禁止オプションの「次の段落と連動」 |
 | マスターページ（[code: \[masters\]]） | 親ページ（InDesign 2022 より前はマスターページ） |
 | プロジェクトの [code: fonts/] | Document Fonts フォルダー |
@@ -140,6 +141,19 @@ InDesign の文字パネルの「位置」の上付き文字と下付き文字�
 - フォントが上付きと下付きの字形を持ち、範囲のすべての字がその字形に置き換わるときは、縮めずにその字形を使います。InDesign では、OpenType 機能の上付き序数表記を別に選びます。
 - 縮める大きさとずらす量は変えられません。
 - 上付きと下付きの文字の前では行を改めません。
+
+@nonumber
+## 下線と打ち消し線
+
+InDesign の下線と打ち消し線は、文字スタイルの [code: underline] と [code: strikethrough] に当たります。
+オプションの線幅は [code: weight]、種類は [code: style]、オフセットは [code: offset]、カラーは [code: color] です。
+
+違いは次のとおりです。
+
+- 線幅の既定は、文字の大きさの 5%（[code: "0.05zw"]）です。
+- 線の位置は、フォントの情報ではなく、文字の字面の枠から決めます。和文と欧文が混じった範囲でも、線は段違いになりません。
+- 縦組みの下線を、文字の右に引きます。InDesign の縦組みの下線の側は確かめていないので、JLReq に従いました。縦組みのルビと圏点の外に引きます。
+- 線の間隔のカラーと濃淡、オーバープリントはありません。
 - HTML と EPUB では、CSS で近い指定に置き換えます。CSS では和文と欧文で別のカーニングを指定できないので、PDF と同じにはなりません。
 
 @nonumber

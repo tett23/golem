@@ -96,6 +96,7 @@ MCID は、ページごとに 0 から内容のストリームの順に振る。
 | 相互参照（`[ref-number]`、`[ref-title]`、`[ref-page]`）、引用の印（`[cite]`） | `Reference`（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)） |
 | 外部のリンク（`[link]`、[docs/adr/0182](adr/0182-external-links.md)） | `Link`。リンクの文字と、行ごとのリンクの注釈の `OBJR` を持つ |
 | 言語の区間（`[lang]`、[docs/adr/0187](adr/0187-inline-language-switch.md)） | `/Lang` を持つ `Span`。`@lang` を付けたブロックは、その要素が `/Lang` を持つ |
+| 下線と打ち消し線を引いた範囲（線の基準の文字スタイルの適用、[ADR 0270](adr/0270-underline-and-strikethrough.md)） | 属性 `/A << /O /Layout /TextDecorationType /Underline >>`（打ち消し線では `/LineThrough`）を持つ `Span`。両方を引いた範囲は、下線の `Span` の中に打ち消し線の `Span` を置く。縦組みの傍線も `/Underline` とする |
 | 文字スタイル `code`（と、それに行き着く文字スタイル） | `Code` |
 | ほかの文字スタイル、色、圏点の親文字、縦中横、数 | 親の構造の要素の中身のまま |
 
@@ -1657,7 +1658,7 @@ LSP と `golem lint` はファイルを検査しないので、フォントを�
 スタイルの定義は、`based-on` をたどった鎖の根から順に、子のキーが親のキーを上書きして決める。
 スタイルの名前は、英小文字で始まり、英小文字、数字、`-` だけからなる。
 
-文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic`、`features`（OpenType の機能、後述）、`position`（上付きと下付き、後述）、`no-break`（真偽値）である。
+文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic`、`features`（OpenType の機能、後述）、`position`（上付きと下付き、後述）、`underline` と `strikethrough`（下線と打ち消し線、後述）、`no-break`（真偽値）である。
 `no-break` が真の文字は改行しない範囲になり、その中では行を分けない（「行分割」の節、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
 文字スタイルを入れ子にしたときは、どれか一つの `no-break` が真なら真である。
 コードの文字スタイルは、本文の中のコードの背景と余白のキー `background` と `padding` と、改行の印のキー `wrap-mark` も持つ（後述）。
@@ -1821,6 +1822,83 @@ HTML と EPUB では、`position` が `"superscript"` に解決する文字ス�
 プレーンテキストは、添え字の範囲の字を原稿のまま出す。
 
 利用者が `[character-styles.superscript]` か `[character-styles.subscript]` をすでに書いている本では、書いたキーを組み込みの定義に重ねるので、`position` が加わる。
+
+文字スタイルは、下線と打ち消し線の欄 `underline` と `strikethrough` も持つ（[ADR 0270](adr/0270-underline-and-strikethrough.md)）。
+値は `true`（既定の線を引く。`{}` と同じ）、表（書いたキーの線を引く）、`false`（外側の線を引かない）のどれかであり、書かなければ外側の値を引き継ぐ。
+`based-on` の鎖では、子が書いた値が親の値を置き換え、表のキーを親とつなぎ合わせない。
+段落スタイルには置かない。
+組み込みの文字スタイルは加えない。
+
+| キー | 型 | 既定 | 意味 |
+| --- | --- | --- | --- |
+| `weight` | 寸法 | `"0.05zw"` | 線の太さ。0 より大きい |
+| `offset` | 符号付きの寸法 | `"0pt"` | 線の位置（後述） |
+| `style` | 文字列 | `"solid"` | 線の種類。罫線の指定の 12 種 |
+| `dash` | 寸法 | `weight` の 3 倍 | 破線の線分の長さ |
+| `gap` | 寸法 | 線の種類による | 破線と点線の間隔 |
+| `color` | スウォッチの名前 | 線を引く字の色 | 線の色 |
+
+キーは罫線の指定と同じ関数で読み、同じ文言とコードを使う。
+罫線の指定と違い、`weight`、`dash`、`gap` に `zw` を書け、`zw` は線の基準（次の段落）の大きさで数える。
+`length`、`space-before`、`space-after`、`start-indent`、`end-indent`、`keep-in-column` は書けず、未知のキーと同じく G03006 とする。
+寸法として読めない `offset`、`true` と表のほかの値も G03006 とし、`color` が `[color.swatches]` にない場合は G03013 とする。
+`@style-def` では表を書けないので、`underline=true` と `underline=false` だけを書ける。
+
+入れ子の文字スタイルでは、`underline`（`strikethrough`）の値を書いた定義に `based-on` で行き着くスタイルの適用のうち、ある字を含む最も内側のものを、その字の線の基準と呼ぶ。
+線の基準の大きさ `s`、色、`baseline-shift` が、線の太さと位置と既定の色を決める。
+線の基準より内側の文字スタイルの `size`、`baseline-shift`、`position` は、線を動かさない。
+内側で `false` を書けばその範囲で線が切れ、別の表を書けばその範囲は内側の線の基準で引く。
+
+線の位置は、線の基準の字面の枠から決める。
+字面の枠は、横組みでは高さ `s` で基準線を上から 0.88 の位置に置いた枠、縦組みでは幅 `s` で行の中心線に中心を置いた枠であり、線の基準の `baseline-shift` だけずらす。
+横組みの下線は字面の枠の下端から `offset` だけ下に線の上の縁を置き、打ち消し線は字面の枠の中心から `offset` だけ上に線の中心を置く。
+縦組みの下線（傍線）は、JLReq の 4.5.1 に従って字の右に引き、字面の枠の右端から `offset` だけ右に線の左の縁を置く。
+縦組みの打ち消し線は、字面の枠の中心から `offset` だけ右に線の中心を置く。
+縦組みで、区画（次の段落）の中に右に読みか圏点を持つ箱があるときは、区画の全体の傍線を、その区画の読みと圏点の右端のうち最も右のものから `offset` だけ右に置く。
+横組みの下線と打ち消し線は、ルビと圏点で動かさない。
+縦組みの左の傍線は引かない。
+線は行送りを変えず、行分割と改ページにも影響しない（JLReq の 2.4.2）。
+版面の先頭と末尾の行の線が版面の外にはみ出しても、行の位置は変えない（JLReq の 4.5.1）。
+
+行ごとに、行に置いた箱のうち、下線（打ち消し線）の値が等しい箱の連なりを一つの区画とする。
+値が等しいとは、解決した線の太さ、位置、種類、破線の長さ、色、線の基準の大きさと基準線のずらしがすべて等しいことである。
+区画は、最初の箱の始まりから最後の箱の終わりまでとし、あいだのグルーを含む。
+別々に当てた同じ文字スタイルが隣り合えば一つの区画になり、値の違う線が隣り合えば別の区画になる。
+区画は行をまたがない。
+行末で捨てる空白と、線のある箱と線のない箱のあいだの空白には線を引かない。
+行末のハイフンとぶら下げた約物は箱に含まれるので線を引く。
+ルビの親文字と縦中横の箱には線を引き、ルビの読みと圏点の字には引かない。
+中身のない範囲は箱を作らないので、線を引かない。
+
+区画の長さの帯に、罫線の線の種類の形を描き、破線と点線の割り付けは区画ごとに行う。
+帯の「前」の縁は、横組みでは上、縦組みでは右である。
+PDF では、行の内容を、本文の中のコードの背景、下線、行の字、打ち消し線の順に描く。
+欧文の字のディセンダーを線で隠さず、色の付いた打ち消し線を字で隠さないためである。
+線の色は、`color` があればそのスウォッチの CMYK を DeviceCMYK で塗り、なければ線の基準の字の色（文字スタイルの `color`）で塗り、字に色がなければ色を設定せずに塗る。
+線の図形はアーティファクト（`/Artifact << /Type /Layout >>`）として描き、線を引いた範囲はタグ付き PDF の `Span` にする（「タグ付き PDF」の節）。
+golem preflight は、線の最も細い部分の太さを罫線の太さに加えて細すぎる線（G09018）を調べ、線の色のスウォッチを総インキ量の検査（G09015）の対象にする。
+
+HTML と EPUB では、`cs-名前` の CSS に次のように書く。
+
+| Golem | CSS |
+| --- | --- |
+| `underline` | `text-decoration-line: underline` |
+| `strikethrough` | `text-decoration-line: line-through` |
+| 両方 | `text-decoration-line: underline line-through` |
+| `style` | `text-decoration-style`。`"solid"` は書かず、`"dashed"` は `dashed`、`"dotted"` と `"japanese-dots"` は `dotted`、多重線の 7 種は `double`、`"wavy"` は `wavy` |
+| `weight` | `text-decoration-thickness`（`zw` は `em`、絶対の寸法は `pt`） |
+| `color` | `text-decoration-color`（スウォッチの RGB の近似）。書かなければ書かない |
+| `offset`（下線） | `text-underline-offset`。0 なら書かない |
+| 縦組みの本の下線 | `text-underline-position: right` |
+
+両方を書いたスタイルの線の種類、太さ、色は、下線の値を書く。
+`dash` と `gap`、打ち消し線の `offset` は書かない。
+CSS と PDF は、次の点で違う。
+`text-underline-offset` は書体が決める位置からの距離であり、Golem の字面の枠からの距離と一致しない。
+CSS の文字の飾りは子孫の要素で消せないので、`false` を写した CSS は書かず、HTML と EPUB では外側の線が消えない。
+範囲の最後の空白にも、CSS は線を引く。
+読書環境が `text-underline-position: right` を読むかは確かめていない。
+プレーンテキストは、線を出さず、字を原稿のまま出す。
 
 組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`、`padding = "0.25zw"`、`wrap-mark = "⏎"`）、`url`（キーなし）、`note-mark`（`size = "0.5zw"`）、`superscript`（`position = "superscript"`）、`subscript`（`position = "subscript"`）、`no-break`（`no-break = true`）の九つである。
 `no-break` は改行しない範囲を指定する文字スタイルである（「行分割」の節、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。

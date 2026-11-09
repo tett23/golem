@@ -468,11 +468,33 @@ restyle style lk = \case
               one, position aside (docs/adr/0269) -}
               lkPosition = fromMaybe (lkPosition lk) (csPosition cs),
               lkNominalSize = size,
+              -- the lines the style writes have it as their basis (docs/adr/0270)
+              lkUnderline = decoration (csUnderline cs) (lkUnderline lk),
+              lkStrikethrough = decoration (csStrikethrough cs) (lkStrikethrough lk),
               -- a range that does not break: true in one of the styles around is true (docs/adr ADR 0272)
               lkNoBreak = lkNoBreak lk || csNoBreak cs == Just True
             }
       where
         code = isCodeCharStyle style name
+        {- an underline or a strikethrough written: its weight, offset and
+        lengths at the size of the style, its colour or that of the
+        characters, and the baseline shift of the style; false is none;
+        not written, that of the look around -}
+        decoration written outer = case written of
+          Nothing -> outer
+          Just Nothing -> Nothing
+          Just (Just d) ->
+            let size = maybe (lkSize lk) (dimToSp (lkSize lk)) (csSize cs)
+                (w, st) = decorationStyle size d
+             in Just
+                  L.Decoration
+                    { L.decWeight = w,
+                      L.decOffset = dimToSp size (dsOffset d),
+                      L.decStyle = st,
+                      L.decColor = dsColor d <|> csColor cs <|> lkColor lk,
+                      L.decSize = size,
+                      L.decShift = maybe (lkBaselineShift lk) (dimToSp size) (csBaselineShift cs)
+                    }
     Nothing -> lk
   Color _ sw _ -> lk {lkColor = Just sw}
   -- the boxes of a link know its target, which the line breaking does not read (docs/adr ADR 0182)

@@ -39,6 +39,7 @@ import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
 import TomlMessageSpec qualified
+import UnderlineSpec qualified
 import VarsSpec qualified
 
 main :: IO ()
@@ -693,6 +694,7 @@ tests =
       ColophonSpec.tests,
       FeaturesSpec.tests,
       PositionSpec.tests,
+      UnderlineSpec.tests,
       OutputCharsSpec.tests,
       SharedValuesSpec.tests,
       StylePositionSpec.tests,
@@ -1986,6 +1988,8 @@ localStyleTests =
               "border-width" -> "1pt"
               "features" -> "smcp,-liga"
               "position" -> "superscript"
+              "underline" -> "true"
+              "strikethrough" -> "false"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))
         assertBool "char" (all (known CharacterKind) charStyleKeys)

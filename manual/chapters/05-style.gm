@@ -223,6 +223,7 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 - [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]：文字の送りです（「[ref-title kerning]」、[ref-page kerning] ページ）。
 - [code: features]：スモールキャップや数字の形式などの OpenType の機能です（「[ref-title opentype-features]」、[ref-page opentype-features] ページ）。
 - [code: position]：上付きと下付きです（「[ref-title scripts]」、[ref-page scripts] ページ）。
+- [code: underline]、[code: strikethrough]：下線と打ち消し線です（「[ref-title decorations]」、[ref-page decorations] ページ）。
 - [code: based-on]：引き継ぐ文字スタイルです。
 - [code: background]、[code: padding]：本文の中のコードの背景の色と、前後の余白です。[code: code] と、それを引き継ぐ文字スタイルにだけ書けます。[code: background] を書かなければ、段落スタイル [code: code] の背景を使います。
 
@@ -460,6 +461,49 @@ InDesign の文字パネルの「位置」の上付き文字と下付き文字�
 
 HTML と EPUB では [code: <sup>] と [code: <sub>] の要素になり、大きさと位置は閲覧に使うソフトウェアに任せます。
 プレーンテキストでは、文字をそのまま出します。
+
+@label decorations
+## 下線と打ち消し線
+
+下線[index reading=かせん: 下線]と打ち消し線[index reading=うちけしせん: 打ち消し線]は、文字スタイルの [code: underline] と [code: strikethrough] で引きます。
+InDesign の文字パネルの下線と打ち消し線に当たります。
+[code: true] と書けば既定の線を引き、表を書けば線の太さ、種類、位置、色を決められます。
+
+```toml
+[character-styles.emphasis-line]
+underline = true
+
+[character-styles.deleted]
+strikethrough = { weight = "0.5pt", color = "accent" }
+
+[character-styles.wavy.underline]
+style = "wavy"
+weight = "0.08zw"
+offset = "0.05zw"
+```
+
+この設定で、[style emphasis-line: 下線を引いた字]、[style deleted: 打ち消した字]、[style wavy: 波線の下線] のように組まれます。
+
+表のキーは、罫線の表と同じ [code: weight]、[code: style]、[code: dash]、[code: gap]、[code: color] と、線の位置をずらす [code: offset] です。
+[code: weight] の既定は [code: "0.05zw"] で、[code: zw] は線を引く文字の大きさを一字とします。
+[code: style] には、罫線と同じ 12 種の線の種類を書けます。
+[code: color] を書かなければ、文字と同じ色で引きます。
+[code: false] を書くと、外側の線をその範囲で止めます。
+[code: @style-def] では、[code: underline=true] と [code: underline=false] だけを書けます。
+
+線の位置と太さは、線を書いた文字スタイルの文字で決まり、その内側で文字の大きさや位置を変えても動きません。
+上付きの文字を含む範囲でも、下線はまっすぐに続きます。
+隣り合う範囲に同じ線を書けば、線は切れずにつながります。
+線は行送りを変えず、行の改め方にも影響しません。
+
+縦組みの下線は、文字の右に引く傍線[index reading=ぼうせん: 傍線]になります。
+ルビや圏点がある範囲では、傍線をルビと圏点の外に引きます。
+左の傍線は、まだ引けません。
+
+PDF では、下線を文字の前に、打ち消し線を文字の後に描くので、下線は文字を隠さず、打ち消し線は文字に隠れません。
+HTML と EPUB では、CSS の [code: text-decoration] で表します。
+CSS では内側の要素で外側の線を消せないので、HTML と EPUB では [code: false] を書いても外側の線が残ります。
+プレーンテキストでは、線を出さず、文字をそのまま出します。
 
 ## ファイルの中のスタイル
 
