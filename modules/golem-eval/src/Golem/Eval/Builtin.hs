@@ -176,5 +176,7 @@ builtinBlockCommands =
     -- docs/adr/0262
     "column-widths",
     -- docs/adr ADR 0272
-    "hyphenation-exceptions"
+    "hyphenation-exceptions",
+    -- docs/adr/0263
+    "note"
   ]

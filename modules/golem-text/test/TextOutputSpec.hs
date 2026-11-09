@@ -77,8 +77,8 @@ twoFiles lang na nb chapters =
   renderText lang "kanji" False (const (const (0, 0))) (TextLists (pure "・") Nothing Nothing) False Map.empty Horizontal ft2 $
     (bookOf [])
       { bookDocs =
-          [ Document fid [para 0 [txt "甲", Note (at 1) na [txt "注甲。"]]],
-            Document fidB [Block (mkSpan fidB 0 1) Nothing Nothing (Paragraph Nothing [txt "乙", Note (mkSpan fidB 1 2) nb [txt "注乙。"]])]
+          [ Document fid [para 0 [txt "甲", Note (at 1) na (noteBody (at 1) [txt "注甲。"])]],
+            Document fidB [Block (mkSpan fidB 0 1) Nothing Nothing (Paragraph Nothing [txt "乙", Note (mkSpan fidB 1 2) nb (noteBody (mkSpan fidB 1 2) [txt "注乙。"])])]
           ],
         bookChapterOf = chapters
       }
@@ -91,14 +91,14 @@ tests =
       twoFiles "en" 1 1 [0, 1] @?= [("chapters/a.txt", "甲*1\n\nNotes\n*1 注甲。\n"), ("chapters/b.txt", "乙*1\n\nNotes\n*1 注乙。\n")],
     testCase "files after the chapters the manifest gives are each a chapter of their own" $
       let (fidC, ft3) = registerFile "chapters/c.gm" ft2
-          noted f n t = Document f [Block (mkSpan f 0 1) Nothing Nothing (Paragraph Nothing [txt t, Note (mkSpan f 1 2) n [txt ("注" <> t)]])]
+          noted f n t = Document f [Block (mkSpan f 0 1) Nothing Nothing (Paragraph Nothing [txt t, Note (mkSpan f 1 2) n (noteBody (mkSpan f 1 2) [txt ("注" <> t)])])]
        in renderText "ja" "kanji" False (const (const (0, 0))) (TextLists (pure "・") Nothing Nothing) False Map.empty Horizontal ft3 ((bookOf []) {bookDocs = [noted fid 1 "甲", noted fidB 2 "乙", noted fidC 3 "丙"], bookChapterOf = [0]})
             @?= [("chapters/a.txt", "甲*1\n\n注\n*1 注甲\n"), ("chapters/b.txt", "乙*2\n\n注\n*2 注乙\n"), ("chapters/c.txt", "丙*3\n\n注\n*3 注丙\n")],
     testCase "the title of the notes is 注 for any language that starts with ja, in any case" $
       [lookup "chapters/b.txt" (twoFiles lang 1 1 [0, 1]) | lang <- ["JA", "ja-JP"]]
         @?= replicate 2 (Just "乙*1\n\n注\n*1 注乙。\n"),
     testCase "the last file of a chapter with no text of its own has the title and the notes only" $
-      renderText "ja" "kanji" False (const (const (0, 0))) (TextLists (pure "・") Nothing Nothing) False Map.empty Horizontal ft2 ((bookOf []) {bookDocs = [Document fid [para 0 [txt "甲", Note (at 1) 1 [txt "注甲。"]]], Document fidB []], bookChapterOf = [0, 0]})
+      renderText "ja" "kanji" False (const (const (0, 0))) (TextLists (pure "・") Nothing Nothing) False Map.empty Horizontal ft2 ((bookOf []) {bookDocs = [Document fid [para 0 [txt "甲", Note (at 1) 1 (noteBody (at 1) [txt "注甲。"])]], Document fidB []], bookChapterOf = [0, 0]})
         @?= [("chapters/a.txt", "甲*1\n"), ("chapters/b.txt", "注\n*1 注甲。\n")],
     testCase "the file is named after the source with .txt and ends with one newline" $
       horizontal (bookOf [para 0 [txt "本文。"]]) @?= [("chapters/a.txt", "本文。\n")],
@@ -132,18 +132,21 @@ tests =
       let book = (bookOf [para 0 [txt "文献", Cite (at 1) "knuth1981", txt "による。"]]) {bookBibliographies = [(Nothing, [("tex", 1), ("knuth1981", 2)])], bookCiteMarks = Map.fromList [((fid, at 1), (Nothing, 2))]}
        in only (horizontal book) @?= "文献[2]による。\n",
     testCase "a footnote is *n in horizontal text, its body at the end of the file" $
-      let book = bookOf [para 0 [txt "本文", Note (at 1) 1 [txt "注の本文。"], txt "。"], para 5 [txt "次の段落。"]]
+      let book = bookOf [para 0 [txt "本文", Note (at 1) 1 (noteBody (at 1) [txt "注の本文。"]), txt "。"], para 5 [txt "次の段落。"]]
        in only (horizontal book) @?= "本文*1。\n\n次の段落。\n\n注\n*1 注の本文。\n",
+    testCase "I5: a footnote of three paragraphs: the first after its mark, each other on a line of its own, without a mark or an indent (docs/adr/0263)" $
+      let body = [Block (at 1) Nothing Nothing (Paragraph Nothing [txt p]) | p <- ["一。", "二。", "三。"]]
+       in only (horizontal (bookOf [para 0 [txt "本文", Note (at 1) 1 body]])) @?= "本文*1\n\n注\n*1 一。\n二。\n三。\n",
     testCase "a footnote is ※n in vertical text" $
-      only (vertical (bookOf [para 0 [txt "本文", Note (at 1) 1 [txt "注の本文。"]]])) @?= "本文※1\n\n注\n※1 注の本文。\n",
+      only (vertical (bookOf [para 0 [txt "本文", Note (at 1) 1 (noteBody (at 1) [txt "注の本文。"])]])) @?= "本文※1\n\n注\n※1 注の本文。\n",
     testCase "the footnotes of several paragraphs are gathered in order at the end" $
-      let book = bookOf [para 0 [txt "甲", Note (at 1) 1 [txt "一"]], para 5 [txt "乙", Note (at 6) 2 [txt "二"]]]
+      let book = bookOf [para 0 [txt "甲", Note (at 1) 1 (noteBody (at 1) [txt "一"])], para 5 [txt "乙", Note (at 6) 2 (noteBody (at 6) [txt "二"])]]
        in only (horizontal book) @?= "甲*1\n\n乙*2\n\n注\n*1 一\n*2 二\n",
     testCase "a footnote inside emphasis is still gathered at the end" $
-      let book = bookOf [para 0 [CharStyle (at 1) "strong" [txt "強", Note (at 2) 1 [txt "注"]]]]
+      let book = bookOf [para 0 [CharStyle (at 1) "strong" [txt "強", Note (at 2) 1 (noteBody (at 2) [txt "注"])]]]
        in only (horizontal book) @?= "強*1\n\n注\n*1 注\n",
     testCase "a sidenote is marked ※n and its body follows the paragraph" $
-      let book = bookOf [para 0 [txt "本文", Sidenote (at 1) 1 [txt "補足。"], txt "。"], para 5 [txt "次。"]]
+      let book = bookOf [para 0 [txt "本文", Sidenote (at 1) 1 (noteBody (at 1) [txt "補足。"]), txt "。"], para 5 [txt "次。"]]
        in only (horizontal book) @?= "本文※1。\n※1 補足。\n\n次。\n",
     testGroup
       "ruby is base（reading）"

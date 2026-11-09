@@ -128,8 +128,8 @@ kinds = foldMap block . docBlocks
       Kenten _ _ is -> inlines is
       Color _ _ is -> inlines is
       CharStyle _ _ is -> inlines is
-      Note _ _ is -> inlines is
-      Sidenote _ _ is -> inlines is
+      Note _ _ bs -> foldMap inlines (noteParagraphs bs)
+      Sidenote _ _ bs -> foldMap inlines (noteParagraphs bs)
       ChannelItem _ c -> inlines (ciBody c)
       Link _ _ is -> inlines is
       Lang _ _ is -> inlines is

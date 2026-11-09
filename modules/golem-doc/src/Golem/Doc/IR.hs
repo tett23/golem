@@ -51,6 +51,9 @@ module Golem.Doc.IR
     isLineBreak,
     splitAtLineBreaks,
     withoutAnchors,
+    noteParagraphs,
+    noteBody,
+    mapNoteBody,
   )
 where
 
@@ -309,8 +312,10 @@ data InlineF r
   | Number !SrcSpan !Integer !(Maybe NumberStyle)
   | Ref !SrcSpan !RefKind !Text
   | Deferred !SrcSpan DeferredExpr
-  | Note !SrcSpan !Int [InlineF r]
-  | Sidenote !SrcSpan !Int [InlineF r]
+  | -- | a footnote, its number in its file and its body: paragraphs without a paragraph style, whatever r is (docs/adr/0263)
+    Note !SrcSpan !Int [Block]
+  | -- | a sidenote, its number and its body: one paragraph without a paragraph style (docs/adr/0263)
+    Sidenote !SrcSpan !Int [Block]
   | IndexMark !SrcSpan IndexEntry
   | Cite !SrcSpan !Text
   | ProofComment !SrcSpan Text
@@ -418,8 +423,9 @@ noRuby = \case
   Number s n st -> Just (Number s n st)
   Ref s k l -> Just (Ref s k l)
   Deferred s e -> Just (Deferred s e)
-  Note s n xs -> Note s n <$> traverse noRuby xs
-  Sidenote s n xs -> Sidenote s n <$> traverse noRuby xs
+  -- the body of a note is set outside the base: no ruby inside ruby (docs/adr/0263)
+  Note s n bs -> Just (Note s n bs)
+  Sidenote s n bs -> Just (Sidenote s n bs)
   IndexMark s e -> Just (IndexMark s e)
   Cite s k -> Just (Cite s k)
   ProofComment s t -> Just (ProofComment s t)
@@ -429,6 +435,23 @@ noRuby = \case
   Link s u xs -> Link s u <$> traverse noRuby xs
   Lang s l xs -> Lang s l <$> traverse noRuby xs
   Resolved s k l xs -> Resolved s k l <$> traverse noRuby xs
+
+{- | The inlines of the paragraphs of the body of a note, in order
+(docs/adr/0263); the other blocks, which the evaluation and Validate do
+not let in, are left out.
+-}
+noteParagraphs :: [Block] -> [[Inline]]
+noteParagraphs bs = [is | Block _ _ _ (Paragraph _ is) <- bs]
+
+-- | The body of a note with the inlines of its paragraphs changed (docs/adr/0263).
+mapNoteBody :: ([Inline] -> [Inline]) -> [Block] -> [Block]
+mapNoteBody f = map $ \b -> case blockBody b of
+  Paragraph st is -> b {blockBody = Paragraph st (f is)}
+  _ -> b
+
+-- | The body of a note of one paragraph without a paragraph style, at a span (docs/adr/0263).
+noteBody :: SrcSpan -> [Inline] -> [Block]
+noteBody sp is = [Block sp Nothing Nothing (Paragraph Nothing is)]
 
 {- | A title as it is copied elsewhere in the book (the table of contents,
 [ref-title]): without the inlines that tell a list where the text is,

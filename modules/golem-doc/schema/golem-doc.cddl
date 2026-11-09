@@ -61,8 +61,6 @@ inline-no-ruby =
   / [9, span, int64, number-style / null]          ; number
   / [10, span, ref-kind, label: tstr]              ; reference
   / [11, span, expr]                               ; deferred expression (S1)
-  / [12, span, uint64, inlines]                    ; note
-  / [13, span, uint64, inlines]                    ; sidenote
   / [14, span, terms: [1*2 tstr], readings: [1*2 tstr]] ; index mark
   / [15, span, key: tstr]                          ; citation
   / [16, span, tstr]                               ; proofreading comment
@@ -72,7 +70,10 @@ inline-no-ruby =
   / [20, span, uri: tstr, inlines]               ; link to an external URL (docs/adr ADR 0182)
   / [21, span, lang: tstr, inlines]              ; language span (docs/adr ADR 0187)
   / [22, span, ref-kind, label: tstr, inlines]   ; [ref-number] or [ref-title] that the assembly resolved, never in a request nor a response of a plugin (docs/adr/0215)
-; 1 (strong), 2 (bold) and 3 (italic) are retired: they are character styles (docs/adr ADR 0005)
+  / [23, span, uint64, [+ block]]                  ; note (docs/adr/0263)
+  / [24, span, uint64, [+ block]]                  ; sidenote (docs/adr/0263)
+; 1 (strong), 2 (bold) and 3 (italic) are retired: they are character styles (docs/adr ADR 0005);
+; 12 and 13 (notes of inlines) are retired (docs/adr/0263)
 
 number-style = 0..2                                ; kanji, kanji-digits, tcy
 ref-kind = 0..2                                    ; number, title, page

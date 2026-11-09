@@ -26,7 +26,7 @@ unspan = \case
   Text _ t -> Text z t
   CharStyle _ c xs -> CharStyle z c (map unspan xs)
   Lang _ l xs -> Lang z l (map unspan xs)
-  Note _ n xs -> Note z n (map unspan xs)
+  Note _ n bs -> Note z n [Block z l lg (Paragraph st (map unspan is)) | Block _ l lg (Paragraph st is) <- bs]
   x -> x
 
 z :: SrcSpan
@@ -96,7 +96,7 @@ tests =
         inlinesOf "[lang en: a [lang fr: b] c]\n" @?= [[Lang z "en" [Text z "a ", Lang z "fr" [Text z "b"], Text z " c"]]],
       testCase "a span in a character style, a note and the base of a ruby" $ do
         inlinesOf "[style term: [lang en: a]]\n" @?= [[CharStyle z "term" [Lang z "en" [Text z "a"]]]]
-        inlinesOf "本文[note: [lang en: a]]\n" @?= [[Text z "本文", Note z 1 [Lang z "en" [Text z "a"]]]]
+        inlinesOf "本文[note: [lang en: a]]\n" @?= [[Text z "本文", Note z 1 (noteBody z [Lang z "en" [Text z "a"]])]]
         msgs "[ruby: [lang ja: 東] | ひがし]\n" @?= [],
       testCase "a span in a heading stays in its title" $
         [map unspan is | Heading _ _ is <- resultBodies (evalResult ctx "# [lang en: Tokyo] の話\n")] @?= [[Lang z "en" [Text z "Tokyo"], Text z " の話"]],

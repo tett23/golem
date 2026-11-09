@@ -101,6 +101,8 @@ sizeOf name args = case (name, args) of
 build :: Text -> [PrimValue] -> Either Diagnostic PrimValue
 build name args = case (name, args) of
   ("div", [PV a, PV b]) -> PV <$> divAt nowhere a b
+  -- a note of one paragraph without a paragraph style (docs/adr/0263): the module Inline cannot name Block.Paragraph
+  ("Inline.note", [xs]) -> Right (PL 1 [PC "Note" [PL 1 [PC "Paragraph" [PC "Nothing" [], xs]]]])
   -- List
   ("List.length", [PL _ xs]) -> value (nat (length xs))
   ("List.reverse", [PL _ xs]) -> list (reverse xs)

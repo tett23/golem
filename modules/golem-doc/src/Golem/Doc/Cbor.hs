@@ -169,8 +169,9 @@ inlineT rt = \case
   Number s n st -> tagged 9 [spanT s, int n, opt (int . fromEnum) st]
   Ref s k l -> tagged 10 [spanT s, int (fromEnum k), text l]
   Deferred s (DeferredExpr e) -> tagged 11 [spanT s, exprT e]
-  Note s n xs -> tagged 12 [spanT s, int n, sub xs]
-  Sidenote s n xs -> tagged 13 [spanT s, int n, sub xs]
+  -- 12 and 13 are retired: the body is blocks (docs/adr/0263)
+  Note s n bs -> tagged 23 [spanT s, int n, list blockT bs]
+  Sidenote s n bs -> tagged 24 [spanT s, int n, list blockT bs]
   IndexMark s (IndexEntry ts rs) -> tagged 14 [spanT s, list text ts, list text rs]
   Cite s k -> tagged 15 [spanT s, text k]
   ProofComment s t -> tagged 16 [spanT s, text t]
@@ -487,8 +488,9 @@ termInline rd t =
         (9, [n, st]) -> Number s <$> asInt n <*> asOpt asEnum st
         (10, [k, l]) -> Ref s <$> asEnum k <*> asText l
         (11, [e]) -> Deferred s . DeferredExpr <$> termExpr e
-        (12, [n, x]) -> Note s <$> asIntI n <*> sub x
-        (13, [n, x]) -> Sidenote s <$> asIntI n <*> sub x
+        -- 12 and 13 are retired (docs/adr/0263)
+        (23, [n, x]) -> Note s <$> asIntI n <*> (asList x >>= traverse termBlock)
+        (24, [n, x]) -> Sidenote s <$> asIntI n <*> (asList x >>= traverse termBlock)
         (14, [ts, rs]) -> (\a b -> IndexMark s (IndexEntry a b)) <$> (asList ts >>= traverse asText) <*> (asList rs >>= traverse asText)
         (15, [k]) -> Cite s <$> asText k
         (16, [x]) -> ProofComment s <$> asText x

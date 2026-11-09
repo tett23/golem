@@ -26,6 +26,7 @@ import InMemorySpec (inMemoryTests)
 import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
 import NewPlanSpec (newPlanTests)
+import NotesSpec (notesTests)
 import OpenTypeFeaturesSpec (openTypeFeaturesTests)
 import OutputGoldenSpec
 import OverflowSpec (overflowTests)
@@ -124,6 +125,7 @@ tests skips =
              testGroup "bibliography entries and G03026 (golem-doc ADR 0004)" bibliographyFormatTests,
              testGroup "PDF tables (ADR 0008)" tableTests,
              testGroup "table numbers, captions, column widths and cell styles (docs/adr/0262)" tableCaptionsTests,
+             testGroup "notes of more than one paragraph (docs/adr/0263)" notesTests,
              testGroup "table column widths (golem-driver ADR 0037)" columnWidthTests,
              testGroup "PDF table of contents (ADR 0009)" tocTests,
              testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,

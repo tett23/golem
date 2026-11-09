@@ -79,7 +79,7 @@ applyRegexStyles rules d
     -- the bodies of sidenotes, with the regex styles of sidenote
     sidenotes :: InlineF r -> InlineF r
     sidenotes = \case
-      Sidenote sp n xs -> Sidenote sp n (paragraph (rulesOf "sidenote") xs)
+      Sidenote sp n bs -> Sidenote sp n [b {blockBody = case blockBody b of Paragraph st is -> Paragraph st (paragraph (rulesOf "sidenote") is); other -> other} | b <- bs]
       Kenten sp k xs -> Kenten sp k (map sidenotes xs)
       Color sp c xs -> Color sp c (map sidenotes xs)
       CharStyle sp c xs -> CharStyle sp c (map sidenotes xs)

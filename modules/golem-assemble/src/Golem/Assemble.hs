@@ -241,8 +241,16 @@ blockNotes outer (Block _ _ blang body) = case body of
 (golem-driver ADR 0026). A body is in a language span of the language of
 the place of its mark, if that has one (docs/adr ADR 0187).
 -}
-documentNotes :: Document -> [(SrcSpan, Int, [Inline])]
-documentNotes (Document _ bs) = [(sp, n, inLang sp l xs) | (l, Note sp n xs) <- concatMap (blockNotes Nothing) bs]
+documentNotes :: Document -> [(SrcSpan, Int, [[Inline]])]
+documentNotes (Document _ bs) = [(sp, n, [inLang sp (pl <|> l) is | Block _ _ pl (Paragraph _ is) <- body]) | (l, Note sp n body) <- concatMap (blockNotes Nothing) bs]
+
+{- | The paragraphs of the body of a note with their inlines changed in
+an applicative (docs/adr/0263); the other blocks as they are.
+-}
+traverseNoteBody :: (Applicative f) => ([Inline] -> f [Inline]) -> [Block] -> f [Block]
+traverseNoteBody f = traverse $ \case
+  b@(Block _ _ _ (Paragraph st is)) -> (\is' -> b {blockBody = Paragraph st is'}) <$> f is
+  b -> pure b
 
 headingAnchor :: Maybe Text -> SrcSpan -> Text
 headingAnchor (Just l) _ = l
@@ -663,10 +671,10 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
       CharStyle sp c xs -> pure . CharStyle sp c <$> inls xs
       Lang sp t xs -> pure . Lang sp t <$> inls xs
       Resolved sp k l xs -> pure . Resolved sp k l <$> inls xs
-      Note sp n xs -> pure . Note sp n <$> inls xs
+      Note sp n body -> pure . Note sp n <$> traverseNoteBody inls body
       -- the body of an item resolves like the text around it (golem-doc ADR 0007)
       ChannelItem sp c -> (\b -> [ChannelItem sp c {ciBody = b}]) <$> inls (ciBody c)
-      Sidenote sp n xs -> pure . Sidenote sp n <$> inls xs
+      Sidenote sp n body -> pure . Sidenote sp n <$> traverseNoteBody inls body
       other -> pure [other]
 
 {- | The notes and the sidenotes numbered again over the range of
@@ -703,11 +711,11 @@ renumberNotes cfg docs = evalState (zipWithM doc restarts docs) (0, 0)
       Note sp _ xs -> do
         (n, m) <- get
         put (n + 1, m)
-        Note sp (n + 1) <$> inls xs
+        Note sp (n + 1) <$> traverseNoteBody inls xs
       Sidenote sp _ xs -> do
         (n, m) <- get
         put (n, m + 1)
-        Sidenote sp (m + 1) <$> inls xs
+        Sidenote sp (m + 1) <$> traverseNoteBody inls xs
       Kenten sp s xs -> Kenten sp s <$> inls xs
       Color sp c xs -> Color sp c <$> inls xs
       CharStyle sp c xs -> CharStyle sp c <$> inls xs
@@ -833,8 +841,8 @@ bodyInlines body = concatMap flatten $ case body of
         Link _ _ xs -> concatMap flatten xs
         Lang _ _ xs -> concatMap flatten xs
         Resolved _ _ _ xs -> concatMap flatten xs
-        Note _ _ xs -> concatMap flatten xs
-        Sidenote _ _ xs -> concatMap flatten xs
+        Note _ _ bs -> concatMap flatten (concat (noteParagraphs bs))
+        Sidenote _ _ bs -> concatMap flatten (concat (noteParagraphs bs))
         _ -> []
 
 {- | Inlines in a language span of the language of their block, if it has
