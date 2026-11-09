@@ -102,6 +102,14 @@ nextNeed env = \case
      in case frBody fr of
           RuledHeading _ _ ls -> Need size (noteLinesOf ls)
           RuledLines _ _ -> grid size
+  -- a box: its grid lines before and the first part of its body, and its grid lines after when that is all of it (docs/adr/0271)
+  (FBoxed _ kb ka body : _) ->
+    let n = nextNeed env body
+        whole = case body of
+          [FParagraph kp ls] -> firstPart kp True (length ls) >= length ls
+          [FStanza kp vs] -> firstPart kp True (length vs) >= length vs
+          _ -> False
+     in n {needGrid = kb + needGrid n + (if whole then ka else 0)}
   [] -> mempty
   where
     capacity = envCapacity env
@@ -165,6 +173,8 @@ in the column.
 -}
 nextFirstLines :: Int -> [Flow] -> (Int, Bool)
 nextFirstLines n after = case dropWhile skipped after of
+  -- of a box, those of its body (docs/adr/0271)
+  FBoxed {fbBody = body} : _ -> nextFirstLines n body
   FParagraph kp ls : _ -> (max (firstPart kp True (length ls)) (min n (length ls)), True)
   FContinued kp ls : _ -> (max (firstPart kp False (length ls)) (min n (length ls)), True)
   FStanza kp vs : _ -> (length (concat (take (max (firstPart kp True (length vs)) (min n (length vs))) vs)), True)

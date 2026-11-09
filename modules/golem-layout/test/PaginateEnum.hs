@@ -28,6 +28,8 @@ module PaginateEnum
     startOfKind,
     keepElementsFor,
     keepInputs,
+    boxElementsFor,
+    boxInputs,
     renderInput,
     renderCase,
   )
@@ -75,6 +77,10 @@ data Element
     EKeepNext !Int
   | -- | the paragraph after started in the next column or on the next page of the kind (docs/adr/0261)
     EStart !BreakKind
+  | -- | a box of k grid lines before and after a paragraph of n lines (docs/adr/0271)
+    EBoxed !Int !Int
+  | -- | a box of k grid lines before and after two paragraphs of two lines with a grid line of space between them (docs/adr/0271)
+    EBoxedPair !Int
   deriving stock (Eq, Show)
 
 -- | The grid lines of a column, the columns of a page and the elements of the flow.
@@ -146,6 +152,22 @@ keepElementsFor c =
 keepInputs :: Tiers Input
 keepInputs = inputsOver [3 .. 5] keepElementsFor
 
+{- | The elements of the flows of boxes (docs/adr/0271) in columns of c
+grid lines: boxes of k = 0 and 1 around a paragraph of 1 to 4 lines and
+around two paragraphs, paragraphs of 1 to 4 lines, a heading, a figure of
+c lines, a space, a break and a paragraph of 2 lines with a note.
+-}
+boxElementsFor :: Int -> [Element]
+boxElementsFor c =
+  [EBoxed k n | k <- [0, 1], n <- [1 .. 4]]
+    <> map EBoxedPair [0, 1]
+    <> map EPara [1 .. 4]
+    <> [EHeading, EFigure c, ESpace, EBreak, ENotedPara 2]
+
+-- | The inputs of boxes (docs/adr/0271): columns of 3 to 5 grid lines and 'boxElementsFor'.
+boxInputs :: Tiers Input
+boxInputs = inputsOver [3 .. 5] boxElementsFor
+
 -- | The inputs of docs/adr/0204: columns of 3 to 8 grid lines and every element of 'elementsFor'.
 fullInputs :: Tiers Input
 fullInputs = inputsOver [3 .. 8] elementsFor
@@ -196,6 +218,9 @@ enumFlows = placed . go 0 1000 0
       -- the span of the control stands for the span of the paragraph before
       EKeepNext n -> FKeepNext (controlSpan m) n : go i j (m + 1) rest
       EStart k -> FSection (OfParagraph (controlSpan m)) k : go i j (m + 1) rest
+      -- a box by the id of its first line
+      EBoxed k n -> FBoxed i k k [FParagraph defaultKeep (plain i n)] : go (i + n) j m rest
+      EBoxedPair k -> FBoxed i k k [FParagraph defaultKeep (plain i 2), FSpace 1, FParagraph defaultKeep (plain (i + 2) 2)] : go (i + 4) j m rest
     plain base n = [LineBox (base + k) [] [] [] 0 | k <- [0 .. n - 1]]
     verses base vs = [plain b v | (b, v) <- zip (scanl (+) base vs) vs]
     noted i = LineBox i [NoteBody (noteOf i) 1] [] [] 0
