@@ -51,6 +51,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Unsafe qualified as BU
 import Data.Either (fromRight)
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -87,7 +88,7 @@ foreign import capi unsafe "golem_font.h golem_font_v_origin" c_vOrigin :: Ptr C
 foreign import capi unsafe "golem_font.h golem_font_shape"
   c_shape :: Ptr CFont -> CString -> CInt -> CString -> CString -> CInt -> CString -> CInt -> Ptr Word32 -> Ptr Word32 -> Ptr Int32 -> CInt -> IO CInt
 
-foreign import capi unsafe "golem_font.h golem_font_has_feature" c_hasFeature :: Ptr CFont -> CString -> IO CInt
+foreign import capi unsafe "golem_font.h golem_font_feature_tags" c_featureTags :: Ptr CFont -> Ptr Word32 -> CInt -> IO CInt
 
 foreign import capi unsafe "golem_font.h golem_font_subset" c_subset :: Ptr CFont -> Ptr Word32 -> CInt -> Ptr CSize -> IO (Ptr Word8)
 
@@ -120,7 +121,9 @@ data Font = Font
     HarfBuzz's fallback when the font has none.
     -} fontEmBoxCentral :: !Int,
     -- | the CID of every glyph of a CID-keyed font, read while loading (docs/adr ADR 0034)
-    fontCids :: !(Maybe (UArray Int Int))
+    fontCids :: !(Maybe (UArray Int Int)),
+    -- | the tags of the FeatureList of GSUB and GPOS, read while loading (docs/adr/0268)
+    fontFeatureTags :: !(Set.Set Text)
   }
 
 -- | The Registry, Ordering and Supplement of a CID-keyed font.
@@ -172,11 +175,18 @@ loadFont bytes = do
         if cidKeyed && n > 0
           then Just . listArray (0, n - 1) <$> mapM (fmap fromIntegral . c_cid p . fromIntegral) [0 .. n - 1]
           else pure Nothing
+      -- the feature list, of any script and language system (docs/adr/0268)
+      count <- fromIntegral <$> c_featureTags p nullPtr 0
+      tags <- allocaArray (max 1 count) $ \arr -> do
+        _ <- c_featureTags p arr (fromIntegral count)
+        Set.fromList . map tagText <$> peekArray count arr
       touchForeignPtr fp
       pure $
         if embeddingRestricted fsType
           then Left (EmbeddingRestricted fsType)
-          else Right (Font fp bytes upem cff cff2 n ext ps ros central cids)
+          else Right (Font fp bytes upem cff cff2 n ext ps ros central cids tags)
+  where
+    tagText w = T.pack [toEnum (fromIntegral ((w `shiftR` s) .&. 0xFF)) | s <- [24, 16, 8, 0]]
 
 {- | Whether fsType forbids Golem to embed the font (golem-driver ADR 0016),
 as the OpenType specification reads it: bits 0 to 3 are usage permissions
@@ -250,8 +260,7 @@ shapeUnits f req = unsafePerformIO $ withForeignPtr (fontPtr f) $ \p ->
 an OpenType feature tag, of any script and language system (docs/adr/0268).
 -}
 fontHasFeature :: Font -> Text -> Bool
-fontHasFeature f tag = unsafePerformIO $ withForeignPtr (fontPtr f) $ \p ->
-  withCString (T.unpack tag) $ \t -> (/= 0) <$> c_hasFeature p t
+fontHasFeature f tag = Set.member tag (fontFeatureTags f)
 
 {- | The vertical origin (x, y) of a glyph in font units, as
 @hb_font_get_glyph_v_origin@ gives it (golem-driver ADR 0020): vertical

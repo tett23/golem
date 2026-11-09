@@ -180,25 +180,22 @@ int golem_font_shape(golem_font *f, const char *utf8, int len, const char *scrip
   return (int)count;
 }
 
-/* Whether the GSUB or the GPOS table lists the feature, of any script and
-   language system (docs/adr/0268). */
-int golem_font_has_feature(golem_font *f, const char *tag) {
-  hb_tag_t t = hb_tag_from_string(tag, -1);
+/* The tags of the FeatureList of GSUB and then of GPOS, of every script
+   and language system, with repeats (docs/adr/0268): the first max of them
+   are written to out; the number of all of them is returned. */
+int golem_font_feature_tags(golem_font *f, uint32_t *out, int max) {
   hb_tag_t tables[2] = {HB_OT_TAG_GSUB, HB_OT_TAG_GPOS};
-  int found = 0;
-  for (int i = 0; i < 2 && !found; i++) {
-    hb_set_t *indexes = hb_set_create();
-    hb_ot_layout_collect_features(f->hbface, tables[i], NULL, NULL, NULL, indexes);
-    hb_codepoint_t ix = HB_SET_VALUE_INVALID;
-    while (!found && hb_set_next(indexes, &ix)) {
+  int total = 0;
+  for (int i = 0; i < 2; i++) {
+    unsigned n = hb_ot_layout_table_get_feature_tags(f->hbface, tables[i], 0, NULL, NULL);
+    for (unsigned k = 0; k < n; k++, total++) {
       hb_tag_t got = HB_TAG_NONE;
       unsigned one = 1;
-      hb_ot_layout_table_get_feature_tags(f->hbface, tables[i], ix, &one, &got);
-      if (one == 1 && got == t) found = 1;
+      hb_ot_layout_table_get_feature_tags(f->hbface, tables[i], k, &one, &got);
+      if (total < max) out[total] = (uint32_t)got;
     }
-    hb_set_destroy(indexes);
   }
-  return found;
+  return total;
 }
 
 uint8_t *golem_font_subset(golem_font *f, const uint32_t *gids, int n, size_t *out_len) {

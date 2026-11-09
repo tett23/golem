@@ -38,9 +38,9 @@ int golem_font_shape(golem_font *f, const char *utf8, int len, const char *scrip
                      uint32_t *out_gids, uint32_t *out_clusters, int32_t *out_pos,
                      int max_glyphs);
 
-/* 1 when the FeatureList of GSUB or GPOS has the tag (four characters),
-   whatever the script and the language system; 0 otherwise. */
-int golem_font_has_feature(golem_font *f, const char *tag);
+/* The tags of the FeatureList of GSUB and GPOS, of every script and
+   language system: the first max to out; returns the number of them all. */
+int golem_font_feature_tags(golem_font *f, uint32_t *out, int max);
 
 /* Subsets to the glyphs, keeping glyph ids. Returns a malloc'd buffer
    (free with golem_font_free) and its length, or NULL. */

@@ -18,7 +18,7 @@ import Data.ByteString qualified as BS
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Functor ((<&>))
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -35,7 +35,7 @@ import Golem.Project.Paths (PathError (..), pathErrorMessage)
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Typeset (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyFontDiagnostics, bodyRole, normalTexts, usedRoles)
-import Golem.Typeset.Memo (fromShapingTextKey, memoWith, shapingTextKey, textDigits)
+import Golem.Typeset.Memo (fromShapingTextKey, memoWith, shapingTextKey)
 import Golem.Typeset.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 import Text.Printf (printf)
 
@@ -156,7 +156,7 @@ provide memoise fid faces body roles =
          in (\m -> let (x0, y0, x1, y1) = gmBBox m in (em x0, em y0, em x1, em y1)) <$> glyphMetrics f g,
       lfRoleFeatures = \role -> let (_, _, fs) = roleOf role in fs,
       -- the feature list of GSUB and GPOS, of any script and language (docs/adr/0268)
-      lfHasFeature = curry hasFeature
+      lfHasFeature = fontHasFeature . fontAt
     }
   where
     {- advances are asked for again and again while composing; they are
@@ -169,8 +169,6 @@ provide memoise fid faces body roles =
     the second round of the page references (docs/adr/0253) -}
     shapedOf = memoWith key unkey (uncurry shapeText)
     shaped s t = if memoise then shapedOf (s, t) else shapeText s t
-    -- the feature list of each face and tag read once (docs/adr/0268)
-    hasFeature = memoWith (\(ix, tag) -> ix : textDigits tag) (\ds -> (fromMaybe 0 (listToMaybe ds), T.pack (map toEnum (drop 2 ds)))) (\(ix, tag) -> fontHasFeature (fontAt ix) tag)
     -- the roles by their order in the table, a short key (docs/adr/0253)
     key = shapingTextKey (Map.keys roles)
     unkey = fromShapingTextKey (Map.keys roles)
