@@ -123,7 +123,7 @@ structureTree fe units figureAttrs =
       UIndexEntry _ -> [NKid (P.KidElem (P.structElem P.SP text))]
       UHeading l _ _ -> [NKid (P.KidElem (P.structElem (headingType l) text))]
       UTerm _ -> [NTerm text]
-      UTocEntry _ _ -> [NKid (P.KidElem (P.structElem P.STOCI text))]
+      UTocEntry {} -> [NKid (P.KidElem (P.structElem P.STOCI text))]
       UTable tbl -> [NKid (P.KidElem (tableElem i u tbl))]
       UCode _ code -> [NKid (P.KidElem (codeElem i u code))]
       UFigure fig -> [NKid (P.KidElem (figureElem i u fig))]

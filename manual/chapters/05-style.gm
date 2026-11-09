@@ -827,6 +827,42 @@ color = "accent"
 このマニュアルは、傍注の領域を取るために一行の字数を減らしています。
 傍注の領域は小口側の余白の中に収まる必要があるからです。
 
+@label toc-styles
+## 目次の項目の書式
+
+目次の項目は、階層ごとの段落スタイル [code: toc-1] から [code: toc-6] で組みます。
+[code: toc-1] が章、[code: toc-2] が節の項目です。
+どれも [code: body] を引き継ぎ、本文の文字の大きさで、階層の数から一を引いた字数だけ字下げする組み込みの段落スタイルです。
+InDesign の目次スタイルで、項目に段落スタイルを当てるのに当たります。
+
+ほかの組み込みのスタイルと同じく、同じ名前の表を書いて上書きします。
+章の項目をゴシック体にし、前に一行空けるには、次のように書きます。
+
+```toml
+[paragraph-styles.toc-1]
+font = "gothic"
+space-before = 1
+
+[paragraph-styles.toc-2]
+indent = "2zw"
+```
+
+書体と大きさ（[code: font]、[code: size]）、字下げ（[code: indent]、[code: first-line-indent]、[code: end-indent]）、前後とあいだの空き（[code: space-before]、[code: space-after]、[code: space-between]）、罫線（[code: rule-before]、[code: rule-after]）は、本文の段落と同じ意味で適用されます。
+リーダーの点も、項目の段落スタイルの書体と大きさで組みます。
+
+ページ番号は、組み込みの文字スタイル [code: toc-page-number] で組みます。
+ページ番号だけを欧文の書体にするときは、次のように書きます。
+
+```toml
+[character-styles.toc-page-number]
+font = "latin"
+```
+
+ページ番号は、[code: end-indent] によらず、行の終わりにそろいます。
+ページ番号の幅は、どの階層でも同じだけ空けるので、リーダーの終わりの位置はそろいます。
+字下げが大きすぎて、項目の行に一字も入らなくなると、エラー（G07117）になります。
+HTML では、[code: toc-1] などの [code: font] だけを目次の項目に使います。
+
 @label index-columns
 ## 索引の段組み
 

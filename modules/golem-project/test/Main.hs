@@ -1171,7 +1171,14 @@ styleTests :: TestTree
 styleTests =
   testGroup
     "character and paragraph styles (docs/adr ADR 0005)"
-    [ testCase "the built-in styles" $ do
+    [ testCase "the built-in toc-1 to toc-6 and toc-page-number; a table of toc-<l> overrides the keys it writes (docs/adr/0264)" $ do
+        s <- parsed ""
+        [(psBasedOn d, psSize d, psIndent d, psFirstLineIndent d, psEndIndent d) | l <- [1 .. 6 :: Int], Just d <- [Map.lookup ("toc-" <> T.pack (show l)) (stParaStyles s)]]
+          @?= [(Just "body", Just (Zw 1), Just (Zw (fromIntegral (l - 1))), Just (Zw 0), Just (Zw 0)) | l <- [1 .. 6 :: Int]]
+        Map.member "toc-page-number" (stCharStyles s) @?= True
+        s' <- parsed "[fonts.gothic]\nja = \"g.otf\"\n\n[paragraph-styles.toc-2]\nfont = \"gothic\"\nspace-before = 1\n"
+        fmap (\d -> (psFont d, psSpaceBefore d, psIndent d, psSize d)) (Map.lookup "toc-2" (stParaStyles s')) @?= Just (Just "gothic", Just 1, Just (Zw 1), Just (Zw 1)),
+      testCase "the built-in styles" $ do
         s <- parsed ""
         (charStyle s "strong" >>= csSyntheticBold) @?= Just True
         (charStyle s "italic" >>= csSyntheticItalic) @?= Just True
@@ -1184,8 +1191,8 @@ styleTests =
         paraStyle s (Just "nope") @?= Nothing
         noBase (paraStyle s (Just "caption")) @?= noBase (paraStyle s Nothing)
         noBase (paraStyle s (Just "sidenote")) @?= noBase (paraStyle s Nothing)
-        Map.keys (stParaStyles s) @?= ["body", "caption", "code", "sidenote", "table", "verse"]
-        Map.keys (stCharStyles s) @?= ["bold", "code", "italic", "no-break", "note-mark", "strong", "subscript", "superscript", "url"],
+        Map.keys (stParaStyles s) @?= ["body", "caption", "code", "sidenote", "table", "toc-1", "toc-2", "toc-3", "toc-4", "toc-5", "toc-6", "verse"]
+        Map.keys (stCharStyles s) @?= ["bold", "code", "italic", "no-break", "note-mark", "strong", "subscript", "superscript", "toc-page-number", "url"],
       testCase "a user definition overrides the keys it writes" $ do
         s <- parsed "[paragraph-styles.caption]\nsize = \"0.8zw\"\n"
         (paraStyle s (Just "caption") >>= psSize) @?= Just (Zw (4 / 5))

@@ -132,6 +132,7 @@ test-suite golem-driver-test
     TableCaptionsSpec
     TableFilesSpec
     TaggedPdfSpec
+    TocStylesSpec
     UnwritableNumbersSpec
     VarsSpec
     Support

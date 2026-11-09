@@ -111,7 +111,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **PDF のしおりとリンク**：見出しから PDF のしおり（アウトライン）を作り、相互参照、目次、索引、脚注の印を PDF のリンクにする。リンクのほかの注釈も扱う（[golem-pdf ADR 0001](golem-pdf/adr/0001-deterministic-pdf-writer.md)）。外部の URL へのリンク（[docs/adr/0182](adr/0182-external-links.md)）で作ったリンクの注釈の仕組み（`LinkTarget` と `Annotation`）を使う。
 - **段落スタイルの分割禁止と連動**：段落スタイルに、次の段落と連動、段落を分割しない、段落の始めと終わりに残す行の数（孤立行の行数）、段落の開始位置（次の段、次のページなど）の欄を加える。InDesign の段落の分割禁止オプションにあたる。改ページの手での制御（[docs/adr 0030](adr/0030-manual-page-break-control.md)）と同じ仕組みで組む。行の数の欄は、InDesign の「段落の始めと終わりの行数」にあたり、書かなければ今の規則（最初と最後の行を一つだけ残さない）のままとする。段落を分割しない欄は、韻文の連をページで分けない指定にも使う（[docs/adr/0180](adr/0180-verse-spacing-and-stanza-breaks.md)）。
 - **複数段落の注**：注の本文を複数の段落にできるようにする。注の本文の型をインラインからブロックに変えるので、意味論の IR とプラグインの ABI が変わる。今の注は一つの段落に限る。
-- **目次の項目の書式**：目次の階層ごとに段落スタイルを当て、書体、大きさ、字下げ、空きを変えられるようにする。InDesign の目次スタイルの項目のスタイルにあたる。図目次、表目次、章ごとの小目次は v2 の「目次の拡張」に残す。
 - **索引の参照、ページの範囲、見出し**：索引の項目に「を見よ」「をも見よ」の参照とページの範囲を書けるようにし、索引に行の見出し（「あ」「か」など）を入れられるようにする。`[index]` の記法と IR が変わる。v2 の「索引と参考文献の拡張」のこれらの部分を先に取り出す。
 - **引用の頁の指定と複数の文献**：`[cite]` に頁（引用の位置）を書けるようにし、複数の文献を一度に引けるようにする。InDesign に組み込みの引用の機能がないので、LaTeX の `\cite[p.~5]{a,b}` と biblatex を参考にする。「参考文献のスタイル」より先に、引用が持つ値を決める。
 - **段落の背景と囲み罫**：今は段落スタイル `code` にだけ書ける背景と枠を、ほかの段落スタイルにも書けるようにする。コラムや注意書きの囲みに使う。v0.1.0-rc3 の段落スタイルの罫線と罫線の色と種類を枠に使う。続く段落を一つの囲みにまとめることと、ページをまたぐ分割は ADR で決める。
@@ -133,7 +132,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **図版とキャプションの拡張**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。
 - **韻文の拡張**：行番号（5 行ごとの番号など）（[docs/adr/0003](adr/0003-verse-line-breaks.md)）。連をページで分けない指定は、v1.0.0 の「段落スタイルの分割禁止と連動」の段落を分割しない欄で扱う。
 - **参考文献のスタイル**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、参考文献のスタイルを選び、定められるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。
-- **ページ番号と柱の拡張**：EPUB の `page-list`、柱とノンブルと目次の項目を見出しの書体で組むこと、柱、ノンブル、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。
+- **ページ番号と柱の拡張**：EPUB の `page-list`、柱とノンブルを見出しの書体で組むこと、柱、ノンブル、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。
 
 ### 機能をそろえた後の確かめ
 
@@ -181,7 +180,7 @@ v2.0.0-rc1 は、数式の組版かその下準備、あるいはその両方を
 - **フレーム**：レベル 2 と 3 のフレーム。型は定義してあり、v1 では値を書くとエラーになる（[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)、[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)）。
 - **段組みの拡張**：v1 で実装する段組み（仕様書の [「style.toml」の節](specifications.md#styletoml) の段組み、[docs/adr/0018](adr/0018-multi-column-layout.md)）を超える部分。段抜きの見出し、索引のほかで一冊の中で段数を切り替えること、段組みの版面での回り込みと段をまたぐ除外領域を含む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。段の高さの調整は「改ページの大域の最適化」に、段組みの版面での傍注の領域は「傍注の拡張」に含める。索引の段組みは [docs/adr/0025](adr/0025-index-columns.md) で v1 に入れた。
 - **notice の局所的な抑制**：textlint の無効にするコメントのように、`.gm` の中で notice を局所的に抑制するブロックコマンド。今の抑制は `manifest.toml` の `silence-notices` と `--no-notices` による本の全体の単位であり、縮めた図版の notice の G07039 も図版ごとには抑制できない。本の全体での抑制で困る例が出たら、別の ADR で加える（[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）。
-- **目次の拡張**：章ごとの小目次（v1 の `@toc` は文書に一つだけ）、`[toc]` の `font` と `size` による項目の書体と大きさ、階層ごとの書体の切り替え、字下げ、空き、リーダーの字の設定、折り返した題のぶら下げ、図目次と表目次（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
+- **目次の拡張**：章ごとの小目次（v1 の `@toc` は文書に一つだけ）、リーダーの字の設定、折り返した題のぶら下げ、図目次と表目次（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
 - **縦組みの傍注**：v1 の傍注は横組みに限る（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。
 - **索引と参考文献の拡張**：索引の三段以上の階層と「〜を見よ」のような項目間の参照（v1 は二段まで）、索引の見出し（「あ」「か」のような行の区切り）、ページ番号の範囲の圧縮、副項目の折り返した行の字下げ、縦組みの本の索引を横組みにして巻末から始めること、参考文献の書式の選択（著者名の順の一覧を含む）と書誌のぶら下げ字下げ（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。
 - **Web 経路のスタイル**：HTML と EPUB で、見出しの `font` と `size`、文字スタイルの `size`、`caption` と `sidenote` 以外の段落スタイルの `size` を使うこと、Web 経路のフォントのサブセット化（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。

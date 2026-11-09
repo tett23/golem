@@ -1198,6 +1198,8 @@ css cfg book =
           -- the same style in a row: space-between, also 0 against the spaces before and after (docs/adr/0189)
           spaced = hpsSpaceBefore ps > 0 || hpsSpaceAfter ps > 0
        in ["p.ps-" <> name <> " { font-family: " <> fontStack role <> "; }" | name /= "body", Just role <- [hpsFont ps]]
+            -- the entries of the table of contents in the font of toc-<l> (docs/adr/0264)
+            <> ["nav.toc li." <> name <> " { font-family: " <> fontStack role <> "; }" | "toc-" `T.isPrefixOf` name, Just role <- [hpsFont ps]]
             <> [sel <> " { margin-block: 0; }" | hpsKeepLines ps]
             <> [ sel <> " { padding-inline-start: " <> hpsIndent ps <> "; text-indent: " <> hpsFirstLineIndent ps <> "; }"
                | indentRule name ps

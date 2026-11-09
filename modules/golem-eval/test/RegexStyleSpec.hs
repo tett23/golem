@@ -116,7 +116,8 @@ tests =
                       $ Map.insert "plain" noParaDef {psRegexStyles = Just []} (stParaStyles defaultStyle)
                 }
             r = regexRules st
-        Map.keys r @?= ["body", "caption", "quote", "sidenote", "table", "verse"]
+        -- toc-1 to toc-6 are based on body too (docs/adr/0264)
+        Map.keys r @?= ["body", "caption", "quote", "sidenote", "table", "toc-1", "toc-2", "toc-3", "toc-4", "toc-5", "toc-6", "verse"]
         map snd (Map.findWithDefault [] "quote" r) @?= ["bold"]
     ]
   where

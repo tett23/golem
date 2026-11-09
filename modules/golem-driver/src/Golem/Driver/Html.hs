@@ -63,6 +63,8 @@ htmlParaStyles style =
           (cssLength (fromMaybe (Zw 0) (psEndIndent d)))
       )
     | n <- Map.keys (stParaStyles style),
+      -- toc-<l> as built in writes nothing: the table of contents of HTML is as before (docs/adr/0264)
+      not ("toc-" `T.isPrefixOf` n && Map.lookup n (stParaStyles style) == Map.lookup n builtinParaStyles),
       Just d <- [paraStyle style (Just n)]
     ]
   where

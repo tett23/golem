@@ -60,6 +60,7 @@ module Golem.Project.Style
     styleSchema,
     builtinCharStyles,
     builtinParaStyles,
+    tocStyleName,
     builtinAkiSetNames,
     lineBreaksValues,
     HeadingStyle (..),
@@ -517,7 +518,9 @@ builtinCharStyles =
       -- superscript and subscript (docs/adr/0269)
       ("subscript", noCharDef {csPosition = Just P.PositionSubscript}),
       ("superscript", noCharDef {csPosition = Just P.PositionSuperscript}),
-      ("url", noCharDef)
+      ("url", noCharDef),
+      -- the page numbers of the table of contents (docs/adr/0264)
+      ("toc-page-number", noCharDef)
     ]
 
 {- | The first definition that writes a size on the based-on chain of the
@@ -550,10 +553,10 @@ markSizeOver :: Maybe Dim -> Maybe Text -> Map Text CharStyleDef -> Map Text Cha
 markSizeOver (Just d) Nothing = Map.adjust (\c -> c {csSize = Just d}) "note-mark"
 markSizeOver _ _ = id
 
--- | The built-in paragraph styles: body, verse (a line before and after it, docs/adr/0180), caption, sidenote, table (docs/adr/0262) and code (golem-driver ADR 0017).
+-- | The built-in paragraph styles: body, verse (a line before and after it, docs/adr/0180), caption, sidenote, table (docs/adr/0262), code (golem-driver ADR 0017) and toc-1 to toc-6 (docs/adr/0264).
 builtinParaStyles :: Map Text ParaStyleDef
 builtinParaStyles =
-  Map.fromList
+  Map.fromList $
     [ ("body", bodyDefaults),
       ("verse", noParaDef {psBasedOn = Just "body", psLineBreaks = Just KeepLines, psSpaceBetween = Just 1, psSpaceBefore = Just 1, psSpaceAfter = Just 1, psIndent = Just (Zw 2), psFirstLineIndent = Just (Zw (-2))}),
       -- caption and sidenote do not take the indents of body (golem-driver ADR 0043)
@@ -563,8 +566,21 @@ builtinParaStyles =
       ("table", noIndents {psBasedOn = Just "body"}),
       ("code", noParaDef {psFont = Just "code", psPadding = Just (Zw (1 % 2))})
     ]
+      -- the entries of the table of contents by level (docs/adr/0264)
+      <> [(tocStyleName l, tocStyleDefault l) | l <- [1 .. 6]]
   where
     noIndents = noParaDef {psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0), psEndIndent = Just (Zw 0)}
+
+-- | The paragraph style of the entries of the table of contents of a level (docs/adr/0264).
+tocStyleName :: Int -> Text
+tocStyleName l = "toc-" <> T.pack (show l)
+
+{- | The built-in definition of toc-<l> (docs/adr/0264): based on body, of
+the size of the grid, all its lines indented by l - 1 characters, no
+first-line indent and no end indent.
+-}
+tocStyleDefault :: Int -> ParaStyleDef
+tocStyleDefault l = noParaDef {psBasedOn = Just "body", psSize = Just (Zw 1), psIndent = Just (Zw (fromIntegral (l - 1))), psFirstLineIndent = Just (Zw 0), psEndIndent = Just (Zw 0)}
 
 {- | The paragraph styles that never indent: caption, sidenote
 (golem-driver ADR 0043) and table (docs/adr/0262).
