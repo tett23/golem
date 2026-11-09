@@ -2994,8 +2994,10 @@ P1、P3、P4 の「次のブロック」は、[golem-layout ADR 0026](golem-layo
 前の図版がまだ置かれていない位置に書いた図版と、書いた位置のページに置けない回した図版を、待つ図版とする（[golem-layout ADR 0033](golem-layout/adr/0033-read-waiting-figures-from-the-placement.md)）。
 図版は、待つか、自ら送られれば、置かれるまで残る。
 自ら送られる図版は、流れが来た段より後の段に、直前の行アキと、残りに足りない `@need-lines` に動かされずに置かれた図版か、後に書いた図版でないブロックの最初の部分より後に置かれた図版である。
+`@need-lines` が空きの前の残りで満たされても、空きの行を引いた残りに入らずに後の段へ移った図版は、`@need-lines` に動かされた図版であり、自ら送られた図版ではない（[golem-layout ADR 0044](golem-layout/adr/0044-read-the-figures-moved-by-need-lines-judged-before-spaces.md)）。
 流れが来た段は、前に書いたブロックと書いた位置に置かれた図版の最後の部分の段か、その後に書いた改ページが進むページの最初の段である。
 空きの前で判定した `@need-lines` で次の段へ進めば、その段である。
+空きが `@need-lines` の前にあっても後にあっても、同じである（[golem-layout ADR 0044](golem-layout/adr/0044-read-the-figures-moved-by-need-lines-judged-before-spaces.md)）。
 [golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の「実装すること」の 3 は、後に書いたブロックの最初の部分より後の位置に置かれた図版を待つ図版とするが、それでは、後のブロックが次の段へ進んで先に置かれた待つ図版を見落とし、前の `@need-lines` を受け取る自ら送られる図版を待つ図版に数える。
 述語は、改ページが待たせる図版を、入力の流れと出力だけから読む（[golem-layout ADR 0033](golem-layout/adr/0033-read-waiting-figures-from-the-placement.md)）。
 I2、I4、I5、I6、I8 は、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md) の「実装すること」の 6 の表のとおりに読む。
@@ -3004,6 +3006,8 @@ P9 は、空きの直後に `@need-lines` がある入力で、二つを入れ�
 前のブロックと次のブロックのあいだに、改ページの印、`@no-page-break`、`@page-lines` がある入力は判定しない。
 述語は `modules/golem-layout/test/PaginateInvariants.hs` にあり、改ページの入力と出力だけを読む。
 P9 だけは、入れ替えた入力をテストが渡す改ページで組み直す。
+[golem-layout ADR 0044](golem-layout/adr/0044-read-the-figures-moved-by-need-lines-judged-before-spaces.md) の「不変条件」の節の W3 は、P9 が入れ替えた入力の出力が元の出力と同じとき、述語が二つの入力から同じ待つ図版を読むことを求める。
+W3 も、すべての入力のテストと抜き取りのテストで確かめる。
 `modules/golem-layout/test/PaginateInvariantsSpec.hs` は、段の行の数が 3 から 5、段の数が 1 と 2 の版面に、段落、注を持つ段落、見出し、注を持つ見出し、改丁の見出し、1 行と C − 1 行と C 行（C は段の行の数）の図版、一行の空き、改ページ、`@need-lines 2` と `@need-lines C − 1`（[golem-layout ADR 0035](golem-layout/adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md)）、1 行と 2 行の行アキを並べた流れを、要素の少ない順にすべて組み、どの述語も違反を返さないことを確かめる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 3）。
 プルリクエストの CI は要素 3 個まで、毎晩の `enum.yml` は要素 5 個まで調べる。
 毎晩の `enum.yml` は、段の行の数が 3 から 8 で、段の行の数以下のすべての図版を含む流れから、要素 6 個の流れを 500 万、種を固定した擬似乱数で抜き取って調べる。
