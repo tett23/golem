@@ -539,3 +539,52 @@ run needMoreSpace46Here {
     n.pos = 0 and sp.pos = 1 and m.pos = 2 and b.pos = 3 and n.lines = 1 and m.lines = 3
       and base27[p] and needMet[p] and spaceKeeps35[p] and here[p, sp] and here[p, b]
 } for 4 but 5 Int, 8 Placement
+
+-- docs/adr/0261: the keep options of paragraph styles. A paragraph of
+-- Kept has its own keep-first-lines and keep-last-lines (1 to 3), one of
+-- AllLines is not broken; the others keep 2 and 2, the rule before.
+
+sig Kept in Para {
+  kf: one Int,
+  kl: one Int
+}
+
+sig AllLines in Para {}
+
+fact keeps { all q: Kept | q.kf >= 1 and q.kf <= 3 and q.kl >= 1 and q.kl <= 3 }
+
+fun kFirst[q: Para]: Int { q in Kept implies q.kf else 2 }
+fun kLast[q: Para]: Int { q in Kept implies q.kl else 2 }
+
+-- the lines of a paragraph in the column, and in the next one
+fun linesHere[p: Placement, q: Para]: Int { #{l: para.q | here[p, l]} }
+fun linesNext[p: Placement, q: Para]: Int { minus[#para.q, linesHere[p, q]] }
+
+pred broken[p: Placement, q: Para] { linesHere[p, q] > 0 and linesNext[p, q] > 0 }
+
+-- K1: the first part has keep-first-lines lines, but from an empty column
+pred keepFirst[p: Placement] {
+  all q: Para | (broken[p, q] and not startsColumn[p, first[q]]) implies linesHere[p, q] >= kFirst[q]
+}
+
+-- K2: the last part has keep-last-lines lines, but after a column the paragraph starts empty
+pred keepLast[p: Placement] {
+  all q: Para | (broken[p, q] and not startsColumn[p, first[q]]) implies linesNext[p, q] >= kLast[q]
+}
+
+-- K3: a paragraph of keep-all-lines is not broken, but from an empty column
+pred keepAll[p: Placement] {
+  all q: AllLines | broken[p, q] implies startsColumn[p, first[q]]
+}
+
+-- no input has no placement that meets the keep options with the base rules
+run keepNone { inDomain and (no p: Placement | base[p] and keepFirst[p] and keepLast[p] and keepAll[p]) } for 5 but 5 Int, 14 Placement
+
+-- the keeps of 2 and 2 are the rules of the orphan and the widow: no placement meets one and not the other
+run keepDefaultDiffers {
+  inDomain and no Kept and no AllLines
+  some p: Placement | base[p] and ((orphan[p] and widow[p]) iff not (keepFirst[p] and keepLast[p]))
+} for 5 but 5 Int, 14 Placement
+
+-- with the keeps, a placement that meets them exists for a paragraph of keep-all-lines broken from a column that is not empty: the model is not empty
+run keepAllSome { inDomain and some AllLines and Col.used > 0 and (some p: Placement | base[p] and keepFirst[p] and keepLast[p] and keepAll[p]) } for 5 but 5 Int, 14 Placement

@@ -16,6 +16,10 @@ module Golem.Layout.Paginate.Types
     RuledBody (..),
     PlacedRule (..),
     HeadingBlock (..),
+    Keep (..),
+    defaultKeep,
+    StartOf (..),
+    Part (..),
   )
 where
 
@@ -49,14 +53,38 @@ data LineBox = LineBox
   }
   deriving stock (Eq, Show)
 
+{- | How a paragraph is broken between columns (docs/adr/0261): the
+fewest lines (verse lines of a stanza) of its first and last parts, and
+whether it is not broken at all.
+-}
+data Keep = Keep {kFirst :: !Int, kLast :: !Int, kAll :: !Bool}
+  deriving stock (Eq, Show)
+
+-- | The rule before docs/adr/0261: no first or last line alone, broken anywhere.
+defaultKeep :: Keep
+defaultKeep = Keep 2 2 False
+
+{- | What a start before the flow starts (docs/adr/0260, docs/adr/0261): a
+section, by its number in the order of the manifest, or a paragraph of a
+style with page-break, by its span.
+-}
+
+-- | The first or the last part of a paragraph broken between columns (docs/adr/0261).
+data Part = FirstPart | LastPart
+  deriving stock (Eq, Show)
+
+data StartOf = OfSection !Int | OfParagraph !SrcSpan
+  deriving stock (Eq, Show)
+
 data Flow
-  = FParagraph [LineBox]
+  = -- | a paragraph and how it is broken (docs/adr/0261)
+    FParagraph !Keep [LineBox]
   | {- | a stanza of verse, a paragraph of line-breaks = "keep": its verse
     lines, each the lines it is broken into (docs/adr/0180). A verse line
     is not broken between columns; a column does not end or start with a
     single verse line of a stanza.
     -}
-    FStanza [[LineBox]]
+    FStanza !Keep [[LineBox]]
   | -- | a heading, placed whole over 'fhSpan' grid lines (golem-driver ADR 0003)
     FHeading {fhLevel :: !Int, fhRecto :: !Bool, fhSpan :: !Int, fhLines :: [LineBox]}
   | FDefTerm [LineBox]
@@ -72,7 +100,7 @@ data Flow
   | {- | the rest of a paragraph whose first lines are beside a wrapped
     figure: no orphan rule for its first line (golem-driver ADR 0005)
     -}
-    FContinued [LineBox]
+    FContinued !Keep [LineBox]
   | {- | a table: the grid lines of space before it (not at the first line
     of a column), its header row (none when empty) and body rows, in grid
     lines (golem-driver ADR 0008, 0031), and the grid lines of its caption
@@ -86,13 +114,21 @@ data Flow
     FSpace !Int
   | -- | a forced break before what follows (docs/adr ADR 0017)
     FBreak !BreakKind
-  | {- | the start of a section (docs/adr/0260): its number in the order
-    of the manifest and the number of its first page. A break before what
-    follows: to an odd page for an odd start, to an even page for an even
-    one, and without a start to the next page unless the page is empty.
-    The page it opens is the first page of the section.
+  | {- | a start before what follows (docs/adr/0260, docs/adr/0261): of a
+    section, or of a paragraph of a style with page-break. Unlike a forced
+    break, it does nothing in an empty column or on an empty page: to the
+    next column unless the column is empty ('BreakColumn'), to the next
+    page unless the page is empty ('BreakPage'), and to an odd or an even
+    page ('BreakRecto', 'BreakVerso'), the figures sent on and the
+    continued notes placed first but for a column. The page a start of a
+    section opens is the first page of the section.
     -}
-    FSection !Int !(Maybe Integer)
+    FSection !StartOf !BreakKind
+  | {- | a paragraph kept with the first part of what follows, of at least
+    so many lines (docs/adr/0261): placed right after the paragraph, with
+    the span of the paragraph
+    -}
+    FKeepNext !SrcSpan !Int
   | {- | a code block: its rows, broken between any two of them; each part
     takes the grid lines of 'codeSpan' (golem-driver ADR 0017). The first
     part has the grid lines of the caption above it and at least
@@ -142,7 +178,7 @@ data Flow
 paragraph, or a heading (recto, grid lines, lines) as 'FHeading'.
 -}
 data RuledBody
-  = RuledLines ![LineBox]
+  = RuledLines !Keep ![LineBox]
   | RuledHeading {rhRecto :: !Bool, rhSpan :: !Int, rhLines :: ![LineBox]}
   deriving stock (Eq, Show)
 
@@ -245,6 +281,15 @@ data Unmet
     lines left in the column
     -}
     TallHeading !Int !Int !Int
+  | -- | a keep-with-next not met: the span of the paragraph (docs/adr/0261)
+    UnmetKeepNext !SrcSpan
+  | -- | a paragraph of keep-all-lines broken, as an empty column does not hold it: the id of its first line (docs/adr/0261)
+    SplitKept !Int
+  | {- | a first or last part shorter than its keep, placed in an empty
+    column (docs/adr/0261): which part, the id of the first line of the
+    paragraph, the lines asked for and the lines placed
+    -}
+    ShortPart !Part !Int !Int !Int
   deriving stock (Eq, Show)
 
 -- | The part of a table on a page, in grid lines.

@@ -28,6 +28,12 @@ module Golem.Layout.Paginate
     RuledBody (..),
     PlacedRule (..),
     HeadingBlock (..),
+    Keep (..),
+    defaultKeep,
+    StartOf (..),
+    Part (..),
+    splitAtBreak,
+    firstPart,
     headingBlock,
     Need (..),
     lookAhead,
@@ -45,6 +51,7 @@ where
 
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (listToMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
@@ -146,8 +153,8 @@ or of the column a break placed them in, and recorded (golem-layout ADR
 -}
 placeAll :: Env -> St -> [Flow] -> St
 placeAll env st [] =
-  let st1 = maybe st (\(sp, _, _, _) -> addUnmet (UnmetNoBreak sp) st) (sNoBreak st)
-      st2 = st1 {sBreaks = [], sNeed = Nothing, sNeedAt = Nothing, sNoBreak = Nothing, sBlank = []}
+  let st1 = foldl' (\s' (u, _, _, _, _) -> addUnmet u s') st (sNoBreak st)
+      st2 = st1 {sBreaks = [], sNeed = Nothing, sNeedAt = Nothing, sNoBreak = [], sBlank = []}
       dropBlanks s = foldl' (\s' (sp, _) -> addUnmet (DroppedBlank sp) s') s (sBlank st1)
    in if null (sBlank st1)
         then flushDeferred env st2
@@ -159,7 +166,11 @@ placeAll env st (f : rest) = case f of
   -- a no-break with nothing before it, or after a figure sent on, cannot be met
   FNoBreak sp
     | not (sSeen st) || sLastDeferred st -> placeAll env (addUnmet (UnmetNoBreak sp) st) rest
-    | otherwise -> placeAll env st {sNoBreak = Just (sp, sPage st, sColumn st, length (sSlots st))} rest
+    | otherwise -> placeAll env (waitFor (UnmetNoBreak sp) (1, False) st) rest
+  -- a keep-with-next as a no-break, the first part of what follows in the column (docs/adr/0261)
+  FKeepNext sp n
+    | not (sSeen st) || sLastDeferred st -> placeAll env (addUnmet (UnmetKeepNext sp) st) rest
+    | otherwise -> placeAll env (waitFor (UnmetKeepNext sp) (nextFirstLines n rest) st) rest
   -- the larger need-lines is kept; one larger than the need-lines judged is judged again (golem-layout ADR 0035),
   -- before the spaces placed after the block before it (golem-layout ADR 0043)
   FNeedLines sp n -> placeAll env (needMore env sp n st) rest
@@ -283,6 +294,7 @@ waitsFor = \case
   FBreak _ -> True
   FSection {} -> True
   FNoBreak _ -> True
+  FKeepNext {} -> True
   FNeedLines _ _ -> True
   FAdjustLines _ _ -> True
   FBlank _ _ -> True
@@ -340,25 +352,26 @@ adjustLines env st sp k =
         | otherwise = AdjustOneLine
    in if got /= want then addUnmet (UnmetAdjust sp got limit) st1 else st1
 
--- | A paragraph before a no-break keeps its last lines with what follows.
+-- | A paragraph before a no-break or a keep-with-next keeps its last lines with what follows.
 placeFlow :: Env -> St -> Flow -> [Flow] -> St
 placeFlow env st f rest = case (f, keptNeed env rest) of
-  (FParagraph ls, Just n) -> placeKept env (placeLines env) st True ls n
+  (FParagraph kp ls, Just n) -> placeKept env kp (placeLines env kp) st True ls n
   -- a stanza keeps its last verse lines as a paragraph its last lines (docs/adr/0205)
-  (FStanza vs, Just n) -> placeKept env (placeStanza env) st True vs n
-  (FContinued ls, Just n) -> placeKept env (placeLines env) st False ls n
-  (FDefTerm ls, Just n) -> placeKept env (placeLines env) (keep env st (\s -> needIn env s (termNeed ls) (nextNeed env rest))) True ls n
+  (FStanza kp vs, Just n) -> placeKept env kp (placeStanza env kp) st True vs n
+  (FContinued kp ls, Just n) -> placeKept env kp (placeLines env kp) st False ls n
+  (FDefTerm ls, Just n) -> placeKept env defaultKeep (placeLines env defaultKeep) (keep env st (\s -> needIn env s (termNeed ls) (nextNeed env rest))) True ls n
   _ -> place env st f rest
 
-{- | The last two lines, or the whole paragraph of three lines or fewer, go
-to the next column, not from an empty one; of a stanza, its verse lines
-(docs/adr/0205).
+{- | The last kLast lines, or the whole paragraph of kLast lines or fewer
+or of fewer than kFirst + kLast, go to the next column, not from an
+empty one; of a stanza, its verse lines (docs/adr/0205, docs/adr/0261).
+With 'defaultKeep', the last two lines, or the whole of three or fewer.
 -}
-placeKept :: Env -> (St -> Bool -> [a] -> St) -> St -> Bool -> [a] -> Need -> St
-placeKept env placeIn st isStart ls n =
+placeKept :: Env -> Keep -> (St -> Bool -> [a] -> St) -> St -> Bool -> [a] -> Need -> St
+placeKept env kp placeIn st isStart ls n =
   let st1 = placeIn st isStart ls
       len = length ls
-      (front, back) = splitAt (len - (if len <= 3 then len else 2)) ls
+      (front, back) = splitAt (len - (if kAll kp || len <= kLast kp || len < kFirst kp + kLast kp then len else kLast kp)) ls
       stA = placeIn st isStart front
       here = placeIn stA (isStart && null front) back
       fits s = needIn env s mempty n <= free env s
@@ -370,16 +383,38 @@ placeKept env placeIn st isStart ls n =
             then here
             else if isEmpty stA then st1 else placeIn (nextColumn env stA) (isStart && null front) back
 
--- | The flow after a no-break must start in the column where the flow before it ended.
+{- | A no-break or a keep-with-next waiting for the next flow
+(docs/adr/0261): at the place of the first, the larger of the lines they
+ask for.
+-}
+waitFor :: Unmet -> (Int, Bool) -> St -> St
+waitFor u k st = case sNoBreak st of
+  [] -> st {sNoBreak = [(u, sPage st, sColumn st, length (sSlots st), k)]}
+  ws@((_, p, c, n, (k0, l0)) : _) ->
+    let both = (max k0 (fst k), l0 || snd k)
+     in st {sNoBreak = [(u', p, c, n, both) | (u', _, _, _, _) <- ws <> [(u, p, c, n, k)]]}
+
+{- | The flow after a no-break must start in the column where the flow
+before it ended; after a keep-with-next, its first part (docs/adr/0261).
+Each control waiting that is not met is recorded.
+-}
 checkNoBreak :: St -> St
 checkNoBreak st = case sNoBreak st of
-  Nothing -> st
-  Just (sp, p, c, n) ->
-    let grew po = poNumber po == p && poColumn po == c && length (poSlots po) > n
-        met
-          | (sPage st, sColumn st) == (p, c) = length (sSlots st) > n
-          | otherwise = any grew (sDone st)
-     in (if met then st else addUnmet (UnmetNoBreak sp) st) {sNoBreak = Nothing}
+  [] -> st
+  ws@((_, p, c, n, (k, linesOnly)) : _) ->
+    let linesIn = sum . map (slotLineCount linesOnly . snd) . drop n
+        added
+          | (sPage st, sColumn st) == (p, c) = linesIn (sSlots st)
+          | otherwise = maximum (0 : [linesIn (poSlots po) | po <- sDone st, poNumber po == p, poColumn po == c])
+        met = added >= max 1 k
+     in (if met then st else foldl' (\s' (u, _, _, _, _) -> addUnmet u s') st ws) {sNoBreak = []}
+
+-- | The lines a slot holds; one for a figure or a code block, none when only the lines count.
+slotLineCount :: Bool -> Slotted -> Int
+slotLineCount linesOnly = \case
+  SLine _ -> 1
+  SHeading _ m -> max 1 m
+  _ -> if linesOnly then 0 else 1
 
 applyBreaks :: Env -> St -> St
 applyBreaks env st = foldl' (applyBreak env) st {sBreaks = []} (sBreaks st)
@@ -387,23 +422,27 @@ applyBreaks env st = foldl' (applyBreak env) st {sBreaks = []} (sBreaks st)
 applyBreak :: Env -> St -> Pending -> St
 applyBreak env st = \case
   PendingBreak k -> applyBreakKind env st k
-  PendingSection i start -> sectionStart env st i start
+  PendingStart of_ k -> startBefore env st of_ k
 
-{- | The break before a section (docs/adr/0260), and the page it opens
-recorded as the first page of the section: to an odd page for an odd
-start and to an even page for an even one, as @page-break recto and
-verso; without a start, to the next page unless the page is empty. The
-figures sent on and the continued notes are placed first, before the
-first page of the section.
+{- | The start of a section (docs/adr/0260) or of a paragraph of a style
+with page-break (docs/adr/0261): to the next column unless the column is
+empty; to the next page unless the page is empty; to an odd or an even
+page, as @page-break recto and verso. Before a page, the figures sent on
+and the continued notes are placed first. The page a section starts on
+is recorded as its first page.
 -}
-sectionStart :: Env -> St -> Int -> Maybe Integer -> St
-sectionStart env st i start =
-  let st1 = case start of
-        Just s -> parityStart env (if odd s then odd else even) st
-        Nothing ->
+startBefore :: Env -> St -> StartOf -> BreakKind -> St
+startBefore env st of_ k =
+  let st1 = case k of
+        BreakColumn -> if isEmpty st then st else nextColumn env st
+        BreakPage ->
           let st0 = flushDeferred env st
            in if isEmpty st0 && sColumn st0 == 0 then st0 else nextPage env st0
-   in st1 {sSections = sSections st1 <> [(i, sPage st1)]}
+        BreakRecto -> parityStart env odd st
+        BreakVerso -> parityStart env even st
+   in case of_ of
+        OfSection i -> st1 {sSections = sSections st1 <> [(i, sPage st1)]}
+        OfParagraph _ -> st1
 
 applyBreakKind :: Env -> St -> BreakKind -> St
 applyBreakKind env st = \case
@@ -426,9 +465,9 @@ breakPage env st
 place :: Env -> St -> Flow -> [Flow] -> St
 place env st f rest = case f of
   FRuled {} -> placeRuled env st f rest
-  FParagraph ls -> placeLines env st True ls
-  FStanza vs -> placeStanza env st True vs
-  FContinued ls -> placeLines env st False ls
+  FParagraph kp ls -> placeLines env kp st True ls
+  FStanza kp vs -> placeStanza env kp st True vs
+  FContinued kp ls -> placeLines env kp st False ls
   -- the space before a table only below the first line of a column (golem-driver ADR 0031);
   -- in the columns gone on to, the header and the first row are kept together (golem-layout ADR 0025)
   -- the caption with the lines it touches (docs/adr/0262)
@@ -439,7 +478,7 @@ place env st f rest = case f of
           | sp + headed <= free env st || isEmpty st = st {sUsed = sUsed st + min sp (free env st)}
           | otherwise = keep env (nextColumn env st) (const headed)
      in placeTable env st1 i h rows capt below
-  FDefTerm ls -> placeLines env (keep env st (\s -> needIn env s (termNeed ls) need)) True ls
+  FDefTerm ls -> placeLines env defaultKeep (keep env st (\s -> needIn env s (termNeed ls) need)) True ls
   -- the notes of a heading count as the notes of a line do (golem-layout ADR 0013)
   FHeading _ recto n ls ->
     let st1 = if recto then parityStart env odd st else keep env st (\s -> needIn env s (Need n (noteLinesOf ls)) need)
@@ -460,9 +499,9 @@ place env st f rest = case f of
         -- the continued notes take the foot of the columns gone on to (golem-layout ADR 0025)
         st1 = keep env st0 (const size)
         st2 = putSlot st1 0 (SWrapped i) labels marks
-     in (placeLines env st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines env st2 False beside))}
+     in (placeLines env defaultKeep st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines env defaultKeep st2 False beside))}
   FBreak k -> st {sBreaks = sBreaks st <> [PendingBreak k]}
-  FSection i start -> st {sBreaks = sBreaks st <> [PendingSection i start]}
+  FSection of_ k -> st {sBreaks = sBreaks st <> [PendingStart of_ k]}
   FCode g caption first cont ls -> placeCode env st (g, caption, first, cont) True ls
   FSwitchColumns set ->
     let st1 = flushDeferred env st
@@ -477,6 +516,7 @@ place env st f rest = case f of
     | otherwise -> st {sUsed = sUsed st + max 0 (min n (free env st))}
   -- the controls of page breaks are handled in placeAll (docs/adr ADR 0030)
   FNoBreak _ -> st
+  FKeepNext {} -> st
   FNeedLines _ _ -> st
   FAdjustLines _ _ -> st
   FBlank _ _ -> st
@@ -507,21 +547,42 @@ placeCode env st c@(g, cap0, first, cont) isFirst ls@(l0 : _) =
         then placeCode env (nextColumn env st) c isFirst ls
         else if null rest then st1 else placeCode env (nextColumn env st1) c False rest
 
--- | Lines of one paragraph; orphans and widows are moved.
-placeLines :: Env -> St -> Bool -> [LineBox] -> St
-placeLines _ st _ [] = st
-placeLines env st isStart ls =
-  let n = length ls
-      k0 = fitting env st ls
-      k2 = splitAtBreak isStart n k0
-      -- a column of nothing but headings places a line as an empty one does,
-      -- when the line and a line of its notes are left room (golem-layout ADR 0019)
-      k = if k2 == 0 && (isEmpty st || (sHeadingOnly st && roomForLine env st ls)) then max 1 (min n k0) else k2
-   in if k >= n
-        then foldl' (putLine env) st ls
-        else
-          let st1 = foldl' (putLine env) st (take k ls)
-           in placeLines env (nextColumn env st1) (isStart && k == 0) (drop k ls)
+{- | Lines of one paragraph; orphans and widows are moved, by the keep of
+the paragraph (docs/adr/0261). A paragraph of keep-all-lines that its
+column does not hold starts the next column; one that an empty column
+does not hold either is broken, and that is recorded ('SplitKept'). A
+part shorter than its keep placed in an empty column is recorded
+('ShortPart').
+-}
+placeLines :: Env -> Keep -> St -> Bool -> [LineBox] -> St
+placeLines _ _ st _ [] = st
+placeLines env kp0 st0 isStart0 ls0@(l0 : _) = go kp0 st0 isStart0 ls0
+  where
+    pid = lbId l0
+    go _ st _ [] = st
+    go kp st isStart ls =
+      let n = length ls
+          k0 = fitting env st ls
+          -- a column of nothing but headings places a line as an empty one does,
+          -- when the line and a line of its notes are left room (golem-layout ADR 0019)
+          emptyish = isEmpty st || (sHeadingOnly st && roomForLine env st ls)
+          k2 = splitAtBreak kp isStart n k0
+          forced = k2 == 0 && emptyish
+          k = if forced then max 1 (min n k0) else k2
+       in if kAll kp && isStart && k0 < n
+            then
+              if isEmpty st || sHeadingOnly st
+                then go kp {kAll = False} (addUnmet (SplitKept pid) st) isStart ls
+                else go kp (nextColumn env st) isStart ls
+            else
+              if k >= n
+                then foldl' (putLine env) st ls
+                else
+                  let short =
+                        [ShortPart FirstPart pid (kFirst kp) k | forced, isStart, k < kFirst kp]
+                          <> [ShortPart LastPart pid (kLast kp) (n - k) | forced, n - k < kLast kp]
+                      st1 = foldl' (flip addUnmet) (foldl' (putLine env) st (take k ls)) short
+                   in go kp (nextColumn env st1) (isStart && k == 0) (drop k ls)
 
 {- | The verse lines of a stanza (docs/adr/0180): a verse line is not
 broken between columns, and a column neither ends with the first verse
@@ -530,26 +591,45 @@ counts lines. A stanza that cannot be placed so in an empty column, or in
 a column of nothing but headings, places as many verse lines as fit, or
 breaks its first verse line as a paragraph when none fits.
 -}
-placeStanza :: Env -> St -> Bool -> [[LineBox]] -> St
-placeStanza _ st _ [] = st
-placeStanza env st isStart vs =
-  let n = length vs
-      room = fitting env st (concat vs)
-      k0 = length (takeWhile (<= room) (drop 1 (scanl (+) 0 (map length vs))))
-      k2 = splitAtBreak isStart n k0
-      putVerses s = foldl' (putLine env) s . concat
-      split k = placeStanza env (nextColumn env (putVerses st (take k vs))) False (drop k vs)
-   in if k2 >= n
-        then putVerses st vs
-        else
-          if k2 > 0
-            then split k2
+placeStanza :: Env -> Keep -> St -> Bool -> [[LineBox]] -> St
+placeStanza _ _ st _ [] = st
+placeStanza env kp0 st0 isStart0 vs0 = go kp0 st0 isStart0 vs0
+  where
+    pid = maybe 0 lbId (listToMaybe (concat vs0))
+    go _ st _ [] = st
+    go kp st isStart vs =
+      let n = length vs
+          room = fitting env st (concat vs)
+          k0 = length (takeWhile (<= room) (drop 1 (scanl (+) 0 (map length vs))))
+          k2 = splitAtBreak kp isStart n k0
+          putVerses s = foldl' (putLine env) s . concat
+          split forced k =
+            let short =
+                  [ShortPart FirstPart pid (kFirst kp) k | forced, isStart, k < kFirst kp]
+                    <> [ShortPart LastPart pid (kLast kp) (n - k) | forced, n - k < kLast kp]
+             in go kp (nextColumn env (foldl' (flip addUnmet) (putVerses st (take k vs)) short)) False (drop k vs)
+          emptyish = isEmpty st || (sHeadingOnly st && roomForLine env st (concat vs))
+       in if kAll kp && isStart && k0 < n
+            then
+              if isEmpty st || sHeadingOnly st
+                then go kp {kAll = False} (addUnmet (SplitKept pid) st) isStart vs
+                else go kp (nextColumn env st) isStart vs
             else
-              if isEmpty st || (sHeadingOnly st && roomForLine env st (concat vs))
-                then case vs of
-                  v : more | k0 == 0 -> placeStanza env (placeLines env st isStart v) False more
-                  _ -> split k0
-                else placeStanza env (nextColumn env st) isStart vs
+              if k2 >= n
+                then putVerses st vs
+                else
+                  if k2 > 0
+                    then split False k2
+                    else
+                      if emptyish
+                        then case vs of
+                          v : more
+                            | k0 == 0 ->
+                                let st1 = placeLines env defaultKeep st isStart v
+                                    short = [ShortPart LastPart pid (kLast kp) (n - 1) | n - 1 < kLast kp, not (null more)]
+                                 in go kp (foldl' (flip addUnmet) st1 short) False more
+                          _ -> split True k0
+                        else go kp (nextColumn env st) isStart vs
 
 {- | A paragraph or heading with rules (golem-driver ADR 0027): the area of
 its rule before, its lines and the area of its rule after as one block.
@@ -570,7 +650,14 @@ placeRuled env st fr rest = case sJoin st of
   Just _ -> placeRuled env (flushJoin env st) fr rest
   Nothing ->
     let st1 = if isRecto (frBody fr) then parityStart env odd st else st
-        st2 = if isHeadingBody (frBody fr) && not (isRecto (frBody fr)) then keep env st1 (\s -> needIn env s (planParts fr (planOf env s fr rest Nothing)) (nextNeed env rest)) else st1
+        -- a ruled paragraph of keep-with-next goes whole with the first part of what follows (docs/adr/0261)
+        keepNext = case (frBody fr, keepAhead rest) of
+          (RuledLines {}, Just (_, n, _)) | n > 0 -> keptNeed env rest
+          _ -> Nothing
+        st2
+          | isHeadingBody (frBody fr) && not (isRecto (frBody fr)) = keep env st1 (\s -> needIn env s (planParts fr (planOf env s fr rest Nothing)) (nextNeed env rest))
+          | Just kn <- keepNext = keep env st1 (\s -> needIn env s (planParts fr (planOf env s fr rest Nothing)) kn)
+          | otherwise = st1
         plan2 = planOf env st2 fr rest Nothing
      in if planNeed env st2 fr plan2 <= free env st2
           then commitRuled env st2 fr plan2
@@ -586,7 +673,7 @@ commitRuled :: Env -> St -> Flow -> Plan -> St
 commitRuled env st fr (k1, before, k2, after, waiting) =
   let st1 = st {sRules = sRules st <> before, sUsed = sUsed st + k1, sJoin = Nothing}
       st2 = case frBody fr of
-        RuledLines ls -> foldl' (\s' (j, l) -> putLineKeeping env (length ls - 1 - j + k2) s' l) st1 (zip [0 ..] ls)
+        RuledLines _ ls -> foldl' (\s' (j, l) -> putLineKeeping env (length ls - 1 - j + k2) s' l) st1 (zip [0 ..] ls)
         RuledHeading _ n ls -> (putBlock env st1 n ls) {sHeadingOnly = isEmpty st || sHeadingOnly st}
    in st2 {sRules = sRules st2 <> after, sUsed = min (sUsed st2 + k2) (max (sUsed st2) (cap env st2 - sNoteLines st2)), sJoin = waiting}
 
@@ -600,7 +687,7 @@ splitRuled env st0 fr rest =
   let st = if isEmpty st0 then st0 else nextColumn env st0
       (k1, before, _, _, _) = planOf env st fr rest Nothing
    in case frBody fr of
-        RuledLines ls -> placeLines env st True ls
+        RuledLines kp ls -> placeLines env kp st True ls
         RuledHeading _ n ls ->
           let (_, _, k2, after, _) = planOf env st fr [] Nothing
            in if k1 + headingNeed env st n ls + k2 <= free env st

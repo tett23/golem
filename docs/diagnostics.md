@@ -125,6 +125,8 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | [G07046](#g07046) | 処理系による調整 | レイアウト |
 | [G07100](#g07100) | 一般的でない書き方 | レイアウト |
 | [G07101](#g07101) | 処理系による調整 | 出力 |
+| [G07112](#g07112) | 処理系による調整 | レイアウト |
+| [G07113](#g07113) | 処理系による調整 | レイアウト |
 | [G07123](#g07123) | 効果のない書き方 | レイアウト |
 | [G07124](#g07124) | 効果のない書き方 | レイアウト |
 | [G08008](#g08008) | 既定の使用 | 出力 |
@@ -5729,6 +5731,7 @@ style.toml の誤りです
 - 組み込みの段落スタイル `caption`、`sidenote`、`table` に、0 でない `indent`、`first-line-indent`、`end-indent` を書いた。キャプションと傍注と表のセルは字下げをしないためである。値が 0 なら誤りとせず、お知らせ [G03100](#g03100) を出す（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)、[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。三つに書けないキーは、0 でない `indent`、`first-line-indent`、`end-indent`、`rule-before`、`rule-after`、`background`、`padding`、`border`、`border-width` である。
 - 段落スタイルの `align` に九つのほかの値を書いたか、`space-before` か `space-after` に負の数を、`end-indent` に負の長さを書いた（[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。段落スタイル `code` に `align`、`space-before`、`space-after`、`end-indent` を書いた場合も同じである。
 - `border` か `border-width` を、`code` のほかの段落スタイルに書いた。`border-width` を zw で書いた（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+- 段落スタイルの `keep-with-next` に 0 から 5 のほかの整数を、`keep-first-lines` か `keep-last-lines` に 0 を、`keep-all-lines` に真偽値でない値を、`page-break` に `"any"`、`"column"`、`"page"`、`"recto"`、`"verso"` のほかの値を書いた。段落スタイル `code` にこれらのキーを書いた場合も同じである。負の整数は [G02103](#g02103) とする（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。
 - 文字スタイルの `background` か `padding` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。文字スタイルの `background` に `true` を書いた。文字スタイルの `padding` が負であるか、寸法として読めない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
 - 文字スタイルの `wrap-mark` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。`wrap-mark` を文字列で書いていない（[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md)）。
 - `[code]` か `[code.colors]` に未知のキーを書いた。`[code]` の `line-numbers` が真偽値でない。`[code]` の `number` が `{n}` などの差し込みを含まない。
@@ -9581,6 +9584,92 @@ HTML、EPUB、プレーンテキストは書く。
 ### 直し方
 
 `style` を、そのセクションのページの数を表せる表記（`lower-roman`、`arabic` など）に替える。
+
+## G07111
+
+段落スタイルの keep-with-next を守れませんでした
+
+- 重大度: 警告
+- 状態: 使用中
+
+### 意味
+
+`keep-with-next` を書いた段落スタイルの段落の最後の行と、後に続くものの最初の部分を、同じ段に置けなかった（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。
+後が送った図版の場合、後が `page-break` の段落か改丁の見出しで段を改めた場合、本の末尾の場合、合わせて段に入らない場合である。
+`@no-page-break` の [G07037](#g07037) と同じく、指定を守らずに組んだ結果なので警告とする。
+同じ位置に `@no-page-break` があれば、両方を報告する。
+PDF をターゲットに含むときだけ、改ページの繰り返しの最後の回の結果から求める。
+位置は段落の範囲である。
+
+- メッセージ: `段落スタイル <名前> の keep-with-next を守れませんでした`
+- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Paginate`、golem-typeset の `Golem.Typeset`）
+- ADR: [docs/adr/0261](adr/0261-keep-options-of-paragraph-styles.md)
+
+### 主な原因
+
+- 連動の連なりが長く、段に入らない。
+- 連動する段落の後に、図版や `page-break` の段落を置いた。
+
+### 直し方
+
+`keep-with-next` の行の数を減らすか、段落を短くする。
+連動させない段落には `keep-with-next = 0` を書く。
+
+## G07112
+
+段落スタイルの段落が段に入らないので、keep-all-lines を外して分けました
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+`keep-all-lines = true` の段落スタイルの段落が、空の段（見出しだけの段を含む）にも入らないので、`keep-first-lines` と `keep-last-lines` で分けて組んだ（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。
+段落は次の段から置いてから分けるので、前の段の残りが空く。
+罫線を持つ段落の [G07046](#g07046) と同じく、版面に入らないものを組むための唯一の置き方なので、お知らせとする。
+位置は、段落の最初の行の段落の範囲である。
+
+- メッセージ: `段落スタイル <名前> の段落が段に入らないので、keep-all-lines を外して分けました`
+- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Paginate`、golem-typeset の `Golem.Typeset`）
+- ADR: [docs/adr/0261](adr/0261-keep-options-of-paragraph-styles.md)
+
+### 主な原因
+
+- 段の行の数より長い段落に `keep-all-lines` を当てた。
+
+### 直し方
+
+段落を分けるか、その段落には `keep-all-lines` を当てない。
+`manifest.toml` の `[diagnostics]` の `silence-notices` に `"G07112"` を加えると、このお知らせを出さなくなる。
+
+## G07113
+
+段の行が足りないので、段落の部分を短くしました
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+空の段か見出しだけの段で、段落の行を一行も置けなくなるので入るだけの行を置いた結果、段落の最初の部分か最後の部分の行の数が、`keep-first-lines` か `keep-last-lines` より少なくなった（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。
+連では、行の数は韻文の行の数である。
+書いた値でも、既定の値（2）でも出す。
+置き方は変わらず、規則を守れなかった置き方を知らせる。
+位置は、段落の最初の行の段落の範囲である。
+
+- メッセージ: `段の行が足りないので、段落の <最初か最後> の部分を <置いた数> 行にしました（keep-<first か last>-lines = <求めた数>）`
+- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Paginate`、golem-typeset の `Golem.Typeset`）
+- ADR: [docs/adr/0261](adr/0261-keep-options-of-paragraph-styles.md)
+
+### 主な原因
+
+- 段の行の数が少ない。`@page-lines` で段を短くした。
+- 見出しが段の大半を取り、続く段落の行を一行しか置けない。
+
+### 直し方
+
+段の行の数を増やすか、段落の前で改ページする。
+`manifest.toml` の `[diagnostics]` の `silence-notices` に `"G07113"` を加えると、このお知らせを出さなくなる。
 
 ## G07114
 

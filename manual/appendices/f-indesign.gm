@@ -20,6 +20,7 @@ InDesign の操作の手順は説明しません。
 | 文字スタイルの [code: position] | 文字パネルの「位置」（上付き文字、下付き文字） |
 | 文字スタイルの [code: underline]、[code: strikethrough] | 下線、打ち消し線とそのオプション |
 | [code: @no-page-break] | 段落分離禁止オプションの「次の段落と連動」 |
+| 段落スタイルの [code: keep-with-next]、[code: keep-all-lines]、[code: keep-first-lines]、[code: keep-last-lines]、[code: page-break] | 段落分離禁止オプションの「次の段落と連動」「段落を分割しない」「段落の始めと終わりの行数」「段落の開始位置」 |
 | 表の [code: @caption]、[code: @column-widths]、[code: @style] | 表のキャプション、列の幅、表スタイルとセルスタイル |
 | マスターページ（[code: \[masters\]]） | 親ページ（InDesign 2022 より前はマスターページ） |
 | プロジェクトの [code: fonts/] | Document Fonts フォルダー |

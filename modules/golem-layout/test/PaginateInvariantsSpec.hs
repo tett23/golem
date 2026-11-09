@@ -21,6 +21,7 @@ one element past the depth: @GOLEM_ENUM_PAGINATION_SAMPLES@ of them.
 -}
 module PaginateInvariantsSpec (invariantTests, prDepth, KnownBug (..), knownBugs) where
 
+import Data.Bits (xor)
 import Data.List (intercalate, nub)
 import Data.Set qualified as Set
 import Data.Word (Word64)
@@ -40,7 +41,8 @@ invariantTests =
     "pagination invariants on every small input (docs/adr/0204)"
     [ testGroup "the enumeration of the inputs" enumerationTests,
       testGroup "the predicates" predicateTests,
-      testGroup "every input" exhaustiveTests
+      testGroup "every input" exhaustiveTests,
+      testGroup "the keep options of paragraph styles (docs/adr/0261)" keepTests
     ]
 
 {- | The elements of the flows of pull requests (docs/adr/0204, the
@@ -104,7 +106,7 @@ enumerationTests =
       map length (upTo 2 fullInputs) @?= [12, sum [2 * length (elementsFor c) | c <- [3 .. 8]], sum [2 * length (elementsFor c) ^ (2 :: Int) | c <- [3 .. 8]]],
     testCase "the lines are numbered from 0 in the order of the flow, the figures from 1000, the controls from 0" $
       enumFlows [EPara 2, EFigure 3, ENeedLines, ENotedHeading, ESpace, EBreak, EBlank 2, EFigure 1, EBlank 1, ERecto]
-        @?= [ FParagraph [LineBox 0 [] [] [] 0, LineBox 1 [] [] [] 0],
+        @?= [ FParagraph defaultKeep [LineBox 0 [] [] [] 0, LineBox 1 [] [] [] 0],
               FFigure 1000 3 [] [],
               FNeedLines (controlSpan 0) 2,
               FHeading 2 False 1 [LineBox 2 [NoteBody (noteOf 2) 1] [] [] 0],
@@ -117,7 +119,7 @@ enumerationTests =
             ],
     testCase "PL1, PL2, PL3, PL7: the sections start without a start and at 1 and 2, numbered among the controls (docs/adr/0260)" $ do
       [e | e@(ESection _) <- elementsFor 3] @?= [ESection Nothing, ESection (Just 1), ESection (Just 2)]
-      enumFlows [ENeedLines, ESection (Just 2), EBlank 1, ESection Nothing] @?= [FNeedLines (controlSpan 0) 2, FSection 1 (Just 2), FBlank (controlSpan 2) 1, FSection 3 Nothing],
+      enumFlows [ENeedLines, ESection (Just 2), EBlank 1, ESection Nothing] @?= [FNeedLines (controlSpan 0) 2, sectionFlow 1 (Just 2), FBlank (controlSpan 2) 1, sectionFlow 3 Nothing],
     testCase "the shortened enumeration has columns of 3 to 5 grid lines, and figures of 1, C - 1 and C lines (docs/adr/0208)" $ do
       [n | EFigure n <- shortElementsFor 3] @?= [1, 2, 3]
       [n | EFigure n <- shortElementsFor 4] @?= [1, 3, 4]
@@ -191,7 +193,7 @@ plainLines :: Int -> Int -> [LineBox]
 plainLines base n = [LineBox (base + k) [] [] [] 0 | k <- [0 .. n - 1]]
 
 para :: Int -> Int -> Flow
-para base n = FParagraph (plainLines base n)
+para base n = FParagraph defaultKeep (plainLines base n)
 
 heading :: Int -> Flow
 heading i = FHeading 2 False 1 (plainLines i 1)
@@ -226,18 +228,18 @@ predicateTests =
       [ testCase "I2: four lines in a column of three" $
           broken [para 0 4] [column 1 0 3 (map SLine [0 .. 3])] @?= [I2],
         testCase "I2: two lines, a note and its separator in a column of three" $
-          broken [FParagraph [notedLine 0, LineBox 1 [] [] [] 0]] [withNotes [(noteOf 0, 0, 1)] (column 1 0 3 [SLine 0, SLine 1])] @?= [I2],
+          broken [FParagraph defaultKeep [notedLine 0, LineBox 1 [] [] [] 0]] [withNotes [(noteOf 0, 0, 1)] (column 1 0 3 [SLine 0, SLine 1])] @?= [I2],
         testCase "I2: a figure that ends past the column" $
           broken [para 0 2, FFigure 1000 2 [] []] [column 1 0 3 [SLine 0, SLine 1, SFigure 1000]] @?= [I2],
         testCase "I2: a column filled exactly is not broken" $
-          broken [FParagraph [notedLine 0]] [withNotes [(noteOf 0, 0, 1)] (column 1 0 3 [SLine 0])] @?= [],
+          broken [FParagraph defaultKeep [notedLine 0]] [withNotes [(noteOf 0, 0, 1)] (column 1 0 3 [SLine 0])] @?= [],
         testCase "I2: a heading recorded as taller than its column is not judged" $
           broken [FHeading 2 False 4 (plainLines 0 1)] [(column 1 0 3 [SHeading 0 1]) {poUnmet = [TallHeading 0 4 3]}] @?= [],
         testCase "I2: a figure taller than the column is broken" $
           broken [FFigure 1000 4 [] []] [column 1 0 3 [SFigure 1000]] @?= [I2],
         testCase "I2: the first line of a paragraph in an empty column, its note continued, is not judged" $
           broken
-            [FParagraph [LineBox 0 [NoteBody (noteOf 0) 5] [] [] 0]]
+            [FParagraph defaultKeep [LineBox 0 [NoteBody (noteOf 0) 5] [] [] 0]]
             [withNotes [(noteOf 0, 0, 3)] (column 1 0 3 [SLine 0]), withNotes [(noteOf 0, 3, 2)] (column 2 0 3 [])]
             @?= []
       ],
@@ -296,10 +298,10 @@ predicateTests =
     testGroup
       "I7 a note on the page of its mark"
       [ testCase "I7: the note of a line on the next page" $
-          broken [FParagraph [notedLine 0]] [column 1 0 3 [SLine 0], withNotes [(noteOf 0, 0, 1)] (column 2 0 3 [])] @?= [I7],
+          broken [FParagraph defaultKeep [notedLine 0]] [column 1 0 3 [SLine 0], withNotes [(noteOf 0, 0, 1)] (column 2 0 3 [])] @?= [I7],
         testCase "I7: a note continued on the next page is not broken" $
           broken
-            [FParagraph [LineBox 0 [NoteBody (noteOf 0) 2] [] [] 0]]
+            [FParagraph defaultKeep [LineBox 0 [NoteBody (noteOf 0) 2] [] [] 0]]
             [withNotes [(noteOf 0, 0, 1)] (column 1 0 3 [SLine 0]), withNotes [(noteOf 0, 1, 1)] (column 2 0 3 [])]
             @?= [],
         testCase "I7: the note of a heading in the other column of its page is not broken" $
@@ -321,19 +323,19 @@ predicateTests =
     testGroup
       "PL1, PL2, PL3, PL7 the page labels and the breaks before sections (I1, I2, I3, I7 of docs/adr/0260)"
       [ testCase "PL1: a section at 2 that starts on an odd page" $
-          broken [para 0 1, FSection 0 (Just 2), para 1 1] [column 1 0 3 [SLine 0], blank 2, (column 3 0 3 [SLine 1]) {poSections = [0]}] @?= [PL1],
+          broken [para 0 1, sectionFlow 0 (Just 2), para 1 1] [column 1 0 3 [SLine 0], blank 2, (column 3 0 3 [SLine 1]) {poSections = [0]}] @?= [PL1],
         testCase "PL1, PL2, PL3, PL7: a section at 1 on page 3 after a blank page breaks nothing" $
-          broken [para 0 1, FSection 0 (Just 1), para 1 1] [column 1 0 3 [SLine 0], blank 2, (column 3 0 3 [SLine 1]) {poSections = [0]}] @?= [],
+          broken [para 0 1, sectionFlow 0 (Just 1), para 1 1] [column 1 0 3 [SLine 0], blank 2, (column 3 0 3 [SLine 1]) {poSections = [0]}] @?= [],
         testCase "PL2: the pages after the first page of a section are numbered on from it" $
-          broken [FSection 0 (Just 3), para 0 4] [(column 1 0 3 (map SLine [0 .. 2])) {poSections = [0]}, column 2 0 3 [SLine 3]] @?= [],
+          broken [sectionFlow 0 (Just 3), para 0 4] [(column 1 0 3 (map SLine [0 .. 2])) {poSections = [0]}, column 2 0 3 [SLine 3]] @?= [],
         testCase "PL3: of two sections on one page, the last numbers it" $
-          broken [para 0 1, FSection 0 (Just 1), FSection 1 Nothing, para 1 1] [column 1 0 3 [SLine 0], blank 2, (column 3 0 3 [SLine 1]) {poSections = [0, 1]}] @?= [],
+          broken [para 0 1, sectionFlow 0 (Just 1), sectionFlow 1 Nothing, para 1 1] [column 1 0 3 [SLine 0], blank 2, (column 3 0 3 [SLine 1]) {poSections = [0, 1]}] @?= [],
         testCase "PL7: a line after a section on a page before its first page" $
-          broken [para 0 1, FSection 0 Nothing, para 1 1] [column 1 0 3 [SLine 0, SLine 1], (column 2 0 3 []) {poSections = [0]}] @?= [PL7],
+          broken [para 0 1, sectionFlow 0 Nothing, para 1 1] [column 1 0 3 [SLine 0, SLine 1], (column 2 0 3 []) {poSections = [0]}] @?= [PL7],
         testCase "PL7: a line before a section on its first page" $
-          broken [para 0 1, FSection 0 Nothing, para 1 1] [(column 1 0 3 [SLine 0, SLine 1]) {poSections = [0]}] @?= [PL7],
+          broken [para 0 1, sectionFlow 0 Nothing, para 1 1] [(column 1 0 3 [SLine 0, SLine 1]) {poSections = [0]}] @?= [PL7],
         testCase "PL7: a section with no page and a line placed after it" $
-          broken [para 0 1, FSection 0 Nothing, para 1 1] [column 1 0 3 [SLine 0], column 2 0 3 [SLine 1]] @?= [PL7]
+          broken [para 0 1, sectionFlow 0 Nothing, para 1 1] [column 1 0 3 [SLine 0], column 2 0 3 [SLine 1]] @?= [PL7]
       ],
     testGroup
       "P1 need-lines met"
@@ -344,7 +346,7 @@ predicateTests =
         testCase "P1: the block first in an empty column is not broken" $
           broken [para 0 3, FNeedLines (controlSpan 0) 2, para 3 1] [column 1 0 4 (map SLine [0 .. 2]), column 2 0 4 [SLine 3]] @?= [],
         testCase "P1: the notes before the block count" $
-          broken [FParagraph [notedLine 0], FNeedLines (controlSpan 0) 2, para 1 1] [withNotes [(noteOf 0, 0, 1)] (column 1 0 4 [SLine 0, SLine 1])] @?= [P1],
+          broken [FParagraph defaultKeep [notedLine 0], FNeedLines (controlSpan 0) 2, para 1 1] [withNotes [(noteOf 0, 0, 1)] (column 1 0 4 [SLine 0, SLine 1])] @?= [P1],
         testCase "P1: a need-lines beyond the column is not judged" $
           broken [para 0 3, FNeedLines (controlSpan 0) 5, para 3 1] [(column 1 0 4 (map SLine [0 .. 3])) {poUnmet = [UnmetNeedLines (controlSpan 0) 5]}] @?= []
       ],
@@ -499,6 +501,70 @@ predicateTests =
     -- a figure sent on, a space, a figure that waits, need-lines 2 and the paragraph on line 2 of page 1 (golem-layout ADR 0047)
     passing = [para 0 1, FFigure 1000 3 [] [], FSpace 1, FFigure 1001 1 [] [], need 0, para 1 1]
     passingOut = [columnAt 1 0 3 [(0, SLine 0), (2, SLine 1)], column 2 0 3 [SFigure 1000], column 3 0 3 [SFigure 1001]]
+
+-- the keep options (docs/adr/0261)
+
+{- | The hash of the placements of every input of 'inputs' up to 3
+elements, the 'ShortPart' recorded by docs/adr/0261 left out: pinned from
+the implementation before docs/adr/0261 (K7). FNV-1a of 64 bits over the
+characters of 'show' of each placement.
+-}
+placementsHash :: Word64
+placementsHash = foldl' step 14695981039346656037 [c | t <- upTo 3 inputs, i <- t, c <- show (map placed (paginateInput i))]
+  where
+    step h c = (h `xor` fromIntegral (fromEnum c)) * 1099511628211
+    placed p = (poNumber p, poColumn p, poBlank p, poSlots p, poFootnotes p, poLabels p, poMarks p, poTables p, poLines p, filter (not . isShort) (poUnmet p), poSections p)
+    isShort = \case
+      ShortPart {} -> True
+      _ -> False
+
+-- | The keep options: K1 to K6 by hand, every input of 'keepInputs', and K7.
+keepTests :: [TestTree]
+keepTests =
+  [ testCase "K7: every input of the enumeration of docs/adr/0208 up to 3 elements is placed as before docs/adr/0261" $
+      placementsHash @?= 3327068915294146639,
+    testCase "the elements of the keep options: 35 in columns of 3 grid lines" $ do
+      length (keepElementsFor 3) @?= 15 + 6 + 2 + 4 + 4 + 4
+      -- a keep-with-next only after a paragraph or a stanza, a start only before one
+      enumFlows [EHeading, EKeepNext 2, EStart BreakPage, EPara 1] @?= [FHeading 2 False 1 [LineBox 0 [] [] [] 0], FSection (OfParagraph (controlSpan 1)) BreakPage, FParagraph defaultKeep [LineBox 1 [] [] [] 0]]
+      enumFlows [EPara 1, EKeepNext 2, EStart BreakPage, EHeading] @?= [FParagraph defaultKeep [LineBox 0 [] [] [] 0], FKeepNext (controlSpan 0) 2, FHeading 2 False 1 [LineBox 1 [] [] [] 0]],
+    testGroup
+      "K1 to K6 by hand"
+      [ testCase "K1 first part: one line of a paragraph of keep-first-lines 3 left at the end of a column" $
+          keepBroken [FParagraph (Keep 3 1 False) (plainLines 0 4)] [column 1 0 3 [SLine 9, SLine 9, SLine 0], column 2 0 3 (map SLine [1 .. 3])] @?= [K1],
+        testCase "K1, K2: a short part from an empty column with ShortPart recorded is not broken" $
+          keepBroken [FParagraph (Keep 3 3 False) (plainLines 0 4)] [(column 1 0 3 (map SLine [0 .. 2])) {poUnmet = [ShortPart LastPart 0 3 1]}, column 2 0 3 [SLine 3]] @?= [],
+        testCase "K2 last part: one line of a paragraph of keep-last-lines 3 alone in the next column" $
+          keepBroken [para 9 1, FParagraph (Keep 1 3 False) (plainLines 0 4)] [column 1 0 4 [SLine 9, SLine 0, SLine 1, SLine 2], column 2 0 4 [SLine 3]] @?= [K2],
+        testCase "K3 keep-all-lines: a paragraph broken from a column that was not empty" $
+          keepBroken [para 9 1, FParagraph (Keep 2 2 True) (plainLines 0 4)] [column 1 0 3 [SLine 9, SLine 0, SLine 1], column 2 0 3 [SLine 2, SLine 3]] @?= [K3],
+        testCase "K3: broken from an empty column with SplitKept recorded is not broken" $
+          keepBroken [FParagraph (Keep 2 2 True) (plainLines 0 4)] [(column 1 0 3 (map SLine [0 .. 2])) {poUnmet = [SplitKept 0, ShortPart LastPart 0 2 1]}, column 2 0 3 [SLine 3]] @?= [],
+        testCase "K4 keep-with-next: held and not recorded breaks nothing; held and recorded is broken" $ do
+          let flows = [para 0 1, FKeepNext (controlSpan 0) 2, para 1 2]
+          keepBroken flows [column 1 0 3 [SLine 0, SLine 1, SLine 2]] @?= []
+          keepBroken flows [(column 1 0 3 [SLine 0, SLine 1, SLine 2]) {poUnmet = [UnmetKeepNext (controlSpan 0)]}] @?= [K4],
+        testCase "K4: apart and recorded breaks nothing; apart and not recorded is broken" $ do
+          let flows = [para 0 1, FKeepNext (controlSpan 0) 2, para 1 2]
+          keepBroken flows [(column 1 0 3 [SLine 0]) {poUnmet = [UnmetKeepNext (controlSpan 0)]}, column 2 0 3 [SLine 1, SLine 2]] @?= []
+          keepBroken flows [column 1 0 3 [SLine 0], column 2 0 3 [SLine 1, SLine 2]] @?= [K4],
+        testCase "K5 start: a paragraph of a start of a page after a line of its page" $
+          keepBroken [para 0 1, FSection (OfParagraph (controlSpan 0)) BreakPage, para 1 1] [column 1 0 3 [SLine 0, SLine 1]] @?= [K5],
+        testCase "K5: of a recto on an even page" $
+          keepBroken [para 0 1, FSection (OfParagraph (controlSpan 0)) BreakRecto, para 1 1] [column 1 0 3 [SLine 0], column 2 0 3 [SLine 1]] @?= [K5, K6],
+        testCase "K6: a start of a page that skips a page" $
+          keepBroken [para 0 1, FSection (OfParagraph (controlSpan 0)) BreakPage, para 1 1] [column 1 0 3 [SLine 0], blank 2, column 3 0 3 [SLine 1]] @?= [K6],
+        testCase "K5, K6: a start of a column in the next column breaks nothing" $
+          keepBroken [para 0 1, FSection (OfParagraph (controlSpan 0)) BreakColumn, para 1 1] [column 1 0 3 [SLine 0], column 1 1 3 [SLine 1]] @?= []
+      ],
+    testCase "K1 to K6 and I1 to I8 but I4 and I5 hold for every input of the keep options up to GOLEM_ENUM_DEPTH elements" $ do
+      depth <- enumDepth
+      case checkAllPar depth keepInputs (\input -> [Violation (show (breachOf b)) (breachWhy b) | b <- keepBreaches 1 (enumFlows (inElements input)) (paginateInput input)]) of
+        Passed _ -> pure ()
+        Failed k input vs -> assertFailure (report ("the smallest input of the keep options that breaks an invariant has " <> show k <> " elements") input vs)
+  ]
+  where
+    keepBroken flows ps = map breachOf (keepBreaches 1 flows ps)
 
 -- every input
 

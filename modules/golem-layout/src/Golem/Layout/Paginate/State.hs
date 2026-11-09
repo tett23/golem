@@ -51,9 +51,9 @@ data Env = Env
   }
 
 {- | A break not applied yet: a forced break (docs/adr ADR 0017), or the
-start of a section with its first page (docs/adr/0260).
+start of a section or a paragraph (docs/adr/0260, docs/adr/0261).
 -}
-data Pending = PendingBreak !BreakKind | PendingSection !Int !(Maybe Integer)
+data Pending = PendingBreak !BreakKind | PendingStart !StartOf !BreakKind
 
 data St = St
   { sPage :: !Int,
@@ -95,8 +95,11 @@ data St = St
     sAdjust :: !Int,
     -- | the controls not met, for the next column closed
     sUnmet :: ![Unmet],
-    -- | a no-break waiting for the next flow: page, column and slots before it
-    sNoBreak :: !(Maybe (SrcSpan, Int, Int, Int)),
+    {- | the no-break and the keep-with-next (docs/adr/0261) waiting for the
+    next flow: what is recorded when not met, the page, the column and the
+    slots before it, and the lines of the next flow that the column must take
+    and whether only its lines count
+    -} sNoBreak :: ![(Unmet, Int, Int, Int, (Int, Bool))],
     -- | the blank lines not placed yet, in the order written (docs/adr ADR 0046)
     sBlank :: ![(SrcSpan, Int)],
     -- | whether any flow has been placed
@@ -109,7 +112,7 @@ data St = St
 
 -- | Page 1, column 0, nothing placed, in the columns of the page.
 initialState :: Env -> St
-initialState env = St 1 0 0 0 [] [] [] [] [] [] [] [] [] [] (envBase env) {csFirstLine = 0} 0 [] Nothing Nothing Nothing [] 0 [] Nothing [] False False False
+initialState env = St 1 0 0 0 [] [] [] [] [] [] [] [] [] [] (envBase env) {csFirstLine = 0} 0 [] Nothing Nothing Nothing [] 0 [] [] [] False False False
 
 -- | The first grid line of the set of columns on this page.
 top :: St -> Int

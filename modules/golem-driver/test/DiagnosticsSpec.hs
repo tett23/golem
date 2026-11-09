@@ -145,6 +145,8 @@ everyNoticeProjects =
     style =
       replaceIn "lines = 30" "lines = 5" horizontalStyle
         <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\" }\nrule-after = { weight = \"0.5pt\" }\n\n[paragraph-styles.caption]\nindent = \"0zw\"\n"
+        -- a paragraph style that is not broken (G07112, docs/adr/0261)
+        <> "\n[paragraph-styles.kept]\nkeep-all-lines = true\n"
         <> fakeBody
         <> "\n[fonts.inkless]\nja = \"fonts/b.otf\"\n\n[character-styles.inkless]\nfont = \"inkless\"\n"
         -- the ways of writing to be retired of docs/adr/0177: G03114, G03115, G03116 and G03117
@@ -164,6 +166,8 @@ everyNoticeProjects =
           "@blank-line\n@blank-line\n\nc\n\n", -- G02094
           "@blank-line 5\n\nd\n\n", -- G04011
           "@page-break\n\n@page-lines -4\n\n# H\n\ne\n\n", -- G07100
+          "@style kept\n  " <> T.replicate 72 "あ" <> "\n\n", -- G07112 (docs/adr/0261)
+          "@page-break\n\n@page-lines -4\n\n" <> T.replicate 36 "あ" <> "\n\n", -- G07113 (docs/adr/0261)
           "``` highlight=1-1\nx\n```\n\n", -- G02108
           "@table src=t.csv\n\n", -- G02129 (docs/adr/0184)
           "@page-break\n\n@blank-line\n" -- G04008 and G04009

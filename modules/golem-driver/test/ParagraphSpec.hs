@@ -11,7 +11,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Look (..), Synthetic (..))
-import Golem.Layout.Paginate (Flow (..), LineBox (..), PageOut (..), Slotted (..), paginate)
+import Golem.Layout.Paginate (Flow (..), LineBox (..), PageOut (..), Slotted (..), defaultKeep, paginate)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), columnsFor, typeAreaFor)
 import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
@@ -74,7 +74,7 @@ hardBreakTests =
       let fs = 655360
       (flow, ls) <- verseLines (horizontal30 "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") "東京都\\\n千代田区\n"
       map snd ls @?= [fs, 0]
-      [length bs | FParagraph bs <- flow] @?= [2],
+      [length bs | FParagraph _ bs <- flow] @?= [2],
     testCase "PDF: a hard break in verse starts a verse line as before" $ do
       (_, withBreak) <- verseLines pdfStyle "@style verse\n  a\\\n  b\n"
       (_, plain) <- verseLines pdfStyle "@style verse\n  a\n  b\n"
@@ -82,10 +82,10 @@ hardBreakTests =
     testCase "PDF: a paragraph of hard breaks is one paragraph for the widow and orphan rules" $ do
       (flow, ls) <- verseLines (horizontal30 "") "一行目\\\n二行目\\\n三行目\n"
       length ls @?= 3
-      [length bs | FParagraph bs <- flow] @?= [3]
+      [length bs | FParagraph _ bs <- flow] @?= [3]
       -- one line left on a page: the paragraph moves whole rather than leave its first line alone
       case flow of
-        [p@(FParagraph _)] -> map (map fst . poSlots) (paginate 1 4 [FParagraph [LineBox i [] [] [] 0 | i <- [100, 101, 102]], p]) @?= [[0, 1, 2], [0, 1, 2]]
+        [p@(FParagraph _ _)] -> map (map fst . poSlots) (paginate 1 4 [FParagraph defaultKeep [LineBox i [] [] [] 0 | i <- [100, 101, 102]], p]) @?= [[0, 1, 2], [0, 1, 2]]
         other -> assertFailure (show (length other)),
     testCase "HTML: a hard break is br inside the p; verse keeps its lines" $ do
       withVerseProject "" "a\\\nb\n\n- c\\\n  d\n" $ \tmp -> do
@@ -145,7 +145,7 @@ verseTests =
           fs = 655360
       (flow, ls) <- verseLines style ("@style verse\n  " <> T.replicate 45 "あ" <> "\n\n  い\n")
       ls @?= [(30 * fs, 0), (28 * fs, 2 * fs), (30 * fs, 0)]
-      [map length vs | FStanza vs <- flow] @?= [[2], [1]]
+      [map length vs | FStanza _ vs <- flow] @?= [[2], [1]]
       [n | FSpace n <- flow] @?= [1],
     testCase "PDF: the hang in vertical writing, and the space between stanzas from the style" $ do
       let fs = maybe 0 (dimToSp 0) (parseDim "13Q")
@@ -155,11 +155,11 @@ verseTests =
     testCase "PDF: the attribute form and a label" $ do
       (flow, ls) <- verseLines pdfStyle "@label song\n@style verse\nあ\nい\n"
       length ls @?= 2
-      [map length vs | FStanza vs <- flow] @?= [[1, 1]],
+      [map length vs | FStanza _ vs <- flow] @?= [[1, 1]],
     testCase "PDF: a paragraph of line-breaks keep is one stanza of a verse line more than its line breaks (docs/adr/0180)" $ do
       (flow, _) <- verseLines pdfStyle "@style verse\n  a\n  b\n  c\n"
-      [map length vs | FStanza vs <- flow] @?= [[1, 1, 1]]
-      [() | FParagraph _ <- flow] @?= [],
+      [map length vs | FStanza _ vs <- flow] @?= [[1, 1, 1]]
+      [() | FParagraph _ _ <- flow] @?= [],
     testCase "PDF: a line of space between verse and body, before and after (docs/adr/0180)" $ do
       (after, _) <- verseLines pdfStyle "@style verse\n  a\n  b\n\nc\n"
       map flowKind after @?= ["stanza", "space 1", "paragraph"]
@@ -182,8 +182,8 @@ verseTests =
 -- | The kind of a flow, for the tests of the spaces around verse.
 flowKind :: Flow -> String
 flowKind = \case
-  FStanza _ -> "stanza"
-  FParagraph _ -> "paragraph"
+  FStanza _ _ -> "stanza"
+  FParagraph _ _ -> "paragraph"
   FSpace n -> "space " <> show n
   _ -> "other"
 

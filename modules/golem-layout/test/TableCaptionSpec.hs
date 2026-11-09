@@ -75,10 +75,10 @@ tableCaptionTests =
         let lb i = [LineBox i [] [] [] 0]
             tbl = FTable 50 0 (lb 100) [lb 200, lb 201] (lb 900) False
             slots = map (map snd . poSlots)
-        slots (paginate 1 4 [FParagraph (lb 0), tbl]) @?= [[SLine 0, SLine 900, SLine 100, SLine 200], [SLine 100, SLine 201]]
-        slots (paginate 1 4 [FParagraph [LineBox i [] [] [] 0 | i <- [0, 1]], tbl]) @?= [[SLine 0, SLine 1], [SLine 900, SLine 100, SLine 200, SLine 201]]
+        slots (paginate 1 4 [FParagraph defaultKeep (lb 0), tbl]) @?= [[SLine 0, SLine 900, SLine 100, SLine 200], [SLine 100, SLine 201]]
+        slots (paginate 1 4 [FParagraph defaultKeep [LineBox i [] [] [] 0 | i <- [0, 1]], tbl]) @?= [[SLine 0, SLine 1], [SLine 900, SLine 100, SLine 200, SLine 201]]
         -- the rules: the first of the table under the caption
-        map poTables (paginate 1 4 [FParagraph (lb 0), tbl]) @?= [[TableSegment 50 2 (Just 2) 3], [TableSegment 50 0 (Just 0) 1]],
+        map poTables (paginate 1 4 [FParagraph defaultKeep (lb 0), tbl]) @?= [[TableSegment 50 2 (Just 2) 3], [TableSegment 50 0 (Just 0) 1]],
       testCase "I8: below, the last row goes on with the caption when they do not fit together, after the header repeated" $ do
         let lb i = [LineBox i [] [] [] 0]
             tbl = FTable 50 0 (lb 100) [lb 200, lb 201, lb 202] (lb 900) True
@@ -87,13 +87,13 @@ tableCaptionTests =
         slots (paginate 1 4 [tbl]) @?= [[SLine 100, SLine 200, SLine 201], [SLine 100, SLine 202, SLine 900]]
         map poTables (paginate 1 4 [tbl]) @?= [[TableSegment 50 0 (Just 0) 2], [TableSegment 50 0 (Just 0) 1]]
         -- a table of one row keeps the header, the row and the caption together
-        slots (paginate 1 4 [FParagraph (lb 0), FParagraph (lb 1), FTable 50 0 (lb 100) [lb 200] (lb 900) True]) @?= [[SLine 0, SLine 1], [SLine 100, SLine 200, SLine 900]],
+        slots (paginate 1 4 [FParagraph defaultKeep (lb 0), FParagraph defaultKeep (lb 1), FTable 50 0 (lb 100) [lb 200] (lb 900) True]) @?= [[SLine 0, SLine 1], [SLine 100, SLine 200, SLine 900]],
       testCase "I8: the caption keeps to the lines it touches, every small table in every small column" $
         forM_ tableCases $ \c@(cap, lead, below, h, rows) -> do
           let caption = [LineBox (900 + i) [] [] [] 0 | i <- [0 .. cap - 1]]
               header = [LineBox (100 + i) [] [] [] 0 | i <- [0 .. h - 1]]
               body = [[LineBox (200 + 10 * r + i) [] [] [] 0 | i <- [0 .. n - 1]] | (r, n) <- zip [0 ..] rows]
-              flow = [FParagraph [LineBox i [] [] [] 0 | i <- [0 .. lead - 1]] | lead > 0] <> [FTable 50 0 header body caption below]
+              flow = [FParagraph defaultKeep [LineBox i [] [] [] 0 | i <- [0 .. lead - 1]] | lead > 0] <> [FTable 50 0 header body caption below]
               ps = paginate 1 capacity flow
               columnsOf lid = [(poNumber p, poColumn p) | p <- ps, (_, SLine l) <- poSlots p, l == lid]
               firstColumn lid = take 1 (columnsOf lid)
