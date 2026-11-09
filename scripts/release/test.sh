@@ -394,6 +394,7 @@ commit_file README.md "initial"
 merge_pr_with 1 "status only" docs/adr/0010-status.md "$(adr 'ADR 0010: s' 'ステータス: 提案')"
 merge_pr_with 2 "other line" docs/adr/0011-other.md "$(adr 'ADR 0011: o' 'ステータス: 採択')"
 merge_pr_with 3 "module" docs/golem-cli/adr/0012-module.md "$(adr 'ADR 0012: m' 'ステータス:  採択（未実装） ')"
+merge_pr_with 4 "links" docs/golem-cli/adr/0014-links.md "$(adr 'ADR 0014: l' 'ステータス: 採択→x は [ADR 0010](../../adr/0010-status.md)')"
 git_ tag v1.0.0
 merge_pr_with 10 "accept 0010" docs/adr/0010-status.md "$(adr 'ADR 0010: s' 'ステータス: 採択')"
 merge_pr_with 11 "a link in 0011" docs/adr/0011-other.md "$(adr 'ADR 0011: o' 'ステータス: 採択')
@@ -401,6 +402,10 @@ a link"
 merge_pr_with 12 "implement 0012" docs/golem-cli/adr/0012-module.md "$(adr 'ADR 0012: m' 'ステータス: 採択')"
 merge_pr_with 13 "add 0013" docs/adr/0013-new.md "$(adr 'ADR 0013: n' 'ステータス: 採択（未実装）')"
 merge_pr_with 14 "implement 0013" docs/adr/0013-new.md "$(adr 'ADR 0013: n' 'ステータス: 採択')"
+# relative links of a status line, before and after, become absolute at
+# their tags; a link to a section, an absolute link and an anchor stay as
+# they are but for the path (docs/adr/0259, decision 8)
+merge_pr_with 15 "links of 0014" docs/golem-cli/adr/0014-links.md "$(adr 'ADR 0014: l' 'ステータス: 採択→x は [ADR 0010](../../adr/0010-status.md)、y は [golem-cli ADR 0012](./0012-module.md#文脈)、z は [ADR 0013](https://github.com/tett23/golem/blob/v1.1.0/docs/adr/0013-new.md)、w は [下](#文脈)')"
 git_ tag v1.1.0
 run notes v1.0.0 v1.1.0
 # I4, I5: only 0010 and 0012 have their status changed; 0011 changed in
@@ -806,7 +811,12 @@ if [ "$(sed -n '/^# The ADRs whose status changed in this release$/,$p' "$P")" =
 ## docs/golem-cli/adr/0012-module.md (https://github.com/tett23/golem/blob/v1.1.0/docs/golem-cli/adr/0012-module.md)
 
 # ADR 0012: m
-ステータス: 採択" ]; then ok; else ng "write-notes: I3 the ADRs whose status changed in the prompt"; fi
+ステータス: 採択
+
+## docs/golem-cli/adr/0014-links.md (https://github.com/tett23/golem/blob/v1.1.0/docs/golem-cli/adr/0014-links.md)
+
+# ADR 0014: l
+ステータス: 採択→x は [ADR 0010](https://github.com/tett23/golem/blob/v1.1.0/docs/adr/0010-status.md)、y は [golem-cli ADR 0012](https://github.com/tett23/golem/blob/v1.1.0/docs/golem-cli/adr/0012-module.md#文脈)、z は [ADR 0013](https://github.com/tett23/golem/blob/v1.1.0/docs/adr/0013-new.md)、w は [下](https://github.com/tett23/golem/blob/v1.1.0/docs/golem-cli/adr/0014-links.md#文脈)" ]; then ok; else ng "write-notes: I3 the ADRs whose status changed in the prompt, their links absolute (docs/adr/0259)"; fi
 unset WN_TAG
 REPO=$REPO_MAIN
 

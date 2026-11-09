@@ -426,6 +426,7 @@ golem のパッケージに依存しないことの検査は golem-test-support 
 `common warnings` を持つパッケージはそこに、持たない golem-cli は各コンポーネントに書く。
 依存するパッケージ（Hackage のものと、`source-repository-package` の peg-hs）には付けず、`cabal.project` と `cabal.project.wasm` の `ghc-options` にも書かない。
 CI の `changes` ジョブの `scripts/ci/werror.sh` が、`-Werror` を持たないコンポーネント、`-Werror` の後の `-Wwarn` と `-Wno-error`（`=` の付いたものも含む）、`modules/` の Haskell のファイルの `OPTIONS_GHC` の `-Wwarn`、`-Wno-error`、`-Wno-` で始まる警告の無効化、`cabal.project`、`cabal.project.wasm`、`cabal.project.local` の `ghc-options` の `-Wwarn` と `-Wno-error` を見つけて失敗する。
+すべての warning を消す `-w` も、コンポーネントの `ghc-options`（取りこむ `common` の節を含む）、`OPTIONS_GHC`、三つの `cabal.project` のどこにあっても、`-Werror` との前後によらず失敗にする（[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 peg-hs の生成器が書くモジュール（`Golem.Parser.Generated`、golem-parser のテストの `StrippedGrammar`、`Golem.Emet.Generated`）は、生成器が書く `-Wno-unused-imports` と `-Wno-unused-top-binds` を持つので、`OPTIONS_GHC` の検査から外す。
 CI の `build` ジョブが、これらが `scripts/gen-parser.sh` の出力と一致することを確かめる。
 
@@ -2565,6 +2566,7 @@ PDF を読む処理は golem-pdf の `Golem.Pdf.Import` に Haskell で書き、
 - 取り込みの資源には上限がある（[docs/adr/0040](adr/0040-pdf-import-resource-limits.md)）。一つの図版の取り込みで展開するバイト数は、フィルタの各段の出力を合わせて 256 MiB までとし、同じストリームは一度だけ展開する。画像のストリームは展開せずに写すので数えない。ページの木で一つのノードを二度指す PDF、相互参照の項目がすべての改訂を合わせて 8,388,607 を超える PDF、予測子の値が範囲の外にある PDF は、G08010 で拒む。値と数え方は [golem-pdf の仕様書](golem-pdf/specifications.md) に書く。
   ページの `Contents` で同じストリームを何度も名指しすると、そのストリームを出力でも一度だけ書き、名指しの位置から呼ぶ（[docs/adr/0051](adr/0051-reuse-repeated-pdf-content-streams.md)）。
   そう書けないストリームはつないで写し、つないだ内容が 256 MiB を超えれば G08015 とする。
+  呼ぶ先にするストリームのオブジェクトの番号が 2147483647 を超えれば、G08020 とする（[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 - 内容のストリームは復号し、DeviceRGB を書き換えてから Flate で圧縮し直す。画像などのストリームはそのまま写す。
 - DeviceRGB は、sRGB のプロファイルの ICCBased に置き換える。内容のストリームの `r g b rg` は `/GolemSRGB cs r g b sc` に、`RG` は `CS` と `SC` の組に書き換える。
 - フォントは埋め込んだものだけを受け付け、取り込んだフォントを本文のフォントとまとめない。
@@ -4036,7 +4038,7 @@ PDF の索引は、一つの項目を一つの段落として本文と同じ書�
 - ページ番号は数として扱うので、縦組みでは `[numbers]` の `vertical` の表記（既定では漢数字）になる。
 - 印のページは、印を含む行が置かれたページとする。ページの下の脚注と傍注の本文の中の印は、その注の印を含む本文の行のページ、章末の注（`placement = "chapter-end"`）の本文の中の印は、注の一覧のその注の行のページ、図版のキャプションの中の印は図版を置いたページとする。
 - 印のページは、ページ番号への参照と同じくレイアウトを繰り返して収束させ、上限の回数までに収束しなければ G07021 とする。G07021 は、ページの変わり続けたラベルと索引の語を並べ、最初のものの位置（ラベルを付けたブロックか索引の印）を指す（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
-- 繰り返しの二周め以降は、前の周と同じ位置にあって値の等しい単位のうち、`[ref-page]` を含まないものを組み直さず、前の周の組版を使う（[ADR 0251](adr/0251-reuse-the-compositions-of-unchanged-units-between-fixpoint-rounds.md)）。`[ref-page]` を含む単位と、索引の行のように前の周と値の異なる単位は毎周組み直す。単位の数か、リストの印の幅が前の周と異なる周は、すべての単位を組み直す。保持するのは直前の一周の組版だけである。使い回した組版は組み直した組版と同じなので、PDF のバイト列と diagnostics は変わらない。
+- 繰り返しの二周め以降は、前の周と同じ位置にあって値の等しい単位のうち、`[ref-page]` を含まないものを組み直さず、前の周の組版を使う（[ADR 0251](adr/0251-reuse-the-compositions-of-unchanged-units-between-fixpoint-rounds.md)）。`[ref-page]` を含む単位と、索引の行のように前の周と値の異なる単位は毎周組み直す。単位の数か、リストの印の幅が前の周と異なる周は、すべての単位を組み直す（[ADR 0256](adr/0256-record-what-the-implementations-of-adr-0251-and-0252-decided.md)）。保持するのは直前の一周の組版だけである。使い回した組版は組み直した組版と同じなので、PDF のバイト列と diagnostics は変わらない。
 
 `style.toml` の `[index]` の `columns` が版面の段数と異なる場合、PDF は `@index` の位置で段数を切り替える（[docs/adr/0025](adr/0025-index-columns.md)）。
 段の行長の決め方は「style.toml」の節に書く。
@@ -4674,7 +4676,7 @@ data = { table = "data/words.tsv" }
 - 指す先のない名前、どの図版からも指されない画像、`plugin:` でない `src`、`web` のある図版、出力の最上位でない図版（箇条書きと定義リストの中）、svg、png、jpeg でない形式、合計で 64 MiB を超える画像は、不正な出力（G06009）である。図版のキャプションに段落でないブロック（図版を含む）があれば、画像の検査より先に、キャプションの理由（`図版のキャプションには段落だけを置けます`）で不正な出力とする（[docs/adr/0144](adr/0144-figure-captions-hold-paragraphs-only.md)）。本体から受け取った図版は、受け取ったまま返せる。
 - ホストは、図版の `src` を `golem-plugin-image://<画像の SHA-256 の 16 進>.<拡張子>`（`.svg`、`.png`、`.jpg`）に置き換える。同じバイト列の画像は一つになる。この名前は `://` を含むので、原稿の `@figure` に書くと URL（G02060）になり、プロジェクトのファイルとは取り違えない。
 - 評価は、プラグインの図版を `@figure` と同じ段の検査（`checkFigure`。`page` の G02075、`wrap` と `rotate` と `width` の G02087 と G02031）に、呼び出しの位置で通す。検査を通らない図版はブロックにならず、その画像も残らない。キャプションの段落スタイルは G02013 とし、スタイルを除く。
-- 画像は評価の結果（`erImages`）から本（`bookImages`）に運ぶ。PDF はファイルの代わりにそのバイト列を読み、画像の読み込みと SVG の検査（G08010、G08011、G08015 から G08017、G08101）は `@figure` と同じである。HTML と EPUB は `images/golem-plugin/<SHA-256>.<拡張子>` に書き、G08014 も同じく検査する。組版、番号、ラベル、プリフライトも原稿の図版と同じである。
+- 画像は評価の結果（`erImages`）から本（`bookImages`）に運ぶ。PDF はファイルの代わりにそのバイト列を読み、画像の読み込みと SVG の検査（G08010、G08011、G08015 から G08017、G08020、G08101）は `@figure` と同じである。HTML と EPUB は `images/golem-plugin/<SHA-256>.<拡張子>` に書き、G08014 も同じく検査する。組版、番号、ラベル、プリフライトも原稿の図版と同じである。
 - 原稿の図版で、HTML と EPUB に写す画像のパスが `images/golem-plugin/` の下にあるものは、G08102 とし、HTML と EPUB を書かない（[docs/adr/0137](adr/0137-plugin-image-folder-collision-g08102.md)）。
 - 図版の IR の形は変えない。
 
@@ -4926,7 +4928,7 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 
 `golem` は計算機のすべてのプロセッサの上で動く（GHC のランタイムの `-N`）。
 PDF の段落の組版は複数の OS のスレッドで同時に進む（[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)）。
-PDF のページの描画と、内容のストリームの直列化と圧縮は、ページごとに GHC の spark で並列に進む（[ADR 0252](adr/0252-draw-and-serialise-the-pages-of-the-pdf-in-parallel.md)）。
+PDF のページの描画と、内容のストリームの直列化と圧縮は、ページごとに GHC の spark で並列に進む（[ADR 0252](adr/0252-draw-and-serialise-the-pages-of-the-pdf-in-parallel.md)、[ADR 0256](adr/0256-record-what-the-implementations-of-adr-0251-and-0252-decided.md)）。
 spark は純粋な値の計算を別の capability に委ねるだけなので、結果は逐次に計算したものと同じである。
 出力のバイト列はプロセッサの数によらない（[docs/adr/0002](adr/0002-determinism.md)）。
 実行ファイルは `-threaded` と `-with-rtsopts=-N -A64m` でリンクし、`-rtsopts` は付けない。
@@ -5138,7 +5140,7 @@ Golem のバージョンは `X.Y.Z` か、プレリリースの識別子を付�
 中には、実行ファイル `golem`、Golem のライセンス `LICENSE`、静的にリンクしたものと同梱したデータのライセンスの文書 `THIRD_PARTY_LICENSES/`、ビルドの情報 `BUILDINFO`、エディタ向けの構文の定義 `share/golem/editors/` が入る。
 `share/golem/editors/` には、`tools/editors/` の `README.md`、`textmate/` の二つの文法、二つの tree-sitter の文法の `grammar.js`、`tree-sitter.json`、`src/`、`queries/` を写す（「エディタ向けの構文の定義」の節、[docs/adr/0170](adr/0170-emet-editor-support.md)）。
 リリースには、三つのアーカイブのほかに、`SHA256SUMS`、ビルドの来歴の証明、リンクした GMP のソースのアーカイブ、二つのマニュアルの PDF と HTML（「マニュアル」の節）、見本のプラグインの `<名前>.wasm` と、そのライセンスの文書のアーカイブ `golem-plugins-licenses-<タグ>.tar.gz`（「見本のプラグイン」の節）を添える。
-見本のプラグインとそのライセンスの文書のアーカイブの SHA-256 も `SHA256SUMS` に載せる。
+見本のプラグインとそのライセンスの文書のアーカイブと、GMP のソースのアーカイブの SHA-256 も `SHA256SUMS` に載せる（[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 GMP は LGPL-3.0 であり、三つの実行ファイルのどれにも静的にリンクされるためである。
 
 `THIRD_PARTY_LICENSES/` に入れるものは、固定の一覧ではなく、実行ファイルのリンクマップから決める（[docs/adr/0007](adr/0007-third-party-licenses.md)）。
@@ -5184,12 +5186,15 @@ GitHub がマージした `Merge pull request #N from <所有者>/<ブランチ>
 変更の一覧の `## ADRs` には、範囲で追加された ADR を並べる。
 その後の `## ADRs whose status changed` には、範囲で変更された ADR のうち、ステータスの行（行頭が `ステータス:` の最初の行）が前のタグとタグで違うものを、`LC_ALL=C sort` のパスの順に並べる（[docs/adr/0246](adr/0246-bound-the-prompt-of-the-release-notes.md)）。
 各行は `- [<パス>](https://github.com/tett23/golem/blob/<タグ>/<パス>): <前のステータス> → <タグのステータス>` の形で、ステータスは `ステータス:` の後の文字列から前後の空白を除いたものである。
+ステータスの中の相対リンクは、ADR のディレクトリから解いたパスの、そのステータスのタグ（前のステータスは前のタグ、タグのステータスはタグ）の版への絶対 URL にする（`scripts/release/absolute-links.sh`、[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
+`#` だけのリンクは ADR 自身のその節を指し、スキームを持つリンクは変えない。
 範囲で追加された ADR は、同じ範囲でステータスが変わっても `## ADRs` にだけ並ぶ。
 ステータス以外の行だけが変わった ADR と、改名された ADR は、どちらにも並ばない。
 前のタグがない最初のリリースでは、`## ADRs whose status changed` は見出しだけになる。
 
 AI に渡すプロンプトは、変更の一覧、プルリクエストの題名と本文、ADR の題名とステータスの行からなる（[docs/adr/0246](adr/0246-bound-the-prompt-of-the-release-notes.md)）。
 ADR は、追加されたもの（`# The ADRs added in this release`）と、ステータスの変わったもの（`# The ADRs whose status changed in this release`）のそれぞれについて、パス、タグの版への絶対 URL、題名（最初の `# ` の行）、ステータスの行だけを入れ、本文は入れない。
+題名とステータスの行の相対リンクは、同じ規則でタグの版への絶対 URL にする（[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 プルリクエストの本文は、先頭の 4000 バイトまでを入れる。
 切ったときは、UTF-8 の文字の途中で切れた末尾のバイト列を `iconv -c` で落とし、その後に `(cut at 4000 bytes)` の行を足す。
 本文が空のプルリクエストは、題名だけを入れる。

@@ -9,13 +9,15 @@
 # A component (library, executable, test-suite, benchmark) passes when its
 # ghc-options (those of the common stanzas it imports, then its own) have
 # -Werror, and no -Wwarn, -Wwarn=..., -Wno-error or -Wno-error=... after
-# it. A component that does not is written to stderr as FILE: COMPONENT,
+# it, and no -w anywhere in them (-w turns every warning off, so that
+# -Werror has nothing to fail on; docs/adr/0259). A component that does
+# not is written to stderr as FILE: COMPONENT,
 # and the exit code is 1; so is a directory under ROOT/modules without a
 # .cabal file. The same options fail the check in the ghc-options of
 # ROOT/cabal.project, ROOT/cabal.project.wasm and ROOT/cabal.project.local,
 # which cabal gives after those of the .cabal files (written as FILE:
-# SECTION), and so do they and any -Wno-... that turns a warning off in an
-# OPTIONS_GHC pragma of a Haskell file under ROOT/modules (written as
+# SECTION), and so do they, -w, and any -Wno-... that turns a warning off
+# in an OPTIONS_GHC pragma of a Haskell file under ROOT/modules (written as
 # FILE:LINE). The files that peg-hs writes (GENERATED below; CI checks that
 # they are as scripts/gen-parser.sh writes them) are not read for the
 # pragmas: their -Wno-unused-imports and -Wno-unused-top-binds are written
@@ -46,11 +48,19 @@ READ='
     }
     return s
   }
+  # whether the options have -w, which turns every warning off, so that
+  # -Werror before or after it has nothing to fail on (docs/adr/0259)
+  function has_w(v,   n, w, i) {
+    gsub(/"/, " ", v)
+    n = split(v, w, " ")
+    for (i = 1; i <= n; i++) if (w[i] == "-w") return 1
+    return 0
+  }
   # the end of a field: its value is all of its lines
   function close_field(   line) {
     if (field == "ghc-options") {
-      if (project) { if (state(value, "") == "0") back[section] = 1 }
-      else if (scope != "") st[scope] = state(value, st[scope])
+      if (project) { if (state(value, "") == "0" || has_w(value)) back[section] = 1 }
+      else if (scope != "") { st[scope] = state(value, st[scope]); if (has_w(value)) off[scope] = 1 }
     } else if (field == "import" && scope != "") {
       line = value; gsub(/[ \t,]+/, " ", line)
       imports[scope] = imports[scope] " " line
@@ -95,9 +105,13 @@ READ='
     for (i = 1; i <= n; i++) {
       c = order[i]; s = ""
       m = split(imports[c], names, " ")
-      for (j = 1; j <= m; j++) if (st["common " names[j]] != "") s = st["common " names[j]]
+      w = (c in off)
+      for (j = 1; j <= m; j++) {
+        if (st["common " names[j]] != "") s = st["common " names[j]]
+        if (("common " names[j]) in off) w = 1
+      }
       if (st[c] != "") s = st[c]
-      if (s != "1") print c
+      if (s != "1" || w) print c
     }
   }
 '
@@ -147,7 +161,7 @@ if [ -d "$ROOT/modules" ]; then
       line = ""
       if (e > 0) {
         on = 0
-        if (text ~ /(^|[ \t])-W(warn|no-)/) print FILENAME ":" at
+        if (text ~ /(^|[ \t])-W(warn|no-)/ || text ~ /(^|[ \t])-w([ \t]|$)/) print FILENAME ":" at
       }
     }
   ' {} +)

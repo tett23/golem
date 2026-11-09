@@ -1,6 +1,6 @@
 # ADR 0231: LSP とエディタの文法を、ヘッドレスの Neovim と Helix で CI で確かめる
 
-ステータス: 採択
+ステータス: 採択→実装すること 1 の `silence-notices` の置き場所、I3 の範囲（動的な登録を申し出るクライアント）、I6 の読み方（`use-grammars` を添えた例）は [ADR 0259](0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)
 
 ## 文脈
 

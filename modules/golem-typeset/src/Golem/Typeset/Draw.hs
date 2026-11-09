@@ -389,7 +389,7 @@ writeDocumentView tamper version inp geom fonts layout intent =
       {- each glyph once per font, with the text of its cluster; a whole
       cluster wins, then the first drawn (golem-driver ADR 0030) -}
       used = Map.map toUnicodeOf (Map.fromListWith (<>) [(guRef u, [(guGlyph u, guText u, guPart u)]) | pd <- reverse (P.parPages [glyphsOf pd `pseq` pd | pd <- drawn]), u <- reverse (pdUses pd)])
-      -- the glyphs of each page decided on its own capability before they are gathered (docs/adr ADR 0252)
+      -- the glyphs of each page decided on its own capability before they are gathered (docs/adr ADR 0252, ADR 0256)
       glyphsOf pd = foldl' (\n u -> n + guGlyph u + T.length (guText u)) 0 (pdUses pd)
       -- the ToUnicode entries the marks are checked against for ActualText (golem-driver ADR 0030)
       textEntries = Map.map Map.fromList used

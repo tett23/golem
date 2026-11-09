@@ -2437,7 +2437,7 @@ buildFlow inp geom fonts images prev assumed = do
   let fe = flowEnv inp geom fonts assumed
       (units, widths) = flowUnits fe
       unitAt = Map.fromList units
-      -- the units the round before composed the same way: none if the number of the units or the widths of the list markers differ
+      -- the units the round before composed the same way: none if the number of the units or the widths of the list markers differ (docs/adr ADR 0256)
       unchanged = case prev of
         Just p
           | length (bUnits p) == length units && bWidths p == widths ->
@@ -2861,7 +2861,7 @@ figure cannot be drawn for, G08011, G08016, G08017 and G08101 (golem-pdf ADR
 0008, 0009, docs/adr ADR 0054, 0084), or G08015, the joined content of a PDF page over
 256 MiB (docs/adr ADR 0051).
 -}
-data Unplaced = Unplaced !Text | UnsupportedSvg !S.SvgProblems | ContentTooLarge
+data Unplaced = Unplaced !Text | UnsupportedSvg !S.SvgProblems | ContentTooLarge | StreamNumberTooLarge !Int64
 
 {- | The figures, read once by file and page; why one cannot be placed
 (golem-pdf ADR 0008). The format follows the extension, as golem-eval
@@ -2883,6 +2883,7 @@ loadFigures inp = do
         if
           | ".pdf" `T.isSuffixOf` T.toLower s -> case P.importPage page bytes of
               Left (P.ContentTooLarge _) -> Left ContentTooLarge
+              Left (P.StreamNumberTooLarge k) -> Left (StreamNumberTooLarge k)
               Left e -> Left (Unplaced (P.importErrorText e))
               Right ip -> Right (P.VectorFigure ip)
           | ".svg" `T.isSuffixOf` T.toLower s -> case S.readSvg bytes of
@@ -2899,8 +2900,9 @@ figureBlocks book = [(sp, f) | Document _ bs <- bookDocs book, Block sp _ _ (Fig
 with things outside the subset, G08016: with markers in a cycle, G08017: with
 markers nested too deep, G08101: with markers that draw too many segments,
 each that applies in this order; G08015: a PDF figure whose page content
-joined is over 256 MiB; one of each per @figure (golem-pdf ADR 0008, 0009,
-docs/adr ADR 0051, 0054, 0084).
+joined is over 256 MiB; G08020: a PDF figure whose page names twice a
+stream numbered over 2^31 - 1; one of each per @figure (golem-pdf ADR 0008,
+0009, docs/adr ADR 0051, 0054, 0084, 0259).
 -}
 figureDiagnostics :: PdfInput -> Map (Text, Int) (Either Unplaced P.FigureContent) -> [Diagnostic]
 figureDiagnostics inp loaded =
@@ -2915,6 +2917,7 @@ figureDiagnostics inp loaded =
           <> [diagnostic "G08017" Error sp (markerMessage "SVG の図版の marker の入れ子が 9 段を超えます: " (figSource f) rs) | Just rs <- [nonEmpty (S.spMarkerDepth ps)]]
           <> [diagnostic "G08101" Error sp (markerSegmentsMessage (figSource f) n) | Just n <- [S.spMarkerSegments ps]]
       ContentTooLarge -> [diagnostic "G08015" Error sp ("図版の PDF のページの内容をつなぐと 256 MiB を超えます: " <> figSource f)]
+      StreamNumberTooLarge k -> [diagnostic "G08020" Error sp ("図版の PDF のページが二度以上名指すストリームのオブジェクトの番号が 2147483647 を超えます: " <> figSource f <> "（" <> T.pack (show k) <> "）")]
   ]
 
 {- | The rectangle of a figure's image on page @page@ from grid line @slot@
