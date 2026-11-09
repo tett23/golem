@@ -105,6 +105,7 @@ test-suite golem-driver-test
     FunctionsSpec
     HeadingLevelsSpec
     InMemorySpec
+    ManualEmetSpec
     LinkSpec
     OutputGoldenSpec
     OverflowSpec

@@ -1,0 +1,6 @@
+pub fn label :: Nat -> String
+label price = yen (withTax price) ++ "（税込）"
+  where {
+    withTax p = div (p * 110) 100
+    yen p = String.fromNat p ++ "円"
+  }

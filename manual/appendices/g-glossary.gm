@@ -291,7 +291,7 @@
 = [strong: 関数（Emet）]
   本を作る人が、自分の本のための小さな計算や書式を書き、原稿から呼び出すものです。[index reading=かんすう: 関数]
   Emet という言語で、拡張子が [code: .emet] のファイルに書きます。プラグインと違い、配って使うものではありません。
-  [ref-title app-emet]（[ref-page app-emet] ページ）。
+  第[ref-number emet-intro]章「[ref-title emet-intro]」、[ref-title app-emet]（[ref-page app-emet] ページ）。
 = [strong: プラグイン]
   Golem にコマンドやフィルタを足す、別に配布されるプログラムです。[index reading=ぷらぐいん: プラグイン]
   第[ref-number plugins]章「[ref-title plugins]」。

@@ -22,6 +22,7 @@ import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
 import HeadingLevelsSpec (headingLevelsTests)
 import InMemorySpec (inMemoryTests)
 import LinkSpec (linkTests)
+import ManualEmetSpec (manualEmetTests)
 import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
@@ -68,6 +69,7 @@ tests skips =
         unwritableNumbersTests,
         emetSamplesTests,
         functionLibraryTests,
+        manualEmetTests,
         testGroup "output and layout diagnostic codes (golem-driver ADR 0016)" outputDiagnosticTests,
         testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
         testGroup "the background of inline code (golem-driver ADR 0029)" inlineCodeBackgroundTests,

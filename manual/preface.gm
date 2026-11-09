@@ -334,6 +334,7 @@ Golem は生まれたばかりで、そうした蓄積はありません。
 | 変更の履歴、校正の作業の分け方、CI、ページの画像の比較 | 第[ref-number git-ci]章「[ref-title git-ci]」 |
 | 書きながら誤りを見つける | 第[ref-number editor]章「[ref-title editor]」 |
 | 機能を足す部品 | 第[ref-number plugins]章「[ref-title plugins]」 |
+| 自分の本のための計算を関数で書く | 第[ref-number emet-intro]章「[ref-title emet-intro]」 |
 | InDesign の機能との対応 | [ref-title app-indesign] |
 
 このマニュアルは、[strong: Golem 自身で組んでいます]。

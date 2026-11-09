@@ -1,0 +1,2 @@
+chapter :: Nat -> String
+chapter n = "第" ++ n ++ "章"

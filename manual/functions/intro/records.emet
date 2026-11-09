@@ -1,0 +1,20 @@
+data Size = A5 | B6 | Shiroku
+
+data Book =
+  Book { title :: String, size :: Size, pages :: Nat }
+
+sizeName :: Size -> String
+sizeName A5 = "A5判"
+sizeName B6 = "B6判"
+sizeName Shiroku = "四六判"
+
+describe :: Book -> String
+describe (Book t s p) =
+  "『" ++ t ++ "』" ++ sizeName s ++
+  String.fromNat p ++ "ページ"
+
+pub fn sample :: Nat -> String
+sample p = describe (sampleBook p)
+
+sampleBook :: Nat -> Book
+sampleBook p = Book { title = "見本", size = B6, pages = p }

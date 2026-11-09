@@ -1,0 +1,4 @@
+binding :: Nat -> String
+binding pages
+  | pages <= 64 = "中綴じ"
+  | pages > 64 = "無線綴じ"

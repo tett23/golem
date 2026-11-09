@@ -1,0 +1,11 @@
+-- 3 人までは並べ、4 人以上は最初の 1 人と「ほか」
+pub inline authors :: Varargs String -> Inlines
+authors names = Inline.text (byline names)
+
+byline :: List String -> String
+byline names
+  | List.length names <= 3 = joined names ++ " 著"
+  | otherwise = joined (List.take 1 names) ++ " ほか 著"
+
+joined :: List String -> String
+joined names = String.join "、" names

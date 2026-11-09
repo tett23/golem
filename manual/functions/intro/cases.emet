@@ -1,0 +1,11 @@
+-- 版の呼び方
+pub fn edition :: Nat -> String
+edition 1 = "初版"
+edition n = "第" ++ String.fromNat n ++ "版"
+
+-- ページ数から綴じ方を選ぶ
+pub fn binding :: Nat -> String
+binding pages
+  | pages % 4 /= 0 = "4 の倍数にしてください"
+  | pages <= 64 = "中綴じ"
+  | otherwise = "無線綴じ"
