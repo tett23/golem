@@ -109,8 +109,9 @@ GHC と cabal は、ghcup が自分のメタデータの SHA-256 で確かめる
 HTML の圧縮ファイルは、[code: tar] に名前の順、時刻 0、所有者 0 を指定し、[code: gzip -n] で作る。
 同じ HTML から同じバイト列の圧縮ファイルができるようにするためである。
 
-配布物には、[code: actions/attest-build-provenance] で来歴の証明を付ける。
+実行ファイルのアーカイブ（[code: golem-*.tar.gz]）には、[code: actions/attest-build-provenance] で来歴の証明を付ける。
 どのワークフローがどのコミットから作ったかを、利用者が [code: gh attestation verify] で検証できる。
+マニュアルの PDF と HTML、見本のプラグインの [code: .wasm]、GMP のソースには来歴の証明がなく、[code: SHA256SUMS] でだけ確かめられる。
 
 GMP のソースを添えるのは、GMP が LGPL-3.0 であり、三つの実行ファイルのどれにも静的にリンクされるからである。
 
@@ -138,7 +139,8 @@ Windows と x86-64 の macOS は配布の対象にしていない。
 変更点は「Added」「Changed」「Removed」「Fixed」のように項目を分け、できれば各変更のコミットかプルリクエストと ADR を絶対リンクで添える。
 
 下書きのノートは AI が書く。[index reading="りりーすのーと": リリースノート]
-[code: scripts/release/write-notes.sh] が、前のタグからの変更の一覧（[code: scripts/release/notes.sh]）、プルリクエスト、範囲で加わった ADR を Claude Code に渡して書かせ、[code: scripts/release/check-notes.sh] で検査する。
+[code: scripts/release/write-notes.sh] が、前のタグからの変更の一覧（[code: scripts/release/notes.sh]）、プルリクエストの題名と本文、範囲で加わった ADR とステータスの変わった ADR の題名とステータスの行を Claude Code に渡して書かせ、[code: scripts/release/check-notes.sh] で検査する。
+プルリクエストの本文は 4,000 バイトで切り、渡すものの全体が 1,000,000 バイトを超えたら Claude Code を動かさず、一覧をそのままノートにする。
 検査は、見出しが英語であること、[code: ## Unsorted] がないこと、すべてのリンクが許可リストの前置きで始まること、一覧のすべてのプルリクエストへのリンクがあることを確かめる。
 
 許可リストは [code: scripts/release/allowed-links.txt] であり、ノートに書いてよいリンクの前置きを 1 行に一つ書く。
