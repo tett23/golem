@@ -1693,6 +1693,22 @@ done
 VB=$(job_lines verapdf | awk '/^      - /{ if (found) exit; s = "" } { s = s $0 "\n" } /nix build / { found = 1 } END { if (found) printf "%s", s }')
 if printf '%s\n' "$VB" | grep -qxF '          NIX_CONFIG: access-tokens = github.com=${{ github.token }}'; then ok; else ng "ci.yml: the nix build of verapdf has NIX_CONFIG with access-tokens = github.com= (docs/adr/0243)"; fi
 
+# the native alex and happy read their templates from data files, which
+# the cabal store of the runner that built them had: the cache of the host
+# tools keeps them too, and the wasm jobs point alex_datadir and
+# happy_lib_datadir at them, so that a hit of the host tools builds the
+# wasm store without that cabal store (docs/adr/0243, after the run
+# 42537562660 that missed the toolchain)
+for wf in ci.yml release.yml; do
+  WJ=$(awk '$0 == "  wasm:" { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$WORKFLOWS/$wf")
+  if printf '%s\n' "$WJ" | grep -qxF '      alex_datadir: ${{ github.workspace }}/third_party/hosttools/alex-data' &&
+    printf '%s\n' "$WJ" | grep -qxF '      happy_lib_datadir: ${{ github.workspace }}/third_party/hosttools/happy-lib-data' &&
+    printf '%s\n' "$WJ" | grep -qF 'key: hosttools-alex-3.5.4.2-happy-2.2-data-' &&
+    printf '%s\n' "$WJ" | grep -qF 'AlexTemplate.hs' && printf '%s\n' "$WJ" | grep -qF 'HappyTemplate.hs'; then ok; else
+    ng "$wf: the cache of the native alex and happy has their data files, and the wasm job points them there"
+  fi
+done
+
 # ---------------------------------------------------------------- ci.yml and the caches of GHC and the index
 # (docs/adr/0141-smaller-ghc-and-hackage-index-caches.md)
 

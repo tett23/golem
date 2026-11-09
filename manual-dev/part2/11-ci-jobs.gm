@@ -228,7 +228,7 @@ x86-64 の [code: outputs] のランナーが、ビルドの直後、epubcheck �
 
 + チェックアウトする。
 + shem のアーカイブを [code: third_party/downloads] に、[code: scripts/visual/fetch-shem.sh] のハッシュをキーにした [code: main] のキャッシュから戻す。版と SHA-256 はこのスクリプトにあるので、版を上げればキーも変わる。
-+ [code: sh scripts/visual/fetch-shem.sh] を、10 分を上限に実行する。戻したアーカイブの SHA-256 が合えば何も取らずに展開し、なければ [code: scripts/ci/fetch-url.sh] が shem の release から取る。取得は、10 秒と 30 秒を待って 3 回まで試す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0243-retry-every-download-and-cache-the-archives-checked-by-sha-256.md]（docs/adr の ADR 0243「CI の取得を一つの補助スクリプトで再試行し、取得物のアーカイブを SHA-256 で照合してキャッシュする」）]
++ [code: sh scripts/visual/fetch-shem.sh] を、10 分を上限に実行する。戻したアーカイブの SHA-256 が合えば何も取らずに展開し、なければ [code: scripts/ci/fetch-url.sh] が shem の release から取る。取得は 3 回まで試し、試行のあいだに 10 秒と 30 秒を待つ。
 + [code: main] への push では、キャッシュになかったアーカイブを保存する。
 + [code: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh] で、この実行に [code: visual-pdfs] が上がるのを待つ。
 + [code: visual-pdfs] を取り寄せる。
