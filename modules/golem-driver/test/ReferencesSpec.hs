@@ -34,9 +34,12 @@ import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
 
--- | The page numbers among inlines.
+-- | The numbers of inlines, those of the page numbers of the index inside their links (docs/adr/0267) too.
 numbersIn :: [Inline] -> [Integer]
-numbersIn is = [n | Number _ n _ <- is]
+numbersIn = concatMap $ \case
+  Number _ n _ -> [n]
+  Resolved _ _ _ xs -> numbersIn xs
+  _ -> []
 
 refsJson :: BS.ByteString
 refsJson = "[{\"id\": \"knuth1981\", \"title\": \"Breaking Paragraphs into Lines\", \"author\": [{\"family\": \"Knuth\", \"given\": \"Donald\"}], \"issued\": {\"date-parts\": [[1981]]}}]"

@@ -102,13 +102,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **段落スタイルの拡張**：行送り、次のスタイル、ドロップキャップと字取り、先頭文字スタイル、`@style` の引数による段落ごとの上書き、段落の先頭の始め括弧類の字下げの調整（JLReq）、見出し、リストなどへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。
 - **発行の履歴の書式**：`@printings` は、奥付の発行の履歴の行（`2026年10月16日　初版第1刷発行` の形）を、日本語の一つの書式に固定して組む（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。この書式を `style.toml` で変えられるようにする（`第1版第1刷` と書く本、日付と版の順を変える本など）。日本語でない本の書式も合わせて扱う。
 
-### LaTeX との差を埋める項目
-
-数式を除いて LaTeX との差を埋めるための項目である（[2026-10-17 の調査](audits/2026-10-17-latex-gap-for-v1.md)）。
-どれも着手するときに ADR を作成する。
-
-- **PDF のしおりとリンク**：見出しから PDF のしおり（アウトライン）を作り、相互参照、目次、索引、脚注の印を PDF のリンクにする。リンクのほかの注釈も扱う（[golem-pdf ADR 0001](golem-pdf/adr/0001-deterministic-pdf-writer.md)）。外部の URL へのリンク（[docs/adr/0182](adr/0182-external-links.md)）で作ったリンクの注釈の仕組み（`LinkTarget` と `Annotation`）を使う。
-
 ### ページ分割
 
 - **`@no-page-break` で送る行の数の設定**：今は、前の段落が 3 行以下なら全体を、4 行以上なら最後の 2 行を送る（草案の ADR で決める）。送る行の数を書き手が決められるようにする。
@@ -131,7 +124,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 ### 機能をそろえた後の確かめ
 
 - **より複雑な組版の fixture**：v0.1.0-rc4 で作る二冊の fixture（縦組みの一段の本と、横組みの二段の本）より複雑な組版の例を作り、fixture に入れる。二冊が組み合わせていない機能、たとえば縦組みの本文の段組みや、章ごとの書字方向と段数の切り替えのように後から足す機能を組み合わせ、機能のあいだの相互作用を、出力のゴールデン、決定性の検査、見た目の回帰テストで固定する。どの組み合わせを足すかと、fixture の数と大きさは、着手するときに ADR で決める。
-- **リンクの注釈についての ISO 15930-7 の照合**：v1.0.0 のタグを打つ前に、メンテナーが ISO 15930-7:2010 の本文を入手し、リンクの注釈、URI のアクション、仕上がりの線の内側の印刷する注釈、外観のストリームのない注釈の四つの問いと、[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) の要件の一覧を照合する。結果は `docs/audits/<日付>-iso-15930-7-check.md` に記録する。今の出力が規格に反すると分かれば、[docs/adr/0182](adr/0182-external-links.md) の PDF/X-4 の節を改める ADR を作り、その実装がマージされるまで v1.0.0 のタグを打たない。タグを打つ前に、記録があり、この項目が消えていることを確かめる（[docs/adr/0221](adr/0221-check-iso-15930-7-for-link-annotations-before-rc4.md)、[docs/adr/0226](adr/0226-move-the-iso-15930-7-check-to-before-v1.md)）。v1.0.0 の前のリリースのリリースノートには、照合を済ませていないことを既知の問題として書く。
+- **リンクの注釈についての ISO 15930-7 の照合**：v1.0.0 のタグを打つ前に、メンテナーが ISO 15930-7:2010 の本文を入手し、リンクの注釈、URI のアクション、`/Dest` を持つ文書の中のリンクの注釈、文書のアウトライン（`/Outlines`）、仕上がりの線の内側の印刷する注釈、外観のストリームのない注釈の六つの問いと、[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) の要件の一覧を照合する。結果は `docs/audits/<日付>-iso-15930-7-check.md` に記録する。今の出力が規格に反すると分かれば、[docs/adr/0182](adr/0182-external-links.md) の PDF/X-4 の節を改める ADR を作り、その実装がマージされるまで v1.0.0 のタグを打たない。タグを打つ前に、記録があり、この項目が消えていることを確かめる（[docs/adr/0221](adr/0221-check-iso-15930-7-for-link-annotations-before-rc4.md)、[docs/adr/0226](adr/0226-move-the-iso-15930-7-check-to-before-v1.md)）。v1.0.0 の前のリリースのリリースノートには、照合を済ませていないことを既知の問題として書く。
 - **Adobe の製品で確かめる見た目**：Adobe の製品を使う手の確かめは、費用がかかるので、v1.0.0 のリリースのときにメンテナーがまとめて行う（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md) の「決めたことの記録」）。見本は、見た目の回帰テストの入力の `specimens-horizontal` と `specimens-vertical` を使える。
   - 縦組みのダッシュを、InDesign の縦組みと比べること（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
   - 圏点の十の形を、InDesign の圏点と比べること（[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）。
@@ -249,7 +242,7 @@ v3 の GUI は、次の原則に従って作る。
   - マニュアルの付録の注（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）。
 - **EPUB の読書環境での見え方**：別のファイルの参考文献への引用のリンク、ナビゲーション文書の深さ、プラグインの独自のチャネルを使った EPUB を、ブラウザと読書環境で開いて見え方を確かめていない。三つを含む fixture の `epub-forms` は、CI が epubcheck にかける（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)、[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）。
 - **タグ付き PDF の読み上げ**：タグ付き PDF を、macOS の VoiceOver と Acrobat Reader、Windows の NVDA と Acrobat Reader で読み、縦組みの本文、ルビ（親文字の後に読み）、注（印の直後に注の本文）の読む順と、図版の代替テキストが読まれることを確かめていない。veraPDF が調べるのは PDF/UA-1 のうち自動で調べられる要件だけである（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
-- **PDF のリンクの注釈**（v1.0.0 のリリースで確かめる）：リンクを含む横組みと縦組みの PDF を、Acrobat Reader と macOS のプレビューで開き、リンクの矩形をクリックして URL が開くことを確かめていない。Poppler の `pdfinfo -url` がリンクの注釈の URL とページを読むことは、golem-driver のテストが確かめる（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。ISO 15930-7:2010（PDF/X-4）の本文で、注釈と URI のアクションを禁じる規定がないことも確かめていない。この照合は、v1.0.0 のタグの前にメンテナーが行い、`docs/audits/` に記録する（[docs/adr/0221](adr/0221-check-iso-15930-7-for-link-annotations-before-rc4.md)、[docs/adr/0226](adr/0226-move-the-iso-15930-7-check-to-before-v1.md)）。禁じる規定があれば、`[color] intent` のある本にリンクを書く扱いを改める ADR を作る（[docs/adr/0182](adr/0182-external-links.md)）。
+- **PDF のリンクの注釈**（v1.0.0 のリリースで確かめる）：リンクを含む横組みと縦組みの PDF を、Acrobat Reader と macOS のプレビューで開き、リンクの矩形をクリックして URL が開くことを確かめていない。文書の中のリンクとしおり（[docs/adr/0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)）も、横組みと縦組みの `conformance` の fixture の PDF を Acrobat Reader と macOS のプレビューで開き、しおりのパネルが開いて最上位の項目だけが並ぶこと、しおりと各種のリンクをクリックして行先の行がウィンドウの上端に来ることを確かめていない。Poppler の `pdfinfo -url` がリンクの注釈の URL とページを読むことは、golem-driver のテストが確かめる（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。ISO 15930-7:2010（PDF/X-4）の本文で、注釈と URI のアクションを禁じる規定がないことも確かめていない。この照合は、v1.0.0 のタグの前にメンテナーが行い、`docs/audits/` に記録する（[docs/adr/0221](adr/0221-check-iso-15930-7-for-link-annotations-before-rc4.md)、[docs/adr/0226](adr/0226-move-the-iso-15930-7-check-to-before-v1.md)）。禁じる規定があれば、`[color] intent` のある本にリンクを書く扱いを改める ADR を作る（[docs/adr/0182](adr/0182-external-links.md)）。
 - **CI のキャッシュの量**：`caches` ジョブを入れた後、`main` の 24 時間後と 7 日後（2026-11-15 ごろ）にキャッシュの量が 10 GB を下回り、プルリクエストのキャッシュが消えていることを確かめていない（[docs/adr/0228](adr/0228-keep-the-ci-caches-under-the-10-gb-limit.md) の I5）。結果は `docs/ci-timings/2026-11-08-ci-caches-under-the-limit.md` とは別の記録として `docs/ci-timings/` に書き、項目を外す。所要時間の数え直しは、`verapdf` を臨界経路から外した後の記録で代える（[docs/adr/0244](adr/0244-take-verapdf-off-the-critical-path-of-ci.md)）。
 - **リリースノートのプロンプトの大きさ**：プロンプトの ADR を題名とステータスの行に絞り、プルリクエストの本文を 4000 バイトで切った後のリリースで、ジョブ `notes` のログのプロンプトのバイト数と、AI のノートが `check-notes.sh` を通ったことを確かめていない。v0.1.0-rc3 から v0.1.0-rc4 までの範囲では、手元で組んだプロンプトは 885692 バイトだった。次のリリースの `notes` のログか、タグの前に `workflow_dispatch` で動かした `release.yml` のログで確かめ、項目を外す（[docs/adr/0246](adr/0246-bound-the-prompt-of-the-release-notes.md)）。
 
@@ -310,4 +303,5 @@ ADR と仕様が扱わないと決めたもので、課題として残さない�
 - **ICC プロファイルによる Web の色変換**：画面の色は印刷の色の近似でよいと決めたので、差が問題になるまで扱わない（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。
 - **musl の malloc の速度**：GHC のヒープは RTS が自前で管理して影響が限られるので、問題になるまで扱わない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 - **utf-32 の交渉と、`lsp` パッケージを使わない LSP の実装**：UTF-16 で常に応えられ、`lsp` への細工は一か所に閉じ込められるので採らない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)）。
+- **PDF のリンクのほかの注釈**：テキストの注釈（付箋）、ハイライト、フォームのフィールド、添付ファイルの注釈は作らない。v1.0.0 の「PDF のしおりとリンク」の「リンクのほかの注釈も扱う」は、元の v2 の項目の「注釈」を合わせたときに残った語で、使う場面が書かれておらず、LaTeX との差の調査にも InDesign の調べにも不足が挙がっていない。PDF/X-4 と PDF/A-2 の注釈の制約を照合する手間も増える（[docs/adr/0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)）。
 - **diagnostics と CLI の文言の多言語化**：v1 の diagnostics と使い方の文言は日本語だけと決めたので扱わない（[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。

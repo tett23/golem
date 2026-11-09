@@ -66,7 +66,6 @@ import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look hiding (Kerning (..))
 import Golem.Layout.Look qualified as L
-import Golem.Layout.Paginate
 import Golem.LayoutSpec (PageGeometry (..))
 import Golem.Length (zwToSp)
 import Golem.Pdf qualified as P
@@ -497,8 +496,19 @@ restyle style lk = \case
                     }
     Nothing -> lk
   Color _ sw _ -> lk {lkColor = Just sw}
+  -- a link inside a link: the outer link alone (docs/adr/0267)
+  _ | isJust (lkLink lk) -> lk
   -- the boxes of a link know its target, which the line breaking does not read (docs/adr ADR 0182)
   Link _ u _ -> lk {lkLink = Just (L.LinkUri u)}
+  {- a reference is a link to its target (docs/adr/0267): [ref-number] and
+  [ref-title] resolved and [ref-page] to the block of the label, the page
+  number of the index (a resolved page reference to the place of a mark) to
+  the line of the mark, the mark of a note to its body, by the span of the
+  note; its place among the notes of its span is given by the composition -}
+  Resolved sp RefPage _ _ -> lk {lkLink = Just (L.LinkTo (L.DestIndexMark sp))}
+  Resolved _ _ l _ -> lk {lkLink = Just (L.LinkTo (L.DestLabel l))}
+  Ref _ RefPage l -> lk {lkLink = Just (L.LinkTo (L.DestLabel l))}
+  Note sp _ _ -> lk {lkLink = Just (L.LinkTo (L.DestNote (L.NoteId sp 0)))}
   _ -> lk
 
 {- | The size source inside an inline element (golem-cli ADR 0008), as

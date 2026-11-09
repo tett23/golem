@@ -24,6 +24,7 @@ module Golem.Driver
     pdfStructure,
     pdfLeafTexts,
     pdfWithTree,
+    pdfWithDests,
     metadataValues,
     epubConfig,
     Evaluated (..),
@@ -1296,6 +1297,21 @@ pdfWithTree tamper opts = do
       Just book -> do
         (_, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
         renderPdfWithTree tamper golemVersion (optFonts opts) (pdfInputOf opts e (evStyleFile e) book bib)
+
+{- | The PDF of a project with the destinations of its links inside the
+document changed by a function before they are used, for the tests of
+G07120 only (docs/adr/0267): a stand-in for a mistake of Golem.
+-}
+pdfWithDests :: (Map.Map LinkDest P.Dest -> Map.Map LinkDest P.Dest) -> BuildOptions -> IO (Either [Diagnostic] BS.ByteString)
+pdfWithDests tamper opts = do
+  ev <- evaluateProjectWith (optFiles opts) Map.empty (optProfile opts) (optRoot opts)
+  case ev of
+    Left f -> pure (Left (pfDiagnostics f))
+    Right e -> case evBook e of
+      Nothing -> pure (Left (evDiagnostics e))
+      Just book -> do
+        (_, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
+        renderPdfWithDests tamper golemVersion (optFonts opts) (pdfInputOf opts e (evStyleFile e) book bib)
 
 -- | Removes a folder and what it holds, if it is there.
 cleanDir :: FilePath -> IO ()

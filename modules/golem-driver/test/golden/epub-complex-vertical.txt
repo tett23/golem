@@ -152,7 +152,7 @@ code { padding-inline: 0.25em; }
 </nav>
 </body>
 </html>
-== OEBPS/chapters/01.xhtml (deflate, time 315532800, 6828 bytes)
+== OEBPS/chapters/01.xhtml (deflate, time 315532800, 6903 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -170,7 +170,7 @@ code { padding-inline: 0.25em; }
 <img src="../images/stick.svg" alt="細長い植字用のステッキに活字が並んだ図"/>
 <figcaption><span class="number">図1-1</span>　植字に使う<ruby class="mono">道<rp>（</rp><rt>どう</rt><rp>）</rp>具<rp>（</rp><rt>ぐ</rt><rp>）</rp></ruby>（ステッキ）。活字を一行分ずつ並べる。</figcaption>
 </figure>
-<p>図1-1は、拾った活字を一行分ずつ並べる道具を描いたものである。この道具の名前は「細長い植字用のステッキに活字が並んだ図」とは呼ばれず、現場ではただ「ステッキ」と言った。</p>
+<p>図<a href="#fig-stick">1-1</a>は、拾った活字を一行分ずつ並べる道具を描いたものである。この道具の名前は「<a href="#fig-stick">細長い植字用のステッキに活字が並んだ図</a>」とは呼ばれず、現場ではただ「ステッキ」と言った。</p>
 <p class="ps-quote">拾った活字は、一本たりとも無駄にしてはならない。棚に戻すまでが文選の仕事である。</p>
 <p class="ps-signature">ある活版所の壁の貼り紙から</p>
 <h2 id="h-2-2082"><span class="number">二</span>　活字の大きさ</h2>
@@ -202,7 +202,7 @@ code { padding-inline: 0.25em; }
 <img src="../images/press.svg" alt="手引きの印刷機を横から見た図" style="height: 10em; max-height: 100%"/>
 <figcaption><span class="number">図1-3</span>　手引きの印刷機。</figcaption>
 </figure>
-<p>手引きの印刷機（<a href="#fig-press">手引きの印刷機を横から見た図</a>ページの図1-3）は、版の上に紙を置き、上から<ruby class="mono">平<rp>（</rp><rt>ひら</rt><rp>）</rp>盤<rp>（</rp><rt>ばん</rt><rp>）</rp></ruby>を押し下げて刷る。一枚ずつ刷るので、一日に刷れる数は多くない。町の活版所の仕事の多くは、こうした端物と呼ばれる小さな刷り物である<span id="i-2-3766"></span>。</p>
+<p>手引きの印刷機（<a href="#fig-press">手引きの印刷機を横から見た図</a>ページの図<a href="#fig-press">1-3</a>）は、版の上に紙を置き、上から<ruby class="mono">平<rp>（</rp><rt>ひら</rt><rp>）</rp>盤<rp>（</rp><rt>ばん</rt><rp>）</rp></ruby>を押し下げて刷る。一枚ずつ刷るので、一日に刷れる数は多くない。町の活版所の仕事の多くは、こうした端物と呼ばれる小さな刷り物である<span id="i-2-3766"></span>。</p>
 <p class="ps-box">大きな仕事が入ると、活版所は急に騒がしくなる。――棚の前に人が並び、ステッキの鳴る音が途切れなくなる。版を組む台の上には、組み終えたページが何枚も重ねられ、校正の刷りを待つ。その間も端物の注文は来るので、主人は夜遅くまで一人で刷り機を動かした<span id="i-2-4178"></span>。</p>
 <section class="notes">
 <h2>注</h2>
@@ -211,7 +211,7 @@ code { padding-inline: 0.25em; }
 </section>
 </body>
 </html>
-== OEBPS/chapters/02.xhtml (deflate, time 315532800, 8245 bytes)
+== OEBPS/chapters/02.xhtml (deflate, time 315532800, 8273 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -289,7 +289,7 @@ code { padding-inline: 0.25em; }
 <img src="../images/timeline.svg" alt="横に長い線の上に、四つの印と四つの箱を交互に置いた年表の図"/>
 <figcaption><span class="number">図2-1</span>　活版所の一年。版を組む仕事は、年末と年度の替わり目に集まる。</figcaption>
 </figure>
-<p>図2-1のとおり、仕事は季節によって大きく偏る。年末には年賀状と暦の注文が重なり、春には学校と役所の書類が続く。</p>
+<p>図<a href="#fig-timeline">2-1</a>のとおり、仕事は季節によって大きく偏る。年末には年賀状と暦の注文が重なり、春には学校と役所の書類が続く。</p>
 <p class="ps-box">組版の台の上では、版はいつも裏返しに組まれる。刷ったときに正しい向きになるよう、字は左右が逆に彫られているからである。植字工は、逆さの字を逆さのまま読み、行の間違いを見つけなければならない。慣れた人は、鏡に映した新聞を読むように、版の上の字をすらすらと読んだという。それでも、似た形の字の取り違えはなくならない。「ぱ」と「ば」、「シ」と「ツ」、「未」と「末」は、校正の刷りで最もよく赤字の入る組み合わせだった。こうした間違いを減らすために、ある活版所では、似た字の棚を離して置き、拾うときに手が迷わないようにしていた。棚の配置そのものが、間違いを防ぐ仕組みになっていたのである。棚を並べ替えるのは大仕事で、何日も店を閉めなければならなかった。それでも、取り違えの数が目に見えて減ったので、主人は並べ替えてよかったと語っていた。同じ工夫は、ほかの町の活版所にも広まり、やがて棚の標準の配置として本にまとめられた。もっとも、標準の配置がそのまま使われた活版所は多くない。字の使われ方は、刷る物によって違うからである。名刺を多く刷る店では人名の漢字を、役所の書類を多く刷る店では「申」「請」「届」のような字を、手前の棚に置いた。標準の配置は出発点にすぎず、それぞれの店が自分の仕事に合わせて少しずつ崩していった。崩した配置は、その店の職人にしか分からない。よその店から来た職人は、腕がよくても、はじめの一月ほどは字を探して棚の前を行き来することになった。</p>
 <section class="notes">
 <h2>注</h2>

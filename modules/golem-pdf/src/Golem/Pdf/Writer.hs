@@ -22,6 +22,9 @@ module Golem.Pdf.Writer
     Page (..),
     Annotation (..),
     LinkAction (..),
+    Dest (..),
+    OutlineItem (..),
+    outlineFromLevels,
     asciiUri,
     FontProgram (..),
     Font (..),
@@ -236,8 +239,27 @@ data Annotation = LinkAnnotation
   }
   deriving stock (Eq, Show)
 
--- | What a link does: open an external URL, as written.
-newtype LinkAction = UriAction Text
+{- | What a link does: open an external URL, as written (docs/adr ADR
+0182), or go to a place of the document (docs/adr/0267).
+-}
+data LinkAction = UriAction Text | GoTo Dest
+  deriving stock (Eq, Show)
+
+{- | A destination (docs/adr/0267): the page by its index from 0 and the
+top of the window, written as an explicit /XYZ destination that keeps the
+left and the zoom of the viewer.
+-}
+data Dest = DestXyz !Int !Sp
+  deriving stock (Eq, Show)
+
+{- | An item of the document outline (docs/adr/0267): its title, its
+destination and its children, in order.
+-}
+data OutlineItem = OutlineItem
+  { oiTitle :: !Text,
+    oiDest :: !Dest,
+    oiKids :: ![OutlineItem]
+  }
   deriving stock (Eq, Show)
 
 {- | A URL in 7-bit ASCII (docs/adr ADR 0182): each character outside
@@ -301,7 +323,9 @@ data Document = Document
     docStructure :: !StructElem,
     {- | the ranges of the page labels (docs/adr/0260), in the order of
     their first pages; none writes no /PageLabels
-    -} docPageLabels :: ![PageLabelRange]
+    -} docPageLabels :: ![PageLabelRange],
+    -- | the top items of the outline (docs/adr/0267); none writes no /Outlines
+    docOutline :: ![OutlineItem]
   }
 
 {- | A range of page labels (ISO 32000-1, 12.4.2; docs/adr/0260): the
@@ -638,9 +662,12 @@ documentObjectsWith strategy doc =
       annotRefs = [[ORef n | n <- take (length (pageAnnots p)) [from ..]] | (p, from) <- zip pages (annotBase : annotNums)]
       -- each annotation with its object, its page and its key in the ParentTree after the pages (docs/adr ADR 0183)
       annotPlaces = [(n, pg, nPages + k, a) | (k, (n, (pg, a))) <- zip [0 ..] (zip [annotBase ..] [(pg, a) | (pg, p) <- zip [0 ..] pages, a <- pageAnnots p])]
-      annotObjs = [annotationObject (if isJust (annotLink a) then Just key else Nothing) a | (_, _, key, a) <- annotPlaces]
+      annotObjs = [annotationObject pageObj (if isJust (annotLink a) then Just key else Nothing) a | (_, _, key, a) <- annotPlaces]
+      -- the outline after the annotations, before the structure tree (docs/adr/0267)
+      outlineBase = annotBase + length annotObjs
+      outlineObjs = outlineObjects pageObj outlineBase (docOutline doc)
       -- the structure tree after the objects of the pages, before the information dictionary (docs/adr ADR 0183)
-      structBase = annotBase + length annotObjs
+      structBase = outlineBase + length outlineObjs
       (tree, tagOf) = withOrphans (docStructure doc) [l | p <- pages, l <- contentLeaves (pageContent p)]
       streams = [pageStream fontNames imageNames formNames tagOf (pageContent p) | p <- pages]
       -- each page drawn, written and compressed on its own, in parallel by 'parPages' (docs/adr ADR 0252)
@@ -675,6 +702,8 @@ documentObjectsWith strategy doc =
             ]
               -- the page labels of a book whose labels are not its places (docs/adr/0260)
               <> [("PageLabels", pageLabelsTree (docPageLabels doc)) | not (null (docPageLabels doc))]
+              -- the outline, and the panel of it open, when the book has one (docs/adr/0267)
+              <> concat [[("Outlines", ORef outlineBase), ("PageMode", OName "UseOutlines")] | not (null (docOutline doc))]
               <> xCatalog
           )
       pageTree = ODict [("Type", OName "Pages"), ("Kids", OArr [ORef (pageObj i) | i <- [0 .. nPages - 1]]), ("Count", OInt (fromIntegral nPages))]
@@ -710,7 +739,7 @@ documentObjectsWith strategy doc =
           `addInfo` [("Trapped", OName "False"), ("GTS_PDFXVersion", OStr "PDF/X-4")]
       addInfo (ODict kvs) extra = ODict (kvs <> (if isJust (docPdfX doc) then extra else []))
       addInfo o _ = o
-      objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> srgbObjs <> formObjsAll <> xObjs <> annotObjs <> structObjs <> [info]
+      objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> srgbObjs <> formObjsAll <> xObjs <> annotObjs <> outlineObjs <> structObjs <> [info]
       size = length objects + 1
    in PdfObjects "1.6" objects (ODict [("Size", OInt (fromIntegral size)), ("Root", ORef 1), ("Info", ORef infoObj), ("ID", OArr [OHex (docId doc), OHex (docInstanceId doc)])])
   where
@@ -920,10 +949,13 @@ and the action that opens the URL in ASCII; its text in Contents and,
 when it is in the structure tree, its key of the ParentTree (docs/adr
 ADR 0183).
 -}
-annotationObject :: Maybe Int -> Annotation -> Obj
-annotationObject key (LinkAnnotation r (UriAction u) _ contents) =
+annotationObject :: (Int -> Int) -> Maybe Int -> Annotation -> Obj
+annotationObject pageObj key (LinkAnnotation r action _ contents) =
   ODict
-    ( [ ("A", ODict [("S", OName "URI"), ("URI", OStr (TE.encodeUtf8 (asciiUri u)))]),
+    ( [ case action of
+          UriAction u -> ("A", ODict [("S", OName "URI"), ("URI", OStr (TE.encodeUtf8 (asciiUri u)))])
+          -- a place of the document: an explicit destination, no action (docs/adr/0267)
+          GoTo d -> ("Dest", destObject pageObj d),
         ("Border", OArr [OInt 0, OInt 0, OInt 0]),
         ("F", OInt 4),
         ("Rect", rectObj r),
@@ -933,6 +965,65 @@ annotationObject key (LinkAnnotation r (UriAction u) _ contents) =
         <> [("Contents", pdfTextString t) | Just t <- [contents]]
         <> [("StructParent", OInt (fromIntegral k)) | Just k <- [key]]
     )
+
+{- | An explicit destination (docs/adr/0267): [p 0 R /XYZ null t null], the
+page by its object and the top of the window in the space of the page,
+written as the numbers of /Rect.
+-}
+destObject :: (Int -> Int) -> Dest -> Obj
+destObject pageObj (DestXyz p t) = OArr [ORef (pageObj p), OName "XYZ", ONull, OReal (spToPt t), ONull]
+
+{- | The objects of the outline from object @base@ (docs/adr/0267): the
+/Outlines dictionary, then each item in preorder, the order of the
+document. Every item with children is closed: its /Count is the number of
+its children made negative, and the root's the number of the top items;
+an item without children has no /Count. None for no item.
+-}
+outlineObjects :: (Int -> Int) -> Int -> [OutlineItem] -> [Obj]
+outlineObjects pageObj base tops
+  | null tops = []
+  | otherwise = root : map snd (sortOn fst (siblings base numbered))
+  where
+    numbered = snd (number (base + 1) tops)
+    number n = \case
+      [] -> (n, [])
+      x : rest ->
+        let (n1, kids) = number (n + 1) (oiKids x)
+            (n2, others) = number n1 rest
+         in (n2, NumberedItem n x kids : others)
+    numberOf (NumberedItem n _ _) = n
+    firstLast ks = case (ks, reverse ks) of
+      (f : _, l : _) -> [("First", ORef (numberOf f)), ("Last", ORef (numberOf l))]
+      _ -> []
+    root = ODict ([("Type", OName "Outlines")] <> firstLast numbered <> [("Count", OInt (fromIntegral (length numbered)))])
+    siblings parent ks =
+      concat
+        [ (n, item parent prev next x kids) : siblings n kids
+        | (prev, NumberedItem n x kids, next) <- zip3 (Nothing : map Just ks) ks (map Just (drop 1 ks) <> [Nothing])
+        ]
+    item parent prev next x kids =
+      ODict
+        ( [("Title", pdfTextString (oiTitle x)), ("Parent", ORef parent)]
+            <> [("Prev", ORef (numberOf m)) | Just m <- [prev]]
+            <> [("Next", ORef (numberOf m)) | Just m <- [next]]
+            <> firstLast kids
+            <> [("Count", OInt (negate (fromIntegral (length kids)))) | not (null kids)]
+            <> [("Dest", destObject pageObj (oiDest x))]
+        )
+
+{- | The outline of entries in the order of the document, each with its
+level (docs/adr/0267): the parent of an entry is the nearest entry before
+it of a smaller level, and the root when there is none.
+-}
+outlineFromLevels :: [(Int, Text, Dest)] -> [OutlineItem]
+outlineFromLevels = \case
+  [] -> []
+  (l, t, d) : rest ->
+    let (inside, after) = span (\(l', _, _) -> l' > l) rest
+     in OutlineItem t d (outlineFromLevels inside) : outlineFromLevels after
+
+-- | An item of the outline with its object number and its children (docs/adr/0267).
+data NumberedItem = NumberedItem !Int !OutlineItem ![NumberedItem]
 
 {- | The Form XObjects of PDF figures from object @base@ (ADR 0008): each
 form, then the objects of its page not yet written, in the order of the
