@@ -120,7 +120,7 @@ tests =
               (l == "pp.") @?= (case v of LocRange a b -> a /= b; _ -> False)
               ps @?= [CiteText "[", CiteNumber "b" 2, CiteText "; ", CiteNumber "a" 1, CiteText ", ", CiteLocator l x, CiteText "]"]
             other -> assertFailure (show other),
-       testCase "I1: the numbers of a mark without a locator, the ranges by what they cover, are the numbers cited, each once" $
+      testCase "I1: the numbers of a mark without a locator, the ranges by what they cover, are the numbers cited, each once" $
         forM_ orders $
           \ns -> covered (citationPieces (itemsOf ns)) @?= sort ns,
       testCase "I2: the mark without a locator does not change with the order of the keys" $

@@ -293,7 +293,7 @@ boxKind = toEnum . bcTag
 data Piece
   = PChar !Look !Char !Text -- the character and its variation selectors; kenten is in the look
   | PWord !Look !Text ![Int] -- a Latin word (no spaces), and where the soft hyphens taken out of it were (docs/adr ADR 0272)
-  | PSpace !Look -- an inter-word space
+  | PSpace !Look !Bool -- an inter-word space, and whether no line breaks at it (docs/adr/0277)
   | PBox !Look !Text !BoxKind !Sp -- ruby, tcy, …: an unbreakable box of a given width
   | PRuby !Look !RubyKind !Text ![Look] !(Maybe Text) -- ruby: the base, the look of each base character (golem-layout ADR 0011) and the reading (none for a segment without one)
   | PRubyBreak -- a break allowed between mono ruby bases
@@ -326,7 +326,7 @@ composeInlinesTree env inls =
         let new = itemsFor env {ceBoxSource = src, ceBoxAt = offs, ceLeaf = l} pv p nx
             -- the glue of a space of inline code, by its index (golem-layout ADR 0037)
             cs' = case p of
-              PSpace lk | lkCode lk -> IntSet.union cs (IntSet.fromList [length acc + k | (k, Glue {}) <- zip [0 ..] new])
+              PSpace lk _ | lkCode lk -> IntSet.union cs (IntSet.fromList [length acc + k | (k, Glue {}) <- zip [0 ..] new])
               _ -> cs
          in (acc <> new, as, cs')
       -- the neighbours of each piece, anchors and breaks between mono ruby bases skipped
@@ -501,11 +501,8 @@ walk env st@(LeafState next cur seen) inl = case inl of
                         (s'', ns, ps) = go s' rest
                      in (s'', NodeLink t [Text sp (T.pack (show n))] [NodeLeaf m] : after : ns, here <> ps)
               piece : rest ->
-                let text = case piece of
-                      CiteNumber _ n -> T.pack (show n)
-                      CiteText t -> t
-                    (s', ns, ps) = go s rest
-                 in (s', ns, [(leafOf s, src, p) | (src, p) <- at sp (textPieces lk text)] <> ps)
+                let (s', ns, ps) = go s rest
+                 in (s', ns, [(leafOf s, src, p) | (src, p) <- at sp (citeTextPieces lk [piece])] <> ps)
          in element RoleReference (`go` pieces)
   Cite {} -> element RoleReference (\st' -> (st', [], [(leafOf st', src, p) | (src, p) <- piecesOf env inl]))
   _ -> (st, [], [(cur, src, p) | (src, p) <- piecesOf env inl])
@@ -712,7 +709,7 @@ piecesOf env inl = case inl of
   -- nothing shows; its page is followed like that of an index mark (golem-doc ADR 0007)
   ChannelItem sp _ -> at sp [PAnchor (\i -> AnchorIndex i sp (IndexEntry [] [] IndexPoint))]
   -- the mark of the default style; a key whose number is not known as itself (docs/adr/0266)
-  Cite sp is -> at sp (textPieces lk (citationText (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is])))
+  Cite sp is -> at sp (citeTextPieces lk (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]))
   ProofComment {} -> []
   -- the lines of a keep style are split before they are composed (docs/adr
   -- ADR 0005); what reaches here is a hard break (docs/adr ADR 0016)
@@ -795,6 +792,22 @@ joinedDashes = "\x2014\x2015"
 
 textPieces :: Look -> Text -> [Piece]
 textPieces lk = map snd . textPiecesAt lk
+
+{- | The pieces of the pieces of the mark of a citation: the pieces of their
+text joined, as other text, the space between the label of each locator
+and its value held (docs/adr/0277): a line does not break at it.
+-}
+citeTextPieces :: Look -> [CitePiece] -> [Piece]
+citeTextPieces lk pieces = [hold (at' 0) p | (at', p) <- textPiecesAt lk (citationText pieces)]
+  where
+    -- the index in the text of each space between a label and its value
+    held = IntSet.fromList (concat (snd (mapAccumL place 0 pieces)))
+    place i piece = case piece of
+      CiteLocator l v -> (i + T.length l + 1 + T.length v, [i + T.length l])
+      _ -> (i + T.length (citationText [piece]), [])
+    hold i = \case
+      PSpace l _ | IntSet.member i held -> PSpace l True
+      p -> p
 
 -- | The soft hyphen, U+00AD (docs/adr ADR 0272).
 softHyphen :: Char
@@ -934,7 +947,7 @@ strippedPieces lk shys t
       [] -> False
     go [] = []
     go ((i, (c, marks), l) : rest)
-      | c == ' ' = (i, PSpace lk) : go (dropWhile (\(_, (b, _), _) -> b == ' ') rest)
+      | c == ' ' = (i, PSpace lk False) : go (dropWhile (\(_, (b, _), _) -> b == ' ') rest)
       | l =
           let (w, rest') = span (\(_, _, latin) -> latin) ((i, (c, marks), l) : rest)
               word = T.concat [T.cons b m | (_, (b, m), _) <- w]
@@ -964,7 +977,7 @@ codePieces lk = go 0
     -- each piece with the index of its first character in the text
     go i t = case T.uncons t of
       Nothing -> []
-      Just (' ', _) -> let (sps, rest) = T.span (== ' ') t in (i, PSpace lk) : go (i + T.length sps) rest
+      Just (' ', _) -> let (sps, rest) = T.span (== ' ') t in (i, PSpace lk False) : go (i + T.length sps) rest
       Just ('\t', rest) -> (i, PChar lk '\t' "") : go (i + 1) rest
       Just _ ->
         let (run, rest) = T.break (\c -> c == ' ' || c == '\t') t
@@ -1136,7 +1149,7 @@ pieceLook :: Piece -> Maybe Look
 pieceLook = \case
   PChar lk _ _ -> Just lk
   PWord lk _ _ -> Just lk
-  PSpace lk -> Just lk
+  PSpace lk _ -> Just lk
   PBox lk _ _ _ -> Just lk
   PRuby lk _ _ _ _ -> Just lk
   PAki lk _ -> Just lk
@@ -1176,7 +1189,7 @@ scriptRanges env = go
     charsOf = \case
       PChar lk c _ -> [(lk, c)]
       PWord lk t _ -> [(lk, c) | c <- T.unpack t]
-      PSpace lk -> [(lk, ' ')]
+      PSpace lk _ -> [(lk, ' ')]
       PBox lk t _ _ -> [(lk, c) | c <- T.unpack t]
       PRuby lk _ base looks _ -> zip (looks <> repeat lk) (T.unpack base)
       PCode lk t _ _ -> [(lk, c) | c <- T.unpack t]
@@ -1185,7 +1198,7 @@ scriptRanges env = go
     settle pos glyphs = \case
       PChar lk c vs -> PChar (set lk) c vs
       PWord lk t shys -> PWord (set lk) t shys
-      PSpace lk -> PSpace (set lk)
+      PSpace lk held -> PSpace (set lk) held
       PBox lk t kind w -> PBox (set lk) t kind (if w == lkSize lk then lkSize (set lk) else w)
       PRuby lk kind base looks reading -> PRuby (set lk) kind base (map set looks) reading
       PAki lk a -> PAki (set lk) a
@@ -1232,14 +1245,15 @@ itemsFor env prev p next = case p of
   PWord lk word shys
     | isScript lk -> [x | x@Box {} <- wordItems env lk word shys]
     | otherwise -> wordItems env lk word shys
-  PSpace lk ->
+  PSpace lk held ->
     let sw = advance env lk ' '
         glue
           | lkCode lk || isScript lk = Glue (sw + tracking lk) 0 0 -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
           | otherwise = Glue (sw + tracking lk) (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))
      in {- a space inside a range of superscript or subscript neither breaks nor
-        stretches, and no line breaks before a range (docs/adr/0269) -}
-        [Penalty 0 infPenalty NoHyphen | not (lkCode lk), isScript lk || maybe False (maybe False isScript . pieceLook) next] <> [glue]
+        stretches, and no line breaks before a range (docs/adr/0269); nor at a
+        space held, between the label of a page and its value (docs/adr/0277) -}
+        [Penalty 0 infPenalty NoHyphen | held || (not (lkCode lk) && (isScript lk || maybe False (maybe False isScript . pieceLook) next))] <> [glue]
   PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
@@ -1414,7 +1428,7 @@ padCode = \case
   where
     codeKey = \case
       PCode l _ _ _ -> key l
-      PSpace l -> key l
+      PSpace l _ -> key l
       PChar l _ _ -> key l
       PMark _ l _ _ _ -> key l
       PRuby l _ _ _ _ -> key l

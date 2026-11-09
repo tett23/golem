@@ -780,6 +780,8 @@ inline c = \case
       let at = fst =<< Map.lookup (spanFile sp, sp) (bookCiteMarks (cBook c))
           piece = \case
             CiteText t -> escapeXml t
+            -- U+00A0: the browser does not break between the label of a page and its value (docs/adr/0277)
+            CiteLocator l v -> escapeXml l <> "\xA0" <> escapeXml v
             CiteNumber k n -> case bibliographyHome (cBook c) sp of
               Just home -> "<a href=\"" <> linkTo c home (citeId c at k) <> "\">" <> tshow n <> "</a>"
               Nothing -> tshow n

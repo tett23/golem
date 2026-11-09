@@ -2,8 +2,8 @@ module Main (main) where
 
 import AkiTableSpec (akiTableTests)
 import AlignSpec (alignTests)
-import CiteBreakEnum (citeBreakTests)
 import CharClassSpec (charClassTests)
+import CiteBreakEnum (citeBreakTests)
 import CodeJapaneseSpec (codeJapaneseTests)
 import CodeSpaceSpec (codeSpaceTests)
 import CodeStopSpec (codeStopTests)

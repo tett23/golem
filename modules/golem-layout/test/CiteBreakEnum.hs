@@ -26,7 +26,7 @@ import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.TestSupport.Enum
 import LineBreakEnum (Setting (..), advance, composeEnv, normalSettings, paramsOf, parts, placings)
-import LineBreakInvariants (Breach (..), Paragraph (..), bruteLimit, breaches)
+import LineBreakInvariants (Breach (..), Paragraph (..), breaches, bruteLimit)
 import System.Environment (lookupEnv)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -112,18 +112,18 @@ c1Lines ls =
 {- | C2: the items are those of the text of the marks set as other text
 (the composition before the ADR) with one penalty of 10000 put before the
 glue after each label, and nothing else: the widths, the stretch and the
-shrink as they were.
+shrink as they were. Where the composition before already put one there
+(a prohibition across the space, golem-layout ADR 0028), none is added.
 -}
 c2Items :: [Item] -> [Item] -> [Violation]
 c2Items its before
-  | map keyOf (unheld its) /= map keyOf before = [Violation "C2" ("the items are " <> show (map keyOf its) <> ", before " <> show (map keyOf before))]
-  | length its - length before /= labels = [Violation "C2" ("the items differ from those before by " <> show (length its - length before) <> " for " <> show labels <> " labels")]
+  | map keyOf its /= map keyOf want = [Violation "C2" ("the items are " <> show (map keyOf its) <> ", not " <> show (map keyOf want))]
   | otherwise = []
   where
-    labels = length [() | Box _ c <- before, isLabel (bcText c)]
-    unheld = \case
-      b@(Box _ c) : Penalty _ p NoHyphen : rest@(Glue {} : _) | isLabel (bcText c) && p >= infPenalty -> b : unheld rest
-      x : rest -> x : unheld rest
+    want = held before
+    held = \case
+      b@(Box _ c) : rest@(Glue {} : _) | isLabel (bcText c) -> b : Penalty 0 infPenalty NoHyphen : held rest
+      x : rest -> x : held rest
       [] -> []
 
 tailsOf :: [a] -> [[a]]
@@ -278,16 +278,16 @@ citeBreakTests =
     "the label of a page kept with its value (docs/adr/0277)"
     [ testCase "C1: no line ends with the label of a page, in lines of 8 to 14 em, horizontal and vertical" $
         inLines locatedMarks (\its _ br -> c1Items its <> c1Lines (brLines br)),
-      testCase "C1: before the ADR, the marks of the unit tests broke after the label in some of these lines" $
-        assertBool "no input broke after the label" $
-          or
-            [ not (null (c1Lines (brLines (breakParagraph defaultParams (const (fromIntegral w * fs)) before))))
-            | m <- locatedMarks,
-              vertical <- [False, True],
-              w <- [8 .. 14 :: Int],
-              n <- [0 .. w],
-              let (_, before) = itemsBoth vertical plain (markParagraph n m)
-            ],
+      testCase "C1: before the ADR, the marks of the unit tests broke after the label in some of these lines"
+        $ assertBool "no input broke after the label"
+        $ or
+          [ not (null (c1Lines (brLines (breakParagraph defaultParams (const (fromIntegral w * fs)) before))))
+          | m <- locatedMarks,
+            vertical <- [False, True],
+            w <- [8 .. 14 :: Int],
+            n <- [0 .. w],
+            let (_, before) = itemsBoth vertical plain (markParagraph n m)
+          ],
       testCase "C2: the items are those before the ADR with a penalty of 10000 before the glue after the label, and only that" $
         inLines locatedMarks (\its before _ -> c2Items its before),
       testCase "C3: the items of a mark without a page are those before the ADR" $
