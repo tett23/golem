@@ -16,6 +16,7 @@ InDesign の操作の手順は説明しません。
 | 正規表現スタイル | 正規表現スタイル（GREP スタイル） |
 | アキ量のセット | 文字組みアキ量設定 |
 | [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift] | カーニング、トラッキング、プロポーショナルメトリクス、ベースラインシフト |
+| 文字スタイルと段落スタイルの [code: features] | OpenType 機能 |
 | [code: @no-page-break] | 段落分離禁止オプションの「次の段落と連動」 |
 | マスターページ（[code: \[masters\]]） | 親ページ（InDesign 2022 より前はマスターページ） |
 | プロジェクトの [code: fonts/] | Document Fonts フォルダー |
@@ -113,6 +114,18 @@ InDesign と同じ値だとは限りません。
 - [code: "japanese-equal-width"] は、欧文にだけペアカーニングをかけ、和文を全角の送りで組みます。和文を字送りの格子にそろえたい本文に使います。
 - トラッキングは、行の最後の文字の後ろには足しません。
 - ベースラインシフトは、行送りに影響しません。
+
+@nonumber
+## OpenType 機能
+
+InDesign の文字パネルのメニューの「OpenType 機能」で選ぶ分数、上付き序数表記、スワッシュ字形、スモールキャップ、数字の形式、スタイルセットなどは、文字スタイルと段落スタイルの [code: features] に機能のタグで書きます。
+スモールキャップは [code: "smcp"]、分数は [code: "frac"]、等幅の数字は [code: "tnum"]、オールドスタイル数字は [code: "onum"]、スタイルセットの 1 番は [code: "ss01"] です。
+
+違いは次のとおりです。
+
+- メニューの名前ではなく、OpenType の機能のタグを書きます。
+- フォントにない機能は、InDesign ではメニューに角括弧付きで示されるだけですが、Golem は G08103 で知らせ、[code: --profile prod] では PDF を書きません。
+- フォントにスモールキャップがないとき、InDesign は大文字を縮めて作りますが、Golem は作らず、元の字形で組みます。
 - HTML と EPUB では、CSS で近い指定に置き換えます。CSS では和文と欧文で別のカーニングを指定できないので、PDF と同じにはなりません。
 
 @nonumber

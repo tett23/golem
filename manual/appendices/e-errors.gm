@@ -16,7 +16,7 @@
 
 ほとんどはエラーで、一つでもあれば出力を書きません。
 警告になるものは、項目の中にそう書いています。
-G03010、G05004、G08100 は、[code: --profile dev] では警告、[code: --profile prod] ではエラーです。
+G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[code: --profile prod] ではエラーです。
 [code: golem preflight] だけが出す G09 で始まる診断の重さは、プリフライトの設定で決まります。
 お知らせと情報は、最後の二つの節にまとめています。
 この付録にない番号は、今のバージョンの Golem では出ません。
@@ -639,6 +639,10 @@ G03010、G05004、G08100 は、[code: --profile dev] では警告、[code: --pro
 = [strong: G03021 [code: … の値が正しくありません: …]]
   [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift] の値が違います。
   [code: kerning = "optical"] はまだ使えないので、[code: "metrics"] にしてください。
+= [strong: G03124 [code: OpenType の機能の書き方が正しくありません: …]]
+  フォントの役割、文字スタイル、段落スタイルの [code: features] に、読めない機能の文字列があります。
+  [code: smcp]、[code: -liga]、[code: salt=2] のように、英字と数字の 4 字のタグで書いてください。
+  [code: kern\[3:5\]] のような範囲の指定と、[code: aalt=on] のような語の値は書けません。
 = [strong: G03022 [code: \[lists\] の … が正しくありません: …]]
   [code: \[lists\]] の [code: bullets]、[code: numbers]、[code: gap] の値が違います。
   [code: numbers] の書式には、番号の差し込みをちょうど一つ書いてください。
@@ -784,6 +788,11 @@ PDF を組むときに出るエラーです。
   [code: --profile prod] ではエラーになり、PDF を書きません。
   [code: golem build] の PDF と [code: golem preflight] で出ます。HTML、EPUB、プレーンテキストと [code: golem check] では出ません。
   [code: golem preflight] では、同じ文字が G09002 でも出ます。
+= [strong: G08103 [code: フォント … に OpenType の機能 … がありません]]（[code: --profile dev] では警告）
+  [code: features] で使う機能を、その文字を組むフォントが持っていません。PDF の字形は変わりません。
+  その機能を持つフォントを役割に書くか、文字スタイルから機能を消してください。
+  [code: --profile prod] ではエラーになり、PDF を書きません。
+  [code: golem build] の PDF でだけ出ます。HTML、EPUB、プレーンテキストと [code: golem check] では出ません。
 = [strong: G08006 [code: 出力インテントの ICC プロファイルがありません: …]]
   [code: \[color\]] の [code: intent] に書いたファイルがありません。
 = [strong: G08009 [code: 役割 … の和文の書体に圏点の形 … の字（U+…）がありません]]

@@ -14,6 +14,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import FeaturesSpec qualified
 import FilesSpec qualified
 import FunctionsSpec qualified
 import Golem.Assemble (NoteNumbering (..))
@@ -689,6 +690,7 @@ tests =
       tomlMessageTests,
       TomlMessageSpec.tests,
       ColophonSpec.tests,
+      FeaturesSpec.tests,
       OutputCharsSpec.tests,
       SharedValuesSpec.tests,
       StylePositionSpec.tests,
@@ -1964,6 +1966,7 @@ localStyleTests =
               "aki-set" -> "gyomatsu-yakumono-hankaku"
               "padding" -> "1zw"
               "border-width" -> "1pt"
+              "features" -> "smcp,-liga"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))
         assertBool "char" (all (known CharacterKind) charStyleKeys)
