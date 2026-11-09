@@ -182,7 +182,7 @@ tests =
         -- the stage that gives each of them
         map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "02", "02", "03", "03", "03", "03", "03", "03", "03", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "07", "08", "02"]
         map stage infoCodes @?= ["07", "05"]
-        map stage profileDependentCodes @?= ["05", "03", "08"]
+        map stage profileDependentCodes @?= ["05", "03", "08", "08"]
         assertBool "preflight is 09" (all ((== "09") . stage) preflightCodes),
       testCase "human rendering" $ do
         let src = "abc\ndef"

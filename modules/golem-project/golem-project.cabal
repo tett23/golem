@@ -17,6 +17,7 @@ library
   hs-source-dirs:   src
   exposed-modules:
     Golem.Project
+    Golem.Project.Feature
     Golem.Project.Files
     Golem.Project.Imports
     Golem.Project.Manifest
@@ -46,6 +47,7 @@ test-suite golem-project-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    ColophonSpec
+                    FeaturesSpec
                     FilesSpec
                     FunctionsSpec
                     OutputCharsSpec

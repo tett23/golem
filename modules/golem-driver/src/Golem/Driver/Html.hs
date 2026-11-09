@@ -21,13 +21,14 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Html
 import Golem.Length qualified as L
+import Golem.Project.Feature (normalFeatures)
 import Golem.Project.Style
 
 -- | The character styles of a style, resolved for CSS (docs/adr ADR 0005).
 htmlCharStyles :: Style -> Map Text HtmlCharStyle
 htmlCharStyles style =
   Map.fromList
-    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d)) code background padding)
+    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d) (csFeatures d)) code background padding)
     | n <- Map.keys (stCharStyles style),
       Just d <- [charStyle style n],
       let code = isCodeCharStyle style n
@@ -47,7 +48,7 @@ htmlParaStyles style =
           (fromMaybe 0 (psSpaceBetween d))
           (cssLength (fromMaybe (Zw 0) (psIndent d)))
           (cssLength (fromMaybe (Zw 0) (psFirstLineIndent d)))
-          (htmlFeatures (psKerning d) (psTracking d) (psProportional d) (psBaselineShift d))
+          (htmlFeatures (psKerning d) (psTracking d) (psProportional d) (psBaselineShift d) (psFeatures d))
           (htmlRule style <$> join (psRuleBefore d))
           (htmlRule style <$> join (psRuleAfter d))
           (alignDecls bindingRight (fromMaybe ParaLeftJustified (psAlign d)))
@@ -122,9 +123,9 @@ htmlRule style r =
           hrInner = space (rsSpaceAfter r)
         }
 
--- | The keys of the spacing of characters for CSS (docs/adr/0020).
-htmlFeatures :: Maybe Kerning -> Maybe Int -> Maybe Bool -> Maybe Dim -> HtmlFeatures
-htmlFeatures k t p b =
+-- | The keys of the spacing of characters (docs/adr/0020) and the OpenType features (docs/adr/0268) for CSS.
+htmlFeatures :: Maybe Kerning -> Maybe Int -> Maybe Bool -> Maybe Dim -> [Feature] -> HtmlFeatures
+htmlFeatures k t p b fs =
   HtmlFeatures
     { hfKerning =
         k >>= \case
@@ -134,7 +135,8 @@ htmlFeatures k t p b =
           KernOptical -> Nothing,
       hfTracking = t,
       hfProportional = p,
-      hfBaselineShift = cssLength <$> b
+      hfBaselineShift = cssLength <$> b,
+      hfOpenType = normalFeatures [(ftTag f, ftValue f) | f <- fs]
     }
 
 -- | A ruby alignment of style.toml as a CSS ruby-align value (golem-layout ADR 0009).

@@ -1212,8 +1212,8 @@ writePdfTarget inMemory opts e diagFid book bib = do
     Right (bytes, notices, view, starts)
       -- golem preflight keeps the PDF in memory (golem-cli ADR 0006)
       | inMemory -> pure ([], notices <> fontNotice <> glyphs, Just (bytes, view))
-      -- G08100 is an error in prod and stops the PDF; the PDF of an earlier build goes too (docs/adr 0081)
-      | hasErrors (map (adjustForProfile (optProfile opts)) glyphs) -> do
+      -- G08100 and G08103 are errors in prod and stop the PDF; the PDF of an earlier build goes too (docs/adr 0081, docs/adr/0268)
+      | hasErrors (map (adjustForProfile (optProfile opts)) (glyphs <> notices)) -> do
           cleanDir dir
           pure ([], notices <> fontNotice <> glyphs, Nothing)
       | otherwise -> do

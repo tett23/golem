@@ -646,6 +646,25 @@ intWidthTests =
         [a, b] -> assertBool (show (a, b)) (a /= b)
         other -> assertFailure (show other),
     testGroup
+      "I3: an inner Form is keyed only for a stream numbered below 2^31; a stream of 2^31 or more named twice is refused (docs/adr ADR 0259)"
+      [ testCase "I3: a stream of the number 2^31 - 1 named twice is an inner Form of a negative key, apart from the objects" $ do
+          p <- importOk 1 (contentsPage "<< >>" "2147483647 0 R 2147483647 0 R" [(2147483647, stream "" "q 0 g 0 0 1 1 re f Q")])
+          ipContent p @?= "/GolemC2147483647 Do\n/GolemC2147483647 Do"
+          let inner = [k | (k, OStream d _) <- ipObjects p, lookup "Subtype" d == Just (OName "Form")]
+          inner @?= [negate (2147483647 * 4294967296 + 1)]
+          assertBool (show inner) (all (< 0) inner),
+        testCase "I3: a stream of the number 2^31 named twice is refused" $
+          importPage 1 (contentsPage "<< >>" "2147483648 0 R 2147483648 0 R" [(2147483648, stream "" "q 0 g 0 0 1 1 re f Q")]) @?= Left (StreamNumberTooLarge 2147483648),
+        testCase "I3: a stream of 18 digits named twice is refused" $
+          importPage 1 (contentsPage "<< >>" "123456789012345678 0 R 123456789012345678 0 R" [(123456789012345678, stream "" "q 0 g 0 0 1 1 re f Q")]) @?= Left (StreamNumberTooLarge 123456789012345678),
+        testCase "I3: a stream of the number 2^31 named once is placed: it has no inner Form" $ do
+          p <- importOk 1 (contentsPage "<< >>" "2147483648 0 R" [(2147483648, stream "" "q 0 g 0 0 1 1 re f Q")])
+          ipContent p @?= "q 0 g 0 0 1 1 re f Q",
+        testCase "I3: a stream of the number 2^31 named twice that is not closed is joined and placed" $ do
+          p <- importOk 1 (contentsPage "<< >>" "2147483648 0 R 2147483648 0 R" [(2147483648, stream "" "0 g 0 0 1 1 re f")])
+          ipContent p @?= "0 g 0 0 1 1 re f\n0 g 0 0 1 1 re f"
+      ],
+    testGroup
       "I4: a stream is closed when, and only when, q and Q, BMC or BDC and EMC are each balanced"
       [ testCase "I4: one BDC and one EMC is closed: the stream named twice is one inner Form" $ do
           p <- importOk 1 (contentsPage "<< >>" "4 0 R 4 0 R" [(4, stream "" "/Span << >> BDC 0 0 1 1 re f EMC")])

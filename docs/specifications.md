@@ -1657,7 +1657,7 @@ LSP と `golem lint` はファイルを検査しないので、フォントを�
 スタイルの定義は、`based-on` をたどった鎖の根から順に、子のキーが親のキーを上書きして決める。
 スタイルの名前は、英小文字で始まり、英小文字、数字、`-` だけからなる。
 
-文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic` である。
+文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic`、`features`（OpenType の機能、後述）である。
 コードの文字スタイルは、本文の中のコードの背景と余白のキー `background` と `padding` と、改行の印のキー `wrap-mark` も持つ（後述）。
 `font` の役割は、役割が持つ側（和文か欧文）の文字だけをその役割で組み、持たない側の文字は外側の書体のまま組む。
 `synthetic-bold` が真なら、`font` の役割が持たない側の文字を合成の太字（輪郭を線で太らせる）にし、`font` がなければ両側を太らせる。
@@ -1725,6 +1725,56 @@ CSS では、和文と欧文で別のカーニングを指定できない。
 `letter-spacing` は行の最後の文字の後ろにも空きを足すが、PDF との差として受け入れる。
 プレーンテキストは、どのキーも使わない。
 
+文字スタイルと段落スタイルは、OpenType の機能の欄 `features` も持つ（[ADR 0268](adr/0268-opentype-features-on-character-styles.md)）。
+値は機能の文字列の配列であり、スモールキャップ、分数、数字の形式、スタイルセットなどを、文字の範囲と段落に当てる。
+
+```toml
+[character-styles.small-caps]
+features = ["smcp"]
+
+[character-styles.abbr]
+based-on = "small-caps"
+features = ["c2sc"]
+
+[paragraph-styles.table-cell]
+features = ["tnum", "lnum"]
+
+[character-styles.alt]
+features = ["salt=2", "-liga"]
+```
+
+機能の文字列は、次の四つの形だけを受け付ける。
+`tag` は英字と数字の 4 字である。
+
+| 形 | 意味 | 正規の形 |
+| --- | --- | --- |
+| `tag` | 機能を有効にする（値 1） | `tag` |
+| `+tag` | 機能を有効にする（値 1） | `tag` |
+| `-tag` | 機能を止める（値 0） | `-tag` |
+| `tag=N` | 機能を値 N で有効にする。`N` は 0 から 65535 までの十進の整数 | `N` が 0 なら `-tag`、1 なら `tag`、ほかは `tag=N` |
+
+HarfBuzz が読めるほかの形（`kern[3:5]` のような範囲、`aalt=on` のような語の値）は受け付けない。
+読めない要素はエラー（G03124）とし、その要素の位置に、誤りのある要素ごとに一つ、要素の順に出す。
+誤りのある定義は、ほかの `style.toml` の誤りと同じく捨てる。
+`@style-def` では配列を書けないので、`features="smcp,-liga"` のように `,` で区切った一つの文字列で書く。
+空の要素（`features="smcp,"`）も G03124 とする。
+
+`features` は、ほかのキーと違い、`based-on` の子が親の値を置き換えず、親の並びの後ろにつなぐ。
+組み込みのスタイルと同じ名前の表と、`@style-def` で同じ名前の定義を重ねた場合も、元の定義の並びの後ろにつなぐ。
+InDesign では機能の一つずつが文字の属性なので、子のスタイルでスモールキャップを有効にしても、親のオールドスタイル数字は残る。
+親の機能を止めたい子は `-tag` を書く。
+つないだ並びは、タグごとに最後の値だけを、その最後の位置に正規の形で残す。
+`["onum", "smcp"]` の親と `["-smcp", "salt=2"]` の子の並びは、`["onum", "-smcp", "salt=2"]` になる。
+PDF での並べ方と、書体にない機能の扱いは「フォント」の節に書く。
+
+HTML と EPUB では、`cs-名前` と `ps-名前` の CSS に `font-feature-settings` を一つだけ書く。
+値は、そのスタイルの `based-on` の鎖の並びをつないでタグごとに最後の値を残した並びを、`"smcp" 1, "liga" 0, "salt" 2` の形にしたものである。
+`proportional-metrics` が真なら、同じ宣言の最後に `"palt" 1`（縦組みの本では `"vpal" 1`）を加える。
+`features` を書かないスタイルの CSS は、前の節の表のとおりである。
+CSS の `font-feature-settings` は外側の要素の値に足されず、内側の要素の値で置き換わる。
+そのため、入れ子にした文字スタイルと、段落スタイルの中の文字スタイルでは、HTML と EPUB では内側のスタイルの並びだけが当たり、PDF と違う。
+プレーンテキストは、`features` を使わない。
+
 組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`、`padding = "0.25zw"`、`wrap-mark = "⏎"`）、`url`（キーなし）、`note-mark`（`size = "0.5zw"`）の六つである。
 `note-mark` は、PDF の本文の注の印に当てる既定の文字スタイルである（「脚注」の節、[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 `url` は参考文献の URL を組む文字スタイルであり、書体、大きさ、色は周りの文字のまま組む（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
@@ -1742,7 +1792,7 @@ PDF では、`url` と、`based-on` をたどって `url` に行き着く文字�
 `[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
 `[character-styles.strong] based-on = "italic"` は、`[strong: ...]` を斜体で表す。
 
-段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、段落の前と後に引く罫線の `rule-before` と `rule-after` である。
+段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`features`、段落の前と後に引く罫線の `rule-before` と `rule-after` である。
 
 `rule-before` と `rule-after` は、「罫線の指定」の表か `false` をとる（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 InDesign の段落境界線にあたる。
@@ -2455,6 +2505,7 @@ SVG の図版の色も sRGB のまま、sRGB のプロファイルの ICCBased �
 和文と欧文で別のフォントを組み合わせるのは日本語組版の標準的なやり方である。
 OpenType の機能（縦書き用の字形、プロポーショナルな字詰めなど）も役割ごとに指定し、縦書きの役割では縦書き用の字形を既定で有効にする。
 役割の `features` は機能をそのままシェイピングに渡すが、`palt` と `vpal` だけは、JLReq の規則で前後の空きを決める約物に当てない（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
+役割の `features` にも、文字スタイルの `features` と同じ四つの形だけを書け、読めない要素は G03124 とする（[ADR 0268](adr/0268-opentype-features-on-character-styles.md)）。
 縦書き用の字形がない文字のうち、UAX #50 の縦組みの向き（Vertical_Orientation）が R か Tr のもの（`U+2014` のダッシュなど）は、PDF では横組みの字形を時計回りに 90 度回転し、仮想ボディの中心を行の中心線にそろえて描く（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 フォントに縦書き用の字形があれば、R の文字でもその字形を正立で使う。
 PDF の縦中横は、箱の文字列を横組みでシェイピングし、横組みの字として回転せずに左から右へベタで並べる（[golem-driver ADR 0045](golem-driver/adr/0045-draw-tate-chu-yoko-horizontally-in-pdf.md)）。
@@ -2471,6 +2522,41 @@ HTML と EPUB では、CSS の `text-orientation` の既定の `mixed` に任せ
 ただし、JLReq の規則で前後の空きを決める約物（始め括弧類、終わり括弧類、句点類、読点類、中点類）には、カーニングの方式と `proportional-metrics` によらず `palt` と `vpal` を足さず、`-palt` と `-vpal` を足す（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
 役割の `features` の `palt` と `vpal` も、この `-palt` と `-vpal` が上書きする。
 これらの約物に足す機能は、`metrics` で `-palt` と `-vpal`、`none` と `japanese-equal-width` で `-kern`、`-vkrn`、`-palt`、`-vpal` である。
+
+PDF で字をシェイピングする機能の並びは、次の順につないだものである（[ADR 0268](adr/0268-opentype-features-on-character-styles.md)）。
+後ろの機能が、前の同じタグの機能に勝つ。
+
+1. 役割の `features`。
+2. 段落スタイルの `features`。`based-on` の鎖の根から順に置く。
+3. 文字スタイルの `features`。入れ子の外側から順に、各スタイルの中では `based-on` の鎖の根から順に置く。
+4. Golem が足す機能。カーニングの方式、`proportional-metrics`、JLReq の約物の打ち消しである。
+
+つないだ並びは、タグごとに最後の値だけを、その最後の位置に正規の形で残してから HarfBuzz に渡す。
+渡す機能の数に上限はない。
+Golem が足す機能を最後に置くので、`features = ["palt"]` の文字スタイルでも、`kerning = "japanese-equal-width"` の和文は全角で組み、JLReq の約物には `palt` が当たらない。
+約物の字形を半角の幅にする機能 `halt`、`vhal`、`chws`、`vchw` も、JLReq の規則で前後の空きを決める約物には当てない。
+並び（役割、段落スタイル、文字スタイル）がこれらを有効にしている字が約物のときだけ、4 の段で `-halt`、`-vhal`、`-chws`、`-vchw` のうち有効なものを足す。
+これらは Golem の約物の空きと同じことを書体の側で行う機能であり、重ねると空きが二重に詰まるためである。
+
+機能の並びは見た目の一部であり、並びの違う字は別の箱になって別々にシェイピングされる。
+機能の境をまたいで合字とカーニングはかからない。
+行分割の送りの計測と描画は、同じ並びでシェイピングするので、行分割の幅と描いた幅は一致する。
+縦組みでも、`features` は書いたとおりに渡し、`palt` を `vpal` に読み替えない。
+縦組みの中で回転して組む欧文と縦中横は、横書きの方向で同じ並びでシェイピングする。
+ルビの読みは外側の見た目の機能で組み、圏点の字は役割の機能だけで組み、注の印は印の文字スタイルの機能で組む。
+
+PDF をターゲットに含む `golem build` は、有効にした機能を書体が持たないとき、G08103 で報告する。
+書体が機能を持つとは、その書体の GSUB か GPOS の機能の一覧にそのタグがあることであり、用字系と言語系を問わない。
+報告の単位は同じ見た目の字の連なり（ラン）であり、ランの字が使う書体（和文の字は和文の書体、欧文の字は欧文の書体）のどれもがその機能を持たないときに報告する。
+和文と欧文が混じったランで欧文の書体だけがスモールキャップを持つ場合は、報告しない。
+止める機能（値 0）と、Golem が足す機能は報告しない。
+G08103 は、フォントのファイルと機能のタグの組ごとに一つにまとめる。
+位置は、その機能を有効にした `style.toml` の値のうちファイルの中で最初のものであり、`@style-def` だけが書いた場合はその行である。
+事実は `font`、`feature`、`pdf-pages`（その機能のランが現れたページ）である。
+重大度はプロファイルで変わり、dev では警告、prod ではエラーとする（G08100 と同じ）。
+dev では PDF を書き、prod では PDF を書かず（前のビルドの PDF も消す）、ほかのターゲットは書く。
+書体が機能を持たなければ字形は変わらないので、合成のスモールキャップは作らず、元の字形で組む。
+HTML、EPUB、プレーンテキストのターゲットと、`golem check`、LSP は報告しない。
 
 ライセンスで埋め込みが禁止されているフォントを使った場合は、エラー（G08004）とする。
 OS/2 の `fsType` は OpenType の仕様のとおりに読み、ビット 1（制限付きのライセンス）がビット 2 とビット 3 なしに立っている場合、ビット 8（サブセット化の禁止）が立っている場合、ビット 9（ビットマップの埋め込みだけを許す）が立っている場合に埋め込みを禁じているとみなす（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
@@ -2561,6 +2647,7 @@ PDF を読む処理は golem-pdf の `Golem.Pdf.Import` に Haskell で書き、
 - 取り込みの資源には上限がある（[docs/adr/0040](adr/0040-pdf-import-resource-limits.md)）。一つの図版の取り込みで展開するバイト数は、フィルタの各段の出力を合わせて 256 MiB までとし、同じストリームは一度だけ展開する。画像のストリームは展開せずに写すので数えない。ページの木で一つのノードを二度指す PDF、相互参照の項目がすべての改訂を合わせて 8,388,607 を超える PDF、予測子の値が範囲の外にある PDF は、G08010 で拒む。値と数え方は [golem-pdf の仕様書](golem-pdf/specifications.md) に書く。
   ページの `Contents` で同じストリームを何度も名指しすると、そのストリームを出力でも一度だけ書き、名指しの位置から呼ぶ（[docs/adr/0051](adr/0051-reuse-repeated-pdf-content-streams.md)）。
   そう書けないストリームはつないで写し、つないだ内容が 256 MiB を超えれば G08015 とする。
+  呼ぶ先にするストリームのオブジェクトの番号が 2147483647 を超えれば、G08020 とする（[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 - 内容のストリームは復号し、DeviceRGB を書き換えてから Flate で圧縮し直す。画像などのストリームはそのまま写す。
 - DeviceRGB は、sRGB のプロファイルの ICCBased に置き換える。内容のストリームの `r g b rg` は `/GolemSRGB cs r g b sc` に、`RG` は `CS` と `SC` の組に書き換える。
 - フォントは埋め込んだものだけを受け付け、取り込んだフォントを本文のフォントとまとめない。
@@ -4617,7 +4704,7 @@ data = { table = "data/words.tsv" }
 - 指す先のない名前、どの図版からも指されない画像、`plugin:` でない `src`、`web` のある図版、出力の最上位でない図版（箇条書きと定義リストの中）、svg、png、jpeg でない形式、合計で 64 MiB を超える画像は、不正な出力（G06009）である。図版のキャプションに段落でないブロック（図版を含む）があれば、画像の検査より先に、キャプションの理由（`図版のキャプションには段落だけを置けます`）で不正な出力とする（[docs/adr/0144](adr/0144-figure-captions-hold-paragraphs-only.md)）。本体から受け取った図版は、受け取ったまま返せる。
 - ホストは、図版の `src` を `golem-plugin-image://<画像の SHA-256 の 16 進>.<拡張子>`（`.svg`、`.png`、`.jpg`）に置き換える。同じバイト列の画像は一つになる。この名前は `://` を含むので、原稿の `@figure` に書くと URL（G02060）になり、プロジェクトのファイルとは取り違えない。
 - 評価は、プラグインの図版を `@figure` と同じ段の検査（`checkFigure`。`page` の G02075、`wrap` と `rotate` と `width` の G02087 と G02031）に、呼び出しの位置で通す。検査を通らない図版はブロックにならず、その画像も残らない。キャプションの段落スタイルは G02013 とし、スタイルを除く。
-- 画像は評価の結果（`erImages`）から本（`bookImages`）に運ぶ。PDF はファイルの代わりにそのバイト列を読み、画像の読み込みと SVG の検査（G08010、G08011、G08015 から G08017、G08101）は `@figure` と同じである。HTML と EPUB は `images/golem-plugin/<SHA-256>.<拡張子>` に書き、G08014 も同じく検査する。組版、番号、ラベル、プリフライトも原稿の図版と同じである。
+- 画像は評価の結果（`erImages`）から本（`bookImages`）に運ぶ。PDF はファイルの代わりにそのバイト列を読み、画像の読み込みと SVG の検査（G08010、G08011、G08015 から G08017、G08020、G08101）は `@figure` と同じである。HTML と EPUB は `images/golem-plugin/<SHA-256>.<拡張子>` に書き、G08014 も同じく検査する。組版、番号、ラベル、プリフライトも原稿の図版と同じである。
 - 原稿の図版で、HTML と EPUB に写す画像のパスが `images/golem-plugin/` の下にあるものは、G08102 とし、HTML と EPUB を書かない（[docs/adr/0137](adr/0137-plugin-image-folder-collision-g08102.md)）。
 - 図版の IR の形は変えない。
 
