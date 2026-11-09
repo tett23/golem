@@ -9,7 +9,7 @@ separator takes.
 -}
 module PaginateSpec (paginateTests) where
 
-import Control.Monad (forM_, replicateM)
+import Control.Monad (forM_, replicateM, when)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -24,7 +24,7 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import PaginateEnum (Element (..), Input (..), controlSpan, enumFlows, noteOf, paginateInput)
-import PaginateInvariants (Breach (..), Invariant (..), breaches, waitingFigures)
+import PaginateInvariants (Breach (..), Invariant (..), breaches, p9SpaceMoved, waitingFigures)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -57,6 +57,7 @@ paginateTests =
       testGroup "need-lines is judged again in the column a block goes on to after spaces (golem-layout ADR 0027)" spaceAfterNeedTests,
       testGroup "the figures that wait are read from the placement (golem-layout ADR 0033)" waitingReadTests,
       testGroup "a larger need-lines after one judged is judged again (golem-layout ADR 0035)" largerNeedTests,
+      testGroup "the spaces before need-lines are not counted either (golem-layout ADR 0043)" spaceBeforeNeedTests,
       testGroup "invariants" propertyTests
     ]
 
@@ -1243,9 +1244,11 @@ waitingReadTests =
 
 {- | golem-layout ADR 0035: need-lines 2 judged before a space, then k
 spaces, a second need-lines of m lines, a space and a block, in one
-column of 6 grid lines. r grid lines are left where the second is judged,
-the spaces before it placed. A larger second one is judged again (N1); a
-second one no larger changes nothing (N2).
+column of 6 grid lines. r grid lines are left after the k spaces. A
+larger second one is judged again (N1); a second one no larger changes
+nothing (N2). The second is judged before the k spaces, r + k grid lines
+left, as golem-layout ADR 0043 decides: the spaces before a need-lines
+are not counted either.
 -}
 largerNeedTests :: [TestTree]
 largerNeedTests =
@@ -1285,7 +1288,7 @@ largerNeedTests =
           | m > c = do
               unmets ps @?= [UnmetNeedLines mk2 m]
               pageOfBlock ps @?= 2
-          | otherwise = pageOfBlock ps @?= (if r >= m then 1 else 2)
+          | otherwise = pageOfBlock ps @?= (if r + k >= m then 1 else 2)
     boundaryName m k r name =
       (if m <= 2 then "N2: " else "N1: ")
         <> ("need-lines " <> show m <> " after " <> show k <> " spaces, " <> show r <> " grid lines left, before " <> name)
@@ -1322,3 +1325,82 @@ spaceAfterNeedTests =
       let ps = paginateInput (Input 4 1 [EPara 2, EFigure 3, ENeedLines, ESpace, ESpace, EPara 1])
       gridLines ps @?= [[0, 1], [0], [0]]
   ]
+
+{- | golem-layout ADR 0043: the spaces between the block before and
+need-lines are not counted either. Need-lines is judged before them, as
+before the spaces after it (golem-layout ADR 0027), and the block after
+is placed in the column judged in when its first part fits after the
+spaces (P10). Moving the spaces after the need-lines lays out the same
+(P9). The cases of its section 「テスト設計」 and of its table of the
+boundary inputs, in columns of 6 grid lines for the table.
+-}
+spaceBeforeNeedTests :: [TestTree]
+spaceBeforeNeedTests =
+  [ testCase "P10: the paragraph after a space and need-lines 2 stays on page 1, after the space" $ do
+      let input = Input 3 1 [EPara 1, ESpace, ENeedLines, EPara 1]
+          ps = paginateInput input
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1])]
+      gridLines ps @?= [[0, 2]]
+      unmets ps @?= []
+      brokenIn [minBound .. maxBound] input @?= [],
+    testCase "P9: the space before need-lines and the space after it lay out the same, and without the space the paragraph is on line 2" $ do
+      placedIn (Input 3 1 [EPara 1, ESpace, ENeedLines, EPara 1]) @?= placedIn (Input 3 1 [EPara 1, ENeedLines, ESpace, EPara 1])
+      gridLines (paginateInput (Input 3 1 [EPara 1, ENeedLines, ESpace, EPara 1])) @?= [[0, 2]]
+      gridLines (paginateInput (Input 3 1 [EPara 1, ENeedLines, EPara 1])) @?= [[0, 1]],
+    testCase "P9: moving the space after the need-lines lays out the same, in the first form of golem-layout ADR 0043" $ do
+      let flows = enumFlows [EPara 1, ESpace, ENeedLines, EPara 1]
+          lay = paginate 1 3
+      p9SpaceMoved lay flows (lay flows) @?= [],
+    testCase "P5: the counterexample of the nightly job: the figure after the space, the next at the top of column 2, the blank line dropped and recorded" $ do
+      -- the enum.yml run 42530629702 of 2026-11-09
+      forM_ [ENeedLinesMore 2, ENeedLines] $ \n -> do
+        let input = Input 3 2 [EPara 1, ESpace, n, EFigure 1, EBlank 1, EFigure 1]
+            ps = paginateInput input
+        placedIn input @?= [(1, 0, [SLine 0, SFigure 1000]), (1, 1, [SFigure 1001])]
+        gridLines ps @?= [[0, 2], [0]]
+        [(poColumn p, poUnmet p) | p <- ps] @?= [(0, []), (1, [DroppedBlank (controlSpan 1)])]
+        waitingFigures (enumFlows (inElements input)) ps @?= []
+        brokenIn [minBound .. maxBound] input @?= []
+        p9SpaceMoved (paginateIn 1 (ColumnSet 2 0 0 0) 3) (enumFlows (inElements input)) ps @?= [],
+    testGroup "the boundary inputs" (map boundary cases)
+  ]
+  where
+    c = 6
+    need = 2
+    blocks = [("a paragraph of 1 line", FParagraph (lines' 100 1), 1), ("a paragraph of 2 lines", FParagraph (lines' 100 2), 2), ("a figure of 1 line", FFigure 1000 1 [] [], 1), ("a figure of C lines", FFigure 1000 c [] [], c)]
+    afters = [("", []), (", blank lines and a figure", [FBlank mk2 1, FFigure 1001 1 [] []])]
+    -- columns, spaces before, the lines left before them, spaces after
+    cases =
+      [ (k, s, r, a)
+      | k <- [1, 2],
+        s <- [0, 1, 2, 3],
+        r <- nubInts [need - 1, need, need + s - 1, need + s, s],
+        r >= 1,
+        r <= c - 1,
+        r >= s,
+        a <- [0, 1]
+      ]
+    {- the need-lines met before the spaces, a block whose first part does
+    not fit after them, and a figure after it: the block goes on as
+    golem-layout ADR 0027 decides, and the reading of the figures that
+    wait (golem-layout ADR 0033) reads it as sent on by itself. P5 breaks
+    here with the spaces after the need-lines too, before golem-layout
+    ADR 0043 as after it, which does not change that reading; P9 checks
+    that the two forms lay out the same. -}
+    goesOnAfterSpaces s r a first rest = r >= need && first > r - s - a && not (null rest)
+    nubInts = foldr (\x xs -> x : filter (/= x) xs) []
+    boundary (k, s, r, a) =
+      testCase (boundaryName k s r a) $
+        forM_ [(name <> what, block, first, rest) | (name, block, first) <- blocks, (what, rest) <- afters] $ \(name, block, first, rest) -> do
+          let flows = [FParagraph (lines' 0 (c - r))] <> replicate s (FSpace 1) <> [FNeedLines mk need] <> replicate a (FSpace 1) <> [block] <> rest
+              lay = paginateIn 1 (ColumnSet k 0 0 0) c
+              ps = lay flows
+              firstAt = take 1 [(poNumber p, poColumn p) | p <- ps, (_, sl) <- poSlots p, sl `elem` [SLine 100, SFigure 1000]]
+          assertEqual ("the invariants, before " <> name) [] (brokenOf [i | i <- [minBound .. maxBound], i /= P5 || not (goesOnAfterSpaces s r a first rest)] flows ps)
+          assertEqual ("P9, before " <> name) [] (map breachWhy (p9SpaceMoved lay flows ps))
+          when (s > 0 && r >= need && first <= r - s - a) $
+            assertEqual ("P10, the column of " <> name) [(1, 0)] firstAt
+    boundaryName k s r a =
+      (if s > 0 then "P9, P10: " else "P9: ")
+        <> (show k <> " column" <> (if k > 1 then "s, " else ", "))
+        <> (show s <> " spaces before need-lines 2, " <> show r <> " grid lines left before them, " <> show a <> " after")

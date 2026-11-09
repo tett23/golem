@@ -5,8 +5,8 @@
 
 {- | The invariants of pagination checked on every small input
 (docs/adr/0204): the enumeration of the inputs, the predicates I1 to I8,
-P1 to P4 (golem-layout ADR 0025) and P5 (golem-layout ADR 0026) on
-outputs made by hand, and every
+P1 to P4 (golem-layout ADR 0025), P5 (golem-layout ADR 0026) and P9
+(golem-layout ADR 0043) on outputs made by hand, and every
 input up to the depth of
 @GOLEM_ENUM_DEPTH@ elements, with the known bugs excluded by an explicit
 list whose counterexamples are counted.
@@ -403,8 +403,30 @@ predicateTests =
       -- five lines, a heading whose note did not count, two lines on the next page
       let flows = [para 0 5, FHeading 2 False 1 [notedLine 20], para 30 2]
           before0013 = [withNotes [(noteOf 20, 0, 1)] (columnAt 1 0 8 (zip [0 ..] (map SLine [0 .. 4]) <> [(5, SHeading 20 1)])), column 2 0 8 [SLine 30, SLine 31]]
-      broken flows before0013 @?= [I6]
+      broken flows before0013 @?= [I6],
+    testGroup
+      "P9 a space moved after the need-lines after it lays out the same (golem-layout ADR 0043)"
+      [ testCase "P9: the same output for the input with the space moved breaks nothing" $
+          p9SpaceMoved (const out) moving out @?= [],
+        testCase "P9: another output for the input with the space moved is a breach" $
+          map breachOf (p9SpaceMoved (const []) moving out) @?= [P9],
+        testCase "P9: the input laid out again has the space after the need-lines" $
+          p9SpaceMoved (\fs -> if fs == [para 0 1, need 0, FSpace 1, para 1 1] then out else []) moving out @?= [],
+        testCase "P9: each space right before a need-lines is moved by itself" $
+          map breachOf (p9SpaceMoved (const []) [para 0 1, FSpace 1, need 0, FSpace 1, need 1, para 1 1] out) @?= [P9, P9],
+        testCase "P9: a space after the need-lines, or with a break, a no-break or a page-lines among the controls between the blocks, is not moved" $ do
+          p9SpaceMoved (const []) [para 0 1, need 0, FSpace 1, para 1 1] out @?= []
+          p9SpaceMoved (const []) [para 0 1, FBreak BreakPage, FSpace 1, need 0, para 1 1] out @?= []
+          p9SpaceMoved (const []) [para 0 1, FSpace 1, need 0, FNoBreak (controlSpan 1), para 1 1] out @?= []
+          p9SpaceMoved (const []) [para 0 1, FSpace 1, need 0, FAdjustLines (controlSpan 1) 1, para 1 1] out @?= []
+          -- a break past the block after does not count
+          map breachOf (p9SpaceMoved (const []) [para 0 1, FSpace 1, need 0, para 1 1, FBreak BreakPage] out) @?= [P9]
+      ]
   ]
+  where
+    need m = FNeedLines (controlSpan m) 2
+    moving = [para 0 1, FSpace 1, need 0, para 1 1]
+    out = [columnAt 1 0 3 [(0, SLine 0), (2, SLine 1)]]
 
 -- every input
 
@@ -424,9 +446,19 @@ data KnownBug = KnownBug
 knownBugs :: [KnownBug]
 knownBugs = []
 
--- | The breaches of an input.
+{- | The breaches of an input: of the predicates over its output, and of
+P9 (golem-layout ADR 0043), which lays out again the input with a space
+moved after the need-lines after it.
+-}
 breachesOf :: Input -> [Breach]
-breachesOf input = breaches 1 (enumFlows (inElements input)) (paginateInput input)
+breachesOf input =
+  let flows = enumFlows (inElements input)
+      ps = paginateInput input
+   in breaches 1 flows ps <> p9SpaceMoved (paginateFlowsOf input) flows ps
+
+-- | The flows given laid out on the page of the input.
+paginateFlowsOf :: Input -> [Flow] -> [PageOut]
+paginateFlowsOf (Input c k _) = paginateWithin maxBound 1 (ColumnSet k 0 0 0) c
 
 -- | The breaches no known bug excuses.
 unexcused :: [KnownBug] -> Input -> [Breach]
@@ -506,7 +538,7 @@ report what input vs =
 
 exhaustiveTests :: [TestTree]
 exhaustiveTests =
-  [ testCase "I1 to I8 and P1 to P5 hold for every input up to GOLEM_ENUM_DEPTH elements, but the known bugs, which excuse as many inputs as pinned" $ do
+  [ testCase "I1 to I8, P1 to P5 and P9 hold for every input up to GOLEM_ENUM_DEPTH elements, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- enumDepth
       -- built here, not in a value of its own, so that it is not held
       case tallyAllPar depth (inputsOver [3 .. 5] shortElementsFor) (judge knownBugs) of
@@ -526,7 +558,7 @@ exhaustiveTests =
                     <> ", the inputs a known bug excuses differ from the count pinned:\n"
                     <> intercalate "\n" [item <> ": pinned " <> maybe "nothing" show pinned <> ", counted " <> show n | (item, pinned, n) <- wrong]
                 ),
-    testCase "I1 to I8 hold for every input drawn from the enumeration of docs/adr/0204 one element past GOLEM_ENUM_DEPTH, GOLEM_ENUM_PAGINATION_SAMPLES of them, but the known bugs" $ do
+    testCase "I1 to I8, P1 to P5 and P9 hold for every input drawn from the enumeration of docs/adr/0204 one element past GOLEM_ENUM_DEPTH, GOLEM_ENUM_PAGINATION_SAMPLES of them, but the known bugs" $ do
       depth <- enumDepth
       count <- enumSamples
       let drawn = Tiers [sampleT sampleSeed count (drawInput (depth + 1))]

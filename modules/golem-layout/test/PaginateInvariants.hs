@@ -4,7 +4,9 @@ read as docs/adr/0206 (its section 6) decides, and the invariants P1 to
 P4 of need-lines and blank lines (golem-layout ADR 0025, its section
 「不変条件」), their next block read as golem-layout ADR 0026 decides
 (P1′, P3′ and P4′ of its section 「不変条件」), with its P5. They read nothing of the paginator but its input and
-output, and every case is judged.
+output, and every case is judged. P9 of golem-layout ADR 0043 alone
+compares the output with that of another input, laid out by the
+paginator it is given.
 
 The columns are taken in the order of their page and their column. A
 grid line, a heading or a figure is at a place: its column in that
@@ -27,6 +29,7 @@ module PaginateInvariants
     p3BlankNoOverflow,
     p4BlankWithNext,
     p5BlankBeforeWaiting,
+    p9SpaceMoved,
     waitingFigures,
     invariants,
     breaches,
@@ -40,8 +43,8 @@ import Data.Maybe (isJust, listToMaybe, mapMaybe)
 import Golem.Layout.Paginate
 import Golem.Syntax (SrcSpan)
 
--- | The invariants of docs/adr/0204 and of golem-layout ADR 0025 and 0026, by their numbers.
-data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5
+-- | The invariants of docs/adr/0204 and of golem-layout ADR 0025, 0026 and 0043, by their numbers.
+data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5 | P9
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken: the lines or figures concerned, and how.
@@ -698,3 +701,44 @@ p5BlankBeforeWaiting flows ps =
         let c = Map.findWithDefault 0 sp dropped,
         c /= 1
       ]
+
+{- | P9 of golem-layout ADR 0043, its section 「不変条件」: a space between
+the block before and a need-lines, moved after the need-lines, lays out
+the same slots ('poSlots') and records ('poUnmet') in every column. Each
+space right before a need-lines is moved by itself, the input laid out
+again by the paginator given. Only the inputs with no break, no
+no-break and no page-lines among the controls between the block before
+and the block after are judged.
+-}
+p9SpaceMoved :: ([Flow] -> [PageOut]) -> Check
+p9SpaceMoved lay flows ps =
+  [ Breach P9 [] ("the space at flow " <> show k <> " moved after the need-lines after it lays out " <> show moved <> ", not " <> show here)
+  | k <- movable,
+    let moved = shape (lay (swapAt k)),
+    moved /= here
+  ]
+  where
+    shape = map (\p -> (poNumber p, poColumn p, poSlots p, poUnmet p))
+    here = shape ps
+    movable =
+      [ k
+      | (k, (FSpace _, FNeedLines _ _)) <- zip [0 ..] (zip flows (drop 1 flows)),
+        not (any manual (reverse (takeWhile control (reverse (take k flows))) <> takeWhile control (drop k flows)))
+      ]
+    swapAt k = case splitAt k flows of
+      (before, s : n : after) -> before <> (n : s : after)
+      _ -> flows
+    -- the flows that place nothing of their own, between two blocks
+    control = \case
+      FBreak _ -> True
+      FNoBreak _ -> True
+      FNeedLines _ _ -> True
+      FAdjustLines _ _ -> True
+      FBlank _ _ -> True
+      FSpace _ -> True
+      _ -> False
+    manual = \case
+      FBreak _ -> True
+      FNoBreak _ -> True
+      FAdjustLines _ _ -> True
+      _ -> False
