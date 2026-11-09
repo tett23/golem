@@ -361,14 +361,15 @@ markBuilder fontNames imageNames formNames = mark
     sp = B.char7 ' '
     nl = B.char7 '\n'
     fontName' f = "/F" <> B.intDec (Map.findWithDefault 0 f fontNames)
-    glyphs gs = mconcat ["1 0 0 1 " <> num x <> sp <> num y <> " Tm <" <> hex4 g <> "> Tj" <> nl | (g, x, y) <- gs]
+    -- glyph codes are CIDs, at most 0xFFFF (docs/adr ADR 0254)
+    glyphs gs = mconcat ["1 0 0 1 " <> num x <> sp <> num y <> " Tm <" <> hex4 (fromIntegral g) <> "> Tj" <> nl | (g, x, y) <- gs]
     mark = \case
       GlyphRun f size gs -> "BT " <> fontName' f <> sp <> num size <> " Tf" <> nl <> glyphs gs <> "ET" <> nl
       -- inside q and Q, so that the scaling does not outlive the run (golem-pdf ADR 0015)
       ScaledGlyphRun f size scale gs ->
         "q BT " <> fontName' f <> sp <> num size <> " Tf " <> ratio (toInteger scale % 10) <> " Tz" <> nl <> glyphs gs <> "ET Q" <> nl
       RotatedGlyphRun f size gs ->
-        "BT " <> fontName' f <> sp <> num size <> " Tf" <> nl <> mconcat ["0 -1 1 0 " <> num x <> sp <> num y <> " Tm <" <> hex4 g <> "> Tj" <> nl | (g, x, y) <- gs] <> "ET" <> nl
+        "BT " <> fontName' f <> sp <> num size <> " Tf" <> nl <> mconcat ["0 -1 1 0 " <> num x <> sp <> num y <> " Tm <" <> hex4 (fromIntegral g) <> "> Tj" <> nl | (g, x, y) <- gs] <> "ET" <> nl
       Rule (Rect x y w h) -> num x <> sp <> num y <> sp <> num w <> sp <> num h <> " re f" <> nl
       Disc x y r ->
         -- four quarters counterclockwise from the right; the control points 0.5523 of the radius away
@@ -400,7 +401,7 @@ markBuilder fontNames imageNames formNames = mark
               <> (if scale /= 1000 then sp <> ratio (toInteger scale % 10) <> " Tz" else "")
               <> (if stroke > 0 then " 2 Tr " <> num stroke <> " w" else "")
               <> nl
-              <> mconcat [matrix <> num x <> sp <> num y <> " Tm <" <> hex4 g <> "> Tj" <> nl | (g, x, y) <- gs]
+              <> mconcat [matrix <> num x <> sp <> num y <> " Tm <" <> hex4 (fromIntegral g) <> "> Tj" <> nl | (g, x, y) <- gs]
               <> "ET Q"
               <> nl
       TransformedGlyphRun f size stroke gs ->
@@ -412,7 +413,7 @@ markBuilder fontNames imageNames formNames = mark
               <> " Tf"
               <> (if stroke > 0 then " 2 Tr " <> num stroke <> " w" else "")
               <> nl
-              <> mconcat [mconcat [ratio v <> sp | v <- [a, b, c, d]] <> num x <> sp <> num y <> " Tm <" <> hex4 g <> "> Tj" <> nl | ((a, b, c, d), g, x, y) <- gs]
+              <> mconcat [mconcat [ratio v <> sp | v <- [a, b, c, d]] <> num x <> sp <> num y <> " Tm <" <> hex4 (fromIntegral g) <> "> Tj" <> nl | ((a, b, c, d), g, x, y) <- gs]
               <> close
               <> nl
       Saved ms -> "q" <> nl <> mconcat (map mark ms) <> "Q" <> nl
@@ -426,7 +427,6 @@ markBuilder fontNames imageNames formNames = mark
       -- the form maps its crop box to the unit square (its Matrix), so it is placed as an image is
       Form f (Rect x y w h) ->
         "q " <> num w <> " 0 0 " <> num h <> sp <> num x <> sp <> num y <> " cm /Fm" <> B.intDec (Map.findWithDefault 0 f formNames) <> " Do Q" <> nl
-    hex4 g = B.string7 (printf "%04X" g)
     point (x, y) = num x <> sp <> num y
     curve (a, b, c) = point a <> sp <> point b <> sp <> point c <> " c" <> nl
 
@@ -479,7 +479,7 @@ serializePdf (PdfObjects version objects trailerDict) =
         "xref\n0 "
           <> B.intDec size
           <> "\n0000000000 65535 f \n"
-          <> mconcat [B.string7 (printf "%010d 00000 n \n" o) | o <- init offsets]
+          <> mconcat [decimal10 o <> " 00000 n \n" | o <- init offsets]
       trailer =
         "trailer\n"
           <> serialize trailerDict
@@ -1002,7 +1002,7 @@ toUnicodeCMap entries =
       hexText t = mconcat [B.word8HexFixed w | w <- BS.unpack (TE.encodeUtf16BE t)]
       body =
         mconcat
-          [ B.intDec (length c) <> " beginbfchar\n" <> mconcat ["<" <> B.string7 (printf "%04X" g) <> "> <" <> hexText t <> ">\n" | (g, t) <- c] <> "endbfchar\n"
+          [ B.intDec (length c) <> " beginbfchar\n" <> mconcat ["<" <> hex4 (fromIntegral g) <> "> <" <> hexText t <> ">\n" | (g, t) <- c] <> "endbfchar\n"
           | c <- chunk (sortOn fst entries)
           ]
    in BL.toStrict . B.toLazyByteString $

@@ -47,6 +47,7 @@ test-suite golem-pdf-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    DrawingSpec
+                    HexSpec
                     HorizontalScalingSpec
                     ImageSpec
                     ImportSpec
