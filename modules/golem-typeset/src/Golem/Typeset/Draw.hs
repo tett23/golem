@@ -12,13 +12,14 @@ where
 
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
-import Data.Containers.ListUtils (nubOrdOn)
+import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Either (lefts)
 import Data.List (groupBy, nub, nubBy)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ratio ((%))
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (toGregorian)
@@ -39,6 +40,7 @@ import Golem.Pdf qualified as P
 import Golem.Preflight (OverfullLine (..), overfullLine)
 import Golem.Preflight.View qualified as V
 import Golem.Project
+import Golem.Project.Feature (normalFeatures, parseFeature)
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
@@ -127,7 +129,7 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
               Right layout | ds@(_ : _) <- folioErrors inp geom layout -> pure (Left ds)
               Right layout -> case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
                 [] -> do
-                  let (used, stops, overfull, finish) = writeDocumentView tamper version inp geom fonts layout intent
+                  let (used, stops, overfull, missingFeatures, finish) = writeDocumentView tamper version inp geom fonts layout intent
                   {- G07104 stops the PDF/A-2a before its fonts are embedded (docs/adr ADR 0183);
                   G07107, content drawn but not in the structure tree, stops every PDF (docs/adr ADR 0216) -}
                   if not (null stops)
@@ -141,7 +143,8 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
                           let (bytes, view, structure) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
                           -- G07101: dashes without ink (docs/adr ADR 0172)
                           -- G07105: the lines past their measure, from the lines drawn, not from the view (docs/adr ADR 0210)
-                          pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout <> overfullWarnings overfull, view, structure, pageStarts layout))
+                          -- G08103: the features the fonts do not have (docs/adr/0268)
+                          pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout <> overfullWarnings overfull <> missingFeatures, view, structure, pageStarts layout))
                         ds -> pure (Left ds)
                 ds -> pure (Left ds)
   where
@@ -269,7 +272,9 @@ data GlyphUse = GlyphUse
     guGlyphPart :: !V.GlyphPart,
     guSpan :: !SrcSpan,
     -- | the leaf of the structure tree the glyph is drawn in, if any (docs/adr ADR 0183, ADR 0227)
-    guLeaf :: !(Maybe P.LeafId)
+    guLeaf :: !(Maybe P.LeafId),
+    -- | the look the glyph is drawn in, for G08103 (docs/adr/0268)
+    guLook :: Look
   }
 
 {- | A line drawn, for the view of golem preflight (golem-cli ADR 0006): what
@@ -340,7 +345,7 @@ embedded in IO between the two halves (docs/adr ADR 0034): the glyphs
 used in each font and their text, then the PDF and its view from the
 embedded fonts.
 -}
-writeDocumentView :: (P.StructElem -> P.StructElem) -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [(OverfullLine, Bool)], Map P.FontRef P.Font -> (ByteString, V.View, Structure))
+writeDocumentView :: (P.StructElem -> P.StructElem) -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [(OverfullLine, Bool)], [Diagnostic], Map P.FontRef P.Font -> (ByteString, V.View, Structure))
 writeDocumentView tamper version inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
@@ -479,7 +484,60 @@ writeDocumentView tamper version inp geom fonts layout intent =
           (mkSpan (projectManifestFile (piProject inp)) 0 0)
           (Map.fromList [(i, uSpan u) | (i, u) <- plUnits layout])
           (P.orphanLeaves structure [l | p <- pdfPages, l <- P.contentLeaves (P.pageContent p)])
-   in (used, privateUse <> orphans, overfull, finish)
+   in (used, privateUse <> orphans, overfull, featureWarnings inp fonts (zip [1 ..] (map pdUses drawn)), finish)
+
+{- | G08103 (docs/adr/0268): an OpenType feature that a run turns on and
+that none of the faces of its characters has, once for each font file and
+tag, with the pages of such runs. A run is the glyphs of one look in a row
+on a page, kenten left out (they take the role's features only). A
+character turns on the features of its role (its side's) and of the look
+whose last value is not 0; the features Golem adds are not among them. At
+the first value of style.toml that turns the tag on, else at the first
+@style-def that does, else at the top of style.toml. Warnings; the profile
+makes them errors in prod.
+-}
+featureWarnings :: PdfInput -> LoadedFonts -> [(Int, [GlyphUse])] -> [Diagnostic]
+featureWarnings inp fonts pages =
+  [ (diagnostic "G08103" Warning (siteOf tag) ("フォント " <> T.pack path <> " に OpenType の機能 " <> tag <> " がありません"))
+      { diagFacts = [("font", FactText (T.pack path)), ("feature", FactText tag), ("pdf-pages", FactInts (map toInteger (Set.toAscList ps)))]
+      }
+  | ((path, tag), ps) <- Map.toAscList missing
+  ]
+  where
+    missing =
+      Map.fromListWith
+        Set.union
+        [ ((fst (lfFaceFile fonts face), tag), Set.singleton i)
+        | (i, us) <- pages,
+          run@(u0 : _) <- groupBy (\a b -> guLook a == guLook b) [u | u <- us, guGlyphPart u /= V.PartKenten],
+          let look = guLook u0
+              ja = enabled look False
+              la = enabled look True,
+          not (null ja && null la),
+          let sides = [(guFace u, tags) | u <- run, Just (c, _) <- [T.uncons (guText u)], let tags = if lookClass look c == Western then la else ja, not (null tags)],
+          tag <- nubOrd (concatMap snd sides),
+          let faces = nubOrd [face | (face, tags) <- sides, tag `elem` tags],
+          not (any (\face -> lfHasFeature fonts face tag) faces),
+          face <- faces
+        ]
+    -- the tags turned on in the role of a side and the look
+    enabled look latin =
+      let role = if latin then lkLatinFace look else lkFace look
+       in [t | (t, v) <- normalFeatures (mapMaybe parseFeature (lfRoleFeatures fonts role <> lkFeatures look)), v /= 0]
+    style = piStyle inp
+    written = concat (Map.elems (Map.map frFeatures (stFonts style))) <> concatMap csFeatures (Map.elems (stCharStyles style)) <> concatMap psFeatures (Map.elems (stParaStyles style))
+    locals = concat [concatMap csFeatures (Map.elems (lsCharStyles ls)) <> concatMap psFeatures (Map.elems (lsParaStyles ls)) | ls <- Map.elems (piLocalStyles inp)]
+    siteOf tag =
+      let on = [f | f <- written <> locals, ftTag f == tag, ftValue f /= 0]
+          tomls = [(l, c) | Feature {ftSite = SiteToml l c} <- on]
+          sources = [sp | Feature {ftSite = SiteSource sp} <- on]
+          top = mkSpan (piStyleFile inp) 0 0
+       in case (tomls, sources) of
+            (_ : _, _) ->
+              let (l, c) = minimum tomls
+               in maybe top (\off -> mkSpan (piStyleFile inp) off off) (lineColToOffset (mkLineIndex (piStyleText inp)) (LineCol (l - 1) (c - 1)))
+            ([], _ : _) -> minimum sources
+            ([], []) -> top
 
 -- font index × direction: even refs horizontal, odd refs vertical
 ref :: Int -> Bool -> P.FontRef
@@ -519,7 +577,7 @@ runAtSqueezed env look v rotated scale squeeze (bx, by) txt =
       (x0, y0) = if v then (bx + shift, by) else (bx, by + shift)
       -- shaped with the features of the look; rotated Latin is shaped horizontally
       vv = v && not rotated
-      shapingFor role r = (shapingOf vv look (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = vv}
+      shapingFor role r = (shapingOf (lfRoleFeatures fonts) vv look (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = vv}
       {- the tracking after the last glyph of each cluster, for each of its
       characters, as the boxes count it (docs/adr/0020) -}
       tr = fromIntegral (lkTracking look) * size
@@ -603,7 +661,7 @@ tcyAt :: DrawEnv -> Look -> (Sp, Sp) -> Text -> ([P.Mark], [(P.FontRef, Int, Tex
 tcyAt env look (xc, y0) txt =
   let s = lkSize look
       flat = look {lkTracking = 0, lkBaselineShift = 0}
-      shapingFor role r = (shapingOf False flat (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = False}
+      shapingFor role r = (shapingOf (lfRoleFeatures fonts) False flat (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = False}
       advances = [unSp (toSp s (shAdvance g)) | (role, r, _) <- runsOf flat txt, g <- lfShape fonts (shapingFor role r) r]
       fit = tcyFit (unSp s) advances
       left = xc + lkBaselineShift look - Sp (tfWidth fit `div` 2)
@@ -715,7 +773,7 @@ runAtU :: DrawEnv -> (SizeSource, V.GlyphPart, SrcSpan) -> Look -> Bool -> Bool 
 runAtU env who look v rotated scale pt txt = usesOf who look (runAt env look v rotated scale pt txt)
 
 usesOf :: (SizeSource, V.GlyphPart, SrcSpan) -> Look -> ([P.Mark], [(P.FontRef, Int, Text, ClusterPart)]) -> ([P.Mark], [GlyphUse])
-usesOf (src, gp, sp) look (ms, us) = (ms, [GlyphUse r g t (k `div` 2) (lkSize look) (lkColor look) part src gp sp Nothing | (r@(P.FontRef k), g, t, part) <- us])
+usesOf (src, gp, sp) look (ms, us) = (ms, [GlyphUse r g t (k `div` 2) (lkSize look) (lkColor look) part src gp sp Nothing look | (r@(P.FontRef k), g, t, part) <- us])
 
 -- | The uses of glyphs drawn in a leaf (docs/adr ADR 0227).
 inLeaf :: Maybe P.LeafId -> [GlyphUse] -> [GlyphUse]
@@ -891,8 +949,8 @@ drawLineAt env (x0, y0) sl =
                           baseUnits = clusters base
                           baseLooks = zipWith const (bcBaseLooks c <> repeat look) baseUnits
                           advOf lk u = case T.uncons u of
-                            Just (ch, rest) | T.null rest -> toSp (lkSize lk) (lfAdvance fonts (shapingOf vertical lk ch) ch)
-                            Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingOf vertical lk ch) u)
+                            Just (ch, rest) | T.null rest -> toSp (lkSize lk) (lfAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) ch)
+                            Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) u)
                             Nothing -> 0
                           baseAdv = zipWith advOf baseLooks baseUnits
                           readAdv = map (advOf half . T.singleton) (T.unpack rt)
@@ -917,7 +975,7 @@ drawLineAt env (x0, y0) sl =
                   let (b1, u1) = runAtU env (whoOf V.PartBase c) look vertical False 0 (origin off) (bcText c)
                       d = lkSize half
                       shift = lkBaselineShift look
-                      parent = lfShape fonts (shapingOf vertical look (T.head (bcText c))) (bcText c)
+                      parent = lfShape fonts (shapingOf (lfRoleFeatures fonts) vertical look (T.head (bcText c))) (bcText c)
                       centre
                         | vertical = beside (origin (off + Sp (unSp size `div` 2))) (shift + kentenAcross True size 0 d)
                         | otherwise =

@@ -18,6 +18,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import DoubleDashSpec (doubleDashTests)
 import ExpansionStepSpec (expansionStepTests)
+import FeaturesSpec (featuresTests)
 import Fixtures (compose, fs, look0, sp, sp0)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiSet, akiPositions, builtinAkiSets, defaultAkiSet, withAkiRule)
@@ -385,6 +386,7 @@ tests =
       codeStopTests,
       urlBreakTests,
       linkTests,
+      featuresTests,
       langTests,
       structureTests,
       combiningTests,

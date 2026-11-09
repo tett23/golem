@@ -16,6 +16,10 @@ module Golem.Project.Style
     pageTrimSize,
     Grid (..),
     FontRole (..),
+    Feature (..),
+    FeatureSite (..),
+    charFeatures,
+    paraFeatures,
     CharStyleDef (..),
     Kerning (..),
     LineBreaks (..),
@@ -100,7 +104,7 @@ import Control.Applicative ((<|>))
 import Control.Monad (join, unless, when)
 import Data.Bifunctor (bimap)
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
-import Data.Foldable (toList)
+import Data.Foldable (asum, toList)
 import Data.List (find, nub, nubBy)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
@@ -114,6 +118,7 @@ import Golem.Assemble.Formats (Braces (..), Legacy (..), MarkFormat, NumberSlotN
 import Golem.Assemble.ListMarkers (NumberFormat, parseNumberFormat, parseNumberFormatLegacy)
 import Golem.Length (Sp (..))
 import Golem.Length qualified as L
+import Golem.Project.Feature
 import Golem.Project.Manifest (decodeStrictBy, decodeStrictWith, maxNaturalInt, naturalIntOf, naturalOf, positionSpan, readTomlTable)
 import Golem.Project.TomlMessage (schemaMessage)
 import Golem.Project.TomlSchema
@@ -122,7 +127,7 @@ import Golem.Syntax
 import Numeric.Natural (Natural)
 import Toml qualified
 import Toml.Schema
-import Toml.Schema.Matcher (inKey)
+import Toml.Schema.Matcher (inIndex, inKey)
 import Toml.Semantics (valueAnn)
 import Toml.Syntax (Position (..))
 import Prelude hiding (fail)
@@ -207,7 +212,8 @@ data Page = Page
 data FontRole = FontRole
   { frJa :: !(Maybe FilePath),
     frLatin :: !(Maybe FilePath),
-    frFeatures :: ![Text]
+    -- | the OpenType features of the role, checked (docs/adr/0268)
+    frFeatures :: ![Feature]
   }
   deriving stock (Eq, Show)
 
@@ -243,6 +249,9 @@ data CharStyleDef = CharStyleDef
     than at a space (golem-layout ADR 0034); for code styles only, the
     empty text draws none
     -} csWrapMark :: !(Maybe Text),
+    {- | the OpenType features (docs/adr/0268): through based-on and over a
+    definition of the same name they are added after the parent's
+    -} csFeatures :: ![Feature],
     {- | the characters do not break between them (docs/adr ADR 0272), as
     InDesign's No Break; true in one of the styles around a character is
     true for it
@@ -307,7 +316,9 @@ data ParaStyleDef = ParaStyleDef
     psSpaceBefore :: !(Maybe Int),
     psSpaceAfter :: !(Maybe Int),
     -- | the end of every line (docs/adr/0189)
-    psEndIndent :: !(Maybe Dim)
+    psEndIndent :: !(Maybe Dim),
+    -- | the OpenType features, added after the parent's (docs/adr/0268)
+    psFeatures :: ![Feature]
   }
   deriving stock (Eq, Show)
 
@@ -376,11 +387,11 @@ data RegexStyleDef = RegexStyleDef
 
 -- | A character style with no key written.
 noCharDef :: CharStyleDef
-noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
@@ -651,7 +662,9 @@ charStyleBackground style name = case charStyle style name >>= csBackground of
   Just b -> b
   Nothing -> paraStyle style (Just "code") >>= psBackground
 
--- | A user definition over a built-in one: the keys written win.
+{- | A user definition over a built-in one: the keys written win, but the
+features are added after those of the definition below (docs/adr/0268).
+-}
 overChar :: CharStyleDef -> CharStyleDef -> CharStyleDef
 overChar u b =
   CharStyleDef
@@ -668,6 +681,7 @@ overChar u b =
     (csBackground u <|> csBackground b)
     (csPadding u <|> csPadding b)
     (csWrapMark u <|> csWrapMark b)
+    (csFeatures b <> csFeatures u)
     (csNoBreak u <|> csNoBreak b)
 
 overPara :: ParaStyleDef -> ParaStyleDef -> ParaStyleDef
@@ -696,6 +710,7 @@ overPara u b =
     (psSpaceBefore u <|> psSpaceBefore b)
     (psSpaceAfter u <|> psSpaceAfter b)
     (psEndIndent u <|> psEndIndent b)
+    (psFeatures b <> psFeatures u)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -720,6 +735,16 @@ charStyle :: Style -> Text -> Maybe CharStyleDef
 charStyle style name = case chainOf (const csBasedOn) (stCharStyles style) name of
   [] -> Nothing
   chain@(d : _) -> Just (foldr1 overChar chain) {csBasedOn = csBasedOn d}
+
+{- | The features of a character style through its based-on chain, root
+first (docs/adr/0268); none for an unknown name.
+-}
+charFeatures :: Style -> Text -> [Feature]
+charFeatures style = maybe [] csFeatures . charStyle style
+
+-- | The features of a paragraph style through its based-on chain, root first (docs/adr/0268).
+paraFeatures :: Style -> Maybe Text -> [Feature]
+paraFeatures style = maybe [] psFeatures . paraStyle style
 
 {- | The definition of style.toml that decided the size of a character
 (golem-cli ADR 0008): the definition that writes @size@ (or @mark-size@,
@@ -1579,7 +1604,7 @@ instance FromValue Page where
 instance FromValue FontRole where
   fromValue =
     parseTableFromValue $
-      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> (fromMaybe [] <$> optKey "features")
+      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey
 
 instance FromValue CharStyleDef where
   fromValue = parseTableFromValue $ do
@@ -1599,8 +1624,23 @@ instance FromValue CharStyleDef where
     -- a negative padding is read and reported by the checks (golem-driver ADR 0029)
     pad' <- signedDimKey "padding" "（0.25zw や 1mm のように書きます）"
     wm <- optKey "wrap-mark"
+    fs <- featuresKey
     nb <- optKey "no-break"
-    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm nb)
+    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm fs nb)
+
+{- | The key features (docs/adr/0268): an array of the four forms of
+'parseFeature'. Each element that is not one fails at itself, all of them
+at once, in their order (G03124 by the path of the element).
+-}
+featuresKey :: ParseTable l [Feature]
+featuresKey =
+  fmap (fromMaybe []) . optKeyOf "features" $ \case
+    List' _ xs -> do
+      read' <- sequence [inIndex i ((valueAnn x,) <$> fromValue x) | (i, x) <- zip [0 ..] xs]
+      case [inIndex i (failAt l (T.unpack (featureMessage t))) | (i, (l, t)) <- zip [0 ..] read', Nothing <- [parseFeature t]] of
+        [] -> pure [Feature tag v SiteNone | (_, t) <- read', Just (tag, v) <- [parseFeature t]]
+        bad -> asum bad
+    v -> failAt (valueAnn v) "features には配列を書きます（[\"smcp\", \"-liga\"] のように書きます）"
 
 {- | kerning, tracking, proportional-metrics and baseline-shift
 (docs/adr/0020). Every error is under its key, which makes it G03021.
@@ -1649,8 +1689,9 @@ instance FromValue ParaStyleDef where
     sbefore <- optKeyOf "space-before" (withValue (\l x -> if x < 0 then failAt l "space-before は 0 以上です" else pure x))
     safter <- optKeyOf "space-after" (withValue (\l x -> if x < 0 then failAt l "space-after は 0 以上です" else pure x))
     endInd <- dimKey "end-indent"
+    fs <- featuresKey
     let align = al >>= \v -> lookup v (zip alignValues [minBound .. maxBound])
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw rb ra align sbefore safter endInd)
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw rb ra align sbefore safter endInd fs)
 
 {- | A dimension that may be negative, read in its key so that an error is
 at the value and names the key (golem-project ADR 0008).
@@ -2126,7 +2167,7 @@ filesystem.
 parseStyle :: FileId -> Text -> Either [Diagnostic] Style
 parseStyle fid src = do
   s0 <- either (Left . map akiCode) Right (decodeStrictWith styleSchema "G03006" codeAt fid src)
-  let s = s0 {stIndex = (\ix -> ix {ixColumnsAt = columnsAt}) <$> stIndex s0}
+  let s = sited s0 {stIndex = (\ix -> ix {ixColumnsAt = columnsAt}) <$> stIndex s0}
   -- the same code and message once, at the path that comes first (golem-project ADR 0008)
   case nubBy (\(c, _, m) (c', _, m') -> (c, m) == (c', m')) [(code, path, m) | (code, _, path, m) <- styleChecks "style.toml の" s] of
     [] -> Right s
@@ -2141,6 +2182,19 @@ parseStyle fid src = do
     at path = case tree >>= (`checkPosition` path) of
       Just (Position _ l c) | Just off <- lineColToOffset (mkLineIndex src) (LineCol (l - 1) (c - 1)) -> mkSpan fid off off
       _ -> mkSpan fid 0 0
+    {- each feature with where it is written, for G08103 (docs/adr/0268):
+    the built-in styles have none, so the features of a style are those of
+    its table, in order -}
+    sited st =
+      st
+        { stFonts = Map.mapWithKey (\r fr -> fr {frFeatures = siteAll ["fonts", r] (frFeatures fr)}) (stFonts st),
+          stCharStyles = Map.mapWithKey (\n d -> d {csFeatures = siteAll ["character-styles", n] (csFeatures d)}) (stCharStyles st),
+          stParaStyles = Map.mapWithKey (\n d -> d {psFeatures = siteAll ["paragraph-styles", n] (psFeatures d)}) (stParaStyles st)
+        }
+    siteAll prefix fs =
+      [ f {ftSite = maybe SiteNone (\(Position _ l c) -> SiteToml l c) (tree >>= \t -> checkPosition t (map ScopeKey (prefix <> ["features"]) <> [ScopeIndex i]))}
+      | (i, f) <- zip [0 ..] fs
+      ]
     -- where the value of [index] columns starts, for G07044 (docs/adr ADR 0025)
     columnsAt = spanStart (at [ScopeKey "index", ScopeKey "columns"])
     -- an aki amount wrong in any key is G03020 (docs/adr ADR 0019)
@@ -2163,6 +2217,8 @@ parseStyle fid src = do
       ScopeKey "headings" : _ : ScopeKey "running-head" : _ -> "G03019"
       -- the keys of kerning, tracking and baseline shift are G03021 (docs/adr/0020)
       ScopeKey t : _ : ScopeKey k : _ | t `elem` ["character-styles", "paragraph-styles"], k `elem` featureKeys -> "G03021"
+      -- an element of features that does not read is G03124 (docs/adr/0268)
+      [ScopeKey t, _, ScopeKey "features", ScopeIndex _] | t `elem` ["fonts", "character-styles", "paragraph-styles"] -> "G03124"
       _ -> "G03006"
 
 {- | The checks of the styles of a 'Style' (docs/adr ADR 0005, 0006, 0014):
@@ -2514,8 +2570,9 @@ data LocalValue = LocalWord Text | LocalString Text
 
 -- | The keys @style-def takes, as style.toml's (for completion).
 charStyleKeys, paraStyleKeys, regexStyleKeys :: [Text]
-charStyleKeys = scalarKeys charStyleNode
-paraStyleKeys = scalarKeys paraStyleNode
+-- features, an array in style.toml, is one string of elements separated by commas in @style-def (docs/adr/0268)
+charStyleKeys = scalarKeys charStyleNode <> ["features"]
+paraStyleKeys = scalarKeys paraStyleNode <> ["features"]
 regexStyleKeys = scalarKeys regexStyleNode
 
 {- | The keys of one @style-def as a TOML table, read with the 'FromValue'
@@ -2534,7 +2591,7 @@ localRegexStyleDef :: [(Text, LocalValue)] -> Either [Text] RegexStyleDef
 localRegexStyleDef = either (Left . map snd) Right . readLocal
 
 readLocal :: (FromValue a) => [(Text, LocalValue)] -> Either [(Text, Text)] a
-readLocal kvs = run (Table (table [(k, tomlValue v) | (k, v) <- kvs]))
+readLocal kvs = run (Table (table [(k, value k v) | (k, v) <- kvs]))
   where
     run :: (FromValue a) => Value -> Either [(Text, Text)] a
     run v = case runMatcher (fromValue v) of
@@ -2544,7 +2601,15 @@ readLocal kvs = run (Table (table [(k, tomlValue v) | (k, v) <- kvs]))
     message (MatchMessage _ path msg) = (codeOf path, schemaMessage path msg)
     codeOf = \case
       ScopeKey k : _ | k `elem` featureKeys -> "G03021"
+      -- an element of features that does not read (docs/adr/0268)
+      ScopeKey "features" : ScopeIndex _ : _ -> "G03124"
       _ -> "G03006"
+    -- features is one string of elements separated by commas (docs/adr/0268)
+    value k v
+      | k == "features" = case v of
+          LocalString t -> List (map Text (T.splitOn "," t))
+          LocalWord t -> List (map Text (T.splitOn "," t))
+      | otherwise = tomlValue v
     tomlValue = \case
       LocalString t -> Text t
       LocalWord "true" -> Bool True
@@ -2682,7 +2747,7 @@ styleSchema :: Node
 styleSchema =
   NTable
     [ ("page", pageNode),
-      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", NArray str)])),
+      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features)])),
       ("character-styles", NNamed (Just CharStyles) charStyleNode),
       ("paragraph-styles", NNamed (Just ParaStyles) paraStyleNode),
       ("headings", NNamed Nothing headingNode),
@@ -2819,7 +2884,8 @@ charStyleNode =
         <> [ ("background", NEither [ref Swatches, NValue LFalse]),
              ("padding", dim),
              ("wrap-mark", str),
-             ("no-break", bool)
+             ("no-break", bool),
+             ("features", features)
            ]
     )
 
@@ -2847,7 +2913,8 @@ paraStyleNode =
              ("border", ref Swatches),
              ("border-width", dim),
              ("rule-before", ruleOrFalseNode),
-             ("rule-after", ruleOrFalseNode)
+             ("rule-after", ruleOrFalseNode),
+             ("features", features)
            ]
     )
 
@@ -2878,6 +2945,10 @@ ruleKeys =
     ("end-indent", dim),
     ("keep-in-column", bool)
   ]
+
+-- | The OpenType features of a role or a style (docs/adr/0268).
+features :: Node
+features = NArray str
 
 str, dim, int, bool :: Node
 str = NValue LString

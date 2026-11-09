@@ -87,6 +87,8 @@ sample here node = case (reverse here, node) of
   (k : "[]" : "rules" : _, _) | k `elem` ["optimum", "minimum", "maximum"] -> Text "四分"
   ("mark-format" : _, _) -> Text "{n}"
   ("numbers" : "lists" : _, _) -> List [Text "{n}"]
+  -- an OpenType feature (docs/adr/0268)
+  ("features" : _, _) -> List [Text "smcp"]
   _ -> case node of
     NValue l -> leafSample l
     NTable _ -> Table (table (required here ""))
@@ -198,8 +200,8 @@ tests =
         errorsOf "[character-styles.em]\nkerning = \"x\"\n"
           @?= [("G03021", "kerning の値が正しくありません: x (character-styles.em.kerning)", 2, 11)],
       testCase "the keys of @style-def are those of the schema, in its order" $ do
-        charStyleKeys @?= ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic", "kerning", "tracking", "proportional-metrics", "baseline-shift", "background", "padding", "wrap-mark", "no-break"]
-        paraStyleKeys @?= ["based-on", "font", "size", "line-breaks", "space-between", "space-before", "space-after", "align", "indent", "first-line-indent", "end-indent", "aki-set", "kerning", "tracking", "proportional-metrics", "baseline-shift", "background", "padding", "border", "border-width"]
+        charStyleKeys @?= ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic", "kerning", "tracking", "proportional-metrics", "baseline-shift", "background", "padding", "wrap-mark", "no-break", "features"]
+        paraStyleKeys @?= ["based-on", "font", "size", "line-breaks", "space-between", "space-before", "space-after", "align", "indent", "first-line-indent", "end-indent", "aki-set", "kerning", "tracking", "proportional-metrics", "baseline-shift", "background", "padding", "border", "border-width", "features"]
         regexStyleKeys @?= ["pattern", "style"],
       testCase "the values of line-breaks are those the decoder reads" $
         lineBreaksValues @?= ["join", "keep"],

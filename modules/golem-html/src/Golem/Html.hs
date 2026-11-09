@@ -183,12 +183,14 @@ data HtmlFeatures = HtmlFeatures
     hfTracking :: !(Maybe Int),
     hfProportional :: !(Maybe Bool),
     -- | a CSS length
-    hfBaselineShift :: !(Maybe Text)
+    hfBaselineShift :: !(Maybe Text),
+    -- | the OpenType features through based-on, the last value of each tag (docs/adr/0268)
+    hfOpenType :: ![(Text, Int)]
   }
   deriving stock (Eq)
 
 noFeatures :: HtmlFeatures
-noFeatures = HtmlFeatures Nothing Nothing Nothing Nothing
+noFeatures = HtmlFeatures Nothing Nothing Nothing Nothing []
 
 -- | A resolved paragraph style for CSS (docs/adr ADR 0005, 0006).
 data HtmlParaStyle = HtmlParaStyle
@@ -1109,7 +1111,13 @@ css cfg book =
         k /= "metrics"
       ]
         <> ["letter-spacing: " <> thousandths t <> "em" | Just t <- [hfTracking f], t /= 0]
-        <> ["font-feature-settings: \"" <> (if hcVertical cfg then "vpal" else "palt") <> "\" 1" | hfProportional f == Just True]
+        -- one declaration: the features of the style, then palt (vpal) of proportional-metrics (docs/adr/0268)
+        <> [ "font-feature-settings: " <> T.intercalate ", " settings
+           | let settings =
+                   ["\"" <> t <> "\" " <> tshow v | (t, v) <- hfOpenType f]
+                     <> ["\"" <> (if hcVertical cfg then "vpal" else "palt") <> "\" 1" | hfProportional f == Just True],
+             not (null settings)
+           ]
         <> ["vertical-align: " <> l | Just l <- [hfBaselineShift f], not (isZero l)]
     thousandths n =
       let (q, r) = abs n `divMod` 1000

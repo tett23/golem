@@ -73,6 +73,7 @@ test-suite golem-layout-test
                     CombiningSpec
                     DoubleDashSpec
                     ExpansionStepSpec
+                    FeaturesSpec
                     Fixtures
                     InseparableSpec
                     KnuthPlassBrute

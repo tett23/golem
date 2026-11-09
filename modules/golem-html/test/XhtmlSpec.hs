@@ -419,6 +419,23 @@ tests =
           let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing (Just "0.25em") False
               cfg = cfg0 {hcCharStyles = Map.fromList [("code", code)]}
            in cssLines "code {" cfg @?= ["code { padding-inline: 0.25em; }"],
+        -- the OpenType features of a style (docs/adr/0268)
+        testCase "features are one font-feature-settings" $
+          let sc = HtmlCharStyle Nothing False False Nothing noFeatures {hfOpenType = [("smcp", 1), ("liga", 0)]} False Nothing Nothing False
+              cfg = cfg0 {hcCharStyles = Map.fromList [("sc", sc)]}
+           in cssLines ".cs-sc" cfg @?= [".cs-sc { font-feature-settings: \"smcp\" 1, \"liga\" 0; }"],
+        testCase "proportional-metrics adds palt to the end of the same declaration" $
+          let sc = HtmlCharStyle Nothing False False Nothing noFeatures {hfOpenType = [("smcp", 1), ("liga", 0), ("salt", 2)], hfProportional = Just True} False Nothing Nothing False
+              cfg = cfg0 {hcCharStyles = Map.fromList [("sc", sc)]}
+           in cssLines ".cs-sc" cfg @?= [".cs-sc { font-feature-settings: \"smcp\" 1, \"liga\" 0, \"salt\" 2, \"palt\" 1; }"],
+        testCase "a paragraph style's features are in its rule" $
+          let ps = plainPara {hpsFeatures = noFeatures {hfOpenType = [("tnum", 1)]}}
+              cfg = cfg0 {hcParaStyles = Map.fromList [("table-cell", ps)]}
+           in assertBool (show (cssLines "p.ps-table-cell" cfg)) (any ("font-feature-settings: \"tnum\" 1;" `T.isInfixOf`) (cssLines "p.ps-table-cell" cfg)),
+        testCase "a style without features has the CSS of before" $
+          let tight = HtmlCharStyle Nothing False False Nothing noFeatures {hfProportional = Just True} False Nothing Nothing False
+              cfg = cfg0 {hcCharStyles = Map.fromList [("tight", tight)]}
+           in cssLines ".cs-tight" cfg @?= [".cs-tight { font-feature-settings: \"palt\" 1; }"],
         testCase "coloured text is a span with the class of its swatch" $
           bodyA cfg0 (bookOf [para 0 [Color (at 1) "accent" [txt "赤"]]]) @?= "<p><span class=\"swatch-accent\">赤</span></p>\n"
       ],

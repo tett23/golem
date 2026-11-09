@@ -1130,7 +1130,7 @@ fixpoint labelSpan termOf layoutWith = go (1 :: Int) Nothing (Assumed Map.empty 
 composeEnv :: Style -> PageGeometry -> LoadedFonts -> Assumed -> Look -> ComposeEnv
 composeEnv style geom fonts assumed look =
   let comp = stComposition style
-      shaping = shapingOf (pgVertical geom)
+      shaping = shapingOf (lfRoleFeatures fonts) (pgVertical geom)
    in (defaultComposeEnv (lkSize look))
         { ceAdvance = \lk c -> lfAdvance fonts (shaping lk c) c,
           ceWordAdvance = \lk t -> lfWordAdvance fonts (maybe (Shaping (lkLatinFace lk) False [] False) (shaping lk . fst) (T.uncons t)) t,
@@ -2626,7 +2626,7 @@ codeBlockOf atSource geom fonts measure capacity u lead code caption =
       cs = stCode st
       toSp = L.zwToSp size
       -- the shaping of each side: Latin, or Japanese ('漢')
-      side latin = shapingOf vertical lk (if latin then 'a' else '\x6F22')
+      side latin = shapingOf (lfRoleFeatures fonts) vertical lk (if latin then 'a' else '\x6F22')
       shape latin r =
         let gs = lfShape fonts (side latin) r
             starts = Set.toAscList (Set.fromList (map shCluster gs))

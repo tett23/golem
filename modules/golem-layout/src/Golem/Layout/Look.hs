@@ -140,6 +140,10 @@ data Look = Look
     {- | the mark at the end of a line that breaks inside inline code at a
     break other than a space (golem-layout ADR 0034); empty is none
     -} lkWrapMark :: !Text,
+    {- | the OpenType features of the paragraph style and the character
+    styles, in the normal form, the last value of each tag (docs/adr/0268);
+    the role's are not here
+    -} lkFeatures :: ![Text],
     {- | the text is in a range that does not break (docs/adr ADR 0272):
     no break between two of its characters but a forced one
     -} lkNoBreak :: !Bool
@@ -155,7 +159,7 @@ newtype LinkTarget = LinkUri Text
 {- | One role for both scripts at a size, upright, regular, default colour,
 metrics kerning, no tracking, no proportional metrics, no baseline shift,
 not code, not a URL, no kenten, no background, no padding, no link,
-outside a language span, no wrap mark and breaking.
+outside a language span, no wrap mark, no features and breaking.
 -}
 plainLook :: Text -> Sp -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" False
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] False
