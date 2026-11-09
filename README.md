@@ -458,6 +458,7 @@ CI の hlint は、GHC でビルドせず、hlint のリリースの x86-64 Linu
 Node を入れてから `sh scripts/ci/textlint.sh` を実行する。
 初めての実行で、`tools/textlint/package-lock.json` が固定したパッケージを `tools/textlint/node_modules/` に入れる。
 `TEXTLINT_ARGS=--fix` を付けると、直せる違反を直す。
+文書はファイルごとに並べて検査し、何も報告しなかったファイルを `tools/textlint/.cache/` に覚えて、文書も規則も変わらなければ次から検査を省く（[docs/adr/0258](./docs/adr/0258-textlint-per-file-jobs-and-a-cache-of-clean-results.md)）。
 規則と、止めた規則の理由は [tools/textlint/README.md](./tools/textlint/README.md) にある。
 Golem のビルドとテストは Node を使わない。
 エディタ向けの構文の定義のテスト（`tools/editors/test.sh`）は、textlint と同じく Node を使う。
@@ -472,7 +473,7 @@ Golem のビルドとテストは Node を使わない。
 |---|---|---|
 | `docs.yml` | `adr` | コミット済みの ADR と記録（`docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/`）が変更されていないこと、文書の中の ADR の参照にリンクがあること、各 ADR がステータスの行をちょうど一つ持つことを検査する |
 | `docs.yml` | `manual` | プルリクエストで、`docs/markup.md` か `docs/specifications.md` を変えたのに `manual/` も `manual-dev/` も変えていないこと、`CONTRIBUTING.md` か `CONTRIBUTING.en.md` を変えたのに `manual-dev/` を変えていないことを検査する（`scripts/manual/check-updated.sh`）。`main` への push では省く |
-| `docs.yml` | `textlint` | `tools/textlint/` の規則のテストを実行し、`docs/` の文書（ADR と記録を除く）、README.md、CONTRIBUTING.md、変更で加わった ADR、二つのマニュアルの原稿の表記を textlint で検査する（`scripts/ci/textlint.sh`、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)） |
+| `docs.yml` | `textlint` | `tools/textlint/` の規則のテストを実行し、`docs/` の文書（ADR と記録を除く）、README.md、CONTRIBUTING.md、変更で加わった ADR、二つのマニュアルの原稿の表記を textlint で検査する（`scripts/ci/textlint.sh`、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。何も報告しなかったファイルのキーをキャッシュに保つ（[docs/adr/0258](./docs/adr/0258-textlint-per-file-jobs-and-a-cache-of-clean-results.md)） |
 | `docs.yml` | `anchors` | `docs/diagnostics.md` か `modules/golem-driver/src/Golem/Driver/Explain.hs` を変えたプルリクエストと `main` への push で、GitHub の API が描いた `docs/diagnostics.md` の HTML に、すべての diagnostic のコードの見出しの `id`（`user-content-g01017` の形）があることを確かめる（`scripts/ci/github-anchors.sh`）。API から引けないフォークのコミットは飛ばし、`main` への push で確かめる（[docs/adr/0235](./docs/adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)） |
 | `models.yml` | `models` | `docs/*/models/` を変えたプルリクエストと `main` への push と週に一度、版と SHA-256 で固定した Alloy 6.2.0 の jar で、モデルのコマンドを一つずつ並べて走らせ、解の有無が同じディレクトリの `expected.txt` のとおりであることを確かめる（`scripts/models/check.sh`、上限は 30 分、[docs/adr/0235](./docs/adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)） |
 | `models-nightly.yml` | `prepare`、`nightly` | 毎日一回 `main` で起動し、前回の成功した実行から `main` が変わっていれば（`scripts/ci/race-needed.sh` に `models-nightly.yml` を渡す）、`expected.txt` には重すぎるコマンドを挙げた同じディレクトリの `nightly.txt` のコマンドを、一つのジョブに一つずつ同時に走らせ、解の有無が `nightly.txt` のとおりであることを確かめる（`scripts/models/check.sh -f nightly.txt`）。一つのコマンドの上限は 5.5 時間（`TIMEOUT=19800`）で、時間切れは失敗にせず、注釈とジョブの要約に書く。結果の違いと Alloy の失敗だけを失敗にする。`workflow_dispatch` で手で起動すると、判定せずに走らせる。権限は `contents: read` と `actions: read` だけである（[docs/adr/0242](./docs/adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)） |

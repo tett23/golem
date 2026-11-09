@@ -62,7 +62,8 @@ jobs:
   # The Japanese writing rules of the documents: textlint with the pinned
   # rules of tools/textlint/ over docs/, README.md, CONTRIBUTING.md, functions/README.md, the ADRs
   # that the change adds, and the sources of the two manuals
-  # (docs/adr/0036-textlint-for-documents.md). Developers run the same script.
+  # (docs/adr/0036-textlint-for-documents.md, docs/adr/0258). Developers run the
+  # same script.
   textlint:
     runs-on: ubuntu-24.04
     steps:
@@ -83,12 +84,34 @@ jobs:
           key: textlint-${{ runner.os }}-${{ hashFiles('tools/textlint/package-lock.json') }}
       - if: steps.cache.outputs.cache-hit != 'true'
         run: npm ci --prefix tools/textlint --no-fund --no-audit
-      - name: The tests of the Golem rules and the dictionaries
+      - name: The tests of the Golem rules, the dictionaries and the script
         run: node --test tools/textlint/test/*.test.js
+      # The keys of the jobs that reported nothing (docs/adr/0258). A key is
+      # the hash of everything a job reads, so a list of any run is correct
+      # for this one: the newest is restored, and a miss checks everything.
+      # Restored and saved apart, so that a run that reports saves too; saved
+      # only when the list changed.
+      - name: Restore the keys of the clean jobs (docs/adr/0258)
+        uses: actions/cache/restore@v6
+        with:
+          path: tools/textlint/.cache
+          key: textlint-clean-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: textlint-clean-${{ runner.os }}-
+      - id: restored
+        name: The hash of the restored keys
+        env:
+          HASH: ${{ hashFiles('tools/textlint/.cache/clean') }}
+        run: echo "hash=$HASH" >>"$GITHUB_OUTPUT"
       - name: textlint
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: sh scripts/ci/textlint.sh "$BASE"
+      - name: Save the keys of the clean jobs (docs/adr/0258)
+        if: ${{ !cancelled() && hashFiles('tools/textlint/.cache/clean') != '' && hashFiles('tools/textlint/.cache/clean') != steps.restored.outputs.hash }}
+        uses: actions/cache/save@v6
+        with:
+          path: tools/textlint/.cache
+          key: textlint-clean-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   # Every diagnostic code of docs/diagnostics.md has its anchor in the HTML
   # that GitHub renders of the file, where the URL of golem explain points

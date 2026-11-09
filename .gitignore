@@ -17,6 +17,7 @@ cabal.project.local
 # the fonts copied into the specimens of docs/adr/0233 to build them by hand
 /modules/golem-driver/test/fixtures/specimens/*/fonts/
 /tools/textlint/node_modules/
+/tools/textlint/.cache/
 /tools/editors/node_modules/
 /dist-wasm/
 /scripts/browser/node_modules/
