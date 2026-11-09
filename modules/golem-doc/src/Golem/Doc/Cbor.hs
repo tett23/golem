@@ -345,7 +345,7 @@ termCiteItem sub t =
     termLocatorValue x =
       asList x >>= \case
         [i, n] | Right 0 <- asIntI i -> LocNumber . toInteger <$> asNatural n
-        [i, a, b] | Right 1 <- asIntI i -> LocRange <$> (toInteger <$> asNatural a) <*> (toInteger <$> asNatural b)
+        [i, a, b] | Right 1 <- asIntI i -> LocRange . toInteger <$> asNatural a <*> (toInteger <$> asNatural b)
         [i, v] | Right 2 <- asIntI i -> LocText <$> asText v
         _ -> bad "引用の位置の値"
 
