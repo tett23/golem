@@ -3622,7 +3622,7 @@ PDF では、区間の言語で次のように組む（golem-layout の `charCla
 本体の形の `@lang` は、評価器が本体の最上位のブロックのそれぞれに `blockLang` を書く。
 `Golem.Doc.Validate` は、言語の区間と `blockLang` のタグが BCP 47 の形であることを検査する（プラグインの出力なら G06009、関数の出力なら E06104）。
 プラグインのインラインのコマンドの出力は、言語の区間のタグを `Validate.langErrors` で検査する。
-ABI のバージョンは 8 のままである。
+この変更で ABI のバージョンは上げていない（[docs/adr/0052](adr/0052-plugin-abi-version-bump-rule.md)）。
 見出しの題を写す箇所（目次の項目、`[ref-title]` の写し）は、言語の区間を残し、見出しのブロックの言語を写した題の全体を包む言語の区間にする。
 正規表現スタイルは言語の区間を分けず、一部だけが一致すれば区間の中で包む。
 
@@ -3686,7 +3686,7 @@ URL は、評価のときに次の順に検査し、最初に当たったもの�
 意味論 IR のインラインに `Link !SrcSpan !Text [InlineF r]` を加え、CDDL では `[20, span, uri: tstr, inlines]` と書く。
 IR は、原稿に書いた URL をそのまま持ち、ASCII への符号化は出力ごとに行う。
 リンクはルビの親文字の中にも置ける。
-プラグインとの ABI のバージョンは 8 のままである（[docs/adr/0052](adr/0052-plugin-abi-version-bump-rule.md)。8 はまだどのリリースにも含まれていない）。
+この変更でプラグインとの ABI のバージョンは上げていない（[docs/adr/0052](adr/0052-plugin-abi-version-bump-rule.md)。当時の 8 はまだどのリリースにも含まれていなかった）。
 プラグインの SDK の `Inline::Link { span, uri, body }` も、同じバイト列を読み書きする。
 Emet の `Inline.Inline` には `Link String Inlines` がある。
 正規表現スタイルは、リンクの中の文字にも当てる。
