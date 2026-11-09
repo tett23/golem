@@ -3839,7 +3839,8 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 本文の中のコードの並びも、同じ述語と、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の C1 から C8 と、[golem-layout ADR 0045](golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md) の J1 から J7 で調べる（C3 と C4 は J3 と J5 に置き換えた）。
 部品は、和文の `漢`、`あ`、`「`、`」`、`。`、`、`、`ー`、`ぁ`、`…` と、欧文の `a`、`ab`、`1`、`/`、`_`、`-`、`.`、`"` と、空白の 18 である（`-`、`.`、`1` は 0045 で足した）。
 並びの全体を `[code: …]` に入れ、前の `あ` と後の `い` はコードの外に置く。
-組み方の環境は禁則の強さと区間の言語と余白の有無であり、正規形は 24 の部品と同じく、`ー` か `ぁ` がなければ強い禁則だけ、両用の字がなければ区間なしだけとする。余白の有無は正規形で減らさない。
+組み方の環境は禁則の強さと区間の言語と余白の有無であり、正規形は 24 の部品と同じく、`ー` か `ぁ` がなければ強い禁則だけ、両用の字がなければ区間なしだけとする。
+余白の有無は正規形で減らさない。
 コードの字の送りは、字のクラスごとに上の表の値とし、改行の印は `⏎` で、その幅をコードの字の大きさの 3/5 とする（[golem-layout ADR 0042](golem-layout/adr/0042-draw-the-wrap-mark-of-inline-code-small-and-light.md)）。
 C4（和文を含まないコードの項目は、印の幅と種類を除けば印のないときと同じ）は、和文を含まない並びの組ごとに、印を空にして組んだ項目と比べる。
 どの並びも、余白のないコードと、`padding` が `0.25zw` のコードの二通りで組み、どちらでも同じ述語を調べる（[golem-layout ADR 0048](golem-layout/adr/0048-put-the-padding-of-inline-code-on-its-first-and-last-pieces-that-are-not-spaces.md)）。
