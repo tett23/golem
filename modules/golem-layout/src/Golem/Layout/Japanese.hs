@@ -980,7 +980,7 @@ protrusion or expansion.
 -}
 codeItems :: ComposeEnv -> Look -> Text -> Sp -> Sp -> [Item]
 codeItems env lk run padStart padEnd =
-  [ Box (w + tr * fromIntegral (T.length seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env k))
+  [ Box (w + tr * fromIntegral (trackedChars seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env k))
   | let segs = [unit | part <- slashParts run, seg <- T.groupBy sameSide part, unit <- if isCodeJapanese seg then clusters seg else [seg]]
         lastIx = length segs - 1,
     -- the index of the first character of each part in the run (docs/adr ADR 0195)
@@ -993,6 +993,11 @@ codeItems env lk run padStart padEnd =
   ]
   where
     tr = tracking lk
+    {- the tracking after each character: a Japanese character of code
+    is one box with its combining characters, of its advance and one
+    tracking (golem-layout ADR 0034, C7); the Latin parts take one for
+    each character -}
+    trackedChars seg = if isCodeJapanese seg then 1 else T.length seg
     sameSide a b = isExtending b || (lookClass lk a == Western) == (lookClass lk b == Western)
     -- a run of Japanese characters of code, not of a URL (golem-layout ADR 0034)
     isCodeJapanese seg = lkCode lk && not (lkUrl lk) && maybe False ((/= Western) . lookClass lk . fst) (T.uncons seg)

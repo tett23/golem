@@ -1003,13 +1003,34 @@ tests =
             -- eleven and ten Latin characters of 0.5em
             cellExtent (compose enUS "hyphenation") @?= (11 * Sp (unSp fs `div` 2), 11 * Sp (unSp fs `div` 2))
             cellExtent (compose (defaultComposeEnv fs) "well-known") @?= (5 * Sp (unSp fs `div` 2), 5 * fs),
-          testCase "cell extents: a piece that ends at a break of code holds the wrap mark drawn there (golem-layout ADR 0034, 0045)" $ do
+          testCase "W1: cell extents: a piece that ends at a break of code holds the wrap mark drawn there (golem-layout ADR 0034, 0045)" $ do
             -- a line of the piece "a-" broken after it ends with the mark of 3/5 em
             let env = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True, lkWrapMark = "⏎"}}
                 half = Sp (unSp fs `div` 2)
                 mark = Sp ((unSp fs * 3) `div` 5)
             cellExtent (compose env "ab-c") @?= (3 * half + mark, 4 * half)
             cellExtent (compose env "ab/c") @?= (3 * half + mark, 4 * half),
+          testCase "W1: cell extents at the other breaks of code, empty marks, and the last piece (docs/adr ADR 0255)" $ do
+            let env = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True, lkWrapMark = "⏎"}}
+                noMark = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True, lkWrapMark = ""}}
+                half = Sp (unSp fs `div` 2)
+                mark = Sp ((unSp fs * 3) `div` 5)
+            -- after the runs of low lines but the last: "a_", "bb_" with the mark, then "c_d"
+            cellExtent (compose env "a_bb_c_d") @?= (3 * half + mark, 8 * half)
+            -- at the border with Japanese characters: "ab" and the mark is the widest
+            cellExtent (compose env "ab漢字") @?= (2 * half + mark, 2 * half + 2 * fs)
+            -- an empty mark has no width
+            cellExtent (compose noMark "ab-c") @?= (3 * half, 4 * half)
+            cellExtent (compose noMark "ab/c") @?= (3 * half, 4 * half)
+            -- the last piece, without a mark, is the widest
+            cellExtent (compose env "a-bcde") @?= (4 * half, 6 * half)
+            -- no break: the whole cell
+            cellExtent (compose env "abcd") @?= (4 * half, 4 * half)
+            -- two breaks: "a-" and "b." each with the mark, then "c"
+            cellExtent (compose env "a-b.c") @?= (2 * half + mark, 5 * half),
+          testCase "W1: cell extents: a piece that ends at glue does not hold the glue (docs/adr ADR 0255)" $ do
+            let half = Sp (unSp fs `div` 2)
+            fst (cellExtent (compose (defaultComposeEnv fs) "ab cde")) @?= 3 * half,
           testCase "column widths: natural when they fit" $
             columnWidths 100 [(10, 30), (20, 40)] @?= Right [30, 40],
           testCase "column widths: short columns filled first, the long ones level (golem-driver ADR 0037)" $ do

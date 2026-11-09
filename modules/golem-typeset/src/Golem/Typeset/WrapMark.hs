@@ -12,6 +12,7 @@ module Golem.Typeset.WrapMark
   )
 where
 
+import Golem.Layout.Japanese (wrapMarkScale, wrapMarkSize)
 import Golem.LayoutSpec (baselineRatio)
 import Golem.Length (Sp (..))
 import Golem.Pdf qualified as P
@@ -19,8 +20,9 @@ import Golem.Pdf qualified as P
 {- | The four parts of the mark in its square, (0, 0) at the lower left and
 (1, 1) at the upper right, horizontal (right along the line, up above it):
 the stem, the line along to the head, and the two strokes of the head.
-Each part is a quadrilateral. The strokes are 1/12 of the square thick:
-1/20 of the size of the code in a square of 3/5 of it. The strokes of the
+Each part is a quadrilateral. The strokes are 1/20 of the size of the
+code thick, in a square of 'wrapMarkScale' (3/5) of it, so 1/12 of the
+square. The strokes of the
 head run along the hypotenuse of a triangle of 3, 4 and 5, so the points
 beside them are rational.
 -}
@@ -32,7 +34,7 @@ wrapMarkUnitPolygons =
     stroke (tip, base) (tip + 24 / 100, base - 18 / 100) (3 / 5, 4 / 5)
   ]
   where
-    t = 1 / 12
+    t = (1 / 20) / wrapMarkScale
     h = t / 2
     right = 82 / 100
     base = 30 / 100
@@ -44,8 +46,9 @@ wrapMarkUnitPolygons =
        in [(x1 + dx, y1 + dy), (x2 + dx, y2 + dy), (x2 - dx, y2 - dy), (x1 - dx, y1 - dy)]
 
 {- | The parts of the mark on the page, vertical or not, at the origin of
-the mark, for code of the size given. The square is 3/5 of the size wide,
-rounded down. Horizontal, it runs from the origin along the line, its
+the mark, for code of the size given. The square is 'wrapMarkSize' of the
+size wide: 'wrapMarkScale' of it, rounded down, the width of the break
+in the line breaking too. Horizontal, it runs from the origin along the line, its
 centre (0.88 − 1/2) of the size above the baseline. Vertical, it runs
 from the origin down the line, its centre on the centre line, and the
 shape is turned 90 degrees clockwise about the centre of the square.
@@ -53,7 +56,7 @@ shape is turned 90 degrees clockwise about the centre of the square.
 wrapMarkPolygons :: Bool -> (Sp, Sp) -> Sp -> [[(Sp, Sp)]]
 wrapMarkPolygons vertical (Sp ox, Sp oy) (Sp s) = map (map onPage) wrapMarkUnitPolygons
   where
-    w = toRational (floor (toRational s * 3 / 5) :: Integer)
+    w = toRational (unSp (wrapMarkSize (Sp s)))
     (cx, cy)
       | vertical = (toRational ox, toRational oy - w / 2)
       | otherwise = (toRational ox + w / 2, toRational oy + (baselineRatio - 1 / 2) * toRational s)

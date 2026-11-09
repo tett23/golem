@@ -92,6 +92,8 @@ test-suite golem-driver-test
     CliSpec
     ComplexFixtureSpec
     DiagnosticSitesSpec
+    ReuseSpec
+    CodeFontSpec
     DiagnosticsSpec
     DoubleDashSpec
     EmetSamplesSpec

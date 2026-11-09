@@ -327,6 +327,14 @@ codeTrailingSpaceTests =
         let quarter = "_" <> show (unSp fs `div` 4, 0 :: Integer, 0 :: Integer)
         codeShapes [code "a b"] @?= ["a", quarter, "b"] <> paragraphEnd
         codeShapes [code "漢 ", txt "い"] @?= ["漢", quarter, "い"] <> paragraphEnd,
+      testCase "B4: with no space of code before a line end, nothing is dropped: the items are those of before" $ do
+        let box = Box fs (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
+            codeSpace = Glue (Sp (unSp fs `div` 4)) 0 0
+            wordSpace = Glue (Sp (unSp fs `div` 3)) (Sp (unSp fs `div` 6)) (Sp (unSp fs `div` 9))
+        trailingSpaces (IntSet.singleton 1) ([box, codeSpace, box] <> finish) @?= IntSet.empty
+        trailingSpaces (IntSet.fromList [1, 7]) ([box, codeSpace, box] <> finish <> [box, codeSpace, box] <> finish) @?= IntSet.empty
+        trailingSpaces IntSet.empty ([box, wordSpace, box] <> finish) @?= IntSet.empty
+        trailingSpaces (IntSet.singleton 1) [box, codeSpace, box] @?= IntSet.empty,
       testCase "B6: glue that neither stretches nor shrinks and is not a space of code stays before the end" $ do
         let box = Box fs (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
             fixed = Glue (Sp (unSp fs `div` 4)) 0 0
