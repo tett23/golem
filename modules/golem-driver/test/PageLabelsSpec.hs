@@ -182,21 +182,21 @@ pageLabelsTests =
         [c | d <- filter isError ds, let { DiagnosticCode c = diagCode d }] @?= ["G07110"]
         pdf @?= Nothing,
       testCase "the user manual of 「マニュアルで試すこと」 builds with no error, its /PageLabels /r for the front matter and /D from chapter 1" $
-      withSystemTempDirectory "golem-manual" $ \tmp -> do
-        copyTree "../../manual" tmp
-        manifest <- TE.decodeUtf8 <$> BS.readFile (tmp </> "manifest.toml")
-        assertBool "the preface in lower-roman" ("{ file = \"preface.gm\", page-numbering = { style = \"lower-roman\" } }" `T.isInfixOf` manifest)
-        assertBool "chapter 1 from 1" ("{ file = \"chapters/01-first-book.gm\", page-numbering = { style = \"arabic\", start = 1 } }" `T.isInfixOf` manifest)
-        r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFiles = diskFiles tmp, optFonts = fakeProvider}
-        [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d] @?= []
-        pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
-          [p] -> BS.readFile p
-          other -> assertFailure (show other)
-        let tree = BS.takeWhile (/= 93) (snd (BS.breakSubstring "/PageLabels << /Nums [" pdf))
-        case BS.split 32 (BS.drop (BS.length "/PageLabels << /Nums [") tree) of
-          ["0", "<<", "/S", "/r", ">>", first, "<<", "/S", "/D", ">>"] -> assertBool "chapter 1 after the front matter" (first > "0")
-          other -> assertFailure (show other),
-    testCase "I9: the hidden folios are the places of the pages: the last page of the front matter, the blank page of the break and the first of the body" $ do
+        withSystemTempDirectory "golem-manual" $ \tmp -> do
+          copyTree "../../manual" tmp
+          manifest <- TE.decodeUtf8 <$> BS.readFile (tmp </> "manifest.toml")
+          assertBool "the preface in lower-roman" ("{ file = \"preface.gm\", page-numbering = { style = \"lower-roman\" } }" `T.isInfixOf` manifest)
+          assertBool "chapter 1 from 1" ("{ file = \"chapters/01-first-book.gm\", page-numbering = { style = \"arabic\", start = 1 } }" `T.isInfixOf` manifest)
+          r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFiles = diskFiles tmp, optFonts = fakeProvider}
+          [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d] @?= []
+          pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
+            [p] -> BS.readFile p
+            other -> assertFailure (show other)
+          let tree = BS.takeWhile (/= 93) (snd (BS.breakSubstring "/PageLabels << /Nums [" pdf))
+          case BS.split 32 (BS.drop (BS.length "/PageLabels << /Nums [") tree) of
+            ["0", "<<", "/S", "/r", ">>", first, "<<", "/S", "/D", ">>"] -> assertBool "chapter 1 after the front matter" (first > "0")
+            other -> assertFailure (show other),
+      testCase "I9: the hidden folios are the places of the pages: the last page of the front matter, the blank page of the break and the first of the body" $ do
         let style = folioStyle <> "\n[hidden-folio]\npages = \"all\"\n"
         (inp, _, pl) <- layoutBook (Just P.Western) (manifestOf [numbered "preface.gm" "{ style = \"lower-roman\" }", numbered "one.gm" "{ start = 1 }"] ["pdf"]) style [("preface.gm", "前付け。\n"), ("one.gm", "本文。\n")]
         let labels = layoutLabels inp pl
