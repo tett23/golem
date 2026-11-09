@@ -290,11 +290,11 @@ CI では `editors-lsp` ジョブが、`build (ubuntu-24.04, outputs)` の golem
 
 | テスト | 確かめること |
 | --- | --- |
-| `encoding` | クライアントの `offset_encoding` が `utf-8` になる。`general.positionEncodings` に `utf-16` だけを渡すと `utf-16` になる |
-| `columns` | 日本語と 4 バイトの文字を含む行の diagnostic の `col` と `end_col` が、その行のバイト数を超えない |
-| `notice` | notice の diagnostic が `INFO` で、`vim.diagnostic.setqflist()` の後の quickfix に載る。`manifest.toml` の `silence-notices` にそのコードを足して保存すると消える |
-| `whitespace` | コマンドと式の中の空白の semantic tokens の型が `operator` で、その位置の強調のグループが、既定の色の組で背景と下線を持たない |
-| `completion` | `style.toml` と `preflight.toml` で `vim.lsp.completion` の一覧に候補が出て、引用符の外と内で選んだ後の行が期待の文字列になる。`manifest.toml` とルートより下の `style.toml` では一覧が出ない |
+| `encoding`（I1） | クライアントの `offset_encoding` が `utf-8` になる。`general.positionEncodings` に `utf-16` だけを渡すと `utf-16` になる |
+| `columns`（I2） | 日本語と 4 バイトの文字を含む行の diagnostic の `col` と `end_col` が、その行のバイト数を超えない |
+| `notice`（I3） | notice の diagnostic が `INFO` で、`vim.diagnostic.setqflist()` の後の quickfix に載る。`manifest.toml` の `silence-notices` にそのコードを足して保存すると消える |
+| `whitespace`（I4） | コマンドと式の中の空白の semantic tokens の型が `operator` で、その位置の強調のグループが、既定の色の組で背景と下線を持たない |
+| `completion`（I5） | `style.toml` と `preflight.toml` で `vim.lsp.completion` の一覧に候補が出て、引用符の外と内で選んだ後の行が期待の文字列になる。`manifest.toml` と、ルートより下の `style.toml` と、ルートの外の `style.toml` では一覧が出ない |
 | `readme` | 上の「Neovim」の節の、nvim-treesitter を使わない手順（`sh` のブロックと最後の `lua` のブロック）で、`emet-samples` の `text.gm` と `fn/lib.emet` のファイルタイプが `golem` と `emet` になり、tree-sitter の色付けが始まる |
 
 補完の一覧は、`vim.ui_attach` で `ext_popupmenu` を受けて、端末なら描かれる項目を読む。

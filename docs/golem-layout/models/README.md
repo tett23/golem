@@ -207,7 +207,7 @@ docs/roadmap.md の「未決事項」に足す組はない。
 待つ図版の形は、送る図版、行アキ、待つ図版、後のブロックの 4 個で作れる。
 スコープ 4 で、解のないコマンドに SAT4J が 2 分から 20 分かかったので、スコープ 5 は走らせていない。
 `blankFigureOrder` のスコープ 4 は 1 時間を超えても終わらなかったので打ち切り、スコープ 3 までの結果を書いた。
-「なし」は、スコープ 4 までに解がなかったことを示す。
+「なし」は、スコープ 5 までに解がなかったことを示す（下の 2026-11-09 の結果を含む）。
 2026-11-09 に、6 のコマンドをスコープ 5 でも走らせた（[docs/adr/0242](../../adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
 解の有無は表と同じで、「なし」のコマンドはスコープ 5 までに解がない。
 `blankFigureOrder` も、スコープ 5 はランナーで 648 秒で終わり、解はない。
@@ -217,7 +217,7 @@ docs/roadmap.md の「未決事項」に足す組はない。
 | `waitingBlankSome` | 送った図版の後の行アキと待つ図版と後の本文があり、`base26` と `blankWithNext` を満たし、行アキと後の本文をこの段に置く配置がある入力があるか | 4 |
 | `waitingBlankNone` | `base26` と `blankWithNext` を満たす配置がない入力があるか | なし |
 | `waitingBlankAllButGreedy` | `waitingBlankNone` に `orphan`、`widow`、`keepHeading21` を足したもの | なし |
-| `blankFigureOrder` | `blankWithNext` と、`figures` と `figureOrder` の組 | なし（スコープ 3 まで） |
+| `blankFigureOrder` | `blankWithNext` と、`figures` と `figureOrder` の組 | なし |
 | `blankBeforeWaiting25` | この ADR の前の読み方で、行アキが待つ図版とともに次の段に移り、後の本文だけがこの段に残る配置がある入力があるか | 4 |
 | `blankRules25` | この ADR の前の読み方で、`base26` と `blankWithNext25` を満たす配置がない入力があるか | なし |
 
@@ -242,7 +242,7 @@ docs/roadmap.md の「未決事項」に足す組はない。
 2026-11-08 に、スコープ 2 から 3 まで（要素は 3 個まで、整数は 5 ビット）で走らせた結果である。
 `@need-lines`、空き、次のブロックの 3 個で、この ADR の形を作れる。
 `needSpaceNone` のスコープ 3 に SAT4J が 33 分かかったので、スコープ 4 は走らせていない。
-「なし」は、スコープ 3 までに解がなかったことを示す。
+「なし」は、スコープ 5 までに解がなかったことを示す（下の 2026-11-09 の結果を含む）。
 2026-11-09 に、5 のコマンドをスコープ 5 でも走らせ、`needSpaceAllButGreedy` をスコープ 4 でも走らせた（[docs/adr/0242](../../adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
 `needSpaceAllButGreedy` には、スコープ 4 で解があった（下）。
 ほかの 4 のコマンドの解の有無は、スコープ 5 でも表と同じである。
@@ -292,7 +292,7 @@ docs/roadmap.md の「未決事項」に足す組はない。
 この ADR の形は、`@need-lines`、空き、より大きい `@need-lines`、次のブロックの 4 個で作れるので、ADR のテスト設計のスコープ 3 には現れない。
 そのためスコープ 4 まで走らせた。
 `needMoreNone` のスコープ 3 は約 2 分、スコープ 4 は約 14 分かかった。
-「なし」は、スコープ 4 までに解がなかったことを示す。
+「なし」は、`needMoreNone` ではスコープ 4 までに解がなかったことを示す（スコープ 5 は下のとおり終わらなかった）。
 2026-11-09 に、`needMoreSome` と `needMore27` をスコープ 5 でも走らせ、解があった（[docs/adr/0242](../../adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)）。
 `needMoreNone` のスコープ 5 は、ランナーで 5 時間 55 分（ジョブの上限）を過ぎても終わらなかった。
 毎晩の検査は、`needMoreNone` をスコープ 4 で走らせる。

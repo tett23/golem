@@ -2,7 +2,7 @@
 (docs/adr ADR 0183): the checks of a declared book, and the catalog and
 XMP of the PDF.
 -}
-module TaggedPdfSpec (taggedPdfTests) where
+module TaggedPdfSpec (taggedPdfTests, fixtureBooks, prepareFixtureBook) where
 
 import Control.Monad (filterM, forM_, unless)
 import Data.ByteString qualified as BS
@@ -326,13 +326,14 @@ orphanTests =
       failures @?= []
   ]
 
-{- | Builds a fixture book to PDF, with the fonts of the other fixtures as
-fonts/ja.otf and fonts/latin.otf, the sample with the page of its PDF
-golden (OutputGoldenSpec) and a book of no page with the page of
-'horizontalStyle': what went wrong, if it gave G07107 or no PDF.
+{- | Copies a fixture book into a directory as a book that builds to PDF:
+with the fonts of the other fixtures as fonts/ja.otf and fonts/latin.otf,
+the sample with the page of its PDF golden (OutputGoldenSpec) and a book
+of no page with the page of 'horizontalStyle'. PlatesSpec builds the same
+books (docs/adr ADR 0232, I9).
 -}
-fixtureOrphans :: FilePath -> IO [String]
-fixtureOrphans name = withSystemTempDirectory "golem-orphans" $ \tmp -> do
+prepareFixtureBook :: FilePath -> FilePath -> IO ()
+prepareFixtureBook name tmp = do
   copyTree ("test/fixtures" </> name) tmp
   createDirectoryIfMissing True (tmp </> "fonts")
   copyFile "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" (tmp </> "fonts/ja.otf")
@@ -346,6 +347,11 @@ fixtureOrphans name = withSystemTempDirectory "golem-orphans" $ \tmp -> do
       st <- BS.readFile (tmp </> "style.toml")
       unless ("[page]" `BS.isInfixOf` st) $
         BS.writeFile (tmp </> "style.toml") (st <> "\n" <> horizontalStyle <> "\n[fonts.body]\nja = \"fonts/ja.otf\"\nlatin = \"fonts/latin.otf\"\n\n[fonts.code]\nja = \"fonts/ja.otf\"\nlatin = \"fonts/latin.otf\"\n")
+
+-- | Builds a fixture book to PDF: what went wrong, if it gave G07107 or no PDF.
+fixtureOrphans :: FilePath -> IO [String]
+fixtureOrphans name = withSystemTempDirectory "golem-orphans" $ \tmp -> do
+  prepareFixtureBook name tmp
   r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf]}
   let codes = map diagCode (brDiagnostics r)
   pure ([name <> ": " <> show codes | DiagnosticCode "G07107" `elem` codes || not (any (".pdf" `isSuffixOf`) (brWritten r))])

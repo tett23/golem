@@ -107,6 +107,12 @@ jobs:
     if: needs.prepare.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 11
+    env:
+      # an input of golem.wasm that does not end is stopped well before the
+      # time-out of the job, so that the list says `exit timeout` for it
+      # (docs/adr/0247 section 7); the 14 inputs take about 90 seconds in
+      # all (docs/ci-timings/2026-11-08-wasmtime-in-browser-workflow.md)
+      COMPARE_TIMEOUT: 60
     steps:
       - uses: actions/checkout@v7
         with:
@@ -166,17 +172,17 @@ jobs:
         env:
           BROWSER: chromium
         run: node --test scripts/browser/test/browser.test.mjs
-      - name: golem.wasm under Deno is the native golem (docs/adr/0234 section 5)
+      - name: golem.wasm under Deno is the native golem (docs/adr/0234 section 5, I5)
         if: always() && steps.ready.outcome == 'success'
         run: |
           DENO=third_party/deno/deno sh scripts/wasm/compare.sh --deno browser-inputs/golem.wasm > deno-list.txt
           sh scripts/wasm/compare.sh --check browser-inputs/wasm-native-list.txt deno-list.txt
-      - name: golem.wasm in Chromium is the native golem (docs/adr/0234 section 5)
+      - name: golem.wasm in Chromium is the native golem (docs/adr/0234 section 5, I5)
         if: always() && steps.ready.outcome == 'success'
         run: |
           sh scripts/wasm/compare.sh --browser chromium browser-inputs/golem.wasm > chromium-list.txt
           sh scripts/wasm/compare.sh --check browser-inputs/wasm-native-list.txt chromium-list.txt
-      - name: golem.wasm under the C API of wasmtime is the native golem (docs/adr/0238 section 5)
+      - name: golem.wasm under the C API of wasmtime is the native golem (docs/adr/0238 section 5, I2)
         if: always() && steps.ready.outcome == 'success'
         run: |
           sh scripts/wasm/compare.sh --wasmtime browser-inputs/golem.wasm > wasmtime-list.txt
@@ -209,6 +215,8 @@ jobs:
     if: needs.prepare.outputs.run == 'true'
     runs-on: macos-15
     timeout-minutes: 6
+    env:
+      COMPARE_TIMEOUT: 60
     steps:
       - uses: actions/checkout@v7
         with:
@@ -243,7 +251,7 @@ jobs:
         env:
           BROWSER: safari
         run: node --test scripts/browser/test/browser.test.mjs
-      - name: golem.wasm in Safari is the native golem (docs/adr/0234 section 5)
+      - name: golem.wasm in Safari is the native golem (docs/adr/0234 section 5, I5)
         if: always() && steps.ready.outcome == 'success'
         run: |
           sh scripts/wasm/compare.sh --browser safari browser-inputs/golem.wasm > safari-list.txt
