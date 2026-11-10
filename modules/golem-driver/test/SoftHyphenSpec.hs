@@ -116,6 +116,29 @@ softHyphenTests =
         inMark (byteLength "あ") plain' @?= ["G07105"]
         kept <- builtCiting ("あ[style no-break: " <> mark <> "]\n\n@bibliography\n")
         inMark (byteLength "あ[style no-break: ") kept @?= ["G07122"],
+      testCase "N1 of docs/adr ADR 0297: a soft hyphen right after a link word, and one right after code, is one G07124 at the soft hyphen with the message of the ADR, no G07123" $ do
+        let message = "改行しない文字（コード、URL、リンク、改行しない範囲）の中か隣のソフトハイフンなので、分割の候補にしません"
+        sequence_
+          [ do
+              r <- built horizontalStyle (before <> "\xAD" <> rest <> "\n")
+              sitesOf ["G07123", "G07124"] r @?= [("G07124", "a.gm", byteLength before, 2)]
+              [diagMessage d | d <- diagnosticsOf "G07124" (brDiagnostics r)] @?= [message]
+          | (before, rest) <- [("[link \"https://example.com/\": abc]", "def"), ("[code: ab]", "cd")]
+          ],
+      testCase "I3 of docs/adr ADR 0272: a soft hyphen at the end of a range that does not break before a letter outside it, or at its head after one, is no break and one G07124" $ do
+        let a = T.replicate 4 "abcdefghij"
+            k = T.replicate 4 "klmnopqrst"
+        sequence_
+          [ do
+              (_, pl) <- layoutOk (horizontal30 "") (source <> "\n") []
+              lineTexts pl @?= [a <> k]
+              r <- built (horizontal30 "") (source <> "\n")
+              sitesOf ["G07123", "G07124"] r @?= [("G07124", "a.gm", at, 2)]
+          | (source, at) <-
+              [ ("[style no-break: " <> a <> "\xAD]" <> k, byteLength ("[style no-break: " <> a)),
+                (a <> "[style no-break: \xAD" <> k <> "]", byteLength (a <> "[style no-break: "))
+              ]
+          ],
       testCase "no G07123 nor G07124 in an HTML build" $
         withSystemTempDirectory "golem-shy-html" $ \tmp -> do
           writeProject tmp (miniManifest <> "\n[targets.html]\n") horizontalStyle "a\xAD.\n" fakeFontFiles
