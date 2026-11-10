@@ -664,9 +664,13 @@ indexColumnTests =
       nub [lineTarget (slLine sl) | sl <- entries] @?= [15 * 10 * pt]
       nub [csMeasure (poColumnSet p) | p <- plPages pl, not (null (indexLinesOn pl p))] @?= [15 * 10 * pt]
       content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
-      let ta = typeAreaFor geom 1
+      -- the heading of the index goes on to page 2 with the first section
+      -- heading and the entry it keeps with (docs/adr/0261, its I6 and K4)
+      let first = [poNumber p | p <- plPages pl, not (null (indexLinesOn pl p))]
+          ta = typeAreaFor geom 2
           x1 = TE.encodeUtf8 (spToPt (rectX ta + 17 * 10 * pt))
-      assertBool "the second column starts 17 characters on" (any (any ((== x1) . dX) . drawnGlyphs) (take 1 content)),
+      take 1 first @?= [2]
+      assertBool "the second column starts 17 characters on" (any (any ((== x1) . dX) . drawnGlyphs) (take 1 (drop 1 content))),
     testCase "PDF: the lines of the index columns are on the grid of the type area" $ do
       -- the entries alone, without the headings of docs/adr/0265; the text
       -- before the index balanced (docs/adr/0274), so that it takes the lines
