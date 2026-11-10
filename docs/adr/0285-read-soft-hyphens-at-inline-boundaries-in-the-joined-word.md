@@ -1,6 +1,6 @@
 # ADR 0285: インラインの境目の隣のソフトハイフンを、つないだ語で読む
 
-ステータス: 採択
+ステータス: 採択→（改行しない字の隣のソフトハイフンの notice）は [ADR 0297](0297-report-soft-hyphens-next-to-unbreakable-characters-as-g07124.md)
 
 ## 文脈
 

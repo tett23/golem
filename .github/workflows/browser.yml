@@ -212,6 +212,32 @@ jobs:
             echo "$f: the same $(wc -c < "$F/$f.node") bytes"
           done
           test "$(od -An -tu1 -N1 "$F/not-normalised.node" | tr -d ' ')" = 1
+      # a host built with an upper bound of 64 bytes on the input frame:
+      # 64 bytes are passed on, 65 stop before golem_alloc (docs/adr/0289)
+      - name: The bound of run-wasmtime.c on the input frame (docs/adr/0289 H1, H2)
+        if: always() && steps.ready.outcome == 'success'
+        run: |
+          H=$RUNNER_TEMP/wasmtime
+          F=$RUNNER_TEMP/frames
+          W=third_party/wasmtime
+          cc -O2 -DRUN_WASMTIME_MAX_INPUT=64 -I"$W/include" -o "$H/run-wasmtime-64" scripts/wasm/run-wasmtime.c "$W/lib/libwasmtime.a" -lpthread -ldl -lm
+          head -c 64 "$F/kanikosen" > "$F/64"
+          head -c 65 "$F/kanikosen" > "$F/65"
+          test "$(wc -c < "$F/64" | tr -d ' ')" = 64
+          test "$(wc -c < "$F/65" | tr -d ' ')" = 65
+          code=0
+          "$H/run-wasmtime-64" call "$H/golem.cwasm" < "$F/64" > "$F/64.out" 2> "$F/64.err" || code=$?
+          cat "$F/64.err" >&2
+          test "$code" != 3 || { echo "H1: 64 bytes, the bound, exit 3" >&2; exit 1; }
+          echo "H1: 64 bytes, the bound, exit $code"
+          code=0
+          "$H/run-wasmtime-64" call "$H/golem.cwasm" < "$F/65" > "$F/65.out" 2> "$F/65.err" || code=$?
+          cat "$F/65.err" >&2
+          test "$code" = 3 || { echo "H2: 65 bytes exit $code, not 3" >&2; exit 1; }
+          test ! -s "$F/65.out" || { echo "H2: 65 bytes write to stdout" >&2; exit 1; }
+          grep -qxF 'run-wasmtime: the input frame is larger than 64 bytes' "$F/65.err" || { echo "H2: 65 bytes do not say the bound" >&2; exit 1; }
+          if grep -qF golem_alloc "$F/65.err"; then echo "H2: 65 bytes reach golem_alloc" >&2; exit 1; fi
+          echo "H2: 65 bytes, one over the bound, exit 3 before golem_alloc"
 
   # the Safari of the image of the runner, not pinned: the versions are
   # written to the summary of the job, whether the checks pass or fail. A

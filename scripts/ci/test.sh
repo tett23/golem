@@ -3650,6 +3650,10 @@ expect "run-wasmtime: build without the PDF is a usage error" 2
 run sh "$HERE/../wasm/run-wasmtime.sh" run a b c
 expect "run-wasmtime: an unknown command is a usage error" 2
 
+# (docs/adr/0289 H4): the engine is made with memory64 off, so that the
+# linear memory stays within 4 GiB whatever the default of wasmtime
+if grep -qF 'wasmtime_config_wasm_memory64_set(config, false)' "$HERE/../wasm/run-wasmtime.c"; then ok; else ng "H4 run-wasmtime.c: engine() turns memory64 off"; fi
+
 # ---------------------------------------------------------------- fetch-chromium.sh, fetch-deno.sh
 # (docs/adr/0234 sections 1 and 5): the arguments, and a zip of another
 # SHA-256, from a fake curl, is not unpacked
