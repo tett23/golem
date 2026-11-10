@@ -180,6 +180,20 @@ golem-layout のテストの「every input」が落ちたら、表示された�
 たとえば `GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_PAGINATION_SAMPLES=100000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` のように、調べる要素の数を上げて走らせる。
 golem-layout のテストは `-threaded` で作り、入力をプロセッサの数に分けて調べる。
 
+列挙のテストの予算は、範囲ごとに 10 秒、すべての範囲の和で 30 秒である（[ADR 0281](./docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md)）。
+時間は、x86-64 のランナーで、範囲のテストだけを `-p` で走らせた壁時計の時間で量る。
+`tests-rest` のログの tasty の時間は、ほかのテストスイートと同時に走った時間なので使わない。
+`enum.yml` の範囲の段の前の段「The time of each area on the settings of pull requests」が、上限の変数を渡さずに範囲ごとに走らせ、時間と和の表をジョブの要約に書く（`scripts/ci/enum-timings.sh`）。
+予算を超えても、この段は落ちない。
+
+列挙を足すか変えるプルリクエストでは、次の手順で時間を量る。
+
+1. ブランチを push し、`gh workflow run enum.yml --repo tett23/golem --ref <ブランチ>` で `enum.yml` を起動する。
+2. 終わった実行の要約から、「The time of each area on the settings of pull requests」の表をプルリクエストの説明に貼る。
+3. 範囲が 10 秒を超えたか、和が 30 秒を超えたら、[ADR 0281](./docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md) の「予算を超えたときの順」で手を打つ。まず範囲のテストを速くし、次に既定の組版でない値を毎晩の段に移す。移したことは、移す境を決めるコード（`groupsAt`、`adjustsAt` など）の注釈と、仕様書のその範囲の段落に書く。
+
+`enum.yml` の範囲の段は、どれも `!cancelled()` を持ち、前の段が落ちても走る。
+
 Golem は、同じ入力から常に同じバイト列を出力する。
 出力を変える変更は、x86-64 と aarch64 で同じ結果になることを CI の `determinism` ジョブで確かめる。
 時刻、乱数、ハッシュ表の走査順、ロケールのように、環境で変わるものを出力に混ぜないよう注意する。

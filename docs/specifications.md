@@ -3972,7 +3972,13 @@ L9 の「前に 2 字、後に 3 字」は、語の言語の前と後に残す�
 部品は、和文の文字クラスごとの一字と `—` と、欧文の語の `a` と `table` と `hyphenation` と `lime-tree` と、語間の空白と `.` と `“` と `”` と、ソフトハイフン（U+00AD）である。
 `modules/golem-layout/test/LineBreakInvariantsSpec.hs` は、この段落を組み方の環境と 2 字から 5 字の行の幅のすべてで組み、部品の少ない順に、どの述語も違反を返さないことを確かめる。
 組み方の環境は、禁則（strict か loose）とぶら下げと突き出しと字幅の伸縮の有無と、区間の言語（なし、`en`、`fr`、`ja`）の組み合わせである。
-`fr` は [ADR 0276](adr/0276-hyphenate-words-by-the-patterns-of-their-language.md) で足し、プルリクエストの CI の段が x86-64 の実行環境で 10 秒の予算を超えたので、すべての入力を調べるテストでは毎晩の `enum.yml` だけが調べる。
+`fr` は [ADR 0276](adr/0276-hyphenate-words-by-the-patterns-of-their-language.md) で足し、すべての入力を調べるテストでは毎晩の `enum.yml` だけが調べる。
+行の調整（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)）は、毎晩の `enum.yml` が `"pull-in-first"` と `"balanced"` のそれぞれを、伸びの上限なし、0、2500 で組み、プルリクエストの CI は既定の `"pull-in-first"` と上限なしだけで組む（[ADR 0282](adr/0282-record-what-the-implementations-of-adr-0274-and-0275-decided.md)）。
+`"balanced"` と上限なしの出力が [ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md) の前と同じこと（R1）は、毎晩の `enum.yml` だけが部品 2 個まで調べる。
+数と単位の罰点（[ADR 0275](adr/0275-keep-numbers-with-the-units-after-them.md)）は、どちらの段でも 10000 と 50 で組む。
+プルリクエストの CI は、すべての述語と既定の組版の設定を調べ、既定でない値を毎晩の `enum.yml` に移せる（[ADR 0281](adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md)）。
+2026-11-10 に [ADR 0281](adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md) の量り方（範囲のテストだけを `-p` で走らせた x86-64 の壁時計の時間）で測ると、`fr`、R1、`"balanced"` の上限なしは、どれか一つをプルリクエストの CI に戻すだけで、量ったランナーの一つ以上で、すべての範囲の和が予算の 30 秒を超えた。
+そのため、三つとも毎晩の `enum.yml` だけが調べる。
 字の送りはフォントによらず、欧文の字を 1/4 em、1/2 em、3/4 em の三通りに、語間の空白を 1/4 em に、和文の字を 1 em にした表を `ceAdvance` と `ceWordAdvance` に渡す。
 並びの字が関わらない組み方の環境は組む前に一つにまとめ（正規形）、まとめた入力が `breakParagraph` に渡す値を変えないことを、毎晩の `enum.yml` で部品 2 個まで、プルリクエストの CI で部品 1 個までテストする。
 縦組みも、同じ部品の数までで `breakParagraph` に渡す値を変えないことだけを確かめる。
@@ -3986,7 +3992,7 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 行の調整の順（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）は、同じ 24 の部品の並びの部品 2 個までを、追い込みを優先して組み、A1 から A6 で調べる（`modules/golem-layout/test/AdjustOrderSpec.hs`）。
 どの順でも分割は同じ比で置いたときと同じで（A1）、各行の最後の項目の終わりは 1 sp の差の内にあり（A2）、グルーの量は限度の内にあって、段の順と段の中の割合と最後の段の em の数を守る（A3 から A6）。
 プルリクエストの CI は既定の順だけを 4 字までの行で調べ、毎晩の `enum.yml` は既定の順とその逆順とすべての種類を一つの段にした順を 5 字までの行で調べる。
-三つの順をプルリクエストで調べると、手元の環境で 5 秒かかり、x86-64 の実行環境で 10 秒の予算を超えるおそれがあるためである。
+三つの順は、[ADR 0281](adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md) の量り方で、プルリクエストに戻すと範囲は 10 秒に収まる（7.33 秒から 9.20 秒）が、すべての範囲の和が 30 秒を超える（30.67 秒から 39.46 秒）ので、毎晩の `enum.yml` だけが調べる。
 グルーの種類と大きさを除いた `composeInlines` の項目が、この ADR の前と同じであること（A9）は、部品 2 個までの並びの項目のハッシュを `modules/golem-layout/test/golden/adjust-order-items.tsv` と比べて確かめる。
 
 語の途中のインラインの境目は、[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の W1 から W3 として、`modules/golem-layout/test/JoinedWordEnum.hs` で確かめる。
