@@ -91,7 +91,6 @@ test-suite golem-driver-test
     ChapterNotesSpec
     ColophonSpec
     CliSpec
-    NewPlanSpec
     ComplexFixtureSpec
     DiagnosticSitesSpec
     ReuseSpec
@@ -172,7 +171,6 @@ test-suite golem-driver-test
     , golem-length
     , golem-parser
     , golem-pdf
-    , golem-plugin
     , golem-preflight
     , golem-project
     , golem-syntax
@@ -189,6 +187,13 @@ test-suite golem-driver-test
     , text
     , zip-archive
   default-language: GHC2021
+  -- golem-plugin and golem new only with the plugins, as the library
+  -- (docs/adr ADR 0300): without them (cabal.project.wasm, wasm32) the
+  -- tests that use them are not built
+  if flag(plugins)
+    cpp-options:   -DGOLEM_PLUGINS
+    other-modules: NewPlanSpec
+    build-depends: golem-plugin
 
 -- The tests of golem-driver that change the state of the process (the
 -- environment variable XDG_CACHE_HOME, the locale encoding), in a suite
@@ -202,7 +207,6 @@ test-suite golem-driver-global-test
   other-modules:
     InMemoryWritesSpec
     LocaleSpec
-    PluginsSpec
     Support
   build-depends:
     , base
@@ -221,7 +225,6 @@ test-suite golem-driver-global-test
     , golem-length
     , golem-parser
     , golem-pdf
-    , golem-plugin
     , golem-preflight
     , golem-project
     , golem-syntax
@@ -236,6 +239,13 @@ test-suite golem-driver-global-test
     , text
     , zip-archive
   default-language: GHC2021
+  -- golem-plugin and golem new only with the plugins, as the library
+  -- (docs/adr ADR 0300): without them (cabal.project.wasm, wasm32) the
+  -- tests that use them are not built
+  if flag(plugins)
+    cpp-options:   -DGOLEM_PLUGINS
+    other-modules: PluginsSpec
+    build-depends: golem-plugin
 
 -- Parallel composition on several OS threads (ParallelSpec), in a suite of
 -- its own.

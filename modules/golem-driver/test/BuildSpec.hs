@@ -1,9 +1,13 @@
+{-# LANGUAGE CPP #-}
+
 module BuildSpec (buildTests, allTargetsTests, versionTests, producerTests, publicDomainTests, numberSeparatorTests, bulletTests, styleFileTests) where
 
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
+#ifdef GOLEM_PLUGINS
 import Data.Either (isRight)
+#endif
 import Data.IORef (newIORef, readIORef)
 import Data.List (isSuffixOf, sort)
 import Data.List.NonEmpty (NonEmpty (..))
@@ -15,7 +19,9 @@ import Data.Text.IO qualified as TIO
 import Golem.Assemble (Book (..), HeadingInfo (..))
 import Golem.Doc.IR (InlineF (..))
 import Golem.Driver
+#ifdef GOLEM_PLUGINS
 import Golem.Driver.New
+#endif
 import Golem.Driver.Version (golemVersion)
 import Golem.Driver.Version.Embedded (versionText)
 import Golem.Epub (EpubConfig (..), navDocument)
@@ -303,6 +309,8 @@ styleFileTests =
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
         codeSeverities r @?= [(DiagnosticCode "G03010", Warning)]
   ]
+#ifdef GOLEM_PLUGINS
+    -- golem new only with the plugins, as the library (docs/adr ADR 0300)
     <> [ testCase ("a project made without fonts builds every target but the PDF (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
            let dir = tmp </> "book"
            createProject dir (templateFiles lang uuid0) Nothing >>= assertBool "written" . isRight
@@ -312,6 +320,7 @@ styleFileTests =
            doesDirectoryExist (dir </> "build/pdf") >>= assertBool "no PDF" . not
        | (lang, tag) <- [(Japanese, "ja"), (English, "en")]
        ]
+#endif
 
 -- | The manifest of the one-chapter project in another language.
 langManifest :: T.Text -> BS.ByteString

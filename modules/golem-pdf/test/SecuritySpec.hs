@@ -14,6 +14,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
+import Data.Int (Int64)
 import Data.Text (Text)
 import Golem.Pdf
 import Golem.TestSupport.TimeLimit (hangLimits, withinTimeLimits)
@@ -68,7 +69,7 @@ pageWith dict body =
     ]
 
 -- | One page whose Contents is the array given, with the streams given.
-contentsOf :: ByteString -> [(Int, ByteString)] -> ByteString
+contentsOf :: ByteString -> [(Int64, ByteString)] -> ByteString
 contentsOf refs streams =
   classicPdf
     ""
@@ -101,7 +102,7 @@ nulStream n = stream "/Filter /FlateDecode" (zeros n)
 -- ------------------------------------------------------------------ C1: the page tree as a DAG
 
 -- | A page tree of the depth given in which every node names the same child twice.
-dagPdf :: Int -> ByteString
+dagPdf :: Int64 -> ByteString
 dagPdf depth =
   classicPdf "" $
     [catalog]
@@ -321,7 +322,7 @@ tests2018 =
 to the largest: the objects in the file at their offsets, and the objects
 in object streams as (number, stream, index).
 -}
-xrefStreamPdf :: [(Int, ByteString)] -> [(Int, Int, Int)] -> ByteString
+xrefStreamPdf :: [(Int64, ByteString)] -> [(Int64, Int64, Int)] -> ByteString
 xrefStreamPdf inFile inStreams =
   let (body, offs) = layout "%PDF-1.5\n%\xE2\xE3\xCF\xD3\n" inFile
       xrefNum = maximum (map fst inFile <> [n | (n, _, _) <- inStreams]) + 1
@@ -329,7 +330,7 @@ xrefStreamPdf inFile inStreams =
       be k (x :: Int) = BS.pack [fromIntegral (x `shiftR` (8 * i)) | i <- reverse [0 .. k - 1]]
       row n
         | Just o <- lookup n offs = BS.singleton 1 <> be 4 o <> be 2 0
-        | (s, i) : _ <- [(s, i) | (m, s, i) <- inStreams, m == n] = BS.singleton 2 <> be 4 s <> be 2 i
+        | (s, i) : _ <- [(s, i) | (m, s, i) <- inStreams, m == n] = BS.singleton 2 <> be 4 (fromIntegral s) <> be 2 i
         | n == xrefNum = BS.singleton 1 <> be 4 (BS.length body) <> be 2 0
         | otherwise = BS.singleton 0 <> be 4 0 <> be 2 0
       rows = BS.concat (map row [0 .. xrefNum])
@@ -346,7 +347,7 @@ objStm dict objs =
    in stream ("/Type /ObjStm /N " <> BC.pack (show (length objs)) <> " /First " <> BC.pack (show (BS.length header)) <> " " <> dict) content
 
 -- | A page tree whose Kids are references to arrays of two direct nodes that name the next array.
-arrayKidsPdf :: Int -> ByteString
+arrayKidsPdf :: Int64 -> ByteString
 arrayKidsPdf depth =
   classicPdf "" $
     [catalog, (2, "<< /Type /Pages /Kids 10 0 R /Count 1 >>")]
@@ -385,7 +386,7 @@ sharedOffsetPdf n pad =
       header = BS.concat [BC.pack (show k) <> " " <> BC.pack (show o) <> " " | (k, o) <- pairs]
       content = header <> BS.concat [b <> "\n" | b <- bodies]
       stm = stream ("/Type /ObjStm /N " <> BC.pack (show (length pairs)) <> " /First " <> BC.pack (show (BS.length header)) <> " /Filter /FlateDecode") (compressed content)
-   in xrefStreamPdf [(4, stream "" "0 0 1 1 re f"), (6, stm)] ([(1, 6, 0), (2, 6, 1), (3, 6, 2), (100, 6, 3)] <> [(200 + i, 6, 3 + i) | i <- [1 .. n]])
+   in xrefStreamPdf [(4, stream "" "0 0 1 1 re f"), (6, stm)] ([(1, 6, 0), (2, 6, 1), (3, 6, 2), (100, 6, 3)] <> [(200 + fromIntegral i, 6, 3 + i) | i <- [1 .. n]])
 
 -- | The allocation of importing the page of a PDF.
 allocationOf :: ByteString -> IO Integer

@@ -1,9 +1,13 @@
+{-# LANGUAGE CPP #-}
+
 module PdfSpec (qpdfInstalled, fontResources, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests, codeBlockRubyTests, ligatureTests, combiningTests) where
 
 import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
+#ifdef GOLEM_PLUGINS
 import Data.Either (isRight)
+#endif
 import Data.IORef (newIORef, readIORef)
 import Data.List (isSuffixOf, nub, sort, sortOn, zip4)
 import Data.Map.Strict qualified as Map
@@ -12,7 +16,9 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
+#ifdef GOLEM_PLUGINS
 import Golem.Driver.New (Language (..), createProject, templateFiles)
+#endif
 import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (AdjustOrder (..), BoxContent (..), Hyphen (..), Item (..), Line (..), noLeaf, placeLine)
 import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook)
@@ -654,6 +660,8 @@ marksTests =
       (w, h) <- a5Size
       boxOf "MediaBox" pdf @?= boxOf "BleedBox" pdf
       boxOf "TrimBox" pdf @?= boxText (Rect 557314 557314 w h),
+#ifdef GOLEM_PLUGINS
+    -- golem new only with the plugins, as the library (docs/adr ADR 0300)
     testCase "the English template: 0.125in of bleed, and Japanese marks without G07002 (golem-pdf ADR 0010, golem-project ADR 0010)" $ withSystemTempDirectory "golem-new" $ \tmp -> do
       let dir = tmp </> "book"
       createProject dir (templateFiles English uuid0) Nothing >>= assertBool "written" . isRight
@@ -668,6 +676,7 @@ marksTests =
       let s = P.sheet (Just P.Japanese) (9 * 65536) (20054016, 32440320)
       boxOf "TrimBox" pdf @?= boxText (P.shTrim s)
       boxOf "BleedBox" pdf @?= boxText (P.shBleed s),
+#endif
     testCase "Japanese marks without bleed are G07002 at the top of style.toml, and no PDF" $ do
       b <- buildMarks (\o -> o {optMarks = JapaneseMarks}) (Just horizontalStyle)
       map diagCode (bErrors b) @?= [DiagnosticCode "G07002"]

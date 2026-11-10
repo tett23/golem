@@ -19,9 +19,11 @@ import Text.Printf (printf)
 built :: B.Builder -> String
 built = BLC.unpack . B.toLazyByteString
 
--- | The largest offset that printf "%010d" writes in ten digits.
+{- | The largest offset that printf "%010d" writes in ten digits, within
+'Int' (2^31 - 1 on wasm32, docs/adr ADR 0300).
+-}
 maxOffset :: Int
-maxOffset = 9999999999
+maxOffset = fromInteger (min 9999999999 (toInteger (maxBound :: Int)))
 
 tests :: TestTree
 tests =

@@ -646,10 +646,13 @@ cabal 3.14.2.0 は、`build-tool-depends` の `alex` と `happy` も wasm の GH
 wasm32 の `Int` は 32 ビットなので、ネイティブで通る断言が wasm32 で落ちたところが、`Int` の幅に依るコードの候補になる。
 走らせるスイートは、`cabal.project.wasm` の `packages:` にある golem のパッケージのすべてのスイートで、`scripts/ci/test-suites.sh wasm` が求める。
 組むのは `cabal.project.wasm-tests` で、`cabal.project.wasm` と `cabal.project.wasm.freeze` を取りこみ、テストを組む。
-テストだけが使う golem-test-support と golem-doc-gen と、golem-driver のスイートが依る golem-plugin を `packages:` に足す。
+テストだけが使う golem-test-support と golem-doc-gen を `packages:` に足す。
 `skylighting` と `skylighting-core` のテストは組まない。
 wasm32 には threaded の実行時システムがないので、`-threaded` と `-N` は wasm32 では付けない。
 golem-pdf のテストは、wasm32 で組めない uuid を、ほかのターゲットでだけ使い、uuid と比べるテストは wasm32 では組まない。
+golem-pdf のテストは、`Int` に収まらない PDF のオブジェクトの番号を `Int64` で書き、`Int` のリテラルは wasm32 の `Int` に収める（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)）。
+golem-driver の golem-driver-test と golem-driver-global-test は、ライブラリと同じくフラグ `plugins` のときだけ golem-plugin に依り、golem-plugin か `Golem.Driver.New` を使うテスト（プラグインと `golem new` のテスト）を組む（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)）。
+`cabal.project.wasm` は `plugins` を外すので、wasm32 ではそれらのテストを組まない。
 golem-font のテストの C のファイルは、ライブラリと同じく wasm の例外処理で `setjmp.h` を読む。
 
 スイートは、`scripts/wasm/run-tests.mjs` が Node の `node:wasi` で一つずつ動かす。

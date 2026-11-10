@@ -1,10 +1,14 @@
+{-# LANGUAGE CPP #-}
+
 module Main (main) where
 
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import InMemoryWritesSpec (inMemoryWritesTests)
 import LocaleSpec
+#ifdef GOLEM_PLUGINS
 import PluginsSpec
+#endif
 import System.Environment (lookupEnv)
 import Test.Tasty
 
@@ -19,11 +23,21 @@ main = enterPackageDirectory >> lookupEnv "XDG_CACHE_HOME" >>= defaultMainReport
 
 -- | The tests, with XDG_CACHE_HOME as it was when the suite started (docs/adr ADR 0072).
 tests :: Maybe String -> TestTree
+#ifdef GOLEM_PLUGINS
 tests cacheHome =
+#else
+tests _ =
+#endif
   testGroup
     "golem-driver: the tests that change the state of the process (docs/adr/0146)"
-    [ testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
-      cacheHomeRestored cacheHome,
-      localeTests,
-      inMemoryWritesTests
-    ]
+    ( -- the plugins only with them, as the library (docs/adr ADR 0300)
+#ifdef GOLEM_PLUGINS
+      [ testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
+        cacheHomeRestored cacheHome
+      ]
+        <>
+#endif
+        [ localeTests,
+          inMemoryWritesTests
+        ]
+    )

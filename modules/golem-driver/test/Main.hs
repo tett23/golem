@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module Main (main) where
 
 import AdjustOrderSpec (adjustOrderTests)
@@ -33,7 +35,9 @@ import KeepOptionsSpec (keepOptionsTests)
 import LineAdjustmentSpec (lineAdjustmentTests)
 import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
+#ifdef GOLEM_PLUGINS
 import NewPlanSpec (newPlanTests)
+#endif
 import NotesSpec (notesTests)
 import NumberUnitBuildSpec (numberUnitBuildTests)
 import OpenTypeFeaturesSpec (openTypeFeaturesTests)
@@ -116,9 +120,11 @@ tests skips =
       ]
         <> buildTests
         <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, insideLinksTests, overflowTests, softHyphenTests, exceptionsTests, bookLanguageTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, scriptsTests, decorationsTests]
-        <> [ newProjectTests,
-             newPlanTests,
-             allTargetsTests,
+        -- golem new only with the plugins, as the library (docs/adr ADR 0300)
+#ifdef GOLEM_PLUGINS
+        <> [newProjectTests, newPlanTests]
+#endif
+        <> [ allTargetsTests,
              pdfPipelineTests,
              testGroup "files of style.toml per target (golem-project ADR 0004)" styleFileTests,
              testGroup "verse (docs/adr ADR 0003)" verseTests,
