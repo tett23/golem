@@ -7,9 +7,9 @@ scripts at the end of its text joins the Latin word after a boundary.
 -}
 module BookLanguageSpec (bookLanguageTests) where
 
+import Control.Monad (unless)
 import Data.ByteString qualified as BS
 import Data.Char (intToDigit)
-import Control.Monad (unless)
 import Data.List (isSuffixOf, sort)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
