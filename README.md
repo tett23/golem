@@ -656,6 +656,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 - 全パッケージのすべてのコンポーネントが `-Werror` でビルドされること（`scripts/ci/werror.sh`、[docs/adr/0245](./docs/adr/0245-keep-the-warnings-of-ci-at-zero.md)）。
 - `unsafePerformIO` の使用が一覧のとおりであること（`scripts/ci/unsafe-io.sh`、[docs/adr/0034](./docs/adr/0034-fewer-unsafe-perform-io.md)）。
 - `modules/` のプログラムが実行中に capability の数を変えないこと（`scripts/ci/rts-capabilities.sh`）。
+- すべてのテストのスイートが `x86_64` と `aarch64` のそれぞれに時間の上限を一つずつ持つこと（`scripts/ci/suite-limits.sh --check`、[ADR 0292](./docs/adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md)）。
 - プラグインの ABI のバージョンが直前のリリースからの ABI の変更に合っていること（`scripts/ci/abi-version.sh`、[docs/adr/0052](./docs/adr/0052-plugin-abi-version-bump-rule.md)。直前のリリースが `v1.0.0` 以降なら、ABI の変更の予告と patch の規則も）。
 - 直前のリリースが `v1.0.0` 以降なら、diagnostic のコードが 1.x の約束を守っていること（`scripts/ci/diagnostic-codes.sh`、[docs/adr/0174](./docs/adr/0174-compatibility-promises-for-1-0.md)）。
 
@@ -672,7 +673,8 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 
 `build` は、x86-64 と aarch64 の Linux でビルドとテストを行う。
 10 分で終わらないテストのスイートは `scripts/ci/suite-timeout.sh` が止めて失敗にする。
-終わったスイートは、かかった秒を標準エラーに一行で書く。
+終わったスイートは、かかった秒を標準エラーに一行で書き、その秒が `scripts/ci/suite-limits.tsv` のアーキテクチャごとの上限を超えれば失敗にする。
+上限は、直近の `main` への push の 20 回の中央値 m から `max(10, ceil(2 × m))` で決める（[ADR 0292](./docs/adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md)）。
 
 ビルドの後に、生成物と出力を確かめる。
 生成したパーサーが文法と一致すること、`scripts/gen-embedded.sh` で生成した golem-driver のモジュールが `VERSION` と `docs/diagnostics.md` と一致すること（[docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）を確かめる。
