@@ -1134,6 +1134,26 @@ if [ "$CODE" = 1 ] && grep -qF 'golem-gone-test' "$WORK/err"; then ok; else ng "
 run suite_limits --check
 expect "suite-limits: L4 the table of the repository has every suite of test-suites.sh, once on each architecture" 0
 
+# G1 --set ARCH SUITE SECONDS TABLE changes the seconds of that row alone, to
+# max(10, ceil(2 t)): t = 0, 4.9, 5 and 5.1 give 10, 10, 10 and 11; the row
+# of the same suite on the other architecture stays (docs/adr ADR 0301)
+printf '# a comment\naarch64\tgolem-a-test\t30\naarch64\tgolem-b-test\t12\nx86_64\tgolem-a-test\t40\n' >"$SL/set.tsv"
+for case in "0 10" "4.9 10" "5 10" "5.1 11" "71 142"; do
+  set -- $case
+  cp "$SL/set.tsv" "$SL/t.tsv"
+  : >"$WORK/in"
+  run suite_limits --set aarch64 golem-a-test "$1" "$SL/t.tsv"
+  printf '# a comment\naarch64\tgolem-a-test\t%s\naarch64\tgolem-b-test\t12\nx86_64\tgolem-a-test\t40\n' "$2" >"$SL/want.tsv"
+  if [ "$CODE" = 0 ] && cmp -s "$SL/t.tsv" "$SL/want.tsv"; then ok; else ng "suite-limits: G1 --set of $1 seconds gives that row alone a limit of $2"; fi
+done
+# G2 --set of a row the table does not have changes nothing, and fails
+for row in "x86_64 golem-b-test" "aarch64 golem-c-test"; do
+  set -- $row
+  cp "$SL/set.tsv" "$SL/t.tsv"
+  run suite_limits --set "$1" "$2" 20 "$SL/t.tsv"
+  if [ "$CODE" != 0 ] && [ "$CODE" != 2 ] && cmp -s "$SL/t.tsv" "$SL/set.tsv" && grep -qF "$2" "$WORK/err"; then ok; else ng "suite-limits: G2 --set of $2 on $1, not in the table, fails and changes nothing"; fi
+done
+
 # ---------------------------------------------------------------- bg.sh
 # (docs/adr/0037-ci-build-job-speedup.md)
 
