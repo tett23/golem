@@ -51,7 +51,7 @@ module LineBreakInvariants
   )
 where
 
-import Data.Char (chr, isDigit, isLetter)
+import Data.Char (GeneralCategory (..), chr, generalCategory, isDigit, isLetter)
 import Data.List (mapAccumL)
 import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import Data.Text (Text)
@@ -139,7 +139,10 @@ classOf :: BoxContent -> Char -> CharClass
 classOf c ch = if latinDual c ch then dualJapaneseClass ch else lookClass (bcLook c) ch
 
 startClass, endClass :: BoxContent -> Maybe CharClass
-startClass c = classOf c . fst <$> T.uncons (baseOf c)
+startClass c = case T.uncons (baseOf c) of
+  -- an apostrophe at the start of a Latin word, with a letter or a digit after it, is Latin (golem-layout ADR 0030)
+  Just ('\x2019', more) | bcExpandable c, Just (n, _) <- T.uncons more, isLetter n || generalCategory n == DecimalNumber -> Just Western
+  u -> classOf c . fst <$> u
 endClass c = classOf c . snd <$> T.unsnoc (baseOf c)
 
 -- | The text of a line.

@@ -138,3 +138,19 @@ jobs:
         env:
           GOLEM_ENUM_NOBREAK_DEPTH: "3"
         run: cabal test golem-layout-test --test-option=-p --test-option='/ranges that do not break on every small input/'
+      # the marks of citations among the parts of the line breaking: every
+      # input of up to GOLEM_ENUM_CITE_DEPTH parts; the pull requests check
+      # up to 2 (docs/adr/0277, docs/adr ADR 0280)
+      - name: The marks of citations on every small input (docs/adr/0277, docs/adr ADR 0280)
+        if: steps.needed.outputs.run == 'true'
+        env:
+          GOLEM_ENUM_CITE_DEPTH: "3"
+        run: cabal test golem-layout-test --test-option=-p --test-option='/GOLEM_ENUM_CITE_DEPTH/'
+      # the boundaries of inlines inside Latin words: every input of up to
+      # GOLEM_ENUM_JOINED_DEPTH parts; the pull requests check up to 2
+      # (docs/adr ADR 0280)
+      - name: The boundaries inside Latin words on every small input (docs/adr ADR 0280)
+        if: steps.needed.outputs.run == 'true'
+        env:
+          GOLEM_ENUM_JOINED_DEPTH: "3"
+        run: cabal test golem-layout-test --test-option=-p --test-option='/GOLEM_ENUM_JOINED_DEPTH/'

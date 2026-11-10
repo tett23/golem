@@ -83,6 +83,7 @@ test-suite golem-layout-test
                     AlignSpec
                     CharClassSpec
                     CiteBreakEnum
+                    JoinedWordEnum
                     CodeJapaneseSpec
                     CodePaddingSpec
                     CodeSpaceSpec
