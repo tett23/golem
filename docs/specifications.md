@@ -564,8 +564,13 @@ CI の `changes` ジョブの `scripts/ci/suite-limits.sh --check` は、`script
 `enum.yml` と `race.yml` など、`build` ジョブの外で走るスイートと、手元の `cabal test` には上限を当てない。
 
 上限を超えたら、まず性能の後退かどうかを調べ、後退なら直す。
-テストを足したことによる正当な増加なら、そのプルリクエストで `sh scripts/ci/suite-limits.sh --fetch 20 | sh scripts/ci/suite-limits.sh` で表を作り直す。
-増えたスイートの行は、プルリクエストの CI の秒を中央値に加えた値で上限を求め、プルリクエストの説明に前と後の上限を書く。
+テストを足したことによる正当な増加なら、そのプルリクエストで、増えたスイートの行だけを、そのプルリクエストの CI の秒 t から `max(10, ceil(2 × t))` で求め直す（[ADR 0301](adr/0301-make-the-suite-limits-follow-a-suite-that-grew-by-added-tests.md)）。
+中央値は伸びる前の値に引かれ、伸びた後の値が過半になるまで上限が伸びに追いつかないからである。
+`scripts/ci/suite-limits.sh --set ARCH SUITE SECONDS [TABLE]` は、表のその行の秒だけをこの式で書き換え、ほかの行を変えない。
+表にその行がちょうど一つなければ、表を変えずに失敗する。
+プルリクエストの説明には、前と後の上限と、使った秒を書く。
+伸びた後の `main` への push が 20 回たまったら、`sh scripts/ci/suite-limits.sh --fetch 20 | sh scripts/ci/suite-limits.sh` で表全体を作り直してもよい。
+この作り直しは任意の手順である。
 新しいスイートを足すプルリクエストは、そのスイートの行を、プルリクエストの CI の秒から同じ式で求めて足す。
 `--fetch N` は、`gh run list` で `main` への push の成功した実行のうちテストを走らせた直近の N 回を選び、テストのランナーのログを API から `curl` で取って、`finished in` の行にアーキテクチャを前に付けて書く。
 
@@ -666,10 +671,13 @@ cabal 3.14.2.0 は、`build-tool-depends` の `alex` と `happy` も wasm の GH
 wasm32 の `Int` は 32 ビットなので、ネイティブで通る断言が wasm32 で落ちたところが、`Int` の幅に依るコードの候補になる。
 走らせるスイートは、`cabal.project.wasm` の `packages:` にある golem のパッケージのすべてのスイートで、`scripts/ci/test-suites.sh wasm` が求める。
 組むのは `cabal.project.wasm-tests` で、`cabal.project.wasm` と `cabal.project.wasm.freeze` を取りこみ、テストを組む。
-テストだけが使う golem-test-support と golem-doc-gen と、golem-driver のスイートが依る golem-plugin を `packages:` に足す。
+テストだけが使う golem-test-support と golem-doc-gen を `packages:` に足す。
 `skylighting` と `skylighting-core` のテストは組まない。
 wasm32 には threaded の実行時システムがないので、`-threaded` と `-N` は wasm32 では付けない。
 golem-pdf のテストは、wasm32 で組めない uuid を、ほかのターゲットでだけ使い、uuid と比べるテストは wasm32 では組まない。
+golem-pdf のテストは、`Int` に収まらない PDF のオブジェクトの番号を `Int64` で書き、`Int` のリテラルは wasm32 の `Int` に収める（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)）。
+golem-driver の golem-driver-test と golem-driver-global-test は、ライブラリと同じくフラグ `plugins` のときだけ golem-plugin に依り、golem-plugin か `Golem.Driver.New` を使うテスト（プラグインと `golem new` のテスト）を組む（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)）。
+`cabal.project.wasm` は `plugins` を外すので、wasm32 ではそれらのテストを組まない。
 golem-font のテストの C のファイルは、ライブラリと同じく wasm の例外処理で `setjmp.h` を読む。
 
 スイートは、`scripts/wasm/run-tests.mjs` が Node の `node:wasi` で一つずつ動かす。
