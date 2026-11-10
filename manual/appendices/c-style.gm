@@ -322,6 +322,7 @@ PDF では、表の行がセルの全体を収める最も少ない行を占め�
 | [code: protrusion] | [code: false] | [code: true] にすると、行末と行頭の欧文のハイフンや句読点を、版面の外にわずかに出して、行の端をそろえて見せます。 |
 | [code: expansion] | なし | 欧文の字の幅をわずかに伸び縮みさせて、語間のむらを減らします。[code: { limit = 20, step = 5 }] のように、限度と刻みを千分率で書きます（20 は 2%）。 |
 | [code: explicit-hyphen-penalty] | [code: 50] | 欧文の語に書かれたハイフンやダッシュの後ろで行を分けるときの、避けたさの度合いです。-9999 から 10000 までで、10000 にするとそこでは分けません。 |
+| [code: number-unit-penalty] | [code: 10000] | 数字とその後の仮名か漢字（[code: 100円]、[code: 3人]）のあいだで行を分けるときの、避けたさの度合いです。-9999 から 10000 までで、既定の 10000 ではそこで分けません。漢数字の後ろと、空白を挟む組には当てません。 |
 | [code: hyphenation-exceptions] | なし | 本の欧文の語の分け方（分綴の例外）です。[code: \[composition.hyphenation-exceptions\]] の表に、[code: en = \["ta-ble", "pro-ject"\]] のように言語のタグごとに語の配列を書きます。語の分けてよい位置に [code: -] を書き、[code: -] のない語は分けません。PDF でだけ有効です。語と言語のタグの誤りは、原稿の [code: @hyphenation-exceptions] と同じエラー（G03126 から G03130）になります。 |
 
 @nonumber

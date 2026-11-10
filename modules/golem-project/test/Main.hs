@@ -961,6 +961,14 @@ tests =
         fmap (compExplicitHyphenPenalty . stComposition) (parseStyle (FileId 0) "[composition]\nexplicit-hyphen-penalty = -9999\n") @?= Right (-9999)
         codes (parseStyle (FileId 0) "[composition]\nexplicit-hyphen-penalty = -10000\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[composition]\nexplicit-hyphen-penalty = 10001\n") @?= ["G03006"],
+      testCase "number-unit-penalty (docs/adr/0275): 10000 by default, -9999 to 10000 read" $ do
+        let nu = fmap (compNumberUnitPenalty . stComposition) . parseStyle (FileId 0)
+        nu "" @?= Right 10000
+        mapM_ (\v -> nu ("[composition]\nnumber-unit-penalty = " <> T.pack (show v) <> "\n") @?= Right v) [-9999, 0, 50, 9999, 10000 :: Int],
+      testCase "W7 (docs/adr/0275): number-unit-penalty out of its range or not an integer is one G03006" $
+        mapM_
+          (\v -> (v, codes (parseStyle (FileId 0) ("[composition]\nnumber-unit-penalty = " <> v <> "\n"))) @?= (v, ["G03006"]))
+          ["10001", "-10000", "1.5", "\"10\""],
       testCase "[composition.ruby] (golem-layout ADR 0009)" $ do
         let rubyOf = fmap (compRuby . stComposition) . parseStyle (FileId 0)
         rubyOf "" @?= Right (RubyStyleDef "center" "1:2:1" "1:2:1" (Zw 0.5) "kana")

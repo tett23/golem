@@ -38,6 +38,9 @@ module LineBreakInvariants
     pairForbidden,
     adjacentPairs,
     forbidPairs,
+    penalizePairs,
+    withoutNumberUnits,
+    numberUnitOf,
     breaches,
     codeInvariants,
     codeBreaches,
@@ -48,14 +51,14 @@ module LineBreakInvariants
   )
 where
 
-import Data.Char (chr, isDigit, isLetter)
+import Data.Char (GeneralCategory (..), chr, generalCategory, isDigit, isLetter)
 import Data.List (mapAccumL)
 import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Layout.Aki (AkiPos (..), akiBetween, defaultAkiSet, noAki)
 import Golem.Layout.Aki qualified as A
-import Golem.Layout.CharClass (dualJapaneseClass, isDualCharacter, isExtending, spanIsJapanese)
+import Golem.Layout.CharClass (charClass, dualJapaneseClass, isDualCharacter, isExtending, spanIsJapanese)
 import Golem.Layout.Hyphenation (hyphenMins)
 import Golem.Layout.Hyphenation.Languages (patternsFor)
 import Golem.Layout.Japanese (BoxKind (..), CharClass (..), boxKind, lineEndProhibited, lineStartProhibited, lookClass)
@@ -73,7 +76,7 @@ before golem-layout ADR 0045, which no output tells: the tests of the
 items check it. D1 to D5 of golem-layout ADR 0048 compare the items of
 code with padding with those without it ('paddingBreaches').
 -}
-data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1 | I4 | B2 | B3 | B4 | C1 | C2 | C6 | C7 | C8 | J1 | J2 | J3 | J4 | J6 | J7 | D1 | D2 | D3 | D4 | D5 | R5 | R6
+data LineInvariant = L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 | L9 | L10 | L11 | L12 | L13 | T1 | I4 | B2 | B3 | B4 | C1 | C2 | C6 | C7 | C8 | J1 | J2 | J3 | J4 | J6 | J7 | D1 | D2 | D3 | D4 | D5 | R5 | R6 | W1 | W2
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | An invariant broken, the line it is broken at (from 0; -1 for the whole paragraph), and how.
@@ -83,7 +86,8 @@ data Breach = Breach {breachOf :: !LineInvariant, breachLine :: !Int, breachWhy 
 {- | What a predicate reads: the characters of the paragraph, those of its
 inline code, the font size, the width of its lines, the strictness of its
 kinsoku, its items, the parameters of its breaking and the breaks that
-came out, and the advance of a character in em (Latin text or not).
+came out, the advance of a character in em (Latin text or not), and the
+penalty of a number and its unit (docs/adr/0275).
 -}
 data Paragraph = Paragraph
   { pText :: !Text,
@@ -94,7 +98,8 @@ data Paragraph = Paragraph
     pItems :: ![Item],
     pParams :: !Params,
     pBreaks :: !Breaks,
-    pAdvance :: Bool -> Char -> Rational
+    pAdvance :: Bool -> Char -> Rational,
+    pNumberUnit :: !Int
   }
 
 -- | The breaks of a paragraph L7 brute-forces: up to 8 on pull requests (docs/adr/0209, its section 3).
@@ -134,7 +139,10 @@ classOf :: BoxContent -> Char -> CharClass
 classOf c ch = if latinDual c ch then dualJapaneseClass ch else lookClass (bcLook c) ch
 
 startClass, endClass :: BoxContent -> Maybe CharClass
-startClass c = classOf c . fst <$> T.uncons (baseOf c)
+startClass c = case T.uncons (baseOf c) of
+  -- an apostrophe at the start of a Latin word, with a letter or a digit after it, is Latin (golem-layout ADR 0030)
+  Just ('\x2019', more) | bcExpandable c, Just (n, _) <- T.uncons more, isLetter n || generalCategory n == DecimalNumber -> Just Western
+  u -> classOf c . fst <$> u
 endClass c = classOf c . snd <$> T.unsnoc (baseOf c)
 
 -- | The text of a line.
@@ -241,12 +249,14 @@ l4Inseparable _ p =
     <> [ Breach L4 i ("lines " <> show (i + 1) <> " and " <> show (i + 2) <> " break between " <> show x <> " and " <> show y <> ", a pair that may not be broken")
        | (i, l, _) <- pairs p,
          Just at <- [breakIndex p i],
-         (i1, i2, x, y) <- adjacentPairs (pText p) (pItems p),
+         (i1, i2, x, y) <- kept,
          i1 < at,
          at < i2,
-         pairForbidden False x y,
          not (wide p l)
        ]
+  where
+    -- the pairs of golem-layout ADR 0049, and of docs/adr/0275 when its penalty is 10000, once for the paragraph
+    kept = [q | q@(_, _, x, y) <- adjacentPairs (pText p) (pItems p), pairForbidden False x y || (pNumberUnit p >= infPenalty && isJust (numberUnitOf x y))]
 
 {- | L5: no line ends past W and its protrusion at the end, with 1 sp of
 rounding, but a line that is overfull and has no break where it would
@@ -762,13 +772,22 @@ and an infinite penalty put before a glue that the first box comes right
 before.
 -}
 forbidPairs :: Bool -> Text -> [Item] -> [Item]
-forbidPairs vertical text its = concat (zipWith change [0 ..] its)
+forbidPairs vertical = penalizePairs (\a b -> if pairForbidden vertical a b then Just infPenalty else Nothing)
+
+{- | The items with the penalty given to the pairs of 'adjacentPairs' it
+gives one: between their boxes, every penalty under the infinite one made
+that penalty, and that penalty put before a glue that the first box comes
+right before, so that the glue is no break (golem-layout ADR 0049, B6;
+docs/adr/0275, W2 and W3). A pair whose break was infinite stays so.
+-}
+penalizePairs :: (Char -> Char -> Maybe Int) -> Text -> [Item] -> [Item]
+penalizePairs penaltyOf text its = concat (zipWith change [0 ..] its)
   where
-    kept = [(i1, i2) | (i1, i2, a, b) <- adjacentPairs text its, pairForbidden vertical a b]
-    change k it = case [i1 | (i1, i2) <- kept, k > i1, k < i2] of
-      i1 : _ -> case it of
-        Penalty w p h | p < infPenalty -> [Penalty w infPenalty h]
-        Glue {} | k == i1 + 1 -> [Penalty 0 infPenalty NoHyphen, it]
+    kept = [(i1, i2, n) | (i1, i2, a, b) <- adjacentPairs text its, Just n <- [penaltyOf a b]]
+    change k it = case [(i1, n) | (i1, i2, n) <- kept, k > i1, k < i2] of
+      (i1, n) : _ -> case it of
+        Penalty w p h | p < infPenalty -> [Penalty w n h]
+        Glue {} | k == i1 + 1 -> [Penalty 0 n NoHyphen, it]
         _ -> [it]
       [] -> [it]
 
@@ -847,6 +866,54 @@ refPostfixed c =
         0xFFE0
       ]
 
+-- * numbers and their units (docs/adr/0275)
+
+-- | Whether the pair of a last and a first character is a number and its unit: an Arabic digit, and a kana or a kanji.
+numberUnitOf :: Char -> Char -> Maybe ()
+numberUnitOf a b
+  | refArabicDigit a && charClass b `elem` [Kana, Ideograph] = Just ()
+  | otherwise = Nothing
+
+{- | W1 and W2 of docs/adr/0275, in horizontal writing: between the boxes of
+a number and its unit that golem-layout ADR 0049 does not keep together,
+no break when the penalty is 10000; otherwise one break, a penalty of the
+penalty, of no width and no hyphen, and no glue the first box comes right
+before.
+-}
+w1w2NumberUnit :: Check
+w1w2NumberUnit _ p =
+  [ Breach (if pNumberUnit p >= infPenalty then W1 else W2) (-1) ("the breaks between " <> show a <> " and " <> show b <> " are " <> show cs)
+  | (i1, i2, a, b) <- adjacentPairs (pText p) (pItems p),
+    isJust (numberUnitOf a b),
+    not (pairForbidden False a b),
+    let mid = take (i2 - i1 - 1) (drop (i1 + 1) (pItems p))
+        cs = [it | (k, it) <- zip [i1 + 1 ..] mid, candidate i1 k it],
+    if pNumberUnit p >= infPenalty then not (null cs) else cs /= [Penalty 0 (pNumberUnit p) NoHyphen]
+  ]
+  where
+    candidate i1 k = \case
+      Penalty _ n _ -> n < infPenalty
+      Glue {} -> k == i1 + 1
+      Box {} -> False
+
+{- | The items as they were before docs/adr/0275, vertical or not: between
+the boxes of a number and its unit that golem-layout ADR 0049 does not keep
+together, the penalty the ADR put before the glue taken out, and the
+penalty in place of a break of 0 made 0 again. The tests of golem-layout
+ADR 0049 and docs/adr/0274 compare these with what they recorded before
+docs/adr/0275.
+-}
+withoutNumberUnits :: Bool -> Text -> [Item] -> [Item]
+withoutNumberUnits vertical text its = concat (zipWith change [0 ..] its)
+  where
+    pairsAt = [(i1, i2) | (i1, i2, a, b) <- adjacentPairs text its, isJust (numberUnitOf a b), not (pairForbidden vertical a b)]
+    change k it = case [i1 | (i1, i2) <- pairsAt, k > i1, k < i2] of
+      i1 : _ -> case (it, drop (k + 1) its) of
+        (Penalty _ _ NoHyphen, Glue {} : _) | k == i1 + 1 -> []
+        (Penalty w _ NoHyphen, _) -> [Penalty w 0 NoHyphen]
+        _ -> [it]
+      [] -> [it]
+
 -- | Every invariant, with its check.
 lineInvariants :: [(LineInvariant, Check)]
 lineInvariants =
@@ -867,6 +934,7 @@ lineInvariants =
     (I4, i4NoHyphensWithShy),
     -- B3 and B4 of golem-layout ADR 0049 too
     (B2, b2to4Pairs),
+    (W1, w1w2NumberUnit),
     (R5, r5Limit),
     (R6, r6Capped)
   ]

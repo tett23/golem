@@ -1374,6 +1374,7 @@ composeEnv bookLang style geom fonts assumed look =
           ceHanging = compHanging comp,
           ceProtrusion = compProtrusion comp,
           ceExplicitHyphenPenalty = compExplicitHyphenPenalty comp,
+          ceNumberUnitPenalty = compNumberUnitPenalty comp,
           ceRuby = rubyStyleOf style (lkSize look),
           ceVerticalNumbers = verticalNumbersNamed (stNumbersVertical style),
           ceRefPageNumbers = case fromMaybe (stNumbersVertical style) (stNumbersRefPage style) of

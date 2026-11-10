@@ -1044,6 +1044,8 @@ data Composition = Composition
     compExpansion :: !(Maybe (Int, Int)),
     -- | the penalty of a break after an explicit hyphen (golem-layout ADR 0008)
     compExplicitHyphenPenalty :: !Int,
+    -- | the penalty of a break between an Arabic digit and the kana or kanji after it; 10000 none (docs/adr/0275)
+    compNumberUnitPenalty :: !Int,
     {- | [composition.hyphenation-exceptions] (docs/adr ADR 0272): the words
     of each language tag as written, hyphens where they may break
     -} compHyphenationExceptions :: !(Map Text [Text])
@@ -1631,7 +1633,7 @@ data Style = Style
   deriving stock (Eq, Show)
 
 defaultComposition :: Composition
-defaultComposition = Composition True False defaultRubyStyleDef "sesame" 100 200 (Abs 0) False Nothing 50 Map.empty
+defaultComposition = Composition True False defaultRubyStyleDef "sesame" 100 200 (Abs 0) False Nothing 50 10000 Map.empty
 
 defaultStyle :: Style
 defaultStyle =
@@ -2131,6 +2133,7 @@ instance FromValue Composition where
     pr <- optKey "protrusion"
     ex <- optKey "expansion"
     eh <- optKey "explicit-hyphen-penalty"
+    nu <- optKey "number-unit-penalty"
     hx <- optKey "hyphenation-exceptions"
     let d = defaultComposition
     pure
@@ -2145,6 +2148,7 @@ instance FromValue Composition where
           compProtrusion = fromMaybe False pr,
           compExpansion = (\(Expansion l s) -> (l, s)) <$> ex,
           compExplicitHyphenPenalty = fromMaybe (compExplicitHyphenPenalty d) eh,
+          compNumberUnitPenalty = fromMaybe (compNumberUnitPenalty d) nu,
           compHyphenationExceptions = fromMaybe Map.empty hx
         }
 
@@ -2751,6 +2755,10 @@ compositionChecks s =
       | let p = compExplicitHyphenPenalty (stComposition s),
         p < -9999 || p > 10000
       ]
+        <> [ (styleKeys ["composition", "number-unit-penalty"], "number-unit-penalty は -9999 から 10000 までです: " <> T.pack (show p))
+           | let p = compNumberUnitPenalty (stComposition s),
+             p < -9999 || p > 10000
+           ]
         <> [ (styleKeys ["composition", "ruby", "overhang"], "ルビのかけの量は 0 以上です（[composition.ruby] の overhang）")
            | negativeDim (rdOverhang (compRuby (stComposition s)))
            ]
@@ -3317,6 +3325,7 @@ styleSchema =
           ("protrusion", bool),
           ("expansion", NTable [("limit", int), ("step", int)]),
           ("explicit-hyphen-penalty", int),
+          ("number-unit-penalty", int),
           -- the tags and the words are checked by hyphenationExceptionChecks (docs/adr ADR 0272)
           ("hyphenation-exceptions", NNamed Nothing (NArray str))
         ]

@@ -1312,6 +1312,7 @@ tolerance = 200
 protrusion = true
 expansion = { limit = 20, step = 5 }
 explicit-hyphen-penalty = 50
+number-unit-penalty = 10000
 
 [composition.hyphenation-exceptions]
 en = ["ta-ble", "pro-ject", "Golem"]
@@ -1400,6 +1401,8 @@ folio = { position = "bottom-outside", format = "{n}" }
 `tolerance`（既定は 200）は、パターンの分綴を加えた二つ目の段階と、緊急の伸びを加えた三つ目の段階の許容度である。
 `emergency-stretch`（既定は 0）は、三つ目の段階で各行に加える伸びの量で、0 以下なら三つ目の段階を飛ばす。
 `kinsoku` は `strict`（既定）か `loose` で、行頭禁則の文字の範囲を決める（「行分割」の節）。
+`number-unit-penalty` は、アラビア数字とその後の仮名か漢字のあいだの分割の候補の罰点で、−9999 から 10000 までの整数である（既定は 10000、「行分割」の節、[ADR 0275](adr/0275-keep-numbers-with-the-units-after-them.md)）。
+範囲の外の値と整数でない値は、その値の位置で G03006 とする。
 `hanging-punctuation` を `true` にすると、行末の句点と読点を版面の外にぶら下げる（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）。
 既定は `false` である。
 囲みを持つ段落（「段落スタイルの囲み」の説明）では、`hanging-punctuation` の値によらず、句読点をぶら下げない（[ADR 0279](adr/0279-no-hanging-punctuation-inside-paragraph-boxes.md)）。
@@ -3527,6 +3530,8 @@ P1、P3、P4 の「次のブロック」は、[golem-layout ADR 0026](golem-layo
 自ら送られる図版は、流れが来た段より後の段に、直前の行アキと、残りに足りない `@need-lines` に動かされずに置かれた図版か、後に書いた図版でないブロックの最初の部分より後に置かれた図版である。
 `@need-lines` が空きの前の残りで満たされても、空きの行を引いた残りに入らずに後の段へ移った図版は、`@need-lines` に動かされた図版であり、自ら送られた図版ではない（[golem-layout ADR 0044](golem-layout/adr/0044-read-the-figures-moved-by-need-lines-judged-before-spaces.md)）。
 流れが来た段は、前に書いたブロックと書いた位置に置かれた図版の最後の部分の段か、その後に書いた改ページが進むページの最初の段である。
+セクションの前の改ページなら、出力が記録するセクションの最初のページの最初の段である。
+開始の番号の偶奇が白ページを求めれば、白ページの次のページである（[ADR 0260](adr/0260-front-matter-folios-and-page-labels.md)）。
 空きの前で判定した `@need-lines` で次の段へ進めば、その段である。
 空きが `@need-lines` の前にあっても後にあっても、同じである（[golem-layout ADR 0044](golem-layout/adr/0044-read-the-figures-moved-by-need-lines-judged-before-spaces.md)）。
 空きと `@need-lines` のあいだに待つ図版があっても、同じである（[golem-layout ADR 0047](golem-layout/adr/0047-spaces-before-a-waiting-figure-and-need-lines.md)）。
@@ -3782,6 +3787,23 @@ JLReq の 3.1.10 に従い、隣り合う字の次の三つの組でも改行し
 そのため、行の調整では、`１２３` の字のあいだも他の字のあいだと同じだけ空く（JLReq の「行の調整処理で字間を空ける処理に使用しない箇所」とは一致しない）。
 前置省略記号、後置省略記号、連数字は `CharClass` の値ではなく、アキ量のセットの分類の名前も変えない。
 
+数とその後の単位や助数詞は、行末と次の行頭に分けない（[ADR 0275](adr/0275-keep-numbers-with-the-units-after-them.md)）。
+隣り合う字の組で、前の字がアラビア数字（半角と全角）、後の字の分類が仮名か漢字等のとき、その位置の分割の候補の罰点を `[composition]` の `number-unit-penalty` にする。
+`100円`、`3人`、`2026年`、`１０冊`、`3つ`、`5パーセント` の数と次の一字のあいだが当たり、次の一字の後（`2026年｜に`）は分けてよい。
+漢数字（`三人`）には当てない。
+既定の 10000 ではその位置を分割の候補にせず、10000 より小さい値ではその罰点の幅 0 の罰点の項目を置く。
+あいだに空きのグルーがあれば、罰点の項目をグルーの前に置き、グルーは候補にしない。
+空きのグルーの幅と伸び縮みは変えない。
+JLReq の 3.1.10 が分割禁止とする組（連数字、前置省略記号と数、数と後置省略記号）と、禁則で分けない位置では、`number-unit-penalty` によらず改行しない。
+規則は隣り合う字にだけ当て、語間の空白とコードの空白を挟む組（`100 円`）には当てない。
+本文の中のコードと URL の箱どうしのあいだにも当てず、ルビの箱の端の字は字として見ない。
+縦組みでも横組みと同じに当てる。
+全角の数字は漢字等なので、縦組みの `１２３` の字のあいだも、この規則で既定では分けない。
+改行しない範囲（文字スタイル `no-break`）の中では、`number-unit-penalty` によらず改行しない。
+数と単位の組を分けないために行長に収まる分割がなくなった行は、ほかの禁則で分けられない行と同じく G07105 で報告し、はみ出しを測る位置の箱が改行しない範囲の箱なら G07122 とする。
+HTML と EPUB には書き出さず、ブラウザーは数と和字のあいだで分けうる。
+人名や熟語のように一続きに読ませたい語句は、書き手が文字スタイル `no-break` で包む（`docs/markup.md` の文字スタイルの節）。
+
 和文の中で全角のダッシュ（`U+2014` と `U+2015`、混ざってもよい）が二字以上続いたもの（二倍ダッシュ）は、一つの箱にする（[docs/adr/0172](adr/0172-continuous-double-dashes.md)）。
 箱の送りは、ダッシュの字数 × 全角であり、フォントのダッシュの送り（Noto Serif JP の `U+2014` は 0.89 字）にはよらない。
 二倍ダッシュは、横組みでも縦組みでも、ちょうど二字分の長さになる。
@@ -3814,6 +3836,16 @@ HTML、EPUB、プレーンテキストは、ダッシュの文字をそのまま
 値は −9999 から 10000 までで、10000 にするとこの候補を置かない。
 明示のハイフンで分けた行が続くと、パターンによるハイフンと同じく連続するハイフンの罰点を加える。
 一回目の段階で除くのは、パターンによるハイフネーションの候補だけである。
+
+語が文字スタイル、言語の区間、リンク、引用の印の境目で二つ以上の箱に分かれても、明示のハイフンの候補は、箱の字をつないだ語と同じ位置にだけ置く（[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md)）。
+あいだにほかの項目を挟まずに続く二つの欧文の語の箱のあいだには、つないだ語でそこがハイフンとダッシュの連なりの直後の候補の位置なら明示のハイフンの罰点を置き、ほかの境目には何も置かない。
+ダッシュの前、連なりの途中（`a-` と `-b`）、U+2011 の後、引用符とアポストロフィの前後では分けない。
+箱がハイフンとダッシュの連なりで始まり、前に続く欧文の語の箱があって、つないだ語で連なりの前に字があるときは、箱を連なりの後でも切って同じ罰点を置く。
+そのため `[strong: aaaa]—bbbbbbbbbb` は `—` の後で分けうるが、`—` の前では分けない。
+罰点の値と禁則は語の中の明示のハイフンの候補と同じであり、区間の外でも区間の中でも同じ規則で決める。
+リンクの語は一つの箱のままとし、切らない。
+パターンの分綴は今のとおり箱ごとに当て、つないだ語には当てない。
+カーニングも箱をまたがないので、連なりの後で切った位置（`—` と後の字のあいだ）のペアにはかからない。
 
 U+2010 と U+2013 は、引用符や em ダッシュと同じく、どちらかの側の最も近い文字が欧文の文字なら欧文の語に含める。
 これは言語の区間の外の規則であり、区間の中では区間の言語で決める（「原稿の中の言語」の節）。
@@ -3942,6 +3974,16 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 プルリクエストの CI は既定の順だけを 4 字までの行で調べ、毎晩の `enum.yml` は既定の順とその逆順とすべての種類を一つの段にした順を 5 字までの行で調べる。
 三つの順をプルリクエストで調べると、手元の環境で 5 秒かかり、x86-64 の実行環境で 10 秒の予算を超えるおそれがあるためである。
 グルーの種類と大きさを除いた `composeInlines` の項目が、この ADR の前と同じであること（A9）は、部品 2 個までの並びの項目のハッシュを `modules/golem-layout/test/golden/adjust-order-items.tsv` と比べて確かめる。
+
+語の途中のインラインの境目は、[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の W1 から W3 として、`modules/golem-layout/test/JoinedWordEnum.hs` で確かめる。
+部品は、`a`、`lime-tree`、`“`、`”`、`.`、空白、`-`、`‐`、`‑`、`–`、`—`、`’`、`あ`、ソフトハイフンの 14 である。
+隣り合う二つの部品のあいだを、同じテキストか文字スタイルの境目かの二通りに組む。
+組み方の環境は、区間（なし、`en`、`ja`）と `explicit-hyphen-penalty`（50、10000）の組み合わせで、禁則は strict とし、2 字から 4 字の行の幅で組む。
+L1 から L13 と W1 は分綴のパターンのある環境で、W1 と W2 はパターンのない環境で調べる。
+W2 は、両側の字が欧文の語の箱の字である位置の候補だけを比べ、境目で分けると欧文の語に入る字が変わる入力では調べない。
+空白の隣には境目を置かず、ソフトハイフンの隣に境目のある入力では L8 と W1 だけを調べる（どちらも「既知の不具合」）。
+プルリクエストの CI は部品 2 個まで、毎晩の `enum.yml` は部品 3 個まで調べる（`GOLEM_ENUM_JOINED_DEPTH`）。
+引用の印を部品に足した列挙（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）は、プルリクエストの CI で部品 2 個まで、毎晩の `enum.yml` で部品 3 個まで調べる（`GOLEM_ENUM_CITE_DEPTH`）。
 
 本文の中のコードの並びも、同じ述語と、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の C1 から C8 と、[golem-layout ADR 0045](golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md) の J1 から J7 で調べる（C3 と C4 は J3 と J5 に置き換えた）。
 部品は、和文の `漢`、`あ`、`「`、`」`、`。`、`、`、`ー`、`ぁ`、`…` と、欧文の `a`、`ab`、`1`、`/`、`_`、`-`、`.`、`"` と、空白の 18 である（`-`、`.`、`1` は 0045 で足した）。
@@ -6244,6 +6286,9 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **`[ref-number]` の図番号とリスト番号と表番号が、`[figures]` と `[code]` と `[tables]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックと番号のある表を `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号、`[tables]` の `number` と表番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
+- **二つのインラインの空白が、二つのグルーになる**：一つのテキストの中の続く空白は一つのグルーにまとめるが、`a ` と `[strong:  b]` のように境目の両側にある空白は、それぞれグルーになる。[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の L11 に反する。[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の境目の列挙で見つかったので、その列挙は空白の隣に境目を置かない。
+- **インラインの境目の隣のソフトハイフンを、述語と組版が別の語で読む**：ソフトハイフンの述語（I3 まで広げた L9 と I4、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）は段落の字の並びでソフトハイフンを読み、境目の前後のソフトハイフンを語の中にあるとみなす。組版は、インラインごとの語で読むので、同じソフトハイフンを語の端にあるとみなす。`a\xAD` と `[strong: a]` で、述語は分割を求め、組版は分けない。どちらに合わせるかは決めていない（[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の境目の列挙で見つかった）。
+- **区間の外で、両用の字の役割がインラインごとに決まる**：区間の外の引用符、アポストロフィ、ハイフン類、ダッシュが欧文の語に入るかは、同じテキストの中の最も近い字で決める（[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。`a` と `[strong: —]` と `b` では、`—` は和文の分離禁止文字になり、一つのテキストの `a—b` と行の分け方が違う。区間の中の `’` だけの箱も、後の箱の字を見ないので、語の頭のアポストロフィ（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)）にならない。[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) は欧文の語の箱のあいだだけを決めたので、これらは決めていない。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合

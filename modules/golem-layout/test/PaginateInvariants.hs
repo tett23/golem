@@ -728,7 +728,10 @@ later than the one the flow has come to.
 
 The column the flow has come to is that of the last slot placed of the
 blocks before and of the figures placed where they are written, or of the
-first column of the page each break written after them goes on to.
+first column of the page each break written after them goes on to. The
+break before a section goes on to the first page of the section, which
+the output records, past a blank page when the parity of its start asks
+for one (docs/adr/0260): the flow comes to the first column of that page.
 Blank lines right before a figure that does not wait move it; a
 need-lines does when the grid lines left after the last slot, its notes
 and their separator counted, are fewer than it asks for. A need-lines
@@ -792,11 +795,16 @@ waitingFigures flows ps = go Nothing 0 Nothing [] flows
                   _ -> Nothing
              in Just (Just (c + 1, -1), held')
       _ -> Nothing
+    -- the first column of the first page of a section, as the output records it
+    sectionColumn s = listToMaybe [c | p <- ps, s `elem` poSections p, (c, q) <- zip [0 ..] cols, poNumber q == poNumber p]
     withoutNeeds = filter (\case FNeedLines _ _ -> False; _ -> True)
     -- the last line placed, the breaks after it, the figure held, the controls right before, the flows left
     go _ _ _ _ [] = []
     go lastText breaks held before (f : rest) = case f of
       FBreak _ -> go lastText (breaks + 1) held (before <> [f]) rest
+      -- the break before a section goes on to the first page of the section, past a blank page for its parity (docs/adr/0260)
+      FSection (OfSection s) _
+        | Just c <- sectionColumn s -> go (Just (c, -1)) 0 held (before <> [f]) rest
       FSection {} -> go lastText (breaks + 1) held (before <> [f]) rest
       -- a need-lines after a space or before one is judged before it (golem-layout ADR 0043, 0044)
       FSpace _

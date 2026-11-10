@@ -159,6 +159,10 @@ data ComposeEnv = ComposeEnv
     {- | the penalty of a break after a hyphen or dash in a Latin word;
     10000 or more means no such break (golem-layout ADR 0008)
     -} ceExplicitHyphenPenalty :: !Int,
+    {- | the penalty of a break between an Arabic digit and the kana or
+    kanji after it, 10000 none (docs/adr/0275): [composition]'s
+    number-unit-penalty
+    -} ceNumberUnitPenalty :: !Int,
     -- | the aki set of the paragraph (docs/adr ADR 0019)
     ceAkiSet :: !AkiSet,
     -- | [notes] mark-format: the text of a note mark, its number in a notation (golem-driver ADR 0025, docs/adr/0177)
@@ -227,6 +231,7 @@ defaultComposeEnv fs =
       ceSidenoteMarker = MarkerNumber,
       ceCiteNumber = \_ _ -> Nothing,
       ceExplicitHyphenPenalty = 50,
+      ceNumberUnitPenalty = 10000,
       ceAkiSet = defaultAkiSet,
       ceNoteMarkFormat = defaultMarkFormat,
       ceScriptGlyphs = \_ _ -> False,
@@ -319,11 +324,11 @@ composeInlinesTree env inls =
       leaves = [l | (l, _, _) <- sourced0]
       -- padCode and scriptRanges keep one piece for each piece
       pieces = scriptRanges env (padCode (map snd sourced))
-      (items, anchors, codeSpaces) = foldl' emit ([], [], IntSet.empty) (zip5 leaves (map fst sourced) prevs pieces nexts)
-      emit (acc, as, cs) (_, _, _, PAnchor f, _) = (acc, (length acc, f) : as, cs)
+      (items, anchors, codeSpaces) = foldl' emit ([], [], IntSet.empty) (zip5 leaves (map fst sourced) prevs (zip leads pieces) nexts)
+      emit (acc, as, cs) (_, _, _, (_, PAnchor f), _) = (acc, (length acc, f) : as, cs)
       -- the boxes of a piece carry its source (golem-cli ADR 0008) and its leaf (docs/adr ADR 0183)
-      emit (acc, as, cs) (l, (src, offs), pv, p, nx) =
-        let new = itemsFor env {ceBoxSource = src, ceBoxAt = offs, ceLeaf = l} pv p nx
+      emit (acc, as, cs) (l, (src, offs), pv, (lead, p), nx) =
+        let new = itemsFor env {ceBoxSource = src, ceBoxAt = offs, ceLeaf = l} lead pv p nx
             -- the glue of a space of inline code, by its index (golem-layout ADR 0037)
             cs' = case p of
               PSpace lk _ | lkCode lk -> IntSet.union cs (IntSet.fromList [length acc + k | (k, Glue {}) <- zip [0 ..] new])
@@ -336,6 +341,14 @@ composeInlinesTree env inls =
         PRubyBreak -> False
         _ -> True
       prevs = scanl (\acc p -> if solid p then Just p else acc) Nothing pieces
+      {- whether the words right before each piece, with no item between
+      them, have a character that is not a hyphen or a dash (docs/adr ADR
+      0280): Nothing after any other piece that makes items -}
+      leads = map (== Just True) (scanl latinBefore Nothing pieces)
+      latinBefore acc = \case
+        PWord lk w _ | not (isScript lk) -> Just (acc == Just True || T.any (\c -> not (isExtending c) && c `notElem` ("-‐–—" :: String)) w)
+        q | solid q -> Nothing
+        _ -> acc
       nexts = drop 1 (scanr (\p acc -> if solid p then Just p else acc) Nothing pieces)
       spaced = normalize env codeSpaces (kernPairs env items)
       -- anchors index the normalized items: the spacing inserted before a box shifts it, a space taken out the items after it
@@ -1220,8 +1233,12 @@ scriptRanges env = go
 readingAdvances :: ComposeEnv -> Look -> Maybe Text -> [Sp]
 readingAdvances env lk = maybe [] (map (advance env (readingLook lk)) . T.unpack)
 
-itemsFor :: ComposeEnv -> Maybe Piece -> Piece -> Maybe Piece -> [Item]
-itemsFor env prev p next = case p of
+{- | The items of a piece between its neighbours, given whether the boxes
+of a Latin word right before it have a character before a run of hyphens
+and dashes at its start (docs/adr ADR 0280).
+-}
+itemsFor :: ComposeEnv -> Bool -> Maybe Piece -> Piece -> Maybe Piece -> [Item]
+itemsFor env lead prev p next = case p of
   PChar lk c vs ->
     let cls = lookClass lk c
         fs = lkSize lk
@@ -1243,8 +1260,8 @@ itemsFor env prev p next = case p of
      in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   -- a word of superscript or subscript is not broken (docs/adr/0269)
   PWord lk word shys
-    | isScript lk -> [x | x@Box {} <- wordItems env lk word shys]
-    | otherwise -> wordItems env lk word shys
+    | isScript lk -> [x | x@Box {} <- wordItems env lk False word shys]
+    | otherwise -> wordItems env lk lead word shys
   PSpace lk held ->
     let sw = advance env lk ' '
         space
@@ -1467,10 +1484,13 @@ explicit-hyphen-penalty 10000, gets no pattern hyphens. A word with a low
 line is cut after its runs of low lines instead, with no hyphen, and gets
 no pattern hyphens (golem-layout ADR 0031). A word of a link
 is one box (docs/adr ADR 0182). A character at an end of a box protrudes
-by its advance in the font of the box (docs/adr/0222).
+by its advance in the font of the box (docs/adr/0222). Given a character
+of the Latin word before it in the boxes right before it (docs/adr ADR
+0280), a run of hyphens and dashes at its start is cut after as in the
+word they make; not in a word with a soft hyphen.
 -}
-wordItems :: ComposeEnv -> Look -> Text -> [Int] -> [Item]
-wordItems env lk word shys =
+wordItems :: ComposeEnv -> Look -> Bool -> Text -> [Int] -> [Item]
+wordItems env lk lead word shys =
   let explicitP = ceExplicitHyphenPenalty env
       explicitPen = Penalty 0 explicitP ExplicitHyphen
       patternPen = Penalty (advance env lk '-') 50 (PatternHyphen (protAt snd '-'))
@@ -1504,7 +1524,7 @@ wordItems env lk word shys =
       -- the pen inside an element without soft hyphens
       innerPen = if lowLined then lowLinePen else patternPen
       -- the parts of a word with a low line at its written hyphens, each with the index of its first character in the word
-      hyphenParts = if explicitP >= infPenalty || not (T.any isHyphen word) then [word] else explicitParts word
+      hyphenParts = if explicitP >= infPenalty || not (T.any isHyphen word) then [word] else explicitPartsAfter lead word
       {- the soft hyphens (docs/adr ADR 0272): an element with one is cut at
       those that are breaks, and at nothing else; the elements are those of
       the written hyphens, which a word kept whole by explicit-hyphen-penalty
@@ -1517,7 +1537,7 @@ wordItems env lk word shys =
         | not (null shys) && explicitP >= infPenalty = [(softPen, splitAtCuts cuts 0 word)]
         | not (null shys) = [withShys o part | (o, part) <- offsetsOf (if T.any isHyphen word then explicitParts word else [word])]
         | lowLined = [(lowLinePen, splitAtCuts (lowLineCuts word) o part) | (o, part) <- offsetsOf hyphenParts]
-        | T.any isHyphen word = if explicitP >= infPenalty then [(innerPen, [word])] else map ((innerPen,) . pieces) (explicitParts word)
+        | T.any isHyphen word = if explicitP >= infPenalty then [(innerPen, [word])] else map ((innerPen,) . pieces) (explicitPartsAfter lead word)
         | otherwise = [(innerPen, pieces word)]
       offsetsOf ps = zip (scanl (+) 0 (map T.length ps)) ps
       rotated = ceVertical env
@@ -1604,13 +1624,20 @@ splitAtCuts cuts o part = case [c - o | c <- cuts, c > o, c < o + T.length part]
 before it and one after it (lime-|tree, a--|b; not -5 or pre-).
 -}
 explicitParts :: Text -> [Text]
-explicitParts word = go [] (zip [0 :: Int ..] groups)
+explicitParts = explicitPartsAfter False
+
+{- | 'explicitParts' of a word with a character before it or not
+(docs/adr ADR 0280): with one, a run of hyphens and dashes at the start
+of the word has a character before it, and the word is cut after it.
+-}
+explicitPartsAfter :: Bool -> Text -> [Text]
+explicitPartsAfter lead word = go [] (zip [0 :: Int ..] groups)
   where
     isExplicit c = c `elem` ("-‐–—" :: String)
     -- a combining character after a hyphen stays with the hyphen (golem-driver ADR 0036)
     groups = map T.concat (groupBy (\a b -> isExplicit (T.head a) == isExplicit (T.head b)) (clusters word))
     lastIx = length groups - 1
-    cutAfter i g = i > 0 && i < lastIx && T.all isExplicit (T.filter (not . isExtending) g)
+    cutAfter i g = (i > 0 || lead) && i < lastIx && T.all isExplicit (T.filter (not . isExtending) g)
     go acc [] = [T.concat (reverse acc) | not (null acc)]
     go acc ((i, g) : rest)
       | cutAfter i g = T.concat (reverse (g : acc)) : go [] rest
@@ -1644,8 +1671,11 @@ data Before
     AfterStartMark
   | -- | the box of an [aki] (docs/adr ADR 0019, golem-layout ADR 0012)
     AfterAki
-  | -- | a box, and whether a box comes right before it
-    AfterBox !BoxContent !Bool
+  | {- | a box, whether a box comes right before it, and the characters of
+    the boxes of a Latin word right before it up to it when it is one
+    (docs/adr ADR 0280)
+    -}
+    AfterBox !BoxContent !Bool !(Maybe Text)
 
 {- | Inserts break opportunities and spacing between neighbouring boxes:
 no break where a prohibition applies (golem-layout ADR 0002), and the
@@ -1673,39 +1703,48 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
         | boxKind c == KindNoteMark || isScript (bcLook c) ->
             let before' = case before of
                   AtStart -> AfterStartMark
+                  -- the boxes of a Latin word are no longer next to each other
+                  AfterBox p b _ -> AfterBox p b Nothing
                   other -> other
              in Penalty 0 infPenalty NoHyphen : Box w c {bcEdgeStart = 0, bcEdgeEnd = 0} : go (k + 1) before' first rest
       Box w c ->
         let spacing = case before of
               -- inside code: a break after a slash, no spacing (golem-driver ADR 0017)
               -- inside a URL: a break after the characters of url.sty's breaks (golem-layout ADR 0018)
-              AfterBox p _ | lkUrl (bcLook p) && lkUrl (bcLook c) -> [Penalty 0 n NoHyphen | Just n <- [urlBreakAfter (bcText p)]]
+              AfterBox p _ _ | lkUrl (bcLook p) && lkUrl (bcLook c) -> [Penalty 0 n NoHyphen | Just n <- [urlBreakAfter (bcText p)]]
               {- inside code: also a break of 100 after a run of low lines, but
               the first of the run, a box of low lines alone with no box before
               it (golem-layout ADR 0031) -}
               {- inside code, where a Japanese character is on either side: a
               break where no prohibition applies, of 100 after a low line and
               0 otherwise, the only one there (golem-layout ADR 0034) -}
-              AfterBox p _
+              AfterBox p _ _
                 | codeOnly p && codeOnly c && japaneseAt (lastClass p) (firstClass c) ->
                     [codeBreak p (if "_" `T.isSuffixOf` baseOf p then 100 else 0) | not (prohibitedAcross True p c)]
               {- inside code: also a break of 100 after a run of hyphen-minus
               signs and full stops between two Latin characters, but where a
               slash, a low line or two digits are beside it (golem-layout ADR
               0045); 'codeItems' cuts the boxes there -}
-              AfterBox p afterBox
+              AfterBox p afterBox _
                 | breaksAsCode (bcLook p) && breaksAsCode (bcLook c) ->
                     [codeBreak p 0 | "/" `T.isSuffixOf` bcText p]
                       <> [codeBreak p 100 | "_" `T.isSuffixOf` baseOf p, afterBox || T.any (/= '_') (baseOf p)]
                       <> [codeBreak p 100 | codeOnly p && codeOnly c, afterStops p c]
-              AfterBox p _ -> between p c
+              {- two boxes of a Latin word next to each other: the break of an
+              explicit hyphen where the word joined breaks there, nothing
+              otherwise (docs/adr ADR 0280) -}
+              AfterBox p _ (Just joined) | bcExpandable c -> joinedBreak p c joined
+              AfterBox p _ _ -> between p c
               AtStart -> leading c
               -- the space of the paragraph start, after the mark: no break there
               AfterStartMark -> case leading c of
                 [] -> []
                 l -> Penalty 0 infPenalty NoHyphen : l
               AfterAki -> []
-         in spacing <> [Box w (withEdges first c)] <> go (k + 1) (AfterBox c (isBoxBefore before)) False rest
+            joined' = case before of
+              AfterBox _ _ (Just j) | bcExpandable c -> Just (j <> bcText c)
+              _ -> if bcExpandable c then Just (bcText c) else Nothing
+         in spacing <> [Box w (withEdges first c)] <> go (k + 1) (AfterBox c (isBoxBefore before) joined') False rest
       {- a space between words: no break at it where the character after it
       may not start a line or the one before it may not end one; its width
       and the spacing after it as before (golem-layout ADR 0028); a space
@@ -1713,13 +1752,13 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
       (golem-layout ADR 0038) -}
       Glue {}
         | wordSpace x || IntSet.member k codeSpaces,
-          AfterBox p _ <- before,
+          AfterBox p _ _ <- before,
           Just c <- nextBox rest,
           prohibitedAcross False p c ->
             Penalty 0 infPenalty NoHyphen : x : go (k + 1) AtStart first rest
       -- a break after a written hyphen or dash: none where a prohibition applies across it (golem-layout ADR 0028)
       Penalty _ _ ExplicitHyphen
-        | AfterBox p _ <- before,
+        | AfterBox p _ _ <- before,
           Box _ c : _ <- rest,
           prohibitedAcross True p c ->
             go (k + 1) AtStart first rest
@@ -1727,6 +1766,20 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
     isBoxBefore = \case
       AfterBox {} -> True
       _ -> False
+    {- between two boxes of a Latin word next to each other, the characters
+    of the word up to the first of them given (docs/adr ADR 0280): a
+    break of an explicit hyphen where 'explicitParts' cuts the word they
+    make, with the rules of one in a word (golem-layout ADR 0008, golem-layout
+    ADR 0028); nothing elsewhere, no spacing -}
+    joinedBreak p c joined =
+      let explicitP = ceExplicitHyphenPenalty env
+          word = joined <> bcText c
+          cuts = scanl (+) 0 (map T.length (explicitParts word))
+       in [ Penalty 0 explicitP ExplicitHyphen
+          | T.length joined `elem` cuts,
+            explicitP < infPenalty,
+            not (prohibitedAcross True p c)
+          ]
     -- a box of code, not of a URL (golem-layout ADR 0034)
     codeOnly b = lkCode (bcLook b) && not (lkUrl (bcLook b))
     -- a box of code that ends with a run of hyphen-minus signs and full stops after a character, before one code breaks after the run at (golem-layout ADR 0045)
@@ -1852,8 +1905,22 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
                   || (isPrefixedAbbreviation a && isNumeral b)
                   || (isNumeral a && isPostfixedAbbreviation b)
               _ -> False
-          candidate = if pairKept then infPenalty else 0
-          pen = [Penalty 0 infPenalty NoHyphen | noBreak || pairKept]
+          {- a number and its unit (docs/adr/0275): an Arabic digit and a
+          kana or a kanji after it, not between two boxes of code or of a
+          URL, nor at the edge of a ruby, in vertical writing too -}
+          numberUnit =
+            not (breaksAsCode (bcLook p) && breaksAsCode (bcLook c)) && case (lastChar p, firstChar c) of
+              (Just a, Just b) -> isArabicDigit a && lookClass (bcLook c) b `elem` [Kana, Ideograph]
+              _ -> False
+          {- the penalty of the break: none where a prohibition or a pair of
+          golem-layout ADR 0049 keeps it, number-unit-penalty before a unit,
+          put before the glue, which is then no break -}
+          kept
+            | noBreak || pairKept = Just infPenalty
+            | numberUnit = Just (min infPenalty (ceNumberUnitPenalty env))
+            | otherwise = Nothing
+          candidate = fromMaybe 0 kept
+          pen = [Penalty 0 n NoHyphen | Just n <- [kept]]
           -- a ruby is an ideograph next to punctuation, so that the punctuation keeps its space
           classes = case (akiLast p, akiFirst c) of
             (Nothing, Just b) | isPunct b -> Just (Ideograph, b)
