@@ -56,6 +56,7 @@ test-suite golem-eval-test
     , golem-project
     , golem-regex
     , golem-syntax
+    , golem-test-support
     , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6
     , tasty-hedgehog >=1.4 && <1.5

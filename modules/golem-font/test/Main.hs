@@ -12,6 +12,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Font
 import Golem.TestSupport.CffRos (withRos)
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Parallel (raceFactor)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
@@ -19,6 +20,7 @@ import Test.Tasty.HUnit
 
 main :: IO ()
 main = do
+  enterPackageDirectory
   han <- load "SourceHanSans-Regular_subset.otf"
   sans <- load "SourceSansPro-Regular.otf"
   serif <- BS.readFile "test/fonts/SourceSerifVariable-Roman.ttf"

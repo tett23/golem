@@ -33,6 +33,7 @@ test-suite golem-numerals-test
   build-depends:
     , base
     , golem-numerals
+    , golem-test-support
     , text
     , tasty          >=1.4 && <1.6
     , tasty-hunit    >=0.10 && <0.11
