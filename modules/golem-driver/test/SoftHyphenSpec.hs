@@ -46,7 +46,16 @@ softHyphenTests :: TestTree
 softHyphenTests =
   testGroup
     "soft hyphens and the ranges that do not break in the PDF (docs/adr ADR 0272)"
-    [ testCase "a line broken at a soft hyphen ends with a hyphen drawn; no glyph and no ToUnicode entry of U+00AD" $ do
+    [ testCase "H1 to H3 of docs/adr ADR 0285: [italic: hyphenationhyphenation], U+00AD, hyphenationhyphenation in [lang en] in lines of 12 em breaks at the soft hyphen, a hyphen drawn, not where the patterns break, no notice" $ do
+        let source = "[lang en: [italic: hyphenationhyphenation]\xAD\&hyphenationhyphenation]\n"
+        (_, pl) <- layoutOk horizontalStyle source []
+        lineTexts pl @?= ["hyphenationhyphenation", "hyphenationhyphenation"]
+        pdf <- miniPdf fakeProvider False horizontalStyle source []
+        contents <- pageContents pdf
+        assertBool "a hyphen" (fromEnum '-' `elem` map dGlyph (drawnGlyphs (BS.concat contents)))
+        r <- built horizontalStyle source
+        sitesOf ["G07123", "G07124"] r @?= [],
+      testCase "a line broken at a soft hyphen ends with a hyphen drawn; no glyph and no ToUnicode entry of U+00AD" $ do
         pdf <- miniPdf fakeProvider False (horizontal30 "") (longWord "\xAD" <> "\n") []
         contents <- pageContents pdf
         let glyphs = map dGlyph (drawnGlyphs (BS.concat contents))
