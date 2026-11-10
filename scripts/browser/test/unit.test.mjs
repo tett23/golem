@@ -9,14 +9,16 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { chromiumArgs } from '../browsers.mjs';
 import { devtoolsUrl } from '../cdp.mjs';
 import { emphasis, KENTEN } from '../html-checks.mjs';
 import { decode } from '../png.mjs';
-import { fileOf, serve } from '../serve.mjs';
+import { fileOf, serve, servedFile } from '../serve.mjs';
 import { compareInk, GENEROUS, judge, SAFARI } from '../svg-text.mjs';
 import { connect } from '../webdriver.mjs';
 
@@ -118,6 +120,72 @@ describe('serve.mjs', () => {
       assert.equal(await (await fetch(`${s.url}/p.html`)).text(), '<p>x</p>');
       assert.equal((await fetch(`${s.url}/no-such-file`)).status, 404);
       assert.equal((await fetch(`${s.url}/`)).status, 404);
+    } finally {
+      await s.close();
+    }
+  });
+});
+
+// the real path of a file served stays under the real path of the root
+// (docs/adr ADR 0288): a root r, a directory beside it, r2, whose name
+// starts with that of r, and links of every kind under r
+describe('serve.mjs and the real paths of the files', () => {
+  let tmp; let r; let real;
+  before(async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'golem-serve-test-'));
+    r = join(tmp, 'r');
+    await mkdir(join(r, 'sub'), { recursive: true });
+    await mkdir(join(tmp, 'r2'));
+    await mkdir(join(tmp, 'outside'));
+    await writeFile(join(r, 'in.txt'), 'in');
+    await writeFile(join(r, 'sub', 'deep.txt'), 'deep');
+    await writeFile(join(tmp, 'outside', 'secret.txt'), 'secret');
+    await writeFile(join(tmp, 'r2', 'beside.txt'), 'beside');
+    await symlink(join(r, 'sub', 'deep.txt'), join(r, 'link-in.txt'));
+    await symlink(join(tmp, 'outside', 'secret.txt'), join(r, 'link-out.txt'));
+    await symlink(join(tmp, 'outside'), join(r, 'dir-out'));
+    await symlink(join(tmp, 'r2'), join(r, 'dir-beside'));
+    await symlink(join(tmp, 'no-such-file'), join(r, 'dangling.txt'));
+    await symlink(join(tmp, 'outside', 'secret.txt'), join(r, 'p.html'));
+    await symlink(r, join(tmp, 'root-link'));
+    real = await realpath(r);
+  });
+  after(async () => {
+    if (tmp) await rm(tmp, { recursive: true, force: true });
+  });
+  test('S2: a plain file under the root is served', async () => {
+    assert.equal(await servedFile(r, '/in.txt', real), join(real, 'in.txt'));
+  });
+  test('S3: a link under the root to a file under the root is served', async () => {
+    assert.equal(await servedFile(r, '/link-in.txt', real), join(real, 'sub', 'deep.txt'));
+  });
+  test('S1: a link under the root to a file outside it is not served', async () => {
+    assert.equal(await servedFile(r, '/link-out.txt', real), null);
+  });
+  test('S1: a file in a link under the root to a directory outside it is not served', async () => {
+    assert.equal(await servedFile(r, '/dir-out/secret.txt', real), null);
+  });
+  test('S1: a directory beside the root whose name starts with that of the root is outside it', async () => {
+    assert.equal(await servedFile(r, '/dir-beside/beside.txt', real), null);
+  });
+  test('a link to nothing is not served', async () => {
+    assert.equal(await servedFile(r, '/dangling.txt', real), null);
+  });
+  test('S2: when the root is a link, the files under what it points to are served', async () => {
+    const root = join(tmp, 'root-link');
+    assert.equal(await servedFile(root, '/in.txt', await realpath(root)), join(real, 'in.txt'));
+  });
+  test('S1, S4: the server answers 404 for the links outside the root, 200 for those inside, and the pages before the files', async () => {
+    const s = await serve(r, { pages: { '/p.html': '<p>x</p>' } });
+    try {
+      assert.equal((await fetch(`${s.url}/link-out.txt`)).status, 404);
+      assert.equal((await fetch(`${s.url}/dir-out/secret.txt`)).status, 404);
+      assert.equal((await fetch(`${s.url}/dangling.txt`)).status, 404);
+      const inside = await fetch(`${s.url}/link-in.txt`);
+      assert.equal(inside.status, 200);
+      assert.equal(await inside.text(), 'deep');
+      assert.equal(await (await fetch(`${s.url}/in.txt`)).text(), 'in');
+      assert.equal(await (await fetch(`${s.url}/p.html`)).text(), '<p>x</p>');
     } finally {
       await s.close();
     }
