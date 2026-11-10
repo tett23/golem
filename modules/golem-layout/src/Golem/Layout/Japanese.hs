@@ -316,7 +316,8 @@ data Piece
   | PAnchor (Int -> Anchor)
   | {- | a soft hyphen (docs/adr ADR 0272): the look of its text, whether it
     is in the word piece before it, and why it is not a break, when it is
-    not one; no items -}
+    not one; no items
+    -}
     PShy !Look !Bool !(Maybe SoftHyphenNote)
 
 {- | What the soft hyphens of the joined word make of a word piece (docs/adr
