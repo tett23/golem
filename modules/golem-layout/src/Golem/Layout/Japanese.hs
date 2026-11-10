@@ -47,6 +47,7 @@ where
 
 import Control.Applicative ((<|>))
 import Data.Char (GeneralCategory (..), generalCategory, isDigit, isLetter, isSpace)
+import Data.Either (lefts, rights)
 import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet qualified as IntSet
 import Data.List (groupBy, mapAccumL, sort, zip4, zip5)
@@ -316,7 +317,8 @@ data Piece
   | PAnchor (Int -> Anchor)
   | {- | a soft hyphen (docs/adr ADR 0272): the look of its text, whether it
     is in the word piece before it, and why it is not a break, when it is
-    not one; no items -}
+    not one; no items
+    -}
     PShy !Look !Bool !(Maybe SoftHyphenNote)
 
 {- | What the soft hyphens of the joined word make of a word piece (docs/adr
@@ -341,7 +343,7 @@ elements of ruby, references, notes and code.
 -}
 composeInlinesTree :: ComposeEnv -> [Inline] -> ([Item], [Anchor], [InlineNode])
 composeInlinesTree env inls =
-  let (nodes, sourced0) = structured env inls
+  let (nodes, sourced0) = fmap mergeSpaces (structured env inls)
       sourced = [(src, p) | (_, src, p) <- sourced0]
       leaves = [l | (l, _, _) <- sourced0]
       -- padCode and scriptRanges keep one piece for each piece
@@ -387,6 +389,22 @@ composeInlinesTree env inls =
    in (finish kept, [f (at i) | (i, f) <- reverse anchors], nodes)
   where
     finish its = its <> lineEnd
+
+{- | The spaces between words on both sides of inline boundaries as one
+(docs/adr ADR 0284): of two or more spaces outside code with nothing but
+anchors and soft hyphens between them, the first is kept and the others
+go, with their sources. A space of inline code is no such space
+(golem-layout ADR 0017).
+-}
+mergeSpaces :: [(Int, Sourced, Piece)] -> [(Int, Sourced, Piece)]
+mergeSpaces = go False
+  where
+    go _ [] = []
+    go afterSpace (x@(_, _, p) : rest) = case p of
+      PSpace lk _ | not (lkCode lk) -> if afterSpace then go True rest else x : go True rest
+      PAnchor _ -> x : go afterSpace rest
+      PShy {} -> x : go afterSpace rest
+      _ -> x : go False rest
 
 -- | The structure of the inlines of 'composeInlinesTree', without composing them.
 inlineStructure :: ComposeEnv -> [Inline] -> [InlineNode]
@@ -1707,7 +1725,7 @@ and each soft hyphen with where it is and the look of its text.
 joinRun :: [(Int, Sourced, Piece)] -> [(Int, Sourced, Piece)]
 joinRun run
   | null words' = run
-  | otherwise = map fix (zip [0 :: Int ..] run)
+  | otherwise = zipWith fix [0 :: Int ..] run
   where
     indexed = zip [0 :: Int ..] run
     -- the word pieces: index in the run, start in the joined word, look, word, soft hyphens
@@ -1717,8 +1735,8 @@ joinRun run
       PShy lk True _ | Just (wAt, shys, n) <- lastWord, q : _ <- drop n shys -> ((at, Just (wAt, shys, n + 1)), [Right (k, wAt + q, lk)])
       PShy lk _ _ -> ((at, lastWord), [Right (k, at, lk)])
       _ -> ((at, lastWord), [])
-    words' = [w | Left w <- concat placed]
-    sites = [x | Right x <- concat placed]
+    words' = lefts (concat placed)
+    sites = rights (concat placed)
     joined = T.concat [w | (_, _, _, w) <- words']
     total = T.length joined
     lookAt i = listToMaybe [lk | (_, at, lk, w) <- words', i >= at, i < at + T.length w]
@@ -1746,7 +1764,7 @@ joinRun run
               wsNoPatterns = [o | (o, _) <- wordElements w, IntSet.member (fst (elementSpan joined (at + o))) shyStarts],
               wsBreakAfter = IntSet.member end cutsJ && IntSet.member end nextWordAt
             }
-    fix (k, x@(l, src, p)) = case p of
+    fix k x@(l, src, p) = case p of
       PWord lk w shys _ -> (l, src, PWord lk w shys (IntMap.lookup k wordShys))
       PShy lk inWord _ -> (l, src, PShy lk inWord (IntMap.lookup k roles >>= snd))
       _ -> x

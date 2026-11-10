@@ -1,4 +1,4 @@
--- | The alignment, the spaces before and after, and the end indent of paragraph styles (docs/adr/0189).
+-- | The alignment, the spaces before and after, and the end indent of paragraph styles (docs/adr/0189); the spaces on both sides of an inline boundary (docs/adr ADR 0284).
 module AlignSpaceSpec (alignSpaceTests) where
 
 import Control.Monad (forM_)
@@ -7,7 +7,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
-import Golem.Layout.KnuthPlass (Line (..))
+import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Length (Sp (..))
 import Golem.Project.Style (dimToSp, parseDim)
@@ -37,7 +37,18 @@ indentsByPage pl = [(poNumber p, [slIndent sl | (_, SLine lid) <- poSlots p, Jus
 
 alignSpaceTests :: [TestTree]
 alignSpaceTests =
-  [ testCase "PDF: paragraphs of the same style are apart by space-between only" $ do
+  [ testCase "S1 of docs/adr ADR 0284: x [strong: y\\ ] z has one glue between y and z" $ do
+      (_, pl) <- layoutOk horizontalStyle "x [strong: y\\ ] z\n" []
+      let its = concat [lineItems (slLine sl) | sl <- Map.elems (plLines pl)]
+          between = takeWhile (not . isBox) (drop 1 (dropWhile (not . boxOf "y") its))
+          boxOf t = \case
+            Box _ c -> bcText c == t
+            _ -> False
+          isBox = \case
+            Box {} -> True
+            _ -> False
+      length [() | Glue {} <- between] @?= 1,
+    testCase "PDF: paragraphs of the same style are apart by space-between only" $ do
       let style = styled "[paragraph-styles.quote]\nspace-before = 2\nspace-after = 3\nspace-between = 1\n"
       slotsOf style "@style quote\nあ\n\n@style quote\nい\n" >>= (@?= [[0, 2]])
       slotsOf (styled "[paragraph-styles.quote]\nspace-before = 2\nspace-after = 3\n") "@style quote\nあ\n\n@style quote\nい\n" >>= (@?= [[0, 1]]),

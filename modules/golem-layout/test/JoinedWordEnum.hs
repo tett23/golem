@@ -328,6 +328,44 @@ violations i =
         <> w1Boundary True (inExplicit i) softs bounds itsBare
         <> e1Same itsBare (itemsWith bare one)
         <> w2Same itsBare (itemsWith bare one)
+        <> s1Glues (pItems p)
+        <> s2Same itsBare (itemsWith bare one)
+
+-- * the spaces on both sides of a boundary (docs/adr ADR 0284)
+
+-- | Whether an item is the glue of a space between words: it stretches, but not as the glue that fills the last line; a space of code does not.
+wordGlue :: Item -> Bool
+wordGlue = \case
+  Glue _ y _ -> y > 0 && y < filStretch
+  _ -> False
+
+{- | S1: no two glues of spaces between words follow each other with no box
+between them (penalties between them count as nothing).
+-}
+s1Glues :: [Item] -> [Violation]
+s1Glues its = [Violation "S1" ("two glues of spaces in a row in " <> show (map keyOf its)) | go False its]
+  where
+    go seen = \case
+      [] -> False
+      x : rest
+        | wordGlue x -> seen || go True rest
+        | Penalty {} <- x -> go seen rest
+        | otherwise -> go False rest
+
+-- | The glues of spaces between words of items, each at the index among the characters of the boxes before it.
+wordGluesOf :: [Item] -> [Int]
+wordGluesOf its = concat (snd (mapAccumL step 0 its))
+  where
+    step at = \case
+      Box _ c -> (at + T.length (bcText c), [])
+      x | wordGlue x -> (at, [at])
+      _ -> (at, [])
+
+-- | S2: the glues of spaces between words of the paragraph split at boundaries are those of it as one text, as many and where they are.
+s2Same :: [Item] -> [Item] -> [Violation]
+s2Same its one
+  | wordGluesOf its == wordGluesOf one = []
+  | otherwise = [Violation "S2" ("the glues of spaces are at " <> show (wordGluesOf its) <> ", as one text " <> show (wordGluesOf one))]
 
 -- | The breaks of the soft hyphens of the run of an input.
 softsOf :: Input -> [Int]
@@ -350,13 +388,11 @@ after the first with a boundary before it or not.
 inputT :: Tiers Input
 inputT =
   let Tiers xss = listsOf (Tiers [[(t, b) | t <- jwParts, b <- [False, True]]])
-   in Tiers (map (concatMap inputsOf . filter (\r -> not (boundaryFirst r) && not (spaceAtBoundary r))) xss)
+   in Tiers (map (concatMap inputsOf . filter (not . boundaryFirst)) xss)
   where
     boundaryFirst = \case
       (_, True) : _ -> True
       _ -> False
-    -- a boundary next to a space: two spaces of two inlines are two glues, a bug of its own (see the pull request of the ADR)
-    spaceAtBoundary r = or [b && (t == " " || p == " ") | ((p, _), (t, b)) <- zip r (drop 1 r)]
 
 -- | The parts of the runs: GOLEM_ENUM_JOINED_DEPTH, or 'joinedPrDepth' on pull requests.
 depthOf :: IO Int
@@ -668,12 +704,54 @@ softHyphenBoundaryTests =
         map violationRule (w1Boundary True 50 (softsOf i) (boundsOf 0 (inRun i)) zeroed) @?= ["W1"]
     ]
 
+-- | The look of the character style @big@: twice the size.
+bigEnv :: ComposeEnv
+bigEnv = (bothEnv Nothing) {ceRestyle = \lk -> \case IR.CharStyle _ "big" _ -> lk {lkSize = 2 * lkSize lk}; IR.CharStyle _ "code" _ -> lk {lkCode = True}; _ -> lk}
+
+-- | The glues of spaces of inlines, in order.
+spaceGlues :: ComposeEnv -> [IR.Inline] -> [Item]
+spaceGlues env is = filter wordGlue (itemsWith env is)
+
+{- | The places of the table of the boundaries of the ADR: a space at the
+end of the text before, at the head of the text after, on both sides, a
+text of a space alone; two and three spaces; an index mark, a text of a
+soft hyphen alone between them; Latin and Japanese characters beside them,
+and the end of the paragraph.
+-}
+spaceCases :: [[IR.Inline]]
+spaceCases =
+  [ [txt x, mid, strong y]
+  | (x, y) <- [("a ", " b"), ("あ ", " a"), ("a ", " あ"), ("a ", " "), ("a  ", "  b")],
+    mid <- [txt "", indexMark, txt "\xAD"]
+  ]
+    <> [[txt "a ", strong " ", txt " b"], [txt "a", strong " ", txt " ", strong " b"], [txt "a ", strong " "], [txt "あ ", strong " ", txt " あ"]]
+
+spaceTests :: TestTree
+spaceTests =
+  testGroup
+    "the spaces on both sides of an inline boundary are one glue (docs/adr ADR 0284)"
+    [ testCase "S1: the places of the ADR have no two glues of spaces in a row" $
+        sequence_ [assertEqual (show is) [] (map violationDetail (s1Glues (itemsWith (bothEnv Nothing) is))) | is <- spaceCases],
+      testCase "S2: the places of the ADR have the glues of spaces of one text, as many and where they are" $
+        sequence_ [assertEqual (show is) [] (map violationDetail (s2Same (itemsWith (bothEnv Nothing) is) (itemsWith (bothEnv Nothing) (oneText is)))) | is <- spaceCases],
+      testCase "S1: the mark of a note between two spaces is a box: two glues stay" $
+        length (spaceGlues (bothEnv Nothing) [txt "a ", IR.Note sp 1 (IR.noteBody sp [txt "n"]), strong " b"]) @?= 2,
+      testCase "S3: the glue left is that of the space before, the text before at 10 pt and after at 20 pt, and the other way" $ do
+        spaceGlues bigEnv [txt "a ", IR.CharStyle sp "big" [txt " b"]] @?= spaceGlues bigEnv [txt "a b"]
+        spaceGlues bigEnv [IR.CharStyle sp "big" [txt "a "], txt " b"] @?= spaceGlues bigEnv [IR.CharStyle sp "big" [txt "a b"]],
+      testCase "S5: a space of code and a space after it outside code are two glues, as before" $ do
+        let its = itemsWith (bothEnv Nothing) [IR.CharStyle sp "code" [txt "x "], txt " b"]
+        length (filter wordGlue its) @?= 1
+        length [() | Glue _ y _ <- its, y == 0] @?= 1
+    ]
+
 joinedWordTests :: TestTree
 joinedWordTests =
   testGroup
     "the breaks between the boxes of a Latin word follow the joined word (docs/adr ADR 0280)"
     [ bothScriptsTests,
       softHyphenBoundaryTests,
+      spaceTests,
       testCase "L8: the smallest input of the marks of citations, a, — and [cite a page=5] in lines of 2 em, breaks only where L8 allows" $ do
         let cite = IR.Cite sp [IR.CiteItem "a" (Just (IR.Locator IR.LocatorPage (IR.LocNumber 5))) [] []]
             env = (composeEnv False (settingOf Nothing)) {ceCiteNumber = \_ k -> if k == "a" then Just 1 else Nothing}
@@ -723,7 +801,7 @@ joinedWordTests =
         map violationRule (e1Same before one) @?= ["E1"]
         map violationRule (w2Same before one) @?= ["W2"]
         map violationRule (w2Same zeroed one) @?= ["W2"],
-      testCase "W3 and H5: L1 to L13 of docs/adr/0209, I4, W1 (as H4) and W2 hold for every input up to GOLEM_ENUM_JOINED_DEPTH parts, soft hyphens next to boundaries too" $ do
+      testCase "W3, H5 and S4: L1 to L13 of docs/adr/0209, I4, W1 (as H4), W2, S1 and S2 hold for every input up to GOLEM_ENUM_JOINED_DEPTH parts, soft hyphens and spaces next to boundaries too" $ do
         depth <- depthOf
         case checkAllPar depth inputT violations of
           Failed k i vs -> assertFailure ("the smallest input that breaks an invariant has " <> show k <> " parts: " <> show i <> "\n" <> unlines [violationRule v <> ": " <> violationDetail v | v <- vs])
