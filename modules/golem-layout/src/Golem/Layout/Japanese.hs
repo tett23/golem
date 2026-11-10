@@ -47,6 +47,7 @@ where
 
 import Control.Applicative ((<|>))
 import Data.Char (GeneralCategory (..), generalCategory, isDigit, isLetter, isSpace)
+import Data.Either (lefts, rights)
 import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet qualified as IntSet
 import Data.List (groupBy, mapAccumL, sort, zip4, zip5)
@@ -1708,7 +1709,7 @@ and each soft hyphen with where it is and the look of its text.
 joinRun :: [(Int, Sourced, Piece)] -> [(Int, Sourced, Piece)]
 joinRun run
   | null words' = run
-  | otherwise = map fix (zip [0 :: Int ..] run)
+  | otherwise = zipWith fix [0 :: Int ..] run
   where
     indexed = zip [0 :: Int ..] run
     -- the word pieces: index in the run, start in the joined word, look, word, soft hyphens
@@ -1718,8 +1719,8 @@ joinRun run
       PShy lk True _ | Just (wAt, shys, n) <- lastWord, q : _ <- drop n shys -> ((at, Just (wAt, shys, n + 1)), [Right (k, wAt + q, lk)])
       PShy lk _ _ -> ((at, lastWord), [Right (k, at, lk)])
       _ -> ((at, lastWord), [])
-    words' = [w | Left w <- concat placed]
-    sites = [x | Right x <- concat placed]
+    words' = lefts (concat placed)
+    sites = rights (concat placed)
     joined = T.concat [w | (_, _, _, w) <- words']
     total = T.length joined
     lookAt i = listToMaybe [lk | (_, at, lk, w) <- words', i >= at, i < at + T.length w]
@@ -1747,7 +1748,7 @@ joinRun run
               wsNoPatterns = [o | (o, _) <- wordElements w, IntSet.member (fst (elementSpan joined (at + o))) shyStarts],
               wsBreakAfter = IntSet.member end cutsJ && IntSet.member end nextWordAt
             }
-    fix (k, x@(l, src, p)) = case p of
+    fix k x@(l, src, p) = case p of
       PWord lk w shys _ -> (l, src, PWord lk w shys (IntMap.lookup k wordShys))
       PShy lk inWord _ -> (l, src, PShy lk inWord (IntMap.lookup k roles >>= snd))
       _ -> x
