@@ -1353,6 +1353,21 @@ waitingReadTests =
       let input = Input 7 1 [EFigure 6, EFigure 6, EBreak, EFigure 6, ENeedLines, EFigure 1]
       waitingFigures (enumFlows (inElements input)) (paginateInput input) @?= [1003]
       brokenIn [P1, P2] input @?= [],
+    testCase "W1, P5: a figure after the break before a section at an odd page is where the flow comes to, the first page of the section (docs/adr/0260)" $ do
+      -- the nightly enumeration's counterexample: the section goes past the blank page 2 to page 3
+      let input = Input 3 1 [EPara 1, ESection (Just 1), EFigure 1, EBlank 1, EFigure 1]
+      placedIn input @?= [(1, 0, [SLine 0]), (2, 0, []), (3, 0, [SFigure 1000, SFigure 1001])]
+      waitingFigures (enumFlows (inElements input)) (paginateInput input) @?= []
+      brokenIn [P3, P4, P5] input @?= [],
+    testCase "W1, P4: a figure after the break before a section at an odd page, in two columns, does not wait, and the blank line before the next figure goes with it (docs/adr/0260)" $ do
+      let input = Input 8 2 [EFigure 8, ESection (Just 1), EFigure 7, EBlank 1, EFigure 2, EHeading]
+      waitingFigures (enumFlows (inElements input)) (paginateInput input) @?= []
+      brokenIn [P3, P4, P5] input @?= [],
+    testCase "W1, P5: a figure after the break before a section at an even page after an even page does not wait (docs/adr/0260)" $ do
+      let input = Input 3 1 [EPara 3, EPara 1, ESection (Just 2), EFigure 1, EBlank 1, EFigure 1]
+      placedIn input @?= [(1, 0, [SLine 0, SLine 1, SLine 2]), (2, 0, [SLine 3]), (3, 0, []), (4, 0, [SFigure 1000, SFigure 1001])]
+      waitingFigures (enumFlows (inElements input)) (paginateInput input) @?= []
+      brokenIn [P3, P4, P5] input @?= [],
     testCase "W1, P5: a figure at the end of the book that fits where it is written does not wait" $
       forM_ [Input l c [EPara 1, EBlank 1, EFigure 1] | l <- [3 .. 5], c <- [1, 2]] $ \input -> do
         waitingFigures (enumFlows (inElements input)) (paginateInput input) @?= []
