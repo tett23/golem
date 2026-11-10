@@ -40,7 +40,7 @@ library
     , text          >=2.0  && <2.2
   default-language: GHC2021
   include-dirs:     cbits/golem cbits/freetype/include cbits/harfbuzz/src
-  -- HarfBuzz 14.6.0 and FreeType 2.14.3, statically linked; no fused
+  -- HarfBuzz 14.6.0 and FreeType 2.15.0, statically linked; no fused
   -- multiply-add, so results match across architectures (ADR 0001)
   c-sources:
     cbits/golem/golem_font.c
