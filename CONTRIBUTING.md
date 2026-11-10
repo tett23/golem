@@ -128,7 +128,7 @@ CI の `build` ジョブは、テストのスイートの全体の時間を、`s
 スイートが上限を超えたら、次の順で扱う。
 
 1. まず性能の後退かどうかを調べる。後退なら直す。
-2. テストを足したことによる正当な増加なら、そのプルリクエストで `sh scripts/ci/suite-limits.sh --fetch 20 | sh scripts/ci/suite-limits.sh > scripts/ci/suite-limits.tsv` で表を作り直す。増えたスイートの行は、プルリクエストの CI の秒を中央値に加えた値で上限を求める。プルリクエストの説明に、前と後の上限を書く。
+2. テストを足したことによる正当な増加なら、そのプルリクエストで、増えたスイートの行を `sh scripts/ci/suite-limits.sh --set <アーキテクチャ> <スイート> <秒>` で求め直す。秒はプルリクエストの CI のそのスイートの秒 t で、上限は `max(10, ceil(2 × t))` になり、ほかの行は変わらない（[ADR 0301](./docs/adr/0301-make-the-suite-limits-follow-a-suite-that-grew-by-added-tests.md)）。プルリクエストの説明に、前と後の上限と、使った秒を書く。伸びた後の `main` への push が 20 回たまったら、`sh scripts/ci/suite-limits.sh --fetch 20 | sh scripts/ci/suite-limits.sh > scripts/ci/suite-limits.tsv` で表全体を作り直してもよい。
 3. 新しいスイートを足すプルリクエストは、そのスイートの行を、プルリクエストの CI の秒から同じ式で求めて、`x86_64` と `aarch64` の二行を足す。行を足し忘れると、`changes` ジョブの `scripts/ci/suite-limits.sh --check` が落ち、テストのラッパーもそのスイートを走らせずに落とす。
 
 手元でラッパーを使うときは `SUITE_LIMITS=` を付けると、上限を当てない。

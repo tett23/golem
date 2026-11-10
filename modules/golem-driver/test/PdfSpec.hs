@@ -1,9 +1,13 @@
+{-# LANGUAGE CPP #-}
+
 module PdfSpec (qpdfInstalled, fontResources, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests, codeBlockRubyTests, ligatureTests, combiningTests) where
 
 import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
+#ifdef GOLEM_PLUGINS
 import Data.Either (isRight)
+#endif
 import Data.IORef (newIORef, readIORef)
 import Data.List (isSuffixOf, nub, sort, sortOn, zip4)
 import Data.Map.Strict qualified as Map
@@ -12,7 +16,9 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
+#ifdef GOLEM_PLUGINS
 import Golem.Driver.New (Language (..), createProject, templateFiles)
+#endif
 import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (AdjustOrder (..), BoxContent (..), Hyphen (..), Item (..), Line (..), noLeaf, placeLine)
 import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook)
@@ -654,62 +660,50 @@ marksTests =
       pdf <- marksPdf id bleedStyle
       (w, h) <- a5Size
       boxOf "MediaBox" pdf @?= boxOf "BleedBox" pdf
-      boxOf "TrimBox" pdf @?= boxText (Rect 557314 557314 w h),
-    testCase "the English template: 0.125in of bleed, and Japanese marks without G07002 (golem-pdf ADR 0010, golem-project ADR 0010)" $ withSystemTempDirectory "golem-new" $ \tmp -> do
-      let dir = tmp </> "book"
-      createProject dir (templateFiles English uuid0) Nothing >>= assertBool "written" . isRight
-      createDirectoryIfMissing True (dir </> "fonts")
-      copyFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" (dir </> "fonts/SourceSerif4-Regular.otf")
-      r <- build (defaultOptions dir) {optTargets = Just [TargetPdf], optMarks = JapaneseMarks}
-      [diagCode d | d <- brDiagnostics r, isError d] @?= []
-      pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
-        [p] -> BS.readFile p
-        other -> assertFailure (show other)
-      -- mass-market is 4.25 x 6.875 in, 306 x 495 pt
-      let s = P.sheet (Just P.Japanese) (9 * 65536) (20054016, 32440320)
-      boxOf "TrimBox" pdf @?= boxText (P.shTrim s)
-      boxOf "BleedBox" pdf @?= boxText (P.shBleed s),
-    testCase "Japanese marks without bleed are G07002 at the top of style.toml, and no PDF" $ do
-      b <- buildMarks (\o -> o {optMarks = JapaneseMarks}) (Just horizontalStyle)
-      map diagCode (bErrors b) @?= [DiagnosticCode "G07002"]
-      [(fmap siPath (Map.lookup (spanFile (diagSpan d)) (bSources b)), spanStart (diagSpan d)) | d <- bErrors b] @?= [(Just "style.toml", 0)]
-      bPdf b @?= Nothing
-      w <- buildMarks (\o -> o {optMarks = WesternMarks}) (Just horizontalStyle)
-      map diagCode (bErrors w) @?= []
-      assertBool "Western PDF" (isJust (bPdf w)),
-    testCase "without style.toml, G07002 is at the top of manifest.toml" $ do
-      b <- buildMarks (\o -> o {optMarks = JapaneseMarks}) Nothing
-      [(fmap siPath (Map.lookup (spanFile (diagSpan d)) (bSources b)), spanStart (diagSpan d)) | d <- ofCode "G07002" b] @?= [(Just "manifest.toml", 0)],
-    testCase "Japanese marks without bleed are not G07002 when PDF is not a target" $ do
-      b <- buildMarks (\o -> o {optMarks = JapaneseMarks, optTargets = Just [TargetHtml]}) (Just horizontalStyle)
-      map diagCode (bErrors b) @?= []
-      assertBool "HTML" (any (".xhtml" `isSuffixOf`) (bWritten b)),
-    testCase "golem check with Japanese marks and no bleed is G07002 and writes nothing" $ do
-      b <- buildMarks (\o -> o {optMarks = JapaneseMarks, optTargets = Nothing, optCheckOnly = True}) (Just horizontalStyle)
-      map diagCode (bErrors b) @?= [DiagnosticCode "G07002"]
-      bBuildDir b @?= False,
-    testCase "bleed in style.toml changes the instance ID" $ do
-      a <- marksPdf id horizontalStyle
-      b <- marksPdf id bleedStyle
-      assertBool "instance" (snd (pdfIds a) /= snd (pdfIds b)),
-    testCase "--marks and --profile change the instance ID, not the document ID" $ do
-      none <- marksPdf id bleedStyle
-      japanese <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
-      prod <- marksPdf (\o -> o {optProfile = Prod}) bleedStyle
-      fst (pdfIds none) @?= fst (pdfIds japanese)
-      assertBool "marks" (snd (pdfIds none) /= snd (pdfIds japanese))
-      assertBool "profile" (snd (pdfIds none) /= snd (pdfIds prod)),
-    testCase "a page size by dimensions is the TrimBox (golem-project ADR 0005)" $ do
-      pdf <- marksPdf id (replaceIn "size = \"A5\"\n" "size = { width = \"396pt\", height = \"612pt\" }\n" horizontalStyle)
-      boxOf "TrimBox" pdf @?= "0 0 396 612",
-    testCase "golem check rejects a page size outside the table (golem-project ADR 0005)" $ do
-      b <- buildMarks (\o -> o {optTargets = Nothing, optCheckOnly = True}) (Just (replaceIn "size = \"A5\"\n" "size = \"148mm x 210mm\"\n" horizontalStyle))
-      map diagCode (bErrors b) @?= [DiagnosticCode "G03017"],
-    testCase "with marks and bleed, two builds give the same bytes" $ do
-      a <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
-      b <- marksPdf (\o -> o {optMarks = JapaneseMarks, optParallel = False}) bleedStyle
-      a @?= b
+      boxOf "TrimBox" pdf @?= boxText (Rect 557314 557314 w h)
   ]
+    <> englishTemplateTests
+    <> [ testCase "Japanese marks without bleed are G07002 at the top of style.toml, and no PDF" $ do
+           b <- buildMarks (\o -> o {optMarks = JapaneseMarks}) (Just horizontalStyle)
+           map diagCode (bErrors b) @?= [DiagnosticCode "G07002"]
+           [(fmap siPath (Map.lookup (spanFile (diagSpan d)) (bSources b)), spanStart (diagSpan d)) | d <- bErrors b] @?= [(Just "style.toml", 0)]
+           bPdf b @?= Nothing
+           w <- buildMarks (\o -> o {optMarks = WesternMarks}) (Just horizontalStyle)
+           map diagCode (bErrors w) @?= []
+           assertBool "Western PDF" (isJust (bPdf w)),
+         testCase "without style.toml, G07002 is at the top of manifest.toml" $ do
+           b <- buildMarks (\o -> o {optMarks = JapaneseMarks}) Nothing
+           [(fmap siPath (Map.lookup (spanFile (diagSpan d)) (bSources b)), spanStart (diagSpan d)) | d <- ofCode "G07002" b] @?= [(Just "manifest.toml", 0)],
+         testCase "Japanese marks without bleed are not G07002 when PDF is not a target" $ do
+           b <- buildMarks (\o -> o {optMarks = JapaneseMarks, optTargets = Just [TargetHtml]}) (Just horizontalStyle)
+           map diagCode (bErrors b) @?= []
+           assertBool "HTML" (any (".xhtml" `isSuffixOf`) (bWritten b)),
+         testCase "golem check with Japanese marks and no bleed is G07002 and writes nothing" $ do
+           b <- buildMarks (\o -> o {optMarks = JapaneseMarks, optTargets = Nothing, optCheckOnly = True}) (Just horizontalStyle)
+           map diagCode (bErrors b) @?= [DiagnosticCode "G07002"]
+           bBuildDir b @?= False,
+         testCase "bleed in style.toml changes the instance ID" $ do
+           a <- marksPdf id horizontalStyle
+           b <- marksPdf id bleedStyle
+           assertBool "instance" (snd (pdfIds a) /= snd (pdfIds b)),
+         testCase "--marks and --profile change the instance ID, not the document ID" $ do
+           none <- marksPdf id bleedStyle
+           japanese <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
+           prod <- marksPdf (\o -> o {optProfile = Prod}) bleedStyle
+           fst (pdfIds none) @?= fst (pdfIds japanese)
+           assertBool "marks" (snd (pdfIds none) /= snd (pdfIds japanese))
+           assertBool "profile" (snd (pdfIds none) /= snd (pdfIds prod)),
+         testCase "a page size by dimensions is the TrimBox (golem-project ADR 0005)" $ do
+           pdf <- marksPdf id (replaceIn "size = \"A5\"\n" "size = { width = \"396pt\", height = \"612pt\" }\n" horizontalStyle)
+           boxOf "TrimBox" pdf @?= "0 0 396 612",
+         testCase "golem check rejects a page size outside the table (golem-project ADR 0005)" $ do
+           b <- buildMarks (\o -> o {optTargets = Nothing, optCheckOnly = True}) (Just (replaceIn "size = \"A5\"\n" "size = \"148mm x 210mm\"\n" horizontalStyle))
+           map diagCode (bErrors b) @?= [DiagnosticCode "G03017"],
+         testCase "with marks and bleed, two builds give the same bytes" $ do
+           a <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
+           b <- marksPdf (\o -> o {optMarks = JapaneseMarks, optParallel = False}) bleedStyle
+           a @?= b
+       ]
 
 -- | The x of each glyph of a size, as numbers.
 glyphXs :: BS.ByteString -> BS.ByteString -> [Double]
@@ -2149,3 +2143,26 @@ glyphColours g content = go [] Nothing (BC.lines content)
         | length ws == 10, ws !! 4 == "k", ws !! 9 == "K" -> go saved (Just (map ptD (take 4 ws))) rest
         | [d] <- drawnGlyphs l, dGlyph d == g -> colour : go saved colour rest
         | otherwise -> go saved colour rest
+
+-- | The template of golem new, only with the plugins, as the library (docs/adr ADR 0300).
+englishTemplateTests :: [TestTree]
+#ifdef GOLEM_PLUGINS
+englishTemplateTests =
+  [ testCase "the English template: 0.125in of bleed, and Japanese marks without G07002 (golem-pdf ADR 0010, golem-project ADR 0010)" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+      let dir = tmp </> "book"
+      createProject dir (templateFiles English uuid0) Nothing >>= assertBool "written" . isRight
+      createDirectoryIfMissing True (dir </> "fonts")
+      copyFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" (dir </> "fonts/SourceSerif4-Regular.otf")
+      r <- build (defaultOptions dir) {optTargets = Just [TargetPdf], optMarks = JapaneseMarks}
+      [diagCode d | d <- brDiagnostics r, isError d] @?= []
+      pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
+        [p] -> BS.readFile p
+        other -> assertFailure (show other)
+      -- mass-market is 4.25 x 6.875 in, 306 x 495 pt
+      let s = P.sheet (Just P.Japanese) (9 * 65536) (20054016, 32440320)
+      boxOf "TrimBox" pdf @?= boxText (P.shTrim s)
+      boxOf "BleedBox" pdf @?= boxText (P.shBleed s)
+  ]
+#else
+englishTemplateTests = []
+#endif
