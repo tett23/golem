@@ -2,7 +2,8 @@
 the book (docs/adr ADR 0276): F4, a paragraph outside a span is set as in
 a span of the language of the book; F5, the exceptions of the book are
 looked up by that language; F7, the HTML, the EPUB and the plain text do
-not change.
+not change. And a regression of docs/adr ADR 0283: a character of both
+scripts at the end of its text joins the Latin word after a boundary.
 -}
 module BookLanguageSpec (bookLanguageTests) where
 
@@ -101,7 +102,10 @@ bookLanguageTests :: TestTree
 bookLanguageTests =
   testGroup
     "the words outside a span by the language of the book (docs/adr ADR 0276)"
-    [ testCase "F4: in a book of fr, a paragraph outside a span is set as the same paragraph in [lang fr]" $ do
+    [ testCase "E1 of docs/adr ADR 0283: in a book of en, the apostrophe of F4. ’[italic: Bless] of pd-merry-wives is a box of a Latin word" $ do
+        ls <- linesIn "en" horizontalStyle [("a.gm", "139: [italic: Bless]] F4. ’[italic: Bless] F1 Q3 F2 F3. [italic: God save] (Q1 Q2).\n")]
+        [bcExpandable c | its <- ls, Box _ c <- its, bcText c == "’"] @?= [True],
+      testCase "F4: in a book of fr, a paragraph outside a span is set as the same paragraph in [lang fr]" $ do
         outside <- linesIn "fr" horizontalStyle [("a.gm", french <> "\n")]
         inside <- linesIn "fr" horizontalStyle [("a.gm", "[lang fr: " <> french <> "]\n")]
         map (map plain) outside @?= map (map plain) inside

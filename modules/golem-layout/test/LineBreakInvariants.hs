@@ -139,11 +139,34 @@ classOf :: BoxContent -> Char -> CharClass
 classOf c ch = if latinDual c ch then dualJapaneseClass ch else lookClass (bcLook c) ch
 
 startClass, endClass :: BoxContent -> Maybe CharClass
-startClass c = case T.uncons (baseOf c) of
-  -- an apostrophe at the start of a Latin word, with a letter or a digit after it, is Latin (golem-layout ADR 0030)
-  Just ('\x2019', more) | bcExpandable c, Just (n, _) <- T.uncons more, isLetter n || generalCategory n == DecimalNumber -> Just Western
-  u -> classOf c . fst <$> u
+startClass c = startClassBefore c Nothing
 endClass c = classOf c . snd <$> T.unsnoc (baseOf c)
+
+{- | The class of the first character of a box, the box of a Latin word
+right after it given: an apostrophe at the start of a Latin word, with a
+letter or a digit after it in the joined word, is Latin (golem-layout ADR
+0030, docs/adr ADR 0283): after a box of the apostrophe alone, the next
+character is the first of the box after it.
+-}
+startClassBefore :: BoxContent -> Maybe BoxContent -> Maybe CharClass
+startClassBefore c next = case T.uncons (baseOf c) of
+  Just ('\x2019', more) | bcExpandable c, Just n <- nextOf more, isLetter n || generalCategory n == DecimalNumber -> Just Western
+  u -> classOf c . fst <$> u
+  where
+    nextOf more = case T.uncons more of
+      Just (n, _) -> Just n
+      Nothing -> case next of
+        Just d | bcExpandable d -> fst <$> T.uncons (baseOf d)
+        _ -> Nothing
+
+{- | The box of a Latin word right after the first box of items, with no
+item between them, when the first is one too (docs/adr ADR 0280).
+-}
+nextWordBox :: [Item] -> Maybe BoxContent
+nextWordBox = \case
+  Box _ c : Box _ d : _ | bcExpandable c && bcExpandable d -> Just d
+  Box _ c : rest | bcExpandable c, Penalty {} : Box _ d : _ <- rest, bcExpandable d -> Just d
+  _ -> Nothing
 
 -- | The text of a line.
 textOf :: Line -> Text
@@ -212,7 +235,7 @@ l2LineStart _ p =
   [ Breach L2 (i + 1) ("line " <> show (i + 2) <> " starts with " <> show (textOf next))
   | (i, _, next) <- pairs p,
     Just c <- [firstBox next],
-    Just k <- [startClass c],
+    Just k <- [startClassBefore c (nextWordBox (dropWhile (\case Box {} -> False; _ -> True) (lineItems next)))],
     lineStartProhibited (pStrict p) k,
     not (wide p next)
   ]
