@@ -234,18 +234,20 @@ objectsOf pdf = Map.fromList (go pdf)
                 text = fst (BS.breakSubstring "endobj" body)
                 (dictText, streamPart) = BS.breakSubstring "stream" text
              in case (BC.readInt num, pdfValue (pdfTokens dictText)) of
-                  (Just (n, _), Just (v, _)) | not (BS.null num), atLineStart ->
-                    let afterKw = BS.drop (BS.length "stream") (snd (BS.breakSubstring "stream" body))
-                        dataStart = if "\r\n" `BS.isPrefixOf` afterKw then BS.drop 2 afterKw else BS.drop 1 afterKw
-                        len = case lookup "/Length" (dictOf v) of
-                          Just (PdfAtom l) | Just (k, "") <- BC.readInt l -> Just k
-                          _ -> Nothing
-                     in case (BS.null streamPart, len) of
-                          (True, _) -> (n, Obj v Nothing) : go body
-                          (False, Just k) -> (n, Obj v (Just (BS.take k dataStart))) : go (BS.drop k dataStart)
-                          (False, Nothing) ->
-                            let d = fst (BS.breakSubstring "endstream" dataStart)
-                             in (n, Obj v (Just (fst (BC.spanEnd (`elem` ("\r\n" :: String)) d)))) : go (BS.drop (BS.length d) dataStart)
+                  (Just (n, _), Just (v, _))
+                    | not (BS.null num),
+                      atLineStart ->
+                        let afterKw = BS.drop (BS.length "stream") (snd (BS.breakSubstring "stream" body))
+                            dataStart = if "\r\n" `BS.isPrefixOf` afterKw then BS.drop 2 afterKw else BS.drop 1 afterKw
+                            len = case lookup "/Length" (dictOf v) of
+                              Just (PdfAtom l) | Just (k, "") <- BC.readInt l -> Just k
+                              _ -> Nothing
+                         in case (BS.null streamPart, len) of
+                              (True, _) -> (n, Obj v Nothing) : go body
+                              (False, Just k) -> (n, Obj v (Just (BS.take k dataStart))) : go (BS.drop k dataStart)
+                              (False, Nothing) ->
+                                let d = fst (BS.breakSubstring "endstream" dataStart)
+                                 in (n, Obj v (Just (fst (BC.spanEnd (`elem` ("\r\n" :: String)) d)))) : go (BS.drop (BS.length d) dataStart)
                   _ -> go body
 
 dictOf :: PdfValue -> [(BS.ByteString, PdfValue)]
