@@ -62,6 +62,13 @@ tocStylesTests =
         let style = horizontalStyle <> "\n[paragraph-styles.toc-2]\nsize = \"0.8zw\"\nindent = \"3zw\"\n"
         (_, pl) <- layoutOk style tocSource []
         [(i, s) | (_, i, s) <- entryLines pl] @?= [(0, 10 * pt), (24 * pt, 8 * pt), (0, 10 * pt)],
+      testCase "I2, I3: toc-<l> of @style-def sets the entries as one of style.toml" $ do
+        (_, toml) <- layoutOk (horizontalStyle <> "\n[paragraph-styles.toc-2]\nsize = \"0.8zw\"\nindent = \"3zw\"\n\n[paragraph-styles.toc-1]\nend-indent = \"2zw\"\n") tocSource []
+        (_, local) <- layoutOk horizontalStyle ("@style-def paragraph toc-2 size=0.8zw indent=3zw\n@style-def paragraph toc-1 end-indent=2zw\n\n" <> tocSource) []
+        (_, plain) <- layoutOk horizontalStyle tocSource []
+        [(i, s) | (_, i, s) <- entryLines toml] @?= [(0, 10 * pt), (24 * pt, 8 * pt), (0, 10 * pt)]
+        assertBool "end-indent shortens the titles" (entryLines toml /= entryLines plain)
+        entryLines local @?= entryLines toml,
       testCase "I3, I5: end-indent shortens the title, the page number still ends at the measure" $ do
         let style = horizontalStyle <> "\n[paragraph-styles.toc-1]\nend-indent = \"2zw\"\n"
         (_, pl) <- layoutOk style tocSource []

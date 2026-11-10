@@ -4,6 +4,7 @@ paragraphs, in the same order on every build, and the CSS of HTML.
 -}
 module KeepOptionsSpec (keepOptionsTests) where
 
+import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -65,5 +66,21 @@ keepOptionsTests =
         assertBool (T.unpack css) ("p.ps-k { break-after: avoid; break-inside: avoid; orphans: 3; widows: 4; break-before: recto; }" `T.isInfixOf` css)
         assertBool "no rule of d" (not ("p.ps-d { break" `T.isInfixOf` css) && not ("p.ps-d { orphans" `T.isInfixOf` css))
         (_, plain) <- htmlMini horizontalStyle "あ。\n"
-        assertBool "none of the keep options" (not (any (`T.isInfixOf` plain) ["orphans", "widows", "break-inside", "break-after"]))
+        assertBool "none of the keep options" (not (any (`T.isInfixOf` plain) ["orphans", "widows", "break-inside", "break-after"])),
+      testCase "K1 to K5: each keep option of @style-def breaks the pages as one of style.toml, and not as the default" $ do
+        let short = T.concat [t <> "。\n\n" | t <- ["一", "二", "三", "四"]]
+            cases =
+              [ ("keep-with-next", "1", "1", short <> "@style k\nあ。\n\nい。\n"),
+                ("keep-all-lines", "true", "true", T.concat [t <> "。\n\n" | t <- ["一", "二", "三"]] <> styled "k" 4),
+                ("keep-first-lines", "3", "3", T.concat [t <> "。\n\n" | t <- ["一", "二", "三"]] <> styled "k" 4),
+                ("keep-last-lines", "3", "3", T.concat [t <> "。\n\n" | t <- ["一", "二"]] <> styled "k" 4),
+                ("page-break", "\"recto\"", "recto", "一。\n\n@style k\nあ。\n")
+              ]
+            pages style source = pagesMini "" style source [] Map.empty >>= either (assertFailure . show) pure
+        forM_ cases $ \(key, tomlValue, defValue, source) -> do
+          toml <- pages (fiveLines <> "\n[paragraph-styles.k]\n" <> TE.encodeUtf8 key <> " = " <> TE.encodeUtf8 tomlValue <> "\n") source
+          local <- pages fiveLines ("@style-def paragraph k " <> key <> "=" <> defValue <> "\n\n" <> source)
+          plain <- pages fiveLines ("@style-def paragraph k\n\n" <> source)
+          assertBool (T.unpack key <> " changes the pages") (toml /= plain)
+          assertEqual (T.unpack key) toml local
     ]
