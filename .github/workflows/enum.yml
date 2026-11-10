@@ -28,8 +28,10 @@ permissions:
   contents: read
   actions: read
 
+# runs that only time the areas wait for no other run, and none waits for
+# them (docs/adr ADR 0286)
 concurrency:
-  group: enum
+  group: ${{ inputs.timings && format('enum-timings-{0}', github.run_id) || 'enum' }}
   cancel-in-progress: false
 
 env:
