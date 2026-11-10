@@ -337,10 +337,11 @@ ordersDepth =
 'linesPrDepth' (the nightly job) the three orders of the test design in
 lines up to 5 em; on pull requests the default order alone in lines up to
 4 em, the default composition (docs/adr ADR 0281, its section 3). The
-three orders took 5 seconds of the area on a laptop, past the 10 seconds
-of docs/adr/0208 (its section 4) on the x86-64 runner of CI, so the
-others are values moved to the nightly job (docs/adr/0278, its test
-design).
+other orders are values moved to the nightly job (docs/adr/0278, its test
+design). Timed as docs/adr ADR 0281 asks, the three orders back on pull
+requests keep the area within its 10 seconds (7.33 to 9.20) but take the
+sum of the areas past its 30 (30.67 to 39.46), so they stay on the
+nightly job (its section 7).
 -}
 ordersAt :: Int -> ([AdjustOrder], Int)
 ordersAt depth = if depth > linesPrDepth then (staged, 5) else ([defaultOrder], 4)
