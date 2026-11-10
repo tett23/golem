@@ -69,6 +69,7 @@ import Test.Tasty
 import TocStylesSpec (tocStylesTests)
 import UnwritableNumbersSpec (unwritableNumbersTests)
 import VarsSpec (varsTests)
+import VisualSubsetSpec (visualSubsetTests)
 
 main :: IO ()
 main = enterPackageDirectory >> defaultMainReportingSkips tests
@@ -91,6 +92,7 @@ tests skips =
         functionsTests,
         callsTests,
         varsTests,
+        visualSubsetTests,
         unwritableNumbersTests,
         pageLabelsTests,
         indexRangeTests,
