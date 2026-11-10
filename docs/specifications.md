@@ -3750,9 +3750,12 @@ dev と prod の両方で警告で、PDF を書き、notice ではないので `
 コードの空白は、`lkCode` の空白から作ったグルーとして見分け、空白の前の箱か後の箱がコードの外の箱でも判定する。
 `[code: 「 a]`、`[code: a 」]`、`[code: 漢 。]` は空白で改行せず、`[code: … …]` は空白で改行してよい。
 消した候補の位置でも、コードの空白は伸び縮みしないままである。
-欧文の語の箱の最初の字が U+2019 で、次の字が字か数字（一般カテゴリが L か Nd）なら、その字は語の頭のアポストロフィとし、行頭禁則を当てない（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)）。
+欧文の語の箱の最初の字が U+2019 で、つないだ語の中の次の字が字か数字（一般カテゴリが L か Nd）なら、その字は語の頭のアポストロフィとし、行頭禁則を当てない（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)、[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md)）。
+つないだ語は、あいだにほかの項目を挟まずに続く欧文の語の箱の字をつないだものである（[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md)）。
+箱が U+2019 と結合文字だけなら、次の字は後に続く欧文の語の箱の最初の字であり、後に続く箱がなければ次の字はない。
 次の字は、結合文字を除いて数える。
-`aaa ’tis` と `aaa ’90` は空白で改行してよく、`aaa ’` と `aaa ’.` の `’` は今のとおり終わり括弧類として空白で改行しない。
+`aaa ’tis` と `aaa ’90` は空白で改行してよく、`aaa ’[strong: tis]` も同じである。
+`aaa ’` と `aaa ’.` の `’` は今のとおり終わり括弧類として空白で改行しない。
 区間の外と欧文の区間で同じ規則を当て、本の言語は見ない。
 和文の区間の `’` は欧文の語の箱に入らないので、終わり括弧類のままである。
 空白を改行の位置から外しても、空白の幅と伸縮は変えず、和欧間の空きとアキ量のセットの空きを足さない。
@@ -3849,6 +3852,8 @@ HTML、EPUB、プレーンテキストは、ダッシュの文字をそのまま
 
 U+2010 と U+2013 は、引用符や em ダッシュと同じく、どちらかの側の最も近い文字が欧文の文字なら欧文の語に含める。
 これは言語の区間の外の規則であり、区間の中では区間の言語で決める（「原稿の中の言語」の節）。
+最も近い文字は、段落の字の並びで探す（[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md)）。
+探し方は「原稿の中の言語」の節の「両用の文字」に書く。
 そのため `lime‐tree` や `1990–2000` は一つの語として組み、和欧間の空きを入れない。
 和文に挟まれたハイフン類は、今までどおり行頭禁則の文字として一字ずつ組む。
 
@@ -3980,10 +3985,13 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 隣り合う二つの部品のあいだを、同じテキストか文字スタイルの境目かの二通りに組む。
 組み方の環境は、区間（なし、`en`、`ja`）と `explicit-hyphen-penalty`（50、10000）の組み合わせで、禁則は strict とし、2 字から 4 字の行の幅で組む。
 L1 から L13 と W1 は分綴のパターンのある環境で、W1 と W2 はパターンのない環境で調べる。
-W2 は、両側の字が欧文の語の箱の字である位置の候補だけを比べ、境目で分けると欧文の語に入る字が変わる入力では調べない。
+W2 は、[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md) の E2 のとおり、すべての位置の候補を比べる。
+同じ環境で、境目で分けた段落と一つのテキストとで、欧文の語に入る字の列が等しいこと（E1）も調べる。
 空白の隣には境目を置かず、ソフトハイフンの隣に境目のある入力では L8 と W1 だけを調べる（どちらも「既知の不具合」）。
 プルリクエストの CI は部品 2 個まで、毎晩の `enum.yml` は部品 3 個まで調べる（`GOLEM_ENUM_JOINED_DEPTH`）。
 引用の印を部品に足した列挙（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）は、プルリクエストの CI で部品 2 個まで、毎晩の `enum.yml` で部品 3 個まで調べる（`GOLEM_ENUM_CITE_DEPTH`）。
+区間の外で両用の字が印のすぐ隣にある入力では、C2 を調べない。
+印は両用の字の最も近い字を探すのを止めるが、C2 が比べる、印を同じ文字列のテキストにした段落では止めないので、両用の字の役割が違うためである（[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md)）。
 
 本文の中のコードの並びも、同じ述語と、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の C1 から C8 と、[golem-layout ADR 0045](golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md) の J1 から J7 で調べる（C3 と C4 は J3 と J5 に置き換えた）。
 部品は、和文の `漢`、`あ`、`「`、`」`、`。`、`、`、`ー`、`ぁ`、`…` と、欧文の `a`、`ab`、`1`、`/`、`_`、`-`、`.`、`"` と、空白の 18 である（`-`、`.`、`1` は 0045 で足した）。
@@ -4051,9 +4059,19 @@ He said nothing, and the silence was the answer.
 
 PDF では、区間の言語で次のように組む（golem-layout の `charClassIn`）。
 
-- 欧文の区間：両用の文字は欧文（`western`）とし、隣の欧文の文字と一つの語の箱にする。役割の欧文のフォントで組む。両用の文字の隣には、和欧間の空きもアキ量のセットの空きも入れない。両用の文字の隣での改行は、その字の和文の文字クラス（始め括弧類なら後ろで改行しない、など）の禁則に従う（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。ただし、語の頭のアポストロフィ（欧文の語の箱の最初の U+2019 で、次の字が字か数字のもの）は、欧文の字として判定し、行頭禁則を当てない（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)）。突き出しは欧文の約物の表に従い、表にない `«»‹›…` は突き出さない。
+- 欧文の区間：両用の文字は欧文（`western`）とし、隣の欧文の文字と一つの語の箱にする。役割の欧文のフォントで組む。両用の文字の隣には、和欧間の空きもアキ量のセットの空きも入れない。両用の文字の隣での改行は、その字の和文の文字クラス（始め括弧類なら後ろで改行しない、など）の禁則に従う（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。ただし、語の頭のアポストロフィ（欧文の語の箱の最初の U+2019 で、つないだ語の中の次の字が字か数字のもの）は、欧文の字として判定し、行頭禁則を当てない（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)）。突き出しは欧文の約物の表に従い、表にない `«»‹›…` は突き出さない。
 - 和文の区間：両用の文字は和文の文字クラスの一字とする。`“‘«‹` は始め括弧類、`”’»›` は終わり括弧類、`—…` は分離禁止文字、`–‐‑` はハイフン類である。隣が欧文の文字でも欧文の語に含めず、和文のフォントで組む。
-- 区間の外：今のとおり、最も近い文字で決める。本の言語は見ない（分綴のパターンは本の言語で引く。「分綴」の節）。`‹›` は漢字等のまま組む。
+- 区間の外：どちらかの側の最も近い文字（両用の文字を飛ばした先）が欧文の文字なら、欧文の語に含める。本の言語は見ない（分綴のパターンは本の言語で引く。「分綴」の節）。`‹›` は漢字等のまま組む。
+
+区間の外の最も近い文字は、段落の字の並びで探す（[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md)）。
+字の並びは、段落のインラインを順にたどり、テキストの字をつないだものである。
+文字スタイル、色、リンク、言語の区間、圏点、解決した参照の境目は、字の並びを切らない。
+項目を作らないインライン（索引の印などのアンカーと、ソフトハイフン）は飛ばす。
+ルビ、縦中横、番号、本文の中のコード、注の印、引用の印、強制改行、`[aki]` に当たったら、そこで探すのをやめ、その側に欧文の字はないものとする。
+空白に当たったときと、段落の端に着いたときも、その側に欧文の字はないものとする。
+見つけた字が欧文の字かは、その字のインラインの見た目（区間の言語を含む）で決める。
+そのため `x “[strong: Ham]” y` の引用符は、一つのテキストの `x “Ham” y` と同じく欧文の語に入り、`a[strong: —]b` の `—` も `a—b` と同じく欧文の語に入る。
+ルビやコードの向こうの字は見ないので、`a[code: x][strong: —]` の `—` は欧文の語に入らない。
 
 両用の文字でない文字の扱いは、区間の言語で変えない。
 区間の境目は語の箱の境目になる。
@@ -6288,7 +6306,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **二つのインラインの空白が、二つのグルーになる**：一つのテキストの中の続く空白は一つのグルーにまとめるが、`a ` と `[strong:  b]` のように境目の両側にある空白は、それぞれグルーになる。[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の L11 に反する。[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の境目の列挙で見つかったので、その列挙は空白の隣に境目を置かない。
 - **インラインの境目の隣のソフトハイフンを、述語と組版が別の語で読む**：ソフトハイフンの述語（I3 まで広げた L9 と I4、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）は段落の字の並びでソフトハイフンを読み、境目の前後のソフトハイフンを語の中にあるとみなす。組版は、インラインごとの語で読むので、同じソフトハイフンを語の端にあるとみなす。`a\xAD` と `[strong: a]` で、述語は分割を求め、組版は分けない。どちらに合わせるかは決めていない（[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の境目の列挙で見つかった）。
-- **区間の外で、両用の字の役割がインラインごとに決まる**：区間の外の引用符、アポストロフィ、ハイフン類、ダッシュが欧文の語に入るかは、同じテキストの中の最も近い字で決める（[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。`a` と `[strong: —]` と `b` では、`—` は和文の分離禁止文字になり、一つのテキストの `a—b` と行の分け方が違う。区間の中の `’` だけの箱も、後の箱の字を見ないので、語の頭のアポストロフィ（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)）にならない。[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) は欧文の語の箱のあいだだけを決めたので、これらは決めていない。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合
