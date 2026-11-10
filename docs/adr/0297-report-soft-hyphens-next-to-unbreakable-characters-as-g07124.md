@@ -1,6 +1,6 @@
 # ADR 0297: 改行しない字の隣のソフトハイフンを G07124 で知らせる
 
-ステータス: 採択
+ステータス: 採択→（N4 の範囲の中のソフトハイフン）は [ADR 0305](0305-leave-soft-hyphens-in-or-next-to-a-no-break-range-out-of-i8.md)
 
 ## 文脈
 
