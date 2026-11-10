@@ -9,6 +9,7 @@ import CodeJapaneseSpec (codeJapaneseTests)
 import CodePaddingSpec (codePaddingTests)
 import CodeSpaceSpec (codeSpaceTests)
 import CodeStopSpec (codeStopTests)
+import ColumnWidthInvariantsSpec (columnWidthInvariantTests)
 import CombiningSpec (combiningTests)
 import Control.Monad (forM_)
 import Data.List (isPrefixOf, maximumBy, subsequences)
@@ -393,7 +394,7 @@ tests =
     [ testGroup "kenten shapes (golem-driver ADR 0019)" kentenTests,
       testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
       testGroup "note marks and note keys (golem-driver ADR 0018)" noteMarkTests,
-      testGroup "boundaries and invariants" [paginateTests, invariantTests, punctuationTests, lineBreakingTests, lineInvariantTests, noBreakTests, citeBreakTests, joinedWordTests, enumSplitTests, softHyphenTests, exceptionsTests, overflowTests, alignTests, expansionStepTests, charClassTests],
+      testGroup "boundaries and invariants" [paginateTests, invariantTests, punctuationTests, lineBreakingTests, lineInvariantTests, noBreakTests, columnWidthInvariantTests, citeBreakTests, joinedWordTests, enumSplitTests, softHyphenTests, exceptionsTests, overflowTests, alignTests, expansionStepTests, charClassTests],
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       inseparableTests,
       doubleDashTests,
@@ -1071,6 +1072,10 @@ tests =
             columnWidths 26 [(11, 11), (1, 5), (1, 16)] @?= Right [11, 5, 10]
             -- the remainder one sp at a time from the first column
             columnWidths 10 [(0, 9), (0, 9), (0, 9)] @?= Right [4, 3, 3],
+          testCase "column widths: C5, C6: the remainder goes to the columns at the level, not to one wider for its minimum (docs/adr ADR 0295)" $ do
+            -- before ADR 0295 the first column took the remainder at 2, [2, 0, 0], and lost it at 3
+            columnWidths 2 [(1, 2), (0, 1), (0, 1)] @?= Right [1, 1, 0]
+            columnWidths 3 [(1, 2), (0, 1), (0, 1)] @?= Right [1, 1, 1],
           testProperty "column widths: the sum is the width, each between its minimum and natural width, the short ones natural (golem-driver ADR 0037)" $ property $ do
             ranges <- forAll (Gen.list (Range.linear 1 8) (Gen.int (Range.linear 0 1000) >>= \lo -> (\hi -> (fromIntegral lo, fromIntegral hi)) <$> Gen.int (Range.linear lo 1000)))
             let lo = sum (map fst ranges)
