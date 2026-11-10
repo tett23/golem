@@ -93,6 +93,9 @@ test-suite golem-font-test
   -- library (docs/adr/0238)
   include-dirs:     cbits/freetype/include
   c-sources:        test/cbits/golem_test_cmap.c
+  -- the setjmp.h of FreeType on wasm32, as in the library (docs/adr/0293)
+  if arch(wasm32)
+    cc-options:     -mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false
   -- ConcurrencySpec shapes one font from several capabilities at once;
   -- -N: one capability per processor from the start, so that the count
   -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)
