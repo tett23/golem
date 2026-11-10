@@ -34,13 +34,14 @@
 #   8. c-objects.tsv: the C and assembly members of each libwasmtime.a; the
 #      component column is filled by hand and kept from the previous output
 set -eu
-VERSION=49.0.5
-# the commit of the tag v49.0.5 (git ls-remote, 2026-11-05)
-COMMIT=805a0f15320e8836cf2b9f001b53d884bf866c89
-RUSTC_VERSION=1.98.0
+VERSION=50.0.1
+# the commit of the tag v50.0.1 (git ls-remote, 2026-11-10)
+COMMIT=c307ec81de02852d815e9849f7c89d955c03c30d
+RUSTC_VERSION=1.99.0
 # the SHA-256 of compiler-rt/LICENSE.TXT of llvm-project at the version
-# of LLVM of rustc $RUSTC_VERSION (llvmorg-22.1.8, the blob
-# 5a79a1b9d5cb0af9a779751f07033e44ca3b14d8 of the tag); recorded at the
+# of LLVM of rustc $RUSTC_VERSION (llvmorg-23.1.1, the blob
+# 5a79a1b9d5cb0af9a779751f07033e44ca3b14d8 of the tag, as of llvmorg-22.1.8
+# for rustc 1.98.0); recorded at the
 # first full run (2026-10-13)
 COMPILER_RT_LICENSE_SHA256=1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d
 ARCHES="aarch64-macos x86_64-musl aarch64-musl"
@@ -67,9 +68,9 @@ fi
 sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 archive_sha() {
   case "$1" in
-    aarch64-macos) echo 16bf4584b586bf18c708bf7b98cb94c415c0201575d5ad24860dcbdf83c213e5 ;;
-    x86_64-musl) echo a56728962f434ad6eed02c6b9313069b0044e2ac3143574bc9fa2c0f5cb2cebc ;;
-    aarch64-musl) echo 2e2a6cb8cabf22f88f2dc52018ac0b048bfc9ba45b09455bb5b17af6588239b1 ;;
+    aarch64-macos) echo a49327ca596fae51cd92e230265132112bb7896c5a24e4d58cd05b56612e26bb ;;
+    x86_64-musl) echo 579216d5979f3b2f0714c039e097de13f0e6af62bbaa96588a0de1b7de9c20cb ;;
+    aarch64-musl) echo 3f9f1875a83a3764987e34138db364d149d75b573c3e725559b779ba781f0e2f ;;
   esac
 }
 triple() {

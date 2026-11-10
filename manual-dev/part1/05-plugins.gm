@@ -94,7 +94,7 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 ## ホストが与えるもの、与えないもの
 
 ホストは wasmtime の C API を FFI で呼ぶ。[index reading=wasmtime: wasmtime]
-バージョンは 49.0.5 に固定してあり、上げるときは ADR を書く。
+バージョンは 50.0.1 に固定してあり、上げるときは ADR を書く。
 FFI は golem-plugin の中に閉じ、ほかのモジュールは golem-plugin の Haskell の API だけを使う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0001-wasm-host-and-abi.md]（golem-plugin ADR 0001「wasm のホストと ABI」）]
 
 ホストの設定は次のとおりである。

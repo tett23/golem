@@ -1,17 +1,17 @@
 The license documents of the Rust crates, the Rust standard library and
-compiler-rt in libwasmtime.a of the wasmtime 49.0.5 C API
+compiler-rt in libwasmtime.a of the wasmtime 50.0.1 C API
 (docs/adr/0007-third-party-licenses.md). Generated; do not edit, except
 the component column of c-objects.tsv.
 
-generated: 2026-11-04
+generated: 2026-11-10
 command: scripts/wasmtime-licenses.sh
-wasmtime: v49.0.5, commit 805a0f15320e8836cf2b9f001b53d884bf866c89
-rustc: 1.98.0
+wasmtime: v50.0.1, commit c307ec81de02852d815e9849f7c89d955c03c30d
+rustc: 1.99.0
 cargo: cargo 1.97.0-nightly (eb94155a9 2026-04-09)
 
-crates in MANIFEST.tsv: 256
-crates found in libwasmtime.a of aarch64-macos: 134
-crates found in libwasmtime.a of x86_64-musl: 138
-crates found in libwasmtime.a of aarch64-musl: 138
+crates in MANIFEST.tsv: 247
+crates found in libwasmtime.a of aarch64-macos: 133
+crates found in libwasmtime.a of x86_64-musl: 137
+crates found in libwasmtime.a of aarch64-musl: 136
 step 7: every crate found in the three archives is listed
 members of c-objects.tsv without a component: 0
