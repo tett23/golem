@@ -33,7 +33,7 @@ jobs:
       run: ${{ steps.needed.outputs.run }}
       commands: ${{ steps.commands.outputs.commands }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - id: needed
@@ -64,14 +64,14 @@ jobs:
       matrix:
         command: ${{ fromJSON(needs.prepare.outputs.commands) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # the jar that models.yml saved on main, checked by its SHA-256 in
       # check.sh before it is used; the jobs of the matrix restore it and do
       # not save it (docs/adr/0243)
       - name: Restore the archives of the downloads (docs/adr/0243)
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/downloads
           key: downloads-models-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/models/check.sh') }}
