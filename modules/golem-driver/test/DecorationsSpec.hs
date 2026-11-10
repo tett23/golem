@@ -91,6 +91,13 @@ decorationsTests =
         let cs = concat (boxesOf pl)
         map (fmap decColor . lkStrikethrough . bcLook) cs @?= [Just (Just "red"), Nothing, Nothing]
         map (fmap decColor . lkUnderline . bcLook) cs @?= [Nothing, Just (Just "blue"), Just Nothing],
+      testCase "I1, I8: underline and strikethrough of @style-def are drawn as those of style.toml" $ do
+        let source = "漢[style d: 字漢]字\n"
+        toml <- contents (horizontalStyle <> "\n[character-styles.d]\nunderline = true\nstrikethrough = true\n") source
+        local <- contents horizontalStyle ("@style-def character d underline=true strikethrough=true\n\n" <> source)
+        plain <- contents horizontalStyle ("@style-def character d underline=false\n\n" <> source)
+        assertBool "the lines are drawn" (toml /= plain)
+        local @?= toml,
       testCase "I8: the underline is drawn before the characters, the strikethrough after, as artifacts" $ do
         streams <- contents horizontal "[style both: 漢字]\n"
         case filter (" re f" `BS.isInfixOf`) streams of
