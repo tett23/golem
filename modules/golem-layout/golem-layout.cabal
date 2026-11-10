@@ -85,6 +85,7 @@ test-suite golem-layout-test
                     CiteBreakEnum
                     JoinedWordEnum
                     CodeJapaneseSpec
+                    ColumnWidthInvariantsSpec
                     CodePaddingSpec
                     CodeSpaceSpec
                     CodeStopSpec

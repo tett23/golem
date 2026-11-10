@@ -178,3 +178,12 @@ jobs:
         env:
           GOLEM_ENUM_JOINED_DEPTH: "3"
         run: cabal test golem-layout-test --test-option=-p --test-option='/GOLEM_ENUM_JOINED_DEPTH/'
+      # the widths of the columns of a table: every input of columnWidths
+      # of widths up to 5 and up to 4 columns, and of tableColumnWidths of
+      # widths up to 4 and up to 3 columns; the pull requests check up to
+      # 4 and 3, and 3 and 3 (docs/adr ADR 0295)
+      - name: The widths of the columns of a table on every small input (docs/adr ADR 0295)
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        env:
+          GOLEM_ENUM_TABLE_DEPTH: "5"
+        run: cabal test golem-layout-test --test-option=-p --test-option='/GOLEM_ENUM_TABLE_DEPTH/'
