@@ -62,6 +62,11 @@ $ scripts/fetch-wasmtime.sh
 プルリクエストの CI では照合しない。
 [code: scripts/fetch-wasmtime.sh] を変えたプルリクエストでは、手元で [code: sh scripts/wasmtime-advisories.sh] を実行し、出力をプルリクエストの説明に貼る。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0157-check-wasmtime-pin-against-advisories.md]（docs/adr の ADR 0157「固定した wasmtime の版を、上流のアドバイザリと毎日照合する」）][note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0166-read-wasmtime-advisory-ranges-as-written.md]（docs/adr の ADR 0166「wasmtime のアドバイザリの範囲、修正版、パッケージを、上流の書き方のまま読む」）]
 
+同じワークフローの [code: actions] ジョブは、ワークフローで固定したアクションを上流と照合する。
+[code: sh scripts/ci/actions-pins.sh verify] は、注釈のタグが固定したコミットを指すことを [code: git ls-remote] で確かめる。
+[code: sh scripts/ci/actions-pins.sh latest] は、固定した版が上流のいちばん新しい版であることと、その [code: action.yml] の [code: runs.using] が Node 24 以降か [code: composite] であることを確かめる。
+失敗したら、[code: sh scripts/ci/actions-pins.sh update] で書き換えて、プルリクエストを出す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0296-pin-every-github-action-by-commit-sha.md]（docs/adr の ADR 0296「GitHub Actions の action を、コミットの SHA と版の注釈で指定する」）]
+
 ```sh
 $ cabal build all
 $ cabal test all
