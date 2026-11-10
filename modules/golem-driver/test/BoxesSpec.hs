@@ -79,7 +79,17 @@ boxesTests =
             r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml], optFonts = fakeProvider}
             filter isError (brDiagnostics r) @?= []
             page <- TIO.readFile (tmp </> "build/html/a.xhtml")
-            assertBool (T.unpack page) ("<div class=\"box box-title\">\n<p class=\"ps-title\">題。</p>\n<p class=\"ps-column\">本文。</p>\n</div>\n<div class=\"box box-caution\">\n<p class=\"ps-caution\">注意。</p>\n</div>" `T.isInfixOf` page)
+            assertBool (T.unpack page) ("<div class=\"box box-title\">\n<p class=\"ps-title\">題。</p>\n<p class=\"ps-column\">本文。</p>\n</div>\n<div class=\"box box-caution\">\n<p class=\"ps-caution\">注意。</p>\n</div>" `T.isInfixOf` page),
+        testCase "B1, B5: PDF: a box of @style-def is drawn as one of style.toml, and not without the keys" $ do
+          let keys = [("background", "\"pale\"", "pale"), ("border", "\"blue\"", "blue"), ("border-width", "\"2pt\"", "2pt"), ("border-style", "\"dashed\"", "dashed"), ("border-sides", "[\"before\", \"start\"]", "before,start"), ("border-radius", "\"1zw\"", "1zw"), ("padding", "\"1zw\"", "1zw")]
+              base = horizontalStyle <> encode swatches
+              source = "前。\n\n@style column\n本文。\n\n後。\n"
+              draw style src = miniPdf fakeProvider True style src [] >>= pageContents
+          toml <- draw (base <> "[paragraph-styles.column]\n" <> encode (T.concat [k <> " = " <> v <> "\n" | (k, v, _) <- keys])) source
+          local <- draw base ("@style-def paragraph column" <> T.concat [" " <> k <> "=" <> v | (k, _, v) <- keys] <> "\n\n" <> source)
+          plain <- draw base ("@style-def paragraph column\n\n" <> source)
+          assertBool "the box changes the page" (toml /= plain)
+          local @?= toml
       ]
       <> hangingTests
   where
