@@ -623,14 +623,19 @@ balancedAdjust :: Adjust
 balancedAdjust = Adjust False Nothing
 
 {- | The adjustments of the inputs at a depth (docs/adr/0274, its test
-design): both values of line-adjustment; past 'linesPrDepth', as the
-nightly job checks, each with no limit, 0 and 2500. On pull requests, the
-limits made the inputs of the line breaking take more than the 10
-seconds of the area (docs/adr/0208, its section 4): those are checked
-there on the paragraphs made by hand and by R7.
+design). Past 'linesPrDepth', as the nightly job checks: both values of
+line-adjustment, each with no limit and the limits 0 and 2500. On pull
+requests, the default alone, pulling in first with no limit: with both
+values the inputs of the line breaking took more than the 10 seconds of
+the area on the x86-64 runner of CI (docs/adr/0208, its section 4). The
+inputs balanced and without a limit are broken and placed as before the
+ADR (R1), which the enumeration checked; the limits are checked on the
+paragraphs made by hand and by R7.
 -}
 adjustsAt :: Int -> [Adjust]
-adjustsAt depth = [Adjust p l | p <- [False, True], l <- if depth > linesPrDepth then [Nothing, Just 0, Just 2500] else [Nothing]]
+adjustsAt depth
+  | depth > linesPrDepth = [Adjust p l | p <- [False, True], l <- [Nothing, Just 0, Just 2500]]
+  | otherwise = [Adjust True Nothing]
 
 -- | The parameters with an adjustment.
 withAdjust :: Adjust -> Params -> Params
