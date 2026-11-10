@@ -569,6 +569,22 @@ regressionTests =
       sound p
       let bs = broken (rebroken oneBox p)
       assertBool ("L1 and L9 in " <> show bs) (L1 `elem` bs && L9 `elem` bs),
+    testCase "docs/adr ADR 0272 I4: a soft hyphen right after a dash is in the element after it, though the dash and the ellipsis after it make no break: [lang en] hyphenation\x2014\xAD\x2026 is hyphenated by the patterns" $ do
+      -- the nightly enumeration drew it (2026-11-10): the predicate read the
+      -- elements from the breaks after written hyphens, and the dash and
+      -- the ellipsis after it, inseparable, have none between them
+      let p = paragraphIn plain {sLang = Just "en"} False 4 ["hyphenation", "\x2014", "\xAD", "\x2026"]
+      assertBool "no break after the dash" (null [() | Penalty _ q ExplicitHyphen <- pItems p, q < infPenalty])
+      assertBool "the patterns hyphenate hyphenation\x2014" (not (null [() | Penalty _ _ (PatternHyphen _) <- pItems p]))
+      sound p,
+    testCase "docs/adr ADR 0272 I4: a hyphen of the patterns in the element of a soft hyphen before a dash is broken by I4" $ do
+      let p = paragraphIn plain {sLang = Just "en"} False 4 ["hyphenation", "\xAD", "\x2014", "\x2026"]
+          half w = Sp (unSp w `div` 2)
+          hyphenated = concatMap $ \case
+            Box w c | bcText c == "hyphenation\x2014" -> [Box (half w) c {bcText = "hyphen"}, Penalty 0 50 (PatternHyphen 0), Box (w - half w) c {bcText = "ation\x2014"}]
+            it -> [it]
+      sound p
+      assertBool "I4" (I4 `elem` broken (rebroken hyphenated p)),
     testCase "golem-layout ADR 0016: the output before it, a full stop apart from the ellipsis before it, is broken by L2" $ do
       -- the test design of docs/adr/0209 names L4 for it, but a full stop
       -- is not inseparable: it is the line-start prohibition that it breaks
@@ -633,7 +649,8 @@ values the inputs of the line breaking took more than the 10 seconds of
 the area on the x86-64 runner of CI (docs/adr/0208, its section 4). The
 inputs balanced and without a limit are broken and placed as before the
 ADR (R1), which the enumeration checked; the limits are checked on the
-paragraphs made by hand and by R7.
+paragraphs made by hand and by R7. This split is recorded in
+docs/adr/0282.
 -}
 adjustsAt :: Int -> [Text] -> [Adjust]
 adjustsAt depth run =

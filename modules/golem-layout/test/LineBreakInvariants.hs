@@ -688,6 +688,9 @@ boxes of Latin text joined by the hyphens of the patterns and the soft
 hyphens; a soft hyphen of the paragraph is in one where it is before one
 of its characters, or right after its last when nothing written follows
 (a soft hyphen right after a written hyphen is in the element after it).
+The elements are cut right after a written hyphen or dash that a box of
+the word follows, whether a break is there or a prohibition took it away
+(`—…`): the elements are those of the written hyphens (docs/adr/0179).
 -}
 i4NoHyphensWithShy :: Check
 i4NoHyphensWithShy _ p =
@@ -715,7 +718,7 @@ i4NoHyphensWithShy _ p =
         | bcExpandable c -> case cur of
             [] -> go [(a, b, bcText c)] False rest
             _ | joined cur -> go (cur <> [(a, b, bcText c)]) hy rest
-            _ -> close cur hy False <> go [(a, b, bcText c)] False rest
+            _ -> close cur hy (endsWritten cur) <> go [(a, b, bcText c)] False rest
       (Penalty _ _ (PatternHyphen _), _) : rest | not (null cur) -> go (cur <> [joint]) True rest
       (Penalty _ _ (SoftHyphen _), _) : rest | not (null cur) -> go (cur <> [joint]) hy rest
       (Penalty _ _ ExplicitHyphen, _) : rest -> close cur hy True <> go [] False rest
@@ -723,6 +726,10 @@ i4NoHyphensWithShy _ p =
       [] -> close cur hy False
     -- a marker that the next box is of the same element
     joint = (-1, -1, "")
+    -- whether the boxes end with a written hyphen or dash
+    endsWritten cur = case [t | (a, _, t) <- reverse cur, a >= 0] of
+      t : _ -> maybe False ((`elem` ("-\x2010\x2013\x2014" :: String)) . snd) (T.unsnoc (T.filter (not . isExtending) t))
+      [] -> False
     joined cur = case reverse cur of
       (-1, -1, _) : _ -> True
       _ -> False
@@ -901,7 +908,9 @@ numberUnitOf a b
 a number and its unit that golem-layout ADR 0049 does not keep together,
 no break when the penalty is 10000; otherwise one break, a penalty of the
 penalty, of no width and no hyphen, and no glue the first box comes right
-before.
+before. The pairs excluded are only those with both boxes of code or of a
+URL, and W2 is read without the places a prohibition or a pair of 0049
+keeps (docs/adr/0282).
 -}
 w1w2NumberUnit :: Check
 w1w2NumberUnit _ p =
