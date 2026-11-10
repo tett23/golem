@@ -1,6 +1,6 @@
 # ADR 0272: 任意ハイフン、分綴の例外、分離禁止
 
-ステータス: 採択→（インラインの境目のソフトハイフン）は [ADR 0285](0285-read-soft-hyphens-at-inline-boundaries-in-the-joined-word.md)
+ステータス: 採択→（インラインの境目のソフトハイフン）は [ADR 0285](0285-read-soft-hyphens-at-inline-boundaries-in-the-joined-word.md)、（I8）は [ADR 0305](0305-leave-soft-hyphens-in-or-next-to-a-no-break-range-out-of-i8.md)
 
 ## 文脈
 
