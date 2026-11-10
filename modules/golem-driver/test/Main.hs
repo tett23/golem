@@ -37,7 +37,6 @@ import NewPlanSpec (newPlanTests)
 import NotesSpec (notesTests)
 import NumberUnitBuildSpec (numberUnitBuildTests)
 import OpenTypeFeaturesSpec (openTypeFeaturesTests)
-import PunctuationWidthSpec (punctuationWidthTests)
 import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
@@ -48,6 +47,7 @@ import ParagraphSpec
 import PdfSpec
 import PlatesSpec (platesTests)
 import PopplerSpec (popplerTests)
+import PunctuationWidthSpec (punctuationWidthTests)
 import ReferencesSpec
 import ReuseSpec
 import ScriptsSpec (scriptsTests)
