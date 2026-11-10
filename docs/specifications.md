@@ -4001,13 +4001,16 @@ L9 の「前に 2 字、後に 3 字」は、語の言語の前と後に残す�
 部品は、和文の文字クラスごとの一字と `—` と、欧文の語の `a` と `table` と `hyphenation` と `lime-tree` と、語間の空白と `.` と `“` と `”` と、ソフトハイフン（U+00AD）である。
 `modules/golem-layout/test/LineBreakInvariantsSpec.hs` は、この段落を組み方の環境と 2 字から 5 字の行の幅のすべてで組み、部品の少ない順に、どの述語も違反を返さないことを確かめる。
 組み方の環境は、禁則（strict か loose）とぶら下げと突き出しと字幅の伸縮の有無と、区間の言語（なし、`en`、`fr`、`ja`）の組み合わせである。
-`fr` は [ADR 0276](adr/0276-hyphenate-words-by-the-patterns-of-their-language.md) で足し、すべての入力を調べるテストでは毎晩の `enum.yml` だけが調べる。
+`fr` は [ADR 0276](adr/0276-hyphenate-words-by-the-patterns-of-their-language.md) で足し、プルリクエストの CI と毎晩の `enum.yml` の両方が調べる（[ADR 0286](adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md)）。
 行の調整（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)）は、毎晩の `enum.yml` が `"pull-in-first"` と `"balanced"` のそれぞれを、伸びの上限なし、0、2500 で組み、プルリクエストの CI は既定の `"pull-in-first"` と上限なしだけで組む（[ADR 0282](adr/0282-record-what-the-implementations-of-adr-0274-and-0275-decided.md)）。
-`"balanced"` と上限なしの出力が [ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md) の前と同じこと（R1）は、毎晩の `enum.yml` だけが部品 2 個まで調べる。
+`"balanced"` と上限なしの出力が [ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md) の前と同じこと（R1）は、プルリクエストの CI と毎晩の `enum.yml` の両方が部品 2 個まで調べる。
 数と単位の罰点（[ADR 0275](adr/0275-keep-numbers-with-the-units-after-them.md)）は、どちらの段でも 10000 と 50 で組む。
 プルリクエストの CI は、すべての述語と既定の組版の設定を調べ、既定でない値を毎晩の `enum.yml` に移せる（[ADR 0281](adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md)）。
-2026-11-10 に [ADR 0281](adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md) の量り方（範囲のテストだけを `-p` で走らせた x86-64 の壁時計の時間）で測ると、`fr`、R1、`"balanced"` の上限なしは、どれか一つをプルリクエストの CI に戻すだけで、量ったランナーの一つ以上で、すべての範囲の和が予算の 30 秒を超えた。
-そのため、三つとも毎晩の `enum.yml` だけが調べる。
+範囲の時間は、テストの実行ファイルを範囲ごとに直接 `-p` で走らせた x86-64 の壁時計の時間で量り、四つのジョブの中央値を予算と比べる（[ADR 0286](adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md)）。
+2026-11-10 にこの量り方で、`fr`、R1、`"balanced"` の上限なし、行の調整の三つの順を、この順に一つずつ足してプルリクエストの CI に戻した時間を量った（`enum.yml` の実行 42761004416）。
+`fr` を戻すと行分割の範囲は 5.43 秒から 5.46 秒、和は 23.37 秒から 23.47 秒で、R1 も戻すと範囲は 8.53 秒、和は 26.54 秒から 26.55 秒で、予算に収まった。
+さらに `"balanced"` の上限なしを戻すと、行分割の範囲が 11.21 秒から 11.38 秒になり、10 秒を超えた。
+そのため、`fr` と R1 はプルリクエストの CI に戻し、`"balanced"` と伸びの上限は毎晩の `enum.yml` だけが調べる。
 字の送りはフォントによらず、欧文の字を 1/4 em、1/2 em、3/4 em の三通りに、語間の空白を 1/4 em に、和文の字を 1 em にした表を `ceAdvance` と `ceWordAdvance` に渡す。
 並びの字が関わらない組み方の環境は組む前に一つにまとめ（正規形）、まとめた入力が `breakParagraph` に渡す値を変えないことを、毎晩の `enum.yml` で部品 2 個まで、プルリクエストの CI で部品 1 個までテストする。
 縦組みも、同じ部品の数までで `breakParagraph` に渡す値を変えないことだけを確かめる。
@@ -4020,8 +4023,8 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 
 行の調整の順（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）は、同じ 24 の部品の並びの部品 2 個までを、追い込みを優先して組み、A1 から A6 で調べる（`modules/golem-layout/test/AdjustOrderSpec.hs`）。
 どの順でも分割は同じ比で置いたときと同じで（A1）、各行の最後の項目の終わりは 1 sp の差の内にあり（A2）、グルーの量は限度の内にあって、段の順と段の中の割合と最後の段の em の数を守る（A3 から A6）。
-プルリクエストの CI は既定の順だけを 4 字までの行で調べ、毎晩の `enum.yml` は既定の順とその逆順とすべての種類を一つの段にした順を 5 字までの行で調べる。
-三つの順は、[ADR 0281](adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md) の量り方で、プルリクエストに戻すと範囲は 10 秒に収まる（7.33 秒から 9.20 秒）が、すべての範囲の和が 30 秒を超える（30.67 秒から 39.46 秒）ので、毎晩の `enum.yml` だけが調べる。
+既定の順とその逆順とすべての種類を一つの段にした順を、プルリクエストの CI は 4 字までの行で、毎晩の `enum.yml` は 5 字までの行で調べる。
+三つの順は、[ADR 0286](adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md) の量り方で、`fr` と R1 の後にプルリクエストに戻すと、順の範囲は 6.53 秒から 6.59 秒、すべての範囲の和は 29.49 秒から 29.73 秒で、予算に収まった（四つのジョブの中央値、`enum.yml` の実行 42761004416）。
 グルーの種類と大きさを除いた `composeInlines` の項目が、この ADR の前と同じであること（A9）は、部品 2 個までの並びの項目のハッシュを `modules/golem-layout/test/golden/adjust-order-items.tsv` と比べて確かめる。
 
 語の途中のインラインの境目は、[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の W1 から W3 として、`modules/golem-layout/test/JoinedWordEnum.hs` で確かめる。
@@ -6083,144 +6086,258 @@ diagnostic の位置は、誤りの種類で決まる。
 
 ## CLI
 
+Golem の操作は、すべて `golem` という一つの実行ファイルのコマンドで行う。
+コマンドは次のとおりである。
+
 | コマンド | 内容 |
 |---|---|
-| `golem new <dir> [--language ja\|en] [--no-fonts]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する。`<dir>` は、ないパスか、プロジェクトのないディレクトリである（空でなくてよい。[ADR 0273](adr/0273-golem-new-in-a-directory-without-a-project.md)） |
-| `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
-| `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)） |
-| `golem preflight [--rules <ファイル>] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、ファイルに書かずに、入稿の前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)） |
-| `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose]` | lint を実行する |
+| `golem new <dir> [--language ja\|en] [--no-fonts]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する。`<dir>` は、ないパスか、プロジェクトのないディレクトリである（空でなくてよい。[ADR 0273](adr/0273-golem-new-in-a-directory-without-a-project.md)）。「[golem new](#golem-new)」の節を参照 |
+| `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
+| `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。「[golem check](#golem-check)」の節を参照 |
+| `golem preflight [--rules <ファイル>] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、ファイルに書かずに、入稿の前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。「[golem preflight](#golem-preflight)」の節を参照 |
+| `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose] [--format human\|json]` | lint を実行する |
 | `golem fmt [--check] [<file>...]` | 整形する。引数のファイルがないか通常のファイルでなければ G03002 とし、そのファイルを飛ばして残りを整形し、終了コードを 1 とする（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)） |
 | `golem lsp` | LSP サーバーを起動する |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得し、キャッシュする |
 | `golem plugin lock` | `plugins.lock` を更新する |
-| `golem inspect <file> [--as cst\|ast\|ir\|cbor]` | CST、AST、意味論 IR を人が読む木の形で、または意味論 IR の CBOR を表示する（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)） |
-| `golem explain [CODE...]` | diagnostic のコードの説明を表示する。コードを省くと、すべてのコードと題を一行ずつ表示する。複数のコードを渡すと、節をコマンドラインの順に、空行一つで区切って標準出力に書く。Golem のコードは大文字に直して同じになるものを、プラグインのコードは綴りが同じものを、最初のものだけ扱う。未知のコードと形の誤り（4 桁のコードと、プラグインのコードの形の誤りを含む）は、正しいコードの節を書いた後に、一つずつ一行で標準エラー出力に書き、使い方の表示は書かず、使い方の誤りとして終了コードを 2 とする（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)、[golem-cli ADR 0009](golem-cli/adr/0009-explain-several-codes.md)、[docs/adr/0151](adr/0151-explain-uses-plugin-code-rule.md)、[docs/adr/0164](adr/0164-explain-dedup-and-plugin-code-messages.md)） |
+| `golem inspect <file> [--as cst\|ast\|ir\|cbor]` | CST、AST、意味論 IR を人が読む木の形で、または意味論 IR の CBOR を表示する（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）。「[golem inspect](#golem-inspect)」の節を参照 |
+| `golem explain [CODE...]` | diagnostic のコードの説明を表示する（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。「[golem explain](#golem-explain)」の節を参照 |
 | `golem --version` | `golem` にバージョンを続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
 
-`golem new` での `id` の生成が、Golem が乱数を使う唯一の箇所である。
+### golem new
 
-`golem inspect` は、diagnostics をほかのコマンドと同じく人が読む形で標準エラー出力に書き、エラーがあれば終了コード 1 とする（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）。
-表示は、diagnostics があっても作れる限り標準出力に書く。
-引数のファイルがないか通常のファイルでなければ、G03002 とし、何も表示しない。
-`--as cst` と `--as ast` は、引数のファイルだけを構文解析する。
-`--as ir` と `--as cbor` は、作業中のディレクトリをルートとして `golem check --profile dev` と同じく評価し、引数のファイルの文書を出す。
-引数のファイルがプロジェクトの原稿なら、その S0 の結果の文書と、評価のすべての diagnostics を出す。
-原稿でないファイルは、プロジェクトの文脈（体裁、プラグイン、マニフェスト）で S0 まで評価し、プロジェクトの段階の diagnostics とそのファイルの diagnostics だけを出す。
-`manifest.toml` がなければ、LSP がマニフェストから到達しないファイルを扱うのと同じく、組み込みの体裁だけで S0 まで評価する。
-`--as ast` と `--as ir` は、導出した `Show` の文字列を、100 桁に収まらない節を字下げした木に組み直して出す（golem-syntax の `Golem.Syntax.ShowTree`）。
-文字列の日本語はそのまま書き、位置は `@開始..終わり` の形で書く。
-`--as cbor` は、文書の CBOR のバイト列をそのまま書く。
+`golem new` が作る雛形は、そのまま四つのターゲットをすべてビルドできる（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。
+雛形には次のファイルが入る。
 
-`golem` は計算機のすべてのプロセッサの上で動く（GHC のランタイムの `-N`）。
-PDF の段落の組版は複数の OS のスレッドで同時に進む（[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)）。
-PDF のページの描画と、内容のストリームの直列化と圧縮は、ページごとに GHC の spark で並列に進む（[ADR 0252](adr/0252-draw-and-serialise-the-pages-of-the-pdf-in-parallel.md)、[ADR 0256](adr/0256-record-what-the-implementations-of-adr-0251-and-0252-decided.md)）。
-spark は純粋な値の計算を別の capability に委ねるだけなので、結果は逐次に計算したものと同じである。
-出力のバイト列はプロセッサの数によらない（[docs/adr/0002](adr/0002-determinism.md)）。
-実行ファイルは `-threaded` と `-with-rtsopts=-N -A64m` でリンクし、`-rtsopts` は付けない。
-`-A64m` は capability ごとの割り当て領域（nursery）を 64 MB にして、世代 0 の GC の回数を減らす（[docs/adr/0249](adr/0249-link-golem-with-a-64-mb-allocation-area.md)）。
-`-rtsopts` がないので、利用者は GC の設定を変えられず、`+RTS -A4m -RTS` のような指定は「Most RTS options are disabled」で終了コード 1 になる。
-それでも、環境変数 `GHCRTS=-N<n>` かコマンド行の `+RTS -N<n> -RTS` で capability の数を変えられ、変えても出力のバイト列と diagnostics は変わらない（[docs/adr/0050](adr/0050-run-golem-on-every-processor.md)）。
+- `manifest.toml`
+- `style.toml`
+- 最初の章の原稿（`chapters/01.gm`）
+- 出力のディレクトリを除く `.gitignore`（`build/` の一行）
+- プリフライトの設定 `preflight.toml`（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）
 
-`--no-notices` は、そのコマンドの実行に限り、すべての notice を出さない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
-人が読む形式と JSON の形式の両方に適用され、エラーと警告は残す。
-出力のバイト列は変えない。
-`golem build`、`golem check`、`golem lint` だけが受け付け、`golem fmt` と `golem explain` に付けると使い方の誤りになる。
+マニフェストの `id` は、`golem new` が乱数から生成する。
+この生成が、Golem が乱数を使う唯一の箇所である。
 
-`--verbose`（短い形は `-v`）は、info の diagnostic も出す（[docs/adr/0104](adr/0104-info-severity.md)）。
-付けなければ、その実行の diagnostics の一覧から info を落とす。
-人が読む形式と JSON の形式の両方に適用され、`silence-info` に並べたコードの info は付けても出さない。
-変えるのは info を出すかどうかだけで、進み具合のログなどほかの出力は加えず、出力のバイト列も変えない。
-`--no-notices` とは互いに独立であり、両方を付けると notice を出さず、info を出す。
-`golem build`、`golem check`、`golem lint` だけが受け付け、`golem fmt`、`golem explain`、`golem inspect`、`golem preflight`、`golem new`、`golem plugin`、`golem lsp` に付けると使い方の誤りになる。
-この中で diagnostic を出す `golem inspect` と `golem preflight` は、info をつねに落とす。
-`-v` は `--version` の短い形ではなく、`golem -v` は使い方の誤りになる。
-
-`--marks` は PDF に付けるトンボの形を選ぶ（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
-値は `japanese`（日本式の二重のトンボ）、`western`（欧文の一重のトンボ）、`none`（トンボなし）で、既定は `none` である。
-`--marks` は PDF でだけ有効で、PDF を書かないビルドでは何も変えない。
-未知の値と値の欠けは使い方の誤りとし、終了コード 2 で終える。
-トンボは閲覧用と入稿用の PDF を同じ原稿から作り分けるための出力の設定なので、ファイルではなくオプションで選ぶ。
-トンボがあると、MediaBox は仕上がりの判型の外側に、トンボの始点の距離と 13mm を足した幅だけ広がり、ページの内容はその分だけ移して描く。
-トンボの線は太さ 0.25pt、長さ 10mm で、レジストレーションの色（Separation の `All`）で描く（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
-日本式のトンボの始点は塗り足しの線、欧文のトンボの始点は塗り足しの線と仕上がりから 3mm のうち遠いほうである。
-日本式のトンボは仕上がりの線と塗り足しの線の間隔で塗り足しを示すので、塗り足しが 0 ならエラー（G07002）とし、PDF を出力しない。
-G07002 は PDF をターゲットに含むときにだけ出し、位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
-`golem check` は四つのターゲットを検査するので、マニフェストのターゲットによらず G07002 を検査する（[golem-pdf ADR 0010](golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)）。
-同じく、`style.toml` だけで決まる版面の誤り（G07001）、段落スタイルの字下げの誤り（G07025）、本文のフォントの設定の欠け（G08007）も、`golem check`（四つのターゲットを検査するので、つねに PDF を含む）が報告する（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
-これらの位置は、`style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
-トンボを付けた PDF には、`style.toml` の `[hidden-folio]` に従って隠しノンブルが入る（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、「style.toml」の節を参照）。
-`--marks` が `japanese` か `western` のとき、PDF をターゲットに含むビルドと `golem check`（つねに PDF を含む）は、隠しノンブルが版面に重なる誤り（G07050）も検査する。
-`golem lint`、`golem fmt`、LSP は `--marks` を持たない。
-
-`golem new` の雛形は、そのまま四つのターゲットをすべてビルドできる（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。
-雛形には、`manifest.toml`、`style.toml`、最初の章の原稿（`chapters/01.gm`）、出力のディレクトリを除く `.gitignore`（`build/` の一行）のほかに、プリフライトの設定 `preflight.toml` が入る（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
-`preflight.toml` は `based-on = "print"` の一行と、`print` の主な値をコメントで書き写した例からなり、コメントの言語だけを雛形の言語に合わせる。
+`preflight.toml` は、`based-on = "print"` の一行と、`print` の主な値をコメントで書き写した例からなる。
+コメントの言語だけを雛形の言語に合わせる。
 例の後には、`page-count` の段落と、墨一色の本のための段落（`[cmy-plates]` の `severity = "error"` と `[image-color-space]` の `allowed = ["gray"]`）を、どちらもコメントで書く（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
-`--no-fonts` を付けても作り、フォントの取得に失敗したときはほかのファイルと同じく書かない。
-雛形のプロジェクトは、そのままでは `print` のプリフライトを通らない（出力インテントの欠けの G09014）。
-`--language` で日本語（既定）と英語を選び、言語に合わせて版面とフォントと塗り足しを決める。
-日本語は A6 判の縦組みで Noto Serif JP を、英語はマスマーケットのペーパーバック（4.25in × 6.875in、`mass-market`）の横組みで Source Serif 4 を使う。
-`style.toml` の `[page]` には、それぞれの印刷所の慣行に合わせて、日本語は `bleed = "3mm"`、英語は `bleed = "0.125in"` の塗り足しを書く（[golem-pdf ADR 0010](golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)）。
-そのため、雛形のプロジェクトは `--marks japanese` でもそのまま PDF を組める。
-フォントとそのライセンスの文書は、配布元のタグで固定したバージョンから取得し、Golem のソースに固定した SHA-256 で検査してから `fonts/` に置く。
+`preflight.toml` は、`--no-fonts` を付けても作る。
+フォントの取得に失敗したときは、ほかのファイルと同じく書かない。
+ただし、雛形のプロジェクトは、そのままでは `print` のプリフライトを通らない（出力インテントの欠けの G09014）。
+
+版面とフォントと塗り足しは、`--language` で選ぶ雛形の言語に合わせて決める。
+言語は日本語（既定）と英語である。
+
+| 言語 | 判型と組み方向 | フォント | `style.toml` の `[page]` の塗り足し |
+|---|---|---|---|
+| 日本語 | A6 判の縦組み | Noto Serif JP | `bleed = "3mm"` |
+| 英語 | マスマーケットのペーパーバック（4.25in × 6.875in、`mass-market`）の横組み | Source Serif 4 | `bleed = "0.125in"` |
+
+塗り足しの幅は、それぞれの言語の印刷所の慣行に合わせたものである（[golem-pdf ADR 0010](golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)）。
+塗り足しがあるので、雛形のプロジェクトは `--marks japanese` でもそのまま PDF を組める。
+
+フォントとそのライセンスの文書は、`golem new` がネットワークから取得する。
+取得するのは配布元のタグで固定したバージョンであり、Golem のソースに固定した SHA-256 で検査してから `fonts/` に置く。
 取得に失敗すると、プロジェクトのファイルを一つも書かない。
-ネットワークに接続するのは、この取得とプラグインの取得だけである。
+Golem がネットワークに接続するのは、この取得とプラグインの取得だけである。
+`--no-fonts` を付けると取得せず、置くべきファイルを表示する。
+フォントを置く前でも、HTML、EPUB、プレーンテキストはビルドできる（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
+PDF は、フォントを置くまで G08002 で止まる。
 
 `golem new` の引数は、ないパスか、ディレクトリでなければならない（[ADR 0273](adr/0273-golem-new-in-a-directory-without-a-project.md)）。
 ないパスは、途中のディレクトリも含めて作る。
 ディレクトリへのシンボリックリンクは辿る。
 それ以外（通常のファイル、ファイルへのシンボリックリンク、辿れないシンボリックリンク、途中の要素がディレクトリでないパス）は G03133 とする。
-ディレクトリは空でなくてよく、雛形のパスでないエントリ（`.git/`、`README.md`、`chapters/` の中の `.md` など）は見ずに残す。
-`manifest.toml` か `style.toml` にエントリ（種類を問わない）があれば、あるものそれぞれに G03131 を出し、ほかの衝突は報告しない。
-`chapters/01.gm`、`preflight.toml`、フォントとそのライセンスの文書のパスにエントリがあるか、途中の要素（`chapters`、`fonts`）がシンボリックリンクでないディレクトリでなければ、G03132 を出す。
-途中の要素が当たったときは、その要素のパスで一つだけ出す。
-`--no-fonts` のときは、`fonts` とその下を検査しない。
-G03132 は、すべての衝突をパスのバイト列の昇順に一度に出す。
+
+引数のディレクトリは空でなくてよい。
+雛形のパスでないエントリ（`.git/`、`README.md`、`chapters/` の中の `.md` など）は、見ずに残す。
+雛形のパスとの衝突は、次の二つのコードで報告する。
+
+- **G03131**：`manifest.toml` か `style.toml` にエントリ（種類を問わない）がある。あるものそれぞれに出し、このときはほかの衝突を報告しない。
+- **G03132**：`chapters/01.gm`、`preflight.toml`、フォントとそのライセンスの文書のパスにエントリがあるか、途中の要素（`chapters`、`fonts`）がシンボリックリンクでないディレクトリでない。途中の要素が当たったときは、その要素のパスで一つだけ出す。`--no-fonts` のときは、`fonts` とその下を検査しない。すべての衝突を、パスのバイト列の昇順に一度に出す。
+
 検査は、引数、プロジェクトの有無、雛形との衝突の順に進み、前の段にエラーがあれば後の段を調べない。
-検査はすべてフォントの取得より前に終え、エラーが一つでもあれば、取得せず、何も作らず、終了コード 1 で終える。
-`.gitignore` がすでにあれば、中身を読まずに残し、雛形の `.gitignore` を書かない。
-そのときは、プロジェクトを書き終えた後に notice の G03134 を出す。
-終了コードは 0 のままである。
-雛形の中身は、どこに作っても同じであり、`manifest.toml` の章の一覧は `["chapters/01.gm"]` のままとする。
-四つのコードは、パスの先頭（`<パス>:1:1`）を位置として、人が読む形で標準エラー出力に書き、`golem explain` の案内の行を付ける。
-`<パス>` は、引数のパスと雛形のパスをつないで正規化したもので、`golem new .` なら `manifest.toml` になる。
+検査はすべてフォントの取得より前に終える。
+エラーが一つでもあれば、取得せず、何も作らず、終了コード 1 で終える。
 検査と書き込みのあいだに、ほかのプロセスが引数のディレクトリを変えた場合は扱わない。
-`--no-fonts` を付けると取得せず、置くべきファイルを表示する。
-フォントを置く前でも、HTML、EPUB、プレーンテキストはビルドできる（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
-PDF は、フォントを置くまで G08002 で止まる。
+
+`.gitignore` だけは、すでにあっても衝突としない。
+`golem new` は既存の `.gitignore` を中身を読まずに残し、雛形の `.gitignore` を書かない。
+そのときは、プロジェクトを書き終えた後に notice の G03134 を出し、終了コードは 0 のままである。
+雛形の中身は、どこに作っても同じであり、`manifest.toml` の章の一覧は `["chapters/01.gm"]` のままとする。
+
+G03131 から G03134 の四つのコードは、パスの先頭（`<パス>:1:1`）を位置として、人が読む形で標準エラー出力に書き、`golem explain` の案内の行を付ける。
+`<パス>` は、引数のパスと雛形のパスをつないで正規化したもので、`golem new .` なら `manifest.toml` になる。
+
+### golem check
+
+`golem check` は、マニフェストのターゲットによらず、四つのターゲットを検査する。
+そのため、PDF だけに関わる誤りのうち `style.toml` だけで決まるものは、つねに `golem check` が報告する。
+該当するコードは次のとおりである。
+
+- 日本式のトンボの塗り足しの欠け（G07002。[golem-pdf ADR 0010](golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)、「[トンボ](#トンボ)」の節を参照）
+- 版面の誤り（G07001。[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）
+- 段落スタイルの字下げの誤り（G07025。同 ADR）
+- 本文のフォントの設定の欠け（G08007。同 ADR）
+
+これらの位置は、`style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
+隠しノンブルが版面に重なる誤り（G07050）も、同じ理由で `golem check` が検査する（「[トンボ](#トンボ)」の節を参照）。
+
+### トンボ
+
+`--marks` は、PDF に付けるトンボの形を選ぶ（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
+トンボは、閲覧用と入稿用の PDF を同じ原稿から作り分けるための出力の設定である。
+そのため、ファイルではなくオプションで選ぶ。
+値は次の三つで、既定は `none` である。
+
+- `japanese`：日本式の二重のトンボ
+- `western`：欧文の一重のトンボ
+- `none`：トンボなし
+
+`--marks` は PDF でだけ有効で、PDF を書かないビルドでは何も変えない。
+未知の値と値の欠けは使い方の誤りとし、終了コード 2 で終える。
+`golem lint`、`golem fmt`、LSP は `--marks` を持たない。
+
+トンボを付けると、PDF の MediaBox が広がる。
+広がる幅は、仕上がりの判型の外側に、トンボの始点の距離と 13mm を足したものであり、ページの内容はその分だけ移して描く。
+トンボの始点は、日本式では塗り足しの線、欧文では塗り足しの線と仕上がりから 3mm のうち遠いほうである。
+トンボの線は太さ 0.25pt、長さ 10mm で、レジストレーションの色（Separation の `All`）で描く（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
+
+日本式のトンボは、仕上がりの線と塗り足しの線の間隔で塗り足しを示す。
+そのため、`--marks japanese` で塗り足しが 0 ならエラー（G07002）とし、PDF を出力しない。
+G07002 は PDF をターゲットに含むときにだけ出し、位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
+
+トンボを付けた PDF には、`style.toml` の `[hidden-folio]` に従って隠しノンブルが入る（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、「style.toml」の節を参照）。
+`--marks` が `japanese` か `western` のとき、PDF をターゲットに含むビルドと `golem check`（つねに PDF を含む）は、隠しノンブルが版面に重なる誤り（G07050）も検査する。
+
+### diagnostics の量を変えるオプション
+
+`golem build`、`golem check`、`golem lint` は、出す diagnostics の量を変える二つのオプションを受け付ける。
+どちらも、人が読む形式と JSON の形式の両方に適用し、出力のバイト列は変えない。
+
+`--no-notices` は、そのコマンドの実行に限り、すべての notice を出さない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+エラーと警告は残す。
+`golem fmt` と `golem explain` に付けると、使い方の誤りになる。
+
+`--verbose`（短い形は `-v`）は、info の diagnostic も出す（[docs/adr/0104](adr/0104-info-severity.md)）。
+付けなければ、その実行の diagnostics の一覧から info を落とす。
+付けても、`silence-info` に並べたコードの info は出さない。
+変えるのは info を出すかどうかだけで、進み具合のログなどほかの出力は加えない。
+`golem fmt`、`golem explain`、`golem inspect`、`golem preflight`、`golem new`、`golem plugin`、`golem lsp` に付けると、使い方の誤りになる。
+この中で diagnostic を出す `golem inspect` と `golem preflight` は、info をつねに落とす。
+`-v` は `--version` の短い形ではなく、`golem -v` は使い方の誤りになる。
+
+二つのオプションは、互いに独立である。
+両方を付けると、notice を出さず、info を出す。
+
+### golem inspect
+
+`golem inspect` は、引数のファイルを四つの形のどれかで標準出力に書く（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）。
+形は `--as` で選ぶ。
+
+- `--as cst` と `--as ast`：引数のファイルだけを構文解析する。
+- `--as ir` と `--as cbor`：作業中のディレクトリをルートとして `golem check --profile dev` と同じく評価し、引数のファイルの文書を出す。
+
+`--as ir` と `--as cbor` の評価の範囲は、引数のファイルがプロジェクトの原稿かどうかで変わる。
+原稿なら、その S0 の結果の文書と、評価のすべての diagnostics を出す。
+原稿でないファイルは、プロジェクトの文脈（体裁、プラグイン、マニフェスト）で S0 まで評価し、プロジェクトの段階の diagnostics とそのファイルの diagnostics だけを出す。
+`manifest.toml` がなければ、組み込みの体裁だけで S0 まで評価する。
+これは、LSP がマニフェストから到達しないファイルを扱うのと同じである。
+
+表示の書き方は形ごとに決まっている。
+`--as ast` と `--as ir` は、導出した `Show` の文字列を、100 桁に収まらない節を字下げした木に組み直して出す（golem-syntax の `Golem.Syntax.ShowTree`）。
+文字列の日本語はそのまま書き、位置は `@開始..終わり` の形で書く。
+`--as cbor` は、文書の CBOR のバイト列をそのまま書く。
+
+diagnostics は、ほかのコマンドと同じく人が読む形で標準エラー出力に書き、エラーがあれば終了コード 1 とする。
+表示は、diagnostics があっても、作れる限り標準出力に書く。
+引数のファイルがないか通常のファイルでなければ、G03002 とし、何も表示しない。
+
+### golem explain
+
+`golem explain` は、diagnostic のコードの説明を表示する（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)、[golem-cli ADR 0009](golem-cli/adr/0009-explain-several-codes.md)、[docs/adr/0151](adr/0151-explain-uses-plugin-code-rule.md)、[docs/adr/0164](adr/0164-explain-dedup-and-plugin-code-messages.md)）。
+コードを省くと、すべてのコードと題を一行ずつ表示する。
+複数のコードを渡すと、節をコマンドラインの順に、空行一つで区切って標準出力に書く。
+
+同じコードを繰り返し渡したときは、最初のものだけを扱う。
+同じとみなすのは、Golem のコードなら大文字に直して同じになるもの、プラグインのコードなら綴りが同じものである。
+
+未知のコードと形の誤りは、使い方の誤りとして扱う。
+形の誤りには、4 桁のコードと、プラグインのコードの形の誤りを含む。
+これらは、正しいコードの節を書いた後に、一つずつ一行で標準エラー出力に書く。
+使い方の表示は書かず、終了コードを 2 とする。
+
+### 並列の実行
+
+`golem` は、計算機のすべてのプロセッサの上で動く（GHC のランタイムの `-N`）。
+並列に進むのは、PDF の次の処理である。
+
+- 段落の組版は、複数の OS のスレッドで同時に進む（[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)）。
+- ページの描画と、内容のストリームの直列化と圧縮は、ページごとに GHC の spark で並列に進む（[ADR 0252](adr/0252-draw-and-serialise-the-pages-of-the-pdf-in-parallel.md)、[ADR 0256](adr/0256-record-what-the-implementations-of-adr-0251-and-0252-decided.md)）。
+
+並列にしても、出力のバイト列はプロセッサの数によらない（[docs/adr/0002](adr/0002-determinism.md)）。
+spark は純粋な値の計算を別の capability に委ねるだけなので、結果は逐次に計算したものと同じである。
+
+実行ファイルは、`-threaded` と `-with-rtsopts=-N -A64m` でリンクし、`-rtsopts` は付けない。
+`-A64m` は、capability ごとの割り当て領域（nursery）を 64 MB にして、世代 0 の GC の回数を減らす（[docs/adr/0249](adr/0249-link-golem-with-a-64-mb-allocation-area.md)）。
+`-rtsopts` がないので、利用者は GC の設定を変えられない。
+`+RTS -A4m -RTS` のような指定は、「Most RTS options are disabled」で終了コード 1 になる。
+
+ただし、capability の数だけは変えられる。
+環境変数 `GHCRTS=-N<n>` か、コマンド行の `+RTS -N<n> -RTS` で指定する。
+変えても、出力のバイト列と diagnostics は変わらない（[docs/adr/0050](adr/0050-run-golem-on-every-processor.md)）。
 
 ### golem preflight
 
 `golem preflight` は、印刷所に入稿する前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 `golem build --target pdf` と同じ手順で PDF を組み、ファイルに書かずに、組んだ結果と PDF を検査する。
-プロファイルは常に prod で、`--profile` を付けると使い方の誤りになる。
-`manifest.toml` の `[targets.*]` の有無は見ず、常に PDF を組む。
-`--marks` は `golem build` と同じ意味で、入稿する PDF と同じトンボで検査するためにある。
-構文から出力までの段階の誤りは `golem build` と同じコードで出し、そのどれかのエラーで PDF を作れなければ、プリフライトの検査は行わない。
-LSP、`golem check`、`golem build` はプリフライトの検査をしない。
-フォントにない字は、プリフライトの検査の G09002 のほかに、ビルドの G08100 としても出る（[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）。
-プロファイルが prod なので G08100 はエラーであり、プリフライトの設定の `glyph-missing` は G08100 に当たらない。
-G08100 は PDF を組んだ後に出るので、プリフライトの検査は走り、二つは同じ位置に同じメッセージと事実で並ぶ。
-`glyph-missing` を `warning` か `off` にしても、フォントにない字があれば終了コードは 1 である。
-行長からはみ出す行も、プリフライトの検査の G09013 のほかに、ビルドの G07105 の警告として出る（[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。
-二つは同じ行について、同じ位置に同じメッセージと事実で並び、G09013 の重大度だけが `overfull-lines` の `severity` による。
-ビルドは原稿と設定の誤りで止まり、プリフライトは印刷の条件で止まる、という分け方である。
+組み方には、次の決まりがある。
+
+- プロファイルは常に prod で、`--profile` を付けると使い方の誤りになる。
+- `manifest.toml` の `[targets.*]` の有無は見ず、常に PDF を組む。
+- `--marks` は `golem build` と同じ意味で、入稿する PDF と同じトンボで検査するためにある。
+
+構文から出力までの段階の誤りは、`golem build` と同じコードで出す。
+そのどれかのエラーで PDF を作れなければ、プリフライトの検査は行わない。
+逆に、LSP、`golem check`、`golem build` はプリフライトの検査をしない。
+
+ビルドとプリフライトの役割は、止める理由で分かれている。
+ビルドは原稿と設定の誤りで止まり、プリフライトは印刷の条件で止まる。
+それでも、次の二つの問題は、両方の側から同じ位置に同じメッセージと事実で出る。
+
+- フォントにない字は、プリフライトの検査の G09002 のほかに、ビルドの G08100 としても出る（[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）。プロファイルが prod なので、G08100 はエラーである。G08100 は PDF を組んだ後に出るので、プリフライトの検査は走る。プリフライトの設定の `glyph-missing` は G08100 に当たらないので、`glyph-missing` を `warning` か `off` にしても、フォントにない字があれば終了コードは 1 である。
+- 行長からはみ出す行は、プリフライトの検査の G09013 のほかに、ビルドの G07105 の警告としても出る（[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。G09013 の重大度だけが、`overfull-lines` の `severity` による。
+
+#### プリフライトの設定
 
 InDesign のプリフライトプロファイルにあたるものを、プリフライトの設定と呼ぶ。
-プリフライトの設定は TOML のファイルに書き、`--rules` で指す（作業ディレクトリからの相対パスか絶対パスで、プロジェクトの外でもよい）。
+プリフライトの設定は TOML のファイルに書き、`--rules` で指す。
+パスは作業ディレクトリからの相対パスか絶対パスで、プロジェクトの外でもよい。
 `--rules` を付けなければプロジェクトのルートの `preflight.toml` を読み、それもなければ組み込みの `print` を使う。
-最上位のキーは `based-on`（`basic`、`print`、`none` のどれか。省けば `print`）と `name`（要約に出す名前）と、検査の名前の表である。
-各検査の表は `severity`（`error`、`warning`、`off`）としきい値のキーを持ち、書かなかったキーは `based-on` の設定から引き継ぐ。
+
+設定のファイルの最上位のキーは、次の三種類である。
+
+- `based-on`：`basic`、`print`、`none` のどれか。省けば `print`
+- `name`：要約に出す名前
+- 検査の名前の表
+
+各検査の表は、`severity`（`error`、`warning`、`off`）としきい値のキーを持つ。
+書かなかったキーは、`based-on` の設定から引き継ぐ。
 notice は設定の値として選べない。
 長さは `style.toml` と同じ書き方で、`zw` は使えない。
-設定のファイルの誤りはすべて G09001 で、G09001 があれば PDF を組まずに終える。
-未知のキーは、`style.toml` と同じく、キーと列挙の値をデータとして書いたスキーマで決め、値の誤りと未知のキーが同じファイルにあれば両方を報告する（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
 
-組み込みの設定は次のとおりである。
-`basic` は InDesign の `[基本]` にあたり、ビルドを止めない項目だけを検査する。
-`print` のしきい値は、日本の印刷所の入稿の案内でよく見る値から選んだもので、特定の規格の値ではない。
-`none` はすべての検査を `off` にした設定で、一から設定を書くときの基にする。
+設定のファイルの誤りは、すべて G09001 である。
+G09001 があれば、PDF を組まずに終える。
+未知のキーは、`style.toml` と同じく、キーと列挙の値をデータとして書いたスキーマで決める。
+値の誤りと未知のキーが同じファイルにあれば、両方を報告する（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
+
+組み込みの設定は、次の三つである。
+
+- `basic`：InDesign の `[基本]` にあたり、ビルドを止めない項目だけを検査する。
+- `print`：しきい値は、日本の印刷所の入稿の案内でよく見る値から選んだもので、特定の規格の値ではない。
+- `none`：すべての検査を `off` にした設定で、一から設定を書くときの基にする。
+
+`basic` と `print` の検査と重大度は、次の表のとおりである。
 
 | 検査 | コード | `basic` | `print` |
 | --- | --- | --- | --- |
@@ -6244,61 +6361,106 @@ notice は設定の値として選べない。
 | `spot-colors`（特色の色空間） | G09020 | off | error |
 | `cmy-plates`（C、M、Y の版に出る色） | G09021 | off | off |
 
-PDF に置けない図版は、プリフライトの検査ではなく G08010 のエラーで、PDF を作れないのでプリフライトは何も検査しない。
-`image-unplaceable` の検査（G09005）は廃止し、`preflight.toml` に書くと知らないキー（G09001）になる（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
-PDF の図版も、ページの図版の一覧に載せて検査する。
-G09006 と G09007 は PNG と JPEG の図版だけを検査し、PDF の図版の中の画像の解像度は検査しない。
-G09008 は、PDF の図版が使う色空間のうち許さないものをすべて並べて一つの diagnostic にする。
-sRGB に置き換えた DeviceRGB は `rgb` とし、ICCBased は成分の数で `gray`、`rgb`、`cmyk` とする。
-G09009 は、PDF の図版の CMYK の ICCBased のプロファイルが出力インテントと違えば出す。
-G09011 は、PDF の図版もその矩形で検査する。
-SVG の図版は、G09008 では `rgb` とし、G09006、G09007、G09009 では検査せず、G09011 ではその矩形で検査する（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
+#### 図版の検査
+
+PDF に置けない図版は、プリフライトの検査では扱わない。
+それは G08010 のエラーであり、PDF を作れないので、プリフライトは何も検査しない。
+そのため、`image-unplaceable` の検査（G09005）は廃止し、`preflight.toml` に書くと知らないキー（G09001）になる（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
+
+図版の検査は、ページの図版の一覧に対して行う。
+一覧には、PNG と JPEG のほか、PDF と SVG の図版も載る。
+図版の形式ごとの扱いは、次の表のとおりである（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
+
+| 検査 | PDF の図版 | SVG の図版 |
+| --- | --- | --- |
+| G09006、G09007 | 検査しない（PNG と JPEG の図版だけを検査し、PDF の図版の中の画像の解像度は検査しない） | 検査しない |
+| G09008 | 使う色空間のうち許さないものをすべて並べて一つの diagnostic にする。sRGB に置き換えた DeviceRGB は `rgb` とし、ICCBased は成分の数で `gray`、`rgb`、`cmyk` とする | `rgb` とする |
+| G09009 | CMYK の ICCBased のプロファイルが出力インテントと違えば出す | 検査しない |
+| G09011 | その矩形で検査する | その矩形で検査する |
+
 `rotate=true` で回した図版とキャプションの行は、回した後のページの上の矩形で検査する（[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）。
 回した図版の G09006 と G09007 の実効の解像度は、画素の幅を矩形の高さで、画素の高さを矩形の幅で割った値の小さいほうとする。
 
-同じ原因の diagnostics は検査ごとの単位で一つにまとめ、最初のページの位置に出す。
-ページは PDF の何ページ目か（1 から数える）で示し、メッセージには最初の十ページまでを書き、それより多ければ `ほか <n> ページ` と添える。
+#### diagnostics の書き方
+
+同じ原因の diagnostics は、検査ごとの単位で一つにまとめ、最初のページの位置に出す。
+ページは、PDF の何ページ目か（1 から数える）で示す。
+メッセージには最初の十ページまでを書き、それより多ければ `ほか <n> ページ` と添える。
+
 長さは mm で、小数点以下 2 桁に、等距離なら偶数の側へ丸めて書く（`0.06mm`。[docs/adr/0103](adr/0103-single-place-for-unit-conversions.md)）。
-G09013 のはみ出しの量だけは、G07105 と同じく、小数点以下 2 桁に切り上げて書く（`0.00mm` とは書かない。[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。
-検査は golem-preflight の純粋な関数（`Golem.Preflight.check`）が、golem-driver の PDF の書き手が作る組んだ結果の写し（`Golem.Preflight.View`）に対して行う。
+ただし、G09013 のはみ出しの量だけは、G07105 と同じく、小数点以下 2 桁に切り上げて書く（`0.00mm` とは書かない。[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。
+
+#### 組んだ結果の写し
+
+検査は、golem-preflight の純粋な関数（`Golem.Preflight.check`）が行う。
+検査の対象は、golem-driver の PDF の書き手が作る、組んだ結果の写し（`Golem.Preflight.View`）である。
 写しは遅延して作る。
 `golem build` は G08100 のために写しの字の一覧だけを評価し、図版、フォントの形式、色など、ほかの部分は `golem preflight` のときだけ作る。
-写しの字（`GlyphView`）は、文字の大きさを決めた `style.toml` の定義（`gvSizeSource`）、字の種類（`gvPart`。親文字、ルビ、圏点）、原稿の位置（`gvSpan`）と、字を描いた行のブロックの位置（`gvLineSpan`）を持つ（[golem-cli ADR 0008](golem-cli/adr/0008-g0904-by-size-source-and-colour.md)）。
-大きさを決めた定義は、`size` を書いた定義であり、`based-on` で引き継いだ大きさは引き継ぎ元の定義とする。
-原稿の位置は、その字を含む原稿のテキストの位置で、テキストを持たない字（見出しの番号、目次の項目、リストの印、柱、ノンブル）はそれを生んだ要素の位置である。
+
+写しの字（`GlyphView`）は、次の四つを持つ（[golem-cli ADR 0008](golem-cli/adr/0008-g0904-by-size-source-and-colour.md)）。
+
+- `gvSizeSource`：文字の大きさを決めた `style.toml` の定義。`size` を書いた定義であり、`based-on` で引き継いだ大きさは引き継ぎ元の定義とする。
+- `gvPart`：字の種類（親文字、ルビ、圏点）
+- `gvSpan`：原稿の位置。その字を含む原稿のテキストの位置で、テキストを持たない字（見出しの番号、目次の項目、リストの印、柱、ノンブル）はそれを生んだ要素の位置である。
+- `gvLineSpan`：字を描いた行のブロックの位置
+
 定義と位置は、行分割の箱（`BoxContent` の `bcSource`）に載せて、見た目（`Look`）とは別に字を描く段階まで運ぶ。
 行分割、字形の選択、描画はこれを読まないので、PDF は変わらない。
 G09004 はこの定義、字の種類、色でまとめ、G09002 は行のブロックの位置に出す。
-G09014 の検査は、golem-pdf の `Golem.Pdf.X4.verify` が書く前の PDF のオブジェクトに対して行う、Golem が生成しうる要素に限った自前の検査であり、PDF/X-4 の適合の判定ではない（[golem-pdf ADR 0003](golem-pdf/adr/0003-pdf-x-4-validator.md)）。
-要件「JavaScript と外部への参照」の詳細は、禁止の名前（`JavaScript`、`JS`、`URI`、`Launch`、`GoToR`）を、トレーラー、オブジェクトの順に走査して見つけた順に一度ずつ「、」でつなぎ、`<名前>、<名前> があります` とする（[golem-pdf ADR 0012](golem-pdf/adr/0012-x4-forbidden-names-in-found-order.md)）。
+
+#### PDF/X-4 の要件とフォントの埋め込み
+
+G09014 の検査は、PDF/X-4 の適合の判定ではない（[golem-pdf ADR 0003](golem-pdf/adr/0003-pdf-x-4-validator.md)）。
+golem-pdf の `Golem.Pdf.X4.verify` が、書く前の PDF のオブジェクトに対して行う、Golem が生成しうる要素に限った自前の検査である。
+そのため、入稿の前には、商用のプリフライトでも確かめる。
+
+要件「JavaScript と外部への参照」の詳細は、見つけた禁止の名前を並べた `<名前>、<名前> があります` の形である（[golem-pdf ADR 0012](golem-pdf/adr/0012-x4-forbidden-names-in-found-order.md)）。
+禁止の名前は `JavaScript`、`JS`、`URI`、`Launch`、`GoToR` で、トレーラー、オブジェクトの順に走査して見つけた順に、一度ずつ「、」でつなぐ。
 ただし、ページの `/Annots` が指すリンクの注釈（`/Subtype /Link`）の `/A` が `/S /URI` のアクションであれば、その `/S` と `/URI` は数えない（[docs/adr/0182](adr/0182-external-links.md)）。
 ほかの位置の `URI`（カタログの `/URI` など）と、注釈の中のほかの禁止の名前は、今のとおり数える。
+
 `Golem.Pdf.X4.verify` はフォントの埋め込みも要件として返すが、G09014 はそれを出さず、G09019 が受け持つ（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
-一つの原因に一つのコードを出すためで、`pdf-x` を `error`、`font-embedding` を `off` にした設定では、埋め込んでいないフォントは報告されない。
-入稿の前には、商用のプリフライトでも確かめる。
+一つの原因に一つのコードを出すためである。
+そのため、`pdf-x` を `error`、`font-embedding` を `off` にした設定では、埋め込んでいないフォントは報告されない。
+
+#### フォント、特色、C、M、Y の版の検査
 
 G09019 から G09021 は、写しの三つの欄を読む（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
 三つとも、`vwX4` と同じく書く前の PDF のオブジェクト（`documentObjects`）から遅延して作るので、`golem build` は計算しない。
-`vwUnembeddedFonts` は golem-pdf の `unembeddedFonts` の結果で、`FontFile`、`FontFile2`、`FontFile3` のどれも持たないフォントの記述子の `FontName` を、オブジェクトの順に並べる。
-G09019 は、出力インテントの有無によらず、その名前ごとに一つ出す。
-`vwSpotColorants` は `spotColorants` の結果で、すべてのオブジェクトの `Separation` と `DeviceN` の色材の名前のうち、`All`、`None`、`Cyan`、`Magenta`、`Yellow`、`Black` でないものを、見つけた順に一度ずつ並べる。
-使われているかは問わない。
-G09020 は、その名前ごとに一つ出す。
-`vwPaints` は `paintsOf` の結果で、ページの内容のストリームの塗りと線（`f`、`f*`、`B`、`B*`、`b`、`b*`、`S`、`s`、`Tj`、`TJ`、`'`、`"`、`sh`）を、そのときの色空間と色の成分（ストリームに書かれた文字列のまま）とともに、描く順に並べる。
-ストリームは Flate で展開し、`Golem.Pdf.Import` の字句の読み方で演算子を読む。
-`q` と `Q` は色と描き方を保存して戻し、`cs` と `CS` の後の色はその色空間の初期の色とする。
-`Do` で呼んだ Form XObject の中は、呼んだ側の色を引き継いで読み、`Do` の後は呼んだ側の色に戻す。
-塗りと線の両方を描く演算子とテキストの描き方は二つの塗りとし、描かないテキストの描き方（`3`、`7`）と画像は塗りとしない。
-`sh` はシェーディングの辞書の色空間で塗る。
+
+| 欄 | 作る関数 | 中身 | 検査 |
+| --- | --- | --- | --- |
+| `vwUnembeddedFonts` | golem-pdf の `unembeddedFonts` | `FontFile`、`FontFile2`、`FontFile3` のどれも持たないフォントの記述子の `FontName` を、オブジェクトの順に並べる | G09019 は、出力インテントの有無によらず、その名前ごとに一つ出す |
+| `vwSpotColorants` | `spotColorants` | すべてのオブジェクトの `Separation` と `DeviceN` の色材の名前のうち、`All`、`None`、`Cyan`、`Magenta`、`Yellow`、`Black` でないものを、見つけた順に一度ずつ並べる。使われているかは問わない | G09020 は、その名前ごとに一つ出す |
+| `vwPaints` | `paintsOf` | ページの内容のストリームの塗りと線を、そのときの色空間と色の成分（ストリームに書かれた文字列のまま）とともに、描く順に並べる | G09021 |
+
+`vwPaints` が数える塗りと線は、演算子 `f`、`f*`、`B`、`B*`、`b`、`b*`、`S`、`s`、`Tj`、`TJ`、`'`、`"`、`sh` による。
+ストリームの読み方は次のとおりである。
+
+- ストリームは Flate で展開し、`Golem.Pdf.Import` の字句の読み方で演算子を読む。
+- `q` と `Q` は色と描き方を保存して戻し、`cs` と `CS` の後の色はその色空間の初期の色とする。
+- `Do` で呼んだ Form XObject の中は、呼んだ側の色を引き継いで読み、`Do` の後は呼んだ側の色に戻す。
+- 塗りと線の両方を描く演算子とテキストの描き方は二つの塗りとし、描かないテキストの描き方（`3`、`7`）と画像は塗りとしない。
+- `sh` はシェーディングの辞書の色空間で塗る。
+
 G09021 は、ページの内容のストリームの塗りのうち、C、M、Y の版に出る色を、色空間と成分の組ごとに一つ、最初に現れた順に出す。
-C、M、Y の版に出る色は、初めの三つの成分のどれかが 0 でない `DeviceCMYK` と 4 成分の `ICCBased` と、成分によらず、`DeviceGray`、1 成分の `ICCBased`、`Separation All` を除くほかの色空間の色である。
+C、M、Y の版に出る色は、次のとおりである。
+
+- 初めの三つの成分のどれかが 0 でない `DeviceCMYK` と 4 成分の `ICCBased` の色
+- `DeviceGray`、1 成分の `ICCBased`、`Separation All` を除くほかの色空間の色（成分によらない）
+
 Form XObject の中の色（PDF と SVG の図版）と画像は G09008 が受け持つので、G09021 は数えない。
+
 今の Golem の出力では、G09019 と G09020 は出ない。
 Golem はプロセスカラーだけを書き、取り込む PDF の図版の特色と埋め込まないフォントを G08010 で拒むからである。
 
-終了コードはほかのコマンドと同じく、エラーの diagnostic がなければ 0、あれば 1、使い方の誤りは 2 である。
+#### 終了コードと要約
+
+終了コードは、ほかのコマンドと同じく、エラーの diagnostic がなければ 0、あれば 1、使い方の誤りは 2 である。
 警告だけなら 0 で、警告でも止めたいときは設定で重大度を `error` にする。
+
 人が読む形式では、PDF を作れたときに、diagnostics の後に要約の一行を標準エラー出力に加える。
+`--format json` では要約の行を出さない。
 
 ```
 プリフライト（設定: preflight.toml、基にした設定: print）: エラー 1、警告 3。PDF/X-4 の適合の判定ではないので、入稿の前に商用のプリフライトでも確かめます。検査した PDF の SHA-256: 3f2a…（64 桁）
@@ -6306,16 +6468,18 @@ Golem はプロセスカラーだけを書き、取り込む PDF の図版の特
 
 設定の名前は、`name` があればそれ、なければファイル名、ファイルがなければ `組み込みの print` である。
 SHA-256 は検査した PDF のバイト列のもので、`golem build --target pdf --profile prod` に同じ `--marks` を付けて作った PDF と一致する。
-プロファイルは PDF のインスタンス ID の入力に入るので、`--profile prod` を付けずに作った PDF とは一致しない。
-`--format json` では要約の行を出さない。
+`--profile prod` を付けずに作った PDF とは一致しない。
+プロファイルが PDF のインスタンス ID の入力に入るからである。
 
 ### diagnostics と終了コード
 
 diagnostics は人が読む形で出力し、`--format json` を指定するとプログラムが読む形で出力する。
+`--format` を受け付けるのは、`golem build`、`golem check`、`golem lint`、`golem preflight` である。
 終了コードは、成功が 0、diagnostic によるエラーが 1、コマンドの使い方の誤りが 2 である。
+
 使い方の誤り（未知のオプション、未知のコマンド、列挙にない値、値の欠け）とヘルプは、日本語で表示する（[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。
-`--version` は `golem` 自身のオプションであり、`golem build --version` のようにコマンドに付けると使い方の誤りになる。
 コマンドに未知のオプションを付けたときは、そのコマンドの使い方を表示する。
+`--version` は `golem` 自身のオプションであり、`golem build --version` のようにコマンドに付けると使い方の誤りになる。
 
 ## 配布
 
