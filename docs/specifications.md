@@ -7947,6 +7947,7 @@ diagnostics は、ほかのコマンドと同じく人が読む形で標準エ�
 並列に進むのは、PDF の次の処理である。
 
 - 段落の組版は、複数の OS のスレッドで同時に進む（[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)）。
+  段落と表は、それぞれのスレッドの中で行まで評価してから返す。表は文字列にせずに評価する（[ADR 0299](adr/0299-force-a-composed-table-without-turning-it-into-a-string.md)）。
 - ページの描画と、内容のストリームの直列化と圧縮は、ページごとに GHC の spark で並列に進む（[ADR 0252](adr/0252-draw-and-serialise-the-pages-of-the-pdf-in-parallel.md)、[ADR 0256](adr/0256-record-what-the-implementations-of-adr-0251-and-0252-decided.md)）。
 
 並列にしても、出力のバイト列はプロセッサの数によらない（[docs/adr/0002](adr/0002-determinism.md)）。
