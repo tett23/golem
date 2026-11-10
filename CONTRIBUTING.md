@@ -417,6 +417,14 @@ CI の `textlint` ジョブ（`docs.yml`）も同じスクリプトを走らせ�
 
 Node は最新の LTS を使う。
 アクションは、Node 24 以降で動く最新のメジャーバージョンを使う。
+アクションは、コミットの SHA と版のタグの注釈で指定する（`- uses: actions/checkout@<40 桁の SHA> # v7.0.1` の形）。
+注釈のタグは、そのコミットを指すタグのうち、いちばん細かいものとする。
+プルリクエストの CI（`scripts-linux` ジョブ）は、`sh scripts/ci/actions-pins.sh check` でこの形を確かめる。
+ワークフローを足すときも、同じ形で書く。
+`.github/workflows/advisories.yml` は毎日一回、`verify` と `latest` で、注釈のタグが固定したコミットを指すことと、固定した版が上流の最新であることを照合する。
+照合が失敗したら、手元で `sh scripts/ci/actions-pins.sh update` を実行し、書き換えたワークフローのプルリクエストを出す。
+プルリクエストの説明には、`update` の出力（どの action をどの版からどの版へ上げたか）を書く。
+メジャーバージョンが上がるときは、上流のリリースノートを読み、入力の変わったアクションの `with:` を同じプルリクエストで直す（[docs/adr/0296](./docs/adr/0296-pin-every-github-action-by-commit-sha.md)）。
 
 CI の実行時間は 5 分以内を保つ。
 CI を待つ時間は、変更を一つ入れるたびにかかるので、CI が遅いと開発そのものが遅くなる。

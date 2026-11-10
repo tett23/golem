@@ -21,7 +21,7 @@ jobs:
   adr:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -32,7 +32,7 @@ jobs:
       # docs/benchmarks/, docs/benchmark/) fail
       # (docs/adr/0010, docs/adr/0011, docs/adr/0012, docs/adr/0032,
       # docs/adr/0048, docs/adr/0194)
-      - uses: tett23/adr-guard@v0.10.0
+      - uses: tett23/adr-guard@624df60fe8956ef52b3a275198ee938175324496 # v0.10.0
         with:
           allow-status: true
           allow-links: true
@@ -46,7 +46,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -67,18 +67,18 @@ jobs:
   textlint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # the merge base with the base finds the ADRs that the change adds
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: lts/*
       # node_modules itself is cached, so that a hit skips npm ci; the rules of
       # tools/textlint/rules/ are linked, not copied, and need no new key
       - id: cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tools/textlint/node_modules
           key: textlint-${{ runner.os }}-${{ hashFiles('tools/textlint/package-lock.json') }}
@@ -92,7 +92,7 @@ jobs:
       # Restored and saved apart, so that a run that reports saves too; saved
       # only when the list changed.
       - name: Restore the keys of the clean jobs (docs/adr/0258)
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tools/textlint/.cache
           key: textlint-clean-${{ runner.os }}-${{ github.run_id }}
@@ -108,7 +108,7 @@ jobs:
         run: sh scripts/ci/textlint.sh "$BASE"
       - name: Save the keys of the clean jobs (docs/adr/0258)
         if: ${{ !cancelled() && hashFiles('tools/textlint/.cache/clean') != '' && hashFiles('tools/textlint/.cache/clean') != steps.restored.outputs.hash }}
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tools/textlint/.cache
           key: textlint-clean-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -121,7 +121,7 @@ jobs:
   anchors:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
