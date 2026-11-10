@@ -2578,19 +2578,55 @@ expect "timings: an unknown option" 2
 # and a job of ci.yml that asks for more makes every run of release.yml
 # end in startup_failure, whether the job would run or not: the ci job of
 # release.yml grants each permission that a job of ci.yml asks for, at the
-# same level or write (run 42480681991, the caches job of docs/adr/0228)
-CI_CALLER=$(perms_of "$RELEASE_YML" ci)
-CI_ASKED=$(ci_jobs "$CI_YML" | while IFS= read -r j; do perms_of "$CI_YML" "$j"; done | sort -u)
-missing=
-while IFS= read -r p; do
-  [ -n "$p" ] || continue
-  scope=${p%%:*}
-  level=${p#*: }
-  if printf '%s\n' "$CI_CALLER" | grep -qx "$scope: $level" || printf '%s\n' "$CI_CALLER" | grep -qx "$scope: write"; then :; else missing="$missing $p"; fi
-done <<PERMS
-$CI_ASKED
-PERMS
-if [ -z "$missing" ]; then ok; else ng "release.yml: the ci job grants what the jobs of ci.yml ask for (missing:$missing)"; fi
+# same level or write (run 42480681991, the caches job of docs/adr/0228).
+# It grants actions: write, which caches alone receives, and caches does
+# not run on the push of a tag (docs/adr ADR 0287)
+# ci_perms CI RELEASE: the predicates P1 to P4 of docs/adr ADR 0287 that
+# the two workflows break, one per line with what breaks it
+ci_perms() {
+  cp_ci=$1 cp_rel=$2
+  cp_asked=$(ci_jobs "$cp_ci" | while IFS= read -r j; do perms_of "$cp_ci" "$j"; done | LC_ALL=C sort -u)
+  cp_granted=$(perms_of "$cp_rel" ci | LC_ALL=C sort -u)
+  # P1 no job but caches asks for actions: write
+  ci_jobs "$cp_ci" | while IFS= read -r j; do
+    if [ "$j" != caches ] && perms_of "$cp_ci" "$j" | grep -qx 'actions: write'; then printf 'P1 %s\n' "$j"; fi
+  done
+  # P2 caches runs on pushes to main only
+  cp_if=$(job_of "$cp_ci" caches | sed -n 's/^    if: //p')
+  case "$cp_if" in
+    *"github.event_name == 'push'"*) ;;
+    *) echo "P2 github.event_name == 'push'" ;;
+  esac
+  case "$cp_if" in
+    *"github.ref == 'refs/heads/main'"*) ;;
+    *) echo "P2 github.ref == 'refs/heads/main'" ;;
+  esac
+  # P3 nothing granted that no job asks for
+  printf '%s\n' "$cp_granted" | while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    printf '%s\n' "$cp_asked" | grep -qxF "$p" || printf 'P3 %s\n' "$p"
+  done
+  # P4 everything asked is granted, at the same level or write
+  printf '%s\n' "$cp_asked" | while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    printf '%s\n' "$cp_granted" | grep -qxF -e "$p" -e "${p%%:*}: write" || printf 'P4 %s\n' "$p"
+  done
+}
+CP=$HERE/testdata/ci-permissions
+broken=$(ci_perms "$CI_YML" "$RELEASE_YML")
+if [ -z "$broken" ]; then ok; else ng "ci.yml and release.yml: P1 to P4 hold (docs/adr ADR 0287): $broken"; fi
+# p4 grants no actions: write, which visual asks for as read and caches as write
+for cp_case in "now:" "none:" "p1:P1 visual" "p2:P2 github.ref == 'refs/heads/main'" "p3:P3 contents: write" "p4:P4 actions: read|P4 actions: write"; do
+  cp_dir=${cp_case%%:*}
+  cp_want=$(printf '%s\n' "${cp_case#*:}" | tr '|' '\n')
+  cp_got=$(ci_perms "$CP/$cp_dir/ci.yml" "$CP/$cp_dir/release.yml")
+  case "$cp_dir" in
+    now) cp_name="P1 to P4 hold for the two workflows of testdata" ;;
+    none) cp_name="P1 to P4: a job without permissions asks for nothing" ;;
+    *) cp_name="$(printf '%s' "$cp_want" | cut -c1-2) breaks for $cp_dir ($cp_want)" ;;
+  esac
+  if [ "$cp_got" = "$cp_want" ]; then ok; else ng "ci-permissions: $cp_name, got: $cp_got"; fi
+done
 
 # ---------------------------------------------------------------- race-needed.sh
 # (docs/adr/0075-race-search-repetitions.md)
