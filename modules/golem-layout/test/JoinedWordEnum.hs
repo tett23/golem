@@ -216,7 +216,7 @@ breaksOf its = concat (snd (mapAccumL step (0, False) its))
       Box _ c -> ((at + T.length (bcText c), True), [])
       Penalty _ q h | q < infPenalty -> ((at, False), [(at, q, hyphenKind h)])
       Penalty {} -> ((at, False), [])
-      Glue _ y _ | afterBox && y < filStretch -> ((at, False), [(at, -1, -1)])
+      Glue _ y _ _ _ | afterBox && y < filStretch -> ((at, False), [(at, -1, -1)])
       Glue {} -> ((at, False), [])
 
 {- | Whether each character of the boxes is in a box of a Latin word, in
@@ -248,7 +248,7 @@ w2Same its one
 keyOf :: Item -> (Int, Sp, Sp, Sp, Text, Int, Int)
 keyOf = \case
   Box w c -> (0, w, 0, 0, bcText c, 0, 0)
-  Glue w y z -> (1, w, y, z, "", 0, 0)
+  Glue w y z _ _ -> (1, w, y, z, "", 0, 0)
   Penalty w q h -> (2, w, 0, 0, "", q, hyphenKind h)
 
 hyphenKind :: Hyphen -> Int

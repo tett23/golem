@@ -20,7 +20,7 @@ word w = Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing n
 
 -- | The end of a paragraph: no break, the glue that fills the last line, the forced break.
 finish :: [Item]
-finish = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+finish = [Penalty 0 infPenalty NoHyphen, glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
 
 -- | The items given as the first line, a forced break, then a last line of one small box.
 firstLine :: [Item] -> [Item]
@@ -45,7 +45,7 @@ expansionStepTests =
         assertBool "a line shrinks" (any ((< 0) . lineExpansion) (brLines br)),
       testCase "E3: a line that shrinks rounds the expansion up, and its glue shrinks by no more than the ratio of the line" $ do
         -- 5000 + 100 + 5000 in 9900: a ratio of −200 / 250, −16 permille rounded up to −20; the glue does not shrink
-        let l = lineOf (Just (20, 5)) 9900 [word 5000, Glue 100 0 50, word 5000]
+        let l = lineOf (Just (20, 5)) 9900 [word 5000, glue 100 0 50, word 5000]
         lineExpansion l @?= -20
         lineOverfull l @?= False
         assertBool "the glue shrinks more than the line" (glueRatio l >= lineRatio l)

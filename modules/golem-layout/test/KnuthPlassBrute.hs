@@ -77,7 +77,7 @@ feasiblePaths ps width pass items =
     prefix = Map.fromList (zip [0 ..] (scanl add (0, 0, 0) items))
     add (w, y, z) = \case
       Box w' _ -> (w + w', y, z)
-      Glue w' y' z' -> (w + w', y + y', z + z')
+      Glue w' y' z' _ _ -> (w + w', y + y', z + z')
       Penalty {} -> (w, y, z)
     sumsTo i = prefix Map.! i
     -- where a line after a break at i starts: what can be discarded is skipped
