@@ -42,6 +42,7 @@ module Golem.Layout.Japanese
     protrusionRatio,
     verticalSidenotes,
     punctSpace,
+    narrowPunctuation,
   )
 where
 
@@ -1247,6 +1248,25 @@ punctSpace = \case
   MiddleDot -> (1 / 4, 1 / 4)
   _ -> (0, 0)
 
+{- | The box of a punctuation glyph narrower than full width
+(docs/adr/0302), given its class, the size and the advance of its glyph:
+the width of the box and where the glyph starts in it. Nothing for a
+glyph of full width or more, and for a character that is not JLReq's
+punctuation.
+-}
+narrowPunctuation :: CharClass -> Sp -> Sp -> Maybe (Sp, Sp)
+narrowPunctuation cls size a
+  | (pre, post) /= (0, 0) && a < size =
+      let w = max a (size - L.zwToSp size (pre + post))
+          off = case cls of
+            Opening -> w - a
+            MiddleDot -> Sp ((unSp w - unSp a) `div` 2)
+            _ -> 0
+       in Just (w, off)
+  | otherwise = Nothing
+  where
+    (pre, post) = punctSpace cls
+
 {- | Whether a character takes kenten (golem-driver ADR 0019): not
 punctuation (P), a separator (Z) or a control or format character (Cc,
 Cf), as CSS text-emphasis has it.
@@ -1377,7 +1397,8 @@ itemsFor env lead prev p next = case p of
         full
           | T.null vs = advance env lk c
           | otherwise = L.zwToSp fs (ceWordAdvance env lk (T.cons c vs))
-        w = full - L.zwToSp fs (pre + post)
+        -- a glyph narrower than full width takes a box of max a (1zw - aki) (docs/adr/0302)
+        w = maybe (full - L.zwToSp fs (pre + post)) fst (narrowPunctuation cls fs full)
         -- tracking after the character, given back at the line end (docs/adr/0020)
         t = tracking lk
         -- kenten on characters other than punctuation and separators (golem-driver ADR 0019)

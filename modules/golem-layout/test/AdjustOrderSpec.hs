@@ -58,7 +58,8 @@ alone, the kind and the size it has after docs/adr/0278 left out.
 itemKey :: Item -> String
 itemKey = \case
   Glue {itemWidth = w, itemStretch = y, itemShrink = z} -> "G" <> show (unSp w, unSp y, unSp z)
-  it -> show it
+  -- the field of the look docs/adr/0302 added, left out as the file was written before it
+  it -> T.unpack (T.replace ", lkFullWidthPunctuation = True" "" (T.pack (show it)))
 
 {- | A9 of docs/adr/0278: the items of every run up to two parts, in every
 setting of its normal form, at the start and not, at the end and not, in

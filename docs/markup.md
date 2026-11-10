@@ -622,7 +622,7 @@ main = do
 `caption` と `sidenote` は、図版のキャプションと傍注の本文の書体と大きさを決める段落スタイルでもある。
 `table` は表のセルの段落スタイルの既定であり、`@style` で表ごとに替えられる（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 既定では本文と同じ書体と大きさで組む。
-表のセルには、段落スタイルの `font`、`size`、`aki-set`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`regex-styles` を当て、ほかの欄（`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ、罫線、背景）は当てない。
+表のセルには、段落スタイルの `font`、`size`、`aki-set`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width`、`regex-styles` を当て、ほかの欄（`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ、罫線、背景）は当てない。
 `caption`、`sidenote`、`table` は `body` の字下げを引き継がず、`@style caption` や `@style sidenote` を付けた段落も字下げなしで組む（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
 `@style-def paragraph caption`、`@style-def paragraph sidenote`、`@style-def paragraph table` に 0 でない `indent` か `first-line-indent` を書くとエラー（G03006）、0 を書くと効果がないことを知らせる notice（G03100）になる。
 

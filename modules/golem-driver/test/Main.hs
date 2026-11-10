@@ -36,6 +36,7 @@ import NewPlanSpec (newPlanTests)
 import NotesSpec (notesTests)
 import NumberUnitBuildSpec (numberUnitBuildTests)
 import OpenTypeFeaturesSpec (openTypeFeaturesTests)
+import PunctuationWidthSpec (punctuationWidthTests)
 import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
@@ -114,7 +115,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, insideLinksTests, overflowTests, softHyphenTests, exceptionsTests, bookLanguageTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, scriptsTests, decorationsTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, insideLinksTests, overflowTests, softHyphenTests, exceptionsTests, bookLanguageTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, punctuationWidthTests, scriptsTests, decorationsTests]
         <> [ newProjectTests,
              newPlanTests,
              allTargetsTests,

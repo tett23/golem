@@ -918,6 +918,7 @@ tests =
       indentTests,
       listTests,
       characterFeatureTests,
+      punctuationWidthTests,
       codeStyleTests,
       boxStyleTests,
       captionSidenoteTests,
@@ -2080,6 +2081,41 @@ characterFeatureTests =
         either (map fst) (const []) (localStyleDef ParagraphKind [("rule-before", LocalWord "x")]) @?= ["G03006"]
     ]
 
+-- | punctuation-width of paragraph and character styles (docs/adr/0302).
+punctuationWidthTests :: TestTree
+punctuationWidthTests =
+  testGroup
+    "punctuation-width (docs/adr/0302)"
+    [ testCase "N8: style.toml reads both values on paragraph and character styles; body is full-width" $
+        case parseStyle (FileId 0) "[paragraph-styles.a]\npunctuation-width = \"font\"\n\n[character-styles.b]\npunctuation-width = \"full-width\"\n\n[character-styles.c]\npunctuation-width = \"font\"\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            (paraStyle s (Just "a") >>= psPunctuationWidth) @?= Just PunctuationFont
+            (charStyle s "b" >>= csPunctuationWidth) @?= Just PunctuationFullWidth
+            (charStyle s "c" >>= csPunctuationWidth) @?= Just PunctuationFont
+            (paraStyle s Nothing >>= psPunctuationWidth) @?= Just PunctuationFullWidth,
+      testCase "N8: a child of based-on replaces the value of its parent, and inherits it when it writes none" $
+        case parseStyle (FileId 0) "[paragraph-styles.a]\npunctuation-width = \"font\"\n\n[paragraph-styles.b]\nbased-on = \"a\"\n\n[paragraph-styles.c]\nbased-on = \"a\"\npunctuation-width = \"full-width\"\n\n[character-styles.x]\npunctuation-width = \"font\"\n\n[character-styles.y]\nbased-on = \"x\"\n\n[character-styles.z]\nbased-on = \"x\"\npunctuation-width = \"full-width\"\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            (paraStyle s (Just "b") >>= psPunctuationWidth) @?= Just PunctuationFont
+            (paraStyle s (Just "c") >>= psPunctuationWidth) @?= Just PunctuationFullWidth
+            (charStyle s "y" >>= csPunctuationWidth) @?= Just PunctuationFont
+            (charStyle s "z" >>= csPunctuationWidth) @?= Just PunctuationFullWidth,
+      testCase "N8: caption, sidenote, table and code take the key" $
+        forM_ ["caption", "sidenote", "table", "code"] $ \n ->
+          codes (parseStyle (FileId 0) ("[paragraph-styles." <> n <> "]\npunctuation-width = \"font\"\n")) @?= [],
+      testCase "N8: a value that does not read is G03021" $ do
+        let g03021 src = codes (parseStyle (FileId 0) src) @?= ["G03021"]
+        g03021 "[paragraph-styles.a]\npunctuation-width = \"half-width\"\n"
+        g03021 "[character-styles.a]\npunctuation-width = \"half-width\"\n"
+        g03021 "[character-styles.a]\npunctuation-width = true\n",
+      testCase "N8: @style-def takes the key; a wrong value is G03021" $ do
+        localStyleDef CharacterKind [("punctuation-width", LocalWord "font")] @?= Right (Left noCharDef {csPunctuationWidth = Just PunctuationFont})
+        localStyleDef ParagraphKind [("punctuation-width", LocalWord "full-width")] @?= Right (Right noParaDef {psPunctuationWidth = Just PunctuationFullWidth})
+        either (map fst) (const []) (localStyleDef CharacterKind [("punctuation-width", LocalWord "half")]) @?= ["G03021"]
+    ]
+
 -- | Aki amounts and aki sets (docs/adr ADR 0019).
 akiTests :: TestTree
 akiTests =
@@ -2257,6 +2293,7 @@ localStyleTests =
               "tracking" -> "10"
               "proportional-metrics" -> "true"
               "baseline-shift" -> "1pt"
+              "punctuation-width" -> "font"
               "aki-set" -> "gyomatsu-yakumono-hankaku"
               "padding" -> "1zw"
               "border-width" -> "1pt"

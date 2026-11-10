@@ -141,6 +141,7 @@ noticeCodes =
       "G07113", -- a first or last part shorter than its keep, in an empty column (docs/adr/0261)
       "G07123", -- a soft hyphen without a letter on either side, not a break (docs/adr ADR 0272)
       "G07124", -- a soft hyphen in or next to text that does not break, not a break (docs/adr ADR 0272, ADR 0297)
+      "G07126", -- the ink of JLReq's punctuation reaches the character next to it (docs/adr/0302)
       "G08008", -- code in the body role without [fonts.code] (golem-driver ADR 0017)
       "E02109" -- a binding of where of .emet that nothing uses (docs/adr/0160)
     ]

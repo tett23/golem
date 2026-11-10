@@ -174,7 +174,7 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
                           -- G07101: dashes without ink (docs/adr ADR 0172)
                           -- G07105: the lines past their measure, from the lines drawn, not from the view (docs/adr ADR 0210)
                           -- G07109: the sections with no page (docs/adr/0260); G08103: the features the fonts do not have (docs/adr/0268)
-                          pure (Right (bytes, plNotices layout <> sectionNotices inp layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout <> overfullWarnings overfull <> missingFeatures, view, structure, pageStarts layout))
+                          pure (Right (bytes, plNotices layout <> sectionNotices inp layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout <> punctuationInkNotices (pgVertical geom) fonts layout <> overfullWarnings overfull <> missingFeatures, view, structure, pageStarts layout))
                         ds -> pure (Left ds)
                 ds -> pure (Left ds)
   where
@@ -1286,7 +1286,7 @@ drawLineAt env (x0, y0) sl =
                 KindDashes -> whole (usesOf (whoOf V.PartBase c) look (dashesAt env look vertical (origin off) (bcText c)))
                 _ ->
                   let pre = case T.unpack (bcText c) of
-                        [ch] | boxKind c == KindPunctuation -> toSp size (fst (punctSpace (lookClass look ch)))
+                        [ch] | boxKind c == KindPunctuation -> punctuationPre fonts vertical look ch
                         _ -> 0
                       rotated = boxKind c == KindRotated
                       -- the glyphs of inline code after its padding (golem-driver ADR 0029)

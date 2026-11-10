@@ -20,6 +20,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import DoubleDashSpec (doubleDashTests)
+import NarrowPunctuationSpec (narrowPunctuationTests)
 import EnumSplitSpec (enumSplitTests)
 import ExceptionsSpec (exceptionsTests)
 import ExpansionStepSpec (expansionStepTests)
@@ -395,6 +396,7 @@ tests =
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       inseparableTests,
       doubleDashTests,
+      narrowPunctuationTests,
       codeSpaceTests,
       codeJapaneseTests,
       codePaddingTests,

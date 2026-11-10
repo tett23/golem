@@ -149,6 +149,8 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 行の終わりの側の字下げは `end-indent`、行揃えは `align`（`left`、`center`、`right`、均等配置の三つ、`fully-justified`、ノド側と小口側）、段落の前後に空ける行の数は `space-before` と `space-after` で指定する（[docs/adr/0189](./docs/adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。
 文字スタイルと段落スタイルの `kerning`（`metrics`、`japanese-equal-width`、`none`）、`tracking`、`proportional-metrics`、`baseline-shift` で、カーニングの方式、トラッキング、プロポーショナルメトリクス、ベースラインシフトを指定する。
 既定はフォントのペアカーニングを和文にも欧文にもかける `metrics` である（[docs/adr/0020](docs/adr/0020-indesign-character-features.md)）。
+括弧類、句読点、中点類は、PDF で既定でフォントの全角の字形（`fwid`）で組み、全角の字形がなければ全角の字幅の箱の中に字形を置く。
+文字スタイルと段落スタイルの `punctuation-width = "font"` で、フォントの字形のまま組む（[ADR 0302](docs/adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
 PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。
 箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
 和欧間や括弧類の前後などの字間の空き（アキ）の量は、`[aki-sets.<名前>]` で文字のクラスの組ごとに定義したアキ量のセットを、段落スタイルの `aki-set` で選んで変えられる（既定は行末約物半角の `gyomatsu-yakumono-hankaku`）。

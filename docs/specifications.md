@@ -1792,7 +1792,7 @@ LSP と `golem lint` はファイルを検査しないので、フォントを�
 スタイルの定義は、`based-on` をたどった鎖の根から順に、子のキーが親のキーを上書きして決める。
 スタイルの名前は、英小文字で始まり、英小文字、数字、`-` だけからなる。
 
-文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic`、`features`（OpenType の機能、後述）、`position`（上付きと下付き、後述）、`underline` と `strikethrough`（下線と打ち消し線、後述）、`no-break`（真偽値）である。
+文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic`、`punctuation-width`（約物の字形、後述）、`features`（OpenType の機能、後述）、`position`（上付きと下付き、後述）、`underline` と `strikethrough`（下線と打ち消し線、後述）、`no-break`（真偽値）である。
 `no-break` が真の文字は改行しない範囲になり、その中では行を分けない（「行分割」の節、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
 文字スタイルを入れ子にしたときは、どれか一つの `no-break` が真なら真である。
 コードの文字スタイルは、本文の中のコードの背景と余白のキー `background` と `padding` と、改行の印のキー `wrap-mark` も持つ（後述）。
@@ -1861,6 +1861,16 @@ CSS では、和文と欧文で別のカーニングを指定できない。
 `japanese-equal-width` は、欧文のカーニングを保つことを優先して `font-kerning: normal` とし、和文のカーニングは閲覧環境の既定に任せる。
 `letter-spacing` は行の最後の文字の後ろにも空きを足すが、PDF との差として受け入れる。
 プレーンテキストは、どのキーも使わない。
+
+文字スタイルと段落スタイルは、和文の約物の字形を選ぶキー `punctuation-width` も持つ（[ADR 0302](adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
+値は `"full-width"` と `"font"` で、`body` の既定は `"full-width"` である。
+`"full-width"` では、JLReq の規則で前後の空きを決める約物を、PDF でフォントの全角の字形（OpenType の `fwid`）で組む。
+`"font"` では、Golem は `fwid` を足さず、フォントの既定の字形で組む。
+ほかの四つのキーと同じく、文字スタイルが書かないキーは外側の値を引き継ぎ、`based-on` の子が書けば親の値を置き換える。
+`caption`、`sidenote`、`table`、`code` にも書け、`@style-def` でも書ける。
+二つの値のほかは G03021 とする。
+HTML と EPUB では、`fwid` を約物だけに当てられないので、CSS に書かない。
+どちらの値でも、フォントの役割と文字スタイルと段落スタイルの `features` に書いた機能が当たる（「フォント」の節）。
 
 文字スタイルと段落スタイルは、OpenType の機能の欄 `features` も持つ（[ADR 0268](adr/0268-opentype-features-on-character-styles.md)）。
 値は機能の文字列の配列であり、スモールキャップ、分数、数字の形式、スタイルセットなどを、文字の範囲と段落に当てる。
@@ -2054,7 +2064,7 @@ PDF では、`url` と、`based-on` をたどって `url` に行き着く文字�
 `[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
 `[character-styles.strong] based-on = "italic"` は、`[strong: ...]` を斜体で表す。
 
-段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`features`、段落の前と後に引く罫線の `rule-before` と `rule-after`、段落の分け方の `keep-with-next`、`keep-all-lines`、`keep-first-lines`、`keep-last-lines`、`page-break`（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）、段落の囲みの `background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`（[ADR 0271](adr/0271-paragraph-backgrounds-and-borders.md)）、行の調整の `line-adjustment` と `stretch-limit`（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、「行分割」の節）、行の調整の順の `shrink-order` と `stretch-order`（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)、「行分割」の節）である。
+段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width`、`features`、段落の前と後に引く罫線の `rule-before` と `rule-after`、段落の分け方の `keep-with-next`、`keep-all-lines`、`keep-first-lines`、`keep-last-lines`、`page-break`（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）、段落の囲みの `background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`（[ADR 0271](adr/0271-paragraph-backgrounds-and-borders.md)）、行の調整の `line-adjustment` と `stretch-limit`（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、「行分割」の節）、行の調整の順の `shrink-order` と `stretch-order`（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)、「行分割」の節）である。
 
 段落の分け方の五つのキーは、ほかのキーと同じく `based-on` で引き継ぎ、書いた値が勝つ。
 
@@ -2117,7 +2127,7 @@ PDF の本文を行の格子に載せるので、段落ごとに行送りを変�
 `style.toml` にすでに `[paragraph-styles.table]` を書いた本では、その定義がすべての表のセルに当たる。
 図版のキャプションは段落スタイル `caption` の `font` と `size` で組み、ほかの欄（`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ）はキャプションには適用されない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 傍注の本文も同じく、段落スタイル `sidenote` の `font` と `size` で組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
-PDF のキャプションと傍注の本文には、ほかに `aki-set`、`line-adjustment`、`stretch-limit`、`shrink-order`、`stretch-order`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` を、どの出力でも `regex-styles` を適用する。
+PDF のキャプションと傍注の本文には、ほかに `aki-set`、`line-adjustment`、`stretch-limit`、`shrink-order`、`stretch-order`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width` を、どの出力でも `regex-styles` を適用する。
 表のセルには、セルの段落スタイル（`@style` を付けた表はその段落スタイル、ほかは `table`）の同じ欄を適用し、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ、罫線、背景は適用しない（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 セルの揃えは列の揃えで決め、`@style` で字下げを持つ段落スタイルを当てても字下げは適用しない。
 `line-breaks`、`space-between`、`space-before`、`space-after`、`align` は、`@style caption` や `@style sidenote` を付けた原稿の段落には適用される。
@@ -2128,7 +2138,7 @@ PDF のキャプションと傍注の本文には、ほかに `aki-set`、`line-
 値が 0（`"0zw"`、`"0mm"` など）なら組版は変わらないので、誤りとせず、効果がないことを notice（G03100）で知らせる。
 G03100 の位置は、`style.toml` では値、`@style-def` ではそのキーの引数である。
 三つに書けないキーは、0 でない `indent`、`first-line-indent`、`end-indent`、`rule-before`、`rule-after` と、囲みの七つのキー（`background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`）である。
-`based-on`、`font`、`size`、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` は書ける。
+`based-on`、`font`、`size`、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width` は書ける。
 HTML と EPUB でも、`caption` の `font` と `size` を `figcaption` の CSS に、`sidenote` の `font` と `size` を `.sidenote` の CSS に書く。
 表のセルの段落スタイルの `font` と `size` は、`table` を `table:not([class]) th, table:not([class]) td` の、表に当てたほかの段落スタイルを `table.ps-名前 th, table.ps-名前 td` の CSS に書く（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 `sidenote` の `size` がなければ、HTML の傍注は本文の 0.85 倍の大きさにする。
@@ -2573,6 +2583,8 @@ aki-set = "wide-waou"
 基準のセットの規則は、子のセットの規則より前にある。
 規則のない組の空きは 0 で、伸び縮みしない。
 行頭と行末の空きは `optimum` の固定の量とし、行の伸縮の調整には使わない。
+約物の空きは、約物の字形が全角の字幅の一部を占めるとして決める。
+全角より狭い字形の約物も、箱と空きで全角の字幅を占める（「フォント」の節、[ADR 0302](adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
 `minimum <= optimum <= maximum` でない規則、未知のクラスの名前、`before` の `line-end`、`after` の `line-start` と `paragraph-start`、組み込みと同じ名前の節はエラー（G03020）とする。
 
 組み込みのセットは `gyomatsu-yakumono-hankaku`（行末約物半角）と `gyomatsu-yakumono-zenkaku`（行末約物全角）の二つで、名前と考え方を InDesign の同名のセットに合わせ、値は [golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md) の組み方から決めた。
@@ -2943,6 +2955,26 @@ HTML と EPUB では、CSS の `text-orientation` の既定の `mixed` に任せ
 ただし、JLReq の規則で前後の空きを決める約物（始め括弧類、終わり括弧類、句点類、読点類、中点類）には、カーニングの方式と `proportional-metrics` によらず `palt` と `vpal` を足さず、`-palt` と `-vpal` を足す（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
 役割の `features` の `palt` と `vpal` も、この `-palt` と `-vpal` が上書きする。
 これらの約物に足す機能は、`metrics` で `-palt` と `-vpal`、`none` と `japanese-equal-width` で `-kern`、`-vkrn`、`-palt`、`-vpal` である。
+
+JLReq の規則で前後の空きを決める約物には、`punctuation-width` が `"full-width"`（既定）なら、Golem が `fwid` も足す（[ADR 0302](adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
+Noto CJK の `“”‘’` のように全角でない字形を既定に持つフォントでも、全角の字形で組むためである。
+フォントの役割、段落スタイル、文字スタイルの `features` をつないだ並びが、幅の機能 `fwid`、`hwid`、`pwid`、`twid`、`qwid` のどれかを値によらず含めば、Golem は `fwid` を足さず、書いた機能が当たる。
+書体が `fwid` を持つかは調べない。
+HarfBuzz は書体の持たない機能を無視するので、`fwid` を持たない書体の字形は変わらない。
+Golem が足す `fwid` は、G08103 の対象にしない。
+
+これらの約物の幅は全角を前提に空きを決めるが、シェイピングした後の送り `a` が 1zw（その字の大きさ）より小さい字形もある。
+`fwid` を持たない欧文のフォントの `“”‘’` や、`punctuation-width = "font"` か書いた機能で選んだ全角でない字形である。
+この字形の箱の幅は、`a` と、1zw から前後の空きを引いた値の大きいほうとし、引いた空きは今のとおりアキ量のセットのグルーで戻す（[ADR 0302](adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
+字形は箱の中に描き、始め括弧類は箱の終わりに、終わり括弧類、句点類、読点類は箱の始まりに、中点類は箱の中央に置く。
+空白の隣や行の端でも、字形は次の字に重ならない。
+縦組みでも同じ規則で、送りは行の方向の送り（横倒しの字形なら横の送り）とする。
+送りが 1zw 以上の字形は、送りから前後の空きを引いた幅の箱に、前の空きの分だけ箱の始まりより前から描く。
+
+PDF で、これらの約物の一字の字面（フォントの字形の枠の、行の方向の範囲）が、同じ行の隣の字にかかれば、notice G07126 を出す（[ADR 0302](adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
+字面がトラッキングを除いた箱の端から出た量が、その側の隣の箱とのあいだの空きより大きいときである。
+行の端、ぶら下げた句読点、負のトラッキングだけによる重なりには出さない。
+フォントのファイルとコードポイントの組ごとに一度、原稿の順で最初の約物に出す。
 
 PDF で字をシェイピングする機能の並びは、次の順につないだものである（[ADR 0268](adr/0268-opentype-features-on-character-styles.md)）。
 後ろの機能が、前の同じタグの機能に勝つ。

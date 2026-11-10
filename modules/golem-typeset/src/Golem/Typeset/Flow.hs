@@ -16,6 +16,7 @@ module Golem.Typeset.Flow
     checkedGeometry,
     kentenGlyphDiagnostics,
     dashInkNotices,
+    punctuationInkNotices,
     flowLines,
     layoutPdf,
     layoutPdfWith,
@@ -483,6 +484,51 @@ dashInkNotices vertical fonts layout =
     boxKind c == KindDashes,
     (ch, g) <- take 1 [(ch, g) | ch <- T.unpack (bcText c), g <- dashShaped fonts vertical (bcLook c) ch, isNothing (dashInk fonts vertical g)]
   ]
+
+{- | G07126 (docs/adr/0302): the ink of a glyph of JLReq's punctuation
+reaches a box next to it on its line. The ink is out of the box of the
+punctuation, tracking aside, by more than the space between the two
+boxes; an overlap that the tracking alone makes is not reported, nor ink
+out at the end of a line. Once for each font file and character, at the
+first such character of the source.
+-}
+punctuationInkNotices :: Bool -> LoadedFonts -> PdfLayout -> [Diagnostic]
+punctuationInkNotices vertical fonts layout =
+  [ notice "G07126" sp ("約物の字面が隣の字にかかります: " <> codePointText ch <> "（" <> T.pack path <> "）")
+  | (_, (sp, ch, path)) <- Map.toAscList (Map.fromListWith min [((path, ch), (sp, ch, path)) | (sp, ch, path) <- overlaps])
+  ]
+  where
+    overlaps = [o | l <- layoutLines layout, o <- lineOverlaps (placeLine l)]
+    lineOverlaps placed =
+      [ (charSpan c ch, ch, fst (lfFaceFile fonts (shFace g)))
+      | (i, (Box _ c, s)) <- zip [0 :: Int ..] placed,
+        boxKind c == KindPunctuation,
+        [ch] <- [T.unpack (bcText c)],
+        let look = bcLook c
+            size = lkSize look
+            gs = lfShape fonts (shapingOf (lfRoleFeatures fonts) vertical look ch) (T.singleton ch),
+        g : _ <- [gs],
+        Just (lo, hi) <- [inkAlong g],
+        let x = s - punctuationPre fonts vertical look ch
+            inkStart = x + L.zwToSp size lo
+            inkEnd = x + L.zwToSp size hi
+            t = trackingOf look
+            boxesBefore = [(s' + w', bcLook c') | (Box w' c', s') <- reverse (take i placed)]
+            boxesAfter = [s' | (Box _ _, s') <- drop (i + 1) placed],
+        or [inkEnd > next + max 0 (negate t) | next : _ <- [boxesAfter]]
+          || or [inkStart < prevEnd - max 0 (trackingOf prevLook) | (prevEnd, prevLook) : _ <- [boxesBefore]]
+      ]
+    -- the ink along the line, in em from the origin of the glyph
+    inkAlong g = do
+      (x0, y0, x1, y1) <- lfInkBox fonts (shFace g) (shGlyph g)
+      let top = lfEmBoxCentral fonts (shFace g) + 1 / 2
+          (a, b) = if vertical && not (shTurned g) then (top - y1, top - y0) else (x0 + fst (shOffset g), x1 + fst (shOffset g))
+      if b > a then Just (a, b) else Nothing
+    trackingOf lk = L.Sp (round (toInteger (lkTracking lk) * L.unSp (lkSize lk) % 1000))
+    -- the character itself where the source has it (docs/adr ADR 0195), else the span of the box
+    charSpan c ch
+      | bcAt c >= 0 = mkSpan (spanFile (snd (bcSource c))) (bcAt c) (bcAt c + BS.length (TE.encodeUtf8 (T.singleton ch)))
+      | otherwise = snd (bcSource c)
 
 -- | Every line of a layout: of the text, notes, sidenotes, tables, captions and the table of contents.
 layoutLines :: PdfLayout -> [Line]
