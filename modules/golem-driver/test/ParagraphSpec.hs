@@ -55,6 +55,13 @@ akiTests =
       length styled @?= 3
       (_, body) <- verseLines (horizontal30 (wide <> "\n[paragraph-styles.body]\naki-set = \"wide\"\n")) src
       length body @?= 4,
+    testCase "PDF: aki-set of @style-def sets the paragraph as one of style.toml; the set stays in style.toml" $ do
+      let sets = TE.encodeUtf8 "\n[aki-sets.wide]\nrules = [{ before = \"kana\", after = \"kana\", optimum = \"全角\" }]\n"
+          src = T.replicate 20 "あ" <> "\n\n@style quote\n  " <> T.replicate 20 "あ" <> "\n"
+      (_, toml) <- verseLines (horizontal30 (sets <> "\n[paragraph-styles.quote]\naki-set = \"wide\"\n")) src
+      (_, local) <- verseLines (horizontal30 sets) ("@style-def paragraph quote aki-set=wide\n\n" <> src)
+      length toml @?= 3
+      local @?= toml,
     testCase "HTML: [aki] is an empty span with a margin, between word joiners" $
       withVerseProject "" "a[aki 五分]b\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}

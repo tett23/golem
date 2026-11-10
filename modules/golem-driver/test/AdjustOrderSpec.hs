@@ -68,6 +68,13 @@ adjustOrderTests =
         os @?= map (const (AdjustStaged [] [[WordSpaceGlue, JapaneseWesternGlue]])) os
         local <- ordersOf horizontalStyle ("@style-def paragraph tight shrink-order=comma,word-space\n\n@style tight\n" <> paragraph)
         local @?= map (const (AdjustStaged [[CommaGlue], [WordSpaceGlue]] (aoStretch defaultOrder))) local,
+      testCase "a paragraph style of @style-def with stretch-order takes them as one of style.toml" $ do
+        let toml = horizontalStyle <> "\n[paragraph-styles.even]\nstretch-order = [[\"word-space\"], [\"japanese-western\"]]\n"
+        fromToml <- ordersOf toml ("@style even\n" <> paragraph)
+        local <- ordersOf horizontalStyle ("@style-def paragraph even stretch-order=word-space,japanese-western\n\n@style even\n" <> paragraph)
+        assertBool "lines" (not (null fromToml))
+        fromToml @?= map (const (AdjustStaged (aoShrink defaultOrder) [[WordSpaceGlue], [JapaneseWesternGlue]])) fromToml
+        local @?= fromToml,
       testCase "A11: HTML and EPUB are the same bytes with the keys written and without them" $ do
         let out style = withSystemTempDirectory "golem-order" $ \tmp -> do
               BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")

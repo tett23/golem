@@ -109,6 +109,20 @@ openTypeFeaturesTests =
             assertBool "smcp changes the width" (w /= measured (bcLook c) {lkFeatures = []} "cdef")
           other -> assertFailure (show (map (bcText . snd) other))
         mapM_ (\(w, c) -> w @?= measured (bcLook c) (bcText c)) [(w, c) | (w, c) <- boxes, not (T.null (bcText c))],
+      testCase "I1, I9: a range in a character style of @style-def with features is set as one of style.toml" $ do
+        let fontsToml = horizontalStyle <> "\n[fonts.body]\nja = \"fonts/noto.otf\"\nlatin = \"fonts/sans.otf\"\n"
+            source = "ab [style sc: cdef] gh\n"
+        files <- fontFiles
+        let boxesOf style src = do
+              (_, pl) <- layoutMiniFonts golemFontProvider miniManifest style src files >>= either (assertFailure . show) pure
+              pure [(w, bcText c, lkFeatures (bcLook c)) | sl <- Map.elems (plLines pl), Box w c <- lineItems (slLine sl), not (T.null (bcText c))]
+        toml <- boxesOf (fontsToml <> "\n[character-styles.sc]\nfeatures = [\"smcp\", \"-liga\"]\n") source
+        local <- boxesOf fontsToml ("@style-def character sc features=\"smcp,-liga\"\n\n" <> source)
+        plain <- boxesOf fontsToml ("@style-def character sc\n\n" <> source)
+        [f | (_, t, f) <- toml, t == "cdef"] @?= [["smcp", "-liga"]]
+        [f | (_, t, f) <- plain, t == "cdef"] @?= [[]]
+        assertBool "smcp changes the width" (toml /= plain)
+        local @?= toml,
       testCase "every feature is shaped, the 33rd too: 32 of the role and smcp of a style" $ do
         let padding = ["-ss" <> T.justifyRight 2 '0' (T.pack (show n)) | n <- [1 .. 20 :: Int]] <> ["-cv" <> T.justifyRight 2 '0' (T.pack (show n)) | n <- [1 .. 12 :: Int]]
             role = "[fonts.body]\nlatin = \"fonts/sans.otf\"\nfeatures = [" <> T.intercalate ", " ["\"" <> p <> "\"" | p <- padding] <> "]\n"
