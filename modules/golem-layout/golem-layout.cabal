@@ -88,6 +88,7 @@ test-suite golem-layout-test
                     LineBreakInvariantsSpec
                     LineBreakingSpec
                     NoBreakEnum
+                    NumberUnitSpec
                     SoftHyphenSpec
                     OverflowSpec
                     PaginateEnum

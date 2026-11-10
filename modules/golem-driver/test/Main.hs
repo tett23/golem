@@ -32,6 +32,7 @@ import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
 import NewPlanSpec (newPlanTests)
 import NotesSpec (notesTests)
+import NumberUnitBuildSpec (numberUnitBuildTests)
 import OpenTypeFeaturesSpec (openTypeFeaturesTests)
 import OutputGoldenSpec
 import OverflowSpec (overflowTests)
@@ -87,6 +88,7 @@ tests skips =
         tocStylesTests,
         keepOptionsTests,
         lineAdjustmentTests,
+        numberUnitBuildTests,
         boxesTests,
         emetSamplesTests,
         functionLibraryTests,
