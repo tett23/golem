@@ -704,6 +704,12 @@ golem-font のテストが、このフォントの `num_charmaps` が元のフ�
 `compare.sh` は、入力ごとの組版を `COMPARE_TIMEOUT` 秒（既定は 600 秒）で止め、止めた入力の終了の状態を `exit timeout` と書く。
 止まらない入力で、CI のジョブが時間切れまで待たないためである。
 
+`scripts/ci/test.sh` は、止めた入力のホストの子が残らないことを、偽のホストが作業の場所に書いた子の PID に `kill -0` を送って確かめる（[ADR 0303](adr/0303-check-only-the-processes-a-test-started.md)）。
+PID が書かれていなければ、断言は失敗する。
+`pgrep -P` がテスト自身の子を一覧できない環境では、`compare.sh` も子を見つけられないので、この断言は `SKIP` になる。
+テストのスクリプト（`scripts/**/test*.sh`、`scripts/ci/test-suites.sh`、`tools/editors/**/test.sh`）は、プロセスの状態をそのテストが起動したプロセスの PID でだけ調べる。
+`-P` を伴わない `pgrep`、`pkill`、`killall` と、すべてのプロセスを並べる `ps` を使う行があれば、`scripts/ci/test.sh` が `ファイル:行` を出して失敗する。
+
 夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` をほかの実行環境で動かす。
 Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、wasmtime 49.0.5 の C API と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno`、`--wasmtime`、`--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
 
