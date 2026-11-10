@@ -333,22 +333,21 @@ ordersDepth =
     Just v | Just n <- readMaybe v -> pure n
     _ -> pure linesPrDepth
 
-{- | The orders and the widest line the enumeration checks at a depth: past
-'linesPrDepth' (the nightly job) the three orders of the test design in
-lines up to 5 em; on pull requests the default order alone in lines up to
-4 em, the default composition (docs/adr ADR 0281, its section 3). The
-other orders are values moved to the nightly job (docs/adr/0278, its test
-design). Timed as docs/adr ADR 0281 asks, the three orders back on pull
-requests keep the area within its 10 seconds (7.33 to 9.20) but take the
-sum of the areas past its 30 (30.67 to 39.46), so they stay on the
-nightly job (its section 7).
+{- | The orders and the widest line the enumeration checks at a depth: the
+three orders of the test design, in lines up to 5 em past 'linesPrDepth'
+(the nightly job) and up to 4 em on pull requests. docs/adr/0278 moved
+the orders but the default one to the nightly job; timed as docs/adr ADR
+0286 asks (the median of four jobs, run 42761004416), the three orders
+back on pull requests after the span of fr and R1 keep the area at 6.53
+to 6.59 seconds and the sum at 29.49 to 29.73, within its 30 (docs/adr
+ADR 0281, its section 7).
 -}
 ordersAt :: Int -> ([AdjustOrder], Int)
-ordersAt depth = if depth > linesPrDepth then (staged, 5) else ([defaultOrder], 4)
+ordersAt depth = if depth > linesPrDepth then (staged, 5) else (staged, 4)
 
 enumerationTests :: [TestTree]
 enumerationTests =
-  [ testCase "A1 to A6: every input up to 2 parts, broken with an order, breaks as with one ratio, its lines end where they do with it, and spread their glue in stages: the default order in lines up to 4 em on pull requests, and also the default reversed and every kind in one stage in lines up to 5 em in the nightly job" $ do
+  [ testCase "A1 to A6: every input up to 2 parts, broken with an order, breaks as with one ratio, its lines end where they do with it, and spread their glue in stages: the default order, the default reversed and every kind in one stage, in lines up to 4 em on pull requests and up to 5 em in the nightly job" $ do
       (orders, width) <- ordersAt <$> ordersDepth
       checkAllPar 2 runsT (orderMisses orders width) @?= Passed (length (concat (upTo 2 runsT)))
   ]

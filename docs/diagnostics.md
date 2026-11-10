@@ -10461,7 +10461,6 @@ PDF をターゲットに含む `golem build` で、ソフトハイフン（U+00
 要素の最初の字より前のソフトハイフン（`[shy]table`）は、その要素を分けない指定なので、このコードを出さない。
 語が文字スタイルなどのインラインの境目で分かれていても、語の字は境目の両側の字をつないだ語で数える（[ADR 0285](adr/0285-read-soft-hyphens-at-inline-boundaries-in-the-joined-word.md)）。
 `a[shy][strong: b]` のソフトハイフンは分割の候補になり、このコードを出さない。
-境目の向こうの字がリンクの語か改行しない範囲の字なら、ソフトハイフン自身がその外にあっても分割の候補にせず、このコードを出す。
 位置はソフトハイフンで、`[shy]` で書いたものは `[shy]` である。
 一つの文字列に複数あれば、それぞれに出す。
 HTML、EPUB、プレーンテキストだけのビルドと、`golem check`、LSP では出さない。
@@ -10481,28 +10480,30 @@ HTML、EPUB、プレーンテキストだけのビルドと、`golem check`、LS
 
 ## G07124
 
-改行しない文字の中のソフトハイフンを、分割の候補にしませんでした
+改行しない文字の中か隣のソフトハイフンを、分割の候補にしませんでした
 
 - 重大度: お知らせ
 - 状態: 使用中
 
 ### 意味
 
-PDF をターゲットに含む `golem build` で、改行しない文字の中にソフトハイフン（U+00AD か `[shy]`）があった。
+PDF をターゲットに含む `golem build` で、改行しない文字の中か隣にソフトハイフン（U+00AD か `[shy]`）があった。
 改行しない文字は、本文の中のコード、文字スタイル `url` の文字、リンクの語、改行しない範囲（文字スタイルの `no-break` が真の文字）である。
 そのソフトハイフンは分割の候補にならず、何も描かない。
 前か後ろが語の字でないソフトハイフンでも、改行しない文字の中にあれば、[G07123](#g07123) ではなくこのコードを出す。
+ソフトハイフンが改行しない文字の外にあっても、インラインの境目の両側の字をつないだ語で前の字と後の字がどちらも語の字であり、そのどちらかが改行しない文字なら、このコードを出す（`[link "https://example.com/": abc][shy]def`）。
+後の字が語の字でないもの（`[link "https://example.com/": abc][shy].`）は、[G07123](#g07123) である。
 要素の最初の字より前のソフトハイフンには出さない（コードと `url` の文字の中を除く）。
 位置はソフトハイフンで、`[shy]` で書いたものは `[shy]` である。
 HTML、EPUB、プレーンテキストだけのビルドと、`golem check`、LSP では出さない。
 
-- メッセージ: `改行しない文字（コード、URL、リンク、改行しない範囲）の中のソフトハイフンなので、分割の候補にしません`
+- メッセージ: `改行しない文字（コード、URL、リンク、改行しない範囲）の中か隣のソフトハイフンなので、分割の候補にしません`
 - 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Japanese`、golem-typeset の `Golem.Typeset`）
-- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
+- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)、[ADR 0285](adr/0285-read-soft-hyphens-at-inline-boundaries-in-the-joined-word.md)、[ADR 0297](adr/0297-report-soft-hyphens-next-to-unbreakable-characters-as-g07124.md)
 
 ### 主な原因
 
-- コードやリンクの語に `[shy]` を書いた。
+- コードやリンクの語の中か隣に `[shy]` を書いた。
 - 改行しない範囲の中で、語を分けられると考えた。
 
 ### 直し方
