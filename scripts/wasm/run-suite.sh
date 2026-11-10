@@ -57,6 +57,13 @@ PATTERN=
 while IFS= read -r name; do
   if [ -z "$PATTERN" ]; then PATTERN="\$0 == $(quote "$name")"; else PATTERN="$PATTERN || \$0 == $(quote "$name")"; fi
 done <"$OUT/$SUITE.listed"
+if [ -n "$PATTERN" ]; then
+  bytes=$(LC_ALL=C printf '%s' "!($PATTERN)" | wc -c | tr -d ' ')
+  if [ "$bytes" -gt 65536 ]; then
+    echo "A2 $SUITE: the pattern of $bytes bytes is over 65536" >&2
+    exit 1
+  fi
+fi
 start=$(date +%s)
 code=0
 if [ -n "$PATTERN" ]; then

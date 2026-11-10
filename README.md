@@ -942,6 +942,7 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 `ci.yml` のキャッシュを戻すだけで、保存しない。
 
 - `wasm`：スイートを `cabal.project.wasm-tests` で wasm32 に向けて組み、`scripts/wasm/run-suite.sh` で一つずつ Node の `node:wasi` で走らせる（`scripts/wasm/run-tests.mjs`）。
+  スイートごとに空の `/tmp` を用意して後に消し、除外するテストの式が 65,536 バイトを超えれば、スイートを起動せずに失敗する（[docs/adr/0307](./docs/adr/0307-preopen-a-temporary-directory-at-tmp-for-the-wasm-tests.md)）。
   `scripts/wasm/test-failures.tsv` のテストを除いたテストが通るか SKIP になること、一覧のテストがそれだけで走らせると落ちることを確かめ、スイートごとの時間と OK、FAIL、SKIP の数をジョブの要約に書く。
   組めなかったスイートも要約に書き、ジョブを失敗にする。
 - `native`：同じスイートをネイティブの GHC で、外部の道具（qpdf、cddl、pdfinfo、pdftoppm）を `PATH` に置かずに走らせる。

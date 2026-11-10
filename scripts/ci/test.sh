@@ -3994,6 +3994,53 @@ if grep -qF 'SHA-256' "$WORK/err"; then ok; else ng "compare.sh: says that the S
 
 WT=$WORK/wasm-tests
 mkdir -p "$WT"
+# P2, P3, P4 of docs/adr/0307: a minimal WASI module exits with 0 or 7,
+# or traps. Record the directories made by run-tests.mjs before it removes
+# them, so that the two distinct names and their removal can both be checked.
+node - "$WT" <<'NODE'
+const fs = require('node:fs');
+const dir = process.argv[2];
+const str = s => [s.length, ...Buffer.from(s)];
+const sec = (id, body) => [id, body.length, ...body];
+const imp = [1, ...str('wasi_snapshot_preview1'), ...str('proc_exit'), 0, 0];
+const prefix = [0, 0x61, 0x73, 0x6d, 1, 0, 0, 0,
+  ...sec(1, [2, 0x60, 1, 0x7f, 0, 0x60, 0, 0]),
+  ...sec(2, imp), ...sec(3, [1, 1]), ...sec(5, [1, 0, 1]),
+  ...sec(7, [2, ...str('memory'), 2, 0, ...str('_start'), 0, 1])];
+for (const code of [0, 7]) {
+  const body = [1, 6, 0, 0x41, code, 0x10, 0, 0x0b];
+  fs.writeFileSync(`${dir}/exit${code}.wasm`, Buffer.from([...prefix, ...sec(10, body)]));
+}
+fs.writeFileSync(`${dir}/trap.wasm`, Buffer.from([...prefix, ...sec(10, [1, 3, 0, 0, 0x0b])]));
+NODE
+cat >"$WT/record-temp.mjs" <<'NODE'
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+const mkdtempSync = fs.mkdtempSync;
+fs.mkdtempSync = (...args) => {
+  const dir = mkdtempSync(...args);
+  fs.appendFileSync(process.env.GOLEM_0307_TEMP_RECORD, `${dir}\n`);
+  return dir;
+};
+syncBuiltinESMExports();
+NODE
+mkdir "$WT/temp"
+: >"$WT/record"
+for code in 0 7; do
+  run env TMPDIR="$WT/temp" GOLEM_0307_TEMP_RECORD="$WT/record" node --no-warnings --import "$WT/record-temp.mjs" "$HERE/../wasm/run-tests.mjs" "$WT/exit$code.wasm" golem-layout
+  expect "run-tests: proc_exit($code) keeps exit code (P4)" "$code"
+done
+run env TMPDIR="$WT/temp" GOLEM_0307_TEMP_RECORD="$WT/record" node --no-warnings --import "$WT/record-temp.mjs" "$HERE/../wasm/run-tests.mjs" "$WT/trap.wasm" golem-layout
+if [ "$CODE" != 0 ]; then ok; else ng "run-tests: a trap has a nonzero exit code (P3)"; fi
+if [ "$(wc -l <"$WT/record" | tr -d ' ')" = 3 ] &&
+  [ "$(LC_ALL=C sort -u "$WT/record" | wc -l | tr -d ' ')" = 3 ]; then ok; else
+  ng "run-tests: each execution creates a distinct temporary directory (P2)"
+fi
+if [ "$(wc -l <"$WT/record" | tr -d ' ')" = 3 ] &&
+  [ -z "$(ls -A "$WT/temp")" ] &&
+  (while IFS= read -r dir; do [ ! -e "$dir" ] || exit 1; done <"$WT/record"); then ok; else
+  ng "run-tests: temporary directories are removed after exits and traps (P3)"
+fi
 cat >"$WT/tasty.log" <<'LOG'
 suite
   group one
@@ -4057,6 +4104,25 @@ run env RUN="sh $WT/fake.sh" FAILURES="$WT/stale.tsv" sh "$HERE/../wasm/run-suit
 if [ "$CODE" = 1 ] && grep -qx 'A3 fake-test: listed, but passes or is not a test of the suite: g.zz' "$WORK/err" && ! grep -q 'g\.c' "$WORK/err"; then ok; else ng "A3 run-suite: a listed test the suite does not have fails the suite"; fi
 run sh "$HERE/../wasm/run-suite.sh" golem-fake fake.wasm "$WT/out"
 expect "run-suite: a target without :test: is a usage error" 2
+# A pattern of 65536 bytes starts the suite, while 65537 bytes does not
+# start even the A3 checks (docs/adr/0307 P5).
+cat >"$WT/pattern-fake.sh" <<'FAKE'
+echo called >>"$GOLEM_0307_CALLS"
+case ${6-} in
+  '!'\(* ) echo g; echo '  a: OK'; exit 0 ;;
+  *) exit 1 ;;
+esac
+FAKE
+base=$(printf '!($0 == "")' | wc -c | tr -d ' ')
+for limit in 65536 65537; do
+  name=$(awk -v n="$((limit - base))" 'BEGIN { for (i = 0; i < n; i++) printf "a" }')
+  printf 'suite\ttest\treason\tclass\nfake-test\t%s\twidth\ttest\n' "$name" >"$WT/pattern.tsv"
+  : >"$WT/calls"
+  run env RUN="sh $WT/pattern-fake.sh" GOLEM_0307_CALLS="$WT/calls" FAILURES="$WT/pattern.tsv" sh "$HERE/../wasm/run-suite.sh" golem-fake:test:fake-test fake.wasm "$WT/out"
+  if [ "$limit" = 65536 ] && [ -s "$WT/calls" ]; then ok; elif [ "$limit" = 65537 ] && [ "$CODE" = 1 ] && [ ! -s "$WT/calls" ] && grep -q "A2 fake-test: the pattern of 65537 bytes is over 65536" "$WORK/err"; then ok; else
+    ng "run-suite: pattern of $limit bytes follows the limit (P5)"
+  fi
+done
 # check-skips.sh
 mkdir -p "$WT/native" "$WT/wasm"
 printf 'OK\tg.a\nSKIP\tg.b\nOK\tg.c\n' >"$WT/native/fake-test.results"
@@ -4079,6 +4145,9 @@ run env FAILURES="$WT/two.tsv" sh "$HERE/../wasm/check-skips.sh" "$WT/native" "$
 expect "A3 check-skips: a listed test that is a native SKIP, and a name with a backslash, pass natively" 0
 # the list itself: a header and four fields, a known suite, product or test
 WTF=$HERE/../wasm/test-failures.tsv
+if awk -F '\t' 'NR > 1 && $3 ~ /which is not in the preopened root of the repository$/ { exit 1 }' "$WTF"; then ok; else
+  ng "test-failures.tsv: no test has only a missing /tmp preopen as its reason (P6)"
+fi
 if [ "$(head -n 1 "$WTF")" = "$(printf 'suite\ttest\treason\tclass')" ] &&
   awk -F '\t' 'NR > 1 && (NF != 4 || $4 !~ /^(product|test)$/ || $2 == "" || $3 == "") { bad = 1 } END { exit bad }' "$WTF"; then ok; else
   ng "test-failures.tsv: a header, then a suite, a test, a reason and product or test on each line"

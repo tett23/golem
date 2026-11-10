@@ -681,7 +681,9 @@ golem-driver の golem-driver-test と golem-driver-global-test は、ライブ�
 golem-font のテストの C のファイルは、ライブラリと同じく wasm の例外処理で `setjmp.h` を読む。
 
 スイートは、`scripts/wasm/run-tests.mjs` が Node の `node:wasi` で一つずつ動かす。
-リポジトリの根を `/` に preopen し、環境の変数は `GOLEM_TEST_PACKAGE_DIR=/modules/<パッケージ>` と `TASTY_NO_CREATE=true` だけを渡し、標準入力は `/dev/null` とする。
+リポジトリの根を `/` に preopen し、実行ごとに作る空の一時ディレクトリを `/tmp` に preopen する（[ADR 0307](adr/0307-preopen-a-temporary-directory-at-tmp-for-the-wasm-tests.md)）。
+一時ディレクトリはスイートが返った後と trap の後に消す。
+環境の変数は `GOLEM_TEST_PACKAGE_DIR=/modules/<パッケージ>` と `TASTY_NO_CREATE=true` だけを渡し、標準入力は `/dev/null` とする。
 スイートの `main` は、最初に golem-test-support の `enterPackageDirectory` を呼ぶ。
 wasm32 では `GOLEM_TEST_PACKAGE_DIR` があればそこへ移り、ネイティブでは何もしない。
 テストのパッケージのディレクトリからの相対のパスは、ネイティブの `cabal test` と同じに解決される。
@@ -691,6 +693,7 @@ wasm32 では `GOLEM_TEST_PACKAGE_DIR` があればそこへ移り、ネイテ�
 扱いは `product`（製品のコードが `Int` の幅に依る）か `test`（テストやテストの環境がホストに依る）である。
 `scripts/wasm/run-suite.sh` は、一覧のテストを tasty の `-p` で除いて走らせ、ほかのテストが通るか SKIP になることを確かめる。
 次に一覧のテストを一つずつ走らせ、落ちることを確かめる。
+一覧を除く `-p` の式が 65,536 バイトを超えたときは、スイートを起動せず、その名前と式の長さを出してジョブを落とす（[ADR 0307](adr/0307-preopen-a-temporary-directory-at-tmp-for-the-wasm-tests.md)）。
 一覧にないテストが落ちたとき、一覧のテストが通ったとき、一覧のテストがスイートにないときは、ジョブが落ちる。
 同じスイートを、ネイティブの GHC で外部の道具（qpdf、cddl、pdfinfo、pdftoppm）を `PATH` に置かず、`GOLEM_REQUIRE_EXTERNAL_TOOLS` を渡さずに走らせる。
 wasm32 で SKIP になったテストはこのときの SKIP に含まれ、一覧のテストはネイティブで通ることを、`scripts/wasm/check-skips.sh` が確かめる。
