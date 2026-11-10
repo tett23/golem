@@ -267,7 +267,8 @@ paragraphOf i =
           pItems = its,
           pParams = ps,
           pBreaks = breakParagraph ps (const width) its,
-          pAdvance = advance
+          pAdvance = advance,
+          pNumberUnit = infPenalty
         }
 
 {- | The violations of an input: L1 to L13 of docs/adr/0209 and W1 with the
@@ -406,14 +407,14 @@ joinedWordTests =
             its = itemsWith env [IR.Text sp "a—", cite]
             ps = paramsOf (settingOf Nothing) False its
             br = breakParagraph ps (const (2 * fs)) its
-            p = Paragraph "a—[1, p. 5]" "" fs (2 * fs) True its ps br advance
+            p = Paragraph "a—[1, p. 5]" "" fs (2 * fs) True its ps br advance infPenalty
         map breachWhy (l8Of p) @?= [],
       testCase "L8: the example of a book, あ eleven times, [strong: aaaa]—bbbbbbbbbb in lines of 14 em: no line starts with the dash" $ do
         let is = [IR.Text sp (T.replicate 11 "あ"), IR.CharStyle sp "strong" [IR.Text sp "aaaa"], IR.Text sp "—bbbbbbbbbb"]
             its = itemsWith (composeEnv False (settingOf Nothing)) is
             ps = paramsOf (settingOf Nothing) False its
             br = breakParagraph ps (const (14 * fs)) its
-            p = Paragraph (T.replicate 11 "あ" <> "aaaa—bbbbbbbbbb") "" fs (14 * fs) True its ps br advance
+            p = Paragraph (T.replicate 11 "あ" <> "aaaa—bbbbbbbbbb") "" fs (14 * fs) True its ps br advance infPenalty
         map breachWhy (l8Of p) @?= []
         filter ("—" `T.isPrefixOf`) (map lineText (brLines br)) @?= [],
       testCase "W1: the items between the boxes of every pair of the ADR, in no span, [lang en] and [lang ja], with explicit-hyphen-penalty 50 and 10000" $
