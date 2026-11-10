@@ -1,6 +1,6 @@
 # ADR 0228: CI のキャッシュの量を 10 GB の上限の下に保つ
 
-ステータス: 採択→記録の時期は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
+ステータス: 採択→記録の時期は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)、`release.yml` の `ci` の呼び出しの権限は [ADR 0287](0287-keep-actions-write-of-the-ci-call-in-release-yml-for-the-caches-job-alone.md)
 
 ## 文脈
 

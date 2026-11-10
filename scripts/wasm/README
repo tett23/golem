@@ -7,7 +7,7 @@ the same version, and reads no file. It is a WASI (preview 1) reactor
 module: it imports only wasi_snapshot_preview1, and needs no preopened
 directory. CI runs it under the node:wasi of Node, and every night under
 Deno 2.9.8, under the C API of wasmtime 50.0.1 and, with
-browser_wasi_shim 0.4.2, in Chromium (Chrome for Testing 157.0.8103.38) and
+browser_wasi_shim 0.4.2, in Chromium (Chrome for Testing 157.0.8103.50) and
 in the Safari of the macOS runner of GitHub Actions, and checks that each
 gives the PDFs and the diagnostics of the native golem (docs/adr/0234,
 docs/adr/0238). Deno runs the host of Node, scripts/wasm/run.mjs, as it is

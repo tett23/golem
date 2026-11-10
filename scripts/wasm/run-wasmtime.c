@@ -13,13 +13,29 @@
  * those of run.mjs: _initialize, hs_init(0, 0), golem_alloc, golem_build_pdf,
  * golem_free, golem_result_len. The frames are read and written by
  * run.mjs frame and run.mjs result. A failure of wasmtime or a trap exits 3,
- * a usage error 2. */
+ * a usage error 2.
+ *
+ * The bounds (docs/adr/0289): an input frame longer than
+ * RUN_WASMTIME_MAX_INPUT bytes (2^32 - 1, the largest length of the Word32
+ * of golem_alloc, unless a test builds it smaller) stops the host with exit
+ * code 3 before golem_alloc, and so does a golem_alloc that returns 0 for a
+ * frame that is not empty. memory64 is off, so that the linear memory of
+ * golem.wasm cannot grow past the 2^16 pages (4 GiB) of wasm32 whatever the
+ * default of wasmtime; it is on by default in wasmtime 49.0.5. There is no
+ * fuel, epoch nor limiter of the store: the host runs only the golem.wasm
+ * of this repository, and the time-outs of compare.sh and of the job bound
+ * its time. */
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wasi.h>
 #include <wasmtime.h>
+
+#ifndef RUN_WASMTIME_MAX_INPUT
+#define RUN_WASMTIME_MAX_INPUT UINT32_MAX
+#endif
 
 static void fail(const char *what, wasmtime_error_t *error, wasm_trap_t *trap) {
   wasm_byte_vec_t message;
@@ -37,13 +53,14 @@ static void fail(const char *what, wasmtime_error_t *error, wasm_trap_t *trap) {
   exit(3);
 }
 
-/* All the bytes of a stream. */
-static uint8_t *slurp(FILE *f, size_t *len) {
+/* All the bytes of a stream, or false as soon as there are more than max. */
+static bool slurp(FILE *f, uint64_t max, uint8_t **bytes, size_t *len) {
   size_t cap = 1 << 16, n = 0, got;
   uint8_t *buf = malloc(cap);
   if (buf == NULL) fail("out of memory", NULL, NULL);
   while ((got = fread(buf + n, 1, cap - n, f)) > 0) {
     n += got;
+    if ((uint64_t)n > max) return false;
     if (n == cap) {
       cap *= 2;
       buf = realloc(buf, cap);
@@ -51,13 +68,15 @@ static uint8_t *slurp(FILE *f, size_t *len) {
     }
   }
   if (ferror(f)) fail("cannot read the input", NULL, NULL);
+  *bytes = buf;
   *len = n;
-  return buf;
+  return true;
 }
 
 static wasm_engine_t *engine(void) {
   wasm_config_t *config = wasm_config_new();
   wasmtime_config_wasm_exceptions_set(config, true);
+  wasmtime_config_wasm_memory64_set(config, false);
   return wasm_engine_new_with_config(config);
 }
 
@@ -70,7 +89,7 @@ static int compile(const char *wasm_path, const char *cwasm_path) {
   wasmtime_error_t *error;
   wasm_byte_vec_t compiled;
   if (in == NULL) fail(wasm_path, NULL, NULL);
-  wasm = slurp(in, &len);
+  if (!slurp(in, SIZE_MAX, &wasm, &len)) fail(wasm_path, NULL, NULL);
   fclose(in);
   eng = engine();
   if ((error = wasmtime_module_new(eng, wasm, len, &module)) != NULL) fail("compile", error, NULL);
@@ -91,8 +110,9 @@ static wasmtime_extern_t export_of(const char *name) {
   return e;
 }
 
-/* Calls an export with i32 arguments; its one i32 result, or 0. */
-static int32_t invoke(const char *name, const int32_t *args, size_t nargs, size_t nresults) {
+/* Calls an export with i32 arguments, each the bits of a uint32_t; its one
+ * i32 result, or 0. */
+static uint32_t invoke(const char *name, const uint32_t *args, size_t nargs, size_t nresults) {
   wasmtime_extern_t f = export_of(name);
   wasmtime_val_t params[2], result;
   wasm_trap_t *trap = NULL;
@@ -101,11 +121,11 @@ static int32_t invoke(const char *name, const int32_t *args, size_t nargs, size_
   if (f.kind != WASMTIME_EXTERN_FUNC || nargs > 2 || nresults > 1) fail(name, NULL, NULL);
   for (i = 0; i < nargs; i++) {
     params[i].kind = WASMTIME_I32;
-    params[i].of.i32 = args[i];
+    params[i].of.i32 = (int32_t)args[i];
   }
   error = wasmtime_func_call(context, &f.of.func, params, nargs, &result, nresults, &trap);
   if (error != NULL || trap != NULL) fail(name, error, trap);
-  return nresults == 1 ? result.of.i32 : 0;
+  return nresults == 1 ? (uint32_t)result.of.i32 : 0;
 }
 
 static uint8_t *memory_at(uint32_t ptr, size_t len) {
@@ -124,10 +144,13 @@ static int call(const char *cwasm_path) {
   wasm_trap_t *trap = NULL;
   wasi_config_t *wasi = wasi_config_new();
   const char *argv[] = {"golem.wasm"};
-  int32_t a[2];
-  uint32_t in_ptr, out_ptr, out_len;
+  uint32_t a[2], in_ptr, out_ptr, out_len;
   size_t len;
-  uint8_t *input = slurp(stdin, &len);
+  uint8_t *input;
+  if (!slurp(stdin, RUN_WASMTIME_MAX_INPUT, &input, &len)) {
+    fprintf(stderr, "run-wasmtime: the input frame is larger than %llu bytes\n", (unsigned long long)RUN_WASMTIME_MAX_INPUT);
+    exit(3);
+  }
   context = wasmtime_store_context(store);
   if ((error = wasmtime_module_deserialize_file(eng, cwasm_path, &module)) != NULL) fail("deserialize", error, NULL);
   linker = wasmtime_linker_new(eng);
@@ -140,16 +163,20 @@ static int call(const char *cwasm_path) {
   a[0] = 0;
   a[1] = 0;
   invoke("hs_init", a, 2, 0);
-  a[0] = (int32_t)len;
-  in_ptr = (uint32_t)invoke("golem_alloc", a, 1, 1);
+  a[0] = (uint32_t)len;
+  in_ptr = invoke("golem_alloc", a, 1, 1);
+  if (in_ptr == 0 && len > 0) {
+    fprintf(stderr, "run-wasmtime: golem_alloc could not allocate %zu bytes\n", len);
+    exit(3);
+  }
   if (len > 0) memcpy(memory_at(in_ptr, len), input, len);
-  a[0] = (int32_t)in_ptr;
-  a[1] = (int32_t)len;
-  out_ptr = (uint32_t)invoke("golem_build_pdf", a, 2, 1);
-  a[0] = (int32_t)in_ptr;
+  a[0] = in_ptr;
+  a[1] = (uint32_t)len;
+  out_ptr = invoke("golem_build_pdf", a, 2, 1);
+  a[0] = in_ptr;
   invoke("golem_free", a, 1, 0);
-  a[0] = (int32_t)out_ptr;
-  out_len = (uint32_t)invoke("golem_result_len", a, 1, 1);
+  a[0] = out_ptr;
+  out_len = invoke("golem_result_len", a, 1, 1);
   if (fwrite(memory_at(out_ptr, out_len), 1, out_len, stdout) != out_len || fflush(stdout) != 0) fail("cannot write the result frame", NULL, NULL);
   /* as in compile, nothing is freed */
   return 0;

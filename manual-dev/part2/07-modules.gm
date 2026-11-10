@@ -119,7 +119,7 @@ C のライブラリは、それぞれを担当するモジュールの中に閉
 
 | ライブラリ | バージョン | 担当 |
 | --- | --- | --- |
-| HarfBuzz | 14.6.0 | golem-font |
+| HarfBuzz | 15.1.0 | golem-font |
 | FreeType | 2.14.3 | golem-font |
 | wasmtime | 50.0.1 | golem-plugin |
 | zlib | 1.3.2 | golem-pdf |
