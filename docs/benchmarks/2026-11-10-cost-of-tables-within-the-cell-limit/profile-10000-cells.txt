@@ -1,0 +1,13 @@
+	Tue Nov 10 15:13 2026 Time and Allocation Profiling Report  (Final)
+
+	   golem-prof +RTS -N -A64m -p -RTS build --target pdf
+
+	total time  =        0.58 secs   (813 ticks @ 1000 us, 10 processors)
+	total alloc = 2,303,303,704 bytes  (excludes profiling overheads)
+
+COST CENTRE                   MODULE                             SRC                                                 %time %alloc
+
+$w$cshowsPrec4                Golem.Layout.Look                  src/Golem/Layout/Look.hs:187:28-31                    7.9   17.3
+trieAt                        Golem.Typeset.Memo                 src/Golem/Typeset/Memo.hs:62:1-6                      7.4    0.6
+$w$cshowsPrec1                Golem.Layout.KnuthPlass            src/Golem/Layout/KnuthPlass.hs:91:23-26               4.9    8.7
+$fShowSetCell1 (inherited %time %alloc): 25.2 52.9
