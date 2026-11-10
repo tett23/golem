@@ -18,6 +18,7 @@ out of one is one inline, so that a word in a range is one piece.
 -}
 module NoBreakEnum (noBreakTests, noBreakPrDepth) where
 
+import Control.Applicative ((<|>))
 import Data.List (mapAccumL, zip4)
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
@@ -266,8 +267,8 @@ holdInside ch xs =
   where
     -- whether the characters of each box are of a range
     marks = [case x of Box _ c | not (T.null (bcText c)) -> Just (chInRange ch (bcAt c)); _ -> Nothing | x <- xs]
-    befores = scanl (\acc m -> maybe acc Just m) Nothing marks
-    afters = drop 1 (scanr (\m acc -> maybe acc Just m) Nothing marks)
+    befores = scanl (flip (<|>)) Nothing marks
+    afters = drop 1 (scanr (<|>) Nothing marks)
     afterBox = False : [case x of Box {} -> True; _ -> False | x <- xs]
 
 {- | S1 (docs/adr/0305, in place of I8 of docs/adr ADR 0272): the items of
