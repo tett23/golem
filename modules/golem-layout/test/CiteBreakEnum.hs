@@ -72,7 +72,7 @@ type Key = (Int, Sp, Sp, Sp, Text, Int, Int)
 keyOf :: Item -> Key
 keyOf = \case
   Box w c -> (0, w, 0, 0, bcText c, 0, 0)
-  Glue w y z -> (1, w, y, z, "", 0, 0)
+  Glue w y z _ _ -> (1, w, y, z, "", 0, 0)
   Penalty w p h -> (2, w, 0, 0, "", p, hyphenKind h)
   where
     hyphenKind = \case
@@ -94,7 +94,7 @@ c1Items its =
   ]
   where
     held = \case
-      Penalty _ p NoHyphen : Glue _ y _ : Box {} : _ -> p >= infPenalty && y < filStretch
+      Penalty _ p NoHyphen : Glue _ y _ _ _ : Box {} : _ -> p >= infPenalty && y < filStretch
       _ -> False
 
 -- | C1 on the lines: no line but the last ends with a label.

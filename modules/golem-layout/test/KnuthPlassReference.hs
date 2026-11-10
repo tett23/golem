@@ -104,7 +104,7 @@ parseWords t = do
 
 -- | The end of a paragraph, as in TeX: no break, \parfillskip, the forced break.
 finish :: [Item]
-finish = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+finish = [Penalty 0 infPenalty NoHyphen, glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
 
 -- | The look of the boxes: the algorithm does not read it.
 referenceLook :: Look
@@ -118,7 +118,7 @@ paragraphItems :: Words -> [Item]
 paragraphItems ws =
   let (w, y, z) = wSpace ws
       between = \case
-        (WordBox {} : _) -> [Glue w y z]
+        (WordBox {} : _) -> [glue w y z]
         _ -> []
       items = \case
         (WordBox word n : rest) -> Box n (BoxContent word False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) : between rest <> items rest
@@ -290,8 +290,8 @@ lineFitness :: Line -> Fitness
 lineFitness l =
   let its = lineItems l
       natural = sum [itemWidth it | it <- its, not (isPenalty it)]
-      stretch = sum [y | Glue _ y _ <- its]
-      shrink = sum [z | Glue _ _ z <- its]
+      stretch = sum [y | Glue _ y _ _ _ <- its]
+      shrink = sum [z | Glue _ _ z _ _ <- its]
       shortfall = lineTarget l - natural
    in if shortfall >= 0
         then fitnessOf False (badness shortfall stretch)

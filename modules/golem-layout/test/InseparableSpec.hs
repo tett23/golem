@@ -56,7 +56,7 @@ breakAfterBox items k =
 
 -- | The glue (width, stretch, shrink) between the characters, without the paragraph end.
 glues :: Text -> [(Sp, Sp, Sp)]
-glues t = [(w, s, h) | Glue w s h <- compose (defaultComposeEnv fs) t, s < filStretch]
+glues t = [(w, s, h) | Glue w s h _ _ <- compose (defaultComposeEnv fs) t, s < filStretch]
 
 inseparableTests :: TestTree
 inseparableTests =

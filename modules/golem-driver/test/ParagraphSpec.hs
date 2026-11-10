@@ -718,7 +718,7 @@ codeSpaceTests =
           let placed = placeLine (slLine sl)
               gaps =
                 [ (next - (at + w), g)
-                | ((Box w c, at), (Glue g _ _, _), (Box _ c', next)) <- zip3 placed (drop 1 placed) (drop 2 placed),
+                | ((Box w c, at), (Glue g _ _ _ _, _), (Box _ c', next)) <- zip3 placed (drop 1 placed) (drop 2 placed),
                   (bcText c, bcText c') `elem` [("golem", "new"), ("new", "DIR")]
                 ]
           length gaps @?= 2

@@ -656,7 +656,7 @@ walk env st@(LeafState next cur seen) inl = case inl of
 
 -- | The end of a paragraph, and of a line broken by a hard break: the rest of the line is fill.
 lineEnd :: [Item]
-lineEnd = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+lineEnd = [Penalty 0 infPenalty NoHyphen, glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
 
 {- | The ranges of text that do not break (docs/adr ADR 0272): a break
 whose nearest character before it and nearest character after it are
@@ -722,10 +722,10 @@ trailingSpaces codeSpaces its = IntSet.fromList (concatMap before ends)
       Penalty _ p NoHyphen -> p >= infPenalty
       _ -> False
     isLineEnd = \case
-      Penalty _ p NoHyphen : Glue 0 y 0 : Penalty _ q NoHyphen : _ -> p >= infPenalty && y == filStretch && q <= negate infPenalty
+      Penalty _ p NoHyphen : Glue 0 y 0 _ _ : Penalty _ q NoHyphen : _ -> p >= infPenalty && y == filStretch && q <= negate infPenalty
       _ -> False
     isWordSpace = \case
-      Glue _ y _ -> y > 0 && y < filStretch
+      Glue {itemStretch = y} -> y > 0 && y < filStretch
       _ -> False
 
 {- | Where each item ends up after 'normalize', which only inserts items
@@ -1375,13 +1375,14 @@ itemsFor env lead prev p next = case p of
     | otherwise -> wordItems env lk lead word shys ws
   PSpace lk held ->
     let sw = advance env lk ' '
-        glue
-          | lkCode lk || isScript lk = Glue (sw + tracking lk) 0 0 -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
-          | otherwise = Glue (sw + tracking lk) (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))
+        space
+          | lkCode lk || isScript lk = glue (sw + tracking lk) 0 0 -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
+          -- a space between words, in the size of its characters (docs/adr/0278)
+          | otherwise = Glue (sw + tracking lk) (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3)) WordSpaceGlue (lkSize lk)
      in {- a space inside a range of superscript or subscript neither breaks nor
         stretches, and no line breaks before a range (docs/adr/0269); nor at a
         space held, between the label of a page and its value (docs/adr/0277) -}
-        [Penalty 0 infPenalty NoHyphen | held || (not (lkCode lk) && (isScript lk || maybe False (maybe False isScript . pieceLook) next))] <> [glue]
+        [Penalty 0 infPenalty NoHyphen | held || (not (lkCode lk) && (isScript lk || maybe False (maybe False isScript . pieceLook) next))] <> [space]
   PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
@@ -2000,7 +2001,7 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
       | otherwise = L.zwToSp (wrapMarkSize (lkSize lk)) (ceWordAdvance env lk m)
     -- the glue of a space between words: it stretches, but not as the glue that fills the last line; a space of code does not
     wordSpace = \case
-      Glue _ y _ -> y > 0 && y < filStretch
+      Glue {itemStretch = y} -> y > 0 && y < filStretch
       _ -> False
     -- the box after the spaces, if a box of text comes next
     nextBox = \case
@@ -2022,12 +2023,13 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
             || maybe False lineEndProhibited pk
             || (hyphen && pk == Just Inseparable && ck == Just Inseparable)
     sizeOf = lkSize . bcLook
-    glueOf base (A.Aki n o m) =
+    -- the glue of an aki, of its kind, in the size its amounts are of (docs/adr/0278)
+    glueOf kind base (A.Aki n o m) =
       let sp = L.zwToSp base
-       in [Glue (sp o) (sp m - sp o) (sp o - sp n)]
+       in [Glue (sp o) (sp m - sp o) (sp o - sp n) kind base]
     -- the space before the first box of a paragraph, in the box's size
     leading c = case akiFirst c of
-      Just b | a <- akiBetween set AkiParagraphStart (AkiChar b), a /= noAki -> glueOf (sizeOf c) a
+      Just b | a <- akiBetween set AkiParagraphStart (AkiChar b), a /= noAki -> glueOf ParagraphStartGlue (sizeOf c) a
       _ -> []
     -- the line start (but not the paragraph start) and the line end are fixed, in the box's size
     withEdges first c = case (akiFirst c, akiLast c) of
@@ -2073,6 +2075,16 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
     akiFirst c = if bcExpandable c then Just Western else firstClass c
     akiLast c = if bcExpandable c then Just Western else lastClass c
     isPunct k = k `elem` [Opening, Closing, FullStop, Comma, MiddleDot]
+    {- the kind of the aki between two classes (docs/adr/0278): the first of
+    middle dots, brackets, commas, full stops, Japanese and Latin, and
+    other Japanese characters that it is -}
+    akiKind a b
+      | a == MiddleDot || b == MiddleDot = MiddleDotGlue
+      | a == Closing || b == Opening = BracketsGlue
+      | a == Comma = CommaGlue
+      | a == FullStop = FullStopGlue
+      | (a == Western) /= (b == Western) = JapaneseWesternGlue
+      | otherwise = BetweenCharactersGlue
     between p c next =
       let pc = lastClass p
           cc = firstClass c
@@ -2132,7 +2144,7 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
               | not noAkiHere,
                 aki <- akiBetween set (AkiChar a) (AkiChar b),
                 aki /= noAki ->
-                  pen <> glueOf (base a b) aki
+                  pen <> glueOf (akiKind a b) (base a b) aki
             Just _ -> [Penalty 0 candidate NoHyphen | not noBreak]
             Nothing -> if noBreak then [] else [Penalty 0 candidate NoHyphen | not (bcExpandable p && bcExpandable c)]
 

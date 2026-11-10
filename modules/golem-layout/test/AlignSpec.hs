@@ -22,7 +22,7 @@ box w = Box w (BoxContent "w" True 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource No
 
 -- | Words of the given widths with glue of width 6, the stretch and the shrink given between them.
 words' :: Sp -> Sp -> [Sp] -> [Item]
-words' y z ws = concat [box w : [Glue 6 y z | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
+words' y z ws = concat [box w : [glue 6 y z | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 paragraph :: [Sp] -> [Item]
 paragraph = words' 3 2
@@ -40,7 +40,7 @@ stretched :: Line -> Bool
 stretched l = glueRatio l > 0 && any isStretchy (lineItems l)
   where
     isStretchy = \case
-      Glue _ y _ -> y > 0
+      Glue _ y _ _ _ -> y > 0
       _ -> False
 
 expanding :: Params

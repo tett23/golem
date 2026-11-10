@@ -31,12 +31,12 @@ and its natural width (boxes and glue on one line).
 cellExtent :: [Item] -> (Sp, Sp)
 cellExtent items = (maximum (0 : segments), natural)
   where
-    natural = sum [w | Box w _ <- items] + sum [w | Glue w y _ <- items, y < filStretch]
+    natural = sum [w | Box w _ <- items] + sum [w | Glue w y _ _ _ <- items, y < filStretch]
     segments = go 0 Nothing items
     go acc _ [] = [acc]
     go acc prev (x : xs) = case x of
       Box w _ -> go (acc + w) (Just x) xs
-      Glue w _ _
+      Glue {itemWidth = w}
         | isBox prev -> acc : go 0 (Just x) xs
         | otherwise -> go (acc + w) (Just x) xs
       Penalty w p h
