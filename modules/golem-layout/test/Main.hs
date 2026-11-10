@@ -1,5 +1,6 @@
 module Main (main) where
 
+import AdjustOrderSpec (adjustOrderTests)
 import AkiTableSpec (akiTableTests)
 import AlignSpec (alignTests)
 import CharClassSpec (charClassTests)
@@ -397,6 +398,7 @@ tests =
       codeStopTests,
       urlBreakTests,
       pullInTests,
+      adjustOrderTests,
       unbreakablePairsTests,
       linkTests,
       featuresTests,
