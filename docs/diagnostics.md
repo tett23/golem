@@ -10459,13 +10459,16 @@ PDF をターゲットに含む `golem build` で、ソフトハイフン（U+00
 そのソフトハイフンは分割の候補にならず、何も描かない。
 句読点の前（`a[shy].`）、語の終わり、和文の字のあいだのソフトハイフンがこれにあたる。
 要素の最初の字より前のソフトハイフン（`[shy]table`）は、その要素を分けない指定なので、このコードを出さない。
+語が文字スタイルなどのインラインの境目で分かれていても、語の字は境目の両側の字をつないだ語で数える（[ADR 0285](adr/0285-read-soft-hyphens-at-inline-boundaries-in-the-joined-word.md)）。
+`a[shy][strong: b]` のソフトハイフンは分割の候補になり、このコードを出さない。
+境目の向こうの字がリンクの語か改行しない範囲の字なら、ソフトハイフン自身がその外にあっても分割の候補にせず、このコードを出す。
 位置はソフトハイフンで、`[shy]` で書いたものは `[shy]` である。
 一つの文字列に複数あれば、それぞれに出す。
 HTML、EPUB、プレーンテキストだけのビルドと、`golem check`、LSP では出さない。
 
 - メッセージ: `ソフトハイフンの前か後ろが語の字でないので、分割の候補にしません`
 - 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Japanese`、golem-typeset の `Golem.Typeset`）
-- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)
+- ADR: [docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)、[ADR 0285](adr/0285-read-soft-hyphens-at-inline-boundaries-in-the-joined-word.md)
 
 ### 主な原因
 
