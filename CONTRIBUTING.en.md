@@ -372,6 +372,14 @@ This package is not part of the release archives.
 
 Use the latest LTS of Node.
 Use the latest major version of each action that runs on Node 24 or later.
+Pin each action by the SHA of a commit with the tag of its version as a comment (`- uses: actions/checkout@<40-digit SHA> # v7.0.1`).
+The comment is the most specific tag that points at the commit.
+CI on a pull request (the `scripts-linux` job) checks this form with `sh scripts/ci/actions-pins.sh check`.
+A new workflow is written in the same form.
+Once a day, `.github/workflows/advisories.yml` runs `verify` and `latest`: the tag of each comment points at the pinned commit, and the pinned version is the newest upstream.
+When it fails, run `sh scripts/ci/actions-pins.sh update` locally and open a pull request with the rewritten workflows.
+The description of the pull request includes the output of `update` (which action went from which version to which).
+When a major version changes, read the release notes upstream and fix the `with:` of the actions whose inputs changed in the same pull request ([docs/adr/0296](./docs/adr/0296-pin-every-github-action-by-commit-sha.md)).
 
 Keep CI within 5 minutes.
 Every change waits for CI, so slow CI slows down development itself.
