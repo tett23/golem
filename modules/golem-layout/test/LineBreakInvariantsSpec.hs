@@ -633,7 +633,8 @@ values the inputs of the line breaking took more than the 10 seconds of
 the area on the x86-64 runner of CI (docs/adr/0208, its section 4). The
 inputs balanced and without a limit are broken and placed as before the
 ADR (R1), which the enumeration checked; the limits are checked on the
-paragraphs made by hand and by R7.
+paragraphs made by hand and by R7. This split is recorded in
+docs/adr/0282.
 -}
 adjustsAt :: Int -> [Text] -> [Adjust]
 adjustsAt depth run =

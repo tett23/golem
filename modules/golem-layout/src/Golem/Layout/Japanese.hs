@@ -1907,7 +1907,9 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
               _ -> False
           {- a number and its unit (docs/adr/0275): an Arabic digit and a
           kana or a kanji after it, not between two boxes of code or of a
-          URL, nor at the edge of a ruby, in vertical writing too -}
+          URL, nor at the edge of a ruby, in vertical writing too; a box of
+          code next to one of prose is not excluded, the same boundary as
+          pairKept (docs/adr/0282) -}
           numberUnit =
             not (breaksAsCode (bcLook p) && breaksAsCode (bcLook c)) && case (lastChar p, firstChar c) of
               (Just a, Just b) -> isArabicDigit a && lookClass (bcLook c) b `elem` [Kana, Ideograph]
