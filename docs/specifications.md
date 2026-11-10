@@ -2902,9 +2902,11 @@ CSS を書けると、媒体契約の外で見た目を変える抜け道にな�
 名前と CMYK 値の対応は、出力インテント（v1 では Japan Color 2001 Coated）に束縛して定義する。
 印刷を第一の媒体とし、色を変換する場合は CMYK から RGB の方向に限る。
 EPUB と HTML の色は、印刷用の色を RGB に近似したものになる。
+
 PDF の文字の色（`[color スウォッチ: ...]`）は、スウォッチの CMYK の値をそのまま DeviceCMYK のプロセスカラーとして書き、RGB への変換も特色の色空間も使わない（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 色を指定しない文字は、色を設定せずに描く。
 罫線の色（罫線の指定の `color`）も、スウォッチの CMYK を DeviceCMYK で塗る（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
+
 PDF の色はプロセスカラーだけであり、例外はトンボのレジストレーションの色（Separation の `All`）だけである（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
 レジストレーションの色は golem-pdf の中でトンボだけが使え、`style.toml` のスウォッチから使う手段はない。
 
@@ -2921,19 +2923,24 @@ SVG の図版の色も sRGB のまま、sRGB のプロファイルの ICCBased �
 フォントはプロジェクトの中のファイルだけから読み込み、システムにインストールされたフォントは探さない。
 システムのフォントはマシンごとに異なり、同じ入力から同じ出力が得られなくなるためである。
 
+### 役割と OpenType の機能
+
 フォントは `style.toml` で役割（本文、見出し、等幅など）ごとに指定する。
 各役割には、和文と欧文で別のフォントを指定できる。
 和文と欧文で別のフォントを組み合わせるのは日本語組版の標準的なやり方である。
 OpenType の機能（縦書き用の字形、プロポーショナルな字詰めなど）も役割ごとに指定し、縦書きの役割では縦書き用の字形を既定で有効にする。
 役割の `features` は機能をそのままシェイピングに渡すが、`palt` と `vpal` だけは、JLReq の規則で前後の空きを決める約物に当てない（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
 役割の `features` にも、文字スタイルの `features` と同じ四つの形だけを書け、読めない要素は G03124 とする（[ADR 0268](adr/0268-opentype-features-on-character-styles.md)）。
+
 縦書き用の字形がない文字のうち、UAX #50 の縦組みの向き（Vertical_Orientation）が R か Tr のもの（`U+2014` のダッシュなど）は、PDF では横組みの字形を時計回りに 90 度回転し、仮想ボディの中心を行の中心線にそろえて描く（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 フォントに縦書き用の字形があれば、R の文字でもその字形を正立で使う。
+
 PDF の縦中横は、箱の文字列を横組みでシェイピングし、横組みの字として回転せずに左から右へベタで並べる（[golem-driver ADR 0045](golem-driver/adr/0045-draw-tate-chu-yoko-horizontally-in-pdf.md)）。
 和文の書体の字面の枠の中心を箱の中心に置き、文字列の中心を行の中心線に置く。
 送りの和 `W` が箱の大きさ `s` を超える文字列は、水平の比率 `⌊1000 × s / W⌋`（千分率）で縮めて一字分に収める。
 一字の縦中横も同じ規則で描き、トラッキングは足さない。
 HTML と EPUB では、CSS の `text-orientation` の既定の `mixed` に任せる。
+
 役割より細かく書体を変えたい場合は、`style.toml` に文字スタイルを定義し、本文から適用する。
 
 文字スタイルと段落スタイルの `kerning` と `proportional-metrics`（「style.toml」の節）は、役割の `features` の後ろに機能を足して PDF のシェイピングに渡す（[docs/adr/0020](adr/0020-indesign-character-features.md)）。
@@ -2943,6 +2950,8 @@ HTML と EPUB では、CSS の `text-orientation` の既定の `mixed` に任せ
 ただし、JLReq の規則で前後の空きを決める約物（始め括弧類、終わり括弧類、句点類、読点類、中点類）には、カーニングの方式と `proportional-metrics` によらず `palt` と `vpal` を足さず、`-palt` と `-vpal` を足す（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
 役割の `features` の `palt` と `vpal` も、この `-palt` と `-vpal` が上書きする。
 これらの約物に足す機能は、`metrics` で `-palt` と `-vpal`、`none` と `japanese-equal-width` で `-kern`、`-vkrn`、`-palt`、`-vpal` である。
+
+### 機能の並び
 
 PDF で字をシェイピングする機能の並びは、次の順につないだものである（[ADR 0268](adr/0268-opentype-features-on-character-styles.md)）。
 後ろの機能が、前の同じタグの機能に勝つ。
@@ -2979,6 +2988,8 @@ dev では PDF を書き、prod では PDF を書かず（前のビルドの PDF
 書体が機能を持たなければ字形は変わらないので、合成のスモールキャップは作らず、元の字形で組む。
 HTML、EPUB、プレーンテキストのターゲットと、`golem check`、LSP は報告しない。
 
+### 埋め込めないフォント
+
 ライセンスで埋め込みが禁止されているフォントを使った場合は、エラー（G08004）とする。
 OS/2 の `fsType` は OpenType の仕様のとおりに読み、ビット 1（制限付きのライセンス）がビット 2 とビット 3 なしに立っている場合、ビット 8（サブセット化の禁止）が立っている場合、ビット 9（ビットマップの埋め込みだけを許す）が立っている場合に埋め込みを禁じているとみなす（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 Golem は常にサブセットを埋め込むので、サブセット化を禁じるフォントは埋め込めない。
@@ -2988,6 +2999,8 @@ PDF の埋め込みフォントの入れ物は CFF2 の輪郭を受けないた�
 G08019 は読めないフォント（G08003）と原因が違うので、コードを分ける。
 `golem build` の PDF、`golem check`、`golem preflight` が報告し、`golem check` もフォントのファイルを読んで確かめる。
 HTML と EPUB はフォントのファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、拒まない。
+
+### フォントにない字
 
 PDF をターゲットに含む `golem build` は、シェイピングの結果のグリフ番号が 0（.notdef）になった字を G08100 で報告する（[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）。
 原稿の文字、番号の文字列、柱、ノンブル、目次と索引の文字列、ルビ、圏点のすべてを対象とし、符号位置とフォントのファイルの組ごとに一つにまとめ、その字を含む行のブロックの位置に出す。
@@ -2999,6 +3012,8 @@ HTML、EPUB、プレーンテキストのターゲットでは報告しない。
 HTML と EPUB はフォントのファイルを同梱するだけで、字を描くのは読書環境であり、プレーンテキストはフォントを使わない。
 `golem check` と LSP は組版をしないので、報告しない。
 
+### 読み込む役割
+
 PDF は、本文の役割と、見出しの `font`、文字スタイルの `font`、段落スタイル（組み込みの `caption` と `sidenote` を含む）の `font` が指す役割のフォントだけを読み込む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 コードの書体は役割 `code` で指定し、組み込みの段落スタイル `code` と文字スタイル `code` が既定でこれを指す（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 PDF は、本にコードブロックかコードの文字スタイルの文字があるときだけ `code` の役割のフォントを読み込む。
@@ -3008,6 +3023,8 @@ PDF は、本にコードブロックかコードの文字スタイルの文字�
 二つの役割が同じバイト列のファイルを指す場合は、一つのフォントとして一度だけ埋め込む。
 バイト列が異なるのに PostScript 名が同じフォントを使う場合は、エラー（G08005）とする。
 
+### PDF への埋め込み
+
 PDF に埋め込むフォントは、Type 0 のフォントと CIDFont で書き、文字のコードを `Identity-H`（縦組みでは `Identity-V`）とする（[golem-font ADR 0002](golem-font/adr/0002-subsetting-and-embedding.md)）。
 CID-keyed の CFF のフォントは CID を文字のコードとし、CIDFont の `CIDSystemInfo` をフォントの CFF の ROS（Registry、Ordering、Supplement）とする。
 それ以外のフォント（TrueType と、CID-keyed でない CFF）はグリフ ID を文字のコードとし、`CIDSystemInfo` を Adobe-Identity-0 とする（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。
@@ -3016,6 +3033,9 @@ CID-keyed の CFF のフォントは CID を文字のコードとし、CIDFont �
 OpenType に包んだ CFF（`/Subtype /OpenType`）は ISO 32000-1 が認める形だが、埋め込まない。
 Chromium の PDF のビューアー（PDFium）は、OpenType に包んだ CID-keyed の CFF の文字のコードをグリフ ID として読み、和文を描かないためである。
 CFF の表を取り出せないフォントは、OpenType のまま埋め込まずにエラー（G08018）とし、PDF を書かない。
+
+### ToUnicode と ActualText
+
 PDF の ToUnicode は、グリフを、そのグリフが組んだクラスタ（シェイピングで一まとまりになった文字の並び）の文字列の全体に対応させる（[golem-driver ADR 0030](golem-driver/adr/0030-ligature-text-layer.md)、[golem-font ADR 0002](golem-font/adr/0002-subsetting-and-embedding.md)）。
 合字（fi、ffi など）は、PDF から抜き出すと複数の文字に戻る。
 一つのクラスタを複数のグリフで組んだ場合は、最初のグリフにクラスタの文字列を対応させ、残りのグリフには対応させない。
@@ -3024,6 +3044,9 @@ ToUnicode で文字列に戻らないクラスタの出現は、内容のスト�
 マーク付きの内容は ActualText のためだけに書き、タグ付き PDF の構造（`StructTreeRoot`、`MCID`）は作らない。
 ToUnicode で戻るクラスタは囲まないので、合字だけの本の内容のストリームは変わらない。
 本文の中のコードの既定の改行の印（`⏎`）は字形を使わない図形なので、使った字形の一覧にも、ToUnicode にも、ActualText にも何も足さず、PDF から抜き出した文字列に出ない（[golem-layout ADR 0042](golem-layout/adr/0042-draw-the-wrap-mark-of-inline-code-small-and-light.md)）。
+
+### 結合文字と異体字セレクタ
+
 原稿の結合文字（一般カテゴリーが Mn、Mc、Me の字）は、PDF では直前の基底の字と一つの箱にし、基底の字と同じ書体で一度にシェイピングする（[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）。
 箱の文字のクラス（禁則、アキ量のセットの空き、カーニング、圏点、欧文の語に入るかどうか）は、基底の字で決める。
 欧文の語の分綴は、結合文字を除いた語にパターンをかけ、分ける位置を基底の字とそれに続く結合文字の後に写すので、箱が結合文字で始まることはない。
@@ -3034,6 +3057,8 @@ ToUnicode には、異体字セレクタを除いた文字列を書く。
 異体字を基底の文字で検索できるようにするためである。
 ほかの結合文字は ToUnicode と ActualText の文字列から除かず、抜き出した文字列は原稿の文字列に戻る。
 HTML、EPUB、プレーンテキストは、異体字セレクタを原稿のまま出力する（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。
+
+### HarfBuzz と FreeType の呼び出し
 
 golem-font は HarfBuzz と FreeType の呼び出しを純粋な関数として包む（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)）。
 純粋な関数はどのスレッドからでも同時に評価されうるので、包んだ関数はスレッドから同時に呼んでも、一つずつ呼んだときと同じ結果を返す。
@@ -3058,6 +3083,8 @@ HarfBuzz のフォントは開いた後は読むだけで、HarfBuzz が複数�
 - PNG の透過は、アルファのチャンネル（色の種類 4 と 6）も tRNS のチャンク（パレットのアルファと、グレーと RGB の透明の色）も、SMask として PDF に入れる。tRNS があれば、透明の画素がなくても SMask を書く。色のキーのマスク（`/Mask`）は書かない。PNG の仕様に反する tRNS（色の種類 4 と 6 にある、パレットより長い、長さが色の種類に合わない、二つ以上ある）と、画素が 2^29 を超える tRNS の PNG は、G08010 にする。HTML と EPUB は今と同じく PNG をそのまま写す（[golem-pdf ADR 0014](golem-pdf/adr/0014-png-trns-transparency.md)）。アルファの面の作り方は [golem-pdf の仕様書](golem-pdf/specifications.md) に書く。
 - PDF に置けない図版（読めない画像と、取り込めない PDF）は、PDF を組むとき（`golem build` の PDF と `golem preflight`）に `@figure` ごとに G08010 のエラーとし、PDF を書かない。dev と prod の両方でエラーである。HTML、EPUB、プレーンテキストは G08010 を出さない。HTML と EPUB が読むのは SVG だけで、動的なコンテンツの検査（G08014、[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)）のためである（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 
+### PDF の図版
+
 PDF の図版は、そのページを Form XObject として PDF に取り込み、ベクターのまま描く（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 PDF を読む処理は golem-pdf の `Golem.Pdf.Import` に Haskell で書き、ほかのライブラリを使わない。
 
@@ -3073,6 +3100,8 @@ PDF を読む処理は golem-pdf の `Golem.Pdf.Import` に Haskell で書き、
 - DeviceRGB は、sRGB のプロファイルの ICCBased に置き換える。内容のストリームの `r g b rg` は `/GolemSRGB cs r g b sc` に、`RG` は `CS` と `SC` の組に書き換える。
 - フォントは埋め込んだものだけを受け付け、取り込んだフォントを本文のフォントとまとめない。
 - 次の PDF は拒み、G08010 の理由に示す：暗号化された PDF、`page` のページがない PDF、`LZWDecode`、`JBIG2Decode`、`JPXDecode` などの扱わない圧縮を使う PDF、埋め込んでいないフォントを使う PDF、特色（Separation と DeviceN）を使う PDF、RGB のインライン画像を持つ PDF、レイヤー（オプショナルコンテンツ）を持つ PDF、`UserUnit` が 1 でないページ。
+
+### SVG の図版
 
 SVG の図版は、golem-svg が Haskell で読み、PDF の描画の演算子で Form XObject に描く（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
 外部の変換器もほかのライブラリも使わない。
@@ -3108,12 +3137,15 @@ SVG の図版は、golem-svg が Haskell で読み、PDF の描画の演算子�
 
 - XML として読めない SVG、UTF-8 でない SVG、内部サブセットを持つ `DOCTYPE` を持つ SVG も、中身を確かめられないので G08014 とし、G08010 と同じ理由を括弧の中に書く。動的なコンテンツを取り除いて写すことはしない。検査を通った SVG は、バイト列をそのまま写す。
 
+### キャプションと大きさ
+
 PDF では、図番号とキャプションを、画像の下（縦組みでは左）に、段落スタイル `caption` の `font` と `size` で組む（[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 指定がなければ本文と同じ書体と大きさになる。
 本文より小さいキャプションの行は、本文の行送りと文字の大きさの比を保った行送りで送り、画像の直後の行の格子の先頭にそろえて置く。
 キャプションは、その全体を収める最も少ない数の格子の行を占め、余りはキャプションの後ろに回る。
 画像の行と、キャプションが占める格子の行は行の格子に載せ、図版の後の本文も格子からずらさない。
 回り込ませる図版の除外領域の深さは、キャプションの実際の終わりまでとする。
+
 図版の `width` は、図版の行の方向の長さ（横組みでは幅、縦組みでは高さ）である（[docs/adr/0190](adr/0190-non-wrapping-figure-width.md)）。
 回り込ませる図版では必須であり、回り込ませない図版と回した図版では省ける。
 
@@ -3132,6 +3164,8 @@ PDF では、図番号とキャプションを、画像の下（縦組みでは�
 - 最後の行の方向の長さが、`width`（なければ段の行長）より短い図版ごとに、notice の G07039 を出す。`width` を行長より大きく書いて行長に縮めた図版も、行の送りの方向に収めるために縮めた図版も、同じ G07039 である。メッセージの割合は、最後の長さ × 100 ÷ `width` の長さ（なければ段の行長）の切り捨てである。回せばより大きく置ける図版では、`rotate=true` の案内を足す。抑制は `silence-notices` と `--no-notices` による本の全体の単位である。
 - キャプションが占める格子の行の数が段の行の数に達し、画像を置く行が残らない場合はエラー（G07038）とする。
 
+### HTML と EPUB の図版の大きさ
+
 HTML と EPUB は、`width` を持つ図版の `<img>` に、`style` の属性で大きさを書く（[docs/adr/0190](adr/0190-non-wrapping-figure-width.md)）。
 横組みの本では `width` と `max-width: 100%`、縦組みの本では `height` と `max-height: 100%` を書く。
 長さは、`mm`、`pt`、`Q`、`H`、`in` を `pt` に換算し（sp にしてから小数点以下 4 桁まで）、`zw` を `em`、`%` を `%` にする。
@@ -3140,6 +3174,8 @@ HTML と EPUB は、`width` を持つ図版の `<img>` に、`style` の属性�
 回り込ませる図版も、HTML と EPUB では回り込ませない図版として置くので、同じく書く。
 `width` を持たない図版の `<img>` は `src` と `alt` だけを持つ。
 プレーンテキストは図版を描かないので、`width` によって変わらない。
+
+### 回した図版
 
 `@figure` に `rotate=true` を書くと、PDF で図版とキャプションを一緒に 90 度回し、本文を持たない一ページに置く（[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）。
 回すのは書き手が指定したときだけで、自動では回さない。
@@ -3157,19 +3193,25 @@ HTML と EPUB は、`width` を持つ図版の `<img>` に、`style` の属性�
 - 回した図版のページには、柱とノンブルをほかのページと同じく置く。脚注は置かず、前のページから続く脚注は次の本文のページに続ける。
 - 図番号は原稿の順のままであり、`ref-page` は回した図版を置いたページを指す。キャプションの文字はテキストとして描くので、PDF から文字列を抜き出せる。
 - HTML と EPUB は `rotate` を読まず、図版とキャプションを回さずに置く。ページのない媒体では、読み手が本を回すことがないためである。プレーンテキストは図版を描かないので変わらない。
+
+### 回り込ませる図版と図版の順
+
 回り込ませる図版は、画像とキャプションを含む矩形に `[figures]` の `wrap-gap` を足した除外領域を作り、その脇の行を除外領域の分だけ短く組む[^line-length]。
 脇の行は図版の直後の段落に限り、見出しなどの段落でないブロックが来たら、除外領域の残りを空けたまま、その後から組む。
 図版がページの残りに収まらない場合は、脇の行とともに次のページの先頭に送り、前のページの残りは空白にする。
 送った先のページで、前のページから続く脚注が末尾を取って図版が収まらなければ、さらに次のページに送る（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。
+
 図版は、回り込みの有無にかかわらず、原稿の順に段に置く（[golem-layout ADR 0015](golem-layout/adr/0015-figure-order.md)）。
 回り込ませない図版が段の残りに収まらない場合は、次の段の先頭に送り、その後の本文を図版の前に詰める。
 送った図版が待っているあいだは、後の図版も、収まるかどうかにかかわらず、待っている図版の後に送る。
 待っていた図版は、次の段の先頭に原稿の順に並べ、その後に本文が続く。
+
 送った図版が待っているあいだに書いた図版と、何もないページに置けずに待つ回した図版（待つ図版）は、直前の `@need-lines` と行アキを受け取らない。
 それらは、流れで次に来る、待つ図版でないブロックに当てる（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。
 待つ図版かどうかは、ためた改ページの印を適用した後で判定する。改ページで待っていた図版が置かれれば、その後の図版は待たない。
 待っている図版があるときの回り込ませる図版は、待っている図版をすべて置いた後の段に、脇の行とともに置き、今の段の残りは空白にする。
 待っている図版の数に上限はない。
+
 脇の行の長さが本文の文字の大きさの 8 字分に満たない場合はエラー（G07022）、除外領域が一ページの行数を超える場合はエラー（G07023）とする。
 `width` が読めない場合は、評価の G02133 であり、G07022 ではない（[docs/adr/0190](adr/0190-non-wrapping-figure-width.md)）。
 脇の段落で、脇の行の長さから字下げを引いた値が 0 以下になる行があれば、その段落を指すエラー（G07028）とする（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
@@ -3178,6 +3220,8 @@ HTML と EPUB は、`width` を持つ図版の `<img>` に、`style` の属性�
 
 表の記法は言語仕様に定める。
 HTML と EPUB は表を `<table>` として出力し、列の幅の指定のない表の列の幅と、罫線は読者側のエンジンに任せる。
+
+### 表の属性
 
 表には、キャプション（`@caption`）、表番号を外す `@nonumber`、セルの段落スタイル（`@style`）、列の幅（`@column-widths`）を付けられる（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 `|` の表と `@table` のどちらにも同じく付き、改行の様式でも属性は直後の表の全体に付く。
@@ -3190,12 +3234,15 @@ HTML と EPUB は表を `<table>` として出力し、列の幅の指定のな�
 - HTML と EPUB では、キャプションのある表は `<table>` の最初の子に `<caption>` を置き、表番号を `<span class="number">` に入れ、区切りとキャプションを続ける。`caption-position = "below"` では、`style.css` に `table > caption { caption-side: bottom; }` を書く。列の幅の指定のある表は `<colgroup>` に列ごとの `<col>` を置き、`auto` でない列に `style="width: ..."` を書く。`zw` は `em` に、寸法は図版の `width` と同じく `pt` に、`%` は `%` にする。HTML の `%` は表の幅に対する割合なので、PDF の列が分け合う幅とは基準が違う。`table` でない段落スタイルを当てた表は、`<table>` に `ps-名前` の class を付ける。
 - プレーンテキストでは、キャプションのある表に、表番号と区切りとキャプションの一行を書く。`caption-position` が `"above"` なら行の前に、`"below"` なら行の後に書く。
 
+### 表のファイル
+
 `@table` は、CSV（RFC 4180）か TSV（IANA の `text/tab-separated-values`）のファイルから表を作る（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
 表のファイルのパスは、`@figure` と `@listing` と同じく、最初の位置引数に語か文字列で書く（[ADR 0184](adr/0184-table-positional-path.md)）。
 `src=` のキーワード引数でも書けるが廃止予定であり、`src=` の引数に notice（G02129）を出して、同じ表を組む。
 パスがなければ G02034 とする。
 パスが二つ以上あるとき（位置引数が二つ以上か、位置引数と `src=` の両方）は、どちらが正しいかを処理系は知らないので、コマンドの行に G02130 を出して表を組まない。
 ビルドが読むファイルを集める `assetRefs` は、`@table` の最初の位置引数と `src=` の両方を集める。
+
 形式は、`format` のキーワード引数（`csv` か `tsv`）があればその値で、なければパスの拡張子で決める。
 拡張子が `.tsv`（大文字と小文字を区別しない）なら TSV、それ以外は CSV とする。
 TSV は、LF か CRLF で行を、タブでセルを区切り、引用符とバックスラッシュを書いたままの文字とする。
@@ -3203,12 +3250,16 @@ TSV は、LF か CRLF で行を、タブでセルを区切り、引用符とバ�
 TSV の空のセルは、原稿の `|` の表と同じくインラインを持たないセルになる。
 CSV は引用符の中の改行をセルの中の改行として残し、空の行を捨てる。
 どちらも一行目を見出しの行とし、セルの中身は地の文として扱う。
+
 `align` のキーワード引数は列の揃えを `left`、`center`、`right`、`default` のカンマ区切りで並べ、一つだけ書けばすべての列に当てる。
 揃えは意味論 IR の表の揃えに入り、原稿の `|` の表の揃えと同じ経路ですべての出力に届く。
 `cells` のキーワード引数は、セルの読み方として予約し、今は `text` だけを受け付ける。
 `cells=markup` は名前だけを決めた値であり、まだ実装していないのでエラー（G02084）とする。
+
 セルの `Text` の位置は `@table` のコマンド全体であり、表のファイルの中の位置は、読み込みと表の形の diagnostics にだけ使う。
 読み込みは先頭の BOM と CRLF を受け付けるが、`golem fmt` で先頭の BOM を取り除き、CRLF と単独の CR を LF に直せる（[ADR 0186](adr/0186-fmt-table-files.md)、「fmt」の節）。
+
+### 表のファイルの上限
 
 表のファイルには三つの上限がある（[docs/adr/0043](adr/0043-table-file-size-limits.md)）。
 ファイルの大きさは 16 MiB（2^24 バイト、BOM を含む）以下、行の数は見出しの行を含めて 10,000 以下、1 行のセルの数は 256 以下とする。
@@ -3221,6 +3272,8 @@ G02088 の位置は `@table` のブロックとし、メッセージはパスと
 上限は設定で変えられない。
 CSV と TSV の読み手は、ファイルを `Text` のまま読み、`String` を作らない。
 一つの表の読み込みの割り当ては、ファイルの大きさの 16 倍以下とする。
+
+### PDF の表
 
 PDF では、表を行の格子の上に組む（[golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)）。
 
