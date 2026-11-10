@@ -885,7 +885,9 @@ numberUnitOf a b
 a number and its unit that golem-layout ADR 0049 does not keep together,
 no break when the penalty is 10000; otherwise one break, a penalty of the
 penalty, of no width and no hyphen, and no glue the first box comes right
-before.
+before. The pairs excluded are only those with both boxes of code or of a
+URL, and W2 is read without the places a prohibition or a pair of 0049
+keeps (docs/adr/0282).
 -}
 w1w2NumberUnit :: Check
 w1w2NumberUnit _ p =
