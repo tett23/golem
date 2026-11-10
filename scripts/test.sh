@@ -514,11 +514,12 @@ if [ ! -e "$PL/calls" ]; then ok; else ng "plugin-licenses --check: no curl for 
 # bytecodealliance/wasmtime as the API gave them on 2026-11-05, with only
 # ghsa_id, severity, summary and package, vulnerable_version_range and
 # patched_versions of vulnerabilities. The list of the crates is
-# licenses/wasmtime-v49.0.5/MANIFEST.tsv as it is.
+# licenses/wasmtime-v49.0.5/MANIFEST.tsv as it was, kept in
+# testdata/wasmtime-v49.0.5-MANIFEST.tsv when wasmtime was raised to 50.0.1.
 
 WA=$WORK/advisories
 mkdir -p "$WA"
-WA_MANIFEST=$HERE/../licenses/wasmtime-v49.0.5/MANIFEST.tsv
+WA_MANIFEST=$HERE/testdata/wasmtime-v49.0.5-MANIFEST.tsv
 WA_DATA=$HERE/testdata/wasmtime-advisories.json
 # manifest PACKAGE VERSION...: a list of the crates with PACKAGE at each VERSION
 manifest() {

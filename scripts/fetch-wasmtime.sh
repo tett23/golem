@@ -1,6 +1,6 @@
 #!/bin/sh
 # Downloads the wasmtime C API for this platform into third_party/wasmtime
-# and checks its SHA-256 (golem-plugin ADR 0001: wasmtime 49.0.5).
+# and checks its SHA-256 (golem-plugin ADR 0001: wasmtime 50.0.1).
 # On musl (Alpine), for which the glibc archives cannot be linked, it uses
 # the musl archives of the same release (docs/adr/0004).
 #
@@ -20,17 +20,17 @@ case ${1:-} in
   "") ;;
   *) echo "usage: fetch-wasmtime.sh [--expected]" >&2; exit 2 ;;
 esac
-VERSION=49.0.5
+VERSION=50.0.1
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 is_musl() {
   [ -f /etc/alpine-release ] || { ldd --version 2>&1 || true; } | grep -q musl
 }
 case "$(uname -s)-$(uname -m)" in
-  Darwin-arm64) ARCH=aarch64-macos; SHA=16bf4584b586bf18c708bf7b98cb94c415c0201575d5ad24860dcbdf83c213e5 ;;
+  Darwin-arm64) ARCH=aarch64-macos; SHA=a49327ca596fae51cd92e230265132112bb7896c5a24e4d58cd05b56612e26bb ;;
   Linux-x86_64)
-    if is_musl; then ARCH=x86_64-musl; SHA=a56728962f434ad6eed02c6b9313069b0044e2ac3143574bc9fa2c0f5cb2cebc; else ARCH=x86_64-linux; SHA=9dd9a5b4d29bfe172656e9c060ab494ce8db2c15e659351bd86ae891bb3bd330; fi ;;
+    if is_musl; then ARCH=x86_64-musl; SHA=579216d5979f3b2f0714c039e097de13f0e6af62bbaa96588a0de1b7de9c20cb; else ARCH=x86_64-linux; SHA=e2c0c26e1aef52f82f0b9918ad6f34cc30f4b557aee3e261cb127a9462be8f4d; fi ;;
   Linux-aarch64)
-    if is_musl; then ARCH=aarch64-musl; SHA=2e2a6cb8cabf22f88f2dc52018ac0b048bfc9ba45b09455bb5b17af6588239b1; else ARCH=aarch64-linux; SHA=e9286bc2ec8e216aa63c7b4004fa1a7a786bd9e0b7541e70247210ec83f452ed; fi ;;
+    if is_musl; then ARCH=aarch64-musl; SHA=3f9f1875a83a3764987e34138db364d149d75b573c3e725559b779ba781f0e2f; else ARCH=aarch64-linux; SHA=1a36140a016a9cc098f02a37bb0cc7be6451032861ba70049127928d2f31ef84; fi ;;
   *) echo "unsupported platform: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
 esac
 NAME=wasmtime-v$VERSION-$ARCH-c-api

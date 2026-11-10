@@ -907,18 +907,18 @@ cp "$HERE/../check-wasmtime-linked.sh" "$FW/root/scripts/"
 CW=$WORK/cw
 mkdir -p "$CW"
 check_linked() { sh "$FW/root/scripts/check-wasmtime-linked.sh" "$@"; }
-printf 'abc\0version: 49.0.5\0xyz\n' >"$CW/one"
+printf 'abc\0version: 50.0.1\0xyz\n' >"$CW/one"
 run check_linked "$CW/one"
 expect "check-wasmtime-linked: one line of the version of fetch-wasmtime.sh" 0
 printf 'abc\0xyz\n' >"$CW/none"
 run check_linked "$CW/none"
 expect "check-wasmtime-linked: no line of a version" 1
-if grep -q '49.0.5' "$WORK/err"; then ok; else ng "check-wasmtime-linked: the expected version is shown"; fi
+if grep -q '50.0.1' "$WORK/err"; then ok; else ng "check-wasmtime-linked: the expected version is shown"; fi
 printf 'abc\0version: 49.0.2\0xyz\n' >"$CW/old"
 run check_linked "$CW/old"
 expect "check-wasmtime-linked: the line of another version" 1
 if grep -q 'version: 49.0.2' "$WORK/err"; then ok; else ng "check-wasmtime-linked: the line found is shown"; fi
-printf 'abc\0version: 49.0.5\0version: 1.2.3\0xyz\n' >"$CW/two"
+printf 'abc\0version: 50.0.1\0version: 1.2.3\0xyz\n' >"$CW/two"
 run check_linked "$CW/two"
 expect "check-wasmtime-linked: two lines of versions" 1
 

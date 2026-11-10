@@ -719,7 +719,7 @@ PID が書かれていなければ、断言は失敗する。
 `-P` を伴わない `pgrep`、`pkill`、`killall` と、すべてのプロセスを並べる `ps` を使う行があれば、`scripts/ci/test.sh` が `ファイル:行` を出して失敗する。
 
 夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` をほかの実行環境で動かす。
-Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、wasmtime 49.0.5 の C API と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno`、`--wasmtime`、`--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、wasmtime 50.0.1 の C API と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno`、`--wasmtime`、`--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
 
 wasmtime のホストは、`scripts/fetch-wasmtime.sh` が取る C API にリンクする C のプログラム `scripts/wasm/run-wasmtime.c` である。
 `golem.wasm` を一度だけコンパイルして直列化し、入力ごとに、`run.mjs frame` が書く入力の枠を `golem_build_pdf` に渡して結果の枠を書き、`run.mjs result` がそれを読む（`scripts/wasm/run-wasmtime.sh`）。
@@ -732,7 +732,7 @@ wasmtime の CLI は、メモリにバイト列を書いて渡す手段がない
 `golem_alloc` と `golem_build_pdf` に渡す長さは、`uint32_t` のビットの並びのまま `i32` に入れる。
 空でない入力の枠に `golem_alloc` が 0 を返したときは、`run-wasmtime: golem_alloc could not allocate <長さ> bytes` と書いて終了コード 3 で終わる。
 `engine()` は memory64 を切って engine を作るので、`golem.wasm` の線形メモリは wasm32 の 2^16 ページ（4 GiB）を超えて伸びない。
-wasmtime 49.0.5 の既定では memory64 が有効であり（C API のヘッダー `wasmtime/config.h` の文書は既定を偽と書くが、既定の設定は 64 ビットのメモリを持つモジュールを受け付ける）、上限は既定ではなくホストの設定で保つ。
+wasmtime 50.0.1 の既定では memory64 が有効であり（C API のヘッダー `wasmtime/config.h` の文書は既定を偽と書くが、既定の設定は 64 ビットのメモリを持つモジュールを受け付ける）、上限は既定ではなくホストの設定で保つ。
 memory64 を切ったホストは、memory64 を有効にしてコンパイルした `golem.cwasm` を読まない。
 fuel、epoch、store の limiter は置かない。
 ホストが動かすのはリポジトリ自身のビルドした `golem.wasm` だけであり、時間は `chromium` のジョブの時間切れと `compare.sh` の `COMPARE_TIMEOUT` が縛る。
