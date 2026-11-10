@@ -1,6 +1,6 @@
 {-# LANGUAGE CApiFFI #-}
 
-{- | Plugins as wasm modules run by wasmtime 49.0.5 (golem-plugin ADR 0001).
+{- | Plugins as wasm modules run by wasmtime 50.0.1 (golem-plugin ADR 0001).
 No imports, no WASI, no threads, canonical NaNs, no relaxed SIMD, fuel
 and memory limits, a fresh instance per call. Requests and responses
 are CBOR (golem-doc.cddl); every response is validated. Compiling and

@@ -719,7 +719,7 @@ PID が書かれていなければ、断言は失敗する。
 `-P` を伴わない `pgrep`、`pkill`、`killall` と、すべてのプロセスを並べる `ps` を使う行があれば、`scripts/ci/test.sh` が `ファイル:行` を出して失敗する。
 
 夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` をほかの実行環境で動かす。
-Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、wasmtime 49.0.5 の C API と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno`、`--wasmtime`、`--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、wasmtime 50.0.1 の C API と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno`、`--wasmtime`、`--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
 
 wasmtime のホストは、`scripts/fetch-wasmtime.sh` が取る C API にリンクする C のプログラム `scripts/wasm/run-wasmtime.c` である。
 `golem.wasm` を一度だけコンパイルして直列化し、入力ごとに、`run.mjs frame` が書く入力の枠を `golem_build_pdf` に渡して結果の枠を書き、`run.mjs result` がそれを読む（`scripts/wasm/run-wasmtime.sh`）。
@@ -732,7 +732,7 @@ wasmtime の CLI は、メモリにバイト列を書いて渡す手段がない
 `golem_alloc` と `golem_build_pdf` に渡す長さは、`uint32_t` のビットの並びのまま `i32` に入れる。
 空でない入力の枠に `golem_alloc` が 0 を返したときは、`run-wasmtime: golem_alloc could not allocate <長さ> bytes` と書いて終了コード 3 で終わる。
 `engine()` は memory64 を切って engine を作るので、`golem.wasm` の線形メモリは wasm32 の 2^16 ページ（4 GiB）を超えて伸びない。
-wasmtime 49.0.5 の既定では memory64 が有効であり（C API のヘッダー `wasmtime/config.h` の文書は既定を偽と書くが、既定の設定は 64 ビットのメモリを持つモジュールを受け付ける）、上限は既定ではなくホストの設定で保つ。
+wasmtime 50.0.1 の既定では memory64 が有効であり（C API のヘッダー `wasmtime/config.h` の文書は既定を偽と書くが、既定の設定は 64 ビットのメモリを持つモジュールを受け付ける）、上限は既定ではなくホストの設定で保つ。
 memory64 を切ったホストは、memory64 を有効にしてコンパイルした `golem.cwasm` を読まない。
 fuel、epoch、store の limiter は置かない。
 ホストが動かすのはリポジトリ自身のビルドした `golem.wasm` だけであり、時間は `chromium` のジョブの時間切れと `compare.sh` の `COMPARE_TIMEOUT` が縛る。
@@ -5536,7 +5536,9 @@ HTML と EPUB は U+00AD をそのまま書き、閲覧環境はその位置で�
 入れ子にした文字スタイルの `no-break` は、どれか一つが真なら真であり、内側に `no-break = false` を書いても外側の範囲は解けない。
 
 分割の候補の前の最も近い字と後の最も近い字が、どちらも改行しない範囲の字なら、その候補を置かない。
-和文の字のあいだ、語間の空白、明示のハイフンの後、パターンの分綴、ソフトハイフン、ルビの親文字のあいだ、コードの改行の位置のすべてに当てる。
+和文の字のあいだ、語間の空白、明示のハイフンの後、パターンの分綴、ルビの親文字のあいだ、コードの改行の位置のすべてに当てる。
+範囲に触れるソフトハイフン（ソフトハイフン自身が範囲の字であるか、つないだ語の中で前の字か後の字が範囲の字であるもの）は候補にならず、罰則によらず罰点を残さない（[ADR 0305](adr/0305-leave-soft-hyphens-in-or-next-to-a-no-break-range-out-of-i8.md)）。
+範囲の中のソフトハイフンと前後の字が一つのテキストの字なら、語はそこで切れず、一つの箱になる。
 罰点の候補は罰則 10000 の罰点に、グルーの候補は前に罰則 10000 の罰点を置いたものにし、箱の幅、グルーの伸び縮み、和欧間の空き、アキ量のセットの空き、禁則、突き出し、字幅の伸縮は変えない。
 範囲の中の語間の空白は、改行しないまま伸び縮みする。
 範囲の端の候補（前か後ろの最も近い字が範囲の外の字であるもの）は、範囲がないときと同じ規則で決める。
@@ -5663,7 +5665,10 @@ C5（`url`）は例のテストで確かめる。
 正規形と縦組みは、28 の部品の並びと同じ部品の数までで確かめる。
 コードの並びの既知の不具合の一覧は空であり、除く入力はない（[golem-layout ADR 0038](golem-layout/adr/0038-kinsoku-across-spaces-of-inline-code.md)）。
 
-改行しない範囲は、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md) の I7（行の境の前と後の最も近い字がどちらも範囲の字なら、その境は強制改行である）と I8（範囲は分割の候補を消すだけである）として、`modules/golem-layout/test/NoBreakEnum.hs` で確かめる。
+改行しない範囲は、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md) の I7（行の境の前と後の最も近い字がどちらも範囲の字なら、その境は強制改行である）と、[ADR 0305](adr/0305-leave-soft-hyphens-in-or-next-to-a-no-break-range-out-of-i8.md) の S1 と S2 として、`modules/golem-layout/test/NoBreakEnum.hs` で確かめる。
+S1 は [ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md) の I8 を置き換え、範囲は分割の候補を消すだけであるとする。
+範囲を外した入力の項目から、範囲に触れるソフトハイフンの罰点を先に除き（そのソフトハイフンと前後の字が一つのテキストの字なら、前後の箱を一つにつなぐ）、そのうえで範囲の中の候補を罰則 10000 にしたものが、もとの入力の項目に等しい。
+S2 は、範囲に触れるソフトハイフンが罰点を残さないことである。
 部品は、和文の `漢`、`あ`、`。`、`「` と、欧文の `a`、`table`、`hyphenation`、`lime-tree` と、語間の空白、ソフトハイフン、親文字が二字のモノルビ、`/` を含むコード、強制改行の 13 であり、それぞれを範囲の中か外に置く。
 行の幅は 2 字から 5 字である。
 プルリクエストの CI は部品 2 個まで、毎晩の `enum.yml` は部品 3 個までを調べる。
