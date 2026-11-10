@@ -21,6 +21,8 @@ module Golem.Project.Style
     charFeatures,
     paraFeatures,
     CharStyleDef (..),
+    PunctuationWidth (..),
+    punctuationWidthValues,
     Kerning (..),
     LineBreaks (..),
     ParaAlign (..),
@@ -244,6 +246,16 @@ and then rejected by the checks of style.toml (G03021): it is a v2 item.
 data Kerning = KernMetrics | KernJapaneseEqualWidth | KernNone | KernOptical
   deriving stock (Eq, Ord, Show)
 
+{- | The glyphs of JLReq's punctuation (docs/adr/0302): full-width, shaped
+with fwid, or those of the font.
+-}
+data PunctuationWidth = PunctuationFullWidth | PunctuationFont
+  deriving stock (Eq, Ord, Show)
+
+-- | The values of punctuation-width in style.toml.
+punctuationWidthValues :: [(Text, PunctuationWidth)]
+punctuationWidthValues = [("full-width", PunctuationFullWidth), ("font", PunctuationFont)]
+
 -- | [character-styles.<name>] (docs/adr ADR 0005).
 data CharStyleDef = CharStyleDef
   { csBasedOn :: !(Maybe Text),
@@ -282,7 +294,9 @@ data CharStyleDef = CharStyleDef
     {- | the characters do not break between them (docs/adr ADR 0272), as
     InDesign's No Break; true in one of the styles around a character is
     true for it
-    -} csNoBreak :: !(Maybe Bool)
+    -} csNoBreak :: !(Maybe Bool),
+    -- | whether Golem shapes JLReq's punctuation with fwid (docs/adr/0302)
+    csPunctuationWidth :: !(Maybe PunctuationWidth)
   }
   deriving stock (Eq, Show)
 
@@ -368,7 +382,9 @@ data ParaStyleDef = ParaStyleDef
     {- | the stages the glue of a line shrinks and stretches in, each the
     names of kinds of 'adjustPlaceNames' (docs/adr/0278)
     -} psShrinkOrder :: !(Maybe [[Text]]),
-    psStretchOrder :: !(Maybe [[Text]])
+    psStretchOrder :: !(Maybe [[Text]]),
+    -- | whether Golem shapes JLReq's punctuation with fwid (docs/adr/0302)
+    psPunctuationWidth :: !(Maybe PunctuationWidth)
   }
   deriving stock (Eq, Show)
 
@@ -503,11 +519,11 @@ data RegexStyleDef = RegexStyleDef
 
 -- | A character style with no key written.
 noCharDef :: CharStyleDef
-noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing
+noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
@@ -522,6 +538,7 @@ bodyDefaults =
       psTracking = Just 0,
       psProportional = Just False,
       psBaselineShift = Just (Abs 0),
+      psPunctuationWidth = Just PunctuationFullWidth,
       psAlign = Just ParaLeftJustified,
       psSpaceBefore = Just 0,
       psSpaceAfter = Just 0,
@@ -790,7 +807,7 @@ captionIndentMessage n k = "段落スタイル " <> n <> " には 0 でない in
 
 -- | The keys the paragraph style code takes (golem-driver ADR 0017).
 codeParaKeys :: [Text]
-codeParaKeys = ["font", "size", "background", "padding", "border", "border-width", "border-style", "border-sides", "border-radius"]
+codeParaKeys = ["font", "size", "background", "padding", "border", "border-width", "border-style", "border-sides", "border-radius", "punctuation-width"]
 
 {- | Whether a character style is code or reaches code through based-on
 (golem-driver ADR 0017).
@@ -846,6 +863,7 @@ overChar u b =
     (csUnderline u <|> csUnderline b)
     (csStrikethrough u <|> csStrikethrough b)
     (csNoBreak u <|> csNoBreak b)
+    (csPunctuationWidth u <|> csPunctuationWidth b)
 
 overPara :: ParaStyleDef -> ParaStyleDef -> ParaStyleDef
 overPara u b =
@@ -886,6 +904,7 @@ overPara u b =
     (psStretchLimit u <|> psStretchLimit b)
     (psShrinkOrder u <|> psShrinkOrder b)
     (psStretchOrder u <|> psStretchOrder b)
+    (psPunctuationWidth u <|> psPunctuationWidth b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -1877,7 +1896,7 @@ instance FromValue CharStyleDef where
     c <- optKey "color"
     sb <- optKey "synthetic-bold"
     si <- optKey "synthetic-italic"
-    (k, t, p, bs) <- featureKeysOf
+    (k, t, p, bs, pw) <- featureKeysOf
     -- a swatch or false (golem-driver ADR 0029)
     bg <-
       optKeyOf "background" $ \v -> case v of
@@ -1894,7 +1913,7 @@ instance FromValue CharStyleDef where
     ul <- optKeyOf "underline" decorationOrFalse
     st <- optKeyOf "strikethrough" decorationOrFalse
     nb <- optKey "no-break"
-    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm fs (pos >>= (`lookup` P.positionValues)) ul st nb)
+    pure (CharStyleDef b f s c sb si k t p bs bg pad' wm fs (pos >>= (`lookup` P.positionValues)) ul st nb pw)
 
 {- | An underline or a strikethrough (docs/adr/0270): true is the default
 line, a table the keys written, false none.
@@ -1921,9 +1940,10 @@ featuresKey =
     v -> failAt (valueAnn v) "features には配列を書きます（[\"smcp\", \"-liga\"] のように書きます）"
 
 {- | kerning, tracking, proportional-metrics and baseline-shift
-(docs/adr/0020). Every error is under its key, which makes it G03021.
+(docs/adr/0020), and punctuation-width (docs/adr/0302). Every error is
+under its key, which makes it G03021.
 -}
-featureKeysOf :: ParseTable l (Maybe Kerning, Maybe Int, Maybe Bool, Maybe Dim)
+featureKeysOf :: ParseTable l (Maybe Kerning, Maybe Int, Maybe Bool, Maybe Dim, Maybe PunctuationWidth)
 featureKeysOf = do
   let wrong l key v = failAt l (T.unpack (key <> " の値が正しくありません: " <> v))
   k <-
@@ -1936,11 +1956,12 @@ featureKeysOf = do
         if n < -1000 || n > 10000 then wrong l "tracking" (T.pack (show n) <> "（-1000 から 10000 までです）") else pure n
   p <- optKey "proportional-metrics"
   bs <- optKeyOf "baseline-shift" (withValue (\l v -> maybe (wrong l "baseline-shift" v) pure (parseSignedDim v)))
-  pure (k, t, p, bs)
+  pw <- optKeyOf "punctuation-width" (withValue (\l v -> maybe (wrong l "punctuation-width" v) pure (lookup v punctuationWidthValues)))
+  pure (k, t, p, bs, pw)
 
 -- | The keys of 'featureKeysOf': their errors are G03021 (docs/adr/0020).
 featureKeys :: [Text]
-featureKeys = ["kerning", "tracking", "proportional-metrics", "baseline-shift"]
+featureKeys = ["kerning", "tracking", "proportional-metrics", "baseline-shift", "punctuation-width"]
 
 instance FromValue ParaStyleDef where
   fromValue = parseTableFromValue $ do
@@ -1953,7 +1974,7 @@ instance FromValue ParaStyleDef where
     fli' <- signedDimKey "first-line-indent" "（1zw や -1zw のように書きます）"
     rs <- optKey "regex-styles"
     aki <- optKey "aki-set"
-    (k, t, p, bs) <- featureKeysOf
+    (k, t, p, bs, pw) <- featureKeysOf
     -- a swatch or false (docs/adr/0271)
     bg <- optKeyOf "background" (swatchOrFalse "background")
     -- a negative padding is read and reported by the checks (golem-driver ADR 0017)
@@ -1992,7 +2013,7 @@ instance FromValue ParaStyleDef where
     let align = al >>= \v -> lookup v (zip alignValues [minBound .. maxBound])
         start = pbk >>= \v -> lookup v (zip paraStartValues [minBound .. maxBound])
         adjustment = ladj >>= \v -> lookup v (zip lineAdjustmentValues [minBound .. maxBound])
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim sord tord)
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim sord tord pw)
     where
       keepCount :: Natural -> Maybe Natural -> Value' l -> Matcher l Int
       keepCount lo hi v =
@@ -3469,7 +3490,7 @@ regexStyleNode = NTable [("pattern", str), ("style", ref CharStyles)]
 
 -- | The keys of 'featureKeysOf'.
 featureNodes :: [(Text, Node)]
-featureNodes = zip featureKeys [enum (map fst kerningValues), int, bool, dim]
+featureNodes = zip featureKeys [enum (map fst kerningValues), int, bool, dim, enum (map fst punctuationWidthValues)]
 
 -- | A rule spec, or false (golem-driver ADR 0027).
 ruleOrFalseNode :: Node

@@ -520,6 +520,27 @@ InDesign の「オプティカル」に当たるカーニング（[code: kerning
 HTML と EPUB では、CSS の [code: font-kerning]、[code: letter-spacing]、[code: font-feature-settings]、[code: vertical-align] で表します。
 CSS では和文と欧文で別のカーニングを指定できないので、[code: japanese-equal-width] は欧文のカーニングを保ちます。
 
+@label punctuation-width
+## 約物の字形
+
+括弧類、句読点、中点類は、PDF ではフォントの全角の字形で組みます。
+OpenType の [code: fwid] の機能を使います。
+Noto CJK のように引用符 [code: “”‘’] に全角でない字形を割り当てたフォントでも、[code: 「」] と同じ幅と空きで組めます。
+フォントの字形のまま組みたいときは、段落スタイルか文字スタイルに [code: punctuation-width = "font"] と書きます。
+既定は [code: "full-width"] です。
+文字スタイルで書かなければ、外側の文字の値のままです。
+
+```toml
+[paragraph-styles.body]
+punctuation-width = "font"
+```
+
+全角の字形を持たないフォント（欧文のフォントの引用符など）の約物は、全角の字幅の箱の中に字形を置いて組みます。
+始め括弧類は箱の後ろに、終わり括弧類と句読点は箱の前に、中点類は箱の中央に寄せるので、空白の隣や行の端でも、字形が隣の字に重なりません。
+フォントの役割、段落スタイル、文字スタイルの [code: features] に [code: fwid]、[code: hwid]、[code: pwid]、[code: twid]、[code: qwid] のどれかを書いたときは、書いた機能のとおりに組みます。
+約物の字形の字面が隣の字にかかるときは、お知らせ（G07126）が出ます。
+HTML と EPUB では、[code: punctuation-width] を使わず、閲覧環境のフォントの字形で組みます。
+
 @label opentype-features
 ## OpenType の機能
 

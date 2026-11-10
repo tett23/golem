@@ -16,7 +16,7 @@ aarch64	golem-font-race-test	10
 aarch64	golem-font-test	10
 aarch64	golem-html-test	10
 aarch64	golem-layout-spec-test	10
-aarch64	golem-layout-test	91
+aarch64	golem-layout-test	116
 aarch64	golem-length-test	10
 aarch64	golem-lint-test	10
 aarch64	golem-lsp-test	10
@@ -51,7 +51,7 @@ x86_64	golem-font-race-test	10
 x86_64	golem-font-test	10
 x86_64	golem-html-test	10
 x86_64	golem-layout-spec-test	10
-x86_64	golem-layout-test	118
+x86_64	golem-layout-test	142
 x86_64	golem-length-test	10
 x86_64	golem-lint-test	10
 x86_64	golem-lsp-test	10

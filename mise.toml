@@ -3,7 +3,7 @@
 [env]
 _.path = ["{{env.HOME}}/.ghcup/bin"]
 GOLEM_GHC_VERSION = "9.10.3"
-GOLEM_CABAL_VERSION = "3.16.1.0"
+GOLEM_CABAL_VERSION = "3.18.2.0"
 
 # Claude Code, which writes the release notes (docs/adr/0044). The version
 # is exact; update it with a pull request. mise does not run the install

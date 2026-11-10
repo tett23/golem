@@ -102,7 +102,7 @@ ca-certificates の入っていない最小構成のコンテナでは、ca-cert
 対応した最初の版は、Chrome 137、Firefox 131、Safari 18.4、Node 24.15、Deno 2.3.2、wasmtime 47 である。
 
 Node の `node:wasi` で動くことは、CI で確かめている。
-夜ごとの `.github/workflows/browser.yml` が、Deno 2.9.8 の `node:wasi` と、wasmtime 50.0.1 の C API のホスト（`scripts/wasm/run-wasmtime.c`）と、`browser_wasi_shim` を使う Chromium（Chrome for Testing 157.0.8103.50）と Safari（macOS のランナーのもの）でも、ネイティブの `golem` と同じ PDF と diagnostics を返すことを確かめている（[docs/adr/0234](./docs/adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[docs/adr/0238](./docs/adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+夜ごとの `.github/workflows/browser.yml` が、Deno 2.9.8 の `node:wasi` と、wasmtime 49.0.5 の C API のホスト（`scripts/wasm/run-wasmtime.c`）と、`browser_wasi_shim` を使う Chromium（Chrome for Testing 157.0.8103.50）と Safari（macOS のランナーのもの）でも、ネイティブの `golem` と同じ PDF と diagnostics を返すことを確かめている（[docs/adr/0234](./docs/adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[docs/adr/0238](./docs/adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
 
 エクスポートは C の ABI の次の五つと `hs_init` で、ホストは `_initialize` を一度、`hs_init(0, 0)` を一度呼んでから使う。
 
@@ -200,6 +200,8 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 文字の詰めと送りも、スタイルで指定する。
 文字スタイルと段落スタイルの `kerning`（`metrics`、`japanese-equal-width`、`none`）、`tracking`、`proportional-metrics`、`baseline-shift` で、カーニングの方式、トラッキング、プロポーショナルメトリクス、ベースラインシフトを指定する。
 既定はフォントのペアカーニングを和文にも欧文にもかける `metrics` である（[docs/adr/0020](docs/adr/0020-indesign-character-features.md)）。
+括弧類、句読点、中点類は、PDF で既定でフォントの全角の字形（`fwid`）で組み、全角の字形がなければ全角の字幅の箱の中に字形を置く。
+文字スタイルと段落スタイルの `punctuation-width = "font"` で、フォントの字形のまま組む（[ADR 0302](docs/adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
 
 段落スタイルの `regex-styles = [{ pattern = '[0-9]+', style = "bold" }]` のような正規表現スタイルは、段落の中で正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル、[docs/adr/0015](./docs/adr/0015-regex-styles.md)）。
 
@@ -342,7 +344,7 @@ ADR の参照の書き方にも、決まりがある。
 | ライブラリ | バージョン |
 |---|---|
 | HarfBuzz | 15.1.0 |
-| FreeType | 2.14.3 |
+| FreeType | 2.15.0 |
 | wasmtime | 50.0.1 |
 | zlib | 1.3.2 |
 | hyph-utf8（欧文の八つの言語のハイフネーションのパターン） | コミット 5684c0f |
@@ -367,7 +369,7 @@ wasm の版だけは、ネイティブの版と違うパッケージを使う（
 
 ### ビルドとテスト
 
-GHC 9.10.3 と cabal-install 3.16.1.0 を ghcup で入れる。
+GHC 9.10.3 と cabal-install 3.18.2.0 を ghcup で入れる。
 `mise.toml` は ghcup の `bin` を `PATH` に加える。
 `mise.toml` は、リリースノートを書く Claude Code のバージョンも固定する（`mise install` で入る）。
 C と C++ のコンパイラも必要である。

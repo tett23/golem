@@ -29,6 +29,7 @@ module Golem.Typeset.Fonts
     withBoxSource,
     noteIdSpan,
     withFeatures,
+    punctuationPre,
     shapingOf,
     normalTexts,
     thickRule,
@@ -471,7 +472,9 @@ restyle style lk = \case
               lkUnderline = decoration (csUnderline cs) (lkUnderline lk),
               lkStrikethrough = decoration (csStrikethrough cs) (lkStrikethrough lk),
               -- a range that does not break: true in one of the styles around is true (docs/adr ADR 0272)
-              lkNoBreak = lkNoBreak lk || csNoBreak cs == Just True
+              lkNoBreak = lkNoBreak lk || csNoBreak cs == Just True,
+              -- the glyphs of JLReq's punctuation, an attribute (docs/adr/0302)
+              lkFullWidthPunctuation = maybe (lkFullWidthPunctuation lk) (== PunctuationFullWidth) (csPunctuationWidth cs)
             }
       where
         code = isCodeCharStyle style name
@@ -550,7 +553,9 @@ withFeatures d lk =
       lkProportional = fromMaybe (lkProportional lk) (d >>= psProportional),
       lkBaselineShift = maybe (lkBaselineShift lk) (dimToSp (lkSize lk)) (d >>= psBaselineShift),
       -- the features of the paragraph style through based-on (docs/adr/0268)
-      lkFeatures = normalTexts (lkFeatures lk <> maybe [] (normalFeatureTexts . psFeatures) d)
+      lkFeatures = normalTexts (lkFeatures lk <> maybe [] (normalFeatureTexts . psFeatures) d),
+      -- the glyphs of JLReq's punctuation (docs/adr/0302)
+      lkFullWidthPunctuation = maybe (lkFullWidthPunctuation lk) (== PunctuationFullWidth) (d >>= psPunctuationWidth)
     }
 
 {- | A list of features in the normal form with the last value of each tag
@@ -567,13 +572,15 @@ kerning method and the proportional metrics after the role's. Japanese
 punctuation that JLReq spaces keeps its full width (docs/adr ADR 0053):
 palt and vpal are not added to it, and -palt and -vpal after the role's
 features turn off a palt or vpal of the role; halt, vhal, chws and vchw
-that the role or the look turns on are turned off for it (docs/adr/0268).
+that the role or the look turns on are turned off for it (docs/adr/0268);
+fwid is added to it unless punctuation-width is font or the role or the
+look writes a width feature (docs/adr/0302).
 The first argument gives the features of a role.
 -}
 shapingOf :: (Text -> [Text]) -> Bool -> Look -> Char -> Shaping
 shapingOf roleFeatures vertical lk c
   | lookClass lk c == Western = Shaping (lkLatinFace lk) False (normalTexts (lkFeatures lk <> script <> ["-kern" | lkKerning lk == L.KernNone])) latinSpan
-  | otherwise = Shaping (lkFace lk) vertical (normalTexts (lkFeatures lk <> script <> extra <> narrowed)) latinSpan
+  | otherwise = Shaping (lkFace lk) vertical (normalTexts (lkFeatures lk <> script <> extra <> narrowed <> widened)) latinSpan
   where
     -- a range of superscript or subscript in the glyphs of the font (docs/adr/0269)
     script
@@ -586,7 +593,12 @@ shapingOf roleFeatures vertical lk c
     narrowed
       | spaced = ["-" <> t | t <- ["halt", "vhal", "chws", "vchw"], on t]
       | otherwise = []
-    on t = maybe False (/= 0) (lookup t (reverse (mapMaybe parseFeature (roleFeatures (lkFace lk) <> lkFeatures lk))))
+    written = mapMaybe parseFeature (roleFeatures (lkFace lk) <> lkFeatures lk)
+    on t = maybe False (/= 0) (lookup t (reverse written))
+    -- the full-width glyph, unless a width feature is written (docs/adr/0302)
+    widened
+      | spaced && lkFullWidthPunctuation lk && not (any ((`elem` ["fwid", "hwid", "pwid", "twid", "qwid"]) . fst) written) = ["fwid"]
+      | otherwise = []
     -- the characters of both scripts in a Latin span are Latin (docs/adr ADR 0187)
     latinSpan = maybe False (not . spanIsJapanese) (lkLang lk)
     spaced = punctSpace (lookClass lk c) /= (0, 0)
@@ -597,6 +609,17 @@ shapingOf roleFeatures vertical lk c
       L.KernJapaneseEqualWidth -> ["-kern", "-vkrn", "-palt", "-vpal"]
       L.KernNone -> ["-kern", "-vkrn"] <> proportional
       L.KernMetrics -> proportional
+
+{- | How far before the start of its box the glyph of JLReq's punctuation
+is drawn: the space before it, or for a glyph narrower than full width,
+less where it starts inside its box (docs/adr/0302).
+-}
+punctuationPre :: LoadedFonts -> Bool -> Look -> Char -> Sp
+punctuationPre fonts vertical look ch =
+  let size = lkSize look
+      cls = lookClass look ch
+      a = zwToSp size (lfAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical look ch) ch)
+   in maybe (zwToSp size (fst (punctSpace cls))) (negate . snd) (narrowPunctuation cls size a)
 
 -- | The rules at the top and bottom of a table: 0.6pt (golem-driver ADR 0008).
 thickRule :: Sp

@@ -149,6 +149,8 @@ everyNoticeProjects =
         <> "\n[paragraph-styles.kept]\nkeep-all-lines = true\n"
         <> fakeBody
         <> "\n[fonts.inkless]\nja = \"fonts/b.otf\"\n\n[character-styles.inkless]\nfont = \"inkless\"\n"
+        -- the role overhang of the fake fonts draws ink past the box of ” (G07126, docs/adr/0302)
+        <> "\n[fonts.overhang]\nja = \"fonts/b.otf\"\n\n[character-styles.overhang]\nfont = \"overhang\"\n"
         -- the ways of writing to be retired of docs/adr/0177: G03114, G03115, G03116 and G03117
         <> "\n[lists]\nnumbers = [\"{{{n}}}\", \"{a}.\"]\n\n[notes]\nmark-size = \"0.5zw\"\n\n[masters.extra]\nrunning-head = { position = \"top-outside\", content = [\"{{x}}\"] }\n"
     tall = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"300\"><rect width=\"100\" height=\"300\" fill=\"none\"/></svg>"
@@ -158,6 +160,7 @@ everyNoticeProjects =
           "\n本文。\n\n@style verse\n  ab\\ \n  cd\n\n", -- G02079
           "[ruby: [kenten: 漢]|かん]\n\n", -- G07045
           "あ[style inkless: ——]い\n\n", -- G07101
+          "[style overhang: あ\x201Dい]\n\n", -- G07126 (docs/adr/0302)
           "a\xAD. [code: x[shy]y]\n\n", -- G07123 and G07124 (docs/adr ADR 0272)
           "```\nabcdefghijklmnopqrstuvwxyzabcd\n```\n\n", -- G07030
           "@figure images/tall.svg alt=\"t\"\n  キャプション。\n\n", -- G07039, with a caption for G03100
