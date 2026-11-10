@@ -38,6 +38,7 @@ test-suite golem-bibliography-test
     , base
     , bytestring
     , golem-bibliography
+    , golem-test-support
     , scientific
     , tasty          >=1.4 && <1.6
     , tasty-hunit    >=0.10 && <0.11

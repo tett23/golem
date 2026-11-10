@@ -10,11 +10,12 @@ import GeometrySpec (geometryTests)
 import Golem.LayoutSpec
 import Golem.Project.Style
 import Golem.Syntax
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
 
 main :: IO ()
-main = defaultMain tests
+main = enterPackageDirectory >> defaultMain tests
 
 -- A5 = 148mm × 210mm, rounded once from exact rationals.
 a5W, a5H :: Sp

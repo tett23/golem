@@ -2,6 +2,7 @@ module Main (main) where
 
 import BoxSpec (boxTests)
 import GlyphRunsSpec (glyphRunsTests)
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import MemoSpec (memoTests)
 import RuleShapeSpec (ruleShapeTests)
 import TcySpec (tcyTests)
@@ -9,7 +10,7 @@ import Test.Tasty
 import WrapMarkSpec (wrapMarkTests)
 
 main :: IO ()
-main = defaultMain tests
+main = enterPackageDirectory >> defaultMain tests
 
 -- | The tests of the modules of golem-typeset that need no evaluation (docs/adr/0192).
 tests :: TestTree

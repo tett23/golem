@@ -4,12 +4,14 @@ import Data.Either (isLeft, isRight)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Regex
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Suites (boostCases, pcreCases)
 import Test.Tasty
 import Test.Tasty.HUnit
 
 main :: IO ()
-main =
+main = do
+  enterPackageDirectory
   defaultMain $
     testGroup
       "golem-regex"
