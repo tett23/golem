@@ -98,12 +98,14 @@ tests =
         lineEndOffset li 1 @?= Just 9
         lineEndOffset li 2 @?= Nothing
         lineEndOffset (mkLineIndex "a\n") 1 @?= Just 2,
-      -- The time limit is the one golem-lsp ADR 0002 sets. The test takes
-      -- about 0.06 s (2026-10), over 30 times below it, while a search
-      -- linear in the line count would make the 100001 round trips take
-      -- billions of steps; a count of steps would need a change to the
-      -- library, so the wall clock stays.
-      localOption (mkTimeout 2000000) $
+      -- The time-out only detects a hang, 30 seconds as every other
+      -- (docs/adr/0073). The test takes about 0.06 s (2026-10), while a
+      -- search linear in the line count would make the 100001 round trips
+      -- take billions of steps; that regression is found by the limit of
+      -- this suite in scripts/ci/suite-limits.tsv, 10 seconds by its
+      -- formula (docs/adr ADR 0292, which replaced the 2 seconds of
+      -- golem-lsp ADR 0002).
+      localOption (mkTimeout 30000000) $
         testCase "positions on 100000 lines round-trip quickly (golem-lsp ADR 0002)" $ do
           let n = 100000 :: Int
               t = T.replicate n "漢😀a\n" <> "漢😀a"

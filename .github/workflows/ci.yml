@@ -62,6 +62,8 @@ jobs:
         run: sh scripts/ci/unsafe-io.sh
       - name: No program changes its number of capabilities while it runs
         run: sh scripts/ci/rts-capabilities.sh
+      - name: Every test suite has a limit on each architecture (docs/adr ADR 0292)
+        run: sh scripts/ci/suite-limits.sh --check
       - name: The ABI version of plugins follows the last release (docs/adr/0052)
         run: sh scripts/ci/abi-version.sh
       - name: The diagnostic codes keep the promise of 1.x (docs/adr/0174)

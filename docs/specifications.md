@@ -443,6 +443,26 @@ CI の `ci` ジョブは、`gate.sh` の step の後に、同じ実行の終わ�
 `release.yml` は `ci.yml` を呼ぶので、同じ検査が走る。
 ほかのワークフローのログは検査しない。
 
+CI の `build` ジョブのテストのスイートには、スイートの全体の時間の上限がある（[ADR 0292](adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md)）。
+上限は、アーキテクチャ（`uname -m` の値、`x86_64` と `aarch64`）ごと、スイートごとに `scripts/ci/suite-limits.tsv` に一行ずつ、アーキテクチャ、スイートの名前、秒をタブで区切って書く。
+上限の秒は、直近の `main` への push の 20 回の、そのアーキテクチャとスイートの秒の中央値 m から、`max(10, ceil(2 × m))` で求める。
+偶数個の中央値は、中央の二つの平均とする。
+テストのラッパー `scripts/ci/suite-timeout.sh` は、壁時計で量ったスイートの秒が上限を超えたら、`<スイート>: finished in <秒> seconds, over its limit of <上限> seconds (scripts/ci/suite-limits.tsv)` を標準エラーに書き、スイートが通っていても失敗にする。
+スイートが落ちていれば、スイートの終了コードのままにする。
+表にそのアーキテクチャとスイートの行がなければ、スイートを走らせずに失敗にする。
+600 秒で止まらないスイートを止める時間切れは、上限によらず働く。
+環境の変数 `SUITE_LIMITS` で表の場所を変えられ、空にすると上限を当てない（手元でラッパーを使うとき）。
+CI の `changes` ジョブの `scripts/ci/suite-limits.sh --check` は、`scripts/ci/test-suites.sh` が展開するすべてのスイートについて、`x86_64` と `aarch64` のそれぞれにちょうど一行があり、スイートのない行がないことを確かめる。
+目的は、行の数に比例する探索のような、時間が桁で変わる後退を見つけることである。
+そのため、golem-syntax の 10 万行の位置の往復のテストも、時間切れはほかと同じ 30 秒とし（[ADR 0073](adr/0073-time-bounds-in-tests.md)）、探索の後退はこのスイートの上限で見つける。
+`enum.yml` と `race.yml` など、`build` ジョブの外で走るスイートと、手元の `cabal test` には上限を当てない。
+
+上限を超えたら、まず性能の後退かどうかを調べ、後退なら直す。
+テストを足したことによる正当な増加なら、そのプルリクエストで `sh scripts/ci/suite-limits.sh --fetch 20 | sh scripts/ci/suite-limits.sh` で表を作り直す。
+増えたスイートの行は、プルリクエストの CI の秒を中央値の入力に加えて求め、プルリクエストの説明に前と後の上限を書く。
+新しいスイートを足すプルリクエストは、そのスイートの行を、プルリクエストの CI の秒から同じ式で求めて足す。
+`--fetch N` は、`gh run list` で `main` への push の成功した実行のうちテストを走らせた直近の N 回を選び、テストのランナーのログを API から `curl` で取って、`finished in` の行にアーキテクチャを前に付けて書く。
+
 golem-project は、プロジェクトのファイルの読み方を表す値 `Files` を持つ（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
 `Files` は、パスの解決、バイト列の読み込み、バイト数の三つの関数を持つレコードである。
 ディスクのルートの下から読む `diskFiles` と、パスとバイト列の表から読む `memoryFiles` がある。
