@@ -20,7 +20,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.List (sortOn, uncons, unsnoc)
 import Data.Maybe (fromMaybe)
-import Data.Word (Word8)
+import Data.Word (Word32, Word8)
 
 -- | The font with the ROS; Nothing when it is not a CID-keyed CFF font this can read.
 withRos :: ByteString -> ByteString -> Int -> ByteString -> Maybe ByteString
@@ -52,6 +52,13 @@ beN n b i
 record :: ByteString -> Int -> Maybe (ByteString, Int, Int)
 record font r = (,,) (slice r 4 font) <$> beN 4 font (r + 8) <*> beN 4 font (r + 12)
 
+{- | The low 32 bits of an Int. On wasm32, where Int has 32 bits, it is
+every bit, and the sums wrap at 2^32 by themselves; the literal
+0xFFFFFFFF overflowed there (docs/adr/0293).
+-}
+mask32 :: Int
+mask32 = fromIntegral (maxBound :: Word32)
+
 bytesBE :: Int -> Int -> ByteString
 bytesBE n v = BS.pack [fromIntegral (v `shiftR` (8 * k)) | k <- [n - 1, n - 2 .. 0]]
 
@@ -68,7 +75,7 @@ relayout header tables =
 checksum :: ByteString -> Int
 checksum t =
   let p = t <> BS.replicate ((4 - BS.length t `mod` 4) `mod` 4) 0
-   in foldl' (\acc i -> (acc + fromMaybe 0 (beN 4 p i)) .&. 0xFFFFFFFF) 0 [0, 4 .. BS.length p - 4]
+   in foldl' (\acc i -> (acc + fromMaybe 0 (beN 4 p i)) .&. mask32) 0 [0, 4 .. BS.length p - 4]
 
 -- ------------------------------------------------------------------ CFF
 
@@ -117,7 +124,7 @@ encode :: [Token] -> ByteString
 encode = BS.concat . map one
   where
     one = \case
-      Num v -> BS.cons 29 (bytesBE 4 (v .&. 0xFFFFFFFF))
+      Num v -> BS.cons 29 (bytesBE 4 (v .&. mask32))
       Real r -> r
       Op o -> o
 
@@ -196,7 +203,7 @@ fixFdArray delta at rest = do
     fixPrivate d = do
       i <- privateAt d
       v <- beN 4 d (i + 1)
-      Just (BS.take (i + 1) d <> bytesBE 4 ((v + delta) .&. 0xFFFFFFFF) <> BS.drop (i + 5) d)
+      Just (BS.take (i + 1) d <> bytesBE 4 ((v + delta) .&. mask32) <> BS.drop (i + 5) d)
     -- the byte 29 of the five-byte integer just before the operator 18
     privateAt d = case [k - 5 | k <- [5 .. BS.length d - 1], BS.index d k == (18 :: Word8), BS.index d (k - 5) == 29] of
       k : _ -> Just k

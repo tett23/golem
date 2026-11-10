@@ -8,11 +8,12 @@ import Data.Text qualified as T
 import Golem.Numerals (kanji)
 import Golem.Numerals.Format
 import Golem.Numerals.Notation
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
 
 main :: IO ()
-main = defaultMain tests
+main = enterPackageDirectory >> defaultMain tests
 
 named :: T.Text -> Notation
 named t = fromMaybe (error ("no notation " <> T.unpack t)) (notationNamed t)

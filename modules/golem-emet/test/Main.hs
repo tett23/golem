@@ -2,6 +2,7 @@ module Main (main) where
 
 import ExportSpec (exportTests)
 import FmtSpec (fmtTests)
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Watchdog (watchTests)
 import IdeSpec (ideTests)
 import LanguageSpec (languageTests)
@@ -24,7 +25,7 @@ works around a GHC bug and is not a property of Golem: an ADR lifts it
 once a GHC that fixes #28001 is in use.
 -}
 main :: IO ()
-main = defaultMain (watchTests 300 (localOption (NumThreads 1) tests))
+main = enterPackageDirectory >> defaultMain (watchTests 300 (localOption (NumThreads 1) tests))
 
 tests :: TestTree
 tests = testGroup "golem-emet" [languageTests, requirementTests, exportTests, lintTests, fmtTests, ideTests]

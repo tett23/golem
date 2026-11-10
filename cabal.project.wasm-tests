@@ -1,0 +1,31 @@
+-- The test suites of the packages of golem.wasm, built for wasm32 with the
+-- wasm GHC of scripts/fetch-ghc-wasm.sh (docs/adr/0293), which
+-- .github/workflows/wasm-tests.yml runs every night under node:wasi
+-- (scripts/wasm/run-tests.mjs):
+--
+--   . third_party/ghc-wasm/env
+--   wasm32-wasi-cabal --project-file=cabal.project.wasm-tests build PACKAGE:test:SUITE
+--
+-- cabal.project.wasm with tests, and the versions of its freeze, which
+-- cabal reads next to a project file of the same name only; the
+-- dependencies of the tests are in cabal.project.wasm.freeze with the
+-- versions of cabal.project.freeze (scripts/ci/wasm-freeze.sh).
+-- golem-test-support and golem-doc-gen are packages of the test suites
+-- only; golem-plugin is here because the suites of golem-driver depend
+-- on it, which the solver cannot plan without it.
+import: cabal.project.wasm
+import: cabal.project.wasm.freeze
+
+packages:
+  modules/golem-test-support
+  modules/golem-doc-gen
+  modules/golem-plugin
+
+tests: True
+
+-- the suites of the golem packages only (docs/adr/0293 A1)
+package skylighting-core
+  tests: False
+
+package skylighting
+  tests: False

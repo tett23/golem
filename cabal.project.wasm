@@ -37,8 +37,8 @@ packages:
   modules/golem-wasm
   -- docs/adr/0202 section 2: the archives of Hackage with the patches of
   -- scripts/wasm/patches/, unpacked by scripts/fetch-wasm-packages.sh
-  third_party/wasm-packages/skylighting-core-0.15
-  third_party/wasm-packages/skylighting-0.15
+  third_party/wasm-packages/skylighting-core-0.15.0.1
+  third_party/wasm-packages/skylighting-0.15.0.1
 
 tests: False
 
@@ -51,7 +51,7 @@ package golem-driver
 source-repository-package
   type: git
   location: https://github.com/tett23/peg-hs
-  tag: 8441ad7f9d77acb6c95e6dce214ad219f03425d2
+  tag: 4b4adc7046a14d18c8eec711f18dbcaa9b059cca
   subdir: packages/peg-runtime
 
 -- docs/adr/0202 section 2: cborg of the upstream commit, which builds on

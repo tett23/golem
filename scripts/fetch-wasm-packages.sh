@@ -1,6 +1,6 @@
 #!/bin/sh
 # The Hackage packages that the wasm build of Golem takes patched
-# (docs/adr/0202 section 2): skylighting-core-0.15 and skylighting-0.15,
+# (docs/adr/0202 section 2): skylighting-core-0.15.0.1 and skylighting-0.15.0.1,
 # without Skylighting.Parser and Skylighting.Loader, their re-exports and
 # xml-conduit, which brings network, which WASI preview 1 cannot build.
 # Golem uses lookupSyntax, tokenize and defaultSyntaxMap only, which read
@@ -18,8 +18,8 @@
 # cabal.project.wasm lists the two directories.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-CORE_SHA=485721e90b3f5e52369a11f08994969a224c038ae4c812734233ff3b30b6fa61
-SKY_SHA=2929c28a042453ee67785201dda234308ef19e068fb474cc1db69dd5f67c4dab
+CORE_SHA=498d56e66175f1a58e5724a5f9ac4fc7c894252ce3886f9fc20e5dfb18c3f6b3
+SKY_SHA=b84691c7e2e619e0f98e28a3f468bb7a57c68293efe9d6c66174f4123b8d570e
 DEST=$ROOT/third_party/wasm-packages
 DOWNLOADS=${GOLEM_DOWNLOADS:-$ROOT/third_party/downloads}
 TMP=$(mktemp -d)
@@ -38,5 +38,5 @@ one() {
   mv "$TMP/$1.x/$1" "$DEST/$1"
   echo "$1: SHA-256 $2, patched"
 }
-one skylighting-core-0.15 "$CORE_SHA"
-one skylighting-0.15 "$SKY_SHA"
+one skylighting-core-0.15.0.1 "$CORE_SHA"
+one skylighting-0.15.0.1 "$SKY_SHA"
