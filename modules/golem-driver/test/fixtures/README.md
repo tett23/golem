@@ -138,9 +138,9 @@ is one of them (wavy, in a colour). The hidden folios are shown by the
 visual regression test building the vertical book with Japanese crop
 marks and a bleed of 3 mm (`specimens-vertical-marks-japanese`); its
 `[hidden-folio]` puts them on every page, as every page has a folio.
-The figures are small PNG images; shem draws images as boxes, so the
-references show the place and the size of a figure, and its turned
-caption, not its content.
+The figures are small PNG images; shem draws their samples, so the
+references show the place, the size and the content of a figure, turned
+with its caption.
 
 What a page of these books shows is accepted by eye once, when its
 reference is written (the pull request says what was looked at on each

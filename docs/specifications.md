@@ -1280,7 +1280,7 @@ EPUB はパッケージである zip の中に時刻や並び順の揺れを含�
 
 テストにだけ使う道具として、見た目の回帰テストで PDF のページを画像にするラスタライザ shem（[tett23/shem](https://github.com/tett23/shem)）も版を固定する（[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）。
 golem の実行ファイルと配布物には含めず、テストと CI からコマンドとして呼ぶ。
-`scripts/visual/fetch-shem.sh` が、shem の GitHub の release から、固定した版（v0.1.0-rc7）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ `third_party/shem/` に入れる。
+`scripts/visual/fetch-shem.sh` が、shem の GitHub の release から、固定した版（v0.1.0-rc9）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ `third_party/shem/` に入れる。
 release の `SHA256SUMS` は読まない。
 
 アーカイブは、macOS の aarch64 と、Linux の x86-64 と aarch64 の三つである。
@@ -1378,9 +1378,11 @@ Golem と shem の出力はどちらも決定的なので、同じ PDF からは
 意図して見た目を変えたときは、`scripts/visual/run.sh --accept`（`build.sh`、`fetch-shem.sh`、`check.sh --accept` を続けて行う）で参照を書き直し、同じ変更に入れる。
 `--accept` は、PDF がない入力、ページが一つもない入力、`unreadable` の入力があれば、どの参照も書かずに失敗する。
 
+画像と図版は、shem が中身を描く（画像の XObject の標本と、SVG と PDF の図版の Form の内容。shem v0.1.0-rc9 から）。
+shem は ICC のプロファイルを使わず、拡大した小さい画像を双一次で補間するので、描いた色と見え方はビューアのものと同じとは限らない。
+
 このテストが見つけない変化もある。
 PDF の Producer とインスタンス ID は画像に現れないので、`VERSION` だけを変えても参照は変わらない。
-画像と図版は shem が中身を読まずに箱で描くので、その中身の変化はこのテストでは見つからない。
 
 CI では、`build` の x86-64 の `outputs` のランナーが、epubcheck と決定性の検査の出力より先に PDF を組んで成果物 `visual-pdfs` として上げ、`visual` ジョブが x86-64 で描いて比べる（[ADR 0095](adr/0095-visual-job-in-ci.md)、[ADR 0140](adr/0140-ci-split-test-runners-and-visual-pdfs-first.md)）。
 比べる手順の実時間の上限は 600 秒で、shem が止まらなくなったことだけを見つけるためのものである。
