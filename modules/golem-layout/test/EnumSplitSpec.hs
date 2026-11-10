@@ -15,6 +15,7 @@ module EnumSplitSpec (enumSplitTests) where
 
 import AdjustOrderSpec (defaultOrder, ordersAt, staged)
 import CiteBreakEnum (citePrDepth)
+import ColumnWidthInvariantsSpec (tableBoundsAt, tablePrDepth)
 import Data.Char (isDigit, isSpace)
 import Data.List (isPrefixOf, isSuffixOf, nub, stripPrefix)
 import Data.Maybe (isNothing)
@@ -41,7 +42,8 @@ areas =
     ("GOLEM_ENUM_LINES_DEPTH", linesPrDepth),
     ("GOLEM_ENUM_NOBREAK_DEPTH", noBreakPrDepth),
     ("GOLEM_ENUM_CITE_DEPTH", citePrDepth),
-    ("GOLEM_ENUM_JOINED_DEPTH", joinedPrDepth)
+    ("GOLEM_ENUM_JOINED_DEPTH", joinedPrDepth),
+    ("GOLEM_ENUM_TABLE_DEPTH", tablePrDepth)
   ]
 
 -- | The depth of an area in the nightly job: the one value of its variable in the workflow.
@@ -126,6 +128,12 @@ enumSplitTests =
         filter (`notElem` nightlyOrders) prOrders @?= []
         assertBool "the lines of pull requests are wider than those of the nightly job" (prWidth <= nightlyWidth)
         assertBool "pull requests do not check the default order" (defaultOrder `elem` prOrders),
+      testCase "N2: the column widths of the nightly job have widths as large and as many columns as those of pull requests or more (docs/adr ADR 0295)" $ do
+        nightly <- nightlyDepth' "GOLEM_ENUM_TABLE_DEPTH"
+        let ((prK, prN), (prK', prN')) = tableBoundsAt tablePrDepth
+            ((k, n), (k', n')) = tableBoundsAt nightly
+        assertBool "the nightly job checks fewer inputs of columnWidths than pull requests" (prK <= k && prN <= n)
+        assertBool "the nightly job checks fewer inputs of tableColumnWidths than pull requests" (prK' <= k' && prN' <= n'),
       testCase "ADR 0286, its section 4: pull requests check what fits the budgets by the median of four jobs: the span of fr, R1 up to 2 parts and the three orders; balanced stays on the nightly job" $ do
         let pr = Set.toList (lineSettingsAt linesPrDepth)
         assertBool "pull requests do not check the span of fr" (any (\(s, _, _, _) -> sLang s == Just "fr") pr)

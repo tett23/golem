@@ -246,7 +246,11 @@ golem-typeset の [code: Golem.Typeset.FontProvider] は、字の送りと二字
 
 PDF の経路の [code: buildFlow]（[code: Golem.Driver.Pdf]）は IO の関数で、段落の組版を [code: mapConcurrently] で並列に実行する。
 並列にするかどうかは [code: optParallel] で決まり、[code: defaultOptions] では並列にする。
-各スレッドが実行するのは純粋な組版（[code: breakParagraph] など）で、[code: evaluate] で結果を評価しきってから返す。
+各スレッドが実行するのは純粋な組版（[code: breakParagraph] など）で、[code: evaluate] で結果を行まで評価してから返す。
+段落は [code: forceComposed] が、表は [code: forceTable] が、各行を WHNF まで評価する。
+行のフィールドは正格なので、行分割はスレッドの中で済む。
+表は [code: show] で文字列にしない。
+文字列にすると、捨てるだけの文字列が表の割り当ての半分を占める。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0299-force-a-composed-table-without-turning-it-into-a-string.md]（docs/adr の ADR 0299「組んだ表を、文字列にせずに評価しきる」）]
 [code: mapConcurrently] は、結果を完了の順ではなく入力のリストの順に並べて返す。
 このため、どのスレッドが先に終わっても、組版の結果のリストは同じになる。
 golem-driver のテストは、並列と逐次で組んだ PDF のバイト列が一致することを、機能ごとに確かめている（[code: PdfSpec] の「the features in parallel and in sequence give the same bytes」など）。
