@@ -2848,7 +2848,8 @@ else ok; fi
 first_area=$(grep -n '^          GOLEM_ENUM_[A-Z0-9_]*DEPTH:' "$ENUM_YML" | head -n 1 | cut -d: -f1)
 timing_lines=$(grep -n 'sh scripts/ci/enum-timings.sh' "$ENUM_YML" | cut -d: -f1)
 if [ "$(printf '%s\n' "$timing_lines" | grep -c .)" = 1 ] && [ -n "$first_area" ] && [ "$timing_lines" -lt "$first_area" ] &&
-  grep -qF 'sh scripts/ci/enum-timings.sh >> "$GITHUB_STEP_SUMMARY"' "$ENUM_YML"; then ok; else
+  grep -qF 'sh scripts/ci/enum-timings.sh > "$RUNNER_TEMP/enum-timings.md"' "$ENUM_YML" &&
+  grep -qF 'cat "$RUNNER_TEMP/enum-timings.md" >> "$GITHUB_STEP_SUMMARY"' "$ENUM_YML"; then ok; else
   ng "enum.yml: N5 one step runs enum-timings.sh into \$GITHUB_STEP_SUMMARY, before the first area"
 fi
 

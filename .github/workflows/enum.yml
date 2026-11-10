@@ -116,10 +116,16 @@ jobs:
       # the time of each area alone, without the variables of the steps
       # below: as the pull requests check it, against the budgets of 10
       # seconds an area and 30 in all, into the summary of the job; a time
-      # over a budget fails nothing (docs/adr ADR 0281)
+      # over a budget fails nothing (docs/adr ADR 0281); the table also goes
+      # to the log, which gh can read
       - name: The time of each area on the settings of pull requests (docs/adr ADR 0281)
         if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
-        run: sh scripts/ci/enum-timings.sh >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          status=0
+          sh scripts/ci/enum-timings.sh > "$RUNNER_TEMP/enum-timings.md" || status=$?
+          cat "$RUNNER_TEMP/enum-timings.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/enum-timings.md"
+          exit "$status"
       # pagination: every input of the shortened enumeration of up to
       # GOLEM_ENUM_DEPTH elements, and inputs of one element more drawn from
       # the enumeration of docs/adr/0204; the pull requests check up to the
