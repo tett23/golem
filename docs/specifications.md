@@ -3506,6 +3506,7 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 罫線を持つ段落は、この規則によらず、罫線を持つ段落の規則で置く。
 見出しの直後では改ページしない。
 見出しは、続く見出しのすべてと、その後の段落の最初の 2 行まで（3 行の段落では全体。孤立行と寡婦行の規則で 2 行だけを置けないため）と同じ段に置く（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）。
+その段落の全体が最初の部分になり、段落が `keep-with-next` を持つときは、`keep-with-next` が足す後の最初の部分も数える（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md) の I6 と K4）。
 改丁の見出しは、前の見出しの続く見出しに数えない。
 改丁の見出しの前の見出しは、`@page-break` の前の見出しと同じく、後に続くものを数えない（[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md)）。
 それらを合わせて段に収まらないときも、空の段からは送らない。

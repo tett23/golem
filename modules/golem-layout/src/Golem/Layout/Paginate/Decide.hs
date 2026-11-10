@@ -65,11 +65,12 @@ nextNeed env = \case
   -- a heading at a recto starts a page of its own: nothing before it keeps it (docs/adr/0206)
   (f : _) | startsRecto f -> mempty
   -- the first part that can be split from the rest (golem-layout ADR 0021)
-  -- with the keep of the paragraph (docs/adr/0261)
-  (FParagraph kp ls : _) -> linesNeed (take (firstPart kp True (length ls)) ls)
-  (FContinued kp ls : _) -> linesNeed (take (firstPart kp False (length ls)) ls)
+  -- with the keep of the paragraph (docs/adr/0261); when that is the whole
+  -- and it keeps with what follows it, that too (docs/adr/0261, its I6 and K4)
+  (FParagraph kp ls : more) -> chained env (length ls) (firstPart kp True (length ls)) (\k -> linesNeed (take k ls)) more
+  (FContinued kp ls : more) -> chained env (length ls) (firstPart kp False (length ls)) (\k -> linesNeed (take k ls)) more
   -- of a stanza, its verse lines (docs/adr/0180, golem-layout ADR 0021)
-  (FStanza kp vs : _) -> linesNeed (concat (take (firstPart kp True (length vs)) vs))
+  (FStanza kp vs : more) -> chained env (length vs) (firstPart kp True (length vs)) (\k -> linesNeed (concat (take k vs))) more
   (FTable _ sp h rows capt below : _) -> grid (sp + tableHead h rows capt below)
   (FDefTerm ls : _) -> termNeed ls
   -- a heading keeps what follows it, a heading after it too (golem-driver ADR 0032)
@@ -149,20 +150,27 @@ followNeed :: Env -> Int -> [Flow] -> Need
 followNeed env n after
   | n <= 0 = nextNeed env after
   | otherwise = case after of
-      FParagraph kp ls : more -> chain (length ls) (max (firstPart kp True (length ls)) (min n (length ls))) (\k -> linesNeed (take k ls)) more
-      FContinued kp ls : more -> chain (length ls) (max (firstPart kp False (length ls)) (min n (length ls))) (\k -> linesNeed (take k ls)) more
-      FStanza kp vs : more -> chain (length vs) (max (firstPart kp True (length vs)) (min n (length vs))) (\k -> linesNeed (concat (take k vs))) more
+      FParagraph kp ls : more -> chained env (length ls) (max (firstPart kp True (length ls)) (min n (length ls))) (\k -> linesNeed (take k ls)) more
+      FContinued kp ls : more -> chained env (length ls) (max (firstPart kp False (length ls)) (min n (length ls))) (\k -> linesNeed (take k ls)) more
+      FStanza kp vs : more -> chained env (length vs) (max (firstPart kp True (length vs)) (min n (length vs))) (\k -> linesNeed (concat (take k vs))) more
       _ -> nextNeed env after
-  where
-    chain total k needOf more =
-      let base = needOf k
-       in case keepAhead more of
-            Just (before, m, after')
-              | k >= total,
-                m > 0 ->
-                  let r = spaced env (sum [max 0 x | FSpace x <- before]) (followNeed env m after')
-                   in Need (min (envCapacity env) (needGrid base + needGrid r)) (needNotes base + needNotes r)
-            _ -> base
+
+{- | The first part of @k@ of the @total@ lines (verse lines) of a
+paragraph or a stanza, the need of so many given; when that is the whole
+and a keep-with-next follows it, the first part of what follows that too,
+with the spaces before it, at most a column (docs/adr/0261). A no-break
+alone adds nothing.
+-}
+chained :: Env -> Int -> Int -> (Int -> Need) -> [Flow] -> Need
+chained env total k needOf more =
+  let base = needOf k
+   in case keepAhead more of
+        Just (before, m, after')
+          | k >= total,
+            m > 0 ->
+              let r = spaced env (sum [max 0 x | FSpace x <- before]) (followNeed env m after')
+               in Need (min (envCapacity env) (needGrid base + needGrid r)) (needNotes base + needNotes r)
+        _ -> base
 
 {- | The lines of the first part of what follows a keep-with-next of @n@
 lines that must be in the column of the paragraph before
