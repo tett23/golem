@@ -51,7 +51,7 @@ import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet qualified as IntSet
 import Data.List (groupBy, mapAccumL, sort, zip4, zip5)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -303,7 +303,7 @@ boxKind = toEnum . bcTag
 -- One unit of composition before items are generated, with its look.
 data Piece
   = PChar !Look !Char !Text -- the character and its variation selectors; kenten is in the look
-  | PWord !Look !Text ![Int] -- a Latin word (no spaces), and where the soft hyphens taken out of it were (docs/adr ADR 0272)
+  | PWord !Look !Text ![Int] !(Maybe WordShys) -- a Latin word (no spaces), where the soft hyphens taken out of it were (docs/adr ADR 0272), and what they make of it in the joined word (docs/adr ADR 0285)
   | PSpace !Look !Bool -- an inter-word space, and whether no line breaks at it (docs/adr/0277)
   | PBox !Look !Text !BoxKind !Sp -- ruby, tcy, …: an unbreakable box of a given width
   | PRuby !Look !RubyKind !Text ![Look] !(Maybe Text) -- ruby: the base, the look of each base character (golem-layout ADR 0011) and the reading (none for a segment without one)
@@ -314,7 +314,23 @@ data Piece
   | PDashes !Look !Text -- a run of two or more full-width dashes: one box, an em for each (docs/adr ADR 0172)
   | PMark !Look !Look ![MarkPart] !Sp !Sp -- the mark of a note in the text: the look of its place, its own, its parts and the padding of code before and after it (docs/adr/0177)
   | PAnchor (Int -> Anchor)
-  | PShy !SoftHyphenNote -- a soft hyphen that is not a break, and why (docs/adr ADR 0272): no items
+  | {- | a soft hyphen (docs/adr ADR 0272): the look of its text, whether it
+    is in the word piece before it, and why it is not a break, when it is
+    not one; no items -}
+    PShy !Look !Bool !(Maybe SoftHyphenNote)
+
+{- | What the soft hyphens of the joined word make of a word piece (docs/adr
+ADR 0285): the breaks inside it, the starts of its elements in an
+element of the joined word with a soft hyphen (no hyphens of the
+patterns), and whether a break of a soft hyphen is right after it, before
+the next word piece of the joined word.
+-}
+data WordShys = WordShys
+  { wsCuts :: ![Int],
+    wsNoPatterns :: ![Int],
+    wsBreakAfter :: !Bool
+  }
+  deriving stock (Eq, Show)
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
 composeInlines env inls = let (items, anchors, _) = composeInlinesTree env inls in (items, anchors)
@@ -343,7 +359,7 @@ composeInlinesTree env inls =
       -- the neighbours of each piece, anchors and breaks between mono ruby bases skipped
       solid = \case
         PAnchor _ -> False
-        PShy _ -> False
+        PShy {} -> False
         PRubyBreak -> False
         _ -> True
       prevs = scanl (\acc p -> if solid p then Just p else acc) Nothing pieces
@@ -352,7 +368,7 @@ composeInlinesTree env inls =
       0280): Nothing after any other piece that makes items -}
       leads = map (== Just True) (scanl latinBefore Nothing pieces)
       latinBefore acc = \case
-        PWord lk w _ | not (isScript lk) -> Just (acc == Just True || T.any (\c -> not (isExtending c) && c `notElem` ("-‐–—" :: String)) w)
+        PWord lk w _ _ | not (isScript lk) -> Just (acc == Just True || T.any (\c -> not (isExtending c) && c `notElem` ("-‐–—" :: String)) w)
         q | solid q -> Nothing
         _ -> acc
       nexts = drop 1 (scanr (\p acc -> if solid p then Just p else acc) Nothing pieces)
@@ -384,7 +400,7 @@ source ('ceSourceAt'; -1 where the source does not have it), and why.
 softHyphenSites :: ComposeEnv -> [Inline] -> [(SrcSpan, Int, SoftHyphenNote)]
 softHyphenSites env inls =
   let (nodes, sourced) = structured env inls
-      here = [(snd src, offs 0, note) | (_, (src, offs), PShy note) <- sourced]
+      here = [(snd src, offs 0, note) | (_, (src, offs), PShy _ _ (Just note)) <- sourced]
    in here <> concatMap (softHyphenSites env) (concatMap bodies nodes)
   where
     bodies = \case
@@ -429,7 +445,7 @@ structured env inls =
   let (labelled, rest) = splitAt (ceLabelInlines env) inls
       st0 = LeafState 1 0 Map.empty
    in if null labelled
-        then let (_, ns, ps) = walkAll env st0 rest in (NodeLeaf 0 : ns, ps)
+        then let (_, ns, ps) = walkAll env st0 rest in (NodeLeaf 0 : ns, joinShys ps)
         else
           let -- the label a link of its own, unless the text is in one (docs/adr/0267)
               link = if isJust (lkLink (ceLook env)) then Nothing else ceLabelLink env
@@ -438,7 +454,7 @@ structured env inls =
               (st2, after) = freshLeaf st1
               (_, ns2, ps2) = walkAll env st2 rest
               inner = NodeLeaf 0 : ns1
-           in (NodeElem RoleLabel (maybe inner (\t -> [NodeLink t labelled inner]) link) : after : ns2, ps1 <> ps2)
+           in (NodeElem RoleLabel (maybe inner (\t -> [NodeLink t labelled inner]) link) : after : ns2, joinShys (ps1 <> ps2))
 
 walkAll :: ComposeEnv -> LeafState -> [Inline] -> (LeafState, [InlineNode], [(Int, Sourced, Piece)])
 walkAll env st0 xs = foldl' step (st0, [], []) (zip xs (textEdges env xs))
@@ -919,10 +935,25 @@ the nearest characters before it and after it in the paragraph are Latin.
 textPiecesWith :: (Bool, Bool) -> Look -> Text -> [(Int -> Int, Piece)]
 textPiecesWith edges lk t
   | not (T.any (== softHyphen) t) = [((i +), p) | (i, p) <- strippedPieces lk edges [] t]
-  | otherwise =
-      [(\k -> orig (i + k), p) | (i, p) <- strippedPieces lk edges shys stripped]
-        <> [(const j, PShy note) | (j, note) <- notes]
+  | otherwise = place orphans pieces
   where
+    pieces = strippedPieces lk edges shys stripped
+    noteOf = IntMap.fromList notes
+    -- the soft hyphens of a word: those from before its first character to after its last
+    attachedTo i w = [j | (n, j) <- shys, n >= i, n <= i + T.length w]
+    attached = IntSet.fromList [j | (i, PWord _ w _ _) <- pieces, j <- attachedTo i w]
+    orphans = [(n, j) | (n, j) <- shys, not (IntSet.member j attached)]
+    shyPiece inWord j = (const j, PShy lk inWord (IntMap.lookup j noteOf))
+    {- each soft hyphen a piece (docs/adr ADR 0285): those of a word right
+    after it, in order, the others where they are among the pieces -}
+    place os = \case
+      (i, p) : rest ->
+        let (now, later) = span ((<= i) . fst) os
+            own = case p of
+              PWord _ w _ _ -> [shyPiece True j | j <- attachedTo i w]
+              _ -> []
+         in [shyPiece False j | (_, j) <- now] <> [(\k -> orig (i + k), p)] <> own <> place later rest
+      [] -> [shyPiece False j | (_, j) <- os]
     stripped = T.filter (/= softHyphen) t
     indexed = zip [0 :: Int ..] (T.unpack t)
     -- the index in the text of each character left, and of the end
@@ -946,7 +977,7 @@ softHyphenNotes lk edges shys stripped
         Just note <- [maybe (Just orphan) (\(start, w) -> roleNote (shyRole lk w (pos - start))) (wordAt pos)]
       ]
   where
-    words' = [(i, w) | (i, PWord _ w _) <- strippedPieces lk edges [] stripped]
+    words' = [(i, w) | (i, PWord _ w _ _) <- strippedPieces lk edges [] stripped]
     -- the word a soft hyphen is in, before its first character or after its last
     wordAt pos = listToMaybe [(i, w) | (i, w) <- words', pos >= i, pos <= i + T.length w]
     orphan = if unbreakable lk then ShyInUnbreakable else ShyNotBetweenLetters
@@ -1044,7 +1075,7 @@ strippedPieces lk (edgeBefore, edgeAfter) shys t
               word = T.concat [T.cons b m | (_, (b, m), _) <- w]
               -- the soft hyphens before its first character to after its last (docs/adr ADR 0272)
               inWord = [p - i | (p, _) <- shys, p >= i, p <= i + T.length word]
-           in (i, PWord lk word inWord) : go rest'
+           in (i, PWord lk word inWord Nothing) : go rest'
       | otherwise = (i, PChar lk c marks) : go rest
     -- two or more dashes in a row, without combining characters, are one piece (docs/adr ADR 0172)
     joinDashes = \case
@@ -1239,7 +1270,7 @@ isScript = (/= PositionNormal) . lkPosition
 pieceLook :: Piece -> Maybe Look
 pieceLook = \case
   PChar lk _ _ -> Just lk
-  PWord lk _ _ -> Just lk
+  PWord lk _ _ _ -> Just lk
   PSpace lk _ -> Just lk
   PBox lk _ _ _ -> Just lk
   PRuby lk _ _ _ _ -> Just lk
@@ -1274,12 +1305,12 @@ scriptRanges env = go
     positionOf q = pieceLook q >>= \lk -> if isScript lk then Just (lkPosition lk) else Nothing
     transparent = \case
       PAnchor _ -> True
-      PShy _ -> True
+      PShy {} -> True
       PRubyBreak -> True
       _ -> False
     charsOf = \case
       PChar lk c _ -> [(lk, c)]
-      PWord lk t _ -> [(lk, c) | c <- T.unpack t]
+      PWord lk t _ _ -> [(lk, c) | c <- T.unpack t]
       PSpace lk _ -> [(lk, ' ')]
       PBox lk t _ _ -> [(lk, c) | c <- T.unpack t]
       PRuby lk _ base looks _ -> zip (looks <> repeat lk) (T.unpack base)
@@ -1288,7 +1319,7 @@ scriptRanges env = go
       _ -> []
     settle pos glyphs = \case
       PChar lk c vs -> PChar (set lk) c vs
-      PWord lk t shys -> PWord (set lk) t shys
+      PWord lk t shys ws -> PWord (set lk) t shys ws
       PSpace lk held -> PSpace (set lk) held
       PBox lk t kind w -> PBox (set lk) t kind (if w == lkSize lk then lkSize (set lk) else w)
       PRuby lk kind base looks reading -> PRuby (set lk) kind base (map set looks) reading
@@ -1337,9 +1368,9 @@ itemsFor env lead prev p next = case p of
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
      in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   -- a word of superscript or subscript is not broken (docs/adr/0269)
-  PWord lk word shys
-    | isScript lk -> [x | x@Box {} <- wordItems env lk False word shys]
-    | otherwise -> wordItems env lk lead word shys
+  PWord lk word shys ws
+    | isScript lk -> [x | x@Box {} <- wordItems env lk False word shys Nothing]
+    | otherwise -> wordItems env lk lead word shys ws
   PSpace lk held ->
     let sw = advance env lk ' '
         glue
@@ -1393,7 +1424,7 @@ itemsFor env lead prev p next = case p of
      in [Box (w + t) (BoxContent d False 0 0 (fromEnum KindDashes) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PMark place lk parts ps pe -> [markItem env place lk parts ps pe]
   PAnchor _ -> []
-  PShy _ -> []
+  PShy {} -> []
 
 {- | The box of the mark of a note in the text (golem-driver ADR 0018,
 docs/adr/0177): one box, nothing breaks it and no aki set spaces it. Its
@@ -1533,7 +1564,7 @@ padCode = \case
     key l = if lkCode l then Just (lkBackground l, lkPadding l) else Nothing
     transparent = \case
       PAnchor _ -> True
-      PShy _ -> True
+      PShy {} -> True
       PRubyBreak -> True
       _ -> False
     -- the padding goes on the first and the last piece that is not a space when they are code (golem-layout ADR 0048)
@@ -1564,10 +1595,13 @@ is one box (docs/adr ADR 0182). A character at an end of a box protrudes
 by its advance in the font of the box (docs/adr/0222). Given a character
 of the Latin word before it in the boxes right before it (docs/adr ADR
 0280), a run of hyphens and dashes at its start is cut after as in the
-word they make; not in a word with a soft hyphen.
+word they make; not in a word with a soft hyphen. The soft hyphens are
+those of the joined word given (docs/adr ADR 0285), or else those of the
+word: the breaks of soft hyphens inside it and after it, and its elements
+that get no pattern hyphens.
 -}
-wordItems :: ComposeEnv -> Look -> Bool -> Text -> [Int] -> [Item]
-wordItems env lk lead word shys =
+wordItems :: ComposeEnv -> Look -> Bool -> Text -> [Int] -> Maybe WordShys -> [Item]
+wordItems env lk lead word shys joinedShys =
   let explicitP = ceExplicitHyphenPenalty env
       explicitPen = Penalty 0 explicitP ExplicitHyphen
       patternPen = Penalty (advance env lk '-') 50 (PatternHyphen (protAt snd '-'))
@@ -1606,13 +1640,15 @@ wordItems env lk lead word shys =
       those that are breaks, and at nothing else; the elements are those of
       the written hyphens, which a word kept whole by explicit-hyphen-penalty
       10000 is not broken at -}
-      cuts = softHyphenCuts lk word shys
-      shyElements = IntSet.fromList [fst (elementSpan word p) | p <- shys]
+      cuts = maybe (softHyphenCuts lk word shys) wsCuts joinedShys
+      shyElements = maybe (IntSet.fromList [fst (elementSpan word p) | p <- shys]) (IntSet.fromList . wsNoPatterns) joinedShys
+      withShy = not (IntSet.null shyElements)
+      breakAfter = [softPen | maybe False wsBreakAfter joinedShys]
       withShys o part = if IntSet.member o shyElements then (softPen, splitAtCuts cuts o part) else (innerPen, if lowLined then splitAtCuts (lowLineCuts word) o part else pieces part)
       elements
         | isJust (lkLink lk) = [(innerPen, [word])]
-        | not (null shys) && explicitP >= infPenalty = [(softPen, splitAtCuts cuts 0 word)]
-        | not (null shys) = [withShys o part | (o, part) <- offsetsOf (if T.any isHyphen word then explicitParts word else [word])]
+        | withShy && explicitP >= infPenalty = [(softPen, splitAtCuts cuts 0 word)]
+        | withShy = [withShys o part | (o, part) <- wordElements word]
         | lowLined = [(lowLinePen, splitAtCuts (lowLineCuts word) o part) | (o, part) <- offsetsOf hyphenParts]
         | T.any isHyphen word = if explicitP >= infPenalty then [(innerPen, [word])] else map ((innerPen,) . pieces) (explicitPartsAfter lead word)
         | otherwise = [(innerPen, pieces word)]
@@ -1633,7 +1669,87 @@ wordItems env lk lead word shys =
       withPens pen = concat . zipWith (\i x -> (if i > (0 :: Int) then pen else []) <> x) [0 ..]
       -- each box with the index of its first character in the word (docs/adr ADR 0195)
       indexed = snd (mapAccumL (\k (pen, ts) -> let (k', ixs) = mapAccumL (\k0 t -> (k0 + T.length t, (k0, t))) k ts in (k', (pen, ixs))) 0 elements)
-   in withPens [explicitPen] [withPens [pen] (map (pure . box) ixs) | (pen, ixs) <- indexed]
+   in withPens [explicitPen] [withPens [pen] (map (pure . box) ixs) | (pen, ixs) <- indexed] <> breakAfter
+
+-- | The elements of a word, each with the index of its first character in it: its parts at its written hyphens and dashes.
+wordElements :: Text -> [(Int, Text)]
+wordElements word = zip (scanl (+) 0 (map T.length ps)) ps
+  where
+    ps = if T.any isHyphenCharacter word then explicitParts word else [word]
+
+{- | The soft hyphens read in the joined word (docs/adr ADR 0285): each run
+of word pieces (not of superscript or subscript) and soft hyphens, with
+nothing but anchors and soft hyphens between them, is one word, the soft
+hyphens between two pieces at the boundary of them. The rules of docs/adr
+ADR 0272 then decide, in that word, the breaks, the elements that get no
+pattern hyphens and why a soft hyphen is not a break; a break is not
+taken where the character before it or after it does not break (a link,
+a range that does not break), and is G07123 then but in such text.
+-}
+joinShys :: [(Int, Sourced, Piece)] -> [(Int, Sourced, Piece)]
+joinShys = go
+  where
+    go xs = case break member xs of
+      (before, []) -> before
+      (before, rest) -> let (run, after) = span (\x -> member x || anchor x) rest in before <> joinRun run <> go after
+    member (_, _, p) = case p of
+      PWord lk _ _ _ -> not (isScript lk)
+      -- a soft hyphen of code is in no word (golem-driver ADR 0017)
+      PShy lk _ _ -> not (breaksAsCode lk)
+      _ -> False
+    anchor (_, _, p) = case p of
+      PAnchor _ -> True
+      _ -> False
+
+{- | One joined word of 'joinShys': its word pieces with where each starts,
+and each soft hyphen with where it is and the look of its text.
+-}
+joinRun :: [(Int, Sourced, Piece)] -> [(Int, Sourced, Piece)]
+joinRun run
+  | null words' = run
+  | otherwise = map fix (zip [0 :: Int ..] run)
+  where
+    indexed = zip [0 :: Int ..] run
+    -- the word pieces: index in the run, start in the joined word, look, word, soft hyphens
+    (_, placed) = mapAccumL place (0, Nothing) indexed
+    place (at, lastWord) (k, (_, _, p)) = case p of
+      PWord lk w shys _ -> ((at + T.length w, Just (at, shys, 0 :: Int)), [Left (k, at, lk, w)])
+      PShy lk True _ | Just (wAt, shys, n) <- lastWord, q : _ <- drop n shys -> ((at, Just (wAt, shys, n + 1)), [Right (k, wAt + q, lk)])
+      PShy lk _ _ -> ((at, lastWord), [Right (k, at, lk)])
+      _ -> ((at, lastWord), [])
+    words' = [w | Left w <- concat placed]
+    sites = [x | Right x <- concat placed]
+    joined = T.concat [w | (_, _, _, w) <- words']
+    total = T.length joined
+    lookAt i = listToMaybe [lk | (_, at, lk, w) <- words', i >= at, i < at + T.length w]
+    -- the role of a soft hyphen at a position of the joined word, of a look: a break, and why it is not one
+    roleOf pos own =
+      let near = catMaybes [lookAt (pos - 1) | pos > 0] <> catMaybes [lookAt pos | pos < total]
+          orphan = if unbreakable own then ShyInUnbreakable else ShyNotBetweenLetters
+       in case shyRole own {lkLink = Nothing} joined pos of
+            ShyHead -> (False, Nothing)
+            ShyStray -> (False, Just orphan)
+            ShyCut
+              | any (isJust . lkLink) (own : near) -> (False, Just orphan)
+              | unbreakable own -> (True, Just ShyInUnbreakable)
+              | any unbreakable near -> (False, Just ShyNotBetweenLetters)
+              | otherwise -> (True, Nothing)
+    roles = IntMap.fromList [(k, roleOf pos own) | (k, pos, own) <- sites]
+    cutsJ = IntSet.fromList [pos | (k, pos, _) <- sites, Just (True, _) <- [IntMap.lookup k roles]]
+    shyStarts = IntSet.fromList [fst (elementSpan joined pos) | (_, pos, _) <- sites]
+    nextWordAt = IntSet.fromList [at | (_, at, _, _) <- drop 1 words']
+    wordShys = IntMap.fromList [(k, shysOf at w) | (k, at, _, w) <- words']
+    shysOf at w =
+      let end = at + T.length w
+       in WordShys
+            { wsCuts = [c - at | c <- IntSet.toAscList cutsJ, c > at, c < end],
+              wsNoPatterns = [o | (o, _) <- wordElements w, IntSet.member (fst (elementSpan joined (at + o))) shyStarts],
+              wsBreakAfter = IntSet.member end cutsJ && IntSet.member end nextWordAt
+            }
+    fix (k, x@(l, src, p)) = case p of
+      PWord lk w shys _ -> (l, src, PWord lk w shys (IntMap.lookup k wordShys))
+      PShy lk inWord _ -> (l, src, PShy lk inWord (IntMap.lookup k roles >>= snd))
+      _ -> x
 
 {- | Where a word is cut after its runs of low lines (golem-layout ADR
 0031): after each run that has a character before it and one after it in

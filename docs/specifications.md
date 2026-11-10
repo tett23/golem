@@ -3869,6 +3869,15 @@ PDF の行分割では、ソフトハイフンは字の箱を作らない。
 候補にならないソフトハイフンは、要素の最初の字より前のものを除き、PDF をターゲットに含む `golem build` が notice で報告する。
 改行しない文字（コード、`url` の文字、リンクの語、改行しない範囲）の中のものは G07124、ほかのもの（前か後ろが字でないもの、語の終わりのもの、和文の字のあいだのもの）は G07123 とする。
 位置はソフトハイフンで、`[shy]` で書いたものは `[shy]` である。
+
+語が文字スタイル、言語の区間、リンク、引用の印の境目で二つ以上の部品に分かれても、候補、分綴しない要素、notice は、つないだ語で決める（[ADR 0285](adr/0285-read-soft-hyphens-at-inline-boundaries-in-the-joined-word.md)）。
+つないだ語は、あいだに項目を作る部品を挟まずに続く欧文の語の部品（上付きと下付きの範囲のものを除く）の字をつないだものである。
+ソフトハイフンだけのテキストとアンカーは、項目を作らないので並びを切らず、ソフトハイフンだけのテキストは前後の部品の境目に置く。
+そのため `a­[strong: a]`、`a[strong: ­]a`、`[italic: hyphen]­ation` は一つのテキストの `a­a` や `hyphen­ation` と同じく分けられ、notice は出ない。
+境目の候補は、二つの箱のあいだにソフトハイフンの罰点（幅は `-` の送り、罰則 50）を一つ置き、前の部品の項目の後に置く。
+ソフトハイフンを含むつないだ語の要素は、その要素の字を持つどの箱もパターンと例外で分綴しない。
+候補の前の字か後の字が改行しない字（リンクの語、改行しない範囲）なら、候補にしない。
+このソフトハイフンが改行しない字の中にあれば G07124、ないときは G07123 とする。
 どちらも出力は同じで、ソフトハイフンを描かない。
 `golem check`、LSP、HTML、EPUB、プレーンテキストだけのビルドでは報告しない。
 
@@ -3942,7 +3951,8 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 L1 から L13 と W1 は分綴のパターンのある環境で、W1 と W2 はパターンのない環境で調べる。
 W2 は、[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md) の E2 のとおり、すべての位置の候補を比べる。
 同じ環境で、境目で分けた段落と一つのテキストとで、欧文の語に入る字の列が等しいこと（E1）も調べる。
-空白の隣には境目を置かず、ソフトハイフンの隣に境目のある入力では L8 と W1 だけを調べる（どちらも「既知の不具合」）。
+空白の隣には境目を置かない（「既知の不具合」）。
+ソフトハイフンの隣に境目のある入力でも、L1 から L13 と I4 と W2 を調べ、W1 は [ADR 0285](adr/0285-read-soft-hyphens-at-inline-boundaries-in-the-joined-word.md) の H4 のとおり、境目のソフトハイフンの罰点を含めて調べる。
 プルリクエストの CI は部品 2 個まで、毎晩の `enum.yml` は部品 3 個まで調べる（`GOLEM_ENUM_JOINED_DEPTH`）。
 引用の印を部品に足した列挙（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）は、プルリクエストの CI で部品 2 個まで、毎晩の `enum.yml` で部品 3 個まで調べる（`GOLEM_ENUM_CITE_DEPTH`）。
 区間の外で両用の字が印のすぐ隣にある入力では、C2 を調べない。
@@ -6260,7 +6270,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **二つのインラインの空白が、二つのグルーになる**：一つのテキストの中の続く空白は一つのグルーにまとめるが、`a ` と `[strong:  b]` のように境目の両側にある空白は、それぞれグルーになる。[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の L11 に反する。[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の境目の列挙で見つかったので、その列挙は空白の隣に境目を置かない。
-- **インラインの境目の隣のソフトハイフンを、述語と組版が別の語で読む**：ソフトハイフンの述語（I3 まで広げた L9 と I4、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）は段落の字の並びでソフトハイフンを読み、境目の前後のソフトハイフンを語の中にあるとみなす。組版は、インラインごとの語で読むので、同じソフトハイフンを語の端にあるとみなす。`a\xAD` と `[strong: a]` で、述語は分割を求め、組版は分けない。どちらに合わせるかは決めていない（[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の境目の列挙で見つかった）。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合
