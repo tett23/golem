@@ -7,7 +7,7 @@
 //   BROWSER=chromium node --test scripts/browser/test/
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +19,21 @@ import { HARNESS, svgText } from '../svg-text.mjs';
 const BROWSER = process.env.BROWSER;
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const skip = BROWSER ? false : 'BROWSER is not set';
+const SHIM = new URL('../node_modules/@bjorn3/browser_wasi_shim/dist/', import.meta.url);
+const OK_WASM = Buffer.from('0061736d01000000010401600000030201000503010001071802066d656d6f727902000b5f696e697469616c697a6500000a040102000b', 'hex');
+
+// A page whose wasm initializes but lacks hs_init. The test checks errors
+// from the Worker and its loading without needing the product wasm.
+async function wasmPage(dir, worker) {
+  const pages = {
+    '/__golem/run.html': await readFile(join(ROOT, 'scripts/wasm/browser/run.html')),
+    '/__golem/golem.wasm': OK_WASM,
+    '/__golem/files.json': '[]',
+  };
+  if (worker) pages['/__golem/worker.js'] = await readFile(join(ROOT, 'scripts/wasm/browser/worker.js'));
+  for (const f of await readdir(SHIM)) if (f.endsWith('.js')) pages[`/__golem/shim/${f}`] = await readFile(new URL(f, SHIM));
+  return serve(dir, { pages });
+}
 
 // test/pages with the files the repository has elsewhere: a PNG with tRNS
 // and the fonts
@@ -57,6 +72,24 @@ function suite(scale) {
 
     test('S1: the server answers 404 for a link under its root to a file outside it (docs/adr ADR 0288)', async () => {
       assert.equal((await fetch(u('outside.mjs'))).status, 404);
+    });
+    test('I4: an initializing wasm without hs_init rejects with the initialize step', async () => {
+      const mock = await wasmPage(dir, true);
+      try {
+        await page.open(`${mock.url}/__golem/run.html`);
+        await assert.rejects(page.evaluateAsync('golemBuild()'), /initialize: /);
+      } finally {
+        await mock.close();
+      }
+    });
+    test('I4: a missing Worker rejects with the worker step', async () => {
+      const mock = await wasmPage(dir, false);
+      try {
+        await page.open(`${mock.url}/__golem/run.html`);
+        await assert.rejects(page.evaluateAsync('golemBuild()'), /worker: /);
+      } finally {
+        await mock.close();
+      }
     });
     test('I1: line numbers and diff marks of user-select: none are not selected', async () => {
       assert.deepEqual(await html.selection(page, u('select-ok.html')), []);

@@ -103,6 +103,7 @@ ca-certificates の入っていない最小構成のコンテナでは、ca-cert
 
 Node の `node:wasi` で動くことは、CI で確かめている。
 夜ごとの `.github/workflows/browser.yml` が、Deno 2.9.8 の `node:wasi` と、wasmtime 50.0.1 の C API のホスト（`scripts/wasm/run-wasmtime.c`）と、`browser_wasi_shim` を使う Chromium（Chrome for Testing 157.0.8103.50）と Safari（macOS のランナーのもの）でも、ネイティブの `golem` と同じ PDF と diagnostics を返すことを確かめている（[docs/adr/0234](./docs/adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[docs/adr/0238](./docs/adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+Chromium と Safari では、ページの Worker の中で `golem.wasm` を動かす（[docs/adr/0309](./docs/adr/0309-run-golem-wasm-in-a-worker-of-the-browser-page.md)）。
 
 エクスポートは C の ABI の次の五つと `hs_init` で、ホストは `_initialize` を一度、`hs_init(0, 0)` を一度呼んでから使う。
 

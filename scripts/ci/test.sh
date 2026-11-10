@@ -4584,5 +4584,20 @@ if [ "$CODE" = 0 ] && grep -Eq '^[1-9][0-9]* files checked$' "$WORK/out"; then o
 if printf '%s\n' "$PC_FILES" | grep -qxF scripts/ci/test.sh && printf '%s\n' "$PC_FILES" | grep -qxF scripts/test.sh && printf '%s\n' "$PC_FILES" | grep -qxF tools/editors/nvim/test.sh; then ok; else ng "process check: the files checked include scripts/ci/test.sh, scripts/test.sh and tools/editors/nvim/test.sh (I8)"; fi
 
 # ----------------------------------------------------------------
+# The browser page leaves WebAssembly to its Worker (docs/adr/0309 I3).
+RUN_HTML=$HERE/../wasm/browser/run.html
+if grep -qE 'WebAssembly\.|golem_build_pdf' "$RUN_HTML"; then
+  ng "run.html: the main thread does not instantiate or call golem.wasm (I3)"
+else
+  ok
+fi
+run env GITHUB_ACTIONS= GITHUB_JOB= RUNNER_ENVIRONMENT= RUNNER_OS= \
+  sh "$HERE/../wasm/test/browser-leftovers.sh"
+if [ "$CODE" = 2 ] && grep -qF 'requires the dedicated GitHub-hosted Safari job' "$WORK/err"; then
+  ok
+else
+  ng "browser-leftovers: refuses to launch Safari outside its dedicated runner (docs/adr/0309)"
+fi
+
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]
