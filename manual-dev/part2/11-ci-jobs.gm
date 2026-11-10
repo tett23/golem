@@ -99,6 +99,8 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 - [code: scripts/test.sh]：手でだけ動くスクリプト（[code: scripts/gen-vertical-orientation.sh]、[code: scripts/fixtures/copy-fonts.sh]、[code: scripts/fixtures/fetch-public-domain.sh]）のテスト。各スクリプトは置かれたリポジトリに書き込むので、一時ディレクトリに作った偽の根に写して動かす。[code: curl] などは [code: PATH] の先頭に置いた偽物で差し替え、ネットワークを使わない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0078-tests-for-release-and-hand-run-scripts.md]（docs/adr の ADR 0078「リリースのときと手でだけ動くスクリプトにテストを書く」）]
 - [code: scripts/visual/test.sh]：見た目の回帰テストのスクリプトのテスト（第[ref-number determinism]章）。[code: uname] と [code: curl] を偽物で差し替え、ネットワークを使わずに、shem の取得が SHA-256 と版を確かめることを確かめる。偽の [code: golem] と shem で、入力の組み方と、参照との比べ方、[code: --accept] の書き方も確かめる。偽の [code: gh] で、[code: visual-pdfs] の待ち方も確かめる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md]（docs/adr の ADR 0093「見た目の回帰テストのラスタライザ shem を、版と SHA-256 を固定して配布元の release から取る」）]
 
+テストのほかに、ワークフローのすべてのアクションがコミットの SHA と版の注釈で指定されていることを、[code: sh scripts/ci/actions-pins.sh check] で確かめる（この章の「Actions のバージョン」）。
+
 以前は、これらのテストを [code: changes] が実行していた。
 [code: build] と [code: scripts-macos] は [code: changes] の後に始まるので、ビルドの要否の判定に使わないテストの十数秒を、毎回待っていた。
 [code: scripts-linux] は [code: needs] も条件も持たないので、[code: changes] と同時に始まり、文書だけの変更でも走る。
@@ -434,5 +436,15 @@ CI を待つ時間は変更を一つ入れるたびにかかるので、CI が�
 ## Actions のバージョン
 
 GitHub Actions のアクションは、Node 24 以降で動く最新のメジャーバージョンを使う。
+アクションは、コミットの SHA と版のタグの注釈で指定する（[code: - uses: actions/checkout@<40 桁の SHA> # v7.0.1] の形）。
+注釈のタグは、そのコミットを指すタグのうち、いちばん細かいものとする。
+同じリポジトリのアクション（[code: actions/cache] と [code: actions/cache/restore] など）は、どのファイルでも同じ SHA と注釈で指定する。
+このリポジトリの reusable workflow（[code: ./.github/workflows/ci.yml]）だけは [code: ./] で書く。
+[code: scripts-linux] は [code: sh scripts/ci/actions-pins.sh check] でこの形を確かめ、外れた行の [code: ファイル:行] を出して失敗する。[index reading="actions-pins.sh": actions-pins.sh]
+ワークフローを足すときも、同じ形で書く。
+[code: advisories.yml] の [code: actions] ジョブが毎日一回、固定したアクションを上流と照合する。
+失敗したら、手元で [code: sh scripts/ci/actions-pins.sh update] を実行し、書き換えたワークフローのプルリクエストを出す。
+プルリクエストの説明には、[code: update] の出力（どのアクションをどの版からどの版へ上げたか）を書く。
+メジャーバージョンが上がるときは、上流のリリースノートを読み、入力の変わったアクションの [code: with:] を同じプルリクエストで直す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0296-pin-every-github-action-by-commit-sha.md]（docs/adr の ADR 0296「GitHub Actions の action を、コミットの SHA と版の注釈で指定する」）]
 Node を使う手順では、最新の LTS を使う。
 リリースのワークフローがリリースノートを書く道具を入れる手順も、[code: actions/setup-node] に [code: lts/*] を渡している。
