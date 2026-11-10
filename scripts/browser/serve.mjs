@@ -8,9 +8,11 @@
 //   await server.close();
 //
 // pages are served at their paths before the files of root. A path that
-// leaves root, or names no file, is 404. Nothing is cached.
+// leaves root, a file whose real path leaves the real path of root (a
+// link to outside it, followed), or a path that names no file, is 404
+// (docs/adr ADR 0288). Nothing is cached.
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
 
 const TYPES = {
@@ -50,7 +52,26 @@ export function fileOf(root, urlPath) {
   return join(root, rel);
 }
 
+// The real path of the file under ROOT that the path of a URL names, when
+// it is REAL (the real path of ROOT) or under it and a file; null
+// otherwise, also when the real path cannot be found (a link to nothing,
+// no permission). Links that stay under the root are followed (docs/adr
+// ADR 0288).
+export async function servedFile(root, urlPath, real) {
+  const file = fileOf(root, urlPath);
+  if (file === null) return null;
+  try {
+    const path = await realpath(file);
+    if (path !== real && !path.startsWith(real.endsWith(sep) ? real : real + sep)) return null;
+    return (await stat(path)).isFile() ? path : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function serve(root, { pages = {} } = {}) {
+  // once, when the server starts
+  const real = await realpath(root);
   const server = createServer(async (req, res) => {
     const headers = { 'cache-control': 'no-store' };
     const path = req.url.split('?')[0];
@@ -59,9 +80,9 @@ export async function serve(root, { pages = {} } = {}) {
       res.end(pages[path]);
       return;
     }
-    const file = fileOf(root, req.url);
+    const file = await servedFile(root, req.url, real);
     try {
-      if (file === null || !(await stat(file)).isFile()) throw new Error('not a file');
+      if (file === null) throw new Error('not a file');
       const body = await readFile(file);
       res.writeHead(200, { ...headers, 'content-type': contentType(file) });
       res.end(body);

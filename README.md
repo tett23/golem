@@ -854,7 +854,10 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 
 範囲の段の前の段（`scripts/ci/enum-timings.sh`）は、時間を量る。
 範囲ごとのテストを上限の変数を渡さずにプルリクエストと同じ設定で走らせ、範囲ごとの壁時計の時間と和を予算（範囲ごとに 10 秒、和で 30 秒）と並べた表にして、ジョブの要約とログに書く（[ADR 0281](./docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md)）。
+範囲の時間は、`cabal list-bin` で求めたテストの実行ファイルを直接走らせた時間で、`cabal test` の起動の時間を含まない。
 時間が予算を超えても、この段は落ちない。
+`workflow_dispatch` の入力 `timings` を付けて起動すると、この段だけを四つのジョブで走らせ（範囲の段は走らせない）、後の `medians` のジョブが四つの表の範囲ごとと和の中央値を予算と並べて要約に書く（`enum-timings.sh --median`）。
+予算と比べるのは、この中央値である（[ADR 0286](./docs/adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md)）。
 
 範囲の段と、プルリクエストの CI が同じテストを調べる範囲は、次のとおりである。
 
@@ -862,11 +865,12 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
   プルリクエストの CI は、同じテストを要素 3 個まで調べ、抜き取らない。
 - 行分割の段：golem-layout のテスト（「line breaking invariants on every small input」）を `GOLEM_ENUM_LINES_DEPTH=3` と `GOLEM_ENUM_LINES_SAMPLES=5000000` で走らせる。
   本文の中のコードの 18 の部品の並びも、同じ部品の数と行の幅まで調べる（抜き取らない）。
-  プルリクエストの CI は、同じテストを部品 2 個まで 4 字までの行で調べ（正規形と縦組みと R7 は部品 1 個まで。`[lang fr]` の区間と、行の調整の `"balanced"` と伸びの上限と、R1 は毎晩だけ。[ADR 0276](./docs/adr/0276-hyphenate-words-by-the-patterns-of-their-language.md)、[ADR 0282](./docs/adr/0282-record-what-the-implementations-of-adr-0274-and-0275-decided.md)）、抜き取らない（[docs/adr/0209](./docs/adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md)、コードの並びは [golem-layout ADR 0034](./docs/golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) と [golem-layout ADR 0045](./docs/golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md)）。
+  プルリクエストの CI は、同じテストを部品 2 個まで 4 字までの行で調べ（正規形と縦組みと R7 は部品 1 個まで。行の調整の `"balanced"` と伸びの上限は毎晩だけ）、抜き取らない（[docs/adr/0209](./docs/adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md)、コードの並びは [golem-layout ADR 0034](./docs/golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) と [golem-layout ADR 0045](./docs/golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md)）。
+  `[lang fr]` の区間と R1 は、[ADR 0276](./docs/adr/0276-hyphenate-words-by-the-patterns-of-their-language.md) と [ADR 0282](./docs/adr/0282-record-what-the-implementations-of-adr-0274-and-0275-decided.md) が毎晩に移したものを、[ADR 0286](./docs/adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md) の量り方でプルリクエストに戻した。
 - 引用の印の段と語の途中の境目の段：引用の印の段は、golem-layout のテスト（「GOLEM_ENUM_CITE_DEPTH」）を `GOLEM_ENUM_CITE_DEPTH=3` で走らせ、語の途中の境目の段は、golem-layout のテスト（「GOLEM_ENUM_JOINED_DEPTH」）を `GOLEM_ENUM_JOINED_DEPTH=3` で走らせる。
   プルリクエストの CI は、どちらも部品 2 個まで調べる（[docs/adr/0277](./docs/adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)、[ADR 0280](./docs/adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md)）。
 - 行の調整の順の段：golem-layout のテスト（「order of JLReq」の「every small input」）を `GOLEM_ENUM_LINES_DEPTH=3` で走らせ、三つの順を 5 字までの行で調べる。
-  プルリクエストの CI は、既定の順だけを 4 字までの行で調べる（[docs/adr/0278](./docs/adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
+  プルリクエストの CI も、三つの順を 4 字までの行で調べる。[ADR 0286](./docs/adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md) の量り方でプルリクエストに戻した（[docs/adr/0278](./docs/adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
 
 2026-11-10 にブランチで起動した四回の実行（[ADR 0281](./docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md) の 8）では、段の時間は次のとおりだった。
 
@@ -912,6 +916,8 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 
 - `ci`：`ci.yml` を再利用可能なワークフローとして呼ぶ。
   呼び出したワークフローは呼ぶジョブの権限までしか持てないので、`ci.yml` のジョブが求める権限（`visual` の `actions: read` と、`main` への push でだけ走る `caches` の `actions: write`）を与える。
+  `actions: write` を受け取るのは `caches` だけで、タグの push では `caches` は走らない。
+  ほかのジョブが `actions: write` を求めないことと、ジョブが求めない権限を与えないことは、`scripts/ci/test.sh` が確かめる（[ADR 0287](./docs/adr/0287-keep-actions-write-of-the-ci-call-in-release-yml-for-the-caches-job-alone.md)）。
 - `version`：`scripts/release/check-version.sh` で `VERSION` とタグを検査し、タグのコミットが `main` に含まれることを確かめる。
   タグの push では、`scripts/release/check-patch.sh` で、タグが patch（`X` と `Z` が 1 以上）かを決め、patch なら基準のリリース（同じ `X.Y` のプレリリースでない最新のタグ）を `patch` ジョブに渡す。
   patch なのに基準のリリースがなければ失敗する（[docs/adr/0174](./docs/adr/0174-compatibility-promises-for-1-0.md)、[docs/adr/0212](./docs/adr/0212-patch-release-check-on-the-inputs-of-the-previous-release.md)）。
