@@ -1,6 +1,6 @@
 # ADR 0030: 語の頭のアポストロフィを、行頭禁則の終わり括弧類として扱わない
 
-ステータス: 採択
+ステータス: 採択→（次の字の範囲）は [docs/adr/0283](../../adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md)
 
 ## 文脈
 

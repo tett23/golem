@@ -16,12 +16,13 @@ as other text, which the composition of the citation then was.
 -}
 module CiteBreakEnum (citeBreakTests) where
 
-import Data.Maybe (mapMaybe)
+import Data.Maybe (isNothing, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Fixtures (fs, sp)
 import Golem.Doc.Citation (citationPieces, citationText)
 import Golem.Doc.IR qualified as IR
+import Golem.Layout.CharClass (isJoinerCharacter)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.TestSupport.Enum
@@ -210,7 +211,10 @@ inputInlines i =
       PText _ -> True
       _ -> False
 
--- | The violations of an input: L1 to L13 of docs/adr/0209, C1 and C2.
+{- | The violations of an input: L1 to L13 of docs/adr/0209, C1 and C2; C2
+not where a character of both scripts outside a span is next to a mark
+('dualAtMark').
+-}
 violations :: Input -> [Violation]
 violations i =
   let env = envOf False (inSetting i)
@@ -233,7 +237,20 @@ violations i =
             pAdvance = advance,
             pNumberUnit = 10000
           }
-   in [Violation (show (breachOf b)) (show (breachLine b) <> ": " <> breachWhy b) | b <- breaches bruteLimit p] <> c1Items its <> c1Lines (brLines br) <> c2Items its before
+   in [Violation (show (breachOf b)) (show (breachLine b) <> ": " <> breachWhy b) | b <- breaches bruteLimit p] <> c1Items its <> c1Lines (brLines br) <> (if dualAtMark i then [] else c2Items its before)
+
+{- | Whether a character of both scripts outside a span is right next to a
+mark: the mark stops the search for the nearest character that decides
+whether it joins a Latin word, and the text of the mark set as other text
+does not (docs/adr ADR 0283), so that the composition before docs/adr/0277
+that C2 compares with is not the same there.
+-}
+dualAtMark :: Input -> Bool
+dualAtMark i = isNothing (sLang (inSetting i)) && or (zipWith next (inRun i) (drop 1 (inRun i)))
+  where
+    next (PText t) (PCite _) = maybe False (isJoinerCharacter . snd) (T.unsnoc t)
+    next (PCite _) (PText t) = maybe False (isJoinerCharacter . fst) (T.uncons t)
+    next _ _ = False
 
 -- | The inputs of a run: every setting of its normal form, placing in lines of 2 to 4 em and expansion.
 inputsOf :: [Part] -> [Input]
