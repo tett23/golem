@@ -1,4 +1,4 @@
-/* The host of golem.wasm under the C API of wasmtime 49.0.5 (docs/adr/0238),
+/* The host of golem.wasm under the C API of wasmtime 50.0.1 (docs/adr/0238),
  * which scripts/fetch-wasmtime.sh fetches. run-wasmtime.sh builds it.
  *
  *   run-wasmtime compile WASM CWASM   compiles golem.wasm with Cranelift and
