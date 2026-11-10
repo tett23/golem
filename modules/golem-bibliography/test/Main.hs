@@ -2,7 +2,8 @@ module Main (main) where
 
 import BibliographySpec qualified
 import CslSpec qualified
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Test.Tasty
 
 main :: IO ()
-main = defaultMain (testGroup "golem-bibliography" [BibliographySpec.tests, CslSpec.tests])
+main = enterPackageDirectory >> defaultMain (testGroup "golem-bibliography" [BibliographySpec.tests, CslSpec.tests])

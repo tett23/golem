@@ -33,8 +33,8 @@ case ${1:-} in
   "") ;;
   *) echo "usage: fetch-chromium.sh [--expected]" >&2; exit 2 ;;
 esac
-VERSION=157.0.8103.38
-SHA256=deafffa74660b34853a4119c361fd427ac8c9fcb62db51ddb8a797cd83a4ba2d
+VERSION=157.0.8103.50
+SHA256=7bf0d41e424efd1d6281c4162993ab9dc5de92fac213c211614905a71c057d0f
 if [ "$EXPECTED_ONLY" = true ]; then printf '%s %s\n' "$VERSION" "$SHA256"; exit 0; fi
 case "$(uname -s)-$(uname -m)" in
   Linux-x86_64) ;;
