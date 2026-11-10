@@ -14,7 +14,7 @@ The mark is composed from the citation (an 'IR.Cite'); what it was
 composed as before the ADR is the text of the mark ('citationText') set
 as other text, which the composition of the citation then was.
 -}
-module CiteBreakEnum (citeBreakTests) where
+module CiteBreakEnum (citeBreakTests, citePrDepth) where
 
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)

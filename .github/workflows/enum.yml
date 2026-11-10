@@ -5,7 +5,10 @@ name: Enum
 # the days main has changed since the last successful run of this
 # workflow, and whenever it is started by hand. One step for each area,
 # with its depth and the inputs it draws past the depth; all the steps
-# together within 60 minutes (docs/adr/0208, its section 4).
+# together within 60 minutes (docs/adr/0208, its section 4). The first
+# step of the areas times each on the settings of pull requests, and each
+# area runs whatever the steps before it gave, unless the run is
+# cancelled (docs/adr ADR 0281).
 on:
   schedule:
     - cron: "47 18 * * *"
@@ -110,12 +113,19 @@ jobs:
       - name: Build the test suites
         if: steps.needed.outputs.run == 'true'
         run: cabal build golem-layout-test
+      # the time of each area alone, without the variables of the steps
+      # below: as the pull requests check it, against the budgets of 10
+      # seconds an area and 30 in all, into the summary of the job; a time
+      # over a budget fails nothing (docs/adr ADR 0281)
+      - name: The time of each area on the settings of pull requests (docs/adr ADR 0281)
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        run: sh scripts/ci/enum-timings.sh >> "$GITHUB_STEP_SUMMARY"
       # pagination: every input of the shortened enumeration of up to
       # GOLEM_ENUM_DEPTH elements, and inputs of one element more drawn from
       # the enumeration of docs/adr/0204; the pull requests check up to the
       # depth of PaginateInvariantsSpec.prDepth and draw none
       - name: The pagination invariants on every small input (docs/adr/0204, docs/adr/0208)
-        if: steps.needed.outputs.run == 'true'
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
         env:
           GOLEM_ENUM_DEPTH: "5"
           GOLEM_ENUM_PAGINATION_SAMPLES: "5000000"
@@ -125,7 +135,7 @@ jobs:
       # requests check up to LineBreakInvariantsSpec.linesPrDepth parts in
       # lines of up to 4 em and draw none
       - name: The line breaking invariants on every small input (docs/adr/0209)
-        if: steps.needed.outputs.run == 'true'
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
         env:
           GOLEM_ENUM_LINES_DEPTH: "3"
           GOLEM_ENUM_LINES_SAMPLES: "5000000"
@@ -134,7 +144,7 @@ jobs:
       # GOLEM_ENUM_NOBREAK_DEPTH parts; the pull requests check up to 2
       # (docs/adr ADR 0272)
       - name: The ranges that do not break on every small input (docs/adr ADR 0272)
-        if: steps.needed.outputs.run == 'true'
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
         env:
           GOLEM_ENUM_NOBREAK_DEPTH: "3"
         run: cabal test golem-layout-test --test-option=-p --test-option='/ranges that do not break on every small input/'
@@ -142,7 +152,7 @@ jobs:
       # input of up to GOLEM_ENUM_CITE_DEPTH parts; the pull requests check
       # up to 2 (docs/adr/0277, docs/adr ADR 0280)
       - name: The marks of citations on every small input (docs/adr/0277, docs/adr ADR 0280)
-        if: steps.needed.outputs.run == 'true'
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
         env:
           GOLEM_ENUM_CITE_DEPTH: "3"
         run: cabal test golem-layout-test --test-option=-p --test-option='/GOLEM_ENUM_CITE_DEPTH/'
@@ -150,7 +160,7 @@ jobs:
       # GOLEM_ENUM_JOINED_DEPTH parts; the pull requests check up to 2
       # (docs/adr ADR 0280)
       - name: The boundaries inside Latin words on every small input (docs/adr ADR 0280)
-        if: steps.needed.outputs.run == 'true'
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
         env:
           GOLEM_ENUM_JOINED_DEPTH: "3"
         run: cabal test golem-layout-test --test-option=-p --test-option='/GOLEM_ENUM_JOINED_DEPTH/'

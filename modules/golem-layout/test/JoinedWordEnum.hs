@@ -17,7 +17,7 @@ A boundary is made by setting the parts after it in a character style
 (@strong@) or out of one, by turns; the style changes nothing of the
 look, so that the boxes of the two sides differ only in their pieces.
 -}
-module JoinedWordEnum (joinedWordTests) where
+module JoinedWordEnum (joinedWordTests, joinedPrDepth) where
 
 import Data.Char (isLetter)
 import Data.List (mapAccumL)

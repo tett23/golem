@@ -10,7 +10,18 @@ L7, the regressions, and every input up to @GOLEM_ENUM_LINES_DEPTH@
 parts with @GOLEM_ENUM_LINES_SAMPLES@ inputs drawn one part past it,
 the known bugs excluded by an explicit list whose inputs are counted.
 -}
-module LineBreakInvariantsSpec (lineInvariantTests, linesPrDepth, LineBug (..), lineBugs) where
+module LineBreakInvariantsSpec
+  ( lineInvariantTests,
+    linesPrDepth,
+    LineBug (..),
+    lineBugs,
+    Adjust (..),
+    LineSetting,
+    lineSettingsAt,
+    lineChecksAt,
+    lineLimitsAt,
+  )
+where
 
 import Control.Monad (when)
 import Data.Bits (xor)
@@ -18,6 +29,8 @@ import Data.ByteString.Lazy qualified as BL
 import Data.Char (ord)
 import Data.List (intercalate, nub)
 import Data.Map.Strict qualified as Map
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -87,6 +100,55 @@ groupsAt depth run =
   | g <- normalGroups (maxWidthAt depth) run,
     depth > linesPrDepth || sLang (gSetting g) /= Just "fr"
   ]
+
+{- | The parts up to which R1 of docs/adr/0274 is checked: 2 past
+'linesPrDepth' (the nightly job), none on pull requests, where breaking
+every input once more took the area past the 10 seconds of docs/adr/0208
+(its section 4) on the x86-64 runner of CI, as the run of the tests of
+every package at once was timed (docs/adr/0282).
+-}
+r1Depth :: Int -> Int
+r1Depth depth = if depth > linesPrDepth then 2 else 0
+
+{- | A run whose normal form keeps every setting: a prolonged sound mark
+(loose kinsoku), a full stop (hanging), a Latin word (protrusion, the
+spans and the expansion) and a digit (the penalty of a number and its
+unit).
+-}
+coveringRun :: [Text]
+coveringRun = ["ー", "。", "table", "１"]
+
+{- | A setting the enumeration of the line breaking combines an input with
+(docs/adr ADR 0281, its section 1): the composition, the expansion, the
+width of the lines in em, and the adjustment.
+-}
+type LineSetting = (Setting, Bool, Int, Adjust)
+
+{- | The settings the enumeration checks at a depth: those of the groups
+of 'groupsAt' and the adjustments of 'adjustsAt', on a run whose normal
+form keeps every setting.
+-}
+lineSettingsAt :: Int -> Set LineSetting
+lineSettingsAt depth = Set.fromList [(gSetting g, e, w, a) | g <- groupsAt depth coveringRun, (w, e) <- gCases g, a <- adjustsAt depth coveringRun]
+
+{- | The checks of the line breaking at a depth, and the parts each checks
+every run up to (0: not checked).
+-}
+lineChecksAt :: Int -> [(String, Int)]
+lineChecksAt depth =
+  [ ("L1 to L13, T1, I4, B2 to B4, R2, R5, R6 on every input", depth),
+    ("L1 to L13, T1, C1, C2, C4, C6 to C8, J1 to J7, D1 to D5 on every input of code", depth),
+    ("R1", r1Depth depth),
+    ("R7", formDepth depth),
+    ("the normal form", formDepth depth),
+    ("the normal form of code", formDepth depth),
+    ("vertical writing", formDepth depth),
+    ("vertical writing of code", formDepth depth)
+  ]
+
+-- | The limits of the line breaking at a depth: the widest line in em, and the breaks L7 brute-forces.
+lineLimitsAt :: Int -> [(String, Int)]
+lineLimitsAt depth = [("the widest line", maxWidthAt depth), ("the breaks of the naive search", bruteLimitAt depth)]
 
 -- | The depth: GOLEM_ENUM_LINES_DEPTH, or 'linesPrDepth'.
 linesDepth :: IO Int
@@ -619,7 +681,7 @@ balanced, and the stretch limit in permille, or none; and the penalty of a
 number and its unit (docs/adr/0275), which the items are composed with.
 -}
 data Adjust = Adjust {aPullIn :: !Bool, aLimit :: !(Maybe Int), aNumberUnit :: !Int}
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 -- | The adjustment of 'defaultParams' and 'defaultComposeEnv': balanced, no limit, numbers kept with their units.
 balancedAdjust :: Adjust
@@ -811,10 +873,9 @@ limitMisses maxWidth run =
 exhaustiveTests :: [TestTree]
 exhaustiveTests =
   [ testCase "R1 (docs/adr/0274): balanced and without a limit, every input up to 2 parts is broken and placed as before the ADR (test/golden/line-adjustment-balanced.tsv), past the depth of pull requests" $ do
-      -- the nightly job only: breaking every input once more took the area
-      -- past the 10 seconds of docs/adr/0208 (its section 4) on pull requests
+      -- up to 'r1Depth': the nightly job only
       depth <- linesDepth
-      when (depth > linesPrDepth) $ do
+      when (r1Depth depth > 0) $ do
         want <- BL.readFile "test/golden/line-adjustment-balanced.tsv"
         BL.fromStrict (TE.encodeUtf8 balancedLines) == want @? "the lines differ from test/golden/line-adjustment-balanced.tsv",
     testCase "R7 (docs/adr/0274): a stretch limit of 0, 1000 or 2500 changes no breaks, demerits nor pass of any input up to 2 parts (1 on pull requests)" $ do
