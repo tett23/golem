@@ -38,6 +38,7 @@ test-suite golem-layout-spec-test
     , golem-layout-spec
     , golem-project
     , golem-syntax
+    , golem-test-support
     , tasty          >=1.4 && <1.6
     , text
     , tasty-hunit    >=0.10 && <0.11

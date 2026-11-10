@@ -45,6 +45,7 @@ import Golem.Layout.Wrap
 import Golem.Length (zwToSp)
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (FileId (..), mkSpan)
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -76,7 +77,7 @@ import UnbreakablePairsSpec (unbreakablePairsTests)
 import UrlBreakSpec (urlBreakTests)
 
 main :: IO ()
-main = defaultMain tests
+main = enterPackageDirectory >> defaultMain tests
 
 box :: Sp -> Item
 box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)

@@ -615,7 +615,7 @@ Golem のビルドとテストは Node を使わない。
 
 ほかに、決まった時刻か決まった変更で走るワークフローがある。
 
-- 夜間に `main` で走る `.github/workflows/race.yml` と `.github/workflows/enum.yml` と `.github/workflows/browser.yml`。
+- 夜間に `main` で走る `.github/workflows/race.yml` と `.github/workflows/enum.yml` と `.github/workflows/browser.yml` と `.github/workflows/wasm-tests.yml`。
 - 毎日一回 wasmtime のアドバイザリと action の固定を照合する `.github/workflows/advisories.yml`。
 - Alloy のモデルを変えたときと週に一度走る `.github/workflows/models.yml` と、そのモデルの重いコマンドを夜間に走らせる `.github/workflows/models-nightly.yml`。
 
@@ -813,7 +813,7 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 #### 定期に走るワークフロー
 
 `docs.yml` と `ci.yml` のほかのワークフローは、次のとおりである。
-夜間の `race.yml`、`enum.yml`、`browser.yml`、`models-nightly.yml` は、毎日一回 `main` で起動し、前回の成功した実行から `main` が変わっていれば走る（判定は `scripts/ci/race-needed.sh`）。
+夜間の `race.yml`、`enum.yml`、`browser.yml`、`wasm-tests.yml`、`models-nightly.yml` は、毎日一回 `main` で起動し、前回の成功した実行から `main` が変わっていれば走る（判定は `scripts/ci/race-needed.sh`）。
 `workflow_dispatch` で手で起動すると、判定せずに走らせる。
 権限は `contents: read` と `actions: read` だけである。
 
@@ -907,6 +907,17 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
   Safari の版は固定しない。
 
 どの検査も前の検査の失敗で止まらず、`safari` の失敗も再実行も無視もしない。
+
+##### `wasm-tests.yml`
+
+`wasm-tests.yml` の `prepare`、`native`、`wasm`、`skips` は、`scripts/ci/race-needed.sh` に `wasm-tests.yml` を渡して判定して走り、`golem.wasm` のパッケージのテストのスイート（`scripts/ci/test-suites.sh wasm`）を wasm32 とネイティブの両方で走らせる（[docs/adr/0293](./docs/adr/0293-run-the-test-suites-of-the-packages-of-golem-wasm-on-wasm32-every-night.md)）。
+`ci.yml` のキャッシュを戻すだけで、保存しない。
+
+- `wasm`：スイートを `cabal.project.wasm-tests` で wasm32 に向けて組み、`scripts/wasm/run-suite.sh` で一つずつ Node の `node:wasi` で走らせる（`scripts/wasm/run-tests.mjs`）。
+  `scripts/wasm/test-failures.tsv` のテストを除いたテストが通るか SKIP になること、一覧のテストがそれだけで走らせると落ちることを確かめ、スイートごとの時間と OK、FAIL、SKIP の数をジョブの要約に書く。
+  組めなかったスイートも要約に書き、ジョブを失敗にする。
+- `native`：同じスイートをネイティブの GHC で、外部の道具（qpdf、cddl、pdfinfo、pdftoppm）を `PATH` に置かずに走らせる。
+- `skips`：wasm32 の SKIP がネイティブの SKIP に含まれること、一覧のテストがネイティブで通ることを `scripts/wasm/check-skips.sh` で確かめる。
 
 #### リリースのワークフロー（release.yml）
 

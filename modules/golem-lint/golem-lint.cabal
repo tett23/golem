@@ -37,6 +37,7 @@ test-suite golem-lint-test
     , golem-parser
     , golem-syntax
     , golem-eval
+    , golem-test-support
     , tasty          >=1.4 && <1.6
     , tasty-hunit    >=0.10 && <0.11
     , text

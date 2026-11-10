@@ -3142,6 +3142,27 @@ if [ -s "$WORK/ts-driver" ] && [ -s "$WORK/ts-rest" ] &&
   ! grep -qv '^golem-driver:' "$WORK/ts-driver"; then ok; else
   ng "test-suites: driver and rest of modules/ split every test suite in two"
 fi
+# (docs/adr/0293 A1): wasm is every suite of the golem packages that the
+# packages: of cabal.project.wasm, next to MODULES, lists, and no other
+printf 'packages:\n  modules/golem-pdf\n  modules/other-dir\n  third_party/wasm-packages/skylighting-0.15\n\ntests: False\n\npackage golem-driver\n  flags: -plugins\n' >"$WORK/cabal.project.wasm"
+run test_suites wasm "$TS"
+expect "A1 test-suites: wasm has the suites of the golem packages of cabal.project.wasm" 0 "golem-pdf:test:golem-pdf-test
+golem-renamed:test:renamed-test"
+rm -f "$WORK/cabal.project.wasm"
+run test_suites wasm "$TS"
+expect "A1 test-suites: wasm without cabal.project.wasm" 1
+test_suites wasm >"$WORK/ts-wasm" 2>"$WORK/err" || true
+for d in $(sed -n 's|^  modules/\([a-z0-9-]*\)[[:space:]]*$|\1|p' "$HERE/../../cabal.project.wasm"); do
+  f="$HERE/../../modules/$d/$d.cabal"
+  pkg=$(awk 'tolower($1) == "name:" { print $2; exit }' "$f")
+  awk -v p="$pkg" 'tolower($1) == "test-suite" { print p ":test:" $2 }' "$f"
+done | LC_ALL=C sort >"$WORK/ts-wasm-every"
+if [ -s "$WORK/ts-wasm-every" ] && [ "$(LC_ALL=C sort "$WORK/ts-wasm")" = "$(cat "$WORK/ts-wasm-every")" ]; then ok; else
+  ng "A1 test-suites: wasm is every suite of the golem packages of cabal.project.wasm"
+fi
+if grep -qF 'sh scripts/ci/test-suites.sh wasm' "$HERE/../../.github/workflows/wasm-tests.yml" 2>/dev/null; then ok; else
+  ng "A1 wasm-tests.yml: runs the suites of test-suites.sh wasm"
+fi
 
 # ---------------------------------------------------------------- run-all.sh
 
@@ -3197,13 +3218,14 @@ expect "run-all: -t of a word" 2
 
 # ---------------------------------------------------------------- golem-driver's suites and threads
 # (docs/adr/0146-threaded-golem-driver-test.md)
+# The options are under if !arch(wasm32), indented (docs/adr/0293)
 
 # stanza NAME: the lines of the test-suite NAME of golem-driver.cabal
 DRIVER_CABAL=$HERE/../../modules/golem-driver/golem-driver.cabal
 stanza() { awk -v n="test-suite $1" '$0 == n { on = 1; next } on && /^[^ \t-]/ { on = 0 } on' "$DRIVER_CABAL"; }
 # modules NAME: the other-modules of the test-suite NAME, one per line
 modules_of() { stanza "$1" | awk '/^  other-modules:/ { on = 1; next } on && /^  [a-z-]+:/ { on = 0 } on { print $1 }'; }
-if stanza golem-driver-test | grep -Eq '^  ghc-options: .*-threaded' && stanza golem-driver-test | grep -qF '"-with-rtsopts=-N"'; then ok; else
+if stanza golem-driver-test | grep -Eq '^ +ghc-options: .*-threaded' && stanza golem-driver-test | grep -qF '"-with-rtsopts=-N"'; then ok; else
   ng "golem-driver.cabal: golem-driver-test is built -threaded with -N"
 fi
 if [ -n "$(stanza golem-driver-global-test)" ] && ! stanza golem-driver-global-test | grep -q -- '-threaded'; then ok; else
@@ -3401,6 +3423,15 @@ run sh "$HERE/wasm-freeze.sh" "$WF_DATA/native.freeze" "$WORK/in"
 expect "wasm-freeze: a wasm freeze without versions fails" 1
 run sh "$HERE/wasm-freeze.sh"
 expect "wasm-freeze: cabal.project.wasm.freeze has the versions of cabal.project.freeze" 0
+# (docs/adr/0293 section 1): the project of the test suites on wasm32
+# takes cabal.project.wasm and its freeze, which cabal does not read for
+# a project file of another name
+printf 'import: cabal.project.wasm\n\ntests: True\n' >"$WORK/wasm-tests.project"
+run sh "$HERE/wasm-freeze.sh" "$WF_DATA/native.freeze" "$WF_DATA/wasm.freeze" "$WORK/wasm-tests.project"
+expect "wasm-freeze: a project of the tests that does not import cabal.project.wasm.freeze fails" 1
+printf 'import: cabal.project.wasm\nimport: cabal.project.wasm.freeze\n\ntests: True\n' >"$WORK/wasm-tests.project"
+run sh "$HERE/wasm-freeze.sh" "$WF_DATA/native.freeze" "$WF_DATA/wasm.freeze" "$WORK/wasm-tests.project"
+expect "wasm-freeze: a project of the tests that imports cabal.project.wasm and its freeze passes" 0
 
 # ---------------------------------------------------------------- wasm/compare.sh --check
 # (docs/adr/0199 section 7)
@@ -3771,6 +3802,107 @@ printf 'not the font\n' >"$CS/modules/golem-driver/test/fixtures/kanikosen/fonts
 run sh "$CS/scripts/wasm/compare.sh" --native /nonexistent/golem
 expect "compare.sh: another Noto Serif JP than the one broken-cmap breaks fails" 1
 if grep -qF 'SHA-256' "$WORK/err"; then ok; else ng "compare.sh: says that the SHA-256 of the font differs"; fi
+
+# ---------------------------------------------------------------- wasm/tasty-results.sh, run-suite.sh, check-skips.sh
+# (docs/adr/0293 sections 4 and 5): the results of a tasty log; a suite
+# against the list of the tests known to fail on wasm32, with a fake
+# suite; the SKIPs of wasm32 against the native ones
+
+WT=$WORK/wasm-tests
+mkdir -p "$WT"
+cat >"$WT/tasty.log" <<'LOG'
+suite
+  group one
+    a test:                OK (0.01s)
+    with: a colon:         FAIL (0.02s)
+      test/Main.hs:10:
+      expected: 1
+       but got: 2
+      Use -p '/with: a colon/' to rerun this test only.
+    nested
+      deep:                SKIP
+        qpdf is not installed; GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes this a failure
+  last:                    OK
+
+1 out of 4 tests failed (0.03s)
+2 tests skipped: qpdf is not installed (GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes them failures)
+LOG
+run sh "$HERE/../wasm/tasty-results.sh" "$WT/tasty.log"
+expect "tasty-results: each test, its result and its full name, the description of a failure left out" 0 "OK	suite.group one.a test
+FAIL	suite.group one.with: a colon
+SKIP	suite.group one.nested.deep
+OK	suite.last"
+# the fake suite: g.a passes, g.b is a SKIP, g.c fails (passes with
+# FAKE_C=OK); -p with $0 == "NAME" runs NAME alone, -p !(...) leaves the
+# names in it out
+cat >"$WT/fake.sh" <<'FAKE'
+shift 2
+[ "$1" = --color ] && [ "$2" = never ] || exit 9
+shift 2
+pattern=
+if [ "${1:-}" = -p ]; then pattern=$2; fi
+names=$(printf '%s' "$pattern" | grep -o '"[^"]*"' | tr -d '"')
+echo g
+code=0
+for t in a b c; do
+  case "$pattern" in
+    "!("*) if printf '%s\n' "$names" | grep -qx "g.$t"; then continue; fi ;;
+    "") ;;
+    *) printf '%s\n' "$names" | grep -qx "g.$t" || continue ;;
+  esac
+  case $t in
+    a) echo "  a: OK" ;;
+    b) echo "  b: SKIP" ;;
+    c) if [ "${FAKE_C:-FAIL}" = OK ]; then echo "  c: OK"; else echo "  c: FAIL"; code=1; fi ;;
+  esac
+done
+exit $code
+FAKE
+printf 'suite\ttest\treason\tclass\n' >"$WT/none.tsv"
+printf 'suite\ttest\treason\tclass\nfake-test\tg.c\tthe width of Int\tproduct\nother-test\tg.a\tanother suite\ttest\n' >"$WT/listed.tsv"
+printf 'suite\ttest\treason\tclass\nfake-test\tg.c\tthe width of Int\tproduct\nfake-test\tg.zz\tno such test\ttest\n' >"$WT/stale.tsv"
+run env RUN="sh $WT/fake.sh" FAILURES="$WT/listed.tsv" sh "$HERE/../wasm/run-suite.sh" golem-fake:test:fake-test fake.wasm "$WT/out"
+if [ "$CODE" = 0 ] && [ "$(cut -f1,3- "$WORK/out")" = "fake-test	0	1	0	1" ] && [ "$(cat "$WT/out/fake-test.skipped")" = g.b ]; then ok; else
+  ng "A2 A3 run-suite: the listed test left out passes the others, and fails alone"
+fi
+run env RUN="sh $WT/fake.sh" FAILURES="$WT/none.tsv" sh "$HERE/../wasm/run-suite.sh" golem-fake:test:fake-test fake.wasm "$WT/out"
+if [ "$CODE" = 1 ] && grep -qx 'A2 fake-test: failed: g.c' "$WORK/err"; then ok; else ng "A2 run-suite: a test that fails and is not listed fails the suite"; fi
+run env RUN="sh $WT/fake.sh" FAILURES="$WT/listed.tsv" FAKE_C=OK sh "$HERE/../wasm/run-suite.sh" golem-fake:test:fake-test fake.wasm "$WT/out"
+if [ "$CODE" = 1 ] && grep -qx 'A3 fake-test: listed, but passes or is not a test of the suite: g.c' "$WORK/err"; then ok; else ng "A3 run-suite: a listed test that passes fails the suite"; fi
+run env RUN="sh $WT/fake.sh" FAILURES="$WT/stale.tsv" sh "$HERE/../wasm/run-suite.sh" golem-fake:test:fake-test fake.wasm "$WT/out"
+if [ "$CODE" = 1 ] && grep -qx 'A3 fake-test: listed, but passes or is not a test of the suite: g.zz' "$WORK/err" && ! grep -q 'g\.c' "$WORK/err"; then ok; else ng "A3 run-suite: a listed test the suite does not have fails the suite"; fi
+run sh "$HERE/../wasm/run-suite.sh" golem-fake fake.wasm "$WT/out"
+expect "run-suite: a target without :test: is a usage error" 2
+# check-skips.sh
+mkdir -p "$WT/native" "$WT/wasm"
+printf 'OK\tg.a\nSKIP\tg.b\nOK\tg.c\n' >"$WT/native/fake-test.results"
+printf 'OK\tg.a\nSKIP\tg.b\n' >"$WT/wasm/fake-test.results"
+printf 'suite\ttest\treason\tclass\nfake-test\tg.c\tthe width of Int\tproduct\n' >"$WT/one.tsv"
+run env FAILURES="$WT/one.tsv" sh "$HERE/../wasm/check-skips.sh" "$WT/native" "$WT/wasm"
+expect "A3 A4 check-skips: the SKIPs of wasm32 are native SKIPs, and the listed test passes natively" 0
+printf 'OK\tg.a\nSKIP\tg.b\nSKIP\tg.c\n' >"$WT/wasm/fake-test.results"
+run env FAILURES="$WT/one.tsv" sh "$HERE/../wasm/check-skips.sh" "$WT/native" "$WT/wasm"
+if [ "$CODE" = 1 ] && grep -qx 'A4 fake-test: a SKIP on wasm32, not natively: g.c' "$WORK/err"; then ok; else ng "A4 check-skips: a SKIP on wasm32 that is not a native SKIP fails"; fi
+printf 'OK\tg.a\nSKIP\tg.b\n' >"$WT/wasm/fake-test.results"
+printf 'OK\tg.a\nSKIP\tg.b\nFAIL\tg.c\n' >"$WT/native/fake-test.results"
+run env FAILURES="$WT/one.tsv" sh "$HERE/../wasm/check-skips.sh" "$WT/native" "$WT/wasm"
+if [ "$CODE" = 1 ] && grep -qx 'A3 fake-test: listed, but does not pass natively: g.c' "$WORK/err"; then ok; else ng "A3 check-skips: a listed test that fails natively fails"; fi
+# a listed test of needsTool is a SKIP natively without the tool; a name
+# with a backslash is read as it is
+printf 'OK\tg.a\nSKIP\tg.b\nOK\tg.\\u{d800}\n' >"$WT/native/fake-test.results"
+printf 'suite\ttest\treason\tclass\nfake-test\tg.b\tno PATH\ttest\nfake-test\tg.\\u{d800}\tthe width of Int\tproduct\n' >"$WT/two.tsv"
+run env FAILURES="$WT/two.tsv" sh "$HERE/../wasm/check-skips.sh" "$WT/native" "$WT/wasm"
+expect "A3 check-skips: a listed test that is a native SKIP, and a name with a backslash, pass natively" 0
+# the list itself: a header and four fields, a known suite, product or test
+WTF=$HERE/../wasm/test-failures.tsv
+if [ "$(head -n 1 "$WTF")" = "$(printf 'suite\ttest\treason\tclass')" ] &&
+  awk -F '\t' 'NR > 1 && (NF != 4 || $4 !~ /^(product|test)$/ || $2 == "" || $3 == "") { bad = 1 } END { exit bad }' "$WTF"; then ok; else
+  ng "test-failures.tsv: a header, then a suite, a test, a reason and product or test on each line"
+fi
+sh "$HERE/test-suites.sh" wasm | sed 's/.*://' | LC_ALL=C sort >"$WORK/wasm-suites"
+if [ -z "$(awk -F '\t' 'NR > 1 { print $1 }' "$WTF" | LC_ALL=C sort -u | LC_ALL=C comm -23 - "$WORK/wasm-suites")" ]; then ok; else
+  ng "test-failures.tsv: every suite is one of test-suites.sh wasm"
+fi
 
 # ---------------------------------------------------------------- wasm/run-wasmtime.sh
 # (docs/adr/0238 section 4): the arguments

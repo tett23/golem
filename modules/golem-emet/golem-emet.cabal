@@ -71,4 +71,7 @@ test-suite golem-emet-test
     , tasty-hunit    >=0.10 && <0.11
     , text
   default-language: GHC2021
-  ghc-options: -threaded -rtsopts "-with-rtsopts=-N"
+  -- wasm32 has no threaded runtime: -threaded does not link there, and
+  -- -N needs it (docs/adr/0293)
+  if !arch(wasm32)
+    ghc-options:    -threaded -rtsopts "-with-rtsopts=-N"

@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import InMemoryWritesSpec (inMemoryWritesTests)
 import LocaleSpec
@@ -14,7 +15,7 @@ and no test reads the state another has half changed; golem-driver-test,
 which is -threaded, has none of them (docs/adr/0146).
 -}
 main :: IO ()
-main = lookupEnv "XDG_CACHE_HOME" >>= defaultMainReportingSkips . const . tests
+main = enterPackageDirectory >> lookupEnv "XDG_CACHE_HOME" >>= defaultMainReportingSkips . const . tests
 
 -- | The tests, with XDG_CACHE_HOME as it was when the suite started (docs/adr ADR 0072).
 tests :: Maybe String -> TestTree
