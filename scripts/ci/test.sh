@@ -3048,6 +3048,7 @@ expect "run-all: -t of a word" 2
 
 # ---------------------------------------------------------------- golem-driver's suites and threads
 # (docs/adr/0146-threaded-golem-driver-test.md)
+# The options are under if !arch(wasm32), indented (docs/adr/0293)
 
 # stanza NAME: the lines of the test-suite NAME of golem-driver.cabal
 DRIVER_CABAL=$HERE/../../modules/golem-driver/golem-driver.cabal
