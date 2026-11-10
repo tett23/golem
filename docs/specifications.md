@@ -925,6 +925,13 @@ isbn = "978-..."
 プルリクエストの CI では照合しない。
 結果がコミットではなく、上流がアドバイザリを公開した時刻で変わるためである。
 
+ワークフローの action は、すべてコミットの SHA と、そのコミットを指すいちばん細かい版のタグの注釈で指定する（`actions/checkout@<40 桁の SHA> # v7.0.1` の形、[ADR 0296](adr/0296-pin-every-github-action-by-commit-sha.md)）。
+このリポジトリの reusable workflow（`./.github/workflows/ci.yml`）だけは `./` で書く。
+同じリポジトリの action は、パスが違っても、どのファイルでも同じ SHA と注釈で指定する。
+プルリクエストの CI の `scripts-linux` ジョブは、`scripts/ci/actions-pins.sh check` でこの形を確かめ、外れた行の `ファイル:行` を出して失敗する。
+`.github/workflows/advisories.yml` の `actions` ジョブは毎日一回、`verify` で注釈のタグが固定したコミットを指すことを、`latest` で固定したコミットが `v` と数字とドットだけからなる版のタグのうちいちばん大きな版のコミットであり、その `runs.using` が `node24` 以上の Node か `composite` であることを照合する。
+照合が失敗したら、`scripts/ci/actions-pins.sh update` で書き換えたワークフローをプルリクエストで入れる。
+
 テストにだけ使う道具として、見た目の回帰テストで PDF のページを画像にするラスタライザ shem（[tett23/shem](https://github.com/tett23/shem)）も版を固定する（[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）。
 golem の実行ファイルと配布物には含めず、テストと CI からコマンドとして呼ぶ。
 `scripts/visual/fetch-shem.sh` が、shem の GitHub の release から、固定した版（v0.1.0-rc4）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ `third_party/shem/` に入れる。
