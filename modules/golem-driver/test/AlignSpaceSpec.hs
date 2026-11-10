@@ -1,4 +1,4 @@
--- | The alignment, the spaces before and after, and the end indent of paragraph styles (docs/adr/0189).
+-- | The alignment, the spaces before and after, and the end indent of paragraph styles (docs/adr/0189); the spaces on both sides of an inline boundary (docs/adr ADR 0284).
 module AlignSpaceSpec (alignSpaceTests) where
 
 import Control.Monad (forM_)
@@ -7,7 +7,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
-import Golem.Layout.KnuthPlass (Line (..))
+import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Length (Sp (..))
 import Golem.Project.Style (dimToSp, parseDim)
@@ -37,7 +37,18 @@ indentsByPage pl = [(poNumber p, [slIndent sl | (_, SLine lid) <- poSlots p, Jus
 
 alignSpaceTests :: [TestTree]
 alignSpaceTests =
-  [ testCase "PDF: paragraphs of the same style are apart by space-between only" $ do
+  [ testCase "S1 of docs/adr ADR 0284: x [strong: y\\ ] z has one glue between y and z" $ do
+      (_, pl) <- layoutOk horizontalStyle "x [strong: y\\ ] z\n" []
+      let its = concat [lineItems (slLine sl) | sl <- Map.elems (plLines pl)]
+          between = takeWhile (not . isBox) (drop 1 (dropWhile (not . boxOf "y") its))
+          boxOf t = \case
+            Box _ c -> bcText c == t
+            _ -> False
+          isBox = \case
+            Box {} -> True
+            _ -> False
+      length [() | Glue {} <- between] @?= 1,
+    testCase "PDF: paragraphs of the same style are apart by space-between only" $ do
       let style = styled "[paragraph-styles.quote]\nspace-before = 2\nspace-after = 3\nspace-between = 1\n"
       slotsOf style "@style quote\nあ\n\n@style quote\nい\n" >>= (@?= [[0, 2]])
       slotsOf (styled "[paragraph-styles.quote]\nspace-before = 2\nspace-after = 3\n") "@style quote\nあ\n\n@style quote\nい\n" >>= (@?= [[0, 1]]),
@@ -181,5 +192,70 @@ alignSpaceTests =
       -- only the built-in verse has spaces before and after (docs/adr/0180)
       filter ("blank-line +" `T.isInfixOf`) (T.lines plain) @?= ["div.blank-line + p.ps-verse { margin-block-start: 0; }"]
   ]
-  where
-    nub' = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
+    <> styleDefTests
+
+{- | The four keys written in @style-def reach the composition: each sets
+the PDF as the same definition in style.toml does, and differently from the
+default. The numbers are those of the rules of the spaces of docs/adr/0189.
+-}
+styleDefTests :: [TestTree]
+styleDefTests =
+  [ testCase "align: PDF: a style of @style-def with align sets the lines as one of style.toml, in horizontal writing" $
+      forM_ [("center", 13), ("right", 24), ("left", 2)] $ \(a, at) -> do
+        let keys = "indent=2zw end-indent=4zw align=" <> a
+        (_, toml) <- verseLines (horizontal30 ("\n[paragraph-styles.quote]\nindent = \"2zw\"\nend-indent = \"4zw\"\nalign = \"" <> TE.encodeUtf8 a <> "\"\n")) "@style quote\nあい\n"
+        (_, local) <- verseLines (horizontal30 "") ("@style-def paragraph quote " <> keys <> "\n\n@style quote\nあい\n")
+        (_, plain) <- verseLines (horizontal30 "") "@style-def paragraph quote indent=2zw end-indent=4zw\n\n@style quote\nあい\n"
+        toml @?= [(24 * fs, at * fs)]
+        local @?= toml
+        plain @?= [(24 * fs, 2 * fs)],
+    testCase "align: PDF: a style of @style-def with align sets the lines as one of style.toml, in vertical writing" $ do
+      let size = maybe 0 (dimToSp 0) (parseDim "13Q")
+      (_, toml) <- verseLines (pdfStyle <> "\n[paragraph-styles.quote]\nalign = \"right\"\n") "@style quote\nあい\n"
+      (_, local) <- verseLines pdfStyle "@style-def paragraph quote align=right\n\n@style quote\nあい\n"
+      (_, plain) <- verseLines pdfStyle "@style-def paragraph quote\n\n@style quote\nあい\n"
+      toml @?= [(42 * size, 40 * size)]
+      local @?= toml
+      plain @?= [(42 * size, 0)],
+    testCase "align: PDF: towards-spine of @style-def goes to the side of the spine of each page as one of style.toml" $ do
+      let src = T.intercalate "\\\n" (replicate 7 "あ") <> "\n"
+      (_, toml) <- layoutOk (fiveLines <> "\n[paragraph-styles.quote]\nalign = \"towards-spine\"\n") ("@style quote\n" <> src) []
+      (_, local) <- layoutOk fiveLines ("@style-def paragraph quote align=towards-spine\n\n@style quote\n" <> src) []
+      (_, plain) <- layoutOk fiveLines ("@style-def paragraph quote\n\n@style quote\n" <> src) []
+      indentsByPage toml @?= [(1, replicate 5 0), (2, replicate 2 (11 * fs))]
+      indentsByPage local @?= indentsByPage toml
+      indentsByPage plain @?= [(1, replicate 5 0), (2, replicate 2 0)],
+    testCase "end-indent: PDF: a style of @style-def with end-indent has the line lengths of one of style.toml" $ do
+      let src = "@style quote\n" <> T.replicate 45 "あ" <> "\n"
+      (_, toml) <- verseLines (horizontal30 "\n[paragraph-styles.quote]\nend-indent = \"3zw\"\n") src
+      (_, local) <- verseLines (horizontal30 "") ("@style-def paragraph quote end-indent=3zw\n\n" <> src)
+      (_, plain) <- verseLines (horizontal30 "") ("@style-def paragraph quote\n\n" <> src)
+      map fst toml @?= [27 * fs, 27 * fs]
+      local @?= toml
+      map fst plain @?= [30 * fs, 30 * fs],
+    testCase "end-indent: PDF: in vertical writing end-indent of @style-def shortens the lines from the bottom as one of style.toml" $ do
+      let size = maybe 0 (dimToSp 0) (parseDim "13Q")
+      (_, toml) <- verseLines (pdfStyle <> "\n[paragraph-styles.quote]\nend-indent = \"2zw\"\nalign = \"right\"\n") "@style quote\nあい\n"
+      (_, local) <- verseLines pdfStyle "@style-def paragraph quote end-indent=2zw align=right\n\n@style quote\nあい\n"
+      (_, plain) <- verseLines pdfStyle "@style-def paragraph quote align=right\n\n@style quote\nあい\n"
+      toml @?= [(40 * size, 38 * size)]
+      local @?= toml
+      plain @?= [(42 * size, 40 * size)],
+    testCase "3: PDF: space-before and space-after of @style-def take the greater as those of style.toml" $ do
+      let src = "あ\n\n@style quote\nい\n\nう\n"
+      toml <- slotsOf (styled "[paragraph-styles.quote]\nspace-before = 2\nspace-after = 3\n") src
+      local <- slotsOf horizontalStyle ("@style-def paragraph quote space-before=2 space-after=3\n\n" <> src)
+      plain <- slotsOf horizontalStyle ("@style-def paragraph quote\n\n" <> src)
+      toml @?= [[0, 3, 7]]
+      local @?= toml
+      plain @?= [[0, 1, 2]],
+    testCase "2: PDF: paragraphs of the same style of @style-def are apart by space-between only, as in style.toml" $ do
+      let src = "@style quote\nあ\n\n@style quote\nい\n"
+      toml <- slotsOf (styled "[paragraph-styles.quote]\nspace-before = 2\nspace-after = 3\nspace-between = 1\n") src
+      local <- slotsOf horizontalStyle ("@style-def paragraph quote space-before=2 space-after=3 space-between=1\n\n" <> src)
+      toml @?= [[0, 2]]
+      local @?= toml
+  ]
+
+nub' :: (Eq a) => [a] -> [a]
+nub' = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
