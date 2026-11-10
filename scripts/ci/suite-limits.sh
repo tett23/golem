@@ -5,6 +5,7 @@
 #   suite-limits.sh < LINES               writes the table
 #   suite-limits.sh --fetch N > LINES     the lines of the last N pushes to main
 #   suite-limits.sh --check [TABLE [MODULES]]
+#   suite-limits.sh --set ARCH SUITE SECONDS [TABLE]
 #
 # The input is the lines that suite-timeout.sh writes for a suite that
 # finished ("SUITE: finished in SECONDS seconds", with or without ", over
@@ -23,6 +24,12 @@
 # and jobs are read with gh, the logs with curl from the same API, as the
 # ci job does (docs/adr/0245 section 6). GH_REPO chooses the repository,
 # tett23/golem unless given.
+#
+# --set rewrites the row of ARCH and SUITE of TABLE (scripts/ci/suite-limits.tsv
+# unless given) to the limit max(10, ceil(2 t)) of SECONDS t alone, for a
+# suite that grew by added tests: t is the seconds of the CI of the pull
+# request (docs/adr ADR 0301). Other rows stay. Without exactly one such row
+# it changes nothing and fails.
 #
 # --check fails unless TABLE (scripts/ci/suite-limits.tsv unless given) has
 # exactly one row for each suite of test-suites.sh driver and rest (of
@@ -73,8 +80,24 @@ case "${1-}" in
     [ "$found" -eq "$N" ] || { echo "suite-limits: only $found runs of the tests found" >&2; exit 1; }
     exit 0
     ;;
+  --set)
+    [ $# -eq 4 ] || [ $# -eq 5 ] || { echo "usage: suite-limits.sh --set ARCH SUITE SECONDS [TABLE]" >&2; exit 2; }
+    ARCH=$2 SUITE=$3 T=$4
+    TABLE=${5:-$HERE/suite-limits.tsv}
+    case $T in
+      '' | .* | *. | *[!0-9.]* | *.*.*) echo "suite-limits: $T is not a number of seconds" >&2; exit 2 ;;
+    esac
+    [ -f "$TABLE" ] || { echo "suite-limits: no table $TABLE" >&2; exit 1; }
+    NEW=$(awk -F '\t' -v a="$ARCH" -v s="$SUITE" -v t="$T" '
+      BEGIN { OFS = "\t"; lim = int(2 * t); if (lim < 2 * t) lim++; if (lim < 10) lim = 10 }
+      !/^#/ && $1 == a && $2 == s { $3 = lim; n++ }
+      { print }
+      END { exit n == 1 ? 0 : 1 }' "$TABLE") || { echo "suite-limits: $TABLE has no one row of $SUITE on $ARCH" >&2; exit 1; }
+    printf '%s\n' "$NEW" >"$TABLE"
+    exit 0
+    ;;
   "") ;;
-  *) echo "usage: suite-limits.sh [--fetch N | --check [TABLE [MODULES]]] < LINES" >&2; exit 2 ;;
+  *) echo "usage: suite-limits.sh [--fetch N | --check [TABLE [MODULES]] | --set ARCH SUITE SECONDS [TABLE]] < LINES" >&2; exit 2 ;;
 esac
 
 OUT=$(awk -F '\t' '

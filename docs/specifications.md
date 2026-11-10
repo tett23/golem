@@ -564,8 +564,13 @@ CI の `changes` ジョブの `scripts/ci/suite-limits.sh --check` は、`script
 `enum.yml` と `race.yml` など、`build` ジョブの外で走るスイートと、手元の `cabal test` には上限を当てない。
 
 上限を超えたら、まず性能の後退かどうかを調べ、後退なら直す。
-テストを足したことによる正当な増加なら、そのプルリクエストで `sh scripts/ci/suite-limits.sh --fetch 20 | sh scripts/ci/suite-limits.sh` で表を作り直す。
-増えたスイートの行は、プルリクエストの CI の秒を中央値に加えた値で上限を求め、プルリクエストの説明に前と後の上限を書く。
+テストを足したことによる正当な増加なら、そのプルリクエストで、増えたスイートの行だけを、そのプルリクエストの CI の秒 t から `max(10, ceil(2 × t))` で求め直す（[ADR 0301](adr/0301-make-the-suite-limits-follow-a-suite-that-grew-by-added-tests.md)）。
+中央値は伸びる前の値に引かれ、伸びた後の値が過半になるまで上限が伸びに追いつかないからである。
+`scripts/ci/suite-limits.sh --set ARCH SUITE SECONDS [TABLE]` は、表のその行の秒だけをこの式で書き換え、ほかの行を変えない。
+表にその行がちょうど一つなければ、表を変えずに失敗する。
+プルリクエストの説明には、前と後の上限と、使った秒を書く。
+伸びた後の `main` への push が 20 回たまったら、`sh scripts/ci/suite-limits.sh --fetch 20 | sh scripts/ci/suite-limits.sh` で表全体を作り直してもよい。
+この作り直しは任意の手順である。
 新しいスイートを足すプルリクエストは、そのスイートの行を、プルリクエストの CI の秒から同じ式で求めて足す。
 `--fetch N` は、`gh run list` で `main` への push の成功した実行のうちテストを走らせた直近の N 回を選び、テストのランナーのログを API から `curl` で取って、`finished in` の行にアーキテクチャを前に付けて書く。
 
