@@ -38,10 +38,8 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### テストと CI
 
-- **テストのスイートの時間の上限**：スイートの全体の所要時間に上限を設ける仕組みを作る（直近の実行の中央値などから決める）。golem-syntax のテストの 2 秒の時間切れは、行の数に比例する探索に戻ったことを見つけるためのもの（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)）であり、時間切れを 30 秒にそろえる規則（[ADR 0073](adr/0073-time-bounds-in-tests.md)）の例外として残している。この仕組みができたら、2 秒の時間切れも 30 秒にそろえ、性能の後退はこの仕組みで見つける。
 - **画像と図版を描く処理**：shem（見た目の回帰テストのラスタライザ、[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）に、画像（JPEG、PNG）の復号と、図版（SVG と PDF の Form）の描画を自前で加える。v2 で図版をフレームに合わせて拡大縮小するとき、画像を描けない描画系は致命的になるので、それより前に入れる。
 - **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲の ADR はまだない。上から順に、前の範囲の結果を見て書く。
-  - **表の列の幅**：`Golem.Layout.Table` の列の幅（列ごとの最小の幅と自然な幅、使える幅）を整数の小さな組で列挙し、列の幅の和と最小の幅の不変条件で確かめる（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。
   - **パーサーと `golem fmt` の往復**：文法から作る短い原稿を列挙し、`golem fmt` の往復と diagnostics の位置の不変条件で確かめる。peg-hs の文法を読んで原稿を作る部品が先に要る。
   - **位置の変換**：UTF-16 の列、`pages.json`、LSP の位置の変換を、サロゲートペアを含む短い文字列の列挙で確かめる。
   - **長さの換算と丸め**：golem-length と `headingBlock` の丸めを、整数の範囲の列挙で確かめる。SBV を golem-length のテストにだけ入れるかを、この範囲の ADR で決める。
@@ -110,7 +108,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **平字の注の印**：縦組みで注の番号に漢数字を使うとき、上下の外枠を 50% にした漢数字（平字）で組めるようにする（JLReq の 4.2.2、[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「実装しないこと」）。字形を行の方向にだけ縮める描き方は二倍ダッシュ（[ADR 0172](adr/0172-continuous-double-dashes.md)）にあるが、印の箱の長さと字の位置の決め方が変わるので、要るときに ADR で決める。
 - **図版とキャプションの拡張**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。
 - **韻文の拡張**：行番号（5 行ごとの番号など）（[docs/adr/0003](adr/0003-verse-line-breaks.md)）。
-- **参考文献のスタイル**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、参考文献のスタイルを選び、定められるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）もこの項目で決める。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。
+- **参考文献のスタイル**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、参考文献のスタイルを選び、定められるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。
 - **ページ番号と柱の拡張**：EPUB の `page-list`、柱とノンブルを見出しの書体で組むこと、柱、ノンブル、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。
 
 ### 機能をそろえた後の確かめ
@@ -163,7 +161,7 @@ v2.0.0-rc1 は、数式の組版かその下準備、あるいはその両方を
 - **notice の局所的な抑制**：textlint の無効にするコメントのように、`.gm` の中で notice を局所的に抑制するブロックコマンド。今の抑制は `manifest.toml` の `silence-notices` と `--no-notices` による本の全体の単位であり、縮めた図版の notice の G07039 も図版ごとには抑制できない。本の全体での抑制で困る例が出たら、別の ADR で加える（[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）。
 - **目次の拡張**：章ごとの小目次（v1 の `@toc` は文書に一つだけ）、リーダーの字の設定、折り返した題のぶら下げ、図目次と表目次（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
 - **縦組みの傍注**：v1 の傍注は横組みに限る（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。
-- **索引と参考文献の拡張**：索引の三段以上の階層（v1 は二段まで）、副項目の折り返した行の字下げ、縦組みの本の索引を横組みにして巻末から始めること、参考文献の書式の選択（著者名の順の一覧を含む）と書誌のぶら下げ字下げ（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。
+- **索引の拡張**：索引の三段以上の階層（v1 は二段まで）、副項目の折り返した行の字下げ、縦組みの本の索引を横組みにして巻末から始めること。参考文献の書式の選択（著者名の順の一覧を含む）と書誌のぶら下げ字下げは、v1.0.0 の「参考文献のスタイル」で扱う（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。
 - **Web 経路のスタイル**：HTML と EPUB で、見出しの `font` と `size`、文字スタイルの `size`、`caption` と `sidenote` 以外の段落スタイルの `size` を使うこと、Web 経路のフォントのサブセット化（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。
 - **特色（スポットカラー）**：Separation と DeviceN の色空間。今の Golem はプロセスカラーだけを扱う（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)）。
 - **プラグインの配布機構**：レジストリと、許容するバージョンの範囲を宣言して解決する方式、配布されたバイナリがどのソースから作られたかの検証、キャッシュの削除と整理のコマンド（[golem-plugin ADR 0002](golem-plugin/adr/0002-distribution-and-lock.md)）。

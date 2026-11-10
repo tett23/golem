@@ -123,6 +123,16 @@ golem-driver-test のテストでは、時間の上限に `modules/golem-driver/
 テストは threaded の RTS で同時に走るので、CPU 時間では測らない（[docs/adr/0237](./docs/adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)）。
 `Support.hs` の外に `mkTimeout` があると、`scripts/ci/test.sh` が失敗する。
 
+CI の `build` ジョブは、テストのスイートの全体の時間を、`scripts/ci/suite-limits.tsv` のアーキテクチャごとの上限と比べ、超えたスイートを失敗にする（[ADR 0292](./docs/adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md)）。
+上限は、直近の `main` への push の 20 回の秒の中央値 m から `max(10, ceil(2 × m))` で決める。
+スイートが上限を超えたら、次の順で扱う。
+
+1. まず性能の後退かどうかを調べる。後退なら直す。
+2. テストを足したことによる正当な増加なら、そのプルリクエストで `sh scripts/ci/suite-limits.sh --fetch 20 | sh scripts/ci/suite-limits.sh > scripts/ci/suite-limits.tsv` で表を作り直す。増えたスイートの行は、プルリクエストの CI の秒を中央値に加えた値で上限を求める。プルリクエストの説明に、前と後の上限を書く。
+3. 新しいスイートを足すプルリクエストは、そのスイートの行を、プルリクエストの CI の秒から同じ式で求めて、`x86_64` と `aarch64` の二行を足す。行を足し忘れると、`changes` ジョブの `scripts/ci/suite-limits.sh --check` が落ち、テストのラッパーもそのスイートを走らせずに落とす。
+
+手元でラッパーを使うときは `SUITE_LIMITS=` を付けると、上限を当てない。
+
 外部ツール（`cddl`、`qpdf`、`openssl` など）を使うテストは、`modules/golem-test-support` の `Golem.TestSupport.ExternalTool` にある `needsTool` か `optionalTool` で書く（[docs/adr/0028](./docs/adr/0028-shared-test-support-package.md)）。
 golem-driver のテストは、qpdf のほかに Poppler の `pdftoppm` と `pdfinfo` を使うので、手元にも `poppler-utils` を入れる（[docs/adr/0232](./docs/adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
 ツールがなければ `SKIP` と表示され、`GOLEM_REQUIRE_EXTERNAL_TOOLS=1` のもとでは失敗になる。

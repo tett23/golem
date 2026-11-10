@@ -507,14 +507,17 @@ e1Of l is = e1Same (itemsWith (bothEnv l) (inSpan l is)) (itemsWith (bothEnv l) 
 inSpan :: Maybe Text -> [IR.Inline] -> [IR.Inline]
 inSpan l is = maybe is (\x -> [IR.Lang sp x is]) l
 
--- | The inlines that stop the search for the nearest character (the ADR, its section 1), each with a name.
+-- | The inlines that stop the search for the nearest character (the ADR, its section 1; the mark of a citation no more, docs/adr ADR 0298), each with a name.
 stoppers :: [(String, IR.Inline)]
 stoppers =
   [ ("ruby", IR.Ruby sp () [IR.RubySegment [IR.Text sp "漢"] (Just "かん")]),
     ("code", IR.CharStyle sp "code" [IR.Text sp "x"]),
-    ("the mark of a note", IR.Note sp 1 (IR.noteBody sp [IR.Text sp "n"])),
-    ("the mark of a citation", IR.Cite sp [IR.CiteItem "a" Nothing [] []])
+    ("the mark of a note", IR.Note sp 1 (IR.noteBody sp [IR.Text sp "n"]))
   ]
+
+-- | The mark of a citation of key a, [1]: its text is read (docs/adr ADR 0298).
+citeMark :: IR.Inline
+citeMark = IR.Cite sp [IR.CiteItem "a" Nothing [] []]
 
 -- | An index mark: an anchor, no items.
 indexMark :: IR.Inline
@@ -548,6 +551,7 @@ e1Cases =
       [[txt "b"], [txt "あ"], [txt " "], [], [IR.Lang sp "en" [txt "b"]], [IR.Lang sp "ja" [txt "b"]], [IR.Lang sp "ja" [txt "あ"]], [indexMark, txt "b"]]
         <> [[x] | (_, x) <- stoppers]
         <> [[x, txt "b"] | (_, x) <- stoppers]
+        <> [[citeMark], [citeMark, txt "b"]]
     placed far =
       [ far <> [strong "—あ"],
         [strong "あ—"] <> reverse far,
@@ -594,11 +598,18 @@ bothScriptsTests =
         take 1 (linesIn (Just "en") 2 [txt "aaa ’", strong "."]) @?= ["aaa’."],
       testCase "E3: an apostrophe alone after a space with no box after it is a closing bracket, as before" $
         length (linesIn (Just "en") 2 [txt "aaa ’"]) @?= 1,
-      testCase "E4: ruby, code, the marks of notes and citations and a space between a and [strong: —] stop the search: b or あ beyond them changes nothing" $
+      testCase "E4, M4 (docs/adr ADR 0298): ruby, code, the mark of a note and a space between a and [strong: —] stop the search: b or あ beyond them changes nothing" $
         sequence_
-          [ assertEqual name (dashIsLatin [txt "b", x, strong "—"]) (dashIsLatin [txt "あ", x, strong "—"])
+          [ do
+              assertEqual name (dashIsLatin [txt "b", x, strong "—"]) (dashIsLatin [txt "あ", x, strong "—"])
+              assertEqual name [False] (dashIsLatin [txt "b", x, strong "—"])
           | (name, x) <- stoppers <> [("a space", txt " ")]
           ],
+      testCase "M3 (docs/adr ADR 0298): a citation mark between b or あ and [strong: —] reads its text: the dash joins the Latin word of [1]" $ do
+        dashIsLatin [txt "b", citeMark, strong "—"] @?= [True]
+        dashIsLatin [txt "あ", citeMark, strong "—"] @?= [True]
+        dashIsLatin [strong "—", citeMark, txt "b"] @?= [True]
+        dashIsLatin [strong "—", citeMark, txt "あ"] @?= [True],
       testCase "E4: an index mark between b and [strong: —] does not stop it: the dash joins b" $ do
         dashIsLatin [txt "b", indexMark, strong "—"] @?= [True]
         dashIsLatin [txt "あ", indexMark, strong "—"] @?= [False]
