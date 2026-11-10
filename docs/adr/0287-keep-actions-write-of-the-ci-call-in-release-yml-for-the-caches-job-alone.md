@@ -1,6 +1,6 @@
 # ADR 0287: `release.yml` が `ci.yml` に渡す `actions: write` を、`caches` のジョブだけが受け取るように検査する
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 

@@ -7,7 +7,7 @@
 //   BROWSER=chromium node --test scripts/browser/test/
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,6 +40,9 @@ function suite(scale) {
     const u = (p) => `${server.url}/${p}`;
     before(async () => {
       dir = await pagesRoot();
+      // a link to a file outside the root, which the server does not
+      // serve (docs/adr ADR 0288)
+      await symlink(fileURLToPath(import.meta.url), join(dir, 'outside.mjs'));
       server = await serve(dir);
       svg = await serve(join(dir, 'svg'), { pages: { '/images/src/__svg-text.html': HARNESS } });
       page = await openBrowser(BROWSER, { scale });
@@ -52,6 +55,9 @@ function suite(scale) {
       if (dir) await rm(dir, { recursive: true, force: true });
     });
 
+    test('S1: the server answers 404 for a link under its root to a file outside it (docs/adr ADR 0288)', async () => {
+      assert.equal((await fetch(u('outside.mjs'))).status, 404);
+    });
     test('I1: line numbers and diff marks of user-select: none are not selected', async () => {
       assert.deepEqual(await html.selection(page, u('select-ok.html')), []);
     });
