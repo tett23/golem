@@ -7,6 +7,7 @@ scripts at the end of its text joins the Latin word after a boundary.
 -}
 module BookLanguageSpec (bookLanguageTests) where
 
+import Control.Monad (unless)
 import Data.ByteString qualified as BS
 import Data.Char (intToDigit)
 import Data.List (isSuffixOf, sort)
@@ -38,8 +39,19 @@ setLanguage tmp l = do
 
 -- | The items of the lines of the chapters, in a book of a language.
 linesIn :: Text -> BS.ByteString -> [(FilePath, Text)] -> IO [[Item]]
-linesIn l style chapters = withChapters (withBodyFont style) chapters [] $ \tmp -> do
+linesIn = linesWith []
+
+{- | The same, in a book of the works of a refs.json given, when it is
+given (one work of each key of the list, a title of its own).
+-}
+linesWith :: [Text] -> Text -> BS.ByteString -> [(FilePath, Text)] -> IO [[Item]]
+linesWith keys l style chapters = withChapters (withBodyFont style) chapters [] $ \tmp -> do
   setLanguage tmp l
+  unless (null keys) $ do
+    m <- TIO.readFile (tmp </> "manifest.toml")
+    let (first, rest) = T.breakOn "\n" m
+    TIO.writeFile (tmp </> "manifest.toml") (first <> "\nbibliography = [\"refs.json\"]" <> rest)
+    TIO.writeFile (tmp </> "refs.json") ("[" <> T.intercalate ", " ["{\"id\": \"" <> k <> "\", \"title\": \"T " <> k <> "\"}" | k <- keys] <> "]")
   writeFiles tmp fakeFontFiles
   ev <- evaluateProject Dev tmp
   e <- either (assertFailure . show . pfDiagnostics) pure ev
@@ -102,7 +114,16 @@ bookLanguageTests :: TestTree
 bookLanguageTests =
   testGroup
     "the words outside a span by the language of the book (docs/adr ADR 0276)"
-    [ testCase "E1 of docs/adr ADR 0283: in a book of en, the apostrophe of F4. ’[italic: Bless] of pd-merry-wives is a box of a Latin word" $ do
+    [ testCase "M2 of docs/adr ADR 0298: in a book of en, the quotes of as shown “[cite a]” here are boxes of Latin words, with no space before “ but that of the words" $ do
+        ls <- linesWith ["a"] "en" horizontalStyle [("a.gm", "as shown “[cite a]” here\n\n@bibliography\n")]
+        let its = concat (take 1 ls)
+            quotes = [(bcText c, bcExpandable c) | Box _ c <- its, bcText c `elem` ["“", "”"]]
+            -- the glue right before the box of “, and the width of the box of the word before it
+            before = [(w, y, z) | (Glue w y z _ _, Box _ c) <- zip its (drop 1 its), bcText c == "“"]
+            spaces = [(w, y, z) | (Box _ c, Glue w y z _ _) <- zip its (drop 1 its), bcText c == "as"]
+        quotes @?= [("“", True), ("”", True)]
+        before @?= spaces,
+      testCase "E1 of docs/adr ADR 0283: in a book of en, the apostrophe of F4. ’[italic: Bless] of pd-merry-wives is a box of a Latin word" $ do
         ls <- linesIn "en" horizontalStyle [("a.gm", "139: [italic: Bless]] F4. ’[italic: Bless] F1 Q3 F2 F3. [italic: God save] (Q1 Q2).\n")]
         [bcExpandable c | its <- ls, Box _ c <- its, bcText c == "’"] @?= [True],
       testCase "F4: in a book of fr, a paragraph outside a span is set as the same paragraph in [lang fr]" $ do

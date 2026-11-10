@@ -4,7 +4,12 @@
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 WORK=$(mktemp -d)
-trap 'rm -rf "${WORK:?}"' EXIT
+# the sleep of the fake host deno-hangs, if it is still there, is stopped by
+# the PID it wrote, whether the tests pass or fail (docs/adr/0303 I7)
+trap 'kill_hang; rm -rf "${WORK:?}"' EXIT
+kill_hang() {
+  if [ -s "${CB:-$WORK}/hang.pid" ]; then kill "$(cat "${CB:-$WORK}/hang.pid")" 2>/dev/null || :; fi
+}
 FAILURES=0
 COUNT=0
 
@@ -1010,7 +1015,8 @@ Test-Suite b-test
 
 # GNU timeout is on the runners; macOS has none unless coreutils is installed
 if command -v timeout >/dev/null 2>&1; then
-  suite_timeout() { SUITE_TIMEOUT=1 sh "$HERE/suite-timeout.sh" "$@"; }
+  # without the table of limits, as by hand (docs/adr ADR 0292)
+  suite_timeout() { SUITE_TIMEOUT=1 SUITE_LIMITS= sh "$HERE/suite-timeout.sh" "$@"; }
   : >"$WORK/in"
   run suite_timeout true
   expect "suite-timeout: a suite that passes" 0
@@ -1023,9 +1029,110 @@ if command -v timeout >/dev/null 2>&1; then
   run suite_timeout sleep 30
   expect "suite-timeout: a suite that does not finish is stopped" 124
   if grep -qx 'sleep: did not finish in 1 seconds' "$WORK/err" && ! grep -q 'finished in' "$WORK/err"; then ok; else ng "suite-timeout: the suite that did not finish is named, without seconds"; fi
+
+  # the limits of scripts/ci/testdata/suite-limits/limits.tsv (docs/adr ADR
+  # 0292): golem-x-test is a suite that exits with $ST_CODE and says it ran;
+  # date gives the times of a list, one per call, so that nothing sleeps
+  ST=$WORK/suite-limits-wrapper
+  mkdir -p "$ST/bin"
+  printf '#!/bin/sh\necho ran >>"%s/ran"\nexit "${ST_CODE:-0}"\n' "$ST" >"$ST/golem-x-test"
+  cp "$ST/golem-x-test" "$ST/golem-y-test"
+  chmod +x "$ST/golem-x-test" "$ST/golem-y-test"
+  printf '#!/bin/sh\nhead -n 1 "%s/times"\ntail -n +2 "%s/times" >"%s/times.next"\nmv "%s/times.next" "%s/times"\n' "$ST" "$ST" "$ST" "$ST" "$ST" >"$ST/bin/date"
+  chmod +x "$ST/bin/date"
+  # st_run CODE START END PROGRAM...: the suite exits with CODE, and runs from START to END
+  st_run() {
+    printf '%s\n%s\n' "$2" "$3" >"$ST/times"
+    rm -f "$ST/ran"
+    code=$1
+    shift 3
+    run env PATH="$ST/bin:$PATH" ST_CODE="$code" SUITE_LIMITS="$HERE/testdata/suite-limits/limits.tsv" sh "$HERE/suite-timeout.sh" "$@"
+  }
+  st_run 0 100 110 "$ST/golem-x-test"
+  expect "suite-timeout: L1 a suite of exactly its limit keeps its exit code" 0
+  if [ "$(cat "$WORK/err")" = "golem-x-test: finished in 10 seconds" ]; then ok; else ng "suite-timeout: L1 a suite within its limit says its seconds alone"; fi
+  st_run 3 100 110 "$ST/golem-x-test"
+  expect "suite-timeout: L1 a failing suite within its limit keeps its exit code" 3
+  st_run 0 100 111 "$ST/golem-x-test"
+  expect "suite-timeout: L2 a passing suite one second over its limit fails" 1
+  if [ "$(cat "$WORK/err")" = "golem-x-test: finished in 11 seconds, over its limit of 10 seconds (scripts/ci/suite-limits.tsv)" ]; then ok; else ng "suite-timeout: L2 the line of the limit"; fi
+  st_run 1 100 111 "$ST/golem-x-test"
+  if [ "$CODE" = 1 ] && grep -qxF "golem-x-test: finished in 11 seconds, over its limit of 10 seconds (scripts/ci/suite-limits.tsv)" "$WORK/err"; then ok; else ng "suite-timeout: L2 a failing suite over its limit keeps its exit code 1, with the line of the limit"; fi
+  st_run 3 100 111 "$ST/golem-x-test"
+  if [ "$CODE" = 3 ] && grep -qF "over its limit of 10 seconds" "$WORK/err"; then ok; else ng "suite-timeout: L2 a failing suite over its limit keeps its exit code 3"; fi
+  st_run 0 100 101 "$ST/golem-y-test"
+  if [ "$CODE" = 1 ] && [ ! -e "$ST/ran" ] && [ "$(cat "$WORK/err")" = "golem-y-test: no limit in scripts/ci/suite-limits.tsv" ]; then ok; else ng "suite-timeout: L3 a suite without a row does not run, and fails"; fi
+  printf '100\n200\n' >"$ST/times"
+  rm -f "$ST/ran"
+  run env PATH="$ST/bin:$PATH" SUITE_LIMITS= sh "$HERE/suite-timeout.sh" "$ST/golem-y-test"
+  if [ "$CODE" = 0 ] && [ -e "$ST/ran" ] && [ "$(cat "$WORK/err")" = "golem-y-test: finished in 100 seconds" ]; then ok; else ng "suite-timeout: an empty SUITE_LIMITS puts no limit"; fi
+  run env SUITE_TIMEOUT=1 SUITE_LIMITS="$HERE/testdata/suite-limits/limits.tsv" sh "$HERE/suite-timeout.sh" sleep 30
+  if [ "$CODE" = 124 ] && grep -qx 'sleep: did not finish in 1 seconds' "$WORK/err" && ! grep -q 'over its limit' "$WORK/err"; then ok; else ng "suite-timeout: L6 SUITE_TIMEOUT stops a suite whatever its limit"; fi
 else
-  skip 5 "suite-timeout (no timeout command)"
+  skip 19 "suite-timeout (no timeout command)"
 fi
+
+# ---------------------------------------------------------------- suite-limits.sh
+# (docs/adr ADR 0292)
+
+suite_limits() { sh "$HERE/suite-limits.sh" "$@"; }
+SL=$WORK/suite-limits
+mkdir -p "$SL"
+# sl_lines ARCH SECONDS...: lines of suite-timeout.sh of golem-a-test, with the architecture before them
+sl_lines() {
+  a=$1
+  shift
+  for s in "$@"; do printf '%s\t2026-11-10T00:00:00.0000000Z golem-a-test: finished in %s seconds\n' "$a" "$s"; done
+}
+# L5 the limit is max(10, ceil(2 m)): m = 0, 4.9, 5 and 5.1 give 10, 10, 10 and 11
+for case in "0 10" "4.9 10" "5 10" "5.1 11" "7 14"; do
+  set -- $case
+  sl_lines x86_64 "$1" >"$WORK/in"
+  run suite_limits
+  if [ "$CODE" = 0 ] && grep -qxF "x86_64	golem-a-test	$2" "$WORK/out"; then ok; else ng "suite-limits: L5 a median of $1 seconds gives a limit of $2"; fi
+done
+# L5 two seconds: their mean; three: the middle; the order of the lines does not matter
+sl_lines aarch64 6 9 >"$WORK/in"
+run suite_limits
+if [ "$CODE" = 0 ] && grep -qxF "aarch64	golem-a-test	15" "$WORK/out"; then ok; else ng "suite-limits: L5 the median of two is their mean (7.5, a limit of 15)"; fi
+sl_lines x86_64 40 6 9 >"$WORK/in"
+run suite_limits
+if [ "$CODE" = 0 ] && grep -qxF "x86_64	golem-a-test	18" "$WORK/out"; then ok; else ng "suite-limits: L5 the median of three is the one in the middle"; fi
+# each architecture and suite apart; the line of a suite over its limit counts; other lines do not
+{
+  sl_lines x86_64 30 30 30
+  sl_lines aarch64 8
+  printf 'x86_64\tgolem-b-test: finished in 12 seconds, over its limit of 10 seconds (scripts/ci/suite-limits.tsv)\n'
+  printf 'x86_64\tgolem-c-test: did not finish in 600 seconds\n'
+  printf 'x86_64\tsomething else\n'
+} >"$WORK/in"
+run suite_limits
+if [ "$CODE" = 0 ] && [ "$(grep -v '^#' "$WORK/out")" = "aarch64	golem-a-test	16
+x86_64	golem-a-test	60
+x86_64	golem-b-test	24" ]; then ok; else ng "suite-limits: L5 one row for each architecture and suite, in order"; fi
+: >"$WORK/in"
+run suite_limits
+expect "suite-limits: no line, no table" 1
+
+# L4 every suite of test-suites.sh, on x86_64 and aarch64, has exactly one row
+mkdir -p "$SL/modules/golem-p" "$SL/modules/golem-driver"
+printf 'cabal-version: 3.0\nname: golem-p\n\ntest-suite golem-p-test\n  type: exitcode-stdio-1.0\n' >"$SL/modules/golem-p/golem-p.cabal"
+printf 'cabal-version: 3.0\nname: golem-driver\n\ntest-suite golem-driver-test\n  type: exitcode-stdio-1.0\n' >"$SL/modules/golem-driver/golem-driver.cabal"
+printf '# a comment\nx86_64\tgolem-p-test\t10\naarch64\tgolem-p-test\t10\nx86_64\tgolem-driver-test\t20\naarch64\tgolem-driver-test\t20\n' >"$SL/good.tsv"
+: >"$WORK/in"
+run suite_limits --check "$SL/good.tsv" "$SL/modules"
+expect "suite-limits: L4 a table with one row for each suite and architecture" 0
+grep -v 'aarch64	golem-p-test' "$SL/good.tsv" >"$SL/missing.tsv"
+run suite_limits --check "$SL/missing.tsv" "$SL/modules"
+if [ "$CODE" = 1 ] && grep -qF 'golem-p-test' "$WORK/err"; then ok; else ng "suite-limits: L4 a suite without its row on one architecture fails"; fi
+{ cat "$SL/good.tsv"; printf 'x86_64\tgolem-p-test\t30\n'; } >"$SL/twice.tsv"
+run suite_limits --check "$SL/twice.tsv" "$SL/modules"
+if [ "$CODE" = 1 ] && grep -qF 'golem-p-test' "$WORK/err"; then ok; else ng "suite-limits: L4 two rows of the same suite and architecture fail"; fi
+{ cat "$SL/good.tsv"; printf 'x86_64\tgolem-gone-test\t30\n'; } >"$SL/extra.tsv"
+run suite_limits --check "$SL/extra.tsv" "$SL/modules"
+if [ "$CODE" = 1 ] && grep -qF 'golem-gone-test' "$WORK/err"; then ok; else ng "suite-limits: L4 a row without its suite fails"; fi
+run suite_limits --check
+expect "suite-limits: L4 the table of the repository has every suite of test-suites.sh, once on each architecture" 0
 
 # ---------------------------------------------------------------- bg.sh
 # (docs/adr/0037-ci-build-job-speedup.md)
@@ -3730,21 +3837,38 @@ if grep -qxF -- "-  missing-font/pdf" "$CB/browser.txt" && grep -qxF "exit 1  mi
 cat >"$CB/deno-hangs" <<'FAKE'
 #!/bin/sh
 case "$7" in
-  */int-width-png-chunk) sleep 300 ;;
+  */int-width-png-chunk) sleep 300 & echo "$!" >"$HANG_PID"; wait "$!" ;;
 esac
 printf '%%PDF %s\n' "${7##*/}" >"$8"
 printf '[]\n' >&2
 FAKE
 chmod +x "$CB/deno-hangs"
+# the children of the host are checked by the PID the fake host wrote, not
+# by name over the machine; where pgrep -P cannot list a child of this
+# shell, compare.sh cannot stop them either and the check is skipped
+# (docs/adr/0303 sections 2 and 3)
+sleep 30 &
+probe=$!
+if pgrep -P "$$" 2>/dev/null | grep -qxF "$probe"; then lists_children=1; else lists_children=0; fi
+kill "$probe" 2>/dev/null || :
+wait "$probe" 2>/dev/null || :
+rm -f "$CB/hang.pid"
 s0=$(date +%s)
-run env DENO="$CB/deno-hangs" COMPARE_TIMEOUT=2 sh "$HERE/../wasm/compare.sh" --deno golem.wasm
+run env DENO="$CB/deno-hangs" HANG_PID="$CB/hang.pid" COMPARE_TIMEOUT=2 sh "$HERE/../wasm/compare.sh" --deno golem.wasm
 s1=$(date +%s)
 cp "$WORK/out" "$CB/hangs.txt"
 expect "compare.sh: an input past COMPARE_TIMEOUT does not fail the list (I1)" 0
 if grep -qxF "exit timeout  int-width-png-chunk" "$CB/hangs.txt" && grep -qxF "exit 0  int-width-printing" "$CB/hangs.txt"; then ok; else ng "compare.sh: exit timeout for the input stopped, and the next input runs (I1)"; fi
 if grep -qF "int-width-png-chunk: stopped after 2 s" "$WORK/err"; then ok; else ng "compare.sh: says which input it stopped (I1)"; fi
 if [ $((s1 - s0)) -lt 60 ]; then ok; else ng "compare.sh: the input is stopped near COMPARE_TIMEOUT, not after the sleep of the host (I1)"; fi
-if pgrep -f "sleep 300" >/dev/null 2>&1; then ng "compare.sh: the children of the host stopped are stopped too (I1)"; else ok; fi
+if [ ! -s "$CB/hang.pid" ]; then
+  ng "compare.sh: the fake host wrote the PID of its child (docs/adr/0303 I4)"
+elif [ "$lists_children" = 0 ]; then
+  skip 1 "compare.sh: the children of the host (pgrep -P cannot list processes)"
+elif kill -0 "$(cat "$CB/hang.pid")" 2>/dev/null; then
+  ng "compare.sh: the children of the host stopped are stopped too (I1, docs/adr/0303 I5)"
+else ok; fi
+kill_hang
 # browser.yml gives its jobs that compare a COMPARE_TIMEOUT of fewer seconds
 # than their timeout-minutes, so that an input that does not end is in the
 # list as `exit timeout` before the job is cancelled (docs/adr/0247 section 7)
@@ -4270,6 +4394,58 @@ if job_of "$ADV_YML" actions | grep -qF 'sh scripts/ci/actions-pins.sh verify' &
   job_of "$ADV_YML" actions | grep -qF 'GH_TOKEN: ${{ github.token }}' &&
   job_of "$ADV_YML" actions | grep -qxF '    timeout-minutes: 10'; then ok; else ng "advisories.yml: the actions job runs verify and latest with GH_TOKEN in 10 minutes"; fi
 if job_lines scripts-linux | grep -qF 'run: sh scripts/ci/actions-pins.sh check'; then ok; else ng "ci.yml: scripts-linux runs actions-pins.sh check"; fi
+
+# ---------------------------------------------------------------- processes looked for by name
+# (docs/adr/0303 section 4): a test checks only the processes it started, by
+# their PIDs. The tools that look for processes by name over the machine,
+# unless -P narrows them to the children of a PID, and a ps that lists every
+# process, are reported as FILE:LINE: TEXT. The names are written as
+# pgre[p] and the like below so that this file does not match itself
+# process_check FILE...: fails on such a line, and with no FILE
+process_check() {
+  if [ $# -eq 0 ]; then
+    echo "0 files checked"
+    return 1
+  fi
+  pc_found=0
+  for pc_file in "$@"; do
+    pc_lines=$(sed -E 's/(pgre[p]|pkil[l]|killal[l])[[:space:]]+-P[[:space:]]*//g' "$pc_file" |
+      grep -nE '(^|[^[:alnum:]_.-])(pgre[p]|pkil[l]|killal[l])([^[:alnum:]_.-]|$)|(^|[[:space:];|&(`$])p[s][[:space:]]+(-[[:alnum:]]*[eA]|aux|ax)' || :)
+    if [ -n "$pc_lines" ]; then
+      printf '%s\n' "$pc_lines" | sed "s|^\([0-9]*\):|$pc_file:\1: |"
+      pc_found=1
+    fi
+  done
+  echo "$# files checked"
+  [ "$pc_found" = 0 ]
+}
+PC_DATA=$HERE/testdata/process-checks
+run process_check "$PC_DATA/by-name.sh"
+if [ "$CODE" = 1 ] && grep -qF "$PC_DATA/by-name.sh:5: " "$WORK/out" && [ "$(grep -c ': ' "$WORK/out")" = 1 ]; then ok; else ng "process check: a fake test with a search by command line fails at FILE:LINE (I8)"; fi
+run process_check "$PC_DATA/by-pid.sh"
+expect "process check: a fake test that checks the PIDs it started passes (I8)" 0 "1 files checked"
+run process_check
+expect "process check: no file fails (I8)" 1 "0 files checked"
+PC=$WORK/process-checks
+mkdir -p "$PC"
+for line in 'pgre''p -f "sleep 300"' 'pgre''p sleep' 'pkil''l -f golem' 'killal''l sleep' 'x=$(pgre''p -P 1; pgre''p -f a)' \
+  'p''s -ef | grep sleep' 'p''s -A' 'p''s aux' 'p''s ax' '(p''s -e)'; do
+  printf '#!/bin/sh\n%s\n' "$line" >"$PC/t.sh"
+  run process_check "$PC/t.sh"
+  if [ "$CODE" = 1 ] && grep -qF "$PC/t.sh:2: " "$WORK/out"; then ok; else ng "process check: '$line' fails (I8)"; fi
+done
+for line in 'pgre''p -P "$$"' 'pkil''l -P "$pid"' 'p''s -p "$pid"' 'kill -0 "$pid"' '# maps -e and steps aux are words' 'the_pgre''p_count=1'; do
+  printf '#!/bin/sh\n%s\n' "$line" >"$PC/t.sh"
+  run process_check "$PC/t.sh"
+  expect "process check: '$line' passes (I8)" 0 "1 files checked"
+done
+# the test scripts of the repository; git ls-files and the glob, which
+# matches scripts/test.sh as well, rather than the files of the work tree
+PC_FILES=$(git -C "$HERE/../.." ls-files ':(glob)scripts/**/test*.sh' scripts/ci/test-suites.sh ':(glob)tools/editors/**/test.sh')
+# shellcheck disable=SC2086 # the paths have no spaces
+run process_check $(printf '%s\n' "$PC_FILES" | sed "s|^|$HERE/../../|")
+if [ "$CODE" = 0 ] && grep -Eq '^[1-9][0-9]* files checked$' "$WORK/out"; then ok; else ng "process check: the test scripts of the repository look for no process by name (I8)"; fi
+if printf '%s\n' "$PC_FILES" | grep -qxF scripts/ci/test.sh && printf '%s\n' "$PC_FILES" | grep -qxF scripts/test.sh && printf '%s\n' "$PC_FILES" | grep -qxF tools/editors/nvim/test.sh; then ok; else ng "process check: the files checked include scripts/ci/test.sh, scripts/test.sh and tools/editors/nvim/test.sh (I8)"; fi
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
