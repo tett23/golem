@@ -12,6 +12,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Svg
 import Golem.Svg.Css
 import Golem.Svg.Xml
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import NumberSpec qualified
 import SecuritySpec qualified
 import System.Directory (listDirectory)
@@ -22,6 +23,7 @@ import Test.Tasty.HUnit
 
 main :: IO ()
 main = do
+  enterPackageDirectory
   outlined <- figures "../../manual-dev/images"
   sources <- figures "../../manual-dev/images/src"
   defaultMain (tests outlined sources)

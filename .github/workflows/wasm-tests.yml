@@ -1,0 +1,295 @@
+name: wasm tests
+
+# The test suites of the packages of golem.wasm, built for wasm32 and run
+# under the node:wasi of Node (docs/adr/0293): once a day on main, on the
+# days main has changed since the last successful run of this workflow,
+# and whenever it is started by hand; never on pull requests. The tests of
+# scripts/wasm/test-failures.tsv are known to fail on wasm32 and must fail
+# (A3); every other test must pass or be a SKIP of an external tool (A2,
+# A4). The job native finds the tests that are a SKIP without the external
+# tools, on the native GHC.
+on:
+  schedule:
+    - cron: "47 19 * * *"
+  workflow_dispatch:
+  # TEMPORARY, for the pull request of the implementation only: a workflow
+  # that is not on main cannot be dispatched
+  push:
+    branches: [impl-0293]
+
+# It reads the repository, and the runs of this workflow for
+# scripts/ci/race-needed.sh; it writes nothing but its artifacts. The
+# caches of ci.yml are restored, never saved: the toolchain alone is more
+# than 1 GB, and the caches of the repository are near the 10 GB limit
+# (docs/adr/0228).
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: wasm-tests
+  cancel-in-progress: false
+
+env:
+  GHC_VERSION: "9.10.3"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      run: ${{ steps.needed.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: needed
+        name: Whether main has changed since the last successful run (docs/adr/0075)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != schedule ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA" wasm-tests.yml); fi
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+
+  # the suites of test-suites.sh wasm on the native GHC, without qpdf,
+  # cddl, pdfinfo and pdftoppm on the PATH and without
+  # GOLEM_REQUIRE_EXTERNAL_TOOLS: the tests that are a SKIP here are those
+  # of needsTool (A4); the results also show that the listed tests pass
+  # natively (A3)
+  native:
+    needs: prepare
+    if: needs.prepare.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Image and GHC directory for the cache keys (docs/adr/0009)
+        run: |
+          test -n "$ImageOS"
+          echo "ImageOS=$ImageOS" >> "$GITHUB_ENV"
+          echo "GHC_DIR=${GHCUP_INSTALL_BASE_PREFIX:-$HOME}/.ghcup/ghc/$GHC_VERSION" >> "$GITHUB_ENV"
+      - name: Restore GHC (docs/adr/0009)
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.GHC_DIR }}
+          key: ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-slim
+      - name: cabal's directory (docs/adr/0201)
+        run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
+      - id: setup
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: ${{ env.GHC_VERSION }}
+          cabal-version: "3.16.1.0"
+          cabal-update: false
+      - name: GHC on the PATH (docs/adr/0009)
+        run: |
+          if [ ! -x "$GHC_DIR/bin/ghc-$GHC_VERSION" ]; then
+            test -x "$GHC_DIR/bin/ghc"
+            ln -s ghc "$GHC_DIR/bin/ghc-$GHC_VERSION"
+          fi
+          echo "$GHC_DIR/bin" >> "$GITHUB_PATH"
+      - id: index
+        name: Restore the Hackage index (docs/adr/0009)
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cabal/packages/hackage.haskell.org
+          key: hackage-index-no-gz-${{ hashFiles('cabal.project.freeze') }}
+      - if: steps.index.outputs.cache-hit != 'true'
+        run: cabal update
+      - name: Restore the cabal store
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ steps.setup.outputs.cabal-store }}
+          key: cabal-store-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}
+          restore-keys: cabal-store-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-
+      - name: Restore dist-newstyle (docs/adr/0009)
+        uses: actions/cache/restore@v6
+        with:
+          path: dist-newstyle
+          key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-${{ github.sha }}
+          restore-keys: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-
+      - name: The setup-config of dist-newstyle newer than the .cabal files (docs/adr/0147)
+        run: |
+          if [ -d dist-newstyle ]; then find dist-newstyle -name setup-config -exec touch {} +; fi
+      # golem-plugin, on which the suites of golem-driver depend
+      - name: wasmtime C API (golem-plugin ADR 0001)
+        timeout-minutes: 10
+        run: sh scripts/fetch-wasmtime.sh
+      - name: The suites of test-suites.sh wasm
+        run: cabal build $(sh scripts/ci/test-suites.sh wasm)
+      # each suite in the directory of its package, as cabal test runs it
+      - name: The suites without the external tools (docs/adr/0293 A3, A4)
+        run: |
+          OUT=$RUNNER_TEMP/native
+          mkdir -p "$OUT"
+          for t in qpdf cddl pdfinfo pdftoppm; do
+            if PATH=/usr/bin:/bin command -v "$t" >/dev/null; then echo "$t is on the PATH of the suites" >&2; exit 1; fi
+          done
+          for target in $(sh scripts/ci/test-suites.sh wasm); do
+            pkg=${target%%:*} suite=${target##*:}
+            bin=$(cabal list-bin -v0 "$target")
+            code=0
+            (cd "modules/$pkg" && env -u GOLEM_REQUIRE_EXTERNAL_TOOLS PATH=/usr/bin:/bin "$bin" --color never) > "$OUT/$suite.log" 2>&1 < /dev/null || code=$?
+            sh scripts/wasm/tasty-results.sh "$OUT/$suite.log" > "$OUT/$suite.results"
+            echo "$suite: exit $code, $(grep -c '^SKIP' "$OUT/$suite.results" || true) SKIP"
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: wasm-tests-native
+          path: ${{ runner.temp }}/native
+
+  wasm:
+    needs: prepare
+    if: needs.prepare.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      HOSTTOOLS: ${{ github.workspace }}/third_party/hosttools
+      alex_datadir: ${{ github.workspace }}/third_party/hosttools/alex-data
+      happy_lib_datadir: ${{ github.workspace }}/third_party/hosttools/happy-lib-data
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Image for the cache keys
+        run: |
+          test -n "$ImageOS"
+          echo "ImageOS=$ImageOS" >> "$GITHUB_ENV"
+      # the caches of the wasm job of ci.yml, restored only (docs/adr/0199,
+      # docs/adr/0202): the native alex and happy, the toolchain with its
+      # cabal store, and dist-wasm
+      - id: hosttools
+        name: Restore the native alex and happy (docs/adr/0202)
+        uses: actions/cache/restore@v6
+        with:
+          path: third_party/hosttools
+          key: hosttools-alex-3.5.4.2-happy-2.2-data-ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
+      - if: steps.hosttools.outputs.cache-hit != 'true'
+        name: cabal's directory (docs/adr/0201)
+        run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
+      - if: steps.hosttools.outputs.cache-hit != 'true'
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: ${{ env.GHC_VERSION }}
+          cabal-version: "3.16.1.0"
+          cabal-update: true
+      - if: steps.hosttools.outputs.cache-hit != 'true'
+        name: The native alex and happy (docs/adr/0202)
+        run: |
+          mkdir -p "$HOSTTOOLS" "$RUNNER_TEMP/hosttools-src"
+          cd "$RUNNER_TEMP/hosttools-src"
+          cabal install alex-3.5.4.2 happy-2.2 --installdir="$HOSTTOOLS" --install-method=copy --overwrite-policy=always
+          t=$(find "$HOME/.cabal/store" -path '*/alex-3.5.4.2-*/AlexTemplate.hs' | head -n 1)
+          test -n "$t"
+          cp -R "$(dirname "$t")" "$alex_datadir"
+          t=$(find "$HOME/.cabal/store" -path '*/happy-lib-2.2-*/HappyTemplate.hs' | head -n 1)
+          test -n "$t"
+          cp -R "$(dirname "$t")" "$happy_lib_datadir"
+      - id: ghcwasm
+        name: Restore the wasm toolchain and its cabal store (docs/adr/0199)
+        uses: actions/cache/restore@v6
+        with:
+          path: third_party/ghc-wasm
+          key: ghc-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze', 'scripts/fetch-wasm-packages.sh', 'scripts/wasm/patches/*') }}
+          restore-keys: ghc-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-
+      - name: The wasm toolchain (docs/adr/0199)
+        run: timeout -k 10 900 sh scripts/fetch-ghc-wasm.sh
+      - name: skylighting 0.15 patched (docs/adr/0202)
+        timeout-minutes: 10
+        run: sh scripts/fetch-wasm-packages.sh
+      # cabal.project.wasm-tests imports cabal.project.wasm.freeze
+      - name: The versions of Hackage are those of cabal.project.freeze (docs/adr/0199, docs/adr/0293)
+        run: sh scripts/ci/wasm-freeze.sh
+      - if: steps.ghcwasm.outputs.cache-hit != 'true'
+        name: The Hackage index of the wasm build
+        run: |
+          . third_party/ghc-wasm/env
+          wasm32-wasi-cabal update
+      - name: Restore dist-wasm
+        uses: actions/cache/restore@v6
+        with:
+          path: dist-wasm
+          key: dist-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze') }}-${{ github.sha }}
+          restore-keys: dist-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze') }}-
+      - name: The setup-config of dist-wasm newer than the .cabal files (docs/adr/0147)
+        run: |
+          if [ -d dist-wasm ]; then find dist-wasm -name setup-config -exec touch {} +; fi
+      # every suite that builds is run; one that does not fails the job
+      # after the others have run
+      - id: build
+        name: The suites for wasm32 (docs/adr/0293)
+        shell: bash
+        run: |
+          . third_party/ghc-wasm/env
+          export PATH="$HOSTTOOLS:$PATH"
+          s=$(date +%s)
+          code=0
+          wasm32-wasi-cabal --project-file=cabal.project.wasm-tests --builddir=dist-wasm build --keep-going $(sh scripts/ci/test-suites.sh wasm) 2>&1 | tee "$RUNNER_TEMP/wasm-tests-build.log" || code=$?
+          echo "the build of the suites: $(( $(date +%s) - s )) s, exit $code" | tee -a "$GITHUB_STEP_SUMMARY"
+          mkdir -p "$RUNNER_TEMP/suites"
+          for target in $(sh scripts/ci/test-suites.sh wasm); do
+            bin=$(wasm32-wasi-cabal --project-file=cabal.project.wasm-tests --builddir=dist-wasm list-bin -v0 "$target" 2>/dev/null || true)
+            if [ -n "$bin" ] && [ -f "$bin" ]; then cp "$bin" "$RUNNER_TEMP/suites/${target##*:}.wasm"; else echo "$target: not built" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+          done
+      - name: The suites under node:wasi (docs/adr/0293 A2, A3)
+        if: always() && steps.build.outcome != 'skipped'
+        env:
+          RUN: timeout -k 10 1800 node --no-warnings scripts/wasm/run-tests.mjs
+        run: |
+          OUT=$RUNNER_TEMP/wasm
+          mkdir -p "$OUT"
+          bad=0
+          {
+            echo "| Suite | Seconds | Exit code | OK | FAIL | SKIP |"
+            echo "| --- | --- | --- | --- | --- | --- |"
+          } > "$RUNNER_TEMP/table"
+          for target in $(sh scripts/ci/test-suites.sh wasm); do
+            suite=${target##*:}
+            if [ ! -f "$RUNNER_TEMP/suites/$suite.wasm" ]; then
+              echo "| $suite | not built | | | | |" >> "$RUNNER_TEMP/table"
+              bad=1
+              continue
+            fi
+            line=$(sh scripts/wasm/run-suite.sh "$target" "$RUNNER_TEMP/suites/$suite.wasm" "$OUT") || bad=1
+            echo "$line"
+            echo "| $(printf '%s' "$line" | sed 's/\t/ | /g') |" >> "$RUNNER_TEMP/table"
+          done
+          cat "$RUNNER_TEMP/table" >> "$GITHUB_STEP_SUMMARY"
+          exit "$bad"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: wasm-tests-wasm
+          path: |
+            ${{ runner.temp }}/wasm
+            ${{ runner.temp }}/wasm-tests-build.log
+
+  # the SKIPs of wasm32 are SKIPs of the native suites without the tools
+  # (A4), and the listed tests pass natively (A3)
+  skips:
+    needs: [native, wasm]
+    if: always() && needs.native.result != 'skipped' && needs.wasm.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: wasm-tests-native
+          path: native
+      - uses: actions/download-artifact@v8
+        with:
+          name: wasm-tests-wasm
+          path: wasm
+      - name: The SKIPs of wasm32 and the listed tests (docs/adr/0293 A3, A4)
+        run: sh scripts/wasm/check-skips.sh native "$(find wasm -name '*.results' -exec dirname {} \; | head -n 1)" | tee -a "$GITHUB_STEP_SUMMARY"
