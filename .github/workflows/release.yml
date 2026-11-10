@@ -44,7 +44,7 @@ jobs:
       tag: ${{ steps.check.outputs.tag }}
       patch-base: ${{ steps.patch.outputs.patch-base }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -99,14 +99,14 @@ jobs:
           case "$ALPINE_IMAGE $DEBIAN_IMAGE" in
             *TODO*) echo "::error::fill in the image digests in release.yml"; exit 1 ;;
           esac
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # the archives of the downloads, from the cache of main; each is checked
       # by its SHA-256 before it is used (docs/adr/0243)
       - id: downloads
         name: Restore the archives of the downloads (docs/adr/0243)
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/downloads
           key: downloads-release-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-wasmtime.sh', 'scripts/release/fetch-gmp.sh') }}
@@ -125,7 +125,7 @@ jobs:
         run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
       - id: setup
         if: runner.os == 'macOS'
-        uses: haskell-actions/setup@v2
+        uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2.12.1
         with:
           ghc-version: "9.10.3"
           cabal-version: "3.18.2.0"
@@ -144,11 +144,11 @@ jobs:
       # (docs/adr/0228, docs/adr/0243)
       - name: Save the archives of the downloads (docs/adr/0243)
         if: github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/downloads
           key: ${{ steps.downloads.outputs.cache-primary-key }}
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: archive-${{ matrix.platform }}
           path: |
@@ -157,7 +157,7 @@ jobs:
             dist/gmp-version-*.txt
       # what THIRD_PARTY_LICENSES/ was made from, not in the archive
       # (docs/adr/0007-third-party-licenses.md)
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: linkmap-${{ matrix.platform }}
@@ -185,10 +185,10 @@ jobs:
       ARCHIVE: dist/golem-${{ needs.version.outputs.tag }}-${{ matrix.platform }}.tar.gz
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: archive-${{ matrix.platform }}
           path: dist
@@ -215,7 +215,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/src:ro" -v /etc/ssl/certs/ca-certificates.crt:/certs/ca.pem:ro -w /src "$DEBIAN_IMAGE" \
             sh scripts/release/smoke.sh --no-certs /certs/ca.pem "$ARCHIVE" "$VERSION"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: determinism-${{ matrix.platform }}
           path: determinism-${{ matrix.platform }}.txt
@@ -238,10 +238,10 @@ jobs:
       alex_datadir: ${{ github.workspace }}/third_party/hosttools/alex-data
       happy_lib_datadir: ${{ github.workspace }}/third_party/hosttools/happy-lib-data
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: lts/*
       - name: Image for the cache keys
@@ -250,7 +250,7 @@ jobs:
           echo "ImageOS=$ImageOS" >> "$GITHUB_ENV"
       - id: hosttools
         name: Cache the native alex and happy (docs/adr/0202)
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/hosttools
           key: hosttools-alex-3.5.4.2-happy-2.2-data-ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
@@ -258,7 +258,7 @@ jobs:
         name: cabal's directory (docs/adr/0201)
         run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
       - if: steps.hosttools.outputs.cache-hit != 'true'
-        uses: haskell-actions/setup@v2
+        uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2.12.1
         with:
           ghc-version: ${{ env.GHC_VERSION }}
           cabal-version: "3.18.2.0"
@@ -283,7 +283,7 @@ jobs:
           test -f "$happy_lib_datadir/HappyTemplate.hs"
       - id: ghcwasm
         name: Cache the wasm toolchain and its cabal store (docs/adr/0199)
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/ghc-wasm
           key: ghc-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze', 'scripts/fetch-wasm-packages.sh', 'scripts/wasm/patches/*') }}
@@ -327,7 +327,7 @@ jobs:
           test "$found" = 2
       - name: The checks of golem.wasm under node:wasi (docs/adr/0199)
         run: node scripts/wasm/run.mjs check golem.wasm modules/golem-driver/test/fixtures/kanikosen
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: archive-x86_64-linux
           path: dist-native
@@ -356,7 +356,7 @@ jobs:
       # too, before a tag (docs/adr/0230)
       - name: The archive of golem.wasm has its license documents (docs/adr/0230)
         run: sh scripts/release/check-wasm-archive.sh "dist/golem-$TAG-wasm32-wasi.tar.gz"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: archive-wasm32-wasi
           path: |
@@ -375,11 +375,11 @@ jobs:
       BASE: ${{ needs.version.outputs.patch-base }}
       ARCHIVE: dist/golem-${{ needs.version.outputs.tag }}-x86_64-linux.tar.gz
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: archive-x86_64-linux
           path: dist
@@ -393,7 +393,7 @@ jobs:
     needs: [ci, smoke]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: determinism-*
           merge-multiple: true
@@ -415,11 +415,11 @@ jobs:
     env:
       REF: ${{ github.ref_type == 'tag' && needs.version.outputs.tag || github.sha }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: jdx/mise-action@v5
+      - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
         env:
           MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
         with:
@@ -431,7 +431,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN: ${{ github.token }}
         run: sh scripts/release/write-notes.sh "$REF" notes.md
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: notes
           path: notes.md
@@ -456,11 +456,11 @@ jobs:
     env:
       TAG: ${{ needs.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: archive-*
           path: dist
@@ -504,10 +504,10 @@ jobs:
           done
           sha256sum gmp-*.tar.xz >> SHA256SUMS
           sha256sum -c SHA256SUMS
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/golem-*.tar.gz
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: notes
       - name: Draft release
