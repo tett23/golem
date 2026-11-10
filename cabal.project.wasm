@@ -37,8 +37,8 @@ packages:
   modules/golem-wasm
   -- docs/adr/0202 section 2: the archives of Hackage with the patches of
   -- scripts/wasm/patches/, unpacked by scripts/fetch-wasm-packages.sh
-  third_party/wasm-packages/skylighting-core-0.15
-  third_party/wasm-packages/skylighting-0.15
+  third_party/wasm-packages/skylighting-core-0.15.0.1
+  third_party/wasm-packages/skylighting-0.15.0.1
 
 tests: False
 

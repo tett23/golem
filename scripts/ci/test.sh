@@ -3494,19 +3494,19 @@ expect "legacy-eh: two arguments are a usage error" 2
 # patches, and a fake curl that writes the archive of the URL to the file
 # of -o. The SHA-256 of the script are those of the fake archives.
 FW=$WORK/fetch-wasm
-mkdir -p "$FW/root/scripts/wasm/patches" "$FW/root/scripts/ci" "$FW/src/skylighting-core-0.15" "$FW/src/skylighting-0.15" "$FW/archives" "$FW/bin"
+mkdir -p "$FW/root/scripts/wasm/patches" "$FW/root/scripts/ci" "$FW/src/skylighting-core-0.15.0.1" "$FW/src/skylighting-0.15.0.1" "$FW/archives" "$FW/bin"
 cp "$HERE/fetch-url.sh" "$FW/root/scripts/ci/"
-printf 'module A\nimport Skylighting.Parser\n' >"$FW/src/skylighting-core-0.15/A.hs"
-printf 'module B\nimport Skylighting.Loader\n' >"$FW/src/skylighting-0.15/B.hs"
-for p in skylighting-core-0.15 skylighting-0.15; do (cd "$FW/src" && tar -czf "$FW/archives/$p.tar.gz" "$p"); done
-cat >"$FW/root/scripts/wasm/patches/skylighting-core-0.15.patch" <<'EOF'
+printf 'module A\nimport Skylighting.Parser\n' >"$FW/src/skylighting-core-0.15.0.1/A.hs"
+printf 'module B\nimport Skylighting.Loader\n' >"$FW/src/skylighting-0.15.0.1/B.hs"
+for p in skylighting-core-0.15.0.1 skylighting-0.15.0.1; do (cd "$FW/src" && tar -czf "$FW/archives/$p.tar.gz" "$p"); done
+cat >"$FW/root/scripts/wasm/patches/skylighting-core-0.15.0.1.patch" <<'EOF'
 --- a/A.hs
 +++ b/A.hs
 @@ -1,2 +1 @@
  module A
 -import Skylighting.Parser
 EOF
-cat >"$FW/root/scripts/wasm/patches/skylighting-0.15.patch" <<'EOF'
+cat >"$FW/root/scripts/wasm/patches/skylighting-0.15.0.1.patch" <<'EOF'
 --- a/B.hs
 +++ b/B.hs
 @@ -1,2 +1 @@
@@ -3514,8 +3514,8 @@ cat >"$FW/root/scripts/wasm/patches/skylighting-0.15.patch" <<'EOF'
 -import Skylighting.Loader
 EOF
 fw_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
-sed -e "s/^CORE_SHA=.*/CORE_SHA=$(fw_sha "$FW/archives/skylighting-core-0.15.tar.gz")/" \
-  -e "s/^SKY_SHA=.*/SKY_SHA=$(fw_sha "$FW/archives/skylighting-0.15.tar.gz")/" \
+sed -e "s/^CORE_SHA=.*/CORE_SHA=$(fw_sha "$FW/archives/skylighting-core-0.15.0.1.tar.gz")/" \
+  -e "s/^SKY_SHA=.*/SKY_SHA=$(fw_sha "$FW/archives/skylighting-0.15.0.1.tar.gz")/" \
   "$HERE/../fetch-wasm-packages.sh" >"$FW/root/scripts/fetch-wasm-packages.sh"
 cat >"$FW/bin/curl" <<'FAKE'
 #!/bin/sh
@@ -3535,24 +3535,24 @@ fw_tree() { (cd "$FW/root/third_party/wasm-packages" && find . -type f | LC_ALL=
 : >"$FW/curl.log"
 run fetch_wasm
 expect "fetch-wasm-packages: the archives of the SHA-256 are unpacked and patched" 0
-if grep -qF "https://hackage.haskell.org/package/skylighting-core-0.15/skylighting-core-0.15.tar.gz" "$FW/curl.log" &&
-  grep -qF "https://hackage.haskell.org/package/skylighting-0.15/skylighting-0.15.tar.gz" "$FW/curl.log"; then ok; else ng "fetch-wasm-packages: the archives come from Hackage"; fi
-if [ "$(cat "$FW/root/third_party/wasm-packages/skylighting-core-0.15/A.hs")" = "module A" ] &&
-  [ "$(cat "$FW/root/third_party/wasm-packages/skylighting-0.15/B.hs")" = "module B" ]; then ok; else ng "fetch-wasm-packages: the patches are applied"; fi
+if grep -qF "https://hackage.haskell.org/package/skylighting-core-0.15.0.1/skylighting-core-0.15.0.1.tar.gz" "$FW/curl.log" &&
+  grep -qF "https://hackage.haskell.org/package/skylighting-0.15.0.1/skylighting-0.15.0.1.tar.gz" "$FW/curl.log"; then ok; else ng "fetch-wasm-packages: the archives come from Hackage"; fi
+if [ "$(cat "$FW/root/third_party/wasm-packages/skylighting-core-0.15.0.1/A.hs")" = "module A" ] &&
+  [ "$(cat "$FW/root/third_party/wasm-packages/skylighting-0.15.0.1/B.hs")" = "module B" ]; then ok; else ng "fetch-wasm-packages: the patches are applied"; fi
 fw_tree >"$FW/tree1"
 # the archives are kept in third_party/downloads, and not fetched again
 # (docs/adr/0243)
-if cmp -s "$FW/archives/skylighting-core-0.15.tar.gz" "$FW/root/third_party/downloads/skylighting-core-0.15.tar.gz" &&
-  cmp -s "$FW/archives/skylighting-0.15.tar.gz" "$FW/root/third_party/downloads/skylighting-0.15.tar.gz"; then ok; else ng "fetch-wasm-packages: the archives are kept in third_party/downloads (docs/adr/0243)"; fi
+if cmp -s "$FW/archives/skylighting-core-0.15.0.1.tar.gz" "$FW/root/third_party/downloads/skylighting-core-0.15.0.1.tar.gz" &&
+  cmp -s "$FW/archives/skylighting-0.15.0.1.tar.gz" "$FW/root/third_party/downloads/skylighting-0.15.0.1.tar.gz"; then ok; else ng "fetch-wasm-packages: the archives are kept in third_party/downloads (docs/adr/0243)"; fi
 : >"$FW/curl.log"
 run fetch_wasm
 expect "fetch-wasm-packages: a second run passes" 0
 fw_tree >"$FW/tree2"
 if cmp -s "$FW/tree1" "$FW/tree2"; then ok; else ng "fetch-wasm-packages: two runs make the same tree"; fi
 if [ ! -s "$FW/curl.log" ]; then ok; else ng "fetch-wasm-packages: the archives in third_party/downloads are not fetched again (docs/adr/0243)"; fi
-printf 'other\n' >"$FW/root/third_party/downloads/skylighting-0.15.tar.gz"
+printf 'other\n' >"$FW/root/third_party/downloads/skylighting-0.15.0.1.tar.gz"
 run fetch_wasm
-if [ "$CODE" = 0 ] && [ "$(grep -c . "$FW/curl.log")" = 1 ] && cmp -s "$FW/archives/skylighting-0.15.tar.gz" "$FW/root/third_party/downloads/skylighting-0.15.tar.gz"; then ok; else ng "fetch-wasm-packages: an archive of another SHA-256 in third_party/downloads is fetched again (docs/adr/0243)"; fi
+if [ "$CODE" = 0 ] && [ "$(grep -c . "$FW/curl.log")" = 1 ] && cmp -s "$FW/archives/skylighting-0.15.0.1.tar.gz" "$FW/root/third_party/downloads/skylighting-0.15.0.1.tar.gz"; then ok; else ng "fetch-wasm-packages: an archive of another SHA-256 in third_party/downloads is fetched again (docs/adr/0243)"; fi
 # one character of the SHA-256 changed: nothing is unpacked
 rm -rf "$FW/root/third_party"
 sed 's/^\(CORE_SHA=.\{63\}\)./\1x/' "$FW/root/scripts/fetch-wasm-packages.sh" >"$FW/bad-sha.sh"
@@ -3561,10 +3561,10 @@ cp "$FW/bad-sha.sh" "$FW/root/scripts/fetch-wasm-packages.sh"
 rm -rf "$FW/root/third_party"
 run fetch_wasm
 expect "fetch-wasm-packages: an archive of another SHA-256 fails" 1
-if [ ! -e "$FW/root/third_party/wasm-packages/skylighting-core-0.15" ]; then ok; else ng "fetch-wasm-packages: an archive of another SHA-256 is not unpacked"; fi
+if [ ! -e "$FW/root/third_party/wasm-packages/skylighting-core-0.15.0.1" ]; then ok; else ng "fetch-wasm-packages: an archive of another SHA-256 is not unpacked"; fi
 cp "$FW/good.sh" "$FW/root/scripts/fetch-wasm-packages.sh"
 # a patch that does not apply fails
-printf -- '--- a/A.hs\n+++ b/A.hs\n@@ -1,2 +1 @@\n module X\n-import Y\n' >"$FW/root/scripts/wasm/patches/skylighting-core-0.15.patch"
+printf -- '--- a/A.hs\n+++ b/A.hs\n@@ -1,2 +1 @@\n module X\n-import Y\n' >"$FW/root/scripts/wasm/patches/skylighting-core-0.15.0.1.patch"
 run fetch_wasm
 expect "fetch-wasm-packages: a patch that does not apply fails" 1
 
