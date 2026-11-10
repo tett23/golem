@@ -704,6 +704,12 @@ golem-font のテストが、このフォントの `num_charmaps` が元のフ�
 `compare.sh` は、入力ごとの組版を `COMPARE_TIMEOUT` 秒（既定は 600 秒）で止め、止めた入力の終了の状態を `exit timeout` と書く。
 止まらない入力で、CI のジョブが時間切れまで待たないためである。
 
+`scripts/ci/test.sh` は、止めた入力のホストの子が残らないことを、偽のホストが作業の場所に書いた子の PID に `kill -0` を送って確かめる（[ADR 0303](adr/0303-check-only-the-processes-a-test-started.md)）。
+PID が書かれていなければ、断言は失敗する。
+`pgrep -P` がテスト自身の子を一覧できない環境では、`compare.sh` も子を見つけられないので、この断言は `SKIP` になる。
+テストのスクリプト（`scripts/**/test*.sh`、`scripts/ci/test-suites.sh`、`tools/editors/**/test.sh`）は、プロセスの状態をそのテストが起動したプロセスの PID でだけ調べる。
+`-P` を伴わない `pgrep`、`pkill`、`killall` と、すべてのプロセスを並べる `ps` を使う行があれば、`scripts/ci/test.sh` が `ファイル:行` を出して失敗する。
+
 夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` をほかの実行環境で動かす。
 Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、wasmtime 49.0.5 の C API と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno`、`--wasmtime`、`--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
 
@@ -3627,6 +3633,7 @@ PDF では、段落と見出しの罫線を、格子の行を単位とする罫�
 
 `size` と `lines` を省いた見出しは、キーごとに次の既定の値で組む（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）。
 本の言語（マニフェストの `language`）が `ja` で始まる本と、ほかの言語の本とで、`lines` の既定が違う。
+`language` は英小文字にしてから比べるので、`JA` で始まる本も `ja` の本として扱う。
 `zw` は版面の文字の大きさを一字とする。
 
 | 階層 | `size` | `lines`（`ja`） | `lines`（ほかの言語） |
@@ -5590,8 +5597,6 @@ W2 は、[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-acro
 プルリクエストの CI は部品 2 個まで、毎晩の `enum.yml` は部品 3 個まで調べる（`GOLEM_ENUM_JOINED_DEPTH`）。
 
 引用の印を部品に足した列挙（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）は、プルリクエストの CI で部品 2 個まで、毎晩の `enum.yml` で部品 3 個まで調べる（`GOLEM_ENUM_CITE_DEPTH`）。
-ただし、区間の外で両用の字が印のすぐ隣にある入力では、C2 を調べない。
-印は両用の字の最も近い字を探すのを止めるが、C2 が比べる、印を同じ文字列のテキストにした段落では止めないので、両用の字の役割が違うためである（[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md)）。
 
 本文の中のコードの並びも、同じ述語と、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の C1 から C8 と、[golem-layout ADR 0045](golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md) の J1 から J7 で調べる（C3 と C4 は J3 と J5 に置き換えた）。
 部品は、和文の `漢`、`あ`、`「`、`」`、`。`、`、`、`ー`、`ぁ`、`…` と、欧文の `a`、`ab`、`1`、`/`、`_`、`-`、`.`、`"` と、空白の 18 である（`-`、`.`、`1` は 0045 で足した）。
@@ -5670,10 +5675,13 @@ PDF では、両用の文字の役割を区間の言語で決め、次のよう�
 字の並びは、段落のインラインを順にたどり、テキストの字をつないだものである。
 文字スタイル、色、リンク、言語の区間、圏点、解決した参照の境目は、字の並びを切らない。
 項目を作らないインライン（索引の印などのアンカーと、ソフトハイフン）は飛ばす。
+引用の印に当たったら、印の文字列（既定の書式では `[1]`、`[1, p. 5]` など）の字を、字の並びの字として読む（[ADR 0298](adr/0298-read-the-text-of-a-citation-mark-for-characters-of-both-scripts.md)）。
+印の外から探すときは、印の文字列の、探す向きの端から字を読む。
+既定の書式の印は `[` で始まり `]` で終わるので、印のすぐ隣の両用の字は欧文の語に入る。
 
 探すのをやめて、その側に欧文の字はないものとする場合は、次の三つである。
 
-- ルビ、縦中横、番号、本文の中のコード、注の印、引用の印、強制改行、`[aki]` に当たったとき
+- ルビ、縦中横、番号、本文の中のコード、注の印、強制改行、`[aki]` に当たったとき
 - 空白に当たったとき
 - 段落の端に着いたとき
 
@@ -6483,7 +6491,7 @@ PDF では、ページ下（脚注）か章末（章末注）かを `[notes]` �
 マニフェストの章に属さないファイルは、それぞれが一つの章になる。
 章末の注の一覧には、章の中のすべての注（本文、見出し、図版のキャプション、表のセル、定義リスト、リストの項目の中の注）を、文書の中の出現の順に並べる。
 注のない章には一覧を置かない。
-一覧の前には見出しを置き、その文言は、マニフェストの `language` が `ja` で始まれば「注」、そうでなければ（空の言語を含む）「Notes」とする。
+一覧の前には見出しを置き、その文言は、マニフェストの `language` を英小文字にしたものが `ja` で始まれば「注」、そうでなければ（空の言語を含む）「Notes」とする。
 文言を変える設定はない。
 
 PDF の章末の注は、次のように組む。
@@ -6784,7 +6792,7 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 参考文献のスタイル（誌ごとの書式、TeX と互換の書式）は選べず、どの本もこの節の書式で組む（スタイルを選べるようにする予定は [docs/roadmap.md](roadmap.md)）。
 
 書式は、項目ごとに和文の項目か欧文の項目かで変わる。
-項目の `language` があれば、その主の副タグ（最初の `-` の前）が `ja` のとき和文の項目とし、それ以外は欧文の項目とする。
+項目の `language` があれば、その主の副タグ（最初の `-` の前を英小文字にしたもの）が `ja` のとき和文の項目とし、それ以外は欧文の項目とする。
 `language` がなければ、題、著者、発行者のうち最初にある欄が和字（平仮名、片仮名、CJK 統合漢字とその拡張 A、CJK 互換漢字、「々」「〆」「〇」）を含むとき和文の項目とする。
 `language` が `zh` や `ko` の項目は、欧文の項目として組む。
 

@@ -90,7 +90,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **ターゲット**：出力する形式。PDF、EPUB、HTML、プレーンテキストの四つがある。`golem build` は既定で四つすべてを生成し、`--target` で絞れる（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。
 - **出力に書けない文字**：XML 1.0 の `Char` に当たらない文字。タブ、改行、復帰以外の U+0000 から U+001F と、U+FFFE、U+FFFF、サロゲートの符号位置である。出力の側で置き換えず、原稿では G02089、`manifest.toml` では G03028、参考文献の CSL-JSON のファイルでは G03108 として、どのターゲットでも読み込みの段階で拒む（[仕様書](specifications.md)、[docs/adr/0042](adr/0042-control-characters-and-glob-metacharacters.md)）。
 - **PDF/X-4**：印刷用の PDF の規格（ISO 15930-7:2010）。出力インテント、フォントの埋め込み、XMP のメタデータなどを求める（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)）。
-- **出力インテント**：印刷の条件を表す ICC プロファイル。v1 では Japan Color 2001 Coated とし、色の名前と CMYK の値はこれに結び付けて定義する。
+- **出力インテント**：印刷の条件を表す ICC プロファイル。Golem は Japan Color 2001 Coated を想定し、色の名前と CMYK の値はこれに結び付けて定義する（[仕様書](specifications.md)）。
 - **スウォッチ**：名前を付けた色。`style.toml` に CMYK の値で定義し、原稿からは名前で指す。
 - **シェイピング**：文字の並びを、フォントのグリフの並びと位置に変換すること。合字、カーニング、縦書き用の字形の置き換えを含み、HarfBuzz で行う（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)）。
 - **サブセット化**：フォントを、文書で使ったグリフだけを含む形に縮めること。Golem はグリフ番号を振り直さずに保つ（[golem-font ADR 0002](golem-font/adr/0002-subsetting-and-embedding.md)）。
