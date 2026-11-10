@@ -1186,7 +1186,8 @@ bibliographyLines bib cites =
 of the book that is not a break, at the soft hyphen ([shy] where it is
 written so), in the order of the documents and their blocks. A soft
 hyphen without a letter of its element on either side is G07123, one in
-text that does not break G07124; one before the first letter of its
+text that does not break, or next to it with a letter on either side,
+G07124 (docs/adr ADR 0297); one before the first letter of its
 element is neither. The lines Golem makes are not read: what they show is
 written in the source, and reported there.
 -}
@@ -1200,7 +1201,7 @@ softHyphenNotices inp =
     (sp, off, note) <- softHyphenSites env is,
     let (code, msg) = case note of
           ShyNotBetweenLetters -> ("G07123", "ソフトハイフンの前か後ろが語の字でないので、分割の候補にしません")
-          ShyInUnbreakable -> ("G07124", "改行しない文字（コード、URL、リンク、改行しない範囲）の中のソフトハイフンなので、分割の候補にしません")
+          ShyInUnbreakable -> ("G07124", "改行しない文字（コード、URL、リンク、改行しない範囲）の中か隣のソフトハイフンなので、分割の候補にしません")
   ]
   where
     sources = Map.map (TE.encodeUtf8 . sfText) (projectSources (piProject inp))
