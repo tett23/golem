@@ -343,7 +343,7 @@ elements of ruby, references, notes and code.
 -}
 composeInlinesTree :: ComposeEnv -> [Inline] -> ([Item], [Anchor], [InlineNode])
 composeInlinesTree env inls =
-  let (nodes, sourced0) = structured env inls
+  let (nodes, sourced0) = fmap mergeSpaces (structured env inls)
       sourced = [(src, p) | (_, src, p) <- sourced0]
       leaves = [l | (l, _, _) <- sourced0]
       -- padCode and scriptRanges keep one piece for each piece
@@ -389,6 +389,22 @@ composeInlinesTree env inls =
    in (finish kept, [f (at i) | (i, f) <- reverse anchors], nodes)
   where
     finish its = its <> lineEnd
+
+{- | The spaces between words on both sides of inline boundaries as one
+(docs/adr ADR 0284): of two or more spaces outside code with nothing but
+anchors and soft hyphens between them, the first is kept and the others
+go, with their sources. A space of inline code is no such space
+(golem-layout ADR 0017).
+-}
+mergeSpaces :: [(Int, Sourced, Piece)] -> [(Int, Sourced, Piece)]
+mergeSpaces = go False
+  where
+    go _ [] = []
+    go afterSpace (x@(_, _, p) : rest) = case p of
+      PSpace lk _ | not (lkCode lk) -> if afterSpace then go True rest else x : go True rest
+      PAnchor _ -> x : go afterSpace rest
+      PShy {} -> x : go afterSpace rest
+      _ -> x : go False rest
 
 -- | The structure of the inlines of 'composeInlinesTree', without composing them.
 inlineStructure :: ComposeEnv -> [Inline] -> [InlineNode]
