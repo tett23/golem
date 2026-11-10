@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # a scheduled run compares its commit with the head of the last
@@ -50,7 +50,7 @@ jobs:
           echo "GHC_DIR=${GHCUP_INSTALL_BASE_PREFIX:-$HOME}/.ghcup/ghc/$GHC_VERSION" >> "$GITHUB_ENV"
       - name: Restore GHC (docs/adr/0009)
         if: steps.needed.outputs.run == 'true'
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.GHC_DIR }}
           key: ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
@@ -62,7 +62,7 @@ jobs:
         run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
       - id: setup
         if: steps.needed.outputs.run == 'true'
-        uses: haskell-actions/setup@v2
+        uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2.12.1
         with:
           ghc-version: ${{ env.GHC_VERSION }}
           cabal-version: "3.16.1.0"
@@ -84,7 +84,7 @@ jobs:
       - id: index
         name: Restore the Hackage index (docs/adr/0009)
         if: steps.needed.outputs.run == 'true'
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cabal/packages/hackage.haskell.org
           key: hackage-index-${{ hashFiles('cabal.project.freeze') }}
@@ -92,14 +92,14 @@ jobs:
         run: cabal update
       - name: Restore the cabal store
         if: steps.needed.outputs.run == 'true'
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.setup.outputs.cabal-store }}
           key: cabal-store-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}
           restore-keys: cabal-store-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-
       - name: Restore dist-newstyle (docs/adr/0009)
         if: steps.needed.outputs.run == 'true'
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: dist-newstyle
           key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-${{ github.sha }}

@@ -1,6 +1,6 @@
 # ADR 0035: 信頼できない入力に対する防御を固める
 
-ステータス: 採択→読めない図版の診断は [golem-pdf ADR 0008](../golem-pdf/adr/0008-pdf-figures.md)
+ステータス: 採択→読めない図版の診断は [golem-pdf ADR 0008](../golem-pdf/adr/0008-pdf-figures.md)、action をタグで指定し SHA で固定しないことは [ADR 0296](0296-pin-every-github-action-by-commit-sha.md)
 
 ## 文脈
 
