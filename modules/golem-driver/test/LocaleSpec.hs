@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 {- | The locale does not reach the output (docs/adr/0002-determinism.md):
 with the encoding of the process set to EUC-JP, build writes the HTML and
 the plain text in the same UTF-8 bytes, and golem new writes its template
@@ -12,7 +14,9 @@ import Data.Map.Strict qualified as Map
 import Data.Text.Encoding qualified as TE
 import GHC.IO.Encoding (getLocaleEncoding, mkTextEncoding, setLocaleEncoding, utf8)
 import Golem.Driver
+#ifdef GOLEM_PLUGINS
 import Golem.Driver.New
+#endif
 import Golem.Syntax
 import Support
 import System.FilePath ((</>))
@@ -24,34 +28,45 @@ localeTests :: TestTree
 localeTests =
   testGroup
     "the locale does not change the output (docs/adr/0002-determinism.md)"
-    [ testCase "HTML and plain text are the same UTF-8 bytes under EUC-JP" $ do
-        ref <- withEncoding "UTF-8" builtOutputs
-        euc <- withEncoding "EUC-JP" builtOutputs
-        map fst ref
-          @?= [ "html/chapters/01.xhtml",
-                "html/chapters/02.xhtml",
-                "html/front.xhtml",
-                "html/index.xhtml",
-                "html/style.css",
-                "text/horizontal/chapters/01.txt",
-                "text/horizontal/chapters/02.txt",
-                "text/horizontal/front.txt",
-                "text/vertical/chapters/01.txt",
-                "text/vertical/chapters/02.txt",
-                "text/vertical/front.txt"
-              ]
-        map fst euc @?= map fst ref
-        forM_ (zip ref euc) $ \((p, a), (_, b)) -> assertEqual p a b
-        -- the fixture's heading, in UTF-8
-        case lookup "html/chapters/01.xhtml" ref of
-          Nothing -> assertFailure (show (map fst ref))
-          Just b -> assertBool "はじめに in UTF-8" (TE.encodeUtf8 "はじめに" `BS.isInfixOf` b),
-      testCase "golem new writes the template in UTF-8 under EUC-JP" $ withSystemTempDirectory "golem-new" $ \tmp -> do
-        let files = templateFiles Japanese uuid0
-        r <- withEncoding "EUC-JP" (createProject (tmp </> "book") files Nothing)
-        r @?= Right (Plan (map fst files) False)
-        forM_ files $ \(p, t) -> BS.readFile (tmp </> "book" </> p) >>= assertEqual p (TE.encodeUtf8 t)
-    ]
+    ( [ testCase "HTML and plain text are the same UTF-8 bytes under EUC-JP" $ do
+          ref <- withEncoding "UTF-8" builtOutputs
+          euc <- withEncoding "EUC-JP" builtOutputs
+          map fst ref
+            @?= [ "html/chapters/01.xhtml",
+                  "html/chapters/02.xhtml",
+                  "html/front.xhtml",
+                  "html/index.xhtml",
+                  "html/style.css",
+                  "text/horizontal/chapters/01.txt",
+                  "text/horizontal/chapters/02.txt",
+                  "text/horizontal/front.txt",
+                  "text/vertical/chapters/01.txt",
+                  "text/vertical/chapters/02.txt",
+                  "text/vertical/front.txt"
+                ]
+          map fst euc @?= map fst ref
+          forM_ (zip ref euc) $ \((p, a), (_, b)) -> assertEqual p a b
+          -- the fixture's heading, in UTF-8
+          case lookup "html/chapters/01.xhtml" ref of
+            Nothing -> assertFailure (show (map fst ref))
+            Just b -> assertBool "はじめに in UTF-8" (TE.encodeUtf8 "はじめに" `BS.isInfixOf` b)
+      ]
+        <> newTemplateTests
+    )
+
+-- | golem new, only with the plugins, as the library (docs/adr ADR 0300).
+newTemplateTests :: [TestTree]
+#ifdef GOLEM_PLUGINS
+newTemplateTests =
+  [ testCase "golem new writes the template in UTF-8 under EUC-JP" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+      let files = templateFiles Japanese uuid0
+      r <- withEncoding "EUC-JP" (createProject (tmp </> "book") files Nothing)
+      r @?= Right (Plan (map fst files) False)
+      forM_ files $ \(p, t) -> BS.readFile (tmp </> "book" </> p) >>= assertEqual p (TE.encodeUtf8 t)
+  ]
+#else
+newTemplateTests = []
+#endif
 
 -- | Runs the action with the locale encoding of the process set, and restores it.
 withEncoding :: String -> IO a -> IO a
