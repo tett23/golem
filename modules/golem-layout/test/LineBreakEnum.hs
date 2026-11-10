@@ -19,6 +19,8 @@ module LineBreakEnum
   ( jaParts,
     latinParts,
     pairParts,
+    unitParts,
+    partsBefore0275,
     parts,
     hasLatin,
     Setting (..),
@@ -99,9 +101,22 @@ of them an ideograph.
 pairParts :: [Text]
 pairParts = map T.singleton "１％￥"
 
--- | The 27 parts of the runs: the 24 of docs/adr/0209 and the 3 of golem-layout ADR 0049.
+{- | The part of the numbers and units (docs/adr/0275, its test design): a
+kanji after a digit, the pair of the ADR with １.
+-}
+unitParts :: [Text]
+unitParts = ["円"]
+
+{- | The 27 parts before docs/adr/0275: the 24 of docs/adr/0209 and the 3 of
+golem-layout ADR 0049. The hashes of golem-layout ADR 0049 and docs/adr/0274
+were written over their runs.
+-}
+partsBefore0275 :: [Text]
+partsBefore0275 = jaParts <> latinParts <> pairParts
+
+-- | The 28 parts of the runs: those of 'partsBefore0275' and the one of docs/adr/0275.
 parts :: [Text]
-parts = jaParts <> latinParts <> pairParts
+parts = partsBefore0275 <> unitParts
 
 {- | Whether a run has a Latin part or a character of both scripts: the
 protrusion, the expansion and the language can only matter then. The soft

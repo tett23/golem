@@ -55,6 +55,7 @@ import LineBreakingSpec (lineBreakingTests)
 import LinkSpec (linkTests)
 import NoBreakEnum (noBreakTests)
 import NoteSplitSpec (noteSplitTests)
+import NumberUnitSpec (numberUnitTests)
 import OverflowSpec (overflowTests)
 import PaginateInvariantsSpec (invariantTests)
 import PaginateSpec (paginateTests)
@@ -398,6 +399,7 @@ tests =
       urlBreakTests,
       pullInTests,
       unbreakablePairsTests,
+      numberUnitTests,
       linkTests,
       featuresTests,
       scriptTests,

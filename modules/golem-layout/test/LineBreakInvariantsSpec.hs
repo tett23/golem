@@ -169,11 +169,12 @@ runsT = listsOf (Tiers [parts])
 
 enumerationTests :: [TestTree]
 enumerationTests =
-  [ testCase "there are 27 parts: 15 Japanese characters, 4 Latin words, 4 Latin signs, the soft hyphen (docs/adr ADR 0272), and a digit and two abbreviations (golem-layout ADR 0049)" $ do
+  [ testCase "there are 28 parts: 15 Japanese characters, 4 Latin words, 4 Latin signs, the soft hyphen (docs/adr ADR 0272), a digit and two abbreviations (golem-layout ADR 0049), and a unit (docs/adr/0275)" $ do
       length jaParts @?= 15
       length latinParts @?= 9
       length pairParts @?= 3
-      length (nub parts) @?= 27,
+      length unitParts @?= 1
+      length (nub parts) @?= 28,
     testCase "in lines of 2 em, the inputs of up to 1 part are as many as the parts and the settings allow" $ do
       let made = [i | t <- upTo 1 (groupT (normalGroups 5)), g <- t, i <- groupInputs g, inWidth i == 2]
           -- before the run 0 or 1 'あ', after it none or 2 'い'
@@ -181,12 +182,12 @@ enumerationTests =
           -- the empty run; 9 Japanese parts of one setting (漢あ「」〜！・ゝ and the
           -- ideographic space); the soft hyphen, of one setting too (docs/adr
           -- ADR 0272); the 3 parts of the pairs, of one setting too
-          -- (golem-layout ADR 0049); ー and ぁ, strict and loose; 。 and 、,
+          -- (golem-layout ADR 0049) and the unit 円 (docs/adr/0275); ー and ぁ, strict and loose; 。 and 、,
           -- with and without hanging; 10 parts of Latin text or of both
           -- scripts (… — and the 8 other Latin parts), with and without
           -- protrusion, in no span, en, fr (docs/adr ADR 0276) and ja, with and
           -- without the expansion
-          runs = 1 + 9 + 1 + 3 + 2 * 2 + 2 * 2 + 10 * (2 * 4 * 2)
+          runs = 1 + 9 + 1 + 3 + 1 + 2 * 2 + 2 * 2 + 10 * (2 * 4 * 2)
       length made @?= placed * runs,
     testCase "the normal form: up to 2 parts (1 on pull requests), the inputs it leaves out give 'breakParagraph' no value it is not given" $ do
       -- the values (items, width, expansion and protrusion) of every
@@ -533,7 +534,8 @@ handParagraph w its =
       pItems = its,
       pParams = defaultParams,
       pBreaks = breakParagraph defaultParams (const w) its,
-      pAdvance = advance
+      pAdvance = advance,
+      pNumberUnit = infPenalty
     }
 
 -- * the regressions
@@ -613,14 +615,15 @@ paragraphWith :: [Item] -> Input -> Paragraph
 paragraphWith = paragraphAdjusted balancedAdjust
 
 {- | The line adjustment of an input (docs/adr/0274): pulling in first or
-balanced, and the stretch limit in permille, or none.
+balanced, and the stretch limit in permille, or none; and the penalty of a
+number and its unit (docs/adr/0275), which the items are composed with.
 -}
-data Adjust = Adjust {aPullIn :: !Bool, aLimit :: !(Maybe Int)}
+data Adjust = Adjust {aPullIn :: !Bool, aLimit :: !(Maybe Int), aNumberUnit :: !Int}
   deriving stock (Eq, Show)
 
--- | The adjustment of 'defaultParams': balanced, no limit.
+-- | The adjustment of 'defaultParams' and 'defaultComposeEnv': balanced, no limit, numbers kept with their units.
 balancedAdjust :: Adjust
-balancedAdjust = Adjust False Nothing
+balancedAdjust = Adjust False Nothing 10000
 
 {- | The adjustments of the inputs at a depth (docs/adr/0274, its test
 design). Past 'linesPrDepth', as the nightly job checks: both values of
@@ -632,10 +635,17 @@ inputs balanced and without a limit are broken and placed as before the
 ADR (R1), which the enumeration checked; the limits are checked on the
 paragraphs made by hand and by R7.
 -}
-adjustsAt :: Int -> [Adjust]
-adjustsAt depth
-  | depth > linesPrDepth = [Adjust p l | p <- [False, True], l <- [Nothing, Just 0, Just 2500]]
-  | otherwise = [Adjust True Nothing]
+adjustsAt :: Int -> [Text] -> [Adjust]
+adjustsAt depth run =
+  [ Adjust p l n
+  | (p, l) <- if depth > linesPrDepth then [(p, l) | p <- [False, True], l <- [Nothing, Just 0, Just 2500]] else [(True, Nothing)],
+    -- the penalty 50 of a number and its unit only where the run has a digit (docs/adr/0275, its test design)
+    n <- 10000 : [50 | "１" `elem` run]
+  ]
+
+-- | The items of an input in an adjustment: composed with its penalty of a number and its unit.
+itemsAdjusted :: Adjust -> Setting -> Int -> [Text] -> Int -> [Item]
+itemsAdjusted a s pre run post = fst (composeInlines ((composeEnv False s) {ceNumberUnitPenalty = aNumberUnit a}) (inlinesOf s pre run post))
 
 -- | The parameters with an adjustment.
 withAdjust :: Adjust -> Params -> Params
@@ -655,7 +665,8 @@ paragraphAdjusted a its i =
           pItems = its,
           pParams = ps,
           pBreaks = br,
-          pAdvance = advance
+          pAdvance = advance,
+          pNumberUnit = aNumberUnit a
         }
 
 {- | A known bug: its item in 「既知の不具合」 of the specification, the
@@ -676,7 +687,7 @@ lineBugs = []
 
 -- | The breaches of an input no known bug excuses, and whether each known bug excuses one.
 judged :: Int -> (Input, Adjust) -> ([Breach], [Bool])
-judged limit (i, a) = judgedAs limit i (paragraphAdjusted a (itemsOf False (inSetting i) (inPre i) (inRun i) (inPost i)) i)
+judged limit (i, a) = judgedAs limit i (paragraphAdjusted a (itemsAdjusted a (inSetting i) (inPre i) (inRun i) (inPost i)) i)
 
 -- | 'judged' of the paragraph given for the input.
 judgedAs :: Int -> Input -> Paragraph -> ([Breach], [Bool])
@@ -702,8 +713,9 @@ instance Monoid Excused where
 -- | The violations of the first input of a group that has some, and the known bugs that excuse its inputs.
 judgeGroup :: Int -> Int -> Group -> ([Violation], Excused)
 judgeGroup depth limit g =
-  let its = itemsOf False (gSetting g) (gPre g) (gRun g) (gPost g)
-      results = [((i, a), judgedAs limit i (paragraphAdjusted a its i)) | i <- groupInputs g, a <- adjustsAt depth]
+  let itsOf n = itemsAdjusted balancedAdjust {aNumberUnit = n} (gSetting g) (gPre g) (gRun g) (gPost g)
+      composed = [(n, itsOf n) | n <- [10000, 50]]
+      results = [((i, a), judgedAs limit i (paragraphAdjusted a its i)) | i <- groupInputs g, a <- adjustsAt depth (gRun g), Just its <- [lookup (aNumberUnit a) composed]]
       excused = Excused (foldr (zipWith (+) . map fromEnum . snd . snd) (map (const 0) lineBugs) results)
    in case [(i, bs) | (i, (bs, _)) <- results, not (null bs)] of
         (i, bs) : _ -> ([Violation (show (breachOf b)) (breachWhy b) | b <- bs] <> [Violation "input" (show i)], excused)
@@ -711,7 +723,7 @@ judgeGroup depth limit g =
 
 -- | The first input of a group that breaks an invariant no known bug excuses.
 firstBroken :: Int -> Int -> Group -> Maybe (Input, Adjust)
-firstBroken depth limit g = case [ia | i <- groupInputs g, a <- adjustsAt depth, let ia = (i, a), not (null (fst (judged limit ia)))] of
+firstBroken depth limit g = case [ia | i <- groupInputs g, a <- adjustsAt depth (gRun g), let ia = (i, a), not (null (fst (judged limit ia)))] of
   i : _ -> Just i
   [] -> Nothing
 
@@ -729,7 +741,7 @@ drawInput maxWidth n g0 =
       (pre, post, ws) = placing
       (w, g4) = oneOf ws g3
       (e, g5) = if hasLatin run then oneOf [False, True] g4 else (False, g4)
-      (a, g6) = oneOf (adjustsAt maxBound) g5
+      (a, g6) = oneOf (adjustsAt maxBound run) g5
    in ((Input s e w pre run post, a), g6)
 
 -- | The input with parts of its run taken out as long as it still breaks an invariant no known bug excuses.
@@ -775,9 +787,13 @@ before the ADR.
 balancedLines :: Text
 balancedLines =
   let -- each run hashed on every processor, then written in the order of the runs
-      (_, hashes) = tallyAllPar 2 runsT (\run -> ([], Map.singleton run (hashOf run)))
-      hashOf run = T.pack (showHex (fnv (concat [placedKey (paragraphWith its i) | g <- normalGroups 5 run, sLang (gSetting g) /= Just "fr", let its = itemsOf False (gSetting g) (gPre g) (gRun g) (gPost g), i <- groupInputs g])) "")
-   in T.unlines [T.intercalate "\t" [T.pack (show run), Map.findWithDefault "" run hashes] | run <- concat (upTo 2 runsT)]
+      -- the runs of the parts before docs/adr/0275, as the hashes were written
+      runs0274 = listsOf (Tiers [partsBefore0275])
+      (_, hashes) = tallyAllPar 2 runs0274 (\run -> ([], Map.singleton run (hashOf run)))
+      -- without the span of fr (docs/adr ADR 0276) and the change of
+      -- docs/adr/0275, as the hashes were written before them
+      hashOf run = T.pack (showHex (fnv (concat [placedKey (paragraphWith its i) | g <- normalGroups 5 run, sLang (gSetting g) /= Just "fr", let its = withoutNumberUnits False (T.replicate (gPre g) "あ" <> T.concat run <> T.replicate (gPost g) "い") (itemsOf False (gSetting g) (gPre g) (gRun g) (gPost g)), i <- groupInputs g])) "")
+   in T.unlines [T.intercalate "\t" [T.pack (show run), Map.findWithDefault "" run hashes] | run <- concat (upTo 2 runs0274)]
 
 -- | R7 of docs/adr/0274: the breaks of each input with each limit, pulling in first and not, are those without a limit.
 limitMisses :: Int -> [Text] -> [Violation]
@@ -787,8 +803,8 @@ limitMisses maxWidth run =
     let its = itemsOf False (gSetting g) (gPre g) (gRun g) (gPost g),
     i <- groupInputs g,
     p <- [False, True],
-    let breaksOf l = let br = pBreaks (paragraphAdjusted (Adjust p l) its i) in (brPositions br, brDemerits br, brPass br),
-    a <- [Adjust p (Just m) | m <- [0, 1000, 2500]],
+    let breaksOf l = let br = pBreaks (paragraphAdjusted (Adjust p l 10000) its i) in (brPositions br, brDemerits br, brPass br),
+    a <- [Adjust p (Just m) 10000 | m <- [0, 1000, 2500]],
     breaksOf (aLimit a) /= breaksOf Nothing
   ]
 
