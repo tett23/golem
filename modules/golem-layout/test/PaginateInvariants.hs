@@ -54,6 +54,10 @@ module PaginateInvariants
     waitingFigures,
     invariants,
     breaches,
+    Seen,
+    seen,
+    breachesIn,
+    movedBreaches,
   )
 where
 
@@ -80,8 +84,68 @@ data Invariant = I1 | I2 | I3 | I4 | I5 | I6 | I7 | I8 | P1 | P2 | P3 | P4 | P5 
 data Breach = Breach {breachOf :: !Invariant, breachAt :: ![Int], breachWhy :: !String}
   deriving stock (Eq, Show)
 
--- | A predicate over the flow and the columns.
-type Check = [Flow] -> [PageOut] -> [Breach]
+-- | A predicate over the flow and the columns, read through 'Seen'.
+type Check = Seen -> [Breach]
+
+{- | The flow and the columns, with what several predicates read of them:
+each is made once for an input, however many predicates read it, since
+every predicate is judged on every input (docs/adr ADR 0281, its section
+4: the tests are made faster by not making the same thing again). Each
+field is what the function named in its comment returns.
+-}
+data Seen = Seen
+  { seenFlows :: [Flow],
+    seenOut :: [PageOut],
+    -- | 'ordered'
+    seenOrdered :: [PageOut],
+    -- | 'slotsOf'
+    seenSlots :: [(Place, PageOut, Slotted)],
+    -- | 'linePlacesOf'
+    seenLinePlaces :: Map Int (Place, PageOut),
+    -- | 'figurePlacesOf'
+    seenFigurePlaces :: Map Int Place,
+    -- | 'waitingFigures'
+    seenWaitingFigures :: [Int],
+    -- | 'waitingAndLeftWith'
+    seenWaitingAndLeft :: ([([Flow], Flow)], [Flow]),
+    -- | 'blanksBeforeWith'
+    seenBlanksBefore :: [([SrcSpan], Int, Flow)],
+    -- | 'droppedBlanks'
+    seenDropped :: Map SrcSpan Int,
+    -- | 'labelsOf'
+    seenLabels :: [(Int, PageLabel)],
+    -- | 'firstsOf'
+    seenFirsts :: Map Int [Int],
+    -- | 'extentIn'
+    seenExtent :: Slotted -> Int,
+    -- | 'noteMarks'
+    seenNoteMarks :: Map NoteId Int
+  }
+
+-- | The flow and the columns, with nothing read of them yet: each field is made when a predicate first reads it.
+seen :: [Flow] -> [PageOut] -> Seen
+seen flows ps =
+  let cols = ordered ps
+      placed = slotsOf cols
+      extent = extentIn flows
+      figures = waitingFiguresWith cols placed extent flows ps
+      held = waitingAndLeftWith figures flows
+   in Seen
+        { seenFlows = flows,
+          seenOut = ps,
+          seenOrdered = cols,
+          seenSlots = placed,
+          seenLinePlaces = linePlacesOf placed,
+          seenFigurePlaces = figurePlacesOf placed,
+          seenWaitingFigures = figures,
+          seenWaitingAndLeft = held,
+          seenBlanksBefore = blanksBeforeWith (fst held) ps,
+          seenDropped = droppedBlanks ps,
+          seenLabels = labelsOf flows ps,
+          seenFirsts = firstsOf ps,
+          seenExtent = extent,
+          seenNoteMarks = noteMarks flows
+        }
 
 -- | Every invariant, with a footnote separator of the grid lines given.
 invariants :: Int -> [(Invariant, Check)]
@@ -106,8 +170,12 @@ invariants separator =
   ]
 
 -- | The breaches of every invariant, I1 first.
-breaches :: Int -> Check
-breaches separator flows ps = concatMap (\(_, c) -> c flows ps) (invariants separator)
+breaches :: Int -> [Flow] -> [PageOut] -> [Breach]
+breaches separator flows ps = breachesIn separator (seen flows ps)
+
+-- | 'breaches' of an input read through 'Seen'.
+breachesIn :: Int -> Seen -> [Breach]
+breachesIn separator judged = concatMap (\(_, c) -> c judged) (invariants separator)
 
 {- | The invariants of the inputs of the keep options (docs/adr/0261): those
 of 'invariants' with I4 and I5 replaced by K1 and K2, which read the keep
@@ -119,8 +187,8 @@ keepInvariants separator =
     <> [(K1, k1FirstPart), (K2, k2LastPart), (K3, k3KeepAll), (K4, k4KeepNext), (K5, k5Start), (K6, k6NoExtraStart)]
 
 -- | The breaches of 'keepInvariants'.
-keepBreaches :: Int -> Check
-keepBreaches separator flows ps = concatMap (\(_, c) -> c flows ps) (keepInvariants separator)
+keepBreaches :: Int -> [Flow] -> [PageOut] -> [Breach]
+keepBreaches separator flows ps = let judged = seen flows ps in concatMap (\(_, c) -> c judged) (keepInvariants separator)
 
 {- | The invariants of the inputs of boxes (docs/adr/0271): those of
 'invariants' and B1 to B3.
@@ -129,8 +197,8 @@ boxInvariants :: Int -> [(Invariant, Check)]
 boxInvariants separator = invariants separator <> [(B1, b1BoxShape), (B2, b2BoxNoOverflow separator), (B3, b3BoxParts)]
 
 -- | The breaches of 'boxInvariants'.
-boxBreaches :: Int -> Check
-boxBreaches separator flows ps = concatMap (\(_, c) -> c flows ps) (boxInvariants separator)
+boxBreaches :: Int -> [Flow] -> [PageOut] -> [Breach]
+boxBreaches separator flows ps = let judged = seen flows ps in concatMap (\(_, c) -> c judged) (boxInvariants separator)
 
 -- the input
 
@@ -185,17 +253,17 @@ slotFigure = \case
   SFigure i -> Just i
   _ -> Nothing
 
--- | Every slot with its place and its column.
-slots :: [PageOut] -> [(Place, PageOut, Slotted)]
-slots ps = [((c, k), p, s) | (c, p) <- zip [0 ..] (ordered ps), (k, (_, s)) <- zip [0 ..] (poSlots p)]
+-- | Every slot with its place and its column, of the columns in order ('ordered').
+slotsOf :: [PageOut] -> [(Place, PageOut, Slotted)]
+slotsOf cols = [((c, k), p, s) | (c, p) <- zip [0 ..] cols, (k, (_, s)) <- zip [0 ..] (poSlots p)]
 
--- | The place of each line placed (the first, if placed more than once).
-linePlaces :: [PageOut] -> Map Int (Place, PageOut)
-linePlaces ps = Map.fromListWith (\_ old -> old) [(i, (pl, p)) | (pl, p, s) <- slots ps, i <- slotLines s]
+-- | The place of each line placed (the first, if placed more than once), of the slots given ('slotsOf').
+linePlacesOf :: [(Place, PageOut, Slotted)] -> Map Int (Place, PageOut)
+linePlacesOf placed = Map.fromListWith (\_ old -> old) [(i, (pl, p)) | (pl, p, s) <- placed, i <- slotLines s]
 
--- | The place of each figure placed.
-figurePlaces :: [PageOut] -> Map Int Place
-figurePlaces ps = Map.fromListWith (\_ old -> old) [(i, pl) | (pl, _, s) <- slots ps, Just i <- [slotFigure s]]
+-- | The place of each figure placed, of the slots given ('slotsOf').
+figurePlacesOf :: [(Place, PageOut, Slotted)] -> Map Int Place
+figurePlacesOf placed = Map.fromListWith (\_ old -> old) [(i, pl) | (pl, _, s) <- placed, Just i <- [slotFigure s]]
 
 -- | The column of a line, in order.
 columnOf :: Map Int (Place, PageOut) -> Int -> Maybe Int
@@ -214,16 +282,16 @@ isHeadingSlot = \case
 and a blank page holds nothing.
 -}
 i1PlacedOnce :: Check
-i1PlacedOnce flows ps =
-  let placedLines = Map.fromListWith (+) [(i, 1 :: Int) | (_, _, s) <- slots ps, i <- slotLines s]
-      placedFigures = Map.fromListWith (+) [(i, 1 :: Int) | (_, _, s) <- slots ps, Just i <- [slotFigure s]]
+i1PlacedOnce sn@Seen {seenFlows = flows} =
+  let placedLines = Map.fromListWith (+) [(i, 1 :: Int) | (_, _, s) <- seenSlots sn, i <- slotLines s]
+      placedFigures = Map.fromListWith (+) [(i, 1 :: Int) | (_, _, s) <- seenSlots sn, Just i <- [slotFigure s]]
       once what counts i = case Map.findWithDefault 0 i counts of
         1 -> []
         n -> [Breach I1 [i] (what <> " " <> show i <> " placed " <> show n <> " times")]
    in concatMap (once "line" placedLines) (inputLines flows)
         <> concatMap (once "figure" placedFigures . fst) (inputFigures flows)
         <> [ Breach I1 [] ("blank page " <> show (poNumber p) <> " holds something")
-           | p <- ordered ps,
+           | p <- seenOrdered sn,
              poBlank p,
              not (null (poSlots p) && null (poFootnotes p))
            ]
@@ -238,15 +306,10 @@ taller than the column: golem-driver shrinks it to fit an empty one, and
 the input of pagination has none (docs/adr/0206).
 -}
 i2NoOverflow :: Int -> Check
-i2NoOverflow separator flows ps =
-  let spans = headingSpans flows
-      figures = Map.fromList (inputFigures flows)
-      firstLines = [l | FParagraph _ (l : _) <- flows]
-      extent = \case
-        SHeading l _ -> Map.findWithDefault 1 l spans
-        SFigure i -> Map.findWithDefault 1 i figures
-        _ -> 1
-      cols = ordered ps
+i2NoOverflow separator sn@Seen {seenFlows = flows} =
+  let firstLines = [l | FParagraph _ (l : _) <- flows]
+      extent = seenExtent sn
+      cols = seenOrdered sn
       continuedLater c note = or [k > 0 | p <- drop (c + 1) cols, (n, k, _) <- poFootnotes p, n == note]
       noteContinues c p = case poSlots p of
         (_, SLine i) : _ -> or [continuedLater c (nbId nb) | l <- firstLines, lbId l == i, nb <- lbNotes l]
@@ -270,11 +333,11 @@ figures; a figure may come out after the text that follows it in the
 input, never before the text that precedes it.
 -}
 i3Order :: Check
-i3Order flows ps =
+i3Order sn@Seen {seenFlows = flows} =
   let index = Map.fromList (zip (inputLines flows) [0 :: Int ..])
       figIndex = Map.fromList (zip (map fst (inputFigures flows)) [0 :: Int ..])
-      textOut = [i | (_, _, s) <- slots ps, i <- slotLines s]
-      figsOut = [i | (_, _, s) <- slots ps, Just i <- [slotFigure s]]
+      textOut = [i | (_, _, s) <- seenSlots sn, i <- slotLines s]
+      figsOut = [i | (_, _, s) <- seenSlots sn, Just i <- [slotFigure s]]
       inversions ix what out =
         [ Breach I3 [a, b] (what <> " " <> show b <> " comes out after " <> show a)
         | (a, b) <- zip out (drop 1 out),
@@ -282,8 +345,8 @@ i3Order flows ps =
           Just y <- [Map.lookup b ix],
           y < x
         ]
-      places = linePlaces ps
-      figPlaces = figurePlaces ps
+      places = seenLinePlaces sn
+      figPlaces = seenFigurePlaces sn
       -- the last line before each figure in the input
       before = go Nothing flows
         where
@@ -312,8 +375,8 @@ headings placed from the top of the column: such a column places lines
 as an empty one does (docs/adr/0206).
 -}
 i4NoOrphan :: Check
-i4NoOrphan flows ps =
-  let places = linePlaces ps
+i4NoOrphan sn@Seen {seenFlows = flows} =
+  let places = seenLinePlaces sn
    in [ Breach I4 [l1, l2] ("line " <> show l1 <> " is alone at the end of page " <> show (poNumber p) <> " column " <> show (poColumn p))
       | l1 : l2 : _ <- paragraphs flows,
         Just ((c1, k), p) <- [Map.lookup l1 places],
@@ -330,8 +393,8 @@ headings, and holds nothing else but lines of the paragraph: such a
 column places lines as an empty one does (docs/adr/0206).
 -}
 i5NoWidow :: Check
-i5NoWidow flows ps =
-  let places = linePlaces ps
+i5NoWidow sn@Seen {seenFlows = flows} =
+  let places = seenLinePlaces sn
    in [ Breach I5 [lp, ln] ("line " <> show ln <> " is alone at the start of page " <> show (poNumber pn) <> " column " <> show (poColumn pn))
       | ls <- paragraphs flows,
         let ln = last ls
@@ -352,8 +415,8 @@ empty column). A heading at a recto ends the run: the paragraph after
 it is not counted (docs/adr/0206).
 -}
 i6HeadingKept :: Check
-i6HeadingKept flows ps =
-  let places = linePlaces ps
+i6HeadingKept sn@Seen {seenFlows = flows} =
+  let places = seenLinePlaces sn
       isHeading = \case
         FHeading {fhRecto = False} -> True
         _ -> False
@@ -383,9 +446,9 @@ i6HeadingKept flows ps =
 
 -- | I7: the first line of the body of a note is on the page of the line with its mark.
 i7NoteOnPage :: Check
-i7NoteOnPage flows ps =
-  let places = linePlaces ps
-      cols = ordered ps
+i7NoteOnPage sn@Seen {seenFlows = flows} =
+  let places = seenLinePlaces sn
+      cols = seenOrdered sn
       firstPage note = case [poNumber p | p <- cols, (n, 0, _) <- poFootnotes p, n == note] of
         pg : _ -> Just pg
         [] -> Nothing
@@ -402,8 +465,8 @@ i7NoteOnPage flows ps =
 first slot: no line and no figure sent on is before it (docs/adr/0206).
 -}
 i8Recto :: Check
-i8Recto flows ps =
-  let places = linePlaces ps
+i8Recto sn@Seen {seenFlows = flows} =
+  let places = seenLinePlaces sn
    in [ Breach I8 [lbId l] ("heading " <> show (lbId l) <> " at a recto is on page " <> show (poNumber p) <> " column " <> show (poColumn p) <> " after " <> show k <> " slots")
       | FHeading {fhRecto = True, fhLines = l : _} <- flows,
         Just ((_, k), p) <- [Map.lookup (lbId l) places],
@@ -426,9 +489,9 @@ firstsOf ps = Map.fromListWith (flip (<>)) [(poNumber p, poSections p) | p <- ps
 
 -- | PL1 (I1 of docs/adr/0260): the number of the label of every page has the parity of the page.
 pl1Parity :: Check
-pl1Parity flows ps =
+pl1Parity sn =
   [ Breach PL1 [] ("page " <> show p <> " is numbered " <> show (plNumber l))
-  | (p, l) <- labelsOf flows ps,
+  | (p, l) <- seenLabels sn,
     odd (plNumber l) /= odd p
   ]
 
@@ -436,9 +499,9 @@ pl1Parity flows ps =
 is numbered one more than the page before, in its notation.
 -}
 pl2Continues :: Check
-pl2Continues flows ps =
-  let ls = labelsOf flows ps
-      firsts = firstsOf ps
+pl2Continues sn =
+  let ls = seenLabels sn
+      firsts = seenFirsts sn
    in [ Breach PL2 [] ("page " <> show p <> " is numbered " <> show (plNumber l) <> " after " <> show (plNumber l0))
       | ((_, l0), (p, l)) <- zip ls (drop 1 ls),
         Map.notMember p firsts,
@@ -450,11 +513,11 @@ is numbered its start; of one without, one more than the page before, or
 1 on the first page. Of the sections that start on one page, the last.
 -}
 pl3SectionStart :: Check
-pl3SectionStart flows ps =
-  let ls = Map.fromList (labelsOf flows ps)
+pl3SectionStart sn@Seen {seenFlows = flows} =
+  let ls = Map.fromList (seenLabels sn)
       starts = Map.fromList [(i, startOfKind k) | FSection (OfSection i) k <- flows]
    in [ Breach PL3 [] ("page " <> show p <> " of section " <> show s <> " is numbered " <> show (plNumber l))
-      | (p, ss@(_ : _)) <- Map.toList (firstsOf ps),
+      | (p, ss@(_ : _)) <- Map.toList (seenFirsts sn),
         let s = last ss,
         Just l <- [Map.lookup p ls],
         plNumber l /= expectedOf ls starts p s
@@ -469,9 +532,9 @@ on its first page or later; those before it, on pages before its first
 page. A section with no first page has nothing placed after it.
 -}
 pl7SectionBreak :: Check
-pl7SectionBreak flows ps =
-  let lines' = Map.map (poNumber . snd) (linePlaces ps)
-      figures = Map.fromListWith (\_ old -> old) [(i, poNumber p) | (_, p, s) <- slots ps, Just i <- [slotFigure s]]
+pl7SectionBreak sn@Seen {seenFlows = flows, seenOut = ps} =
+  let lines' = Map.map (poNumber . snd) (seenLinePlaces sn)
+      figures = Map.fromListWith (\_ old -> old) [(i, poNumber p) | (_, p, s) <- seenSlots sn, Just i <- [slotFigure s]]
       pagesOfFlow f = [n | l <- flowLines f, Just n <- [Map.lookup (lbId l) lines']] <> [n | FFigure i _ _ _ <- [f], Just n <- [Map.lookup i figures]]
       firstPage = Map.fromList [(s, poNumber p) | p <- ps, s <- poSections p]
    in concat
@@ -498,10 +561,9 @@ column, the verse lines whose first line is there, whether the column
 held nothing but headings and figures before the first of them ("from an
 empty column"), and the column.
 -}
-partsOf :: [PageOut] -> [[Int]] -> [(Int, Int, Bool, PageOut)]
-partsOf ps verses =
-  let places = linePlaces ps
-      firsts = [(c, k, p) | (v : _) <- verses, Just ((c, k), p) <- [Map.lookup v places]]
+partsOf :: Map Int (Place, PageOut) -> [[Int]] -> [(Int, Int, Bool, PageOut)]
+partsOf places verses =
+  let firsts = [(c, k, p) | (v : _) <- verses, Just ((c, k), p) <- [Map.lookup v places]]
       grouped = foldr (\(c, k, p) acc -> case acc of ((c', n, _, _) : more) | c' == c -> (c, n + 1, k, p) : more; _ -> (c, 1 :: Int, k, p) : acc) [] firsts
    in [(c, n, all (\sl -> isHeadingSlot sl || isFigureSlot sl) (slotsBefore p k), p) | (c, n, k, p) <- grouped]
 
@@ -521,10 +583,10 @@ kFirst verse lines or more, unless it is placed from an empty column and
 the output records its 'ShortPart'.
 -}
 k1FirstPart :: Check
-k1FirstPart flows ps =
+k1FirstPart sn@Seen {seenFlows = flows, seenOut = ps} =
   [ Breach K1 (concat (take n vs)) ("the first part of the block of line " <> show pid <> " has " <> show n <> " verse lines, fewer than " <> show (kFirst kp))
   | (kp, vs@((pid : _) : _)) <- keptBlocks flows,
-    (_, n, fromEmpty, _) : _ : _ <- [partsOf ps vs],
+    (_, n, fromEmpty, _) : _ : _ <- [partsOf (seenLinePlaces sn) vs],
     n < kFirst kp,
     not (fromEmpty && recordsUnmet ps (ShortPart FirstPart pid (kFirst kp) n))
   ]
@@ -535,10 +597,10 @@ column, its column holds nothing of the flow after its headings but lines
 of the block, and the output records its 'ShortPart'.
 -}
 k2LastPart :: Check
-k2LastPart flows ps =
+k2LastPart sn@Seen {seenFlows = flows, seenOut = ps} =
   [ Breach K2 (concat (drop (length vs - n) vs)) ("the last part of the block of line " <> show pid <> " has " <> show n <> " verse lines, fewer than " <> show (kLast kp))
   | (kp, vs@((pid : _) : _)) <- keptBlocks flows,
-    let parts = partsOf ps vs,
+    let parts = partsOf (seenLinePlaces sn) vs,
     length parts >= 2,
     let (_, n, _, _) = last parts
         (_, _, fromEmpty, pb) = last (init parts)
@@ -551,11 +613,11 @@ k2LastPart flows ps =
 is placed from an empty column and the output records its 'SplitKept'.
 -}
 k3KeepAll :: Check
-k3KeepAll flows ps =
+k3KeepAll sn@Seen {seenFlows = flows, seenOut = ps} =
   [ Breach K3 [pid] ("the block of line " <> show pid <> " of keep-all-lines is in " <> show (length parts) <> " columns")
   | (kp, vs@((pid : _) : _)) <- keptBlocks flows,
     kAll kp,
-    let parts = partsOf ps vs,
+    let parts = partsOf (seenLinePlaces sn) vs,
     (_, _, fromEmpty, _) : _ : _ <- [parts],
     not (fromEmpty && recordsUnmet ps (SplitKept pid))
   ]
@@ -583,7 +645,7 @@ first line or figure of anything else) are in one column, and the output
 records 'UnmetKeepNext'.
 -}
 k4KeepNext :: Check
-k4KeepNext flows ps =
+k4KeepNext sn@Seen {seenFlows = flows, seenOut = ps} =
   [ Breach K4 [] ("the keep-with-next " <> show sp <> (if held then " is held and recorded" else " is not held and not recorded"))
   | (k, FKeepNext sp n) <- zip [0 :: Int ..] flows,
     Just prev <- [lastText (take k flows)],
@@ -595,14 +657,14 @@ k4KeepNext flows ps =
           FParagraph kp ls : _ -> map (colOfLine . lbId) (take (firstOf kp (length ls)) ls)
           FContinued kp ls : _ -> map (colOfLine . lbId) (take (max (firstPart kp False (length ls)) (min n (length ls))) ls)
           FStanza kp vs : _ -> map (colOfLine . lbId) (concat (take (firstOf kp (length vs)) vs))
-          FFigure i _ _ _ : _ -> [fst <$> Map.lookup i (figurePlaces ps)]
+          FFigure i _ _ _ : _ -> [fst <$> Map.lookup i (seenFigurePlaces sn)]
           b : _ -> [colOfLine (lbId x) | x <- take 1 (flowLines b)]
           [] -> [Nothing]
         held = isJust target && not (null nextCols) && all (== target) nextCols,
     held == recordsUnmet ps (UnmetKeepNext sp)
   ]
   where
-    colOfLine i = fst . fst <$> Map.lookup i (linePlaces ps)
+    colOfLine i = fst . fst <$> Map.lookup i (seenLinePlaces sn)
     lastText before = case reverse (filter (not . passedByKeep) before) of
       f@FParagraph {} : _ -> Just f
       f@FStanza {} : _ -> Just f
@@ -622,10 +684,10 @@ any column of its page before it; of a recto or a verso, on an odd or an
 even page too.
 -}
 k5Start :: Check
-k5Start flows ps =
+k5Start sn@Seen {seenFlows = flows, seenOut = ps} =
   [ Breach K5 [l] ("line " <> show l <> " after a start of " <> show kind <> " is on page " <> show (poNumber p) <> " column " <> show (poColumn p) <> " after " <> show k <> " slots")
   | (_, kind, l) <- startsOf flows,
-    Just ((_, k), p) <- [Map.lookup l (linePlaces ps)],
+    Just ((_, k), p) <- [Map.lookup l (seenLinePlaces sn)],
     let columnClear = all isFigureSlot (slotsBefore p k)
         pageClear = columnClear && and [all (isFigureSlot . snd) (poSlots q) | q <- ps, poNumber q == poNumber p, poColumn q < poColumn p]
         ok = case kind of
@@ -645,13 +707,13 @@ its parity from there. Starts after a break or another start are not
 judged.
 -}
 k6NoExtraStart :: Check
-k6NoExtraStart flows ps =
+k6NoExtraStart sn@Seen {seenFlows = flows} =
   [ Breach K6 [l] ("line " <> show l <> " after a start of " <> show kind <> " went past the column the flow came to")
   | (before, kind, l) <- startsOf flows,
     not (any (\case FBreak _ -> True; FSection {} -> True; _ -> False) (takeWhile passedByKeep (reverse before))),
-    Just ((c, _), p) <- [Map.lookup l (linePlaces ps)],
+    Just ((c, _), p) <- [Map.lookup l (seenLinePlaces sn)],
     let placedBefore = [pl | f <- before, pl <- placesOf f]
-        cols = ordered ps
+        cols = seenOrdered sn
         (came, cameP) = case placedBefore of
           [] -> (0, 1)
           _ -> let (c0, _) = maximum placedBefore in (c0, poNumber (cols !! c0))
@@ -666,7 +728,7 @@ k6NoExtraStart flows ps =
     not ok
   ]
   where
-    placesOf f = [pl | i <- map lbId (flowLines f), Just (pl, _) <- [Map.lookup i (linePlaces ps)]] <> [pl | FFigure i _ _ _ <- [f], Just pl <- [Map.lookup i (figurePlaces ps)]]
+    placesOf f = [pl | i <- map lbId (flowLines f), Just (pl, _) <- [Map.lookup i (seenLinePlaces sn)]] <> [pl | FFigure i _ _ _ <- [f], Just pl <- [Map.lookup i (seenFigurePlaces sn)]]
 
 -- need-lines and blank lines (golem-layout ADR 0025)
 
@@ -686,21 +748,17 @@ waits = \case
   _ -> False
 
 {- | Each flow that places something, with the flows that wait for it, in
-the order of the flow: its next block. The figures that wait are passed
-over (golem-layout ADR 0026): they are not the next block of the flows
-before them, and those wait on for the block after them. The flows left
-waiting at the end of the book have nothing to wait for and are dropped.
+the order of the flow: its next block. The figures that wait, given
+('waitingFigures'), are passed over (golem-layout ADR 0026): they are not
+the next block of the flows before them, and those wait on for the block
+after them. The flows left waiting at the end of the book have nothing
+to wait for and are dropped. And second, the flows left waiting at the
+end of the book, in their order, with the figures that wait passed over
+among them.
 -}
-waiting :: [Flow] -> [PageOut] -> [([Flow], Flow)]
-waiting flows ps = fst (waitingAndLeft flows ps)
-
-{- | 'waiting', and the flows left waiting at the end of the book, in their
-order, with the figures that wait passed over among them.
--}
-waitingAndLeft :: [Flow] -> [PageOut] -> ([([Flow], Flow)], [Flow])
-waitingAndLeft flows ps = go [] flows
+waitingAndLeftWith :: [Int] -> [Flow] -> ([([Flow], Flow)], [Flow])
+waitingAndLeftWith passed = go []
   where
-    passed = waitingFigures flows ps
     -- the flows that wait and the figures passed over since the last block
     go held [] = ([], held)
     go held (f : rest)
@@ -759,10 +817,13 @@ A figure that waits does not clear the spaces before it: the need-lines
 after it is judged before them (golem-layout ADR 0047).
 -}
 waitingFigures :: [Flow] -> [PageOut] -> [Int]
-waitingFigures flows ps = go Nothing 0 Nothing [] flows
+waitingFigures flows ps = let cols = ordered ps in waitingFiguresWith cols (slotsOf cols) (extentIn flows) flows ps
+
+-- | 'waitingFigures' with the columns in order, their slots and the grid lines of a slot ('extentIn') given.
+waitingFiguresWith :: [PageOut] -> [(Place, PageOut, Slotted)] -> (Slotted -> Int) -> [Flow] -> [PageOut] -> [Int]
+waitingFiguresWith cols placed extent flows ps = go Nothing 0 Nothing [] flows
   where
-    cols = ordered ps
-    places = [((c, k), s) | ((c, k), _, s) <- slots ps]
+    places = [((c, k), s) | ((c, k), _, s) <- placed]
     placeOf f = listToMaybe [pl | (pl, s) <- places, startsBlock f s]
     lastOf f = case [pl | (pl, s) <- places, ownedBy f s] of
       [] -> Nothing
@@ -774,7 +835,7 @@ waitingFigures flows ps = go Nothing 0 Nothing [] flows
       (c, k) <- place
       p <- listToMaybe (drop c cols)
       let notes = sum [n | (_, _, n) <- poFootnotes p]
-      pure (poLines p - endBefore flows p (k + 1) - notes - (if notes > 0 then 1 else 0))
+      pure (poLines p - endBefore extent p (k + 1) - notes - (if notes > 0 then 1 else 0))
     -- the column the flow has come to: of the last line placed, or of the first column of the page the breaks after it go on to
     reached lastText breaks = case lastText of
       Nothing -> Nothing
@@ -897,8 +958,8 @@ startsBlock f s = case (f, s) of
     first = lbId <$> listToMaybe (blockLines f)
 
 -- | The first slot of a block: its column, its slot in the column and the column.
-firstSlotOf :: [PageOut] -> Flow -> Maybe (Int, Int, PageOut)
-firstSlotOf ps f = listToMaybe [(c, k, p) | ((c, k), p, s) <- slots ps, startsBlock f s]
+firstSlotOf :: [(Place, PageOut, Slotted)] -> Flow -> Maybe (Int, Int, PageOut)
+firstSlotOf placed f = listToMaybe [(c, k, p) | ((c, k), p, s) <- placed, startsBlock f s]
 
 -- | The grid lines a slot takes, as 'i2NoOverflow' counts them.
 extentIn :: [Flow] -> Slotted -> Int
@@ -910,9 +971,9 @@ extentIn flows =
         SFigure i -> Map.findWithDefault 1 i figures
         _ -> 1
 
--- | The grid line after the slots of the column before the slot k: the first grid line of the column if none.
-endBefore :: [Flow] -> PageOut -> Int -> Int
-endBefore flows p k = maximum (csFirstLine (poColumnSet p) : [at + extentIn flows s | (at, s) <- take k (poSlots p)])
+-- | The grid line after the slots of the column before the slot k, each taking the grid lines given ('extentIn'): the first grid line of the column if none.
+endBefore :: (Slotted -> Int) -> PageOut -> Int -> Int
+endBefore extent p k = maximum (csFirstLine (poColumnSet p) : [at + extent s | (at, s) <- take k (poSlots p)])
 
 -- | The line that has the mark of each note.
 noteMarks :: [Flow] -> Map NoteId Int
@@ -920,12 +981,12 @@ noteMarks flows = Map.fromList [(nbId nb, lbId l) | f <- flows, l <- blockLines 
 
 {- | The lines of the notes of the column before the slot k, and the
 separator if there are any: the notes continued from a column before and
-the notes of the lines of the slots before k.
+the notes of the lines of the slots before k, their marks given
+('noteMarks').
 -}
-notesBefore :: Int -> [Flow] -> PageOut -> Int -> Int
-notesBefore separator flows p k =
-  let marks = noteMarks flows
-      before = concatMap (slotLines . snd) (take k (poSlots p))
+notesBefore :: Int -> Map NoteId Int -> PageOut -> Int -> Int
+notesBefore separator marks p k =
+  let before = concatMap (slotLines . snd) (take k (poSlots p))
       counted = [n | (note, from, n) <- poFootnotes p, from > 0 || maybe False (`elem` before) (Map.lookup note marks)]
    in if null counted then 0 else sum counted + separator
 
@@ -937,14 +998,14 @@ and the lines of the notes before it: the blank lines and the spaces
 after the need-lines are not counted (docs/adr ADR 0046).
 -}
 p1NeedLinesMet :: Int -> Check
-p1NeedLinesMet separator flows ps =
+p1NeedLinesMet separator sn =
   [ Breach P1 (blockIds b) ("need-lines " <> show n <> " has " <> show room <> " grid lines left before its block on page " <> show (poNumber p) <> " column " <> show (poColumn p))
-  | (ws, b) <- waiting flows ps,
+  | (ws, b) <- fst (seenWaitingAndLeft sn),
     FNeedLines _ n <- ws,
-    Just (_, k, p) <- [firstSlotOf ps b],
+    Just (_, k, p) <- [firstSlotOf (seenSlots sn) b],
     n <= poLines p,
-    let notes = notesBefore separator flows p k
-        room = poLines p - endBefore flows p k - notes,
+    let notes = notesBefore separator (seenNoteMarks sn) p k
+        room = poLines p - endBefore (seenExtent sn) p k - notes,
     k > 0 || notes > 0,
     room < n
   ]
@@ -956,8 +1017,8 @@ column of the block is recorded (the larger of two in a row applies,
 docs/adr ADR 0030).
 -}
 p2NeedLinesRecorded :: Check
-p2NeedLinesRecorded flows ps =
-  let recorded = [(sp, n, p) | p <- ordered ps, UnmetNeedLines sp n <- poUnmet p]
+p2NeedLinesRecorded sn@Seen {seenFlows = flows} =
+  let recorded = [(sp, n, p) | p <- seenOrdered sn, UnmetNeedLines sp n <- poUnmet p]
       written = [(sp, n) | FNeedLines sp n <- flows]
       counts = Map.fromListWith (+) [(sp, 1 :: Int) | (sp, _, _) <- recorded]
       wrong =
@@ -968,20 +1029,23 @@ p2NeedLinesRecorded flows ps =
       twice = [Breach P2 [] ("need-lines at " <> show sp <> " is recorded " <> show c <> " times") | (sp, c) <- Map.toList counts, c > 1]
       missing =
         [ Breach P2 [] ("need-lines " <> show [n | (_, n) <- big] <> " is not recorded")
-        | (ws, b) <- waiting flows ps,
-          Just (_, _, p) <- [firstSlotOf ps b],
+        | (ws, b) <- fst (seenWaitingAndLeft sn),
+          Just (_, _, p) <- [firstSlotOf (seenSlots sn) b],
           let big = [(sp, n) | FNeedLines sp n <- ws, n > poLines p],
           not (null big),
           not (any ((`Map.member` counts) . fst) big)
         ]
    in wrong <> twice <> missing
 
--- | The blank lines before each block: the spans, the grid lines of all of them as the paginator counts them, and the block.
-blanksBefore :: [Flow] -> [PageOut] -> [([SrcSpan], Int, Flow)]
-blanksBefore flows ps =
+{- | The blank lines before each block: the spans, the grid lines of all
+of them as the paginator counts them, and the block, of the next blocks
+given ('waitingAndLeftWith').
+-}
+blanksBeforeWith :: [([Flow], Flow)] -> [PageOut] -> [([SrcSpan], Int, Flow)]
+blanksBeforeWith held ps =
   let capacity = maximum (1 : map poLines ps)
    in [ (map fst bs, foldl' (\a (_, n) -> min capacity (a + min capacity n)) 0 bs, b)
-      | (ws, b) <- waiting flows ps,
+      | (ws, b) <- held,
         let bs = [(sp, n) | FBlank sp n <- ws],
         not (null bs)
       ]
@@ -998,16 +1062,16 @@ lines not dropped and not seen there are a breach: no column is seen to
 hold them.
 -}
 p3BlankNoOverflow :: Int -> Check
-p3BlankNoOverflow separator flows ps =
-  let dropped = droppedBlanks ps
+p3BlankNoOverflow separator sn =
+  let dropped = seenDropped sn
    in [ Breach P3 ids why
-      | (sps, total, b) <- blanksBefore flows ps,
+      | (sps, total, b) <- seenBlanksBefore sn,
         not (any (`Map.member` dropped) sps),
-        Just (_, k, p) <- [firstSlotOf ps b],
+        Just (_, k, p) <- [firstSlotOf (seenSlots sn) b],
         let ids = blockIds b
             start = maybe 0 fst (listToMaybe (drop k (poSlots p)))
-            before = endBefore flows p k
-            used = maximum (0 : [at + extentIn flows s | (at, s) <- poSlots p])
+            before = endBefore (seenExtent sn) p k
+            used = maximum (0 : [at + seenExtent sn s | (at, s) <- poSlots p])
             notes = sum [n | (_, _, n) <- poFootnotes p]
             sep = if null (poFootnotes p) then 0 else separator
             whole = max used (before + total) + notes + sep,
@@ -1027,13 +1091,13 @@ being the first of the column, each @blank-line recorded once as
 dropped. A blank line is recorded only when it is dropped.
 -}
 p4BlankWithNext :: Check
-p4BlankWithNext flows ps =
-  let dropped = droppedBlanks ps
+p4BlankWithNext sn@Seen {seenFlows = flows} =
+  let dropped = seenDropped sn
       written = [sp | FBlank sp _ <- flows]
       judged =
         [ Breach P4 ids why
-        | (sps, total, b) <- blanksBefore flows ps,
-          Just (_, k, p) <- [firstSlotOf ps b],
+        | (sps, total, b) <- seenBlanksBefore sn,
+          Just (_, k, p) <- [firstSlotOf (seenSlots sn) b],
           let ids = blockIds b
               counts = map (\sp -> Map.findWithDefault 0 sp dropped) sps
               start = maybe 0 fst (listToMaybe (drop k (poSlots p)))
@@ -1043,7 +1107,7 @@ p4BlankWithNext flows ps =
               then ["the blank lines are dropped, and their block is after slot " <> show k <> " of " <> at | k > 0]
               else
                 if all (== 0) counts
-                  then ["the blank lines are not in the column of their block, " <> at | start - endBefore flows p k < total]
+                  then ["the blank lines are not in the column of their block, " <> at | start - endBefore (seenExtent sn) p k < total]
                   else ["the blank lines are recorded as dropped " <> show counts <> " times"]
         ]
       stray = [Breach P4 [] ("a blank line at " <> show sp <> " not written is recorded as dropped") | sp <- Map.keys dropped, sp `notElem` written]
@@ -1054,9 +1118,9 @@ but figures that wait after them to the end of the book, are placed in
 no column: each @blank-line is recorded once as dropped.
 -}
 p5BlankBeforeWaiting :: Check
-p5BlankBeforeWaiting flows ps =
-  let dropped = droppedBlanks ps
-      (_, left) = waitingAndLeft flows ps
+p5BlankBeforeWaiting sn =
+  let dropped = seenDropped sn
+      (_, left) = seenWaitingAndLeft sn
    in [ Breach P5 figs ("the blank line at " <> show sp <> " before the figures that wait " <> show figs <> " is recorded as dropped " <> show c <> " times")
       | (FBlank sp _, after) <- zip left (drop 1 (tails left)),
         let figs = concatMap figureIds after,
@@ -1076,34 +1140,50 @@ break, no no-break and no page-lines among the controls between the
 block before and the block after, the figures that wait passed over,
 are judged. With no figure that waits between, this is P9 of ADR 0043.
 -}
-p9SpaceMoved :: ([Flow] -> [PageOut]) -> Check
-p9SpaceMoved lay flows ps =
+p9SpaceMoved :: ([Flow] -> [PageOut]) -> [Flow] -> [PageOut] -> [Breach]
+p9SpaceMoved lay flows ps = p9Of (spaceMovedLaid lay (seen flows ps))
+
+-- | 'p9SpaceMoved' of the inputs laid out again ('spaceMovedLaid').
+p9Of :: ([(Int, [Flow], [OutShape])], Seen) -> [Breach]
+p9Of (laid, s) =
   [ Breach P9 [] ("the space at flow " <> show k <> " moved after the need-lines after it lays out " <> show moved <> ", not " <> show here)
-  | (k, swapped) <- spacesMoved (waitingFigures flows ps) flows,
-    let moved = outShape (lay swapped),
+  | (k, _, moved) <- laid,
     moved /= here
   ]
   where
-    here = outShape ps
+    here = outShape (seenOut s)
+
+{- | Each input 'spacesMoved' makes, with the slots and records it lays
+out: P9 and W3 read the same inputs, laid out once for both.
+-}
+spaceMovedLaid :: ([Flow] -> [PageOut]) -> Seen -> ([(Int, [Flow], [OutShape])], Seen)
+spaceMovedLaid lay s = ([(k, swapped, outShape (lay swapped)) | (k, swapped) <- spacesMoved (seenWaitingFigures s) (seenFlows s)], s)
 
 {- | W3 of golem-layout ADR 0044, its section 「不変条件」: for each input
 P9 (P9′ of golem-layout ADR 0047) lays out again, with the space moved after the need-lines, that lays
 out the same, 'waitingFigures' reads the same figures from the two
 inputs and the one output.
 -}
-w3WaitingAlike :: ([Flow] -> [PageOut]) -> Check
-w3WaitingAlike lay flows ps =
+w3WaitingAlike :: ([Flow] -> [PageOut]) -> [Flow] -> [PageOut] -> [Breach]
+w3WaitingAlike lay flows ps = w3Of (spaceMovedLaid lay (seen flows ps))
+
+-- | 'w3WaitingAlike' of the inputs laid out again ('spaceMovedLaid').
+w3Of :: ([(Int, [Flow], [OutShape])], Seen) -> [Breach]
+w3Of (laid, s) =
   [ Breach W3 (here <> there) ("the space at flow " <> show k <> " moved after the need-lines after it lays out the same, and the figures that wait are read as " <> show there <> ", not " <> show here)
-  | (k, swapped) <- spacesMoved (waitingFigures flows ps) flows,
-    outShape (lay swapped) == outShape ps,
-    let there = waitingFigures swapped ps,
+  | (k, swapped, moved) <- laid,
+    moved == outShape (seenOut s),
+    let there = waitingFigures swapped (seenOut s),
     there /= here
   ]
   where
-    here = waitingFigures flows ps
+    here = seenWaitingFigures s
+
+-- | The slots and records of a column, P9 compares.
+type OutShape = (Int, Int, [(Int, Slotted)], [Unmet])
 
 -- | The slots and records of every column, P9 compares.
-outShape :: [PageOut] -> [(Int, Int, [(Int, Slotted)], [Unmet])]
+outShape :: [PageOut] -> [OutShape]
 outShape = map (\p -> (poNumber p, poColumn p, poSlots p, poUnmet p))
 
 {- | The flows with each space before a need-lines moved right after it,
@@ -1130,17 +1210,26 @@ figures are: the slots of the figures moved taken out, the slots
 ('poSlots') and records ('poUnmet') of every column are the same. Only
 the inputs P9′ judges are judged.
 -}
-p11WaitingBeforeSpace :: ([Flow] -> [PageOut]) -> Check
-p11WaitingBeforeSpace lay flows ps =
+p11WaitingBeforeSpace :: ([Flow] -> [PageOut]) -> [Flow] -> [PageOut] -> [Breach]
+p11WaitingBeforeSpace lay flows ps = p11Of lay (seen flows ps)
+
+-- | 'p11WaitingBeforeSpace' of an input read through 'Seen'.
+p11Of :: ([Flow] -> [PageOut]) -> Seen -> [Breach]
+p11Of lay s =
   [ Breach P11 ids ("the figures that wait " <> show ids <> " written before the space at flow " <> show k <> " lay out " <> show moved <> ", not " <> show here)
-  | (k, ids, swapped) <- waitingMovedBefore waitingIds flows,
-    let here = withoutFigures ids (outShape ps)
+  | (k, ids, swapped) <- waitingMovedBefore (seenWaitingFigures s) (seenFlows s),
+    let here = withoutFigures ids (outShape (seenOut s))
         moved = withoutFigures ids (outShape (lay swapped)),
     moved /= here
   ]
   where
-    waitingIds = waitingFigures flows ps
     withoutFigures ids = map (\(n, c, sl, u) -> (n, c, [x | x@(_, sl') <- sl, not (any (\i -> sl' == SFigure i || sl' == SPageFigure i) ids)], u))
+
+{- | The breaches of P9, W3 and P11, in that order, of an input read
+through 'Seen': the inputs P9 and W3 lay out again are laid out once.
+-}
+movedBreaches :: ([Flow] -> [PageOut]) -> Seen -> [Breach]
+movedBreaches lay s = let laid = spaceMovedLaid lay s in p9Of laid <> w3Of laid <> p11Of lay s
 
 {- | The flows with the figures that wait between a space and a need-lines
 written before the space, with where the space is and the figures: the
@@ -1190,10 +1279,10 @@ of the first line of the box in its column, and the last k after that of
 the last.
 -}
 b1BoxShape :: Check
-b1BoxShape flows ps =
+b1BoxShape sn@Seen {seenFlows = flows} =
   [ Breach B1 [i] ("part " <> show (bsFirst seg, bsLast seg) <> " of box " <> show i <> " on page " <> show (poNumber p) <> " column " <> show (poColumn p) <> " has its lines on " <> show gs)
   | (i, kb, ka, ids) <- inputBoxes flows,
-    p <- ordered ps,
+    p <- seenOrdered sn,
     seg <- poBoxes p,
     bsBox seg == i,
     let gs = boxLinesIn ids p,
@@ -1206,16 +1295,11 @@ boxes included, the lines of its notes and the separator, if it has
 notes, do not exceed its grid lines: I2 with the grid lines of boxes.
 -}
 b2BoxNoOverflow :: Int -> Check
-b2BoxNoOverflow separator flows ps =
-  let figures = Map.fromList (inputFigures flows)
-      spans = headingSpans flows
-      extent = \case
-        SHeading l _ -> Map.findWithDefault 1 l spans
-        SFigure i -> Map.findWithDefault 1 i figures
-        _ -> 1
+b2BoxNoOverflow separator sn =
+  let extent = seenExtent sn
       tall p = or [True | TallHeading {} <- poUnmet p]
    in [ Breach B2 (concatMap (slotLines . snd) (poSlots p)) ("page " <> show (poNumber p) <> " column " <> show (poColumn p) <> " uses " <> show total <> " of " <> show (poLines p) <> " grid lines with its boxes")
-      | p <- ordered ps,
+      | p <- seenOrdered sn,
         not (poBlank p),
         not (null (poBoxes p)),
         let used = maximum (0 : [k + extent s | (k, s) <- poSlots p] <> [bsLast b + 1 | b <- poBoxes p])
@@ -1229,17 +1313,17 @@ b2BoxNoOverflow separator flows ps =
 box is in exactly one part of it.
 -}
 b3BoxParts :: Check
-b3BoxParts flows ps =
+b3BoxParts sn@Seen {seenFlows = flows} =
   [ Breach B3 [i] ("part " <> show (bsFirst seg, bsLast seg) <> " of box " <> show i <> " on page " <> show (poNumber p) <> " column " <> show (poColumn p) <> " holds no line of it")
   | (i, _, _, ids) <- inputBoxes flows,
-    p <- ordered ps,
+    p <- seenOrdered sn,
     seg <- poBoxes p,
     bsBox seg == i,
     null [g | g <- boxLinesIn ids p, g >= bsFirst seg, g <= bsLast seg]
   ]
     <> [ Breach B3 [i, l] ("line " <> show l <> " of box " <> show i <> " is in " <> show n <> " parts of it")
        | (i, _, _, ids) <- inputBoxes flows,
-         p <- ordered ps,
+         p <- seenOrdered sn,
          (g, SLine l) <- poSlots p,
          l `elem` ids,
          let n = length [() | seg <- poBoxes p, bsBox seg == i, g >= bsFirst seg, g <= bsLast seg],
