@@ -98,17 +98,20 @@ first-line-indent = "0zw"
 rule-before = { weight = "1.5pt", space-before = "0.5zw", space-after = "0.25zw", style = "wavy", color = "green" }
 
 # 段落の背景と囲み罫（docs/adr/0271）。題と本文の段落スタイルは違うが、囲みの設定が等しいので一つの囲みになる。
-# 角丸の枠は線（S）で描き、見た目の回帰のテストの shem は線を読まないので、この見本のコラムは背景だけにする
 [paragraph-styles.column-title]
 first-line-indent = "0zw"
 background = "pale"
 padding = "0.5zw"
+border = "blue"
+border-width = "1pt"
 border-radius = "1zw"
 
 [paragraph-styles.column]
 first-line-indent = "1zw"
 background = "pale"
 padding = "0.5zw"
+border = "blue"
+border-width = "1pt"
 border-radius = "1zw"
 
 # 行の始まりの辺だけの注意書き
