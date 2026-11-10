@@ -519,7 +519,7 @@ placementsHash = foldl' step 14695981039346656037 [c | t <- upTo 3 inputs, i <- 
       ShortPart {} -> True
       _ -> False
 
--- | The keep options: K1 to K6 by hand, every input of 'keepInputs', and K7.
+-- | The keep options: K1 to K6 by hand, every input of the keep options, and K7.
 keepTests :: [TestTree]
 keepTests =
   [ testCase "K7: every input of the enumeration of docs/adr/0208 up to 3 elements is placed as before docs/adr/0261" $
@@ -560,14 +560,18 @@ keepTests =
       ],
     testCase "K1 to K6 and I1 to I8 but I4 and I5 hold for every input of the keep options up to GOLEM_ENUM_DEPTH elements" $ do
       depth <- enumDepth
-      case checkAllPar depth keepInputs (\input -> [Violation (show (breachOf b)) (breachWhy b) | b <- keepBreaches 1 (enumFlows (inElements input)) (paginateInput input)]) of
+      -- keepInputs of docs/adr/0261: columns of 3 to 5 grid lines and
+      -- 'keepElementsFor'; built here, not in a value of its own, which
+      -- would hold every input checked (hundreds of millions at the depth
+      -- of the nightly job, more than the memory of its runner)
+      case checkAllPar depth (inputsOver [3 .. 5] keepElementsFor) (\input -> [Violation (show (breachOf b)) (breachWhy b) | b <- keepBreaches 1 (enumFlows (inElements input)) (paginateInput input)]) of
         Passed _ -> pure ()
         Failed k input vs -> assertFailure (report ("the smallest input of the keep options that breaks an invariant has " <> show k <> " elements") input vs)
   ]
   where
     keepBroken flows ps = map breachOf (keepBreaches 1 flows ps)
 
--- | The boxes: the elements, B1 to B3 by hand, examples, and every input of 'boxInputs'.
+-- | The boxes: the elements, B1 to B3 by hand, examples, and every input of boxes.
 boxTests :: [TestTree]
 boxTests =
   [ testCase "the elements of boxes: 19 in columns of 3 grid lines" $ do
@@ -607,7 +611,10 @@ boxTests =
       ],
     testCase "B1 to B3 and I1 to I8, P1 to P5, PL1, PL2, PL3, PL7 hold for every input of boxes up to GOLEM_ENUM_DEPTH elements" $ do
       depth <- enumDepth
-      case checkAllPar depth boxInputs (\input -> [Violation (show (breachOf b)) (breachWhy b) | b <- boxBreaches 1 (enumFlows (inElements input)) (paginateInput input)]) of
+      -- boxInputs of docs/adr/0271: columns of 3 to 5 grid lines and
+      -- 'boxElementsFor'; built here, not in a value of its own, which
+      -- would hold every input checked
+      case checkAllPar depth (inputsOver [3 .. 5] boxElementsFor) (\input -> [Violation (show (breachOf b)) (breachWhy b) | b <- boxBreaches 1 (enumFlows (inElements input)) (paginateInput input)]) of
         Passed _ -> pure ()
         Failed k input vs -> assertFailure (report ("the smallest input of boxes that breaks an invariant has " <> show k <> " elements") input vs)
   ]
@@ -647,7 +654,8 @@ breachesOf input =
   let flows = enumFlows (inElements input)
       ps = paginateInput input
       lay = paginateFlowsOf input
-   in breaches 1 flows ps <> p9SpaceMoved lay flows ps <> w3WaitingAlike lay flows ps <> p11WaitingBeforeSpace lay flows ps
+      once = seen flows ps
+   in breachesIn 1 once <> movedBreaches lay once
 
 -- | The flows given laid out on the page of the input.
 paginateFlowsOf :: Input -> [Flow] -> [PageOut]
