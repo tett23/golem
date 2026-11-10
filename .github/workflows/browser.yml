@@ -246,7 +246,7 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.run == 'true'
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 26
     env:
       COMPARE_TIMEOUT: 60
     steps:
