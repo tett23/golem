@@ -898,6 +898,26 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 段の和は、どの回も 60 分に収まった。
 時間を量る段の和（プルリクエストの設定）は、ランナーによって 22.48 秒から 28.91 秒であった。
 
+保持の設定の段を分けた後（[ADR 0304](./docs/adr/0304-check-the-keep-options-up-to-4-elements-and-draw-5-every-night.md)）に、ブランチで毎晩の設定のまま起動した四回の実行（42837473529、42848615465、42859556574、42869707002）では、段の時間は次のとおりだった。
+
+| 段 | 一回目 | 二回目 | 三回目 | 四回目 |
+|---|---|---|---|---|
+| 時間を量る段 | 34 秒 | 35 秒 | 31 秒 | 24 秒 |
+| 改ページ | 9 分 43 秒 | 9 分 46 秒 | 8 分 25 秒 | 6 分 46 秒 |
+| 保持の設定 | 2 分 18 秒 | 2 分 20 秒 | 2 分 1 秒 | 1 分 38 秒 |
+| 行分割 | 36 分 59 秒 | 37 分 22 秒 | 32 分 55 秒 | 26 分 12 秒 |
+| 行の調整の順 | 15 秒 | 15 秒 | 14 秒 | 11 秒 |
+| 改行しない範囲 | 14 秒 | 14 秒 | 12 秒 | 25 秒 |
+| 引用の印 | 6 分 9 秒 | 6 分 12 秒 | 5 分 46 秒 | 4 分 30 秒 |
+| 境目 | 4 分 10 秒 | 4 分 14 秒 | 3 分 43 秒 | 2 分 57 秒 |
+| 表の列の幅 | 13 秒 | 12 秒 | 11 秒 | 9 秒 |
+| 和 | 60 分 35 秒 | 61 分 10 秒 | 53 分 58 秒 | 43 分 12 秒 |
+
+初めの三回は、[ADR 0305](./docs/adr/0305-leave-soft-hyphens-in-or-next-to-a-no-break-range-out-of-i8.md) を入れる前のコミットで、改行しない範囲の段が I8 の違反で落ちた。
+四回目は、ADR 0305 を入れた後のコミットで、すべて通った。
+保持の設定の段の中央値は 2 分 10 秒、段の和の中央値は 57 分 17 秒で、60 分に収まった。
+一回目と二回目は、行分割の段が 37 分ほどかかり、和が 60 分を超えた。
+
 `enum.yml` が落ちたら、表示された最も小さい入力と、実行の URL と head のコミットを添えて issue を立てる。
 手元では `GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_PAGINATION_SAMPLES=5000000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/&&!/keep options/'`、`GOLEM_ENUM_KEEP_DEPTH=4 GOLEM_ENUM_KEEP_SAMPLES=5000000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/keep options/&&/every input/'`、`GOLEM_ENUM_LINES_DEPTH=3 GOLEM_ENUM_LINES_SAMPLES=5000000 cabal test golem-layout-test --test-option=-p --test-option='/line breaking invariants on/'` で同じ入力を調べる。
 
