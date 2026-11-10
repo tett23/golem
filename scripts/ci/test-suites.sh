@@ -13,7 +13,8 @@
 # A target is PACKAGE:test:SUITE, read from the test-suite sections of
 # MODULES/*/*.cabal (MODULES is the modules/ of the repository unless
 # given). Every suite is in driver or in rest, never in both, so that a new
-# suite runs without being listed anywhere. wasm reads the lines
+# suite runs without being listed here (it needs its limits in
+# suite-limits.tsv, docs/adr ADR 0292). wasm reads the lines
 # modules/NAME of the packages: of the cabal.project.wasm next to MODULES,
 # and the suites of MODULES/NAME/*.cabal, so that a suite added to a
 # package of golem.wasm runs on wasm32 too.
