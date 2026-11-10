@@ -1041,6 +1041,9 @@ x86-64 の `outputs` のランナーは、`sample`、`bibliographies`、`languag
 
 HTML は、夜ごとの `.github/workflows/browser.yml` が、版と SHA-256 で固定した Chrome for Testing の `chrome-headless-shell`（`scripts/browser/fetch-chromium.sh`）と、macOS のランナーの Safari で開いて確かめる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)）。
 Chromium は Chrome DevTools Protocol で、Safari は `safaridriver` の W3C WebDriver で操り、どちらのクライアントも Node の組み込みだけで書く（`scripts/browser/cdp.mjs`、`scripts/browser/webdriver.mjs`）。
+ブラウザーは、検査のページを `127.0.0.1` のサーバー（`scripts/browser/serve.mjs`）から開く。
+サーバーは、URL のパスが root を出るファイルも、実のパス（シンボリックリンクをたどった先）が root の実のパスの下にないファイルも返さず、404 を返す（[ADR 0288](adr/0288-serve-no-file-whose-real-path-leaves-the-root-of-the-browser-checks.md)）。
+root の下を指すリンクは返し、実のパスを求められないリンク（先のないもの、権限のないもの）は 404 とする。
 検査は二つのブラウザで同じ関数で走り、同じ基準を当てる（例外は、下の Chromium の起動の引数と Safari の縦書きである）。
 確かめるのは、技術書のコードブロックの選択とコピーに行番号と差分の印が入らないこと、`pre` の `white-space` とコードの書体、縦組みのダッシュの墨が縦に長いこと、圏点の十の形の `text-emphasis-style`、段落の罫線が段落の前後にあること、tRNS の透明の画素でページの背景が見えること、二冊のマニュアルのすべてのページで画像とスタイルシートと書体が読み込まれ、`#` のリンクの先があることである（`scripts/browser/html-checks.mjs`）。
 Chromium では、加えてコンソールの誤りと読み込みの失敗がないことを確かめる。
