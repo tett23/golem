@@ -1,6 +1,6 @@
 # ADR 0274: 行の調整で追い込みを優先し、行の伸びの上限を段落スタイルで決められるようにする
 
-ステータス: 採択
+ステータス: 採択→段に分けて置く行（`AdjustStaged`）での R5 の前半の読み方は [ADR 0278](0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)
 
 ## 文脈
 

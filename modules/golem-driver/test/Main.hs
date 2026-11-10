@@ -1,5 +1,6 @@
 module Main (main) where
 
+import AdjustOrderSpec (adjustOrderTests)
 import AlignSpaceSpec (alignSpaceTests)
 import BookLanguageSpec (bookLanguageTests)
 import BoxesSpec (boxesTests)
@@ -88,6 +89,7 @@ tests skips =
         tocStylesTests,
         keepOptionsTests,
         lineAdjustmentTests,
+        adjustOrderTests,
         boxesTests,
         emetSamplesTests,
         functionLibraryTests,

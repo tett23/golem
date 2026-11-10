@@ -22,7 +22,7 @@ overflowTests =
         [overflows (breakParagraph defaultParams (const 30) (box 0 w : finish)) | w <- [29, 30, 31, 60]]
           @?= [[0], [0], [1], [30]],
       testCase "O1, O2: a glue of shrink 1 inside the run takes 1sp of a natural width of 31, not of 32" $ do
-        let run w = [box 0 w, Penalty 0 infPenalty NoHyphen, Glue 1 0 1, box 1 15] <> finish
+        let run w = [box 0 w, Penalty 0 infPenalty NoHyphen, glue 1 0 1, box 1 15] <> finish
         overflows (breakParagraph defaultParams (const 30) (run 15)) @?= [0]
         overflows (breakParagraph defaultParams (const 30) (run 16)) @?= [1],
       testCase "O1, O2: a full stop hung past the target is not overflow" $ do
@@ -59,8 +59,8 @@ overflowTests =
     overflows = map lineOverflow . brLines
     lines' = brLines . breakParagraph defaultParams (const width) . itemsOf
     expected l =
-      let n = sum [w | Box w _ <- lineItems l] + sum [w | Glue w _ _ <- lineItems l]
-          z = sum [s | Glue _ _ s <- lineItems l]
+      let n = sum [w | Box w _ <- lineItems l] + sum [w | Glue w _ _ _ _ <- lineItems l]
+          z = sum [s | Glue _ _ s _ _ <- lineItems l]
        in max 0 (n - z - lineTarget l)
     tags l = [read (T.unpack (bcText c)) | Box _ c <- lineItems l] :: [Int]
 
@@ -100,11 +100,11 @@ itemsOf :: [Run] -> [Item]
 itemsOf p = concat (zipWith runItems [0 ..] (numbered p)) <> finish
   where
     runItems i (t, Run bs gs) =
-      [Glue 2 1 1 | i > (0 :: Int)]
-        <> concat (zipWith3 (\k w g -> box k w : maybe [] (\(gw, gz) -> [Penalty 0 infPenalty NoHyphen, Glue gw 0 gz]) g) [t ..] bs (map Just gs <> [Nothing]))
+      [glue 2 1 1 | i > (0 :: Int)]
+        <> concat (zipWith3 (\k w g -> box k w : maybe [] (\(gw, gz) -> [Penalty 0 infPenalty NoHyphen, glue gw 0 gz]) g) [t ..] bs (map Just gs <> [Nothing]))
 
 finish :: [Item]
-finish = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+finish = [Penalty 0 infPenalty NoHyphen, glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
 
 -- | A box of a width; its text is its tag.
 box :: Int -> Sp -> Item

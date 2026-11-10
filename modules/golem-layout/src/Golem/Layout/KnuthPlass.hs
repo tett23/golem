@@ -6,6 +6,10 @@ breaks them (ADR 0008).
 module Golem.Layout.KnuthPlass
   ( Sp (..),
     Item (..),
+    glue,
+    GlueKind (..),
+    glueKindName,
+    AdjustOrder (..),
     Hyphen (..),
     isPatternHyphen,
     endsWithHyphen,
@@ -27,13 +31,14 @@ module Golem.Layout.KnuthPlass
     fitnessOf,
     placeLine,
     glueRatio,
+    glueAmounts,
     reachedLimit,
   )
 where
 
 import Data.List (maximumBy, sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (listToMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Ord (Down (..), comparing)
 import Data.Ratio ((%))
 import Data.Text (Text)
@@ -148,8 +153,68 @@ endsWithHyphen = \case
 
 data Item
   = Box {itemWidth :: !Sp, itemContent :: !BoxContent}
-  | Glue {itemWidth :: !Sp, itemStretch :: !Sp, itemShrink :: !Sp}
+  | Glue
+      { itemWidth :: !Sp,
+        itemStretch :: !Sp,
+        itemShrink :: !Sp,
+        -- | the space it is made of (docs/adr/0278)
+        itemKind :: !GlueKind,
+        {- | the size of its characters, 1 zw (docs/adr/0278): of the aki its
+        amounts are of, of the space; 0 for 'OtherGlue'
+        -} itemZw :: !Sp
+      }
   | Penalty {itemWidth :: !Sp, itemPenalty :: !Int, itemHyphen :: !Hyphen}
+  deriving stock (Eq, Show)
+
+-- | A glue of no kind and no size ('OtherGlue').
+glue :: Sp -> Sp -> Sp -> Item
+glue w y z = Glue w y z OtherGlue 0
+
+{- | The kind of a glue, the space it is made of (docs/adr/0278): the
+places of line adjustment of JLReq 3.8.3 and 3.8.4. A space between two
+characters takes the first kind of the list that it is.
+-}
+data GlueKind
+  = -- | a space between words, not in inline code nor in a range of superscript or subscript
+    WordSpaceGlue
+  | -- | a space before or after a middle dot
+    MiddleDotGlue
+  | -- | a space before an opening bracket or after a closing one
+    BracketsGlue
+  | -- | a space after a comma
+    CommaGlue
+  | -- | a space after a full stop in the line
+    FullStopGlue
+  | -- | the space at the start of a paragraph
+    ParagraphStartGlue
+  | -- | a space between a Japanese character and a Latin one
+    JapaneseWesternGlue
+  | -- | a space between other Japanese characters
+    BetweenCharactersGlue
+  | -- | any other glue: of a space of code, the end of a paragraph
+    OtherGlue
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+-- | The name of a kind in shrink-order and stretch-order (docs/adr/0278); 'OtherGlue' has none.
+glueKindName :: GlueKind -> Maybe Text
+glueKindName = \case
+  WordSpaceGlue -> Just "word-space"
+  MiddleDotGlue -> Just "middle-dot"
+  BracketsGlue -> Just "brackets"
+  CommaGlue -> Just "comma"
+  FullStopGlue -> Just "full-stop"
+  ParagraphStartGlue -> Just "paragraph-start"
+  JapaneseWesternGlue -> Just "japanese-western"
+  BetweenCharactersGlue -> Just "between-characters"
+  OtherGlue -> Nothing
+
+{- | How the shortfall or the excess of a set line is spread over its glue
+(docs/adr/0278): by one ratio over all of it, or in stages of kinds, each
+used up to its limit before the next.
+-}
+data AdjustOrder
+  = AdjustUniform
+  | AdjustStaged {aoShrink :: [[GlueKind]], aoStretch :: [[GlueKind]]}
   deriving stock (Eq, Show)
 
 {- | A hyphen break, of any kind (of the patterns, written, soft; docs/adr
@@ -197,12 +262,16 @@ data Params = Params
     {- | the most the glue of a set line stretches, as a ratio
     (docs/adr/0274): the paragraph style's stretch-limit in permille. It
     changes where the items of a line are placed, not the breaks
-    -} pStretchLimit :: !(Maybe Rational)
+    -} pStretchLimit :: !(Maybe Rational),
+    {- | the order the glue of a set line shrinks and stretches in
+    (docs/adr/0278): the paragraph style's shrink-order and stretch-order.
+    It changes where the items of a line are placed, not the breaks
+    -} pAdjustOrder :: !AdjustOrder
   }
   deriving stock (Eq, Show)
 
 defaultParams :: Params
-defaultParams = Params 100 200 0 10 10000 10000 Nothing False 0 False Nothing
+defaultParams = Params 100 200 0 10 10000 10000 Nothing False 0 False Nothing AdjustUniform
 
 data Line = Line
   { -- | the items of the line, discardable items after the break removed
@@ -222,7 +291,9 @@ data Line = Line
     -- | the edges of the first and the last box (golem-layout ADR 0009)
     lineEdge :: !(Sp, Sp),
     -- | the most its glue stretches, as a ratio, from 'pStretchLimit' (docs/adr/0274)
-    lineStretchLimit :: !(Maybe Rational)
+    lineStretchLimit :: !(Maybe Rational),
+    -- | the order its glue shrinks and stretches in, from 'pAdjustOrder' (docs/adr/0278)
+    lineAdjustOrder :: !AdjustOrder
   }
   deriving stock (Eq, Show)
 
@@ -326,7 +397,7 @@ breakParagraph ps lineWidth items =
     prefix = scanl add (Totals 0 0 0 0) items
     add (Totals w y z e) = \case
       Box w' c -> Totals (w + w') y z (if bcExpandable c then e + w' else e)
-      Glue w' y' z' -> Totals (w + w') (y + y') (z + z') e
+      Glue w' y' z' _ _ -> Totals (w + w') (y + y') (z + z') e
       Penalty {} -> Totals w y z e
     pre = Map.fromList (zip [0 ..] prefix)
     sumsTo i = pre Map.! i -- totals of items [0, i)
@@ -507,7 +578,7 @@ breakParagraph ps lineWidth items =
           expansion = case pExpansion ps of
             Just (limit, stp) | e > 0 -> expansionStep limit stp ratio
             _ -> 0
-       in Line its ratio target expansion (protS, protE) overflow edges (pStretchLimit ps)
+       in Line its ratio target expansion (protS, protE) overflow edges (pStretchLimit ps) (pAdjustOrder ps)
 
 {- | The expansion of a line in permille (golem-layout ADR 0029): the
 ratio times the limit the steps reach, rounded to a multiple of the
@@ -537,9 +608,9 @@ reachedLimit limit stp
   | otherwise = limit `div` stp * stp
 
 {- | The start offsets of the items of a set line. Expansion (a multiple
-of the step) scales the expandable boxes; the glue takes up the rest.
-Offsets are rounded once from exact rationals, so rounding never
-accumulates along the line.
+of the step) scales the expandable boxes; the glue takes up the rest, each
+glue by its amount ('glueAmounts'). Offsets are rounded once from exact
+rationals, so rounding never accumulates along the line.
 -}
 placeLine :: Line -> [(Item, Sp)]
 placeLine l =
@@ -547,23 +618,24 @@ placeLine l =
       (protS, _) = lineProtrusion l
       (edgeS, _) = lineEdge l
       ex = toRational (lineExpansion l) / 1000
-      g = glueRatio l
       lastIx = length its - 1
       -- a penalty's width (a hyphen) counts only where the line breaks
-      width (i, it) = case it of
-        Box w c -> toRational (unSp w) * (if bcExpandable c then 1 + ex else 1)
-        Glue w y z -> toRational (unSp w) + (if g >= 0 then toRational (unSp y) else toRational (unSp z)) * g
-        Penalty w _ _ -> if i == lastIx then toRational (unSp w) else 0
-      offsets = scanl (+) (toRational (unSp (edgeS - protS))) (zipWith (curry width) [0 ..] its)
+      widths _ [] = []
+      widths as ((i, it) : more) = case it of
+        Box w c -> toRational (unSp w) * (if bcExpandable c then 1 + ex else 1) : widths as more
+        Glue {itemWidth = w} -> case as of
+          a : as' -> toRational (unSp w) + a : widths as' more
+          [] -> toRational (unSp w) : widths [] more
+        Penalty w _ _ -> (if i == lastIx then toRational (unSp w) else 0) : widths as more
+      offsets = scanl (+) (toRational (unSp (edgeS - protS))) (widths (glueAmounts l) (zip [0 :: Int ..] its))
    in zip its (map (Sp . round) offsets)
 
-{- | The ratio by which the glue of a set line is stretched or shrunk,
-after the glyph expansion has taken its share; a line that stretches no
-more than its stretch limit (docs/adr/0274), what is left of the line
-left after its last item.
+{- | What a set line has to take up by its glue (docs/adr/0274): its
+target less its natural width and the share of the glyph expansion;
+negative when the glue shrinks.
 -}
-glueRatio :: Line -> Rational
-glueRatio l =
+lineRest :: Line -> Rational
+lineRest l =
   let its = lineItems l
       (protS, protE) = lineProtrusion l
       (edgeS, edgeE) = lineEdge l
@@ -574,9 +646,74 @@ glueRatio l =
         Penalty {} -> True
         _ -> False
       expandable = toRational (unSp (sum [w | Box w c <- its, bcExpandable c]))
-      rest = toRational (unSp (lineTarget l)) - natural - expandable * ex
-      ys = toRational (unSp (sum [y | Glue _ y _ <- its]))
-      zs = toRational (unSp (sum [z | Glue _ _ z <- its]))
+   in toRational (unSp (lineTarget l)) - natural - expandable * ex
+
+{- | The ratio by which the glue of a set line is stretched or shrunk,
+after the glyph expansion has taken its share; a line that stretches no
+more than its stretch limit (docs/adr/0274), what is left of the line
+left after its last item. It places the glue of a line of 'AdjustUniform'.
+-}
+glueRatio :: Line -> Rational
+glueRatio l =
+  let its = lineItems l
+      rest = lineRest l
+      ys = toRational (unSp (sum [itemStretch g | g@Glue {} <- its]))
+      zs = toRational (unSp (sum [itemShrink g | g@Glue {} <- its]))
    in if rest > 0 && ys > 0
         then maybe id min (lineStretchLimit l) (rest / ys)
         else if rest < 0 && zs > 0 then max (-1) (rest / zs) else 0
+
+{- | What each glue of a set line adds to its width, in the order of the
+glue (docs/adr/0278); negative where it shrinks. A line of 'AdjustUniform'
+takes 'glueRatio' of each. A line of 'AdjustStaged' takes its stages in
+order, the kinds of no stage last: each stage up to the shrink or the
+stretch of its glue, its glue in proportion to it. What stretching is
+left past every stage goes to the glue that stretches, in proportion to
+its size, so that each widens by as many em; in proportion to its
+stretch where none has a size. A line with the glue of the end of a
+paragraph, which takes every stretch, stretches as one of
+'AdjustUniform'. The stretch limit (docs/adr/0274) caps what the line
+stretches by before the stages share it.
+-}
+glueAmounts :: Line -> [Rational]
+glueAmounts l = case lineAdjustOrder l of
+  AdjustStaged shrinkOrder stretchOrder
+    | rest < 0 -> staged shrinkOrder itemShrink (negate rest) negate (\_ -> [])
+    | rest > 0, not (any ((>= filStretch) . itemStretch) gs) -> staged stretchOrder itemStretch capped id spread
+  _ -> uniform
+  where
+    gs = [g | g@Glue {} <- lineItems l]
+    rest = lineRest l
+    num = toRational . unSp
+    uniform =
+      let r = glueRatio l
+       in [num (if r >= 0 then itemStretch g else itemShrink g) * r | g <- gs]
+    ys = sum (map (num . itemStretch) gs)
+    capped = maybe rest (\m -> min rest (m * ys)) (lineStretchLimit l)
+    -- the stage of a kind: the first that has it, after every stage for one in none
+    stageOf order k = case [i | (i, ks) <- zip [0 :: Int ..] order, k `elem` ks] of
+      i : _ -> i
+      [] -> length order
+    {- each stage up to its limit, in order, its glue in proportion to its
+    limit; what is left past the last stage to 'extra' -}
+    staged order limitOf amount sign extra =
+      let limits = map (num . limitOf) gs
+          kinds = map (stageOf order . itemKind) gs
+          go _ [] = []
+          go remaining (k : ks) =
+            let cap = sum [lim | (lim, k') <- zip limits kinds, k' == k]
+                took = min remaining cap
+             in (k, if cap > 0 then took / cap else 0) : go (remaining - took) ks
+          shares = go amount [0 .. length order]
+          base = [sign (lim * fromMaybe 0 (lookup k shares)) | (lim, k) <- zip limits kinds]
+          left = amount - sum limits
+       in if left > 0 then zipWith (+) base (extra left <> repeat 0) else base
+    -- what is left past every stage, by size, or by stretch where no glue that stretches has a size
+    spread left =
+      let stretching = [num (itemStretch g) > 0 | g <- gs]
+          sizes = [if st then num (itemZw g) else 0 | (g, st) <- zip gs stretching]
+          total = sum sizes
+          stretches = [if st then num (itemStretch g) else 0 | (g, st) <- zip gs stretching]
+       in if total > 0
+            then [left * z / total | z <- sizes]
+            else if ys > 0 then [left * y / ys | y <- stretches] else map (const 0) gs

@@ -389,15 +389,15 @@ keep-all-lines = true
 @label line-adjustment
 ### 行の調整
 
-段落スタイルの二つのキーで、行に字が収まらないときの組み方を決めます。
+段落スタイルの四つのキーで、行に字が収まらないときの組み方を決めます。
 
 - [code: line-adjustment]：[code: "pull-in-first"] は、約物の空きや語間を詰めて字を前の行に入れること（追い込み）を優先します。既定です。[code: "balanced"] は、詰める行と字間を空ける行を同じ基準で比べます。
 - [code: stretch-limit]：行の字間を空ける量の上限を、伸びの最大に対する千分率で書きます。書かなければ上限はありません。
 
 改行できない長いコードの前の行のように、字間が大きく空く行を避けたい段落に [code: stretch-limit] を書きます。
 上限を超える分は行末に残すので、その行は行末がそろいません。
-1000 なら、仮名と漢字のあいだは 1/10 字まで空きます。
-2500 なら、四分まで空きます。
+1000 なら、空ける量は、行のどの空きも最大まで空けた量までです。
+2500 なら、その 2.5 倍までです。
 
 ```toml
 [paragraph-styles.table]
@@ -405,6 +405,28 @@ stretch-limit = 2500
 ```
 
 英語の本で語間が詰まりすぎると感じたら、[code: line-adjustment = "balanced"] を書きます。
+
+行を詰めるときと空けるときは、どの空きから使うかの順があります（JLReq の 3.8.3 と 3.8.4）。
+詰めるときは、欧文の語間、中点の前後、括弧と読点の後ろ、和文と欧文のあいだの順に、それぞれ最小まで詰めます。
+空けるときは、欧文の語間、和文と欧文のあいだ、和文の字のあいだの順に、それぞれ最大まで空けます。
+それでも足りない行は、すべての空きを、字の大きさに比例して同じだけ空けます。
+
+- [code: shrink-order]：詰める順です。空きの種類の名前を、使う順に配列で書きます。同じ段で一緒に詰める種類は、内側の配列にまとめます。
+- [code: stretch-order]：空ける順です。書き方は [code: shrink-order] と同じです。
+
+空きの種類の名前は、[code: word-space]（欧文の語間）、[code: middle-dot]（中点の前後）、[code: brackets]（括弧の外側）、[code: comma]（読点の後ろ）、[code: full-stop]（句点の後ろ）、[code: paragraph-start]（段落の先頭）、[code: japanese-western]（和文と欧文のあいだ）、[code: between-characters]（和文の字のあいだ）です。
+書かなかった種類は、最後にまとめて使います。
+既定の順は、次のとおりです。
+
+```toml
+[paragraph-styles.body]
+shrink-order = ["word-space", "middle-dot", ["brackets", "comma"], "japanese-western"]
+stretch-order = ["word-space", "japanese-western", "between-characters"]
+```
+
+順を変えても、行の分かれ方とページは変わりません。
+変わるのは、行の中の字の位置だけです。
+すべての空きを同じ割合で詰めるには、[code: shrink-order = \[\]] を書きます。
 
 @label paragraph-boxes
 ### 段落の背景と囲み罫

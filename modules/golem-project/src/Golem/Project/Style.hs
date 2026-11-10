@@ -36,6 +36,7 @@ module Golem.Project.Style
     paraStartValues,
     LineAdjustment (..),
     lineAdjustmentValues,
+    adjustPlaceNames,
     CodeStyle (..),
     CaptionPosition (..),
     defaultCodeStyle,
@@ -363,7 +364,11 @@ data ParaStyleDef = ParaStyleDef
     -- | how its lines are adjusted (docs/adr/0274)
     psLineAdjustment :: !(Maybe LineAdjustment),
     -- | the most the glue of a line stretches, as a ratio in permille; no limit when not written (docs/adr/0274)
-    psStretchLimit :: !(Maybe Int)
+    psStretchLimit :: !(Maybe Int),
+    {- | the stages the glue of a line shrinks and stretches in, each the
+    names of kinds of 'adjustPlaceNames' (docs/adr/0278)
+    -} psShrinkOrder :: !(Maybe [[Text]]),
+    psStretchOrder :: !(Maybe [[Text]])
   }
   deriving stock (Eq, Show)
 
@@ -426,6 +431,12 @@ data LineAdjustment = PullInFirst | Balanced
 -- | The values of line-adjustment of a paragraph style, in the order of 'LineAdjustment' (docs/adr/0274).
 lineAdjustmentValues :: [Text]
 lineAdjustmentValues = ["pull-in-first", "balanced"]
+
+{- | The names of the places of line adjustment, the kinds of glue, that
+shrink-order and stretch-order are written in (docs/adr/0278).
+-}
+adjustPlaceNames :: [Text]
+adjustPlaceNames = ["word-space", "middle-dot", "brackets", "comma", "full-stop", "paragraph-start", "japanese-western", "between-characters"]
 
 {- | [code] and [code.colors] (golem-driver ADR 0023): the format of the
 listing numbers, whether code blocks have line numbers, the swatches of
@@ -496,7 +507,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
@@ -522,7 +533,11 @@ bodyDefaults =
       psKeepLastLines = Just 2,
       psPageBreak = Just StartAnywhere,
       -- pulling in first, and no limit of the stretch (docs/adr/0274)
-      psLineAdjustment = Just PullInFirst
+      psLineAdjustment = Just PullInFirst,
+      {- the order of JIS X 4051 of JLReq 3.8.3 (a, d, e, f) and 3.8.4 (a
+      to c); the kinds not written come last (docs/adr/0278) -}
+      psShrinkOrder = Just [["word-space"], ["middle-dot"], ["brackets", "comma"], ["japanese-western"]],
+      psStretchOrder = Just [["word-space"], ["japanese-western"], ["between-characters"]]
     }
 
 {- | An aki amount (docs/adr ADR 0019): a name (ベタ, 全角, 二分, 三分, 四分,
@@ -869,6 +884,8 @@ overPara u b =
     (psPageBreak u <|> psPageBreak b)
     (psLineAdjustment u <|> psLineAdjustment b)
     (psStretchLimit u <|> psStretchLimit b)
+    (psShrinkOrder u <|> psShrinkOrder b)
+    (psStretchOrder u <|> psStretchOrder b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -1967,10 +1984,13 @@ instance FromValue ParaStyleDef where
     -- the line adjustment and the limit of the stretch (docs/adr/0274): a negative limit is G03006, not G02103
     ladj <- enumKey "line-adjustment" lineAdjustmentValues
     slim <- optKeyOf "stretch-limit" (withValue (\l x -> if x < 0 then failAt l ("stretch-limit は 0 以上の整数です（千分率）: " <> show x) else pure x))
+    -- the order of the places of line adjustment (docs/adr/0278)
+    sord <- optKeyOf "shrink-order" (adjustOrderOf "shrink-order")
+    tord <- optKeyOf "stretch-order" (adjustOrderOf "stretch-order")
     let align = al >>= \v -> lookup v (zip alignValues [minBound .. maxBound])
         start = pbk >>= \v -> lookup v (zip paraStartValues [minBound .. maxBound])
         adjustment = ladj >>= \v -> lookup v (zip lineAdjustmentValues [minBound .. maxBound])
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim)
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim sord tord)
     where
       keepCount :: Natural -> Maybe Natural -> Value' l -> Matcher l Int
       keepCount lo hi v =
@@ -1985,6 +2005,42 @@ swatchOrFalse key = \case
   Bool' _ False -> pure Nothing
   v@(Bool' _ True) -> failAt (valueAnn v) (T.unpack (key <> " にはスウォッチの名前か false を書きます"))
   v -> Just <$> fromValue v
+
+{- | shrink-order or stretch-order (docs/adr/0278): an array of stages,
+each a name of 'adjustPlaceNames' or a non-empty array of them. A value
+that is not an array, an element that is neither a string nor an array of
+strings, an empty array of a stage, a name not of the list, and a name
+written before in the key fail at themselves.
+-}
+adjustOrderOf :: Text -> Value' l -> Matcher l [[Text]]
+adjustOrderOf key = \case
+  List' _ xs -> do
+    stages <- sequence [inIndex i (stageOf x) | (i, x) <- zip [0 ..] xs]
+    let named = [(i, j, nested, l, t) | (i, stage) <- zip [0 ..] stages, (j, (nested, (l, t))) <- zip [0 :: Int ..] stage]
+        before (i, j, _, _, _) = [t | (i', j', _, _, t) <- named, (i', j') < (i, j)]
+        bad =
+          [ inIndex i ((if nested then inIndex j else id) (failAt l (T.unpack msg)))
+          | n@(i, j, nested, l, t) <- named,
+            Just msg <-
+              [ if t `notElem` adjustPlaceNames
+                  then Just (key <> " に使えない名前です: " <> t <> "（" <> T.intercalate "、" adjustPlaceNames <> " のどれか）")
+                  else if t `elem` before n then Just (key <> " に同じ名前を二度書いています: " <> t) else Nothing
+              ]
+          ]
+    case bad of
+      [] -> pure (map (map (snd . snd)) stages)
+      _ -> asum bad
+  v -> failAt (valueAnn v) (T.unpack (key <> " には配列を書きます（[\"word-space\", [\"brackets\", \"comma\"]] のように書きます）"))
+  where
+    -- a stage: its names with their places, each marked whether it is in an array of its own
+    stageOf = \case
+      Text' l t -> pure [(False, (l, t))]
+      List' l [] -> failAt l (T.unpack (key <> " の段に空の配列は書けません"))
+      List' _ ys -> sequence [inIndex j (nameOf y) | (j, y) <- zip [0 ..] ys]
+      v -> failAt (valueAnn v) (T.unpack (key <> " の要素には名前か名前の配列を書きます"))
+    nameOf = \case
+      Text' l t -> pure (True, (l, t))
+      v -> failAt (valueAnn v) (T.unpack (key <> " の段の配列には名前だけを書きます"))
 
 {- | The sides of border-sides (docs/adr/0271): an array of one to four
 of before, after, start and end, each once. An element that is not one,
@@ -2787,7 +2843,9 @@ codeStyleChecks s =
             ("keep-last-lines", isJust (psKeepLastLines d)),
             ("page-break", isJust (psPageBreak d)),
             ("line-adjustment", isJust (psLineAdjustment d)),
-            ("stretch-limit", isJust (psStretchLimit d))
+            ("stretch-limit", isJust (psStretchLimit d)),
+            ("shrink-order", isJust (psShrinkOrder d)),
+            ("stretch-order", isJust (psStretchOrder d))
           ],
         written
       ]
@@ -3006,8 +3064,8 @@ data LocalValue = LocalWord Text | LocalString Text
 charStyleKeys, paraStyleKeys, regexStyleKeys :: [Text]
 -- features, an array in style.toml, is one string of elements separated by commas in @style-def (docs/adr/0268)
 charStyleKeys = scalarKeys charStyleNode <> ["features", "underline", "strikethrough"]
--- border-sides, an array too, is one string of sides separated by commas (docs/adr/0271)
-paraStyleKeys = scalarKeys paraStyleNode <> ["features", "border-sides"]
+-- border-sides, an array too, is one string of sides separated by commas (docs/adr/0271), and so are shrink-order and stretch-order, a stage of a name each (docs/adr/0278)
+paraStyleKeys = scalarKeys paraStyleNode <> ["features", "border-sides", "shrink-order", "stretch-order"]
 regexStyleKeys = scalarKeys regexStyleNode
 
 {- | The keys of one @style-def as a TOML table, read with the 'FromValue'
@@ -3042,7 +3100,7 @@ readLocal kvs = run (Table (table [(k, value k v) | (k, v) <- kvs]))
       _ -> "G03006"
     -- features is one string of elements separated by commas (docs/adr/0268)
     value k v
-      | k `elem` ["features", "border-sides"] = case v of
+      | k `elem` ["features", "border-sides", "shrink-order", "stretch-order"] = case v of
           LocalString t -> List (map Text (T.splitOn "," t))
           LocalWord t -> List (map Text (T.splitOn "," t))
       | otherwise = tomlValue v
@@ -3373,7 +3431,9 @@ paraStyleNode =
         ("keep-last-lines", int),
         ("page-break", enum paraStartValues),
         ("line-adjustment", enum lineAdjustmentValues),
-        ("stretch-limit", int)
+        ("stretch-limit", int),
+        ("shrink-order", adjustOrderNode),
+        ("stretch-order", adjustOrderNode)
       ]
         <> featureNodes
         <> [ ("background", NEither [ref Swatches, NValue LFalse]),
@@ -3389,6 +3449,10 @@ paraStyleNode =
              ("features", features)
            ]
     )
+
+-- | shrink-order and stretch-order (docs/adr/0278): an array of names and arrays of names.
+adjustOrderNode :: Node
+adjustOrderNode = NArray (NEither [enum adjustPlaceNames, NArray (enum adjustPlaceNames)])
 
 -- | One regex style of a paragraph style (docs/adr ADR 0015).
 regexStyleNode :: Node

@@ -124,7 +124,7 @@ data Shape = SBox Integer Text | SGlue Integer Integer Integer | SPen Integer In
 shapeOf :: Item -> Shape
 shapeOf = \case
   Box w c -> SBox (unSp w) (bcText c)
-  Glue w y z -> SGlue (unSp w) (unSp y) (unSp z)
+  Glue w y z _ _ -> SGlue (unSp w) (unSp y) (unSp z)
   Penalty w p h -> SPen (unSp w) p (hyphenName h)
   where
     hyphenName = \case

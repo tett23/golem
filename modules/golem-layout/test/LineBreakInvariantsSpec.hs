@@ -126,7 +126,7 @@ keyOf w ps its = (unSp w, map item its, pExpansion ps, pProtrusion ps)
   where
     item = \case
       Box (Sp bw) c -> (0, bw, 0, 0, bcText c, bcExpandable c, unSp (bcProtrudeStart c), unSp (bcProtrudeEnd c), unSp (bcEdgeStart c), unSp (bcEdgeEnd c), 0)
-      Glue (Sp gw) (Sp y) (Sp z) -> (1, gw, y, z, "", False, 0, 0, 0, 0, 0)
+      Glue (Sp gw) (Sp y) (Sp z) _ _ -> (1, gw, y, z, "", False, 0, 0, 0, 0, 0)
       Penalty (Sp pw) p h -> (2, pw, case h of NoHyphen -> 0; ExplicitHyphen -> 1; PatternHyphen _ -> 2; WrapMark _ -> 3; SoftHyphen _ -> 4, 0, "", False, case h of PatternHyphen (Sp q) -> q; SoftHyphen (Sp q) -> q; _ -> 0, 0, 0, 0, p)
 
 {- | The values 'breakParagraph' is given for the inputs of a group in
@@ -365,7 +365,7 @@ predicateTests =
       broken (withLines (atLine 1 (\l -> l {lineTarget = lineTarget l + fs})) p) @?= [L5],
     testCase "L5: a line made overfull, with a break where it fits" $ do
       let p = paragraphIn plain False 2 ["あ", "い", "う", "え"]
-          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0) Nothing]
+          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0) Nothing AdjustUniform]
       broken (withLines joined p) @?= [L5],
     testCase "L5, D6 (docs/adr/0222): an overfull line with no break where it fits is not broken, and is not broken inside the run of line-start prohibitions" $ do
       let p = paragraphIn plain False 2 ["」", "」", "」", "」", "」"]
@@ -382,7 +382,7 @@ predicateTests =
       broken p @?= [],
     testCase "L6, D1 (docs/adr/0222): a line of one word without glue that stretches, short of W by a step or more while the expansion is short of its limit" $ do
       -- 10000 in 10120: 12 permille to stretch, rounded down to 10, 20 sp short; a step is 50 sp
-      let its = [boxOf 10000, Glue 0 0 0, boxOf 10000] <> paragraphEnd
+      let its = [boxOf 10000, glue 0 0 0, boxOf 10000] <> paragraphEnd
           ps = defaultParams {pExpansion = Just (20, 5)}
           p = (handParagraph 10120 its) {pParams = ps, pBreaks = breakParagraph ps (const 10120) its}
       map lineExpansion (brLines (pBreaks p)) @?= [10, 0]
@@ -419,7 +419,7 @@ predicateTests =
       broken (withLines (atLine lastLine (\l -> l {lineItems = latinSpace p : lineItems l})) p) @?= [L10],
     testCase "L11: no space between a Japanese character and a Latin word" $ do
       let p = paragraphIn plain False 3 ["漢", "a"]
-          noGlue = filter (\case Glue _ y _ -> y >= filStretch; _ -> True)
+          noGlue = filter (\case Glue _ y _ _ _ -> y >= filStretch; _ -> True)
       sound p
       broken (withLines (atLine 0 (\l -> l {lineItems = noGlue (lineItems l)})) p) @?= [L11],
     testCase "L11, D2 (docs/adr/0222): the space between Japanese and Latin text added to a space written between them" $ do
@@ -478,11 +478,11 @@ boxOf w = Box (Sp w) content
 
 -- | The end of a paragraph, as the composition makes it: no break, the glue that fills the last line, the forced break.
 paragraphEnd :: [Item]
-paragraphEnd = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+paragraphEnd = [Penalty 0 infPenalty NoHyphen, glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
 
 -- | Words of the widths given, with glue of 5, stretching 10 and shrinking 2 between them, and the end of a paragraph.
 wordsOf :: [Integer] -> [Item]
-wordsOf ws = concat (zipWith (\i w -> [Glue 5 10 2 | i > (0 :: Int)] <> [boxOf w]) [0 ..] ws) <> paragraphEnd
+wordsOf ws = concat (zipWith (\i w -> [glue 5 10 2 | i > (0 :: Int)] <> [boxOf w]) [0 ..] ws) <> paragraphEnd
 
 bruteTests :: [TestTree]
 bruteTests =
@@ -510,7 +510,7 @@ bruteTests =
       -- path, and as one that chose the worst feasible path would: six
       -- words of 30 in lines of 100, with glue that stretches 60, break
       -- three and three, two, two and two, and other ways in the first pass
-      let its = concat (zipWith (\i w -> [Glue 5 60 2 | i > (0 :: Int)] <> [boxOf w]) [0 ..] (replicate 6 30)) <> paragraphEnd
+      let its = concat (zipWith (\i w -> [glue 5 60 2 | i > (0 :: Int)] <> [boxOf w]) [0 ..] (replicate 6 30)) <> paragraphEnd
           p = handParagraph 100 its
           br = pBreaks p
           ds = map pathDemerits (feasiblePaths (pParams p) (pWidth p) (brPass br) its)
@@ -579,7 +579,7 @@ regressionTests =
       broken (rebroken (allowBefore "…") p) @?= [L4],
     testCase "the output before what does not fit was pushed out in the last pass, a line past W where a break fits, is broken by L5" $ do
       let p = paragraphIn plain False 2 ["あ", "い", "う", "え", "お"]
-          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0) Nothing]
+          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0) Nothing AdjustUniform]
       sound p
       broken (withLines joined p) @?= [L5],
     testCase "golem-layout ADR 0008: the output before it, a word with a hyphen sent whole to the next line past W, is broken by L5" $ do
@@ -759,7 +759,7 @@ placedKey p =
   let br = pBreaks p
       item = \case
         Box w c -> "B" <> show (unSp w) <> T.unpack (bcText c)
-        Glue w y z -> "G" <> show (unSp w, unSp y, unSp z)
+        Glue w y z _ _ -> "G" <> show (unSp w, unSp y, unSp z)
         Penalty w n _ -> "P" <> show (unSp w, n)
    in show (brPositions br, brDemerits br, brPass br, [[(item it, unSp off) | (it, off) <- placeLine l] | l <- brLines br])
 
@@ -970,7 +970,7 @@ codeTests =
       judge edged (padIn "a" (0, 0)) @?= [D2]
       judge [" "] (padIn "あ" (codePadding, 0)) @?= [D3]
       judge ["漢", "a"] (padIn "漢" (0, 0)) @?= [D1, D4]
-      judge edged (map (\case Glue w y z -> Glue (w + 1) y z; it -> it)) @?= [D5],
+      judge edged (map (\case g@Glue {} -> g {itemWidth = itemWidth g + 1}; it -> it)) @?= [D5],
     testCase "golem-layout ADR 0038 S3: two ellipses of code broken at the space between them break no invariant" $ do
       let p = codeParagraphOf (Input plain False 1 0 ["…", " ", "…"] 0)
       map lineText (brLines (pBreaks p)) @?= ["…", "…"]

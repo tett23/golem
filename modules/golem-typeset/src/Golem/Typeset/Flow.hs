@@ -940,7 +940,7 @@ tocPage tg e number =
       le = tgMeasure tg - max (tgReserve tg) w - g
       k0 = if tgLeaders tg && u > 0 then max 0 (unSp (le - (e + g)) `div` unSp u) else 0
       (ns, k) = if ns0 < e + g then (e + g, 0) else (ns0, k0)
-      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) 0 (0, 0) Nothing
+      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
    in TocPage (le - fromInteger k * u) leader ns number
 
 -- | The measure of a column of the page.
@@ -958,7 +958,7 @@ pageNumberLine env l =
   let sp0 = mkSpan (FileId 0) 0 0
       boxes = [b | b@Box {} <- fst (composeInlines env [CharStyle sp0 "toc-page-number" (pageLabelInlines sp0 l)])]
       w = sum (map itemWidth boxes)
-   in Line boxes 0 w 0 (0, 0) 0 (0, 0) Nothing
+   in Line boxes 0 w 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
 
 {- | How the last line of an entry of the table of contents ends
 (docs/adr/0264): the reserve W of every level, the gap, and the leader in
@@ -1476,15 +1476,23 @@ rubyStyleOf style fs =
 {- | The parameters of the breaking of a paragraph of a paragraph style
 (docs/adr/0274): its line-adjustment, pulling in first unless it is
 balanced, and its stretch-limit in permille, from the same paragraph style
-as the aki set ('akiSetOf').
+as the aki set ('akiSetOf'); and the order its lines shrink and stretch
+in, its shrink-order and stretch-order, those of body for a style there
+is not (docs/adr/0278).
 -}
 adjustedParams :: Style -> Maybe Text -> Params -> Params
 adjustedParams style st ps =
   let d = paraStyle style st
+      orderOf key = maybe [] (map (mapMaybe kindNamed)) ((d <|> paraStyle style Nothing) >>= key)
    in ps
         { pPullInFirst = (d >>= psLineAdjustment) /= Just Balanced,
-          pStretchLimit = (\m -> toInteger m % 1000) <$> (d >>= psStretchLimit)
+          pStretchLimit = (\m -> toInteger m % 1000) <$> (d >>= psStretchLimit),
+          pAdjustOrder = AdjustStaged (orderOf psShrinkOrder) (orderOf psStretchOrder)
         }
+
+-- | The kind of glue of a name of shrink-order and stretch-order (docs/adr/0278).
+kindNamed :: Text -> Maybe GlueKind
+kindNamed n = lookup n [(name, k) | k <- [minBound .. maxBound], Just name <- [glueKindName k]]
 
 kpParams :: Style -> PageGeometry -> Params
 kpParams style geom =
@@ -2806,7 +2814,7 @@ numberTable fe u tbl r nb = case r of
     div' a b = fromInteger (a `div` b)
     below = stTableCaption (piStyle (feInput fe)) == CaptionBelow
     capacity = length (pgLineGrid (feGeom fe))
-    emptyLine = Line [] 0 0 0 (0, 0) 0 (0, 0) Nothing
+    emptyLine = Line [] 0 0 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
     layoutError = \case
       ColumnsTooWide mn avail -> diagnostic "G07041" Error (uSpan u) ("表の列の最小の幅の合計（" <> L.mmText mn <> "）が使える幅（" <> L.mmText avail <> "）に収まりません")
       WidthsTooWide total avail -> diagnostic "G07114" Error (uSpan u) ("表の列に指定した幅の合計（" <> L.mmText total <> "）が、列の間隔を除いた行長（" <> L.mmText avail <> "）を超えます")
@@ -3383,7 +3391,7 @@ codeBlockOf atSource geom fonts measure capacity u lead code caption =
               [emptyBox off (o - x) | o > x]
                 <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf off)]
                 <> go (o + w) rest
-         in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) 0 (0, 0) Nothing
+         in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
       at leaf o col t = [(o + cpOffset p, cpText p, cpWidth p, cpLatin p, col, leaf) | p <- oneRow t]
       rowLeaf j = Leaf (codeRowSite (uIndex u) j) 0
       lineNumberColor = cdLineNumberColor cs

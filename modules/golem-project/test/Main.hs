@@ -336,6 +336,49 @@ lineAdjustmentTests =
       either (map fst) (const []) (localStyleDef ParagraphKind [("stretch-limit", LocalWord "2.5")]) @?= ["G03006"]
   ]
 
+-- | The order of the places of line adjustment of paragraph styles (docs/adr/0278).
+adjustOrderTests :: [TestTree]
+adjustOrderTests =
+  [ testCase "the two keys are read with stages of one name and of several, and inherited through based-on; body has the order of JIS X 4051" $ do
+      let src = "[paragraph-styles.a]\nshrink-order = [\"word-space\", [\"brackets\", \"comma\"]]\nstretch-order = []\n\n[paragraph-styles.b]\nbased-on = \"a\"\nstretch-order = [\"between-characters\"]\n"
+      s <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
+      let keys st = (psShrinkOrder st, psStretchOrder st)
+      fmap keys (paraStyle s (Just "a")) @?= Just (Just [["word-space"], ["brackets", "comma"]], Just [])
+      fmap keys (paraStyle s (Just "b")) @?= Just (Just [["word-space"], ["brackets", "comma"]], Just [["between-characters"]])
+      fmap keys (paraStyle s Nothing) @?= Just (Just [["word-space"], ["middle-dot"], ["brackets", "comma"], ["japanese-western"]], Just [["word-space"], ["japanese-western"], ["between-characters"]]),
+    testCase "A10: each wrong value is one G03006, a right one none" $
+      mapM_
+        (\(kv, c) -> (kv, codes (parseStyle (FileId 0) ("[paragraph-styles.a]\n" <> kv <> "\n"))) @?= (kv, c))
+        [ ("shrink-order = \"word-space\"", ["G03006"]),
+          ("shrink-order = [\"word-space\", 1]", ["G03006"]),
+          ("shrink-order = [[]]", ["G03006"]),
+          ("shrink-order = [[\"brackets\", [\"comma\"]]]", ["G03006"]),
+          ("shrink-order = [\"tab\"]", ["G03006"]),
+          ("shrink-order = [\"comma\", \"comma\"]", ["G03006"]),
+          ("stretch-order = [\"comma\", [\"brackets\", \"comma\"]]", ["G03006"]),
+          ("stretch-order = [\"tab\"]", ["G03006"]),
+          ("shrink-order = []", []),
+          ("shrink-order = [\"word-space\", \"middle-dot\", \"brackets\", \"comma\", \"japanese-western\"]", []),
+          ("stretch-order = [[\"word-space\", \"japanese-western\", \"between-characters\", \"full-stop\", \"paragraph-start\"]]", [])
+        ],
+    testCase "A10: a name written twice is G03006 at the second" $ do
+      let src = "[paragraph-styles.a]\nshrink-order = [\"comma\", [\"brackets\", \"comma\"]]\n"
+          at t = BS.length (TE.encodeUtf8 (fst (T.breakOnEnd t src)))
+      case parseStyle (FileId 0) src of
+        Left ds -> map (\d -> (diagCode d, spanStart (diagSpan d))) ds @?= [(DiagnosticCode "G03006", at "\"brackets\", ")]
+        Right _ -> assertFailure "no error",
+    testCase "A10: the keys in the paragraph style code are one G03006 each" $
+      mapM_
+        (\kv -> (kv, codes (parseStyle (FileId 0) ("[paragraph-styles.code]\n" <> kv <> "\n"))) @?= (kv, ["G03006"]))
+        ["stretch-order = []", "shrink-order = [\"word-space\"]"],
+    testCase "A10: @style-def reads the keys as names separated by commas, a stage each, with the same checks" $ do
+      fmap (either (const Nothing) (\d -> Just (psShrinkOrder d, psStretchOrder d))) (localStyleDef ParagraphKind [("shrink-order", LocalWord "brackets,comma"), ("stretch-order", LocalString "word-space")])
+        @?= Right (Just (Just [["brackets"], ["comma"]], Just [["word-space"]]))
+      mapM_
+        (\v -> (v, either (map fst) (const []) (localStyleDef ParagraphKind [("shrink-order", LocalWord v)])) @?= (v, ["G03006"]))
+        ["tab", "comma,comma", "word-space,1", ""]
+  ]
+
 -- | [targets.pdf] pdfa and pdfua (docs/adr ADR 0183).
 pdfConformanceTests :: TestTree
 pdfConformanceTests =
@@ -1257,6 +1300,7 @@ styleTests =
         fmap (\d -> (psFont d, psSpaceBefore d, psIndent d, psSize d)) (Map.lookup "toc-2" (stParaStyles s')) @?= Just (Just "gothic", Just 1, Just (Zw 1), Just (Zw 1)),
       testGroup "the keep options of paragraph styles (docs/adr/0261)" keepOptionTests,
       testGroup "the line adjustment of paragraph styles (docs/adr/0274)" lineAdjustmentTests,
+      testGroup "the order of the places of line adjustment (docs/adr/0278)" adjustOrderTests,
       testCase "the built-in styles" $ do
         s <- parsed ""
         (charStyle s "strong" >>= csSyntheticBold) @?= Just True
@@ -2222,6 +2266,8 @@ localStyleTests =
               "page-break" -> "page"
               "line-adjustment" -> "balanced"
               "stretch-limit" -> "2500"
+              "shrink-order" -> "word-space,comma"
+              "stretch-order" -> "word-space"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))
         assertBool "char" (all (known CharacterKind) charStyleKeys)

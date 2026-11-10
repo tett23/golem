@@ -14,7 +14,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.New (Language (..), createProject, templateFiles)
 import Golem.Layout.Japanese (BoxKind (..))
-import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), noLeaf, placeLine)
+import Golem.Layout.KnuthPlass (AdjustOrder (..), BoxContent (..), Hyphen (..), Item (..), Line (..), noLeaf, placeLine)
 import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook)
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
@@ -1715,7 +1715,7 @@ inlineCodeBackgroundTests =
         (_, pl) <- layoutOk (style <> cbg) "あ[code: 漢\\ ]い\n" []
         let placed = [(it, slIndent sl + off) | sl <- Map.elems (plLines pl), (it, off) <- placeLine (slLine sl)]
             kan = [(off, w, c) | (Box w c, off) <- placed, bcText c == "漢"]
-            glueAfter = [(off, w) | ((Box _ c, _), (Glue w _ _, off)) <- zip placed (drop 1 placed), bcText c == "漢"]
+            glueAfter = [(off, w) | ((Box _ c, _), (Glue w _ _ _ _, off)) <- zip placed (drop 1 placed), bcText c == "漢"]
         case (kan, glueAfter, backgroundRuns pl) of
           ([(off, w, c)], [(g, gw)], [(s0, e0)]) -> do
             let pad = lkPadding (bcLook c)
@@ -1863,8 +1863,8 @@ codeBlockRubyTests =
   ]
   where
     codeBg = "\n[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.code]\nbackground = \"code-bg\"\n"
-    plainLine = Line [] 0 0 0 (0, 0) 0 (0, 0) Nothing
-    lineOf items = Line items 0 0 0 (0, 0) 0 (0, 0) Nothing
+    plainLine = Line [] 0 0 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
+    lineOf items = Line items 0 0 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
     -- a ruby box of the kind set at 10pt, its reading at half that; its base characters at 10pt unless given
     rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0 noBoxSource Nothing noLeaf 0)
     firstPage pl = take 1 (plPages pl)
