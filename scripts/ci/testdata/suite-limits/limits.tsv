@@ -1,0 +1,9 @@
+x86_64	golem-x-test	10
+aarch64	golem-x-test	10
+arm64	golem-x-test	10
+x86_64	sleep	10
+aarch64	sleep	10
+arm64	sleep	10
+x86_64	other-test	10
+aarch64	other-test	10
+arm64	other-test	10

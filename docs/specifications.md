@@ -549,6 +549,26 @@ CI の実行の時間は、`build` のランナーのうち最も遅いもので
 2026-11-10 に数えると、テストのスイートを省いて縮むのは、`tests-rest` が最後に終わったときの二番めのランナーとの差だけで、`main` への push の 15 回では 1 回、プルリクエストの 14 回では 7 回（差の中央値は 21 秒）だった（[記録](ci-timings/2026-11-10-the-build-runners-that-finish-last.md)）。
 テストは、`build-depends` に現れないほかのパッケージのファイル（フォント、フィクスチャ、`VERSION` など）も相対のパスで読むので、省く規則には、テストが読むファイルの一覧と、その一覧の検査が要る。
 
+CI の `build` ジョブのテストのスイートには、スイートの全体の時間の上限がある（[ADR 0292](adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md)）。
+上限は、アーキテクチャ（`uname -m` の値、`x86_64` と `aarch64`）ごと、スイートごとに `scripts/ci/suite-limits.tsv` に一行ずつ、アーキテクチャ、スイートの名前、秒をタブで区切って書く。
+上限の秒は、直近の `main` への push の 20 回の、そのアーキテクチャとスイートの秒の中央値 m から、`max(10, ceil(2 × m))` で求める。
+偶数個の中央値は、中央の二つの平均とする。
+テストのラッパー `scripts/ci/suite-timeout.sh` は、壁時計で量ったスイートの秒が上限を超えたら、`<スイート>: finished in <秒> seconds, over its limit of <上限> seconds (scripts/ci/suite-limits.tsv)` を標準エラーに書き、スイートが通っていても失敗にする。
+スイートが落ちていれば、スイートの終了コードのままにする。
+表にそのアーキテクチャとスイートの行がなければ、スイートを走らせずに失敗にする。
+600 秒で止まらないスイートを止める時間切れは、上限によらず働く。
+環境の変数 `SUITE_LIMITS` で表の場所を変えられ、空にすると上限を当てない（手元でラッパーを使うとき）。
+CI の `changes` ジョブの `scripts/ci/suite-limits.sh --check` は、`scripts/ci/test-suites.sh` が展開するすべてのスイートについて、`x86_64` と `aarch64` のそれぞれにちょうど一行があり、スイートのない行がないことを確かめる。
+目的は、行の数に比例する探索のような、時間が桁で変わる後退を見つけることである。
+そのため、golem-syntax の 10 万行の位置の往復のテストも、時間切れはほかと同じ 30 秒とし（[ADR 0073](adr/0073-time-bounds-in-tests.md)）、探索の後退はこのスイートの上限で見つける。
+`enum.yml` と `race.yml` など、`build` ジョブの外で走るスイートと、手元の `cabal test` には上限を当てない。
+
+上限を超えたら、まず性能の後退かどうかを調べ、後退なら直す。
+テストを足したことによる正当な増加なら、そのプルリクエストで `sh scripts/ci/suite-limits.sh --fetch 20 | sh scripts/ci/suite-limits.sh` で表を作り直す。
+増えたスイートの行は、プルリクエストの CI の秒を中央値に加えた値で上限を求め、プルリクエストの説明に前と後の上限を書く。
+新しいスイートを足すプルリクエストは、そのスイートの行を、プルリクエストの CI の秒から同じ式で求めて足す。
+`--fetch N` は、`gh run list` で `main` への push の成功した実行のうちテストを走らせた直近の N 回を選び、テストのランナーのログを API から `curl` で取って、`finished in` の行にアーキテクチャを前に付けて書く。
+
 ### プロジェクトのファイルの読み方
 
 golem-project は、プロジェクトのファイルの読み方を表す値 `Files` を持つ（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
@@ -7930,6 +7950,7 @@ diagnostics は、ほかのコマンドと同じく人が読む形で標準エ�
 並列に進むのは、PDF の次の処理である。
 
 - 段落の組版は、複数の OS のスレッドで同時に進む（[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)）。
+  段落と表は、それぞれのスレッドの中で行まで評価してから返す。表は文字列にせずに評価する（[ADR 0299](adr/0299-force-a-composed-table-without-turning-it-into-a-string.md)）。
 - ページの描画と、内容のストリームの直列化と圧縮は、ページごとに GHC の spark で並列に進む（[ADR 0252](adr/0252-draw-and-serialise-the-pages-of-the-pdf-in-parallel.md)、[ADR 0256](adr/0256-record-what-the-implementations-of-adr-0251-and-0252-decided.md)）。
 
 並列にしても、出力のバイト列はプロセッサの数によらない（[docs/adr/0002](adr/0002-determinism.md)）。

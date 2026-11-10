@@ -361,7 +361,14 @@ layoutMiniWith = layoutMiniFonts fakeProvider
 
 -- | 'layoutMiniWith' with the fonts of a provider.
 layoutMiniFonts :: FontProvider -> BS.ByteString -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO (Either [Diagnostic] (PageGeometry, PdfLayout))
-layoutMiniFonts provider manifest style source files = withSystemTempDirectory "golem-layout" $ \tmp -> do
+layoutMiniFonts provider manifest style source files =
+  either Left id <$> withMiniInput provider manifest style source files (\inp geom fonts -> fmap (geom,) <$> layoutPdf inp geom fonts)
+
+{- | Runs an action on the input of the PDF of a one-chapter project, as
+'layoutMiniFonts' lays it out, inside the directory of the project.
+-}
+withMiniInput :: FontProvider -> BS.ByteString -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (PdfInput -> PageGeometry -> LoadedFonts -> IO a) -> IO (Either [Diagnostic] a)
+withMiniInput provider manifest style source files act = withSystemTempDirectory "golem-layout" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") manifest
   BS.writeFile (tmp </> "style.toml") style
   BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
@@ -376,7 +383,7 @@ layoutMiniFonts provider manifest style source files = withSystemTempDirectory "
           Left ds -> pure (Left ds)
           Right fonts -> do
             (_, _, bib) <- loadBibliography (diskFiles tmp) (projectManifest (evProject e))
-            fmap (geom,) <$> layoutPdf (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] bib Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))) (evStyleText e)) geom fonts
+            Right <$> act (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] bib Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))) (evStyleText e)) geom fonts
       (_, Left ds) -> pure (Left ds)
       (Nothing, _) -> pure (Left (filter isError (evDiagnostics e)))
 
