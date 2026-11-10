@@ -8,11 +8,18 @@ name: Enum
 # together within 60 minutes (docs/adr/0208, its section 4). The first
 # step of the areas times each on the settings of pull requests, and each
 # area runs whatever the steps before it gave, unless the run is
-# cancelled (docs/adr ADR 0281).
+# cancelled (docs/adr ADR 0281). Started by hand with timings, it runs
+# that first step alone on four jobs and writes the medians of their
+# tables, which are what the budgets are judged by (docs/adr ADR 0286).
 on:
   schedule:
     - cron: "47 18 * * *"
   workflow_dispatch:
+    inputs:
+      timings:
+        description: "Only time the areas on four jobs and write their medians (docs/adr ADR 0286)"
+        type: boolean
+        default: false
 
 # It reads the repository, and the runs of this workflow for
 # scripts/ci/race-needed.sh (gh run list); it writes nothing. The caches
@@ -21,8 +28,10 @@ permissions:
   contents: read
   actions: read
 
+# runs that only time the areas wait for no other run, and none waits for
+# them (docs/adr ADR 0286)
 concurrency:
-  group: enum
+  group: ${{ inputs.timings && format('enum-timings-{0}', github.run_id) || 'enum' }}
   cancel-in-progress: false
 
 env:
@@ -32,6 +41,11 @@ jobs:
   enum:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    # one job, or four that time the areas alone (docs/adr ADR 0286)
+    strategy:
+      fail-fast: false
+      matrix:
+        job: ${{ fromJSON(inputs.timings && '[1, 2, 3, 4]' || '[1]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -126,12 +140,20 @@ jobs:
           cat "$RUNNER_TEMP/enum-timings.md" >> "$GITHUB_STEP_SUMMARY"
           cat "$RUNNER_TEMP/enum-timings.md"
           exit "$status"
+      # the table of each of the four jobs, for the medians (docs/adr ADR 0286)
+      - name: The table of the times of this job (docs/adr ADR 0286)
+        if: ${{ !cancelled() && inputs.timings }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: enum-timings-${{ matrix.job }}
+          path: ${{ runner.temp }}/enum-timings.md
+          if-no-files-found: error
       # pagination: every input of the shortened enumeration of up to
       # GOLEM_ENUM_DEPTH elements, and inputs of one element more drawn from
       # the enumeration of docs/adr/0204; the pull requests check up to the
       # depth of PaginateInvariantsSpec.prDepth and draw none
       - name: The pagination invariants on every small input (docs/adr/0204, docs/adr/0208)
-        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
         env:
           GOLEM_ENUM_DEPTH: "5"
           GOLEM_ENUM_PAGINATION_SAMPLES: "5000000"
@@ -141,7 +163,7 @@ jobs:
       # requests check up to LineBreakInvariantsSpec.linesPrDepth parts in
       # lines of up to 4 em and draw none
       - name: The line breaking invariants on every small input (docs/adr/0209)
-        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
         env:
           GOLEM_ENUM_LINES_DEPTH: "3"
           GOLEM_ENUM_LINES_SAMPLES: "5000000"
@@ -150,7 +172,7 @@ jobs:
       # parts in lines of up to 5 em, in three orders; the pull requests
       # check the default order alone in lines of up to 4 em (docs/adr/0278)
       - name: The order of line adjustment on every small input (docs/adr/0278)
-        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
         env:
           GOLEM_ENUM_LINES_DEPTH: "3"
         run: cabal test golem-layout-test --test-option=-p --test-option='/order of JLReq/&&/every small input/'
@@ -158,7 +180,7 @@ jobs:
       # GOLEM_ENUM_NOBREAK_DEPTH parts; the pull requests check up to 2
       # (docs/adr ADR 0272)
       - name: The ranges that do not break on every small input (docs/adr ADR 0272)
-        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
         env:
           GOLEM_ENUM_NOBREAK_DEPTH: "3"
         run: cabal test golem-layout-test --test-option=-p --test-option='/ranges that do not break on every small input/'
@@ -166,7 +188,7 @@ jobs:
       # input of up to GOLEM_ENUM_CITE_DEPTH parts; the pull requests check
       # up to 2 (docs/adr/0277, docs/adr ADR 0280)
       - name: The marks of citations on every small input (docs/adr/0277, docs/adr ADR 0280)
-        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
         env:
           GOLEM_ENUM_CITE_DEPTH: "3"
         run: cabal test golem-layout-test --test-option=-p --test-option='/GOLEM_ENUM_CITE_DEPTH/'
@@ -174,7 +196,7 @@ jobs:
       # GOLEM_ENUM_JOINED_DEPTH parts; the pull requests check up to 2
       # (docs/adr ADR 0280)
       - name: The boundaries inside Latin words on every small input (docs/adr ADR 0280)
-        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
         env:
           GOLEM_ENUM_JOINED_DEPTH: "3"
         run: cabal test golem-layout-test --test-option=-p --test-option='/GOLEM_ENUM_JOINED_DEPTH/'
@@ -183,7 +205,29 @@ jobs:
       # widths up to 4 and up to 3 columns; the pull requests check up to
       # 4 and 3, and 3 and 3 (docs/adr ADR 0295)
       - name: The widths of the columns of a table on every small input (docs/adr ADR 0295)
-        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
         env:
           GOLEM_ENUM_TABLE_DEPTH: "5"
         run: cabal test golem-layout-test --test-option=-p --test-option='/GOLEM_ENUM_TABLE_DEPTH/'
+
+  # the medians of the tables of the four jobs, judged against the budgets
+  # of 10 seconds an area and 30 in all, into the summary of the run; a
+  # median over a budget fails nothing (docs/adr ADR 0286)
+  medians:
+    needs: enum
+    if: ${{ !cancelled() && inputs.timings }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: enum-timings-*
+          path: ${{ runner.temp }}/tables
+      - name: The medians of the times of the areas (docs/adr ADR 0286)
+        run: |
+          sh scripts/ci/enum-timings.sh --median "$RUNNER_TEMP"/tables/enum-timings-*/enum-timings.md > "$RUNNER_TEMP/medians.md"
+          cat "$RUNNER_TEMP/medians.md" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/medians.md"
