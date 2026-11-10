@@ -90,9 +90,13 @@ maxWidthAt :: Int -> Int
 maxWidthAt depth = if depth > linesPrDepth then 5 else linesPrWidth
 
 {- | The groups of a run the enumeration checks at a depth: those of the
-normal form; on pull requests without the span of fr, which took the
-area past the 10 seconds of docs/adr/0208 (its section 4) on the x86-64
-runner of CI, so that only the nightly job checks it (docs/adr ADR 0276).
+normal form; on pull requests without the span of fr, which only the
+nightly job checks (docs/adr ADR 0276). Timed as docs/adr ADR 0281 asks
+(the area alone with -p, on the x86-64 runner, three times), the span of
+fr back on pull requests keeps the area within its 10 seconds (7.72 to
+7.78) but takes the sum of the areas past its 30 (30.13 to 30.42), so it
+stays a value the default composition does not use, moved to the nightly
+job (docs/adr ADR 0281, its section 7).
 -}
 groupsAt :: Int -> [Text] -> [Group]
 groupsAt depth run =
@@ -102,10 +106,11 @@ groupsAt depth run =
   ]
 
 {- | The parts up to which R1 of docs/adr/0274 is checked: 2 past
-'linesPrDepth' (the nightly job), none on pull requests, where breaking
-every input once more took the area past the 10 seconds of docs/adr/0208
-(its section 4) on the x86-64 runner of CI, as the run of the tests of
-every package at once was timed (docs/adr/0282).
+'linesPrDepth' (the nightly job), none on pull requests (docs/adr/0282).
+Timed as docs/adr ADR 0281 asks, R1 back on pull requests keeps the area
+within its 10 seconds (9.77 to 9.81) but takes the sum of the areas past
+its 30 (32.27 to 32.32), so the comparison with the output before the ADR
+stays on the nightly job (docs/adr ADR 0281, its sections 3 and 7).
 -}
 r1Depth :: Int -> Int
 r1Depth depth = if depth > linesPrDepth then 2 else 0
@@ -690,13 +695,14 @@ balancedAdjust = Adjust False Nothing 10000
 {- | The adjustments of the inputs at a depth (docs/adr/0274, its test
 design). Past 'linesPrDepth', as the nightly job checks: both values of
 line-adjustment, each with no limit and the limits 0 and 2500. On pull
-requests, the default alone, pulling in first with no limit: with both
-values the inputs of the line breaking took more than the 10 seconds of
-the area on the x86-64 runner of CI (docs/adr/0208, its section 4). The
-inputs balanced and without a limit are broken and placed as before the
-ADR (R1), which the enumeration checked; the limits are checked on the
-paragraphs made by hand and by R7. This split is recorded in
-docs/adr/0282.
+requests, the default composition alone, pulling in first with no limit
+(docs/adr/0282, docs/adr ADR 0281, its section 3). Timed as docs/adr ADR
+0281 asks, the six back on pull requests take the area past its 10
+seconds (18.74 to 18.81), and balanced without a limit added alone keeps
+it within them (8.75 to 8.82) but takes the sum of the areas past its 30
+(31.20 to 31.45), so both stay on the nightly job (its section 7). The
+limits are checked on pull requests on the paragraphs made by hand and by
+R7.
 -}
 adjustsAt :: Int -> [Text] -> [Adjust]
 adjustsAt depth run =
