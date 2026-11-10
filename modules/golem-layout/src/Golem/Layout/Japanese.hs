@@ -931,7 +931,8 @@ softHyphen = '\xAD'
 {- | What a soft hyphen that is not a break is reported as (docs/adr ADR
 0272): one without a letter of its element on either side (G07123), or
 one in text that does not break, code, a URL, a link or a range that
-does not break (G07124).
+does not break, or next to such text with a letter on either side
+(G07124, docs/adr ADR 0297).
 -}
 data SoftHyphenNote = ShyNotBetweenLetters | ShyInUnbreakable
   deriving stock (Eq, Ord, Show)
@@ -1049,10 +1050,12 @@ elementSpan word pos =
         [] -> fromMaybe (0, T.length word) (listToMaybe (reverse spans))
 
 {- | The breaks of soft hyphens in a word (docs/adr ADR 0272): the positions
-given that are breaks, each once, in order.
+given that are breaks, each once, in order; none in unbreakable characters.
 -}
 softHyphenCuts :: Look -> Text -> [Int] -> [Int]
-softHyphenCuts lk word shys = IntSet.toAscList (IntSet.fromList [p | p <- shys, shyRole lk word p == ShyCut])
+softHyphenCuts lk word shys
+  | unbreakable lk = []
+  | otherwise = IntSet.toAscList (IntSet.fromList [p | p <- shys, shyRole lk word p == ShyCut])
 
 {- | The pieces of a text without soft hyphens, each with the index of its
 first character in it, the soft hyphens given in the words they are in,
@@ -1701,9 +1704,10 @@ of word pieces (not of superscript or subscript) and soft hyphens, with
 nothing but anchors and soft hyphens between them, is one word, the soft
 hyphens between two pieces at the boundary of them. The rules of docs/adr
 ADR 0272 then decide, in that word, the breaks, the elements that get no
-pattern hyphens and why a soft hyphen is not a break; a break is not
-taken where the character before it or after it does not break (a link,
-a range that does not break), and is G07123 then but in such text.
+pattern hyphens and why a soft hyphen is not a break; a soft hyphen in
+unbreakable characters (code, a URL, a link, a range that does not break),
+or with such a character before it or after it, is not a break, and is
+G07124 (docs/adr ADR 0297).
 -}
 joinShys :: [(Int, Sourced, Piece)] -> [(Int, Sourced, Piece)]
 joinShys = go
@@ -1713,6 +1717,10 @@ joinShys = go
       (before, rest) -> let (run, after) = span (\x -> member x || anchor x) rest in before <> joinRun run <> go after
     member (_, _, p) = case p of
       PWord lk _ _ _ -> not (isScript lk)
+      {- a run of code or of a URL is in the joined word, so that a soft
+      hyphen next to it is read there (docs/adr ADR 0297); it gets nothing
+      of the soft hyphens -}
+      PCode lk _ _ _ -> not (isScript lk)
       -- a soft hyphen of code is in no word (golem-driver ADR 0017)
       PShy lk _ _ -> not (breaksAsCode lk)
       _ -> False
@@ -1733,6 +1741,7 @@ joinRun run
     (_, placed) = mapAccumL place (0, Nothing) indexed
     place (at, lastWord) (k, (_, _, p)) = case p of
       PWord lk w shys _ -> ((at + T.length w, Just (at, shys, 0 :: Int)), [Left (k, at, lk, w)])
+      PCode lk t _ _ -> ((at + T.length t, Nothing), [Left (k, at, lk, t)])
       PShy lk True _ | Just (wAt, shys, n) <- lastWord, q : _ <- drop n shys -> ((at, Just (wAt, shys, n + 1)), [Right (k, wAt + q, lk)])
       PShy lk _ _ -> ((at, lastWord), [Right (k, at, lk)])
       _ -> ((at, lastWord), [])
@@ -1748,10 +1757,10 @@ joinRun run
        in case shyRole own {lkLink = Nothing} joined pos of
             ShyHead -> (False, Nothing)
             ShyStray -> (False, Just orphan)
+            {- a soft hyphen in unbreakable characters, or with one on
+            either side, is never a break (docs/adr ADR 0272, ADR 0297) -}
             ShyCut
-              | any (isJust . lkLink) (own : near) -> (False, Just orphan)
-              | unbreakable own -> (True, Just ShyInUnbreakable)
-              | any unbreakable near -> (False, Just ShyNotBetweenLetters)
+              | any unbreakable (own : near) -> (False, Just ShyInUnbreakable)
               | otherwise -> (True, Nothing)
     roles = IntMap.fromList [(k, roleOf pos own) | (k, pos, own) <- sites]
     cutsJ = IntSet.fromList [pos | (k, pos, _) <- sites, Just (True, _) <- [IntMap.lookup k roles]]

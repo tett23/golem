@@ -33,8 +33,8 @@ env:
   EPUBCHECK_SHA256: "33350c61038e71dfb3d45a76aed04bf5481e6d5500cb780f6e98db8bbd15a28c"
   # mise, which installs the pinned Claude Code of mise.toml, at an exact
   # version and the SHA-256 of its linux-x64 binary (docs/adr/0085)
-  MISE_VERSION: "2026.10.18"
-  MISE_SHA256: "e97c38973336aa2ff350fea50f47b412b266fe263b102b7200ff1e9b118c6942"
+  MISE_VERSION: "2026.11.5"
+  MISE_SHA256: "7a5b051d6f17d335c502f8047a5175cf3103f347d91942771c60da4e302ebcb0"
   # veraPDF from nixpkgs at a fixed commit, and the store path of its
   # x86-64 Linux output there; a pull request changes both to move it
   # (docs/adr/0183)

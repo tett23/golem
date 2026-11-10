@@ -10,4 +10,4 @@ GOLEM_CABAL_VERSION = "3.18.2.0"
 # scripts of npm packages unless allow_builds names them, and the
 # postinstall of Claude Code puts its native binary in place.
 [tools]
-"npm:@anthropic-ai/claude-code" = { version = "2.1.292", allow_builds = ["@anthropic-ai/claude-code"] }
+"npm:@anthropic-ai/claude-code" = { version = "2.1.322", allow_builds = ["@anthropic-ai/claude-code"] }
