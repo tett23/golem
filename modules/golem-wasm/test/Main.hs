@@ -5,6 +5,7 @@ import Data.Bits (shiftL, (.|.))
 import Data.ByteString qualified as BS
 import Data.List (nub)
 import Data.Word (Word8)
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.Wasm.Frame
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
@@ -14,7 +15,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
 
 main :: IO ()
-main = defaultMain tests
+main = enterPackageDirectory >> defaultMain tests
 
 -- | A path segment: ASCII or Japanese, never . nor .. nor empty.
 segment :: Gen String

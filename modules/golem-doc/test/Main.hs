@@ -12,6 +12,7 @@ import Golem.Doc.Validate
 import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
 import Golem.TestSupport.ExternalTool (needsTool)
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import IndexSpec qualified
 import LangSpec qualified
@@ -29,7 +30,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 main :: IO ()
-main = defaultMainReportingSkips (const tests)
+main = enterPackageDirectory >> defaultMainReportingSkips (const tests)
 
 sp :: SrcSpan
 sp = SrcSpan (FileId 0) 0 1

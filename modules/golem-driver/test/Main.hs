@@ -23,6 +23,7 @@ import FigureSpec
 import FileSpacesSpec (fileSpacesTests)
 import FunctionLibrarySpec (functionLibraryTests)
 import FunctionsSpec (functionsTests)
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
 import HeadingLevelsSpec (headingLevelsTests)
 import InMemorySpec (inMemoryTests)
@@ -64,7 +65,7 @@ import UnwritableNumbersSpec (unwritableNumbersTests)
 import VarsSpec (varsTests)
 
 main :: IO ()
-main = defaultMainReportingSkips tests
+main = enterPackageDirectory >> defaultMainReportingSkips tests
 
 {- | The tests. The suite is -threaded and tasty runs them at the same time:
 none of them changes the state of the process (environment variables, the

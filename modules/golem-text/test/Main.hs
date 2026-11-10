@@ -10,13 +10,14 @@ import Golem.Assemble
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
 import Golem.Syntax
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.Text
 import Test.Tasty
 import Test.Tasty.HUnit
 import TextOutputSpec (textOutputTests)
 
 main :: IO ()
-main = defaultMain tests
+main = enterPackageDirectory >> defaultMain tests
 
 lists :: TextLists
 lists = TextLists ("・" :| []) Nothing Nothing
