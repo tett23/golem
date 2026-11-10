@@ -23,6 +23,9 @@ concurrency:
 env:
   # written once, for haskell-actions/setup and the cache keys (docs/adr/0009)
   GHC_VERSION: "9.10.3"
+  # cabal-install, for haskell-actions/setup and the key of the Hackage
+  # index, whose 01-index.cache another version of cabal cannot read
+  CABAL_VERSION: "3.18.2.0"
   CDDL_VERSION: "0.10.7"
   # the release zip of w3c/epubcheck, for the cache key and its check
   # (docs/adr/0062)
@@ -250,7 +253,7 @@ jobs:
         uses: haskell-actions/setup@v2
         with:
           ghc-version: ${{ env.GHC_VERSION }}
-          cabal-version: "3.16.1.0"
+          cabal-version: ${{ env.CABAL_VERSION }}
           cabal-update: false
       - name: cabal uses ~/.cabal (docs/adr/0201)
         run: |
@@ -283,7 +286,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.cabal/packages/hackage.haskell.org
-          key: hackage-index-no-gz-${{ hashFiles('cabal.project.freeze') }}
+          key: hackage-index-no-gz-cabal-${{ env.CABAL_VERSION }}-${{ hashFiles('cabal.project.freeze') }}
       # rm without -f: if cabal names the file otherwise, the step fails
       - if: steps.index.outputs.cache-hit != 'true'
         run: |
@@ -667,7 +670,7 @@ jobs:
         uses: haskell-actions/setup@v2
         with:
           ghc-version: ${{ env.GHC_VERSION }}
-          cabal-version: "3.16.1.0"
+          cabal-version: ${{ env.CABAL_VERSION }}
           cabal-update: true
       - if: steps.hosttools.outputs.cache-hit != 'true'
         name: The native alex and happy (docs/adr/0202)

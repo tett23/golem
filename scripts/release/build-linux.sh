@@ -34,7 +34,7 @@ PACKAGES="bash binutils build-base ca-certificates curl file git gmp-dev gmp-sta
 # shellcheck disable=SC2086
 apk add --no-cache $PACKAGES
 
-# GHC 9.10.3 for Alpine and cabal-install 3.16.1.0 through ghcup. The
+# GHC 9.10.3 for Alpine and cabal-install 3.18.2.0 through ghcup. The
 # bootstrap script of ghcup is fetched from the commit that installs
 # GHCUP_VERSION and is checked by its SHA-256 before it runs; ghcup checks
 # GHC and cabal by the SHA-256 of its metadata (docs/adr/0044). Update the
@@ -60,7 +60,7 @@ rm -f "$BOOTSTRAP"
 PATH=$HOME/.ghcup/bin:$PATH
 export PATH
 ghcup install ghc 9.10.3 --set
-ghcup install cabal 3.16.1.0 --set
+ghcup install cabal 3.18.2.0 --set
 
 sh scripts/fetch-wasmtime.sh
 # the link map of golem (docs/adr/0007), in cabal.project.local as

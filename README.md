@@ -261,7 +261,7 @@ wasm の版だけは、32 ビットで組めない cborg 0.2.10.0 の代わり�
 
 ### ビルドとテスト
 
-GHC 9.10.3 と cabal-install 3.16.1.0 を ghcup で入れる。
+GHC 9.10.3 と cabal-install 3.18.2.0 を ghcup で入れる。
 `mise.toml` は ghcup の `bin` を `PATH` に加える。
 `mise.toml` は、リリースノートを書く Claude Code のバージョンも固定する（`mise install` で入る）。
 C と C++ のコンパイラも必要である。

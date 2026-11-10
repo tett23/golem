@@ -128,7 +128,7 @@ jobs:
         uses: haskell-actions/setup@v2
         with:
           ghc-version: "9.10.3"
-          cabal-version: "3.16.1.0"
+          cabal-version: "3.18.2.0"
       - name: cabal uses ~/.cabal (docs/adr/0201)
         if: runner.os == 'macOS'
         run: |
@@ -261,7 +261,7 @@ jobs:
         uses: haskell-actions/setup@v2
         with:
           ghc-version: ${{ env.GHC_VERSION }}
-          cabal-version: "3.16.1.0"
+          cabal-version: "3.18.2.0"
           cabal-update: true
       - if: steps.hosttools.outputs.cache-hit != 'true'
         name: The native alex and happy (docs/adr/0202)

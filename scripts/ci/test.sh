@@ -1914,7 +1914,7 @@ done
 INDEX_STEP="name: Cache the Hackage index"
 if step_has "$INDEX_STEP" '          path: ~/.cabal/packages/hackage.haskell.org' &&
   ! step_has "$INDEX_STEP" '!~/.cabal' &&
-  step_has "$INDEX_STEP" "key: hackage-index-no-gz-\${{ hashFiles('cabal.project.freeze') }}"; then ok; else
+  step_has "$INDEX_STEP" "key: hackage-index-no-gz-cabal-\${{ env.CABAL_VERSION }}-\${{ hashFiles('cabal.project.freeze') }}"; then ok; else
   ng "ci.yml: the Hackage index is cached as one directory under hackage-index-no-gz-"
 fi
 UPDATE_STEP="- if: steps.index.outputs.cache-hit != 'true'"
