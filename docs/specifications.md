@@ -6188,6 +6188,17 @@ AI の実行か検査に失敗したとき、プロンプトが上限を超え�
 `notes` は書いたノートを成果物として上げ、`release` がそれを下ろして下書きのリリースに使う。
 `release` は Node も Claude Code も入れない。
 
+`release.yml` の `ci` ジョブは、`ci.yml` を再利用可能なワークフローとして呼ぶ。
+呼ばれたワークフローは呼ぶジョブの権限までしか持てず、`ci.yml` のジョブが求める権限を与えないと、どの実行も起動の時点で失敗する。
+そのため `ci` は、`ci.yml` のジョブが求める権限の和集合、`contents: read` と `actions: write` を与える（[ADR 0287](adr/0287-keep-actions-write-of-the-ci-call-in-release-yml-for-the-caches-job-alone.md)）。
+`actions: write` を受け取るのは、`main` の古い `dist-` のキャッシュを消す `caches` だけである（[docs/adr/0228](adr/0228-keep-the-ci-caches-under-the-10-gb-limit.md)）。
+`caches` の `if` は `main` への push に限るので、タグの push の実行では `caches` は走らず、書き込みの権限のトークンは使われない。
+`scripts/ci/test.sh` は、次の四つを確かめる。
+`ci.yml` で `actions: write` を求めるジョブは `caches` だけであること（P1）。
+`caches` の `if` が `github.event_name == 'push'` と `github.ref == 'refs/heads/main'` の両方を含むこと（P2）。
+`ci` が、`ci.yml` のどのジョブも求めない権限を与えないこと（P3）。
+`ci.yml` のジョブが求めるどの権限も、同じ段階か `write` で与えること（P4）。
+
 ノートを書く Claude Code は、リポジトリのルートの `mise.toml` で正確なバージョンに固定し、`notes` が `jdx/mise-action` で入れる。
 Claude Code を入れる mise 自身も、正確な版と、その版の Linux の x86-64 の実行ファイルの SHA-256 で固定する（[docs/adr/0085](adr/0085-pin-mise-version-in-workflows.md)）。
 値は `release.yml` と `ci.yml` の最上位の `env` の `MISE_VERSION` と `MISE_SHA256` に同じものを書き、`jdx/mise-action` を使うすべてのステップ（`notes` と、CI の `release-scripts`）が `version` と `sha256` に渡す。

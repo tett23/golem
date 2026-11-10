@@ -525,7 +525,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 
 | ジョブ | 内容 |
 |---|---|
-| `ci` | `ci.yml` を再利用可能なワークフローとして呼ぶ。呼び出したワークフローは呼ぶジョブの権限までしか持てないので、`ci.yml` のジョブが求める権限（`visual` の `actions: read` と、`main` への push でだけ走る `caches` の `actions: write`）を与える |
+| `ci` | `ci.yml` を再利用可能なワークフローとして呼ぶ。呼び出したワークフローは呼ぶジョブの権限までしか持てないので、`ci.yml` のジョブが求める権限（`visual` の `actions: read` と、`main` への push でだけ走る `caches` の `actions: write`）を与える。`actions: write` を受け取るのは `caches` だけで、タグの push では `caches` は走らない。ほかのジョブが `actions: write` を求めないことと、ジョブが求めない権限を与えないことは、`scripts/ci/test.sh` が確かめる（[ADR 0287](./docs/adr/0287-keep-actions-write-of-the-ci-call-in-release-yml-for-the-caches-job-alone.md)） |
 | `version` | `scripts/release/check-version.sh` で `VERSION` とタグを検査し、タグのコミットが `main` に含まれることを確かめる。タグの push では、`scripts/release/check-patch.sh` で、タグが patch（`X` と `Z` が 1 以上）かを決め、patch なら基準のリリース（同じ `X.Y` のプレリリースでない最新のタグ）を `patch` ジョブに渡す。patch なのに基準のリリースがなければ失敗する（[docs/adr/0174](./docs/adr/0174-compatibility-promises-for-1-0.md)、[docs/adr/0212](./docs/adr/0212-patch-release-check-on-the-inputs-of-the-previous-release.md)） |
 | `build` | Linux の二つのアーキテクチャでは Alpine のコンテナの中で musl に静的にリンクして、macOS では `macos-15` でビルドし、アーカイブを作る。`THIRD_PARTY_LICENSES/` を決めたリンクマップも成果物として上げる |
 | `smoke` | アーカイブを別のランナーと、`alpine` と `debian:stable-slim` のコンテナの中で展開して動かす。`golem new` の雛形と sample のビルドが diagnostics を一つも出さない（notice も含む）こと、`golem new --no-fonts` が置くべきフォントの一覧のほかに何も書かないことを確かめる（[docs/adr/0080](./docs/adr/0080-release-smoke-checks-diagnostics.md)） |
