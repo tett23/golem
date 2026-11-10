@@ -1978,7 +1978,7 @@ perms_of() { # perms_of WORKFLOW JOB: the permissions of the job, one per line
   job_of "$1" "$2" | awk '/^    permissions:/ { on = 1; next } on && /^    [^ ]/ { on = 0 } on { sub(/^ +/, ""); print }'
 }
 if [ "$(perms_of "$RELEASE_YML" notes)" = "contents: read" ]; then ok; else ng "release.yml: the notes job has contents: read only"; fi
-if job_of "$RELEASE_YML" notes | grep -q 'jdx/mise-action@v'; then ok; else ng "release.yml: the notes job installs Claude Code with mise"; fi
+if job_of "$RELEASE_YML" notes | grep -q 'jdx/mise-action@'; then ok; else ng "release.yml: the notes job installs Claude Code with mise"; fi
 if job_of "$RELEASE_YML" release | grep -Eiq 'npm|mise|claude'; then ng "release.yml: the release job has no npm, mise nor Claude Code"; else ok; fi
 if job_of "$RELEASE_YML" release | grep -q '^      - release$\|needs:.*notes'; then ok; else ng "release.yml: the release job needs the notes job"; fi
 if grep -q 'npm install' "$RELEASE_YML"; then ng "release.yml: no npm install"; else ok; fi
@@ -2003,10 +2003,10 @@ step_cond() { # step_cond WORKFLOW JOB TEXT: the if: of the first step that has 
     END { if (found) print c }'
 }
 cabal_dir_case() { # cabal_dir_case WORKFLOW JOB NAME
-  if [ "$(grep -cF 'uses: haskell-actions/setup@v2' "$1")" = "$(grep -cF "$CABAL_DIR_RUN" "$1")" ]; then ok; else
+  if [ "$(grep -cF 'uses: haskell-actions/setup@' "$1")" = "$(grep -cF "$CABAL_DIR_RUN" "$1")" ]; then ok; else
     ng "$3: as many steps give CABAL_DIR as run haskell-actions/setup (docs/adr/0201)"
   fi
-  setup=$(step_line "$1" "$2" 'uses: haskell-actions/setup@v2')
+  setup=$(step_line "$1" "$2" 'uses: haskell-actions/setup@')
   give=$(step_line "$1" "$2" "$CABAL_DIR_RUN")
   check=""
   for key in config-file:config remote-repo-cache:packages store-dir:store; do
@@ -2019,8 +2019,8 @@ cabal_dir_case() { # cabal_dir_case WORKFLOW JOB NAME
   if [ -n "$setup" ] && [ "$check" != none ] && [ "$check" -gt "$setup" ]; then ok; else
     ng "$3: a step after haskell-actions/setup checks that cabal uses ~/.cabal (docs/adr/0201)"
   fi
-  if [ -n "$setup" ] && [ "$(step_cond "$1" "$2" "$CABAL_DIR_RUN")" = "$(step_cond "$1" "$2" 'uses: haskell-actions/setup@v2')" ] &&
-    [ "$(step_cond "$1" "$2" 'cabal path -z --config-file')" = "$(step_cond "$1" "$2" 'uses: haskell-actions/setup@v2')" ]; then ok; else
+  if [ -n "$setup" ] && [ "$(step_cond "$1" "$2" "$CABAL_DIR_RUN")" = "$(step_cond "$1" "$2" 'uses: haskell-actions/setup@')" ] &&
+    [ "$(step_cond "$1" "$2" 'cabal path -z --config-file')" = "$(step_cond "$1" "$2" 'uses: haskell-actions/setup@')" ]; then ok; else
     ng "$3: the steps of CABAL_DIR have the if: of haskell-actions/setup (docs/adr/0201)"
   fi
 }
@@ -3852,6 +3852,249 @@ if [ "$(uname -s)" = Darwin ]; then
 else
   skip 3 "safari-versions: plutil is of macOS"
 fi
+
+# ---------------------------------------------------------------- actions-pins.sh
+# every action of the workflows is pinned by the SHA of a commit with the tag
+# of its version as a comment (docs/adr/0296); git and gh are stubs that
+# answer from scripts/ci/testdata/actions-pins/ and the files below
+
+AP=$WORK/actions-pins
+AP_DATA=$HERE/testdata/actions-pins
+mkdir -p "$AP/bin" "$AP/tags" "$AP/gh"
+: >"$WORK/in"
+cp "$AP_DATA"/*.tags "$AP/tags/"
+# git ls-remote --tags https://github.com/OWNER/REPO.git: $AP/tags/OWNER_REPO.tags
+cat >"$AP/bin/git" <<'STUB'
+#!/bin/sh
+[ "$1" = ls-remote ] || exit 2
+r=${3#https://github.com/}
+r=${r%.git}
+f=$AP_TAGS/$(printf '%s' "$r" | tr / _).tags
+[ -f "$f" ] || { echo "fatal: repository not found" >&2; exit 128; }
+cat "$f"
+STUB
+# gh api -H ... repos/OWNER/REPO/contents/PATH?ref=SHA: the file of that
+# argument with /, ? and = turned into _, or a failure (not found)
+cat >"$AP/bin/gh" <<'STUB'
+#!/bin/sh
+for a; do last=$a; done
+f=$AP_GH/$(printf '%s' "$last" | tr '/?=' '___')
+[ -f "$f" ] || { echo "HTTP 404" >&2; exit 1; }
+cat "$f"
+STUB
+chmod +x "$AP/bin/git" "$AP/bin/gh"
+ap() { env PATH="$AP/bin:$PATH" AP_TAGS="$AP/tags" AP_GH="$AP/gh" sh "$HERE/actions-pins.sh" "$@"; }
+# action_yml REPO PATH SHA USING [FILE]: the action.yml of the stub
+action_yml() {
+  printf 'name: x\nruns:\n  using: %s\n  main: index.js\n' "$4" >"$AP/gh/$(printf 'repos/%s/contents/%s%s?ref=%s' "$1" "${2:+$2/}" "${5:-action.yml}" "$3" | tr '/?=' '___')"
+}
+CO=3d3c42e5aac5ba805825da76410c181273ba90b1     # actions/checkout v7, v7.0.1 (lightweight)
+CO0=9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0    # actions/checkout v7.0.0
+HS=0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d     # haskell-actions/setup v2.12.1 (annotated)
+HSTAG=0f7370ccbc65f22514ec3e094f6601b8d61fbbf7  # the tag object of v2.12.1
+FM=1b9df64b784203126500372730b9725c97e4040b     # haskell-actions/run-fourmolu v13 (only majors)
+action_yml actions/checkout "" "$CO" node24
+action_yml haskell-actions/setup "" "$HS" node24
+action_yml haskell-actions/run-fourmolu "" "$FM" node24
+# ap_dir NAME: a new directory of workflows, $AP/NAME
+ap_dir() { rm -rf "${AP:?}/$1"; mkdir -p "$AP/$1"; }
+
+# check: the form of every uses: line (I1), and the lines that are not (I2)
+ap_dir good
+cat >"$AP/good/a.yml" <<YML
+jobs:
+  a:
+    steps:
+      - uses: actions/checkout@$CO # v7.0.1
+      - name: setup
+        uses: haskell-actions/setup@$HS # v2.12.1
+      - uses: haskell-actions/run-fourmolu@$FM # v13
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1
+      # uses: a comment is not a uses: line
+  b:
+    uses: ./.github/workflows/ci.yml
+YML
+cat >"$AP/good/b.yml" <<YML
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1
+YML
+printf 'not a workflow: uses: x\n' >"$AP/good/c.yaml"
+run ap check "$AP/good"
+expect "actions-pins check: the pinned forms, ./ and the paths of a repository pass, 6 lines (I1, I3, I4)" 0 "6 uses: lines checked"
+for bad in "actions/checkout@v7" "actions/checkout@main" "actions/checkout@3d3c42e" \
+  "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b # v7.0.1" \
+  "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1a # v7.0.1" \
+  "actions/checkout@3D3C42E5AAC5BA805825DA76410C181273BA90B1 # v7.0.1" \
+  "actions/checkout@$CO" "actions/checkout@$CO # v7.0.1.2" "actions/checkout@$CO # 7.0.1" \
+  "actions/checkout@$CO # v7.0.1 " "actions/checkout@$CO #v7.0.1" "actions/checkout@$CO # v7.0.1 x" \
+  "\"actions/checkout@$CO\" # v7.0.1" "docker://alpine:3" "checkout@$CO # v7.0.1"; do
+  ap_dir bad
+  printf '      - uses: haskell-actions/setup@%s # v2.12.1\n      - uses: %s\n' "$HS" "$bad" >"$AP/bad/w.yml"
+  run ap check "$AP/bad"
+  if [ "$CODE" = 1 ] && grep -qF "$AP/bad/w.yml:2: " "$WORK/out" && ! grep -qF "w.yml:1:" "$WORK/out" &&
+    grep -qxF "2 uses: lines checked" "$WORK/out"; then ok; else ng "actions-pins check: '$bad' fails at FILE:LINE (I2)"; fi
+done
+# the forms of the line: name: above, a uses: under a step
+ap_dir bad
+printf '      - name: x\n        uses: actions/checkout@v7\n' >"$AP/bad/w.yml"
+run ap check "$AP/bad"
+if [ "$CODE" = 1 ] && grep -qF "$AP/bad/w.yml:2: " "$WORK/out"; then ok; else ng "actions-pins check: a uses: under name: is checked (I2)"; fi
+
+# check: the same repository is pinned alike in every file (I3)
+for pair in "$CO0 # v7.0.0" "$CO # v7"; do
+  ap_dir two
+  printf '      - uses: actions/checkout@%s # v7.0.1\n' "$CO" >"$AP/two/a.yml"
+  printf 'x: 1\n      - uses: actions/checkout/sub@%s\n' "$pair" >"$AP/two/b.yml"
+  run ap check "$AP/two"
+  if [ "$CODE" = 1 ] && grep -qF "$AP/two/b.yml:2: actions/checkout is pinned" "$WORK/out"; then ok; else
+    ng "actions-pins check: actions/checkout at '$pair' and at $CO # v7.0.1 fails (I3)"
+  fi
+done
+
+# check: the number of lines, and 0 lines fails (I4)
+ap_dir none
+printf 'on: push\njobs:\n  a:\n    steps:\n      - run: true\n' >"$AP/none/a.yml"
+run ap check "$AP/none"
+expect "actions-pins check: no uses: line fails (I4)" 1 "0 uses: lines checked"
+ap_dir one
+printf '      - uses: ./.github/workflows/ci.yml\n' >"$AP/one/a.yml"
+run ap check "$AP/one"
+expect "actions-pins check: one uses: line (I4)" 0 "1 uses: lines checked"
+run ap check "$AP/nonexistent"
+expect "actions-pins check: no directory is an error" 2
+
+# verify: the tag of the comment is the pinned commit, peeled (I5)
+ap_dir v
+printf '      - uses: actions/checkout@%s # v7.0.1\n      - uses: haskell-actions/setup@%s # v2.12.1\n      - uses: haskell-actions/run-fourmolu@%s # v13\n      - uses: ./.github/workflows/ci.yml\n' "$CO" "$HS" "$FM" >"$AP/v/a.yml"
+run ap verify "$AP/v"
+expect "actions-pins verify: a lightweight tag, an annotated tag peeled, a major tag (I5)" 0 "4 uses: lines checked"
+for case in "haskell-actions/setup@$HSTAG # v2.12.1:the tag object of an annotated tag" \
+  "actions/checkout@$CO # v7.0.9:a tag that is not upstream" \
+  "actions/checkout@$CO # v7.0.0:a tag of another commit"; do
+  ap_dir v
+  printf '      - uses: %s\n' "${case%%:*}" >"$AP/v/a.yml"
+  run ap verify "$AP/v"
+  if [ "$CODE" = 1 ] && [ "$(grep -vc 'uses: lines checked' "$WORK/out")" = 1 ]; then ok; else ng "actions-pins verify: ${case#*:} fails (I5)"; fi
+done
+# the tag was moved to another commit
+cp "$AP/tags/actions_checkout.tags" "$AP/checkout.tags"
+sed "s|^$CO	refs/tags/v7.0.1\$|$CO0	refs/tags/v7.0.1|" "$AP/checkout.tags" >"$AP/tags/actions_checkout.tags"
+ap_dir v
+printf '      - uses: actions/checkout@%s # v7.0.1\n' "$CO" >"$AP/v/a.yml"
+run ap verify "$AP/v"
+if [ "$CODE" = 1 ] && grep -qF "actions/checkout: v7.0.1 is $CO0 upstream" "$WORK/out"; then ok; else ng "actions-pins verify: a moved tag fails (I5)"; fi
+cp "$AP/checkout.tags" "$AP/tags/actions_checkout.tags"
+# a repository that is not upstream is an error
+ap_dir v
+printf '      - uses: nobody/nothing@%s # v1\n' "$CO" >"$AP/v/a.yml"
+run ap verify "$AP/v"
+expect "actions-pins verify: git ls-remote fails, an error" 2
+
+# latest: the pinned SHA is the commit of the greatest version, and the
+# action runs on node 24 or later or is composite (I6)
+ap_dir l
+printf '      - uses: actions/checkout@%s # v7.0.1\n      - uses: haskell-actions/setup@%s # v2.12.1\n      - uses: haskell-actions/run-fourmolu@%s # v13\n' "$CO" "$HS" "$FM" >"$AP/l/a.yml"
+run ap latest "$AP/l"
+expect "actions-pins latest: the newest versions, v13 above v9, only majors (I6)" 0 "3 uses: lines checked"
+# latest_tags NAME LINE: latest with LINE added to the tags of actions/checkout
+latest_tags() {
+  { cat "$AP/checkout.tags"; printf '%s\n' "$2"; } >"$AP/tags/actions_checkout.tags"
+  run ap latest "$AP/l"
+  cp "$AP/checkout.tags" "$AP/tags/actions_checkout.tags"
+}
+latest_tags patch "$CO0	refs/tags/v7.0.2"
+if [ "$CODE" = 1 ] && grep -qF "actions/checkout: the newest is v7.0.2 ($CO0)" "$WORK/out"; then ok; else ng "actions-pins latest: a newer patch fails with its name (I6)"; fi
+latest_tags major "$CO0	refs/tags/v8"
+if [ "$CODE" = 1 ] && grep -qF "actions/checkout: the newest is v8 " "$WORK/out"; then ok; else ng "actions-pins latest: a newer major fails (I6)"; fi
+latest_tags beta "$CO0	refs/tags/v8.0.0-beta.1"
+expect "actions-pins latest: a version with a suffix is not newer (I6)" 0 "3 uses: lines checked"
+ap_dir l0
+printf '      - uses: actions/checkout@%s # v7.0.0\n' "$CO0" >"$AP/l0/a.yml"
+action_yml actions/checkout "" "$CO0" node24
+run ap latest "$AP/l0"
+if [ "$CODE" = 1 ] && grep -qF "the newest is v7.0.1 ($CO), pinned v7.0.0" "$WORK/out"; then ok; else ng "actions-pins latest: an older version fails (I6)"; fi
+for u in node26:0 node20:1 composite:0 docker:1 "'node24':0"; do
+  action_yml actions/checkout "" "$CO" "${u%%:*}"
+  run ap latest "$AP/l"
+  expect "actions-pins latest: runs.using ${u%%:*} (I6)" "${u#*:}"
+done
+# CRLF, as actions/checkout writes its action.yml
+printf 'name: x\r\nruns:\r\n  using: node24\r\n  main: index.js\r\n' >"$AP/gh/repos_actions_checkout_contents_action.yml_ref_$CO"
+run ap latest "$AP/l"
+expect "actions-pins latest: an action.yml with CRLF (I6)" 0 "3 uses: lines checked"
+rm -f "$AP/gh/repos_actions_checkout_contents_action.yml_ref_$CO"
+action_yml actions/checkout "" "$CO" node24 action.yaml
+run ap latest "$AP/l"
+expect "actions-pins latest: only action.yaml (I6)" 0 "3 uses: lines checked"
+rm -f "$AP/gh/repos_actions_checkout_contents_action.yaml_ref_$CO"
+run ap latest "$AP/l"
+if [ "$CODE" = 1 ] && grep -qF "runs.using is missing" "$WORK/out"; then ok; else ng "actions-pins latest: no action.yml fails (I6)"; fi
+action_yml actions/checkout "" "$CO" node24
+# the action of a path is read at its path
+ap_dir lp
+printf '      - uses: actions/checkout/sub@%s # v7.0.1\n' "$CO" >"$AP/lp/a.yml"
+run ap latest "$AP/lp"
+if [ "$CODE" = 1 ] && grep -qF "actions/checkout/sub@$CO: runs.using is missing" "$WORK/out"; then ok; else ng "actions-pins latest: the action.yml of a path (I6)"; fi
+action_yml actions/checkout sub "$CO" composite
+run ap latest "$AP/lp"
+expect "actions-pins latest: the action.yml of a path is composite (I6)" 0 "1 uses: lines checked"
+
+# update: rewrites to the newest versions; the result passes check, verify
+# and latest, and a second update changes nothing (I7)
+ap_dir u
+cat >"$AP/u/a.yml" <<YML
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: setup
+        uses: haskell-actions/setup@v2
+      - uses: ./.github/workflows/ci.yml
+YML
+cat >"$AP/u/b.yml" <<YML
+      - uses: haskell-actions/setup@v2
+      - uses: haskell-actions/run-fourmolu@v13
+      - uses: actions/checkout@$CO0 # v7.0.0
+YML
+run ap update "$AP/u"
+if [ "$CODE" = 0 ] && [ "$(sort "$WORK/out")" = "actions/checkout: v7 -> v7.0.1
+haskell-actions/setup: v2 -> v2.12.1" ]; then ok; else ng "actions-pins update: says what it raised (I7)"; fi
+if [ "$(cat "$AP/u/a.yml")" = "      - uses: actions/checkout@$CO # v7.0.1
+        with:
+          persist-credentials: false
+      - name: setup
+        uses: haskell-actions/setup@$HS # v2.12.1
+      - uses: ./.github/workflows/ci.yml" ] && [ "$(cat "$AP/u/b.yml")" = "      - uses: haskell-actions/setup@$HS # v2.12.1
+      - uses: haskell-actions/run-fourmolu@$FM # v13
+      - uses: actions/checkout@$CO # v7.0.1" ]; then ok; else ng "actions-pins update: the rewritten workflows (I7)"; fi
+run ap check "$AP/u"
+expect "actions-pins update: the result passes check (I7)" 0 "6 uses: lines checked"
+run ap verify "$AP/u"
+expect "actions-pins update: the result passes verify (I7)" 0 "6 uses: lines checked"
+run ap latest "$AP/u"
+expect "actions-pins update: the result passes latest (I7)" 0 "6 uses: lines checked"
+cp -R "$AP/u" "$AP/u1"
+run ap update "$AP/u"
+if [ "$CODE" = 0 ] && [ ! -s "$WORK/out" ] && diff -r "$AP/u1" "$AP/u" >/dev/null; then ok; else ng "actions-pins update: a second update changes nothing (I7)"; fi
+# the newest version runs on node20: nothing is written
+ap_dir u
+printf '      - uses: actions/checkout@v7\n      - uses: haskell-actions/setup@v2\n' >"$AP/u/a.yml"
+cp "$AP/u/a.yml" "$AP/u.orig"
+action_yml actions/checkout "" "$CO" node20
+run ap update "$AP/u"
+if [ "$CODE" = 1 ] && grep -qF "actions/checkout@$CO: runs.using is node20" "$WORK/out" && cmp -s "$AP/u.orig" "$AP/u/a.yml"; then ok; else
+  ng "actions-pins update: node20 at the newest version fails and writes nothing (I7)"
+fi
+action_yml actions/checkout "" "$CO" node24
+
+# the workflows of the repository pass check, and the daily job checks
+# them against upstream with contents: read only (docs/adr/0296)
+run sh "$HERE/actions-pins.sh" check
+if [ "$CODE" = 0 ] && grep -Eq '^[1-9][0-9]* uses: lines checked$' "$WORK/out"; then ok; else ng "actions-pins check: the workflows of the repository (I1, I3)"; fi
+if [ "$(perms_of "$ADV_YML" actions)" = "contents: read" ]; then ok; else ng "advisories.yml: the actions job has contents: read only"; fi
+if job_of "$ADV_YML" actions | grep -qF 'sh scripts/ci/actions-pins.sh verify' &&
+  job_of "$ADV_YML" actions | grep -qF 'sh scripts/ci/actions-pins.sh latest' &&
+  job_of "$ADV_YML" actions | grep -qF 'GH_TOKEN: ${{ github.token }}' &&
+  job_of "$ADV_YML" actions | grep -qxF '    timeout-minutes: 10'; then ok; else ng "advisories.yml: the actions job runs verify and latest with GH_TOKEN in 10 minutes"; fi
+if job_lines scripts-linux | grep -qF 'run: sh scripts/ci/actions-pins.sh check'; then ok; else ng "ci.yml: scripts-linux runs actions-pins.sh check"; fi
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
