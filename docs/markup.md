@@ -1300,6 +1300,11 @@ HTML と EPUB では、ファイルの中のスタイルを持つ章の `<body>`
 `bold` は合成の太字、`italic` は合成の斜体、`strong` は `bold` を基準にした文字スタイル、`code` は書体の役割 `code` で組む文字スタイル、`url` は参考文献の URL を組む文字スタイルである（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
 `no-break` は、中で行を分けない範囲（InDesign の分離禁止にあたる）を作る文字スタイルである（[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
 `[style no-break: 100 円]` は、PDF で `100` と `円` のあいだで改行しない。
+数とその後の単位や助数詞（`100円`、`3人`）は、`no-break` を書かなくても既定で分けない（[ADR 0275](adr/0275-keep-numbers-with-the-units-after-them.md)、`[composition]` の `number-unit-penalty`）。
+人名や熟語は自動では分けないので、分けたくない語句は `[style no-break: 夏目漱石]` のように包む。
+決まった形の語句は、正規表現スタイルで `no-break` を当てれば、書くたびに包まずに済む。
+段落スタイルに `{ pattern = '第[0-9０-９]+[章節]', style = "no-break" }` を書けば、`第3章` を分けない。
+正規表現スタイルは見出し、定義リストの用語、注の本文には当たらないので、そこでは `[style no-break: …]` で包む。
 範囲が行に収まらなければ、範囲を分けずに行をはみ出させ、`golem build` が警告（G07122）で知らせる。
 行末の `\` の強制改行は、範囲の中でも改行する。
 `url` には別名がなく、原稿では `[style url: ...]` と書く。

@@ -159,6 +159,10 @@ data ComposeEnv = ComposeEnv
     {- | the penalty of a break after a hyphen or dash in a Latin word;
     10000 or more means no such break (golem-layout ADR 0008)
     -} ceExplicitHyphenPenalty :: !Int,
+    {- | the penalty of a break between an Arabic digit and the kana or
+    kanji after it, 10000 none (docs/adr/0275): [composition]'s
+    number-unit-penalty
+    -} ceNumberUnitPenalty :: !Int,
     -- | the aki set of the paragraph (docs/adr ADR 0019)
     ceAkiSet :: !AkiSet,
     -- | [notes] mark-format: the text of a note mark, its number in a notation (golem-driver ADR 0025, docs/adr/0177)
@@ -227,6 +231,7 @@ defaultComposeEnv fs =
       ceSidenoteMarker = MarkerNumber,
       ceCiteNumber = \_ _ -> Nothing,
       ceExplicitHyphenPenalty = 50,
+      ceNumberUnitPenalty = 10000,
       ceAkiSet = defaultAkiSet,
       ceNoteMarkFormat = defaultMarkFormat,
       ceScriptGlyphs = \_ _ -> False,
@@ -1888,8 +1893,22 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
                   || (isPrefixedAbbreviation a && isNumeral b)
                   || (isNumeral a && isPostfixedAbbreviation b)
               _ -> False
-          candidate = if pairKept then infPenalty else 0
-          pen = [Penalty 0 infPenalty NoHyphen | noBreak || pairKept]
+          {- a number and its unit (docs/adr/0275): an Arabic digit and a
+          kana or a kanji after it, not between two boxes of code or of a
+          URL, nor at the edge of a ruby, in vertical writing too -}
+          numberUnit =
+            not (breaksAsCode (bcLook p) && breaksAsCode (bcLook c)) && case (lastChar p, firstChar c) of
+              (Just a, Just b) -> isArabicDigit a && lookClass (bcLook c) b `elem` [Kana, Ideograph]
+              _ -> False
+          {- the penalty of the break: none where a prohibition or a pair of
+          golem-layout ADR 0049 keeps it, number-unit-penalty before a unit,
+          put before the glue, which is then no break -}
+          kept
+            | noBreak || pairKept = Just infPenalty
+            | numberUnit = Just (min infPenalty (ceNumberUnitPenalty env))
+            | otherwise = Nothing
+          candidate = fromMaybe 0 kept
+          pen = [Penalty 0 n NoHyphen | Just n <- [kept]]
           -- a ruby is an ideograph next to punctuation, so that the punctuation keeps its space
           classes = case (akiLast p, akiFirst c) of
             (Nothing, Just b) | isPunct b -> Just (Ideograph, b)

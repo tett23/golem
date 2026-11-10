@@ -230,7 +230,8 @@ violations i =
             pItems = its,
             pParams = ps,
             pBreaks = br,
-            pAdvance = advance
+            pAdvance = advance,
+            pNumberUnit = 10000
           }
    in [Violation (show (breachOf b)) (show (breachLine b) <> ": " <> breachWhy b) | b <- breaches bruteLimit p] <> c1Items its <> c1Lines (brLines br) <> c2Items its before
 

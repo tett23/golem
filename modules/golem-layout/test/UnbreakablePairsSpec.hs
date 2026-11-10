@@ -30,8 +30,8 @@ import Golem.Layout.CharClass
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.TestSupport.Enum (Tiers (..), listsOf, upTo)
-import LineBreakEnum (Setting (..), codeEnv, composeEnv, normalSettings, parts)
-import LineBreakInvariants (forbidPairs, refArabicDigit, refNumeral, refPostfixed, refPrefixed)
+import LineBreakEnum (Setting (..), codeEnv, composeEnv, normalSettings, partsBefore0275)
+import LineBreakInvariants (forbidPairs, refArabicDigit, refNumeral, refPostfixed, refPrefixed, withoutNumberUnits)
 import Numeric (showHex)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
@@ -110,9 +110,12 @@ predicateTests =
 plain :: Setting
 plain = Setting True False False Nothing
 
--- | The items of a text, vertical or not.
+{- | The items of a text, vertical or not, without the change of
+docs/adr/0275, which keeps a digit with a kanji after it in vertical
+writing too: these tests are of golem-layout ADR 0049 alone.
+-}
 itemsV :: Bool -> Text -> [Item]
-itemsV vertical t = fst (composeInlines (composeEnv vertical plain) [IR.Text sp t])
+itemsV vertical t = withoutNumberUnits vertical t (fst (composeInlines (composeEnv vertical plain) [IR.Text sp t]))
 
 items :: Text -> [Item]
 items = itemsV False
@@ -269,7 +272,7 @@ goldenTests =
         @?= []
   ]
   where
-    runs = concat (upTo 2 (listsOf (Tiers [parts])))
+    runs = concat (upTo 2 (listsOf (Tiers [partsBefore0275])))
     line run = T.intercalate "\t" [T.pack (show run), hashOf False run, hashOf True run]
     hashOf v run = T.pack (showHex (fnv (show [(s, map shapeOf (forbidPairs v t its)) | (s, its) <- itemsOfRun v run, let t = textOf' s run])) "")
     textOf' (_, pre, post) run = T.replicate pre "あ" <> T.concat run <> T.replicate post "い"
@@ -280,7 +283,8 @@ goldenTests =
         s <- filter ((/= Just "fr") . sLang) (normalSettings run),
         pre <- [0, 1],
         post <- [0, 1],
-        let its = fst (composeInlines (composeEnv v s) (inl s pre run post))
+        -- without the change of docs/adr/0275, as the hashes were written before it
+        let its = withoutNumberUnits v (textOf' (s, pre, post) run) (fst (composeInlines (composeEnv v s) (inl s pre run post)))
       ]
     inl s pre run post =
       [IR.Text sp (T.replicate pre "あ") | pre > 0]
