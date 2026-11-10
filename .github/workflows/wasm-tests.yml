@@ -12,10 +12,6 @@ on:
   schedule:
     - cron: "47 19 * * *"
   workflow_dispatch:
-  # TEMPORARY, for the pull request of the implementation only: a workflow
-  # that is not on main cannot be dispatched
-  push:
-    branches: [impl-0293]
 
 # It reads the repository, and the runs of this workflow for
 # scripts/ci/race-needed.sh; it writes nothing but its artifacts. The
