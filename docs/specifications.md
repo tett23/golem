@@ -443,6 +443,11 @@ CI の `ci` ジョブは、`gate.sh` の step の後に、同じ実行の終わ�
 `release.yml` は `ci.yml` を呼ぶので、同じ検査が走る。
 ほかのワークフローのログは検査しない。
 
+CI の `build` ジョブのテストのランナーは、文書だけの変更（`scripts/ci/needs-build.sh` がビルドを要らないとするもの）を除き、どの変更でも `scripts/ci/test-suites.sh` が挙げるすべてのテストのスイートを走らせ、変更のないパッケージのテストを省かない（[ADR 0291](adr/0291-run-the-tests-of-every-package-on-every-change.md)）。
+CI の実行の時間は、`build` のランナーのうち最も遅いもので決まり、そのランナーは多くの実行で `outputs` か `env` である。
+2026-11-10 に数えると、テストのスイートを省いて縮むのは、`tests-rest` が最後に終わったときの二番めのランナーとの差だけで、`main` への push の 15 回では 1 回、プルリクエストの 14 回では 7 回（差の中央値は 21 秒）だった（[記録](ci-timings/2026-11-10-the-build-runners-that-finish-last.md)）。
+テストは、`build-depends` に現れないほかのパッケージのファイル（フォント、フィクスチャ、`VERSION` など）も相対のパスで読むので、省く規則には、テストが読むファイルの一覧と、その一覧の検査が要る。
+
 golem-project は、プロジェクトのファイルの読み方を表す値 `Files` を持つ（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
 `Files` は、パスの解決、バイト列の読み込み、バイト数の三つの関数を持つレコードである。
 ディスクのルートの下から読む `diskFiles` と、パスとバイト列の表から読む `memoryFiles` がある。
