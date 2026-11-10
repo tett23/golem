@@ -70,16 +70,15 @@ lineBytesOf li n =
 lineText :: LineIndex -> Int -> Text
 lineText li = TE.decodeUtf8 . snd . lineBytesOf li
 
--- | The last line whose start is at or before the offset (binary search).
+-- | TEMPORARY (docs/adr ADR 0292, never merged): a search from the first
+-- line, linear in the line count, to see the limit of golem-syntax-test fail.
 lineOf :: LineIndex -> Int -> Int
-lineOf li off = go 0 (lineCount li - 1)
+lineOf li off = go 0
   where
     starts = liStarts li
-    go lo hi
-      | lo >= hi = lo
-      | otherwise =
-          let mid = (lo + hi + 1) `div` 2
-           in if starts ! mid <= off then go mid hi else go lo (mid - 1)
+    go i
+      | i + 1 < lineCount li && starts ! (i + 1) <= off = go (i + 1)
+      | otherwise = i
 
 isContinuation :: Word8 -> Bool
 isContinuation b = b .&. 0xC0 == 0x80
