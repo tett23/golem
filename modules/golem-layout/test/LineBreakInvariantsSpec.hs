@@ -12,10 +12,16 @@ the known bugs excluded by an explicit list whose inputs are counted.
 -}
 module LineBreakInvariantsSpec (lineInvariantTests, linesPrDepth, LineBug (..), lineBugs) where
 
+import Control.Monad (when)
+import Data.Bits (xor)
+import Data.ByteString.Lazy qualified as BL
+import Data.Char (ord)
 import Data.List (intercalate, nub)
 import Data.Map.Strict qualified as Map
+import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Word (Word64)
 import Fixtures (fs)
 import Golem.Layout.Japanese (ComposeEnv (..), composeInlines)
@@ -25,6 +31,7 @@ import Golem.TestSupport.Enum
 import KnuthPlassBrute
 import LineBreakEnum
 import LineBreakInvariants
+import Numeric (showHex)
 import System.Environment (lookupEnv)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -358,7 +365,7 @@ predicateTests =
       broken (withLines (atLine 1 (\l -> l {lineTarget = lineTarget l + fs})) p) @?= [L5],
     testCase "L5: a line made overfull, with a break where it fits" $ do
       let p = paragraphIn plain False 2 ["あ", "い", "う", "え"]
-          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0)]
+          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0) Nothing]
       broken (withLines joined p) @?= [L5],
     testCase "L5, D6 (docs/adr/0222): an overfull line with no break where it fits is not broken, and is not broken inside the run of line-start prohibitions" $ do
       let p = paragraphIn plain False 2 ["」", "」", "」", "」", "」"]
@@ -572,7 +579,7 @@ regressionTests =
       broken (rebroken (allowBefore "…") p) @?= [L4],
     testCase "the output before what does not fit was pushed out in the last pass, a line past W where a break fits, is broken by L5" $ do
       let p = paragraphIn plain False 2 ["あ", "い", "う", "え", "お"]
-          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0)]
+          joined ls = [Line (concatMap lineItems ls) 0 (pWidth p) 0 (0, 0) 1 (0, 0) Nothing]
       sound p
       broken (withLines joined p) @?= [L5],
     testCase "golem-layout ADR 0008: the output before it, a word with a hyphen sent whole to the next line past W, is broken by L5" $ do
@@ -603,8 +610,41 @@ paragraphOf i = paragraphWith (itemsOf False (inSetting i) (inPre i) (inRun i) (
 composed once for every width and expansion of it.
 -}
 paragraphWith :: [Item] -> Input -> Paragraph
-paragraphWith its i =
-  let ps = paramsOf (inSetting i) (inExpansion i) its
+paragraphWith = paragraphAdjusted balancedAdjust
+
+{- | The line adjustment of an input (docs/adr/0274): pulling in first or
+balanced, and the stretch limit in permille, or none.
+-}
+data Adjust = Adjust {aPullIn :: !Bool, aLimit :: !(Maybe Int)}
+  deriving stock (Eq, Show)
+
+-- | The adjustment of 'defaultParams': balanced, no limit.
+balancedAdjust :: Adjust
+balancedAdjust = Adjust False Nothing
+
+{- | The adjustments of the inputs at a depth (docs/adr/0274, its test
+design). Past 'linesPrDepth', as the nightly job checks: both values of
+line-adjustment, each with no limit and the limits 0 and 2500. On pull
+requests, the default alone, pulling in first with no limit: with both
+values the inputs of the line breaking took more than the 10 seconds of
+the area on the x86-64 runner of CI (docs/adr/0208, its section 4). The
+inputs balanced and without a limit are broken and placed as before the
+ADR (R1), which the enumeration checked; the limits are checked on the
+paragraphs made by hand and by R7.
+-}
+adjustsAt :: Int -> [Adjust]
+adjustsAt depth
+  | depth > linesPrDepth = [Adjust p l | p <- [False, True], l <- [Nothing, Just 0, Just 2500]]
+  | otherwise = [Adjust True Nothing]
+
+-- | The parameters with an adjustment.
+withAdjust :: Adjust -> Params -> Params
+withAdjust a ps = ps {pPullInFirst = aPullIn a, pStretchLimit = (\m -> toInteger m % 1000) <$> aLimit a}
+
+-- | 'paragraphWith' with an adjustment.
+paragraphAdjusted :: Adjust -> [Item] -> Input -> Paragraph
+paragraphAdjusted a its i =
+  let ps = withAdjust a (paramsOf (inSetting i) (inExpansion i) its)
       br = breakParagraph ps (const (lineWidth i)) its
    in Paragraph
         { pText = T.replicate (inPre i) "あ" <> T.concat (inRun i) <> T.replicate (inPost i) "い",
@@ -635,8 +675,8 @@ lineBugs :: [LineBug]
 lineBugs = []
 
 -- | The breaches of an input no known bug excuses, and whether each known bug excuses one.
-judged :: Int -> Input -> ([Breach], [Bool])
-judged limit i = judgedAs limit i (paragraphOf i)
+judged :: Int -> (Input, Adjust) -> ([Breach], [Bool])
+judged limit (i, a) = judgedAs limit i (paragraphAdjusted a (itemsOf False (inSetting i) (inPre i) (inRun i) (inPost i)) i)
 
 -- | 'judged' of the paragraph given for the input.
 judgedAs :: Int -> Input -> Paragraph -> ([Breach], [Bool])
@@ -660,25 +700,26 @@ instance Monoid Excused where
   mempty = Excused []
 
 -- | The violations of the first input of a group that has some, and the known bugs that excuse its inputs.
-judgeGroup :: Int -> Group -> ([Violation], Excused)
-judgeGroup limit g =
+judgeGroup :: Int -> Int -> Group -> ([Violation], Excused)
+judgeGroup depth limit g =
   let its = itemsOf False (gSetting g) (gPre g) (gRun g) (gPost g)
-      results = [(i, judgedAs limit i (paragraphWith its i)) | i <- groupInputs g]
+      results = [((i, a), judgedAs limit i (paragraphAdjusted a its i)) | i <- groupInputs g, a <- adjustsAt depth]
       excused = Excused (foldr (zipWith (+) . map fromEnum . snd . snd) (map (const 0) lineBugs) results)
    in case [(i, bs) | (i, (bs, _)) <- results, not (null bs)] of
         (i, bs) : _ -> ([Violation (show (breachOf b)) (breachWhy b) | b <- bs] <> [Violation "input" (show i)], excused)
         [] -> ([], excused)
 
 -- | The first input of a group that breaks an invariant no known bug excuses.
-firstBroken :: Int -> Group -> Maybe Input
-firstBroken limit g = case [i | i <- groupInputs g, not (null (fst (judged limit i)))] of
+firstBroken :: Int -> Int -> Group -> Maybe (Input, Adjust)
+firstBroken depth limit g = case [ia | i <- groupInputs g, a <- adjustsAt depth, let ia = (i, a), not (null (fst (judged limit ia)))] of
   i : _ -> Just i
   [] -> Nothing
 
 {- | An input of n parts drawn from the enumeration: its run, a setting of
-its normal form, a placing, one of its widths and an expansion.
+its normal form, a placing, one of its widths and an expansion, and an
+adjustment.
 -}
-drawInput :: Int -> Int -> SplitMix -> (Input, SplitMix)
+drawInput :: Int -> Int -> SplitMix -> ((Input, Adjust), SplitMix)
 drawInput maxWidth n g0 =
   let go 0 g = ([], g)
       go m g = let (x, g') = oneOf parts g; (xs, g'') = go (m - 1 :: Int) g' in (x : xs, g'')
@@ -688,34 +729,89 @@ drawInput maxWidth n g0 =
       (pre, post, ws) = placing
       (w, g4) = oneOf ws g3
       (e, g5) = if hasLatin run then oneOf [False, True] g4 else (False, g4)
-   in (Input s e w pre run post, g5)
+      (a, g6) = oneOf (adjustsAt maxBound) g5
+   in ((Input s e w pre run post, a), g6)
 
 -- | The input with parts of its run taken out as long as it still breaks an invariant no known bug excuses.
-shrinkInput :: Int -> Input -> Input
-shrinkInput limit i = i {inRun = shrinkList (\run -> not (null (fst (judged limit i {inRun = run})))) (inRun i)}
+shrinkInput :: Int -> (Input, Adjust) -> (Input, Adjust)
+shrinkInput limit (i, a) = (i {inRun = shrinkList (\run -> not (null (fst (judged limit (i {inRun = run}, a))))) (inRun i)}, a)
 
-report :: Int -> String -> Input -> String
-report limit what input =
+report :: Int -> String -> (Input, Adjust) -> String
+report limit what (input, a) =
   intercalate
     "\n"
     ( (what <> ":")
         : ["  " <> show (breachOf b) <> ": " <> breachWhy b | b <- bs]
-          <> ["", "As a case of LineBreakingSpec:", "", renderCase name input]
+          <> ["", "In the adjustment " <> show a <> " (docs/adr/0274); as a case of LineBreakingSpec:", "", renderCase name input]
     )
   where
-    bs = fst (judged limit input)
+    bs = fst (judged limit (input, a))
     name = case bs of
       b : _ -> show (breachOf b) <> ": " <> breachWhy b
       [] -> "no violation"
 
+{- | What R1 of docs/adr/0274 compares of a paragraph: its breaks, demerits
+and pass, and where each item of each line is placed, by its kind and
+widths.
+-}
+placedKey :: Paragraph -> String
+placedKey p =
+  let br = pBreaks p
+      item = \case
+        Box w c -> "B" <> show (unSp w) <> T.unpack (bcText c)
+        Glue w y z -> "G" <> show (unSp w, unSp y, unSp z)
+        Penalty w n _ -> "P" <> show (unSp w, n)
+   in show (brPositions br, brDemerits br, brPass br, [[(item it, unSp off) | (it, off) <- placeLine l] | l <- brLines br])
+
+-- | FNV-1a, 64 bits, over the code points of a string.
+fnv :: String -> Word64
+fnv = foldl (\h c -> (h `xor` fromIntegral (ord c)) * 0x100000001b3) 0xcbf29ce484222325
+
+{- | R1 of docs/adr/0274: every run up to two parts, each input of lines up
+to 5 em, balanced and without a limit, broken and placed: the hash of
+'placedKey' of each. The golden file was written by the implementation
+before the ADR.
+-}
+balancedLines :: Text
+balancedLines =
+  let -- each run hashed on every processor, then written in the order of the runs
+      (_, hashes) = tallyAllPar 2 runsT (\run -> ([], Map.singleton run (hashOf run)))
+      hashOf run = T.pack (showHex (fnv (concat [placedKey (paragraphWith its i) | g <- normalGroups 5 run, sLang (gSetting g) /= Just "fr", let its = itemsOf False (gSetting g) (gPre g) (gRun g) (gPost g), i <- groupInputs g])) "")
+   in T.unlines [T.intercalate "\t" [T.pack (show run), Map.findWithDefault "" run hashes] | run <- concat (upTo 2 runsT)]
+
+-- | R7 of docs/adr/0274: the breaks of each input with each limit, pulling in first and not, are those without a limit.
+limitMisses :: Int -> [Text] -> [Violation]
+limitMisses maxWidth run =
+  [ Violation "R7" (show (i, a))
+  | g <- normalGroups maxWidth run,
+    let its = itemsOf False (gSetting g) (gPre g) (gRun g) (gPost g),
+    i <- groupInputs g,
+    p <- [False, True],
+    let breaksOf l = let br = pBreaks (paragraphAdjusted (Adjust p l) its i) in (brPositions br, brDemerits br, brPass br),
+    a <- [Adjust p (Just m) | m <- [0, 1000, 2500]],
+    breaksOf (aLimit a) /= breaksOf Nothing
+  ]
+
 exhaustiveTests :: [TestTree]
 exhaustiveTests =
-  [ testCase "L1 to L13, T1 and I4 (docs/adr ADR 0272) hold for every input up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
+  [ testCase "R1 (docs/adr/0274): balanced and without a limit, every input up to 2 parts is broken and placed as before the ADR (test/golden/line-adjustment-balanced.tsv), past the depth of pull requests" $ do
+      -- the nightly job only: breaking every input once more took the area
+      -- past the 10 seconds of docs/adr/0208 (its section 4) on pull requests
+      depth <- linesDepth
+      when (depth > linesPrDepth) $ do
+        want <- BL.readFile "test/golden/line-adjustment-balanced.tsv"
+        BL.fromStrict (TE.encodeUtf8 balancedLines) == want @? "the lines differ from test/golden/line-adjustment-balanced.tsv",
+    testCase "R7 (docs/adr/0274): a stretch limit of 0, 1000 or 2500 changes no breaks, demerits nor pass of any input up to 2 parts (1 on pull requests)" $ do
+      -- 1 on pull requests, as the normal form: up to 2 parts took 4 seconds of the area on a laptop (docs/adr/0208, its section 4)
+      depth <- linesDepth
+      let d = formDepth depth
+      checkAllPar d runsT (limitMisses (maxWidthAt depth)) @?= Passed (length (concat (upTo d runsT))),
+    testCase "L1 to L13, T1 and I4 (docs/adr ADR 0272), B2 to B4 (golem-layout ADR 0049), R2, R5 and R6 (docs/adr/0274, each input pulling in first and balanced, with no limit and limits of 0 and 2500) hold for every input up to GOLEM_ENUM_LINES_DEPTH parts, but the known bugs, which excuse as many inputs as pinned" $ do
       depth <- linesDepth
       let limit = bruteLimitAt depth
       -- built here, not in a value of its own, so that it is not held
-      case tallyAllPar depth (groupT (groupsAt depth)) (judgeGroup limit) of
-        (Failed k g _, _) -> case firstBroken limit g of
+      case tallyAllPar depth (groupT (groupsAt depth)) (judgeGroup depth limit) of
+        (Failed k g _, _) -> case firstBroken depth limit g of
           Just i -> assertFailure (report limit ("the smallest input that breaks an invariant has " <> show k <> " parts") i)
           Nothing -> assertFailure "a group broke an invariant, but none of its inputs does"
         (Passed _, Excused counted) -> do
@@ -742,7 +838,7 @@ exhaustiveTests =
         Passed _ -> pure ()
         Failed _ input _ ->
           let small = shrinkInput limit input
-           in assertFailure (report limit ("an input drawn with " <> show (depth + 1) <> " parts breaks an invariant; with parts taken out as long as it still does, it has " <> show (length (inRun small))) small)
+           in assertFailure (report limit ("an input drawn with " <> show (depth + 1) <> " parts breaks an invariant; with parts taken out as long as it still does, it has " <> show (length (inRun (fst small)))) small)
   ]
 
 -- * inline code (golem-layout ADR 0034, its section 5)

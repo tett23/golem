@@ -301,6 +301,41 @@ keepOptionTests =
       either (map fst) (const []) (localStyleDef ParagraphKind [("keep-last-lines", LocalWord "-1")]) @?= ["G02103"]
   ]
 
+-- | The line adjustment and the stretch limit of paragraph styles (docs/adr/0274).
+lineAdjustmentTests :: [TestTree]
+lineAdjustmentTests =
+  [ testCase "the two keys are read and inherited through based-on; body pulls in first with no limit" $ do
+      let src = "[paragraph-styles.a]\nline-adjustment = \"balanced\"\nstretch-limit = 2500\n\n[paragraph-styles.b]\nbased-on = \"a\"\nstretch-limit = 0\n"
+      s <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
+      let keys st = (psLineAdjustment st, psStretchLimit st)
+      fmap keys (paraStyle s (Just "a")) @?= Just (Just Balanced, Just 2500)
+      fmap keys (paraStyle s (Just "b")) @?= Just (Just Balanced, Just 0)
+      fmap keys (paraStyle s Nothing) @?= Just (Just PullInFirst, Nothing)
+      [fmap psLineAdjustment (paraStyle s' (Just "c")) | v <- lineAdjustmentValues, Right s' <- [parseStyle (FileId 0) ("[paragraph-styles.c]\nline-adjustment = \"" <> v <> "\"\n")]] @?= map (Just . Just) [minBound .. maxBound],
+    testCase "R8: a wrong value of each key is one G03006, a right one none" $ do
+      mapM_
+        (\(kv, c) -> (kv, codes (parseStyle (FileId 0) ("[paragraph-styles.a]\n" <> kv <> "\n"))) @?= (kv, c))
+        [ ("line-adjustment = \"fast\"", ["G03006"]),
+          ("stretch-limit = -1", ["G03006"]),
+          ("stretch-limit = 2.5", ["G03006"]),
+          ("stretch-limit = \"1000\"", ["G03006"]),
+          ("line-adjustment = \"pull-in-first\"", []),
+          ("line-adjustment = \"balanced\"", []),
+          ("stretch-limit = 0", []),
+          ("stretch-limit = 1000", [])
+        ],
+    testCase "R8: the keys in the paragraph style code are one G03006 each" $
+      mapM_
+        (\kv -> (kv, codes (parseStyle (FileId 0) ("[paragraph-styles.code]\n" <> kv <> "\n"))) @?= (kv, ["G03006"]))
+        ["stretch-limit = 1000", "line-adjustment = \"balanced\""],
+    testCase "R8: @style-def reads the keys with the same checks" $ do
+      fmap (either (const Nothing) (\d -> Just (psLineAdjustment d, psStretchLimit d))) (localStyleDef ParagraphKind [("line-adjustment", LocalWord "balanced"), ("stretch-limit", LocalWord "2500")])
+        @?= Right (Just (Just Balanced, Just 2500))
+      either (map fst) (const []) (localStyleDef ParagraphKind [("line-adjustment", LocalWord "fast")]) @?= ["G03006"]
+      either (map fst) (const []) (localStyleDef ParagraphKind [("stretch-limit", LocalWord "-1")]) @?= ["G03006"]
+      either (map fst) (const []) (localStyleDef ParagraphKind [("stretch-limit", LocalWord "2.5")]) @?= ["G03006"]
+  ]
+
 -- | [targets.pdf] pdfa and pdfua (docs/adr ADR 0183).
 pdfConformanceTests :: TestTree
 pdfConformanceTests =
@@ -1221,6 +1256,7 @@ styleTests =
         s' <- parsed "[fonts.gothic]\nja = \"g.otf\"\n\n[paragraph-styles.toc-2]\nfont = \"gothic\"\nspace-before = 1\n"
         fmap (\d -> (psFont d, psSpaceBefore d, psIndent d, psSize d)) (Map.lookup "toc-2" (stParaStyles s')) @?= Just (Just "gothic", Just 1, Just (Zw 1), Just (Zw 1)),
       testGroup "the keep options of paragraph styles (docs/adr/0261)" keepOptionTests,
+      testGroup "the line adjustment of paragraph styles (docs/adr/0274)" lineAdjustmentTests,
       testCase "the built-in styles" $ do
         s <- parsed ""
         (charStyle s "strong" >>= csSyntheticBold) @?= Just True
@@ -2184,6 +2220,8 @@ localStyleTests =
               "keep-first-lines" -> "2"
               "keep-last-lines" -> "2"
               "page-break" -> "page"
+              "line-adjustment" -> "balanced"
+              "stretch-limit" -> "2500"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))
         assertBool "char" (all (known CharacterKind) charStyleKeys)

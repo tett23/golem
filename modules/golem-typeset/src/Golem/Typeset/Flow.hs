@@ -940,7 +940,7 @@ tocPage tg e number =
       le = tgMeasure tg - max (tgReserve tg) w - g
       k0 = if tgLeaders tg && u > 0 then max 0 (unSp (le - (e + g)) `div` unSp u) else 0
       (ns, k) = if ns0 < e + g then (e + g, 0) else (ns0, k0)
-      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) 0 (0, 0)
+      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) 0 (0, 0) Nothing
    in TocPage (le - fromInteger k * u) leader ns number
 
 -- | The measure of a column of the page.
@@ -958,7 +958,7 @@ pageNumberLine env l =
   let sp0 = mkSpan (FileId 0) 0 0
       boxes = [b | b@Box {} <- fst (composeInlines env [CharStyle sp0 "toc-page-number" (pageLabelInlines sp0 l)])]
       w = sum (map itemWidth boxes)
-   in Line boxes 0 w 0 (0, 0) 0 (0, 0)
+   in Line boxes 0 w 0 (0, 0) 0 (0, 0) Nothing
 
 {- | How the last line of an entry of the table of contents ends
 (docs/adr/0264): the reserve W of every level, the gap, and the leader in
@@ -1472,6 +1472,19 @@ rubyStyleOf style fs =
         "start" -> R.AlignStart
         _ -> R.AlignCenter
    in RubyStyle (align (rdMonoAlign rd)) (align (rdGroupAlign rd)) (align (rdBaseSpacing rd)) (dimToSp fs (rdOverhang rd)) (rdOverhangOnto rd == "kana")
+
+{- | The parameters of the breaking of a paragraph of a paragraph style
+(docs/adr/0274): its line-adjustment, pulling in first unless it is
+balanced, and its stretch-limit in permille, from the same paragraph style
+as the aki set ('akiSetOf').
+-}
+adjustedParams :: Style -> Maybe Text -> Params -> Params
+adjustedParams style st ps =
+  let d = paraStyle style st
+   in ps
+        { pPullInFirst = (d >>= psLineAdjustment) /= Just Balanced,
+          pStretchLimit = (\m -> toInteger m % 1000) <$> (d >>= psStretchLimit)
+        }
 
 kpParams :: Style -> PageGeometry -> Params
 kpParams style geom =
@@ -2266,7 +2279,7 @@ composeUnit fe widths lineWidth u =
       shift = length marker
       (textItems, anchors) = composeInlines env (uInlines u)
       items = marker <> textItems
-      lines' = brLines (A.breakAligned (layoutAlign (uKind u)) params lineWidth items)
+      lines' = brLines (A.breakAligned (layoutAlign (uKind u)) (adjustedParams (uStyle u) (uParaStyle u) params) lineWidth items)
    in Composed lines' (unitNotes fe u anchors) (unitSidenotes fe u shift anchors) (unitMarks fe u shift anchors) anchors items shift
 
 {- | The place of the text of a unit in the structure tree (docs/adr ADR
@@ -2326,7 +2339,7 @@ the line without a mark, no indent and no space between them.
 footnoteLines :: FlowEnv -> ComposeEnv -> Style -> NoteId -> Int -> [[Inline]] -> [Line]
 footnoteLines fe env st k n ps =
   concat
-    [ brLines (breakParagraph (feParams fe) (const (feMeasure fe)) (fst (composeInlines env' is)))
+    [ brLines (breakParagraph (adjustedParams st Nothing (feParams fe)) (const (feMeasure fe)) (fst (composeInlines env' is)))
     | (j, para) <- zip [0 :: Int ..] ps,
       let (env', is) =
             if j == 0
@@ -2357,7 +2370,7 @@ sidenoteLines fe st sp n snBody =
       (_, snSize', _) = sidenoteMetrics st geom
       prefix = sidenotePrefix fe sp n
       snEnv = (withFileExceptions fe (spanFile sp) (sidenoteEnv fe st)) {ceSite = sidenoteSite sp n, ceLabelInlines = length prefix}
-      snParams = (feParams fe) {pEmergencyStretch = dimToSp snSize' (compEmergencyStretch (stComposition (piStyle (feInput fe))))}
+      snParams = (adjustedParams st (Just "sidenote") (feParams fe)) {pEmergencyStretch = dimToSp snSize' (compEmergencyStretch (stComposition (piStyle (feInput fe))))}
       snMeasure = maybe 0 (rectW . fst) (pgSidenotes geom)
    in brLines (breakParagraph snParams (const snMeasure) (fst (composeInlines snEnv (prefix <> snBody))))
 
@@ -2429,7 +2442,7 @@ placeFigure fe u fig content =
       captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number (concat [is | Block _ _ _ (Paragraph _ is) <- figCaption fig])
       -- the caption in the role and size of the paragraph style caption (golem-driver ADR 0010)
       (_, cs) = paraFace (uStyle u) geom "caption"
-      captionParams = (feParams fe) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
+      captionParams = (adjustedParams style (Just "caption") (feParams fe)) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
       (captionItems, captionAnchors) = composeInlines (captionEnv fe u) captionInlines
       captionAt len = if null captionInlines then [] else brLines (breakParagraph captionParams (const len) captionItems)
       -- the grid lines a caption of k lines takes: the fewest that hold it, its pitch in the body's ratio of pitch to size
@@ -2544,7 +2557,7 @@ composeTableCells fe i fid st lang t =
         _ -> True
       header = if all (all blank . fst) hCells then [] else hCells
    in -- the gap between columns: one character of the cells (docs/adr/0262)
-      case layoutTable (feParams fe) (feMeasure fe) (tableCellSize fe st t) (tableWidths t) (tableAligns t) (map fst header) (map (map fst) rCells) of
+      case layoutTable (adjustedParams st (Just (tableStyleName t)) (feParams fe)) (feMeasure fe) (tableCellSize fe st t) (tableWidths t) (tableAligns t) (map fst header) (map (map fst) rCells) of
         Left e -> Left e
         Right set -> Right (set, rowAttached header (stHeader set) (stHeaderLines set) : zipWith3 rowAttached rCells (stRows set) (stRowLines set))
 
@@ -2570,7 +2583,7 @@ captionLinesOf fe u lead number = \case
     let inp = feInput fe
         captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number is
         (_, cs) = paraFace (uStyle u) (feGeom fe) "caption"
-        captionParams = (feParams fe) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition (piStyle inp)))}
+        captionParams = (adjustedParams (piStyle inp) (Just "caption") (feParams fe)) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition (piStyle inp)))}
         (captionItems, captionAnchors) = composeInlines (captionEnv fe u) captionInlines
         ls = brLines (breakParagraph captionParams (const (feMeasure fe - lead)) captionItems)
         cb = headingBlock fs pitch cs (length ls) 1
@@ -2793,7 +2806,7 @@ numberTable fe u tbl r nb = case r of
     div' a b = fromInteger (a `div` b)
     below = stTableCaption (piStyle (feInput fe)) == CaptionBelow
     capacity = length (pgLineGrid (feGeom fe))
-    emptyLine = Line [] 0 0 0 (0, 0) 0 (0, 0)
+    emptyLine = Line [] 0 0 0 (0, 0) 0 (0, 0) Nothing
     layoutError = \case
       ColumnsTooWide mn avail -> diagnostic "G07041" Error (uSpan u) ("表の列の最小の幅の合計（" <> L.mmText mn <> "）が使える幅（" <> L.mmText avail <> "）に収まりません")
       WidthsTooWide total avail -> diagnostic "G07114" Error (uSpan u) ("表の列に指定した幅の合計（" <> L.mmText total <> "）が、列の間隔を除いた行長（" <> L.mmText avail <> "）を超えます")
@@ -3370,7 +3383,7 @@ codeBlockOf atSource geom fonts measure capacity u lead code caption =
               [emptyBox off (o - x) | o > x]
                 <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf off)]
                 <> go (o + w) rest
-         in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) 0 (0, 0)
+         in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) 0 (0, 0) Nothing
       at leaf o col t = [(o + cpOffset p, cpText p, cpWidth p, cpLatin p, col, leaf) | p <- oneRow t]
       rowLeaf j = Leaf (codeRowSite (uIndex u) j) 0
       lineNumberColor = cdLineNumberColor cs

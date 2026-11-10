@@ -108,6 +108,7 @@ test-suite golem-layout-test
                     PaginateInvariants
                     PaginateInvariantsSpec
                     PaginateSpec
+                    PullInSpec
                     PunctuationSpec
                     RuleAreaSpec
                     LangSpec

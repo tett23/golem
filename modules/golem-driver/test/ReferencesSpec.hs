@@ -329,7 +329,7 @@ urlRefsJson = TE.encodeUtf8 "[{\"id\": \"jlreq\", \"type\": \"webpage\", \"title
 
 -- | A line of one box of a width (a page number in the tests of tocPage).
 oneBoxLine :: Sp -> Line
-oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)] 0 w 0 (0, 0) 0 (0, 0)
+oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)] 0 w 0 (0, 0) 0 (0, 0) Nothing
 
 -- | fs = 10pt, measure = 120pt, W = 15pt, g = 5pt, u = 10pt.
 tocGeom :: Bool -> TocGeometry
@@ -668,8 +668,10 @@ indexColumnTests =
           x1 = TE.encodeUtf8 (spToPt (rectX ta + 17 * 10 * pt))
       assertBool "the second column starts 17 characters on" (any (any ((== x1) . dX) . drawnGlyphs) (take 1 content)),
     testCase "PDF: the lines of the index columns are on the grid of the type area" $ do
-      -- the entries alone, without the headings of docs/adr/0265
-      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32) <> "section-headings = false\n"
+      -- the entries alone, without the headings of docs/adr/0265; the text
+      -- before the index balanced (docs/adr/0274), so that it takes the lines
+      -- that leave ten for the second column of the index
+      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32 <> "\n[paragraph-styles.body]\nline-adjustment = \"balanced\"\n") <> "section-headings = false\n"
       (geom, _) <- layoutOk style indexSource []
       content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
       let ta = typeAreaFor geom 1

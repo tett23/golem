@@ -1863,8 +1863,8 @@ codeBlockRubyTests =
   ]
   where
     codeBg = "\n[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.code]\nbackground = \"code-bg\"\n"
-    plainLine = Line [] 0 0 0 (0, 0) 0 (0, 0)
-    lineOf items = Line items 0 0 0 (0, 0) 0 (0, 0)
+    plainLine = Line [] 0 0 0 (0, 0) 0 (0, 0) Nothing
+    lineOf items = Line items 0 0 0 (0, 0) 0 (0, 0) Nothing
     -- a ruby box of the kind set at 10pt, its reading at half that; its base characters at 10pt unless given
     rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0 noBoxSource Nothing noLeaf 0)
     firstPage pl = take 1 (plPages pl)

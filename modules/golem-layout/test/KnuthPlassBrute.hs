@@ -4,6 +4,9 @@ of a paragraph, each line judged by the formulas golem-layout exports
 demerits. It checks the search of 'breakParagraph' (its dynamic
 programming and the pruning of its active nodes), not its formulas.
 
+Pulling in first (docs/adr/0274) measures a line that shrinks within the
+shrink of its glue with the badness 0, which makes L7 R2 of that ADR.
+
 Only paragraphs without glyph expansion and protrusion: the amounts of
 those are not exported, and writing them again would check a copy of
 the formulas (docs/adr/0209, the decision 7 of the maintainer).
@@ -117,6 +120,8 @@ feasiblePaths ps width pass items =
                 | shortfall > 0 = (badness shortfall stretch, False, False)
                 | shortfall == 0 = (0, False, False)
                 | negate shortfall > shrink = (10000, True, True)
+                -- pulling in first (docs/adr/0274, R2): a line that shrinks within the shrink of its glue has the badness 0
+                | pPullInFirst ps = (0, True, False)
                 | otherwise = (badness (negate shortfall) shrink, True, False)
               fit = fitnessOf shrinking bad
               pen = case at b of
