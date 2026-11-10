@@ -2036,7 +2036,7 @@ PDF では、`url` と、`based-on` をたどって `url` に行き着く文字�
 `[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
 `[character-styles.strong] based-on = "italic"` は、`[strong: ...]` を斜体で表す。
 
-段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`features`、段落の前と後に引く罫線の `rule-before` と `rule-after`、段落の分け方の `keep-with-next`、`keep-all-lines`、`keep-first-lines`、`keep-last-lines`、`page-break`（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）、段落の囲みの `background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`（[ADR 0271](adr/0271-paragraph-backgrounds-and-borders.md)）、行の調整の `line-adjustment` と `stretch-limit`（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、「行分割」の節）である。
+段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`features`、段落の前と後に引く罫線の `rule-before` と `rule-after`、段落の分け方の `keep-with-next`、`keep-all-lines`、`keep-first-lines`、`keep-last-lines`、`page-break`（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）、段落の囲みの `background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`（[ADR 0271](adr/0271-paragraph-backgrounds-and-borders.md)）、行の調整の `line-adjustment` と `stretch-limit`（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、「行分割」の節）、行の調整の順の `shrink-order` と `stretch-order`（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)、「行分割」の節）である。
 
 段落の分け方の五つのキーは、ほかのキーと同じく `based-on` で引き継ぎ、書いた値が勝つ。
 
@@ -2057,16 +2057,21 @@ PDF では、`url` と、`based-on` をたどって `url` に行き着く文字�
 HTML と EPUB の `style.css` には、既定でない値を `break-after: avoid`、`break-inside: avoid`、`orphans`、`widows`、`break-before` として書く。
 プレーンテキストは何も出力しない。
 
-行の調整の二つのキーも、`based-on` で引き継ぎ、書いた値が勝つ（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)）。
+行の調整の四つのキーも、`based-on` で引き継ぎ、書いた値が勝つ（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
 
 | キー | 型 | 既定 | 意味 |
 | --- | --- | --- | --- |
 | `line-adjustment` | `"pull-in-first"`、`"balanced"` | `"pull-in-first"` | 行の調整で追い込みを優先するか、詰める行と空ける行を同じ式で量るか |
 | `stretch-limit` | 0 以上の整数（千分率） | 書かなければ上限なし | 行のグルーを伸ばす比の上限 |
+| `shrink-order` | グルーの種類の名前か名前の配列の配列 | `["word-space", "middle-dot", ["brackets", "comma"], "japanese-western"]` | 行を詰める段の順 |
+| `stretch-order` | 同上 | `["word-space", "japanese-western", "between-characters"]` | 行を空ける段の順 |
 
-表にない文字列、負の数、整数でない値は、その値の位置で G03006 とする。
+`line-adjustment` と `stretch-limit` で、表にない文字列、負の数、整数でない値は、その値の位置で G03006 とする。
+`shrink-order` と `stretch-order` で、配列でない値、文字列でも文字列の配列でもない要素、空の内側の配列、内側の配列の中の配列、グルーの種類の名前でない名前、同じキーに二度書いた名前（二度めの位置）は G03006 とする。
 組み込みの段落スタイル `code` には書けない（G03006）。
 `@style-def` にも同じキーを同じ検査で書ける。
+`@style-def` の `shrink-order` と `stretch-order` は、`shrink-order=word-space,comma` のように名前をコンマで区切った一つの値で書き、名前のそれぞれが一つの段になる。
+一つの段に二つ以上の種類を置く順は、`style.toml` にだけ書ける。
 HTML と EPUB には書き出さない。
 
 `rule-before` と `rule-after` は、「罫線の指定」の表か `false` をとる（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
@@ -2094,7 +2099,7 @@ PDF の本文を行の格子に載せるので、段落ごとに行送りを変�
 `style.toml` にすでに `[paragraph-styles.table]` を書いた本では、その定義がすべての表のセルに当たる。
 図版のキャプションは段落スタイル `caption` の `font` と `size` で組み、ほかの欄（`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ）はキャプションには適用されない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 傍注の本文も同じく、段落スタイル `sidenote` の `font` と `size` で組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
-PDF のキャプションと傍注の本文には、ほかに `aki-set`、`line-adjustment`、`stretch-limit`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` を、どの出力でも `regex-styles` を適用する。
+PDF のキャプションと傍注の本文には、ほかに `aki-set`、`line-adjustment`、`stretch-limit`、`shrink-order`、`stretch-order`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` を、どの出力でも `regex-styles` を適用する。
 表のセルには、セルの段落スタイル（`@style` を付けた表はその段落スタイル、ほかは `table`）の同じ欄を適用し、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ、罫線、背景は適用しない（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 セルの揃えは列の揃えで決め、`@style` で字下げを持つ段落スタイルを当てても字下げは適用しない。
 `line-breaks`、`space-between`、`space-before`、`space-after`、`align` は、`@style caption` や `@style sidenote` を付けた原稿の段落には適用される。
@@ -2577,7 +2582,7 @@ aki-set = "wide-waou"
 `body` の既定は `gyomatsu-yakumono-hankaku` で、ほかの段落スタイルは `based-on` から引き継ぐ。
 見出し、目次、索引、脚注の本文は `body` のセットで、図版のキャプションは `caption` の、傍注の本文は `sidenote` の段落スタイルのセットで組む。
 表のセルは、セルの段落スタイルのセットで組む。
-行の調整の `line-adjustment` と `stretch-limit` も、アキ量のセットと同じ段落スタイルから引く（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)）。
+行の調整の `line-adjustment`、`stretch-limit`、`shrink-order`、`stretch-order` も、アキ量のセットと同じ段落スタイルから引く（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
 目次の項目はその階層の `toc-1` から `toc-6` から、脚注と章末の注の本文、定義リストと箇条書きの段落は `body` から引く。
 `@style-def` でも `aki-set` を書けるが、セットそのものは `style.toml` にだけ定義できる。
 アキ量のセットは PDF でだけ有効で、HTML と EPUB はブラウザーの既定で組む。
@@ -3671,8 +3676,41 @@ PDF 経路の段落は、Knuth と Plass の方式で行に分ける（[golem-la
 段落スタイルに `stretch-limit` の値 m を書いた段落では、決まった分割の行を置くとき、グルーを伸ばす比を m/1000 で頭打ちにする（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)）。
 頭打ちにした行は、行長に足りない分を行末に残して行頭にそろい、縦組みでは行の頭にそろう。
 行分割の判定（不良度、罰点、段階、送り出し）は変えず、頭打ちにした行を diagnostic で報告しない。
-比はすべてのグルーに同じ割合で掛けるので、既定のアキ量のセットでは、1000 で仮名と漢字のあいだは 1/10 em、和欧間は最適の四分に 1/4 em まで、2500 で 1/4 em と 5/8 em まで空く。
+上限は、行に足す伸びの合計を行の伸びの合計の m/1000 倍で頭打ちにし、頭打ちにした量を後述の空ける順で配る（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
+すべてのグルーに同じ割合で配るとすれば、既定のアキ量のセットでは、1000 で仮名と漢字のあいだは 1/10 em、和欧間は最適の四分に 1/4 em まで、2500 で 1/4 em と 5/8 em まで空く量に当たる。
+段に分けて配るので、先の段のグルー（欧文間隔、和欧間）は、この割合より先に限度まで空く。
 両端を揃えない段落の行はグルーが伸びないので変わらず、段落の最後の行は段落の終わりのグルーが伸びを受け持つので、`align = "fully-justified"` の段落の最後の行のほかでは変わらない。
+
+決まった分割の行を置くときは、詰める量と空ける量を、JLReq の 3.8.3 と 3.8.4 の順に段に分けてグルーに配る（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
+行分割の項目のグルーは、それを作った空きの種類を持つ。
+種類は次の表の上から順に当てて、最初に当たるものとする。
+
+| 種類（`shrink-order` と `stretch-order` の名前） | グルー |
+| --- | --- |
+| `word-space` | 語間の空白（本文の中のコードと上付き、下付きの範囲の空白を除く） |
+| `middle-dot` | 前か後ろの字が中点類である空き |
+| `brackets` | 始め括弧類の前、終わり括弧類の後ろの空き |
+| `comma` | 読点類の後ろの空き |
+| `full-stop` | 行中の句点類の後ろの空き |
+| `paragraph-start` | 段落の先頭の空き（後ろの字の分類によらない） |
+| `japanese-western` | 和文の字と欧文の字のあいだの空き |
+| `between-characters` | ほかの和文の字のあいだの空き（仮名と漢字の前の伸び） |
+
+どれにも当たらないグルー（本文の中のコードの空白、段落の終わりのグルー）は、名前を持たない種類とする。
+段落スタイルの `shrink-order` と `stretch-order` の段を書いた順に並べ、どの段にも書かれていない種類（名前を持たない種類を含む）を一つの段にまとめて最後に置く。
+詰める行は、字幅の圧縮が取り分を取った残りを、前の段から、その段のグルーの縮みの合計まで、縮みに比例して詰める。
+すべての段で詰めても残る行ははみ出し、すべてのグルーを縮みの限度まで詰める。
+空ける行は、前の段から、その段のグルーの伸びの合計まで、伸びに比例して空ける。
+すべての段で限度まで空けても残る量は、伸びが正のすべてのグルーに、そのグルーの文字の大きさに比例して足し、どのグルーも同じ em の数だけ広がる（JLReq の 3.8.4 の d）。
+グルーの文字の大きさは、アキ量のセットの空きでは空きの量を決めた大きさ、語間の空白ではその空白の文字の大きさである。
+伸びが正で大きさを持つグルーがない行では、伸びに比例して足す。
+段落の終わりのグルーのある行は、そのグルーがすべての伸びを受け持つ。
+段の限度はアキ量のセットの最小と最大であり、既定のセットでは字間の伸びの限度は 1/10 em である。
+既定の詰める順は JIS X 4051 の四つの段であり、句点類の後ろと段落の先頭の空きは最後の段になる。
+`shrink-order = []` の段落は、すべてのグルーを同じ割合で詰める。
+行末の約物の空きは箱の端の固定の量なので、どの段にも入らない。
+行分割の判定は、グルーの伸びと縮みの合計だけを読むので、順を変えても行の分け方とページは変わらない。
+HTML と EPUB には書き出さない。
 
 最後の段階（はみ出す行を許す段階）では、不良度が 10000 未満の行を許容度の範囲として、罰点が最小の分割を探す。
 不良度が上限の 10000 に達する行は、罰点が上限で頭打ちになり、数文字だけの行と行長に近い行を区別できない。
@@ -3682,6 +3720,7 @@ PDF 経路の段落は、Knuth と Plass の方式で行に分ける（[golem-la
 TeX は、この場合にも行の始まりの候補を捨てる。
 行長に収まる分割がなくなった位置では、収まらない箱を次の行へ送り出し、その前のいちばん後ろの分割の候補で行を終える（JLReq の追い出し）。
 送り出した行は伸びの許すかぎり字間を空けて行長にそろえ、分割はその行の後ろからやり直す。
+空ける量は、前述の空ける順で段に分けて配る（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
 段落スタイルに `stretch-limit` を書いた段落では、上限を超える分を行末に残す（後述）。
 伸びるグルーのない行（一字だけの行、一つの欧文の語だけの行）は、行長に足りないまま行頭にそろえる（[docs/adr/0222](adr/0222-line-breaking-points-the-invariants-did-not-decide.md)）。
 行長に収まる分割の候補がない場合に限り、はみ出す行を作る。
@@ -3949,6 +3988,12 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 違反があれば、最も小さい入力を表示する。
 「既知の不具合」に載せた違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
 24 の部品の並びの一覧は空である（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md) で、一覧にあった「段落の終わりの語間の空白の前の行末禁則」を直した）。
+
+行の調整の順（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）は、同じ 24 の部品の並びの部品 2 個までを、追い込みを優先して組み、A1 から A6 で調べる（`modules/golem-layout/test/AdjustOrderSpec.hs`）。
+どの順でも分割は同じ比で置いたときと同じで（A1）、各行の最後の項目の終わりは 1 sp の差の内にあり（A2）、グルーの量は限度の内にあって、段の順と段の中の割合と最後の段の em の数を守る（A3 から A6）。
+プルリクエストの CI は既定の順だけを 4 字までの行で調べ、毎晩の `enum.yml` は既定の順とその逆順とすべての種類を一つの段にした順を 5 字までの行で調べる。
+三つの順をプルリクエストで調べると、手元の環境で 5 秒かかり、x86-64 の実行環境で 10 秒の予算を超えるおそれがあるためである。
+グルーの種類と大きさを除いた `composeInlines` の項目が、この ADR の前と同じであること（A9）は、部品 2 個までの並びの項目のハッシュを `modules/golem-layout/test/golden/adjust-order-items.tsv` と比べて確かめる。
 
 語の途中のインラインの境目は、[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の W1 から W3 として、`modules/golem-layout/test/JoinedWordEnum.hs` で確かめる。
 部品は、`a`、`lime-tree`、`“`、`”`、`.`、空白、`-`、`‐`、`‑`、`–`、`—`、`’`、`あ`、ソフトハイフンの 14 である。

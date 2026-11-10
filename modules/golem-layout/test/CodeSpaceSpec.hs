@@ -28,7 +28,7 @@ code t = IR.CharStyle sp "code" [txt t]
 
 -- | The glue of the items, without the paragraph end.
 glues :: [Item] -> [(Sp, Sp, Sp)]
-glues items = [(w, y, z) | Glue w y z <- items, y < filStretch]
+glues items = [(w, y, z) | Glue w y z _ _ <- items, y < filStretch]
 
 -- | The items of the inlines, ended by a forced break with no fill: the line is justified.
 justified :: [IR.Inline] -> [Item]
@@ -85,5 +85,5 @@ codeSpaceTests =
     ]
   where
     endsWithGlue its = case reverse [it | it <- its, case it of Penalty {} -> False; _ -> True] of
-      Glue _ y _ : _ -> y < filStretch
+      Glue _ y _ _ _ : _ -> y < filStretch
       _ -> False

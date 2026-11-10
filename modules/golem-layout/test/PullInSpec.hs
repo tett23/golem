@@ -94,7 +94,7 @@ and a stretch of 40 (a ratio of 1/2), the second of 70 and a stretch of
 -}
 twoLines :: [Item]
 twoLines =
-  [boxOf 40, Glue 0 40 0, boxOf 40, Penalty 0 (negate infPenalty) NoHyphen, boxOf 35, Glue 0 10 0, boxOf 35, Penalty 0 (negate infPenalty) NoHyphen]
+  [boxOf 40, glue 0 40 0, boxOf 40, Penalty 0 (negate infPenalty) NoHyphen, boxOf 35, glue 0 10 0, boxOf 35, Penalty 0 (negate infPenalty) NoHyphen]
 
 setWith :: Maybe Rational -> [Line]
 setWith m = brLines (breakParagraph defaultParams {pStretchLimit = m} (const 100) twoLines)
@@ -125,7 +125,7 @@ r5Tests =
             [] -> error "no line"
           capped = l {lineItems = [it | it <- lineItems l, not (isFill it)]}
           isFill = \case
-            Glue _ y _ -> y >= filStretch
+            Glue _ y _ _ _ -> y >= filStretch
             _ -> False
       glueRatio capped @?= 1
       lineEndOf capped @?= 3 * fs + 2 * Sp (unSp fs `div` 10)

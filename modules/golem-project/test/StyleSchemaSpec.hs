@@ -201,7 +201,7 @@ tests =
           @?= [("G03021", "kerning の値が正しくありません: x (character-styles.em.kerning)", 2, 11)],
       testCase "the keys of @style-def are those of the schema, in its order" $ do
         charStyleKeys @?= ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic", "kerning", "tracking", "proportional-metrics", "baseline-shift", "background", "padding", "wrap-mark", "no-break", "position", "features", "underline", "strikethrough"]
-        paraStyleKeys @?= ["based-on", "font", "size", "line-breaks", "space-between", "space-before", "space-after", "align", "indent", "first-line-indent", "end-indent", "aki-set", "keep-with-next", "keep-all-lines", "keep-first-lines", "keep-last-lines", "page-break", "line-adjustment", "stretch-limit", "kerning", "tracking", "proportional-metrics", "baseline-shift", "background", "padding", "border", "border-width", "border-style", "border-radius", "features", "border-sides"]
+        paraStyleKeys @?= ["based-on", "font", "size", "line-breaks", "space-between", "space-before", "space-after", "align", "indent", "first-line-indent", "end-indent", "aki-set", "keep-with-next", "keep-all-lines", "keep-first-lines", "keep-last-lines", "page-break", "line-adjustment", "stretch-limit", "kerning", "tracking", "proportional-metrics", "baseline-shift", "background", "padding", "border", "border-width", "border-style", "border-radius", "features", "border-sides", "shrink-order", "stretch-order"]
         regexStyleKeys @?= ["pattern", "style"],
       testCase "the values of line-breaks are those the decoder reads" $
         lineBreaksValues @?= ["join", "keep"],
