@@ -873,6 +873,8 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
   プルリクエストの CI は、どちらも部品 2 個まで調べる（[docs/adr/0277](./docs/adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)、[ADR 0280](./docs/adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md)）。
 - 行の調整の順の段：golem-layout のテスト（「order of JLReq」の「every small input」）を `GOLEM_ENUM_LINES_DEPTH=3` で走らせ、三つの順を 5 字までの行で調べる。
   プルリクエストの CI も、三つの順を 4 字までの行で調べる。[ADR 0286](./docs/adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md) の量り方でプルリクエストに戻した（[docs/adr/0278](./docs/adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
+- 表の列の幅の段：golem-layout のテスト（「GOLEM_ENUM_TABLE_DEPTH」）を `GOLEM_ENUM_TABLE_DEPTH=5` で走らせ、`columnWidths` を幅 5 まで列 4 個まで、`tableColumnWidths` を幅 4 まで列 3 個まで調べる。
+  プルリクエストの CI は、それぞれ幅 4 まで列 3 個までと、幅 3 まで列 3 個まで調べる（[ADR 0295](./docs/adr/0295-column-widths-of-tables-by-exhaustive-small-inputs.md)）。
 
 2026-11-10 にブランチで起動した四回の実行（[ADR 0281](./docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md) の 8）では、段の時間は次のとおりだった。
 
