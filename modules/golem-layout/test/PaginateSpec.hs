@@ -103,6 +103,11 @@ keepOptionTests =
       [(poNumber p, poBlank p) | p <- paginate 1 3 [FParagraph defaultKeep (lines' 0 1), FBreak BreakPage, recto, FParagraph defaultKeep (lines' 10 1)]] @?= [(1, False), (2, True), (3, False)]
       -- after a line of an even page, the next odd page with no blank page
       [(poNumber p, poBlank p) | p <- paginate 1 3 [FParagraph defaultKeep (lines' 0 3), FParagraph defaultKeep (lines' 5 1), recto, FParagraph defaultKeep (lines' 10 1)]] @?= [(1, False), (2, False), (3, False)],
+    testCase "I6, K4: a heading before a paragraph that is all its first part and keeps with the next goes on with them" $ do
+      -- the nightly enumeration's counterexample: the heading counts the first part kept with the paragraph after it
+      let ps = paginate 1 3 [FParagraph (Keep 1 1 False) (lines' 0 1), headingAt 1, FParagraph (Keep 1 1 False) (lines' 2 1), FKeepNext mk 2, FParagraph (Keep 1 1 False) (lines' 3 1)]
+      map (map snd . poSlots) ps @?= [[SLine 0], [SHeading 1 1, SLine 2, SLine 3]]
+      unmets ps @?= [],
     testCase "K5: a heading right before a paragraph of page-break page stays on the page before, unrecorded" $ do
       let ps = paginate 1 3 [FParagraph defaultKeep (lines' 0 1), headingAt 20, FSection (OfParagraph mk) BreakPage, FParagraph defaultKeep (lines' 10 2)]
       map (map snd . poSlots) ps @?= [[SLine 0, SHeading 20 1], [SLine 10, SLine 11]]
