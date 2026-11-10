@@ -82,7 +82,7 @@ ca-certificates の入っていない最小構成のコンテナでは、ca-cert
 ファイルを読まず、プロジェクトのファイルをバイト列で受け取って、PDF と diagnostics の JSON を返す。
 インポートは WASI（preview 1）の `wasi_snapshot_preview1` だけで、前もって開くディレクトリ（preopen）を要らない。
 Node の `node:wasi` で動くことを CI で確かめている。
-夜ごとの `.github/workflows/browser.yml` が、Deno 2.9.8 の `node:wasi` と、wasmtime 49.0.5 の C API のホスト（`scripts/wasm/run-wasmtime.c`）と、`browser_wasi_shim` を使う Chromium（Chrome for Testing 157.0.8103.38）と Safari（macOS のランナーのもの）でも、ネイティブの `golem` と同じ PDF と diagnostics を返すことを確かめている（[docs/adr/0234](./docs/adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[docs/adr/0238](./docs/adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+夜ごとの `.github/workflows/browser.yml` が、Deno 2.9.8 の `node:wasi` と、wasmtime 49.0.5 の C API のホスト（`scripts/wasm/run-wasmtime.c`）と、`browser_wasi_shim` を使う Chromium（Chrome for Testing 157.0.8103.50）と Safari（macOS のランナーのもの）でも、ネイティブの `golem` と同じ PDF と diagnostics を返すことを確かめている（[docs/adr/0234](./docs/adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[docs/adr/0238](./docs/adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
 `golem.wasm` は、wasm の例外処理の標準化された形（exnref の形）を使い、古い形（legacy exceptions）を使わない。
 動かす実行環境は、標準化された例外処理に対応した版でなければならない。
 対応した最初の版は、Chrome 137、Firefox 131、Safari 18.4、Node 24.15、Deno 2.3.2、wasmtime 47 である。
