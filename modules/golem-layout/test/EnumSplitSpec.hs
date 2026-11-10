@@ -13,9 +13,10 @@ the nightly job by its depth ('lineSettingsAt', 'lineChecksAt').
 -}
 module EnumSplitSpec (enumSplitTests) where
 
+import AdjustOrderSpec (defaultOrder, ordersAt, staged)
 import CiteBreakEnum (citePrDepth)
 import Data.Char (isDigit, isSpace)
-import Data.List (isPrefixOf, isSuffixOf, stripPrefix)
+import Data.List (isPrefixOf, isSuffixOf, nub, stripPrefix)
 import Data.Maybe (isNothing)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -36,6 +37,8 @@ areas :: [(String, Int)]
 areas =
   [ ("GOLEM_ENUM_DEPTH", prDepth),
     ("GOLEM_ENUM_LINES_DEPTH", linesPrDepth),
+    -- the order of line adjustment (docs/adr/0278), at the depth of the line breaking
+    ("GOLEM_ENUM_LINES_DEPTH", linesPrDepth),
     ("GOLEM_ENUM_NOBREAK_DEPTH", noBreakPrDepth),
     ("GOLEM_ENUM_CITE_DEPTH", citePrDepth),
     ("GOLEM_ENUM_JOINED_DEPTH", joinedPrDepth)
@@ -44,7 +47,7 @@ areas =
 -- | The depth of an area in the nightly job: the one value of its variable in the workflow.
 nightlyDepth :: String -> String -> IO Int
 nightlyDepth yml var =
-  case [n | l <- lines yml, Just v <- [stripPrefix (var <> ": ") (dropWhile isSpace l)], let n = filter isDigit v, not (null n)] of
+  case nub [n | l <- lines yml, Just v <- [stripPrefix (var <> ": ") (dropWhile isSpace l)], let n = filter isDigit v, not (null n)] of
     [n] -> pure (read n)
     ns -> assertFailure (enumYml <> " gives " <> var <> " " <> show (length ns) <> " values, not one")
 
@@ -114,7 +117,15 @@ enumSplitTests =
         [(c, pr, n) | ((c, pr), (_, n)) <- zip (lineChecksAt linesPrDepth) (lineChecksAt nightly), pr > n] @?= []
         [(c, pr, n) | ((c, pr), (_, n)) <- zip (lineLimitsAt linesPrDepth) (lineLimitsAt nightly), pr > n] @?= [],
       testCase "N3: the pull requests break lines in the default composition: pulling in first, no stretch limit, number-unit-penalty 10000, no span" $
-        assertBool "no setting of pull requests is of the default composition" (any isDefault (Set.toList (lineSettingsAt linesPrDepth)))
+        assertBool "no setting of pull requests is of the default composition" (any isDefault (Set.toList (lineSettingsAt linesPrDepth))),
+      testCase "N1, N2, N3: the order of line adjustment checks the three orders of docs/adr/0278 in lines up to 5 em in the nightly job, and the default order of style.toml on pull requests, in lines no wider" $ do
+        nightly <- nightlyDepth' "GOLEM_ENUM_LINES_DEPTH"
+        let (prOrders, prWidth) = ordersAt linesPrDepth
+            (nightlyOrders, nightlyWidth) = ordersAt nightly
+        (nightlyOrders, nightlyWidth) @?= (staged, 5)
+        filter (`notElem` nightlyOrders) prOrders @?= []
+        assertBool "the lines of pull requests are wider than those of the nightly job" (prWidth <= nightlyWidth)
+        assertBool "pull requests do not check the default order" (defaultOrder `elem` prOrders)
     ]
   where
     nightlyDepth' var = readFile enumYml >>= (`nightlyDepth` var)
