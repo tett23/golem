@@ -1129,6 +1129,20 @@ codeTests =
             fst s1 @?= 3
           other -> assertFailure (show other)
         [] -> assertFailure "no page",
+    testCase "the keys of code written in @style-def paragraph code set the code blocks as in style.toml (golem-driver ADR 0017, ADR 0023)" $ do
+      let swatches = "\n[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\nline = { cmyk = [0, 0, 0, 100] }\n"
+          base = grid13 <> swatches
+          source = "```\na\nb\nc\n```\n\n本文。\n"
+          keys = [("size", "\"11Q\"", "11Q"), ("background", "\"code-bg\"", "code-bg"), ("padding", "\"2pt\"", "2pt"), ("border", "\"line\"", "line"), ("border-width", "\"1pt\"", "1pt")]
+          set style src = do
+            (_, pl) <- layoutOk style src []
+            drawn <- miniPdf fakeProvider True style src [] >>= pageContents
+            pure (map poSlots (plPages pl), drawn)
+      toml <- set (base <> "\n[paragraph-styles.code]\n" <> TE.encodeUtf8 (T.concat [k <> " = " <> v <> "\n" | (k, v, _) <- keys])) source
+      local <- set base ("@style-def paragraph code" <> T.concat [" " <> k <> "=" <> v | (k, _, v) <- keys] <> "\n\n" <> source)
+      plain <- set base source
+      assertBool "the keys change the code block" (snd toml /= snd plain)
+      local @?= toml,
     testCase "the background: a CMYK rectangle of the lines taken, drawn before the text" $ do
       pdf <- miniPdf fakeProvider True (horizontalStyle <> codeBg) "```\na\nb\n```\n" []
       (geom, _) <- layoutOk (horizontalStyle <> codeBg) "```\na\nb\n```\n" []
@@ -1604,7 +1618,20 @@ overlaps (a0, b0, a1, b1) r = case r of
 
 inlineCodeBackgroundTests :: [TestTree]
 inlineCodeBackgroundTests =
-  [ testCase "horizontal: one rectangle of the swatch from the first box to the end of the last, the face of the line, before the text" $ do
+  [ testCase "background and padding of @style-def character code are drawn as those of style.toml (golem-driver ADR 0029)" $ do
+      let swatch = "\n[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n"
+          src = "あ[code: manifest.toml]い\n"
+          set style source = do
+            (_, pl) <- layoutOk style source []
+            drawn <- miniPdf fakeProvider True style source [] >>= pageContents
+            pure (backgroundRuns pl, drawn)
+      toml <- set (horizontalStyle <> swatch <> "\n[character-styles.code]\nbackground = \"code-bg\"\npadding = \"0.5zw\"\n") src
+      local <- set (horizontalStyle <> swatch) ("@style-def character code background=code-bg padding=0.5zw\n\n" <> src)
+      plain <- set (horizontalStyle <> swatch) src
+      assertBool "a background" (length (fst toml) == 1)
+      assertBool "the keys change the page" (toml /= plain)
+      local @?= toml,
+    testCase "horizontal: one rectangle of the swatch from the first box to the end of the last, the face of the line, before the text" $ do
       let src = "あ[code: manifest.toml]い\n"
       (geom, pl) <- layoutOk (horizontalStyle <> cbg) src []
       contents <- miniPdf fakeProvider True (horizontalStyle <> cbg) src [] >>= pageContents

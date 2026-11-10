@@ -146,6 +146,13 @@ tableCaptionsTests =
       c <- content style "@style small\n@column-widths 2zw auto\n| 項 | 値 |\n|---|---|\n| 幅 | 10 |\n"
       [kou, chi] <- mapM (xOf c) "項値"
       approx (chi - kou) 15,
+    testCase "I9: table of @style-def paragraph table sets the cells as one of style.toml" $ do
+      let source = "前。\n\n| 項 |\n|---|\n| " <> T.replicate 30 "あ" <> "末 |\n\n後。\n"
+      toml <- content (horizontalStyle <> "\n[paragraph-styles.table]\nsize = \"0.5zw\"\n") source
+      local <- content horizontalStyle ("@style-def paragraph table size=0.5zw\n\n" <> source)
+      plain <- content horizontalStyle source
+      assertBool "the size changes the cells" (toml /= plain)
+      local @?= toml,
     testCase "I11: the side of the caption changes no number, [ref-number] nor [ref-title]" $ do
       let source = "# 章\n\n@label t\n@caption 題目\n| 項目 | 値 |\n|---|---|\n| 幅 | 10 |\n\n表[ref-number t]は[ref-title t]。\n"
       a <- textOf horizontalStyle source
