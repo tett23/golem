@@ -689,11 +689,11 @@ softHyphenBoundaryTests =
         failing h23Of (shyInputs shyRuns),
       testCase "H2: a U+00AD and a has the penalty of a soft hyphen between the two boxes" $
         [q | (_, _, q) <- shyPenalties (itemsWith (envOf True Nothing 50) (fst (inputInlines (Input Nothing 50 False 4 0 aShyA 0))))] @?= [50],
-      testCase "H3: a soft hyphen at the end of the text of a link, next to a boundary, is G07124; one after a link word is G07123" $ do
+      testCase "H3: a soft hyphen at the end of the text of a link, next to a boundary, is G07124; so is one after a link word (docs/adr ADR 0297)" $ do
         let env = (envOf False Nothing 50) {ceRestyle = \lk -> \case IR.Link _ u _ -> lk {lkLink = Just (LinkUri u)}; _ -> lk}
             link = IR.Link sp "https://example.com/" [IR.Text sp ("ab" <> shyC)]
         shyNotes env [link, IR.Text sp "cd"] @?= [ShyInUnbreakable]
-        shyNotes env [IR.Link sp "https://example.com/" [IR.Text sp "ab"], IR.Text sp (shyC <> "cd")] @?= [ShyNotBetweenLetters],
+        shyNotes env [IR.Link sp "https://example.com/" [IR.Text sp "ab"], IR.Text sp (shyC <> "cd")] @?= [ShyInUnbreakable],
       testCase "H4: predicate tests, the items of a U+00AD and a without the penalty of the soft hyphen, or with a penalty 0 in its place, break H4" $ do
         let i = Input Nothing 50 False 4 0 aShyA 0
             its = itemsWith (envOf False Nothing 50) (fst (inputInlines i))
@@ -702,6 +702,102 @@ softHyphenBoundaryTests =
         map violationRule (w1Boundary True 50 (softsOf i) (boundsOf 0 (inRun i)) its) @?= []
         map violationRule (w1Boundary True 50 (softsOf i) (boundsOf 0 (inRun i)) removed) @?= ["W1"]
         map violationRule (w1Boundary True 50 (softsOf i) (boundsOf 0 (inRun i)) zeroed) @?= ["W1"]
+    ]
+
+-- * the soft hyphens next to unbreakable characters (docs/adr ADR 0297)
+
+-- | The looks of the unbreakable characters: a link, and the character styles @url@, @code@ and @no-break@; patterns off.
+unbreakableEnv :: ComposeEnv
+unbreakableEnv =
+  (envOf False Nothing 50)
+    { ceRestyle = \lk -> \case
+        IR.Link _ u _ -> lk {lkLink = Just (LinkUri u)}
+        IR.CharStyle _ "url" _ -> lk {lkUrl = True}
+        IR.CharStyle _ "code" _ -> lk {lkCode = True}
+        IR.CharStyle _ "no-break" _ -> lk {lkNoBreak = True}
+        _ -> lk
+    }
+
+-- | The kinds of unbreakable characters of the ADR, each with how a text is set in it.
+unbreakableKinds :: [(String, Text -> IR.Inline)]
+unbreakableKinds =
+  [ ("a link word", \t -> IR.Link sp "https://example.com/" [txt t]),
+    ("url", \t -> IR.CharStyle sp "url" [txt t]),
+    ("code", \t -> IR.CharStyle sp "code" [txt t]),
+    ("no-break", \t -> IR.CharStyle sp "no-break" [txt t])
+  ]
+
+{- | The places of the ADR of a soft hyphen in a joined word with a letter
+on either side, one side in the unbreakable characters given: inside at
+the end, inside at the head, right after, right before, on both sides, a
+text of the soft hyphen alone at the boundary.
+-}
+unbreakablePlaces :: (Text -> IR.Inline) -> [(String, [IR.Inline])]
+unbreakablePlaces u =
+  [ ("inside at the end", [u ("abc" <> shyC), txt "def"]),
+    ("inside at the head", [txt "abc", u (shyC <> "def")]),
+    ("right after", [u "abc", txt (shyC <> "def")]),
+    ("right before", [txt ("abc" <> shyC), u "def"]),
+    ("on both sides", [u "abc", txt shyC, u "def"]),
+    ("alone at the boundary", [u "abc", strong shyC, txt "def"])
+  ]
+
+-- | Every place of every kind, named.
+unbreakableCases :: [(String, [IR.Inline])]
+unbreakableCases = [(kind <> ", " <> place, is) | (kind, u) <- unbreakableKinds, (place, is) <- unbreakablePlaces u]
+
+{- | The places of the ADR where the far side is no letter, or there is no
+unbreakable character, with their notices: G07123 for a full stop or the
+end of the paragraph after a soft hyphen right after the unbreakable
+characters, G07124 for one inside them at the end of the paragraph, none
+for one that is a break, G07123 for one before a full stop.
+-}
+farSideCases :: [(String, [IR.Inline], [SoftHyphenNote])]
+farSideCases =
+  concat
+    [ [ (kind <> ", right after, a full stop", [u "abc", txt (shyC <> ".")], [ShyNotBetweenLetters]),
+        (kind <> ", right after, the end of the paragraph", [u "abc", txt shyC], [ShyNotBetweenLetters]),
+        (kind <> ", inside at the end, the end of the paragraph", [u ("abc" <> shyC)], [ShyInUnbreakable])
+      ]
+    | (kind, u) <- unbreakableKinds
+    ]
+    <> [ ("no unbreakable character, a boundary", [txt ("abc" <> shyC), strong "def"], []),
+         ("no unbreakable character, a full stop", [txt ("abc" <> shyC <> ".")], [ShyNotBetweenLetters])
+       ]
+
+-- | The inlines with their soft hyphens taken out.
+withoutShys :: [IR.Inline] -> [IR.Inline]
+withoutShys = map $ \case
+  IR.Text s t -> IR.Text s (T.filter (/= '\xAD') t)
+  IR.CharStyle s n xs -> IR.CharStyle s n (withoutShys xs)
+  IR.Link s u xs -> IR.Link s u (withoutShys xs)
+  x -> x
+
+-- | Fails with every case whose value is not the one wanted, each with its name.
+allEqual :: (Eq a, Show a) => [(String, a, a)] -> Assertion
+allEqual cs = case [name <> ": expected " <> show want <> ", got " <> show got | (name, want, got) <- cs, want /= got] of
+  [] -> pure ()
+  bad -> assertFailure (unlines bad)
+
+unbreakableShyTests :: TestTree
+unbreakableShyTests =
+  testGroup
+    "the soft hyphens next to unbreakable characters are G07124 (docs/adr ADR 0297)"
+    [ testCase "N1: a soft hyphen with a letter on either side, one of them unbreakable, is G07124 alone, at every place of every kind" $
+        allEqual [(name, [ShyInUnbreakable], shyNotes unbreakableEnv is) | (name, is) <- unbreakableCases],
+      testCase "N2: G07123 is left to a soft hyphen with no letter on one side; none for one that is a break" $
+        allEqual [(name, want, shyNotes unbreakableEnv is) | (name, is, want) <- farSideCases],
+      testCase "N3 and N5: one notice for each soft hyphen that is not a break, as many as before" $
+        allEqual [(name, 1, length (shyNotes unbreakableEnv is)) | (name, is) <- unbreakableCases <> [(n, is) | (n, is, w) <- farSideCases, not (null w)]],
+      testCase "N4 and I3 of docs/adr ADR 0272: no penalty of a soft hyphen next to or in unbreakable characters; the items are those without the soft hyphen" $
+        do
+          allEqual [(name, [], shyPenalties (itemsWith unbreakableEnv is)) | (name, is) <- unbreakableCases]
+          allEqual [(name, itemsWith unbreakableEnv (withoutShys is), itemsWith unbreakableEnv is) | (name, is) <- unbreakableCases],
+      testCase "I3 of docs/adr ADR 0272: a soft hyphen in a range that does not break, at its end or its head next to a letter outside it, is no break in either direction" $ do
+        let nb t = IR.CharStyle sp "no-break" [txt t]
+        shyPenalties (itemsWith unbreakableEnv [nb ("abc" <> shyC), txt "def"]) @?= []
+        shyPenalties (itemsWith unbreakableEnv [txt "abc", nb (shyC <> "def")]) @?= []
+        shyPenalties (itemsWith unbreakableEnv [nb ("ab" <> shyC <> "cd")]) @?= []
     ]
 
 -- | The look of the character style @big@: twice the size.
@@ -751,6 +847,7 @@ joinedWordTests =
     "the breaks between the boxes of a Latin word follow the joined word (docs/adr ADR 0280)"
     [ bothScriptsTests,
       softHyphenBoundaryTests,
+      unbreakableShyTests,
       spaceTests,
       testCase "L8: the smallest input of the marks of citations, a, — and [cite a page=5] in lines of 2 em, breaks only where L8 allows" $ do
         let cite = IR.Cite sp [IR.CiteItem "a" (Just (IR.Locator IR.LocatorPage (IR.LocNumber 5))) [] []]
