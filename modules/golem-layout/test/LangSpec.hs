@@ -133,7 +133,7 @@ langTests =
         texts outside @?= ["wait", "…", "what"]
         assertBool (show (between "wait" "…" outside)) (not (null [g | g@Glue {} <- between "wait" "…" outside])),
       testCase "[lang fr: « Bonjour »]: the guillemets are Latin" $
-        boxes (items env [lang "fr" [t "« Bonjour »"]]) @?= [latin "«", latin "Bonjour", latin "»"],
+        boxes (items env [lang "fr" [t "« Bonjour »"]]) @?= [latin "«", latin "Bon", latin "jour", latin "»"],
       testCase "‹ and › outside a span stay ideographs; in a Japanese span they are brackets" $ do
         boxes (items env [t "‹a›"]) @?= [("‹", False, KindText), latin "a", ("›", False, KindText)]
         boxes (items env [lang "ja" [t "‹a›"]]) @?= [punct "‹", latin "a", punct "›"],
@@ -145,19 +145,19 @@ langTests =
       testCase "the boxes of a span have its language in their look" $
         [(bcText c, lkLang (bcLook c)) | Box _ c <- items env [t "a ", lang "fr" [t "b ", lang "de" [t "c"]]]]
           @?= [("a", Nothing), ("b", Just "fr"), ("c", Just "de")],
-      testCase "[lang fr: ...] is not hyphenated by patterns; [lang en: ...] and the text outside a span are, as before" $ do
+      testCase "[lang ru: ...] is not hyphenated by patterns (no bundled patterns, docs/adr ADR 0276); [lang en: ...] and the text outside a span are, as before" $ do
         mapM_
           ( \w -> do
               let outside = items env [t w]
               texts (items env [lang "en" [t w]]) @?= texts outside
-              texts (items env [lang "en-GB" [t w]]) @?= texts outside
-              texts (items env [lang "fr" [t w]]) @?= [w]
-              texts (items (inBlock "fr") [t w]) @?= [w]
+              texts (items env [lang "en-US" [t w]]) @?= texts outside
+              texts (items env [lang "ru" [t w]]) @?= [w]
+              texts (items (inBlock "ru") [t w]) @?= [w]
           )
           ["proverbe", "hyphenation"]
         texts (items env [t "hyphenation"]) @?= ["hy", "phen", "ation"],
-      testCase "[lang fr: porte-monnaie] breaks after porte- and nowhere else" $ do
-        let its = items env [lang "fr" [t "porte-monnaie"]]
+      testCase "[lang ru: porte-monnaie], a language without patterns, breaks after porte- and nowhere else" $ do
+        let its = items env [lang "ru" [t "porte-monnaie"]]
         texts its @?= ["porte-", "monnaie"]
         hyphens its @?= [ExplicitHyphen],
       testCase "the body of a note or a sidenote is in the language of the place of its mark" $ do
@@ -168,8 +168,8 @@ langTests =
         bodies [lang "fr" [t "a", note, side]] @?= [[[lang "fr" [t "n"]]], [[lang "fr" [t "s"]]]]
         [b | AnchorNote _ _ _ b <- snd (composeInlines (inBlock "en") [note])] @?= [[[lang "en" [t "n"]]]]
         [b | NodeNote _ _ _ b <- inlineStructure env [lang "fr" [note]] >>= nodes] @?= [[[lang "fr" [t "n"]]]],
-      testCase "the patterns of a language: English for en, en-GB and outside a span, none for fr and ja" $ do
-        map (isJust . patternsFor) [Just "en", Just "en-GB", Just "EN-us", Nothing] @?= [True, True, True, True]
-        map (isNothing . patternsFor) [Just "fr", Just "ja", Just "de-CH-1996"] @?= [True, True, True]
+      testCase "the patterns of a language: English for en and outside a span, British English for en-GB, French for fr, none for ja (docs/adr ADR 0276)" $ do
+        map (isJust . patternsFor) [Just "en", Just "en-GB", Just "EN-us", Just "fr", Just "de-CH-1996", Nothing] @?= [True, True, True, True, True, True]
+        map (isNothing . patternsFor) [Just "ja", Just "ru"] @?= [True, True]
         void (patternsFor Nothing) @?= void (Just englishUS)
     ]

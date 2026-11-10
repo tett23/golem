@@ -278,7 +278,9 @@ goldenTests =
     textOf' (_, pre, post) run = T.replicate pre "あ" <> T.concat run <> T.replicate post "い"
     itemsOfRun v run =
       [ ((s, pre, post), its)
-      | s <- normalSettings run,
+      | -- the span of fr, added to the enumeration after the golden was
+        -- written (docs/adr ADR 0276), is not in it
+        s <- filter ((/= Just "fr") . sLang) (normalSettings run),
         pre <- [0, 1],
         post <- [0, 1],
         -- without the change of docs/adr/0275, as the hashes were written before it

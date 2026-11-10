@@ -128,7 +128,7 @@ C のライブラリは、それぞれを担当するモジュールの中に閉
 HarfBuzz と FreeType は、ソースを [code: modules/golem-font/cbits/] に同梱して静的にリンクする。
 wasmtime は、プラットフォームごとの C API の配布物を [code: scripts/fetch-wasmtime.sh] で取得する。
 zlib は、Hackage の [code: zlib-clib] の 1.3.2 を同梱するバージョンとして使う。
-hyph-utf8 は英語（米国）のハイフネーションのパターンで、バージョンはコミットで固定している。
+hyph-utf8 は欧文の八つの言語（英語の米国と英国、フランス語、ドイツ語、スペイン語、イタリア語、ポルトガル語、オランダ語）のハイフネーションのパターンで、バージョンはコミットで固定している。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0276-hyphenate-words-by-the-patterns-of-their-language.md]（docs/adr の ADR 0276「欧文の語を、その語の言語の分綴のパターンで分綴する」）]
 
 どれも出力の決定性のためにバージョンを固定しており、バージョンを上げるときは ADR を書く（第[ref-number determinism]章）。
 

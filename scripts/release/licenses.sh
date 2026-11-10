@@ -68,6 +68,10 @@
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=${GOLEM_ROOT:-$(cd "$HERE/../.." && pwd)}
+# the languages of the hyphenation patterns of hyph-utf8 in
+# modules/golem-layout/data/hyphenation/ (docs/adr/0276); check-wasm-archive.sh
+# has the same list
+HYPH_LANGUAGES='en-us en-gb fr de-1996 es it pt nl'
 GHC_VERSION=${GHC_VERSION:-9.10.3}
 REPO_URL=https://github.com/tett23/golem
 
@@ -288,7 +292,10 @@ fi
 copy "$ROOT/modules/golem-font/cbits/harfbuzz/COPYING" harfbuzz
 copy "$ROOT/modules/golem-font/cbits/freetype/LICENSE.TXT" freetype
 copy "$ROOT/modules/golem-font/cbits/freetype/docs/FTL.TXT" freetype
-copy "$ROOT/modules/golem-layout/data/hyphenation/LICENSE-hyph-en-us.txt" hyph-en-us
+# the hyphenation patterns of hyph-utf8, one directory a language (docs/adr/0276)
+for l in $HYPH_LANGUAGES; do
+  copy "$ROOT/modules/golem-layout/data/hyphenation/LICENSE-hyph-$l.txt" "hyph-$l"
+done
 # the wasi-sdk of the toolchain (docs/adr/0199): licenses/wasi-sdk/, whose
 # VERSION must be the wasi-sdk of scripts/fetch-ghc-wasm.sh
 if [ "$WASM" = true ]; then
@@ -432,6 +439,14 @@ FREETYPE_YEAR=$(sed -n 's/.*Copyright (C) 1996-\([0-9]\{4\}\).*/\1/p' "$ROOT/mod
     line '' 'crates/<crate>-<version>/, rust/)'
   fi
   line hyph-en-us/ 'the US English hyphenation patterns of hyph-utf8'
+  line hyph-en-gb/ 'the British English hyphenation patterns of hyph-utf8'
+  line hyph-fr/ 'the French hyphenation patterns of hyph-utf8'
+  line hyph-de-1996/ 'the German hyphenation patterns (1996) of hyph-utf8'
+  line hyph-es/ 'the Spanish hyphenation patterns of hyph-utf8'
+  line hyph-it/ 'the Italian hyphenation patterns of hyph-utf8, used'
+  line '' 'under the MIT licence (one of LPPL 1.3 and MIT)'
+  line hyph-pt/ 'the Portuguese hyphenation patterns of hyph-utf8'
+  line hyph-nl/ 'the Dutch hyphenation patterns of hyph-utf8'
   if [ -d "$OUT/wasi-sdk" ]; then
     line wasi-sdk/wasi-libc/ 'wasi-libc (with musl, COPYRIGHT-musl) of wasi-sdk'
     line wasi-sdk/llvm/ 'libc++, libc++abi and compiler-rt of LLVM, of wasi-sdk'

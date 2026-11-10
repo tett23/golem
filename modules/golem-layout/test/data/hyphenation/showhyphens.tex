@@ -1,0 +1,22 @@
+% The break positions of the patterns of hyph-utf8 bundled in
+% modules/golem-layout/data/hyphenation/ (docs/adr ADR 0276, F2), by TeX's
+% \showhyphens. Run with lualatex in a directory holding the files
+% hyph-*.pat.txt and hyph-*.hyp.txt of data/hyphenation/; see README.md.
+\documentclass{article}
+\begin{document}
+\directlua{dofile("showhyphens.lua")}
+% \words{lang}{left}{right}{words}
+\def\words#1#2#3#4{%
+  \typeout{GOLEM-LANG #1}%
+  \language=\csname lang#1\endcsname\relax
+  \lefthyphenmin=#2\relax \righthyphenmin=#3\relax
+  \showhyphens{#4}}
+\words{enus}{2}{3}{hyphenation typesetting algorithm}
+\words{engb}{2}{3}{table tables hyphenation typography character programming organisation independent}
+\words{fr}{2}{2}{papa pomme proverbe typographie dictionnaire manuscrit imprimerie élémentaire connaissance bonjour}
+\words{de1996}{2}{2}{nase nasen silbentrennung buchdruckerkunst straße möglichkeit übersetzung wörterbuch}
+\words{es}{2}{2}{casa perro tipografía diccionario español imprenta computadora pequeño}
+\words{it}{2}{2}{mela gatto tipografia dizionario stampatore italiano macchina gnocchi}
+\words{pt}{2}{3}{casas casais tipografia dicionário português computador impressão biblioteca}
+\words{nl}{2}{2}{boek boeken woordenboek boekdrukkunst afbreekpatronen nederlands typografie ziekenhuis}
+\end{document}

@@ -49,6 +49,7 @@ import Hedgehog.Range qualified as Range
 import InseparableSpec (inseparableTests)
 import KnuthPlassReference
 import LangSpec (langTests)
+import LanguagesSpec (languagesTests)
 import LineBreakInvariantsSpec (lineInvariantTests)
 import LineBreakingSpec (lineBreakingTests)
 import LinkSpec (linkTests)
@@ -403,6 +404,7 @@ tests =
       featuresTests,
       scriptTests,
       langTests,
+      languagesTests,
       structureTests,
       tableCaptionTests,
       noteSplitTests,
