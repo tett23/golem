@@ -1,6 +1,6 @@
 # ADR 0282: [ADR 0274](0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md) と [ADR 0275](0275-keep-numbers-with-the-units-after-them.md) の実装が ADR を越えて決めた点を記録する
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 
