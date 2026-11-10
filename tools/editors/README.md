@@ -18,7 +18,7 @@ LSP の色付けに対応したエディタでは、LSP が動き出すと LSP �
 | `test/sample.gm`、`test/sample.emet` | 二つの形式が共有する見本の原稿。行の下に TextMate のスコープを書いた vscode-tmgrammar-test の形式 |
 | `test/classes.test.js` | 見本の同じ要素が、二つの形式で同じ分類になることのテスト |
 | `test.sh` | すべてのテスト（CI の `editors` ジョブも同じものを実行する） |
-| `package.json`、`package-lock.json` | テストの道具 tree-sitter-cli 0.27.1 と vscode-tmgrammar-test 0.1.3（どちらも MIT）を正確な版で固定する |
+| `package.json`、`package-lock.json` | テストの道具 tree-sitter-cli 0.27.2 と vscode-tmgrammar-test 0.1.3（どちらも MIT）を正確な版で固定する |
 | `tree-sitter-cli.sha256` | tree-sitter-cli が GitHub のリリースから取る実行ファイルの SHA-256 |
 
 構文の定義そのものは、Node も tree-sitter-cli も要らない。

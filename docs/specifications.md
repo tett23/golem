@@ -4544,7 +4544,7 @@ tree-sitter の文法は、改行と字下げで決まる区切りを外部の�
 Golem の構文解析が受け付ける原稿は受け付けるが、Golem が誤りとする原稿の一部（2 つでない字下げの本体、`#` の後に空白のない見出しなど）も受け付ける。
 
 `tools/editors/test.sh`（CI の `editors` ジョブ）が、生成した `src/` と `grammar.js` の一致、`tree-sitter test` の構文木と色付けのテスト、vscode-tmgrammar-test の形式で書いた見本 `tools/editors/test/sample.gm` と `sample.emet` のスコープ、同じ見本の同じ要素が二つの形式で同じ分類になること、`modules/golem-driver/test/fixtures/`、`manual/`、`manual-dev/` のすべての `.gm` と `.emet` を tree-sitter が誤りなく読めることを確かめる。
-テストの道具（tree-sitter-cli 0.27.1 と vscode-tmgrammar-test 0.1.3）は `tools/editors/package.json` と `package-lock.json` で固定し、tree-sitter-cli が取る実行ファイルの SHA-256 を `tools/editors/tree-sitter-cli.sha256` で照合する。
+テストの道具（tree-sitter-cli 0.27.2 と vscode-tmgrammar-test 0.1.3）は `tools/editors/package.json` と `package-lock.json` で固定し、tree-sitter-cli が取る実行ファイルの SHA-256 を `tools/editors/tree-sitter-cli.sha256` で照合する。
 `tools/editors/helix/test.sh`（CI の `editors` ジョブ）は、`tools/editors/README.md` の Helix の手順の `sh` と `toml` のコードブロックを切り出し、一時的な `HOME` で Helix 25.07.1 に二つの文法を作らせ、`hx --health` がパーサーと強調の問い合わせを見つけることを確かめる（[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。
 `toml` のブロックの前には `use-grammars = { only = ["golem", "emet"] }` を足し、ほかの言語の文法を作らせない。
 `tools/editors/nvim/test.sh`（CI の `editors-lsp` ジョブ）は、ヘッドレスの Neovim 0.12.6 を `--clean` で起動し、`golem lsp` を付けて、次を確かめる（[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。
