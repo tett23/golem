@@ -3054,7 +3054,7 @@ DRIVER_CABAL=$HERE/../../modules/golem-driver/golem-driver.cabal
 stanza() { awk -v n="test-suite $1" '$0 == n { on = 1; next } on && /^[^ \t-]/ { on = 0 } on' "$DRIVER_CABAL"; }
 # modules NAME: the other-modules of the test-suite NAME, one per line
 modules_of() { stanza "$1" | awk '/^  other-modules:/ { on = 1; next } on && /^  [a-z-]+:/ { on = 0 } on { print $1 }'; }
-if stanza golem-driver-test | grep -Eq '^  ghc-options: .*-threaded' && stanza golem-driver-test | grep -qF '"-with-rtsopts=-N"'; then ok; else
+if stanza golem-driver-test | grep -Eq '^ +ghc-options: .*-threaded' && stanza golem-driver-test | grep -qF '"-with-rtsopts=-N"'; then ok; else
   ng "golem-driver.cabal: golem-driver-test is built -threaded with -N"
 fi
 if [ -n "$(stanza golem-driver-global-test)" ] && ! stanza golem-driver-global-test | grep -q -- '-threaded'; then ok; else
@@ -3716,6 +3716,12 @@ printf 'OK\tg.a\nSKIP\tg.b\n' >"$WT/wasm/fake-test.results"
 printf 'OK\tg.a\nSKIP\tg.b\nFAIL\tg.c\n' >"$WT/native/fake-test.results"
 run env FAILURES="$WT/one.tsv" sh "$HERE/../wasm/check-skips.sh" "$WT/native" "$WT/wasm"
 if [ "$CODE" = 1 ] && grep -qx 'A3 fake-test: listed, but does not pass natively: g.c' "$WORK/err"; then ok; else ng "A3 check-skips: a listed test that fails natively fails"; fi
+# a listed test of needsTool is a SKIP natively without the tool; a name
+# with a backslash is read as it is
+printf 'OK\tg.a\nSKIP\tg.b\nOK\tg.\\u{d800}\n' >"$WT/native/fake-test.results"
+printf 'suite\ttest\treason\tclass\nfake-test\tg.b\tno PATH\ttest\nfake-test\tg.\\u{d800}\tthe width of Int\tproduct\n' >"$WT/two.tsv"
+run env FAILURES="$WT/two.tsv" sh "$HERE/../wasm/check-skips.sh" "$WT/native" "$WT/wasm"
+expect "A3 check-skips: a listed test that is a native SKIP, and a name with a backslash, pass natively" 0
 # the list itself: a header and four fields, a known suite, product or test
 WTF=$HERE/../wasm/test-failures.tsv
 if [ "$(head -n 1 "$WTF")" = "$(printf 'suite\ttest\treason\tclass')" ] &&

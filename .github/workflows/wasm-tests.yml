@@ -292,4 +292,8 @@ jobs:
           name: wasm-tests-wasm
           path: wasm
       - name: The SKIPs of wasm32 and the listed tests (docs/adr/0293 A3, A4)
-        run: sh scripts/wasm/check-skips.sh native "$(find wasm -name '*.results' -exec dirname {} \; | head -n 1)" | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          code=0
+          sh scripts/wasm/check-skips.sh native "$(find wasm -name '*.results' -exec dirname {} \; | head -n 1)" > table.md || code=$?
+          cat table.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"

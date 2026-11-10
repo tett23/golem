@@ -10,8 +10,9 @@
 # the result, a tab, the full name). Every test that is a SKIP on wasm32 is
 # a SKIP natively, where only a missing tool of needsTool makes one (A4);
 # every test of scripts/wasm/test-failures.tsv (FAILURES chooses another
-# list) passes natively (A3). A suite of the list or of WASM without
-# native results breaks both.
+# list) passes natively (A3): OK, or a SKIP, which is a test of needsTool
+# that the native suites of ci.yml run with the tool. A suite of the list
+# or of WASM without native results breaks both.
 #
 # Writes a Markdown table of the SKIPs of each suite to stdout. Exit code
 # 0: both hold; 1: they do not, each test that breaks them named on stderr;
@@ -45,7 +46,8 @@ listed=$(awk -F '\t' 'NR > 1 && NF >= 2 { print $1 "\t" $2 }' "$FAILURES")
 if [ -n "$listed" ]; then
   while IFS="$(printf '\t')" read -r suite name; do
     n=$NATIVE/$suite.results
-    if [ ! -f "$n" ] || ! awk -F '\t' -v t="$name" '$1 == "OK" && $2 == t { found = 1 } END { exit !found }' "$n"; then
+    # the name through the environment: awk -v reads escapes in it
+    if [ ! -f "$n" ] || ! NAME=$name awk -F '\t' '($1 == "OK" || $1 == "SKIP") && $2 == ENVIRON["NAME"] { found = 1 } END { exit !found }' "$n"; then
       echo "A3 $suite: listed, but does not pass natively: $name" >&2
       bad=1
     fi
