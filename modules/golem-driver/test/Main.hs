@@ -23,6 +23,7 @@ import ExpansionSpec (expansionTests)
 import FigureExternalSpec (figureExternalTests)
 import FigureSpec
 import FileSpacesSpec (fileSpacesTests)
+import ForceTableSpec (forceTableTests)
 import FunctionLibrarySpec (functionLibraryTests)
 import FunctionsSpec (functionsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
@@ -145,6 +146,7 @@ tests skips =
              testGroup "bibliography entries and G03026 (golem-doc ADR 0004)" bibliographyFormatTests,
              testGroup "PDF tables (ADR 0008)" tableTests,
              testGroup "table numbers, captions, column widths and cell styles (docs/adr/0262)" tableCaptionsTests,
+             forceTableTests,
              testGroup "notes of more than one paragraph (docs/adr/0263)" notesTests,
              testGroup "table column widths (golem-driver ADR 0037)" columnWidthTests,
              testGroup "PDF table of contents (ADR 0009)" tocTests,

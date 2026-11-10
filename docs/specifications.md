@@ -1153,156 +1153,14 @@ isbn = "978-..."
 
 成果物に書き込む識別子は、乱数を使わずすべて導出する。
 
-- **文書 ID**（XMP の DocumentID と PDF のトレーラー `/ID` の第一要素）：マニフェストの `id` から名前ベースの UUID（v5）で導出する。文書 ID は同じ文書の版をまたいで変わらない値なので、本の識別子から作る。
-- **インスタンス ID**（XMP の InstanceID と `/ID` の第二要素）：入力全体のハッシュから導出する。入力全体とは、全ソースファイル、マニフェスト、`style.toml`、`plugins.lock`、使ったフォントのバイト列、出力を変える CLI のオプション（`--marks` と `--profile`）、Golem のバージョンである。`style.toml` はマニフェストの直後に置き、ないときは空のバイト列とする。CLI のオプションは、ソースファイルの後に `options marks=<値> profile=<値>` の形の一つの要素として置き、既定の値も省かない（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。Golem の版は `golem-` に `VERSION` の内容を続けた文字列とし、入力の末尾に加える（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
+- **文書 ID**（XMP の DocumentID と PDF のトレーラー `/ID` の第一要素）：マニフェストの `id` から名前ベースの UUID（v5）で導出する。
+  文書 ID は同じ文書の版をまたいで変わらない値なので、本の識別子から作る。
+- **インスタンス ID**（XMP の InstanceID と `/ID` の第二要素）：入力全体のハッシュから導出する。
+  入力全体とは、全ソースファイル、マニフェスト、`style.toml`、`plugins.lock`、使ったフォントのバイト列、出力を変える CLI のオプション（`--marks` と `--profile`）、Golem のバージョンである。
+  `style.toml` はマニフェストの直後に置き、ないときは空のバイト列とする。
+  CLI のオプションは、ソースファイルの後に `options marks=<値> profile=<値>` の形の一つの要素として置き、既定の値も省かない（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
+  Golem の版は `golem-` に `VERSION` の内容を続けた文字列とし、入力の末尾に加える（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 - **EPUB の識別子**：電子版の ISBN があればそれを使い、なければマニフェストの `id` を使う。
-
-シェイピングとフォントの処理に使う HarfBuzz と FreeType、プラグインの実行に使う wasmtime、PDF の圧縮に使う zlib はバージョンを固定する。
-これらのバージョンが変わるとグリフの配置が変わり、同じ入力から同じ出力が得られなくなるためである。
-使っているバージョンは README に記載し、バージョンを上げるときは ADR を作成する。
-
-固定した wasmtime の版は、`.github/workflows/advisories.yml` が毎日一回、`scripts/wasmtime-advisories.sh` で bytecodealliance/wasmtime のリポジトリのアドバイザリと照合する（[ADR 0157](adr/0157-check-wasmtime-pin-against-advisories.md)）。
-パッケージ（`wasmtime`、`wasmtime-wasi`、`cranelift-codegen` など）の版は、固定した版の `licenses/wasmtime-v<バージョン>/MANIFEST.tsv` から引く。
-範囲（`vulnerable_version_range`）は、末尾の `(excluding …)` を除く版として切り離し、残りをカンマ、`&&`、`and` で比較の項目に分け、版の順に並べてから、下限で区間を開き上限で閉じる並びとして読む。
-上限のない区間に入ったときだけ修正版（`patched_versions`）を読み、区間の下限以上で固定した版以下の修正版が同じ系列にあるか、修正版の最大であれば、直った版として当たりにしない（[ADR 0166](adr/0166-read-wasmtime-advisory-ranges-as-written.md)）。
-当たるアドバイザリがあれば終了コード 1、一覧にないパッケージ、ほかのエコシステム、読めない範囲や修正版があれば終了コード 2 で、ワークフローは失敗する。
-当たったアドバイザリが Golem に届くかは判定せず、照合から外す一覧も持たない。
-当たったときは、ADR を書いて wasmtime の版を上げる。
-プルリクエストの CI では照合しない。
-結果がコミットではなく、上流がアドバイザリを公開した時刻で変わるためである。
-
-ワークフローの action は、すべてコミットの SHA と、そのコミットを指すいちばん細かい版のタグの注釈で指定する（`actions/checkout@<40 桁の SHA> # v7.0.1` の形、[ADR 0296](adr/0296-pin-every-github-action-by-commit-sha.md)）。
-このリポジトリの reusable workflow（`./.github/workflows/ci.yml`）だけは `./` で書く。
-同じリポジトリの action は、パスが違っても、どのファイルでも同じ SHA と注釈で指定する。
-プルリクエストの CI の `scripts-linux` ジョブは、`scripts/ci/actions-pins.sh check` でこの形を確かめ、外れた行の `ファイル:行` を出して失敗する。
-`.github/workflows/advisories.yml` の `actions` ジョブは毎日一回、`verify` で注釈のタグが固定したコミットを指すことを、`latest` で固定したコミットが `v` と数字とドットだけからなる版のタグのうちいちばん大きな版のコミットであり、その `runs.using` が `node24` 以上の Node か `composite` であることを照合する。
-照合が失敗したら、`scripts/ci/actions-pins.sh update` で書き換えたワークフローをプルリクエストで入れる。
-
-テストにだけ使う道具として、見た目の回帰テストで PDF のページを画像にするラスタライザ shem（[tett23/shem](https://github.com/tett23/shem)）も版を固定する（[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）。
-golem の実行ファイルと配布物には含めず、テストと CI からコマンドとして呼ぶ。
-`scripts/visual/fetch-shem.sh` が、shem の GitHub の release から、固定した版（v0.1.0-rc7）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ `third_party/shem/` に入れる。
-release の `SHA256SUMS` は読まない。
-アーカイブは、macOS の aarch64 と、Linux の x86-64 と aarch64 の三つである。
-`third_party/shem/VERSION` にはアーカイブの名前と SHA-256 を空白で区切って書き、スクリプトの値と一致すればネットワークに接続しない。
-入れる前に `shem --version` が `shem <固定した版>` を出すことを確かめ、出なければ終了コード 1 で終わる。
-`fetch-shem.sh --expected` は、期待する `VERSION` の中身を出力する。
-アーカイブのない環境（x86-64 の macOS など）では、取らずに終了コード 1 で終わり、標準エラーで環境変数 `SHEM` を案内する。
-`SHEM` は、固定した版のタグから自分でビルドした shem のパスである。
-`SHEM` の shem も、`--version` が固定した版でなければ使わない。
-shem は、同じ版なら環境によらず同じ画素を出すと約束している。
-同じ入力の画素を変える shem の変更はマイナーバージョンを上げるので、マイナーバージョンを上げるときは、同じ変更で見た目の回帰テストの参照を作り直す。
-パッチバージョンを上げるときは、shem の画素のために変わる参照を変えない。
-古い版と新しい版のどちらかが pre-release の識別子（`-rc3` など）を持つ版上げは、マイナーバージョンを上げるときと同じに扱い、参照を作り直してよい（[ADR 0100](adr/0100-raise-shem-to-v0-1-0-rc3-and-pre-release-bumps.md)）。
-そのプルリクエストは、PDF を古い版と新しい版の両方で描き、ページの SHA-256 が違うページを入力ごとに説明に挙げる（なければ「なし」と書く）。
-違うページがあれば、shem のリリースノートの「変更」を引き、前後の画像を見てから参照を受け入れる。
-版上げが Golem の入力（固定した版の名前を書いた開発者のマニュアルの本文など）を変えたために変わるページの参照は、版上げの種類によらず直してよい。
-直してよいのは、古い版と新しい版で同じ SHA-256 になるページに限る。
-Golem の Writer が shem の読まない演算子や資源を書くようになるときは、先に shem を直してリリースし、固定した版を上げる。
-
-式の評価は、x86-64 と aarch64 の両方の CI でテストし、結果が一致することを確かめる。
-式の言語の数は自然数、整数、有理数であり、浮動小数点数を持たず、演算はすべて正確に行う（[ADR 0101](adr/0101-rational-numbers-in-expressions.md)）。
-行数、番号、桁数のように負にならない量を受け取る箇所は自然数を求め、式は評価の前に型を推論して、S0 で値の決まる負の数（G02103）と整数でない数（G02104）を評価の前に見つける。
-`doc` を参照する式の値は S1 の評価で調べる（[ADR 0102](adr/0102-natural-number-type.md)、[docs/markup.md](markup.md) の「数の規則」）。
-
-diagnostics も決定性の対象である（「設計原則」の「diagnostics の決定性」）。
-同じ入力からは同じ diagnostics を得て、並びの順はコードの順、ファイルの順、位置の順に固定する（[ADR 0002](adr/0002-determinism.md)、[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
-x86-64 と aarch64 の間でも、diagnostics と終了コードが同じであることを CI の `determinism` ジョブが確かめる（[ADR 0071](adr/0071-determinism-check-compares-diagnostics.md)）。
-
-出力は、ファイルの入力、Golem のバージョン、出力を変える CLI のオプション（`--marks` と `--profile`）だけで決まる（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
-CLI のオプションは呼び出しに明示されるので、同じオプションで呼べば CI と手元で同じ出力が得られる。
-今後 CLI に出力を変えるオプションを加えるときは、インスタンス ID の入力に加える。
-
-v1 で決定性を保証するのは PDF、HTML、プレーンテキストである。
-EPUB はパッケージである zip の中に時刻や並び順の揺れを含みうるので、EPUB の決定性はまだ保証しない（予定は [docs/roadmap.md](roadmap.md)）。
-
-実行の環境を変えて出力の一致を確かめる検査 `scripts/env-determinism/check.sh` がある（[ADR 0029](adr/0029-environment-variation-determinism-test.md)）。
-決まった入力を基準の環境で組み、タイムゾーン、ロケール、`SOURCE_DATE_EPOCH`、`HOME`、`XDG_*`、`PATH`、umask、プロジェクトの置き場所、ファイルの時刻、どこからも参照しないファイル、capability の数（`GHCRTS=-N1` と `-N2`、[docs/adr/0050](adr/0050-run-golem-on-every-processor.md)）を一つずつ変えて組み直し、`build/` の下のファイル、終了コード、標準出力、標準エラー出力（`--format json` の diagnostics）が一致することを確かめる。
-小さな入力は、`scripts/determinism` の式、`sample`（HTML、EPUB、テキストと、B6 の縦組みの PDF）、diagnostics を出す入力と、機能を組み合わせた二冊（`complex-vertical` と `complex-horizontal`、四つのターゲット、[ADR 0175](adr/0175-complex-typesetting-fixture.md)）であり、プルリクエストの `--quick` でも検査する。
-すべての変化を同時に当てる `combined` は、『テンペスト』、『蟹工船』、十冊のパブリックドメインの本、二つのマニュアルにも当てる。
-`combined` は capability を二つにして組む。
-この検査は EPUB も比べるので、v1 の EPUB にも事実上の決定性を求めるが、仕様としての EPUB の決定性の約束は v2 からのままである。
-
-決定性の検査は、コミットをまたいだ出力の変化も見る（[ADR 0173](adr/0173-rc4-refactoring.md)）。
-`scripts/determinism.sh --no-manuals` の一覧を `scripts/determinism/hashes.txt` としてコミットし、CI の `determinism` ジョブが、x86-64 の一覧からマニュアルの行を除いたものをこれと比べる（`scripts/ci/determinism-hashes.sh`）。
-違えば、違う行を書いて失敗する。
-マニュアルを除くのは、奥付に組んだコミットのハッシュが入り、一覧がコミットごとに変わるからである。
-意図して出力を変えるプルリクエストは、同じプルリクエストで `hashes.txt` を書き直す。
-`VERSION` を上げると PDF の Producer とインスタンス ID が変わるので、リリースのプルリクエストも書き直す。
-一覧はハッシュなので、出力が変わったことは分かるが、どう変わったかは分からない。
-コミットをまたいで PDF の見た目が変わったことは、見た目の回帰テストが見つける（[ADR 0094](adr/0094-visual-regression-page-hashes-at-72-dpi.md)）。
-このテストは Golem 自身の開発のためのもので、利用者のためのページ画像の差分（「Golem が強いるワークフロー」の節）とは別である。
-入力は 23 の PDF である。
-`sample`（`scripts/determinism.sh` と同じ B6 の縦組み）、`figures`、機能を組み合わせた二冊の `complex-vertical` と `complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）、『蟹工船』、`[page]` に `bleed = "3mm"` を足して `--marks japanese` で組んだ『蟹工船』、『テンペスト』、和文と欧文の両方で使う引用符やダッシュを言語を切り替える範囲の内と外に置いた `languages`（[ADR 0187](adr/0187-inline-language-switch.md)）、目で見て確かめる見た目の見本の二冊 `specimens-horizontal` と `specimens-vertical`、`specimens-vertical` の `[page]` に `bleed = "3mm"` を足して `--marks japanese` で組み、すべてのページに隠しノンブルを入れたもの（[ADR 0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）、パブリックドメインの十冊、二つのマニュアルからなる。
-見本の二冊は、ADR ごとに見出しを立て、見出しの下にその ADR の番号を書く。
-見本の見た目のうち、人の判断を要るもの（二倍ダッシュが一本の線に見えるか、点の丸さ、波線のつながりなど）は、参照を受け入れるときに一度だけ人が見て、その後はこのテストが変わらないことを守る。
-罫が字面に接しないこと、表の前後の空き、段落の罫線の位置、段組みの脚注の位置、縮めた図版と回した図版、番号付きリストの本文の行頭のような幾何の性質は、golem-driver のテストが組んだ結果の矩形で確かめる。
-マニュアルは、奥付がコミットごとに変わらないように、`GOLEM_MANUAL_COMMIT` を 0 が 40 個の文字列に、`GOLEM_MANUAL_TAG` を `v0.0.0-visual` にして組む。
-`scripts/visual/build.sh` が、各プロジェクトを一時的なディレクトリに写して組み、リポジトリの `build/` には書かない。
-入力の一覧は `build.sh --list` が出す。
-`scripts/visual/check.sh` が、各 PDF を shem で 72 dpi の PPM に描き、ページごとの SHA-256 を `scripts/visual/pages/<入力>.txt` の参照と比べる。
-PDF は、プロセッサの数（`getconf _NPROCESSORS_ONLN`、取れなければ 1）を上限に同時に、大きい（バイト数の多い）ものから、同じ大きさなら入力の名前の順に描き始め、各 shem には `--jobs 1` を渡す（[ADR 0168](adr/0168-render-visual-pdfs-side-by-side-with-shem-jobs-1.md)）。
-違いの行は、描き終えた順によらず、入力の一覧の順に書く。
-参照の一行は `<SHA-256>  page-<番号>` で、行はページの順（`LC_ALL=C`）に並べる。
-比べるのはバイト列の完全な一致で、閾値はない。
-Golem と shem の出力はどちらも決定的なので、同じ PDF からは同じ一覧ができる。
-違いは `changed`、`added`、`removed`（ページ）、`unlisted`、`stale`（参照のファイル）、`unreadable`（shem が読めなかった PDF。shem の標準エラーの一行を続ける）、`missing`（PDF がない）の行で標準出力に書き、終了コード 1 で終わる。
-`unreadable` は、Golem の Writer が shem の読む部分集合の外を書いたことを意味するので、参照を書き直しても通らない。
-意図して見た目を変えたときは、`scripts/visual/run.sh --accept`（`build.sh`、`fetch-shem.sh`、`check.sh --accept` を続けて行う）で参照を書き直し、同じ変更に入れる。
-`--accept` は、PDF がない入力、ページが一つもない入力、`unreadable` の入力があれば、どの参照も書かずに失敗する。
-PDF の Producer とインスタンス ID は画像に現れないので、`VERSION` だけを変えても参照は変わらない。
-画像と図版は shem が中身を読まずに箱で描くので、その中身の変化はこのテストでは見つからない。
-CI では、`build` の x86-64 の `outputs` のランナーが、epubcheck と決定性の検査の出力より先に PDF を組んで成果物 `visual-pdfs` として上げ、`visual` ジョブが x86-64 で描いて比べる（[ADR 0095](adr/0095-visual-job-in-ci.md)、[ADR 0140](adr/0140-ci-split-test-runners-and-visual-pdfs-first.md)）。
-比べる手順の実時間の上限は 600 秒で、shem が止まらなくなったことだけを見つけるためのものである。
-比べる手順が失敗したときだけ、`scripts/visual/report.sh` が、変わったページの前と後の画像（150 dpi の PNG、最初の 100 ページ）と `shem diff` の差分の画像、`check.sh --accept` が書くはずの参照の一覧を成果物 `visual-diff` として上げ、変わったページの表（違う画素の数と矩形は 72 dpi で数える）をジョブの要約に書く（[ADR 0096](adr/0096-before-and-after-images-of-changed-pages.md)）。
-前の画像は、ベースのコミットから first-parent の祖先を 20 個までたどって最初に見つかった成果物 `visual-pdfs` から描き、ページの SHA-256 がベースのコミットの参照と一致するときだけ使う。
-違う画素の数は合否に使わない。
-
-CI の `build` の x86-64 の `outputs` のランナーは、二冊のマニュアルを組んだ後、それぞれのプロジェクトで `golem preflight --rules ../scripts/ci/manual-preflight.toml` を走らせ、終了コードが 0 であることを確かめる（[ADR 0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
-この設定は `based-on = "none"` で、フォントの埋め込み（`font-embedding`、G09019）と特色の色空間（`spot-colors`、G09020）だけをエラーにする。
-同じランナーは、`scripts/ci/pdf-fonts.sh` で二冊の PDF の書体を確かめる。
-`pdf-fonts.sh` は、PDF のフォントの辞書の `BaseFont` を `qpdf --json` で読み、サブセットの印（六つの大文字と `+`）を除いた名前を、並べ替えて一度ずつ書く。
-書体の名前を引数に与えると、それ以外の書体があれば失敗する。
-CI は、そのマニュアルの `fonts/` の OpenType のファイルの名前（`.otf` を除いたもの）を与える。
-同じランナーは、`scripts/ci/pdf-text.sh` で、開発者のマニュアルの PDF の文字列を Poppler の `pdftotext` で取り出し、原稿のコードに `\|` と書いた箇所が `|` と表示されることを確かめる（[ADR 0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
-`pdf-text.sh` は、`--has` に与えた文字列を含む行がないときと、`--lacks` に与えた文字列を含む行があるときに失敗する。
-CI は、`\|` と書いた四つの箇所の前後の文字列を `--has` に、`\|` を `--lacks` に与える。
-テストのランナーは、qpdf と同じ一回の apt-get で Ubuntu の `poppler-utils` を入れ、golem-driver のテストが Poppler で Golem の PDF を読む（[ADR 0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
-`pdftoppm` で figures の fixture を 72 dpi の画像にし、tRNS を持つ PNG の透明の画素が白になり、半透明の画素が色と白をアルファで混ぜた値から 2 以内になることを確かめる。
-`pdfinfo -url` で、横組みと縦組みの PDF のリンクの注釈の URL とページが原稿のとおりであることを確かめる。
-Poppler は CI で走らせるだけで、Golem にはリンクせず、`golem` から呼ばない。
-golem-driver のテストは、ほかのツールが書き出した図版の試料（`modules/golem-driver/test/fixtures/figures-external/`）も置いて組む（[ADR 0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
-試料は、六つのツール（Inkscape、LibreOffice Draw、Chromium の印刷、matplotlib、pdfTeX、LuaTeX）の PDF と、Inkscape と draw.io の SVG である。
-試料ごとに、置けるか、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md) の表のどの理由で拒むか、G08011 になるかを期待として持つ。
-置いた PDF は `qpdf --check` を通り、置ける PDF の試料は、元のページと、それを等倍で置いた図の範囲を同じ画素の数で `pdftoppm` にかけ、チャネルの差の平均が 5 以下であることを確かめる。
-閾値は、試料で測った最大の 2.56 の二倍ほどである。
-Illustrator の試料は v1.0.0 のリリースでメンテナーが書き出して加え、ファイルがなければテストはその行を飛ばす。
-x86-64 の `outputs` のランナーは、`sample`、`bibliographies`、`languages` に加えて `epub-forms` の EPUB を epubcheck にかける。
-`epub-forms` は、引用と `@bibliography` を別のファイルに置き、`@toc depth=1` で階層 3 までの見出しを持ち、見本のプラグイン `glossary` のチャネルを使う。
-プラグインは `plugins/wasm/glossary.wasm` を `plugins.lock` の SHA-256 の名前でキャッシュに置いて読み、URL からは取得しない。
-
-HTML は、夜ごとの `.github/workflows/browser.yml` が、版と SHA-256 で固定した Chrome for Testing の `chrome-headless-shell`（`scripts/browser/fetch-chromium.sh`）と、macOS のランナーの Safari で開いて確かめる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)）。
-Chromium は Chrome DevTools Protocol で、Safari は `safaridriver` の W3C WebDriver で操り、どちらのクライアントも Node の組み込みだけで書く（`scripts/browser/cdp.mjs`、`scripts/browser/webdriver.mjs`）。
-ブラウザーは、検査のページを `127.0.0.1` のサーバー（`scripts/browser/serve.mjs`）から開く。
-サーバーは、URL のパスが root を出るファイルも、実のパス（シンボリックリンクをたどった先）が root の実のパスの下にないファイルも返さず、404 を返す（[ADR 0288](adr/0288-serve-no-file-whose-real-path-leaves-the-root-of-the-browser-checks.md)）。
-root の下を指すリンクは返し、実のパスを求められないリンク（先のないもの、権限のないもの）は 404 とする。
-検査は二つのブラウザで同じ関数で走り、同じ基準を当てる（例外は、下の Chromium の起動の引数と Safari の縦書きである）。
-確かめるのは、技術書のコードブロックの選択とコピーに行番号と差分の印が入らないこと、`pre` の `white-space` とコードの書体、縦組みのダッシュの墨が縦に長いこと、圏点の十の形の `text-emphasis-style`、段落の罫線が段落の前後にあること、tRNS の透明の画素でページの背景が見えること、二冊のマニュアルのすべてのページで画像とスタイルシートと書体が読み込まれ、`#` のリンクの先があることである（`scripts/browser/html-checks.mjs`）。
-Chromium では、加えてコンソールの誤りと読み込みの失敗がないことを確かめる。
-WebDriver にはそれを受け取る命令がないので、Safari では確かめない。
-開発者のマニュアルの輪郭の SVG の文字は、原稿の SVG を同じブラウザで描いた文字と比べ、墨の外接矩形の中心の差が CSS の 1 画素以下、大きさの差が CSS の 2 画素以下であることを確かめる（`scripts/browser/svg-text.mjs`、[ADR 0239](adr/0239-decide-the-conditions-of-the-outlined-figure-check-and-the-punctuation-of-figure-sources.md)）。
-この検査の Chromium だけは、`--font-render-hinting=none` で起動する（`scripts/browser/browsers.mjs` の `chromiumArgs`）。
-輪郭のパスはヒンティングを受けないためである。
-`chromium` のジョブは、この起動の引数を版の表に書く。
-Safari では、縦書きの文字列を測るが判定には含めず、その数と差の最大をジョブの要約に書く。
-Safari は、SVG の縦書きの正立の字を Chromium と Inkscape と違う量で送るためである。
-Safari の横書きの文字列は、中心と大きさの差の上限を CSS の 8 画素として判定する（`scripts/browser/svg-text.mjs` の `SAFARI`）。
-Safari は、Chromium に合わせた輪郭から、横書きの文字列を最大で 5.5 画素離して描く。
-8 画素の上限は、`halt` が当たらずに約物が全角のまま残る誤り（20px の字で 20 画素）や、別のフォントで描かれた図を見つけるためのものである。
-Safari の版は固定せず、ランナーの像に従う。
-`safari` のジョブは、macOS の版、像の版、Safari の版、WebDriver の `browserVersion` の表をジョブの要約に書き、検査が失敗しても表を残す（`scripts/browser/safari-versions.sh`）。
-
-ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
-対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。
 
 PDF の Producer には Golem のバージョンを書く。
 Producer は `Golem ` に `VERSION` の内容を続けた文字列（例：`Golem 0.1.0-rc1`）とし、文書情報辞書の `Producer` と XMP の `pdf:Producer` の両方に書く（[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md)）。
@@ -1331,7 +1189,9 @@ Git のコミットやビルドの環境は含めない。
 
 - `id`、`title`、`language`、`date`（`2026-10-16` の形の文字列）と、あれば `title_reading`、`edition`、`publisher`、`publisher_person`
 - `creators`：`creators` の名前の配列
-- `roles.<役割>`：`creators` と `contributors` のうち役割が `<役割>` である項目の名前の配列。`<役割>` は役割の語の `-` を `_` にしたもの（`meta.roles.cover_designer`）である。`creators` を先に、それぞれマニフェストの順に並べ、印刷所と製本所も含む（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）
+- `roles.<役割>`：`creators` と `contributors` のうち役割が `<役割>` である項目の名前の配列。
+  `<役割>` は役割の語の `-` を `_` にしたもの（`meta.roles.cover_designer`）である。
+  `creators` を先に、それぞれマニフェストの順に並べ、印刷所と製本所も含む（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）
 - `printing`：現在の刷の連想配列であり、`edition`、`number`、`year`、`month`、`day` を整数で、`date` を `2026-10-16` の形の文字列で持つ
 - `printings`：`printings` の全項目を、`printing` と同じ形の連想配列の配列にしたもの
 
@@ -1339,15 +1199,243 @@ Git のコミットやビルドの環境は含めない。
 
 発行の履歴は、ブロックコマンド `@printings` で組む。
 `printings` の全項目を、マニフェストの順に、一項目を一つの段落にして組み、`@style` などの属性はすべての段落に適用される。
+
 一つの段落は `2026年10月16日　初版第1刷発行` の形であり、版の番号が 1 なら「初版」、2 以上なら `第2版` のように番号を入れた形とする。
 年、月、日と版、刷の番号は数の値として組むので、縦組みでは漢数字になる。
 年は一字ずつの漢数字（`kanji-digits`、二〇二六）とし、ほかは `[numbers]` の `vertical` の既定に従う。
 書式はこの一つに固定する。
+
 `@printings` の誤りは、原因ごとに一つのコードとし、どれもエラーである（[docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)）。
-引数を書いた場合は G02096（`@printings は引数を取りません`）、本体を書いた場合は G02097（`@printings は本体を持てません`、位置は本体の最初のブロック）、日本語でない本（`language` が `ja` でない本）では G02076、`printings` のない本では G02098 とする。
+
+- 引数を書いた場合は G02096（`@printings は引数を取りません`）とする。
+- 本体を書いた場合は G02097（`@printings は本体を持てません`、位置は本体の最初のブロック）とする。
+- 日本語でない本（`language` が `ja` でない本）では G02076 とする。
+- `printings` のない本では G02098 とする。
+
 四つは互いに独立に判定し、当たるものをすべてこの順に出す。
 どれか一つでもあれば、`@printings` は何も組まない。
-書式を変える設定は、v0.1.0-rc4 か v1.0.0 で扱う予定である（[docs/roadmap.md](roadmap.md) の「発行の履歴の書式」）。
+今は、この書式を変える設定はない（予定は [docs/roadmap.md](roadmap.md) の「発行の履歴の書式」）。
+
+## 決定性
+
+同じ入力からバイト単位で同じ出力を得るために（「Golem が強いるワークフロー」の節）、Golem は出力を決めるものを限り、それを CI で確かめる。
+
+### 出力を決めるもの
+
+出力は、ファイルの入力、Golem のバージョン、出力を変える CLI のオプション（`--marks` と `--profile`）だけで決まる（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
+CLI のオプションは呼び出しに明示されるので、同じオプションで呼べば CI と手元で同じ出力が得られる。
+今後 CLI に出力を変えるオプションを加えるときは、インスタンス ID の入力に加える。
+
+決定性を保証するのは、PDF、HTML、プレーンテキストである。
+EPUB はパッケージである zip の中に時刻や並び順の揺れを含みうるので、今は EPUB の決定性を保証しない（予定は [docs/roadmap.md](roadmap.md) の「EPUB の決定性」）。
+
+ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
+対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。
+
+### 固定する依存
+
+シェイピングとフォントの処理に使う HarfBuzz と FreeType、プラグインの実行に使う wasmtime、PDF の圧縮に使う zlib はバージョンを固定する。
+これらのバージョンが変わるとグリフの配置が変わり、同じ入力から同じ出力が得られなくなるためである。
+使っているバージョンは README に記載し、バージョンを上げるときは ADR を作成する。
+
+#### wasmtime のアドバイザリの照合
+
+固定した wasmtime の版は、`.github/workflows/advisories.yml` が毎日一回、`scripts/wasmtime-advisories.sh` で bytecodealliance/wasmtime のリポジトリのアドバイザリと照合する（[ADR 0157](adr/0157-check-wasmtime-pin-against-advisories.md)）。
+パッケージ（`wasmtime`、`wasmtime-wasi`、`cranelift-codegen` など）の版は、固定した版の `licenses/wasmtime-v<バージョン>/MANIFEST.tsv` から引く。
+範囲と修正版は、次のように読む。
+
+- 範囲（`vulnerable_version_range`）は、末尾の `(excluding …)` を除く版として切り離し、残りをカンマ、`&&`、`and` で比較の項目に分け、版の順に並べてから、下限で区間を開き上限で閉じる並びとして読む。
+- 上限のない区間に入ったときだけ修正版（`patched_versions`）を読み、区間の下限以上で固定した版以下の修正版が同じ系列にあるか、修正版の最大であれば、直った版として当たりにしない（[ADR 0166](adr/0166-read-wasmtime-advisory-ranges-as-written.md)）。
+
+照合の結果は、終了コードで表す。
+当たるアドバイザリがあれば終了コード 1、一覧にないパッケージ、ほかのエコシステム、読めない範囲や修正版があれば終了コード 2 で、ワークフローは失敗する。
+当たったアドバイザリが Golem に届くかは判定せず、照合から外す一覧も持たない。
+当たったときは、ADR を書いて wasmtime の版を上げる。
+
+プルリクエストの CI では照合しない。
+結果がコミットではなく、上流がアドバイザリを公開した時刻で変わるためである。
+
+#### action の固定
+
+ワークフローの action は、すべてコミットの SHA と、そのコミットを指すいちばん細かい版のタグの注釈で指定する（`actions/checkout@<40 桁の SHA> # v7.0.1` の形、[ADR 0296](adr/0296-pin-every-github-action-by-commit-sha.md)）。
+このリポジトリの reusable workflow（`./.github/workflows/ci.yml`）だけは `./` で書く。
+同じリポジトリの action は、パスが違っても、どのファイルでも同じ SHA と注釈で指定する。
+プルリクエストの CI の `scripts-linux` ジョブは、`scripts/ci/actions-pins.sh check` でこの形を確かめ、外れた行の `ファイル:行` を出して失敗する。
+
+`.github/workflows/advisories.yml` の `actions` ジョブは毎日一回、`verify` で注釈のタグが固定したコミットを指すことを、`latest` で固定したコミットが `v` と数字とドットだけからなる版のタグのうちいちばん大きな版のコミットであり、その `runs.using` が `node24` 以上の Node か `composite` であることを照合する。
+照合が失敗したら、`scripts/ci/actions-pins.sh update` で書き換えたワークフローをプルリクエストで入れる。
+
+#### shem の固定
+
+テストにだけ使う道具として、見た目の回帰テストで PDF のページを画像にするラスタライザ shem（[tett23/shem](https://github.com/tett23/shem)）も版を固定する（[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）。
+golem の実行ファイルと配布物には含めず、テストと CI からコマンドとして呼ぶ。
+`scripts/visual/fetch-shem.sh` が、shem の GitHub の release から、固定した版（v0.1.0-rc7）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ `third_party/shem/` に入れる。
+release の `SHA256SUMS` は読まない。
+
+アーカイブは、macOS の aarch64 と、Linux の x86-64 と aarch64 の三つである。
+`third_party/shem/VERSION` にはアーカイブの名前と SHA-256 を空白で区切って書き、スクリプトの値と一致すればネットワークに接続しない。
+入れる前に `shem --version` が `shem <固定した版>` を出すことを確かめ、出なければ終了コード 1 で終わる。
+`fetch-shem.sh --expected` は、期待する `VERSION` の中身を出力する。
+
+アーカイブのない環境（x86-64 の macOS など）では、取らずに終了コード 1 で終わり、標準エラーで環境変数 `SHEM` を案内する。
+`SHEM` は、固定した版のタグから自分でビルドした shem のパスである。
+`SHEM` の shem も、`--version` が固定した版でなければ使わない。
+
+shem の版上げは、見た目の回帰テストの参照を変えうる。
+shem は、同じ版なら環境によらず同じ画素を出すと約束している。
+同じ入力の画素を変える shem の変更はマイナーバージョンを上げるので、マイナーバージョンを上げるときは、同じ変更で見た目の回帰テストの参照を作り直す。
+パッチバージョンを上げるときは、shem の画素のために変わる参照を変えない。
+古い版と新しい版のどちらかが pre-release の識別子（`-rc3` など）を持つ版上げは、マイナーバージョンを上げるときと同じに扱い、参照を作り直してよい（[ADR 0100](adr/0100-raise-shem-to-v0-1-0-rc3-and-pre-release-bumps.md)）。
+
+そのプルリクエストは、PDF を古い版と新しい版の両方で描き、ページの SHA-256 が違うページを入力ごとに説明に挙げる（なければ「なし」と書く）。
+違うページがあれば、shem のリリースノートの「変更」を引き、前後の画像を見てから参照を受け入れる。
+版上げが Golem の入力（固定した版の名前を書いた開発者のマニュアルの本文など）を変えたために変わるページの参照は、版上げの種類によらず直してよい。
+直してよいのは、古い版と新しい版で同じ SHA-256 になるページに限る。
+
+Golem の Writer が shem の読まない演算子や資源を書くようになるときは、先に shem を直してリリースし、固定した版を上げる。
+
+### 式の評価と diagnostics
+
+式の評価は、x86-64 と aarch64 の両方の CI でテストし、結果が一致することを確かめる。
+式の言語の数は自然数、整数、有理数であり、浮動小数点数を持たず、演算はすべて正確に行う（[ADR 0101](adr/0101-rational-numbers-in-expressions.md)）。
+行数、番号、桁数のように負にならない量を受け取る箇所は自然数を求め、式は評価の前に型を推論して、S0 で値の決まる負の数（G02103）と整数でない数（G02104）を評価の前に見つける。
+`doc` を参照する式の値は S1 の評価で調べる（[ADR 0102](adr/0102-natural-number-type.md)、[docs/markup.md](markup.md) の「数の規則」）。
+
+diagnostics も決定性の対象である（「設計原則」の「diagnostics の決定性」）。
+同じ入力からは同じ diagnostics を得て、並びの順はコードの順、ファイルの順、位置の順に固定する（[ADR 0002](adr/0002-determinism.md)、[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
+x86-64 と aarch64 の間でも、diagnostics と終了コードが同じであることを CI の `determinism` ジョブが確かめる（[ADR 0071](adr/0071-determinism-check-compares-diagnostics.md)）。
+
+### 実行の環境を変える検査
+
+実行の環境を変えて出力の一致を確かめる検査 `scripts/env-determinism/check.sh` がある（[ADR 0029](adr/0029-environment-variation-determinism-test.md)）。
+決まった入力を基準の環境で組み、タイムゾーン、ロケール、`SOURCE_DATE_EPOCH`、`HOME`、`XDG_*`、`PATH`、umask、プロジェクトの置き場所、ファイルの時刻、どこからも参照しないファイル、capability の数（`GHCRTS=-N1` と `-N2`、[docs/adr/0050](adr/0050-run-golem-on-every-processor.md)）を一つずつ変えて組み直し、`build/` の下のファイル、終了コード、標準出力、標準エラー出力（`--format json` の diagnostics）が一致することを確かめる。
+
+小さな入力は、`scripts/determinism` の式、`sample`（HTML、EPUB、テキストと、B6 の縦組みの PDF）、diagnostics を出す入力と、機能を組み合わせた二冊（`complex-vertical` と `complex-horizontal`、四つのターゲット、[ADR 0175](adr/0175-complex-typesetting-fixture.md)）であり、プルリクエストの `--quick` でも検査する。
+すべての変化を同時に当てる `combined` は、『テンペスト』、『蟹工船』、十冊のパブリックドメインの本、二つのマニュアルにも当てる。
+`combined` は capability を二つにして組む。
+この検査は EPUB も比べるので、実際には EPUB にも決定性を求めている。
+しかし、仕様としては EPUB の決定性を約束しない。
+
+### コミットをまたいだ出力の変化
+
+決定性の検査は、コミットをまたいだ出力の変化も見る（[ADR 0173](adr/0173-rc4-refactoring.md)）。
+`scripts/determinism.sh --no-manuals` の一覧を `scripts/determinism/hashes.txt` としてコミットし、CI の `determinism` ジョブが、x86-64 の一覧からマニュアルの行を除いたものをこれと比べる（`scripts/ci/determinism-hashes.sh`）。
+違えば、違う行を書いて失敗する。
+マニュアルを除くのは、奥付に組んだコミットのハッシュが入り、一覧がコミットごとに変わるからである。
+
+意図して出力を変えるプルリクエストは、同じプルリクエストで `hashes.txt` を書き直す。
+`VERSION` を上げると PDF の Producer とインスタンス ID が変わるので、リリースのプルリクエストも書き直す。
+
+### 見た目の回帰テスト
+
+一覧はハッシュなので、出力が変わったことは分かるが、どう変わったかは分からない。
+コミットをまたいで PDF の見た目が変わったことは、見た目の回帰テストが見つける（[ADR 0094](adr/0094-visual-regression-page-hashes-at-72-dpi.md)）。
+このテストは Golem 自身の開発のためのもので、利用者のためのページ画像の差分（「Golem が強いるワークフロー」の節）とは別である。
+
+入力は 23 の PDF であり、次のものからなる。
+
+- `sample`（`scripts/determinism.sh` と同じ B6 の縦組み）
+- `figures`
+- 機能を組み合わせた二冊の `complex-vertical` と `complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）
+- 『蟹工船』
+- `[page]` に `bleed = "3mm"` を足して `--marks japanese` で組んだ『蟹工船』
+- 『テンペスト』
+- 和文と欧文の両方で使う引用符やダッシュを言語を切り替える範囲の内と外に置いた `languages`（[ADR 0187](adr/0187-inline-language-switch.md)）
+- 目で見て確かめる見た目の見本の二冊 `specimens-horizontal` と `specimens-vertical`
+- `specimens-vertical` の `[page]` に `bleed = "3mm"` を足して `--marks japanese` で組み、すべてのページに隠しノンブルを入れたもの（[ADR 0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）
+- パブリックドメインの十冊
+- 二つのマニュアル
+
+見本の二冊は、ADR ごとに見出しを立て、見出しの下にその ADR の番号を書く。
+見本の見た目のうち、人の判断を要るもの（二倍ダッシュが一本の線に見えるか、点の丸さ、波線のつながりなど）は、参照を受け入れるときに一度だけ人が見て、その後はこのテストが変わらないことを守る。
+罫が字面に接しないこと、表の前後の空き、段落の罫線の位置、段組みの脚注の位置、縮めた図版と回した図版、番号付きリストの本文の行頭のような幾何の性質は、golem-driver のテストが組んだ結果の矩形で確かめる。
+
+マニュアルは、奥付がコミットごとに変わらないように、`GOLEM_MANUAL_COMMIT` を 0 が 40 個の文字列に、`GOLEM_MANUAL_TAG` を `v0.0.0-visual` にして組む。
+`scripts/visual/build.sh` が、各プロジェクトを一時的なディレクトリに写して組み、リポジトリの `build/` には書かない。
+入力の一覧は `build.sh --list` が出す。
+
+`scripts/visual/check.sh` が、各 PDF を shem で 72 dpi の PPM に描き、ページごとの SHA-256 を `scripts/visual/pages/<入力>.txt` の参照と比べる。
+PDF は、プロセッサの数（`getconf _NPROCESSORS_ONLN`、取れなければ 1）を上限に同時に、大きい（バイト数の多い）ものから、同じ大きさなら入力の名前の順に描き始め、各 shem には `--jobs 1` を渡す（[ADR 0168](adr/0168-render-visual-pdfs-side-by-side-with-shem-jobs-1.md)）。
+違いの行は、描き終えた順によらず、入力の一覧の順に書く。
+参照の一行は `<SHA-256>  page-<番号>` で、行はページの順（`LC_ALL=C`）に並べる。
+比べるのはバイト列の完全な一致で、閾値はない。
+Golem と shem の出力はどちらも決定的なので、同じ PDF からは同じ一覧ができる。
+
+違いは `changed`、`added`、`removed`（ページ）、`unlisted`、`stale`（参照のファイル）、`unreadable`（shem が読めなかった PDF。shem の標準エラーの一行を続ける）、`missing`（PDF がない）の行で標準出力に書き、終了コード 1 で終わる。
+`unreadable` は、Golem の Writer が shem の読む部分集合の外を書いたことを意味するので、参照を書き直しても通らない。
+
+意図して見た目を変えたときは、`scripts/visual/run.sh --accept`（`build.sh`、`fetch-shem.sh`、`check.sh --accept` を続けて行う）で参照を書き直し、同じ変更に入れる。
+`--accept` は、PDF がない入力、ページが一つもない入力、`unreadable` の入力があれば、どの参照も書かずに失敗する。
+
+このテストが見つけない変化もある。
+PDF の Producer とインスタンス ID は画像に現れないので、`VERSION` だけを変えても参照は変わらない。
+画像と図版は shem が中身を読まずに箱で描くので、その中身の変化はこのテストでは見つからない。
+
+CI では、`build` の x86-64 の `outputs` のランナーが、epubcheck と決定性の検査の出力より先に PDF を組んで成果物 `visual-pdfs` として上げ、`visual` ジョブが x86-64 で描いて比べる（[ADR 0095](adr/0095-visual-job-in-ci.md)、[ADR 0140](adr/0140-ci-split-test-runners-and-visual-pdfs-first.md)）。
+比べる手順の実時間の上限は 600 秒で、shem が止まらなくなったことだけを見つけるためのものである。
+
+比べる手順が失敗したときだけ、`scripts/visual/report.sh` が、変わったページの前と後の画像（150 dpi の PNG、最初の 100 ページ）と `shem diff` の差分の画像、`check.sh --accept` が書くはずの参照の一覧を成果物 `visual-diff` として上げ、変わったページの表（違う画素の数と矩形は 72 dpi で数える）をジョブの要約に書く（[ADR 0096](adr/0096-before-and-after-images-of-changed-pages.md)）。
+前の画像は、ベースのコミットから first-parent の祖先を 20 個までたどって最初に見つかった成果物 `visual-pdfs` から描き、ページの SHA-256 がベースのコミットの参照と一致するときだけ使う。
+違う画素の数は合否に使わない。
+
+### マニュアルと fixture の出力の検査
+
+CI は、見た目の回帰テストのほかに、組んだ出力の中身を道具で確かめる。
+CI の `build` の x86-64 の `outputs` のランナーは、二冊のマニュアルを組んだ後、それぞれのプロジェクトで `golem preflight --rules ../scripts/ci/manual-preflight.toml` を走らせ、終了コードが 0 であることを確かめる（[ADR 0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
+この設定は `based-on = "none"` で、フォントの埋め込み（`font-embedding`、G09019）と特色の色空間（`spot-colors`、G09020）だけをエラーにする。
+
+同じランナーは、`scripts/ci/pdf-fonts.sh` で二冊の PDF の書体を確かめる。
+`pdf-fonts.sh` は、PDF のフォントの辞書の `BaseFont` を `qpdf --json` で読み、サブセットの印（六つの大文字と `+`）を除いた名前を、並べ替えて一度ずつ書く。
+書体の名前を引数に与えると、それ以外の書体があれば失敗する。
+CI は、そのマニュアルの `fonts/` の OpenType のファイルの名前（`.otf` を除いたもの）を与える。
+
+同じランナーは、`scripts/ci/pdf-text.sh` で、開発者のマニュアルの PDF の文字列を Poppler の `pdftotext` で取り出し、原稿のコードに `\|` と書いた箇所が `|` と表示されることを確かめる（[ADR 0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
+`pdf-text.sh` は、`--has` に与えた文字列を含む行がないときと、`--lacks` に与えた文字列を含む行があるときに失敗する。
+CI は、`\|` と書いた四つの箇所の前後の文字列を `--has` に、`\|` を `--lacks` に与える。
+
+テストのランナーは、qpdf と同じ一回の apt-get で Ubuntu の `poppler-utils` を入れ、golem-driver のテストが Poppler で Golem の PDF を読む（[ADR 0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
+`pdftoppm` で figures の fixture を 72 dpi の画像にし、tRNS を持つ PNG の透明の画素が白になり、半透明の画素が色と白をアルファで混ぜた値から 2 以内になることを確かめる。
+`pdfinfo -url` で、横組みと縦組みの PDF のリンクの注釈の URL とページが原稿のとおりであることを確かめる。
+Poppler は CI で走らせるだけで、Golem にはリンクせず、`golem` から呼ばない。
+
+golem-driver のテストは、ほかのツールが書き出した図版の試料（`modules/golem-driver/test/fixtures/figures-external/`）も置いて組む（[ADR 0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
+試料は、六つのツール（Inkscape、LibreOffice Draw、Chromium の印刷、matplotlib、pdfTeX、LuaTeX）の PDF と、Inkscape と draw.io の SVG である。
+試料ごとに、置けるか、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md) の表のどの理由で拒むか、G08011 になるかを期待として持つ。
+置いた PDF は `qpdf --check` を通り、置ける PDF の試料は、元のページと、それを等倍で置いた図の範囲を同じ画素の数で `pdftoppm` にかけ、チャネルの差の平均が 5 以下であることを確かめる。
+閾値は、試料で測った最大の 2.56 の二倍ほどである。
+Illustrator の試料は今はなく、ファイルがなければテストはその行を飛ばす（試料を加える予定は [docs/roadmap.md](roadmap.md) の「Adobe の製品で確かめる見た目」）。
+
+x86-64 の `outputs` のランナーは、`sample`、`bibliographies`、`languages` に加えて `epub-forms` の EPUB を epubcheck にかける。
+`epub-forms` は、引用と `@bibliography` を別のファイルに置き、`@toc depth=1` で階層 3 までの見出しを持ち、見本のプラグイン `glossary` のチャネルを使う。
+プラグインは `plugins/wasm/glossary.wasm` を `plugins.lock` の SHA-256 の名前でキャッシュに置いて読み、URL からは取得しない。
+
+### ブラウザーでの HTML の検査
+
+HTML は、夜ごとの `.github/workflows/browser.yml` が、版と SHA-256 で固定した Chrome for Testing の `chrome-headless-shell`（`scripts/browser/fetch-chromium.sh`）と、macOS のランナーの Safari で開いて確かめる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)）。
+Chromium は Chrome DevTools Protocol で、Safari は `safaridriver` の W3C WebDriver で操り、どちらのクライアントも Node の組み込みだけで書く（`scripts/browser/cdp.mjs`、`scripts/browser/webdriver.mjs`）。
+ブラウザーは、検査のページを `127.0.0.1` のサーバー（`scripts/browser/serve.mjs`）から開く。
+サーバーは、URL のパスが root を出るファイルも、実のパス（シンボリックリンクをたどった先）が root の実のパスの下にないファイルも返さず、404 を返す（[ADR 0288](adr/0288-serve-no-file-whose-real-path-leaves-the-root-of-the-browser-checks.md)）。
+root の下を指すリンクは返し、実のパスを求められないリンク（先のないもの、権限のないもの）は 404 とする。
+検査は二つのブラウザで同じ関数で走り、同じ基準を当てる（例外は、下の Chromium の起動の引数と Safari の縦書きである）。
+
+確かめるのは、技術書のコードブロックの選択とコピーに行番号と差分の印が入らないこと、`pre` の `white-space` とコードの書体、縦組みのダッシュの墨が縦に長いこと、圏点の十の形の `text-emphasis-style`、段落の罫線が段落の前後にあること、tRNS の透明の画素でページの背景が見えること、二冊のマニュアルのすべてのページで画像とスタイルシートと書体が読み込まれ、`#` のリンクの先があることである（`scripts/browser/html-checks.mjs`）。
+Chromium では、加えてコンソールの誤りと読み込みの失敗がないことを確かめる。
+WebDriver にはそれを受け取る命令がないので、Safari では確かめない。
+
+開発者のマニュアルの輪郭の SVG の文字は、原稿の SVG を同じブラウザで描いた文字と比べ、墨の外接矩形の中心の差が CSS の 1 画素以下、大きさの差が CSS の 2 画素以下であることを確かめる（`scripts/browser/svg-text.mjs`、[ADR 0239](adr/0239-decide-the-conditions-of-the-outlined-figure-check-and-the-punctuation-of-figure-sources.md)）。
+この検査の Chromium だけは、`--font-render-hinting=none` で起動する（`scripts/browser/browsers.mjs` の `chromiumArgs`）。
+輪郭のパスはヒンティングを受けないためである。
+`chromium` のジョブは、この起動の引数を版の表に書く。
+
+Safari では、縦書きの文字列を測るが判定には含めず、その数と差の最大をジョブの要約に書く。
+Safari は、SVG の縦書きの正立の字を Chromium と Inkscape と違う量で送るためである。
+
+Safari の横書きの文字列は、中心と大きさの差の上限を CSS の 8 画素として判定する（`scripts/browser/svg-text.mjs` の `SAFARI`）。
+Safari は、Chromium に合わせた輪郭から、横書きの文字列を最大で 5.5 画素離して描く。
+8 画素の上限は、`halt` が当たらずに約物が全角のまま残る誤り（20px の字で 20 画素）や、別のフォントで描かれた図を見つけるためのものである。
+
+Safari の版は固定せず、ランナーの像に従う。
+`safari` のジョブは、macOS の版、像の版、Safari の版、WebDriver の `browserVersion` の表をジョブの要約に書き、検査が失敗しても表を残す（`scripts/browser/safari-versions.sh`）。
 
 ## 目次と文書構造の参照
 
@@ -4306,7 +4394,7 @@ PDF では、表を行の格子の上に組む（[golem-driver ADR 0008](golem-d
   - ts = fs なら、セルの一行が格子の一行になり、表の行の高さはその行で最も行数の多いセルの行数になる。
 - 列の幅は、セルの最小の幅と自然な幅から決める。最小の幅は、改行できる位置のあいだの最も広い部分の幅である（本文の中のコードの改行の印を描く位置で終わる部分は、印の幅を含む。[ADR 0255](adr/0255-record-what-implementations-decided-on-2026-11-09.md)）。自然な幅は、一行に組んだ幅である。列の間隔は ts の一字分とする。
   - 自然な幅の合計が収まれば、その幅で組む。
-  - 収まらなければ、短い列から自然な幅を満たして配る（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。各列の幅を、上限 C を最小の幅以上、自然な幅以下に収めた値とし、合計が使える幅に収まる最大の整数の C（sp）を二分探索で求める。残りは、自然な幅に届いていない列に、行の始まりの側の列から 1sp ずつ配る。そのため、自然な幅が C 以下の短い列は折り返さず、折り返しは長い列に集まる。
+  - 収まらなければ、短い列から自然な幅を満たして配る（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。各列の幅を、上限 C を最小の幅以上、自然な幅以下に収めた値とし、合計が使える幅に収まる最大の整数の C（sp）を二分探索で求める。残りは、水位にある列（最小の幅が C 以下で、自然な幅が C より広い列）に、行の始まりの側の列から 1sp ずつ配る（[ADR 0295](adr/0295-column-widths-of-tables-by-exhaustive-small-inputs.md)）。最小の幅のために C より広い列は、残りを受け取らない。そのため、使える幅が広がって狭くなる列はない。自然な幅が C 以下の短い列は折り返さず、折り返しは長い列に集まる。
   - 最小の幅の合計が収まらない場合は、エラー（G07041）とする。
   - 表の幅が行長より短い場合は、行の始まりの側に寄せる。
 - `@column-widths` を書いた表では、列が分け合う幅を W（行長 − 列の間隔の和）として、`auto` でない列の幅を sp で求める。`zw` は ts に、`%` は W に掛け、どちらも sp の未満を切り捨てる。指定した幅は、自然な幅より広くても狭くてもそのまま使い、指定した列に残りを配らない。
@@ -4338,6 +4426,14 @@ PDF では、表を行の格子の上に組む（[golem-driver ADR 0008](golem-d
   - HTML、EPUB、テキストのターゲットにはこの上限がない。PDF を組まない `golem check` と LSP は G07108 を出さない。
 - 縦組みの本では表も縦組みで組み、セルの中の行は上から下へ進み、表の行は右から左へ並ぶ。左寄せは天寄せ、右寄せは地寄せになる。
 - セルの中の注、索引の印、ページ番号への参照は、そのセルの行が置かれる格子の行に付き、表のラベルは表の最初の格子の行に付く。
+
+列の幅の規則は、[ADR 0295](adr/0295-column-widths-of-tables-by-exhaustive-small-inputs.md) の「不変条件」の節の C1 から C8 として、golem-layout のテストで確かめる（`modules/golem-layout/test/ColumnWidthInvariantsSpec.hs`）。
+`columnWidths` は、列の数 n と各列の最小の幅と自然な幅（0 以上 K 以下）と使える幅（0 から n × K + 1）のすべての組で調べる。
+調べるのは、誤りの条件と和と幅の範囲と単調さ（使える幅を 1 増やして狭くなる列がないこと）、そして C を 0 から一つずつ試す素朴な探索で求めた幅に等しいことである。
+`tableColumnWidths` は、さらに各列を `auto` か 0 以上 K 以下の書いた幅にした組で、書いた列の幅と、書かない列の幅と、三つの誤りの条件を調べる。
+`zw` と `%` の指定は列挙しない。
+プルリクエストの CI は、`columnWidths` を K = 4、列 3 個まで、`tableColumnWidths` を K = 3、列 3 個まで調べ、毎晩の `enum.yml` は、それぞれ K = 5、列 4 個までと K = 4、列 3 個まで調べる（`GOLEM_ENUM_TABLE_DEPTH`）。
+違反があれば、最も小さい入力を表示する。
 
 ## 構文木と diagnostics
 
@@ -7945,6 +8041,7 @@ diagnostics は、ほかのコマンドと同じく人が読む形で標準エ�
 並列に進むのは、PDF の次の処理である。
 
 - 段落の組版は、複数の OS のスレッドで同時に進む（[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)）。
+  段落と表は、それぞれのスレッドの中で行まで評価してから返す。表は文字列にせずに評価する（[ADR 0299](adr/0299-force-a-composed-table-without-turning-it-into-a-string.md)）。
 - ページの描画と、内容のストリームの直列化と圧縮は、ページごとに GHC の spark で並列に進む（[ADR 0252](adr/0252-draw-and-serialise-the-pages-of-the-pdf-in-parallel.md)、[ADR 0256](adr/0256-record-what-the-implementations-of-adr-0251-and-0252-decided.md)）。
 
 並列にしても、出力のバイト列はプロセッサの数によらない（[docs/adr/0002](adr/0002-determinism.md)）。
