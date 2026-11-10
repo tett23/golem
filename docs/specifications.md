@@ -914,6 +914,13 @@ isbn = "978-..."
 プルリクエストの CI では照合しない。
 結果がコミットではなく、上流がアドバイザリを公開した時刻で変わるためである。
 
+ワークフローの action は、すべてコミットの SHA と、そのコミットを指すいちばん細かい版のタグの注釈で指定する（`actions/checkout@<40 桁の SHA> # v7.0.1` の形、[ADR 0296](adr/0296-pin-every-github-action-by-commit-sha.md)）。
+このリポジトリの reusable workflow（`./.github/workflows/ci.yml`）だけは `./` で書く。
+同じリポジトリの action は、パスが違っても、どのファイルでも同じ SHA と注釈で指定する。
+プルリクエストの CI の `scripts-linux` ジョブは、`scripts/ci/actions-pins.sh check` でこの形を確かめ、外れた行の `ファイル:行` を出して失敗する。
+`.github/workflows/advisories.yml` の `actions` ジョブは毎日一回、`verify` で注釈のタグが固定したコミットを指すことを、`latest` で固定したコミットが `v` と数字とドットだけからなる版のタグのうちいちばん大きな版のコミットであり、その `runs.using` が `node24` 以上の Node か `composite` であることを照合する。
+照合が失敗したら、`scripts/ci/actions-pins.sh update` で書き換えたワークフローをプルリクエストで入れる。
+
 テストにだけ使う道具として、見た目の回帰テストで PDF のページを画像にするラスタライザ shem（[tett23/shem](https://github.com/tett23/shem)）も版を固定する（[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）。
 golem の実行ファイルと配布物には含めず、テストと CI からコマンドとして呼ぶ。
 `scripts/visual/fetch-shem.sh` が、shem の GitHub の release から、固定した版（v0.1.0-rc4）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ `third_party/shem/` に入れる。
@@ -3760,6 +3767,12 @@ dev と prod の両方で警告で、PDF を書き、notice ではないので `
 区間の外と欧文の区間で同じ規則を当て、本の言語は見ない。
 和文の区間の `’` は欧文の語の箱に入らないので、終わり括弧類のままである。
 空白を改行の位置から外しても、空白の幅と伸縮は変えず、和欧間の空きとアキ量のセットの空きを足さない。
+続く語間の空白は、インラインの境目をまたいでも一つのグルーにまとめる（[ADR 0284](adr/0284-merge-spaces-on-both-sides-of-an-inline-boundary.md)）。
+あいだに項目を作らない部品（索引の印などのアンカーと、ソフトハイフン）だけを挟んで続く空白も、続く空白とみなす。
+残すのは前の空白であり、グルーの幅と伸縮は前の空白の見た目（字の大きさ、字送り）で決まる。
+そのため `x [strong: y\ ] z` の `y` と `z` のあいだは、一つのテキストの `y z` と同じく語間の空白一つである。
+注の印のように箱を作るインラインを挟んだ空白は、まとめない。
+本文の中のコードの空白はまとめないので、コードの空白とコードの外の空白が続くときは二つのグルーになる。
 段落の終わりと強制改行の前の語間の空白は、行分割の前に捨てる（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md)）。
 本文の中のコードの空白も、同じく捨てる（[golem-layout ADR 0037](golem-layout/adr/0037-drop-spaces-of-code-before-the-end-of-a-paragraph.md)）。
 空白と行の終わりのあいだに箱がなければ捨て、あいだに内容を描かないコマンド（索引の印など）があっても捨てる。
@@ -4003,7 +4016,7 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 L1 から L13 と W1 は分綴のパターンのある環境で、W1 と W2 はパターンのない環境で調べる。
 W2 は、[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md) の E2 のとおり、すべての位置の候補を比べる。
 同じ環境で、境目で分けた段落と一つのテキストとで、欧文の語に入る字の列が等しいこと（E1）も調べる。
-空白の隣には境目を置かない（「既知の不具合」）。
+空白の隣にも境目を置き、境目で分けた段落に続く語間の空白のグルーがないこと（S1）と、語間の空白のグルーの数と位置が一つのテキストと等しいこと（S2）を調べる（[ADR 0284](adr/0284-merge-spaces-on-both-sides-of-an-inline-boundary.md)）。
 ソフトハイフンの隣に境目のある入力でも、L1 から L13 と I4 と W2 を調べ、W1 は [ADR 0285](adr/0285-read-soft-hyphens-at-inline-boundaries-in-the-joined-word.md) の H4 のとおり、境目のソフトハイフンの罰点を含めて調べる。
 プルリクエストの CI は部品 2 個まで、毎晩の `enum.yml` は部品 3 個まで調べる（`GOLEM_ENUM_JOINED_DEPTH`）。
 引用の印を部品に足した列挙（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）は、プルリクエストの CI で部品 2 個まで、毎晩の `enum.yml` で部品 3 個まで調べる（`GOLEM_ENUM_CITE_DEPTH`）。
@@ -6321,7 +6334,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **`[ref-number]` の図番号とリスト番号と表番号が、`[figures]` と `[code]` と `[tables]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックと番号のある表を `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号、`[tables]` の `number` と表番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
-- **二つのインラインの空白が、二つのグルーになる**：一つのテキストの中の続く空白は一つのグルーにまとめるが、`a ` と `[strong:  b]` のように境目の両側にある空白は、それぞれグルーになる。[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の L11 に反する。[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の境目の列挙で見つかったので、その列挙は空白の隣に境目を置かない。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合
