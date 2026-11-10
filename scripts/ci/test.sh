@@ -3350,8 +3350,14 @@ expect "run-all: -t of a word" 2
 # stanza NAME: the lines of the test-suite NAME of golem-driver.cabal
 DRIVER_CABAL=$HERE/../../modules/golem-driver/golem-driver.cabal
 stanza() { awk -v n="test-suite $1" '$0 == n { on = 1; next } on && /^[^ \t-]/ { on = 0 } on' "$DRIVER_CABAL"; }
-# modules NAME: the other-modules of the test-suite NAME, one per line
-modules_of() { stanza "$1" | awk '/^  other-modules:/ { on = 1; next } on && /^  [a-z-]+:/ { on = 0 } on { print $1 }'; }
+# modules NAME: the other-modules of the test-suite NAME, one per line, those
+# under a condition too (the flag plugins, docs/adr ADR 0300)
+modules_of() {
+  stanza "$1" | awk '
+    /^ +other-modules:/ { on = 1; sub(/^ +other-modules: */, ""); if ($0 != "") print $1; next }
+    on && /^ +([a-z-]+:|if |else)/ { on = 0 }
+    on { print $1 }'
+}
 if stanza golem-driver-test | grep -Eq '^ +ghc-options: .*-threaded' && stanza golem-driver-test | grep -qF '"-with-rtsopts=-N"'; then ok; else
   ng "golem-driver.cabal: golem-driver-test is built -threaded with -N"
 fi
