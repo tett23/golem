@@ -420,8 +420,17 @@ stretch-limit = 2500
 
 ```toml
 [paragraph-styles.body]
-shrink-order = ["word-space", "middle-dot", ["brackets", "comma"], "japanese-western"]
-stretch-order = ["word-space", "japanese-western", "between-characters"]
+shrink-order = [
+  "word-space",
+  "middle-dot",
+  ["brackets", "comma"],
+  "japanese-western",
+]
+stretch-order = [
+  "word-space",
+  "japanese-western",
+  "between-characters",
+]
 ```
 
 順を変えても、行の分かれ方とページは変わりません。
