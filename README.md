@@ -897,7 +897,7 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 - `prepare`：成果物 `golem-wasm`、`wasm-native-list`、`manual`、`manual-dev`、`golem-linux-x86_64` のそろった最新の成功した `main` の `ci.yml` の実行からそれらを取り、`scripts/browser/fixtures/` と figures の fixture の HTML を組んで、成果物 `browser-inputs` として上げる。
   偽の WebDriver のサーバーに対する `scripts/browser/test/unit.test.mjs` もここで走る。
 - `chromium`（`ubuntu-24.04`）：版と SHA-256 で固定した `chrome-headless-shell` と Deno と wasmtime の C API で、次の検査を走らせる（[docs/adr/0238](./docs/adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
-  HTML の検査、輪郭の SVG の文字の検査（この検査だけ `--font-render-hinting=none` で起動し、起動の引数を版の表に書く）、`scripts/browser/test/` の手で書いたページの検査、Deno、wasmtime の C API（`scripts/wasm/run-wasmtime.sh`）、Chromium の `golem.wasm` の一覧の比べ合わせと、`run-wasmtime.c` と `run.mjs` の `call` が同じ結果の枠を返すことの確かめである。
+  HTML の検査、輪郭の SVG の文字の検査（この検査だけ `--font-render-hinting=none` で起動し、起動の引数を版の表に書く）、`scripts/browser/test/` の手で書いたページの検査、Deno、wasmtime の C API（`scripts/wasm/run-wasmtime.sh`）、Chromium の `golem.wasm` の一覧の比べ合わせと、`run-wasmtime.c` と `run.mjs` の `call` が同じ結果の枠を返すことの確かめと、入力の枠の上限を 64 バイトにしてビルドした `run-wasmtime.c` が 65 バイトの入力の枠を `golem_alloc` の前に終了コード 3 で止めることの確かめである（[docs/adr/0289](./docs/adr/0289-bound-the-input-and-the-memory-of-the-wasmtime-host.md)）。
 - `safari`（`macos-15`）：`sudo safaridriver --enable` の後に、同じ検査を Safari で走らせ、macOS、像、Safari、`browserVersion` の版の表をジョブの要約に書く。
   輪郭の SVG の文字の検査では縦書きの文字列を判定に含めず、その数と差の最大を要約に書き、横書きの文字列は中心と大きさの差の上限を CSS の 8 画素にする。
   Safari の版は固定しない。
