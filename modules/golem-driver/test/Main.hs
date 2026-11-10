@@ -120,10 +120,7 @@ tests skips =
       ]
         <> buildTests
         <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, insideLinksTests, overflowTests, softHyphenTests, exceptionsTests, bookLanguageTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, scriptsTests, decorationsTests]
-        -- golem new only with the plugins, as the library (docs/adr ADR 0300)
-#ifdef GOLEM_PLUGINS
-        <> [newProjectTests, newPlanTests]
-#endif
+        <> newTests
         <> [ allTargetsTests,
              pdfPipelineTests,
              testGroup "files of style.toml per target (golem-project ADR 0004)" styleFileTests,
@@ -189,3 +186,11 @@ tests skips =
              testGroup "the compositions reused between the rounds of page references (docs/adr ADR 0251)" reuseTests
            ]
     )
+
+-- | The tests of golem new, only with the plugins, as the library (docs/adr ADR 0300).
+newTests :: [TestTree]
+#ifdef GOLEM_PLUGINS
+newTests = [newProjectTests, newPlanTests]
+#else
+newTests = []
+#endif

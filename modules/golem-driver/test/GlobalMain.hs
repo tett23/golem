@@ -23,21 +23,15 @@ main = enterPackageDirectory >> lookupEnv "XDG_CACHE_HOME" >>= defaultMainReport
 
 -- | The tests, with XDG_CACHE_HOME as it was when the suite started (docs/adr ADR 0072).
 tests :: Maybe String -> TestTree
-#ifdef GOLEM_PLUGINS
 tests cacheHome =
-#else
-tests _ =
-#endif
   testGroup
     "golem-driver: the tests that change the state of the process (docs/adr/0146)"
-    ( -- the plugins only with them, as the library (docs/adr ADR 0300)
+    (pluginGroups cacheHome <> [localeTests, inMemoryWritesTests])
+
+-- | The tests of the plugins, only with them, as the library (docs/adr ADR 0300).
+pluginGroups :: Maybe String -> [TestTree]
 #ifdef GOLEM_PLUGINS
-      [ testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
-        cacheHomeRestored cacheHome
-      ]
-        <>
+pluginGroups cacheHome = [testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests, cacheHomeRestored cacheHome]
+#else
+pluginGroups _ = []
 #endif
-        [ localeTests,
-          inMemoryWritesTests
-        ]
-    )

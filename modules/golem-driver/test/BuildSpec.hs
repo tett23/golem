@@ -309,18 +309,7 @@ styleFileTests =
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
         codeSeverities r @?= [(DiagnosticCode "G03010", Warning)]
   ]
-#ifdef GOLEM_PLUGINS
-    -- golem new only with the plugins, as the library (docs/adr ADR 0300)
-    <> [ testCase ("a project made without fonts builds every target but the PDF (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
-           let dir = tmp </> "book"
-           createProject dir (templateFiles lang uuid0) Nothing >>= assertBool "written" . isRight
-           r <- build (defaultOptions dir) {optTargets = Just allTargets}
-           codeSeverities r @?= [(DiagnosticCode "G03010", Warning), (DiagnosticCode "G08002", Error)]
-           mapM_ (\d -> doesDirectoryExist (dir </> d) >>= assertBool d) ["build/html", "build/epub", "build/text"]
-           doesDirectoryExist (dir </> "build/pdf") >>= assertBool "no PDF" . not
-       | (lang, tag) <- [(Japanese, "ja"), (English, "en")]
-       ]
-#endif
+    <> newTemplateTests
 
 -- | The manifest of the one-chapter project in another language.
 langManifest :: T.Text -> BS.ByteString
@@ -466,3 +455,20 @@ numberSeparatorTests =
   ]
   where
     sp0 = mkSpan (FileId 0) 0 0
+
+-- | The template of golem new, only with the plugins, as the library (docs/adr ADR 0300).
+newTemplateTests :: [TestTree]
+#ifdef GOLEM_PLUGINS
+newTemplateTests =
+  [ testCase ("a project made without fonts builds every target but the PDF (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
+           let dir = tmp </> "book"
+           createProject dir (templateFiles lang uuid0) Nothing >>= assertBool "written" . isRight
+           r <- build (defaultOptions dir) {optTargets = Just allTargets}
+           codeSeverities r @?= [(DiagnosticCode "G03010", Warning), (DiagnosticCode "G08002", Error)]
+           mapM_ (\d -> doesDirectoryExist (dir </> d) >>= assertBool d) ["build/html", "build/epub", "build/text"]
+           doesDirectoryExist (dir </> "build/pdf") >>= assertBool "no PDF" . not
+       | (lang, tag) <- [(Japanese, "ja"), (English, "en")]
+       ]
+#else
+newTemplateTests = []
+#endif

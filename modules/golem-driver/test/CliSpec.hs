@@ -1,14 +1,6 @@
 {-# LANGUAGE CPP #-}
 
-module CliSpec
-  ( -- golem new only with the plugins, as the library (docs/adr ADR 0300)
-#ifdef GOLEM_PLUGINS
-    newProjectTests,
-    newPreflightTests,
-#endif
-    preflightTests,
-  )
-where
+module CliSpec (newProjectTests, newPreflightTests, preflightTests) where
 
 #ifdef GOLEM_PLUGINS
 import Control.Exception (try)
@@ -181,7 +173,13 @@ newPreflightTests =
       Just rest | isSetting rest -> rest
       _ -> l
     isSetting r = "[" `T.isPrefixOf` r || (" = " `T.isInfixOf` r && not ("name" `T.isPrefixOf` r))
+#else
+-- golem new only with the plugins, as the library (docs/adr ADR 0300)
+newProjectTests :: TestTree
+newProjectTests = testGroup "golem new (golem-cli ADR 0003)" []
 
+newPreflightTests :: [TestTree]
+newPreflightTests = []
 #endif
 
 -- | A one-chapter project for golem preflight, with the fake fonts.
@@ -401,8 +399,14 @@ preflightTests =
         map diagCode (prDiagnostics p) @?= [DiagnosticCode "G09001"]
         prPdf p @?= Nothing
   ]
+    <> templatePreflightTests
+    <> g0904Tests
+
+-- | The preflight of the template of golem new, only with the plugins, as the library (docs/adr ADR 0300).
+templatePreflightTests :: [TestTree]
 #ifdef GOLEM_PLUGINS
-    <> [ testCase ("the template fails print with G09014 only, and passes with intent; it has a bleed (golem-pdf ADR 0010) (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
+templatePreflightTests =
+  [ testCase ("the template fails print with G09014 only, and passes with intent; it has a bleed (golem-pdf ADR 0010) (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
            let dir = tmp </> "book"
            createProject dir (templateFiles lang uuid0) Nothing >>= assertBool "written" . isRight
            writeFiles dir [(fsPath f, "fake") | f <- templateFonts lang]
@@ -417,5 +421,6 @@ preflightTests =
            errorCodes (prDiagnostics q) @?= []
        | (lang, tag) <- [(Japanese, "ja"), (English, "en")]
        ]
+#else
+templatePreflightTests = []
 #endif
-    <> g0904Tests
