@@ -110,6 +110,10 @@ CI の [code: changes] ジョブが実行する [code: scripts/ci/docs-refs.sh] 
 監査の記録と性能計測のスナップショットは、[code: docs/] の下に用途ごとのディレクトリを作って置く。
 リリースの確かめの記録は [code: docs/audits/releases/<タグ>.md]、性能計測は [code: docs/benchmarks/] である。
 
+最大常駐を条件にする変更は、ヒープのプロファイルの標本ごとの合計の最大で確かめる。
+前と後を交互に 3 回ずつ測り、中央値を比べる。
+測定の設定、保存する証拠、値の読み方は [code: docs/heap-measurement.md] にまとめる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/heap-measurement.md]（ヒープの測定手順）]
+
 記録は、コミットした後は変えない。
 次の四つのディレクトリの記録は、adr-guard が変更、削除、移動を拒む。
 

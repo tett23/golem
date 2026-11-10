@@ -294,6 +294,7 @@ diagnostic のコード（`G01001` など）の意味と直し方は [docs/diagn
 ## Development
 
 変更の進め方と約束ごとは [CONTRIBUTING.md](./CONTRIBUTING.md) にある。
+最大常駐を条件にする変更は、[ヒープの測定手順](./docs/heap-measurement.md) に従って確かめる。
 
 ### Git フックの有効化
 

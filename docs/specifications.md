@@ -21,6 +21,9 @@ ADR と記録には、次の決まりがある。
 - 同じディレクトリの ADR に同じ番号を付けない（[docs/adr/0194](adr/0194-update-adr-guard-to-v0.10.0.md)）。
 - 監査の記録（`docs/audit/`、`docs/audits/`）と性能計測の記録（`docs/benchmarks/`、`docs/benchmark/`）も、コミット後は変更しない（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](adr/0012-update-adr-guard-to-v0.8.1.md)）。
 
+以後の ADR が最大常駐を条件にするときは、[ヒープの測定手順](heap-measurement.md) に従う（[Golem ADR 0306](adr/0306-measure-the-residency-of-forcing-a-table-by-heap-profiles.md)）。
+測定結果はコミット後に変えない記録とし、共通の手順は `docs/heap-measurement.md` に置く。
+
 ## 目的
 
 Golem が目指すのは、CLI で動き CI/CD に載る InDesign である。
