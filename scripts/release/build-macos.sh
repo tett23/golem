@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds golem for macOS (arm64, macOS 14 or later) and makes the release
 # archive in dist/ (docs/adr/0004-binary-distribution-and-release.md).
-# GHC 9.10.3 and cabal-install 3.16.1.0 must be on PATH.
+# GHC 9.10.3 and cabal-install 3.18.2.0 must be on PATH.
 #
 #   build-macos.sh TAG PLATFORM
 #

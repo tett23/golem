@@ -369,7 +369,7 @@ wasm の版だけは、ネイティブの版と違うパッケージを使う（
 
 ### ビルドとテスト
 
-GHC 9.10.3 と cabal-install 3.16.1.0 を ghcup で入れる。
+GHC 9.10.3 と cabal-install 3.18.2.0 を ghcup で入れる。
 `mise.toml` は ghcup の `bin` を `PATH` に加える。
 `mise.toml` は、リリースノートを書く Claude Code のバージョンも固定する（`mise install` で入る）。
 C と C++ のコンパイラも必要である。
