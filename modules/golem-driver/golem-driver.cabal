@@ -145,6 +145,7 @@ test-suite golem-driver-test
     TocStylesSpec
     UnwritableNumbersSpec
     VarsSpec
+    VisualSubsetSpec
     Support
   -- -threaded: tasty runs the tests at the same time on every processor;
   -- none of them changes the state of the process, and those that do are

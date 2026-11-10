@@ -1,0 +1,11 @@
+# What the PDFs of the visual regression test (the inputs of
+# scripts/visual/build.sh) use, and the pinned shem (v0.1.0-rc9) reads: a
+# kind on each line, "<what> <name>", sorted with LC_ALL=C. <what> is
+# operator (of the content streams of the pages and the Form XObjects),
+# filter (of a stream), colorspace (a family, with the bases of Indexed and
+# Separation), xobject (its Subtype) or font (its Subtype).
+#
+# golem-driver-test (VisualSubsetSpec) builds the inputs and fails when one
+# uses a kind that is not here (V1), or a kind here is used by none (V2).
+# A kind is added only in the change that pins a shem that reads it
+# (docs/adr/0294-draw-images-and-figures-in-the-visual-regression-test.md).
