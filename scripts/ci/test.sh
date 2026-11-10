@@ -3016,6 +3016,40 @@ if [ "$(printf '%s\n' "$timing_lines" | grep -c .)" = 1 ] && [ -n "$first_area" 
   ng "enum.yml: N5 one step runs enum-timings.sh into \$GITHUB_STEP_SUMMARY, before the first area"
 fi
 
+# the keep options are an area of their own, KEEP (docs/adr ADR 0304)
+# KS1 exactly one area runs the test of the keep options, with the depth
+# GOLEM_ENUM_KEEP_DEPTH, and the pattern of the pagination leaves it out
+if [ "$(awk -F '\t' 'index($2, "/keep options/") && index($2, "!/keep options/") == 0' "$EA" | grep -c .)" = 1 ] &&
+  [ "$(awk -F '\t' 'index($2, "/keep options/") && index($2, "!/keep options/") == 0 { print $1 }' "$EA")" = GOLEM_ENUM_KEEP_DEPTH ] &&
+  [ "$(awk -F '\t' '$1 == "GOLEM_ENUM_DEPTH" { print $2 }' "$EA")" = '/pagination invariants/&&/every input/&&!/keep options/' ] &&
+  [ "$(awk -F '\t' '$1 == "GOLEM_ENUM_KEEP_DEPTH" { print $2 }' "$EA")" = '/pagination invariants/&&/keep options/&&/every input/' ]; then ok; else
+  ng "enum.yml: KS1 one area runs the keep options with GOLEM_ENUM_KEEP_DEPTH, and the pagination leaves them out"
+  sed 's/^/  /' "$EA"
+fi
+# KS2 every night the keep options check every input up to a depth of
+# pull requests or more, and draw inputs one element past it
+keep_env() {
+  # the value of $1 in the steps with GOLEM_ENUM_KEEP_DEPTH, if one step gives one
+  awk -v v="$1" '
+    function flush() { if (keep && val != "") vals[n++] = val; keep = 0; val = "" }
+    /^      - |^  [a-z]/ { flush() }
+    /^          GOLEM_ENUM_KEEP_DEPTH:/ { keep = 1 }
+    { line = $0; sub(/^ */, "", line) }
+    index(line, v ": ") == 1 { val = substr(line, length(v) + 3); gsub(/"/, "", val) }
+    END { flush(); if (n == 1) print vals[0] }
+  ' "$ENUM_YML"
+}
+keep_pr=$(sed -n 's/^prDepth = \([0-9][0-9]*\)$/\1/p' "$HERE/../../modules/golem-layout/test/PaginateInvariantsSpec.hs")
+keep_depth=$(keep_env GOLEM_ENUM_KEEP_DEPTH)
+keep_samples=$(keep_env GOLEM_ENUM_KEEP_SAMPLES)
+case "$keep_pr$keep_depth$keep_samples" in
+  '' | *[!0-9]*) keep_ok=false ;;
+  *) if [ -n "$keep_pr" ] && [ -n "$keep_depth" ] && [ -n "$keep_samples" ] && [ "$keep_depth" -ge "$keep_pr" ] && [ "$keep_samples" -gt 0 ]; then keep_ok=true; else keep_ok=false; fi ;;
+esac
+if [ "$keep_ok" = true ]; then ok; else
+  ng "enum.yml: KS2 GOLEM_ENUM_KEEP_DEPTH ($keep_depth) is prDepth ($keep_pr) or more, and GOLEM_ENUM_KEEP_SAMPLES ($keep_samples) is more than 0"
+fi
+
 # started by hand with timings, four jobs time the areas alone, and a job
 # after them writes the medians of their tables into the summary
 # (docs/adr ADR 0286)

@@ -865,8 +865,10 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 
 範囲の段と、プルリクエストの CI が同じテストを調べる範囲は、次のとおりである。
 
-- 改ページの段：golem-layout のテスト（「pagination invariants」の「every input」）を `GOLEM_ENUM_DEPTH=5` と `GOLEM_ENUM_PAGINATION_SAMPLES=5000000` で走らせる。
+- 改ページの段：golem-layout のテスト（「pagination invariants」の「every input」のうち「keep options」でないもの）を `GOLEM_ENUM_DEPTH=5` と `GOLEM_ENUM_PAGINATION_SAMPLES=5000000` で走らせる。
   プルリクエストの CI は、同じテストを要素 3 個まで調べ、抜き取らない。
+- 段落の分け方の段：golem-layout のテスト（「pagination invariants」の「keep options」の「every input」）を `GOLEM_ENUM_KEEP_DEPTH=4` と `GOLEM_ENUM_KEEP_SAMPLES=5000000` で走らせ、要素 4 個までのすべての入力と、要素 5 個の入力の抜き取りを調べる。
+  プルリクエストの CI は、同じテストを要素 3 個まで調べ、抜き取らない（[ADR 0304](./docs/adr/0304-check-the-keep-options-up-to-4-elements-and-draw-5-every-night.md)）。
 - 行分割の段：golem-layout のテスト（「line breaking invariants on every small input」）を `GOLEM_ENUM_LINES_DEPTH=3` と `GOLEM_ENUM_LINES_SAMPLES=5000000` で走らせる。
   本文の中のコードの 18 の部品の並びも、同じ部品の数と行の幅まで調べる（抜き取らない）。
   プルリクエストの CI は、同じテストを部品 2 個まで 4 字までの行で調べ（正規形と縦組みと R7 は部品 1 個まで。行の調整の `"balanced"` と伸びの上限は毎晩だけ）、抜き取らない（[docs/adr/0209](./docs/adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md)、コードの並びは [golem-layout ADR 0034](./docs/golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) と [golem-layout ADR 0045](./docs/golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md)）。
@@ -897,7 +899,7 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 時間を量る段の和（プルリクエストの設定）は、ランナーによって 22.48 秒から 28.91 秒であった。
 
 `enum.yml` が落ちたら、表示された最も小さい入力と、実行の URL と head のコミットを添えて issue を立てる。
-手元では `GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_PAGINATION_SAMPLES=5000000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` と `GOLEM_ENUM_LINES_DEPTH=3 GOLEM_ENUM_LINES_SAMPLES=5000000 cabal test golem-layout-test --test-option=-p --test-option='/line breaking invariants on/'` で同じ入力を調べる。
+手元では `GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_PAGINATION_SAMPLES=5000000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/&&!/keep options/'`、`GOLEM_ENUM_KEEP_DEPTH=4 GOLEM_ENUM_KEEP_SAMPLES=5000000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/keep options/&&/every input/'`、`GOLEM_ENUM_LINES_DEPTH=3 GOLEM_ENUM_LINES_SAMPLES=5000000 cabal test golem-layout-test --test-option=-p --test-option='/line breaking invariants on/'` で同じ入力を調べる。
 
 ##### `browser.yml`
 
