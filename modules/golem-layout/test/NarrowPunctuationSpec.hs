@@ -45,13 +45,13 @@ narrowBoxes :: ComposeEnv -> [Item] -> [(Text, Sp, Sp, Sp, Sp, Maybe Sp, Maybe S
 narrowBoxes env items =
   [ (bcText c, s, s + w, s + off, a, prevEnd, nextStart)
   | (i, (Box w c, s)) <- zip [0 :: Int ..] placed,
-    [ch] <- [T.unpack (bcText c)],
     boxKind c == KindPunctuation,
+    [ch] <- [T.unpack (bcText c)],
     let lk = bcLook c
         a = zwToSp (lkSize lk) (ceAdvance env lk ch),
-    Just (_, off) <- [narrowPunctuation (lookClass lk ch) (lkSize lk) a],
     let prevEnd = case [s' + w' | (Box w' _, s') <- reverse (take i placed)] of (e : _) -> Just e; [] -> Nothing
-        nextStart = case [s' | (Box _ _, s') <- drop (i + 1) placed] of (n : _) -> Just n; [] -> Nothing
+        nextStart = case [s' | (Box _ _, s') <- drop (i + 1) placed] of (n : _) -> Just n; [] -> Nothing,
+    Just (_, off) <- [narrowPunctuation (lookClass lk ch) (lkSize lk) a]
   ]
   where
     placed = placedNatural items
@@ -81,8 +81,8 @@ narrowPunctuationTests =
                   [ (bcText c, x, x + a)
                   | l <- ls,
                     (Box _ c, s) <- placeLine l,
-                    [ch] <- [T.unpack (bcText c)],
                     boxKind c == KindPunctuation,
+                    [ch] <- [T.unpack (bcText c)],
                     let lk = bcLook c
                         a = zwToSp (lkSize lk) (ceAdvance env lk ch),
                     Just (_, off) <- [narrowPunctuation (lookClass lk ch) (lkSize lk) a],

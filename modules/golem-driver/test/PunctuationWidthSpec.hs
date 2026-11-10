@@ -117,7 +117,7 @@ punctuationWidthTests =
         forM_ [False, True] $ \v ->
           forM_ ("\x201C「。" :: String) $ \c -> lastValue "fwid" (shapedWith [] v (lookWith [] False) c) @?= Nothing,
       testCase "N7: a width feature written in the role or the styles wins over the default" $ do
-        let at role fs c = shapedWith role False (lookWith fs True) c
+        let at role fs = shapedWith role False (lookWith fs True)
         lastValue "fwid" (at ["-fwid"] [] '\x201D') @?= Just 0
         lastValue "fwid" (at [] ["-fwid"] '\x201D') @?= Just 0
         lastValue "fwid" (at [] ["fwid=0"] '\x201D') @?= Just 0
