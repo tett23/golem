@@ -1,0 +1,83 @@
+	Tue Nov 10 15:12 2026 Time and Allocation Profiling Report  (Final)
+
+	   golem-prof +RTS -N -A64m -p -hc -i0.5 -s<scratch>/prof/s-p.txt -RTS build --target pdf
+
+	total time  =       12.22 secs   (17234 ticks @ 1000 us, 10 processors)
+	total alloc = 22,609,060,200 bytes  (excludes profiling overheads)
+
+COST CENTRE                   MODULE                             SRC                                                %time %alloc
+
+$w$cshowsPrec4                Golem.Layout.Look                  src/Golem/Layout/Look.hs:187:28-31                   7.6   17.6
+$wdocumentObjectsWith         Golem.Pdf.Writer                   src/Golem/Pdf/Writer.hs:613:1-19                     6.5    0.9
+trieAt                        Golem.Typeset.Memo                 src/Golem/Typeset/Memo.hs:62:1-6                     5.9    0.6
+$w$cshowsPrec1                Golem.Layout.KnuthPlass            src/Golem/Layout/KnuthPlass.hs:91:23-26              4.6    8.8
+catchAll                      Control.Concurrent.Async.Internal  Control/Concurrent/Async/Internal.hs:930:1-16        3.9    0.6
+$w$cshowsPrec3                Golem.Layout.KnuthPlass            src/Golem/Layout/KnuthPlass.hs:167:23-26             2.9    6.4
+$wdrawLineAt                  Golem.Typeset.Draw                 src/Golem/Typeset/Draw.hs:1179:1-10                  2.7    2.7
+breakParagraph                Golem.Layout.KnuthPlass            src/Golem/Layout/KnuthPlass.hs:371:1-14              2.7    1.7
+$w$cshowsPrec5                Golem.Layout.KnuthPlass            src/Golem/Layout/KnuthPlass.hs:298:23-26             2.6    6.4
+wordItems                     Golem.Layout.Japanese              src/Golem/Layout/Japanese.hs:1607:1-9                2.3    1.1
+renderPdf2                    Golem.Typeset.Draw                 <no location info>                                   2.2    1.0
+$wglyphMetrics                Golem.Font                         src/Golem/Font.hs:288:1-12                           2.1    0.5
+$wrunAtSqueezed               Golem.Typeset.Draw                 src/Golem/Typeset/Draw.hs:778:1-13                   1.7    2.2
+$sfromListWithKey_$sgo8       Golem.Pdf.Writer                   <no location info>                                   1.6    0.5
+$w$cshowsPrec                 Golem.Layout.KnuthPlass            src/Golem/Layout/KnuthPlass.hs:196:28-31             1.6    3.8
+$wplaceLine                   Golem.Layout.KnuthPlass            src/Golem/Layout/KnuthPlass.hs:616:1-9               1.4    3.0
+poly_go15                     Golem.Layout.Hyphenation.Languages <no location info>                                   1.3    1.8
+contentStream1                Golem.Pdf.Writer                   <no location info>                                   1.3    0.3
+go28                          Golem.Layout.Japanese              src/Golem/Layout/Japanese.hs:1695:5-6                1.3    0.9
+$w$cshowsPrec6                Golem.Layout.Look                  src/Golem/Layout/Look.hs:63:28-31                    1.3    3.0
+$wlookupTag                   Golem.Layout.Hyphenation.Languages src/Golem/Layout/Hyphenation/Languages.hs:101:1-9    1.3    1.0
+go14                          Golem.Pdf.Writer                   <no location info>                                   1.3    1.1
+$w$cshowsPrec2                Golem.Syntax.Span                  src/Golem/Syntax/Span.hs:30:28-31                    1.1    1.9
+$wpageStream                  Golem.Pdf.Writer                   src/Golem/Pdf/Writer.hs:417:1-10                     1.1    0.5
+$wcomposeInlinesTree          Golem.Layout.Japanese              src/Golem/Layout/Japanese.hs:345:1-18                1.1    1.3
+orphanLeaves_go15             Golem.Pdf.Writer                   <no location info>                                   1.0    0.0
+$wwalkAll                     Golem.Layout.Japanese              src/Golem/Layout/Japanese.hs:462:1-7                 1.0    1.4
+$fShowAdjustOrder_$cshowsPrec Golem.Layout.KnuthPlass            src/Golem/Layout/KnuthPlass.hs:218:23-26             0.9    1.7
+$w$cshowsPrec                 Golem.Layout.Table                 src/Golem/Layout/Table.hs:133:23-26                  0.9    1.8
+go17                          Golem.Pdf.Writer                   <no location info>                                   0.8    2.4
+$w$cshowsPrec4                Golem.Layout.KnuthPlass            src/Golem/Layout/KnuthPlass.hs:112:28-31             0.7    1.4
+
+
+                                                                                                                                                                                         individual      inherited
+COST CENTRE                                                        MODULE                               SRC                                                          no.      entries  %time %alloc   %time %alloc
+
+(the call tree, cost centres of 3% of the allocation or more inherited; columns: entries, individual %time %alloc, inherited %time %alloc)
+
+    run                                                                Main                                        1    0.0    0.0   99.1  100.0
+     $wbuildCore                                                       Golem.Driver                                1    0.0    0.0   99.1  100.0
+      renderPdf2                                                       Golem.Typeset.Draw                          1    2.2    1.0   97.5   99.1
+       $wentryAt                                                       Golem.Typeset.Draw                     104756    0.2    0.2   12.6    9.6
+        $wdrawLineAt                                                   Golem.Typeset.Draw                     111086    2.0    1.6   11.0    6.4
+       $wdrawLineAt                                                    Golem.Typeset.Draw                     100000    0.7    1.1    2.1    3.1
+       $wdocumentObjectsWith                                           Golem.Pdf.Writer                            2    6.5    0.9   15.4    4.9
+       $wserializePdf                                                  Golem.Pdf.Writer                            1    0.2    0.2    6.7    5.3
+        go17                                                           Golem.Pdf.Writer                       111357    0.8    2.4    5.7    4.9
+       layoutPdf2                                                      Golem.Typeset.Flow                          1    0.0    0.1   53.0   71.8
+        softHyphenSites                                                Golem.Layout.Japanese                  100002    0.1    0.1    2.9    3.1
+         $wstructured                                                  Golem.Layout.Japanese                  100002    0.2    0.1    2.8    3.1
+        fixpoint1                                                      Golem.Typeset.Flow                          1    0.0    0.0   49.7   68.4
+         flowLines4                                                    Golem.Typeset.Flow                          1    0.2    0.3   49.7   68.4
+          mapConcurrently                                              Control.Concurrent.Async.Internal           4    0.0    0.0   49.3   67.8
+           concurrently                                                Control.Concurrent.Async.Internal           3    0.0    0.0   49.3   67.8
+            concurrently'                                              Control.Concurrent.Async.Internal           3    0.0    0.0   49.3   67.8
+             catchAll                                                  Control.Concurrent.Async.Internal           0    3.9    0.6   49.3   67.8
+              $wcomposeInlinesTree                                     Golem.Layout.Japanese                  100000    1.1    1.3   15.0   10.3
+               $wstructured                                            Golem.Layout.Japanese                  100000    0.1    0.1    4.7    3.2
+               wordItems                                               Golem.Layout.Japanese                  100000    2.3    1.1    8.4    5.5
+                withFileExceptions                                     Golem.Typeset.Flow                          0    0.0    0.0    3.6    3.4
+                 exceptionPatterns                                     Golem.Layout.Hyphenation.Languages     100000    0.0    0.1    3.6    3.4
+                  $wlookupTag                                          Golem.Layout.Hyphenation.Languages     400000    1.3    1.0    3.6    3.4
+              $w$cshowsPrec1                                           Golem.Layout.Table                          1    0.1    0.1   24.8   54.0
+               $fShowSetCell1                                          Golem.Layout.Table                      99990    0.0    0.0   24.7   54.0
+                $w$cshowsPrec                                          Golem.Layout.Table                      99990    0.9    1.8   24.7   54.0
+                 $w$cshowsPrec5                                        Golem.Layout.KnuthPlass                 99990    2.6    6.4   23.8   52.1
+                  $w$cshowsPrec3                                       Golem.Layout.KnuthPlass                299970    2.9    6.4   18.5   39.7
+                   $w$cshowsPrec1                                      Golem.Layout.KnuthPlass                 99990    4.6    8.8   15.4   33.1
+                    $w$cshowsPrec4                                     Golem.Layout.Look                       99990    7.6   17.6    8.9   20.6
+                     $w$cshowsPrec6                                    Golem.Layout.Look                      199980    1.3    3.0    1.3    3.0
+                  $fShowAdjustOrder_$cshowsPrec                        Golem.Layout.KnuthPlass                 99990    0.9    1.7    2.7    6.0
+                   $fShowAdjustOrder_$cshowList1                       Golem.Layout.KnuthPlass                699930    0.3    0.5    1.8    4.3
+                    $fShowAdjustOrder5                                 Golem.Layout.KnuthPlass                799920    0.0    0.0    1.6    3.8
+                     $w$cshowsPrec                                     Golem.Layout.KnuthPlass                799920    1.6    3.8    1.6    3.8
