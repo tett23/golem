@@ -40,7 +40,7 @@ pagesOf manifest style sources = withSystemTempDirectory "golem-chapter-notes" $
   case ev of
     Left f -> assertFailure (show (pfDiagnostics f))
     Right e -> case (evBook e, filter isError (evDiagnostics e)) of
-      (Just book, []) -> layoutPages fakeProvider (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))) (evStyleText e)) >>= either (assertFailure . show) pure
+      (Just book, []) -> layoutPages fakeProvider (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))) (evStyleText e)) >>= either (assertFailure . show) pure
       (_, ds) -> assertFailure (show ds)
 
 {- | Builds the project for the targets: its diagnostics and the contents
