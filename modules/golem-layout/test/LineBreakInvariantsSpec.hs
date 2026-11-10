@@ -98,7 +98,7 @@ area at 5.43 to 5.46 seconds and the sum at 23.37 to 23.47 (docs/adr ADR
 0281, its section 7).
 -}
 groupsAt :: Int -> [Text] -> [Group]
-groupsAt depth run = normalGroups (maxWidthAt depth) run
+groupsAt depth = normalGroups (maxWidthAt depth)
 
 {- | The parts up to which R1 of docs/adr/0274 is checked: 2, on pull
 requests too. docs/adr/0282 kept it to the nightly job; timed as docs/adr
