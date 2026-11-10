@@ -4,7 +4,6 @@ import AkiTableSpec (akiTableTests)
 import AlignSpec (alignTests)
 import CharClassSpec (charClassTests)
 import CiteBreakEnum (citeBreakTests)
-import JoinedWordEnum (joinedWordTests)
 import CodeJapaneseSpec (codeJapaneseTests)
 import CodePaddingSpec (codePaddingTests)
 import CodeSpaceSpec (codeSpaceTests)
@@ -48,6 +47,7 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import InseparableSpec (inseparableTests)
+import JoinedWordEnum (joinedWordTests)
 import KnuthPlassReference
 import LangSpec (langTests)
 import LanguagesSpec (languagesTests)

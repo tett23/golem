@@ -1667,7 +1667,8 @@ data Before
     AfterAki
   | {- | a box, whether a box comes right before it, and the characters of
     the boxes of a Latin word right before it up to it when it is one
-    (docs/adr ADR 0280) -}
+    (docs/adr ADR 0280)
+    -}
     AfterBox !BoxContent !Bool !(Maybe Text)
 
 {- | Inserts break opportunities and spacing between neighbouring boxes:
