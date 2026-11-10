@@ -507,24 +507,25 @@ textEdges env xs =
 character of both scripts outside a span next to it (docs/adr ADR 0283),
 from its end or from its start: Just whether it is a Latin character,
 Just False for a space and for an inline that stops the search (ruby,
-tate-chu-yoko, a number, inline code, the marks of notes and citations, a
-forced break, an [aki]), Nothing where it holds none: characters of both
-scripts outside a span, soft hyphens, and the inlines of no items
-(anchors).
+tate-chu-yoko, a number, inline code, the mark of a note, a forced break,
+an [aki]), Nothing where it holds none: characters of both scripts
+outside a span, soft hyphens, and the inlines of no items (anchors). A
+citation mark answers with the characters of its text, as a text of
+them does (docs/adr ADR 0298).
 -}
 edgeOf :: Bool -> ComposeEnv -> Inline -> Maybe Bool
 edgeOf fromEnd env inl = case inl of
   Text _ t
     | breaksAsCode lk -> if T.null t then Nothing else Just False
-    | otherwise ->
-        let bases = [T.head u | u <- clusters (T.filter (/= softHyphen) t)]
-         in listToMaybe [latinWordChar lk c | c <- ordered bases, not (isNothing (lkLang lk) && isJoinerCharacter c)]
+    | otherwise -> textEdge t
   Color _ _ xs -> inner restyled xs
   CharStyle _ _ xs -> inner restyled xs
   Link _ _ xs -> inner restyled xs
   Lang _ l xs -> inner env {ceLook = lk {lkLang = Just l}} xs
   Resolved _ _ _ xs -> inner env xs
   Kenten _ sh xs -> inner env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}} xs
+  -- a citation mark: the characters of its text, read as text (docs/adr ADR 0298)
+  Cite sp is -> textEdge (citationText (citationPieces [(i, ceCiteNumber env sp (citKey i)) | i <- is]))
   IndexMark {} -> Nothing
   ChannelItem {} -> Nothing
   ProofComment {} -> Nothing
@@ -537,6 +538,10 @@ edgeOf fromEnd env inl = case inl of
     ordered :: [a] -> [a]
     ordered = if fromEnd then reverse else id
     inner e ys = listToMaybe (mapMaybe (edgeOf fromEnd e) (ordered ys))
+    -- the nearest character of a text that is not of both scripts outside a span, past soft hyphens
+    textEdge t =
+      let bases = [T.head u | u <- clusters (T.filter (/= softHyphen) t)]
+       in listToMaybe [latinWordChar lk c | c <- ordered bases, not (isNothing (lkLang lk) && isJoinerCharacter c)]
 
 -- | Whether a character of a look is one of a Latin word, outside a span by its own class.
 latinWordChar :: Look -> Char -> Bool
