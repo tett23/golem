@@ -27,9 +27,7 @@ module PaginateEnum
     sectionFlow,
     startOfKind,
     keepElementsFor,
-    keepInputs,
     boxElementsFor,
-    boxInputs,
     renderInput,
     renderCase,
   )
@@ -148,10 +146,6 @@ keepElementsFor c =
     <> map EPara [1 .. 4]
     <> [EHeading, EFigure c, ESpace, EBreak]
 
--- | The inputs of the keep options (docs/adr/0261): columns of 3 to 5 grid lines and 'keepElementsFor'.
-keepInputs :: Tiers Input
-keepInputs = inputsOver [3 .. 5] keepElementsFor
-
 {- | The elements of the flows of boxes (docs/adr/0271) in columns of c
 grid lines: boxes of k = 0 and 1 around a paragraph of 1 to 4 lines and
 around two paragraphs, paragraphs of 1 to 4 lines, a heading, a figure of
@@ -163,10 +157,6 @@ boxElementsFor c =
     <> map EBoxedPair [0, 1]
     <> map EPara [1 .. 4]
     <> [EHeading, EFigure c, ESpace, EBreak, ENotedPara 2]
-
--- | The inputs of boxes (docs/adr/0271): columns of 3 to 5 grid lines and 'boxElementsFor'.
-boxInputs :: Tiers Input
-boxInputs = inputsOver [3 .. 5] boxElementsFor
 
 -- | The inputs of docs/adr/0204: columns of 3 to 8 grid lines and every element of 'elementsFor'.
 fullInputs :: Tiers Input
