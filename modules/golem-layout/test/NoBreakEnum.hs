@@ -16,7 +16,7 @@ forced break. The parts of a range are set in the character style
 @no-break@, those around them as they are; a run of parts in a range or
 out of one is one inline, so that a word in a range is one piece.
 -}
-module NoBreakEnum (noBreakTests) where
+module NoBreakEnum (noBreakTests, noBreakPrDepth) where
 
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
@@ -197,18 +197,22 @@ inputsOf run = [Input pre run post w | (pre, post, ws) <- placings 5, w <- ws]
 inputT :: Tiers Input
 inputT = let Tiers xss = listsOf (Tiers [[(p, b) | p <- nbParts, b <- [False, True]]]) in Tiers (map (concatMap inputsOf) xss)
 
-{- | The parts of the runs: GOLEM_ENUM_NOBREAK_DEPTH, or 2 on pull requests;
+{- | The parts of the runs: GOLEM_ENUM_NOBREAK_DEPTH, or 'noBreakPrDepth' on pull requests;
 3 took 7 seconds on 8 processors, more than the budget of docs/adr/0208,
 and the nightly job checks it.
 -}
 depthOf :: IO Int
 depthOf =
   lookupEnv "GOLEM_ENUM_NOBREAK_DEPTH" >>= \case
-    Nothing -> pure 2
-    Just "" -> pure 2
+    Nothing -> pure noBreakPrDepth
+    Just "" -> pure noBreakPrDepth
     Just s -> case readMaybe s of
       Just n | n >= 0 -> pure n
       _ -> assertFailure ("GOLEM_ENUM_NOBREAK_DEPTH is not a whole number of 0 or more: " <> show s)
+
+-- | The parts of the runs of pull requests.
+noBreakPrDepth :: Int
+noBreakPrDepth = 2
 
 noBreakTests :: TestTree
 noBreakTests =

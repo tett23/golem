@@ -90,6 +90,7 @@ test-suite golem-layout-test
                     CodeStopSpec
                     CombiningSpec
                     DoubleDashSpec
+                    EnumSplitSpec
                     ExceptionsSpec
                     ExpansionStepSpec
                     FeaturesSpec

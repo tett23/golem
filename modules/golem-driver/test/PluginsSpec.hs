@@ -118,7 +118,7 @@ pdfPages tmp = do
   e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
   book <- maybe (assertFailure (show (evDiagnostics e))) pure (evBook e)
   assertEqual "no errors" [] (map diagCode (filter isError (evDiagnostics e)))
-  layoutPages fakeProvider (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))) (evStyleText e))
+  layoutPages fakeProvider (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))) (evStyleText e))
     >>= either (assertFailure . show) pure
 
 -- | The channels of plugins (golem-doc ADR 0007).

@@ -7,7 +7,7 @@ the kinds of glue, the stages that shrink and stretch a set line, and A1
 to A9 and A12 on paragraphs made by hand and on every small input of
 docs/adr/0209.
 -}
-module AdjustOrderSpec (adjustOrderTests) where
+module AdjustOrderSpec (adjustOrderTests, ordersAt, staged, defaultOrder) where
 
 import Data.Bits (xor)
 import Data.ByteString.Lazy qualified as BL
@@ -326,22 +326,29 @@ orderMisses orders maxWidth run =
         <> [(take 2 b, "line " <> show (i :: Int) <> ": " <> b) | (i, l) <- zip [0 ..] (brLines br), b <- stageBreaches l]
   ]
 
-{- | Whether the nightly job runs the tests: GOLEM_ENUM_LINES_DEPTH past the
-depth of pull requests (docs/adr/0209).
--}
-nightly :: IO Bool
-nightly =
+-- | The depth: GOLEM_ENUM_LINES_DEPTH, or 'linesPrDepth' (docs/adr/0209).
+ordersDepth :: IO Int
+ordersDepth =
   lookupEnv "GOLEM_ENUM_LINES_DEPTH" >>= \case
-    Just v | Just n <- readMaybe v -> pure (n > linesPrDepth)
-    _ -> pure False
+    Just v | Just n <- readMaybe v -> pure n
+    _ -> pure linesPrDepth
+
+{- | The orders and the widest line the enumeration checks at a depth: past
+'linesPrDepth' (the nightly job) the three orders of the test design in
+lines up to 5 em; on pull requests the default order alone in lines up to
+4 em, the default composition (docs/adr ADR 0281, its section 3). The
+other orders are values moved to the nightly job (docs/adr/0278, its test
+design). Timed as docs/adr ADR 0281 asks, the three orders back on pull
+requests keep the area within its 10 seconds (7.33 to 9.20) but take the
+sum of the areas past its 30 (30.67 to 39.46), so they stay on the
+nightly job (its section 7).
+-}
+ordersAt :: Int -> ([AdjustOrder], Int)
+ordersAt depth = if depth > linesPrDepth then (staged, 5) else ([defaultOrder], 4)
 
 enumerationTests :: [TestTree]
 enumerationTests =
   [ testCase "A1 to A6: every input up to 2 parts, broken with an order, breaks as with one ratio, its lines end where they do with it, and spread their glue in stages: the default order in lines up to 4 em on pull requests, and also the default reversed and every kind in one stage in lines up to 5 em in the nightly job" $ do
-      -- the three orders took 5 seconds of the area on a laptop, past the
-      -- 10 seconds of docs/adr/0208 (its section 4) on the x86-64 runner
-      -- of CI: pull requests check the default alone (docs/adr/0278, its test design)
-      deep <- nightly
-      let (orders, width) = if deep then (staged, 5) else ([defaultOrder], 4)
+      (orders, width) <- ordersAt <$> ordersDepth
       checkAllPar 2 runsT (orderMisses orders width) @?= Passed (length (concat (upTo 2 runsT)))
   ]

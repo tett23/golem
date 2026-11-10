@@ -2827,6 +2827,99 @@ fi
 if grep -qF 'one font from many threads' "$HERE/../../modules/golem-font/test/ConcurrencySpec.hs"; then ok; else ng "race.yml: the pattern names the group of ConcurrencySpec"; fi
 if awk -v c="if: steps.needed.outputs.run == 'true'" 'index($0, "name: The race tests") { getline; if (index($0, c)) f = 1 } END { exit !f }' "$RACE_YML"; then ok; else ng "race.yml: the tests run only when race-needed.sh says so"; fi
 
+# ---------------------------------------------------------------- enum.yml
+# (docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md)
+
+ENUM_YML=$HERE/../../.github/workflows/enum.yml
+enum_timings() { sh "$HERE/enum-timings.sh" "$@"; }
+: >"$WORK/in"
+run enum_timings --list "$ENUM_YML"
+EA=$WORK/enum-areas
+cp "$WORK/out" "$EA"
+: >"$WORK/out"
+# every step with the depth of an area is an area
+if [ "$CODE" = 0 ] && [ "$(wc -l <"$EA" | tr -d ' ')" = "$(grep -c '^          GOLEM_ENUM_[A-Z0-9_]*DEPTH:' "$ENUM_YML")" ] && [ -s "$EA" ]; then ok; else ng "enum.yml: every step with GOLEM_ENUM_*DEPTH is an area"; fi
+# N4 the step of every area runs whatever the steps before it gave, unless the job is cancelled
+if [ -s "$EA" ] && ! awk -F '\t' 'index($3, "!cancelled()") == 0 { bad = 1 } END { exit bad }' "$EA"; then
+  ng "enum.yml: N4 the step of every area has !cancelled()"
+  awk -F '\t' 'index($3, "!cancelled()") == 0 { print "  " $1 ": " $3 }' "$EA"
+else ok; fi
+# N5 exactly one step times the areas, before the step of the first area, into the summary of the job
+first_area=$(grep -n '^          GOLEM_ENUM_[A-Z0-9_]*DEPTH:' "$ENUM_YML" | head -n 1 | cut -d: -f1)
+timing_lines=$(grep -n 'sh scripts/ci/enum-timings.sh' "$ENUM_YML" | cut -d: -f1)
+if [ "$(printf '%s\n' "$timing_lines" | grep -c .)" = 1 ] && [ -n "$first_area" ] && [ "$timing_lines" -lt "$first_area" ] &&
+  grep -qF 'sh scripts/ci/enum-timings.sh > "$RUNNER_TEMP/enum-timings.md"' "$ENUM_YML" &&
+  grep -qF 'cat "$RUNNER_TEMP/enum-timings.md" >> "$GITHUB_STEP_SUMMARY"' "$ENUM_YML"; then ok; else
+  ng "enum.yml: N5 one step runs enum-timings.sh into \$GITHUB_STEP_SUMMARY, before the first area"
+fi
+
+# enum-timings.sh on workflows of its own: a cabal that says what it was
+# given, and a clock that gives the times of a list, one per call
+ET=$WORK/enum-timings
+mkdir -p "$ET"
+cat >"$ET/cabal" <<'CABAL'
+#!/bin/sh
+printf '%s|%s|%s\n' "$*" "${GOLEM_ENUM_DEPTH-unset}" "${GOLEM_ENUM_LINES_SAMPLES-unset}" >>"$ET_DIR/cabal.log"
+case "$*" in *"/broken/"*) exit 1 ;; esac
+exit 0
+CABAL
+chmod +x "$ET/cabal"
+cat >"$ET/clock" <<'CLOCK'
+#!/bin/sh
+head -n 1 "$ET_DIR/times"
+tail -n +2 "$ET_DIR/times" >"$ET_DIR/times.next"
+mv "$ET_DIR/times.next" "$ET_DIR/times"
+CLOCK
+chmod +x "$ET/clock"
+# et_workflow FILE PATTERN...: a workflow with one area per pattern, and a step that is not one
+et_workflow() {
+  out=$1
+  shift
+  {
+    printf 'name: Enum\njobs:\n  enum:\n    steps:\n      - uses: actions/checkout@v7\n      - name: Build\n        run: cabal build golem-layout-test\n'
+    n=0
+    for p in "$@"; do
+      n=$((n + 1))
+      printf "      - name: Area %s\n        if: \${{ !cancelled() }}\n        env:\n          GOLEM_ENUM_A%s_DEPTH: \"3\"\n        run: cabal test golem-layout-test --test-option=-p --test-option='%s'\n" "$n" "$n" "$p"
+    done
+  } >"$out"
+}
+et_run() {
+  printf '%s\n' "$@" >"$ET/times"
+  : >"$ET/cabal.log"
+  run env ET_DIR="$ET" CABAL="$ET/cabal" CLOCK="$ET/clock" GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_LINES_SAMPLES=9 sh "$HERE/enum-timings.sh" "$ET/w.yml"
+}
+et_workflow "$ET/w.yml" '/one/' '/two/&&/three/'
+run enum_timings --list "$ET/w.yml"
+expect "enum-timings: --list writes the variable, the pattern and the condition of each area" 0 "GOLEM_ENUM_A1_DEPTH	/one/	\${{ !cancelled() }}
+GOLEM_ENUM_A2_DEPTH	/two/&&/three/	\${{ !cancelled() }}"
+# the budget of an area is 10 seconds: exactly 10 is within it, 10.01 is over
+et_run 100 110 200 210.01
+expect "enum-timings: N5 a row per area and the sum, 10 seconds within the budget and 10.01 over" 0 "| 範囲 | \`-p\` の式 | 秒 | 予算 | テスト |
+| --- | --- | --- | --- | --- |
+| \`GOLEM_ENUM_A1_DEPTH\` | \`/one/\` | 10.00 | 10 秒以内 | 通る |
+| \`GOLEM_ENUM_A2_DEPTH\` | \`/two/&&/three/\` | 10.01 | 10 秒を超える | 通る |
+| 和 | | 20.01 | 30 秒以内 | |"
+if [ "$(cat "$ET/cabal.log")" = "test golem-layout-test --test-option=-p --test-option=/one/|unset|unset
+test golem-layout-test --test-option=-p --test-option=/two/&&/three/|unset|unset" ]; then ok; else ng "enum-timings: each pattern runs alone, without the variables GOLEM_ENUM_*"; sed 's/^/  /' "$ET/cabal.log"; fi
+# the sum: 30 seconds within the budget, over it when every area is within its own
+et_workflow "$ET/w.yml" '/a/' '/b/' '/c/'
+et_run 0 10 10 20 20 30
+if [ "$CODE" = 0 ] && [ "$(tail -n 1 "$WORK/out")" = "| 和 | | 30.00 | 30 秒以内 | |" ]; then ok; else ng "enum-timings: a sum of 30 seconds is within the budget"; fi
+et_workflow "$ET/w.yml" '/a/' '/b/' '/c/' '/d/'
+et_run 0 8 8 16 16 24 24 32
+if [ "$CODE" = 0 ] && [ "$(tail -n 1 "$WORK/out")" = "| 和 | | 32.00 | 30 秒を超える | |" ] && [ "$(grep -c '10 秒以内' "$WORK/out")" = 4 ]; then ok; else ng "enum-timings: only the sum over its budget, and the script does not fail"; fi
+# tests that fail fail the script, after every area has run
+et_workflow "$ET/w.yml" '/broken/' '/b/'
+et_run 0 1 1 2
+if [ "$CODE" = 1 ] && grep -qF '| `/broken/` | 1.00 | 10 秒以内 | 落ちる |' "$WORK/out" && grep -qF '| `/b/` | 1.00 | 10 秒以内 | 通る |' "$WORK/out"; then ok; else ng "enum-timings: a failing area fails the script after the others ran"; fi
+# a step without the depth of an area, or another command, is not an area
+printf "jobs:\n  enum:\n    steps:\n      - name: no depth\n        run: cabal test golem-layout-test --test-option=-p --test-option='/x/'\n      - name: other\n        env:\n          GOLEM_ENUM_X_DEPTH: \"3\"\n        run: cabal test golem-layout-test\n" >"$ET/none.yml"
+run enum_timings --list "$ET/none.yml"
+expect "enum-timings: a step is an area with both a depth and a pattern" 0 ""
+run enum_timings "$ET/none.yml"
+expect "enum-timings: a workflow without areas fails" 1
+
 # ---------------------------------------------------------------- advisories.yml
 # (docs/adr/0157-check-wasmtime-pin-against-advisories.md)
 
