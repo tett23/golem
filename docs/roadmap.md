@@ -40,7 +40,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **画像と図版を描く処理**：shem（見た目の回帰テストのラスタライザ、[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）に、画像（JPEG、PNG）の復号と、図版（SVG と PDF の Form）の描画を自前で加える。v2 で図版をフレームに合わせて拡大縮小するとき、画像を描けない描画系は致命的になるので、それより前に入れる。
 - **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲の ADR はまだない。上から順に、前の範囲の結果を見て書く。
-  - **表の列の幅**：`Golem.Layout.Table` の列の幅（列ごとの最小の幅と自然な幅、使える幅）を整数の小さな組で列挙し、列の幅の和と最小の幅の不変条件で確かめる（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。
   - **パーサーと `golem fmt` の往復**：文法から作る短い原稿を列挙し、`golem fmt` の往復と diagnostics の位置の不変条件で確かめる。peg-hs の文法を読んで原稿を作る部品が先に要る。
   - **位置の変換**：UTF-16 の列、`pages.json`、LSP の位置の変換を、サロゲートペアを含む短い文字列の列挙で確かめる。
   - **長さの換算と丸め**：golem-length と `headingBlock` の丸めを、整数の範囲の列挙で確かめる。SBV を golem-length のテストにだけ入れるかを、この範囲の ADR で決める。
