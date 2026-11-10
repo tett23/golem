@@ -19,8 +19,9 @@ look, so that the boxes of the two sides differ only in their pieces.
 -}
 module JoinedWordEnum (joinedWordTests, joinedPrDepth) where
 
-import Data.Char (isLetter)
+import Data.Char (GeneralCategory (..), generalCategory, isLetter)
 import Data.List (mapAccumL)
+import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Fixtures (fs, sp)
@@ -126,11 +127,21 @@ classIn c ch
   | isDualCharacter ch && maybe False (not . spanIsJapanese) (lkLang (bcLook c)) = dualJapaneseClass ch
   | otherwise = lookClass (bcLook c) ch
 
-startClassOf :: BoxContent -> Maybe CharClass
-startClassOf c = case T.unpack (bcText c) of
-  '\x2019' : n : _ | isLetter n -> Just Western
+{- | The class of the first character of a box, the box of a Latin word
+after it in the joined word given: an apostrophe at the start of a Latin
+word, with a letter or a digit after it in the joined word (its combining
+characters left out), is Latin (golem-layout ADR 0030, docs/adr ADR 0283).
+-}
+startClassOf :: BoxContent -> Maybe BoxContent -> Maybe CharClass
+startClassOf c next = case T.unpack (baseText (bcText c)) of
+  '\x2019' : rest | Just n <- nextOf rest, isLetter n || generalCategory n == DecimalNumber -> Just Western
   ch : _ -> Just (classIn c ch)
   [] -> Nothing
+  where
+    nextOf = \case
+      n : _ -> Just n
+      [] -> next >>= fmap fst . T.uncons . baseText . bcText
+    baseText t = let b = T.dropWhileEnd isExtending t in if T.null b then t else b
 
 {- | W1: the items between two neighbouring boxes of a Latin word that the
 boundaries given (indices among the characters of the boxes) fall
@@ -150,7 +161,7 @@ w1Boundary strict p bounds its =
     bcExpandable a && bcExpandable b,
     let word = joined k
         cut = (bt - wordStart k) `elem` explicitCuts word
-        want = [Penalty 0 p ExplicitHyphen | cut, p < infPenalty, not (prohibited a b)],
+        want = [Penalty 0 p ExplicitHyphen | cut, p < infPenalty, not (prohibited k a b)],
     map keyOf between /= map keyOf want
   ]
   where
@@ -171,9 +182,9 @@ w1Boundary strict p bounds its =
     wordStart k = case span' k of
       (s, _, _) : _ -> s
       [] -> 0
-    prohibited a b =
+    prohibited k a b =
       let pk = classIn a <$> lastOf a
-          ck = startClassOf b
+          ck = startClassOf b (if linked (k + 1) then (\(_, d, _) -> d) <$> listToMaybe (drop (k + 2) bs) else Nothing)
        in maybe False (lineStartProhibited strict) ck || maybe False lineEndProhibited pk || (pk == Just Inseparable && ck == Just Inseparable)
     lastOf c = snd <$> T.unsnoc (bcText c)
 
@@ -205,34 +216,31 @@ breaksOf its = concat (snd (mapAccumL step (0, False) its))
       Box _ c -> ((at + T.length (bcText c), True), [])
       Penalty _ q h | q < infPenalty -> ((at, False), [(at, q, hyphenKind h)])
       Penalty {} -> ((at, False), [])
-      Glue _ y _ | afterBox && y < filStretch -> ((at, False), [(at, -1, -1)])
+      Glue _ y _ _ _ | afterBox && y < filStretch -> ((at, False), [(at, -1, -1)])
       Glue {} -> ((at, False), [])
 
 {- | Whether each character of the boxes is in a box of a Latin word, in
-order. Outside a language span a character of both scripts joins a Latin
-word only by the letters of its own text (golem-layout ADR 0008), so that
-a boundary next to it can make it a Japanese character: W2 compares two
-paragraphs whose Latin words have the same characters.
+order: the same for the paragraph split at boundaries and for it with the
+run one text (E1 of docs/adr ADR 0283), outside a language span a
+character of both scripts joining a Latin word by the nearest character
+in the run of the characters of the paragraph.
 -}
 latinMask :: [Item] -> [Bool]
 latinMask its = concat [replicate (T.length (bcText c)) (bcExpandable c) | Box _ c <- its]
 
-{- | W2: the breaks of the paragraph inside its Latin words (a character
-of a Latin word on either side) are those of it with the run one text,
-where the boundaries leave the Latin words their characters. The breaks
-between a Latin word and a Japanese character are not the ADR's (its
-「実装しないこと」): a box of an apostrophe alone after a boundary is a
-closing bracket to the character before it in a Latin span, the
-apostrophe of a word in one text (golem-layout ADR 0030).
+-- | E1 of docs/adr ADR 0283: the same characters are in Latin words split at boundaries and as one text.
+e1Same :: [Item] -> [Item] -> [Violation]
+e1Same its one
+  | latinMask its == latinMask one = []
+  | otherwise = [Violation "E1" ("the characters in Latin words are " <> show (latinMask its) <> ", as one text " <> show (latinMask one))]
+
+{- | W2 as E2 of docs/adr ADR 0283 widens it: the breaks of the paragraph
+at every position are those of it with the run one text.
 -}
 w2Same :: [Item] -> [Item] -> [Violation]
 w2Same its one
-  | mask /= latinMask one = []
-  | inside its == inside one = []
-  | otherwise = [Violation "W2" ("the breaks inside Latin words are " <> show (inside its) <> ", as one text " <> show (inside one))]
-  where
-    mask = latinMask its
-    inside xs = [b | b@(at, _, _) <- breaksOf xs, at > 0, at < length mask, mask !! (at - 1), mask !! at]
+  | breaksOf its == breaksOf one = []
+  | otherwise = [Violation "W2" ("the breaks are " <> show (breaksOf its) <> ", as one text " <> show (breaksOf one))]
 
 -- * the predicates on an input
 
@@ -240,7 +248,7 @@ w2Same its one
 keyOf :: Item -> (Int, Sp, Sp, Sp, Text, Int, Int)
 keyOf = \case
   Box w c -> (0, w, 0, 0, bcText c, 0, 0)
-  Glue w y z -> (1, w, y, z, "", 0, 0)
+  Glue w y z _ _ -> (1, w, y, z, "", 0, 0)
   Penalty w q h -> (2, w, 0, 0, "", q, hyphenKind h)
 
 hyphenKind :: Hyphen -> Int
@@ -272,8 +280,9 @@ paragraphOf i =
         }
 
 {- | The violations of an input: L1 to L13 of docs/adr/0209 and W1 with the
-patterns, W1 and W2 without them; W2 where no part is a soft hyphen (the
-ADR, its 「実装しないこと」).
+patterns, W1, E1 and W2 without them (E1 and E2 of docs/adr ADR 0283); W2
+where no soft hyphen is next to a boundary (docs/adr ADR 0280, its
+「実装しないこと」).
 -}
 violations :: Input -> [Violation]
 violations i =
@@ -285,7 +294,8 @@ violations i =
    in [Violation (show (breachOf b)) (show (breachLine b) <> ": " <> breachWhy b) | b <- breaches bruteLimit p, not (shyAtBoundary (inRun i)) || show (breachOf b) == "L8"]
         <> w1Boundary True (inExplicit i) bounds (pItems p)
         <> w1Boundary True (inExplicit i) bounds itsBare
-        <> (if any ((== "\xAD") . fst) (inRun i) then [] else w2Same itsBare (itemsWith bare one))
+        <> e1Same itsBare (itemsWith bare one)
+        <> (if shyAtBoundary (inRun i) then [] else w2Same itsBare (itemsWith bare one))
 
 {- | Whether a soft hyphen is next to a boundary: only L8 and W1 are
 checked on such an input (the ADR, its 「実装しないこと」). The predicates
@@ -385,7 +395,7 @@ w1Of i = w1Boundary True (inExplicit i) (boundsOf (inPre i) (inRun i)) (itemsWit
 
 -- | W2 of an input without the patterns.
 w2Of :: Input -> [Violation]
-w2Of i = let bare = envOf False (inLang i) (inExplicit i); (split, one) = inputInlines i in w2Same (itemsWith bare split) (itemsWith bare one)
+w2Of i = let bare = envOf False (inLang i) (inExplicit i); (split, one) = inputInlines i in e1Same (itemsWith bare split) (itemsWith bare one) <> w2Same (itemsWith bare split) (itemsWith bare one)
 
 -- | The violations of each input of a list, with the input.
 failing :: (Input -> [Violation]) -> [Input] -> Assertion
@@ -397,11 +407,147 @@ failing f is = case [(i, vs) | i <- is, let vs = f i, not (null vs)] of
 l8Of :: Paragraph -> [Breach]
 l8Of p = [b | b <- breaches bruteLimit p, show (breachOf b) == "L8"]
 
+-- * the characters of both scripts across boundaries (docs/adr ADR 0283)
+
+-- | A text, and a text in the character style @strong@: a boundary on either side.
+txt, strong :: Text -> IR.Inline
+txt = IR.Text sp
+strong t = IR.CharStyle sp "strong" [IR.Text sp t]
+
+{- | The paragraph as one text: the character style @strong@ taken off,
+and the texts next to each other joined; the other inlines as they are.
+-}
+oneText :: [IR.Inline] -> [IR.Inline]
+oneText = joinTexts . concatMap unstyle
+  where
+    unstyle = \case
+      IR.CharStyle _ "strong" xs -> concatMap unstyle xs
+      x -> [x]
+    joinTexts = \case
+      IR.Text _ a : IR.Text _ b : rest -> joinTexts (IR.Text sp (a <> b) : rest)
+      x : rest -> x : joinTexts rest
+      [] -> []
+
+-- | The environment of the boundaries: that of 'envOf' without the patterns, the character style @code@ code, the mark of a citation of key a 1.
+bothEnv :: Maybe Text -> ComposeEnv
+bothEnv l =
+  (envOf False l 50)
+    { ceRestyle = \lk -> \case
+        IR.CharStyle _ "code" _ -> lk {lkCode = True}
+        _ -> lk,
+      ceCiteNumber = \_ k -> if k == "a" then Just 1 else Nothing
+    }
+
+-- | E1 of the inlines of a paragraph: the characters in Latin words are those of it as one text.
+e1Of :: Maybe Text -> [IR.Inline] -> [Violation]
+e1Of l is = e1Same (itemsWith (bothEnv l) (inSpan l is)) (itemsWith (bothEnv l) (inSpan l (oneText is)))
+
+inSpan :: Maybe Text -> [IR.Inline] -> [IR.Inline]
+inSpan l is = maybe is (\x -> [IR.Lang sp x is]) l
+
+-- | The inlines that stop the search for the nearest character (the ADR, its section 1), each with a name.
+stoppers :: [(String, IR.Inline)]
+stoppers =
+  [ ("ruby", IR.Ruby sp () [IR.RubySegment [IR.Text sp "漢"] (Just "かん")]),
+    ("code", IR.CharStyle sp "code" [IR.Text sp "x"]),
+    ("the mark of a note", IR.Note sp 1 (IR.noteBody sp [IR.Text sp "n"])),
+    ("the mark of a citation", IR.Cite sp [IR.CiteItem "a" Nothing [] []])
+  ]
+
+-- | An index mark: an anchor, no items.
+indexMark :: IR.Inline
+indexMark = IR.IndexMark sp (IR.IndexEntry ["x"] [] IR.IndexPoint)
+
+{- | The rows of 「今の振る舞い」 of the ADR, and the places of a character
+of both scripts against the nearest character across a boundary: a Latin
+or a Japanese character, a space, the end of the paragraph, the inlines
+that stop the search, in no span, [lang en] and [lang ja] (the far
+character's or the dash's), an index mark between them, one character of
+both scripts skipped and two boundaries crossed.
+-}
+e1Cases :: [(Maybe Text, [IR.Inline])]
+e1Cases =
+  [(Nothing, r) | r <- rows]
+    <> [(Just "en", r) | r <- rows]
+    <> [(l, r) | l <- [Nothing, Just "en", Just "ja"], far <- fars, r <- placed far]
+  where
+    rows =
+      [ [txt "a", strong "—", txt "b"],
+        [txt "aaaa", strong "—", txt "b"],
+        [txt "a", strong "“", txt "b"],
+        [txt "x “", strong "Ham", txt "” y"],
+        [txt "aaa ’", strong "tis"],
+        [txt "x ’", strong "90"],
+        [txt "a", strong "“", txt "—", strong "b"],
+        [txt "a", strong "“", strong "—", txt "b"],
+        [txt "あ", strong "“", txt "—", strong "b"]
+      ]
+    fars =
+      [[txt "b"], [txt "あ"], [txt " "], [], [IR.Lang sp "en" [txt "b"]], [IR.Lang sp "ja" [txt "b"]], [IR.Lang sp "ja" [txt "あ"]], [indexMark, txt "b"]]
+        <> [[x] | (_, x) <- stoppers]
+        <> [[x, txt "b"] | (_, x) <- stoppers]
+    placed far =
+      [ far <> [strong "—あ"],
+        [strong "あ—"] <> reverse far,
+        far <> [strong "—"] <> reverse far,
+        far <> [strong "—"],
+        [strong "—"] <> reverse far,
+        far <> [IR.CharStyle sp "strong" [IR.Lang sp "en" [txt "—"]]],
+        far <> [IR.CharStyle sp "strong" [IR.Lang sp "ja" [txt "—"]]] <> reverse far,
+        far <> [strong "“", strong "—あ"]
+      ]
+
+-- | The lines of the inlines of a paragraph in a span, in lines of the width in em given.
+linesIn :: Maybe Text -> Int -> [IR.Inline] -> [Text]
+linesIn l w is =
+  let its = itemsWith (bothEnv l) (inSpan l is)
+   in map lineText (brLines (breakParagraph (paramsOf (settingOf l) False its) (const (fromIntegral w * fs)) its))
+
+-- | Whether the box of a lone dash among the items of inlines is that of a Latin word.
+dashIsLatin :: [IR.Inline] -> [Bool]
+dashIsLatin is = [bcExpandable c | Box _ c <- itemsWith (bothEnv Nothing) is, bcText c == "—"]
+
+bothScriptsTests :: TestTree
+bothScriptsTests =
+  testGroup
+    "the roles of the characters of both scripts across inline boundaries (docs/adr ADR 0283)"
+    [ testCase "E1: the rows of the ADR and the places of a character of both scripts put the same characters in Latin words as one text" $
+        case [(l, is, vs) | (l, is) <- e1Cases, let vs = e1Of l is, not (null vs)] of
+          [] -> pure ()
+          found -> assertFailure (unlines [show l <> " " <> show is <> ": " <> unwords (map violationDetail vs) | (l, is, vs) <- take 8 found] <> show (length found) <> " of " <> show (length e1Cases)),
+      testCase "E1: a, — and b in three boxes, outside a span, are one Latin word as a—b is" $
+        dashIsLatin [txt "a", strong "—", txt "b"] @?= [True],
+      testCase "E2: W2 at every position, the narrowings of docs/adr ADR 0280 lifted, on a, — and b, and on ’ and tis" $ do
+        failing w2Of [Input l p False 4 0 [("a", False), ("—", True), ("b", True)] 0 | l <- [Nothing, Just "en", Just "ja"], p <- [50, 10000]]
+        failing w2Of [Input l p False 4 0 [("aaa ", False), ("’", False), ("tis", True)] 0 | l <- [Nothing, Just "en", Just "ja"], p <- [50, 10000]]
+        failing w2Of [Input l p False 4 0 [("’", False), ("a", True)] 0 | l <- [Nothing, Just "en", Just "ja"], p <- [50, 10000]],
+      testCase "E3: aaa ’ and [strong: tis] in lines of 2 em are aaa and ’tis, in no span and in [lang en]" $ do
+        linesIn Nothing 2 [txt "aaa ’", strong "tis"] @?= ["aaa", "’tis"]
+        linesIn (Just "en") 2 [txt "aaa ’", strong "tis"] @?= ["aaa", "’tis"],
+      testCase "E3: aaa ’ and [strong: 90] in lines of 2 em are aaa and ’90, in no span and in [lang en]" $ do
+        linesIn Nothing 2 [txt "aaa ’", strong "90"] @?= ["aaa", "’90"]
+        linesIn (Just "en") 2 [txt "aaa ’", strong "90"] @?= ["aaa", "’90"],
+      testCase "E3: aaa ’ and [strong: .] do not break at the space nor before the full stop: the apostrophe is a closing bracket" $ do
+        take 1 (linesIn Nothing 2 [txt "aaa ’", strong "."]) @?= ["aaa’."]
+        take 1 (linesIn (Just "en") 2 [txt "aaa ’", strong "."]) @?= ["aaa’."],
+      testCase "E3: an apostrophe alone after a space with no box after it is a closing bracket, as before" $
+        length (linesIn (Just "en") 2 [txt "aaa ’"]) @?= 1,
+      testCase "E4: ruby, code, the marks of notes and citations and a space between a and [strong: —] stop the search: b or あ beyond them changes nothing" $
+        sequence_
+          [ assertEqual name (dashIsLatin [txt "b", x, strong "—"]) (dashIsLatin [txt "あ", x, strong "—"])
+          | (name, x) <- stoppers <> [("a space", txt " ")]
+          ],
+      testCase "E4: an index mark between b and [strong: —] does not stop it: the dash joins b" $ do
+        dashIsLatin [txt "b", indexMark, strong "—"] @?= [True]
+        dashIsLatin [txt "あ", indexMark, strong "—"] @?= [False]
+    ]
+
 joinedWordTests :: TestTree
 joinedWordTests =
   testGroup
     "the breaks between the boxes of a Latin word follow the joined word (docs/adr ADR 0280)"
-    [ testCase "L8: the smallest input of the marks of citations, a, — and [cite a page=5] in lines of 2 em, breaks only where L8 allows" $ do
+    [ bothScriptsTests,
+      testCase "L8: the smallest input of the marks of citations, a, — and [cite a page=5] in lines of 2 em, breaks only where L8 allows" $ do
         let cite = IR.Cite sp [IR.CiteItem "a" (Just (IR.Locator IR.LocatorPage (IR.LocNumber 5))) [] []]
             env = (composeEnv False (settingOf Nothing)) {ceCiteNumber = \_ k -> if k == "a" then Just 1 else Nothing}
             its = itemsWith env [IR.Text sp "a—", cite]
@@ -421,9 +567,9 @@ joinedWordTests =
         failing w1Of pairInputs,
       testCase "W2: every pair of the ADR has the breaks of the run as one text" $
         failing w2Of pairInputs,
-      testCase "W2: the pairs whose boundary makes a character of both scripts Japanese, outside a span: a lone dash" $
-        [map fst (inRun i) | i <- pairInputs, let bare = envOf False (inLang i) (inExplicit i); (split, one) = inputInlines i, latinMask (itemsWith bare split) /= latinMask (itemsWith bare one), inExplicit i == 50]
-          @?= [["a", "—", "b"], ["—", "b"]],
+      testCase "E1: no pair of docs/adr ADR 0280 has a character of both scripts that a boundary makes Japanese, a lone dash among them" $
+        [map fst (inRun i) | i <- pairInputs, let bare = envOf False (inLang i) (inExplicit i); (split, one) = inputInlines i, latinMask (itemsWith bare split) /= latinMask (itemsWith bare one)]
+          @?= [],
       testCase "W1 and W2: the explicit hyphen at a boundary, a— | b, and at the head of a box, a | —b" $ do
         let itemsOf' x = itemsWith (envOf False Nothing 50) (fst (inputInlines (pairInput Nothing 50 x)))
             boxes its = [bcText c | Box _ c <- its]
@@ -441,6 +587,15 @@ joinedWordTests =
             before = concatMap (\case Penalty _ 50 ExplicitHyphen -> [Penalty 0 0 NoHyphen]; x -> [x]) its
         map violationRule (w1Boundary True 50 (boundsOf 0 (inRun i)) before) @?= ["W1"]
         map violationRule (w2Same before (itemsWith bare one)) @?= ["W2"],
+      testCase "E1 and E2: predicate tests, the items of a, — and b with the dash a Japanese character, as before docs/adr ADR 0283, break E1; a penalty 0 for the explicit hyphen breaks E2" $ do
+        let bare = envOf False Nothing 50
+            one = itemsWith bare [IR.Text sp "a—b"]
+            -- the dash Japanese, as it was outside a span before the ADR: in a Japanese span
+            before = itemsWith bare [IR.Text sp "a", IR.CharStyle sp "strong" [IR.Lang sp "ja" [IR.Text sp "—"]], IR.Text sp "b"]
+            zeroed = concatMap (\case Penalty _ 50 ExplicitHyphen -> [Penalty 0 0 NoHyphen]; x -> [x]) one
+        map violationRule (e1Same before one) @?= ["E1"]
+        map violationRule (w2Same before one) @?= ["W2"]
+        map violationRule (w2Same zeroed one) @?= ["W2"],
       testCase "W3: L1 to L13 of docs/adr/0209, W1 and W2 hold for every input up to GOLEM_ENUM_JOINED_DEPTH parts" $ do
         depth <- depthOf
         case checkAllPar depth inputT violations of

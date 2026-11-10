@@ -1,6 +1,6 @@
 # ADR 0280: 隣り合う欧文の語の箱のあいだの分割を、つないだ語の分割に合わせる
 
-ステータス: 採択
+ステータス: 採択→（W2 の比べる範囲）は [ADR 0283](0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md)
 
 ## 文脈
 

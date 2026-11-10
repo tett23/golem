@@ -173,7 +173,7 @@ i8OnlyBreaks its off
     zip4' _ _ _ _ = []
     key = \case
       Box w c -> (0 :: Int, w, 0, 0, bcText c, 0 :: Int, 0 :: Int)
-      Glue w y z -> (1, w, y, z, "", 0, 0)
+      Glue w y z _ _ -> (1, w, y, z, "", 0, 0)
       Penalty w p h -> (2, w, 0, 0, "", p, hyphenKind h)
     hyphenKind = \case
       NoHyphen -> 0
@@ -229,7 +229,7 @@ noBreakTests =
             -- a break allowed between the two characters again: the penalty before the glue between them taken out
             allowed = dropHeld its
             dropHeld = \case
-              Box w c : Penalty _ p NoHyphen : g@(Glue _ y _) : rest | p >= infPenalty, y < filStretch -> Box w c : g : dropHeld rest
+              Box w c : Penalty _ p NoHyphen : g@(Glue _ y _ _ _) : rest | p >= infPenalty, y < filStretch -> Box w c : g : dropHeld rest
               x : rest -> x : dropHeld rest
               [] -> []
             br = breakParagraph defaultParams (const (widthOf i)) allowed
@@ -249,7 +249,7 @@ noBreakTests =
         linesOf over @?= ["漢漢漢"],
       testCase "I8: the spaces of a range stretch, unbroken: a word space of a range is a glue with a penalty of 10000 before it" $ do
         let (its, _) = itemsOf (Input 0 [(PText "a table", True)] 0 5)
-        [() | Penalty _ p NoHyphen : Glue _ y _ : _ <- tailsOf its, p >= infPenalty, y > 0, y < filStretch] @?= [()],
+        [() | Penalty _ p NoHyphen : Glue _ y _ _ _ : _ <- tailsOf its, p >= infPenalty, y > 0, y < filStretch] @?= [()],
       testCase "two ranges next to each other: no break between them" $ do
         let its = fst (composeInlines env [IR.CharStyle sp "no-break" [IR.Text sp "漢"], IR.CharStyle sp "no-break" [IR.Text sp "字"]])
         breaksIn its @?= 0,
@@ -259,7 +259,7 @@ noBreakTests =
     ]
   where
     -- the breaks but the forced one at the end: a finite penalty, a glue after a box
-    breaksIn its = length [() | Penalty _ p _ <- its, p < infPenalty, p > negate infPenalty] + length [() | Box {} : Glue _ y _ : _ <- tailsOf its, y < filStretch]
+    breaksIn its = length [() | Penalty _ p _ <- its, p < infPenalty, p > negate infPenalty] + length [() | Box {} : Glue _ y _ _ _ : _ <- tailsOf its, y < filStretch]
     tailsOf xs = case xs of
       [] -> []
       _ : rest -> xs : tailsOf rest

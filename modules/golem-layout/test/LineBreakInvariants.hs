@@ -139,11 +139,34 @@ classOf :: BoxContent -> Char -> CharClass
 classOf c ch = if latinDual c ch then dualJapaneseClass ch else lookClass (bcLook c) ch
 
 startClass, endClass :: BoxContent -> Maybe CharClass
-startClass c = case T.uncons (baseOf c) of
-  -- an apostrophe at the start of a Latin word, with a letter or a digit after it, is Latin (golem-layout ADR 0030)
-  Just ('\x2019', more) | bcExpandable c, Just (n, _) <- T.uncons more, isLetter n || generalCategory n == DecimalNumber -> Just Western
-  u -> classOf c . fst <$> u
+startClass c = startClassBefore c Nothing
 endClass c = classOf c . snd <$> T.unsnoc (baseOf c)
+
+{- | The class of the first character of a box, the box of a Latin word
+right after it given: an apostrophe at the start of a Latin word, with a
+letter or a digit after it in the joined word, is Latin (golem-layout ADR
+0030, docs/adr ADR 0283): after a box of the apostrophe alone, the next
+character is the first of the box after it.
+-}
+startClassBefore :: BoxContent -> Maybe BoxContent -> Maybe CharClass
+startClassBefore c next = case T.uncons (baseOf c) of
+  Just ('\x2019', more) | bcExpandable c, Just n <- nextOf more, isLetter n || generalCategory n == DecimalNumber -> Just Western
+  u -> classOf c . fst <$> u
+  where
+    nextOf more = case T.uncons more of
+      Just (n, _) -> Just n
+      Nothing -> case next of
+        Just d | bcExpandable d -> fst <$> T.uncons (baseOf d)
+        _ -> Nothing
+
+{- | The box of a Latin word right after the first box of items, with no
+item between them, when the first is one too (docs/adr ADR 0280).
+-}
+nextWordBox :: [Item] -> Maybe BoxContent
+nextWordBox = \case
+  Box _ c : Box _ d : _ | bcExpandable c && bcExpandable d -> Just d
+  Box _ c : rest | bcExpandable c, Penalty {} : Box _ d : _ <- rest, bcExpandable d -> Just d
+  _ -> Nothing
 
 -- | The text of a line.
 textOf :: Line -> Text
@@ -155,10 +178,10 @@ lineEnd l = case reverse (placeLine l) of
   [] -> fst (lineEdge l) - fst (lineProtrusion l)
   (it, off) : _ ->
     let ex = toRational (lineExpansion l) / 1000
-        g = glueRatio l
         w = case it of
           Box bw c -> toRational (unSp bw) * (if bcExpandable c then 1 + ex else 1)
-          Glue gw y z -> toRational (unSp gw) + (if g >= 0 then toRational (unSp y) else toRational (unSp z)) * g
+          -- the last glue, by its amount (docs/adr/0278)
+          Glue {itemWidth = gw} -> toRational (unSp gw) + last (0 : glueAmounts l)
           Penalty pw _ _ -> toRational (unSp pw)
      in Sp (unSp off + round w)
 
@@ -166,11 +189,11 @@ lineEnd l = case reverse (placeLine l) of
 endProtrusion :: Line -> Sp
 endProtrusion = snd . lineProtrusion
 
--- | The glue of a space between Latin words (golem-layout's Japanese composition): its width, half of it to stretch, a third to shrink.
+-- | The glue of a space between Latin words (golem-layout's Japanese composition): its width, half of it to stretch, a third to shrink, of its kind and size (docs/adr/0278).
 latinSpace :: Paragraph -> Item
 latinSpace p =
   let sw = L.zwToSp (pSize p) (pAdvance p True ' ')
-   in Glue sw (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))
+   in Glue sw (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3)) WordSpaceGlue (pSize p)
 
 {- | The glue of a space of inline code (golem-layout ADR 0017): the
 advance of a space in the font of code, neither stretching nor shrinking.
@@ -178,7 +201,7 @@ The paragraphs of the predicates have no tracking, and their code is set
 in the advances of the paragraph.
 -}
 codeSpace :: Paragraph -> Item
-codeSpace p = Glue (L.zwToSp (pSize p) (pAdvance p True ' ')) 0 0
+codeSpace p = glue (L.zwToSp (pSize p) (pAdvance p True ' ')) 0 0
 
 -- | The lines but the last, each with the next.
 pairs :: Paragraph -> [(Int, Line, Line)]
@@ -212,7 +235,7 @@ l2LineStart _ p =
   [ Breach L2 (i + 1) ("line " <> show (i + 2) <> " starts with " <> show (textOf next))
   | (i, _, next) <- pairs p,
     Just c <- [firstBox next],
-    Just k <- [startClass c],
+    Just k <- [startClassBefore c (nextWordBox (dropWhile (\case Box {} -> False; _ -> True) (lineItems next)))],
     lineStartProhibited (pStrict p) k,
     not (wide p next)
   ]
@@ -305,13 +328,13 @@ fittingBreaks p l =
                 Penalty _ _ (PatternHyphen q) -> q
                 Penalty _ _ (SoftHyphen q) -> q
                 _ -> sum (map bcProtrudeEnd lastB)
-          natural = sum [w | Box w _ <- before] + sum [w | Glue w _ _ <- before] + penW - protS - protE + sum (map bcEdgeStart firstB) + sum (map bcEdgeEnd lastB)
+          natural = sum [w | Box w _ <- before] + sum [w | Glue w _ _ _ _ <- before] + penW - protS - protE + sum (map bcEdgeStart firstB) + sum (map bcEdgeEnd lastB)
           expandable = sum [w | Box w c <- before, bcExpandable c]
           shrinkE = case pExpansion ps of
             -- the limit the steps reach (golem-layout ADR 0029)
             Just (limit, stp) -> Sp (unSp expandable * toInteger (reachedLimit limit stp) `div` 1000)
             Nothing -> 0
-          shrink = sum [z | Glue _ _ z <- before] + shrinkE
+          shrink = sum [z | Glue _ _ z _ _ <- before] + shrinkE
        in natural - shrink <= pWidth p
 
 {- | L6: every line but the last that is not overfull ends at W and its
@@ -334,7 +357,7 @@ l6Justified _ p =
     not (capped l)
   ]
   where
-    noStretch l = all (<= 0) [y | Glue _ y _ <- lineItems l]
+    noStretch l = all (<= 0) [y | Glue _ y _ _ _ <- lineItems l]
     -- short by less than a step of the expansion where it has not reached its limit
     shortByLessThanAStep l short = case pExpansion (pParams p) of
       Just (limit, stp)
@@ -379,7 +402,7 @@ r6Capped _ p =
     capped l,
     Just m <- [lineStretchLimit l],
     let unlimited = l {lineStretchLimit = Nothing}
-        want = Sp (round (toRational (unSp (lineEnd unlimited)) - (glueRatio unlimited - m) * toRational (unSp (sum [y | Glue _ y _ <- lineItems l])))),
+        want = Sp (round (toRational (unSp (lineEnd unlimited)) - (glueRatio unlimited - m) * toRational (unSp (sum [y | Glue _ y _ _ _ <- lineItems l])))),
     abs (lineEnd l - want) > 1
       || lineEnd l >= pWidth p + endProtrusion l
       || map snd (take 1 (placeLine l)) /= map snd (take 1 (placeLine unlimited))
@@ -567,7 +590,7 @@ l11Aki _ p =
     ]
   where
     aki = akiBetween defaultAkiSet (AkiChar Ideograph) (AkiChar Western)
-    akiGlue a = let z = L.zwToSp (pSize p) in Glue (z (A.akiOptimum a)) (z (A.akiMaximum a) - z (A.akiOptimum a)) (z (A.akiOptimum a) - z (A.akiMinimum a))
+    akiGlue a = let z = L.zwToSp (pSize p) in Glue (z (A.akiOptimum a)) (z (A.akiMaximum a) - z (A.akiOptimum a)) (z (A.akiOptimum a) - z (A.akiMinimum a)) JapaneseWesternGlue (pSize p)
     akiGlues = [akiGlue aki | aki /= noAki]
     japanese c = not (bcExpandable c) && all (`elem` [Kana, Ideograph]) (catMaybes [startClass c, endClass c])
     -- what is between two boxes next to each other: the glue, when the pair is of a Japanese character and a Latin word
@@ -1068,7 +1091,7 @@ c7Widths _ p =
     w /= want
   ]
     <> [ Breach C7 (-1) ("glue that stretches or shrinks inside code, after " <> show (bcText a))
-       | (Box _ a, Glue _ y z, Box _ b) <- zip3 (pItems p) (drop 1 (pItems p)) (drop 2 (pItems p)),
+       | (Box _ a, Glue _ y z _ _, Box _ b) <- zip3 (pItems p) (drop 1 (pItems p)) (drop 2 (pItems p)),
          isCode a && isCode b,
          y /= 0 || z /= 0
        ]

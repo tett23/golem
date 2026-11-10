@@ -2036,7 +2036,7 @@ PDF では、`url` と、`based-on` をたどって `url` に行き着く文字�
 `[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
 `[character-styles.strong] based-on = "italic"` は、`[strong: ...]` を斜体で表す。
 
-段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`features`、段落の前と後に引く罫線の `rule-before` と `rule-after`、段落の分け方の `keep-with-next`、`keep-all-lines`、`keep-first-lines`、`keep-last-lines`、`page-break`（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）、段落の囲みの `background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`（[ADR 0271](adr/0271-paragraph-backgrounds-and-borders.md)）、行の調整の `line-adjustment` と `stretch-limit`（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、「行分割」の節）である。
+段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`space-before` と `space-after`（段落の前と後に空ける行の数）、`align`（行揃え）、`indent`、`first-line-indent`、`end-indent`（字下げ）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`features`、段落の前と後に引く罫線の `rule-before` と `rule-after`、段落の分け方の `keep-with-next`、`keep-all-lines`、`keep-first-lines`、`keep-last-lines`、`page-break`（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）、段落の囲みの `background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`（[ADR 0271](adr/0271-paragraph-backgrounds-and-borders.md)）、行の調整の `line-adjustment` と `stretch-limit`（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、「行分割」の節）、行の調整の順の `shrink-order` と `stretch-order`（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)、「行分割」の節）である。
 
 段落の分け方の五つのキーは、ほかのキーと同じく `based-on` で引き継ぎ、書いた値が勝つ。
 
@@ -2057,16 +2057,21 @@ PDF では、`url` と、`based-on` をたどって `url` に行き着く文字�
 HTML と EPUB の `style.css` には、既定でない値を `break-after: avoid`、`break-inside: avoid`、`orphans`、`widows`、`break-before` として書く。
 プレーンテキストは何も出力しない。
 
-行の調整の二つのキーも、`based-on` で引き継ぎ、書いた値が勝つ（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)）。
+行の調整の四つのキーも、`based-on` で引き継ぎ、書いた値が勝つ（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
 
 | キー | 型 | 既定 | 意味 |
 | --- | --- | --- | --- |
 | `line-adjustment` | `"pull-in-first"`、`"balanced"` | `"pull-in-first"` | 行の調整で追い込みを優先するか、詰める行と空ける行を同じ式で量るか |
 | `stretch-limit` | 0 以上の整数（千分率） | 書かなければ上限なし | 行のグルーを伸ばす比の上限 |
+| `shrink-order` | グルーの種類の名前か名前の配列の配列 | `["word-space", "middle-dot", ["brackets", "comma"], "japanese-western"]` | 行を詰める段の順 |
+| `stretch-order` | 同上 | `["word-space", "japanese-western", "between-characters"]` | 行を空ける段の順 |
 
-表にない文字列、負の数、整数でない値は、その値の位置で G03006 とする。
+`line-adjustment` と `stretch-limit` で、表にない文字列、負の数、整数でない値は、その値の位置で G03006 とする。
+`shrink-order` と `stretch-order` で、配列でない値、文字列でも文字列の配列でもない要素、空の内側の配列、内側の配列の中の配列、グルーの種類の名前でない名前、同じキーに二度書いた名前（二度めの位置）は G03006 とする。
 組み込みの段落スタイル `code` には書けない（G03006）。
 `@style-def` にも同じキーを同じ検査で書ける。
+`@style-def` の `shrink-order` と `stretch-order` は、`shrink-order=word-space,comma` のように名前をコンマで区切った一つの値で書き、名前のそれぞれが一つの段になる。
+一つの段に二つ以上の種類を置く順は、`style.toml` にだけ書ける。
 HTML と EPUB には書き出さない。
 
 `rule-before` と `rule-after` は、「罫線の指定」の表か `false` をとる（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
@@ -2094,7 +2099,7 @@ PDF の本文を行の格子に載せるので、段落ごとに行送りを変�
 `style.toml` にすでに `[paragraph-styles.table]` を書いた本では、その定義がすべての表のセルに当たる。
 図版のキャプションは段落スタイル `caption` の `font` と `size` で組み、ほかの欄（`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ）はキャプションには適用されない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 傍注の本文も同じく、段落スタイル `sidenote` の `font` と `size` で組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
-PDF のキャプションと傍注の本文には、ほかに `aki-set`、`line-adjustment`、`stretch-limit`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` を、どの出力でも `regex-styles` を適用する。
+PDF のキャプションと傍注の本文には、ほかに `aki-set`、`line-adjustment`、`stretch-limit`、`shrink-order`、`stretch-order`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` を、どの出力でも `regex-styles` を適用する。
 表のセルには、セルの段落スタイル（`@style` を付けた表はその段落スタイル、ほかは `table`）の同じ欄を適用し、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ、罫線、背景は適用しない（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 セルの揃えは列の揃えで決め、`@style` で字下げを持つ段落スタイルを当てても字下げは適用しない。
 `line-breaks`、`space-between`、`space-before`、`space-after`、`align` は、`@style caption` や `@style sidenote` を付けた原稿の段落には適用される。
@@ -2577,7 +2582,7 @@ aki-set = "wide-waou"
 `body` の既定は `gyomatsu-yakumono-hankaku` で、ほかの段落スタイルは `based-on` から引き継ぐ。
 見出し、目次、索引、脚注の本文は `body` のセットで、図版のキャプションは `caption` の、傍注の本文は `sidenote` の段落スタイルのセットで組む。
 表のセルは、セルの段落スタイルのセットで組む。
-行の調整の `line-adjustment` と `stretch-limit` も、アキ量のセットと同じ段落スタイルから引く（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)）。
+行の調整の `line-adjustment`、`stretch-limit`、`shrink-order`、`stretch-order` も、アキ量のセットと同じ段落スタイルから引く（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
 目次の項目はその階層の `toc-1` から `toc-6` から、脚注と章末の注の本文、定義リストと箇条書きの段落は `body` から引く。
 `@style-def` でも `aki-set` を書けるが、セットそのものは `style.toml` にだけ定義できる。
 アキ量のセットは PDF でだけ有効で、HTML と EPUB はブラウザーの既定で組む。
@@ -3671,8 +3676,41 @@ PDF 経路の段落は、Knuth と Plass の方式で行に分ける（[golem-la
 段落スタイルに `stretch-limit` の値 m を書いた段落では、決まった分割の行を置くとき、グルーを伸ばす比を m/1000 で頭打ちにする（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)）。
 頭打ちにした行は、行長に足りない分を行末に残して行頭にそろい、縦組みでは行の頭にそろう。
 行分割の判定（不良度、罰点、段階、送り出し）は変えず、頭打ちにした行を diagnostic で報告しない。
-比はすべてのグルーに同じ割合で掛けるので、既定のアキ量のセットでは、1000 で仮名と漢字のあいだは 1/10 em、和欧間は最適の四分に 1/4 em まで、2500 で 1/4 em と 5/8 em まで空く。
+上限は、行に足す伸びの合計を行の伸びの合計の m/1000 倍で頭打ちにし、頭打ちにした量を後述の空ける順で配る（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
+すべてのグルーに同じ割合で配るとすれば、既定のアキ量のセットでは、1000 で仮名と漢字のあいだは 1/10 em、和欧間は最適の四分に 1/4 em まで、2500 で 1/4 em と 5/8 em まで空く量に当たる。
+段に分けて配るので、先の段のグルー（欧文間隔、和欧間）は、この割合より先に限度まで空く。
 両端を揃えない段落の行はグルーが伸びないので変わらず、段落の最後の行は段落の終わりのグルーが伸びを受け持つので、`align = "fully-justified"` の段落の最後の行のほかでは変わらない。
+
+決まった分割の行を置くときは、詰める量と空ける量を、JLReq の 3.8.3 と 3.8.4 の順に段に分けてグルーに配る（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
+行分割の項目のグルーは、それを作った空きの種類を持つ。
+種類は次の表の上から順に当てて、最初に当たるものとする。
+
+| 種類（`shrink-order` と `stretch-order` の名前） | グルー |
+| --- | --- |
+| `word-space` | 語間の空白（本文の中のコードと上付き、下付きの範囲の空白を除く） |
+| `middle-dot` | 前か後ろの字が中点類である空き |
+| `brackets` | 始め括弧類の前、終わり括弧類の後ろの空き |
+| `comma` | 読点類の後ろの空き |
+| `full-stop` | 行中の句点類の後ろの空き |
+| `paragraph-start` | 段落の先頭の空き（後ろの字の分類によらない） |
+| `japanese-western` | 和文の字と欧文の字のあいだの空き |
+| `between-characters` | ほかの和文の字のあいだの空き（仮名と漢字の前の伸び） |
+
+どれにも当たらないグルー（本文の中のコードの空白、段落の終わりのグルー）は、名前を持たない種類とする。
+段落スタイルの `shrink-order` と `stretch-order` の段を書いた順に並べ、どの段にも書かれていない種類（名前を持たない種類を含む）を一つの段にまとめて最後に置く。
+詰める行は、字幅の圧縮が取り分を取った残りを、前の段から、その段のグルーの縮みの合計まで、縮みに比例して詰める。
+すべての段で詰めても残る行ははみ出し、すべてのグルーを縮みの限度まで詰める。
+空ける行は、前の段から、その段のグルーの伸びの合計まで、伸びに比例して空ける。
+すべての段で限度まで空けても残る量は、伸びが正のすべてのグルーに、そのグルーの文字の大きさに比例して足し、どのグルーも同じ em の数だけ広がる（JLReq の 3.8.4 の d）。
+グルーの文字の大きさは、アキ量のセットの空きでは空きの量を決めた大きさ、語間の空白ではその空白の文字の大きさである。
+伸びが正で大きさを持つグルーがない行では、伸びに比例して足す。
+段落の終わりのグルーのある行は、そのグルーがすべての伸びを受け持つ。
+段の限度はアキ量のセットの最小と最大であり、既定のセットでは字間の伸びの限度は 1/10 em である。
+既定の詰める順は JIS X 4051 の四つの段であり、句点類の後ろと段落の先頭の空きは最後の段になる。
+`shrink-order = []` の段落は、すべてのグルーを同じ割合で詰める。
+行末の約物の空きは箱の端の固定の量なので、どの段にも入らない。
+行分割の判定は、グルーの伸びと縮みの合計だけを読むので、順を変えても行の分け方とページは変わらない。
+HTML と EPUB には書き出さない。
 
 最後の段階（はみ出す行を許す段階）では、不良度が 10000 未満の行を許容度の範囲として、罰点が最小の分割を探す。
 不良度が上限の 10000 に達する行は、罰点が上限で頭打ちになり、数文字だけの行と行長に近い行を区別できない。
@@ -3682,6 +3720,7 @@ PDF 経路の段落は、Knuth と Plass の方式で行に分ける（[golem-la
 TeX は、この場合にも行の始まりの候補を捨てる。
 行長に収まる分割がなくなった位置では、収まらない箱を次の行へ送り出し、その前のいちばん後ろの分割の候補で行を終える（JLReq の追い出し）。
 送り出した行は伸びの許すかぎり字間を空けて行長にそろえ、分割はその行の後ろからやり直す。
+空ける量は、前述の空ける順で段に分けて配る（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）。
 段落スタイルに `stretch-limit` を書いた段落では、上限を超える分を行末に残す（後述）。
 伸びるグルーのない行（一字だけの行、一つの欧文の語だけの行）は、行長に足りないまま行頭にそろえる（[docs/adr/0222](adr/0222-line-breaking-points-the-invariants-did-not-decide.md)）。
 行長に収まる分割の候補がない場合に限り、はみ出す行を作る。
@@ -3711,9 +3750,12 @@ dev と prod の両方で警告で、PDF を書き、notice ではないので `
 コードの空白は、`lkCode` の空白から作ったグルーとして見分け、空白の前の箱か後の箱がコードの外の箱でも判定する。
 `[code: 「 a]`、`[code: a 」]`、`[code: 漢 。]` は空白で改行せず、`[code: … …]` は空白で改行してよい。
 消した候補の位置でも、コードの空白は伸び縮みしないままである。
-欧文の語の箱の最初の字が U+2019 で、次の字が字か数字（一般カテゴリが L か Nd）なら、その字は語の頭のアポストロフィとし、行頭禁則を当てない（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)）。
+欧文の語の箱の最初の字が U+2019 で、つないだ語の中の次の字が字か数字（一般カテゴリが L か Nd）なら、その字は語の頭のアポストロフィとし、行頭禁則を当てない（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)、[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md)）。
+つないだ語は、あいだにほかの項目を挟まずに続く欧文の語の箱の字をつないだものである（[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md)）。
+箱が U+2019 と結合文字だけなら、次の字は後に続く欧文の語の箱の最初の字であり、後に続く箱がなければ次の字はない。
 次の字は、結合文字を除いて数える。
-`aaa ’tis` と `aaa ’90` は空白で改行してよく、`aaa ’` と `aaa ’.` の `’` は今のとおり終わり括弧類として空白で改行しない。
+`aaa ’tis` と `aaa ’90` は空白で改行してよく、`aaa ’[strong: tis]` も同じである。
+`aaa ’` と `aaa ’.` の `’` は今のとおり終わり括弧類として空白で改行しない。
 区間の外と欧文の区間で同じ規則を当て、本の言語は見ない。
 和文の区間の `’` は欧文の語の箱に入らないので、終わり括弧類のままである。
 空白を改行の位置から外しても、空白の幅と伸縮は変えず、和欧間の空きとアキ量のセットの空きを足さない。
@@ -3810,6 +3852,8 @@ HTML、EPUB、プレーンテキストは、ダッシュの文字をそのまま
 
 U+2010 と U+2013 は、引用符や em ダッシュと同じく、どちらかの側の最も近い文字が欧文の文字なら欧文の語に含める。
 これは言語の区間の外の規則であり、区間の中では区間の言語で決める（「原稿の中の言語」の節）。
+最も近い文字は、段落の字の並びで探す（[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md)）。
+探し方は「原稿の中の言語」の節の「両用の文字」に書く。
 そのため `lime‐tree` や `1990–2000` は一つの語として組み、和欧間の空きを入れない。
 和文に挟まれたハイフン類は、今までどおり行頭禁則の文字として一字ずつ組む。
 
@@ -3936,15 +3980,24 @@ L7 は、字幅の伸縮と突き出しのない入力の一回目と二回目�
 「既知の不具合」に載せた違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
 24 の部品の並びの一覧は空である（[golem-layout ADR 0032](golem-layout/adr/0032-drop-word-spaces-before-the-end-of-a-paragraph.md) で、一覧にあった「段落の終わりの語間の空白の前の行末禁則」を直した）。
 
+行の調整の順（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)）は、同じ 24 の部品の並びの部品 2 個までを、追い込みを優先して組み、A1 から A6 で調べる（`modules/golem-layout/test/AdjustOrderSpec.hs`）。
+どの順でも分割は同じ比で置いたときと同じで（A1）、各行の最後の項目の終わりは 1 sp の差の内にあり（A2）、グルーの量は限度の内にあって、段の順と段の中の割合と最後の段の em の数を守る（A3 から A6）。
+プルリクエストの CI は既定の順だけを 4 字までの行で調べ、毎晩の `enum.yml` は既定の順とその逆順とすべての種類を一つの段にした順を 5 字までの行で調べる。
+三つの順をプルリクエストで調べると、手元の環境で 5 秒かかり、x86-64 の実行環境で 10 秒の予算を超えるおそれがあるためである。
+グルーの種類と大きさを除いた `composeInlines` の項目が、この ADR の前と同じであること（A9）は、部品 2 個までの並びの項目のハッシュを `modules/golem-layout/test/golden/adjust-order-items.tsv` と比べて確かめる。
+
 語の途中のインラインの境目は、[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の W1 から W3 として、`modules/golem-layout/test/JoinedWordEnum.hs` で確かめる。
 部品は、`a`、`lime-tree`、`“`、`”`、`.`、空白、`-`、`‐`、`‑`、`–`、`—`、`’`、`あ`、ソフトハイフンの 14 である。
 隣り合う二つの部品のあいだを、同じテキストか文字スタイルの境目かの二通りに組む。
 組み方の環境は、区間（なし、`en`、`ja`）と `explicit-hyphen-penalty`（50、10000）の組み合わせで、禁則は strict とし、2 字から 4 字の行の幅で組む。
 L1 から L13 と W1 は分綴のパターンのある環境で、W1 と W2 はパターンのない環境で調べる。
-W2 は、両側の字が欧文の語の箱の字である位置の候補だけを比べ、境目で分けると欧文の語に入る字が変わる入力では調べない。
+W2 は、[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md) の E2 のとおり、すべての位置の候補を比べる。
+同じ環境で、境目で分けた段落と一つのテキストとで、欧文の語に入る字の列が等しいこと（E1）も調べる。
 空白の隣には境目を置かず、ソフトハイフンの隣に境目のある入力では L8 と W1 だけを調べる（どちらも「既知の不具合」）。
 プルリクエストの CI は部品 2 個まで、毎晩の `enum.yml` は部品 3 個まで調べる（`GOLEM_ENUM_JOINED_DEPTH`）。
 引用の印を部品に足した列挙（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）は、プルリクエストの CI で部品 2 個まで、毎晩の `enum.yml` で部品 3 個まで調べる（`GOLEM_ENUM_CITE_DEPTH`）。
+区間の外で両用の字が印のすぐ隣にある入力では、C2 を調べない。
+印は両用の字の最も近い字を探すのを止めるが、C2 が比べる、印を同じ文字列のテキストにした段落では止めないので、両用の字の役割が違うためである（[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md)）。
 
 本文の中のコードの並びも、同じ述語と、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の C1 から C8 と、[golem-layout ADR 0045](golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md) の J1 から J7 で調べる（C3 と C4 は J3 と J5 に置き換えた）。
 部品は、和文の `漢`、`あ`、`「`、`」`、`。`、`、`、`ー`、`ぁ`、`…` と、欧文の `a`、`ab`、`1`、`/`、`_`、`-`、`.`、`"` と、空白の 18 である（`-`、`.`、`1` は 0045 で足した）。
@@ -4012,9 +4065,19 @@ He said nothing, and the silence was the answer.
 
 PDF では、区間の言語で次のように組む（golem-layout の `charClassIn`）。
 
-- 欧文の区間：両用の文字は欧文（`western`）とし、隣の欧文の文字と一つの語の箱にする。役割の欧文のフォントで組む。両用の文字の隣には、和欧間の空きもアキ量のセットの空きも入れない。両用の文字の隣での改行は、その字の和文の文字クラス（始め括弧類なら後ろで改行しない、など）の禁則に従う（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。ただし、語の頭のアポストロフィ（欧文の語の箱の最初の U+2019 で、次の字が字か数字のもの）は、欧文の字として判定し、行頭禁則を当てない（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)）。突き出しは欧文の約物の表に従い、表にない `«»‹›…` は突き出さない。
+- 欧文の区間：両用の文字は欧文（`western`）とし、隣の欧文の文字と一つの語の箱にする。役割の欧文のフォントで組む。両用の文字の隣には、和欧間の空きもアキ量のセットの空きも入れない。両用の文字の隣での改行は、その字の和文の文字クラス（始め括弧類なら後ろで改行しない、など）の禁則に従う（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。ただし、語の頭のアポストロフィ（欧文の語の箱の最初の U+2019 で、つないだ語の中の次の字が字か数字のもの）は、欧文の字として判定し、行頭禁則を当てない（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)）。突き出しは欧文の約物の表に従い、表にない `«»‹›…` は突き出さない。
 - 和文の区間：両用の文字は和文の文字クラスの一字とする。`“‘«‹` は始め括弧類、`”’»›` は終わり括弧類、`—…` は分離禁止文字、`–‐‑` はハイフン類である。隣が欧文の文字でも欧文の語に含めず、和文のフォントで組む。
-- 区間の外：今のとおり、最も近い文字で決める。本の言語は見ない（分綴のパターンは本の言語で引く。「分綴」の節）。`‹›` は漢字等のまま組む。
+- 区間の外：どちらかの側の最も近い文字（両用の文字を飛ばした先）が欧文の文字なら、欧文の語に含める。本の言語は見ない（分綴のパターンは本の言語で引く。「分綴」の節）。`‹›` は漢字等のまま組む。
+
+区間の外の最も近い文字は、段落の字の並びで探す（[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md)）。
+字の並びは、段落のインラインを順にたどり、テキストの字をつないだものである。
+文字スタイル、色、リンク、言語の区間、圏点、解決した参照の境目は、字の並びを切らない。
+項目を作らないインライン（索引の印などのアンカーと、ソフトハイフン）は飛ばす。
+ルビ、縦中横、番号、本文の中のコード、注の印、引用の印、強制改行、`[aki]` に当たったら、そこで探すのをやめ、その側に欧文の字はないものとする。
+空白に当たったときと、段落の端に着いたときも、その側に欧文の字はないものとする。
+見つけた字が欧文の字かは、その字のインラインの見た目（区間の言語を含む）で決める。
+そのため `x “[strong: Ham]” y` の引用符は、一つのテキストの `x “Ham” y` と同じく欧文の語に入り、`a[strong: —]b` の `—` も `a—b` と同じく欧文の語に入る。
+ルビやコードの向こうの字は見ないので、`a[code: x][strong: —]` の `—` は欧文の語に入らない。
 
 両用の文字でない文字の扱いは、区間の言語で変えない。
 区間の境目は語の箱の境目になる。
@@ -6249,7 +6312,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **二つのインラインの空白が、二つのグルーになる**：一つのテキストの中の続く空白は一つのグルーにまとめるが、`a ` と `[strong:  b]` のように境目の両側にある空白は、それぞれグルーになる。[docs/adr/0209](adr/0209-line-breaking-invariants-by-exhaustive-small-inputs.md) の L11 に反する。[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の境目の列挙で見つかったので、その列挙は空白の隣に境目を置かない。
 - **インラインの境目の隣のソフトハイフンを、述語と組版が別の語で読む**：ソフトハイフンの述語（I3 まで広げた L9 と I4、[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）は段落の字の並びでソフトハイフンを読み、境目の前後のソフトハイフンを語の中にあるとみなす。組版は、インラインごとの語で読むので、同じソフトハイフンを語の端にあるとみなす。`a\xAD` と `[strong: a]` で、述語は分割を求め、組版は分けない。どちらに合わせるかは決めていない（[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) の境目の列挙で見つかった）。
-- **区間の外で、両用の字の役割がインラインごとに決まる**：区間の外の引用符、アポストロフィ、ハイフン類、ダッシュが欧文の語に入るかは、同じテキストの中の最も近い字で決める（[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。`a` と `[strong: —]` と `b` では、`—` は和文の分離禁止文字になり、一つのテキストの `a—b` と行の分け方が違う。区間の中の `’` だけの箱も、後の箱の字を見ないので、語の頭のアポストロフィ（[golem-layout ADR 0030](golem-layout/adr/0030-apostrophes-at-word-starts-are-not-closing-brackets.md)）にならない。[ADR 0280](adr/0280-breaks-between-latin-word-boxes-follow-the-joined-word.md) は欧文の語の箱のあいだだけを決めたので、これらは決めていない。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合

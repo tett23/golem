@@ -146,7 +146,7 @@ boxesAndGlue its = [x | it <- its, x <- shape it]
   where
     shape = \case
       Box w c -> [('B', unSp w, 0, 0, bcText c)]
-      Glue w y z -> [('G', unSp w, unSp y, unSp z, "")]
+      Glue w y z _ _ -> [('G', unSp w, unSp y, unSp z, "")]
       Penalty {} -> []
 
 w34Tests :: [TestTree]
@@ -163,7 +163,7 @@ itemsShape = map shape
   where
     shape = \case
       Box w c -> ('B', unSp w, 0, 0, bcText c, 0)
-      Glue w y z -> ('G', unSp w, unSp y, unSp z, "", 0)
+      Glue w y z _ _ -> ('G', unSp w, unSp y, unSp z, "", 0)
       Penalty w n _ -> ('P', unSp w, 0, 0, "", n)
 
 w5Tests :: [TestTree]

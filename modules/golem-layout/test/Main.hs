@@ -1,5 +1,6 @@
 module Main (main) where
 
+import AdjustOrderSpec (adjustOrderTests)
 import AkiTableSpec (akiTableTests)
 import AlignSpec (alignTests)
 import CharClassSpec (charClassTests)
@@ -82,7 +83,7 @@ box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing n
 
 -- | Words of the given widths separated by interword glue.
 paragraph :: [Sp] -> [Item]
-paragraph ws = concat [box w : [Glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
+paragraph ws = concat [box w : [glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 refBox :: Text -> Sp -> Item
 refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
@@ -184,8 +185,8 @@ bruteScore ps lw items brks = go 0 2 False (-1) brks 0 []
           seg = [at j | j <- [s .. b - 1]]
           penW = case at b of Penalty w _ _ -> w; _ -> 0
           natural = sum (map itemWidth seg) + penW
-          y = sum [st | Glue _ st _ <- seg]
-          z = sum [sh | Glue _ _ sh <- seg]
+          y = sum [st | Glue _ st _ _ _ <- seg]
+          z = sum [sh | Glue _ _ sh _ _ <- seg]
           target = lw line
           short = target - natural
           (bad, shrinking, over)
@@ -400,6 +401,7 @@ tests =
       codeStopTests,
       urlBreakTests,
       pullInTests,
+      adjustOrderTests,
       unbreakablePairsTests,
       numberUnitTests,
       linkTests,
@@ -450,7 +452,7 @@ tests =
             brPositions r @?= [3, length items - 1]
             brDemerits r @?= 200,
           testCase "equal demerits: the path TeX keeps, here four lines over three (ADR 0008)" $ do
-            let fil = Glue 0 filStretch 0
+            let fil = glue 0 filStretch 0
                 items = [box 20, Penalty 0 0 NoHyphen, box 10, fil, Penalty 0 0 NoHyphen, box 10, fil, Penalty 0 0 NoHyphen, box 20] <> finish
                 r = breakParagraph defaultParams {pLinePenalty = 0, pAdjDemerits = 0} (const 20) items
             length (brLines r) @?= 4
@@ -472,7 +474,7 @@ tests =
             fmap snd (bruteBest noPretol (const 90) items) @?= Just (brPositions r),
           testCase "equal demerits: the loosest last line wins, as in TeX (ADR 0010)" $ do
             -- after B: decent then tight; after C: tight then decent; both 484
-            let items = [box 50, Penalty 0 infPenalty NoHyphen, Glue 0 10 10, box 50, Penalty 0 0 NoHyphen, box 6, Penalty 0 0 NoHyphen, box 50, Penalty 0 infPenalty NoHyphen, Glue 0 10 10, box 50] <> finish
+            let items = [box 50, Penalty 0 infPenalty NoHyphen, glue 0 10 10, box 50, Penalty 0 0 NoHyphen, box 6, Penalty 0 0 NoHyphen, box 50, Penalty 0 infPenalty NoHyphen, glue 0 10 10, box 50] <> finish
                 r = breakParagraph defaultParams {pLinePenalty = 0, pAdjDemerits = 0} (const 100) items
             brPositions r @?= [6, length items - 1]
             brDemerits r @?= 484
@@ -493,7 +495,7 @@ tests =
           testCase "a very loose line (badness 100) before a decent one adds adj-demerits, as the search finds" $ do
             -- 40 + 50 with a stretch of 10 on a measure of 100: badness 100, very loose (0),
             -- two classes from the decent (2) start before it and the decent last line after it
-            let items = [box 40, Glue 0 10 0, box 50, Glue 0 10 0, box 50] <> finish
+            let items = [box 40, glue 0 10 0, box 50, glue 0 10 0, box 50] <> finish
                 r = breakParagraph noPretol (const 100) items
             badness 10 10 @?= 100
             brPositions r @?= [3, length items - 1]
@@ -520,8 +522,8 @@ tests =
           testCase "the last pass pushes out a box that does not fit, rather than leave a near-empty line (JLReq 追い出し)" $ do
             -- five boxes and a box of 55: no line of 100 holds them within the tolerance; after
             -- one box alone, the next line would be merely loose
-            let small = concat [[box 10, Glue 0 2 0] | _ <- [1 .. 5 :: Int]]
-                items = small <> [box 55, Glue 0 2 0, box 10] <> finish
+            let small = concat [[box 10, glue 0 2 0] | _ <- [1 .. 5 :: Int]]
+                items = small <> [box 55, glue 0 2 0, box 10] <> finish
                 r = breakParagraph defaultParams (const 100) items
             brPass r @?= 4
             [[w | Box w _ <- lineItems l] | l <- brLines r] @?= [replicate 5 10, [55, 10]]
@@ -533,12 +535,12 @@ tests =
             brPass r @?= 4
             [[w | Box w _ <- lineItems l] | l <- brLines r] @?= [[30, 30], [30, 30]],
           testCase "a penalty inside a line takes no width; at the line end it does" $ do
-            let items = [box 30, Penalty 5 50 (PatternHyphen 0), box 30, Glue 6 3 2, box 30, Penalty 5 50 (PatternHyphen 0), box 30] <> finish
+            let items = [box 30, Penalty 5 50 (PatternHyphen 0), box 30, glue 6 3 2, box 30, Penalty 5 50 (PatternHyphen 0), box 30] <> finish
                 r = breakParagraph defaultParams (const 1000) items
             case brLines r of
               [l] -> [x | (Box {}, x) <- placeLine l] @?= [0, 30, 66, 96]
               ls -> assertFailure (show (length ls))
-            let r2 = breakParagraph noPretol (const 70) ([box 30, Glue 6 3 2, box 30, Penalty 5 50 (PatternHyphen 0), box 30] <> finish)
+            let r2 = breakParagraph noPretol (const 70) ([box 30, glue 6 3 2, box 30, Penalty 5 50 (PatternHyphen 0), box 30] <> finish)
             case brLines r2 of
               (l : _) -> case reverse (lineItems l) of
                 (Penalty 5 _ (PatternHyphen _) : _) -> pure ()
@@ -580,7 +582,7 @@ tests =
               parseScaled "104.05528fil" @?= 104 * 65536 + 3623,
             testCase "reference words become the indent box, the words with interword glue, and the paragraph end" $
               paragraphItems (Words (6, 3, 2) 20 0 [WordBox "a" 10, WordBox "b" 12])
-                @?= [refBox "" 20, refBox "a" 10, Glue 6 3 2, refBox "b" 12] <> finish,
+                @?= [refBox "" 20, refBox "a" 10, glue 6 3 2, refBox "b" 12] <> finish,
             testCase "an exhyphen record becomes an explicit hyphen penalty (ADR 0008)" $ do
               fmap wBoxes (parseWords "space 6 3 2\nparindent 20\nwhole 0\nbox 7 lime-\nexhyphen\nbox 5 tree\n")
                 @?= Right [WordBox "lime-" 7, WordExHyphen, WordBox "tree" 5]
@@ -716,7 +718,7 @@ tests =
             (breakBeforeBox strict 1, breakBeforeBox strict 3) @?= (False, False)
             (breakBeforeBox loose 1, breakBeforeBox loose 3) @?= (True, True),
           testCase "punctuation spacing: closing then opening keeps a half em, closing then closing none" $ do
-            let glues t = [w | Glue w _ _ <- compose (defaultComposeEnv fs) t, w > 0]
+            let glues t = [w | Glue w _ _ _ _ <- compose (defaultComposeEnv fs) t, w > 0]
             glues "」「" @?= [Sp (unSp fs `div` 2)]
             glues "）」" @?= []
             glues "あ。」" @?= [],
@@ -728,7 +730,7 @@ tests =
             [bcText c | Box _ c <- compose (defaultComposeEnv fs) "彼は“あ”と"] @?= ["彼", "は", "“", "あ", "”", "と"],
           testCase "a quarter em between Japanese and Latin text" $ do
             let items = compose (defaultComposeEnv fs) "日本Golem語"
-            [w | Glue w _ _ <- items, w > 0, w < filStretch] @?= [Sp (unSp fs `div` 4), Sp (unSp fs `div` 4)],
+            [w | Glue w _ _ _ _ <- items, w > 0, w < filStretch] @?= [Sp (unSp fs `div` 4), Sp (unSp fs `div` 4)],
           testCase "ruby wider than its base overhangs, then widens the base" $ do
             let seg base r = RubySegment [Text sp base] (Just r)
                 rubyW e segs = [w | Box w c <- fst (composeInlines e [sp0 "の", Ruby sp () segs, sp0 "の"]), boxKind c `elem` [KindRuby, KindGroupRuby]]
@@ -772,12 +774,12 @@ tests =
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
             ws <- forAll (Gen.list (Range.linear 3 12) (Sp <$> Gen.integral (Range.linear 20 70)))
-            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | w <- ws] `interleave` Glue 6 3 2 <> finish
+            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | w <- ws] `interleave` glue 6 3 2 <> finish
                 r = breakParagraph defaultParams {pExpansion = Just (20, 5)} (const 150) items
             mapM_ (\l -> assert (abs (lineExpansion l) <= 20 && lineExpansion l `mod` 5 == 0)) (brLines r),
           testCase "expansion lowers the spread of adjustment ratios" $ do
             let ws = [23, 41, 37, 19, 52, 33, 28, 45, 31, 26, 39, 22, 48, 35, 29, 41]
-                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | w <- ws] `interleave` Glue 600 300 200 <> finish
+                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | w <- ws] `interleave` glue 600 300 200 <> finish
                 variance ps =
                   let rs = map glueRatio (init (brLines (breakParagraph ps (const 15000) items)))
                       m = sum rs / fromIntegral (length rs)
@@ -923,7 +925,7 @@ tests =
           testCase "the space after a closing bracket follows the bracket's size" $ do
             let env = lookEnv (\lk -> \case CharStyle {} -> lk {lkSize = 2 * lkSize lk}; _ -> lk)
                 items = fst (composeInlines env [CharStyle sp "big" [sp0 "」"], sp0 "あ"])
-            [w | Glue w _ _ <- items, w > 0, w < filStretch] @?= [fs],
+            [w | Glue w _ _ _ _ <- items, w > 0, w < filStretch] @?= [fs],
           testCase "a look boundary inside a Latin word is no break" $ do
             let env = lookEnv (\lk -> \case CharStyle _ "bold" _ -> lk {lkSynthetic = both, lkLatinSynthetic = both}; _ -> lk)
                 items = fst (composeInlines env [bold [sp0 "Gol"], sp0 "em"])
@@ -943,7 +945,7 @@ tests =
                 marks = \case
                   Box _ c -> [T.unpack (bcText c)]
                   Penalty _ p _ | p >= infPenalty -> ["+inf"] | p <= negate infPenalty -> ["-inf"]
-                  Glue _ st _ | st >= filStretch -> ["fil"]
+                  Glue _ st _ _ _ | st >= filStretch -> ["fil"]
                   _ -> []
             take 7 (concatMap marks items) @?= ["ab", "+inf", "fil", "-inf", "cd", "+inf", "fil"],
           testCase "a forced break always breaks the line (docs/adr ADR 0016)" $ do
@@ -955,8 +957,8 @@ tests =
             let env = lookEnv const
                 items = fst (composeInlines env [sp0 "あい", LineBreak sp, sp0 "cd"])
                 quarter = Sp (unSp fs `div` 4)
-            [w | Glue w _ _ <- items, w == quarter] @?= []
-            assertBool "the space appears without the break" (not (null [w | Glue w _ _ <- fst (composeInlines env [sp0 "あいcd"]), w == quarter]))
+            [w | Glue w _ _ _ _ <- items, w == quarter] @?= []
+            assertBool "the space appears without the break" (not (null [w | Glue w _ _ _ _ <- fst (composeInlines env [sp0 "あいcd"]), w == quarter]))
         ],
       testGroup
         "heading blocks (golem-driver ADR 0003)"
@@ -1411,7 +1413,7 @@ characterFeatureTests =
           plain = defaultComposeEnv fs
       [(w, bcEdgeEnd c) | Box w c <- compose env "あ"] @?= [(fs + tenth, negate tenth)]
       let wordBoxes e = [(w, bcEdgeEnd c) | Box w c <- compose e "abc def"]
-          gluesOf e = [w | Glue w _ _ <- take 3 (compose e "abc def")]
+          gluesOf e = [w | Glue w _ _ _ _ <- take 3 (compose e "abc def")]
       wordBoxes env @?= [(w + 3 * tenth, negate tenth) | (w, _) <- wordBoxes plain]
       gluesOf env @?= [w + tenth | w <- gluesOf plain],
     testCase "ruby and tate-chu-yoko get no tracking; a note mark gets it after each character but the last (docs/adr/0177)" $ do
@@ -1620,13 +1622,13 @@ rubyTests =
                 lineOf items w = case brLines (breakParagraph params (const w) (items <> finish)) of
                   [l] -> pure l
                   other -> assertFailure (show (length other))
-            start <- lineOf [edgeBox 10 (3, 0), Glue 5 5 5, box 10, Glue 5 5 5, box 10] 38
+            start <- lineOf [edgeBox 10 (3, 0), glue 5 5 5, box 10, glue 5 5 5, box 10] 38
             take 1 (boxSpans start) @?= [(3, 13)]
             map snd (drop 2 (boxSpans start)) @?= [38]
             lineEdge start @?= (3, 0)
-            middle <- lineOf [box 10, Glue 5 5 5, edgeBox 10 (3, 3), Glue 5 5 5, box 10] 40
+            middle <- lineOf [box 10, glue 5 5 5, edgeBox 10 (3, 3), glue 5 5 5, box 10] 40
             map fst (boxSpans middle) @?= [0, 15, 30]
-            end <- lineOf [box 10, Glue 5 5 5, box 10, Glue 5 5 5, edgeBox 10 (0, 3)] 38
+            end <- lineOf [box 10, glue 5 5 5, box 10, glue 5 5 5, edgeBox 10 (0, 3)] 38
             map snd (drop 2 (boxSpans end)) @?= [35]
         )
         [False, True]
@@ -1668,7 +1670,7 @@ convert it.
 referenceNormalize :: ComposeEnv -> [Item] -> [Item]
 referenceNormalize env items = go Nothing [it | it@Box {} <- items] <> lineEndItems
   where
-    lineEndItems = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+    lineEndItems = [Penalty 0 infPenalty NoHyphen, glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
     fsz = ceFontSize env
     em = zwToSp fsz
     go _ [] = []
@@ -1678,7 +1680,7 @@ referenceNormalize env items = go Nothing [it | it@Box {} <- items] <> lineEndIt
       _ -> x : go Nothing rest
     sizeOf c = toRational (unSp (lkSize (bcLook c)))
     leading c = case textClass c of
-      Just cls | fst (punctSpace cls) > 0 -> let w = Sp (round (fst (punctSpace cls) * sizeOf c)) in [Glue w 0 w]
+      Just cls | fst (punctSpace cls) > 0 -> let w = Sp (round (fst (punctSpace cls) * sizeOf c)) in [glue w 0 w]
       _ -> []
     trailingSpace c = maybe 0 (snd . punctSpace) (textClass c) * sizeOf c
     leadingSpace c = maybe 0 (fst . punctSpace) (textClass c) * sizeOf c
@@ -1707,16 +1709,16 @@ referenceNormalize env items = go Nothing [it | it@Box {} <- items] <> lineEndIt
           waou = (pc == Just Western && isJa cc && isJust cc && space == 0 && notPunct cc) || (cc == Just Western && isJa pc && isJust pc && space == 0 && notPunct pc)
           pen = [Penalty 0 infPenalty NoHyphen | noBreak]
        in if space > 0
-            then pen <> [Glue (Sp (round space)) 0 (Sp (round space))]
+            then pen <> [glue (Sp (round space)) 0 (Sp (round space))]
             else
               if waou
-                then pen <> [Glue (em (1 / 4)) (em (1 / 4)) (em (1 / 8))]
+                then pen <> [glue (em (1 / 4)) (em (1 / 4)) (em (1 / 8))]
                 else
                   if noBreak
                     then []
                     else
                       if bothJapanese pc cc
-                        then [Glue 0 (em (1 / 10)) 0]
+                        then [glue 0 (em (1 / 10)) 0]
                         else [Penalty 0 0 NoHyphen | not (bcExpandable p && bcExpandable c)]
     bothJapanese pc cc = maybe False (/= Western) pc && maybe False (/= Western) cc
     combined post pre pc cc
@@ -1768,6 +1770,12 @@ oldDefaultAkiSet = foldl' (\s (b, a, x) -> withAkiRule b a x s) cleared rules
 akiWith :: [Text] -> [Text] -> Aki.Aki -> AkiSet
 akiWith bs as a = withAkiRule (concatMap akiPositions bs) (concatMap akiPositions as) a defaultAkiSet
 
+{- | The items with every glue of no kind and no size (docs/adr/0278): for
+the tests of the amounts of aki, which the kinds do not change.
+-}
+unkinded :: [Item] -> [Item]
+unkinded = map (\case Glue w y z _ _ -> glue w y z; it -> it)
+
 akiEnv :: AkiSet -> ComposeEnv
 akiEnv s = (defaultComposeEnv fs) {ceAkiSet = s}
 
@@ -1781,19 +1789,19 @@ akiTests :: [TestTree]
 akiTests =
   [ testCase "gyomatsu-yakumono-hankaku composes as before but for 「「, 」・, ・「, ・」, ・。, ・、 and the pairs of the ideographic space (kinsoku strict; golem-layout ADR 0039 B1-B3, ADR 0040 A1, ADR 0041 S1 S2)" $ do
       let env = akiEnv defaultAkiSet
-      [t | t <- akiTexts, compose env t /= referenceNormalize env (compose env t)] @?= (jlreqPairs <> spacePairs) `orderedAs` akiTexts
+      [t | t <- akiTexts, unkinded (compose env t) /= unkinded (referenceNormalize env (compose env t))] @?= (jlreqPairs <> spacePairs) `orderedAs` akiTexts
       forM_ jlreqPairs $ \t -> between (compose env t) @?= jlreqBetween t
       forM_ spacePairs $ \t -> (t, between (compose env t)) @?= (t, [Penalty 0 0 NoHyphen]),
     testCase "with kinsoku loose only Japanese before small kana and the long vowel mark, and 「「, 」・, ・「, ・」, ・。, ・、 and the pairs of the ideographic space differ (golem-layout ADR 0039, ADR 0040 A1, ADR 0041 S1 S2)" $ do
       let env = (akiEnv defaultAkiSet) {ceKinsokuStrict = False}
-          differ = [t | t <- akiTexts, compose env t /= referenceNormalize env (compose env t)]
+          differ = [t | t <- akiTexts, unkinded (compose env t) /= unkinded (referenceNormalize env (compose env t))]
           ja = filter (`notElem` ("「」・。、A" :: String)) akiRepresentatives
       differ @?= ([T.pack [a, b] | a <- ja, b <- "ーぁ"] <> jlreqPairs <> spacePairs) `orderedAs` akiTexts
       forM_ jlreqPairs $ \t -> between (compose env t) @?= jlreqBetween t
       forM_ spacePairs $ \t -> (t, between (compose env t)) @?= (t, [Penalty 0 0 NoHyphen])
-      let stretch = Glue 0 (Sp (unSp fs `div` 10)) 0
+      let stretch = glue 0 (Sp (unSp fs `div` 10)) 0
           asBreak it = if it == stretch then Penalty 0 0 NoHyphen else it
-      [t | t <- differ, t `notElem` jlreqPairs, t `notElem` spacePairs, compose env t /= map asBreak (referenceNormalize env (compose env t))] @?= [],
+      [t | t <- differ, t `notElem` jlreqPairs, t `notElem` spacePairs, unkinded (compose env t) /= map asBreak (unkinded (referenceNormalize env (compose env t)))] @?= [],
     testCase "B1: no aki between two opening brackets in gyomatsu-yakumono-hankaku (golem-layout ADR 0039)" $
       Aki.akiBetween defaultAkiSet (Aki.AkiChar Opening) (Aki.AkiChar Opening) @?= Aki.Aki 0 0 0,
     testCase "B2: a quarter em between a closing bracket and a middle dot (golem-layout ADR 0039)" $
@@ -1825,7 +1833,7 @@ akiTests =
             other -> error (show other)
       [(a, b) | a <- "・：；", b <- "」）。、", gap (T.pack ['漢', a, b, '漢']) /= [Penalty 0 infPenalty NoHyphen, quarterGlue]] @?= []
       let big = (akiEnv defaultAkiSet) {ceRestyle = \lk -> \case CharStyle {} -> lk {lkSize = 2 * lkSize lk}; _ -> lk}
-          bigQuarter = Glue (Sp (unSp fs `div` 2)) 0 (Sp (unSp fs `div` 2))
+          bigQuarter = glue (Sp (unSp fs `div` 2)) 0 (Sp (unSp fs `div` 2))
           bigGap is = case gaps (fst (composeInlines big is)) of
             [_, g, _] -> g
             other -> error (show other)
@@ -1855,26 +1863,26 @@ akiTests =
     testCase "S8: a set based on the default with a rule for ideographic-space and opening keeps its value (golem-layout ADR 0041)" $ do
       let s = akiWith ["ideographic-space"] ["opening"] (Aki.Aki 0 (1 / 2) (1 / 2))
           half = Sp (unSp fs `div` 2)
-      between (compose (akiEnv s) "　「") @?= [Glue half 0 half],
+      between (compose (akiEnv s) "　「") @?= [glue half 0 half],
     testCase "B6: nothing between consecutive opening brackets; the first keeps its aki (golem-layout ADR 0039)" $ do
       let env = akiEnv defaultAkiSet
           half = Sp (unSp fs `div` 2)
-      gaps (compose env "漢（「あ") @?= [[Glue half 0 half], [], []]
-      gaps (compose env "漢（「『あ") @?= [[Glue half 0 half], [], [], []]
+      gaps (compose env "漢（「あ") @?= [[glue half 0 half], [], []]
+      gaps (compose env "漢（「『あ") @?= [[glue half 0 half], [], [], []]
       let start = compose env "「（あ"
-      take 1 start @?= [Glue half 0 half]
+      take 1 (unkinded start) @?= [glue half 0 half]
       gaps start @?= [[], []],
     testCase "B7: a set based on the default with a rule for opening and opening keeps its value (golem-layout ADR 0039)" $ do
       let s = akiWith ["opening"] ["opening"] (Aki.Aki 0 (1 / 2) (1 / 2))
           half = Sp (unSp fs `div` 2)
-      between (compose (akiEnv s) "（「") @?= [Penalty 0 infPenalty NoHyphen, Glue half 0 half],
+      between (compose (akiEnv s) "（「") @?= [Penalty 0 infPenalty NoHyphen, glue half 0 half],
     testCase "a set with (四分, 三分, 二分) between Japanese and Latin" $ do
       let s = withAkiRule (akiPositions "western") (akiPositions "japanese") (Aki.Aki (1 / 4) (1 / 3) (1 / 2)) (akiWith ["japanese"] ["western"] (Aki.Aki (1 / 4) (1 / 3) (1 / 2)))
           third = Sp (round (toRational (unSp fs) / 3))
           half = Sp (unSp fs `div` 2)
           quarter = Sp (unSp fs `div` 4)
-      [g | g@Glue {} <- compose (akiEnv s) "漢A", itemStretch g < filStretch] @?= [Glue third (half - third) (third - quarter)]
-      [g | g@Glue {} <- compose (akiEnv s) "A漢", itemStretch g < filStretch] @?= [Glue third (half - third) (third - quarter)],
+      [g | g@Glue {} <- compose (akiEnv s) "漢A", itemStretch g < filStretch] @?= [Glue third (half - third) (third - quarter) JapaneseWesternGlue fs]
+      [g | g@Glue {} <- compose (akiEnv s) "A漢", itemStretch g < filStretch] @?= [Glue third (half - third) (third - quarter) JapaneseWesternGlue fs],
     testCase "gyomatsu-yakumono-zenkaku keeps a half em after a closing bracket at the line end" $ do
       let txt = "あいう」えおかき"
           firstLine s w = case brLines (breakParagraph defaultParams (const w) (compose (akiEnv s) txt)) of
@@ -1894,7 +1902,8 @@ akiTests =
     testCase "the space after a larger closing bracket is in the bracket's size" $ do
       let env = (akiEnv defaultAkiSet) {ceRestyle = \lk -> \case CharStyle _ "big" _ -> lk {lkSize = 2 * fs}; _ -> lk}
           items = fst (composeInlines env [CharStyle sp "big" [sp0 "」"], sp0 "漢"])
-      [g | g@Glue {} <- items, itemStretch g < filStretch] @?= [Glue fs 0 fs],
+      -- a space after a closing bracket, in the size of the bracket (docs/adr/0278)
+      [g | g@Glue {} <- items, itemStretch g < filStretch] @?= [Glue fs 0 fs BracketsGlue (2 * fs)],
     testCase "[aki] is an empty box of its width, with no break and no aki of the set (golem-layout ADR 0012)" $ do
       let items = fst (composeInlines (akiEnv defaultAkiSet) [sp0 "漢", Aki sp (AkiZw (1 / 5)), sp0 "A"])
           shapeOf = \case
@@ -1909,8 +1918,8 @@ akiTests =
     testCase "a space of no advance is not taken for an [aki] (golem-layout ADR 0012)" $ do
       let zeroSpace env = env {ceAdvance = \lk c -> if c == ' ' then 0 else ceAdvance env lk c}
           base = akiEnv defaultAkiSet
-          glueless = map (\case Glue {} -> Glue 0 0 0; it -> it)
-      [g | g@Glue {} <- compose (zeroSpace base) "A 漢", itemStretch g < filStretch] @?= [Glue 0 0 0]
+          glueless = map (\case Glue {} -> glue 0 0 0; it -> it)
+      [g | g@Glue {} <- compose (zeroSpace base) "A 漢", itemStretch g < filStretch] @?= [Glue 0 0 0 WordSpaceGlue fs]
       glueless (compose (zeroSpace base) "A 漢") @?= glueless (compose base "A 漢")
       glueless (compose (zeroSpace base) "A 「漢") @?= glueless (compose base "A 「漢"),
     testCase "the first character after an [aki] at the paragraph start is the paragraph's first (golem-layout ADR 0012)" $ do
@@ -1932,7 +1941,7 @@ akiTests =
         ls -> assertFailure (show ls),
     testCase "an [aki] inside a line breaks as the penalty and the fixed glue did (golem-layout ADR 0012)" $ do
       let asGlue = concatMap $ \case
-            Box w c | boxKind c == KindAki -> [Penalty 0 infPenalty NoHyphen, Glue w 0 0]
+            Box w c | boxKind c == KindAki -> [Penalty 0 infPenalty NoHyphen, glue w 0 0]
             it -> [it]
           texts l = T.concat [bcText c | Box _ c <- lineItems l]
           outcome its w = [(texts l, lineRatio l, lineEdge l) | l <- brLines (breakParagraph defaultParams (const w) its)]
@@ -1956,9 +1965,9 @@ akiTests =
       "「「" -> []
       "・「" -> [quarterGlue]
       _ -> [Penalty 0 infPenalty NoHyphen, quarterGlue]
-    quarterGlue = Glue (Sp (unSp fs `div` 4)) 0 (Sp (unSp fs `div` 4))
+    quarterGlue = glue (Sp (unSp fs `div` 4)) 0 (Sp (unSp fs `div` 4))
     -- the items between the first two boxes
-    between its = takeWhile (not . isBox) (drop 1 (dropWhile (not . isBox) its))
+    between its = takeWhile (not . isBox) (drop 1 (dropWhile (not . isBox) (unkinded its)))
     isBox = \case
       Box {} -> True
       _ -> False
@@ -1970,8 +1979,10 @@ akiTests =
     -- ADR 0041 changes: a break with no glue in place of the aki or the stretch
     spacePairs = ["」　", "゠　", "！　", "…　", "々　", "ー　", "ぁ　", "　　", "あ　", "漢　", "A　", "　「", "　…", "　あ", "　漢", "　A"] `orderedAs` akiTexts
     -- the items between each box and the next
-    gaps its = case [i | (i, Box {}) <- zip [0 :: Int ..] its] of
+    gaps its0 = case [i | (i, Box {}) <- zip [0 :: Int ..] its] of
       ixs -> zipWith (\a b -> take (b - a - 1) (drop (a + 1) its)) ixs (drop 1 ixs)
+      where
+        its = unkinded its0
     isLineEnd = \case
       Penalty _ p _ -> p >= infPenalty
       _ -> False
@@ -2047,7 +2058,7 @@ codeTests =
     testCase "code: no aki inside, the advances as they are" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True}}
           its = compose env "a漢b"
-      [w | Glue w _ _ <- takeWhile (not . isFinalPenalty) its] @?= []
+      [w | Glue w _ _ _ _ <- takeWhile (not . isFinalPenalty) its] @?= []
       sum [w | Box w _ <- its] @?= Sp (unSp fs `div` 2) + fs + Sp (unSp fs `div` 2),
     -- the padding of inline code (golem-driver ADR 0029)
     testCase "inline code: the padding is added to the first and the last box, with or without a background" $
@@ -2069,7 +2080,7 @@ codeTests =
             Box {} -> True
             _ -> False
       between "code" @?= between "plain"
-      assertBool (show (between "code")) (any (\case Glue w _ _ -> w == 250; _ -> False) (between "code")),
+      assertBool (show (between "code")) (any (\case Glue w _ _ _ _ -> w == 250; _ -> False) (between "code")),
     testCase "inline code: no break between the padding and the first character" $ do
       let its = fst (composeInlines padEnv [Text sp "漢", CharStyle sp "code" [Text sp "ab"]])
       [bcText c | Box _ c <- its] @?= ["漢", "ab"],
@@ -2095,7 +2106,7 @@ codeTests =
       [t | Box _ c <- its, let { t = bcText c }] @?= ["https://", "example.", "com/", "a/", "b"]
       [h | Penalty _ p h <- its, abs p < infPenalty] @?= [NoHyphen, NoHyphen, NoHyphen, NoHyphen]
       [h | Penalty _ p h <- compose env "typesetting", abs p < infPenalty, h /= NoHyphen] @?= []
-      [w | Glue w _ _ <- takeWhile (not . isFinalPenalty) (compose env "a漢b")] @?= [],
+      [w | Glue w _ _ _ _ <- takeWhile (not . isFinalPenalty) (compose env "a漢b")] @?= [],
     testCase "url: a narrow paragraph breaks after a slash and draws no hyphen" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkUrl = True}, cePatterns = const (Just englishUS)}
           its = compose env "https://example.com/abcdefgh/ijklmnop"

@@ -45,7 +45,7 @@ breakAligned a ps lineWidth items = case a of
      in r {brLines = onLast fillLast (brLines r)}
   where
     rigid = \case
-      Glue w _ z -> Glue w 0 z
+      g@Glue {} -> g {itemStretch = 0}
       x -> x
     onLast f = \case
       [] -> []
@@ -54,10 +54,10 @@ breakAligned a ps lineWidth items = case a of
     fillLast l =
       let (before, rest) = break isFill (reverse (lineItems l))
        in case rest of
-            Glue w _ z : more -> l {lineItems = reverse (before <> (Glue w 0 z : more))}
+            g@Glue {} : more -> l {lineItems = reverse (before <> (g {itemStretch = 0} : more))}
             _ -> l
     isFill = \case
-      Glue _ y _ -> y >= filStretch
+      Glue {itemStretch = y} -> y >= filStretch
       _ -> False
 
 {- | The difference between the target width of a set line and the width

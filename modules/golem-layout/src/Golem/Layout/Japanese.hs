@@ -51,7 +51,7 @@ import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet qualified as IntSet
 import Data.List (groupBy, mapAccumL, sort, zip4, zip5)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -202,7 +202,12 @@ data ComposeEnv = ComposeEnv
     {- | whether a range of superscript or subscript is set in the glyphs of
     the font (docs/adr/0269): its characters, each in its look; otherwise
     it is set by synthesis
-    -} ceScriptGlyphs :: Position -> [(Look, Char)] -> Bool
+    -} ceScriptGlyphs :: Position -> [(Look, Char)] -> Bool,
+    {- | whether the nearest character before the inline set and the nearest
+    after it in the run of the characters of the paragraph, characters of
+    both scripts outside a span skipped, are Latin (docs/adr ADR 0283); set
+    by 'composeInlines' for each inline, False at the ends of the paragraph
+    -} ceTextEdges :: !(Bool, Bool)
   }
 
 -- | The mark of a sidenote in the text: its number, ※ or nothing.
@@ -246,7 +251,8 @@ defaultComposeEnv fs =
       ceLeaf = 0,
       ceLabelInlines = 0,
       ceLabelLink = Nothing,
-      ceCiteLink = \_ _ -> Nothing
+      ceCiteLink = \_ _ -> Nothing,
+      ceTextEdges = (False, False)
     }
   where
     defaultAdvance c
@@ -435,9 +441,71 @@ structured env inls =
            in (NodeElem RoleLabel (maybe inner (\t -> [NodeLink t labelled inner]) link) : after : ns2, ps1 <> ps2)
 
 walkAll :: ComposeEnv -> LeafState -> [Inline] -> (LeafState, [InlineNode], [(Int, Sourced, Piece)])
-walkAll env st0 = foldl' step (st0, [], [])
+walkAll env st0 xs = foldl' step (st0, [], []) (zip xs (textEdges env xs))
   where
-    step (st, ns, ps) inl = let (st', ns', ps') = walk env st inl in (st', ns <> ns', ps <> ps')
+    step (st, ns, ps) (inl, e) = let (st', ns', ps') = walk env {ceTextEdges = e} st inl in (st', ns <> ns', ps <> ps')
+
+{- | The edges of each of inlines (docs/adr ADR 0283): whether the nearest
+character before it and the nearest after it in the run of the characters
+of the paragraph are Latin, those beyond the inlines given by the
+environment. An inline that stops the search, or holds no text of the
+run, has False on both sides: what it holds does not read them.
+-}
+textEdges :: ComposeEnv -> [Inline] -> [(Bool, Bool)]
+textEdges env xs =
+  let (outerBefore, outerAfter) = ceTextEdges env
+      befores = scanl (\acc x -> fromMaybe acc (edgeOf True env x)) outerBefore xs
+      afters = drop 1 (scanr (\x acc -> fromMaybe acc (edgeOf False env x)) outerAfter xs)
+   in [if inRun x then (b, a) else (False, False) | (x, b, a) <- zip3 xs befores afters]
+  where
+    inRun = \case
+      Text {} -> True
+      Color {} -> True
+      CharStyle {} -> True
+      Link {} -> True
+      Lang {} -> True
+      Resolved {} -> True
+      Kenten {} -> True
+      _ -> False
+
+{- | The nearest character of an inline that decides the role of a
+character of both scripts outside a span next to it (docs/adr ADR 0283),
+from its end or from its start: Just whether it is a Latin character,
+Just False for a space and for an inline that stops the search (ruby,
+tate-chu-yoko, a number, inline code, the marks of notes and citations, a
+forced break, an [aki]), Nothing where it holds none: characters of both
+scripts outside a span, soft hyphens, and the inlines of no items
+(anchors).
+-}
+edgeOf :: Bool -> ComposeEnv -> Inline -> Maybe Bool
+edgeOf fromEnd env inl = case inl of
+  Text _ t
+    | breaksAsCode lk -> if T.null t then Nothing else Just False
+    | otherwise ->
+        let bases = [T.head u | u <- clusters (T.filter (/= softHyphen) t)]
+         in listToMaybe [latinWordChar lk c | c <- ordered bases, not (isNothing (lkLang lk) && isJoinerCharacter c)]
+  Color _ _ xs -> inner restyled xs
+  CharStyle _ _ xs -> inner restyled xs
+  Link _ _ xs -> inner restyled xs
+  Lang _ l xs -> inner env {ceLook = lk {lkLang = Just l}} xs
+  Resolved _ _ _ xs -> inner env xs
+  Kenten _ sh xs -> inner env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}} xs
+  IndexMark {} -> Nothing
+  ChannelItem {} -> Nothing
+  ProofComment {} -> Nothing
+  Deferred {} -> Nothing
+  Sidenote {} | ceSidenoteMarker env == MarkerNone -> Nothing
+  _ -> Just False
+  where
+    lk = ceLook env
+    restyled = env {ceLook = ceRestyle env lk inl}
+    ordered :: [a] -> [a]
+    ordered = if fromEnd then reverse else id
+    inner e ys = listToMaybe (mapMaybe (edgeOf fromEnd e) (ordered ys))
+
+-- | Whether a character of a look is one of a Latin word, outside a span by its own class.
+latinWordChar :: Look -> Char -> Bool
+latinWordChar lk c = lookClass lk c == Western && not (isSpace c)
 
 -- a new leaf for the content after an element
 freshLeaf :: LeafState -> (LeafState, InlineNode)
@@ -570,7 +638,7 @@ walk env st@(LeafState next cur seen) inl = case inl of
 
 -- | The end of a paragraph, and of a line broken by a hard break: the rest of the line is fill.
 lineEnd :: [Item]
-lineEnd = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+lineEnd = [Penalty 0 infPenalty NoHyphen, glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
 
 {- | The ranges of text that do not break (docs/adr ADR 0272): a break
 whose nearest character before it and nearest character after it are
@@ -636,10 +704,10 @@ trailingSpaces codeSpaces its = IntSet.fromList (concatMap before ends)
       Penalty _ p NoHyphen -> p >= infPenalty
       _ -> False
     isLineEnd = \case
-      Penalty _ p NoHyphen : Glue 0 y 0 : Penalty _ q NoHyphen : _ -> p >= infPenalty && y == filStretch && q <= negate infPenalty
+      Penalty _ p NoHyphen : Glue 0 y 0 _ _ : Penalty _ q NoHyphen : _ -> p >= infPenalty && y == filStretch && q <= negate infPenalty
       _ -> False
     isWordSpace = \case
-      Glue _ y _ -> y > 0 && y < filStretch
+      Glue {itemStretch = y} -> y > 0 && y < filStretch
       _ -> False
 
 {- | Where each item ends up after 'normalize', which only inserts items
@@ -682,7 +750,7 @@ piecesOf :: ComposeEnv -> Inline -> [(Sourced, Piece)]
 piecesOf env inl = case inl of
   Text sp t ->
     let offs = ceSourceAt env sp t
-     in [(((ceSizeSource env, pieceSpan sp t (at' 0) p), offs . at'), p) | (at', p) <- textPiecesAt lk t]
+     in [(((ceSizeSource env, pieceSpan sp t (at' 0) p), offs . at'), p) | (at', p) <- textPiecesWith (ceTextEdges env) lk t]
   Color _ _ xs -> restyled xs
   CharStyle _ _ xs -> restyled xs
   -- the target of a link is a look of the characters inside (docs/adr ADR 0182)
@@ -843,10 +911,16 @@ and each soft hyphen that will not be a break leaves a piece of no items
 that says why ('PShy'), at the end.
 -}
 textPiecesAt :: Look -> Text -> [(Int -> Int, Piece)]
-textPiecesAt lk t
-  | not (T.any (== softHyphen) t) = [((i +), p) | (i, p) <- strippedPieces lk [] t]
+textPiecesAt = textPiecesWith (False, False)
+
+{- | 'textPiecesAt' with the edges of the text (docs/adr ADR 0283): whether
+the nearest characters before it and after it in the paragraph are Latin.
+-}
+textPiecesWith :: (Bool, Bool) -> Look -> Text -> [(Int -> Int, Piece)]
+textPiecesWith edges lk t
+  | not (T.any (== softHyphen) t) = [((i +), p) | (i, p) <- strippedPieces lk edges [] t]
   | otherwise =
-      [(\k -> orig (i + k), p) | (i, p) <- strippedPieces lk shys stripped]
+      [(\k -> orig (i + k), p) | (i, p) <- strippedPieces lk edges shys stripped]
         <> [(const j, PShy note) | (j, note) <- notes]
   where
     stripped = T.filter (/= softHyphen) t
@@ -856,15 +930,15 @@ textPiecesAt lk t
     orig k = IntMap.findWithDefault (T.length t) k origs
     -- each soft hyphen: how many characters are left before it, and its index in the text
     shys = concat (snd (mapAccumL (\n (j, c) -> if c == softHyphen then (n, [(n, j)]) else (n + 1, [])) 0 indexed))
-    notes = softHyphenNotes lk shys stripped
+    notes = softHyphenNotes lk edges shys stripped
 
 {- | Why each soft hyphen given (how many characters of the text without
 them are before it, and its index in the text) is not a break, by its
 index in the text (docs/adr ADR 0272): none for a break and for one before
 the first letter of its element.
 -}
-softHyphenNotes :: Look -> [(Int, Int)] -> Text -> [(Int, SoftHyphenNote)]
-softHyphenNotes lk shys stripped
+softHyphenNotes :: Look -> (Bool, Bool) -> [(Int, Int)] -> Text -> [(Int, SoftHyphenNote)]
+softHyphenNotes lk edges shys stripped
   | breaksAsCode lk = [(j, ShyInUnbreakable) | (_, j) <- shys]
   | otherwise =
       [ (j, note)
@@ -872,7 +946,7 @@ softHyphenNotes lk shys stripped
         Just note <- [maybe (Just orphan) (\(start, w) -> roleNote (shyRole lk w (pos - start))) (wordAt pos)]
       ]
   where
-    words' = [(i, w) | (i, PWord _ w _) <- strippedPieces lk [] stripped]
+    words' = [(i, w) | (i, PWord _ w _) <- strippedPieces lk edges [] stripped]
     -- the word a soft hyphen is in, before its first character or after its last
     wordAt pos = listToMaybe [(i, w) | (i, w) <- words', pos >= i, pos <= i + T.length w]
     orphan = if unbreakable lk then ShyInUnbreakable else ShyNotBetweenLetters
@@ -931,9 +1005,12 @@ given that are breaks, each once, in order.
 softHyphenCuts :: Look -> Text -> [Int] -> [Int]
 softHyphenCuts lk word shys = IntSet.toAscList (IntSet.fromList [p | p <- shys, shyRole lk word p == ShyCut])
 
--- | The pieces of a text without soft hyphens, each with the index of its first character in it, the soft hyphens given in the words they are in.
-strippedPieces :: Look -> [(Int, Int)] -> Text -> [(Int, Piece)]
-strippedPieces lk shys t
+{- | The pieces of a text without soft hyphens, each with the index of its
+first character in it, the soft hyphens given in the words they are in,
+the edges of the text given (docs/adr ADR 0283).
+-}
+strippedPieces :: Look -> (Bool, Bool) -> [(Int, Int)] -> Text -> [(Int, Piece)]
+strippedPieces lk (edgeBefore, edgeAfter) shys t
   | breaksAsCode lk = codePieces lk t
   | otherwise = joinDashes (go (zip3 offsets units latinish))
   where
@@ -944,20 +1021,21 @@ strippedPieces lk shys t
     offsets = scanl (\n (_, marks) -> n + 1 + T.length marks) 0 units
     cs = map fst units
     -- in a language span, the characters of both scripts are of its language (docs/adr ADR 0187)
-    isLatinWordChar c = lookClass lk c == Western && not (isSpace c)
+    isLatinWordChar = latinWordChar lk
     -- outside a span, quotation marks, apostrophes, hyphens and dashes join a
     -- Latin word when the nearest letter on either side is Latin (I’ll,
-    -- “Mercy”—“We”, lime‐tree, 1990–2000; golem-layout ADR 0008)
+    -- “Mercy”—“We”, lime‐tree, 1990–2000; golem-layout ADR 0008), past the
+    -- ends of the text in the run of the characters of the paragraph (docs/adr ADR 0283)
     isJoiner c = isNothing (lkLang lk) && isJoinerCharacter c
     latinish =
-      [ isLatinWordChar c || (isJoiner c && (side (reverse before) || side after))
+      [ isLatinWordChar c || (isJoiner c && (side edgeBefore (reverse before) || side edgeAfter after))
       | (i, c) <- zip [0 :: Int ..] cs,
         let before = take i cs
             after = drop (i + 1) cs
       ]
-    side rest = case dropWhile isJoiner rest of
+    side edge rest = case dropWhile isJoiner rest of
       (c : _) -> isLatinWordChar c
-      [] -> False
+      [] -> edge
     go [] = []
     go ((i, (c, marks), l) : rest)
       | c == ' ' = (i, PSpace lk False) : go (dropWhile (\(_, (b, _), _) -> b == ' ') rest)
@@ -1264,13 +1342,14 @@ itemsFor env lead prev p next = case p of
     | otherwise -> wordItems env lk lead word shys
   PSpace lk held ->
     let sw = advance env lk ' '
-        glue
-          | lkCode lk || isScript lk = Glue (sw + tracking lk) 0 0 -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
-          | otherwise = Glue (sw + tracking lk) (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3))
+        space
+          | lkCode lk || isScript lk = glue (sw + tracking lk) 0 0 -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
+          -- a space between words, in the size of its characters (docs/adr/0278)
+          | otherwise = Glue (sw + tracking lk) (Sp (unSp sw `div` 2)) (Sp (unSp sw `div` 3)) WordSpaceGlue (lkSize lk)
      in {- a space inside a range of superscript or subscript neither breaks nor
         stretches, and no line breaks before a range (docs/adr/0269); nor at a
         space held, between the label of a page and its value (docs/adr/0277) -}
-        [Penalty 0 infPenalty NoHyphen | held || (not (lkCode lk) && (isScript lk || maybe False (maybe False isScript . pieceLook) next))] <> [glue]
+        [Penalty 0 infPenalty NoHyphen | held || (not (lkCode lk) && (isScript lk || maybe False (maybe False isScript . pieceLook) next))] <> [space]
   PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
@@ -1719,7 +1798,7 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
               0 otherwise, the only one there (golem-layout ADR 0034) -}
               AfterBox p _ _
                 | codeOnly p && codeOnly c && japaneseAt (lastClass p) (firstClass c) ->
-                    [codeBreak p (if "_" `T.isSuffixOf` baseOf p then 100 else 0) | not (prohibitedAcross True p c)]
+                    [codeBreak p (if "_" `T.isSuffixOf` baseOf p then 100 else 0) | not (prohibitedAcross True p c next)]
               {- inside code: also a break of 100 after a run of hyphen-minus
               signs and full stops between two Latin characters, but where a
               slash, a low line or two digits are beside it (golem-layout ADR
@@ -1732,14 +1811,15 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
               {- two boxes of a Latin word next to each other: the break of an
               explicit hyphen where the word joined breaks there, nothing
               otherwise (docs/adr ADR 0280) -}
-              AfterBox p _ (Just joined) | bcExpandable c -> joinedBreak p c joined
-              AfterBox p _ _ -> between p c
+              AfterBox p _ (Just joined) | bcExpandable c -> joinedBreak p c next joined
+              AfterBox p _ _ -> between p c next
               AtStart -> leading c
               -- the space of the paragraph start, after the mark: no break there
               AfterStartMark -> case leading c of
                 [] -> []
                 l -> Penalty 0 infPenalty NoHyphen : l
               AfterAki -> []
+            next = wordAfter c rest
             joined' = case before of
               AfterBox _ _ (Just j) | bcExpandable c -> Just (j <> bcText c)
               _ -> if bcExpandable c then Just (bcText c) else Nothing
@@ -1752,14 +1832,14 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
       Glue {}
         | wordSpace x || IntSet.member k codeSpaces,
           AfterBox p _ _ <- before,
-          Just c <- nextBox rest,
-          prohibitedAcross False p c ->
+          Just (c, more) <- nextBox rest,
+          prohibitedAcross False p c (wordAfter c more) ->
             Penalty 0 infPenalty NoHyphen : x : go (k + 1) AtStart first rest
       -- a break after a written hyphen or dash: none where a prohibition applies across it (golem-layout ADR 0028)
       Penalty _ _ ExplicitHyphen
         | AfterBox p _ _ <- before,
-          Box _ c : _ <- rest,
-          prohibitedAcross True p c ->
+          Box _ c : more <- rest,
+          prohibitedAcross True p c (wordAfter c more) ->
             go (k + 1) AtStart first rest
       _ -> x : go (k + 1) AtStart first rest
     isBoxBefore = \case
@@ -1770,14 +1850,14 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
     break of an explicit hyphen where 'explicitParts' cuts the word they
     make, with the rules of one in a word (golem-layout ADR 0008, golem-layout
     ADR 0028); nothing elsewhere, no spacing -}
-    joinedBreak p c joined =
+    joinedBreak p c next joined =
       let explicitP = ceExplicitHyphenPenalty env
           word = joined <> bcText c
           cuts = scanl (+) 0 (map T.length (explicitParts word))
        in [ Penalty 0 explicitP ExplicitHyphen
           | T.length joined `elem` cuts,
             explicitP < infPenalty,
-            not (prohibitedAcross True p c)
+            not (prohibitedAcross True p c next)
           ]
     -- a box of code, not of a URL (golem-layout ADR 0034)
     codeOnly b = lkCode (bcLook b) && not (lkUrl (bcLook b))
@@ -1803,29 +1883,35 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
       | otherwise = L.zwToSp (wrapMarkSize (lkSize lk)) (ceWordAdvance env lk m)
     -- the glue of a space between words: it stretches, but not as the glue that fills the last line; a space of code does not
     wordSpace = \case
-      Glue _ y _ -> y > 0 && y < filStretch
+      Glue {itemStretch = y} -> y > 0 && y < filStretch
       _ -> False
     -- the box after the spaces, if a box of text comes next
     nextBox = \case
       g : more | wordSpace g -> nextBox more
-      Box _ c : _ | boxKind c `notElem` [KindAki, KindNoteMark] -> Just c
+      Box _ c : more | boxKind c `notElem` [KindAki, KindNoteMark] -> Just (c, more)
+      _ -> Nothing
+    {- the box of a Latin word right after a box of one, with no item
+    between them: the next box of the joined word (docs/adr ADR 0280) -}
+    wordAfter c = \case
+      Box _ d : _ | bcExpandable c && bcExpandable d && not (isScript (bcLook d)) -> Just d
       _ -> Nothing
     {- the prohibitions across a space or a written hyphen: the line start
     and the line end, and two inseparable characters across a written
     hyphen only; not the rule that keeps two Latin words together -}
-    prohibitedAcross hyphen p c =
+    prohibitedAcross hyphen p c next =
       let pk = breakClass lastChar lastClass p
-          ck = startClass c
+          ck = startClass c next
        in maybe False (lineStartProhibited (ceKinsokuStrict env)) ck
             || maybe False lineEndProhibited pk
             || (hyphen && pk == Just Inseparable && ck == Just Inseparable)
     sizeOf = lkSize . bcLook
-    glueOf base (A.Aki n o m) =
+    -- the glue of an aki, of its kind, in the size its amounts are of (docs/adr/0278)
+    glueOf kind base (A.Aki n o m) =
       let sp = L.zwToSp base
-       in [Glue (sp o) (sp m - sp o) (sp o - sp n)]
+       in [Glue (sp o) (sp m - sp o) (sp o - sp n) kind base]
     -- the space before the first box of a paragraph, in the box's size
     leading c = case akiFirst c of
-      Just b | a <- akiBetween set AkiParagraphStart (AkiChar b), a /= noAki -> glueOf (sizeOf c) a
+      Just b | a <- akiBetween set AkiParagraphStart (AkiChar b), a /= noAki -> glueOf ParagraphStartGlue (sizeOf c) a
       _ -> []
     -- the line start (but not the paragraph start) and the line end are fixed, in the box's size
     withEdges first c = case (akiFirst c, akiLast c) of
@@ -1855,12 +1941,14 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
     breakClass edge cls c = if latinDual c (edge c) then dualJapaneseClass <$> edge c else cls c
     {- the class of the first character of a box for kinsoku: an apostrophe
     at the start of a Latin word, U+2019 with a letter or a digit after it
-    (its combining characters left out), is Latin, in no span and in a
-    Latin one alike (golem-layout ADR 0030) -}
-    startClass c
+    in the joined word (its combining characters left out), is Latin, in
+    no span and in a Latin one alike (golem-layout ADR 0030, docs/adr ADR
+    0283); after a box of the apostrophe alone, the next character is the
+    first of the box of the word after it given -}
+    startClass c next
       | bcExpandable c,
         Just ('\x2019', more) <- T.uncons (baseOf c),
-        Just (n, _) <- T.uncons more,
+        Just (n, _) <- T.uncons more <|> (next >>= T.uncons . baseOf),
         isLetter n || generalCategory n == DecimalNumber =
           Just Western
       | otherwise = breakClass firstChar firstClass c
@@ -1869,11 +1957,21 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
     akiFirst c = if bcExpandable c then Just Western else firstClass c
     akiLast c = if bcExpandable c then Just Western else lastClass c
     isPunct k = k `elem` [Opening, Closing, FullStop, Comma, MiddleDot]
-    between p c =
+    {- the kind of the aki between two classes (docs/adr/0278): the first of
+    middle dots, brackets, commas, full stops, Japanese and Latin, and
+    other Japanese characters that it is -}
+    akiKind a b
+      | a == MiddleDot || b == MiddleDot = MiddleDotGlue
+      | a == Closing || b == Opening = BracketsGlue
+      | a == Comma = CommaGlue
+      | a == FullStop = FullStopGlue
+      | (a == Western) /= (b == Western) = JapaneseWesternGlue
+      | otherwise = BetweenCharactersGlue
+    between p c next =
       let pc = lastClass p
           cc = firstClass c
           pk = breakClass lastChar lastClass p
-          ck = startClass c
+          ck = startClass c next
           strict = ceKinsokuStrict env
           noBreak =
             maybe False (lineStartProhibited strict) ck
@@ -1928,7 +2026,7 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
               | not noAkiHere,
                 aki <- akiBetween set (AkiChar a) (AkiChar b),
                 aki /= noAki ->
-                  pen <> glueOf (base a b) aki
+                  pen <> glueOf (akiKind a b) (base a b) aki
             Just _ -> [Penalty 0 candidate NoHyphen | not noBreak]
             Nothing -> if noBreak then [] else [Penalty 0 candidate NoHyphen | not (bcExpandable p && bcExpandable c)]
 

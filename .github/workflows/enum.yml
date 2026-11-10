@@ -146,6 +146,14 @@ jobs:
           GOLEM_ENUM_LINES_DEPTH: "3"
           GOLEM_ENUM_LINES_SAMPLES: "5000000"
         run: cabal test golem-layout-test --test-option=-p --test-option='/line breaking invariants on/'
+      # the order of the places of line adjustment: every input of up to 2
+      # parts in lines of up to 5 em, in three orders; the pull requests
+      # check the default order alone in lines of up to 4 em (docs/adr/0278)
+      - name: The order of line adjustment on every small input (docs/adr/0278)
+        if: steps.needed.outputs.run == 'true'
+        env:
+          GOLEM_ENUM_LINES_DEPTH: "3"
+        run: cabal test golem-layout-test --test-option=-p --test-option='/order of JLReq/&&/every small input/'
       # the ranges that do not break: every input of up to
       # GOLEM_ENUM_NOBREAK_DEPTH parts; the pull requests check up to 2
       # (docs/adr ADR 0272)
