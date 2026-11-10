@@ -6113,8 +6113,7 @@ diagnostics は人が読む形で出力し、`--format json` を指定すると�
 ## 配布
 
 `golem` の実行ファイルは GitHub Releases で配布する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
-対象は次の三つである。
-Windows と x86-64 の macOS は対象にしない。
+対象のプラットフォームは次の三つであり、Windows と x86-64 の macOS は対象にしない。
 
 | 名前 | OS とアーキテクチャ | リンク |
 |---|---|---|
@@ -6122,88 +6121,163 @@ Windows と x86-64 の macOS は対象にしない。
 | `aarch64-linux` | Linux の aarch64 | musl で完全に静的。Alpine Linux の上でビルドする |
 | `aarch64-macos` | macOS 14 以降の arm64 | OS 標準のライブラリだけに動的。アドホックの署名だけを付け、公証はしない |
 
-Linux を glibc にリンクしないのは、古い glibc の環境で起動できなくなることと、静的にリンクした glibc の名前解決が実行時に NSS のモジュールを読もうとすることを避けるためである。
+Linux の実行ファイルは、glibc にリンクしない。
+glibc にリンクすると、二つの問題が起きるからである。
+一つは、古い glibc の環境で起動できなくなることである。
+もう一つは、静的にリンクした glibc の名前解決が、実行時に NSS のモジュールを読もうとすることである。
 
 ### バージョン
 
-Golem のバージョンは `X.Y.Z` か、プレリリースの識別子を付けた `X.Y.Z-<識別子>`（例：`0.1.0-rc1`）で表す。
+Golem のバージョンは、`X.Y.Z` か、プレリリースの識別子を付けた `X.Y.Z-<識別子>`（例：`0.1.0-rc1`）で表す。
 1.0.0 までは、原稿の記法、CLI、出力の互換性を壊す変更で `Y` を、それ以外の変更で `Z` を上げる。
 1.0.0 の後のバージョンの付け方と、1.0.0 から互換を守る範囲は、互換性の文書 [docs/compatibility.md](compatibility.md) にある（[docs/adr/0174](adr/0174-compatibility-promises-for-1-0.md)）。
-バージョンの正本はリポジトリの根の `VERSION` であり、golem-driver の `Golem.Driver.Version` がコンパイルの時点に埋め込む。
+
+バージョンの正本は、リポジトリの根の `VERSION` である。
+golem-driver の `Golem.Driver.Version` が、コンパイルの時点にこれを埋め込む。
 全パッケージの cabal ファイルの `version` は、`VERSION` から識別子を除いた `X.Y.Z` と同じにする。
 `scripts/release/check-version.sh` が、この一致と、タグと `VERSION` の一致を検査する。
 
 ### 配布物
 
 アーカイブの名前は `golem-<タグ>-<プラットフォーム>.tar.gz` とし、展開すると `golem-<タグ>-<プラットフォーム>/` の一つのディレクトリができる。
-中には、実行ファイル `golem`、Golem のライセンス `LICENSE`、静的にリンクしたものと同梱したデータのライセンスの文書 `THIRD_PARTY_LICENSES/`、ビルドの情報 `BUILDINFO`、エディタ向けの構文の定義 `share/golem/editors/` が入る。
+中に入るものは、次のとおりである。
+
+- 実行ファイル `golem`
+- Golem のライセンス `LICENSE`
+- 静的にリンクしたものと同梱したデータのライセンスの文書 `THIRD_PARTY_LICENSES/`
+- ビルドの情報 `BUILDINFO`
+- エディタ向けの構文の定義 `share/golem/editors/`
+
 `share/golem/editors/` には、`tools/editors/` の `README.md`、`textmate/` の二つの文法、二つの tree-sitter の文法の `grammar.js`、`tree-sitter.json`、`src/`、`queries/` を写す（「エディタ向けの構文の定義」の節、[docs/adr/0170](adr/0170-emet-editor-support.md)）。
-リリースには、三つのアーカイブのほかに、`SHA256SUMS`、ビルドの来歴の証明、リンクした GMP のソースのアーカイブ、二つのマニュアルの PDF と HTML（「マニュアル」の節）、見本のプラグインの `<名前>.wasm` と、そのライセンスの文書のアーカイブ `golem-plugins-licenses-<タグ>.tar.gz`（「見本のプラグイン」の節）を添える。
-見本のプラグインとそのライセンスの文書のアーカイブと、GMP のソースのアーカイブの SHA-256 も `SHA256SUMS` に載せる（[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
-GMP は LGPL-3.0 であり、三つの実行ファイルのどれにも静的にリンクされるためである。
+
+リリースには、三つのアーカイブのほかに、次のファイルを添える。
+
+- `SHA256SUMS`
+- ビルドの来歴の証明
+- リンクした GMP のソースのアーカイブ
+- 二つのマニュアルの PDF と HTML（「[マニュアル](#マニュアル)」の節）
+- 見本のプラグインの `<名前>.wasm` と、そのライセンスの文書のアーカイブ `golem-plugins-licenses-<タグ>.tar.gz`（「見本のプラグイン」の節）
+
+`SHA256SUMS` には、見本のプラグインとそのライセンスの文書のアーカイブと、GMP のソースのアーカイブの SHA-256 も載せる（[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
+GMP のソースを添えるのは、GMP が LGPL-3.0 であり、三つの実行ファイルのどれにも静的にリンクされるためである。
 
 `THIRD_PARTY_LICENSES/` に入れるものは、固定の一覧ではなく、実行ファイルのリンクマップから決める（[docs/adr/0007](adr/0007-third-party-licenses.md)）。
-ビルドのスクリプトがリンカーにリンクマップを書かせ、`scripts/release/link-components.sh` が、実行ファイルに入ったアーカイブを一つずつ、ライセンスの文書を持つ構成要素（Haskell のパッケージ、GHC、GMP、wasmtime、Alpine のパッケージ、compiler-rt）に対応させる。
-Linux の GHC が RTS に同梱する libffi（`libCffi.a`）は、構成要素 `ghc-libffi` として、`licenses/ghc-libffi/` にコミットした文書を使う。
+ビルドのスクリプトは、リンカーにリンクマップを書かせる。
+`scripts/release/link-components.sh` は、実行ファイルに入ったアーカイブを一つずつ、ライセンスの文書を持つ構成要素に対応させる。
+構成要素は、Haskell のパッケージ、GHC、GMP、wasmtime、Alpine のパッケージ、compiler-rt である。
 対応の付かないアーカイブが一つでもあれば、配布物を作らずに止まる。
-Alpine のパッケージの文書は、そのパッケージの `-doc` から取り、入っていないものだけをリポジトリの `licenses/alpine/` に置く。
-`libwasmtime.a` に入った Rust のクレート、Rust の標準ライブラリ、compiler-rt の文書は、wasmtime のバージョンごとに `scripts/wasmtime-licenses.sh` で `licenses/wasmtime-v<バージョン>/` に生成してコミットする。
-リリースのたびに、`libwasmtime.a` のシンボルとパニックの位置から取り出したクレートの一覧と、C のオブジェクトの一覧をこれと照合し、載っていないものがあれば止まる。
-リンクマップと照合に使った `nm`、`strings`、`ar` の出力は配布物に入れず、リリースのワークフローの成果物として残す。
 
-配布物はルート証明書を同梱せず、OS の証明書のストアを読む（`SSL_CERT_FILE` と `SSL_CERT_DIR` が優先される）。
+構成要素の文書の出どころは、構成要素ごとに決まっている。
+
+- Linux の GHC が RTS に同梱する libffi（`libCffi.a`）は、構成要素 `ghc-libffi` として、`licenses/ghc-libffi/` にコミットした文書を使う。
+- Alpine のパッケージの文書は、そのパッケージの `-doc` から取り、入っていないものだけをリポジトリの `licenses/alpine/` に置く。
+- `libwasmtime.a` に入った Rust のクレート、Rust の標準ライブラリ、compiler-rt の文書は、wasmtime のバージョンごとに `scripts/wasmtime-licenses.sh` で `licenses/wasmtime-v<バージョン>/` に生成してコミットする。
+
+wasmtime の文書は、リリースのたびに照合する。
+照合するのは、`libwasmtime.a` のシンボルとパニックの位置から取り出したクレートの一覧と、C のオブジェクトの一覧であり、文書に載っていないものがあれば止まる。
+リンクマップと照合に使った `nm`、`strings`、`ar` の出力は、配布物に入れず、リリースのワークフローの成果物として残す。
+
+配布物は、ルート証明書を同梱せず、OS の証明書のストアを読む（`SSL_CERT_FILE` と `SSL_CERT_DIR` が優先される）。
 ストアが空のときは、HTTPS の取得は接続する前に失敗し、ca-certificates を入れるか `SSL_CERT_FILE` を指定するよう案内する。
+
+配布物でも、同じバージョンの Golem に同じ入力を与えれば、同じ出力が得られる。
+一方、同じソースから同じバイト列の実行ファイルが得られること（再現可能なビルド）は、今は求めない（予定は [docs/roadmap.md](roadmap.md) にある）。
+その代わりに、`BUILDINFO` にビルドの環境を記録し、来歴の証明でどのワークフローがどのコミットから作ったかを検証できるようにする。
 
 ### リリースの手順
 
 `v` で始まるタグのリリースの前には、プレリリースを含め、毎回セキュリティ監査をし、記録を `docs/audits/` に置く（[docs/adr/0035](adr/0035-security-hardening.md)）。
-仕様を変える修正には ADR を書く。
-`.github/workflows/release.yml` が、`v` で始まるタグの push で配布物を作り、検査し、下書きのリリースを作る。
+監査で見つかった問題のうち、仕様を変える修正には ADR を書く。
+
+リリースは、`.github/workflows/release.yml` のワークフローが作る。
+`v` で始まるタグの push で起動したときは、配布物を作り、検査し、下書きのリリースを作る。
 `workflow_dispatch` で起動したときは、配布物を作って検査し、リリースノートを書くところまでを行う。
-リリースの前に、CI と同じビルド、テスト、決定性の検査を通し、三つの配布物が CI のビルドと同じ出力を出すことを確かめる。
-wasm の版の配布物 `golem-<タグ>-wasm32-wasi.tar.gz` は、ジョブ `wasm` が CI と同じ手順で組み、x86-64 の Linux の配布物の `golem` と同じ PDF と diagnostics を返すことを確かめてから作る（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
-中身は `golem.wasm`、`LICENSE`、`THIRD_PARTY_LICENSES/`、エクスポートと枠の形を書いた `README` で、`--sort=name --mtime=@0` で固めた tar を gzip で圧縮する。
-`THIRD_PARTY_LICENSES/` には、wasm の GHC の RTS と boot のパッケージ、Hackage のパッケージ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc、libc++、libc++abi、compiler-rt、libffi-wasm、GMP のライセンスを入れる。
-GHC の仮想のパッケージ `system-cxx-std-lib` は、C++ の標準ライブラリにリンクする設定だけを持ち、コードを持たない。
-そのライセンスは同梱した libc++ と libc++abi のものなので、`rts` と同じく `haskell/` の下に置かず、`licenses/wasi-sdk/llvm/` に二つの文書がなければ失敗する（[ADR 0240](adr/0240-skip-the-code-less-system-cxx-std-lib-in-the-licenses-of-golem-wasm.md)）。
-ネイティブの配布物の依存に `system-cxx-std-lib` が入れば、ライセンスの文書のないほかのパッケージと同じく失敗する。
-上流のコミットを使う cborg には、そのリポジトリとコミットを、差分を当てた `skylighting` と `skylighting-core` には、その差分と元のアーカイブの URL を添える（[ADR 0202](adr/0202-packages-that-do-not-build-for-wasm.md)）。
-wasi-sdk の配布物はライセンスの文書を持たないので、上流から取った文書を `licenses/wasi-sdk/` に置き、その `VERSION` が `scripts/fetch-ghc-wasm.sh` の wasi-sdk と一致しなければ失敗する。
-wasm にリンクした GMP の版は、wasm の GHC の `ghc-gmp.h` から読む（`scripts/release/gmp-version.sh` を `GMP_GHC=wasm32-wasi-ghc` で動かす）。
-そのソースのアーカイブは、ネイティブの配布物の GMP と同じく `scripts/release/fetch-gmp.sh` で取ってリリースに添える。
+公開の操作は、どちらの場合もワークフローでは行わない。
+
+リリースの前には、CI と同じビルド、テスト、決定性の検査を通す。
+そのうえで、三つの配布物が CI のビルドと同じ出力を出すことを確かめる。
+最初のプレリリース v0.1.0-rc1 で確かめた結果は、[docs/audits/releases/v0.1.0-rc1.md](audits/releases/v0.1.0-rc1.md) に記録した（[docs/adr/0008](adr/0008-first-release-verification.md)）。
+
+#### wasm の版の配布物
+
+wasm の版の配布物 `golem-<タグ>-wasm32-wasi.tar.gz` は、ジョブ `wasm` が作る（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
+ジョブ `wasm` は、CI と同じ手順で組み、x86-64 の Linux の配布物の `golem` と同じ PDF と diagnostics を返すことを確かめてから、配布物を作る。
+中身は `golem.wasm`、`LICENSE`、`THIRD_PARTY_LICENSES/`、エクスポートと枠の形を書いた `README` であり、`--sort=name --mtime=@0` で固めた tar を gzip で圧縮する。
 配布物の名前は `golem-*.tar.gz` に当たるので、`SHA256SUMS`、来歴の証明、下書きのリリースに、ほかの配布物と同じ規則で入る。
+
+`THIRD_PARTY_LICENSES/` には、次のもののライセンスを入れる。
+wasm の GHC の RTS と boot のパッケージ、Hackage のパッケージ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc、libc++、libc++abi、compiler-rt、libffi-wasm、GMP である。
+
+ライセンスの文書の扱いには、wasm の版に固有の決まりがある。
+
+- GHC の仮想のパッケージ `system-cxx-std-lib` は、C++ の標準ライブラリにリンクする設定だけを持ち、コードを持たない。そのライセンスは同梱した libc++ と libc++abi のものなので、`rts` と同じく `haskell/` の下に置かない。`licenses/wasi-sdk/llvm/` に二つの文書がなければ失敗する（[ADR 0240](adr/0240-skip-the-code-less-system-cxx-std-lib-in-the-licenses-of-golem-wasm.md)）。ネイティブの配布物の依存に `system-cxx-std-lib` が入れば、ライセンスの文書のないほかのパッケージと同じく失敗する。
+- 上流のコミットを使う cborg には、そのリポジトリとコミットを添える。差分を当てた `skylighting` と `skylighting-core` には、その差分と元のアーカイブの URL を添える（[ADR 0202](adr/0202-packages-that-do-not-build-for-wasm.md)）。
+- wasi-sdk の配布物はライセンスの文書を持たないので、上流から取った文書を `licenses/wasi-sdk/` に置く。その `VERSION` が `scripts/fetch-ghc-wasm.sh` の wasi-sdk と一致しなければ失敗する。
+- wasm にリンクした GMP の版は、wasm の GHC の `ghc-gmp.h` から読む（`scripts/release/gmp-version.sh` を `GMP_GHC=wasm32-wasi-ghc` で動かす）。そのソースのアーカイブは、ネイティブの配布物の GMP と同じく `scripts/release/fetch-gmp.sh` で取ってリリースに添える。
+
 ジョブ `wasm` は、アーカイブを作った直後に `scripts/release/check-wasm-archive.sh` で中身を確かめる（[ADR 0230](adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)）。
-最上位のディレクトリに `golem.wasm`、`LICENSE`、`README`、`THIRD_PARTY_LICENSES/` がなく、`THIRD_PARTY_LICENSES/` に wasm の GHC と RTS、boot のパッケージ（`base`、`ghc-prim`、`ghc-bignum`、`ghc-internal`）、HarfBuzz、FreeType、hyph-utf8、zlib（`zlib-clib`）、wasi-libc、libc++、GMP の文書がなく、または `.sha256` がアーカイブの SHA-256 と違えば、ジョブは失敗し、`release` は走らない。
-`workflow_dispatch` でも走るので、タグを打つ前に確かめられる。
-`release` は、下書きのリリースを作った後に、その `SHA256SUMS` を下ろして `dist/` のファイルを `sha256sum -c` で照らし、`dist/` のアーカイブのそれぞれに `gh attestation verify <ファイル> -R tett23/golem` を走らせる（[ADR 0230](adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)）。
+次のどれかに当たれば、ジョブは失敗し、`release` は走らない。
+
+- 最上位のディレクトリに `golem.wasm`、`LICENSE`、`README`、`THIRD_PARTY_LICENSES/` がない。
+- `THIRD_PARTY_LICENSES/` に、wasm の GHC と RTS、boot のパッケージ（`base`、`ghc-prim`、`ghc-bignum`、`ghc-internal`）、HarfBuzz、FreeType、hyph-utf8、zlib（`zlib-clib`）、wasi-libc、libc++、GMP の文書がない。
+- `.sha256` がアーカイブの SHA-256 と違う。
+
+この検査は `workflow_dispatch` でも走るので、タグを打つ前に確かめられる。
+
+#### 下書きのリリースの検査
+
+ジョブ `release` は、下書きのリリースを作った後に、その中身を確かめる（[ADR 0230](adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)）。
+下書きの `SHA256SUMS` を下ろして、`dist/` のファイルを `sha256sum -c` で照らす。
+さらに、`dist/` のアーカイブのそれぞれに `gh attestation verify <ファイル> -R tett23/golem` を走らせる。
 タグのコミットが `main` に含まれないときは、リリースを作らない。
-リリースノートは AI が英語で書き、検査（`scripts/release/check-notes.sh`）に通らなければ変更の一覧をそのまま使う。
-人がリリースノートを読んで直してから公開する。
+
+#### リリースノート
+
+リリースノートは、AI が英語で書く。
+書いたノートが検査（`scripts/release/check-notes.sh`）に通らなければ、変更の一覧をそのままノートにする。
+どちらの場合も、人がリリースノートを読んで直してから公開する。
+
 変更の一覧（`scripts/release/notes.sh`）は、`main` の first-parent のマージのコミットからプルリクエストを拾う（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
-GitHub がマージした `Merge pull request #N from <所有者>/<ブランチ>` の形では、本文の 1 行目をプルリクエストの題名とする。
-手でマージした `Merge pull request #N: <題名>` の形も拾う。
-変更の一覧の `## ADRs` には、範囲で追加された ADR を並べる。
-その後の `## ADRs whose status changed` には、範囲で変更された ADR のうち、ステータスの行（行頭が `ステータス:` の最初の行）が前のタグとタグで違うものを、`LC_ALL=C sort` のパスの順に並べる（[docs/adr/0246](adr/0246-bound-the-prompt-of-the-release-notes.md)）。
-各行は `- [<パス>](https://github.com/tett23/golem/blob/<タグ>/<パス>): <前のステータス> → <タグのステータス>` の形で、ステータスは `ステータス:` の後の文字列から前後の空白を除いたものである。
-ステータスの中の相対リンクは、ADR のディレクトリから解いたパスの、そのステータスのタグ（前のステータスは前のタグ、タグのステータスはタグ）の版への絶対 URL にする（`scripts/release/absolute-links.sh`、[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
+拾うマージのコミットのメッセージは、次の二つの形である。
+
+- GitHub がマージした `Merge pull request #N from <所有者>/<ブランチ>` の形。本文の 1 行目をプルリクエストの題名とする。
+- 手でマージした `Merge pull request #N: <題名>` の形。
+
+変更の一覧には、ADR の二つの見出しが続く（[docs/adr/0246](adr/0246-bound-the-prompt-of-the-release-notes.md)）。
+
+- `## ADRs`：範囲で追加された ADR を並べる。
+- `## ADRs whose status changed`：範囲で変更された ADR のうち、ステータスの行（行頭が `ステータス:` の最初の行）が前のタグとタグで違うものを、`LC_ALL=C sort` のパスの順に並べる。
+
+`## ADRs whose status changed` の各行は、`- [<パス>](https://github.com/tett23/golem/blob/<タグ>/<パス>): <前のステータス> → <タグのステータス>` の形である。
+ステータスは、`ステータス:` の後の文字列から前後の空白を除いたものである。
+ステータスの中の相対リンクは、ADR のディレクトリから解いたパスの絶対 URL にする（`scripts/release/absolute-links.sh`、[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
+URL が指す版は、そのステータスのタグ（前のステータスは前のタグ、タグのステータスはタグ）の版である。
 `#` だけのリンクは ADR 自身のその節を指し、スキームを持つリンクは変えない。
-範囲で追加された ADR は、同じ範囲でステータスが変わっても `## ADRs` にだけ並ぶ。
-ステータス以外の行だけが変わった ADR と、改名された ADR は、どちらにも並ばない。
-前のタグがない最初のリリースでは、`## ADRs whose status changed` は見出しだけになる。
+
+二つの見出しの境界は、次のとおりである。
+
+- 範囲で追加された ADR は、同じ範囲でステータスが変わっても `## ADRs` にだけ並ぶ。
+- ステータス以外の行だけが変わった ADR と、改名された ADR は、どちらにも並ばない。
+- 前のタグがない最初のリリースでは、`## ADRs whose status changed` は見出しだけになる。
 
 AI に渡すプロンプトは、変更の一覧、プルリクエストの題名と本文、ADR の題名とステータスの行からなる（[docs/adr/0246](adr/0246-bound-the-prompt-of-the-release-notes.md)）。
-ADR は、追加されたもの（`# The ADRs added in this release`）と、ステータスの変わったもの（`# The ADRs whose status changed in this release`）のそれぞれについて、パス、タグの版への絶対 URL、題名（最初の `# ` の行）、ステータスの行だけを入れ、本文は入れない。
+ADR は、追加されたもの（`# The ADRs added in this release`）と、ステータスの変わったもの（`# The ADRs whose status changed in this release`）に分けて入れる。
+どちらも、パス、タグの版への絶対 URL、題名（最初の `# ` の行）、ステータスの行だけを入れ、本文は入れない。
 題名とステータスの行の相対リンクは、同じ規則でタグの版への絶対 URL にする（[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
+
+プロンプトの大きさには、二つの上限がある。
 プルリクエストの本文は、先頭の 4000 バイトまでを入れる。
 切ったときは、UTF-8 の文字の途中で切れた末尾のバイト列を `iconv -c` で落とし、その後に `(cut at 4000 bytes)` の行を足す。
 本文が空のプルリクエストは、題名だけを入れる。
 プロンプトが 1000000 バイトを超えたときは、`claude -p` を動かさず、変更の一覧をそのままノートにする。
-理由は `the prompt is N bytes, over 1000000` である。
+そのときの理由は `the prompt is N bytes, over 1000000` である。
 二つの上限は `write-notes.sh` の先頭の変数（`BODY_LIMIT` と `PROMPT_LIMIT`）で決め、環境変数では変えられない。
 
-AI の実行か検査に失敗したとき、プロンプトが上限を超えたときは、その理由をジョブの要約とジョブのログの両方に書く。
+AI の実行か検査に失敗したとき、またはプロンプトが上限を超えたときは、その理由をジョブの要約とジョブのログの両方に書く。
 理由には、`claude -p` が標準出力と標準エラーに書いたものの先頭と、プロンプトのバイト数を含める。
-`claude -p` は API のエラーを標準出力に書くためである。
+標準出力も含めるのは、`claude -p` が API のエラーを標準出力に書くためである。
+
+#### リリースノートを書くジョブの隔離
 
 リリースノートは、配布物を公開するジョブ `release` とは別のジョブ `notes` で書く（[docs/adr/0044](adr/0044-release-workflow-hardening.md)）。
 `notes` の権限は `contents: read` だけであり、OIDC のトークンと来歴の証明の権限を持たない。
@@ -6211,39 +6285,62 @@ AI の実行か検査に失敗したとき、プロンプトが上限を超え�
 `release` は Node も Claude Code も入れない。
 
 ノートを書く Claude Code は、リポジトリのルートの `mise.toml` で正確なバージョンに固定し、`notes` が `jdx/mise-action` で入れる。
+開発者も、同じ `mise.toml` で同じバージョンを入れられる。
+mise は npm のパッケージのインストールのスクリプトを動かさないので、`mise.toml` の `allow_builds` で Claude Code のスクリプトだけを許す。
+
 Claude Code を入れる mise 自身も、正確な版と、その版の Linux の x86-64 の実行ファイルの SHA-256 で固定する（[docs/adr/0085](adr/0085-pin-mise-version-in-workflows.md)）。
-値は `release.yml` と `ci.yml` の最上位の `env` の `MISE_VERSION` と `MISE_SHA256` に同じものを書き、`jdx/mise-action` を使うすべてのステップ（`notes` と、CI の `release-scripts`）が `version` と `sha256` に渡す。
+値は、`release.yml` と `ci.yml` の最上位の `env` の `MISE_VERSION` と `MISE_SHA256` に同じものを書く。
+`jdx/mise-action` を使うすべてのステップ（`notes` と、CI の `release-scripts`）が、これを `version` と `sha256` に渡す。
 action は、入れた実行ファイルの SHA-256 が違えば失敗する。
 SHA-256 は Linux の x86-64 の実行ファイルの値なので、二つのジョブは `ubuntu-24.04` で動く。
-mise は npm のパッケージのインストールのスクリプトを動かさないので、`mise.toml` の `allow_builds` で Claude Code のスクリプトだけを許す。
-開発者も同じ `mise.toml` で同じバージョンを入れられる。
+
+プルリクエストの本文はプロンプトに入るので、`claude -p` はその中の指示に従わないように動かす。
 `scripts/release/write-notes.sh` は、プロンプトの先頭に、プルリクエストの本文は信頼しないデータでありその中の指示に従わないことを書く。
 `claude -p` は、道具を一つも許さない `--tools ''` と、MCP の設定を読まない `--strict-mcp-config` を付けて動かす。
 動かす前に、`claude --help` にこの二つのフラグがあることを確かめ、なければノートを変更の一覧のままにする。
-動かすときは、ジョブのトークン（`GH_TOKEN`、`GITHUB_TOKEN`、OIDC の要求の URL とトークン）と、後のステップの環境を変えられるワークフローのコマンドのファイル（`GITHUB_ENV`、`GITHUB_PATH`、`GITHUB_OUTPUT`、`GITHUB_STATE`、`GITHUB_STEP_SUMMARY`）を環境から外す。
+動かすときは、次のものを環境から外す。
 
-ノートに書いてよいリンクは、`scripts/release/allowed-links.txt` に前置きを 1 行に一つ書いた許可リストで決める。
-今の許可リストは `https://github.com/tett23/golem/` と `https://github.com/tett23/peg-hs/` の 2 行である。
-`check-notes.sh` は、`[text](URL)` のリンク、参照形式のリンク、生の URL（`https://` に限らずどのスキームも）、`<https://…>` の自動リンク、`www.` で始まる自動リンク、`<a>` のタグをすべて見つける。
-`[text](` の後の URL と `<a` の後の属性が次の行から始まるものも見つける。
-URL が許可リストのどの前置きでも始まらないとき、`http://` で始まるとき、`..` を含むとき、`&` か `\` を含むとき、`href` のない `<a>` のタグがあるときは失敗する。
-`&` と `\` を拒むのは、Markdown が URL の中の文字参照とエスケープを文字に戻し、`&#46;` や `\.` で `..` を書けるからである。
-許可リストの各行は、`https://` で始まり `/` で終わらなければならない。
+- ジョブのトークン（`GH_TOKEN`、`GITHUB_TOKEN`、OIDC の要求の URL とトークン）
+- 後のステップの環境を変えられるワークフローのコマンドのファイル（`GITHUB_ENV`、`GITHUB_PATH`、`GITHUB_OUTPUT`、`GITHUB_STATE`、`GITHUB_STEP_SUMMARY`）
+
+#### ノートに書いてよいリンク
+
+ノートに書いてよいリンクは、`scripts/release/allowed-links.txt` の許可リストで決める。
+許可リストには、URL の前置きを 1 行に一つ書く。
+各行は、`https://` で始まり `/` で終わらなければならない。
+今の許可リストは、`https://github.com/tett23/golem/` と `https://github.com/tett23/peg-hs/` の 2 行である。
 兄弟のリポジトリへのリンクを許すときは、許可リストに 1 行足すプルリクエストを出す。
 
-Linux の配布物をビルドする `scripts/release/build-linux.sh` は、ghcup のブートストラップのスクリプトを、ghcup のバージョンに対応するコミットからファイルに下ろし、スクリプトに書いた SHA-256 と比べてから動かす。
-ハッシュが違うとき、またはスクリプトが入れる ghcup のバージョンがスクリプトに書いたものと違うときは止まる。
+`check-notes.sh` は、ノートの中のリンクを、次の形のすべてについて見つける。
+
+- `[text](URL)` のリンク（`[text](` の後の URL が次の行から始まるものを含む）
+- 参照形式のリンク
+- 生の URL（`https://` に限らずどのスキームも）
+- `<https://…>` の自動リンク
+- `www.` で始まる自動リンク
+- `<a>` のタグ（`<a` の後の属性が次の行から始まるものを含む）
+
+見つけたリンクが次のどれかに当たれば、検査は失敗する。
+
+- URL が許可リストのどの前置きでも始まらない。
+- URL が `http://` で始まる。
+- URL が `..` を含む。
+- URL が `&` か `\` を含む。
+- `href` のない `<a>` のタグがある。
+
+`&` と `\` を拒むのは、Markdown が URL の中の文字参照とエスケープを文字に戻し、`&#46;` や `\.` で `..` を書けるからである。
+
+#### ビルドの道具の取得
+
+Linux の配布物をビルドする `scripts/release/build-linux.sh` は、ghcup のブートストラップのスクリプトを確かめてから動かす。
+スクリプトは、ghcup のバージョンに対応するコミットからファイルに下ろし、`build-linux.sh` に書いた SHA-256 と比べる。
+ハッシュが違うとき、またはスクリプトが入れる ghcup のバージョンが `build-linux.sh` に書いたものと違うときは止まる。
 GHC と cabal は、ghcup が自分のメタデータの SHA-256 で確かめる。
 
-`scripts/fetch-wasmtime.sh` は、`third_party/wasmtime/VERSION` に配布物の名前と SHA-256 を空白で区切って書く。
+`scripts/fetch-wasmtime.sh` は、取得した wasmtime を記録として `third_party/wasmtime/VERSION` に残す。
+`VERSION` には、配布物の名前と SHA-256 を空白で区切って書く。
 `VERSION` の名前とハッシュの両方がスクリプトのものと一致するときだけ、取得済みのディレクトリを使い、そうでなければ取り直す。
 `fetch-wasmtime.sh --expected` は、期待する `VERSION` の中身を出力する。
-公開の操作はワークフローでは行わない。
-最初のプレリリース v0.1.0-rc1 で確かめた結果は、[docs/audits/releases/v0.1.0-rc1.md](audits/releases/v0.1.0-rc1.md) に記録した（[docs/adr/0008](adr/0008-first-release-verification.md)）。
-
-同じバージョンの Golem に同じ入力を与えれば、配布物でも同じ出力が得られる。
-同じソースから同じバイト列の実行ファイルが得られること（再現可能なビルド）は、v1 では求めない。
-代わりに、`BUILDINFO` にビルドの環境を記録し、来歴の証明でどのワークフローがどのコミットから作ったかを検証できるようにする。
 
 ## マニュアル
 
@@ -6253,13 +6350,21 @@ Golem には二つのマニュアルがあり、どちらも Golem 自身で組�
 - **manual/**：使い手のマニュアル。読み手は、一般的な組版の知識を持ち InDesign を使える編集者と DTP オペレーターである。A5 判の横組みで、敬体で書く。各節は、その節で説明する機能（ルビ、注、表、相互参照など）を実際に使って組む。
 - **manual-dev/**：開発者のマニュアル。第一部「Golem で仕組みを作る」はプラグインの作者、CI で自動の組版を組む人、エディタに LSP をつなぐ人に、第二部「Golem を開発する」は Golem そのものを開発する人に向ける。B5 判の横組みで、常体で書く。仕様書、各モジュールの仕様書、ADR、CONTRIBUTING.md をまとめてリンクし、新しい決定はしない。
 
-出力は、どちらも PDF と HTML だけとする。
+マニュアルを Golem 自身で組むのは、二つの理由による。
+一つは、配布する PDF をそのまま組版の見本にするためである。
+もう一つは、一冊の本の分量の原稿を毎回組むことを、回帰の検査にするためである。
+
+### マニュアルに書くこと
+
+マニュアルの出力は、どちらも PDF と HTML だけとする。
 読み手、文体、説明の厚さ、根拠の示し方、規格の一覧、章立て、コードの表示、更新の決まりは、方針の文書 [docs/manual-policy.md](manual-policy.md) に書く。
+
 マニュアルに書くのは、採択して実装を終えた仕様だけである。
 [docs/roadmap.md](roadmap.md) に載っている事項（未決事項を含む）と、提案の ADR は書かない。
 マニュアルと ADR や仕様書が食い違ったときは、ADR と仕様書に従ってマニュアルを直す。
 
-マニュアルを Golem 自身で組むのは、配布する PDF をそのまま組版の見本にし、一冊の本の分量の原稿を毎回組むことを回帰の検査にするためである。
+### マニュアルの体裁と奥付
+
 二つのマニュアルの体裁は、次の点をそろえる。
 
 - 前付けは、番号のない「はじめに」（`@nonumber`、目次に載せる）、目次の順に置く。ノンブルは「はじめに」から通しで振る。
@@ -6268,30 +6373,55 @@ Golem には二つのマニュアルがあり、どちらも Golem 自身で組�
 - 奥付に、版と、組んだコミットのハッシュを載せる。
 
 奥付の値は、`scripts/manual/build-info.sh PROJECT` が組む前に `PROJECT/common/build-info.gm` に書き、奥付が `@import` で読む。
-`edition` は、組むコミットに `v` で始まるタグがあればそのタグ、なければ `VERSION` の内容に「の開発版」を続けた文字列である。
-`commit` は `git rev-parse HEAD` の 40 桁のハッシュだけである。
-`uncommitted` は、追跡しているファイルにコミットしていない変更があれば「（コミットしていない変更を含む）」、なければ空の文字列である。
+値は次の三つである。
+
+- `edition`：組むコミットに `v` で始まるタグがあればそのタグ、なければ `VERSION` の内容に「の開発版」を続けた文字列
+- `commit`：`git rev-parse HEAD` の 40 桁のハッシュだけ
+- `uncommitted`：追跡しているファイルにコミットしていない変更があれば「（コミットしていない変更を含む）」、なければ空の文字列
+
+環境変数 `GOLEM_MANUAL_COMMIT` と `GOLEM_MANUAL_TAG` があれば、`build-info.sh` は git を読まずにその値を使い、`uncommitted` を空の文字列にする。
+どちらもなく、ハッシュを読めない場合は、終了コード 1 で終わり、ファイルを書かない。
+
 奥付は、ハッシュだけを本文の中のコードにし、`uncommitted` を本文の文字として続ける（`コミット：[code: [= build.commit]][= build.uncommitted]`）。
 注記は和文として字のあいだで改行できるので、コミットの行は版面に収まる（[docs/adr/0178](adr/0178-colophon-commit-line-overflow.md)）。
-環境変数 `GOLEM_MANUAL_COMMIT` と `GOLEM_MANUAL_TAG` があれば、git を読まずにその値を使い、`uncommitted` は空の文字列にする。
-どちらもなく、ハッシュを読めない場合は、終了コード 1 で終わり、ファイルを書かない。
+
 `build-info.gm` は生成物であり、Git で管理しない。
 これがないまま `golem check` や LSP でマニュアルを開くと G03002 になるので、編集する前に一度 `build-info.sh` を実行する。
-奥付のハッシュも入力の一部なので、マニュアルの出力は内容を変えていないコミットでも奥付の分だけ変わる。
-決定性の検査は、同じコミットの二つのマシンの一覧どうしを比べ、コミットをまたいで `hashes.txt` と比べるときはマニュアルの行を除くので、この影響を受けない。
 
-`scripts/manual/build.sh [manual|manual-dev]...`（省くと両方）は、プロジェクトごとに `build-info.sh` を呼び、`scripts/manual/fetch-fonts.sh` でフォントを取得し（あれば検査だけ）、`golem build --target pdf --target html` で組む。
-エラー、警告、notice のどれか一つでも出れば失敗とする。
+奥付のハッシュも入力の一部なので、マニュアルの出力は、内容を変えていないコミットでも奥付の分だけ変わる。
+それでも、決定性の検査はこの影響を受けない。
+決定性の検査は、同じコミットの二つのマシンの一覧どうしを比べ、コミットをまたいで `hashes.txt` と比べるときはマニュアルの行を除くからである。
+
+### マニュアルの組み方とライセンス
+
+`scripts/manual/build.sh [manual|manual-dev]...`（省くと両方）は、プロジェクトごとに次の順に組む。
+
+1. `build-info.sh` を呼ぶ。
+2. `scripts/manual/fetch-fonts.sh` でフォントを取得する（あれば検査だけ）。
+3. `golem build --target pdf --target html` で組む。
+
+マニュアルは、diagnostic を一つも出さずに組めなければならない。
+エラー、警告、notice のどれか一つでも出れば、`build.sh` は失敗とする。
 マニフェストに `silence-notices` があれば、組む前に失敗とする。
 `--no-notices` は付けない。
-プロジェクトに `LICENSE` がなければ、組む前に終了コード 1 で失敗とする。
-組めたら、プロジェクトの `LICENSE` を `build/html/LICENSE` に写し、`build/html/fonts/` があれば、プロジェクトの `fonts/LICENSE-*` をすべて `build/html/fonts/` に写す（[ADR 0082](adr/0082-manuals-under-cc0.md)）。
-HTML の出力はフォントのファイルを `fonts/` にそのまま写すので、その隣に SIL Open Font License 1.1 の全文を置くためである。
-PDF には何も足さない。
-二つのマニュアルの `manual/` と `manual-dev/` の下で Git が管理するファイル（`fonts/` を除く）と、そこから組んだ PDF と HTML は CC0 1.0 で公開し、各プロジェクトの `LICENSE` に条文を置く。
+
+二つのマニュアルは、CC0 1.0 で公開する（[ADR 0082](adr/0082-manuals-under-cc0.md)）。
+対象は、`manual/` と `manual-dev/` の下で Git が管理するファイル（`fonts/` を除く）と、そこから組んだ PDF と HTML である。
+各プロジェクトの `LICENSE` に条文を置く。
 `LICENSE` は、1 行目に CC0 1.0 の説明のページの URL、2 行目を空行とし、3 行目から Creative Commons の条文の平文を変えずに置く。
-フォントは SIL Open Font License 1.1 のままであり、奥付にそのことを書く。
-書体（Noto Serif JP、Noto Sans JP の Regular と Bold、Source Serif 4、Source Sans 3 の Bold、Source Code Pro。どれも SIL Open Font License 1.1）はリポジトリに入れず、`fetch-fonts.sh` がバージョンを固定した URL から取得し、SHA-256 を検査して各プロジェクトの `fonts/` に置く。
+プロジェクトに `LICENSE` がなければ、`build.sh` は組む前に終了コード 1 で失敗とする。
+
+フォントは、SIL Open Font License 1.1 のままであり、奥付にそのことを書く。
+書体は、Noto Serif JP、Noto Sans JP の Regular と Bold、Source Serif 4、Source Sans 3 の Bold、Source Code Pro で、どれも SIL Open Font License 1.1 である。
+書体はリポジトリに入れない。
+`fetch-fonts.sh` が、バージョンを固定した URL から取得し、SHA-256 を検査して各プロジェクトの `fonts/` に置く。
+
+組めたら、`build.sh` は HTML の出力にライセンスの文書を写す。
+プロジェクトの `LICENSE` を `build/html/LICENSE` に写し、`build/html/fonts/` があれば、プロジェクトの `fonts/LICENSE-*` をすべて `build/html/fonts/` に写す。
+フォントの文書を写すのは、HTML の出力がフォントのファイルを `fonts/` にそのまま写すので、その隣に SIL Open Font License 1.1 の全文を置くためである。
+PDF には何も足さない。
+
+### マニュアルの更新の検査
 
 `scripts/manual/check-updated.sh` は、ブランチの分岐点からの変更を次の規則で検査する。
 
@@ -6300,30 +6430,42 @@ PDF には何も足さない。
 3. どちらの規則も、範囲のコミットのどれかのメッセージに `Manual: unchanged` のトレーラーがあれば通す。
 
 各モジュールの仕様書と ADR の変更は検査しない。
-Git の `pre-push` のフック（`origin/main` からの分岐点で検査する）と、`docs.yml` の `manual` ジョブ（プルリクエストのとき）が、このスクリプトを走らせる。
+このスクリプトを走らせるのは、Git の `pre-push` のフック（`origin/main` からの分岐点で検査する）と、`docs.yml` の `manual` ジョブ（プルリクエストのとき）である。
+
+docs/manual-policy.md は Golem の振る舞いを定めないので、ビルドが読む文書の一覧（`scripts/ci/needs-build.sh`）に入れない。
+一方、`manual/` と `manual-dev/` は `docs/` の外にあるので、その変更はビルドを走らせる。
+
+### CI とリリースでのマニュアル
 
 CI の `build` ジョブは、テストの後に `scripts/manual/build.sh` で二つのマニュアルを組み、x86-64 のジョブで成果物 `manual` と `manual-dev` を上げる。
 組んだ PDF と HTML のハッシュは `scripts/determinism.sh` の出力に入り、x86-64 と aarch64 で同じバイト列になることを `determinism` ジョブが確かめる。
-`scripts/determinism.sh` は、マニュアルのほかの入力では、出力のファイルに加えて `golem build --format json` の標準出力と標準エラー出力の SHA-256 と終了コードも書く。
-入力には、機能を組み合わせた二冊（`modules/golem-driver/test/fixtures/complex-vertical` と `complex-horizontal`）を四つのターゲットで組んだものも含む（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）。
-二冊は、縦組みの一段の本と横組みの二段の本で、ルビ、圏点、注、図版、表、コードブロック、罫線を持つ段落と見出し、目次、索引、参考文献、Emet の関数とフィルタを組み合わせる。
-二冊の PDF と EPUB は、golem-driver の出力のゴールデン（`OutputGoldenSpec`）も固定し、どのターゲットでも diagnostic を出さないことを確かめる。
-ただし、二冊が固定する機能のうち、コードブロックの行の折り返しと、ページか段の境で分けて組む罫線を持つ段落は、使えば必ず notice（G07030 と G07046）を出す。
-二冊の `manifest.toml` は、`[diagnostics]` の `silence-notices` にこの二つのコードだけを並べ、ほかの diagnostic を止める手段（ほかのコード、`silence-info`、`--no-notices`）を使わない（[ADR 0198](adr/0198-silenced-notices-of-complex-fixtures.md)）。
-golem-driver の `ComplexFixtureSpec` が、二冊の `[diagnostics]` の表がこの一つのキーだけを持つことを確かめる。
-入力には diagnostics を出して終了コード 1 で終わる `scripts/env-determinism/diagnostics/` を含むので、二つのアーキテクチャの diagnostics と終了コードも比べることになる。
-マニュアルは diagnostic を一つでも出せば `scripts/manual/build.sh` が失敗にするので、diagnostics の比較の対象にしない（[ADR 0071](adr/0071-determinism-check-compares-diagnostics.md)）。
-docs/manual-policy.md は Golem の振る舞いを定めないので、ビルドが読む文書の一覧（`scripts/ci/needs-build.sh`）に入れない。
-`manual/` と `manual-dev/` は `docs/` の外にあるので、その変更はビルドを走らせる。
 
-リリースのワークフローは、そのリリースの x86-64 の Linux の配布物で、`GOLEM_MANUAL_TAG` にタグを渡して二つのマニュアルを組み、`golem-manual-<タグ>.pdf`、`golem-manual-<タグ>-html.tar.gz`、`golem-dev-manual-<タグ>.pdf`、`golem-dev-manual-<タグ>-html.tar.gz` をリリースのアセットと `SHA256SUMS` に加える。
-HTML の tar は `build/html` をそのまま固めたものなので、HTML とフォントのほかに、マニュアルの `LICENSE`（CC0 1.0 の条文）と、`fonts/` のフォントのライセンスの文書（`LICENSE-*`）を含む。
+`scripts/determinism.sh` は、マニュアルのほかの入力では、出力のファイルに加えて、`golem build --format json` の標準出力と標準エラー出力の SHA-256 と終了コードも書く。
+その入力には、diagnostics を出して終了コード 1 で終わる `scripts/env-determinism/diagnostics/` を含む。
+そのため、二つのアーキテクチャの diagnostics と終了コードも比べることになる。
+マニュアルは、diagnostic を一つでも出せば `scripts/manual/build.sh` が失敗にするので、diagnostics の比較の対象にしない（[ADR 0071](adr/0071-determinism-check-compares-diagnostics.md)）。
+
+決定性の検査の入力には、機能を組み合わせた二冊（`modules/golem-driver/test/fixtures/complex-vertical` と `complex-horizontal`）を四つのターゲットで組んだものも含む（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）。
+二冊は、縦組みの一段の本と横組みの二段の本である。
+どちらも、ルビ、圏点、注、図版、表、コードブロック、罫線を持つ段落と見出し、目次、索引、参考文献、Emet の関数とフィルタを組み合わせる。
+二冊の PDF と EPUB は、golem-driver の出力のゴールデン（`OutputGoldenSpec`）も固定し、どのターゲットでも diagnostic を出さないことを確かめる。
+
+ただし、二冊が固定する機能のうち二つは、使えば必ず notice を出す。
+コードブロックの行の折り返し（G07030）と、ページか段の境で分けて組む罫線を持つ段落（G07046）である。
+二冊の `manifest.toml` は、`[diagnostics]` の `silence-notices` にこの二つのコードだけを並べる（[ADR 0198](adr/0198-silenced-notices-of-complex-fixtures.md)）。
+ほかの diagnostic を止める手段（ほかのコード、`silence-info`、`--no-notices`）は使わない。
+golem-driver の `ComplexFixtureSpec` が、二冊の `[diagnostics]` の表がこの一つのキーだけを持つことを確かめる。
+
+リリースのワークフローは、そのリリースの x86-64 の Linux の配布物で、`GOLEM_MANUAL_TAG` にタグを渡して二つのマニュアルを組む。
+組んだ `golem-manual-<タグ>.pdf`、`golem-manual-<タグ>-html.tar.gz`、`golem-dev-manual-<タグ>.pdf`、`golem-dev-manual-<タグ>-html.tar.gz` を、リリースのアセットと `SHA256SUMS` に加える。
+HTML の tar は `build/html` をそのまま固めたものである。
+そのため、HTML とフォントのほかに、マニュアルの `LICENSE`（CC0 1.0 の条文）と、`fonts/` のフォントのライセンスの文書（`LICENSE-*`）を含む。
 
 ## 開発順序
 
-構文 → 意味論 IR → Web 経路 → レイアウト → 行組版 → フォントと PDF の順に進める。
+Golem の開発は、構文 → 意味論 IR → Web 経路 → レイアウト → 行組版 → フォントと PDF の順に進める。
 Web 経路を先行させるのは、行分割器もフォントエンジンも必要とせず、意味論レイヤーを最短で実働させられるためである。
-PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 準拠の直列化）を含むため、意味論が固まった後の第二段とする。
+PDF 経路は、最重量の工程（フォントのサブセット化と PDF/X-4 準拠の直列化）を含むため、意味論が固まった後の第二段とする。
 
 ## ロードマップ
 
@@ -6342,26 +6484,30 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 
 ## 既知の不具合
 
-自動のテストを足すときと文書を書くときに見つかった、仕様や ADR とコードの食い違いと、仕様や ADR が振る舞いを定めていない箇所をここにまとめる。
+この節には、仕様や ADR とコードの食い違いと、仕様や ADR が振る舞いを定めていない箇所をまとめる。
+どれも、自動のテストを足すときか文書を書くときに見つかったものである。
 テストを足すときに見つかったものは、該当する場合をテストに入れずに残している。
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
 - **`[ref-number]` の図番号とリスト番号と表番号が、`[figures]` と `[code]` と `[tables]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックと番号のある表を `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号、`[tables]` の `number` と表番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
-- **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因はまだ調べていない。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
+- **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因は未確認である。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合
 
-LLM は仕様が不明なとき、適宜 Pandoc の仕様を参照してよい。
-ただし、仕様を変更する場合は人間に確認をとらなくてはならない。
-和文組版は日本語組版処理の要件（JLReq、<https://www.w3.org/TR/jlreq/>）に従う。
-数字の縦書きと横書きの表記は「公文書作成の考え方」に倣う。
 組版の振る舞いを決めるときは、JLReq、InDesign、TeX と LaTeX の順に拠る。
-和文組版で JLReq が定める点は JLReq に従い、InDesign の振る舞いと食い違う場合も JLReq を採る。
-JLReq が定めない点は、まず Adobe InDesign の振る舞いを調べ、それに倣う。
-InDesign の振る舞いを確かめられない場合に限り、TeX と LaTeX の仕様に従う。
+和文組版は JLReq に従い、出典ごとの扱いは次のとおりである。
+
+1. 和文組版で JLReq（日本語組版処理の要件、<https://www.w3.org/TR/jlreq/>）が定める点は、JLReq に従う。InDesign の振る舞いと食い違う場合も、JLReq を採る。
+2. JLReq が定めない点は、まず Adobe InDesign の振る舞いを調べ、それに倣う。
+3. InDesign の振る舞いを確かめられない場合に限り、TeX と LaTeX の仕様に従う。
+
+数字の縦書きと横書きの表記は、「公文書作成の考え方」に倣う。
 調べた結果と出典は、その仕様を決める ADR に書く。
+
+LLM は、仕様が不明なとき、適宜 Pandoc の仕様を参照してよい。
+ただし、仕様を変更する場合は人間に確認をとらなくてはならない。
 
 [^running-head]: **柱**：ページの余白に置く、章題などの見出し。位置と内容はマスターページで決める。
 [^type-area]: **版面**：ページの中で本文を組む領域。定義の方法は「style.toml」の節で定める。
