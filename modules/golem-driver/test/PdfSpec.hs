@@ -270,13 +270,14 @@ characterFeatureTests =
       shapingOf (const []) True (lk KernMetrics False) 'a' @?= Shaping "body" False [] False,
     testCase "punctuation JLReq spaces gets -palt and -vpal by every kerning method (docs/adr ADR 0053)" $ do
       let lk k p = (plainLook "body" 655360) {lkKerning = k, lkProportional = p}
-      shapingOf (const []) False (lk KernMetrics True) '「' @?= Shaping "body" False ["-palt", "-vpal"] False
-      shapingOf (const []) True (lk KernMetrics True) '「' @?= Shaping "body" True ["-palt", "-vpal"] False
+      -- and fwid, the full-width glyph (docs/adr/0302)
+      shapingOf (const []) False (lk KernMetrics True) '「' @?= Shaping "body" False ["-palt", "-vpal", "fwid"] False
+      shapingOf (const []) True (lk KernMetrics True) '「' @?= Shaping "body" True ["-palt", "-vpal", "fwid"] False
       -- the role's palt is undone even without proportional-metrics
-      shapingOf (const []) False (lk KernMetrics False) '「' @?= Shaping "body" False ["-palt", "-vpal"] False
-      mapM_ (\c -> shapingOf (const []) False (lk KernMetrics True) c @?= Shaping "body" False ["-palt", "-vpal"] False) ['」', '。', '、', '・', '：', '；']
-      shapingOf (const []) False (lk KernNone True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"] False
-      shapingOf (const []) False (lk KernJapaneseEqualWidth True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"] False
+      shapingOf (const []) False (lk KernMetrics False) '「' @?= Shaping "body" False ["-palt", "-vpal", "fwid"] False
+      mapM_ (\c -> shapingOf (const []) False (lk KernMetrics True) c @?= Shaping "body" False ["-palt", "-vpal", "fwid"] False) ['」', '。', '、', '・', '：', '；']
+      shapingOf (const []) False (lk KernNone True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal", "fwid"] False
+      shapingOf (const []) False (lk KernJapaneseEqualWidth True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal", "fwid"] False
       -- what JLReq does not space keeps palt
       shapingOf (const []) False (lk KernMetrics True) '？' @?= Shaping "body" False ["palt"] False
       shapingOf (const []) False (lk KernMetrics True) '…' @?= Shaping "body" False ["palt"] False,

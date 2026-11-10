@@ -58,6 +58,7 @@ import LanguagesSpec (languagesTests)
 import LineBreakInvariantsSpec (lineInvariantTests)
 import LineBreakingSpec (lineBreakingTests)
 import LinkSpec (linkTests)
+import NarrowPunctuationSpec (narrowPunctuationTests)
 import NoBreakEnum (noBreakTests)
 import NoteSplitSpec (noteSplitTests)
 import NumberUnitSpec (numberUnitTests)
@@ -397,6 +398,7 @@ tests =
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       inseparableTests,
       doubleDashTests,
+      narrowPunctuationTests,
       codeSpaceTests,
       codeJapaneseTests,
       codePaddingTests,

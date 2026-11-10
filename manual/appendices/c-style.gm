@@ -123,6 +123,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: underline] | 外側の値 | 下線です。[code: true] で既定の線、表で [code: weight]、[code: offset]、[code: style]、[code: dash]、[code: gap]、[code: color] を書いた線、[code: false] で線なしにします。縦組みでは文字の右に引きます。 |
 | [code: strikethrough] | 外側の値 | 打ち消し線です。書き方は [code: underline] と同じです。 |
 | [code: features] | なし | OpenType の機能の配列です。[code: \["smcp", "-liga", "salt=2"\]] のように書きます。[code: based-on] で引き継いだ機能の後ろに足します。 |
+| [code: punctuation-width] | 外側の値 | [code: "full-width"] で括弧類、句読点、中点類を全角の字形で、[code: "font"] でフォントの字形のまま組みます。[code: body] の既定は [code: "full-width"] です（「[ref-title punctuation-width]」、[ref-page punctuation-width] ページ）。 |
 | [code: no-break] | [code: false] | [code: true] にすると、その文字の範囲の中では PDF で行を分けません（InDesign の分離禁止にあたります）。語のあいだの空白は、分けないまま伸び縮みします。行末の [code: \\] の改行は範囲の中でも行を改めます。範囲が行に収まらなければ、行がはみ出して警告（G07122）が出ます。文字スタイルを入れ子にしたときは、どれか一つが [code: true] なら分けません。HTML と EPUB では [code: white-space: nowrap] になります。 |
 
 文字の送りを決める次の四つのキーも書けます。
@@ -220,7 +221,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: padding] | 囲みの内側の余白です。[code: zw] は段落スタイルの文字の大きさを一字とします。既定は [code: "0.5zw"] です。 |
 | [code: border-radius] | 囲みの角の丸みの半径です。[code: zw] は段落スタイルの文字の大きさを一字とします。既定は [code: "0pt"] です。 |
 
-段落スタイルには、文字スタイルと同じ [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]、[code: features] も書けます。
+段落スタイルには、文字スタイルと同じ [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]、[code: punctuation-width]、[code: features] も書けます。
 [code: \[paragraph-styles.body\]] に書くと、本の全体の既定になります。
 [code: aki-set]、[code: line-adjustment]、[code: stretch-limit]、[code: shrink-order]、[code: stretch-order] は [code: body] から引き継ぐので、[code: body] に書けば本の全体が変わります。
 キャプション、傍注、表のセル、目次の項目は、それぞれの段落スタイルの値で組み、注の本文とリストは [code: body] の値で組みます。

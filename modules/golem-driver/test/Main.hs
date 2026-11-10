@@ -52,6 +52,7 @@ import ParagraphSpec
 import PdfSpec
 import PlatesSpec (platesTests)
 import PopplerSpec (popplerTests)
+import PunctuationWidthSpec (punctuationWidthTests)
 import ReferencesSpec
 import ReuseSpec
 import ScriptsSpec (scriptsTests)
@@ -120,7 +121,7 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, insideLinksTests, overflowTests, softHyphenTests, exceptionsTests, bookLanguageTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, scriptsTests, decorationsTests]
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, insideLinksTests, overflowTests, softHyphenTests, exceptionsTests, bookLanguageTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, punctuationWidthTests, scriptsTests, decorationsTests]
         <> newTests
         <> [ allTargetsTests,
              pdfPipelineTests,

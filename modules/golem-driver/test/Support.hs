@@ -19,6 +19,8 @@ import Golem.Assemble (inlineText)
 import Golem.Bibliography (EntryPart)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
+import Golem.Layout.CharClass (charClass)
+import Golem.Layout.Japanese (punctSpace)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..))
 import Golem.LayoutSpec (PageGeometry (..), pageGeometry)
@@ -553,7 +555,9 @@ tfSizes content = [size | l <- BC.lines content, (size, "Tf") <- zip (BC.words l
 
 {- | Fixed-width stand-in fonts: full-width characters one em, others half;
 the role "wide" (face 2) sets everything one em wide; the role "heading"
-is face 4; the glyphs of the role "inkless" (face 8) have no ink (G07101).
+is face 4; the glyphs of the role "inkless" (face 8) have no ink (G07101);
+in the role "overhang" (face 10) ” is 0.4 em wide and the ink of every
+glyph reaches 1.2 em (G07126, docs/adr/0302).
 -}
 fakeFonts :: LoadedFonts
 fakeFonts =
@@ -565,7 +569,13 @@ fakeFonts =
       lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i (0, 0) ClusterWhole | (i, c) <- zip [0 ..] (T.unpack t)],
       lfEmBoxCentral = const (38 / 100),
       lfFaceFile = const ("fonts/b.otf", "truetype"),
-      lfInkBox = \ix _ -> if ix == 8 then Nothing else Just (1 / 10, -(1 / 10), 9 / 10, 8 / 10),
+      lfInkBox = \ix g -> case ix of
+        8 -> Nothing
+        10 -> Just (1 / 20, -(1 / 10), 6 / 5, 8 / 10)
+        -- JLReq's punctuation has its ink in the part of the em its spaces leave (docs/adr/0302)
+        _ -> case punctSpace (charClass (toEnum g)) of
+          (0, 0) -> Just (1 / 10, -(1 / 10), 9 / 10, 8 / 10)
+          (pre, post) -> Just (pre + 1 / 20, -(1 / 10), 1 - post - 1 / 20, 8 / 10),
       -- no role has features, and every face has every feature (docs/adr/0268)
       lfRoleFeatures = const [],
       lfHasFeature = \_ _ -> True,
@@ -575,12 +585,16 @@ fakeFonts =
     }
   where
     -- the role "wide" sets every character one em wide
-    advOf role c = if role == "wide" then 1 else adv c
+    advOf role c
+      | role == "wide" = 1
+      | role == "overhang" && c == '\x201D' = 2 / 5
+      | otherwise = adv c
     faceOf = \case
       "wide" -> 2
       "heading" -> 4
       "code" -> 6
       "inkless" -> 8
+      "overhang" -> 10
       _ -> 0
     adv c = if fromEnum c < 0x2000 then 1 / 2 else 1
 

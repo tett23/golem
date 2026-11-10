@@ -115,6 +115,7 @@ test-suite golem-driver-test
     DecorationsSpec
     ExceptionsSpec
     OpenTypeFeaturesSpec
+    PunctuationWidthSpec
     ScriptsSpec
     OverflowSpec
     SoftHyphenSpec
