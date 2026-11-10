@@ -3241,50 +3241,54 @@ PDF では、表を行の格子の上に組む（[golem-driver ADR 0008](golem-d
 
 ## 構文木と diagnostics
 
-パーサーはロスレスな構文木（CST）を出力し、AST はそこから導出する。
-CST はコメント、空白、改行をトリビアとして保持する。
+パーサーはロスレスな構文木（CST）を出力し、AST は CST から導出する。
+CST は、コメント、空白、改行をトリビアとして保持する。
 fmt はコメントを含めて元のテキストを書き戻す必要があり、トリビアを捨てる AST からは書き戻せないためである。
 
-パーサーは構文エラーから回復し、エラーを含むファイルからも構文木を作る。
-LSP は書きかけのファイルを常に扱うので、最初の構文エラーで解析が止まると補完も diagnostics も出せないためである。
-この二つ（トリビアの保持とエラーからの回復）は、別リポジトリで開発する PEG ライブラリへの要件になる。
+また、パーサーは構文エラーから回復し、エラーを含むファイルからも構文木を作る。
+LSP は書きかけのファイルを常に扱うので、最初の構文エラーで解析が止まると、補完も diagnostics も出せないためである。
+トリビアの保持とエラーからの回復の二つは、別リポジトリで開発する PEG ライブラリへの要件になる。
 
 ### diagnostic の形式とコード
 
 コンパイルエラー、lint の警告、LSP の diagnostics は、すべて同じ diagnostic の形式で表す。
-各 diagnostic は、安定したコード、重大度、ソース位置、可能な場合は修正案を持つ。
-コードは `G`、diagnostic を出す段階の 2 桁、番号の 3 桁からなる 5 桁である（G02058 など。[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)、[docs/adr/0061](adr/0061-five-digit-diagnostic-codes.md)）。
+各 diagnostic は、安定したコード、重大度、ソース位置を持ち、可能な場合は修正案も持つ。
+コードは、`G` に、diagnostic を出す段階の 2 桁と番号の 3 桁を続けた 5 桁である（G02058 など。[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)、[docs/adr/0061](adr/0061-five-digit-diagnostic-codes.md)）。
 番号の 000 から 099 は以前の 4 桁のコードを写したものであり、新しいコードには 100 から 999 を割り当てる。
 4 桁のコードは受け付けず、`golem explain` では使い方の誤り、`silence-notices` では G03024 とする。
-関数を書く言語 Emet のコードは `E` で始まり、`golem explain`、`silence-notices`、`silence-info` は `E` のコードも受け付ける（[docs/adr/0160](adr/0160-emet-function-language-core.md)）。
+関数を書く言語 Emet のコードは `E` で始まる。
+`golem explain`、`silence-notices`、`silence-info` は、`E` のコードも受け付ける（[docs/adr/0160](adr/0160-emet-function-language-core.md)）。
 コードの形の誤りのメッセージは、`G` か `E` の後に 5 桁の数字を続けることを示す（[docs/adr/0176](adr/0176-e-code-shape-message.md)）。
 
 diagnostic のコードの一覧と、コードごとの意味、原因、直し方は [docs/diagnostics.md](diagnostics.md) にまとめる（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
-この文書は golem-driver に埋め込み、`golem explain <コード>` で節をそのまま表示する。
-埋め込みは `scripts/gen-embedded.sh` が生成してコミットしたモジュールで行うので、文書を変えたら同じ変更でこのスクリプトを走らせ、生成し直したモジュールもコミットする（[ADR 0203](adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）。
+docs/diagnostics.md は golem-driver に埋め込み、`golem explain <コード>` はその節をそのまま表示する。
+埋め込みには、`scripts/gen-embedded.sh` が生成してコミットしたモジュールを使う（[ADR 0203](adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）。
+そのため、docs/diagnostics.md を変えたら、同じ変更でこのスクリプトを走らせ、生成し直したモジュールもコミットする。
 節の形（題、重大度、状態、意味、主な原因、直し方）は golem-driver のテストが検査し、形の崩れた文書は CI を通らない。
-新しいコードを足すときは、同じ変更でこの文書に説明を足す。
+新しいコードを足すときは、同じ変更で docs/diagnostics.md に説明を足す。
 使わなくなったコードは、節を消さずに状態を廃止にする。
 
 評価の段階のコードのうち G02001 から G02043、G02060、G02061 は、出す条件、メッセージ、位置を [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md) が定める。
 図版、表、ソースコードのリストのパスが、絶対パス、URL、プロジェクトルートの外を指す場合は G02060、ファイルがない場合は G02033 とする。
+
 `@table` の表のファイル（CSV と TSV）の diagnostics は、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md) が定める。
-`format` の値の誤りは G02080、`align` の誤りは G02081、`cells` の誤りは G02084 とし、原稿の引数の位置を指す。
+`format` の値の誤りは G02080、`align` の誤りは G02081、`cells` の誤りは G02084 であり、どれも原稿の引数の位置を指す。
 表のファイルの中の誤りは、ファイルの位置を指す。
-空の表と、行のセルの数が見出しの行と違う行は G02085、閉じていない CSV の引用符は G02083 とする。
+空の表と、行のセルの数が見出しの行と違う行は G02085、閉じていない CSV の引用符は G02083 である。
 表のファイルが大きさ、行の数、セルの数の上限を超えたときは G02088 とし、`@table` のブロックを指す（[docs/adr/0043](adr/0043-table-file-size-limits.md)）。
-表のファイルには、テキストとして読むファイル（`@table` と `@listing` のファイル）ごとに `plugins.lock` の次から振る `FileId` があり、人が読む形式では `data/sizes.tsv:3:1` の形で表示する。
 G02035（`@table` のコマンドを指した CSV の誤り）は、G02085 に置き換えて廃止した。
+テキストとして読むファイル（`@table` と `@listing` のファイル）には、ファイルごとに `plugins.lock` の次から振る `FileId` がある。
+人が読む形式では、表のファイルの位置を `data/sizes.tsv:3:1` の形で表示する。
 
 ソースで使うコードがすべて使用中の節を持ち、使用中の節のコードがすべてソースで使われていることは、golem-driver のテストが確かめる。
-プラグインが出す diagnostic のコードは、この文書の対象外である。
-そのコードは `<プラグインの宣言の名前>/<英小文字で始まり、英小文字、数字、- だけからなる列>` の形で、Golem のコードとは重ならない（「プラグイン」の節）。
+プラグインが出す diagnostic のコードは、docs/diagnostics.md の対象外である。
+プラグインのコードは `<プラグインの宣言の名前>/<英小文字で始まり、英小文字、数字、- だけからなる列>` の形で、Golem のコードとは重ならない（「プラグイン」の節）。
 
 ### 段階ごとの位置と文言
 
 プロジェクトの段階の diagnostics（G03001 から G03009、G03016 など）は、プロジェクトの読み込みに失敗したときも、それまでに読んだファイル（`manifest.toml`、原稿、`style.toml`）の位置で表示する（[golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)）。
 `manifest.toml` がないときは G03016 とし、章や `@import` の指すファイルがないときの G03002 と分ける。
-LSP は、これらの diagnostics を位置の指すファイルに載せ、どのファイルも指さない diagnostic を `manifest.toml` に載せる。
+LSP は、プロジェクトの段階の diagnostics を位置の指すファイルに載せ、どのファイルも指さない diagnostic を `manifest.toml` に載せる。
 
 構文の段階のコード（G01001 から G01003、G01010 から G01022、G01029）は、出す条件、メッセージ、位置を [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md) が定める。
 
@@ -3292,154 +3296,217 @@ LSP は、これらの diagnostics を位置の指すファイルに載せ、ど
 `style.toml` の G01003 には、`golem fmt` で直す修正案を付けない（`golem fmt` は `style.toml` を整形しない）。
 
 表のファイル（CSV と TSV）は、表のファイルのための読み込みの段階で検査する（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
-UTF-8 として不正なバイト列は原稿と同じく G01001 とし、先頭の BOM は読み飛ばして G01002 にしない。
+UTF-8 として不正なバイト列は、原稿と同じく G01001 とする。
+先頭の BOM は読み飛ばし、G01002 にしない。
 CRLF は受け付け、LF の前にない CR（単独の CR）を G02082 とする。
-検査に通らないファイルからは表を作らず、同じファイルを複数の `@table` から参照しても、読み込みの段階の diagnostic は一度だけ出す。
-`@listing` のファイルは、この検査をしない。
+検査に通らないファイルからは表を作らない。
+同じファイルを複数の `@table` から参照しても、読み込みの段階の diagnostic は一度だけ出す。
+`@listing` のファイルには、この検査をしない。
 LSP では、エディタで開いているファイルの BOM と CR も G01002 と G01003 にするが、プロジェクトの読み込みは止めない。
 
 プロジェクトの外のファイルに構文エラーがあるときは、構文の diagnostics だけを出し、評価の diagnostics を出さない。
 解析の段階の diagnostic の位置は、誤りの文字から始まる（インデントの余分な空白、7 つ目の `#`、用語のない `=:`、本文の `[`）。
 
 `manifest.toml`、`style.toml`、`plugins.lock` の誤りの文言は、toml-parser が作る文言も含めてすべて日本語にする（[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md)）。
-未知のキーは `知らないキーです: page.bindng`、値の型の誤りは `page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に `page.bindng` や `chapters[0]` の形の経路を書く。
+文言の中には、`page.bindng` や `chapters[0]` の形の経路を書く。
+たとえば、未知のキーは `知らないキーです: page.bindng`、値の型の誤りは `page.binding には文字列を書きます（整数が書かれています）` とする。
 TOML の構文の誤りと意味の誤り（同じ表を二度書くなど）は、ファイルの先頭ではなく誤りのある行の位置で出す。
-Golem が値の読み込みで出す誤り（単位のない寸法、列挙にない値など）も、その値の位置で出し、文言の後ろの経路はそのキーまでを書く（[golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md)）。
+Golem が値の読み込みで出す誤り（単位のない寸法、列挙にない値など）も、その値の位置で出す。
+その文言の後ろの経路は、そのキーまでを書く（[golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md)）。
 二つのキーの組み合わせで決まる誤りは、文言が直すよう求めているキーの値の位置で出す。
 `style.toml` を読み込んだ後の検査（スタイルの参照、版面を超える文字の大きさなど）の誤りは、直すべき値の位置で出す。
-その値がそのスタイルの表に書かれていなければ（`based-on` で受け継いだ値など）その表の見出しの位置、表もなければ `style.toml` の先頭で出す。
+その値がそのスタイルの表に書かれていなければ（`based-on` で受け継いだ値など）、その表の見出しの位置で出す。
+表もなければ、`style.toml` の先頭で出す。
 
 ### 重大度
 
 diagnostic の重大度は、エラー、警告、notice、info の四つである（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)、[docs/adr/0104](adr/0104-info-severity.md)）。
-エラーはビルドを止め、警告は止めないが入稿やデプロイの前に直すべきものを表す。
+エラーはビルドを止める。
+警告はビルドを止めないが、入稿やデプロイの前に直すべきものを表す。
 notice は、誤りではないが書き手が知っておいたほうがよいことを表し、直さなくてよい。
 notice は終了コードに影響せず、プロファイルで重大度が変わらず、出力のバイト列を変えない。
-人が読む形式では重大度を `notice`、JSON の形式では `"severity":"notice"` と書き、LSP では `Information` に写す。
+notice の重大度は、人が読む形式では `notice`、JSON の形式では `"severity":"notice"` と書き、LSP では `Information` に写す。
 notice のコードは `Golem.Syntax.Diagnostic.noticeCodes` に一箇所で並べ、docs/diagnostics.md の重大度が「お知らせ」のコードと一致することを golem-driver のテストが確かめる。
 lint の規則（G05xxx）は notice を出さない。
 
-info は notice より下の重大度であり、組版の規則どおりに処理系が行ったことの記録で、書き手が知らなくても困らないものを表す（[docs/adr/0104](adr/0104-info-severity.md)）。
+info は notice より下の重大度であり、組版の規則どおりに処理系が行ったことのうち、書き手が知らなくても困らないものの記録を表す（[docs/adr/0104](adr/0104-info-severity.md)）。
 notice と info を分ける基準は、書き手がそれを知る必要があるかどうかである。
-原稿か設定に理由があり、書き手が知っておいたほうがよいもの（効果のない書き方、廃止予定の書き方、書いた意図と違う結果になったものなど）は notice にし、迷うものも notice にする。
+原稿か設定に理由があり、書き手が知っておいたほうがよいもの（効果のない書き方、廃止予定の書き方、書いた意図と違う結果になったものなど）は notice にする。
+どちらにするか迷うものも notice にする。
+一つのコードの重大度は一つに決まり、同じコードが場合によって notice になったり info になったりすることはない。
+
 info は、`golem build`、`golem check`、`golem lint` に `--verbose`（`-v`）を付けたときにだけ出し、付けなければその実行の diagnostics の一覧から落とす。
 人が読む形式でも JSON の形式でも同じであり、二つの形式で出す diagnostic の集合は同じである。
 info は終了コードに影響せず、プロファイルで重大度が変わらない。
-人が読む形式では重大度を `info`、JSON の形式では `"severity":"info"` と書き、LSP では `Hint` に写す。
+info の重大度は、人が読む形式では `info`、JSON の形式では `"severity":"info"` と書き、LSP では `Hint` に写す。
 info のコードは `Golem.Syntax.Diagnostic.infoCodes` に一箇所で並べ、docs/diagnostics.md の重大度が「情報」のコードと一致することを golem-driver のテストが確かめる。
-一つのコードの重大度は一つに決まり、同じコードが場合によって notice になったり info になったりすることはない。
 lint の規則、プラグイン、プリフライト（G09xxx）は info を出さない。
-今の info は、段の先頭で捨てた行アキ（G07047）だけである。
+info を出すのは、段の先頭で捨てた行アキ（G07047）と、`.emet` の関数のシグネチャの閉じた列にある、本体で使わない要求（E05108、[ADR 0161](adr/0161-emet-requirements-and-driver-handlers.md)）だけである。
 
 notice と info は、出力のバイト列を変えない。
 PDF、HTML、EPUB、プレーンテキストのバイト列は、notice と info を出すかどうかによらず、`silence-notices`、`silence-info`、`--no-notices`、`--verbose` の有無でも変わらない。
-`--verbose` は、出力を変えず、diagnostics の一覧だけを変えるオプションであり、同じ入力と同じオプションからは同じ info を同じ順で出す。
-これは golem-driver のテストが、すべての notice と info を出すプロジェクトで確かめる。
-今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、`@table` の `src=`（G02129、廃止予定）、`-` で区切った範囲（G02108、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、`caption`、`sidenote`、`table` の 0 の字下げ（G03100）、`[lists]` の `numbers` の `{{` と `}}`（G03114、廃止予定）、`[lists]` の `numbers` の一字の見本の差し込み（G03115、廃止予定）、柱の書式の `{{` と `}}`（G03116、廃止予定）、`[notes]` の `mark-size`（G03117、廃止予定）、`[source]` に `paragraph-separator` を書いていないプロジェクト（G03120）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、`@page-lines` で減らした段の残りより高い見出し（G07100）、線のない字形のダッシュの二倍ダッシュ（G07101）、`[fonts.code]` のない本のコード（G08008）、`.emet` の使われていない `where` の束縛（E02109）である。
+`--verbose` は、出力を変えず、diagnostics の一覧だけを変えるオプションである。
+同じ入力と同じオプションからは、同じ info を同じ順で出す。
+この二つの性質は、golem-driver のテストが、すべての notice と info を出すプロジェクトで確かめる。
+
+notice を出すのは、次のものである。
+
+- ファイルの中のスタイルの上書き（G02062）
+- 数字だけの縦中横（G02063）
+- `keep` の段落の行頭のエスケープした空白（G02064）
+- `keep` の段落の行末のエスケープした空白（G02079）
+- `@listing` の `src=`（G02065、廃止予定）
+- `@table` の `src=`（G02129、廃止予定）
+- `-` で区切った範囲（G02108、廃止予定）
+- 続けて書いた `@blank-line`（G02094）
+- `style.toml` のないプロジェクト（G03023）
+- `caption`、`sidenote`、`table` の 0 の字下げ（G03100）
+- `[lists]` の `numbers` の `{{` と `}}`（G03114、廃止予定）
+- `[lists]` の `numbers` の一字の見本の差し込み（G03115、廃止予定）
+- 柱の書式の `{{` と `}}`（G03116、廃止予定）
+- `[notes]` の `mark-size`（G03117、廃止予定）
+- `[source]` に `paragraph-separator` を書いていないプロジェクト（G03120）
+- `golem new` が書かずに残した既存の `.gitignore`（G03134）
+- 自動の番号と同じ `@number`（G04007）
+- 本の最後の改ページ（G04008）
+- 本の最後の行アキ（G04009）
+- 行数の和がページの行数以上になる行アキ（G04011）
+- コードブロックの行の折り返し（G07030）
+- 段に収めるために縮めた図版（G07039）
+- PDF で描かないルビの親文字の圏点（G07045）
+- 分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）
+- `@page-lines` で減らした段の残りより高い見出し（G07100）
+- 線のない字形のダッシュの二倍ダッシュ（G07101）
+- 空の段にも入らないので `keep-first-lines` と `keep-last-lines` で分けた `keep-all-lines` の段落（G07112）
+- 空の段で `keep-first-lines` か `keep-last-lines` より短くした段落の部分（G07113）
+- 前後が語の字でないので分割の候補にしなかったソフトハイフン（G07123）
+- 改行しない文字の中か隣にあるので分割の候補にしなかったソフトハイフン（G07124）
+- `[fonts.code]` のない本のコード（G08008）
+- `.emet` の使われていない `where` の束縛（E02109）
 
 ### 並びの順と表示
 
 diagnostics は、エラーと警告を先に、notice をその後に、info を最後に並べる（[docs/adr/0104](adr/0104-info-severity.md)）。
-エラーと警告のあいだは、コードの順、ファイルの順、開始位置の順、終了位置の順、メッセージの順で並べ、notice どうしと info どうしも同じ規則で並べる（[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
-エラーと警告は区別せず、コードの順で混ぜて並べる。
 notice の多いプロジェクトで、ビルドを止めたエラーが画面の外に流れないようにするためである。
-人が読む形式と JSON の形式は同じ順で出す。
+エラーと警告は区別せず、一つの群として並べる。
+群の中は、コードの順、ファイルの順、開始位置の順、終了位置の順、メッセージの順で並べ、notice どうしと info どうしも同じ規則で並べる（[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
+人が読む形式と JSON の形式は、同じ順で出す。
 
 人が読む形式は端末に書くので、パス、メッセージ、ソース行、関連する位置のメッセージの制御文字を、見える形に置き換える（[docs/adr/0042](adr/0042-control-characters-and-glob-metacharacters.md)）。
 置き換える文字は U+0000 から U+001F（タブを除く）、U+007F、U+0080 から U+009F であり、`\x` に続く小文字の 16 進数 2 桁（ESC は `\x1b`）で書く。
 タブはそのまま書き、メッセージの中の改行も改行のまま書く。
-CRLF の行のソース行は、行末の CR を書かない。
+CRLF の行のソース行には、行末の CR を書かない。
+
 ソース行は、diagnostic の位置の桁を中心に最大 200 文字を書く。
 行がそれより長いときは、位置の前を最大 60 文字、後ろを残りの文字数とし、切った端に `…` を置く。
 省いた文字数は書かない。
 行の長さは制御文字を置き換えた後の文字数で数え、置き換えた形（`\x1b` など）の途中では切らない。
-この置き換えは表示だけのもので、diagnostic の値も出力のファイルも変えない。
-JSON の形式（制御文字を `\u001b` の形でエスケープする）と、LSP に送る diagnostic は変えない。
+制御文字の置き換えと行の切り詰めは表示だけのものであり、diagnostic の値も出力のファイルも変えない。
+JSON の形式（制御文字を `\u001b` の形でエスケープする）と、LSP に送る diagnostic も変えない。
 
 ### 抑制
 
 抑制できるのは notice と info だけであり、エラーと警告を抑制する手段はどこにも設けない。
-notice の抑制の手段は、マニフェストの `[diagnostics]` の `silence-notices`（プロジェクトの方針としてコードを並べる）と、`golem build`、`golem check`、`golem lint` の `--no-notices`（その実行に限り、すべての notice を出さない）の二つである。
+notice を抑制する手段は、次の二つである。
+
+- マニフェストの `[diagnostics]` の `silence-notices`：プロジェクトの方針として、抑制するコードを並べる。
+- `golem build`、`golem check`、`golem lint` の `--no-notices`：その実行に限り、すべての notice を出さない。
+
 info を止める手段は、マニフェストの `[diagnostics]` の `silence-info` だけである。
 `--verbose` は info を出すかどうかを決め、`silence-info` は出す info のうちどのコードを除くかを決める。
 `--no-notices` は info を落とさず、`silence-info` は notice を落とさない。
-`--verbose` と `--no-notices` を両方付けると、notice を出さず、info を出す。
+そのため、`--verbose` と `--no-notices` を両方付けると、notice を出さず、info を出す。
 原稿の中で notice と info を止める指示と、`style.toml` の設定は設けない。
+
 LSP は `silence-notices` と `silence-info` に従い、抑制した notice と info を公開しない。
 LSP には `--no-notices` と `--verbose` に当たる設定を設けず、`silence-info` にない info はつねに `Hint` として公開する。
+
 記法と設定のキーを廃止する手順は、互換性の文書 [docs/compatibility.md](compatibility.md) の「廃止の手順」にある（[docs/adr/0174](adr/0174-compatibility-promises-for-1-0.md)）。
 
 ### 事実
 
 diagnostic は、プログラムが読む事実（`diagFacts`）を持てる（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
-事実は名前と値（整数、文字列、整数の配列、文字列の配列）の組の並びで、今はプリフライトの diagnostics と、フォントにない字の G08100（[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）と、行長からはみ出す行の G07105（[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）だけが、ページ番号（`pdf-pages`）や測った値（`ppi` など）を持つ。
+事実は、名前と値（整数、文字列、整数の配列、文字列の配列）の組の並びである。
+事実を持つのは、次の diagnostics だけである。
+どれも、ページ番号（`pdf-pages`）や測った値（`ppi` など）を持つ。
+
+- プリフライトの diagnostics
+- フォントにない字の G08100（[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）
+- 行長からはみ出す行の G07105（[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）
+
+
 JSON の形式では、事実を持つ diagnostic にだけ、書いた順にキーを並べた `"facts"` のオブジェクトを `"fixes"` の後に加える。
 
 ```json
 {"code":"G09006","severity":"warning","span":{...},"message":"…","related":[],"fixes":[],"facts":{"pdf-pages":[12],"ppi":212,"limit":300}}
 ```
 
-事実のない diagnostic の JSON は変わらない。
+事実のない diagnostic の JSON は、`"facts"` を持たない。
 人が読む形式は事実を表示せず、メッセージに同じことを書く。
 
 ### golem explain の案内
 
-人が読む形式で diagnostics を出した後に、文書にあるコードが一つでもあれば、標準エラー出力に `コードの説明は golem explain <コード> で表示できます（例: golem explain G01017）` の一行を加える。
-例のコードは、出した diagnostics のうち文書にあるコードの最小のものである。
-notice のコードも数え、抑制した後に残った diagnostics から作る。
+人が読む形式で diagnostics を出した後に、docs/diagnostics.md にあるコードが一つでもあれば、標準エラー出力に `コードの説明は golem explain <コード> で表示できます（例: golem explain G01017）` の一行を加える。
+例のコードは、出した diagnostics のうち docs/diagnostics.md にあるコードの最小のものである。
+例を選ぶときは notice のコードも数え、抑制した後に残った diagnostics から選ぶ。
 この行は一度だけ加え、`--format json` には加えない。
-LSP は、文書にあるコードの diagnostic の `codeDescription` に、`main` の `docs/diagnostics.md` の節の URL（`…/docs/diagnostics.md#g01017` の形）を付ける。
+LSP は、docs/diagnostics.md にあるコードの diagnostic の `codeDescription` に、`main` の `docs/diagnostics.md` の節の URL（`…/docs/diagnostics.md#g01017` の形）を付ける。
 
 ## コメント
 
 コメントは `%%` で始まり `%%` で終わる。
-`%%=` で始まるコメントは校正用であり、dev ビルドでのみ出力され、prod ビルドに残っていると警告になる[^profile]。
-コメントは段落の境界（空行）を越えられず、段落内で閉じないコメントは構文エラーとする。
-
-コメントの開始を `%` 一文字にしないのは、`50%と70%` のような本文で二つの `%` の間がコメントとして成立し、本文が黙って消えるのを防ぐためである。
+コメントの開始を `%` 一文字にすると、`50%と70%` のような本文で二つの `%` のあいだがコメントとして成立し、本文が黙って消える。
 `%%` で始めれば、本文中の `%` は構文上コメントになりえず、エスケープも要らない。
+
+`%%=` で始まるコメントは校正用である。
+校正用のコメントは dev ビルドでのみ出力され、prod ビルドに残っていると警告になる[^profile]。
+コメントは段落の境界（空行）を越えられず、段落内で閉じないコメントは構文エラーとする。
 
 ## 段落内の改行
 
-段落内の改行は文字を生まない。
-改行の前後は、空白を挟まずにそのままつながる。
-Golem は日本語の組版を主眼とし、日本語では行の折り返し位置に空白を入れないためである。
-欧文の単語の途中や単語の間で改行すると、単語どうしが空白なしにつながる。
-詩や戯曲の韻文のように行分けを保つには、`line-breaks = "keep"` の段落スタイル（組み込みの `verse` など）を `@style verse` のように付ける（[docs/adr/0003](adr/0003-verse-line-breaks.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
-
-これは、マニフェストの `[source]` に `paragraph-separator = "blank-line"` と書いた、空行で段落を区切る空行の様式の規則である。
-既定は、改行ひとつで段落を区切る改行の様式である（「原稿の読み方」の節、[docs/adr/0013](adr/0013-paragraph-separator.md)、[docs/adr/0193](adr/0193-line-paragraph-separator-by-default.md)）。
-和文の原稿（青空文庫の形式など）は、一行を一つの段落として書くことが多いためである。
+段落内の改行の扱いは、段落の区切りの様式で変わる（「原稿の読み方」の節、[docs/adr/0013](adr/0013-paragraph-separator.md)、[docs/adr/0193](adr/0193-line-paragraph-separator-by-default.md)）。
+既定は、改行ひとつで段落を区切る改行の様式である。
+マニフェストの `[source]` に `paragraph-separator = "blank-line"` と書くと、空行で段落を区切る空行の様式になる。
+既定を改行の様式にしたのは、和文の原稿（青空文庫の形式など）が、一行を一つの段落として書くことが多いためである。
 改行の様式では、一行が一つの段落になり、空行は空きを生まずに無視される。
 見出しやリストなどのブロックの記法、`line-breaks = "keep"` の段落スタイルの段落の改行、散文スロットの中の改行は、二つの様式で変わらない。
 記法の細部は [markup.md](markup.md) の「段落と改行」の節で定める。
 
-段落を分けずに行を改めるには、行の末尾に `\` を書く（強制改行、[docs/adr/0016](adr/0016-hard-line-breaks.md)）。
-住所、署名、手紙の結びのような段落のためである。
-意味は二つの様式で変わらない。
+空行の様式では、段落内の改行は文字を生まない。
+改行の前後は、空白を挟まずにそのままつながる。
+Golem は日本語の組版を主眼とし、日本語では行の折り返し位置に空白を入れないためである。
+そのため、欧文の単語の途中や単語の間で改行すると、単語どうしが空白なしにつながる。
+詩や戯曲の韻文のように行分けを保つには、`line-breaks = "keep"` の段落スタイル（組み込みの `verse` など）を `@style verse` のように付ける（[docs/adr/0003](adr/0003-verse-line-breaks.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+
+住所、署名、手紙の結びのような段落では、段落を分けずに行を改めたい。
+そのためには、行の末尾に `\` を書く（強制改行、[docs/adr/0016](adr/0016-hard-line-breaks.md)）。
+強制改行の意味は、二つの様式で変わらない。
 改行の様式では、`\` で終わる行と次の行が一つの段落になる。
 `\` の次の行は同じ段落の続きの行でなければならず、空行、ファイルの末尾、ブロックの始まりが続くと構文エラー（G01024）になる。
-見出し、定義リストの用語、表のセル、散文スロットの中には書けない。
+強制改行は、見出し、定義リストの用語、表のセル、散文スロットの中には書けない。
 散文スロットの中の強制改行は G02056、中身のない行を作る強制改行は G02057 になる。
 
 強制改行は、AST の `HardBreak` を経て、意味論 IR の `LineBreak` になる。
-同じ `LineBreak` が、`line-breaks = "keep"` の段落では韻文の行の区切りを、それ以外の段落では強制改行を表し、どちらの意味かは段落スタイルで決まる。
+同じ `LineBreak` が、`line-breaks = "keep"` の段落では韻文の行の区切りを、それ以外の段落では強制改行を表す。
+どちらの意味かは、段落スタイルで決まる。
 `keep` の段落では、行末の `\` は改行と同じ意味になり、行ごとに一行目の字下げが掛かる。
 それ以外の段落では、強制改行の後の行に一行目の字下げを掛けない。
-PDF では、強制改行の前の行を段落の最後の行と同じくフィルのグルーで行末を空けて組み、強制改行を含む段落を孤立行の規則の上で一つの段落として扱う。
-HTML と EPUB では `<br/>` にし、プレーンテキストでは改行にする。
+
+PDF では、強制改行の前の行を、段落の最後の行と同じく、フィルのグルーで行末を空けて組む。
+強制改行を含む段落は、孤立行の規則の上では一つの段落として扱う。
+HTML と EPUB では強制改行を `<br/>` にし、プレーンテキストでは改行にする。
 プレーンテキストでは、`keep` でない段落の強制改行の後の行の頭に、`indent` の整数部の数の全角の空白を置く（`indent` と `first-line-indent` がどちらも `zw` の場合に限る。[docs/adr/0049](adr/0049-plain-text-indent-after-hard-break.md)）。
 
-様式は評価の段階で扱う。
+段落の区切りの様式は、評価の段階で扱う。
 構文解析と AST はマニフェストを読まずに原稿のテキストだけで決まり、段落の中の改行は AST に `SoftBreak` として残る。
-評価の入口で、改行の様式のファイルの段落を最上位の `SoftBreak` で分けて複数の段落にする。
-このため、`golem fmt`、構文の diagnostics、LSP の構文解析はマニフェストを知らずに済み、整形の不変条件も様式によらない。
-代わりに、改行の様式では AST の段落が出力の段落と一致しない。
+評価の入口で、改行の様式のファイルの段落を、最上位の `SoftBreak` で分けて複数の段落にする。
+そのため、`golem fmt`、構文の diagnostics、LSP の構文解析はマニフェストを知らずに済み、整形の不変条件も様式によらない。
+代わりに、改行の様式では、AST の段落が出力の段落と一致しない。
 
 ## 行アキ
 
 段落と段落のあいだの空き（行アキ）は、`@blank-line` と `@blank-line N` で書く（[docs/adr/0046](adr/0046-blank-line-command.md)）。
-空行は、二つの様式のどちらでも空きを生まない。
+空行は、段落の区切りの二つの様式のどちらでも、空きを生まない。
 空行の数で空きを表すと、段落の区切りと空きの区別が空行の数に依存し、空行を一つ足すだけで出力が変わるためである。
 記法、置ける位置、diagnostics は [markup.md](markup.md) の「行アキ」の節で定める。
 
@@ -3447,39 +3514,49 @@ HTML と EPUB では `<br/>` にし、プレーンテキストでは改行にす
 
 行アキは意味論 IR の最上位のブロック（`BlankLines`、CBOR のタグ 13）であり、1 以上の行数を持つ。
 行数は行の格子の行数という抽象的な数であり、ページの大きさや位置ではない。
-HTML、EPUB、プレーンテキストにも出力するので、PDF だけの指定である `PageControl` には入れず、改ページ（`ForcedBreak`）とも量を持つ点で分けた。
-ラベルを持てず、文書の最上位にだけ置ける。
-フィルタのプラグインが別の位置に置くと、IR の検証で誤りになる。
+行アキは HTML、EPUB、プレーンテキストにも出力するので、PDF だけの指定である `PageControl` には入れない。
+改ページ（`ForcedBreak`）とも、量を持つ点で分けた。
+
+行アキはラベルを持てず、文書の最上位にだけ置ける。
+フィルタのプラグインが行アキを別の位置に置くと、IR の検証で誤りになる。
 目次、索引、図番号、見出しの番号は、行アキを数えない。
 
 ### 効果のない行アキ
 
-文書の組み立てで、本の全体を見て、効果のない行アキを捨てる。
-
-- 本の最後のブロックの後に、行アキ、改ページ、改ページの手での制御しかなければ、その行アキを捨て、notice（G04009）を出す。
-- 行アキの直後に、改ページの手での制御とほかの行アキだけを挟んで改ページが続けば、その行アキを捨て、警告（G04010）を出す。ファイルの末尾の行アキと次のファイルの先頭の改ページの組み合わせも含む。行アキは次のブロックの前に付くので、改ページの前の行アキは、PDF では必ず改ページの後の段の先頭で捨てられる。HTML、EPUB、プレーンテキストでもその行アキを捨てて、媒体の結果をそろえる。
-- G04009 と G04010 で捨てた後に残った行アキのうち、続けて書いた行アキ（あいだに改ページの手での制御しかないもの。ファイルをまたいでもよい）の行数の和が、ページの行数（`[page.grid]` の `lines`）以上なら、その行アキをすべての出力で捨て、行アキごとに notice（G04011）を出す（[docs/adr/0047](adr/0047-blank-line-limit.md)）。PDF では、ページの行数以上の行アキは次に置くものの最初の部分とともに一つの段に入らず、必ず段の先頭で捨てられる。段組みでも段の行数はページの行数と同じである。`@page-lines` による増減は判定に含めず、HTML とプレーンテキストを組むときにも同じ判定を下す。ページの行数は、golem-driver が `AssembleConfig` の `acPageLines` で渡す。`[page.grid]` のない本では判定しない。PDF では、捨てた行アキは改ページに届かないので、G07047 は出ない。
-
+文書の組み立てでは、本の全体を見て、効果のない行アキを捨てる。
+ファイルの末尾の行アキは、次のファイルの最初のブロックの前に置かれる。
 判定の順は G04009、G04010、G04011 で固定し、一つの行アキに二つのコードを出さない。
 
-ファイルの末尾の行アキは、次のファイルの最初のブロックの前に置かれる。
+- 本の最後のブロックの後に、行アキ、改ページ、改ページの手での制御しかなければ、その行アキを捨て、notice（G04009）を出す。
+- 行アキの直後に、改ページの手での制御とほかの行アキだけを挟んで改ページが続けば、その行アキを捨て、警告（G04010）を出す。ファイルの末尾の行アキと次のファイルの先頭の改ページの組み合わせも含む。
+  - 行アキは次のブロックの前に付くので、改ページの前の行アキは、PDF では必ず改ページの後の段の先頭で捨てられる。HTML、EPUB、プレーンテキストでもその行アキを捨てて、媒体の結果をそろえる。
+- G04009 と G04010 で捨てた後に残った行アキのうち、続けて書いた行アキ（あいだに改ページの手での制御しかないもの。ファイルをまたいでもよい）の行数の和が、ページの行数（`[page.grid]` の `lines`）以上なら、その行アキをすべての出力で捨て、行アキごとに notice（G04011）を出す（[docs/adr/0047](adr/0047-blank-line-limit.md)）。
+  - PDF では、ページの行数以上の行アキは、次に置くものの最初の部分とともに一つの段に入らないので、必ず段の先頭で捨てられる。段組みでも、段の行数はページの行数と同じである。
+  - `@page-lines` による増減は判定に含めない。HTML とプレーンテキストを組むときにも、同じ判定を下す。
+  - ページの行数は、golem-driver が `AssembleConfig` の `acPageLines` で渡す。`[page.grid]` のない本では判定しない。
+  - PDF では、G04011 で捨てた行アキは改ページに届かないので、G07047 は出ない。
 
 ### PDF の行アキ
 
 PDF では、行アキを、次に置くもの（行、見出し、図版、表など）の前の行の格子の空きの行とし、次に置くものの最初の部分と同じ段に置く。
 改ページ（golem-layout の `Golem.Layout.Paginate`）は、行アキ（`FBlank`）をためておき、改ページと改ページの手での制御以外のものを置く直前に、次の順で処理する。
 
-1. ためた改ページの印と `@need-lines` を適用する。`@need-lines` の判定に行アキの行数は数えない。置くものが待つ図版（「図版」の節）なら、`@need-lines` と行アキを適用せずに図版を待たせ、行アキと `@need-lines` は流れで次に来る、待つ図版でないブロックに当てる（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。
+1. ためた改ページの印と `@need-lines` を適用する。`@need-lines` の判定に、行アキの行数は数えない。置くものが待つ図版（「図版」の節）なら、`@need-lines` と行アキを適用せずに図版を待たせ、行アキと `@need-lines` は、流れで次に来る、待つ図版でないブロックに当てる（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。
 2. 置くものが `page-break = "recto"` の見出しなら、奇数ページから始める。
-3. 今の段が空でなく、行アキの行数の和と、置くものの最初の部分の和が今の段の残りに入らなければ、入るか、段の先頭に来るまで次の段へ進む。進んだ段の先頭には送った図版が、末尾には続きの脚注が先に置かれるので、段ごとに残りを数え直す。送った図版を置いた段は、空ではなく、段の先頭でもない。続きの脚注だけを持つ段は、段の先頭である（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)、[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。
+3. 今の段が空でなく、行アキの行数と置くものの最初の部分の和が今の段の残りに入らなければ、入るか、段の先頭に来るまで次の段へ進む。進んだ段の先頭には送った図版が、末尾には続きの脚注が先に置かれるので、段ごとに残りを数え直す。送った図版を置いた段は、空ではなく、段の先頭でもない。続きの脚注だけを持つ段は、段の先頭である（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)、[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。
 4. 今の段の先頭なら、行アキを捨て、捨てた `@blank-line` ごとに info（G07047、`--verbose` を付けたときだけ出す。[docs/adr/0104](adr/0104-info-severity.md)）を出す。そうでなければ、行アキの行数だけ行の格子の行を空ける。
 5. 置くものを置く。
 
-行アキの後に、本の終わりまで待つ図版しか続かなければ、行アキは待つ図版を置く段の先頭に来るものとして捨て、捨てた `@blank-line` ごとに G07047 を出す（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。
-待つ図版は次の段の先頭から置かれるので、ほかの G07047 と同じく段の先頭で捨てたものである。
+段の先頭で行アキを捨てるのは、段の先頭の空きが前の段の終わりの余白と見分けられず、前後のブロックの区切りにならないためである。
+段落スタイルの `space-between`、`space-before`、`space-after` の空きと同じ規則である。
 行アキが段に入りきらない場合も段の先頭で捨てるので、行アキを途中で切り詰めることはない。
-段の先頭の空きは前の段の終わりの余白と見分けられず、前後のブロックの区切りにならないためであり、段落スタイルの `space-between`、`space-before`、`space-after` の空きと同じ規則である。
-書き手の入力と違う出力になるので、黙って捨てずに notice で知らせる。
+捨てると書き手の入力と違う出力になるので、黙って捨てずに G07047 で知らせる。
+
+行アキの後に、本の終わりまで待つ図版しか続かなければ、行アキは、待つ図版を置く段の先頭に来るものとして捨て、捨てた `@blank-line` ごとに G07047 を出す（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。
+待つ図版は次の段の先頭から置かれるので、この行アキも、ほかの G07047 と同じく段の先頭で捨てたものである。
+
+ほかの規則と行アキの関係は、次のとおりである。
+
 
 - 見出しを後と離さない規則と `@no-page-break` の先読みは、行アキの行数を後のものの量に足す。足した量は段の行の格子の数を上限とする。行アキを置いたことは、`@no-page-break` が待つものを置いたことにならない。
 - 間に行アキを挟んだ二つの段落は、続いた段落として扱わない。`space-between`、`space-before`、`space-after` の空きと行アキは足さず、行アキだけが入る。
@@ -3491,22 +3568,25 @@ PDF では、行アキを、次に置くもの（行、見出し、図版、表�
 ### 段落スタイルの前後の空き
 
 段落スタイルの `space-before` と `space-after` は、段落の前と後に空ける行の格子の行の数であり、0 以上の整数である（既定は 0、負の数は G03006。[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。
-空きは `space-between` と同じく、ブロックのあいだの空きの行として置き、行の格子を崩さない。
+空きは、`space-between` と同じく、ブロックのあいだの空きの行として置き、行の格子を崩さない。
 続いた二つのブロック A と B のあいだの空きの行の数は、次のように決める。
 
 1. A と B のあいだに行アキがあれば、行アキの行だけを空ける。
 2. A と B が同じ段落スタイルの段落なら、`space-between` の行を空け、A の `space-after` と B の `space-before` は使わない。
 3. それ以外は、A が段落なら A の `space-after`、B が段落なら B の `space-before` を取り、大きいほうの行を空ける。段落でないブロック（見出し、図版、表、コードブロック、リストなど）は 0 とする。
 
-改ページと改ページの手での制御の直前には空きを置かない（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。
-空きは一つのファイルのブロックのあいだにだけ置き、ファイルの境には置かない（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。
-段の先頭に来た空きは捨て、diagnostic を出さない。
-段落の後のアキで段が終わる場合も、空きは次の段の先頭に来て捨てられる。
-G07047 は原稿に書いた `@blank-line` だけを対象とする。
+空きを置く位置には、次の制限がある。
+
+- 改ページと改ページの手での制御の直前には、空きを置かない（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。
+- 空きは一つのファイルのブロックのあいだにだけ置き、ファイルの境には置かない（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。
+- 段の先頭に来た空きは捨て、diagnostic を出さない。段落の後のアキで段が終わる場合も、空きは次の段の先頭に来て捨てられる。G07047 は、原稿に書いた `@blank-line` だけを対象とする。
+
 見出しを後と離さない規則と `@no-page-break` の先読みは、空きの行を後のものの量に足す（[docs/adr/0205](adr/0205-rules-added-by-the-implementation-of-adr-0180.md)、[golem-layout ADR 0022](golem-layout/adr/0022-no-page-break-counts-spaces.md)）。
 `line-breaks = "keep"` の段落では、`space-before` を最初の行の前に、`space-after` を最後の行の後に置き、行のあいだには置かない。
 罫線を持つ段落では、前後のアキの行を罫線の領域の外に置き、罫線の領域とは別に数える。
-前後のアキは、段落の罫線を引く段落（文書の最上位の段落と `@style` の本体の段落）に適用し、リストの項目、表のセル、注の本文、定義リストの中の段落には適用しない。
+
+前後のアキは、段落の罫線を引く段落（文書の最上位の段落と `@style` の本体の段落）に適用する。
+リストの項目、表のセル、注の本文、定義リストの中の段落には適用しない。
 `code` に `space-before`、`space-after`、`align`、`end-indent` を書くと G03006 とする。
 プレーンテキストでは、`space-between` と同じく、`space-before`、`space-after`、`align`、`end-indent` を使わない。
 
@@ -3514,8 +3594,14 @@ G07047 は原稿に書いた `@blank-line` だけを対象とする。
 
 HTML と EPUB では、行アキを、行数と同じ数の `<br/>` を持つ `<div class="blank-line">` で書く。
 `<br/>` 一つが、継いだ行の高さの一行の行ボックスを作るので、CSS の規則が要らない。
-`p` でなく `div` にするのは、段落スタイルの CSS と `p + p` の `space-between` の規則を受けないためである。
-文書（XHTML）の最初のブロックの前、改ページの直後（間に改ページの手での制御と行アキしかない位置）、文書の最後のブロックの後の行アキは、何も出力しない。
+`p` でなく `div` にするのは、段落スタイルの CSS と、`p + p` の `space-between` の規則を受けないためである。
+
+次の三つの位置の行アキは、何も出力しない。
+
+- 文書（XHTML）の最初のブロックの前
+- 改ページの直後（あいだに改ページの手での制御と行アキしかない位置）
+- 文書の最後のブロックの後
+
 前の二つは、EPUB の読書環境でページの先頭に来ることが決まっている位置であり、PDF の段の先頭の規則に合わせる。
 最後の一つは、EPUB の読書環境が文書の境界で改ページし、文書の末尾の空きが見えないためである。
 それ以外の位置で読書環境がページの先頭に置いた行アキは、そのまま空く。
@@ -3531,37 +3617,44 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 ### 段落と連の分け方
 
 段落は行の単位で段に分ける（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）。
-段落の n 行のうち段に k 行が入るとき、段の前に置く行の数を次の順で決める。
-段落スタイルの `keep-all-lines` が真で k < n なら 0 とする。
-0 < n − k < `keep-last-lines` なら、k を max 0 (n − `keep-last-lines`) にする（寡婦行）。
-段落がこの段から始まり、0 < k < `keep-first-lines` なら 0 にする（孤立行）。
-既定の値（2 と 2）では、段落の最初の 1 行だけを段の末尾に残さず、最後の 1 行だけを次の段の先頭に送らない。
-空の段では、この規則で一行も置けなくなる場合は、入るだけの行を置く。
-そのとき、置いた最初の部分か次の段に送った最後の部分が `keep-first-lines`、`keep-last-lines` より少なければ、その段落の範囲に notice G07113 を出す。
-`keep-all-lines` の段落は、今の段に全体が入らなければ次の段から置き、空の段（見出しだけの段を含む）にも入らなければ `keep-first-lines` と `keep-last-lines` で分け、notice G07112 を出す。
+段落の n 行のうち段に k 行が入るとき、段の区切りより前に置く行の数を次の順で決める。
 
-`keep-with-next` の段落は、`@no-page-break` と同じ仕組みで、最後の `keep-last-lines` 行（`keep-last-lines` 以下の段落と、`keep-first-lines` と `keep-last-lines` の和より短い段落は全体）を、後に続くものの最初の部分と同じ段に置く。
+1. 段落スタイルの `keep-all-lines` が真で k < n なら、0 とする。
+2. 0 < n − k < `keep-last-lines` なら、k を max 0 (n − `keep-last-lines`) にする（寡婦行）。
+3. 段落がこの段から始まり、0 < k < `keep-first-lines` なら、0 にする（孤立行）。
+
+既定の値（`keep-first-lines` と `keep-last-lines` がどちらも 2）では、段落の最初の 1 行だけを段の末尾に残さず、最後の 1 行だけを次の段の先頭に送らない。
+
+空の段では、この規則で一行も置けなくなる場合は、入るだけの行を置く。
+そのとき、置いた最初の部分が `keep-first-lines` より少ないか、次の段に送った最後の部分が `keep-last-lines` より少なければ、その段落の範囲に notice G07113 を出す。
+`keep-all-lines` の段落は、今の段に全体が入らなければ、次の段から置く。
+空の段（見出しだけの段を含む）にも入らなければ、`keep-first-lines` と `keep-last-lines` で分け、notice G07112 を出す。
+
+`keep-with-next` が N（1 以上）の段落は、`@no-page-break` と同じ仕組みで、最後の `keep-last-lines` 行（`keep-last-lines` 以下の段落と、`keep-first-lines` と `keep-last-lines` の和より短い段落は全体）を、後に続くものの最初の部分と同じ段に置く。
 後が段落か連なら、その最初の部分を N 行以上に広げる。
 後の段落も `keep-with-next` を持ち、その全体が最初の部分に入るときは、その後の最初の部分も足す。
-足した量は段の行の格子の数を上限とする。
+足した量は、段の行の格子の数を上限とする。
 罫線を持つ段落なら、まとまりの全体を、後の最初の部分と合わせて段に入る位置に送る。
-空の段からは送らない。
+ただし、空の段からは送らない。
 後の最初の部分が前の最後の行と同じ段に置かれなければ、段落の範囲に警告 G07111 を出す。
-`@no-page-break` と `keep-with-next` が同じ位置にあれば、一つの連動として扱い、大きいほうの量を取り、守れなければ両方を報告する。
+`@no-page-break` と `keep-with-next` が同じ位置にあれば、一つの連動として扱って大きいほうの量を取り、守れなければ両方を報告する。
 
-`page-break` の段落は、ためた改ページを適用した後に置く。
-`"column"` なら、今の段が空でなければ次の段へ進む。
-`"page"`、`"recto"`、`"verso"` なら、送った図版と続きの脚注を置いてから、今のページが空で段 0 にいれば留まり、そうでなければ次のページへ進む。
-`"recto"` と `"verso"` では、偶奇が合わなければ白ページを入れる。
-`@page-break` と違い、空の段や空のページでは何もしない。
-セクションの前の改ページ（「プロジェクトの構成と import」の節）と同じ規則である。
+段落スタイルの `page-break` を持つ段落は、ためた改ページを適用した後に置く。
+
+- `"column"` なら、今の段が空でなければ次の段へ進む。
+- `"page"`、`"recto"`、`"verso"` なら、送った図版と続きの脚注を置いてから、今のページが空で段 0 にいれば留まり、そうでなければ次のページへ進む。
+- `"recto"` と `"verso"` では、偶奇が合わなければ白ページを入れる。
+
+`@page-break` と違い、`page-break` は空の段や空のページでは何もしない。
+これは、セクションの前の改ページ（「プロジェクトの構成と import」の節）と同じ規則である。
 `page-break` の段落の前の見出しは、改丁の見出しの前の見出しと同じく、後に続くものを数えずに置く。
 
-`line-breaks = "keep"` の段落は、一つの連として扱い、韻文の行を単位にして同じ二つの規則を当てる（[docs/adr/0180](adr/0180-verse-spacing-and-stanza-breaks.md)）。
-連の最初の韻文の行だけを段の末尾に残さず、最後の韻文の行だけを次の段の先頭に送らない。
+`line-breaks = "keep"` の段落は一つの連として扱い、韻文の行を単位にして、孤立行と寡婦行の二つの規則を当てる（[docs/adr/0180](adr/0180-verse-spacing-and-stanza-breaks.md)）。
+つまり、連の最初の韻文の行だけを段の末尾に残さず、最後の韻文の行だけを次の段の先頭に送らない。
 送るほうが一つの韻文の行だけになる場合は、前の段の最後の韻文の行も次の段に送る。
 韻文の行を折り返した行のあいだでは、段を分けない。
-空の段で一つの韻文の行も置けなくなる場合は、入るだけの韻文の行を置き、最初の韻文の行が段より高ければ、その行を段落の行と同じ規則で分ける。
+空の段で一つの韻文の行も置けなくなる場合は、入るだけの韻文の行を置く。
+最初の韻文の行が段より高ければ、その行を段落の行と同じ規則で分ける。
 見出しの直後と `@no-page-break` の前では、連の最初の 2 つの韻文の行（3 つの韻文の行の連では全体。孤立行と寡婦行の規則で 2 つだけを置けないため）を、後に続くものの量として数える（[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）。
 `@no-page-break` の前の連は、段落が最後の 2 行を後に続くものと同じ段に置くのと同じく、最後の 2 つの韻文の行（3 つ以下の連は連の全体）を後に続くものと同じ段に置く（[docs/adr/0205](adr/0205-rules-added-by-the-implementation-of-adr-0180.md)）。
 罫線を持つ段落は、この規則によらず、罫線を持つ段落の規則で置く。
@@ -3569,136 +3662,195 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 ### 見出しと後に続くもの
 
 見出しの直後では改ページしない。
-見出しは、続く見出しのすべてと、その後の段落の最初の 2 行まで（3 行の段落では全体。孤立行と寡婦行の規則で 2 行だけを置けないため）と同じ段に置く（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）。
-その段落の全体が最初の部分になり、段落が `keep-with-next` を持つときは、`keep-with-next` が足す後の最初の部分も数える（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md) の I6 と K4）。
+そのため、見出しは、続く見出しのすべてと、その後の段落の最初の 2 行まで（3 行の段落では全体。孤立行と寡婦行の規則で 2 行だけを置けないため）と同じ段に置く（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）。
+その段落の全体が最初の部分になり、その段落が `keep-with-next` を持つときは、`keep-with-next` が足す後の最初の部分も数える（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md) の I6 と K4）。
 改丁の見出しは、前の見出しの続く見出しに数えない。
 改丁の見出しの前の見出しは、`@page-break` の前の見出しと同じく、後に続くものを数えない（[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md)）。
-それらを合わせて段に収まらないときも、空の段からは送らない。
-次の段に送ったときに、送った図版がその段の先頭を取って、それらが入らなくなれば、さらに次の段に送る（[golem-layout ADR 0023](golem-layout/adr/0023-keep-with-next-after-figures-sent-on.md)）。
+見出しと後に続くものを合わせて段に収まらないときも、空の段からは送らない。
+次の段に送ったときに、送った図版がその段の先頭を取って、見出しと後に続くものが入らなくなれば、さらに次の段に送る（[golem-layout ADR 0023](golem-layout/adr/0023-keep-with-next-after-figures-sent-on.md)）。
 続く見出しと行の量には、それらの注の本文の行と、その段で最初の注なら区切りの領域を数える（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
 段の先頭から見出しだけを置いた段では、空の段と同じく、孤立行と寡婦行の規則で一行も置けなくなる場合は、入るだけの行を置き、入らない注の本文を次の段に続ける（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md)）。
 
 ### 不変条件による検査
 
+改ページの規則は、[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の I1 から I8 として、golem-layout のテストで確かめる。
+`@need-lines` と行アキの規則は、[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の「不変条件」の節の P1 から P4 と、[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の「不変条件」の節の P5 として、golem-layout のテストで確かめる。
+
 段落の分け方の規則は、[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md) の「不変条件」の節の K1 から K7 として、段落の分け方の要素を足した列挙の入力で golem-layout のテストが確かめる。
 
 段落の囲みは、中の段落の行のあいだで段とページをまたいで分け、囲みの部分ごとに前と後の k 行を取る（「style.toml」の段落の囲みの説明）。
-囲みの部分の形（B1）、囲みの k 行を含めて段からあふれないこと（B2）、空の部分がなくどの行もちょうど一つの部分に入ること（B3）は、[ADR 0271](adr/0271-paragraph-backgrounds-and-borders.md) の「不変条件」の節として、囲みの要素を足した列挙の入力で golem-layout のテストが確かめる。
-続く段落をまとめる規則（B4）、格子からずれないことと余白（B5、B6）、角の半径とパスが矩形の中にあること（B8、B9）は、golem-typeset のテストが確かめる。
+囲みの規則は、[ADR 0271](adr/0271-paragraph-backgrounds-and-borders.md) の「不変条件」の節として、次のテストが確かめる。
 
-これらの規則は、[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の I1 から I8 として、`@need-lines` と行アキの規則は [golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の「不変条件」の節の P1 から P4 と、[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の「不変条件」の節の P5 として、golem-layout のテストで確かめる。
+- 囲みの部分の形（B1）、囲みの k 行を含めて段からあふれないこと（B2）、空の部分がなくどの行もちょうど一つの部分に入ること（B3）は、囲みの要素を足した列挙の入力で golem-layout のテストが確かめる。
+- 続く段落をまとめる規則（B4）、格子からずれないことと余白（B5、B6）、角の半径とパスが矩形の中にあること（B8、B9）は、golem-typeset のテストが確かめる。
+
+#### 待つ図版と自ら送られる図版
 
 P1、P3、P4 の「次のブロック」は、[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) のとおり、待つ図版を飛ばした最初のブロックである。
-述語は、待つ図版を出力から判定する。
-前の図版がまだ置かれていない位置に書いた図版と、書いた位置のページに置けない回した図版を、待つ図版とする（[golem-layout ADR 0033](golem-layout/adr/0033-read-waiting-figures-from-the-placement.md)）。
+述語は、改ページが待たせる図版を、入力の流れと出力だけから読む（[golem-layout ADR 0033](golem-layout/adr/0033-read-waiting-figures-from-the-placement.md)）。
+前の図版がまだ置かれていない位置に書いた図版と、書いた位置のページに置けない回した図版を、待つ図版とする。
 図版は、待つか、自ら送られれば、置かれるまで残る。
+
+述語は、[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の「実装すること」の 3 の読み方を採らない。
+その読み方は、後に書いたブロックの最初の部分より後の位置に置かれた図版を待つ図版とする。
+しかし、それでは、後のブロックが次の段へ進んで先に置かれた待つ図版を見落とし、前の `@need-lines` を受け取る自ら送られる図版を待つ図版に数える。
+
 自ら送られる図版は、流れが来た段より後の段に、直前の行アキと、残りに足りない `@need-lines` に動かされずに置かれた図版か、後に書いた図版でないブロックの最初の部分より後に置かれた図版である。
 `@need-lines` が空きの前の残りで満たされても、空きの行を引いた残りに入らずに後の段へ移った図版は、`@need-lines` に動かされた図版であり、自ら送られた図版ではない（[golem-layout ADR 0044](golem-layout/adr/0044-read-the-figures-moved-by-need-lines-judged-before-spaces.md)）。
-流れが来た段は、前に書いたブロックと書いた位置に置かれた図版の最後の部分の段か、その後に書いた改ページが進むページの最初の段である。
-セクションの前の改ページなら、出力が記録するセクションの最初のページの最初の段である。
-開始の番号の偶奇が白ページを求めれば、白ページの次のページである（[ADR 0260](adr/0260-front-matter-folios-and-page-labels.md)）。
-空きの前で判定した `@need-lines` で次の段へ進めば、その段である。
-空きが `@need-lines` の前にあっても後にあっても、同じである（[golem-layout ADR 0044](golem-layout/adr/0044-read-the-figures-moved-by-need-lines-judged-before-spaces.md)）。
-空きと `@need-lines` のあいだに待つ図版があっても、同じである（[golem-layout ADR 0047](golem-layout/adr/0047-spaces-before-a-waiting-figure-and-need-lines.md)）。
-[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の「実装すること」の 3 は、後に書いたブロックの最初の部分より後の位置に置かれた図版を待つ図版とするが、それでは、後のブロックが次の段へ進んで先に置かれた待つ図版を見落とし、前の `@need-lines` を受け取る自ら送られる図版を待つ図版に数える。
 
-述語は、改ページが待たせる図版を、入力の流れと出力だけから読む（[golem-layout ADR 0033](golem-layout/adr/0033-read-waiting-figures-from-the-placement.md)）。
+流れが来た段は、次のとおりに決める。
+
+- 前に書いたブロックと書いた位置に置かれた図版の最後の部分の段か、その後に書いた改ページが進むページの最初の段である。
+- セクションの前の改ページなら、出力が記録するセクションの最初のページの最初の段である。開始の番号の偶奇が白ページを求めれば、白ページの次のページである（[ADR 0260](adr/0260-front-matter-folios-and-page-labels.md)）。
+- 空きの前で判定した `@need-lines` で次の段へ進めば、その段である。空きが `@need-lines` の前にあっても後にあっても、同じである（[golem-layout ADR 0044](golem-layout/adr/0044-read-the-figures-moved-by-need-lines-judged-before-spaces.md)）。空きと `@need-lines` のあいだに待つ図版があっても、同じである（[golem-layout ADR 0047](golem-layout/adr/0047-spaces-before-a-waiting-figure-and-need-lines.md)）。
+
 I2、I4、I5、I6、I8 は、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md) の「実装すること」の 6 の表のとおりに読む。
+
+#### 空きの位置によらないこと
 
 空きの位置によらないことは、[golem-layout ADR 0043](golem-layout/adr/0043-spaces-before-need-lines-are-not-counted-either.md) の「不変条件」の節の P9 として確かめる。
 P9 は、空きの直後に `@need-lines` がある入力で、二つを入れ替えた入力を組み直し、すべての段の枠と記録が元の入力と同じことを求める。
 [golem-layout ADR 0047](golem-layout/adr/0047-spaces-before-a-waiting-figure-and-need-lines.md) の「不変条件」の節の P9′ は、P9 を広げ、空きと `@need-lines` のあいだに待つ図版だけがある入力でも、空きを `@need-lines` の直後へ移した入力を組み直す。
 同じ ADR の P11 は、そのあいだの待つ図版を空きの前に書いた入力を組み直し、待つ図版の枠を除いて、すべての段の枠と記録が元の入力と同じことを求める。
 前のブロックと次のブロックのあいだに、待つ図版を飛ばして、改ページの印、`@no-page-break`、`@page-lines` がある入力は判定しない。
+
 述語は `modules/golem-layout/test/PaginateInvariants.hs` にあり、改ページの入力と出力だけを読む。
 P9 と P11 だけは、入れ替えた入力をテストが渡す改ページで組み直す。
 [golem-layout ADR 0044](golem-layout/adr/0044-read-the-figures-moved-by-need-lines-judged-before-spaces.md) の「不変条件」の節の W3 は、P9（P9′ を含む）が入れ替えた入力の出力が元の出力と同じとき、述語が二つの入力から同じ待つ図版を読むことを求める。
 W3 も、すべての入力のテストと抜き取りのテストで確かめる。
 
-`modules/golem-layout/test/PaginateInvariantsSpec.hs` は、段の行の数が 3 から 5、段の数が 1 と 2 の版面に、段落、注を持つ段落、見出し、注を持つ見出し、改丁の見出し、1 行と C − 1 行と C 行（C は段の行の数）の図版、一行の空き、改ページ、`@need-lines 2` と `@need-lines C − 1`（[golem-layout ADR 0035](golem-layout/adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md)）、1 行と 2 行の行アキを並べた流れを、要素の少ない順にすべて組み、どの述語も違反を返さないことを確かめる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 3）。
+#### 列挙の入力
+
+`modules/golem-layout/test/PaginateInvariantsSpec.hs` は、次の要素を並べた流れを、要素の少ない順にすべて組み、どの述語も違反を返さないことを確かめる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 3）。
+
+- 版面：段の行の数が 3 から 5、段の数が 1 と 2。
+- 要素：段落、注を持つ段落、見出し、注を持つ見出し、改丁の見出し、1 行と C − 1 行と C 行（C は段の行の数）の図版、一行の空き、改ページ、`@need-lines 2` と `@need-lines C − 1`（[golem-layout ADR 0035](golem-layout/adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md)）、1 行と 2 行の行アキ。
+
 プルリクエストの CI は要素 3 個まで、毎晩の `enum.yml` は要素 5 個まで調べる。
-毎晩の `enum.yml` は、段の行の数が 3 から 8 で、段の行の数以下のすべての図版を含む流れから、要素 6 個の流れを 500 万、種を固定した擬似乱数で抜き取って調べる。
+毎晩の `enum.yml` は、さらに、段の行の数が 3 から 8 で、段の行の数以下のすべての図版を含む流れから、要素 6 個の流れを 500 万、種を固定した擬似乱数で抜き取って調べる。
 すべての入力を調べるテストと抜き取りのテストは、入力をプロセッサの数に分けて調べる。
+
 違反があれば、最も小さい入力を表示する。
 抜き取りで見つけた違反は、違反が残るかぎり要素を一つずつ取り除いた入力を表示する。
 「既知の不具合」に載せた違反は、テストの中の一覧で入力の形を限って除き、除いた入力の数を固定する。
 今の一覧に項目はない（[golem-layout ADR 0027](golem-layout/adr/0027-need-lines-judged-again-after-spaces.md) で最後の項目を直した）。
 述語が判定しない場合はない。
 
-行アキは、出力では後のブロックの前の空いた格子の行としてしか見えないので、捨てていない行アキが後のブロックの前に見えなければ、P3 も違反とする。
+行アキは、出力では後のブロックの前の空いた格子の行としてしか見えない。
+そのため、捨てていない行アキが後のブロックの前に見えなければ、P3 も違反とする。
 改ページに渡す図版は、段の行の数以下であることを前提とする（図版を縮める規則は「図版」の節）。
 
 ### 罫線を持つ段落
 
 罫線を持つ段落と見出しは、前の罫線の領域、行、後の罫線の領域を合わせて一つのまとまりとして置き、改ページと改段で分けない（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 
-- 今の段に入らなければ、次の段から置く。罫線を持つ段落のまとまりが段に入るかは格子の行の数だけで決め、注の本文の行を数えない。段落はその位置に留まり、入らない注の本文を次のページに送る。
+- まとまりが今の段に入らなければ、次の段から置く。罫線を持つ段落のまとまりが段に入るかは、格子の行の数だけで決め、注の本文の行を数えない。段落はその位置に留まり、入らない注の本文を次のページに送る。
 - 罫線を持つ見出しは、見出しの行と注の本文と区切りの行に、罫線の領域を足して判定し、入らなければ注と罫線とともに次の段に送る。
 - 見出しの直後で改ページしない規則は、続く要素が罫線のまとまりなら、その全体の行の数を数える。
-- 空の段にも入らないまとまりは、notice（G07046）を出して組む。段落は罫線を持たない段落と同じ規則で行を段に分け、前の罫線も後の罫線も引かず、罫線の領域の行も取らない（[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）。最初の部分は段の最初の格子の行から始まる。分けて組んだ段落は隣り合う罫線の領域を共有せず、直前の段落の後の罫線と直後の段落の前の罫線は、それぞれの段落だけの罫線として数える。見出しは、後の罫線を省き、それでも入らなければ前の罫線も省く。
+- 空の段にも入らないまとまりは、notice（G07046）を出して組む（[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）。
+  - 段落は、罫線を持たない段落と同じ規則で行を段に分け、前の罫線も後の罫線も引かず、罫線の領域の行も取らない。最初の部分は、段の最初の格子の行から始まる。
+  - 分けて組んだ段落は、隣り合う罫線の領域を共有しない。直前の段落の後の罫線と直後の段落の前の罫線は、それぞれの段落だけの罫線として数える。
+  - 見出しは、後の罫線を省き、それでも入らなければ前の罫線も省く。
 - 回り込む図版の脇には、罫線を持つ段落を組まない。その段落は図版の後から置き、図版の脇の残りの行は空ける。
 
 ### 原稿からの改ページ
 
-原稿からは、`@page-break`（改ページ）、`@page-break recto`（改丁）、`@page-break verso`（次の偶数ページから始める）、`@column-break`（改段）で改められる（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
-記法と置ける位置は [markup.md](markup.md) の「改ページ」の節で定める。
-引数と本体の誤りは原因ごとのコードにし、どれもエラーとして誤ったコマンドを捨てる（[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)）。
-`@page-break` の引数が `recto` か `verso` の一つでなければ G02058、`@column-break` に引数を書けば G02096、どちらかに本体を書けば本体の最初のブロックに G02097 を出す。
-引数と本体の両方が誤っていれば、両方をこの順に出す。
+原稿では、次の四つのコマンドでページと段を改める（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
+
+- `@page-break`：改ページ
+- `@page-break recto`：改丁
+- `@page-break verso`：次の偶数ページから始める
+- `@column-break`：改段
+
+記法と置ける位置は、[markup.md](markup.md) の「改ページ」の節で定める。
 改ページは意味論 IR の最上位のブロック（`ForcedBreak`）であり、ページの大きさや位置を持たない。
 「次のページから始める」は文書の構造の指定であり、HTML と EPUB でも CSS の `break-before` として意味を持つためである。
 
-- `@page-break` は、今のページに何も置いていなくてもページを閉じる。中身のないまま閉じたページは白ページになるので、二つ続けると白ページが一ページできる。ただし、本文を持たないページに回した図版を置いた直後の改ページは、白ページを足さない（[golem-driver ADR 0039](golem-driver/adr/0039-breaks-around-turned-figures.md)）。
+引数と本体の誤りは原因ごとのコードにし、どれもエラーとして誤ったコマンドを捨てる（[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)）。
+`@page-break` の引数が `recto` か `verso` の一つでなければ G02058、`@column-break` に引数を書けば G02096 を出す。
+どちらかに本体を書けば、本体の最初のブロックに G02097 を出す。
+引数と本体の両方が誤っていれば、両方をこの順に出す。
+
+PDF では、改ページを次のように扱う。
+
+
+- `@page-break` は、今のページに何も置いていなくてもページを閉じる。中身のないまま閉じたページは白ページになるので、`@page-break` を二つ続けると白ページが一ページできる。ただし、本文を持たないページに回した図版を置いた直後の改ページは、白ページを足さない（[golem-driver ADR 0039](golem-driver/adr/0039-breaks-around-turned-figures.md)）。
 - `recto` と `verso` は、今のページが空で奇数（偶数）なら何もせず、そうでなければ次の奇数（偶数）ページから続け、途中のページを白ページにする。見出しの `page-break = "recto"` と同じ規則である。
 - 改段は、今の段を閉じて次の段から続ける（[docs/adr/0018](adr/0018-multi-column-layout.md)）。今の段が最後の段なら、次のページの最初の段から続ける。今の段に何も置いていなくても進むので、段の先頭の改段は空の段を一つ作る。一段組みの版面では、改ページと同じになる。
 - 段組みの版面の改ページ、`recto`、`verso` は、今の段がどの段であっても、次の（奇数、偶数）ページの最初の段から続ける。今のページに残る段は空のままにする。
-- 本の最後の改ページは捨てる。印が続く場合は書いた順に適用し、`@page-break` の後の `page-break = "recto"` の見出しは、改ページの後のページが偶数ならさらに白ページを入れる。
+- 本の最後の改ページは捨てる。
+- 改ページの印が続く場合は、書いた順に適用する。`@page-break` の後の `page-break = "recto"` の見出しは、改ページの後のページが偶数なら、さらに白ページを入れる。
 - 送った図版と続きの脚注は、改ページの後の新しいページに置き、白ページには置かない。改丁の見出しと `@page-break recto`、`@page-break verso` では、送った図版と続きの脚注をすべて置いてから、奇数（偶数）ページを始める。改丁の見出しは、送った図版の後に置かない（[golem-layout ADR 0024](golem-layout/adr/0024-recto-start-places-figures-sent-on-first.md)、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md)）。
 - 白ページには柱もノンブルも描かない。柱の値は改ページで変えない。
 
-HTML と EPUB では、改ページの後の最初のブロックの要素に `data-break-before` 属性を付け、`style.css` に本で使った種類の規則だけを書く。
-改段と文書の最後の改ページは何も出力しない。
+HTML と EPUB では、改ページの後の最初のブロックの要素に `data-break-before` 属性を付け、`style.css` には本で使った種類の規則だけを書く。
+改段と文書の最後の改ページは、何も出力しない。
 EPUB の読書環境は文書の境界で改ページし、見開きの左右も読書環境が決めるので、Golem は改丁のための白ページを足さない。
 プレーンテキストは改ページを出力しない。
 
 ### 改ページの手での制御
 
-原稿からは、`@no-page-break`（ここで改ページしない）、`@need-lines N`（残りが N 行に足りなければ次の段から続ける）、`@page-lines ±N`（その段の行数を増減する）で、改ページを止めたり、位置を少しずらしたりできる（[docs/adr/0030](adr/0030-manual-page-break-control.md)）。
-記法と規則は [markup.md](markup.md) の「改ページの手での制御」の節で定める。
-引数と本体の誤りは原因ごとのコードにし、どれもエラーとして誤ったコマンドを捨てる（[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)）。
-`@no-page-break` に引数を書けば G02096、`@need-lines` の引数が 1 以上の整数の一つでなければ G02070、`@page-lines` の引数が符号を付けた 0 でない整数の一つでなければ G02099、三つのどれかに本体を書けば本体の最初のブロックに G02097 を出す。
-引数と本体の両方が誤っていれば、両方をこの順に出す。
-三つの印は意味論 IR の最上位のブロック（`PageControl`）である。
-`ForcedBreak` と別のブロックにしたのは、`@need-lines` と `@page-lines` が版面の行数に依存する PDF だけの指定だからである。
+原稿では、次の三つの印で、改ページを止めたり、位置を少しずらしたりする（[docs/adr/0030](adr/0030-manual-page-break-control.md)）。
+
+- `@no-page-break`：ここで改ページしない。
+- `@need-lines N`：残りが N 行に足りなければ、次の段から続ける。
+- `@page-lines ±N`：その段の行数を増減する。
+
+記法と規則は、[markup.md](markup.md) の「改ページの手での制御」の節で定める。
+三つの印は、意味論 IR の最上位のブロック（`PageControl`）である。
+`ForcedBreak` と別のブロックにしたのは、`@need-lines` と `@page-lines` が、版面の行数に依存する PDF だけの指定だからである。
 行数は版面の格子の行数という抽象的な数であり、ページの大きさや位置ではない。
 
-- `@no-page-break` の前が段落か定義リストの用語なら、改ページは、前の最後の 2 行（3 行以下の段落では全体。[docs/adr/0055](adr/0055-no-page-break-moves-short-paragraphs-whole.md)）を次の段に送り、後の最初の部分（`nextNeed` と同じ量。3 行の段落では全体とする。その部分の行の注の本文と、その段で最初の注なら区切りの領域を含む。[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）と同じ段に置く。`@no-page-break` の前と後にある空き（`space-between`、`space-before`、`space-after`）の行も、後の最初の部分の量に足す。足した量は段の行の格子の数を上限とする（[golem-layout ADR 0022](golem-layout/adr/0022-no-page-break-counts-spaces.md)）。空の段からは送らない。前が見出しなら今の規則のとおりで、そのほかのブロックなら置き方を変えない。
-- `@need-lines` は、改ページの印と同じくためておき、次のブロックを置く直前に、改ページの印の後で判定する。次の段へ進んだら、送った図版と続きの脚注をその段に置いた後の残りで数え直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。待つ図版（「図版」の節）は次のブロックに数えず、その後の、待つ図版でないブロックの直前で判定する（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。空き（改ページに渡す一行の空き。表とコードブロックの後や、`space-before` を持つ段落の前に入る）も、行アキと同じく次のブロックに数えず、判定の残りに数えない。`@need-lines` の後に空きがあれば、空きの前の位置で判定する。判定した段で、空きを置いた後の残りに次のブロックの最初の部分が入れば、ブロックはその段に置く。入らずにブロックが後の段に移れば、移った段で送った図版と続きの脚注を置いた後の残りで N 行を判定し直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0027](golem-layout/adr/0027-need-lines-judged-again-after-spaces.md)）。`@need-lines` の前に置いた空きも数えない。前のブロックの後に空きを置いてから `@need-lines` が来れば、空きを置く前の位置で、後の空きと同じく判定し、判定した段を覚える。空きが `@need-lines` の前にあっても後にあっても、結果は同じである（[golem-layout ADR 0043](golem-layout/adr/0043-spaces-before-need-lines-are-not-counted-either.md)）。空きと `@need-lines` のあいだに待つ図版があっても、空きを数えない。何も置かない待つ図版は、前の空きを `@need-lines` から隔てない。段に入らずに次の段へ送られる図版（自ら送られる図版）は、前のブロックとして空きを隔てる。待つ図版の前に改ページの印がたまっていれば、待つ図版が印を適用し、流れは空きのある段を離れるので、`@need-lines` は進んだ先の段の残りで判定する（[golem-layout ADR 0047](golem-layout/adr/0047-spaces-before-a-waiting-figure-and-need-lines.md)）。ブロックを挟まずに続く `@need-lines` は、大きいほうの行の数を取る。空きの前で判定した後に、より大きい `@need-lines` が続けば、合わせて増えた値を、次の空きの前か、ブロックの前で判定し直す。同じか小さい値なら、判定し直さない（[golem-layout ADR 0035](golem-layout/adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md)）。増えた値の前に空きを置いていれば、増えた値も空きを置く前の位置で判定する（[golem-layout ADR 0043](golem-layout/adr/0043-spaces-before-need-lines-are-not-counted-either.md)）。
-- `@page-lines` は、ためた改ページの印を先に適用してから、今の段の行数に足す。段を進めると増減は 0 に戻る。増やした行は、版面の行の格子を行の進む方向に延ばした位置に置く。行数の上限は、行の字面が裁ち落としを除いたページの内側に収まる行の数である。増やした行と、ノンブル、柱、傍注の領域との重なりは検査しない。
+引数と本体の誤りは原因ごとのコードにし、どれもエラーとして誤ったコマンドを捨てる（[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)）。
+
+- `@no-page-break` に引数を書けば G02096 を出す。
+- `@need-lines` の引数が 1 以上の整数の一つでなければ G02070 を出す。
+- `@page-lines` の引数が符号を付けた 0 でない整数の一つでなければ G02099 を出す。
+- 三つのどれかに本体を書けば、本体の最初のブロックに G02097 を出す。
+
+引数と本体の両方が誤っていれば、両方をこの順に出す。
+
+PDF では、三つの印を次のように扱う。
+
+
+- `@no-page-break` の前が段落か定義リストの用語なら、改ページは、前の最後の 2 行（3 行以下の段落では全体。[docs/adr/0055](adr/0055-no-page-break-moves-short-paragraphs-whole.md)）を次の段に送り、後の最初の部分と同じ段に置く。
+  - 後の最初の部分は `nextNeed` と同じ量であり、3 行の段落では全体とする。その部分の行の注の本文と、その段で最初の注なら区切りの領域を含む（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）。
+  - `@no-page-break` の前と後にある空き（`space-between`、`space-before`、`space-after`）の行も、後の最初の部分の量に足す。足した量は、段の行の格子の数を上限とする（[golem-layout ADR 0022](golem-layout/adr/0022-no-page-break-counts-spaces.md)）。
+  - 空の段からは送らない。
+  - 前が見出しなら、見出しの規則（「見出しと後に続くもの」）のとおりに置く。前がそのほかのブロックなら、置き方を変えない。
+- `@need-lines` は、改ページの印と同じくためておき、次のブロックを置く直前に、改ページの印の後で判定する。次の段へ進んだら、送った図版と続きの脚注をその段に置いた後の残りで数え直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。
+  - 待つ図版（「図版」の節）は次のブロックに数えず、その後の、待つ図版でないブロックの直前で判定する（[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md)）。
+  - 空き（改ページに渡す一行の空き。表とコードブロックの後や、`space-before` を持つ段落の前に入る）も、行アキと同じく次のブロックに数えず、判定の残りに数えない。
+  - `@need-lines` の後に空きがあれば、空きの前の位置で判定する。判定した段で、空きを置いた後の残りに次のブロックの最初の部分が入れば、ブロックはその段に置く。入らずにブロックが後の段に移れば、移った段で、送った図版と続きの脚注を置いた後の残りで N 行を判定し直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0027](golem-layout/adr/0027-need-lines-judged-again-after-spaces.md)）。
+  - `@need-lines` の前に置いた空きも数えない。前のブロックの後に空きを置いてから `@need-lines` が来れば、空きを置く前の位置で、後の空きと同じく判定し、判定した段を覚える。そのため、空きが `@need-lines` の前にあっても後にあっても、結果は同じである（[golem-layout ADR 0043](golem-layout/adr/0043-spaces-before-need-lines-are-not-counted-either.md)）。
+  - 空きと `@need-lines` のあいだに待つ図版があっても、空きを数えない（[golem-layout ADR 0047](golem-layout/adr/0047-spaces-before-a-waiting-figure-and-need-lines.md)）。何も置かない待つ図版は、前の空きを `@need-lines` から隔てない。一方、段に入らずに次の段へ送られる図版（自ら送られる図版）は、前のブロックとして空きを隔てる。待つ図版の前に改ページの印がたまっていれば、待つ図版が印を適用し、流れは空きのある段を離れるので、`@need-lines` は進んだ先の段の残りで判定する。
+  - ブロックを挟まずに続く `@need-lines` は、大きいほうの行の数を取る。空きの前で判定した後に、より大きい `@need-lines` が続けば、合わせて増えた値を、次の空きの前か、ブロックの前で判定し直す。同じか小さい値なら、判定し直さない（[golem-layout ADR 0035](golem-layout/adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md)）。増えた値の前に空きを置いていれば、増えた値も、空きを置く前の位置で判定する（[golem-layout ADR 0043](golem-layout/adr/0043-spaces-before-need-lines-are-not-counted-either.md)）。
+- `@page-lines` は、ためた改ページの印を先に適用してから、今の段の行数に足す。段を進めると、増減は 0 に戻る。増やした行は、版面の行の格子を行の進む方向に延ばした位置に置く。行数の上限は、行の字面が裁ち落としを除いたページの内側に収まる行の数である。増やした行と、ノンブル、柱、傍注の領域との重なりは検査しない。
 - 見出しを後のブロックと離さない規則の先読みは、三つの印を飛ばす。
 - 守れなかった指定は、改ページの繰り返し（S2）の最後の回の結果から、印の位置の警告（G07037）にする。
-- `@page-lines` で減らした段の残りより高い見出しは、置き方を変えずに、同じく最後の回の結果から、見出しの位置の notice（G07100）にする（[golem-layout ADR 0020](golem-layout/adr/0020-heading-taller-than-column.md)）。段を減らした組み方は意図したものでありうるので、止めない。
+- `@page-lines` で減らした段の残りより高い見出しは、置き方を変えずに、同じく最後の回の結果から、見出しの位置の notice（G07100）にする（[golem-layout ADR 0020](golem-layout/adr/0020-heading-taller-than-column.md)）。段を減らした組み方は意図したものでありうるので、ビルドを止めない。
 
 HTML と EPUB では、`@no-page-break` の後の最初のブロックの要素に `data-break-before="avoid"` 属性を付け、本で使った場合に限り `style.css` に `break-before: avoid` の規則を書く。
-`@need-lines` と `@page-lines` は、Web の媒体が版面の行の格子を持たないので何も出力しない。
+`@need-lines` と `@page-lines` は、Web の媒体が版面の行の格子を持たないので、何も出力しない。
 プレーンテキストは三つの印を出力しない。
 
 ### ページの始まりの原稿の位置
 
 `golem build` は、PDF を書くとき、同じ `build/pdf/` に `pages.json` を書く（[docs/adr/0195](adr/0195-page-start-positions-of-pdf.md)）。
 `pages.json` は、PDF の各ページの最初の行が、原稿のどのファイルの何行何列から始まるかを表す。
-エディタが改ページの位置の印を原稿に出すためのものである。
+エディタは、`pages.json` を読んで、改ページの位置の印を原稿に出す。
 `golem preflight` は PDF をファイルに書かないので、`pages.json` も書かない。
 
 `pages.json` は、ページの順に、ページごとに一つのオブジェクトを並べた配列である。
-オブジェクトのキーは、`page`、`file`、`line`、`character` の順に並ぶ。
-`page` は PDF の何ページ目か（1 から数える）である。
-`file` は原稿のファイルのパスで、`--format json` の diagnostics の `file` と同じく、プロジェクトのルートからの相対パスである。
-`line` と `character` は、LSP の位置（`Position`）と同じく、どちらも 0 から数える。
-`character` は、行の先頭からの UTF-16 のコード単位の数である。
-LSP の既定の単位であり、golem-lsp もクライアントが UTF-8 を申し出なければこの単位を使う。
-`--format json` の diagnostics の `line` と `column` は 1 から数えるコードポイントの数なので、単位が違う。
 配列は diagnostics と同じく一行に書き、改行で終える。
+オブジェクトのキーは、`page`、`file`、`line`、`character` の順に並ぶ。
+
+- `page`：PDF の何ページ目か（1 から数える）。
+- `file`：原稿のファイルのパス。`--format json` の diagnostics の `file` と同じく、プロジェクトのルートからの相対パスである。
+- `line`：LSP の位置（`Position`）と同じく、0 から数える行。
+- `character`：LSP の位置と同じく、0 から数える、行の先頭からの UTF-16 のコード単位の数。UTF-16 は LSP の既定の単位であり、golem-lsp もクライアントが UTF-8 を申し出なければこの単位を使う。
+
+`--format json` の diagnostics の `line` と `column` は、1 から数えるコードポイントの数なので、`pages.json` とは単位が違う。
 
 ```json
 [{"page":1,"file":"chapters/01.gm","line":0,"character":0},{"page":2,"file":"chapters/01.gm","line":3,"character":17},{"page":3}]
@@ -3707,12 +3859,14 @@ LSP の既定の単位であり、golem-lsp もクライアントが UTF-8 を�
 ページの最初の行は、ページの段を順にたどった最初の行（本文の行、見出しの行、コードブロックの行、表の行）である。
 柱、ノンブル、脚注、傍注、図版は、行に数えない。
 行を持たないページ（白ページ、図版だけのページ）のオブジェクトは、`page` だけを持つ。
+
 位置は、その行の最初の字が原稿のどこにあるかである。
 改ページが段落の途中にあれば、段落が原稿の何行にまたがっていても、エスケープを含んでいても、その字の位置を示す。
 原稿にない字（見出しの番号、リストの印、式の値）は飛ばし、その行で原稿にある最初の字の位置とする。
 ルビ、縦中横、注の印のように要素から生まれる字は、その要素の始まりの位置を持つ。
 その行のブロックの中に原稿の位置を持つ字がないとき（目次の項目、表のファイルから読んだセル、番号だけの行）は、ブロックの始まりを位置とする。
 見出しのように範囲が長さを持たないブロックでは、同じファイルの字をブロックの中とみなす。
+
 ページの最初の行がコードブロックの行なら、位置は次のとおりとする（[docs/adr/0218](adr/0218-page-starts-inside-code-blocks.md)）。
 
 1. その行がコードブロックの最初の部分（キャプション、ファイル名の行、最初の行を含む部分）にあれば、コードブロックの始まりとする。
@@ -3720,16 +3874,16 @@ LSP の既定の単位であり、golem-lsp もクライアントが UTF-8 を�
 3. 2 のコードの行が空の行なら、そのコードの行の範囲の始まりとする。
 4. 2 のコードの行が原稿の位置を持たなければ（`@listing`、プラグインが返したコード、Emet の関数が作ったコード）、コードブロックの始まりとする。
 
-行番号、差分の印、折り返しの印、注釈の印、続きの印（`continued`）は原稿にない字なので飛ばす。
+行番号、差分の印、折り返しの印、注釈の印、続きの印（`continued`）は、原稿にない字なので飛ばす。
 タブは原稿の一字として数える。
-コードの行の箱の `bcAt` は、その行（折り返した続きなら続き）の最初の字の位置を持つ。
-位置は、意味論 IR の `CodeLine` の範囲とテキストを、段落のテキストと同じく照らして決める。
+コードの行の位置は、意味論 IR の `CodeLine` の範囲とテキストを、段落のテキストと同じく照らして決める。
 
 位置を出すために、行分割の箱（`BoxContent`）は、`bcSource` とは別に、箱の最初の字の原稿のバイトの位置（`bcAt`）を持つ。
+コードの行の箱の `bcAt` は、その行（折り返した続きなら続き）の最初の字の位置を持つ。
 意味論 IR のテキスト（`Text`）は、原稿の改行やエスケープの `\` を落とした文字列と、原稿の範囲を持つ。
 golem-driver は、テキストの字を、その範囲の原稿のバイト列に、前の字の後から順に照らして位置を決める。
 照らせない字を含むテキスト（式の値など）は、すべての字を原稿にない字とする。
-行分割、字形の選択、描画はこの位置を読まないので、PDF は変わらない。
+行分割、字形の選択、描画はこの位置を読まないので、位置を持っても PDF は変わらない。
 `pages.json` は原稿と組版の結果だけで決まり、ほかの出力と同じく同じ入力から同じバイト列になる（[docs/adr/0002](adr/0002-determinism.md)）。
 
 ## 行分割
