@@ -4,7 +4,8 @@ The tests read their files by paths relative to the directory of their
 package, as cabal test runs them there, and some reach other packages
 (@../golem-font/test/fonts/@). WASI has no working directory of the
 process: wasi-libc resolves a relative path from @/@ at first.
-scripts/wasm/run-tests.mjs preopens the root of the repository at @/@ and
+scripts/wasm/run-tests.mjs preopens the root of the repository at @/@ and a
+fresh temporary directory at @/tmp@, removes it after the suite ends, and
 passes @GOLEM_TEST_PACKAGE_DIR=/modules/<package>@; the @main@ of each
 suite of the packages of golem.wasm calls 'enterPackageDirectory' first.
 -}

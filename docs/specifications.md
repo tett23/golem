@@ -21,6 +21,9 @@ ADR と記録には、次の決まりがある。
 - 同じディレクトリの ADR に同じ番号を付けない（[docs/adr/0194](adr/0194-update-adr-guard-to-v0.10.0.md)）。
 - 監査の記録（`docs/audit/`、`docs/audits/`）と性能計測の記録（`docs/benchmarks/`、`docs/benchmark/`）も、コミット後は変更しない（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](adr/0012-update-adr-guard-to-v0.8.1.md)）。
 
+以後の ADR が最大常駐を条件にするときは、[ヒープの測定手順](heap-measurement.md) に従う（[Golem ADR 0306](adr/0306-measure-the-residency-of-forcing-a-table-by-heap-profiles.md)）。
+測定結果はコミット後に変えない記録とし、共通の手順は `docs/heap-measurement.md` に置く。
+
 ## 目的
 
 Golem が目指すのは、CLI で動き CI/CD に載る InDesign である。
@@ -681,7 +684,9 @@ golem-driver の golem-driver-test と golem-driver-global-test は、ライブ�
 golem-font のテストの C のファイルは、ライブラリと同じく wasm の例外処理で `setjmp.h` を読む。
 
 スイートは、`scripts/wasm/run-tests.mjs` が Node の `node:wasi` で一つずつ動かす。
-リポジトリの根を `/` に preopen し、環境の変数は `GOLEM_TEST_PACKAGE_DIR=/modules/<パッケージ>` と `TASTY_NO_CREATE=true` だけを渡し、標準入力は `/dev/null` とする。
+リポジトリの根を `/` に preopen し、実行ごとに作る空の一時ディレクトリを `/tmp` に preopen する（[ADR 0307](adr/0307-preopen-a-temporary-directory-at-tmp-for-the-wasm-tests.md)）。
+一時ディレクトリはスイートが返った後と trap の後に消す。
+環境の変数は `GOLEM_TEST_PACKAGE_DIR=/modules/<パッケージ>` と `TASTY_NO_CREATE=true` だけを渡し、標準入力は `/dev/null` とする。
 スイートの `main` は、最初に golem-test-support の `enterPackageDirectory` を呼ぶ。
 wasm32 では `GOLEM_TEST_PACKAGE_DIR` があればそこへ移り、ネイティブでは何もしない。
 テストのパッケージのディレクトリからの相対のパスは、ネイティブの `cabal test` と同じに解決される。
@@ -691,6 +696,7 @@ wasm32 では `GOLEM_TEST_PACKAGE_DIR` があればそこへ移り、ネイテ�
 扱いは `product`（製品のコードが `Int` の幅に依る）か `test`（テストやテストの環境がホストに依る）である。
 `scripts/wasm/run-suite.sh` は、一覧のテストを tasty の `-p` で除いて走らせ、ほかのテストが通るか SKIP になることを確かめる。
 次に一覧のテストを一つずつ走らせ、落ちることを確かめる。
+一覧を除く `-p` の式が 65,536 バイトを超えたときは、スイートを起動せず、その名前と式の長さを出してジョブを落とす（[ADR 0307](adr/0307-preopen-a-temporary-directory-at-tmp-for-the-wasm-tests.md)）。
 一覧にないテストが落ちたとき、一覧のテストが通ったとき、一覧のテストがスイートにないときは、ジョブが落ちる。
 同じスイートを、ネイティブの GHC で外部の道具（qpdf、cddl、pdfinfo、pdftoppm）を `PATH` に置かず、`GOLEM_REQUIRE_EXTERNAL_TOOLS` を渡さずに走らせる。
 wasm32 で SKIP になったテストはこのときの SKIP に含まれ、一覧のテストはネイティブで通ることを、`scripts/wasm/check-skips.sh` が確かめる。
@@ -720,6 +726,9 @@ PID が書かれていなければ、断言は失敗する。
 
 夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` をほかの実行環境で動かす。
 Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、wasmtime 50.0.1 の C API と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno`、`--wasmtime`、`--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+ブラウザのページは `scripts/wasm/browser/worker.js` の module Worker で `golem.wasm` を動かし、PDF の SHA-256、長さ、状態、diagnostics を受け取る（[ADR 0309](adr/0309-run-golem-wasm-in-a-worker-of-the-browser-page.md)）。
+夜ごとの Safari の専用ランナーでは、打ち切りが WebContent のプロセスを入力の数だけ残さないことを確かめる。
+この検査に限り、実行前後の WebContent の PID の差を読み取る（[ADR 0303](adr/0303-check-only-the-processes-a-test-started.md) の例外）。
 
 wasmtime のホストは、`scripts/fetch-wasmtime.sh` が取る C API にリンクする C のプログラム `scripts/wasm/run-wasmtime.c` である。
 `golem.wasm` を一度だけコンパイルして直列化し、入力ごとに、`run.mjs frame` が書く入力の枠を `golem_build_pdf` に渡して結果の枠を書き、`run.mjs result` がそれを読む（`scripts/wasm/run-wasmtime.sh`）。

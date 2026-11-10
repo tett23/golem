@@ -103,6 +103,7 @@ ca-certificates の入っていない最小構成のコンテナでは、ca-cert
 
 Node の `node:wasi` で動くことは、CI で確かめている。
 夜ごとの `.github/workflows/browser.yml` が、Deno 2.9.8 の `node:wasi` と、wasmtime 50.0.1 の C API のホスト（`scripts/wasm/run-wasmtime.c`）と、`browser_wasi_shim` を使う Chromium（Chrome for Testing 157.0.8103.50）と Safari（macOS のランナーのもの）でも、ネイティブの `golem` と同じ PDF と diagnostics を返すことを確かめている（[docs/adr/0234](./docs/adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[docs/adr/0238](./docs/adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+Chromium と Safari では、ページの Worker の中で `golem.wasm` を動かす（[docs/adr/0309](./docs/adr/0309-run-golem-wasm-in-a-worker-of-the-browser-page.md)）。
 
 エクスポートは C の ABI の次の五つと `hs_init` で、ホストは `_initialize` を一度、`hs_init(0, 0)` を一度呼んでから使う。
 
@@ -294,6 +295,7 @@ diagnostic のコード（`G01001` など）の意味と直し方は [docs/diagn
 ## Development
 
 変更の進め方と約束ごとは [CONTRIBUTING.md](./CONTRIBUTING.md) にある。
+最大常駐を条件にする変更は、[ヒープの測定手順](./docs/heap-measurement.md) に従って確かめる。
 
 ### Git フックの有効化
 
@@ -942,6 +944,7 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 `ci.yml` のキャッシュを戻すだけで、保存しない。
 
 - `wasm`：スイートを `cabal.project.wasm-tests` で wasm32 に向けて組み、`scripts/wasm/run-suite.sh` で一つずつ Node の `node:wasi` で走らせる（`scripts/wasm/run-tests.mjs`）。
+  スイートごとに空の `/tmp` を用意して後に消し、除外するテストの式が 65,536 バイトを超えれば、スイートを起動せずに失敗する（[docs/adr/0307](./docs/adr/0307-preopen-a-temporary-directory-at-tmp-for-the-wasm-tests.md)）。
   `scripts/wasm/test-failures.tsv` のテストを除いたテストが通るか SKIP になること、一覧のテストがそれだけで走らせると落ちることを確かめ、スイートごとの時間と OK、FAIL、SKIP の数をジョブの要約に書く。
   組めなかったスイートも要約に書き、ジョブを失敗にする。
 - `native`：同じスイートをネイティブの GHC で、外部の道具（qpdf、cddl、pdfinfo、pdftoppm）を `PATH` に置かずに走らせる。
