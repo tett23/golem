@@ -18,6 +18,9 @@ module Golem.Typeset.Flow
     dashInkNotices,
     punctuationInkNotices,
     flowLines,
+    TableRefusal (..),
+    forceTable,
+    composedTables,
     layoutPdf,
     layoutPdfWith,
     gridLine,
@@ -2592,7 +2595,34 @@ maxTableCells = 100000
 data TableRefusal
   = TooManyCells !Int
   | LayoutRefused ![TableError]
-  deriving stock (Show)
+  deriving stock (Eq, Show)
+
+{- | A composed table evaluated, so that the work is done where it is run
+(docs/adr ADR 0299), without turning it into a string: the refusal, or the
+widths of the columns, the heights in grid lines, and every line of every
+cell with the alignments of its lines, each to weak head normal form, as
+'forceComposed' evaluates the lines of a paragraph. A line's fields are
+strict, so its line breaking is done.
+-}
+forceTable :: Either TableRefusal (SetTable, a) -> IO (Either TableRefusal (SetTable, a))
+forceTable r = evaluate (either refusal (table . fst) r) >> pure r
+  where
+    refusal = \case
+      TooManyCells n -> n `seq` ()
+      LayoutRefused es -> spine es
+    table st = spine (stWidths st) `seq` stHeaderLines st `seq` spine (stRowLines st) `seq` foldr cell () (stHeader st <> concat (stRows st))
+    cell c rest = spine (scLines c) `seq` spine (scShifts c) `seq` rest
+    -- every element to weak head normal form
+    spine :: [b] -> ()
+    spine = foldr seq ()
+
+{- | The tables of the book composed as 'flowLines' composes them, in their
+order, for the tests of 'forceTable' (docs/adr ADR 0299).
+-}
+composedTables :: PdfInput -> PageGeometry -> LoadedFonts -> [Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])]
+composedTables inp geom fonts = [composeTable fe i (spanFile (uSpan u)) (uStyle u) (lkLang (uLook u)) t | (i, u@Unit {uKind = UTable t}) <- fst (flowUnits fe)]
+  where
+    fe = flowEnv inp geom fonts (Assumed Map.empty Map.empty)
 
 composeTableCells :: FlowEnv -> Int -> FileId -> Style -> Maybe Text -> Table -> Either [TableError] (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
 composeTableCells fe i fid st lang t =
@@ -3187,7 +3217,7 @@ buildFlow inp geom fonts images prev assumed = do
       tableUnits = [(i, spanFile (uSpan u), uStyle u, lkLang (uLook u), t) | (i, u@Unit {uKind = UTable t}) <- units]
   _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (\(i, u) -> maybe (forceComposed (composeUnit fe widths (unitLineWidth fe (uKind u)) u)) pure (reused cuSingles i)) rest
-  tables <- Map.fromList <$> mapper (\(i, fid, st, l, t) -> maybe (let r = composeTable fe i fid st l t in evaluate (length (show (fmap fst r))) >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
+  tables <- Map.fromList <$> mapper (\(i, fid, st, l, t) -> maybe (let r = composeTable fe i fid st l t in forceTable r >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
   -- 3. number the lines in document order
   let codeBlocks = codeBlocksOf fe units
       composed = ComposedUnits unitAt besides figures singles tables codeBlocks

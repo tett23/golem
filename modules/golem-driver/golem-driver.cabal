@@ -103,6 +103,7 @@ test-suite golem-driver-test
     FigureExternalSpec
     FigureSpec
     FileSpacesSpec
+    ForceTableSpec
     FunctionLibrarySpec
     FunctionsSpec
     HeadingLevelsSpec
