@@ -76,6 +76,18 @@ formDepth depth = if depth > linesPrDepth then 2 else 1
 maxWidthAt :: Int -> Int
 maxWidthAt depth = if depth > linesPrDepth then 5 else linesPrWidth
 
+{- | The groups of a run the enumeration checks at a depth: those of the
+normal form; on pull requests without the span of fr, which took the
+area past the 10 seconds of docs/adr/0208 (its section 4) on the x86-64
+runner of CI, so that only the nightly job checks it (docs/adr ADR 0276).
+-}
+groupsAt :: Int -> [Text] -> [Group]
+groupsAt depth run =
+  [ g
+  | g <- normalGroups (maxWidthAt depth) run,
+    depth > linesPrDepth || sLang (gSetting g) /= Just "fr"
+  ]
+
 -- | The depth: GOLEM_ENUM_LINES_DEPTH, or 'linesPrDepth'.
 linesDepth :: IO Int
 linesDepth = wholeNumber "GOLEM_ENUM_LINES_DEPTH" linesPrDepth
@@ -172,8 +184,9 @@ enumerationTests =
           -- (golem-layout ADR 0049); ー and ぁ, strict and loose; 。 and 、,
           -- with and without hanging; 10 parts of Latin text or of both
           -- scripts (… — and the 8 other Latin parts), with and without
-          -- protrusion, in no span, en and ja, with and without the expansion
-          runs = 1 + 9 + 1 + 3 + 2 * 2 + 2 * 2 + 10 * (2 * 3 * 2)
+          -- protrusion, in no span, en, fr (docs/adr ADR 0276) and ja, with and
+          -- without the expansion
+          runs = 1 + 9 + 1 + 3 + 2 * 2 + 2 * 2 + 10 * (2 * 4 * 2)
       length made @?= placed * runs,
     testCase "the normal form: up to 2 parts (1 on pull requests), the inputs it leaves out give 'breakParagraph' no value it is not given" $ do
       -- the values (items, width, expansion and protrusion) of every
@@ -758,7 +771,7 @@ balancedLines :: Text
 balancedLines =
   let -- each run hashed on every processor, then written in the order of the runs
       (_, hashes) = tallyAllPar 2 runsT (\run -> ([], Map.singleton run (hashOf run)))
-      hashOf run = T.pack (showHex (fnv (concat [placedKey (paragraphWith its i) | g <- normalGroups 5 run, let its = itemsOf False (gSetting g) (gPre g) (gRun g) (gPost g), i <- groupInputs g])) "")
+      hashOf run = T.pack (showHex (fnv (concat [placedKey (paragraphWith its i) | g <- normalGroups 5 run, sLang (gSetting g) /= Just "fr", let its = itemsOf False (gSetting g) (gPre g) (gRun g) (gPost g), i <- groupInputs g])) "")
    in T.unlines [T.intercalate "\t" [T.pack (show run), Map.findWithDefault "" run hashes] | run <- concat (upTo 2 runsT)]
 
 -- | R7 of docs/adr/0274: the breaks of each input with each limit, pulling in first and not, are those without a limit.
@@ -789,7 +802,7 @@ exhaustiveTests =
       depth <- linesDepth
       let limit = bruteLimitAt depth
       -- built here, not in a value of its own, so that it is not held
-      case tallyAllPar depth (groupT (normalGroups (maxWidthAt depth))) (judgeGroup depth limit) of
+      case tallyAllPar depth (groupT (groupsAt depth)) (judgeGroup depth limit) of
         (Failed k g _, _) -> case firstBroken depth limit g of
           Just i -> assertFailure (report limit ("the smallest input that breaks an invariant has " <> show k <> " parts") i)
           Nothing -> assertFailure "a group broke an invariant, but none of its inputs does"
