@@ -8,11 +8,12 @@ import Golem.Lint
 import Golem.Parser (parse)
 import Golem.Parser.SourceSettings
 import Golem.Syntax
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
 
 main :: IO ()
-main = defaultMain tests
+main = enterPackageDirectory >> defaultMain tests
 
 -- | The blank-line style, which the tests are written in (the default before docs/adr/0193).
 blankLine :: SourceSettings
