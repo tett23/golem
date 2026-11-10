@@ -418,8 +418,8 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
 = [strong: G02097 [code: @printings は本体を持てません]] など
   [code: @printings] や改ページのコマンドのような、本体を持てないコマンドの次の行を字下げしています。
   字下げをやめて、別の段落として書いてください。
-= [strong: G02076 [code: @printings は日本語の本（language = "ja"）でだけ使えます]]
-  [code: manifest.toml] の [code: language] が [code: "ja"] でない本に [code: @printings] を書いています。
+= [strong: G02076 [code: @printings は日本語の本（language の主の副タグが ja）でだけ使えます]]
+  [code: manifest.toml] の [code: language] の最初の [code: -] より前を英小文字にしたものが [code: ja] でない本に [code: @printings] を書いています。
   日本語でない本では、[code: @printings] を消し、[code: meta.printing] の値から一行ずつ書いてください。
 = [strong: G02098 [code: マニフェストに \[\[metadata.printings\]\] がありません]]
   [code: manifest.toml] に [code: \[\[metadata.printings\]\]] がない本に [code: @printings] を書いています。

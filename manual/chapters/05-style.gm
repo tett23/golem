@@ -763,7 +763,7 @@ regex-styles = [
 
 [code: size] と [code: lines] を書かなければ、次の既定の値で組みます。
 [code: lines] の既定は、本の言語（[code: manifest.toml] の [code: language]）で変わります。
-[code: language] が [code: ja] で始まる本は日本語の本で、大文字と小文字は区別しません（[code: "JA"] も日本語の本です）。
+[code: language] の最初の [code: -] より前を英小文字にしたものが [code: ja] なら日本語の本です（[code: "JA"] と [code: "ja-JP"] も日本語の本です）。
 欧文の本は行送りが文字の大きさに近いので、行を多めに取ります。
 
 | 階層 | [code: size] | [code: lines]（日本語） | [code: lines]（ほかの言語） |

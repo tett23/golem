@@ -593,6 +593,14 @@ headingTests =
       errs @?= [DiagnosticCode "G07024"]
       pdf @?= Nothing
       layoutMini style "# A\n\nx\n" [] >>= (@?= [("G07024", "見出しが版面に入りません（1 の見出し: A）", FileId 1, 0, 4)]) . layoutErrors,
+    testCase "J1: heading defaults use the primary language subtag" $ do
+      let cases = [("", False), ("j", False), ("ja", True), ("JA", True), ("ja-JP", True), ("ja-", True), ("jam", False), ("ja_JP", False), ("en", False), ("en-ja", False)]
+          jaDefaults = map (headingDefaults "ja") [1, 2]
+          otherDefaults = map (headingDefaults "en") [1, 2]
+      forM_ cases $ \(lang, expected) -> map (headingDefaults lang) [1, 2] @?= if expected then jaDefaults else otherDefaults,
+    testCase "J2: heading defaults ignore case" $ do
+      let cases = [("", False), ("j", False), ("ja", True), ("JA", True), ("ja-JP", True), ("ja-", True), ("jam", False), ("ja_JP", False), ("en", False), ("en-ja", False)]
+      forM_ cases $ \(lang, _) -> map (headingDefaults lang) [1, 2] @?= map (headingDefaults (T.toUpper lang)) [1, 2],
     testCase "the default size and lines of a heading by language and level (golem-driver ADR 0032)" $ do
       headingDefaults "ja" 1 @?= (Zw (3 % 2), 5)
       headingDefaults "ja-JP" 3 @?= (Zw 1, 2)
