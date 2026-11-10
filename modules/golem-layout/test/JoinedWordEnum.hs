@@ -20,7 +20,8 @@ look, so that the boxes of the two sides differ only in their pieces.
 module JoinedWordEnum (joinedWordTests, joinedPrDepth) where
 
 import Data.Char (GeneralCategory (..), generalCategory, isLetter)
-import Data.List (mapAccumL)
+import Data.List (mapAccumL, sort, zip4)
+import Data.List.NonEmpty qualified as NE
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -29,7 +30,7 @@ import Golem.Doc.IR qualified as IR
 import Golem.Layout.CharClass (dualJapaneseClass, isDualCharacter, spanIsJapanese)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
-import Golem.Layout.Look (Look (..))
+import Golem.Layout.Look (LinkTarget (..), Look (..), plainLook)
 import Golem.TestSupport.Enum
 import LineBreakEnum (Setting (..), advance, composeEnv, lineText, paramsOf, placings)
 import LineBreakInvariants (Breach (..), Paragraph (..), breaches, bruteLimit)
@@ -150,10 +151,12 @@ kind of an explicit hyphen, which is there where the boundary is a cut of
 the joined word, the penalty is less than 10000 and no prohibition of
 golem-layout ADR 0028 applies, and only there. The joined word is the run
 of Latin boxes around the boundary with nothing but penalties between
-them.
+them. As H4 of docs/adr ADR 0285 widens it: or one penalty of a soft
+hyphen, where the boundary is a break of a soft hyphen of the joined word
+(the positions given, 'softCutsOf'), and only there.
 -}
-w1Boundary :: Bool -> Int -> [Int] -> [Item] -> [Violation]
-w1Boundary strict p bounds its =
+w1Boundary :: Bool -> Int -> [Int] -> [Int] -> [Item] -> [Violation]
+w1Boundary strict p softs bounds its =
   [ Violation "W1" ("at " <> show (bcText a) <> " | " <> show (bcText b) <> " in " <> show word <> ": " <> show between <> ", not " <> show want)
   | (k, ((at, a, between), (bt, b, _))) <- zip [0 :: Int ..] (zip bs (drop 1 bs)),
     bt `elem` bounds,
@@ -161,8 +164,8 @@ w1Boundary strict p bounds its =
     bcExpandable a && bcExpandable b,
     let word = joined k
         cut = (bt - wordStart k) `elem` explicitCuts word
-        want = [Penalty 0 p ExplicitHyphen | cut, p < infPenalty, not (prohibited k a b)],
-    map keyOf between /= map keyOf want
+        want = [Penalty 0 p ExplicitHyphen | cut, p < infPenalty, not (prohibited k a b)] <> [Penalty 0 50 (SoftHyphen 0) | bt `elem` softs],
+    map shapeOf between /= map shapeOf want
   ]
   where
     bs = boxesWith its
@@ -188,20 +191,48 @@ w1Boundary strict p bounds its =
        in maybe False (lineStartProhibited strict) ck || maybe False lineEndProhibited pk || (pk == Just Inseparable && ck == Just Inseparable)
     lastOf c = snd <$> T.unsnoc (bcText c)
 
+-- | An item as W1 reads it: a penalty by its penalty and kind, the rest by 'keyOf'.
+shapeOf :: Item -> Either (Int, Int) (Int, Sp, Sp, Sp, Text, Int, Int)
+shapeOf = \case
+  Penalty _ q h -> Left (q, hyphenKind h)
+  x -> Right (keyOf x)
+
 {- | The boundaries of a run between two characters of boxes, as indices
 among the characters of the boxes of the paragraph: spaces and soft
-hyphens make no box, and a boundary next to one is not between two boxes.
+hyphens make no box, and a boundary next to a space is not between two
+boxes; one next to soft hyphens is between the characters around them
+(docs/adr ADR 0285), each index once.
 -}
 boundsOf :: Int -> [(Text, Bool)] -> [Int]
 boundsOf pre run =
-  [ pre + n
-  | (n, before, (t, True)) <- zip3 (drop 1 starts) (scanl1 (<>) (map fst run)) (drop 1 run),
-    maybe False (not . gap . snd) (T.unsnoc before),
-    maybe False (not . gap . fst) (T.uncons t)
-  ]
+  nubOrd
+    [ pre + n
+    | (n, before, (_, True), rest) <- zip4 (drop 1 starts) (scanl1 (<>) (map fst run)) (drop 1 run) (drop 1 (scanr1 (<>) (map fst run))),
+      maybe False ((/= ' ') . snd) (T.unsnoc (T.filter (/= '\xAD') before)),
+      maybe False ((/= ' ') . fst) (T.uncons (T.filter (/= '\xAD') rest))
+    ]
   where
     gap c = c == ' ' || c == '\xAD'
     starts = scanl (+) 0 [T.length (T.filter (not . gap) t) | (t, _) <- run]
+    nubOrd = map NE.head . NE.group . sort
+
+{- | The breaks of the soft hyphens of a paragraph, as indices among the
+characters of the boxes: each run of soft hyphens between two Latin
+letters (I3 of docs/adr ADR 0272), the text before the run given.
+-}
+softCutsOf :: Int -> Text -> [Int]
+softCutsOf pre t = [pre + n | (n, (a, b)) <- zip boxIndices (zip cs (drop 1 cs)), shyBetween a b, latin (fst a), latin (fst b)]
+  where
+    -- the characters but the soft hyphens, each with whether soft hyphens are right before it
+    cs = go False (T.unpack t)
+    go _ [] = []
+    go s (c : rest)
+      | c == '\xAD' = go True rest
+      | otherwise = (c, s) : go False rest
+    shyBetween _ (_, s) = s
+    -- the index among the characters of the boxes after each character: spaces make no box
+    boxIndices = drop 1 (scanl (\n (c, _) -> if c == ' ' then n else n + 1) 0 cs)
+    latin c = isLetter c && lookClass (plainLook "body" 0) c == Western
 
 -- * W2: the breaks of the run as one text
 
@@ -279,10 +310,10 @@ paragraphOf i =
           pNumberUnit = infPenalty
         }
 
-{- | The violations of an input: L1 to L13 of docs/adr/0209 and W1 with the
-patterns, W1, E1 and W2 without them (E1 and E2 of docs/adr ADR 0283); W2
-where no soft hyphen is next to a boundary (docs/adr ADR 0280, its
-「実装しないこと」).
+{- | The violations of an input: L1 to L13 of docs/adr/0209 (I4 of docs/adr
+ADR 0272 among them) and W1 as H4 of docs/adr ADR 0285 widens it with the
+patterns, W1, E1 and W2 without them (E1 and E2 of docs/adr ADR 0283), on
+every input, soft hyphens next to boundaries too (H5).
 -}
 violations :: Input -> [Violation]
 violations i =
@@ -291,21 +322,16 @@ violations i =
       bare = envOf False (inLang i) (inExplicit i)
       itsBare = itemsWith bare split
       bounds = boundsOf (inPre i) (inRun i)
-   in [Violation (show (breachOf b)) (show (breachLine b) <> ": " <> breachWhy b) | b <- breaches bruteLimit p, not (shyAtBoundary (inRun i)) || show (breachOf b) == "L8"]
-        <> w1Boundary True (inExplicit i) bounds (pItems p)
-        <> w1Boundary True (inExplicit i) bounds itsBare
+      softs = softsOf i
+   in [Violation (show (breachOf b)) (show (breachLine b) <> ": " <> breachWhy b) | b <- breaches bruteLimit p]
+        <> w1Boundary True (inExplicit i) softs bounds (pItems p)
+        <> w1Boundary True (inExplicit i) softs bounds itsBare
         <> e1Same itsBare (itemsWith bare one)
-        <> (if shyAtBoundary (inRun i) then [] else w2Same itsBare (itemsWith bare one))
+        <> w2Same itsBare (itemsWith bare one)
 
-{- | Whether a soft hyphen is next to a boundary: only L8 and W1 are
-checked on such an input (the ADR, its 「実装しないこと」). The predicates
-of the soft hyphens (L9 as I3 of docs/adr ADR 0272 widens it, I4) read
-the soft hyphens in the text of the paragraph, where one before or after
-a boundary is inside a word; the composition reads the word of each
-inline, where it is at an end of it (see the pull request of the ADR).
--}
-shyAtBoundary :: [(Text, Bool)] -> Bool
-shyAtBoundary r = or [b && (t == "\xAD" || p == "\xAD") | ((p, _), (t, b)) <- zip r (drop 1 r)]
+-- | The breaks of the soft hyphens of the run of an input.
+softsOf :: Input -> [Int]
+softsOf i = softCutsOf (inPre i) (T.concat (map fst (inRun i)))
 
 -- | The inputs of a run: every span and penalty, placing in lines of 2 to 4 em and expansion.
 inputsOf :: [(Text, Bool)] -> [Input]
@@ -391,7 +417,7 @@ pairInputs = [f l p | l <- [Nothing, Just "en", Just "ja"], p <- [50, 10000], f 
 
 -- | W1 of an input without the patterns.
 w1Of :: Input -> [Violation]
-w1Of i = w1Boundary True (inExplicit i) (boundsOf (inPre i) (inRun i)) (itemsWith (envOf False (inLang i) (inExplicit i)) (fst (inputInlines i)))
+w1Of i = w1Boundary True (inExplicit i) (softsOf i) (boundsOf (inPre i) (inRun i)) (itemsWith (envOf False (inLang i) (inExplicit i)) (fst (inputInlines i)))
 
 -- | W2 of an input without the patterns.
 w2Of :: Input -> [Violation]
@@ -542,11 +568,112 @@ bothScriptsTests =
         dashIsLatin [txt "あ", indexMark, strong "—"] @?= [False]
     ]
 
+-- * the soft hyphens at boundaries (docs/adr ADR 0285)
+
+-- | The soft hyphen.
+shyC :: Text
+shyC = "\xAD"
+
+{- | The rows of 「今の振る舞い」 of the ADR: a soft hyphen at the end of the
+text before a boundary, alone between two, at the head of the text after
+one, and alone before a word the patterns break.
+-}
+shyRows :: [[(Text, Bool)]]
+shyRows =
+  [ [("a" <> shyC, False), ("a", True)],
+    [("a", False), (shyC, True), ("a", True)],
+    [("ab", False), (shyC <> "hyphenation", True)],
+    [("hyphenation", False), (shyC, True), ("x", True)]
+  ]
+
+{- | The places of the table of the boundaries of the ADR: a soft hyphen at
+the end of the text before, at the head of the text after, alone, on both
+sides; between two letters, a letter and a full stop, after an explicit
+hyphen, a letter and a digit; and the elements a pattern breaks.
+-}
+shyRuns :: [[(Text, Bool)]]
+shyRuns =
+  [ r
+  | (x, y) <- [("a", "b"), ("a.", "b"), ("a-", "b"), ("a", "1"), ("hyphenation", "x")],
+    r <-
+      [ [(x <> shyC, False), (y, True)],
+        [(x, False), (shyC <> y, True)],
+        [(x, False), (shyC, True), (y, True)],
+        [(x <> shyC, False), (shyC <> y, True)],
+        [(x, False), (shyC, True), (shyC, False), (y, True)]
+      ]
+  ]
+    <> shyRows
+    <> [[(shyC, False), ("hyphenation", True)], [("x", False), (shyC, True), ("hyphenation", True)]]
+
+-- | The first row: a, U+00AD, a boundary and a.
+aShyA :: [(Text, Bool)]
+aShyA = [("a" <> shyC, False), ("a", True)]
+
+-- | The inputs of runs in every span with either penalty, in lines of 4 em.
+shyInputs :: [[(Text, Bool)]] -> [Input]
+shyInputs rs = [Input l p False 4 0 r 0 | r <- rs, l <- [Nothing, Just "en", Just "ja"], p <- [50, 10000]]
+
+-- | The penalties of the soft hyphens of items: where each is among the characters of the boxes, its width and its penalty.
+shyPenalties :: [Item] -> [(Int, Sp, Int)]
+shyPenalties its = concat (snd (mapAccumL step 0 its))
+  where
+    step at = \case
+      Box _ c -> (at + T.length (bcText c), [])
+      Penalty w q (SoftHyphen _) -> (at, [(at, w, q)])
+      _ -> (at, [])
+
+-- | The notices of the soft hyphens of inlines that are not breaks, in order.
+shyNotes :: ComposeEnv -> [IR.Inline] -> [SoftHyphenNote]
+shyNotes env is = [n | (_, _, n) <- softHyphenSites env is]
+
+-- | H2 and H3 of an input: the soft hyphens and their notices of the split paragraph and of it as one text, with the patterns and without them.
+h23Of :: Input -> [Violation]
+h23Of i =
+  concat
+    [ [Violation "H2" (show pats <> ": " <> show (shyPenalties (itemsWith env split)) <> ", as one text " <> show (shyPenalties (itemsWith env one))) | shyPenalties (itemsWith env split) /= shyPenalties (itemsWith env one)]
+        <> [Violation "H3" (show pats <> ": " <> show (shyNotes env split) <> ", as one text " <> show (shyNotes env one)) | shyNotes env split /= shyNotes env one]
+    | pats <- [True, False],
+      let env = envOf pats (inLang i) (inExplicit i)
+    ]
+  where
+    (split, one) = inputInlines i
+
+-- | L9 (I3 of docs/adr ADR 0272) and I4 of an input.
+h1Of :: Input -> [Violation]
+h1Of i = [Violation (show (breachOf b)) (breachWhy b) | b <- breaches bruteLimit (paragraphOf i), show (breachOf b) `elem` ["L9", "I4"]]
+
+softHyphenBoundaryTests :: TestTree
+softHyphenBoundaryTests =
+  testGroup
+    "the soft hyphens at inline boundaries read in the joined word (docs/adr ADR 0285)"
+    [ testCase "H1: the four rows of the ADR keep I3 and I4" $
+        failing h1Of (shyInputs shyRows),
+      testCase "H2 and H3: the soft hyphens and their notices of the places of the ADR are those of one text, with the patterns and without them" $
+        failing h23Of (shyInputs shyRuns),
+      testCase "H2: a U+00AD and a has the penalty of a soft hyphen between the two boxes" $
+        [q | (_, _, q) <- shyPenalties (itemsWith (envOf True Nothing 50) (fst (inputInlines (Input Nothing 50 False 4 0 aShyA 0))))] @?= [50],
+      testCase "H3: a soft hyphen at the end of the text of a link, next to a boundary, is G07124; one after a link word is G07123" $ do
+        let env = (envOf False Nothing 50) {ceRestyle = \lk -> \case IR.Link _ u _ -> lk {lkLink = Just (LinkUri u)}; _ -> lk}
+            link = IR.Link sp "https://example.com/" [IR.Text sp ("ab" <> shyC)]
+        shyNotes env [link, IR.Text sp "cd"] @?= [ShyInUnbreakable]
+        shyNotes env [IR.Link sp "https://example.com/" [IR.Text sp "ab"], IR.Text sp (shyC <> "cd")] @?= [ShyNotBetweenLetters],
+      testCase "H4: predicate tests, the items of a U+00AD and a without the penalty of the soft hyphen, or with a penalty 0 in its place, break H4" $ do
+        let i = Input Nothing 50 False 4 0 aShyA 0
+            its = itemsWith (envOf False Nothing 50) (fst (inputInlines i))
+            removed = [x | x <- its, case x of Penalty _ _ (SoftHyphen _) -> False; _ -> True]
+            zeroed = map (\case Penalty _ _ (SoftHyphen _) -> Penalty 0 0 NoHyphen; x -> x) its
+        map violationRule (w1Boundary True 50 (softsOf i) (boundsOf 0 (inRun i)) its) @?= []
+        map violationRule (w1Boundary True 50 (softsOf i) (boundsOf 0 (inRun i)) removed) @?= ["W1"]
+        map violationRule (w1Boundary True 50 (softsOf i) (boundsOf 0 (inRun i)) zeroed) @?= ["W1"]
+    ]
+
 joinedWordTests :: TestTree
 joinedWordTests =
   testGroup
     "the breaks between the boxes of a Latin word follow the joined word (docs/adr ADR 0280)"
     [ bothScriptsTests,
+      softHyphenBoundaryTests,
       testCase "L8: the smallest input of the marks of citations, a, — and [cite a page=5] in lines of 2 em, breaks only where L8 allows" $ do
         let cite = IR.Cite sp [IR.CiteItem "a" (Just (IR.Locator IR.LocatorPage (IR.LocNumber 5))) [] []]
             env = (composeEnv False (settingOf Nothing)) {ceCiteNumber = \_ k -> if k == "a" then Just 1 else Nothing}
@@ -585,7 +712,7 @@ joinedWordTests =
             its = itemsWith bare split
             -- the penalty 0 before the ADR between the two boxes
             before = concatMap (\case Penalty _ 50 ExplicitHyphen -> [Penalty 0 0 NoHyphen]; x -> [x]) its
-        map violationRule (w1Boundary True 50 (boundsOf 0 (inRun i)) before) @?= ["W1"]
+        map violationRule (w1Boundary True 50 [] (boundsOf 0 (inRun i)) before) @?= ["W1"]
         map violationRule (w2Same before (itemsWith bare one)) @?= ["W2"],
       testCase "E1 and E2: predicate tests, the items of a, — and b with the dash a Japanese character, as before docs/adr ADR 0283, break E1; a penalty 0 for the explicit hyphen breaks E2" $ do
         let bare = envOf False Nothing 50
@@ -596,7 +723,7 @@ joinedWordTests =
         map violationRule (e1Same before one) @?= ["E1"]
         map violationRule (w2Same before one) @?= ["W2"]
         map violationRule (w2Same zeroed one) @?= ["W2"],
-      testCase "W3: L1 to L13 of docs/adr/0209, W1 and W2 hold for every input up to GOLEM_ENUM_JOINED_DEPTH parts" $ do
+      testCase "W3 and H5: L1 to L13 of docs/adr/0209, I4, W1 (as H4) and W2 hold for every input up to GOLEM_ENUM_JOINED_DEPTH parts, soft hyphens next to boundaries too" $ do
         depth <- depthOf
         case checkAllPar depth inputT violations of
           Failed k i vs -> assertFailure ("the smallest input that breaks an invariant has " <> show k <> " parts: " <> show i <> "\n" <> unlines [violationRule v <> ": " <> violationDetail v | v <- vs])
