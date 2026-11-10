@@ -90,30 +90,24 @@ maxWidthAt :: Int -> Int
 maxWidthAt depth = if depth > linesPrDepth then 5 else linesPrWidth
 
 {- | The groups of a run the enumeration checks at a depth: those of the
-normal form; on pull requests without the span of fr, which only the
-nightly job checks (docs/adr ADR 0276). Timed as docs/adr ADR 0281 asks
-(the area alone with -p, on the x86-64 runner, three times), the span of
-fr back on pull requests keeps the area within its 10 seconds (7.72 to
-7.78) but takes the sum of the areas past its 30 (30.13 to 30.42), so it
-stays a value the default composition does not use, moved to the nightly
-job (docs/adr ADR 0281, its section 7).
+normal form, the span of fr included on pull requests too. docs/adr ADR
+0276 moved the span of fr to the nightly job; timed as docs/adr ADR 0286
+asks (the test executable alone with -p, the median of four jobs on the
+x86-64 runner, run 42761004416), it is back on pull requests with the
+area at 5.43 to 5.46 seconds and the sum at 23.37 to 23.47 (docs/adr ADR
+0281, its section 7).
 -}
 groupsAt :: Int -> [Text] -> [Group]
-groupsAt depth run =
-  [ g
-  | g <- normalGroups (maxWidthAt depth) run,
-    depth > linesPrDepth || sLang (gSetting g) /= Just "fr"
-  ]
+groupsAt depth run = normalGroups (maxWidthAt depth) run
 
-{- | The parts up to which R1 of docs/adr/0274 is checked: 2 past
-'linesPrDepth' (the nightly job), none on pull requests (docs/adr/0282).
-Timed as docs/adr ADR 0281 asks, R1 back on pull requests keeps the area
-within its 10 seconds (9.77 to 9.81) but takes the sum of the areas past
-its 30 (32.27 to 32.32), so the comparison with the output before the ADR
-stays on the nightly job (docs/adr ADR 0281, its sections 3 and 7).
+{- | The parts up to which R1 of docs/adr/0274 is checked: 2, on pull
+requests too. docs/adr/0282 kept it to the nightly job; timed as docs/adr
+ADR 0286 asks (the median of four jobs, run 42761004416), R1 back on pull
+requests after the span of fr keeps the area at 8.53 seconds and the sum
+at 26.54 to 26.55 (docs/adr ADR 0281, its section 7).
 -}
 r1Depth :: Int -> Int
-r1Depth depth = if depth > linesPrDepth then 2 else 0
+r1Depth _ = 2
 
 {- | A run whose normal form keeps every setting: a prolonged sound mark
 (loose kinsoku), a full stop (hanging), a Latin word (protrusion, the
@@ -714,11 +708,12 @@ line-adjustment, each with no limit and the limits 0 and 2500. On pull
 requests, the default composition alone, pulling in first with no limit
 (docs/adr/0282, docs/adr ADR 0281, its section 3). Timed as docs/adr ADR
 0281 asks, the six back on pull requests take the area past its 10
-seconds (18.74 to 18.81), and balanced without a limit added alone keeps
-it within them (8.75 to 8.82) but takes the sum of the areas past its 30
-(31.20 to 31.45), so both stay on the nightly job (its section 7). The
-limits are checked on pull requests on the paragraphs made by hand and by
-R7.
+seconds (18.74 to 18.81). Timed again as docs/adr ADR 0286 asks (the
+median of four jobs, run 42761004416), balanced without a limit added to
+the span of fr and R1 takes the area past its 10 seconds (11.21 to
+11.38), so the values of line-adjustment stay on the nightly job (docs/adr
+ADR 0281, its section 7). The limits are checked on pull requests on the
+paragraphs made by hand and by R7.
 -}
 adjustsAt :: Int -> [Text] -> [Adjust]
 adjustsAt depth run =
@@ -895,8 +890,8 @@ limitMisses maxWidth run =
 
 exhaustiveTests :: [TestTree]
 exhaustiveTests =
-  [ testCase "R1 (docs/adr/0274): balanced and without a limit, every input up to 2 parts is broken and placed as before the ADR (test/golden/line-adjustment-balanced.tsv), past the depth of pull requests" $ do
-      -- up to 'r1Depth': the nightly job only
+  [ testCase "R1 (docs/adr/0274): balanced and without a limit, every input up to 2 parts is broken and placed as before the ADR (test/golden/line-adjustment-balanced.tsv)" $ do
+      -- up to 'r1Depth', on pull requests too (docs/adr ADR 0286)
       depth <- linesDepth
       when (r1Depth depth > 0) $ do
         want <- BL.readFile "test/golden/line-adjustment-balanced.tsv"
