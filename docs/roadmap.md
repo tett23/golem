@@ -166,7 +166,7 @@ v2.0.0-rc1 は、数式の組版かその下準備、あるいはその両方を
 - **索引と参考文献の拡張**：索引の三段以上の階層（v1 は二段まで）、副項目の折り返した行の字下げ、縦組みの本の索引を横組みにして巻末から始めること、参考文献の書式の選択（著者名の順の一覧を含む）と書誌のぶら下げ字下げ（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。
 - **Web 経路のスタイル**：HTML と EPUB で、見出しの `font` と `size`、文字スタイルの `size`、`caption` と `sidenote` 以外の段落スタイルの `size` を使うこと、Web 経路のフォントのサブセット化（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。
 - **特色（スポットカラー）**：Separation と DeviceN の色空間。今の Golem はプロセスカラーだけを扱う（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)）。
-- **プラグインの配布機構**：レジストリとバージョンの解決、配布されたバイナリがどのソースから作られたかの検証、キャッシュの削除と整理のコマンド（[golem-plugin ADR 0002](golem-plugin/adr/0002-distribution-and-lock.md)）。
+- **プラグインの配布機構**：レジストリと、許容するバージョンの範囲を宣言して解決する方式、配布されたバイナリがどのソースから作られたかの検証、キャッシュの削除と整理のコマンド（[golem-plugin ADR 0002](golem-plugin/adr/0002-distribution-and-lock.md)）。
 - **配布の拡張**：macOS の実行ファイルの署名（Developer ID）と公証、Homebrew の tap とインストール用のスクリプト、再現可能なビルド、`-split-sections` による実行ファイルの縮小（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 - **傍注の拡張**：段組みの版面での傍注の領域、収まらない傍注を脚注に回すことと傍注のために本文の行を次のページに送ること、脚注の本文とキャプションの中の傍注の配置（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）、複数の段落の傍注（意味論 IR の傍注の本文はブロックの並びだが、`Golem.Doc.Validate` が段落をちょうど一つに限る。[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
 - **注の本文のリストとコード**：脚注の本文に、リスト、コードなどの段落でないブロックを置くこと。意味論 IR の注の本文はブロックの並びだが、評価と `Golem.Doc.Validate` は段落だけを受け付ける。PDF の脚注の領域でのリストの字下げ、コードの背景と改ページを、注の行の格子の上で決める必要がある（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。

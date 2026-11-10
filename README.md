@@ -102,7 +102,7 @@ ca-certificates の入っていない最小構成のコンテナでは、ca-cert
 対応した最初の版は、Chrome 137、Firefox 131、Safari 18.4、Node 24.15、Deno 2.3.2、wasmtime 47 である。
 
 Node の `node:wasi` で動くことは、CI で確かめている。
-夜ごとの `.github/workflows/browser.yml` が、Deno 2.9.8 の `node:wasi` と、wasmtime 49.0.5 の C API のホスト（`scripts/wasm/run-wasmtime.c`）と、`browser_wasi_shim` を使う Chromium（Chrome for Testing 157.0.8103.38）と Safari（macOS のランナーのもの）でも、ネイティブの `golem` と同じ PDF と diagnostics を返すことを確かめている（[docs/adr/0234](./docs/adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[docs/adr/0238](./docs/adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+夜ごとの `.github/workflows/browser.yml` が、Deno 2.9.8 の `node:wasi` と、wasmtime 49.0.5 の C API のホスト（`scripts/wasm/run-wasmtime.c`）と、`browser_wasi_shim` を使う Chromium（Chrome for Testing 157.0.8103.50）と Safari（macOS のランナーのもの）でも、ネイティブの `golem` と同じ PDF と diagnostics を返すことを確かめている（[docs/adr/0234](./docs/adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[docs/adr/0238](./docs/adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
 
 エクスポートは C の ABI の次の五つと `hs_init` で、ホストは `_initialize` を一度、`hs_init(0, 0)` を一度呼んでから使う。
 
@@ -341,14 +341,14 @@ ADR の参照の書き方にも、決まりがある。
 
 | ライブラリ | バージョン |
 |---|---|
-| HarfBuzz | 14.6.0 |
+| HarfBuzz | 15.1.0 |
 | FreeType | 2.14.3 |
 | wasmtime | 49.0.5 |
 | zlib | 1.3.2 |
 | hyph-utf8（欧文の八つの言語のハイフネーションのパターン） | コミット 5684c0f |
 | wasm のツールチェーン（ghc-wasm-meta の 9.10 の flavour） | ghc-wasm-meta のコミット 8079eb96、GHC 9.10.3.20260731、wasi-sdk（clang 21.1.8）、cabal 3.14.2.0 |
 | cborg（wasm の版だけ） | 上流のコミット 6ef2791c |
-| skylighting、skylighting-core（wasm の版だけ） | Hackage の 0.15 に `scripts/wasm/patches/` の差分を当てたもの |
+| skylighting、skylighting-core（wasm の版だけ） | Hackage の 0.15.0.1 に `scripts/wasm/patches/` の差分を当てたもの |
 
 固定の仕方は、ライブラリごとに違う。
 
@@ -359,7 +359,7 @@ ADR の参照の書き方にも、決まりがある。
 
 wasm の版だけは、ネイティブの版と違うパッケージを使う（[docs/adr/0202](./docs/adr/0202-packages-that-do-not-build-for-wasm.md)）。
 32 ビットで組めない cborg 0.2.10.0 の代わりに、上流のコミット 6ef2791c を `cabal.project.wasm` の `source-repository-package` で使う。
-`network` に依存する `xml-conduit` を外すために、Hackage の `skylighting` 0.15 と `skylighting-core` 0.15 に `Skylighting.Parser` と `Skylighting.Loader` を除く差分（`scripts/wasm/patches/`）を当てたものを、`scripts/fetch-wasm-packages.sh` で `third_party/wasm-packages/` に置いて使う。
+`network` に依存する `xml-conduit` を外すために、Hackage の `skylighting` 0.15.0.1 と `skylighting-core` 0.15.0.1 に `Skylighting.Parser` と `Skylighting.Loader` を除く差分（`scripts/wasm/patches/`）を当てたものを、`scripts/fetch-wasm-packages.sh` で `third_party/wasm-packages/` に置いて使う。
 
 ライセンスの文書のうち、ビルドの環境から取れないものはリポジトリに置く。
 `licenses/` には、配布物の `THIRD_PARTY_LICENSES/` に写すライセンスの文書のうち、ビルドの環境から取れないもの（`libwasmtime.a` に入った Rust のクレートなどの文書と、Alpine のパッケージが入れない文書と、wasi-sdk の配布物が持たない文書の `licenses/wasi-sdk/`）を置く（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
