@@ -12,13 +12,14 @@ import Golem.Preflight
 import Golem.Preflight.Rules
 import Golem.Preflight.View
 import Golem.Syntax
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import PlatesSpec qualified
 import RulesSchemaSpec qualified
 import Test.Tasty
 import Test.Tasty.HUnit
 
 main :: IO ()
-main = defaultMain tests
+main = enterPackageDirectory >> defaultMain tests
 
 -- ------------------------------------------------------------------ fixtures
 

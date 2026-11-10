@@ -150,7 +150,10 @@ test-suite golem-driver-test
   -- none of them changes the state of the process, and those that do are
   -- in golem-driver-global-test (docs/adr/0146). -N: one capability per
   -- processor from the start (scripts/ci/rts-capabilities.sh)
-  ghc-options:      -threaded "-with-rtsopts=-N"
+  -- wasm32 has no threaded runtime: -threaded does not link there, and
+  -- -N needs it (docs/adr/0293)
+  if !arch(wasm32)
+    ghc-options:    -threaded "-with-rtsopts=-N"
   build-depends:
     , base
     , bytestring
@@ -247,7 +250,10 @@ test-suite golem-driver-parallel-test
     Support
   -- -N: one capability per processor from the start, so that the count
   -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)
-  ghc-options:      -threaded "-with-rtsopts=-N"
+  -- wasm32 has no threaded runtime: -threaded does not link there, and
+  -- -N needs it (docs/adr/0293)
+  if !arch(wasm32)
+    ghc-options:    -threaded "-with-rtsopts=-N"
   build-depends:
     , base
     , bytestring

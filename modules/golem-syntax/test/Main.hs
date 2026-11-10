@@ -11,6 +11,7 @@ import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
 import Golem.TestSupport.Bytes (hex)
 import Golem.TestSupport.Gen (genText)
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -23,7 +24,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
 
 main :: IO ()
-main = defaultMain tests
+main = enterPackageDirectory >> defaultMain tests
 
 -- Byte offsets that fall on a code point boundary.
 boundaries :: Text -> [Int]

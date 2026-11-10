@@ -4,8 +4,15 @@
 # cabal.project.freeze and cabal.project.wasm.freeze pin has the same
 # version in both.
 #
-#   wasm-freeze.sh [NATIVE WASM]   (cabal.project.freeze and
-#                                  cabal.project.wasm.freeze by default)
+#   wasm-freeze.sh [NATIVE WASM [TESTS]]   (cabal.project.freeze,
+#                                          cabal.project.wasm.freeze and
+#                                          cabal.project.wasm-tests by
+#                                          default)
+#
+# TESTS, the project of the test suites on wasm32 (docs/adr/0293), imports
+# cabal.project.wasm and cabal.project.wasm.freeze: cabal reads a freeze
+# file only next to a project file of the same name, so the versions
+# checked here are those of the tests too.
 #
 # Left out of the comparison (docs/adr/0202 section 2):
 #   cborg              the wasm build takes a commit of its upstream, which
@@ -22,6 +29,13 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 NATIVE=${1:-$ROOT/cabal.project.freeze}
 WASM=${2:-$ROOT/cabal.project.wasm.freeze}
+TESTS=${3:-}
+if [ $# -lt 2 ]; then TESTS=$ROOT/cabal.project.wasm-tests; fi
+if [ -n "$TESTS" ]; then
+  for i in cabal.project.wasm cabal.project.wasm.freeze; do
+    grep -qx "import: $i" "$TESTS" || { echo "wasm-freeze: $TESTS does not import $i" >&2; exit 1; }
+  done
+fi
 EXCLUDED="cborg skylighting skylighting-core"
 # versions FILE: NAME VERSION of each any.NAME ==VERSION, sorted
 versions() {

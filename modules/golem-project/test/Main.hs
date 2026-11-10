@@ -27,6 +27,7 @@ import Golem.Project qualified as P
 import Golem.Project.Paths
 import Golem.Project.Style
 import Golem.Syntax
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import HyphenationExceptionsSpec qualified
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
@@ -44,7 +45,7 @@ import UnderlineSpec qualified
 import VarsSpec qualified
 
 main :: IO ()
-main = defaultMain tests
+main = enterPackageDirectory >> defaultMain tests
 
 -- | The diagnostics of a failed load, without the sources (golem-project ADR 0006).
 loadProject :: FilePath -> IO (Either [Diagnostic] Project)

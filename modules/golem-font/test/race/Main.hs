@@ -12,12 +12,14 @@ module Main (main) where
 import Control.Exception (evaluate)
 import Data.ByteString qualified as BS
 import Golem.Font
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Parallel (inParallel)
 import Test.Tasty
 import Test.Tasty.HUnit
 
 main :: IO ()
 main = do
+  enterPackageDirectory
   noto <- BS.readFile "../golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" >>= loadFont >>= either (fail . show) pure
   defaultMain (raceTests noto)
 
