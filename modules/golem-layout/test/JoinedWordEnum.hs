@@ -336,7 +336,7 @@ violations i =
 -- | Whether an item is the glue of a space between words: it stretches, but not as the glue that fills the last line; a space of code does not.
 wordGlue :: Item -> Bool
 wordGlue = \case
-  Glue _ y _ -> y > 0 && y < filStretch
+  Glue {itemStretch = y} -> y > 0 && y < filStretch
   _ -> False
 
 {- | S1: no two glues of spaces between words follow each other with no box
@@ -742,7 +742,7 @@ spaceTests =
       testCase "S5: a space of code and a space after it outside code are two glues, as before" $ do
         let its = itemsWith (bothEnv Nothing) [IR.CharStyle sp "code" [txt "x "], txt " b"]
         length (filter wordGlue its) @?= 1
-        length [() | Glue _ y _ <- its, y == 0] @?= 1
+        length [() | Glue {itemStretch = 0} <- its] @?= 1
     ]
 
 joinedWordTests :: TestTree
