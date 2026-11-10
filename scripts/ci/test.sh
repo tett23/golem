@@ -4515,6 +4515,13 @@ if grep -qE 'WebAssembly\.|golem_build_pdf' "$RUN_HTML"; then
 else
   ok
 fi
+run env GITHUB_ACTIONS= GITHUB_JOB= RUNNER_ENVIRONMENT= RUNNER_OS= \
+  sh "$HERE/../wasm/test/browser-leftovers.sh"
+if [ "$CODE" = 2 ] && grep -qF 'requires the dedicated GitHub-hosted Safari job' "$WORK/err"; then
+  ok
+else
+  ng "browser-leftovers: refuses to launch Safari outside its dedicated runner (docs/adr/0309)"
+fi
 
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]

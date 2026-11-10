@@ -11,12 +11,23 @@ fi
 
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
+cleanup() {
+  result=$?
+  if [ "$result" -ne 0 ]; then
+    for file in ok.log ok.err hang.log hang.err before after new; do
+      if [ -f "$WORK/$file" ]; then
+        printf '%s\n' "browser-leftovers: $file" >&2
+        cat "$WORK/$file" >&2
+      fi
+    done
+  fi
+  rm -rf "$WORK"
+}
+trap cleanup EXIT
 
 webcontent() {
-  ps -A -ww -o pid= -o comm= |
-    awk '$2 ~ /(^|\/)com\.apple\.WebKit\.WebContent$/ { print $1 }' |
-    sort
+  ps -A -ww -o pid= -o comm= >"$WORK/processes"
+  awk '$2 ~ /(^|\/)com\.apple\.WebKit\.WebContent$/ { print $1 }' "$WORK/processes" | sort
 }
 
 assert_exits() {
@@ -47,6 +58,12 @@ assert_exits timeout "$WORK/hang.log"
 sleep 35
 webcontent >"$WORK/after"
 comm -13 "$WORK/before" "$WORK/after" >"$WORK/new"
+printf 'I1: WebContent before (%s):\n' "$(wc -l <"$WORK/before" | tr -d ' ')"
+cat "$WORK/before"
+printf 'I1: WebContent after (%s):\n' "$(wc -l <"$WORK/after" | tr -d ' ')"
+cat "$WORK/after"
+printf 'I1: new WebContent PIDs:\n'
+cat "$WORK/new"
 left=$(wc -l <"$WORK/new" | tr -d ' ')
 printf 'I1: 14 timeouts, %s new WebContent processes after 35 seconds\n' "$left"
 if [ "$left" -ge 14 ]; then

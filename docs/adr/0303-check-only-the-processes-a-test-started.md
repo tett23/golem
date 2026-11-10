@@ -1,6 +1,6 @@
 # ADR 0303: テストが調べるプロセスを、テスト自身が起動したものに限る
 
-ステータス: 採択
+ステータス: 採択→専用の Safari ランナーで WebContent の PID 差分を調べる例外は [ADR 0309](0309-run-golem-wasm-in-a-worker-of-the-browser-page.md)
 
 ## 文脈
 

@@ -19,7 +19,7 @@ import { HARNESS, svgText } from '../svg-text.mjs';
 const BROWSER = process.env.BROWSER;
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const skip = BROWSER ? false : 'BROWSER is not set';
-const SHIM = new URL('../../node_modules/@bjorn3/browser_wasi_shim/dist/', import.meta.url);
+const SHIM = new URL('../node_modules/@bjorn3/browser_wasi_shim/dist/', import.meta.url);
 const OK_WASM = Buffer.from('0061736d01000000010401600000030201000503010001071802066d656d6f727902000b5f696e697469616c697a6500000a040102000b', 'hex');
 
 // A page whose wasm initializes but lacks hs_init. The test checks errors

@@ -720,6 +720,9 @@ PID が書かれていなければ、断言は失敗する。
 
 夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` をほかの実行環境で動かす。
 Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、wasmtime 50.0.1 の C API と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno`、`--wasmtime`、`--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+ブラウザのページは `scripts/wasm/browser/worker.js` の module Worker で `golem.wasm` を動かし、PDF の SHA-256、長さ、状態、diagnostics を受け取る（[ADR 0309](adr/0309-run-golem-wasm-in-a-worker-of-the-browser-page.md)）。
+夜ごとの Safari の専用ランナーでは、打ち切りが WebContent のプロセスを入力の数だけ残さないことを確かめる。
+この検査に限り、実行前後の WebContent の PID の差を読み取る（[ADR 0303](adr/0303-check-only-the-processes-a-test-started.md) の例外）。
 
 wasmtime のホストは、`scripts/fetch-wasmtime.sh` が取る C API にリンクする C のプログラム `scripts/wasm/run-wasmtime.c` である。
 `golem.wasm` を一度だけコンパイルして直列化し、入力ごとに、`run.mjs frame` が書く入力の枠を `golem_build_pdf` に渡して結果の枠を書き、`run.mjs result` がそれを読む（`scripts/wasm/run-wasmtime.sh`）。

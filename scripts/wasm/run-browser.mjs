@@ -4,7 +4,7 @@
 //   node run-browser.mjs build BROWSER WASM DIR
 //
 // serves the files under DIR (build/ left out), golem.wasm and
-// scripts/wasm/browser/run.html with scripts/browser/serve.mjs on
+// scripts/wasm/browser/run.html and worker.js with scripts/browser/serve.mjs on
 // 127.0.0.1, opens run.html in BROWSER (chromium or safari, by
 // scripts/browser/browsers.mjs) and builds the PDF there. It prints the
 // SHA-256 of the PDF, or - when there is none, on stdout, and the JSON of
@@ -38,6 +38,7 @@ async function filesOf(dir, rel = '') {
 async function build(browser, wasmPath, dir) {
   const pages = {
     '/__golem/run.html': await readFile(new URL('browser/run.html', import.meta.url)),
+    '/__golem/worker.js': await readFile(new URL('browser/worker.js', import.meta.url)),
     '/__golem/golem.wasm': await readFile(wasmPath),
     '/__golem/files.json': JSON.stringify(await filesOf(dir)),
   };
