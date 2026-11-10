@@ -1,8 +1,9 @@
 name: Advisories
 
 # Checks the pinned version of wasmtime against the security advisories of
-# bytecodealliance/wasmtime, once a day and whenever it is started by hand
-# (docs/adr/0157, docs/adr/0166). A failed scheduled run is the notice to
+# bytecodealliance/wasmtime (docs/adr/0157, docs/adr/0166) and the pinned
+# actions against upstream (docs/adr/0296), once a day and whenever it is
+# started by hand. A failed scheduled run is the notice to
 # the maintainer. Pull requests do not run it: its result depends on the
 # day, not on the commit.
 on:
@@ -19,10 +20,33 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: The pinned wasmtime against its advisories (docs/adr/0157)
         env:
           GH_TOKEN: ${{ github.token }}
         run: sh scripts/wasmtime-advisories.sh
+
+  # The pinned actions against upstream (docs/adr/0296): the tag of each
+  # comment is the pinned commit, and the pinned commit is the newest
+  # version, which runs on node 24 or later or is composite. A failure is
+  # raised with `sh scripts/ci/actions-pins.sh update` in a pull request.
+  actions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The tags of the comments are the pinned commits (docs/adr/0296)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh scripts/ci/actions-pins.sh verify
+      - name: The pinned commits are the newest versions (docs/adr/0296)
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh scripts/ci/actions-pins.sh latest
