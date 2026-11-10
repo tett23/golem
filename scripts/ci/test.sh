@@ -3997,6 +3997,8 @@ mkdir -p "$WT"
 # P2, P3, P4 of docs/adr/0307: a minimal WASI module exits with 0 or 7,
 # or traps. Record the directories made by run-tests.mjs before it removes
 # them, so that the two distinct names and their removal can both be checked.
+if command -v node >/dev/null 2>&1; then
+make_wasi_modules() {
 node - "$WT" <<'NODE'
 const fs = require('node:fs');
 const dir = process.argv[2];
@@ -4013,6 +4015,8 @@ for (const code of [0, 7]) {
 }
 fs.writeFileSync(`${dir}/trap.wasm`, Buffer.from([...prefix, ...sec(10, [1, 3, 0, 0, 0x0b])]));
 NODE
+}
+fixture 'the WASI modules for P2, P3 and P4' make_wasi_modules
 cat >"$WT/record-temp.mjs" <<'NODE'
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
@@ -4040,6 +4044,9 @@ if [ "$(wc -l <"$WT/record" | tr -d ' ')" = 3 ] &&
   [ -z "$(ls -A "$WT/temp")" ] &&
   (while IFS= read -r dir; do [ ! -e "$dir" ] || exit 1; done <"$WT/record"); then ok; else
   ng "run-tests: temporary directories are removed after exits and traps (P3)"
+fi
+else
+  skip 5 'run-tests: P2, P3 and P4 (no node)'
 fi
 cat >"$WT/tasty.log" <<'LOG'
 suite
