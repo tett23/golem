@@ -178,7 +178,7 @@ lineTests =
     testCase "A5: two word spaces and two commas of two sizes shrink in proportion to their shrink in their stage" $ do
       let its = [boxOf fs, commaSpace fs, boxOf fs, commaSpace (2 * fs), boxOf fs, wordSpace, boxOf fs]
           l = lineOf defaultOrder (naturalOf its - itemShrink wordSpace - 3 * 65536) its
-      glueAmounts l @?= [-65536, -2 * 65536, negate (toRational (unSp (itemShrink wordSpace)))],
+      glueAmounts l @?= [-65536, -(2 * 65536), negate (toRational (unSp (itemShrink wordSpace)))],
     testCase "A3: a line shorter than all the shrink is shrunk by all of it, as by the ratio -1" $ do
       let its = [boxOf fs, wordSpace, boxOf fs, commaSpace fs, boxOf fs]
           l = lineOf defaultOrder (naturalOf its - fs) its
@@ -209,9 +209,9 @@ lineTests =
     testCase "A7: a line of word spaces of one size alone is placed as by one ratio, stretched or shrunk, in any order" $
       sequence_
         [ placeLine l @?= placeLine l {lineAdjustOrder = AdjustUniform}
-        | o <- [defaultOrder, AdjustStaged [] [], AdjustStaged [[JapaneseWesternGlue], [WordSpaceGlue]] [[BetweenCharactersGlue], [WordSpaceGlue]]],
-          let its = [boxOf fs, wordSpace, boxOf fs, wordSpace, boxOf (2 * fs)],
-          d <- [-2 * 65536, -1, 1, 3 * 65536, fs],
+        | let its = [boxOf fs, wordSpace, boxOf fs, wordSpace, boxOf (2 * fs)],
+          o <- [defaultOrder, AdjustStaged [] [], AdjustStaged [[JapaneseWesternGlue], [WordSpaceGlue]] [[BetweenCharactersGlue], [WordSpaceGlue]]],
+          d <- [-(2 * 65536), -1, 1, 3 * 65536, fs],
           let l = lineOf o (naturalOf its + d) its
         ],
     testCase "A8: with an empty shrink-order a line that shrinks is placed as by one ratio" $
@@ -289,10 +289,10 @@ stageBreaches l =
                 <> [ "A6 " <> show (g, a, h, b)
                    | lastStage,
                      (g, a, _) <- rows,
-                     (h, b, _) <- rows,
                      itemStretch g > 0,
-                     itemStretch h > 0,
                      itemZw g > 0,
+                     (h, b, _) <- rows,
+                     itemStretch h > 0,
                      itemZw h > 0,
                      (a - limitOf g) * num (itemZw h) /= (b - limitOf h) * num (itemZw g)
                    ]

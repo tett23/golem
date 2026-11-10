@@ -678,7 +678,7 @@ stretches by before the stages share it.
 glueAmounts :: Line -> [Rational]
 glueAmounts l = case lineAdjustOrder l of
   AdjustStaged shrinkOrder stretchOrder
-    | rest < 0 -> staged shrinkOrder itemShrink (negate rest) negate (\_ -> [])
+    | rest < 0 -> staged shrinkOrder itemShrink (negate rest) negate (const [])
     | rest > 0, not (any ((>= filStretch) . itemStretch) gs) -> staged stretchOrder itemStretch capped id spread
   _ -> uniform
   where
