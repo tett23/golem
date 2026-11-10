@@ -240,14 +240,23 @@ violations i =
    in [Violation (show (breachOf b)) (show (breachLine b) <> ": " <> breachWhy b) | b <- breaches bruteLimit p] <> c1Items its <> c1Lines (brLines br) <> (if dualAtMark i then [] else c2Items its before)
 
 {- | Whether a character of both scripts outside a span is right next to a
-mark: the mark stops the search for the nearest character that decides
+mark, past soft hyphens: the mark stops the search for the nearest character that decides
 whether it joins a Latin word, and the text of the mark set as other text
 does not (docs/adr ADR 0283), so that the composition before docs/adr/0277
 that C2 compares with is not the same there.
 -}
 dualAtMark :: Input -> Bool
-dualAtMark i = isNothing (sLang (inSetting i)) && or (zipWith next (inRun i) (drop 1 (inRun i)))
+dualAtMark i = isNothing (sLang (inSetting i)) && or (zipWith next runs (drop 1 runs))
   where
+    -- the texts between the marks joined, their soft hyphens skipped as the search skips them
+    runs = merged (inRun i)
+    merged = \case
+      [] -> []
+      PCite c : rest -> PCite c : merged rest
+      ps -> let (ts, rest) = span isText ps in PText (T.filter (/= '\xAD') (T.concat (map partText ts))) : merged rest
+    isText = \case
+      PText _ -> True
+      _ -> False
     next (PText t) (PCite _) = maybe False (isJoinerCharacter . snd) (T.unsnoc t)
     next (PCite _) (PText t) = maybe False (isJoinerCharacter . fst) (T.uncons t)
     next _ _ = False
