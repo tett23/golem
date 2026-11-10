@@ -246,7 +246,7 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.run == 'true'
     runs-on: macos-15
-    timeout-minutes: 6
+    timeout-minutes: 20
     env:
       COMPARE_TIMEOUT: 60
     steps:
@@ -288,6 +288,9 @@ jobs:
         run: |
           sh scripts/wasm/compare.sh --browser safari browser-inputs/golem.wasm > safari-list.txt
           sh scripts/wasm/compare.sh --check browser-inputs/wasm-native-list.txt safari-list.txt
+      - name: Timed-out builds leave fewer WebContent processes than inputs (docs/adr/0309 I1, I5)
+        if: always() && steps.ready.outcome == 'success'
+        run: sh scripts/wasm/test/browser-leftovers.sh
       # the table with the browserVersion of the WebDriver session, when
       # one was made (I7)
       - name: The versions in the summary
