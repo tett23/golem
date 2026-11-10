@@ -64,7 +64,11 @@ natural) width (golem-driver ADR 0037): natural widths when they fit;
 otherwise each column up to the largest level C whose widths, C held
 between the minimum and the natural width, still fit, so that the short
 columns are filled and the long ones share the rest; the remainder is
-given 1sp at a time from the first column not yet at its natural width.
+given 1sp at a time from the first column at the level, its minimum width
+at most C and its natural width wider (docs/adr ADR 0295): a column wider
+than C for its minimum takes none, so that no column narrows as the width
+available grows. The columns at the level are S(C + 1) − S(C), more than
+the remainder as C is the largest.
 -}
 columnWidths :: Sp -> [(Sp, Sp)] -> Either TableError [Sp]
 columnWidths available cols
@@ -73,8 +77,9 @@ columnWidths available cols
       let level = search 0 (maximum (map snd cols))
           widths = map (clampTo level) cols
           leftover = available - sum widths
-          short = scanl (+) 0 [if w < nat then 1 else 0 | (w, (_, nat)) <- zip widths cols]
-       in Right [w + (if w < nat && k < leftover then 1 else 0) | (w, (_, nat), k) <- zip3 widths cols short]
+          atLevel = [mn <= level && level < nat | (mn, nat) <- cols]
+          ranks = scanl (+) 0 [if a then 1 else 0 | a <- atLevel]
+       in Right [w + (if a && k < leftover then 1 else 0) | (w, a, k) <- zip3 widths atLevel ranks]
   | otherwise = Left (ColumnsTooWide sumMin available)
   where
     sumMin = sum (map fst cols)
