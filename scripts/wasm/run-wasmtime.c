@@ -21,7 +21,7 @@
  * code 3 before golem_alloc, and so does a golem_alloc that returns 0 for a
  * frame that is not empty. memory64 is off, so that the linear memory of
  * golem.wasm cannot grow past the 2^16 pages (4 GiB) of wasm32 whatever the
- * default of wasmtime; it is on by default in wasmtime 49.0.5. There is no
+ * default of wasmtime; it is on by default in wasmtime 50.0.1. There is no
  * fuel, epoch nor limiter of the store: the host runs only the golem.wasm
  * of this repository, and the time-outs of compare.sh and of the job bound
  * its time. */

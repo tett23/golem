@@ -1,6 +1,6 @@
 # ADR 0037: 表の列の幅を短い列から満たして配る
 
-ステータス: 採択
+ステータス: 採択→「列の幅の配り方」の 3（残りを配る列）は [docs/adr ADR 0295](../../adr/0295-column-widths-of-tables-by-exhaustive-small-inputs.md)
 
 ## 文脈
 
