@@ -118,14 +118,20 @@ enumSplitTests =
         [(c, pr, n) | ((c, pr), (_, n)) <- zip (lineLimitsAt linesPrDepth) (lineLimitsAt nightly), pr > n] @?= [],
       testCase "N3: the pull requests break lines in the default composition: pulling in first, no stretch limit, number-unit-penalty 10000, no span" $
         assertBool "no setting of pull requests is of the default composition" (any isDefault (Set.toList (lineSettingsAt linesPrDepth))),
-      testCase "N1, N2, N3: the order of line adjustment checks the three orders of docs/adr/0278 in lines up to 5 em in the nightly job, and the default order of style.toml on pull requests, in lines no wider" $ do
+      testCase "N1, N2, N3: the order of line adjustment checks the three orders of docs/adr/0278 in lines up to 5 em in the nightly job, and the same orders, the default order of style.toml among them, on pull requests, in lines no wider" $ do
         nightly <- nightlyDepth' "GOLEM_ENUM_LINES_DEPTH"
         let (prOrders, prWidth) = ordersAt linesPrDepth
             (nightlyOrders, nightlyWidth) = ordersAt nightly
         (nightlyOrders, nightlyWidth) @?= (staged, 5)
         filter (`notElem` nightlyOrders) prOrders @?= []
         assertBool "the lines of pull requests are wider than those of the nightly job" (prWidth <= nightlyWidth)
-        assertBool "pull requests do not check the default order" (defaultOrder `elem` prOrders)
+        assertBool "pull requests do not check the default order" (defaultOrder `elem` prOrders),
+      testCase "ADR 0286, its section 4: pull requests check what fits the budgets by the median of four jobs: the span of fr, R1 up to 2 parts and the three orders; balanced stays on the nightly job" $ do
+        let pr = Set.toList (lineSettingsAt linesPrDepth)
+        assertBool "pull requests do not check the span of fr" (any (\(s, _, _, _) -> sLang s == Just "fr") pr)
+        lookup "R1" (lineChecksAt linesPrDepth) @?= Just 2
+        fst (ordersAt linesPrDepth) @?= staged
+        [a | (_, _, _, a) <- pr, not (aPullIn a)] @?= []
     ]
   where
     nightlyDepth' var = readFile enumYml >>= (`nightlyDepth` var)

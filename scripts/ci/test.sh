@@ -2948,26 +2948,56 @@ if [ -s "$EA" ] && ! awk -F '\t' 'index($3, "!cancelled()") == 0 { bad = 1 } END
 else ok; fi
 # N5 exactly one step times the areas, before the step of the first area, into the summary of the job
 first_area=$(grep -n '^          GOLEM_ENUM_[A-Z0-9_]*DEPTH:' "$ENUM_YML" | head -n 1 | cut -d: -f1)
-timing_lines=$(grep -n 'sh scripts/ci/enum-timings.sh' "$ENUM_YML" | cut -d: -f1)
+timing_lines=$(grep -n 'sh scripts/ci/enum-timings.sh' "$ENUM_YML" | grep -v -- '--median' | cut -d: -f1)
 if [ "$(printf '%s\n' "$timing_lines" | grep -c .)" = 1 ] && [ -n "$first_area" ] && [ "$timing_lines" -lt "$first_area" ] &&
   grep -qF 'sh scripts/ci/enum-timings.sh > "$RUNNER_TEMP/enum-timings.md"' "$ENUM_YML" &&
   grep -qF 'cat "$RUNNER_TEMP/enum-timings.md" >> "$GITHUB_STEP_SUMMARY"' "$ENUM_YML"; then ok; else
   ng "enum.yml: N5 one step runs enum-timings.sh into \$GITHUB_STEP_SUMMARY, before the first area"
 fi
 
-# enum-timings.sh on workflows of its own: a cabal that says what it was
-# given, and a clock that gives the times of a list, one per call
+# started by hand with timings, four jobs time the areas alone, and a job
+# after them writes the medians of their tables into the summary
+# (docs/adr ADR 0286)
+if awk '/^  workflow_dispatch:/ { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$ENUM_YML" | grep -qx '        type: boolean' &&
+  grep -qxF "        job: \${{ fromJSON(inputs.timings && '[1, 2, 3, 4]' || '[1]') }}" "$ENUM_YML"; then ok; else
+  ng "enum.yml: the input timings runs four jobs, and one without it"
+fi
+if [ -s "$EA" ] && ! awk -F '\t' 'index($3, "!inputs.timings") == 0 { bad = 1 } END { exit bad }' "$EA"; then
+  ng "enum.yml: the step of every area is left out when timing"
+else ok; fi
+if grep -qF '          name: enum-timings-${{ matrix.job }}' "$ENUM_YML" &&
+  awk '/^  medians:/ { on = 1 } on' "$ENUM_YML" | grep -qF '    needs: enum' &&
+  awk '/^  medians:/ { on = 1 } on' "$ENUM_YML" | grep -qF "    if: \${{ !cancelled() && inputs.timings }}" &&
+  awk '/^  medians:/ { on = 1 } on' "$ENUM_YML" | grep -qF 'sh scripts/ci/enum-timings.sh --median "$RUNNER_TEMP"/tables/enum-timings-*/enum-timings.md > "$RUNNER_TEMP/medians.md"' &&
+  awk '/^  medians:/ { on = 1 } on' "$ENUM_YML" | grep -qF 'cat "$RUNNER_TEMP/medians.md" >> "$GITHUB_STEP_SUMMARY"'; then ok; else
+  ng "enum.yml: each job keeps its table, and the job medians writes their medians into the summary"
+fi
+
+# enum-timings.sh on workflows of its own: a cabal whose list-bin names a
+# test executable that says what it was given, and a clock that gives the
+# times of a list, one per call; the three write what they did, in order,
+# to one log (docs/adr ADR 0286)
 ET=$WORK/enum-timings
 mkdir -p "$ET"
 cat >"$ET/cabal" <<'CABAL'
 #!/bin/sh
-printf '%s|%s|%s\n' "$*" "${GOLEM_ENUM_DEPTH-unset}" "${GOLEM_ENUM_LINES_SAMPLES-unset}" >>"$ET_DIR/cabal.log"
-case "$*" in *"/broken/"*) exit 1 ;; esac
-exit 0
+printf 'cabal %s\n' "$*" >>"$ET_DIR/events"
+case "$*" in
+  "list-bin golem-layout-test") [ -z "${ET_NO_BIN-}" ] || exit 1; printf '%s\n' "$ET_DIR/bin" ;;
+  *) exit 1 ;;
+esac
 CABAL
 chmod +x "$ET/cabal"
+cat >"$ET/bin" <<'BIN'
+#!/bin/sh
+printf 'bin %s|%s|%s\n' "$*" "${GOLEM_ENUM_DEPTH-unset}" "${GOLEM_ENUM_LINES_SAMPLES-unset}" >>"$ET_DIR/events"
+case "$*" in *"/broken/"*) exit 1 ;; esac
+exit 0
+BIN
+chmod +x "$ET/bin"
 cat >"$ET/clock" <<'CLOCK'
 #!/bin/sh
+echo clock >>"$ET_DIR/events"
 head -n 1 "$ET_DIR/times"
 tail -n +2 "$ET_DIR/times" >"$ET_DIR/times.next"
 mv "$ET_DIR/times.next" "$ET_DIR/times"
@@ -2988,7 +3018,7 @@ et_workflow() {
 }
 et_run() {
   printf '%s\n' "$@" >"$ET/times"
-  : >"$ET/cabal.log"
+  : >"$ET/events"
   run env ET_DIR="$ET" CABAL="$ET/cabal" CLOCK="$ET/clock" GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_LINES_SAMPLES=9 sh "$HERE/enum-timings.sh" "$ET/w.yml"
 }
 et_workflow "$ET/w.yml" '/one/' '/two/&&/three/'
@@ -3002,8 +3032,28 @@ expect "enum-timings: N5 a row per area and the sum, 10 seconds within the budge
 | \`GOLEM_ENUM_A1_DEPTH\` | \`/one/\` | 10.00 | 10 秒以内 | 通る |
 | \`GOLEM_ENUM_A2_DEPTH\` | \`/two/&&/three/\` | 10.01 | 10 秒を超える | 通る |
 | 和 | | 20.01 | 30 秒以内 | |"
-if [ "$(cat "$ET/cabal.log")" = "test golem-layout-test --test-option=-p --test-option=/one/|unset|unset
-test golem-layout-test --test-option=-p --test-option=/two/&&/three/|unset|unset" ]; then ok; else ng "enum-timings: each pattern runs alone, without the variables GOLEM_ENUM_*"; sed 's/^/  /' "$ET/cabal.log"; fi
+# M1 the executable of cabal list-bin runs once an area, with -p and the
+# pattern and no variable GOLEM_ENUM_*, between the two readings of the
+# clock; cabal runs no test
+if [ "$(cat "$ET/events")" = "cabal list-bin golem-layout-test
+clock
+bin -p /one/|unset|unset
+clock
+clock
+bin -p /two/&&/three/|unset|unset
+clock" ]; then ok; else ng "enum-timings: M1 two areas time the executable alone, once each, with -p and the pattern"; sed 's/^/  /' "$ET/events"; fi
+et_workflow "$ET/w.yml" '/a/' '/b/' '/c/' '/d/' '/e/' '/f/'
+et_run 0 1 1 2 2 3 3 4 4 5 5 6
+if [ "$CODE" = 0 ] && [ "$(grep -c '^bin -p /[a-f]/|unset|unset$' "$ET/events")" = 6 ] && [ "$(grep -c '^cabal ' "$ET/events")" = 1 ] &&
+  [ "$(grep -c '^clock$' "$ET/events")" = 12 ] && [ "$(tail -n 1 "$WORK/out")" = "| 和 | | 6.00 | 30 秒以内 | |" ]; then ok; else
+  ng "enum-timings: M1 six areas run the executable six times, and cabal once"
+fi
+# M1 without the executable: no table, no test, and the script fails
+et_workflow "$ET/w.yml" '/one/'
+printf '0\n1\n' >"$ET/times"
+: >"$ET/events"
+run env ET_DIR="$ET" ET_NO_BIN=1 CABAL="$ET/cabal" CLOCK="$ET/clock" sh "$HERE/enum-timings.sh" "$ET/w.yml"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ] && [ "$(cat "$ET/events")" = "cabal list-bin golem-layout-test" ]; then ok; else ng "enum-timings: M1 cabal list-bin fails, and so does the script, before any test"; fi
 # the sum: 30 seconds within the budget, over it when every area is within its own
 et_workflow "$ET/w.yml" '/a/' '/b/' '/c/'
 et_run 0 10 10 20 20 30
@@ -3021,6 +3071,90 @@ run enum_timings --list "$ET/none.yml"
 expect "enum-timings: a step is an area with both a depth and a pattern" 0 ""
 run enum_timings "$ET/none.yml"
 expect "enum-timings: a workflow without areas fails" 1
+
+# enum-timings.sh --median on tables of its own (docs/adr ADR 0286)
+# et_table FILE SUM SECONDS...: a table of enum-timings.sh with an area
+# /aN/ of GOLEM_ENUM_AN_DEPTH for each of SECONDS, and the sum SUM
+et_table() {
+  out=$1 sum=$2
+  shift 2
+  {
+    printf '| 範囲 | `-p` の式 | 秒 | 予算 | テスト |\n| --- | --- | --- | --- | --- |\n'
+    n=0
+    for s in "$@"; do
+      n=$((n + 1))
+      printf '| `GOLEM_ENUM_A%s_DEPTH` | `/a%s/` | %s | - | 通る |\n' "$n" "$n" "$s"
+    done
+    printf '| 和 | | %s | - | |\n' "$sum"
+  } >"$out"
+}
+EM=$ET/median
+mkdir -p "$EM"
+# M2 one table: its own seconds
+et_table "$EM/1" 3.00 1.00 2.00
+run enum_timings --median "$EM/1"
+expect "enum-timings: M2 the median of one table is its seconds" 0 "| 範囲 | \`-p\` の式 | 1 | 中央値 | 予算 |
+| --- | --- | --- | --- | --- |
+| \`GOLEM_ENUM_A1_DEPTH\` | \`/a1/\` | 1.00 | 1.00 | 10 秒以内 |
+| \`GOLEM_ENUM_A2_DEPTH\` | \`/a2/\` | 2.00 | 2.00 | 10 秒以内 |
+| 和 | | 3.00 | 3.00 | 30 秒以内 |"
+# M2 two tables: the mean of the two in the middle
+et_table "$EM/2" 7.00 2.00 5.00
+run enum_timings --median "$EM/1" "$EM/2"
+expect "enum-timings: M2 the median of two tables is the mean of the two" 0 "| 範囲 | \`-p\` の式 | 1 | 2 | 中央値 | 予算 |
+| --- | --- | --- | --- | --- | --- |
+| \`GOLEM_ENUM_A1_DEPTH\` | \`/a1/\` | 1.00 | 2.00 | 1.50 | 10 秒以内 |
+| \`GOLEM_ENUM_A2_DEPTH\` | \`/a2/\` | 2.00 | 5.00 | 3.50 | 10 秒以内 |
+| 和 | | 3.00 | 7.00 | 5.00 | 30 秒以内 |"
+# M2 three tables: the one in the middle, whatever the order of the tables
+et_table "$EM/3" 4.00 9.00 0.50
+run enum_timings --median "$EM/3" "$EM/1" "$EM/2"
+if [ "$CODE" = 0 ] && grep -qxF '| `GOLEM_ENUM_A1_DEPTH` | `/a1/` | 9.00 | 1.00 | 2.00 | 2.00 | 10 秒以内 |' "$WORK/out" &&
+  grep -qxF '| `GOLEM_ENUM_A2_DEPTH` | `/a2/` | 0.50 | 2.00 | 5.00 | 2.00 | 10 秒以内 |' "$WORK/out" &&
+  grep -qxF '| 和 | | 4.00 | 3.00 | 7.00 | 4.00 | 30 秒以内 |' "$WORK/out"; then ok; else ng "enum-timings: M2 the median of three tables is the one in the middle"; fi
+# M2 four tables, where the median of the sums (8, 9, 10, 10: 9.50) is not
+# the sum of the medians of the areas (5.00 + 3.50 = 8.50)
+et_table "$EM/4a" 10.00 1.00 9.00
+et_table "$EM/4b" 10.00 9.00 1.00
+et_table "$EM/4c" 8.00 4.00 4.00
+et_table "$EM/4d" 9.00 6.00 3.00
+run enum_timings --median "$EM/4a" "$EM/4b" "$EM/4c" "$EM/4d"
+expect "enum-timings: M2 the sum is the median of the sums of four tables, not the sum of the medians" 0 "| 範囲 | \`-p\` の式 | 1 | 2 | 3 | 4 | 中央値 | 予算 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| \`GOLEM_ENUM_A1_DEPTH\` | \`/a1/\` | 1.00 | 9.00 | 4.00 | 6.00 | 5.00 | 10 秒以内 |
+| \`GOLEM_ENUM_A2_DEPTH\` | \`/a2/\` | 9.00 | 1.00 | 4.00 | 3.00 | 3.50 | 10 秒以内 |
+| 和 | | 10.00 | 10.00 | 8.00 | 9.00 | 9.50 | 30 秒以内 |"
+# M3 the budgets on the medians: 10.00 and 30.00 within, 10.01 and 30.01 over
+et_table "$EM/b1" 30.00 10.00 20.00
+run enum_timings --median "$EM/b1"
+if [ "$CODE" = 0 ] && grep -qxF '| `GOLEM_ENUM_A1_DEPTH` | `/a1/` | 10.00 | 10.00 | 10 秒以内 |' "$WORK/out" &&
+  grep -qxF '| 和 | | 30.00 | 30.00 | 30 秒以内 |' "$WORK/out"; then ok; else ng "enum-timings: M3 a median of 10.00 an area and 30.00 in all is within the budgets"; fi
+et_table "$EM/b2" 30.01 10.01 20.00
+run enum_timings --median "$EM/b2"
+if [ "$CODE" = 0 ] && grep -qxF '| `GOLEM_ENUM_A1_DEPTH` | `/a1/` | 10.01 | 10.01 | 10 秒を超える |' "$WORK/out" &&
+  grep -qxF '| 和 | | 30.01 | 30.01 | 30 秒を超える |' "$WORK/out"; then ok; else ng "enum-timings: M3 a median of 10.01 an area and 30.01 in all is over the budgets"; fi
+# M3 one table over the budgets, the median within: no mark
+et_table "$EM/c1" 40.00 12.00 1.00
+et_table "$EM/c2" 20.00 8.00 1.00
+et_table "$EM/c3" 20.00 9.00 1.00
+run enum_timings --median "$EM/c1" "$EM/c2" "$EM/c3"
+if [ "$CODE" = 0 ] && ! grep -q '超える' "$WORK/out" && grep -qxF '| `GOLEM_ENUM_A1_DEPTH` | `/a1/` | 12.00 | 8.00 | 9.00 | 9.00 | 10 秒以内 |' "$WORK/out" &&
+  grep -qxF '| 和 | | 40.00 | 20.00 | 20.00 | 20.00 | 30 秒以内 |' "$WORK/out"; then ok; else ng "enum-timings: M3 one table over the budgets, the medians within, marks nothing"; fi
+# M4 the areas of the tables differ: no table, and the script fails
+et_table "$EM/m1" 3.00 1.00 2.00
+et_table "$EM/m2" 1.00 1.00
+run enum_timings --median "$EM/m1" "$EM/m1" "$EM/m2"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng "enum-timings: M4 a table without one of the areas fails, writing no table"; fi
+sed 's|`/a1/`|`/a9/`|' "$EM/m1" >"$EM/m3"
+run enum_timings --median "$EM/m1" "$EM/m3"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng "enum-timings: M4 a table with another pattern fails, writing no table"; fi
+{ sed -n 1,2p "$EM/m1"; sed -n 4p "$EM/m1"; sed -n 3p "$EM/m1"; sed -n 5p "$EM/m1"; } >"$EM/m4"
+run enum_timings --median "$EM/m1" "$EM/m4"
+if [ "$CODE" != 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng "enum-timings: M4 the areas in another order fail, writing no table"; fi
+run enum_timings --median "$EM/m1" "$EM/m1"
+expect "enum-timings: M4 the same areas in the same order make a table" 0
+run enum_timings --median
+expect "enum-timings: --median needs a table" 2
 
 # ---------------------------------------------------------------- advisories.yml
 # (docs/adr/0157-check-wasmtime-pin-against-advisories.md)
@@ -3715,6 +3849,10 @@ run sh "$HERE/../wasm/run-wasmtime.sh" build host dir
 expect "run-wasmtime: build without the PDF is a usage error" 2
 run sh "$HERE/../wasm/run-wasmtime.sh" run a b c
 expect "run-wasmtime: an unknown command is a usage error" 2
+
+# (docs/adr/0289 H4): the engine is made with memory64 off, so that the
+# linear memory stays within 4 GiB whatever the default of wasmtime
+if grep -qF 'wasmtime_config_wasm_memory64_set(config, false)' "$HERE/../wasm/run-wasmtime.c"; then ok; else ng "H4 run-wasmtime.c: engine() turns memory64 off"; fi
 
 # ---------------------------------------------------------------- fetch-chromium.sh, fetch-deno.sh
 # (docs/adr/0234 sections 1 and 5): the arguments, and a zip of another

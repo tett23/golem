@@ -191,16 +191,27 @@ golem-layout のテストの「every input」が落ちたら、表示された�
 golem-layout のテストは `-threaded` で作り、入力をプロセッサの数に分けて調べる。
 
 列挙のテストの予算は、範囲ごとに 10 秒、すべての範囲の和で 30 秒である（[ADR 0281](./docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md)）。
-時間は、x86-64 のランナーで、範囲のテストだけを `-p` で走らせた壁時計の時間で量る。
+時間は、x86-64 のランナーで、範囲ごとにテストの実行ファイルを直接 `-p` で走らせた壁時計の時間で量る（[ADR 0286](./docs/adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md)）。
+`cabal test` が計画を立てて組み上げを確かめる時間は、範囲の重さによらないので含めない。
 `tests-rest` のログの tasty の時間は、ほかのテストスイートと同時に走った時間なので使わない。
 `enum.yml` の範囲の段の前の段「The time of each area on the settings of pull requests」が、上限の変数を渡さずに範囲ごとに走らせ、時間と和の表をジョブの要約に書く（`scripts/ci/enum-timings.sh`）。
 予算を超えても、この段は落ちない。
+手元で量るときは、先に `cabal build golem-layout-test` を走らせてから `sh scripts/ci/enum-timings.sh` を走らせる。
+
+予算と比べるのは、x86-64 の四つのジョブで同じコミットを量った値の中央値である（[ADR 0286](./docs/adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md)）。
+範囲ごとの中央値は四つのジョブのその範囲の秒の中央値で、和の中央値はジョブごとの和の中央値である。
+範囲ごとの中央値の和ではない。
+偶数個の中央値は、中央の二つの平均とする。
+ランナーは当たるたびに速さが違い、同じ設定の和が 1.7 倍まで違うので、一つのジョブの時間では判定しない。
 
 列挙を足すか変えるプルリクエストでは、次の手順で時間を量る。
 
-1. ブランチを push し、`gh workflow run enum.yml --repo tett23/golem --ref <ブランチ>` で `enum.yml` を起動する。
-2. 終わった実行の要約から、「The time of each area on the settings of pull requests」の表をプルリクエストの説明に貼る。
-3. 範囲が 10 秒を超えたか、和が 30 秒を超えたら、[ADR 0281](./docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md) の「予算を超えたときの順」で手を打つ。まず範囲のテストを速くし、次に既定の組版でない値を毎晩の段に移す。移したことは、移す境を決めるコード（`groupsAt`、`adjustsAt` など）の注釈と、仕様書のその範囲の段落に書く。
+1. ブランチを push し、`gh workflow run enum.yml --repo tett23/golem --ref <ブランチ> -f timings=true` で `enum.yml` を起動する。時間を量る段だけを四つのジョブで走らせ、範囲の段は走らせない。
+2. 終わった実行の要約から、`medians` のジョブの「The medians of the times of the areas」の表をプルリクエストの説明に貼る。四つのジョブの秒と中央値が並ぶ（`scripts/ci/enum-timings.sh --median`）。
+3. 範囲の中央値が 10 秒を超えたか、和の中央値が 30 秒を超えたら、[ADR 0281](./docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md) の「予算を超えたときの順」で手を打つ。まず範囲のテストを速くし、次に既定の組版でない値を毎晩の段に移す。移したことは、移す境を決めるコード（`groupsAt`、`adjustsAt` など）の注釈と、仕様書のその範囲の段落に書く。
+
+毎晩の実行と、`timings` を付けずに手で起動した実行は、一つのジョブで量った表を書く。
+これは揺れの目安で、判定には使わない。
 
 `enum.yml` の範囲の段は、どれも `!cancelled()` を持ち、前の段が落ちても走る。
 
