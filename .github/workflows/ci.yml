@@ -48,7 +48,7 @@ jobs:
     outputs:
       build: ${{ steps.decide.outputs.build }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -99,15 +99,17 @@ jobs:
   scripts-linux:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # the node of the tests of scripts/wasm/legacy-eh.sh (docs/adr/0238)
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: lts/*
       - name: Tests of the CI scripts (docs/adr/0009)
         run: sh scripts/ci/test.sh
+      - name: Every action is pinned by the SHA of a commit (docs/adr/0296)
+        run: sh scripts/ci/actions-pins.sh check
       - name: Tests of the scripts of the manuals (docs/adr/0022, docs/adr/0024)
         run: sh scripts/manual/test.sh
       - name: Tests of the environment check (docs/adr/0029)
@@ -186,7 +188,7 @@ jobs:
     name: build (${{ matrix.runner }}, ${{ matrix.part }})
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # apt-get takes about 20 seconds; it runs while the caches are
@@ -207,7 +209,7 @@ jobs:
       # (docs/adr/0259)
       - name: Cache the release of epubcheck (docs/adr/0062)
         if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/epubcheck/zip
           key: epubcheck-${{ env.EPUBCHECK_VERSION }}-${{ env.EPUBCHECK_SHA256 }}
@@ -237,7 +239,7 @@ jobs:
       # (docs/adr/0141)
       - id: ghc
         name: Cache GHC (docs/adr/0009, docs/adr/0141)
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.GHC_DIR }}
           key: ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-slim
@@ -247,7 +249,7 @@ jobs:
       - name: cabal's directory (docs/adr/0201)
         run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
       - id: setup
-        uses: haskell-actions/setup@v2
+        uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2.12.1
         with:
           ghc-version: ${{ env.GHC_VERSION }}
           cabal-version: "3.16.1.0"
@@ -280,7 +282,7 @@ jobs:
       # (docs/adr/0141, docs/adr/0152)
       - id: index
         name: Cache the Hackage index (docs/adr/0009, docs/adr/0141, docs/adr/0152)
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cabal/packages/hackage.haskell.org
           key: hackage-index-no-gz-${{ hashFiles('cabal.project.freeze') }}
@@ -292,13 +294,13 @@ jobs:
           rm ~/.cabal/packages/hackage.haskell.org/01-index.tar.gz
           du -sh ~/.cabal/packages/hackage.haskell.org
       - name: Cache the cabal store
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.setup.outputs.cabal-store }}
           key: cabal-store-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}
           restore-keys: cabal-store-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-
       - name: Restore dist-newstyle (docs/adr/0009)
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: dist-newstyle
           key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-${{ github.sha }}
@@ -316,7 +318,7 @@ jobs:
       # by its SHA-256 before it is used (docs/adr/0243)
       - id: downloads
         name: Restore the archives of the downloads (docs/adr/0243)
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/downloads
           key: downloads-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}
@@ -327,14 +329,14 @@ jobs:
       # a push to main saves the archives it fetched (docs/adr/0228, docs/adr/0243)
       - name: Save the archives of the downloads (docs/adr/0243)
         if: matrix.save && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/downloads
           key: ${{ steps.downloads.outputs.cache-primary-key }}
       - id: cddl
         name: Cache the cddl CLI (docs/adr/0009)
         if: matrix.tests
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cargo/bin/cddl
           key: cddl-${{ env.CDDL_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
@@ -372,7 +374,7 @@ jobs:
         run: mkdir golem-linux-x86_64 && cp "$(cabal list-bin -v0 golem)" golem-linux-x86_64/golem
       - name: Upload golem for the job editors-lsp (docs/adr/0231)
         if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: golem-linux-x86_64
           path: golem-linux-x86_64
@@ -432,7 +434,7 @@ jobs:
           git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs
       - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
         if: matrix.outputs || matrix.env
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             manual/fonts
@@ -448,7 +450,7 @@ jobs:
         run: GOLEM="$(cabal list-bin -v0 golem)" sh scripts/visual/build.sh visual-pdfs
       - name: Upload the PDFs of the visual regression test
         if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: visual-pdfs
           path: visual-pdfs
@@ -460,7 +462,7 @@ jobs:
         run: sh scripts/wasm/compare.sh --native "$(cabal list-bin -v0 golem)" > wasm-native-list.txt
       - name: Upload the native list of the comparison with golem.wasm
         if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: wasm-native-list
           path: wasm-native-list.txt
@@ -471,7 +473,7 @@ jobs:
         run: GOLEM="$(cabal list-bin -v0 golem)" sh scripts/ci/conformance-pdfs.sh conformance-pdfs
       - name: Upload the PDFs that declare PDF/A-2a and PDF/UA-1
         if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: conformance-pdfs
           path: conformance-pdfs
@@ -519,7 +521,7 @@ jobs:
       - name: Outputs for the determinism check; the manuals build without diagnostics
         if: matrix.outputs
         run: GOLEM="$(cabal list-bin -v0 golem)" scripts/determinism.sh > determinism-${{ matrix.runner }}.txt
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: matrix.outputs
         with:
           name: determinism-${{ matrix.runner }}
@@ -592,7 +594,7 @@ jobs:
       # by the determinism job (docs/adr/0022, docs/adr/0024)
       - name: The user manual (docs/adr/0022)
         if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: manual
           path: |
@@ -600,7 +602,7 @@ jobs:
             manual/build/html
       - name: The developer manual (docs/adr/0024)
         if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: manual-dev
           path: |
@@ -613,7 +615,7 @@ jobs:
       # (docs/adr/0045, docs/adr/0140, docs/adr/0155, docs/adr/0228)
       - name: Save dist-newstyle (docs/adr/0009)
         if: success() && matrix.save && steps.build.outputs.compiled == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: dist-newstyle
           key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ hashFiles('scripts/fetch-wasmtime.sh') }}-${{ github.sha }}
@@ -639,11 +641,11 @@ jobs:
       alex_datadir: ${{ github.workspace }}/third_party/hosttools/alex-data
       happy_lib_datadir: ${{ github.workspace }}/third_party/hosttools/happy-lib-data
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - run: date +%s > "$RUNNER_TEMP/t0"
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: lts/*
       - name: Image for the cache keys
@@ -656,7 +658,7 @@ jobs:
       # no native GHC at all
       - id: hosttools
         name: Restore the native alex and happy (docs/adr/0202)
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/hosttools
           key: hosttools-alex-3.5.4.2-happy-2.2-data-ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
@@ -664,7 +666,7 @@ jobs:
         name: cabal's directory (docs/adr/0201)
         run: echo "CABAL_DIR=$HOME/.cabal" >> "$GITHUB_ENV"
       - if: steps.hosttools.outputs.cache-hit != 'true'
-        uses: haskell-actions/setup@v2
+        uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2.12.1
         with:
           ghc-version: ${{ env.GHC_VERSION }}
           cabal-version: "3.16.1.0"
@@ -689,7 +691,7 @@ jobs:
           test -f "$happy_lib_datadir/HappyTemplate.hs"
       - if: steps.hosttools.outputs.cache-hit != 'true'
         name: Save the native alex and happy
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/hosttools
           key: ${{ steps.hosttools.outputs.cache-primary-key }}
@@ -701,7 +703,7 @@ jobs:
       # again
       - id: ghcwasm
         name: Restore the wasm toolchain and its cabal store (docs/adr/0199)
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/ghc-wasm
           key: ghc-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze', 'scripts/fetch-wasm-packages.sh', 'scripts/wasm/patches/*') }}
@@ -726,7 +728,7 @@ jobs:
           . third_party/ghc-wasm/env
           wasm32-wasi-cabal update
       - name: Restore dist-wasm
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: dist-wasm
           key: dist-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze') }}-${{ github.sha }}
@@ -753,7 +755,7 @@ jobs:
         run: sh scripts/wasm/legacy-eh.sh golem.wasm
       - name: Save the wasm toolchain and its cabal store
         if: always() && steps.ghcwasm.outputs.cache-hit != 'true' && steps.build.outcome != 'skipped'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/ghc-wasm
           key: ${{ steps.ghcwasm.outputs.cache-primary-key }}
@@ -778,7 +780,7 @@ jobs:
       # (docs/adr/0219)
       - name: Save dist-wasm
         if: steps.build.outputs.compiled == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: dist-wasm
           key: dist-wasm-${{ hashFiles('scripts/fetch-ghc-wasm.sh') }}-${{ hashFiles('cabal.project.wasm', 'cabal.project.wasm.freeze') }}-${{ github.sha }}
@@ -789,7 +791,7 @@ jobs:
         run: node scripts/wasm/run.mjs check golem.wasm modules/golem-driver/test/fixtures/kanikosen
       - name: The PDFs and the diagnostics of golem.wasm (docs/adr/0199)
         run: sh scripts/wasm/compare.sh golem.wasm > wasm-list.txt
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: golem-wasm
           path: |
@@ -800,7 +802,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' wasm-native-list
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: wasm-native-list
       - name: The PDFs and the diagnostics of golem.wasm are those of golem (docs/adr/0199, docs/adr/0238 I2)
@@ -828,10 +830,10 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: determinism-*
           merge-multiple: true
@@ -866,7 +868,7 @@ jobs:
     steps:
       # the whole history, for the first-parent ancestors of the base and
       # its references (docs/adr/0096)
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -876,7 +878,7 @@ jobs:
       # before it is unpacked (docs/adr/0243)
       - id: downloads
         name: Restore the archives of the downloads (docs/adr/0243)
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/downloads
           key: downloads-visual-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/visual/fetch-shem.sh') }}
@@ -887,7 +889,7 @@ jobs:
       # a push to main saves the archives it fetched (docs/adr/0228, docs/adr/0243)
       - name: Save the archives of the downloads (docs/adr/0243)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/downloads
           key: ${{ steps.downloads.outputs.cache-primary-key }}
@@ -898,7 +900,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)'
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: visual-pdfs
           path: visual-pdfs
@@ -922,7 +924,7 @@ jobs:
         run: sh scripts/visual/report.sh "$RUNNER_TEMP/visual.txt" visual-pdfs "$RUNNER_TEMP/visual-diff" ${BASE:+"$BASE"} >> "$GITHUB_STEP_SUMMARY"
       - name: Upload the report of the changed pages (docs/adr/0096)
         if: failure() && steps.check.outcome == 'failure'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: visual-diff
           path: ${{ runner.temp }}/visual-diff
@@ -932,7 +934,7 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: VERSION matches the version of every package (docs/adr/0004)
@@ -940,7 +942,7 @@ jobs:
       # the pinned Claude Code of mise.toml, as in the notes job of
       # release.yml, for the check of claude --help; no API key
       # (docs/adr/0044, docs/adr/0058)
-      - uses: jdx/mise-action@v5
+      - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
         env:
           MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
         with:
@@ -965,7 +967,7 @@ jobs:
     env:
       PATH: /usr/bin:/bin:/usr/sbin:/sbin
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # the six tests at the same time on the cores of the runner; the
@@ -980,10 +982,10 @@ jobs:
     timeout-minutes: 10
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: haskell-actions/run-fourmolu@v13
+      - uses: haskell-actions/run-fourmolu@1b9df64b784203126500372730b9725c97e4040b # v13
         with:
           version: "0.21.0.0"
           pattern: |
@@ -997,7 +999,7 @@ jobs:
       # by its SHA-256 before it is used (docs/adr/0243)
       - id: downloads
         name: Restore the archives of the downloads (docs/adr/0243)
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/downloads
           key: downloads-format-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/ci/fetch-hlint.sh') }}
@@ -1009,7 +1011,7 @@ jobs:
       # a push to main saves the archives it fetched (docs/adr/0228, docs/adr/0243)
       - name: Save the archives of the downloads (docs/adr/0243)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/downloads
           key: ${{ steps.downloads.outputs.cache-primary-key }}
@@ -1029,7 +1031,7 @@ jobs:
       run:
         working-directory: plugins
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Tests of the crates
@@ -1055,16 +1057,16 @@ jobs:
     timeout-minutes: 15
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: lts/*
       # node_modules itself is cached; test.sh checks the SHA-256 of the
       # executable of tree-sitter, also when it comes from the cache
       - id: cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tools/editors/node_modules
           key: editors-${{ runner.os }}-${{ hashFiles('tools/editors/package-lock.json') }}
@@ -1076,7 +1078,7 @@ jobs:
       # version is a new key (docs/adr/0231)
       - id: downloads
         name: Restore the archives of the downloads (docs/adr/0243)
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/downloads
           key: downloads-editors-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/editors/helix/test.sh') }}
@@ -1088,7 +1090,7 @@ jobs:
       # a push to main saves the archives it fetched (docs/adr/0228, docs/adr/0243)
       - name: Save the archives of the downloads (docs/adr/0243)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/downloads
           key: ${{ steps.downloads.outputs.cache-primary-key }}
@@ -1104,14 +1106,14 @@ jobs:
     timeout-minutes: 75
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # the version and the SHA-256 are in fetch-nvim.sh, so a new version
       # is a new key
       - id: downloads
         name: Restore the archives of the downloads (docs/adr/0243)
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/downloads
           key: downloads-editors-lsp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/editors/fetch-nvim.sh') }}
@@ -1122,7 +1124,7 @@ jobs:
       # a push to main saves the archives it fetched (docs/adr/0228, docs/adr/0243)
       - name: Save the archives of the downloads (docs/adr/0243)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/downloads
           key: ${{ steps.downloads.outputs.cache-primary-key }}
@@ -1131,7 +1133,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' golem-linux-x86_64
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: golem-linux-x86_64
           path: golem-linux-x86_64
@@ -1158,10 +1160,10 @@ jobs:
     timeout-minutes: 75
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: cachix/install-nix-action@v31
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
       # nixpkgs comes from api.github.com with the token of the job, under
       # the rate limit of an authenticated request (docs/adr/0243)
       - name: veraPDF from nixpkgs, at the store path of VERAPDF_STORE_PATH
@@ -1179,7 +1181,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' conformance-pdfs
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: conformance-pdfs
           path: conformance-pdfs
@@ -1203,7 +1205,7 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Delete the stale dist- caches of main (docs/adr/0228)
@@ -1252,7 +1254,7 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Results of the jobs
