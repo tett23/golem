@@ -1948,7 +1948,20 @@ printingsTests :: TestTree
 printingsTests =
   testGroup
     "@printings (docs/adr ADR 0033)"
-    [ testCase "three printings are three paragraphs; edition 1 is 初版, 2 is 第2版" $ do
+    [ testCase "J1: G02076 follows the primary language subtag at every boundary" $ do
+        let cases = [("", False), ("j", False), ("ja", True), ("JA", True), ("ja-JP", True), ("ja-", True), ("jam", False), ("ja_JP", False), ("en", False), ("en-ja", False)]
+            ok lang = "G02076" `notElem` snd (run (printingsCtx lang) "@printings\n")
+        mapM_ (\(lang, expected) -> ok lang @?= expected) cases,
+      testCase "J2: case changes leave G02076 unchanged" $ do
+        let cases = [("", False), ("j", False), ("ja", True), ("JA", True), ("ja-JP", True), ("ja-", True), ("jam", False), ("ja_JP", False), ("en", False), ("en-ja", False)]
+            codes lang = snd (run (printingsCtx lang) "@printings\n")
+        mapM_ (\(lang, _) -> codes lang @?= codes (T.toUpper lang)) cases,
+      testCase "J1: missing or non-string language remains G02076" $ do
+        let withLanguage value = (printingsCtx "ja") {ctxMeta = Map.insert "language" value (ctxMeta (printingsCtx "ja"))}
+            withoutLanguage = (printingsCtx "ja") {ctxMeta = Map.delete "language" (ctxMeta (printingsCtx "ja"))}
+        snd (run withoutLanguage "@printings\n") @?= ["G02076"]
+        snd (run (withLanguage (VInt 1)) "@printings\n") @?= ["G02076"],
+      testCase "three printings are three paragraphs; edition 1 is 初版, 2 is 第2版" $ do
         let (bs, es) = run (printingsCtx "ja") "@printings\n"
         es @?= []
         [plainOf is | Paragraph Nothing is <- bs] @?= ["2026年10月16日\x3000初版第1刷発行", "2027年4月1日\x3000初版第2刷発行", "2028年1月10日\x3000第2版第1刷発行"],
@@ -1960,7 +1973,7 @@ printingsTests =
         [st | Paragraph st _ <- fst (run (printingsCtx "ja") "@style quote\n@printings\n")] @?= [Just "quote", Just "quote", Just "quote"],
       testCase "a book not in Japanese is G02076 alone and sets nothing" $ do
         run (printingsCtx "en") "@printings\n" @?= ([], ["G02076"])
-        [m | (_, m, _, _) <- diagsWith (printingsCtx "en") "@printings\n"] @?= ["@printings は日本語の本（language = \"ja\"）でだけ使えます"],
+        [m | (_, m, _, _) <- diagsWith (printingsCtx "en") "@printings\n"] @?= ["@printings は日本語の本（language の主の副タグが ja）でだけ使えます"],
       testCase "a Japanese book without printings is G02098 alone and sets nothing" $ do
         let noPrintings = (printingsCtx "ja") {ctxMeta = Map.fromList [("language", VString "ja")]}
         run noPrintings "@printings\n" @?= ([], ["G02098"])

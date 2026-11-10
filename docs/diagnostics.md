@@ -3773,22 +3773,22 @@ PNG、JPEG、SVG の図版からは、`page` を消す。
 
 ### 意味
 
-`@printings` を、日本語でない本（`[metadata] language` が `ja` でない本）に書いた。
+`@printings` を、日本語でない本（`[metadata] language` の主の副タグが `ja` でない本）に書いた。
 `@printings` は何も組まない。
 位置は `@printings` の行である。
 `@printings` のほかの誤り（引数の G02096、本体の G02097、`[[metadata.printings]]` の欠けの G02098）も当たれば、それらと一緒に出る。
 
-- メッセージ: `@printings は日本語の本（language = "ja"）でだけ使えます`
+- メッセージ: `@printings は日本語の本（language の主の副タグが ja）でだけ使えます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)、[docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)
+- ADR: [docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)、[docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)、[ADR 0308](adr/0308-tell-a-japanese-book-by-the-primary-subtag-of-its-language.md)
 
 ### 主な原因
 
-- `[metadata] language` が `ja` でない本に `@printings` を書いた。発行の履歴の書式は、今は日本語の一つだけである。
+- `[metadata] language` の主の副タグが `ja` でない本に `@printings` を書いた。発行の履歴の書式は、今は日本語の一つだけである。
 
 ### 直し方
 
-日本語の本なら、`[metadata] language` を `ja` にする。
+日本語の本なら、`[metadata] language` の主の副タグを `ja` にする。
 日本語でない本では、`@printings` を消し、`meta.printing` の値から発行の履歴を一行ずつ書く。
 
 ## G02077

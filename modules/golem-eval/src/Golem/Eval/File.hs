@@ -1003,10 +1003,13 @@ printingsBlock ctx sp args body = case (errors, Map.lookup "printings" (ctxMeta 
     printings = case Map.lookup "printings" (ctxMeta ctx) of
       Just (VArray (_ : _)) -> True
       _ -> False
+    japaneseBook = case Map.lookup "language" (ctxMeta ctx) of
+      Just (VString lang) -> T.toLower (T.takeWhile (/= '-') lang) == "ja"
+      _ -> False
     errors =
       [("G02096", sp, takesNoArguments "printings") | not (null args)]
         <> [("G02097", bsp, takesNoBody "printings") | A.Located bsp _ : _ <- [body]]
-        <> [("G02076", sp, "@printings は日本語の本（language = \"ja\"）でだけ使えます") | Map.lookup "language" (ctxMeta ctx) /= Just (VString "ja")]
+        <> [("G02076", sp, "@printings は日本語の本（language の主の副タグが ja）でだけ使えます") | not japaneseBook]
         <> [("G02098", sp, "マニフェストに [[metadata.printings]] がありません") | not printings]
     line = \case
       VHash h
