@@ -249,13 +249,13 @@ ADR はコミット後に変更しない規約であり、変更が必要な場�
 | hyph-utf8（欧文の八つの言語のハイフネーションのパターン） | コミット 5684c0f |
 | wasm のツールチェーン（ghc-wasm-meta の 9.10 の flavour） | ghc-wasm-meta のコミット 8079eb96、GHC 9.10.3.20260731、wasi-sdk（clang 21.1.8）、cabal 3.14.2.0 |
 | cborg（wasm の版だけ） | 上流のコミット 6ef2791c |
-| skylighting、skylighting-core（wasm の版だけ） | Hackage の 0.15 に `scripts/wasm/patches/` の差分を当てたもの |
+| skylighting、skylighting-core（wasm の版だけ） | Hackage の 0.15.0.1 に `scripts/wasm/patches/` の差分を当てたもの |
 
 HarfBuzz と FreeType は、ソースを `modules/golem-font/cbits/` に同梱して静的にリンクする。
 zlib は Hackage の `zlib-clib` 1.3.2 を同梱するバージョンとして使う（`cabal.project` で固定）。
 wasmtime はプラットフォームごとの C API の配布物を `scripts/fetch-wasmtime.sh` で取得する（SHA-256 を検証し、`third_party/wasmtime` に置く。`third_party/wasmtime/VERSION` の名前と SHA-256 がスクリプトのものと一致しなければ取り直す）。
 wasm の版（`golem.wasm`）のツールチェーンは、ghc-wasm-meta の配布物を `scripts/fetch-ghc-wasm.sh` で x86-64 の Linux の向けだけ取得する（各アーカイブの SHA-256 と、`autogen.json` の SRI の値を 16 進に直したものを検証し、`third_party/ghc-wasm` に置く、[docs/adr/0199](./docs/adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
-wasm の版だけは、32 ビットで組めない cborg 0.2.10.0 の代わりに上流のコミット 6ef2791c を `cabal.project.wasm` の `source-repository-package` で使い、`network` に依存する `xml-conduit` を外すために、Hackage の `skylighting` 0.15 と `skylighting-core` 0.15 に `Skylighting.Parser` と `Skylighting.Loader` を除く差分（`scripts/wasm/patches/`）を当てたものを `scripts/fetch-wasm-packages.sh` で `third_party/wasm-packages/` に置いて使う（[docs/adr/0202](./docs/adr/0202-packages-that-do-not-build-for-wasm.md)）。
+wasm の版だけは、32 ビットで組めない cborg 0.2.10.0 の代わりに上流のコミット 6ef2791c を `cabal.project.wasm` の `source-repository-package` で使い、`network` に依存する `xml-conduit` を外すために、Hackage の `skylighting` 0.15.0.1 と `skylighting-core` 0.15.0.1 に `Skylighting.Parser` と `Skylighting.Loader` を除く差分（`scripts/wasm/patches/`）を当てたものを `scripts/fetch-wasm-packages.sh` で `third_party/wasm-packages/` に置いて使う（[docs/adr/0202](./docs/adr/0202-packages-that-do-not-build-for-wasm.md)）。
 `licenses/` には、配布物の `THIRD_PARTY_LICENSES/` に写すライセンスの文書のうち、ビルドの環境から取れないもの（`libwasmtime.a` に入った Rust のクレートなどの文書と、Alpine のパッケージが入れない文書と、wasi-sdk の配布物が持たない文書の `licenses/wasi-sdk/`）を置く（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
 `licenses/plugins/` には、見本のプラグインに入るものの著作権の表示とライセンスの文書を `scripts/plugin-licenses.sh` で生成して置く（[docs/adr/0133](./docs/adr/0133-third-party-licenses-of-sample-plugins.md)）。
 

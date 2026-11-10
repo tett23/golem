@@ -497,7 +497,7 @@ boot のパッケージの版は wasm の GHC のものになる（`time` は 1.
 二つの freeze の両方にあるパッケージの版が一致することを、`scripts/ci/wasm-freeze.sh` が確かめる。
 cborg、`skylighting`、`skylighting-core` は、この比べから外す（[ADR 0202](adr/0202-packages-that-do-not-build-for-wasm.md)）。
 cborg は、32 ビットで組める上流のコミット `6ef2791c` を使う。
-`skylighting-core` 0.15 と `skylighting` 0.15 は、`scripts/fetch-wasm-packages.sh` が Hackage のアーカイブを SHA-256 で確かめて `third_party/wasm-packages/` に展開し、`Skylighting.Parser` と `Skylighting.Loader`、その再エクスポート、`xml-conduit` の依存を除く `scripts/wasm/patches/` の差分を当てる。
+`skylighting-core` 0.15.0.1 と `skylighting` 0.15.0.1 は、`scripts/fetch-wasm-packages.sh` が Hackage のアーカイブを SHA-256 で確かめて `third_party/wasm-packages/` に展開し、`Skylighting.Parser` と `Skylighting.Loader`、その再エクスポート、`xml-conduit` の依存を除く `scripts/wasm/patches/` の差分を当てる。
 golem-font は、wasm に向けて組むときだけ、FreeType を `-mllvm -wasm-enable-sjlj` と `-mllvm -wasm-use-legacy-eh=false` でコンパイルし、wasi-sdk の `c++`、`c++abi`、`setjmp` をリンクする。
 FreeType の `setjmp` と `longjmp` は、wasm の例外処理の標準化された形（exnref の形、`try_table` と `throw_ref`）で実装される（[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
 古い形（`try`、`catch`、`catch_all`、`delegate`、`rethrow`）の命令は使わない。
