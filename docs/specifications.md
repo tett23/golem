@@ -5858,7 +5858,7 @@ tree-sitter の文法は Golem の構文解析が受け付ける原稿を受け�
 - 同じ見本の同じ要素が、二つの形式で同じ分類になる。
 - `modules/golem-driver/test/fixtures/`、`manual/`、`manual-dev/` のすべての `.gm` と `.emet` を、tree-sitter が誤りなく読める。
 
-テストの道具（tree-sitter-cli 0.27.1 と vscode-tmgrammar-test 0.1.3）は `tools/editors/package.json` と `package-lock.json` で固定し、tree-sitter-cli が取る実行ファイルの SHA-256 を `tools/editors/tree-sitter-cli.sha256` で照合する。
+テストの道具（tree-sitter-cli 0.27.2 と vscode-tmgrammar-test 0.1.3）は `tools/editors/package.json` と `package-lock.json` で固定し、tree-sitter-cli が取る実行ファイルの SHA-256 を `tools/editors/tree-sitter-cli.sha256` で照合する。
 
 `tools/editors/helix/test.sh`（CI の `editors` ジョブ）は、Helix の手順を確かめる（[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。
 `tools/editors/README.md` の Helix の手順の `sh` と `toml` のコードブロックを切り出し、一時的な `HOME` で Helix 25.07.1 に二つの文法を作らせ、`hx --health` がパーサーと強調の問い合わせを見つけることを確かめる。
