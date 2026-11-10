@@ -59,6 +59,7 @@ import NoteSplitSpec (noteSplitTests)
 import OverflowSpec (overflowTests)
 import PaginateInvariantsSpec (invariantTests)
 import PaginateSpec (paginateTests)
+import PullInSpec (pullInTests)
 import PunctuationSpec (punctuationTests)
 import RuleAreaSpec (ruleAreaTests)
 import ScriptSpec (scriptTests)
@@ -396,6 +397,7 @@ tests =
       codePaddingTests,
       codeStopTests,
       urlBreakTests,
+      pullInTests,
       unbreakablePairsTests,
       linkTests,
       featuresTests,

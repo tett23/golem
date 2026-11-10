@@ -189,12 +189,20 @@ data Params = Params
     {- | the stretch at the end of every line, of a paragraph whose lines are
     not justified (docs/adr/0189): 'filStretch' there, 0 otherwise. It
     counts in the badness of a line only, not in its ratio
-    -} pEndStretch :: !Sp
+    -} pEndStretch :: !Sp,
+    {- | pull in first (docs/adr/0274): a line that shrinks to fit within
+    the shrink of its glue, the compression of the glyphs left out, has the
+    badness 0 and is decent; the paragraph style's line-adjustment
+    -} pPullInFirst :: !Bool,
+    {- | the most the glue of a set line stretches, as a ratio
+    (docs/adr/0274): the paragraph style's stretch-limit in permille. It
+    changes where the items of a line are placed, not the breaks
+    -} pStretchLimit :: !(Maybe Rational)
   }
   deriving stock (Eq, Show)
 
 defaultParams :: Params
-defaultParams = Params 100 200 0 10 10000 10000 Nothing False 0
+defaultParams = Params 100 200 0 10 10000 10000 Nothing False 0 False Nothing
 
 data Line = Line
   { -- | the items of the line, discardable items after the break removed
@@ -212,7 +220,9 @@ data Line = Line
     taken, less the target; 0 when it fits
     -} lineOverflow :: !Sp,
     -- | the edges of the first and the last box (golem-layout ADR 0009)
-    lineEdge :: !(Sp, Sp)
+    lineEdge :: !(Sp, Sp),
+    -- | the most its glue stretches, as a ratio, from 'pStretchLimit' (docs/adr/0274)
+    lineStretchLimit :: !(Maybe Rational)
   }
   deriving stock (Eq, Show)
 
@@ -414,12 +424,17 @@ breakParagraph ps lineWidth items =
           natural = tW tw - tW ts + penW - protS - protE + edgeS + edgeE
           (ey, ez) = expansionOf (tE tw - tE ts)
           stretch = tY tw - tY ts + emergency + ey + pEndStretch ps
-          shrink = tZ tw - tZ ts + ez
+          glueShrink = tZ tw - tZ ts
+          shrink = glueShrink + ez
           shortfall = lineWidth (nLine a) - natural
           (bad, shrinking, overfull)
             | shortfall > 0 = (badness shortfall stretch, False, False)
             | shortfall == 0 = (0, False, False)
             | negate shortfall > shrink = (10000, True, True)
+            {- pulling in first (docs/adr/0274): a line that shrinks within
+            the shrink of its glue, the compression of the glyphs left out,
+            has the badness 0, and is decent -}
+            | pPullInFirst ps && negate shortfall <= glueShrink = (0, True, False)
             | otherwise = (badness (negate shortfall) shrink, True, False)
           fit = fitnessOf shrinking bad
           pen = case at b of
@@ -492,7 +507,7 @@ breakParagraph ps lineWidth items =
           expansion = case pExpansion ps of
             Just (limit, stp) | e > 0 -> expansionStep limit stp ratio
             _ -> 0
-       in Line its ratio target expansion (protS, protE) overflow edges
+       in Line its ratio target expansion (protS, protE) overflow edges (pStretchLimit ps)
 
 {- | The expansion of a line in permille (golem-layout ADR 0029): the
 ratio times the limit the steps reach, rounded to a multiple of the
@@ -543,7 +558,9 @@ placeLine l =
    in zip its (map (Sp . round) offsets)
 
 {- | The ratio by which the glue of a set line is stretched or shrunk,
-after the glyph expansion has taken its share.
+after the glyph expansion has taken its share; a line that stretches no
+more than its stretch limit (docs/adr/0274), what is left of the line
+left after its last item.
 -}
 glueRatio :: Line -> Rational
 glueRatio l =
@@ -561,5 +578,5 @@ glueRatio l =
       ys = toRational (unSp (sum [y | Glue _ y _ <- its]))
       zs = toRational (unSp (sum [z | Glue _ _ z <- its]))
    in if rest > 0 && ys > 0
-        then rest / ys
+        then maybe id min (lineStretchLimit l) (rest / ys)
         else if rest < 0 && zs > 0 then max (-1) (rest / zs) else 0

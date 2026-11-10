@@ -129,6 +129,7 @@ test-suite golem-driver-test
     SecuritySpec
     BoxesSpec
     KeepOptionsSpec
+    LineAdjustmentSpec
     PageLabelsSpec
     IndexRangeSpec
     ShapingMemoSpec
