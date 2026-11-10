@@ -4020,8 +4020,6 @@ W2 は、[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-acro
 ソフトハイフンの隣に境目のある入力でも、L1 から L13 と I4 と W2 を調べ、W1 は [ADR 0285](adr/0285-read-soft-hyphens-at-inline-boundaries-in-the-joined-word.md) の H4 のとおり、境目のソフトハイフンの罰点を含めて調べる。
 プルリクエストの CI は部品 2 個まで、毎晩の `enum.yml` は部品 3 個まで調べる（`GOLEM_ENUM_JOINED_DEPTH`）。
 引用の印を部品に足した列挙（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）は、プルリクエストの CI で部品 2 個まで、毎晩の `enum.yml` で部品 3 個まで調べる（`GOLEM_ENUM_CITE_DEPTH`）。
-区間の外で両用の字が印のすぐ隣にある入力では、C2 を調べない。
-印は両用の字の最も近い字を探すのを止めるが、C2 が比べる、印を同じ文字列のテキストにした段落では止めないので、両用の字の役割が違うためである（[ADR 0283](adr/0283-decide-the-roles-of-characters-of-both-scripts-across-inline-boundaries.md)）。
 
 本文の中のコードの並びも、同じ述語と、[golem-layout ADR 0034](golem-layout/adr/0034-line-breaks-between-japanese-characters-in-inline-code.md) の C1 から C8 と、[golem-layout ADR 0045](golem-layout/adr/0045-break-inline-code-after-hyphens-and-full-stops-to-avoid-loose-lines.md) の J1 から J7 で調べる（C3 と C4 は J3 と J5 に置き換えた）。
 部品は、和文の `漢`、`あ`、`「`、`」`、`。`、`、`、`ー`、`ぁ`、`…` と、欧文の `a`、`ab`、`1`、`/`、`_`、`-`、`.`、`"` と、空白の 18 である（`-`、`.`、`1` は 0045 で足した）。
@@ -4097,7 +4095,10 @@ PDF では、区間の言語で次のように組む（golem-layout の `charCla
 字の並びは、段落のインラインを順にたどり、テキストの字をつないだものである。
 文字スタイル、色、リンク、言語の区間、圏点、解決した参照の境目は、字の並びを切らない。
 項目を作らないインライン（索引の印などのアンカーと、ソフトハイフン）は飛ばす。
-ルビ、縦中横、番号、本文の中のコード、注の印、引用の印、強制改行、`[aki]` に当たったら、そこで探すのをやめ、その側に欧文の字はないものとする。
+引用の印に当たったら、印の文字列（既定の書式では `[1]`、`[1, p. 5]` など）の字を、字の並びの字として読む（[ADR 0298](adr/0298-read-the-text-of-a-citation-mark-for-characters-of-both-scripts.md)）。
+印の外から探すときは、印の文字列の、探す向きの端から字を読む。
+既定の書式の印は `[` で始まり `]` で終わるので、印のすぐ隣の両用の字は欧文の語に入る。
+ルビ、縦中横、番号、本文の中のコード、注の印、強制改行、`[aki]` に当たったら、そこで探すのをやめ、その側に欧文の字はないものとする。
 空白に当たったときと、段落の端に着いたときも、その側に欧文の字はないものとする。
 見つけた字が欧文の字かは、その字のインラインの見た目（区間の言語を含む）で決める。
 そのため `x “[strong: Ham]” y` の引用符は、一つのテキストの `x “Ham” y` と同じく欧文の語に入り、`a[strong: —]b` の `—` も `a—b` と同じく欧文の語に入る。

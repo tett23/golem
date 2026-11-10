@@ -8,7 +8,9 @@
 worth of times, in lines of 8 to 14 em, horizontal and vertical; and L1
 to L13 of docs/adr/0209 with C1 and C2 on every small input, a run of the
 parts of 'parts' and of the marks of 'citeParts' after 'あ' and before
-'い', in lines of 2 to 4 em, tier n holding the runs of n parts.
+'い', in lines of 2 to 4 em, tier n holding the runs of n parts. And the
+characters of both scripts next to a mark read its text (M1 and M2 of
+docs/adr ADR 0298).
 
 The mark is composed from the citation (an 'IR.Cite'); what it was
 composed as before the ADR is the text of the mark ('citationText') set
@@ -16,13 +18,12 @@ as other text, which the composition of the citation then was.
 -}
 module CiteBreakEnum (citeBreakTests, citePrDepth) where
 
-import Data.Maybe (isNothing, mapMaybe)
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Fixtures (fs, sp)
 import Golem.Doc.Citation (citationPieces, citationText)
 import Golem.Doc.IR qualified as IR
-import Golem.Layout.CharClass (isJoinerCharacter)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.TestSupport.Enum
@@ -211,9 +212,8 @@ inputInlines i =
       PText _ -> True
       _ -> False
 
-{- | The violations of an input: L1 to L13 of docs/adr/0209, C1 and C2; C2
-not where a character of both scripts outside a span is next to a mark
-('dualAtMark').
+{- | The violations of an input: L1 to L13 of docs/adr/0209, C1 and C2,
+C2 on every input (M1 of docs/adr ADR 0298).
 -}
 violations :: Input -> [Violation]
 violations i =
@@ -237,29 +237,7 @@ violations i =
             pAdvance = advance,
             pNumberUnit = 10000
           }
-   in [Violation (show (breachOf b)) (show (breachLine b) <> ": " <> breachWhy b) | b <- breaches bruteLimit p] <> c1Items its <> c1Lines (brLines br) <> (if dualAtMark i then [] else c2Items its before)
-
-{- | Whether a character of both scripts outside a span is right next to a
-mark, past soft hyphens: the mark stops the search for the nearest character that decides
-whether it joins a Latin word, and the text of the mark set as other text
-does not (docs/adr ADR 0283), so that the composition before docs/adr/0277
-that C2 compares with is not the same there.
--}
-dualAtMark :: Input -> Bool
-dualAtMark i = isNothing (sLang (inSetting i)) && or (zipWith next runs (drop 1 runs))
-  where
-    -- the texts between the marks joined, their soft hyphens skipped as the search skips them
-    runs = merged (inRun i)
-    merged = \case
-      [] -> []
-      PCite c : rest -> PCite c : merged rest
-      ps -> let (ts, rest) = span isText ps in PText (T.filter (/= '\xAD') (T.concat (map partText ts))) : merged rest
-    isText = \case
-      PText _ -> True
-      _ -> False
-    next (PText t) (PCite _) = maybe False (isJoinerCharacter . snd) (T.unsnoc t)
-    next (PCite _) (PText t) = maybe False (isJoinerCharacter . fst) (T.uncons t)
-    next _ _ = False
+   in [Violation (show (breachOf b)) (show (breachLine b) <> ": " <> breachWhy b) | b <- breaches bruteLimit p] <> c1Items its <> c1Lines (brLines br) <> c2Items its before
 
 -- | The inputs of a run: every setting of its normal form, placing in lines of 2 to 4 em and expansion.
 inputsOf :: [Part] -> [Input]
@@ -299,6 +277,69 @@ depthOf =
 citePrDepth :: Int
 citePrDepth = 2
 
+-- * the characters of both scripts next to a mark (docs/adr ADR 0298)
+
+{- | Each character of the boxes of items, and whether its box is one of a
+Latin word (a box of 'bcExpandable'); soft hyphens left out.
+-}
+rolesOf :: [Item] -> [(Char, Bool)]
+rolesOf its = [(ch, bcExpandable c) | Box _ c <- its, ch <- T.unpack (bcText c), ch /= '\xAD']
+
+{- | M2: the characters of a paragraph in a span (or in none) are in Latin
+words as those of it with each mark set as its text.
+-}
+m2Of :: Maybe Text -> [IR.Inline] -> [Violation]
+m2Of l is =
+  let (its, before) = itemsBoth False plain (maybe is (\x -> [IR.Lang sp x is]) l)
+   in [Violation "M2" (show (rolesOf its) <> ", not " <> show (rolesOf before)) | rolesOf its /= rolesOf before]
+
+-- | A text, and the citations of a and of b.
+txt :: Text -> IR.Inline
+txt = IR.Text sp
+
+citeA, citeB :: IR.Inline
+citeA = IR.Cite sp [IR.citeItem "a"]
+citeB = IR.Cite sp [IR.citeItem "b"]
+
+-- | The rows of 「今の振る舞い」 of the ADR, in their order.
+m2Rows :: [[IR.Inline]]
+m2Rows =
+  [ [txt "あ—", citeA, txt "い"],
+    [txt "あ", citeA, txt "—い"],
+    [txt "あ“", citeA, txt "”い"],
+    [txt "あ", citeA, txt "’い"],
+    [txt "あ", citeA, txt "–", citeB, txt "い"],
+    [txt "see “", citeA, txt "” and"],
+    [txt "as in ", citeA, txt "— and"],
+    [txt "power—", citeA],
+    [citeA, txt "’s"]
+  ]
+
+{- | The places of a character of both scripts next to a mark (the boundary
+inputs of the ADR): each of them right before a mark, right after one and
+between two; on its other side a Japanese character, a Latin word, a
+letter, a space or the end of the paragraph; beyond the mark nothing, い
+or b; nothing, a soft hyphen or an index mark between it and the mark;
+every kind of mark.
+-}
+m2Places :: [[IR.Inline]]
+m2Places =
+  concat
+    [ [ [txt (opp <> T.singleton d <> shy)] <> index <> [mark] <> farText,
+        farText <> [mark] <> index <> [txt (shy <> T.singleton d <> opp)],
+        farText <> [mark] <> index <> [txt (shy <> T.singleton d <> shy)] <> index <> [citeB] <> farText
+      ]
+    | d <- "—–’”“‘",
+      mark <- marks,
+      opp <- ["あ", "power", "s", " ", ""],
+      far <- ["", "い", "b"],
+      let farText = [txt far | not (T.null far)],
+      (shy, index) <- [("", []), ("\xAD", []), ("", [indexMark])]
+    ]
+  where
+    marks = citeOf Nothing : locatedMarks <> [IR.Cite sp [IR.citeItem "a", IR.citeItem "c"]]
+    indexMark = IR.IndexMark sp (IR.IndexEntry ["x"] [] IR.IndexPoint)
+
 citeBreakTests :: TestTree
 citeBreakTests =
   testGroup
@@ -329,7 +370,17 @@ citeBreakTests =
         let (_, before) = itemsBoth False plain (markParagraph 0 (citeOf (Just (IR.LocNumber 5))))
         map violationRule (c2Items before before) @?= ["C2"]
         map violationRule (c1Items before) @?= ["C1"],
-      testCase "L1 to L13 of docs/adr/0209, C1 and C2 hold for every input up to GOLEM_ENUM_CITE_DEPTH parts" $ do
+      testCase "M2 (docs/adr ADR 0298): the rows of the ADR put the same characters in Latin words with the mark and with its text" $
+        case [(is, vs) | is <- m2Rows, let vs = m2Of Nothing is, not (null vs)] of
+          [] -> pure ()
+          found -> assertFailure (unlines [show (map markOf is) <> ": " <> unwords (map violationDetail vs) | (is, vs) <- found]),
+      testCase "M2 (docs/adr ADR 0298): a character of both scripts before, after and between marks, in no span, [lang en] and [lang ja]" $
+        case [(l, is, vs) | l <- [Nothing, Just "en", Just "ja"], is <- m2Places, let vs = m2Of l is, not (null vs)] of
+          [] -> pure ()
+          found -> assertFailure (unlines [show l <> " " <> show (map markOf is) <> ": " <> unwords (map violationDetail vs) | (l, is, vs) <- take 8 found] <> show (length found) <> " inputs"),
+      testCase "M2: a predicate test, a dash of a Latin word and one of Japanese differ" $
+        rolesOf (fst (itemsBoth False plain [txt "a—b"])) /= rolesOf (fst (itemsBoth False plain [txt "あ—い"])) @?= True,
+      testCase "M1 (docs/adr ADR 0298): L1 to L13 of docs/adr/0209, C1 and C2 hold for every input up to GOLEM_ENUM_CITE_DEPTH parts, none left out" $ do
         depth <- depthOf
         case checkAllPar depth inputT violations of
           Failed k i vs -> assertFailure ("the smallest input that breaks an invariant has " <> show k <> " parts: " <> show i <> "\n" <> unlines [violationRule v <> ": " <> violationDetail v | v <- vs])
