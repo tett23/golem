@@ -564,8 +564,13 @@ CI の `changes` ジョブの `scripts/ci/suite-limits.sh --check` は、`script
 `enum.yml` と `race.yml` など、`build` ジョブの外で走るスイートと、手元の `cabal test` には上限を当てない。
 
 上限を超えたら、まず性能の後退かどうかを調べ、後退なら直す。
-テストを足したことによる正当な増加なら、そのプルリクエストで `sh scripts/ci/suite-limits.sh --fetch 20 | sh scripts/ci/suite-limits.sh` で表を作り直す。
-増えたスイートの行は、プルリクエストの CI の秒を中央値に加えた値で上限を求め、プルリクエストの説明に前と後の上限を書く。
+テストを足したことによる正当な増加なら、そのプルリクエストで、増えたスイートの行だけを、そのプルリクエストの CI の秒 t から `max(10, ceil(2 × t))` で求め直す（[ADR 0301](adr/0301-make-the-suite-limits-follow-a-suite-that-grew-by-added-tests.md)）。
+中央値は伸びる前の値に引かれ、伸びた後の値が過半になるまで上限が伸びに追いつかないからである。
+`scripts/ci/suite-limits.sh --set ARCH SUITE SECONDS [TABLE]` は、表のその行の秒だけをこの式で書き換え、ほかの行を変えない。
+表にその行がちょうど一つなければ、表を変えずに失敗する。
+プルリクエストの説明には、前と後の上限と、使った秒を書く。
+伸びた後の `main` への push が 20 回たまったら、`sh scripts/ci/suite-limits.sh --fetch 20 | sh scripts/ci/suite-limits.sh` で表全体を作り直してもよい。
+この作り直しは任意の手順である。
 新しいスイートを足すプルリクエストは、そのスイートの行を、プルリクエストの CI の秒から同じ式で求めて足す。
 `--fetch N` は、`gh run list` で `main` への push の成功した実行のうちテストを走らせた直近の N 回を選び、テストのランナーのログを API から `curl` で取って、`finished in` の行にアーキテクチャを前に付けて書く。
 
@@ -666,10 +671,13 @@ cabal 3.14.2.0 は、`build-tool-depends` の `alex` と `happy` も wasm の GH
 wasm32 の `Int` は 32 ビットなので、ネイティブで通る断言が wasm32 で落ちたところが、`Int` の幅に依るコードの候補になる。
 走らせるスイートは、`cabal.project.wasm` の `packages:` にある golem のパッケージのすべてのスイートで、`scripts/ci/test-suites.sh wasm` が求める。
 組むのは `cabal.project.wasm-tests` で、`cabal.project.wasm` と `cabal.project.wasm.freeze` を取りこみ、テストを組む。
-テストだけが使う golem-test-support と golem-doc-gen と、golem-driver のスイートが依る golem-plugin を `packages:` に足す。
+テストだけが使う golem-test-support と golem-doc-gen を `packages:` に足す。
 `skylighting` と `skylighting-core` のテストは組まない。
 wasm32 には threaded の実行時システムがないので、`-threaded` と `-N` は wasm32 では付けない。
 golem-pdf のテストは、wasm32 で組めない uuid を、ほかのターゲットでだけ使い、uuid と比べるテストは wasm32 では組まない。
+golem-pdf のテストは、`Int` に収まらない PDF のオブジェクトの番号を `Int64` で書き、`Int` のリテラルは wasm32 の `Int` に収める（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)）。
+golem-driver の golem-driver-test と golem-driver-global-test は、ライブラリと同じくフラグ `plugins` のときだけ golem-plugin に依り、golem-plugin か `Golem.Driver.New` を使うテスト（プラグインと `golem new` のテスト）を組む（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)）。
+`cabal.project.wasm` は `plugins` を外すので、wasm32 ではそれらのテストを組まない。
 golem-font のテストの C のファイルは、ライブラリと同じく wasm の例外処理で `setjmp.h` を読む。
 
 スイートは、`scripts/wasm/run-tests.mjs` が Node の `node:wasi` で一つずつ動かす。
@@ -1272,7 +1280,7 @@ EPUB はパッケージである zip の中に時刻や並び順の揺れを含�
 
 テストにだけ使う道具として、見た目の回帰テストで PDF のページを画像にするラスタライザ shem（[tett23/shem](https://github.com/tett23/shem)）も版を固定する（[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）。
 golem の実行ファイルと配布物には含めず、テストと CI からコマンドとして呼ぶ。
-`scripts/visual/fetch-shem.sh` が、shem の GitHub の release から、固定した版（v0.1.0-rc7）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ `third_party/shem/` に入れる。
+`scripts/visual/fetch-shem.sh` が、shem の GitHub の release から、固定した版（v0.1.0-rc9）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ `third_party/shem/` に入れる。
 release の `SHA256SUMS` は読まない。
 
 アーカイブは、macOS の aarch64 と、Linux の x86-64 と aarch64 の三つである。
@@ -1296,6 +1304,14 @@ shem は、同じ版なら環境によらず同じ画素を出すと約束して
 直してよいのは、古い版と新しい版で同じ SHA-256 になるページに限る。
 
 Golem の Writer が shem の読まない演算子や資源を書くようになるときは、先に shem を直してリリースし、固定した版を上げる。
+この順は、`scripts/visual/pdf-subset.txt` の検査で保つ（[ADR 0294](adr/0294-draw-images-and-figures-in-the-visual-regression-test.md)）。
+この一覧は、見た目の回帰テストの入力の PDF が使い、固定した shem が読む種類を、一行に一つずつ書く。
+種類は、ページと Form XObject の内容の演算子、ストリームのフィルタ、色の空間（`Indexed` と Separation の基の色の空間を含む）、XObject の `Subtype`、フォントの `Subtype` である。
+golem-driver のテストは、`scripts/visual/build.sh --list` の入力を `build.sh` と同じように組み、PDF からこれらの種類を数える。
+マニュアルは、`scripts/manual/fetch-fonts.sh` が取るフォントの代わりに、fixture の CFF の OpenType のフォントで組む。
+一覧にない種類を使う入力があればテストは落ち、どの入力も使わない種類が一覧にあってもテストは落ちる。
+これで、Writer が shem の読まないものを書き始めたことが、shem で描く前に golem-driver のテストで見つかる。
+一覧に種類を足すのは、それを読む shem の版を固定する変更の中だけである。
 
 ### 式の評価と diagnostics
 
@@ -1370,9 +1386,11 @@ Golem と shem の出力はどちらも決定的なので、同じ PDF からは
 意図して見た目を変えたときは、`scripts/visual/run.sh --accept`（`build.sh`、`fetch-shem.sh`、`check.sh --accept` を続けて行う）で参照を書き直し、同じ変更に入れる。
 `--accept` は、PDF がない入力、ページが一つもない入力、`unreadable` の入力があれば、どの参照も書かずに失敗する。
 
+画像と図版は、shem が中身を描く（画像の XObject の標本と、SVG と PDF の図版の Form の内容。shem v0.1.0-rc9 から）。
+shem は ICC のプロファイルを使わず、拡大した小さい画像を双一次で補間するので、描いた色と見え方はビューアのものと同じとは限らない。
+
 このテストが見つけない変化もある。
 PDF の Producer とインスタンス ID は画像に現れないので、`VERSION` だけを変えても参照は変わらない。
-画像と図版は shem が中身を読まずに箱で描くので、その中身の変化はこのテストでは見つからない。
 
 CI では、`build` の x86-64 の `outputs` のランナーが、epubcheck と決定性の検査の出力より先に PDF を組んで成果物 `visual-pdfs` として上げ、`visual` ジョブが x86-64 で描いて比べる（[ADR 0095](adr/0095-visual-job-in-ci.md)、[ADR 0140](adr/0140-ci-split-test-runners-and-visual-pdfs-first.md)）。
 比べる手順の実時間の上限は 600 秒で、shem が止まらなくなったことだけを見つけるためのものである。
@@ -2327,6 +2345,7 @@ diagnostic の位置は `style.toml` の先頭とし、同じコードと同じ�
 - `underline` と `strikethrough`（「下線と打ち消し線」）
 - `no-break`（真偽値）
 - 文字の送りの四つのキー（「文字の送り」）
+- `punctuation-width`（「約物の字形」）
 
 コードの文字スタイルは、本文の中のコードの背景と余白のキー `background` と `padding` と、改行の印のキー `wrap-mark` も持つ（「本文の中のコード」）。
 
@@ -2358,7 +2377,7 @@ PDF の合成の太字の線の幅は、和文で文字の大きさの 1/80、�
 | `align` | 行揃え（「行揃え」） |
 | `indent`、`first-line-indent`、`end-indent` | 字下げ（「字下げ」） |
 | `aki-set` | アキ量のセットの名前 |
-| `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`features` | 文字スタイルと同じキー |
+| `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width`、`features` | 文字スタイルと同じキー |
 | `rule-before`、`rule-after` | 段落の前と後に引く罫線（「段落の罫線」） |
 | `keep-with-next`、`keep-all-lines`、`keep-first-lines`、`keep-last-lines`、`page-break` | 段落の分け方（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)） |
 | `background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius` | 段落の囲み（[ADR 0271](adr/0271-paragraph-backgrounds-and-borders.md)） |
@@ -2430,6 +2449,19 @@ HTML と EPUB の組み方は、CSS で書けないところで PDF と違う。
 - `letter-spacing` は行の最後の文字の後ろにも空きを足すが、PDF との差として受け入れる。
 
 プレーンテキストは、どのキーも使わない。
+
+#### 約物の字形
+
+文字スタイルと段落スタイルは、和文の約物の字形を選ぶキー `punctuation-width` も持つ（[ADR 0302](adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
+値は `"full-width"` と `"font"` で、`body` の既定は `"full-width"` である。
+`"full-width"` では、JLReq の規則で前後の空きを決める約物を、PDF でフォントの全角の字形（OpenType の `fwid`）で組む。
+`"font"` では、Golem は `fwid` を足さず、フォントの既定の字形で組む。
+
+文字の送りの四つのキーと同じく、文字スタイルが書かないキーは外側の値を引き継ぎ、`based-on` の子が書けば親の値を置き換える。
+`caption`、`sidenote`、`table`、`code` にも書け、`@style-def` でも書ける。
+二つの値のほかは G03021 とする。
+HTML と EPUB では、`fwid` を約物だけに当てられないので、CSS に書かない。
+どちらの値でも、役割と段落スタイルと文字スタイルの `features` に書いた幅の機能が当たる（「フォント」の節の「全角の字形と全角より狭い字形」）。
 
 #### OpenType の機能
 
@@ -2884,7 +2916,7 @@ EPUB の読書環境が論理的な指定（`border-block-start` など）を読
 
 - 図版のキャプションは、段落スタイル `caption` の `font` と `size` で組む。ほかの欄（`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ）はキャプションには適用されない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 - 傍注の本文も同じく、段落スタイル `sidenote` の `font` と `size` で組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
-- PDF のキャプションと傍注の本文には、ほかに `aki-set`、`line-adjustment`、`stretch-limit`、`shrink-order`、`stretch-order`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` を、どの出力でも `regex-styles` を適用する。
+- PDF のキャプションと傍注の本文には、ほかに `aki-set`、`line-adjustment`、`stretch-limit`、`shrink-order`、`stretch-order`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width` を、どの出力でも `regex-styles` を適用する。
 - 表のセルには、セルの段落スタイル（`@style` を付けた表はその段落スタイル、ほかは `table`）の同じ欄を適用し、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ、罫線、背景は適用しない（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。セルの揃えは列の揃えで決め、`@style` で字下げを持つ段落スタイルを当てても字下げは適用しない。
 
 ただし、`line-breaks`、`space-between`、`space-before`、`space-after`、`align` は、`@style caption` や `@style sidenote` を付けた原稿の段落には適用される。
@@ -2896,7 +2928,7 @@ EPUB の読書環境が論理的な指定（`border-block-start` など）を読
 `caption`、`sidenote`、`table` の三つに書けるキーと書けないキーは次のとおりである。
 
 - 書けないキー：0 でない `indent`、`first-line-indent`、`end-indent`、`rule-before`、`rule-after` と、囲みの七つのキー（`background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`）
-- 書けるキー：`based-on`、`font`、`size`、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`
+- 書けるキー：`based-on`、`font`、`size`、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width`
 
 三つに 0 でない `indent`、`first-line-indent`、`end-indent` を書くと、`style.toml` でも `@style-def` でも G03006 とする。
 値が 0（`"0zw"`、`"0mm"` など）なら組版は変わらないので、誤りとせず、効果がないことを notice（G03100）で知らせる。
@@ -3394,6 +3426,8 @@ aki-set = "wide-waou"
 基準のセットの規則は、子のセットの規則より前にある。
 規則のない組の空きは 0 で、伸び縮みしない。
 行頭と行末の空きは `optimum` の固定の量とし、行の伸縮の調整には使わない。
+約物の空きは、約物の字形が全角の字幅の一部を占めるとして決める。
+全角より狭い字形の約物も、箱と空きで全角の字幅を占める（「フォント」の節、[ADR 0302](adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
 次の誤りは G03020 とする。
 
 - `minimum <= optimum <= maximum` でない規則
@@ -3925,7 +3959,7 @@ PDF で字をシェイピングする機能の並びは、次の順につない�
 1. 役割の `features`。
 2. 段落スタイルの `features`。`based-on` の鎖の根から順に置く。
 3. 文字スタイルの `features`。入れ子の外側から順に、各スタイルの中では `based-on` の鎖の根から順に置く。
-4. Golem が足す機能。カーニングの方式、`proportional-metrics`、JLReq の約物の打ち消しである。
+4. Golem が足す機能。カーニングの方式、`proportional-metrics`、JLReq の約物の打ち消しと `fwid`（[ADR 0302](adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）である。
 
 つないだ並びは、タグごとに最後の値だけを、その最後の位置に正規の形で残してから HarfBuzz に渡す。
 渡す機能の数に上限はない。
@@ -3940,6 +3974,28 @@ Golem が足す機能を最後に置くので、`features = ["palt"]` の文字�
 縦組みでも、`features` は書いたとおりに渡し、`palt` を `vpal` に読み替えない。
 縦組みの中で回転して組む欧文と縦中横は、横書きの方向で同じ並びでシェイピングする。
 ルビの読みは外側の見た目の機能で、圏点の字は役割の機能だけで、注の印は印の文字スタイルの機能で組む。
+
+### 全角の字形と全角より狭い字形
+
+JLReq の規則で前後の空きを決める約物には、`punctuation-width` が `"full-width"`（既定）なら、Golem が `fwid` も足す（[ADR 0302](adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
+Noto CJK の `“”‘’` のように全角でない字形を既定に持つフォントでも、全角の字形で組むためである。
+役割、段落スタイル、文字スタイルの `features` をつないだ並びが、幅の機能 `fwid`、`hwid`、`pwid`、`twid`、`qwid` のどれかを値によらず含めば、Golem は `fwid` を足さず、書いた機能が当たる。
+書体が `fwid` を持つかは調べない。
+HarfBuzz は書体の持たない機能を無視するので、`fwid` を持たない書体の字形は変わらない。
+Golem が足す `fwid` は、G08103 の対象にしない。
+
+これらの約物の空きは全角を前提に決めるが、シェイピングした後の送り `a` が 1zw（その字の大きさ）より小さい字形もある。
+`fwid` を持たない欧文のフォントの `“”‘’` や、`punctuation-width = "font"` か書いた機能で選んだ全角でない字形である。
+この字形の箱の幅は、`a` と、1zw から前後の空きを引いた値の大きいほうとし、引いた空きは今のとおりアキ量のセットのグルーで戻す。
+字形は箱の中に描き、始め括弧類は箱の終わりに、終わり括弧類、句点類、読点類は箱の始まりに、中点類は箱の中央に置く。
+そのため、空白の隣や行の端でも、字形は次の字に重ならない。
+縦組みでも同じ規則で、送りは行の方向の送り（横倒しの字形なら横の送り）とする。
+送りが 1zw 以上の字形は、送りから前後の空きを引いた幅の箱に、前の空きの分だけ箱の始まりより前から描く。
+
+PDF で、これらの約物の一字の字面（フォントの字形の枠の、行の方向の範囲）が同じ行の隣の字にかかれば、notice G07126 を出す。
+字面がトラッキングを除いた箱の端から出た量が、その側の隣の箱とのあいだの空きより大きいときである。
+行の端、ぶら下げた句読点、負のトラッキングだけによる重なりには出さない。
+フォントのファイルとコードポイントの組ごとに一度、原稿の順で最初の約物に出す。
 
 ### 書体が持たない機能
 

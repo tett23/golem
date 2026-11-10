@@ -29,17 +29,18 @@ pullInTests =
 plain :: Setting
 plain = Setting True False False Nothing
 
-{- | The composition of R3: every character half an em, the comma a box
-of nothing and the half em after it, which shrinks to nothing. 「あいう、えお」
-is 3 em at its natural width and 2.5 em with the half em taken; 「あいう、え」
-is 2.5 em, the width of the lines ('r3Width').
+{- | The composition of R3: every character half an em but the comma, a
+full-width glyph (a narrower one would take a box of half an em, docs/adr/0302):
+a box of half an em and the half em after it, which shrinks to nothing.
+「あいう、えお」 is 3.5 em at its natural width and 3 em with the half em
+taken; 「あいう、え」 is 3 em, the width of the lines ('r3Width').
 -}
 r3Env :: Bool -> ComposeEnv
-r3Env vertical = (composeEnv vertical plain) {ceAdvance = \_ _ -> 1 / 2}
+r3Env vertical = (composeEnv vertical plain) {ceAdvance = \_ c -> if c == '、' then 1 else 1 / 2}
 
--- | The width of the lines of R3: 2.5 em, five characters.
+-- | The width of the lines of R3: 3 em, six half-em characters.
 r3Width :: Sp
-r3Width = Sp (unSp fs * 5 `div` 2)
+r3Width = 3 * fs
 
 itemsIn :: ComposeEnv -> Text -> [Item]
 itemsIn env t = fst (composeInlines env [IR.Text sp t])
@@ -72,7 +73,7 @@ r3Tests =
     testCase "R3: a line that needs exactly the shrink of its glue is pulled in, and one that needs none is as balanced" $ do
       let its = itemsIn (r3Env False) "あいう、えお"
       linesOf pullIn r3Width its @?= ["あいう、えお"]
-      linesOf pullIn (3 * fs) its @?= linesOf balanced (3 * fs) its
+      linesOf pullIn (Sp (unSp fs * 7 `div` 2)) its @?= linesOf balanced (Sp (unSp fs * 7 `div` 2)) its
   ]
 
 r4Tests :: [TestTree]

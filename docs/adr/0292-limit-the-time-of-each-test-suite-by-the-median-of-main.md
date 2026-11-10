@@ -1,6 +1,6 @@
 # ADR 0292: テストのスイートごとの時間に、`main` の中央値から決めた上限を置く
 
-ステータス: 採択
+ステータス: 採択→テストを足して伸びたスイートの上限の求め方は [ADR 0301](0301-make-the-suite-limits-follow-a-suite-that-grew-by-added-tests.md)
 
 ## 文脈
 

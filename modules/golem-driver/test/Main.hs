@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module Main (main) where
 
 import AdjustOrderSpec (adjustOrderTests)
@@ -34,7 +36,9 @@ import KeepOptionsSpec (keepOptionsTests)
 import LineAdjustmentSpec (lineAdjustmentTests)
 import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
+#ifdef GOLEM_PLUGINS
 import NewPlanSpec (newPlanTests)
+#endif
 import NotesSpec (notesTests)
 import NumberUnitBuildSpec (numberUnitBuildTests)
 import OpenTypeFeaturesSpec (openTypeFeaturesTests)
@@ -48,6 +52,7 @@ import ParagraphSpec
 import PdfSpec
 import PlatesSpec (platesTests)
 import PopplerSpec (popplerTests)
+import PunctuationWidthSpec (punctuationWidthTests)
 import ReferencesSpec
 import ReuseSpec
 import ScriptsSpec (scriptsTests)
@@ -64,6 +69,7 @@ import Test.Tasty
 import TocStylesSpec (tocStylesTests)
 import UnwritableNumbersSpec (unwritableNumbersTests)
 import VarsSpec (varsTests)
+import VisualSubsetSpec (visualSubsetTests)
 
 main :: IO ()
 main = enterPackageDirectory >> defaultMainReportingSkips tests
@@ -86,6 +92,7 @@ tests skips =
         functionsTests,
         callsTests,
         varsTests,
+        visualSubsetTests,
         unwritableNumbersTests,
         pageLabelsTests,
         indexRangeTests,
@@ -116,10 +123,9 @@ tests skips =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
-        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, insideLinksTests, overflowTests, softHyphenTests, exceptionsTests, bookLanguageTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, scriptsTests, decorationsTests]
-        <> [ newProjectTests,
-             newPlanTests,
-             allTargetsTests,
+        <> [outputGoldenTests, complexFixtureTests, taggedPdfTests, insideLinksTests, overflowTests, softHyphenTests, exceptionsTests, bookLanguageTests, specimenGeometryTests, tateChuYokoTests, expansionTests, codeFontTests, openTypeFeaturesTests, punctuationWidthTests, scriptsTests, decorationsTests]
+        <> newTests
+        <> [ allTargetsTests,
              pdfPipelineTests,
              testGroup "files of style.toml per target (golem-project ADR 0004)" styleFileTests,
              testGroup "verse (docs/adr ADR 0003)" verseTests,
@@ -185,3 +191,11 @@ tests skips =
              testGroup "the compositions reused between the rounds of page references (docs/adr ADR 0251)" reuseTests
            ]
     )
+
+-- | The tests of golem new, only with the plugins, as the library (docs/adr ADR 0300).
+newTests :: [TestTree]
+#ifdef GOLEM_PLUGINS
+newTests = [newProjectTests, newPlanTests]
+#else
+newTests = []
+#endif

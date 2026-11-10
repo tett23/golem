@@ -31,12 +31,12 @@ case ${1:-} in
   "") ;;
   *) echo "usage: fetch-shem.sh [--expected]" >&2; exit 2 ;;
 esac
-VERSION=0.1.0-rc7
+VERSION=0.1.0-rc9
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 case "$(uname -s)-$(uname -m)" in
-  Darwin-arm64) TARGET=aarch64-apple-darwin; SHA=1e1b5144ab86eb3906707d64b057f3aba6506cc5a7a21678a145340d769cbb71 ;;
-  Linux-x86_64) TARGET=x86_64-unknown-linux-musl; SHA=4fd48dd08f9aebcd77df01cb2bbd2deacbb239e8be128388efeba022ab2519d5 ;;
-  Linux-aarch64) TARGET=aarch64-unknown-linux-musl; SHA=d6a8fe61bed582ef2e34b4360c9aeef72e5f98ba926aa1fab86cf82a099915d4 ;;
+  Darwin-arm64) TARGET=aarch64-apple-darwin; SHA=a8a32331ef3b8a51992b4ee4cf70f58aff21ae077af415faae43f5e07056b96a ;;
+  Linux-x86_64) TARGET=x86_64-unknown-linux-musl; SHA=58deff2a450931c565f0924a19bac27f4918e1babd033be986a741de4787803d ;;
+  Linux-aarch64) TARGET=aarch64-unknown-linux-musl; SHA=c416e1869682ed813611a57d28a355446e4e6436a9175b9229d265df63aed8d4 ;;
   *)
     echo "fetch-shem: shem v$VERSION has no archive for $(uname -s)-$(uname -m); build the tag v$VERSION of https://github.com/tett23/shem with cargo build --release and give the path of the binary in SHEM" >&2
     exit 1

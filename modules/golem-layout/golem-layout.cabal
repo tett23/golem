@@ -107,6 +107,7 @@ test-suite golem-layout-test
                     LineBreakInvariants
                     LineBreakInvariantsSpec
                     LineBreakingSpec
+                    NarrowPunctuationSpec
                     NoBreakEnum
                     NumberUnitSpec
                     SoftHyphenSpec
