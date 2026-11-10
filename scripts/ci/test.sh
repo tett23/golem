@@ -1134,6 +1134,26 @@ if [ "$CODE" = 1 ] && grep -qF 'golem-gone-test' "$WORK/err"; then ok; else ng "
 run suite_limits --check
 expect "suite-limits: L4 the table of the repository has every suite of test-suites.sh, once on each architecture" 0
 
+# G1 --set ARCH SUITE SECONDS TABLE changes the seconds of that row alone, to
+# max(10, ceil(2 t)): t = 0, 4.9, 5 and 5.1 give 10, 10, 10 and 11; the row
+# of the same suite on the other architecture stays (docs/adr ADR 0301)
+printf '# a comment\naarch64\tgolem-a-test\t30\naarch64\tgolem-b-test\t12\nx86_64\tgolem-a-test\t40\n' >"$SL/set.tsv"
+for case in "0 10" "4.9 10" "5 10" "5.1 11" "71 142"; do
+  set -- $case
+  cp "$SL/set.tsv" "$SL/t.tsv"
+  : >"$WORK/in"
+  run suite_limits --set aarch64 golem-a-test "$1" "$SL/t.tsv"
+  printf '# a comment\naarch64\tgolem-a-test\t%s\naarch64\tgolem-b-test\t12\nx86_64\tgolem-a-test\t40\n' "$2" >"$SL/want.tsv"
+  if [ "$CODE" = 0 ] && cmp -s "$SL/t.tsv" "$SL/want.tsv"; then ok; else ng "suite-limits: G1 --set of $1 seconds gives that row alone a limit of $2"; fi
+done
+# G2 --set of a row the table does not have changes nothing, and fails
+for row in "x86_64 golem-b-test" "aarch64 golem-c-test"; do
+  set -- $row
+  cp "$SL/set.tsv" "$SL/t.tsv"
+  run suite_limits --set "$1" "$2" 20 "$SL/t.tsv"
+  if [ "$CODE" != 0 ] && [ "$CODE" != 2 ] && cmp -s "$SL/t.tsv" "$SL/set.tsv" && grep -qF "$2" "$WORK/err"; then ok; else ng "suite-limits: G2 --set of $2 on $1, not in the table, fails and changes nothing"; fi
+done
+
 # ---------------------------------------------------------------- bg.sh
 # (docs/adr/0037-ci-build-job-speedup.md)
 
@@ -3330,8 +3350,14 @@ expect "run-all: -t of a word" 2
 # stanza NAME: the lines of the test-suite NAME of golem-driver.cabal
 DRIVER_CABAL=$HERE/../../modules/golem-driver/golem-driver.cabal
 stanza() { awk -v n="test-suite $1" '$0 == n { on = 1; next } on && /^[^ \t-]/ { on = 0 } on' "$DRIVER_CABAL"; }
-# modules NAME: the other-modules of the test-suite NAME, one per line
-modules_of() { stanza "$1" | awk '/^  other-modules:/ { on = 1; next } on && /^  [a-z-]+:/ { on = 0 } on { print $1 }'; }
+# modules NAME: the other-modules of the test-suite NAME, one per line, those
+# under a condition too (the flag plugins, docs/adr ADR 0300)
+modules_of() {
+  stanza "$1" | awk '
+    /^ +other-modules:/ { on = 1; sub(/^ +other-modules: */, ""); if ($0 != "") print $1; next }
+    on && /^ +([a-z-]+:|if |else)/ { on = 0 }
+    on { print $1 }'
+}
 if stanza golem-driver-test | grep -Eq '^ +ghc-options: .*-threaded' && stanza golem-driver-test | grep -qF '"-with-rtsopts=-N"'; then ok; else
   ng "golem-driver.cabal: golem-driver-test is built -threaded with -N"
 fi
