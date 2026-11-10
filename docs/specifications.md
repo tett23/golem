@@ -5966,11 +5966,10 @@ G03131 から G03134 の四つのコードは、パスの先頭（`<パス>:1:1`
 該当するコードは次のとおりである。
 
 - 日本式のトンボの塗り足しの欠け（G07002。[golem-pdf ADR 0010](golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)、「[トンボ](#トンボ)」の節を参照）
-- 版面の誤り（G07001）
-- 段落スタイルの字下げの誤り（G07025）
-- 本文のフォントの設定の欠け（G08007）
+- 版面の誤り（G07001。[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）
+- 段落スタイルの字下げの誤り（G07025。同 ADR）
+- 本文のフォントの設定の欠け（G08007。同 ADR）
 
-G07001、G07025、G08007 の扱いは [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md) による。
 これらの位置は、`style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
 隠しノンブルが版面に重なる誤り（G07050）も、同じ理由で `golem check` が検査する（「[トンボ](#トンボ)」の節を参照）。
 
