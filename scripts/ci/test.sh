@@ -4,7 +4,12 @@
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 WORK=$(mktemp -d)
-trap 'rm -rf "${WORK:?}"' EXIT
+# the sleep of the fake host deno-hangs, if it is still there, is stopped by
+# the PID it wrote, whether the tests pass or fail (docs/adr/0303 I7)
+trap 'kill_hang; rm -rf "${WORK:?}"' EXIT
+kill_hang() {
+  if [ -s "${CB:-$WORK}/hang.pid" ]; then kill "$(cat "${CB:-$WORK}/hang.pid")" 2>/dev/null || :; fi
+}
 FAILURES=0
 COUNT=0
 
@@ -3832,21 +3837,38 @@ if grep -qxF -- "-  missing-font/pdf" "$CB/browser.txt" && grep -qxF "exit 1  mi
 cat >"$CB/deno-hangs" <<'FAKE'
 #!/bin/sh
 case "$7" in
-  */int-width-png-chunk) sleep 300 ;;
+  */int-width-png-chunk) sleep 300 & echo "$!" >"$HANG_PID"; wait "$!" ;;
 esac
 printf '%%PDF %s\n' "${7##*/}" >"$8"
 printf '[]\n' >&2
 FAKE
 chmod +x "$CB/deno-hangs"
+# the children of the host are checked by the PID the fake host wrote, not
+# by name over the machine; where pgrep -P cannot list a child of this
+# shell, compare.sh cannot stop them either and the check is skipped
+# (docs/adr/0303 sections 2 and 3)
+sleep 30 &
+probe=$!
+if pgrep -P "$$" 2>/dev/null | grep -qxF "$probe"; then lists_children=1; else lists_children=0; fi
+kill "$probe" 2>/dev/null || :
+wait "$probe" 2>/dev/null || :
+rm -f "$CB/hang.pid"
 s0=$(date +%s)
-run env DENO="$CB/deno-hangs" COMPARE_TIMEOUT=2 sh "$HERE/../wasm/compare.sh" --deno golem.wasm
+run env DENO="$CB/deno-hangs" HANG_PID="$CB/hang.pid" COMPARE_TIMEOUT=2 sh "$HERE/../wasm/compare.sh" --deno golem.wasm
 s1=$(date +%s)
 cp "$WORK/out" "$CB/hangs.txt"
 expect "compare.sh: an input past COMPARE_TIMEOUT does not fail the list (I1)" 0
 if grep -qxF "exit timeout  int-width-png-chunk" "$CB/hangs.txt" && grep -qxF "exit 0  int-width-printing" "$CB/hangs.txt"; then ok; else ng "compare.sh: exit timeout for the input stopped, and the next input runs (I1)"; fi
 if grep -qF "int-width-png-chunk: stopped after 2 s" "$WORK/err"; then ok; else ng "compare.sh: says which input it stopped (I1)"; fi
 if [ $((s1 - s0)) -lt 60 ]; then ok; else ng "compare.sh: the input is stopped near COMPARE_TIMEOUT, not after the sleep of the host (I1)"; fi
-if pgrep -f "sleep 300" >/dev/null 2>&1; then ng "compare.sh: the children of the host stopped are stopped too (I1)"; else ok; fi
+if [ ! -s "$CB/hang.pid" ]; then
+  ng "compare.sh: the fake host wrote the PID of its child (docs/adr/0303 I4)"
+elif [ "$lists_children" = 0 ]; then
+  skip 1 "compare.sh: the children of the host (pgrep -P cannot list processes)"
+elif kill -0 "$(cat "$CB/hang.pid")" 2>/dev/null; then
+  ng "compare.sh: the children of the host stopped are stopped too (I1, docs/adr/0303 I5)"
+else ok; fi
+kill_hang
 # browser.yml gives its jobs that compare a COMPARE_TIMEOUT of fewer seconds
 # than their timeout-minutes, so that an input that does not end is in the
 # list as `exit timeout` before the job is cancelled (docs/adr/0247 section 7)
@@ -4372,6 +4394,58 @@ if job_of "$ADV_YML" actions | grep -qF 'sh scripts/ci/actions-pins.sh verify' &
   job_of "$ADV_YML" actions | grep -qF 'GH_TOKEN: ${{ github.token }}' &&
   job_of "$ADV_YML" actions | grep -qxF '    timeout-minutes: 10'; then ok; else ng "advisories.yml: the actions job runs verify and latest with GH_TOKEN in 10 minutes"; fi
 if job_lines scripts-linux | grep -qF 'run: sh scripts/ci/actions-pins.sh check'; then ok; else ng "ci.yml: scripts-linux runs actions-pins.sh check"; fi
+
+# ---------------------------------------------------------------- processes looked for by name
+# (docs/adr/0303 section 4): a test checks only the processes it started, by
+# their PIDs. The tools that look for processes by name over the machine,
+# unless -P narrows them to the children of a PID, and a ps that lists every
+# process, are reported as FILE:LINE: TEXT. The names are written as
+# pgre[p] and the like below so that this file does not match itself
+# process_check FILE...: fails on such a line, and with no FILE
+process_check() {
+  if [ $# -eq 0 ]; then
+    echo "0 files checked"
+    return 1
+  fi
+  pc_found=0
+  for pc_file in "$@"; do
+    pc_lines=$(sed -E 's/(pgre[p]|pkil[l]|killal[l])[[:space:]]+-P[[:space:]]*//g' "$pc_file" |
+      grep -nE '(^|[^[:alnum:]_.-])(pgre[p]|pkil[l]|killal[l])([^[:alnum:]_.-]|$)|(^|[[:space:];|&(`$])p[s][[:space:]]+(-[[:alnum:]]*[eA]|aux|ax)' || :)
+    if [ -n "$pc_lines" ]; then
+      printf '%s\n' "$pc_lines" | sed "s|^\([0-9]*\):|$pc_file:\1: |"
+      pc_found=1
+    fi
+  done
+  echo "$# files checked"
+  [ "$pc_found" = 0 ]
+}
+PC_DATA=$HERE/testdata/process-checks
+run process_check "$PC_DATA/by-name.sh"
+if [ "$CODE" = 1 ] && grep -qF "$PC_DATA/by-name.sh:5: " "$WORK/out" && [ "$(grep -c ': ' "$WORK/out")" = 1 ]; then ok; else ng "process check: a fake test with a search by command line fails at FILE:LINE (I8)"; fi
+run process_check "$PC_DATA/by-pid.sh"
+expect "process check: a fake test that checks the PIDs it started passes (I8)" 0 "1 files checked"
+run process_check
+expect "process check: no file fails (I8)" 1 "0 files checked"
+PC=$WORK/process-checks
+mkdir -p "$PC"
+for line in 'pgre''p -f "sleep 300"' 'pgre''p sleep' 'pkil''l -f golem' 'killal''l sleep' 'x=$(pgre''p -P 1; pgre''p -f a)' \
+  'p''s -ef | grep sleep' 'p''s -A' 'p''s aux' 'p''s ax' '(p''s -e)'; do
+  printf '#!/bin/sh\n%s\n' "$line" >"$PC/t.sh"
+  run process_check "$PC/t.sh"
+  if [ "$CODE" = 1 ] && grep -qF "$PC/t.sh:2: " "$WORK/out"; then ok; else ng "process check: '$line' fails (I8)"; fi
+done
+for line in 'pgre''p -P "$$"' 'pkil''l -P "$pid"' 'p''s -p "$pid"' 'kill -0 "$pid"' '# maps -e and steps aux are words' 'the_pgre''p_count=1'; do
+  printf '#!/bin/sh\n%s\n' "$line" >"$PC/t.sh"
+  run process_check "$PC/t.sh"
+  expect "process check: '$line' passes (I8)" 0 "1 files checked"
+done
+# the test scripts of the repository; git ls-files and the glob, which
+# matches scripts/test.sh as well, rather than the files of the work tree
+PC_FILES=$(git -C "$HERE/../.." ls-files ':(glob)scripts/**/test*.sh' scripts/ci/test-suites.sh ':(glob)tools/editors/**/test.sh')
+# shellcheck disable=SC2086 # the paths have no spaces
+run process_check $(printf '%s\n' "$PC_FILES" | sed "s|^|$HERE/../../|")
+if [ "$CODE" = 0 ] && grep -Eq '^[1-9][0-9]* files checked$' "$WORK/out"; then ok; else ng "process check: the test scripts of the repository look for no process by name (I8)"; fi
+if printf '%s\n' "$PC_FILES" | grep -qxF scripts/ci/test.sh && printf '%s\n' "$PC_FILES" | grep -qxF scripts/test.sh && printf '%s\n' "$PC_FILES" | grep -qxF tools/editors/nvim/test.sh; then ok; else ng "process check: the files checked include scripts/ci/test.sh, scripts/test.sh and tools/editors/nvim/test.sh (I8)"; fi
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
