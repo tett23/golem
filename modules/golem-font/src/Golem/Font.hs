@@ -1,6 +1,6 @@
 {-# LANGUAGE CApiFFI #-}
 
-{- | Fonts through HarfBuzz 15.1.0 and FreeType 2.14.3 (golem-font ADR 0001
+{- | Fonts through HarfBuzz 15.1.0 and FreeType 2.15.0 (golem-font ADR 0001
 and 0002): loading from bytes, the embedding licence check, shaping,
 metrics, subsetting with retained glyph ids, subset name tags and
 ToUnicode mappings. The FFI is confined here. Loading and subsetting are
