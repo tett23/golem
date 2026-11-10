@@ -38,7 +38,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### テストと CI
 
-- **画像と図版を描く処理**：shem（見た目の回帰テストのラスタライザ、[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）に、画像（JPEG、PNG）の復号と、図版（SVG と PDF の Form）の描画を自前で加える。v2 で図版をフレームに合わせて拡大縮小するとき、画像を描けない描画系は致命的になるので、それより前に入れる。
 - **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲の ADR はまだない。上から順に、前の範囲の結果を見て書く。
   - **パーサーと `golem fmt` の往復**：文法から作る短い原稿を列挙し、`golem fmt` の往復と diagnostics の位置の不変条件で確かめる。peg-hs の文法を読んで原稿を作る部品が先に要る。
   - **位置の変換**：UTF-16 の列、`pages.json`、LSP の位置の変換を、サロゲートペアを含む短い文字列の列挙で確かめる。
@@ -107,6 +106,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **平字の注の印**：縦組みで注の番号に漢数字を使うとき、上下の外枠を 50% にした漢数字（平字）で組めるようにする（JLReq の 4.2.2、[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「実装しないこと」）。字形を行の方向にだけ縮める描き方は二倍ダッシュ（[ADR 0172](adr/0172-continuous-double-dashes.md)）にあるが、印の箱の長さと字の位置の決め方が変わるので、要るときに ADR で決める。
 - **図版とキャプションの拡張**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。
+- **チャネルの番号をページごとに振り直す方式**：注の番号を、ページごとに 1 から振れるようにする。今の注の番号は、章（既定）、ファイル、本の全体のどれかの範囲で、文書の組み立て（S1）で振る。ページごとに振り直す方式は、ページが決まるまで番号が決まらないので採っていない（[docs/specifications.md の「注の番号」](specifications.md#注の番号)、[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）。番号の字の幅が組みを変え、組みがページを変えるので、番号をレイアウトの後（S2）に決める手順と、その繰り返しが止まることを ADR で決める。
 - **韻文の拡張**：行番号（5 行ごとの番号など）（[docs/adr/0003](adr/0003-verse-line-breaks.md)）。
 - **参考文献のスタイル**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、参考文献のスタイルを選び、定められるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）もこの項目で決める。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。
 - **ページ番号と柱の拡張**：EPUB の `page-list`、柱とノンブルを見出しの書体で組むこと、柱、ノンブル、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。
@@ -224,6 +224,7 @@ v3 の GUI は、次の原則に従って作る。
 - **技術書のコードブロックの見え方**：行番号、キャプション、強調、注釈の印を付けたコードブロックを PDF と HTML で開き、技術書として読める見た目であることを目で確かめていない。HTML で行番号と差分の印が選択とコピーに含まれないことは、`browser.yml` が Chromium と Safari で確かめる（[docs/adr/0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 - **本文の中のコードの改行の印の刷り**：既定の改行の印は、コードの字の大きさの 1/20 の太さの線を、コードの色の半分の網で描く（13Q で 0.16mm、11Q で 0.14mm）。オフセットの印刷で、網点のために線が途切れて見えないかを、刷って確かめていない。画面と PNG では、二つのマニュアルを組んで目で見た（[golem-layout ADR 0042](golem-layout/adr/0042-draw-the-wrap-mark-of-inline-code-small-and-light.md)）。途切れて見えれば、線の太さか色の比を改める ADR を作る。
 - **マニュアルの中の InDesign の記述**（v1.0.0 のリリースで確かめる）：利用者向けのマニュアルの InDesign との対応と比較の記述（「はじめに」と付録 E）を、InDesign に詳しい人が確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
+- **shem が描く画像と図版**：画像と図版のある見た目の回帰テストの入力（`figures`、`complex-vertical`、`complex-horizontal`、`specimens-horizontal`、`specimens-vertical`）を shem と pdftoppm で描いて並べ、色、透過、向き、切り抜きが合うことを目で確かめていない。shem の描いた結果が正しいことは、shem 自身のテストでも見た目の回帰テストでも示せない（[docs/adr/0294](adr/0294-draw-images-and-figures-in-the-visual-regression-test.md)）。shem は ICC のプロファイルを使わないので、色は近ければよい。
 
 - **v0.1.0-rc4 のリリースの前のマニュアルの目視**：rc3 の作業でマニュアルを直した箇所を、組んだ PDF と HTML で目で確かめていない。v0.1.0-rc3 のリリース（2026-10-24）までに見られなかったので、メンテナーが v0.1.0-rc4 のリリースの前にまとめて確かめる（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)）。
   - 行番号を付けたコードブロック。利用者のマニュアルの第 1 章の『高野聖』の原稿で、本文の「11 行目と 20 行目」が行番号と合っていること。第 4 章、第 5 章、第 8 章、開発者のマニュアルの `.wat`、チャネルの例、関数の型の一覧、ADR の雛形も見ること。

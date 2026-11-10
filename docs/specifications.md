@@ -1290,6 +1290,14 @@ shem は、同じ版なら環境によらず同じ画素を出すと約束して
 直してよいのは、古い版と新しい版で同じ SHA-256 になるページに限る。
 
 Golem の Writer が shem の読まない演算子や資源を書くようになるときは、先に shem を直してリリースし、固定した版を上げる。
+この順は、`scripts/visual/pdf-subset.txt` の検査で保つ（[ADR 0294](adr/0294-draw-images-and-figures-in-the-visual-regression-test.md)）。
+この一覧は、見た目の回帰テストの入力の PDF が使い、固定した shem が読む種類を、一行に一つずつ書く。
+種類は、ページと Form XObject の内容の演算子、ストリームのフィルタ、色の空間（`Indexed` と Separation の基の色の空間を含む）、XObject の `Subtype`、フォントの `Subtype` である。
+golem-driver のテストは、`scripts/visual/build.sh --list` の入力を `build.sh` と同じように組み、PDF からこれらの種類を数える。
+マニュアルは、`scripts/manual/fetch-fonts.sh` が取るフォントの代わりに、fixture の CFF の OpenType のフォントで組む。
+一覧にない種類を使う入力があればテストは落ち、どの入力も使わない種類が一覧にあってもテストは落ちる。
+これで、Writer が shem の読まないものを書き始めたことが、shem で描く前に golem-driver のテストで見つかる。
+一覧に種類を足すのは、それを読む shem の版を固定する変更の中だけである。
 
 ### 式の評価と diagnostics
 
