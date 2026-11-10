@@ -13,12 +13,12 @@ the nightly job by its depth ('lineSettingsAt', 'lineChecksAt').
 -}
 module EnumSplitSpec (enumSplitTests) where
 
+import CiteBreakEnum (citePrDepth)
 import Data.Char (isDigit, isSpace)
-import Data.Maybe (isNothing)
 import Data.List (isPrefixOf, isSuffixOf, stripPrefix)
+import Data.Maybe (isNothing)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import CiteBreakEnum (citePrDepth)
 import JoinedWordEnum (joinedPrDepth)
 import LineBreakEnum (Setting (..))
 import LineBreakInvariantsSpec (Adjust (..), LineSetting, lineChecksAt, lineLimitsAt, lineSettingsAt, linesPrDepth)

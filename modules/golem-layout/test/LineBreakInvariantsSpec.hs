@@ -29,9 +29,9 @@ import Data.ByteString.Lazy qualified as BL
 import Data.Char (ord)
 import Data.List (intercalate, nub)
 import Data.Map.Strict qualified as Map
+import Data.Ratio ((%))
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
