@@ -1,10 +1,14 @@
+{-# LANGUAGE CPP #-}
+
 module Main (main) where
 
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import InMemoryWritesSpec (inMemoryWritesTests)
 import LocaleSpec
+#ifdef GOLEM_PLUGINS
 import PluginsSpec
+#endif
 import System.Environment (lookupEnv)
 import Test.Tasty
 
@@ -22,8 +26,12 @@ tests :: Maybe String -> TestTree
 tests cacheHome =
   testGroup
     "golem-driver: the tests that change the state of the process (docs/adr/0146)"
-    [ testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
-      cacheHomeRestored cacheHome,
-      localeTests,
-      inMemoryWritesTests
-    ]
+    (pluginGroups cacheHome <> [localeTests, inMemoryWritesTests])
+
+-- | The tests of the plugins, only with them, as the library (docs/adr ADR 0300).
+pluginGroups :: Maybe String -> [TestTree]
+#ifdef GOLEM_PLUGINS
+pluginGroups cacheHome = [testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests, cacheHomeRestored cacheHome]
+#else
+pluginGroups _ = []
+#endif

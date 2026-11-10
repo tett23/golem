@@ -88,13 +88,14 @@ openTypeFeaturesTests =
       testCase "I2: halt of a style is turned off on JLReq's punctuation only" $ do
         let extra c = shExtra (shapingOf (const []) False (featured ["halt"]) c)
         lastValue "halt" (extra '「') @?= Just 0
-        extra '「' @?= ["-palt", "-vpal", "-halt"]
+        -- fwid: full-width glyphs for JLReq's punctuation (docs/adr/0302)
+        extra '「' @?= ["-palt", "-vpal", "-halt", "fwid"]
         extra 'あ' @?= ["halt"]
         -- without halt the punctuation is shaped as before
-        shExtra (shapingOf (const []) False (featured []) '「') @?= ["-palt", "-vpal"],
+        shExtra (shapingOf (const []) False (featured []) '「') @?= ["-palt", "-vpal", "fwid"],
       testCase "I2: halt, vhal, chws and vchw of the role are turned off on JLReq's punctuation" $ do
-        shExtra (shapingOf (const ["chws", "vhal"]) True (featured []) '」') @?= ["-palt", "-vpal", "-vhal", "-chws"]
-        shExtra (shapingOf (const ["chws", "-chws"]) True (featured []) '」') @?= ["-palt", "-vpal"],
+        shExtra (shapingOf (const ["chws", "vhal"]) True (featured []) '」') @?= ["-palt", "-vpal", "-vhal", "-chws", "fwid"]
+        shExtra (shapingOf (const ["chws", "-chws"]) True (featured []) '」') @?= ["-palt", "-vpal", "fwid"],
       testCase "I1: a range in smcp is measured and drawn with smcp" $ do
         let style = horizontalStyle <> "\n[fonts.body]\nja = \"fonts/noto.otf\"\nlatin = \"fonts/sans.otf\"\n\n[character-styles.sc]\nfeatures = [\"smcp\"]\n"
         files <- fontFiles

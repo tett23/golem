@@ -11,15 +11,14 @@
 -- dependencies of the tests are in cabal.project.wasm.freeze with the
 -- versions of cabal.project.freeze (scripts/ci/wasm-freeze.sh).
 -- golem-test-support and golem-doc-gen are packages of the test suites
--- only; golem-plugin is here because the suites of golem-driver depend
--- on it, which the solver cannot plan without it.
+-- only. The suites of golem-driver depend on golem-plugin only with the
+-- flag plugins, which cabal.project.wasm turns off (docs/adr/0300).
 import: cabal.project.wasm
 import: cabal.project.wasm.freeze
 
 packages:
   modules/golem-test-support
   modules/golem-doc-gen
-  modules/golem-plugin
 
 tests: True
 

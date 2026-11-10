@@ -7,7 +7,7 @@ Golem をソースからビルドする手順は、README の Development の節
 
 ## 道具をそろえる
 
-Haskell の処理系は GHC 9.10.3、ビルドの道具は cabal-install 3.16.1.0 であり、どちらも ghcup で入れる。[index reading=cabal: cabal]
+Haskell の処理系は GHC 9.10.3、ビルドの道具は cabal-install 3.18.2.0 であり、どちらも ghcup で入れる。[index reading=cabal: cabal]
 バージョンは [code: cabal.project] の [code: with-compiler: ghc-9.10.3] と [code: mise.toml] に書いてある。
 [code: mise.toml] は ghcup の [code: bin] を [code: PATH] に加え、二つのバージョンを環境変数に記録する。
 HarfBuzz、FreeType、wasmtime の C の部分をビルドするので、C と C++ のコンパイラも要る。
@@ -251,7 +251,7 @@ shem はテストと CI からコマンドとして呼び、golem の実行フ�
 $ scripts/visual/fetch-shem.sh
 ```
 
-このスクリプトは、shem の GitHub の release から、固定した版（v0.1.0-rc7）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ [code: third_party/shem] に入れる。[index reading="fetch-shem.sh": fetch-shem.sh]
+このスクリプトは、shem の GitHub の release から、固定した版（v0.1.0-rc9）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ [code: third_party/shem] に入れる。[index reading="fetch-shem.sh": fetch-shem.sh]
 入れる前に [code: shem --version] が固定した版を出すことも確かめる。
 [code: third_party/shem/VERSION] にはアーカイブの名前と SHA-256 を書き、どちらもスクリプトのものと一致すれば、ネットワークに接続しない。
 release の [code: SHA256SUMS] は読まない。

@@ -182,7 +182,10 @@ data Look = Look
     lkStrikethrough :: !(Maybe Decoration),
     {- | the text is in a range that does not break (docs/adr ADR 0272):
     no break between two of its characters but a forced one
-    -} lkNoBreak :: !Bool
+    -} lkNoBreak :: !Bool,
+    {- | JLReq's punctuation is shaped with fwid unless a width feature is
+    written (docs/adr/0302): punctuation-width = "full-width"
+    -} lkFullWidthPunctuation :: !Bool
   }
   deriving stock (Eq, Ord, Show)
 
@@ -240,4 +243,4 @@ outside a language span, no wrap mark, no features, the normal position and
 breaking.
 -}
 plainLook :: Text -> Sp -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing False
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing False True

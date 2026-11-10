@@ -200,6 +200,8 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 文字の詰めと送りも、スタイルで指定する。
 文字スタイルと段落スタイルの `kerning`（`metrics`、`japanese-equal-width`、`none`）、`tracking`、`proportional-metrics`、`baseline-shift` で、カーニングの方式、トラッキング、プロポーショナルメトリクス、ベースラインシフトを指定する。
 既定はフォントのペアカーニングを和文にも欧文にもかける `metrics` である（[docs/adr/0020](docs/adr/0020-indesign-character-features.md)）。
+括弧類、句読点、中点類は、PDF で既定でフォントの全角の字形（`fwid`）で組み、全角の字形がなければ全角の字幅の箱の中に字形を置く。
+文字スタイルと段落スタイルの `punctuation-width = "font"` で、フォントの字形のまま組む（[ADR 0302](docs/adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
 
 段落スタイルの `regex-styles = [{ pattern = '[0-9]+', style = "bold" }]` のような正規表現スタイルは、段落の中で正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル、[docs/adr/0015](./docs/adr/0015-regex-styles.md)）。
 
@@ -367,7 +369,7 @@ wasm の版だけは、ネイティブの版と違うパッケージを使う（
 
 ### ビルドとテスト
 
-GHC 9.10.3 と cabal-install 3.16.1.0 を ghcup で入れる。
+GHC 9.10.3 と cabal-install 3.18.2.0 を ghcup で入れる。
 `mise.toml` は ghcup の `bin` を `PATH` に加える。
 `mise.toml` は、リリースノートを書く Claude Code のバージョンも固定する（`mise install` で入る）。
 C と C++ のコンパイラも必要である。

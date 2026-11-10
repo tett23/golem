@@ -1,10 +1,16 @@
+{-# LANGUAGE CPP #-}
+
 module CliSpec (newProjectTests, newPreflightTests, preflightTests) where
 
+#ifdef GOLEM_PLUGINS
 import Control.Exception (try)
+#endif
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
+#ifdef GOLEM_PLUGINS
 import Data.ByteString.Lazy qualified as BL
 import Data.Either (isRight)
+#endif
 import Data.List (isSuffixOf, sort)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
@@ -12,22 +18,37 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
+#ifdef GOLEM_PLUGINS
 import Golem.Driver.New
-import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry)
+#endif
+import Golem.LayoutSpec (Rect (..))
+#ifdef GOLEM_PLUGINS
+import Golem.LayoutSpec (PageGeometry (..), pageGeometry)
+#endif
 import Golem.Length (Sp (..))
+#ifdef GOLEM_PLUGINS
 import Golem.Plugin.Lock (hashHex)
 import Golem.Preflight.Rules (Level (..), Rules (..), parseRules, printRules)
+#endif
 import Golem.Preflight.View (GlyphView (..), ImageView (..), LineView (..), PageView (..), RuleView (..), View (..))
+#ifdef GOLEM_PLUGINS
 import Golem.Project.Style (Page (..), Style (..), parseDim, parseStyle)
+#endif
 import Golem.Syntax
 import Support
-import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
+import System.Directory (copyFile, createDirectoryIfMissing)
+#ifdef GOLEM_PLUGINS
+import System.Directory (doesDirectoryExist, doesFileExist)
+#endif
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
+#ifdef GOLEM_PLUGINS
 import Test.Tasty.Golden (goldenVsString)
+#endif
 import Test.Tasty.HUnit
 
+#ifdef GOLEM_PLUGINS
 -- | A file of the template; one that is not in it fails the test (docs/adr/0064).
 templateText :: Language -> FilePath -> IO T.Text
 templateText lang file = maybe (assertFailure ("the template has no " <> file)) pure (lookup file (templateFiles lang uuid0))
@@ -152,6 +173,14 @@ newPreflightTests =
       Just rest | isSetting rest -> rest
       _ -> l
     isSetting r = "[" `T.isPrefixOf` r || (" = " `T.isInfixOf` r && not ("name" `T.isPrefixOf` r))
+#else
+-- golem new only with the plugins, as the library (docs/adr ADR 0300)
+newProjectTests :: TestTree
+newProjectTests = testGroup "golem new (golem-cli ADR 0003)" []
+
+newPreflightTests :: [TestTree]
+newPreflightTests = []
+#endif
 
 -- | A one-chapter project for golem preflight, with the fake fonts.
 withPreflightProject :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
@@ -370,7 +399,14 @@ preflightTests =
         map diagCode (prDiagnostics p) @?= [DiagnosticCode "G09001"]
         prPdf p @?= Nothing
   ]
-    <> [ testCase ("the template fails print with G09014 only, and passes with intent; it has a bleed (golem-pdf ADR 0010) (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
+    <> templatePreflightTests
+    <> g0904Tests
+
+-- | The preflight of the template of golem new, only with the plugins, as the library (docs/adr ADR 0300).
+templatePreflightTests :: [TestTree]
+#ifdef GOLEM_PLUGINS
+templatePreflightTests =
+  [ testCase ("the template fails print with G09014 only, and passes with intent; it has a bleed (golem-pdf ADR 0010) (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
            let dir = tmp </> "book"
            createProject dir (templateFiles lang uuid0) Nothing >>= assertBool "written" . isRight
            writeFiles dir [(fsPath f, "fake") | f <- templateFonts lang]
@@ -385,4 +421,6 @@ preflightTests =
            errorCodes (prDiagnostics q) @?= []
        | (lang, tag) <- [(Japanese, "ja"), (English, "en")]
        ]
-    <> g0904Tests
+#else
+templatePreflightTests = []
+#endif

@@ -10,6 +10,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Either (isRight)
+import Data.Int (Int64)
 import Data.Map.Strict qualified as Map
 import Data.Word (Word8)
 import Golem.Pdf
@@ -30,8 +31,11 @@ import Text.Printf (printf)
 
 -- ------------------------------------------------------------------ building PDFs
 
--- | An object of a PDF: its number and what is between @obj@ and @endobj@.
-type RawObj = (Int, ByteString)
+{- | An object of a PDF: its number and what is between @obj@ and @endobj@;
+the number an 'Int64', so that numbers past 2^31 are the same on wasm32
+(docs/adr ADR 0300).
+-}
+type RawObj = (Int64, ByteString)
 
 objBytes :: RawObj -> ByteString
 objBytes (n, b) = BC.pack (show n) <> " 0 obj\n" <> b <> "\nendobj\n"
@@ -40,14 +44,14 @@ stream :: ByteString -> ByteString -> ByteString
 stream dict body = "<< " <> dict <> " /Length " <> BC.pack (show (BS.length body)) <> " >>\nstream\n" <> body <> "\nendstream"
 
 -- | The bodies laid after @prefix@, with their offsets.
-layout :: ByteString -> [RawObj] -> (ByteString, [(Int, Int)])
+layout :: ByteString -> [RawObj] -> (ByteString, [(Int64, Int)])
 layout prefix objs =
   let bodies = map objBytes objs
       offsets = scanl (+) (BS.length prefix) (map BS.length bodies)
    in (prefix <> BS.concat bodies, zip (map fst objs) offsets)
 
 -- | A classic cross-reference section for the objects at their offsets.
-xrefTable :: [(Int, Int)] -> ByteString
+xrefTable :: [(Int64, Int)] -> ByteString
 xrefTable offs =
   "xref\n"
     <> BS.concat
@@ -106,7 +110,7 @@ xrefStreamPdf inStream direct =
       maxN = xrefNum
       entry n
         | Just o <- lookup n offs = [1] <> be 4 o <> be 2 0
-        | Just i <- lookup n (zip (map fst inStream) [0 :: Int ..]) = [2] <> be 4 stmNum <> be 2 i
+        | Just i <- lookup n (zip (map fst inStream) [0 :: Int ..]) = [2] <> be 4 (fromIntegral stmNum) <> be 2 i
         | n == xrefNum = [1] <> be 4 xrefAt <> be 2 0
         | otherwise = [0] <> be 4 0 <> be 2 0
       rows = [entry n | n <- [0 .. maxN]]
