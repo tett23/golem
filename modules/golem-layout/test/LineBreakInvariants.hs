@@ -246,12 +246,14 @@ l4Inseparable _ p =
     <> [ Breach L4 i ("lines " <> show (i + 1) <> " and " <> show (i + 2) <> " break between " <> show x <> " and " <> show y <> ", a pair that may not be broken")
        | (i, l, _) <- pairs p,
          Just at <- [breakIndex p i],
-         (i1, i2, x, y) <- adjacentPairs (pText p) (pItems p),
+         (i1, i2, x, y) <- kept,
          i1 < at,
          at < i2,
-         pairForbidden False x y || (pNumberUnit p >= infPenalty && isJust (numberUnitOf x y)),
          not (wide p l)
        ]
+  where
+    -- the pairs of golem-layout ADR 0049, and of docs/adr/0275 when its penalty is 10000, once for the paragraph
+    kept = [q | q@(_, _, x, y) <- adjacentPairs (pText p) (pItems p), pairForbidden False x y || (pNumberUnit p >= infPenalty && isJust (numberUnitOf x y))]
 
 {- | L5: no line ends past W and its protrusion at the end, with 1 sp of
 rounding, but a line that is overfull and has no break where it would

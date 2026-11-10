@@ -13,6 +13,7 @@ module NumberUnitSpec (numberUnitTests, numberUnitPenalty) where
 import Data.Bits (xor)
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (ord)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -22,7 +23,7 @@ import Golem.Doc.IR qualified as IR
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..))
-import Golem.TestSupport.Enum (Tiers (..), listsOf, upTo)
+import Golem.TestSupport.Enum (Result (..), Tiers (..), Violation (..), checkAllPar, listsOf, tallyAllPar, upTo)
 import LineBreakEnum (Setting (..), codeEnv, composeEnv, normalSettings, parts)
 import LineBreakInvariants (penalizePairs, refArabicDigit)
 import Numeric (showHex)
@@ -205,13 +206,15 @@ goldenTests =
   [ goldenVsString
       "W3, W4: the items of every run are those before the ADR with its change (test/golden/number-unit.tsv)"
       "test/golden/number-unit.tsv"
-      (pure (BL.fromStrict (TE.encodeUtf8 (T.unlines (map line runs))))),
+      (pure (BL.fromStrict (TE.encodeUtf8 (T.unlines [Map.findWithDefault "" run lines' | run <- concat (upTo 2 runsT)])))),
     testCase "W1, W2: the change of the ADR changes no items of any run: the breaks of its pairs are already its penalty" $
-      take 5 [(run, k, p, v) | run <- runs, p <- [10000, 50], v <- [False, True], (k, its) <- itemsOfRun p v run, numberUnitChange p (textOf k run) its /= its]
-        @?= []
+      checkAllPar 2 runsT (\run -> [Violation "unchanged" (show (run, k, p, v)) | p <- [10000, 50], v <- [False, True], (k, its) <- itemsOfRun p v run, numberUnitChange p (textOf k run) its /= its])
+        @?= Passed (length (concat (upTo 2 runsT)))
   ]
   where
-    runs = concat (upTo 2 (listsOf (Tiers [parts])))
+    runsT = listsOf (Tiers [parts])
+    -- each run hashed on every processor
+    lines' = snd (tallyAllPar 2 runsT (\run -> ([], Map.singleton run (line run))))
     line run = T.intercalate "\t" (T.pack (show run) : [hashOf p v run | p <- [10000, 50], v <- [False, True]])
     hashOf p v run = T.pack (showHex (fnv (show [(k, itemsShape (numberUnitChange p (textOf k run) its)) | (k, its) <- itemsOfRun p v run])) "")
     textOf (_, pre, post) run = T.replicate pre "あ" <> T.concat run <> T.replicate post "い"
