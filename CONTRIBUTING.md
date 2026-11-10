@@ -184,10 +184,11 @@ golem-layout のテストの「every input」が落ちたら、表示された�
 
 | 範囲 | テスト | 上限 | 抜き取りの数 |
 |---|---|---|---|
-| 改ページ | `cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` | `GOLEM_ENUM_DEPTH`（プルリクエストは 3、毎晩は 5） | `GOLEM_ENUM_PAGINATION_SAMPLES`（プルリクエストは 0、毎晩は 500 万） |
+| 改ページ | `cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/&&!/keep options/'` | `GOLEM_ENUM_DEPTH`（プルリクエストは 3、毎晩は 5） | `GOLEM_ENUM_PAGINATION_SAMPLES`（プルリクエストは 0、毎晩は 500 万） |
+| 段落の分け方 | `cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/keep options/&&/every input/'` | `GOLEM_ENUM_KEEP_DEPTH`（プルリクエストは 3、毎晩は 4） | `GOLEM_ENUM_KEEP_SAMPLES`（プルリクエストは 0、毎晩は 500 万） |
 | 行分割 | `cabal test golem-layout-test --test-option=-p --test-option='/line breaking invariants on/'` | `GOLEM_ENUM_LINES_DEPTH`（プルリクエストは 2、毎晩は 3。2 までは 4 字までの行、3 からは 5 字までの行） | `GOLEM_ENUM_LINES_SAMPLES`（プルリクエストは 0、毎晩は 500 万） |
 
-たとえば `GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_PAGINATION_SAMPLES=100000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'` のように、調べる要素の数を上げて走らせる。
+たとえば `GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_PAGINATION_SAMPLES=100000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/&&!/keep options/'` のように、調べる要素の数を上げて走らせる。
 golem-layout のテストは `-threaded` で作り、入力をプロセッサの数に分けて調べる。
 
 列挙のテストの予算は、範囲ごとに 10 秒、すべての範囲の和で 30 秒である（[ADR 0281](./docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md)）。

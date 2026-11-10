@@ -37,6 +37,8 @@ enumYml = "../../.github/workflows/enum.yml"
 areas :: [(String, Int)]
 areas =
   [ ("GOLEM_ENUM_DEPTH", prDepth),
+    -- the keep options (docs/adr/0261), an area of their own (docs/adr ADR 0304)
+    ("GOLEM_ENUM_KEEP_DEPTH", prDepth),
     ("GOLEM_ENUM_LINES_DEPTH", linesPrDepth),
     -- the order of line adjustment (docs/adr/0278), at the depth of the line breaking
     ("GOLEM_ENUM_LINES_DEPTH", linesPrDepth),

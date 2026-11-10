@@ -160,7 +160,18 @@ jobs:
         env:
           GOLEM_ENUM_DEPTH: "5"
           GOLEM_ENUM_PAGINATION_SAMPLES: "5000000"
-        run: cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/'
+        run: cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/&&!/keep options/'
+      # the keep options of paragraph styles (docs/adr/0261), an area of
+      # their own: every input of up to GOLEM_ENUM_KEEP_DEPTH elements, and
+      # inputs of one element more drawn from their enumeration; the pull
+      # requests check up to the depth of PaginateInvariantsSpec.prDepth
+      # and draw none (docs/adr ADR 0304)
+      - name: The keep options on every small input (docs/adr/0261, docs/adr ADR 0304)
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' && !inputs.timings }}
+        env:
+          GOLEM_ENUM_KEEP_DEPTH: "4"
+          GOLEM_ENUM_KEEP_SAMPLES: "5000000"
+        run: cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/keep options/&&/every input/'
       # line breaking: every input of up to GOLEM_ENUM_LINES_DEPTH parts in
       # lines of up to 5 em, and inputs of one part more drawn; the pull
       # requests check up to LineBreakInvariantsSpec.linesPrDepth parts in

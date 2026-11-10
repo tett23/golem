@@ -1,6 +1,6 @@
 # ADR 0261: 段落スタイルの分割禁止と連動
 
-ステータス: 採択
+ステータス: 採択→毎晩の上限は [ADR 0304](0304-check-the-keep-options-up-to-4-elements-and-draw-5-every-night.md)
 
 ## 文脈
 

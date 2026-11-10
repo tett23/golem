@@ -4933,6 +4933,10 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 `@need-lines` と行アキの規則は、[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md) の「不変条件」の節の P1 から P4 と、[golem-layout ADR 0026](golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の「不変条件」の節の P5 として、golem-layout のテストで確かめる。
 
 段落の分け方の規則は、[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md) の「不変条件」の節の K1 から K7 として、段落の分け方の要素を足した列挙の入力で golem-layout のテストが確かめる。
+この列挙は、改ページの列挙とは別の範囲として調べる（[ADR 0304](adr/0304-check-the-keep-options-up-to-4-elements-and-draw-5-every-night.md)）。
+プルリクエストの CI は要素 3 個まで、毎晩の `enum.yml` は要素 4 個までのすべての入力を調べる（`GOLEM_ENUM_KEEP_DEPTH`）。
+毎晩の `enum.yml` は、さらに、同じ列挙の要素 5 個の入力を 500 万、種を固定した擬似乱数で抜き取って調べる（`GOLEM_ENUM_KEEP_SAMPLES`）。
+抜き取りで見つけた違反は、違反が残るかぎり要素を一つずつ取り除いた入力を表示する。
 
 段落の囲みは、中の段落の行のあいだで段とページをまたいで分け、囲みの部分ごとに前と後の k 行を取る（「style.toml」の段落の囲みの説明）。
 囲みの規則は、[ADR 0271](adr/0271-paragraph-backgrounds-and-borders.md) の「不変条件」の節として、次のテストが確かめる。

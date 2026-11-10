@@ -68,6 +68,23 @@ enumSamples = wholeNumber "GOLEM_ENUM_PAGINATION_SAMPLES" 0
 sampleSeed :: Word64
 sampleSeed = 0x0208
 
+{- | The depth of the keep options (docs/adr/0261), an area of its own
+(docs/adr ADR 0304): GOLEM_ENUM_KEEP_DEPTH, a whole number of 0 or more,
+or 'prDepth'.
+-}
+keepDepth :: IO Int
+keepDepth = wholeNumber "GOLEM_ENUM_KEEP_DEPTH" prDepth
+
+{- | The inputs of the keep options drawn one element past their depth
+(docs/adr ADR 0304): GOLEM_ENUM_KEEP_SAMPLES, or none.
+-}
+keepSamples :: IO Int
+keepSamples = wholeNumber "GOLEM_ENUM_KEEP_SAMPLES" 0
+
+-- | The seed of the inputs of the keep options drawn (docs/adr ADR 0304).
+keepSeed :: Word64
+keepSeed = 0x0304
+
 -- | A variable that holds a whole number of 0 or more, or the default when it is unset or empty.
 wholeNumber :: String -> Int -> IO Int
 wholeNumber name def =
@@ -529,6 +546,18 @@ keepTests =
       -- a keep-with-next only after a paragraph or a stanza, a start only before one
       enumFlows [EHeading, EKeepNext 2, EStart BreakPage, EPara 1] @?= [FHeading 2 False 1 [LineBox 0 [] [] [] 0], FSection (OfParagraph (controlSpan 1)) BreakPage, FParagraph defaultKeep [LineBox 1 [] [] [] 0]]
       enumFlows [EPara 1, EKeepNext 2, EStart BreakPage, EHeading] @?= [FParagraph defaultKeep [LineBox 0 [] [] [] 0], FKeepNext (controlSpan 0) 2, FHeading 2 False 1 [LineBox 1 [] [] [] 0]],
+    testCase "KS3, KS4: an input of the keep options drawn with 5 elements is of their enumeration, and the same seed draws the same inputs (docs/adr ADR 0304)" $ do
+      let drawn = sampleT 1 1000 (drawKeepInput 5)
+      length drawn @?= 1000
+      assertBool "every input has 5 elements" (all ((== 5) . length . inElements) drawn)
+      assertBool "every input has a column of 3 to 5 grid lines" (all ((`elem` [3 .. 5]) . inLines) drawn)
+      assertBool "every input has pages of one or two columns" (all ((`elem` [1, 2]) . inColumns) drawn)
+      assertBool "every element is of the keep options of its column" (all (\i -> all (`elem` keepElementsFor (inLines i)) (inElements i)) drawn)
+      -- the bounds: columns of 3 and 5 grid lines, one and two columns, the first and the last element
+      assertBool "columns of 3 and 5 grid lines are drawn" (all (\c -> any ((== c) . inLines) drawn) [3, 5])
+      assertBool "pages of one and two columns are drawn" (all (\k -> any ((== k) . inColumns) drawn) [1, 2])
+      assertBool "the first and the last element are drawn" (all (\pick -> any (\i -> pick (keepElementsFor (inLines i)) `elem` inElements i) drawn) [(!! 0), \es -> es !! (length es - 1)])
+      drawn @?= sampleT 1 1000 (drawKeepInput 5),
     testGroup
       "K1 to K6 by hand"
       [ testCase "K1 first part: one line of a paragraph of keep-first-lines 3 left at the end of a column" $
@@ -558,15 +587,33 @@ keepTests =
         testCase "K5, K6: a start of a column in the next column breaks nothing" $
           keepBroken [para 0 1, FSection (OfParagraph (controlSpan 0)) BreakColumn, para 1 1] [column 1 0 3 [SLine 0], column 1 1 3 [SLine 1]] @?= []
       ],
-    testCase "K1 to K6 and I1 to I8 but I4 and I5 hold for every input of the keep options up to GOLEM_ENUM_DEPTH elements" $ do
-      depth <- enumDepth
+    testCase "K1 to K6 and I1 to I8 but I4 and I5 hold for every input of the keep options up to GOLEM_ENUM_KEEP_DEPTH elements (docs/adr ADR 0304)" $ do
+      depth <- keepDepth
       -- keepInputs of docs/adr/0261: columns of 3 to 5 grid lines and
       -- 'keepElementsFor'; built here, not in a value of its own, which
       -- would hold every input checked (hundreds of millions at the depth
       -- of the nightly job, more than the memory of its runner)
-      case checkAllPar depth (inputsOver [3 .. 5] keepElementsFor) (\input -> [Violation (show (breachOf b)) (breachWhy b) | b <- keepBreaches 1 (enumFlows (inElements input)) (paginateInput input)]) of
+      case checkAllPar depth (inputsOver [3 .. 5] keepElementsFor) keepViolations of
         Passed _ -> pure ()
-        Failed k input vs -> assertFailure (report ("the smallest input of the keep options that breaks an invariant has " <> show k <> " elements") input vs)
+        Failed k input vs -> assertFailure (report ("the smallest input of the keep options that breaks an invariant has " <> show k <> " elements") input vs),
+    testCase "K1 to K6 and I1 to I8 but I4 and I5 hold for every input of the keep options drawn one element past GOLEM_ENUM_KEEP_DEPTH, GOLEM_ENUM_KEEP_SAMPLES of them (docs/adr ADR 0304)" $ do
+      depth <- keepDepth
+      count <- keepSamples
+      let drawn = Tiers [sampleT keepSeed count (drawKeepInput (depth + 1))]
+      case checkAllPar 0 drawn keepViolations of
+        Passed _ -> pure ()
+        Failed _ input _ ->
+          let small = shrinkKeepInput input
+           in assertFailure
+                ( report
+                    ( "an input of the keep options drawn with "
+                        <> show (depth + 1)
+                        <> " elements breaks an invariant; with elements taken out as long as it still does, it has "
+                        <> show (length (inElements small))
+                    )
+                    small
+                    (keepViolations small)
+                )
   ]
   where
     keepBroken flows ps = map breachOf (keepBreaches 1 flows ps)
@@ -709,13 +756,24 @@ its column of 3 to 8 grid lines, its pages of one or two columns, then
 each element.
 -}
 drawInput :: Int -> SplitMix -> (Input, SplitMix)
-drawInput n g0 =
-  let (c, g1) = oneOf [3 .. 8] g0
+drawInput = drawOver [3 .. 8] elementsFor
+
+{- | An input of n elements drawn from the enumeration of the keep options
+(docs/adr/0261, docs/adr ADR 0304): its column of 3 to 5 grid lines, its
+pages of one or two columns, then each element of 'keepElementsFor'.
+-}
+drawKeepInput :: Int -> SplitMix -> (Input, SplitMix)
+drawKeepInput = drawOver [3 .. 5] keepElementsFor
+
+-- | An input of n elements: its column of one of cs grid lines, its pages of one or two columns, then each element of its column.
+drawOver :: [Int] -> (Int -> [Element]) -> Int -> SplitMix -> (Input, SplitMix)
+drawOver cs els n g0 =
+  let (c, g1) = oneOf cs g0
       (k, g2) = oneOf [1, 2] g1
       go 0 g = ([], g)
-      go m g = let (e, g') = oneOf (elementsFor c) g; (es, g'') = go (m - 1 :: Int) g' in (e : es, g'')
-      (els, g3) = go n g2
-   in (Input c k els, g3)
+      go m g = let (e, g') = oneOf (els c) g; (es, g'') = go (m - 1 :: Int) g' in (e : es, g'')
+      (es0, g3) = go n g2
+   in (Input c k es0, g3)
 
 {- | The input with elements taken out as long as it still breaks an
 invariant no known bug excuses ('shrinkList'): a counterexample drawn is
@@ -723,6 +781,14 @@ not the smallest, and this one is smaller.
 -}
 shrinkInput :: Input -> Input
 shrinkInput (Input c k es) = Input c k (shrinkList (violates . Input c k) es)
+
+-- | The keep options and the invariants but I4 and I5 an input of them breaks (docs/adr/0261).
+keepViolations :: Input -> [Violation]
+keepViolations input = [Violation (show (breachOf b)) (breachWhy b) | b <- keepBreaches 1 (enumFlows (inElements input)) (paginateInput input)]
+
+-- | 'shrinkInput' for the keep options: elements taken out as long as the input still breaks an invariant (docs/adr ADR 0304).
+shrinkKeepInput :: Input -> Input
+shrinkKeepInput (Input c k es) = Input c k (shrinkList (not . null . keepViolations . Input c k) es)
 
 report :: String -> Input -> [Violation] -> String
 report what input vs =
