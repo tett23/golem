@@ -1,7 +1,8 @@
 module Main (main) where
 
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import LengthSpec qualified
 import Test.Tasty
 
 main :: IO ()
-main = defaultMain LengthSpec.tests
+main = enterPackageDirectory >> defaultMain LengthSpec.tests

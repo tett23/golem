@@ -20,6 +20,7 @@ import Golem.Pdf.Rect (Rect (..))
 import Golem.Pdf.Writer (Mark (..))
 import Golem.TestSupport.Bytes (hex)
 import Golem.TestSupport.ExternalTool (needsTool)
+import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
@@ -44,6 +45,7 @@ import UuidSpec qualified
 
 main :: IO ()
 main = do
+  enterPackageDirectory
   tinyJpeg <- BS.readFile "test/fixtures/tiny.jpg"
   defaultMainReportingSkips (const (tests tinyJpeg))
 

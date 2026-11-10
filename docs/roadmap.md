@@ -39,7 +39,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 ### テストと CI
 
 - **テストのスイートの時間の上限**：スイートの全体の所要時間に上限を設ける仕組みを作る（直近の実行の中央値などから決める）。golem-syntax のテストの 2 秒の時間切れは、行の数に比例する探索に戻ったことを見つけるためのもの（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)）であり、時間切れを 30 秒にそろえる規則（[ADR 0073](adr/0073-time-bounds-in-tests.md)）の例外として残している。この仕組みができたら、2 秒の時間切れも 30 秒にそろえ、性能の後退はこの仕組みで見つける。
-- **golem のテストのスイートを wasm32 で走らせる**：wasm32 の GHC の `Int` は 32 ビットなので、`Int` の幅で値が変わるコードは、`golem.wasm` の PDF と diagnostics をネイティブのものと違えさせる。[docs/adr/0247](adr/0247-keep-the-values-of-golem-wasm-independent-of-the-width-of-int.md) は、調べた範囲の箇所を直し、`scripts/wasm/compare.sh` の入力で確かめるだけで、調べていない `fromIntegral` と `fromInteger`（約 200 か所）を一つずつは読んでいない。golem-pdf などのテストのスイートを wasm32 でビルドし、Node の WASI で走らせれば、幅に依るコードを網羅的に見つけられる見込みがある。外部の道具（qpdf、Poppler など）を使うテストを分ける必要があるので、ADR で決める。
 - **画像と図版を描く処理**：shem（見た目の回帰テストのラスタライザ、[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）に、画像（JPEG、PNG）の復号と、図版（SVG と PDF の Form）の描画を自前で加える。v2 で図版をフレームに合わせて拡大縮小するとき、画像を描けない描画系は致命的になるので、それより前に入れる。
 - **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲の ADR はまだない。上から順に、前の範囲の結果を見て書く。
   - **表の列の幅**：`Golem.Layout.Table` の列の幅（列ごとの最小の幅と自然な幅、使える幅）を整数の小さな組で列挙し、列の幅の和と最小の幅の不変条件で確かめる（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。
@@ -116,6 +115,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### 機能をそろえた後の確かめ
 
+- **wasm32 で落ちることがわかっているテストを 0 にする**：毎晩の `wasm-tests.yml` は、`golem.wasm` のパッケージのテストのスイートを wasm32 で走らせ、落ちることがわかっているテストを `scripts/wasm/test-failures.tsv` に、製品の問題（product）とテストの問題（test）に分けて載せる（[docs/adr/0293](adr/0293-run-the-test-suites-of-the-packages-of-golem-wasm-on-wasm32-every-night.md)）。一覧が空になるまで、一つずつ別のプルリクエストで直す。wasm32 で組めないスイート（golem-plugin に依る golem-driver の二つと、`Int` を超えるリテラルを持つ golem-pdf のテスト）も、組めるようにする。
 - **より複雑な組版の fixture**：v0.1.0-rc4 で作る二冊の fixture（縦組みの一段の本と、横組みの二段の本）より複雑な組版の例を作り、fixture に入れる。二冊が組み合わせていない機能、たとえば縦組みの本文の段組みや、章ごとの書字方向と段数の切り替えのように後から足す機能を組み合わせ、機能のあいだの相互作用を、出力のゴールデン、決定性の検査、見た目の回帰テストで固定する。どの組み合わせを足すかと、fixture の数と大きさは、着手するときに ADR で決める。
 - **リンクの注釈についての ISO 15930-7 の照合**：v1.0.0 のタグを打つ前に、メンテナーが ISO 15930-7:2010 の本文を入手し、リンクの注釈、URI のアクション、`/Dest` を持つ文書の中のリンクの注釈、文書のアウトライン（`/Outlines`）、仕上がりの線の内側の印刷する注釈、外観のストリームのない注釈の六つの問いと、[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) の要件の一覧を照合する。結果は `docs/audits/<日付>-iso-15930-7-check.md` に記録する。今の出力が規格に反すると分かれば、[docs/adr/0182](adr/0182-external-links.md) の PDF/X-4 の節を改める ADR を作り、その実装がマージされるまで v1.0.0 のタグを打たない。タグを打つ前に、記録があり、この項目が消えていることを確かめる（[docs/adr/0221](adr/0221-check-iso-15930-7-for-link-annotations-before-rc4.md)、[docs/adr/0226](adr/0226-move-the-iso-15930-7-check-to-before-v1.md)）。v1.0.0 の前のリリースのリリースノートには、照合を済ませていないことを既知の問題として書く。
 - **Adobe の製品で確かめる見た目**：Adobe の製品を使う手の確かめは、費用がかかるので、v1.0.0 のリリースのときにメンテナーがまとめて行う（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md) の「決めたことの記録」）。見本は、見た目の回帰テストの入力の `specimens-horizontal` と `specimens-vertical` を使える。

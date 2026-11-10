@@ -26,12 +26,14 @@ import Golem.TestSupport.ExternalTool
 import Golem.TestSupport.ExternalTool.Internal
 import Golem.TestSupport.Gen
 import Golem.TestSupport.Manifest
+import Golem.TestSupport.PackageDirectory
 import Golem.TestSupport.Parallel
 import Golem.TestSupport.Skipped
 import Golem.TestSupport.TimeLimit
 import Golem.TestSupport.Watchdog
 import Hedgehog.Gen qualified as Gen
 import System.CPUTime (getCPUTime)
+import System.Directory (getCurrentDirectory)
 import System.Environment (getExecutablePath, lookupEnv, setEnv, unsetEnv)
 import System.Exit (ExitCode (..))
 import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
@@ -63,8 +65,20 @@ allTests =
         timeLimitTests,
         watchdogTests,
         enumTests,
-        cssCascadeTests
+        cssCascadeTests,
+        packageDirectoryTests
       ]
+
+-- | enterPackageDirectory on the native target (docs/adr/0293 A5).
+packageDirectoryTests :: TestTree
+packageDirectoryTests =
+  testGroup
+    "enterPackageDirectory"
+    [ testCase "A5 native: GOLEM_TEST_PACKAGE_DIR set, the working directory stays" $ do
+        before <- getCurrentDirectory
+        withEnv "GOLEM_TEST_PACKAGE_DIR" "/" enterPackageDirectory
+        getCurrentDirectory >>= (@?= before)
+    ]
 
 found, missing :: IO (Maybe FilePath)
 found = pure (Just "/usr/bin/tool")

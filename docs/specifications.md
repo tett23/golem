@@ -512,6 +512,33 @@ FreeType の `setjmp` と `longjmp` は、wasm の例外処理の標準化され
 cabal 3.14.2.0 は、`build-tool-depends` の `alex` と `happy` も wasm の GHC で組んで store に `alex.wasm` と `happy.wasm` を置くが、それは wasm のモジュールで、cabal は `alex` と `happy` として使わないので、ビルドの中で動くのは `PATH` のものだけである。
 `hsc2hs` は、`wasm32-wasi-cabal` が `--with-hsc2hs` で渡す wasm の GHC のものを使う。
 
+`golem.wasm` のパッケージのテストのスイートは、夜ごとの `.github/workflows/wasm-tests.yml` が wasm32 でも走らせる（[ADR 0293](adr/0293-run-the-test-suites-of-the-packages-of-golem-wasm-on-wasm32-every-night.md)）。
+wasm32 の `Int` は 32 ビットなので、ネイティブで通る断言が wasm32 で落ちたところが、`Int` の幅に依るコードの候補になる。
+走らせるスイートは、`cabal.project.wasm` の `packages:` にある golem のパッケージのすべてのスイートで、`scripts/ci/test-suites.sh wasm` が求める。
+組むのは `cabal.project.wasm-tests` で、`cabal.project.wasm` と `cabal.project.wasm.freeze` を取りこみ、テストを組む。
+テストだけが使う golem-test-support と golem-doc-gen と、golem-driver のスイートが依る golem-plugin を `packages:` に足す。
+`skylighting` と `skylighting-core` のテストは組まない。
+wasm32 には threaded の実行時システムがないので、`-threaded` と `-N` は wasm32 では付けない。
+golem-pdf のテストは、wasm32 で組めない uuid を、ほかのターゲットでだけ使い、uuid と比べるテストは wasm32 では組まない。
+golem-font のテストの C のファイルは、ライブラリと同じく wasm の例外処理で `setjmp.h` を読む。
+
+スイートは、`scripts/wasm/run-tests.mjs` が Node の `node:wasi` で一つずつ動かす。
+リポジトリの根を `/` に preopen し、環境の変数は `GOLEM_TEST_PACKAGE_DIR=/modules/<パッケージ>` と `TASTY_NO_CREATE=true` だけを渡し、標準入力は `/dev/null` とする。
+スイートの `main` は、最初に golem-test-support の `enterPackageDirectory` を呼ぶ。
+wasm32 では `GOLEM_TEST_PACKAGE_DIR` があればそこへ移り、ネイティブでは何もしない。
+テストのパッケージのディレクトリからの相対のパスは、ネイティブの `cabal test` と同じに解決される。
+
+`scripts/wasm/test-failures.tsv` は、wasm32 で落ちることがわかっているテストの一覧である。
+一行に、スイート、tasty のテストの名前（グループの名前と自身の名前を `.` でつないだもの）、理由、扱いを、タブで区切って書く。
+扱いは `product`（製品のコードが `Int` の幅に依る）か `test`（テストやテストの環境がホストに依る）である。
+`scripts/wasm/run-suite.sh` は、一覧のテストを tasty の `-p` で除いて走らせ、ほかのテストが通るか SKIP になることを確かめる。
+次に一覧のテストを一つずつ走らせ、落ちることを確かめる。
+一覧にないテストが落ちたとき、一覧のテストが通ったとき、一覧のテストがスイートにないときは、ジョブが落ちる。
+同じスイートを、ネイティブの GHC で外部の道具（qpdf、cddl、pdfinfo、pdftoppm）を `PATH` に置かず、`GOLEM_REQUIRE_EXTERNAL_TOOLS` を渡さずに走らせる。
+wasm32 で SKIP になったテストはこのときの SKIP に含まれ、一覧のテストはネイティブで通ることを、`scripts/wasm/check-skips.sh` が確かめる。
+組めなかったスイートは、ジョブの要約に書き、ジョブを落とす。
+ジョブは `ci.yml` の `wasm` のジョブのキャッシュ（ツールチェーンと wasm の cabal の store、`dist-wasm`）を戻すだけで、保存しない。
+
 CI の `wasm` ジョブは、組んだ直後の `golem.wasm` に古い形の例外処理の命令がないことを `scripts/wasm/legacy-eh.sh` で確かめる（[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md) の I1）。
 このスクリプトは、モジュールを Node で二度検証し、既定の Node では正しく、`--no-experimental-wasm-legacy-eh` を付けた Node では正しくないとき 1 で終わる。
 既定の Node でも正しくないモジュールは、別の誤りとして 2 で終わる。
