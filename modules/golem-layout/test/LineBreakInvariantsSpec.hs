@@ -12,6 +12,7 @@ the known bugs excluded by an explicit list whose inputs are counted.
 -}
 module LineBreakInvariantsSpec (lineInvariantTests, linesPrDepth, LineBug (..), lineBugs) where
 
+import Control.Monad (when)
 import Data.Bits (xor)
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (ord)
@@ -33,7 +34,6 @@ import LineBreakInvariants
 import Numeric (showHex)
 import System.Environment (lookupEnv)
 import Test.Tasty
-import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
 import Text.Read (readMaybe)
 
@@ -810,10 +810,13 @@ limitMisses maxWidth run =
 
 exhaustiveTests :: [TestTree]
 exhaustiveTests =
-  [ goldenVsString
-      "R1 (docs/adr/0274): balanced and without a limit, every input up to 2 parts is broken and placed as before the ADR (test/golden/line-adjustment-balanced.tsv)"
-      "test/golden/line-adjustment-balanced.tsv"
-      (pure (BL.fromStrict (TE.encodeUtf8 balancedLines))),
+  [ testCase "R1 (docs/adr/0274): balanced and without a limit, every input up to 2 parts is broken and placed as before the ADR (test/golden/line-adjustment-balanced.tsv), past the depth of pull requests" $ do
+      -- the nightly job only: breaking every input once more took the area
+      -- past the 10 seconds of docs/adr/0208 (its section 4) on pull requests
+      depth <- linesDepth
+      when (depth > linesPrDepth) $ do
+        want <- BL.readFile "test/golden/line-adjustment-balanced.tsv"
+        BL.fromStrict (TE.encodeUtf8 balancedLines) == want @? "the lines differ from test/golden/line-adjustment-balanced.tsv",
     testCase "R7 (docs/adr/0274): a stretch limit of 0, 1000 or 2500 changes no breaks, demerits nor pass of any input up to 2 parts (1 on pull requests)" $ do
       -- 1 on pull requests, as the normal form: up to 2 parts took 4 seconds of the area on a laptop (docs/adr/0208, its section 4)
       depth <- linesDepth
