@@ -1841,7 +1841,7 @@ diagnosticTests =
       testCase "G02085: CSV that is not a table, in the file (golem-eval ADR 0004)" $ do
         msgs "@table empty.csv\n" @?= [("G02085", "CSV が空です")]
         msgs "@table blank.csv\n" @?= [("G02085", "CSV が空です")]
-        diags "@table ragged.csv\n" @?= [("G02085", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
+        diags "@table ragged.csv\n" @?= [("G02154", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
       testCase "G02036: @listing without a path" $ do
         msgs "@listing\n" @?= [("G02036", "@listing にはファイルのパスが必要です")]
         -- src= is read, with the notice G02065 (golem-syntax ADR 0002)

@@ -1,7 +1,7 @@
 {- | The preflight rules (golem-cli ADR 0006): which checks golem preflight
 runs, with which severity and thresholds. A file of rules is TOML; what it
 does not write comes from the built-in rules it is based on, key by key.
-Every error of the file is G09001.
+The causes of a file error have distinct codes (docs/adr/0321).
 -}
 module Golem.Preflight.Rules
   ( Level (..),
@@ -26,7 +26,7 @@ import Control.Monad (when)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Project.Manifest (decodeStrictWith, naturalOf)
+import Golem.Project.Manifest (decodeStrictWithReasons, naturalOf)
 import Golem.Project.Style (Dim (..), Sp, parseDim)
 import Golem.Project.TomlSchema (Leaf (..), Node (..))
 import Golem.Syntax (Diagnostic, FileId)
@@ -178,9 +178,9 @@ noneRules =
 builtinRules :: [(Text, Rules)]
 builtinRules = [("basic", basicRules), ("print", printRules), ("screen", screenRules), ("none", noneRules)]
 
--- | Reads a file of rules; every error is G09001 at its place in the file.
+-- | Reads rules with a code for each cause at its place in the file.
 parseRules :: FileId -> Text -> Either [Diagnostic] Rules
-parseRules fid src = (\(RulesFile r) -> r) <$> decodeStrictWith rulesSchema "G09001" (const "G09001") fid src
+parseRules fid src = (\(RulesFile r) -> r) <$> decodeStrictWithReasons rulesSchema fid src
 
 newtype RulesFile = RulesFile Rules
 
