@@ -161,6 +161,13 @@ newTests =
         assertEqual err ExitSuccess code
         files <- filesUnder (tmp </> "book")
         files @?= [".gitignore", "chapters/01.gm", "manifest.toml", "preflight.toml", "style.toml"],
+      testCase "Golem ADR 0327 S2: new --screen writes screen rules and no bleed" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+        (code, _, err) <- golemAt tmp ["new", "book", "--no-fonts", "--screen"]
+        assertEqual err ExitSuccess code
+        rules <- readUtf8 (tmp </> "book/preflight.toml")
+        style <- readUtf8 (tmp </> "book/style.toml")
+        rules @?= "based-on = \"screen\"\n"
+        assertBool style (not ("bleed =" `isInfixOf` style)),
       testCase "--no-fonts names the Japanese font and its licence to place, with their URLs" $ withSystemTempDirectory "golem-new" $ \tmp -> do
         (_, _, err) <- golemAt tmp ["new", "book", "--no-fonts"]
         lines err

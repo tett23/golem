@@ -200,6 +200,7 @@ $ golem new mybook
 
 作られるのは、A6 判の縦組みの本です。
 英語の本を作るときは、[code: --language en] のオプションを付けます。
+画面で読む本を作るときは、[code: --screen] を付けると塗り足しを省き、[code: preflight.toml] に [code: based-on = "screen"] を書きます。
 
 ```sh
 $ golem new --language en mybook
