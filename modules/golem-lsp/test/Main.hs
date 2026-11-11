@@ -35,6 +35,7 @@ import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
 import PublishSpec (publishTests)
+import PositionEnumSpec (positionEnumTests)
 import SemanticTokensSpec (semanticTokensTests)
 import StaleS1Spec (staleS1Tests)
 import Support (codesOf)
@@ -109,7 +110,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-lsp (ADR 0001)"
-    [ testCase "no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005)" $
+    [ positionEnumTests,
+      testCase "no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005)" $
         codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing,
       testCase "definition: label across files, import path, namespaced variable" $ do
         ws <- openWorkspace root
