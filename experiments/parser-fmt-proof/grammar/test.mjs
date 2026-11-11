@@ -107,7 +107,7 @@ try {
   assert.notEqual(refuted.status, 0, 'reversing the PEG choice must break the theorem');
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  console.log(`grammar fragment: rules ${emittedRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proofs 2, negative mutations 7`);
+  console.log(`grammar fragment: rules ${emittedRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proofs 2, negative mutations 9`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
