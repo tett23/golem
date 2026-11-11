@@ -113,4 +113,23 @@ theorem greedyWidow :
   unfold twoHeadingFits twoHeadingGreedy twoLineWidow
   omega
 
+/- `strictAfterHeadings` from the Alloy report: an empty 3-line column,
+   one heading and a three-line paragraph. A break after the heading alone
+   violates `lineAfterHeadings`; a break after one or two paragraph lines
+   violates the strict orphan or widow rule. -/
+def headingParagraphFits (brk : Fin 5) : Prop := brk.val ≤ 3
+def headingParagraphNonempty (brk : Fin 5) : Prop := brk.val ≥ 1
+def headingParagraphHasLine (brk : Fin 5) : Prop := brk.val ≠ 1
+def headingParagraphOrphan (brk : Fin 5) : Prop := brk.val ≠ 2
+def headingParagraphWidow (brk : Fin 5) : Prop := brk.val ≠ 3
+
+theorem strictAfterHeadings : ∀ brk : Fin 5,
+    ¬ (headingParagraphFits brk ∧ headingParagraphNonempty brk ∧
+       headingParagraphHasLine brk ∧ headingParagraphOrphan brk ∧
+       headingParagraphWidow brk) := by
+  intro brk
+  unfold headingParagraphFits headingParagraphNonempty headingParagraphHasLine
+    headingParagraphOrphan headingParagraphWidow
+  omega
+
 end GolemPagination
