@@ -14,6 +14,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUID
+import Golem.Cli.BuildCommand (BuildMode (..), jsonResult, runBuild)
 import Golem.Doc.Cbor (encodeDocument)
 import Golem.Driver
 import Golem.Driver.Explain (Explanation (..), Status (..), catalog, explainHint)
@@ -50,7 +51,7 @@ data Format = Human | Json
 data InspectAs = AsCst | AsAst | AsIr | AsCbor
 
 data Command
-  = New FilePath Language Bool
+  = New FilePath Language Bool Bool
   | Build [Target] Profile CropMarks Bool Bool Format
   | Check Profile CropMarks Bool Bool Format
   | Preflight (Maybe FilePath) CropMarks Format
@@ -193,7 +194,7 @@ commands =
   subparser
     ( commandGroup "コマンド:"
         <> metavar "COMMAND"
-        <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない")) "プロジェクトを作る"
+        <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない") <*> switch (long "screen" <> help "画面向けのプリフライト設定を作る")) "プロジェクトを作る"
         <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> marksOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "出力を build/ に書く"
         <> cmd "check" (Check <$> profileOpt <*> marksOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "出力を書かずに検査する"
         <> cmd "preflight" (Preflight <$> optional (strOption (long "rules" <> metavar "FILE" <> help "プリフライトの設定のファイル（既定は preflight.toml）")) <*> marksOpt <*> formatOpt) "入稿の前に PDF を検査する"
@@ -244,9 +245,9 @@ localize = intercalate "\n" . go . lines
 
 run :: Command -> IO ExitCode
 run = \case
-  New dir lang noFonts -> newProject dir lang noFonts
-  Build tgs profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
-  Check profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
+  New dir lang noFonts screen -> newProject dir lang noFonts screen
+  Build tgs profile marks quiet verbose fmt -> report fmt =<< runBuild "." (WriteTargets tgs) profile marks quiet verbose
+  Check profile marks quiet verbose fmt -> report fmt =<< runBuild "." CheckOnly profile marks quiet verbose
   Preflight rules marks fmt -> preflightRun rules marks fmt
   PluginFetch -> pluginFetch
   PluginLock -> pluginLock
@@ -291,9 +292,8 @@ report :: Format -> BuildResult -> IO ExitCode
 report fmt r = do
   let ds = brDiagnostics r
   case fmt of
-    Human -> putHuman (brSources r) ds
-    Json -> TIO.hPutStr stderr (renderJson (brSources r) ds)
-  pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
+    Human -> putHuman (brSources r) ds >> pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
+    Json -> let (code, text) = jsonResult r in TIO.hPutStr stderr text >> pure code
 
 {- | golem preflight (golem-cli ADR 0006): the diagnostics, and in the human
 format a summary as the last line when the PDF was made.
@@ -432,12 +432,12 @@ relativePath p = do
   pure (makeRelative cwd (joinPath parts))
 
 -- | golem new (golem-cli ADR 0003).
-newProject :: FilePath -> Language -> Bool -> IO ExitCode
-newProject dir lang noFonts = do
+newProject :: FilePath -> Language -> Bool -> Bool -> IO ExitCode
+newProject dir lang noFonts screen = do
   uuid <- UUID.nextRandom
   fetch <- httpsFetcher
   let fonts = templateFonts lang
-  r <- createProject dir (templateFiles lang (UUID.toText uuid)) (if noFonts then Nothing else Just (fetch, fonts))
+  r <- createProject dir (templateFilesFor screen lang (UUID.toText uuid)) (if noFonts then Nothing else Just (fetch, fonts))
   case r of
     Left (FetchFailed es) -> mapM_ (TIO.hPutStrLn stderr) es >> pure (ExitFailure 1)
     Left (Conflicts cs) -> putNewDiagnostics (map conflictDiagnostic cs) >> pure (ExitFailure 1)
