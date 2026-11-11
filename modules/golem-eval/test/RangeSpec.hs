@@ -124,7 +124,7 @@ tests =
           testCase "one line" $
             mapM_ (\src -> (src, codeOf src) @?= (src, [(["l2"], [], Just 2)])) [listing "lines=2", listing "lines=[= 2]", listing "lines=2...2"],
           testCase "a negative end, one not an integer and one past the limit" $ do
-            codes (listing "lines=3...-1") @?= ["G02103"]
+            codes (listing "lines=3...-1") @?= ["G02110"]
             codes (listing "lines=[= 3...0 - 1]") @?= ["G02103"]
             codes (listing "lines=1...1.5") @?= ["G02104"]
             codes (listing "lines=1...1e1301") @?= ["G02086"]
@@ -142,22 +142,21 @@ tests =
           testCase "the start after the end is G02106" $ do
             codes (listing "lines=7...3") @?= ["G02106"]
             codes (listing "lines=[= 7...3]") @?= ["G02106"],
-          testCase "two items or an array is G02107" $ do
-            codes (listing "lines=1,3") @?= ["G02107"]
-            codes (listing "lines=[= [1...2]]") @?= ["G02107"]
-            codes (listing "lines=[= [1, 2]]") @?= ["G02107"]
-            msgs (listing "lines=1,3") @?= [("G02107", "@listing の lines には範囲を一つだけ書きます: 1,3")],
+          testCase "ADR 0342 I1: multiple items are accepted in order" $ do
+            codeOf (listing "lines=1,3") @?= [(["l1", "l3"], [], Just 1)]
+            codeOf (listing "lines=[= [1...2]]") @?= [(["l1", "l2"], [], Just 1)]
+            codeOf (listing "lines=[= [1, 2]]") @?= [(["l1", "l2"], [], Just 1)],
           testCase "a range out of the file is G02037" $ do
             msgs (listing "lines=2...9") @?= [("G02037", "@listing の lines の範囲がファイルの行（1〜3）を外れています: 2...9")]
             codes (listing "lines=0...2") @?= ["G02037"],
           testCase ".. is G01100 at the argument" $ do
             sites (listing "lines=1..3") @?= [("G01100", 21, 31)]
             codes (listing "lines=\"1..3\"") @?= ["G01100"],
-          testCase "the range of - is taken with the notice G02108" $ do
-            codeOf (listing "lines=2-3") @?= [(["l2", "l3"], [], Just 2)]
-            codeOf (listing "lines=\"2-3\"") @?= [(["l2", "l3"], [], Just 2)]
-            msgs (listing "lines=2-3") @?= [("G02108", "- で区切った範囲は廃止予定です。2...3 のように ... で区切ります")]
-            codes (listing "lines=3--1") @?= ["G02108", "G02103"]
+          testCase "ADR 0342 I2: a dash separator is an error" $ do
+            codeOf (listing "lines=2-3") @?= []
+            codeOf (listing "lines=\"2-3\"") @?= []
+            msgs (listing "lines=2-3") @?= [("G02251", "- で区切った範囲は使えません。2...3 のように両端を残して ... で区切ります")]
+            codes (listing "lines=3--1") @?= ["G02110"]
         ],
       testGroup
         "highlight="
@@ -173,13 +172,26 @@ tests =
             codes "``` highlight=7...3\na\n```\n" @?= ["G02106"],
           testCase ".. is G01100" $
             codes "``` highlight=3,5..7\na\n```\n" @?= ["G01100"],
-          testCase "the range of - is taken with one notice G02108 an argument" $ do
-            highlighted "highlight=3,5-7" @?= [["c", "e", "f", "g"]]
-            highlighted "highlight=[= \"5-7\"]" @?= [["e", "f", "g"]]
-            codes "``` highlight=3,5-7\na\nb\nc\nd\ne\nf\ng\n```\n" @?= ["G02108"]
-            codes "``` highlight=[= \"5-7\"]\na\nb\nc\nd\ne\nf\ng\n```\n" @?= ["G02108"]
-            codes "``` highlight=1-2,4-5\na\nb\nc\nd\ne\n```\n" @?= ["G02108"]
+          testCase "ADR 0342 I2: highlight reports one error per argument" $ do
+            codes "``` highlight=3,5-7\na\nb\nc\nd\ne\nf\ng\n```\n" @?= ["G02251"]
+            codes "``` highlight=[= \"5-7\"]\na\nb\nc\nd\ne\nf\ng\n```\n" @?= ["G02251"]
+            codes "``` highlight=1-2,4-5\na\nb\nc\nd\ne\n```\n" @?= ["G02251"]
         ],
+      testCase "ADR 0342 I1 I2: line ranges use three dots and allow lists" $ do
+        codes (listing "lines=1...1") @?= []
+        codes (listing "lines=2-3") @?= ["G02251"]
+        codes (listing "lines=[= \"2-3\"]") @?= ["G02251"]
+        codes (listing "lines=1-2,2-3") @?= ["G02251"]
+        codeOf (listing "lines=1...2,3") @?= [(["l1", "l2", "l3"], [], Just 1)]
+        codeOf (listing "lines=\"1...2, 3\"") @?= [(["l1", "l2", "l3"], [], Just 1)]
+        [map clNumber (codeLines c) | CodeBlock c <- resultBodies (evalResult listingCtx (listing "lines=1,3"))]
+          @?= [[Just 1, Just 3]]
+        codes (listing "lines=3--1") @?= ["G02110"]
+        codes (listing "lines=\"1...-2\"") @?= ["G02110"],
+      testCase "ADR 0342 I1: a contiguous listing keeps diff line numbers" $ do
+        let patchCtx = baseCtx {ctxAssets = Map.fromList [("patch.txt", AssetText (FileId 23) "+a\n-b\n c\n")]}
+            numbers = [map clNumber (codeLines c) | CodeBlock c <- resultBodies (evalResult patchCtx "@listing patch.txt lines=1...3 diff=true\n")]
+        numbers @?= [[Just 1, Nothing, Just 2]],
       testCase "numbers= takes no range" $ do
         codes "``` numbers=5-5\na\n```\n" @?= ["G02069"]
         -- a range where no range is taken is G02113 (docs/adr ADR 0111)
