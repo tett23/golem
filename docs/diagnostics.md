@@ -7308,24 +7308,21 @@ InDesign は縦組みのフレームではこの二つを適用しないが、Go
 
 ## G03119
 
-PDF/A と PDF/UA には、language を言語のタグの形で書きます
+language を言語のタグの形で書きます
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`manifest.toml` の `[targets.pdf]` に `pdfa` か `pdfua` を書いた本で、`[metadata]` の `language` が BCP 47 の言語のタグの形でない。
-PDF のカタログの `/Lang` に書く値なので、PDF/A と PDF/UA はその形を調べる。
-調べるのは形だけで、IANA の登録簿に載っているかは調べない。
-`pdfa` も `pdfua` も書かない本では調べない。
-PDF は書かず、HTML、EPUB、プレーンテキストは書く。
+マニフェストの `[metadata]` の `language` が言語のタグの形に合わない。
+すべての出力ターゲットと `check` で、マニフェストを読むときに形を調べる。
 dev と prod の両方でエラーである。
 位置は `language` の値である。
 
-- メッセージ: `PDF/A と PDF/UA には、language を言語のタグの形で書きます: <値>`
-- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset`、形の検査は golem-syntax の `Golem.Syntax.LanguageTag`）。PDF を書くときに、組む前に調べる
-- ADR: [docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)
+- メッセージ: `language を言語のタグの形で書きます: <値>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）
+- ADR: [Golem ADR 0324](adr/0324-manifest-language-form.md)
 
 ### 主な原因
 

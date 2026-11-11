@@ -38,7 +38,7 @@ module Golem.Project.Manifest
   )
 where
 
-import Control.Monad (zipWithM_)
+import Control.Monad (unless, zipWithM_)
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Int (Int32)
 import Data.List (isPrefixOf, sortOn)
@@ -55,6 +55,7 @@ import Golem.Parser.SourceSettings
 import Golem.Project.TomlMessage (pathText, schemaMessage, semanticMessage, syntaxMessage)
 import Golem.Project.TomlSchema (Node, unknownKeys)
 import Golem.Syntax
+import Golem.Syntax.LanguageTag (isLanguageTag)
 import Numeric.Natural (Natural)
 import Toml qualified
 import Toml.Schema
@@ -804,6 +805,10 @@ parseManifest fid src = do
       filters = zipWith (\f (pluginSpan, filterSpan) -> f {fdPluginSpan = pluginSpan, fdFilterSpan = filterSpan}) (manifestFilters m0) (filterSites <> repeat (Nothing, Nothing))
       m = m0 {manifestChapters = withNumberingSpans sites (manifestChapters m0), manifestFilters = filters}
       t = manifestTargets m
+      tag = mdLanguage (manifestMetadata m)
+      loc = fromMaybe (mkSpan fid 0 0) (manifestValueSpan fid src ["metadata", "language"])
+  unless (isLanguageTag tag) $
+    Left [diagnostic "G03119" Error loc ("language を言語のタグの形で書きます: " <> tag)]
   if tgHtml t || not (null (tgText t)) || isJust (tgPdf t) || isJust (tgEpub t)
     then Right m
     else Left [diagnostic "G03001" Error (mkSpan fid 0 0) "出力ターゲットが一つもありません"]

@@ -161,6 +161,9 @@ golem new mybook
 `DIR` は空でなくてよく、`manifest.toml` と `style.toml` のないディレクトリ（Markdown の原稿のリポジトリなど）なら、ほかのファイルを残したまま作る。
 雛形のファイルと同じパスに何かあれば何も書かず、既存の `.gitignore` は書き換えない（[docs/adr/0273](./docs/adr/0273-golem-new-in-a-directory-without-a-project.md)）。
 
+マニフェストの `[metadata].language` は `ja-JP` や `en-US` のように書く。
+`ja_JP` はどの出力形式でも G03119 になる。
+
 `golem explain` は、コードを省くと一覧を表示する。
 複数のコードを渡すと、渡した順に空行一つで区切って標準出力に書く。
 Golem のコードは大文字に直して同じになるものを、プラグインのコードは綴りが同じものを、最初のものだけ扱う。
