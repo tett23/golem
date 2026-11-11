@@ -158,6 +158,9 @@ golem new mybook
 プリフライトの設定を読めない場合は、原因に応じて G09001 または G09100〜G09104 を出す（[Golem ADR 0321](./docs/adr/0321-preflight-rule-error-causes.md)）。
 設定のエラーを検出した実行は PDF を組まず、終了コード 1 で終わる。
 
+`golem lsp` は原稿の命令と式、プロジェクト直下の `style.toml`、`preflight.toml`、`manifest.toml` に入力候補を返す。
+説明のある候補では、その説明と Emet の公開関数の署名も表示する（[Golem ADR 0347](docs/adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）。
+
 `golem new` が作るプロジェクトは、版面の設定と、配布元から取得したフォントと、プリフライトの設定 `preflight.toml` を含む。
 `--no-fonts` で作ったプロジェクトも、フォントを置く前から HTML、EPUB、プレーンテキストを作れる（PDF はフォントを置くまで作れない）。
 `--screen` は塗り足しを省き、プリフライトに `based-on = "screen"` を設定する（[ADR 0327](./docs/adr/0327-screen-preflight-and-template.md)）。
