@@ -21,7 +21,7 @@ import Data.Containers.ListUtils (nubOrd)
 import Data.Either (lefts, partitionEithers, rights)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -96,7 +96,7 @@ those of the plugins.
 -}
 loadPlugins :: FilePath -> Map.Map FilePath Text -> FilePath -> FileId -> FileId -> Text -> FileId -> HostContext -> FunctionFilter -> Manifest -> IO LoadedPlugins
 loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context functionFilter manifest
-  | Map.null (manifestPlugins manifest) && null [() | FilterDecl (FilterPlugin _) _ _ <- manifestFilters manifest] =
+  | Map.null (manifestPlugins manifest) && null [() | FilterDecl (FilterPlugin _) _ _ _ _ <- manifestFilters manifest] =
       pure (LoadedPlugins (Right noPlugins {phApplyFilters = filtersOver (const Nothing) functionFilter manifest}) [] Map.empty)
   | otherwise =
       case parseLock lfid lockText of
@@ -173,9 +173,9 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context f
           filterError f = case fdSource f of
             FilterFunction _ -> Nothing
             FilterPlugin pname -> case lookupPlugin pname of
-              Nothing -> Just ("宣言されていないプラグインです: " <> pname <> "（フィルタ " <> pname <> "." <> fdFilter f <> "）")
+              Nothing -> Just ("G06010", fdPluginSpan f, "宣言されていないプラグインです: " <> pname <> "（フィルタ " <> pname <> "." <> fdFilter f <> "）")
               Just (_, _, p)
-                | fdFilter f `notElem` pluginFilters p -> Just ("プラグインが提供していないフィルタです: " <> pname <> "." <> fdFilter f)
+                | fdFilter f `notElem` pluginFilters p -> Just ("G06107", fdFilterSpan f, "プラグインが提供していないフィルタです: " <> pname <> "." <> fdFilter f)
                 | otherwise -> Nothing
           lookupPlugin n = case [x | x@(n', _, _) <- plugins, n' == n] of
             (x : _) -> Just x
@@ -193,7 +193,7 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context f
               <> [err "G06006" ("複数のプラグインが同じブロックコマンドを提供しています: @" <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- blockCollisions]
               <> [err "G06007" (collisionMessage u) | u <- undeclared]
               <> [err "G06008" m | (_, Left m) <- checkedOverrides]
-              <> [err "G06010" m | Just m <- map filterError (manifestFilters manifest)]
+              <> [diagnostic code Error (fromMaybe (mkSpan mfid 0 0) spanAt) message | Just (code, spanAt, message) <- map filterError (manifestFilters manifest)]
               <> [err "G06012" ("複数のプラグインが同じチャネルを宣言しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- channelCollisions]
               <> [err "G06012" (n <> ": このチャネルの名前は使えません: " <> c) | (n, c) <- badChannels]
           call pname p name = PluginCommand $ \vals slots sp ->

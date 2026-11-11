@@ -432,6 +432,9 @@ pdfs "$CK/p"
 # wait-pdfs.sh makes it in jq or in the shell. It fails from
 # the 21st question for the artifact, so that a wait-pdfs.sh that never
 # stops fails instead.
+run sh "$HERE/../../experiments/ci-wait/compare.sh" --current
+expect "Golem ADR 0333 W1-W6: artifact polling and rate limits" 0
+
 WT=$WORK/wait
 fake "$WT/bin" gh 'printf "%s\n" "$*" >>"$GH_LOG"
 case "$*" in

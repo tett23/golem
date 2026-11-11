@@ -1,6 +1,6 @@
 # ADR 0334: 原稿の入力位置と設定の欄に合う候補を返す
 
-ステータス: 採択（未実装）
+ステータス: 採択→[ADR 0347](0347-revise-complete-manifest-values-and-manuscript-expressions.md)
 
 ## 文脈
 

@@ -142,7 +142,7 @@ golem new mybook
 
 | コマンド | 内容 |
 |---|---|
-| `golem new DIR [--language ja\|en] [--no-fonts]` | プロジェクトを作る（下に詳しく書く） |
+| `golem new DIR [--language ja\|en] [--no-fonts] [--screen]` | プロジェクトを作る（下に詳しく書く） |
 | `golem plugin lock` | マニフェストのプラグインを取得し、ハッシュを `plugins.lock` に書く |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得してキャッシュに置く |
 | `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none）。`--no-notices` はその実行に限り notice を出さない。`--verbose`（`-v`）は info も出す |
@@ -157,8 +157,12 @@ golem new mybook
 
 `golem new` が作るプロジェクトは、版面の設定と、配布元から取得したフォントと、プリフライトの設定 `preflight.toml` を含む。
 `--no-fonts` で作ったプロジェクトも、フォントを置く前から HTML、EPUB、プレーンテキストを作れる（PDF はフォントを置くまで作れない）。
+`--screen` は塗り足しを省き、プリフライトに `based-on = "screen"` を設定する（[ADR 0327](./docs/adr/0327-screen-preflight-and-template.md)）。
 `DIR` は空でなくてよく、`manifest.toml` と `style.toml` のないディレクトリ（Markdown の原稿のリポジトリなど）なら、ほかのファイルを残したまま作る。
 雛形のファイルと同じパスに何かあれば何も書かず、既存の `.gitignore` は書き換えない（[docs/adr/0273](./docs/adr/0273-golem-new-in-a-directory-without-a-project.md)）。
+
+マニフェストの `[metadata].language` は `ja-JP` や `en-US` のように書く。
+`ja_JP` はどの出力形式でも G03119 になる。
 
 `golem explain` は、コードを省くと一覧を表示する。
 複数のコードを渡すと、渡した順に空行一つで区切って標準出力に書く。
@@ -727,6 +731,9 @@ x86-64 の一覧からマニュアルの行を除いたものを、コミット�
 
 `visual` は見た目の回帰テストである。
 `changes` だけを待って `build` と同時に始まり、`build` の x86-64 の `outputs` が成果物 `visual-pdfs` を上げるのを `scripts/visual/wait-pdfs.sh` で待つ（上限は 60 分、ジョブは 75 分。`outputs` が上げずに終わると失敗する、[docs/adr/0099](./docs/adr/0099-visual-job-waits-only-for-visual-pdfs.md)）。
+成果物は既定で 30 秒ごとに問い合わせる。
+見つからなければ初回と以降 4 間隔ごとに生成元のジョブを確認する。
+GitHub API が利用上限を返したときは、応答に従って待ってから再試行する（[ADR 0333](./docs/adr/0333-wait-for-ci-artifacts-with-fewer-api-requests.md)）。
 
 上がった `visual-pdfs` を取り寄せ、固定した版の shem で 72 dpi の PPM に描き、ページごとの SHA-256 が `scripts/visual/pages/` の参照と一致することを `scripts/visual/check.sh` で確かめる。
 shem は、shem のアーカイブを `third_party/downloads` に `scripts/visual/fetch-shem.sh` のハッシュをキーにキャッシュし、`fetch-shem.sh` を 10 分の上限で実行して取る。
