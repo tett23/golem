@@ -49,7 +49,6 @@ import Golem.Project
 import Golem.Project.Feature (normalFeatures, parseFeature)
 import Golem.Project.Style
 import Golem.Syntax
-import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Typeset.Box (BoxPaint (..), boxArea, boxMarks)
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
@@ -331,8 +330,7 @@ overfullWarnings os =
 
 {- | What a book that declares PDF/A or PDF/UA must meet before its PDF is
 set (docs/adr ADR 0183), in dev and prod alike: an output intent for PDF/A
-(G03113, at the value of pdfa), [metadata] language in the form of a
-language tag (G03119, at its value), and for PDF/UA headings that start at
+(G03113, at the value of pdfa), and for PDF/UA headings that start at
 level 1 and never go two levels deeper (G07103, at the heading). The
 document itself is level 0 before the first heading.
 -}
@@ -342,10 +340,6 @@ declarationErrors inp =
   | isJust pdfA,
     isNothing (stIntent (piStyle inp))
   ]
-    <> [ diagnostic "G03119" Error (valueSpan ["metadata", "language"]) ("PDF/A と PDF/UA には、language を言語のタグの形で書きます: " <> mdLanguage md)
-       | isJust pdfA || isJust pdfUa,
-         not (isLanguageTag (mdLanguage md))
-       ]
     <> [ diagnostic "G07103" Error sp ("PDF/UA では見出しの段を飛ばせません: " <> tshow' before <> " から " <> tshow' l)
        | isJust pdfUa,
          let levels = [(l, sp) | Document _ bs <- bookDocs (piBook inp), Block sp _ _ (Heading l _ _) <- blocksWithin bs],
@@ -355,7 +349,6 @@ declarationErrors inp =
   where
     project = piProject inp
     manifest = projectManifest project
-    md = manifestMetadata manifest
     pdfA = tgPdfA (manifestTargets manifest)
     pdfUa = tgPdfUa (manifestTargets manifest)
     fid = projectManifestFile project
