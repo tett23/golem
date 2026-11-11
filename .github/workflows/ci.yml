@@ -1247,12 +1247,17 @@ jobs:
             echo "After: $(usage)"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  parser-fmt-proofs:
+    needs: [changes]
+    if: needs.changes.outputs.build == 'true'
+    uses: ./.github/workflows/parser-fmt-proofs.yml
+
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
   # the logs of the other jobs of the run are read for warnings, which
   # needs actions: read (docs/adr/0245)
   ci:
-    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins, editors, editors-lsp, verapdf, wasm]
+    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins, editors, editors-lsp, verapdf, wasm, parser-fmt-proofs]
     if: always()
     runs-on: ubuntu-24.04
     permissions:

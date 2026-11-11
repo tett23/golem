@@ -1,0 +1,28 @@
+name: Parser and formatter proofs
+on:
+  workflow_call:
+  schedule:
+    - cron: "17 18 * * *"
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [eval/Eval, arguments/Arguments]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Lean 4.7.0
+        run: |
+          archive="$RUNNER_TEMP/lean.tar.zst"
+          sh scripts/ci/fetch-url.sh "$archive" 6d7e1c6f951009b7f277df996c196c9747c0b6b80b30b74e61acc894577a3106 https://github.com/leanprover/lean4/releases/download/v4.7.0/lean-4.7.0-linux.tar.zst
+          tar --zstd -xf "$archive" -C "$RUNNER_TEMP"
+      - name: Check the model with Lean
+        env:
+          MODEL: ${{ matrix.model }}
+        run: '"$RUNNER_TEMP/lean-4.7.0-linux/bin/lean" "experiments/parser-fmt-proof/$MODEL.lean"'
