@@ -985,7 +985,7 @@ one), as Style keeps no positions.
 -}
 cropMarkDiagnostics :: BuildOptions -> Evaluated -> FileId -> [Target] -> [Diagnostic]
 cropMarkDiagnostics opts e fid targets =
-  [ diagnostic "G07002" Error (mkSpan fid 0 0) "日本式のトンボには塗り足しが要ります。style.toml の [page] に bleed を書いてください"
+  [ diagnostic "G07002" Error (mkSpan fid 0 0) "日本式のトンボには塗り足しが要ります。style.toml の [page] の bleed に 0 より大きい長さを書いてください"
   | optMarks opts == JapaneseMarks,
     TargetPdf `elem` targets,
     maybe 0 pageBleed (stPage (evStyle e)) == 0

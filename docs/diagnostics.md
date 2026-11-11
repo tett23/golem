@@ -8995,7 +8995,7 @@ LSP は出さない。
 PDF をターゲットに含まないビルドと LSP では出さない。
 `golem check` は四つのターゲットを検査するので、マニフェストのターゲットによらず出す。
 
-- メッセージ: `日本式のトンボには塗り足しが要ります。style.toml の [page] に bleed を書いてください`
+- メッセージ: `日本式のトンボには塗り足しが要ります。style.toml の [page] の bleed に 0 より大きい長さを書いてください`
 - 段階とモジュール: レイアウト（golem-driver の `Golem.Driver`）
 - ADR: [golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-pdf ADR 0010](golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)
 

@@ -8067,6 +8067,7 @@ G03131 から G03134 の四つのコードは、パスの先頭（`<パス>:1:1`
 日本式のトンボは、仕上がりの線と塗り足しの線の間隔で塗り足しを示す。
 そのため、`--marks japanese` で塗り足しが 0 ならエラー（G07002）とし、PDF を出力しない。
 G07002 は PDF をターゲットに含むときにだけ出し、位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
+G07002 は、`[page]` の `bleed` に 0 より大きい長さを書くよう案内する（[ADR 0332](adr/0332-positive-bleed-in-japanese-crop-mark-message.md)）。
 
 トンボを付けた PDF には、`style.toml` の `[hidden-folio]` に従って隠しノンブルが入る（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、「style.toml」の節を参照）。
 `--marks` が `japanese` か `western` のとき、PDF をターゲットに含むビルドと `golem check`（つねに PDF を含む）は、隠しノンブルが版面に重なる誤り（G07050）も検査する。
