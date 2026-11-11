@@ -31,6 +31,7 @@ import Data.Aeson.KeyMap qualified as KM
 import Data.ByteString qualified as BS
 import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.ByteString.Lazy qualified as BSL
+import Data.Char (toLower)
 import Data.Either (fromRight)
 import Data.Foldable (foldlM)
 import Data.Map.Strict qualified as Map
@@ -306,7 +307,7 @@ handlers encVar rootVar plotVar wikiVar wsVar gen watchVar lock dirtyVar pubVar 
             plot <- liftIO (readTVarIO plotVar)
             wiki <- liftIO (readTVarIO wikiVar)
             let projectFiles = [(stRoot st </> p, Nothing) | p <- ["manifest.toml", "style.toml"] <> wsSourceFiles ws <> maybe [] pure plot]
-                wikiFiles = maybe [] (\(root, sheets) -> [(root </> p, Just p) | (p, _) <- sheets, takeExtension p == ".md"]) wiki
+                wikiFiles = maybe [] (\(root, sheets) -> [(root </> p, Just p) | (p, _) <- sheets, map toLower (takeExtension p) == ".md"]) wiki
                 wikiPairs = maybe [] (\(root, _) -> [(makeRelative root (stRoot st </> from), makeRelative root (stRoot st </> to)) | (from, to) <- pairs]) wiki
             planned <- forM (projectFiles <> wikiFiles) $ \(path, wikiSource) -> do
               let p = makeRelative (stRoot st) path
