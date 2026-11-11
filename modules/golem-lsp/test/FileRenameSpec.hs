@@ -96,6 +96,10 @@ fileRenameTests =
         let sheets = [("notes/a.md", Nothing), ("one/target.md", Nothing), ("two/target.md", Nothing)]
         planWiki [("one/target.md", "one/new.md")] "notes/a.md" sheets "`[[target]]`\n```\n[[target]]\n```\n[[target]]\n"
           @?= Right [],
+      testCase "R2: Wiki byte ranges account for non-ASCII text and paired backticks" $ do
+        let sheets = [("notes/a.md", Nothing), ("notes/target.md", Nothing)]
+        planWiki [("notes/target.md", "notes/new.md")] "notes/a.md" sheets "章\n``[[target]]`` [[target]]\n"
+          @?= Right [(21, 27, "new")],
       testCase "R3: didRename discards old overlays and refreshes the source index" $
         withSystemTempDirectory "golem-rename" $ \root -> do
           createDirectory (root </> "part")

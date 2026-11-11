@@ -445,22 +445,24 @@ wikiPath path = joinPath . reverse <$> foldl step (Just []) (splitDirectories pa
 -- | Byte ranges of link targets, excluding headings and labels. Fenced and
 -- inline code, escaped opens, and malformed links are not references.
 wikiLinks :: Text -> [(Int, Int, Text)]
-wikiLinks source = concat (snd (foldl line (False, []) (zip [0 ..] (T.splitOn "\n" source))))
+wikiLinks source = reverse (third (foldl line (False, 0, []) (T.splitOn "\n" source)))
   where
-    line (fenced, found) (lineNo, content)
+    third (_, _, found) = found
+    line (fenced, base, found) content
       | let stripped = T.stripStart content,
-        "```" `T.isPrefixOf` stripped || "~~~" `T.isPrefixOf` stripped = (not fenced, found <> [[]])
-      | fenced = (fenced, found <> [[]])
-      | otherwise =
-          let base = BS.length (TE.encodeUtf8 (T.intercalate "\n" (take lineNo (T.splitOn "\n" source)))) + if lineNo == 0 then 0 else 1
-           in (False, found <> [scan base content 0])
+        "```" `T.isPrefixOf` stripped || "~~~" `T.isPrefixOf` stripped = (not fenced, next, found)
+      | fenced = (fenced, next, found)
+      | otherwise = (False, next, reverse (scan base content 0) <> found)
+      where
+        next = base + BS.length (TE.encodeUtf8 content) + 1
     scan base content index
       | index >= T.length content = []
       | T.index content index == '\\' = scan base content (index + 2)
       | T.index content index == '`' =
-          let rest = T.drop (index + 1) content
-              (before, after) = T.breakOn "`" rest
-           in scan base content (if T.null after then index + 1 else index + 2 + T.length before)
+          let ticks = T.takeWhile (== '`') (T.drop index content)
+              rest = T.drop (index + T.length ticks) content
+              (before, after) = T.breakOn ticks rest
+           in scan base content (if T.null after then index + T.length ticks else index + 2 * T.length ticks + T.length before)
       | "[[" `T.isPrefixOf` T.drop index content =
           let innerStart = index + 2
               (inner, close) = T.breakOn "]]" (T.drop innerStart content)
