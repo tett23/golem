@@ -1,0 +1,17 @@
+chapters = ["a.gm"]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000344"
+title = "互換性"
+language = "ja"
+date = 2026-11-11
+publisher = "test"
+
+[[metadata.creators]]
+name = "test"
+role = "author"
+
+[targets.text]
+
+[source]
+paragraph-separator = "line"
