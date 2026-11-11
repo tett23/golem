@@ -25,6 +25,7 @@ module Golem.Project.Manifest
     ProjectVar (..),
     parseManifest,
     manifestValueSpan,
+    manifestChoiceValues,
     chapterFiles,
     applyEdits,
     decodeStrict,
@@ -665,15 +666,37 @@ data PdfTable = PdfTable
 value that is not a string, is G03001 at the value (docs/adr ADR 0183).
 The values are strings so that parts and levels can be added later.
 -}
+pdfAValues :: [(Text, PdfAPart)]
+pdfAValues = [("2a", PdfA2a)]
+
+pdfUaValues :: [(Text, PdfUaPart)]
+pdfUaValues = [("1", PdfUa1)]
+
+-- | String spellings known to the manifest reader at a value position.
+manifestChoiceValues :: [Text] -> Bool -> [Text]
+manifestChoiceValues path arrayElement = case (path, arrayElement) of
+  (["source", "paragraph-separator"], False) -> separators
+  (["chapters", "paragraph-separator"], False) -> separators
+  (["chapters", "page-numbering", "style"], False) -> map notationName notations
+  (["metadata", group, "role"], False) | group `elem` ["creators", "contributors"] -> map roleWord [minBound .. maxBound]
+  (["targets", "pdf", "pdfa"], False) -> map fst pdfAValues
+  (["targets", "pdf", "pdfua"], False) -> map fst pdfUaValues
+  (["targets", "text", "variants"], True) -> map fst textVariantNames
+  (["diagnostics", "silence-notices"], True) -> [n | DiagnosticCode n <- noticeCodes]
+  (["diagnostics", "silence-info"], True) -> [n | DiagnosticCode n <- infoCodes]
+  _ -> []
+  where
+    separators = map fst paragraphSeparators
+
 instance FromValue PdfTable where
   fromValue = parseTableFromValue (PdfTable <$> optKey "isbn" <*> optKeyOf "pdfa" pdfa <*> optKeyOf "pdfua" pdfua)
     where
       pdfa = \case
-        Text' _ "2a" -> pure PdfA2a
+        Text' _ v | Just part <- lookup v pdfAValues -> pure part
         Text' l v -> failAt l (T.unpack ("pdfa に書けるのは \"2a\" だけです: " <> v))
         v -> typeError "string" v
       pdfua = \case
-        Text' _ "1" -> pure PdfUa1
+        Text' _ v | Just part <- lookup v pdfUaValues -> pure part
         Text' l v -> failAt l (T.unpack ("pdfua に書けるのは \"1\" だけです: " <> v))
         v -> typeError "string" v
 
@@ -692,9 +715,12 @@ instance FromValue EmptyTable where
 
 newtype TextTable = TextTable [Text]
 
+textVariantNames :: [(Text, TextVariant)]
+textVariantNames = [("vertical", TextVertical), ("horizontal", TextHorizontal)]
+
 textVariants :: TextTable -> [TextVariant]
 textVariants (TextTable vs) =
-  [v | (k, v) <- [("vertical", TextVertical), ("horizontal", TextHorizontal)], k `elem` vs]
+  [v | (k, v) <- textVariantNames, k `elem` vs]
 
 instance FromValue TextTable where
   fromValue = parseTableFromValue $ do

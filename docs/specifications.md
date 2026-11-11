@@ -5130,6 +5130,8 @@ HTML と EPUB では、`@no-page-break` の後の最初のブロックの要素�
 `pages.json` は、PDF の各ページの最初の行が、原稿のどのファイルの何行何列から始まるかを表す。
 エディタは、`pages.json` を読んで、改ページの位置の印を原稿に出す。
 `golem preflight` は PDF をファイルに書かないので、`pages.json` も書かない。
+ディスクに書く prod ビルドで PDF を対象に選び、エラーで今回の PDF を書けなければ、前の `build/pdf` と `pages.json` を片付ける（[ADR 0326](adr/0326-discard-stale-pdf-after-build-errors.md)）。
+dev ビルド、`golem check`、`golem preflight`、PDF を選ばないビルドでは前の PDF を残す。
 
 `pages.json` は、ページの順に、ページごとに一つのオブジェクトを並べた配列である。
 配列は diagnostics と同じく一行に書き、改行で終える。
@@ -6212,7 +6214,7 @@ LSP は次の機能を持つ。
 - diagnostics（コンパイルエラーと lint）。重大度ごとの載せ方は下に書く。
 - 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。
 - ラベルの名前変更（章をまたいで一括で書き換える）と、`.emet` の名前の変更（[docs/adr/0170](adr/0170-emet-editor-support.md)）
-- 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の `meta` と `meta.roles` のキー、式の中の `vars` と `[vars]` の表の中のキー、`style.toml` と `preflight.toml` のキーと値）
+- 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の組み込みの定数と関数、`meta` と `meta.roles` のキー、式の中の `vars` と `[vars]` の表の中のキー、`style.toml` と `preflight.toml` のキーと値、`manifest.toml` の列挙できる値、[Golem ADR 0347](adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）
 - ホバーによる `[= ...]` の評価結果の表示
 - 整形（fmt を呼び出す）
 - 見出しによる文書のアウトラインと、`.emet` の宣言のアウトライン（[docs/adr/0170](adr/0170-emet-editor-support.md)）
@@ -6273,10 +6275,11 @@ LSP は、`@table` が参照する表のファイルの変更を受けても評�
 ### TOML の補完
 
 `style.toml` と `preflight.toml` の補完は、プロジェクトのルートからの相対パスがちょうど `style.toml` と `preflight.toml` のファイルだけで働く（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
-ルートより下の同じ名前のファイルと `manifest.toml` では補わない。
+`manifest.toml` では、段落区切り、ページ番号の表記、関係者の役割、PDF の宣言、テキスト出力の向き、抑制する diagnostic のコードに、欄ごとの候補を返す（[Golem ADR 0347](adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）。
+ルートより下の同じ名前のファイルでは補わない。
 エディタがこれらのファイルを LSP に送るように設定する必要がある。
 
-補う位置は次の五つである。
+`style.toml` と `preflight.toml` で補う位置は次の五つである。
 
 - 表の見出し（次の段のキー、利用者が名前を決める段では名前）
 - 表の中のキー（その表にまだ書いていないキー）
@@ -6295,8 +6298,8 @@ LSP は、`@table` が参照する表のファイルの変更を受けても評�
 候補は、エディタが今持っているテキストのカーソルより前だけを、先頭から読んで決める。
 コメントと複数行の文字列の中、値の後では候補を返さない。
 
-補完のほかは、この二つのファイルを編集中の内容で扱わない。
-この二つのファイルの diagnostics は、ディスクの内容による。
+補完のほかは、この三つのファイルを編集中の内容で扱わない。
+これらのファイルの diagnostics は、ディスクの内容による。
 拡張子が `.gm` でない編集中のファイル（`style.toml`、`manifest.toml` など）は、原稿として構文解析も評価もしない。
 
 ### semantic tokens
@@ -6387,7 +6390,7 @@ tree-sitter の文法は Golem の構文解析が受け付ける原稿を受け�
 - Neovim が受け取った diagnostic の列が、その行のバイト数を超えない。
 - notice が `INFO` の diagnostic になって quickfix に載り、マニフェストの `silence-notices` にそのコードを書いて保存すると消える。
 - コマンドと式の中の空白の semantic tokens の型が `operator` で、その位置の強調のグループが、既定の色の組で背景と下線を持たない。
-- ルートの `style.toml` と `preflight.toml` で補完の一覧が出て、引用符の外と内で選んだ後の行が期待の文字列になる。`manifest.toml` と、ルートより下の TOML と、ルートの外の TOML では一覧が出ない。
+- ルートの `style.toml`、`preflight.toml`、`manifest.toml` で定められた欄の補完が出て、引用符の外と内で選んだ後の行が期待の値になる。ルートより下の同名の TOML と、ルートの外の TOML では一覧が出ない。
 - `tools/editors/README.md` の nvim-treesitter を使わない手順（`sh` のブロックと最後の `lua` のブロック）で、`.gm` と `.emet` のファイルタイプが決まり、tree-sitter の色付けが始まる。
 
 `--self-test` は、各テストの期待を一つ反転して走らせ、どれも失敗することを確かめる。
