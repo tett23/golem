@@ -129,6 +129,20 @@ tests =
           Left e -> assertFailure (show e)
         renameLabel ws "a.gm" (at ws "a.gm" "intro" 0) "second" @?= Left (LabelExists "second")
         renameLabel ws "a.gm" (at ws "a.gm" "はじめに" 0) "x" @?= Left NotALabel,
+      testCase "ADR 0320 I2: rename binds style and source references only" $ do
+        let styleText = "[values.length]\nindent = \"1zw\"\n[values.count]\nrows = 2\n[paragraph-styles.quote]\nindent = \"indent\"\n"
+            gmText = "@style-def paragraph letter indent=indent\n# indent\n"
+        ws0 <- openWorkspace root
+        ws1 <- updateFile ws0 "style.toml" styleText
+        ws2 <- updateFile ws1 "b.gm" gmText
+        ws <- updateFile ws2 "unrelated.gm" gmText
+        assertBool (show (wsProjectErrors ws)) (isJust (wsEvaluated ws))
+        assertBool "b.gm is in workspace" (isJust (sourceOf ws "b.gm"))
+        let sliceAt (Location p s e) = TE.decodeUtf8 (BS.take (e - s) (BS.drop s (TE.encodeUtf8 (if p == "style.toml" then styleText else gmText))))
+        case renameLayoutValue ws styleText "style.toml" (offsetIn styleText "indent =" 1) "margin" of
+          Left err -> assertFailure (show err)
+          Right edits -> map (\(loc', _) -> (locPath loc', sliceAt loc')) edits @?= [("style.toml", "indent"), ("style.toml", "indent"), ("b.gm", "indent")]
+        renameLayoutValue ws styleText "style.toml" (offsetIn styleText "indent =" 1) "rows" @?= Left (LayoutValueExists "rows"),
       testCase "completion: commands, labels, import paths, swatches" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n[ref-title \n[co\n[color \n@import \n"

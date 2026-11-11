@@ -11,6 +11,7 @@ module Golem.Lsp.Features
     RenameError (..),
     renameMessage,
     renameLabel,
+    renameLayoutValue,
     renameEmet,
     emetTextOf,
     Completion (..),
@@ -62,7 +63,7 @@ import Golem.Parser.SourceSettings (sourceKeys)
 import Golem.Preflight.Rules (rulesSchema)
 import Golem.Project
 import Golem.Project.Paths (normalizeRelative)
-import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), alignValues, builtinAkiSetNames, builtinCharStyles, builtinParaStyles, charStyleKeys, defaultStyle, lineBreaksValues, noLocalStyles, paraStyleKeys, regexStyleKeys, styleSchema)
+import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), alignValues, builtinAkiSetNames, builtinCharStyles, builtinParaStyles, charStyleKeys, defaultStyle, layoutValueNames, layoutValueSites, lineBreaksValues, noLocalStyles, paraStyleKeys, parseStyle, regexStyleKeys, styleSchema)
 import Golem.Project.TomlSchema (Leaf (..), Namespace (..), Node (..), nodeAt)
 import Golem.Syntax
 import Language.LSP.Protocol.Types (PositionEncodingKind (..), SemanticTokenAbsolute (..), SemanticTokenModifiers (..), SemanticTokenTypes (..))
@@ -344,7 +345,7 @@ references ws path off = case sourceOf ws path of
 
 -- ------------------------------------------------------------------ rename
 
-data RenameError = NotALabel | LabelExists Text | InvalidName Text | EmetRename R.RenameError
+data RenameError = NotALabel | LabelExists Text | InvalidName Text | NotALayoutValue | LayoutValueExists Text | InvalidLayoutValue Text | EmetRename R.RenameError
   deriving stock (Eq, Show)
 
 -- | The message of an error of renaming, as the editor shows it.
@@ -353,6 +354,9 @@ renameMessage = \case
   NotALabel -> "ラベルの上で名前を変更してください"
   LabelExists l -> "すでにあるラベルの名前です: " <> l
   InvalidName l -> "ラベルに使えない名前です: " <> l
+  NotALayoutValue -> "組版用の値の名前の上で名前を変更してください"
+  LayoutValueExists l -> "すでにある組版用の値の名前です: " <> l
+  InvalidLayoutValue l -> "組版用の値に使えない名前です: " <> l
   EmetRename e -> case e of
     R.RenameNotAName -> "関数、型、コンストラクタ、局所の名前の上で名前を変更してください"
     R.RenameBuiltin n -> "組み込みの名前は変えられません: " <> n
@@ -373,6 +377,48 @@ renameLabel ws path off new = case sourceOf ws path >>= \s -> snd <$> occurrence
       | T.null new || T.any (\c -> c == ' ' || c == ']' || c == '[' || c == '\n') new = Left (InvalidName new)
       | new /= l && not (null (labelDefs ws new)) = Left (LabelExists new)
       | otherwise = Right [(x, new) | x <- nub (labelDefs ws l <> labelRefs ws l)]
+
+-- | Rename one typed layout value in style.toml and loaded source files.
+renameLayoutValue :: Workspace -> Text -> FilePath -> Int -> Text -> Either RenameError [(Location, Text)]
+renameLayoutValue ws styleText path off new = case [ (kind, name) | (kind, name, loc', _) <- sites, path == locPath loc', locStart loc' <= off, off <= locEnd loc' ] of
+  [] -> Left NotALayoutValue
+  (kind, old) : _
+    | not (valid new) -> Left (InvalidLayoutValue new)
+    | old /= new, new `elem` [name | (_, name, _, True) <- sites] -> Left (LayoutValueExists new)
+    | otherwise -> Right [(loc', new) | (kind', name, loc', _) <- sites, kind' == kind, name == old]
+  where
+    style = either (const defaultStyle) id (parseStyle (FileId 0) styleText)
+    styleSites = [(kind, name, Location "style.toml" start end, def) | (kind, name, start, end, def) <- layoutValueSites styleText]
+    sites = styleSites <> concatMap sourceSites [src | src <- allSources ws, srcInProject src]
+    valid name = case T.uncons name of
+      Just (first, rest) -> isAsciiLower first && T.all (\c -> isAsciiLower c || isDigit c || c == '-') rest
+      Nothing -> False
+    sourceSites src = case srcAst src of
+      File _ blocks -> concatMap (blockSites src) blocks
+    blockSites src (Located _ block) = case block of
+      Attributed commands next -> concatMap (blockSites src) commands <> maybe [] (blockSites src) next
+      BlockCommand (Located _ "style-def") (Located _ (Positional (Word kind)) : _ : args) _
+        | Just styleKind <- styleKindOf kind ->
+            [ (kindOf styleKind key, name, loc', False)
+            | Located argSpan (Keyword (Located _ key) value) <- args,
+              Just name <- [case value of Word n -> Just n; StringLit n -> Just n; _ -> Nothing],
+              name `elem` layoutValueNames style styleKind key,
+              Just loc' <- [argumentSite src argSpan name]
+            ]
+      _ -> []
+    kindOf styleKind key = case layoutValueNames style styleKind key of
+      names | any (\n -> ("length", n) `elem` declared) names -> "length"
+      names | any (\n -> ("aki", n) `elem` declared) names -> "aki"
+      _ -> "count"
+    declared = [(kind, name) | (kind, name, _, True) <- styleSites]
+    argumentSite src span' name =
+      let bytes = TE.encodeUtf8 (srcText src)
+          fragment = TE.decodeUtf8Lenient (BS.take (spanEnd span' - spanStart span') (BS.drop (spanStart span') bytes))
+          (_, afterEq) = T.breakOn "=" fragment
+          prefix = T.take (T.length fragment - T.length afterEq) fragment <> "="
+          (beforeName, found) = T.breakOn name (T.drop 1 afterEq)
+          start = spanStart span' + BS.length (TE.encodeUtf8 (prefix <> beforeName))
+       in if T.null afterEq || T.null found then Nothing else Just (Location (srcPath src) start (start + BS.length (TE.encodeUtf8 name)))
 
 {- | Renames a name of a .emet (docs/adr/0170): in the .emet of the
 program, and for a function .gm calls by its name, the calls of .gm and
@@ -638,7 +684,7 @@ styleDefCompletions style paraNames charNames rest =
       "line-breaks" | kind == "paragraph" -> [Completion v CkSettingValue | v <- lineBreaksValues]
       -- docs/adr/0189
       "align" | kind == "paragraph" -> [Completion v CkSettingValue | v <- alignValues]
-      _ -> []
+      key -> [Completion n CkSettingValue | Just k <- [styleKindOf kind], n <- layoutValueNames style k key]
 
 {- | The schema of a file of settings the language server completes
 (docs/adr ADR 0169): style.toml and preflight.toml at the root of the
@@ -679,7 +725,7 @@ tomlCompletions schema text off = case contextAt text off of
       ]
     Just (NNamed ns _) -> namesUnder ns path
     _ -> []
-  AtValue path element q _ -> maybe [] (nub . values element) (nodeAt schema path)
+  AtValue path element q _ -> nub (maybe [] (values element) (nodeAt schema path) <> layoutNames path q)
     where
       values inArr = \case
         NValue l | not inArr -> leaf l
@@ -696,6 +742,22 @@ tomlCompletions schema text off = case contextAt text off of
   Nowhere -> []
   where
     defined = definedPaths text
+    layoutNames path q
+      | schema /= styleSchema = []
+      | Just kind <- layoutKind path =
+          [ Completion (if q == Bare then "\"" <> name <> "\"" else name) CkSettingValue
+          | ["values", declaredKind, name] <- defined,
+            declaredKind == kind,
+            path /= ["values", kind, name]
+          ]
+      | otherwise = []
+    layoutKind path = case path of
+      ["values", kind, _] | kind `elem` ["length", "aki", "count"] -> Just kind
+      _ -> case nodeAt styleSchema path of
+        Just (NValue LDimension) -> Just "length"
+        Just (NValue LInteger) | last path `elem` ["lines", "keep-first-lines", "keep-last-lines", "keep-with-next", "space-before", "space-after", "space-between"] -> Just "count"
+        _ | "aki-sets" `elem` path, last path `elem` ["optimum", "minimum", "maximum"] -> Just "aki"
+        _ -> Nothing
     -- the names a namespace has: the built-in ones, then those of the file in its order
     names ns = nub (builtinNames ns <> [n | (ns', n) <- concatMap (namesOn schema) defined, ns' == ns])
     namesUnder ns path = case ns of

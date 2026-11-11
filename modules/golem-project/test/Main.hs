@@ -727,8 +727,8 @@ diagnosticCodeTests =
         has "[toc]\nleader = \"dash\"\n" "leader に使えない値です: dash（dots, none のどれか）"
         has (grid "columns = 2\n") "columns が 2 以上のときは column-gap が要ります"
         has "[paragraph-styles.x]\nspace-between = -1\n" "space-between は 0 以上です"
-        has "[paragraph-styles.x]\nfirst-line-indent = \"abc\"\n" "長さの書き方が不正です: abc（1zw や -1zw のように書きます）"
-        has "[page]\nsize = \"A6\"\nbleed = \"abc\"\n" "長さの書き方が不正です: abc（13Q や 20mm のように書きます）"
+        has "[paragraph-styles.x]\nfirst-line-indent = \"abc\"\n" "値の名前がありません: abc"
+        has "[page]\nsize = \"A6\"\nbleed = \"abc\"\n" "値の名前がありません: abc"
         has "[page]\nsize = \"A6\"\nbleed = 3\n" "長さは文字列で書きます"
         has "[color.swatches]\na = { cmyk = [0, 0, 0, 101] }\n" "cmyk は 0 から 100 までの整数四つです"
         has "[headings.7]\n" "見出しの段は 1 から 6 のどれかです: 7",
@@ -889,6 +889,30 @@ tests =
           ]
         let notices = styleNotices (FileId 0) "[paragraph-styles.caption]\nindent = 0\n"
         map diagCode notices @?= [DiagnosticCode "G03100"],
+      testCase "ADR 0320 I1 I3: named length resolves after declarations" $ do
+        let src = "[paragraph-styles.quote]\nindent = \"indent\"\n[values.length]\nindent = \"1zw\"\n"
+        case parseStyle (FileId 0) src of
+          Left ds -> assertFailure (show ds)
+          Right s -> (paraStyle s (Just "quote") >>= psIndent) @?= Just (Zw 1)
+        codes (parseStyle (FileId 0) "[values.length]\na = \"1zw\"\n[values.aki]\na = \"二分\"\n") @?= ["G03254"]
+        codes (parseStyle (FileId 0) "[values.length]\na = \"b\"\nb = \"a\"\n") @?= ["G03256"],
+      testCase "ADR 0320 I1: count expressions and @style-def share declarations" $ do
+        let src = "[values.count]\nmore = \"rows + 1\"\nrows = 2\n[paragraph-styles.quote]\nkeep-with-next = \"more\"\n"
+        case parseStyle (FileId 0) src of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            (paraStyle s (Just "quote") >>= psKeepWithNext) @?= Just 3
+            fmap (either (const Nothing) psKeepWithNext) (localStyleDefWithValues s ParagraphKind [("keep-with-next", LocalWord "more")]) @?= Right (Just 3)
+            fmap (either (const Nothing) psKeepWithNext) (localStyleDefWithValues s ParagraphKind [("keep-with-next", LocalString "rows + 1")]) @?= Right (Just 3)
+            either (map fst) (const []) (localStyleDefWithValues s ParagraphKind [("keep-with-next", LocalWord "missing")]) @?= ["G03257"],
+      testCase "ADR 0320 I3: invalid names and typed references have located errors" $ do
+        codes (parseStyle (FileId 0) "[values.length]\nBad = \"1zw\"\n") @?= ["G03255"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"missing\"\n") @?= ["G03257"]
+        codes (parseStyle (FileId 0) "[values.aki]\nhalf = \"二分\"\n[paragraph-styles.quote]\nindent = \"half\"\n") @?= ["G03258"],
+      testCase "ADR 0320 I2: typed source sites include only bound references" $ do
+        let src = "[values.length]\nindent = \"1zw\"\n[values.count]\nrows = 2\n[paragraph-styles.quote]\nindent = \"indent\"\nkeep-with-next = \"rows\"\nbased-on = \"indent\"\n"
+            sites = layoutValueSites src
+        [(kind, name, def) | (kind, name, _, _, def) <- sites] @?= [("count", "rows", True), ("length", "indent", True), ("length", "indent", False), ("count", "rows", False)],
       testCase "the inch unit (golem-project ADR 0010)" $ do
         parseDim "1in" @?= Just (Abs (72 * 65536))
         parseDim "0.125in" @?= Just (Abs (9 * 65536))
@@ -922,7 +946,8 @@ tests =
         linesOf "[headings.2]\nnumber = \"{n}\"\n" @?= Just (Just Nothing)
         mapM_
           (\v -> codes (parseStyle (FileId 0) ("[headings.2]\nlines = " <> v <> "\n")) @?= ["G03006"])
-          ["0", "1.5", "\"3\""]
+          ["0", "1.5"]
+        linesOf "[headings.2]\nlines = \"3\"\n" @?= Just (Just (Just 3))
         -- a negative number is G02103 (docs/adr ADR 0102)
         codes (parseStyle (FileId 0) "[headings.2]\nlines = -1\n") @?= ["G02103"],
       testCase "the placement of notes (golem-driver ADR 0026)" $ do
@@ -934,7 +959,8 @@ tests =
         sizeOf "0.65zw" @?= Just (Just (Zw (65 % 100)), Just (Zw (65 % 100)))
         sizeOf "6pt" @?= Just (parseDim "6pt", parseDim "6pt")
         sizeOf "1zw" @?= Just (Just (Zw 1), Just (Zw 1))
-        mapM_ (\v -> codes (parseStyle (FileId 0) ("[notes]\nmark-size = \"" <> v <> "\"\n")) @?= ["G03006"]) ["0zw", "1.5zw", "abc", "0pt"],
+        mapM_ (\v -> codes (parseStyle (FileId 0) ("[notes]\nmark-size = \"" <> v <> "\"\n")) @?= ["G03006"]) ["0zw", "1.5zw", "0pt"]
+        codes (parseStyle (FileId 0) "[notes]\nmark-size = \"abc\"\n") @?= ["G03257"],
       noteMarkTests,
       indentTests,
       listTests,
@@ -1031,11 +1057,11 @@ tests =
         -- a rule with chapter-end notes is not an error
         ruleOf "[notes]\nplacement = \"chapter-end\"\n\n[notes.rule]\nlength = \"10zw\"\n" @?= Right (Just (RuleSpec (Just (Zw 10)) 19661 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True))
         codes (parseStyle (FileId 0) "[notes.rule]\nweight = \"0.3pt\"\n") @?= ["G03006"]
-        codes (parseStyle (FileId 0) "[notes.rule]\nlength = \"abc\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[notes.rule]\nlength = \"abc\"\n") @?= ["G03257"]
         codes (parseStyle (FileId 0) "[notes.rule]\nlength = \"0mm\"\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[notes.rule]\nlength = \"10zw\"\nweight = \"1zw\"\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[notes.rule]\nlength = \"10zw\"\nspace-before = \"-1pt\"\n") @?= ["G03006"]
-        codes (parseStyle (FileId 0) "[notes.rule]\nlength = \"10zw\"\nspace-after = \"abc\"\n") @?= ["G03006"],
+        codes (parseStyle (FileId 0) "[notes.rule]\nlength = \"10zw\"\nspace-after = \"abc\"\n") @?= ["G03257"],
       testCase "the colour and the style of a rule (golem-driver ADR 0028)" $ do
         let rule = parseRuleSpec (FileId 0)
             pt x = Sp (round (x * 65536 :: Rational))
@@ -1224,10 +1250,11 @@ hiddenFolioTests =
       testCase "the four keys are read" $
         fmap stHiddenFolio (parseStyle (FileId 0) "[hidden-folio]\nenabled = false\npages = \"all\"\nsize = \"8Q\"\ngutter = \"2mm\"\n")
           @?= Right (HiddenFolio False HiddenAll (Abs 371543) (Abs 371543) True),
-      testCase "zw, a size or gutter of 0 or less, an unknown pages and an unknown key are G03006" $
+      testCase "zw, a size or gutter of 0 or less, an unknown pages and an unknown key are G03006" $ do
         mapM_
           (\body -> codes (parseStyle (FileId 0) ("[hidden-folio]\n" <> body <> "\n")) @?= ["G03006"])
-          ["size = \"1zw\"", "gutter = \"-1mm\"", "size = \"0pt\"", "pages = \"blank\"", "font = \"body\"", "gutter = \"1zw\"", "size = \"abc\""],
+          ["size = \"1zw\"", "gutter = \"-1mm\"", "size = \"0pt\"", "pages = \"blank\"", "font = \"body\"", "gutter = \"1zw\""]
+        codes (parseStyle (FileId 0) "[hidden-folio]\nsize = \"abc\"\n") @?= ["G03257"],
       testCase "a gutter less than half the size is G03029 at gutter, with the values to fix (golem-driver ADR 0041)" $ do
         let src = "[hidden-folio]\nsize = \"6pt\"\ngutter = \"2pt\"\n"
         case parseStyle (FileId 0) src of
@@ -1302,7 +1329,7 @@ indexStyleTests =
           ["0", "1.5", "\"2\""],
       testCase "a column-gap that is negative or not a dimension is G03025" $ do
         codes (parseStyle (FileId 0) "[index]\ncolumns = 2\ncolumn-gap = \"-1zw\"\n") @?= ["G03025"]
-        codes (parseStyle (FileId 0) "[index]\ncolumns = 2\ncolumn-gap = \"abc\"\n") @?= ["G03025"],
+        codes (parseStyle (FileId 0) "[index]\ncolumns = 2\ncolumn-gap = \"abc\"\n") @?= ["G03257"],
       testCase "section-headings is read, true without it (docs/adr/0265)" $ do
         fmap (fmap ixSectionHeadings . stIndex) (parseStyle (FileId 0) "[index]\nsection-headings = false\n") @?= Right (Just False)
         fmap (fmap ixSectionHeadings . stIndex) (parseStyle (FileId 0) "[index]\ncolumns = 2\n") @?= Right (Just True)
@@ -1510,7 +1537,7 @@ listTests =
         g03022 "[lists]\nnumbers = [\"{x}\"]\n" "numbers"
         g03022 "[lists]\nnumbers = [\"\"]\n" "numbers"
         g03022 "[lists]\ngap = \"-1zw\"\n" "gap"
-        g03022 "[lists]\ngap = \"wide\"\n" "gap",
+        codes (parseStyle (FileId 0) "[lists]\ngap = \"wide\"\n") @?= ["G03257"],
       testCase "literal braces in a number format" $
         case parseStyle (FileId 0) "[lists]\nnumbers = [\"{{{n}}}\"]\n" of
           Left ds -> assertFailure (show ds)
@@ -1735,9 +1762,10 @@ alignSpaceTests =
         forM_ (zip alignValues [ParaLeft, ParaCenter, ParaRight, ParaLeftJustified, ParaCenterJustified, ParaRightJustified, ParaFullyJustified, ParaTowardsSpine, ParaAwayFromSpine]) $ \(v, a) -> do
           s <- styleOf ("[paragraph-styles.quote]\nalign = \"" <> v <> "\"\n")
           (paraStyle s (Just "quote") >>= psAlign) @?= Just a,
-      testCase "another align, a negative space and a negative end-indent are G03006" $
-        forM_ ["align = \"justify\"", "align = \"Center\"", "space-before = -1", "space-after = -1", "end-indent = \"-1zw\"", "end-indent = \"x\""] $ \kv ->
-          codes (parseStyle (FileId 0) ("[paragraph-styles.quote]\n" <> kv <> "\n")) @?= ["G03006"],
+      testCase "another align, a negative space and a negative end-indent are G03006" $ do
+        forM_ ["align = \"justify\"", "align = \"Center\"", "space-before = -1", "space-after = -1", "end-indent = \"-1zw\""] $ \kv ->
+          codes (parseStyle (FileId 0) ("[paragraph-styles.quote]\n" <> kv <> "\n")) @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nend-indent = \"x\"\n") @?= ["G03257"],
       testCase "@style-def reads the four keys and rejects the same values" $ do
         localStyleDef ParagraphKind [("align", LocalWord "right"), ("space-before", LocalWord "1"), ("space-after", LocalWord "2"), ("end-indent", LocalWord "1zw")]
           @?= Right (Right noParaDef {psAlign = Just ParaRight, psSpaceBefore = Just 1, psSpaceAfter = Just 2, psEndIndent = Just (Zw 1)})
@@ -1822,7 +1850,7 @@ codeStyleTests =
       testCase "a missing swatch is G03013; a padding that is negative or not a dimension G03006" $ do
         codes (parseStyle (FileId 0) "[paragraph-styles.code]\nbackground = \"nope\"\n") @?= ["G03013"]
         codes (parseStyle (FileId 0) "[paragraph-styles.code]\npadding = \"-1zw\"\n") @?= ["G03006"]
-        codes (parseStyle (FileId 0) "[paragraph-styles.code]\npadding = \"abc\"\n") @?= ["G03006"],
+        codes (parseStyle (FileId 0) "[paragraph-styles.code]\npadding = \"abc\"\n") @?= ["G03257"],
       testCase "a size larger than the grid is G03011" $
         codes (parseStyle (FileId 0) "[page]\nsize = \"A5\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 30\nlines = 20\nline-pitch = \"22H\"\nposition = { top = \"20mm\", gutter = \"20mm\" }\n\n[paragraph-styles.code]\nsize = \"14Q\"\n") @?= ["G03011"],
       testCase "@style-def paragraph code: the four keys only" $ do
@@ -1900,7 +1928,7 @@ codeStyleTests =
       testCase "a missing background swatch is G03013; a negative or unreadable padding G03006" $ do
         codes (parseStyle (FileId 0) "[character-styles.code]\nbackground = \"none-such\"\n") @?= ["G03013"]
         codes (parseStyle (FileId 0) "[character-styles.code]\npadding = \"-1pt\"\n") @?= ["G03006"]
-        codes (parseStyle (FileId 0) "[character-styles.code]\npadding = \"abc\"\n") @?= ["G03006"],
+        codes (parseStyle (FileId 0) "[character-styles.code]\npadding = \"abc\"\n") @?= ["G03257"],
       testCase "@style-def character code background=code-bg" $ do
         base <- styleOf "[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n"
         case localStyleDef CharacterKind [("background", LocalWord "code-bg"), ("padding", LocalWord "0.5zw")] of
@@ -2006,7 +2034,7 @@ boxStyleTests =
       testCase "a negative border-radius and one that is not a dimension are G03006; zw is the size of the style" $ do
         codes (parseStyle (FileId 0) "[paragraph-styles.a]\nborder-radius = \"1zw\"\n") @?= []
         codes (parseStyle (FileId 0) "[paragraph-styles.a]\nborder-radius = \"-1pt\"\n") @?= ["G03006"]
-        codes (parseStyle (FileId 0) "[paragraph-styles.a]\nborder-radius = \"abc\"\n") @?= ["G03006"],
+        codes (parseStyle (FileId 0) "[paragraph-styles.a]\nborder-radius = \"abc\"\n") @?= ["G03257"],
       testCase "a negative padding and a border-width in zw or negative are G03006 in any style" $ do
         codes (parseStyle (FileId 0) "[paragraph-styles.a]\npadding = \"-1zw\"\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[paragraph-styles.a]\nborder-width = \"1zw\"\n") @?= ["G03006"],
@@ -2068,10 +2096,10 @@ characterFeatureTests =
         g03021 "[character-styles.a]\nkerning = \"auto\"\n"
         g03021 "[character-styles.a]\ntracking = 10001\n"
         g03021 "[character-styles.a]\ntracking = -1001\n"
-        g03021 "[character-styles.a]\nbaseline-shift = \"up\"\n"
+        codes (parseStyle (FileId 0) "[character-styles.a]\nbaseline-shift = \"up\"\n") @?= ["G03257"]
         g03021 "[paragraph-styles.a]\nkerning = \"optical\"\n"
         g03021 "[paragraph-styles.a]\ntracking = 10001\n"
-        g03021 "[paragraph-styles.a]\nbaseline-shift = \"up\"\n",
+        codes (parseStyle (FileId 0) "[paragraph-styles.a]\nbaseline-shift = \"up\"\n") @?= ["G03257"],
       testCase "optical kerning names v1" $
         assertBool "message" (any ("v1 ではオプティカルカーニングを使えません" `T.isInfixOf`) (msgs (parseStyle (FileId 0) "[character-styles.a]\nkerning = \"optical\"\n"))),
       testCase "the bounds of tracking are allowed" $ do
@@ -2182,7 +2210,7 @@ akiTests =
         assertBool (show ms) (not (null ms) && all ("アキの量の指定が正しくありません: " `T.isPrefixOf`) ms),
       testCase "an aki name in another dimension is G03020" $ do
         codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"二分\"\n") @?= ["G03020"]
-        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"wide\"\n") @?= ["G03006"],
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"wide\"\n") @?= ["G03257"],
       testCase "references to aki sets are G03013" $ do
         codes (parseStyle (FileId 0) "[paragraph-styles.body]\naki-set = \"nope\"\n") @?= ["G03013"]
         codes (parseStyle (FileId 0) "[aki-sets.a]\nbased-on = \"nope\"\n") @?= ["G03013"]

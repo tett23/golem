@@ -308,6 +308,33 @@ InDesign の段落スタイルとの違いは、次のとおりです。
 - 最終行右インデントはありません。
 - 段落ごとに書いたスタイルの上書き（オーバーライド）はありません。体裁を変えたい段落には、別の段落スタイルを作って付けます。原稿にあるのはスタイルの名前だけなので、スタイルを直せば、それを使うすべての段落が変わります。
 
+## 組版用の値を名前で共有する
+
+同じ字下げ、アキ量、行数を複数のスタイルで使うときは、[code: style.toml] の [code: \[values.length\]]、[code: \[values.aki\]]、[code: \[values.count\]] に名前を付けます。
+スタイル同士を [code: based-on] で結ばなくても、同じ値を参照できます。
+
+```toml
+[values.length]
+indent = "1zw"
+
+[values.aki]
+half = "二分"
+
+[values.count]
+rows = 2
+more = "rows + 1"
+
+[paragraph-styles.quote]
+indent = "indent"
+keep-with-next = "more"
+```
+
+名前は英小文字で始め、後は英小文字、数字、ハイフンで書きます。
+三つの表で同じ名前を二度使えません。
+宣言の順番は自由で、行数の式には足し算を使えます。
+原稿の [code: @style-def paragraph letter indent=indent] でも、同じ宣言を参照できます。
+長さの [code: zw] は、値を使う欄の文字の大きさで決まります。
+
 ## 行揃えと段落の前後のアキ
 
 段落スタイルの [code: align] で、段落の行の揃え方を変えます。

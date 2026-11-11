@@ -52,7 +52,7 @@ readingRows =
     Row "a bleed in zw" "[page]\nsize = \"A5\"\nbleed = \"1zw\"\n" "G03006" "\"1zw\"" 0 Nothing,
     Row "a page size that is a number" "[page]\nsize = 3\n" "G03017" "3" 0 Nothing,
     Row "a hidden folio pages outside the table" "[hidden-folio]\npages = \"some\"\n" "G03006" "\"some\"" 0 Nothing,
-    Row "an aki rule value that is no dimension" "[aki-sets.mine]\nrules = [{ before = \"opening\", after = \"closing\", optimum = \"abc\" }]\n" "G03020" "\"abc\"" 0 Nothing,
+    Row "an aki rule value that is no dimension" "[aki-sets.mine]\nrules = [{ before = \"opening\", after = \"closing\", optimum = \"abc\" }]\n" "G03257" "\"abc\"" 0 Nothing,
     Row "an aki rule with an unknown class" "[aki-sets.mine]\nrules = [{ before = \"nothere\", after = \"closing\", optimum = \"四分\" }]\n" "G03020" "\"nothere\"" 0 Nothing,
     Row "a built-in aki set defined again" "[aki-sets.gyomatsu-yakumono-hankaku]\nbased-on = \"gyomatsu-yakumono-zenkaku\"\n" "G03020" "gyomatsu-yakumono-hankaku]" 0 Nothing,
     Row "a swatch with five numbers" "[color.swatches.red]\ncmyk = [0, 100, 100, 0, 0]\n" "G03006" "[0, 100" 0 Nothing,

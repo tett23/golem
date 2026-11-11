@@ -47,7 +47,9 @@ styleDefTests =
         [c | (c, _, _, _) <- diags "@style-def paragraph letter indent=二分\n\nx\n"] @?= ["G03020"],
       testCase "the message names the value and how to write a dimension" $
         [m | (_, m, _, _) <- diags "@style-def paragraph letter indent=二分\n\nx\n"]
-          @?= ["@style-def の値が不正です: アキの量の指定が正しくありません: アキの量の名前と百分率は、アキの量を書く欄でだけ使えます。寸法は 0.5zw や 2mm のように書きます: 二分 (indent)"]
+          @?= ["@style-def の値が不正です: アキの量の指定が正しくありません: アキの量の名前と百分率は、アキの量を書く欄でだけ使えます。寸法は 0.5zw や 2mm のように書きます: 二分 (indent)"],
+      testCase "ADR 0320 I4: an undefined layout value points at its use" $
+        [(c, start, end) | (c, _, start, end) <- diags "@style-def paragraph letter indent=missing\n\nx\n"] @?= [("G03257", 35, 42)]
     ]
 
 tests :: TestTree

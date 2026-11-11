@@ -162,7 +162,9 @@ tests =
                   Success ws _ -> assertBool (show (here, ws)) (not (any unexpected ws))
                   Failure es -> assertFailure ("the sample does not read: " <> show (here, es))
           )
-          paths,
+          [(steps, node) | (steps, node) <- paths, take 1 (keysOf steps) /= ["values"]],
+      testCase "ADR 0320 I1: values are read before the style decoder" $
+        errorsOf "[values.length]\nindent = \"1zw\"\n[paragraph-styles.quote]\nindent = \"indent\"\n" @?= [],
       testCase "every value of an enumeration is read at its key" $
         mapM_
           ( \(steps, node) ->
