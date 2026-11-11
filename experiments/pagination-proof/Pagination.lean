@@ -172,4 +172,28 @@ theorem waitingBlankSome :
       blankWithNextCase false false true = true := by
   exact ⟨4, 2, 4, 4, by decide⟩
 
+/- A need of two lines before a one-line figure in a column with one line
+   left conflicts with the older rule that keeps every figure that fits. -/
+theorem needFigure :
+    (∃ kept : Bool, kept = decide (4 + 1 ≤ 5)) ∧
+    (∃ kept : Bool, kept = true → 4 + 2 ≤ 5) ∧
+    (∀ kept : Bool, ¬ (kept = decide (4 + 1 ≤ 5) ∧
+                      (kept = true → 4 + 2 ≤ 5))) := by
+  refine ⟨⟨true, by decide⟩, ⟨false, by decide⟩, ?_⟩
+  intro kept
+  cases kept <;> decide
+
+/- The same need before a heading conflicts with filling the last line. -/
+theorem needGreedy :
+    (∃ brk : Fin 2, 2 + brk.val ≤ 3 ∧
+      (brk.val = 1 ∨ 2 + brk.val + 1 > 3)) ∧
+    (∃ brk : Fin 2, 2 + brk.val ≤ 3 ∧
+      (brk.val = 1 → 2 + 2 ≤ 3)) ∧
+    (∀ brk : Fin 2, ¬ (2 + brk.val ≤ 3 ∧
+      (brk.val = 1 ∨ 2 + brk.val + 1 > 3) ∧
+      (brk.val = 1 → 2 + 2 ≤ 3))) := by
+  refine ⟨⟨1, by decide⟩, ⟨0, by decide⟩, ?_⟩
+  intro brk
+  omega
+
 end GolemPagination
