@@ -10,7 +10,8 @@
 # ARTIFACT waits for another artifact of JOB instead: the job wasm waits
 # so for wasm-native-list (docs/adr/0199).
 # gh reads the repository from GH_REPO and the token from GH_TOKEN. Every
-# WAIT_INTERVAL seconds (10 by default) it asks for the artifact; it exits
+# WAIT_INTERVAL seconds (30 by default) it asks for the artifact. Before
+# the first sleep and every fourth interval it checks JOB. It exits
 # 0 once the run has it, and 1 when JOB is completed without it, or when
 # the attempt has no job JOB. The limit of the waiting is the timeout of
 # the step.
@@ -24,39 +25,94 @@
 set -eu
 [ $# -eq 3 ] || [ $# -eq 4 ] || { echo "usage: wait-pdfs.sh RUN ATTEMPT JOB [ARTIFACT]" >&2; exit 2; }
 RUN=$1 ATTEMPT=$2 JOB=$3 ARTIFACT=${4:-visual-pdfs}
-INTERVAL=${WAIT_INTERVAL:-10}
+INTERVAL=${WAIT_INTERVAL:-30}
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+# gh --include writes the headers to stdout for a failed request too.
+# Retry the operation, including all pages, only for an identified rate
+# limit. A partial job list must never become a "missing producer".
+api() {
+  backoff=60
+  while :; do
+    if gh api "$@" --include >"$tmp/response" 2>"$tmp/error"; then
+      awk '/^HTTP\/[0-9.]+ [0-9][0-9][0-9]([[:space:]]|$)/ {header=1; next}
+           header && /^\r?$/ {header=0; next}
+           !header {print}' "$tmp/response"
+      return 0
+    else
+      code=$?
+    fi
+    cat "$tmp/error" >&2
+    status=$(awk '/^HTTP\/[0-9.]+ / {status=$2} END {print status}' "$tmp/response")
+    case "$status" in
+      429) ;;
+      403) grep -Eiq 'API rate limit exceeded|secondary rate limit' "$tmp/error" || return "$code" ;;
+      *) return "$code" ;;
+    esac
+    # Retry-After is in seconds. X-RateLimit-Reset is in epoch seconds
+    # and also appears on ordinary responses: use it only if exhausted.
+    delay=$(awk -v now="$(date +%s)" -v fallback="$backoff" '
+      /^HTTP\/[0-9.]+ / {headers=1; retry=reset=0; remaining=""; next}
+      /^\r?$/ {headers=0}
+      headers && $2 ~ /^[0-9]+\r?$/ {
+        key=tolower($1)
+        if (key=="retry-after:") retry=$2+0
+        if (key=="x-ratelimit-remaining:") remaining=$2+0
+        if (key=="x-ratelimit-reset:") reset=$2+0
+      }
+      END {
+        delay=retry
+        if (remaining=="0" && reset > 0 && reset >= now && reset-now+1 > delay) delay=reset-now+1
+        printf "%.0f\n", (delay > 0 ? delay : fallback)
+      }' "$tmp/response")
+    echo "wait-pdfs: rate limited; retrying in ${delay}s" >&2
+    sleep "$delay" || return $?
+    backoff=$((backoff * 2))
+    [ "$backoff" -le 600 ] || backoff=600
+  done
+}
+
+artifact_count() {
+  api "repos/{owner}/{repo}/actions/runs/$RUN/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length'
+}
+
+poll=0
 while :; do
-  n=$(gh api "repos/{owner}/{repo}/actions/runs/$RUN/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')
+  n=$(artifact_count)
   if [ "$n" -gt 0 ]; then
     echo "wait-pdfs: $ARTIFACT is uploaded" >&2
     exit 0
   fi
-  jobs=$(gh api --paginate "repos/{owner}/{repo}/actions/runs/$RUN/attempts/$ATTEMPT/jobs" --jq '.jobs[] | [.name, .status] | @tsv')
-  # the lines "name<TAB>status" of the jobs that match JOB
-  found=$(printf '%s\n' "$jobs" | JOB=$JOB awk -F '\t' '
-    { n = $1; j = ENVIRON["JOB"]; s = " / " j }
-    n == j || (length(n) > length(s) && substr(n, length(n) - length(s) + 1) == s)')
-  count=$(printf '%s' "$found" | awk 'END { print NR }')
-  case "$count" in
-    0)
-      echo "wait-pdfs: the attempt $ATTEMPT of the run $RUN has no job '$JOB'" >&2
+  if [ "$poll" = 0 ]; then
+    jobs=$(api --paginate "repos/{owner}/{repo}/actions/runs/$RUN/attempts/$ATTEMPT/jobs" --jq '.jobs[] | [.name, .status] | @tsv')
+    # the lines "name<TAB>status" of the jobs that match JOB
+    found=$(printf '%s\n' "$jobs" | JOB=$JOB awk -F '\t' '
+      { n = $1; j = ENVIRON["JOB"]; s = " / " j }
+      n == j || (length(n) > length(s) && substr(n, length(n) - length(s) + 1) == s)')
+    count=$(printf '%s' "$found" | awk 'END { print NR }')
+    case "$count" in
+      0)
+        echo "wait-pdfs: the attempt $ATTEMPT of the run $RUN has no job '$JOB'" >&2
+        exit 1
+        ;;
+      1) ;;
+      *)
+        echo "wait-pdfs: the attempt $ATTEMPT of the run $RUN has $count jobs that match '$JOB':" >&2
+        printf '%s\n' "$found" | cut -f 1 | sed 's/^/  /' >&2
+        exit 1
+        ;;
+    esac
+    name=$(printf '%s\n' "$found" | cut -f 1)
+    status=$(printf '%s\n' "$found" | cut -f 2)
+    if [ "$status" = completed ]; then
+      # the artifact is uploaded before the job completes; ask once more
+      n=$(artifact_count)
+      if [ "$n" -gt 0 ]; then exit 0; fi
+      echo "wait-pdfs: '$name' completed without uploading $ARTIFACT" >&2
       exit 1
-      ;;
-    1) ;;
-    *)
-      echo "wait-pdfs: the attempt $ATTEMPT of the run $RUN has $count jobs that match '$JOB':" >&2
-      printf '%s\n' "$found" | cut -f 1 | sed 's/^/  /' >&2
-      exit 1
-      ;;
-  esac
-  name=$(printf '%s\n' "$found" | cut -f 1)
-  status=$(printf '%s\n' "$found" | cut -f 2)
-  if [ "$status" = completed ]; then
-    # the artifact is uploaded before the job completes; ask once more
-    n=$(gh api "repos/{owner}/{repo}/actions/runs/$RUN/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')
-    if [ "$n" -gt 0 ]; then exit 0; fi
-    echo "wait-pdfs: '$name' completed without uploading $ARTIFACT" >&2
-    exit 1
+    fi
   fi
+  poll=$(((poll + 1) % 4))
   sleep "$INTERVAL"
 done

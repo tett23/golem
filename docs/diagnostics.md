@@ -8655,21 +8655,20 @@ overrides に書けない名前です
 
 ### 意味
 
-`[[filters]]` の項目が、宣言されていないプラグインか、宣言したプラグインが提供していないフィルタを指す。
-位置は `manifest.toml` の先頭である。
+`[[filters]]` の項目が、宣言されていないプラグインを指す。
+位置は `manifest.toml` の `[[filters]]` の `plugin` の値である。
 
-- メッセージ: `宣言されていないプラグインです: <プラグイン>（フィルタ <プラグイン>.<フィルタ>）`、`プラグインが提供していないフィルタです: <プラグイン>.<フィルタ>`
+- メッセージ: `宣言されていないプラグインです: <プラグイン>（フィルタ <プラグイン>.<フィルタ>）`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[ADR 0330](adr/0330-undeclared-plugin-and-missing-filter.md)
 
 ### 主な原因
 
 - `[[filters]]` の項目が、宣言されていないプラグインを指す。
-- `[[filters]]` の項目が、プラグインが提供していないフィルタを指す。
 
 ### 直し方
 
-プラグインを宣言するか、`[[filters]]` の項目のプラグインとフィルタの名前を直す。
+プラグインを宣言するか、`[[filters]]` の `plugin` の名前を直す。
 
 ## G06011
 
@@ -8910,6 +8909,30 @@ Golem を新しい版に上げるか、この Golem に合う版のプラグイ�
 
 プラグインを使うプロジェクトは、ネイティブの `golem` で組む。
 wasm の Golem で組むときは、`[plugins]` とプラグインのフィルタの `[[filters]]` を外す。
+
+## G06107
+
+プラグインがフィルタを提供していません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[[filters]]` に書いたプラグインは読み込めたが、指定した `filter` を提供していない。
+位置は `manifest.toml` の `[[filters]]` の `filter` の値である。
+
+- メッセージ: `プラグインが提供していないフィルタです: <プラグイン>.<フィルタ>`
+- 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
+- ADR: [ADR 0330](adr/0330-undeclared-plugin-and-missing-filter.md)
+
+### 主な原因
+
+`[[filters]]` の `filter` に、プラグインが提供しない名前を書いた。
+
+### 直し方
+
+`[[filters]]` の `filter` に、プラグインが提供する名前を書く。
 
 ## G07001
 
@@ -11331,7 +11354,7 @@ HTML、EPUB、プレーンテキストのターゲットと、`golem check`、LS
 `golem preflight` が読むプリフライトの設定のファイルに誤りがある。
 ファイルは `--rules` で指したもの、指さなければプロジェクトのルートの `preflight.toml` である。
 ファイルが読めない（`--rules` の指すファイルがない、UTF-8 でない）、TOML として読めない、知らないキーがある、値の型や範囲が違う、のどれもがこのコードになる。
-`based-on` が `basic`、`print`、`none` のどれでもないとき、`image-resolution` の `error-below` が `warning-below` より大きいときも、このコードである。
+`based-on` が `basic`、`print`、`screen`、`none` のどれでもないとき、`image-resolution` の `error-below` が `warning-below` より大きいときも、このコードである。
 しきい値が負のときは [G02103](#g02103) である（[docs/adr/0102](adr/0102-natural-number-type.md)）。
 位置は、そのファイルの中の誤りの位置である。
 このコードが出ると、PDF を組まずに終える。
