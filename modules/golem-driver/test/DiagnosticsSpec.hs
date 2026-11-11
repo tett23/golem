@@ -157,6 +157,7 @@ everyNoticeProjects =
     source =
       T.concat
         [ TE.decodeUtf8 noticeSource,
+          "\n@set legacy = 1\n\n", -- G02154 (Golem ADR 0336)
           "\n本文。\n\n@style verse\n  ab\\ \n  cd\n\n", -- G02079
           "[ruby: [kenten: 漢]|かん]\n\n", -- G07045
           "あ[style inkless: ——]い\n\n", -- G07101
