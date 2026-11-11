@@ -76,6 +76,19 @@ def twoHeadingFits (brk : Fin 3) : Prop := 2 + brk.val ≤ 3
 def twoHeadingGreedy (brk : Fin 3) : Prop := brk.val = 2 ∨ 2 + brk.val + 1 > 3
 def twoHeadingKeep (brk : Fin 3) : Prop := brk.val = 0 ∨ brk.val = 2
 
+/- The conflict does not depend on the Alloy bound of 3..6 lines. -/
+theorem greedyHeadingConflict_general (used : Nat) (brk : Fin 3) :
+    ¬ (used + brk.val ≤ used + 1 ∧
+       (brk.val = 2 ∨ used + brk.val + 1 > used + 1) ∧
+       (brk.val = 0 ∨ brk.val = 2)) := by
+  omega
+
+theorem greedyOrphanConflict_general (used : Nat) (brk : Fin 3) :
+    ¬ (used + brk.val ≤ used + 1 ∧
+       (brk.val = 2 ∨ used + brk.val + 1 > used + 1) ∧
+       brk.val ≠ 1) := by
+  omega
+
 theorem greedyKeepHeading :
     (∃ brk : Fin 3, twoHeadingFits brk ∧ twoHeadingGreedy brk) ∧
     (∃ brk : Fin 3, twoHeadingFits brk ∧ twoHeadingKeep brk) ∧
