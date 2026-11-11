@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 -- | manifest.toml (golem-project ADR 0001, specifications.md).
 module Golem.Project.Manifest
   ( Manifest (..),
@@ -25,11 +27,13 @@ module Golem.Project.Manifest
     ProjectVar (..),
     parseManifest,
     manifestValueSpan,
+    manifestChoiceValues,
     chapterFiles,
     applyEdits,
     decodeStrict,
     decodeStrictBy,
     decodeStrictWith,
+    decodeStrictWithReasons,
     naturalOf,
     naturalIntOf,
     maxNaturalInt,
@@ -38,7 +42,7 @@ module Golem.Project.Manifest
   )
 where
 
-import Control.Monad (zipWithM_)
+import Control.Monad (unless, zipWithM_)
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Int (Int32)
 import Data.List (isPrefixOf, sortOn)
@@ -55,6 +59,7 @@ import Golem.Parser.SourceSettings
 import Golem.Project.TomlMessage (pathText, schemaMessage, semanticMessage, syntaxMessage)
 import Golem.Project.TomlSchema (Node, unknownKeys)
 import Golem.Syntax
+import Golem.Syntax.LanguageTag (isLanguageTag)
 import Numeric.Natural (Natural)
 import Toml qualified
 import Toml.Schema
@@ -664,15 +669,37 @@ data PdfTable = PdfTable
 value that is not a string, is G03001 at the value (docs/adr ADR 0183).
 The values are strings so that parts and levels can be added later.
 -}
+pdfAValues :: [(Text, PdfAPart)]
+pdfAValues = [("2a", PdfA2a)]
+
+pdfUaValues :: [(Text, PdfUaPart)]
+pdfUaValues = [("1", PdfUa1)]
+
+-- | String spellings known to the manifest reader at a value position.
+manifestChoiceValues :: [Text] -> Bool -> [Text]
+manifestChoiceValues path arrayElement = case (path, arrayElement) of
+  (["source", "paragraph-separator"], False) -> separators
+  (["chapters", "paragraph-separator"], False) -> separators
+  (["chapters", "page-numbering", "style"], False) -> map notationName notations
+  (["metadata", group, "role"], False) | group `elem` ["creators", "contributors"] -> map roleWord [minBound .. maxBound]
+  (["targets", "pdf", "pdfa"], False) -> map fst pdfAValues
+  (["targets", "pdf", "pdfua"], False) -> map fst pdfUaValues
+  (["targets", "text", "variants"], True) -> map fst textVariantNames
+  (["diagnostics", "silence-notices"], True) -> [n | DiagnosticCode n <- noticeCodes]
+  (["diagnostics", "silence-info"], True) -> [n | DiagnosticCode n <- infoCodes]
+  _ -> []
+  where
+    separators = map fst paragraphSeparators
+
 instance FromValue PdfTable where
   fromValue = parseTableFromValue (PdfTable <$> optKey "isbn" <*> optKeyOf "pdfa" pdfa <*> optKeyOf "pdfua" pdfua)
     where
       pdfa = \case
-        Text' _ "2a" -> pure PdfA2a
+        Text' _ v | Just part <- lookup v pdfAValues -> pure part
         Text' l v -> failAt l (T.unpack ("pdfa に書けるのは \"2a\" だけです: " <> v))
         v -> typeError "string" v
       pdfua = \case
-        Text' _ "1" -> pure PdfUa1
+        Text' _ v | Just part <- lookup v pdfUaValues -> pure part
         Text' l v -> failAt l (T.unpack ("pdfua に書けるのは \"1\" だけです: " <> v))
         v -> typeError "string" v
 
@@ -691,9 +718,12 @@ instance FromValue EmptyTable where
 
 newtype TextTable = TextTable [Text]
 
+textVariantNames :: [(Text, TextVariant)]
+textVariantNames = [("vertical", TextVertical), ("horizontal", TextHorizontal)]
+
 textVariants :: TextTable -> [TextVariant]
 textVariants (TextTable vs) =
-  [v | (k, v) <- [("vertical", TextVertical), ("horizontal", TextHorizontal)], k `elem` vs]
+  [v | (k, v) <- textVariantNames, k `elem` vs]
 
 instance FromValue TextTable where
   fromValue = parseTableFromValue $ do
@@ -760,6 +790,124 @@ decodeStrictWith schema code codeAt fid src = case parseToml src of
             [] -> Right a
             ms -> report ms
 
+{- | Decode preflight rules with separate codes for syntax, conflicting
+definitions, unknown keys and invalid known values (docs/adr/0321).
+-}
+decodeStrictWithReasons :: forall a. (FromValue a) => Node -> FileId -> Text -> Either [Diagnostic] a
+decodeStrictWithReasons schema fid src =
+  case parseToml src of
+    Left (ErrSyntax _) ->
+      let (masked, syntaxErrors) = recoverRulesSyntax fid src
+          combined = case decode masked of
+            Left ds -> syntaxErrors <> ds
+            Right _ -> syntaxErrors
+          detected = length combined
+          withCount d
+            | "未検査範囲" `T.isInfixOf` diagMessage d =
+                d {diagMessage = diagMessage d <> "（検出済み " <> T.pack (show detected) <> " 件）"}
+            | otherwise = d
+       in Left (map withCount (sortOn (spanStart . diagSpan) combined))
+    _ -> decode src
+  where
+    decode :: Text -> Either [Diagnostic] a
+    decode candidate = case parseToml candidate of
+      Left (ErrSyntax (Located pos msg)) -> Left [diagnostic "G09001" Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> syntaxMessage msg)]
+      Left (ErrSemantics (SemanticError pos key kind)) -> Left [diagnostic "G09104" Error (positionSpan fid src (Just pos)) ("TOML の定義が衝突しています: " <> semanticMessage kind key)]
+      Right tab ->
+        let unknown = unknownKeys schema tab
+            report = Left . map one . sortOn (fmap (\(Position _ l c) -> (l, c)) . matchAnn)
+            one (MatchMessage loc path msg) =
+              diagnostic
+                (if msg == naturalOutOfRange then "G02103" else if "unexpected key: " `isPrefixOf` msg then "G09103" else "G09102")
+                Error
+                (positionSpan fid src loc)
+                (schemaMessage path msg)
+         in case runMatcher (fromValue (Table' (Position 0 1 1) tab)) of
+              Failure es -> report (es <> unknown)
+              Success ws a -> case filter (not . isPrefixOf "unexpected key: " . matchMessage) ws <> unknown of
+                [] -> Right a
+                ms -> report ms
+
+{- | Check each complete TOML item once. A multiline item is a single token
+range; without its closing delimiter, no later text is treated as a key.
+Replacing a rejected range with spaces preserves every later line and
+column for the normal TOML parser and schema matcher.
+-}
+recoverRulesSyntax :: FileId -> Text -> (Text, [Diagnostic])
+recoverRulesSyntax fid src =
+  let (parts, errors) = go 1 (T.splitOn "\n" src)
+   in (T.intercalate "\n" parts, errors)
+  where
+    go _ [] = ([], [])
+    go first remaining =
+      let (item, rest, unclosed) = takeItem remaining
+          chunk = T.intercalate "\n" item
+          count = length item
+          (following, more) = if unclosed then (map blank rest, []) else go (first + count) rest
+       in case parseRawToml chunk of
+            Right _ -> (item <> following, more)
+            Left (Located (Position _ line column) msg) ->
+              let pos = Position 0 (first + line - 1) column
+                  suffix = if unclosed then "（未検査範囲: " <> T.pack (show first) <> " 行目からファイルの終わりまで）" else ""
+                  err = diagnostic "G09001" Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> syntaxMessage msg <> suffix)
+               in (map blank item <> following, err : more)
+    blank = T.map (const ' ')
+    takeItem [] = ([], [], False)
+    takeItem (line : rest) =
+      collect [line] rest (scanRuleLine emptyRuleTokenState line)
+    collect acc rest state
+      | not (ruleTriple state) && ruleSquare state <= 0 && ruleCurly state <= 0 = (reverse acc, rest, False)
+      | otherwise = case rest of
+          [] -> (reverse acc, [], True)
+          line : more ->
+            collect
+              (line : acc)
+              more
+              (scanRuleLine state line)
+
+data RuleTokenState = RuleTokenState
+  { ruleQuote :: !(Maybe Char),
+    ruleTriple :: !Bool,
+    ruleEscaped :: !Bool,
+    ruleSquare :: !Int,
+    ruleCurly :: !Int
+  }
+
+emptyRuleTokenState :: RuleTokenState
+emptyRuleTokenState = RuleTokenState Nothing False False 0 0
+
+-- | Track only delimiters outside strings and comments, once per character.
+scanRuleLine :: RuleTokenState -> Text -> RuleTokenState
+scanRuleLine initial input =
+  let end = go initial input
+   in if ruleTriple end then end else end {ruleQuote = Nothing, ruleEscaped = False}
+  where
+    go state remaining = case T.uncons remaining of
+      Nothing -> state
+      Just (c, rest)
+        | ruleEscaped state -> go (state {ruleEscaped = False}) rest
+        | Just q <- ruleQuote state,
+          ruleTriple state,
+          T.isPrefixOf (T.replicate 3 (T.singleton q)) remaining ->
+            go (state {ruleQuote = Nothing, ruleTriple = False}) (T.drop 3 remaining)
+        | Just q <- ruleQuote state,
+          not (ruleTriple state),
+          c == q ->
+            go (state {ruleQuote = Nothing}) rest
+        | Just '"' <- ruleQuote state,
+          c == '\\' ->
+            go (state {ruleEscaped = True}) rest
+        | Just _ <- ruleQuote state -> go state rest
+        | c == '#' -> state
+        | T.isPrefixOf "\"\"\"" remaining -> go (state {ruleQuote = Just '"', ruleTriple = True}) (T.drop 3 remaining)
+        | T.isPrefixOf "'''" remaining -> go (state {ruleQuote = Just '\'', ruleTriple = True}) (T.drop 3 remaining)
+        | c == '"' || c == '\'' -> go (state {ruleQuote = Just c}) rest
+        | c == '[' -> go (state {ruleSquare = ruleSquare state + 1}) rest
+        | c == ']' -> go (state {ruleSquare = ruleSquare state - 1}) rest
+        | c == '{' -> go (state {ruleCurly = ruleCurly state + 1}) rest
+        | c == '}' -> go (state {ruleCurly = ruleCurly state - 1}) rest
+        | otherwise -> go state rest
+
 -- | The errors of reading TOML before the schema (Toml.parse' of toml-parser, which the package does not export).
 data TomlError
   = ErrSyntax (Located String)
@@ -804,6 +952,10 @@ parseManifest fid src = do
       filters = zipWith (\f (pluginSpan, filterSpan) -> f {fdPluginSpan = pluginSpan, fdFilterSpan = filterSpan}) (manifestFilters m0) (filterSites <> repeat (Nothing, Nothing))
       m = m0 {manifestChapters = withNumberingSpans sites (manifestChapters m0), manifestFilters = filters}
       t = manifestTargets m
+      tag = mdLanguage (manifestMetadata m)
+      loc = fromMaybe (mkSpan fid 0 0) (manifestValueSpan fid src ["metadata", "language"])
+  unless (isLanguageTag tag) $
+    Left [diagnostic "G03119" Error loc ("language を言語のタグの形で書きます: " <> tag)]
   if tgHtml t || not (null (tgText t)) || isJust (tgPdf t) || isJust (tgEpub t)
     then Right m
     else Left [diagnostic "G03001" Error (mkSpan fid 0 0) "出力ターゲットが一つもありません"]
