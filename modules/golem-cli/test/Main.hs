@@ -163,6 +163,19 @@ tests =
         (code', _, _) <- readCreateProcessWithExitCode (proc "golem" ["fmt", "a.gm"]) {cwd = Just tmp} ""
         code' @?= ExitSuccess
         readFile (tmp </> "a.gm") >>= (@?= "@verse\n  Full fathom five\n"),
+      testCase "Golem ADR 0329 O3 and O4: fmt cleans only selected regular Finder files" $ withSystemTempDirectory "golem-cli" $ \tmp -> do
+        createDirectoryIfMissing True (tmp </> "chapters")
+        createDirectoryIfMissing True (tmp </> "other")
+        writeFile (tmp </> "chapters/a.gm") "本文。\n"
+        forM_ [tmp, tmp </> "chapters", tmp </> "other"] $ \dir -> writeFile (dir </> ".DS_Store") "finder"
+        let fmt args = readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
+        (checked, _, _) <- fmt ["fmt", "--check", "chapters/a.gm"]
+        checked @?= ExitSuccess
+        forM_ [tmp, tmp </> "chapters", tmp </> "other"] $ \dir -> doesFileExist (dir </> ".DS_Store") >>= (@?= True)
+        (formatted, _, _) <- fmt ["fmt", "chapters/a.gm"]
+        formatted @?= ExitSuccess
+        forM_ [tmp, tmp </> "chapters"] $ \dir -> doesFileExist (dir </> ".DS_Store") >>= (@?= False)
+        doesFileExist (tmp </> "other/.DS_Store") >>= (@?= True),
       fmtCrTests,
       fmtTableTests,
       missingFontTests,

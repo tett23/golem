@@ -40,7 +40,7 @@ import Options.Applicative.Extra (helperWith)
 import System.Directory (doesFileExist, getCurrentDirectory)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
-import System.FilePath (joinPath, makeRelative, normalise, splitDirectories, takeExtension, (</>))
+import System.FilePath (joinPath, makeRelative, normalise, splitDirectories, takeDirectory, takeExtension, (</>))
 import System.IO (hFlush, hPutStrLn, hSetEncoding, stderr, stdout, utf8)
 import Text.Printf (printf)
 
@@ -478,6 +478,7 @@ formatFiles check files0 = do
   case files of
     Nothing -> pure (ExitFailure 1)
     Just fs -> do
+      unless check $ cleanFinderInfo "." ("." : map (takeDirectory . fst) fs)
       results <- mapM (uncurry one) fs
       pure (if and results then ExitSuccess else ExitFailure 1)
   where
