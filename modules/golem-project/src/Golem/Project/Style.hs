@@ -2639,7 +2639,7 @@ resolveStyleValues fid src (MkTable root) = do
       Just (first, rest) -> isAsciiLower first && T.all (\c -> isAsciiLower c || isDigit c || c == '-') rest
       Nothing -> False
     reservedName name = name `elem` ["pt", "in", "mm", "Q", "H", "zw", "ベタ", "全角", "二分", "三分", "四分", "五分", "六分", "八分", "二分四分"]
-    bad code pos msg = diagnostic code Error (positionSpan fid src (Just pos)) msg
+    bad code pos = diagnostic code Error (positionSpan fid src (Just pos))
     resolveName defs cache stack name = case Map.lookup name cache of
       Just result -> Right (result, cache)
       Nothing -> case Map.lookup name defs of

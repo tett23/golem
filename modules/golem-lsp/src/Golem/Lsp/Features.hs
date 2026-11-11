@@ -388,7 +388,7 @@ renameLayoutValue ws styleText path off new = case [(kind, name) | (kind, name, 
     | old /= new, new `elem` [name | (_, name, _, True) <- sites] -> Left (LayoutValueExists new)
     | otherwise -> Right [(loc', new) | (kind', name, loc', _) <- sites, kind' == kind, name == old]
   where
-    style = either (const defaultStyle) id (parseStyle (FileId 0) styleText)
+    style = fromRight defaultStyle (parseStyle (FileId 0) styleText)
     styleSites = [(kind, name, Location "style.toml" start end, def) | (kind, name, start, end, def) <- layoutValueSites styleText]
     sites = styleSites <> concatMap sourceSites [src | src <- allSources ws, srcInProject src]
     valid name = case T.uncons name of
