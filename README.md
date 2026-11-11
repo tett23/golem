@@ -155,6 +155,12 @@ golem new mybook
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
 
+命令の引数列と原稿内の式には通常コメント `%%注%%` を書ける（[Golem ADR 0339](./docs/adr/0339-comments-in-arguments-and-manuscript-expressions.md)）。
+たとえば `[f %%理由%% x key=y]` と `[= 1+%%理由%%2]` のコメントは値に入らない。
+既存の原稿で `%%注%%` を引数の値にしていた場合は `"%%注%%"` と書く。
+`key=x%%注%%` を値にしていた場合は `key="x%%注%%"` と書く。
+引用符不足のファイルは `golem fmt` でも自動修正されず、ほかの整形可能なファイルは整形される。
+
 `golem new` が作るプロジェクトは、版面の設定と、配布元から取得したフォントと、プリフライトの設定 `preflight.toml` を含む。
 `--no-fonts` で作ったプロジェクトも、フォントを置く前から HTML、EPUB、プレーンテキストを作れる（PDF はフォントを置くまで作れない）。
 `--screen` は塗り足しを省き、プリフライトに `based-on = "screen"` を設定する（[ADR 0327](./docs/adr/0327-screen-preflight-and-template.md)）。

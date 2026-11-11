@@ -5,12 +5,18 @@ module Golem.Parser
   ( parse,
     parseFile,
     parseAst,
+    commentBoundaryInfos,
     labelCode,
   )
 where
 
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
+import Data.List (sortOn)
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Parser.AST (File)
 import Golem.Parser.CST
 import Golem.Parser.Convert (convert)
@@ -24,7 +30,70 @@ import Peg.Runtime (SyntaxError (..))
 parse :: FileId -> Text -> (Node, [Diagnostic])
 parse fid src =
   let (tree, errs) = G.parseSyntaxRecover src
-   in (convert tree, map (syntaxErrorDiagnostic fid) errs)
+      cst = convert tree
+      extra = commentDiagnostics fid cst
+      unclosedAt p =
+        any
+          ( \x ->
+              spanEnd (posSpan x) == p && case posText x of
+                Just t | posKind x == KComment -> not ("%%" `T.isInfixOf` T.drop 2 t)
+                Just t | posKind x == KProofComment -> not ("%%" `T.isInfixOf` T.drop 3 t)
+                _ -> False
+          )
+          (withPositions fid cst)
+      covered d =
+        diagCode d `elem` [DiagnosticCode "G01018", DiagnosticCode "G01017"]
+          && unclosedAt (spanStart (diagSpan d))
+          && any (\e -> diagCode e `elem` [DiagnosticCode "G01018", DiagnosticCode "G01101"] && spanEnd (diagSpan e) == spanStart (diagSpan d) && spanLength (diagSpan e) > 0) extra
+   in (cst, sortOn (spanStart . diagSpan) (filter (not . covered) (map (syntaxErrorDiagnostic fid) errs) <> extra))
+
+-- Diagnostics whose spans and suggested edits depend on the lossless tokens.
+commentDiagnostics :: FileId -> Node -> [Diagnostic]
+commentDiagnostics fid = walk False 0
+  where
+    walk inExpr start n =
+      let k = nodeKind n
+          expr = inExpr || k == NExpr || (k == NBlockCommand && any isSet (nodeChildren n))
+          context
+            | expr = Just "式"
+            | k `elem` [NInlineCommand, NBlockCommand, NCodeBlock] = Just "引数列"
+            | otherwise = Nothing
+          children = snd (foldl' (step expr context) (start, []) (nodeChildren n))
+          wordsHere = case k of
+            NArgument -> wordValues start (nodeChildren n)
+            NKeywordArgument -> drop 1 (wordValues start (nodeChildren n))
+            _ -> []
+       in mapMaybe quoteDiagnostic wordsHere <> children
+    step expr context (offset, ds) e =
+      let ds' = case e of
+            ElemNode n -> walk expr offset n
+            ElemToken t
+              | tokKind t == KProofComment,
+                Just whereAt <- context ->
+                  [diagnostic "G01101" Error (mkSpan fid offset (offset + elementWidth e)) (whereAt <> "では校正コメントを使えません")]
+              | tokKind t == KComment,
+                Just whereAt <- context,
+                not ("%%" `T.isInfixOf` T.drop 2 (tokText t)) ->
+                  [diagnostic "G01018" Error (mkSpan fid offset (offset + elementWidth e)) (whereAt <> "のコメントが閉じていません")]
+            _ -> []
+       in (offset + elementWidth e, ds <> ds')
+    wordValues start = snd . foldl' stepWord (start, [])
+    stepWord (offset, ws) e =
+      let ws' = case e of
+            ElemToken (Token KWord t) -> [(offset, t)]
+            _ -> []
+       in (offset + elementWidth e, ws <> ws')
+    quoteDiagnostic (start, value)
+      | "%%" `T.isInfixOf` value =
+          let full = mkSpan fid start (start + BS.length (TE.encodeUtf8 value))
+           in Just
+                ( (diagnostic "G01102" Error full "引用符なしの値に %% が含まれています。値全体を引用符で囲みます")
+                    { diagFixes = [Fix "値を引用符で囲む" [(full, "\"" <> value <> "\"")] | not (T.any (`elem` ['\n', '"']) value)]
+                    }
+                )
+      | otherwise = Nothing
+    isSet (ElemToken (Token KIdent "set")) = True
+    isSet _ = False
 
 -- | Parse and lower to the AST in one step.
 parseAst :: FileId -> Text -> (File, Node, [Diagnostic])
@@ -65,3 +134,36 @@ syntaxErrorDiagnostic fid e =
   let (s, en) = syntaxErrorRange e
       (code, msg) = labelCode (syntaxErrorLabel e)
    in diagnostic code Error (mkSpan fid s en) msg
+
+-- | Each missing separator at a comment boundary is one lint info.
+commentBoundaryInfos :: FileId -> Node -> [Diagnostic]
+commentBoundaryInfos fid = go 0
+  where
+    go start n =
+      let cs = childrenAt start (nodeChildren n)
+          nested = concat [go offset m | (offset, ElemNode m) <- cs]
+          eligible = nodeKind n `elem` [NInlineCommand, NBlockCommand, NCodeBlock, NExpr, NRangeExpr, NBinaryExpr, NUnaryExpr, NCallExpr, NVarExpr, NArrayExpr, NHashExpr, NHashEntry, NParenExpr]
+          missing = if eligible then mapMaybe boundary (zip cs (drop 1 cs)) else []
+       in missing <> nested
+    childrenAt start = snd . foldl' (\(offset, xs) e -> (offset + elementWidth e, xs <> [(offset, e)])) (start, [])
+    boundary ((_, a), (offset, b))
+      | let left = edgeLast a,
+        let right = edgeFirst b,
+        left == Just KComment || right == Just KComment,
+        left `notElem` map Just [KWhitespace, KExprOpen, KLParen, KLBracket, KLBrace],
+        right `notElem` map Just [KWhitespace, KRBracket, KRParen, KRBrace, KColon, KNewline],
+        elementWidth a > 0,
+        elementWidth b > 0 =
+          let sp = mkSpan fid offset offset
+           in Just ((infoDiagnostic "G05100" sp "コメントとの間に半角スペースを入れます") {diagFixes = [Fix "半角スペースを入れる" [(sp, " ")]]})
+      | otherwise = Nothing
+    edgeFirst = \case
+      ElemToken t -> Just (tokKind t)
+      ElemNode n -> case nodeChildren n of
+        (e : _) -> edgeFirst e
+        [] -> Nothing
+    edgeLast = \case
+      ElemToken t -> Just (tokKind t)
+      ElemNode n -> case reverse (nodeChildren n) of
+        (e : _) -> edgeLast e
+        [] -> Nothing
