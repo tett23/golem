@@ -371,6 +371,12 @@ preflightTests =
         assertBool "no view" (isNothing (prView p))
         assertBool "the enabled page checks explain why they were skipped" (("glyph-missing", "ページ情報を作れませんでした") `elem` prSkipped p)
         assertBool "bleed was checked" ("bleed-size" `notElem` map fst (prSkipped p)),
+    testCase "Golem ADR 0331 I1: preflight reports encrypted PDF as G08105" $ do
+      encrypted <- BS.readFile "test/fixtures/figures/images/chart-encrypted.pdf"
+      img <- tinyImage
+      withPreflightProject horizontalStyle "# 章\n\n@figure images/a.pdf web=images/tiny.jpg alt=\"t\"\n\n本文。\n" (("images/a.pdf", encrypted) : img) $ \tmp -> do
+        p <- preflightIn tmp
+        errorCodes (prDiagnostics p) @?= [DiagnosticCode "G08105", DiagnosticCode "G09010"],
     testCase "image-unplaceable in preflight.toml is G09001 (golem-pdf ADR 0008)" $
       withPreflightProject horizontalStyle "本文。\n" [("preflight.toml", "[image-unplaceable]\nseverity = \"off\"\n")] $ \tmp -> do
         p <- preflightIn tmp
