@@ -1,0 +1,36 @@
+✔ 315 I1 migration preserves location and only changes targeted codes (1.394875ms)
+✔ 316 I1 migration preserves location and only changes targeted codes (0.100667ms)
+✔ 317 I1 migration preserves location and only changes targeted codes (0.074875ms)
+✔ 318 I1 migration preserves location and only changes targeted codes (0.081667ms)
+✔ 317 I2 existing duplicate path error takes precedence (0.074917ms)
+✔ 319 I1 numeric and textual zero share canonical dimension (0.100292ms)
+✔ 319 I2 count and CSS remain distinct (0.053125ms)
+✔ 320 I1 use site resolves zw and enforces kind (0.152709ms)
+✔ 320 I2 completion and rename follow references (0.144375ms)
+✔ 315 I2, 317 I2 reject ambiguous input before file lookup (0.204375ms)
+✖ 320 I3 declarations reject duplicates, aliases and ill-typed literals (0.1845ms)
+✖ 320 I4 dimensional references expand only in eligible source fields (0.117916ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 10
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 56.715458
+
+✖ failing tests:
+
+test at experiments/syntax/test.mjs:50:1
+✖ 320 I3 declarations reject duplicates, aliases and ill-typed literals (0.1845ms)
+  TypeError [Error]: declare is not a function
+      at TestContext.<anonymous> (file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-syntax/experiments/syntax/test.mjs:53:32)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at experiments/syntax/test.mjs:56:1
+✖ 320 I4 dimensional references expand only in eligible source fields (0.117916ms)
+  TypeError [Error]: expand is not a function
+      at TestContext.<anonymous> (file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-syntax/experiments/syntax/test.mjs:58:16)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)

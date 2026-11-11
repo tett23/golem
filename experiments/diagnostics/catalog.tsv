@@ -1,0 +1,410 @@
+code	line	status	title	triage	literal sites
+E01100	206	使用中	.emet の構文の誤りです	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:1312|modules/golem-emet/src/Golem/Emet/Parse.hs:110|modules/golem-emet/src/Golem/Emet/Parse.hs:161
+E01101	239	使用中	.emet に閉じていない括弧か引用符があります	未判定	modules/golem-emet/src/Golem/Emet/Parse.hs:99|modules/golem-emet/src/Golem/Emet/Parse.hs:100|modules/golem-emet/src/Golem/Emet/Parse.hs:101|modules/golem-emet/src/Golem/Emet/Parse.hs:102|modules/golem-emet/src/Golem/Emet/Parse.hs:103
+E01102	265	使用中	.emet で使えない予約語です	未判定	modules/golem-emet/src/Golem/Emet/Parse.hs:107
+E01103	292	使用中	関数の末尾にない where です	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:841
+E02100	318	使用中	.emet の未定義の名前です	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:433|modules/golem-emet/src/Golem/Emet/Check.hs:474|modules/golem-emet/src/Golem/Emet/Check.hs:613|modules/golem-emet/src/Golem/Emet/Check.hs:904|modules/golem-emet/src/Golem/Emet/Check.hs:906|modules/golem-emet/src/Golem/Emet/Check.hs:908|modules/golem-emet/src/Golem/Emet/Check.hs:933|modules/golem-emet/src/Golem/Emet/Check.hs:935|modules/golem-emet/src/Golem/Emet/Check.hs:937|modules/golem-emet/src/Golem/Emet/Check.hs:1044|modules/golem-emet/src/Golem/Emet/Check.hs:1177|modules/golem-emet/src/Golem/Emet/Check.hs:1302|modules/golem-emet/src/Golem/Emet/Eval.hs:165|modules/golem-emet/src/Golem/Emet/Eval.hs:213|modules/golem-emet/src/Golem/Emet/Eval.hs:220
+E02101	346	使用中	.emet の型が合いません	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:248|modules/golem-emet/src/Golem/Emet/Check.hs:405|modules/golem-emet/src/Golem/Emet/Check.hs:424|modules/golem-emet/src/Golem/Emet/Check.hs:432|modules/golem-emet/src/Golem/Emet/Check.hs:512|modules/golem-emet/src/Golem/Emet/Check.hs:642|modules/golem-emet/src/Golem/Emet/Check.hs:1042|modules/golem-emet/src/Golem/Emet/Check.hs:1046|modules/golem-emet/src/Golem/Emet/Check.hs:1145|modules/golem-emet/src/Golem/Emet/Check.hs:1175|modules/golem-emet/src/Golem/Emet/Solve.hs:175|modules/golem-emet/src/Golem/Emet/Solve.hs:179|modules/golem-emet/src/Golem/Emet/Solve.hs:208
+E02102	376	使用中	シグネチャのない最上位の関数です	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:612
+E02103	400	使用中	.emet の import が循環しています	未判定	modules/golem-emet/src/Golem/Emet.hs:220
+E02104	424	使用中	.emet で同じ名前を二度定義しています	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:397|modules/golem-emet/src/Golem/Emet/Check.hs:398|modules/golem-emet/src/Golem/Emet/Check.hs:399|modules/golem-emet/src/Golem/Emet/Check.hs:561|modules/golem-emet/src/Golem/Emet/Check.hs:562|modules/golem-emet/src/Golem/Emet/Check.hs:563|modules/golem-emet/src/Golem/Emet/Check.hs:580|modules/golem-emet/src/Golem/Emet/Check.hs:609|modules/golem-emet/src/Golem/Emet/Check.hs:610|modules/golem-emet/src/Golem/Emet/Check.hs:1043|modules/golem-emet/src/Golem/Emet/Check.hs:1126|modules/golem-emet/src/Golem/Emet/Check.hs:1176|modules/golem-emet/src/Golem/Emet/Check.hs:1190|modules/golem-emet/src/Golem/Emet/Check.hs:1300
+E02105	449	使用中	公開されていない名前です	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:450|modules/golem-emet/src/Golem/Emet/Check.hs:457|modules/golem-emet/src/Golem/Emet/Check.hs:903|modules/golem-emet/src/Golem/Emet/Check.hs:910|modules/golem-emet/src/Golem/Emet/Check.hs:932|modules/golem-emet/src/Golem/Emet/Check.hs:939
+E02106	473	使用中	等式の引数の数が合いません	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:709|modules/golem-emet/src/Golem/Emet/Check.hs:711
+E02107	499	使用中	同じ関数の等式が離れています	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:611|modules/golem-emet/src/Golem/Emet/Check.hs:1301
+E02108	523	使用中	取り込んだ名前が重なります	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:373
+E02109	550	使用中	使われていない where の束縛です	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:808|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:146
+E03100	577	使用中	網羅していないパターンマッチです	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:1264|modules/golem-emet/src/Golem/Emet/Eval.hs:304
+E03101	604	使用中	選ばれない選択肢です	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:1243|modules/golem-emet/src/Golem/Emet/Check.hs:1257
+E03102	629	使用中	ガードの並びの最後が otherwise ではありません	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:1252
+E04100	655	使用中	関数の評価の手数が上限を超えました	未判定	modules/golem-emet/src/Golem/Emet/Eval.hs:187
+E04101	685	使用中	末尾でない呼び出しの深さが上限を超えました	未判定	modules/golem-emet/src/Golem/Emet/Eval.hs:179
+E04102	710	使用中	where の束縛が自分自身の値を求めました	未判定	modules/golem-emet/src/Golem/Emet/Eval.hs:246
+E05100	737	使用中	知らない要求の種類です	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:507
+E05101	766	使用中	シグネチャにない要求を使っています	未判定	modules/golem-emet/src/Golem/Emet/Solve.hs:234
+E05102	796	使用中	同じ要求を二度書いています	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:521
+E05103	822	使用中	要求したファイルが UTF-8 として読めません	未判定	modules/golem-driver/src/Golem/Driver/Functions.hs:86
+E05104	848	使用中	要求が manifest.toml の [functions.requires] にありません	未判定	modules/golem-driver/src/Golem/Driver/Functions.hs:145|modules/golem-emet/src/Golem/Emet/Eval.hs:343
+E05105	879	使用中	要求したファイルが大きすぎます	未判定	modules/golem-driver/src/Golem/Driver/Functions.hs:82
+E05106	904	使用中	本体を評価する前の矢印に要求の列があります	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:693
+E05107	931	使用中	File.read の引数が文字列のリテラルではありません	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:893|modules/golem-emet/src/Golem/Emet/Check.hs:982
+E05108	957	使用中	本体が使わない要求です	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:787|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:169
+E06100	986	使用中	.gm の名前の規則に従わない名前です	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:1578|modules/golem-emet/src/Golem/Emet/Check.hs:1582|modules/golem-emet/src/Golem/Emet/Check.hs:1585|modules/golem-emet/src/Golem/Emet/Check.hs:1628
+E06101	1018	使用中	種類に合わない戻り値の型です	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:1572|modules/golem-emet/src/Golem/Emet/Check.hs:1574|modules/golem-emet/src/Golem/Emet/Check.hs:1589|modules/golem-emet/src/Golem/Emet/Gm.hs:122
+E06102	1043	使用中	.gm から渡せない引数の型か、引数の並びの誤りです	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:1615|modules/golem-emet/src/Golem/Emet/Check.hs:1617|modules/golem-emet/src/Golem/Emet/Check.hs:1623|modules/golem-emet/src/Golem/Emet/Check.hs:1630|modules/golem-emet/src/Golem/Emet/Check.hs:1636|modules/golem-emet/src/Golem/Emet/Check.hs:1639|modules/golem-emet/src/Golem/Emet/Check.hs:1640
+E06103	1069	使用中	キーワード引数の誤りです	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:1474|modules/golem-emet/src/Golem/Emet/Check.hs:1539|modules/golem-emet/src/Golem/Emet/Check.hs:1561|modules/golem-emet/src/Golem/Emet/Check.hs:1614|modules/golem-emet/src/Golem/Emet/Check.hs:1626|modules/golem-emet/src/Golem/Emet/Check.hs:1627|modules/golem-emet/src/Golem/Emet/Check.hs:1631|modules/golem-emet/src/Golem/Emet/Check.hs:1633
+E06104	1097	使用中	関数の出力が意味論 IR の規則に反しています	未判定	modules/golem-emet/src/Golem/Emet/Gm.hs:87
+E06105	1125	使用中	可変長引数の誤りです	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:1475|modules/golem-emet/src/Golem/Emet/Check.hs:1540|modules/golem-emet/src/Golem/Emet/Check.hs:1559|modules/golem-emet/src/Golem/Emet/Check.hs:1562|modules/golem-emet/src/Golem/Emet/Check.hs:1613|modules/golem-emet/src/Golem/Emet/Check.hs:1620|modules/golem-emet/src/Golem/Emet/Check.hs:1621
+E06106	1150	使用中	同じ名前を二度出しています	未判定	modules/golem-emet/src/Golem/Emet/Check.hs:1445
+E07100	1175	使用中	使われていない、pub のない最上位の宣言です	候補	modules/golem-emet/src/Golem/Emet/Lint.hs:47|modules/golem-emet/src/Golem/Emet/Lint.hs:52|modules/golem-emet/src/Golem/Emet/Lint.hs:59
+E07101	1203	使用中	使われていない import です	未判定	modules/golem-emet/src/Golem/Emet/Lint.hs:66
+E07102	1227	使用中	使われていないパターンの変数です	未判定	modules/golem-emet/src/Golem/Emet/Lint.hs:79
+G01001	1253	使用中	UTF-8 として不正なバイト列があります	候補	modules/golem-parser/src/Golem/Parser/Read.hs:48|modules/golem-syntax/src/Golem/Syntax/Read.hs:32
+G01002	1278	使用中	ファイルの先頭に BOM があります	候補	modules/golem-syntax/src/Golem/Syntax/Read.hs:55
+G01003	1306	使用中	改行に CR が含まれています	候補	modules/golem-syntax/src/Golem/Syntax/Read.hs:48
+G01010	1337	使用中	このブロックを解釈できません	未判定	modules/golem-parser/src/Golem/Parser.hs:44
+G01011	1360	使用中	インデントが不正です	未判定	modules/golem-parser/src/Golem/Parser.hs:45
+G01012	1388	使用中	見出しの階層は 6 までです	未判定	modules/golem-parser/src/Golem/Parser.hs:46
+G01013	1413	使用中	用語のない =: があります	未判定	modules/golem-parser/src/Golem/Parser.hs:47
+G01014	1437	使用中	表の 2 行目が区切りの行ではありません	未判定	modules/golem-parser/src/Golem/Parser.hs:48
+G01015	1460	使用中	表のセルの数が見出しの行と一致しません	未判定	modules/golem-parser/src/Golem/Parser.hs:49
+G01016	1486	使用中	コードブロックが閉じていません	未判定	modules/golem-parser/src/Golem/Parser.hs:50
+G01017	1510	使用中	ここに閉じ括弧 ] が必要です	未判定	modules/golem-parser/src/Golem/Parser.hs:51
+G01018	1539	使用中	コメントが段落の中で閉じていません	未判定	modules/golem-parser/src/Golem/Parser.hs:52
+G01019	1564	使用中	位置引数と *[...] は、key=value と **[...] より前に書きます	未判定	modules/golem-parser/src/Golem/Parser.hs:53
+G01020	1590	使用中	式を解釈できません	未判定	modules/golem-eval/src/Golem/Eval/Expr.hs:162|modules/golem-parser/src/Golem/Parser.hs:54
+G01021	1614	使用中	[ の後にコマンド名も = もありません	未判定	modules/golem-parser/src/Golem/Parser.hs:55
+G01022	1639	使用中	解釈できない入力が残っています	未判定	modules/golem-parser/src/Golem/Parser.hs:61
+G01023	1664	使用中	表の行が | で始まらないか、| で終わりません	未判定	modules/golem-parser/src/Golem/Parser.hs:56
+G01024	1687	使用中	行末の \ の次の行に段落の続きがありません	未判定	modules/golem-parser/src/Golem/Parser.hs:57
+G01029	1719	使用中	構文エラー	未判定	modules/golem-parser/src/Golem/Parser.hs:60
+G01100	1743	使用中	予約された記法です	候補	modules/golem-eval/src/Golem/Eval/File.hs:2945|modules/golem-parser/src/Golem/Parser.hs:58
+G02001	1791	使用中	型が合いません	候補	modules/golem-emet/src/Golem/Emet/Eval.hs:290|modules/golem-emet/src/Golem/Emet/Eval.hs:379|modules/golem-eval/src/Golem/Eval/Expr.hs:74
+G02002	1820	使用中	未定義の名前です	未判定	modules/golem-eval/src/Golem/Eval/Expr.hs:135|modules/golem-eval/src/Golem/Eval/Expr.hs:137|modules/golem-eval/src/Golem/Eval/Expr.hs:139|modules/golem-eval/src/Golem/Eval/Expr.hs:196|modules/golem-eval/src/Golem/Eval/Expr.hs:311|modules/golem-eval/src/Golem/Eval/Expr.hs:312|modules/golem-eval/src/Golem/Eval/Expr.hs:313|modules/golem-eval/src/Golem/Eval/Expr.hs:319|modules/golem-eval/src/Golem/Eval/Expr.hs:320
+G02003	1845	使用中	0 で割っています	未判定	modules/golem-eval/src/Golem/Eval/Expr.hs:244|modules/golem-eval/src/Golem/Eval/Expr.hs:248|modules/golem-eval/src/Golem/Eval/Expr.hs:283|modules/golem-eval/src/Golem/Eval/Expr.hs:342
+G02004	1868	廃止	結果が NaN か無限大になります	未判定	
+G02005	1890	使用中	校正用のコメントが残っています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2303
+G02006	1915	使用中	** の指数は整数に限ります	未判定	modules/golem-eval/src/Golem/Eval/Expr.hs:253
+G02007	1940	使用中	関数の引数が不正です	未判定	modules/golem-emet/src/Golem/Emet/Eval.hs:344|modules/golem-emet/src/Golem/Emet/Prim.hs:147|modules/golem-emet/src/Golem/Emet/Prim.hs:158|modules/golem-eval/src/Golem/Eval/Expr.hs:351
+G02008	1966	使用中	本文に埋め込めない値です	未判定	modules/golem-eval/src/Golem/Eval/Expr.hs:375
+G02009	1993	使用中	未知のブロックコマンドです	未判定	modules/golem-driver/src/Golem/Driver.hs:278|modules/golem-eval/src/Golem/Eval/File.hs:591|modules/golem-eval/src/Golem/Eval/File.hs:726|modules/golem-eval/src/Golem/Eval/File.hs:730
+G02010	2019	使用中	属性の後にブロックがありません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:588|modules/golem-eval/src/Golem/Eval/File.hs:920|modules/golem-eval/src/Golem/Eval/File.hs:1464
+G02011	2042	使用中	属性のまとまりに属性でないコマンドがあります	未判定	modules/golem-eval/src/Golem/Eval/File.hs:919|modules/golem-eval/src/Golem/Eval/File.hs:924
+G02012	2066	使用中	同じ属性を二度書いています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:943
+G02013	2091	使用中	このブロックには付けられない属性です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:617|modules/golem-eval/src/Golem/Eval/File.hs:936|modules/golem-eval/src/Golem/Eval/File.hs:1269|modules/golem-eval/src/Golem/Eval/File.hs:1350|modules/golem-eval/src/Golem/Eval/File.hs:1355|modules/golem-eval/src/Golem/Eval/File.hs:1745
+G02014	2121	使用中	見出しの中では doc も相互参照も使えません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2320|modules/golem-eval/src/Golem/Eval/File.hs:2386
+G02015	2144	使用中	ルビの対象と読みの数が一致しません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2578
+G02016	2171	使用中	ルビの中にルビは入れられません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2574
+G02017	2194	使用中	style.toml にないスウォッチです	未判定	modules/golem-eval/src/Golem/Eval/File.hs:768|modules/golem-eval/src/Golem/Eval/File.hs:2412|modules/golem-eval/src/Golem/Eval/File.hs:2413
+G02018	2220	使用中	定義されていない文字スタイルです	未判定	modules/golem-eval/src/Golem/Eval/File.hs:767|modules/golem-eval/src/Golem/Eval/File.hs:2416|modules/golem-eval/src/Golem/Eval/File.hs:2417
+G02019	2246	使用中	number-text の引数が不正です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2436|modules/golem-eval/src/Golem/Eval/File.hs:2438|modules/golem-eval/src/Golem/Eval/File.hs:2439
+G02020	2272	使用中	索引には reading が必要です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2467
+G02021	2295	使用中	書誌データにないキーです	未判定	modules/golem-eval/src/Golem/Eval/File.hs:771|modules/golem-eval/src/Golem/Eval/File.hs:2692
+G02022	2322	使用中	未知のコマンドです	未判定	modules/golem-driver/src/Golem/Driver.hs:278|modules/golem-eval/src/Golem/Eval/File.hs:699|modules/golem-eval/src/Golem/Eval/File.hs:703|modules/golem-eval/src/Golem/Eval/File.hs:2366
+G02023	2350	使用中	予約語は名前に使えません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:504|modules/golem-eval/src/Golem/Eval/File.hs:546
+G02024	2375	使用中	変数を二度定義しています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:507
+G02025	2399	使用中	@toc の depth は 1 から 6 の整数です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:567
+G02026	2424	使用中	ラベルの名前を一つ書きます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1232|modules/golem-eval/src/Golem/Eval/File.hs:2489
+G02027	2448	使用中	@number には整数を一つ書きます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1281
+G02028	2473	使用中	図版には alt の代替テキストが必要です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1703
+G02029	2496	使用中	PDF の図版には web の代替画像が必要です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1635
+G02030	2519	使用中	wrap は start か end です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1720
+G02031	2542	使用中	回り込む図版には width が必要です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1665
+G02032	2565	使用中	@figure には画像のパスを一つ書きます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1725
+G02033	2588	使用中	ファイルがありません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2053
+G02034	2614	使用中	@table にはファイルのパスが必要です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1795
+G02035	2643	廃止	CSV が空か、行ごとのセルの数が一致しません	未判定	
+G02036	2664	使用中	@listing にはファイルのパスが必要です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2066
+G02037	2687	使用中	lines の範囲がファイルの行を外れています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2088
+G02038	2717	使用中	散文スロットの数が違います	候補	modules/golem-eval/src/Golem/Eval/File.hs:1176|modules/golem-eval/src/Golem/Eval/File.hs:2387|modules/golem-eval/src/Golem/Eval/File.hs:2396|modules/golem-eval/src/Golem/Eval/File.hs:2449|modules/golem-eval/src/Golem/Eval/File.hs:2457|modules/golem-eval/src/Golem/Eval/File.hs:2476|modules/golem-eval/src/Golem/Eval/File.hs:2524|modules/golem-eval/src/Golem/Eval/File.hs:2581
+G02039	2746	使用中	未知の圏点の形です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:770|modules/golem-eval/src/Golem/Eval/File.hs:2407
+G02040	2770	使用中	縦中横の中身は地の文に限ります	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2424
+G02041	2793	使用中	索引の語は地の文に限ります	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2468
+G02042	2816	使用中	索引の語と読みの段の数が不正です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2472
+G02043	2843	使用中	ルビの読みは地の文に限ります	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2575
+G02044	2866	廃止	@verse は引数を取りません	未判定	
+G02045	2888	使用中	@style の本体には段落だけを置けます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1466
+G02046	2913	使用中	@style の本体に段落がありません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1465|modules/golem-eval/src/Golem/Eval/File.hs:1471
+G02047	2936	使用中	定義されていない段落スタイルです	未判定	modules/golem-eval/src/Golem/Eval/File.hs:769|modules/golem-eval/src/Golem/Eval/File.hs:818|modules/golem-eval/src/Golem/Eval/File.hs:884|modules/golem-eval/src/Golem/Eval/File.hs:1250|modules/golem-eval/src/Golem/Eval/File.hs:1456|modules/golem-eval/src/Golem/Eval/File.hs:1492|modules/golem-eval/src/Golem/Eval/File.hs:1559|modules/golem-eval/src/Golem/Eval/File.hs:1560
+G02048	2964	廃止	@verse は @style verse に変わりました	未判定	
+G02049	2985	使用中	@manifest、@style-def、@hyphenation-exceptions はファイルの最初に置きます	候補	modules/golem-eval/src/Golem/Eval/File.hs:890
+G02050	3012	使用中	ファイルの中で上書きできない設定です	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:121
+G02051	3039	使用中	@manifest の値が不正です	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:123
+G02052	3063	使用中	@manifest か @style-def の位置引数の数が誤っています	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:131|modules/golem-eval/src/Golem/Eval/Settings.hs:258|modules/golem-eval/src/Golem/Eval/Settings.hs:259|modules/golem-eval/src/Golem/Eval/Settings.hs:325
+G02053	3095	使用中	同じ名前のスタイルを二度定義しています	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:281
+G02054	3120	廃止	正規表現スタイルはまだ実装していません	未判定	
+G02055	3141	使用中	アキの量が正しくありません	候補	modules/golem-eval/src/Golem/Eval/File.hs:2508
+G02056	3170	使用中	コマンドの中に強制改行があります	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2300
+G02057	3197	使用中	強制改行で中身のない行ができます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1545
+G02058	3224	使用中	@page-break の引数が誤っています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1053
+G02059	3254	使用中	改ページのコマンドは文書の最上位にだけ置けます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1214
+G02060	3282	使用中	使えないパスです	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2048
+G02061	3310	使用中	未定義の関数です	未判定	modules/golem-eval/src/Golem/Eval/Expr.hs:352
+G02062	3336	使用中	ファイルの中の定義がスタイルを上書きしています	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:220|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:114
+G02063	3369	使用中	数の縦中横は number-text でも書けます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2421|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:115
+G02064	3409	使用中	行頭のエスケープした空白は無視されます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1509|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:116
+G02065	3437	使用中	@listing の src= は廃止予定です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2060|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:117
+G02066	3476	使用中	code はコードブロックの段落スタイルです	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1454
+G02067	3502	使用中	柱が参照する変数がファイルにありません	未判定	modules/golem-driver/src/Golem/Driver.hs:512
+G02068	3534	使用中	柱に出せるのは文字列と数です	未判定	modules/golem-driver/src/Golem/Driver.hs:516
+G02069	3560	使用中	コードブロックの引数か中身が正しくありません	候補	modules/golem-eval/src/Golem/Eval/File.hs:1259|modules/golem-eval/src/Golem/Eval/File.hs:1265|modules/golem-eval/src/Golem/Eval/File.hs:2131|modules/golem-eval/src/Golem/Eval/File.hs:2132|modules/golem-eval/src/Golem/Eval/File.hs:2133|modules/golem-eval/src/Golem/Eval/File.hs:2184|modules/golem-eval/src/Golem/Eval/File.hs:2216|modules/golem-eval/src/Golem/Eval/File.hs:2222|modules/golem-eval/src/Golem/Eval/File.hs:3037
+G02070	3604	使用中	@need-lines の引数が誤っています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1090
+G02071	3633	使用中	改ページの制御は文書の最上位にだけ置けます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1215
+G02072	3660	使用中	改ページと改ページの禁止が同じ位置にあります	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1136
+G02073	3685	使用中	web の代替画像の形式が使えません	候補	modules/golem-eval/src/Golem/Eval/File.hs:1641
+G02074	3711	使用中	図版の形式が使えません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1640
+G02075	3738	使用中	page の値が正しくありません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1645
+G02076	3767	使用中	@printings は日本語の本でだけ使えます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1012
+G02077	3794	使用中	同じキーを二度書いています	候補	modules/golem-eval/src/Golem/Eval/File.hs:2603|modules/golem-eval/src/Golem/Eval/Settings.hs:79
+G02078	3824	使用中	`##` と `##` のあいだには算用数字だけを書きます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2298
+G02079	3855	使用中	行末のエスケープした空白は無視されます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1515|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:118
+G02080	3883	使用中	@table の format の値が正しくありません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1781
+G02081	3910	使用中	@table の align の値が正しくありません	候補	modules/golem-eval/src/Golem/Eval/File.hs:1786|modules/golem-eval/src/Golem/Eval/File.hs:1814
+G02082	3940	使用中	表のファイルに単独の CR があります	未判定	modules/golem-parser/src/Golem/Parser/Read.hs:66
+G02083	3970	使用中	CSV の引用符が閉じていません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1979
+G02084	3997	使用中	@table の cells の値が正しくありません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1792|modules/golem-eval/src/Golem/Eval/File.hs:1793
+G02085	4025	使用中	表のファイルが表になりません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1997|modules/golem-eval/src/Golem/Eval/File.hs:2011
+G02086	4055	使用中	数が大きすぎます	未判定	modules/golem-eval/src/Golem/Eval/Expr.hs:91|modules/golem-eval/src/Golem/Eval/Expr.hs:354
+G02087	4090	使用中	@figure の rotate の誤りです	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1664|modules/golem-eval/src/Golem/Eval/File.hs:1721
+G02088	4118	使用中	表のファイルが上限を超えます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1859
+G02089	4152	使用中	出力に書けない文字があります	未判定	modules/golem-eval/src/Golem/Eval/File.hs:296
+G02090	4186	使用中	宣言されていないチャネルです	候補	modules/golem-driver/src/Golem/Driver.hs:278|modules/golem-eval/src/Golem/Eval/File.hs:885|modules/golem-eval/src/Golem/Eval/File.hs:886
+G02091	4215	使用中	数が意味論 IR に書ける範囲を超えています	候補	modules/golem-eval/src/Golem/Eval/File.hs:3065
+G02092	4254	使用中	`@blank-line` の引数か本体が誤っています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1114
+G02093	4287	使用中	`@blank-line` は文書の最上位にだけ置けます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1216
+G02094	4314	使用中	続けて書いた `@blank-line` はまとめて書けます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1122|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:119
+G02095	4343	廃止	累乗の正確な計算に要るビットの数が上限を超えます	未判定	
+G02096	4364	使用中	引数を取らないコマンドに引数を書きました	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1010|modules/golem-eval/src/Golem/Eval/File.hs:1052|modules/golem-eval/src/Golem/Eval/File.hs:1062
+G02097	4391	使用中	本体を持てないコマンドに本体を書きました	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1011|modules/golem-eval/src/Golem/Eval/File.hs:1039|modules/golem-eval/src/Golem/Eval/File.hs:1086|modules/golem-eval/src/Golem/Eval/Settings.hs:97
+G02098	4421	使用中	マニフェストに [[metadata.printings]] がありません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1013
+G02099	4447	使用中	@page-lines の引数が誤っています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1070
+G02101	4475	使用中	負の数の平方根は求められません	未判定	modules/golem-eval/src/Golem/Eval/Expr.hs:328
+G02102	4501	使用中	小数点以下が 1000 桁を超える数は本文に埋め込めません	未判定	modules/golem-emet/src/Golem/Emet/Prim.hs:157|modules/golem-eval/src/Golem/Eval/Expr.hs:373
+G02103	4528	使用中	自然数を求める箇所に負の数があります	候補	modules/golem-eval/src/Golem/Eval/Expr.hs:207|modules/golem-project/src/Golem/Project/Manifest.hs:848|modules/golem-project/src/Golem/Project/Style.hs:3124
+G02104	4568	使用中	自然数を求める箇所に整数でない数があります	候補	modules/golem-eval/src/Golem/Eval/Expr.hs:172|modules/golem-eval/src/Golem/Eval/Expr.hs:208
+G02105	4603	使用中	行の番号でも範囲でもない値です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2978
+G02106	4632	使用中	範囲の始めが終わりより大きくなっています	未判定	modules/golem-eval/src/Golem/Eval/Expr.hs:160|modules/golem-eval/src/Golem/Eval/File.hs:2974
+G02107	4663	使用中	@listing の lines には範囲を一つだけ書きます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2979
+G02108	4691	使用中	範囲の - の区切りは廃止予定です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2951|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:120
+G02110	4733	使用中	範囲の端には数を書きます	未判定	modules/golem-eval/src/Golem/Eval/Expr.hs:177|modules/golem-parser/src/Golem/Parser.hs:59
+G02111	4763	使用中	*[式] の値は配列でなければなりません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2637
+G02112	4792	使用中	**[式] の値は連想配列でなければなりません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2640
+G02113	4818	使用中	範囲を受け取らない引数に範囲を書いています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2838
+G02114	4853	使用中	評価の前に読むコマンドに展開を書いています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2666|modules/golem-eval/src/Golem/Eval/Settings.hs:62
+G02115	4883	使用中	@manifest に引数がありません	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:117
+G02116	4908	使用中	値は語か文字列で書きます	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:93
+G02117	4936	使用中	未知のスタイルの種類です	候補	modules/golem-eval/src/Golem/Eval/Settings.hs:264
+G02118	4962	使用中	図版のキャプションには段落だけを書けます	候補	modules/golem-eval/src/Golem/Eval/File.hs:1729
+G02119	4994	使用中	シグネチャにないキーワード引数です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:677
+G02120	5019	使用中	位置引数の数が合いません	未判定	modules/golem-eval/src/Golem/Eval/Functions.hs:157
+G02121	5045	使用中	値の型が引数の型に写せません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:686|modules/golem-eval/src/Golem/Eval/Functions.hs:159
+G02122	5074	使用中	散文スロットの数が合いません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:711
+G02123	5100	使用中	本体を受け取らない関数のブロックコマンドに本体があります	未判定	modules/golem-eval/src/Golem/Eval/File.hs:738
+G02124	5125	使用中	link の引数が誤っています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2548
+G02125	5156	使用中	URL の形が誤っています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2555
+G02126	5187	使用中	リンクにできる URL は http と https だけです	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2556
+G02127	5217	使用中	URL のホストは ASCII で書きます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2557
+G02128	5244	使用中	リンクの中にリンクになる要素は置けません	候補	modules/golem-eval/src/Golem/Eval/File.hs:2545
+G02129	5271	使用中	@table の src= は廃止予定です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1773|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:121
+G02130	5310	使用中	@table にはファイルのパスを一つ書きます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1796
+G02131	5339	使用中	lang には言語のタグを一つ書きます	候補	modules/golem-eval/src/Golem/Eval/File.hs:1163
+G02132	5368	使用中	言語のタグの形が誤っています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1162
+G02133	5396	使用中	図版の width が読めません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1666
+G02134	5426	使用中	キャプションのないコードブロックと表への @nonumber は要りません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:969|modules/golem-eval/src/Golem/Eval/File.hs:975
+G02135	5455	使用中	@column-widths の値が読めません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1307
+G02136	5484	使用中	@column-widths の値の数が表の列の数と違います	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1302
+G02137	5510	使用中	定義されていない注の名前です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1381
+G02138	5538	使用中	使われない注の本文です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1387
+G02139	5565	使用中	一つの注の本文を二つ以上の [note] が指しています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1383
+G02140	5591	使用中	同じ名前の注の本文を二度書いています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1340
+G02141	5615	使用中	注の本文には段落だけを書けます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1358
+G02142	5643	使用中	注の名前を一つの語で書きます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1345|modules/golem-eval/src/Golem/Eval/File.hs:2456
+G02143	5672	使用中	@note に本文がありません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:1341
+G02144	5698	使用中	range は begin か end です	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2743
+G02145	5725	使用中	一つの索引の印に see と range は書けません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2740
+G02146	5750	使用中	see の参照先の語は一段か二段で、空の段を持てません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2749
+G02147	5778	使用中	一つの引用に同じキーを二度書いています	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2691
+G02148	5803	使用中	page には頁の数、範囲、文字列を書きます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2700
+G02149	5830	使用中	page は文献を一つだけ引く cite に書きます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2701
+G02150	5854	使用中	cite のキーは名前か文字列で書きます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2689
+G02151	5880	使用中	cite には書誌データのキーを書きます	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2702
+G02152	5903	使用中	[shy] は引数を取りません	未判定	modules/golem-eval/src/Golem/Eval/File.hs:2485
+G02153	5930	使用中	@hyphenation-exceptions にはキーワード引数を書けません	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:323
+G03001	5956	使用中	manifest.toml の誤りです	候補	modules/golem-driver/src/Golem/Driver.hs:608|modules/golem-project/src/Golem/Project.hs:206|modules/golem-project/src/Golem/Project/Manifest.hs:530|modules/golem-project/src/Golem/Project/Manifest.hs:797|modules/golem-project/src/Golem/Project/Manifest.hs:805
+G03002	5989	使用中	ファイルがありません	未判定	modules/golem-driver/src/Golem/Driver.hs:558|modules/golem-emet/src/Golem/Emet.hs:229|modules/golem-project/src/Golem/Project.hs:271
+G03003	6016	使用中	使えないパスです	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:126|modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:282|modules/golem-driver/src/Golem/Driver.hs:559|modules/golem-driver/src/Golem/Driver.hs:715|modules/golem-driver/src/Golem/Driver/Functions.hs:70|modules/golem-driver/src/Golem/Driver/Functions.hs:78|modules/golem-emet/src/Golem/Emet.hs:216|modules/golem-emet/src/Golem/Emet.hs:230|modules/golem-emet/src/Golem/Emet/Check.hs:513|modules/golem-emet/src/Golem/Emet/Check.hs:975|modules/golem-project/src/Golem/Project.hs:272
+G03004	6043	使用中	大文字と小文字だけが異なるパスです	未判定	modules/golem-driver/src/Golem/Driver/Functions.hs:73|modules/golem-driver/src/Golem/Driver/Functions.hs:144|modules/golem-emet/src/Golem/Emet/Check.hs:522|modules/golem-project/src/Golem/Project.hs:168
+G03005	6070	使用中	import が循環しています	未判定	modules/golem-project/src/Golem/Project.hs:132
+G03006	6094	使用中	style.toml の誤りです	候補	modules/golem-eval/src/Golem/Eval/Settings.hs:170|modules/golem-eval/src/Golem/Eval/Settings.hs:278|modules/golem-project/src/Golem/Project/Style.hs:1596|modules/golem-project/src/Golem/Project/Style.hs:1596|modules/golem-project/src/Golem/Project/Style.hs:2583|modules/golem-project/src/Golem/Project/Style.hs:2636|modules/golem-project/src/Golem/Project/Style.hs:2695|modules/golem-project/src/Golem/Project/Style.hs:2719|modules/golem-project/src/Golem/Project/Style.hs:2773|modules/golem-project/src/Golem/Project/Style.hs:2794|modules/golem-project/src/Golem/Project/Style.hs:2888|modules/golem-project/src/Golem/Project/Style.hs:3129|modules/golem-project/src/Golem/Project/Style.hs:3169
+G03007	6155	使用中	style.toml にないマスターページです	未判定	modules/golem-driver/src/Golem/Driver.hs:290
+G03008	6182	使用中	style.toml にないフォントの役割です	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:170|modules/golem-project/src/Golem/Project/Style.hs:2917
+G03009	6208	使用中	@import の形が不正です	未判定	modules/golem-project/src/Golem/Project/Imports.hs:56
+G03010	6236	使用中	フォントのファイルがないので、HTML と EPUB に同梱しません	未判定	modules/golem-driver/src/Golem/Driver.hs:969|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:194
+G03011	6263	使用中	段落スタイルの文字の大きさが版面の文字の大きさを超えます	未判定	modules/golem-project/src/Golem/Project/Style.hs:3015
+G03012	6286	使用中	段落の最初の行が版面の外に出ます	未判定	modules/golem-project/src/Golem/Project/Style.hs:3032
+G03013	6309	使用中	style.toml のスタイルの参照が不正です	候補	modules/golem-eval/src/Golem/Eval/Settings.hs:170|modules/golem-project/src/Golem/Project/Style.hs:2929|modules/golem-project/src/Golem/Project/Style.hs:3195|modules/golem-project/src/Golem/Project/Style.hs:3211
+G03014	6352	使用中	柱の内容が正しくありません	候補	modules/golem-project/src/Golem/Project/Style.hs:2628
+G03015	6389	使用中	正規表現を解釈できません	未判定	modules/golem-project/src/Golem/Project/Style.hs:3181
+G03016	6423	使用中	manifest.toml がありません	未判定	modules/golem-project/src/Golem/Project.hs:97
+G03017	6449	使用中	判型が不正です	候補	modules/golem-project/src/Golem/Project/Style.hs:2620
+G03018	6476	使用中	マスターページの位置が不正です	未判定	modules/golem-project/src/Golem/Project/Style.hs:2630
+G03019	6502	使用中	見出しの running-head は廃止しました	未判定	modules/golem-project/src/Golem/Project/Style.hs:2631
+G03020	6526	使用中	アキの量の指定が正しくありません	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:284|modules/golem-project/src/Golem/Project/Style.hs:2616|modules/golem-project/src/Golem/Project/Style.hs:2624
+G03021	6559	使用中	文字の送りの欄の値が正しくありません	候補	modules/golem-project/src/Golem/Project/Style.hs:2633|modules/golem-project/src/Golem/Project/Style.hs:3049|modules/golem-project/src/Golem/Project/Style.hs:3126
+G03022	6592	使用中	リストの書式が正しくありません	候補	modules/golem-project/src/Golem/Project/Style.hs:2622
+G03023	6621	使用中	style.toml がないので、既定の体裁で組みます	未判定	modules/golem-driver/src/Golem/Driver.hs:234|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:122
+G03024	6651	使用中	抑制の一覧に抑制できないコードがあります	未判定	modules/golem-project/src/Golem/Project/Manifest.hs:528|modules/golem-project/src/Golem/Project/Manifest.hs:529
+G03025	6689	使用中	[index] の値が正しくありません	未判定	modules/golem-project/src/Golem/Project/Style.hs:2626
+G03026	6716	使用中	参考文献のファイルを読めません	未判定	modules/golem-driver/src/Golem/Driver.hs:739
+G03027	6747	使用中	章末の注の番号が章の中で重なります	未判定	modules/golem-driver/src/Golem/Driver.hs:884
+G03028	6775	使用中	manifest.toml に出力に書けない文字があります	未判定	modules/golem-project/src/Golem/Project/Manifest.hs:836
+G03029	6805	使用中	隠しノンブルが仕上がりの線を越えます	候補	modules/golem-project/src/Golem/Project/Style.hs:2592|modules/golem-project/src/Golem/Project/Style.hs:2653
+G03100	6840	使用中	キャプションと傍注は字下げを掛けないので、`<スタイル>.<キー> = <値>` は効果がありません	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:232|modules/golem-project/src/Golem/Project/Style.hs:758|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:123
+G03101	6869	使用中	[functions.requires] に知らない要求の種類があります	未判定	modules/golem-project/src/Golem/Project/Manifest.hs:527
+G03102	6897	使用中	[functions.requires] の file のファイルがありません	未判定	modules/golem-driver/src/Golem/Driver/Functions.hs:77
+G03108	6924	使用中	参考文献のファイルに出力に書けない文字があります	未判定	modules/golem-driver/src/Golem/Driver.hs:724
+G03109	6962	使用中	[vars] に書けない値です	候補	modules/golem-project/src/Golem/Project/Manifest.hs:393
+G03110	6992	使用中	[vars] のキーが式の名前の形ではありません	未判定	modules/golem-project/src/Golem/Project/Manifest.hs:379
+G03111	7018	使用中	柱が参照する [vars] の変数がありません	未判定	modules/golem-driver/src/Golem/Driver/ProjectVars.hs:61
+G03112	7048	使用中	柱に出せない [vars] の値です	未判定	modules/golem-driver/src/Golem/Driver/ProjectVars.hs:64
+G03113	7076	使用中	PDF/A には [color] の intent が要ります	未判定	modules/golem-typeset/src/Golem/Typeset/Draw.hs:341
+G03114	7104	使用中	[lists] の numbers の {{ と }} は廃止予定です	未判定	modules/golem-project/src/Golem/Project/Style.hs:766|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:124
+G03115	7148	使用中	[lists] の numbers の一字の見本の差し込みは廃止予定です	未判定	modules/golem-project/src/Golem/Project/Style.hs:767|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:125
+G03116	7192	使用中	柱の書式の {{ と }} は廃止予定です	未判定	modules/golem-project/src/Golem/Project/Style.hs:772|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:126
+G03117	7234	使用中	[notes] の mark-size は廃止予定です	未判定	modules/golem-project/src/Golem/Project/Style.hs:781|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:127
+G03118	7278	使用中	縦組みの本では、段落スタイルの align にノドと小口の揃えを書けません	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:170|modules/golem-eval/src/Golem/Eval/Settings.hs:194|modules/golem-project/src/Golem/Project/Style.hs:3058
+G03119	7309	使用中	PDF/A と PDF/UA には、language を言語のタグの形で書きます	未判定	modules/golem-typeset/src/Golem/Typeset/Draw.hs:345
+G03120	7338	使用中	段落の区切り方を書いていないので、改行の様式（paragraph-separator = "line"）で読みます	未判定	modules/golem-driver/src/Golem/Driver.hs:236|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:128
+G03121	7371	使用中	page-numbering の style が数の表記の名前ではありません	未判定	modules/golem-project/src/Golem/Project/Manifest.hs:433
+G03122	7399	使用中	page-numbering の start が 0 です	未判定	modules/golem-project/src/Golem/Project/Manifest.hs:437
+G03123	7427	使用中	同じファイルを page-numbering の設定を変えて章に二度並べています	未判定	modules/golem-project/src/Golem/Project.hs:212
+G03124	7456	使用中	OpenType の機能の書き方が正しくありません	未判定	modules/golem-project/src/Golem/Project/Style.hs:2635|modules/golem-project/src/Golem/Project/Style.hs:3128
+G03125	7489	使用中	注の印の文字スタイルの position は "normal" だけを書けます	未判定	modules/golem-project/src/Golem/Project/Style.hs:2670
+G03126	7517	使用中	分綴の例外の一覧のキーが言語のタグの形ではありません	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:333|modules/golem-project/src/Golem/Project/Style.hs:2747
+G03127	7545	使用中	分綴の例外の語には字と - だけを書きます	未判定	modules/golem-project/src/Golem/Project/Style.hs:2763
+G03128	7575	使用中	分綴の例外の語の - が端にあるか、二つ続いています	未判定	modules/golem-project/src/Golem/Project/Style.hs:2764
+G03129	7603	使用中	同じ語を二度書いています	未判定	modules/golem-project/src/Golem/Project/Style.hs:2765
+G03130	7632	使用中	大文字と小文字だけが違う言語のタグの一覧が二つあります	未判定	modules/golem-eval/src/Golem/Eval/Settings.hs:336|modules/golem-project/src/Golem/Project/Style.hs:2748
+G03131	7658	使用中	プロジェクトのファイルがすでにあります	未判定	
+G03132	7689	使用中	雛形のファイルを書くパスに、すでにエントリがあります	候補	
+G03133	7726	使用中	ディレクトリではありません	未判定	
+G03134	7754	使用中	.gitignore がすでにあるので書きませんでした	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:129
+G04001	7783	使用中	ラベルが重複しています	未判定	modules/golem-assemble/src/Golem/Assemble.hs:650
+G04002	7808	使用中	@toc は文書に一つだけ置けます	未判定	modules/golem-assemble/src/Golem/Assemble.hs:422
+G04003	7834	使用中	存在しないラベルへの参照です	未判定	modules/golem-assemble/src/Golem/Assemble.hs:681
+G04004	7860	使用中	章の外にある図版、表、コードに、章番号を使う番号を振れません	未判定	modules/golem-assemble/src/Golem/Assemble.hs:410
+G04005	7891	使用中	番号を持たない要素への参照です	未判定	modules/golem-assemble/src/Golem/Assemble.hs:687
+G04006	7917	使用中	題を持たない要素への参照です	未判定	modules/golem-assemble/src/Golem/Assemble.hs:691
+G04007	7945	使用中	@number が自動で振られる番号と同じです	未判定	modules/golem-assemble/src/Golem/Assemble.hs:469|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:130
+G04008	7975	使用中	本の最後の改ページは効果がありません	未判定	modules/golem-assemble/src/Golem/Assemble.hs:514|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:131
+G04009	8003	使用中	本の最後の `@blank-line` は効果がありません	未判定	modules/golem-assemble/src/Golem/Assemble.hs:581|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:132
+G04010	8032	使用中	`@blank-line` の直後に改ページがあります	未判定	modules/golem-assemble/src/Golem/Assemble.hs:583
+G04011	8063	使用中	`@blank-line` の行数がページの行数以上なので捨てます	未判定	modules/golem-assemble/src/Golem/Assemble.hs:548|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:133
+G04012	8098	使用中	見出しの番号を書式の表記で表せません	候補	modules/golem-assemble/src/Golem/Assemble.hs:346
+G04013	8130	使用中	図番号を書式の表記で表せません	未判定	modules/golem-assemble/src/Golem/Assemble.hs:405
+G04014	8157	使用中	リスト番号を書式の表記で表せません	未判定	modules/golem-assemble/src/Golem/Assemble.hs:406
+G04100	8184	使用中	表番号を書式の表記で表せません	未判定	modules/golem-assemble/src/Golem/Assemble.hs:407
+G04101	8212	使用中	索引の参照先の項目がありません	未判定	modules/golem-assemble/src/Golem/Assemble.hs:894
+G04102	8241	使用中	索引の「を見よ」の参照が輪になります	未判定	modules/golem-assemble/src/Golem/Assemble.hs:918
+G04103	8270	使用中	索引の範囲の始めに、対になる終わりがありません	未判定	modules/golem-assemble/src/Golem/Assemble.hs:891
+G04104	8299	使用中	索引の範囲の終わりに、対になる始めがありません	未判定	modules/golem-assemble/src/Golem/Assemble.hs:892
+G05001	8326	使用中	改行の前後が欧文なので、単語が空白なしにつながります	未判定	modules/golem-driver/src/Golem/Driver/Lint.hs:61|modules/golem-lint/src/Golem/Lint.hs:120
+G05002	8355	使用中	使われていない変数です	未判定	modules/golem-lint/src/Golem/Lint.hs:149
+G05003	8378	使用中	使われていない import です	未判定	modules/golem-lint/src/Golem/Lint.hs:167
+G05004	8401	使用中	参照されていないラベルです	未判定	modules/golem-lint/src/Golem/Lint.hs:178|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:193
+G06002	8424	使用中	plugins.lock にないプラグインです	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:135|modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:136
+G06003	8450	使用中	キャッシュにないプラグインです	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:132
+G06004	8475	使用中	キャッシュの配布物のハッシュが plugins.lock と一致しません	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:133
+G06005	8500	使用中	プラグインを読み込めません	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:141
+G06006	8533	使用中	複数のプラグインが同じコマンドを提供しています	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:192|modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:193
+G06007	8559	使用中	組み込みのコマンドと衝突しています	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:194
+G06008	8586	使用中	overrides に書けない名前です	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:195
+G06009	8613	使用中	プラグインの実行が失敗しました	候補	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:320
+G06010	8649	使用中	フィルタの設定が不正です	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:196
+G06011	8674	使用中	plugins.lock を読めません	未判定	modules/golem-plugin/src/Golem/Plugin/Lock.hs:69|modules/golem-plugin/src/Golem/Plugin/Lock.hs:72
+G06012	8702	使用中	チャネルの宣言が誤っています	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:197|modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:198
+G06100	8728	使用中	プラグインが遅延した式に有限でない浮動小数点数を書きました	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:319
+G06101	8756	使用中	プラグインのデータのファイルがありません	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:281
+G06102	8782	使用中	プラグインが受け取らないデータの名前です	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:260
+G06103	8808	使用中	プラグインのデータが上限を超えています	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:270
+G06104	8833	使用中	プラグインのファイルがありません	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:125
+G06105	8859	使用中	Golem が渡せない文脈を求めています	未判定	modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs:140
+G06106	8887	使用中	このビルドの Golem にはプラグインの機能がありません	未判定	modules/golem-driver/src-no-plugins/Golem/Driver/Plugins.hs:79
+G07001	8914	使用中	版面を計算できません	未判定	modules/golem-layout-spec/src/Golem/LayoutSpec.hs:127
+G07002	8965	使用中	日本式のトンボには塗り足しが要ります	未判定	modules/golem-driver/src/Golem/Driver.hs:988
+G07021	8990	使用中	ページ番号の参照が収束しません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:1401
+G07022	9018	使用中	回り込む図版の幅が不正です	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:2544
+G07023	9043	使用中	回り込む図版が一ページに収まりません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:2545
+G07024	9066	使用中	見出しが版面に入りません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:3091
+G07025	9091	使用中	段落スタイルの字下げが大きすぎます	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:442
+G07026	9123	使用中	段組みの版面では図版を回り込ませられません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:2541
+G07027	9149	使用中	リストの入れ子が深く、項目の本文の行長が足りません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:2688
+G07028	9177	使用中	回り込む図版の脇で、字下げを引くと行が残りません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:2954
+G07029	9202	使用中	リストの番号を書式で表せません	候補	modules/golem-assemble/src/Golem/Assemble/ListMarkers.hs:161
+G07030	9229	使用中	コードの行を折り返しました	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:134|modules/golem-typeset/src/Golem/Typeset/Flow.hs:3553
+G07032	9261	使用中	縦組みの版面では傍注を使えません	未判定	modules/golem-layout/src/Golem/Layout/Japanese.hs:2210
+G07033	9289	使用中	傍注が傍注の領域に収まりません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:1356|modules/golem-typeset/src/Golem/Typeset/Flow.hs:1357
+G07034	9314	使用中	傍注の領域のない版面では傍注を使えません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:1283
+G07035	9337	使用中	脚注の本文と図版のキャプションの中に傍注を置けません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:1284
+G07037	9361	使用中	改ページの手での制御を守れませんでした	候補	modules/golem-typeset/src/Golem/Typeset/Flow.hs:688|modules/golem-typeset/src/Golem/Typeset/Flow.hs:689|modules/golem-typeset/src/Golem/Typeset/Flow.hs:690
+G07038	9391	使用中	図版のキャプションが段に収まりません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:2548
+G07039	9420	使用中	図版を段に収めるため縮めました	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:135|modules/golem-typeset/src/Golem/Typeset/Flow.hs:2531
+G07041	9455	使用中	表の列が版面の行長に収まりません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:2897
+G07042	9482	使用中	表の行が一ページに収まりません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:2823
+G07043	9507	使用中	コードブロックの行長が足りません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:376|modules/golem-typeset/src/Golem/Typeset/Flow.hs:3523|modules/golem-typeset/src/Golem/Typeset/Flow.hs:3524
+G07044	9537	使用中	索引の段の行長が足りません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:415
+G07045	9564	使用中	ルビの親文字の圏点を PDF で描きません	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:136|modules/golem-typeset/src/Golem/Typeset/Fonts.hs:376
+G07046	9595	使用中	罫線を持つ段落か見出しが版面に入りません	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:137|modules/golem-typeset/src/Golem/Typeset/Flow.hs:713|modules/golem-typeset/src/Golem/Typeset/Flow.hs:714
+G07047	9630	使用中	段の先頭に来た `@blank-line` の空きを捨てました	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:168|modules/golem-typeset/src/Golem/Typeset/Flow.hs:692
+G07050	9665	使用中	隠しノンブルが版面に重なります	未判定	modules/golem-layout-spec/src/Golem/LayoutSpec.hs:329
+G07051	9694	使用中	柱の行が版面の幅を超えています	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:898
+G07052	9722	使用中	柱の行がページからはみ出しています	未判定	modules/golem-layout-spec/src/Golem/LayoutSpec.hs:291
+G07100	9751	使用中	見出しが段に入りません	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:138|modules/golem-typeset/src/Golem/Typeset/Flow.hs:694
+G07101	9785	使用中	ダッシュの字形に線がないので、二倍ダッシュの線をつながずに描きます	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:139|modules/golem-typeset/src/Golem/Typeset/Flow.hs:484
+G07102	9817	使用中	注の番号を mark-format の表記で表せません	候補	modules/golem-typeset/src/Golem/Typeset/Flow.hs:1320
+G07103	9846	使用中	PDF/UA では見出しの段を飛ばせません	未判定	modules/golem-typeset/src/Golem/Typeset/Draw.hs:349
+G07104	9879	使用中	PDF/A-2a の PDF に私用領域の字は書けません	未判定	modules/golem-typeset/src/Golem/Typeset/Draw.hs:380
+G07105	9910	使用中	行が行長からはみ出しています	未判定	modules/golem-typeset/src/Golem/Typeset/Draw.hs:329
+G07106	9951	使用中	ノンブルを書式の表記で表せません	未判定	modules/golem-typeset/src/Golem/Typeset/Draw.hs:285
+G07107	9985	使用中	構造の木にない内容を描きました	未判定	modules/golem-typeset/src/Golem/Typeset/Draw.hs:310
+G07108	10016	使用中	表のセルが多すぎて PDF に組めません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:2816
+G07109	10052	使用中	page-numbering のセクションにページがありません	未判定	modules/golem-typeset/src/Golem/Typeset/Draw.hs:222
+G07110	10081	使用中	page-numbering の style ではノンブルを表せません	候補	modules/golem-typeset/src/Golem/Typeset/Draw.hs:207
+G07111	10111	使用中	段落スタイルの keep-with-next を守れませんでした	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:698
+G07112	10141	使用中	段落スタイルの段落が段に入らないので、keep-all-lines を外して分けました	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:140|modules/golem-typeset/src/Golem/Typeset/Flow.hs:699
+G07113	10168	使用中	段の行が足りないので、段落の部分を短くしました	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:141|modules/golem-typeset/src/Golem/Typeset/Flow.hs:701
+G07114	10197	使用中	表の列に指定した幅の合計が行長を超えます	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:2898
+G07115	10225	使用中	表の列に指定した幅がセルの最小の幅より狭くなっています	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:2899
+G07116	10252	使用中	表のキャプションが、接する行とともに一つの段に収まりません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:2880
+G07117	10280	使用中	目次の項目の行の長さが、段落スタイルの一字に足りません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:1034
+G07118	10309	使用中	索引の範囲の終わりのページが、始めのページより前にあります	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:1192
+G07119	10336	使用中	索引の範囲の始めと終わりが、ノンブルの別のセクションにあります	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:1193
+G07120	10362	使用中	リンクの元かしおりの項目の行先が、描いたページにありません	未判定	modules/golem-typeset/src/Golem/Typeset/Draw.hs:541
+G07121	10392	使用中	段落スタイルの囲みの一行と上下の padding が段に収まりません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:3153
+G07122	10421	使用中	改行しない範囲が行に収まりません	未判定	modules/golem-typeset/src/Golem/Typeset/Draw.hs:329
+G07123	10451	使用中	前後が語の字でないソフトハイフンを、分割の候補にしませんでした	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:142|modules/golem-typeset/src/Golem/Typeset/Flow.hs:1252
+G07124	10483	使用中	改行しない文字の中か隣のソフトハイフンを、分割の候補にしませんでした	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:143|modules/golem-typeset/src/Golem/Typeset/Flow.hs:1253
+G07126	10516	使用中	約物の字面が隣の字にかかります	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:144|modules/golem-typeset/src/Golem/Typeset/Flow.hs:500
+G08001	10551	使用中	フォントを読まずに PDF を作ろうとしました	未判定	modules/golem-typeset/src/Golem/Typeset/Fonts.hs:181
+G08002	10578	使用中	PDF のフォントのファイルがありません	未判定	modules/golem-driver/src/Golem/Driver.hs:962|modules/golem-typeset/src/Golem/Typeset/FontProvider.hs:64
+G08003	10607	使用中	フォントを読み込めません	未判定	modules/golem-typeset/src/Golem/Typeset/FontProvider.hs:72
+G08004	10635	使用中	ライセンスが埋め込みを禁じているフォントです	候補	modules/golem-typeset/src/Golem/Typeset/FontProvider.hs:73
+G08005	10666	使用中	PostScript 名が同じ異なるフォントがあります	未判定	modules/golem-typeset/src/Golem/Typeset/FontProvider.hs:101
+G08006	10691	使用中	出力インテントの ICC プロファイルがありません	未判定	modules/golem-driver/src/Golem/Driver.hs:963|modules/golem-typeset/src/Golem/Typeset/Flow.hs:3798
+G08007	10717	使用中	PDF の本文のフォントの設定がありません	未判定	modules/golem-typeset/src/Golem/Typeset/Fonts.hs:251
+G08008	10745	使用中	コードの書体の役割がありません	未判定	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:145|modules/golem-typeset/src/Golem/Typeset/Fonts.hs:340
+G08009	10775	使用中	圏点の字が書体にありません	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:472
+G08010	10803	使用中	図版を PDF に置けません	候補	modules/golem-typeset/src/Golem/Typeset/Flow.hs:3693
+G08011	10882	使用中	SVG の図版に扱えないものがあります	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:3695
+G08013	10925	使用中	出力先がシンボリックリンクです	未判定	modules/golem-driver/src/Golem/Driver.hs:1022
+G08014	10953	使用中	SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります	候補	modules/golem-driver/src/Golem/Driver.hs:871
+G08015	10991	使用中	図版の PDF のページの内容をつなぐと 256 MiB を超えます	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:3699
+G08016	11020	使用中	SVG の図版の marker が循環しています	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:3696
+G08017	11054	使用中	SVG の図版の marker の入れ子が 9 段を超えます	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:3697
+G08018	11087	使用中	フォントから CFF の表を取り出せません	未判定	modules/golem-typeset/src/Golem/Typeset/FontProvider.hs:293
+G08019	11118	使用中	CFF2 の輪郭のフォントは PDF に埋め込めません	未判定	modules/golem-typeset/src/Golem/Typeset/FontProvider.hs:109
+G08020	11149	使用中	図版の PDF のページが二度以上名指すストリームのオブジェクトの番号が 2147483647 を超えます	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:3700
+G08100	11179	使用中	フォントにグリフのない文字があります	未判定	modules/golem-driver/src/Golem/Driver.hs:1247|modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:195
+G08101	11213	使用中	SVG の図版の marker が描くパスの区間が 1000000 を超えます	未判定	modules/golem-typeset/src/Golem/Typeset/Flow.hs:3698
+G08102	11253	使用中	図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります	未判定	modules/golem-driver/src/Golem/Driver.hs:845
+G08103	11283	使用中	フォントに OpenType の機能がありません	候補	modules/golem-syntax/src/Golem/Syntax/Diagnostic.hs:196|modules/golem-typeset/src/Golem/Typeset/Draw.hs:706
+G09001	11322	使用中	プリフライトの設定に誤りがあります	候補	modules/golem-driver/src/Golem/Driver.hs:929|modules/golem-driver/src/Golem/Driver.hs:934|modules/golem-preflight/src/Golem/Preflight/Rules.hs:179|modules/golem-preflight/src/Golem/Preflight/Rules.hs:179
+G09002	11356	使用中	フォントにグリフのない文字があります	未判定	modules/golem-preflight/src/Golem/Preflight.hs:163
+G09003	11387	使用中	この設定では使えない形式のフォントです	未判定	modules/golem-preflight/src/Golem/Preflight.hs:169
+G09004	11414	使用中	文字が小さすぎます	候補	modules/golem-preflight/src/Golem/Preflight.hs:192
+G09005	11453	廃止	図版を PDF に置けません	未判定	
+G09006	11476	使用中	図版の実効の解像度が足りません	未判定	modules/golem-preflight/src/Golem/Preflight.hs:224
+G09007	11503	使用中	図版の実効の解像度が高すぎます	未判定	modules/golem-preflight/src/Golem/Preflight.hs:245
+G09008	11528	使用中	この設定では使えない色空間の図版です	未判定	modules/golem-preflight/src/Golem/Preflight.hs:284
+G09009	11556	使用中	出力インテントと違う ICC プロファイルを持つ CMYK の図版です	未判定	modules/golem-preflight/src/Golem/Preflight.hs:303
+G09010	11582	使用中	塗り足しの幅が足りません	未判定	modules/golem-preflight/src/Golem/Preflight.hs:322
+G09011	11606	使用中	図版が仕上がりの線の近くにあり、塗り足しまで届いていません	候補	modules/golem-preflight/src/Golem/Preflight.hs:340
+G09012	11633	使用中	文字が仕上がりの線に近すぎます	未判定	modules/golem-preflight/src/Golem/Preflight.hs:359
+G09013	11662	使用中	行が行長からはみ出しています	未判定	modules/golem-preflight/src/Golem/Preflight.hs:390
+G09014	11695	使用中	PDF/X-4 の要件を満たしていません	候補	modules/golem-preflight/src/Golem/Preflight.hs:405|modules/golem-preflight/src/Golem/Preflight.hs:408
+G09015	11732	使用中	色の総インキ量が多すぎます	未判定	modules/golem-preflight/src/Golem/Preflight.hs:422
+G09016	11758	使用中	ページ数が指定の倍数ではありません	未判定	modules/golem-preflight/src/Golem/Preflight.hs:437
+G09017	11783	使用中	空白のページがあります	未判定	modules/golem-preflight/src/Golem/Preflight.hs:444
+G09018	11811	使用中	線が細すぎます	未判定	modules/golem-preflight/src/Golem/Preflight.hs:450
+G09019	11840	使用中	フォントを埋め込んでいません	候補	modules/golem-preflight/src/Golem/Preflight.hs:462
+G09020	11870	使用中	特色の色空間があります	未判定	modules/golem-preflight/src/Golem/Preflight.hs:470
+G09021	11900	使用中	C、M、Y の版に出る色があります	候補	modules/golem-preflight/src/Golem/Preflight.hs:485

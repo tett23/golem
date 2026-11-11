@@ -1,0 +1,199 @@
+diff --git a/modules/golem-cli/app/Main.hs b/modules/golem-cli/app/Main.hs
+index 76b4d48a..903fc506 100644
+--- a/modules/golem-cli/app/Main.hs
++++ b/modules/golem-cli/app/Main.hs
+@@ -13,6 +13,7 @@ import Data.Text.Encoding qualified as TE
+ import Data.Text.IO qualified as TIO
+ import Data.UUID qualified as UUID
+ import Data.UUID.V4 qualified as UUID
++import Golem.Cli.BuildCommand (BuildMode (..), jsonResult, runBuild)
+ import Golem.Doc.Cbor (encodeDocument)
+ import Golem.Driver
+ import Golem.Driver.Explain (Explanation (..), Status (..), catalog, explainHint)
+@@ -244,8 +245,8 @@ localize = intercalate "\n" . go . lines
+ run :: Command -> IO ExitCode
+ run = \case
+   New dir lang noFonts -> newProject dir lang noFonts
+-  Build tgs profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
+-  Check profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
++  Build tgs profile marks quiet verbose fmt -> report fmt =<< runBuild "." (WriteTargets tgs) profile marks quiet verbose
++  Check profile marks quiet verbose fmt -> report fmt =<< runBuild "." CheckOnly profile marks quiet verbose
+   Preflight rules marks fmt -> preflightRun rules marks fmt
+   PluginFetch -> pluginFetch
+   PluginLock -> pluginLock
+@@ -290,9 +291,8 @@ report :: Format -> BuildResult -> IO ExitCode
+ report fmt r = do
+   let ds = brDiagnostics r
+   case fmt of
+-    Human -> putHuman (brSources r) ds
+-    Json -> TIO.hPutStr stderr (renderJson (brSources r) ds)
+-  pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
++    Human -> putHuman (brSources r) ds >> pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
++    Json -> let (code, text) = jsonResult r in TIO.hPutStr stderr text >> pure code
+ 
+ {- | golem preflight (golem-cli ADR 0006): the diagnostics, and in the human
+ format a summary as the last line when the PDF was made.
+diff --git a/modules/golem-cli/golem-cli.cabal b/modules/golem-cli/golem-cli.cabal
+index 3945a1a2..39276504 100644
+--- a/modules/golem-cli/golem-cli.cabal
++++ b/modules/golem-cli/golem-cli.cabal
+@@ -9,7 +9,8 @@ category:           Text
+ build-type:         Simple
+ 
+ executable golem
+-  hs-source-dirs:   app
++  hs-source-dirs:   app shared
++  other-modules:    Golem.Cli.BuildCommand
+   main-is:          Main.hs
+   -- -N: every processor, so that paragraphs are composed on several OS
+   -- threads at once (golem-driver ADR 0002); -A64m: an allocation area of
+@@ -39,9 +40,10 @@ executable golem
+ 
+ test-suite golem-cli-test
+   type:             exitcode-stdio-1.0
+-  hs-source-dirs:   test
++  hs-source-dirs:   test shared
+   main-is:          Main.hs
+-  other-modules:    CommandsSpec
++  other-modules:    Golem.Cli.BuildCommand
++                    CommandsSpec
+                     FmtTableSpec
+                     LocaleSpec
+                     RtsSpec
+diff --git a/modules/golem-cli/test/CommandsSpec.hs b/modules/golem-cli/test/CommandsSpec.hs
+index 2a78909b..b3f41d71 100644
+--- a/modules/golem-cli/test/CommandsSpec.hs
++++ b/modules/golem-cli/test/CommandsSpec.hs
+@@ -7,6 +7,8 @@ that are rejected or artifacts that are already in the cache.
+ module CommandsSpec (commandsTests) where
+ 
+ import Control.Monad (forM_)
++import Data.Aeson qualified as J
++import Data.Aeson.Types (Parser, parseEither)
+ import Data.ByteString qualified as BS
+ import Data.ByteString.Lazy qualified as BL
+ import Data.Char (isDigit)
+@@ -15,11 +17,13 @@ import Data.Map.Strict qualified as Map
+ import Data.Text qualified as T
+ import Data.Text.Encoding qualified as TE
+ import Golem.Doc.Cbor (encodeDocument)
+-import Golem.Driver (Evaluated (..), evaluateProject)
++import Golem.Cli.BuildCommand (BuildMode (..), jsonResult, runBuild)
++import Golem.Driver (CropMarks (NoMarks), Evaluated (..), Target (TargetHtml), evaluateProject)
+ import Golem.Eval.File (EvalResult (..))
+ import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..))
+ import Golem.Syntax (Diagnostic (..), FileId (..), Profile (..))
+ import Golem.Syntax.ShowTree (showTree)
++import Golem.TestSupport.Heading (headingLimitSource)
+ import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
+ import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory, removeDirectoryRecursive)
+ import System.Environment (getEnvironment)
+@@ -34,7 +38,7 @@ commandsTests :: TestTree
+ commandsTests =
+   testGroup
+     "commands on a project"
+-    [newTests, templateBuildTests, tablePathTests, inspectTests, fmtTests, pluginTests, preflightTests]
++    [newTests, templateBuildTests, tablePathTests, headingLimitTests, inspectTests, fmtTests, pluginTests, preflightTests]
+ 
+ -- ------------------------------------------------------------------ helpers
+ 
+@@ -106,6 +110,43 @@ twoChapters = [("manifest.toml", manifestWith ["a.gm", "b.gm"]), ("style.toml",
+ manifestWith :: [T.Text] -> String
+ manifestWith chapters = T.unpack (manifestToml testManifest {tmChapters = chapters})
+ 
++-- | Compare each command with literal source spans. In particular, do
++-- not deduplicate or sort its diagnostics before checking them.
++headingLimitTests :: TestTree
++headingLimitTests =
++  testGroup "heading-limit"
++    [ testCase ("G3/H1/H2/C1: " <> scenario <> " " <> name) $
++        withSystemTempDirectory "golem-heading" $ \dir -> do
++          let manifest = T.replace "chapters = [\"a.gm\"]" ("chapters = " <> chapters) (manifestToml testManifest)
++          writeFiles dir (("manifest.toml", T.unpack manifest) : [(file, T.unpack text) | (file, text) <- files])
++          (exit, err) <- jsonResult <$> runBuild dir mode Dev NoMarks False False
++          assertEqual (T.unpack err) (ExitFailure 1) exit
++          let decoded = J.eitherDecodeStrict (TE.encodeUtf8 err) :: Either String [J.Value]
++              spans = decoded >>= parseEither (mapM headingSpan)
++          fmap concat spans @?= Right wanted
++    | (scenario, chapters, files, wanted) <- scenarios,
++      (name, mode) <- [("check", CheckOnly), ("build --target html", WriteTargets [TargetHtml])]
++    ]
++  where
++    two file = [expected file 23 29 5, expected file 46 49 9]
++    one file = [expected file 23 29 5]
++    firstHeading = T.unlines (take 5 (T.lines headingLimitSource))
++    importing = "@import shared.gm as common\n"
++    scenarios =
++      [ ("single", "[\"a.gm\"]", [("a.gm", headingLimitSource)], two "a.gm"),
++        ("nested", "[[\"a.gm\"]]", [("a.gm", headingLimitSource)], two "a.gm"),
++        ("repeat", "[\"a.gm\", \"a.gm\"]", [("a.gm", headingLimitSource)], two "a.gm"),
++        ("two", "[\"a.gm\", \"b.gm\"]", [("a.gm", headingLimitSource), ("b.gm", firstHeading)], two "a.gm" <> one "b.gm"),
++        ("shared", "[\"a.gm\", \"b.gm\"]", [("a.gm", importing), ("b.gm", importing), ("shared.gm", firstHeading)], one "shared.gm"),
++        ("chapter-import", "[\"a.gm\", \"shared.gm\"]", [("a.gm", importing), ("shared.gm", firstHeading)], one "shared.gm")
++      ]
++    headingSpan :: J.Value -> Parser [J.Value]
++    headingSpan = J.withObject "diagnostic" $ \d -> do
++      code <- d J..: "code"
++      if code == ("G01012" :: T.Text) then pure <$> d J..: "span" else pure []
++    expected :: T.Text -> Int -> Int -> Int -> J.Value
++    expected file start end line = J.object ["file" J..= file, "start" J..= start, "end" J..= end, "line" J..= line, "column" J..= (7 :: Int)]
++
+ -- ------------------------------------------------------------------ golem new (golem-cli ADR 0003, ADR 0006)
+ 
+ newTests :: TestTree
+diff --git a/modules/golem-test-support/golem-test-support.cabal b/modules/golem-test-support/golem-test-support.cabal
+index 092bd348..03e5df5e 100644
+--- a/modules/golem-test-support/golem-test-support.cabal
++++ b/modules/golem-test-support/golem-test-support.cabal
+@@ -31,6 +31,7 @@ library
+     Golem.TestSupport.ExternalTool
+     Golem.TestSupport.ExternalTool.Internal
+     Golem.TestSupport.Gen
++    Golem.TestSupport.Heading
+     Golem.TestSupport.Manifest
+     Golem.TestSupport.PackageDirectory
+     Golem.TestSupport.Parallel
+diff --git a/modules/golem-cli/shared/Golem/Cli/BuildCommand.hs b/modules/golem-cli/shared/Golem/Cli/BuildCommand.hs
+new file mode 100644
+index 00000000..54966db9
+--- /dev/null
++++ b/modules/golem-cli/shared/Golem/Cli/BuildCommand.hs
+@@ -0,0 +1,22 @@
++-- | The two CLI paths through the build pipeline (Golem ADR 0337).
++module Golem.Cli.BuildCommand (BuildMode (..), runBuild, jsonResult) where
++
++import Data.Text (Text)
++import Golem.Driver
++import Golem.Syntax
++import System.Exit (ExitCode (..))
++
++data BuildMode = CheckOnly | WriteTargets [Target]
++
++runBuild :: FilePath -> BuildMode -> Profile -> CropMarks -> Bool -> Bool -> IO BuildResult
++runBuild root mode profile marks quiet verbose =
++  let (checkOnly, targets) = case mode of
++        CheckOnly -> (True, allTargets)
++        WriteTargets [] -> (False, allTargets)
++        WriteTargets ts -> (False, ts)
++   in build (defaultOptions root) {optTargets = Just targets, optProfile = profile, optCheckOnly = checkOnly, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
++
++jsonResult :: BuildResult -> (ExitCode, Text)
++jsonResult r =
++  let ds = brDiagnostics r
++   in (if hasErrors ds then ExitFailure 1 else ExitSuccess, renderJson (brSources r) ds)
+diff --git a/modules/golem-test-support/src/Golem/TestSupport/Heading.hs b/modules/golem-test-support/src/Golem/TestSupport/Heading.hs
+new file mode 100644
+index 00000000..20b86ae6
+--- /dev/null
++++ b/modules/golem-test-support/src/Golem/TestSupport/Heading.hs
+@@ -0,0 +1,10 @@
++-- | One source for checking the parser, CLI and language server against
++-- the same headings (Golem ADR 0310, 0311 and 0323).
++module Golem.TestSupport.Heading (headingLimitSource) where
++
++import Data.Text (Text)
++
++-- | The six-mark heading is legal. The two seven-mark headings follow
++-- multibyte text, and the first error ends after a surrogate pair.
++headingLimitSource :: Text
++headingLimitSource = "😀\n\n###### ok\n\n####### 😀\n\n漢😀\n\n####### A\n"

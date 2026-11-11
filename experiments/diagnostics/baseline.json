@@ -1,0 +1,1176 @@
+{
+  "rules-absent": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G09001",
+        "severity": "error",
+        "span": {
+          "file": "rules.toml",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "プリフライトの設定のファイルがありません: rules.toml",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "rules-utf8": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G09001",
+        "severity": "error",
+        "span": {
+          "file": "rules.toml",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "プリフライトの設定のファイルが UTF-8 として読めません: rules.toml",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "rules-syntax": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G09001",
+        "severity": "error",
+        "span": {
+          "file": "rules.toml",
+          "start": 1,
+          "end": 1,
+          "line": 1,
+          "column": 2
+        },
+        "message": "TOML の誤りです: ここにファイルの終わりは書けません",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "rules-duplicate": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G09001",
+        "severity": "error",
+        "span": {
+          "file": "rules.toml",
+          "start": 11,
+          "end": 11,
+          "line": 2,
+          "column": 1
+        },
+        "message": "TOML の誤りです: 同じキーに二度値を書いています: name",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "rules-unknown": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G09001",
+        "severity": "error",
+        "span": {
+          "file": "rules.toml",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "知らないキーです: what",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "rules-mixed": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G09001",
+        "severity": "error",
+        "span": {
+          "file": "rules.toml",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "知らないキーです: what",
+        "related": [],
+        "fixes": []
+      },
+      {
+        "code": "G09001",
+        "severity": "error",
+        "span": {
+          "file": "rules.toml",
+          "start": 36,
+          "end": 36,
+          "line": 3,
+          "column": 12
+        },
+        "message": "severity の値が正しくありません: no（error、warning、off のどれかにします） (glyph-missing.severity)",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "rules-value": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G09001",
+        "severity": "error",
+        "span": {
+          "file": "rules.toml",
+          "start": 27,
+          "end": 27,
+          "line": 2,
+          "column": 12
+        },
+        "message": "severity の値が正しくありません: no（error、warning、off のどれかにします） (glyph-missing.severity)",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "heading-one": [
+    [
+      {
+        "file": "a.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      },
+      {
+        "file": "a.gm",
+        "start": 17,
+        "end": 20,
+        "line": 3,
+        "column": 7
+      }
+    ],
+    [
+      {
+        "file": "a.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      },
+      {
+        "file": "a.gm",
+        "start": 17,
+        "end": 20,
+        "line": 3,
+        "column": 7
+      }
+    ]
+  ],
+  "heading-nested": [
+    [
+      {
+        "file": "a.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      },
+      {
+        "file": "a.gm",
+        "start": 17,
+        "end": 20,
+        "line": 3,
+        "column": 7
+      }
+    ],
+    [
+      {
+        "file": "a.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      },
+      {
+        "file": "a.gm",
+        "start": 17,
+        "end": 20,
+        "line": 3,
+        "column": 7
+      }
+    ]
+  ],
+  "heading-repeat": [
+    [
+      {
+        "file": "a.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      },
+      {
+        "file": "a.gm",
+        "start": 17,
+        "end": 20,
+        "line": 3,
+        "column": 7
+      }
+    ],
+    [
+      {
+        "file": "a.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      },
+      {
+        "file": "a.gm",
+        "start": 17,
+        "end": 20,
+        "line": 3,
+        "column": 7
+      }
+    ]
+  ],
+  "heading-two": [
+    [
+      {
+        "file": "a.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      },
+      {
+        "file": "a.gm",
+        "start": 17,
+        "end": 20,
+        "line": 3,
+        "column": 7
+      },
+      {
+        "file": "b.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      }
+    ],
+    [
+      {
+        "file": "a.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      },
+      {
+        "file": "a.gm",
+        "start": 17,
+        "end": 20,
+        "line": 3,
+        "column": 7
+      },
+      {
+        "file": "b.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      }
+    ]
+  ],
+  "heading-shared": [
+    [
+      {
+        "file": "shared.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      }
+    ],
+    [
+      {
+        "file": "shared.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      }
+    ]
+  ],
+  "heading-chapterImport": [
+    [
+      {
+        "file": "shared.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      }
+    ],
+    [
+      {
+        "file": "shared.gm",
+        "start": 6,
+        "end": 9,
+        "line": 1,
+        "column": 7
+      }
+    ]
+  ],
+  "language-ja": [],
+  "language-ja-JP": [],
+  "language-ja_JP": [],
+  "language-x": [],
+  "language-i-klingon": [],
+  "language-sl-rozaj-rozaj": [],
+  "language-en-a-foo-a-bar": [],
+  "language-bad-schema": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G03001",
+        "severity": "error",
+        "span": {
+          "file": "manifest.toml",
+          "start": 173,
+          "end": 173,
+          "line": 8,
+          "column": 1
+        },
+        "message": "知らないキーです: metadata.bogus",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "languageMatrix": [
+    {
+      "setting": "html",
+      "profile": "dev",
+      "exit": 0,
+      "spans": []
+    },
+    {
+      "setting": "html",
+      "profile": "prod",
+      "exit": 0,
+      "spans": []
+    },
+    {
+      "setting": "text",
+      "profile": "dev",
+      "exit": 0,
+      "spans": []
+    },
+    {
+      "setting": "text",
+      "profile": "prod",
+      "exit": 0,
+      "spans": []
+    },
+    {
+      "setting": "epub",
+      "profile": "dev",
+      "exit": 0,
+      "spans": []
+    },
+    {
+      "setting": "epub",
+      "profile": "prod",
+      "exit": 0,
+      "spans": []
+    },
+    {
+      "setting": "pdf",
+      "profile": "dev",
+      "exit": 0,
+      "spans": []
+    },
+    {
+      "setting": "pdf",
+      "profile": "prod",
+      "exit": 0,
+      "spans": []
+    },
+    {
+      "setting": "pdfa",
+      "profile": "dev",
+      "exit": 1,
+      "spans": [
+        {
+          "file": "manifest.toml",
+          "start": 165,
+          "end": 165,
+          "line": 7,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "setting": "pdfa",
+      "profile": "prod",
+      "exit": 1,
+      "spans": [
+        {
+          "file": "manifest.toml",
+          "start": 165,
+          "end": 165,
+          "line": 7,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "setting": "pdfua",
+      "profile": "dev",
+      "exit": 1,
+      "spans": [
+        {
+          "file": "manifest.toml",
+          "start": 165,
+          "end": 165,
+          "line": 7,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "setting": "pdfua",
+      "profile": "prod",
+      "exit": 1,
+      "spans": [
+        {
+          "file": "manifest.toml",
+          "start": 165,
+          "end": 165,
+          "line": 7,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "setting": "check",
+      "profile": "dev",
+      "exit": 0,
+      "spans": []
+    },
+    {
+      "setting": "check",
+      "profile": "prod",
+      "exit": 0,
+      "spans": []
+    }
+  ],
+  "glyph-off": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G08100",
+        "severity": "error",
+        "span": {
+          "file": "a.gm",
+          "start": 0,
+          "end": 13,
+          "line": 1,
+          "column": 1
+        },
+        "message": "フォントにグリフのない文字です: U+E000「」（ja.otf、PDF の 1 ページ目）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "code-point": "U+E000",
+          "font": "ja.otf",
+          "pdf-pages": [
+            1
+          ],
+          "count": 1
+        }
+      },
+      {
+        "code": "G09010",
+        "severity": "error",
+        "span": {
+          "file": "style.toml",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "塗り足しの幅が足りません: 0.00mm（3.00mm 以上にします）",
+        "related": [],
+        "fixes": []
+      },
+      {
+        "code": "G09014",
+        "severity": "error",
+        "span": {
+          "file": "style.toml",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の [color] に intent を書きます）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "requirement": "出力インテント"
+        }
+      }
+    ]
+  },
+  "glyph-warning": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G08100",
+        "severity": "error",
+        "span": {
+          "file": "a.gm",
+          "start": 0,
+          "end": 13,
+          "line": 1,
+          "column": 1
+        },
+        "message": "フォントにグリフのない文字です: U+E000「」（ja.otf、PDF の 1 ページ目）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "code-point": "U+E000",
+          "font": "ja.otf",
+          "pdf-pages": [
+            1
+          ],
+          "count": 1
+        }
+      },
+      {
+        "code": "G09002",
+        "severity": "warning",
+        "span": {
+          "file": "a.gm",
+          "start": 0,
+          "end": 13,
+          "line": 1,
+          "column": 1
+        },
+        "message": "フォントにグリフのない文字です: U+E000「」（ja.otf、PDF の 1 ページ目）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "code-point": "U+E000",
+          "font": "ja.otf",
+          "pdf-pages": [
+            1
+          ],
+          "count": 1
+        }
+      },
+      {
+        "code": "G09010",
+        "severity": "error",
+        "span": {
+          "file": "style.toml",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "塗り足しの幅が足りません: 0.00mm（3.00mm 以上にします）",
+        "related": [],
+        "fixes": []
+      },
+      {
+        "code": "G09014",
+        "severity": "error",
+        "span": {
+          "file": "style.toml",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の [color] に intent を書きます）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "requirement": "出力インテント"
+        }
+      }
+    ]
+  },
+  "glyph-error": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G08100",
+        "severity": "error",
+        "span": {
+          "file": "a.gm",
+          "start": 0,
+          "end": 13,
+          "line": 1,
+          "column": 1
+        },
+        "message": "フォントにグリフのない文字です: U+E000「」（ja.otf、PDF の 1 ページ目）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "code-point": "U+E000",
+          "font": "ja.otf",
+          "pdf-pages": [
+            1
+          ],
+          "count": 1
+        }
+      },
+      {
+        "code": "G09002",
+        "severity": "error",
+        "span": {
+          "file": "a.gm",
+          "start": 0,
+          "end": 13,
+          "line": 1,
+          "column": 1
+        },
+        "message": "フォントにグリフのない文字です: U+E000「」（ja.otf、PDF の 1 ページ目）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "code-point": "U+E000",
+          "font": "ja.otf",
+          "pdf-pages": [
+            1
+          ],
+          "count": 1
+        }
+      },
+      {
+        "code": "G09010",
+        "severity": "error",
+        "span": {
+          "file": "style.toml",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "塗り足しの幅が足りません: 0.00mm（3.00mm 以上にします）",
+        "related": [],
+        "fixes": []
+      },
+      {
+        "code": "G09014",
+        "severity": "error",
+        "span": {
+          "file": "style.toml",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の [color] に intent を書きます）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "requirement": "出力インテント"
+        }
+      }
+    ]
+  },
+  "isolated-glyph-off": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G08100",
+        "severity": "error",
+        "span": {
+          "file": "a.gm",
+          "start": 0,
+          "end": 13,
+          "line": 1,
+          "column": 1
+        },
+        "message": "フォントにグリフのない文字です: U+E000「」（ja.otf、PDF の 1 ページ目）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "code-point": "U+E000",
+          "font": "ja.otf",
+          "pdf-pages": [
+            1
+          ],
+          "count": 1
+        }
+      }
+    ]
+  },
+  "isolated-glyph-warning": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G08100",
+        "severity": "error",
+        "span": {
+          "file": "a.gm",
+          "start": 0,
+          "end": 13,
+          "line": 1,
+          "column": 1
+        },
+        "message": "フォントにグリフのない文字です: U+E000「」（ja.otf、PDF の 1 ページ目）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "code-point": "U+E000",
+          "font": "ja.otf",
+          "pdf-pages": [
+            1
+          ],
+          "count": 1
+        }
+      },
+      {
+        "code": "G09002",
+        "severity": "warning",
+        "span": {
+          "file": "a.gm",
+          "start": 0,
+          "end": 13,
+          "line": 1,
+          "column": 1
+        },
+        "message": "フォントにグリフのない文字です: U+E000「」（ja.otf、PDF の 1 ページ目）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "code-point": "U+E000",
+          "font": "ja.otf",
+          "pdf-pages": [
+            1
+          ],
+          "count": 1
+        }
+      }
+    ]
+  },
+  "isolated-glyph-error": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G08100",
+        "severity": "error",
+        "span": {
+          "file": "a.gm",
+          "start": 0,
+          "end": 13,
+          "line": 1,
+          "column": 1
+        },
+        "message": "フォントにグリフのない文字です: U+E000「」（ja.otf、PDF の 1 ページ目）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "code-point": "U+E000",
+          "font": "ja.otf",
+          "pdf-pages": [
+            1
+          ],
+          "count": 1
+        }
+      },
+      {
+        "code": "G09002",
+        "severity": "error",
+        "span": {
+          "file": "a.gm",
+          "start": 0,
+          "end": 13,
+          "line": 1,
+          "column": 1
+        },
+        "message": "フォントにグリフのない文字です: U+E000「」（ja.otf、PDF の 1 ページ目）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "code-point": "U+E000",
+          "font": "ja.otf",
+          "pdf-pages": [
+            1
+          ],
+          "count": 1
+        }
+      }
+    ]
+  },
+  "press-print": [
+    "G09010",
+    "G09014"
+  ],
+  "press-basic": [
+    "G09014"
+  ],
+  "press-none": [],
+  "press-screen": [
+    "G09001"
+  ],
+  "screen-override": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G09001",
+        "severity": "error",
+        "span": {
+          "file": "./preflight.toml",
+          "start": 11,
+          "end": 11,
+          "line": 1,
+          "column": 12
+        },
+        "message": "based-on の値が正しくありません: screen（basic、print、none のどれかにします） (based-on)",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "marks": [
+    "G09001"
+  ],
+  "resolution-0": [
+    [],
+    [],
+    []
+  ],
+  "resolution-1": [
+    [],
+    [],
+    []
+  ],
+  "resolution-2": [
+    [
+      {
+        "code": "G09006",
+        "severity": "error",
+        "span": {
+          "file": "a.gm",
+          "start": 7,
+          "end": 32,
+          "line": 3,
+          "column": 1
+        },
+        "message": "図版の実効の解像度が足りません: tiny.jpg（1ppi、2ppi 未満、PDF の 1 ページ目）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "ppi": 1,
+          "limit": 2,
+          "pixels": [
+            2,
+            3
+          ],
+          "pdf-pages": [
+            1
+          ]
+        }
+      }
+    ],
+    [
+      {
+        "code": "G09006",
+        "severity": "error",
+        "span": {
+          "file": "a.gm",
+          "start": 7,
+          "end": 32,
+          "line": 3,
+          "column": 1
+        },
+        "message": "図版の実効の解像度が足りません: tiny.jpg（1ppi、2ppi 未満、PDF の 1 ページ目）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "ppi": 1,
+          "limit": 2,
+          "pixels": [
+            2,
+            3
+          ],
+          "pdf-pages": [
+            1
+          ]
+        }
+      }
+    ],
+    [
+      {
+        "code": "G09006",
+        "severity": "error",
+        "span": {
+          "file": "a.gm",
+          "start": 7,
+          "end": 32,
+          "line": 3,
+          "column": 1
+        },
+        "message": "図版の実効の解像度が足りません: tiny.jpg（1ppi、2ppi 未満、PDF の 1 ページ目）",
+        "related": [],
+        "fixes": [],
+        "facts": {
+          "ppi": 1,
+          "limit": 2,
+          "pixels": [
+            2,
+            3
+          ],
+          "pdf-pages": [
+            1
+          ]
+        }
+      }
+    ]
+  ],
+  "ppi": 1,
+  "template-ja": {
+    "exit": 2,
+    "bleed": false,
+    "rules": null
+  },
+  "template-en": {
+    "exit": 2,
+    "bleed": false,
+    "rules": null
+  },
+  "table-csv-empty": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G02085",
+        "severity": "error",
+        "span": {
+          "file": "data.csv",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "CSV が空です",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "table-csv-uneven": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G02085",
+        "severity": "error",
+        "span": {
+          "file": "data.csv",
+          "start": 4,
+          "end": 5,
+          "line": 2,
+          "column": 1
+        },
+        "message": "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "table-csv-valid": {
+    "exit": 0,
+    "d": []
+  },
+  "table-tsv-empty": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G02085",
+        "severity": "error",
+        "span": {
+          "file": "data.tsv",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "TSV が空です",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "table-tsv-uneven": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G02085",
+        "severity": "error",
+        "span": {
+          "file": "data.tsv",
+          "start": 4,
+          "end": 5,
+          "line": 2,
+          "column": 1
+        },
+        "message": "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "table-tsv-valid": {
+    "exit": 0,
+    "d": []
+  },
+  "filter-missing": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G06010",
+        "severity": "error",
+        "span": {
+          "file": "manifest.toml",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "宣言されていないプラグインです: ghost（フィルタ ghost.x）",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "filter-unknown": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G06010",
+        "severity": "error",
+        "span": {
+          "file": "manifest.toml",
+          "start": 0,
+          "end": 0,
+          "line": 1,
+          "column": 1
+        },
+        "message": "プラグインが提供していないフィルタです: tcy.missing",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "pdf-encrypted": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G08010",
+        "severity": "error",
+        "span": {
+          "file": "a.gm",
+          "start": 7,
+          "end": 57,
+          "line": 3,
+          "column": 1
+        },
+        "message": "図版を PDF に置けません: chart.pdf（暗号化された PDF は使えません）",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "pdf-page": {
+    "exit": 1,
+    "d": [
+      {
+        "code": "G08010",
+        "severity": "error",
+        "span": {
+          "file": "a.gm",
+          "start": 7,
+          "end": 59,
+          "line": 3,
+          "column": 1
+        },
+        "message": "図版を PDF に置けません: chart.pdf（100 ページ目がありません（全 1 ページ））",
+        "related": [],
+        "fixes": []
+      }
+    ]
+  },
+  "stale": {
+    "exit": 1,
+    "codes": [
+      "G08010"
+    ],
+    "remaining": [
+      "pages.json",
+      "urn-uuid-11111111-2222-4333-8444-555555555555.pdf"
+    ]
+  },
+  "cleanup-default-pdf": {
+    "exit": 1,
+    "remaining": true
+  },
+  "cleanup-check": {
+    "exit": 1,
+    "remaining": true
+  },
+  "cleanup-html": {
+    "exit": 1,
+    "remaining": true
+  },
+  "cleanup-default-html": {
+    "exit": 1,
+    "remaining": true
+  },
+  "cleanup-invalid-explicit": {
+    "exit": 1,
+    "remaining": true
+  },
+  "cleanup-invalid-default": {
+    "exit": 1,
+    "remaining": true
+  },
+  "cleanup-link": {
+    "codes": [
+      "G08013"
+    ],
+    "remaining": "outside"
+  },
+  "output-file": {
+    "codes": [
+      "G08013"
+    ],
+    "remaining": "file"
+  },
+  "cleanup-sibling": {
+    "codes": [
+      "G03001"
+    ],
+    "remaining": true,
+    "external": "outside"
+  }
+}

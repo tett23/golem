@@ -1,0 +1,27 @@
+✔ 315 I1 migration preserves location and only changes targeted codes (1.410334ms)
+✔ 316 I1 migration preserves location and only changes targeted codes (0.097291ms)
+✔ 317 I1 migration preserves location and only changes targeted codes (0.072833ms)
+✔ 318 I1 migration preserves location and only changes targeted codes (0.074583ms)
+✔ 317 I2 existing duplicate path error takes precedence (0.069708ms)
+✔ 319 I1 numeric and textual zero share canonical dimension (0.092333ms)
+✔ 319 I2 count and CSS remain distinct (0.056125ms)
+✔ 320 I1 use site resolves zw and enforces kind (0.150083ms)
+✔ 320 I2 completion and rename follow references (0.137458ms)
+✖ 315 I2, 317 I2 reject ambiguous input before file lookup (0.2755ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 9
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 56.572125
+
+✖ failing tests:
+
+test at experiments/syntax/test.mjs:38:1
+✖ 315 I2, 317 I2 reject ambiguous input before file lookup (0.2755ms)
+  TypeError [Error]: pathOf is not a function
+      at TestContext.<anonymous> (file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-syntax/experiments/syntax/test.mjs:43:18)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)

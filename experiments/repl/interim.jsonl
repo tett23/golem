@@ -1,0 +1,21 @@
+{"name":"R1 precedence","ok":true,"status":0,"stdout":"7\n","stderr":""}
+{"name":"R1 values","ok":true,"status":0,"stdout":"True\n\"猫\"\n[1, 2]\n(1, False)\n(Just 2)\n","stderr":""}
+{"name":"R1 string escapes","ok":true,"status":0,"stdout":"\"a\\nb\"\n","stderr":""}
+{"name":"R2 unknown then arithmetic","ok":true,"status":1,"stdout":"5\n","stderr":"E02100: 未定義の名前 missing です\n"}
+{"name":"R2 syntax then arithmetic","ok":true,"status":1,"stdout":"4\n","stderr":"E01101: 閉じていない ( があります。) が要ります\n"}
+{"name":"R2 type then arithmetic","ok":true,"status":1,"stdout":"5\n","stderr":"E02101: + は 数（Nat、Int、Rat） にだけ使えます（String があります）\n"}
+{"name":"R2 evaluation then arithmetic","ok":true,"status":1,"stdout":"6\n","stderr":"G02003: 0 で割っています\n"}
+{"name":"R2 pure requirements","ok":true,"status":1,"stdout":"7\n","stderr":"E05101: シグネチャにない要求を使っています: file \"secret.txt\"\n"}
+{"name":"R3 definitions do not persist","ok":true,"status":1,"stdout":"8\n","stderr":"E01100: 構文の誤りです。'\"'、'%'、'&&'、'('、'*'、'**'、'+'、'++'、'-'、'--'、'/'、'/='、':'、'<'、'<='、'=='、'>'、'>='、'?'、'['、'\\''、'\\n'、'where'、'||'、[ \\t]、[0-9]、[A-Z]、[a-z_] が要ります\nE02100: 未定義の名前 x です\n"}
+{"name":"R3 explicit multiline","ok":true,"status":0,"stdout":"3\n","stderr":""}
+{"name":"R3 unterminated block","ok":true,"status":1,"stdout":"","stderr":":} で入力を閉じる必要があります\n"}
+{"name":"R4 blank and EOF","ok":true,"status":0,"stdout":"","stderr":""}
+{"name":"R4 last line without newline","ok":true,"status":0,"stdout":"9\n","stderr":""}
+{"name":"R5 exact 4096 bytes","ok":true,"status":0,"stdout":"1\n","stderr":""}
+{"name":"R5 single-line overflow recovers","ok":true,"status":1,"stdout":"9\n","stderr":"REPL の入力が 4096 バイトを超えました\n"}
+{"name":"R5 multiline overflow discards whole block","ok":true,"status":1,"stdout":"3\n","stderr":"REPL の入力が 4096 バイトを超えました\n"}
+{"name":"R5 step limit","ok":true,"status":1,"stdout":"42\n","stderr":"E04100: 関数の評価の手数が上限（100000 手）を超えました: entry（<repl>:1）\n"}
+{"name":"R5 output bound","ok":true,"status":1,"stdout":"1\n","stderr":"REPL の出力が 4096 バイトを超えました\n"}
+{"name":"R5 invalid UTF-8 recovers","ok":true,"status":1,"stdout":"1\n","stderr":"G01001: UTF-8 として不正なバイト列があります\n"}
+{"name":"R4 interactive prompts and EOF","ok":true,"status":0,"output":"emet> :{\r\n....> 1+2\r\n....> :}\r\n3\r\nemet> "}
+{"total":20,"passed":20,"failed":0}

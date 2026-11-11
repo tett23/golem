@@ -1,0 +1,16 @@
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+G1/G2 valid=28 G3 invalid=4
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+U1/U2/U3 strings=85 boundaries=313
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+L1 half-units=325 L2/L3 headings=1296
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+P1/P2 flows=3333
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+H1/S1 cases=1814 AV adjustment=-14 upem=1000
+Parser: rejected
+Position: rejected
+Length: rejected
+Pagination: rejected
+Shape: rejected
+S1: rejected uncorrected AV width (684851 versus 694026 sp)

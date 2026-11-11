@@ -1,0 +1,8 @@
+  checks
+    A2: G09006 has identical facts at the rational cutoff on native and wasm32: OK
+
+All 1 tests passed (0.00s)
+Test suite golem-preflight-test: PASS
+Test suite logged to:
+/Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-diag/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-preflight-0.1.0/t/golem-preflight-test/test/golem-preflight-0.1.0-golem-preflight-test.log
+1 of 1 test suites (1 of 1 test cases) passed.

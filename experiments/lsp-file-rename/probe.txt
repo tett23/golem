@@ -1,0 +1,10 @@
+("folder (2 sites, no prose or prefix sibling)",True)
+("duplicate pair",True)
+("consistent ancestor and child",True)
+("conflicting ancestor and child",True)
+("single file",True)
+("empty operation",True)
+("outside root",True)
+("simultaneous map",True)
+("unsaved buffer chosen by caller",True)
+Right [(LineCol {lcLine = 1, lcColumn = 8},LineCol {lcLine = 1, lcColumn = 16},"\26032\31456/a.gm"),(LineCol {lcLine = 2, lcColumn = 8},LineCol {lcLine = 2, lcColumn = 16},"\"\26032\31456/a.gm\"")]

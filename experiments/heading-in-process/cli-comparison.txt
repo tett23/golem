@@ -1,0 +1,2 @@
+{"args":["check"],"status":1,"stdout":"","spans":[{"file":"a.gm","start":23,"end":29,"line":5,"column":7},{"file":"a.gm","start":46,"end":49,"line":9,"column":7}]}
+{"args":["build","--target","html"],"status":1,"stdout":"","spans":[{"file":"a.gm","start":23,"end":29,"line":5,"column":7},{"file":"a.gm","start":46,"end":49,"line":9,"column":7}]}

@@ -1,0 +1,283 @@
+diff --git a/modules/golem-cli/app/Main.hs b/modules/golem-cli/app/Main.hs
+index 76b4d48a..b2f57e53 100644
+--- a/modules/golem-cli/app/Main.hs
++++ b/modules/golem-cli/app/Main.hs
+@@ -42,6 +42,7 @@ import System.Environment (getArgs)
+ import System.Exit (ExitCode (..), exitWith)
+ import System.FilePath (joinPath, makeRelative, normalise, splitDirectories, takeExtension, (</>))
+ import System.IO (hFlush, hPutStrLn, hSetEncoding, stderr, stdout, utf8)
++import Repl qualified
+ import Text.Printf (printf)
+ 
+ data Format = Human | Json
+@@ -58,6 +59,7 @@ data Command
+   | Inspect FilePath InspectAs
+   | Lint Profile Bool Bool Format
+   | Fmt Bool [FilePath]
++  | EmetRepl
+   | Lsp
+   | Explain [T.Text]
+ 
+@@ -208,6 +210,7 @@ commands =
+           "プラグインを管理する"
+         <> cmd "lint" (Lint <$> profileOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "lint の規則を適用する"
+         <> cmd "fmt" (Fmt <$> switch (long "check" <> help "整形が必要なファイルを示すだけにする") <*> many (strArgument (metavar "FILE"))) "原稿を整形する"
++        <> cmd "repl" (subparser (commandGroup "コマンド:" <> metavar "LANGUAGE" <> cmd "emet" (pure EmetRepl) "Emet の式を対話的に評価する")) "対話的に式を評価する"
+         <> cmd "lsp" (pure Lsp) "標準入出力で LSP サーバーを動かす"
+         <> cmd "inspect" (Inspect <$> strArgument (metavar "FILE") <*> inspectAsOpt) "ファイルの CST、AST、IR を表示する"
+         <> cmd "explain" (Explain <$> many (strArgument (metavar "CODE..."))) "診断のコードの説明を表示する"
+@@ -243,6 +246,7 @@ localize = intercalate "\n" . go . lines
+ 
+ run :: Command -> IO ExitCode
+ run = \case
++  EmetRepl -> Repl.run
+   New dir lang noFonts -> newProject dir lang noFonts
+   Build tgs profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
+   Check profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
+diff --git a/modules/golem-cli/golem-cli.cabal b/modules/golem-cli/golem-cli.cabal
+index 3945a1a2..701dc2b1 100644
+--- a/modules/golem-cli/golem-cli.cabal
++++ b/modules/golem-cli/golem-cli.cabal
+@@ -11,6 +11,7 @@ build-type:         Simple
+ executable golem
+   hs-source-dirs:   app
+   main-is:          Main.hs
++  other-modules:    Repl
+   -- -N: every processor, so that paragraphs are composed on several OS
+   -- threads at once (golem-driver ADR 0002); -A64m: an allocation area of
+   -- 64 MB for each capability, so that the collections of the youngest
+@@ -25,6 +26,7 @@ executable golem
+     , filepath              >=1.4  && <1.6
+     , golem-doc
+     , golem-driver
++    , golem-emet
+     , golem-eval
+     , golem-fmt
+     , golem-lsp
+diff --git a/modules/golem-emet/src/Golem/Emet.hs b/modules/golem-emet/src/Golem/Emet.hs
+index f692b0a8..854ce32c 100644
+--- a/modules/golem-emet/src/Golem/Emet.hs
++++ b/modules/golem-emet/src/Golem/Emet.hs
+@@ -5,6 +5,7 @@ modules, calling its functions with the handlers of their requirements
+ module Golem.Emet
+   ( Program,
+     SourceProblem (..),
++    evaluateExpression,
+     loadProgram,
+     callFunction,
+     callFunctionCounted,
+@@ -45,6 +46,7 @@ where
+ 
+ import Control.Monad (foldM)
+ import Data.ByteString (ByteString)
++import Data.ByteString qualified as BS
+ import Data.Int (Int64)
+ import Data.List (intercalate)
+ import Data.Map.Strict (Map)
+@@ -53,6 +55,7 @@ import Data.Text (Text)
+ import Data.Text qualified as T
+ import Golem.Emet.Builtins (builtinSources, divInfo, hiddenConstructors)
+ import Golem.Emet.Check
++import Golem.Emet.Core (CEq (..), CFun (..), CRhs (..), Global (..))
+ import Golem.Emet.Eval
+ import Golem.Emet.Fmt (formatEmet)
+ import Golem.Emet.Parse (parseModule, readEmet)
+@@ -143,6 +146,38 @@ builtins = foldl' step ([], Map.empty, Map.fromList [snd divInfo]) builtinSource
+          in (ds <> es, Map.insert name mi' mods, Map.union globals (Map.fromList defs))
+     builtinFile = FileId (-1)
+ 
++-- | Evaluate one expression, with no project or filesystem and no bindings from earlier calls.
++evaluateExpression :: Int64 -> ByteString -> Either [Diagnostic] Result
++evaluateExpression limit bytes = do
++  src <- readEmet fid bytes
++  let wrapped = prefix <> src
++  let adjust d = d {diagSpan = mkSpan fid (offset (spanStart (diagSpan d))) (offset (spanEnd (diagSpan d)))}
++      offset n = min (BS.length bytes) (max 0 (n - T.length prefix))
++      withInputPositions = either (Left . map adjust) Right
++  m <- withInputPositions (parseModule fid wrapped)
++  case m of
++    Module [DEq Equation {eqName = "entry", eqPats = [], eqRhs = Plain expr, eqWheres = []}] -> do
++      let (ds, mods, globals) = builtins
++          scope = Scope [] mods (Map.singleton "div" (fst divInfo))
++      case ds of
++        [] -> pure ()
++        _ -> Left ds
++      body <- withInputPositions (checkExpression scope fid path wrapped expr)
++      let fn = GFun (CFun "入力した式" path 1 0 [CEq [] (CPlain body)] [])
++          key = (path, "entry")
++          at = mkSpan fid (T.length prefix) (T.length prefix + BS.length bytes)
++          files = Map.fromList ((path, fid) : [(p, FileId (-1)) | (_, p, _) <- builtinSources])
++          result = fst (evalCallLimited limit noHandlers (Map.insert key fn globals) files at key [])
++          -- A fault inside a built-in module points to this submission.
++          locate d | spanFile (diagSpan d) == fid = adjust d
++                   | otherwise = d {diagSpan = mkSpan fid 0 (BS.length bytes)}
++      either (Left . pure . locate) Right result
++    _ -> Left [diagnostic "E01100" Error (mkSpan fid 0 0) "REPL には Emet の式を一つ入力してください"]
++  where
++    prefix = "entry = "
++    path = "<repl>"
++    fid = FileId 0
++
+ data Loaded = Loaded
+   { ldFiles :: !(Map FilePath (FileId, Text, Module)),
+     -- | the order to check: imports before their importers
+diff --git a/modules/golem-emet/src/Golem/Emet/Check.hs b/modules/golem-emet/src/Golem/Emet/Check.hs
+index 1c968542..7f6259cf 100644
+--- a/modules/golem-emet/src/Golem/Emet/Check.hs
++++ b/modules/golem-emet/src/Golem/Emet/Check.hs
+@@ -23,6 +23,7 @@ module Golem.Emet.Check
+     TypeDef (..),
+     Scope (..),
+     checkModule,
++    checkExpression,
+     checkModuleLocals,
+     builtinCons,
+     builtinModuleNames,
+@@ -282,6 +283,20 @@ zonkM t = gets (\s -> zonk (tsSolve s) t)
+ 
+ -- * Checking a module
+ 
++-- | Infer and check an isolated REPL expression in the same closed, pure row as a pure function.
++checkExpression :: Scope -> FileId -> FilePath -> Text -> Expr -> Either [Diagnostic] CExpr
++checkExpression scope fid path src expr =
++  let cx = Ctx fid path src (importedNames scope) scope "" "" Set.empty pureRow False
++      inferBody = do
++        (_, body) <- infer cx Map.empty expr
++        solveNow cx True
++        pure body
++   in case runStateT inferBody (TcState emptySolveState [] [] Set.empty 0 [] []) of
++        Left d -> Left [d]
++        Right (body, st) -> case reverse (tsDiags st) of
++          [] -> Right body
++          ds -> Left ds
++
+ {- | Checks a module and returns its diagnostics, what it defines and its
+ functions. In a built-in module (@prims@), a signature without equations
+ is a primitive.
+diff --git a/modules/golem-cli/app/Repl.hs b/modules/golem-cli/app/Repl.hs
+new file mode 100644
+index 00000000..408d6414
+--- /dev/null
++++ b/modules/golem-cli/app/Repl.hs
+@@ -0,0 +1,121 @@
++module Repl (run) where
++
++import Control.Exception (AsyncException(UserInterrupt), tryJust)
++import Control.Monad (when)
++import Data.ByteString qualified as BS
++import Data.Char (isControl, ord)
++import Data.IORef
++import Data.List (intercalate)
++import Data.Text qualified as T
++import Data.Text.IO qualified as TIO
++import Data.Text.Lazy qualified as LT
++import Data.Text.Lazy.Encoding qualified as LTE
++import Data.ByteString.Lazy qualified as BL
++import Golem.Emet (Result(..), evaluateExpression)
++import Golem.Eval.Expr (valueText)
++import Golem.Eval.Value (Value(..))
++import Golem.Syntax (Diagnostic(..), DiagnosticCode(..),spanStart,spanEnd)
++import Numeric (showHex)
++import System.Exit
++import System.IO
++
++data Line = End | TooLong | Line BS.ByteString
++data Entry = Ready | More BS.ByteString [Diagnostic]
++
++limit :: Int
++limit = 4096
++
++-- | Keep at most one bounded line and one input chunk, including when a pipe never writes LF.
++readLine :: IORef BS.ByteString -> IO Line
++readLine pending = go 0 []
++  where
++    go !count !parts = do
++      buffered <- readIORef pending
++      chunk <- if BS.null buffered then BS.hGetSome stdin limit else pure buffered
++      writeIORef pending BS.empty
++      if BS.null chunk then pure (if count == 0 then End else finish count parts)
++      else do
++        let (before,end) = BS.break (== 10) chunk
++            size = min (limit+1) (count + BS.length before)
++            keep = if size > limit then [] else before:parts
++        if BS.null end then go size keep
++        else writeIORef pending (BS.tail end) >> pure (finish size keep)
++    finish n xs = if n > limit then TooLong else Line (BS.concat (reverse xs))
++
++-- | Render only the prefix the REPL may print. Large nested lists never become one strict String.
++showResult :: Result -> String
++showResult = \case
++  RPrim (VString s) -> quoted '"' (T.unpack s)
++  RPrim (VBool b) -> if b then "True" else "False"
++  RPrim v -> T.unpack (valueText v)
++  RChar c -> quoted '\'' [c]
++  RCon c [] -> T.unpack c
++  RCon c fields -> "(" <> unwords (T.unpack c:map showResult fields) <> ")"
++  RList xs -> "[" <> intercalate ", " (map showResult xs) <> "]"
++  RTuple xs -> "(" <> intercalate ", " (map showResult xs) <> ")"
++  RFun -> "<function>"
++  where
++    quoted q cs = q : concatMap (escape q) cs ++ [q]
++    escape q c | c == q || c == '\\' = ['\\',c]
++    escape _ '\n' = "\\n"
++    escape _ '\t' = "\\t"
++    escape _ c | isControl c = "\\u{" <> showHex (ord c) "}"
++    escape _ c = [c]
++
++report :: Diagnostic -> IO ()
++report d = do
++  let DiagnosticCode code = diagCode d
++      sp = diagSpan d
++      site = T.pack (" [" ++ show (spanStart sp) ++ "," ++ show (spanEnd sp) ++ "): ")
++  TIO.hPutStrLn stderr (code <> site <> diagMessage d)
++
++submit :: Bool -> BS.ByteString -> IO (Bool, Entry)
++submit interactive input
++  | BS.all (`elem` [32,9,10]) input = pure (True, Ready)
++  | otherwise = case evaluateExpression 100000 input of
++      Left ds | not (null ds) && all needsMore ds -> pure (True, More input ds)
++              | otherwise -> mapM_ report ds >> pure (False, Ready)
++      Right value ->
++        let output = LT.pack (showResult value)
++         in if BL.length (BL.take (fromIntegral limit+1) (LTE.encodeUtf8 output)) > fromIntegral limit
++              then hPutStrLn stderr "REPL の出力が 4096 バイトを超えました" >> pure (False, Ready)
++              else do
++                when interactive (TIO.putStr "=> ")
++                TIO.putStrLn (LT.toStrict output)
++                hFlush stdout
++                pure (True, Ready)
++  where
++    needsMore d = let DiagnosticCode code = diagCode d
++                      sp = diagSpan d
++                   in code `elem` ["E01100","E01101"] && spanStart sp == BS.length input && spanEnd sp == BS.length input
++
++run :: IO ExitCode
++run = do
++  inputTTY <- hIsTerminalDevice stdin
++  promptTTY <- hIsTerminalDevice stderr
++  pending <- newIORef BS.empty
++  let interactive = inputTTY && promptTTY
++      interrupt UserInterrupt | interactive = Just ()
++      interrupt _ = Nothing
++      cancel ok = writeIORef pending BS.empty >> hPutStrLn stderr "" >> loop ok Ready
++      finish ok = pure (if ok then ExitSuccess else ExitFailure 1)
++      overflow = hPutStrLn stderr "REPL の入力が 4096 バイトを超えました" >> loop False Ready
++      loop !ok entry = do
++        when interactive $ do
++          hPutStr stderr (case entry of Ready -> "emet> "; More{} -> "....> ")
++          hFlush stderr
++        tryJust interrupt (readLine pending) >>= \case
++          Left () -> cancel ok
++          Right line -> consume ok entry line
++      consume !ok entry = \case
++          End -> case entry of
++            Ready -> finish ok
++            More _ ds -> mapM_ report ds >> finish False
++          TooLong -> overflow
++          Line s -> do
++            let input = case entry of Ready -> s; More previous _ -> previous <> "\n" <> s
++            if BS.length input > limit then overflow else do
++              tryJust interrupt (submit interactive input) >>= \case
++                Left () -> cancel ok
++                Right (passed,next) -> loop (ok && passed) next
++  loop True Ready
