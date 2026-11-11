@@ -1,17 +1,19 @@
 module Repl (run) where
 
-import Control.Exception (AsyncException (UserInterrupt), tryJust)
+import Control.Exception (AsyncException (UserInterrupt), throwIO, try, tryJust)
 import Control.Monad (when)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as B8
-import Data.Char (isControl, ord)
+import Data.Char (isAlphaNum, isControl, ord)
 import Data.IORef
-import Data.List (intercalate)
+import Data.List (intercalate, isPrefixOf, nub, sort)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.Text.Lazy qualified as LT
 import Data.Text.Lazy.IO qualified as LTIO
 import Golem.Emet (Program, Result (..), SourceProblem (..), evaluateExpression, loadProgram, parseModule, readEmet, sessionPath, stepLimit)
+import Golem.Emet.Ide (IdeKind (..), emetCompletions)
 import Golem.Emet.Syntax (Decl (..), Equation (..), Loc (..), Module (..), Signature (..))
 import Golem.Eval.Expr (valueText)
 import Golem.Eval.Value (Value (..))
@@ -19,8 +21,10 @@ import Golem.Project.Files (Files (..), diskFiles)
 import Golem.Project.Paths (PathError (Missing))
 import Golem.Syntax (Diagnostic (..), DiagnosticCode (..), FileId (..), spanEnd, spanStart)
 import Numeric (showHex)
-import System.Directory (getCurrentDirectory)
+import System.Console.Haskeline qualified as H
+import System.Directory (doesDirectoryExist, getCurrentDirectory, listDirectory)
 import System.Exit
+import System.FilePath (addTrailingPathSeparator, splitFileName, takeExtension, (</>))
 import System.IO
 import System.IO.Error (tryIOError)
 
@@ -107,10 +111,59 @@ submit session interactive input
           sp = diagSpan d
        in code `elem` ["E01100", "E01101"] && spanStart sp == BS.length input && spanEnd sp == BS.length input
 
+-- Haskeline supplies the prefix in reverse order, with the suffix left in the editor.
+completeEntry :: Files -> Session -> Entry -> H.CompletionFunc IO
+completeEntry files (Session declarations program) entry (back, _) = do
+  let left = reverse back
+      typed = T.pack left
+      lead = T.stripStart typed
+      source = B8.unlines (map snd declarations <> pending) <> TE.encodeUtf8 typed
+      pending = case entry of Ready -> []; More src _ -> [src]; Declaration src -> [src]
+      (nameRev, rest) = span (\c -> isAlphaNum c || c == '_') back
+      name = reverse nameRev
+      inType = "::" `T.isInfixOf` typed
+      kinds k = if inType then k `elem` [IdeType, IdeRequirement] else k /= IdeType
+      names = [T.unpack n | (n, k) <- emetCompletions program sessionPath (TE.decodeUtf8Lenient source) (BS.length source), kinds k]
+      options prefix = map (\n -> H.Completion n n False) . sort . nub . filter (prefix `isPrefixOf`)
+  case T.stripPrefix "import" lead >>= T.stripPrefix "\"" . T.stripStart of
+    Just fragment | not (T.any (== '"') fragment) -> do
+      let path = T.unpack fragment
+          (dir, prefix) = splitFileName path
+      resolved <- if null dir || dir == "./" then pure (Right ".") else filesResolve files dir
+      paths <- case resolved of
+        Left _ -> pure []
+        Right rel -> do
+          listing <- tryIOError (listDirectory rel)
+          fmap concat $
+            mapM
+              ( \n -> do
+                  safe <- filesResolve files (dir </> n)
+                  case safe of
+                    Left _ -> pure []
+                    Right target -> do
+                      directory <- doesDirectoryExist target
+                      pure [if directory then addTrailingPathSeparator n else n | directory || takeExtension n == ".emet"]
+              )
+              (either (const []) id listing)
+      pure (drop (length prefix) back, options prefix paths)
+    _
+      | literalOrComment left -> pure (back, [])
+      | otherwise -> pure (rest, options name names)
+  where
+    literalOrComment = outside
+    outside [] = False
+    outside ('-' : '-' : _) = True
+    outside (c : cs) | c == '"' || c == '\'' = quoted c cs
+    outside (_ : cs) = outside cs
+    quoted _ [] = True
+    quoted q ('\\' : _ : cs) = quoted q cs
+    quoted q (c : cs) = if c == q then outside cs else quoted q cs
+
 run :: IO ExitCode
 run = do
   session <- newIORef (Session [] Nothing)
   files <- diskFiles <$> getCurrentDirectory
+  _ <- declare files session BS.empty
   inputTTY <- hIsTerminalDevice stdin
   promptTTY <- hIsTerminalDevice stderr
   let interactive = inputTTY && promptTTY
@@ -119,10 +172,14 @@ run = do
       cancel ok = hPutStrLn stderr "" >> loop ok Ready
       finish ok = pure (if ok then ExitSuccess else ExitFailure 1)
       loop !ok entry = do
-        when interactive $ do
-          hPutStr stderr (case entry of Ready -> "emet> "; _ -> "....> ")
-          hFlush stderr
-        tryJust interrupt (hIsEOF stdin >>= \eof -> if eof then pure Nothing else Just <$> B8.hGetLine stdin) >>= \case
+        current <- readIORef session
+        let prompt = case entry of Ready -> "emet> "; _ -> "....> "
+            settings = H.Settings (completeEntry files current entry) Nothing False
+            terminal = try (H.runInputT settings (H.withInterrupt (H.getInputLine prompt)))
+            lineInput
+              | interactive = terminal >>= \case Left H.Interrupt -> throwIO UserInterrupt; Right line -> pure (TE.encodeUtf8 . T.pack <$> line)
+              | otherwise = hIsEOF stdin >>= \eof -> if eof then pure Nothing else Just <$> B8.hGetLine stdin
+        tryJust interrupt lineInput >>= \case
           Left () -> cancel ok
           Right line -> consume ok entry line
       consume !ok entry = \case
