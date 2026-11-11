@@ -1199,7 +1199,7 @@ Git のコミットやビルドの環境は含めない。
 ### 本文からの参照
 
 原稿のファイル内変数は、行頭の `set 名前 = 式` で宣言し、`[= 名前]` で参照する（[Golem ADR 0336](adr/0336-unprefixed-variable-declarations.md)）。
-旧記法の `@set 名前 = 式` も同じ値を定義するが、先頭の `@` に G02154 の notice と一字を消す修正を出す。
+旧記法の `@set 名前 = 式` も同じ値を定義するが、先頭の `@` に G02155 の notice と一字を消す修正を出す。
 宣言はコードブロックの内容、見出し、段落の途中では始まらない。
 
 メタデータは、式文脈[^contexts]から読み取り専用の名前空間 `meta` で参照できる（例：`[= meta.title]`）。
@@ -4556,7 +4556,7 @@ docs/diagnostics.md は golem-driver に埋め込み、`golem explain <コード
 `@table` の表のファイル（CSV と TSV）の diagnostics は、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md) が定める。
 `format` の値の誤りは G02080、`align` の誤りは G02081、`cells` の誤りは G02084 であり、どれも原稿の引数の位置を指す。
 表のファイルの中の誤りは、ファイルの位置を指す。
-空の表と、行のセルの数が見出しの行と違う行は G02085、閉じていない CSV の引用符は G02083 である。
+空の表は G02085、行のセルの数が見出しの行と違う行は G02154、閉じていない CSV の引用符は G02083 である（[ADR 0328](adr/0328-table-file-shape-diagnostics.md)）。
 表のファイルが大きさ、行の数、セルの数の上限を超えたときは G02088 とし、`@table` のブロックを指す（[docs/adr/0043](adr/0043-table-file-size-limits.md)）。
 G02035（`@table` のコマンドを指した CSV の誤り）は、G02085 に置き換えて廃止した。
 テキストとして読むファイル（`@table` と `@listing` のファイル）には、ファイルごとに `plugins.lock` の次から振る `FileId` がある。
@@ -5126,6 +5126,8 @@ HTML と EPUB では、`@no-page-break` の後の最初のブロックの要素�
 `pages.json` は、PDF の各ページの最初の行が、原稿のどのファイルの何行何列から始まるかを表す。
 エディタは、`pages.json` を読んで、改ページの位置の印を原稿に出す。
 `golem preflight` は PDF をファイルに書かないので、`pages.json` も書かない。
+ディスクに書く prod ビルドで PDF を対象に選び、エラーで今回の PDF を書けなければ、前の `build/pdf` と `pages.json` を片付ける（[ADR 0326](adr/0326-discard-stale-pdf-after-build-errors.md)）。
+dev ビルド、`golem check`、`golem preflight`、PDF を選ばないビルドでは前の PDF を残す。
 
 `pages.json` は、ページの順に、ページごとに一つのオブジェクトを並べた配列である。
 配列は diagnostics と同じく一行に書き、改行で終える。
@@ -6199,7 +6201,7 @@ LSP は次の機能を持つ。
 - diagnostics（コンパイルエラーと lint）。重大度ごとの載せ方は下に書く。
 - 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。
 - ラベルの名前変更（章をまたいで一括で書き換える）と、`.emet` の名前の変更（[docs/adr/0170](adr/0170-emet-editor-support.md)）
-- 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の `meta` と `meta.roles` のキー、式の中の `vars` と `[vars]` の表の中のキー、`style.toml` と `preflight.toml` のキーと値）
+- 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の組み込みの定数と関数、`meta` と `meta.roles` のキー、式の中の `vars` と `[vars]` の表の中のキー、`style.toml` と `preflight.toml` のキーと値、`manifest.toml` の列挙できる値、[Golem ADR 0347](adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）
 - ホバーによる `[= ...]` の評価結果の表示
 - 整形（fmt を呼び出す）
 - 見出しによる文書のアウトラインと、`.emet` の宣言のアウトライン（[docs/adr/0170](adr/0170-emet-editor-support.md)）
@@ -6260,10 +6262,11 @@ LSP は、`@table` が参照する表のファイルの変更を受けても評�
 ### TOML の補完
 
 `style.toml` と `preflight.toml` の補完は、プロジェクトのルートからの相対パスがちょうど `style.toml` と `preflight.toml` のファイルだけで働く（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
-ルートより下の同じ名前のファイルと `manifest.toml` では補わない。
+`manifest.toml` では、段落区切り、ページ番号の表記、関係者の役割、PDF の宣言、テキスト出力の向き、抑制する diagnostic のコードに、欄ごとの候補を返す（[Golem ADR 0347](adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）。
+ルートより下の同じ名前のファイルでは補わない。
 エディタがこれらのファイルを LSP に送るように設定する必要がある。
 
-補う位置は次の五つである。
+`style.toml` と `preflight.toml` で補う位置は次の五つである。
 
 - 表の見出し（次の段のキー、利用者が名前を決める段では名前）
 - 表の中のキー（その表にまだ書いていないキー）
@@ -6282,8 +6285,8 @@ LSP は、`@table` が参照する表のファイルの変更を受けても評�
 候補は、エディタが今持っているテキストのカーソルより前だけを、先頭から読んで決める。
 コメントと複数行の文字列の中、値の後では候補を返さない。
 
-補完のほかは、この二つのファイルを編集中の内容で扱わない。
-この二つのファイルの diagnostics は、ディスクの内容による。
+補完のほかは、この三つのファイルを編集中の内容で扱わない。
+これらのファイルの diagnostics は、ディスクの内容による。
 拡張子が `.gm` でない編集中のファイル（`style.toml`、`manifest.toml` など）は、原稿として構文解析も評価もしない。
 
 ### semantic tokens
@@ -6374,7 +6377,7 @@ tree-sitter の文法は Golem の構文解析が受け付ける原稿を受け�
 - Neovim が受け取った diagnostic の列が、その行のバイト数を超えない。
 - notice が `INFO` の diagnostic になって quickfix に載り、マニフェストの `silence-notices` にそのコードを書いて保存すると消える。
 - コマンドと式の中の空白の semantic tokens の型が `operator` で、その位置の強調のグループが、既定の色の組で背景と下線を持たない。
-- ルートの `style.toml` と `preflight.toml` で補完の一覧が出て、引用符の外と内で選んだ後の行が期待の文字列になる。`manifest.toml` と、ルートより下の TOML と、ルートの外の TOML では一覧が出ない。
+- ルートの `style.toml`、`preflight.toml`、`manifest.toml` で定められた欄の補完が出て、引用符の外と内で選んだ後の行が期待の値になる。ルートより下の同名の TOML と、ルートの外の TOML では一覧が出ない。
 - `tools/editors/README.md` の nvim-treesitter を使わない手順（`sh` のブロックと最後の `lua` のブロック）で、`.gm` と `.emet` のファイルタイプが決まり、tree-sitter の色付けが始まる。
 
 `--self-test` は、各テストの期待を一つ反転して走らせ、どれも失敗することを確かめる。
@@ -8194,10 +8197,16 @@ InDesign のプリフライトプロファイルにあたるものを、プリ�
 notice は設定の値として選べない。
 長さは `style.toml` と同じ書き方で、`zw` は使えない。
 
-設定のファイルの誤りは、すべて G09001 である。
-G09001 があれば、PDF を組まずに終える。
+設定を読めない原因は、TOML の文法違反を G09001、明示したファイルの不在を G09100、UTF-8 の誤りを G09101、既知の値の誤りを G09102、未知のキーを G09103、TOML の定義の衝突を G09104 とする（[Golem ADR 0321](adr/0321-preflight-rule-error-causes.md)）。
+負の自然数には G02103 を優先する。
+以前 G09001 で報告した設定エラーは、この対応表の原因別のコードへ移る。
+設定を読むエラーがあれば PDF を組まず、その設定に依存する検査も成功扱いしない。
+設定の読み込みで出る六つのエラーは、プリフライトの設定で重大度を選べない。
+CI が設定エラーをすべて止めるには終了コード 1 を使い、原因別の案内をするには対応表のコードを使う。
 未知のキーは、`style.toml` と同じく、キーと列挙の値をデータとして書いたスキーマで決める。
 値の誤りと未知のキーが同じファイルにあれば、両方を報告する（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
+文法の誤りがあっても、終わりを識別できる次の項目から解析を続ける。
+複数行の値の終わりが識別できない範囲は未検査と示し、そこから別のエラーを推測しない。
 
 組み込みの設定は、次の四つである。
 
@@ -8234,7 +8243,7 @@ G09001 があれば、PDF を組まずに終える。
 
 PDF に置けない図版は、プリフライトの検査では扱わない。
 それは G08010 のエラーであり、PDF を作れないので、プリフライトは何も検査しない。
-そのため、`image-unplaceable` の検査（G09005）は廃止し、`preflight.toml` に書くと知らないキー（G09001）になる（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
+そのため、`image-unplaceable` の検査（G09005）は廃止し、`preflight.toml` に書くと知らないキー（G09103）になる（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[Golem ADR 0321](adr/0321-preflight-rule-error-causes.md)）。
 
 図版の検査は、ページの図版の一覧に対して行う。
 一覧には、PNG と JPEG のほか、PDF と SVG の図版も載る。

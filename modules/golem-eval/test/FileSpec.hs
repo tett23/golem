@@ -357,9 +357,9 @@ tests =
         paraOf "set x = 2\n\n[= x * 3]\n" @?= ["6"]
         let diagnostics = fst (evalSource ctx "@set x = 2\n\n[= x * 3]\n")
         [(diagCode d, spanStart (diagSpan d), spanEnd (diagSpan d), [(spanStart sp, spanEnd sp, replacement) | Fix _ edits <- diagFixes d, (sp, replacement) <- edits]) | d <- diagnostics]
-          @?= [(DiagnosticCode "G02154", 0, 1, [(0, 1, "")])]
+          @?= [(DiagnosticCode "G02155", 0, 1, [(0, 1, "")])]
         errs "set doc = 1\n" @?= ["G02023"]
-        errs "@set doc = 1\n" @?= ["G02154", "G02023"],
+        errs "@set doc = 1\n" @?= ["G02155", "G02023"],
       testCase "redefinition and use before definition are errors" $ do
         errs "set x = 1\n\nset x = 2\n" @?= ["G02024"]
         errs "[= y]\n\nset y = 1\n" @?= ["G02002"],
@@ -1825,7 +1825,7 @@ diagnosticTests =
       testCase "G02085: CSV that is not a table, in the file (golem-eval ADR 0004)" $ do
         msgs "@table empty.csv\n" @?= [("G02085", "CSV が空です")]
         msgs "@table blank.csv\n" @?= [("G02085", "CSV が空です")]
-        diags "@table ragged.csv\n" @?= [("G02085", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
+        diags "@table ragged.csv\n" @?= [("G02154", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
       testCase "G02036: @listing without a path" $ do
         msgs "@listing\n" @?= [("G02036", "@listing にはファイルのパスが必要です")]
         -- src= is read, with the notice G02065 (golem-syntax ADR 0002)
