@@ -5,6 +5,7 @@ modules, calling its functions with the handlers of their requirements
 module Golem.Emet
   ( Program,
     SourceProblem (..),
+    evaluateExpression,
     loadProgram,
     callFunction,
     callFunctionCounted,
@@ -45,6 +46,7 @@ where
 
 import Control.Monad (foldM)
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.Int (Int64)
 import Data.List (intercalate)
 import Data.Map.Strict (Map)
@@ -53,6 +55,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Emet.Builtins (builtinSources, divInfo, hiddenConstructors)
 import Golem.Emet.Check
+import Golem.Emet.Core (CEq (..), CFun (..), CRhs (..), Global (..))
 import Golem.Emet.Eval
 import Golem.Emet.Fmt (formatEmet)
 import Golem.Emet.Parse (parseModule, readEmet)
@@ -142,6 +145,39 @@ builtins = foldl' step ([], Map.empty, Map.fromList [snd divInfo]) builtinSource
             mi' = mi {miCons = Map.mapWithKey (\c ci -> if c `elem` hidden then ci {ciPub = False} else ci) (miCons mi)}
          in (ds <> es, Map.insert name mi' mods, Map.union globals (Map.fromList defs))
     builtinFile = FileId (-1)
+
+-- | Evaluate one expression, with no project or filesystem and no bindings from earlier calls.
+evaluateExpression :: Int64 -> ByteString -> Either [Diagnostic] Result
+evaluateExpression limit bytes = do
+  src <- readEmet fid bytes
+  let wrapped = prefix <> src
+  let adjust d = d {diagSpan = mkSpan fid (offset (spanStart (diagSpan d))) (offset (spanEnd (diagSpan d)))}
+      offset n = min (BS.length bytes) (max 0 (n - T.length prefix))
+      withInputPositions = either (Left . map adjust) Right
+  m <- withInputPositions (parseModule fid wrapped)
+  case m of
+    Module [DEq Equation {eqName = "entry", eqPats = [], eqRhs = Plain expr, eqWheres = []}] -> do
+      let (ds, mods, globals) = builtins
+          scope = Scope [] mods (Map.singleton "div" (fst divInfo))
+      case ds of
+        [] -> pure ()
+        _ -> Left ds
+      body <- withInputPositions (checkExpression scope fid path wrapped expr)
+      let fn = GFun (CFun "入力した式" path 1 0 [CEq [] (CPlain body)] [])
+          key = (path, "entry")
+          at = mkSpan fid (T.length prefix) (T.length prefix + BS.length bytes)
+          files = Map.fromList ((path, fid) : [(p, FileId (-1)) | (_, p, _) <- builtinSources])
+          result = fst (evalCallLimited limit noHandlers (Map.insert key fn globals) files at key [])
+          -- A fault inside a built-in module points to this submission.
+          locate d
+            | spanFile (diagSpan d) == fid = adjust d
+            | otherwise = d {diagSpan = mkSpan fid 0 (BS.length bytes)}
+      either (Left . pure . locate) Right result
+    _ -> Left [diagnostic "E01100" Error (mkSpan fid 0 0) "REPL には Emet の式を一つ入力してください"]
+  where
+    prefix = "entry = "
+    path = "<repl>"
+    fid = FileId 0
 
 data Loaded = Loaded
   { ldFiles :: !(Map FilePath (FileId, Text, Module)),

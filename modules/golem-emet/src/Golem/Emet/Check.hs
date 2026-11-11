@@ -23,6 +23,7 @@ module Golem.Emet.Check
     TypeDef (..),
     Scope (..),
     checkModule,
+    checkExpression,
     checkModuleLocals,
     builtinCons,
     builtinModuleNames,
@@ -281,6 +282,20 @@ zonkM :: Ty -> Tc Ty
 zonkM t = gets (\s -> zonk (tsSolve s) t)
 
 -- * Checking a module
+
+-- | Infer and check an isolated REPL expression in the same closed, pure row as a pure function.
+checkExpression :: Scope -> FileId -> FilePath -> Text -> Expr -> Either [Diagnostic] CExpr
+checkExpression scope fid path src expr =
+  let cx = Ctx fid path src (importedNames scope) scope "" "" Set.empty pureRow False
+      inferBody = do
+        (_, body) <- infer cx Map.empty expr
+        solveNow cx True
+        pure body
+   in case runStateT inferBody (TcState emptySolveState [] [] Set.empty 0 [] []) of
+        Left d -> Left [d]
+        Right (body, st) -> case reverse (tsDiags st) of
+          [] -> Right body
+          ds -> Left ds
 
 {- | Checks a module and returns its diagnostics, what it defines and its
 functions. In a built-in module (@prims@), a signature without equations

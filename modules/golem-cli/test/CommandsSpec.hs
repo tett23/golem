@@ -34,7 +34,23 @@ commandsTests :: TestTree
 commandsTests =
   testGroup
     "commands on a project"
-    [newTests, templateBuildTests, tablePathTests, inspectTests, fmtTests, pluginTests, preflightTests]
+    [replTests, newTests, templateBuildTests, tablePathTests, inspectTests, fmtTests, pluginTests, preflightTests]
+
+replTests :: TestTree
+replTests =
+  testGroup
+    "Emet REPL (Golem ADR 0335)"
+    [ testCase "R1/R3/R4: multiline and final expressions each print one value on a pipe" $
+        runRepl "1 +\n2\n6" >>= (@?= (ExitSuccess, "3\n6\n", "")),
+      testCase "R2/R5: an oversized line does not consume the next expression" $ do
+        (code, out, err) <- runRepl (replicate 4097 ' ' <> "\n42\n")
+        code @?= ExitFailure 1
+        out @?= "42\n"
+        assertBool err ("4096" `isInfixOf` err)
+    ]
+  where
+    runRepl input = withSystemTempDirectory "golem-repl" $ \dir ->
+      readCreateProcessWithExitCode (proc "golem" ["repl", "emet"]) {cwd = Just dir} input
 
 -- ------------------------------------------------------------------ helpers
 
