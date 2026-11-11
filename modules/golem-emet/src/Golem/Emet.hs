@@ -6,6 +6,7 @@ module Golem.Emet
   ( Program,
     SourceProblem (..),
     evaluateExpression,
+    sessionPath,
     loadProgram,
     callFunction,
     callFunctionCounted,
@@ -146,9 +147,12 @@ builtins = foldl' step ([], Map.empty, Map.fromList [snd divInfo]) builtinSource
          in (ds <> es, Map.insert name mi' mods, Map.union globals (Map.fromList defs))
     builtinFile = FileId (-1)
 
--- | Evaluate one expression, with no project or filesystem and no bindings from earlier calls.
-evaluateExpression :: Int64 -> ByteString -> Either [Diagnostic] Result
-evaluateExpression limit bytes = do
+sessionPath :: FilePath
+sessionPath = "<repl>"
+
+-- | Evaluate an expression against the last successfully checked session.
+evaluateExpression :: Maybe Program -> Int64 -> ByteString -> Either [Diagnostic] Result
+evaluateExpression session limit bytes = do
   src <- readEmet fid bytes
   let wrapped = prefix <> src
   let adjust d = d {diagSpan = mkSpan fid (offset (spanStart (diagSpan d))) (offset (spanEnd (diagSpan d)))}
@@ -158,16 +162,18 @@ evaluateExpression limit bytes = do
   case m of
     Module [DEq Equation {eqName = "entry", eqPats = [], eqRhs = Plain expr, eqWheres = []}] -> do
       let (ds, mods, globals) = builtins
-          scope = Scope [] mods (Map.singleton "div" (fst divInfo))
+          imports = [(l, mi) | Just p <- [session], Just (_, _, Module decls) <- [Map.lookup path (prModules p)], DImport _ raw l <- decls, Right target <- [normalizePath (T.unpack raw)], Just mi <- [Map.lookup target (prModInfos p)]]
+          own = session >>= Map.lookup path . prModInfos
+          scope = Scope imports mods (Map.singleton "div" (fst divInfo))
       case ds of
         [] -> pure ()
         _ -> Left ds
-      body <- withInputPositions (checkExpression scope fid path wrapped expr)
+      body <- withInputPositions (checkExpression own scope fid path wrapped expr)
       let fn = GFun (CFun "入力した式" path 1 0 [CEq [] (CPlain body)] [])
-          key = (path, "entry")
+          key = (path, "<expression>")
           at = mkSpan fid (T.length prefix) (T.length prefix + BS.length bytes)
           files = Map.fromList ((path, fid) : [(p, FileId (-1)) | (_, p, _) <- builtinSources])
-          result = fst (evalCallLimited limit noHandlers (Map.insert key fn globals) files at key [])
+          result = fst (evalCallLimited limit noHandlers (Map.insert key fn (maybe globals prGlobals session)) files at key [])
           -- A fault inside a built-in module points to this submission.
           locate d
             | spanFile (diagSpan d) == fid = adjust d
@@ -176,7 +182,7 @@ evaluateExpression limit bytes = do
     _ -> Left [diagnostic "E01100" Error (mkSpan fid 0 0) "REPL には Emet の式を一つ入力してください"]
   where
     prefix = "entry = "
-    path = "<repl>"
+    path = sessionPath
     fid = FileId 0
 
 data Loaded = Loaded

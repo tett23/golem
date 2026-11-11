@@ -49,6 +49,9 @@ replTests =
       testCase "R1: both input and displayed string can exceed 4096 bytes" $ do
         let literal = "\"" <> replicate 4097 'a' <> "\""
         runRepl literal >>= (@?= (ExitSuccess, literal <> "\n", "")),
+      testCase "R6: failed replacement leaves the checked definition callable" $ do
+        (code, out, _) <- runRepl "twice :: Nat -> Nat\ntwice n = n + n\n\ntwice 3\ntwice :: Nat -> Nat\ntwice n = False\n\ntwice 4\n"
+        (code, out) @?= (ExitFailure 1, "6\n8\n"),
       testCase "R2: recover after a syntax error without consuming the next expression" $ do
         (code, out, err) <- runRepl "1 + )\n42\n"
         (code, out) @?= (ExitFailure 1, "42\n")

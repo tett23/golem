@@ -284,9 +284,10 @@ zonkM t = gets (\s -> zonk (tsSolve s) t)
 -- * Checking a module
 
 -- | Infer and check an isolated REPL expression in the same closed, pure row as a pure function.
-checkExpression :: Scope -> FileId -> FilePath -> Text -> Expr -> Either [Diagnostic] CExpr
-checkExpression scope fid path src expr =
-  let cx = Ctx fid path src (importedNames scope) scope "" "" Set.empty pureRow False
+checkExpression :: Maybe ModInfo -> Scope -> FileId -> FilePath -> Text -> Expr -> Either [Diagnostic] CExpr
+checkExpression own scope fid path src expr =
+  let base = Ctx fid path src (importedNames scope) scope "" "" Set.empty pureRow False
+      cx = maybe base (withOwn base) own
       inferBody = do
         (_, body) <- infer cx Map.empty expr
         solveNow cx True
