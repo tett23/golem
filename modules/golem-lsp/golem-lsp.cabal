@@ -81,4 +81,5 @@ test-suite golem-lsp-test
     , temporary
     , text
     , transformers
+    , toml-parser
   default-language: GHC2021

@@ -3641,7 +3641,7 @@ figure cannot be drawn for, G08011, G08016, G08017 and G08101 (golem-pdf ADR
 0008, 0009, docs/adr ADR 0054, 0084), or G08015, the joined content of a PDF page over
 256 MiB (docs/adr ADR 0051).
 -}
-data Unplaced = Unplaced !Text | UnsupportedSvg !S.SvgProblems | ContentTooLarge | StreamNumberTooLarge !Int64
+data Unplaced = Unplaced !Text | EncryptedPdf | MissingPdfPage !Int !Int | UnsupportedSvg !S.SvgProblems | ContentTooLarge | StreamNumberTooLarge !Int64
 
 {- | The figures, read once by file and page; why one cannot be placed
 (golem-pdf ADR 0008). The format follows the extension, as golem-eval
@@ -3662,6 +3662,8 @@ loadFigures inp = do
       pure $
         if
           | ".pdf" `T.isSuffixOf` T.toLower s -> case P.importPage page bytes of
+              Left P.Encrypted -> Left EncryptedPdf
+              Left (P.NoSuchPage requested count) -> Left (MissingPdfPage requested count)
               Left (P.ContentTooLarge _) -> Left ContentTooLarge
               Left (P.StreamNumberTooLarge k) -> Left (StreamNumberTooLarge k)
               Left e -> Left (Unplaced (P.importErrorText e))
@@ -3691,6 +3693,8 @@ figureDiagnostics inp loaded =
     Just (Left why) <- [Map.lookup (figureKey f) loaded],
     d <- case why of
       Unplaced reason -> [diagnostic "G08010" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> reason <> "）")]
+      EncryptedPdf -> [diagnostic "G08105" Error sp ("暗号化された PDF の図版は使えません: " <> figSource f)]
+      MissingPdfPage requested count -> [diagnostic "G08106" Error sp ("図版の PDF に " <> T.pack (show requested) <> " ページ目がありません（全 " <> T.pack (show count) <> " ページ）: " <> figSource f)]
       UnsupportedSvg ps ->
         [diagnostic "G08011" Error sp (unsupportedMessage (figSource f) us) | Just us <- [nonEmpty (S.spUnsupported ps)]]
           <> [diagnostic "G08016" Error sp (markerMessage "SVG の図版の marker が循環しています: " (figSource f) rs) | Just rs <- [nonEmpty (S.spMarkerCycles ps)]]
