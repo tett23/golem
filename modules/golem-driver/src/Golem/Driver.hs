@@ -693,8 +693,17 @@ assetRefs (A.File _ bs) = concatMap blk bs
             "figure" -> [(T.unpack p, UseImage) | p <- take 1 pos <> kw "web"]
             -- the first argument, and src= to be retired (docs/adr/0184)
             "table" -> [(T.unpack p, UseTable) | p <- take 1 pos <> kw "src"]
-            "listing" -> [(T.unpack p, UseListing) | null (kw "src"), [p] <- [pos]]
+            "listing" ->
+              [ (T.unpack p, UseListing)
+              | not (any isSrc args),
+                [A.Located _ (A.Positional v)] <- [filter isPositional args],
+                Just p <- [txt v]
+              ]
             _ -> []
+    isSrc (A.Located _ (A.Keyword (A.Located _ "src") _)) = True
+    isSrc _ = False
+    isPositional (A.Located _ (A.Positional _)) = True
+    isPositional _ = False
     txt = \case
       A.Word t -> Just t
       A.StringLit t -> Just t

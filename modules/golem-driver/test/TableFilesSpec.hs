@@ -61,6 +61,11 @@ tableFileTests =
           e <- evaluateProject Dev tmp >>= either (const (assertFailure "the project does not load")) pure
           [r | sf <- Map.elems (projectSources (evProject e)), sfPath sf == "a.gm", r <- assetRefs (sfAst sf)]
             @?= [("data/t.csv", UseTable), ("data/u.csv", UseTable)],
+      testCase "ADR 0315 I2: assetRefs skips listings with raw src= or multiple positional arguments" $
+        withTables [("a.gm", "@listing src/x.hs src=[= \"other.hs\"]\n\n@listing src/x.hs [= \"other.hs\"]\n\n@listing src/x.hs\n")] [("src/x.hs", "x\n")] $ \tmp -> do
+          e <- evaluateProject Dev tmp >>= either (const (assertFailure "the project does not load")) pure
+          [r | sf <- Map.elems (projectSources (evProject e)), sfPath sf == "a.gm", r <- assetRefs (sfAst sf)]
+            @?= [("src/x.hs", UseListing)],
       testCase "a BOM at the start of a TSV or a CSV is skipped" $ do
         withBom <- oneTable "data/x.tsv" "\xEF\xBB\xBF\&a\tb\n1\t2\n"
         without <- oneTable "data/x.tsv" "a\tb\n1\t2\n"
