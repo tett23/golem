@@ -77,11 +77,11 @@ tableWatchTests =
         tableFilesChanged ws {wsWatchedTables = tablesToWatch ws} ["data/y.tsv", "a.gm"] @?= False
         open <- updateFile ws "data/x.tsv" "a\tb\nc\n"
         tableFilesChanged open {wsWatchedTables = tablesToWatch ws} ["data/x.tsv"] @?= False,
-      -- docs/adr/0184
-      testCase "a table file written as the first argument is watched, as one written as src=" $
+      testCase "ADR 0343: only a positional table path is watched" $
         withProject [("a.gm", "@table data/p.tsv\n\n@table src=data/s.tsv\n"), ("data/p.tsv", "a\tb\n1\t2\n"), ("data/s.tsv", "a\tb\n1\t2\n")] $ \dir -> do
           ws <- openWorkspace dir
-          tablesToWatch ws @?= Set.fromList ["data/p.tsv", "data/s.tsv", "manifest.toml"]
+          tablesToWatch ws @?= Set.fromList ["data/p.tsv", "manifest.toml"]
+          tableFilesChanged ws {wsWatchedTables = tablesToWatch ws} ["data/s.tsv"] @?= False
           tableFilesChanged ws {wsWatchedTables = tablesToWatch ws} ["data/p.tsv"] @?= True,
       testCase "a client with dynamic registration watches the table files; a fixed file clears G02085" $ withTableProject $ \dir -> do
         (regs, cleared, afterSwitch, unchanged) <- lspSession True dir $ do
