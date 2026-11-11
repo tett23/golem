@@ -196,4 +196,21 @@ theorem needGreedy :
   intro brk
   omega
 
+/- The fixed input of golem-layout ADR 0046: capacity 4, one used line,
+   need 1, space, need 3, then a one-line paragraph. Text break 1 keeps
+   only the space; break 2 also keeps the paragraph. Both needs are judged
+   before the space, so the larger need is met and P7 requires break 2. -/
+def space46Keeps (brk : Fin 3) : Prop :=
+  (4 - 1 ≥ 1 ∧ 4 - 1 ≥ 3 ∧ 1 + 1 + 1 ≤ 4) → brk.val = 2
+
+theorem needMoreSpace46 :
+    ∀ brk : Fin 3, ¬ (brk.val = 1 ∧ space46Keeps brk) := by
+  intro brk
+  unfold space46Keeps
+  omega
+
+theorem needMoreSpace46Here :
+    ∃ brk : Fin 3, brk.val = 2 ∧ space46Keeps brk ∧ 1 + brk.val ≤ 4 := by
+  exact ⟨2, by decide, by simp [space46Keeps], by decide⟩
+
 end GolemPagination
