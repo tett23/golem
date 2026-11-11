@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const fragment = process.argv[2] === '--fragment';
 const [input, output] = process.argv.slice(fragment ? 3 : 2);
@@ -14,6 +17,35 @@ const errors = [];
 const peg = spawnSync(process.env.PEG_HS ?? 'peg-hs', ['lint', input], { encoding: 'utf8' });
 if (peg.error || peg.status !== 0) {
   errors.push(`peg-hs: ${peg.error?.message ?? (peg.stderr || peg.stdout).trim()}`);
+}
+// Use the exact peg-grammar package selected by this Cabal plan.  Several
+// versions can have the same package name in the store.
+let ast;
+try {
+  const plan = JSON.parse(readFileSync(process.env.CABAL_PLAN ?? 'dist-newstyle/cache/plan.json', 'utf8'));
+  const packageId = name => plan['install-plan'].find(unit => unit['pkg-name'] === name)?.id;
+  const pegId = packageId('peg-grammar');
+  const aesonId = packageId('aeson');
+  if (!pegId || !aesonId) throw new Error('Cabal plan needs peg-grammar and aeson');
+  const compiler = plan['compiler-id'];
+  const store = join(process.env.CABAL_DIR ?? join(homedir(), '.cabal'), 'store');
+  const packageDb = process.env.GHC_PACKAGE_DB ?? readdirSync(store)
+    .filter(name => name.startsWith(compiler) && existsSync(join(store, name, 'package.db')))
+    .map(name => join(store, name, 'package.db'))[0];
+  if (!packageDb) throw new Error(`no package database for ${compiler}`);
+  const runghc = process.env.RUNGHC ?? `runghc-${compiler.slice(4)}`;
+  const exporter = fileURLToPath(new URL('./export-peg.hs', import.meta.url));
+  const result = spawnSync(runghc, [
+    `--ghc-arg=-package-db=${packageDb}`,
+    `--ghc-arg=-package-id=${pegId}`,
+    `--ghc-arg=-package-id=${aesonId}`,
+    exporter,
+    input
+  ], { encoding: 'utf8' });
+  if (result.error || result.status !== 0) throw new Error(result.error?.message ?? result.stderr.trim());
+  ast = JSON.parse(result.stdout);
+} catch (error) {
+  errors.push(`peg-hs AST: ${error.message}`);
 }
 const sourceRules = [];
 let activeRule = false;
@@ -190,7 +222,36 @@ if (errors.length) {
 
 const sha = createHash('sha256').update(grammar).digest('hex');
 const leanString = value => JSON.stringify(value).replaceAll('\\u2028', '\\u2028').replaceAll('\\u2029', '\\u2029');
+const leanList = (values, emit) => `[${values.map(emit).join(', ')}]`;
+const leanOpt = value => value === null ? 'none' : `some ${leanString(value)}`;
+function leanExpr(expr) {
+  const child = () => leanExpr(expr.expr);
+  switch (expr.tag) {
+    case 'lit': return `.lit ${leanString(expr.value)} ${leanString(expr.written)}`;
+    case 'class': return `.charClass ${leanList(expr.ranges, ([lo, hi]) => `(${lo}, ${hi})`)} ${leanString(expr.written)}`;
+    case 'any': return '.any';
+    case 'ref': return `.ref ${leanString(expr.name)} ${leanList(expr.args, leanString)}`;
+    case 'choice': return `.choice ${leanList(expr.alts, alt => leanList(alt, leanItem))}`;
+    case 'star': return `.star (${child()})`;
+    case 'plus': return `.plus (${child()})`;
+    case 'opt': return `.opt (${child()})`;
+    case 'and': return `.andPred (${child()})`;
+    case 'not': return `.notPred (${child()})`;
+    case 'capture': return `.capture (${child()})`;
+    case 'label': return `.label (${child()}) ${leanString(expr.name)}`;
+    case 'pred': return `.semanticPred ${expr.positive} ${leanString(expr.source)}`;
+    case 'template': return `.template ${leanString(expr.name)} ${leanList(expr.children, leanExpr)} ${leanList(expr.args, leanString)}`;
+    case 'discard': return `.discard (${child()})`;
+    default: throw new Error(`unknown peg-hs expression ${expr.tag}`);
+  }
+}
+function leanItem(item) {
+  const child = leanExpr(item.expr);
+  return item.bind === null ? child : `.bind (some ${leanString(item.bind)}) (${child})`;
+}
+const pegRules = ast.rules.map((rule, index) => `private def pegRule${index} : PegModel.Rule := { name := ${leanString(rule.name)}, line := ${rule.line}, params := ${leanList(rule.params, leanString)}, templateParams := ${leanList(rule.templateParams, leanString)}, resultType := ${leanString(rule.type)}, alts := ${leanList(rule.alts, alt => `{ line := ${alt.line}, items := ${leanList(alt.items, leanItem)}, action := ${leanOpt(alt.action)}, constructor := ${leanOpt(alt.constructor)} }`)} }`);
 writeFileSync(output, [
+  'import PegModel',
   'namespace Generated',
   `def sourceSha256 : String := ${leanString(sha)}`,
   `def stringLitEscapeFirst : Bool := ${alternatives[0] === escape}`,
@@ -199,6 +260,9 @@ writeFileSync(output, [
   ...sourceRules.map(([name, rhs]) => `  (${leanString(name)}, ${leanString(rhs)}),`),
   ']',
   ...Object.entries(productions).map(([name, rhs]) => `def ${name[0].toLowerCase() + name.slice(1)}Production : String := ${leanString(rhs)}`),
+  ...pegRules,
+  `def pegRules : List PegModel.Rule := [${ast.rules.map((_, index) => `pegRule${index}`).join(', ')}]`,
+  `def pegGrammar : PegModel.Grammar := { start := ${leanString(ast.start)}, tokens := ${leanList(ast.tokens, leanString)}, trivia := ${leanList(ast.trivia, leanString)}, inline := ${leanList(ast.inline, leanString)}, rules := pegRules }`,
   'end Generated',
   ''
 ].join('\n'));

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,9 +52,12 @@ try {
   assert.match(model, /def stringLitEscapeFirst : Bool := true/);
   assert.match(model, /def sourceSha256 : String := /);
   assert.match(model, /def wordForbidden : List Char := /);
+  assert.match(model, /def pegRules : List PegModel.Rule := /, 'the canonical PEG AST must become an explicit Lean model');
   const sourceRuleCount = [...original.matchAll(/^[A-Za-z][A-Za-z0-9]* <- /gm)].length;
   const emittedRuleCount = [...model.matchAll(/^  \("/gm)].length;
   assert.equal(emittedRuleCount, sourceRuleCount, 'every PEG production must appear in the Lean source data');
+  const astRuleCount = [...model.matchAll(/^private def pegRule\d+ : PegModel.Rule := /gm)].length;
+  assert.equal(astRuleCount, sourceRuleCount, 'the canonical PEG AST must emit every Lean rule');
 
   const reversed = original.replace(/^(StringLit <- )'"' \('\\\\' \. \/ !\["\\n\] \.\)\* '"'/m, '$1\'"\' (!["\\n] . / \'\\\\\' .)* \'"\'');
   assert.notEqual(reversed, original, 'the negative test must change StringLit');
@@ -95,19 +98,27 @@ try {
   assert.match(combinedFailure.stderr, /Word: unsupported production/);
 
   writeFileSync(generated, model);
-  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], { cwd: work, stdio: 'pipe' });
+  const pegModel = join(work, 'PegModel.lean');
+  copyFileSync(join(here, 'PegModel.lean'), pegModel);
+  execFileSync(lean, ['-o', join(work, 'PegModel.olean'), pegModel], { cwd: work, stdio: 'pipe' });
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], { cwd: work, env: { ...process.env, LEAN_PATH: work }, stdio: 'pipe' });
+  const modelTests = spawnSync(lean, [join(here, 'PegModelTest.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
+  assert.equal(modelTests.status, 0, modelTests.stdout + modelTests.stderr);
   const stringProof = spawnSync(lean, [join(here, 'StringRoundTrip.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(stringProof.status, 0, stringProof.stderr);
   const wordProof = spawnSync(lean, [join(here, 'WordRoundTrip.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(wordProof.status, 0, wordProof.stderr);
 
   writeFileSync(generated, mutation);
-  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], { cwd: work, stdio: 'pipe' });
+  execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], { cwd: work, env: { ...process.env, LEAN_PATH: work }, stdio: 'pipe' });
+  const pegRefuted = spawnSync(lean, [join(here, 'PegModelTest.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
+  assert.notEqual(pegRefuted.status, 0, 'reversed choice must also break the AST interpreter proof');
+  assert.match(pegRefuted.stdout + pegRefuted.stderr, /PegModelTest\.lean:\d+:/);
   const refuted = spawnSync(lean, [join(here, 'StringRoundTrip.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.notEqual(refuted.status, 0, 'reversing the PEG choice must break the theorem');
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  console.log(`grammar fragment: rules ${emittedRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proofs 2, negative mutations 9`);
+  console.log(`grammar fragment: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 9`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
