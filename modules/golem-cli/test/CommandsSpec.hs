@@ -515,7 +515,24 @@ fmtTests :: TestTree
 fmtTests =
   testGroup
     "golem fmt over the project (golem-fmt ADR 0001)"
-    [ testCase "--check names only the unformatted chapter on stdout and exits with 1" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+    [ testCase "Golem ADR 0339 I3: lint shows boundary info without verbose and obeys silence-info" $ withSystemTempDirectory "golem-lint-comment" $ \tmp -> do
+        let chapter = "[strong%%注%%: 本文]\n"
+            manifest = manifestWith ["chapter.gm"]
+        writeFiles tmp [("manifest.toml", manifest), ("chapter.gm", chapter)]
+        (_, _, shown) <- golemAt tmp ["lint"]
+        assertBool shown ("G05100" `isInfixOf` shown)
+        writeFiles tmp [("manifest.toml", manifest <> "\n[diagnostics]\nsilence-info = [\"G05100\"]\n")]
+        (_, _, hidden) <- golemAt tmp ["lint"]
+        assertBool hidden (not ("G05100" `isInfixOf` hidden)),
+      testCase "Golem ADR 0339 I5: no-argument fmt recovers paths but does not rewrite quote errors" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+        let bad = "[f key=x%%注%% other=%%=注記%%]\n"
+        writeFiles tmp [("manifest.toml", manifestWith ["chapters/01.gm", "chapters/02.gm"]), ("chapters/01.gm", bad), ("chapters/02.gm", "本文。  \n")]
+        (code, _, err) <- golemAt tmp ["fmt"]
+        code @?= ExitFailure 1
+        assertBool err ("G01102" `isInfixOf` err)
+        readUtf8 (tmp </> "chapters/01.gm") >>= (@?= bad)
+        readUtf8 (tmp </> "chapters/02.gm") >>= (@?= "本文。\n"),
+      testCase "--check names only the unformatted chapter on stdout and exits with 1" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
         writeFiles tmp fmtProject
         (code, out, _) <- golemAt tmp ["fmt", "--check"]
         (code, out) @?= (ExitFailure 1, "chapters/02.gm\n"),
