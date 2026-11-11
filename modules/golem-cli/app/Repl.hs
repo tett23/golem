@@ -5,6 +5,7 @@ import Control.Monad (when)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as B8
 import Data.Char (isAlphaNum, isControl, ord)
+import Data.Either (fromRight)
 import Data.IORef
 import Data.List (intercalate, isPrefixOf, nub, sort)
 import Data.Text qualified as T
@@ -137,8 +138,8 @@ completeEntry root (Session declarations program) entry (back, _) = do
         Left _ -> pure []
         Right rel -> do
           listing <- tryIOError (listDirectory (root </> rel))
-          fmap concat $
-            mapM
+          concat
+            <$> mapM
               ( \n -> do
                   safe <- resolveEntryInRoot root (dir </> n)
                   case safe of
@@ -147,7 +148,7 @@ completeEntry root (Session declarations program) entry (back, _) = do
                       directory <- doesDirectoryExist (root </> target)
                       pure [if directory then addTrailingPathSeparator n else n | directory || takeExtension n == ".emet"]
               )
-              (either (const []) id listing)
+              (fromRight [] listing)
       pure (drop (length prefix) back, options prefix paths)
     _
       | literalOrComment left -> pure (back, [])
@@ -182,7 +183,7 @@ run = do
             terminal = try (H.runInputT settings (H.withInterrupt (H.getInputLine prompt)))
             lineInput
               | interactive = terminal >>= \case Left H.Interrupt -> throwIO UserInterrupt; Right line -> pure (TE.encodeUtf8 . T.pack <$> line)
-              | otherwise = hIsEOF stdin >>= \eof -> if eof then pure Nothing else Just <$> B8.hGetLine stdin
+              | otherwise = isEOF >>= \eof -> if eof then pure Nothing else Just <$> B8.hGetLine stdin
         tryJust interrupt lineInput >>= \case
           Left () -> cancel ok
           Right line -> consume ok entry line
