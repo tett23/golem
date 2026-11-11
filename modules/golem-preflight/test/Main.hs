@@ -2,6 +2,7 @@
 module Main (main) where
 
 import Data.ByteString qualified as BS
+import Data.Either (fromLeft)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -209,7 +210,7 @@ rulesTests =
         found @?= [DiagnosticCode "G09001", DiagnosticCode "G09103"],
       testCase "Golem ADR 0321 D9: an unclosed multiline string leaves its range unexamined" $ do
         let src = "name = \"\"\"open\n[unknown]\nbad = 1\n"
-            found = either id (const []) (parseRules (FileId 0) src)
+            found = fromLeft [] (parseRules (FileId 0) src)
         map diagCode found @?= [DiagnosticCode "G09001"]
         assertBool "unexamined range" (any (T.isInfixOf "未検査範囲" . diagMessage) found)
         assertBool "detected count" (any (T.isInfixOf "検出済み 1 件" . diagMessage) found),
