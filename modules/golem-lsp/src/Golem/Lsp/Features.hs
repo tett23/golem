@@ -43,7 +43,7 @@ import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Either (fromRight)
 import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -548,7 +548,7 @@ completions ws path off = case sourceOf ws path of
                           if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
                             then [Completion n CkParaStyle | n <- paraNames]
                             else
-                              if not (isJust open)
+                              if isNothing open
                                 then []
                                 else case metaPath of
                                   -- the keys of meta and of meta.roles (docs/adr ADR 0033)
