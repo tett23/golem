@@ -2066,7 +2066,7 @@ listing ctx sp args = do
     (_ : _, _, _) -> do
       mapM_ (\(asp, k) -> err "G02077" asp ("同じキーを二度書いています: " <> k)) duplicates
       pure []
-    ([], (first : second : _), _) -> do
+    ([], first : second : _, _) -> do
       err "G02253" (fst second) ("@listing のパスを二つ書いています: " <> snd first <> "、" <> snd second <> "。採用する一方だけを位置引数に残します")
       pure []
     ([], first : _, old : _) -> do
