@@ -44,6 +44,14 @@ fileRenameTests =
       testCase "R2: Emet import edits only its path literal" $ do
         planEmetImports [("lib/a.emet", "lib/b.emet")] "import \"lib/a.emet\"\n-- lib/a.emet\n"
           @?= Right [(7, 19, "\"lib/b.emet\"")],
+      testCase "R2: Emet file requirements and File.read literals both change" $ do
+        let source = "r :: <file \"a.tsv\"> String\nr = File.read \"a.tsv\"\n"
+        case planEmetImports [("a.tsv", "b.tsv")] source of
+          Left err -> fail err
+          Right edits -> do
+            length edits @?= 2
+            foldr (\(start, end, replacement) text -> T.take start text <> replacement <> T.drop end text) source edits
+              @?= "r :: <file \"b.tsv\"> String\nr = File.read \"b.tsv\"\n",
       testCase "R2: duplicate manifest chapters edit every value but no unrelated text" $ do
         let source = "chapters = [\"a.gm\", [\"a.gm\"], {file = \"a.gm\", title = \"a.gm\"}]\n"
         case planManifest [("a.gm", "b.gm")] source of

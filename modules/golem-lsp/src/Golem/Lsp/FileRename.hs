@@ -15,6 +15,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Emet (parseModule)
 import Golem.Emet.Syntax (Decl (DImport), Loc (..), Module (..))
+import Golem.Emet.Syntax qualified as E
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Project.Manifest (positionSpan, readTomlTable)
@@ -115,17 +116,93 @@ planImports operations source = do
 -- | Emet's parsed import declarations carry the path literal's byte range.
 planEmetImports :: [(FilePath, FilePath)] -> Text -> Either String [(Int, Int, Text)]
 planEmetImports operations source = do
-  let imports = case parseModule (FileId 0) source of
-        Right (Module decls) -> [(path, loc) | DImport _ path loc <- decls]
+  let bytes = TE.encodeUtf8 source
+      imports = case parseModule (FileId 0) source of
+        Right (Module decls) -> [(path, locStart loc, locEnd loc) | DImport _ path loc <- decls] <> concatMap (declSites bytes) decls
         Left _ -> []
   concat
     <$> forM
       imports
-      ( \(path, Loc start end) -> do
+      ( \(path, start, end) -> do
           original <- either (Left . show) Right (normalizeRelative (T.unpack path))
           destination <- renamePath operations (T.unpack path)
           pure (if destination == original then [] else [(start, end, quoted (T.pack destination))])
       )
+
+declSites :: BS.ByteString -> E.Decl -> [(Text, Int, Int)]
+declSites bytes = \case
+  E.DSig sig -> signatureSites bytes sig
+  E.DEq equation -> equationSites bytes equation
+  E.DData _ _ _ _ constructors -> concatMap constructorSites constructors
+  E.DType _ _ _ _ typeExpr -> typeSites bytes typeExpr
+  E.DImport {} -> []
+  where
+    constructorSites (E.ConPos _ _ types) = concatMap (typeSites bytes) types
+    constructorSites (E.ConRec _ _ fields) = concatMap (typeSites bytes . snd) fields
+
+signatureSites :: BS.ByteString -> E.Signature -> [(Text, Int, Int)]
+signatureSites bytes sig = maybe [] (rowSites bytes) (E.sigRow sig) <> typeSites bytes (E.sigType sig)
+
+equationSites :: BS.ByteString -> E.Equation -> [(Text, Int, Int)]
+equationSites bytes equation = rhsSites bytes (E.eqRhs equation) <> concatMap (whereSites bytes) (E.eqWheres equation)
+
+whereSites :: BS.ByteString -> E.Where -> [(Text, Int, Int)]
+whereSites bytes (E.Where _ bindings) = concatMap bindingSites bindings
+  where
+    bindingSites (E.BSig sig) = signatureSites bytes sig
+    bindingSites (E.BEq equation) = equationSites bytes equation
+
+rhsSites :: BS.ByteString -> E.Rhs -> [(Text, Int, Int)]
+rhsSites bytes = \case
+  E.Plain expr -> exprSites bytes expr
+  E.Guarded branches -> concatMap branchSites branches
+  where
+    branchSites (guarded, wheres) =
+      (case E.guardCond guarded of E.GExpr expr -> exprSites bytes expr; E.GOtherwise _ -> [])
+        <> exprSites bytes (E.guardBody guarded)
+        <> concatMap (whereSites bytes) wheres
+
+typeSites :: BS.ByteString -> E.TypeE -> [(Text, Int, Int)]
+typeSites bytes = \case
+  E.TCon _ _ args -> concatMap (typeSites bytes) args
+  E.TFun before row after -> typeSites bytes before <> maybe [] (rowSites bytes) row <> typeSites bytes after
+  E.TTuple _ types -> concatMap (typeSites bytes) types
+  E.TNamed _ _ ty defaultValue -> typeSites bytes ty <> maybe [] (exprSites bytes) defaultValue
+  E.TVar {} -> []
+
+rowSites :: BS.ByteString -> E.RowE -> [(Text, Int, Int)]
+rowSites bytes row =
+  [ (path, start, end)
+  | requirement <- E.rowReqs row,
+    E.reqKind requirement == "file",
+    [path] <- [E.reqArgs requirement],
+    let Loc from to = E.reqLoc requirement,
+    let raw = BS.take (to - from) (BS.drop from bytes),
+    Just quoteStart <- [BS.elemIndex 34 raw],
+    let start = from + quoteStart,
+    Just lengthOfString <- [tomlStringLength (BS.drop start bytes)],
+    let end = start + lengthOfString
+  ]
+
+exprSites :: BS.ByteString -> E.Expr -> [(Text, Int, Int)]
+exprSites bytes expr = case expr of
+  E.EApp function argument -> fileRead function argument <> exprSites bytes function <> exprSites bytes argument
+  E.EBin _ _ left right -> exprSites bytes left <> exprSites bytes right
+  E.ENeg _ inner -> exprSites bytes inner
+  E.ECase _ subject alternatives -> exprSites bytes subject <> concatMap alternativeSites alternatives
+  E.ETernary _ condition left right -> exprSites bytes condition <> exprSites bytes left <> exprSites bytes right
+  E.ERecord _ _ fields -> concatMap (exprSites bytes . (\(_, _, value) -> value)) fields
+  E.EParen _ inner -> exprSites bytes inner
+  E.EList _ items -> concatMap (exprSites bytes) items
+  E.ETuple _ items -> concatMap (exprSites bytes) items
+  _ -> []
+  where
+    fileRead function argument = case (unparen function, unparen argument) of
+      (E.EVar _ (E.QName (Just "File") "read"), E.EStr (Loc start end) path) -> [(path, start, end)]
+      _ -> []
+    unparen (E.EParen _ inner) = unparen inner
+    unparen inner = inner
+    alternativeSites alt = rhsSites bytes (E.altRhs alt) <> concatMap (whereSites bytes) (E.altWheres alt)
 
 quoted :: Text -> Text
 quoted value = "\"" <> T.concatMap quoteChar value <> "\""
