@@ -15,7 +15,7 @@ import System.Environment (getArgs)
 import System.Exit (die)
 
 itemValue :: Item -> Value
-itemValue item = object ["bind" .= itemBind item, "expr" .= exprValue (itemExpr item)]
+itemValue item = object ["line" .= locLine (itemLoc item), "bind" .= itemBind item, "expr" .= exprValue (itemExpr item)]
 
 exprValue :: Expr -> Value
 exprValue = \case

@@ -64,69 +64,50 @@ const names = sourceRules.map(([name]) => name);
 for (const name of new Set(names)) {
   if (names.filter(other => other === name).length !== 1) errors.push(`${name}: duplicate production`);
 }
-// Preserve every ordered-choice branch, including choices in nested groups.
-// Quotes, character classes and semantic actions do not contain PEG choices.
-function choices(rhs) {
-  const branches = [];
-  const branch = (start, end) => {
-    const raw = rhs.slice(start, end);
-    const leading = raw.match(/^\s*/)[0].length;
-    return {
-      text: raw.replace(/\s+/g, ' ').trim(),
-      lineOffset: [...rhs.slice(0, start + leading).matchAll(/\n/g)].length
-    };
-  };
-  const stack = [{ start: 0, slashes: [] }];
-  let quote = false;
-  let charClass = false;
-  let actionDepth = 0;
-  let escaped = false;
-  for (let i = 0; i < rhs.length; i++) {
-    const char = rhs[i];
-    if (quote || charClass) {
-      if (escaped) escaped = false;
-      else if (char === '\\') escaped = true;
-      else if ((quote && char === "'") || (charClass && char === ']')) {
-        quote = false;
-        charClass = false;
-      }
-    } else if (actionDepth) {
-      if (char === '{') actionDepth++;
-      if (char === '}') actionDepth--;
-    } else if (char === "'") {
-      quote = true;
-    } else if (char === '[') {
-      charClass = true;
-    } else if (char === '{') {
-      actionDepth = 1;
-    } else if (char === '(') {
-      stack.push({ start: i + 1, slashes: [] });
-    } else if (char === ')') {
-      const group = stack.pop();
-      if (!group || stack.length === 0) throw new Error(`unbalanced PEG group in ${rhs}`);
-      if (group.slashes.length) {
-        const boundaries = [group.start, ...group.slashes.map(index => index + 1), i];
-        for (let j = 0; j + 1 < boundaries.length; j++) {
-          const end = j < group.slashes.length ? group.slashes[j] : boundaries[j + 1];
-          branches.push(branch(boundaries[j], end));
-        }
-      }
-    } else if (char === '/') {
-      stack[stack.length - 1].slashes.push(i);
-    }
+// Report choices from peg-hs's AST, including branches nested under labels,
+// repetition and templates. A second PEG scanner could miss syntax it does not
+// understand, so the report and Lean model share this one canonical source.
+function describeExpr(expr) {
+  const child = () => describeExpr(expr.expr);
+  switch (expr.tag) {
+    case 'lit': return expr.written;
+    case 'class': return expr.written;
+    case 'any': return '.';
+    case 'ref': return `${expr.name}${expr.args.length ? `(${expr.args.join(', ')})` : ''}`;
+    case 'choice': return `(${expr.alts.map(describeItems).join(' / ')})`;
+    case 'star': return `${child()}*`;
+    case 'plus': return `${child()}+`;
+    case 'opt': return `${child()}?`;
+    case 'and': return `&${child()}`;
+    case 'not': return `!${child()}`;
+    case 'capture': return `$${child()}`;
+    case 'label': return `${child()}^${expr.name}`;
+    case 'pred': return `${expr.positive ? '&' : '!'}{${expr.source}}`;
+    case 'template': return `${expr.name}<${expr.children.map(describeExpr).join(', ')}>${expr.args.length ? `(${expr.args.join(', ')})` : ''}`;
+    case 'discard': return `~${child()}`;
+    default: throw new Error(`unknown peg-hs expression ${expr.tag}`);
   }
-  if (quote || charClass || actionDepth || stack.length !== 1) throw new Error(`unclosed PEG term in ${rhs}`);
-  const root = stack[0];
-  if (root.slashes.length) {
-    const boundaries = [0, ...root.slashes.map(index => index + 1), rhs.length];
-    for (let j = 0; j + 1 < boundaries.length; j++) {
-      const end = j < root.slashes.length ? root.slashes[j] : boundaries[j + 1];
-      branches.push(branch(boundaries[j], end));
-    }
-  } else {
-    branches.push(branch(0, rhs.length));
+}
+function describeItems(items) {
+  return items.map(item => `${item.bind === null ? '' : `${item.bind}:`}${describeExpr(item.expr)}`).join(' ');
+}
+function nestedChoices(expr, visit) {
+  switch (expr.tag) {
+    case 'choice':
+      if (expr.alts.length > 1) expr.alts.forEach(visit);
+      expr.alts.flat().forEach(item => nestedChoices(item.expr, visit));
+      break;
+    case 'star': case 'plus': case 'opt': case 'and': case 'not':
+    case 'capture': case 'label': case 'discard':
+      nestedChoices(expr.expr, visit);
+      break;
+    case 'template':
+      expr.children.forEach(child => nestedChoices(child, visit));
+      break;
+    case 'lit': case 'class': case 'any': case 'ref': case 'pred':
+      break;
+    default: throw new Error(`unknown peg-hs expression ${expr.tag}`);
   }
-  return branches;
 }
 
 function rule(name) {
@@ -197,18 +178,23 @@ const shapes = {
   ArgValue: ['StringLit / ExprCtx / ReservedBracket / InlineCommand(0) / Word'],
   KeywordArgument: ['Word Eq ArgValue']
 };
-if (!fragment) {
-  const supportedWord = shapes.Word[0];
-  for (const [name, rhs, line] of sourceRules) {
-    try {
-      if (name === 'StringLit' && alternatives.length === 2 && alternatives.includes(escape) && alternatives.includes(ordinary)) continue;
-      choices(rhs).forEach((choice, index) => {
-        const normalized = choice.text.replaceAll(' { () }', '').trim();
-        if (name === 'Word' && normalized === supportedWord) return;
-        errors.push(`unsupported ${name} choice ${index + 1} at ${input}:${line + choice.lineOffset}: ${choice.text}`);
-      });
-    } catch (error) {
-      errors.push(`unsupported ${name} choice ?: ${error.message}`);
+if (!fragment && ast) {
+  for (const rule of ast.rules) {
+    if (rule.name === 'StringLit' && alternatives.length === 2 && alternatives.includes(escape) && alternatives.includes(ordinary) && rule.alts.length === 1) continue;
+    let index = 0;
+    const report = (items, line) => {
+      index++;
+      errors.push(`unsupported ${rule.name} choice ${index} at ${input}:${line}: ${describeItems(items)}`);
+    };
+    for (const [rootIndex, alt] of rule.alts.entries()) {
+      if (!(rule.name === 'Word' && shapes.Word.includes(word) && rootIndex === rule.alts.length - 1)) {
+        report(alt.items, alt.line);
+      }
+    }
+    for (const alt of rule.alts) {
+      for (const item of alt.items) {
+        nestedChoices(item.expr, items => report(items, items[0]?.line ?? item.line));
+      }
     }
   }
 }

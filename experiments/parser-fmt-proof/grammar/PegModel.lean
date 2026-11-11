@@ -2,7 +2,7 @@ namespace PegModel
 
 -- The constructors match Peg.Grammar.Expr in the pinned peg-hs release.
 -- Haskell actions and predicates remain source text until their semantics are
--- modeled; they cannot be used as an assumed successful parse.
+-- modeled. Recognition alone does not prove the action's AST or value.
 inductive Expr where
   | lit (value written : String)
   | charClass (ranges : List (Nat × Nat)) (written : String)
