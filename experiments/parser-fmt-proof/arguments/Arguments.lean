@@ -73,6 +73,25 @@ def known : List Rule :=
     { name := "count", kind := .nat, required := true, repeatable := false },
     { name := "label", kind := .string, required := true, repeatable := false } ]
 
+/- FunctionSpec's book.price accepts tax and unit after its positional
+   value. The first positional value is omitted from this keyword model. -/
+def bookPrice : List Rule :=
+  [ { name := "tax", kind := .bool, required := false, repeatable := false },
+    { name := "unit", kind := .string, required := false, repeatable := false } ]
+
+example :
+    check bookPrice
+      [ { name := "x", kind := .nat },
+        { name := "x", kind := .nat },
+        { name := "x", kind := .nat },
+        { name := "tax", kind := .string } ] =
+      [ { position := 0, name := "x", error := .unknown },
+        { position := 1, name := "x", error := .unknown },
+        { position := 1, name := "x", error := .duplicate },
+        { position := 2, name := "x", error := .unknown },
+        { position := 2, name := "x", error := .duplicate },
+        { position := 3, name := "tax", error := .wrongType } ] := by decide
+
 /- These are the same boundaries used by the Haskell regression tests:
    unknown x three times, an ill-typed required argument, and two missing
    required names in declaration order. -/
