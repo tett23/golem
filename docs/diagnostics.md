@@ -6053,6 +6053,30 @@ TSV の途中の空の行は消す。
 
 `@set x = 3` を `set x = 3` に書き換える。
 
+## G02254
+
+行アキは 0 行です
+
+- 重大度: 情報
+- 状態: 使用中
+
+### 意味
+
+連続する `@blank-line` の行数の合計が 0 であり、意味論 IR に行アキを出さない。
+まとまりの最初の `@blank-line` に一件出す。
+
+- メッセージ: `行アキは 0 行です`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [Golem ADR 0345](adr/0345-revise-unitless-zero-in-length-fields.md)
+
+### 主な原因
+
+- `@blank-line 0` を一つ、または続けて書いた。
+
+### 直し方
+
+行アキが不要なら、この `@blank-line` を消す。
+
 ## G03001
 
 manifest.toml の誤りです
