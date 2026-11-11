@@ -253,7 +253,8 @@ PDF の索引は、`[index]` の `columns` と `column-gap` で、一段組み�
 索引の項目には、`[index reading=くみはん range=begin: 組版]` と `range=end` でページの範囲を、`see=組版` で「（組版を見よ）」「（組版をも見よ）」の参照を書ける。
 続くページは「5–6」のように範囲にまとめ、項目は「あ」「か」のような行の見出しの下に並べる（見出しは `[index]` の `section-headings = false` で外せる。[docs/adr/0265](./docs/adr/0265-index-cross-references-page-ranges-and-section-headings.md)）。
 
-外部の URL へのリンクは `[link "https://www.w3.org/TR/jlreq/": 日本語組版処理の要件]` と書き、PDF ではリンクの注釈に、HTML と EPUB では `a` 要素になる。
+PDF/X-4 ではリンクの文字としおりを保ち、本文のクリック領域を省く。
+外部の URL へのリンクは `[link "https://www.w3.org/TR/jlreq/": 日本語組版処理の要件]` と書き、出力インテントのない PDF ではリンクの注釈に、HTML と EPUB では `a` 要素になる。
 リンクは見た目を変えない（[docs/adr/0182](./docs/adr/0182-external-links.md)）。
 
 文書の中の参照も、行先へのリンクになる。

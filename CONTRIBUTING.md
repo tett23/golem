@@ -399,7 +399,7 @@ CI の `textlint` ジョブ（`docs.yml`）も同じスクリプトを走らせ�
    ジョブ `wasm` は、`golem.wasm` のアーカイブを作った直後に `scripts/release/check-wasm-archive.sh` でライセンスの文書と `.sha256` を確かめる。`workflow_dispatch` でも走る（[docs/adr/0230](./docs/adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)）。
    `release` ジョブは、下書きのリリースを作った後に、上げたアーカイブのそれぞれに `gh attestation verify` を走らせ、下書きの `SHA256SUMS` で `dist/` のファイルと照らす（[docs/adr/0230](./docs/adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)）。
 6. 下書きのリリースノートを読む。AI が書いたノートの分類やまとめ方がおかしければ、手で直す。AI の実行か検査に失敗したときは、`## Unsorted` に変更の一覧が残ったノートになるので、分類して書き直す。ワークフローの要約に、失敗の理由が書かれる。
-   v1.0.0 より前のリリースでは、リンクの注釈を含む PDF/X-4 の PDF を ISO 15930-7 と照合していないことを、ノートの既知の問題に書く（[docs/adr/0226](./docs/adr/0226-move-the-iso-15930-7-check-to-before-v1.md)）。
+   v1.0.0 より前のリリースでは、PDF/X-4 の本文リンクのクリック領域を省くことと、ISO 15930-7 の残る未照合事項をノートに書く ([Golem ADR 0350](./docs/adr/0350-omit-page-link-annotations-from-pdf-x-4.md))。
 7. GitHub の Releases の画面で、下書きを公開する。公開の操作はワークフローでは行わない。
 
 配布物を作って検査するところまでを試すときは、`gh workflow run release.yml --ref <ブランチ>` で `workflow_dispatch` から起動する。

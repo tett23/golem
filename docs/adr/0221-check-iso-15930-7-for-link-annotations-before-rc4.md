@@ -1,6 +1,6 @@
 # ADR 0221: リンクの注釈についての ISO 15930-7 の照合を、rc4 の前にメンテナーが行い、監査の記録に残す
 
-ステータス: 採択（未実装）→照合の期限は [ADR 0226](0226-move-the-iso-15930-7-check-to-before-v1.md)
+ステータス: 採択（未実装）→照合の期限は [ADR 0226](0226-move-the-iso-15930-7-check-to-before-v1.md)→PDF/X-4 の本文リンク注釈は [ADR 0350](0350-omit-page-link-annotations-from-pdf-x-4.md)
 
 ## 文脈
 
