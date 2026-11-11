@@ -369,7 +369,7 @@ runningHeadTests =
       runningHeadLines meta Map.empty (Map.fromList [(["revision"], "r1")]) (fmt [["{set.revision}"]]) Map.empty [] @?= ["r1"]
       runningHeadLines meta Map.empty (Map.fromList [(["values", "price"], "100")]) (fmt [["{set.values.price}"]]) Map.empty [] @?= ["100"]
       forM_ [("\"r1\"", "r1"), ("3", "3"), ("0.5", "0.5")] $ \(v, shown) -> do
-        (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "@set revision = " <> v <> "\n\n" <> twoChapters)]
+        (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "set revision = " <> v <> "\n\n" <> twoChapters)]
         Map.lookup 2 heads @?= Just [shown],
     testCase "even pages the title, odd pages the chapter; none on recto and blank pages" $ do
       (heads, _) <- layoutHeads miniManifest (headsStyle "even = \"title\", odd = \"heading.1.short\"") [("a.gm", twoChapters)]
@@ -418,10 +418,10 @@ runningHeadTests =
       (ds', _, _) <- buildHeads (headsStyle "content = [\"{set.revision?}\"]") [("a.gm", twoChapters)] Nothing
       [d | d <- ds', isError d] @?= [],
     testCase "a variable that is not a string or a number is G02068 (ADR 0022)" $ do
-      (ds, srcs, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "@set revision = true\n\n" <> twoChapters)] Nothing
+      (ds, srcs, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "set revision = true\n\n" <> twoChapters)] Nothing
       [(described d, fmap siPath (Map.lookup (spanFile (diagSpan d)) srcs)) | d <- ds, isError d] @?= [(("G02068", "柱に出せるのは文字列と数です: revision は 真偽値", FileId 1, 0, 0), Just "a.gm")],
     testCase "an imported variable (ADR 0022)" $ do
-      (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.values.price}\"]") [("a.gm", "@import common/values.gm as values\n\n" <> twoChapters), ("common/values.gm", "@set price = 100\n")]
+      (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.values.price}\"]") [("a.gm", "@import common/values.gm as values\n\n" <> twoChapters), ("common/values.gm", "set price = 100\n")]
       Map.lookup 2 heads @?= Just ["100"],
     testCase "no G02067 in a build without the PDF (ADR 0022)" $ do
       (ds, _, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", twoChapters)] (Just [TargetHtml])
