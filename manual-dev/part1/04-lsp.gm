@@ -99,6 +99,13 @@ Neovim なら次の式で表示できる。
 行の番号が文書の行の数を超える場合と、列が文字の途中（UTF-8 の後続のバイト、UTF-16 のサロゲートペアの間）に当たる場合は、仕様が定めていないので丸めず、結果を空にする。
 丸めると、クライアントの誤りを隠して、利用者が指していない位置の結果を返すことになるからである。
 
+## ファイルとフォルダの改名
+
+クライアントがファイル操作の能力を申し出ると、LSP はファイルとフォルダの改名前に [code: workspace/willRenameFiles] を受ける。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0338-update-references-on-file-and-folder-renames.md]（docs/adr ADR 0338「ファイルとフォルダの改名に伴う参照の編集を Golem LSP が返す」）]
+LSP は元の URI と文書の版を付けた参照の編集を返し、編集がなければ [code: null] を返す。
+クライアントは編集を適用してからファイルを改名し、成功後に [code: workspace/didRenameFiles] を一度送る。
+LSP は改名後に旧パスの索引を捨て、プロジェクトを読み直す。
+
 ## 文書の同期と再評価
 
 文書の同期は全文の同期である。[index reading="ぜんぶんのどうき": 全文の同期]
