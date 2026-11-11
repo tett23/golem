@@ -311,7 +311,7 @@ rulesTests =
       testCase "ADR 0319 I1: preflight length accepts typed zero" $ do
         ruBleedMin (parsed "[bleed-size]\nmin = 0\n") @?= 0
         ruBleedMin (parsed "[bleed-size]\nmin = \"-0\"\n") @?= 0
-        g09001 "[bleed-size]\nmin = 0.0\n" 1
+        ruleError "G09102" "[bleed-size]\nmin = 0.0\n" 1
     ]
 
 checkTests :: [TestTree]
