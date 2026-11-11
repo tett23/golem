@@ -326,7 +326,7 @@ preflightTests =
       v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
       assertBool "glyph 0 of U+E000" (any (any (\g -> gvGlyph g == 0 && gvText g == "\xE000") . pvGlyphs) (vwPages v))
       assertBool "G09002" (DiagnosticCode "G09002" `elem` errorCodes (prDiagnostics p)),
-    testCase "a character the font has not: the G08100 of the build, an error, beside G09002 (docs/adr 0081)" $ do
+    testCase "P1/P2: preflight reports missing glyphs only at the configured severity (Golem ADR 0325)" $ do
       let privateUse rules = withSystemTempDirectory "golem-preflight" $ \tmp -> do
             copyTree fixture tmp
             createDirectoryIfMissing True (tmp </> "fonts")
@@ -339,14 +339,17 @@ preflightTests =
             pure [(diagCode d, diagSeverity d, diagSpan d, diagMessage d) | d <- prDiagnostics p, "U+E000" `T.isInfixOf` diagMessage d]
       found <- privateUse Nothing
       case found of
-        [(c1, s1, sp1, m1), (c2, s2, sp2, m2)] -> do
-          (c1, s1, c2, s2) @?= (DiagnosticCode "G08100", Error, DiagnosticCode "G09002", Error)
-          (sp1, m1) @?= (sp2, m2)
+        [(code, severity, sp, message)] -> do
+          (code, severity) @?= (DiagnosticCode "G09002", Error)
+          warned <- privateUse (Just "[glyph-missing]\nseverity = \"warning\"\n")
+          warned @?= [(code, Warning, sp, message)]
         other -> assertFailure (show other)
-      warned <- privateUse (Just "[glyph-missing]\nseverity = \"warning\"\n")
-      [(c, sev) | (c, sev, _, _) <- warned] @?= [(DiagnosticCode "G08100", Error), (DiagnosticCode "G09002", Warning)]
       off <- privateUse (Just "[glyph-missing]\nseverity = \"off\"\n")
-      [(c, sev) | (c, sev, _, _) <- off] @?= [(DiagnosticCode "G08100", Error)],
+      off @?= [],
+    testCase "P3: disabling glyph-missing does not hide a bleed error" $
+      withPreflightProject horizontalStyle "本文。\n" [("preflight.toml", "[glyph-missing]\nseverity = \"off\"\n")] $ \tmp -> do
+        result <- preflightIn tmp
+        assertBool (show (prDiagnostics result)) (DiagnosticCode "G09010" `elem` errorCodes (prDiagnostics result)),
     testCase "a PDF as a figure is placed, with neither G09005 nor G08010 (golem-pdf ADR 0008)" $ do
       fig <- miniPdf fakeProvider False horizontalStyle "図。\n" []
       img <- tinyImage
@@ -361,11 +364,13 @@ preflightTests =
         p <- preflightIn tmp
         let codes = map diagCode (prDiagnostics p)
         assertBool (show codes) (DiagnosticCode "G09008" `elem` codes && DiagnosticCode "G09006" `notElem` codes),
-    testCase "a figure that cannot be placed stops golem preflight with G08010 before the checks (golem-pdf ADR 0008)" $
+    testCase "P4: a broken PNG and insufficient bleed are both reported (Golem ADR 0325)" $
       withPreflightProject horizontalStyle "# 章\n\n@figure images/a.png alt=\"t\"\n\n本文。\n" [("images/a.png", "\x89PNG\r\n\x1a\n")] $ \tmp -> do
         p <- preflightIn tmp
-        errorCodes (prDiagnostics p) @?= [DiagnosticCode "G08010"]
-        assertBool "no view" (isNothing (prView p)),
+        errorCodes (prDiagnostics p) @?= [DiagnosticCode "G08010", DiagnosticCode "G09010"]
+        assertBool "no view" (isNothing (prView p))
+        assertBool "the enabled page checks explain why they were skipped" (("glyph-missing", "ページ情報を作れませんでした") `elem` prSkipped p)
+        assertBool "bleed was checked" ("bleed-size" `notElem` map fst (prSkipped p)),
     testCase "image-unplaceable in preflight.toml is G09001 (golem-pdf ADR 0008)" $
       withPreflightProject horizontalStyle "本文。\n" [("preflight.toml", "[image-unplaceable]\nseverity = \"off\"\n")] $ \tmp -> do
         p <- preflightIn tmp
@@ -378,10 +383,10 @@ preflightTests =
         p <- preflightIn tmp
         [diagSeverity d | d <- prDiagnostics p, diagCode d == DiagnosticCode "G02005"] @?= [Warning]
         assertBool "a view" (isJust (prView p)),
-    testCase "an error of the build stops before the checks" $
+    testCase "P4: a manuscript error still permits the independent bleed check" $
       withPreflightProject horizontalStyle "[nope: x]\n" [] $ \tmp -> do
         p <- preflightIn tmp
-        errorCodes (prDiagnostics p) @?= [DiagnosticCode "G02022"]
+        errorCodes (prDiagnostics p) @?= [DiagnosticCode "G02022", DiagnosticCode "G09010"]
         assertBool "no view" (isNothing (prView p)),
     testCase "rules out of the project are read, a missing file is G09001" $
       withPreflightProject horizontalStyle "本文。\n" [] $ \tmp -> withSystemTempDirectory "golem-rules" $ \other -> do
