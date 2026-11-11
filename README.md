@@ -149,7 +149,7 @@ golem new mybook
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を書かずに検査する |
 | `golem preflight [--rules FILE] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、書かずに入稿の前の検査（プリフライト）を行う。設定は `--rules` のファイル、なければ `preflight.toml`、それもなければ組み込みの `print`。最後に検査した PDF の SHA-256 を出す |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose]` | lint の規則を適用する |
-| `golem fmt [--check] [FILE...]` | 原稿を整形し、表のファイルの BOM と改行を直す |
+| `golem fmt [--check] [FILE...]` | 原稿を整形し、表のファイルの BOM と改行を直す。通常の実行では対象フォルダーの `.DS_Store` も片付ける |
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
 | `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |
@@ -279,6 +279,8 @@ CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tag
 
 入稿する PDF は `golem build --target pdf --profile prod` で作る。
 prod の PDF ビルドがエラーで書けなければ、前の `build/pdf/` と `pages.json` を片付ける。dev では前の結果を残す（[ADR 0326](./docs/adr/0326-discard-stale-pdf-after-build-errors.md)）。
+通常の `golem build` は、プロジェクトのルートと今回選んだ出力フォルダーにある通常の `.DS_Store` を片付ける（[ADR 0329](./docs/adr/0329-output-path-file-diagnostic.md)）。
+出力フォルダーと同じパスがリンクなら G08013、通常のファイルなら G08104 を出し、上書きしない。
 `golem preflight` の要約の SHA-256 は、この PDF と一致する。
 PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には `golem preflight --marks japanese` を通し、その後に商用のプリフライト（Acrobat や pdfToolbox など）で確認する（[docs/golem-cli/adr/0006](docs/golem-cli/adr/0006-preflight.md)）。
 
