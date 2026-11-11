@@ -57,8 +57,8 @@ tests =
         notesOf ctx "- 項目[note k]。\n\n  @note k\n    中。\n" @?= ([[(Nothing, "中。")]], []),
       testCase "the names of notes are apart from the labels" $
         codesOf ctx "@label k\n本文[note k]。\n\n@note k\n  注。\n" @?= [],
-      testCase "the body reads the values of @set up to @note" $
-        notesOf ctx "@set x = \"一\"\n\n本文[note k]。\n\n@note k\n  [= x]。\n" @?= ([[(Nothing, "一。")]], []),
+      testCase "the body reads the values of set up to @note" $
+        notesOf ctx "set x = \"一\"\n\n本文[note k]。\n\n@note k\n  [= x]。\n" @?= ([[(Nothing, "一。")]], []),
       testCase "the boundaries of the numbers of [note name] and @note: 0 and 1, 1 and 0, 1 and 1, 2 and 1, 1 and 2" $ do
         codesOf ctx "@note k\n  注。\n" @?= ["G02138"]
         notesOf ctx "本文[note k]。\n" @?= ([], ["G02137"])

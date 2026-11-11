@@ -245,6 +245,16 @@ semanticTokensTests =
                 (0, 14, 1, L.SemanticTokenTypes_Operator, []),
                 (0, 15, 1, L.SemanticTokenTypes_Variable, [])
               ],
+      testCase "ADR 0336 I1: semantic tokens of set have no @ decorator" $
+        toks Utf8 "set x = 1\n"
+          @?= [ (0, 0, 3, L.SemanticTokenTypes_Decorator, []),
+                (0, 3, 1, L.SemanticTokenTypes_Operator, []),
+                (0, 4, 1, L.SemanticTokenTypes_Variable, [L.SemanticTokenModifiers_Declaration]),
+                (0, 5, 1, L.SemanticTokenTypes_Operator, []),
+                (0, 6, 1, L.SemanticTokenTypes_Operator, []),
+                (0, 7, 1, L.SemanticTokenTypes_Operator, []),
+                (0, 8, 1, L.SemanticTokenTypes_Number, [])
+              ],
       testCase "not the indentation of a block command, but its other spaces (golem-lsp ADR 0008)" $
         [t | t@(l, _, _, _, _) <- toks Utf8 "@box\n  @label x\n  本文\n", l > 0]
           @?= [ (1, 2, 1, L.SemanticTokenTypes_Decorator, []),

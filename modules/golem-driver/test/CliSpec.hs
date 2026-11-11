@@ -377,10 +377,10 @@ preflightTests =
       withPreflightProject horizontalStyle "# 章\n\n@figure images/a.pdf web=images/tiny.jpg alt=\"t\"\n\n本文。\n" (("images/a.pdf", encrypted) : img) $ \tmp -> do
         p <- preflightIn tmp
         errorCodes (prDiagnostics p) @?= [DiagnosticCode "G08105", DiagnosticCode "G09010"],
-    testCase "image-unplaceable in preflight.toml is G09001 (golem-pdf ADR 0008)" $
+    testCase "Golem ADR 0321 D5: image-unplaceable in preflight.toml is G09103" $
       withPreflightProject horizontalStyle "本文。\n" [("preflight.toml", "[image-unplaceable]\nseverity = \"off\"\n")] $ \tmp -> do
         p <- preflightIn tmp
-        map diagCode (prDiagnostics p) @?= [DiagnosticCode "G09001"],
+        map diagCode (prDiagnostics p) @?= [DiagnosticCode "G09103"],
     {- the profile is prod: G02005 is reported in prod only. G05004, the
     example of the ADR, is a diagnostic of golem lint, which neither golem
     build nor golem preflight runs. -}
@@ -394,7 +394,7 @@ preflightTests =
         p <- preflightIn tmp
         errorCodes (prDiagnostics p) @?= [DiagnosticCode "G02022", DiagnosticCode "G09010"]
         assertBool "no view" (isNothing (prView p)),
-    testCase "rules out of the project are read, a missing file is G09001" $
+    testCase "Golem ADR 0321 D1: rules out of the project are read, a missing file is G09100" $
       withPreflightProject horizontalStyle "本文。\n" [] $ \tmp -> withSystemTempDirectory "golem-rules" $ \other -> do
         TIO.writeFile (other </> "printer.toml") "based-on = \"none\"\nname = \"A 印刷\"\n"
         p <- preflight (defaultPreflightOptions tmp) {poFonts = fakeProvider, poRules = Just (other </> "printer.toml")}
@@ -402,12 +402,12 @@ preflightTests =
         prBasedOn p @?= "none"
         errorCodes (prDiagnostics p) @?= []
         q <- preflight (defaultPreflightOptions tmp) {poFonts = fakeProvider, poRules = Just (other </> "missing.toml")}
-        map diagCode (prDiagnostics q) @?= [DiagnosticCode "G09001"]
+        map diagCode (prDiagnostics q) @?= [DiagnosticCode "G09100"]
         prPdf q @?= Nothing,
-    testCase "a wrong preflight.toml stops before the PDF" $
+    testCase "Golem ADR 0321 D6: a wrong preflight.toml stops before the PDF" $
       withPreflightProject horizontalStyle "本文。\n" [("preflight.toml", "[pdf-x]\nseverity = \"notice\"\n")] $ \tmp -> do
         p <- preflightIn tmp
-        map diagCode (prDiagnostics p) @?= [DiagnosticCode "G09001"]
+        map diagCode (prDiagnostics p) @?= [DiagnosticCode "G09102"]
         prPdf p @?= Nothing
   ]
     <> templatePreflightTests

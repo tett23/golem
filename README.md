@@ -149,11 +149,23 @@ golem new mybook
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を書かずに検査する |
 | `golem preflight [--rules FILE] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、書かずに入稿の前の検査（プリフライト）を行う。設定は `--rules` のファイル、なければ `preflight.toml`、それもなければ組み込みの `print`。PDF を組めた場合は SHA-256、組めなかった場合はエラー件数と未検査の項目を出す |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose]` | lint の規則を適用する |
-| `golem fmt [--check] [FILE...]` | 原稿を整形し、表のファイルの BOM と改行を直す |
+| `golem fmt [--check] [FILE...]` | 原稿を整形し、表のファイルの BOM と改行を直す。通常の実行では対象フォルダーの `.DS_Store` も片付ける |
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
 | `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
+
+命令の引数列と原稿内の式には通常コメント `%%注%%` を書ける（[Golem ADR 0339](./docs/adr/0339-comments-in-arguments-and-manuscript-expressions.md)）。
+たとえば `[f %%理由%% x key=y]` と `[= 1+%%理由%%2]` のコメントは値に入らない。
+既存の原稿で `%%注%%` を引数の値にしていた場合は `"%%注%%"` と書く。
+`key=x%%注%%` を値にしていた場合は `key="x%%注%%"` と書く。
+引用符不足のファイルは `golem fmt` でも自動修正されず、ほかの整形可能なファイルは整形される。
+
+プリフライトの設定を読めない場合は、原因に応じて G09001 または G09100〜G09104 を出す（[Golem ADR 0321](./docs/adr/0321-preflight-rule-error-causes.md)）。
+設定のエラーを検出した実行は PDF を組まず、終了コード 1 で終わる。
+
+`golem lsp` は原稿の命令と式、プロジェクト直下の `style.toml`、`preflight.toml`、`manifest.toml` に入力候補を返す。
+説明のある候補では、その説明と Emet の公開関数の署名も表示する（[Golem ADR 0347](docs/adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）。
 
 `golem new` が作るプロジェクトは、版面の設定と、配布元から取得したフォントと、プリフライトの設定 `preflight.toml` を含む。
 `--no-fonts` で作ったプロジェクトも、フォントを置く前から HTML、EPUB、プレーンテキストを作れる（PDF はフォントを置くまで作れない）。
@@ -181,6 +193,11 @@ Golem のコードは大文字に直して同じになるものを、プラグ�
 `golem new` の雛形は `paragraph-separator = "line"` を書く。
 
 段落を分けずに行を改めるには、行の末尾に `\` を書く（強制改行、[docs/adr/0016](docs/adr/0016-hard-line-breaks.md)）。
+
+### 原稿の変数
+
+行頭の `set x = "abc"` でファイル内の変数を宣言し、`[= x]` で参照する（[Golem ADR 0336](docs/adr/0336-unprefixed-variable-declarations.md)）。
+旧記法の `@set x = "abc"` も使えるが、先頭の `@` に移行用の notice が出る。
 
 ### 書体とスタイル
 
@@ -266,6 +283,9 @@ HTML と EPUB では、`[ref-number]` と `[ref-title]` もラベルの行先へ
 CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tagged-pdf-and-pdf-a.md)）。
 
 入稿する PDF は `golem build --target pdf --profile prod` で作る。
+prod の PDF ビルドがエラーで書けなければ、前の `build/pdf/` と `pages.json` を片付ける。dev では前の結果を残す（[ADR 0326](./docs/adr/0326-discard-stale-pdf-after-build-errors.md)）。
+通常の `golem build` は、プロジェクトのルートと今回選んだ出力フォルダーにある通常の `.DS_Store` を片付ける（[ADR 0329](./docs/adr/0329-output-path-file-diagnostic.md)）。
+出力フォルダーと同じパスがリンクなら G08013、通常のファイルなら G08104 を出し、上書きしない。
 `golem preflight` の要約の SHA-256 は、この PDF と一致する。
 PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には `golem preflight --marks japanese` を通し、その後に商用のプリフライト（Acrobat や pdfToolbox など）で確認する（[docs/golem-cli/adr/0006](docs/golem-cli/adr/0006-preflight.md)）。
 

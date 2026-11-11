@@ -61,15 +61,15 @@ tableWatchTests =
         watchGlob "a*b?.tsv" @?= "a[*]b[?].tsv"
         watchGlob "data/[x]{y}.csv" @?= "data/[[]x[]][{]y[}].csv"
         watchGlob "data/x.tsv" @?= "data/x.tsv",
-      testCase "G02085 is published on the table file" $ withTableProject $ \dir -> do
+      testCase "Golem ADR 0328 I1: G02154 is published on the table file" $ withTableProject $ \dir -> do
         ws <- openWorkspace dir
-        codesOf ws "data/x.tsv" @?= ["G02085"]
-        codesOf ws "data/x.csv" @?= ["G02085"],
+        codesOf ws "data/x.tsv" @?= ["G02154"]
+        codesOf ws "data/x.csv" @?= ["G02154"],
       testCase "the editor's text of an open table file comes before the disk" $ withTableProject $ \dir -> do
         ws0 <- openWorkspace dir
         ws <- updateFile ws0 "data/x.tsv" "a\tb\nc\td\n"
         codesOf ws "data/x.tsv" @?= []
-        codesOf ws "data/x.csv" @?= ["G02085"],
+        codesOf ws "data/x.csv" @?= ["G02154"],
       testCase "the table files to watch, and which notifications re-evaluate" $ withTableProject $ \dir -> do
         ws <- openWorkspace dir
         tablesToWatch ws @?= Set.fromList ["data/x.csv", "data/x.tsv", "manifest.toml"]
@@ -83,7 +83,7 @@ tableWatchTests =
           ws <- openWorkspace dir
           tablesToWatch ws @?= Set.fromList ["data/p.tsv", "data/s.tsv", "manifest.toml"]
           tableFilesChanged ws {wsWatchedTables = tablesToWatch ws} ["data/p.tsv"] @?= True,
-      testCase "a client with dynamic registration watches the table files; a fixed file clears G02085" $ withTableProject $ \dir -> do
+      testCase "a client with dynamic registration watches the table files; a fixed file clears G02154" $ withTableProject $ \dir -> do
         (regs, cleared, afterSwitch, unchanged) <- lspSession True dir $ do
           _ <- waitDiagnostics dir "data/x.tsv" (not . null)
           regs <- watched
