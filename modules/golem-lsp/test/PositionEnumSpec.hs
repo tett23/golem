@@ -8,7 +8,6 @@ import Data.Text.Encoding qualified as TE
 import Golem.Lsp.Features qualified as Lsp
 import Golem.Syntax (FileId (..), LineCol (..), mkLineIndex)
 import Golem.Typeset (pagesJson)
-import Language.LSP.Protocol.Types (PositionEncodingKind (..))
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertEqual, testCase, (@?=))
 
@@ -37,7 +36,7 @@ positionEnumTests =
   testGroup
     "Golem ADR 0311"
     [ testCase "U1: all valid UTF-8 and UTF-16 boundaries round trip" $ do
-        Lsp.chooseEncoding (Just [PositionEncodingKind_UTF16, PositionEncodingKind_UTF8]) @?= Lsp.Utf8
+        Lsp.chooseEncoding (Just [Lsp.encodingKind Lsp.Utf16, Lsp.encodingKind Lsp.Utf8]) @?= Lsp.Utf8
         mapM_
           ( \(source, count) -> do
               let index = mkLineIndex (T.pack source)
