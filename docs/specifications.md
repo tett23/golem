@@ -7869,6 +7869,7 @@ files = ["chapters/01.gm"]
 - `url` は配布物の URL、`path` はプロジェクトの中の `.wasm` のパス（下の `path` の説明）で、どちらか一方だけを書く。両方を書くか、どちらも書かなければ G03001 になる。
 - `overrides` は、上書きする組み込みのインラインのコマンドの名前の配列である。`data` は、プラグインに渡すデータ（「データ」の節）である。
 - `[[filters]]` は、フィルタを当てるファイルを、当てる順に書く。`plugin` は `[plugins.<名前>]` の名前、`filter`（必須）はそのプラグインのフィルタの名前、`files`（必須）はフィルタを当てる原稿のファイルの配列である。
+  未宣言の `plugin` は G06010 をその値に、プラグインが提供していない `filter` は G06107 をその値に出す（[ADR 0330](adr/0330-undeclared-plugin-and-missing-filter.md)）。
 - `[[filters]]` の `plugin` の代わりに `function` に `.emet` のパスを書けば、`.emet` のフィルタになる（[ADR 0162](adr/0162-calling-emet-functions-from-gm.md)、「.gm から関数を使う」）。`plugin` と `function` は、どちらか一方だけを書く。
 
 想定する配布元は GitHub などのリリースであり、URL はバージョンごとに固定されたものを書く。
