@@ -155,6 +155,9 @@ golem new mybook
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
 
+`golem lsp` は原稿の命令と式、プロジェクト直下の `style.toml`、`preflight.toml`、`manifest.toml` に入力候補を返す。
+説明のある候補では、その説明と Emet の公開関数の署名も表示する（[Golem ADR 0347](docs/adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）。
+
 `golem new` が作るプロジェクトは、版面の設定と、配布元から取得したフォントと、プリフライトの設定 `preflight.toml` を含む。
 `--no-fonts` で作ったプロジェクトも、フォントを置く前から HTML、EPUB、プレーンテキストを作れる（PDF はフォントを置くまで作れない）。
 `DIR` は空でなくてよく、`manifest.toml` と `style.toml` のないディレクトリ（Markdown の原稿のリポジトリなど）なら、ほかのファイルを残したまま作る。
