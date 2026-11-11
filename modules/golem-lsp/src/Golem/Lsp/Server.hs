@@ -23,7 +23,7 @@ import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Concurrent.STM
 import Control.Exception (evaluate)
-import Control.Monad (forM_, guard, join, unless, void, when)
+import Control.Monad (forM, forM_, guard, join, unless, void, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as J
 import Data.Aeson.KeyMap qualified as KM
@@ -42,13 +42,15 @@ import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Emet.Outline (emetOutline)
 import Golem.Emet.Outline qualified as O
 import Golem.Lsp.Features qualified as F
+import Golem.Lsp.FileRename qualified as R
 import Golem.Lsp.Workspace
+import Golem.Project.Paths (normalizeRelative, resolveInRoot)
 import Golem.Syntax qualified as S
 import Language.LSP.Logging (defaultClientLogger)
 import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Types
 import Language.LSP.Server
-import Language.LSP.VFS (virtualFileText)
+import Language.LSP.VFS (VirtualFile (_lsp_version), virtualFileText)
 import Prettyprinter (pretty, viaShow)
 import System.Directory (doesFileExist, makeAbsolute)
 import System.FilePath (makeRelative, takeDirectory, takeExtension, (</>))
@@ -156,9 +158,14 @@ serverDefinition encVar initIdVar = do
         options =
           defaultOptions
             { optTextDocumentSync = Just (TextDocumentSyncOptions (Just True) (Just TextDocumentSyncKind_Full) Nothing Nothing Nothing),
-              optCompletionTriggerCharacters = Just ['[', ' ']
+              optCompletionTriggerCharacters = Just ['[', ' '],
+              optWorkspaceWillRenameFileOperationRegistrationOptions = Just renameFilter,
+              optWorkspaceDidRenameFileOperationRegistrationOptions = Just renameFilter
             }
       }
+
+renameFilter :: FileOperationRegistrationOptions
+renameFilter = FileOperationRegistrationOptions [FileOperationFilter (Just "file") (FileOperationPattern "**/*" Nothing Nothing)]
 
 -- | @capabilities.general.positionEncodings@ of the initialize request.
 offeredEncodings :: InitializeParams -> Maybe [PositionEncodingKind]
@@ -219,6 +226,48 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
         forM_ (relPath st uri) $ \p -> serially $ withWs $ \ws -> do
           ws' <- liftIO (closeFile ws p)
           commit Set.empty ws',
+      requestHandler SMethod_WorkspaceWillRenameFiles $ \(TRequestMessage _ _ _ (RenameFilesParams renames)) respond -> do
+        st <- state
+        enc <- encoding
+        mws <- liftIO (readTVarIO wsVar)
+        case (mws, traverse (renamePair st) renames >>= R.validateRenames) of
+          (_, Left err) -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (T.pack err) Nothing))
+          (Nothing, _) -> respond (Right (InR Null))
+          (Just ws, Right pairs) -> do
+            planned <- forM (["manifest.toml", "style.toml"] <> wsSourceFiles ws) $ \p -> do
+              safe <- liftIO (resolveInRoot (stRoot st) p)
+              if (p `notElem` ["manifest.toml", "style.toml"] && takeExtension p `notElem` [".gm", ".emet"]) || either (const True) (const False) safe
+                then pure (Right Nothing)
+                else do
+                  let uri = filePathToUri (stRoot st </> p)
+                  vf <- getVirtualFile (toNormalizedUri uri)
+                  disk <- case vf of
+                    Just _ -> pure Nothing
+                    Nothing -> liftIO $ do
+                      bytes <- BS.readFile (stRoot st </> p)
+                      pure (either (const Nothing) Just (TE.decodeUtf8' bytes))
+                  let content = maybe disk (Just . virtualFileText) vf
+                      version = maybe (InR Null) (InL . _lsp_version) vf
+                  case content of
+                    Nothing -> pure (Right Nothing)
+                    Just source -> case (if p == "manifest.toml" then R.planManifest else if p == "style.toml" then R.planStyle else if takeExtension p == ".emet" then R.planEmetImports else R.planImports) pairs source of
+                      Left err -> pure (Left err)
+                      Right edits -> do
+                        let li = S.mkLineIndex source
+                            textEdits = [InL (TextEdit (rangeWith enc li start end) replacement) | (start, end, replacement) <- edits]
+                            doc = TextDocumentEdit (OptionalVersionedTextDocumentIdentifier uri version) textEdits
+                        pure (Right (if null edits then Nothing else Just doc))
+            case sequence planned of
+              Left err -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (T.pack err) Nothing))
+              Right docs -> case [InL doc | Just doc <- docs] of
+                [] -> respond (Right (InR Null))
+                edits -> respond (Right (InL (WorkspaceEdit Nothing (Just edits) Nothing))),
+      notificationHandler SMethod_WorkspaceDidRenameFiles $ \(TNotificationMessage _ _ (RenameFilesParams renames)) -> do
+        st <- state
+        forM_ (traverse (renamePair st) renames >>= R.validateRenames) $ \pairs ->
+          serially $ withWs $ \ws -> do
+            ws' <- liftIO (renameWorkspace ws pairs)
+            commit Set.empty ws',
       requestHandler SMethod_TextDocumentDefinition $ \(TRequestMessage _ _ _ (DefinitionParams doc pos _ _)) respond -> do
         enc <- encoding
         r <- atPosition doc pos $ \ws p off ->
@@ -365,6 +414,12 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
             Nothing -> pure Nothing
         _ -> pure Nothing
     relPath st uri = makeRelative (stRoot st) <$> uriToFilePath uri
+    renamePair st (FileRename old new) = do
+      from <- maybe (Left "old URI is not a file") Right (uriToFilePath (Uri old))
+      to <- maybe (Left "new URI is not a file") Right (uriToFilePath (Uri new))
+      a <- either (Left . show) Right (normalizeRelative (makeRelative (stRoot st) from))
+      b <- either (Left . show) Right (normalizeRelative (makeRelative (stRoot st) to))
+      pure (a, b)
     toLocation ws (F.Location p s e) = (ws, p, s, e)
     toLspLocation enc (ws, p, s, e) = Location (fileUri ws p) (rangeIn enc ws p s e)
     toLink enc (ws, p, s, e) = DefinitionLink (LocationLink Nothing (fileUri ws p) (rangeIn enc ws p s e) (rangeIn enc ws p s e))

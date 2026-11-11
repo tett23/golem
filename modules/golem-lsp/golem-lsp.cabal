@@ -17,6 +17,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Golem.Lsp.Workspace
                     Golem.Lsp.Features
+                    Golem.Lsp.FileRename
                     Golem.Lsp.Server
                     Golem.Lsp.Toml
   build-depends:
@@ -41,6 +42,7 @@ library
     , prettyprinter >=1.7  && <1.8
     , stm
     , text          >=2.0  && <2.2
+    , toml-parser   >=2.0  && <2.1
   default-language: GHC2021
 
 test-suite golem-lsp-test
@@ -48,7 +50,7 @@ test-suite golem-lsp-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    EditingSpec FunctionsLspSpec PublishSpec SemanticTokensSpec StaleS1Spec Support TableWatchSpec TomlSpec
+  other-modules:    EditingSpec FileRenameSpec FunctionsLspSpec PublishSpec SemanticTokensSpec StaleS1Spec Support TableWatchSpec TomlSpec
   -- -N: one capability per processor from the start, so that the count
   -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)
   ghc-options:      -threaded "-with-rtsopts=-N"

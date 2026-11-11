@@ -10,6 +10,7 @@ module Golem.Lsp.Workspace
     updateFile,
     closeFile,
     reloadWorkspace,
+    renameWorkspace,
     tablesToWatch,
     watchGlob,
     tableFilesChanged,
@@ -37,6 +38,7 @@ import Golem.Eval.File
 import Golem.Eval.Settings (isSettingCommand)
 import Golem.Eval.Value (Value)
 import Golem.Lint
+import Golem.Lsp.FileRename qualified as Rename
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.CST (Node)
@@ -143,6 +145,16 @@ disk (golem-eval ADR 0004).
 -}
 reloadWorkspace :: Workspace -> IO Workspace
 reloadWorkspace = fullEvaluate
+
+{- | Rebuild after a client has renamed files on disk. The old VFS paths are
+discarded; the client opens the moved documents at their new URIs.
+-}
+renameWorkspace :: Workspace -> [(FilePath, FilePath)] -> IO Workspace
+renameWorkspace ws operations = do
+  files <- listSources (wsRoot ws)
+  let moved path = either (const False) (/= path) (Rename.renamePath operations path)
+      overlay = Map.filterWithKey (\path _ -> not (moved path)) (wsOverlay ws)
+  fullEvaluate ws {wsOverlay = overlay, wsSourceFiles = files}
 
 {- | Keeps the functions of .emet of the last evaluation that checked them
 (docs/adr/0170): renaming finds the names with them while a file does not
