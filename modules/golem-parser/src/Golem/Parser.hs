@@ -31,7 +31,8 @@ parse :: FileId -> Text -> (Node, [Diagnostic])
 parse fid src =
   let (tree, errs) = G.parseSyntaxRecover src
       cst = convert tree
-      extra = commentDiagnostics fid cst
+      recovered = recoverExpressionComments fid cst
+      extra = commentDiagnostics fid cst <> recovered
       unclosedAt p =
         any
           ( \x ->
@@ -42,9 +43,13 @@ parse fid src =
           )
           (withPositions fid cst)
       covered d =
-        diagCode d `elem` [DiagnosticCode "G01018", DiagnosticCode "G01017"]
-          && unclosedAt (spanStart (diagSpan d))
-          && any (\e -> diagCode e `elem` [DiagnosticCode "G01018", DiagnosticCode "G01101"] && spanEnd (diagSpan e) == spanStart (diagSpan d) && spanLength (diagSpan e) > 0) extra
+        ( diagCode d `elem` [DiagnosticCode "G01018", DiagnosticCode "G01017"]
+            && unclosedAt (spanStart (diagSpan d))
+            && any (\e -> diagCode e `elem` [DiagnosticCode "G01018", DiagnosticCode "G01101"] && spanEnd (diagSpan e) == spanStart (diagSpan d) && spanLength (diagSpan e) > 0) extra
+        )
+          || ( diagCode d `elem` [DiagnosticCode "G01010", DiagnosticCode "G01017", DiagnosticCode "G01020"]
+                 && any (spanContains (diagSpan d) . diagSpan) recovered
+             )
    in (cst, sortOn (spanStart . diagSpan) (filter (not . covered) (map (syntaxErrorDiagnostic fid) errs) <> extra))
 
 -- Diagnostics whose spans and suggested edits depend on the lossless tokens.
@@ -94,6 +99,50 @@ commentDiagnostics fid = walk False 0
       | otherwise = Nothing
     isSet (ElemToken (Token KIdent "set")) = True
     isSet _ = False
+
+-- An operator before an unclosed expression comment may make PEG backtrack
+-- to a shorter expression. Recover its comment from the retained error token.
+recoverExpressionComments :: FileId -> Node -> [Diagnostic]
+recoverExpressionComments fid = walk False 0
+  where
+    walk inExpr start n = snd (foldl' step (start, []) (nodeChildren n))
+      where
+        step (offset, ds) e =
+          let found = case e of
+                ElemNode m -> walk (inExpr || nodeKind m == NExpr) offset m
+                ElemToken (Token KError t)
+                  | inExpr || isSetLine t ->
+                      let (prefix, body) = if inExpr then ("", t) else let (p, v) = T.breakOn "=" t in (p <> "=", T.drop 1 v)
+                       in case unclosedMarker body of
+                            Just (before, proof) ->
+                              let from = offset + BS.length (TE.encodeUtf8 (prefix <> before))
+                                  sp = mkSpan fid from (offset + elementWidth e)
+                                  code = if proof then "G01101" else "G01018"
+                                  msg = if proof then "式では校正コメントを使えません" else "式のコメントが閉じていません"
+                               in [diagnostic code Error sp msg]
+                            Nothing -> []
+                _ -> []
+           in (offset + elementWidth e, ds <> found)
+    unclosedMarker = scan "" False
+      where
+        scan before quoted rest = case T.uncons rest of
+          Nothing -> Nothing
+          Just ('\\', tailText) | quoted -> case T.uncons tailText of
+            Just (c, xs) -> scan (before <> "\\" <> T.singleton c) quoted xs
+            Nothing -> Nothing
+          Just ('"', xs) -> scan (before <> "\"") (not quoted) xs
+          Just ('%', xs)
+            | not quoted,
+              Just ('%', after) <- T.uncons xs ->
+                let proof = "=" `T.isPrefixOf` after
+                    content = if proof then T.drop 1 after else after
+                 in if "%%" `T.isInfixOf` content
+                      then let (_, suffix) = T.breakOn "%%" content in scan (before <> "%%" <> (if proof then "=" else "") <> T.take (T.length content - T.length suffix) content <> "%%") False (T.drop 2 suffix)
+                      else Just (before, proof)
+          Just (c, xs) -> scan (before <> T.singleton c) quoted xs
+    isSetLine t =
+      let line = T.dropWhile (`elem` [' ', '\t']) t
+       in "@set " `T.isPrefixOf` line || "@set\t" `T.isPrefixOf` line
 
 -- | Parse and lower to the AST in one step.
 parseAst :: FileId -> Text -> (File, Node, [Diagnostic])

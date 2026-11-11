@@ -177,6 +177,13 @@ tests =
         let ds = snd (parse fid "[f %%閉じない\n")
         map diagCode ds @?= [DiagnosticCode "G01018"]
         map (\d -> (spanStart (diagSpan d), spanEnd (diagSpan d))) ds @?= [(3, 17)],
+      testCase "Golem ADR 0339 I4: unclosed expression comments point from their start" $ do
+        let inlineDs = snd (parse fid "[= 1+%%閉じない\n")
+            setDs = snd (parse fid "@set x = 1+%%閉じない\n")
+        map diagCode inlineDs @?= [DiagnosticCode "G01018"]
+        map (spanStart . diagSpan) inlineDs @?= [5]
+        map diagCode setDs @?= [DiagnosticCode "G01018"]
+        map (spanStart . diagSpan) setDs @?= [11],
       testCase "Golem ADR 0339 I4: only comments cannot fill a required expression" $ do
         let inlineDs = snd (parse fid "[= %%甲%% %%乙%%]")
             setDs = snd (parse fid "@set x = %%甲%% %%乙%%\n")
