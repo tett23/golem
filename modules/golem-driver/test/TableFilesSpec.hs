@@ -68,10 +68,10 @@ tableFileTests =
         headerTexts withBom @?= [["a"], ["b"]]
         csvBom <- oneTable "data/x.csv" "\xEF\xBB\xBF\&a,b\n1,2\n"
         headerTexts csvBom @?= [["a"], ["b"]],
-      testCase "G02085 after a BOM counts its bytes" $
+      testCase "G02154 after a BOM counts its bytes" $
         withTables [("a.gm", "@table data/x.tsv\n")] [("data/x.tsv", "\xEF\xBB\xBF\&a\tb\nc\n")] $ \tmp -> do
           r <- check tmp
-          [(c, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- brDiagnostics r, let { DiagnosticCode c = diagCode d }] @?= [("G02085", 7, 8)],
+          [(c, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- brDiagnostics r, let { DiagnosticCode c = diagCode d }] @?= [("G02154", 7, 8)],
       testCase "a BOM at the start of a source file is still G01002" $
         withTables [("a.gm", "\xEF\xBB\xBF\&x\n")] [] $ \tmp -> do
           r <- check tmp
@@ -99,8 +99,8 @@ tableFileTests =
           r <- check tmp
           let human = renderHuman (brSources r) (brDiagnostics r)
               json = renderJson (brSources r) (brDiagnostics r)
-          assertBool (T.unpack human) ("data/x.tsv:2:1: error[G02085]" `T.isInfixOf` human)
-          assertBool (T.unpack human) ("data/x.csv:2:1: error[G02085]" `T.isInfixOf` human)
+          assertBool (T.unpack human) ("data/x.tsv:2:1: error[G02154]" `T.isInfixOf` human)
+          assertBool (T.unpack human) ("data/x.csv:2:1: error[G02154]" `T.isInfixOf` human)
           assertBool (T.unpack json) ("\"data/x.tsv\"" `T.isInfixOf` json && "\"data/x.csv\"" `T.isInfixOf` json),
       testCase "a file referred to twice gives its reading error once" $
         withTables [("a.gm", "@table data/x.tsv\n\n@table data/x.tsv\n")] [("data/x.tsv", "a\rb\n")] $ \tmp -> do
@@ -192,7 +192,7 @@ cellLimitTests =
         testCase "T1: the cells of a header row of empty cells, a table without a header row, are counted" $ do
           ds <- pdfDiagnostics False [("a.gm", fromEmet "blank-header"), emetFile]
           [(c, m) | (c, m, _) <- ds] @?= [("G07108", tooMany 100001)],
-      -- every source makes rows as long as the header row (G02085, G01015,
+      -- every source makes rows as long as the header row (G02154, G01015,
       -- E06104, and the output of a plugin), so no test of rows of
       -- different lengths reaches the PDF
       localOption hangTimeout $
