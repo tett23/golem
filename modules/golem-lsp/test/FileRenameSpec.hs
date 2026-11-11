@@ -4,8 +4,9 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Lsp.FileRename (planEmetImports, planImports, planManifest, planPlotCsv, planStyle, planWiki, renamePath, validateRenames)
+import Golem.Lsp.Server (safeRenamePair)
 import Golem.Lsp.Workspace (openWorkspace, renameWorkspace, updateFile, wsOverlay, wsSourceFiles)
-import System.Directory (createDirectory, renameDirectory)
+import System.Directory (createDirectory, createFileLink, renameDirectory)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (TestTree, testGroup)
@@ -114,5 +115,13 @@ fileRenameTests =
           renameDirectory (root </> "part") (root </> "new")
           renamed <- renameWorkspace edited [("part", "new")]
           Map.member "part/a.gm" (wsOverlay renamed) @?= False
-          "new/a.gm" `elem` wsSourceFiles renamed @?= True
+          "new/a.gm" `elem` wsSourceFiles renamed @?= True,
+      testCase "R1: a symlink outside the project yields no rename edits" $
+        withSystemTempDirectory "golem-rename-root" $ \root ->
+          withSystemTempDirectory "golem-rename-outside" $ \outside -> do
+            TIO.writeFile (root </> "a.gm") "# A\n"
+            TIO.writeFile (outside </> "a.gm") "# Outside\n"
+            createFileLink (outside </> "a.gm") (root </> "link.gm")
+            safeRenamePair root ("a.gm", "b.gm") >>= (@?= True)
+            safeRenamePair root ("link.gm", "new.gm") >>= (@?= False)
     ]

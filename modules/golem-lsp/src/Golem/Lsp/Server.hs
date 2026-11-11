@@ -13,6 +13,7 @@ module Golem.Lsp.Server
     runGolemLspWithHandles,
     rewriteInitializeResponse,
     lspSeverity,
+    safeRenamePair,
   )
 where
 
@@ -22,7 +23,7 @@ import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Concurrent.STM
-import Control.Exception (evaluate)
+import Control.Exception (IOException, evaluate, try)
 import Control.Monad (forM, forM_, guard, join, unless, void, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as J
@@ -52,7 +53,7 @@ import Language.LSP.Protocol.Types
 import Language.LSP.Server
 import Language.LSP.VFS (VirtualFile (_lsp_version), virtualFileText)
 import Prettyprinter (pretty, viaShow)
-import System.Directory (doesFileExist, makeAbsolute)
+import System.Directory (canonicalizePath, doesFileExist, doesPathExist, makeAbsolute)
 import System.FilePath (makeRelative, takeDirectory, takeExtension, (</>))
 import System.IO (BufferMode (..), Handle, hFlush, hSetBuffering, hSetEncoding, stdin, stdout, utf8)
 
@@ -209,6 +210,27 @@ alephWiki root params = do
       pure (makeRelative workspace path, title)
     sheet _ _ = Nothing
 
+-- | A rename source and its destination parent must resolve inside the
+-- project. This also rejects a symlink that leads out of the project.
+safeRenamePair :: FilePath -> (FilePath, FilePath) -> IO Bool
+safeRenamePair root (from, to) = do
+  result <- try $ do
+    oldExists <- doesPathExist (root </> from)
+    parentExists <- doesPathExist (root </> takeDirectory to)
+    if not oldExists || not parentExists
+      then pure False
+      else do
+        canonicalRoot <- canonicalizePath root
+        canonicalOld <- canonicalizePath (root </> from)
+        canonicalParent <- canonicalizePath (root </> takeDirectory to)
+        let inside path =
+              path == canonicalRoot
+                || case normalizeRelative (makeRelative canonicalRoot path) of
+                  Right relative -> relative /= ""
+                  Left _ -> False
+        pure (inside canonicalOld && inside canonicalParent)
+  pure (either (const False) id (result :: Either IOException Bool))
+
 -- | @capabilities.general.positionEncodings@ of the initialize request.
 offeredEncodings :: InitializeParams -> Maybe [PositionEncodingKind]
 offeredEncodings (InitializeParams _ _ _ _ _ _ (ClientCapabilities _ _ _ _ general _) _ _ _) =
@@ -272,10 +294,15 @@ handlers encVar rootVar plotVar wikiVar wsVar gen watchVar lock dirtyVar pubVar 
         st <- state
         enc <- encoding
         mws <- liftIO (readTVarIO wsVar)
-        case (mws, traverse (renamePair st) renames >>= R.validateRenames) of
-          (_, Left err) -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (T.pack err) Nothing))
-          (Nothing, _) -> respond (Right (InR Null))
-          (Just ws, Right pairs) -> do
+        let pairsResult = traverse (renamePair st) renames >>= R.validateRenames
+        safeRenames <- case pairsResult of
+          Left _ -> pure True
+          Right pairs -> liftIO (and <$> traverse (safeRenamePair (stRoot st)) pairs)
+        case (mws, pairsResult, safeRenames) of
+          (_, Left err, _) -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (T.pack err) Nothing))
+          (Nothing, _, _) -> respond (Right (InR Null))
+          (_, Right _, False) -> respond (Right (InR Null))
+          (Just ws, Right pairs, True) -> do
             plot <- liftIO (readTVarIO plotVar)
             wiki <- liftIO (readTVarIO wikiVar)
             let projectFiles = [(stRoot st </> p, Nothing) | p <- ["manifest.toml", "style.toml"] <> wsSourceFiles ws <> maybe [] pure plot]
