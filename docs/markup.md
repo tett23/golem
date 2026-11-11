@@ -283,7 +283,7 @@ v1 で定めるブロックコマンドは次のとおりである。
 - `@printings`：マニフェストの `[[metadata.printings]]` から、発行の履歴（`2026年10月16日　初版第1刷発行` の形の段落）を一項目一段落で組む。引数と本体は取らない。日本語の本でだけ使える（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。
 - `@figure`：図版を置く（「図版」の節を参照）。
 - `@table path format=形式 align=揃え cells=text`：CSV か TSV のファイルから表を作る（「表」の節を参照）。パスは最初の引数に書く。`format`、`align`、`cells` は省ける（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。`src=path` とも書けるが廃止予定であり、notice（G02129）を出す（[ADR 0184](adr/0184-table-positional-path.md)）。
-- `@listing path lines=N...M lang=言語`：Golem 以外のファイルの内容をコードとして取り込む（「コードブロック」の節を参照）。`lines` は `N...M` で N 行めから M 行めまで、`N` で N 行めだけを取り込む。パスは最初の引数に書く。`lang` は色分けの言語の名前である。コードブロックの開始の行と同じキーワード引数も書ける。`src=path` とも書けるが廃止予定であり、notice（G02065）を出す（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+- `@listing path lines=N...M lang=言語`：Golem 以外のファイルの内容をコードとして取り込む（「コードブロック」の節を参照）。`lines` は `N...M` で N 行めから M 行めまで、`N` で N 行めだけを取り込む。パスは最初の位置引数に一つ書く。`lang` は色分けの言語の名前である。コードブロックの開始の行と同じキーワード引数も書ける。`src=path` は G02250、パスを二つ書くと G02253 になる（[ADR 0315](adr/0315-retire-listing-src.md)）。
 - `@note 名前`：二つ以上の段落の脚注の本文を書く。本文の位置には `[note 名前]` を書く（「脚注」の節を参照）。
 - `@style 名前`：段落に段落スタイルを付ける（「段落スタイル」の節を参照）。
 - `@lang タグ`：ブロックの言語を指定する。属性の形と本体の形がある（「言語」の節を参照）。

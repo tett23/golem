@@ -1092,11 +1092,10 @@ noticeTests =
         errs "@style verse\n  a\\ b\n" @?= []
         -- the escaped space is dropped as before (golem-parser ADR 0010)
         verseOf "@style verse\n  a\n  \\ x\n" @?= [[["a"], ["x"]]],
-      testCase "G02065: @listing src=, and the content is the same" $ do
-        [(c, m, s, e) | (c, m, s, e) <- diags "@listing src=src/Main.hs\n", c == "G02065"]
-          @?= [("G02065", "@listing の src= は廃止予定です。パスを最初の引数に書きます", 9, 24)]
-        errs "@listing src/Main.hs\n" @?= []
-        body "@listing src=src/Main.hs lines=2...3\n" @?= body "@listing src/Main.hs lines=2...3\n",
+      testCase "ADR 0315 I1: positional @listing keeps its content" $ do
+        [(c, m, s, e) | (c, m, s, e) <- diags "@listing src=src/Main.hs\n", c == "G02250"]
+          @?= [("G02250", "@listing の src= は使えません。パスを最初の引数に移します", 9, 24)]
+        errs "@listing src/Main.hs\n" @?= [],
       testCase "the span of each @number by the span of its block" $ do
         let r = evalResult ctx "+ a\n@number 3\n+ b\n\n@number 2\n# h\n"
         Map.toList (erNumberSites r) @?= [(mkSpan (FileId 1) 14 18, mkSpan (FileId 1) 4 14), (mkSpan (FileId 1) 29 33, mkSpan (FileId 1) 19 29)]
@@ -1820,9 +1819,14 @@ diagnosticTests =
         msgs "@table blank.csv\n" @?= [("G02085", "CSV が空です")]
         diags "@table ragged.csv\n" @?= [("G02085", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
       testCase "G02036: @listing without a path" $ do
-        msgs "@listing\n" @?= [("G02036", "@listing にはファイルのパスが必要です")]
-        -- src= is read, with the notice G02065 (golem-syntax ADR 0002)
-        errs "@listing src=src/Main.hs\n" @?= ["G02065"],
+        msgs "@listing\n" @?= [("G02036", "@listing にはファイルのパスが必要です")],
+      testCase "ADR 0315 I2: reject legacy and ambiguous listing paths" $ do
+        errs "@listing src=src/Main.hs\n" @?= ["G02250"]
+        errs "@listing src/Main.hs src=src/Main.hs\n" @?= ["G02253"]
+        errs "@listing src/Main.hs src=other.hs\n" @?= ["G02253"]
+        errs "@listing src/Main.hs other.hs\n" @?= ["G02253"]
+        errs "@listing src=src/Main.hs src=other.hs\n" @?= ["G02077"]
+        errs "@listing src/Main.hs src=src/Main.hs src=other.hs\n" @?= ["G02077"],
       testCase "G02038: the number of prose slots" $ do
         msgs "[strong]\n" @?= [("G02038", "strong には散文スロットが一つ必要です")]
         msgs "[strong: a|b]\n" @?= [("G02038", "strong には散文スロットが一つ必要です")]

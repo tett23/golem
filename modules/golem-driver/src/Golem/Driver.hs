@@ -693,7 +693,7 @@ assetRefs (A.File _ bs) = concatMap blk bs
             "figure" -> [(T.unpack p, UseImage) | p <- take 1 pos <> kw "web"]
             -- the first argument, and src= to be retired (docs/adr/0184)
             "table" -> [(T.unpack p, UseTable) | p <- take 1 pos <> kw "src"]
-            "listing" -> [(T.unpack p, UseListing) | p <- take 1 pos <> kw "src"]
+            "listing" -> [(T.unpack p, UseListing) | null (kw "src"), [p] <- [pos]]
             _ -> []
     txt = \case
       A.Word t -> Just t
