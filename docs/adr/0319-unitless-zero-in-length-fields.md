@@ -1,6 +1,6 @@
 # ADR 0319: 長さを取る欄で単位のないゼロを受け付ける
 
-ステータス: 採択
+ステータス: 採択→[ADR 0345](0345-revise-unitless-zero-in-length-fields.md)
 
 ## 文脈
 
