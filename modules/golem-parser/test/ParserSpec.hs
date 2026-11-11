@@ -146,6 +146,70 @@ tests =
       testCase "unclosed comment" $ do
         let (_, ds) = parse fid "本文 %% 閉じない\n\n次。\n"
         map diagCode ds @?= [DiagnosticCode "G01018"],
+      testCase "Golem ADR 0339 I1: comments in all three argument lists and manuscript expressions" $ do
+        mapM_
+          parseOk
+          [ "[f %%先%% x %%中%% key=y %%後%%]\n",
+            "@f %%先%% x %%中%% key=y %%後%%\n",
+            "```text %%先%% key=y %%後%%\nbody\n```\n",
+            "[= 1+%%注%%2]\n",
+            "@set x = 1+%%注%%2\n"
+          ],
+      testCase "Golem ADR 0339 I1: comments preserve token boundaries and argument ordering" $ do
+        parseOk "[f %%甲\n乙%% x %%丙%% key=y]\n"
+        parseOk "[= (%%前%% 1 %%後%%)]\n"
+        parseOk "[= \"%%=注%%\"]\n"
+        assertBool "comments do not join identifiers" (not (null (codes "@set x = ab%%注%%cd\n")))
+        codes "[f key=y %%注%% x]\n" @?= [DiagnosticCode "G01019"],
+      testCase "Golem ADR 0339 I1: comments between call and member tokens" $ do
+        parseOk "[= f%%注%%(1)]\n"
+        parseOk "[= values%%注%%.price]\n",
+      testCase "Golem ADR 0339 I4: proof comments are banned in arguments and expressions" $ do
+        let src = "[f %%=注%% x %%=別%%]\n[= %%=式%% 1]\n"
+            ds = snd (parse fid src)
+        map diagCode ds @?= replicate 3 (DiagnosticCode "G01101")
+        map (\d -> (spanStart (diagSpan d), spanEnd (diagSpan d))) ds @?= [(3, 11), (14, 22), (27, 35)],
+      testCase "Golem ADR 0339 I4: set expression proof comment has expression context" $ do
+        let ds = snd (parse fid "@set x = %%=注%% 1\n")
+        map diagCode ds @?= [DiagnosticCode "G01101"]
+        map diagMessage ds @?= ["式では校正コメントを使えません"],
+      testCase "Golem ADR 0339 I4: unclosed argument comment spans its source" $ do
+        let ds = snd (parse fid "[f %%閉じない\n")
+        map diagCode ds @?= [DiagnosticCode "G01018"]
+        map (\d -> (spanStart (diagSpan d), spanEnd (diagSpan d))) ds @?= [(3, 17)],
+      testCase "Golem ADR 0339 I4: unclosed expression comments point from their start" $ do
+        let inlineDs = snd (parse fid "[= 1+%%閉じない\n")
+            setDs = snd (parse fid "@set x = 1+%%閉じない\n")
+        map diagCode inlineDs @?= [DiagnosticCode "G01018"]
+        map (spanStart . diagSpan) inlineDs @?= [5]
+        map diagCode setDs @?= [DiagnosticCode "G01018"]
+        map (spanStart . diagSpan) setDs @?= [11],
+      testCase "Golem ADR 0339 I4: only comments cannot fill a required expression" $ do
+        let inlineDs = snd (parse fid "[= %%甲%% %%乙%%]")
+            setDs = snd (parse fid "@set x = %%甲%% %%乙%%\n")
+        map diagCode inlineDs @?= [DiagnosticCode "G01020"]
+        map (spanStart . diagSpan) inlineDs @?= [18]
+        map (spanStart . diagSpan) setDs @?= [24],
+      testCase "Golem ADR 0339 I4: unclosed proof comment has only one error" $ do
+        let ds = snd (parse fid "[f %%=閉じない]\n")
+        map diagCode ds @?= [DiagnosticCode "G01101"],
+      testCase "Golem ADR 0339 I4: missing quotes cover complete values" $ do
+        let ds = snd (parse fid "[f x%%y key=x%%注%% tail=z%%]\n")
+        map diagCode ds @?= replicate 3 (DiagnosticCode "G01102"),
+      testCase "Golem ADR 0339 I4: a proof-like keyword value needs quotes" $ do
+        let ds = snd (parse fid "[f key=%%=注記%%]\n")
+        map diagCode ds @?= [DiagnosticCode "G01102"]
+        map (\d -> (spanStart (diagSpan d), spanEnd (diagSpan d))) ds @?= [(7, 18)]
+        map (map fixEdits . diagFixes) ds @?= [[[(mkSpan fid 7 18, "\"%%=注記%%\"")]]],
+      testCase "Golem ADR 0339 I3: each missing comment separator has one info" $ do
+        let counts src = length (commentBoundaryInfos fid (fst (parse fid src)))
+        counts "[cmd%%注%%]\n" @?= 1
+        counts "[cmd x %%注%% : 本文]\n" @?= 0
+        counts "[cmd \"x\"%%甲%%%%乙%%key=y]\n" @?= 3
+        counts "[= 1+%%注%%2]\n" @?= 2
+        counts "[= (%%前%% 1 %%後%%)]\n" @?= 0
+        counts "[= f%%注%%(1)]\n" @?= 2
+        counts "[= values%%注%%.price]\n" @?= 2,
       testCase "positional after keyword" $ do
         let (_, ds) = parse fid "[f a=1 b]\n"
         map diagCode ds @?= [DiagnosticCode "G01019"],

@@ -175,6 +175,21 @@ tests =
         case format src of
           Formatted r -> astFingerprintWith removableEscape r === astFingerprintWith removableEscape (preprocess src)
           Unformattable _ -> discard,
+      testCase "Golem ADR 0339 I2: comment boundaries and order format idempotently" $ do
+        let source = "[cmd%%注%%]\n\n[cmd x %%注%% : 本文]\n\n[cmd \"x\"%%甲%%%%乙%%key=y]\n\n[= 1+%%注%%2]\n"
+            expected = "[cmd %%注%%]\n\n[cmd x %%注%%: 本文]\n\n[cmd \"x\" %%甲%% %%乙%% key=y]\n\n[= 1+ %%注%% 2]\n"
+        formatted source @?= expected
+        formatted expected @?= expected,
+      testCase "Golem ADR 0339 I5: missing quotes prevent rewriting" $
+        case format "[cmd key=x%%注%%]\n" of
+          Unformattable ds -> map diagCode ds @?= [DiagnosticCode "G01102"]
+          Formatted r -> assertFailure ("rewritten: " <> show r),
+      testCase "Golem ADR 0339 I2: expression delimiters touch boundary comments" $ do
+        formatted "[= ( %%前%% 1 %%後%% )]\n" @?= "[= (%%前%% 1 %%後%%)]\n"
+        formatted "[= %%前%% 1 %%後%% ]\n" @?= "[=%%前%% 1 %%後%%]\n",
+      testCase "Golem ADR 0339 I2: call and member comments keep their order" $ do
+        formatted "[= f%%注%%(1)]\n" @?= "[= f %%注%% (1)]\n"
+        formatted "[= values%%注%%.price]\n" @?= "[= values %%注%% .price]\n",
       testProperty "idempotent" $ property $ do
         src <- forAll document
         cover 80 "formattable" (isFormatted (format src))
