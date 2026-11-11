@@ -73,7 +73,7 @@ import Data.Time.Calendar (showGregorian, toGregorian)
 #if !defined(wasm32_HOST_ARCH)
 import Foreign.C.Error (throwErrnoIfMinus1Retry_)
 import Foreign.C.String (CString, withCString)
-import Foreign.C.Types (CInt)
+import Foreign.C.Types (CInt (..))
 #endif
 import Golem.Assemble
 import Golem.Assemble.Formats (MarkFormat (..))
