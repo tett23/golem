@@ -3,7 +3,7 @@ module Golem.Lsp.FileRename (renamePath, validateRenames, planImports, planEmetI
 
 import Control.Monad (forM)
 import Data.ByteString qualified as BS
-import Data.Char (isAlphaNum)
+import Data.Char (isAlphaNum, toLower)
 import Data.List
   ( nub,
     sortOn,
@@ -381,7 +381,7 @@ planWiki operations sourcePath sheets source = do
                 | otherwise =
                     let base = if relative then takeDirectory newSource else "."
                         rel = wikiRelative base newTarget
-                     in T.pack (if takeExtension (T.unpack written) == "" && takeExtension rel == ".md" then dropExtension rel else rel)
+                     in T.pack (if takeExtension (T.unpack written) == "" && map toLower (takeExtension rel) == ".md" then dropExtension rel else rel)
               resolvesSame = case wikiResolve newSource movedSheets written of
                 Just (path, _, _) -> path == newTarget
                 Nothing -> False
@@ -415,9 +415,9 @@ wikiResolve source sheets written
   where
     text = T.unpack written
     nfc = normalize NFC
-    hasKnownExtension path = takeExtension path `elem` [".md", ".gm", ".emet", ".txt", ".toml", ".csv", ".tsv", ".svg", ".mmd", ".json", ".jsonc", ".json5", ".jsonl", ".png", ".jpg", ".jpeg", ".gif", ".webp"]
-    kindRank path | takeExtension path == ".md" = 0
-    kindRank path | takeExtension path == ".gm" = 1
+    hasKnownExtension path = map toLower (takeExtension path) `elem` [".md", ".gm", ".emet", ".txt", ".toml", ".csv", ".tsv", ".svg", ".mmd", ".json", ".jsonc", ".json5", ".jsonl", ".png", ".jpg", ".jpeg", ".gif", ".webp"]
+    kindRank path | map toLower (takeExtension path) == ".md" = 0
+    kindRank path | map toLower (takeExtension path) == ".gm" = 1
     kindRank _ = 2
 
 wikiDistance :: FilePath -> FilePath -> Int
