@@ -169,7 +169,7 @@ rulesTests =
         ruFontFormatsAllowed printRules @?= ["cff", "truetype"]
         (ruBleedMin printRules, ruTrimHazardDistance printRules, ruLiveAreaDistance printRules) @?= (mm 3, mm 3, mm 3)
         (ruInkMax printRules, ruPageMultiple printRules, ruStrokeMin printRules) @?= (350, 1, mm 0.1)
-        map fst builtinRules @?= ["basic", "print", "none"],
+        map fst builtinRules @?= ["basic", "print", "screen", "none"],
       testCase "a key written replaces only itself" $ do
         let r = parsed "based-on = \"print\"\n[image-resolution]\ncolor = { warning-below = 350 }\n"
         ruResolutionColor r @?= Tier 150 350
@@ -179,6 +179,14 @@ rulesTests =
         ruName (parsed "name = \"A 印刷\"\n") @?= Just "A 印刷"
         parsed "based-on = \"basic\"\n" @?= basicRules
         parsed "based-on = \"none\"\n" @?= noneRules,
+      testCase "Golem ADR 0327 S1 and S3: screen keeps basic checks and accepts bleed override" $ do
+        let screen = parsed "based-on = \"screen\"\n"
+        ruBasedOn screen @?= "screen"
+        ruGlyphMissing screen @?= ruGlyphMissing basicRules
+        ruOverfullLines screen @?= ruOverfullLines basicRules
+        ruFontEmbedding screen @?= ruFontEmbedding basicRules
+        map ($ screen) [ruBleedSize, ruBleedTrimHazard, ruLiveArea, ruPdfX] @?= replicate 4 LevelOff
+        ruBleedSize (parsed "based-on = \"screen\"\n[bleed-size]\nseverity = \"error\"\nmin = \"3mm\"\n") @?= LevelError,
       testCase "image-unplaceable is an unknown check (golem-pdf ADR 0008)" $ g09001 "[image-unplaceable]\nseverity = \"off\"\n" 0,
       testCase "an unknown top-level key is G09001 at its line" $ g09001 "based-on = \"print\"\nfoo = 1\n" 1,
       testCase "an unknown key of a check is G09001 at its line" $ g09001 "[bleed-size]\nseverity = \"error\"\nmaximum = \"3mm\"\n" 2,

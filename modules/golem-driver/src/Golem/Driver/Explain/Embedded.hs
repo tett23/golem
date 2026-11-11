@@ -11347,7 +11347,7 @@ documentText =
       "`golem preflight` が読むプリフライトの設定のファイルに誤りがある。",
       "ファイルは `--rules` で指したもの、指さなければプロジェクトのルートの `preflight.toml` である。",
       "ファイルが読めない（`--rules` の指すファイルがない、UTF-8 でない）、TOML として読めない、知らないキーがある、値の型や範囲が違う、のどれもがこのコードになる。",
-      "`based-on` が `basic`、`print`、`none` のどれでもないとき、`image-resolution` の `error-below` が `warning-below` より大きいときも、このコードである。",
+      "`based-on` が `basic`、`print`、`screen`、`none` のどれでもないとき、`image-resolution` の `error-below` が `warning-below` より大きいときも、このコードである。",
       "しきい値が負のときは [G02103](#g02103) である（[docs/adr/0102](adr/0102-natural-number-type.md)）。",
       "位置は、そのファイルの中の誤りの位置である。",
       "このコードが出ると、PDF を組まずに終える。",

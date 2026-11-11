@@ -5,6 +5,7 @@ releases and checked against fixed hashes.
 module Golem.Driver.New
   ( Language (..),
     templateFiles,
+    templateFilesFor,
     FontSource (..),
     templateFonts,
     Entry (..),
@@ -37,11 +38,15 @@ data Language = Japanese | English
 
 -- | The files of a new project, given the UUID of its id.
 templateFiles :: Language -> Text -> [(FilePath, Text)]
-templateFiles lang uuid =
+templateFiles = templateFilesFor False
+
+-- | The screen template uses the screen preflight rules and omits bleed.
+templateFilesFor :: Bool -> Language -> Text -> [(FilePath, Text)]
+templateFilesFor screen lang uuid =
   [ ("manifest.toml", manifest),
     ("style.toml", style),
     ("chapters/01.gm", chapter),
-    ("preflight.toml", preflightToml lang),
+    ("preflight.toml", if screen then "based-on = \"screen\"\n" else preflightToml lang),
     (".gitignore", "build/\n")
   ]
   where
@@ -83,20 +88,21 @@ templateFiles lang uuid =
         "size = \"" <> size <> "\"",
         "binding = \"" <> binding <> "\"",
         "writing-mode = \"" <> mode <> "\"",
-        "bleed = \"" <> bleed <> "\"",
-        "",
-        "[page.grid]",
-        "font-size = \"" <> fontSize <> "\"",
-        "characters = " <> T.show chars,
-        "lines = " <> T.show lineCount,
-        "line-pitch = \"" <> pitch <> "\"",
-        "columns = 1",
-        "position = { top = \"" <> top <> "\", gutter = \"" <> gutter <> "\" }",
-        "",
-        "[masters.body]",
-        "folio = { position = \"bottom-outside\", format = \"{n}\" }",
-        ""
       ]
+        <> ["bleed = \"" <> bleed <> "\"" | not screen]
+        <> [ "",
+             "[page.grid]",
+             "font-size = \"" <> fontSize <> "\"",
+             "characters = " <> T.show chars,
+             "lines = " <> T.show lineCount,
+             "line-pitch = \"" <> pitch <> "\"",
+             "columns = 1",
+             "position = { top = \"" <> top <> "\", gutter = \"" <> gutter <> "\" }",
+             "",
+             "[masters.body]",
+             "folio = { position = \"bottom-outside\", format = \"{n}\" }",
+             ""
+           ]
     fonts comment path = ["[fonts.body]", comment, path, ""]
     rest number =
       [ "[headings.1]",

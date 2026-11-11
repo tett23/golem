@@ -7938,7 +7938,7 @@ Golem の操作は、すべて `golem` という一つの実行ファイルの�
 
 | コマンド | 内容 |
 |---|---|
-| `golem new <dir> [--language ja\|en] [--no-fonts]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する。`<dir>` は、ないパスか、プロジェクトのないディレクトリである（空でなくてよい。[ADR 0273](adr/0273-golem-new-in-a-directory-without-a-project.md)）。「[golem new](#golem-new)」の節を参照 |
+| `golem new <dir> [--language ja\|en] [--no-fonts] [--screen]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する。`<dir>` は、ないパスか、プロジェクトのないディレクトリである（空でなくてよい。[ADR 0273](adr/0273-golem-new-in-a-directory-without-a-project.md)）。「[golem new](#golem-new)」の節を参照 |
 | `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。「[golem check](#golem-check)」の節を参照 |
 | `golem preflight [--rules <ファイル>] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、ファイルに書かずに、入稿の前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。「[golem preflight](#golem-preflight)」の節を参照 |
@@ -7966,6 +7966,7 @@ Golem の操作は、すべて `golem` という一つの実行ファイルの�
 この生成が、Golem が乱数を使う唯一の箇所である。
 
 `preflight.toml` は、`based-on = "print"` の一行と、`print` の主な値をコメントで書き写した例からなる。
+`--screen` を付けた雛形では、`style.toml` の塗り足しを省き、`preflight.toml` に `based-on = "screen"` の一行を書く（[ADR 0327](adr/0327-screen-preflight-and-template.md)）。
 コメントの言語だけを雛形の言語に合わせる。
 例の後には、`page-count` の段落と、墨一色の本のための段落（`[cmy-plates]` の `severity = "error"` と `[image-color-space]` の `allowed = ["gray"]`）を、どちらもコメントで書く（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
 `preflight.toml` は、`--no-fonts` を付けても作る。
@@ -8165,7 +8166,7 @@ InDesign のプリフライトプロファイルにあたるものを、プリ�
 
 設定のファイルの最上位のキーは、次の三種類である。
 
-- `based-on`：`basic`、`print`、`none` のどれか。省けば `print`
+- `based-on`：`basic`、`print`、`screen`、`none` のどれか。省けば `print`
 - `name`：要約に出す名前
 - 検査の名前の表
 
@@ -8179,10 +8180,11 @@ G09001 があれば、PDF を組まずに終える。
 未知のキーは、`style.toml` と同じく、キーと列挙の値をデータとして書いたスキーマで決める。
 値の誤りと未知のキーが同じファイルにあれば、両方を報告する（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
 
-組み込みの設定は、次の三つである。
+組み込みの設定は、次の四つである。
 
 - `basic`：InDesign の `[基本]` にあたり、ビルドを止めない項目だけを検査する。
 - `print`：しきい値は、日本の印刷所の入稿の案内でよく見る値から選んだもので、特定の規格の値ではない。
+- `screen`：`basic` の検査から PDF/X-4 の検査を外し、画面向けの本に使う（[ADR 0327](adr/0327-screen-preflight-and-template.md)）。
 - `none`：すべての検査を `off` にした設定で、一から設定を書くときの基にする。
 
 `basic` と `print` の検査と重大度は、次の表のとおりである。

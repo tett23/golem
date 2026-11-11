@@ -49,7 +49,7 @@ data Format = Human | Json
 data InspectAs = AsCst | AsAst | AsIr | AsCbor
 
 data Command
-  = New FilePath Language Bool
+  = New FilePath Language Bool Bool
   | Build [Target] Profile CropMarks Bool Bool Format
   | Check Profile CropMarks Bool Bool Format
   | Preflight (Maybe FilePath) CropMarks Format
@@ -192,7 +192,7 @@ commands =
   subparser
     ( commandGroup "コマンド:"
         <> metavar "COMMAND"
-        <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない")) "プロジェクトを作る"
+        <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない") <*> switch (long "screen" <> help "画面向けのプリフライト設定を作る")) "プロジェクトを作る"
         <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> marksOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "出力を build/ に書く"
         <> cmd "check" (Check <$> profileOpt <*> marksOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "出力を書かずに検査する"
         <> cmd "preflight" (Preflight <$> optional (strOption (long "rules" <> metavar "FILE" <> help "プリフライトの設定のファイル（既定は preflight.toml）")) <*> marksOpt <*> formatOpt) "入稿の前に PDF を検査する"
@@ -243,7 +243,7 @@ localize = intercalate "\n" . go . lines
 
 run :: Command -> IO ExitCode
 run = \case
-  New dir lang noFonts -> newProject dir lang noFonts
+  New dir lang noFonts screen -> newProject dir lang noFonts screen
   Build tgs profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
   Check profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
   Preflight rules marks fmt -> preflightRun rules marks fmt
@@ -420,12 +420,12 @@ relativePath p = do
   pure (makeRelative cwd (joinPath parts))
 
 -- | golem new (golem-cli ADR 0003).
-newProject :: FilePath -> Language -> Bool -> IO ExitCode
-newProject dir lang noFonts = do
+newProject :: FilePath -> Language -> Bool -> Bool -> IO ExitCode
+newProject dir lang noFonts screen = do
   uuid <- UUID.nextRandom
   fetch <- httpsFetcher
   let fonts = templateFonts lang
-  r <- createProject dir (templateFiles lang (UUID.toText uuid)) (if noFonts then Nothing else Just (fetch, fonts))
+  r <- createProject dir (templateFilesFor screen lang (UUID.toText uuid)) (if noFonts then Nothing else Just (fetch, fonts))
   case r of
     Left (FetchFailed es) -> mapM_ (TIO.hPutStrLn stderr) es >> pure (ExitFailure 1)
     Left (Conflicts cs) -> putNewDiagnostics (map conflictDiagnostic cs) >> pure (ExitFailure 1)
