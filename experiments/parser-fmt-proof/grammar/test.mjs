@@ -40,6 +40,10 @@ try {
     assert.match(strict.stderr, /unsupported Word choice 1: '%%='/);
   }
 
+  const invalidPeg = generate(`${original}\nUnclosed <- (\n`);
+  assert.notEqual(invalidPeg.status, 0, 'the canonical PEG parser must reject malformed grammar');
+  assert.match(invalidPeg.stderr, /peg-hs/);
+
   const positive = generate(original);
   assert.equal(positive.status, 0, positive.stderr);
   const model = readFileSync(generated, 'utf8');
@@ -93,7 +97,7 @@ try {
   assert.notEqual(refuted.status, 0, 'reversing the PEG choice must break the theorem');
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  console.log(`grammar fragment: rules ${emittedRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proofs 2, negative mutations 6`);
+  console.log(`grammar fragment: rules ${emittedRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proofs 2, negative mutations 7`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

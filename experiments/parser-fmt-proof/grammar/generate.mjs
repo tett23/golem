@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const fragment = process.argv[2] === '--fragment';
@@ -10,6 +11,10 @@ if (!input || !output) {
 
 const grammar = readFileSync(input, 'utf8');
 const errors = [];
+const peg = spawnSync(process.env.PEG_HS ?? 'peg-hs', ['lint', input], { encoding: 'utf8' });
+if (peg.error || peg.status !== 0) {
+  errors.push(`peg-hs: ${peg.error?.message ?? (peg.stderr || peg.stdout).trim()}`);
+}
 const sourceRules = [];
 let activeRule = false;
 for (const line of grammar.split('\n')) {
